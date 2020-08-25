@@ -130,7 +130,30 @@ type StoreType uint8
 const (
 	MetaTypeMemory StoreType = iota
 	MetaTypeRocks
+	MetaTypeUnKnown = 255
 )
+
+func (s StoreType) ToString() string {
+	switch s {
+	case MetaTypeMemory:
+		return "memory"
+	case MetaTypeRocks:
+		return "rocksdb"
+	default:
+		return "unknown"
+	}
+}
+
+func MpStoreTypeParseFromString(st string) (StoreType, bool) {
+	switch st {
+	case string(MetaTypeMemory):
+		return MetaTypeMemory, true
+	case string(MetaTypeRocks):
+		return MetaTypeRocks, true
+	default:
+		return MetaTypeUnKnown, false
+	}
+}
 
 type Token struct {
 	TokenType int8
@@ -434,6 +457,7 @@ type MetaPartitionView struct {
 	IsRecover   bool
 	Members     []string
 	LeaderAddr  string
+	StoreType   string
 	Status      int8
 }
 

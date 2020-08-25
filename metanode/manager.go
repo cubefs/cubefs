@@ -424,7 +424,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		End:         request.End,
 		Cursor:      request.Start,
 		Peers:       request.Members,
-		StoreType:   m.storeType,
+		StoreType:   request.StoreType,
 		RaftStore:   m.raftStore,
 		NodeId:      m.nodeId,
 		RootDir:     path.Join(m.rootDir, partitionPrefix+partitionId),

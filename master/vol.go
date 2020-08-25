@@ -47,6 +47,7 @@ type Vol struct {
 	tokens             map[string]*proto.Token
 	tokensLock         sync.RWMutex
 	MetaPartitions     map[uint64]*MetaPartition `graphql:"-"`
+	mpStoreType        proto.StoreType           //metaPartition store type
 	mpsLock            sync.RWMutex
 	dataPartitions     *DataPartitionMap
 	mpsCache           []byte
@@ -58,56 +59,75 @@ type Vol struct {
 	sync.RWMutex
 }
 
-func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead, authenticate, crossZone bool, enableToken bool, createTime int64, description string) (vol *Vol) {
-	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
-	vol.dataPartitions = newDataPartitionMap(name)
+type createVolArg struct {
+	name         string
+	owner        string
+	zoneName     string
+	description  string
+	mpCount      int
+	dpReplicaNum int
+	mpReplicaNum int
+	mpStoreType  proto.StoreType
+	size         uint64
+	capacity     uint64
+	followerRead bool
+	authenticate bool
+	crossZone    bool
+	enableToken  bool
+}
+
+func newVol(id uint64, createTime int64, arg *createVolArg) (vol *Vol) {
+	vol = &Vol{ID: id, Name: arg.name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
+	vol.dataPartitions = newDataPartitionMap(arg.name)
+	dpReplicaNum := arg.dpReplicaNum
 	if dpReplicaNum < defaultReplicaNum {
 		dpReplicaNum = defaultReplicaNum
 	}
-	vol.dpReplicaNum = dpReplicaNum
+	vol.dpReplicaNum = uint8(dpReplicaNum)
 	vol.threshold = defaultMetaPartitionMemUsageThreshold
+	mpReplicaNum := arg.mpReplicaNum
 	if mpReplicaNum < defaultReplicaNum {
 		mpReplicaNum = defaultReplicaNum
 	}
-	vol.mpReplicaNum = mpReplicaNum
-	vol.Owner = owner
-	if dpSize == 0 {
-		dpSize = util.DefaultDataPartitionSize
-	}
+	vol.mpReplicaNum = uint8(mpReplicaNum)
+	vol.Owner = arg.owner
+	dpSize := arg.size
 	if dpSize < util.GB {
 		dpSize = util.DefaultDataPartitionSize
 	}
 	vol.dataPartitionSize = dpSize
-	vol.Capacity = capacity
-	vol.FollowerRead = followerRead
-	vol.authenticate = authenticate
-	vol.crossZone = crossZone
-	vol.zoneName = zoneName
+	vol.Capacity = arg.capacity
+	vol.FollowerRead = arg.followerRead
+	vol.authenticate = arg.authenticate
+	vol.crossZone = arg.crossZone
+	vol.zoneName = arg.zoneName
 	vol.viewCache = make([]byte, 0)
 	vol.mpsCache = make([]byte, 0)
+	vol.mpStoreType = arg.mpStoreType
 	vol.createTime = createTime
-	vol.enableToken = enableToken
+	vol.enableToken = arg.enableToken
 	vol.tokens = make(map[string]*proto.Token, 0)
-	vol.description = description
+	vol.description = arg.description
 	return
 }
 
 func newVolFromVolValue(vv *volValue) (vol *Vol) {
-	vol = newVol(
-		vv.ID,
-		vv.Name,
-		vv.Owner,
-		vv.ZoneName,
-		vv.DataPartitionSize,
-		vv.Capacity,
-		vv.DpReplicaNum,
-		vv.ReplicaNum,
-		vv.FollowerRead,
-		vv.Authenticate,
-		vv.CrossZone,
-		vv.EnableToken,
-		vv.CreateTime,
-		vv.Description)
+	arg := &createVolArg{
+		name:         vv.Name,
+		owner:        vv.Owner,
+		zoneName:     vv.ZoneName,
+		size:         vv.DataPartitionSize,
+		capacity:     vv.Capacity,
+		dpReplicaNum: int(vv.DpReplicaNum),
+		mpReplicaNum: int(vv.ReplicaNum),
+		followerRead: vv.FollowerRead,
+		authenticate: vv.Authenticate,
+		crossZone:    vv.CrossZone,
+		enableToken:  vv.EnableToken,
+		description:  vv.Description,
+		mpStoreType:  vv.MpStoreType,
+	}
+	vol = newVol(vv.ID, vv.CreateTime, arg)
 	// overwrite oss secure
 	vol.OSSAccessKey, vol.OSSSecretKey = vv.OSSAccessKey, vv.OSSSecretKey
 	vol.Status = vv.Status
@@ -764,7 +784,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	if partitionID, err = c.idAlloc.allocateMetaPartitionID(); err != nil {
 		return nil, errors.NewError(err)
 	}
-	mp = newMetaPartition(partitionID, start, end, vol.mpReplicaNum, vol.Name, vol.ID)
+	mp = newMetaPartition(partitionID, start, end, vol.mpReplicaNum, vol.Name, vol.ID, vol.mpStoreType)
 	mp.setHosts(hosts)
 	mp.setPeers(peers)
 	for _, host := range hosts {
