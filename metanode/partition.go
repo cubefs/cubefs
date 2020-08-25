@@ -244,8 +244,12 @@ func (mp *MetaPartition) startRaft() (err error) {
 		}
 		peers = append(peers, rp)
 	}
-	log.LogDebugf("start partition id=%d raft peers: %s",
-		mp.config.PartitionId, peers)
+	log.LogDebugf("start partition id=%d raft peers: %s", mp.config.PartitionId, peers)
+
+	applyID, _ := mp.inodeTree.GetApplyID()
+
+	log.LogErrorf("=====================partition:{}=======================applyID:{}====applyID:{}===========count:{}", mp.config.PartitionId, mp.applyID, applyID, mp.inodeTree.Count())
+
 	pc := &raftstore.PartitionConfig{
 		ID:      mp.config.PartitionId,
 		Applied: mp.applyID,
