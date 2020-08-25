@@ -9,6 +9,13 @@
 [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs?ref=badge_shield)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/2761/badge)](https://bestpractices.coreinfrastructure.org/projects/2761)
 
+|<img src="https://user-images.githubusercontent.com/5708406/91202310-31eaab80-e734-11ea-84fc-c1b1882ae71c.png" height="24"/>&nbsp;Community Meeting|
+|------------------|
+| The ChubaoFS Project holds bi-weekly community online meeting. To join or watch previous meeting notes and recordings, please see [meeting schedule](https://github.com/chubaofs/community/wiki/Meeting-Schedule) and [meeting notes](https://github.com/chubaofs/community/wiki/Meeting-Agenda-and-Notes). |
+
+**Note**: The `master` branch may be in an *unstable or even broken state* during development.
+Please use [releases](https://github.com/chubaofs/chubaofs/releases) instead of the `master` branch in order to get a stable set of binaries.
+
 <div width="100%" style="text-align:center;"><img alt="ChubaoFS" src="https://user-images.githubusercontent.com/5708406/83598049-556de200-a59b-11ea-9a31-6daa1439f81a.png" height="200"/></div>
 
 ## Contents
