@@ -271,11 +271,11 @@ func (b *DentryRocks) Count() uint64 {
 }
 
 func (b *ExtendRocks) Count() uint64 {
-	return b.RocksTree.Count(DentryType)
+	return b.RocksTree.Count(ExtendType)
 }
 
 func (b *MultipartRocks) Count() uint64 {
-	return b.RocksTree.Count(DentryType)
+	return b.RocksTree.Count(MultipartType)
 }
 
 //Get
