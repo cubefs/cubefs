@@ -16,7 +16,6 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
 	"time"
 )
@@ -43,7 +42,6 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				"checkDiskRecoveryProgress occurred panic")
 		}
 	}()
-	var diff float64
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
 		badDataPartitionIds := value.([]uint64)
 		newBadDpIds := make([]uint64, 0)
@@ -59,8 +57,7 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 			if len(partition.Replicas) == 0 || len(partition.Replicas) < int(vol.dpReplicaNum) {
 				continue
 			}
-			diff = partition.getMinus()
-			if diff < util.GB {
+			if partition.isDataCatchUp() {
 				partition.isRecover = false
 				partition.RLock()
 				c.syncUpdateDataPartition(partition)
