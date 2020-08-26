@@ -600,9 +600,6 @@ func (s *ExtentStore) StoreSizeExtentID(maxExtentID uint64) (totalSize uint64) {
 	s.eiMutex.RUnlock()
 	for _, extentInfo := range extentInfos {
 		totalSize += extentInfo.Size
-		if extentInfo.Size > util.BlockSize*util.BlockCount {
-			log.LogErrorf("file(%v) size too much (%v)", s.dataPath, extentInfo)
-		}
 	}
 
 	return totalSize
