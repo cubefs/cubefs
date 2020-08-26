@@ -16,6 +16,8 @@ package datanode
 
 import (
 	"encoding/json"
+	"github.com/chubaofs/chubaofs/util"
+	"math"
 	"net"
 	"sync"
 	"time"
@@ -479,6 +481,9 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	sizeDiff := remoteExtentInfo.Size - localExtentInfo.Size
 	request := repl.NewExtentRepairReadPacket(dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
 	if storage.IsTinyExtent(remoteExtentInfo.FileID) {
+		if sizeDiff >= math.MaxUint32 {
+			sizeDiff = math.MaxUint32 - util.MB
+		}
 		request = repl.NewTinyExtentRepairReadPacket(dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
 	}
 	var conn *net.TCPConn
