@@ -61,6 +61,7 @@ type Tree interface {
 	SetApplyID(index uint64)
 	GetApplyID() (uint64, error)
 	Flush() error
+	Clear() error
 }
 
 type InodeTree interface {

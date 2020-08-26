@@ -305,7 +305,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) (*Met
 		extendTree = &ExtendBTree{NewBtree()}
 		multipartTree = &MultipartBTree{NewBtree()}
 	} else {
-		tree, err := DefaultRocksTree(path.Join(conf.RootDir, strconv.Itoa(int(conf.PartitionId))), true)
+		tree, err := DefaultRocksTree(path.Join(conf.RootDir, strconv.Itoa(int(conf.PartitionId))))
 		if err != nil {
 			log.LogErrorf("[NewMetaPartition] default rocks tree dir: %v, id: %v error %v ", conf.RootDir, conf.PartitionId, err)
 			return nil, err

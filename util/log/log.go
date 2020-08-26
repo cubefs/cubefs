@@ -483,12 +483,18 @@ func LogIfNotNil(e error) {
 	if gLog == nil {
 		return
 	}
-	if ErrorLevel&gLog.level != gLog.level {
-		return
+
+	if gLog.level == DebugLevel {
+		if ErrorLevel&gLog.level != gLog.level {
+			return
+		}
+		s := fmt.Sprintln(e.Error())
+		s = gLog.SetPrefix(s, levelPrefixes[3])
+		gLog.errorLogger.Output(2, s)
+	} else {
+		gLog.errorLogger.Output(2, e.Error())
 	}
-	s := fmt.Sprintln(e.Error())
-	s = gLog.SetPrefix(s, levelPrefixes[3])
-	gLog.errorLogger.Output(2, s)
+
 }
 
 // LogError logs the errors.

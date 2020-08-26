@@ -468,6 +468,11 @@ func (i *BTree) Release() {
 	i.Reset()
 }
 
+func (i *BTree) Clear() error {
+	i.Release()
+	return nil
+}
+
 func (i *BTree) SetApplyID(index uint64) {
 }
 

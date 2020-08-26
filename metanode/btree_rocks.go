@@ -15,6 +15,7 @@ import (
 
 var readOption = gorocksdb.NewDefaultReadOptions()
 var writeOption = gorocksdb.NewDefaultWriteOptions()
+var flushOption = gorocksdb.NewDefaultFlushOptions()
 
 func init() {
 	readOption.SetFillCache(false)
@@ -28,11 +29,11 @@ type RocksTree struct {
 	sync.Mutex
 }
 
-func DefaultRocksTree(dir string, createIfMissing bool) (*RocksTree, error) {
-	return NewRocksTree(dir, createIfMissing, 256*util.MB, 4*util.MB)
+func DefaultRocksTree(dir string) (*RocksTree, error) {
+	return NewRocksTree(dir, 256*util.MB, 4*util.MB)
 }
 
-func NewRocksTree(dir string, createIfMissing bool, lruCacheSize int, writeBufferSize int) (*RocksTree, error) {
+func NewRocksTree(dir string, lruCacheSize int, writeBufferSize int) (*RocksTree, error) {
 	if stat, err := os.Stat(dir); err != nil {
 		if os.IsNotExist(err) {
 			if err := os.MkdirAll(dir, os.ModePerm); err != nil {
@@ -54,7 +55,7 @@ func NewRocksTree(dir string, createIfMissing bool, lruCacheSize int, writeBuffe
 	basedTableOptions.SetBlockCache(gorocksdb.NewLRUCache(lruCacheSize))
 	opts := gorocksdb.NewDefaultOptions()
 	opts.SetBlockBasedTableFactory(basedTableOptions)
-	opts.SetCreateIfMissing(createIfMissing)
+	opts.SetCreateIfMissing(true)
 	opts.SetWriteBufferSize(writeBufferSize)
 	opts.SetMaxWriteBufferNumber(2)
 	opts.SetCompression(gorocksdb.NoCompression)
@@ -85,7 +86,7 @@ func (r *RocksTree) GetApplyID() (uint64, error) {
 }
 
 func (r *RocksTree) Flush() error {
-	return r.db.Flush(gorocksdb.NewDefaultFlushOptions())
+	return r.db.Flush(flushOption)
 }
 
 var _ Snapshot = &RocksSnapShot{}
@@ -202,13 +203,45 @@ func (r *RocksTree) Put(key []byte, value []byte) error {
 }
 
 // drop the current btree.
-func (b *RocksTree) Release() {
-	if b.db != nil {
-		b.Lock()
-		defer b.Unlock()
-		b.db.Close()
-		b.db = nil
+func (r *RocksTree) Release() {
+	if r.db != nil {
+		r.Lock()
+		defer r.Unlock()
+		r.db.Close()
+		r.db = nil
 	}
+}
+
+func (r *RocksTree) Clear() error {
+	if r.db != nil {
+		r.Lock()
+		defer r.Unlock()
+		snapshot := r.db.NewSnapshot()
+		it := r.Iterator(snapshot)
+		defer func() {
+			it.Close()
+			r.db.ReleaseSnapshot(snapshot)
+		}()
+		start := []byte{0}
+		it.Seek(start)
+		batch := gorocksdb.NewWriteBatch()
+		for ; it.ValidForPrefix(start); it.Next() {
+			key := it.Key().Data()
+			batch.Delete(key)
+			if batch.Count() > 10000 {
+				if err := r.db.Write(writeOption, batch); err != nil {
+					return err
+				}
+			}
+		}
+		if batch.Count() > 0 {
+			if err := r.db.Write(writeOption, batch); err != nil {
+				return err
+			}
+		}
+		return r.db.Flush(flushOption)
+	}
+	return nil
 }
 
 var _ InodeTree = &InodeRocks{}

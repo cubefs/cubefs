@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -267,16 +266,10 @@ func (mp *MetaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		extendTree = &ExtendBTree{NewBtree()}
 		multipartTree = &MultipartBTree{NewBtree()}
 	} else {
-		mp.inodeTree.Release()
 		log.LogInfof("clean rocksdb data and new one to apply snapshot")
-		tree, err := DefaultRocksTree(path.Join(mp.config.RootDir, strconv.Itoa(int(mp.config.PartitionId))), false)
-		if err != nil {
+		if err := mp.inodeTree.Clear(); err != nil {
 			return err
 		}
-		inodeTree = &InodeRocks{tree}
-		dentryTree = &DentryRocks{tree}
-		extendTree = &ExtendRocks{tree}
-		multipartTree = &MultipartRocks{tree}
 	}
 
 	defer func() {
@@ -313,8 +306,6 @@ func (mp *MetaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			return
 		}
 		index++
-
-		log.LogInfof("appy type {} appIndexID", snap.Op, appIndexID)
 
 		switch snap.Op {
 		case opFSMCreateInode:
