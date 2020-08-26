@@ -28,11 +28,11 @@ type RocksTree struct {
 	sync.Mutex
 }
 
-func DefaultRocksTree(dir string) (*RocksTree, error) {
-	return NewRocksTree(dir, 256*util.MB, 4*util.MB)
+func DefaultRocksTree(dir string, createIfMissing bool) (*RocksTree, error) {
+	return NewRocksTree(dir, createIfMissing, 256*util.MB, 4*util.MB)
 }
 
-func NewRocksTree(dir string, lruCacheSize int, writeBufferSize int) (*RocksTree, error) {
+func NewRocksTree(dir string, createIfMissing bool, lruCacheSize int, writeBufferSize int) (*RocksTree, error) {
 	if stat, err := os.Stat(dir); err != nil {
 		if os.IsNotExist(err) {
 			if err := os.MkdirAll(dir, os.ModePerm); err != nil {
@@ -54,7 +54,7 @@ func NewRocksTree(dir string, lruCacheSize int, writeBufferSize int) (*RocksTree
 	basedTableOptions.SetBlockCache(gorocksdb.NewLRUCache(lruCacheSize))
 	opts := gorocksdb.NewDefaultOptions()
 	opts.SetBlockBasedTableFactory(basedTableOptions)
-	opts.SetCreateIfMissing(true)
+	opts.SetCreateIfMissing(createIfMissing)
 	opts.SetWriteBufferSize(writeBufferSize)
 	opts.SetMaxWriteBufferNumber(2)
 	opts.SetCompression(gorocksdb.NoCompression)

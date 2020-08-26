@@ -267,7 +267,9 @@ func (mp *MetaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		extendTree = &ExtendBTree{NewBtree()}
 		multipartTree = &MultipartBTree{NewBtree()}
 	} else {
-		tree, err := DefaultRocksTree(path.Join(mp.config.RootDir, strconv.Itoa(int(mp.config.PartitionId))))
+		mp.inodeTree.Release()
+		log.LogInfof("clean rocksdb data and new one to apply snapshot")
+		tree, err := DefaultRocksTree(path.Join(mp.config.RootDir, strconv.Itoa(int(mp.config.PartitionId))), false)
 		if err != nil {
 			return err
 		}

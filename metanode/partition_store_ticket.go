@@ -33,7 +33,7 @@ type storeMsg struct {
 
 //rocksdb schedule for index
 func (mp *MetaPartition) startScheduleByRocksDB() {
-	var keepLogNum uint64 = 10000
+	var keepLogNum uint64 = 20000
 
 	for mp.state != common.StateShutdown && mp.state != common.StateStopped {
 		defer func() {
