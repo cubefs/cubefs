@@ -242,6 +242,13 @@ func (mp *MetaPartition) Snapshot() (snap raftproto.Snapshot, err error) {
 
 // ApplySnapshot applies the given snapshots.
 func (mp *MetaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.SnapIterator) (err error) {
+	log.LogInfof("apply snapshot begin")
+
+	defer func() {
+		if err != nil {
+			log.LogErrorf("partition:[%d] apply snapshot has err:[%s]", mp.config.PartitionId, mp.applyID, err.Error())
+		}
+	}()
 
 	var (
 		data          []byte
@@ -304,6 +311,9 @@ func (mp *MetaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			return
 		}
 		index++
+
+		log.LogInfof("appy type {} appIndexID", snap.Op, appIndexID)
+
 		switch snap.Op {
 		case opFSMCreateInode:
 			ino := NewInode(0, 0)
