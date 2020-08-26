@@ -29,7 +29,7 @@ type RocksTree struct {
 }
 
 func DefaultRocksTree(dir string) (*RocksTree, error) {
-	return NewRocksTree(dir, 2<<32, 4*util.MB)
+	return NewRocksTree(dir, 256*util.MB, 4*util.MB)
 }
 
 func NewRocksTree(dir string, lruCacheSize int, writeBufferSize int) (*RocksTree, error) {
