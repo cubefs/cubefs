@@ -406,6 +406,9 @@ func (mp *MetaPartition) Load(snapshotPath string) (err error) {
 
 	//it means rocksdb and not init so skip load snapshot
 	if mp.config.StoreType == 1 && mp.inodeTree.Count() > 0 {
+		if mp.applyID == 0 {
+			mp.applyID = mp.persistedApplyID
+		}
 		return nil
 	}
 
