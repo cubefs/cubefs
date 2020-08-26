@@ -14,9 +14,6 @@ func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
 		}
 	}()
 
-	var (
-		usedSizeDiff  float64
-	)
 	c.MigratedDataPartitionIds.Range(func(key, value interface{}) bool {
 		badDataPartitionIds := value.([]uint64)
 		newBadDpIds := make([]uint64, 0)
@@ -32,8 +29,7 @@ func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
 			if len(partition.Replicas) == 0 || len(partition.Replicas) < int(vol.dpReplicaNum) {
 				continue
 			}
-			usedSizeDiff = partition.getMinus()
-			if usedSizeDiff == 0 {
+			if partition.isDataCatchUpInStrictMode() {
 				partition.isRecover = false
 				partition.RLock()
 				c.syncUpdateDataPartition(partition)

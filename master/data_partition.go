@@ -601,8 +601,6 @@ func (partition *DataPartition) containsBadDisk(diskPath string, nodeAddr string
 }
 
 func (partition *DataPartition) getMinus() (minus float64) {
-	partition.RLock()
-	defer partition.RUnlock()
 	if len(partition.Replicas) == 0 {
 		return
 	}
@@ -716,4 +714,35 @@ func (partition *DataPartition) isLatestReplica(addr string) (ok bool) {
 	}
 	latestAddr := partition.Hosts[hostsLen-1]
 	return latestAddr == addr
+}
+
+func (partition *DataPartition) isDataCatchUp() (ok bool) {
+	partition.RLock()
+	defer partition.RUnlock()
+	minus := partition.getMinus()
+	return minus < util.GB
+}
+
+func (partition *DataPartition) isDataCatchUpInStrictMode() (ok bool) {
+	partition.RLock()
+	defer partition.RUnlock()
+	minus := partition.getMinus()
+	if partition.used > 10*util.GB {
+		if minus < util.GB {
+			return true
+		}
+	} else if partition.used > util.GB {
+		if minus < 500*util.MB {
+			return true
+		}
+	} else {
+		if partition.used == 0 {
+			return true
+		}
+		percent := minus / float64(partition.used)
+		if percent < 0.2 {
+			return true
+		}
+	}
+	return false
 }
