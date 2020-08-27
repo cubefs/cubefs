@@ -35,6 +35,9 @@ func fininshDoExtentRepair() {
 }
 
 func setDoExtentRepair(value int) {
+	if value<=0 {
+		value=MaxExtentRepairLimit
+	}
 	close(extentRepairLimiteRater)
 	if value > MaxExtentRepairLimit {
 		value = MaxExtentRepairLimit
