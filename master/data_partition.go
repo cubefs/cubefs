@@ -737,8 +737,14 @@ func (partition *DataPartition) isDataCatchUpInStrictMode() (ok bool) {
 			return true
 		}
 		percent := minus / float64(partition.used)
-		if percent < 0.2 {
-			return true
+		if partition.used > util.MB {
+			if percent < 0.5 {
+				return true
+			}
+		} else {
+			if percent < 0.7 {
+				return true
+			}
 		}
 	}
 	return false
