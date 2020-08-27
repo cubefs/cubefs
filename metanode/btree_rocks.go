@@ -237,7 +237,7 @@ func (r *RocksTree) Clear() error {
 		start := []byte{0}
 		it.Seek(start)
 		batch := gorocksdb.NewWriteBatch()
-		defer batch.Clear()
+		defer batch.Destroy()
 		for ; it.ValidForPrefix(start); it.Next() {
 			key := it.Key().Data()
 			batch.Delete(key)
@@ -310,19 +310,31 @@ func multipartEncodingKey(key string, id string) []byte {
 }
 
 // count by type
-func (b *InodeRocks) Count() uint64 {
+func (b *InodeRocks) Count(estimate bool) uint64 {
+	if estimate {
+		return 1 //TODO : fix me
+	}
 	return b.RocksTree.Count(InodeType)
 }
 
-func (b *DentryRocks) Count() uint64 {
+func (b *DentryRocks) Count(estimate bool) uint64 {
+	if estimate {
+		return 1 //TODO : fix me
+	}
 	return b.RocksTree.Count(DentryType)
 }
 
-func (b *ExtendRocks) Count() uint64 {
+func (b *ExtendRocks) Count(estimate bool) uint64 {
+	if estimate {
+		return 1 //TODO : fix me
+	}
 	return b.RocksTree.Count(ExtendType)
 }
 
-func (b *MultipartRocks) Count() uint64 {
+func (b *MultipartRocks) Count(estimate bool) uint64 {
+	if estimate {
+		return 1 //TODO : fix me
+	}
 	return b.RocksTree.Count(MultipartType)
 }
 

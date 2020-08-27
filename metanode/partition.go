@@ -314,7 +314,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) (*Met
 		dentryTree = &DentryRocks{tree}
 		extendTree = &ExtendRocks{tree}
 		multipartTree = &MultipartRocks{tree}
-		log.LogInfof("partition:[%d] inode:[%d] dentry:[%d] extend:[%d] multipart:[%d]", conf.PartitionId, inodeTree.Count(), dentryTree.Count(), extendTree.Count(), multipartTree.Count())
+		log.LogInfof("partition:[%d] inode:[%d] dentry:[%d] extend:[%d] multipart:[%d]", conf.PartitionId, inodeTree.Count(false), dentryTree.Count(false), extendTree.Count(false), multipartTree.Count(false))
 	}
 
 	applyID, err := inodeTree.GetApplyID()
@@ -405,7 +405,7 @@ func (mp *MetaPartition) Load(snapshotPath string) (err error) {
 	}
 
 	//it means rocksdb and not init so skip load snapshot
-	if mp.config.StoreType == 1 && mp.inodeTree.Count() > 0 {
+	if mp.config.StoreType == 1 && mp.inodeTree.Count(true) > 0 {
 		if mp.applyID == 0 {
 			mp.applyID = mp.persistedApplyID
 		}
@@ -599,8 +599,8 @@ func (mp *MetaPartition) ResponseLoadMetaPartition(p *Packet) (err error) {
 		DoCompare:   true,
 	}
 	resp.MaxInode = mp.GetCursor()
-	resp.InodeCount = uint64(mp.inodeTree.Count())
-	resp.DentryCount = uint64(mp.dentryTree.Count())
+	resp.InodeCount = uint64(mp.inodeTree.Count(false))
+	resp.DentryCount = uint64(mp.dentryTree.Count(false))
 	resp.ApplyID = mp.applyID
 	if err != nil {
 		err = errors.Trace(err,
