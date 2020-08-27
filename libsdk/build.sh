@@ -6,13 +6,13 @@ BranchName=`git rev-parse --abbrev-ref HEAD 2>/dev/null`
 CommitID=`git rev-parse HEAD 2>/dev/null`
 BuildTime=`date +%Y-%m-%d\ %H:%M`
 
-SrcPath=${RootPath}/sdklib
+SrcPath=${RootPath}/libsdk
 case `uname` in
     Darwin)
-        TargetFile=${1:-$RootPath/sdklib/libsdk.dylib}
+        TargetFile=${1:-${SrcPath}/libcfs.dylib}
         ;;
     Linux)
-        TargetFile=${1:-$RootPath/sdklib/libsdk.so}
+        TargetFile=${1:-${SrcPath}/libcfs.so}
         ;;
     *)
         echo "Unsupported platform"
