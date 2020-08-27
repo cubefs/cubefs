@@ -503,21 +503,10 @@ func (dp *DataPartition) actualSize(path string, finfo os.FileInfo) (size int64)
 }
 
 func (dp *DataPartition) computeUsage() {
-	var (
-		used  int64
-		files []os.FileInfo
-		err   error
-	)
 	if time.Now().Unix()-dp.intervalToUpdatePartitionSize < IntervalToUpdatePartitionSize {
 		return
 	}
-	if files, err = ioutil.ReadDir(dp.path); err != nil {
-		return
-	}
-	for _, file := range files {
-		used += dp.actualSize(dp.path, file)
-	}
-	dp.used = int(used)
+	dp.used = int(dp.ExtentStore().GetStoreUsedSize())
 	dp.intervalToUpdatePartitionSize = time.Now().Unix()
 }
 
