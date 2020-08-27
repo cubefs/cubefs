@@ -484,7 +484,7 @@ func (i *BTree) Flush() error {
 	panic("implement me")
 }
 
-func (i *BTree) Count(estimate bool) uint64 {
+func (i *BTree) Count() uint64 {
 	return uint64(i.Len())
 }
 

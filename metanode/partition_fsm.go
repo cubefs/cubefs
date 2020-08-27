@@ -270,11 +270,22 @@ func (mp *MetaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		if err := mp.inodeTree.Clear(); err != nil {
 			return err
 		}
+		if err := mp.dentryTree.Clear(); err != nil {
+			return err
+		}
+		if err := mp.extendTree.Clear(); err != nil {
+			return err
+		}
+		if err := mp.multipartTree.Clear(); err != nil {
+			return err
+		}
+		mp.inodeTree.SetApplyID(0)
 	}
 
 	defer func() {
 		if err == io.EOF {
 			mp.applyID = appIndexID
+			mp.inodeTree.SetApplyID(appIndexID)
 			mp.inodeTree = inodeTree
 			mp.dentryTree = dentryTree
 			mp.SetCursor(cursor)
@@ -288,8 +299,10 @@ func (mp *MetaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			mp.extReset <- struct{}{}
 			log.LogDebugf("ApplySnapshot: finish with EOF: partitionID(%v) applyID(%v)", mp.config.PartitionId, mp.applyID)
 			return
+		} else if err != nil {
+			log.LogErrorf("ApplySnapshot: stop with error: partitionID(%v) err(%v)", mp.config.PartitionId, err)
 		}
-		log.LogErrorf("ApplySnapshot: stop with error: partitionID(%v) err(%v)", mp.config.PartitionId, err)
+
 	}()
 	for {
 		data, err = iter.Next()
