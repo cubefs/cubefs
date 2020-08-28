@@ -42,27 +42,40 @@ const (
 )
 
 func (mw *MetaWrapper) GetRootIno(subdir string) (uint64, error) {
-	rootIno := proto.RootIno
-	if subdir == "" || subdir == "/" {
-		return rootIno, nil
+	rootIno, err := mw.LookupPath(subdir)
+	if err != nil {
+		return 0, fmt.Errorf("GetRootIno: Lookup failed, subdir(%v) err(%v)", subdir, err)
 	}
-
-	dirs := strings.Split(subdir, "/")
-	for idx, dir := range dirs {
-		if dir == "/" || dir == "" {
-			continue
-		}
-		child, mode, err := mw.Lookup_ll(rootIno, dir)
-		if err != nil {
-			return 0, fmt.Errorf("GetRootIno: Lookup failed, subdir(%v) idx(%v) dir(%v) err(%v)", subdir, idx, dir, err)
-		}
-		if !proto.IsDir(mode) {
-			return 0, fmt.Errorf("GetRootIno: not directory, subdir(%v) idx(%v) dir(%v) child(%v) mode(%v) err(%v)", subdir, idx, dir, child, mode, err)
-		}
-		rootIno = child
+	info, err := mw.InodeGet_ll(rootIno)
+	if err != nil {
+		return 0, fmt.Errorf("GetRootIno: InodeGet failed, subdir(%v) err(%v)", subdir, err)
+	}
+	if !proto.IsDir(info.Mode) {
+		return 0, fmt.Errorf("GetRootIno: not directory, subdir(%v) mode(%v) err(%v)", subdir, info.Mode, err)
 	}
 	syslog.Printf("GetRootIno: %v\n", rootIno)
 	return rootIno, nil
+}
+
+// Looks up absolute path and returns the ino
+func (mw *MetaWrapper) LookupPath(subdir string) (uint64, error) {
+	ino := proto.RootIno
+	if subdir == "" || subdir == "/" {
+		return ino, nil
+	}
+
+	dirs := strings.Split(subdir, "/")
+	for _, dir := range dirs {
+		if dir == "/" || dir == "" {
+			continue
+		}
+		child, _, err := mw.Lookup_ll(ino, dir)
+		if err != nil {
+			return 0, err
+		}
+		ino = child
+	}
+	return ino, nil
 }
 
 func (mw *MetaWrapper) Statfs() (total, used uint64) {
