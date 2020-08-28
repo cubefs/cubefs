@@ -17,6 +17,13 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/cmd/common"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/raftstore"
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/chubaofs/chubaofs/util/log"
 	"io/ioutil"
 	"net"
 	_ "net/http/pprof"
@@ -26,14 +33,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-
-	"github.com/chubaofs/chubaofs/cmd/common"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/raftstore"
-	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/exporter"
-	"github.com/chubaofs/chubaofs/util/log"
+	"time"
 )
 
 const partitionPrefix = "partition_"
@@ -53,6 +53,7 @@ type MetadataManagerConfig struct {
 	NodeID    uint64
 	StoreType uint8
 	RootDir   string
+	RocksDirs []string
 	ZoneName  string
 	RaftStore raftstore.RaftStore
 }
@@ -61,6 +62,7 @@ type metadataManager struct {
 	nodeId             uint64
 	zoneName           string
 	rootDir            string
+	rocksDirs          []string
 	raftStore          raftstore.RaftStore
 	storeType          uint8 // 0:memory , 1:rocksdb  default memory
 	connPool           *util.ConnectPool
@@ -276,6 +278,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 			wg.Add(1)
 			go func(fileName string) {
 				var errload error
+				start := time.Now()
 				defer func() {
 					if r := recover(); r != nil {
 						log.LogErrorf("loadPartitions partition: %s, "+
@@ -288,9 +291,12 @@ func (m *metadataManager) loadPartitions() (err error) {
 							"error: %s", fileName, errload)
 						log.LogFlush()
 						panic(errload)
+					} else {
+						log.LogInfof("load partition:[%s] end use time:[%s]", fileName, time.Now().Sub(start))
 					}
 				}()
 				defer wg.Done()
+
 				if len(fileName) < 10 {
 					log.LogWarnf("ignore unknown partition dir: %s", fileName)
 					return
@@ -302,6 +308,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 					log.LogWarnf("ignore path: %s,not partition", partitionId)
 					return
 				}
+
 				partitionConfig := &MetaPartitionConfig{
 					PartitionId: id,
 					NodeId:      m.nodeId,
@@ -310,6 +317,29 @@ func (m *metadataManager) loadPartitions() (err error) {
 					RootDir:     path.Join(m.rootDir, fileName),
 					ConnPool:    m.connPool,
 				}
+
+				//if sotreType is rocksdb , so find rocksdir in path
+				if m.storeType == 1 {
+					for _, dir := range m.rocksDirs {
+						if _, err = os.Stat(path.Join(dir, partitionPrefix+partitionId)); err != nil {
+							if err == os.ErrNotExist {
+								err = nil
+							} else {
+								errload = err
+								return
+							}
+						} else {
+							partitionConfig.RocksDir = dir
+							break
+						}
+					}
+
+					if partitionConfig.RocksDir == "" {
+						partitionConfig.RocksDir = path.Join(m.rocksDirs[int(id)%len(m.rocksDirs)], partitionPrefix+partitionId)
+						log.LogIfNotNil(os.MkdirAll(partitionConfig.RocksDir, os.ModePerm))
+					}
+				}
+
 				partitionConfig.AfterStop = func() {
 					m.detachPartition(id)
 				}
@@ -377,6 +407,8 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 	err = nil
 	partitionId := fmt.Sprintf("%d", request.PartitionID)
 
+	rocksPath := m.rocksDirs[int(request.PartitionID)%len(m.rocksDirs)]
+
 	mpc := &MetaPartitionConfig{
 		PartitionId: request.PartitionID,
 		VolName:     request.VolName,
@@ -388,6 +420,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		RaftStore:   m.raftStore,
 		NodeId:      m.nodeId,
 		RootDir:     path.Join(m.rootDir, partitionPrefix+partitionId),
+		RocksDir:    path.Join(rocksPath, partitionPrefix+partitionId),
 		ConnPool:    m.connPool,
 	}
 	mpc.AfterStop = func() {
@@ -463,6 +496,7 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) Metadata
 		zoneName:   conf.ZoneName,
 		rootDir:    conf.RootDir,
 		storeType:  conf.StoreType,
+		rocksDirs:  conf.RocksDirs,
 		raftStore:  conf.RaftStore,
 		partitions: make(map[uint64]*MetaPartition),
 		metaNode:   metaNode,

@@ -69,6 +69,7 @@ type MetaPartitionConfig struct {
 	Cursor      uint64              `json:"-"`          // Cursor ID of the inode that have been assigned
 	NodeId      uint64              `json:"-"`
 	RootDir     string              `json:"-"`
+	RocksDir    string              `json:"-"`
 	BeforeStart func()              `json:"-"`
 	AfterStart  func()              `json:"-"`
 	BeforeStop  func()              `json:"-"`
@@ -305,7 +306,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) (*Met
 		extendTree = &ExtendBTree{NewBtree()}
 		multipartTree = &MultipartBTree{NewBtree()}
 	} else {
-		tree, err := DefaultRocksTree(path.Join(conf.RootDir, strconv.Itoa(int(conf.PartitionId))))
+		tree, err := DefaultRocksTree(conf.RocksDir)
 		if err != nil {
 			log.LogErrorf("[NewMetaPartition] default rocks tree dir: %v, id: %v error %v ", conf.RootDir, conf.PartitionId, err)
 			return nil, err

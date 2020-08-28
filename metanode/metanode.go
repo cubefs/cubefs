@@ -47,6 +47,7 @@ type MetaNode struct {
 	nodeId            uint64
 	listen            string
 	metadataDir       string // root dir of the metaNode
+	rocksDirs         []string
 	raftDir           string // root dir of the raftStore log
 	metadataManager   MetadataManager
 	localAddr         string
@@ -167,6 +168,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.listen = cfg.GetString(proto.ListenPort)
 	serverPort = m.listen
 	m.metadataDir = cfg.GetString(cfgMetadataDir)
+	m.rocksDirs = cfg.GetStringSlice(cfgRocksDirs)
 	m.raftDir = cfg.GetString(cfgRaftDir)
 	m.raftHeartbeatPort = cfg.GetString(cfgRaftHeartbeatPort)
 	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
@@ -247,6 +249,11 @@ func (m *MetaNode) validConfig() (err error) {
 	if m.metadataDir == "" {
 		m.metadataDir = defaultMetadataDir
 	}
+	if m.storeType == 1 && len(m.rocksDirs) == 0 {
+		err = errors.New("store type for rocksdb must have rocksDirs:[path1, path2]..")
+		return
+
+	}
 	if m.raftDir == "" {
 		m.raftDir = defaultRaftDir
 	}
@@ -267,6 +274,7 @@ func (m *MetaNode) startMetaManager() (err error) {
 	conf := MetadataManagerConfig{
 		NodeID:    m.nodeId,
 		RootDir:   m.metadataDir,
+		RocksDirs: m.rocksDirs,
 		StoreType: m.storeType,
 		RaftStore: m.raftStore,
 		ZoneName:  m.zoneName,

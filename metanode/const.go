@@ -140,6 +140,7 @@ const (
 	cfgLocalIP           = "localIP"
 	cfgListen            = "listen"
 	cfgMetadataDir       = "metadataDir"
+	cfgRocksDirs         = "rocksDirs"
 	cfgRaftDir           = "raftDir"
 	cfgMasterAddrs       = "masterAddrs" // will be deprecated
 	cfgRaftHeartbeatPort = "raftHeartbeatPort"
