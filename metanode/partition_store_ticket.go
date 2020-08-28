@@ -41,21 +41,29 @@ func (mp *MetaPartition) startScheduleByRocksDB() {
 				log.LogErrorf("has stoped in startScheduleByRocksDB log:[%v]", e)
 			}
 		}()
-		for mp.state != common.StateShutdown && mp.state != common.StateStopped {
 
-			time.Sleep(1 * time.Minute)
-			if mp.raftPartition == nil {
-				log.LogWarnf("raft not start wait it to start ok")
-				continue
-			}
-			if id, err := mp.inodeTree.GetApplyID();
-				err != nil {
-				log.LogErrorf("get apply id by rocksdb has err:[%s]", err.Error())
-			} else {
-				if id < keepLogNum {
+		timer := time.NewTimer(time.Minute)
+		defer func() {
+			timer.Reset(1)
+		}()
+		for mp.state != common.StateShutdown && mp.state != common.StateStopped {
+			select {
+			case <-timer.C:
+				if mp.raftPartition == nil {
+					log.LogWarnf("raft not start wait it to start ok")
 					continue
 				}
-				mp.raftPartition.Truncate(id - keepLogNum)
+				if id, err := mp.inodeTree.GetApplyID();
+					err != nil {
+					log.LogErrorf("get apply id by rocksdb has err:[%s]", err.Error())
+				} else {
+					if id < keepLogNum {
+						continue
+					}
+					mp.raftPartition.Truncate(id - keepLogNum)
+				}
+			case msg := <-mp.storeChan:
+				log.LogInfof("recive store chan info so skip it:[%v]", msg)
 			}
 		}
 	}

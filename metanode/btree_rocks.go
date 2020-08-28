@@ -598,7 +598,7 @@ func (b *DentryRocks) Create(dentry *Dentry) error {
 	}
 
 	if err = b.RocksTree.Create(&b.count, key, bs); err != nil {
-		log.LogErrorf("[DentryRocks] Put dentry: %v key: %v, err: %v", dentry, key, err)
+		log.LogErrorf("[DentryRocks] Create dentry: %v key: %v, err: %v", dentry, key, err)
 		return err
 	}
 
