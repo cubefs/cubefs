@@ -14,13 +14,51 @@
 
 package main
 
+/*
+
+#define _GNU_SOURCE
+#include <string.h>
+#include <stdint.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <dirent.h>
+#include <fcntl.h>
+
+struct cfs_stat_info {
+    uint64_t ino;
+    uint64_t size;
+    uint64_t blocks;
+    uint64_t atime;
+    uint64_t mtime;
+    uint64_t ctime;
+    uint32_t atime_nsec;
+    uint32_t mtime_nsec;
+    uint32_t ctime_nsec;
+    mode_t   mode;
+    uint32_t nlink;
+    uint32_t blk_size;
+    uint32_t uid;
+    uint32_t gid;
+};
+
+struct cfs_dirent {
+    uint64_t ino;
+    char     name[256];
+	char     d_type;
+};
+
+*/
+import "C"
+
 import (
-	"C"
-	"encoding/json"
+	"os"
+	gopath "path"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"unsafe"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data/stream"
@@ -28,310 +66,34 @@ import (
 )
 
 const (
-	buckets = 4
+	slots = 4
+)
+
+const (
+	defaultBlkSize = uint32(1) << 12
 )
 
 var (
 	nextId        uint64
-	volumeBuckets [buckets]*volumeBucket // mapping: volume name -> volume instance
-	statusOK      = 0
-	statusEIO     = errorToStatus(syscall.EIO)
+	clientBuckets [slots]*clientBucket
+)
+
+var (
+	statusOK = 0
+	// error status must be minus value
+	statusEIO    = -errorToStatus(syscall.EIO)
+	statusEINVAL = -errorToStatus(syscall.EINVAL)
+	statusEEXIST = -errorToStatus(syscall.EEXIST)
+	statusEBADFD = -errorToStatus(syscall.EBADFD)
+	statusEACCES = -errorToStatus(syscall.EACCES)
 )
 
 func init() {
-	for i := 0; i < buckets; i++ {
-		volumeBuckets[i] = &volumeBucket{
-			volumes: make(map[uint64]*volume),
+	for i := 0; i < slots; i++ {
+		clientBuckets[i] = &clientBucket{
+			clients: make(map[uint64]*client),
 		}
 	}
-}
-
-type volume struct {
-	id uint64
-	mw *meta.MetaWrapper
-	ec *stream.ExtentClient
-}
-
-type volumeBucket struct {
-	volumes map[uint64]*volume
-	mu      sync.RWMutex
-}
-
-func (m *volumeBucket) get(id uint64) (client *volume, exist bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	client, exist = m.volumes[id]
-	return
-}
-
-func (m *volumeBucket) put(id uint64, c *volume) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.volumes[id] = c
-}
-
-func (m *volumeBucket) remove(id uint64) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	delete(m.volumes, id)
-}
-
-func putClient(id uint64, c *volume) {
-	volumeBuckets[id%buckets].put(id, c)
-}
-
-func getClient(id uint64) (c *volume, exist bool) {
-	c, exist = volumeBuckets[id%buckets].get(id)
-	return
-}
-
-func removeClient(id uint64) {
-	volumeBuckets[id%buckets].remove(id)
-}
-
-//export ClientCount
-func ClientCount() int {
-	total := 0
-	for i := 0; i < buckets; i++ {
-		total += len(volumeBuckets[i].volumes)
-	}
-	return total
-}
-
-//export NewClient
-func NewClient(volumeName *C.char, followerRead bool, masterAddr *C.char) (clientId uint64, err error) {
-	clientId = atomic.AddUint64(&nextId, 1)
-	var masters = strings.Split(C.GoString(masterAddr), ",")
-	var mw *meta.MetaWrapper
-	if mw, err = meta.NewMetaWrapper(&meta.MetaConfig{
-		Volume:        C.GoString(volumeName),
-		Masters:       masters,
-		ValidateOwner: false,
-	}); err != nil {
-		return
-	}
-	var ec *stream.ExtentClient
-	if ec, err = stream.NewExtentClient(&stream.ExtentConfig{
-		Volume:            C.GoString(volumeName),
-		Masters:           masters,
-		FollowerRead:      followerRead,
-		OnAppendExtentKey: mw.AppendExtentKey,
-		OnGetExtents:      mw.GetExtents,
-		OnTruncate:        mw.Truncate,
-	}); err != nil {
-		return
-	}
-	var c = &volume{
-		id: clientId,
-		mw: mw,
-		ec: ec,
-	}
-	volumeBuckets[clientId%buckets].put(clientId, c)
-	return
-}
-
-//export CloseClient
-func CloseClient(clientId uint64) {
-	if c, exist := getClient(clientId); exist {
-		_ = c.ec.Close()
-		_ = c.mw.Close()
-		removeClient(clientId)
-	}
-}
-
-//export Create
-func Create(clientId uint64, parentId uint64, name *C.char, mode, uid, gid uint32, target *C.char) (inode uint64, status int) {
-	var c *volume
-	var exist bool
-	if c, exist = getClient(clientId); !exist {
-		return 0, statusEIO
-	}
-	var err error
-	var inodeInfo *proto.InodeInfo
-	if inodeInfo, err = c.mw.Create_ll(parentId, C.GoString(name), mode, uid, gid, []byte(C.GoString(target))); err != nil {
-		return 0, statusEIO
-	}
-	inode = inodeInfo.Inode
-	return
-}
-
-//export Lookup
-func Lookup(clientId uint64, parentId uint64, name *C.char) (inode uint64, mode uint32, status int) {
-	var c *volume
-	var exist bool
-	if c, exist = getClient(clientId); !exist {
-		return 0, 0, statusEIO
-	}
-	var err error
-	if inode, mode, err = c.mw.Lookup_ll(parentId, C.GoString(name)); err != nil {
-		status = errorToStatus(err)
-	}
-	return
-}
-
-//export InodeGet
-func InodeGet(clientId uint64, inode uint64) (mode uint32, size uint64, gid, uid uint32, at, mt, ct int64, target *C.char, status int) {
-	var c *volume
-	var exist bool
-	if c, exist = getClient(clientId); !exist {
-		status = statusEIO
-		return
-	}
-	var err error
-	var inodeInfo *proto.InodeInfo
-	if inodeInfo, err = c.mw.InodeGet_ll(inode); err != nil {
-		status = errorToStatus(err)
-		return
-	}
-	mode = inodeInfo.Mode
-	gid = inodeInfo.Gid
-	uid = inodeInfo.Uid
-	size = inodeInfo.Size
-	at = inodeInfo.AccessTime.Unix()
-	mt = inodeInfo.ModifyTime.Unix()
-	ct = inodeInfo.CreateTime.Unix()
-	target = C.CString(string(inodeInfo.Target))
-	return
-}
-
-//export Delete
-func Delete(clientId uint64, parentId uint64, name *C.char, isDir bool) (status int) {
-	var c *volume
-	var exist bool
-	if c, exist = getClient(clientId); !exist {
-		return statusEIO
-	}
-	var err error
-	if _, err = c.mw.Delete_ll(parentId, C.GoString(name), isDir); err != nil {
-		status = errorToStatus(err)
-	}
-	return
-}
-
-//export Evict
-func Evict(clientId uint64, inode uint64) (status int) {
-	var c *volume
-	var exist bool
-	if c, exist = getClient(clientId); !exist {
-		return statusEIO
-	}
-	var err error
-	if err = c.mw.Evict(inode); err != nil {
-		status = errorToStatus(err)
-	}
-	return
-}
-
-//export Rename
-func Rename(clientId uint64, srcParentID uint64, srcName *C.char, dstParentID uint64, dstName *C.char) (status int) {
-	var c *volume
-	var exist bool
-	if c, exist = getClient(clientId); !exist {
-		return statusEIO
-	}
-	var err error
-	if err = c.mw.Rename_ll(srcParentID, C.GoString(srcName), dstParentID, C.GoString(dstName)); err != nil {
-		status = errorToStatus(err)
-	}
-	return
-}
-
-//export Readdir
-func Readdir(clientId uint64, parentId uint64) (result *C.char, status int) {
-	var c *volume
-	var exist bool
-	if c, exist = getClient(clientId); !exist {
-		return C.CString(""), statusEIO
-	}
-	var err error
-	var dentries []proto.Dentry
-	if dentries, err = c.mw.ReadDir_ll(parentId); err != nil {
-		return C.CString(""), errorToStatus(err)
-	}
-	var encoded []byte
-	if encoded, err = json.Marshal(dentries); err != nil {
-		return C.CString(""), statusEIO
-	}
-	result = C.CString(string(encoded))
-	return
-}
-
-//export OpenStream
-func OpenStream(clientId uint64, inode uint64) (status int) {
-	var c *volume
-	var exist bool
-	if c, exist = getClient(clientId); !exist {
-		return statusEIO
-	}
-	return errorToStatus(c.ec.OpenStream(inode))
-}
-
-//export CloseStream
-func CloseStream(clientId uint64, inode uint64) (status int) {
-	var c *volume
-	var exist bool
-	if c, exist = getClient(clientId); !exist {
-		return statusEIO
-	}
-	return errorToStatus(c.ec.CloseStream(inode))
-}
-
-//export EvictStream
-func EvictStream(clientId uint64, inode uint64) (status int) {
-	var c *volume
-	var exist bool
-	if c, exist = getClient(clientId); !exist {
-		return statusEIO
-	}
-	return errorToStatus(c.ec.EvictStream(inode))
-}
-
-//export Write
-func Write(clientId uint64, inode uint64, offset int, data *string) (write int, status int) {
-	var c *volume
-	var exist bool
-	if c, exist = getClient(clientId); !exist {
-		return 0, statusEIO
-	}
-	var err error
-	if write, err = c.ec.Write(inode, offset, []byte(*data), false); err != nil {
-		status = errorToStatus(err)
-	}
-	return
-}
-
-//export Read
-func Read(clientId uint64, inode uint64, data *string, offset int, size int) (read int, status int) {
-	var c *volume
-	var exist bool
-	if c, exist = getClient(clientId); !exist {
-		return 0, statusEIO
-	}
-	var err error
-	if read, err = c.ec.Read(inode, []byte(*data), offset, size); err != nil {
-		status = errorToStatus(err)
-	}
-	return
-}
-
-//export Truncate
-func Truncate(clientId uint64, inode uint64, size int) (status int) {
-	var c *volume
-	var exist bool
-	if c, exist = getClient(clientId); !exist {
-		return statusEIO
-	}
-	return errorToStatus(c.ec.Truncate(inode, size))
-}
-
-//export Flush
-func Flush(clientId uint64, inode uint64) (status int) {
-	var c *volume
-	var exist bool
-	if c, exist = getClient(clientId); !exist {
-		return statusEIO
-	}
-	return errorToStatus(c.ec.Flush(inode))
 }
 
 func errorToStatus(err error) int {
@@ -344,5 +106,554 @@ func errorToStatus(err error) int {
 	return int(syscall.EIO)
 }
 
-func main() {
+type clientBucket struct {
+	clients map[uint64]*client
+	mu      sync.RWMutex
 }
+
+func (m *clientBucket) get(id uint64) (client *client, exist bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	client, exist = m.clients[id]
+	return
+}
+
+func (m *clientBucket) put(id uint64, c *client) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.clients[id] = c
+}
+
+func (m *clientBucket) remove(id uint64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.clients, id)
+}
+
+func putClient(id uint64, c *client) {
+	clientBuckets[id%slots].put(id, c)
+}
+
+func getClient(id uint64) (c *client, exist bool) {
+	c, exist = clientBuckets[id%slots].get(id)
+	return
+}
+
+func removeClient(id uint64) {
+	clientBuckets[id%slots].remove(id)
+}
+
+type file struct {
+	fd    uint64
+	ino   uint64
+	flags uint32
+	mode  uint32
+
+	// dir only
+	dirp *dirStream
+}
+
+type dirStream struct {
+	pos     int
+	dirents []proto.Dentry
+}
+
+type client struct {
+	// client id allocated by libsdk
+	id uint64
+
+	// mount config
+	volName      string
+	masterAddr   string
+	followerRead bool
+
+	// runtime context
+	maxfd  uint64
+	fdmap  map[uint64]*file
+	fdlock sync.RWMutex
+
+	// server info
+	mw *meta.MetaWrapper
+	ec *stream.ExtentClient
+}
+
+//export cfs_new_client
+func cfs_new_client() (id uint64) {
+	id = atomic.AddUint64(&nextId, 1)
+	c := &client{
+		id:    id,
+		fdmap: make(map[uint64]*file),
+	}
+	clientBuckets[id%slots].put(id, c)
+	return id
+}
+
+//export cfs_set_client
+func cfs_set_client(id uint64, key, val *C.char) int {
+	c, exist := getClient(id)
+	if !exist {
+		return statusEINVAL
+	}
+	k := C.GoString(key)
+	v := C.GoString(val)
+	switch k {
+	case "volName":
+		c.volName = v
+	case "masterAddr":
+		c.masterAddr = v
+	case "followerRead":
+		if v == "true" {
+			c.followerRead = true
+		} else {
+			c.followerRead = false
+		}
+	default:
+		return statusEINVAL
+	}
+	return statusOK
+}
+
+//export_cfs_start_client
+func cfs_start_client(id uint64) int {
+	c, exist := getClient(id)
+	if !exist {
+		return statusEINVAL
+	}
+
+	err := c.start()
+	if err != nil {
+		return statusEIO
+	}
+	return statusOK
+}
+
+//export cfs_close_client
+func cfs_close_client(id uint64) {
+	if c, exist := getClient(id); exist {
+		if c.ec != nil {
+			_ = c.ec.Close()
+		}
+		if c.mw != nil {
+			_ = c.mw.Close()
+		}
+		removeClient(id)
+	}
+}
+
+//export cfs_getattr
+func cfs_getattr(id uint64, path *C.char, stat *C.struct_cfs_stat_info) int {
+	c, exist := getClient(id)
+	if !exist {
+		return statusEINVAL
+	}
+
+	info, err := c.lookupPath(C.GoString(path))
+	if err != nil {
+		return -errorToStatus(err)
+	}
+
+	// fill up the stat
+	stat.ino = C.uint64_t(info.Inode)
+	stat.size = C.uint64_t(info.Size)
+	stat.blocks = C.uint64_t(info.Size >> 9)
+	stat.nlink = C.uint32_t(info.Nlink)
+	stat.blk_size = C.uint32_t(defaultBlkSize)
+	stat.uid = C.uint32_t(info.Uid)
+	stat.gid = C.uint32_t(info.Gid)
+
+	// fill up the mode
+	if proto.IsRegular(info.Mode) {
+		stat.mode = C.uint32_t(C.S_IFREG) | C.uint32_t(info.Mode&0777)
+	} else if proto.IsDir(info.Mode) {
+		stat.mode = C.uint32_t(C.S_IFDIR) | C.uint32_t(info.Mode&0777)
+	} else if proto.IsSymlink(info.Mode) {
+		stat.mode = C.uint32_t(C.S_IFLNK) | C.uint32_t(info.Mode&0777)
+	} else {
+		stat.mode = C.uint32_t(C.S_IFSOCK) | C.uint32_t(info.Mode&0777)
+	}
+
+	// fill up the time struct
+	t := info.AccessTime.UnixNano()
+	stat.atime = C.uint64_t(t / 1e9)
+	stat.atime_nsec = C.uint32_t(t % 1e9)
+
+	t = info.ModifyTime.UnixNano()
+	stat.mtime = C.uint64_t(t / 1e9)
+	stat.mtime_nsec = C.uint32_t(t % 1e9)
+
+	t = info.CreateTime.UnixNano()
+	stat.ctime = C.uint64_t(t / 1e9)
+	stat.ctime_nsec = C.uint32_t(t % 1e9)
+
+	return statusOK
+}
+
+//export cfs_open
+func cfs_open(id uint64, path *C.char, flags int, mode C.mode_t) int {
+	c, exist := getClient(id)
+	if !exist {
+		return statusEINVAL
+	}
+
+	fuseMode := uint32(mode) & uint32(0777)
+	fuseFlags := uint32(flags &^ 0x8000)
+	accFlags := fuseFlags & uint32(C.O_ACCMODE)
+
+	var info *proto.InodeInfo
+
+	/*
+	 * Note that the rwx mode is ignored when using libsdk
+	 */
+
+	if fuseFlags&uint32(C.O_CREAT) != 0 {
+		if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
+			return statusEACCES
+		}
+		dirpath, name := gopath.Split(C.GoString(path))
+		dirInfo, err := c.lookupPath(dirpath)
+		if err != nil {
+			return errorToStatus(err)
+		}
+		newInfo, err := c.create(dirInfo.Inode, name, fuseMode)
+		if err != nil {
+			return errorToStatus(err)
+		}
+		info = newInfo
+	} else {
+		newInfo, err := c.lookupPath(C.GoString(path))
+		if err != nil {
+			return errorToStatus(err)
+		}
+		info = newInfo
+	}
+
+	f := c.allocFD(info.Inode, fuseFlags, fuseMode)
+
+	if proto.IsRegular(info.Mode) {
+		c.openStream(f)
+		if fuseFlags&uint32(C.O_TRUNC) != 0 {
+			if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
+				c.closeStream(f)
+				c.releaseFD(int(f.fd))
+				return statusEACCES
+			}
+			if err := c.truncate(f, 0); err != nil {
+				c.closeStream(f)
+				c.releaseFD(int(f.fd))
+				return statusEIO
+			}
+		}
+	}
+
+	return int(f.fd)
+}
+
+//export cfs_flush
+func cfs_flush(id uint64, fd int) int {
+	c, exist := getClient(id)
+	if !exist {
+		return statusEINVAL
+	}
+
+	f := c.getFile(fd)
+	if f == nil {
+		return statusEBADFD
+	}
+
+	err := c.flush(f)
+	if err != nil {
+		return statusEIO
+	}
+	return statusOK
+}
+
+//export cfs_close
+func cfs_close(id uint64, fd int) {
+	c, exist := getClient(id)
+	if !exist {
+		return
+	}
+	f := c.releaseFD(fd)
+	if f != nil {
+		c.flush(f)
+		c.closeStream(f)
+	}
+}
+
+//export cfs_write
+func cfs_write(id uint64, fd int, buf unsafe.Pointer, size C.size_t, off C.off_t) C.ssize_t {
+	c, exist := getClient(id)
+	if !exist {
+		return C.ssize_t(statusEINVAL)
+	}
+
+	f := c.getFile(fd)
+	if f == nil {
+		return C.ssize_t(statusEBADFD)
+	}
+
+	accFlags := f.flags & uint32(C.O_ACCMODE)
+	if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
+		return C.ssize_t(statusEACCES)
+	}
+
+	var buffer []byte
+
+	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&buffer))
+	hdr.Data = uintptr(buf)
+	hdr.Len = int(size)
+	hdr.Cap = int(size)
+
+	var flags int
+	var wait bool
+
+	if f.flags&uint32(C.O_DIRECT) != 0 || f.flags&uint32(C.O_SYNC) != 0 || f.flags&uint32(C.O_DSYNC) != 0 {
+		wait = true
+	}
+	if f.flags&uint32(C.O_APPEND) != 0 {
+		flags |= proto.FlagsAppend
+	}
+
+	n, err := c.write(f, int(off), buffer, flags)
+	if err != nil {
+		return C.ssize_t(statusEIO)
+	}
+
+	if wait {
+		if err = c.flush(f); err != nil {
+			return C.ssize_t(statusEIO)
+		}
+	}
+
+	return C.ssize_t(n)
+}
+
+//export cfs_read
+func cfs_read(id uint64, fd int, buf unsafe.Pointer, size C.size_t, off C.off_t) C.ssize_t {
+	c, exist := getClient(id)
+	if !exist {
+		return C.ssize_t(statusEINVAL)
+	}
+
+	f := c.getFile(fd)
+	if f == nil {
+		return C.ssize_t(statusEBADFD)
+	}
+
+	accFlags := f.flags & uint32(C.O_ACCMODE)
+	if accFlags == uint32(C.O_WRONLY) {
+		return C.ssize_t(statusEACCES)
+	}
+
+	var buffer []byte
+
+	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&buffer))
+	hdr.Data = uintptr(buf)
+	hdr.Len = int(size)
+	hdr.Cap = int(size)
+
+	n, err := c.read(f, int(off), buffer)
+	if err != nil {
+		return C.ssize_t(statusEIO)
+	}
+
+	return C.ssize_t(n)
+}
+
+/*
+ * Note that readdir is not thread-safe according to the POSIX spec.
+ */
+
+//export cfs_readdir
+func cfs_readdir(id uint64, fd int, dirents []C.struct_cfs_dirent, count int) (n int) {
+	c, exist := getClient(id)
+	if !exist {
+		return statusEINVAL
+	}
+
+	f := c.getFile(fd)
+	if f == nil {
+		return statusEBADFD
+	}
+
+	if f.dirp == nil {
+		f.dirp = &dirStream{}
+		dentries, err := c.mw.ReadDir_ll(f.ino)
+		if err != nil {
+			return -errorToStatus(err)
+		}
+		f.dirp.dirents = dentries
+	}
+
+	dirp := f.dirp
+	for dirp.pos < len(dirp.dirents) && n < count {
+		// fill up ino
+		dirents[n].ino = C.uint64_t(dirp.dirents[dirp.pos].Inode)
+
+		// fill up d_type
+		if proto.IsRegular(dirp.dirents[dirp.pos].Type) {
+			dirents[n].d_type = C.DT_REG
+		} else if proto.IsDir(dirp.dirents[dirp.pos].Type) {
+			dirents[n].d_type = C.DT_DIR
+		} else if proto.IsSymlink(dirp.dirents[dirp.pos].Type) {
+			dirents[n].d_type = C.DT_LNK
+		} else {
+			dirents[n].d_type = C.DT_UNKNOWN
+		}
+
+		// fill up name
+		nameLen := len(dirp.dirents[dirp.pos].Name)
+		if nameLen >= 256 {
+			nameLen = 255
+		}
+		hdr := (*reflect.StringHeader)(unsafe.Pointer(&dirp.dirents[dirp.pos].Name))
+		C.memcpy(unsafe.Pointer(&dirents[n].name[0]), unsafe.Pointer(hdr.Data), C.size_t(nameLen))
+		dirents[n].name[nameLen] = 0
+
+		// advance cursor
+		dirp.pos++
+		n++
+	}
+
+	return n
+}
+
+//export cfs_mkdirs
+func cfs_mkdirs(id uint64, path *C.char, mode C.mode_t) int {
+	return 0
+}
+
+//export cfs_rmdir
+func cfs_rmdir(id uint64, path *C.char) int {
+	//TODO
+	return 0
+}
+
+//export cfs_unlink
+func cfs_unlink(id uint64, path *C.char) int {
+	//TODO
+	return 0
+}
+
+//export cfs_rename
+func cfs_rename(id uint64, from *C.char, to *C.char) int {
+	//TODO
+	return 0
+}
+
+// internals
+
+func (c *client) start() (err error) {
+	var masters = strings.Split(c.masterAddr, ",")
+
+	var mw *meta.MetaWrapper
+	if mw, err = meta.NewMetaWrapper(&meta.MetaConfig{
+		Volume:        c.volName,
+		Masters:       masters,
+		ValidateOwner: false,
+	}); err != nil {
+		return
+	}
+
+	var ec *stream.ExtentClient
+	if ec, err = stream.NewExtentClient(&stream.ExtentConfig{
+		Volume:            c.volName,
+		Masters:           masters,
+		FollowerRead:      c.followerRead,
+		OnAppendExtentKey: mw.AppendExtentKey,
+		OnGetExtents:      mw.GetExtents,
+		OnTruncate:        mw.Truncate,
+	}); err != nil {
+		return
+	}
+
+	c.mw = mw
+	c.ec = ec
+	return nil
+}
+
+func (c *client) allocFD(ino uint64, flags, mode uint32) *file {
+	fd := atomic.AddUint64(&c.maxfd, 1)
+	f := &file{fd: fd, ino: ino, flags: flags, mode: mode}
+	c.fdlock.Lock()
+	c.fdmap[fd] = f
+	c.fdlock.Unlock()
+	return f
+}
+
+func (c *client) getFile(fd int) *file {
+	c.fdlock.Lock()
+	f := c.fdmap[uint64(fd)]
+	c.fdlock.Unlock()
+	return f
+}
+
+func (c *client) releaseFD(fd int) *file {
+	c.fdlock.Lock()
+	f, ok := c.fdmap[uint64(fd)]
+	if !ok {
+		c.fdlock.Unlock()
+		return nil
+	}
+	delete(c.fdmap, uint64(fd))
+	c.fdlock.Unlock()
+	return f
+}
+
+func (c *client) lookupPath(path string) (*proto.InodeInfo, error) {
+	ino, err := c.mw.LookupPath(path)
+	if err != nil {
+		return nil, err
+	}
+	info, err := c.mw.InodeGet_ll(ino)
+	if err != nil {
+		return nil, err
+	}
+	return info, nil
+}
+
+func (c *client) create(pino uint64, name string, mode uint32) (info *proto.InodeInfo, err error) {
+	fuseMode := mode & 0777
+	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil)
+}
+
+func (c *client) mkdir(pino uint64, name string, mode uint32) (info *proto.InodeInfo, err error) {
+	fuseMode := mode & 0777
+	fuseMode |= uint32(os.ModeDir)
+	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil)
+}
+
+func (c *client) openStream(f *file) {
+	_ = c.ec.OpenStream(f.ino)
+}
+
+func (c *client) closeStream(f *file) {
+	_ = c.ec.CloseStream(f.ino)
+	_ = c.ec.EvictStream(f.ino)
+}
+
+func (c *client) flush(f *file) error {
+	return c.ec.Flush(f.ino)
+}
+
+func (c *client) truncate(f *file, size int) error {
+	return c.ec.Truncate(f.ino, size)
+}
+
+func (c *client) write(f *file, offset int, data []byte, flags int) (n int, err error) {
+	n, err = c.ec.Write(f.ino, offset, data, flags)
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+func (c *client) read(f *file, offset int, data []byte) (n int, err error) {
+	n, err = c.ec.Read(f.ino, data, offset, len(data))
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+func main() {}
