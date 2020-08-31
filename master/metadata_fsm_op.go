@@ -53,44 +53,47 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 }
 
 type metaPartitionValue struct {
-	PartitionID uint64
-	Start       uint64
-	End         uint64
-	VolID       uint64
-	ReplicaNum  uint8
-	Status      int8
-	VolName     string
-	Hosts       string
-	Peers       []bsProto.Peer
-	IsRecover   bool
+	PartitionID    uint64
+	Start          uint64
+	End            uint64
+	VolID          uint64
+	ReplicaNum     uint8
+	Status         int8
+	VolName        string
+	Hosts          string
+	OfflinePeerID  uint64
+	Peers          []bsProto.Peer
+	IsRecover      bool
 }
 
 func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 	mpv = &metaPartitionValue{
-		PartitionID: mp.PartitionID,
-		Start:       mp.Start,
-		End:         mp.End,
-		VolID:       mp.volID,
-		ReplicaNum:  mp.ReplicaNum,
-		Status:      mp.Status,
-		VolName:     mp.volName,
-		Hosts:       mp.hostsToString(),
-		Peers:       mp.Peers,
-		IsRecover:   mp.IsRecover,
+		PartitionID:   mp.PartitionID,
+		Start:         mp.Start,
+		End:           mp.End,
+		VolID:         mp.volID,
+		ReplicaNum:    mp.ReplicaNum,
+		Status:        mp.Status,
+		VolName:       mp.volName,
+		Hosts:         mp.hostsToString(),
+		Peers:         mp.Peers,
+		OfflinePeerID: mp.OfflinePeerID,
+		IsRecover:     mp.IsRecover,
 	}
 	return
 }
 
 type dataPartitionValue struct {
-	PartitionID uint64
-	ReplicaNum  uint8
-	Hosts       string
-	Peers       []bsProto.Peer
-	Status      int8
-	VolID       uint64
-	VolName     string
-	Replicas    []*replicaValue
-	IsRecover   bool
+	PartitionID   uint64
+	ReplicaNum    uint8
+	Hosts         string
+	Peers         []bsProto.Peer
+	Status        int8
+	VolID         uint64
+	VolName       string
+	OfflinePeerID uint64
+	Replicas      []*replicaValue
+	IsRecover     bool
 }
 
 type replicaValue struct {
@@ -100,15 +103,16 @@ type replicaValue struct {
 
 func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 	dpv = &dataPartitionValue{
-		PartitionID: dp.PartitionID,
-		ReplicaNum:  dp.ReplicaNum,
-		Hosts:       dp.hostsToString(),
-		Peers:       dp.Peers,
-		Status:      dp.Status,
-		VolID:       dp.VolID,
-		VolName:     dp.VolName,
-		Replicas:    make([]*replicaValue, 0),
-		IsRecover:   dp.isRecover,
+		PartitionID:   dp.PartitionID,
+		ReplicaNum:    dp.ReplicaNum,
+		Hosts:         dp.hostsToString(),
+		Peers:         dp.Peers,
+		Status:        dp.Status,
+		VolID:         dp.VolID,
+		VolName:       dp.VolName,
+		OfflinePeerID: dp.OfflinePeerID,
+		Replicas:      make([]*replicaValue, 0),
+		IsRecover:     dp.isRecover,
 	}
 	for _, replica := range dp.Replicas {
 		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}
@@ -666,6 +670,7 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		mp := newMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, vol.mpReplicaNum, vol.Name, mpv.VolID)
 		mp.setHosts(strings.Split(mpv.Hosts, underlineSeparator))
 		mp.setPeers(mpv.Peers)
+		mp.OfflinePeerID = mpv.OfflinePeerID
 		mp.IsRecover = mpv.IsRecover
 		if mp.IsRecover {
 			c.putMigratedMetaPartitions("history", mp.PartitionID)
@@ -701,6 +706,7 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.VolName, dpv.VolID)
 		dp.Hosts = strings.Split(dpv.Hosts, underlineSeparator)
 		dp.Peers = dpv.Peers
+		dp.OfflinePeerID = dpv.OfflinePeerID
 		dp.isRecover = dpv.IsRecover
 		for _, rv := range dpv.Replicas {
 			if !contains(dp.Hosts, rv.Addr) {
