@@ -31,6 +31,7 @@ import (
 type AppendExtentKeyFunc func(inode uint64, key proto.ExtentKey) error
 type GetExtentsFunc func(inode uint64) (uint64, uint64, []proto.ExtentKey, error)
 type TruncateFunc func(inode, size uint64) error
+type EvictIcacheFunc func(inode uint64)
 
 const (
 	MaxMountRetryLimit = 5
@@ -85,6 +86,7 @@ type ExtentConfig struct {
 	OnAppendExtentKey AppendExtentKeyFunc
 	OnGetExtents      GetExtentsFunc
 	OnTruncate        TruncateFunc
+	OnEvictIcache     EvictIcacheFunc
 }
 
 // ExtentClient defines the struct of the extent client.
@@ -99,6 +101,7 @@ type ExtentClient struct {
 	appendExtentKey AppendExtentKeyFunc
 	getExtents      GetExtentsFunc
 	truncate        TruncateFunc
+	evictIcache     EvictIcacheFunc //May be null, must check before using
 }
 
 // NewExtentClient returns a new extent client.
@@ -122,6 +125,7 @@ retry:
 	client.appendExtentKey = config.OnAppendExtentKey
 	client.getExtents = config.OnGetExtents
 	client.truncate = config.OnTruncate
+	client.evictIcache = config.OnEvictIcache
 	client.dataWrapper.InitFollowerRead(config.FollowerRead)
 	client.dataWrapper.SetNearRead(config.NearRead)
 
