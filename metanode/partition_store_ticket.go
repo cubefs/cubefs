@@ -48,6 +48,10 @@ func (mp *MetaPartition) startScheduleByRocksDB() {
 		}()
 		for mp.state != common.StateShutdown && mp.state != common.StateStopped {
 			select {
+			case <-mp.stopC:
+				timer.Reset(0)
+				timer.Stop()
+				return
 			case <-timer.C:
 				if mp.raftPartition == nil {
 					log.LogWarnf("raft not start wait it to start ok")

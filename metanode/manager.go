@@ -407,8 +407,6 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 	err = nil
 	partitionId := fmt.Sprintf("%d", request.PartitionID)
 
-	rocksPath := m.rocksDirs[int(request.PartitionID)%len(m.rocksDirs)]
-
 	mpc := &MetaPartitionConfig{
 		PartitionId: request.PartitionID,
 		VolName:     request.VolName,
@@ -420,9 +418,15 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		RaftStore:   m.raftStore,
 		NodeId:      m.nodeId,
 		RootDir:     path.Join(m.rootDir, partitionPrefix+partitionId),
-		RocksDir:    path.Join(rocksPath, partitionPrefix+partitionId),
-		ConnPool:    m.connPool,
+
+		ConnPool: m.connPool,
 	}
+
+	if mpc.StoreType == 1 {
+		rocksPath := m.rocksDirs[int(request.PartitionID)%len(m.rocksDirs)]
+		mpc.RocksDir = path.Join(rocksPath, partitionPrefix+partitionId)
+	}
+
 	mpc.AfterStop = func() {
 		m.detachPartition(request.PartitionID)
 	}

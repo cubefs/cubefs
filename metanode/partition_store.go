@@ -77,8 +77,8 @@ func (mp *MetaPartition) loadMetadata() (err error) {
 	mp.config.Start = mConf.Start
 	mp.config.End = mConf.End
 	mp.config.Peers = mConf.Peers
-	mp.config.RocksDir = mConf.RocksDir
-	//mp.config.StoreType = mConf.StoreType :TODO use config
+	//mp.config.RocksDir = mConf.RocksDir
+	//mp.config.StoreType = mConf.StoreType :TODO use config ????
 	mp.SetCursor(mp.config.Start)
 
 	log.LogInfof("loadMetadata: load complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
