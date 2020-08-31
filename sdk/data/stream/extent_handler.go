@@ -505,6 +505,8 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 
 		if conn, err = StreamConnPool.GetConnect(dp.Hosts[0]); err != nil {
 			log.LogWarnf("allocateExtent: failed to create connection, eh(%v) err(%v) dp(%v)", eh, err, dp)
+			// If storeMode is tinyExtentType and can't create connection, we also check host status.
+			dp.CheckAllHostsIsAvail(exclude)
 			continue
 		}
 
