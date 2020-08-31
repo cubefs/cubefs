@@ -289,6 +289,7 @@ func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, valid
 		return
 	}
 	removePeer := proto.Peer{ID: metaNode.ID, Addr: addr}
+
 	if err = c.removeMetaPartitionRaftMember(partition, removePeer); err != nil {
 		return
 	}
@@ -317,8 +318,12 @@ func (c *Cluster) deleteMetaPartition(partition *MetaPartition, removeMetaNode *
 }
 
 func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, removePeer proto.Peer) (err error) {
-	partition.Lock()
-	defer partition.Unlock()
+	defer func(){
+		err =  c.updateMetaPartitionOfflinePeerIDWithLock(partition, 0)
+	}()
+	if err = c.updateMetaPartitionOfflinePeerIDWithLock(partition, removePeer.ID); err != nil {
+		return
+	}
 	mr, err := partition.getMetaReplicaLeader()
 	if err != nil {
 		return
@@ -352,9 +357,12 @@ func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, remove
 		}
 		newPeers = append(newPeers, peer)
 	}
+	partition.Lock()
 	if err = partition.persistToRocksDB("removeMetaPartitionRaftMember", partition.volName, newHosts, newPeers, c); err != nil {
+		partition.Unlock()
 		return
 	}
+	partition.Unlock()
 	if mr.Addr != removePeer.Addr {
 		return
 	}
@@ -367,7 +375,15 @@ func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, remove
 	}
 	return
 }
-
+func (c *Cluster) updateMetaPartitionOfflinePeerIDWithLock(mp *MetaPartition, peerID uint64) (err error){
+	mp.Lock()
+	defer mp.Unlock()
+	mp.OfflinePeerID = peerID
+	if err = mp.persistToRocksDB("updateMetaPartitionOfflinePeerIDWithLock", mp.volName, mp.Hosts, mp.Peers, c); err != nil {
+		return
+	}
+	return
+}
 func (c *Cluster) addMetaReplica(partition *MetaPartition, addr string) (err error) {
 	defer func() {
 		if err != nil {

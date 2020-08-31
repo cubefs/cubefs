@@ -46,6 +46,7 @@ type DataPartition struct {
 	modifyTime              int64
 	createTime              int64
 	lastWarnTime            int64
+	OfflinePeerID           uint64
 	FileInCoreMap           map[string]*FileInCore
 	FilesWithMissingReplica map[string]int64 // key: file name, value: last time when a missing replica is found
 }
@@ -700,6 +701,7 @@ func (partition *DataPartition) ToProto(c *Cluster) *proto.DataPartitionInfo {
 		VolName:                 partition.VolName,
 		VolID:                   partition.VolID,
 		FileInCoreMap:           fileInCoreMap,
+		OfflinePeerID:           partition.OfflinePeerID,
 		FilesWithMissingReplica: partition.FilesWithMissingReplica,
 	}
 }
