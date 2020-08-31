@@ -244,7 +244,9 @@ func (w *Wrapper) getRandomDataPartition(partitions []*DataPartition, exclude ma
 		return dp
 	}
 
-	for _, dp = range partitions {
+	length := len(partitions)
+	for i := 1; i < length; i++ {
+		dp := partitions[(index+i)%length]
 		if !isExcluded(dp, exclude) {
 			return dp
 		}
