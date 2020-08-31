@@ -296,6 +296,9 @@ func (mp *MetaPartition) checkAndInsertFreeList(ino *Inode) {
 	}
 	if ino.ShouldDelete() {
 		mp.freeList.Push(ino.Inode)
+	} else if ino.IsTempFile() {
+		ino.AccessTime = time.Now().Unix()
+		mp.freeList.Push(ino.Inode)
 	}
 }
 

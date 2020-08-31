@@ -101,8 +101,6 @@ type ExtentClient struct {
 	appendExtentKey AppendExtentKeyFunc
 	getExtents      GetExtentsFunc
 	truncate        TruncateFunc
-	followerRead    bool
-	evictIcache     EvictIcacheFunc //May be null, must check before using
 }
 
 // NewExtentClient returns a new extent client.
@@ -126,8 +124,7 @@ retry:
 	client.appendExtentKey = config.OnAppendExtentKey
 	client.getExtents = config.OnGetExtents
 	client.truncate = config.OnTruncate
-	client.followerRead = config.FollowerRead || client.dataWrapper.FollowerRead()
-	client.evictIcache = config.OnEvictIcache
+	client.dataWrapper.InitFollowerRead(config.FollowerRead)
 	client.dataWrapper.SetNearRead(config.NearRead)
 
 	var readLimit, writeLimit rate.Limit

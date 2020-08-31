@@ -48,6 +48,7 @@ type Wrapper struct {
 	rwPartition           []*DataPartition
 	localLeaderPartitions []*DataPartition
 	followerRead          bool
+	followerReadClientCfg bool
 	nearRead              bool
 	mc                    *masterSDK.MasterClient
 	stopOnce              sync.Once
@@ -91,6 +92,11 @@ func (w *Wrapper) Stop() {
 	})
 }
 
+func (w *Wrapper) InitFollowerRead(clientConfig bool) {
+	w.followerReadClientCfg = clientConfig
+	w.followerRead = w.followerReadClientCfg || w.followerRead
+}
+
 func (w *Wrapper) FollowerRead() bool {
 	return w.followerRead
 }
@@ -130,10 +136,29 @@ func (w *Wrapper) update() {
 		case <-ticker.C:
 			w.updateDataPartition(false)
 			w.updateDataNodeStatus()
+			if !w.followerReadClientCfg {
+				w.updateFollowerRead()
+			}
 		case <-w.stopC:
 			return
 		}
 	}
+}
+
+func (w *Wrapper) updateFollowerRead() (err error) {
+	var view *proto.SimpleVolView
+
+	if view, err = w.mc.AdminAPI().GetVolumeSimpleInfo(w.volName); err != nil {
+		log.LogWarnf("updateFollowerRead: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
+		return
+	}
+
+	if w.followerRead != view.FollowerRead {
+		log.LogInfof("updateFollowerRead: update followerRead from old(%v) to new(%v)",
+			w.followerRead, view.FollowerRead)
+		w.followerRead = view.FollowerRead
+	}
+	return nil
 }
 
 func (w *Wrapper) updateDataPartition(isInit bool) (err error) {

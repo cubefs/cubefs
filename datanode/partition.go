@@ -512,21 +512,10 @@ func (dp *DataPartition) actualSize(path string, finfo os.FileInfo) (size int64)
 }
 
 func (dp *DataPartition) computeUsage() {
-	var (
-		used  int64
-		files []os.FileInfo
-		err   error
-	)
 	if time.Now().Unix()-dp.intervalToUpdatePartitionSize < IntervalToUpdatePartitionSize {
 		return
 	}
-	if files, err = ioutil.ReadDir(dp.path); err != nil {
-		return
-	}
-	for _, file := range files {
-		used += dp.actualSize(dp.path, file)
-	}
-	dp.used = int(used)
+	dp.used=int(dp.ExtentStore().GetStoreUsedSize())
 	dp.intervalToUpdatePartitionSize = time.Now().Unix()
 }
 
@@ -714,8 +703,7 @@ func (dp *DataPartition) pushSyncDeleteRecordFromLeaderMesg() bool {
 	return false
 }
 
-
-func (dp *DataPartition)consumeTinyDeleteRecordFromLeaderMesg() {
+func (dp *DataPartition) consumeTinyDeleteRecordFromLeaderMesg() {
 	select {
 	case <-dp.Disk().syncTinyDeleteRecordFromLeaderOnEveryDisk:
 		return
@@ -730,7 +718,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 		err                     error
 		conn                    *net.TCPConn
 	)
-	if !dp.pushSyncDeleteRecordFromLeaderMesg(){
+	if !dp.pushSyncDeleteRecordFromLeaderMesg() {
 		return
 	}
 
@@ -798,7 +786,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 				continue
 			}
 			DeleteLimiterWait()
-			log.LogInfof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)", dp.partitionID, extentID, offset, size)
+			//log.LogInfof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)", dp.partitionID, extentID, offset, size)
 			store.MarkDelete(extentID, int64(offset), int64(size))
 		}
 	}

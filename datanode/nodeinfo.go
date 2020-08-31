@@ -42,7 +42,7 @@ func (m *DataNode) updateNodeInfo() {
 		return
 	}
 	setLimiter(deleteLimiteRater, clusterInfo.DataNodeDeleteLimitRate)
-	setLimiter(autoRepairLimiteRater, clusterInfo.DataNodeAutoRepairLimitRate)
+	setDoExtentRepair(int(clusterInfo.DataNodeAutoRepairLimitRate))
 	log.LogInfof("updateNodeInfo from master:"+
 		"deleteLimite(%v),autoRepairLimit(%v)", clusterInfo.DataNodeDeleteLimitRate,
 		clusterInfo.DataNodeAutoRepairLimitRate)
