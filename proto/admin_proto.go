@@ -495,6 +495,8 @@ type SimpleVolView struct {
 	EnableToken        bool
 	Tokens             map[string]*Token `graphql:"-"`
 	Description        string
+	DpSelectorName     string
+	DpSelectorParm     string
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition

@@ -1,0 +1,141 @@
+// Copyright 2020 The Chubao Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
+package wrapper
+
+import (
+	"fmt"
+	"math/rand"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/chubaofs/chubaofs/util/log"
+)
+
+type DefaultRandomSelector struct {
+	sync.RWMutex
+	localLeaderPartitions []*DataPartition
+	partitions            []*DataPartition
+}
+
+func (s *DefaultRandomSelector) InitFunc(string) (err error) {
+	s.localLeaderPartitions = make([]*DataPartition, 0)
+	s.partitions = make([]*DataPartition, 0)
+	log.LogInfof("DefaultRandomSelector: init selector success")
+	return
+}
+
+func (s *DefaultRandomSelector) RefreshFunc(partitions []*DataPartition) (err error) {
+	var localLeaderPartitions []*DataPartition
+	for i := 0; i < len(partitions); i++ {
+		if strings.Split(partitions[i].Hosts[0], ":")[0] == LocalIP {
+			localLeaderPartitions = append(localLeaderPartitions, partitions[i])
+		}
+	}
+
+	s.Lock()
+	defer s.Unlock()
+
+	s.localLeaderPartitions = localLeaderPartitions
+	s.partitions = partitions
+	return
+}
+
+func (s *DefaultRandomSelector) SelectFunc(exclude map[string]struct{}) (dp *DataPartition, err error) {
+	dp = s.getLocalLeaderDataPartition(exclude)
+	if dp != nil {
+		return dp, nil
+	}
+
+	s.RLock()
+	partitions := s.partitions
+	s.RUnlock()
+
+	dp = s.getRandomDataPartition(partitions, exclude)
+
+	if dp != nil {
+		return dp, nil
+	}
+
+	return nil, fmt.Errorf("no writable data partition")
+}
+
+func (s *DefaultRandomSelector) RemoveDpFunc(partitionID uint64) {
+	s.RLock()
+	rwPartitionGroups := s.partitions
+	localLeaderPartitions := s.localLeaderPartitions
+	s.RUnlock()
+
+	var i int
+	for i = 0; i < len(rwPartitionGroups); i++ {
+		if rwPartitionGroups[i].PartitionID == partitionID {
+			break
+		}
+	}
+	newRwPartition := make([]*DataPartition, 0)
+	newRwPartition = append(newRwPartition, rwPartitionGroups[:i]...)
+	newRwPartition = append(newRwPartition, rwPartitionGroups[i+1:]...)
+
+	for i = 0; i < len(localLeaderPartitions); i++ {
+		if localLeaderPartitions[i].PartitionID == partitionID {
+			break
+		}
+	}
+	newLocalLeaderPartitions := make([]*DataPartition, 0)
+	newLocalLeaderPartitions = append(newLocalLeaderPartitions, localLeaderPartitions[:i]...)
+	newLocalLeaderPartitions = append(newLocalLeaderPartitions, localLeaderPartitions[i+1:]...)
+
+	s.Lock()
+	defer s.Unlock()
+	s.partitions = newRwPartition
+	s.localLeaderPartitions = newLocalLeaderPartitions
+
+	return
+}
+
+func (s *DefaultRandomSelector) getLocalLeaderDataPartition(exclude map[string]struct{}) *DataPartition {
+	s.RLock()
+	localLeaderPartitions := s.localLeaderPartitions
+	s.RUnlock()
+	return s.getRandomDataPartition(localLeaderPartitions, exclude)
+}
+
+func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartition, exclude map[string]struct{}) (
+	dp *DataPartition) {
+	length := len(partitions)
+	if length == 0 {
+		return nil
+	}
+
+	rand.Seed(time.Now().UnixNano())
+	index := rand.Intn(length)
+	dp = partitions[index]
+	if !isExcluded(dp, exclude) {
+		log.LogDebugf("DefaultRandomSelector: select dp[%v], index %v", dp, index)
+		return dp
+	}
+
+	log.LogWarnf("DefaultRandomSelector: first random partition was excluded, get partition from others")
+
+	var currIndex int
+	for i := 0; i < length; i++ {
+		currIndex = (index + i) % length
+		if !isExcluded(partitions[currIndex], exclude) {
+			log.LogDebugf("DefaultRandomSelector: select dp[%v], index %v", partitions[currIndex], currIndex)
+			return partitions[currIndex]
+		}
+	}
+	return nil
+}

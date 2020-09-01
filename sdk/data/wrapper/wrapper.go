@@ -16,7 +16,6 @@ package wrapper
 
 import (
 	"fmt"
-	"math/rand"
 	"net"
 	"strings"
 	"sync"
@@ -45,14 +44,17 @@ type Wrapper struct {
 	volName               string
 	masters               []string
 	partitions            map[uint64]*DataPartition
-	rwPartition           []*DataPartition
-	localLeaderPartitions []*DataPartition
 	followerRead          bool
 	followerReadClientCfg bool
 	nearRead              bool
+	dpSelectorChanged     bool
+	dpSelectorName        string
+	dpSelectorParm        string
 	mc                    *masterSDK.MasterClient
 	stopOnce              sync.Once
 	stopC                 chan struct{}
+
+	dpSelector DataPartitionSelector
 
 	HostsStatus map[string]bool
 }
@@ -64,7 +66,6 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 	w.masters = masters
 	w.mc = masterSDK.NewMasterClient(masters, false)
 	w.volName = volName
-	w.rwPartition = make([]*DataPartition, 0)
 	w.partitions = make(map[uint64]*DataPartition)
 	w.HostsStatus = make(map[string]bool)
 	if err = w.updateClusterInfo(); err != nil {
@@ -74,6 +75,9 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 	if err = w.getSimpleVolView(); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
+	}
+	if err = w.initDpSelector(); err != nil {
+		log.LogErrorf("NewDataPartitionWrapper: init initDpSelector failed, [%v]", err)
 	}
 	if err = w.updateDataPartition(true); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
@@ -121,11 +125,14 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 		return
 	}
 	w.followerRead = view.FollowerRead
+	w.dpSelectorName = view.DpSelectorName
+	w.dpSelectorParm = view.DpSelectorParm
 
 	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
-		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) createTime(%v)",
+		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) createTime(%v) dpSelectorName(%v) "+
+		"dpSelectorParm(%v)",
 		view.ID, view.Name, view.Owner, view.Status, view.Capacity, view.MpReplicaNum, view.DpReplicaNum, view.MpCnt,
-		view.DpCnt, view.FollowerRead, view.CreateTime)
+		view.DpCnt, view.FollowerRead, view.CreateTime, view.DpSelectorName, view.DpSelectorParm)
 	return nil
 }
 
@@ -134,30 +141,39 @@ func (w *Wrapper) update() {
 	for {
 		select {
 		case <-ticker.C:
+			w.updateSimpleVolView()
 			w.updateDataPartition(false)
 			w.updateDataNodeStatus()
-			if !w.followerReadClientCfg {
-				w.updateFollowerRead()
-			}
 		case <-w.stopC:
 			return
 		}
 	}
 }
 
-func (w *Wrapper) updateFollowerRead() (err error) {
+func (w *Wrapper) updateSimpleVolView() (err error) {
 	var view *proto.SimpleVolView
 
 	if view, err = w.mc.AdminAPI().GetVolumeSimpleInfo(w.volName); err != nil {
-		log.LogWarnf("updateFollowerRead: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
+		log.LogWarnf("updateSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
 
-	if w.followerRead != view.FollowerRead {
-		log.LogInfof("updateFollowerRead: update followerRead from old(%v) to new(%v)",
+	if w.followerRead != view.FollowerRead && !w.followerReadClientCfg {
+		log.LogInfof("updateSimpleVolView: update followerRead from old(%v) to new(%v)",
 			w.followerRead, view.FollowerRead)
 		w.followerRead = view.FollowerRead
 	}
+
+	if w.dpSelectorName != view.DpSelectorName || w.dpSelectorParm != view.DpSelectorParm {
+		log.LogInfof("updateSimpleVolView: update dpSelector from old(%v %v) to new(%v %v)",
+			w.dpSelectorName, w.dpSelectorParm, view.DpSelectorName, view.DpSelectorParm)
+		w.Lock()
+		w.dpSelectorName = view.DpSelectorName
+		w.dpSelectorParm = view.DpSelectorParm
+		w.dpSelectorChanged = true
+		w.Unlock()
+	}
+
 	return nil
 }
 
@@ -178,7 +194,6 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 	}
 
 	rwPartitionGroups := make([]*DataPartition, 0)
-	localLeaderPartitionGroups := make([]*DataPartition, 0)
 	for _, partition := range dpv.DataPartitions {
 		dp := convert(partition)
 		if w.followerRead && w.nearRead {
@@ -187,17 +202,14 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 		log.LogInfof("updateDataPartition: dp(%v)", dp)
 		w.replaceOrInsertPartition(dp)
 		if dp.Status == proto.ReadWrite {
+			dp.MetricsRefresh()
 			rwPartitionGroups = append(rwPartitionGroups, dp)
-			if strings.Split(dp.Hosts[0], ":")[0] == LocalIP {
-				localLeaderPartitionGroups = append(localLeaderPartitionGroups, dp)
-			}
 		}
 	}
 
 	// isInit used to identify whether this call is caused by mount action
 	if isInit || (len(rwPartitionGroups) >= MinWriteAbleDataPartitionCnt) {
-		w.rwPartition = rwPartitionGroups
-		w.localLeaderPartitions = localLeaderPartitionGroups
+		w.refreshDpSelector(rwPartitionGroups)
 	} else {
 		err = errors.New("updateDataPartition: no writable data partition")
 	}
@@ -218,6 +230,7 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 		old.ReplicaNum = dp.ReplicaNum
 		old.Hosts = dp.Hosts
 		old.NearHosts = dp.Hosts
+		dp.Metrics = old.Metrics
 	} else {
 		dp.Metrics = NewDataPartitionMetrics()
 		w.partitions[dp.PartitionID] = dp
@@ -228,54 +241,6 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 	if ok && oldstatus != dp.Status {
 		log.LogInfof("partition: status change (%v) -> (%v)", old, dp)
 	}
-}
-
-func (w *Wrapper) getRandomDataPartition(partitions []*DataPartition, exclude map[string]struct{}) *DataPartition {
-	var dp *DataPartition
-
-	if len(partitions) == 0 {
-		return nil
-	}
-
-	rand.Seed(time.Now().UnixNano())
-	index := rand.Intn(len(partitions))
-	dp = partitions[index]
-	if !isExcluded(dp, exclude) {
-		return dp
-	}
-
-	for _, dp = range partitions {
-		if !isExcluded(dp, exclude) {
-			return dp
-		}
-	}
-	return nil
-}
-
-func (w *Wrapper) getLocalLeaderDataPartition(exclude map[string]struct{}) *DataPartition {
-	w.RLock()
-	localLeaderPartitions := w.localLeaderPartitions
-	w.RUnlock()
-	return w.getRandomDataPartition(localLeaderPartitions, exclude)
-}
-
-// GetDataPartitionForWrite returns an available data partition for write.
-func (w *Wrapper) GetDataPartitionForWrite(exclude map[string]struct{}) (*DataPartition, error) {
-	dp := w.getLocalLeaderDataPartition(exclude)
-	if dp != nil {
-		return dp, nil
-	}
-
-	w.RLock()
-	rwPartitionGroups := w.rwPartition
-	w.RUnlock()
-
-	dp = w.getRandomDataPartition(rwPartitionGroups, exclude)
-	if dp != nil {
-		return dp, nil
-	}
-
-	return nil, fmt.Errorf("no writable data partition")
 }
 
 // GetDataPartition returns the data partition based on the given partition ID.
