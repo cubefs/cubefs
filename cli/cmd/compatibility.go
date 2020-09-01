@@ -84,7 +84,7 @@ func newMetaCompatibilityCmd() *cobra.Command {
 				stdout("%v\n", err)
 				return
 			}
-			err = mp.Load(snapshotPath)
+			err = mp.LoadSnapshot(snapshotPath)
 			if err != nil {
 				return
 			}
