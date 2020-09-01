@@ -797,3 +797,27 @@ func (dp *DataPartition) ChangeRaftMember(changeType raftProto.ConfChangeType, p
 	resp, err = dp.raftPartition.ChangeMember(changeType, peer, context)
 	return
 }
+//
+func (dp *DataPartition) canRemoveSelf() (canRemove bool, err error) {
+	var partition *proto.DataPartitionInfo
+	if partition, err = MasterClient.AdminAPI().GetDataPartition(dp.volumeID, dp.partitionID); err != nil {
+		log.LogErrorf("action[canRemoveSelf] err[%v]", err)
+		return
+	}
+	canRemove = false
+	var existInPeers bool
+	for _, peer := range partition.Peers {
+		if dp.config.NodeID == peer.ID {
+			existInPeers = true
+		}
+	}
+	if !existInPeers {
+		canRemove = true
+		return
+	}
+	if dp.config.NodeID == partition.OfflinePeerID {
+		canRemove = true
+		return
+	}
+	return
+}
