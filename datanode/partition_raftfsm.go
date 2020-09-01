@@ -42,22 +42,25 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		dp.uploadApplyID(index)
 	}(index)
 
-	req := &proto.DataPartitionDecommissionRequest{}
-	if err = json.Unmarshal(confChange.Context, req); err != nil {
-		return
-	}
-
 	// Change memory the status
 	var (
 		isUpdated bool
 	)
 	switch confChange.Type {
 	case raftproto.ConfAddNode:
+		req := &proto.AddDataPartitionRaftMemberRequest{}
+		if err = json.Unmarshal(confChange.Context, req); err != nil {
+			return
+		}
 		isUpdated, err = dp.addRaftNode(req, index)
 	case raftproto.ConfRemoveNode:
+		req := &proto.RemoveDataPartitionRaftMemberRequest{}
+		if err = json.Unmarshal(confChange.Context, req); err != nil {
+			return
+		}
 		isUpdated, err = dp.removeRaftNode(req, index)
 	case raftproto.ConfUpdateNode:
-		isUpdated, err = dp.updateRaftNode(req, index)
+		log.LogDebugf("[updateRaftNode]: not support.")
 	}
 	if err != nil {
 		log.LogErrorf("action[ApplyMemberChange] dp(%v) type(%v) err(%v).", dp.partitionID, confChange.Type, err)

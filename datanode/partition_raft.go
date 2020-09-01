@@ -290,7 +290,7 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 }
 
 // Add a raft node.
-func (dp *DataPartition) addRaftNode(req *proto.DataPartitionDecommissionRequest, index uint64) (isUpdated bool, err error) {
+func (dp *DataPartition) addRaftNode(req *proto.AddDataPartitionRaftMemberRequest, index uint64) (isUpdated bool, err error) {
 	var (
 		heartbeatPort int
 		replicaPort   int
@@ -325,7 +325,7 @@ func (dp *DataPartition) addRaftNode(req *proto.DataPartitionDecommissionRequest
 }
 
 // Delete a raft node.
-func (dp *DataPartition) removeRaftNode(req *proto.DataPartitionDecommissionRequest, index uint64) (isUpdated bool, err error) {
+func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMemberRequest, index uint64) (isUpdated bool, err error) {
 	var canRemoveSelf bool
 	if canRemoveSelf, err = dp.canRemoveSelf(); err != nil {
 		return
@@ -360,8 +360,12 @@ func (dp *DataPartition) removeRaftNode(req *proto.DataPartitionDecommissionRequ
 	dp.config.Peers = append(dp.config.Peers[:peerIndex], dp.config.Peers[peerIndex+1:]...)
 
 	if dp.config.NodeID == req.RemovePeer.ID && canRemoveSelf {
-		dp.raftPartition.Delete()
-		dp.Disk().space.DeletePartition(dp.partitionID)
+		if req.ReserveResource {
+			dp.Disk().space.DeletePartitionFromCache(dp.partitionID)
+		}else {
+			dp.raftPartition.Delete()
+			dp.Disk().space.DeletePartition(dp.partitionID)
+		}
 		isUpdated = false
 	}
 	log.LogInfof("Fininsh RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",

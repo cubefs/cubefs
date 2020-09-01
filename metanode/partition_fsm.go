@@ -199,21 +199,25 @@ func (mp *metaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 			mp.uploadApplyID(index)
 		}
 	}()
-	req := &proto.MetaPartitionDecommissionRequest{}
-	if err = json.Unmarshal(confChange.Context, req); err != nil {
-		return
-	}
 	// change memory status
 	var (
 		updated bool
 	)
 	switch confChange.Type {
 	case raftproto.ConfAddNode:
+		req := &proto.AddMetaPartitionRaftMemberRequest{}
+		if err = json.Unmarshal(confChange.Context, req); err != nil {
+			return
+		}
 		updated, err = mp.confAddNode(req, index)
 	case raftproto.ConfRemoveNode:
+		req := &proto.RemoveMetaPartitionRaftMemberRequest{}
+		if err = json.Unmarshal(confChange.Context, req); err != nil {
+			return
+		}
 		updated, err = mp.confRemoveNode(req, index)
 	case raftproto.ConfUpdateNode:
-		updated, err = mp.confUpdateNode(req, index)
+		//updated, err = mp.confUpdateNode(req, index)
 	}
 	if err != nil {
 		return

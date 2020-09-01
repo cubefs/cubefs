@@ -82,7 +82,7 @@ func (mp *metaPartition) fsmUpdatePartition(end uint64) (status uint8,
 }
 
 func (mp *metaPartition) confAddNode(req *proto.
-	MetaPartitionDecommissionRequest, index uint64) (updated bool, err error) {
+AddMetaPartitionRaftMemberRequest, index uint64) (updated bool, err error) {
 	var (
 		heartbeatPort int
 		replicaPort   int
@@ -108,7 +108,7 @@ func (mp *metaPartition) confAddNode(req *proto.
 	return
 }
 
-func (mp *metaPartition) confRemoveNode(req *proto.MetaPartitionDecommissionRequest,
+func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMemberRequest,
 	index uint64) (updated bool, err error) {
 	var canRemoveSelf bool
 	if canRemoveSelf, err = mp.canRemoveSelf(); err != nil {
@@ -117,7 +117,7 @@ func (mp *metaPartition) confRemoveNode(req *proto.MetaPartitionDecommissionRequ
 	peerIndex := -1
 	data, _ := json.Marshal(req)
 	log.LogInfof("Start RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
-		req.PartitionID, mp.config.NodeId, string(data))
+		req.PartitionId, mp.config.NodeId, string(data))
 	for i, peer := range mp.config.Peers {
 		if peer.ID == req.RemovePeer.ID {
 			updated = true
@@ -127,19 +127,23 @@ func (mp *metaPartition) confRemoveNode(req *proto.MetaPartitionDecommissionRequ
 	}
 	if !updated {
 		log.LogInfof("NoUpdate RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
-			req.PartitionID, mp.config.NodeId, string(data))
+			req.PartitionId, mp.config.NodeId, string(data))
 		return
 	}
 	mp.config.Peers = append(mp.config.Peers[:peerIndex], mp.config.Peers[peerIndex+1:]...)
 	if mp.config.NodeId == req.RemovePeer.ID && canRemoveSelf {
 		mp.Stop()
-		mp.DeleteRaft()
+		if req.ReserveResource {
+			mp.raftPartition.Stop()
+		} else {
+			mp.DeleteRaft()
+			os.RemoveAll(mp.config.RootDir)
+		}
 		mp.manager.deletePartition(mp.GetBaseConfig().PartitionId)
-		os.RemoveAll(mp.config.RootDir)
 		updated = false
 	}
-	log.LogInfof("Fininsh RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
-		req.PartitionID, mp.config.NodeId, string(data))
+	log.LogInfof("Finish RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+		req.PartitionId, mp.config.NodeId, string(data))
 	return
 }
 

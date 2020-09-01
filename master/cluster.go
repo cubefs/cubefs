@@ -989,7 +989,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		goto errHandler
 	}
 
-	if err = c.removeDataReplica(dp, offlineAddr, false); err != nil {
+	if err = c.removeDataReplica(dp, offlineAddr, false, strictMode); err != nil {
 		goto errHandler
 	}
 	newAddr = targetHosts[0]
@@ -1081,7 +1081,7 @@ func (c *Cluster) validateDecommissionDataPartition(dp *DataPartition, offlineAd
 		return
 	}
 
-	if dp.isRecover && !dp.isLatestReplica(offlineAddr){
+	if dp.isRecover && !dp.isLatestReplica(offlineAddr) {
 		err = fmt.Errorf("vol[%v],data partition[%v] is recovering,[%v] can't be decommissioned", vol.Name, dp.PartitionID, offlineAddr)
 		return
 	}
@@ -1212,7 +1212,7 @@ func (c *Cluster) createDataReplica(dp *DataPartition, addPeer proto.Peer) (err 
 	return
 }
 
-func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate bool) (err error) {
+func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate, migrationMode bool) (err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[removeDataReplica],vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
@@ -1234,11 +1234,13 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate boo
 	}
 	removePeer := proto.Peer{ID: dataNode.ID, Addr: addr}
 
-	if err = c.removeDataPartitionRaftMember(dp, removePeer); err != nil {
+	if err = c.removeDataPartitionRaftMember(dp, removePeer, migrationMode); err != nil {
 		return
 	}
-	if err = c.deleteDataReplica(dp, dataNode); err != nil {
-		return
+	if !migrationMode {
+		if err = c.deleteDataReplica(dp, dataNode); err != nil {
+			return
+		}
 	}
 	leaderAddr := dp.getLeaderAddrWithLock()
 	if leaderAddr != addr {
@@ -1276,7 +1278,7 @@ func (c *Cluster) isRecovering(dp *DataPartition, addr string) (isRecover bool) 
 	return
 }
 
-func (c *Cluster) removeDataPartitionRaftMember(dp *DataPartition, removePeer proto.Peer) (err error) {
+func (c *Cluster) removeDataPartitionRaftMember(dp *DataPartition, removePeer proto.Peer, migrationMode bool) (err error) {
 	defer func() {
 		if err = c.updateDataPartitionOfflinePeerIDWithLock(dp, 0); err != nil {
 			log.LogErrorf("action[removeDataPartitionRaftMember] vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
@@ -1290,6 +1292,7 @@ func (c *Cluster) removeDataPartitionRaftMember(dp *DataPartition, removePeer pr
 	if err != nil {
 		return
 	}
+	task.ReserveResource = migrationMode
 	leaderAddr := dp.getLeaderAddr()
 	leaderDataNode, err := c.dataNode(leaderAddr)
 	if _, err = leaderDataNode.TaskManager.syncSendAdminTask(task); err != nil {
@@ -1318,7 +1321,7 @@ func (c *Cluster) removeDataPartitionRaftMember(dp *DataPartition, removePeer pr
 	dp.Unlock()
 	return
 }
-func (c *Cluster) updateDataPartitionOfflinePeerIDWithLock(dp *DataPartition, peerID uint64) (err error){
+func (c *Cluster) updateDataPartitionOfflinePeerIDWithLock(dp *DataPartition, peerID uint64) (err error) {
 	dp.Lock()
 	defer dp.Unlock()
 	dp.OfflinePeerID = peerID
