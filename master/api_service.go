@@ -569,19 +569,22 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		name         string
-		authKey      string
-		err          error
-		msg          string
-		capacity     uint64
-		replicaNum   int
-		followerRead bool
-		authenticate bool
-		enableToken  bool
-		zoneName     string
-		description  string
-		vol          *Vol
+		name           string
+		authKey        string
+		err            error
+		msg            string
+		capacity       uint64
+		replicaNum     int
+		followerRead   bool
+		authenticate   bool
+		enableToken    bool
+		zoneName       string
+		description    string
+		dpSelectorName string
+		dpSelectorParm string
+		vol            *Vol
 	)
+
 	if name, authKey, description, err = parseRequestToUpdateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -590,7 +593,8 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
-	if zoneName, capacity, replicaNum, enableToken, err = parseDefaultInfoToUpdateVol(r, vol); err != nil {
+	if zoneName, capacity, replicaNum, enableToken, dpSelectorName, dpSelectorParm, err =
+		parseDefaultInfoToUpdateVol(r, vol); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -604,7 +608,19 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err = m.cluster.updateVol(name, authKey, zoneName, description, capacity, vol.dpReplicaNum, followerRead, authenticate, enableToken); err != nil {
+
+	newArgs := getVolVarargs(vol)
+
+	newArgs.zoneName = zoneName
+	newArgs.description = description
+	newArgs.capacity = capacity
+	newArgs.followerRead = followerRead
+	newArgs.authenticate = authenticate
+	newArgs.enableToken = enableToken
+	newArgs.dpSelectorName = dpSelectorName
+	newArgs.dpSelectorParm = dpSelectorParm
+
+	if err = m.cluster.updateVol(name, authKey, newArgs); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -635,7 +651,10 @@ func (m *Server) volExpand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = m.cluster.updateVol(name, authKey, vol.zoneName, vol.description, uint64(capacity), vol.dpReplicaNum, vol.FollowerRead, vol.authenticate, vol.enableToken); err != nil {
+	newArgs := getVolVarargs(vol)
+	newArgs.capacity = uint64(capacity)
+
+	if err = m.cluster.updateVol(name, authKey, newArgs); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -666,7 +685,10 @@ func (m *Server) volShrink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = m.cluster.updateVol(name, authKey, vol.zoneName, vol.description, uint64(capacity), vol.dpReplicaNum, vol.FollowerRead, vol.authenticate, vol.enableToken); err != nil {
+	newArgs := getVolVarargs(vol)
+	newArgs.capacity = uint64(capacity)
+
+	if err = m.cluster.updateVol(name, authKey, newArgs); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -767,6 +789,8 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		DpCnt:              len(vol.dataPartitions.partitionMap),
 		CreateTime:         time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
 		Description:        vol.description,
+		DpSelectorName:     vol.dpSelectorName,
+		DpSelectorParm:     vol.dpSelectorParm,
 	}
 }
 
@@ -1019,7 +1043,7 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(id))
 }
 
-func (m *Server) checkInvalidIDNodes(w http.ResponseWriter,r *http.Request) {
+func (m *Server) checkInvalidIDNodes(w http.ResponseWriter, r *http.Request) {
 	nodes := m.cluster.getInvalidIDNodes()
 	sendOkReply(w, r, newSuccessHTTPReply(nodes))
 }
@@ -1370,7 +1394,8 @@ func parseRequestToUpdateVol(r *http.Request) (name, authKey, description string
 	return
 }
 
-func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, capacity uint64, replicaNum int, enableToken bool, err error) {
+func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, capacity uint64, replicaNum int,
+	enableToken bool, dpSelectorName string, dpSelectorParm string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1402,6 +1427,16 @@ func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, ca
 		}
 	} else {
 		enableToken = vol.enableToken
+	}
+	dpSelectorName = r.FormValue(dpSelectorNameKey)
+	dpSelectorParm = r.FormValue(dpSelectorParmKey)
+	if (dpSelectorName == "") || (dpSelectorParm == "") {
+		if (dpSelectorName != "") || (dpSelectorParm != "") {
+			err = keyNotFound(dpSelectorNameKey + " or " + dpSelectorParmKey)
+			return
+		}
+		dpSelectorName = vol.dpSelectorName
+		dpSelectorParm = vol.dpSelectorParm
 	}
 	return
 }
