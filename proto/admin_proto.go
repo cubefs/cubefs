@@ -202,8 +202,9 @@ type AddDataPartitionRaftMemberRequest struct {
 
 // RemoveDataPartitionRaftMemberRequest defines the request of add raftMember a data partition.
 type RemoveDataPartitionRaftMemberRequest struct {
-	PartitionId uint64
-	RemovePeer  Peer
+	PartitionId     uint64
+	RemovePeer      Peer
+	ReserveResource bool
 }
 
 // AddMetaPartitionRaftMemberRequest defines the request of add raftMember a meta partition.
@@ -214,8 +215,9 @@ type AddMetaPartitionRaftMemberRequest struct {
 
 // RemoveMetaPartitionRaftMemberRequest defines the request of add raftMember a meta partition.
 type RemoveMetaPartitionRaftMemberRequest struct {
-	PartitionId uint64
-	RemovePeer  Peer
+	PartitionId     uint64
+	RemovePeer      Peer
+	ReserveResource bool
 }
 
 // LoadDataPartitionRequest defines the request of loading a data partition.

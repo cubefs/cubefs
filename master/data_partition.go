@@ -642,7 +642,7 @@ func (partition *DataPartition) getToBeDecommissionHost(replicaNum int) (host st
 }
 
 func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string) (err error) {
-	if err = c.removeDataReplica(partition, host, false); err != nil {
+	if err = c.removeDataReplica(partition, host, false, false); err != nil {
 		return
 	}
 	partition.RLock()

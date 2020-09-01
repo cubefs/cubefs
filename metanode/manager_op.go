@@ -862,6 +862,7 @@ func (m *metadataManager) opRemoveMetaPartitionRaftMember(conn net.Conn,
 		m.respondToClient(conn, p)
 		return err
 	}
+	req.ReserveResource = adminTask.ReserveResource
 	mp, err := m.getPartition(req.PartitionId)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))

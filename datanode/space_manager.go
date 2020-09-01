@@ -329,6 +329,19 @@ func (manager *SpaceManager) DeletePartition(dpID uint64) {
 	os.RemoveAll(dp.Path())
 }
 
+// DeletePartition deletes a partition from cache based on the partition id.
+func (manager *SpaceManager) DeletePartitionFromCache(dpID uint64) {
+	dp := manager.Partition(dpID)
+	if dp == nil {
+		return
+	}
+	manager.partitionMutex.Lock()
+	delete(manager.partitions, dpID)
+	manager.partitionMutex.Unlock()
+	dp.Stop()
+	dp.Disk().DetachDataPartition(dp)
+}
+
 func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatResponse) {
 	response.Status = proto.TaskSucceeds
 	stat := s.space.Stats()

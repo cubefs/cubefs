@@ -428,7 +428,7 @@ func (m *Server) deleteDataReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = m.cluster.removeDataReplica(dp, addr, true); err != nil {
+	if err = m.cluster.removeDataReplica(dp, addr, true, false); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -484,7 +484,7 @@ func (m *Server) deleteMetaReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = m.cluster.deleteMetaReplica(mp, addr, true); err != nil {
+	if err = m.cluster.deleteMetaReplica(mp, addr, true, false); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

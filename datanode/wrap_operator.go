@@ -939,7 +939,6 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 	if err = decode.Decode(adminTask); err != nil {
 		return
 	}
-
 	reqData, err = json.Marshal(adminTask.Request)
 	p.AddMesgLog(string(reqData))
 	if err != nil {
@@ -949,6 +948,7 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 		return
 	}
 
+	req.ReserveResource = adminTask.ReserveResource
 	dp := s.space.Partition(req.PartitionId)
 	if dp == nil {
 		return

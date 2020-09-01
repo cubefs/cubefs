@@ -131,9 +131,13 @@ func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMember
 	mp.config.Peers = append(mp.config.Peers[:peerIndex], mp.config.Peers[peerIndex+1:]...)
 	if mp.config.NodeId == req.RemovePeer.ID && !mp.isLoadingMetaPartition && canRemoveSelf {
 		mp.Stop()
-		mp.DeleteRaft()
+		if req.ReserveResource {
+			mp.raftPartition.Stop()
+		} else {
+			mp.DeleteRaft()
+			os.RemoveAll(mp.config.RootDir)
+		}
 		mp.manager.deletePartition(mp.GetBaseConfig().PartitionId)
-		os.RemoveAll(mp.config.RootDir)
 		updated = false
 	}
 	log.LogInfof("Fininsh RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",

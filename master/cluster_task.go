@@ -142,7 +142,7 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, 
 			}
 		}
 	}
-	if err = c.deleteMetaReplica(mp, nodeAddr, false); err != nil {
+	if err = c.deleteMetaReplica(mp, nodeAddr, false, strictMode); err != nil {
 		goto errHandler
 	}
 	if err = c.addMetaReplica(mp, newPeers[0].Addr); err != nil {
@@ -183,11 +183,11 @@ func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr 
 		return
 	}
 
-	if err = mp.hasMissingOneReplica(nodeAddr,int(vol.mpReplicaNum)); err != nil {
+	if err = mp.hasMissingOneReplica(nodeAddr, int(vol.mpReplicaNum)); err != nil {
 		return
 	}
 
-	if mp.IsRecover && !mp.isLatestReplica(nodeAddr){
+	if mp.IsRecover && !mp.isLatestReplica(nodeAddr) {
 		err = fmt.Errorf("vol[%v],meta partition[%v] is recovering,[%v] can't be decommissioned", vol.Name, mp.PartitionID, nodeAddr)
 		return
 	}
@@ -276,7 +276,7 @@ func (c *Cluster) checkLackReplicaMetaPartitions() (lackReplicaMetaPartitions []
 	return
 }
 
-func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, validate bool) (err error) {
+func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, validate, migrationMode bool) (err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[deleteMetaReplica],vol[%v],data partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
@@ -292,7 +292,11 @@ func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, valid
 		return
 	}
 	removePeer := proto.Peer{ID: metaNode.ID, Addr: addr}
-	if err = c.removeMetaPartitionRaftMember(partition, removePeer); err != nil {
+	if err = c.removeMetaPartitionRaftMember(partition, removePeer, migrationMode); err != nil {
+		return
+	}
+	if migrationMode {
+
 		return
 	}
 	if err = c.deleteMetaPartition(partition, metaNode); err != nil {
@@ -319,10 +323,10 @@ func (c *Cluster) deleteMetaPartition(partition *MetaPartition, removeMetaNode *
 	return nil
 }
 
-func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, removePeer proto.Peer) (err error) {
+func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, removePeer proto.Peer, migrationMode bool) (err error) {
 	partition.offlineMutex.Lock()
 	defer partition.offlineMutex.Unlock()
-	defer func(){
+	defer func() {
 		if err1 := c.updateMetaPartitionOfflinePeerIDWithLock(partition, 0); err1 != nil {
 			err = errors.Trace(err, "updateMetaPartitionOfflinePeerIDWithLock failed, err[%v]", err1)
 		}
@@ -338,6 +342,7 @@ func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, remove
 	if err != nil {
 		return
 	}
+	t.ReserveResource = migrationMode
 	var leaderMetaNode *MetaNode
 	leaderMetaNode = mr.metaNode
 	if leaderMetaNode == nil {
@@ -379,7 +384,7 @@ func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, remove
 	return
 }
 
-func (c *Cluster) updateMetaPartitionOfflinePeerIDWithLock(mp *MetaPartition, peerID uint64) (err error){
+func (c *Cluster) updateMetaPartitionOfflinePeerIDWithLock(mp *MetaPartition, peerID uint64) (err error) {
 	mp.Lock()
 	defer mp.Unlock()
 	mp.OfflinePeerID = peerID
