@@ -322,7 +322,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 				if m.storeType == 1 {
 					for _, dir := range m.rocksDirs {
 						if _, err = os.Stat(path.Join(dir, partitionPrefix+partitionId)); err != nil {
-							if err == os.ErrNotExist {
+							if os.IsNotExist(err) {
 								err = nil
 							} else {
 								errload = err

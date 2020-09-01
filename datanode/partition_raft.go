@@ -394,7 +394,7 @@ func (dp *DataPartition) LoadAppliedID() (err error) {
 	}
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
-		if err == os.ErrNotExist {
+		if os.IsNotExist(err) {
 			err = nil
 			return
 		}

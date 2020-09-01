@@ -160,7 +160,7 @@ func (mp *MetaPartition) loadDentry(rootDir string) (err error) {
 	}
 	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
 	if err != nil {
-		if err == os.ErrNotExist {
+		if os.IsNotExist(err) {
 			err = nil
 			return
 		}
@@ -303,7 +303,7 @@ func (mp *MetaPartition) loadApplyID(rootDir string) (err error) {
 	}
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
-		if err == os.ErrNotExist {
+		if os.IsNotExist(err) {
 			err = nil
 			return
 		}
