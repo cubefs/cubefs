@@ -280,6 +280,26 @@ func (w *Wrapper) GetDataPartitionForWrite(exclude map[string]struct{}) (*DataPa
 	return nil, fmt.Errorf("no writable data partition")
 }
 
+func (w *Wrapper) RemoveDataPartitionForWrite(partitionID uint64) {
+	w.Lock()
+	defer w.Unlock()
+	rwPartitionGroups := w.rwPartition
+
+	var i int
+	for i = 0; i < len(rwPartitionGroups); i++ {
+		if rwPartitionGroups[i].PartitionID == partitionID {
+			break
+		}
+	}
+
+	var newRwPartition []*DataPartition
+	newRwPartition = append(newRwPartition, rwPartitionGroups[:i]...)
+	newRwPartition = append(newRwPartition, rwPartitionGroups[i+1:]...)
+
+	w.rwPartition = newRwPartition
+	return
+}
+
 // GetDataPartition returns the data partition based on the given partition ID.
 func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 	w.RLock()
