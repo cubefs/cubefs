@@ -210,21 +210,34 @@ func (i *MultipartBTree) Create(mul *Multipart) error {
 }
 
 //delete
-func (i *InodeBTree) Delete(ino uint64) error {
-	i.BTree.Delete(&Inode{Inode: ino})
-	return nil
+func (i *InodeBTree) Delete(ino uint64) (bool, error) {
+	if v := i.BTree.Delete(&Inode{Inode: ino}); v == nil {
+		return false, nil
+	} else {
+		return true, nil
+	}
 }
-func (i *DentryBTree) Delete(pid uint64, name string) error {
-	i.BTree.Delete(&Dentry{ParentId: pid, Name: name})
-	return nil
+func (i *DentryBTree) Delete(pid uint64, name string) (bool, error) {
+	if v := i.BTree.Delete(&Dentry{ParentId: pid, Name: name}); v == nil {
+		return false, nil
+	} else {
+		return true, nil
+	}
 }
-func (i *ExtendBTree) Delete(ino uint64) error {
-	i.BTree.Delete(&Extend{inode: ino})
-	return nil
+func (i *ExtendBTree) Delete(ino uint64) (bool, error) {
+	if v := i.BTree.Delete(&Extend{inode: ino}); v == nil {
+		return false, nil
+	} else {
+		return true, nil
+	}
 }
-func (i *MultipartBTree) Delete(key, id string) error {
-	i.BTree.Delete(&Multipart{key: key, id: id})
-	return nil
+func (i *MultipartBTree) Delete(key, id string) (bool, error) {
+	if mul := i.BTree.Delete(&Multipart{key: key, id: id}); mul == nil {
+		return false, nil
+	} else {
+		return true, nil
+	}
+
 }
 
 //range

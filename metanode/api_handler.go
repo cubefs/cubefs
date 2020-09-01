@@ -141,7 +141,23 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	f := func(v []byte) (bool, error) {
-		if _, e := w.Write(v); e != nil {
+		if _, e := w.Write([]byte("\n")); e != nil {
+			log.LogErrorf("[getAllInodesHandler] failed to write response: %v", e)
+			return false, e
+		}
+
+		inode := &Inode{}
+		if e := inode.Unmarshal(v); e != nil {
+			log.LogErrorf("unmarshal inode has err:[%s]", e.Error())
+			return false, e
+		}
+
+		data, e := inode.MarshalToJSON()
+		if e != nil {
+			log.LogErrorf("[getAllInodesHandler] failed to marshal to json: %v", e)
+			return false, e
+		}
+		if _, e := w.Write(data); e != nil {
 			log.LogErrorf("[getAllInodesHandler] failed to write response: %v", e)
 			return false, e
 		}
@@ -322,7 +338,6 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 	}
 	buff.Reset()
 	var (
-		val       []byte
 		delimiter = []byte{',', '\n'}
 		isFirst   = true
 	)
@@ -335,7 +350,18 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 		} else {
 			isFirst = false
 		}
-		if _, err = w.Write(val); err != nil {
+
+		d := &Dentry{}
+		if err := d.Unmarshal(v); err != nil {
+			return false, err
+		}
+
+		data, err := json.Marshal(d)
+		if err != nil {
+			return false, err
+		}
+
+		if _, err = w.Write(data); err != nil {
 			return false, err
 		}
 		return true, err

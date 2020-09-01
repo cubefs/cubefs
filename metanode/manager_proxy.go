@@ -47,17 +47,19 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp *MetaPartition, p *Packet
 
 	mConn, err = m.connPool.GetConnect(leaderAddr)
 	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		m.connPool.PutConnect(mConn, ForceClosedConnect)
 		goto end
 	}
 
-	// send to leader connection
+	// send to master connection
 	if err = p.WriteToConn(mConn); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		m.connPool.PutConnect(mConn, ForceClosedConnect)
 		goto end
 	}
 
-	// read connection from the leader
+	// read connection from the master
 	if err = p.ReadFromConn(mConn, proto.NoReadDeadlineTime); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		m.connPool.PutConnect(mConn, ForceClosedConnect)

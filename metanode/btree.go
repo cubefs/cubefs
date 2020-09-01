@@ -71,7 +71,7 @@ type InodeTree interface {
 	Put(inode *Inode) error
 	Update(inode *Inode) error
 	Create(inode *Inode) error
-	Delete(ino uint64) error
+	Delete(ino uint64) (bool, error)
 	Range(start, end *Inode, cb func(v []byte) (bool, error)) error
 	Count() uint64
 }
@@ -82,7 +82,7 @@ type DentryTree interface {
 	Get(ino uint64, name string) (*Dentry, error)
 	Put(dentry *Dentry) error
 	Create(dentry *Dentry) error
-	Delete(pid uint64, name string) error
+	Delete(pid uint64, name string) (bool, error)
 	Range(start, end *Dentry, cb func(v []byte) (bool, error)) error
 	Count() uint64
 }
@@ -94,7 +94,7 @@ type ExtendTree interface {
 	Put(extend *Extend) error
 	Update(extend *Extend) error
 	Create(ext *Extend) error
-	Delete(ino uint64) error
+	Delete(ino uint64) (bool, error)
 	Range(start, end *Extend, cb func(v []byte) (bool, error)) error
 	Count() uint64
 }
@@ -106,7 +106,7 @@ type MultipartTree interface {
 	Put(mutipart *Multipart) error
 	Update(mutipart *Multipart) error
 	Create(mul *Multipart) error
-	Delete(key, id string) error
+	Delete(key, id string) (bool, error)
 	Range(start, end *Multipart, cb func(v []byte) (bool, error)) error
 	Count() uint64
 }

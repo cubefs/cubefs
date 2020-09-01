@@ -54,8 +54,8 @@ func (mp *MetaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		if mp.GetCursor() < ino.Inode {
-			mp.SetCursor(ino.Inode)
+		if mp.config.Cursor < ino.Inode {
+			mp.config.Cursor = ino.Inode
 		}
 		resp = mp.fsmCreateInode(ino)
 	case opFSMUnlinkInode:
@@ -179,8 +179,8 @@ func (mp *MetaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	case opFSMSyncCursor:
 		var cursor uint64
 		cursor = binary.BigEndian.Uint64(msg.V)
-		if cursor > mp.GetCursor() {
-			mp.SetCursor(cursor)
+		if cursor > mp.config.Cursor {
+			mp.config.Cursor = cursor
 		}
 	}
 
@@ -260,13 +260,15 @@ func (mp *MetaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		multipartTree MultipartTree
 	)
 
+	start := time.Now()
+
 	if mp.config.StoreType == 0 {
 		inodeTree = &InodeBTree{NewBtree()}
 		dentryTree = &DentryBTree{NewBtree()}
 		extendTree = &ExtendBTree{NewBtree()}
 		multipartTree = &MultipartBTree{NewBtree()}
 	} else {
-		log.LogInfof("clean rocksdb data and new one to apply snapshot")
+		log.LogInfof("clean rocksdb data to apply snapshot")
 		if err := mp.inodeTree.Clear(); err != nil {
 			return err
 		}
@@ -288,7 +290,9 @@ func (mp *MetaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			mp.inodeTree.SetApplyID(appIndexID)
 			mp.inodeTree = inodeTree
 			mp.dentryTree = dentryTree
-			mp.SetCursor(cursor)
+			mp.extendTree = extendTree
+			mp.multipartTree = multipartTree
+			mp.config.Cursor = cursor
 			err = nil
 			// store message
 			mp.storeChan <- &storeMsg{
@@ -301,6 +305,8 @@ func (mp *MetaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			return
 		} else if err != nil {
 			log.LogErrorf("ApplySnapshot: stop with error: partitionID(%v) err(%v)", mp.config.PartitionId, err)
+		} else {
+			log.LogInfof("partition:[%d] ApplySnapshot success use time:[%v]", mp.config.PartitionId, time.Now().Sub(start))
 		}
 
 	}()
@@ -391,28 +397,20 @@ func (mp *MetaPartition) HandleLeaderChange(leader uint64) {
 		}
 		log.LogDebugf("[metaPartition] HandleLeaderChange close conn %v, nodeId: %v, leader: %v", serverPort, mp.config.NodeId, leader)
 		conn.(*net.TCPConn).SetLinger(0)
-		log.LogDebugf("[HandleLeaderChange] connect close port: %v parititon: %v nodeid: %v, leader: %v", serverPort, mp.config.PartitionId, mp.config.NodeId, leader)
 		conn.Close()
 	}
-	// not leader
 	if mp.config.NodeId != leader {
 		log.LogDebugf("[metaPartition] pid: %v HandleLeaderChange become unleader nodeId: %v, leader: %v", mp.config.PartitionId, mp.config.NodeId, leader)
 		mp.storeChan <- &storeMsg{
 			command: stopStoreTick,
 		}
-		log.LogDebugf("[HandleLeaderChange]  become to follower {pid: %v, leader: %v, nodeid: %v}", mp.config.PartitionId, leader, mp.config.NodeId)
 		return
 	}
-	log.LogDebugf("[HandleLeaderChange]  become to leader {pid: %v, leader: %v, nodeid: %v}", mp.config.PartitionId, leader, mp.config.NodeId)
-	// become to leader
-	// start store tick
 	mp.storeChan <- &storeMsg{
 		command: startStoreTick,
 	}
-	//init inode
-	if mp.config.Start == 0 && mp.GetCursor() == 0 {
-		log.LogDebugf("[metaPartition] pid: %v HandleLeaderChange become leader conn %v, nodeId: %v, leader: %v", mp.config.PartitionId, serverPort, mp.config.NodeId, leader)
-
+	log.LogDebugf("[metaPartition] pid: %v HandleLeaderChange become leader conn %v, nodeId: %v, leader: %v", mp.config.PartitionId, serverPort, mp.config.NodeId, leader)
+	if mp.config.Start == 0 && mp.config.Cursor == 0 {
 		id, err := mp.nextInodeID()
 		if err != nil {
 			log.LogFatalf("[HandleLeaderChange] init root inode id: %s.", err.Error())
@@ -431,7 +429,6 @@ func (mp *MetaPartition) submit(op uint32, data []byte) (resp interface{}, err e
 	}
 	cmd, err := snap.MarshalJson()
 	if err != nil {
-		log.LogErrorf("[MetaPartition] submit op: %v, data: %v MarshalJson error: %v", op, data, err)
 		return
 	}
 

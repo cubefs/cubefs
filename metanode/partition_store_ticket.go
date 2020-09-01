@@ -16,7 +16,6 @@ package metanode
 
 import (
 	"encoding/binary"
-	"sync/atomic"
 	"time"
 
 	"github.com/chubaofs/chubaofs/cmd/common"
@@ -153,10 +152,6 @@ func (mp *MetaPartition) startSchedule(curIndex uint64) {
 					timer.Reset(intervalToPersistData)
 					continue
 				}
-				if atomic.LoadUint64(&mp.persistedApplyID)-curIndex < gapToPersistData {
-					timer.Reset(intervalToPersistData)
-					continue
-				}
 				if _, err := mp.submit(opFSMStoreTick, nil); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 					if _, ok := mp.IsLeader(); ok {
@@ -169,7 +164,7 @@ func (mp *MetaPartition) startSchedule(curIndex uint64) {
 					continue
 				}
 				cursorBuf := make([]byte, 8)
-				binary.BigEndian.PutUint64(cursorBuf, mp.GetCursor())
+				binary.BigEndian.PutUint64(cursorBuf, mp.config.Cursor)
 				if _, err := mp.submit(opFSMSyncCursor, cursorBuf); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 				}

@@ -234,11 +234,11 @@ func (mp *MetaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		}
 		inode.Extents.Range(func(ek proto.ExtentKey) bool {
 			ext := &ek
-			_, ok := allDeleteExtents[ek.GetExtentKey()]
+			_, ok := allDeleteExtents[ext.GetExtentKey()]
 			if !ok {
-				allDeleteExtents[ek.GetExtentKey()] = inode.Inode
+				allDeleteExtents[ext.GetExtentKey()] = inode.Inode
 			}
-			exts, ok := deleteExtentsByPartition[ek.PartitionId]
+			exts, ok := deleteExtentsByPartition[ext.PartitionId]
 			if !ok {
 				exts = make([]*proto.ExtentKey, 0)
 			}

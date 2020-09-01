@@ -16,7 +16,6 @@ package metanode
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -26,6 +25,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync/atomic"
 
 	"github.com/chubaofs/chubaofs/util/log"
 
@@ -77,12 +77,10 @@ func (mp *MetaPartition) loadMetadata() (err error) {
 	mp.config.Start = mConf.Start
 	mp.config.End = mConf.End
 	mp.config.Peers = mConf.Peers
-	//mp.config.RocksDir = mConf.RocksDir
-	//mp.config.StoreType = mConf.StoreType :TODO use config ????
-	mp.SetCursor(mp.config.Start)
+	mp.config.Cursor = mp.config.Start
 
 	log.LogInfof("loadMetadata: load complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
-		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.GetCursor())
+		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor)
 	return
 }
 
@@ -139,8 +137,8 @@ func (mp *MetaPartition) loadInode(rootDir string) (err error) {
 		}
 		mp.fsmCreateInode(ino)
 		mp.checkAndInsertFreeList(ino)
-		if mp.GetCursor() < ino.Inode {
-			mp.SetCursor(ino.Inode)
+		if mp.config.Cursor < ino.Inode {
+			mp.config.Cursor = ino.Inode
 		}
 		numInodes += 1
 	}
@@ -327,10 +325,9 @@ func (mp *MetaPartition) loadApplyID(rootDir string) (err error) {
 		return
 	}
 
-	if cursor > mp.GetCursor() {
-		mp.SetCursor(cursor)
+	if cursor > atomic.LoadUint64(&mp.config.Cursor) {
+		atomic.StoreUint64(&mp.config.Cursor, cursor)
 	}
-	mp.updatePersistedApplyID(cursor)
 	log.LogInfof("loadApplyID: load complete: partitionID(%v) volume(%v) applyID(%v) filename(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.applyID, filename)
 	return
@@ -367,7 +364,7 @@ func (mp *MetaPartition) persistMetadata() (err error) {
 		return
 	}
 	log.LogInfof("persistMetata: persist complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
-		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.GetCursor())
+		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor)
 	return
 }
 
@@ -382,7 +379,7 @@ func (mp *MetaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) 
 		err = fp.Sync()
 		fp.Close()
 	}()
-	if _, err = fp.WriteString(fmt.Sprintf("%d|%d", sm.applyIndex, mp.GetCursor())); err != nil {
+	if _, err = fp.WriteString(fmt.Sprintf("%d|%d", sm.applyIndex, atomic.LoadUint64(&mp.config.Cursor))); err != nil {
 		return
 	}
 	log.LogInfof("storeApplyID: store complete: partitionID(%v) volume(%v) applyID(%v)",
@@ -397,46 +394,32 @@ func (mp *MetaPartition) storeInode(rootDir string, sm *storeMsg) (crc uint32, e
 	if err != nil {
 		return
 	}
-	writer := bufio.NewWriter(fp)
 	defer func() {
-		if err = writer.Flush(); err != nil {
-			return
-		}
 		err = fp.Sync()
 		// TODO Unhandled errors
 		fp.Close()
 	}()
+	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
-	var (
-		buff  = bytes.NewBuffer(nil)
-		reuse = bytes.NewBuffer(nil)
-	)
+	count := 0
 
-	err = sm.snapshot.Range(InodeType, func(v []byte) (b bool, err error) {
-		ino := &Inode{}
-		if err := ino.Unmarshal(v); err != nil {
+	err = sm.snapshot.Range(InodeType, func(data []byte) (b bool, err error) {
+		// set length
+		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
+		if _, err = fp.Write(lenBuf); err != nil {
 			return false, err
 		}
-
-		buff.Reset()
-		if err = ino.WriteTo(buff, reuse); err != nil {
+		if _, err = sign.Write(lenBuf); err != nil {
 			return false, err
 		}
-		var data = buff.Bytes()
-		// write length
-		if err = binary.Write(writer, binary.BigEndian, uint32(len(data))); err != nil {
+		// set body
+		if _, err = fp.Write(data); err != nil {
 			return false, err
-		}
-		if err = binary.Write(sign, binary.BigEndian, uint32(len(data))); err != nil {
-			return false, err
-		}
-		if _, err = writer.Write(data); err != nil {
-			return false, err
-
 		}
 		if _, err = sign.Write(data); err != nil {
 			return false, err
 		}
+		count += 1
 		return true, nil
 	})
 
@@ -446,8 +429,8 @@ func (mp *MetaPartition) storeInode(rootDir string, sm *storeMsg) (crc uint32, e
 	}
 
 	crc = sign.Sum32()
-	log.LogInfof("storeInode: store complete: partitoinID(%v) volume(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, crc)
+	log.LogInfof("storeInode: store complete: partitoinID(%v) volume(%v) numInodes(%v) crc(%v)",
+		mp.config.PartitionId, mp.config.VolName, count, crc)
 	return
 }
 
@@ -457,31 +440,30 @@ func (mp *MetaPartition) storeDentry(rootDir string, sm *storeMsg) (crc uint32, 
 	if err != nil {
 		return
 	}
-	var writer = bufio.NewWriter(fp)
 	defer func() {
-		if err = writer.Flush(); err != nil {
-			return
-		}
 		err = fp.Sync()
 		// TODO Unhandled errors
 		fp.Close()
 	}()
+	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
-
+	count := 0
 	err = sm.snapshot.Range(DentryType, func(data []byte) (b bool, err error) {
-		// write length
-		if err = binary.Write(writer, binary.BigEndian, uint32(len(data))); err != nil {
+		// set length
+		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
+		if _, err = fp.Write(lenBuf); err != nil {
 			return false, err
 		}
-		if err = binary.Write(sign, binary.BigEndian, uint32(len(data))); err != nil {
+		if _, err = sign.Write(lenBuf); err != nil {
 			return false, err
 		}
-		if _, err = writer.Write(data); err != nil {
+		if _, err = fp.Write(data); err != nil {
 			return false, err
 		}
 		if _, err = sign.Write(data); err != nil {
 			return false, err
 		}
+		count += 1
 		return true, nil
 	})
 
@@ -491,8 +473,8 @@ func (mp *MetaPartition) storeDentry(rootDir string, sm *storeMsg) (crc uint32, 
 	}
 
 	crc = sign.Sum32()
-	log.LogInfof("storeDentry: store complete: partitoinID(%v) volume(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, crc)
+	log.LogInfof("storeDentry: store complete: partitoinID(%v) volume(%v) numDentries(%v) crc(%v)",
+		mp.config.PartitionId, mp.config.VolName, count, crc)
 	return
 }
 
@@ -510,34 +492,36 @@ func (mp *MetaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 		}
 	}()
 	var writer = bufio.NewWriterSize(f, 4*1024*1024)
-	var sign = crc32.NewIEEE()
+	var crc32 = crc32.NewIEEE()
 	var varintTmp = make([]byte, binary.MaxVarintLen64)
 	var n int
-	// write number of extends
 	count, err := sm.snapshot.Count(ExtendType)
 	if err != nil {
 		return 0, err
 	}
+	// write number of extends
 	n = binary.PutUvarint(varintTmp, count)
 	if _, err = writer.Write(varintTmp[:n]); err != nil {
 		return
 	}
-	if _, err = sign.Write(varintTmp[:n]); err != nil {
+	if _, err = crc32.Write(varintTmp[:n]); err != nil {
 		return
 	}
 
 	err = sm.snapshot.Range(ExtendType, func(data []byte) (b bool, err error) {
+		// write length
 		n = binary.PutUvarint(varintTmp, uint64(len(data)))
 		if _, err = writer.Write(varintTmp[:n]); err != nil {
 			return false, err
 		}
-		if _, err = sign.Write(varintTmp[:n]); err != nil {
+		if _, err = crc32.Write(varintTmp[:n]); err != nil {
 			return false, err
 		}
+		// write raw
 		if _, err = writer.Write(data); err != nil {
 			return false, err
 		}
-		if _, err = sign.Write(data); err != nil {
+		if _, err = crc32.Write(data); err != nil {
 			return false, err
 		}
 		return true, nil
@@ -553,8 +537,9 @@ func (mp *MetaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 	if err = f.Sync(); err != nil {
 		return
 	}
-	crc = sign.Sum32()
-	log.LogInfof("storeExtend: store complete: partitoinID(%v) volume(%v) crc(%v)", mp.config.PartitionId, mp.config.VolName, crc)
+	crc = crc32.Sum32()
+	log.LogInfof("storeExtend: store complete: partitoinID(%v) volume(%v) numExtends(%v) crc(%v)",
+		mp.config.PartitionId, mp.config.VolName, count, crc)
 	return
 }
 
@@ -617,6 +602,7 @@ func (mp *MetaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint3
 		return
 	}
 	crc = crc32.Sum32()
-	log.LogInfof("storeMultipart: store complete: partitoinID(%v) volume(%v)  crc(%v)", mp.config.PartitionId, mp.config.VolName, crc)
+	log.LogInfof("storeMultipart: store complete: partitoinID(%v) volume(%v) numMultiparts(%v) crc(%v)",
+		mp.config.PartitionId, mp.config.VolName, count, crc)
 	return
 }

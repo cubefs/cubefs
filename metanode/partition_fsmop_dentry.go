@@ -37,7 +37,7 @@ func (mp *MetaPartition) fsmCreateDentry(dentry *Dentry, forceUpdate bool) (stat
 	item, err := mp.inodeTree.Get(dentry.ParentId)
 	if err != nil {
 		log.LogErrorf("[fsmCreateDentry] get dentry error: pid: %v, dentry: %v, error: %v", mp.config.PartitionId, dentry, err.Error())
-		status = proto.OpNotExistErr
+		status = proto.OpErr
 		return
 	}
 	var parIno *Inode
@@ -77,7 +77,7 @@ func (mp *MetaPartition) fsmCreateDentry(dentry *Dentry, forceUpdate bool) (stat
 
 		status = proto.OpExistErr
 	} else if err != nil {
-		status = proto.OpArgMismatchErr
+		status = proto.OpErr
 	} else {
 		if !forceUpdate {
 			parIno.IncNLink()
@@ -94,7 +94,7 @@ func (mp *MetaPartition) getDentry(pid uint64, name string) (*Dentry, uint8) {
 	dentry, err := mp.dentryTree.RefGet(pid, name)
 	if err != nil {
 		log.LogErrorf("get dentry has err:[%s]", err.Error())
-		status = proto.OpNotExistErr
+		status = proto.OpErr
 		return nil, status
 	}
 	if dentry == nil {
@@ -118,7 +118,7 @@ func (mp *MetaPartition) fsmDeleteDentry(dentry *Dentry) (resp *DentryResponse) 
 			log.LogDebugf("[MetaPartition] fsmDeleteDentry inode not equal old: %v, dentry: %v ", old, dentry)
 			return nil
 		}
-		if err := mp.dentryTree.Delete(dentry.ParentId, dentry.Name); err != nil {
+		if _, err := mp.dentryTree.Delete(dentry.ParentId, dentry.Name); err != nil {
 			log.LogErrorf("delete dentry has err:[%s]", err.Error())
 			return nil
 		}

@@ -79,6 +79,22 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		return nil, errors.Trace(err, "NewMetaWrapper failed!")
 	}
 
+	var extentConfig = &stream.ExtentConfig{
+		Volume:            opt.Volname,
+		Masters:           masters,
+		FollowerRead:      opt.FollowerRead,
+		NearRead:          opt.NearRead,
+		ReadRate:          opt.ReadRate,
+		WriteRate:         opt.WriteRate,
+		OnAppendExtentKey: s.mw.AppendExtentKey,
+		OnGetExtents:      s.mw.GetExtents,
+		OnTruncate:        s.mw.Truncate,
+	}
+	s.ec, err = stream.NewExtentClient(extentConfig)
+	if err != nil {
+		return nil, errors.Trace(err, "NewExtentClient failed!")
+	}
+
 	s.volname = opt.Volname
 	s.owner = opt.Owner
 	s.cluster = s.mw.Cluster()
@@ -102,23 +118,6 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.disableDcache = opt.DisableDcache
 	s.fsyncOnClose = opt.FsyncOnClose
 	s.enableXattr = opt.EnableXattr
-
-	var extentConfig = &stream.ExtentConfig{
-		Volume:            opt.Volname,
-		Masters:           masters,
-		FollowerRead:      opt.FollowerRead,
-		NearRead:          opt.NearRead,
-		ReadRate:          opt.ReadRate,
-		WriteRate:         opt.WriteRate,
-		OnAppendExtentKey: s.mw.AppendExtentKey,
-		OnGetExtents:      s.mw.GetExtents,
-		OnTruncate:        s.mw.Truncate,
-		OnEvictIcache:     s.ic.Delete,
-	}
-	s.ec, err = stream.NewExtentClient(extentConfig)
-	if err != nil {
-		return nil, errors.Trace(err, "NewExtentClient failed!")
-	}
 
 	if s.rootIno, err = s.mw.GetRootIno(opt.SubDir); err != nil {
 		return nil, err

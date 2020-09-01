@@ -39,7 +39,6 @@ func (mp *MetaPartition) initInode(ino *Inode) {
 			if mp.hasInode(ino) {
 				return
 			}
-			// must leader raft partition
 			if !mp.raftPartition.IsRaftLeader() {
 				continue
 			}

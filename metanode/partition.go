@@ -190,8 +190,7 @@ func (mp *MetaPartition) onStart() (err error) {
 		}
 		mp.onStop()
 	}()
-
-	if err = mp.Load(path.Join(mp.config.RootDir, snapshotDir)); err != nil {
+	if err = mp.load(); err != nil {
 		err = errors.NewErrorf("[onStart]:load partition id=%d: %s",
 			mp.config.PartitionId, err.Error())
 		return
@@ -380,11 +379,6 @@ func (mp *MetaPartition) GetCursor() uint64 {
 	return atomic.LoadUint64(&mp.config.Cursor)
 }
 
-// GetCursor returns the cursor stored in the config.
-func (mp *MetaPartition) SetCursor(val uint64) {
-	atomic.StoreUint64(&mp.config.Cursor, val)
-}
-
 // PersistMetadata is the wrapper of persistMetadata.
 func (mp *MetaPartition) PersistMetadata() (err error) {
 	mp.config.sortPeers()
@@ -400,17 +394,15 @@ func (mp *MetaPartition) GetInodeTree() InodeTree {
 	return mp.inodeTree
 }
 
-func (mp *MetaPartition) Load(snapshotPath string) (err error) {
+func (mp *MetaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	if err = mp.loadMetadata(); err != nil {
 		return
 	}
 
 	//it means rocksdb and not init so skip load snapshot
 	if mp.config.StoreType == 1 && mp.inodeTree.Count() > 0 {
-		if mp.applyID == 0 {
-			mp.applyID = mp.persistedApplyID
-		}
-		return nil
+		mp.applyID, err = mp.inodeTree.GetApplyID()
+		return err
 	}
 
 	if err = mp.loadInode(snapshotPath); err != nil {
@@ -425,15 +417,15 @@ func (mp *MetaPartition) Load(snapshotPath string) (err error) {
 	if err = mp.loadMultipart(snapshotPath); err != nil {
 		return
 	}
-	if err = mp.loadApplyID(snapshotPath); err != nil {
+	err = mp.loadApplyID(snapshotPath)
+	return
+}
+
+func (mp *MetaPartition) load() (err error) {
+	if err = mp.loadMetadata(); err != nil {
 		return
 	}
-
-	if mp.applyID == 0 {
-		mp.applyID = mp.persistedApplyID
-	}
-
-	return
+	return mp.LoadSnapshot(path.Join(mp.config.RootDir, snapshotDir))
 }
 
 func (mp *MetaPartition) store(sm *storeMsg) (err error) {
@@ -505,10 +497,7 @@ func (mp *MetaPartition) store(sm *storeMsg) (err error) {
 		_ = os.Rename(backupDir, snapshotDir)
 		return
 	}
-	if err = os.RemoveAll(backupDir); err != nil {
-		return
-	}
-	mp.updatePersistedApplyID(sm.applyIndex)
+	err = os.RemoveAll(backupDir)
 	return
 }
 
@@ -526,7 +515,7 @@ func (mp *MetaPartition) DeleteRaft() (err error) {
 // Return a new inode ID and update the offset.
 func (mp *MetaPartition) nextInodeID() (inodeId uint64, err error) {
 	for {
-		cur := mp.GetCursor()
+		cur := atomic.LoadUint64(&mp.config.Cursor)
 		end := mp.config.End
 		if cur >= end {
 			return 0, ErrInodeIDOutOfRange
@@ -631,7 +620,7 @@ func (mp *MetaPartition) Reset() (err error) {
 	mp.extendTree.Release()
 	mp.multipartTree.Release()
 
-	mp.SetCursor(0)
+	mp.config.Cursor = 0
 	mp.applyID = 0
 
 	// remove files
@@ -646,6 +635,12 @@ func (mp *MetaPartition) Reset() (err error) {
 	dir := path.Join(mp.config.RootDir, strconv.Itoa(int(mp.config.PartitionId)))
 	if err := os.RemoveAll(dir); err != nil {
 		log.LogErrorf("drop btree:[%s] has err:[%s]", dir, err.Error())
+	}
+
+	if mp.config.StoreType == 1 {
+		if err := os.RemoveAll(mp.config.RocksDir); err != nil {
+			log.LogErrorf("drop rocksdb data:[%s] has err:[%s]", mp.config.RocksDir, err.Error())
+		}
 	}
 
 	return

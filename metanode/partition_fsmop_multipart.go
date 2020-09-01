@@ -32,8 +32,11 @@ func (mp *MetaPartition) fsmCreateMultipart(multipart *Multipart) (status uint8)
 }
 
 func (mp *MetaPartition) fsmRemoveMultipart(multipart *Multipart) (status uint8) {
-	deletedItem := mp.multipartTree.Delete(multipart.key, multipart.id)
-	if deletedItem == nil {
+	ok, err := mp.multipartTree.Delete(multipart.key, multipart.id)
+	if err != nil {
+		return proto.OpErr
+	}
+	if !ok {
 		return proto.OpNotExistErr
 	}
 	return proto.OpOk

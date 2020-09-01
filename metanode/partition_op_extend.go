@@ -16,7 +16,6 @@ package metanode
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 )
@@ -44,12 +43,12 @@ func (mp *MetaPartition) GetXAttr(req *proto.GetXAttrRequest, p *Packet) (err er
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return err
 	}
-	if extend == nil {
-		return fmt.Errorf("not found extend by inode:[%d]", req.Inode)
+	if extend != nil {
+		if value, exist := extend.Get([]byte(req.Key)); exist {
+			response.Value = string(value)
+		}
 	}
-	if value, exist := extend.Get([]byte(req.Key)); exist {
-		response.Value = string(value)
-	}
+
 	var encoded []byte
 	encoded, err = json.Marshal(response)
 	if err != nil {
@@ -120,14 +119,13 @@ func (mp *MetaPartition) ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err 
 		return err
 	}
 
-	if extend == nil {
-		return fmt.Errorf("not found extend by inode:[%d]", req.Inode)
+	if extend != nil {
+		extend.Range(func(key, value []byte) bool {
+			response.XAttrs = append(response.XAttrs, string(key))
+			return true
+		})
 	}
 
-	extend.Range(func(key, value []byte) bool {
-		response.XAttrs = append(response.XAttrs, string(key))
-		return true
-	})
 	var encoded []byte
 	encoded, err = json.Marshal(response)
 	if err != nil {

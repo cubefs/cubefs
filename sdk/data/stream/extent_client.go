@@ -31,7 +31,6 @@ import (
 type AppendExtentKeyFunc func(inode uint64, key proto.ExtentKey) error
 type GetExtentsFunc func(inode uint64) (uint64, uint64, []proto.ExtentKey, error)
 type TruncateFunc func(inode, size uint64) error
-type EvictIcacheFunc func(inode uint64)
 
 const (
 	MaxMountRetryLimit = 5
@@ -86,7 +85,6 @@ type ExtentConfig struct {
 	OnAppendExtentKey AppendExtentKeyFunc
 	OnGetExtents      GetExtentsFunc
 	OnTruncate        TruncateFunc
-	OnEvictIcache     EvictIcacheFunc
 }
 
 // ExtentClient defines the struct of the extent client.

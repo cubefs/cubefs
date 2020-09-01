@@ -253,12 +253,12 @@ func (r *RocksTree) Create(count *int64, key []byte, value []byte) error {
 	return nil
 }
 
-// Has checks if the key exists in the btree.
-func (r *RocksTree) Delete(count *int64, key []byte) error {
+// Has checks if the key exists in the btree. return is exist and err
+func (r *RocksTree) Delete(count *int64, key []byte) (bool, error) {
 
 	has, err := r.HasKey(key)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	batch := gorocksdb.NewWriteBatch()
@@ -269,13 +269,13 @@ func (r *RocksTree) Delete(count *int64, key []byte) error {
 	batch.Put(applyIDKey, apply)
 
 	if err := r.db.Write(writeOption, batch); err != nil {
-		return err
+		return false, err
 	}
 
 	if has {
 		atomic.AddInt64(count, -1)
 	}
-	return nil
+	return has, nil
 }
 
 // drop the current btree.
@@ -630,16 +630,16 @@ func (b *MultipartRocks) Create(mul *Multipart) error {
 }
 
 //Delete
-func (b *InodeRocks) Delete(ino uint64) error {
+func (b *InodeRocks) Delete(ino uint64) (bool, error) {
 	return b.RocksTree.Delete(&b.count, inodeEncodingKey(ino))
 }
-func (b *DentryRocks) Delete(pid uint64, name string) error {
+func (b *DentryRocks) Delete(pid uint64, name string) (bool, error) {
 	return b.RocksTree.Delete(&b.count, dentryEncodingKey(pid, name))
 }
-func (b *ExtendRocks) Delete(ino uint64) error {
+func (b *ExtendRocks) Delete(ino uint64) (bool, error) {
 	return b.RocksTree.Delete(&b.count, extendEncodingKey(ino))
 }
-func (b *MultipartRocks) Delete(key, id string) error {
+func (b *MultipartRocks) Delete(key, id string) (bool, error) {
 	return b.RocksTree.Delete(&b.count, multipartEncodingKey(key, id))
 }
 
