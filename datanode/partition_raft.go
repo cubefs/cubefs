@@ -328,6 +328,10 @@ func (dp *DataPartition) addRaftNode(req *proto.AddDataPartitionRaftMemberReques
 
 // Delete a raft node.
 func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMemberRequest, index uint64) (isUpdated bool, err error) {
+	var canRemoveSelf bool
+	if canRemoveSelf, err = dp.canRemoveSelf(); err != nil {
+		return
+	}
 	peerIndex := -1
 	data, _ := json.Marshal(req)
 	isUpdated = false
@@ -356,7 +360,7 @@ func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMember
 		dp.config.Hosts = append(dp.config.Hosts[:hostIndex], dp.config.Hosts[hostIndex+1:]...)
 	}
 	dp.config.Peers = append(dp.config.Peers[:peerIndex], dp.config.Peers[peerIndex+1:]...)
-	if dp.config.NodeID == req.RemovePeer.ID && !dp.isLoadingDataPartition {
+	if dp.config.NodeID == req.RemovePeer.ID && !dp.isLoadingDataPartition && canRemoveSelf {
 		dp.raftPartition.Delete()
 		dp.Disk().space.DeletePartition(dp.partitionID)
 		isUpdated = false

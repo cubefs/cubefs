@@ -1336,8 +1336,15 @@ func (c *Cluster) isRecovering(dp *DataPartition, addr string) (isRecover bool) 
 }
 
 func (c *Cluster) removeDataPartitionRaftMember(dp *DataPartition, removePeer proto.Peer) (err error) {
-	dp.Lock()
-	defer dp.Unlock()
+	defer func() {
+		if err = c.updateDataPartitionOfflinePeerIDWithLock(dp, 0); err != nil {
+			log.LogErrorf("action[removeDataPartitionRaftMember] vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
+		}
+	}()
+	if err = c.updateDataPartitionOfflinePeerIDWithLock(dp, removePeer.ID); err != nil {
+		log.LogErrorf("action[removeDataPartitionRaftMember] vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
+		return
+	}
 	task, err := dp.createTaskToRemoveRaftMember(removePeer)
 	if err != nil {
 		return
@@ -1362,12 +1369,24 @@ func (c *Cluster) removeDataPartitionRaftMember(dp *DataPartition, removePeer pr
 		}
 		newPeers = append(newPeers, peer)
 	}
+	dp.Lock()
 	if err = dp.update("removeDataPartitionRaftMember", dp.VolName, newPeers, newHosts, c); err != nil {
+		dp.Unlock()
+		return
+	}
+	dp.Unlock()
+	return
+}
+
+func (c *Cluster) updateDataPartitionOfflinePeerIDWithLock(dp *DataPartition, peerID uint64) (err error) {
+	dp.Lock()
+	defer dp.Unlock()
+	dp.OfflinePeerID = peerID
+	if err = dp.update("updateDataPartitionOfflinePeerIDWithLock", dp.VolName, dp.Peers, dp.Hosts, c); err != nil {
 		return
 	}
 	return
 }
-
 func (c *Cluster) deleteDataReplica(dp *DataPartition, dataNode *DataNode) (err error) {
 	dp.Lock()
 	// in case dataNode is unreachable,update meta first.
