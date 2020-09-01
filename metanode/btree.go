@@ -18,7 +18,8 @@ import "fmt"
 
 type (
 	// BtreeItem type alias google btree Item
-	TreeType uint8
+	TreeType  uint8
+	CountType uint8
 )
 
 const (
@@ -29,9 +30,20 @@ const (
 	MultipartType
 )
 
+const (
+	InodeCountType CountType = CountType(iota + 1 + MultipartType)
+	DentryCountType
+	ExtendCountType
+	MutipartCountType
+)
+
 var (
-	existsError = fmt.Errorf("exists error")
-	applyIDKey  = []byte{byte(ApplyIDType)}
+	existsError      = fmt.Errorf("exists error")
+	applyIDKey       = []byte{byte(ApplyIDType)}
+	InodeCountKey    = []byte{byte(InodeCountType)}
+	DentryCountKey   = []byte{byte(DentryCountType)}
+	ExtendCountKey   = []byte{byte(ExtendCountType)}
+	MutipartCountKey = []byte{byte(MutipartCountType)}
 )
 
 func NewSnapshot(mp *MetaPartition) Snapshot {

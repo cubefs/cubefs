@@ -310,10 +310,22 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) (*Met
 			log.LogErrorf("[NewMetaPartition] default rocks tree dir: %v, id: %v error %v ", conf.RootDir, conf.PartitionId, err)
 			return nil, err
 		}
-		inodeTree = NewInodeRocks(tree)
-		dentryTree = NewDentryRocks(tree)
-		extendTree = NewExtendRocks(tree)
-		multipartTree = NewMultipartRocks(tree)
+		inodeTree, err = NewInodeRocks(tree)
+		if err != nil {
+			return nil, err
+		}
+		dentryTree, err = NewDentryRocks(tree)
+		if err != nil {
+			return nil, err
+		}
+		extendTree, err = NewExtendRocks(tree)
+		if err != nil {
+			return nil, err
+		}
+		multipartTree, err = NewMultipartRocks(tree)
+		if err != nil {
+			return nil, err
+		}
 		log.LogInfof("partition:[%d] inode:[%d] dentry:[%d] extend:[%d] multipart:[%d]", conf.PartitionId, inodeTree.Count(), dentryTree.Count(), extendTree.Count(), multipartTree.Count())
 	}
 
