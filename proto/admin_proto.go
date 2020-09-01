@@ -77,6 +77,8 @@ const (
 	AdminDecommissionMetaPartition = "/metaPartition/decommission"
 	AdminAddMetaReplica            = "/metaReplica/add"
 	AdminDeleteMetaReplica         = "/metaReplica/delete"
+	AdminAddMetaReplicaLearner     = "/metaLearner/add"
+	AdminPromoteMetaReplicaLearner = "/metaLearner/promote"
 
 	// Operation response
 	GetMetaNodeTaskResponse = "/metaNode/response" // Method: 'POST', ContentType: 'application/json'
@@ -159,6 +161,7 @@ type CreateDataPartitionRequest struct {
 	IsRandomWrite bool
 	Members       []Peer
 	Hosts         []string
+	Learners      []uint64
 	CreateType    int
 }
 
@@ -194,6 +197,13 @@ type DataPartitionDecommissionRequest struct {
 type AddDataPartitionRaftMemberRequest struct {
 	PartitionId uint64
 	AddPeer     Peer
+	IsLearner   bool
+}
+
+// PromoteDataPartitionRaftMemberRequest defines the request of promote learner raftMember a data partition.
+type PromoteDataPartitionRaftMemberRequest struct {
+	PartitionId uint64
+	PromotePeer Peer
 }
 
 // RemoveDataPartitionRaftMemberRequest defines the request of add raftMember a data partition.
@@ -209,11 +219,30 @@ type AddMetaPartitionRaftMemberRequest struct {
 	AddPeer     Peer
 }
 
+// AddMetaPartitionRaftLearnerRequest defines the request of add raftLearner a meta partition.
+type AddMetaPartitionRaftLearnerRequest struct {
+	PartitionId uint64  `json:"pid"`
+	AddLearner  Learner `json:"learner"`
+}
+
+// AddMetaPartitionRaftLearnerRequest defines the request of add raftLearner a meta partition.
+type PromoteMetaPartitionRaftLearnerRequest struct {
+	PartitionId    uint64  `json:"pid"`
+	PromoteLearner Learner `json:"learner"`
+}
+
 // RemoveMetaPartitionRaftMemberRequest defines the request of add raftMember a meta partition.
 type RemoveMetaPartitionRaftMemberRequest struct {
 	PartitionId     uint64
 	RemovePeer      Peer
 	ReserveResource bool
+}
+
+// ResetMetaPartitionRaftMemberRequest defines the request of reset raftMembers of a meta partition.
+type ResetMetaPartitionRaftMemberRequest struct {
+	PartitionId uint64
+	NewPeers    []Peer
+	NewLearners []Learner
 }
 
 // LoadDataPartitionRequest defines the request of loading a data partition.
@@ -307,6 +336,7 @@ type MetaPartitionReport struct {
 	VolName     string
 	InodeCnt    uint64
 	DentryCnt   uint64
+	IsLearner   bool
 }
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.

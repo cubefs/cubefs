@@ -69,6 +69,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			VolName:     mConf.VolName,
 			InodeCnt:    uint64(partition.GetInodeTree().Len()),
 			DentryCnt:   uint64(partition.GetDentryTree().Len()),
+			IsLearner:   partition.IsLearner(),
 		}
 		addr, isLeader := partition.IsLeader()
 		if addr == "" {
@@ -841,7 +842,7 @@ func (m *metadataManager) opAddMetaPartitionRaftMember(conn net.Conn,
 		return err
 	}
 
-	if mp.IsExsitPeer(req.AddPeer) {
+	if mp.IsExistPeer(req.AddPeer) {
 		p.PacketOkReply()
 		m.respondToClient(conn, p)
 		return
@@ -878,6 +879,120 @@ func (m *metadataManager) opAddMetaPartitionRaftMember(conn net.Conn,
 	return
 }
 
+func (m *metadataManager) opAddMetaPartitionRaftLearner(conn net.Conn,
+	p *Packet, remoteAddr string) (err error) {
+	var reqData []byte
+	req := &proto.AddMetaPartitionRaftLearnerRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpTryOtherAddr, ([]byte)(proto.ErrMetaPartitionNotExists.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
+
+	if mp.IsExistLearner(req.AddLearner) {
+		p.PacketOkReply()
+		m.respondToClient(conn, p)
+		return
+	}
+
+	if !m.serveProxy(conn, mp, p) {
+		return nil
+	}
+	reqData, err = json.Marshal(req)
+	if err != nil {
+		err = errors.NewErrorf("[opAddMetaPartitionRaftLearner]: partitionID= %d, "+
+			"Marshal %s", req.PartitionId, err)
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+	if req.AddLearner.ID == 0 {
+		err = errors.NewErrorf("[opAddMetaPartitionRaftLearner]: partitionID= %d, "+
+			"Marshal %s", req.PartitionId, fmt.Sprintf("unavali AddPeerID %v", req.AddLearner.ID))
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+	_, err = mp.ChangeMember(raftProto.ConfAddLearner, raftProto.Peer{ID: req.AddLearner.ID}, reqData)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
+	p.PacketOkReply()
+	m.respondToClient(conn, p)
+
+	return
+}
+
+func (m *metadataManager) opPromoteMetaPartitionRaftLearner(conn net.Conn,
+	p *Packet, remoteAddr string) (err error) {
+	var reqData []byte
+	req := &proto.PromoteMetaPartitionRaftLearnerRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpTryOtherAddr, ([]byte)(proto.ErrMetaPartitionNotExists.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
+
+	if !mp.IsExistLearner(req.PromoteLearner) {
+		p.PacketOkReply()
+		m.respondToClient(conn, p)
+		return
+	}
+
+	if !m.serveProxy(conn, mp, p) {
+		return nil
+	}
+	reqData, err = json.Marshal(req)
+	if err != nil {
+		err = errors.NewErrorf("[opAddMetaPartitionRaftLearner]: partitionID= %d, "+
+			"Marshal %s", req.PartitionId, err)
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+	if req.PromoteLearner.ID == 0 {
+		err = errors.NewErrorf("[opAddMetaPartitionRaftLearner]: partitionID= %d, "+
+			"Marshal %s", req.PartitionId, fmt.Sprintf("unavali AddPeerID %v", req.PromoteLearner.ID))
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+	_, err = mp.ChangeMember(raftProto.ConfPromoteLearner, raftProto.Peer{ID: req.PromoteLearner.ID}, reqData)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
+	p.PacketOkReply()
+	m.respondToClient(conn, p)
+
+	return
+}
+
 func (m *metadataManager) opRemoveMetaPartitionRaftMember(conn net.Conn,
 	p *Packet, remoteAddr string) (err error) {
 	var reqData []byte
@@ -900,7 +1015,7 @@ func (m *metadataManager) opRemoveMetaPartitionRaftMember(conn net.Conn,
 		return err
 	}
 
-	if !mp.IsExsitPeer(req.RemovePeer) {
+	if !mp.IsExistPeer(req.RemovePeer) {
 		p.PacketOkReply()
 		m.respondToClient(conn, p)
 		return

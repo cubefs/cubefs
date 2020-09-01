@@ -29,15 +29,17 @@ type DownReplica struct {
 
 // ReplicaStatus  replica status
 type ReplicaStatus struct {
-	Match       uint64 // 复制进度
-	Commit      uint64 // commmit位置
-	Next        uint64
-	State       string
-	Snapshoting bool
-	Paused      bool
-	Active      bool
-	LastActive  time.Time
-	Inflight    int
+	Match       	uint64 // copy progress
+	Commit      	uint64 // commmit index
+	Next        	uint64
+	State       	string
+	Snapshoting 	bool
+	Paused      	bool
+	Active      	bool
+	LastActive  	time.Time
+	Inflight    	int
+	IsLearner		bool
+	PromConfig		*proto.PromoteConfig
 }
 
 // Status raft status

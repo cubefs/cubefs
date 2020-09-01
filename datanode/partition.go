@@ -58,6 +58,7 @@ type DataPartitionMetadata struct {
 	CreateTime              string
 	Peers                   []proto.Peer
 	Hosts                   []string
+	Learners                []uint64
 	DataPartitionCreateType int
 	LastTruncateID          uint64
 }

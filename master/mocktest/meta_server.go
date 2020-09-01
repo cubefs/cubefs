@@ -144,10 +144,16 @@ func (mms *MockMetaServer) serveConn(rc net.Conn) {
 		fmt.Printf("meta node [%v] offline meta partition,err:%v\n", mms.TcpAddr, err)
 	case proto.OpAddMetaPartitionRaftMember:
 		err = mms.handleAddMetaPartitionRaftMember(conn, req, adminTask)
-		fmt.Printf("meta node [%v] add data partition raft member,id[%v],err:%v\n", mms.TcpAddr, adminTask.ID, err)
+		fmt.Printf("meta node [%v] add meta partition raft member,id[%v],err:%v\n", mms.TcpAddr, adminTask.ID, err)
 	case proto.OpRemoveMetaPartitionRaftMember:
 		err = mms.handleRemoveMetaPartitionRaftMember(conn, req, adminTask)
-		fmt.Printf("meta node [%v] remove data partition raft member,id[%v],err:%v\n", mms.TcpAddr, adminTask.ID, err)
+		fmt.Printf("meta node [%v] remove meta partition raft member,id[%v],err:%v\n", mms.TcpAddr, adminTask.ID, err)
+	case proto.OpAddMetaPartitionRaftLearner:
+		err = mms.handleAddMetaPartitionRaftLearner(conn, req, adminTask)
+		fmt.Printf("meta node [%v] add meta partition raft learner,id[%v],err:%v\n", mms.TcpAddr, adminTask.ID, err)
+	case proto.OpPromoteMetaPartitionRaftLearner:
+		err = mms.handlePromoteMetaPartitionRaftLearner(conn, req, adminTask)
+		fmt.Printf("meta node [%v] promote meta partition raft learner,id[%v],err:%v\n", mms.TcpAddr, adminTask.ID, err)
 	case proto.OpMetaPartitionTryToLeader:
 		err = mms.handleTryToLeader(conn, req, adminTask)
 		fmt.Printf("meta node [%v] try to leader,id[%v],err:%v\n", mms.TcpAddr, adminTask.ID, err)
@@ -162,6 +168,16 @@ func (mms *MockMetaServer) handleAddMetaPartitionRaftMember(conn net.Conn, p *pr
 }
 
 func (mms *MockMetaServer) handleRemoveMetaPartitionRaftMember(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
+	responseAckOKToMaster(conn, p, nil)
+	return
+}
+
+func (mms *MockMetaServer) handleAddMetaPartitionRaftLearner(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
+	responseAckOKToMaster(conn, p, nil)
+	return
+}
+
+func (mms *MockMetaServer) handlePromoteMetaPartitionRaftLearner(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
 	responseAckOKToMaster(conn, p, nil)
 	return
 }
@@ -197,6 +213,7 @@ func (mms *MockMetaServer) handleCreateMetaPartition(conn net.Conn, p *proto.Pac
 		End:         req.End,
 		Cursor:      req.Start,
 		Members:     req.Members,
+		Learners:    req.Learners,
 	}
 	mms.Lock()
 	mms.partitions[req.PartitionID] = partition

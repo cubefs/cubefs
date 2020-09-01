@@ -501,7 +501,11 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
-
+	if mp.IsRecover {
+		err = fmt.Errorf("vol[%v], meta partition[%v] is recovering, can not add replica to addr [%v]", mp.volName, mp.PartitionID, addr)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
 	if err = m.cluster.addMetaReplica(mp, addr); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -537,6 +541,72 @@ func (m *Server) deleteMetaReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	msg = fmt.Sprintf("meta partitionID :%v  delete replica [%v] successfully", partitionID, addr)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) addMetaReplicaLearner(w http.ResponseWriter, r *http.Request) {
+	var (
+		msg         string
+		addr        string
+		mp          *MetaPartition
+		partitionID uint64
+		auto        bool
+		threshold   uint8
+		err         error
+	)
+
+	if partitionID, addr, auto, threshold, err = parseRequestToAddMetaReplicaLearner(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
+		return
+	}
+	if mp.IsRecover {
+		err = fmt.Errorf("vol[%v], meta partition[%v] is recovering, can not add replica to addr [%v]", mp.volName, mp.PartitionID, addr)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if err = m.cluster.addMetaReplicaLearner(mp, addr, auto, threshold); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	mp.IsRecover = true
+	m.cluster.putBadMetaPartitions(addr, mp.PartitionID)
+	msg = fmt.Sprintf("meta partitionID[%v] add replica learner[%v] successfully", partitionID, addr)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) promoteMetaReplicaLearner(w http.ResponseWriter, r *http.Request) {
+	var (
+		msg         string
+		addr        string
+		mp          *MetaPartition
+		partitionID uint64
+		err         error
+	)
+
+	if partitionID, addr, err = parseRequestToPromoteMetaReplicaLearner(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
+		return
+	}
+	if mp.IsRecover {
+		err = fmt.Errorf("vol[%v], meta partition[%v] is recovering, can not promote replica learner[%v]", mp.volName, mp.PartitionID, addr)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if err = m.cluster.promoteMetaReplicaLearner(mp, addr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	msg = fmt.Sprintf("meta partitionID[%v] promote replica learner[%v] successfully", partitionID, addr)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
@@ -1648,6 +1718,25 @@ func parseRequestToRemoveMetaReplica(r *http.Request) (ID uint64, addr string, e
 	return extractMetaPartitionIDAndAddr(r)
 }
 
+func parseRequestToAddMetaReplicaLearner(r *http.Request) (ID uint64, addr string, auto bool, threshold uint8, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if ID, err = extractMetaPartitionID(r); err != nil {
+		return
+	}
+	if addr, err = extractNodeAddr(r); err != nil {
+		return
+	}
+	auto = extractAuto(r)
+	threshold = extractLearnerThreshold(r)
+	return
+}
+
+func parseRequestToPromoteMetaReplicaLearner(r *http.Request) (ID uint64, addr string, err error) {
+	return extractMetaPartitionIDAndAddr(r)
+}
+
 func extractMetaPartitionIDAndAddr(r *http.Request) (ID uint64, addr string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -1662,10 +1751,15 @@ func extractMetaPartitionIDAndAddr(r *http.Request) (ID uint64, addr string, err
 }
 
 func parseRequestToAddDataReplica(r *http.Request) (ID uint64, addr string, err error) {
-	return extractDataPartitionIDAndAddr(r)
+	ID, addr, err = extractDataPartitionIDAndAddr(r)
+	return
 }
 
 func parseRequestToRemoveDataReplica(r *http.Request) (ID uint64, addr string, err error) {
+	return extractDataPartitionIDAndAddr(r)
+}
+
+func parseRequestToPromoteDataReplica(r *http.Request) (ID uint64, addr string, err error) {
 	return extractDataPartitionIDAndAddr(r)
 }
 
@@ -1703,6 +1797,25 @@ func extractNodeAddr(r *http.Request) (nodeAddr string, err error) {
 	return
 }
 
+func extractAuto(r *http.Request) (auto bool) {
+	if value := r.FormValue(autoKey); value != "" {
+		auto, _ = strconv.ParseBool(value)
+	}
+	return auto
+}
+
+func extractLearnerThreshold(r *http.Request) (threshold uint8) {
+	var value string
+	if value = r.FormValue(thresholdKey); value != "" {
+		num, _ := strconv.ParseUint(value, 10, 32)
+		threshold = uint8(num)
+	}
+	if threshold <= 0 || threshold > 100 {
+		threshold = defaultLearnerPromThreshold
+	}
+	return
+}
+
 func extractNodeID(r *http.Request) (ID uint64, err error) {
 	var value string
 	if value = r.FormValue(idKey); value == "" {
@@ -1732,6 +1845,10 @@ func parseRequestToLoadMetaPartition(r *http.Request) (partitionID uint64, err e
 
 func parseRequestToDecommissionMetaPartition(r *http.Request) (partitionID uint64, nodeAddr string, err error) {
 	return extractMetaPartitionIDAndAddr(r)
+}
+
+func parseRequestToReplicateMetaPartition(r *http.Request) (partitionID uint64, err error) {
+	return extractMetaPartitionID(r)
 }
 
 func parseAndExtractStatus(r *http.Request) (status bool, err error) {
@@ -2145,6 +2262,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			IsRecover:     mp.IsRecover,
 			Hosts:         mp.Hosts,
 			Peers:         mp.Peers,
+			Learners:      mp.Learners,
 			Zones:         zones,
 			OfflinePeerID: mp.OfflinePeerID,
 			MissNodes:     mp.MissNodes,

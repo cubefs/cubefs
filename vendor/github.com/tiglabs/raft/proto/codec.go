@@ -27,6 +27,9 @@ const (
 	entry_header    uint64 = 17
 	snapmeta_header uint64 = 20
 	message_header  uint64 = 68
+
+	learner_size	uint64 = 10
+	learner_len_size uint64 = 4
 )
 
 // Peer codec
@@ -40,6 +43,23 @@ func (p *Peer) Decode(datas []byte) {
 	p.Type = PeerType(datas[0])
 	p.Priority = binary.BigEndian.Uint16(datas[1:])
 	p.ID = binary.BigEndian.Uint64(datas[3:])
+}
+
+// Learner codec
+func (learner *Learner) Encode(datas []byte) {
+	if learner.PromConfig.AutoPromote {
+		datas[0] = 1
+	} else {
+		datas[0] = 0
+	}
+	datas[1] = learner.PromConfig.PromThreshold
+	binary.BigEndian.PutUint64(datas[2:], learner.ID)
+}
+
+func (learner *Learner) Decode(datas []byte) {
+	learner.PromConfig.AutoPromote = (datas[0] == 1)
+	learner.PromConfig.PromThreshold = datas[1]
+	learner.ID = binary.BigEndian.Uint64(datas[2:])
 }
 
 // HardState codec
@@ -80,7 +100,7 @@ func (c *ConfChange) Decode(datas []byte) {
 
 // SnapshotMeta codec
 func (m *SnapshotMeta) Size() uint64 {
-	return snapmeta_header + peer_size*uint64(len(m.Peers))
+	return snapmeta_header + peer_size*uint64(len(m.Peers)) + learner_len_size + learner_size*uint64(len(m.Learners))
 }
 
 func (m *SnapshotMeta) Encode(w io.Writer) error {
@@ -100,6 +120,17 @@ func (m *SnapshotMeta) Encode(w io.Writer) error {
 			return err
 		}
 	}
+
+	binary.BigEndian.PutUint32(buf[0:], uint32(len(m.Learners)))
+	if _, err := w.Write(buf[0:learner_len_size]); err != nil {
+		return err
+	}
+	for _, learner := range m.Learners {
+		learner.Encode(buf)
+		if _, err := w.Write(buf[0:learner_size]); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -112,6 +143,16 @@ func (m *SnapshotMeta) Decode(datas []byte) {
 	for i := uint32(0); i < size; i++ {
 		m.Peers[i].Decode(datas[start:])
 		start = start + peer_size
+	}
+
+	if uint64(len(datas)) > start {
+		learnerSize := binary.BigEndian.Uint32(datas[start:])
+		m.Learners = make([]Learner, learnerSize)
+		start = start + learner_len_size
+		for i := uint32(0); i < learnerSize; i++ {
+			m.Learners[i].Decode(datas[start:])
+			start = start + learner_size
+		}
 	}
 }
 

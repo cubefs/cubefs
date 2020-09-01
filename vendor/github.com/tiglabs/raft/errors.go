@@ -20,13 +20,16 @@ import (
 )
 
 var (
-	ErrCompacted     = errors.New("requested index is unavailable due to compaction.")
-	ErrRaftExists    = errors.New("raft already exists.")
-	ErrRaftNotExists = errors.New("raft not exists.")
-	ErrNotLeader     = errors.New("raft is not the leader.")
-	ErrStopped       = errors.New("raft is already shutdown.")
-	ErrSnapping      = errors.New("raft is doing snapshot.")
-	ErrRetryLater    = errors.New("retry later")
+	ErrCompacted     	= errors.New("requested index is unavailable due to compaction.")
+	ErrRaftExists    	= errors.New("raft already exists.")
+	ErrRaftNotExists 	= errors.New("raft not exists.")
+	ErrNotLeader     	= errors.New("raft is not the leader.")
+	ErrStopped       	= errors.New("raft is already shutdown.")
+	ErrSnapping      	= errors.New("raft is doing snapshot.")
+	ErrRetryLater    	= errors.New("retry later")
+	ErrPeersEmpty    	= errors.New("peers are nil or empty")
+	ErrLearnerNotReady	= errors.New("raft learner is not ready.")
+	ErrUnmarshal		= errors.New("json unmarshl error")
 )
 
 type FatalError struct {

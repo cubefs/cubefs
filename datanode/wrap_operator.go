@@ -931,6 +931,7 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 	req.ReserveResource = adminTask.ReserveResource
 	dp := s.space.Partition(req.PartitionId)
 	if dp == nil {
+		err = fmt.Errorf("partition %v not exist", req.PartitionId)
 		return
 	}
 	p.PartitionID = req.PartitionId
@@ -1043,5 +1044,19 @@ func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet) (ok bo
 		return
 	}
 
+	return
+}
+
+func containsID(arr []uint64, element uint64) (ok bool) {
+	if arr == nil || len(arr) == 0 {
+		return
+	}
+
+	for _, e := range arr {
+		if e == element {
+			ok = true
+			break
+		}
+	}
 	return
 }

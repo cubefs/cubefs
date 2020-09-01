@@ -100,15 +100,17 @@ const (
 	OpMetaBatchGetXAttr   uint8 = 0x39
 
 	// Operations: Master -> MetaNode
-	OpCreateMetaPartition           uint8 = 0x40
-	OpMetaNodeHeartbeat             uint8 = 0x41
-	OpDeleteMetaPartition           uint8 = 0x42
-	OpUpdateMetaPartition           uint8 = 0x43
-	OpLoadMetaPartition             uint8 = 0x44
-	OpDecommissionMetaPartition     uint8 = 0x45
-	OpAddMetaPartitionRaftMember    uint8 = 0x46
-	OpRemoveMetaPartitionRaftMember uint8 = 0x47
-	OpMetaPartitionTryToLeader      uint8 = 0x48
+	OpCreateMetaPartition             uint8 = 0x40
+	OpMetaNodeHeartbeat               uint8 = 0x41
+	OpDeleteMetaPartition             uint8 = 0x42
+	OpUpdateMetaPartition             uint8 = 0x43
+	OpLoadMetaPartition               uint8 = 0x44
+	OpDecommissionMetaPartition       uint8 = 0x45
+	OpAddMetaPartitionRaftMember      uint8 = 0x46
+	OpRemoveMetaPartitionRaftMember   uint8 = 0x47
+	OpMetaPartitionTryToLeader        uint8 = 0x48
+	OpAddMetaPartitionRaftLearner     uint8 = 0x4C
+	OpPromoteMetaPartitionRaftLearner uint8 = 0x4D
 
 	// Operations: Master -> DataNode
 	OpCreateDataPartition           uint8 = 0x60
@@ -358,6 +360,10 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpAddMetaPartitionRaftMember"
 	case OpRemoveMetaPartitionRaftMember:
 		m = "OpRemoveMetaPartitionRaftMember"
+	case OpAddMetaPartitionRaftLearner:
+		m = "OpAddMetaPartitionRaftLearner"
+	case OpPromoteMetaPartitionRaftLearner:
+		m = "OpPromoteMetaPartitionRaftLearner"
 	case OpMetaPartitionTryToLeader:
 		m = "OpMetaPartitionTryToLeader"
 	case OpDataPartitionTryToLeader:

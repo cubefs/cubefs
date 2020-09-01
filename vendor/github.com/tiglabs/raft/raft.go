@@ -16,6 +16,7 @@
 package raft
 
 import (
+	"encoding/json"
 	"fmt"
 	"runtime"
 	"sync"
@@ -69,7 +70,7 @@ type monitorStatus struct {
 func (s *peerState) change(c *proto.ConfChange) {
 	s.mu.Lock()
 	switch c.Type {
-	case proto.ConfAddNode:
+	case proto.ConfAddNode, proto.ConfAddLearner, proto.ConfPromoteLearner:
 		s.peers[c.Peer.ID] = c.Peer
 	case proto.ConfRemoveNode:
 		delete(s.peers, c.Peer.ID)
@@ -496,6 +497,20 @@ func (s *raft) proposeMemberChange(cc *proto.ConfChange, future *Future) {
 		return
 	}
 
+	if cc.Type == proto.ConfPromoteLearner {
+		req := &proto.ConfChangeLearnerReq{}
+		if err := json.Unmarshal(cc.Context, req); err != nil {
+			logger.Error("raft[%v] json unmarshal ConfChangeLearnerReq Context[%s] err[%v]", s.raftFsm.id, string(cc.Context), err)
+			future.respond(nil, ErrUnmarshal)
+			return
+		}
+		replica, ok := s.raftFsm.replicas[cc.Peer.ID]
+		if !ok || !s.isLearnerReady(replica, req.ChangeLearner.PromConfig.PromThreshold) {
+			future.respond(nil, ErrLearnerNotReady)
+			return
+		}
+	}
+
 	pr := pool.getProposal()
 	pr.cmdType = proto.EntryConfChange
 	pr.future = future
@@ -803,15 +818,17 @@ func (s *raft) getStatus() *Status {
 		st.Replicas = make(map[uint64]*ReplicaStatus)
 		for id, p := range s.raftFsm.replicas {
 			st.Replicas[id] = &ReplicaStatus{
-				Match:       p.match,
-				Commit:      p.committed,
-				Next:        p.next,
-				State:       p.state.String(),
-				Snapshoting: p.state == replicaStateSnapshot,
-				Paused:      p.paused,
-				Active:      p.active,
-				LastActive:  p.lastActive,
-				Inflight:    p.count,
+				Match:       	p.match,
+				Commit:      	p.committed,
+				Next:        	p.next,
+				State:       	p.state.String(),
+				Snapshoting: 	p.state == replicaStateSnapshot,
+				Paused:      	p.paused,
+				Active:      	p.active,
+				LastActive:  	p.lastActive,
+				Inflight:    	p.count,
+				IsLearner:   	p.isLearner,
+				PromConfig: 	p.promConfig,
 			}
 		}
 	}
@@ -880,4 +897,40 @@ func (s *raft) getEntriesInLoop(req *entryRequest) {
 	}
 	entries, err := s.raftFsm.raftLog.entries(req.index, req.maxSize)
 	req.future.respond(entries, err)
+}
+
+func (s *raft) isLearnerReady(pr *replica, threshold uint8) bool {
+	if !pr.isLearner || !pr.active {
+		return false
+	}
+	leaderPr, ok := s.raftFsm.replicas[s.config.NodeID]
+	if !ok || float64(pr.match) < float64(leaderPr.match)*float64(threshold)*0.01 {
+		return false
+	}
+	// todo learner as quorum?
+	if !s.raftFsm.checkLeaderLease() {
+		return false
+	}
+	return true
+}
+
+func (s *raft) promoteLearner() {
+	for id, pr := range s.raftFsm.replicas {
+		if pr.isLearner && pr.promConfig.AutoPromote {
+			future := newFuture()
+			lear := proto.Learner{ID: id, PromConfig: &proto.PromoteConfig{AutoPromote: true}}
+			req := &proto.ConfChangeLearnerReq{Id: s.raftConfig.ID, ChangeLearner: lear}
+			bytes, err := json.Marshal(req)
+			if err != nil {
+				logger.Error("raft[%v] json marshal ConfChangeLearnerReq[%v] err[%v]", s.raftConfig.ID, req, err)
+				continue
+			}
+			p := proto.Peer{ID: id}
+			s.proposeMemberChange(&proto.ConfChange{Type: proto.ConfPromoteLearner, Peer: p, Context: bytes}, future)
+			logger.Debug("raft[%v] leader[%v] auto promote learner[%v]", s.raftConfig.ID, s.config.NodeID, req)
+			if resp, err := future.Response(); err != nil {
+				logger.Error("raft[%v] leader[%v] auto promote learner[%v] resp[%v] err[%v]", s.raftConfig.ID, s.config.NodeID, id, resp, err)
+			}
+		}
+	}
 }

@@ -539,7 +539,7 @@ func (partition *DataPartition) update(action, volName string, newPeers []proto.
 		return errors.Trace(err, "action[%v] update partition[%v] vol[%v] failed", action, partition.PartitionID, volName)
 	}
 	msg := fmt.Sprintf("action[%v] success,vol[%v] partitionID:%v "+
-		"oldHosts:%v newHosts:%v,oldPees[%v],newPeers[%v]",
+		"oldHosts:%v, newHosts:%v, oldPeers[%v], newPeers[%v]",
 		action, volName, partition.PartitionID, orgHosts, partition.Hosts, oldPeers, partition.Peers)
 	log.LogInfo(msg)
 	return

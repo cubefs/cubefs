@@ -172,6 +172,27 @@ func (api *AdminAPI) AddMetaReplica(metaPartitionID uint64, nodeAddr string) (er
 	return
 }
 
+func (api *AdminAPI) AddMetaReplicaLearner(metaPartitionID uint64, nodeAddr string, autoPromote bool) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminAddMetaReplicaLearner)
+	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
+	request.addParam("addr", nodeAddr)
+	request.addParam("auto", strconv.FormatBool(autoPromote))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) PromoteMetaReplicaLearner(metaPartitionID uint64, nodeAddr string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminPromoteMetaReplicaLearner)
+	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
+	request.addParam("addr", nodeAddr)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminDeleteVol)
 	request.addParam("name", volName)

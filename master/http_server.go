@@ -167,6 +167,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminDeleteMetaReplica).
 		HandlerFunc(m.deleteMetaReplica)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminAddMetaReplicaLearner).
+		HandlerFunc(m.addMetaReplicaLearner)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminPromoteMetaReplicaLearner).
+		HandlerFunc(m.promoteMetaReplicaLearner)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminDiagnoseMetaPartition).
 		HandlerFunc(m.diagnoseMetaPartition)
 
