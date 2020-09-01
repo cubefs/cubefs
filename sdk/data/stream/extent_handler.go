@@ -17,14 +17,14 @@ package stream
 import (
 	"fmt"
 	"net"
+	"strings"
 	"sync/atomic"
 	"time"
-
-	"github.com/chubaofs/chubaofs/util/errors"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data/wrapper"
 	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
@@ -498,13 +498,20 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 			extID, err = eh.createExtent(dp)
 		}
 		if err != nil {
-			log.LogWarnf("allocateExtent: failed to create extent, eh(%v) err(%v)", eh, err)
+			if strings.Contains(err.Error(), "DiskNoSpaceErr") {
+				log.LogWarnf("allocateExtent: delete dp[%v] caused by create extent failed, eh(%v) err(%v) exclude(%v)",
+					dp, eh, err, exclude)
+				eh.stream.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
+				continue
+			}
+			log.LogWarnf("allocateExtent: failed to create extent, eh(%v) err(%v) exclude(%v)", eh, err, exclude)
 			dp.CheckAllHostsIsAvail(exclude)
 			continue
 		}
 
 		if conn, err = StreamConnPool.GetConnect(dp.Hosts[0]); err != nil {
-			log.LogWarnf("allocateExtent: failed to create connection, eh(%v) err(%v) dp(%v)", eh, err, dp)
+			log.LogWarnf("allocateExtent: failed to create connection, eh(%v) err(%v) dp(%v) exclude(%v)",
+				eh, err, dp, exclude)
 			// If storeMode is tinyExtentType and can't create connection, we also check host status.
 			dp.CheckAllHostsIsAvail(exclude)
 			continue
