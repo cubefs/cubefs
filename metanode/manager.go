@@ -321,7 +321,8 @@ func (m *metadataManager) loadPartitions() (err error) {
 				//if sotreType is rocksdb , so find rocksdir in path
 				if m.storeType == 1 {
 					for _, dir := range m.rocksDirs {
-						if _, err = os.Stat(path.Join(dir, partitionPrefix+partitionId)); err != nil {
+						rocksdbDir := path.Join(dir, partitionPrefix+partitionId)
+						if _, err = os.Stat(rocksdbDir); err != nil {
 							if os.IsNotExist(err) {
 								err = nil
 							} else {
@@ -329,7 +330,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 								return
 							}
 						} else {
-							partitionConfig.RocksDir = dir
+							partitionConfig.RocksDir = rocksdbDir
 							break
 						}
 					}
