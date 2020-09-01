@@ -179,20 +179,20 @@ func (o *ObjectNode) validateHeaderBySignatureAlgorithmV2(r *http.Request) (bool
 	}
 
 	var accessKey = authInfo.accessKeyId
-	var volume *Volume
-	if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
-		if volume, err = o.getVol(bucket); err != nil {
-			return false, err
-		}
-	}
 	var secretKey string
+	var bucket = mux.Vars(r)["bucket"]
 	if userInfo, err := o.getUserInfoByAccessKey(accessKey); err == nil {
 		secretKey = userInfo.SecretKey
-	} else if (err == proto.ErrUserNotExists || err == proto.ErrAccessKeyNotExists) && volume != nil {
+	} else if (err == proto.ErrUserNotExists || err == proto.ErrAccessKeyNotExists) &&
+		len(bucket) > 0 && GetActionFromContext(r) != proto.OSSCreateBucketAction {
 		// In order to be directly compatible with the signature verification of version 1.5
 		// (each volume has its own access key and secret key), if the user does not exist and
 		// the request specifies a volume, try to use the access key and secret key bound in the
 		// volume information for verification.
+		var volume *Volume
+		if volume, err = o.getVol(bucket); err != nil {
+			return false, err
+		}
 		if ak, sk := volume.OSSSecure(); ak == accessKey {
 			secretKey = sk
 		} else {
@@ -272,7 +272,6 @@ func calculateSignatureV2(authInfo *requestAuthInfoV2, secretKey string, wildcar
 }
 
 func (o *ObjectNode) validateUrlBySignatureAlgorithmV2(r *http.Request) (bool, error) {
-	var err error
 	uris := strings.SplitN(r.RequestURI, "?", 2)
 	if len(uris) < 2 {
 		log.LogInfof("validateUrlBySignatureAlgorithmV2 error, request url invalid %v ", r.RequestURI)
@@ -293,20 +292,21 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV2(r *http.Request) (bool, e
 		GetRequestID(r), r.URL.String(), accessKey, signature, expires)
 
 	// Checking access key
-	var volume *Volume
-	if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
-		if volume, err = o.getVol(bucket); err != nil {
-			return false, err
-		}
-	}
+
 	var secretKey string
+	var bucket = mux.Vars(r)["bucket"]
 	if userInfo, err := o.getUserInfoByAccessKey(accessKey); err == nil {
 		secretKey = userInfo.SecretKey
-	} else if (err == proto.ErrUserNotExists || err == proto.ErrAccessKeyNotExists) && volume != nil {
+	} else if (err == proto.ErrUserNotExists || err == proto.ErrAccessKeyNotExists) &&
+		len(bucket) > 0 && GetActionFromContext(r) != proto.OSSCreateBucketAction {
 		// In order to be directly compatible with the signature verification of version 1.5
 		// (each volume has its own access key and secret key), if the user does not exist and
 		// the request specifies a volume, try to use the access key and secret key bound in the
 		// volume information for verification.
+		var volume *Volume
+		if volume, err = o.getVol(bucket); err != nil {
+			return false, err
+		}
 		if ak, sk := volume.OSSSecure(); ak == accessKey {
 			secretKey = sk
 		} else {
