@@ -20,7 +20,7 @@ import (
 	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
-	"github.com/chubaofs/chubaofs/util"
+	util "github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -38,6 +38,10 @@ import (
 
 const partitionPrefix = "partition_"
 const ExpiredPartitionPrefix = "expired_"
+
+func partitionPrefixPath(dir string, partitionId string) string {
+	return path.Join(dir, partitionPrefix+partitionId)
+}
 
 // MetadataManager manages all the meta partitions.
 type MetadataManager interface {
@@ -321,7 +325,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 				//if sotreType is rocksdb , so find rocksdir in path
 				if m.storeType == proto.MetaTypeRocks {
 					for _, dir := range m.rocksDirs {
-						rocksdbDir := path.Join(dir, partitionPrefix+partitionId)
+						rocksdbDir := partitionPrefixPath(dir, partitionId)
 						if _, err = os.Stat(rocksdbDir); err != nil {
 							if os.IsNotExist(err) {
 								err = nil
@@ -336,8 +340,15 @@ func (m *metadataManager) loadPartitions() (err error) {
 					}
 
 					if partitionConfig.RocksDir == "" {
-						partitionConfig.RocksDir = path.Join(m.rocksDirs[int(id)%len(m.rocksDirs)], partitionPrefix+partitionId)
-						log.LogIfNotNil(os.MkdirAll(partitionConfig.RocksDir, os.ModePerm))
+						dir, err := util.SelectDisk(m.rocksDirs)
+						if err != nil {
+							errload = err
+							return
+						}
+						partitionConfig.RocksDir = partitionPrefixPath(dir, partitionId)
+						if errload = os.MkdirAll(partitionConfig.RocksDir, os.ModePerm); errload != nil {
+							return
+						}
 					}
 				}
 
@@ -422,8 +433,11 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 	}
 
 	if mpc.StoreType == proto.MetaTypeRocks {
-		rocksPath := m.rocksDirs[int(request.PartitionID)%len(m.rocksDirs)]
-		mpc.RocksDir = path.Join(rocksPath, partitionPrefix+partitionId)
+		rocksPath, err := util.SelectDisk(m.rocksDirs)
+		if err != nil {
+			return err
+		}
+		mpc.RocksDir = partitionPrefixPath(rocksPath, partitionId)
 	}
 
 	mpc.AfterStop = func() {

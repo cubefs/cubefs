@@ -65,8 +65,8 @@ type MetaPartitionConfig struct {
 	Start       uint64              `json:"start"` // Minimal Inode ID of this range. (Required during initialization)
 	End         uint64              `json:"end"`   // Maximal Inode ID of this range. (Required during initialization)
 	Peers       []proto.Peer        `json:"peers"` // Peers information of the raftStore
-	StoreType   proto.StoreType     `json:"-"`     // 0:memory , 1:rocksdb  default memory
-	Cursor      uint64              `json:"-"`     // Cursor ID of the inode that have been assigned
+	StoreType   proto.StoreType     `json:"store_type"`
+	Cursor      uint64              `json:"-"` // Cursor ID of the inode that have been assigned
 	NodeId      uint64              `json:"-"`
 	RootDir     string              `json:"-"`
 	RocksDir    string              `json:"-"`
