@@ -57,7 +57,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 	resp.Used, err = util.GetProcessMemory(os.Getpid())
 
 	resp.StoreType = m.storeType
-	if m.storeType == 1 {
+	if m.storeType == proto.MetaTypeRocks {
 		if total, used, err := util.GetDiskInfo(m.rootDir); err != nil {
 			log.LogErrorf("get disk info by path:[%s] has err:[%s]", m.rootDir, err.Error())
 		} else {

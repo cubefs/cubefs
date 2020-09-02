@@ -62,11 +62,11 @@ type MetaPartitionConfig struct {
 	// Identity for raftStore group. RaftStore nodes in the same raftStore group must have the same groupID.
 	PartitionId uint64              `json:"partition_id"`
 	VolName     string              `json:"vol_name"`
-	Start       uint64              `json:"start"`      // Minimal Inode ID of this range. (Required during initialization)
-	End         uint64              `json:"end"`        // Maximal Inode ID of this range. (Required during initialization)
-	Peers       []proto.Peer        `json:"peers"`      // Peers information of the raftStore
-	StoreType   uint8               `json:"store_type"` // 0:memory , 1:rocksdb  default memory
-	Cursor      uint64              `json:"-"`          // Cursor ID of the inode that have been assigned
+	Start       uint64              `json:"start"` // Minimal Inode ID of this range. (Required during initialization)
+	End         uint64              `json:"end"`   // Maximal Inode ID of this range. (Required during initialization)
+	Peers       []proto.Peer        `json:"peers"` // Peers information of the raftStore
+	StoreType   proto.StoreType     `json:"-"`     // 0:memory , 1:rocksdb  default memory
+	Cursor      uint64              `json:"-"`     // Cursor ID of the inode that have been assigned
 	NodeId      uint64              `json:"-"`
 	RootDir     string              `json:"-"`
 	RocksDir    string              `json:"-"`
@@ -195,7 +195,7 @@ func (mp *MetaPartition) onStart() (err error) {
 			mp.config.PartitionId, err.Error())
 		return
 	}
-	if mp.config.StoreType == 1 {
+	if mp.config.StoreType == proto.MetaTypeRocks {
 		go mp.startScheduleByRocksDB()
 	} else {
 		mp.startSchedule(mp.applyID)
@@ -299,12 +299,13 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) (*Met
 		multipartTree MultipartTree
 	)
 
-	if conf.StoreType == 0 {
+	switch conf.StoreType {
+	case proto.MetaTypeMemory:
 		inodeTree = &InodeBTree{NewBtree()}
 		dentryTree = &DentryBTree{NewBtree()}
 		extendTree = &ExtendBTree{NewBtree()}
 		multipartTree = &MultipartBTree{NewBtree()}
-	} else {
+	case proto.MetaTypeRocks:
 		tree, err := DefaultRocksTree(conf.RocksDir)
 		if err != nil {
 			log.LogErrorf("[NewMetaPartition] default rocks tree dir: %v, id: %v error %v ", conf.RootDir, conf.PartitionId, err)
@@ -327,6 +328,8 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) (*Met
 			return nil, err
 		}
 		log.LogInfof("partition:[%d] inode:[%d] dentry:[%d] extend:[%d] multipart:[%d]", conf.PartitionId, inodeTree.Count(), dentryTree.Count(), extendTree.Count(), multipartTree.Count())
+	default:
+		return nil, fmt.Errorf("unsupport store type for %v", conf.StoreType)
 	}
 
 	applyID, err := inodeTree.GetApplyID()
@@ -412,7 +415,7 @@ func (mp *MetaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	}
 
 	//it means rocksdb and not init so skip load snapshot
-	if mp.config.StoreType == 1 && mp.inodeTree.Count() > 0 {
+	if mp.config.StoreType == proto.MetaTypeRocks && mp.inodeTree.Count() > 0 {
 		mp.applyID, err = mp.inodeTree.GetApplyID()
 		return err
 	}
@@ -442,7 +445,7 @@ func (mp *MetaPartition) load() (err error) {
 
 func (mp *MetaPartition) store(sm *storeMsg) (err error) {
 
-	if mp.config.StoreType != 0 {
+	if mp.config.StoreType == proto.MetaTypeRocks {
 		defer sm.snapshot.Close()
 		return mp.inodeTree.Flush()
 	}
@@ -649,7 +652,7 @@ func (mp *MetaPartition) Reset() (err error) {
 		log.LogErrorf("drop btree:[%s] has err:[%s]", dir, err.Error())
 	}
 
-	if mp.config.StoreType == 1 {
+	if mp.config.RocksDir != "" {
 		if err := os.RemoveAll(mp.config.RocksDir); err != nil {
 			log.LogErrorf("drop rocksdb data:[%s] has err:[%s]", mp.config.RocksDir, err.Error())
 		}

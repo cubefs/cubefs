@@ -262,12 +262,13 @@ func (mp *MetaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 
 	start := time.Now()
 
-	if mp.config.StoreType == 0 {
+	switch mp.config.StoreType {
+	case proto.MetaTypeMemory:
 		inodeTree = &InodeBTree{NewBtree()}
 		dentryTree = &DentryBTree{NewBtree()}
 		extendTree = &ExtendBTree{NewBtree()}
 		multipartTree = &MultipartBTree{NewBtree()}
-	} else {
+	case proto.MetaTypeRocks:
 		log.LogInfof("clean rocksdb data to apply snapshot")
 		if err := mp.inodeTree.Clear(); err != nil {
 			return err
@@ -282,6 +283,8 @@ func (mp *MetaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			return err
 		}
 		mp.inodeTree.SetApplyID(0)
+	default:
+		log.LogWarnf("unsupport store type for %v", mp.config.StoreType)
 	}
 
 	defer func() {

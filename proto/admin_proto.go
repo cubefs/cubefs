@@ -125,6 +125,13 @@ const (
 	ReadWriteToken = 2
 )
 
+type StoreType uint8
+
+const (
+	MetaTypeMemory StoreType = iota
+	MetaTypeRocks
+)
+
 type Token struct {
 	TokenType int8
 	Value     string
@@ -315,7 +322,7 @@ type MetaNodeHeartbeatResponse struct {
 	//the param used for disk
 	DiskTotal uint64
 	DiskUsed  uint64
-	StoreType uint8
+	StoreType StoreType
 	Result    string
 }
 

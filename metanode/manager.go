@@ -51,7 +51,7 @@ type MetadataManager interface {
 // MetadataManagerConfig defines the configures in the metadata manager.
 type MetadataManagerConfig struct {
 	NodeID    uint64
-	StoreType uint8
+	StoreType proto.StoreType
 	RootDir   string
 	RocksDirs []string
 	ZoneName  string
@@ -64,7 +64,7 @@ type metadataManager struct {
 	rootDir            string
 	rocksDirs          []string
 	raftStore          raftstore.RaftStore
-	storeType          uint8 // 0:memory , 1:rocksdb  default memory
+	storeType          proto.StoreType
 	connPool           *util.ConnectPool
 	state              uint32
 	mu                 sync.RWMutex
@@ -319,7 +319,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 				}
 
 				//if sotreType is rocksdb , so find rocksdir in path
-				if m.storeType == 1 {
+				if m.storeType == proto.MetaTypeRocks {
 					for _, dir := range m.rocksDirs {
 						rocksdbDir := path.Join(dir, partitionPrefix+partitionId)
 						if _, err = os.Stat(rocksdbDir); err != nil {
@@ -421,7 +421,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		ConnPool: m.connPool,
 	}
 
-	if mpc.StoreType == 1 {
+	if mpc.StoreType == proto.MetaTypeRocks {
 		rocksPath := m.rocksDirs[int(request.PartitionID)%len(m.rocksDirs)]
 		mpc.RocksDir = path.Join(rocksPath, partitionPrefix+partitionId)
 	}

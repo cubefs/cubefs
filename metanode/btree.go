@@ -14,7 +14,10 @@
 
 package metanode
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/chubaofs/chubaofs/proto"
+)
 
 type (
 	// BtreeItem type alias google btree Item
@@ -47,18 +50,21 @@ var (
 )
 
 func NewSnapshot(mp *MetaPartition) Snapshot {
-	if mp.config.StoreType == 0 {
+	switch mp.config.StoreType {
+	case proto.MetaTypeMemory:
 		return &BTreeSnapShot{
 			inode:     &InodeBTree{mp.inodeTree.(*InodeBTree).GetTree()},
 			dentry:    &DentryBTree{mp.dentryTree.(*DentryBTree).GetTree()},
 			extend:    &ExtendBTree{mp.extendTree.(*ExtendBTree).GetTree()},
 			multipart: &MultipartBTree{mp.multipartTree.(*MultipartBTree).GetTree()},
 		}
-	} else {
+	case proto.MetaTypeRocks:
 		return &RocksSnapShot{
 			snap: mp.inodeTree.(*InodeRocks).db.NewSnapshot(),
 			tree: mp.inodeTree.(*InodeRocks).RocksTree,
 		}
+	default:
+		panic(fmt.Sprintf("unsupport store type for %v", mp.config.StoreType))
 	}
 }
 
