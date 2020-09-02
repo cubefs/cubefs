@@ -175,36 +175,6 @@ func (i *Inode) Marshal() (result []byte, err error) {
 	return
 }
 
-// write inode into writer
-func (i *Inode) WriteTo(writer io.Writer, reuse *bytes.Buffer) (err error) {
-	var buff = reuse
-	if buff == nil {
-		buff = bytes.NewBuffer(nil)
-	} else {
-		buff.Reset()
-	}
-	if err = i.WriteKeyTo(buff); err != nil {
-		return
-	}
-	if err = binary.Write(writer, binary.BigEndian, uint32(buff.Len())); err != nil {
-		return
-	}
-	if _, err = buff.WriteTo(writer); err != nil {
-		return
-	}
-	buff.Reset()
-	if err = i.WriteValueTo(buff); err != nil {
-		return
-	}
-	if err = binary.Write(writer, binary.BigEndian, uint32(buff.Len())); err != nil {
-		return
-	}
-	if _, err = buff.WriteTo(writer); err != nil {
-		return
-	}
-	return
-}
-
 // Unmarshal unmarshals the inode.
 func (i *Inode) Unmarshal(raw []byte) (err error) {
 	var (
@@ -286,24 +256,12 @@ func InodeBatchUnmarshal(raw []byte) (InodeBatch, error) {
 // MarshalKey marshals the exporterKey to bytes.
 func (i *Inode) MarshalKey() (k []byte) {
 	k = make([]byte, 8)
-	i.RLock()
-	defer i.RUnlock()
 	binary.BigEndian.PutUint64(k, i.Inode)
-	return
-}
-
-// write inode id to writer
-func (i *Inode) WriteKeyTo(writer io.Writer) (err error) {
-	i.RLock()
-	defer i.RUnlock()
-	err = binary.Write(writer, binary.BigEndian, &i.Inode)
 	return
 }
 
 // UnmarshalKey unmarshals the exporterKey from bytes.
 func (i *Inode) UnmarshalKey(k []byte) (err error) {
-	i.Lock()
-	defer i.Unlock()
 	i.Inode = binary.BigEndian.Uint64(k)
 	return
 }
@@ -373,64 +331,8 @@ func (i *Inode) MarshalValue() (val []byte) {
 	return
 }
 
-func (i *Inode) WriteValueTo(writer io.Writer) (err error) {
-	i.RLock()
-	defer i.RUnlock()
-	if err = binary.Write(writer, binary.BigEndian, &i.Type); err != nil {
-		return
-	}
-	if err = binary.Write(writer, binary.BigEndian, &i.Uid); err != nil {
-		return
-	}
-	if err = binary.Write(writer, binary.BigEndian, &i.Gid); err != nil {
-		return
-	}
-	if err = binary.Write(writer, binary.BigEndian, &i.Size); err != nil {
-		return
-	}
-	if err = binary.Write(writer, binary.BigEndian, &i.Generation); err != nil {
-		return
-	}
-	if err = binary.Write(writer, binary.BigEndian, &i.CreateTime); err != nil {
-		return
-	}
-	if err = binary.Write(writer, binary.BigEndian, &i.AccessTime); err != nil {
-		return
-	}
-	if err = binary.Write(writer, binary.BigEndian, &i.ModifyTime); err != nil {
-		return
-	}
-	// write SymLink
-	symSize := uint32(len(i.LinkTarget))
-	if err = binary.Write(writer, binary.BigEndian, &symSize); err != nil {
-		return
-	}
-	if _, err = writer.Write(i.LinkTarget); err != nil {
-		return
-	}
-
-	if err = binary.Write(writer, binary.BigEndian, &i.NLink); err != nil {
-		return
-	}
-	if err = binary.Write(writer, binary.BigEndian, &i.Flag); err != nil {
-		return
-	}
-	if err = binary.Write(writer, binary.BigEndian, &i.Reserved); err != nil {
-		return
-	}
-	if i.Extents != nil {
-		// marshal ExtentsKey
-		if err = i.Extents.WriteTo(writer); err != nil {
-			return
-		}
-	}
-	return
-}
-
 // UnmarshalValue unmarshals the value from bytes.
 func (i *Inode) UnmarshalValue(val []byte) (err error) {
-	i.RLock()
-	defer i.RUnlock()
 	buff := bytes.NewBuffer(val)
 	if err = binary.Read(buff, binary.BigEndian, &i.Type); err != nil {
 		return

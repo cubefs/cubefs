@@ -391,7 +391,8 @@ func (m *metadataManager) attachPartition(id uint64, partition *MetaPartition) (
 func (m *metadataManager) detachPartition(id uint64) (err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, has := m.partitions[id]; has {
+	if mp, has := m.partitions[id]; has {
+		log.LogIfNotNil(mp.Reset())
 		delete(m.partitions, id)
 	} else {
 		err = fmt.Errorf("unknown partition: %d", id)
