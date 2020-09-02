@@ -294,6 +294,7 @@ clean() {
 dist_clean() {
     $RM -rf ${BuildBinPath}
     $RM -rf ${BuildOutPath}
+    $RM -rf ${VendorPath}/dep    
 }
 
 cmd=${1:-"all"}
