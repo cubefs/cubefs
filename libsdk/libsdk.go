@@ -51,6 +51,7 @@ struct cfs_dirent {
 import "C"
 
 import (
+	"os"
 	gopath "path"
 	"reflect"
 	"strings"
@@ -255,11 +256,21 @@ func cfs_getattr(id uint64, path *C.char, stat *C.struct_cfs_stat_info) int {
 	stat.ino = C.uint64_t(info.Inode)
 	stat.size = C.uint64_t(info.Size)
 	stat.blocks = C.uint64_t(info.Size >> 9)
-	stat.mode = C.uint32_t(info.Mode)
 	stat.nlink = C.uint32_t(info.Nlink)
 	stat.blk_size = C.uint32_t(defaultBlkSize)
 	stat.uid = C.uint32_t(info.Uid)
 	stat.gid = C.uint32_t(info.Gid)
+
+	// fill up the mode
+	if proto.IsRegular(info.Mode) {
+		stat.mode = C.uint32_t(C.S_IFREG) | C.uint32_t(info.Mode&0777)
+	} else if proto.IsDir(info.Mode) {
+		stat.mode = C.uint32_t(C.S_IFDIR) | C.uint32_t(info.Mode&0777)
+	} else if proto.IsSymlink(info.Mode) {
+		stat.mode = C.uint32_t(C.S_IFLNK) | C.uint32_t(info.Mode&0777)
+	} else {
+		stat.mode = C.uint32_t(C.S_IFSOCK) | C.uint32_t(info.Mode&0777)
+	}
 
 	// fill up the time struct
 	t := info.AccessTime.UnixNano()
@@ -286,10 +297,7 @@ func cfs_open(id uint64, path *C.char, flags int, mode C.mode_t) int {
 
 	fuseMode := uint32(mode) & uint32(0777)
 	fuseFlags := uint32(flags &^ 0x8000)
-
-	if fuseFlags&uint32(C.O_ACCMODE) == 0 {
-		return statusEINVAL
-	}
+	accFlags := fuseFlags & uint32(C.O_ACCMODE)
 
 	var info *proto.InodeInfo
 
@@ -298,7 +306,7 @@ func cfs_open(id uint64, path *C.char, flags int, mode C.mode_t) int {
 	 */
 
 	if fuseFlags&uint32(C.O_CREAT) != 0 {
-		if fuseFlags&uint32(C.O_WRONLY) == 0 && fuseFlags&uint32(C.O_RDWR) == 0 {
+		if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
 			return statusEACCES
 		}
 		dirpath, name := gopath.Split(C.GoString(path))
@@ -324,7 +332,7 @@ func cfs_open(id uint64, path *C.char, flags int, mode C.mode_t) int {
 	if proto.IsRegular(info.Mode) {
 		c.openStream(f)
 		if fuseFlags&uint32(C.O_TRUNC) != 0 {
-			if fuseFlags&uint32(C.O_WRONLY) == 0 && fuseFlags&uint32(C.O_RDWR) == 0 {
+			if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
 				c.closeStream(f)
 				c.releaseFD(int(f.fd))
 				return statusEACCES
@@ -384,7 +392,8 @@ func cfs_write(id uint64, fd int, buf unsafe.Pointer, size C.size_t, off C.off_t
 		return C.ssize_t(statusEBADFD)
 	}
 
-	if f.flags&uint32(C.O_WRONLY) == 0 && f.flags&uint32(C.O_RDWR) == 0 {
+	accFlags := f.flags & uint32(C.O_ACCMODE)
+	if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
 		return C.ssize_t(statusEACCES)
 	}
 
@@ -431,6 +440,11 @@ func cfs_read(id uint64, fd int, buf unsafe.Pointer, size C.size_t, off C.off_t)
 		return C.ssize_t(statusEBADFD)
 	}
 
+	accFlags := f.flags & uint32(C.O_ACCMODE)
+	if accFlags == uint32(C.O_WRONLY) {
+		return C.ssize_t(statusEACCES)
+	}
+
 	var buffer []byte
 
 	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&buffer))
@@ -438,7 +452,6 @@ func cfs_read(id uint64, fd int, buf unsafe.Pointer, size C.size_t, off C.off_t)
 	hdr.Len = int(size)
 	hdr.Cap = int(size)
 
-	//FIXME: deal with flags and mode
 	n, err := c.read(f, int(off), buffer)
 	if err != nil {
 		return C.ssize_t(statusEIO)
@@ -507,7 +520,6 @@ func cfs_readdir(id uint64, fd int, dirents []C.struct_cfs_dirent, count int) (n
 
 //export cfs_mkdirs
 func cfs_mkdirs(id uint64, path *C.char, mode C.mode_t) int {
-	//TODO
 	return 0
 }
 
@@ -601,7 +613,14 @@ func (c *client) lookupPath(path string) (*proto.InodeInfo, error) {
 }
 
 func (c *client) create(pino uint64, name string, mode uint32) (info *proto.InodeInfo, err error) {
-	return c.mw.Create_ll(pino, name, mode, 0, 0, nil)
+	fuseMode := mode & 0777
+	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil)
+}
+
+func (c *client) mkdir(pino uint64, name string, mode uint32) (info *proto.InodeInfo, err error) {
+	fuseMode := mode & 0777
+	fuseMode |= uint32(os.ModeDir)
+	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil)
 }
 
 func (c *client) openStream(f *file) {
