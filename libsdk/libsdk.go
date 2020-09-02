@@ -395,15 +395,25 @@ func cfs_write(id uint64, fd int, buf unsafe.Pointer, size C.size_t, off C.off_t
 	hdr.Len = int(size)
 	hdr.Cap = int(size)
 
-	var direct bool
+	var flags int
+	var wait bool
 
 	if f.flags&uint32(C.O_DIRECT) != 0 || f.flags&uint32(C.O_SYNC) != 0 || f.flags&uint32(C.O_DSYNC) != 0 {
-		direct = true
+		wait = true
+	}
+	if f.flags&uint32(C.O_APPEND) != 0 {
+		flags |= proto.FlagsAppend
 	}
 
-	n, err := c.write(f, int(off), buffer, direct)
+	n, err := c.write(f, int(off), buffer, flags)
 	if err != nil {
 		return C.ssize_t(statusEIO)
+	}
+
+	if wait {
+		if err = c.flush(f); err != nil {
+			return C.ssize_t(statusEIO)
+		}
 	}
 
 	return C.ssize_t(n)
@@ -611,8 +621,8 @@ func (c *client) truncate(f *file, size int) error {
 	return c.ec.Truncate(f.ino, size)
 }
 
-func (c *client) write(f *file, offset int, data []byte, direct bool) (n int, err error) {
-	n, err = c.ec.Write(f.ino, offset, data, direct)
+func (c *client) write(f *file, offset int, data []byte, flags int) (n int, err error) {
+	n, err = c.ec.Write(f.ino, offset, data, flags)
 	if err != nil {
 		return 0, err
 	}
