@@ -551,7 +551,7 @@ func (c *Cluster) doLoadDataPartition(dp *DataPartition) {
 
 	dp.getFileCount()
 	dp.validateCRC(c.Name)
-	dp.checkReplicaSize(c.Name,c.cfg.diffSpaceUsage)
+	dp.checkReplicaSize(c.Name, c.cfg.diffSpaceUsage)
 	dp.setToNormal()
 }
 
@@ -673,7 +673,6 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 		log.LogErrorf("action[dealMetaNodeHeartbeatResp],metaNode[%v] error[%v]", metaNode.Addr, err)
 	}
 	c.updateMetaNode(metaNode, resp.MetaPartitionReports, metaNode.reachesThreshold())
-	metaNode.metaPartitionInfos = nil
 	logMsg = fmt.Sprintf("action[dealMetaNodeHeartbeatResp],metaNode:%v,zone[%v], ReportTime:%v  success", metaNode.Addr, metaNode.ZoneName, time.Now().Unix())
 	log.LogInfof(logMsg)
 	return

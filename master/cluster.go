@@ -901,8 +901,6 @@ func (c *Cluster) metaNode(addr string) (metaNode *MetaNode, err error) {
 		return
 	}
 	metaNode = value.(*MetaNode)
-	log.LogInfof("====================[%v]", metaNode.metaPartitionInfos)
-	log.LogInfof("====================[%v]", metaNode.MetaPartitionCount)
 	return
 }
 
