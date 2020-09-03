@@ -15,6 +15,7 @@
 package master
 
 import (
+	"github.com/chubaofs/chubaofs/util/log"
 	"math/rand"
 	"sync"
 	"time"
@@ -112,7 +113,8 @@ func (metaNode *MetaNode) setNodeActive() {
 func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, threshold float32) {
 	metaNode.Lock()
 	defer metaNode.Unlock()
-	metaNode.metaPartitionInfos = append([]*proto.MetaPartitionReport(nil), resp.MetaPartitionReports...)
+	log.LogInfof("++++++++++++++++++[%v]", resp.MetaPartitionReports)
+	metaNode.metaPartitionInfos = resp.MetaPartitionReports
 	metaNode.MetaPartitionCount = len(metaNode.metaPartitionInfos)
 	metaNode.Total = resp.Total
 	metaNode.Used = resp.Used
