@@ -188,9 +188,6 @@ func (partition *DataPartition) checkReplicationTask(clusterID string, dataParti
 			" On :%v  Err:%v  rocksDBRecords:%v",
 			deleteIllegalReplicaErr, partition.PartitionID, excessAddr, excessErr.Error(), partition.Hosts)
 		Warn(clusterID, msg)
-		partition.Lock()
-		partition.removeReplicaByAddr(excessAddr)
-		partition.Unlock()
 	}
 	if partition.Status == proto.ReadWrite {
 		return
@@ -218,6 +215,8 @@ func (partition *DataPartition) deleteIllegalReplica() (excessAddr string, err e
 			break
 		}
 	}
+	partition.removeReplicaByAddr(excessAddr)
+	partition.checkAndRemoveMissReplica(excessAddr)
 	return
 }
 
