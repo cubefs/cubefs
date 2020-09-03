@@ -25,6 +25,11 @@ const (
 	RootIno = uint64(1)
 )
 
+const (
+	FlagsSyncWrite int = 1 << iota
+	FlagsAppend
+)
+
 // Mode returns the fileMode.
 func Mode(osMode os.FileMode) uint32 {
 	return uint32(osMode)
