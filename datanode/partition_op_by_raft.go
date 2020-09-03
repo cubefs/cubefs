@@ -241,6 +241,9 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 		if dp.checkIsDiskError(err) {
 			return
 		}
+		if strings.Contains(err.Error(),storage.ExtentNotFoundError.Error()){
+			err=nil
+		}
 		if err == nil {
 			break
 		}
