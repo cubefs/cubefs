@@ -1280,8 +1280,8 @@ func (c *Cluster) isRecovering(dp *DataPartition, addr string) (isRecover bool) 
 
 func (c *Cluster) removeDataPartitionRaftMember(dp *DataPartition, removePeer proto.Peer, migrationMode bool) (err error) {
 	defer func() {
-		if err = c.updateDataPartitionOfflinePeerIDWithLock(dp, 0); err != nil {
-			log.LogErrorf("action[removeDataPartitionRaftMember] vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
+		if err1 := c.updateDataPartitionOfflinePeerIDWithLock(dp, 0); err1 != nil {
+			err = errors.Trace(err, "updateDataPartitionOfflinePeerIDWithLock failed, err[%v]", err1)
 		}
 	}()
 	if err = c.updateDataPartitionOfflinePeerIDWithLock(dp, removePeer.ID); err != nil {
