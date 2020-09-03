@@ -520,25 +520,100 @@ func cfs_readdir(id uint64, fd int, dirents []C.struct_cfs_dirent, count int) (n
 
 //export cfs_mkdirs
 func cfs_mkdirs(id uint64, path *C.char, mode C.mode_t) int {
+	dirpath := C.GoString(path)
+	if dirpath == "" || dirpath == "/" {
+		return statusEEXIST
+	}
+
+	c, exist := getClient(id)
+	if !exist {
+		return statusEINVAL
+	}
+
+	pino := proto.RootIno
+	dirs := strings.Split(dirpath, "/")
+	for _, dir := range dirs {
+		if dir == "/" || dir == "" {
+			continue
+		}
+		child, _, err := c.mw.Lookup_ll(pino, dir)
+		if err != nil {
+			if err == syscall.ENOENT {
+				info, err := c.mkdir(pino, dir, uint32(mode))
+				if err != nil {
+					return errorToStatus(err)
+				}
+				child = info.Inode
+			} else {
+				return errorToStatus(err)
+			}
+		}
+		pino = child
+	}
+
 	return 0
 }
 
 //export cfs_rmdir
 func cfs_rmdir(id uint64, path *C.char) int {
-	//TODO
-	return 0
+	c, exist := getClient(id)
+	if !exist {
+		return statusEINVAL
+	}
+
+	dirpath, name := gopath.Split(C.GoString(path))
+	dirInfo, err := c.lookupPath(dirpath)
+	if err != nil {
+		return errorToStatus(err)
+	}
+
+	_, err = c.mw.Delete_ll(dirInfo.Inode, name, true)
+	return errorToStatus(err)
 }
 
 //export cfs_unlink
 func cfs_unlink(id uint64, path *C.char) int {
-	//TODO
+	c, exist := getClient(id)
+	if !exist {
+		return statusEINVAL
+	}
+
+	dirpath, name := gopath.Split(C.GoString(path))
+	dirInfo, err := c.lookupPath(dirpath)
+	if err != nil {
+		return errorToStatus(err)
+	}
+
+	info, err := c.mw.Delete_ll(dirInfo.Inode, name, true)
+	if err != nil {
+		return errorToStatus(err)
+	}
+
+	_ = c.mw.Evict(info.Inode)
 	return 0
 }
 
 //export cfs_rename
 func cfs_rename(id uint64, from *C.char, to *C.char) int {
-	//TODO
-	return 0
+	c, exist := getClient(id)
+	if !exist {
+		return statusEINVAL
+	}
+
+	srcDirPath, srcName := gopath.Split(C.GoString(from))
+	dstDirPath, dstName := gopath.Split(C.GoString(to))
+
+	srcDirInfo, err := c.lookupPath(srcDirPath)
+	if err != nil {
+		return errorToStatus(err)
+	}
+	dstDirInfo, err := c.lookupPath(dstDirPath)
+	if err != nil {
+		return errorToStatus(err)
+	}
+
+	err = c.mw.Rename_ll(srcDirInfo.Inode, srcName, dstDirInfo.Inode, dstName)
+	return errorToStatus(err)
 }
 
 // internals
