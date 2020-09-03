@@ -96,6 +96,17 @@ func (s *VolumeService) registerObject(schema *schemabuilder.Schema) {
 		return v.createTime, nil
 	})
 
+	object.FieldFunc("inodeCount", func(ctx context.Context, v *Vol) (int64, error) {
+		if _, _, err := permissions(ctx, USER|ADMIN); err != nil {
+			return 0, err
+		}
+		var count uint64 = 0
+		for _, p := range v.MetaPartitions {
+			count += p.InodeCount
+		}
+		return int64(count), nil
+	})
+
 }
 
 func (s *VolumeService) registerQuery(schema *schemabuilder.Schema) {
