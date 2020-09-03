@@ -1329,10 +1329,8 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate, mi
 	if err = c.removeDataPartitionRaftMember(dp, removePeer, migrationMode); err != nil {
 		return
 	}
-	if !migrationMode {
-		if err = c.deleteDataReplica(dp, dataNode); err != nil {
-			return
-		}
+	if err = c.deleteDataReplica(dp, dataNode, migrationMode); err != nil {
+		return
 	}
 	leaderAddr := dp.getLeaderAddrWithLock()
 	if leaderAddr != addr {
@@ -1422,7 +1420,7 @@ func (c *Cluster) updateDataPartitionOfflinePeerIDWithLock(dp *DataPartition, pe
 	}
 	return
 }
-func (c *Cluster) deleteDataReplica(dp *DataPartition, dataNode *DataNode) (err error) {
+func (c *Cluster) deleteDataReplica(dp *DataPartition, dataNode *DataNode, migrationMode bool) (err error) {
 	dp.Lock()
 	// in case dataNode is unreachable,update meta first.
 	dp.removeReplicaByAddr(dataNode.Addr)
@@ -1433,6 +1431,9 @@ func (c *Cluster) deleteDataReplica(dp *DataPartition, dataNode *DataNode) (err 
 	}
 	task := dp.createTaskToDeleteDataPartition(dataNode.Addr)
 	dp.Unlock()
+	if migrationMode {
+		return
+	}
 	_, err = dataNode.TaskManager.syncSendAdminTask(task)
 	if err != nil {
 		log.LogErrorf("action[deleteDataReplica] vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)

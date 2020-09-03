@@ -302,15 +302,18 @@ func (mp *MetaPartition) checkReplicaNum(c *Cluster, volName string, replicaNum 
 }
 
 func (mp *MetaPartition) removeIllegalReplica() (excessAddr string, t *proto.AdminTask, err error) {
-	mp.RLock()
-	defer mp.RUnlock()
+	mp.Lock()
+	defer mp.Unlock()
 	for _, mr := range mp.Replicas {
 		if !contains(mp.Hosts, mr.Addr) {
 			t = mr.createTaskToDeleteReplica(mp.PartitionID)
+			excessAddr = mr.Addr
 			err = proto.ErrIllegalMetaReplica
 			break
 		}
 	}
+	mp.removeReplicaByAddr(excessAddr)
+	mp.removeMissingReplica(excessAddr)
 	return
 }
 

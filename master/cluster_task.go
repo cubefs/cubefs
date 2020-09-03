@@ -295,17 +295,13 @@ func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, valid
 	if err = c.removeMetaPartitionRaftMember(partition, removePeer, migrationMode); err != nil {
 		return
 	}
-	if migrationMode {
-
-		return
-	}
-	if err = c.deleteMetaPartition(partition, metaNode); err != nil {
+	if err = c.deleteMetaPartition(partition, metaNode, migrationMode); err != nil {
 		return
 	}
 	return
 }
 
-func (c *Cluster) deleteMetaPartition(partition *MetaPartition, removeMetaNode *MetaNode) (err error) {
+func (c *Cluster) deleteMetaPartition(partition *MetaPartition, removeMetaNode *MetaNode, migrationMode bool) (err error) {
 	partition.Lock()
 	mr, err := partition.getMetaReplica(removeMetaNode.Addr)
 	if err != nil {
@@ -316,6 +312,9 @@ func (c *Cluster) deleteMetaPartition(partition *MetaPartition, removeMetaNode *
 	partition.removeReplicaByAddr(removeMetaNode.Addr)
 	partition.removeMissingReplica(removeMetaNode.Addr)
 	partition.Unlock()
+	if migrationMode {
+		return
+	}
 	_, err = removeMetaNode.Sender.syncSendAdminTask(task)
 	if err != nil {
 		log.LogErrorf("action[deleteMetaPartition] vol[%v],data partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
