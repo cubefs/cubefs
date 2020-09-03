@@ -315,7 +315,9 @@ func (c *Cluster) deleteMetaPartition(partition *MetaPartition, removeMetaNode *
 
 func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, removePeer proto.Peer) (err error) {
 	defer func(){
-		err =  c.updateMetaPartitionOfflinePeerIDWithLock(partition, 0)
+		if err1 := c.updateMetaPartitionOfflinePeerIDWithLock(partition, 0); err1 != nil {
+			err = errors.Trace(err, "updateMetaPartitionOfflinePeerIDWithLock failed, err[%v]", err1)
+		}
 	}()
 	if err = c.updateMetaPartitionOfflinePeerIDWithLock(partition, removePeer.ID); err != nil {
 		return
