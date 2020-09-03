@@ -895,11 +895,14 @@ func (c *Cluster) dataNode(addr string) (dataNode *DataNode, err error) {
 
 func (c *Cluster) metaNode(addr string) (metaNode *MetaNode, err error) {
 	value, ok := c.metaNodes.Load(addr)
+
 	if !ok {
 		err = errors.Trace(metaNodeNotFound(addr), "%v not found", addr)
 		return
 	}
 	metaNode = value.(*MetaNode)
+	log.LogInfof("====================[%v]", metaNode.metaPartitionInfos)
+	log.LogInfof("====================[%v]", metaNode.MetaPartitionCount)
 	return
 }
 
@@ -1396,7 +1399,7 @@ func (c *Cluster) putBadMetaPartitions(addr string, partitionID uint64) {
 	c.BadMetaPartitionIds.Store(addr, newBadPartitionIDs)
 }
 
-func (c *Cluster) getBadMetaPartitionsView() (bmpvs []badPartitionView){
+func (c *Cluster) getBadMetaPartitionsView() (bmpvs []badPartitionView) {
 	bmpvs = make([]badPartitionView, 0)
 	c.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
 		badPartitionIds := value.([]uint64)
@@ -1424,7 +1427,7 @@ func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, addr string, part
 	c.BadDataPartitionIds.Store(key, newBadPartitionIDs)
 }
 
-func (c *Cluster) getBadDataPartitionsView() (bpvs []badPartitionView){
+func (c *Cluster) getBadDataPartitionsView() (bpvs []badPartitionView) {
 	bpvs = make([]badPartitionView, 0)
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
 		badDataPartitionIds := value.([]uint64)

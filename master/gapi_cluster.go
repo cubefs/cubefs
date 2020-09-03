@@ -413,11 +413,11 @@ func (s *ClusterService) metaNodeGet(ctx context.Context, args struct {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
 	}
-	mn, found := s.cluster.metaNodes.Load(args.Addr)
-	if found {
-		return mn.(*MetaNode), nil
+	mn, err := s.cluster.metaNode(args.Addr)
+	if err != nil {
+		return nil, err
 	}
-	return nil, fmt.Errorf("not found meta_node by add:[%s]", args.Addr)
+	return mn, nil
 }
 
 func (s *ClusterService) metaNodeList(ctx context.Context, args struct{}) ([]*MetaNode, error) {
