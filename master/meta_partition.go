@@ -301,19 +301,16 @@ func (mp *MetaPartition) checkReplicaNum(c *Cluster, volName string, replicaNum 
 	}
 }
 
-func (mp *MetaPartition) removeIllegalReplica() (excessAddr string, t *proto.AdminTask, err error) {
+func (mp *MetaPartition) removeIllegalReplica() (excessAddr string, err error) {
 	mp.Lock()
 	defer mp.Unlock()
 	for _, mr := range mp.Replicas {
 		if !contains(mp.Hosts, mr.Addr) {
-			t = mr.createTaskToDeleteReplica(mp.PartitionID)
 			excessAddr = mr.Addr
 			err = proto.ErrIllegalMetaReplica
 			break
 		}
 	}
-	mp.removeReplicaByAddr(excessAddr)
-	mp.removeMissingReplica(excessAddr)
 	return
 }
 
@@ -480,20 +477,20 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 	}
 }
 
-func (mp *MetaPartition) replicaCreationTasks(clusterID, volName string) (tasks []*proto.AdminTask) {
+func (mp *MetaPartition) replicaCreationTasks(c *Cluster, volName string) {
 	var msg string
-	tasks = make([]*proto.AdminTask, 0)
-	if addr, _, err := mp.removeIllegalReplica(); err != nil {
+	if addr, err := mp.removeIllegalReplica(); err != nil {
 		msg = fmt.Sprintf("action[%v],clusterID[%v] metaPartition:%v  excess replication"+
 			" on :%v  err:%v  persistenceHosts:%v",
-			deleteIllegalReplicaErr, clusterID, mp.PartitionID, addr, err.Error(), mp.Hosts)
+			deleteIllegalReplicaErr, c.Name, mp.PartitionID, addr, err.Error(), mp.Hosts)
 		log.LogWarn(msg)
+		c.deleteMetaReplica(mp, addr, true, false)
 	}
 	if addrs := mp.missingReplicaAddrs(); addrs != nil {
 		msg = fmt.Sprintf("action[missingReplicaAddrs],clusterID[%v] metaPartition:%v  lack replication"+
 			" on :%v Hosts:%v",
-			clusterID, mp.PartitionID, addrs, mp.Hosts)
-		Warn(clusterID, msg)
+			c.Name, mp.PartitionID, addrs, mp.Hosts)
+		Warn(c.Name, msg)
 	}
 
 	return
