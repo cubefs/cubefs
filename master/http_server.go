@@ -177,7 +177,6 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		HandlerFunc(m.diagnoseMetaPartition)
 
 	// data partition management APIs
-	router.NewRoute().Methods(http.MethodGet).Path("/admin/resetdp").HandlerFunc(m.resetDataPartitionHosts)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminGetDataPartition).
 		HandlerFunc(m.getDataPartition)
