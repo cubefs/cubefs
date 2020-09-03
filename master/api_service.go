@@ -410,6 +410,47 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
+func (m *Server) resetDataPartitionHosts(w http.ResponseWriter, r *http.Request) {
+	var (
+		msg         string
+		addr        string
+		dp          *DataPartition
+		partitionID uint64
+		err         error
+	)
+	if partitionID, addr, err = parseRequestToRemoveDataReplica(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
+		return
+	}
+
+	hosts := make([]string, 0)
+	peers := make([]proto.Peer, 0)
+
+	for _, host := range dp.Hosts {
+		if host == addr {
+			continue
+		}
+		hosts = append(hosts, host)
+	}
+	for _, peer := range dp.Peers {
+		if peer.Addr == addr {
+			continue
+		}
+		peers = append(peers, peer)
+	}
+
+	if err = dp.update("resetDataPartitionHosts", dp.VolName, peers, hosts, m.cluster); err != nil {
+		return
+	}
+	msg = fmt.Sprintf("data partitionID :%v  reset hosts [%v] successfully", partitionID, addr)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
 func (m *Server) deleteDataReplica(w http.ResponseWriter, r *http.Request) {
 	var (
 		msg         string

@@ -237,10 +237,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 			cnt++
 		}
 		dp.checkDiskError(c.Name, c.leaderInfo.addr)
-		tasks := dp.checkReplicationTask(c.Name, vol.dataPartitionSize)
-		if len(tasks) != 0 {
-			c.addDataNodeTasks(tasks)
-		}
+		dp.checkReplicationTask(c, vol.dataPartitionSize)
 	}
 	return
 }
@@ -287,7 +284,6 @@ func (vol *Vol) checkReplicaNum(c *Cluster) {
 }
 
 func (vol *Vol) checkMetaPartitions(c *Cluster) {
-	var tasks []*proto.AdminTask
 	vol.checkSplitMetaPartition(c)
 	maxPartitionID := vol.maxPartitionID()
 	mps := vol.cloneMetaPartitionMap()
@@ -308,9 +304,8 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 		mp.checkReplicaNum(c, vol.Name, vol.mpReplicaNum)
 		mp.checkEnd(c, maxPartitionID)
 		mp.reportMissingReplicas(c.Name, c.leaderInfo.addr, defaultMetaPartitionTimeOutSec, defaultIntervalToAlarmMissingMetaPartition)
-		tasks = append(tasks, mp.replicaCreationTasks(c.Name, vol.Name)...)
+		mp.replicaCreationTasks(c, vol.Name)
 	}
-	c.addMetaNodeTasks(tasks)
 }
 
 func (vol *Vol) checkSplitMetaPartition(c *Cluster) {

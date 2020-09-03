@@ -1223,7 +1223,7 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate, mi
 			return
 		}
 	}
-	ok := c.isRecovering(dp, addr)
+	ok := c.isRecovering(dp, addr) && !dp.isLatestReplica(addr)
 	if ok {
 		err = fmt.Errorf("vol[%v],data partition[%v] can't decommision until it has recovered", dp.VolName, dp.PartitionID)
 		return
