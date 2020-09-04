@@ -44,39 +44,24 @@ build_linux_arm64_gcc4() {
 # wget compress dep 
 get_rocksdb_compress_dep() {
 
-
-   #################################################################
-   ## Might check the dep files each in individual if wget failed ##
-   #################################################################
     if [ ! -d "${RootPath}/vendor/dep" ]; then
         mkdir -p ${RootPath}/vendor/dep
-    fi
-    cd ${RootPath}/vendor/dep
-
-    if [ ! -d "${RootPath}/vendor/dep/zlib-1.2.11" ]; then
+        cd ${RootPath}/vendor/dep
         wget http://www.zlib.net/zlib-1.2.11.tar.gz
-        tar zxf zlib-1.2.11.tar.gz
-    fi
-
-    if [ ! -d "${RootPath}/vendor/dep/bzip2-1.0.6" ]; then
-        wget https://sourceforge.net/projects/bzip2/files/bzip2-1.0.6.tar.gz
-        tar zxf bzip2-1.0.6.tar.gz
-    fi
-
-    if [ ! -d "${RootPath}/vendor/dep/zstd-1.4.5" ]; then
+        wget https://astuteinternet.dl.sourceforge.net/project/bzip2/bzip2-1.0.6.tar.gz
         wget https://codeload.github.com/facebook/zstd/zip/v1.4.5
-        unzip v1.4.5
-    fi
-
-    if [ ! -d "${RootPath}/vendor/dep/lz4-1.9.2" ]; then
         wget https://codeload.github.com/lz4/lz4/tar.gz/v1.9.2
+
+        tar zxf zlib-1.2.11.tar.gz
+        tar zxf bzip2-1.0.6.tar.gz
+        unzip v1.4.5
         tar zxf v1.9.2
+
+        #rm -rf zlib-1.2.11.tar.gz bzip2-1.0.6.tar.gz v1.4.5 v1.9.2
+        cd ${RootPath}
+        
     fi
-
-
-    #rm -rf zlib-1.2.11.tar.gz bzip2-1.0.6.tar.gz v1.4.5 v1.9.2
-    cd ${RootPath}     
-   
+    cd ${RootPath}
 
 }
 
