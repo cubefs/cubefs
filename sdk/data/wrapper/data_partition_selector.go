@@ -21,47 +21,67 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
+// This type defines the constructor used to create and initialize the selector.
+type DataPartitionSelectorConstructor = func(param string) (DataPartitionSelector, error)
+
+// DataPartitionSelector is the interface defines the methods necessary to implement
+// a selector for data partition selecting.
 type DataPartitionSelector interface {
-	InitFunc(string) error
-	RefreshFunc([]*DataPartition) error
-	SelectFunc(map[string]struct{}) (*DataPartition, error)
-	RemoveDpFunc(uint64)
+	// Name return name of current selector instance.
+	Name() string
+
+	// Refresh refreshes current selector instance by specified data partitions.
+	Refresh(partitions []*DataPartition) error
+
+	// Select returns an data partition picked by selector.
+	Select(excludes map[string]struct{}) (*DataPartition, error)
+
+	// RemoveDP removes specified data partition.
+	RemoveDP(partitionID uint64)
 }
 
-func (w *Wrapper) newDpSelector() (newDpSelector DataPartitionSelector, err error) {
-	if strings.EqualFold(w.dpSelectorName, "kfaster") {
-		newDpSelector = &KFasterRandomSelector{}
-	} else if strings.EqualFold(w.dpSelectorName, "default") {
-		newDpSelector = &DefaultRandomSelector{}
-	} else {
-		return nil, errors.New("no match dataPartitionSelector type")
-	}
+var (
+	dataPartitionSelectorConstructors = make(map[string]DataPartitionSelectorConstructor)
 
-	return newDpSelector, newDpSelector.InitFunc(w.dpSelectorParm)
+	ErrDuplicatedDataPartitionSelectorConstructor = errors.New("duplicated data partition selector constructor")
+	ErrDataPartitionSelectorConstructorNotExist   = errors.New("data partition selector constructor not exist")
+)
+
+// RegisterDataPartitionSelector registers a selector constructor.
+// Users can register their own defined selector through this method.
+func RegisterDataPartitionSelector(name string, constructor DataPartitionSelectorConstructor) error {
+	var clearName = strings.TrimSpace(strings.ToLower(name))
+	if _, exist := dataPartitionSelectorConstructors[clearName]; exist {
+		return ErrDuplicatedDataPartitionSelectorConstructor
+	}
+	dataPartitionSelectorConstructors[clearName] = constructor
+	return nil
+}
+
+func newDataPartitionSelector(name string, param string) (newDpSelector DataPartitionSelector, err error) {
+	var clearName = strings.TrimSpace(strings.ToLower(name))
+	constructor, exist := dataPartitionSelectorConstructors[clearName]
+	if !exist {
+		return nil, ErrDataPartitionSelectorConstructorNotExist
+	}
+	return constructor(param)
 }
 
 func (w *Wrapper) initDpSelector() (err error) {
 	w.dpSelectorChanged = false
-	if strings.EqualFold(w.dpSelectorName, "kfaster") {
-		w.dpSelector = &KFasterRandomSelector{}
+	var selectorName = w.dpSelectorName
+	if strings.TrimSpace(selectorName) == "" {
+		log.LogWarnf("initDpSelector: can not find dp selector[%v], use default selector", w.dpSelectorName)
+		selectorName = DefaultRandomSelectorName
 	}
-
-	if w.dpSelector != nil {
-		err = w.dpSelector.InitFunc(w.dpSelectorParm)
-		if err == nil {
-			return
-		}
+	var selector DataPartitionSelector
+	if selector, err = newDataPartitionSelector(selectorName, w.dpSelectorParm); err != nil {
 		log.LogErrorf("initDpSelector: dpSelector[%v] init failed caused by [%v], use default selector", w.dpSelectorName,
 			err)
+		return
 	}
-
-	if w.dpSelectorName != "" {
-		log.LogErrorf("initDpSelector: can not find dp selector[%v], use default selector", w.dpSelectorName)
-	}
-
-	w.dpSelector = &DefaultRandomSelector{}
-
-	return w.dpSelector.InitFunc(w.dpSelectorParm)
+	w.dpSelector = selector
+	return
 }
 
 func (w *Wrapper) refreshDpSelector(partitions []*DataPartition) {
@@ -71,7 +91,12 @@ func (w *Wrapper) refreshDpSelector(partitions []*DataPartition) {
 	w.RUnlock()
 
 	if dpSelectorChanged {
-		newDpSelector, err := w.newDpSelector()
+		var selectorName = w.dpSelectorName
+		if strings.TrimSpace(selectorName) == "" {
+			log.LogWarnf("refreshDpSelector: can not find dp selector[%v], use default selector", w.dpSelectorName)
+			selectorName = DefaultRandomSelectorName
+		}
+		newDpSelector, err := newDataPartitionSelector(selectorName, w.dpSelectorParm)
 		if err != nil {
 			log.LogErrorf("refreshDpSelector: change dpSelector to [%v %v] failed caused by [%v],"+
 				" use last valid selector. Please change dpSelector config through master.",
@@ -86,7 +111,7 @@ func (w *Wrapper) refreshDpSelector(partitions []*DataPartition) {
 		}
 	}
 
-	dpSelector.RefreshFunc(partitions)
+	_ = dpSelector.Refresh(partitions)
 }
 
 // getDataPartitionForWrite returns an available data partition for write.
@@ -95,7 +120,7 @@ func (w *Wrapper) GetDataPartitionForWrite(exclude map[string]struct{}) (*DataPa
 	dpSelector := w.dpSelector
 	w.RUnlock()
 
-	return dpSelector.SelectFunc(exclude)
+	return dpSelector.Select(exclude)
 }
 
 func (w *Wrapper) RemoveDataPartitionForWrite(partitionID uint64) {
@@ -103,5 +128,5 @@ func (w *Wrapper) RemoveDataPartitionForWrite(partitionID uint64) {
 	dpSelector := w.dpSelector
 	w.RUnlock()
 
-	dpSelector.RemoveDpFunc(partitionID)
+	dpSelector.RemoveDP(partitionID)
 }
