@@ -16,6 +16,8 @@ package datanode
 
 import (
 	"encoding/json"
+	"github.com/chubaofs/chubaofs/util"
+	"math"
 	"net"
 	"sync"
 	"time"
@@ -228,6 +230,9 @@ func (dp *DataPartition) DoRepair(repairTasks []*DataPartitionRepairTask) {
 			log.LogWarnf("AutoRepairStatus is False,so cannot Create extent(%v)", extentInfo.String())
 			continue
 		}
+		if dp.ExtentStore().IsDeletedNormalExtent(extentInfo.FileID) {
+			continue
+		}
 		store.Create(extentInfo.FileID)
 	}
 	for _, extentInfo := range repairTasks[0].ExtentsToBeRepaired {
@@ -337,6 +342,9 @@ func (dp *DataPartition) buildExtentCreationTasks(repairTasks []*DataPartitionRe
 				if extentInfo.IsDeleted {
 					continue
 				}
+				if dp.ExtentStore().IsDeletedNormalExtent(extentID){
+					continue
+				}
 				ei := &storage.ExtentInfo{Source: extentInfo.Source, FileID: extentID, Size: extentInfo.Size}
 				repairTask.ExtentsToBeCreated = append(repairTask.ExtentsToBeCreated, ei)
 				repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, ei)
@@ -362,6 +370,9 @@ func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepa
 				continue
 			}
 			if extentInfo.IsDeleted {
+				continue
+			}
+			if dp.ExtentStore().IsDeletedNormalExtent(extentID){
 				continue
 			}
 			if extentInfo.Size < maxFileInfo.Size {
@@ -459,6 +470,10 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 		return errors.Trace(err, "streamRepairExtent Watermark error")
 	}
 
+	if dp.ExtentStore().IsDeletedNormalExtent(remoteExtentInfo.FileID) {
+		return nil
+	}
+
 	if localExtentInfo.Size >= remoteExtentInfo.Size {
 		return nil
 	}
@@ -466,6 +481,9 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	sizeDiff := remoteExtentInfo.Size - localExtentInfo.Size
 	request := repl.NewExtentRepairReadPacket(dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
 	if storage.IsTinyExtent(remoteExtentInfo.FileID) {
+		if sizeDiff >= math.MaxUint32 {
+			sizeDiff = math.MaxUint32 - util.MB
+		}
 		request = repl.NewTinyExtentRepairReadPacket(dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
 	}
 	var conn *net.TCPConn
@@ -525,9 +543,6 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 				remoteExtentInfo.Source, remoteExtentInfo.Size, currFixOffset, request.GetUniqueLogId(), reply.GetUniqueLogId())
 			return errors.Trace(err, "streamRepairExtent receive data error")
 		}
-
-		AutoRepairLimiterWait()
-
 		isEmptyResponse := false
 		// Write it to local extent file
 		if storage.IsTinyExtent(uint64(localExtentInfo.FileID)) {

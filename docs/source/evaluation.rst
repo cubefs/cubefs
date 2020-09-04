@@ -6,24 +6,46 @@ Environment
 
 **Cluster Information**
 
-.. csv-table:: Cluster Information
+.. csv-table::
    :file: csv/performance-environment.csv
 
 **Volume Setup**
 
+.. csv-table::
+   :file: csv/performance-volume.csv
+
+Set volume parameters by following:
+
 .. code-block:: bash
 
-    #!/bin/bash
-    # create volume
-    curl "http://${MASTER}/admin/createVol?name=intest&owner=cfs&capacity=300000000&mpCount=10"
-    # increase 1500 data partitions
-    curl "http://${MASTER}/dataPartition/create?name=intest&count=1500"
+    $ cfs-cli volume create test-vol {owner} --capacity=300000000 --mp-count=10
+    Create a new volume:
+      Name                : test-vol
+      Owner               : ltptest
+      Dara partition size : 120 GB
+      Meta partition count: 10
+      Capacity            : 300000000 GB
+      Replicas            : 3
+      Allow follower read : Enabled
+
+    Confirm (yes/no)[yes]: yes
+    Create volume success.
+
+    $ cfs-cli volume add-dp test-vol 1490
+
+**client configuration**
+
+.. csv-table::
+   :file: csv/performance-client.csv
 
 
-- Initial number of Meta Partitions: ``10``
-- Number of Meta Replication: ``3``
-- Initial number of Data Partitions: ``1510``
-- Number of Data Replication: ``3``
+.. code-block:: bash
+
+   #get current iops, default:-1(no limits on iops)：
+   $ http://[ClientIP]:[ProfPort]/rate/get
+   #set iops
+   $ http://[ClientIP]:[ProfPort]/rate/set?write=800&read=800
+
 
 Small File Performance and Scalability
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -47,11 +69,11 @@ Small file operation performance and scalability benchmark test by mdtest_.
 **Benchmark**
 
 .. image:: pic/cfs-small-file-benchmark.png
-   :align: center
+   :align: left
    :scale: 50 %
    :alt: Small File Benchmark
 
-.. csv-table:: Small File Benchmark
+.. csv-table::
    :file: csv/cfs-small-file-benchmark.csv
 
 IO Performance and Scalability
@@ -85,34 +107,34 @@ IO Performance and benchmark scalability test by fio_.
         -nrfiles=1 \
         -size=10G
 
-**Bandwidth**
+**Bandwidth(MB/s)**
 
 .. image:: pic/cfs-fio-sequential-read-bandwidth.png
-   :align: center
+   :align: left
    :scale: 50 %
    :alt: Sequential Read Bandwidth (MB/s)
 
-.. csv-table:: Sequential Read Bandwidth (MB/s)
+.. csv-table::
    :file: csv/cfs-fio-sequential-read-bandwidth.csv
 
 **IOPS**
 
 .. image:: pic/cfs-fio-sequential-read-iops.png
-   :align: center
+   :align: left
    :scale: 50 %
    :alt: Sequential Read IOPS
 
-.. csv-table:: Sequential Read IOPS
+.. csv-table::
    :file: csv/cfs-fio-sequential-read-iops.csv
 
-**Latency**
+**Latency(Microsecond)**
 
 .. image:: pic/cfs-fio-sequential-read-latency.png
-   :align: center
+   :align: left
    :scale: 50 %
    :alt: Sequential Read Latency (Microsecond)
 
-.. csv-table:: Sequential Read Latency (Microsecond)
+.. csv-table::
    :file: csv/cfs-fio-sequential-read-latency.csv
 
 2. Sequential Write
@@ -135,34 +157,34 @@ IO Performance and benchmark scalability test by fio_.
         -nrfiles=1 \
         -size=10G
 
-**Bandwidth**
+**Bandwidth(MB/s)**
 
 .. image:: pic/cfs-fio-sequential-write-bandwidth.png
-   :align: center
+   :align: left
    :scale: 50 %
    :alt: Sequential Write Bandwidth (MB/s)
 
-.. csv-table:: Sequential Write Bandwidth (MB/s)
+.. csv-table::
    :file: csv/cfs-fio-sequential-write-bandwidth.csv
 
 **IOPS**
 
 .. image:: pic/cfs-fio-sequential-write-iops.png
-   :align: center
+   :align: left
    :scale: 50 %
    :alt: Sequential Write IOPS
 
-.. csv-table:: Sequential Write IOPS
+.. csv-table::
    :file: csv/cfs-fio-sequential-write-iops.csv
 
-**Latency**
+**Latency(Microsecond)**
 
 .. image:: pic/cfs-fio-sequential-write-latency.png
-   :align: center
+   :align: left
    :scale: 50 %
    :alt: Sequential Write Latency (Microsecond)
 
-.. csv-table:: Sequential Write Latency (Microsecond)
+.. csv-table::
    :file: csv/cfs-fio-sequential-write-latency.csv
 
 3. Random Read
@@ -187,34 +209,34 @@ IO Performance and benchmark scalability test by fio_.
         -nrfiles=1 \
         -size=10G
 
-**Bandwidth**
+**Bandwidth(MB/s)**
 
 .. image:: pic/cfs-fio-random-read-bandwidth.png
-   :align: center
+   :align: left
    :scale: 50 %
    :alt:  Random Read Bandwidth (MB/s)
 
-.. csv-table:: Random Read Bandwidth (MB/s)
+.. csv-table::
    :file: csv/cfs-fio-random-read-bandwidth.csv
 
 **IOPS**
 
 .. image:: pic/cfs-fio-random-read-iops.png
-   :align: center
+   :align: left
    :scale: 50 %
    :alt:  Random Read IOPS
 
-.. csv-table:: Random Read IOPS
+.. csv-table::
    :file: csv/cfs-fio-random-read-iops.csv
 
-**Latency**
+**Latency(Microsecond)**
 
 .. image:: pic/cfs-fio-random-read-latency.png
-   :align: center
+   :align: left
    :scale: 50 %
    :alt:  Random Read Latency (Microsecond)
 
-.. csv-table:: Random Read Latency (Microsecond)
+.. csv-table::
    :file: csv/cfs-fio-random-read-latency.csv
 
 4. Random Write
@@ -239,34 +261,34 @@ IO Performance and benchmark scalability test by fio_.
         -nrfiles=1 \
         -size=10G
 
-**Bandwidth**
+**Bandwidth(MB/s)**
 
 .. image:: pic/cfs-fio-random-write-bandwidth.png
-   :align: center
+   :align: left
    :scale: 50 %
    :alt:  Random Write Bandwidth (MB/s)
 
-.. csv-table:: Random Write Bandwidth (MB/s)
+.. csv-table::
    :file: csv/cfs-fio-random-write-bandwidth.csv
 
 **IOPS**
 
 .. image:: pic/cfs-fio-random-write-iops.png
-   :align: center
+   :align: left
    :scale: 50 %
    :alt:  Random Write IOPS
 
-.. csv-table:: Random Write IOPS
+.. csv-table::
    :file: csv/cfs-fio-random-write-iops.csv
 
 **Latency**
 
 .. image:: pic/cfs-fio-random-write-latency.png
-   :align: center
+   :align: left
    :scale: 50 %
    :alt:  Random Write Latency
 
-.. csv-table:: Random Write Latency
+.. csv-table::
    :file: csv/cfs-fio-random-write-latency.csv
 
 Metadata Performance and Scalability
@@ -290,71 +312,71 @@ Metadata performance and scalability benchmark test by mdtest_.
 **Dir Creation**
 
 .. image:: pic/cfs-mdtest-dir-creation.png
-   :align: center
+   :align: left
    :scale: 50 %
    :alt: Dir Creation
 
-.. csv-table:: Dir Creation Benchmark
+.. csv-table::
    :file: csv/cfs-mdtest-dir-creation.csv
 
 **Dir Removal**
 
 .. image:: pic/cfs-mdtest-dir-removal.png
-   :align: center
+   :align: left
    :scale: 50 %
    :alt: Dir Removal
 
-.. csv-table:: Dir Stat Benchmark
+.. csv-table::
    :file: csv/cfs-mdtest-dir-removal.csv
 
 **Dir Stat**
 
 .. image:: pic/cfs-mdtest-dir-stat.png
-   :align: center
+   :align: left
    :scale: 50 %
    :alt: Dir Stat
 
-.. csv-table:: Dir Removal Benchmark
+.. csv-table::
    :file: csv/cfs-mdtest-dir-stat.csv
 
 **File Creation**
 
 .. image:: pic/cfs-mdtest-file-creation.png
-   :align: center
+   :align: left
    :scale: 50 %
    :alt: File Creation
 
-.. csv-table:: File Creation Benchmark
+.. csv-table::
    :file: csv/cfs-mdtest-file-creation.csv
 
 **File Removal**
 
 .. image:: pic/cfs-mdtest-file-removal.png
-   :align: center
+   :align: left
    :scale: 50 %
    :alt: File Removal
 
-.. csv-table:: File Removal Benchmark
+.. csv-table::
    :file: csv/cfs-mdtest-file-removal.csv
 
 **Tree Creation**
 
 .. image:: pic/cfs-mdtest-tree-creation.png
-   :align: center
+   :align: left
    :scale: 50 %
    :alt: Tree Creation
 
-.. csv-table:: Tree Creation Benchmark
+.. csv-table::
    :file: csv/cfs-mdtest-tree-creation.csv
 
 **Tree Removal**
 
 .. image:: pic/cfs-mdtest-tree-removal.png
-   :align: center
+   :align: left
    :scale: 50 %
    :alt: Tree Removal
 
-.. csv-table:: Tree Removal Benchmark
+.. csv-table::
    :file: csv/cfs-mdtest-tree-removal.csv
 
 Integrity

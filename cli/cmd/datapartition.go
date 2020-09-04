@@ -45,7 +45,7 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 
 const (
 	cmdDataPartitionGetShort              = "Display detail information of a data partition"
-	cmdCheckCorruptDataPartitionShort     = "Check out corrupt data partitions"
+	cmdCheckCorruptDataPartitionShort     = "Check and list unhealthy data partitions"
 	cmdDataPartitionDecommissionShort     = "Decommission a replication of the data partition to a new address"
 	cmdDataPartitionReplicateShort        = "Add a replication of the data partition on a new address"
 	cmdDataPartitionDeleteReplicaShort    = "Delete a replication of the data partition on a fixed address"
@@ -64,8 +64,7 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 			)
 			defer func() {
 				if err != nil {
-					errout("Error:%v", err)
-					OsExitWithLogFlush()
+					errout("Error: %v", err)
 				}
 			}()
 			if partitionID, err = strconv.ParseUint(args[0], 10, 64); err != nil {
@@ -98,8 +97,7 @@ The "reset" command will be released in next version`,
 			)
 			defer func() {
 				if err != nil {
-					errout("Error:%v", err)
-					OsExitWithLogFlush()
+					errout("Error: %v", err)
 				}
 			}()
 			if diagnosis, err = client.AdminAPI().DiagnoseDataPartition(); err != nil {
@@ -137,6 +135,7 @@ The "reset" command will be released in next version`,
 
 			stdout("\n")
 			stdout("%v\n", "[Partition lack replicas]:")
+			stdout("%v\n", partitionInfoTableHeader)
 			sort.SliceStable(diagnosis.LackReplicaDataPartitionIDs, func(i, j int) bool {
 				return diagnosis.LackReplicaDataPartitionIDs[i] < diagnosis.LackReplicaDataPartitionIDs[j]
 			})
@@ -148,6 +147,20 @@ The "reset" command will be released in next version`,
 				}
 				if partition != nil {
 					stdout("%v\n", formatDataPartitionInfoRow(partition))
+				}
+			}
+
+
+			stdout("\n")
+			stdout("%v\n", "[Bad data partitions(decommission not completed)]:")
+			badPartitionTablePattern := "%-8v    %-10v\n"
+			stdout(badPartitionTablePattern, "PATH", "PARTITION ID")
+			for _, bdpv := range diagnosis.BadDataPartitionIDs {
+				sort.SliceStable(bdpv.PartitionIDs, func(i, j int) bool {
+					return bdpv.PartitionIDs[i] < bdpv.PartitionIDs[j]
+				})
+				for _, pid := range bdpv.PartitionIDs {
+					stdout(badPartitionTablePattern, bdpv.Path, pid)
 				}
 			}
 			return
@@ -168,8 +181,7 @@ func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 			)
 			defer func() {
 				if err != nil {
-					errout("Error:%v", err)
-					OsExitWithLogFlush()
+					errout("Error: %v", err)
 				}
 			}()
 			address := args[0]
@@ -203,8 +215,7 @@ func newDataPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 			)
 			defer func() {
 				if err != nil {
-					errout("Error:%v", err)
-					OsExitWithLogFlush()
+					errout("Error: %v", err)
 				}
 			}()
 			address := args[0]
@@ -237,8 +248,7 @@ func newDataPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 			)
 			defer func() {
 				if err != nil {
-					errout("Error:%v", err)
-					OsExitWithLogFlush()
+					errout("Error: %v", err)
 				}
 			}()
 			address := args[0]

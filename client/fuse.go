@@ -344,6 +344,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.FsyncOnClose = GlobalMountOptions[proto.FsyncOnClose].GetBool()
 	opt.MaxCPUs = GlobalMountOptions[proto.MaxCPUs].GetInt64()
 	opt.EnableXattr = GlobalMountOptions[proto.EnableXattr].GetBool()
+	opt.NearRead = GlobalMountOptions[proto.NearRead].GetBool()
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))
@@ -385,12 +386,12 @@ func checkPermission(opt *proto.MountOptions) (err error) {
 		if policy.IsOwn(opt.Volname) {
 			return
 		}
-		if policy.IsAuthorized(opt.Volname, proto.POSIXWriteAction) &&
-			policy.IsAuthorized(opt.Volname, proto.POSIXReadAction) {
+		if policy.IsAuthorized(opt.Volname, opt.SubDir, proto.POSIXWriteAction) &&
+			policy.IsAuthorized(opt.Volname, opt.SubDir, proto.POSIXReadAction) {
 			return
 		}
-		if policy.IsAuthorized(opt.Volname, proto.POSIXReadAction) &&
-			!policy.IsAuthorized(opt.Volname, proto.POSIXWriteAction) {
+		if policy.IsAuthorized(opt.Volname, opt.SubDir, proto.POSIXReadAction) &&
+			!policy.IsAuthorized(opt.Volname, opt.SubDir, proto.POSIXWriteAction) {
 			opt.Rdonly = true
 			return
 		}

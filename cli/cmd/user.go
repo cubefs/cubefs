@@ -69,8 +69,7 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 			var userType = proto.UserTypeFromString(optUserType)
 			defer func() {
 				if err != nil {
-					errout("Error:%v", err)
-					OsExitWithLogFlush()
+					errout("Error: %v", err)
 				}
 			}()
 			if !userType.Valid() {
@@ -156,8 +155,7 @@ func newUserUpdateCmd(client *master.MasterClient) *cobra.Command {
 			var userType proto.UserType
 			defer func() {
 				if err != nil {
-					errout("Error:%v", err)
-					OsExitWithLogFlush()
+					errout("Error: %v", err)
 				}
 			}()
 			if optUserType != "" {
@@ -238,8 +236,7 @@ func newUserDeleteCmd(client *master.MasterClient) *cobra.Command {
 			var userID = args[0]
 			defer func() {
 				if err != nil {
-					errout("Error:%v", err)
-					OsExitWithLogFlush()
+					errout("Error: %v", err)
 				}
 			}()
 			if !optYes {
@@ -287,8 +284,7 @@ func newUserInfoCmd(client *master.MasterClient) *cobra.Command {
 			var userInfo *proto.UserInfo
 			defer func() {
 				if err != nil {
-					errout("Error:%v", err)
-					OsExitWithLogFlush()
+					errout("Error: %v", err)
 				}
 			}()
 			if userInfo, err = client.UserAPI().GetUserInfo(userID); err != nil {
@@ -314,6 +310,7 @@ const (
 )
 
 func newUserPermCmd(client *master.MasterClient) *cobra.Command {
+	var subdir string
 	var cmd = &cobra.Command{
 		Use:   cmdUserPermUse,
 		Short: cmdUserPermShort,
@@ -325,15 +322,20 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 			var perm proto.Permission
 			defer func() {
 				if err != nil {
-					errout("Error:%v", err)
-					OsExitWithLogFlush()
+					errout("Error: %v", err)
 				}
 			}()
+
+			perm = proto.BuiltinPermissionPrefix
+			if subdir != "" && subdir != "/" {
+				perm = proto.Permission(string(perm) + subdir + ":")
+			}
+
 			switch strings.ToLower(args[2]) {
 			case "ro", "readonly":
-				perm = proto.BuiltinPermissionReadOnly
+				perm = perm + "ReadOnly"
 			case "rw", "readwrite":
-				perm = proto.BuiltinPermissionWritable
+				perm = perm + "Writable"
 			case "none":
 				perm = proto.NonePermission
 			default:
@@ -343,6 +345,7 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 			stdout("Setup volume permission\n")
 			stdout("  User ID   : %v\n", userID)
 			stdout("  Volume    : %v\n", volume)
+			stdout("  Subdir    : %v\n", subdir)
 			stdout("  Permission: %v\n", perm.ReadableString())
 
 			// ask user for confirm
@@ -380,6 +383,7 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 			return validUsers(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	cmd.Flags().StringVar(&subdir, "subdir", "", "Subdir")
 	return cmd
 }
 
@@ -398,8 +402,7 @@ func newUserListCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("Error:%v", err)
-					OsExitWithLogFlush()
+					errout("Error: %v", err)
 				}
 			}()
 			if users, err = client.UserAPI().ListUsers(optKeyword); err != nil {
@@ -434,4 +437,3 @@ func printUserInfo(userInfo *proto.UserInfo) {
 		stdout("%-20v    %-12v\n", vol, strings.Join(perms, ","))
 	}
 }
-

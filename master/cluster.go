@@ -320,6 +320,116 @@ func (c *Cluster) checkVolReduceReplicaNum() {
 	}
 }
 
+func (c *Cluster) getInvalidIDNodes() (nodes []*InvalidNodeView) {
+	metaNodes := c.getNotConsistentIDMetaNodes()
+	nodes = append(nodes, metaNodes...)
+	dataNodes := c.getNotConsistentIDDataNodes()
+	nodes = append(nodes, dataNodes...)
+	return
+}
+
+func (c *Cluster) getNotConsistentIDMetaNodes() (metaNodes []*InvalidNodeView) {
+	metaNodes = make([]*InvalidNodeView, 0)
+	c.metaNodes.Range(func(key, value interface{}) bool {
+		metanode, ok := value.(*MetaNode)
+		if !ok {
+			return true
+		}
+		notConsistent, oldID := c.hasNotConsistentIDMetaPartitions(metanode)
+		if notConsistent {
+			metaNodes = append(metaNodes, &InvalidNodeView{Addr: metanode.Addr, ID: metanode.ID, OldID: oldID, NodeType: "meta"})
+		}
+		return true
+	})
+	return
+}
+
+func (c *Cluster) hasNotConsistentIDMetaPartitions(metanode *MetaNode) (notConsistent bool, oldID uint64) {
+	safeVols := c.allVols()
+	for _, vol := range safeVols {
+		for _, mp := range vol.MetaPartitions {
+			for _, peer := range mp.Peers {
+				if peer.Addr == metanode.Addr && peer.ID != metanode.ID {
+					return true, peer.ID
+				}
+			}
+		}
+	}
+	return
+}
+
+func (c *Cluster) getNotConsistentIDDataNodes() (dataNodes []*InvalidNodeView) {
+	dataNodes = make([]*InvalidNodeView, 0)
+	c.dataNodes.Range(func(key, value interface{}) bool {
+		datanode, ok := value.(*DataNode)
+		if !ok {
+			return true
+		}
+		notConsistent, oldID := c.hasNotConsistentIDDataPartitions(datanode)
+		if notConsistent {
+			dataNodes = append(dataNodes, &InvalidNodeView{Addr: datanode.Addr, ID: datanode.ID, OldID: oldID, NodeType: "data"})
+		}
+		return true
+	})
+	return
+}
+
+func (c *Cluster) hasNotConsistentIDDataPartitions(datanode *DataNode) (notConsistent bool, oldID uint64) {
+	safeVols := c.allVols()
+	for _, vol := range safeVols {
+		for _, mp := range vol.dataPartitions.partitions {
+			for _, peer := range mp.Peers {
+				if peer.Addr == datanode.Addr && peer.ID != datanode.ID {
+					return true, peer.ID
+				}
+			}
+		}
+	}
+	return
+}
+
+func (c *Cluster) updateDataNodeBaseInfo(nodeAddr string, id uint64) (err error) {
+	c.dnMutex.Lock()
+	defer c.dnMutex.Unlock()
+	value, ok := c.dataNodes.Load(nodeAddr)
+	if !ok {
+		err = fmt.Errorf("node %v is not exist", nodeAddr)
+		return
+	}
+	dataNode := value.(*DataNode)
+	if dataNode.ID == id {
+		return
+	}
+
+	dataNode.ID = id
+	if err = c.syncUpdateDataNode(dataNode); err != nil {
+		return
+	}
+	//partitions := c.getAllMetaPartitionsByMetaNode(nodeAddr)
+	return
+}
+
+func (c *Cluster) updateMetaNodeBaseInfo(nodeAddr string, id uint64) (err error) {
+	c.mnMutex.Lock()
+	defer c.mnMutex.Unlock()
+	value, ok := c.metaNodes.Load(nodeAddr)
+	if !ok {
+		err = fmt.Errorf("node %v is not exist", nodeAddr)
+		return
+	}
+	metaNode := value.(*MetaNode)
+	if metaNode.ID == id {
+		return
+	}
+
+	metaNode.ID = id
+	if err = c.syncUpdateMetaNode(metaNode); err != nil {
+		return
+	}
+	//partitions := c.getAllMetaPartitionsByMetaNode(nodeAddr)
+	return
+}
+
 func (c *Cluster) addMetaNode(nodeAddr, zoneName string) (id uint64, err error) {
 	c.mnMutex.Lock()
 	defer c.mnMutex.Unlock()
@@ -409,6 +519,8 @@ errHandler:
 
 func (c *Cluster) checkCorruptDataPartitions() (inactiveDataNodes []string, corruptPartitions []*DataPartition, err error) {
 	partitionMap := make(map[uint64]uint8)
+	inactiveDataNodes = make([]string, 0)
+	corruptPartitions = make([]*DataPartition, 0)
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
 		if !dataNode.isActive {
@@ -441,6 +553,7 @@ func (c *Cluster) checkCorruptDataPartitions() (inactiveDataNodes []string, corr
 }
 
 func (c *Cluster) checkLackReplicaDataPartitions() (lackReplicaDataPartitions []*DataPartition, err error) {
+	lackReplicaDataPartitions = make([]*DataPartition, 0)
 	vols := c.copyVols()
 	for _, vol := range vols {
 		var dps *DataPartitionMap
@@ -858,6 +971,22 @@ func (c *Cluster) getAllMetaPartitionIDByMetaNode(addr string) (partitionIDs []u
 	return
 }
 
+func (c *Cluster) getAllMetaPartitionsByMetaNode(addr string) (partitions []*MetaPartition) {
+	partitions = make([]*MetaPartition, 0)
+	safeVols := c.allVols()
+	for _, vol := range safeVols {
+		for _, mp := range vol.MetaPartitions {
+			for _, host := range mp.Hosts {
+				if host == addr {
+					partitions = append(partitions, mp)
+					break
+				}
+			}
+		}
+	}
+	return
+}
+
 func (c *Cluster) decommissionDataNode(dataNode *DataNode) (err error) {
 	msg := fmt.Sprintf("action[decommissionDataNode], Node[%v] OffLine", dataNode.Addr)
 	log.LogWarn(msg)
@@ -978,6 +1107,9 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	dp.Status = proto.ReadOnly
 	dp.isRecover = true
 	c.putBadDataPartitionIDs(replica, offlineAddr, dp.PartitionID)
+	dp.RLock()
+	c.syncUpdateDataPartition(dp)
+	dp.RUnlock()
 	log.LogWarnf("clusterID[%v] partitionID:%v  on Node:%v offline success,newHost[%v],PersistenceHosts:[%v]",
 		c.Name, dp.PartitionID, offlineAddr, newAddr, dp.Hosts)
 	return
@@ -1204,8 +1336,14 @@ func (c *Cluster) isRecovering(dp *DataPartition, addr string) (isRecover bool) 
 }
 
 func (c *Cluster) removeDataPartitionRaftMember(dp *DataPartition, removePeer proto.Peer) (err error) {
-	dp.Lock()
-	defer dp.Unlock()
+	defer func() {
+		if err1 := c.updateDataPartitionOfflinePeerIDWithLock(dp, 0); err1 != nil {
+			err = errors.Trace(err, "updateDataPartitionOfflinePeerIDWithLock failed, err[%v]", err1)		}
+	}()
+	if err = c.updateDataPartitionOfflinePeerIDWithLock(dp, removePeer.ID); err != nil {
+		log.LogErrorf("action[removeDataPartitionRaftMember] vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
+		return
+	}
 	task, err := dp.createTaskToRemoveRaftMember(removePeer)
 	if err != nil {
 		return
@@ -1230,12 +1368,24 @@ func (c *Cluster) removeDataPartitionRaftMember(dp *DataPartition, removePeer pr
 		}
 		newPeers = append(newPeers, peer)
 	}
+	dp.Lock()
 	if err = dp.update("removeDataPartitionRaftMember", dp.VolName, newPeers, newHosts, c); err != nil {
+		dp.Unlock()
+		return
+	}
+	dp.Unlock()
+	return
+}
+
+func (c *Cluster) updateDataPartitionOfflinePeerIDWithLock(dp *DataPartition, peerID uint64) (err error) {
+	dp.Lock()
+	defer dp.Unlock()
+	dp.OfflinePeerID = peerID
+	if err = dp.update("updateDataPartitionOfflinePeerIDWithLock", dp.VolName, dp.Peers, dp.Hosts, c); err != nil {
 		return
 	}
 	return
 }
-
 func (c *Cluster) deleteDataReplica(dp *DataPartition, dataNode *DataNode) (err error) {
 	dp.Lock()
 	// in case dataNode is unreachable,update meta first.
@@ -1264,6 +1414,18 @@ func (c *Cluster) putBadMetaPartitions(addr string, partitionID uint64) {
 	c.BadMetaPartitionIds.Store(addr, newBadPartitionIDs)
 }
 
+func (c *Cluster) getBadMetaPartitionsView() (bmpvs []badPartitionView){
+	bmpvs = make([]badPartitionView, 0)
+	c.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
+		badPartitionIds := value.([]uint64)
+		path := key.(string)
+		bpv := badPartitionView{Path: path, PartitionIDs: badPartitionIds}
+		bmpvs = append(bmpvs, bpv)
+		return true
+	})
+	return
+}
+
 func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, addr string, partitionID uint64) {
 	var key string
 	newBadPartitionIDs := make([]uint64, 0)
@@ -1278,6 +1440,18 @@ func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, addr string, part
 	}
 	newBadPartitionIDs = append(newBadPartitionIDs, partitionID)
 	c.BadDataPartitionIds.Store(key, newBadPartitionIDs)
+}
+
+func (c *Cluster) getBadDataPartitionsView() (bpvs []badPartitionView){
+	bpvs = make([]badPartitionView, 0)
+	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
+		badDataPartitionIds := value.([]uint64)
+		path := key.(string)
+		bpv := badPartitionView{Path: path, PartitionIDs: badDataPartitionIds}
+		bpvs = append(bpvs, bpv)
+		return true
+	})
+	return
 }
 
 func (c *Cluster) decommissionMetaNode(metaNode *MetaNode) (err error) {

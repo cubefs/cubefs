@@ -64,8 +64,7 @@ func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 			)
 			defer func() {
 				if err != nil {
-					errout("Error:%v", err)
-					OsExitWithLogFlush()
+					errout("Error: %v", err)
 				}
 			}()
 			if partitionID, err = strconv.ParseUint(args[0], 10, 64); err != nil {
@@ -98,8 +97,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			)
 			defer func() {
 				if err != nil {
-					errout("Error:%v", err)
-					OsExitWithLogFlush()
+					errout("Error: %v", err)
 				}
 			}()
 			if diagnosis, err = client.AdminAPI().DiagnoseMetaPartition(); err != nil {
@@ -138,7 +136,8 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			}
 
 			stdout("\n")
-			stdout("%v\n", "[Partition lack replicas]:")
+			stdout("%v\n", "[Meta partition lack replicas]:")
+			stdout("%v\n", partitionInfoTableHeader)
 			sort.SliceStable(diagnosis.LackReplicaMetaPartitionIDs, func(i, j int) bool {
 				return diagnosis.LackReplicaMetaPartitionIDs[i] < diagnosis.LackReplicaMetaPartitionIDs[j]
 			})
@@ -150,6 +149,19 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 				}
 				if partition != nil {
 					stdout("%v\n", formatMetaPartitionInfoRow(partition))
+				}
+			}
+
+			stdout("\n")
+			stdout("%v\n", "[Bad meta partitions(decommission not completed)]:")
+			badPartitionTablePattern := "%-8v    %-10v\n"
+			stdout(badPartitionTablePattern, "PATH", "PARTITION ID")
+			for _, bmpv := range diagnosis.BadMetaPartitionIDs {
+				sort.SliceStable(bmpv.PartitionIDs, func(i, j int) bool {
+					return bmpv.PartitionIDs[i] < bmpv.PartitionIDs[j]
+				})
+				for _, pid := range bmpv.PartitionIDs {
+					stdout(badPartitionTablePattern, bmpv.Path, pid)
 				}
 			}
 			return
@@ -170,8 +182,7 @@ func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 			)
 			defer func() {
 				if err != nil {
-					errout("Error:%v", err)
-					OsExitWithLogFlush()
+					errout("Error: %v", err)
 				}
 			}()
 			address := args[0]
@@ -202,8 +213,7 @@ func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 			)
 			defer func() {
 				if err != nil {
-					errout("Error:%v", err)
-					OsExitWithLogFlush()
+					errout("Error: %v", err)
 				}
 			}()
 			address := args[0]
@@ -234,8 +244,7 @@ func newMetaPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 			)
 			defer func() {
 				if err != nil {
-					errout("Error:%v", err)
-					OsExitWithLogFlush()
+					errout("Error: %v", err)
 				}
 			}()
 			address := args[0]

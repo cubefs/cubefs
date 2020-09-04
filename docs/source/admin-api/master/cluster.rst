@@ -178,7 +178,7 @@ response
     ]
 
 Get Node Info
------------
+----------------------
 
 .. code-block:: bash
 
@@ -201,7 +201,7 @@ response
     }
 
 Set Node Info
------------
+-------------------
 
 .. code-block:: bash
 

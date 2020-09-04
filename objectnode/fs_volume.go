@@ -18,6 +18,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
+	"fmt"
 	"hash"
 	"io"
 	"os"
@@ -32,6 +33,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data/stream"
 	"github.com/chubaofs/chubaofs/sdk/meta"
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 
 	"github.com/chubaofs/chubaofs/util"
@@ -1044,8 +1046,10 @@ func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash) (size 
 			return
 		}
 		if readN > 0 {
-			if writeN, err = v.ec.Write(inode, offset, buf[:readN], false); err != nil {
+			if writeN, err = v.ec.Write(inode, offset, buf[:readN], 0); err != nil {
 				log.LogErrorf("streamWrite: data write tmp file fail, inode(%v) offset(%v) err(%v)", inode, offset, err)
+				exporter.Warning(fmt.Sprintf("write data fail: volume(%v) inode(%v) offset(%v) size(%v) err(%v)",
+					v.name, inode, offset, readN, err))
 				return
 			}
 			offset += writeN
@@ -1224,6 +1228,8 @@ func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) er
 		if err != nil && err != io.EOF {
 			log.LogErrorf("ReadFile: data read fail: volume(%v) path(%v) inode(%v) offset(%v) size(%v) err(%v)",
 				v.name, path, ino, offset, size, err)
+			exporter.Warning(fmt.Sprintf("read data fail: volume(%v) path(%v) inode(%v) offset(%v) size(%v) err(%v)",
+				v.name, path, ino, offset, readSize, err))
 			return err
 		}
 		if n > 0 {
@@ -1791,7 +1797,7 @@ func (v *Volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
 		})
 		var etagValue ETagValue
 		if i >= 0 && i < len(xattrs) && xattrs[i].Inode == fileInfo.Inode {
-			var xattr = xattrs[0]
+			var xattr = xattrs[i]
 			var rawETag = string(xattr.Get(XAttrKeyOSSETag))
 			if len(rawETag) == 0 {
 				rawETag = string(xattr.Get(XAttrKeyOSSETagDeprecated))
@@ -2128,7 +2134,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			return
 		}
 		if readN > 0 {
-			if writeN, err = v.ec.Write(tInodeInfo.Inode, writeOffset, buf[:readN], false); err != nil {
+			if writeN, err = v.ec.Write(tInodeInfo.Inode, writeOffset, buf[:readN], 0); err != nil {
 				log.LogErrorf("CopyFile: write target path from source fail, volume(%v) path(%v) inode(%v) target offset(%v) err(%v)",
 					v.name, targetPath, tInodeInfo.Inode, writeOffset, err)
 				return

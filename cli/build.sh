@@ -17,6 +17,6 @@ LDFlags="-X github.com/chubaofs/chubaofs/proto.Version=${Version} \
     -X 'github.com/chubaofs/chubaofs/proto.BuildTime=${BuildTime}' "
 
 go build \
-    -ldflags "${LDFLAGS}" \
+    -ldflags "${LDFlags}" \
     -o $TargetFile \
     ${SrcPath}/*.go

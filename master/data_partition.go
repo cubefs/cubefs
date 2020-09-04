@@ -46,6 +46,7 @@ type DataPartition struct {
 	modifyTime              int64
 	createTime              int64
 	lastWarnTime            int64
+	OfflinePeerID           uint64
 	FileInCoreMap           map[string]*FileInCore
 	FilesWithMissingReplica map[string]int64 // key: file name, value: last time when a missing replica is found
 }
@@ -469,6 +470,7 @@ func (partition *DataPartition) loadFile(dataNode *DataNode, resp *proto.LoadDat
 		fc.updateFileInCore(partition.PartitionID, dpf, replica, index)
 	}
 	replica.HasLoadResponse = true
+	replica.Used = resp.Used
 }
 
 func (partition *DataPartition) getReplicaIndex(addr string) (index int, err error) {
@@ -676,6 +678,7 @@ func (partition *DataPartition) ToProto(c *Cluster) *proto.DataPartitionInfo {
 		VolName:                 partition.VolName,
 		VolID:                   partition.VolID,
 		FileInCoreMap:           fileInCoreMap,
+		OfflinePeerID:           partition.OfflinePeerID,
 		FilesWithMissingReplica: partition.FilesWithMissingReplica,
 	}
 }

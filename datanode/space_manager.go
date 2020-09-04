@@ -141,7 +141,7 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace uint64, maxErrC
 		disk.RestorePartition(visitor)
 		manager.putDisk(disk)
 		err = nil
-		go disk.autoComputeExtentCrc()
+		go disk.doBackendTask()
 	}
 	return
 }

@@ -15,6 +15,8 @@
 package objectnode
 
 import (
+	"fmt"
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"hash/crc32"
 	"sync"
 	"time"
@@ -41,7 +43,13 @@ type StrictUserInfoStore struct {
 }
 
 func (s *StrictUserInfoStore) LoadUser(accessKey string) (*proto.UserInfo, error) {
-	return s.mc.UserAPI().GetAKInfo(accessKey)
+	// if error occurred when loading user, and error is not NotExist, output an ump log
+	userInfo, err := s.mc.UserAPI().GetAKInfo(accessKey)
+	if err != proto.ErrUserNotExists && err != proto.ErrAccessKeyNotExists {
+		log.LogErrorf("LoadUser: fetch user info fail: err(%v)", err)
+		exporter.Warning(fmt.Sprintf("StrictUserInfoStore load user fail: accessKey(%v) err(%v)", accessKey, err))
+	}
+	return userInfo, err
 }
 
 type CacheUserInfoStore struct {
@@ -134,35 +142,38 @@ func (us *CacheUserInfoLoader) scheduleUpdate() {
 	for {
 		select {
 		case <-t.C:
-			aks = aks[:0]
-			us.akInfoMutex.RLock()
-			for ak := range us.akInfoStore {
-				aks = append(aks, ak)
-			}
-			us.akInfoMutex.RUnlock()
-			for _, ak := range aks {
-				akPolicy, err := us.mc.UserAPI().GetAKInfo(ak)
-				if err == proto.ErrUserNotExists || err == proto.ErrAccessKeyNotExists {
-					us.akInfoMutex.Lock()
-					delete(us.akInfoStore, ak)
-					us.akInfoMutex.Unlock()
-					us.blacklist.Store(ak, time.Now())
-					log.LogDebugf("scheduleUpdate: release user info: accessKey(%v)", ak)
-					continue
-				}
-				if err != nil {
-					log.LogErrorf("scheduleUpdate: fetch user info fail: accessKey(%v), err(%v)", ak, err)
-					continue
-				}
-				us.akInfoMutex.Lock()
-				us.akInfoStore[ak] = akPolicy
-				us.akInfoMutex.Unlock()
-			}
-			t.Reset(updateUserStoreInterval)
 		case <-us.closeCh:
 			t.Stop()
 			return
 		}
+
+		aks = aks[:0]
+		us.akInfoMutex.RLock()
+		for ak := range us.akInfoStore {
+			aks = append(aks, ak)
+		}
+		us.akInfoMutex.RUnlock()
+		for _, ak := range aks {
+			akPolicy, err := us.mc.UserAPI().GetAKInfo(ak)
+			if err == proto.ErrUserNotExists || err == proto.ErrAccessKeyNotExists {
+				us.akInfoMutex.Lock()
+				delete(us.akInfoStore, ak)
+				us.akInfoMutex.Unlock()
+				us.blacklist.Store(ak, time.Now())
+				log.LogDebugf("scheduleUpdate: release user info: accessKey(%v)", ak)
+				continue
+			}
+			// if error info is not empty, it means error occurred communication with master, output an ump log
+			if err != nil {
+				log.LogErrorf("scheduleUpdate: fetch user info fail: accessKey(%v), err(%v)", ak, err)
+				exporter.Warning(fmt.Sprintf("CacheUserInfoLoader get user info fail when scheduling update: err(%v)", err))
+				break
+			}
+			us.akInfoMutex.Lock()
+			us.akInfoStore[ak] = akPolicy
+			us.akInfoMutex.Unlock()
+		}
+		t.Reset(updateUserStoreInterval)
 	}
 }
 
@@ -208,6 +219,8 @@ func (us *CacheUserInfoLoader) LoadUser(accessKey string) (*proto.UserInfo, erro
 		if err != nil {
 			if err != proto.ErrUserNotExists && err != proto.ErrAccessKeyNotExists {
 				log.LogErrorf("LoadUser: fetch user info fail: err(%v)", err)
+				// if error occurred when loading user, and error is not NotExist, output an ump log
+				exporter.Warning(fmt.Sprintf("CacheUserInfoLoader load user info fail: accessKey(%v) err(%v)", accessKey, err))
 			}
 			release()
 			us.blacklist.Store(accessKey, time.Now())

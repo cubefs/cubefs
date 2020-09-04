@@ -339,6 +339,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 
 func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) (err error) {
 	fmt.Println(fmt.Sprintf("start load metaPartition %v", id))
+	partition.ForceSetMetaPartitionToLoadding()
 	if err = partition.Start(); err != nil {
 		log.LogErrorf("load meta partition %v fail: %v", id, err)
 		return
@@ -459,14 +460,14 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) Metadata
 // if one partition does not exist in master, we decided that it is one expired partition
 func isExpiredPartition(fileName string, partitions []uint64) (expiredPartition bool) {
 	if len(partitions) == 0 {
-		return false
+		return true
 	}
 
 	partitionId := fileName[len(partitionPrefix):]
 	id, err := strconv.ParseUint(partitionId, 10, 64)
 	if err != nil {
 		log.LogWarnf("isExpiredPartition: %s, check error [%v], skip this check", partitionId, err)
-		return false
+		return true
 	}
 
 	for _, existId := range partitions {

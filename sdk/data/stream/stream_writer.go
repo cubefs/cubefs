@@ -57,7 +57,7 @@ type WriteRequest struct {
 	fileOffset int
 	size       int
 	data       []byte
-	direct     bool
+	flags      int
 	writeBytes int
 	err        error
 	done       chan struct{}
@@ -99,7 +99,7 @@ func (s *Streamer) IssueOpenRequest() error {
 	return nil
 }
 
-func (s *Streamer) IssueWriteRequest(offset int, data []byte, direct bool) (write int, err error) {
+func (s *Streamer) IssueWriteRequest(offset int, data []byte, flags int) (write int, err error) {
 	if atomic.LoadInt32(&s.status) >= StreamerError {
 		return 0, errors.New(fmt.Sprintf("IssueWriteRequest: stream writer in error status, ino(%v)", s.inode))
 	}
@@ -109,7 +109,7 @@ func (s *Streamer) IssueWriteRequest(offset int, data []byte, direct bool) (writ
 	request.data = data
 	request.fileOffset = offset
 	request.size = len(data)
-	request.direct = direct
+	request.flags = flags
 	request.done = make(chan struct{}, 1)
 	s.request <- request
 	s.writeLock.Unlock()
@@ -184,6 +184,9 @@ func (s *Streamer) server() {
 				s.client.streamerLock.Lock()
 				if s.idle >= streamWriterIdleTimeoutPeriod && len(s.request) == 0 {
 					delete(s.client.streamers, s.inode)
+					if s.client.evictIcache != nil {
+						s.client.evictIcache(s.inode)
+					}
 					s.client.streamerLock.Unlock()
 
 					// fail the remaining requests in such case
@@ -238,7 +241,7 @@ func (s *Streamer) handleRequest(request interface{}) {
 		s.open()
 		request.done <- struct{}{}
 	case *WriteRequest:
-		request.writeBytes, request.err = s.write(request.data, request.fileOffset, request.size, request.direct)
+		request.writeBytes, request.err = s.write(request.data, request.fileOffset, request.size, request.flags)
 		request.done <- struct{}{}
 	case *TruncRequest:
 		request.err = s.truncate(request.size)
@@ -256,7 +259,18 @@ func (s *Streamer) handleRequest(request interface{}) {
 	}
 }
 
-func (s *Streamer) write(data []byte, offset, size int, direct bool) (total int, err error) {
+func (s *Streamer) write(data []byte, offset, size, flags int) (total int, err error) {
+	var direct bool
+
+	if flags&proto.FlagsSyncWrite != 0 {
+		direct = true
+	}
+
+	if flags&proto.FlagsAppend != 0 {
+		filesize, _ := s.extents.Size()
+		offset = filesize
+	}
+
 	log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v)", s.inode, offset, size)
 
 	ctx := context.Background()

@@ -63,22 +63,23 @@ type DataNodeInfo struct {
 
 // MetaPartition defines the structure of a meta partition
 type MetaPartitionInfo struct {
-	PartitionID  uint64
-	Start        uint64
-	End          uint64
-	MaxInodeID   uint64
-	InodeCount   uint64
-	DentryCount  uint64
-	VolName      string
-	Replicas     []*MetaReplicaInfo
-	ReplicaNum   uint8
-	Status       int8
-	IsRecover    bool
-	Hosts        []string
-	Peers        []Peer
-	Zones        []string
-	MissNodes    map[string]int64
-	LoadResponse []*MetaPartitionLoadResponse
+	PartitionID   uint64
+	Start         uint64
+	End           uint64
+	MaxInodeID    uint64
+	InodeCount    uint64
+	DentryCount   uint64
+	VolName       string
+	Replicas      []*MetaReplicaInfo
+	ReplicaNum    uint8
+	Status        int8
+	IsRecover     bool
+	Hosts         []string
+	Peers         []Peer
+	Zones         []string
+	OfflinePeerID uint64
+	MissNodes     map[string]int64
+	LoadResponse  []*MetaPartitionLoadResponse
 }
 
 // MetaReplica defines the replica of a meta partition
@@ -168,6 +169,7 @@ type DataPartitionInfo struct {
 	MissingNodes            map[string]int64 // key: address of the missing node, value: when the node is missing
 	VolName                 string
 	VolID                   uint64
+	OfflinePeerID           uint64
 	FileInCoreMap           map[string]*FileInCore
 	FilesWithMissingReplica map[string]int64 // key: file name, value: last time when a missing replica is found
 }
@@ -205,6 +207,7 @@ type DataPartitionDiagnosis struct {
 	InactiveDataNodes           []string
 	CorruptDataPartitionIDs     []uint64
 	LackReplicaDataPartitionIDs []uint64
+	BadDataPartitionIDs         []BadPartitionView
 }
 
 // meta partition diagnosis represents the inactive meta nodes, corrupt meta partitions, and meta partitions lack of replicas
@@ -212,4 +215,5 @@ type MetaPartitionDiagnosis struct {
 	InactiveMetaNodes           []string
 	CorruptMetaPartitionIDs     []uint64
 	LackReplicaMetaPartitionIDs []uint64
+	BadMetaPartitionIDs         []BadPartitionView
 }

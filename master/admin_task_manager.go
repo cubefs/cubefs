@@ -33,6 +33,8 @@ const (
 	MaxTaskNum = 30
 
 	TaskWorkerInterval = time.Second * time.Duration(2)
+	idleConnTimeout    = 90 //seconds
+	connectTimeout     = 10 //seconds
 )
 
 // AdminTaskManager sends administration commands to the metaNode or dataNode.
@@ -41,8 +43,8 @@ type AdminTaskManager struct {
 	targetAddr string
 	TaskMap    map[string]*proto.AdminTask
 	sync.RWMutex
-	exitCh   chan struct{}
-	connPool *util.ConnectPool
+	exitCh     chan struct{}
+	connPool   *util.ConnectPool
 }
 
 func newAdminTaskManager(targetAddr, clusterID string) (sender *AdminTaskManager) {
@@ -52,7 +54,7 @@ func newAdminTaskManager(targetAddr, clusterID string) (sender *AdminTaskManager
 		clusterID:  clusterID,
 		TaskMap:    make(map[string]*proto.AdminTask),
 		exitCh:     make(chan struct{}, 1),
-		connPool:   util.NewConnectPool(),
+		connPool:   util.NewConnectPoolWithTimeout(idleConnTimeout, connectTimeout),
 	}
 	go sender.process()
 

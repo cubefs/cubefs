@@ -1,13 +1,13 @@
 ### Command examples
 
-```bash
-./fsck check inode -master "<masterAddr>" -vol "<volName>" -mport "<metanode prof port>"
-./fsck check dentry -master "<masterAddr>" -vol "<volName>" -mport "<metanode prof port>"
-./fsck check both -master "<masterAddr>" -vol "<volName>" -mport "<metanode prof port>"
-./fsck check both -vol "<volName>" --inode-list "inodes.txt" --dentry-list "dens.txt"
-./fsck clean evict -master "<masterAddr>" -vol "<volName>" -mport "<metanode prof port>"
-./fsck clean inode -master "<masterAddr>" -vol "<volName>" -mport "<metanode prof port>"
-./fsck clean inode -vol "<volName>" --inode-list "inodes.txt" --dentry-list "dens.txt"
-./fsck clean dentry -master "<masterAddr>" -vol "<volName>" -mport "<metanode prof port>"
-./fsck clean dentry -vol "<volName>" --inode-list "inodes.txt" --dentry-list "dens.txt"
+```example bash
+./fsck check inode ----master "127.0.0.1:17010" --vol "<volName>" --mport "17220"
+./fsck check dentry --master "127.0.0.1:17010" --vol "<volName>" --mport "17220"
+./fsck check both --master "127.0.0.1:17010" --vol "<volName>" --mport "17220"
+./fsck check both --vol "<volName>" --inode-list "inodes.txt" --dentry-list "dens.txt"
+./fsck clean evict --master "127.0.0.1:17010" --vol "<volName>" --mport "17220"
+./fsck clean inode --master "127.0.0.1:17010" --vol "<volName>" --mport "17220"
+./fsck clean inode --vol "<volName>" --inode-list "inodes.txt" --dentry-list "dens.txt"
+./fsck clean dentry --master "127.0.0.1:17010" --vol "<volName>" --mport "17220"
+./fsck clean dentry --vol "<volName>" --inode-list "inodes.txt" --dentry-list "dens.txt"
 ```

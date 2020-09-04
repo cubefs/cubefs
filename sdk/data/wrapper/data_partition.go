@@ -31,6 +31,7 @@ type DataPartition struct {
 	proto.DataPartitionResponse
 	RandomWrite   bool
 	PartitionType string
+	NearHosts     []string
 	ClientWrapper *Wrapper
 	Metrics       *DataPartitionMetrics
 }
@@ -61,8 +62,8 @@ func NewDataPartitionMetrics() *DataPartitionMetrics {
 
 // String returns the string format of the data partition.
 func (dp *DataPartition) String() string {
-	return fmt.Sprintf("PartitionID(%v) Status(%v) ReplicaNum(%v) PartitionType(%v) Hosts(%v)",
-		dp.PartitionID, dp.Status, dp.ReplicaNum, dp.PartitionType, dp.Hosts)
+	return fmt.Sprintf("PartitionID(%v) Status(%v) ReplicaNum(%v) PartitionType(%v) Hosts(%v) NearHosts(%v)",
+		dp.PartitionID, dp.Status, dp.ReplicaNum, dp.PartitionType, dp.Hosts, dp.NearHosts)
 }
 
 func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {
