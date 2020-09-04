@@ -24,6 +24,32 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
+const (
+	KFasterRandomSelectorName = "kfaster"
+)
+
+func init() {
+	_ = RegisterDataPartitionSelector(KFasterRandomSelectorName, newKFasterRandomSelector)
+}
+
+func newKFasterRandomSelector(selectorParam string) (selector DataPartitionSelector, e error) {
+	param, err := strconv.Atoi(selectorParam)
+	if err != nil {
+		return nil, fmt.Errorf("KFasterRandomSelector: get param failed[%v]", err)
+	}
+
+	if (param <= 0) || (param >= 100) {
+		return nil, fmt.Errorf("KFasterRandomSelector: invalid param[%v]", param)
+	}
+
+	selector = &KFasterRandomSelector{
+		kValueHundred: param,
+		partitions:    make([]*DataPartition, 0),
+	}
+	log.LogInfof("KFasterRandomSelector: init selector success, kValueHundred is %v", param)
+	return
+}
+
 type KFasterRandomSelector struct {
 	sync.RWMutex
 	kValueHundred int
@@ -31,24 +57,11 @@ type KFasterRandomSelector struct {
 	partitions    []*DataPartition
 }
 
-func (s *KFasterRandomSelector) InitFunc(dpSelectorParm string) (err error) {
-	param, err := strconv.Atoi(dpSelectorParm)
-	if err != nil {
-		return fmt.Errorf("KFasterRandomSelector: get param failed[%v]", err)
-	}
-
-	if (param <= 0) || (param >= 100) {
-		return fmt.Errorf("KFasterRandomSelector: invalid param[%v]", param)
-	}
-
-	s.kValueHundred = param
-	s.partitions = make([]*DataPartition, 0)
-	log.LogInfof("KFasterRandomSelector: init selector success, kValueHundred is %v", s.kValueHundred)
-
-	return
+func (s *KFasterRandomSelector) Name() string {
+	return KFasterRandomSelectorName
 }
 
-func (s *KFasterRandomSelector) RefreshFunc(partitions []*DataPartition) (err error) {
+func (s *KFasterRandomSelector) Refresh(partitions []*DataPartition) (err error) {
 	kValue := (len(partitions)-1)*s.kValueHundred/100 + 1
 	selectKminDataPartition(partitions, kValue)
 
@@ -60,7 +73,7 @@ func (s *KFasterRandomSelector) RefreshFunc(partitions []*DataPartition) (err er
 	return
 }
 
-func (s *KFasterRandomSelector) SelectFunc(exclude map[string]struct{}) (dp *DataPartition, err error) {
+func (s *KFasterRandomSelector) Select(exclude map[string]struct{}) (dp *DataPartition, err error) {
 	s.RLock()
 	partitions := s.partitions
 	kValue := s.kValue
@@ -108,7 +121,7 @@ func (s *KFasterRandomSelector) SelectFunc(exclude map[string]struct{}) (dp *Dat
 	return nil, fmt.Errorf("no writable data partition")
 }
 
-func (s *KFasterRandomSelector) RemoveDpFunc(partitionID uint64) {
+func (s *KFasterRandomSelector) RemoveDP(partitionID uint64) {
 	s.RLock()
 	partitions := s.partitions
 	s.RUnlock()
@@ -123,7 +136,7 @@ func (s *KFasterRandomSelector) RemoveDpFunc(partitionID uint64) {
 	newRwPartition = append(newRwPartition, partitions[:i]...)
 	newRwPartition = append(newRwPartition, partitions[i+1:]...)
 
-	s.RefreshFunc(newRwPartition)
+	s.Refresh(newRwPartition)
 
 	return
 }

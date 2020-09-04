@@ -24,20 +24,33 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
+const (
+	DefaultRandomSelectorName = "default"
+)
+
+func init() {
+	_ = RegisterDataPartitionSelector(DefaultRandomSelectorName, newDefaultRandomSelector)
+}
+
+func newDefaultRandomSelector(_ string) (selector DataPartitionSelector, e error) {
+	selector = &DefaultRandomSelector{
+		localLeaderPartitions: make([]*DataPartition, 0),
+		partitions:            make([]*DataPartition, 0),
+	}
+	return
+}
+
 type DefaultRandomSelector struct {
 	sync.RWMutex
 	localLeaderPartitions []*DataPartition
 	partitions            []*DataPartition
 }
 
-func (s *DefaultRandomSelector) InitFunc(string) (err error) {
-	s.localLeaderPartitions = make([]*DataPartition, 0)
-	s.partitions = make([]*DataPartition, 0)
-	log.LogInfof("DefaultRandomSelector: init selector success")
-	return
+func (s *DefaultRandomSelector) Name() string {
+	return DefaultRandomSelectorName
 }
 
-func (s *DefaultRandomSelector) RefreshFunc(partitions []*DataPartition) (err error) {
+func (s *DefaultRandomSelector) Refresh(partitions []*DataPartition) (err error) {
 	var localLeaderPartitions []*DataPartition
 	for i := 0; i < len(partitions); i++ {
 		if strings.Split(partitions[i].Hosts[0], ":")[0] == LocalIP {
@@ -53,7 +66,7 @@ func (s *DefaultRandomSelector) RefreshFunc(partitions []*DataPartition) (err er
 	return
 }
 
-func (s *DefaultRandomSelector) SelectFunc(exclude map[string]struct{}) (dp *DataPartition, err error) {
+func (s *DefaultRandomSelector) Select(exclude map[string]struct{}) (dp *DataPartition, err error) {
 	dp = s.getLocalLeaderDataPartition(exclude)
 	if dp != nil {
 		return dp, nil
@@ -72,7 +85,7 @@ func (s *DefaultRandomSelector) SelectFunc(exclude map[string]struct{}) (dp *Dat
 	return nil, fmt.Errorf("no writable data partition")
 }
 
-func (s *DefaultRandomSelector) RemoveDpFunc(partitionID uint64) {
+func (s *DefaultRandomSelector) RemoveDP(partitionID uint64) {
 	s.RLock()
 	rwPartitionGroups := s.partitions
 	localLeaderPartitions := s.localLeaderPartitions
