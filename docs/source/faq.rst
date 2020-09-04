@@ -220,7 +220,7 @@ Prepare the new dn and mn, start it by json configuration file with the current 
 Zone
 -------------------
 
-Setting the zone can prevent the failure of a single zone witch causes the entire cluster unavailable. If parameter `cell` is set correctly, the node will automatically join the zone(cell).
+Setting the zone can prevent the failure of a single zone witch causes the entire cluster unavailable. If parameter `zoneName` is set correctly, the node will automatically join the zone(cell).
 
 1. See zones list
 
