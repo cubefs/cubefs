@@ -40,14 +40,14 @@ type DataPartition struct {
 	sync.RWMutex
 	total                   uint64
 	used                    uint64
-	MissingNodes            map[string]int64 // key: address of the missing node, value: when the node is missing
+	MissingNodes            map[string]int64 `graphql:"-"` // key: address of the missing node, value: when the node is missing
 	VolName                 string
 	VolID                   uint64
 	modifyTime              int64
 	createTime              int64
 	lastWarnTime            int64
-	FileInCoreMap           map[string]*FileInCore
-	FilesWithMissingReplica map[string]int64 // key: file name, value: last time when a missing replica is found
+	FileInCoreMap           map[string]*FileInCore `graphql:"-"`
+	FilesWithMissingReplica map[string]int64       `graphql:"-"` // key: file name, value: last time when a missing replica is found
 }
 
 func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64) (partition *DataPartition) {
