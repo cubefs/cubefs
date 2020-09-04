@@ -23,7 +23,7 @@ import (
 // DataReplica represents the replica of a data partition
 type DataReplica struct {
 	proto.DataReplica
-	dataNode *DataNode
+	dataNode *DataNode `graphql:"-"`
 	loc      uint8
 }
 
