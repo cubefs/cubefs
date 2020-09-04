@@ -147,6 +147,28 @@ func (s *ClusterService) registerObject(schema *schemabuilder.Schema) {
 		return n.metaPartitionInfos
 	})
 
+	object = schema.Object("metaPartition", MetaPartition{})
+	object.FieldFunc("missNodes", func(ctx context.Context, n *MetaPartition) []string {
+		var addrs []string
+		n.RLock()
+		defer n.RUnlock()
+		for addr, _ := range n.MissNodes {
+			addrs = append(addrs, addr)
+		}
+		return addrs
+	})
+
+	object = schema.Object("dataPartition", DataPartition{})
+	object.FieldFunc("missNodes", func(ctx context.Context, n *DataPartition) []string {
+		var addrs []string
+		n.RLock()
+		defer n.RUnlock()
+		for addr, _ := range n.MissingNodes {
+			addrs = append(addrs, addr)
+		}
+		return addrs
+	})
+
 }
 
 func (s *ClusterService) registerQuery(schema *schemabuilder.Schema) {
