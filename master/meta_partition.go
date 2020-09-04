@@ -57,7 +57,7 @@ type MetaPartition struct {
 	volName      string
 	Hosts        []string
 	Peers        []proto.Peer
-	MissNodes    map[string]int64
+	MissNodes    map[string]int64 `graphql:"-"`
 	LoadResponse []*proto.MetaPartitionLoadResponse
 	sync.RWMutex
 }
