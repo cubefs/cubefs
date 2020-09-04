@@ -101,6 +101,8 @@ func (s *VolumeService) registerObject(schema *schemabuilder.Schema) {
 			return 0, err
 		}
 		var count uint64 = 0
+		v.mpsLock.RLock()
+		defer v.mpsLock.RUnlock()
 		for _, p := range v.MetaPartitions {
 			count += p.InodeCount
 		}

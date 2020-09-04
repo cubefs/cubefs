@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -154,13 +153,14 @@ func (s *ClusterService) registerQuery(schema *schemabuilder.Schema) {
 	query := schema.Query()
 	query.FieldFunc("clusterView", s.clusterView)
 	query.FieldFunc("dataNodeList", s.dataNodeList)
-	query.FieldFunc("dataNodeListTest", s.dataNodeListTest)
 	query.FieldFunc("dataNodeGet", s.dataNodeGet)
 	query.FieldFunc("metaNodeList", s.metaNodeList)
 	query.FieldFunc("metaNodeGet", s.metaNodeGet)
 	query.FieldFunc("masterList", s.masterList)
 	query.FieldFunc("getTopology", s.getTopology)
 	query.FieldFunc("alarmList", s.alarmList)
+	query.FieldFunc("metaPartitionList", s.metaPartitionList)
+	query.FieldFunc("dataPartitionList", s.dataPartitionList)
 }
 
 func (s *ClusterService) registerMutation(schema *schemabuilder.Schema) {
@@ -379,34 +379,6 @@ func (s *ClusterService) dataNodeList(ctx context.Context, args struct{}) ([]*Da
 	return all, nil
 }
 
-func (s *ClusterService) dataNodeListTest(ctx context.Context, args struct {
-	Num int64
-}) ([]*DataNode, error) {
-	if _, _, err := permissions(ctx, ADMIN); err != nil {
-		return nil, err
-	}
-	var all []*DataNode
-
-	for i := 0; i < int(args.Num); i++ {
-		all = append(all, &DataNode{
-			Total:          uint64(i),
-			Used:           1,
-			AvailableSpace: 1,
-			ID:             1,
-			ZoneName:       "123",
-			Addr:           "123123121231",
-			ReportTime:     time.Time{},
-			isActive:       false,
-			RWMutex:        sync.RWMutex{},
-			UsageRatio:     1,
-			SelectedTimes:  2,
-			Carry:          3,
-		})
-	}
-
-	return all, nil
-}
-
 func (s *ClusterService) metaNodeGet(ctx context.Context, args struct {
 	Addr string
 }) (*MetaNode, error) {
@@ -430,6 +402,22 @@ func (s *ClusterService) metaNodeList(ctx context.Context, args struct{}) ([]*Me
 		return true
 	})
 	return all, nil
+}
+
+func (s *ClusterService) metaPartitionList(ctx context.Context, args struct{}) ([]*MetaPartition, error) {
+	var result []*MetaPartition
+	for _, vol := range s.cluster.allVols() {
+		result = append(result, vol.allMetaPartition()...)
+	}
+	return result, nil
+}
+
+func (s *ClusterService) dataPartitionList(ctx context.Context, args struct{}) ([]*DataPartition, error) {
+	var result []*DataPartition
+	for _, vol := range s.cluster.allVols() {
+		result = append(result, vol.allDataPartition()...)
+	}
+	return result, nil
 }
 
 func (m *ClusterService) addMetaNode(ctx context.Context, args struct {
