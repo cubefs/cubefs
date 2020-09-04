@@ -34,8 +34,8 @@ type DataPartition struct {
 	ReplicaNum     uint8
 	Status         int8
 	isRecover      bool
-	Replicas       []*DataReplica
-	Hosts          []string // host addresses
+	Replicas       []*DataReplica `graphql:"-"`
+	Hosts          []string       // host addresses
 	Peers          []proto.Peer
 	sync.RWMutex
 	total                   uint64
