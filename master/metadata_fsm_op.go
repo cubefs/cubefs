@@ -32,22 +32,27 @@ import (
    transferred over the network. */
 
 type clusterValue struct {
-	Name                        string
-	Threshold                   float32
-	DisableAutoAllocate         bool
-	DataNodeDeleteLimitRate     uint64
-	MetaNodeDeleteBatchCount    uint64
-	MetaNodeDeleteWorkerSleepMs uint64
+	Name                                string
+	Threshold                           float32
+	DisableAutoAllocate                 bool
+	DataNodeDeleteLimitRate             uint64
+	MetaNodeDeleteBatchCount            uint64
+	MetaNodeDeleteWorkerSleepMs         uint64
+	poolSizeOfDataPartitionsInRecover   uint64
+	poolSizeOfMetaPartitionsInRecover   uint64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
 	cv = &clusterValue{
-		Name:                        c.Name,
-		Threshold:                   c.cfg.MetaNodeThreshold,
-		DataNodeDeleteLimitRate:     c.cfg.DataNodeDeleteLimitRate,
-		MetaNodeDeleteBatchCount:    c.cfg.MetaNodeDeleteBatchCount,
-		MetaNodeDeleteWorkerSleepMs: c.cfg.MetaNodeDeleteWorkerSleepMs,
-		DisableAutoAllocate:         c.DisableAutoAllocate,
+		Name:                              c.Name,
+		Threshold:                         c.cfg.MetaNodeThreshold,
+		DataNodeDeleteLimitRate:           c.cfg.DataNodeDeleteLimitRate,
+		MetaNodeDeleteBatchCount:          c.cfg.MetaNodeDeleteBatchCount,
+		MetaNodeDeleteWorkerSleepMs:       c.cfg.MetaNodeDeleteWorkerSleepMs,
+		DisableAutoAllocate:               c.DisableAutoAllocate,
+		poolSizeOfDataPartitionsInRecover: c.cfg.dataPartitionsRecoverPoolSize,
+		poolSizeOfMetaPartitionsInRecover: c.cfg.metaPartitionsRecoverPoolSize,
+
 	}
 	return cv
 }
@@ -132,7 +137,6 @@ type volValue struct {
 	Owner             string
 	FollowerRead      bool
 	Authenticate      bool
-	CrossZone         bool
 	EnableToken       bool
 	ZoneName          string
 	OSSAccessKey      string
@@ -158,7 +162,6 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		Owner:             vol.Owner,
 		FollowerRead:      vol.FollowerRead,
 		Authenticate:      vol.authenticate,
-		CrossZone:         vol.crossZone,
 		ZoneName:          vol.zoneName,
 		EnableToken:       vol.enableToken,
 		OSSAccessKey:      vol.OSSAccessKey,
@@ -521,7 +524,11 @@ func (c *Cluster) updateMetaNodeDeleteBatchCount(val uint64) {
 func (c *Cluster) updateMetaNodeDeleteWorkerSleepMs(val uint64) {
 	atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, val)
 }
+func (c *Cluster) updateRecoverPoolSize(dpPoolSize, mpPoolSize uint64) {
+	atomic.StoreUint64(&c.cfg.dataPartitionsRecoverPoolSize, dpPoolSize)
+	atomic.StoreUint64(&c.cfg.metaPartitionsRecoverPoolSize, mpPoolSize)
 
+}
 func (c *Cluster) updateDataNodeDeleteLimitRate(val uint64) {
 	atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, val)
 }
@@ -543,6 +550,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateMetaNodeDeleteBatchCount(cv.MetaNodeDeleteBatchCount)
 		c.updateMetaNodeDeleteWorkerSleepMs(cv.MetaNodeDeleteWorkerSleepMs)
 		c.updateDataNodeDeleteLimitRate(cv.DataNodeDeleteLimitRate)
+		c.updateRecoverPoolSize(cv.poolSizeOfDataPartitionsInRecover, cv.poolSizeOfMetaPartitionsInRecover)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}
 	return

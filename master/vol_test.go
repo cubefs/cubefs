@@ -5,6 +5,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"strings"
 	"testing"
 	"time"
 )
@@ -39,7 +40,7 @@ func TestCheckVol(t *testing.T) {
 func TestVol(t *testing.T) {
 	capacity := 200
 	name := "test1"
-	createVol(name, t)
+	createVol(name, testZone2, t)
 	//report mp/dp info to master
 	server.cluster.checkDataNodeHeartbeat()
 	server.cluster.checkDataNodeHeartbeat()
@@ -56,7 +57,7 @@ func TestVol(t *testing.T) {
 	}
 	vol.checkStatus(server.cluster)
 	getVol(name, t)
-	updateVol(name, capacity, t)
+	updateVol(name, "", capacity, t)
 	statVol(name, t)
 	markDeleteVol(name, t)
 	getSimpleVol(name, t)
@@ -64,8 +65,8 @@ func TestVol(t *testing.T) {
 	vol.deleteVolFromStore(server.cluster)
 }
 
-func createVol(name string, t *testing.T) {
-	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfs&mpCount=2&zoneName=%v", hostAddr, proto.AdminCreateVol, name,testZone2)
+func createVol(name, zone string, t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfs&mpCount=2&zoneName=%v", hostAddr, proto.AdminCreateVol, name, zone)
 	fmt.Println(reqURL)
 	process(reqURL, t)
 	vol, err := server.cluster.getVol(name)
@@ -75,6 +76,45 @@ func createVol(name string, t *testing.T) {
 	}
 	checkDataPartitionsWritableTest(vol, t)
 	checkMetaPartitionsWritableTest(vol, t)
+}
+
+func TestVolMultiZone(t *testing.T) {
+	zoneList := []string{testZone1, testZone2, testZone3}
+	zone := strings.Join(zoneList, ",")
+	fmt.Printf(strings.Join(zoneList, ","))
+	// add meta node
+	addMetaServer(mms7Addr, testZone3)
+	addMetaServer(mms8Addr, testZone3)
+	// add data node
+	addDataServer(mds6Addr, testZone3)
+	addDataServer(mds7Addr, testZone3)
+	testMultiZone := "multiZone"
+
+	createVol(testMultiZone, zone, t)
+	//report mp/dp info to master
+	server.cluster.checkDataNodeHeartbeat()
+	server.cluster.checkDataNodeHeartbeat()
+	time.Sleep(5 * time.Second)
+	//check status
+	server.cluster.checkMetaPartitions()
+	server.cluster.checkDataPartitions()
+	server.cluster.checkLoadMetaPartitions()
+	server.cluster.doLoadDataPartitions()
+	vol, err := server.cluster.getVol(testMultiZone)
+	if err != nil {
+		t.Errorf("err is %v", err)
+		return
+	}
+	vol.checkStatus(server.cluster)
+	getVol(testMultiZone, t)
+	updateVol(testMultiZone, testZone2, 200, t)
+	server.cluster.repairDataPartition()
+	server.cluster.repairMetaPartition()
+	statVol(testMultiZone, t)
+	markDeleteVol(testMultiZone, t)
+	getSimpleVol(testMultiZone, t)
+	vol.checkStatus(server.cluster)
+	vol.deleteVolFromStore(server.cluster)
 }
 
 func checkDataPartitionsWritableTest(vol *Vol, t *testing.T) {
@@ -130,9 +170,9 @@ func getVol(name string, t *testing.T) {
 	process(reqURL, t)
 }
 
-func updateVol(name string, capacity int, t *testing.T) {
-	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v",
-		hostAddr, proto.AdminUpdateVol, name, capacity, buildAuthKey("cfs"))
+func updateVol(name, zone string, capacity int, t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v&zoneName=%v",
+		hostAddr, proto.AdminUpdateVol, name, capacity, buildAuthKey("cfs"), zone)
 	fmt.Println(reqURL)
 	process(reqURL, t)
 	vol, err := server.cluster.getVol(name)
@@ -142,6 +182,13 @@ func updateVol(name string, capacity int, t *testing.T) {
 	}
 	if vol.Capacity != uint64(capacity) {
 		t.Errorf("update vol failed,expect[%v],real[%v]", capacity, vol.Capacity)
+		return
+	}
+	if zone == "" {
+		return
+	}
+	if vol.zoneName != zone {
+		t.Errorf("update vol failed,expect[%v],real[%v]", zone, vol.zoneName)
 		return
 	}
 }
@@ -213,7 +260,7 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 	var volID uint64 = 1
 	var createTime = time.Now().Unix()
 	vol := newVol(volID, name, name, "", util.DefaultDataPartitionSize, 100, defaultReplicaNum,
-		defaultReplicaNum, false, false, false, false, createTime, "")
+		defaultReplicaNum, false, false, false, createTime, "")
 	// unavailable mp
 	mp1 := newMetaPartition(1, 1, defaultMaxMetaPartitionInodeID, 3, name, volID)
 	vol.addMetaPartition(mp1)

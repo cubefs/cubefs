@@ -65,3 +65,40 @@ func RandomString(length int, seed RandomSeed) string {
 	}
 	return result
 }
+func Intersect(string1, string2 []string) (inter []string) {
+	m := make(map[string]int)
+	for _,v := range string1 {
+		m[v]++
+	}
+
+	for _,v := range string2 {
+		times, ok := m[v]
+		if ok && times > 0 {
+			inter = append(inter, v)
+			m[v]--
+		}
+	}
+	return
+}
+
+func Projective(long, short []string) (result []string) {
+	if len(short) == 0 {
+		return long
+	}
+	if len(Intersect(long, short)) < len(short) {
+		return make([]string, 0)
+	}
+	m := make(map[string]int)
+	for _,v := range short {
+		m[v]++
+	}
+	for _, s := range long {
+		times, ok := m[s]
+		if times > 0 && ok {
+			m[s]--
+		} else {
+			result = append(result, s)
+		}
+	}
+	return result
+}

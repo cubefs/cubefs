@@ -7,7 +7,7 @@
   "raftDir": "/cfs/log",
   "consulAddr": "http://192.168.0.101:8500",
   "exporterPort": 9500,
-  "zoneName": "zone-01",
+  "zoneName": "zone-03",
   "logDir": "/cfs/log",
   "logLevel": "info",
   "disks": [

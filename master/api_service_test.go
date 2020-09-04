@@ -43,6 +43,8 @@ const (
 	mds3Addr          = "127.0.0.1:9103"
 	mds4Addr          = "127.0.0.1:9104"
 	mds5Addr          = "127.0.0.1:9105"
+	mds6Addr          = "127.0.0.1:9106"
+	mds7Addr          = "127.0.0.1:9107"
 
 	mms1Addr      = "127.0.0.1:8101"
 	mms2Addr      = "127.0.0.1:8102"
@@ -50,9 +52,12 @@ const (
 	mms4Addr      = "127.0.0.1:8104"
 	mms5Addr      = "127.0.0.1:8105"
 	mms6Addr      = "127.0.0.1:8106"
+	mms7Addr      = "127.0.0.1:8107"
+	mms8Addr      = "127.0.0.1:8108"
 	commonVolName = "commonVol"
 	testZone1     = "zone1"
 	testZone2     = "zone2"
+	testZone3     = "zone3"
 
 	testUserID  = "testUser"
 	ak          = "0123456789123456"
@@ -101,8 +106,10 @@ func createDefaultMasterServerForTest() *Server {
 	testServer.cluster.checkDataNodeHeartbeat()
 	testServer.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
+	testServer.cluster.repairDataPartition()
+	testServer.cluster.repairMetaPartition()
 	testServer.cluster.scheduleToUpdateStatInfo()
-	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 100, false, false, false, false)
+	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 100, false, false, false)
 	if err != nil {
 		panic(err)
 	}
@@ -294,7 +301,7 @@ func decommissionDisk(addr, path string, t *testing.T) {
 
 func TestMarkDeleteVol(t *testing.T) {
 	name := "delVol"
-	createVol(name, t)
+	createVol(name, testZone2, t)
 	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey("cfs"))
 	process(reqURL, t)
 	userInfo, err := server.user.getUserInfo("cfs")

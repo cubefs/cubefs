@@ -49,6 +49,7 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolDeleteCmd(client),
 		newVolTransferCmd(client),
 		newVolAddDPCmd(client),
+		newVolSetCmd(client),
 	)
 	return cmd
 }
@@ -93,6 +94,7 @@ const (
 	cmdVolDefaultCapacity       = 10 // 100GB
 	cmdVolDefaultReplicas       = 3
 	cmdVolDefaultFollowerReader = true
+	cmdVolDefaultZoneName       = "default"
 )
 
 func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
@@ -102,6 +104,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optReplicas int
 	var optFollowerRead bool
 	var optYes bool
+	var optZoneName string
 	var cmd = &cobra.Command{
 		Use:   cmdVolCreateUse,
 		Short: cmdVolCreateShort,
@@ -121,6 +124,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  Capacity            : %v GB\n", optCapacity)
 				stdout("  Replicas            : %v\n", optReplicas)
 				stdout("  Allow follower read : %v\n", formatEnabledDisabled(optFollowerRead))
+				stdout("  ZoneName            : %v\n", optZoneName)
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -130,9 +134,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
-			err = client.AdminAPI().CreateVolume(
-				volumeName, userID, optMPCount, optDPSize,
-				optCapacity, optReplicas, optFollowerRead)
+			err = client.AdminAPI().CreateVolume(volumeName, userID, optMPCount, optDPSize, optCapacity, optReplicas, optFollowerRead, optZoneName)
 			if err != nil {
 				errout("Create volume failed case:\n%v\n", err)
 				os.Exit(1)
@@ -144,8 +146,9 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optMPCount, CliFlagMetaPartitionCount, cmdVolDefaultMPCount, "Specify init meta partition count")
 	cmd.Flags().Uint64Var(&optDPSize, CliFlagDataPartitionSize, cmdVolDefaultDPSize, "Specify size of data partition size [Unit: GB]")
 	cmd.Flags().Uint64Var(&optCapacity, CliFlagCapacity, cmdVolDefaultCapacity, "Specify volume capacity [Unit: GB]")
-	cmd.Flags().IntVar(&optReplicas, CliFlagReplicas, cmdVolDefaultReplicas, "Specify volume replicas number")
+	cmd.Flags().IntVar(&optReplicas, CliFlagReplicas, cmdVolDefaultReplicas, "Specify data partition replicas number")
 	cmd.Flags().BoolVar(&optFollowerRead, CliFlagEnableFollowerRead, cmdVolDefaultFollowerReader, "Enable read form replica follower")
+	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, cmdVolDefaultZoneName, "Specify volume zone name")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	return cmd
 }
@@ -153,8 +156,136 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 const (
 	cmdVolInfoUse   = "info [VOLUME NAME]"
 	cmdVolInfoShort = "Show volume information"
+	cmdVolSetShort  = "Set configuration of the volume"
 )
+func newVolSetCmd(client *master.MasterClient) *cobra.Command {
+	var optCapacity uint64
+	var optReplicas int
+	var optFollowerRead string
+	var optAuthenticate string
+	var optEnableToken string
+	var optZoneName string
+	var optYes bool
+	var confirmString = strings.Builder{}
+	var vv *proto.SimpleVolView
+	var cmd = &cobra.Command{
+		Use:   CliOpSet + " [VOLUME NAME]",
+		Short: cmdVolSetShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var volumeName = args[0]
+			var isChange = false
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+			if vv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
+				return
+			}
+			confirmString.WriteString("Volume configuration changes:\n")
+			confirmString.WriteString(fmt.Sprintf("  Name                : %v\n", vv.Name))
+			if optCapacity > 0 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  Capacity            : %v GB -> %v GB\n", vv.Capacity, optCapacity))
+				vv.Capacity = optCapacity
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Capacity            : %v GB\n", vv.Capacity))
+			}
+			if optReplicas > 0 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  Replicas            : %v -> %v\n", vv.DpReplicaNum, optReplicas))
+				vv.DpReplicaNum = uint8(optReplicas)
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Replicas            : %v\n", vv.DpReplicaNum))
+			}
+			if optFollowerRead != "" {
+				isChange = true
+				var enable bool
+				if enable, err = strconv.ParseBool(optFollowerRead); err != nil {
+					return
+				}
+				confirmString.WriteString(fmt.Sprintf("  Allow follower read : %v -> %v\n", formatEnabledDisabled(vv.FollowerRead), formatEnabledDisabled(enable)))
+				vv.FollowerRead = enable
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Allow follower read : %v\n", formatEnabledDisabled(vv.FollowerRead)))
+			}
 
+			if optAuthenticate != "" {
+				isChange = true
+				var enable bool
+				if enable, err = strconv.ParseBool(optAuthenticate); err != nil {
+					return
+				}
+				confirmString.WriteString(fmt.Sprintf("  Authenticate        : %v -> %v\n", formatEnabledDisabled(vv.Authenticate), formatEnabledDisabled(enable)))
+				vv.Authenticate = enable
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Authenticate        : %v\n", formatEnabledDisabled(vv.Authenticate)))
+			}
+			if optEnableToken != "" {
+				isChange = true
+				var enable bool
+				if enable, err = strconv.ParseBool(optEnableToken); err != nil {
+					return
+				}
+				confirmString.WriteString(fmt.Sprintf("  EnableToken         : %v -> %v\n", formatEnabledDisabled(vv.EnableToken), formatEnabledDisabled(enable)))
+				vv.EnableToken = enable
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  EnableToken         : %v\n", formatEnabledDisabled(vv.EnableToken)))
+			}
+			if vv.CrossZone == false && "" != optZoneName {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v -> %v\n", vv.ZoneName, optZoneName))
+				vv.ZoneName = optZoneName
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v\n", vv.ZoneName))
+			}
+			if vv.CrossZone == true && "" != optZoneName {
+				err = fmt.Errorf("Can not set zone name of the volume that cross zone\n")
+			}
+			if err != nil {
+				return
+			}
+			if !isChange {
+				stdout("No changes has been set.\n")
+				return
+			}
+			// ask user for confirm
+			if !optYes {
+				stdout(confirmString.String())
+				stdout("\nConfirm (yes/no)[yes]: ")
+				var userConfirm string
+				_, _ = fmt.Scanln(&userConfirm)
+				if userConfirm != "yes" && len(userConfirm) != 0 {
+					err = fmt.Errorf("Abort by user.\n")
+					return
+				}
+			}
+			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum),
+				vv.FollowerRead, vv.Authenticate, vv.EnableToken, calcAuthKey(vv.Owner), vv.ZoneName)
+			if err != nil {
+				return
+			}
+			stdout("Volume configuration has been set successfully.\n")
+			return
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().Uint64Var(&optCapacity, CliFlagCapacity, 0, "Specify volume capacity [Unit: GB]")
+	cmd.Flags().IntVar(&optReplicas, CliFlagReplicas, 0, "Specify data partition replicas number")
+	cmd.Flags().StringVar(&optFollowerRead, CliFlagEnableFollowerRead, "", "Enable read form replica follower")
+	cmd.Flags().StringVar(&optAuthenticate, CliFlagAuthenticate, "", "Enable authenticate")
+	cmd.Flags().StringVar(&optEnableToken, CliFlagEnableToken, "", "ReadOnly/ReadWrite token validation for fuse client")
+	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, "", "Specify volume zone name")
+	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+	return cmd
+}
 func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 	var (
 		optMetaDetail bool

@@ -20,8 +20,9 @@ func buildPanicVol() *Vol {
 		return nil
 	}
 	var createTime = time.Now().Unix() // record create time of this volume
-	vol := newVol(id, commonVol.Name, commonVol.Owner, "", commonVol.dataPartitionSize, commonVol.Capacity,
-		defaultReplicaNum, defaultReplicaNum, false, false, false, false, createTime, "")
+	vol := newVol(id, commonVol.Name, commonVol.Owner, testZone1 + "," + testZone2, commonVol.dataPartitionSize, commonVol.Capacity,
+		defaultReplicaNum, defaultReplicaNum, false, false, false, createTime, "")
+
 	vol.dataPartitions = nil
 	return vol
 }

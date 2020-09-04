@@ -16,6 +16,7 @@ package master
 
 import (
 	"sync"
+	"github.com/chubaofs/chubaofs/util"
 
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
@@ -818,4 +819,223 @@ func (mp *MetaPartition) isLatestReplica(addr string) (ok bool) {
 	}
 	latestAddr := mp.Hosts[hostsLen-1]
 	return latestAddr == addr
+}
+func (mp *MetaPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
+	var (
+		zoneList      []string
+		isNeedRebalance  bool
+	)
+	mp.RLock()
+	defer mp.RUnlock()
+	if vol.zoneName == "" {
+		return
+	}
+	zoneList = strings.Split(vol.zoneName, ",")
+	if len(mp.Replicas) != int(vol.mpReplicaNum) {
+		log.LogWarnf("action[RepairZone], meta replica length[%v] not equal to mpReplicaNum[%v]", len(mp.Replicas), vol.mpReplicaNum)
+		return
+	}
+	if mp.IsRecover {
+		log.LogWarnf("action[RepairZone], meta partition[%v] is recovering", mp.PartitionID)
+		return
+	}
+	if isNeedRebalance, err = mp.needToRebalanceZone(c, zoneList); err != nil {
+		return
+	}
+	if !isNeedRebalance {
+		return
+	}
+	if err = c.sendRepairMetaPartitionTask(mp, BalanceMetaZone); err != nil {
+		log.LogErrorf("action[RepairZone] clusterID[%v] vol[%v] meta partition[%v] err[%v]", c.Name, vol.Name, mp.PartitionID, err)
+		return
+	}
+	return
+}
+
+var getTargetAddressForRepairMetaZone = func (c *Cluster, nodeAddr string, mp *MetaPartition, oldHosts []string, excludeNodeSets []uint64, zoneName string) (oldAddr, addAddr string, err error){
+	var(
+		offlineZoneName     string
+		targetZoneName      string
+		addrInTargetZone    string
+		targetZone          *Zone
+		nodesetInTargetZone *nodeSet
+		targetHosts         []string
+	)
+	if offlineZoneName, targetZoneName, err = mp.getOfflineAndTargetZone(c, zoneName); err != nil {
+		return
+	}
+	if offlineZoneName == "" || targetZoneName == "" {
+		return
+	}
+	if targetZone, err = c.t.getZone(targetZoneName); err != nil {
+		return
+	}
+	if oldAddr, err = mp.getAddressByZoneName(c, offlineZoneName); err != nil {
+		return
+	}
+	if oldAddr == "" {
+		err = fmt.Errorf("can not find address to decommission")
+		return
+	}
+	if err = c.validateDecommissionMetaPartition(mp, oldAddr); err != nil {
+		return
+	}
+	if addrInTargetZone, err = mp.getAddressByZoneName(c, targetZone.name); err != nil {
+		return
+	}
+	//if there is no replica in target zone, choose random nodeset in target zone
+	if addrInTargetZone == "" {
+		if targetHosts, _, err = targetZone.getAvailMetaNodeHosts(nil, mp.Hosts, 1); err != nil {
+			return
+		}
+		if len(targetHosts) == 0 {
+			err = fmt.Errorf("no available space to find a target address")
+			return
+		}
+		addAddr = targetHosts[0]
+		return
+	}
+	var targetNode *MetaNode
+	//if there is a replica in target zone, choose the same nodeset with this replica
+	if targetNode, err = c.metaNode(addrInTargetZone); err != nil {
+		err = fmt.Errorf("action[getTargetAddressForRepairMetaZone] partitionID[%v], addr[%v] metaNode not exist", mp.PartitionID, addrInTargetZone)
+		return
+	}
+	if nodesetInTargetZone, err = targetZone.getNodeSet(targetNode.NodeSetID); err != nil {
+		return
+	}
+	if targetHosts, _, err = nodesetInTargetZone.getAvailMetaNodeHosts(mp.Hosts, 1); err != nil {
+		// select meta nodes from the other node set in same zone
+		excludeNodeSets = append(excludeNodeSets, nodesetInTargetZone.ID)
+		if targetHosts, _, err = targetZone.getAvailMetaNodeHosts(excludeNodeSets, mp.Hosts, 1); err != nil {
+			return
+		}
+	}
+	if len(targetHosts) == 0 {
+		err = fmt.Errorf("no available space to find a target address")
+		return
+	}
+	addAddr = targetHosts[0]
+	log.LogInfof("action[getTargetAddressForRepairMetaZone],meta partitionID:%v,zone name:[%v],old address:[%v], new address:[%v]",
+		mp.PartitionID, zoneName, oldAddr, addAddr)
+	return
+}
+
+//check if the meta partition needs to rebalance zone
+func (mp *MetaPartition) needToRebalanceZone(c *Cluster, zoneList []string) (isNeed bool, err error) {
+	var curZoneMap  map[string]uint8
+	var curZoneList []string
+	curZoneMap = make(map[string]uint8, 0)
+	curZoneList = make([]string, 0)
+	if curZoneMap, err = mp.getMetaZoneMap(c); err != nil {
+		return
+	}
+	for k := range curZoneMap {
+		curZoneList = append(curZoneList, k)
+	}
+
+	log.LogInfof("action[needToRebalanceZone],meta partitionID:%v,zone name:%v,current zones[%v]",
+		mp.PartitionID, zoneList, curZoneList)
+	if len(curZoneMap) == len(zoneList) {
+		isNeed = false
+		for _, zone := range zoneList {
+			if _, ok := curZoneMap[zone]; !ok {
+				isNeed = true
+			}
+		}
+		return
+	}
+	isNeed = true
+	return
+}
+
+func (mp *MetaPartition) getOfflineAndTargetZone(c *Cluster, volZoneName string) (offlineZone, targetZone string, err error) {
+	zoneList := strings.Split(volZoneName, ",")
+	switch len(zoneList) {
+	case 1:
+		zoneList = append(make([]string, 0), zoneList[0], zoneList[0], zoneList[0])
+	case 2:
+		switch mp.PartitionID % 2 {
+		case 0:
+			zoneList = append(make([]string, 0), zoneList[0], zoneList[0], zoneList[1])
+		default:
+			zoneList = append(make([]string, 0), zoneList[1], zoneList[1], zoneList[0])
+		}
+		log.LogInfof("action[getSourceAndTargetZone],data partitionID:%v,zone name:[%v],chosen zoneList:%v",
+			mp.PartitionID, volZoneName, zoneList)
+	case 3:
+		log.LogInfof("action[getSourceAndTargetZone],data partitionID:%v,zone name:[%v],chosen zoneList:%v",
+			mp.PartitionID, volZoneName, zoneList)
+	default :
+		err = fmt.Errorf("partition zone num must be 1, 2 or 3")
+		return
+	}
+	var currentZoneList []string
+	if currentZoneList, err = mp.getZoneList(c); err != nil {
+		return
+	}
+	intersect := util.Intersect(zoneList, currentZoneList)
+	projectiveToZoneList := util.Projective(zoneList, intersect)
+	projectiveToCurZoneList := util.Projective(currentZoneList, intersect)
+	log.LogInfof("Current replica zoneList:%v, volume zoneName:%v ", currentZoneList, zoneList)
+	if len(projectiveToZoneList) == 0 || len(projectiveToCurZoneList) == 0{
+		err = fmt.Errorf("action[getSourceAndTargetZone], Current replica zoneList:%v is consistent with the volume zoneName:%v, do not need to balance ", currentZoneList, zoneList)
+		return
+	}
+	offlineZone = projectiveToCurZoneList[0]
+	targetZone = projectiveToZoneList[0]
+	return
+}
+
+func (mp *MetaPartition) getAddressByZoneName(c *Cluster, zone string) (addr string, err error){
+	for _, host := range mp.Hosts {
+		var metaNode *MetaNode
+		var z *Zone
+		if metaNode, err = c.metaNode(host); err != nil {
+			return
+		}
+		if z, err = c.t.getZoneByMetaNode(metaNode); err != nil {
+			return
+		}
+		if zone == z.name {
+			addr = host
+		}
+	}
+	return
+}
+
+func (mp *MetaPartition) getZoneList(c *Cluster) (zoneList []string, err error){
+	zoneList = make([]string, 0)
+	for _, host := range mp.Hosts {
+		var metaNode *MetaNode
+		var zone *Zone
+		if metaNode, err = c.metaNode(host); err != nil {
+			return
+		}
+		if zone, err = c.t.getZoneByMetaNode(metaNode); err != nil {
+			return
+		}
+		zoneList = append(zoneList, zone.name)
+	}
+	return
+}
+
+func (mp *MetaPartition) getMetaZoneMap (c *Cluster) (curZonesMap map[string]uint8,err error){
+	curZonesMap = make(map[string]uint8, 0)
+	for _, host := range mp.Hosts {
+		var metaNode *MetaNode
+		var zone *Zone
+		if metaNode, err = c.metaNode(host); err != nil {
+			return
+		}
+		if zone, err = c.t.getZoneByMetaNode(metaNode); err != nil {
+			return
+		}
+		if _, ok := curZonesMap[zone.name]; !ok {
+			curZonesMap[zone.name] = 1
+		}else {
+			curZonesMap[zone.name] = curZonesMap[zone.name] + 1
+		}
+	}
+	return
 }

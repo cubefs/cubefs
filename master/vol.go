@@ -58,7 +58,7 @@ type Vol struct {
 	sync.RWMutex
 }
 
-func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead, authenticate, crossZone bool, enableToken bool, createTime int64, description string) (vol *Vol) {
+func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead, authenticate, enableToken bool, createTime int64, description string) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	if dpReplicaNum < defaultReplicaNum {
@@ -81,7 +81,6 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
 	vol.authenticate = authenticate
-	vol.crossZone = crossZone
 	vol.zoneName = zoneName
 	vol.viewCache = make([]byte, 0)
 	vol.mpsCache = make([]byte, 0)
@@ -104,7 +103,6 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.ReplicaNum,
 		vv.FollowerRead,
 		vv.Authenticate,
-		vv.CrossZone,
 		vv.EnableToken,
 		vv.CreateTime,
 		vv.Description)
@@ -281,6 +279,27 @@ func (vol *Vol) checkReplicaNum(c *Cluster) {
 		}
 	}
 	vol.NeedToLowerReplica = false
+}
+func (vol *Vol) checkRepairMetaPartitions(c *Cluster) {
+	var err error
+	mps := vol.cloneMetaPartitionMap()
+	for _, mp := range mps {
+		if err = mp.RepairZone(vol, c); err != nil {
+			log.LogErrorf("action[checkRepairMetaPartitions],vol[%v],partitionID[%v],err[%v]", vol.Name, mp.PartitionID, err)
+			continue
+		}
+	}
+}
+
+func (vol *Vol) checkRepairDataPartitions(c *Cluster) {
+	var err error
+	dps := vol.cloneDataPartitionMap()
+	for _, dp := range dps {
+		if err = dp.RepairZone(vol, c); err != nil {
+			log.LogErrorf("action[checkRepairDataPartitions],vol[%v],partitionID[%v],err[%v]", vol.Name, dp.PartitionID, err)
+			continue
+		}
+	}
 }
 
 func (vol *Vol) checkMetaPartitions(c *Cluster) {
@@ -734,7 +753,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 		wg          sync.WaitGroup
 	)
 	errChannel := make(chan error, vol.mpReplicaNum)
-	if hosts, peers, err = c.chooseTargetMetaHosts("", nil, nil, int(vol.mpReplicaNum), vol.crossZone, vol.zoneName); err != nil {
+	if hosts, peers, err = c.chooseTargetMetaHosts("", nil, nil, int(vol.mpReplicaNum), vol.zoneName); err != nil {
 		log.LogErrorf("action[doCreateMetaPartition] chooseTargetMetaHosts err[%v]", err)
 		return nil, errors.NewError(err)
 	}

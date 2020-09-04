@@ -26,6 +26,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
+type ChooseMetaHostFunc func(c *Cluster, nodeAddr string, mp *MetaPartition, oldHosts []string, excludeNodeSets []uint64, zoneName string) (oldAddr, addAddr string, err error)
 func (c *Cluster) addDataNodeTasks(tasks []*proto.AdminTask) {
 	for _, t := range tasks {
 		c.addDataNodeTask(t)
@@ -95,36 +96,70 @@ func (c *Cluster) loadDataPartition(dp *DataPartition) {
 // 3. synchronized decommission meta partition
 // 4. synchronized create a new meta partition
 // 5. persistent the new host list
-func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, strictMode bool) (err error) {
+func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, chooseMetaHostFunc ChooseMetaHostFunc, strictMode bool) (err error) {
 	var (
-		newPeers        []proto.Peer
-		metaNode        *MetaNode
-		zone            *Zone
-		ns              *nodeSet
+		addAddr         string
 		excludeNodeSets []uint64
 		oldHosts        []string
-		zones           []string
-		excludeZone     string
+		vol             *Vol
 	)
+	oldHosts = mp.Hosts
+	if vol, err = c.getVol(mp.volName); err != nil {
+		goto errHandler
+	}
+	if nodeAddr, addAddr, err = chooseMetaHostFunc(c, nodeAddr, mp, oldHosts, excludeNodeSets, vol.zoneName); err != nil {
+		goto errHandler
+	}
+
 	log.LogWarnf("action[decommissionMetaPartition],volName[%v],nodeAddr[%v],partitionID[%v] begin", mp.volName, nodeAddr, mp.PartitionID)
+	if err = c.deleteMetaReplica(mp, nodeAddr, false, strictMode); err != nil {
+		goto errHandler
+	}
+	if err = c.addMetaReplica(mp, addAddr); err != nil {
+		goto errHandler
+	}
+	mp.IsRecover = true
+	if strictMode {
+		c.putMigratedMetaPartitions(nodeAddr, mp.PartitionID)
+	} else {
+		c.putBadMetaPartitions(nodeAddr, mp.PartitionID)
+	}
 	mp.RLock()
-	if !contains(mp.Hosts, nodeAddr) {
-		mp.RUnlock()
+	c.syncUpdateMetaPartition(mp)
+	mp.RUnlock()
+	return
+errHandler:
+	log.LogError(fmt.Sprintf("action[decommissionMetaPartition],volName: %v,partitionID: %v,err: %v",
+		mp.volName, mp.PartitionID, errors.Stack(err)))
+	Warn(c.Name, fmt.Sprintf("clusterID[%v] meta partition[%v] offline addr[%v] failed,err:%v",
+		c.Name, mp.PartitionID, nodeAddr, err))
+	if err != nil {
+		err = fmt.Errorf("vol[%v],partition[%v],err[%v]", mp.volName, mp.PartitionID, err)
+	}
+	return
+}
+var getTargetAddressForMetaPartitionDecommission = func (c *Cluster, nodeAddr string, mp *MetaPartition, oldHosts []string, excludeNodeSets []uint64, zoneName string) (oldAddr, addAddr string, err error){
+	var (
+		metaNode    *MetaNode
+		zone        *Zone
+		zones       []string
+		ns          *nodeSet
+		newPeers    []proto.Peer
+		excludeZone string
+	)
+	oldAddr = nodeAddr
+
+	if err = c.validateDecommissionMetaPartition(mp, nodeAddr); err != nil {
 		return
 	}
-	oldHosts = mp.Hosts
-	mp.RUnlock()
-	if err = c.validateDecommissionMetaPartition(mp, nodeAddr); err != nil {
-		goto errHandler
-	}
 	if metaNode, err = c.metaNode(nodeAddr); err != nil {
-		goto errHandler
+		return
 	}
 	if zone, err = c.t.getZone(metaNode.ZoneName); err != nil {
-		goto errHandler
+		return
 	}
 	if ns, err = zone.getNodeSet(metaNode.NodeSetID); err != nil {
-		goto errHandler
+		return
 	}
 	if _, newPeers, err = ns.getAvailMetaNodeHosts(oldHosts, 1); err != nil {
 		// choose a meta node in other node set in the same zone
@@ -137,45 +172,28 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, 
 				excludeZone = zones[0]
 			}
 			// choose a meta node in other zone
-			if _, newPeers, err = c.chooseTargetMetaHosts(excludeZone, excludeNodeSets, oldHosts, 1, false, ""); err != nil {
-				goto errHandler
+			if _, newPeers, err = c.chooseTargetMetaHostForDecommission(excludeZone, mp, oldHosts, 1, zoneName); err != nil {
+				return
 			}
 		}
 	}
-	if err = c.deleteMetaReplica(mp, nodeAddr, false, strictMode); err != nil {
-		goto errHandler
-	}
-	if err = c.addMetaReplica(mp, newPeers[0].Addr); err != nil {
-		goto errHandler
-	}
-	mp.IsRecover = true
-	if strictMode {
-		c.putMigratedMetaPartitions(nodeAddr, mp.PartitionID)
-	} else {
-		c.putBadMetaPartitions(nodeAddr, mp.PartitionID)
-	}
-	mp.RLock()
-	c.syncUpdateMetaPartition(mp)
-	mp.RUnlock()
-	Warn(c.Name, fmt.Sprintf("action[decommissionMetaPartition] clusterID[%v] vol[%v] meta partition[%v] "+
-		"offline addr[%v] success,new addr[%v]", c.Name, mp.volName, mp.PartitionID, nodeAddr, newPeers[0].Addr))
-	return
-
-errHandler:
-	log.LogError(fmt.Sprintf("action[decommissionMetaPartition],volName: %v,partitionID: %v,err: %v",
-		mp.volName, mp.PartitionID, errors.Stack(err)))
-	Warn(c.Name, fmt.Sprintf("clusterID[%v] meta partition[%v] offline addr[%v] failed,err:%v",
-		c.Name, mp.PartitionID, nodeAddr, err))
-	if err != nil {
-		err = fmt.Errorf("vol[%v],partition[%v],err[%v]", mp.volName, mp.PartitionID, err)
+	if len(newPeers) > 0{
+		addAddr = newPeers[0].Addr
 	}
 	return
 }
+
+
 
 func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr string) (err error) {
 	mp.RLock()
 	defer mp.RUnlock()
 	var vol *Vol
+	if !contains(mp.Hosts, nodeAddr) {
+		err = fmt.Errorf("offline address:[%v] is not in meta partition hosts:%v", nodeAddr, mp.Hosts)
+		return
+	}
+
 	if vol, err = c.getVol(mp.volName); err != nil {
 		return
 	}
