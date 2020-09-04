@@ -59,7 +59,6 @@ phony += dist-clean
 dist-clean:
 	@$(RM) -rf build/bin
 	@$(RM) -rf build/out
-	@$(RM) -rf vendor/dep
 
 phony += test
 test:
