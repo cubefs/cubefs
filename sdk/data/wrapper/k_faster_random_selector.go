@@ -132,6 +132,9 @@ func (s *KFasterRandomSelector) RemoveDP(partitionID uint64) {
 			break
 		}
 	}
+	if i >= len(partitions) {
+		return
+	}
 	newRwPartition := make([]*DataPartition, 0)
 	newRwPartition = append(newRwPartition, partitions[:i]...)
 	newRwPartition = append(newRwPartition, partitions[i+1:]...)
