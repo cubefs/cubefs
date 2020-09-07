@@ -190,8 +190,6 @@ func (s *ClusterService) registerMutation(schema *schemabuilder.Schema) {
 
 	mutation.FieldFunc("clusterFreeze", s.clusterFreeze)
 	mutation.FieldFunc("addRaftNode", s.addRaftNode)
-	mutation.FieldFunc("removeRaftNode", s.removeRaftNode)
-	mutation.FieldFunc("addMetaNode", s.removeRaftNode)
 	mutation.FieldFunc("loadMetaPartition", s.loadMetaPartition)
 	mutation.FieldFunc("decommissionMetaPartition", s.decommissionMetaPartition)
 	mutation.FieldFunc("decommissionMetaNode", s.decommissionMetaNode)
@@ -453,19 +451,76 @@ func (m *ClusterService) addMetaNode(ctx context.Context, args struct {
 	}
 }
 
-// Dynamically remove a master node. Similar to addRaftNode, this operation is performed online.
-func (m *ClusterService) removeRaftNode(ctx context.Context, args struct {
-	Id   uint64
-	Addr string
+func (m *ClusterService) addMetaReplica(ctx context.Context, args struct {
+	PartitionID uint64
+	Addr        string
 }) (*proto.GeneralResp, error) {
-	if _, _, err := permissions(ctx, ADMIN); err != nil {
+	mp, err := m.cluster.getMetaPartitionByID(args.PartitionID)
+	if err != nil {
 		return nil, err
 	}
-	if err := m.cluster.removeRaftNode(args.Id, args.Addr); err != nil {
+
+	if err = m.cluster.addMetaReplica(mp, args.Addr); err != nil {
 		return nil, err
 	}
-	log.LogInfof("remove  raft node id :%v,adr:%v successfully\n", args.Id, args.Addr)
-	return proto.Success("success"), nil
+	mp.IsRecover = true
+	m.cluster.putBadMetaPartitions(args.Addr, mp.PartitionID)
+	msg := fmt.Sprintf("meta partitionID :%v  add replica [%v] successfully", args.PartitionID, args.Addr)
+	return proto.Success(msg), nil
+}
+
+func (m *ClusterService) deleteMetaReplica(ctx context.Context, args struct {
+	PartitionID uint64
+	Addr        string
+}) (*proto.GeneralResp, error) {
+	mp, err := m.cluster.getMetaPartitionByID(args.PartitionID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = m.cluster.deleteMetaReplica(mp, args.Addr, true); err != nil {
+		return nil, err
+	}
+	mp.IsRecover = true
+	m.cluster.putBadMetaPartitions(args.Addr, mp.PartitionID)
+	msg := fmt.Sprintf("meta partitionID :%v  delete replica [%v] successfully", args.PartitionID, args.Addr)
+	return proto.Success(msg), nil
+}
+
+func (m *ClusterService) addDataReplica(ctx context.Context, args struct {
+	PartitionID uint64
+	Addr        string
+}) (*proto.GeneralResp, error) {
+	dp, err := m.cluster.getDataPartitionByID(args.PartitionID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = m.cluster.addDataReplica(dp, args.Addr); err != nil {
+		return nil, err
+	}
+	dp.Status = proto.ReadOnly
+	dp.isRecover = true
+	m.cluster.putBadDataPartitionIDs(nil, args.Addr, dp.PartitionID)
+	msg := fmt.Sprintf("data partitionID :%v  add replica [%v] successfully", args.PartitionID, args.Addr)
+	return proto.Success(msg), nil
+}
+
+func (m *ClusterService) deleteDataReplica(ctx context.Context, args struct {
+	PartitionID uint64
+	Addr        string
+}) (*proto.GeneralResp, error) {
+
+	dp, err := m.cluster.getDataPartitionByID(args.PartitionID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = m.cluster.removeDataReplica(dp, args.Addr, true); err != nil {
+		return nil, err
+	}
+	msg := fmt.Sprintf("data partitionID :%v  delete replica [%v] successfully", args.PartitionID, args.Addr)
+	return proto.Success(msg), nil
 }
 
 // Dynamically add a raft node (replica) for the master.
