@@ -141,6 +141,10 @@ type volValue struct {
 	OSSSecretKey      string
 	CreateTime        int64
 	Description       string
+	CreateRate        float64
+	DeleteRate        float64
+	ReadRate          float64
+	WriteRate         float64
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {

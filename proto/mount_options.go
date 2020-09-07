@@ -24,6 +24,8 @@ const (
 	IcacheTimeout
 	LookupValid
 	AttrValid
+	CreateRate
+	DeleteRate
 	ReadRate
 	WriteRate
 	EnSyncWrite
@@ -85,8 +87,10 @@ func InitMountOptions(opts []MountOption) {
 	opts[IcacheTimeout] = MountOption{"icacheTimeout", "Inode Cache Expiration Time", "", int64(-1)}
 	opts[LookupValid] = MountOption{"lookupValid", "Lookup Valid Duration", "", int64(-1)}
 	opts[AttrValid] = MountOption{"attrValid", "Attr Valid Duration", "", int64(-1)}
-	opts[ReadRate] = MountOption{"readRate", "Read Rate Limit", "", int64(-1)}
-	opts[WriteRate] = MountOption{"writeRate", "Write Rate Limit", "", int64(-1)}
+	opts[CreateRate] = MountOption{"createRate", "Create Rate Limit", "", float64(-1)}
+	opts[DeleteRate] = MountOption{"deleteRate", "Delete Rate Limit", "", float64(-1)}
+	opts[ReadRate] = MountOption{"readRate", "Read Rate Limit", "", float64(-1)}
+	opts[WriteRate] = MountOption{"writeRate", "Write Rate Limit", "", float64(-1)}
 	opts[EnSyncWrite] = MountOption{"enSyncWrite", "Enable Sync Write", "", int64(-1)}
 	opts[AutoInvalData] = MountOption{"autoInvalData", "Auto Invalidate Data", "", int64(-1)}
 	opts[Rdonly] = MountOption{"rdonly", "Mount as readonly", "", false}
@@ -143,6 +147,18 @@ func ParseMountOptions(opts []MountOption, cfg *config.Config) {
 			}
 			fmt.Println(fmt.Sprintf("keyword[%v] value[%v] type[%T]", opts[i].keyword, opts[i].value, v))
 
+		case float64:
+			if opts[i].cmdlineValue != "" {
+				opts[i].value = parseFloat64(opts[i].cmdlineValue)
+			} else {
+				if value, present := cfg.CheckAndGetFloat64(opts[i].keyword); present {
+					opts[i].value = value
+				} else {
+					opts[i].value = v
+				}
+			}
+			fmt.Println(fmt.Sprintf("keyword[%v] value[%v] type[%T]", opts[i].keyword, opts[i].value, v))
+
 		case bool:
 			if opts[i].cmdlineValue != "" {
 				opts[i].value = parseBool(opts[i].cmdlineValue)
@@ -173,6 +189,18 @@ func parseInt64(s string) int64 {
 	return ret
 }
 
+func parseFloat64(s string) float64 {
+	var ret float64 = -1
+
+	if s != "" {
+		val, err := strconv.ParseFloat(s, 64)
+		if err == nil {
+			ret = val
+		}
+	}
+	return ret
+}
+
 func parseBool(s string) bool {
 	var ret bool = false
 
@@ -198,6 +226,14 @@ func (opt *MountOption) GetBool() bool {
 	return val
 }
 
+func (opt *MountOption) GetFloat64() float64 {
+	val, ok := opt.value.(float64)
+	if !ok {
+		return float64(-1)
+	}
+	return val
+}
+
 func (opt *MountOption) GetInt64() int64 {
 	val, ok := opt.value.(int64)
 	if !ok {
@@ -218,8 +254,10 @@ type MountOptions struct {
 	IcacheTimeout int64
 	LookupValid   int64
 	AttrValid     int64
-	ReadRate      int64
-	WriteRate     int64
+	CreateRate    float64
+	DeleteRate    float64
+	ReadRate      float64
+	WriteRate     float64
 	EnSyncWrite   int64
 	AutoInvalData int64
 	UmpDatadir    string

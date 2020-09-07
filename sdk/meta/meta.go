@@ -16,6 +16,7 @@ package meta
 
 import (
 	"fmt"
+	"math"
 	"sync"
 	"syscall"
 	"time"
@@ -52,6 +53,12 @@ const (
 	MaxMountRetryLimit = 5
 	MountRetryInterval = time.Second * 5
 
+	defaultCreateLimitRate  = rate.Inf
+	defaultCreateLimitBurst = 10
+
+	defaultDeleteLimitRate  = rate.Inf
+	defaultDeleteLimitBurst = 10
+
 	/*
 	 * Minimum interval of forceUpdateMetaPartitions in seconds,
 	 * i.e. only one force update request is allowed every 5 sec.
@@ -75,6 +82,8 @@ type MetaConfig struct {
 	TicketMess       auth.TicketMess
 	ValidateOwner    bool
 	OnAsyncTaskError AsyncTaskErrorFunc
+	CreateRate        float64
+	DeleteRate        float64
 }
 
 type MetaWrapper struct {
@@ -125,6 +134,13 @@ type MetaWrapper struct {
 	// Used to trigger and throttle instant partition updates
 	forceUpdate      chan struct{}
 	forceUpdateLimit *rate.Limiter
+	createRate     int64
+	deleteRate     int64
+	readRate       int64
+	writeRate      int64
+
+	createLimiter  *rate.Limiter
+	deleteLimiter  *rate.Limiter
 }
 
 //the ticket from authnode
@@ -169,6 +185,21 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.forceUpdateLimit = rate.NewLimiter(1, MinForceUpdateMetaPartitionsInterval)
 
 	limit := MaxMountRetryLimit
+
+	var createLimit, deleteLimit rate.Limit
+	if config.CreateRate <= 0 {
+		createLimit = defaultCreateLimitRate
+	} else {
+		createLimit = rate.Limit(config.CreateRate)
+	}
+	if config.DeleteRate <= 0 {
+		deleteLimit = defaultDeleteLimitRate
+	} else {
+		deleteLimit = rate.Limit(config.DeleteRate)
+	}
+
+	mw.createLimiter = rate.NewLimiter(createLimit, defaultCreateLimitBurst)
+	mw.deleteLimiter = rate.NewLimiter(deleteLimit, defaultDeleteLimitBurst)
 
 	for limit > 0 {
 		err = mw.initMetaWrapper()
@@ -239,6 +270,38 @@ func (mw *MetaWrapper) LocalIP() string {
 
 func (mw *MetaWrapper) exporterKey(act string) string {
 	return fmt.Sprintf("%s_sdk_meta_%s", mw.cluster, act)
+}
+
+func (mw *MetaWrapper) SetCreateRate(clientRate, serverRate float64) {
+	if clientRate <= 0 && serverRate > 0 {
+		mw.createLimiter.SetLimit(rate.Limit(serverRate))
+	} else if clientRate > 0 && serverRate <= 0 {
+		mw.createLimiter.SetLimit(rate.Limit(clientRate))
+	} else if clientRate > 0 && serverRate > 0 {
+		mw.createLimiter.SetLimit(rate.Limit(math.Min(clientRate, serverRate)))
+	} else {
+		mw.createLimiter.SetLimit(rate.Inf)
+	}
+}
+
+func (mw *MetaWrapper) SetDeleteRate(clientRate, serverRate float64) {
+	if clientRate <= 0 && serverRate > 0 {
+		mw.deleteLimiter.SetLimit(rate.Limit(serverRate))
+	} else if clientRate > 0 && serverRate <= 0 {
+		mw.deleteLimiter.SetLimit(rate.Limit(clientRate))
+	} else if clientRate > 0 && serverRate > 0 {
+		mw.deleteLimiter.SetLimit(rate.Limit(math.Min(clientRate, serverRate)))
+	} else {
+		mw.deleteLimiter.SetLimit(rate.Inf)
+	}
+}
+
+func (mw *MetaWrapper) CreateLimiter() *rate.Limiter {
+	return mw.createLimiter
+}
+
+func (mw *MetaWrapper) DeleteLimiter() *rate.Limiter {
+	return mw.deleteLimiter
 }
 
 // Proto ResultCode to status

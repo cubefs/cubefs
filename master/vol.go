@@ -55,10 +55,16 @@ type Vol struct {
 	createMpMutex      sync.RWMutex
 	createTime         int64
 	description        string
+	createRate         float64
+	deleteRate         float64
+	readRate           float64
+	writeRate          float64
 	sync.RWMutex
 }
 
-func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead, authenticate, crossZone bool, enableToken bool, createTime int64, description string) (vol *Vol) {
+func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8,
+	followerRead, authenticate, crossZone bool, enableToken bool, createTime int64, description string,
+	createRate, deleteRate, readRate, writeRate float64) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	if dpReplicaNum < defaultReplicaNum {
@@ -89,6 +95,10 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.enableToken = enableToken
 	vol.tokens = make(map[string]*proto.Token, 0)
 	vol.description = description
+	vol.createRate = createRate
+	vol.deleteRate = deleteRate
+	vol.readRate = readRate
+	vol.writeRate = writeRate
 	return
 }
 
@@ -107,7 +117,11 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.CrossZone,
 		vv.EnableToken,
 		vv.CreateTime,
-		vv.Description)
+		vv.Description,
+		vv.CreateRate,
+		vv.DeleteRate,
+		vv.ReadRate,
+		vv.WriteRate)
 	// overwrite oss secure
 	vol.OSSAccessKey, vol.OSSSecretKey = vv.OSSAccessKey, vv.OSSSecretKey
 	vol.Status = vv.Status

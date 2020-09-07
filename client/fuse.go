@@ -238,7 +238,9 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 		return
 	}
 
-	http.HandleFunc(ControlCommandSetRate, super.SetRate)
+	super.SetClientRateValue(opt.CreateRate, opt.DeleteRate, opt.ReadRate, opt.WriteRate)
+
+	http.HandleFunc(ControlCommandSetRate, super.SetClientRate)
 	http.HandleFunc(ControlCommandGetRate, super.GetRate)
 	http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
 	http.HandleFunc(ControlCommandFreeOSMemory, freeOSMemory)
@@ -316,8 +318,10 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.IcacheTimeout = GlobalMountOptions[proto.IcacheTimeout].GetInt64()
 	opt.LookupValid = GlobalMountOptions[proto.LookupValid].GetInt64()
 	opt.AttrValid = GlobalMountOptions[proto.AttrValid].GetInt64()
-	opt.ReadRate = GlobalMountOptions[proto.ReadRate].GetInt64()
-	opt.WriteRate = GlobalMountOptions[proto.WriteRate].GetInt64()
+	opt.CreateRate = GlobalMountOptions[proto.CreateRate].GetFloat64()
+	opt.DeleteRate = GlobalMountOptions[proto.DeleteRate].GetFloat64()
+	opt.ReadRate = GlobalMountOptions[proto.ReadRate].GetFloat64()
+	opt.WriteRate = GlobalMountOptions[proto.WriteRate].GetFloat64()
 	opt.EnSyncWrite = GlobalMountOptions[proto.EnSyncWrite].GetInt64()
 	opt.AutoInvalData = GlobalMountOptions[proto.AutoInvalData].GetInt64()
 	opt.UmpDatadir = GlobalMountOptions[proto.WarnLogDir].GetString()

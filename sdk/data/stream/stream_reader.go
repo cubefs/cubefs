@@ -93,7 +93,9 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 	)
 
 	ctx := context.Background()
-	s.client.readLimiter.Wait(ctx)
+	if err := s.client.readLimiter.WaitN(ctx, size); err != nil {
+		log.LogWarnf("readLimiter WaitN(%v) failed, burst=%v", size, s.client.writeLimiter.Burst())
+	}
 
 	requests = s.extents.PrepareReadRequests(offset, size, data)
 	for _, req := range requests {

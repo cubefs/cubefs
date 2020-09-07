@@ -53,6 +53,10 @@ const (
 	nodeDeleteWorkerSleepMs = "deleteWorkerSleepMs"
 	nodeAutoRepairRateKey   = "autoRepairRate"
 	descriptionKey          = "description"
+	createRateKey           = "createRate"
+	deleteRateKey           = "deleteRate"
+	readRateKey             = "readRate"
+	writeRateKey            = "writeRate"
 )
 
 const (
@@ -66,6 +70,10 @@ const (
 
 const (
 	underlineSeparator = "_"
+)
+
+const (
+	notExistIntParam = -2
 )
 
 const (

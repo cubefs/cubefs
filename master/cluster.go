@@ -1498,7 +1498,8 @@ func (c *Cluster) deleteMetaNodeFromCache(metaNode *MetaNode) {
 	go metaNode.clean()
 }
 
-func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacity uint64, replicaNum uint8, followerRead, authenticate, enableToken bool) (err error) {
+func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacity uint64, replicaNum uint8, followerRead,
+	authenticate, enableToken bool, createRate, deleteRate, readRate, writeRate float64) (err error) {
 	var (
 		vol             *Vol
 		serverAuthKey   string
@@ -1510,6 +1511,10 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		volUsedSpace    uint64
 		oldZoneName     string
 		oldDescription  string
+		oldCreateRate   float64
+		oldDeleteRate   float64
+		oldReadRate     float64
+		oldWriteRate    float64
 	)
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[updateVol] err[%v]", err)
@@ -1540,6 +1545,21 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		}
 	}
 
+	if int(createRate) != notExistIntParam {
+		vol.createRate = createRate
+	}
+	if int(deleteRate) != notExistIntParam {
+		vol.deleteRate = deleteRate
+	}
+
+	if int(readRate) != notExistIntParam {
+		vol.readRate = readRate
+	}
+
+	if int(writeRate) != notExistIntParam {
+		vol.writeRate = writeRate
+	}
+
 	oldZoneName = vol.zoneName
 	if vol.crossZone && zoneName != "" {
 		err = fmt.Errorf("only the vol which don't across zones,can specified zoneName")
@@ -1558,6 +1578,10 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	oldAuthenticate = vol.authenticate
 	oldEnableToken = vol.enableToken
 	oldDescription = vol.description
+	oldCreateRate = vol.createRate
+	oldDeleteRate = vol.deleteRate
+	oldReadRate = vol.readRate
+	oldWriteRate = vol.writeRate
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
 	vol.authenticate = authenticate
@@ -1577,6 +1601,10 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		vol.enableToken = oldEnableToken
 		vol.zoneName = oldZoneName
 		vol.description = oldDescription
+		vol.createRate = oldCreateRate
+		vol.deleteRate = oldDeleteRate
+		vol.readRate = oldReadRate
+		vol.writeRate = oldWriteRate
 		log.LogErrorf("action[updateVol] vol[%v] err[%v]", name, err)
 		err = proto.ErrPersistenceByRaft
 		goto errHandler
@@ -1591,7 +1619,8 @@ errHandler:
 
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, crossZone, enableToken bool) (vol *Vol, err error) {
+func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, size, capacity int,
+	followerRead, authenticate, crossZone, enableToken bool, createRate, deleteRate, readRate, writeRate float64) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -1615,7 +1644,8 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	} else if !crossZone {
 		zoneName = DefaultZoneName
 	}
-	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, followerRead, authenticate, crossZone, enableToken); err != nil {
+	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum,
+		followerRead, authenticate, crossZone, enableToken, createRate, deleteRate, readRate, writeRate); err != nil {
 		goto errHandler
 	}
 	if err = vol.initMetaPartitions(c, mpCount); err != nil {
@@ -1643,7 +1673,8 @@ errHandler:
 	return
 }
 
-func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity uint64, dpReplicaNum int, followerRead, authenticate, crossZone, enableToken bool) (vol *Vol, err error) {
+func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity uint64, dpReplicaNum int,
+	followerRead, authenticate, crossZone, enableToken bool, createRate, deleteRate, readRate, writeRate float64) (vol *Vol, err error) {
 	var id uint64
 	c.createVolMutex.Lock()
 	defer c.createVolMutex.Unlock()
@@ -1656,7 +1687,8 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	if err != nil {
 		goto errHandler
 	}
-	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum, followerRead, authenticate, crossZone, enableToken, createTime, description)
+	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum, followerRead,
+		authenticate, crossZone, enableToken, createTime, description, createRate, deleteRate, readRate, writeRate)
 	// refresh oss secure
 	vol.refreshOSSSecure()
 	if err = c.syncAddVol(vol); err != nil {

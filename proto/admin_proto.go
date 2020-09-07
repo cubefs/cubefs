@@ -29,6 +29,7 @@ const (
 	AdminUpdateVol                 = "/vol/update"
 	AdminVolShrink                 = "/vol/shrink"
 	AdminVolExpand                 = "/vol/expand"
+	AdminVolRate                   = "/vol/rate"
 	AdminCreateVol                 = "/admin/createVol"
 	AdminGetVol                    = "/admin/getVol"
 	AdminClusterFreeze             = "/cluster/freeze"
@@ -496,6 +497,10 @@ type SimpleVolView struct {
 	EnableToken        bool
 	Tokens             map[string]*Token `graphql:"-"`
 	Description        string
+	CreateRate         float64
+	DeleteRate         float64
+	ReadRate           float64
+	WriteRate          float64
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition

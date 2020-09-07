@@ -16,6 +16,7 @@ package fs
 
 import (
 	"fmt"
+	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
 	"net/http"
 	"strconv"
 	"strings"
@@ -43,6 +44,7 @@ type Super struct {
 	ic          *InodeCache
 	mw          *meta.MetaWrapper
 	ec          *stream.ExtentClient
+	mc          *masterSDK.MasterClient
 	orphan      *OrphanInodeList
 	enSyncWrite bool
 	keepCache   bool
@@ -54,6 +56,16 @@ type Super struct {
 	fsyncOnClose  bool
 	enableXattr   bool
 	rootIno       uint64
+
+	clientCreateRate float64
+	clientDeleteRate float64
+	clientReadRate   float64
+	clientWriteRate  float64
+
+	serverCreateRate float64
+	serverDeleteRate float64
+	serverReadRate   float64
+	serverWriteRate  float64
 }
 
 // Functions that Super needs to implement
@@ -73,6 +85,8 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		Authenticate:  opt.Authenticate,
 		TicketMess:    opt.TicketMess,
 		ValidateOwner: opt.Authenticate || opt.AccessKey == "",
+		CreateRate:        opt.CreateRate,
+		DeleteRate:        opt.DeleteRate,
 	}
 	s.mw, err = meta.NewMetaWrapper(metaConfig)
 	if err != nil {
@@ -124,6 +138,10 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		return nil, err
 	}
 
+	s.mc = masterSDK.NewMasterClient(masters, false)
+
+	go s.updateLimiter()
+
 	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v)", s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration)
 	return s, nil
 }
@@ -156,32 +174,74 @@ func (s *Super) ClusterName() string {
 }
 
 func (s *Super) GetRate(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte(s.ec.GetRate()))
+	w.Write([]byte(fmt.Sprintf("create rate:\tclient(%v)\tserver(%v)\t==>\t[%v]\n"+
+		"delete rate:\tclient(%v)\tserver(%v)\t==>\t[%v]\n"+
+		"read rate:\tclient(%v)\tserver(%v)\t==>\t[%v]\n"+
+		"write rate:\tclient(%v)\tserver(%v)\t==>\t[%v]\n",
+		s.clientCreateRate, s.serverCreateRate, s.mw.CreateLimiter().Limit(),
+		s.clientDeleteRate, s.serverDeleteRate, s.mw.DeleteLimiter().Limit(),
+		s.clientReadRate, s.serverReadRate, s.ec.ReadLimiter().Limit(),
+		s.clientWriteRate, s.serverWriteRate, s.ec.WriteLimiter().Limit())))
 }
 
-func (s *Super) SetRate(w http.ResponseWriter, r *http.Request) {
+func (s *Super) SetClientRateValue(createRate, deleteRate, readRate, writeRate float64) {
+	s.clientCreateRate = createRate
+	s.clientDeleteRate = deleteRate
+	s.clientReadRate = readRate
+	s.clientWriteRate = writeRate
+}
+
+func (s *Super) SetClientRate(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		w.Write([]byte(err.Error()))
 		return
 	}
 
-	if rate := r.FormValue("read"); rate != "" {
-		val, err := strconv.Atoi(rate)
+	if rate := r.FormValue("create"); rate != "" {
+		val, err := strconv.ParseFloat(rate, 64)
 		if err != nil {
-			w.Write([]byte("Set read rate failed\n"))
+			w.Write([]byte(fmt.Sprintf("Set create rate failed, err:%v\n", err)))
 		} else {
-			msg := s.ec.SetReadRate(val)
-			w.Write([]byte(fmt.Sprintf("Set read rate to %v successfully\n", msg)))
+			s.clientCreateRate = val
+			s.mw.SetCreateRate(s.clientCreateRate, s.serverCreateRate)
+			w.Write([]byte(fmt.Sprintf("Set create rate:\tclient(%v)\tserver(%v)\t==>\t[%v]\n",
+				s.clientCreateRate, s.serverCreateRate, s.mw.CreateLimiter().Limit(),)))
+		}
+	}
+
+	if rate := r.FormValue("delete"); rate != "" {
+		val, err := strconv.ParseFloat(rate, 64)
+		if err != nil {
+			w.Write([]byte(fmt.Sprintf("Set delete rate failed, err:%v\n", err)))
+		} else {
+			s.clientDeleteRate = val
+			s.mw.SetDeleteRate(s.clientDeleteRate, s.serverDeleteRate)
+			w.Write([]byte(fmt.Sprintf("Set delete rate:\tclient(%v)\tserver(%v)\t==>\t[%v]\n",
+				s.clientDeleteRate, s.serverDeleteRate, s.mw.DeleteLimiter().Limit())))
+		}
+	}
+
+	if rate := r.FormValue("read"); rate != "" {
+		val, err := strconv.ParseFloat(rate, 64)
+		if err != nil {
+			w.Write([]byte(fmt.Sprintf("Set read rate failed, err:%v\n", err)))
+		} else {
+			s.clientReadRate = val
+			s.ec.SetReadRate(s.clientReadRate, s.serverReadRate)
+			w.Write([]byte(fmt.Sprintf("Set read rate:\tclient(%v)\tserver(%v)\t==>\t[%v]\n",
+				s.clientReadRate, s.serverReadRate, s.ec.ReadLimiter().Limit())))
 		}
 	}
 
 	if rate := r.FormValue("write"); rate != "" {
-		val, err := strconv.Atoi(rate)
+		val, err := strconv.ParseFloat(rate, 64)
 		if err != nil {
-			w.Write([]byte("Set write rate failed\n"))
+			w.Write([]byte(fmt.Sprintf("Set write rate failed, err:%v\n", err)))
 		} else {
-			msg := s.ec.SetWriteRate(val)
-			w.Write([]byte(fmt.Sprintf("Set write rate to %v successfully\n", msg)))
+			s.clientWriteRate = val
+			s.ec.SetWriteRate(s.clientWriteRate, s.serverWriteRate)
+			w.Write([]byte(fmt.Sprintf("Set write rate:\tclient(%v)\tserver(%v)\t==>\t[%v]\n",
+				s.clientWriteRate, s.serverWriteRate, s.ec.WriteLimiter().Limit())))
 		}
 	}
 }
@@ -197,4 +257,30 @@ func (s *Super) umpKey(act string) string {
 func (s *Super) handleError(op, msg string) {
 	log.LogError(msg)
 	ump.Alarm(s.umpKey(op), msg)
+}
+
+func (s *Super) updateLimiter() {
+	for {
+		var (
+			view *proto.SimpleVolView
+			err  error
+		)
+		if view, err = s.mc.AdminAPI().GetVolumeSimpleInfo(s.volname); err != nil {
+			log.LogWarnf("getSimpleVolView: get volume simple info fail: volume(%v) err(%v)", s.volname, err)
+			return
+		}
+
+		s.serverCreateRate = view.CreateRate
+		s.serverDeleteRate = view.DeleteRate
+		s.serverReadRate = view.ReadRate
+		s.serverWriteRate = view.WriteRate
+
+		s.mw.SetCreateRate(s.clientCreateRate, s.serverCreateRate)
+		s.mw.SetDeleteRate(s.clientDeleteRate, s.serverDeleteRate)
+		s.ec.SetReadRate(s.clientReadRate, s.serverReadRate)
+		s.ec.SetWriteRate(s.clientWriteRate, s.serverWriteRate)
+
+		time.Sleep(1000 * time.Millisecond)
+	}
+
 }

@@ -16,6 +16,7 @@ package meta
 
 import (
 	"fmt"
+	"golang.org/x/net/context"
 	syslog "log"
 	"sort"
 	"strings"
@@ -79,6 +80,11 @@ func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid ui
 		mp           *MetaPartition
 		rwPartitions []*MetaPartition
 	)
+
+	ctx := context.Background()
+	if err := mw.createLimiter.Wait(ctx); err != nil {
+		log.LogWarnf("createLimiter Wait failed, burst=%v", mw.createLimiter.Burst())
+	}
 
 	parentMP := mw.getPartitionByInode(parentID)
 	if parentMP == nil {
@@ -311,6 +317,11 @@ func (mw *MetaWrapper) Delete_ll(parentID uint64, name string, isDir bool) (*pro
 		mp     *MetaPartition
 	)
 
+	ctx := context.Background()
+	if err := mw.deleteLimiter.Wait(ctx); err != nil {
+		log.LogWarnf("deleteLimiter Wait failed, burst=%v", mw.deleteLimiter.Burst())
+	}
+	
 	parentMP := mw.getPartitionByInode(parentID)
 	if parentMP == nil {
 		log.LogErrorf("Delete_ll: No parent partition, parentID(%v) name(%v)", parentID, name)

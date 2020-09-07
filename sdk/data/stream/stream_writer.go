@@ -274,7 +274,9 @@ func (s *Streamer) write(data []byte, offset, size, flags int) (total int, err e
 	log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v)", s.inode, offset, size)
 
 	ctx := context.Background()
-	s.client.writeLimiter.Wait(ctx)
+	if err := s.client.writeLimiter.WaitN(ctx, size); err != nil {
+		log.LogWarnf("writeLimiter WaitN(%v) failed, burst=%v", size, s.client.writeLimiter.Burst())
+	}
 
 	requests := s.extents.PrepareWriteRequests(offset, size, data)
 	log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)

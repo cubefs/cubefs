@@ -102,7 +102,9 @@ func createDefaultMasterServerForTest() *Server {
 	testServer.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
-	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 100, false, false, false, false)
+	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3,
+		3, 3, 100, false, false, false, false,
+		10, 10, 1024, 1024)
 	if err != nil {
 		panic(err)
 	}
