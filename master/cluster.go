@@ -1233,7 +1233,6 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate, mi
 		return
 	}
 	removePeer := proto.Peer{ID: dataNode.ID, Addr: addr}
-
 	if err = c.removeDataPartitionRaftMember(dp, removePeer, migrationMode); err != nil {
 		return
 	}
@@ -1277,6 +1276,8 @@ func (c *Cluster) isRecovering(dp *DataPartition, addr string) (isRecover bool) 
 }
 
 func (c *Cluster) removeDataPartitionRaftMember(dp *DataPartition, removePeer proto.Peer, migrationMode bool) (err error) {
+	dp.offlineMutex.Lock()
+	defer dp.offlineMutex.Unlock()
 	defer func() {
 		if err1 := c.updateDataPartitionOfflinePeerIDWithLock(dp, 0); err1 != nil {
 			err = errors.Trace(err, "updateDataPartitionOfflinePeerIDWithLock failed, err[%v]", err1)
@@ -1311,12 +1312,9 @@ func (c *Cluster) removeDataPartitionRaftMember(dp *DataPartition, removePeer pr
 		}
 		newPeers = append(newPeers, peer)
 	}
-	dp.Lock()
 	if err = dp.update("removeDataPartitionRaftMember", dp.VolName, newPeers, newHosts, c); err != nil {
-		dp.Unlock()
 		return
 	}
-	dp.Unlock()
 	return
 }
 func (c *Cluster) updateDataPartitionOfflinePeerIDWithLock(dp *DataPartition, peerID uint64) (err error) {
