@@ -37,6 +37,7 @@ type DataPartition struct {
 	Replicas       []*DataReplica
 	Hosts          []string // host addresses
 	Peers          []proto.Peer
+	offlineMutex   sync.RWMutex
 	sync.RWMutex
 	total                   uint64
 	used                    uint64

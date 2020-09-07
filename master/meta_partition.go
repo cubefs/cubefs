@@ -60,6 +60,7 @@ type MetaPartition struct {
 	OfflinePeerID uint64
 	MissNodes     map[string]int64
 	LoadResponse  []*proto.MetaPartitionLoadResponse
+	offlineMutex  sync.RWMutex
 	sync.RWMutex
 }
 
