@@ -1,3 +1,9 @@
+## Release v2.2.1 - 2020/09/07
+
+### Bug fix
+* `master`: Ensure concurrency safety in removeRaftMember action. [#893](https://github.com/chubaofs/chubaofs/pull/893)
+* `sdk`: fix panic error when concurrent remove **dataPartition**. [#894](https://github.com/chubaofs/chubaofs/pull/894)
+
 ## Release v2.2.0 - 2020/09/01
 
 ### Enhancement
