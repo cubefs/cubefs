@@ -2,9 +2,10 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
 	"testing"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 func buildPanicCluster() *Cluster {
@@ -20,8 +21,14 @@ func buildPanicVol() *Vol {
 		return nil
 	}
 	var createTime = time.Now().Unix() // record create time of this volume
-	vol := newVol(id, commonVol.Name, commonVol.Owner, "", commonVol.dataPartitionSize, commonVol.Capacity,
-		defaultReplicaNum, defaultReplicaNum, false, false, false, false, createTime, "")
+	arg := createVolArg{
+		name:         commonVol.Name,
+		owner:        commonVol.Owner,
+		size:         commonVol.dataPartitionSize,
+		capacity:     commonVol.Capacity,
+		dpReplicaNum: defaultReplicaNum,
+	}
+	vol := newVol(id, createTime, &arg)
 	vol.dataPartitions = nil
 	return vol
 }
@@ -74,7 +81,7 @@ func TestPanicCheckMetaPartitions(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID)
+	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID, vol.mpStoreType)
 	vol.addMetaPartition(mp)
 	mp = nil
 	c.checkMetaPartitions()

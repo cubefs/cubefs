@@ -1575,39 +1575,41 @@ errHandler:
 
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, crossZone, enableToken bool) (vol *Vol, err error) {
+//func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, crossZone, enableToken bool) (vol *Vol, err error) {
+func (c *Cluster) createVol(arg *createVolArg) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
 	)
-	if size == 0 {
+	if arg.size == 0 {
 		dataPartitionSize = util.DefaultDataPartitionSize
 	} else {
-		dataPartitionSize = uint64(size) * util.GB
+		dataPartitionSize = arg.size * util.GB
 	}
+	arg.size = dataPartitionSize
 
-	if crossZone && c.t.zoneLen() <= 1 {
+	if arg.crossZone && c.t.zoneLen() <= 1 {
 		return nil, fmt.Errorf("cluster has one zone,can't cross zone")
 	}
-	if crossZone && zoneName != "" {
+	if arg.crossZone && arg.zoneName != "" {
 		return nil, fmt.Errorf("only the vol which don't across zones,can specified zoneName")
 	}
-	if zoneName != "" {
-		if _, err = c.t.getZone(zoneName); err != nil {
+	if arg.zoneName != "" {
+		if _, err = c.t.getZone(arg.zoneName); err != nil {
 			return
 		}
-	} else if !crossZone {
-		zoneName = DefaultZoneName
+	} else if !arg.crossZone {
+		arg.zoneName = DefaultZoneName
 	}
-	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, followerRead, authenticate, crossZone, enableToken); err != nil {
+	if vol, err = c.doCreateVol(arg); err != nil {
 		goto errHandler
 	}
-	if err = vol.initMetaPartitions(c, mpCount); err != nil {
+	if err = vol.initMetaPartitions(c, arg.mpCount); err != nil {
 		vol.Status = markDelete
 		if e := vol.deleteVolFromStore(c); e != nil {
 			log.LogErrorf("action[createVol] failed,vol[%v] err[%v]", vol.Name, e)
 		}
-		c.deleteVol(name)
+		c.deleteVol(arg.name)
 		err = fmt.Errorf("action[createVol] initMetaPartitions failed,err[%v]", err)
 		goto errHandler
 	}
@@ -1617,22 +1619,22 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	}
 	vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
 	vol.updateViewCache(c)
-	log.LogInfof("action[createVol] vol[%v],readableAndWritableCnt[%v]", name, readWriteDataPartitions)
+	log.LogInfof("action[createVol] vol[%v],readableAndWritableCnt[%v]", arg.name, readWriteDataPartitions)
 	return
 
 errHandler:
-	err = fmt.Errorf("action[createVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err)
+	err = fmt.Errorf("action[createVol], clusterID[%v] name:%v, err:%v ", c.Name, arg.name, err)
 	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
 	return
 }
 
-func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity uint64, dpReplicaNum int, followerRead, authenticate, crossZone, enableToken bool) (vol *Vol, err error) {
+func (c *Cluster) doCreateVol(arg *createVolArg) (vol *Vol, err error) {
 	var id uint64
 	c.createVolMutex.Lock()
 	defer c.createVolMutex.Unlock()
 	var createTime = time.Now().Unix() // record unix seconds of volume create time
-	if _, err = c.getVol(name); err == nil {
+	if _, err = c.getVol(arg.name); err == nil {
 		err = proto.ErrDuplicateVol
 		goto errHandler
 	}
@@ -1640,14 +1642,15 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	if err != nil {
 		goto errHandler
 	}
-	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum, followerRead, authenticate, crossZone, enableToken, createTime, description)
+	arg.mpReplicaNum = defaultReplicaNum
+	vol = newVol(id, createTime, arg)
 	// refresh oss secure
 	vol.refreshOSSSecure()
 	if err = c.syncAddVol(vol); err != nil {
 		goto errHandler
 	}
 	c.putVol(vol)
-	if enableToken {
+	if arg.enableToken {
 		if err = c.createToken(vol, proto.ReadOnlyToken); err != nil {
 			goto errHandler
 		}
@@ -1657,7 +1660,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	}
 	return
 errHandler:
-	err = fmt.Errorf("action[doCreateVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
+	err = fmt.Errorf("action[doCreateVol], clusterID[%v] name:%v, err:%v ", c.Name, arg.name, err.Error())
 	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
 	return

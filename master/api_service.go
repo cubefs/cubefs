@@ -618,7 +618,7 @@ func (m *Server) volExpand(w http.ResponseWriter, r *http.Request) {
 		authKey  string
 		err      error
 		msg      string
-		capacity int
+		capacity uint64
 		vol      *Vol
 	)
 	if name, authKey, capacity, err = parseRequestToSetVolCapacity(r); err != nil {
@@ -649,7 +649,7 @@ func (m *Server) volShrink(w http.ResponseWriter, r *http.Request) {
 		authKey  string
 		err      error
 		msg      string
-		capacity int
+		capacity uint64
 		vol      *Vol
 	)
 	if name, authKey, capacity, err = parseRequestToSetVolCapacity(r); err != nil {
@@ -660,13 +660,13 @@ func (m *Server) volShrink(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
-	if uint64(capacity) >= vol.Capacity {
+	if capacity >= vol.Capacity {
 		err = fmt.Errorf("shrink capacity[%v] should be less than the old capacity[%v]", capacity, vol.Capacity)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
-	if err = m.cluster.updateVol(name, authKey, vol.zoneName, vol.description, uint64(capacity), vol.dpReplicaNum, vol.FollowerRead, vol.authenticate, vol.enableToken); err != nil {
+	if err = m.cluster.updateVol(name, authKey, vol.zoneName, vol.description, capacity, vol.dpReplicaNum, vol.FollowerRead, vol.authenticate, vol.enableToken); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -676,42 +676,31 @@ func (m *Server) volShrink(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		name         string
-		owner        string
-		err          error
-		msg          string
-		size         int
-		mpCount      int
-		dpReplicaNum int
-		capacity     int
-		vol          *Vol
-		followerRead bool
-		authenticate bool
-		crossZone    bool
-		enableToken  bool
-		zoneName     string
-		description  string
+		arg *createVolArg
+		err error
+		msg string
+		vol *Vol
 	)
 
-	if name, owner, zoneName, description, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, crossZone, enableToken, err = parseRequestToCreateVol(r); err != nil {
+	if arg, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if !(dpReplicaNum == 2 || dpReplicaNum == 3) {
-		err = fmt.Errorf("replicaNum can only be 2 and 3,received replicaNum is[%v]", dpReplicaNum)
+	if !(arg.dpReplicaNum == 2 || arg.dpReplicaNum == 3) {
+		err = fmt.Errorf("replicaNum can only be 2 and 3,received replicaNum is[%v]", arg.dpReplicaNum)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, crossZone, enableToken); err != nil {
+	if vol, err = m.cluster.createVol(arg); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
-	if err = m.associateVolWithUser(owner, name); err != nil {
+	if err = m.associateVolWithUser(arg.owner, arg.name); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	msg = fmt.Sprintf("create vol[%v] successfully, has allocate [%v] data partitions", name, len(vol.dataPartitions.partitions))
+	msg = fmt.Sprintf("create vol[%v] successfully, has allocate [%v] data partitions", arg.name, len(vol.dataPartitions.partitions))
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
@@ -1019,7 +1008,7 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(id))
 }
 
-func (m *Server) checkInvalidIDNodes(w http.ResponseWriter,r *http.Request) {
+func (m *Server) checkInvalidIDNodes(w http.ResponseWriter, r *http.Request) {
 	nodes := m.cluster.getInvalidIDNodes()
 	sendOkReply(w, r, newSuccessHTTPReply(nodes))
 }
@@ -1426,7 +1415,7 @@ func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authent
 	return
 }
 
-func parseRequestToSetVolCapacity(r *http.Request) (name, authKey string, capacity int, err error) {
+func parseRequestToSetVolCapacity(r *http.Request) (name, authKey string, capacity uint64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1442,55 +1431,61 @@ func parseRequestToSetVolCapacity(r *http.Request) (name, authKey string, capaci
 	return
 }
 
-func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, crossZone, enableToken bool, err error) {
+func parseRequestToCreateVol(r *http.Request) (arg *createVolArg, err error) {
+	arg = &createVolArg{}
+
 	if err = r.ParseForm(); err != nil {
 		return
 	}
-	if name, err = extractName(r); err != nil {
+	if arg.name, err = extractName(r); err != nil {
 		return
 	}
-	if owner, err = extractOwner(r); err != nil {
+	if arg.owner, err = extractOwner(r); err != nil {
+		return
+	}
+
+	if arg.mpStoreType, err = extractMpStoreType(r); err != nil {
 		return
 	}
 
 	if mpCountStr := r.FormValue(metaPartitionCountKey); mpCountStr != "" {
-		if mpCount, err = strconv.Atoi(mpCountStr); err != nil {
-			mpCount = defaultInitMetaPartitionCount
+		if arg.mpCount, err = strconv.Atoi(mpCountStr); err != nil {
+			arg.mpCount = defaultInitMetaPartitionCount
 		}
 	}
 
 	if replicaStr := r.FormValue(replicaNumKey); replicaStr == "" {
-		dpReplicaNum = defaultReplicaNum
-	} else if dpReplicaNum, err = strconv.Atoi(replicaStr); err != nil {
+		arg.dpReplicaNum = defaultReplicaNum
+	} else if arg.dpReplicaNum, err = strconv.Atoi(replicaStr); err != nil {
 		err = unmatchedKey(replicaNumKey)
 		return
 	}
 
 	if sizeStr := r.FormValue(dataPartitionSizeKey); sizeStr != "" {
-		if size, err = strconv.Atoi(sizeStr); err != nil {
+		if arg.size, err = strconv.ParseUint(sizeStr, 10, 64); err != nil {
 			err = unmatchedKey(dataPartitionSizeKey)
 			return
 		}
 	}
 
-	if capacity, err = extractCapacity(r); err != nil {
+	if arg.capacity, err = extractCapacity(r); err != nil {
 		return
 	}
 
-	if followerRead, err = extractFollowerRead(r); err != nil {
+	if arg.followerRead, err = extractFollowerRead(r); err != nil {
 		return
 	}
 
-	if authenticate, err = extractAuthenticate(r); err != nil {
+	if arg.authenticate, err = extractAuthenticate(r); err != nil {
 		return
 	}
 
-	if crossZone, err = extractCrossZone(r); err != nil {
+	if arg.crossZone, err = extractCrossZone(r); err != nil {
 		return
 	}
-	zoneName = r.FormValue(zoneNameKey)
-	enableToken = extractEnableToken(r)
-	description = r.FormValue(descriptionKey)
+	arg.zoneName = r.FormValue(zoneNameKey)
+	arg.enableToken = extractEnableToken(r)
+	arg.description = r.FormValue(descriptionKey)
 	return
 }
 
@@ -1985,6 +1980,7 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	mpView.MaxInodeID = mp.MaxInodeID
 	mpView.InodeCount = mp.InodeCount
 	mpView.DentryCount = mp.DentryCount
+	mpView.StoreType = mp.StoreType.ToString()
 	mpView.IsRecover = mp.IsRecover
 	return
 }
@@ -2092,13 +2088,13 @@ func extractMetaPartitionID(r *http.Request) (partitionID uint64, err error) {
 	return strconv.ParseUint(value, 10, 64)
 }
 
-func extractCapacity(r *http.Request) (capacity int, err error) {
+func extractCapacity(r *http.Request) (capacity uint64, err error) {
 	var capacityStr string
 	if capacityStr = r.FormValue(volCapacityKey); capacityStr == "" {
 		err = keyNotFound(volCapacityKey)
 		return
 	}
-	if capacity, err = strconv.Atoi(capacityStr); err != nil {
+	if capacity, err = strconv.ParseUint(capacityStr, 10, 64); err != nil {
 		err = unmatchedKey(volCapacityKey)
 	}
 	return
@@ -2126,6 +2122,23 @@ func extractName(r *http.Request) (name string, err error) {
 	}
 	if !volNameRegexp.MatchString(name) {
 		return "", errors.New("name can only be number and letters")
+	}
+
+	return
+}
+
+func extractMpStoreType(r *http.Request) (mpStoreType proto.StoreType, err error) {
+	var s string
+	if s = r.FormValue(volMpStoreTypeKey); s == "" {
+		mpStoreType = proto.MetaTypeMemory
+		return
+	}
+
+	if storeType, ok := proto.MpStoreTypeParseFromString(s); ok {
+		mpStoreType = storeType
+	} else {
+		err = unmatchedKey(volMpStoreTypeKey)
+		return
 	}
 
 	return
