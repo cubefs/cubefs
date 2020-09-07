@@ -97,6 +97,9 @@ func (s *DefaultRandomSelector) RemoveDP(partitionID uint64) {
 			break
 		}
 	}
+	if i >= len(rwPartitionGroups) {
+		return
+	}
 	newRwPartition := make([]*DataPartition, 0)
 	newRwPartition = append(newRwPartition, rwPartitionGroups[:i]...)
 	newRwPartition = append(newRwPartition, rwPartitionGroups[i+1:]...)
@@ -105,6 +108,9 @@ func (s *DefaultRandomSelector) RemoveDP(partitionID uint64) {
 		if localLeaderPartitions[i].PartitionID == partitionID {
 			break
 		}
+	}
+	if i >= len(localLeaderPartitions) {
+		return
 	}
 	newLocalLeaderPartitions := make([]*DataPartition, 0)
 	newLocalLeaderPartitions = append(newLocalLeaderPartitions, localLeaderPartitions[:i]...)
