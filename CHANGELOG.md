@@ -1,13 +1,13 @@
 ## Release v2.2.1 - 2020/09/07
 
 ### Bug fix
-* `master`: Ensure concurrency safety in removeRaftMember action. [#893](https://github.com/chubaofs/chubaofs/pull/893)
-* `sdk`: fix panic error when concurrent remove **dataPartition**. [#894](https://github.com/chubaofs/chubaofs/pull/894)
+* `master`: Fix the concurrency safe issue when removing raft member. [#893](https://github.com/chubaofs/chubaofs/pull/893)
+* `sdk`: Fix the panic issue while remove data partition concurrently. [#894](https://github.com/chubaofs/chubaofs/pull/894)
 
 ## Release v2.2.0 - 2020/09/01
 
 ### Enhancement
-* `object`: Implemented S3 api 'DeleteBucketPolicy'. [#757](https://github.com/chubaofs/chubaofs/pull/757)
+* `object`: Implemented S3 api 'DeleteBucketPolicy' for bucket deletion. [#757](https://github.com/chubaofs/chubaofs/pull/757)
 * `master`: Introducing management API for volume capacity expanding and shrinking. New capacity must be set more than 20% lager than used. [#764](https://github.com/chubaofs/chubaofs/pull/764)
 * `master`: Introducing management API for updating node address. [#813](https://github.com/chubaofs/chubaofs/pull/813)
 * `master`: Introducing management API for checking nodes. [#813](https://github.com/chubaofs/chubaofs/pull/813) 
