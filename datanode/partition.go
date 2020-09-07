@@ -543,7 +543,7 @@ func (dp *DataPartition) LaunchRepair(extentType uint8) {
 	if dp.partitionStatus == proto.Unavailable {
 		return
 	}
-	if err := dp.updateReplicas(); err != nil {
+	if err := dp.updateReplicas(false); err != nil {
 		log.LogErrorf("action[LaunchRepair] partition(%v) err(%v).", dp.partitionID, err)
 		return
 	}
@@ -556,8 +556,8 @@ func (dp *DataPartition) LaunchRepair(extentType uint8) {
 	dp.repair(extentType)
 }
 
-func (dp *DataPartition) updateReplicas() (err error) {
-	if time.Now().Unix()-dp.intervalToUpdateReplicas <= IntervalToUpdateReplica {
+func (dp *DataPartition) updateReplicas(isForce bool) (err error) {
+	if !isForce && time.Now().Unix()-dp.intervalToUpdateReplicas <= IntervalToUpdateReplica {
 		return
 	}
 	dp.isLeader = false

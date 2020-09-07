@@ -17,6 +17,7 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/storage"
 	"net"
 	"sync/atomic"
 	"time"
@@ -53,6 +54,12 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 			return
 		}
 		isUpdated, err = dp.addRaftNode(req, index)
+		if isUpdated && err == nil {
+			dp.updateReplicas(true)
+			if dp.isLeader {
+				dp.ExtentStore().MoveAllToBrokenTinyExtentC(storage.TinyExtentCount)
+			}
+		}
 	case raftproto.ConfRemoveNode:
 		req := &proto.RemoveDataPartitionRaftMemberRequest{}
 		if err = json.Unmarshal(confChange.Context, req); err != nil {

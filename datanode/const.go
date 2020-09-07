@@ -73,6 +73,10 @@ const (
 	IsReleased = 1
 )
 
+const (
+	MinAvaliTinyExtentCnt = 5
+)
+
 // Sector size
 const (
 	DiskSectorSize = 512
