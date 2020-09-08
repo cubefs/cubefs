@@ -190,13 +190,16 @@ func (s *ClusterService) registerMutation(schema *schemabuilder.Schema) {
 
 	mutation.FieldFunc("addMetaReplica", s.addMetaReplica)
 	mutation.FieldFunc("deleteMetaReplica", s.deleteMetaReplica)
+	mutation.FieldFunc("decommissionMetaPartition", s.decommissionMetaPartition)
 	mutation.FieldFunc("addDataReplica", s.addDataReplica)
 	mutation.FieldFunc("deleteDataReplica", s.deleteDataReplica)
+	mutation.FieldFunc("decommissionDataPartition", s.decommissionDataPartition)
 
 	mutation.FieldFunc("clusterFreeze", s.clusterFreeze)
 	mutation.FieldFunc("addRaftNode", s.addRaftNode)
 	mutation.FieldFunc("loadMetaPartition", s.loadMetaPartition)
 	mutation.FieldFunc("decommissionMetaPartition", s.decommissionMetaPartition)
+	mutation.FieldFunc("decommissionDataPartition", s.decommissionDataPartition)
 	mutation.FieldFunc("decommissionMetaNode", s.decommissionMetaNode)
 	mutation.FieldFunc("decommissionDisk", s.decommissionDisk)
 	mutation.FieldFunc("decommissionDataNode", s.decommissionDataNode)
@@ -286,7 +289,7 @@ func (m *ClusterService) loadMetaPartition(ctx context.Context, args struct {
 
 func (m *ClusterService) decommissionMetaPartition(ctx context.Context, args struct {
 	PartitionID uint64
-	NodeAddr    string
+	Addr        string
 }) (*proto.GeneralResp, error) {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
@@ -295,11 +298,32 @@ func (m *ClusterService) decommissionMetaPartition(ctx context.Context, args str
 	if err != nil {
 		return nil, err
 	}
-	if err := m.cluster.decommissionMetaPartition(args.NodeAddr, mp); err != nil {
+	if err := m.cluster.decommissionMetaPartition(args.Addr, mp); err != nil {
 		return nil, err
 	}
-	log.LogInfof(proto.AdminDecommissionMetaPartition+" partitionID :%v  decommissionMetaPartition successfully", args.PartitionID)
-	return proto.Success("success"), nil
+	rstMsg := fmt.Sprintf(proto.AdminDecommissionMetaPartition+" partitionID :%v  decommissionMetaPartition successfully", args.PartitionID)
+	log.LogInfof(rstMsg)
+	return proto.Success(rstMsg), nil
+}
+
+func (m *ClusterService) decommissionDataPartition(ctx context.Context, args struct {
+	PartitionID uint64
+	Addr        string
+}) (*proto.GeneralResp, error) {
+	if _, _, err := permissions(ctx, ADMIN); err != nil {
+		return nil, err
+	}
+
+	dp, err := m.cluster.getDataPartitionByID(args.PartitionID)
+	if err != nil {
+		return nil, err
+	}
+	if err := m.cluster.decommissionDataPartition(args.Addr, dp, handleDataPartitionOfflineErr); err != nil {
+		return nil, err
+	}
+	rstMsg := fmt.Sprintf(proto.AdminDecommissionDataPartition+" dataPartitionID :%v  on node:%v successfully", args.PartitionID, args.Addr)
+	log.LogInfof(rstMsg)
+	return proto.Success(rstMsg), nil
 }
 
 func (m *ClusterService) getMetaNode(ctx context.Context, args struct {
