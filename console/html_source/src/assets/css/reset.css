@@ -1,0 +1,356 @@
+@charset "utf-8";
+/* CSS Document */
+html,body {
+  height: 100%;
+}
+* {
+  margin: 0;
+  padding: 0
+}
+em, i {
+  font-style: normal
+}
+
+li {
+  list-style: none
+}
+
+img {
+  border: 0;
+  vertical-align: middle
+}
+
+a, button {
+  cursor: pointer
+}
+
+ol, ul {
+  margin-bottom: 0px;
+}
+
+a {
+  color: inherit;
+}
+
+a, a:hover, del, ins, s, u {
+  text-decoration: none
+}
+
+button, input {
+  font-family: Helvetica, PingFangSC-Medium, Microsoft YaHei, tahoma, arial, Hiragino Sans GB, \\5b8b\4f53, sans-serif;
+}
+
+body {
+  font: 14px Helvetica, PingFangSC, Microsoft YaHei, tahoma, arial, Hiragino Sans GB, \\5b8b\4f53, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #EFF2F5;
+  color: #333;
+  width: 100%;
+  overflow-x: hidden;
+}
+input::-webkit-input-placeholder {
+  /* placeholder颜色  */
+  color: #999;
+  font-size: 12px;
+}
+
+.clearfix:after {
+  visibility: hidden;
+  clear: both;
+  display: block;
+  content: ".";
+  height: 0
+}
+
+.hr{
+  width:100%;
+  height: 1px;
+  overflow: hidden;
+  background-color: #dcdfe6;
+}
+
+.tr{
+  text-align: right;
+}
+
+.tc{
+  text-align: center;
+}
+
+.fl {
+  float: left;
+}
+
+.fr {
+  float: right;
+}
+
+.of {
+  overflow: hidden;
+}
+
+.pr{
+  position: relative;
+}
+
+.pa{
+  position: absolute;
+}
+
+.mid-block{
+  display: inline-block;
+  vertical-align: middle;
+}
+.mid-block-top{
+  display: inline-block;
+  vertical-align: top;
+}
+
+.m5{
+  margin: 5px;
+}
+.m10{
+  margin: 10px;
+}
+.m15{
+  margin: 15px;
+}
+.m20{
+  margin: 20px;
+}
+.m25{
+  margin: 25px;
+}
+.m30{
+  margin: 30px;
+}
+.mt5 {
+  margin-top: 5px;
+}
+.mt10{
+  margin-top: 10px;
+}
+.mt15{
+  margin-top: 15px;
+}
+.mt20{
+  margin-top: 20px;
+}
+.mt25{
+  margin-top: 25px;
+}
+.mt30{
+  margin-top: 30px;
+}
+.mt40{
+  margin-top: 40px;
+}
+.mt50{
+  margin-top: 50px;
+}
+.mt60{
+  margin-top: 60px;
+}
+.mr5 {
+  margin-right: 5px;
+}
+.mr10 {
+  margin-right: 10px;
+}
+.mr15 {
+  margin-right: 15px;
+}
+.mr20 {
+  margin-right: 20px;
+}
+.mr25 {
+  margin-right: 25px;
+}
+.mr30 {
+  margin-right: 30px;
+}
+.mr50 {
+  margin-right: 50px;
+}
+.mb5 {
+  margin-bottom: 5px;
+}
+.mb10 {
+  margin-bottom: 10px;
+}
+.mb15 {
+  margin-bottom: 15px;
+}
+.mb20 {
+  margin-bottom: 20px;
+}
+.mb25 {
+  margin-bottom: 25px;
+}
+.mb30 {
+  margin-bottom: 30px;
+}
+.ml5 {
+  margin-left: 5px;
+}
+.ml10 {
+  margin-left: 10px;
+}
+.ml15 {
+  margin-left: 15px;
+}
+.ml20 {
+  margin-left: 20px;
+}
+.ml25 {
+  margin-left: 25px;
+}
+.ml30 {
+  margin-left: 30px;
+}
+.ml50{
+  margin-left: 50px;
+}
+
+.p5{
+  padding: 5px;
+}
+.p10{
+  padding: 10px;
+}
+.p15{
+  padding: 15px;
+}
+.p20{
+  padding: 20px;
+}
+.p25{
+  padding: 25px;
+}
+.p30{
+  padding: 30px;
+}
+.pt5 {
+  padding-top: 5px;
+}
+.pt10{
+  padding-top: 10px;
+}
+.pt15{
+  padding-top: 15px;
+}
+.pt20{
+  padding-top: 20px;
+}
+.pt25{
+  padding-top: 25px;
+}
+.pt30{
+  padding-top: 30px;
+}
+.pt50{
+  padding-top: 50px;
+}
+.pr5 {
+  padding-right: 5px;
+}
+.pr10 {
+  padding-right: 10px;
+}
+.pr15 {
+  padding-right: 15px;
+}
+.pr20 {
+  padding-right: 20px;
+}
+.pr25 {
+  padding-right: 25px;
+}
+.pr30 {
+  padding-right: 30px;
+}
+.pr80 {
+   padding-right: 80px;
+ }
+.pb5 {
+  padding-bottom: 5px;
+}
+.pb10 {
+  padding-bottom: 10px;
+}
+.pb15 {
+  padding-bottom: 15px;
+}
+.pb20 {
+  padding-bottom: 20px;
+}
+.pb25 {
+  padding-bottom: 25px;
+}
+.pb30 {
+  padding-bottom: 30px;
+}
+.pl5 {
+  padding-left: 5px;
+}
+.pl10 {
+  padding-left: 10px;
+}
+.pl15 {
+  padding-left: 15px;
+}
+.pl20 {
+  padding-left: 20px;
+}
+.pl25 {
+  padding-left: 25px;
+}
+.pl30 {
+  padding-left: 30px;
+}
+.pl50{
+  padding-left: 50px;
+}
+.pl105{
+  padding-left: 105px;
+}
+.width80{
+  width: 80px;
+}
+.width100{
+  width: 100px;
+}
+.width120{
+  width: 120px;
+}
+.width150{
+  width: 150px;
+}
+.width160{
+  width: 160px;
+}
+.width180{
+  width: 180px;
+}
+.width250{
+  width: 250px;
+}
+.width300{
+  width: 300px;
+}
+.width350{
+  width: 350px;
+}
+.width400{
+  width: 400px;
+}
+.width500{
+  width: 500px;
+}
+.c-blue{
+  color: #409EFF
+}
+.c-red{
+  color: #F56C6C
+}
