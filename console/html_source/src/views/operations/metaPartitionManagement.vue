@@ -184,6 +184,20 @@ export default {
             }
             // 按创建时间倒序排列
             finalMetaPartitionList.sort(function (a, b) {
+              let errA = a.peers.length != a.replicaNum ;
+              let errB = b.peers.length != b.replicaNum ;
+
+              if (!errA && !errB){
+                return 0;
+              }
+
+              if(!errA){
+                return 1;
+              }
+
+              if(!errB){
+                return -1;
+              }
               return a.partitionID - b.partitionID;
             });
             this.metaPartitionList = finalMetaPartitionList;
