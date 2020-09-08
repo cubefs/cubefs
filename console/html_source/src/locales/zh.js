@@ -166,7 +166,17 @@ export default {
         DecommissionReplica:"解除副本"
       },
       DataPartitionManagement: {
-        title: '数据分片管理'
+        title: '数据分片管理',
+        PartitionID:"ID",
+        MissNodes:"丢失节点",
+        ReplicaNum:"副本数",
+        Status:"状态",
+        LoadedTime:"加载时间",
+        Hosts:"主机",
+        VolName:"卷名称",
+        AddReplica:"增加副本",
+        DeleteReplica:"删除副本",
+        DecommissionReplica:"解除副本"
       },
     },
     servers: {
