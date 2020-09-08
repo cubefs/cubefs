@@ -142,13 +142,19 @@ func (partition *DataPartition) resetTaskID(t *proto.AdminTask) {
 
 // Check if there is a replica missing or not.
 func (partition *DataPartition) hasMissingOneReplica(offlineAddr string, replicaNum int) (err error) {
+	curHostCount := len(partition.Hosts)
+	for _, host := range partition.Hosts {
+		if host == offlineAddr {
+			curHostCount = curHostCount - 1
+		}
+	}
 	curReplicaCount := len(partition.Replicas)
 	for _, r := range partition.Replicas {
 		if r.Addr == offlineAddr {
 			curReplicaCount = curReplicaCount - 1
 		}
 	}
-	if curReplicaCount < replicaNum-1 {
+	if curReplicaCount < replicaNum-1 || curHostCount < replicaNum-1 {
 		log.LogError(fmt.Sprintf("action[%v],partitionID:%v,err:%v",
 			"hasMissingOneReplica", partition.PartitionID, proto.ErrHasOneMissingReplica))
 		err = proto.ErrHasOneMissingReplica
@@ -642,6 +648,8 @@ func (partition *DataPartition) getToBeDecommissionHost(replicaNum int) (host st
 }
 
 func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string) (err error) {
+	partition.offlineMutex.Lock()
+	defer partition.offlineMutex.Unlock()
 	if err = c.removeDataReplica(partition, host, false, false); err != nil {
 		return
 	}

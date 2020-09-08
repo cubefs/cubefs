@@ -365,13 +365,19 @@ func (mp *MetaPartition) canBeOffline(nodeAddr string, replicaNum int) (err erro
 
 // Check if there is a replica missing or not.
 func (mp *MetaPartition) hasMissingOneReplica(offlineAddr string, replicaNum int) (err error) {
+	curHostCount := len(mp.Hosts)
+	for _, host := range mp.Hosts {
+		if host == offlineAddr {
+			curHostCount = curHostCount - 1
+		}
+	}
 	curReplicaCount := len(mp.Replicas)
 	for _, r := range mp.Replicas {
 		if r.Addr == offlineAddr {
 			curReplicaCount = curReplicaCount - 1
 		}
 	}
-	if curReplicaCount < replicaNum-1 {
+	if curHostCount < replicaNum-1 || curReplicaCount < replicaNum - 1{
 		log.LogError(fmt.Sprintf("action[%v],partitionID:%v,err:%v",
 			"hasMissingOneReplica", mp.PartitionID, proto.ErrHasOneMissingReplica))
 		err = proto.ErrHasOneMissingReplica
@@ -479,6 +485,8 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 
 func (mp *MetaPartition) replicaCreationTasks(c *Cluster, volName string) {
 	var msg string
+	mp.offlineMutex.Lock()
+	defer mp.offlineMutex.Unlock()
 	if addr, err := mp.removeIllegalReplica(); err != nil {
 		msg = fmt.Sprintf("action[%v],clusterID[%v] metaPartition:%v  excess replication"+
 			" on :%v  err:%v  persistenceHosts:%v",

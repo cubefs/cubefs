@@ -468,7 +468,8 @@ func (m *Server) deleteDataReplica(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
 		return
 	}
-
+	dp.offlineMutex.Lock()
+	defer dp.offlineMutex.Unlock()
 	if err = m.cluster.removeDataReplica(dp, addr, true, false); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -524,7 +525,8 @@ func (m *Server) deleteMetaReplica(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
-
+	mp.offlineMutex.Lock()
+	defer mp.offlineMutex.Unlock()
 	if err = m.cluster.deleteMetaReplica(mp, addr, true, false); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return

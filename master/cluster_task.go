@@ -106,6 +106,8 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, 
 		zones           []string
 		excludeZone     string
 	)
+	mp.offlineMutex.Lock()
+	defer mp.offlineMutex.Unlock()
 	log.LogWarnf("action[decommissionMetaPartition],volName[%v],nodeAddr[%v],partitionID[%v] begin", mp.volName, nodeAddr, mp.PartitionID)
 	mp.RLock()
 	if !contains(mp.Hosts, nodeAddr) {
@@ -323,8 +325,6 @@ func (c *Cluster) deleteMetaPartition(partition *MetaPartition, removeMetaNode *
 }
 
 func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, removePeer proto.Peer, migrationMode bool) (err error) {
-	partition.offlineMutex.Lock()
-	defer partition.offlineMutex.Unlock()
 	defer func() {
 		if err1 := c.updateMetaPartitionOfflinePeerIDWithLock(partition, 0); err1 != nil {
 			err = errors.Trace(err, "updateMetaPartitionOfflinePeerIDWithLock failed, err[%v]", err1)
@@ -367,9 +367,12 @@ func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, remove
 		}
 		newPeers = append(newPeers, peer)
 	}
+	partition.Lock()
 	if err = partition.persistToRocksDB("removeMetaPartitionRaftMember", partition.volName, newHosts, newPeers, c); err != nil {
+		partition.Unlock()
 		return
 	}
+	partition.Unlock()
 	if mr.Addr != removePeer.Addr {
 		return
 	}

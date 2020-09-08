@@ -1059,6 +1059,8 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		dataNode    *DataNode
 		replica     *DataReplica
 	)
+	dp.offlineMutex.Lock()
+	defer dp.offlineMutex.Unlock()
 	dp.RLock()
 	if ok := dp.hasHost(offlineAddr); !ok {
 		dp.RUnlock()
@@ -1369,8 +1371,6 @@ func (c *Cluster) isRecovering(dp *DataPartition, addr string) (isRecover bool) 
 }
 
 func (c *Cluster) removeDataPartitionRaftMember(dp *DataPartition, removePeer proto.Peer, migrationMode bool) (err error) {
-	dp.offlineMutex.Lock()
-	defer dp.offlineMutex.Unlock()
 	defer func() {
 		if err1 := c.updateDataPartitionOfflinePeerIDWithLock(dp, 0); err1 != nil {
 			err = errors.Trace(err, "updateDataPartitionOfflinePeerIDWithLock failed, err[%v]", err1)
@@ -1405,9 +1405,12 @@ func (c *Cluster) removeDataPartitionRaftMember(dp *DataPartition, removePeer pr
 		}
 		newPeers = append(newPeers, peer)
 	}
+	dp.Lock()
 	if err = dp.update("removeDataPartitionRaftMember", dp.VolName, newPeers, newHosts, c); err != nil {
+		dp.Unlock()
 		return
 	}
+	dp.Unlock()
 	return
 }
 
