@@ -13,8 +13,8 @@
         <el-table-column prop="replicaNum" :label="$t('chubaoFS.operations.DataPartitionManagement.ReplicaNum')"></el-table-column>
         <el-table-column prop="status" :label="$t('chubaoFS.operations.DataPartitionManagement.Status')"></el-table-column>
         <el-table-column prop="missNodes" :label="$t('chubaoFS.operations.DataPartitionManagement.MissNodes')"></el-table-column>
-        <el-table-column prop="lastLoadedTime" :label="$t('chubaoFS.operations.DataPartitionManagement.LoadedTime')"></el-table-column>
         <el-table-column prop="volName" :label="$t('chubaoFS.operations.DataPartitionManagement.VolName')"></el-table-column>
+        <el-table-column prop="loadedTime" :label="$t('chubaoFS.operations.DataPartitionManagement.LoadedTime')"></el-table-column>
         <el-table-column prop :label="$t('chubaoFS.tools.Actions')">
           <template slot-scope="scope">
             <el-dropdown trigger="click" size="medium">
@@ -116,7 +116,7 @@
 <script>
 import baseGql from "../../graphql/operations";
 import { date2Str, time2Str } from "../../utils/dateTime.js";
-import { formatStatus } from "../../utils/string.js";
+import { formatStatus, formatTime } from "../../utils/string.js";
 export default {
   name: "dataPartitionManagement",
   data() {
@@ -189,6 +189,12 @@ export default {
             this.handleCurrentChange(1);
             this.dataPartitionList.forEach((item) => {
               item.status = formatStatus(item.status);
+              console.log(item.lastLoadedTime)
+              item.loadedTime =
+                date2Str(item.lastLoadedTime*1000, "-") +
+                " " +
+                time2Str(item.lastLoadedTime*1000, ":");
+              console.log(item.loadedTime)
               item.replicaNum = item.replicaNum +"/"+ item.peers.length ;
               if(item.missNodes == undefined || item.missNodes == null || item.missNodes.length ==0){
                 item.missNodes = "none";
