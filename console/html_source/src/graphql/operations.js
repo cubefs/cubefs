@@ -139,6 +139,21 @@ const baseGql = {
       missNodes
     }
   }`,
+  queryDataPartitionList: gql`query dataPartitionList {
+    dataPartitionList{
+      partitionID
+      hosts
+      peers{
+        iD
+        addr
+      }
+      replicaNum
+      lastLoadedTime
+      status
+      missNodes
+      volName
+    }
+  }`,
   queryMetaNodeAddrList: gql`query clusterView {
     clusterView{
       metaNodes{
@@ -147,6 +162,21 @@ const baseGql = {
         status
         toMetaNode{
           metaPartitionCount
+          total
+          used
+        }
+      }
+    }
+  }`,
+
+  queryDataNodeAddrList: gql`query clusterView {
+    clusterView{
+      dataNodes{
+        addr
+        isWritable
+        status
+        toDataNode{
+          dataPartitionCount
           total
           used
         }

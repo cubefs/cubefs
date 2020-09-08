@@ -10,9 +10,9 @@
       <el-tab-pane :label="$t('chubaoFS.operations.MetaPartitionManagement.title')" name="MetaPartitionManagement">
         <div class="operation-container"> <metaPartition-management ref="childMetaPartition"></metaPartition-management></div>
       </el-tab-pane>
-      <!-- <el-tab-pane :label="$t('chubaoFS.operations.DataPartitionManagement.title')" name="DataPartitionManagement">
-        <div class="operation-container"> <volume-management ref="childDataPartition"></volume-management></div>
-      </el-tab-pane> -->
+      <el-tab-pane :label="$t('chubaoFS.operations.DataPartitionManagement.title')" name="DataPartitionManagement">
+        <div class="operation-container"> <dataPartition-management ref="childDataPartition"></dataPartition-management></div>
+      </el-tab-pane>
     </el-tabs>
   </div>
 </template>
@@ -21,14 +21,14 @@
 import ServerManagement from './serverManagement'
 import VolumeManagement from './volumeManagement'
 import MetaPartitionManagement from './metaPartitionManagement'
-// import DataManagement from './dataPartitionManagement'
+import DataPartitionManagement from './dataPartitionManagement'
 export default {
   name: 'Operations',
   components: {
     ServerManagement,
     VolumeManagement,
     MetaPartitionManagement,
-    // DataPartitionManagement,
+    DataPartitionManagement,
   },
   data () {
     return {

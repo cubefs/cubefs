@@ -166,7 +166,18 @@ export default {
         DecommissionReplica:"Decommission Replica"
       },
       DataPartitionManagement: {
-        title: 'DataPartition Management'
+        title: 'DataPartition Management',
+        PartitionID:"ID",
+        MissNodes:"Miss Nodes",
+        ReplicaNum:"Replica num",
+        Status:"status",
+        LoadedTime:"Loaded Time",
+        Hosts:"Hosts",
+        VolName:"Volume Name",
+        AddReplica:"Add Replica",
+        DeleteReplica:"Delete Replica",
+        DecommissionReplica:"Decommission Replica"
+
       },
     },
     servers: {
