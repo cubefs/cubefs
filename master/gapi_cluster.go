@@ -198,8 +198,6 @@ func (s *ClusterService) registerMutation(schema *schemabuilder.Schema) {
 	mutation.FieldFunc("clusterFreeze", s.clusterFreeze)
 	mutation.FieldFunc("addRaftNode", s.addRaftNode)
 	mutation.FieldFunc("loadMetaPartition", s.loadMetaPartition)
-	mutation.FieldFunc("decommissionMetaPartition", s.decommissionMetaPartition)
-	mutation.FieldFunc("decommissionDataPartition", s.decommissionDataPartition)
 	mutation.FieldFunc("decommissionMetaNode", s.decommissionMetaNode)
 	mutation.FieldFunc("decommissionDisk", s.decommissionDisk)
 	mutation.FieldFunc("decommissionDataNode", s.decommissionDataNode)
