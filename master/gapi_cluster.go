@@ -188,6 +188,11 @@ func (s *ClusterService) registerQuery(schema *schemabuilder.Schema) {
 func (s *ClusterService) registerMutation(schema *schemabuilder.Schema) {
 	mutation := schema.Mutation()
 
+	mutation.FieldFunc("addMetaReplica", s.addMetaReplica)
+	mutation.FieldFunc("deleteMetaReplica", s.deleteMetaReplica)
+	mutation.FieldFunc("addDataReplica", s.addDataReplica)
+	mutation.FieldFunc("deleteDataReplica", s.deleteDataReplica)
+
 	mutation.FieldFunc("clusterFreeze", s.clusterFreeze)
 	mutation.FieldFunc("addRaftNode", s.addRaftNode)
 	mutation.FieldFunc("loadMetaPartition", s.loadMetaPartition)
