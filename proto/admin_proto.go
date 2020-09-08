@@ -14,6 +14,8 @@
 
 package proto
 
+import "fmt"
+
 // api
 const (
 	// Admin APIs
@@ -146,9 +148,9 @@ func (s StoreType) ToString() string {
 
 func MpStoreTypeParseFromString(st string) (StoreType, bool) {
 	switch st {
-	case string(MetaTypeMemory):
+	case fmt.Sprintf("%d", MetaTypeMemory):
 		return MetaTypeMemory, true
-	case string(MetaTypeRocks):
+	case fmt.Sprintf("%d", MetaTypeRocks):
 		return MetaTypeRocks, true
 	default:
 		return MetaTypeUnKnown, false
