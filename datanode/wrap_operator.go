@@ -923,7 +923,6 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 	req.ReserveResource = adminTask.ReserveResource
 	dp := s.space.Partition(req.PartitionId)
 	if dp == nil {
-		err = fmt.Errorf("partition %v not exsit", req.PartitionId)
 		return
 	}
 	p.PartitionID = req.PartitionId
