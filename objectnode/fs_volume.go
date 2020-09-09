@@ -1426,6 +1426,15 @@ func (v *Volume) recursiveMakeDirectory(path string) (ino uint64, err error) {
 		if err == syscall.ENOENT {
 			var info *proto.InodeInfo
 			info, err = v.mw.Create_ll(ino, pathItem.Name, uint32(DefaultDirMode), 0, 0, nil)
+			if err != nil && err == syscall.EEXIST {
+				_, mode, e := v.mw.Lookup_ll(ino, pathItem.Name)
+				if e != nil {
+					return
+				}
+				if os.FileMode(mode).IsDir() {
+					continue
+				}
+			}
 			if err != nil {
 				return
 			}
