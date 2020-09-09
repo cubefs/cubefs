@@ -287,6 +287,22 @@ build_cli() {
     popd >/dev/null
 }
 
+build_libsdk() {
+    case `uname` in
+        Linux)
+            TargetFile=${1:-${SrcPath}/libsdk.so}
+            ;;
+        *)
+            echo "Unsupported platform"
+            exit 0
+            ;;
+    esac
+    pushd $SrcPath >/dev/null
+    echo -n "build libsdk       "
+    go build $MODFLAGS -ldflags "${LDFlags}" -buildmode c-shared -o ${BuildBinPath}/$TargetFile ${SrcPath}/*.go && echo "success" | echo "failed"
+    popd >/dev/null
+}
+
 clean() {
     $RM -rf ${BuildBinPath}
 }
@@ -302,6 +318,8 @@ case "$cmd" in
     "all")
         build_server
         build_client
+        build_cli
+        build_libsdk
         ;;
     "test")
         run_test
@@ -320,6 +338,9 @@ case "$cmd" in
         ;;
     "cli")
         build_cli
+        ;;
+    "libsdk")
+        build_libsdk
         ;;
     "clean")
         clean
