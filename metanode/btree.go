@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"fmt"
+
 	"github.com/chubaofs/chubaofs/proto"
 )
 
@@ -34,19 +35,19 @@ const (
 )
 
 const (
-	InodeCountType CountType = CountType(iota + 1 + MultipartType)
+	InodeCountType CountType = CountType(iota + 100)
 	DentryCountType
 	ExtendCountType
-	MutipartCountType
+	MultipartCountType
 )
 
 var (
-	existsError      = fmt.Errorf("exists error")
-	applyIDKey       = []byte{byte(ApplyIDType)}
-	InodeCountKey    = []byte{byte(InodeCountType)}
-	DentryCountKey   = []byte{byte(DentryCountType)}
-	ExtendCountKey   = []byte{byte(ExtendCountType)}
-	MutipartCountKey = []byte{byte(MutipartCountType)}
+	existsError       = fmt.Errorf("exists error")
+	applyIDKey        = []byte{byte(ApplyIDType)}
+	InodeCountKey     = []byte{byte(InodeCountType)}
+	DentryCountKey    = []byte{byte(DentryCountType)}
+	ExtendCountKey    = []byte{byte(ExtendCountType)}
+	MultipartCountKey = []byte{byte(MultipartCountType)}
 )
 
 func NewSnapshot(mp *MetaPartition) Snapshot {
