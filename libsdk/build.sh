@@ -8,11 +8,8 @@ BuildTime=`date +%Y-%m-%d\ %H:%M`
 
 SrcPath=${RootPath}/libsdk
 case `uname` in
-    Darwin)
-        TargetFile=${1:-${SrcPath}/libcfs.dylib}
-        ;;
     Linux)
-        TargetFile=${1:-${SrcPath}/libcfs.so}
+        TargetFile=${1:-${SrcPath}/libsdk.so}
         ;;
     *)
         echo "Unsupported platform"
