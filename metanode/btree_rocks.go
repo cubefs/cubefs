@@ -125,11 +125,11 @@ func (r *RocksTree) Count(tp TreeType) (uint64, error) {
 	case InodeType:
 		countBytes, err = r.GetBytes(InodeCountKey)
 	case DentryType:
-		countBytes, err = r.GetBytes(InodeCountKey)
+		countBytes, err = r.GetBytes(DentryCountKey)
 	case ExtendType:
-		countBytes, err = r.GetBytes(InodeCountKey)
+		countBytes, err = r.GetBytes(ExtendCountKey)
 	case MultipartType:
-		countBytes, err = r.GetBytes(InodeCountKey)
+		countBytes, err = r.GetBytes(MultipartCountKey)
 	}
 
 	if err != nil {
@@ -222,7 +222,7 @@ func (r *RocksTree) GetBytes(key []byte) ([]byte, error) {
 }
 
 // Has checks if the key exists in the btree.
-func (r *RocksTree) Put(count *int64, countKey, key []byte, value []byte) error {
+func (r *RocksTree) Put(count *uint64, countKey, key []byte, value []byte) error {
 	has, err := r.HasKey(key)
 	if err != nil {
 		return err
@@ -235,14 +235,14 @@ func (r *RocksTree) Put(count *int64, countKey, key []byte, value []byte) error 
 	binary.BigEndian.PutUint64(apply, r.currentApplyID)
 	batch.Put(applyIDKey, apply)
 	if !has {
-		batch.Put(countKey, i64byte(atomic.LoadInt64(count)+1))
+		batch.Put(countKey, u64byte(atomic.LoadUint64(count)+1))
 	}
 
 	if err := r.db.Write(writeOption, batch); err != nil {
 		return err
 	}
 	if !has {
-		atomic.AddInt64(count, 1)
+		atomic.AddUint64(count, 1)
 	}
 	return nil
 }
@@ -264,7 +264,7 @@ func (r *RocksTree) Update(key []byte, value []byte) error {
 	return r.db.Write(writeOption, batch)
 }
 
-func (r *RocksTree) Create(count *int64, countKey, key []byte, value []byte) error {
+func (r *RocksTree) Create(count *uint64, countKey, key []byte, value []byte) error {
 	has, err := r.HasKey(key)
 	if err != nil {
 		return err
@@ -278,16 +278,16 @@ func (r *RocksTree) Create(count *int64, countKey, key []byte, value []byte) err
 	apply := make([]byte, 8)
 	binary.BigEndian.PutUint64(apply, r.currentApplyID)
 	batch.Put(applyIDKey, apply)
-	batch.Put(countKey, i64byte(atomic.LoadInt64(count)+1))
+	batch.Put(countKey, u64byte(atomic.LoadUint64(count)+1))
 	if err := r.db.Write(writeOption, batch); err != nil {
 		return err
 	}
-	atomic.AddInt64(count, 1)
+	atomic.AddUint64(count, 1)
 	return nil
 }
 
 // Has checks if the key exists in the btree. return is exist and err
-func (r *RocksTree) Delete(count *int64, countKey, key []byte) (bool, error) {
+func (r *RocksTree) Delete(count *uint64, countKey, key []byte) (bool, error) {
 
 	has, err := r.HasKey(key)
 	if err != nil {
@@ -301,7 +301,7 @@ func (r *RocksTree) Delete(count *int64, countKey, key []byte) (bool, error) {
 	binary.BigEndian.PutUint64(apply, r.currentApplyID)
 	batch.Put(applyIDKey, apply)
 	if has {
-		batch.Put(countKey, i64byte(atomic.LoadInt64(count)-1))
+		batch.Put(countKey, u64byte(atomic.LoadUint64(count)-1))
 	}
 
 	if err := r.db.Write(writeOption, batch); err != nil {
@@ -309,7 +309,7 @@ func (r *RocksTree) Delete(count *int64, countKey, key []byte) (bool, error) {
 	}
 
 	if has {
-		atomic.AddInt64(count, -1)
+		atomic.AddUint64(count, ^uint64(0))
 	}
 	return has, nil
 }
@@ -324,7 +324,7 @@ func (r *RocksTree) Release() {
 	}
 }
 
-func (r *RocksTree) rocksClear(count *int64, treeType TreeType) error {
+func (r *RocksTree) rocksClear(count *uint64, treeType TreeType) error {
 	if r.db != nil {
 		r.Lock()
 		defer r.Unlock()
@@ -349,7 +349,8 @@ func (r *RocksTree) rocksClear(count *int64, treeType TreeType) error {
 				if err := r.db.Write(writeOption, batch); err != nil {
 					return err
 				}
-				atomic.AddInt64(count, -int64(batch.Count()))
+				//atomic.AddInt64(count, -int64(batch.Count()))
+				atomic.AddUint64(count, ^uint64(batch.Count()-1))
 				batch.Clear()
 			}
 
@@ -358,23 +359,23 @@ func (r *RocksTree) rocksClear(count *int64, treeType TreeType) error {
 			if err := r.db.Write(writeOption, batch); err != nil {
 				return err
 			}
-			atomic.AddInt64(count, -int64(batch.Count()))
+			atomic.AddUint64(count, ^uint64(batch.Count()-1))
 			batch.Clear()
 		}
 
-		if atomic.LoadInt64(count) != 0 {
+		if atomic.LoadUint64(count) != 0 {
 			log.LogErrorf("clean type:[%v] count:[%d] not zero", treeType, count)
 		}
 
 		switch treeType {
 		case InodeType:
-			batch.Put(InodeCountKey, i64byte(atomic.LoadInt64(count)))
+			batch.Put(InodeCountKey, u64byte(atomic.LoadUint64(count)))
 		case DentryType:
-			batch.Put(DentryCountKey, i64byte(atomic.LoadInt64(count)))
+			batch.Put(DentryCountKey, u64byte(atomic.LoadUint64(count)))
 		case ExtendType:
-			batch.Put(ExtendCountKey, i64byte(atomic.LoadInt64(count)))
+			batch.Put(ExtendCountKey, u64byte(atomic.LoadUint64(count)))
 		case MultipartType:
-			batch.Put(MutipartCountKey, i64byte(atomic.LoadInt64(count)))
+			batch.Put(MultipartCountKey, u64byte(atomic.LoadUint64(count)))
 		}
 		if err := r.db.Write(writeOption, batch); err != nil {
 			return err
@@ -397,13 +398,13 @@ func NewInodeRocks(tree *RocksTree) (*InodeRocks, error) {
 	}
 	return &InodeRocks{
 		RocksTree: tree,
-		count:     int64(count),
+		count:     count,
 	}, nil
 }
 
 type InodeRocks struct {
 	*RocksTree
-	count int64
+	count uint64
 }
 
 func NewDentryRocks(tree *RocksTree) (*DentryRocks, error) {
@@ -413,13 +414,13 @@ func NewDentryRocks(tree *RocksTree) (*DentryRocks, error) {
 	}
 	return &DentryRocks{
 		RocksTree: tree,
-		count:     int64(count),
+		count:     count,
 	}, nil
 }
 
 type DentryRocks struct {
 	*RocksTree
-	count int64
+	count uint64
 }
 
 func NewExtendRocks(tree *RocksTree) (*ExtendRocks, error) {
@@ -429,13 +430,13 @@ func NewExtendRocks(tree *RocksTree) (*ExtendRocks, error) {
 	}
 	return &ExtendRocks{
 		RocksTree: tree,
-		count:     int64(count),
+		count:     count,
 	}, nil
 }
 
 type ExtendRocks struct {
 	*RocksTree
-	count int64
+	count uint64
 }
 
 func NewMultipartRocks(tree *RocksTree) (*MultipartRocks, error) {
@@ -445,13 +446,13 @@ func NewMultipartRocks(tree *RocksTree) (*MultipartRocks, error) {
 	}
 	return &MultipartRocks{
 		RocksTree: tree,
-		count:     int64(count),
+		count:     count,
 	}, nil
 }
 
 type MultipartRocks struct {
 	*RocksTree
-	count int64
+	count uint64
 }
 
 func inodeEncodingKey(ino uint64) []byte {
@@ -501,19 +502,19 @@ func (b *MultipartRocks) Clear() error {
 
 // count by type
 func (b *InodeRocks) Count() uint64 {
-	return uint64(b.count)
+	return b.count
 }
 
 func (b *DentryRocks) Count() uint64 {
-	return uint64(b.count)
+	return b.count
 }
 
 func (b *ExtendRocks) Count() uint64 {
-	return uint64(b.count)
+	return b.count
 }
 
 func (b *MultipartRocks) Count() uint64 {
-	return uint64(b.count)
+	return b.count
 }
 
 //Get
@@ -614,7 +615,7 @@ func (b *MultipartRocks) Put(mutipart *Multipart) error {
 	if err != nil {
 		return err
 	}
-	return b.RocksTree.Put(&b.count, MutipartCountKey, multipartEncodingKey(mutipart.key, mutipart.id), bs)
+	return b.RocksTree.Put(&b.count, MultipartCountKey, multipartEncodingKey(mutipart.key, mutipart.id), bs)
 }
 
 //update
@@ -694,7 +695,7 @@ func (b *MultipartRocks) Create(mul *Multipart) error {
 		return err
 	}
 
-	if err = b.RocksTree.Create(&b.count, MutipartCountKey, multipartEncodingKey(mul.key, mul.id), bs); err != nil {
+	if err = b.RocksTree.Create(&b.count, MultipartCountKey, multipartEncodingKey(mul.key, mul.id), bs); err != nil {
 		return err
 	}
 	return nil
@@ -711,7 +712,7 @@ func (b *ExtendRocks) Delete(ino uint64) (bool, error) {
 	return b.RocksTree.Delete(&b.count, ExtendCountKey, extendEncodingKey(ino))
 }
 func (b *MultipartRocks) Delete(key, id string) (bool, error) {
-	return b.RocksTree.Delete(&b.count, MutipartCountKey, multipartEncodingKey(key, id))
+	return b.RocksTree.Delete(&b.count, MultipartCountKey, multipartEncodingKey(key, id))
 }
 
 // Range begin
@@ -775,8 +776,8 @@ func (b *MultipartRocks) Range(start, end *Multipart, cb func(v []byte) (bool, e
 	return b.RocksTree.Range(startByte, endByte, cb)
 }
 
-func i64byte(count int64) []byte {
+func u64byte(count uint64) []byte {
 	cb := make([]byte, 8)
-	binary.BigEndian.PutUint64(cb, uint64(count))
+	binary.BigEndian.PutUint64(cb, count)
 	return cb
 }
