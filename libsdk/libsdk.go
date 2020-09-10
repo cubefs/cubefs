@@ -51,6 +51,7 @@ struct cfs_dirent {
 import "C"
 
 import (
+	"io"
 	"os"
 	gopath "path"
 	"reflect"
@@ -81,11 +82,11 @@ var (
 var (
 	statusOK = 0
 	// error status must be minus value
-	statusEIO    = -errorToStatus(syscall.EIO)
-	statusEINVAL = -errorToStatus(syscall.EINVAL)
-	statusEEXIST = -errorToStatus(syscall.EEXIST)
-	statusEBADFD = -errorToStatus(syscall.EBADFD)
-	statusEACCES = -errorToStatus(syscall.EACCES)
+	statusEIO    = errorToStatus(syscall.EIO)
+	statusEINVAL = errorToStatus(syscall.EINVAL)
+	statusEEXIST = errorToStatus(syscall.EEXIST)
+	statusEBADFD = errorToStatus(syscall.EBADFD)
+	statusEACCES = errorToStatus(syscall.EACCES)
 )
 
 func init() {
@@ -101,9 +102,9 @@ func errorToStatus(err error) int {
 		return 0
 	}
 	if errno, is := err.(syscall.Errno); is {
-		return int(errno)
+		return -int(errno)
 	}
-	return int(syscall.EIO)
+	return -int(syscall.EIO)
 }
 
 type clientBucket struct {
@@ -213,7 +214,7 @@ func cfs_set_client(id uint64, key, val *C.char) int {
 	return statusOK
 }
 
-//export_cfs_start_client
+//export cfs_start_client
 func cfs_start_client(id uint64) int {
 	c, exist := getClient(id)
 	if !exist {
@@ -255,12 +256,16 @@ func cfs_getattr(id uint64, path *C.char, stat *C.struct_cfs_stat_info) int {
 	// fill up the stat
 	stat.ino = C.uint64_t(info.Inode)
 	stat.size = C.uint64_t(info.Size)
-	stat.blocks = C.uint64_t(info.Size >> 9)
 	stat.nlink = C.uint32_t(info.Nlink)
 	stat.blk_size = C.uint32_t(defaultBlkSize)
 	stat.uid = C.uint32_t(info.Uid)
 	stat.gid = C.uint32_t(info.Gid)
 
+	if info.Size%512 != 0 {
+		stat.blocks = C.uint64_t(info.Size>>9) + 1
+	} else {
+		stat.blocks = C.uint64_t(info.Size >> 9)
+	}
 	// fill up the mode
 	if proto.IsRegular(info.Mode) {
 		stat.mode = C.uint32_t(C.S_IFREG) | C.uint32_t(info.Mode&0777)
@@ -725,7 +730,7 @@ func (c *client) write(f *file, offset int, data []byte, flags int) (n int, err 
 
 func (c *client) read(f *file, offset int, data []byte) (n int, err error) {
 	n, err = c.ec.Read(f.ino, data, offset, len(data))
-	if err != nil {
+	if err != nil && err != io.EOF {
 		return 0, err
 	}
 	return n, nil
