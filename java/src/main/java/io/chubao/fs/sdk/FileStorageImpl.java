@@ -3,7 +3,6 @@ package io.chubao.fs.sdk;
 import io.chubao.fs.sdk.exception.CFSException;
 import io.chubao.fs.sdk.libsdk.CFSDriverIns;
 import io.chubao.fs.sdk.libsdk.SDKStatInfo;
-import io.chubao.fs.sdk.cache.CFSINodeCache;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -15,7 +14,6 @@ public class FileStorageImpl implements FileStorage {
   private static final Log log = LogFactory.getLog(FileStorageImpl.class);
   private final String separator= "/";
   private CFSDriverIns driver;
-  private CFSINodeCache icache;
   private int DEFAULT_MODE = 0644;
 
   public FileStorageImpl(CFSDriverIns driver) {
@@ -23,12 +21,7 @@ public class FileStorageImpl implements FileStorage {
   }
 
   public void init() throws Exception {
-    try {
-      icache = new CFSINodeCache(100);
-    } catch (Exception ex) {
-      log.error(ex.getMessage());
-      throw new RuntimeException(ex);
-    }
+
   }
 
   @Override
