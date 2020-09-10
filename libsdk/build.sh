@@ -9,7 +9,7 @@ BuildTime=`date +%Y-%m-%d\ %H:%M`
 SrcPath=${RootPath}/libsdk
 case `uname` in
     Linux)
-        TargetFile=${1:-${SrcPath}/libsdk.so}
+        TargetFile=${1:-${SrcPath}/libcfs.so}
         ;;
     *)
         echo "Unsupported platform"
