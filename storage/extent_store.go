@@ -359,8 +359,8 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 }
 
 func (s *ExtentStore) tinyDelete(extentID uint64, offset, size int64) (err error) {
-	e,err:=s.extentWithHeaderByExtentID(extentID)
-	if err!=nil {
+	e, err := s.extentWithHeaderByExtentID(extentID)
+	if err != nil {
 		return nil
 	}
 	if offset+size > e.dataSize {
@@ -474,26 +474,26 @@ const (
 	DiskSectorSize = 512
 )
 
-func (s *ExtentStore)GetStoreUsedSize()(used int64){
+func (s *ExtentStore) GetStoreUsedSize() (used int64) {
 	extentInfoSlice := make([]*ExtentInfo, 0, len(s.extentInfoMap))
 	s.eiMutex.RLock()
 	for _, extentID := range s.extentInfoMap {
 		extentInfoSlice = append(extentInfoSlice, extentID)
 	}
 	s.eiMutex.RUnlock()
-	for _,einfo:=range extentInfoSlice{
+	for _, einfo := range extentInfoSlice {
 		if einfo.IsDeleted {
 			continue
 		}
-		if IsTinyExtent(einfo.FileID){
+		if IsTinyExtent(einfo.FileID) {
 			stat := new(syscall.Stat_t)
 			err := syscall.Stat(fmt.Sprintf("%v/%v", s.dataPath, einfo.FileID), stat)
 			if err != nil {
 				continue
 			}
-			used +=(stat.Blocks * DiskSectorSize)
-		}else {
-			used +=int64(einfo.Size)
+			used += (stat.Blocks * DiskSectorSize)
+		} else {
+			used += int64(einfo.Size)
 		}
 	}
 	return
@@ -565,7 +565,7 @@ func (s *ExtentStore) initTinyExtent() (err error) {
 		if err == nil || strings.Contains(err.Error(), syscall.EEXIST.Error()) || err == ExtentExistsError {
 			err = nil
 			s.brokenTinyExtentC <- extentID
-			s.brokenTinyExtentMap.Store(extentID,true)
+			s.brokenTinyExtentMap.Store(extentID, true)
 			continue
 		}
 		return err
@@ -588,18 +588,18 @@ func (s *ExtentStore) GetAvailableTinyExtent() (extentID uint64, err error) {
 
 // SendToAvailableTinyExtentC sends the extent to the channel that stores the available tiny extents.
 func (s *ExtentStore) SendToAvailableTinyExtentC(extentID uint64) {
-	if _,ok:=s.availableTinyExtentMap.Load(extentID);!ok {
+	if _, ok := s.availableTinyExtentMap.Load(extentID); !ok {
 		s.availableTinyExtentC <- extentID
-		s.availableTinyExtentMap.Store(extentID,true)
+		s.availableTinyExtentMap.Store(extentID, true)
 	}
 }
 
 // SendAllToBrokenTinyExtentC sends all the extents to the channel that stores the broken extents.
 func (s *ExtentStore) SendAllToBrokenTinyExtentC(extentIds []uint64) {
 	for _, extentID := range extentIds {
-		if _,ok:=s.brokenTinyExtentMap.Load(extentID);!ok {
+		if _, ok := s.brokenTinyExtentMap.Load(extentID); !ok {
 			s.brokenTinyExtentC <- extentID
-			s.brokenTinyExtentMap.Store(extentID,true)
+			s.brokenTinyExtentMap.Store(extentID, true)
 		}
 
 	}
@@ -628,9 +628,9 @@ func (s *ExtentStore) MoveAllToBrokenTinyExtentC(cnt int) {
 
 // SendToBrokenTinyExtentC sends the given extent id to the channel.
 func (s *ExtentStore) SendToBrokenTinyExtentC(extentID uint64) {
-	if _,ok:=s.brokenTinyExtentMap.Load(extentID);!ok {
+	if _, ok := s.brokenTinyExtentMap.Load(extentID); !ok {
 		s.brokenTinyExtentC <- extentID
-		s.brokenTinyExtentMap.Store(extentID,true)
+		s.brokenTinyExtentMap.Store(extentID, true)
 	}
 
 }

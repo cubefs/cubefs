@@ -515,7 +515,7 @@ func (dp *DataPartition) computeUsage() {
 	if time.Now().Unix()-dp.intervalToUpdatePartitionSize < IntervalToUpdatePartitionSize {
 		return
 	}
-	dp.used=int(dp.ExtentStore().GetStoreUsedSize())
+	dp.used = int(dp.ExtentStore().GetStoreUsedSize())
 	dp.intervalToUpdatePartitionSize = time.Now().Unix()
 }
 
@@ -552,7 +552,7 @@ func (dp *DataPartition) LaunchRepair(extentType uint8) {
 	if dp.partitionStatus == proto.Unavailable {
 		return
 	}
-	if err := dp.updateReplicas(); err != nil {
+	if err := dp.updateReplicas(false); err != nil {
 		log.LogErrorf("action[LaunchRepair] partition(%v) err(%v).", dp.partitionID, err)
 		return
 	}
@@ -565,8 +565,8 @@ func (dp *DataPartition) LaunchRepair(extentType uint8) {
 	dp.repair(extentType)
 }
 
-func (dp *DataPartition) updateReplicas() (err error) {
-	if time.Now().Unix()-dp.intervalToUpdateReplicas <= IntervalToUpdateReplica {
+func (dp *DataPartition) updateReplicas(isForce bool) (err error) {
+	if !isForce && time.Now().Unix()-dp.intervalToUpdateReplicas <= IntervalToUpdateReplica {
 		return
 	}
 	dp.isLeader = false
@@ -797,6 +797,7 @@ func (dp *DataPartition) ChangeRaftMember(changeType raftProto.ConfChangeType, p
 	resp, err = dp.raftPartition.ChangeMember(changeType, peer, context)
 	return
 }
+
 //
 func (dp *DataPartition) canRemoveSelf() (canRemove bool, err error) {
 	var partition *proto.DataPartitionInfo
