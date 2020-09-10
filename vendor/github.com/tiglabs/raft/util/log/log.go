@@ -19,7 +19,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"runtime"
+	"sort"
 	"sync"
 	"time"
 )
@@ -34,6 +36,7 @@ const (
 	LstdFlags     = Ldate | Ltime // initial values for the standard logger
 
 	LogFileNameDateFormat = "2006-01-02"
+	LogMaxReservedDays    = 7 * 24 * time.Hour
 )
 
 var (
@@ -53,6 +56,20 @@ type logWriter struct {
 
 func newLogWriter(out io.WriteCloser, prefix string, flag int) *logWriter {
 	return &logWriter{out: out, prefix: prefix, flag: flag}
+}
+
+type RolledFile []os.FileInfo
+
+func (f RolledFile) Less(i, j int) bool {
+	return f[i].ModTime().Before(f[j].ModTime())
+}
+
+func (f RolledFile) Len() int {
+	return len(f)
+}
+
+func (f RolledFile) Swap(i, j int) {
+	f[i], f[j] = f[j], f[i]
 }
 
 func itoa(buf *[]byte, i int, wid int) {
@@ -237,6 +254,7 @@ func NewLog(dir, module, level string) (*Log, error) {
 
 	if dir != "" {
 		go lg.checkLogRotation(dir, module)
+		go lg.checkCleanLog(dir)
 	}
 	go lg.loopMsg()
 
@@ -406,6 +424,41 @@ func (l *Log) checkLogRotation(logDir, module string) {
 		l.warn.rotateFile(logDir, warnLogFileName, module, true)
 		l.err.rotateFile(logDir, errLogFileName, module, true)
 		l.startTime = time.Now()
+	}
+}
+
+func (l *Log) checkCleanLog(logDir string) {
+	// handle panic
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("[Util.Logger]Check clean logger file panic: [%s]\r\n", r)
+		}
+	}()
+
+	for {
+		raftDir, err := os.Open(logDir)
+		if err != nil {
+			time.Sleep(time.Second * 60)
+			continue
+		}
+		fInfos, err := raftDir.Readdir(0)
+		if err != nil || len(fInfos) == 0 {
+			time.Sleep(time.Second * 60)
+			continue
+		}
+		var needDelFiles RolledFile
+		for _, info := range fInfos {
+			if time.Since(info.ModTime()) > LogMaxReservedDays  {
+				needDelFiles = append(needDelFiles, info)
+			}
+		}
+		sort.Sort(needDelFiles)
+		for _, info := range needDelFiles {
+			if err = os.Remove(path.Join(logDir, info.Name())); err != nil {
+				fmt.Printf("[Util.Logger]Remove logger file[%s] err: [%s]\r\n", info.Name(), err)
+			}
+		}
+		time.Sleep(time.Hour * 24)
 	}
 }
 
