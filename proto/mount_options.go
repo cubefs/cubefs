@@ -49,6 +49,7 @@ const (
 	AlignSize
 	MaxExtentNumPerAlignArea
 	ForceAlignMerge
+	EnablePosixACL
 
 	MaxMountOption
 )
@@ -113,6 +114,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[FsyncOnClose] = MountOption{"fsyncOnClose", "Perform fsync upon file close", "", true}
 	opts[MaxCPUs] = MountOption{"maxcpus", "The maximum number of CPUs that can be executing", "", int64(-1)}
 	opts[EnableXattr] = MountOption{"enableXattr", "Enable xattr support", "", false}
+	opts[EnablePosixACL] = MountOption{"enablePosixACL", "enable posix ACL support", "", false}
 
 	opts[AlignSize] = MountOption{"alignSize", "align size when extent merge", "", int64(4096)}
 	opts[MaxExtentNumPerAlignArea] = MountOption{"maxExtentNumPerAlignArea", "max extent number per align area", "",
@@ -250,4 +252,5 @@ type MountOptions struct {
 	AlignSize                int64
 	MaxExtentNumPerAlignArea int64
 	ForceAlignMerge          bool
+	EnablePosixACL           bool
 }
