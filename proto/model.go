@@ -202,7 +202,7 @@ type DataReplica struct {
 	ReportTime      int64
 	FileCount       uint32
 	Status          int8
-	HasLoadResponse bool // if there is any response when loading
+	HasLoadResponse bool   // if there is any response when loading
 	Total           uint64 `json:"TotalSize"`
 	Used            uint64 `json:"UsedSize"`
 	IsLeader        bool
@@ -224,4 +224,65 @@ type MetaPartitionDiagnosis struct {
 	CorruptMetaPartitionIDs     []uint64
 	LackReplicaMetaPartitionIDs []uint64
 	BadMetaPartitionIDs         []BadPartitionView
+}
+
+type ExtentInfo struct {
+	FileID     uint64 `json:"fileId"`
+	Size       uint64 `json:"size"`
+	Crc        uint32 `json:"Crc"`
+	IsDeleted  bool   `json:"deleted"`
+	ModifyTime int64  `json:"modTime"`
+	Source     string `json:"src"`
+}
+
+// Status raft status
+type Status struct {
+	ID                uint64
+	NodeID            uint64
+	Leader            uint64
+	Term              uint64
+	Index             uint64
+	Commit            uint64
+	Applied           uint64
+	Vote              uint64
+	PendQueue         int
+	RecvQueue         int
+	AppQueue          int
+	Stopped           bool
+	RestoringSnapshot bool
+	State             string // leader、follower、candidate
+	Replicas          map[uint64]*ReplicaStatus
+}
+
+// ReplicaStatus  replica status
+type ReplicaStatus struct {
+	Match       uint64 // copy progress
+	Commit      uint64 // commmit position
+	Next        uint64
+	State       string
+	Snapshoting bool
+	Paused      bool
+	Active      bool
+	LastActive  time.Time
+	Inflight    int
+}
+type DNDataPartitionInfo struct {
+	VolName              string        `json:"volName"`
+	ID                   uint64        `json:"id"`
+	Size                 int           `json:"size"`
+	Used                 int           `json:"used"`
+	Status               int           `json:"status"`
+	Path                 string        `json:"path"`
+	Files                []*ExtentInfo `json:"extents"`
+	FileCount            int           `json:"fileCount"`
+	Replicas             []string      `json:"replicas"`
+	TinyDeleteRecordSize int64         `json:"tinyDeleteRecordSize"`
+	RaftStatus           *Status       `json:"raftStatus"`
+}
+
+type MNMetaPartitionInfo struct {
+	LeaderAddr string `json:"leaderAddr"`
+	Peers      []Peer `json:"peers"`
+	NodeId     uint64 `json:"nodeId"`
+	Cursor     uint64 `json:"cursor"`
 }

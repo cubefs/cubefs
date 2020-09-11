@@ -16,13 +16,13 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/log"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/chubaofs/chubaofs/proto"
-
 	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/spf13/cobra"
 )
 
@@ -71,8 +71,17 @@ func stdout(format string, a ...interface{}) {
 	_, _ = fmt.Fprintf(os.Stdout, format, a...)
 }
 
+func stdoutGreen(str string) {
+	fmt.Printf("\033[1;40;32m%-8v\033[0m\n", str)
+}
+
+func stdoutRed(str string) {
+	fmt.Printf("\033[1;40;31m%-8v\033[0m\n", str)
+	stdoutGreen(strings.Repeat("_ ", len(partitionInfoTableHeader)/2+10) + "\n")
+}
+
 func errout(format string, a ...interface{}) {
-	log.LogErrorf(format + "\n", a...)
+	log.LogErrorf(format+"\n", a...)
 	_, _ = fmt.Fprintf(os.Stderr, format, a...)
 	OsExitWithLogFlush()
 }

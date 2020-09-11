@@ -37,6 +37,8 @@ var (
   "masterAddr": [
     "master.chubao.io"
   ],
+  "dnProf": 17320,
+  "mnProf": 17220,
   "timeout": 60
 }
 `)
@@ -44,8 +46,10 @@ var (
 )
 
 type Config struct {
-	MasterAddr []string `json:"masterAddr"`
-	Timeout    uint16   `json:"timeout"`
+	MasterAddr       []string `json:"masterAddr"`
+	DataNodeProfPort uint16   `json:"dnProf"`
+	MetaNodeProfPort uint16   `json:"mnProf"`
+	Timeout          uint16   `json:"timeout"`
 }
 
 func newConfigCmd() *cobra.Command {
@@ -65,27 +69,43 @@ const (
 
 func newConfigSetCmd() *cobra.Command {
 	var optMasterHost string
+	var optDNProfPort uint16
+	var optMNProfPort uint16
 	var optTimeout uint16
 	var cmd = &cobra.Command{
 		Use:   CliOpSet,
 		Short: cmdConfigSetShort,
 		Long:  `Set the config file`,
 		Run: func(cmd *cobra.Command, args []string) {
-			var (
-				err         error
-				masterHosts []string
-			)
+			var err error
+			var config *Config
+			var masterHosts []string
+
 			defer func() {
 				if err != nil {
 					errout("Error: %v", err)
 				}
 			}()
-			if optMasterHost == "" && optTimeout == 0 {
+
+			if optMasterHost == "" && optDNProfPort == 0 && optMNProfPort == 0 && optTimeout == 0 {
 				stdout(fmt.Sprintf("No change. Input 'cfs-cli config set -h' for help.\n"))
 				return
 			}
 			if len(optMasterHost) != 0 {
 				masterHosts = append(masterHosts, optMasterHost)
+			}
+			if config, err = LoadConfig(); err != nil {
+				stdout("load config file failed")
+				return
+			}
+			if len(masterHosts) > 0 {
+				config.MasterAddr = masterHosts
+			}
+			if optDNProfPort > 0 {
+				config.DataNodeProfPort = optDNProfPort
+			}
+			if optMNProfPort > 0 {
+				config.MetaNodeProfPort = optMNProfPort
 			}
 			if err = setConfig(masterHosts, optTimeout); err != nil {
 				return
@@ -93,8 +113,12 @@ func newConfigSetCmd() *cobra.Command {
 			stdout(fmt.Sprintf("Config has been set successfully!\n"))
 		},
 	}
+
 	cmd.Flags().StringVar(&optMasterHost, "addr", "", "Specify master address [{HOST}:{PORT}]")
+	cmd.Flags().Uint16Var(&optDNProfPort, "dnProf", 0, "Specify prof port for DataNode")
+	cmd.Flags().Uint16Var(&optMNProfPort, "mnProf", 0, "Specify prof port for DataNode")
 	cmd.Flags().Uint16Var(&optTimeout, "timeout", 0, "Specify timeout for requests [Unit: s]")
+
 	return cmd
 }
 func newConfigInfoCmd() *cobra.Command {

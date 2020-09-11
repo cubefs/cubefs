@@ -21,6 +21,7 @@ import (
 	"github.com/spf13/cobra"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 const (
@@ -44,12 +45,12 @@ func newMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdMetaPartitionGetShort              = "Display detail information of a meta partition"
-	cmdCheckCorruptMetaPartitionShort     = "Check out corrupt meta partitions"
-	cmdMetaPartitionDecommissionShort     = "Decommission a replication of the meta partition to a new address"
-	cmdMetaPartitionReplicateShort        = "Add a replication of the meta partition on a new address"
-	cmdMetaPartitionDeleteReplicaShort    = "Delete a replication of the meta partition on a fixed address"
-	)
+	cmdMetaPartitionGetShort           = "Display detail information of a meta partition"
+	cmdCheckCorruptMetaPartitionShort  = "Check out corrupt meta partitions"
+	cmdMetaPartitionDecommissionShort  = "Decommission a replication of the meta partition to a new address"
+	cmdMetaPartitionReplicateShort     = "Add a replication of the meta partition on a new address"
+	cmdMetaPartitionDeleteReplicaShort = "Delete a replication of the meta partition on a fixed address"
+)
 
 func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
@@ -58,9 +59,9 @@ func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				err          error
-				partitionID  uint64
-				partition *proto.MetaPartitionInfo
+				err         error
+				partitionID uint64
+				partition   *proto.MetaPartitionInfo
 			)
 			defer func() {
 				if err != nil {
@@ -91,9 +92,9 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 "reset" command will be released in next version.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				diagnosis     *proto.MetaPartitionDiagnosis
-				metaNodes     []*proto.MetaNodeInfo
-				err           error
+				diagnosis *proto.MetaPartitionDiagnosis
+				metaNodes []*proto.MetaNodeInfo
+				err       error
 			)
 			defer func() {
 				if err != nil {
@@ -143,12 +144,32 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			})
 			for _, pid := range diagnosis.LackReplicaMetaPartitionIDs {
 				var partition *proto.MetaPartitionInfo
-				if partition, err = client.ClientAPI().GetMetaPartition( pid); err != nil {
+				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
 					err = fmt.Errorf("Partition not found, err:[%v] ", err)
 					return
 				}
 				if partition != nil {
 					stdout("%v\n", formatMetaPartitionInfoRow(partition))
+					sort.Strings(partition.Hosts)
+					for _, r := range partition.Replicas {
+						var mnPartition *proto.MNMetaPartitionInfo
+						var err error
+						addr := strings.Split(r.Addr, ":")[0]
+						if mnPartition, err = client.NodeAPI().MetaNodeGetPartition(client, addr, partition.PartitionID); err != nil {
+							fmt.Printf(partitionInfoColorTablePattern+"\n",
+								"", "", "", r.Addr, fmt.Sprintf("%v/%v", 0, partition.ReplicaNum), "no data")
+							continue
+						}
+						mnHosts := make([]string, 0)
+						for _, peer := range mnPartition.Peers {
+							mnHosts = append(mnHosts, peer.Addr)
+						}
+						sort.Strings(mnHosts)
+						fmt.Printf(partitionInfoColorTablePattern+"\n",
+							"", "", "", r.Addr, fmt.Sprintf("%v/%v", len(mnPartition.Peers), partition.ReplicaNum), strings.Join(mnHosts, "; "))
+					}
+					fmt.Printf("\033[1;40;32m%-8v\033[0m", strings.Repeat("_ ", len(partitionInfoTableHeader)/2+5)+"\n")
+
 				}
 			}
 

@@ -21,6 +21,8 @@ import (
 	"github.com/spf13/cobra"
 	"sort"
 	"strconv"
+	"strings"
+	"time"
 )
 
 const (
@@ -44,12 +46,12 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdDataPartitionGetShort              = "Display detail information of a data partition"
-	cmdCheckCorruptDataPartitionShort     = "Check and list unhealthy data partitions"
-	cmdDataPartitionDecommissionShort     = "Decommission a replication of the data partition to a new address"
-	cmdDataPartitionReplicateShort        = "Add a replication of the data partition on a new address"
-	cmdDataPartitionDeleteReplicaShort    = "Delete a replication of the data partition on a fixed address"
-	)
+	cmdDataPartitionGetShort           = "Display detail information of a data partition"
+	cmdCheckCorruptDataPartitionShort  = "Check and list unhealthy data partitions"
+	cmdDataPartitionDecommissionShort  = "Decommission a replication of the data partition to a new address"
+	cmdDataPartitionReplicateShort     = "Add a replication of the data partition on a new address"
+	cmdDataPartitionDeleteReplicaShort = "Delete a replication of the data partition on a fixed address"
+)
 
 func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
@@ -80,6 +82,7 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newListCorruptDataPartitionCmd(client *master.MasterClient) *cobra.Command {
+	var optEnableAutoFullfill bool
 	var cmd = &cobra.Command{
 		Use:   CliOpCheck,
 		Short: cmdCheckCorruptDataPartitionShort,
@@ -91,9 +94,9 @@ you can use the "reset" command to fix the problem.The "reset" command may lead 
 The "reset" command will be released in next version`,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				diagnosis     *proto.DataPartitionDiagnosis
-				dataNodes     []*proto.DataNodeInfo
-				err           error
+				diagnosis *proto.DataPartitionDiagnosis
+				dataNodes []*proto.DataNodeInfo
+				err       error
 			)
 			defer func() {
 				if err != nil {
@@ -118,7 +121,7 @@ The "reset" command will be released in next version`,
 			for _, node := range dataNodes {
 				stdout("%v\n", formatDataNodeDetail(node, true))
 			}
-			stdout("\n")
+			/*stdout("\n")
 			stdout("[Corrupt data partitions](no leader):\n")
 			stdout("%v\n", partitionInfoTableHeader)
 			sort.SliceStable(diagnosis.CorruptDataPartitionIDs, func(i, j int) bool {
@@ -131,7 +134,7 @@ The "reset" command will be released in next version`,
 					return
 				}
 				stdout("%v\n", formatDataPartitionInfoRow(partition))
-			}
+			}*/
 
 			stdout("\n")
 			stdout("%v\n", "[Partition lack replicas]:")
@@ -139,6 +142,11 @@ The "reset" command will be released in next version`,
 			sort.SliceStable(diagnosis.LackReplicaDataPartitionIDs, func(i, j int) bool {
 				return diagnosis.LackReplicaDataPartitionIDs[i] < diagnosis.LackReplicaDataPartitionIDs[j]
 			})
+
+			cv, _ := client.AdminAPI().GetCluster()
+			dns := cv.DataNodes
+			var sb = strings.Builder{}
+
 			for _, pid := range diagnosis.LackReplicaDataPartitionIDs {
 				var partition *proto.DataPartitionInfo
 				if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
@@ -147,9 +155,61 @@ The "reset" command will be released in next version`,
 				}
 				if partition != nil {
 					stdout("%v\n", formatDataPartitionInfoRow(partition))
+					sort.Strings(partition.Hosts)
+					if len(partition.MissingNodes) > 0 || partition.Status == -1 {
+						stdoutRed(fmt.Sprintf("partition not ready to repair"))
+						continue
+					}
+					var leaderRps map[uint64]*proto.ReplicaStatus
+					for _, r := range partition.Replicas {
+						var rps map[uint64]*proto.ReplicaStatus
+						var dnPartition *proto.DNDataPartitionInfo
+						var err error
+						addr := strings.Split(r.Addr, ":")[0]
+						if dnPartition, err = client.NodeAPI().DataNodeGetPartition(client, addr, partition.PartitionID); err != nil {
+							fmt.Printf(partitionInfoColorTablePattern+"\n",
+								"", "", "", r.Addr, fmt.Sprintf("%v/%v", "nil", partition.ReplicaNum), "get partition info failed")
+							continue
+						}
+						sort.Strings(dnPartition.Replicas)
+						fmt.Printf(partitionInfoColorTablePattern+"\n",
+							"", "", "", r.Addr, fmt.Sprintf("%v/%v", len(dnPartition.Replicas), partition.ReplicaNum), strings.Join(dnPartition.Replicas, "; "))
+
+						if rps = dnPartition.RaftStatus.Replicas; rps != nil {
+							leaderRps = rps
+						}
+					}
+					if len(leaderRps) != 3 || len(partition.Hosts) != 2 {
+						stdoutRed(fmt.Sprintf("raft peer number(expected is 3, but is %v) or replica number(expected is 2, but is %v) not match ", len(leaderRps), len(partition.Hosts)))
+						continue
+					}
+					var lackAddr []string
+					for _, dn := range dns {
+						if _, ok := leaderRps[dn.ID]; ok {
+							if !contains(partition.Hosts, dn.Addr) {
+								lackAddr = append(lackAddr, dn.Addr)
+							}
+						}
+					}
+					if len(lackAddr) != 1 {
+						stdoutRed(fmt.Sprintf("Not classic partition, please check and repair it manually"))
+						continue
+					}
+					stdoutGreen(fmt.Sprintf(" The Lack Address is: %v", lackAddr))
+					sb.WriteString(fmt.Sprintf("cfs-cli datapartition add-replica %v %v\n", lackAddr[0], partition.PartitionID))
+					if optEnableAutoFullfill {
+						stdoutGreen("     Auto Repair Begin:")
+						if err = client.AdminAPI().AddDataReplica(partition.PartitionID, lackAddr[0]); err != nil {
+							stdoutRed(fmt.Sprintf("%v err:%v", "     Failed.", err))
+							continue
+						}
+						stdoutGreen("     Done.")
+						time.Sleep(2 * time.Second)
+					}
+					stdoutGreen(strings.Repeat("_ ", len(partitionInfoTableHeader)/2+20) + "\n")
+
 				}
 			}
-
 
 			stdout("\n")
 			stdout("%v\n", "[Bad data partitions(decommission not completed)]:")
@@ -163,9 +223,15 @@ The "reset" command will be released in next version`,
 					stdout(badPartitionTablePattern, bdpv.Path, pid)
 				}
 			}
+
+			if !optEnableAutoFullfill {
+				stdout(sb.String())
+			}
 			return
 		},
 	}
+
+	cmd.Flags().BoolVar(&optEnableAutoFullfill, CliFlagEnableAutoFill, false, "Enable read form replica follower")
 	return cmd
 }
 
