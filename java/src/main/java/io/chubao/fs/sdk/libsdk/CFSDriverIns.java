@@ -24,11 +24,11 @@ public class CFSDriverIns {
     this.clientID = cid;
   }
 
-  public long open(String path, int flags, int mode) throws CFSException {
+  public long open(String path, int flags, int mode, int uid, int gid) throws CFSException {
     GoString.ByValue p = new GoString.ByValue();
     p.ptr = path;
     p.len = path.length();
-    long fd =driver.cfs_open(this.clientID, p, flags, mode);
+    long fd =driver.cfs_open(this.clientID, p, flags, mode, uid, gid);
     if (fd < 0) {
       throw new CFSException("Faield to open file, the status code is " + fd);
     }
@@ -41,6 +41,10 @@ public class CFSDriverIns {
     if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {
       throw new CFSException("Failed to flush.");
     }
+  }
+
+  public void closeClient() {
+    driver.cfs_close_client(this.clientID);
   }
 
   public void close(long fd) throws CFSException {
@@ -97,23 +101,13 @@ public class CFSDriverIns {
     return rsize;
   }
 
-  public void mkdirs(String path, int mode) throws CFSException {
+  public void mkdirs(String path, int mode, int uid, int gid) throws CFSException {
     GoString.ByValue p = new GoString.ByValue();
     p.ptr = path;
     p.len = path.length();
-    int st = driver.cfs_mkdirs(this.clientID, p, mode);
+    int st = driver.cfs_mkdirs(this.clientID, p, mode, uid, gid);
     if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {
       throw new CFSException("Failed to mkdirs.");
-    }
-  }
-
-  public void mkdir(String path) throws CFSException {
-    GoString.ByValue p = new GoString.ByValue();
-    p.ptr = path;
-    p.len = path.length();
-    int st = driver.cfs_mkdir(this.clientID, p);
-    if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {
-      throw new CFSException("Failed to mkdir.");
     }
   }
 
@@ -164,6 +158,56 @@ public class CFSDriverIns {
       throw new CFSException("Failed to truncate: " + path + " status code: " + st);
     }
 
+  }
+
+  public void chmod(String path, int mode) throws CFSException {
+    GoString.ByValue p = new GoString.ByValue();
+    p.ptr = path;
+    p.len = path.length();
+
+    SDKStatInfo.ByReference stat = new SDKStatInfo.ByReference();
+    stat.mode = mode;
+    stat.valid = ATTR_MODE;
+    int st = driver.cfs_setattr_by_path(this.clientID, p, stat);
+    if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {
+      throw new CFSException("Failed to chmod: " + path + " status code: " + st);
+    }
+  }
+
+  public void chown(String path, int uid, int gid) throws CFSException {
+    GoString.ByValue p = new GoString.ByValue();
+    p.ptr = path;
+    p.len = path.length();
+
+    SDKStatInfo.ByReference stat = new SDKStatInfo.ByReference();
+    stat.uid = uid;
+    stat.gid = gid;
+    stat.valid = ATTR_GID | ATTR_UID;
+    int st = driver.cfs_setattr_by_path(this.clientID, p, stat);
+    if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {
+      throw new CFSException("Failed to chown: " + path + " status code: " + st);
+    }
+  }
+
+  public void setTimes(String path, long mtime, long atime) throws CFSException {
+    GoString.ByValue p = new GoString.ByValue();
+    p.ptr = path;
+    p.len = path.length();
+
+    SDKStatInfo.ByReference stat = new SDKStatInfo.ByReference();
+    if (mtime > 0) {
+      stat.mtime = mtime;
+      stat.valid = ATTR_MTIME;
+    }
+
+    if (atime > 0) {
+      stat.atime = atime;
+      stat.valid = stat.valid | ATTR_ATIME;
+    }
+    int st = driver.cfs_setattr_by_path(this.clientID, p, stat);
+    if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {
+      throw new CFSException("Failed to settimes: " + path + " status code: " + st);
+    }
   }
 
   public SDKStatInfo getAttr(String path) throws CFSException {

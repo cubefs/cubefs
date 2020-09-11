@@ -18,8 +18,8 @@ public interface FileStorage {
   int S_IFREG     = 0100000;
   int S_IFLNK     = 0120000;
 
-  boolean mkdirs(String path, int mode) throws CFSException;
-  CFSFile open(String path, int flags, int mode) throws CFSException;
+  boolean mkdirs(String path, int mode, int uid, int gid) throws CFSException;
+  CFSFile open(String path, int flags, int mode, int uid, int gid) throws CFSException;
   void truncate(String path, long newLength) throws CFSException;
   void close() throws CFSException;
   void rmdir(String path, boolean recursive) throws CFSException;
@@ -32,7 +32,14 @@ public interface FileStorage {
   List<String> listXAttr(String path) throws CFSException;
   Map<String,byte[]> getXAttrs(String path, List<String> names) throws CFSException;
   void removeXAttr(String path, String name) throws CFSException;
-  void setOwner(String path, String username, String groupname) throws CFSException;
+  void chown(String path, int uid, int gid) throws CFSException;
+  void chown(String path, String user, String group) throws CFSException;
+  void chmod(String path, int mode) throws CFSException;
+  void setTimes(String path, long mtime,long atime) throws CFSException;
   long getBlockSize();
   int getReplicaNumber();
+  int getUid(String username) throws CFSException;
+  int getGid(String username) throws CFSException;
+  String getUser(int uid) throws CFSException;
+  String getGroup(int gid) throws CFSException;
 }

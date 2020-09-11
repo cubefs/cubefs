@@ -61,8 +61,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 	"unsafe"
-  "time"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data/stream"
@@ -337,7 +337,7 @@ func cfs_setattr_by_path(id uint64, path string , stat *C.struct_cfs_stat_info) 
 
 
 //export cfs_open
-func cfs_open(id uint64, path string, flags int, mode C.mode_t) int64 {
+func cfs_open(id uint64, path string, flags int, mode C.mode_t, uid, gid uint32) int64 {
 	c, exist := getClient(id)
 	if !exist {
 		return int64(statusEINVAL)
@@ -363,7 +363,7 @@ func cfs_open(id uint64, path string, flags int, mode C.mode_t) int64 {
 			fmt.Println("Failed to lookup the parent dir: ", dirpath, " error: ", err)
 			return int64(-errorToStatus(err))
 		}
-		newInfo, err := c.create(dirInfo.Inode, name, fuseMode)
+		newInfo, err := c.create(dirInfo.Inode, name, fuseMode, uid, gid)
 		if err != nil {
 			fmt.Println("Failed to lookup the create file: ", name, " error: ", err)
 			return int64(-errorToStatus(err))
@@ -650,7 +650,7 @@ func cfs_listattr(id uint64, path string, stats *C.struct_cfs_stat_info, count i
 }
 
 //export cfs_mkdirs
-func cfs_mkdirs(id uint64, dirpath string, mode C.mode_t) int {
+func cfs_mkdirs(id uint64, dirpath string, mode C.mode_t, uid, gid uint32) int {
 	if dirpath == "" || dirpath == "/" {
 		return statusEEXIST
 	}
@@ -669,7 +669,7 @@ func cfs_mkdirs(id uint64, dirpath string, mode C.mode_t) int {
 		child, _, err := c.mw.Lookup_ll(pino, dir)
 		if err != nil {
 			if err == syscall.ENOENT {
-				info, err := c.mkdir(pino, dir, uint32(mode))
+				info, err := c.mkdir(pino, dir, uint32(mode), uid, gid)
 				if err != nil {
 					return errorToStatus(err)
 				}
@@ -684,6 +684,86 @@ func cfs_mkdirs(id uint64, dirpath string, mode C.mode_t) int {
 	return 0
 }
 
+//export cfs_rmdir
+func cfs_rmdir(id uint64, path string, recursive bool) int {
+	c, exist := getClient(id)
+	if !exist {
+		return statusEINVAL
+	}
+
+	dirpath, name := gopath.Split(path)
+	dirInfo, err := c.lookupPath(dirpath)
+	if err != nil {
+		return errorToStatus(err)
+	}
+
+	if recursive {
+    info, err := c.lookupPath(path)
+		if err != nil {
+      return errorToStatus(err)
+		}
+    if err != nil {
+      return errorToStatus(err)
+    }
+		err = rmdir_recursive(c, info)
+		if err != nil {
+      fmt.Println("In rmdir operation, failed to rmdir_recursive: ", name, " error: ", err)
+	    return -errorToStatus(err)
+		}
+	}
+  _, err = c.mw.Delete_ll(dirInfo.Inode, name, true)
+  if err != nil {
+    fmt.Println("In rmdir operation, failed to delete: ", name, " error: ", err)
+    return -errorToStatus(err)
+  }
+	return statusOK
+}
+
+func rmdir_recursive(c *client, info *proto.InodeInfo) (err error) {
+	if info.Nlink <= 2 {
+		return nil
+	}
+
+	dentries, err := c.mw.ReadDir_ll(info.Inode)
+	if err != nil {
+    fmt.Println("In rmdir_recursive operation, failed to readdir: ", info.Inode, " error: ", err)
+		return err
+	}
+
+	for _, child := range dentries {
+    var inode *proto.InodeInfo
+
+		inode, err = c.mw.InodeGet_ll(child.Inode)
+		if err != nil {
+      fmt.Println("In rmdir_recursive operation, failed to inodeget: ", child.Inode, " error: ", err)
+			return  err
+		}
+
+		if proto.IsDir(inode.Mode) {
+			err = rmdir_recursive(c, inode)
+			if err != nil {
+        fmt.Println("In rmdir_recursive operation, failed to invoke self: ", child.Name, " error: ", err)
+				return err
+			}
+
+			_, err = c.mw.Delete_ll(info.Inode, child.Name, true)
+			if err != nil {
+          fmt.Println("In rmdir_recursive operation, failed to rmdir: ", child.Name, " error: ", err)
+			    return err
+			}
+		} else {
+			_, err = c.mw.Delete_ll(info.Inode, child.Name, false)
+			if err != nil {
+          fmt.Println("In rmdir_recursive operation, failed to unlink: ", child.Name, " error: ", err)
+			    return err
+			}
+		}
+	}
+
+  return
+}
+
+/*
 //export cfs_rmdir
 func cfs_rmdir(id uint64, path string) int {
 	c, exist := getClient(id)
@@ -700,6 +780,8 @@ func cfs_rmdir(id uint64, path string) int {
 	_, err = c.mw.Delete_ll(dirInfo.Inode, name, true)
 	return errorToStatus(err)
 }
+
+ */
 
 //export cfs_unlink
 func cfs_unlink(id uint64, path string) int {
@@ -819,15 +901,15 @@ func (c *client) lookupPath(path string) (*proto.InodeInfo, error) {
 	return info, nil
 }
 
-func (c *client) create(pino uint64, name string, mode uint32) (info *proto.InodeInfo, err error) {
+func (c *client) create(pino uint64, name string, mode, uid, gid uint32) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0777
-	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil)
+	return c.mw.Create_ll(pino, name, fuseMode, uid, gid, nil)
 }
 
-func (c *client) mkdir(pino uint64, name string, mode uint32) (info *proto.InodeInfo, err error) {
+func (c *client) mkdir(pino uint64, name string, mode, uid, gid uint32) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0777
 	fuseMode |= uint32(os.ModeDir)
-	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil)
+	return c.mw.Create_ll(pino, name, fuseMode, uid, gid, nil)
 }
 
 func (c *client) openStream(f *file) {
@@ -894,3 +976,4 @@ func resetAttr(info *proto.InodeInfo, stat *C.struct_cfs_stat_info) (valid uint3
 }
 
 func main() {}
+

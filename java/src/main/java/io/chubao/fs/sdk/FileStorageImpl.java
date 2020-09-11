@@ -3,6 +3,7 @@ package io.chubao.fs.sdk;
 import io.chubao.fs.sdk.exception.CFSException;
 import io.chubao.fs.sdk.libsdk.CFSDriverIns;
 import io.chubao.fs.sdk.libsdk.SDKStatInfo;
+import io.chubao.fs.sdk.util.CFSOwnerHelper;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -14,19 +15,20 @@ public class FileStorageImpl implements FileStorage {
   private static final Log log = LogFactory.getLog(FileStorageImpl.class);
   private final String separator= "/";
   private CFSDriverIns driver;
-  private int DEFAULT_MODE = 0644;
+  private CFSOwnerHelper owner;
 
   public FileStorageImpl(CFSDriverIns driver) {
     this.driver = driver;
   }
 
   public void init() throws Exception {
-
+    owner = new CFSOwnerHelper();
+    owner.init();
   }
 
   @Override
-  public CFSFile open(String path, int flags, int mode) throws CFSException {
-    long fd = driver.open(path, flags, mode);
+  public CFSFile open(String path, int flags, int mode, int uid, int gid) throws CFSException {
+    long fd = driver.open(path, flags, mode, uid, gid);
     if (fd < 0) {
       throw new CFSException("status code: " + fd);
     }
@@ -34,8 +36,8 @@ public class FileStorageImpl implements FileStorage {
   }
 
   @Override
-  public boolean mkdirs(String path, int mode) throws CFSException {
-    driver.mkdirs(path, mode);
+  public boolean mkdirs(String path, int mode, int uid, int gid) throws CFSException {
+    driver.mkdirs(path, mode, uid, gid);
     return true;
   }
 
@@ -46,7 +48,7 @@ public class FileStorageImpl implements FileStorage {
 
   @Override
   public void close() throws CFSException {
-    //driver.close(d);
+    driver.closeClient();
   }
 
   @Override
@@ -111,9 +113,43 @@ public class FileStorageImpl implements FileStorage {
   }
 
   @Override
-  public void setOwner(String path, String username, String groupname)
-      throws CFSException {
-    log.error("Not implement.");
+  public void chmod(String path, int mode) throws CFSException {
+    driver.chmod(path, mode);
+  }
+
+  @Override
+  public void chown(String path, int uid, int gid) throws CFSException {
+    driver.chown(path, uid, gid);
+  }
+
+  @Override
+  public void chown(String path, String user, String group) throws CFSException {
+    driver.chown(path, owner.getUid(user), owner.getGid(group));
+  }
+
+  @Override
+  public void setTimes(String path, long mtime, long atime) throws CFSException {
+    driver.setTimes(path, mtime, atime);
+  }
+
+  @Override
+  public int getUid(String username) throws CFSException {
+    return owner.getUid(username);
+  }
+
+  @Override
+  public int getGid(String group) throws CFSException {
+    return owner.getGid(group);
+  }
+
+  @Override
+  public String getUser(int uid) throws CFSException {
+    return owner.getUser(uid);
+  }
+
+  @Override
+  public String getGroup(int gid) throws CFSException {
+    return owner.getGroup(gid);
   }
 
   private void setAttr(String path, int mode, int uid, int gid, long mtime, long atime)

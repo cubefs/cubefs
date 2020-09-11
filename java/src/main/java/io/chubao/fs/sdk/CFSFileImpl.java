@@ -41,7 +41,7 @@ public class CFSFileImpl implements CFSFile {
     if (isClosed) {
       return;
     }
-
+    driver.flush(fd);
     driver.close(fd);
   }
 

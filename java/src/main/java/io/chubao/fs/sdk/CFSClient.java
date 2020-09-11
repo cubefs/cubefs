@@ -50,10 +50,10 @@ public class CFSClient {
       throw new CFSException("Failed to start the client [" + cid + "].");
     }
 
-
     try {
       CFSDriverIns ins = new CFSDriverIns(driver, cid);
-      FileStorage storage = new FileStorageImpl(ins);
+      FileStorageImpl storage = new FileStorageImpl(ins);
+      storage.init();
       return storage;
     } catch (Exception ex) {
       log.error(ex.getMessage());
