@@ -45,6 +45,7 @@ type MockDataServer struct {
 	partitions                      []*MockDataPartition
 	zoneName                        string
 	mc                              *master.MasterClient
+	stopC                           chan bool
 }
 
 func NewMockDataServer(addr string, zoneName string) *MockDataServer {
@@ -53,6 +54,7 @@ func NewMockDataServer(addr string, zoneName string) *MockDataServer {
 		zoneName:   zoneName,
 		partitions: make([]*MockDataPartition, 0),
 		mc:         master.NewMasterClient([]string{hostAddr}, false),
+		stopC:      make(chan bool),
 	}
 
 	return mds
@@ -61,6 +63,10 @@ func NewMockDataServer(addr string, zoneName string) *MockDataServer {
 func (mds *MockDataServer) Start() {
 	mds.register()
 	go mds.start()
+}
+
+func (mds *MockDataServer) Stop() {
+	close(mds.stopC)
 }
 
 func (mds *MockDataServer) register() {
@@ -86,6 +92,16 @@ func (mds *MockDataServer) start() {
 	if err != nil {
 		panic(err)
 	}
+	defer listener.Close()
+	go func() {
+		for {
+			select {
+			case <-mds.stopC:
+				return
+			default:
+			}
+		}
+	}()
 	for {
 		conn, err := listener.Accept()
 		if err != nil {

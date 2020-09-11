@@ -59,6 +59,8 @@ const (
 	descriptionKey          = "description"
 	dpSelectorNameKey       = "dpSelectorName"
 	dpSelectorParmKey       = "dpSelectorParm"
+	dpRecoverPoolSizeKey    = "dpRecoverPool"
+	mpRecoverPoolSizeKey    = "mpRecoverPool"
 )
 
 const (
@@ -74,6 +76,7 @@ const (
 	dataNodeOfflineErr            = "dataNodeOfflineErr "
 	diskOfflineErr                = "diskOfflineErr "
 	handleDataPartitionOfflineErr = "handleDataPartitionOffLineErr "
+	balanceDataPartitionZoneErr   = "balanceDataPartitionZoneErr "
 )
 
 const (
@@ -107,6 +110,8 @@ const (
 	defaultRangeOfCountDifferencesAllowed        = 50
 	defaultMinusOfMaxInodeID                     = 1000
 	defaultPercentMinusOfInodeCount              = 0.20
+	defaultDataPartitionsRecoverPoolSize         = 20
+	defaultMetaPartitionsRecoverPoolSize         = 10
 )
 
 const (

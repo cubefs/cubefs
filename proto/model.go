@@ -102,6 +102,8 @@ type ClusterView struct {
 	LeaderAddr             string
 	DisableAutoAlloc       bool
 	MetaNodeThreshold      float32
+	DpRecoverPool          int32
+	MpRecoverPool          int32
 	Applied                uint64
 	MaxDataPartitionID     uint64
 	MaxMetaNodeID          uint64

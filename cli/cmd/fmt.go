@@ -37,6 +37,8 @@ func formatClusterView(cv *proto.ClusterView) string {
 	sb.WriteString(fmt.Sprintf("  DataNode used      : %v GB\n", cv.DataNodeStatInfo.UsedGB))
 	sb.WriteString(fmt.Sprintf("  DataNode total     : %v GB\n", cv.DataNodeStatInfo.TotalGB))
 	sb.WriteString(fmt.Sprintf("  Volume count       : %v\n", len(cv.VolStatInfo)))
+	sb.WriteString(fmt.Sprintf("  Dp recover pool  : %v\n", cv.DpRecoverPool))
+	sb.WriteString(fmt.Sprintf("  Mp recover pool  : %v\n", cv.DpRecoverPool))
 	return sb.String()
 }
 
@@ -147,8 +149,8 @@ func formatDataPartitionTableRow(view *proto.DataPartitionResponse) string {
 }
 
 var (
-	partitionInfoTablePattern      = "%-8v    %-25v    %-8v    %-20v    %-6v    %-18v"
-	partitionInfoColorTablePattern = "%-8v    %-25v    %-8v    %-20v    \033[1;40;32m%-6v\033[0m    %-18v"
+	partitionInfoTablePattern      = "%-8v    %-25v    %-10v    %-20v    %-10v    %-18v"
+	partitionInfoColorTablePattern = "%-8v    %-25v    %-10v    %-20v    \033[1;40;32m%-10v\033[0m    %-18v"
 	partitionInfoTableHeader       = fmt.Sprintf(partitionInfoTablePattern,
 		"ID", "VOLUME", "STATUS", "POSITION", "REPLICANUM", "HOSTS")
 )
@@ -252,7 +254,7 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 }
 
 var (
-	metaPartitionTablePattern = "%-8v    %-12v    %-10v    %-12v    %-12v    %-12v    %-8v    %-12v    %-18v"
+	metaPartitionTablePattern = "%-8v    %-12v    %-12v    %-12v    %-12v    %-12v    %-10v    %-20v    %-18v"
 	metaPartitionTableHeader  = fmt.Sprintf(metaPartitionTablePattern,
 		"ID", "MAX INODE", "DENTRY COUNT", "INODE COUNT", "START", "END", "STATUS", "LEADER", "MEMBERS")
 )
@@ -372,7 +374,7 @@ func formatTimeToString(t time.Time) string {
 	return t.Format("2006-01-02 15:04:05")
 }
 
-var dataReplicaTableRowPattern = "%-18v    %-6v    %-6v    %-8v    %-10v    %-6v    %-12v"
+var dataReplicaTableRowPattern = "%-20v    %-8v    %-8v    %-8v    %-12v    %-10v    %-12v"
 
 func formatDataReplicaTableHeader() string {
 	return fmt.Sprintf(dataReplicaTableRowPattern, "ADDRESS", "USED", "TOTAL", "ISLEADER", "FILECOUNT", "STATUS", "REPORT TIME")
@@ -397,7 +399,7 @@ func formatDataReplica(indentation string, replica *proto.DataReplica, rowTable 
 	return sb.String()
 }
 
-var metaReplicaTableRowPattern = "%-18v    %-8v    %-6v    %-12v"
+var metaReplicaTableRowPattern = "%-20v    %-8v    %-10v    %-12v"
 
 func formatMetaReplicaTableHeader() string {
 	return fmt.Sprintf(metaReplicaTableRowPattern, "ADDRESS", "ISLEADER", "STATUS", "REPORT TIME")

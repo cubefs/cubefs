@@ -270,7 +270,7 @@ func (m *ClusterService) decommissionMetaPartition(ctx context.Context, args str
 	if err != nil {
 		return nil, err
 	}
-	if err := m.cluster.decommissionMetaPartition(args.NodeAddr, mp, false); err != nil {
+	if err := m.cluster.decommissionMetaPartition(args.NodeAddr, mp, getTargetAddressForMetaPartitionDecommission, false); err != nil {
 		return nil, err
 	}
 	log.LogInfof(proto.AdminDecommissionMetaPartition+" partitionID :%v  decommissionMetaPartition successfully", args.PartitionID)
@@ -611,6 +611,8 @@ func (m *ClusterService) makeClusterView() *proto.ClusterView {
 		LeaderAddr:          m.cluster.leaderInfo.addr,
 		DisableAutoAlloc:    m.cluster.DisableAutoAllocate,
 		MetaNodeThreshold:   m.cluster.cfg.MetaNodeThreshold,
+		DpRecoverPool:       m.cluster.cfg.dataPartitionsRecoverPoolSize,
+		MpRecoverPool:       m.cluster.cfg.metaPartitionsRecoverPoolSize,
 		Applied:             m.cluster.fsm.applied,
 		MaxDataPartitionID:  m.cluster.idAlloc.dataPartitionID,
 		MaxMetaNodeID:       m.cluster.idAlloc.commonID,
