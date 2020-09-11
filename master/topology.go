@@ -20,6 +20,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -84,6 +85,9 @@ func (t *topology) putZoneIfAbsent(zone *Zone) (beStoredZone *Zone) {
 }
 
 func (t *topology) getZone(name string) (zone *Zone, err error) {
+	if name == "" {
+		return nil, fmt.Errorf("zone name is empty")
+	}
 	t.zoneMap.Range(func(zoneName, value interface{}) bool {
 		if zoneName != name {
 			return true
@@ -132,6 +136,15 @@ func (t *topology) getZoneByDataNode(dataNode *DataNode) (zone *Zone, err error)
 	}
 
 	return t.getZone(dataNode.ZoneName)
+}
+
+func (t *topology) getZoneByMetaNode(metaNode *MetaNode) (zone *Zone, err error) {
+	_, ok := t.metaNodes.Load(metaNode.Addr)
+	if !ok {
+		return nil, errors.Trace(metaNodeNotFound(metaNode.Addr), "%v not found", metaNode.Addr)
+	}
+
+	return t.getZone(metaNode.ZoneName)
 }
 
 func (t *topology) putMetaNode(metaNode *MetaNode) (err error) {
@@ -306,64 +319,77 @@ func calculateDemandWriteNodes(zoneNum, replicaNum int) (demandWriteNodes int) {
 	return
 }
 
-func (t *topology) allocZonesForMetaNode(zoneNum, replicaNum int, excludeZone []string) (zones []*Zone, err error) {
-	zones = t.getAllZones()
+func (t *topology) allocZonesForMetaNode(zoneName string, replicaNum int, excludeZone []string) (candidateZones []*Zone, err error) {
+	var initCandidateZones []*Zone
+	initCandidateZones = make([]*Zone, 0)
+	zoneList := strings.Split(zoneName, ",")
 	if t.isSingleZone() {
-		return zones, nil
+		return t.getAllZones(), nil
 	}
 	if excludeZone == nil {
 		excludeZone = make([]string, 0)
 	}
-	candidateZones := make([]*Zone, 0)
-	demandWriteNodes := calculateDemandWriteNodes(zoneNum, replicaNum)
-	for i := 0; i < len(zones); i++ {
-		if t.zoneIndexForMetaNode >= len(zones) {
-			t.zoneIndexForMetaNode = 0
+	for _, z := range zoneList {
+		var zone *Zone
+		if zone, err = t.getZone(z); err != nil {
+			return
 		}
-		zone := t.getZoneByIndex(t.zoneIndexForMetaNode)
-		t.zoneIndexForMetaNode++
+		initCandidateZones = append(initCandidateZones, zone)
+	}
+	demandWriteNodes := calculateDemandWriteNodes(len(zoneList), replicaNum)
+	candidateZones = make([]*Zone, 0)
+	for _, zone := range initCandidateZones {
 		if zone.status == unavailableZone {
-			continue
-		}
-		if contains(excludeZone, zone.name) {
 			continue
 		}
 		if zone.canWriteForMetaNode(uint8(demandWriteNodes)) {
 			candidateZones = append(candidateZones, zone)
 		}
-		if len(candidateZones) >= zoneNum {
+		if len(candidateZones) >= len(zoneList) {
 			break
+		}
+	}
+	//if there is no space in the zone for single zone partition, randomly choose another zone
+	if len(candidateZones) < 1 && len(zoneList) == 1 {
+		initCandidateZones = t.getAllZones()
+		for _, zone := range initCandidateZones {
+			if zone.status == unavailableZone {
+				continue
+			}
+			if zone.canWriteForDataNode(uint8(demandWriteNodes)) {
+				candidateZones = append(candidateZones, zone)
+			}
 		}
 	}
 
 	//if across zone,candidateZones must be larger than or equal with 2,otherwise,must have a candidate zone
-	if (zoneNum >= 2 && len(candidateZones) < 2) || len(candidateZones) < 1 {
+	if (len(zoneList) >= 2 && len(candidateZones) < 2) || len(candidateZones) < 1 {
 		log.LogError(fmt.Sprintf("action[allocZonesForMetaNode],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],err:%v",
-			zoneNum, len(candidateZones), demandWriteNodes, proto.ErrNoZoneToCreateMetaPartition))
+			len(zoneList), len(candidateZones), demandWriteNodes, proto.ErrNoZoneToCreateMetaPartition))
 		return nil, proto.ErrNoZoneToCreateMetaPartition
 	}
-	zones = candidateZones
 	err = nil
 	return
 }
 
-func (t *topology) allocZonesForDataNode(zoneNum, replicaNum int, excludeZone []string) (zones []*Zone, err error) {
-	zones = t.getAllZones()
-	fmt.Printf("len(zones) = %v \n", len(zones))
+//allocate zones according to the specified zoneName and replicaNum
+func (t *topology) allocZonesForDataNode(zoneName string, replicaNum int, excludeZone []string) (candidateZones []*Zone, err error) {
+	var initCandidateZones []*Zone
+	initCandidateZones = make([]*Zone, 0)
+	zoneList := strings.Split(zoneName, ",")
 	if t.isSingleZone() {
-		return zones, nil
+		return t.getAllZones(), nil
 	}
-	if excludeZone == nil {
-		excludeZone = make([]string, 0)
-	}
-	demandWriteNodes := calculateDemandWriteNodes(zoneNum, replicaNum)
-	candidateZones := make([]*Zone, 0)
-	for i := 0; i < len(zones); i++ {
-		if t.zoneIndexForDataNode >= len(zones) {
-			t.zoneIndexForDataNode = 0
+	for _, z := range zoneList {
+		var zone *Zone
+		if zone, err = t.getZone(z); err != nil {
+			return
 		}
-		zone := t.getZoneByIndex(t.zoneIndexForDataNode)
-		t.zoneIndexForDataNode++
+		initCandidateZones = append(initCandidateZones, zone)
+	}
+	demandWriteNodes := calculateDemandWriteNodes(len(zoneList), replicaNum)
+	candidateZones = make([]*Zone, 0)
+	for _, zone := range initCandidateZones {
 		if zone.status == unavailableZone {
 			continue
 		}
@@ -373,17 +399,31 @@ func (t *topology) allocZonesForDataNode(zoneNum, replicaNum int, excludeZone []
 		if zone.canWriteForDataNode(uint8(demandWriteNodes)) {
 			candidateZones = append(candidateZones, zone)
 		}
-		if len(candidateZones) >= zoneNum {
+		if len(candidateZones) >= len(zoneList) {
 			break
 		}
 	}
-	//if across zone,candidateZones must be larger than or equal with 2,otherwise,must have one candidate zone
-	if (zoneNum >= 2 && len(candidateZones) < 2) || len(candidateZones) < 1 {
+	//if there is no space in the zone for single zone partition, randomly choose a zone from all zones
+	if len(candidateZones) < 1 && len(zoneList) == 1 {
+		initCandidateZones = t.getAllZones()
+		for _, zone := range initCandidateZones {
+			if zone.status == unavailableZone {
+				continue
+			}
+			if contains(excludeZone, zone.name) {
+				continue
+			}
+			if zone.canWriteForDataNode(uint8(demandWriteNodes)) {
+				candidateZones = append(candidateZones, zone)
+			}
+		}
+	}
+	//if across zone,candidateZones must be larger than or equal with 2, if not across zone, must have one candidate zone
+	if (len(zoneList) >= 2 && len(candidateZones) < 2) || len(candidateZones) < 1 {
 		log.LogError(fmt.Sprintf("action[allocZonesForDataNode],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],err:%v",
-			zoneNum, len(candidateZones), demandWriteNodes, proto.ErrNoZoneToCreateDataPartition))
+			len(zoneList), len(candidateZones), demandWriteNodes, proto.ErrNoZoneToCreateDataPartition))
 		return nil, errors.NewError(proto.ErrNoZoneToCreateDataPartition)
 	}
-	zones = candidateZones
 	err = nil
 	return
 }

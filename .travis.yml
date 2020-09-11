@@ -7,5 +7,6 @@ before_install:
     - docker pull chubaofs/cfs-base:1.0
 
 script:
-    - docker/run_docker.sh -l
     - docker/run_docker.sh -t
+    - docker/run_docker.sh -l
+
