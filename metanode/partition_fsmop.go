@@ -134,10 +134,10 @@ func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMember
 		if req.ReserveResource {
 			mp.raftPartition.Stop()
 		} else {
-			mp.DeleteRaft()
-			os.RemoveAll(mp.config.RootDir)
+			mp.ExpiredRaft()
+			//os.RemoveAll(mp.config.RootDir)
 		}
-		mp.manager.deletePartition(mp.GetBaseConfig().PartitionId)
+		mp.manager.expiredPartition(mp.GetBaseConfig().PartitionId)
 		updated = false
 	}
 	log.LogInfof("Fininsh RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
