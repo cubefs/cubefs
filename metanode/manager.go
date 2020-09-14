@@ -119,7 +119,7 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
 	case proto.OpMetaLookup:
 		err = m.opMetaLookup(conn, p, remoteAddr)
 	case proto.OpDeleteMetaPartition:
-		err = m.opDeleteMetaPartition(conn, p, remoteAddr)
+		err = m.opExpiredMetaPartition(conn, p, remoteAddr)
 	case proto.OpUpdateMetaPartition:
 		err = m.opUpdateMetaPartition(conn, p, remoteAddr)
 	case proto.OpLoadMetaPartition:
