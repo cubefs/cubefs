@@ -419,6 +419,18 @@ func (m *metadataManager) deletePartition(id uint64) (err error) {
 	return
 }
 
+func (m *metadataManager) expiredPartition(id uint64) (err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	mp, has := m.partitions[id]
+	if !has {
+		return
+	}
+	mp.Expired()
+	delete(m.partitions, id)
+	return
+}
+
 // Range scans all the meta partitions.
 func (m *metadataManager) Range(f func(i uint64, p MetaPartition) bool) {
 	m.mu.RLock()

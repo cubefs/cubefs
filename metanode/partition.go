@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"fmt"
 	"io/ioutil"
@@ -175,8 +176,10 @@ type OpPartition interface {
 	PersistMetadata() (err error)
 	ChangeMember(changeType raftproto.ConfChangeType, peer raftproto.Peer, context []byte) (resp interface{}, err error)
 	Reset() (err error)
+	Expired() error
 	UpdatePartition(req *UpdatePartitionReq, resp *UpdatePartitionResp) (err error)
 	DeleteRaft() error
+	ExpiredRaft() error
 	IsExsitPeer(peer proto.Peer) bool
 	TryToLeader(groupID uint64) error
 	CanRemoveRaftMember(peer proto.Peer) error
@@ -533,6 +536,12 @@ func (mp *metaPartition) UpdatePeers(peers []proto.Peer) {
 
 // DeleteRaft deletes the raft partition.
 func (mp *metaPartition) DeleteRaft() (err error) {
+	err = mp.raftPartition.Delete()
+	return
+}
+
+// ExpiredRaft deletes the raft partition.
+func (mp *metaPartition) ExpiredRaft() (err error) {
 	err = mp.raftPartition.Expired()
 	return
 }
@@ -656,6 +665,25 @@ func (mp *metaPartition) Reset() (err error) {
 
 	return
 }
+
+func (mp *metaPartition) Expired() (err error) {
+	mp.inodeTree.Reset()
+	mp.dentryTree.Reset()
+	mp.config.Cursor = 0
+	mp.applyID = 0
+
+	currentPath := path.Clean(mp.config.RootDir)
+
+	var newPath = path.Join(path.Dir(currentPath),
+		ExpiredPartitionPrefix+path.Base(currentPath)+"_"+strconv.FormatInt(time.Now().Unix(), 10))
+
+	if err := os.Rename(currentPath, newPath); err != nil {
+		log.LogErrorf("ExpiredPartition: mark expired partition fail: partitionID(%v) path(%v) newPath(%v) err(%v)", mp.config.PartitionId, currentPath, newPath, err)
+		return err
+	}
+	return nil
+}
+
 //
 func (mp *metaPartition) canRemoveSelf() (canRemove bool, err error) {
 	var partition *proto.MetaPartitionInfo
