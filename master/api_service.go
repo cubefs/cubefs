@@ -210,7 +210,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MaxDataPartitionID:  m.cluster.idAlloc.dataPartitionID,
 		MaxMetaNodeID:       m.cluster.idAlloc.commonID,
 		MaxMetaPartitionID:  m.cluster.idAlloc.metaPartitionID,
-		MetaNodes:           make([]proto.NodeView, 0),
+		MetaNodes:           make([]proto.MetaNodeView, 0),
 		DataNodes:           make([]proto.NodeView, 0),
 		VolStatInfo:         make([]*proto.VolStatInfo, 0),
 		BadPartitionIDs:     make([]proto.BadPartitionView, 0),
@@ -992,16 +992,22 @@ func (m *Server) handleDataNodeTaskResponse(w http.ResponseWriter, r *http.Reque
 
 func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		nodeAddr string
-		zoneName string
-		id       uint64
-		err      error
+		nodeAddr  string
+		zoneName  string
+		storeType proto.StoreType
+		id        uint64
+		err       error
 	)
 	if nodeAddr, zoneName, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if id, err = m.cluster.addMetaNode(nodeAddr, zoneName); err != nil {
+	if storeType, err = extractMpStoreType(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if id, err = m.cluster.addMetaNode(nodeAddr, zoneName, storeType); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1980,7 +1986,7 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	mpView.MaxInodeID = mp.MaxInodeID
 	mpView.InodeCount = mp.InodeCount
 	mpView.DentryCount = mp.DentryCount
-	mpView.StoreType = mp.StoreType.ToString()
+	mpView.StoreType = mp.StoreType.String()
 	mpView.IsRecover = mp.IsRecover
 	return
 }
@@ -2130,13 +2136,14 @@ func extractName(r *http.Request) (name string, err error) {
 func extractMpStoreType(r *http.Request) (mpStoreType proto.StoreType, err error) {
 	var s string
 	if s = r.FormValue(volMpStoreTypeKey); s == "" {
-		mpStoreType = proto.MetaTypeMemory
+		mpStoreType = proto.MetaTypeOld
 		return
 	}
 
 	if storeType, ok := proto.MpStoreTypeParseFromString(s); ok {
 		mpStoreType = storeType
 	} else {
+		mpStoreType = proto.MetaTypeUnKnown
 		err = unmatchedKey(volMpStoreTypeKey)
 		return
 	}

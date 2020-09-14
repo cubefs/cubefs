@@ -39,6 +39,7 @@ const baseGql = {
         addr
         status
         isWritable
+        storeType
         toMetaNode {
           zoneName
           used
@@ -137,6 +138,7 @@ const baseGql = {
       replicaNum
       status
       missNodes
+      storeType
     }
   }`,
   queryDataPartitionList: gql`query dataPartitionList {

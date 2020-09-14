@@ -100,11 +100,11 @@ type ClusterView struct {
 	MaxMetaNodeID       uint64
 	MaxMetaPartitionID  uint64
 	DataNodeStatInfo    *NodeStatInfo
-	MetaNodeStatInfo    *NodeStatInfo
+	MetaNodeStatInfo    *MetaNodeStatInfo
 	VolStatInfo         []*VolStatInfo
 	BadPartitionIDs     []BadPartitionView
 	BadMetaPartitionIDs []BadPartitionView
-	MetaNodes           []NodeView
+	MetaNodes           []MetaNodeView
 	DataNodes           []NodeView
 }
 
@@ -116,6 +116,11 @@ type NodeView struct {
 	IsWritable bool
 }
 
+type MetaNodeView struct {
+	NodeView
+	StoreType StoreType
+}
+
 type BadPartitionView struct {
 	Path         string
 	PartitionIDs []uint64
@@ -123,7 +128,7 @@ type BadPartitionView struct {
 
 type ClusterStatInfo struct {
 	DataNodeStatInfo *NodeStatInfo
-	MetaNodeStatInfo *NodeStatInfo
+	MetaNodeStatInfo *MetaNodeStatInfo
 	ZoneStatInfo     map[string]*ZoneStat
 }
 
@@ -131,6 +136,7 @@ type ZoneStat struct {
 	DataNodeStat *ZoneNodesStat
 	MetaNodeStat *ZoneNodesStat
 }
+
 type ZoneNodesStat struct {
 	Total         float64 `json:"TotalGB"`
 	Used          float64 `json:"UsedGB"`
@@ -145,6 +151,11 @@ type NodeStatInfo struct {
 	UsedGB      uint64
 	IncreasedGB int64
 	UsedRatio   string
+}
+
+type MetaNodeStatInfo struct {
+	NodeStatInfo
+	//StoreType StoreType
 }
 
 type VolStatInfo struct {

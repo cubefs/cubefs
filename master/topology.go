@@ -16,11 +16,12 @@ package master
 
 import (
 	"fmt"
+	"sort"
+	"sync"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"sort"
-	"sync"
 )
 
 type topology struct {
@@ -673,7 +674,7 @@ func (zone *Zone) getAvailDataNodeHosts(excludeNodeSets []uint64, excludeHosts [
 	return ns.getAvailDataNodeHosts(excludeHosts, replicaNum)
 }
 
-func (zone *Zone) getAvailMetaNodeHosts(excludeNodeSets []uint64, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+func (zone *Zone) getAvailMetaNodeHosts(excludeNodeSets []uint64, excludeHosts []string, replicaNum int, storeType proto.StoreType) (newHosts []string, peers []proto.Peer, err error) {
 	if replicaNum == 0 {
 		return
 	}
@@ -681,7 +682,7 @@ func (zone *Zone) getAvailMetaNodeHosts(excludeNodeSets []uint64, excludeHosts [
 	if err != nil {
 		return nil, nil, errors.NewErrorf("zone[%v],err[%v]", zone.name, err)
 	}
-	return ns.getAvailMetaNodeHosts(excludeHosts, replicaNum)
+	return ns.getAvailMetaNodeHosts(excludeHosts, replicaNum, storeType)
 
 }
 

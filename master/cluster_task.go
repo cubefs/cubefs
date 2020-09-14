@@ -124,10 +124,10 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) 
 	if ns, err = zone.getNodeSet(metaNode.NodeSetID); err != nil {
 		goto errHandler
 	}
-	if _, newPeers, err = ns.getAvailMetaNodeHosts(oldHosts, 1); err != nil {
+	if _, newPeers, err = ns.getAvailMetaNodeHosts(oldHosts, 1, mp.StoreType); err != nil {
 		// choose a meta node in other node set in the same zone
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
-		if _, newPeers, err = zone.getAvailMetaNodeHosts(excludeNodeSets, oldHosts, 1); err != nil {
+		if _, newPeers, err = zone.getAvailMetaNodeHosts(excludeNodeSets, oldHosts, 1, mp.StoreType); err != nil {
 			zones = mp.getLiveZones(nodeAddr)
 			if len(zones) == 0 {
 				excludeZone = zone.name
@@ -135,7 +135,7 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) 
 				excludeZone = zones[0]
 			}
 			// choose a meta node in other zone
-			if _, newPeers, err = c.chooseTargetMetaHosts(excludeZone, excludeNodeSets, oldHosts, 1, false, ""); err != nil {
+			if _, newPeers, err = c.chooseTargetMetaHosts(excludeZone, excludeNodeSets, oldHosts, 1, false, "", mp.StoreType); err != nil {
 				goto errHandler
 			}
 		}

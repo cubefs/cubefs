@@ -5,16 +5,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/samsarahq/thunder/graphql"
-	"github.com/samsarahq/thunder/graphql/schemabuilder"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/samsarahq/thunder/graphql"
+	"github.com/samsarahq/thunder/graphql/schemabuilder"
 )
 
 type ClusterService struct {
@@ -468,10 +469,11 @@ func (s *ClusterService) dataPartitionList(ctx context.Context, args struct{}) (
 }
 
 func (m *ClusterService) addMetaNode(ctx context.Context, args struct {
-	NodeAddr string
-	ZoneName string
+	NodeAddr  string
+	ZoneName  string
+	StoreType proto.StoreType
 }) (uint64, error) {
-	if id, err := m.cluster.addMetaNode(args.NodeAddr, args.ZoneName); err != nil {
+	if id, err := m.cluster.addMetaNode(args.NodeAddr, args.ZoneName, args.StoreType); err != nil {
 		return 0, err
 	} else {
 		return id, nil
@@ -707,7 +709,7 @@ func (m *ClusterService) makeClusterView() *proto.ClusterView {
 		MaxDataPartitionID:  m.cluster.idAlloc.dataPartitionID,
 		MaxMetaNodeID:       m.cluster.idAlloc.commonID,
 		MaxMetaPartitionID:  m.cluster.idAlloc.metaPartitionID,
-		MetaNodes:           make([]proto.NodeView, 0),
+		MetaNodes:           make([]proto.MetaNodeView, 0),
 		DataNodes:           make([]proto.NodeView, 0),
 		VolStatInfo:         make([]*proto.VolStatInfo, 0),
 		BadPartitionIDs:     make([]proto.BadPartitionView, 0),

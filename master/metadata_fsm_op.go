@@ -61,6 +61,7 @@ type metaPartitionValue struct {
 	VolID       uint64
 	ReplicaNum  uint8
 	Status      int8
+	StoreType   uint8
 	VolName     string
 	Hosts       string
 	Peers       []bsProto.Peer
@@ -74,6 +75,7 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 		End:         mp.End,
 		VolID:       mp.volID,
 		ReplicaNum:  mp.ReplicaNum,
+		StoreType:   uint8(mp.StoreType),
 		Status:      mp.Status,
 		VolName:     mp.volName,
 		Hosts:       mp.hostsToString(),
@@ -197,6 +199,7 @@ type metaNodeValue struct {
 	NodeSetID uint64
 	Addr      string
 	ZoneName  string
+	StoreType uint8
 }
 
 func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
@@ -205,6 +208,7 @@ func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
 		NodeSetID: metaNode.NodeSetID,
 		Addr:      metaNode.Addr,
 		ZoneName:  metaNode.ZoneName,
+		StoreType: uint8(metaNode.StoreType),
 	}
 }
 
@@ -628,6 +632,7 @@ func (c *Cluster) loadMetaNodes() (err error) {
 		}
 		metaNode := newMetaNode(mnv.Addr, mnv.ZoneName, c.Name)
 		metaNode.ID = mnv.ID
+		metaNode.StoreType = bsProto.StoreType(mnv.StoreType)
 		metaNode.NodeSetID = mnv.NodeSetID
 		oldmn, ok := c.metaNodes.Load(metaNode.Addr)
 		if ok {

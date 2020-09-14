@@ -69,9 +69,24 @@ func formatClusterStat(cs *proto.ClusterStatInfo) string {
 }
 
 var nodeViewTableRowPattern = "%-6v    %-18v    %-8v    %-8v"
+var metaNodeViewTableRowPattern = "%-6v    %-18v    %-8v    %-8v    %-8v"
 
 func formatNodeViewTableHeader() string {
 	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "STATUS")
+}
+
+func formatMetaNodeView(view *proto.MetaNodeView, tableRow bool) string {
+	if tableRow {
+		return fmt.Sprintf(metaNodeViewTableRowPattern, view.ID, view.Addr,
+			formatYesNo(view.IsWritable), formatNodeStatus(view.Status), view.StoreType)
+	}
+	var sb = strings.Builder{}
+	sb.WriteString(fmt.Sprintf("  ID      : %v\n", view.ID))
+	sb.WriteString(fmt.Sprintf("  Address : %v\n", view.Addr))
+	sb.WriteString(fmt.Sprintf("  Writable: %v\n", formatYesNo(view.IsWritable)))
+	sb.WriteString(fmt.Sprintf("  Status  : %v", formatNodeStatus(view.Status)))
+	sb.WriteString(fmt.Sprintf("  StoreType: %v\n", view.StoreType))
+	return sb.String()
 }
 
 func formatNodeView(view *proto.NodeView, tableRow bool) string {

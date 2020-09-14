@@ -17,13 +17,6 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/cmd/common"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/raftstore"
-	util "github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/exporter"
-	"github.com/chubaofs/chubaofs/util/log"
 	"io/ioutil"
 	"net"
 	_ "net/http/pprof"
@@ -34,6 +27,14 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/chubaofs/chubaofs/cmd/common"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/raftstore"
+	util "github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const partitionPrefix = "partition_"
@@ -432,12 +433,15 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		ConnPool: m.connPool,
 	}
 
+	// only allow to create MetaTypeMemory/ MetaTypeRocks mp
 	if mpc.StoreType == proto.MetaTypeRocks {
 		rocksPath, err := util.SelectDisk(m.rocksDirs)
 		if err != nil {
 			return err
 		}
 		mpc.RocksDir = partitionPrefixPath(rocksPath, partitionId)
+	} else {
+		mpc.StoreType = proto.MetaTypeMemory
 	}
 
 	mpc.AfterStop = func() {

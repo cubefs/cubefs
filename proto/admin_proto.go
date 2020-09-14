@@ -130,13 +130,17 @@ const (
 type StoreType uint8
 
 const (
-	MetaTypeMemory StoreType = iota
+	MetaTypeOld StoreType = iota
 	MetaTypeRocks
+	MetaTypeMemory
+
 	MetaTypeUnKnown = 255
 )
 
-func (s StoreType) ToString() string {
+func (s StoreType) String() string {
 	switch s {
+	case MetaTypeOld:
+		return "old"
 	case MetaTypeMemory:
 		return "memory"
 	case MetaTypeRocks:
@@ -146,8 +150,14 @@ func (s StoreType) ToString() string {
 	}
 }
 
+func (s StoreType) ToString() string {
+	return fmt.Sprintf("%d", int(s))
+}
+
 func MpStoreTypeParseFromString(st string) (StoreType, bool) {
 	switch st {
+	case fmt.Sprintf("%d", MetaTypeOld):
+		return MetaTypeOld, true
 	case fmt.Sprintf("%d", MetaTypeMemory):
 		return MetaTypeMemory, true
 	case fmt.Sprintf("%d", MetaTypeRocks):

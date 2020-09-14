@@ -44,7 +44,7 @@ type Cluster struct {
 	idAlloc                   *IDAllocator
 	t                         *topology
 	dataNodeStatInfo          *nodeStatInfo
-	metaNodeStatInfo          *nodeStatInfo
+	metaNodeStatInfo          *metaNodeStatInfo
 	zoneStatInfos             map[string]*proto.ZoneStat
 	volStatInfo               sync.Map
 	BadDataPartitionIds       *sync.Map
@@ -67,7 +67,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.BadDataPartitionIds = new(sync.Map)
 	c.BadMetaPartitionIds = new(sync.Map)
 	c.dataNodeStatInfo = new(nodeStatInfo)
-	c.metaNodeStatInfo = new(nodeStatInfo)
+	c.metaNodeStatInfo = new(metaNodeStatInfo)
 	c.zoneStatInfos = make(map[string]*proto.ZoneStat)
 	c.fsm = fsm
 	c.partition = partition
@@ -430,7 +430,7 @@ func (c *Cluster) updateMetaNodeBaseInfo(nodeAddr string, id uint64) (err error)
 	return
 }
 
-func (c *Cluster) addMetaNode(nodeAddr, zoneName string) (id uint64, err error) {
+func (c *Cluster) addMetaNode(nodeAddr, zoneName string, storeType proto.StoreType) (id uint64, err error) {
 	c.mnMutex.Lock()
 	defer c.mnMutex.Unlock()
 	var metaNode *MetaNode
@@ -439,6 +439,7 @@ func (c *Cluster) addMetaNode(nodeAddr, zoneName string) (id uint64, err error) 
 		return metaNode.ID, nil
 	}
 	metaNode = newMetaNode(nodeAddr, zoneName, c.Name)
+	metaNode.StoreType = storeType
 	zone, err := c.t.getZone(zoneName)
 	if err != nil {
 		zone = c.t.putZoneIfAbsent(newZone(zoneName))
@@ -462,12 +463,12 @@ func (c *Cluster) addMetaNode(nodeAddr, zoneName string) (id uint64, err error) 
 	}
 	c.t.putMetaNode(metaNode)
 	c.metaNodes.Store(nodeAddr, metaNode)
-	log.LogInfof("action[addMetaNode],clusterID[%v] metaNodeAddr:%v,nodeSetId[%v],capacity[%v]",
-		c.Name, nodeAddr, ns.ID, ns.Capacity)
+	log.LogInfof("action[addMetaNode],clusterID[%v] metaNodeAddr:%v,nodeSetId[%v],capacity[%v],storeType[%s]",
+		c.Name, nodeAddr, ns.ID, ns.Capacity, metaNode.StoreType)
 	return
 errHandler:
-	err = fmt.Errorf("action[addMetaNode],clusterID[%v] metaNodeAddr:%v err:%v ",
-		c.Name, nodeAddr, err.Error())
+	err = fmt.Errorf("action[addMetaNode],clusterID[%v] metaNodeAddr:%v storeType:%s err:%v ",
+		c.Name, nodeAddr, metaNode.StoreType, err.Error())
 	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
 	return
@@ -1700,7 +1701,7 @@ func (c *Cluster) updateInodeIDRange(volName string, start uint64) (err error) {
 }
 
 // Choose the target hosts from the available zones and meta nodes.
-func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []uint64, excludeHosts []string, replicaNum int, crossZone bool, specifiedZone string) (hosts []string, peers []proto.Peer, err error) {
+func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []uint64, excludeHosts []string, replicaNum int, crossZone bool, specifiedZone string, storeType proto.StoreType) (hosts []string, peers []proto.Peer, err error) {
 	var (
 		zones      []*Zone
 		masterZone *Zone
@@ -1736,7 +1737,7 @@ func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []ui
 		return nil, nil, fmt.Errorf("action[chooseTargetMetaNodes] no enough zones [%v] to be selected, expect select [%v] zones", len(zones), zoneNum)
 	}
 	if len(zones) == 1 {
-		if hosts, peers, err = zones[0].getAvailMetaNodeHosts(excludeNodeSets, excludeHosts, replicaNum); err != nil {
+		if hosts, peers, err = zones[0].getAvailMetaNodeHosts(excludeNodeSets, excludeHosts, replicaNum, storeType); err != nil {
 			log.LogErrorf("action[chooseTargetMetaNodes],err[%v]", err)
 			return
 		}
@@ -1750,7 +1751,7 @@ func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []ui
 	//replicaNum is equal with the number of allocated zones
 	if replicaNum == len(zones) {
 		for _, zone := range zones {
-			selectedHosts, selectedPeers, e := zone.getAvailMetaNodeHosts(excludeNodeSets, excludeHosts, 1)
+			selectedHosts, selectedPeers, e := zone.getAvailMetaNodeHosts(excludeNodeSets, excludeHosts, 1, storeType)
 			if e != nil {
 				return nil, nil, errors.NewError(e)
 			}
@@ -1774,14 +1775,14 @@ func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []ui
 	for _, zone := range zones {
 		if zone.name == masterZone.name {
 			rNum := replicaNum - len(zones) + 1
-			selectedHosts, selectedPeers, e := zone.getAvailMetaNodeHosts(excludeNodeSets, excludeHosts, rNum)
+			selectedHosts, selectedPeers, e := zone.getAvailMetaNodeHosts(excludeNodeSets, excludeHosts, rNum, storeType)
 			if e != nil {
 				return nil, nil, errors.NewError(e)
 			}
 			hosts = append(hosts, selectedHosts...)
 			peers = append(peers, selectedPeers...)
 		} else {
-			selectedHosts, selectedPeers, e := zone.getAvailMetaNodeHosts(excludeNodeSets, excludeHosts, 1)
+			selectedHosts, selectedPeers, e := zone.getAvailMetaNodeHosts(excludeNodeSets, excludeHosts, 1, storeType)
 			if e != nil {
 				return nil, nil, errors.NewError(e)
 			}
@@ -1823,11 +1824,20 @@ func (c *Cluster) allDataNodes() (dataNodes []proto.NodeView) {
 	return
 }
 
-func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
-	metaNodes = make([]proto.NodeView, 0)
+func (c *Cluster) allMetaNodes() (metaNodes []proto.MetaNodeView) {
+	metaNodes = make([]proto.MetaNodeView, 0)
 	c.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode := node.(*MetaNode)
-		metaNodes = append(metaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
+		metaNodeView := proto.MetaNodeView{
+			NodeView: proto.NodeView{
+				ID:         metaNode.ID,
+				Addr:       metaNode.Addr,
+				Status:     metaNode.IsActive,
+				IsWritable: metaNode.isWritable(),
+			},
+			StoreType: metaNode.StoreType,
+		}
+		metaNodes = append(metaNodes, metaNodeView)
 		return true
 	})
 	return
