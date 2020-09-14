@@ -276,7 +276,7 @@ func (dp *DataPartition) sendAllTinyExtentsToC(extentType uint8, availableTinyEx
 func (dp *DataPartition) brokenTinyExtents() (brokenTinyExtents []uint64) {
 	brokenTinyExtents = make([]uint64, 0)
 	extentsToBeRepaired := MinTinyExtentsToRepair
-	if dp.extentStore.AvailableTinyExtentCnt() == 0 {
+	if dp.extentStore.AvailableTinyExtentCnt() <= MinAvaliTinyExtentCnt {
 		extentsToBeRepaired = storage.TinyExtentCount
 	}
 	for i := 0; i < extentsToBeRepaired; i++ {
@@ -342,7 +342,7 @@ func (dp *DataPartition) buildExtentCreationTasks(repairTasks []*DataPartitionRe
 				if extentInfo.IsDeleted {
 					continue
 				}
-				if dp.ExtentStore().IsDeletedNormalExtent(extentID){
+				if dp.ExtentStore().IsDeletedNormalExtent(extentID) {
 					continue
 				}
 				ei := &storage.ExtentInfo{Source: extentInfo.Source, FileID: extentID, Size: extentInfo.Size}
@@ -372,7 +372,7 @@ func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepa
 			if extentInfo.IsDeleted {
 				continue
 			}
-			if dp.ExtentStore().IsDeletedNormalExtent(extentID){
+			if dp.ExtentStore().IsDeletedNormalExtent(extentID) {
 				continue
 			}
 			if extentInfo.Size < maxFileInfo.Size {

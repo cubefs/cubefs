@@ -292,7 +292,11 @@ func (w *Wrapper) RemoveDataPartitionForWrite(partitionID uint64) {
 		}
 	}
 
-	var newRwPartition []*DataPartition
+	if i >= len(rwPartitionGroups) {
+		return
+	}
+
+	newRwPartition := make([]*DataPartition, 0)
 	newRwPartition = append(newRwPartition, rwPartitionGroups[:i]...)
 	newRwPartition = append(newRwPartition, rwPartitionGroups[i+1:]...)
 

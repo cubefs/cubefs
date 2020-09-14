@@ -1,35 +1,41 @@
+## Release v2.2.1 - 2020/09/07
+
+### Bug fix
+* `master`: Fix the concurrency safe issue when removing raft member. [#893](https://github.com/chubaofs/chubaofs/pull/893)
+* `sdk`: Fix the panic issue while remove data partition concurrently. [#894](https://github.com/chubaofs/chubaofs/pull/894)
+
 ## Release v2.2.0 - 2020/09/01
 
 ### Enhancement
-* `object`: Implement S3 api 'deleteBucketPolicy' and related test cases. [#757](https://github.com/chubaofs/chubaofs/pull/757)
-* `master`: Add interface to expand/shrink capacity of volume, capacity must be set more than 20% lager than used. [#764](https://github.com/chubaofs/chubaofs/pull/764)
-* `master`: Provide update **DataNode** **MetaNode** API, check invalid **DataNode**. [#813](https://github.com/chubaofs/chubaofs/pull/813)  
-* `cli`: Introduce log to cli tool, and added several commands to call master api. [#764](https://github.com/chubaofs/chubaofs/pull/764) [#801](https://github.com/chubaofs/chubaofs/pull/801)
-* `compile`: Support **arm64** cross compiler using docker; support **Ububtu 14.04+**, **CentOS7.6+**. [#779](https://github.com/chubaofs/chubaofs/pull/779)
-* `client`: Enable read from nearest **DataNode** IP. [#810](https://github.com/chubaofs/chubaofs/pull/810)  
+* `object`: Implemented S3 api 'DeleteBucketPolicy' for bucket deletion. [#757](https://github.com/chubaofs/chubaofs/pull/757)
+* `master`: Introducing management API for volume capacity expanding and shrinking. New capacity must be set more than 20% lager than used. [#764](https://github.com/chubaofs/chubaofs/pull/764)
+* `master`: Introducing management API for updating node address. [#813](https://github.com/chubaofs/chubaofs/pull/813)
+* `master`: Introducing management API for checking nodes. [#813](https://github.com/chubaofs/chubaofs/pull/813) 
+* `metanode`: Add header and checksum verification for EXTENT_DEL files. [#813](https://github.com/chubaofs/chubaofs/pull/813)  
+* `cli`: Add logging for CLI tool, and added several commands to call master API. [#764](https://github.com/chubaofs/chubaofs/pull/764) [#801](https://github.com/chubaofs/chubaofs/pull/801)
+* `compile`:Support direct compile or docker cross compile on Arm64 platform. [#779](https://github.com/chubaofs/chubaofs/pull/779)
+* `client`: Introducing **nearRead** option that allow client read data priority from the nearest DataNode to improve reading performance. [#810](https://github.com/chubaofs/chubaofs/pull/810)  
 * `client`: Update volume follower read config from master periodicity. [#837](https://github.com/chubaofs/chubaofs/pull/837)  
 
 ### Refactor
-* `object`: listObject and listObjectsV2 list result is not expected. [#769](https://github.com/chubaofs/chubaofs/pull/769)
+* `object`: Improved compatibility for ListObjects and ListObjectsV2 interfaces. [#769](https://github.com/chubaofs/chubaofs/pull/769)
 * `master`: Check whether the used space between the replicas is consistent when performing the load partition operation. [#813](https://github.com/chubaofs/chubaofs/pull/813)
 * `metanode` `datanode`: Optimize batch delete Extent; add **autoRepairLimitRater** on **DataNode**. [#781](https://github.com/chubaofs/chubaofs/pull/781)
-* `datanode`: Add **autoRepair** limit on **DataNode**. [#842](https://github.com/chubaofs/chubaofs/pull/842)  
-* `datanode`: **repairTask** skip the extent which has been deleted. [#842](https://github.com/chubaofs/chubaofs/pull/842) 
-* `security`: Add security disclosure process. [#782](https://github.com/chubaofs/chubaofs/pull/782) 
+* `datanode`: Introducing **autoRepair** option for limit data repair speed on **DataNode**. [#842](https://github.com/chubaofs/chubaofs/pull/842)  
+* `datanode`: The data repair task will skip process extent file which has been already deleted. [#842](https://github.com/chubaofs/chubaofs/pull/842) 
 
 ### Bug fix
 * `master`: When loading metadata of cluster, using the current ID instead of the loaded ID. [#821](https://github.com/chubaofs/chubaofs/pull/821) 
-* `metanode`: **MetaNode** delete **dEntry** deadlock. [#785](https://github.com/chubaofs/chubaofs/pull/785) 
+* `metanode`: Fix the deadlock problem while **MetaNode** deleting **dentry**. [#785](https://github.com/chubaofs/chubaofs/pull/785) 
 * `metanode`: Fixes [#760](https://github.com/chubaofs/chubaofs/issues/760) Add **inode** to freeList when NLink is 0, and delete **inode** 7 days later. [#767](https://github.com/chubaofs/chubaofs/issues/767)
-* `metanode`: Add EXTENT_DEL file extentKey header and checksum verify. [#813](https://github.com/chubaofs/chubaofs/pull/813)  
 * `datanode` `metanode`: When **DataNode** and **MetaNode** start, the partitions not exist in cluster view will be renamed to **expiredPartition** and skip loading. [#824](https://github.com/chubaofs/chubaofs/pull/824) 
 * `datanode` `metanode`: Fixes issue[#698](https://github.com/chubaofs/chubaofs/issues/698), Raft instance delete itself by applying ConfChange raft log. [#866](https://github.com/chubaofs/chubaofs/pull/866)  
 * `metanode`: **MetaNode** may not free space. [#838](https://github.com/chubaofs/chubaofs/pull/838)  
-* `client`: Refresh Extents cache when opening file. [#783](https://github.com/chubaofs/chubaofs/pull/783) 
+* `client`: Fix the problem that client opening file with outdated extents information. [#783](https://github.com/chubaofs/chubaofs/pull/783) 
 * `client`: Batch inode get mechanism is out of service. [#847](https://github.com/chubaofs/chubaofs/pull/847) 
-* `client`: Mount failure for authorized user. [#828](https://github.com/chubaofs/chubaofs/pull/828) 
-* `datanode`: Several bugs in automatic repair for **tinyExtent**. [#855](https://github.com/chubaofs/chubaofs/pull/855) [#857](https://github.com/chubaofs/chubaofs/pull/857) 
-* `datanode`: Exclude the **DataPartition** having no space when allocate Extent. [#867](https://github.com/chubaofs/chubaofs/pull/867)
+* `client`: Fix the problem that makes authorized user mount volume failure. [#828](https://github.com/chubaofs/chubaofs/pull/828) 
+* `datanode`: Fix several issue in automatic repair process for tiny extent. [#855](https://github.com/chubaofs/chubaofs/pull/855) [#857](https://github.com/chubaofs/chubaofs/pull/857) 
+* `datanode`: Fix the problem that the client still applies to create a new extent to a data partition that has no space. [#867](https://github.com/chubaofs/chubaofs/pull/867)
 
 ### Document
 * Updated Q&A, environment&capacity planing documentation. [#801](https://github.com/chubaofs/chubaofs/pull/801) 
