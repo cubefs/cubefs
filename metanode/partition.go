@@ -533,7 +533,7 @@ func (mp *metaPartition) UpdatePeers(peers []proto.Peer) {
 
 // DeleteRaft deletes the raft partition.
 func (mp *metaPartition) DeleteRaft() (err error) {
-	err = mp.raftPartition.Delete()
+	err = mp.raftPartition.Expired()
 	return
 }
 
