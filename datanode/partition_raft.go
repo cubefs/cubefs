@@ -365,8 +365,8 @@ func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMember
 		if req.ReserveResource {
 			dp.Disk().space.DeletePartitionFromCache(dp.partitionID)
 		} else {
-			dp.raftPartition.Delete()
-			dp.Disk().space.DeletePartition(dp.partitionID)
+			dp.raftPartition.Expired()
+			dp.Disk().space.ExpiredPartition(dp.partitionID)
 		}
 		isUpdated = false
 	}
