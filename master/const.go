@@ -53,6 +53,8 @@ const (
 	nodeDeleteWorkerSleepMs = "deleteWorkerSleepMs"
 	nodeAutoRepairRateKey   = "autoRepairRate"
 	descriptionKey          = "description"
+	dpSelectorNameKey       = "dpSelectorName"
+	dpSelectorParmKey       = "dpSelectorParm"
 )
 
 const (
