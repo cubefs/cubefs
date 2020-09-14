@@ -26,10 +26,11 @@ import (
 	"syscall"
 	"time"
 
+	"os"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
-	"os"
 )
 
 var (
@@ -37,7 +38,9 @@ var (
 	RegexpDataPartitionDir, _ = regexp.Compile("^datapartition_(\\d)+_(\\d)+$")
 )
 
-const ExpiredPartitionPrefix = "expired_"
+const (
+	ExpiredPartitionPrefix = "expired_"
+)
 
 // Disk represents the structure of the disk
 type Disk struct {
