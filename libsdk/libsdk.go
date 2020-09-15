@@ -61,6 +61,8 @@ import (
 	"syscall"
 	"unsafe"
 
+	"github.com/willf/bitset"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data/stream"
 	"github.com/chubaofs/chubaofs/sdk/meta"
@@ -72,6 +74,8 @@ const (
 
 const (
 	defaultBlkSize = uint32(1) << 12
+
+	maxFdNum uint = 1024000
 )
 
 var (
@@ -87,6 +91,7 @@ var (
 	statusEEXIST = errorToStatus(syscall.EEXIST)
 	statusEBADFD = errorToStatus(syscall.EBADFD)
 	statusEACCES = errorToStatus(syscall.EACCES)
+	statusEMFILE = errorToStatus(syscall.EMFILE)
 )
 
 func init() {
@@ -145,7 +150,7 @@ func removeClient(id int64) {
 }
 
 type file struct {
-	fd    uint64
+	fd    uint
 	ino   uint64
 	flags uint32
 	mode  uint32
@@ -169,8 +174,8 @@ type client struct {
 	followerRead bool
 
 	// runtime context
-	maxfd  uint64
-	fdmap  map[uint64]*file
+	fdmap  map[uint]*file
+	fdset  *bitset.BitSet
 	fdlock sync.RWMutex
 
 	// server info
@@ -179,19 +184,22 @@ type client struct {
 }
 
 //export cfs_new_client
-func cfs_new_client() int64 {
+func cfs_new_client() C.int64_t {
 	id := atomic.AddInt64(&nextClientID, 1)
 	c := &client{
 		id:    id,
-		fdmap: make(map[uint64]*file),
+		fdmap: make(map[uint]*file),
+		fdset: bitset.New(maxFdNum),
 	}
+	// Just skip fd 0, 1, 2, to avoid confusion.
+	c.fdset.Set(0).Set(1).Set(2)
 	clientBuckets[id%slots].put(id, c)
-	return id
+	return C.int64_t(id)
 }
 
 //export cfs_set_client
-func cfs_set_client(id int64, key, val *C.char) C.int {
-	c, exist := getClient(id)
+func cfs_set_client(id C.int64_t, key, val *C.char) C.int {
+	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
 	}
@@ -215,8 +223,8 @@ func cfs_set_client(id int64, key, val *C.char) C.int {
 }
 
 //export cfs_start_client
-func cfs_start_client(id int64) C.int {
-	c, exist := getClient(id)
+func cfs_start_client(id C.int64_t) C.int {
+	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
 	}
@@ -229,28 +237,28 @@ func cfs_start_client(id int64) C.int {
 }
 
 //export cfs_close_client
-func cfs_close_client(id int64) {
-	if c, exist := getClient(id); exist {
+func cfs_close_client(id C.int64_t) {
+	if c, exist := getClient(int64(id)); exist {
 		if c.ec != nil {
 			_ = c.ec.Close()
 		}
 		if c.mw != nil {
 			_ = c.mw.Close()
 		}
-		removeClient(id)
+		removeClient(int64(id))
 	}
 }
 
 //export cfs_getattr
-func cfs_getattr(id int64, path *C.char, stat *C.struct_cfs_stat_info) C.int {
-	c, exist := getClient(id)
+func cfs_getattr(id C.int64_t, path *C.char, stat *C.struct_cfs_stat_info) C.int {
+	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
 	}
 
 	info, err := c.lookupPath(C.GoString(path))
 	if err != nil {
-		return -errorToStatus(err)
+		return errorToStatus(err)
 	}
 
 	// fill up the stat
@@ -294,8 +302,8 @@ func cfs_getattr(id int64, path *C.char, stat *C.struct_cfs_stat_info) C.int {
 }
 
 //export cfs_open
-func cfs_open(id int64, path *C.char, flags C.int, mode C.mode_t) C.int {
-	c, exist := getClient(id)
+func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
+	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
 	}
@@ -333,18 +341,21 @@ func cfs_open(id int64, path *C.char, flags C.int, mode C.mode_t) C.int {
 	}
 
 	f := c.allocFD(info.Inode, fuseFlags, fuseMode)
+	if f == nil {
+		return statusEMFILE
+	}
 
 	if proto.IsRegular(info.Mode) {
 		c.openStream(f)
 		if fuseFlags&uint32(C.O_TRUNC) != 0 {
 			if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
 				c.closeStream(f)
-				c.releaseFD(int(f.fd))
+				c.releaseFD(f.fd)
 				return statusEACCES
 			}
 			if err := c.truncate(f, 0); err != nil {
 				c.closeStream(f)
-				c.releaseFD(int(f.fd))
+				c.releaseFD(f.fd)
 				return statusEIO
 			}
 		}
@@ -354,14 +365,13 @@ func cfs_open(id int64, path *C.char, flags C.int, mode C.mode_t) C.int {
 }
 
 //export cfs_flush
-func cfs_flush(id int64, _fd C.int) C.int {
-	fd := int(_fd)
-	c, exist := getClient(id)
+func cfs_flush(id C.int64_t, fd C.int) C.int {
+	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
 	}
 
-	f := c.getFile(fd)
+	f := c.getFile(uint(fd))
 	if f == nil {
 		return statusEBADFD
 	}
@@ -374,13 +384,12 @@ func cfs_flush(id int64, _fd C.int) C.int {
 }
 
 //export cfs_close
-func cfs_close(id int64, _fd C.int) {
-	fd := int(_fd)
-	c, exist := getClient(id)
+func cfs_close(id C.int64_t, fd C.int) {
+	c, exist := getClient(int64(id))
 	if !exist {
 		return
 	}
-	f := c.releaseFD(fd)
+	f := c.releaseFD(uint(fd))
 	if f != nil {
 		c.flush(f)
 		c.closeStream(f)
@@ -388,14 +397,13 @@ func cfs_close(id int64, _fd C.int) {
 }
 
 //export cfs_write
-func cfs_write(id int64, _fd C.int, buf unsafe.Pointer, size C.size_t, off C.off_t) C.ssize_t {
-	fd := int(_fd)
-	c, exist := getClient(id)
+func cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.off_t) C.ssize_t {
+	c, exist := getClient(int64(id))
 	if !exist {
 		return C.ssize_t(statusEINVAL)
 	}
 
-	f := c.getFile(fd)
+	f := c.getFile(uint(fd))
 	if f == nil {
 		return C.ssize_t(statusEBADFD)
 	}
@@ -437,14 +445,13 @@ func cfs_write(id int64, _fd C.int, buf unsafe.Pointer, size C.size_t, off C.off
 }
 
 //export cfs_read
-func cfs_read(id int64, _fd C.int, buf unsafe.Pointer, size C.size_t, off C.off_t) C.ssize_t {
-	fd := int(_fd)
-	c, exist := getClient(id)
+func cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.off_t) C.ssize_t {
+	c, exist := getClient(int64(id))
 	if !exist {
 		return C.ssize_t(statusEINVAL)
 	}
 
-	f := c.getFile(fd)
+	f := c.getFile(uint(fd))
 	if f == nil {
 		return C.ssize_t(statusEBADFD)
 	}
@@ -474,14 +481,13 @@ func cfs_read(id int64, _fd C.int, buf unsafe.Pointer, size C.size_t, off C.off_
  */
 
 //export cfs_readdir
-func cfs_readdir(id int64, _fd C.int, dirents []C.struct_cfs_dirent, count C.int) (n C.int) {
-	fd := int(_fd)
-	c, exist := getClient(id)
+func cfs_readdir(id C.int64_t, fd C.int, dirents []C.struct_cfs_dirent, count C.int) (n C.int) {
+	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
 	}
 
-	f := c.getFile(fd)
+	f := c.getFile(uint(fd))
 	if f == nil {
 		return statusEBADFD
 	}
@@ -490,7 +496,7 @@ func cfs_readdir(id int64, _fd C.int, dirents []C.struct_cfs_dirent, count C.int
 		f.dirp = &dirStream{}
 		dentries, err := c.mw.ReadDir_ll(f.ino)
 		if err != nil {
-			return -errorToStatus(err)
+			return errorToStatus(err)
 		}
 		f.dirp.dirents = dentries
 	}
@@ -529,13 +535,13 @@ func cfs_readdir(id int64, _fd C.int, dirents []C.struct_cfs_dirent, count C.int
 }
 
 //export cfs_mkdirs
-func cfs_mkdirs(id int64, path *C.char, mode C.mode_t) C.int {
+func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) C.int {
 	dirpath := C.GoString(path)
 	if dirpath == "" || dirpath == "/" {
 		return statusEEXIST
 	}
 
-	c, exist := getClient(id)
+	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
 	}
@@ -565,8 +571,8 @@ func cfs_mkdirs(id int64, path *C.char, mode C.mode_t) C.int {
 }
 
 //export cfs_rmdir
-func cfs_rmdir(id int64, path *C.char) C.int {
-	c, exist := getClient(id)
+func cfs_rmdir(id C.int64_t, path *C.char) C.int {
+	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
 	}
@@ -582,8 +588,8 @@ func cfs_rmdir(id int64, path *C.char) C.int {
 }
 
 //export cfs_unlink
-func cfs_unlink(id int64, path *C.char) C.int {
-	c, exist := getClient(id)
+func cfs_unlink(id C.int64_t, path *C.char) C.int {
+	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
 	}
@@ -604,8 +610,8 @@ func cfs_unlink(id int64, path *C.char) C.int {
 }
 
 //export cfs_rename
-func cfs_rename(id int64, from *C.char, to *C.char) C.int {
-	c, exist := getClient(id)
+func cfs_rename(id C.int64_t, from *C.char, to *C.char) C.int {
+	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
 	}
@@ -658,30 +664,34 @@ func (c *client) start() (err error) {
 }
 
 func (c *client) allocFD(ino uint64, flags, mode uint32) *file {
-	fd := atomic.AddUint64(&c.maxfd, 1)
-	f := &file{fd: fd, ino: ino, flags: flags, mode: mode}
 	c.fdlock.Lock()
-	c.fdmap[fd] = f
-	c.fdlock.Unlock()
-	return f
-}
-
-func (c *client) getFile(fd int) *file {
-	c.fdlock.Lock()
-	f := c.fdmap[uint64(fd)]
-	c.fdlock.Unlock()
-	return f
-}
-
-func (c *client) releaseFD(fd int) *file {
-	c.fdlock.Lock()
-	f, ok := c.fdmap[uint64(fd)]
-	if !ok {
-		c.fdlock.Unlock()
+	defer c.fdlock.Unlock()
+	fd, ok := c.fdset.NextClear(0)
+	if !ok || fd > maxFdNum {
 		return nil
 	}
-	delete(c.fdmap, uint64(fd))
+	c.fdset.Set(fd)
+	f := &file{fd: fd, ino: ino, flags: flags, mode: mode}
+	c.fdmap[fd] = f
+	return f
+}
+
+func (c *client) getFile(fd uint) *file {
+	c.fdlock.Lock()
+	f := c.fdmap[fd]
 	c.fdlock.Unlock()
+	return f
+}
+
+func (c *client) releaseFD(fd uint) *file {
+	c.fdlock.Lock()
+	defer c.fdlock.Unlock()
+	f, ok := c.fdmap[fd]
+	if !ok {
+		return nil
+	}
+	delete(c.fdmap, fd)
+	c.fdset.Clear(fd)
 	return f
 }
 
