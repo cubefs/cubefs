@@ -667,6 +667,13 @@ func (mp *metaPartition) Reset() (err error) {
 }
 
 func (mp *metaPartition) Expired() (err error) {
+	mp.stop()
+	if mp.delInodeFp != nil {
+		// TODO Unhandled errors
+		mp.delInodeFp.Sync()
+		mp.delInodeFp.Close()
+	}
+	
 	mp.inodeTree.Reset()
 	mp.dentryTree.Reset()
 	mp.config.Cursor = 0
@@ -681,6 +688,8 @@ func (mp *metaPartition) Expired() (err error) {
 		log.LogErrorf("ExpiredPartition: mark expired partition fail: partitionID(%v) path(%v) newPath(%v) err(%v)", mp.config.PartitionId, currentPath, newPath, err)
 		return err
 	}
+	log.LogInfof("ExpiredPartition: mark expired partition: partitionID(%v) path(%v) newPath(%v)",
+		mp.config.PartitionId, currentPath, newPath)
 	return nil
 }
 
