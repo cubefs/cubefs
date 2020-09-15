@@ -75,12 +75,12 @@ const (
 )
 
 var (
-	nextId        uint64
+	nextClientID  int64
 	clientBuckets [slots]*clientBucket
 )
 
 var (
-	statusOK = 0
+	statusOK = C.int(0)
 	// error status must be minus value
 	statusEIO    = errorToStatus(syscall.EIO)
 	statusEINVAL = errorToStatus(syscall.EINVAL)
@@ -92,55 +92,55 @@ var (
 func init() {
 	for i := 0; i < slots; i++ {
 		clientBuckets[i] = &clientBucket{
-			clients: make(map[uint64]*client),
+			clients: make(map[int64]*client),
 		}
 	}
 }
 
-func errorToStatus(err error) int {
+func errorToStatus(err error) C.int {
 	if err == nil {
 		return 0
 	}
 	if errno, is := err.(syscall.Errno); is {
-		return -int(errno)
+		return -C.int(errno)
 	}
-	return -int(syscall.EIO)
+	return -C.int(syscall.EIO)
 }
 
 type clientBucket struct {
-	clients map[uint64]*client
+	clients map[int64]*client
 	mu      sync.RWMutex
 }
 
-func (m *clientBucket) get(id uint64) (client *client, exist bool) {
+func (m *clientBucket) get(id int64) (client *client, exist bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	client, exist = m.clients[id]
 	return
 }
 
-func (m *clientBucket) put(id uint64, c *client) {
+func (m *clientBucket) put(id int64, c *client) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.clients[id] = c
 }
 
-func (m *clientBucket) remove(id uint64) {
+func (m *clientBucket) remove(id int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.clients, id)
 }
 
-func putClient(id uint64, c *client) {
+func putClient(id int64, c *client) {
 	clientBuckets[id%slots].put(id, c)
 }
 
-func getClient(id uint64) (c *client, exist bool) {
+func getClient(id int64) (c *client, exist bool) {
 	c, exist = clientBuckets[id%slots].get(id)
 	return
 }
 
-func removeClient(id uint64) {
+func removeClient(id int64) {
 	clientBuckets[id%slots].remove(id)
 }
 
@@ -161,7 +161,7 @@ type dirStream struct {
 
 type client struct {
 	// client id allocated by libsdk
-	id uint64
+	id int64
 
 	// mount config
 	volName      string
@@ -179,8 +179,8 @@ type client struct {
 }
 
 //export cfs_new_client
-func cfs_new_client() (id uint64) {
-	id = atomic.AddUint64(&nextId, 1)
+func cfs_new_client() int64 {
+	id := atomic.AddInt64(&nextClientID, 1)
 	c := &client{
 		id:    id,
 		fdmap: make(map[uint64]*file),
@@ -190,7 +190,7 @@ func cfs_new_client() (id uint64) {
 }
 
 //export cfs_set_client
-func cfs_set_client(id uint64, key, val *C.char) int {
+func cfs_set_client(id int64, key, val *C.char) C.int {
 	c, exist := getClient(id)
 	if !exist {
 		return statusEINVAL
@@ -215,7 +215,7 @@ func cfs_set_client(id uint64, key, val *C.char) int {
 }
 
 //export cfs_start_client
-func cfs_start_client(id uint64) int {
+func cfs_start_client(id int64) C.int {
 	c, exist := getClient(id)
 	if !exist {
 		return statusEINVAL
@@ -229,7 +229,7 @@ func cfs_start_client(id uint64) int {
 }
 
 //export cfs_close_client
-func cfs_close_client(id uint64) {
+func cfs_close_client(id int64) {
 	if c, exist := getClient(id); exist {
 		if c.ec != nil {
 			_ = c.ec.Close()
@@ -242,7 +242,7 @@ func cfs_close_client(id uint64) {
 }
 
 //export cfs_getattr
-func cfs_getattr(id uint64, path *C.char, stat *C.struct_cfs_stat_info) int {
+func cfs_getattr(id int64, path *C.char, stat *C.struct_cfs_stat_info) C.int {
 	c, exist := getClient(id)
 	if !exist {
 		return statusEINVAL
@@ -294,14 +294,14 @@ func cfs_getattr(id uint64, path *C.char, stat *C.struct_cfs_stat_info) int {
 }
 
 //export cfs_open
-func cfs_open(id uint64, path *C.char, flags int, mode C.mode_t) int {
+func cfs_open(id int64, path *C.char, flags C.int, mode C.mode_t) C.int {
 	c, exist := getClient(id)
 	if !exist {
 		return statusEINVAL
 	}
 
 	fuseMode := uint32(mode) & uint32(0777)
-	fuseFlags := uint32(flags &^ 0x8000)
+	fuseFlags := uint32(flags) &^ uint32(0x8000)
 	accFlags := fuseFlags & uint32(C.O_ACCMODE)
 
 	var info *proto.InodeInfo
@@ -350,11 +350,12 @@ func cfs_open(id uint64, path *C.char, flags int, mode C.mode_t) int {
 		}
 	}
 
-	return int(f.fd)
+	return C.int(f.fd)
 }
 
 //export cfs_flush
-func cfs_flush(id uint64, fd int) int {
+func cfs_flush(id int64, _fd C.int) C.int {
+	fd := int(_fd)
 	c, exist := getClient(id)
 	if !exist {
 		return statusEINVAL
@@ -373,7 +374,8 @@ func cfs_flush(id uint64, fd int) int {
 }
 
 //export cfs_close
-func cfs_close(id uint64, fd int) {
+func cfs_close(id int64, _fd C.int) {
+	fd := int(_fd)
 	c, exist := getClient(id)
 	if !exist {
 		return
@@ -386,7 +388,8 @@ func cfs_close(id uint64, fd int) {
 }
 
 //export cfs_write
-func cfs_write(id uint64, fd int, buf unsafe.Pointer, size C.size_t, off C.off_t) C.ssize_t {
+func cfs_write(id int64, _fd C.int, buf unsafe.Pointer, size C.size_t, off C.off_t) C.ssize_t {
+	fd := int(_fd)
 	c, exist := getClient(id)
 	if !exist {
 		return C.ssize_t(statusEINVAL)
@@ -434,7 +437,8 @@ func cfs_write(id uint64, fd int, buf unsafe.Pointer, size C.size_t, off C.off_t
 }
 
 //export cfs_read
-func cfs_read(id uint64, fd int, buf unsafe.Pointer, size C.size_t, off C.off_t) C.ssize_t {
+func cfs_read(id int64, _fd C.int, buf unsafe.Pointer, size C.size_t, off C.off_t) C.ssize_t {
+	fd := int(_fd)
 	c, exist := getClient(id)
 	if !exist {
 		return C.ssize_t(statusEINVAL)
@@ -470,7 +474,8 @@ func cfs_read(id uint64, fd int, buf unsafe.Pointer, size C.size_t, off C.off_t)
  */
 
 //export cfs_readdir
-func cfs_readdir(id uint64, fd int, dirents []C.struct_cfs_dirent, count int) (n int) {
+func cfs_readdir(id int64, _fd C.int, dirents []C.struct_cfs_dirent, count C.int) (n C.int) {
+	fd := int(_fd)
 	c, exist := getClient(id)
 	if !exist {
 		return statusEINVAL
@@ -524,7 +529,7 @@ func cfs_readdir(id uint64, fd int, dirents []C.struct_cfs_dirent, count int) (n
 }
 
 //export cfs_mkdirs
-func cfs_mkdirs(id uint64, path *C.char, mode C.mode_t) int {
+func cfs_mkdirs(id int64, path *C.char, mode C.mode_t) C.int {
 	dirpath := C.GoString(path)
 	if dirpath == "" || dirpath == "/" {
 		return statusEEXIST
@@ -560,7 +565,7 @@ func cfs_mkdirs(id uint64, path *C.char, mode C.mode_t) int {
 }
 
 //export cfs_rmdir
-func cfs_rmdir(id uint64, path *C.char) int {
+func cfs_rmdir(id int64, path *C.char) C.int {
 	c, exist := getClient(id)
 	if !exist {
 		return statusEINVAL
@@ -577,7 +582,7 @@ func cfs_rmdir(id uint64, path *C.char) int {
 }
 
 //export cfs_unlink
-func cfs_unlink(id uint64, path *C.char) int {
+func cfs_unlink(id int64, path *C.char) C.int {
 	c, exist := getClient(id)
 	if !exist {
 		return statusEINVAL
@@ -599,7 +604,7 @@ func cfs_unlink(id uint64, path *C.char) int {
 }
 
 //export cfs_rename
-func cfs_rename(id uint64, from *C.char, to *C.char) int {
+func cfs_rename(id int64, from *C.char, to *C.char) C.int {
 	c, exist := getClient(id)
 	if !exist {
 		return statusEINVAL
