@@ -130,13 +130,7 @@ func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMember
 	}
 	mp.config.Peers = append(mp.config.Peers[:peerIndex], mp.config.Peers[peerIndex+1:]...)
 	if mp.config.NodeId == req.RemovePeer.ID && !mp.isLoadingMetaPartition && canRemoveSelf {
-		mp.Stop()
-		if req.ReserveResource {
-			mp.raftPartition.Stop()
-		} else {
-			mp.ExpiredRaft()
-			//os.RemoveAll(mp.config.RootDir)
-		}
+		mp.ExpiredRaft()
 		mp.manager.expiredPartition(mp.GetBaseConfig().PartitionId)
 		updated = false
 	}

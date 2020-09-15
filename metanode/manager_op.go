@@ -675,7 +675,6 @@ func (m *metadataManager) opExpiredMetaPartition(conn net.Conn,
 		return
 	}
 	// Ack the master request
-	mp.Stop()
 	mp.ExpiredRaft()
 	m.expiredPartition(mp.GetBaseConfig().PartitionId)
 	p.PacketOkReply()
