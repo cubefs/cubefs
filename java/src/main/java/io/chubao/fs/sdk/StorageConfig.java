@@ -1,5 +1,6 @@
 package io.chubao.fs.sdk;
 
+import io.chubao.fs.sdk.exception.CFSNullArgumentException;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -12,7 +13,6 @@ public class StorageConfig {
   private String volumeName;
   private String owner;
   private boolean followerRread = false;
-  private int cacheSize;
 
   public StorageConfig() {}
 
@@ -28,25 +28,26 @@ public class StorageConfig {
     this.owner = owner;
   }
 
-  public void setCacheSize(int size) {
-    this.cacheSize = size;
-  }
-
-  public String getMasters() {
+  public String getMasters() throws CFSNullArgumentException {
+    if (masters == null) {
+      throw new CFSNullArgumentException("The master is null.");
+    }
     return this.masters;
   }
 
-  public String getVolumeName() {
+  public String getVolumeName() throws CFSNullArgumentException {
+    if (volumeName == null) {
+      throw new CFSNullArgumentException("The volume name is null.");
+    }
     return this.volumeName;
-  }
-
-
-  public int getCacheSize() {
-    return this.cacheSize;
   }
 
   public boolean getFollowerRead() {
     return this.followerRread;
+  }
+
+  public String getOwner() {
+    return this.owner;
   }
 
   public void print() {

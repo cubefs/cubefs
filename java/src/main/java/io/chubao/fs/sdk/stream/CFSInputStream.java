@@ -25,6 +25,14 @@ public class CFSInputStream extends InputStream {
 
   @Override
   public int read(byte[] b, int off, int len) throws IOException {
+    if (b == null) {
+      throw new NullPointerException();
+    }
+
+    if (off < 0 || len < 0) {
+      throw new IllegalArgumentException();
+    }
+
     int size = 0;
     try {
       size = cfile.read(b, off, len);

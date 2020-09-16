@@ -39,7 +39,7 @@ struct cfs_stat_info {
     uint32_t blk_size;
     uint32_t uid;
     uint32_t gid;
-	  uint32_t valid;
+	uint32_t valid;
     char name[256];
 };
 
@@ -49,11 +49,20 @@ struct cfs_dirent {
 	  char     d_type;
 };
 
+struct cfs_open_res {
+	uint64 fd;
+	uint64 size;
+	uint64 pos;
+};
+
 */
 import "C"
 
 import (
+	"bytes"
+	"container/list"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"os"
 	gopath "path"
 	"reflect"
@@ -85,11 +94,12 @@ var (
 var (
 	statusOK = 0
 	// error status must be minus value
-	statusEIO    = -errorToStatus(syscall.EIO)
-	statusEINVAL = -errorToStatus(syscall.EINVAL)
-	statusEEXIST = -errorToStatus(syscall.EEXIST)
-	statusEBADFD = -errorToStatus(syscall.EBADFD)
-	statusEACCES = -errorToStatus(syscall.EACCES)
+	statusEIO         = -errorToStatus(syscall.EIO)
+	statusEINVAL      = -errorToStatus(syscall.EINVAL)
+	statusEEXIST      = -errorToStatus(syscall.EEXIST)
+	statusEBADFD      = -errorToStatus(syscall.EBADFD)
+	statusEACCES      = -errorToStatus(syscall.EACCES)
+	statusINVALIDPATH = -1024
 )
 
 const (
@@ -258,9 +268,14 @@ func cfs_getattr(id uint64, path string, stat *C.struct_cfs_stat_info) int {
 		return statusEINVAL
 	}
 
-	info, err := c.lookupPath(path)
+	newpath, err := validPath(path)
 	if err != nil {
-    fmt.Println("In getattr operation, Failed to lookup path: ", path, " error: ", err)
+		return statusINVALIDPATH
+	}
+
+	info, err := c.lookupPath(newpath)
+	if err != nil {
+		fmt.Println("In getattr operation, Failed to lookup path: ", path, " error: ", err)
 		return -errorToStatus(err)
 	}
 
@@ -302,19 +317,27 @@ func cfs_getattr(id uint64, path string, stat *C.struct_cfs_stat_info) int {
 }
 
 //export cfs_setattr_by_path
-func cfs_setattr_by_path(id uint64, path string , stat *C.struct_cfs_stat_info) int {
+func cfs_setattr_by_path(id uint64, path string, stat *C.struct_cfs_stat_info) int {
 	c, exist := getClient(id)
 	if !exist {
 		return statusEINVAL
 	}
 
-	info, err := c.lookupPath(path)
+	newpath, err := validPath(path)
+	if err != nil {
+		return statusINVALIDPATH
+	}
+	if newpath == "/" {
+		return statusINVALIDPATH
+	}
+
+	info, err := c.lookupPath(newpath)
 	if err != nil {
 		fmt.Println("In getattr operation, Failed to lookup path ", path, " error:  ", err)
 		return -errorToStatus(err)
 	}
 
-	if uint32(stat.valid) & attrSize != 0 {
+	if uint32(stat.valid)&attrSize != 0 {
 		err := c.mw.Truncate(info.Inode, uint64(stat.size))
 		if err != nil {
 			fmt.Println("Failed to truncate path: ", path, " error: ", err)
@@ -335,12 +358,19 @@ func cfs_setattr_by_path(id uint64, path string , stat *C.struct_cfs_stat_info) 
 	return statusOK
 }
 
-
 //export cfs_open
 func cfs_open(id uint64, path string, flags int, mode C.mode_t, uid, gid uint32) int64 {
 	c, exist := getClient(id)
 	if !exist {
 		return int64(statusEINVAL)
+	}
+
+	newpath, err := validPath(path)
+	if err != nil {
+		return int64(statusINVALIDPATH)
+	}
+	if newpath == "/" {
+		return int64(statusINVALIDPATH)
 	}
 
 	fuseMode := uint32(mode) & uint32(0777)
@@ -353,11 +383,12 @@ func cfs_open(id uint64, path string, flags int, mode C.mode_t, uid, gid uint32)
 	 * Note that the rwx mode is ignored when using libsdk
 	 */
 
-	if fuseFlags&uint32(C.O_CREAT) != 0 && fuseFlags&uint32(C.O_APPEND) == 0 {
+	//if fuseFlags&uint32(C.O_CREAT) != 0 && fuseFlags&uint32(C.O_APPEND) == 0 {
+	if fuseFlags&uint32(C.O_CREAT) != 0  {
 		if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
 			return int64(statusEACCES)
 		}
-		dirpath, name := gopath.Split(path)
+		dirpath, name := gopath.Split(newpath)
 		dirInfo, err := c.lookupPath(dirpath)
 		if err != nil {
 			fmt.Println("Failed to lookup the parent dir: ", dirpath, " error: ", err)
@@ -370,7 +401,7 @@ func cfs_open(id uint64, path string, flags int, mode C.mode_t, uid, gid uint32)
 		}
 		info = newInfo
 	} else {
-		newInfo, err := c.lookupPath(path)
+		newInfo, err := c.lookupPath(newpath)
 		if err != nil {
 			fmt.Println("In cfs_open operation, failed to lookup the path: ", path, " error: ", err)
 			return int64(-errorToStatus(err))
@@ -578,15 +609,20 @@ func cfs_listattr(id uint64, path string, stats *C.struct_cfs_stat_info, count i
 		return statusEINVAL
 	}
 
-	info, err := c.lookupPath(path)
+	newpath, err := validPath(path)
 	if err != nil {
-    fmt.Println("In listattr operation, failed to lookup: ", path, " error: ", err)
+		return statusINVALIDPATH
+	}
+
+	info, err := c.lookupPath(newpath)
+	if err != nil {
+		fmt.Println("In listattr operation, failed to lookup: ", path, " error: ", err)
 		return -errorToStatus(err)
 	}
 
 	dentries, err := c.mw.ReadDir_ll(info.Inode)
 	if err != nil {
-    fmt.Println("In listattr operation, failed to readdir: ", path, " error:", err)
+		fmt.Println("In listattr operation, failed to readdir: ", path, " error:", err)
 		return -errorToStatus(err)
 	}
 
@@ -650,14 +686,18 @@ func cfs_listattr(id uint64, path string, stats *C.struct_cfs_stat_info, count i
 }
 
 //export cfs_mkdirs
-func cfs_mkdirs(id uint64, dirpath string, mode C.mode_t, uid, gid uint32) int {
-	if dirpath == "" || dirpath == "/" {
-		return statusEEXIST
-	}
-
+func cfs_mkdirs(id uint64, path string, mode C.mode_t, uid, gid uint32) int {
 	c, exist := getClient(id)
 	if !exist {
 		return statusEINVAL
+	}
+
+	dirpath, err := validPath(path)
+	if err != nil {
+		return statusINVALIDPATH
+	}
+	if dirpath == "/" {
+		return statusEEXIST
 	}
 
 	pino := proto.RootIno
@@ -691,31 +731,41 @@ func cfs_rmdir(id uint64, path string, recursive bool) int {
 		return statusEINVAL
 	}
 
-	dirpath, name := gopath.Split(path)
+	newpath, err := validPath(path)
+	if err != nil {
+		return statusINVALIDPATH
+	}
+
+	dirpath, name := gopath.Split(newpath)
 	dirInfo, err := c.lookupPath(dirpath)
 	if err != nil {
 		return errorToStatus(err)
 	}
 
 	if recursive {
-    info, err := c.lookupPath(path)
+		info, err := c.lookupPath(newpath)
 		if err != nil {
-      return errorToStatus(err)
+			return errorToStatus(err)
 		}
-    if err != nil {
-      return errorToStatus(err)
-    }
+		if err != nil {
+			return errorToStatus(err)
+		}
 		err = rmdir_recursive(c, info)
 		if err != nil {
-      fmt.Println("In rmdir operation, failed to rmdir_recursive: ", name, " error: ", err)
-	    return -errorToStatus(err)
+			fmt.Println("In rmdir operation, failed to rmdir_recursive: ", name, " error: ", err)
+			return -errorToStatus(err)
 		}
 	}
-  _, err = c.mw.Delete_ll(dirInfo.Inode, name, true)
-  if err != nil {
-    fmt.Println("In rmdir operation, failed to delete: ", name, " error: ", err)
-    return -errorToStatus(err)
-  }
+
+	if newpath == "/" {
+		return statusOK
+	}
+
+	_, err = c.mw.Delete_ll(dirInfo.Inode, name, true)
+	if err != nil {
+		fmt.Println("In rmdir operation, failed to delete: ", name, " error: ", err)
+		return -errorToStatus(err)
+	}
 	return statusOK
 }
 
@@ -726,62 +776,42 @@ func rmdir_recursive(c *client, info *proto.InodeInfo) (err error) {
 
 	dentries, err := c.mw.ReadDir_ll(info.Inode)
 	if err != nil {
-    fmt.Println("In rmdir_recursive operation, failed to readdir: ", info.Inode, " error: ", err)
+		fmt.Println("In rmdir_recursive operation, failed to readdir: ", info.Inode, " error: ", err)
 		return err
 	}
 
 	for _, child := range dentries {
-    var inode *proto.InodeInfo
+		var inode *proto.InodeInfo
 
 		inode, err = c.mw.InodeGet_ll(child.Inode)
 		if err != nil {
-      fmt.Println("In rmdir_recursive operation, failed to inodeget: ", child.Inode, " error: ", err)
-			return  err
+			fmt.Println("In rmdir_recursive operation, failed to inodeget: ", child.Inode, " error: ", err)
+			return err
 		}
 
 		if proto.IsDir(inode.Mode) {
 			err = rmdir_recursive(c, inode)
 			if err != nil {
-        fmt.Println("In rmdir_recursive operation, failed to invoke self: ", child.Name, " error: ", err)
+				fmt.Println("In rmdir_recursive operation, failed to invoke self: ", child.Name, " error: ", err)
 				return err
 			}
 
 			_, err = c.mw.Delete_ll(info.Inode, child.Name, true)
 			if err != nil {
-          fmt.Println("In rmdir_recursive operation, failed to rmdir: ", child.Name, " error: ", err)
-			    return err
+				fmt.Println("In rmdir_recursive operation, failed to rmdir: ", child.Name, " error: ", err)
+				return err
 			}
 		} else {
 			_, err = c.mw.Delete_ll(info.Inode, child.Name, false)
 			if err != nil {
-          fmt.Println("In rmdir_recursive operation, failed to unlink: ", child.Name, " error: ", err)
-			    return err
+				fmt.Println("In rmdir_recursive operation, failed to unlink: ", child.Name, " error: ", err)
+				return err
 			}
 		}
 	}
 
-  return
+	return
 }
-
-/*
-//export cfs_rmdir
-func cfs_rmdir(id uint64, path string) int {
-	c, exist := getClient(id)
-	if !exist {
-		return statusEINVAL
-	}
-
-	dirpath, name := gopath.Split(path)
-	dirInfo, err := c.lookupPath(dirpath)
-	if err != nil {
-		return errorToStatus(err)
-	}
-
-	_, err = c.mw.Delete_ll(dirInfo.Inode, name, true)
-	return errorToStatus(err)
-}
-
- */
 
 //export cfs_unlink
 func cfs_unlink(id uint64, path string) int {
@@ -790,14 +820,31 @@ func cfs_unlink(id uint64, path string) int {
 		return statusEINVAL
 	}
 
-	dirpath, name := gopath.Split(path)
+	newpath, err := validPath(path)
+	if err != nil {
+		return statusINVALIDPATH
+	}
+	if newpath == "/" {
+		return statusINVALIDPATH
+	}
+
+	info, err := c.lookupPath(newpath)
+	if err != nil {
+		fmt.Println("In unlink operation, failed to lookup the parent dir: ", newpath, " error:", err)
+		return -errorToStatus(err)
+	}
+	if proto.IsDir(info.Mode) {
+		return statusEINVAL
+	}
+
+	dirpath, name := gopath.Split(newpath)
 	dirInfo, err := c.lookupPath(dirpath)
 	if err != nil {
 		fmt.Println("In unlink operation, failed to lookup the parent dir: ", dirpath, " error:", err)
 		return -errorToStatus(err)
 	}
 
-	info, err := c.mw.Delete_ll(dirInfo.Inode, name, false)
+	info, err = c.mw.Delete_ll(dirInfo.Inode, name, false)
 	if err != nil {
 		fmt.Println("Failed to unlink: ", name, " error:", err)
 		return -errorToStatus(err)
@@ -814,8 +861,24 @@ func cfs_rename(id uint64, from, to string) int {
 		return statusEINVAL
 	}
 
-	srcDirPath, srcName := gopath.Split(from)
-	dstDirPath, dstName := gopath.Split(to)
+	newfrom, err := validPath(from)
+	if err != nil {
+		return statusINVALIDPATH
+	}
+	if newfrom == "/" {
+		return statusINVALIDPATH
+	}
+
+	newto, err := validPath(to)
+	if err != nil {
+		return statusINVALIDPATH
+	}
+	if newto == "/" {
+		return statusINVALIDPATH
+	}
+
+	srcDirPath, srcName := gopath.Split(newfrom)
+	dstDirPath, dstName := gopath.Split(newto)
 
 	srcDirInfo, err := c.lookupPath(srcDirPath)
 	if err != nil {
@@ -946,28 +1009,28 @@ func (c *client) read(f *file, offset int, data []byte, size int) (n int, err er
 }
 
 func resetAttr(info *proto.InodeInfo, stat *C.struct_cfs_stat_info) (valid uint32) {
-  statValid := uint32(stat.valid)
-	if statValid & attrMode != 0 {
+	statValid := uint32(stat.valid)
+	if statValid&attrMode != 0 {
 		info.Mode = proto.Mode(os.FileMode(stat.mode))
 		valid |= proto.AttrMode
 	}
 
-	if statValid & attrUid != 0 {
+	if statValid&attrUid != 0 {
 		info.Uid = uint32(stat.uid)
 		valid |= proto.AttrUid
 	}
 
-	if statValid & attrGid != 0 {
+	if statValid&attrGid != 0 {
 		info.Gid = uint32(stat.gid)
 		valid |= proto.AttrGid
 	}
 
-	if statValid & attrAccessTime != 0 {
+	if statValid&attrAccessTime != 0 {
 		info.AccessTime = time.Unix(int64(stat.atime), 0)
 		valid |= proto.AttrAccessTime
 	}
 
-	if statValid & attrModifyTime != 0 {
+	if statValid&attrModifyTime != 0 {
 		info.ModifyTime = time.Unix(int64(stat.mtime), 0)
 		valid |= proto.AttrModifyTime
 	}
@@ -975,5 +1038,46 @@ func resetAttr(info *proto.InodeInfo, stat *C.struct_cfs_stat_info) (valid uint3
 	return valid
 }
 
-func main() {}
+func validPath(path string) (newpath string, err error) {
+	if path[0] != '/' {
+		fmt.Println("Is not begin with '/")
+		err = errors.New("Path should be beign with /.")
+		newpath = ""
+		return
+	}
 
+	names := strings.Split(path, "/")
+	dirs := list.List{}
+	for _, name := range names {
+		if name == "." || name == "" {
+			continue
+		}
+		if name == ".." {
+			if dirs.Len() == 0 {
+				err = errors.New("Invalid path.")
+				newpath = ""
+				return
+			}
+			dirs.Remove(dirs.Back())
+		} else {
+			dirs.PushBack(name)
+		}
+	}
+
+	if dirs.Len() == 0 {
+		return "/", nil
+	}
+
+	var bt bytes.Buffer
+	dir := dirs.Front()
+	for dir != nil {
+		bt.WriteString("/")
+		bt.WriteString((dir.Value).(string))
+		dir = dir.Next()
+	}
+
+	fmt.Println(bt.String())
+	return bt.String(), nil
+}
+
+func main() {}

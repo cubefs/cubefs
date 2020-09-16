@@ -1,5 +1,7 @@
 package io.chubao.fs.sdk.exception;
 
+import org.apache.commons.lang.NullArgumentException;
+
 public enum StatusCodes
 {
   CFS_STATUS_OK(0, "Ok"),
@@ -11,7 +13,8 @@ public enum StatusCodes
   CFS_STATUS_IO_ERROR(6, "IO error"),
   CFS_STATUS_DENTRY_EXISTS(7, "Dentry is exist."),
   CFS_STATUS_DENTRY_NOT_FOUND(8, "Not found dentry."),
-  CFS_STATUS_FILIE_NOT_FOUND(-2, "no such file or directory.");
+  CFS_STATUS_FILIE_NOT_FOUND(-2, "no such file or directory."),
+  CFS_STATUS_NULL_ARGUMENT(-3, "Null argument.");
 
   public static StatusCodes get(int code)
   {
@@ -31,6 +34,9 @@ public enum StatusCodes
 
       case -2:
         return CFS_STATUS_FILIE_NOT_FOUND;
+
+      case -3:
+        return CFS_STATUS_NULL_ARGUMENT;
 
       default:
         return CFS_STATUS_ERROR;

@@ -21,6 +21,13 @@ public class CFSFileImpl implements CFSFile {
     this.fd = fd;
   }
 
+  public CFSFileImpl(CFSDriverIns driver, long fd, long fileSize, long position) {
+    this.driver = driver;
+    this.fd = fd;
+    this.fileSize = fileSize;
+    this.position = position;
+  }
+
   public boolean isClosed() {
     return this.isClosed;
   }

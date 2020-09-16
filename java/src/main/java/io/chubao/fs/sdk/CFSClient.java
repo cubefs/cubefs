@@ -1,6 +1,7 @@
 package io.chubao.fs.sdk;
 
 import io.chubao.fs.sdk.exception.CFSException;
+import io.chubao.fs.sdk.exception.CFSNullArgumentException;
 import io.chubao.fs.sdk.exception.StatusCodes;
 import io.chubao.fs.sdk.libsdk.CFSDriver;
 import io.chubao.fs.sdk.libsdk.CFSDriverIns;
@@ -8,6 +9,8 @@ import io.chubao.fs.sdk.libsdk.GoString;
 import com.sun.jna.Native;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+
+import java.io.File;
 
 public class CFSClient {
   private static final Log log = LogFactory.getLog(CFSClient.class);
@@ -19,6 +22,13 @@ public class CFSClient {
   }
 
   public void init() throws CFSException {
+    if (sdkLibPath == null) {
+      throw new CFSNullArgumentException("Please specify the libsdk.so path.");
+    }
+    File file = new File(sdkLibPath);
+    if (file.exists() == false) {
+      throw new CFSNullArgumentException("Not found the libsdk.so: " + sdkLibPath);
+    }
     driver = Native.load(sdkLibPath, CFSDriver.class);
   }
 

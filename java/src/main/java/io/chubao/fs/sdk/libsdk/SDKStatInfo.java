@@ -72,7 +72,7 @@ public class SDKStatInfo extends Structure {
         sb.append(" name:");
         sb.append(str);
       } catch (Exception ex) {
-
+        ex.printStackTrace();
       }
     }
 
