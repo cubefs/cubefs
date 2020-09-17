@@ -12,7 +12,7 @@ Tianpeng Li ([@Skypigltp](https://github.com/skypigltp)) | [skypigltp@gmail.com]
 Yubo Li ([@yuboLee](https://github.com/yuboLee)) | [pangbolee@gmail.com](mailto:pangbolee@gmail.com) | Console | [JD.com](https://www.jd.com/)
 Wei Ding ([@wding109](https://github.com/wding109)) | [wding109@gmail.com](mailto:wding109@gmail.com) | Strategy, Researching | [JD.com](https://www.jd.com/)
 Zhengyi Zhu ([@zhuzhengyi](https://github.com/wding109)) | [zhengyi.zhu.hust@gmail.com](mailto:zhengyi.zhu.hust@gmail.com) | Mointoring  | [JD.com](https://www.jd.com/)
-Liying Zhang ([@Vivian7755](https://github.com/Vivian7755)) | [zly7755@163.com](mailto:zly7755@163.com) | Product Management, Community  | [JD.com](https://www.jd.com/)
+Liying Zhang ([@Vivian7755](https://github.com/Vivian7755)) | [zly7755@163.com](mailto:zly7755@163.com) | Product Design, Community  | [JD.com](https://www.jd.com/)
 Junyuan Zeng ([@jzeng4](https://github.com/jzeng4)) | [jzeng04@gmail.com](mailto:[jzeng04@gmail.com) | Authorization Node  | [LinkedIn](https://www.linkedin.com)
 Xihao Xu ([@xxscott](https://github.com/xxscott)) | [xxscott@163.com](mailto:xxscott@163.com) | CSI Driver  | [JD.com](https://www.jd.com/)
 Zhendong Li ([@lizhendong666](https://github.com/lizhendong666)) | [lizhendong666@gmail.com](mailto:lizhendong666@gmail.com) | Yum Intall Tools  | [JD.com](https://www.jd.com/)
