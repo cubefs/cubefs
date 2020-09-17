@@ -694,7 +694,7 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 				mpv.Peers[i].ID = mn.(*MetaNode).ID
 			}
 		}
-		mp := newMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, vol.mpReplicaNum, vol.Name, mpv.VolID, vol.mpStoreType)
+		mp := newMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, vol.mpReplicaNum, vol.Name, mpv.VolID, bsProto.StoreType(mpv.StoreType))
 		mp.setHosts(strings.Split(mpv.Hosts, underlineSeparator))
 		mp.setPeers(mpv.Peers)
 		mp.IsRecover = mpv.IsRecover

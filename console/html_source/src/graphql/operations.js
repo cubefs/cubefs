@@ -69,8 +69,8 @@ const baseGql = {
         status
       }
     }`,
-  createVolume: gql`mutation createVolume($authenticate:Bool, $capacity:Uint64, $crossZone:Bool, $dataPartitionSize:Uint64, $dpReplicaNum:Uint64, $enableToken:Bool, $followerRead:Bool, $mpCount:Uint64, $name:String, $owner:String, $zoneName:String, $description:String) {
-      createVolume(authenticate:$authenticate, capacity:$capacity, crossZone:$crossZone, dataPartitionSize:$dataPartitionSize, dpReplicaNum:$dpReplicaNum, enableToken:$enableToken, followerRead:$followerRead, mpCount:$mpCount, name:$name, owner:$owner, zoneName:$zoneName, description:$description){
+  createVolume: gql`mutation createVolume($authenticate:Bool, $storeType:Uint8, $capacity:Uint64, $crossZone:Bool, $dataPartitionSize:Uint64, $dpReplicaNum:Uint64, $enableToken:Bool, $followerRead:Bool, $mpCount:Uint64, $name:String, $owner:String, $zoneName:String, $description:String) {
+      createVolume(authenticate:$authenticate, storeType:$storeType, capacity:$capacity, crossZone:$crossZone, dataPartitionSize:$dataPartitionSize, dpReplicaNum:$dpReplicaNum, enableToken:$enableToken, followerRead:$followerRead, mpCount:$mpCount, name:$name, owner:$owner, zoneName:$zoneName, description:$description){
         name
       }
     }`,
@@ -162,6 +162,7 @@ const baseGql = {
         addr
         isWritable
         status
+        storeType
         toMetaNode{
           metaPartitionCount
           total
@@ -220,7 +221,7 @@ const baseGql = {
       code
       message
     }
-  }`,
+  }`
 }
 
 export default baseGql

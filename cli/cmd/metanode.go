@@ -79,7 +79,7 @@ func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 					!strings.Contains(formatYesNo(node.IsWritable), optFilterWritable) {
 					continue
 				}
-				stdout("%v\n", formatMetaNodeView(&node, true))
+				stdout("%v\n", formatNodeView(&node, true))
 			}
 		},
 	}

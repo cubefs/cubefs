@@ -279,7 +279,6 @@ func (m *MetaNode) startMetaManager() (err error) {
 		NodeID:    m.nodeId,
 		RootDir:   m.metadataDir,
 		RocksDirs: m.rocksDirs,
-		StoreType: m.storeType,
 		RaftStore: m.raftStore,
 		ZoneName:  m.zoneName,
 	}

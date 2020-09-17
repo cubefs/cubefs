@@ -50,6 +50,7 @@ export default {
       Size: '节点容量：',
       Available: '可用率',
       Used: '使用率',
+      StoreType: '存储类型',
       TotalVolumeCapacity: '卷容量合计',
       UsedData: '使用量合计'
     },
@@ -126,6 +127,7 @@ export default {
         TotalDataPartition: '总分片数',
         OwnerID: '所有者ID',
         ZoneName: '区域名称',
+        MpStoreType: '元数据存储类型',
         AvailableDataPartition: '可用的数据分片数',
         TotalMetapartition: '元数据分片数',
         CreateTime: '创建时间',
@@ -152,32 +154,33 @@ export default {
       },
       MetaPartitionManagement: {
         title: '元数据分片管理',
-        PartitionID:"ID",
-        dentryCount:"文件数",
-        start:"开始",
-        end:"结束",
-        isRecover:"恢复中",
-        missNodes:"丢失节点",
-        replicaNum:"副本数",
-        status:"状态",
-        Hosts:"主机",
-        AddReplica:"增加副本",
-        DeleteReplica:"删除副本",
-        DecommissionReplica:"解除副本"
+        PartitionID: 'ID',
+        dentryCount: '文件数',
+        start: '开始',
+        end: '结束',
+        storeType: '存储类型',
+        isRecover: '恢复中',
+        missNodes: '丢失节点',
+        replicaNum: '副本数',
+        status: '状态',
+        Hosts: '主机',
+        AddReplica: '增加副本',
+        DeleteReplica: '删除副本',
+        DecommissionReplica: '解除副本'
       },
       DataPartitionManagement: {
         title: '数据分片管理',
-        PartitionID:"ID",
-        MissNodes:"丢失节点",
-        ReplicaNum:"副本数",
-        Status:"状态",
-        LoadedTime:"加载时间",
-        Hosts:"主机",
-        VolName:"卷名称",
-        AddReplica:"增加副本",
-        DeleteReplica:"删除副本",
-        DecommissionReplica:"解除副本"
-      },
+        PartitionID: 'ID',
+        MissNodes: '丢失节点',
+        ReplicaNum: '副本数',
+        Status: '状态',
+        LoadedTime: '加载时间',
+        Hosts: '主机',
+        VolName: '卷名称',
+        AddReplica: '增加副本',
+        DeleteReplica: '删除副本',
+        DecommissionReplica: '解除副本'
+      }
     },
     servers: {
       Cluster: '集群',
@@ -203,6 +206,7 @@ export default {
       DiskPath: '磁盘路径',
       ExtentCount: '扩展数据块数量',
       NeedCompare: '需要比对',
+      StoreType: '存储类型',
       Start: '开始',
       End: '结束',
       Status: '分片状态'
@@ -294,7 +298,7 @@ export default {
       Replica: '副本',
       Add: '增加',
       Delete: '删除',
-      Decommission:'解除'
+      Decommission: '解除'
     },
     commonAttr: {
       UserName: '用户名'
@@ -322,7 +326,7 @@ export default {
     crumb: {
       Server: ['服务器'],
       ServerList: ['服务器', '服务器列表'],
-      VolumeList: ['卷列表'],
+      VolumeList: ['卷列表']
     }
   },
   ...zhLocale

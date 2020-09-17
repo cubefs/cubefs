@@ -136,12 +136,22 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 			cv.NodeSet[ns.ID] = nsView
 			ns.dataNodes.Range(func(key, value interface{}) bool {
 				dataNode := value.(*DataNode)
-				nsView.DataNodes = append(nsView.DataNodes, proto.NodeView{ID: dataNode.ID, Addr: dataNode.Addr, Status: dataNode.isActive, IsWritable: dataNode.isWriteAble()})
+				nsView.DataNodes = append(nsView.DataNodes,
+					proto.NodeView{ID: dataNode.ID,
+						Addr:       dataNode.Addr,
+						Status:     dataNode.isActive,
+						IsWritable: dataNode.isWriteAble(),
+					})
 				return true
 			})
 			ns.metaNodes.Range(func(key, value interface{}) bool {
 				metaNode := value.(*MetaNode)
-				nsView.MetaNodes = append(nsView.MetaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
+				nsView.MetaNodes = append(nsView.MetaNodes,
+					proto.NodeView{ID: metaNode.ID,
+						Addr:       metaNode.Addr,
+						Status:     metaNode.IsActive,
+						IsWritable: metaNode.isWritable(),
+					})
 				return true
 			})
 		}
@@ -210,7 +220,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MaxDataPartitionID:  m.cluster.idAlloc.dataPartitionID,
 		MaxMetaNodeID:       m.cluster.idAlloc.commonID,
 		MaxMetaPartitionID:  m.cluster.idAlloc.metaPartitionID,
-		MetaNodes:           make([]proto.MetaNodeView, 0),
+		MetaNodes:           make([]proto.NodeView, 0),
 		DataNodes:           make([]proto.NodeView, 0),
 		VolStatInfo:         make([]*proto.VolStatInfo, 0),
 		BadPartitionIDs:     make([]proto.BadPartitionView, 0),
@@ -1986,7 +1996,7 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	mpView.MaxInodeID = mp.MaxInodeID
 	mpView.InodeCount = mp.InodeCount
 	mpView.DentryCount = mp.DentryCount
-	mpView.StoreType = mp.StoreType.String()
+	mpView.StoreType = mp.StoreType
 	mpView.IsRecover = mp.IsRecover
 	return
 }
@@ -2037,6 +2047,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			ReplicaNum:   mp.ReplicaNum,
 			Status:       mp.Status,
 			IsRecover:    mp.IsRecover,
+			StoreType:    mp.StoreType,
 			Hosts:        mp.Hosts,
 			Peers:        mp.Peers,
 			Zones:        zones,
@@ -2136,7 +2147,7 @@ func extractName(r *http.Request) (name string, err error) {
 func extractMpStoreType(r *http.Request) (mpStoreType proto.StoreType, err error) {
 	var s string
 	if s = r.FormValue(volMpStoreTypeKey); s == "" {
-		mpStoreType = proto.MetaTypeOld
+		mpStoreType = proto.MetaTypeMemory
 		return
 	}
 

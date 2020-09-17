@@ -44,7 +44,7 @@ type Cluster struct {
 	idAlloc                   *IDAllocator
 	t                         *topology
 	dataNodeStatInfo          *nodeStatInfo
-	metaNodeStatInfo          *metaNodeStatInfo
+	metaNodeStatInfo          *nodeStatInfo
 	zoneStatInfos             map[string]*proto.ZoneStat
 	volStatInfo               sync.Map
 	BadDataPartitionIds       *sync.Map
@@ -67,7 +67,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.BadDataPartitionIds = new(sync.Map)
 	c.BadMetaPartitionIds = new(sync.Map)
 	c.dataNodeStatInfo = new(nodeStatInfo)
-	c.metaNodeStatInfo = new(metaNodeStatInfo)
+	c.metaNodeStatInfo = new(nodeStatInfo)
 	c.zoneStatInfos = make(map[string]*proto.ZoneStat)
 	c.fsm = fsm
 	c.partition = partition
@@ -759,7 +759,7 @@ func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp
 func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartition) (err error) {
 	hosts := make([]string, 0)
 	hosts = append(hosts, host)
-	tasks := mp.buildNewMetaPartitionTasks(hosts, mp.Peers, mp.volName)
+	tasks := mp.buildNewMetaPartitionTasks(hosts, mp.Peers, mp.volName, mp.StoreType)
 	metaNode, err := c.metaNode(host)
 	if err != nil {
 		return
@@ -1818,24 +1818,26 @@ func (c *Cluster) allDataNodes() (dataNodes []proto.NodeView) {
 	dataNodes = make([]proto.NodeView, 0)
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
-		dataNodes = append(dataNodes, proto.NodeView{Addr: dataNode.Addr, Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.isWriteAble()})
+		dataNodes = append(dataNodes, proto.NodeView{
+			Addr:       dataNode.Addr,
+			Status:     dataNode.isActive,
+			ID:         dataNode.ID,
+			IsWritable: dataNode.isWriteAble(),
+		})
 		return true
 	})
 	return
 }
 
-func (c *Cluster) allMetaNodes() (metaNodes []proto.MetaNodeView) {
-	metaNodes = make([]proto.MetaNodeView, 0)
+func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
+	metaNodes = make([]proto.NodeView, 0)
 	c.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode := node.(*MetaNode)
-		metaNodeView := proto.MetaNodeView{
-			NodeView: proto.NodeView{
-				ID:         metaNode.ID,
-				Addr:       metaNode.Addr,
-				Status:     metaNode.IsActive,
-				IsWritable: metaNode.isWritable(),
-			},
-			StoreType: metaNode.StoreType,
+		metaNodeView := proto.NodeView{
+			ID:         metaNode.ID,
+			Addr:       metaNode.Addr,
+			Status:     metaNode.IsActive,
+			IsWritable: metaNode.isWritable(),
 		}
 		metaNodes = append(metaNodes, metaNodeView)
 		return true

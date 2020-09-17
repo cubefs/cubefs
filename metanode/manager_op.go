@@ -56,8 +56,9 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 	resp.Total = configTotalMem
 	resp.Used, err = util.GetProcessMemory(os.Getpid())
 
-	resp.StoreType = m.storeType
-	if m.storeType == proto.MetaTypeRocks {
+	resp.StoreType = m.metaNode.storeType
+	log.LogDebugf("====xxx===metaNodeReport storeType: %v\n", m.metaNode)
+	if m.metaNode.storeType == proto.MetaTypeRocks {
 		if total, used, err := util.GetDiskInfo(m.rootDir); err != nil {
 			log.LogErrorf("get disk info by path:[%s] has err:[%s]", m.rootDir, err.Error())
 		} else {
@@ -72,11 +73,13 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 	}
 	m.Range(func(id uint64, partition *MetaPartition) bool {
 		mConf := partition.GetBaseConfig()
+		log.LogDebugf("====xxx===metaPartition Report storeType: %v\n", mConf)
 		mpr := &proto.MetaPartitionReport{
 			PartitionID: mConf.PartitionId,
 			Start:       mConf.Start,
 			End:         mConf.End,
 			Status:      proto.ReadWrite,
+			StoreType:   mConf.StoreType,
 			MaxInodeID:  mConf.Cursor,
 			VolName:     mConf.VolName,
 			InodeCnt:    uint64(partition.inodeTree.Count()),

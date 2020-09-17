@@ -120,8 +120,14 @@
         >
           <el-input v-model="createVolumeForm.owner"></el-input>
         </el-form-item>
+
         <el-form-item :label="$t('chubaoFS.operations.VolumeManagement.ZoneName')" prop="zoneName">
           <el-input v-model="createVolumeForm.zoneName"></el-input>
+        </el-form-item>
+        <el-form-item :label="$t('chubaoFS.operations.VolumeManagement.MpStoreType')" prop="mpStoreType">
+          <el-select v-model="createVolumeForm.storeType" style="width: 100%;">
+            <el-option v-for="item in mpStoreTypeList" :value="item" :label="item" :key="item"></el-option>
+          </el-select>
         </el-form-item>
         <!--        <el-form-item :label="$t('chubaoFS.operations.VolumeManagement.Replications')" prop="dpReplicaNum">-->
         <!--          <el-select v-model="createVolumeForm.dpReplicaNum" style="width: 100%;">-->
@@ -314,9 +320,11 @@ export default {
         dpReplicaNum: null,
         owner: "",
         zoneName: "default",
+        storeType: 1,
         notes: "",
       },
       dpReplicaNumList: ["2", "3"],
+      mpStoreTypeList: [0, 1],
       extendCapacity: null,
       rules: {
         dpReplicaNum: [
@@ -461,6 +469,7 @@ export default {
             name: this.createVolumeForm.name,
             owner: this.createVolumeForm.owner,
             zoneName: this.createVolumeForm.zoneName,
+            storeType: parseInt(this.createVolumeForm.storeType),
             description: this.createVolumeForm.notes,
           };
           this.apollo

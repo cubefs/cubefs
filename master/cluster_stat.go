@@ -26,7 +26,6 @@ import (
 )
 
 type nodeStatInfo = proto.NodeStatInfo
-type metaNodeStatInfo = proto.MetaNodeStatInfo
 
 type volStatInfo = proto.VolStatInfo
 

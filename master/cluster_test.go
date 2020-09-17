@@ -276,6 +276,7 @@ func TestUpdateInodeIDUpperBound(t *testing.T) {
 		Start:       mp.Start,
 		End:         mp.End,
 		Status:      int(mp.Status),
+		StoreType:   mp.StoreType,
 		MaxInodeID:  mp.Start + 1,
 		IsLeader:    false,
 		VolName:     mp.volName,

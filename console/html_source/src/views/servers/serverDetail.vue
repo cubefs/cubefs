@@ -6,6 +6,7 @@
       <span v-else>{{$t('chubaoFS.servers.Matanode')}}</span>
       {{$t('chubaoFS.servers.PartitionList')}}
       <div class="data-block" v-loading="resData.loading">
+
         <el-table
           :data="resData.resLists"
           class="mt20"
@@ -13,7 +14,6 @@
           v-if="h3Txt === 'data'"
         >
           <el-table-column type="index" label="#"></el-table-column>
-          
           <el-table-column prop="partitionID" :label="$t('chubaoFS.servers.PartitionID')"></el-table-column>
           <el-table-column prop="volName" :label="$t('chubaoFS.servers.Volume')"></el-table-column>
           <el-table-column prop="total" :label="$t('chubaoFS.servers.Total')"></el-table-column>
@@ -32,6 +32,7 @@
             </template>
           </el-table-column>
         </el-table>
+
         <el-table
           :data="resData.resLists"
           class="mt20"
@@ -44,12 +45,14 @@
           <el-table-column prop="start" :label="$t('chubaoFS.servers.Start')"></el-table-column>
           <el-table-column prop="end" :label="$t('chubaoFS.servers.End')"></el-table-column>
           <el-table-column prop="status" :label="$t('chubaoFS.servers.Status')"></el-table-column>
+          <el-table-column prop="storeType" :label="$t('chubaoFS.servers.StoreType')"></el-table-column>
           <el-table-column prop="isLeader" :label="$t('chubaoFS.servers.Leader')">
             <template slot-scope="scope">
               <div>{{scope.row.isLeader}}</div>
             </template>
           </el-table-column>
         </el-table>
+
         <div class="clearfix mt20">
           <el-pagination
             class="fr"
@@ -62,6 +65,7 @@
           </el-pagination>
           <span class="fr page-tips pr10">{{ $t('chubaoFS.commonTxt.eachPageShows') }}</span>
         </div>
+
       </div>
     </div>
   </div>
@@ -133,7 +137,7 @@ export default {
               item.status = item.status==1?"ReadOnly":item.status==2?"ReadWrite":"Unavailable"
             });
           }
-          
+
           this.handleCurrentChange(1)
         } else {
         }

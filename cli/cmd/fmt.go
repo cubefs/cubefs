@@ -75,20 +75,6 @@ func formatNodeViewTableHeader() string {
 	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "STATUS")
 }
 
-func formatMetaNodeView(view *proto.MetaNodeView, tableRow bool) string {
-	if tableRow {
-		return fmt.Sprintf(metaNodeViewTableRowPattern, view.ID, view.Addr,
-			formatYesNo(view.IsWritable), formatNodeStatus(view.Status), view.StoreType)
-	}
-	var sb = strings.Builder{}
-	sb.WriteString(fmt.Sprintf("  ID      : %v\n", view.ID))
-	sb.WriteString(fmt.Sprintf("  Address : %v\n", view.Addr))
-	sb.WriteString(fmt.Sprintf("  Writable: %v\n", formatYesNo(view.IsWritable)))
-	sb.WriteString(fmt.Sprintf("  Status  : %v", formatNodeStatus(view.Status)))
-	sb.WriteString(fmt.Sprintf("  StoreType: %v\n", view.StoreType))
-	return sb.String()
-}
-
 func formatNodeView(view *proto.NodeView, tableRow bool) string {
 	if tableRow {
 		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, view.Addr,
@@ -463,15 +449,15 @@ func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 	return sb.String()
 }
 
-var metaNodeDetailTableRowPattern = "%-6v    %-6v    %-18v    %-6v    %-6v    %-6v    %-10v"
+var metaNodeDetailTableRowPattern = "%-6v    %-6v    %-18v    %-6v    %-6v    %-6v   %-10v   %-10v"
 
 func formatMetaNodeDetailTableHeader() string {
-	return fmt.Sprintf(metaNodeDetailTableRowPattern, "ID", "ZONE", "ADDRESS", "USED", "TOTAL", "STATUS", "REPORT TIME")
+	return fmt.Sprintf(metaNodeDetailTableRowPattern, "ID", "ZONE", "ADDRESS", "USED", "TOTAL", "STATUS", "STORETYPE", "REPORT TIME")
 }
 
 func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	if rowTable {
-		return fmt.Sprintf(metaNodeDetailTableRowPattern, mn.ID, mn.ZoneName, mn.Addr, mn.Used, mn.Total, mn.IsActive, formatTimeToString(mn.ReportTime))
+		return fmt.Sprintf(metaNodeDetailTableRowPattern, mn.ID, mn.ZoneName, mn.Addr, mn.Used, mn.Total, mn.IsActive, mn.StoreType.String(), formatTimeToString(mn.ReportTime))
 	}
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID                  : %v\n", mn.ID))
@@ -483,6 +469,7 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Total               : %v\n", formatSize(mn.Total)))
 	sb.WriteString(fmt.Sprintf("  Zone                : %v\n", mn.ZoneName))
 	sb.WriteString(fmt.Sprintf("  IsActive            : %v\n", formatNodeStatus(mn.IsActive)))
+	sb.WriteString(fmt.Sprintf("  StoreType           : %v\n", mn.StoreType.String()))
 	sb.WriteString(fmt.Sprintf("  Report time         : %v\n", formatTimeToString(mn.ReportTime)))
 	sb.WriteString(fmt.Sprintf("  Partition count     : %v\n", mn.MetaPartitionCount))
 	sb.WriteString(fmt.Sprintf("  Persist partitions  : %v\n", mn.PersistenceMetaPartitions))

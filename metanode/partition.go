@@ -18,13 +18,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/cmd/common"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/raftstore"
-	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
-	raftproto "github.com/tiglabs/raft/proto"
 	"io/ioutil"
 	"os"
 	"path"
@@ -32,6 +25,14 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+
+	"github.com/chubaofs/chubaofs/cmd/common"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/raftstore"
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/log"
+	raftproto "github.com/tiglabs/raft/proto"
 )
 
 var (
@@ -607,6 +608,7 @@ func (mp *MetaPartition) ResponseLoadMetaPartition(p *Packet) (err error) {
 	resp.InodeCount = uint64(mp.inodeTree.Count())
 	resp.DentryCount = uint64(mp.dentryTree.Count())
 	resp.ApplyID = mp.applyID
+	resp.StoreType = mp.config.StoreType
 	if err != nil {
 		err = errors.Trace(err,
 			"[ResponseLoadMetaPartition] check snapshot")

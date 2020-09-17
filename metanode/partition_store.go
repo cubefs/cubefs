@@ -78,9 +78,10 @@ func (mp *MetaPartition) loadMetadata() (err error) {
 	mp.config.End = mConf.End
 	mp.config.Peers = mConf.Peers
 	mp.config.Cursor = mp.config.Start
+	mp.config.StoreType = mConf.StoreType
 
-	log.LogInfof("loadMetadata: load complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
-		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor)
+	log.LogInfof("loadMetadata: load complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v) storeType(%v)",
+		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor, mp.config.StoreType)
 	return
 }
 
