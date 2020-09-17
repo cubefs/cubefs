@@ -44,6 +44,14 @@ public class CfsMount {
         driver.cfs_close_client(id);
     }
 
+    public int Chdir(long id, String path) {
+        return driver.cfs_chdir(id, path);
+    }
+
+    public String Getcwd(long id) {
+        return driver.cfs_getcwd(id);
+    }
+
     public int GetAttr(long id, String path, CfsDriver.StatInfo stat) {
         return driver.cfs_getattr(id, path, stat);
     }
