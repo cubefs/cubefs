@@ -15,15 +15,15 @@
 package cmd
 
 import (
-	"os"
-	"github.com/chubaofs/chubaofs/cli/api"
-	"github.com/spf13/cobra"
-	"github.com/chubaofs/chubaofs/metanode"
 	"fmt"
-	"strconv"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/cli/api"
+	"github.com/chubaofs/chubaofs/metanode"
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/spf13/cobra"
+	"os"
 	"reflect"
+	"strconv"
 )
 
 const (

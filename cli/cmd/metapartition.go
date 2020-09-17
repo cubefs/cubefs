@@ -146,7 +146,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 						addr := strings.Split(r.Addr, ":")[0]
 						if mnPartition, err = client.NodeAPI().MetaNodeGetPartition(client, addr, partition.PartitionID); err != nil {
 							fmt.Printf(partitionInfoColorTablePattern+"\n",
-								"", "", "", r.Addr, fmt.Sprintf("%v/%v", 0, partition.ReplicaNum), "no data")
+								"", "", "", r.Addr, fmt.Sprintf("%v/%v", 0, partition.ReplicaNum), err)
 							continue
 						}
 						mnHosts := make([]string, 0)

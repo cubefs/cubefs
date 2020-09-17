@@ -17,10 +17,11 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/proto"
+	"io/ioutil"
 	"net/http"
 	"strconv"
-
-	"github.com/chubaofs/chubaofs/proto"
+	"strings"
 )
 
 type NodeAPI struct {
@@ -127,40 +128,58 @@ func (api *NodeAPI) MetaNodeDecommission(nodeAddr string) (err error) {
 }
 
 func (api *NodeAPI) DataNodeGetPartition(client *MasterClient, addr string, id uint64) (node *proto.DNDataPartitionInfo, err error) {
-	var request = newAPIRequest(http.MethodGet, "/partition")
-	var buf []byte
-	client.SetAddress(fmt.Sprintf("%v:%v", addr, client.DataNodeProfPort))
-	client.ClientType = DATANODE
-	defer func() {
-		client.ClientType = MASTER
-	}()
-	request.addParam("id", strconv.FormatUint(id, 10))
-	request.addHeader("isTimeOut", "false")
-	if buf, err = api.mc.serveRequest(request); err != nil {
+	url := fmt.Sprintf("http://%v:%v/partition?id=%v", strings.Split(addr,":")[0], client.DataNodeProfPort,id)
+	resp, err := http.Get(url)
+	if err != nil {
+		err = fmt.Errorf("get %v error %v", url, err)
 		return
 	}
+	repsData, err := ioutil.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		err = fmt.Errorf("get %v error %v", url, err)
+		return
+	}
+	var body = &struct {
+		Code int32           `json:"code"`
+		Msg  string          `json:"msg"`
+		Data json.RawMessage `json:"data"`
+	}{}
+	if err := json.Unmarshal(repsData, body); err != nil {
+		return nil, fmt.Errorf("get %v  unmarshal response body err:%v", url,err)
+
+	}
 	node = &proto.DNDataPartitionInfo{}
-	if err = json.Unmarshal(buf, &node); err != nil {
+	if err = json.Unmarshal(body.Data, &node); err != nil {
 		return
 	}
 	return
 }
 
 func (api *NodeAPI) MetaNodeGetPartition(client *MasterClient, addr string, id uint64) (node *proto.MNMetaPartitionInfo, err error) {
-	var request = newAPIRequest(http.MethodGet, "/getPartitionById")
-	var buf []byte
-	client.SetAddress(fmt.Sprintf("%v:%v", addr, client.MetaNodeProfPort))
-	client.ClientType = METANODE
-	defer func() {
-		client.ClientType = MASTER
-	}()
-	request.addParam("pid", strconv.FormatUint(id, 10))
-	request.addHeader("isTimeOut", "false")
-	if buf, err = api.mc.serveRequest(request); err != nil {
+	url := fmt.Sprintf("http://%v:%v/getPartitionById?pid=%v", strings.Split(addr,":")[0], client.MetaNodeProfPort,id)
+	resp, err := http.Get(url)
+	if err != nil {
+		err = fmt.Errorf("get %v error %v", url, err)
 		return
 	}
+	repsData, err := ioutil.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		err = fmt.Errorf("get %v error %v", url, err)
+		return
+	}
+	var body = &struct {
+		Code int32           `json:"code"`
+		Msg  string          `json:"msg"`
+		Data json.RawMessage `json:"data"`
+	}{}
+	if err := json.Unmarshal(repsData, body); err != nil {
+		return nil, fmt.Errorf("get %v  unmarshal response body err:%v", url,err)
+
+	}
 	node = &proto.MNMetaPartitionInfo{}
-	if err = json.Unmarshal(buf, &node); err != nil {
+	if err = json.Unmarshal(body.Data, &node); err != nil {
 		return
 	}
 	return

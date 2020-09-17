@@ -155,7 +155,7 @@ The "reset" command will be released in next version`,
 						addr := strings.Split(r.Addr, ":")[0]
 						if dnPartition, err = client.NodeAPI().DataNodeGetPartition(client, addr, partition.PartitionID); err != nil {
 							fmt.Printf(partitionInfoColorTablePattern+"\n",
-								"", "", "", r.Addr, fmt.Sprintf("%v/%v", "nil", partition.ReplicaNum), "get partition info failed")
+								"", "", "", r.Addr, fmt.Sprintf("%v/%v", "nil", partition.ReplicaNum), err)
 							continue
 						}
 						sort.Strings(dnPartition.Replicas)

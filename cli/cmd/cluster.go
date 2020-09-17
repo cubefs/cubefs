@@ -89,10 +89,10 @@ func newClusterStatCmd(client *master.MasterClient) *cobra.Command {
 
 func newClusterFreezeCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   CliOpFreeze + " [ENABLE]",
+		Use:       CliOpFreeze + " [ENABLE]",
 		ValidArgs: []string{"true", "false"},
-		Short: cmdClusterFreezeShort,
-		Args:  cobra.MinimumNArgs(1),
+		Short:     cmdClusterFreezeShort,
+		Args:      cobra.MinimumNArgs(1),
 		Long: `Turn on or off the automatic allocation of the data partitions. 
 If 'freeze=false', ChubaoFS WILL automatically allocate new data partitions for the volume when:
   1. the used space is below the max capacity,
