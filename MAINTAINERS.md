@@ -15,4 +15,5 @@ Zhengyi Zhu ([@zhuzhengyi](https://github.com/wding109)) | [zhengyi.zhu.hust@gma
 Liying Zhang ([@Vivian7755](https://github.com/Vivian7755)) | [zly7755@163.com](mailto:zly7755@163.com) | Product Design, Community  | [JD.com](https://www.jd.com/)
 Junyuan Zeng ([@jzeng4](https://github.com/jzeng4)) | [jzeng04@gmail.com](mailto:[jzeng04@gmail.com) | Authorization Node  | [LinkedIn](https://www.linkedin.com)
 Xihao Xu ([@xxscott](https://github.com/xxscott)) | [xxscott@163.com](mailto:xxscott@163.com) | CSI Driver  | [JD.com](https://www.jd.com/)
+Wenjia Wu ([@wenjia322](https://github.com/wenjia322)) | [buaa1214wwj@126.com](mailto:buaa1214wwj@126.com) | Authorization Node  | [JD.com](https://www.jd.com/)
 Zhendong Li ([@lizhendong666](https://github.com/lizhendong666)) | [lizhendong666@gmail.com](mailto:lizhendong666@gmail.com) | Yum Intall Tools  | [JD.com](https://www.jd.com/)
