@@ -92,7 +92,8 @@ public class TestCfsClient {
 
             mnt.Close(cid, fd);
         } else if (args[0].equals("ls")) {
-            int fd = mnt.Open(cid, targetPath, mnt.O_RDWR, 0644);
+            mnt.Chdir(cid, targetPath);
+            int fd = mnt.Open(cid, ".", mnt.O_RDWR, 0644);
 
             if (fd < 0) {
                 System.out.println("Open failed: " + fd);

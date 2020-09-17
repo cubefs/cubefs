@@ -78,6 +78,10 @@ public interface CfsDriver extends Library {
 
     void cfs_close_client(long id);
 
+    int cfs_chdir(long id, String path);
+
+    String cfs_getcwd(long id);
+
     int cfs_getattr(long id, String path, StatInfo stat);
 
     int cfs_open(long id, String path, int flags, int mode);

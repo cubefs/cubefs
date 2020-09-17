@@ -86,12 +86,13 @@ var (
 var (
 	statusOK = C.int(0)
 	// error status must be minus value
-	statusEIO    = errorToStatus(syscall.EIO)
-	statusEINVAL = errorToStatus(syscall.EINVAL)
-	statusEEXIST = errorToStatus(syscall.EEXIST)
-	statusEBADFD = errorToStatus(syscall.EBADFD)
-	statusEACCES = errorToStatus(syscall.EACCES)
-	statusEMFILE = errorToStatus(syscall.EMFILE)
+	statusEIO     = errorToStatus(syscall.EIO)
+	statusEINVAL  = errorToStatus(syscall.EINVAL)
+	statusEEXIST  = errorToStatus(syscall.EEXIST)
+	statusEBADFD  = errorToStatus(syscall.EBADFD)
+	statusEACCES  = errorToStatus(syscall.EACCES)
+	statusEMFILE  = errorToStatus(syscall.EMFILE)
+	statusENOTDIR = errorToStatus(syscall.ENOTDIR)
 )
 
 func init() {
@@ -174,6 +175,7 @@ type client struct {
 	followerRead bool
 
 	// runtime context
+	cwd    string // current working directory
 	fdmap  map[uint]*file
 	fdset  *bitset.BitSet
 	fdlock sync.RWMutex
@@ -190,6 +192,7 @@ func cfs_new_client() C.int64_t {
 		id:    id,
 		fdmap: make(map[uint]*file),
 		fdset: bitset.New(maxFdNum),
+		cwd:   "/",
 	}
 	// Just skip fd 0, 1, 2, to avoid confusion.
 	c.fdset.Set(0).Set(1).Set(2)
@@ -249,6 +252,33 @@ func cfs_close_client(id C.int64_t) {
 	}
 }
 
+//export cfs_chdir
+func cfs_chdir(id C.int64_t, path *C.char) C.int {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return statusEINVAL
+	}
+	cwd := c.absPath(C.GoString(path))
+	dirInfo, err := c.lookupPath(cwd)
+	if err != nil {
+		return errorToStatus(err)
+	}
+	if !proto.IsDir(dirInfo.Mode) {
+		return statusENOTDIR
+	}
+	c.cwd = cwd
+	return statusOK
+}
+
+//export cfs_getcwd
+func cfs_getcwd(id C.int64_t) *C.char {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return C.CString("")
+	}
+	return C.CString(c.cwd)
+}
+
 //export cfs_getattr
 func cfs_getattr(id C.int64_t, path *C.char, stat *C.struct_cfs_stat_info) C.int {
 	c, exist := getClient(int64(id))
@@ -256,7 +286,7 @@ func cfs_getattr(id C.int64_t, path *C.char, stat *C.struct_cfs_stat_info) C.int
 		return statusEINVAL
 	}
 
-	info, err := c.lookupPath(C.GoString(path))
+	info, err := c.lookupPath(c.absPath(C.GoString(path)))
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -312,6 +342,8 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
 	fuseFlags := uint32(flags) &^ uint32(0x8000)
 	accFlags := fuseFlags & uint32(C.O_ACCMODE)
 
+	absPath := c.absPath(C.GoString(path))
+
 	var info *proto.InodeInfo
 
 	/*
@@ -322,7 +354,7 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
 		if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
 			return statusEACCES
 		}
-		dirpath, name := gopath.Split(C.GoString(path))
+		dirpath, name := gopath.Split(absPath)
 		dirInfo, err := c.lookupPath(dirpath)
 		if err != nil {
 			return errorToStatus(err)
@@ -333,7 +365,7 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
 		}
 		info = newInfo
 	} else {
-		newInfo, err := c.lookupPath(C.GoString(path))
+		newInfo, err := c.lookupPath(absPath)
 		if err != nil {
 			return errorToStatus(err)
 		}
@@ -536,14 +568,14 @@ func cfs_readdir(id C.int64_t, fd C.int, dirents []C.struct_cfs_dirent, count C.
 
 //export cfs_mkdirs
 func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) C.int {
-	dirpath := C.GoString(path)
-	if dirpath == "" || dirpath == "/" {
-		return statusEEXIST
-	}
-
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
+	}
+
+	dirpath := c.absPath(C.GoString(path))
+	if dirpath == "/" {
+		return statusEEXIST
 	}
 
 	pino := proto.RootIno
@@ -577,7 +609,8 @@ func cfs_rmdir(id C.int64_t, path *C.char) C.int {
 		return statusEINVAL
 	}
 
-	dirpath, name := gopath.Split(C.GoString(path))
+	absPath := c.absPath(C.GoString(path))
+	dirpath, name := gopath.Split(absPath)
 	dirInfo, err := c.lookupPath(dirpath)
 	if err != nil {
 		return errorToStatus(err)
@@ -594,7 +627,8 @@ func cfs_unlink(id C.int64_t, path *C.char) C.int {
 		return statusEINVAL
 	}
 
-	dirpath, name := gopath.Split(C.GoString(path))
+	absPath := c.absPath(C.GoString(path))
+	dirpath, name := gopath.Split(absPath)
 	dirInfo, err := c.lookupPath(dirpath)
 	if err != nil {
 		return errorToStatus(err)
@@ -616,8 +650,10 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) C.int {
 		return statusEINVAL
 	}
 
-	srcDirPath, srcName := gopath.Split(C.GoString(from))
-	dstDirPath, dstName := gopath.Split(C.GoString(to))
+	absFrom := c.absPath(C.GoString(from))
+	absTo := c.absPath(C.GoString(to))
+	srcDirPath, srcName := gopath.Split(absFrom)
+	dstDirPath, dstName := gopath.Split(absTo)
 
 	srcDirInfo, err := c.lookupPath(srcDirPath)
 	if err != nil {
@@ -633,6 +669,14 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) C.int {
 }
 
 // internals
+
+func (c *client) absPath(path string) string {
+	p := gopath.Clean(path)
+	if !gopath.IsAbs(p) {
+		p = gopath.Join(c.cwd, p)
+	}
+	return gopath.Clean(p)
+}
 
 func (c *client) start() (err error) {
 	var masters = strings.Split(c.masterAddr, ",")
@@ -696,7 +740,7 @@ func (c *client) releaseFD(fd uint) *file {
 }
 
 func (c *client) lookupPath(path string) (*proto.InodeInfo, error) {
-	ino, err := c.mw.LookupPath(path)
+	ino, err := c.mw.LookupPath(gopath.Clean(path))
 	if err != nil {
 		return nil, err
 	}
