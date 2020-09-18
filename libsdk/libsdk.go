@@ -66,6 +66,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data/stream"
 	"github.com/chubaofs/chubaofs/sdk/meta"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const (
@@ -173,6 +174,8 @@ type client struct {
 	volName      string
 	masterAddr   string
 	followerRead bool
+	logDir       string
+	logLevel     string
 
 	// runtime context
 	cwd    string // current working directory
@@ -219,6 +222,10 @@ func cfs_set_client(id C.int64_t, key, val *C.char) C.int {
 		} else {
 			c.followerRead = false
 		}
+	case "logDir":
+		c.logDir = v
+	case "logLevel":
+		c.logLevel = v
 	default:
 		return statusEINVAL
 	}
@@ -250,6 +257,7 @@ func cfs_close_client(id C.int64_t) {
 		}
 		removeClient(int64(id))
 	}
+	log.LogFlush()
 }
 
 //export cfs_chdir
@@ -328,6 +336,26 @@ func cfs_getattr(id C.int64_t, path *C.char, stat *C.struct_cfs_stat_info) C.int
 	stat.ctime = C.uint64_t(t / 1e9)
 	stat.ctime_nsec = C.uint32_t(t % 1e9)
 
+	return statusOK
+}
+
+//export cfs_setattr
+func cfs_setattr(id C.int64_t, path *C.char, stat *C.struct_cfs_stat_info, valid C.int) C.int {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return statusEINVAL
+	}
+
+	info, err := c.lookupPath(c.absPath(C.GoString(path)))
+	if err != nil {
+		return errorToStatus(err)
+	}
+
+	err = c.setattr(info, uint32(valid), uint32(stat.mode), uint32(stat.uid), uint32(stat.gid), int64(stat.mtime)*1e9+int64(stat.mtime_nsec), int64(stat.atime)*1e9+int64(stat.atime_nsec))
+
+	if err != nil {
+		return errorToStatus(err)
+	}
 	return statusOK
 }
 
@@ -668,6 +696,30 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) C.int {
 	return errorToStatus(err)
 }
 
+//export cfs_fchmod
+func cfs_fchmod(id C.int64_t, fd C.int, mode C.mode_t) C.int {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return statusEINVAL
+	}
+
+	f := c.getFile(uint(fd))
+	if f == nil {
+		return statusEBADFD
+	}
+
+	info, err := c.mw.InodeGet_ll(f.ino)
+	if err != nil {
+		return errorToStatus(err)
+	}
+
+	err = c.setattr(info, proto.AttrMode, uint32(mode), 0, 0, 0, 0)
+	if err != nil {
+		return errorToStatus(err)
+	}
+	return statusOK
+}
+
 // internals
 
 func (c *client) absPath(path string) string {
@@ -680,6 +732,10 @@ func (c *client) absPath(path string) string {
 
 func (c *client) start() (err error) {
 	var masters = strings.Split(c.masterAddr, ",")
+
+	if c.logDir != "" {
+		log.InitLog(c.logDir, "libcfs", log.InfoLevel, nil)
+	}
 
 	var mw *meta.MetaWrapper
 	if mw, err = meta.NewMetaWrapper(&meta.MetaConfig{
@@ -749,6 +805,17 @@ func (c *client) lookupPath(path string) (*proto.InodeInfo, error) {
 		return nil, err
 	}
 	return info, nil
+}
+
+func (c *client) setattr(info *proto.InodeInfo, valid uint32, mode, uid, gid uint32, mtime, atime int64) error {
+	// Only rwx mode bit can be set
+	if valid&proto.AttrMode != 0 {
+		fuseMode := mode & uint32(0777)
+		mode = info.Mode &^ uint32(0777) // clear rwx mode bit
+		mode |= fuseMode
+	}
+
+	return c.mw.Setattr(info.Inode, valid, mode, uid, gid, mtime, atime)
 }
 
 func (c *client) create(pino uint64, name string, mode uint32) (info *proto.InodeInfo, err error) {
