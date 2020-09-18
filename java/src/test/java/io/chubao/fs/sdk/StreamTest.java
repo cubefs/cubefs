@@ -11,9 +11,10 @@ public class StreamTest extends StorageTest {
   private final static Log log = LogFactory.getLog(StreamTest.class);
   @Test
   public void testInt() {
-    String path = createTestDir + "/f0";
+    String path = StorageTest.streamTestDir + "/f0";
     long size = 2048;
     int val = 32;
+    Assert.assertTrue(mkdirs(StorageTest.streamTestDir));
     {
       int flags = FileStorage.O_WRONLY | FileStorage.O_CREAT;
       CFSFile cfile = openFile(path, flags);
@@ -33,9 +34,11 @@ public class StreamTest extends StorageTest {
     Assert.assertTrue(unlink(path));
   }
 
+
   @Test
   public void testBytes() {
-    String path = createTestDir + "/f0";
+    String path = streamTestDir + "/f1";
+    Assert.assertTrue(mkdirs(streamTestDir));
     byte[] data = genBuff(buffSize);
     long fileSize = 1024;
     {
@@ -74,7 +77,8 @@ public class StreamTest extends StorageTest {
 
   @Test
   public void testBytesOffset() {
-    String path = createTestDir + "/f0";
+    String path = streamTestDir + "/f2";
+    Assert.assertTrue(mkdirs(streamTestDir));
     byte[] data = buffBlock2.getBytes();
     long fileSize = 1024;
     {
@@ -113,7 +117,8 @@ public class StreamTest extends StorageTest {
 
   @Test
   public void testSkipRead() {
-    String path = createTestDir + "/f0";
+    String path = streamTestDir + "/f3";
+    Assert.assertTrue(mkdirs(streamTestDir));
     byte[] data = buffBlock2.getBytes();
     long fileSize = 1024;
     {
@@ -131,7 +136,7 @@ public class StreamTest extends StorageTest {
       int flags = FileStorage.O_RDONLY;
       CFSFile cfile = openFile(path, flags);
       CFSInputStream in = new CFSInputStream(cfile);
-      Assert.assertEquals(skipStream(in, 1000), 0);
+      Assert.assertEquals(skipStream(in, 1000), 1000);
       int rsize = 0;
       long count = 0L;
       while (true) {

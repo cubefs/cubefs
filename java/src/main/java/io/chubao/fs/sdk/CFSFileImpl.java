@@ -12,14 +12,9 @@ public class CFSFileImpl implements CFSFile {
   private CFSDriverIns driver;
   private long position = 0L;
   private long fileSize;
-  private boolean isClosed;
+  private boolean isClosed = false;
   private ReentrantLock lock = new ReentrantLock();
   private long fd;
-
-  public CFSFileImpl(CFSDriverIns driver, long fd) {
-    this.driver = driver;
-    this.fd = fd;
-  }
 
   public CFSFileImpl(CFSDriverIns driver, long fd, long fileSize, long position) {
     this.driver = driver;
@@ -48,6 +43,7 @@ public class CFSFileImpl implements CFSFile {
     if (isClosed) {
       return;
     }
+    isClosed = true;
     driver.flush(fd);
     driver.close(fd);
   }
@@ -64,7 +60,7 @@ public class CFSFileImpl implements CFSFile {
   }
 
   public synchronized void write(byte[] buff, int off, int len) throws CFSException {
-    if (off < 0 || len <= 0) {
+    if (off < 0 || len < 0) {
       throw new CFSException("Invalid argument.");
     }
 
@@ -77,7 +73,9 @@ public class CFSFileImpl implements CFSFile {
     }
 
     position += wsize;
-    fileSize += wsize;
+    if (position > fileSize) {
+      fileSize = position;
+    }
   }
 
   private int write(long offset, byte[] data, int len) throws CFSException {
@@ -85,7 +83,7 @@ public class CFSFileImpl implements CFSFile {
   }
 
   public synchronized int read(byte[] buff, int off, int len) throws CFSException {
-    if (off < 0 || len <= 0) {
+    if (off < 0 || len < 0) {
       throw new CFSException("Invalid argument.");
     }
 

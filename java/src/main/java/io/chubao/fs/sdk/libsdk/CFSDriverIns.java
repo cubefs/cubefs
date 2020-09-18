@@ -1,10 +1,8 @@
 package io.chubao.fs.sdk.libsdk;
 
-import io.chubao.fs.sdk.exception.CFSEOFException;
+import io.chubao.fs.sdk.CFSFile;
+import io.chubao.fs.sdk.exception.*;
 import io.chubao.fs.sdk.CFSStatInfo;
-import io.chubao.fs.sdk.exception.CFSException;
-import io.chubao.fs.sdk.exception.CFSNullArgumentException;
-import io.chubao.fs.sdk.exception.StatusCodes;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -25,17 +23,18 @@ public class CFSDriverIns {
     this.clientID = cid;
   }
 
-  public long open(String path, int flags, int mode, int uid, int gid) throws CFSException {
+  public CFSOpenRes.ByReference open(String path, int flags, int mode, int uid, int gid) throws CFSException {
     verifyPath(path);
     GoString.ByValue p = new GoString.ByValue();
     p.ptr = path;
     p.len = path.length();
-    long fd =driver.cfs_open(this.clientID, p, flags, mode, uid, gid);
-    if (fd < 0) {
-      throw new CFSException("Failed to open:" + path + " status code: " + fd);
+    CFSOpenRes.ByReference res = new CFSOpenRes.ByReference();
+    int st =driver.cfs_open(this.clientID, p, flags, mode, uid, gid, res);
+    if (st < 0) {
+      throw new CFSException("Failed to open:" + path + " status code: " + st);
     }
 
-    return fd;
+    return res;
   }
 
   public void flush(long fd) throws CFSException {
@@ -57,7 +56,7 @@ public class CFSDriverIns {
   }
 
   public int write(long fd, long offset, byte[] data, int len) throws CFSException {
-    if (offset < 0 || len <= 0) {
+    if (offset < 0 || len < 0) {
       throw new CFSException("Invalid argument.");
     }
     int wsize = driver.cfs_write(this.clientID, fd, offset, data, len);
@@ -74,6 +73,9 @@ public class CFSDriverIns {
   }
 
   public int read(long fd, long offset, byte[] buff, int len) throws CFSException {
+    if (offset < 0 || len < 0) {
+      throw new CFSException("Invalid argument.");
+    }
     int rsize = driver.cfs_read(this.clientID, fd, offset, buff, len);
     /*
     byte[] bf = new byte[64];
@@ -243,32 +245,50 @@ public class CFSDriverIns {
     return info;
   }
 
-  public CFSStatInfo[] listDir(String path) throws CFSException {
+  public CFSStatInfo[] list(String path) throws CFSException {
     verifyPath(path);
     log.info("path:" + path.toString() + " len:" + path.length());
     GoString.ByValue p = new GoString.ByValue();
     p.ptr = path;
     p.len = path.length();
 
-    SDKStatInfo info = new SDKStatInfo();
-    SDKStatInfo[] infos = (SDKStatInfo[])info.toArray(100);
-
-    int count = driver.cfs_listattr(this.clientID, p, infos, 100);
-    if (count < 0) {
-      throw new CFSException("Failed to list dir:" + path + " status code: " + count);
+    CFSCountDirRes.ByReference countRes = new CFSCountDirRes.ByReference();
+    int st = driver.cfs_countdir(this.clientID, p, countRes);
+    if (StatusCodes.get(st) == StatusCodes.CFS_STATUS_FILIE_NOT_FOUND) {
+      throw new CFSFileNotFoundException("Not found " + path.toString());
     }
 
-    CFSStatInfo[] fileInfos = new CFSStatInfo[count];
-    for (int i=0; i<count; i++) {
+    if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {
+      throw new CFSException("Failed to count dir:" + path + " status code: " + st);
+    }
+
+    if (countRes.num == 0) {
+      return new CFSStatInfo[0];
+    }
+
+    SDKStatInfo info = new SDKStatInfo();
+    SDKStatInfo[] infos = (SDKStatInfo[])info.toArray(countRes.num);
+
+    st = driver.cfs_listattr(this.clientID, countRes.inode, countRes.num, infos);
+    if (StatusCodes.get(st) == StatusCodes.CFS_STATUS_FILIE_NOT_FOUND) {
+      throw new CFSFileNotFoundException("Not found " + path.toString());
+    }
+
+    if (st < 0) {
+      throw new CFSException("Failed to list dir:" + path + " status code: " + st);
+    }
+
+    CFSStatInfo[] fileInfos = new CFSStatInfo[countRes.num];
+    for (int i=0; i<countRes.num; i++) {
       SDKStatInfo in = infos[i];
       log.info(in.toString());
       try {
         fileInfos[i] = new CFSStatInfo(
             in.mode, in.uid, in.gid, in.size,
-            in.ctime, in.mtime, in.atime, new String(in.name, "utf-8"));
+            in.ctime, in.mtime, in.atime, new String(in.name, 0, in.nameLen, "utf-8"));
 
       } catch (Exception e)  {
-        log.error(e);
+        log.error(e.getMessage(), e);
       }
     }
 

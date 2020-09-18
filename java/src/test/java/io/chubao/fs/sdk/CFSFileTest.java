@@ -9,8 +9,8 @@ public class CFSFileTest extends StorageTest {
   private final static Log log = LogFactory.getLog(CFSFileTest.class);
   @Test
   public void testCreate() {
-    String path = createTestDir + "/f0";
-    Assert.assertTrue(mkdirs(appendTestDir));
+    String path = cfileTestDir + "/f0";
+    Assert.assertTrue(mkdirs(cfileTestDir));
     long size = 2048;
     Assert.assertTrue(createFile(path, size));
     Assert.assertTrue(unlink(path));
@@ -18,8 +18,8 @@ public class CFSFileTest extends StorageTest {
 
   @Test
   public void testAppend() {
-    String path = appendTestDir + "/f0";
-    Assert.assertTrue(mkdirs(appendTestDir));
+    String path = cfileTestDir + "/f1";
+    Assert.assertTrue(mkdirs(cfileTestDir));
     long size = 2048;
     Assert.assertTrue(createFile(path, size));
     size = 4096;
@@ -29,8 +29,8 @@ public class CFSFileTest extends StorageTest {
 
   @Test
   public void testTruncate() {
-    String path = overwriteTestDir + "/f0";
-    Assert.assertTrue(mkdirs(overwriteTestDir));
+    String path = cfileTestDir + "/f2";
+    Assert.assertTrue(mkdirs(cfileTestDir));
     long size = 2048;
     Assert.assertTrue(createFile(path, size));
     size = 4096;
@@ -38,15 +38,16 @@ public class CFSFileTest extends StorageTest {
     Assert.assertTrue(unlink(path));
   }
 
+
   @Test
   public void testSeek() {
-    String path = overwriteTestDir + "/f0";
+    String path = cfileTestDir + "/f3";
     long size = 2048;
-    Assert.assertTrue(mkdirs(overwriteTestDir));
+    Assert.assertTrue(mkdirs(cfileTestDir));
     Assert.assertTrue(createFile(path, size));
     CFSFile cfile = openFile(path, FileStorage.O_WRONLY);
     long offset = 1;
-    Assert.assertTrue(seek(cfile, size));
+    Assert.assertTrue(seek(cfile, offset));
 
     byte[] buff = genBuff(buffSize);
     for (int i=0; i<size/buffSize; i++) {
@@ -59,11 +60,13 @@ public class CFSFileTest extends StorageTest {
     Assert.assertTrue(unlink(path));
   }
 
+
   @Test
   public void testBuffOffset() {
-    String path = createTestDir + "/f0";
-    Assert.assertTrue(mkdirs(createTestDir));
-    CFSFile cfile = openFile(path, FileStorage.O_WRONLY);
+    String path = cfileTestDir + "/f4";
+    Assert.assertTrue(mkdirs(cfileTestDir));
+    CFSFile cfile = openFile(path, FileStorage.O_WRONLY | FileStorage.O_CREAT);
+    Assert.assertNotNull(cfile);
     byte[] buff = buffBlock2.getBytes();
     long size = 2048;
     for (int i=0; i<size/8; i++) {
@@ -76,40 +79,40 @@ public class CFSFileTest extends StorageTest {
 
   @Test
   public void testFlags() {
-    String path = createTestDir + "/f0";
-    Assert.assertTrue(mkdirs(createTestDir));
+    String path = cfileTestDir + "/f5";
+    Assert.assertTrue(mkdirs(cfileTestDir));
     long size = 2048;
     Assert.assertTrue(createFile(path, size));
     int flags = FileStorage.O_WRONLY | FileStorage.O_CREAT;
     Assert.assertNull(openFile(path, flags));
     unlink(path);
 
-    String path1 = createTestDir + TestHelper.getRandomUUID();
+    String path1 = cfileTestDir + TestHelper.getRandomUUID();
     flags = FileStorage.O_WRONLY | FileStorage.O_APPEND;
     Assert.assertNull(openFile(path1, flags));
 
-    String path2 = createTestDir + TestHelper.getRandomUUID();
+    String path2 = cfileTestDir + TestHelper.getRandomUUID();
     flags = FileStorage.O_WRONLY | FileStorage.O_TRUNC;
     Assert.assertNull(openFile(path2, flags));
 
-    String path3 = createTestDir + TestHelper.getRandomUUID();
+    String path3 = cfileTestDir + TestHelper.getRandomUUID();
     flags = FileStorage.O_TRUNC;
     Assert.assertNull(openFile(path3, flags));
 
-    String path4 = createTestDir + TestHelper.getRandomUUID();
+    String path4 = cfileTestDir + TestHelper.getRandomUUID();
     flags = FileStorage.O_CREAT;
     Assert.assertNull(openFile(path4, flags));
 
-    String path5 = createTestDir + TestHelper.getRandomUUID();
+    String path5 = cfileTestDir + TestHelper.getRandomUUID();
     flags = FileStorage.O_APPEND;
     Assert.assertNull(openFile(path5, flags));
   }
 
   @Test
   public void testRead() {
-    String path = readTestDir + "/f0";
+    String path = cfileTestDir + "/f6";
     long size = 2048;
-    Assert.assertTrue(mkdirs(readTestDir));
+    Assert.assertTrue(mkdirs(cfileTestDir));
     Assert.assertTrue(createFile(path, size));
     Assert.assertTrue(readFile(path, size));
     Assert.assertTrue(unlink(path));
@@ -117,12 +120,11 @@ public class CFSFileTest extends StorageTest {
 
   @Test
   public void testReadBuff() {
-    String path = readTestDir + "/f0";
-    Assert.assertTrue(mkdirs(readTestDir));
+    String path = cfileTestDir + "/f7";
+    Assert.assertTrue(mkdirs(cfileTestDir));
     long size = 2048;
     Assert.assertTrue(createFile(path, size));
     Assert.assertTrue(readFile(path, size));
-    Assert.assertTrue(unlink(path));
     CFSFile cfile = openFile(path, FileStorage.O_RDONLY);
     byte[] buff = new byte[10];
     byte[] data = buffBlock2.getBytes();
@@ -132,10 +134,10 @@ public class CFSFileTest extends StorageTest {
       if (rsize == -1) {
         break;
       }
-      Assert.assertEquals(rsize, -2);
+      Assert.assertEquals(rsize, 8);
       len += rsize;
       for (int i=2; i<10; i++) {
-        Assert.assertEquals(buff[i], data[2]);
+        Assert.assertEquals(buff[i], data[i]);
       }
     }
     Assert.assertEquals(len, size);

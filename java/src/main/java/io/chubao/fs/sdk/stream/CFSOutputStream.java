@@ -43,7 +43,7 @@ public class CFSOutputStream extends OutputStream {
 
   @Override
   public void write(byte[] b) throws IOException {
-    write(b, 0, 1);
+    write(b, 0, b.length);
   }
 
   @Override

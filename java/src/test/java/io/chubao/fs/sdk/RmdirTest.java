@@ -80,9 +80,6 @@ public class RmdirTest extends StorageTest {
     String dir1 = "../";
     Assert.assertFalse(rmdir(dir1, true));
 
-    String dir2 = "/../";
-    Assert.assertFalse(rmdir(dir2, true));
-
     String dir3 = null;
     Assert.assertFalse(rmdir(dir3, true));
 

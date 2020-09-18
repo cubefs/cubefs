@@ -11,17 +11,18 @@ public class AppendFileTest extends StorageTest {
   public void testAppendFile() {
     Assert.assertTrue(mkdirs(appendTestDir));
     String path1 = appendTestDir + "/f0";
+    Assert.assertTrue(createFile(path1, 0));
     Assert.assertTrue(appendFile(path1));
     CFSStatInfo stat = stat(path1);
     Assert.assertNotNull(stat);
     checkFileStat(stat);
     Assert.assertTrue(appendFile(path1));
-    Assert.assertTrue(rmdir(createTestDir, true));
+    Assert.assertTrue(rmdir(appendTestDir, true));
   }
 
   @Test
   public void testCreateFileParentNotExist() {
-    String path1 = createTestDir + "/d0/f0";
+    String path1 = appendTestDir + "/d0/f0";
     Assert.assertFalse(appendFile(path1));
   }
 

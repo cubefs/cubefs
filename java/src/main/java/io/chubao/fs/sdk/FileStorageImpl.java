@@ -2,6 +2,7 @@ package io.chubao.fs.sdk;
 
 import io.chubao.fs.sdk.exception.CFSException;
 import io.chubao.fs.sdk.libsdk.CFSDriverIns;
+import io.chubao.fs.sdk.libsdk.CFSOpenRes;
 import io.chubao.fs.sdk.libsdk.SDKStatInfo;
 import io.chubao.fs.sdk.util.CFSOwnerHelper;
 import org.apache.commons.logging.Log;
@@ -16,6 +17,7 @@ public class FileStorageImpl implements FileStorage {
   private final String separator= "/";
   private CFSDriverIns driver;
   private CFSOwnerHelper owner;
+  private long defaultBlockSize = 128 * 1024 * 1024;
 
   public FileStorageImpl(CFSDriverIns driver) {
     this.driver = driver;
@@ -28,11 +30,8 @@ public class FileStorageImpl implements FileStorage {
 
   @Override
   public CFSFile open(String path, int flags, int mode, int uid, int gid) throws CFSException {
-    long fd = driver.open(path, flags, mode, uid, gid);
-    if (fd < 0) {
-      throw new CFSException("status code: " + fd);
-    }
-    return new CFSFileImpl(driver, fd);
+    CFSOpenRes.ByReference res = driver.open(path, flags, mode, uid, gid);
+    return new CFSFileImpl(driver, res.fd, res.size, res.pos);
   }
 
   @Override
@@ -68,7 +67,7 @@ public class FileStorageImpl implements FileStorage {
 
   @Override
   public CFSStatInfo[] listFileStatus(String path) throws CFSException {
-    return driver.listDir(path);
+    return driver.list(path);
   }
 
   @Override
@@ -186,7 +185,7 @@ public class FileStorageImpl implements FileStorage {
 
   @Override
   public long getBlockSize() {
-    return 128 * 1024 * 1024L;
+    return defaultBlockSize;
   }
 
 

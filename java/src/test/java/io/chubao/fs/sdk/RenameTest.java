@@ -7,6 +7,7 @@ import org.junit.Test;
 
 public class RenameTest extends StorageTest {
   private final static Log log = LogFactory.getLog(RenameTest.class);
+
   @Test
   public void testRenameDir() {
     String path1 = unlinkTestDir + "/d0";
@@ -60,14 +61,15 @@ public class RenameTest extends StorageTest {
     // target is exist, as dir.
     Assert.assertTrue(mkdirs(path1));
     Assert.assertTrue(mkdirs(path2));
-    Assert.assertFalse(rename(path1, path2));
+    Assert.assertTrue(rename(path1, path2));
+    Assert.assertNull(stat(path1));
     Assert.assertTrue(rmdir(renameTestDir, true));
 
     // soruce is file, target is dir
     Assert.assertTrue(mkdirs(renameTestDir));
     Assert.assertTrue(createFile(path1, 0));
     Assert.assertTrue(mkdirs(path2));
-    Assert.assertFalse(rename(path1, path2));
+    Assert.assertTrue(rename(path1, path2));
     Assert.assertTrue(rmdir(renameTestDir, true));
 
     // soruce is dir, target is file
@@ -109,5 +111,30 @@ public class RenameTest extends StorageTest {
 
     String dir4 = " ";
     Assert.assertFalse(rename(from, dir4));
+  }
+
+
+  @Test
+  public void testRenameDir2() {
+    String path1 = unlinkTestDir + "/d0";
+    String path2 = path1 + "/dd0";
+    String path3 = unlinkTestDir + "/d1/";
+    Assert.assertTrue(mkdirs(path2));
+    Assert.assertTrue(mkdirs(path3));
+    Assert.assertTrue(rename(path1, path3));
+    Assert.assertNull(stat(path1));
+    Assert.assertNotNull(stat(path3));
+    Assert.assertTrue(rmdir(unlinkTestDir, true));
+  }
+
+
+  @Test
+  public void testRenameToChileDir() {
+    String path1 = unlinkTestDir + "/d0";
+    String path2 = path1 + "/dd0/dd1";
+    Assert.assertTrue(mkdirs(path2));
+    Assert.assertFalse(rename(path1, path2));
+    Assert.assertNotNull(stat(path1));
+    Assert.assertTrue(rmdir(unlinkTestDir, true));
   }
 }

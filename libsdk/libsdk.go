@@ -40,27 +40,32 @@ struct cfs_stat_info {
     uint32_t uid;
     uint32_t gid;
 	uint32_t valid;
+	uint32_t nameLen;
     char name[256];
 };
 
 struct cfs_dirent {
     uint64_t ino;
     char     name[256];
-	  char     d_type;
+	char     d_type;
 };
 
 struct cfs_open_res {
-	uint64 fd;
-	uint64 size;
-	uint64 pos;
+	uint64_t fd;
+	uint64_t size;
+	uint64_t pos;
 };
+
+struct cfs_countdir_res {
+	uint64_t fd;
+	uint32_t num;
+};
+
 
 */
 import "C"
 
 import (
-	"bytes"
-	"container/list"
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"os"
@@ -177,8 +182,10 @@ type file struct {
 }
 
 type dirStream struct {
-	pos     int
-	dirents []proto.Dentry
+	pos      int
+	dirents  []proto.Dentry
+	namesMap map[uint64]string
+	inodes   []proto.InodeInfo
 }
 
 type client struct {
@@ -359,18 +366,18 @@ func cfs_setattr_by_path(id uint64, path string, stat *C.struct_cfs_stat_info) i
 }
 
 //export cfs_open
-func cfs_open(id uint64, path string, flags int, mode C.mode_t, uid, gid uint32) int64 {
+func cfs_open(id uint64, path string, flags int, mode C.mode_t, uid, gid uint32, res *C.struct_cfs_open_res) int {
 	c, exist := getClient(id)
 	if !exist {
-		return int64(statusEINVAL)
+		return statusEINVAL
 	}
 
 	newpath, err := validPath(path)
 	if err != nil {
-		return int64(statusINVALIDPATH)
+		return statusINVALIDPATH
 	}
 	if newpath == "/" {
-		return int64(statusINVALIDPATH)
+		return statusINVALIDPATH
 	}
 
 	fuseMode := uint32(mode) & uint32(0777)
@@ -379,32 +386,46 @@ func cfs_open(id uint64, path string, flags int, mode C.mode_t, uid, gid uint32)
 
 	var info *proto.InodeInfo
 
+	fmt.Printf("flags:%d\n", flags)
+	fmt.Printf("fuseFlags:%d\n", fuseFlags)
+	fmt.Printf("accFlags:%d\n", accFlags)
+
+	fmt.Printf("C.O_RDONLY:%d\n", C.O_RDONLY)
+	fmt.Printf("C.O_WRONLY:%d\n", C.O_WRONLY)
+	fmt.Printf("C.O_RDWR:%d\n", C.O_RDWR)
+	fmt.Printf("C.O_CREAT:%d\n", C.O_CREAT)
+	fmt.Printf("C.O_APPEND:%d\n", C.O_APPEND)
+	fmt.Printf("C.O_TRUNC:%d\n", C.O_TRUNC)
+
+	fmt.Printf("S_IFREG:%d\n", C.S_IFREG)
+	fmt.Printf("S_IFDIR:%d\n", C.S_IFDIR)
+	fmt.Printf("S_IFLNK:%d\n", C.S_IFLNK)
+
 	/*
 	 * Note that the rwx mode is ignored when using libsdk
 	 */
-
 	//if fuseFlags&uint32(C.O_CREAT) != 0 && fuseFlags&uint32(C.O_APPEND) == 0 {
-	if fuseFlags&uint32(C.O_CREAT) != 0  {
+	if fuseFlags&uint32(C.O_CREAT) != 0 {
 		if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
-			return int64(statusEACCES)
+			return statusEACCES
 		}
 		dirpath, name := gopath.Split(newpath)
 		dirInfo, err := c.lookupPath(dirpath)
 		if err != nil {
 			fmt.Println("Failed to lookup the parent dir: ", dirpath, " error: ", err)
-			return int64(-errorToStatus(err))
+			return -errorToStatus(err)
 		}
 		newInfo, err := c.create(dirInfo.Inode, name, fuseMode, uid, gid)
 		if err != nil {
 			fmt.Println("Failed to lookup the create file: ", name, " error: ", err)
-			return int64(-errorToStatus(err))
+			return -errorToStatus(err)
 		}
 		info = newInfo
 	} else {
 		newInfo, err := c.lookupPath(newpath)
 		if err != nil {
 			fmt.Println("In cfs_open operation, failed to lookup the path: ", path, " error: ", err)
-			return int64(-errorToStatus(err))
+			return -errorToStatus(err)
 		}
 		info = newInfo
 	}
@@ -414,21 +435,30 @@ func cfs_open(id uint64, path string, flags int, mode C.mode_t, uid, gid uint32)
 
 	if proto.IsRegular(info.Mode) {
 		c.openStream(f)
-		if fuseFlags&uint32(C.O_TRUNC) != 0 && fuseFlags&uint32(C.O_APPEND) == 0 {
-			if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
-				c.closeStream(f)
-				c.releaseFD(int(f.fd))
-				return int64(statusEACCES)
+		if accFlags == uint32(C.O_WRONLY) || accFlags == uint32(C.O_RDWR) {
+			if fuseFlags&uint32(C.O_TRUNC) != 0 && fuseFlags&uint32(C.O_APPEND) == 0 {
+				if err := c.truncate(f, 0); err != nil {
+					c.closeStream(f)
+					c.releaseFD(int(f.fd))
+					return statusEIO
+				}
+				res.size = 0
+				res.pos = 0
+			} else if fuseFlags&uint32(C.O_TRUNC) == 0 && fuseFlags&uint32(C.O_APPEND) != 0 {
+				res.size = C.uint64_t(info.Size)
+				res.pos = C.uint64_t(info.Size)
+			} else { // O_CREAT
+				res.size = 0
+				res.pos = 0
 			}
-			if err := c.truncate(f, 0); err != nil {
-				c.closeStream(f)
-				c.releaseFD(int(f.fd))
-				return int64(statusEIO)
-			}
+		} else { // O_RDONLY
+			res.size = C.uint64_t(info.Size)
+			res.pos = 0
 		}
 	}
-	fmt.Println("Succ to open: ", path, " fd: ", f.fd)
-	return int64(f.fd)
+	fmt.Println("Succ to open: ", path, " fd: ", f.fd, " size:", res.size, " pos:", res.pos)
+	res.fd = C.uint64_t(f.fd)
+	return statusOK
 }
 
 //export cfs_flush
@@ -464,7 +494,7 @@ func cfs_close(id uint64, fd uint64) {
 }
 
 //export cfs_write
-func cfs_write(id, fd uint64, off C.off_t, buff *C.char, size C.size_t, wsize C.off_t) int {
+func cfs_write(id, fd uint64, off C.off_t, buff *C.char, size C.size_t) int {
 	c, exist := getClient(id)
 	if !exist {
 		return statusEINVAL
@@ -481,7 +511,11 @@ func cfs_write(id, fd uint64, off C.off_t, buff *C.char, size C.size_t, wsize C.
 		return statusEACCES
 	}
 
-	data := C.GoBytes(unsafe.Pointer(buff), C.int(size))
+	var data []byte
+	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&data))
+	hdr.Data = uintptr(unsafe.Pointer(buff))
+	hdr.Len = int(size)
+	hdr.Cap = int(size)
 
 	var flags int
 	var wait bool
@@ -498,15 +532,13 @@ func cfs_write(id, fd uint64, off C.off_t, buff *C.char, size C.size_t, wsize C.
 		return statusEIO
 	}
 
-	wsize = C.off_t(n)
-
 	if wait {
 		if err = c.flush(f); err != nil {
 			return statusEIO
 		}
 	}
 
-	return statusOK
+	return n
 }
 
 //export cfs_read
@@ -602,8 +634,8 @@ func cfs_readdir(id uint64, fd uint64, dirents []C.struct_cfs_dirent, count int)
 	return n
 }
 
-//export cfs_listattr
-func cfs_listattr(id uint64, path string, stats *C.struct_cfs_stat_info, count int) int {
+//export cfs_countdir
+func cfs_countdir(id uint64, path string, res *C.struct_cfs_countdir_res) int {
 	c, exist := getClient(id)
 	if !exist {
 		return statusEINVAL
@@ -616,25 +648,50 @@ func cfs_listattr(id uint64, path string, stats *C.struct_cfs_stat_info, count i
 
 	info, err := c.lookupPath(newpath)
 	if err != nil {
-		fmt.Println("In listattr operation, failed to lookup: ", path, " error: ", err)
+		fmt.Println("In countdir operation, failed to lookup: ", path, " error: ", err)
 		return -errorToStatus(err)
 	}
 
 	dentries, err := c.mw.ReadDir_ll(info.Inode)
 	if err != nil {
-		fmt.Println("In listattr operation, failed to readdir: ", path, " error:", err)
+		fmt.Println("In countdir listattr operation, failed to readdir: ", path, " error:", err)
 		return -errorToStatus(err)
 	}
 
+	res.fd = C.uint64_t(info.Inode)
+	res.num = C.uint32_t(len(dentries))
+
+	return statusOK
+}
+
+//export cfs_listattr
+func cfs_listattr(id, ino uint64, num uint32, stats *C.struct_cfs_stat_info) int {
+	c, exist := getClient(id)
+	if !exist {
+		return statusEINVAL
+	}
+
+	dentries, err := c.mw.ReadDir_ll(ino)
+	if err != nil {
+		fmt.Println("In listattr operation, failed to readdir: ", ino, " error:", err)
+		return -errorToStatus(err)
+	}
+
+	if int(num) != len(dentries) {
+		return statusEINVAL
+	}
+
+	namesMap := make(map[uint64]string)
 	inodes := make([]uint64, 0, len(dentries))
 	for _, child := range dentries {
 		inodes = append(inodes, child.Inode)
+		namesMap[child.Inode] = child.Name
 	}
 
 	size := unsafe.Sizeof(*stats)
 	infos := c.mw.BatchInodeGet(inodes)
-	for i := 0; i < len(inodes); i++ {
 
+	for i := 0; i < len(inodes); i++ {
 		// fill up the stat
 		stats.ino = C.uint64_t(infos[i].Inode)
 		stats.size = C.uint64_t(infos[i].Size)
@@ -668,19 +725,22 @@ func cfs_listattr(id uint64, path string, stats *C.struct_cfs_stat_info, count i
 		stats.ctime = C.uint64_t(t / 1e9)
 		stats.ctime_nsec = C.uint32_t(t % 1e9)
 
+		name, ok := namesMap[infos[i].Inode]
+		if !ok {
+			fmt.Println("Not found the name by inodeid:", infos[i].Inode)
+			return statusEINVAL
+		}
 		// fill up name
-		nameLen := len(dentries[i].Name)
+		nameLen := len(name)
 		if nameLen >= 256 {
 			nameLen = 255
 		}
-		hdr := (*reflect.StringHeader)(unsafe.Pointer(&dentries[i].Name))
+		hdr := (*reflect.StringHeader)(unsafe.Pointer(&name))
 		C.memcpy(unsafe.Pointer(&stats.name[0]), unsafe.Pointer(hdr.Data), C.size_t(nameLen))
 		stats.name[nameLen] = 0
-		fmt.Println("stats:", stats)
+		stats.nameLen = C.uint32_t(nameLen)
 		stats = (*C.struct_cfs_stat_info)(unsafe.Pointer(uintptr(unsafe.Pointer(stats)) + size))
 	}
-
-	fmt.Println("count:", len(dentries))
 
 	return len(dentries)
 }
@@ -697,7 +757,7 @@ func cfs_mkdirs(id uint64, path string, mode C.mode_t, uid, gid uint32) int {
 		return statusINVALIDPATH
 	}
 	if dirpath == "/" {
-		return statusEEXIST
+		return statusOK
 	}
 
 	pino := proto.RootIno
@@ -877,20 +937,49 @@ func cfs_rename(id uint64, from, to string) int {
 		return statusINVALIDPATH
 	}
 
-	srcDirPath, srcName := gopath.Split(newfrom)
-	dstDirPath, dstName := gopath.Split(newto)
+	if strings.Contains(newto, newfrom) {
+		if newto == newfrom {
+			return statusEINVAL
+		}
 
+		if newto[len(newfrom)] == '/' {
+			return statusEINVAL
+		}
+	}
+
+	srcDirPath, srcName := gopath.Split(newfrom)
 	srcDirInfo, err := c.lookupPath(srcDirPath)
 	if err != nil {
 		return errorToStatus(err)
 	}
+
+	dstDirPath, dstName := gopath.Split(newto)
+
+	// mv /d/child /d
+	if srcDirPath == (newto + "/") {
+		return statusOK
+	}
+
+	dstInfo, err := c.lookupPath(newto)
+	if err == nil && proto.IsDir(dstInfo.Mode) {
+		err = c.mw.Rename_ll(srcDirInfo.Inode, srcName, dstInfo.Inode, srcName)
+		if err != nil {
+			fmt.Println("In rename operation, failed to rename ", srcName, " to ", srcName, " error:", err)
+			return -errorToStatus(err)
+		}
+		return statusOK
+	}
+
 	dstDirInfo, err := c.lookupPath(dstDirPath)
 	if err != nil {
 		return errorToStatus(err)
 	}
-
 	err = c.mw.Rename_ll(srcDirInfo.Inode, srcName, dstDirInfo.Inode, dstName)
-	return errorToStatus(err)
+	if err != nil {
+		fmt.Println("In rename operation, failed to rename ", srcName, " to ", dstName, " error:", err)
+		return -errorToStatus(err)
+	}
+	return statusOK
 }
 
 // internals
@@ -965,7 +1054,7 @@ func (c *client) lookupPath(path string) (*proto.InodeInfo, error) {
 }
 
 func (c *client) create(pino uint64, name string, mode, uid, gid uint32) (info *proto.InodeInfo, err error) {
-	fuseMode := mode & 0777
+	fuseMode := mode
 	return c.mw.Create_ll(pino, name, fuseMode, uid, gid, nil)
 }
 
@@ -1046,38 +1135,7 @@ func validPath(path string) (newpath string, err error) {
 		return
 	}
 
-	names := strings.Split(path, "/")
-	dirs := list.List{}
-	for _, name := range names {
-		if name == "." || name == "" {
-			continue
-		}
-		if name == ".." {
-			if dirs.Len() == 0 {
-				err = errors.New("Invalid path.")
-				newpath = ""
-				return
-			}
-			dirs.Remove(dirs.Back())
-		} else {
-			dirs.PushBack(name)
-		}
-	}
-
-	if dirs.Len() == 0 {
-		return "/", nil
-	}
-
-	var bt bytes.Buffer
-	dir := dirs.Front()
-	for dir != nil {
-		bt.WriteString("/")
-		bt.WriteString((dir.Value).(string))
-		dir = dir.Next()
-	}
-
-	fmt.Println(bt.String())
-	return bt.String(), nil
+	return gopath.Clean(path), nil
 }
 
 func main() {}

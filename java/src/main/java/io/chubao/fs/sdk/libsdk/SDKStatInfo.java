@@ -20,6 +20,7 @@ public class SDKStatInfo extends Structure {
   public int uid;
   public int gid;
   public int valid;
+  public int nameLen;
   public byte[] name = new byte[256];
 
   @Override
@@ -40,6 +41,7 @@ public class SDKStatInfo extends Structure {
     fields.add("uid");
     fields.add("gid");
     fields.add("valid");
+    fields.add("nameLen");
     fields.add("name");
     return fields;
   }
@@ -66,9 +68,11 @@ public class SDKStatInfo extends Structure {
     sb.append(atime);
     sb.append(" atime:");
     sb.append(atime);
+    sb.append(" nameLen:");
+    sb.append(nameLen);
     if (name != null) {
       try {
-        String str = new String(name, "utf-8");
+        String str = new String(name, 0, nameLen, "utf-8");
         sb.append(" name:");
         sb.append(str);
       } catch (Exception ex) {

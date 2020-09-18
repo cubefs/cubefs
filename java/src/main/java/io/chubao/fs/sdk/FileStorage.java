@@ -9,14 +9,20 @@ public interface FileStorage {
   int O_RDONLY         = 0;
   int O_WRONLY         = 1;
   int O_ACCMODE        = 3;
+  /*
   int O_CREAT          = 100;
   int O_TRUNC          = 1000;
   int O_APPEND         = 2000;
   int O_DIRECT         = 40000;
 
-  int S_IFDIR     = 0040000;
-  int S_IFREG     = 0100000;
-  int S_IFLNK     = 0120000;
+   */
+  int O_CREAT          = 64;
+  int O_TRUNC          = 512;
+  int O_APPEND         = 1024;
+
+  int S_IFDIR     = 16384;
+  int S_IFREG     = 32768;
+  int S_IFLNK     = 40960;
 
   boolean mkdirs(String path, int mode, int uid, int gid) throws CFSException;
   CFSFile open(String path, int flags, int mode, int uid, int gid) throws CFSException;
