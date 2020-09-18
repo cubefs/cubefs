@@ -109,6 +109,22 @@ public class TestCfsClient {
             }
 
             mnt.Close(cid, fd);
+        } else if (args[0].equals("chmod")) {
+            int fd = mnt.Open(cid, targetPath, mnt.O_RDWR, 0644);
+            if (fd < 0) {
+                System.out.println("Open failed: " + fd);
+                return;
+            }
+
+            ret = mnt.Fchmod(cid, fd, 0666);
+            if (ret < 0) {
+                System.out.println("Fchmod failed: " + ret);
+                return;
+            }
+            CfsDriver.StatInfo stat = new CfsDriver.StatInfo();
+            ret = mnt.GetAttr(cid, targetPath, stat);
+            System.out.println("mode: " + stat.mode);
+            mnt.Close(cid, fd);
         }
 
         mnt.CloseClient(cid);

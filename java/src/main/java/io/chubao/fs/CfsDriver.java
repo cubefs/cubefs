@@ -84,6 +84,8 @@ public interface CfsDriver extends Library {
 
     int cfs_getattr(long id, String path, StatInfo stat);
 
+    int cfs_setattr(long id, String path, StatInfo stat, int mask);
+
     int cfs_open(long id, String path, int flags, int mode);
 
     int cfs_flush(long id, int fd);
@@ -95,4 +97,6 @@ public interface CfsDriver extends Library {
     long cfs_read(long id, int fd, byte[] buf, long size, long offset);
 
     int cfs_readdir(long id, int fd, DirentArray.ByValue dents, long count);
+
+    int cfs_fchmod(long id, int fd, int mode);
 }
