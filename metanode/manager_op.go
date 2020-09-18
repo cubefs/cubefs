@@ -18,15 +18,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"net"
-	"os"
-	"runtime"
-
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	raftProto "github.com/tiglabs/raft/proto"
+	"net"
+	"os"
+	"runtime"
 )
 
 const (
@@ -599,7 +598,40 @@ func (m *metadataManager) opMetaExtentsTruncate(conn net.Conn, p *Packet,
 }
 
 // Delete a meta partition.
-func (m *metadataManager) opDeleteMetaPartition(conn net.Conn,
+//func (m *metadataManager) opDeleteMetaPartition(conn net.Conn,
+//	p *Packet, remoteAddr string) (err error) {
+//	req := &proto.DeleteMetaPartitionRequest{}
+//	adminTask := &proto.AdminTask{
+//		Request: req,
+//	}
+//	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+//	decode.UseNumber()
+//	if err = decode.Decode(adminTask); err != nil {
+//		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+//		m.respondToClient(conn, p)
+//		return
+//	}
+//	mp, err := m.getPartition(req.PartitionID)
+//	if err != nil {
+//		p.PacketOkReply()
+//		m.respondToClient(conn, p)
+//		return
+//	}
+//	// Ack the master request
+//	conf := mp.GetBaseConfig()
+//	mp.Stop()
+//	mp.DeleteRaft()
+//	m.deletePartition(mp.GetBaseConfig().PartitionId)
+//	os.RemoveAll(conf.RootDir)
+//	p.PacketOkReply()
+//	m.respondToClient(conn, p)
+//	runtime.GC()
+//	log.LogInfof("%s [opDeleteMetaPartition] req: %d - %v, resp: %v",
+//		remoteAddr, p.GetReqID(), req, err)
+//	return
+//}
+
+func (m *metadataManager) opExpiredMetaPartition(conn net.Conn,
 	p *Packet, remoteAddr string) (err error) {
 	req := &proto.DeleteMetaPartitionRequest{}
 	adminTask := &proto.AdminTask{
@@ -619,11 +651,8 @@ func (m *metadataManager) opDeleteMetaPartition(conn net.Conn,
 		return
 	}
 	// Ack the master request
-	conf := mp.GetBaseConfig()
-	mp.Stop()
-	mp.DeleteRaft()
-	m.deletePartition(mp.GetBaseConfig().PartitionId)
-	os.RemoveAll(conf.RootDir)
+	mp.ExpiredRaft()
+	m.expiredPartition(mp.GetBaseConfig().PartitionId)
 	p.PacketOkReply()
 	m.respondToClient(conn, p)
 	runtime.GC()

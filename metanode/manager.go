@@ -119,7 +119,7 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
 	case proto.OpMetaLookup:
 		err = m.opMetaLookup(conn, p, remoteAddr)
 	case proto.OpDeleteMetaPartition:
-		err = m.opDeleteMetaPartition(conn, p, remoteAddr)
+		err = m.opExpiredMetaPartition(conn, p, remoteAddr)
 	case proto.OpUpdateMetaPartition:
 		err = m.opUpdateMetaPartition(conn, p, remoteAddr)
 	case proto.OpLoadMetaPartition:
@@ -415,6 +415,18 @@ func (m *metadataManager) deletePartition(id uint64) (err error) {
 		return
 	}
 	mp.Reset()
+	delete(m.partitions, id)
+	return
+}
+
+func (m *metadataManager) expiredPartition(id uint64) (err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	mp, has := m.partitions[id]
+	if !has {
+		return
+	}
+	mp.Expired()
 	delete(m.partitions, id)
 	return
 }

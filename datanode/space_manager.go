@@ -16,15 +16,18 @@ package datanode
 
 import (
 	"fmt"
+	"path"
+	"strconv"
 	"sync"
 	"time"
+
+	"math"
+	"os"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
-	"math"
-	"os"
 )
 
 // SpaceManager manages the disk space.
@@ -298,6 +301,38 @@ func (manager *SpaceManager) DeletePartition(dpID uint64) {
 	dp.Stop()
 	dp.Disk().DetachDataPartition(dp)
 	os.RemoveAll(dp.Path())
+}
+
+// ExpiredPartition marks specified partition as expired.
+// It renames data path to a new name which add 'expired_' as prefix and operation timestamp as suffix.
+// (e.g. '/disk0/datapartition_1_128849018880' to '/disk0/deleted_datapartition_1_128849018880_1600054521')
+func (manager *SpaceManager) ExpiredPartition(partitionID uint64) {
+	dp := manager.Partition(partitionID)
+	if dp == nil {
+		return
+	}
+	manager.partitionMutex.Lock()
+	delete(manager.partitions, partitionID)
+	manager.partitionMutex.Unlock()
+	dp.Stop()
+	dp.Disk().DetachDataPartition(dp)
+	var currentPath = path.Clean(dp.Path())
+	var newPath = path.Join(path.Dir(currentPath),
+		ExpiredPartitionPrefix+path.Base(currentPath)+"_"+strconv.FormatInt(time.Now().Unix(), 10))
+	if err := os.Rename(currentPath, newPath); err != nil {
+		log.LogErrorf("ExpiredPartition: mark expired partition fail: volume(%v) partitionID(%v) path(%v) newPath(%v) err(%v)",
+			dp.volumeID,
+			dp.partitionID,
+			dp.path,
+			newPath,
+			err)
+		return
+	}
+	log.LogInfof("ExpiredPartition: mark expired partition: volume(%v) partitionID(%v) path(%v) newPath(%v)",
+		dp.volumeID,
+		dp.partitionID,
+		dp.path,
+		newPath)
 }
 
 // DeletePartition deletes a partition from cache based on the partition id.
