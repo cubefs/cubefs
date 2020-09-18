@@ -5,6 +5,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
+	"strings"
 	"testing"
 	"time"
 )
@@ -39,7 +40,7 @@ func TestCheckVol(t *testing.T) {
 func TestVol(t *testing.T) {
 	capacity := 200
 	name := "test1"
-	createVol(name, t)
+	createVol(name, testZone2, t)
 	//report mp/dp info to master
 	server.cluster.checkDataNodeHeartbeat()
 	server.cluster.checkDataNodeHeartbeat()
@@ -56,7 +57,7 @@ func TestVol(t *testing.T) {
 	}
 	vol.checkStatus(server.cluster)
 	getVol(name, t)
-	updateVol(name, capacity, t)
+	updateVol(name, "", capacity, t)
 	statVol(name, t)
 	markDeleteVol(name, t)
 	getSimpleVol(name, t)
@@ -64,8 +65,8 @@ func TestVol(t *testing.T) {
 	vol.deleteVolFromStore(server.cluster)
 }
 
-func createVol(name string, t *testing.T) {
-	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfs&mpCount=2&zoneName=%v", hostAddr, proto.AdminCreateVol, name,testZone2)
+func createVol(name, zone string, t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfs&mpCount=2&zoneName=%v", hostAddr, proto.AdminCreateVol, name, zone)
 	fmt.Println(reqURL)
 	process(reqURL, t)
 	vol, err := server.cluster.getVol(name)
@@ -75,6 +76,160 @@ func createVol(name string, t *testing.T) {
 	}
 	checkDataPartitionsWritableTest(vol, t)
 	checkMetaPartitionsWritableTest(vol, t)
+}
+
+func TestVolMultiZoneDowngrade(t *testing.T) {
+	var vol *Vol
+	var err error
+	testMultiZone := "multiZoneDowngrade"
+	zoneList := []string{testZone1, testZone2, testZone3}
+	zone := strings.Join(zoneList, ",")
+	fmt.Printf(strings.Join(zoneList, ","))
+	server.cluster.t.putZoneIfAbsent(newZone(testZone3))
+	createVol(testMultiZone, zone, t)
+	//report mp/dp info to master
+	server.cluster.checkDataNodeHeartbeat()
+	server.cluster.checkDataNodeHeartbeat()
+	time.Sleep(3 * time.Second)
+	//check status
+	server.cluster.checkMetaPartitions()
+	server.cluster.checkDataPartitions()
+	server.cluster.checkLoadMetaPartitions()
+	server.cluster.doLoadDataPartitions()
+	vol, err = server.cluster.getVol(testMultiZone)
+	if err != nil {
+		t.Errorf("err is %v", err)
+		return
+	}
+
+	vol.checkStatus(server.cluster)
+	getVol(testMultiZone, t)
+	updateVol(testMultiZone, zone, 200, t)
+	statVol(testMultiZone, t)
+
+	// add meta node
+	addMetaServer(mms7Addr, testZone3)
+	addMetaServer(mms8Addr, testZone3)
+	// add data node
+	addDataServer(mds7Addr, testZone3)
+	addDataServer(mds8Addr, testZone3)
+	time.Sleep(3 * time.Second)
+	server.cluster.cfg = newClusterConfig()
+	server.cluster.checkDataNodeHeartbeat()
+	server.cluster.checkMetaNodeHeartbeat()
+
+	//test forbid auto recover by setting RecoverPoolSize=-1
+	server.cluster.cfg.metaPartitionsRecoverPoolSize = -1
+	server.cluster.cfg.dataPartitionsRecoverPoolSize = -1
+	server.cluster.checkVolRepairDataPartitions()
+	server.cluster.checkVolRepairMetaPartitions()
+
+	time.Sleep(time.Second * 5)
+	var mps map[uint64]*MetaPartition
+	mps = vol.cloneMetaPartitionMap()
+	var isRecover bool
+	if isRecover, err = checkZoneRecover(mps, zoneList, t); err != nil {
+		t.Errorf("err is %v", err)
+	}
+	if isRecover {
+		t.Errorf("checkVolRepairMetaPartition is forbidden when recover pool size equals -1")
+	}
+	//test normal recover
+	server.cluster.cfg.metaPartitionsRecoverPoolSize = defaultMetaPartitionsRecoverPoolSize
+	server.cluster.cfg.dataPartitionsRecoverPoolSize = defaultDataPartitionsRecoverPoolSize
+	server.cluster.checkVolRepairDataPartitions()
+	server.cluster.checkVolRepairMetaPartitions()
+	//wait for the partitions to be repaired
+	time.Sleep(time.Second * 5)
+	mps = vol.cloneMetaPartitionMap()
+	if isRecover, err = checkZoneRecover(mps, zoneList, t); err != nil {
+		t.Errorf("err is %v", err)
+	}
+	if !isRecover {
+		t.Errorf("checkVolRepairMetaPartition recover failed")
+	}
+	markDeleteVol(testMultiZone, t)
+	getSimpleVol(testMultiZone, t)
+	vol.checkStatus(server.cluster)
+	vol.deleteVolFromStore(server.cluster)
+}
+
+func checkZoneRecover(mps map[uint64]*MetaPartition, zoneList []string, t *testing.T) (isRecover bool, err error) {
+	var curZone []string
+	isRecover = true
+	for _, mp := range mps {
+		curZone = make([]string, 0)
+		for _, host := range mp.Hosts {
+			var mn *MetaNode
+			if mn, err = server.cluster.metaNode(host); err != nil {
+				return
+			}
+			if !contains(curZone, mn.ZoneName) {
+				curZone = append(curZone, mn.ZoneName)
+			}
+		}
+		if len(curZone) != len(zoneList) {
+			t.Logf("vol[%v], meta partition[%v] recover from downgrade failed, curZone:%v, zoneList:%v", mp.volName, mp.PartitionID, curZone, zoneList)
+			isRecover = false
+			continue
+		}
+		t.Logf("vol[%v], meta partition[%v] recover from downgrade successfully!", mp.volName, mp.PartitionID)
+	}
+	return
+}
+func TestVolMultiZone(t *testing.T) {
+	var vol *Vol
+	var err error
+	testMultiZone := "multiZone"
+	zoneList := []string{testZone1, testZone2, testZone3}
+	zone := strings.Join(zoneList, ",")
+	fmt.Printf(strings.Join(zoneList, ","))
+
+	createVol(testMultiZone, zone, t)
+	//report mp/dp info to master
+	server.cluster.checkDataNodeHeartbeat()
+	server.cluster.checkMetaNodeHeartbeat()
+	time.Sleep(3 * time.Second)
+	//check status
+	server.cluster.checkMetaPartitions()
+	server.cluster.checkDataPartitions()
+	server.cluster.checkLoadMetaPartitions()
+	server.cluster.doLoadDataPartitions()
+	vol, err = server.cluster.getVol(testMultiZone)
+	if err != nil {
+		t.Errorf("err is %v", err)
+		return
+	}
+	vol.checkStatus(server.cluster)
+	getVol(testMultiZone, t)
+	updateVol(testMultiZone, testZone1+","+testZone2, 200, t)
+	statVol(testMultiZone, t)
+	//check repair the first replica
+	server.cluster.checkVolRepairDataPartitions()
+	server.cluster.checkVolRepairMetaPartitions()
+	//set partition isRecovering to false
+	server.cluster.checkDiskRecoveryProgress()
+	server.cluster.checkMigratedDataPartitionsRecoveryProgress()
+	server.cluster.checkMetaPartitionRecoveryProgress()
+	server.cluster.checkMigratedMetaPartitionRecoveryProgress()
+	//check repair the second replica, so all replicas should have been repaired
+	server.cluster.checkVolRepairDataPartitions()
+	server.cluster.checkVolRepairMetaPartitions()
+	//wait for the partitions to be repaired
+	time.Sleep(time.Second * 5)
+	mps := vol.cloneMetaPartitionMap()
+	var isRecover bool
+	if isRecover, err = checkZoneRecover(mps, []string{testZone1, testZone2}, t); err != nil {
+		t.Errorf("err is %v", err)
+	}
+	if !isRecover {
+		t.Errorf("checkVolRepairMetaPartition recover failed")
+	}
+
+	markDeleteVol(testMultiZone, t)
+	getSimpleVol(testMultiZone, t)
+	vol.checkStatus(server.cluster)
+	vol.deleteVolFromStore(server.cluster)
 }
 
 func checkDataPartitionsWritableTest(vol *Vol, t *testing.T) {
@@ -130,9 +285,9 @@ func getVol(name string, t *testing.T) {
 	process(reqURL, t)
 }
 
-func updateVol(name string, capacity int, t *testing.T) {
-	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v",
-		hostAddr, proto.AdminUpdateVol, name, capacity, buildAuthKey("cfs"))
+func updateVol(name, zone string, capacity int, t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v&zoneName=%v",
+		hostAddr, proto.AdminUpdateVol, name, capacity, buildAuthKey("cfs"), zone)
 	fmt.Println(reqURL)
 	process(reqURL, t)
 	vol, err := server.cluster.getVol(name)
@@ -142,6 +297,13 @@ func updateVol(name string, capacity int, t *testing.T) {
 	}
 	if vol.Capacity != uint64(capacity) {
 		t.Errorf("update vol failed,expect[%v],real[%v]", capacity, vol.Capacity)
+		return
+	}
+	if zone == "" {
+		return
+	}
+	if vol.zoneName != zone {
+		t.Errorf("update vol failed,expect[%v],real[%v]", zone, vol.zoneName)
 		return
 	}
 }
@@ -213,7 +375,7 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 	var volID uint64 = 1
 	var createTime = time.Now().Unix()
 	vol := newVol(volID, name, name, "", util.DefaultDataPartitionSize, 100, defaultReplicaNum,
-		defaultReplicaNum, false, false, false, false, createTime, "")
+		defaultReplicaNum, false, false, false, createTime, "")
 	// unavailable mp
 	mp1 := newMetaPartition(1, 1, defaultMaxMetaPartitionInodeID, 3, name, volID)
 	vol.addMetaPartition(mp1)

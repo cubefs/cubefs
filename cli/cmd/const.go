@@ -56,6 +56,8 @@ const (
 	CliFlagReplicas           = "replicas"
 	CliFlagEnable             = "enable"
 	CliFlagEnableFollowerRead = "follower-read"
+	CliFlagAuthenticate       = "authenticate"
+	CliFlagEnableToken        = "enable-token"
 	CliFlagEnableAutoFill     = "auto-fill"
 	CliFlagCapacity           = "capacity"
 	CliFlagThreshold          = "threshold"
@@ -64,6 +66,7 @@ const (
 	CliFlagAuthKey            = "authkey"
 	CliFlagINodeStartID       = "inode-start"
 	CliFlagId                 = "id"
+	CliFlagZoneName           = "zonename"
 
 	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
 
