@@ -184,8 +184,6 @@ type file struct {
 type dirStream struct {
 	pos      int
 	dirents  []proto.Dentry
-	namesMap map[uint64]string
-	inodes   []proto.InodeInfo
 }
 
 type client struct {
