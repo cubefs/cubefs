@@ -15,19 +15,24 @@ func TestCleanRaftLog(t *testing.T) {
 		os.MkdirAll(dir, 0755)
 	}
 
-	logFilePath1 := path.Join(dir, "test_clean.log.old")
+	logFilePath1 := path.Join(dir, "raft_info.log.old")
 	if err = createFile(logFilePath1, true); err != nil {
 		t.Errorf("create file[%v] err[%v]", logFilePath1, err)
 		return
 	}
-	logFilePath2 := path.Join(dir, "test_clean.log")
+	logFilePath2 := path.Join(dir, "test_clean.log.old")
 	if err = createFile(logFilePath2, true); err != nil {
 		t.Errorf("create file[%v] err[%v]", logFilePath2, err)
 		return
 	}
-	logFilePath3 := path.Join(dir, "test_clean.log.new")
+	logFilePath3 := path.Join(dir, "raft_err.log.new")
 	if err = createFile(logFilePath3, false); err != nil {
 		t.Errorf("create file[%v] err[%v]", logFilePath3, err)
+		return
+	}
+	logFilePath4 := path.Join(dir, "raft_info.log")
+	if err = createFile(logFilePath4, true); err != nil {
+		t.Errorf("create file[%v] err[%v]", logFilePath4, err)
 		return
 	}
 
@@ -47,6 +52,11 @@ func TestCleanRaftLog(t *testing.T) {
 	_, err = os.Stat(logFilePath3)
 	if err != nil {
 		t.Errorf("expect file[%v] exists but err is [%v]", logFilePath3, err)
+		return
+	}
+	_, err = os.Stat(logFilePath4)
+	if err != nil {
+		t.Errorf("expect file[%v] exists but err is [%v]", logFilePath4, err)
 		return
 	}
 

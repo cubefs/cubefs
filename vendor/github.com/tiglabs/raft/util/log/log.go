@@ -255,7 +255,7 @@ func NewLog(dir, module, level string) (*Log, error) {
 
 	if dir != "" {
 		go lg.checkLogRotation(dir, module)
-		go lg.checkCleanLog(dir)
+		go lg.checkCleanLog(dir, module)
 	}
 	go lg.loopMsg()
 
@@ -428,7 +428,7 @@ func (l *Log) checkLogRotation(logDir, module string) {
 	}
 }
 
-func (l *Log) checkCleanLog(logDir string) {
+func (l *Log) checkCleanLog(logDir, module string) {
 	// handle panic
 	defer func() {
 		if r := recover(); r != nil {
@@ -449,7 +449,7 @@ func (l *Log) checkCleanLog(logDir string) {
 		}
 		var needDelFiles RolledFile
 		for _, info := range fInfos {
-			if time.Since(info.ModTime()) > LogMaxReservedDays && !strings.HasSuffix(info.Name(), ".log") {
+			if time.Since(info.ModTime()) > LogMaxReservedDays && isExpiredRaftLog(module, info.Name()) {
 				needDelFiles = append(needDelFiles, info)
 			}
 		}
@@ -461,6 +461,17 @@ func (l *Log) checkCleanLog(logDir string) {
 		}
 		time.Sleep(time.Hour * 24)
 	}
+}
+
+func isExpiredRaftLog(module, name string) bool {
+	if strings.HasSuffix(name, ".log") {
+		return false
+	}
+	if strings.HasPrefix(name, module + infoLogFileName) || strings.HasPrefix(name, module + debugLogFileName) ||
+		strings.HasPrefix(name, module + warnLogFileName) || strings.HasPrefix(name, module + errLogFileName) {
+		return true
+	}
+	return false
 }
 
 func (l *Log) Debug(format string, v ...interface{}) {
