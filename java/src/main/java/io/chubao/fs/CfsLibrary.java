@@ -6,7 +6,7 @@ import com.sun.jna.Pointer;
 import java.util.List;
 import java.util.Arrays;
 
-public interface CfsDriver extends Library {
+public interface CfsLibrary extends Library {
     public class StatInfo extends Structure implements Structure.ByReference {
         // note that the field layout should be aligned with cfs_stat_info
         public long ino;
