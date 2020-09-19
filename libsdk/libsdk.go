@@ -70,19 +70,12 @@ import (
 )
 
 const (
-	slots = 4
-)
-
-const (
 	defaultBlkSize = uint32(1) << 12
 
 	maxFdNum uint = 1024000
 )
 
-var (
-	nextClientID  int64
-	clientBuckets [slots]*clientBucket
-)
+var gClientManager *clientManager
 
 var (
 	statusOK = C.int(0)
@@ -97,10 +90,8 @@ var (
 )
 
 func init() {
-	for i := 0; i < slots; i++ {
-		clientBuckets[i] = &clientBucket{
-			clients: make(map[int64]*client),
-		}
+	gClientManager = &clientManager{
+		clients: make(map[int64]*client),
 	}
 }
 
@@ -114,41 +105,39 @@ func errorToStatus(err error) C.int {
 	return -C.int(syscall.EIO)
 }
 
-type clientBucket struct {
-	clients map[int64]*client
-	mu      sync.RWMutex
+type clientManager struct {
+	nextClientID int64
+	clients      map[int64]*client
+	mu           sync.RWMutex
 }
 
-func (m *clientBucket) get(id int64) (client *client, exist bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	client, exist = m.clients[id]
-	return
-}
+func newClient() *client {
+	id := atomic.AddInt64(&gClientManager.nextClientID, 1)
+	c := &client{
+		id:    id,
+		fdmap: make(map[uint]*file),
+		fdset: bitset.New(maxFdNum),
+		cwd:   "/",
+	}
 
-func (m *clientBucket) put(id int64, c *client) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.clients[id] = c
-}
+	gClientManager.mu.Lock()
+	gClientManager.clients[id] = c
+	gClientManager.mu.Unlock()
 
-func (m *clientBucket) remove(id int64) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	delete(m.clients, id)
-}
-
-func putClient(id int64, c *client) {
-	clientBuckets[id%slots].put(id, c)
+	return c
 }
 
 func getClient(id int64) (c *client, exist bool) {
-	c, exist = clientBuckets[id%slots].get(id)
+	gClientManager.mu.RLock()
+	defer gClientManager.mu.RUnlock()
+	c, exist = gClientManager.clients[id]
 	return
 }
 
 func removeClient(id int64) {
-	clientBuckets[id%slots].remove(id)
+	gClientManager.mu.Lock()
+	defer gClientManager.mu.Unlock()
+	delete(gClientManager.clients, id)
 }
 
 type file struct {
@@ -190,17 +179,10 @@ type client struct {
 
 //export cfs_new_client
 func cfs_new_client() C.int64_t {
-	id := atomic.AddInt64(&nextClientID, 1)
-	c := &client{
-		id:    id,
-		fdmap: make(map[uint]*file),
-		fdset: bitset.New(maxFdNum),
-		cwd:   "/",
-	}
+	c := newClient()
 	// Just skip fd 0, 1, 2, to avoid confusion.
 	c.fdset.Set(0).Set(1).Set(2)
-	clientBuckets[id%slots].put(id, c)
-	return C.int64_t(id)
+	return C.int64_t(c.id)
 }
 
 //export cfs_set_client
