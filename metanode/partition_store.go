@@ -78,6 +78,7 @@ func (mp *MetaPartition) loadMetadata() (err error) {
 	mp.config.End = mConf.End
 	mp.config.Peers = mConf.Peers
 	mp.config.Cursor = mp.config.Start
+	mp.config.MaxInode = mp.config.MaxInode
 	mp.config.StoreType = mConf.StoreType
 
 	log.LogInfof("loadMetadata: load complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v) storeType(%v)",
@@ -140,6 +141,10 @@ func (mp *MetaPartition) loadInode(rootDir string) (err error) {
 		mp.checkAndInsertFreeList(ino)
 		if mp.config.Cursor < ino.Inode {
 			mp.config.Cursor = ino.Inode
+		}
+
+		if mp.config.MaxInode < ino.Inode {
+			mp.config.MaxInode = ino.Inode
 		}
 		numInodes += 1
 	}

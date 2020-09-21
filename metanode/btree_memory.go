@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"math"
 	"sync"
 
 	"github.com/chubaofs/chubaofs/util/btree"
@@ -83,6 +84,15 @@ type ExtendBTree struct {
 }
 type MultipartBTree struct {
 	*BTree
+}
+
+func (i *InodeBTree) GetMaxInode() (uint64, error) {
+	var maxInode uint64
+	i.BTree.tree.DescendRange(&Inode{Inode: 0}, &Inode{Inode: math.MaxUint64}, func(i btree.Item) bool {
+		maxInode = i.(*Inode).Inode
+		return false
+	})
+	return maxInode, nil
 }
 
 //get

@@ -486,6 +486,28 @@ func multipartEncodingKey(key string, id string) []byte {
 	return buff.Bytes()
 }
 
+func (b *InodeRocks) GetMaxInode() (uint64, error) {
+	iterator := b.RocksTree.db.NewIterator(gorocksdb.NewDefaultReadOptions())
+	defer iterator.Close()
+	iterator.Seek([]byte{byte(InodeType) + 1})
+	iterator.Prev()
+	slice := iterator.Value()
+	if slice == nil {
+		return 0, nil
+	}
+	defer slice.Free()
+	value := slice.Data()
+
+	if value[0] == byte(InodeType) {
+		inode := &Inode{}
+		if err := inode.Unmarshal(value); err != nil {
+			return 0, err
+		}
+		return inode.Inode, nil
+	}
+	return 0, nil
+}
+
 //clear
 func (b *InodeRocks) Clear() error {
 	return b.RocksTree.rocksClear(&b.count, InodeType)

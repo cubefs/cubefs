@@ -422,6 +422,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		Start:       request.Start,
 		End:         request.End,
 		Cursor:      request.Start,
+		MaxInode:    request.Start,
 		Peers:       request.Members,
 		StoreType:   request.StoreType,
 		RaftStore:   m.raftStore,

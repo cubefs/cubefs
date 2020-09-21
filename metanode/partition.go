@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/chubaofs/chubaofs/cmd/common"
@@ -68,6 +69,7 @@ type MetaPartitionConfig struct {
 	Peers       []proto.Peer        `json:"peers"` // Peers information of the raftStore
 	StoreType   proto.StoreType     `json:"store_type"`
 	Cursor      uint64              `json:"-"` // Cursor ID of the inode that have been assigned
+	MaxInode    uint64              `json:"-"`
 	NodeId      uint64              `json:"-"`
 	RootDir     string              `json:"-"`
 	RocksDir    string              `json:"-"`
@@ -132,6 +134,7 @@ type MetaPartition struct {
 	manager                *metadataManager
 	persistedApplyID       uint64
 	isLoadingMetaPartition bool
+	inodeLock              sync.Mutex
 }
 
 func (mp *MetaPartition) ForceSetMetaPartitionToLoadding() {
@@ -417,7 +420,15 @@ func (mp *MetaPartition) LoadSnapshot(snapshotPath string) (err error) {
 
 	//it means rocksdb and not init so skip load snapshot
 	if mp.config.StoreType == proto.MetaTypeRocks && mp.inodeTree.Count() > 0 {
-		mp.applyID, err = mp.inodeTree.GetApplyID()
+		if mp.applyID, err = mp.inodeTree.GetApplyID(); err != nil {
+			return err
+		}
+		if maxID, err := mp.inodeTree.GetMaxInode(); err != nil {
+			return err
+		} else {
+			mp.config.Cursor = maxID
+			mp.config.MaxInode = maxID
+		}
 		return err
 	}
 
@@ -530,17 +541,43 @@ func (mp *MetaPartition) DeleteRaft() (err error) {
 
 // Return a new inode ID and update the offset.
 func (mp *MetaPartition) nextInodeID() (inodeId uint64, err error) {
-	for {
-		cur := atomic.LoadUint64(&mp.config.Cursor)
-		end := mp.config.End
-		if cur >= end {
+	mp.inodeLock.Lock()
+	defer mp.inodeLock.Unlock()
+
+	newID := atomic.AddUint64(&mp.config.Cursor, 1)
+
+	if newID > mp.config.End {
+		if mp.inodeTree.Count()*3 > mp.config.End-mp.config.Start {
 			return 0, ErrInodeIDOutOfRange
 		}
-		newId := cur + 1
-		if atomic.CompareAndSwapUint64(&mp.config.Cursor, cur, newId) {
-			return newId, nil
-		}
+		mp.config.MaxInode = mp.config.End
+		newID = mp.config.Start
 	}
+
+	if mp.config.MaxInode < mp.config.End {
+		mp.config.MaxInode = newID
+		atomic.StoreUint64(&mp.config.Cursor, newID)
+		return newID, nil
+	}
+
+	for {
+		inode, err := mp.inodeTree.Get(newID)
+		if err != nil {
+			return 0, err
+		}
+
+		if inode == nil {
+			break
+		}
+		newID += 1
+	}
+
+	if newID > mp.config.End {
+		return 0, ErrInodeIDOutOfRange
+	}
+
+	atomic.StoreUint64(&mp.config.Cursor, newID)
+	return newID, nil
 }
 
 // ChangeMember changes the raft member with the specified one.
@@ -638,6 +675,8 @@ func (mp *MetaPartition) Reset() (err error) {
 	mp.multipartTree.Release()
 
 	mp.config.Cursor = 0
+	mp.config.MaxInode = 0
+
 	mp.applyID = 0
 
 	// remove files

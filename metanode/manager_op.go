@@ -118,9 +118,10 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			mpr.Status = proto.Unavailable
 		}
 		mpr.IsLeader = isLeader
-		if mConf.Cursor >= mConf.End {
+		if mConf.Cursor >= mConf.End && mpr.InodeCnt*3 > (mConf.End-mConf.Start) {
 			mpr.Status = proto.ReadOnly
 		}
+
 		if resp.Used > uint64(float64(resp.Total)*MaxUsedMemFactor) {
 			mpr.Status = proto.ReadOnly
 		}
