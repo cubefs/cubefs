@@ -49,6 +49,7 @@ export default {
       Size: 'Size:',
       Available: 'Available',
       Used: 'Used',
+      StoreType: 'StoreType',
       TotalVolumeCapacity: 'Total volume capacity',
       UsedData: 'Used data'
     },
@@ -126,6 +127,7 @@ export default {
         TotalDataPartition: 'Total Data Partition',
         OwnerID: 'Owner ID',
         ZoneName: 'Zone Name',
+        MpStoreType: 'Meta Partition Store Type',
         AvailableDataPartition: 'Available Data Partition',
         TotalMetapartition: 'Total Metapartition',
         CreateTime: 'Create time',
@@ -152,33 +154,34 @@ export default {
       },
       MetaPartitionManagement: {
         title: 'MetaPartition Management',
-        PartitionID:"ID",
-        dentryCount:"Dentry Count",
-        start:"Start",
-        end:"End",
-        isRecover:"Is Recover",
-        missNodes:"Miss Nodes",
-        replicaNum:"Replica num",
-        status:"status",
-        Hosts:"Hosts",
-        AddReplica:"Add Replica",
-        DeleteReplica:"Delete Replica",
-        DecommissionReplica:"Decommission Replica"
+        PartitionID: 'ID',
+        dentryCount: 'Dentry Count',
+        start: 'Start',
+        end: 'End',
+        storeType: 'StoreType',
+        isRecover: 'Is Recover',
+        missNodes: 'Miss Nodes',
+        replicaNum: 'Replica num',
+        status: 'status',
+        Hosts: 'Hosts',
+        AddReplica: 'Add Replica',
+        DeleteReplica: 'Delete Replica',
+        DecommissionReplica: 'Decommission Replica'
       },
       DataPartitionManagement: {
         title: 'DataPartition Management',
-        PartitionID:"ID",
-        MissNodes:"Miss Nodes",
-        ReplicaNum:"Replica num",
-        Status:"status",
-        LoadedTime:"Loaded Time",
-        Hosts:"Hosts",
-        VolName:"Volume Name",
-        AddReplica:"Add Replica",
-        DeleteReplica:"Delete Replica",
-        DecommissionReplica:"Decommission Replica"
+        PartitionID: 'ID',
+        MissNodes: 'Miss Nodes',
+        ReplicaNum: 'Replica num',
+        Status: 'status',
+        LoadedTime: 'Loaded Time',
+        Hosts: 'Hosts',
+        VolName: 'Volume Name',
+        AddReplica: 'Add Replica',
+        DeleteReplica: 'Delete Replica',
+        DecommissionReplica: 'Decommission Replica'
 
-      },
+      }
     },
     servers: {
       Cluster: 'Cluster',
@@ -201,6 +204,7 @@ export default {
       PartitionList: 'Partition List',
       PartitionID: 'Partition ID',
       Volume: 'Volume',
+      StoreType: 'Store Type',
       DiskPath: 'DiskPath',
       ExtentCount: 'Extent Count',
       NeedCompare: 'Need Compare',
@@ -296,7 +300,7 @@ export default {
       Replica: 'Replica',
       Add: 'Add',
       Delete: 'Delete',
-      Decommission:'Decommission'
+      Decommission: 'Decommission'
     },
     commonAttr: {
       UserName: 'UserName'
@@ -324,7 +328,7 @@ export default {
     crumb: {
       Server: ['Server'],
       ServerList: ['Server', 'Server List'],
-      VolumeList: ['Volume List'],
+      VolumeList: ['Volume List']
     }
   },
   ...enLocale

@@ -27,6 +27,7 @@
         <el-table-column prop="toMetaNode.available" :label="$t('chubaoFS.servers.Available')"></el-table-column>
         <el-table-column prop="toMetaNode.ratio" :label="$t('chubaoFS.servers.UsedRate')"></el-table-column>
         <el-table-column prop="toMetaNode.reportTime" :label="$t('chubaoFS.servers.ReportTime')" width="150"></el-table-column>
+        <el-table-column prop="storeType" :label="$t('chubaoFS.servers.StoreType')" width="150"></el-table-column>
         <el-table-column prop="toMetaNode.isActive" :label="$t('chubaoFS.servers.IsActive')">
           <template slot-scope="scope">
             <div>{{scope.row.toMetaNode.isActive}}</div>

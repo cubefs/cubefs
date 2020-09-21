@@ -38,9 +38,10 @@ func (api *NodeAPI) AddDataNode(serverAddr, zoneName string) (id uint64, err err
 	return
 }
 
-func (api *NodeAPI) AddMetaNode(serverAddr, zoneName string) (id uint64, err error) {
+func (api *NodeAPI) AddMetaNode(serverAddr, zoneName string, storeType proto.StoreType) (id uint64, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AddMetaNode)
 	request.addParam("addr", serverAddr)
+	request.addParam("mpStoreType", storeType.ToString())
 	request.addParam("zoneName", zoneName)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {

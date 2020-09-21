@@ -5,16 +5,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/samsarahq/thunder/graphql"
-	"github.com/samsarahq/thunder/graphql/schemabuilder"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/samsarahq/thunder/graphql"
+	"github.com/samsarahq/thunder/graphql/schemabuilder"
 )
 
 type ClusterService struct {
@@ -87,6 +88,17 @@ func (s *ClusterService) registerObject(schema *schemabuilder.Schema) {
 	})
 
 	nv := schema.Object("NodeView", proto.NodeView{})
+
+	nv.FieldFunc("storeType", func(ctx context.Context, n *proto.NodeView) (proto.StoreType, error) {
+		if _, _, err := permissions(ctx, ADMIN); err != nil {
+			return proto.MetaTypeUnKnown, err
+		}
+		if m, err := s.cluster.metaNode(n.Addr); err != nil {
+			return proto.MetaTypeUnKnown, err
+		} else {
+			return m.StoreType, nil
+		}
+	})
 
 	nv.FieldFunc("toMetaNode", func(ctx context.Context, n *proto.NodeView) (*MetaNode, error) {
 		if _, _, err := permissions(ctx, ADMIN); err != nil {
@@ -356,12 +368,22 @@ func (m *ClusterService) getTopology(ctx context.Context, args struct{}) (*proto
 			cv.NodeSet[ns.ID] = nsView
 			ns.dataNodes.Range(func(key, value interface{}) bool {
 				dataNode := value.(*DataNode)
-				nsView.DataNodes = append(nsView.DataNodes, proto.NodeView{ID: dataNode.ID, Addr: dataNode.Addr, Status: dataNode.isActive, IsWritable: dataNode.isWriteAble()})
+				nsView.DataNodes = append(nsView.DataNodes,
+					proto.NodeView{ID: dataNode.ID,
+						Addr:       dataNode.Addr,
+						Status:     dataNode.isActive,
+						IsWritable: dataNode.isWriteAble(),
+					})
 				return true
 			})
 			ns.metaNodes.Range(func(key, value interface{}) bool {
 				metaNode := value.(*MetaNode)
-				nsView.MetaNodes = append(nsView.MetaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
+				nsView.MetaNodes = append(nsView.MetaNodes,
+					proto.NodeView{ID: metaNode.ID,
+						Addr:       metaNode.Addr,
+						Status:     metaNode.IsActive,
+						IsWritable: metaNode.isWritable(),
+					})
 				return true
 			})
 		}
@@ -468,10 +490,11 @@ func (s *ClusterService) dataPartitionList(ctx context.Context, args struct{}) (
 }
 
 func (m *ClusterService) addMetaNode(ctx context.Context, args struct {
-	NodeAddr string
-	ZoneName string
+	NodeAddr  string
+	ZoneName  string
+	StoreType proto.StoreType
 }) (uint64, error) {
-	if id, err := m.cluster.addMetaNode(args.NodeAddr, args.ZoneName); err != nil {
+	if id, err := m.cluster.addMetaNode(args.NodeAddr, args.ZoneName, args.StoreType); err != nil {
 		return 0, err
 	} else {
 		return id, nil

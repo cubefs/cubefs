@@ -17,13 +17,6 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/cmd/common"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/raftstore"
-	util "github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/exporter"
-	"github.com/chubaofs/chubaofs/util/log"
 	"io/ioutil"
 	"net"
 	_ "net/http/pprof"
@@ -34,6 +27,14 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/chubaofs/chubaofs/cmd/common"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/raftstore"
+	util "github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const partitionPrefix = "partition_"
@@ -55,7 +56,6 @@ type MetadataManager interface {
 // MetadataManagerConfig defines the configures in the metadata manager.
 type MetadataManagerConfig struct {
 	NodeID    uint64
-	StoreType proto.StoreType
 	RootDir   string
 	RocksDirs []string
 	ZoneName  string
@@ -68,7 +68,6 @@ type metadataManager struct {
 	rootDir            string
 	rocksDirs          []string
 	raftStore          raftstore.RaftStore
-	storeType          proto.StoreType
 	connPool           *util.ConnectPool
 	state              uint32
 	mu                 sync.RWMutex
@@ -317,13 +316,13 @@ func (m *metadataManager) loadPartitions() (err error) {
 					PartitionId: id,
 					NodeId:      m.nodeId,
 					RaftStore:   m.raftStore,
-					StoreType:   m.storeType,
+					StoreType:   m.metaNode.storeType,
 					RootDir:     path.Join(m.rootDir, fileName),
 					ConnPool:    m.connPool,
 				}
 
 				//if sotreType is rocksdb , so find rocksdir in path
-				if m.storeType == proto.MetaTypeRocks {
+				if m.metaNode.storeType == proto.MetaTypeRocks {
 					for _, dir := range m.rocksDirs {
 						rocksdbDir := partitionPrefixPath(dir, partitionId)
 						if _, err = os.Stat(rocksdbDir); err != nil {
@@ -432,12 +431,16 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		ConnPool: m.connPool,
 	}
 
+	// only allow to create MetaTypeMemory/ MetaTypeRocks mp
 	if mpc.StoreType == proto.MetaTypeRocks {
 		rocksPath, err := util.SelectDisk(m.rocksDirs)
 		if err != nil {
 			return err
 		}
 		mpc.RocksDir = partitionPrefixPath(rocksPath, partitionId)
+	} else {
+		log.LogDebugf("====xxx===createMetaPartition: %v\n", mpc)
+		//mpc.StoreType = proto.MetaTypeMemory
 	}
 
 	mpc.AfterStop = func() {
@@ -514,7 +517,6 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) Metadata
 		nodeId:     conf.NodeID,
 		zoneName:   conf.ZoneName,
 		rootDir:    conf.RootDir,
-		storeType:  conf.StoreType,
 		rocksDirs:  conf.RocksDirs,
 		raftStore:  conf.RaftStore,
 		partitions: make(map[uint64]*MetaPartition),

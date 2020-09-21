@@ -69,6 +69,7 @@ func formatClusterStat(cs *proto.ClusterStatInfo) string {
 }
 
 var nodeViewTableRowPattern = "%-6v    %-18v    %-8v    %-8v"
+var metaNodeViewTableRowPattern = "%-6v    %-18v    %-8v    %-8v    %-8v"
 
 func formatNodeViewTableHeader() string {
 	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "STATUS")
@@ -448,15 +449,15 @@ func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 	return sb.String()
 }
 
-var metaNodeDetailTableRowPattern = "%-6v    %-6v    %-18v    %-6v    %-6v    %-6v    %-10v"
+var metaNodeDetailTableRowPattern = "%-6v    %-6v    %-18v    %-6v    %-6v    %-6v   %-10v   %-10v"
 
 func formatMetaNodeDetailTableHeader() string {
-	return fmt.Sprintf(metaNodeDetailTableRowPattern, "ID", "ZONE", "ADDRESS", "USED", "TOTAL", "STATUS", "REPORT TIME")
+	return fmt.Sprintf(metaNodeDetailTableRowPattern, "ID", "ZONE", "ADDRESS", "USED", "TOTAL", "STATUS", "STORETYPE", "REPORT TIME")
 }
 
 func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	if rowTable {
-		return fmt.Sprintf(metaNodeDetailTableRowPattern, mn.ID, mn.ZoneName, mn.Addr, mn.Used, mn.Total, mn.IsActive, formatTimeToString(mn.ReportTime))
+		return fmt.Sprintf(metaNodeDetailTableRowPattern, mn.ID, mn.ZoneName, mn.Addr, mn.Used, mn.Total, mn.IsActive, mn.StoreType.String(), formatTimeToString(mn.ReportTime))
 	}
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID                  : %v\n", mn.ID))
@@ -468,6 +469,7 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Total               : %v\n", formatSize(mn.Total)))
 	sb.WriteString(fmt.Sprintf("  Zone                : %v\n", mn.ZoneName))
 	sb.WriteString(fmt.Sprintf("  IsActive            : %v\n", formatNodeStatus(mn.IsActive)))
+	sb.WriteString(fmt.Sprintf("  StoreType           : %v\n", mn.StoreType.String()))
 	sb.WriteString(fmt.Sprintf("  Report time         : %v\n", formatTimeToString(mn.ReportTime)))
 	sb.WriteString(fmt.Sprintf("  Partition count     : %v\n", mn.MetaPartitionCount))
 	sb.WriteString(fmt.Sprintf("  Persist partitions  : %v\n", mn.PersistenceMetaPartitions))

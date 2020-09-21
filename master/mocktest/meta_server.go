@@ -32,6 +32,7 @@ type MockMetaServer struct {
 	NodeID     uint64
 	TcpAddr    string
 	ZoneName   string
+	StoreType  proto.StoreType
 	mc         *master.MasterClient
 	partitions map[uint64]*MockMetaPartition // Key: metaRangeId, Val: metaPartition
 	sync.RWMutex
@@ -56,7 +57,7 @@ func (mms *MockMetaServer) register() {
 	var nodeID uint64
 	var retry int
 	for retry < 3 {
-		nodeID, err = mms.mc.NodeAPI().AddMetaNode(mms.TcpAddr, mms.ZoneName)
+		nodeID, err = mms.mc.NodeAPI().AddMetaNode(mms.TcpAddr, mms.ZoneName, mms.StoreType)
 		if err == nil {
 			break
 		}

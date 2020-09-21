@@ -132,10 +132,11 @@ type StoreType uint8
 const (
 	MetaTypeMemory StoreType = iota
 	MetaTypeRocks
+
 	MetaTypeUnKnown = 255
 )
 
-func (s StoreType) ToString() string {
+func (s StoreType) String() string {
 	switch s {
 	case MetaTypeMemory:
 		return "memory"
@@ -144,6 +145,10 @@ func (s StoreType) ToString() string {
 	default:
 		return "unknown"
 	}
+}
+
+func (s StoreType) ToString() string {
+	return fmt.Sprintf("%d", int(s))
 }
 
 func MpStoreTypeParseFromString(st string) (StoreType, bool) {
@@ -282,11 +287,12 @@ type LoadMetaPartitionMetricRequest struct {
 
 // LoadMetaPartitionMetricResponse defines the response to the request of loading the meta partition metrics.
 type LoadMetaPartitionMetricResponse struct {
-	Start    uint64
-	End      uint64
-	MaxInode uint64
-	Status   uint8
-	Result   string
+	Start     uint64
+	End       uint64
+	MaxInode  uint64
+	Status    uint8
+	StoreType uint8
+	Result    string
 }
 
 // HeartBeatRequest define the heartbeat request.
@@ -330,6 +336,7 @@ type MetaPartitionReport struct {
 	Start       uint64
 	End         uint64
 	Status      int
+	StoreType   StoreType
 	MaxInodeID  uint64
 	IsLeader    bool
 	VolName     string
@@ -423,6 +430,7 @@ type MetaPartitionLoadResponse struct {
 	MaxInode    uint64
 	DentryCount uint64
 	InodeCount  uint64
+	StoreType   StoreType
 	Addr        string
 }
 
@@ -459,7 +467,7 @@ type MetaPartitionView struct {
 	IsRecover   bool
 	Members     []string
 	LeaderAddr  string
-	StoreType   string
+	StoreType   StoreType
 	Status      int8
 }
 

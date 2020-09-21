@@ -18,10 +18,11 @@ import (
 	"fmt"
 	"strconv"
 
+	"math"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
-	"math"
 )
 
 type nodeStatInfo = proto.NodeStatInfo

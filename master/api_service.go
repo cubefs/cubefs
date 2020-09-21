@@ -136,12 +136,22 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 			cv.NodeSet[ns.ID] = nsView
 			ns.dataNodes.Range(func(key, value interface{}) bool {
 				dataNode := value.(*DataNode)
-				nsView.DataNodes = append(nsView.DataNodes, proto.NodeView{ID: dataNode.ID, Addr: dataNode.Addr, Status: dataNode.isActive, IsWritable: dataNode.isWriteAble()})
+				nsView.DataNodes = append(nsView.DataNodes,
+					proto.NodeView{ID: dataNode.ID,
+						Addr:       dataNode.Addr,
+						Status:     dataNode.isActive,
+						IsWritable: dataNode.isWriteAble(),
+					})
 				return true
 			})
 			ns.metaNodes.Range(func(key, value interface{}) bool {
 				metaNode := value.(*MetaNode)
-				nsView.MetaNodes = append(nsView.MetaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
+				nsView.MetaNodes = append(nsView.MetaNodes,
+					proto.NodeView{ID: metaNode.ID,
+						Addr:       metaNode.Addr,
+						Status:     metaNode.IsActive,
+						IsWritable: metaNode.isWritable(),
+					})
 				return true
 			})
 		}
@@ -992,16 +1002,22 @@ func (m *Server) handleDataNodeTaskResponse(w http.ResponseWriter, r *http.Reque
 
 func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		nodeAddr string
-		zoneName string
-		id       uint64
-		err      error
+		nodeAddr  string
+		zoneName  string
+		storeType proto.StoreType
+		id        uint64
+		err       error
 	)
 	if nodeAddr, zoneName, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if id, err = m.cluster.addMetaNode(nodeAddr, zoneName); err != nil {
+	if storeType, err = extractMpStoreType(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if id, err = m.cluster.addMetaNode(nodeAddr, zoneName, storeType); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1980,7 +1996,7 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	mpView.MaxInodeID = mp.MaxInodeID
 	mpView.InodeCount = mp.InodeCount
 	mpView.DentryCount = mp.DentryCount
-	mpView.StoreType = mp.StoreType.ToString()
+	mpView.StoreType = mp.StoreType
 	mpView.IsRecover = mp.IsRecover
 	return
 }
@@ -2031,6 +2047,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			ReplicaNum:   mp.ReplicaNum,
 			Status:       mp.Status,
 			IsRecover:    mp.IsRecover,
+			StoreType:    mp.StoreType,
 			Hosts:        mp.Hosts,
 			Peers:        mp.Peers,
 			Zones:        zones,
@@ -2137,6 +2154,7 @@ func extractMpStoreType(r *http.Request) (mpStoreType proto.StoreType, err error
 	if storeType, ok := proto.MpStoreTypeParseFromString(s); ok {
 		mpStoreType = storeType
 	} else {
+		mpStoreType = proto.MetaTypeUnKnown
 		err = unmatchedKey(volMpStoreTypeKey)
 		return
 	}

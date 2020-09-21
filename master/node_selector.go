@@ -16,10 +16,11 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
 	"sort"
 	"sync"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const (
@@ -220,6 +221,26 @@ func getAvailHosts(nodes *sync.Map, excludeHosts []string, replicaNum int, selec
 	return
 }
 
-func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
-	return getAvailHosts(ns.metaNodes, excludeHosts, replicaNum, selectMetaNode)
+func (ns *nodeSet) getStoreTypeMetaNodes(storeType proto.StoreType) *sync.Map {
+
+	metaNodes := &sync.Map{}
+
+	ns.metaNodes.Range(func(key, value interface{}) bool {
+		if metaNode, ok := value.(*MetaNode); ok {
+			if storeType == proto.MetaTypeRocks && metaNode.StoreType == proto.MetaTypeRocks {
+				metaNodes.Store(key, metaNode)
+			} else if storeType != proto.MetaTypeRocks && metaNode.StoreType != proto.MetaTypeRocks {
+				metaNodes.Store(key, metaNode)
+			}
+		}
+
+		return true
+	})
+
+	return metaNodes
+}
+
+func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int, storeType proto.StoreType) (newHosts []string, peers []proto.Peer, err error) {
+	metaNodes := ns.getStoreTypeMetaNodes(storeType)
+	return getAvailHosts(metaNodes, excludeHosts, replicaNum, selectMetaNode)
 }

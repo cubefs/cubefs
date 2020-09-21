@@ -32,6 +32,7 @@ type MetaNodeInfo struct {
 	Total                     uint64 `json:"TotalWeight"`
 	Used                      uint64 `json:"UsedWeight"`
 	Ratio                     float64
+	StoreType                 StoreType
 	SelectCount               uint64
 	Carry                     float64
 	Threshold                 float32
@@ -73,6 +74,7 @@ type MetaPartitionInfo struct {
 	Replicas     []*MetaReplicaInfo
 	ReplicaNum   uint8
 	Status       int8
+	StoreType    StoreType
 	IsRecover    bool
 	Hosts        []string
 	Peers        []Peer
@@ -131,6 +133,7 @@ type ZoneStat struct {
 	DataNodeStat *ZoneNodesStat
 	MetaNodeStat *ZoneNodesStat
 }
+
 type ZoneNodesStat struct {
 	Total         float64 `json:"TotalGB"`
 	Used          float64 `json:"UsedGB"`

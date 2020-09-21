@@ -341,6 +341,7 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 		mr = newMetaReplica(mp.Start, mp.End, metaNode)
 		mp.addReplica(mr)
 	}
+	mp.StoreType = mgr.StoreType
 	mr.updateMetric(mgr)
 	mp.setMaxInodeID()
 	mp.setInodeCount()
@@ -490,7 +491,7 @@ func (mp *MetaPartition) replicaCreationTasks(clusterID, volName string) (tasks 
 	return
 }
 
-func (mp *MetaPartition) buildNewMetaPartitionTasks(specifyAddrs []string, peers []proto.Peer, volName string) (tasks []*proto.AdminTask) {
+func (mp *MetaPartition) buildNewMetaPartitionTasks(specifyAddrs []string, peers []proto.Peer, volName string, storeType proto.StoreType) (tasks []*proto.AdminTask) {
 	tasks = make([]*proto.AdminTask, 0)
 	hosts := make([]string, 0)
 	req := &proto.CreateMetaPartitionRequest{
@@ -499,6 +500,7 @@ func (mp *MetaPartition) buildNewMetaPartitionTasks(specifyAddrs []string, peers
 		PartitionID: mp.PartitionID,
 		Members:     peers,
 		VolName:     volName,
+		StoreType:   storeType,
 	}
 	if specifyAddrs == nil {
 		hosts = mp.Hosts
@@ -538,6 +540,7 @@ func (mp *MetaPartition) createTaskToCreateReplica(host string) (t *proto.AdminT
 		PartitionID: mp.PartitionID,
 		Members:     mp.Peers,
 		VolName:     mp.volName,
+		StoreType:   mp.StoreType,
 	}
 	t = proto.NewAdminTask(proto.OpCreateMetaPartition, host, req)
 	resetMetaPartitionTaskID(t, mp.PartitionID)

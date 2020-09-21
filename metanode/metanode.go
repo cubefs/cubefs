@@ -279,7 +279,6 @@ func (m *MetaNode) startMetaManager() (err error) {
 		NodeID:    m.nodeId,
 		RootDir:   m.metadataDir,
 		RocksDirs: m.rocksDirs,
-		StoreType: m.storeType,
 		RaftStore: m.raftStore,
 		ZoneName:  m.zoneName,
 	}
@@ -314,7 +313,8 @@ func (m *MetaNode) register() (err error) {
 			step++
 		}
 		var nodeID uint64
-		if nodeID, err = masterClient.NodeAPI().AddMetaNode(nodeAddress, m.zoneName); err != nil {
+		log.LogInfof("register: register to master fail: address(%v) storeType(%v)", nodeAddress, m.storeType)
+		if nodeID, err = masterClient.NodeAPI().AddMetaNode(nodeAddress, m.zoneName, m.storeType); err != nil {
 			log.LogErrorf("register: register to master fail: address(%v) err(%s)", nodeAddress, err)
 			time.Sleep(3 * time.Second)
 			continue

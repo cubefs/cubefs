@@ -15,6 +15,7 @@ CLIENT_SRC := $(wildcard client/*.go client/fs/*.go sdk/*.go)
 CLIENT2_SRC := $(wildcard clientv2/*.go clientv2/fs/*.go sdk/*.go)
 AUTHTOOL_SRC := $(wildcard authtool/*.go)
 CLI_SRC := $(wildcard cli/*.go)
+CONSOLE_SRC := $(wildcard sdk/graphql/client/* console/html_source/src/graphql/*.js console/html_source/config/*.js console/service/*.go console/*.go)
 
 RM := $(shell [ -x /bin/rm ] && echo "/bin/rm" || echo "/usr/bin/rm" )
 
@@ -35,6 +36,11 @@ client2: $(BIN_CLIENT2)
 authtool: $(BIN_AUTHTOOL)
 
 cli: $(BIN_CLI)
+
+phony += console
+console: $(CONSOLE_SRC)
+	@cd console/html_source; npm run build
+	@cd console; go run html_source/assets_generate.go
 
 $(BIN_SERVER): $(COMMON_SRC) $(SERVER_SRC)
 	@build/build.sh server

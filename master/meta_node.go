@@ -36,6 +36,7 @@ type MetaNode struct {
 	SelectCount               uint64
 	Carry                     float64
 	Threshold                 float32
+	StoreType                 proto.StoreType
 	ReportTime                time.Time
 	metaPartitionInfos        []*proto.MetaPartitionReport
 	MetaPartitionCount        int

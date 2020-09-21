@@ -17,6 +17,7 @@
         <el-table-column prop="missNodes" :label="$t('chubaoFS.operations.MetaPartitionManagement.missNodes')"></el-table-column>
         <el-table-column prop="start" :label="$t('chubaoFS.operations.MetaPartitionManagement.start')"></el-table-column>
         <el-table-column prop="end" :label="$t('chubaoFS.operations.MetaPartitionManagement.end')"></el-table-column>
+        <el-table-column prop="storeType" :label="$t('chubaoFS.operations.MetaPartitionManagement.storeType')"></el-table-column>
         <el-table-column prop :label="$t('chubaoFS.tools.Actions')">
           <template slot-scope="scope">
             <el-dropdown trigger="click" size="medium">

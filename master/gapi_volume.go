@@ -203,6 +203,7 @@ func (s *VolumeService) volPermission(ctx context.Context, args struct {
 func (s *VolumeService) createVolume(ctx context.Context, args struct {
 	Name, Owner, ZoneName, Description                 string
 	Capacity, DataPartitionSize, MpCount, DpReplicaNum uint64
+	StoreType                                          uint8
 	FollowerRead, Authenticate, CrossZone, EnableToken bool
 }) (*Vol, error) {
 	uid, per, err := permissions(ctx, ADMIN|USER)
@@ -224,6 +225,7 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 		zoneName:     args.ZoneName,
 		description:  args.Description,
 		mpCount:      int(args.DpReplicaNum),
+		mpStoreType:  proto.StoreType(args.StoreType),
 		size:         args.DataPartitionSize,
 		capacity:     args.Capacity,
 		followerRead: args.FollowerRead,
