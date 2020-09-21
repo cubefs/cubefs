@@ -15,7 +15,12 @@
 package master
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"net/http"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1942,4 +1947,103 @@ func (c *Cluster) setMetaNodeToOfflineState(startID, endID uint64, state bool, z
 		node.Unlock()
 		return true
 	})
+}
+
+func (c *Cluster) compareMetaData(reqURLs []string) (body []byte, err error) {
+	var (
+		msgMap          map[string][]byte
+		resultMapSlice  []map[string]interface{}
+		masterAddrSlice []interface{}
+	)
+	msgMap = make(map[string][]byte, 0)
+	resultMapSlice = make([]map[string]interface{}, 0)
+
+	if len(reqURLs) <= 1 {
+		err = fmt.Errorf("action[checkMetaData] reqURLs less than two [%v]", reqURLs)
+		return
+	}
+	for _, masterUrl := range reqURLs {
+		msg, err1 := c.sendToReqURL(masterUrl, http.MethodGet, nil, nil, nil)
+		if err1 != nil {
+			err = fmt.Errorf("action[checkMetaData] sendToReqURL err[%v]", err1)
+			return
+		}
+		msgMap[masterUrl] = msg
+	}
+	for _, msg := range msgMap {
+		tmpResultMap := make(map[string]interface{})
+		err = json.Unmarshal(msg, &tmpResultMap)
+		if err != nil {
+			return
+		}
+		resultMapSlice = append(resultMapSlice, tmpResultMap)
+	}
+	for i := 0; i < len(resultMapSlice); i++ {
+		addr, ok := resultMapSlice[i]["ip:port"]
+		if !ok {
+			err = fmt.Errorf("action[checkMetaData] get ip:port failed,reqURLs[%v]", reqURLs)
+			return
+		}
+		masterAddrSlice = append(masterAddrSlice, addr)
+		delete(resultMapSlice[i], "ip:port")
+	}
+	//compare
+	for i := 0; i < len(resultMapSlice) && i < len(masterAddrSlice); i++ {
+		log.LogInfof("----resultMap%d masterAddrSlice[%v],\n %v \n", i, masterAddrSlice[i], resultMapSlice[i])
+		for j := 0; j < len(resultMapSlice) && j < len(masterAddrSlice); j++ {
+			if i == j {
+				continue
+			}
+			respStr := fmt.Sprintf("compare[%v]with[%v]result[%v]\n", masterAddrSlice[i], masterAddrSlice[j], reflect.DeepEqual(resultMapSlice[i], resultMapSlice[j]))
+			log.LogInfo(respStr)
+			body = append(body, []byte(respStr)...)
+		}
+	}
+	return
+}
+
+//request to reqURL with the method, headMap, paramMap and body
+//then return the resp.Body
+func (c *Cluster) sendToReqURL(reqURL, method string, headMap, paramMap map[string]string, body []byte) (msg []byte, err error) {
+	var (
+		req          *http.Request
+		resp         *http.Response
+		urlWithParam string
+	)
+	client := &http.Client{Timeout: 2 * time.Second}
+	reqBody := bytes.NewBuffer(body)
+	urlWithParam = reqURL
+	firstParam := true
+	for k, v := range paramMap {
+		if firstParam {
+			urlWithParam += "?"
+			firstParam = false
+		} else {
+			urlWithParam += "&"
+		}
+		urlWithParam += k + "=" + v
+	}
+	if req, err = http.NewRequest(method, urlWithParam, reqBody); err != nil {
+		log.LogErrorf("action[sendToReqURL] construction NewRequest url=%s err[%s]", urlWithParam, err.Error())
+		return
+	}
+	req.Header.Set("Connection", "close")
+	for k, v := range headMap {
+		req.Header.Add(k, v)
+	}
+	if resp, err = client.Do(req); err != nil {
+		log.LogErrorf("action[sendToReqURL] do request get resp err url=%s err[%s]", urlWithParam, err.Error())
+		return
+	}
+	defer resp.Body.Close()
+	if msg, err = ioutil.ReadAll(resp.Body); err != nil {
+		log.LogErrorf("action[sendToReqURL] read body url=%s: %s", urlWithParam, err.Error())
+		return
+	}
+	if resp.StatusCode == http.StatusOK {
+		return
+	}
+	err = fmt.Errorf("action[sendToReqURL] response url=%s, status_code=%d, msg: %v", urlWithParam, resp.StatusCode, string(msg))
+	log.LogErrorf("action[sendToReqURL] err[%v] headMap[%v] paramMap[%v]", err, headMap, paramMap)
+	return
 }

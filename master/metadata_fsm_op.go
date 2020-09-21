@@ -754,3 +754,131 @@ func (c *Cluster) loadTokens() (err error) {
 	}
 	return
 }
+
+func (c *Cluster) getAllMetaDates() (resultMap map[string]interface{}, err error) {
+	resultMap = make(map[string]interface{}, 0)
+	result, err := c.fsm.store.SeekForPrefix([]byte(clusterPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[getAllMetaDates loadClusterValue],err:%v", err.Error())
+		return
+	}
+	for key, value := range result {
+		cv := &clusterValue{}
+		if err = json.Unmarshal(value, cv); err != nil {
+			log.LogErrorf("action[getAllMetaDates loadClusterValue], unmarshal err:%v", err.Error())
+			return
+		}
+		resultMap[key] = cv
+		log.LogInfof("action[getAllMetaDates loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
+	}
+
+	result, err = c.fsm.store.SeekForPrefix([]byte(nodeSetPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[getAllMetaDates loadNodeSets],err:%v", err.Error())
+		return
+	}
+	for key, value := range result {
+		nsv := &nodeSetValue{}
+		if err = json.Unmarshal(value, nsv); err != nil {
+			log.LogErrorf("action[getAllMetaDates loadNodeSets], unmarshal err:%v", err.Error())
+			return
+		}
+		if nsv.ZoneName == "" {
+			nsv.ZoneName = DefaultZoneName
+		}
+		resultMap[key] = nsv
+	}
+
+	result, err = c.fsm.store.SeekForPrefix([]byte(dataNodePrefix))
+	if err != nil {
+		err = fmt.Errorf("action[getAllMetaDates loadDataNodes],err:%v", err.Error())
+		return
+	}
+	for key, value := range result {
+		dnv := &dataNodeValue{}
+		if err = json.Unmarshal(value, dnv); err != nil {
+			err = fmt.Errorf("action[getAllMetaDates loadDataNodes],value:%v,unmarshal err:%v", string(value), err)
+			return
+		}
+		if dnv.ZoneName == "" {
+			dnv.ZoneName = DefaultZoneName
+		}
+		resultMap[key] = dnv
+	}
+
+	result, err = c.fsm.store.SeekForPrefix([]byte(metaNodePrefix))
+	if err != nil {
+		err = fmt.Errorf("action[getAllMetaDates loadMetaNodes],err:%v", err.Error())
+		return
+	}
+	for key, value := range result {
+		mnv := &metaNodeValue{}
+		if err = json.Unmarshal(value, mnv); err != nil {
+			err = fmt.Errorf("action[getAllMetaDates loadMetaNodes],unmarshal err:%v", err.Error())
+			return
+		}
+		if mnv.ZoneName == "" {
+			mnv.ZoneName = DefaultZoneName
+		}
+		resultMap[key] = mnv
+	}
+
+	result, err = c.fsm.store.SeekForPrefix([]byte(volPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[getAllMetaDates loadVols],err:%v", err.Error())
+		return
+	}
+	for key, value := range result {
+		var vv *volValue
+		if vv, err = newVolValueFromBytes(value); err != nil {
+			err = fmt.Errorf("action[getAllMetaDates loadVols],value:%v,unmarshal err:%v", string(value), err)
+			return
+		}
+		resultMap[key] = vv
+	}
+
+	result, err = c.fsm.store.SeekForPrefix([]byte(metaPartitionPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[getAllMetaDates loadMetaPartitions],err:%v", err.Error())
+		return
+	}
+	for key, value := range result {
+		mpv := &metaPartitionValue{}
+		if err = json.Unmarshal(value, mpv); err != nil {
+			err = fmt.Errorf("action[getAllMetaDates loadMetaPartitions],value:%v,unmarshal err:%v", string(value), err)
+			return
+		}
+		// haven't check if the vol name is in vols ,such as vol, err1 := c.getVol(volName)
+		resultMap[key] = mpv
+	}
+
+	result, err = c.fsm.store.SeekForPrefix([]byte(dataPartitionPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[getAllMetaDates loadDataPartitions],err:%v", err.Error())
+		return
+	}
+	for key, value := range result {
+		dpv := &dataPartitionValue{}
+		if err = json.Unmarshal(value, dpv); err != nil {
+			err = fmt.Errorf("action[getAllMetaDates loadDataPartitions],value:%v,unmarshal err:%v", string(value), err)
+			return
+		}
+		resultMap[key] = dpv
+	}
+
+	result, err = c.fsm.store.SeekForPrefix([]byte(TokenPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[getAllMetaDates loadDataPartitions],err:%v", err.Error())
+		return
+	}
+	for key, value := range result {
+		tv := &TokenValue{}
+		if err = json.Unmarshal(value, tv); err != nil {
+			err = fmt.Errorf("action[getAllMetaDates loadTokens],value:%v,err:%v", value, err)
+			return
+		}
+		resultMap[key] = tv
+	}
+
+	return
+}

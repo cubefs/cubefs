@@ -38,6 +38,8 @@ const (
 	AdminSetNodeInfo               = "/admin/setNodeInfo"
 	AdminGetNodeInfo               = "/admin/getNodeInfo"
 	AdminSetNodeState              = "/admin/setNodeState"
+	AdminGetMetaData               = "/metaData/get"
+	AdminMetaDataCompare           = "/metaData/compare"
 
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"

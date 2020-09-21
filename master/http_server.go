@@ -60,6 +60,10 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 					next.ServeHTTP(w, r)
 					return
 				}
+				if mux.CurrentRoute(r).GetName() == proto.AdminGetMetaData {
+					next.ServeHTTP(w, r)
+					return
+				}
 				if m.partition.IsRaftLeader() {
 					if m.metaReady {
 						next.ServeHTTP(w, r)
@@ -96,6 +100,10 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Methods(http.MethodGet).
 		Path(proto.AdminGetIP).
 		HandlerFunc(m.getIPAddr)
+	router.NewRoute().Name(proto.AdminGetMetaData).
+		Methods(http.MethodGet).
+		Path(proto.AdminGetMetaData).
+		HandlerFunc(m.getMetaData)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminGetCluster).
 		HandlerFunc(m.getCluster)
@@ -135,6 +143,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminListVols).
 		HandlerFunc(m.listVols)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminMetaDataCompare).
+		HandlerFunc(m.compareMetaData)
 
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

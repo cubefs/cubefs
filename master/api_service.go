@@ -2078,6 +2078,50 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))
 }
 
+func (m *Server) getMetaData(w http.ResponseWriter, r *http.Request) {
+	var (
+		body        []byte
+		err         error
+	)
+	resultMap, err := m.cluster.getAllMetaDates()
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	resultMap["ip:port"] = m.ip + ":" + m.port
+	if body, err = json.Marshal(resultMap); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	w.Write(body)
+	return
+}
+
+func (m *Server) compareMetaData(w http.ResponseWriter, r *http.Request) {
+	var (
+		masterAddrs []string
+		reqURLs     []string
+		body        []byte
+		err         error
+	)
+	masterAddrs = m.config.peerAddrs
+	masterNodeAddrs, err := parseMasterNodeAddrs(r, masterAddrs)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	for _, addr := range masterNodeAddrs {
+		reqURLs = append(reqURLs, "http://"+addr+"/metaData/get")
+	}
+	body, err = m.cluster.compareMetaData(reqURLs)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	w.Write(body)
+	return
+}
+
 func parseAndExtractPartitionInfo(r *http.Request) (partitionID uint64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -2261,3 +2305,32 @@ func (m *Server) associateVolWithUser(userID, volName string) error {
 	}
 	return nil
 }
+
+func parseMasterNodeAddrs(r *http.Request, masterAddrs []string) (nodeAddrs []string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	nodeAddrs = make([]string, 0)
+	nodeAddr := r.FormValue(addrKey)
+	if nodeAddr == "" {
+		err = keyNotFound(addrKey)
+		return
+	}
+	realMasterAddrs := make([]string, 0)
+	for _, addr := range masterAddrs {
+		realMasterAddrs= append(realMasterAddrs, addr[2:])
+	}
+	if nodeAddr == "all" {
+		nodeAddrs = realMasterAddrs
+		return
+	}
+	nodeAddrs = strings.Split(nodeAddr, ",")
+	for _, addr := range nodeAddrs {
+		if !contains(realMasterAddrs, addr) {
+			err = fmt.Errorf("node addr is not master addr")
+			return
+		}
+	}
+	return
+}
+
