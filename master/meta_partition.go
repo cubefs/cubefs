@@ -257,7 +257,7 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 			if mr.metaNode == nil {
 				continue
 			}
-			if !mr.metaNode.reachesThreshold() {
+			if !mr.metaNode.reachesThreshold() && mr.InodeCount < defaultMetaPartitionInodeIDStep {
 				continue
 			}
 			if mp.PartitionID == maxPartitionID {

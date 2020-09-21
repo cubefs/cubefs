@@ -18,9 +18,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
 	"runtime"
+	"strconv"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
@@ -43,6 +45,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		adminTask = &proto.AdminTask{
 			Request: req,
 		}
+		readOnlyPartitions = make(map[uint64]bool)
 	)
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
@@ -58,11 +61,37 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 
 	resp.StoreType = m.storeType
 	if m.storeType == proto.MetaTypeRocks {
-		if total, used, err := util.GetDiskInfo(m.rootDir); err != nil {
-			log.LogErrorf("get disk info by path:[%s] has err:[%s]", m.rootDir, err.Error())
-		} else {
-			resp.DiskTotal = total
-			resp.DiskUsed = used
+		for _, rd := range m.rocksDirs {
+			if total, used, err := util.GetDiskInfo(rd); err != nil {
+				log.LogErrorf("get disk info by path:[%s] has err:[%s]", m.rootDir, err.Error())
+			} else {
+				resp.DiskTotal = append(resp.DiskTotal, total)
+				resp.DiskUsed = append(resp.DiskUsed, used)
+
+				if total-used < util.GB {
+					//find all partitionID
+					dirs, _ := ioutil.ReadDir(rd)
+
+					for _, dir := range dirs {
+						if dir.IsDir() {
+							fileName := dir.Name()
+							if len(fileName) < 10 {
+								log.LogWarnf("ignore unknown partition dir: %s", fileName)
+								continue
+							}
+							partitionId := fileName[len(partitionPrefix):]
+							if id, err := strconv.ParseUint(partitionId, 10, 64); err != nil {
+								log.LogWarnf("ignore path: %s,not partition", partitionId)
+							} else {
+								readOnlyPartitions[id] = true
+							}
+
+						}
+
+					}
+
+				}
+			}
 		}
 	}
 
@@ -93,6 +122,11 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		if resp.Used > uint64(float64(resp.Total)*MaxUsedMemFactor) {
 			mpr.Status = proto.ReadOnly
 		}
+
+		if readOnlyPartitions[mpr.PartitionID] {
+			mpr.Status = proto.ReadOnly
+		}
+
 		resp.MetaPartitionReports = append(resp.MetaPartitionReports, mpr)
 		return true
 	})

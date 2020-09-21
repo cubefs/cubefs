@@ -345,8 +345,8 @@ type MetaNodeHeartbeatResponse struct {
 	MetaPartitionReports []*MetaPartitionReport
 	Status               uint8
 	//the param used for disk
-	DiskTotal uint64
-	DiskUsed  uint64
+	DiskTotal []uint64
+	DiskUsed  []uint64
 	StoreType StoreType
 	Result    string
 }
