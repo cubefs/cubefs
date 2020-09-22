@@ -7,14 +7,14 @@ public enum StatusCodes
   CFS_STATUS_OK(0, "Ok"),
   CFS_STATUS_ERROR(1, "Error"),
   CFS_STATUS_TIMEOUT(2, "Timeout"),
-  CFS_STATUS_EOF(3, "End-of-file reached"),
   CFS_STATUS_FILE_OPEN_FAILED(4, "File open failed"),
   CFS_STATUS_FILE_EXISTS(5, "File exists"),
   CFS_STATUS_IO_ERROR(6, "IO error"),
   CFS_STATUS_DENTRY_EXISTS(7, "Dentry is exist."),
   CFS_STATUS_DENTRY_NOT_FOUND(8, "Not found dentry."),
   CFS_STATUS_FILIE_NOT_FOUND(-2, "no such file or directory."),
-  CFS_STATUS_NULL_ARGUMENT(-3, "Null argument.");
+  CFS_STATUS_NULL_ARGUMENT(-3, "Null argument."),
+  CFS_STATUS_EOF(-5, "End-of-file reached");
 
   public static StatusCodes get(int code)
   {

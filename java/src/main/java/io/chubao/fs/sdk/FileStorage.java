@@ -46,6 +46,7 @@ public interface FileStorage {
   int getReplicaNumber();
   int getUid(String username) throws CFSException;
   int getGid(String groupname) throws CFSException;
+  int getGidByUser(String user) throws CFSException;
   String getUser(int uid) throws CFSException;
   String getGroup(int gid) throws CFSException;
 }

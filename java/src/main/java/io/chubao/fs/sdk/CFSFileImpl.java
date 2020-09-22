@@ -13,7 +13,6 @@ public class CFSFileImpl implements CFSFile {
   private long position = 0L;
   private long fileSize;
   private boolean isClosed = false;
-  private ReentrantLock lock = new ReentrantLock();
   private long fd;
 
   public CFSFileImpl(CFSDriverIns driver, long fd, long fileSize, long position) {
@@ -61,7 +60,7 @@ public class CFSFileImpl implements CFSFile {
 
   public synchronized void write(byte[] buff, int off, int len) throws CFSException {
     if (off < 0 || len < 0) {
-      throw new CFSException("Invalid argument.");
+      throw new CFSException("Invalid arguments.");
     }
 
     int wsize = 0;
@@ -84,7 +83,7 @@ public class CFSFileImpl implements CFSFile {
 
   public synchronized int read(byte[] buff, int off, int len) throws CFSException {
     if (off < 0 || len < 0) {
-      throw new CFSException("Invalid argument.");
+      throw new CFSException("Invalid arguments.");
     }
 
     int rsize = 0;
@@ -120,11 +119,6 @@ public class CFSFileImpl implements CFSFile {
 
   @Override
   public int pread(byte[] buff, int buffOffset, int len, long fileOffset) throws CFSException {
-    throw new CFSException("Not implement.");
-  }
-
-  @Override
-  public CFSStatInfo stat() throws CFSException {
     throw new CFSException("Not implement.");
   }
 }

@@ -20,6 +20,7 @@ public class CFSOwnerHelper {
   private Map<Integer, String> uids;
   private Map<String, Integer> groups;
   private Map<Integer, String> gids;
+  private Map<String, Integer> userGroups;
 
   private enum Type {
     user,
@@ -31,6 +32,7 @@ public class CFSOwnerHelper {
     groups = new HashMap<>();
     uids = new HashMap<>();
     gids = new HashMap<>();
+    userGroups = new HashMap<>();
     load(Type.user);
     load(Type.group);
   }
@@ -43,10 +45,11 @@ public class CFSOwnerHelper {
     return uid;
   }
 
-  public String getUser(int uid) throws CFSException {
+  public String getUser(int uid) {
     String user = uids.get(Integer.valueOf(uid));
     if (user == null) {
-      throw new RuntimeException("Not found the uid: " + uid+ " in " + passwdPath);
+      log.warn("Not found the uid: " + uid+ " in " + passwdPath);
+      return String.valueOf(uid);
     }
     return user;
   }
@@ -54,31 +57,44 @@ public class CFSOwnerHelper {
   public int getGid(String group) throws CFSException {
     Integer uid = users.get(group);
     if (uid == null) {
-      throw new RuntimeException("Not found the group: " + group+ " in " + groupPath);
+      throw new RuntimeException("Not found the group: " + group + " in " + groupPath);
     }
     return uid;
   }
 
-  public String getGroup(int gid) throws CFSException {
+  public int getGidByUser(String user) throws CFSException {
+    Integer uid = userGroups.get(user);
+    if (uid == null) {
+      throw new RuntimeException("Not found the group: " + user + " in " + passwdPath);
+    }
+    return uid;
+  }
+
+  public String getGroup(int gid) {
     String group = gids.get(Integer.valueOf(gid));
     if (group == null) {
-      throw new RuntimeException("Not found the uid: " + gid + " in " + passwdPath);
+      log.warn("Not found the uid: " + gid + " in " + passwdPath);
+      return String.valueOf(gid);
     }
     return group;
   }
 
   private void add(String line, Type type) throws Exception {
     String[] fileds = line.split(separator);
-    if (fileds.length < 3) {
-      throw new RuntimeException("[" + line + "] is invalid.");
-    }
 
     if (type == Type.user) {
+      if (fileds.length < 4) {
+        throw new RuntimeException("[" + line + "] is invalid.");
+      }
       users.put(fileds[0], Integer.valueOf(fileds[2]));
       uids.put(Integer.valueOf(fileds[2]), fileds[0]);
+      userGroups.put(fileds[0], Integer.valueOf(fileds[3]));
     }
 
     if (type == Type.group) {
+      if (fileds.length < 3) {
+        throw new RuntimeException("[" + line + "] is invalid.");
+      }
       groups.put(fileds[0], Integer.valueOf(fileds[2]));
       gids.put(Integer.valueOf(fileds[2]), fileds[0]);
     }

@@ -8,13 +8,11 @@ import io.chubao.fs.sdk.util.CFSOwnerHelper;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 public class FileStorageImpl implements FileStorage {
   private static final Log log = LogFactory.getLog(FileStorageImpl.class);
-  private final String separator= "/";
   private CFSDriverIns driver;
   private CFSOwnerHelper owner;
   private long defaultBlockSize = 128 * 1024 * 1024;
@@ -83,32 +81,29 @@ public class FileStorageImpl implements FileStorage {
 
   @Override
   public void setXAttr(String path, String name, byte[] value) throws CFSException {
-    log.error("Not implement.");
-    throw new CFSException("Not support.");
+    throw new CFSException("Not implement setXAttr.");
   }
 
   @Override
   public byte[] getXAttr(String path, String name) throws CFSException {
-    log.error("Not implement.");
-    throw new CFSException("Not support.");
+    throw new CFSException("Not implement getXAttr.");
   }
 
   @Override
   public List<String> listXAttr(String path) throws CFSException {
-    log.error("Not implement.");
-    throw new CFSException("Not support.");
+    throw new CFSException("Not implement listXAttr.");
   }
 
   @Override
   public Map<String,byte[]> getXAttrs(String path, List<String> names)
     throws CFSException {
-    throw new CFSException("Not support.");
+    throw new CFSException("Not implement getXAttrs.");
   }
 
   @Override
   public void removeXAttr(String path, String name) throws CFSException {
     log.error("Not implement.");
-    throw new CFSException("Not support.");
+    throw new CFSException("Not implement removeXAttr.");
   }
 
   @Override
@@ -142,6 +137,11 @@ public class FileStorageImpl implements FileStorage {
   }
 
   @Override
+  public int getGidByUser(String user) throws CFSException {
+    return owner.getGidByUser(user);
+  }
+
+  @Override
   public String getUser(int uid) throws CFSException {
     return owner.getUser(uid);
   }
@@ -153,34 +153,7 @@ public class FileStorageImpl implements FileStorage {
 
   private void setAttr(String path, int mode, int uid, int gid, long mtime, long atime)
     throws CFSException {
-    log.error("Not implement.");
-  }
-
-  private List<String> parsePath(String path) throws CFSException {
-    ArrayList<String> res = new ArrayList<>();
-    int index = 0;
-    if (path.charAt(index) != '/') {
-      throw new CFSException("The path must be start with /");
-    }
-    String[] names = path.split("/");
-    int count = 0;
-    for (int i=1; i<names.length-1; i++) {
-      if (names[i] == "." || names[i] == "") {
-        continue;
-      }
-
-      if (names[i+1] == "..") {
-        if (count == 0) {
-          throw new CFSException("Path is invalid.");
-        }
-        res.remove(count);
-      } else {
-        res.add(names[i]);
-        count ++;
-      }
-
-    }
-    return res;
+    throw new CFSException("Not implement setAttr.");
   }
 
   @Override

@@ -38,6 +38,9 @@ public class CFSDriverIns {
   }
 
   public void flush(long fd) throws CFSException {
+    if (fd < 1) {
+      throw new CFSException("Invalid argument.");
+    }
     int st = driver.cfs_flush(this.clientID, fd);
     if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {
       throw new CFSException("Failed to flush:" + fd + " status code:" + st);
@@ -49,6 +52,9 @@ public class CFSDriverIns {
   }
 
   public void close(long fd) throws CFSException {
+    if (fd < 1) {
+      throw new CFSException("Invalid arguments.");
+    }
     int st = driver.cfs_close(this.clientID, fd);
     if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {
       throw new CFSException("Failed to close:" + fd + " status code:" + fd);
@@ -56,8 +62,8 @@ public class CFSDriverIns {
   }
 
   public int write(long fd, long offset, byte[] data, int len) throws CFSException {
-    if (offset < 0 || len < 0) {
-      throw new CFSException("Invalid argument.");
+    if (fd < 1 || offset < 0 || len < 0) {
+      throw new CFSException("Invalid arguments.");
     }
     int wsize = driver.cfs_write(this.clientID, fd, offset, data, len);
     if (wsize < 0) {
@@ -73,28 +79,10 @@ public class CFSDriverIns {
   }
 
   public int read(long fd, long offset, byte[] buff, int len) throws CFSException {
-    if (offset < 0 || len < 0) {
-      throw new CFSException("Invalid argument.");
+    if (fd < 1 || offset < 0 || len < 0) {
+      throw new CFSException("Invalid arguments.");
     }
     int rsize = driver.cfs_read(this.clientID, fd, offset, buff, len);
-    /*
-    byte[] bf = new byte[64];
-    GoBuffer.ByReference gobuff = new GoBuffer.ByReference(bf);
-    //GoBuffer gobuff = new GoBuffer(bf);
-    Pointer pointer = gobuff.getPointer();
-    System.out.println("pointer:" + pointer);
-    //int rsize = driver.cfs_read(this.clientID, fd, offset, pointer, 64);
-    int rsize = driver.cfs_read(this.clientID, fd, offset, bf, 64);
-    try {
-      String data =  new String(bf, "utf8");
-      log.info("data:" + data);
-      System.out.println("buff:" + Arrays.toString(bf));
-    } catch (Exception e) {
-
-    }
-    if (pointer != null)
-      throw new RuntimeException("fd:" + fd);
-     */
     if (rsize == -5) {
       throw new CFSEOFException("fd:" + fd);
     }
@@ -117,6 +105,7 @@ public class CFSDriverIns {
   }
 
   public void rmdir(String path, boolean recursive) throws CFSException {
+    log.info("rmdir:" + path + " recursive:" + recursive);
     verifyPath(path);
     GoString.ByValue p = new GoString.ByValue();
     p.ptr = path;
@@ -128,6 +117,7 @@ public class CFSDriverIns {
   }
 
   public void unlink(String path) throws CFSException {
+    log.info("unlink:" + path);
     verifyPath(path);
     GoString.ByValue p = new GoString.ByValue();
     p.ptr = path;
@@ -155,6 +145,9 @@ public class CFSDriverIns {
   }
 
   public void truncate(String path, long newLength) throws CFSException {
+    if (newLength < 0) {
+      throw new CFSException("Invalid arguments.");
+    }
     verifyPath(path);
     GoString.ByValue p = new GoString.ByValue();
     p.ptr = path;
@@ -167,7 +160,6 @@ public class CFSDriverIns {
     if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {
       throw new CFSException("Failed to truncate: " + path + " status code: " + st);
     }
-
   }
 
   public void chmod(String path, int mode) throws CFSException {
@@ -229,12 +221,11 @@ public class CFSDriverIns {
     p.ptr = path;
     p.len = path.length();
     SDKStatInfo.ByReference info = new SDKStatInfo.ByReference();
-    //SDKStatInfo info = new SDKStatInfo();
     int st = driver.cfs_getattr(this.clientID, p, info);
     log.info(info.toString());
     if (StatusCodes.get(st) == StatusCodes.CFS_STATUS_FILIE_NOT_FOUND) {
-      log.error("Not fount the path: " + path + " error code: " + st);
-      //throw new CFSFileNotFoundException("Not fount the path: " + path);
+      log.error("Not found the path: " + path + " error code: " + st);
+      //throw new CFSFileNotFoundException("Not found the path: " + path);
       return null;
     }
     if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {

@@ -39,15 +39,15 @@ struct cfs_stat_info {
     uint32_t blk_size;
     uint32_t uid;
     uint32_t gid;
-	uint32_t valid;
-	uint32_t nameLen;
+	  uint32_t valid;
+	  uint32_t nameLen;
     char name[256];
 };
 
 struct cfs_dirent {
     uint64_t ino;
     char     name[256];
-	char     d_type;
+	  char     d_type;
 };
 
 struct cfs_open_res {
@@ -60,7 +60,6 @@ struct cfs_countdir_res {
 	uint64_t fd;
 	uint32_t num;
 };
-
 
 */
 import "C"
@@ -182,8 +181,8 @@ type file struct {
 }
 
 type dirStream struct {
-	pos      int
-	dirents  []proto.Dentry
+	pos     int
+	dirents []proto.Dentry
 }
 
 type client struct {
@@ -364,10 +363,10 @@ func cfs_setattr_by_path(id uint64, path string, stat *C.struct_cfs_stat_info) i
 }
 
 //export cfs_open
-func cfs_open(id uint64, path string, flags int, mode C.mode_t, uid, gid uint32, res *C.struct_cfs_open_res) int {
+func cfs_open(id uint64, path string, flags int, mode C.mode_t, uid, gid uint32, res *C.struct_cfs_open_res) int{
 	c, exist := getClient(id)
 	if !exist {
-		return statusEINVAL
+    return statusEINVAL
 	}
 
 	newpath, err := validPath(path)
@@ -402,7 +401,6 @@ func cfs_open(id uint64, path string, flags int, mode C.mode_t, uid, gid uint32,
 	/*
 	 * Note that the rwx mode is ignored when using libsdk
 	 */
-	//if fuseFlags&uint32(C.O_CREAT) != 0 && fuseFlags&uint32(C.O_APPEND) == 0 {
 	if fuseFlags&uint32(C.O_CREAT) != 0 {
 		if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
 			return statusEACCES
@@ -415,7 +413,7 @@ func cfs_open(id uint64, path string, flags int, mode C.mode_t, uid, gid uint32,
 		}
 		newInfo, err := c.create(dirInfo.Inode, name, fuseMode, uid, gid)
 		if err != nil {
-			fmt.Println("Failed to lookup the create file: ", name, " error: ", err)
+      fmt.Println("Failed to create file: ", path, " error: ", -errorToStatus(err), " msg:", err)
 			return -errorToStatus(err)
 		}
 		info = newInfo
@@ -578,6 +576,8 @@ func cfs_read(id uint64, fd uint64, off C.size_t, buf *C.char, size C.off_t) int
  * Note that readdir is not thread-safe according to the POSIX spec.
  */
 
+
+
 //export cfs_readdir
 func cfs_readdir(id uint64, fd uint64, dirents []C.struct_cfs_dirent, count int) (n int) {
 	c, exist := getClient(id)
@@ -663,7 +663,7 @@ func cfs_countdir(id uint64, path string, res *C.struct_cfs_countdir_res) int {
 }
 
 //export cfs_listattr
-func cfs_listattr(id, ino uint64, num uint32, stats *C.struct_cfs_stat_info) int {
+func cfs_listattr(id, ino uint64,  num uint32, stats *C.struct_cfs_stat_info) int {
 	c, exist := getClient(id)
 	if !exist {
 		return statusEINVAL
@@ -1098,7 +1098,16 @@ func (c *client) read(f *file, offset int, data []byte, size int) (n int, err er
 func resetAttr(info *proto.InodeInfo, stat *C.struct_cfs_stat_info) (valid uint32) {
 	statValid := uint32(stat.valid)
 	if statValid&attrMode != 0 {
-		info.Mode = proto.Mode(os.FileMode(stat.mode))
+		mode := info.Mode
+		if proto.IsRegular(mode) {
+			info.Mode = proto.Mode(os.FileMode(stat.mode))
+		} else if proto.IsDir(info.Mode) {
+			info.Mode = uint32(stat.mode) & 0777
+			info.Mode |= proto.Mode(os.ModeDir)
+		} else if proto.IsSymlink(info.Mode) {
+			info.Mode = uint32(stat.mode) & 0777
+			info.Mode |= proto.Mode(os.ModeSymlink)
+		}
 		valid |= proto.AttrMode
 	}
 

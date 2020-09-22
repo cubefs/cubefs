@@ -11,9 +11,12 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
 import java.io.File;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class CFSClient {
   private static final Log log = LogFactory.getLog(CFSClient.class);
+  private static AtomicLong clientID = new AtomicLong(0L);
+  private static FileStorageImpl storage = null;
   private CFSDriver driver;
   private String sdkLibPath;
 
@@ -33,10 +36,17 @@ public class CFSClient {
   }
 
   public FileStorage openFileStorage(StorageConfig config) throws CFSException {
+    /*
+    if (clientID.get() > 0 && storage != null) {
+      return storage;
+    }
+
+     */
     long cid = driver.cfs_new_client();
     if (cid < 0) {
       throw new CFSException("Failed to new a client.");
     }
+    clientID.set(cid);
 
     GoString.ByValue master = new GoString.ByValue();
     master.ptr = StorageConfig.CONFIG_KEY_MATSER;
@@ -62,11 +72,13 @@ public class CFSClient {
 
     try {
       CFSDriverIns ins = new CFSDriverIns(driver, cid);
-      FileStorageImpl storage = new FileStorageImpl(ins);
+      //FileStorageImpl storage = new FileStorageImpl(ins);
+      storage = new FileStorageImpl(ins);
       storage.init();
+      log.info("Succ to open FileStorage, client id:" + cid);
       return storage;
     } catch (Exception ex) {
-      log.error(ex.getMessage());
+      log.error(ex.getMessage(), ex);
       throw new RuntimeException(ex);
     }
   }

@@ -10,8 +10,6 @@ public interface CFSFile {
   void seek(long offset) throws CFSException;
   int read(byte[] buff, int buffOffset, int len) throws CFSException;
   int pread(byte[] buff, int buffOffset, int len, long fileOffset) throws CFSException;
-  CFSStatInfo stat()throws CFSException;
-  boolean isClosed();
   long getFileSize();
   long getPosition();
 }
