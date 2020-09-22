@@ -144,6 +144,9 @@ func (p *partition) Expired() (err error) {
 
 // Status returns the current raft status.
 func (p *partition) Status() (status *PartitionStatus) {
+	if p == nil || p.raft == nil {
+		return nil
+	}
 	status = p.raft.Status(p.id)
 	return
 }
