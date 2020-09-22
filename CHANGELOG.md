@@ -1,3 +1,17 @@
+## Release v2.2.2 - 2020/09/22
+
+### Feature
+* `datanode`: Introducing data partition selector which allow users to customize the client's selection logic for data partition when reading and writing, and can switch at any time. [#853](https://github.com/chubaofs/chubaofs/pull/853)
+
+### Enhancement
+* `client`: Add **enablePosixACL** configuration to enable POSIX ACL feature. [#906](https://github.com/chubaofs/chubaofs/pull/906) 
+* `datanode`: Improved data recovery speed. [#899](https://github.com/chubaofs/chubaofs/pull/899)
+
+### Bug fix
+* `datanode`: Fix the issue that the information in the memory is not released immediately after deleting the extent, which causes the status information of the data partition to be incorrect. [#938](https://github.com/chubaofs/chubaofs/pull/937)
+* `datanode`: Fix the issue that repeatedly sending requests to the failed data partitions. [#937](https://github.com/chubaofs/chubaofs/pull/937) 
+* `objectnode`: Fix the issue that recursive making directory concurrent with sample multi-layer path prefix. [#904](https://github.com/chubaofs/chubaofs/pull/904)
+
 ## Release v2.2.1 - 2020/09/07
 
 ### Bug fix
