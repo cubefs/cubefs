@@ -554,7 +554,7 @@ func (mp *MetaPartition) nextInodeID() (inodeId uint64, err error) {
 		newID = mp.config.Start
 	}
 
-	if mp.config.MaxInode < mp.config.End {
+	if mp.config.MaxInode < mp.config.End && newID > mp.config.MaxInode {
 		mp.config.MaxInode = newID
 		atomic.StoreUint64(&mp.config.Cursor, newID)
 		return newID, nil
