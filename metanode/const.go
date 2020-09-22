@@ -149,6 +149,7 @@ const (
 	cfgTotalMem          = "totalMem"
 	cfgZoneName          = "zoneName"
 	cfgStoreType         = "storeType"
+	cfgIdleInodeMultiple = "idleInodeMultiple"
 
 	metaNodeDeleteBatchCountKey = "batchCount"
 )

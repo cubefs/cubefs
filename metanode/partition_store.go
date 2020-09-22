@@ -55,7 +55,7 @@ func (mp *MetaPartition) loadMetadata() (err error) {
 		err = errors.NewErrorf("[loadMetadata]: OpenFile %s", err.Error())
 		return
 	}
-	defer fp.Close()
+	defer log.LogIfNotNil(fp.Close())
 	data, err := ioutil.ReadAll(fp)
 	if err != nil || len(data) == 0 {
 		err = errors.NewErrorf("[loadMetadata]: ReadFile %s, data: %s", err.Error(),
@@ -80,6 +80,7 @@ func (mp *MetaPartition) loadMetadata() (err error) {
 	mp.config.Cursor = mp.config.Start
 	mp.config.MaxInode = mp.config.MaxInode
 	mp.config.StoreType = mConf.StoreType
+	mp.config.IdleInodeMultiple = mConf.IdleInodeMultiple
 
 	log.LogInfof("loadMetadata: load complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v) storeType(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor, mp.config.StoreType)
