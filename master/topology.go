@@ -235,10 +235,15 @@ func (ns *nodeSet) deleteMetaNode(metaNode *MetaNode) {
 	ns.metaNodes.Delete(metaNode.Addr)
 }
 
-func (ns *nodeSet) canWriteForDataNode(replicaNum int) bool {
+// can Write For DataNode With Exclude Hosts
+func (ns *nodeSet) canWriteForDataNode(excludeHosts []string, replicaNum int) bool {
 	var count int
 	ns.dataNodes.Range(func(key, value interface{}) bool {
 		node := value.(*DataNode)
+		if contains(excludeHosts, node.Addr) == true {
+			log.LogDebugf("contains return")
+			return true
+		}
 		if node.isWriteAble() {
 			count++
 		}
@@ -604,7 +609,7 @@ func (zone *Zone) deleteMetaNode(metaNode *MetaNode) (err error) {
 	return
 }
 
-func (zone *Zone) allocNodeSetForDataNode(excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
+func (zone *Zone) allocNodeSetForDataNode(excludeNodeSets []uint64, excludeHosts []string, replicaNum uint8) (ns *nodeSet, err error) {
 	nset := zone.getAllNodeSet()
 	if nset == nil {
 		return nil, errors.NewError(proto.ErrNoNodeSetToCreateDataPartition)
@@ -620,7 +625,7 @@ func (zone *Zone) allocNodeSetForDataNode(excludeNodeSets []uint64, replicaNum u
 		if containsID(excludeNodeSets, ns.ID) {
 			continue
 		}
-		if ns.canWriteForDataNode(int(replicaNum)) {
+		if ns.canWriteForDataNode(excludeHosts, int(replicaNum)) {
 			return
 		}
 	}
@@ -706,7 +711,7 @@ func (zone *Zone) getAvailDataNodeHosts(excludeNodeSets []uint64, excludeHosts [
 	if replicaNum == 0 {
 		return
 	}
-	ns, err := zone.allocNodeSetForDataNode(excludeNodeSets, uint8(replicaNum))
+	ns, err := zone.allocNodeSetForDataNode(excludeNodeSets, excludeHosts, uint8(replicaNum))
 	if err != nil {
 		return nil, nil, errors.Trace(err, "zone[%v] alloc node set,replicaNum[%v]", zone.name, replicaNum)
 	}
