@@ -104,6 +104,12 @@ func (s *DefaultRandomSelector) RemoveDP(partitionID uint64) {
 	newRwPartition = append(newRwPartition, rwPartitionGroups[:i]...)
 	newRwPartition = append(newRwPartition, rwPartitionGroups[i+1:]...)
 
+	defer func() {
+		s.Lock()
+		s.partitions = newRwPartition
+		s.Unlock()
+	}()
+
 	for i = 0; i < len(localLeaderPartitions); i++ {
 		if localLeaderPartitions[i].PartitionID == partitionID {
 			break
@@ -118,7 +124,6 @@ func (s *DefaultRandomSelector) RemoveDP(partitionID uint64) {
 
 	s.Lock()
 	defer s.Unlock()
-	s.partitions = newRwPartition
 	s.localLeaderPartitions = newLocalLeaderPartitions
 
 	return
