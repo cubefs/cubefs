@@ -93,6 +93,7 @@ type InodeTree interface {
 	Delete(ino uint64) (bool, error)
 	Range(start, end *Inode, cb func(v []byte) (bool, error)) error
 	Count() uint64
+	GetMaxInode() (uint64, error)
 }
 
 type DentryTree interface {

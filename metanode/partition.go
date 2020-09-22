@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"bytes"
+	"container/list"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -24,6 +25,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/chubaofs/chubaofs/cmd/common"
@@ -61,22 +63,24 @@ func (sp sortedPeers) Swap(i, j int) {
 // MetaPartitionConfig is used to create a meta partition.
 type MetaPartitionConfig struct {
 	// Identity for raftStore group. RaftStore nodes in the same raftStore group must have the same groupID.
-	PartitionId uint64              `json:"partition_id"`
-	VolName     string              `json:"vol_name"`
-	Start       uint64              `json:"start"` // Minimal Inode ID of this range. (Required during initialization)
-	End         uint64              `json:"end"`   // Maximal Inode ID of this range. (Required during initialization)
-	Peers       []proto.Peer        `json:"peers"` // Peers information of the raftStore
-	StoreType   proto.StoreType     `json:"store_type"`
-	Cursor      uint64              `json:"-"` // Cursor ID of the inode that have been assigned
-	NodeId      uint64              `json:"-"`
-	RootDir     string              `json:"-"`
-	RocksDir    string              `json:"-"`
-	BeforeStart func()              `json:"-"`
-	AfterStart  func()              `json:"-"`
-	BeforeStop  func()              `json:"-"`
-	AfterStop   func()              `json:"-"`
-	RaftStore   raftstore.RaftStore `json:"-"`
-	ConnPool    *util.ConnectPool   `json:"-"`
+	PartitionId       uint64              `json:"partition_id"`
+	VolName           string              `json:"vol_name"`
+	Start             uint64              `json:"start"` // Minimal Inode ID of this range. (Required during initialization)
+	End               uint64              `json:"end"`   // Maximal Inode ID of this range. (Required during initialization)
+	Peers             []proto.Peer        `json:"peers"` // Peers information of the raftStore
+	StoreType         proto.StoreType     `json:"store_type"`
+	Cursor            uint64              `json:"-"` // Cursor ID of the inode that have been assigned
+	MaxInode          uint64              `json:"-"`
+	NodeId            uint64              `json:"-"`
+	RootDir           string              `json:"-"`
+	IdleInodeMultiple uint64              `json:"-"`
+	RocksDir          string              `json:"-"`
+	BeforeStart       func()              `json:"-"`
+	AfterStart        func()              `json:"-"`
+	BeforeStop        func()              `json:"-"`
+	AfterStop         func()              `json:"-"`
+	RaftStore         raftstore.RaftStore `json:"-"`
+	ConnPool          *util.ConnectPool   `json:"-"`
 }
 
 func (c *MetaPartitionConfig) checkMeta() (err error) {
@@ -132,6 +136,8 @@ type MetaPartition struct {
 	manager                *metadataManager
 	persistedApplyID       uint64
 	isLoadingMetaPartition bool
+	inodeLock              sync.Mutex
+	inodeIDQueue           list.List
 }
 
 func (mp *MetaPartition) ForceSetMetaPartitionToLoadding() {
@@ -417,7 +423,15 @@ func (mp *MetaPartition) LoadSnapshot(snapshotPath string) (err error) {
 
 	//it means rocksdb and not init so skip load snapshot
 	if mp.config.StoreType == proto.MetaTypeRocks && mp.inodeTree.Count() > 0 {
-		mp.applyID, err = mp.inodeTree.GetApplyID()
+		if mp.applyID, err = mp.inodeTree.GetApplyID(); err != nil {
+			return err
+		}
+		if maxID, err := mp.inodeTree.GetMaxInode(); err != nil {
+			return err
+		} else {
+			mp.config.Cursor = maxID
+			mp.config.MaxInode = maxID
+		}
 		return err
 	}
 
@@ -530,17 +544,61 @@ func (mp *MetaPartition) DeleteRaft() (err error) {
 
 // Return a new inode ID and update the offset.
 func (mp *MetaPartition) nextInodeID() (inodeId uint64, err error) {
-	for {
-		cur := atomic.LoadUint64(&mp.config.Cursor)
-		end := mp.config.End
-		if cur >= end {
+	mp.inodeLock.Lock()
+	defer mp.inodeLock.Unlock()
+
+	defer func() {
+		if inodeId > 0 {
+			atomic.StoreUint64(&mp.config.Cursor, inodeId)
+		}
+	}()
+
+	newID := atomic.AddUint64(&mp.config.Cursor, 1)
+
+	if newID > mp.config.End {
+		if mp.inodeTree.Count()*mp.config.IdleInodeMultiple > mp.config.End-mp.config.Start {
 			return 0, ErrInodeIDOutOfRange
 		}
-		newId := cur + 1
-		if atomic.CompareAndSwapUint64(&mp.config.Cursor, cur, newId) {
-			return newId, nil
-		}
+		mp.config.MaxInode = mp.config.End
+		newID = mp.config.Start
 	}
+
+	if mp.config.MaxInode < mp.config.End && newID > mp.config.MaxInode {
+		mp.config.MaxInode = newID
+		return newID, nil
+	}
+
+	if mp.inodeIDQueue.Len() > 0 {
+		return mp.inodeIDQueue.Front().Value.(uint64), nil
+	}
+
+	pre := mp.config.Start
+	err = mp.inodeTree.Range(&Inode{Inode: newID}, &Inode{Inode: mp.config.End}, func(v []byte) (b bool, err error) {
+		inode := Inode{}
+		if err := inode.Unmarshal(v); err != nil {
+			return false, err
+		}
+		for i := pre + 1; i < inode.Inode; i++ {
+			mp.inodeIDQueue.PushBack(i)
+			if mp.inodeIDQueue.Len() > 100000 {
+				return false, nil
+			}
+		}
+		pre = inode.Inode + 1
+		return true, nil
+	})
+
+	if err != nil {
+		log.LogErrorf("got inode id has err:[%s]", err.Error())
+		return 0, ErrInodeIDOutOfRange
+	}
+
+	if mp.inodeIDQueue.Len() > 0 {
+		return mp.inodeIDQueue.Front().Value.(uint64), nil
+	}
+
+	return 0, ErrInodeIDOutOfRange
+
 }
 
 // ChangeMember changes the raft member with the specified one.
@@ -638,6 +696,8 @@ func (mp *MetaPartition) Reset() (err error) {
 	mp.multipartTree.Release()
 
 	mp.config.Cursor = 0
+	mp.config.MaxInode = 0
+
 	mp.applyID = 0
 
 	// remove files
