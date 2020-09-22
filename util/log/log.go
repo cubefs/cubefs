@@ -489,7 +489,7 @@ func LogIfNotNil(e error) {
 			return
 		}
 		s := fmt.Sprintln(e.Error())
-		s = gLog.SetPrefix(s, levelPrefixes[3])
+		s = gLog.SetPrefix(s, levelPrefixes[2])
 		gLog.errorLogger.Output(2, s)
 	} else {
 		gLog.errorLogger.Output(2, e.Error())

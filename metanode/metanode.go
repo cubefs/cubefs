@@ -316,7 +316,6 @@ func (m *MetaNode) register() (err error) {
 			step++
 		}
 		var nodeID uint64
-		log.LogInfof("register: register to master fail: address(%v) storeType(%v)", nodeAddress, m.storeType)
 		if nodeID, err = masterClient.NodeAPI().AddMetaNode(nodeAddress, m.zoneName, m.storeType); err != nil {
 			log.LogErrorf("register: register to master fail: address(%v) err(%s)", nodeAddress, err)
 			time.Sleep(3 * time.Second)

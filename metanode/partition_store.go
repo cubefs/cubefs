@@ -55,7 +55,9 @@ func (mp *MetaPartition) loadMetadata() (err error) {
 		err = errors.NewErrorf("[loadMetadata]: OpenFile %s", err.Error())
 		return
 	}
-	defer log.LogIfNotNil(fp.Close())
+	defer func() {
+		log.LogIfNotNil(fp.Close())
+	}()
 	data, err := ioutil.ReadAll(fp)
 	if err != nil || len(data) == 0 {
 		err = errors.NewErrorf("[loadMetadata]: ReadFile %s, data: %s", err.Error(),

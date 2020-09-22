@@ -75,8 +75,6 @@ type MetaPartitionConfig struct {
 	RootDir           string              `json:"-"`
 	IdleInodeMultiple uint64              `json:"-"`
 	RocksDir          string              `json:"-"`
-	BeforeStart       func()              `json:"-"`
-	AfterStart        func()              `json:"-"`
 	BeforeStop        func()              `json:"-"`
 	AfterStop         func()              `json:"-"`
 	RaftStore         raftstore.RaftStore `json:"-"`
@@ -160,15 +158,10 @@ func (mp *MetaPartition) Start() (err error) {
 			}
 			atomic.StoreUint32(&mp.state, newState)
 		}()
-		if mp.config.BeforeStart != nil {
-			mp.config.BeforeStart()
-		}
+
 		if err = mp.onStart(); err != nil {
 			err = errors.NewErrorf("[Start]->%s", err.Error())
 			return
-		}
-		if mp.config.AfterStart != nil {
-			mp.config.AfterStart()
 		}
 	}
 	return

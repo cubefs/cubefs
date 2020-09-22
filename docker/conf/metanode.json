@@ -11,6 +11,7 @@
   "warnLogDir": "/cfs/log",
   "totalMem": "536870912",
   "storeType": "0",
+  "idleInodeMultiple": 10,
   "metadataDir": "/cfs/data/meta",
   "raftDir": "/cfs/data/raft",
   "masterAddr": [

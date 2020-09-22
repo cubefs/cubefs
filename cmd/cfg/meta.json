@@ -17,5 +17,6 @@
     "192.168.31.141:80",
     "192.168.30.200:80"
   ],
-  "store_type": 1
+  "store_type": 1,
+  "idleInodeMultiple": 10
 }
