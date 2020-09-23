@@ -38,7 +38,7 @@ func formatClusterView(cv *proto.ClusterView) string {
 	sb.WriteString(fmt.Sprintf("  DataNode total   : %v GB\n", cv.DataNodeStatInfo.TotalGB))
 	sb.WriteString(fmt.Sprintf("  Volume count     : %v\n", len(cv.VolStatInfo)))
 	sb.WriteString(fmt.Sprintf("  Dp recover pool  : %v\n", cv.DpRecoverPool))
-	sb.WriteString(fmt.Sprintf("  Mp recover pool  : %v\n", cv.DpRecoverPool))
+	sb.WriteString(fmt.Sprintf("  Mp recover pool  : %v\n", cv.MpRecoverPool))
 	return sb.String()
 }
 
