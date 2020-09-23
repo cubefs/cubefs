@@ -15,6 +15,7 @@
         <el-table-column prop="replicaNum" :label="$t('chubaoFS.operations.MetaPartitionManagement.replicaNum')"></el-table-column>
         <el-table-column prop="status" :label="$t('chubaoFS.operations.MetaPartitionManagement.status')"></el-table-column>
         <el-table-column prop="missNodes" :label="$t('chubaoFS.operations.MetaPartitionManagement.missNodes')"></el-table-column>
+        <el-table-column prop="volName" :label="$t('chubaoFS.operations.MetaPartitionManagement.VolName')"></el-table-column>
         <el-table-column prop="start" :label="$t('chubaoFS.operations.MetaPartitionManagement.start')"></el-table-column>
         <el-table-column prop="end" :label="$t('chubaoFS.operations.MetaPartitionManagement.end')"></el-table-column>
         <el-table-column prop="storeType" :label="$t('chubaoFS.operations.MetaPartitionManagement.storeType')"></el-table-column>

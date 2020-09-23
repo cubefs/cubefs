@@ -127,6 +127,7 @@ const baseGql = {
       start
       end
       hosts
+      volName
       inodeCount
       isRecover
       maxInodeID

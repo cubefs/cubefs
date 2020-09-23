@@ -164,6 +164,7 @@ export default {
         replicaNum: '副本数',
         status: '状态',
         Hosts: '主机',
+        VolName: '卷名称',
         AddReplica: '增加副本',
         DeleteReplica: '删除副本',
         DecommissionReplica: '解除副本'

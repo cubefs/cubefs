@@ -164,6 +164,7 @@ export default {
         replicaNum: 'Replica num',
         status: 'status',
         Hosts: 'Hosts',
+        VolName: 'Volume Name',
         AddReplica: 'Add Replica',
         DeleteReplica: 'Delete Replica',
         DecommissionReplica: 'Decommission Replica'
