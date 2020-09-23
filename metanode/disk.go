@@ -26,9 +26,9 @@ import (
 type Disk struct {
 	sync.RWMutex
 	Path      string
-	Total     uint64
-	Used      uint64
-	Available uint64
+	Total     float64
+	Used      float64
+	Available float64
 
 	stopCh chan struct{}
 }
@@ -36,6 +36,7 @@ type Disk struct {
 func NewDisk(path string) (d *Disk) {
 	d = new(Disk)
 	d.Path = path
+	d.stopCh = make(chan struct{}, 1)
 	d.computeUsage()
 	d.startScheduleToUpdateSpaceInfo()
 	return
@@ -51,24 +52,9 @@ func (d *Disk) computeUsage() (err error) {
 		return
 	}
 
-	total := int64(fs.Blocks * uint64(fs.Bsize))
-	if total < 0 {
-		total = 0
-	}
-	d.Total = uint64(total)
-
-	available := int64(fs.Bavail * uint64(fs.Bsize))
-	if available < 0 {
-		available = 0
-	}
-	d.Available = uint64(available)
-
-	//  used := math.Max(0, int64(total - available))
-	used := int64(total - available)
-	if used < 0 {
-		used = 0
-	}
-	d.Used = uint64(used)
+	d.Total = float64(fs.Blocks) * float64(fs.Bsize)
+	d.Available = float64(fs.Bavail) * float64(fs.Bsize)
+	d.Used = d.Total - d.Available
 
 	log.LogDebugf("action[computeUsage] disk(%v) all(%v) available(%v) used(%v)", d.Path, d.Total, d.Available, d.Used)
 
