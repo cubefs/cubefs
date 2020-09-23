@@ -18,12 +18,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/gorilla/mux"
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/graphql/introspection"
 	"net/http"
 	"net/http/httputil"
-
-	"github.com/gorilla/mux"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/config"
@@ -92,6 +91,17 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	m.registerHandler(router, proto.AdminVolumeAPI, vs.Schema())
 
 	// cluster management APIs
+	router.NewRoute().Name(proto.VersionPath).
+		Methods(http.MethodGet).
+		Path(proto.VersionPath).
+		HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			version := proto.MakeVersion("console")
+			marshal, _ := json.Marshal(version)
+			if _, err := w.Write(marshal); err != nil {
+				log.LogErrorf("write version has err:[%s]", err.Error())
+			}
+		})
+
 	router.NewRoute().Name(proto.AdminGetIP).
 		Methods(http.MethodGet).
 		Path(proto.AdminGetIP).

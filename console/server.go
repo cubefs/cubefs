@@ -38,6 +38,14 @@ func (c *ConsoleNode) Start(cfg *config.Config) error {
 
 	c.server.HandleFunc(proto.ConsoleIQL, cutil.IQLFun)
 
+	c.server.HandleFunc(proto.VersionPath, func(w http.ResponseWriter, _ *http.Request) {
+		version := proto.MakeVersion("console")
+		marshal, _ := json.Marshal(version)
+		if _, err := w.Write(marshal); err != nil {
+			log.LogErrorf("write version has err:[%s]", err.Error())
+		}
+	})
+
 	loginService := service.NewLoginService(cli)
 	c.addHandle(proto.ConsoleLoginAPI, loginService.Schema(), loginService)
 
