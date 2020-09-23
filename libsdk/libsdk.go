@@ -371,7 +371,13 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
 		}
 		newInfo, err := c.create(dirInfo.Inode, name, fuseMode)
 		if err != nil {
-			return errorToStatus(err)
+			if err != syscall.EEXIST {
+				return errorToStatus(err)
+			}
+			newInfo, err = c.lookupPath(absPath)
+			if err != nil {
+				return errorToStatus(err)
+			}
 		}
 		info = newInfo
 	} else {
