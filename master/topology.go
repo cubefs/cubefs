@@ -368,7 +368,7 @@ func (t *topology) allocZonesForMetaNode(zoneName string, replicaNum int, exclud
 	}
 
 	//if across zone,candidateZones must be larger than or equal with 2,otherwise,must have a candidate zone
-	if (len(zoneList) >= 2 && len(candidateZones) < 2) || len(candidateZones) < 1 {
+	if (replicaNum == 3 && len(zoneList) >= 2 && len(candidateZones) < 2) || len(candidateZones) < 1 {
 		log.LogError(fmt.Sprintf("action[allocZonesForMetaNode],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],err:%v",
 			len(zoneList), len(candidateZones), demandWriteNodes, proto.ErrNoZoneToCreateMetaPartition))
 		return nil, proto.ErrNoZoneToCreateMetaPartition
@@ -424,7 +424,7 @@ func (t *topology) allocZonesForDataNode(zoneName string, replicaNum int, exclud
 		}
 	}
 	//if across zone,candidateZones must be larger than or equal with 2, if not across zone, must have one candidate zone
-	if (len(zoneList) >= 2 && len(candidateZones) < 2) || len(candidateZones) < 1 {
+	if (replicaNum == 3 && len(zoneList) >= 2 && len(candidateZones) < 2) || len(candidateZones) < 1 {
 		log.LogError(fmt.Sprintf("action[allocZonesForDataNode],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],err:%v",
 			len(zoneList), len(candidateZones), demandWriteNodes, proto.ErrNoZoneToCreateDataPartition))
 		return nil, errors.NewError(proto.ErrNoZoneToCreateDataPartition)

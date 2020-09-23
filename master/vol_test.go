@@ -115,12 +115,13 @@ func TestVolMultiZoneDowngrade(t *testing.T) {
 	addDataServer(mds8Addr, testZone3)
 	time.Sleep(3 * time.Second)
 	server.cluster.cfg = newClusterConfig()
+
 	server.cluster.checkDataNodeHeartbeat()
 	server.cluster.checkMetaNodeHeartbeat()
 
 	//test forbid auto recover by setting RecoverPoolSize=-1
-	server.cluster.cfg.metaPartitionsRecoverPoolSize = -1
-	server.cluster.cfg.dataPartitionsRecoverPoolSize = -1
+	server.cluster.cfg.MetaPartitionsRecoverPoolSize = -1
+	server.cluster.cfg.DataPartitionsRecoverPoolSize = -1
 	server.cluster.checkVolRepairDataPartitions()
 	server.cluster.checkVolRepairMetaPartitions()
 
@@ -135,8 +136,8 @@ func TestVolMultiZoneDowngrade(t *testing.T) {
 		t.Errorf("checkVolRepairMetaPartition is forbidden when recover pool size equals -1")
 	}
 	//test normal recover
-	server.cluster.cfg.metaPartitionsRecoverPoolSize = defaultMetaPartitionsRecoverPoolSize
-	server.cluster.cfg.dataPartitionsRecoverPoolSize = defaultDataPartitionsRecoverPoolSize
+	server.cluster.cfg.MetaPartitionsRecoverPoolSize = defaultMetaPartitionsRecoverPoolSize
+	server.cluster.cfg.DataPartitionsRecoverPoolSize = defaultDataPartitionsRecoverPoolSize
 	server.cluster.checkVolRepairDataPartitions()
 	server.cluster.checkVolRepairMetaPartitions()
 	//wait for the partitions to be repaired

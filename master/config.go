@@ -91,8 +91,8 @@ type clusterConfig struct {
 	heartbeatPort                       int64
 	replicaPort                         int64
 	diffSpaceUsage                      uint64
-	dataPartitionsRecoverPoolSize       int32
-	metaPartitionsRecoverPoolSize       int32
+	DataPartitionsRecoverPoolSize       int32
+	MetaPartitionsRecoverPoolSize       int32
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -109,8 +109,6 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.MetaNodeThreshold = defaultMetaPartitionMemUsageThreshold
 	cfg.metaNodeReservedMem = defaultMetaNodeReservedMem
 	cfg.diffSpaceUsage = defaultDiffSpaceUsage
-	cfg.dataPartitionsRecoverPoolSize = defaultDataPartitionsRecoverPoolSize
-	cfg.metaPartitionsRecoverPoolSize = defaultMetaPartitionsRecoverPoolSize
 	return
 }
 
