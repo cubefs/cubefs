@@ -40,13 +40,14 @@ func (c *ConsoleNode) Start(cfg *config.Config) error {
 	c.server.HandleFunc(proto.ConsoleIQL, cutil.IQLFun)
 
 	c.server.HandleFunc(proto.VersionPath, func(w http.ResponseWriter, req *http.Request) {
+		log.LogIfNotNil(req.ParseForm())
 		addr := req.Form["addr"]
 
 		version := proto.VersionInfo{
 			Model: "error",
 		}
 		if len(addr) > 0 {
-			if get, err := http.Get(addr[0]); err != nil {
+			if get, err := http.Get("http://" + addr[0] + "/version"); err != nil {
 				version.CommitID = err.Error()
 			} else {
 				if all, err := ioutil.ReadAll(get.Body); err != nil {
