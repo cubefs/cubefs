@@ -759,7 +759,7 @@ func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp
 func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartition) (err error) {
 	hosts := make([]string, 0)
 	hosts = append(hosts, host)
-	tasks := mp.buildNewMetaPartitionTasks(hosts, mp.Peers, mp.volName, mp.StoreType)
+	tasks := mp.buildNewMetaPartitionTasks(hosts, mp.Peers, mp.VolName, mp.StoreType)
 	metaNode, err := c.metaNode(host)
 	if err != nil {
 		return

@@ -77,7 +77,7 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 		ReplicaNum:  mp.ReplicaNum,
 		StoreType:   uint8(mp.StoreType),
 		Status:      mp.Status,
-		VolName:     mp.volName,
+		VolName:     mp.VolName,
 		Hosts:       mp.hostsToString(),
 		Peers:       mp.Peers,
 		IsRecover:   mp.IsRecover,

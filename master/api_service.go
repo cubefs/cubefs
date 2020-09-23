@@ -2039,7 +2039,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			PartitionID:  mp.PartitionID,
 			Start:        mp.Start,
 			End:          mp.End,
-			VolName:      mp.volName,
+			VolName:      mp.VolName,
 			MaxInodeID:   mp.MaxInodeID,
 			InodeCount:   mp.InodeCount,
 			DentryCount:  mp.DentryCount,

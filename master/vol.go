@@ -583,7 +583,7 @@ func (vol *Vol) deleteMetaPartitionFromMetaNode(c *Cluster, task *proto.AdminTas
 	}
 	_, err = metaNode.Sender.syncSendAdminTask(task)
 	if err != nil {
-		log.LogErrorf("action[deleteMetaPartition] vol[%v],meta partition[%v],err[%v]", mp.volName, mp.PartitionID, err)
+		log.LogErrorf("action[deleteMetaPartition] vol[%v],meta partition[%v],err[%v]", mp.VolName, mp.PartitionID, err)
 		return
 	}
 	mp.Lock()

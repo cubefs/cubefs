@@ -97,7 +97,7 @@ func (mp *MetaPartition) checkInodeCount(clusterID string) {
 	}
 
 	if !isEqual {
-		msg := fmt.Sprintf("inode count is not equal,vol[%v],mpID[%v],", mp.volName, mp.PartitionID)
+		msg := fmt.Sprintf("inode count is not equal,vol[%v],mpID[%v],", mp.VolName, mp.PartitionID)
 		for _, lr := range mp.LoadResponse {
 			inodeCountStr := strconv.FormatUint(lr.MaxInode, 10)
 			applyIDStr := strconv.FormatUint(uint64(lr.ApplyID), 10)
@@ -118,7 +118,7 @@ func (mp *MetaPartition) checkDentryCount(clusterID string) {
 	}
 
 	if !isEqual {
-		msg := fmt.Sprintf("dentry count is not equal,vol[%v],mpID[%v],", mp.volName, mp.PartitionID)
+		msg := fmt.Sprintf("dentry count is not equal,vol[%v],mpID[%v],", mp.VolName, mp.PartitionID)
 		for _, lr := range mp.LoadResponse {
 			dentryCountStr := strconv.FormatUint(lr.DentryCount, 10)
 			applyIDStr := strconv.FormatUint(uint64(lr.ApplyID), 10)
@@ -159,7 +159,7 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 			if err != nil {
 				continue
 			}
-			vol, err := c.getVol(partition.volName)
+			vol, err := c.getVol(partition.VolName)
 			if err != nil {
 				continue
 			}
@@ -172,7 +172,7 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 				partition.RLock()
 				c.syncUpdateMetaPartition(partition)
 				partition.RUnlock()
-				Warn(c.Name, fmt.Sprintf("clusterID[%v],vol[%v] partitionID[%v] has recovered success", c.Name, partition.volName, partitionID))
+				Warn(c.Name, fmt.Sprintf("clusterID[%v],vol[%v] partitionID[%v] has recovered success", c.Name, partition.VolName, partitionID))
 			} else {
 				newBadMpIds = append(newBadMpIds, partitionID)
 			}

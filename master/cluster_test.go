@@ -279,7 +279,7 @@ func TestUpdateInodeIDUpperBound(t *testing.T) {
 		StoreType:   mp.StoreType,
 		MaxInodeID:  mp.Start + 1,
 		IsLeader:    false,
-		VolName:     mp.volName,
+		VolName:     mp.VolName,
 	}
 	metaNode, err := server.cluster.metaNode(mp.Hosts[0])
 	if err != nil {
