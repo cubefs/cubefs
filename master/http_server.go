@@ -95,7 +95,7 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Methods(http.MethodGet).
 		Path(proto.VersionPath).
 		HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			version := proto.MakeVersion("console")
+			version := proto.MakeVersion("master")
 			marshal, _ := json.Marshal(version)
 			if _, err := w.Write(marshal); err != nil {
 				log.LogErrorf("write version has err:[%s]", err.Error())

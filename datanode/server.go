@@ -343,7 +343,7 @@ func (s *DataNode) checkLocalPartitionMatchWithMaster() (err error) {
 
 func (s *DataNode) registerHandler() {
 	http.HandleFunc(proto.VersionPath, func(w http.ResponseWriter, _ *http.Request) {
-		version := proto.MakeVersion("MetaNode")
+		version := proto.MakeVersion("DataNode")
 		marshal, _ := json.Marshal(version)
 		if _, err := w.Write(marshal); err != nil {
 			log.LogErrorf("write version has err:[%s]", err.Error())
