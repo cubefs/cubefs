@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"regexp"
 	"strings"
@@ -38,8 +39,28 @@ func (c *ConsoleNode) Start(cfg *config.Config) error {
 
 	c.server.HandleFunc(proto.ConsoleIQL, cutil.IQLFun)
 
-	c.server.HandleFunc(proto.VersionPath, func(w http.ResponseWriter, _ *http.Request) {
-		version := proto.MakeVersion("console")
+	c.server.HandleFunc(proto.VersionPath, func(w http.ResponseWriter, req *http.Request) {
+		addr := req.Form["addr"]
+
+		version := proto.VersionInfo{
+			Model: "error",
+		}
+		if len(addr) > 0 {
+			if get, err := http.Get(addr[0]); err != nil {
+				version.CommitID = err.Error()
+			} else {
+				if all, err := ioutil.ReadAll(get.Body); err != nil {
+					version.CommitID = err.Error()
+				} else {
+					if err := json.Unmarshal(all, &version); err != nil {
+						version.CommitID = err.Error()
+					}
+				}
+			}
+		} else {
+			version = proto.MakeVersion("console")
+		}
+
 		marshal, _ := json.Marshal(version)
 		if _, err := w.Write(marshal); err != nil {
 			log.LogErrorf("write version has err:[%s]", err.Error())

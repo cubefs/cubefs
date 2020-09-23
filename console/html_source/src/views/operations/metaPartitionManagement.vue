@@ -2,7 +2,6 @@
   <div class="mp">
     <div>
       <div class="partition-right">
-        <span class="pr10">ID</span>
         <el-input v-model="searchVal" placeholder style="width: 255px;"></el-input>
         <el-button type="primary" class="ml5" @click="queryMetaPartitionList" >{{ $t('chubaoFS.tools.Search') }}</el-button>
       </div>
@@ -177,7 +176,7 @@ export default {
             let finalMetaPartitionList = [];
             if (this.searchVal && this.searchVal.trim() !== "") {
               res.data.metaPartitionList.forEach((item) => {
-                if (item.partitionID.toString() == this.searchVal.trim()) {
+                if (item.partitionID.toString() == this.searchVal.trim() || item.volName == this.searchVal.trim()) {
                   finalMetaPartitionList.push(item);
                 }
               });
@@ -203,7 +202,7 @@ export default {
               return a.partitionID - b.partitionID;
             });
             this.metaPartitionList = finalMetaPartitionList;
-            this.resData.page.totalRecord = res.data.metaPartitionList.length;
+            this.resData.page.totalRecord = this.metaPartitionList.length;
             this.handleCurrentChange(1);
             this.totalCapacity = 0;
             this.metaPartitionList.forEach((item) => {

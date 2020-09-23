@@ -2,7 +2,6 @@
   <div class="mp">
     <div>
       <div class="partition-right">
-        <span class="pr10">ID</span>
         <el-input v-model="searchVal" placeholder style="width: 255px;"></el-input>
         <el-button type="primary" class="ml5" @click="queryDataPartitionList" >{{ $t('chubaoFS.tools.Search') }}</el-button>
       </div>
@@ -173,7 +172,7 @@ export default {
             let finalDataPartitionList = [];
             if (this.searchVal && this.searchVal.trim() !== "") {
               res.data.dataPartitionList.forEach((item) => {
-                if (item.partitionID.toString() == this.searchVal.trim()) {
+                if (item.partitionID.toString() == this.searchVal.trim() || item.volName == this.searchVal.trim()) {
                   finalDataPartitionList.push(item);
                 }
               });
@@ -200,7 +199,7 @@ export default {
               return a.partitionID - b.partitionID;
             });
             this.dataPartitionList = finalDataPartitionList;
-            this.resData.page.totalRecord = res.data.dataPartitionList.length;
+            this.resData.page.totalRecord = this.dataPartitionList.length;
             this.handleCurrentChange(1);
             this.dataPartitionList.forEach((item) => {
               item.status = formatStatus(item.status);
