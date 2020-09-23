@@ -99,14 +99,20 @@ public class TestCfsClient {
                 return;
             }
 
+            int total_entry = 0;
             Dirent dent = new Dirent();
-            Dirent[] dents = (Dirent[]) dent.toArray(16);
-            int n = mnt.Readdir(fd, dents, 16);
-            System.out.println("num of entries: " + n);
-            for (int i = 0; i < n; i++) {
-                System.out.println("ino: " + dents[i].ino + " | d_type: " + dents[i].dType);
+            Dirent[] dents = (Dirent[]) dent.toArray(2);
+            for (;;) {
+                int n = mnt.Readdir(fd, dents, 2);
+                if (n <= 0) {
+                    break;
+                }
+                total_entry += n;
+                for (int i = 0; i < n; i++) {
+                    System.out.println("ino: " + dents[i].ino + " | d_type: " + dents[i].dType);
+                }
             }
-
+            System.out.println("num of entries: " + total_entry);
             mnt.Close(fd);
         } else if (args[0].equals("chmod")) {
             int fd = mnt.Open(targetPath, mnt.O_RDWR, 0644);
