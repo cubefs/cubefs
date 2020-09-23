@@ -452,7 +452,7 @@ func (c *Cluster) checkVolRepairMetaPartitions() {
 				"checkVolRepairMetaPartitions occurred panic")
 		}
 	}()
-	if c.DisableAutoAllocate || c.cfg.metaPartitionsRecoverPoolSize == -1 {
+	if c.DisableAutoAllocate || c.cfg.MetaPartitionsRecoverPoolSize == -1 {
 		return
 	}
 	vols := c.allVols()
@@ -484,7 +484,7 @@ func (c *Cluster) checkVolRepairDataPartitions() {
 				"checkVolRepairDataPartitions occurred panic")
 		}
 	}()
-	if c.DisableAutoAllocate || c.cfg.dataPartitionsRecoverPoolSize == -1 {
+	if c.DisableAutoAllocate || c.cfg.DataPartitionsRecoverPoolSize == -1 {
 		return
 	}
 	vols := c.allVols()
@@ -1408,6 +1408,11 @@ func (partition *DataPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
 		log.LogWarnf("action[RepairZone], vol[%v], zoneName[%v], dpReplicaNum[%v] can not be automatically repaired", vol.Name, vol.zoneName, vol.dpReplicaNum)
 		return
 	}
+	rps := partition.liveReplicas(defaultDataPartitionTimeOutSec)
+	if len(rps) < int(vol.dpReplicaNum) {
+		log.LogWarnf("action[RepairZone], vol[%v], zoneName[%v], live Replicas [%v] less than dpReplicaNum[%v], can not be automatically repaired", vol.Name, vol.zoneName, len(rps), vol.dpReplicaNum)
+		return
+	}
 	zoneList = strings.Split(vol.zoneName, ",")
 	if len(partition.Replicas) != int(vol.dpReplicaNum) {
 		log.LogWarnf("action[RepairZone], data replica length[%v] not equal to dpReplicaNum[%v]", len(partition.Replicas), vol.dpReplicaNum)
@@ -1417,16 +1422,16 @@ func (partition *DataPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
 		log.LogWarnf("action[RepairZone], data partition[%v] is recovering", partition.PartitionID)
 		return
 	}
+	var dpInRecover int
+	dpInRecover = c.dataPartitionInRecovering()
+	if int32(dpInRecover) >= c.cfg.DataPartitionsRecoverPoolSize {
+		log.LogWarnf("action[repairDataPartition] clusterID[%v] Recover pool is full, recover partition[%v], pool size[%v]", c.Name, dpInRecover, c.cfg.DataPartitionsRecoverPoolSize)
+		return
+	}
 	if isNeedBalance, err = partition.needToRebalanceZone(c, zoneList); err != nil {
 		return
 	}
 	if !isNeedBalance {
-		return
-	}
-	var dpInRecover int
-	dpInRecover = c.dataPartitionInRecovering()
-	if int32(dpInRecover) >= c.cfg.dataPartitionsRecoverPoolSize {
-		log.LogWarnf("action[repairDataPartition] clusterID[%v] Recover pool is full, recover partition[%v], pool size[%v]", c.Name, dpInRecover, c.cfg.dataPartitionsRecoverPoolSize)
 		return
 	}
 	if err = c.sendRepairDataPartitionTask(partition, BalanceDataZone); err != nil {
@@ -1888,6 +1893,8 @@ func (c *Cluster) updateVol(name, authKey string, newArgs *VolVarargs) (err erro
 		oldEnableToken    bool
 		oldZoneName       string
 		oldDescription    string
+		oldCrossZone      bool
+		zoneList          []string
 		oldDpSelectorName string
 		oldDpSelectorParm string
 		volUsedSpace      uint64
@@ -1921,6 +1928,14 @@ func (c *Cluster) updateVol(name, authKey string, newArgs *VolVarargs) (err erro
 		if err = c.createToken(vol, proto.ReadWriteToken); err != nil {
 			goto errHandler
 		}
+	}
+
+	oldCrossZone = vol.crossZone
+	zoneList = strings.Split(vol.zoneName, ",")
+	if len(zoneList) > 1 {
+		vol.crossZone = true
+	} else {
+		vol.crossZone = false
 	}
 
 	oldZoneName = vol.zoneName
@@ -1964,6 +1979,7 @@ func (c *Cluster) updateVol(name, authKey string, newArgs *VolVarargs) (err erro
 		vol.authenticate = oldAuthenticate
 		vol.enableToken = oldEnableToken
 		vol.zoneName = oldZoneName
+		vol.crossZone = oldCrossZone
 		vol.description = oldDescription
 		vol.dpSelectorName = oldDpSelectorName
 		vol.dpSelectorParm = oldDpSelectorParm
@@ -1992,7 +2008,9 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	} else {
 		dataPartitionSize = uint64(size) * util.GB
 	}
-
+	if err = c.validZone(zoneName, dpReplicaNum); err != nil {
+		goto errHandler
+	}
 	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, followerRead, authenticate, enableToken); err != nil {
 		goto errHandler
 	}
@@ -2038,6 +2056,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 		goto errHandler
 	}
 	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum, followerRead, authenticate, enableToken, createTime, description)
+
 	// refresh oss secure
 	vol.refreshOSSSecure()
 	if err = c.syncAddVol(vol); err != nil {
@@ -2468,12 +2487,12 @@ func (c *Cluster) setMetaNodeToOfflineState(startID, endID uint64, state bool, z
 	})
 }
 func (c *Cluster) setDpRecoverPoolSize(dpRecoverPool int32) (err error) {
-	oldDpPool := atomic.LoadInt32(&c.cfg.dataPartitionsRecoverPoolSize)
-	atomic.StoreInt32(&c.cfg.dataPartitionsRecoverPoolSize, dpRecoverPool)
+	oldDpPool := atomic.LoadInt32(&c.cfg.DataPartitionsRecoverPoolSize)
+	atomic.StoreInt32(&c.cfg.DataPartitionsRecoverPoolSize, dpRecoverPool)
 
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setDpRecoverPoolSize] err[%v]", err)
-		atomic.StoreInt32(&c.cfg.dataPartitionsRecoverPoolSize, oldDpPool)
+		atomic.StoreInt32(&c.cfg.DataPartitionsRecoverPoolSize, oldDpPool)
 		err = proto.ErrPersistenceByRaft
 		return
 	}
@@ -2481,12 +2500,12 @@ func (c *Cluster) setDpRecoverPoolSize(dpRecoverPool int32) (err error) {
 }
 
 func (c *Cluster) setMpRecoverPoolSize(mpRecoverPool int32) (err error) {
-	oldMpPool := atomic.LoadInt32(&c.cfg.metaPartitionsRecoverPoolSize)
-	atomic.StoreInt32(&c.cfg.metaPartitionsRecoverPoolSize, mpRecoverPool)
+	oldMpPool := atomic.LoadInt32(&c.cfg.MetaPartitionsRecoverPoolSize)
+	atomic.StoreInt32(&c.cfg.MetaPartitionsRecoverPoolSize, mpRecoverPool)
 
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setMpRecoverPoolSize] err[%v]", err)
-		atomic.StoreInt32(&c.cfg.metaPartitionsRecoverPoolSize, oldMpPool)
+		atomic.StoreInt32(&c.cfg.MetaPartitionsRecoverPoolSize, oldMpPool)
 		err = proto.ErrPersistenceByRaft
 		return
 	}

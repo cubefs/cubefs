@@ -17,6 +17,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -53,8 +54,8 @@ type Vol struct {
 	NeedToLowerReplica bool
 	FollowerRead       bool
 	authenticate       bool
-	crossZone          bool
 	zoneName           string
+	crossZone          bool
 	enableToken        bool
 	tokens             map[string]*proto.Token
 	tokensLock         sync.RWMutex
@@ -91,6 +92,10 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	if dpSize < util.GB {
 		dpSize = util.DefaultDataPartitionSize
 	}
+	zoneList := strings.Split(zoneName, ",")
+	if len(zoneList) > 1 {
+		vol.crossZone = true
+	}
 	vol.dataPartitionSize = dpSize
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
@@ -123,6 +128,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	// overwrite oss secure
 	vol.OSSAccessKey, vol.OSSSecretKey = vv.OSSAccessKey, vv.OSSSecretKey
 	vol.Status = vv.Status
+	vol.crossZone = vv.CrossZone
 	vol.dpSelectorName = vv.DpSelectorName
 	vol.dpSelectorParm = vv.DpSelectorParm
 	return vol

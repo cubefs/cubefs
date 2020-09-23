@@ -39,8 +39,8 @@ type clusterValue struct {
 	MetaNodeDeleteBatchCount          uint64
 	MetaNodeDeleteWorkerSleepMs       uint64
 	DataNodeAutoRepairLimitRate       uint64
-	poolSizeOfDataPartitionsInRecover int32
-	poolSizeOfMetaPartitionsInRecover int32
+	PoolSizeOfDataPartitionsInRecover int32
+	PoolSizeOfMetaPartitionsInRecover int32
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -52,8 +52,8 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MetaNodeDeleteWorkerSleepMs:       c.cfg.MetaNodeDeleteWorkerSleepMs,
 		DataNodeAutoRepairLimitRate:       c.cfg.DataNodeAutoRepairLimitRate,
 		DisableAutoAllocate:               c.DisableAutoAllocate,
-		poolSizeOfDataPartitionsInRecover: c.cfg.dataPartitionsRecoverPoolSize,
-		poolSizeOfMetaPartitionsInRecover: c.cfg.metaPartitionsRecoverPoolSize,
+		PoolSizeOfDataPartitionsInRecover: c.cfg.DataPartitionsRecoverPoolSize,
+		PoolSizeOfMetaPartitionsInRecover: c.cfg.MetaPartitionsRecoverPoolSize,
 	}
 	return cv
 }
@@ -139,6 +139,7 @@ type volValue struct {
 	FollowerRead      bool
 	Authenticate      bool
 	EnableToken       bool
+	CrossZone         bool
 	ZoneName          string
 	OSSAccessKey      string
 	OSSSecretKey      string
@@ -166,6 +167,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		FollowerRead:      vol.FollowerRead,
 		Authenticate:      vol.authenticate,
 		ZoneName:          vol.zoneName,
+		CrossZone:         vol.crossZone,
 		EnableToken:       vol.enableToken,
 		OSSAccessKey:      vol.OSSAccessKey,
 		OSSSecretKey:      vol.OSSSecretKey,
@@ -545,8 +547,8 @@ func (c *Cluster) updateRecoverPoolSize(dpPoolSize, mpPoolSize int32) {
 	if mpPoolSize == 0 {
 		mpPoolSize = defaultMetaPartitionsRecoverPoolSize
 	}
-	atomic.StoreInt32(&c.cfg.dataPartitionsRecoverPoolSize, dpPoolSize)
-	atomic.StoreInt32(&c.cfg.metaPartitionsRecoverPoolSize, mpPoolSize)
+	atomic.StoreInt32(&c.cfg.DataPartitionsRecoverPoolSize, dpPoolSize)
+	atomic.StoreInt32(&c.cfg.MetaPartitionsRecoverPoolSize, mpPoolSize)
 
 }
 
@@ -569,7 +571,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateMetaNodeDeleteWorkerSleepMs(cv.MetaNodeDeleteWorkerSleepMs)
 		c.updateDataNodeDeleteLimitRate(cv.DataNodeDeleteLimitRate)
 		c.updateDataNodeAutoRepairLimit(cv.DataNodeAutoRepairLimitRate)
-		c.updateRecoverPoolSize(cv.poolSizeOfDataPartitionsInRecover, cv.poolSizeOfMetaPartitionsInRecover)
+		c.updateRecoverPoolSize(cv.PoolSizeOfDataPartitionsInRecover, cv.PoolSizeOfMetaPartitionsInRecover)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}
 	return
@@ -675,6 +677,9 @@ func (c *Cluster) loadVols() (err error) {
 		if vv, err = newVolValueFromBytes(value); err != nil {
 			err = fmt.Errorf("action[loadVols],value:%v,unmarshal err:%v", string(value), err)
 			return err
+		}
+		if !vv.CrossZone && vv.ZoneName == "" {
+			vv.ZoneName = DefaultZoneName
 		}
 		vol := newVolFromVolValue(vv)
 		vol.Status = vv.Status

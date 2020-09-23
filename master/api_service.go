@@ -206,8 +206,8 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		LeaderAddr:             m.leaderInfo.addr,
 		DisableAutoAlloc:       m.cluster.DisableAutoAllocate,
 		MetaNodeThreshold:      m.cluster.cfg.MetaNodeThreshold,
-		DpRecoverPool:          m.cluster.cfg.dataPartitionsRecoverPoolSize,
-		MpRecoverPool:          m.cluster.cfg.metaPartitionsRecoverPoolSize,
+		DpRecoverPool:          m.cluster.cfg.DataPartitionsRecoverPoolSize,
+		MpRecoverPool:          m.cluster.cfg.MetaPartitionsRecoverPoolSize,
 		Applied:                m.fsm.applied,
 		MaxDataPartitionID:     m.cluster.idAlloc.dataPartitionID,
 		MaxMetaNodeID:          m.cluster.idAlloc.commonID,
@@ -704,7 +704,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		vol            *Vol
 	)
 
-	if name, authKey, description, err = parseRequestToUpdateVol(r); err != nil {
+	if name, authKey, replicaNum, err = parseRequestToUpdateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -712,7 +712,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
-	if zoneName, capacity, replicaNum, enableToken, dpSelectorName, dpSelectorParm, err =
+	if zoneName, capacity, description, dpSelectorName, dpSelectorParm, err =
 		parseDefaultInfoToUpdateVol(r, vol); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -725,7 +725,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	if replicaNum == 0 {
 		replicaNum = int(vol.dpReplicaNum)
 	}
-	if followerRead, authenticate, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
+	if followerRead, authenticate, enableToken, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -902,6 +902,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		NeedToLowerReplica: vol.NeedToLowerReplica,
 		Authenticate:       vol.authenticate,
 		EnableToken:        vol.enableToken,
+		CrossZone:          vol.crossZone,
 		Tokens:             vol.tokens,
 		RwDpCnt:            vol.dataPartitions.readableAndWritableCnt,
 		MpCnt:              len(vol.MetaPartitions),
@@ -1052,16 +1053,16 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if val, ok := params[dpRecoverPoolSizeKey]; ok {
-		if v, ok := val.(int32); ok {
-			if err = m.cluster.setDpRecoverPoolSize(v); err != nil {
+		if v, ok := val.(int64); ok {
+			if err = m.cluster.setDpRecoverPoolSize(int32(v)); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
 		}
 	}
 	if val, ok := params[mpRecoverPoolSizeKey]; ok {
-		if v, ok := val.(int32); ok {
-			if err = m.cluster.setMpRecoverPoolSize(v); err != nil {
+		if v, ok := val.(int64); ok {
+			if err = m.cluster.setMpRecoverPoolSize(int32(v)); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -1555,7 +1556,7 @@ func parseRequestToDeleteVol(r *http.Request) (name, authKey string, err error) 
 
 }
 
-func parseRequestToUpdateVol(r *http.Request) (name, authKey, description string, err error) {
+func parseRequestToUpdateVol(r *http.Request) (name, authKey string, replicaNum int, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1565,12 +1566,16 @@ func parseRequestToUpdateVol(r *http.Request) (name, authKey, description string
 	if authKey, err = extractAuthKey(r); err != nil {
 		return
 	}
-	description = r.FormValue(descriptionKey)
+	if replicaNumStr := r.FormValue(replicaNumKey); replicaNumStr != "" {
+		if replicaNum, err = strconv.Atoi(replicaNumStr); err != nil {
+			err = unmatchedKey(replicaNumKey)
+			return
+		}
+	}
 	return
 }
 
-func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, capacity uint64, replicaNum int,
-	enableToken bool, dpSelectorName string, dpSelectorParm string, err error) {
+func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, capacity uint64, description string, dpSelectorName string, dpSelectorParm string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1587,21 +1592,8 @@ func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, ca
 	} else {
 		capacity = vol.Capacity
 	}
-	if replicaNumStr := r.FormValue(replicaNumKey); replicaNumStr != "" {
-		if replicaNum, err = strconv.Atoi(replicaNumStr); err != nil {
-			err = unmatchedKey(replicaNumKey)
-			return
-		}
-	} else {
-		replicaNum = int(vol.dpReplicaNum)
-	}
-	if enableTokenStr := r.FormValue(enableTokenKey); enableTokenStr != "" {
-		if enableToken, err = strconv.ParseBool(enableTokenStr); err != nil {
-			err = unmatchedKey(enableTokenKey)
-			return
-		}
-	} else {
-		enableToken = vol.enableToken
+	if description = r.FormValue(descriptionKey); description == "" {
+		description = vol.description
 	}
 	dpSelectorName = r.FormValue(dpSelectorNameKey)
 	dpSelectorParm = r.FormValue(dpSelectorParmKey)
@@ -1616,7 +1608,7 @@ func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, ca
 	return
 }
 
-func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authenticate bool, err error) {
+func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authenticate, enableToken bool, err error) {
 	if followerReadStr := r.FormValue(followerReadKey); followerReadStr != "" {
 		if followerRead, err = strconv.ParseBool(followerReadStr); err != nil {
 			err = unmatchedKey(followerReadKey)
@@ -1632,6 +1624,14 @@ func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authent
 		}
 	} else {
 		authenticate = vol.authenticate
+	}
+	if enableTokenStr := r.FormValue(enableTokenKey); enableTokenStr != "" {
+		if enableToken, err = strconv.ParseBool(enableTokenStr); err != nil {
+			err = unmatchedKey(enableTokenKey)
+			return
+		}
+	} else {
+		enableToken = vol.enableToken
 	}
 	return
 }
@@ -1971,7 +1971,7 @@ func parseNodeInfoIntKey(params map[string]interface{}, key string, noParams boo
 	if value = r.FormValue(key); value != "" {
 		noParams = false
 		var val = int64(0)
-		val, err = strconv.ParseInt(value, 10, 32)
+		val, err = strconv.ParseInt(value, 10, 64)
 		if err != nil {
 			err = unmatchedKey(key)
 			return

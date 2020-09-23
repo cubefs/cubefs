@@ -853,18 +853,26 @@ func (mp *MetaPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
 		log.LogWarnf("action[RepairZone], meta partition[%v] is recovering", mp.PartitionID)
 		return
 	}
+
+	var mpInRecover uint64
+	mpInRecover = uint64(c.metaPartitionInRecovering())
+	if int32(mpInRecover) > c.cfg.MetaPartitionsRecoverPoolSize {
+		log.LogWarnf("action[repairMetaPartition] clusterID[%v]Recover pool is full, recover partition[%v], pool size[%v]", c.Name, mpInRecover, c.cfg.MetaPartitionsRecoverPoolSize)
+		return
+	}
+	rps := mp.getLiveReplicas()
+	if len(rps) < int(vol.mpReplicaNum) {
+		log.LogWarnf("action[RepairZone], vol[%v], zoneName[%v], live Replicas [%v] less than mpReplicaNum[%v], can not be automatically repaired", vol.Name, vol.zoneName, len(rps), vol.mpReplicaNum)
+		return
+	}
+
 	if isNeedRebalance, err = mp.needToRebalanceZone(c, zoneList); err != nil {
 		return
 	}
 	if !isNeedRebalance {
 		return
 	}
-	var mpInRecover uint64
-	mpInRecover = uint64(c.metaPartitionInRecovering())
-	if int32(mpInRecover) > c.cfg.metaPartitionsRecoverPoolSize {
-		log.LogWarnf("action[repairMetaPartition] clusterID[%v]Recover pool is full, recover partition[%v], pool size[%v]", c.Name, mpInRecover, c.cfg.metaPartitionsRecoverPoolSize)
-		return
-	}
+
 	if err = c.sendRepairMetaPartitionTask(mp, BalanceMetaZone); err != nil {
 		log.LogErrorf("action[RepairZone] clusterID[%v] vol[%v] meta partition[%v] err[%v]", c.Name, vol.Name, mp.PartitionID, err)
 		return
