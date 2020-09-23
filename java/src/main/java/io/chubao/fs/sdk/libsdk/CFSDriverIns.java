@@ -222,9 +222,8 @@ public class CFSDriverIns {
     p.len = path.length();
     SDKStatInfo.ByReference info = new SDKStatInfo.ByReference();
     int st = driver.cfs_getattr(this.clientID, p, info);
-    log.info(info.toString());
     if (StatusCodes.get(st) == StatusCodes.CFS_STATUS_FILIE_NOT_FOUND) {
-      log.error("Not found the path: " + path + " error code: " + st);
+      log.info("Not found the path: " + path + " error code: " + st);
       //throw new CFSFileNotFoundException("Not found the path: " + path);
       return null;
     }
@@ -232,7 +231,7 @@ public class CFSDriverIns {
       log.error("Not stat the path: " + path + " error code: " + st);
       throw new CFSException("Failed to stat.");
     }
-
+    log.info(info.toString());
     return info;
   }
 

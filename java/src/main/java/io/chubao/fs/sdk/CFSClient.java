@@ -40,7 +40,6 @@ public class CFSClient {
     if (clientID.get() > 0 && storage != null) {
       return storage;
     }
-
      */
     long cid = driver.cfs_new_client();
     if (cid < 0) {

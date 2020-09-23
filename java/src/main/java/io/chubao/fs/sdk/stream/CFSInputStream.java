@@ -9,6 +9,7 @@ import org.apache.commons.logging.LogFactory;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
 
 public class CFSInputStream extends InputStream {
   private static final Log log = LogFactory.getLog(CFSInputStream.class);
@@ -27,17 +28,15 @@ public class CFSInputStream extends InputStream {
   public int read(byte[] b, int off, int len) throws IOException {
     if (b == null) {
       throw new NullPointerException();
-    }
-
-    if (off < 0 || len < 0) {
-      throw new IllegalArgumentException();
+    } else if (off < 0 || len < 0 || len > b.length-off) {
+      throw new IndexOutOfBoundsException();
+    } else if (len == 0) {
+      return 0;
     }
 
     int size = 0;
     try {
       size = cfile.read(b, off, len);
-      //String data =  new String(b, "utf8");
-      //log.info("data:" + data);
       return size;
     } catch (CFSEOFException e) {
       return -1;
@@ -84,6 +83,16 @@ public class CFSInputStream extends InputStream {
 
   public boolean seekToNewSource(long pos) throws IOException {
     return pos > cfile.getFileSize() ? false : true;
+  }
+
+  public int read(ByteBuffer buff) throws IOException {
+    byte[] data = new byte[buff.remaining()];
+    int rsize = read(data);
+
+    if (rsize > 0) {
+      buff.put(data);
+    }
+    return rsize;
   }
 }
 
