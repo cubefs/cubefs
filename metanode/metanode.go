@@ -57,6 +57,7 @@ type MetaNode struct {
 	raftReplicatePort string
 	zoneName          string
 	httpStopC         chan uint8
+	disks             map[string]*Disk
 
 	control common.Control
 }
@@ -110,6 +111,9 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.parseConfig(cfg); err != nil {
 		return
 	}
+	if err = m.startDiskStat(); err != nil {
+		return
+	}
 	if err = m.register(); err != nil {
 		return
 	}
@@ -151,6 +155,7 @@ func doShutdown(s common.Server) {
 	m.stopServer()
 	m.stopMetaManager()
 	m.stopRaftServer()
+	m.stopDiskStat()
 }
 
 // Sync blocks the invoker's goroutine until the meta node shuts down.
