@@ -12,15 +12,21 @@ public class CfsMount {
     public final int O_WRONLY = 1;
     public final int O_RDWR = 2;
     public final int O_ACCMODE = 3;
-    public final int O_CREAT = 100;
-    public final int O_TRUNC = 1000;
-    public final int O_APPEND = 2000;
-    public final int O_DIRECT = 40000;
+    public final int O_CREAT = 0100;
+    public final int O_TRUNC = 01000;
+    public final int O_APPEND = 02000;
+    public final int O_DIRECT = 040000;
 
     // Mode
     public final int S_IFDIR = 0040000;
     public final int S_IFREG = 0100000;
     public final int S_IFLNK = 0120000;
+
+    // dType used in Dirent
+    public final int DT_UNKNOWN = 0x0;
+    public final int DT_DIR = 0x4;
+    public final int DT_REG = 0x8;
+    public final int DT_LNK = 0xa;
 
     // Valid flags for setattr
     // Must be compatible with proto.Attr values
