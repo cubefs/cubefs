@@ -805,6 +805,7 @@ func (m *metadataManager) opAddMetaPartitionRaftMember(conn net.Conn,
 	}
 	mp, err := m.getPartition(req.PartitionId)
 	if err != nil {
+		log.LogErrorf("get parititon has err by id:[%d] err:[%s]", req.PartitionId, err.Error())
 		p.PacketErrorWithBody(proto.OpTryOtherAddr, ([]byte)(proto.ErrMetaPartitionNotExists.Error()))
 		m.respondToClient(conn, p)
 		return err
