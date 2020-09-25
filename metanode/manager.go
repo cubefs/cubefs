@@ -471,7 +471,7 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) Metadata
 // if one partition does not exist in master, we decided that it is one expired partition
 func isExpiredPartition(fileName string, partitions []uint64) (expiredPartition bool) {
 	if len(partitions) == 0 {
-		return false
+		return true
 	}
 
 	partitionId := fileName[len(partitionPrefix):]
