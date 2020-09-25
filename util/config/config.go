@@ -221,60 +221,33 @@ func (ccfg *ConstConfig) Equals(cfg *ConstConfig) bool {
 
 // check listen port, raft replica port and raft heartbeat port
 func CheckOrStoreConstCfg(fileDir, fileName string, cfg *ConstConfig) (ok bool, err error) {
-	var (
-		f *os.File
-		l int
-	)
-	buf := make([]byte, 4096)
-	store := false
-
-	filePath := path.Join(fileDir, fileName)
-	f, err = os.Open(filePath)
-	if err != nil {
-		if _, err = os.Stat(fileDir); err != nil {
-			if err = os.MkdirAll(fileDir, 0755); err != nil {
-				return false, err
-			}
-		}
-
-		f, err = os.Create(filePath)
-		if err != nil {
-			return false, fmt.Errorf("create file %v failed: %v", filePath, err)
-		}
-		store = true
+	var filePath = path.Join(fileDir, fileName)
+	var buf []byte
+	buf, err = ioutil.ReadFile(filePath)
+	if err != nil && !os.IsNotExist(err) {
+		return false, fmt.Errorf("read config file %v failed: %v", filePath, err)
 	}
-	defer f.Close()
-
-	// store
-	if store {
-		buf, err = json.Marshal(cfg)
-		if err != nil {
-			return false, fmt.Errorf("marshal cfg %v failed: %v", filePath, err)
+	if os.IsNotExist(err) || len(buf) == 0 {
+		// Persist configuration to disk
+		if buf, err = json.Marshal(cfg); err != nil {
+			return false, fmt.Errorf("marshal const config failed: %v", err)
 		}
-
-		_, err = f.Write(buf)
-		if err != nil {
-			return false, fmt.Errorf("write file %v failed: %v", filePath, err)
+		if err = os.MkdirAll(fileDir, 0755); err != nil {
+			return false, fmt.Errorf("make directory %v filed: %v", fileDir, err)
 		}
-
+		if err = ioutil.WriteFile(filePath, buf, 0755); err != nil {
+			_ = os.Remove(filePath)
+			return false, fmt.Errorf("write config file %v failed: %v", filePath, err)
+		}
 		return true, nil
 	}
-
-	// load stored cfg
+	// Load and check stored const configuration
 	storedConstCfg := new(ConstConfig)
-	l, err = f.Read(buf)
-	if err != nil {
-		return false, fmt.Errorf("read const cfg file %v failed: %v", filePath, err)
+	if err = json.Unmarshal(buf, storedConstCfg); err != nil {
+		return false, fmt.Errorf("unmarshal const config %v failed: %v", filePath, err)
 	}
-	err = json.Unmarshal(buf[:l], storedConstCfg)
-	if err != nil {
-		return false, fmt.Errorf("unmarshal const cfg %v failed: %v", filePath, err)
-	}
-
-	//compare
 	if ok := storedConstCfg.Equals(cfg); !ok {
-		return false, fmt.Errorf("store file %v %v failed: %v", storedConstCfg, cfg, err)
+		return false, fmt.Errorf("compare const config %v and %v failed: %v", storedConstCfg, cfg, err)
 	}
-
 	return true, nil
 }
