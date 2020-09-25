@@ -333,7 +333,7 @@ func cfs_setattr(id C.int64_t, path *C.char, stat *C.struct_cfs_stat_info, valid
 		return errorToStatus(err)
 	}
 
-	err = c.setattr(info, uint32(valid), uint32(stat.mode), uint32(stat.uid), uint32(stat.gid), int64(stat.mtime)*1e9+int64(stat.mtime_nsec), int64(stat.atime)*1e9+int64(stat.atime_nsec))
+	err = c.setattr(info, uint32(valid), uint32(stat.mode), uint32(stat.uid), uint32(stat.gid), int64(stat.mtime), int64(stat.atime))
 
 	if err != nil {
 		return errorToStatus(err)
