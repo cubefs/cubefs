@@ -245,9 +245,11 @@ func (m *metadataManager) loadPartitions() (err error) {
 	// Check metadataDir directory
 	fileInfo, err := os.Stat(m.rootDir)
 	if err != nil {
-		os.MkdirAll(m.rootDir, 0755)
-		err = nil
-		return
+		if os.IsNotExist(err) {
+			err = os.MkdirAll(m.rootDir, 0755)
+		} else {
+			return err
+		}
 	}
 	if !fileInfo.IsDir() {
 		err = errors.New("metadataDir must be directory")
@@ -256,7 +258,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 	// scan the data directory
 	fileInfoList, err := ioutil.ReadDir(m.rootDir)
 	if err != nil {
-		return
+		return err
 	}
 	var wg sync.WaitGroup
 	for _, fileInfo := range fileInfoList {
@@ -267,8 +269,8 @@ func (m *metadataManager) loadPartitions() (err error) {
 					fileInfo.Name())
 				oldName := path.Join(m.rootDir, fileInfo.Name())
 				newName := path.Join(m.rootDir, ExpiredPartitionPrefix+fileInfo.Name()+"_"+strconv.FormatInt(time.Now().Unix(), 10))
-				if err := os.Rename(oldName, newName); err != nil {
-					log.LogErrorf("rename file has err:[%s]", err.Error())
+				if tempErr := os.Rename(oldName, newName); tempErr != nil {
+					log.LogErrorf("rename file has err:[%s]", tempErr.Error())
 				}
 
 				if len(fileInfo.Name()) > 10 && strings.HasPrefix(fileInfo.Name(), partitionPrefix) {
@@ -278,11 +280,11 @@ func (m *metadataManager) loadPartitions() (err error) {
 					oldRaftName := path.Join(m.metaNode.raftDir, partitionId)
 					newRaftName := path.Join(m.metaNode.raftDir, ExpiredPartitionPrefix+partitionId+"_"+strconv.FormatInt(time.Now().Unix(), 10))
 					log.LogErrorf("loadPartitions: find expired try rename raft file [%s] -> [%s]", oldRaftName, newRaftName)
-					if _, err := os.Stat(oldRaftName); err != nil {
-						log.LogWarnf("stat file [%s] has err:[%s]", oldRaftName, err.Error())
+					if _, tempErr := os.Stat(oldRaftName); tempErr != nil {
+						log.LogWarnf("stat file [%s] has err:[%s]", oldRaftName, tempErr.Error())
 					} else {
-						if err := os.Rename(oldRaftName, newRaftName); err != nil {
-							log.LogErrorf("rename file has err:[%s]", err.Error())
+						if tempErr := os.Rename(oldRaftName, newRaftName); tempErr != nil {
+							log.LogErrorf("rename file has err:[%s]", tempErr.Error())
 						}
 					}
 				}
