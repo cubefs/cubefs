@@ -271,7 +271,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 					log.LogErrorf("rename file has err:[%s]", err.Error())
 				}
 
-				if len(fileInfo.Name()) > 10 {
+				if len(fileInfo.Name()) > 10 && strings.HasPrefix(fileInfo.Name(), partitionPrefix) {
 					log.LogErrorf("loadPartitions: find expired partition[%s], rename raft file",
 						fileInfo.Name())
 					partitionId := fileInfo.Name()[len(partitionPrefix):]
