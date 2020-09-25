@@ -17,6 +17,13 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/cmd/common"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/raftstore"
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/chubaofs/chubaofs/util/log"
 	"io/ioutil"
 	"net"
 	_ "net/http/pprof"
@@ -26,14 +33,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-
-	"github.com/chubaofs/chubaofs/cmd/common"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/raftstore"
-	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/exporter"
-	"github.com/chubaofs/chubaofs/util/log"
+	"time"
 )
 
 const partitionPrefix = "partition_"
@@ -266,8 +266,27 @@ func (m *metadataManager) loadPartitions() (err error) {
 				log.LogErrorf("loadPartitions: find expired partition[%s], rename it and you can delete him manually",
 					fileInfo.Name())
 				oldName := path.Join(m.rootDir, fileInfo.Name())
-				newName := path.Join(m.rootDir, ExpiredPartitionPrefix+fileInfo.Name())
-				os.Rename(oldName, newName)
+				newName := path.Join(m.rootDir, ExpiredPartitionPrefix+fileInfo.Name()+"_"+strconv.FormatInt(time.Now().Unix(), 10))
+				if err := os.Rename(oldName, newName); err != nil {
+					log.LogErrorf("rename file has err:[%s]", err.Error())
+				}
+
+				if len(fileInfo.Name()) > 10 {
+					log.LogErrorf("loadPartitions: find expired partition[%s], rename raft file",
+						fileInfo.Name())
+					partitionId := fileInfo.Name()[len(partitionPrefix):]
+					oldRaftName := path.Join(m.metaNode.raftDir, partitionId)
+					newRaftName := path.Join(m.metaNode.raftDir, ExpiredPartitionPrefix+partitionId+"_"+strconv.FormatInt(time.Now().Unix(), 10))
+					log.LogErrorf("loadPartitions: find expired try rename raft file [%s] -> [%s]", oldRaftName, newRaftName)
+					if _, err := os.Stat(oldRaftName); err != nil {
+						log.LogWarnf("stat file [%s] has err:[%s]", oldRaftName, err.Error())
+					} else {
+						if err := os.Rename(oldRaftName, newRaftName); err != nil {
+							log.LogErrorf("rename file has err:[%s]", err.Error())
+						}
+					}
+				}
+
 				continue
 			}
 
