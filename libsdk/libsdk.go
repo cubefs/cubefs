@@ -489,6 +489,7 @@ func cfs_close(id C.int64_t, fd C.int) {
 	}
 }
 
+// Note: The file size is not change
 //export cfs_file_size
 func cfs_file_size(id C.int64_t, fd C.int) C.ssize_t {
 	c, exist := getClient(int64(id))
