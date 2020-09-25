@@ -404,6 +404,10 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	s.cache.Del(e.extentID)
 	s.DeleteBlockCrc(extentID)
 
+	s.eiMutex.Lock()
+	delete(s.extentInfoMap,extentID)
+	s.eiMutex.Unlock()
+
 	return
 }
 
@@ -942,7 +946,7 @@ const (
 )
 
 func (s *ExtentStore)GetStoreUsedSize()(used int64){
-	extentInfoSlice := make([]*ExtentInfo, 0, len(s.extentInfoMap))
+	extentInfoSlice := make([]*ExtentInfo, 0, s.GetExtentCount())
 	s.eiMutex.RLock()
 	for _, extentID := range s.extentInfoMap {
 		extentInfoSlice = append(extentInfoSlice, extentID)

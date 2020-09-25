@@ -63,6 +63,15 @@ func TestSingleZone(t *testing.T) {
 		return
 	}
 	fmt.Println(newHosts)
+
+	// single zone with exclude hosts
+	excludeHosts := []string{mds1Addr, mds2Addr, mds3Addr}
+	newHosts, _, err = zones[0].getAvailDataNodeHosts(nil, excludeHosts, replicaNum)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	fmt.Println(newHosts)
 	topo.deleteDataNode(createDataNodeForTopo(mds1Addr, zoneName, nodeSet))
 }
 
@@ -110,6 +119,9 @@ func TestAllocZones(t *testing.T) {
 	cluster := new(Cluster)
 	cluster.t = topo
 	cluster.cfg = newClusterConfig()
+	cluster.cfg.DataPartitionsRecoverPoolSize = defaultDataPartitionsRecoverPoolSize
+	cluster.cfg.MetaPartitionsRecoverPoolSize = defaultMetaPartitionsRecoverPoolSize
+
 	//don't cross zone
 	hosts, _, err := cluster.chooseTargetDataNodes("", nil, nil, replicaNum, "zone1")
 	if err != nil {
