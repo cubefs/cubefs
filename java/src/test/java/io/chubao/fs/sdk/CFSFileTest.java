@@ -130,7 +130,7 @@ public class CFSFileTest extends StorageTest {
     byte[] data = buffBlock2.getBytes();
     long len = 0L;
     while (true) {
-      int rsize = read(cfile, buff, 2, 8);
+      long rsize = read(cfile, buff, 2, 8);
       if (rsize == -1) {
         break;
       }

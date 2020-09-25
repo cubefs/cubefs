@@ -8,7 +8,7 @@ public interface CFSFile {
   void write(byte[] buff, int buffOffset, int len) throws CFSException;
   void pwrite(byte[] buff, int buffOffset, int len, long fileOffset) throws CFSException;
   void seek(long offset) throws CFSException;
-  int read(byte[] buff, int buffOffset, int len) throws CFSException;
+  long read(byte[] buff, int buffOffset, int len) throws CFSException;
   int pread(byte[] buff, int buffOffset, int len, long fileOffset) throws CFSException;
   long getFileSize();
   long getPosition();

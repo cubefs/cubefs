@@ -44,6 +44,26 @@ public class ListTest extends StorageTest {
   }
 
   @Test
+  public void testList2() {
+    CFSStatInfo[] stats = listStats(listTestDir);
+    Assert.assertNull(stats);
+
+    boolean res = mkdirs(listTestDir);
+    Assert.assertTrue(res);
+
+    for (int i=0; i<1000; i++) {
+      String path = listTestDir + "/" + i;
+      Assert.assertTrue(createFile(path, 0));
+    }
+
+    stats = listStats(listTestDir);
+    Assert.assertEquals(stats.length, 1000);
+    for (int i=0; i<stats.length; i++) {
+      Assert.assertEquals(stats[i].getType(), CFSStatInfo.Type.REG);
+    }
+  }
+
+  @Test
   public void testListInvalidPath() {
     String dir1 = "../";
     Assert.assertNull(listStats(dir1));

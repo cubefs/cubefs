@@ -1,10 +1,17 @@
 package io.chubao.fs.sdk.libsdk;
 
-import io.chubao.fs.sdk.CFSFile;
+import com.sun.jna.Pointer;
+import io.chubao.fs.CfsLibrary;
 import io.chubao.fs.sdk.exception.*;
 import io.chubao.fs.sdk.CFSStatInfo;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import io.chubao.fs.CfsLibrary.*;
+
+import java.io.UnsupportedEncodingException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 
 public class CFSDriverIns {
   private final static int ATTR_MODE      = 1 << 0;
@@ -13,31 +20,37 @@ public class CFSDriverIns {
   private final static int ATTR_MTIME     = 1 << 3;
   private final static int ATTR_ATIME     = 1 << 4;
   private final static int ATTR_SIZE      = 1 << 5;
+  private final static int batchSize = 100;
 
   private static final Log log = LogFactory.getLog(CFSDriverIns.class);
-  private  CFSDriver driver;
+  private CfsLibrary driver;
   private long clientID;
 
-  public CFSDriverIns(CFSDriver d, long cid) {
+  public CFSDriverIns(CfsLibrary d, long cid) {
     this.driver = d;
     this.clientID = cid;
   }
 
-  public CFSOpenRes.ByReference open(String path, int flags, int mode, int uid, int gid) throws CFSException {
+  public int open(String path, int flags, int mode, int uid, int gid) throws CFSException {
     verifyPath(path);
-    GoString.ByValue p = new GoString.ByValue();
-    p.ptr = path;
-    p.len = path.length();
-    CFSOpenRes.ByReference res = new CFSOpenRes.ByReference();
-    int st =driver.cfs_open(this.clientID, p, flags, mode, uid, gid, res);
+
+    int st =driver.cfs_open(this.clientID, path, flags, mode, uid, gid);
     if (st < 0) {
       throw new CFSException("Failed to open:" + path + " status code: " + st);
     }
 
-    return res;
+    return st;
   }
 
-  public void flush(long fd) throws CFSException {
+  public long size(int fd) throws CFSException {
+    long size =driver.cfs_file_size(this.clientID, fd);
+    if (size < 0) {
+      throw new CFSException("Failed to get size of file:" + fd + " status code: " + size);
+    }
+    return size;
+  }
+
+  public void flush(int fd) throws CFSException {
     if (fd < 1) {
       throw new CFSException("Invalid argument.");
     }
@@ -51,39 +64,31 @@ public class CFSDriverIns {
     driver.cfs_close_client(this.clientID);
   }
 
-  public void close(long fd) throws CFSException {
+  public void close(int fd) throws CFSException {
     if (fd < 1) {
       throw new CFSException("Invalid arguments.");
     }
-    int st = driver.cfs_close(this.clientID, fd);
-    if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {
-      throw new CFSException("Failed to close:" + fd + " status code:" + fd);
-    }
+    driver.cfs_close(this.clientID, fd);
   }
 
-  public int write(long fd, long offset, byte[] data, int len) throws CFSException {
+  public long write(int fd, long offset, byte[] data, long len) throws CFSException {
     if (fd < 1 || offset < 0 || len < 0) {
       throw new CFSException("Invalid arguments.");
     }
-    int wsize = driver.cfs_write(this.clientID, fd, offset, data, len);
+    long wsize = driver.cfs_write(this.clientID, fd, data, len, offset);
     if (wsize < 0) {
-      throw new CFSException("Failed to write " + fd + " at offset " + offset + " the status code: " + wsize);
+      throw new CFSException("Failed to write: " + fd + " at offset: " + offset + " the status code: " + wsize);
     }
 
-    /*
-    if (wsize != len) {
-      throw new CFSException("The " + wsize + " bytes written is not expected [" + len + "].");
-    }
-     */
     return wsize;
   }
 
-  public int read(long fd, long offset, byte[] buff, int len) throws CFSException {
+  public long read(int fd, long offset, byte[] buff, int len) throws CFSException {
     if (fd < 1 || offset < 0 || len < 0) {
       throw new CFSException("Invalid arguments.");
     }
-    int rsize = driver.cfs_read(this.clientID, fd, offset, buff, len);
-    if (rsize == -5) {
+    long rsize = driver.cfs_read(this.clientID, fd, buff, len, offset);
+    if (rsize == 0) {
       throw new CFSEOFException("fd:" + fd);
     }
     if (rsize < -1) {
@@ -95,11 +100,14 @@ public class CFSDriverIns {
 
   public void mkdirs(String path, int mode, int uid, int gid) throws CFSException {
     verifyPath(path);
+    /*
     GoString.ByValue p = new GoString.ByValue();
     p.ptr = path;
     p.len = path.length();
-    int st = driver.cfs_mkdirs(this.clientID, p, mode, uid, gid);
-    if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {
+     */
+    int st = driver.cfs_mkdirs(this.clientID, path, mode, uid, gid);
+    if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK &&
+      StatusCodes.get(st) != StatusCodes.CFS_STATUS_FILE_EXISTS) {
       throw new CFSException("Failed to mkdirs: " + path + " status code:" + st);
     }
   }
@@ -107,22 +115,21 @@ public class CFSDriverIns {
   public void rmdir(String path, boolean recursive) throws CFSException {
     log.info("rmdir:" + path + " recursive:" + recursive);
     verifyPath(path);
+    /*
     GoString.ByValue p = new GoString.ByValue();
     p.ptr = path;
     p.len = path.length();
-    int st = driver.cfs_rmdir(this.clientID, p, recursive);
+
+     */
+    int st = driver.cfs_rmdir(this.clientID, path, recursive);
     if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {
       throw new CFSException("Failed to rmdir:" + path + " status code:" + st);
     }
   }
 
   public void unlink(String path) throws CFSException {
-    log.info("unlink:" + path);
     verifyPath(path);
-    GoString.ByValue p = new GoString.ByValue();
-    p.ptr = path;
-    p.len = path.length();
-    int st = driver.cfs_unlink(this.clientID, p);
+    int st = driver.cfs_unlink(this.clientID, path);
     if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {
       throw new CFSException("Failed to unlink " + path + ", the status code is " + st);
     }
@@ -131,14 +138,7 @@ public class CFSDriverIns {
   public void rename(String from, String to) throws CFSException {
     verifyPath(from);
     verifyPath(to);
-    GoString.ByValue src = new GoString.ByValue();
-    src.ptr = from;
-    src.len = from.length();
-
-    GoString.ByValue target = new GoString.ByValue();
-    target.ptr = to;
-    target.len = to.length();
-    int st = driver.cfs_rename(this.clientID, src, target);
+    int st = driver.cfs_rename(this.clientID, from, to);
     if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {
       throw new CFSException("Failed to rename: " + from + " to:" + to + " status code:" + st);
     }
@@ -149,14 +149,11 @@ public class CFSDriverIns {
       throw new CFSException("Invalid arguments.");
     }
     verifyPath(path);
-    GoString.ByValue p = new GoString.ByValue();
-    p.ptr = path;
-    p.len = path.length();
 
-    SDKStatInfo.ByReference stat = new SDKStatInfo.ByReference();
+    CfsLibrary.StatInfo stat = new CfsLibrary.StatInfo();
     stat.size = newLength;
-    stat.valid = ATTR_SIZE;
-    int st = driver.cfs_setattr_by_path(this.clientID, p, stat);
+    int valid = ATTR_SIZE;
+    int st = driver.cfs_setattr_by_path(this.clientID, path, stat, valid);
     if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {
       throw new CFSException("Failed to truncate: " + path + " status code: " + st);
     }
@@ -164,14 +161,10 @@ public class CFSDriverIns {
 
   public void chmod(String path, int mode) throws CFSException {
     verifyPath(path);
-    GoString.ByValue p = new GoString.ByValue();
-    p.ptr = path;
-    p.len = path.length();
-
-    SDKStatInfo.ByReference stat = new SDKStatInfo.ByReference();
+    CfsLibrary.StatInfo stat = new CfsLibrary.StatInfo();
     stat.mode = mode;
-    stat.valid = ATTR_MODE;
-    int st = driver.cfs_setattr_by_path(this.clientID, p, stat);
+    int valid = ATTR_MODE;
+    int st = driver.cfs_setattr_by_path(this.clientID, path, stat, valid);
     if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {
       throw new CFSException("Failed to chmod: " + path + " status code: " + st);
     }
@@ -179,15 +172,11 @@ public class CFSDriverIns {
 
   public void chown(String path, int uid, int gid) throws CFSException {
     verifyPath(path);
-    GoString.ByValue p = new GoString.ByValue();
-    p.ptr = path;
-    p.len = path.length();
-
-    SDKStatInfo.ByReference stat = new SDKStatInfo.ByReference();
+    CfsLibrary.StatInfo stat = new CfsLibrary.StatInfo();
     stat.uid = uid;
     stat.gid = gid;
-    stat.valid = ATTR_GID | ATTR_UID;
-    int st = driver.cfs_setattr_by_path(this.clientID, p, stat);
+    int valid = ATTR_GID | ATTR_UID;
+    int st = driver.cfs_setattr_by_path(this.clientID, path, stat, valid);
     if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {
       throw new CFSException("Failed to chown: " + path + " status code: " + st);
     }
@@ -195,33 +184,27 @@ public class CFSDriverIns {
 
   public void setTimes(String path, long mtime, long atime) throws CFSException {
     verifyPath(path);
-    GoString.ByValue p = new GoString.ByValue();
-    p.ptr = path;
-    p.len = path.length();
-
-    SDKStatInfo.ByReference stat = new SDKStatInfo.ByReference();
+    CfsLibrary.StatInfo stat = new CfsLibrary.StatInfo();
+    int valid = 0;
     if (mtime > 0) {
       stat.mtime = mtime;
-      stat.valid = ATTR_MTIME;
+      valid = ATTR_MTIME;
     }
 
     if (atime > 0) {
       stat.atime = atime;
-      stat.valid = stat.valid | ATTR_ATIME;
+      valid = valid | ATTR_ATIME;
     }
-    int st = driver.cfs_setattr_by_path(this.clientID, p, stat);
+    int st = driver.cfs_setattr_by_path(this.clientID, path, stat, valid);
     if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {
       throw new CFSException("Failed to settimes: " + path + " status code: " + st);
     }
   }
 
-  public SDKStatInfo getAttr(String path) throws CFSException {
+  public CfsLibrary.StatInfo getAttr(String path) throws CFSException {
     verifyPath(path);
-    GoString.ByValue p = new GoString.ByValue();
-    p.ptr = path;
-    p.len = path.length();
-    SDKStatInfo.ByReference info = new SDKStatInfo.ByReference();
-    int st = driver.cfs_getattr(this.clientID, p, info);
+    CfsLibrary.StatInfo.ByReference info = new CfsLibrary.StatInfo.ByReference();
+    int st = driver.cfs_getattr(this.clientID, path, info);
     if (StatusCodes.get(st) == StatusCodes.CFS_STATUS_FILIE_NOT_FOUND) {
       log.info("Not found the path: " + path + " error code: " + st);
       //throw new CFSFileNotFoundException("Not found the path: " + path);
@@ -235,59 +218,74 @@ public class CFSDriverIns {
     return info;
   }
 
-  public CFSStatInfo[] list(String path) throws CFSException {
-    verifyPath(path);
-    log.info("path:" + path.toString() + " len:" + path.length());
-    GoString.ByValue p = new GoString.ByValue();
-    p.ptr = path;
-    p.len = path.length();
+  public int list(int fd, ArrayList<CFSStatInfo> fileStats) throws CFSException, UnsupportedEncodingException {
+    CfsLibrary.Dirent dent = new CfsLibrary.Dirent();
+    CfsLibrary.Dirent[] dents = (CfsLibrary.Dirent[]) dent.toArray(batchSize);
 
-    CFSCountDirRes.ByReference countRes = new CFSCountDirRes.ByReference();
-    int st = driver.cfs_countdir(this.clientID, p, countRes);
-    if (StatusCodes.get(st) == StatusCodes.CFS_STATUS_FILIE_NOT_FOUND) {
-      throw new CFSFileNotFoundException("Not found " + path.toString());
+    Pointer arr = dents[0].getPointer();
+    CfsLibrary.DirentArray.ByValue slice = new DirentArray.ByValue();
+    slice.data = arr;
+    slice.len = batchSize;
+    slice.cap = batchSize;
+
+    int count = driver.cfs_readdir(this.clientID, fd, slice, batchSize);
+    if (StatusCodes.get(count) == StatusCodes.CFS_STATUS_FILIE_NOT_FOUND) {
+      throw new CFSFileNotFoundException("Not found " + fd);
+    }
+    if (count < 0) {
+      throw new CFSException("Failed to count dir:" + fd + " status code: " + count);
     }
 
-    if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {
-      throw new CFSException("Failed to count dir:" + path + " status code: " + st);
+    if (count == 0) {
+      return count;
     }
 
-    if (countRes.num == 0) {
-      return new CFSStatInfo[0];
+    long[] iids = new long[count];
+    Map<Long, String> names = new HashMap<Long, String>(count);
+    for (int i=0; i<count; i++) {
+      dents[i].read();
+      iids[i] = dents[i].ino;
+      names.put(dents[i].ino, new String(dents[i].name, 0, dents[i].nameLen, "utf-8"));
     }
 
-    SDKStatInfo info = new SDKStatInfo();
-    SDKStatInfo[] infos = (SDKStatInfo[])info.toArray(countRes.num);
+    StatInfo stat = new StatInfo();
+    StatInfo[] stats = (StatInfo[]) stat.toArray(count);
+    Pointer statsPtr = stats[0].getPointer();
+    CfsLibrary.DirentArray.ByValue statSlice = new DirentArray.ByValue();
+    statSlice.data = statsPtr;
+    statSlice.len = batchSize;
+    statSlice.cap = batchSize;
+    int num = driver.cfs_batch_get_inodes(this.clientID, fd, iids, statSlice, count);
 
-    st = driver.cfs_listattr(this.clientID, countRes.inode, countRes.num, infos);
-    if (StatusCodes.get(st) == StatusCodes.CFS_STATUS_FILIE_NOT_FOUND) {
-      throw new CFSFileNotFoundException("Not found " + path.toString());
+    if (num < 0) {
+      throw new CFSException("Failed to get inodes,  the fd:" + fd + " status code: " + num);
     }
 
-    if (st < 0) {
-      throw new CFSException("Failed to list dir:" + path + " status code: " + st);
-    }
-
-    CFSStatInfo[] fileInfos = new CFSStatInfo[countRes.num];
-    for (int i=0; i<countRes.num; i++) {
-      SDKStatInfo in = infos[i];
+    for (int i=0; i<num; i++) {
+      stats[i].read();
+      StatInfo in = stats[i];
       log.info(in.toString());
       try {
-        fileInfos[i] = new CFSStatInfo(
+        CFSStatInfo info = new CFSStatInfo(
             in.mode, in.uid, in.gid, in.size,
-            in.ctime, in.mtime, in.atime, new String(in.name, 0, in.nameLen, "utf-8"));
+            in.ctime, in.mtime, in.atime, names.get(in.ino));
+        fileStats.add(info);
 
       } catch (Exception e)  {
         log.error(e.getMessage(), e);
       }
     }
 
-    return fileInfos;
+    return num;
   }
 
-  private void verifyPath(String path) throws CFSNullArgumentException {
+  private void verifyPath(String path) throws CFSException {
     if (path == null || path.trim().length() == 0) {
       throw new CFSNullArgumentException("path is invlaid.");
+    }
+
+    if (path.startsWith("/") == false) {
+      throw new  CFSInvalidArgumentException(path);
     }
   }
 }

@@ -5,17 +5,15 @@ import io.chubao.fs.sdk.libsdk.CFSDriverIns;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
-import java.util.concurrent.locks.ReentrantLock;
-
 public class CFSFileImpl implements CFSFile {
   private static final Log log = LogFactory.getLog(CFSFileImpl.class);
   private CFSDriverIns driver;
   private long position = 0L;
   private long fileSize;
   private boolean isClosed = false;
-  private long fd;
+  private int fd;
 
-  public CFSFileImpl(CFSDriverIns driver, long fd, long fileSize, long position) {
+  public CFSFileImpl(CFSDriverIns driver, int fd, long fileSize, long position) {
     this.driver = driver;
     this.fd = fd;
     this.fileSize = fileSize;
@@ -63,7 +61,7 @@ public class CFSFileImpl implements CFSFile {
       throw new CFSException("Invalid arguments.");
     }
 
-    int wsize = 0;
+    long wsize = 0;
     if (off == 0) {
       wsize = write(position, buff, len);
     } else {
@@ -77,16 +75,16 @@ public class CFSFileImpl implements CFSFile {
     }
   }
 
-  private int write(long offset, byte[] data, int len) throws CFSException {
+  private long write(long offset, byte[] data, int len) throws CFSException {
     return driver.write(fd, offset, data, len);
   }
 
-  public synchronized int read(byte[] buff, int off, int len) throws CFSException {
+  public synchronized long read(byte[] buff, int off, int len) throws CFSException {
     if (off < 0 || len < 0) {
       throw new CFSException("Invalid arguments.");
     }
 
-    int rsize = 0;
+    long rsize = 0;
     if (off == 0) {
       rsize = driver.read(fd, position, buff, len);
       /*

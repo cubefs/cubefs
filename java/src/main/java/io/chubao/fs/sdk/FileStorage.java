@@ -9,13 +9,6 @@ public interface FileStorage {
   int O_RDONLY         = 0;
   int O_WRONLY         = 1;
   int O_ACCMODE        = 3;
-  /*
-  int O_CREAT          = 100;
-  int O_TRUNC          = 1000;
-  int O_APPEND         = 2000;
-  int O_DIRECT         = 40000;
-
-   */
   int O_CREAT          = 64;
   int O_TRUNC          = 512;
   int O_APPEND         = 1024;
@@ -31,7 +24,7 @@ public interface FileStorage {
   void rmdir(String path, boolean recursive) throws CFSException;
   void unlink(String path) throws CFSException;
   void rename(String src, String dst) throws CFSException;
-  CFSStatInfo[] listFileStatus(String path) throws CFSException;
+  CFSStatInfo[] list(String path) throws CFSException;
   CFSStatInfo stat(String path) throws CFSException;
   void setXAttr(String path, String name, byte[] value) throws CFSException;
   byte[] getXAttr(String path, String name) throws CFSException;

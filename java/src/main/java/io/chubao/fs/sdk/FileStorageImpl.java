@@ -1,13 +1,14 @@
 package io.chubao.fs.sdk;
 
+import io.chubao.fs.CfsLibrary;
 import io.chubao.fs.sdk.exception.CFSException;
 import io.chubao.fs.sdk.libsdk.CFSDriverIns;
-import io.chubao.fs.sdk.libsdk.CFSOpenRes;
-import io.chubao.fs.sdk.libsdk.SDKStatInfo;
 import io.chubao.fs.sdk.util.CFSOwnerHelper;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
+import java.io.UnsupportedEncodingException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -16,6 +17,7 @@ public class FileStorageImpl implements FileStorage {
   private CFSDriverIns driver;
   private CFSOwnerHelper owner;
   private long defaultBlockSize = 128 * 1024 * 1024;
+  private int defaultDirPermission = 0644;
 
   public FileStorageImpl(CFSDriverIns driver) {
     this.driver = driver;
@@ -28,8 +30,17 @@ public class FileStorageImpl implements FileStorage {
 
   @Override
   public CFSFile open(String path, int flags, int mode, int uid, int gid) throws CFSException {
-    CFSOpenRes.ByReference res = driver.open(path, flags, mode, uid, gid);
-    return new CFSFileImpl(driver, res.fd, res.size, res.pos);
+    if ((flags & FileStorage.O_APPEND) == 1) {
+      flags = flags & ~(FileStorage.O_APPEND);
+    }
+    int fd = driver.open(path, flags, mode, uid, gid);
+    long size = driver.size(fd);
+    long pos = ((flags == FileStorage.O_RDONLY) || (flags == (FileStorage.O_RDONLY|FileStorage.O_ACCMODE))) ? 0 : size;
+    if (log.isDebugEnabled()) {
+      log.debug("Succ to open:" + path + " size:" + size + " pos:" + pos);
+    }
+
+    return new CFSFileImpl(driver, fd, size, pos);
   }
 
   @Override
@@ -64,13 +75,38 @@ public class FileStorageImpl implements FileStorage {
   }
 
   @Override
-  public CFSStatInfo[] listFileStatus(String path) throws CFSException {
-    return driver.list(path);
+  public CFSStatInfo[] list(String path) throws CFSException {
+    int fd = 0;
+    ArrayList<CFSStatInfo> stats = new ArrayList<CFSStatInfo>();
+    try {
+      fd = driver.open(path, O_RDONLY, defaultDirPermission, 0, 0);
+      long total = 0;
+      long num = 0;
+      while (true) {
+        num = driver.list(fd, stats);
+        if (num <= 0) {
+          break;
+        }
+        total += num;
+      }
+
+    } catch (CFSException ex) {
+      throw ex;
+    } catch (UnsupportedEncodingException e) {
+      throw new CFSException(e);
+    } finally {
+      if (fd > 0) {
+        driver.close(fd);
+      }
+    }
+    CFSStatInfo[] res = new CFSStatInfo[stats.size()];
+    stats.toArray(res);
+    return res;
   }
 
   @Override
   public CFSStatInfo stat(String path) throws CFSException {
-    SDKStatInfo info = driver.getAttr(path);
+    CfsLibrary.StatInfo info = driver.getAttr(path);
     if (info == null) {
       return null;
     }

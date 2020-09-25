@@ -234,7 +234,7 @@ public class StorageTest {
       byte[] buff = new byte[buffSize];
       byte[] data = buffBlock.getBytes();
       while (true) {
-        int rsize = cfile.read(buff, 0, buffSize);
+        long rsize = cfile.read(buff, 0, buffSize);
         if (rsize == -1) {
           break;
         }
@@ -287,7 +287,7 @@ public class StorageTest {
 
   protected CFSStatInfo[] listStats(String path) {
     try {
-      CFSStatInfo[] stats = storage.listFileStatus(path);
+      CFSStatInfo[] stats = storage.list(path);
       if (stats == null || stats.length == 0) {
         return null;
       } else {
@@ -309,7 +309,7 @@ public class StorageTest {
     }
   }
 
-  protected int read(CFSFile cfile, byte[] buff, int buffOffset, int len) {
+  protected long read(CFSFile cfile, byte[] buff, int buffOffset, int len) {
     try {
       return cfile.read(buff, buffOffset, len);
     } catch (CFSEOFException x) {

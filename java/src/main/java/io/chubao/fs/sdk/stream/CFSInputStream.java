@@ -34,10 +34,10 @@ public class CFSInputStream extends InputStream {
       return 0;
     }
 
-    int size = 0;
+    long size = 0;
     try {
       size = cfile.read(b, off, len);
-      return size;
+      return (int)size;
     } catch (CFSEOFException e) {
       return -1;
     } catch (CFSException ex) {

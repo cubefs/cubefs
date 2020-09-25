@@ -75,7 +75,7 @@ public class CfsMount {
     }
 
     public int Open(String path, int flags, int mode) {
-        return libcfs.cfs_open(this.cid, path, flags, mode);
+        return libcfs.cfs_open(this.cid, path, flags, mode, 0, 0);
     }
 
     public void Close(int fd) {

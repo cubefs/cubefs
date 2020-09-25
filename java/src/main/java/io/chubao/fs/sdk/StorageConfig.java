@@ -9,9 +9,13 @@ public class StorageConfig {
   public final static String CONFIG_KEY_MATSER = "masterAddr";
   public final static String CONFIG_KEY_VOLUME = "volName";
   public final static String CONFIG_KEY_FOLLOWER_READ = "followerRead";
+  public final static String CONFIG_KEY_LOG_DIR = "logDir";
+  public final static String CONFIG_KEY_LOG_LEVEL = "logLevel";
   private String masters;
   private String volumeName;
   private String owner;
+  private String logDir = "/var/log/cfs/";
+  private String logLevel = "info";
   private boolean followerRread = false;
 
   public StorageConfig() {}
@@ -26,6 +30,22 @@ public class StorageConfig {
 
   public void setOwner(String owner) {
     this.owner = owner;
+  }
+
+  public void setLogDir(String path) {
+    this.logDir = path;
+  }
+
+  public void setLogLevel(String level) {
+    this.logLevel = level;
+  }
+
+  public String getLogDir() {
+    return this.logDir;
+  }
+
+  public String getLogLevel() {
+    return this.logLevel;
   }
 
   public String getMasters() throws CFSNullArgumentException {
