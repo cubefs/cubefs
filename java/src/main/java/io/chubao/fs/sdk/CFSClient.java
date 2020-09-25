@@ -45,30 +45,10 @@ public class CFSClient {
       throw new CFSException("Failed to new a client.");
     }
     clientID.set(cid);
-
-    /*
-    GoString.ByValue master = new GoString.ByValue();
-    master.ptr = StorageConfig.CONFIG_KEY_MATSER;
-    master.len = StorageConfig.CONFIG_KEY_MATSER.length();
-    GoString.ByValue masterVal = new GoString.ByValue();
-    masterVal.ptr = config.getMasters();
-    masterVal.len = config.getMasters().length();
-    driver.cfs_set_client(cid, master, masterVal);
-    GoString.ByValue volName = new GoString.ByValue();
-    volName.ptr = StorageConfig.CONFIG_KEY_VOLUME;
-    volName.len = StorageConfig.CONFIG_KEY_VOLUME.length();
-    GoString.ByValue volNameVal = new GoString.ByValue();
-    volNameVal.ptr = config.getVolumeName();
-    volNameVal.len = config.getVolumeName().length();
-    driver.cfs_set_client(cid, volName, volNameVal);
-    driver.cfs_set_client(cid, volName, volNameVal);
-
-     */
     driver.cfs_set_client(cid, StorageConfig.CONFIG_KEY_MATSER, config.getMasters());
     driver.cfs_set_client(cid, StorageConfig.CONFIG_KEY_VOLUME, config.getVolumeName());
     driver.cfs_set_client(cid, StorageConfig.CONFIG_KEY_LOG_DIR, config.getLogDir());
     driver.cfs_set_client(cid, StorageConfig.CONFIG_KEY_LOG_LEVEL, config.getLogLevel());
-
 
     int st = driver.cfs_start_client(cid);
     if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {

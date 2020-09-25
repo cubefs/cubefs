@@ -103,25 +103,6 @@ public interface CfsLibrary extends Library {
         }
     }
 
-    public class StatInfoArray extends Structure {
-        public static class ByValue extends StatInfoArray implements Structure.ByValue {
-        }
-
-        // note that the field layout should be aligned with GoSlice
-        public Pointer data;
-        public long len;
-        public long cap;
-
-        public StatInfoArray () {
-            super();
-        }
-
-        protected List<String> getFieldOrder() {
-            return Arrays.asList(new String[] { "data", "len", "cap" });
-        }
-    }
-
-
     // exports from shared library
     long cfs_new_client();
 

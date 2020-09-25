@@ -87,17 +87,6 @@ public class CFSFileImpl implements CFSFile {
     long rsize = 0;
     if (off == 0) {
       rsize = driver.read(fd, position, buff, len);
-      /*
-      byte[] bf = new byte[256];
-      rsize = driver.read(fd, position, bf, 256);
-      try {
-        String data =  new String(bf, "utf8");
-        log.info("2data:" + data);
-      } catch (Exception e) {
-
-      }
-
-       */
     } else {
       byte[] newbuff = new byte[len];
       rsize = driver.read(fd, position, newbuff, len);
