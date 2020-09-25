@@ -59,6 +59,8 @@ fuse.json
    "fsyncOnClose", "bool", "Perform fsync upon file close. True by default.", "No"
    "maxcpus", "int", "The maximum number of available CPU cores. Limit the CPU usage of the client process.", "No"
    "enableXattr", "bool", "Enable xattr support. False by default.", "No"
+   "nearRead", "bool", "Enable read from the nearer datanode. True by default, but only take effect when followerRead is enabled.", "No"
+   "enablePosixACL", "bool", "Enable posix ACL support. False by default.", "No"
 
 Mount
 -----
@@ -73,3 +75,16 @@ Unmount
 --------
 
 It is recommended to use standard Linux ``umount`` command to terminate the mount.
+
+DataPartitionSelector
+---------------------
+
+``dpSelectorName`` and ``dpSelectorParm`` allow custom to specify the desired dataPartition selection strategy to write. If custom does not set any strategy or set a wrong strategy, the default strategy(``DefaultRandomSelector``) will take effect.
+
+Custom can modify ``DataPartitionSelector`` through master API, and do not need to remount client.
+
+.. code-block:: bash
+
+    curl 'http://masterIP:Port/vol/update?name=volName&authKey=VolKey&dpSelectorName=a&dpSelectorParm=b'
+
+``dpSelectorName`` and ``dpSelectorParm`` must be modified at the same time.
