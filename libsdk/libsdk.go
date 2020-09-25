@@ -65,8 +65,12 @@ struct cfs_countdir_res {
 import "C"
 
 import (
+<<<<<<< HEAD
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/errors"
+=======
+	"io"
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 	"os"
 	gopath "path"
 	"reflect"
@@ -77,27 +81,26 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/willf/bitset"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data/stream"
 	"github.com/chubaofs/chubaofs/sdk/meta"
-)
-
-const (
-	slots = 4
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const (
 	defaultBlkSize = uint32(1) << 12
+
+	maxFdNum uint = 1024000
 )
 
-var (
-	nextId        uint64
-	clientBuckets [slots]*clientBucket
-)
+var gClientManager *clientManager
 
 var (
-	statusOK = 0
+	statusOK = C.int(0)
 	// error status must be minus value
+<<<<<<< HEAD
 	statusEIO         = -errorToStatus(syscall.EIO)
 	statusEINVAL      = -errorToStatus(syscall.EINVAL)
 	statusEEXIST      = -errorToStatus(syscall.EEXIST)
@@ -113,65 +116,70 @@ const (
 	attrModifyTime
 	attrAccessTime
 	attrSize
+=======
+	statusEIO     = errorToStatus(syscall.EIO)
+	statusEINVAL  = errorToStatus(syscall.EINVAL)
+	statusEEXIST  = errorToStatus(syscall.EEXIST)
+	statusEBADFD  = errorToStatus(syscall.EBADFD)
+	statusEACCES  = errorToStatus(syscall.EACCES)
+	statusEMFILE  = errorToStatus(syscall.EMFILE)
+	statusENOTDIR = errorToStatus(syscall.ENOTDIR)
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 )
 
 func init() {
-	for i := 0; i < slots; i++ {
-		clientBuckets[i] = &clientBucket{
-			clients: make(map[uint64]*client),
-		}
+	gClientManager = &clientManager{
+		clients: make(map[int64]*client),
 	}
 }
 
-func errorToStatus(err error) int {
+func errorToStatus(err error) C.int {
 	if err == nil {
 		return 0
 	}
 	if errno, is := err.(syscall.Errno); is {
-		return int(errno)
+		return -C.int(errno)
 	}
-	return int(syscall.EIO)
+	return -C.int(syscall.EIO)
 }
 
-type clientBucket struct {
-	clients map[uint64]*client
-	mu      sync.RWMutex
+type clientManager struct {
+	nextClientID int64
+	clients      map[int64]*client
+	mu           sync.RWMutex
 }
 
-func (m *clientBucket) get(id uint64) (client *client, exist bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	client, exist = m.clients[id]
+func newClient() *client {
+	id := atomic.AddInt64(&gClientManager.nextClientID, 1)
+	c := &client{
+		id:    id,
+		fdmap: make(map[uint]*file),
+		fdset: bitset.New(maxFdNum),
+		cwd:   "/",
+	}
+
+	gClientManager.mu.Lock()
+	gClientManager.clients[id] = c
+	gClientManager.mu.Unlock()
+
+	return c
+}
+
+func getClient(id int64) (c *client, exist bool) {
+	gClientManager.mu.RLock()
+	defer gClientManager.mu.RUnlock()
+	c, exist = gClientManager.clients[id]
 	return
 }
 
-func (m *clientBucket) put(id uint64, c *client) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.clients[id] = c
-}
-
-func (m *clientBucket) remove(id uint64) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	delete(m.clients, id)
-}
-
-func putClient(id uint64, c *client) {
-	clientBuckets[id%slots].put(id, c)
-}
-
-func getClient(id uint64) (c *client, exist bool) {
-	c, exist = clientBuckets[id%slots].get(id)
-	return
-}
-
-func removeClient(id uint64) {
-	clientBuckets[id%slots].remove(id)
+func removeClient(id int64) {
+	gClientManager.mu.Lock()
+	defer gClientManager.mu.Unlock()
+	delete(gClientManager.clients, id)
 }
 
 type file struct {
-	fd    uint64
+	fd    uint
 	ino   uint64
 	flags uint32
 	mode  uint32
@@ -187,16 +195,19 @@ type dirStream struct {
 
 type client struct {
 	// client id allocated by libsdk
-	id uint64
+	id int64
 
 	// mount config
 	volName      string
 	masterAddr   string
 	followerRead bool
+	logDir       string
+	logLevel     string
 
 	// runtime context
-	maxfd  uint64
-	fdmap  map[uint64]*file
+	cwd    string // current working directory
+	fdmap  map[uint]*file
+	fdset  *bitset.BitSet
 	fdlock sync.RWMutex
 
 	// server info
@@ -205,19 +216,21 @@ type client struct {
 }
 
 //export cfs_new_client
-func cfs_new_client() (id uint64) {
-	id = atomic.AddUint64(&nextId, 1)
-	c := &client{
-		id:    id,
-		fdmap: make(map[uint64]*file),
-	}
-	clientBuckets[id%slots].put(id, c)
-	return id
+func cfs_new_client() C.int64_t {
+	c := newClient()
+	// Just skip fd 0, 1, 2, to avoid confusion.
+	c.fdset.Set(0).Set(1).Set(2)
+	return C.int64_t(c.id)
 }
 
 //export cfs_set_client
+<<<<<<< HEAD
 func cfs_set_client(id uint64, key, val string) int {
 	c, exist := getClient(id)
+=======
+func cfs_set_client(id C.int64_t, key, val *C.char) C.int {
+	c, exist := getClient(int64(id))
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 	if !exist {
 		return statusEINVAL
 	}
@@ -232,6 +245,10 @@ func cfs_set_client(id uint64, key, val string) int {
 		} else {
 			c.followerRead = false
 		}
+	case "logDir":
+		c.logDir = v
+	case "logLevel":
+		c.logLevel = v
 	default:
 		return statusEINVAL
 	}
@@ -239,8 +256,13 @@ func cfs_set_client(id uint64, key, val string) int {
 }
 
 //export cfs_start_client
+<<<<<<< HEAD
 func cfs_start_client(id uint64) int {
 	c, exist := getClient(id)
+=======
+func cfs_start_client(id C.int64_t) C.int {
+	c, exist := getClient(int64(id))
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 	if !exist {
 		return statusEINVAL
 	}
@@ -253,25 +275,59 @@ func cfs_start_client(id uint64) int {
 }
 
 //export cfs_close_client
-func cfs_close_client(id uint64) {
-	if c, exist := getClient(id); exist {
+func cfs_close_client(id C.int64_t) {
+	if c, exist := getClient(int64(id)); exist {
 		if c.ec != nil {
 			_ = c.ec.Close()
 		}
 		if c.mw != nil {
 			_ = c.mw.Close()
 		}
-		removeClient(id)
+		removeClient(int64(id))
 	}
+	log.LogFlush()
+}
+
+//export cfs_chdir
+func cfs_chdir(id C.int64_t, path *C.char) C.int {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return statusEINVAL
+	}
+	cwd := c.absPath(C.GoString(path))
+	dirInfo, err := c.lookupPath(cwd)
+	if err != nil {
+		return errorToStatus(err)
+	}
+	if !proto.IsDir(dirInfo.Mode) {
+		return statusENOTDIR
+	}
+	c.cwd = cwd
+	return statusOK
+}
+
+//export cfs_getcwd
+func cfs_getcwd(id C.int64_t) *C.char {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return C.CString("")
+	}
+	return C.CString(c.cwd)
 }
 
 //export cfs_getattr
+<<<<<<< HEAD
 func cfs_getattr(id uint64, path string, stat *C.struct_cfs_stat_info) int {
 	c, exist := getClient(id)
+=======
+func cfs_getattr(id C.int64_t, path *C.char, stat *C.struct_cfs_stat_info) C.int {
+	c, exist := getClient(int64(id))
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 	if !exist {
 		return statusEINVAL
 	}
 
+<<<<<<< HEAD
 	newpath, err := validPath(path)
 	if err != nil {
 		return statusINVALIDPATH
@@ -281,17 +337,26 @@ func cfs_getattr(id uint64, path string, stat *C.struct_cfs_stat_info) int {
 	if err != nil {
 		fmt.Println("In getattr operation, Failed to lookup path: ", path, " error: ", err)
 		return -errorToStatus(err)
+=======
+	info, err := c.lookupPath(c.absPath(C.GoString(path)))
+	if err != nil {
+		return errorToStatus(err)
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 	}
 
 	// fill up the stat
 	stat.ino = C.uint64_t(info.Inode)
 	stat.size = C.uint64_t(info.Size)
-	stat.blocks = C.uint64_t(info.Size >> 9)
 	stat.nlink = C.uint32_t(info.Nlink)
 	stat.blk_size = C.uint32_t(defaultBlkSize)
 	stat.uid = C.uint32_t(info.Uid)
 	stat.gid = C.uint32_t(info.Gid)
 
+	if info.Size%512 != 0 {
+		stat.blocks = C.uint64_t(info.Size>>9) + 1
+	} else {
+		stat.blocks = C.uint64_t(info.Size >> 9)
+	}
 	// fill up the mode
 	if proto.IsRegular(info.Mode) {
 		stat.mode = C.uint32_t(C.S_IFREG) | C.uint32_t(info.Mode&0777)
@@ -320,9 +385,35 @@ func cfs_getattr(id uint64, path string, stat *C.struct_cfs_stat_info) int {
 	return statusOK
 }
 
+<<<<<<< HEAD
 //export cfs_setattr_by_path
 func cfs_setattr_by_path(id uint64, path string, stat *C.struct_cfs_stat_info) int {
 	c, exist := getClient(id)
+=======
+//export cfs_setattr
+func cfs_setattr(id C.int64_t, path *C.char, stat *C.struct_cfs_stat_info, valid C.int) C.int {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return statusEINVAL
+	}
+
+	info, err := c.lookupPath(c.absPath(C.GoString(path)))
+	if err != nil {
+		return errorToStatus(err)
+	}
+
+	err = c.setattr(info, uint32(valid), uint32(stat.mode), uint32(stat.uid), uint32(stat.gid), int64(stat.mtime)*1e9+int64(stat.mtime_nsec), int64(stat.atime)*1e9+int64(stat.atime_nsec))
+
+	if err != nil {
+		return errorToStatus(err)
+	}
+	return statusOK
+}
+
+//export cfs_open
+func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
+	c, exist := getClient(int64(id))
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 	if !exist {
 		return statusEINVAL
 	}
@@ -378,8 +469,10 @@ func cfs_open(id uint64, path string, flags int, mode C.mode_t, uid, gid uint32,
 	}
 
 	fuseMode := uint32(mode) & uint32(0777)
-	fuseFlags := uint32(flags &^ 0x8000)
+	fuseFlags := uint32(flags) &^ uint32(0x8000)
 	accFlags := fuseFlags & uint32(C.O_ACCMODE)
+
+	absPath := c.absPath(C.GoString(path))
 
 	var info *proto.InodeInfo
 
@@ -405,7 +498,11 @@ func cfs_open(id uint64, path string, flags int, mode C.mode_t, uid, gid uint32,
 		if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
 			return statusEACCES
 		}
+<<<<<<< HEAD
 		dirpath, name := gopath.Split(newpath)
+=======
+		dirpath, name := gopath.Split(absPath)
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 		dirInfo, err := c.lookupPath(dirpath)
 		if err != nil {
 			fmt.Println("Failed to lookup the parent dir: ", dirpath, " error: ", err)
@@ -413,12 +510,26 @@ func cfs_open(id uint64, path string, flags int, mode C.mode_t, uid, gid uint32,
 		}
 		newInfo, err := c.create(dirInfo.Inode, name, fuseMode, uid, gid)
 		if err != nil {
+<<<<<<< HEAD
       fmt.Println("Failed to create file: ", path, " error: ", -errorToStatus(err), " msg:", err)
 			return -errorToStatus(err)
 		}
 		info = newInfo
 	} else {
 		newInfo, err := c.lookupPath(newpath)
+=======
+			if err != syscall.EEXIST {
+				return errorToStatus(err)
+			}
+			newInfo, err = c.lookupPath(absPath)
+			if err != nil {
+				return errorToStatus(err)
+			}
+		}
+		info = newInfo
+	} else {
+		newInfo, err := c.lookupPath(absPath)
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 		if err != nil {
 			fmt.Println("In cfs_open operation, failed to lookup the path: ", path, " error: ", err)
 			return -errorToStatus(err)
@@ -428,9 +539,13 @@ func cfs_open(id uint64, path string, flags int, mode C.mode_t, uid, gid uint32,
 	fmt.Println("Succ to open: ", path, " info: ", info)
 
 	f := c.allocFD(info.Inode, fuseFlags, fuseMode)
+	if f == nil {
+		return statusEMFILE
+	}
 
 	if proto.IsRegular(info.Mode) {
 		c.openStream(f)
+<<<<<<< HEAD
 		if accFlags == uint32(C.O_WRONLY) || accFlags == uint32(C.O_RDWR) {
 			if fuseFlags&uint32(C.O_TRUNC) != 0 && fuseFlags&uint32(C.O_APPEND) == 0 {
 				if err := c.truncate(f, 0); err != nil {
@@ -446,12 +561,25 @@ func cfs_open(id uint64, path string, flags int, mode C.mode_t, uid, gid uint32,
 			} else { // O_CREAT
 				res.size = 0
 				res.pos = 0
+=======
+		if fuseFlags&uint32(C.O_TRUNC) != 0 {
+			if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
+				c.closeStream(f)
+				c.releaseFD(f.fd)
+				return statusEACCES
+			}
+			if err := c.truncate(f, 0); err != nil {
+				c.closeStream(f)
+				c.releaseFD(f.fd)
+				return statusEIO
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 			}
 		} else { // O_RDONLY
 			res.size = C.uint64_t(info.Size)
 			res.pos = 0
 		}
 	}
+<<<<<<< HEAD
 	fmt.Println("Succ to open: ", path, " fd: ", f.fd, " size:", res.size, " pos:", res.pos)
 	res.fd = C.uint64_t(f.fd)
 	return statusOK
@@ -460,11 +588,20 @@ func cfs_open(id uint64, path string, flags int, mode C.mode_t, uid, gid uint32,
 //export cfs_flush
 func cfs_flush(id uint64, fd uint64) int {
 	c, exist := getClient(id)
+=======
+
+	return C.int(f.fd)
+}
+
+//export cfs_flush
+func cfs_flush(id C.int64_t, fd C.int) C.int {
+	c, exist := getClient(int64(id))
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 	if !exist {
 		return statusEINVAL
 	}
 
-	f := c.getFile(fd)
+	f := c.getFile(uint(fd))
 	if f == nil {
 		return statusEBADFD
 	}
@@ -477,12 +614,21 @@ func cfs_flush(id uint64, fd uint64) int {
 }
 
 //export cfs_close
+<<<<<<< HEAD
 func cfs_close(id uint64, fd uint64) {
 	c, exist := getClient(id)
 	if !exist {
 		return
 	}
 	f := c.releaseFD(int(fd))
+=======
+func cfs_close(id C.int64_t, fd C.int) {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return
+	}
+	f := c.releaseFD(uint(fd))
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 	if f != nil {
 		c.flush(f)
 		c.closeStream(f)
@@ -490,13 +636,18 @@ func cfs_close(id uint64, fd uint64) {
 }
 
 //export cfs_write
+<<<<<<< HEAD
 func cfs_write(id, fd uint64, off C.off_t, buff *C.char, size C.size_t) int {
 	c, exist := getClient(id)
+=======
+func cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.off_t) C.ssize_t {
+	c, exist := getClient(int64(id))
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 	if !exist {
 		return statusEINVAL
 	}
 
-	f := c.getFile(fd)
+	f := c.getFile(uint(fd))
 	if f == nil {
 		fmt.Println("Not found the fd:", fd)
 		return statusEBADFD
@@ -538,13 +689,18 @@ func cfs_write(id, fd uint64, off C.off_t, buff *C.char, size C.size_t) int {
 }
 
 //export cfs_read
+<<<<<<< HEAD
 func cfs_read(id uint64, fd uint64, off C.size_t, buf *C.char, size C.off_t) int {
 	c, exist := getClient(id)
+=======
+func cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.off_t) C.ssize_t {
+	c, exist := getClient(int64(id))
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 	if !exist {
 		return statusEINVAL
 	}
 
-	f := c.getFile(fd)
+	f := c.getFile(uint(fd))
 	if f == nil {
 		return statusEBADFD
 	}
@@ -579,13 +735,18 @@ func cfs_read(id uint64, fd uint64, off C.size_t, buf *C.char, size C.off_t) int
 
 
 //export cfs_readdir
+<<<<<<< HEAD
 func cfs_readdir(id uint64, fd uint64, dirents []C.struct_cfs_dirent, count int) (n int) {
 	c, exist := getClient(id)
+=======
+func cfs_readdir(id C.int64_t, fd C.int, dirents []C.struct_cfs_dirent, count C.int) (n C.int) {
+	c, exist := getClient(int64(id))
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 	if !exist {
 		return statusEINVAL
 	}
 
-	f := c.getFile(fd)
+	f := c.getFile(uint(fd))
 	if f == nil {
 		return statusEBADFD
 	}
@@ -594,7 +755,7 @@ func cfs_readdir(id uint64, fd uint64, dirents []C.struct_cfs_dirent, count int)
 		f.dirp = &dirStream{}
 		dentries, err := c.mw.ReadDir_ll(f.ino)
 		if err != nil {
-			return -errorToStatus(err)
+			return errorToStatus(err)
 		}
 		f.dirp.dirents = dentries
 	}
@@ -632,6 +793,7 @@ func cfs_readdir(id uint64, fd uint64, dirents []C.struct_cfs_dirent, count int)
 	return n
 }
 
+<<<<<<< HEAD
 //export cfs_countdir
 func cfs_countdir(id uint64, path string, res *C.struct_cfs_countdir_res) int {
 	c, exist := getClient(id)
@@ -746,16 +908,27 @@ func cfs_listattr(id, ino uint64,  num uint32, stats *C.struct_cfs_stat_info) in
 //export cfs_mkdirs
 func cfs_mkdirs(id uint64, path string, mode C.mode_t, uid, gid uint32) int {
 	c, exist := getClient(id)
+=======
+//export cfs_mkdirs
+func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) C.int {
+	c, exist := getClient(int64(id))
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 	if !exist {
 		return statusEINVAL
 	}
 
+<<<<<<< HEAD
 	dirpath, err := validPath(path)
 	if err != nil {
 		return statusINVALIDPATH
 	}
 	if dirpath == "/" {
 		return statusOK
+=======
+	dirpath := c.absPath(C.GoString(path))
+	if dirpath == "/" {
+		return statusEEXIST
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 	}
 
 	pino := proto.RootIno
@@ -783,18 +956,28 @@ func cfs_mkdirs(id uint64, path string, mode C.mode_t, uid, gid uint32) int {
 }
 
 //export cfs_rmdir
+<<<<<<< HEAD
 func cfs_rmdir(id uint64, path string, recursive bool) int {
 	c, exist := getClient(id)
+=======
+func cfs_rmdir(id C.int64_t, path *C.char) C.int {
+	c, exist := getClient(int64(id))
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 	if !exist {
 		return statusEINVAL
 	}
 
+<<<<<<< HEAD
 	newpath, err := validPath(path)
 	if err != nil {
 		return statusINVALIDPATH
 	}
 
 	dirpath, name := gopath.Split(newpath)
+=======
+	absPath := c.absPath(C.GoString(path))
+	dirpath, name := gopath.Split(absPath)
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 	dirInfo, err := c.lookupPath(dirpath)
 	if err != nil {
 		return errorToStatus(err)
@@ -872,12 +1055,18 @@ func rmdir_recursive(c *client, info *proto.InodeInfo) (err error) {
 }
 
 //export cfs_unlink
+<<<<<<< HEAD
 func cfs_unlink(id uint64, path string) int {
 	c, exist := getClient(id)
+=======
+func cfs_unlink(id C.int64_t, path *C.char) C.int {
+	c, exist := getClient(int64(id))
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 	if !exist {
 		return statusEINVAL
 	}
 
+<<<<<<< HEAD
 	newpath, err := validPath(path)
 	if err != nil {
 		return statusINVALIDPATH
@@ -896,6 +1085,10 @@ func cfs_unlink(id uint64, path string) int {
 	}
 
 	dirpath, name := gopath.Split(newpath)
+=======
+	absPath := c.absPath(C.GoString(path))
+	dirpath, name := gopath.Split(absPath)
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 	dirInfo, err := c.lookupPath(dirpath)
 	if err != nil {
 		fmt.Println("In unlink operation, failed to lookup the parent dir: ", dirpath, " error:", err)
@@ -913,12 +1106,18 @@ func cfs_unlink(id uint64, path string) int {
 }
 
 //export cfs_rename
+<<<<<<< HEAD
 func cfs_rename(id uint64, from, to string) int {
 	c, exist := getClient(id)
+=======
+func cfs_rename(id C.int64_t, from *C.char, to *C.char) C.int {
+	c, exist := getClient(int64(id))
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 	if !exist {
 		return statusEINVAL
 	}
 
+<<<<<<< HEAD
 	newfrom, err := validPath(from)
 	if err != nil {
 		return statusINVALIDPATH
@@ -926,6 +1125,12 @@ func cfs_rename(id uint64, from, to string) int {
 	if newfrom == "/" {
 		return statusINVALIDPATH
 	}
+=======
+	absFrom := c.absPath(C.GoString(from))
+	absTo := c.absPath(C.GoString(to))
+	srcDirPath, srcName := gopath.Split(absFrom)
+	dstDirPath, dstName := gopath.Split(absTo)
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 
 	newto, err := validPath(to)
 	if err != nil {
@@ -980,10 +1185,46 @@ func cfs_rename(id uint64, from, to string) int {
 	return statusOK
 }
 
+//export cfs_fchmod
+func cfs_fchmod(id C.int64_t, fd C.int, mode C.mode_t) C.int {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return statusEINVAL
+	}
+
+	f := c.getFile(uint(fd))
+	if f == nil {
+		return statusEBADFD
+	}
+
+	info, err := c.mw.InodeGet_ll(f.ino)
+	if err != nil {
+		return errorToStatus(err)
+	}
+
+	err = c.setattr(info, proto.AttrMode, uint32(mode), 0, 0, 0, 0)
+	if err != nil {
+		return errorToStatus(err)
+	}
+	return statusOK
+}
+
 // internals
+
+func (c *client) absPath(path string) string {
+	p := gopath.Clean(path)
+	if !gopath.IsAbs(p) {
+		p = gopath.Join(c.cwd, p)
+	}
+	return gopath.Clean(p)
+}
 
 func (c *client) start() (err error) {
 	var masters = strings.Split(c.masterAddr, ",")
+
+	if c.logDir != "" {
+		log.InitLog(c.logDir, "libcfs", log.InfoLevel, nil)
+	}
 
 	var mw *meta.MetaWrapper
 	if mw, err = meta.NewMetaWrapper(&meta.MetaConfig{
@@ -1012,35 +1253,43 @@ func (c *client) start() (err error) {
 }
 
 func (c *client) allocFD(ino uint64, flags, mode uint32) *file {
-	fd := atomic.AddUint64(&c.maxfd, 1)
-	f := &file{fd: fd, ino: ino, flags: flags, mode: mode}
 	c.fdlock.Lock()
+	defer c.fdlock.Unlock()
+	fd, ok := c.fdset.NextClear(0)
+	if !ok || fd > maxFdNum {
+		return nil
+	}
+	c.fdset.Set(fd)
+	f := &file{fd: fd, ino: ino, flags: flags, mode: mode}
 	c.fdmap[fd] = f
-	c.fdlock.Unlock()
 	return f
 }
 
+<<<<<<< HEAD
 func (c *client) getFile(fd uint64) *file {
+=======
+func (c *client) getFile(fd uint) *file {
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 	c.fdlock.Lock()
 	f := c.fdmap[fd]
 	c.fdlock.Unlock()
 	return f
 }
 
-func (c *client) releaseFD(fd int) *file {
+func (c *client) releaseFD(fd uint) *file {
 	c.fdlock.Lock()
-	f, ok := c.fdmap[uint64(fd)]
+	defer c.fdlock.Unlock()
+	f, ok := c.fdmap[fd]
 	if !ok {
-		c.fdlock.Unlock()
 		return nil
 	}
-	delete(c.fdmap, uint64(fd))
-	c.fdlock.Unlock()
+	delete(c.fdmap, fd)
+	c.fdset.Clear(fd)
 	return f
 }
 
 func (c *client) lookupPath(path string) (*proto.InodeInfo, error) {
-	ino, err := c.mw.LookupPath(path)
+	ino, err := c.mw.LookupPath(gopath.Clean(path))
 	if err != nil {
 		return nil, err
 	}
@@ -1051,9 +1300,26 @@ func (c *client) lookupPath(path string) (*proto.InodeInfo, error) {
 	return info, nil
 }
 
+<<<<<<< HEAD
 func (c *client) create(pino uint64, name string, mode, uid, gid uint32) (info *proto.InodeInfo, err error) {
 	fuseMode := mode
 	return c.mw.Create_ll(pino, name, fuseMode, uid, gid, nil)
+=======
+func (c *client) setattr(info *proto.InodeInfo, valid uint32, mode, uid, gid uint32, mtime, atime int64) error {
+	// Only rwx mode bit can be set
+	if valid&proto.AttrMode != 0 {
+		fuseMode := mode & uint32(0777)
+		mode = info.Mode &^ uint32(0777) // clear rwx mode bit
+		mode |= fuseMode
+	}
+
+	return c.mw.Setattr(info.Inode, valid, mode, uid, gid, mtime, atime)
+}
+
+func (c *client) create(pino uint64, name string, mode uint32) (info *proto.InodeInfo, err error) {
+	fuseMode := mode & 0777
+	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil)
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 }
 
 func (c *client) mkdir(pino uint64, name string, mode, uid, gid uint32) (info *proto.InodeInfo, err error) {
@@ -1087,10 +1353,17 @@ func (c *client) write(f *file, offset int, data []byte, flags int) (n int, err 
 	return n, nil
 }
 
+<<<<<<< HEAD
 func (c *client) read(f *file, offset int, data []byte, size int) (n int, err error) {
 	n, err = c.ec.Read(f.ino, data, offset, size)
 	if err != nil {
 		return n, err
+=======
+func (c *client) read(f *file, offset int, data []byte) (n int, err error) {
+	n, err = c.ec.Read(f.ino, data, offset, len(data))
+	if err != nil && err != io.EOF {
+		return 0, err
+>>>>>>> 513a0cd172a8598de9025d5e73096ca3a0647206
 	}
 	return n, nil
 }
