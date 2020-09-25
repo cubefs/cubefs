@@ -333,7 +333,7 @@ func cfs_setattr(id C.int64_t, path *C.char, stat *C.struct_cfs_stat_info, valid
 		return errorToStatus(err)
 	}
 
-	err = c.setattr(info, uint32(valid), uint32(stat.mode), uint32(stat.uid), uint32(stat.gid), int64(stat.mtime), int64(stat.atime))
+	err = c.setattr(info, uint32(valid), uint32(stat.mode), uint32(stat.uid), uint32(stat.gid), int64(stat.atime), int64(stat.mtime))
 
 	if err != nil {
 		return errorToStatus(err)
@@ -795,7 +795,7 @@ func (c *client) lookupPath(path string) (*proto.InodeInfo, error) {
 	return info, nil
 }
 
-func (c *client) setattr(info *proto.InodeInfo, valid uint32, mode, uid, gid uint32, mtime, atime int64) error {
+func (c *client) setattr(info *proto.InodeInfo, valid uint32, mode, uid, gid uint32, atime, mtime int64) error {
 	// Only rwx mode bit can be set
 	if valid&proto.AttrMode != 0 {
 		fuseMode := mode & uint32(0777)
@@ -803,7 +803,7 @@ func (c *client) setattr(info *proto.InodeInfo, valid uint32, mode, uid, gid uin
 		mode |= fuseMode
 	}
 
-	return c.mw.Setattr(info.Inode, valid, mode, uid, gid, mtime, atime)
+	return c.mw.Setattr(info.Inode, valid, mode, uid, gid, atime, mtime)
 }
 
 func (c *client) create(pino uint64, name string, mode uint32) (info *proto.InodeInfo, err error) {
