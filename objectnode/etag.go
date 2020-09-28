@@ -80,6 +80,14 @@ func DirectoryETagValue() ETagValue {
 	return staticDirectoryETagValue
 }
 
+func EmptyContentETagValue(ts time.Time) ETagValue {
+	return ETagValue{
+		Value:   EmptyContentMD5String,
+		PartNum: 0,
+		TS:      ts,
+	}
+}
+
 func NewRandomBytesETagValue(partNum int, ts time.Time) ETagValue {
 	r := rand.New(rand.NewSource(ts.Unix()))
 	tmp := make([]byte, 4*1024)

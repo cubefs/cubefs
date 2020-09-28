@@ -1832,8 +1832,12 @@ func (v *Volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
 
 func (v *Volume) updateETag(inode uint64, size int64, mt time.Time) (etagValue ETagValue, err error) {
 	// The ETag is invalid or outdated then generate a new ETag and make update.
-	var splittedRanges = SplitFileRange(size, SplitFileRangeBlockSize)
-	etagValue = NewRandomUUIDETagValue(len(splittedRanges), mt)
+	if size == 0 {
+		etagValue = EmptyContentETagValue(mt)
+	} else {
+		var splittedRanges = SplitFileRange(size, SplitFileRangeBlockSize)
+		etagValue = NewRandomUUIDETagValue(len(splittedRanges), mt)
+	}
 	if err = v.mw.XAttrSet_ll(inode, []byte(XAttrKeyOSSETag), []byte(etagValue.Encode())); err != nil {
 		return
 	}
