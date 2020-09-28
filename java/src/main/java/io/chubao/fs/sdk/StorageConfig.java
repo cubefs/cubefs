@@ -31,7 +31,8 @@ public class StorageConfig {
   private String logLevel = "info";
   private boolean followerRread = false;
 
-  public StorageConfig() {}
+  public StorageConfig() {
+  }
 
   public void setMasters(String masters) {
     this.masters = masters;

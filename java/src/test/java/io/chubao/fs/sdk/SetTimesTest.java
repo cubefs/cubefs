@@ -20,6 +20,7 @@ import org.junit.Test;
 
 public class SetTimesTest extends StorageTest {
   private final static Log log = LogFactory.getLog(SetTimesTest.class);
+
   @Test
   public void testSetDir() {
     String path = settimeTestDir + "/settimes_dir_0";

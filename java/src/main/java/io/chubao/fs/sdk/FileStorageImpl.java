@@ -147,8 +147,8 @@ public class FileStorageImpl implements FileStorage {
   }
 
   @Override
-  public Map<String,byte[]> getXAttrs(String path, List<String> names)
-    throws CFSException {
+  public Map<String, byte[]> getXAttrs(String path, List<String> names)
+      throws CFSException {
     throw new CFSException("Not implement getXAttrs.");
   }
 
@@ -204,7 +204,7 @@ public class FileStorageImpl implements FileStorage {
   }
 
   private void setAttr(String path, int mode, int uid, int gid, long mtime, long atime)
-    throws CFSException {
+      throws CFSException {
     throw new CFSException("Not implement setAttr.");
   }
 

@@ -45,7 +45,7 @@ public class TestHelper {
     return UUID.randomUUID().toString();
   }
 
-  public static  CFSClient creatClient(String libpath) {
+  public static CFSClient creatClient(String libpath) {
     try {
       CFSClient client = new CFSClient(libpath);
       client.init();
@@ -56,7 +56,7 @@ public class TestHelper {
     }
   }
 
-  public static  CFSClient creatClient() {
+  public static CFSClient creatClient() {
     try {
       CFSClient client = new CFSClient(getSdkPath());
       client.init();

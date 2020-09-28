@@ -51,7 +51,7 @@ public class StorageTest {
 
   @BeforeClass
   public static void beforeClass() {
-    try  {
+    try {
       storage = TestHelper.getStorage();
       DEFAULT_GID = storage.getGid("root");
       DEFAULT_UID = storage.getUid("root");
@@ -62,7 +62,7 @@ public class StorageTest {
 
   @AfterClass
   public static void afterClass() {
-    try  {
+    try {
       storage.close();
     } catch (CFSException ex) {
       Assert.assertFalse(false);
@@ -161,7 +161,7 @@ public class StorageTest {
         return true;
       }
       byte[] buff = genBuff(buffSize);
-      for (int i=0; i<size/buffSize; i++) {
+      for (int i = 0; i < size / buffSize; i++) {
         cfile.write(buff, 0, buffSize);
       }
       cfile.close();
@@ -187,7 +187,7 @@ public class StorageTest {
       CFSStatInfo stat = stat(path);
       long newsize = stat.getSize() + size;
       byte[] buff = genBuff(buffSize);
-      for (int i=0; i<size/buffSize; i++) {
+      for (int i = 0; i < size / buffSize; i++) {
         cfile.write(buff, 0, buffSize);
       }
       Assert.assertEquals(cfile.getFileSize(), newsize);
@@ -211,7 +211,7 @@ public class StorageTest {
         return true;
       }
       byte[] buff = genBuff(buffSize);
-      for (int i=0; i<size/buffSize; i++) {
+      for (int i = 0; i < size / buffSize; i++) {
         cfile.write(buff, 0, buffSize);
       }
       Assert.assertEquals(cfile.getFileSize(), size);
@@ -250,7 +250,7 @@ public class StorageTest {
         }
 
         Assert.assertEquals(rsize, buffSize);
-        for (int i=0; i<buffSize; i++) {
+        for (int i = 0; i < buffSize; i++) {
           Assert.assertEquals(buff[i], data[i]);
         }
         len += rsize;
@@ -342,7 +342,7 @@ public class StorageTest {
 
   protected byte[] genBuff(int size) {
     StringBuilder sb = new StringBuilder();
-    for (int i=0; i<size/buffSize; i++) {
+    for (int i = 0; i < size / buffSize; i++) {
       sb.append(buffBlock);
     }
     return sb.toString().getBytes();
@@ -352,7 +352,7 @@ public class StorageTest {
     try {
       out.write(val);
       return true;
-    }  catch (IOException ex) {
+    } catch (IOException ex) {
       log.error(ex.getMessage(), ex);
       return false;
     }
@@ -362,7 +362,7 @@ public class StorageTest {
     try {
       out.write(buff);
       return true;
-    }  catch (IOException ex) {
+    } catch (IOException ex) {
       log.error(ex.getMessage(), ex);
       return false;
     }
@@ -372,7 +372,7 @@ public class StorageTest {
     try {
       out.write(buff, off, len);
       return true;
-    }  catch (IOException ex) {
+    } catch (IOException ex) {
       log.error(ex.getMessage(), ex);
       return false;
     }
@@ -381,7 +381,7 @@ public class StorageTest {
   protected int readStream(CFSInputStream in) {
     try {
       return in.read();
-    }  catch (IOException ex) {
+    } catch (IOException ex) {
       log.error(ex.getMessage(), ex);
       return -1;
     }
@@ -390,7 +390,7 @@ public class StorageTest {
   protected int readStream(CFSInputStream in, byte[] buff) {
     try {
       return in.read(buff);
-    }  catch (IOException ex) {
+    } catch (IOException ex) {
       log.error(ex.getMessage(), ex);
       return -2;
     }
@@ -399,7 +399,7 @@ public class StorageTest {
   protected int readStream(CFSInputStream in, byte[] buff, int off, int len) {
     try {
       return in.read(buff, off, len);
-    }  catch (IOException ex) {
+    } catch (IOException ex) {
       log.error(ex.getMessage(), ex);
       return -2;
     }
@@ -409,7 +409,7 @@ public class StorageTest {
     try {
       out.close();
       return true;
-    }  catch (IOException ex) {
+    } catch (IOException ex) {
       log.error(ex.getMessage(), ex);
       return false;
     }
@@ -418,7 +418,7 @@ public class StorageTest {
   protected long skipStream(CFSInputStream in, long n) {
     try {
       return in.skip(n);
-    }  catch (IOException ex) {
+    } catch (IOException ex) {
       log.error(ex.getMessage(), ex);
       return -1;
     }

@@ -15,8 +15,7 @@ package io.chubao.fs.sdk.exception;
 
 import org.apache.commons.lang.NullArgumentException;
 
-public enum StatusCodes
-{
+public enum StatusCodes {
   CFS_STATUS_OK(0, "Ok"),
   CFS_STATUS_ERROR(-999, "Error"),
   CFS_STATUS_INVALID_ARGUMENT(-100, "Invalid argument."),
@@ -25,8 +24,7 @@ public enum StatusCodes
   CFS_STATUS_NULL_ARGUMENT(-3, "Null argument."),
   CFS_STATUS_EOF(-5, "End-of-file reached");
 
-  public static StatusCodes get(int code)
-  {
+  public static StatusCodes get(int code) {
     switch (code) {
       case 0:
         return CFS_STATUS_OK;
@@ -46,25 +44,21 @@ public enum StatusCodes
   private int code;
   private String msg;
 
-  private StatusCodes(int code)
-  {
+  private StatusCodes(int code) {
     this.code = code;
     this.msg = "unkown error";
   }
 
-  private StatusCodes(int code, String msg)
-  {
+  private StatusCodes(int code, String msg) {
     this.code = code;
     this.msg = msg;
   }
 
-  public int code()
-  {
+  public int code() {
     return code;
   }
 
-  public String msg()
-  {
+  public String msg() {
     return msg;
   }
 }

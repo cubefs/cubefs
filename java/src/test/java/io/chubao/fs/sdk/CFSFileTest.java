@@ -21,6 +21,7 @@ import org.junit.Test;
 
 public class CFSFileTest extends StorageTest {
   private final static Log log = LogFactory.getLog(CFSFileTest.class);
+
   @Test
   public void testCreate() {
     String path = cfileTestDir + "/f0";
@@ -64,7 +65,7 @@ public class CFSFileTest extends StorageTest {
     Assert.assertTrue(seek(cfile, offset));
 
     byte[] buff = genBuff(buffSize);
-    for (int i=0; i<size/buffSize; i++) {
+    for (int i = 0; i < size / buffSize; i++) {
       write(cfile, buff, 0, buffSize);
     }
     Assert.assertEquals(cfile.getFileSize(), size + offset);
@@ -83,7 +84,7 @@ public class CFSFileTest extends StorageTest {
     Assert.assertNotNull(cfile);
     byte[] buff = buffBlock2.getBytes();
     long size = 2048;
-    for (int i=0; i<size/8; i++) {
+    for (int i = 0; i < size / 8; i++) {
       Assert.assertTrue(write(cfile, buff, 2, 8));
     }
     Assert.assertTrue(close(cfile));
@@ -150,7 +151,7 @@ public class CFSFileTest extends StorageTest {
       }
       Assert.assertEquals(rsize, 8);
       len += rsize;
-      for (int i=2; i<10; i++) {
+      for (int i = 2; i < 10; i++) {
         Assert.assertEquals(buff[i], data[i]);
       }
     }

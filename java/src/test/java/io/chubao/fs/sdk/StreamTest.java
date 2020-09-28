@@ -22,6 +22,7 @@ import org.junit.Test;
 
 public class StreamTest extends StorageTest {
   private final static Log log = LogFactory.getLog(StreamTest.class);
+
   @Test
   public void testInt() {
     String path = StorageTest.streamTestDir + "/f0";
@@ -58,7 +59,7 @@ public class StreamTest extends StorageTest {
       int flags = FileStorage.O_WRONLY | FileStorage.O_CREAT;
       CFSFile cfile = openFile(path, flags);
       CFSOutputStream output = new CFSOutputStream(cfile);
-      for (int i=0; i<fileSize/buffSize; i++) {
+      for (int i = 0; i < fileSize / buffSize; i++) {
         Assert.assertTrue(writeStream(output, data));
       }
       Assert.assertTrue(closeStream(output));
@@ -78,7 +79,7 @@ public class StreamTest extends StorageTest {
         }
         Assert.assertEquals(rsize, buffSize);
         count += rsize;
-        for (int i=0; i<buffSize; i++) {
+        for (int i = 0; i < buffSize; i++) {
           Assert.assertEquals(buff[i], data[i]);
         }
       }
@@ -98,7 +99,7 @@ public class StreamTest extends StorageTest {
       int flags = FileStorage.O_WRONLY | FileStorage.O_CREAT;
       CFSFile cfile = openFile(path, flags);
       CFSOutputStream output = new CFSOutputStream(cfile);
-      for (int i=0; i<fileSize/buffSize; i++) {
+      for (int i = 0; i < fileSize / buffSize; i++) {
         Assert.assertTrue(writeStream(output, data, 2, buffSize));
       }
       Assert.assertTrue(closeStream(output));
@@ -118,7 +119,7 @@ public class StreamTest extends StorageTest {
         }
         Assert.assertEquals(rsize, buffSize);
         count += rsize;
-        for (int i=2; i<buffSize2; i++) {
+        for (int i = 2; i < buffSize2; i++) {
           Assert.assertEquals(buff[i], data[i]);
         }
       }
@@ -138,7 +139,7 @@ public class StreamTest extends StorageTest {
       int flags = FileStorage.O_WRONLY | FileStorage.O_CREAT;
       CFSFile cfile = openFile(path, flags);
       CFSOutputStream output = new CFSOutputStream(cfile);
-      for (int i=0; i<fileSize/buffSize; i++) {
+      for (int i = 0; i < fileSize / buffSize; i++) {
         Assert.assertTrue(writeStream(output, data, 2, buffSize));
       }
       Assert.assertTrue(closeStream(output));
@@ -159,7 +160,7 @@ public class StreamTest extends StorageTest {
         }
         Assert.assertEquals(rsize, buffSize);
         count += rsize;
-        for (int i=2; i<buffSize2; i++) {
+        for (int i = 2; i < buffSize2; i++) {
           Assert.assertEquals(buff[i], data[i]);
         }
       }

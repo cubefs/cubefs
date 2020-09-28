@@ -21,6 +21,7 @@ import org.junit.Test;
 
 public class CreateFileTest extends StorageTest {
   private final static Log log = LogFactory.getLog(CreateFileTest.class);
+
   @Test
   public void testCreateFile() {
     Assert.assertTrue(mkdirs(createTestDir));

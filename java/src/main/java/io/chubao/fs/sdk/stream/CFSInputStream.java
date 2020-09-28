@@ -34,14 +34,14 @@ public class CFSInputStream extends InputStream {
 
   @Override
   public int available() throws IOException {
-    return (int)(cfile.getFileSize() - cfile.getPosition());
+    return (int) (cfile.getFileSize() - cfile.getPosition());
   }
 
   @Override
   public int read(byte[] b, int off, int len) throws IOException {
     if (b == null) {
       throw new NullPointerException();
-    } else if (off < 0 || len < 0 || len > b.length-off) {
+    } else if (off < 0 || len < 0 || len > b.length - off) {
       throw new IndexOutOfBoundsException();
     } else if (len == 0) {
       return 0;
@@ -50,7 +50,7 @@ public class CFSInputStream extends InputStream {
     long size = 0;
     try {
       size = cfile.read(b, off, len);
-      return (int)size;
+      return (int) size;
     } catch (CFSEOFException e) {
       return -1;
     } catch (CFSException ex) {
@@ -65,7 +65,7 @@ public class CFSInputStream extends InputStream {
     } catch (CFSException ex) {
       throw new IOException(ex);
     }
-}
+  }
 
   @Override
   public int read() throws IOException {
@@ -88,7 +88,7 @@ public class CFSInputStream extends InputStream {
     } catch (CFSException ex) {
       throw new IOException(ex);
     }
-}
+  }
 
   public synchronized long getPos() throws IOException {
     return cfile.getPosition();

@@ -21,6 +21,7 @@ import org.junit.Test;
 
 public class ChmodTest extends StorageTest {
   private final static Log log = LogFactory.getLog(ChmodTest.class);
+
   @Test
   public void testchmodDir() {
     String path = chmodTestDir + "/chmod_dir_0";

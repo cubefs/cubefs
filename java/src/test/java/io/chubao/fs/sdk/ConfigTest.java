@@ -13,6 +13,7 @@
 // permissions and limitations under the License.
 
 package io.chubao.fs.sdk;
+
 import io.chubao.fs.sdk.exception.CFSNullArgumentException;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -21,6 +22,7 @@ import org.junit.Test;
 
 public class ConfigTest {
   private final static Log log = LogFactory.getLog(ConfigTest.class);
+
   @Test
   public void testNormal() {
     String master = "localhost:8080";

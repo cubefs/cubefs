@@ -21,6 +21,7 @@ import org.junit.Test;
 
 public class ChownTest extends StorageTest {
   private final static Log log = LogFactory.getLog(ChownTest.class);
+
   @Test
   public void testChownDir() {
     Assert.assertTrue(mkdirs(chownTestDir));

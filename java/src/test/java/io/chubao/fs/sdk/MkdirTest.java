@@ -20,6 +20,7 @@ import org.junit.*;
 
 public class MkdirTest extends StorageTest {
   private final static Log log = LogFactory.getLog(MkdirTest.class);
+
   @Test
   public void testMkdir() {
     Assert.assertTrue(mkdirs(mkdirsTestDir));

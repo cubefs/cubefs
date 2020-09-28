@@ -27,12 +27,12 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class CFSDriverIns {
-  private final static int ATTR_MODE      = 1 << 0;
-  private final static int ATTR_UID       = 1 << 1;
-  private final static int ATTR_GID       = 1 << 2;
-  private final static int ATTR_MTIME     = 1 << 3;
-  private final static int ATTR_ATIME     = 1 << 4;
-  private final static int ATTR_SIZE      = 1 << 5;
+  private final static int ATTR_MODE = 1 << 0;
+  private final static int ATTR_UID = 1 << 1;
+  private final static int ATTR_GID = 1 << 2;
+  private final static int ATTR_MTIME = 1 << 3;
+  private final static int ATTR_ATIME = 1 << 4;
+  private final static int ATTR_SIZE = 1 << 5;
   private final static int batchSize = 100;
   private final static int timeFactor = 1000 * 1000 * 1000;
 
@@ -48,7 +48,7 @@ public class CFSDriverIns {
   public int open(String path, int flags, int mode, int uid, int gid) throws CFSException {
     verifyPath(path);
 
-    int st =driver.cfs_open(this.clientID, path, flags, mode, uid, gid);
+    int st = driver.cfs_open(this.clientID, path, flags, mode, uid, gid);
     if (st < 0) {
       throw new CFSException("Failed to open:" + path + " status code: " + st);
     }
@@ -57,7 +57,7 @@ public class CFSDriverIns {
   }
 
   public long size(int fd) throws CFSException {
-    long size =driver.cfs_file_size(this.clientID, fd);
+    long size = driver.cfs_file_size(this.clientID, fd);
     if (size < 0) {
       throw new CFSException("Failed to get size of file:" + fd + " status code: " + size);
     }
@@ -116,7 +116,7 @@ public class CFSDriverIns {
     verifyPath(path);
     int st = driver.cfs_mkdirs(this.clientID, path, mode, uid, gid);
     if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK &&
-      StatusCodes.get(st) != StatusCodes.CFS_STATUS_FILE_EXISTS) {
+        StatusCodes.get(st) != StatusCodes.CFS_STATUS_FILE_EXISTS) {
       throw new CFSException("Failed to mkdirs: " + path + " status code:" + st);
     }
   }
@@ -192,14 +192,14 @@ public class CFSDriverIns {
     CfsLibrary.StatInfo stat = new CfsLibrary.StatInfo();
     int valid = 0;
     if (mtime > 0) {
-      stat.mtime = mtime/timeFactor;
-      stat.mtime_nsec = (int)(mtime%timeFactor);
+      stat.mtime = mtime / timeFactor;
+      stat.mtime_nsec = (int) (mtime % timeFactor);
       valid = ATTR_MTIME;
     }
 
     if (atime > 0) {
-      stat.atime = atime/timeFactor;
-      stat.atime_nsec = (int)(atime%timeFactor);
+      stat.atime = atime / timeFactor;
+      stat.atime_nsec = (int) (atime % timeFactor);
       valid = valid | ATTR_ATIME;
     }
     int st = driver.cfs_setattr_by_path(this.clientID, path, stat, valid);
@@ -248,7 +248,7 @@ public class CFSDriverIns {
 
     long[] iids = new long[count];
     Map<Long, String> names = new HashMap<Long, String>(count);
-    for (int i=0; i<count; i++) {
+    for (int i = 0; i < count; i++) {
       dents[i].read();
       iids[i] = dents[i].ino;
       names.put(dents[i].ino, new String(dents[i].name, 0, dents[i].nameLen, "utf-8"));
@@ -267,7 +267,7 @@ public class CFSDriverIns {
       throw new CFSException("Failed to get inodes,  the fd:" + fd + " status code: " + num);
     }
 
-    for (int i=0; i<num; i++) {
+    for (int i = 0; i < num; i++) {
       stats[i].read();
       StatInfo in = stats[i];
       try {
@@ -276,7 +276,7 @@ public class CFSDriverIns {
             in.ctime, in.mtime, in.atime, names.get(in.ino));
         fileStats.add(info);
 
-      } catch (Exception e)  {
+      } catch (Exception e) {
         log.error(e.getMessage(), e);
       }
     }
@@ -290,7 +290,7 @@ public class CFSDriverIns {
     }
 
     if (path.startsWith("/") == false) {
-      throw new  CFSInvalidArgumentException(path);
+      throw new CFSInvalidArgumentException(path);
     }
   }
 }

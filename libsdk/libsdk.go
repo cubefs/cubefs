@@ -156,7 +156,7 @@ type file struct {
 	ino   uint64
 	flags uint32
 	mode  uint32
-	size uint64
+	size  uint64
 
 	// dir only
 	dirp *dirStream
@@ -371,7 +371,7 @@ func cfs_setattr_by_path(id C.int64_t, path *C.char, stat *C.struct_cfs_stat_inf
 		return errorToStatus(err)
 	}
 
-	if uint32(valid)&attrSize  != 0 {
+	if uint32(valid)&attrSize != 0 {
 		err := c.mw.Truncate(info.Inode, uint64(stat.size))
 		if err != nil {
 			fmt.Println("Failed to truncate path: ", path, " error: ", err)
@@ -419,9 +419,9 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, uid, gid C
 		if err != nil {
 			return errorToStatus(err)
 		}
-    if len(name) == 0 {
-		  return statusEINVAL
-    }
+		if len(name) == 0 {
+			return statusEINVAL
+		}
 		newInfo, err := c.create(dirInfo.Inode, name, fuseMode, uint32(uid), uint32(gid))
 		if err != nil {
 			if err != syscall.EEXIST {
@@ -594,7 +594,7 @@ func cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.o
 }
 
 //export cfs_batch_get_inodes
-func cfs_batch_get_inodes(id C.int64_t, fd C.int, iids unsafe.Pointer, stats []C.struct_cfs_stat_info,  count C.int) (n C.int){
+func cfs_batch_get_inodes(id C.int64_t, fd C.int, iids unsafe.Pointer, stats []C.struct_cfs_stat_info, count C.int) (n C.int) {
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -617,7 +617,7 @@ func cfs_batch_get_inodes(id C.int64_t, fd C.int, iids unsafe.Pointer, stats []C
 		return statusEINVAL
 	}
 
-	for i:=0; i<len(infos); i++ {
+	for i := 0; i < len(infos); i++ {
 		// fill up the stat
 		stats[i].ino = C.uint64_t(infos[i].Inode)
 		stats[i].size = C.uint64_t(infos[i].Size)
@@ -653,7 +653,7 @@ func cfs_batch_get_inodes(id C.int64_t, fd C.int, iids unsafe.Pointer, stats []C
 	}
 
 	n = C.int(len(infos))
-  return
+	return
 }
 
 /*
@@ -883,7 +883,7 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) C.int {
 	absFrom := c.absPath(C.GoString(from))
 	absTo := c.absPath(C.GoString(to))
 	if strings.Contains(absTo, absFrom) {
-		if absTo == absFrom{
+		if absTo == absFrom {
 			return statusEINVAL
 		}
 		// handle the /a and /aa
@@ -964,7 +964,7 @@ func (c *client) absPath(path string) string {
 
 func (c *client) start() (err error) {
 	var masters = strings.Split(c.masterAddr, ",")
-  
+
 	if c.logDir != "" {
 		log.InitLog(c.logDir, "libcfs", log.InfoLevel, nil)
 	}

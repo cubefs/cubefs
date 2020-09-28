@@ -21,6 +21,7 @@ import org.junit.Test;
 
 public class ListTest extends StorageTest {
   private final static Log log = LogFactory.getLog(ListTest.class);
+
   @Test
   public void testList() {
     CFSStatInfo[] stats = listStats(listTestDir);
@@ -41,7 +42,7 @@ public class ListTest extends StorageTest {
     Assert.assertTrue(createFile(path3, 0));
 
     stats = listStats(listTestDir);
-    for (int i=0; i<stats.length; i++) {
+    for (int i = 0; i < stats.length; i++) {
       if (stats[i].getName().equals("d1") || stats[i].getName().equals("d2")) {
         Assert.assertEquals(stats[i].getType(), CFSStatInfo.Type.DIR);
       } else if (stats[i].getName().equals("f1")) {
@@ -65,14 +66,14 @@ public class ListTest extends StorageTest {
     boolean res = mkdirs(listTestDir);
     Assert.assertTrue(res);
 
-    for (int i=0; i<1000; i++) {
+    for (int i = 0; i < 1000; i++) {
       String path = listTestDir + "/" + i;
       Assert.assertTrue(createFile(path, 0));
     }
 
     stats = listStats(listTestDir);
     Assert.assertEquals(stats.length, 1000);
-    for (int i=0; i<stats.length; i++) {
+    for (int i = 0; i < stats.length; i++) {
       Assert.assertEquals(stats[i].getType(), CFSStatInfo.Type.REG);
     }
   }

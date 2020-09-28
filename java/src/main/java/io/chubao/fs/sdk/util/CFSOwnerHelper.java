@@ -48,7 +48,7 @@ public class CFSOwnerHelper {
   public String getUser(int uid) {
     String user = uids.get(Integer.valueOf(uid));
     if (user == null) {
-      log.warn("Not found the uid: " + uid+ " in " + passwdPath);
+      log.warn("Not found the uid: " + uid + " in " + passwdPath);
       return String.valueOf(uid);
     }
     return user;
@@ -113,7 +113,7 @@ public class CFSOwnerHelper {
       } else {
         throw new RuntimeException("Not support the type:" + type);
       }
-      File file = new File(path) ;
+      File file = new File(path);
       if (file.exists() == false) {
         throw new RuntimeException("Not found the system passwd profile.");
       }

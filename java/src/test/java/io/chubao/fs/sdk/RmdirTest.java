@@ -20,6 +20,7 @@ import org.junit.Test;
 
 public class RmdirTest extends StorageTest {
   private final static Log log = LogFactory.getLog(RmdirTest.class);
+
   @Test
   public void testRmdir() {
     boolean res = mkdirs(rmdirTestDir);

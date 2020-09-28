@@ -38,7 +38,7 @@ public class CFSFileImpl implements CFSFile {
   }
 
   public long getFileSize() {
-    return  this.fileSize;
+    return this.fileSize;
   }
 
   public long getPosition() {

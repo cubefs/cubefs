@@ -36,7 +36,7 @@ public class CFSStatInfo {
     this.gid = gid;
     this.size = size;
     this.ctime = ctime;
-    this.mtime= mtime;
+    this.mtime = mtime;
     this.atime = atime;
   }
 
@@ -46,7 +46,7 @@ public class CFSStatInfo {
     this.gid = gid;
     this.size = size;
     this.ctime = ctime;
-    this.mtime= mtime;
+    this.mtime = mtime;
     this.atime = atime;
     this.name = name;
   }
@@ -67,7 +67,7 @@ public class CFSStatInfo {
     return this.ctime;
   }
 
-  public Type getType () {
+  public Type getType() {
     if ((mode & FileStorage.S_IFDIR) == FileStorage.S_IFDIR) {
       return Type.DIR;
     }
