@@ -1,3 +1,7 @@
+# Overview
+The java sdk contains two interfaces, high-level and low-level,  that are all contained in a jar package
+
+The high-level sdk's package name is io.chubao.fs.sdk.
 # Usage
 
 ### Build shared library
@@ -15,7 +19,10 @@ cd java
 mvn clean package
 ```
 
-### Deploy single-node cluster using docker
+###  Run junit tests for  high-level sdk
+Modify and exec the sbin/run_test.sh
+
+### Deploy single-node cluster using docker for low-level sdk
 
 ```bash
 cd docker
