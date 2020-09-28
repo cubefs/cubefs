@@ -126,17 +126,14 @@ func (api *NodeAPI) MetaNodeDecommission(nodeAddr string) (err error) {
 	return
 }
 
-func (api *NodeAPI) DataNodeGetPartition(client *MasterClient, addr string, id uint64) (node *proto.DNDataPartitionInfo, err error) {
+func (api *NodeAPI) DataNodeGetPartition(addr string, id uint64) (node *proto.DNDataPartitionInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, "/partition")
 	var buf []byte
-	client.SetAddress(fmt.Sprintf("%v:%v", addr, client.DataNodeProfPort))
-	client.ClientType = DATANODE
-	defer func() {
-		client.ClientType = MASTER
-	}()
+	nodeClient := NewNodeClient(fmt.Sprintf("%v:%v", addr, api.mc.DataNodeProfPort), false, DATANODE)
+	nodeClient.DataNodeProfPort = api.mc.DataNodeProfPort
 	request.addParam("id", strconv.FormatUint(id, 10))
 	request.addHeader("isTimeOut", "false")
-	if buf, err = api.mc.serveRequest(request); err != nil {
+	if buf, err = nodeClient.serveRequest(request); err != nil {
 		return
 	}
 	node = &proto.DNDataPartitionInfo{}
@@ -146,17 +143,14 @@ func (api *NodeAPI) DataNodeGetPartition(client *MasterClient, addr string, id u
 	return
 }
 
-func (api *NodeAPI) MetaNodeGetPartition(client *MasterClient, addr string, id uint64) (node *proto.MNMetaPartitionInfo, err error) {
+func (api *NodeAPI) MetaNodeGetPartition(addr string, id uint64) (node *proto.MNMetaPartitionInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, "/getPartitionById")
 	var buf []byte
-	client.SetAddress(fmt.Sprintf("%v:%v", addr, client.MetaNodeProfPort))
-	client.ClientType = METANODE
-	defer func() {
-		client.ClientType = MASTER
-	}()
+	nodeClient := NewNodeClient(fmt.Sprintf("%v:%v", addr, api.mc.MetaNodeProfPort), false, METANODE)
+	nodeClient.MetaNodeProfPort = api.mc.MetaNodeProfPort
 	request.addParam("pid", strconv.FormatUint(id, 10))
 	request.addHeader("isTimeOut", "false")
-	if buf, err = api.mc.serveRequest(request); err != nil {
+	if buf, err = nodeClient.serveRequest(request); err != nil {
 		return
 	}
 	node = &proto.MNMetaPartitionInfo{}

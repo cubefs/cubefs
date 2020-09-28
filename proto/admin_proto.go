@@ -490,6 +490,7 @@ type SimpleVolView struct {
 	NeedToLowerReplica bool
 	Authenticate       bool
 	CrossZone          bool
+	AutoRepair         bool
 	CreateTime         string
 	EnableToken        bool
 	Tokens             map[string]*Token `graphql:"-"`

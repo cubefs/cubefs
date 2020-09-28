@@ -108,15 +108,13 @@ func createDefaultMasterServerForTest() *Server {
 	addMetaServer(mms5Addr, testZone2)
 	time.Sleep(5 * time.Second)
 	testServer.cluster.cfg = newClusterConfig()
-	testServer.cluster.cfg.DataPartitionsRecoverPoolSize = defaultDataPartitionsRecoverPoolSize
-	testServer.cluster.cfg.MetaPartitionsRecoverPoolSize = defaultMetaPartitionsRecoverPoolSize
+	testServer.cluster.cfg.DataPartitionsRecoverPoolSize = maxDataPartitionsRecoverPoolSize
+	testServer.cluster.cfg.MetaPartitionsRecoverPoolSize = maxMetaPartitionsRecoverPoolSize
 	testServer.cluster.checkDataNodeHeartbeat()
 	testServer.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
-	testServer.cluster.repairDataPartition()
-	testServer.cluster.repairMetaPartition()
 	testServer.cluster.scheduleToUpdateStatInfo()
-	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 100, false, false, false)
+	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 100, false, false, false, true)
 	if err != nil {
 		panic(err)
 	}

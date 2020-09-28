@@ -99,9 +99,6 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.fsm = fsm
 	c.partition = partition
 	c.idAlloc = newIDAllocator(c.fsm.store, c.partition)
-	//Todo: make channel size configurable
-	c.dpRepairChan = make(chan *RepairTask, 10)
-	c.mpRepairChan = make(chan *RepairTask, 10)
 
 	return
 }
@@ -353,66 +350,74 @@ func (c *Cluster) checkVolReduceReplicaNum() {
 		vol.checkReplicaNum(c)
 	}
 }
-func (c *Cluster) repairDataPartition() {
-	var err error
-	go func() {
-		for {
-			time.Sleep(time.Second * 5)
-			select {
-			case task := <-c.dpRepairChan:
+func (c *Cluster) repairDataPartition(wg sync.WaitGroup) {
+	for i := 0; i < cap(c.dpRepairChan); i++ {
+		select {
+		case task := <-c.dpRepairChan:
+			wg.Add(1)
+			go func(c *Cluster, task *RepairTask) {
+				var err error
+				defer wg.Done()
+				defer func() {
+					if err != nil {
+						log.LogErrorf("ClusterID[%v], Action[repairDataPartition], err[%v]", c.Name, err)
+					}
+				}()
 				var dp *DataPartition
 				if dp, err = c.getDataPartitionByID(task.Pid); err != nil {
-					goto errorHandler
+					return
 				}
 				switch task.RType {
 				case BalanceDataZone:
 					if err = c.decommissionDataPartition("", dp, getTargetAddressForBalanceDataPartitionZone, balanceDataPartitionZoneErr, "", false); err != nil {
-						goto errorHandler
+						return
 					}
+					Warn(c.Name, fmt.Sprintf("action[repairDataPartition] clusterID[%v] vol[%v] data partition[%v] "+
+						"Repair success, type[%v]", c.Name, dp.VolName, dp.PartitionID, task.RType))
 				default:
 					err = fmt.Errorf("action[repairDataPartition] unknown repair task type")
-					goto errorHandler
+					return
 				}
-				Warn(c.Name, fmt.Sprintf("action[repairDataPartition] clusterID[%v] vol[%v] data partition[%v] "+
-					"Repair success, type[%v]", c.Name, dp.VolName, dp.PartitionID, task.RType))
-			default:
-				continue
-			}
-		errorHandler:
-			log.LogErrorf("ClusterID[%v], Action[repairDataPartition], err[%v]", c.Name, err)
+			}(c, task)
+		default:
+			time.Sleep(time.Second * 2)
 		}
-	}()
+	}
 }
 
-func (c *Cluster) repairMetaPartition() {
-	var err error
-	go func() {
-		for {
-			time.Sleep(time.Second * 5)
-			select {
-			case task := <-c.mpRepairChan:
+func (c *Cluster) repairMetaPartition(wg sync.WaitGroup) {
+	for i := 0; i < cap(c.mpRepairChan); i++ {
+		select {
+		case task := <-c.mpRepairChan:
+			wg.Add(1)
+			go func(c *Cluster, task *RepairTask) {
+				var err error
+				defer wg.Done()
+				defer func() {
+					if err != nil {
+						log.LogErrorf("ClusterID[%v], Action[repairMetaPartition], err[%v]", c.Name, err)
+					}
+				}()
 				var mp *MetaPartition
 				if mp, err = c.getMetaPartitionByID(task.Pid); err != nil {
-					goto errorHandler
+					return
 				}
 				switch task.RType {
 				case BalanceMetaZone:
 					if err = c.decommissionMetaPartition("", mp, getTargetAddressForRepairMetaZone, false); err != nil {
-						goto errorHandler
+						return
 					}
+					Warn(c.Name, fmt.Sprintf("action[repairMetaPartition] clusterID[%v] vol[%v] meta partition[%v] "+
+						"Repair success, task type[%v]", c.Name, mp.volName, mp.PartitionID, task.RType))
 				default:
 					err = fmt.Errorf("action[repairMetaPartition] unknown repair task type")
-					goto errorHandler
+					return
 				}
-				Warn(c.Name, fmt.Sprintf("action[repairMetaPartition] clusterID[%v] vol[%v] meta partition[%v] "+
-					"Repair success, task type[%v]", c.Name, mp.volName, mp.PartitionID, task.RType))
-			default:
-				continue
-			}
-		errorHandler:
-			log.LogErrorf("ClusterID[%v], Action[repairMetaPartition], err[%v]", c.Name, err)
+			}(c, task)
+		default:
+			time.Sleep(time.Second * 2)
 		}
-	}()
+	}
 }
 func (c *Cluster) dataPartitionInRecovering() (num int) {
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
@@ -435,10 +440,10 @@ func (c *Cluster) metaPartitionInRecovering() (num int) {
 func (c *Cluster) scheduleToRepairMultiZoneMetaPartitions() {
 	go func() {
 		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
+			if c.partition != nil && c.partition.IsRaftLeader() && !c.t.isSingleZone() {
 				c.checkVolRepairMetaPartitions()
 			}
-			time.Sleep(2 * time.Minute)
+			time.Sleep(time.Second * defaultIntervalToCheckDataPartition)
 		}
 	}()
 }
@@ -451,26 +456,44 @@ func (c *Cluster) checkVolRepairMetaPartitions() {
 				"checkVolRepairMetaPartitions occurred panic")
 		}
 	}()
-	if c.DisableAutoAllocate || c.cfg.MetaPartitionsRecoverPoolSize == -1 {
+	var wg sync.WaitGroup
+	var mpInRecover uint64
+	var chanCapacity int32
+	if c.DisableAutoAllocate || c.cfg.MetaPartitionsRecoverPoolSize == defaultRecoverPoolSize {
 		return
 	}
+	mpInRecover = uint64(c.metaPartitionInRecovering())
+	if int32(mpInRecover) > c.cfg.MetaPartitionsRecoverPoolSize {
+		log.LogInfof("action[checkVolRepairMetaPartitions] clusterID[%v]Recover pool is full, recover partition[%v], pool size[%v]", c.Name, mpInRecover, c.cfg.MetaPartitionsRecoverPoolSize)
+		return
+	}
+	chanCapacity = maxMetaPartitionsRecoverPoolSize
+	if c.cfg.MetaPartitionsRecoverPoolSize < maxMetaPartitionsRecoverPoolSize {
+		chanCapacity = c.cfg.MetaPartitionsRecoverPoolSize
+	}
+	c.mpRepairChan = make(chan *RepairTask, chanCapacity)
 	vols := c.allVols()
 	for _, vol := range vols {
+		if !vol.autoRepair {
+			continue
+		}
 		if isValid, _ := c.isValidZone(vol.zoneName); !isValid {
 			log.LogWarnf("checkVolRepairMetaPartitions, vol[%v], zoneName[%v] not valid, skip repair", vol.Name, vol.zoneName)
 			continue
 		}
 		vol.checkRepairMetaPartitions(c)
 	}
+	c.repairMetaPartition(wg)
+	wg.Wait()
 }
 
 func (c *Cluster) scheduleToRepairMultiZoneDataPartitions() {
 	go func() {
 		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
+			if c.partition != nil && c.partition.IsRaftLeader() && !c.t.isSingleZone() {
 				c.checkVolRepairDataPartitions()
 			}
-			time.Sleep(5 * time.Minute)
+			time.Sleep(time.Second * defaultIntervalToCheckDataPartition)
 		}
 	}()
 }
@@ -483,17 +506,35 @@ func (c *Cluster) checkVolRepairDataPartitions() {
 				"checkVolRepairDataPartitions occurred panic")
 		}
 	}()
-	if c.DisableAutoAllocate || c.cfg.DataPartitionsRecoverPoolSize == -1 {
+	var dpInRecover int
+	var wg sync.WaitGroup
+	var chanCapacity int32
+	if c.DisableAutoAllocate || c.cfg.DataPartitionsRecoverPoolSize == defaultRecoverPoolSize {
 		return
 	}
+	dpInRecover = c.dataPartitionInRecovering()
+	if int32(dpInRecover) >= c.cfg.DataPartitionsRecoverPoolSize {
+		log.LogInfof("action[checkVolRepairDataPartitions] clusterID[%v] Recover pool is full, recover partition[%v], pool size[%v]", c.Name, dpInRecover, c.cfg.DataPartitionsRecoverPoolSize)
+		return
+	}
+	chanCapacity = maxDataPartitionsRecoverPoolSize
+	if c.cfg.DataPartitionsRecoverPoolSize < maxDataPartitionsRecoverPoolSize {
+		chanCapacity = c.cfg.DataPartitionsRecoverPoolSize
+	}
+	c.dpRepairChan = make(chan *RepairTask, chanCapacity)
 	vols := c.allVols()
 	for _, vol := range vols {
+		if !vol.autoRepair {
+			continue
+		}
 		if isValid, _ := c.isValidZone(vol.zoneName); !isValid {
 			log.LogWarnf("checkVolRepairDataPartitions, vol[%v], zoneName[%v] not valid, skip repair", vol.Name, vol.zoneName)
 			continue
 		}
 		vol.checkRepairDataPartitions(c)
 	}
+	c.repairDataPartition(wg)
+	wg.Wait()
 }
 
 func (c *Cluster) updateMetaNodeBaseInfo(nodeAddr string, id uint64) (err error) {
@@ -1755,7 +1796,7 @@ func (c *Cluster) deleteMetaNodeFromCache(metaNode *MetaNode) {
 	go metaNode.clean()
 }
 
-func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacity uint64, replicaNum uint8, followerRead, authenticate, enableToken bool) (err error) {
+func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacity uint64, replicaNum uint8, followerRead, authenticate, enableToken, autoRepair bool) (err error) {
 	var (
 		vol             *Vol
 		serverAuthKey   string
@@ -1764,6 +1805,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		oldFollowerRead bool
 		oldAuthenticate bool
 		oldEnableToken  bool
+		oldAutoRepair   bool
 		oldZoneName     string
 		oldDescription  string
 		oldCrossZone    bool
@@ -1818,11 +1860,13 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	oldFollowerRead = vol.FollowerRead
 	oldAuthenticate = vol.authenticate
 	oldEnableToken = vol.enableToken
+	oldAutoRepair = vol.autoRepair
 	oldDescription = vol.description
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
 	vol.authenticate = authenticate
 	vol.enableToken = enableToken
+	vol.autoRepair = autoRepair
 	if description != "" {
 		vol.description = description
 	}
@@ -1838,6 +1882,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		vol.enableToken = oldEnableToken
 		vol.zoneName = oldZoneName
 		vol.crossZone = oldCrossZone
+		vol.autoRepair = oldAutoRepair
 		vol.description = oldDescription
 		log.LogErrorf("action[updateVol] vol[%v] err[%v]", name, err)
 		err = proto.ErrPersistenceByRaft
@@ -1853,7 +1898,7 @@ errHandler:
 
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, enableToken bool) (vol *Vol, err error) {
+func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, enableToken, autoRepair bool) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -1866,7 +1911,7 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	if err = c.validZone(zoneName, dpReplicaNum); err != nil {
 		goto errHandler
 	}
-	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, followerRead, authenticate, enableToken); err != nil {
+	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, followerRead, authenticate, enableToken, autoRepair); err != nil {
 		goto errHandler
 	}
 	if err = c.validZone(zoneName, int(vol.mpReplicaNum)); err != nil {
@@ -1897,7 +1942,7 @@ errHandler:
 	return
 }
 
-func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity uint64, dpReplicaNum int, followerRead, authenticate, enableToken bool) (vol *Vol, err error) {
+func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity uint64, dpReplicaNum int, followerRead, authenticate, enableToken, autoRepair bool) (vol *Vol, err error) {
 	var id uint64
 	c.createVolMutex.Lock()
 	defer c.createVolMutex.Unlock()
@@ -1910,7 +1955,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	if err != nil {
 		goto errHandler
 	}
-	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum, followerRead, authenticate, enableToken, createTime, description)
+	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum, followerRead, authenticate, enableToken, autoRepair, createTime, description)
 
 	// refresh oss secure
 	vol.refreshOSSSecure()
@@ -2365,9 +2410,8 @@ func (c *Cluster) sendRepairMetaPartitionTask(mp *MetaPartition, rType RepairTyp
 		Warn(c.Name, fmt.Sprintf("action[sendRepairMetaPartitionTask] clusterID[%v] vol[%v] meta partition[%v] "+
 			"task type[%v]", c.Name, mp.volName, mp.PartitionID, rType))
 	default:
-		err = fmt.Errorf("mpRepairChan has been full")
 		Warn(c.Name, fmt.Sprintf("action[sendRepairMetaPartitionTask] clusterID[%v] vol[%v] meta partition[%v] "+
-			"task type[%v], err[%v]", c.Name, mp.volName, mp.PartitionID, rType, err))
+			"task type[%v], mpRepairChan has been full", c.Name, mp.volName, mp.PartitionID, rType))
 	}
 	return
 }
@@ -2383,11 +2427,9 @@ func (c *Cluster) sendRepairDataPartitionTask(dp *DataPartition, rType RepairTyp
 		Warn(c.Name, fmt.Sprintf("action[sendRepairDataPartitionTask] clusterID[%v] vol[%v] data partition[%v] "+
 			"task type[%v]", c.Name, dp.VolName, dp.PartitionID, rType))
 	default:
-		err = fmt.Errorf("dpRepairChan has been full")
 		Warn(c.Name, fmt.Sprintf("action[sendRepairDataPartitionTask] clusterID[%v] vol[%v] data partition[%v] "+
-			"task type[%v], chanLength[%v], chanCapacity[%v], err[%v]", c.Name, dp.VolName, dp.PartitionID, rType, len(c.dpRepairChan),
-			cap(c.dpRepairChan),
-			err))
+			"task type[%v], chanLength[%v], chanCapacity[%v], dpRepairChan has been full", c.Name, dp.VolName, dp.PartitionID, rType, len(c.dpRepairChan),
+			cap(c.dpRepairChan)))
 	}
 	return
 }

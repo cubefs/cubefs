@@ -46,7 +46,7 @@ const (
 	akKey                   = "ak"
 	keywordsKey             = "keywords"
 	zoneNameKey             = "zoneName"
-	crossZoneKey            = "crossZone"
+	autoRepairKey           = "autoRepair"
 	tokenKey                = "token"
 	tokenTypeKey            = "tokenType"
 	enableTokenKey          = "enableToken"
@@ -107,8 +107,9 @@ const (
 	defaultRangeOfCountDifferencesAllowed        = 50
 	defaultMinusOfMaxInodeID                     = 1000
 	defaultPercentMinusOfInodeCount              = 0.20
-	defaultDataPartitionsRecoverPoolSize         = 20
-	defaultMetaPartitionsRecoverPoolSize         = 10
+	defaultRecoverPoolSize                       = -1
+	maxDataPartitionsRecoverPoolSize             = 50
+	maxMetaPartitionsRecoverPoolSize             = 30
 )
 
 const (
