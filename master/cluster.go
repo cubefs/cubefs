@@ -357,6 +357,7 @@ func (c *Cluster) repairDataPartition() {
 	var err error
 	go func() {
 		for {
+			time.Sleep(time.Second * 5)
 			select {
 			case task := <-c.dpRepairChan:
 				var dp *DataPartition
@@ -387,6 +388,7 @@ func (c *Cluster) repairMetaPartition() {
 	var err error
 	go func() {
 		for {
+			time.Sleep(time.Second * 5)
 			select {
 			case task := <-c.mpRepairChan:
 				var mp *MetaPartition
