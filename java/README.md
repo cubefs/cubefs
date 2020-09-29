@@ -1,5 +1,19 @@
 # Usage
 
+#Before deploying the cluster, your environment should have the following development tools:
+
+· go development environment
+
+· Java compilation environment 
+
+· mvn compilation tool
+
+· gcc
+
+· Junit (download Junit.4.12.jar and hamcrest-core-1.3.jar ,then put them under  .../jdk/lib)
+
+**Note**:Junit is for regression test,Junit version can be chosen by yourself
+
 ### Build shared library
 
 ```bash
