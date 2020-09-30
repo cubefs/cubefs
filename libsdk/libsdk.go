@@ -87,6 +87,7 @@ var (
 	statusEACCES  = errorToStatus(syscall.EACCES)
 	statusEMFILE  = errorToStatus(syscall.EMFILE)
 	statusENOTDIR = errorToStatus(syscall.ENOTDIR)
+	statusEISDIR  = errorToStatus(syscall.EISDIR)
 )
 
 func init() {
@@ -650,7 +651,12 @@ func cfs_unlink(id C.int64_t, path *C.char) C.int {
 		return errorToStatus(err)
 	}
 
-	info, err := c.mw.Delete_ll(dirInfo.Inode, name, true)
+	_, mode, err := c.mw.Lookup_ll(dirInfo.Inode, name)
+	if proto.IsDir(mode) {
+		return statusEISDIR
+	}
+
+	info, err := c.mw.Delete_ll(dirInfo.Inode, name, false)
 	if err != nil {
 		return errorToStatus(err)
 	}
