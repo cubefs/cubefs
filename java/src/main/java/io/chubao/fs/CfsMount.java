@@ -46,47 +46,47 @@ public class CfsMount {
         cid = libcfs.cfs_new_client();
     }
 
-    public int SetClient(String key, String val) {
+    public int setClient(String key, String val) {
         return libcfs.cfs_set_client(this.cid, key, val);
     }
 
-    public int StartClient() {
+    public int startClient() {
         return libcfs.cfs_start_client(this.cid);
     }
 
-    public void CloseClient() {
+    public void closeClient() {
         libcfs.cfs_close_client(this.cid);
     }
 
-    public int Chdir(String path) {
+    public int chdir(String path) {
         return libcfs.cfs_chdir(this.cid, path);
     }
 
-    public String Getcwd() {
+    public String getcwd() {
         return libcfs.cfs_getcwd(this.cid);
     }
 
-    public int GetAttr(String path, CfsLibrary.StatInfo stat) {
+    public int getAttr(String path, CfsLibrary.StatInfo stat) {
         return libcfs.cfs_getattr(this.cid, path, stat);
     }
 
-    public int SetAttr(String path, CfsLibrary.StatInfo stat, int mask) {
+    public int setAttr(String path, CfsLibrary.StatInfo stat, int mask) {
         return libcfs.cfs_setattr(this.cid, path, stat, mask);
     }
 
-    public int Open(String path, int flags, int mode) {
+    public int open(String path, int flags, int mode) {
         return libcfs.cfs_open(this.cid, path, flags, mode);
     }
 
-    public void Close(int fd) {
+    public void close(int fd) {
         libcfs.cfs_close(this.cid, fd);
     }
 
-    public long Write(int fd, byte[] buf, long size, long offset) {
+    public long write(int fd, byte[] buf, long size, long offset) {
         return libcfs.cfs_write(this.cid, fd, buf, size, offset);
     }
 
-    public long Read(int fd, byte[] buf, long size, long offset) {
+    public long read(int fd, byte[] buf, long size, long offset) {
         return libcfs.cfs_read(this.cid, fd, buf, size, offset);
     }
 
@@ -94,7 +94,7 @@ public class CfsMount {
      * Note that the memory allocated for Dirent[] must be countinuous. For example,
      * (new Dirent()).toArray(count).
      */
-    public int Readdir(int fd, Dirent[] dents, int count) {
+    public int readdir(int fd, Dirent[] dents, int count) {
         Pointer arr = dents[0].getPointer();
         DirentArray.ByValue slice = new DirentArray.ByValue();
         slice.data = arr;
@@ -112,7 +112,7 @@ public class CfsMount {
         return (int) arrSize;
     }
 
-    public int Fchmod(int fd, int mode) {
+    public int fchmod(int fd, int mode) {
         return libcfs.cfs_fchmod(this.cid, fd, mode);
     }
 }
