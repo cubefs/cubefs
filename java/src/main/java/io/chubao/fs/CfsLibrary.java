@@ -98,5 +98,13 @@ public interface CfsLibrary extends Library {
 
     int cfs_readdir(long id, int fd, DirentArray.ByValue dents, long count);
 
+    int cfs_mkdirs(long id, String path, int mode);
+
+    int cfs_rmdir(long id, String path);
+
+    int cfs_unlink(long id, String path);
+
+    int cfs_rename(long id, String from, String to);
+
     int cfs_fchmod(long id, int fd, int mode);
 }

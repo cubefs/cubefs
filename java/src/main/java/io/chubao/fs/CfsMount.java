@@ -112,6 +112,22 @@ public class CfsMount {
         return (int) arrSize;
     }
 
+    public int mkdirs(String path, int mode) {
+        return libcfs.cfs_mkdirs(this.cid, path, mode);
+    }
+
+    public int rmdir(String path) {
+        return libcfs.cfs_rmdir(this.cid, path);
+    }
+
+    public int unlink(String path) {
+        return libcfs.cfs_unlink(this.cid, path);
+    }
+
+    public int rename(String from, String to) {
+        return libcfs.cfs_rename(this.cid, from, to);
+    }
+
     public int fchmod(int fd, int mode) {
         return libcfs.cfs_fchmod(this.cid, fd, mode);
     }
