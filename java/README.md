@@ -12,7 +12,7 @@ sudo cp libcfs.so /usr/lib/libcfs.so
 
 ```bash
 cd java
-mvn clean package
+sh build.sh
 ```
 
 ### Deploy single-node cluster using docker
@@ -20,6 +20,13 @@ mvn clean package
 ```bash
 cd docker
 ./run_docker.sh -r
+```
+
+### Run unit test
+
+```bash
+cd java
+mvn clean package
 ```
 
 ## Run the java test program
