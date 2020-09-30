@@ -6,11 +6,11 @@ public class TestCfsClient {
     public static void main(String[] args) {
         CfsMount mnt = new CfsMount("/usr/lib/libcfs.so");
 
-        mnt.SetClient("volName", "ltptest");
-        mnt.SetClient("masterAddr", "192.168.0.11:17010,192.168.0.12:17010,192.168.0.13:17010");
-        mnt.SetClient("logDir", "/home/liushuoran/log");
-        mnt.SetClient("logLeval", "info");
-        int ret = mnt.StartClient();
+        mnt.setClient("volName", "ltptest");
+        mnt.setClient("masterAddr", "192.168.0.11:17010,192.168.0.12:17010,192.168.0.13:17010");
+        mnt.setClient("logDir", "/home/liushuoran/log");
+        mnt.setClient("logLeval", "info");
+        int ret = mnt.startClient();
         if (ret < 0) {
             System.out.println("start client failed!!!");
             return;
@@ -25,7 +25,7 @@ public class TestCfsClient {
 
         if (args[0].equals("read")) {
             CfsLibrary.StatInfo stat = new CfsLibrary.StatInfo();
-            ret = mnt.GetAttr(targetPath, stat);
+            ret = mnt.getAttr(targetPath, stat);
             if (ret < 0) {
                 System.out.println("GetAttr failed: " + ret);
                 return;
@@ -39,7 +39,7 @@ public class TestCfsClient {
             System.out.println("uid: " + stat.uid);
             System.out.println("gid: " + stat.gid);
 
-            int fd = mnt.Open(targetPath, mnt.O_RDONLY, 0644);
+            int fd = mnt.open(targetPath, mnt.O_RDONLY, 0644);
 
             if (fd < 0) {
                 System.out.println("Open failed: " + fd);
@@ -48,7 +48,7 @@ public class TestCfsClient {
 
             byte[] buf = new byte[4096];
 
-            long readByte = mnt.Read(fd, buf, buf.length, 0);
+            long readByte = mnt.read(fd, buf, buf.length, 0);
 
             System.out.println("fd: " + fd);
             System.out.println("read bytes: " + readByte);
@@ -73,9 +73,9 @@ public class TestCfsClient {
 
             System.out.println("md5: " + sb.toString());
 
-            mnt.Close(fd);
+            mnt.close(fd);
         } else if (args[0].equals("write")) {
-            int fd = mnt.Open(targetPath, mnt.O_RDWR | mnt.O_CREAT, 0644);
+            int fd = mnt.open(targetPath, mnt.O_RDWR | mnt.O_CREAT, 0644);
 
             if (fd < 0) {
                 System.out.println("Open failed: " + fd);
@@ -85,14 +85,14 @@ public class TestCfsClient {
             String toWrite = "abcdefg";
             byte[] buf = toWrite.getBytes();
 
-            long writeBytes = mnt.Write(fd, buf, buf.length, 0);
+            long writeBytes = mnt.write(fd, buf, buf.length, 0);
 
             System.out.println("write bytes: " + writeBytes);
 
-            mnt.Close(fd);
+            mnt.close(fd);
         } else if (args[0].equals("ls")) {
-            mnt.Chdir(targetPath);
-            int fd = mnt.Open(".", mnt.O_RDWR, 0644);
+            mnt.chdir(targetPath);
+            int fd = mnt.open(".", mnt.O_RDWR, 0644);
 
             if (fd < 0) {
                 System.out.println("Open failed: " + fd);
@@ -103,7 +103,7 @@ public class TestCfsClient {
             Dirent dent = new Dirent();
             Dirent[] dents = (Dirent[]) dent.toArray(2);
             for (;;) {
-                int n = mnt.Readdir(fd, dents, 2);
+                int n = mnt.readdir(fd, dents, 2);
                 if (n <= 0) {
                     break;
                 }
@@ -113,25 +113,25 @@ public class TestCfsClient {
                 }
             }
             System.out.println("num of entries: " + total_entry);
-            mnt.Close(fd);
+            mnt.close(fd);
         } else if (args[0].equals("chmod")) {
-            int fd = mnt.Open(targetPath, mnt.O_RDWR, 0644);
+            int fd = mnt.open(targetPath, mnt.O_RDWR, 0644);
             if (fd < 0) {
                 System.out.println("Open failed: " + fd);
                 return;
             }
 
-            ret = mnt.Fchmod(fd, 0666);
+            ret = mnt.fchmod(fd, 0666);
             if (ret < 0) {
                 System.out.println("Fchmod failed: " + ret);
                 return;
             }
             CfsLibrary.StatInfo stat = new CfsLibrary.StatInfo();
-            ret = mnt.GetAttr(targetPath, stat);
+            ret = mnt.getAttr(targetPath, stat);
             System.out.println("mode: " + stat.mode);
-            mnt.Close(fd);
+            mnt.close(fd);
         }
 
-        mnt.CloseClient();
+        mnt.closeClient();
     }
 }
