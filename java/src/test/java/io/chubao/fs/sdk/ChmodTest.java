@@ -20,31 +20,31 @@ import org.junit.Assert;
 import org.junit.Test;
 
 public class ChmodTest extends StorageTest {
-  private final static Log log = LogFactory.getLog(ChmodTest.class);
+    private final static Log log = LogFactory.getLog(ChmodTest.class);
 
-  @Test
-  public void testchmodDir() {
-    String path = chmodTestDir + "/chmod_dir_0";
-    Assert.assertTrue(mkdirs(path));
-    CFSStatInfo stat = stat(path);
-    Assert.assertTrue(stat != null);
-    checkDirStat(stat);
-    Assert.assertTrue(chmod(path, 0755));
-    stat = stat(path);
-    Assert.assertTrue(stat != null);
-    Assert.assertEquals(stat.getMode(), 0755);
-  }
+    @Test
+    public void testchmodDir() {
+        String path = chmodTestDir + "/chmod_dir_0";
+        Assert.assertTrue(mkdirs(path));
+        CFSStatInfo stat = stat(path);
+        Assert.assertTrue(stat != null);
+        checkDirStat(stat);
+        Assert.assertTrue(chmod(path, 0755));
+        stat = stat(path);
+        Assert.assertTrue(stat != null);
+        Assert.assertEquals(stat.getMode(), 0755);
+    }
 
-  @Test
-  public void testchmodFile() {
-    String path = chmodTestDir + "/chmod_file_0";
-    Assert.assertTrue(mkdirs(chmodTestDir));
-    Assert.assertTrue(createFile(path, 1024));
-    CFSStatInfo stat = stat(path);
-    Assert.assertTrue(stat != null);
-    Assert.assertTrue(chmod(path, 0755));
-    stat = stat(path);
-    Assert.assertTrue(stat != null);
-    Assert.assertEquals(stat.getMode(), 0755);
-  }
+    @Test
+    public void testchmodFile() {
+        String path = chmodTestDir + "/chmod_file_0";
+        Assert.assertTrue(mkdirs(chmodTestDir));
+        Assert.assertTrue(createFile(path, 1024));
+        CFSStatInfo stat = stat(path);
+        Assert.assertTrue(stat != null);
+        Assert.assertTrue(chmod(path, 0755));
+        stat = stat(path);
+        Assert.assertTrue(stat != null);
+        Assert.assertEquals(stat.getMode(), 0755);
+    }
 }

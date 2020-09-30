@@ -19,106 +19,106 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
 public class CFSFileImpl implements CFSFile {
-  private static final Log log = LogFactory.getLog(CFSFileImpl.class);
-  private CFSDriverIns driver;
-  private long position = 0L;
-  private long fileSize;
-  private boolean isClosed = false;
-  private int fd;
+    private static final Log log = LogFactory.getLog(CFSFileImpl.class);
+    private CFSDriverIns driver;
+    private long position = 0L;
+    private long fileSize;
+    private boolean isClosed = false;
+    private int fd;
 
-  public CFSFileImpl(CFSDriverIns driver, int fd, long fileSize, long position) {
-    this.driver = driver;
-    this.fd = fd;
-    this.fileSize = fileSize;
-    this.position = position;
-  }
-
-  public boolean isClosed() {
-    return this.isClosed;
-  }
-
-  public long getFileSize() {
-    return this.fileSize;
-  }
-
-  public long getPosition() {
-    return this.position;
-  }
-
-  public void seek(long position) throws CFSException {
-    this.position = position;
-  }
-
-  public void close() throws CFSException {
-    if (isClosed) {
-      return;
-    }
-    isClosed = true;
-    driver.flush(fd);
-    driver.close(fd);
-  }
-
-  @Override
-  public void flush() throws CFSException {
-    driver.flush(fd);
-  }
-
-  private byte[] buffCopy(byte[] buff, int off, int len) {
-    byte[] dest = new byte[len];
-    System.arraycopy(buff, off, dest, 0, len);
-    return dest;
-  }
-
-  public synchronized void write(byte[] buff, int off, int len) throws CFSException {
-    if (off < 0 || len < 0) {
-      throw new CFSException("Invalid arguments.");
+    public CFSFileImpl(CFSDriverIns driver, int fd, long fileSize, long position) {
+        this.driver = driver;
+        this.fd = fd;
+        this.fileSize = fileSize;
+        this.position = position;
     }
 
-    long wsize = 0;
-    if (off == 0) {
-      wsize = write(position, buff, len);
-    } else {
-      byte[] newbuff = buffCopy(buff, off, len);
-      wsize = write(position, newbuff, len);
+    public boolean isClosed() {
+        return this.isClosed;
     }
 
-    position += wsize;
-    if (position > fileSize) {
-      fileSize = position;
-    }
-  }
-
-  private long write(long offset, byte[] data, int len) throws CFSException {
-    return driver.write(fd, offset, data, len);
-  }
-
-  public synchronized long read(byte[] buff, int off, int len) throws CFSException {
-    if (off < 0 || len < 0) {
-      throw new CFSException("Invalid arguments.");
+    public long getFileSize() {
+        return this.fileSize;
     }
 
-    long rsize = 0;
-    if (off == 0) {
-      rsize = driver.read(fd, position, buff, len);
-    } else {
-      byte[] newbuff = new byte[len];
-      rsize = driver.read(fd, position, newbuff, len);
-      System.arraycopy(newbuff, 0, buff, off, len);
+    public long getPosition() {
+        return this.position;
     }
 
-    if (rsize > 0) {
-      position += rsize;
+    public void seek(long position) throws CFSException {
+        this.position = position;
     }
-    return rsize;
-  }
 
-  @Override
-  public void pwrite(byte[] buff, int buffOffset, int len, long fileOffset) throws CFSException {
-    throw new CFSException("Not implement.");
-  }
+    public void close() throws CFSException {
+        if (isClosed) {
+            return;
+        }
+        isClosed = true;
+        driver.flush(fd);
+        driver.close(fd);
+    }
 
-  @Override
-  public int pread(byte[] buff, int buffOffset, int len, long fileOffset) throws CFSException {
-    throw new CFSException("Not implement.");
-  }
+    @Override
+    public void flush() throws CFSException {
+        driver.flush(fd);
+    }
+
+    private byte[] buffCopy(byte[] buff, int off, int len) {
+        byte[] dest = new byte[len];
+        System.arraycopy(buff, off, dest, 0, len);
+        return dest;
+    }
+
+    public synchronized void write(byte[] buff, int off, int len) throws CFSException {
+        if (off < 0 || len < 0) {
+            throw new CFSException("Invalid arguments.");
+        }
+
+        long wsize = 0;
+        if (off == 0) {
+            wsize = write(position, buff, len);
+        } else {
+            byte[] newbuff = buffCopy(buff, off, len);
+            wsize = write(position, newbuff, len);
+        }
+
+        position += wsize;
+        if (position > fileSize) {
+            fileSize = position;
+        }
+    }
+
+    private long write(long offset, byte[] data, int len) throws CFSException {
+        return driver.write(fd, offset, data, len);
+    }
+
+    public synchronized long read(byte[] buff, int off, int len) throws CFSException {
+        if (off < 0 || len < 0) {
+            throw new CFSException("Invalid arguments.");
+        }
+
+        long rsize = 0;
+        if (off == 0) {
+            rsize = driver.read(fd, position, buff, len);
+        } else {
+            byte[] newbuff = new byte[len];
+            rsize = driver.read(fd, position, newbuff, len);
+            System.arraycopy(newbuff, 0, buff, off, len);
+        }
+
+        if (rsize > 0) {
+            position += rsize;
+        }
+        return rsize;
+    }
+
+    @Override
+    public void pwrite(byte[] buff, int buffOffset, int len, long fileOffset) throws CFSException {
+        throw new CFSException("Not implement.");
+    }
+
+    @Override
+    public int pread(byte[] buff, int buffOffset, int len, long fileOffset) throws CFSException {
+        throw new CFSException("Not implement.");
+    }
 }

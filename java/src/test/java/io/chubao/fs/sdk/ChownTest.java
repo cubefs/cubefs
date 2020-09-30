@@ -20,34 +20,34 @@ import org.junit.Assert;
 import org.junit.Test;
 
 public class ChownTest extends StorageTest {
-  private final static Log log = LogFactory.getLog(ChownTest.class);
+    private final static Log log = LogFactory.getLog(ChownTest.class);
 
-  @Test
-  public void testChownDir() {
-    Assert.assertTrue(mkdirs(chownTestDir));
-    CFSStatInfo stat = stat(chownTestDir);
-    Assert.assertTrue(stat != null);
-    checkDirStat(stat);
-    Assert.assertTrue(chown(chownTestDir, 100, 100));
-    stat = stat(chownTestDir);
-    Assert.assertTrue(stat != null);
-    log.info(chownTestDir + ":" + stat.toString());
-    Assert.assertEquals(stat.getUid(), 100);
-    Assert.assertEquals(stat.getGid(), 100);
-  }
+    @Test
+    public void testChownDir() {
+        Assert.assertTrue(mkdirs(chownTestDir));
+        CFSStatInfo stat = stat(chownTestDir);
+        Assert.assertTrue(stat != null);
+        checkDirStat(stat);
+        Assert.assertTrue(chown(chownTestDir, 100, 100));
+        stat = stat(chownTestDir);
+        Assert.assertTrue(stat != null);
+        log.info(chownTestDir + ":" + stat.toString());
+        Assert.assertEquals(stat.getUid(), 100);
+        Assert.assertEquals(stat.getGid(), 100);
+    }
 
-  @Test
-  public void testChownFile() {
-    String path = chownTestDir + "/chown_file_0";
-    Assert.assertTrue(mkdirs(chownTestDir));
-    Assert.assertTrue(createFile(path, 1024));
-    CFSStatInfo stat = stat(path);
-    Assert.assertTrue(stat != null);
-    Assert.assertTrue(chown(path, 200, 200));
-    stat = stat(path);
-    Assert.assertTrue(stat != null);
-    log.info(path + ":" + stat.toString());
-    Assert.assertEquals(stat.getUid(), 200);
-    Assert.assertEquals(stat.getGid(), 200);
-  }
+    @Test
+    public void testChownFile() {
+        String path = chownTestDir + "/chown_file_0";
+        Assert.assertTrue(mkdirs(chownTestDir));
+        Assert.assertTrue(createFile(path, 1024));
+        CFSStatInfo stat = stat(path);
+        Assert.assertTrue(stat != null);
+        Assert.assertTrue(chown(path, 200, 200));
+        stat = stat(path);
+        Assert.assertTrue(stat != null);
+        log.info(path + ":" + stat.toString());
+        Assert.assertEquals(stat.getUid(), 200);
+        Assert.assertEquals(stat.getGid(), 200);
+    }
 }

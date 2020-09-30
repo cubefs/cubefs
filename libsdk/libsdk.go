@@ -380,8 +380,7 @@ func cfs_setattr_by_path(id C.int64_t, path *C.char, stat *C.struct_cfs_stat_inf
 	}
 
 	if valid != 0 {
-		err = c.setattr(info, uint32(valid), uint32(stat.mode), uint32(stat.uid), uint32(stat.gid), int64(stat.mtime)*1e9+int64(stat.mtime_nsec), int64(stat.atime)*1e9+int64(stat.atime_nsec))
-
+		err = c.setattr(info, uint32(valid), uint32(stat.mode), uint32(stat.uid), uint32(stat.gid), int64(stat.mtime), int64(stat.atime))
 		if err != nil {
 			fmt.Println("Failed to Setattr path: ", path, " error: ", err)
 			return errorToStatus(err)

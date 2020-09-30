@@ -18,74 +18,74 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
 public class StorageConfig {
-  private static final Log log = LogFactory.getLog(FileStorageImpl.class);
-  public final static String CONFIG_KEY_MATSER = "masterAddr";
-  public final static String CONFIG_KEY_VOLUME = "volName";
-  public final static String CONFIG_KEY_FOLLOWER_READ = "followerRead";
-  public final static String CONFIG_KEY_LOG_DIR = "logDir";
-  public final static String CONFIG_KEY_LOG_LEVEL = "logLevel";
-  private String masters;
-  private String volumeName;
-  private String owner;
-  private String logDir = "/var/log/cfs/";
-  private String logLevel = "info";
-  private boolean followerRread = false;
+    private static final Log log = LogFactory.getLog(FileStorageImpl.class);
+    public final static String CONFIG_KEY_MATSER = "masterAddr";
+    public final static String CONFIG_KEY_VOLUME = "volName";
+    public final static String CONFIG_KEY_FOLLOWER_READ = "followerRead";
+    public final static String CONFIG_KEY_LOG_DIR = "logDir";
+    public final static String CONFIG_KEY_LOG_LEVEL = "logLevel";
+    private String masters;
+    private String volumeName;
+    private String owner;
+    private String logDir = "/var/log/cfs/";
+    private String logLevel = "info";
+    private boolean followerRread = false;
 
-  public StorageConfig() {
-  }
-
-  public void setMasters(String masters) {
-    this.masters = masters;
-  }
-
-  public void setVolumeName(String volumeName) {
-    this.volumeName = volumeName;
-  }
-
-  public void setOwner(String owner) {
-    this.owner = owner;
-  }
-
-  public void setLogDir(String path) {
-    this.logDir = path;
-  }
-
-  public void setLogLevel(String level) {
-    this.logLevel = level;
-  }
-
-  public String getLogDir() {
-    return this.logDir;
-  }
-
-  public String getLogLevel() {
-    return this.logLevel;
-  }
-
-  public String getMasters() throws CFSNullArgumentException {
-    if (masters == null) {
-      throw new CFSNullArgumentException("The master is null.");
+    public StorageConfig() {
     }
-    return this.masters;
-  }
 
-  public String getVolumeName() throws CFSNullArgumentException {
-    if (volumeName == null) {
-      throw new CFSNullArgumentException("The volume name is null.");
+    public void setMasters(String masters) {
+        this.masters = masters;
     }
-    return this.volumeName;
-  }
 
-  public boolean getFollowerRead() {
-    return this.followerRread;
-  }
+    public void setVolumeName(String volumeName) {
+        this.volumeName = volumeName;
+    }
 
-  public String getOwner() {
-    return this.owner;
-  }
+    public void setOwner(String owner) {
+        this.owner = owner;
+    }
 
-  public void print() {
-    log.info(CONFIG_KEY_MATSER + ":" + masters);
-    log.info(CONFIG_KEY_VOLUME + ":" + volumeName);
-  }
+    public void setLogDir(String path) {
+        this.logDir = path;
+    }
+
+    public void setLogLevel(String level) {
+        this.logLevel = level;
+    }
+
+    public String getLogDir() {
+        return this.logDir;
+    }
+
+    public String getLogLevel() {
+        return this.logLevel;
+    }
+
+    public String getMasters() throws CFSNullArgumentException {
+        if (masters == null) {
+            throw new CFSNullArgumentException("The master is null.");
+        }
+        return this.masters;
+    }
+
+    public String getVolumeName() throws CFSNullArgumentException {
+        if (volumeName == null) {
+            throw new CFSNullArgumentException("The volume name is null.");
+        }
+        return this.volumeName;
+    }
+
+    public boolean getFollowerRead() {
+        return this.followerRread;
+    }
+
+    public String getOwner() {
+        return this.owner;
+    }
+
+    public void print() {
+        log.info(CONFIG_KEY_MATSER + ":" + masters);
+        log.info(CONFIG_KEY_VOLUME + ":" + volumeName);
+    }
 }

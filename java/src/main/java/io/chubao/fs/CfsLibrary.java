@@ -8,160 +8,160 @@ import java.util.Arrays;
 import java.util.List;
 
 public interface CfsLibrary extends Library {
-  class StatInfo extends Structure implements Structure.ByReference {
-    // note that the field layout should be aligned with cfs_stat_info
-    public long ino;
-    public long size;
-    public long blocks;
-    public long atime;
-    public long mtime;
-    public long ctime;
-    public int atime_nsec;
-    public int mtime_nsec;
-    public int ctime_nsec;
-    public int mode;
-    public int nlink;
-    public int blkSize;
-    public int uid;
-    public int gid;
+    class StatInfo extends Structure implements Structure.ByReference {
+        // note that the field layout should be aligned with cfs_stat_info
+        public long ino;
+        public long size;
+        public long blocks;
+        public long atime;
+        public long mtime;
+        public long ctime;
+        public int atime_nsec;
+        public int mtime_nsec;
+        public int ctime_nsec;
+        public int mode;
+        public int nlink;
+        public int blkSize;
+        public int uid;
+        public int gid;
 
-    public StatInfo() {
-      super();
+        public StatInfo() {
+            super();
+        }
+
+        ;
+
+        @Override
+        protected List<String> getFieldOrder() {
+            return Arrays.asList(new String[]{"ino", "size", "blocks", "atime", "mtime", "ctime", "atime_nsec",
+                "mtime_nsec", "ctime_nsec", "mode", "nlink", "blkSize", "uid", "gid"});
+        }
+
+        public static class ByReference extends StatInfo implements Structure.ByReference {
+        }
+
+        public static class ByValue extends StatInfo implements Structure.ByValue {
+        }
+
+        public String toString() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("inodeid:");
+            sb.append(ino);
+            sb.append(" szie:");
+            sb.append(size);
+            sb.append(" uid:");
+            sb.append(uid);
+            sb.append(" gid:");
+            sb.append(gid);
+            sb.append(" mode:");
+            sb.append(mode);
+            sb.append(" ctime:");
+            sb.append(ctime);
+            sb.append(" ctime_nesc:");
+            sb.append(ctime_nsec);
+            sb.append(" mtime:");
+            sb.append(mtime);
+            sb.append(" mtime_nesc:");
+            sb.append(mtime_nsec);
+            sb.append(" atime:");
+            sb.append(atime);
+            sb.append(" atime_nesc:");
+            sb.append(atime_nsec);
+            return sb.toString();
+        }
+
     }
 
-    ;
+    class Dirent extends Structure {
+        // note that the field layout should be aligned with cfs_dirent
+        public long ino;
+        public byte dType;
+        public int nameLen;
+        public byte[] name = new byte[256];
 
-    @Override
-    protected List<String> getFieldOrder() {
-      return Arrays.asList(new String[]{"ino", "size", "blocks", "atime", "mtime", "ctime", "atime_nsec",
-          "mtime_nsec", "ctime_nsec", "mode", "nlink", "blkSize", "uid", "gid"});
+        public Dirent() {
+            super();
+        }
+
+        ;
+
+        @Override
+        protected List<String> getFieldOrder() {
+            return Arrays.asList(new String[]{"ino", "dType", "nameLen", "name"});
+        }
+
+        public static class ByReference extends Dirent implements Structure.ByReference {
+        }
+
+        public static class ByValue extends Dirent implements Structure.ByValue {
+        }
+
     }
 
-    public static class ByReference extends StatInfo implements Structure.ByReference {
+    class DirentArray extends Structure {
+        public static class ByValue extends DirentArray implements Structure.ByValue {
+        }
+
+        public static class ByReference extends DirentArray implements Structure.ByReference {
+        }
+
+        // note that the field layout should be aligned with GoSlice
+        public Pointer data;
+        public long len;
+        public long cap;
+
+        public DirentArray() {
+            super();
+        }
+
+        protected List<String> getFieldOrder() {
+            return Arrays.asList(new String[]{"data", "len", "cap"});
+        }
     }
 
-    public static class ByValue extends StatInfo implements Structure.ByValue {
-    }
+    // exports from shared library
+    long cfs_new_client();
 
-    public String toString() {
-      StringBuilder sb = new StringBuilder();
-      sb.append("inodeid:");
-      sb.append(ino);
-      sb.append(" szie:");
-      sb.append(size);
-      sb.append(" uid:");
-      sb.append(uid);
-      sb.append(" gid:");
-      sb.append(gid);
-      sb.append(" mode:");
-      sb.append(mode);
-      sb.append(" ctime:");
-      sb.append(ctime);
-      sb.append(" ctime_nesc:");
-      sb.append(ctime_nsec);
-      sb.append(" mtime:");
-      sb.append(mtime);
-      sb.append(" mtime_nesc:");
-      sb.append(mtime_nsec);
-      sb.append(" atime:");
-      sb.append(atime);
-      sb.append(" atime_nesc:");
-      sb.append(atime_nsec);
-      return sb.toString();
-    }
+    int cfs_set_client(long id, String key, String val);
 
-  }
+    int cfs_start_client(long id);
 
-  class Dirent extends Structure {
-    // note that the field layout should be aligned with cfs_dirent
-    public long ino;
-    public byte dType;
-    public int nameLen;
-    public byte[] name = new byte[256];
+    void cfs_close_client(long id);
 
-    public Dirent() {
-      super();
-    }
+    int cfs_chdir(long id, String path);
 
-    ;
+    String cfs_getcwd(long id);
 
-    @Override
-    protected List<String> getFieldOrder() {
-      return Arrays.asList(new String[]{"ino", "dType", "nameLen", "name"});
-    }
+    int cfs_getattr(long id, String path, StatInfo stat);
 
-    public static class ByReference extends Dirent implements Structure.ByReference {
-    }
+    int cfs_setattr(long id, String path, StatInfo stat, int mask);
 
-    public static class ByValue extends Dirent implements Structure.ByValue {
-    }
+    int cfs_open(long id, String path, int flags, int mode, int uid, int gid);
 
-  }
+    int cfs_flush(long id, int fd);
 
-  class DirentArray extends Structure {
-    public static class ByValue extends DirentArray implements Structure.ByValue {
-    }
+    void cfs_close(long id, int fd);
 
-    public static class ByReference extends DirentArray implements Structure.ByReference {
-    }
+    long cfs_write(long id, int fd, byte[] buf, long size, long offset);
 
-    // note that the field layout should be aligned with GoSlice
-    public Pointer data;
-    public long len;
-    public long cap;
+    long cfs_read(long id, int fd, byte[] buf, long size, long offset);
 
-    public DirentArray() {
-      super();
-    }
+    int cfs_mkdirs(long cid, String path, int mode, int uid, int gid);
 
-    protected List<String> getFieldOrder() {
-      return Arrays.asList(new String[]{"data", "len", "cap"});
-    }
-  }
+    int cfs_unlink(long cid, String path);
 
-  // exports from shared library
-  long cfs_new_client();
+    int cfs_rename(long cid, String from, String to);
 
-  int cfs_set_client(long id, String key, String val);
+    int cfs_readdir(long id, int fd, DirentArray.ByValue dents, long count);
 
-  int cfs_start_client(long id);
+    int cfs_fchmod(long id, int fd, int mode);
 
-  void cfs_close_client(long id);
+    int cfs_rmdir(long cid, String path, boolean recursive);
 
-  int cfs_chdir(long id, String path);
+    int cfs_batch_get_inodes(long cid, int fd, long[] iids, DirentArray.ByValue stats, int count);
 
-  String cfs_getcwd(long id);
+    int cfs_setattr_by_path(long cid, String path, StatInfo info, int valid);
 
-  int cfs_getattr(long id, String path, StatInfo stat);
-
-  int cfs_setattr(long id, String path, StatInfo stat, int mask);
-
-  int cfs_open(long id, String path, int flags, int mode, int uid, int gid);
-
-  int cfs_flush(long id, int fd);
-
-  void cfs_close(long id, int fd);
-
-  long cfs_write(long id, int fd, byte[] buf, long size, long offset);
-
-  long cfs_read(long id, int fd, byte[] buf, long size, long offset);
-
-  int cfs_mkdirs(long cid, String path, int mode, int uid, int gid);
-
-  int cfs_unlink(long cid, String path);
-
-  int cfs_rename(long cid, String from, String to);
-
-  int cfs_readdir(long id, int fd, DirentArray.ByValue dents, long count);
-
-  int cfs_fchmod(long id, int fd, int mode);
-
-  int cfs_rmdir(long cid, String path, boolean recursive);
-
-  int cfs_batch_get_inodes(long cid, int fd, long[] iids, DirentArray.ByValue stats, int count);
-
-  int cfs_setattr_by_path(long cid, String path, StatInfo info, int valid);
-
-  long cfs_file_size(long cid, int fd);
+    long cfs_file_size(long cid, int fd);
 
 }

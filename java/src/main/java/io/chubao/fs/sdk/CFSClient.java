@@ -26,61 +26,61 @@ import java.io.File;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class CFSClient {
-  private static final Log log = LogFactory.getLog(CFSClient.class);
-  private static AtomicLong clientID = new AtomicLong(0L);
-  private CfsLibrary driver;
-  private String sdkLibPath;
+    private static final Log log = LogFactory.getLog(CFSClient.class);
+    //private static AtomicLong clientID = new AtomicLong(0L);
+    private CfsLibrary driver;
+    private String sdkLibPath;
 
-  public CFSClient(String libpath) {
-    this.sdkLibPath = libpath;
-  }
-
-  public void init() throws CFSException {
-    if (sdkLibPath == null) {
-      throw new CFSNullArgumentException("Please specify the libsdk.so path.");
+    public CFSClient(String libpath) {
+        this.sdkLibPath = libpath;
     }
-    File file = new File(sdkLibPath);
-    if (file.exists() == false) {
-      throw new CFSNullArgumentException("Not found the libsdk.so: " + sdkLibPath);
-    }
-    driver = Native.load(sdkLibPath, CfsLibrary.class);
-  }
 
-  public FileStorage openFileStorage(StorageConfig config) throws CFSException {
+    public void init() throws CFSException {
+        if (sdkLibPath == null) {
+            throw new CFSNullArgumentException("Please specify the libsdk.so path.");
+        }
+        File file = new File(sdkLibPath);
+        if (file.exists() == false) {
+            throw new CFSNullArgumentException("Not found the libsdk.so: " + sdkLibPath);
+        }
+        driver = Native.load(sdkLibPath, CfsLibrary.class);
+    }
+
+    public FileStorage openFileStorage(StorageConfig config) throws CFSException {
     /*
     if (clientID.get() > 0 && storage != null) {
       return storage;
     }
      */
-    long cid = driver.cfs_new_client();
-    if (cid < 0) {
-      throw new CFSException("Failed to new a client.");
-    }
-    clientID.set(cid);
-    driver.cfs_set_client(cid, StorageConfig.CONFIG_KEY_MATSER, config.getMasters());
-    driver.cfs_set_client(cid, StorageConfig.CONFIG_KEY_VOLUME, config.getVolumeName());
-    driver.cfs_set_client(cid, StorageConfig.CONFIG_KEY_LOG_DIR, config.getLogDir());
-    driver.cfs_set_client(cid, StorageConfig.CONFIG_KEY_LOG_LEVEL, config.getLogLevel());
+        long cid = driver.cfs_new_client();
+        if (cid < 0) {
+            throw new CFSException("Failed to new a client.");
+        }
+        //clientID.set(cid);
+        driver.cfs_set_client(cid, StorageConfig.CONFIG_KEY_MATSER, config.getMasters());
+        driver.cfs_set_client(cid, StorageConfig.CONFIG_KEY_VOLUME, config.getVolumeName());
+        driver.cfs_set_client(cid, StorageConfig.CONFIG_KEY_LOG_DIR, config.getLogDir());
+        driver.cfs_set_client(cid, StorageConfig.CONFIG_KEY_LOG_LEVEL, config.getLogLevel());
 
-    int st = driver.cfs_start_client(cid);
-    if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {
-      throw new CFSException("Failed to start the client: " + cid + " status code: " + st);
-    }
+        int st = driver.cfs_start_client(cid);
+        if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {
+            throw new CFSException("Failed to start the client: " + cid + " status code: " + st);
+        }
 
-    st = driver.cfs_chdir(cid, "/");
-    if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {
-      throw new CFSException("Failed to chdir for client: " + cid + " status code: " + st);
-    }
+        st = driver.cfs_chdir(cid, "/");
+        if (StatusCodes.get(st) != StatusCodes.CFS_STATUS_OK) {
+            throw new CFSException("Failed to chdir for client: " + cid + " status code: " + st);
+        }
 
-    try {
-      CFSDriverIns ins = new CFSDriverIns(driver, cid);
-      FileStorageImpl storage = new FileStorageImpl(ins);
-      storage.init();
-      log.info("Succ to open FileStorage, client id:" + cid);
-      return storage;
-    } catch (Exception ex) {
-      log.error(ex.getMessage(), ex);
-      throw new RuntimeException(ex);
+        try {
+            CFSDriverIns ins = new CFSDriverIns(driver, cid);
+            FileStorageImpl storage = new FileStorageImpl(ins);
+            storage.init();
+            log.info("Succ to open FileStorage, client id:" + cid);
+            return storage;
+        } catch (Exception ex) {
+            log.error(ex.getMessage(), ex);
+            throw new RuntimeException(ex);
+        }
     }
-  }
 }
