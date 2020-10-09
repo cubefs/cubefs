@@ -44,6 +44,7 @@ var (
 	ErrIncorrectStoreType       = errors.New("Incorrect store type")
 	ErrNoSpaceToCreatePartition = errors.New("No disk space to create a data partition")
 	ErrNewSpaceManagerFailed    = errors.New("Creater new space manager failed")
+    ErrGetMasterDatanodeInfoFailed =errors.New("Failed to get datanode info from master")
 
 	LocalIP, serverPort string
 	gConnPool           = util.NewConnectPool()
@@ -321,6 +322,10 @@ func (s *DataNode) checkLocalPartitionMatchWithMaster() (err error) {
 		}
 		break
 	}
+	if dataNode==nil{
+    err = ErrGetMasterDatanodeInfoFailed
+    return
+    }
 	dinfo := convert(dataNode)
 	if len(dinfo.PersistenceDataPartitions) == 0 {
 		return
