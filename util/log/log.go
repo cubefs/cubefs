@@ -53,6 +53,7 @@ const (
 	WriterBufferLenLimit   = 4 * 1024 * 1024
 	DefaultRollingInterval = 1 * time.Second
 	RolledExtension        = ".old"
+	MaxReservedDays        = 7 * 24 * time.Hour
 )
 
 var levelPrefixes = []string{
@@ -633,37 +634,10 @@ func (l *Log) checkLogRotation(logDir, module string) {
 		}
 		diskSpaceLeft := int64(fs.Bavail * uint64(fs.Bsize))
 		diskSpaceLeft -= l.rotate.headRoom * 1024 * 1024
-		if diskSpaceLeft <= 0 {
-			// collect free file list
-			fp, err := os.Open(logDir)
-			if err != nil {
-				LogErrorf("error opening log directory: %s", err.Error())
-				continue
-			}
-
-			fInfos, err := fp.Readdir(0)
-			if err != nil {
-				LogErrorf("error read log directory files: %s", err.Error())
-				continue
-			}
-			for _, info := range fInfos {
-				if info.Mode().IsRegular() && strings.HasSuffix(info.Name(),
-					RolledExtension) {
-					needDelFiles = append(needDelFiles, info)
-				}
-			}
-			sort.Sort(needDelFiles)
-			// delete old file
-			for _, info := range needDelFiles {
-				if err = os.Remove(path.Join(logDir, info.Name())); err == nil {
-					diskSpaceLeft += info.Size()
-					if diskSpaceLeft > 0 {
-						break
-					}
-				} else {
-					LogErrorf("failed delete log file %s", info.Name())
-				}
-			}
+		err := l.removeLogFile(logDir, diskSpaceLeft)
+		if err != nil {
+			time.Sleep(DefaultRollingInterval)
+			continue
 		}
 		// check if it is time to rotate
 		now := time.Now()
@@ -679,7 +653,50 @@ func (l *Log) checkLogRotation(logDir, module string) {
 		l.errorLogger.SetRotation()
 		l.readLogger.SetRotation()
 		l.updateLogger.SetRotation()
+		l.criticalLogger.SetRotation()
 
 		l.lastRolledTime = now
 	}
+}
+
+func DeleteFileFilter(info os.FileInfo, diskSpaceLeft int64) bool {
+	if diskSpaceLeft <= 0 {
+		return info.Mode().IsRegular() && strings.HasSuffix(info.Name(), RolledExtension)
+	}
+	return time.Since(info.ModTime()) > MaxReservedDays && strings.HasSuffix(info.Name(), RolledExtension)
+}
+
+func (l *Log) removeLogFile(logDir string, diskSpaceLeft int64) (err error) {
+	// collect free file list
+	fp, err := os.Open(logDir)
+	if err != nil {
+		LogErrorf("error opening log directory: %s", err.Error())
+		return
+	}
+
+	fInfos, err := fp.Readdir(0)
+	if err != nil {
+		LogErrorf("error read log directory files: %s", err.Error())
+		return
+	}
+	var needDelFiles RolledFile
+	for _, info := range fInfos {
+		if DeleteFileFilter(info, diskSpaceLeft) {
+			needDelFiles = append(needDelFiles, info)
+		}
+	}
+	sort.Sort(needDelFiles)
+	// delete old file
+	for _, info := range needDelFiles {
+		if err = os.Remove(path.Join(logDir, info.Name())); err != nil {
+			LogErrorf("failed delete log file %s", info.Name())
+			continue
+		}
+		diskSpaceLeft += info.Size()
+		if diskSpaceLeft > 0 && time.Since(info.ModTime()) < MaxReservedDays {
+			break
+		}
+	}
+	err = nil
+	return
 }
