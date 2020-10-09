@@ -3,8 +3,8 @@ This page listed the ChubaoFS main maintainers and their reponsibilities.
 Name | Email | Focus | Org
 --------|---|---|---
 Haifeng Liu ([@bladehliu](https://github.com/bladehliu))| [bladehliu@qq.com](bladehliu@qq.com) | Sponsor, Software Architect | [-](-)
-Weilong Guo ([@awzhgw](https://github.com/awzhgw))| [guowl18702995996@gmail.com](mailto:guowl18702995996@gmail.com) | Project Lead | [JD.com](https://www.jd.com/)
-Shuoran Liu ([@shuoranliu](https://github.com/shuoranliu)) | [shuoranliu@gmail.com](mailto:shuoranliu@gmail.com) | Client, SDK | [OPPO](https://www.oppo.com)
+Weilong Guo ([@awzhgw](https://github.com/awzhgw))| [guowl18702995996@gmail.com](mailto:guowl18702995996@gmail.com) | Sponsor, Software Architect | [JD.com](https://www.jd.com/)
+Shuoran Liu ([@shuoranliu](https://github.com/shuoranliu)) | [shuoranliu@gmail.com](mailto:shuoranliu@gmail.com) | Project Lead | [OPPO](https://www.oppo.com)
 Hongyin Zhu ([@zhuhyc](https://github.com/zhuhyc)) | [zzhniy.163.niy@163.com](mailto:zzhniy.163.niy@163.com) | Resource Manager | [JD.com](https://www.jd.com/)
 Jianxing Zhao ([@znlstar](https://github.com/znlstar)) | [znlstar@163.com](mailto:znlstar@163.com) | Metadata | [JD.com](https://www.jd.com/)
 Mofei Zhang ([@mervinkid](https://github.com/mervinkid)) | [mofei2816@gmail.com](mailto:mofei2816@gmail.com) | Metadata, S3, Community | [JD.com](https://www.jd.com/)
