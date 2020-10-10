@@ -163,6 +163,7 @@ func (writer *asyncWriter) flushToFile() {
 					writer.file.Close()
 					writer.file = fp
 					writer.logSize = 0
+					_ = os.Chmod(writer.fileName, 0666)
 				}
 			}
 		}
@@ -189,6 +190,7 @@ func newAsyncWriter(fileName string, rollingSize int64) (*asyncWriter, error) {
 	if err != nil {
 		return nil, err
 	}
+	_ = os.Chmod(fileName, 0666)
 	w := &asyncWriter{
 		file:        fp,
 		fileName:    fileName,
@@ -268,6 +270,7 @@ func InitLog(dir, module string, level Level, rotate *LogRotate) (*Log, error) {
 			return nil, errors.New(dir + " is not a directory")
 		}
 	}
+	_ = os.Chmod(dir, 0766)
 	if rotate == nil {
 		rotate = NewLogRotate()
 		fs := syscall.Statfs_t{}
