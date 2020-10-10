@@ -612,6 +612,5 @@ func (eh *ExtentHandler) setRecovery() bool {
 }
 
 func (eh *ExtentHandler) setError() bool {
-	atomic.StoreInt32(&eh.stream.status, StreamerError)
 	return atomic.CompareAndSwapInt32(&eh.status, ExtentStatusRecovery, ExtentStatusError)
 }
