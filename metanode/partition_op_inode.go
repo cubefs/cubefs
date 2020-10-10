@@ -24,6 +24,7 @@ import (
 
 func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
 	ino.RLock()
+	defer ino.RUnlock()
 	if ino.Flag&DeleteMarkFlag > 0 {
 		return false
 	}
@@ -41,7 +42,6 @@ func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
 	info.CreateTime = time.Unix(ino.CreateTime, 0)
 	info.AccessTime = time.Unix(ino.AccessTime, 0)
 	info.ModifyTime = time.Unix(ino.ModifyTime, 0)
-	ino.RUnlock()
 	return true
 }
 
