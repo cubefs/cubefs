@@ -1470,29 +1470,12 @@ func (c *Cluster) buildAddDataPartitionRaftMemberTaskAndSyncSendTask(dp *DataPar
 }
 
 func (c *Cluster) addDataPartitionRaftMember(dp *DataPartition, addPeer proto.Peer) (err error) {
-	dp.Lock()
-	defer dp.Unlock()
-	if contains(dp.Hosts, addPeer.Addr) {
-		err = fmt.Errorf("vol[%v],data partition[%v] has contains host[%v]", dp.VolName, dp.PartitionID, addPeer.Addr)
-		return
-	}
-
 	var (
-		candidateAddrs []string
 		leaderAddr     string
+		candidateAddrs []string
 	)
-	candidateAddrs = make([]string, 0, len(dp.Hosts))
-	leaderAddr = dp.getLeaderAddr()
-	if leaderAddr != "" && contains(dp.Hosts, leaderAddr) {
-		candidateAddrs = append(candidateAddrs, leaderAddr)
-	} else {
-		leaderAddr = ""
-	}
-	for _, host := range dp.Hosts {
-		if host == leaderAddr {
-			continue
-		}
-		candidateAddrs = append(candidateAddrs, host)
+	if leaderAddr, candidateAddrs, err = dp.prepareAddRaftMember(addPeer); err != nil {
+		return
 	}
 	//send task to leader addr first,if need to retry,then send to other addr
 	for index, host := range candidateAddrs {
@@ -1510,13 +1493,16 @@ func (c *Cluster) addDataPartitionRaftMember(dp *DataPartition, addPeer proto.Pe
 	if err != nil {
 		return
 	}
+	dp.Lock()
 	newHosts := make([]string, 0, len(dp.Hosts)+1)
 	newPeers := make([]proto.Peer, 0, len(dp.Peers)+1)
 	newHosts = append(dp.Hosts, addPeer.Addr)
 	newPeers = append(dp.Peers, addPeer)
 	if err = dp.update("addDataPartitionRaftMember", dp.VolName, newPeers, newHosts, c); err != nil {
+		dp.Unlock()
 		return
 	}
+	dp.Unlock()
 	return
 }
 

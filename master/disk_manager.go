@@ -17,6 +17,7 @@ package master
 import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/log"
+	"sync"
 	"time"
 )
 
@@ -82,11 +83,25 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 func (c *Cluster) decommissionDisk(dataNode *DataNode, badDiskPath string, badPartitions []*DataPartition) (err error) {
 	msg := fmt.Sprintf("action[decommissionDisk], Node[%v] OffLine,disk[%v]", dataNode.Addr, badDiskPath)
 	log.LogWarn(msg)
-
+	var wg sync.WaitGroup
+	errChannel := make(chan error, len(badPartitions))
+	defer func() {
+		close(errChannel)
+	}()
 	for _, dp := range badPartitions {
-		if err = c.decommissionDataPartition(dataNode.Addr, dp, getTargetAddressForDataPartitionDecommission, diskOfflineErr, "", false); err != nil {
-			return
-		}
+		wg.Add(1)
+		go func(dp *DataPartition) {
+			defer wg.Done()
+			if err1 := c.decommissionDataPartition(dataNode.Addr, dp, getTargetAddressForDataPartitionDecommission, diskOfflineErr, "", false); err != nil {
+				errChannel <- err1
+			}
+		}(dp)
+	}
+	wg.Wait()
+	select {
+	case err = <-errChannel:
+		return
+	default:
 	}
 	msg = fmt.Sprintf("action[decommissionDisk],clusterID[%v] Node[%v] OffLine success",
 		c.Name, dataNode.Addr)
