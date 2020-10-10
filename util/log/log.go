@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math"
 	"net/http"
@@ -278,6 +279,12 @@ func InitLog(dir, module string, level Level, rotate *LogRotate) (*Log, error) {
 		minRatio := float64(fs.Blocks*uint64(fs.
 			Bsize)) * DefaultHeadRatio / 1024 / 1024
 		rotate.SetHeadRoomMb(int64(math.Min(minRatio, DefaultHeadRoom)))
+
+		minRollingSize := int64(fs.Bavail * uint64(fs.Bsize) / uint64(len(levelPrefixes)))
+		if minRollingSize < DefaultMinRollingSize {
+			minRollingSize = DefaultMinRollingSize
+		}
+		rotate.SetRollingSizeMb(int64(math.Min(float64(minRollingSize), float64(DefaultRollingSize))))
 	}
 	l.rotate = rotate
 	err = l.initLog(dir, module, level)
@@ -668,13 +675,7 @@ func DeleteFileFilter(info os.FileInfo, diskSpaceLeft int64) bool {
 
 func (l *Log) removeLogFile(logDir string, diskSpaceLeft int64) (err error) {
 	// collect free file list
-	fp, err := os.Open(logDir)
-	if err != nil {
-		LogErrorf("error opening log directory: %s", err.Error())
-		return
-	}
-
-	fInfos, err := fp.Readdir(0)
+	fInfos, err := ioutil.ReadDir(logDir)
 	if err != nil {
 		LogErrorf("error read log directory files: %s", err.Error())
 		return
