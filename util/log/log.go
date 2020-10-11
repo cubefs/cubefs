@@ -281,9 +281,14 @@ func InitLog(dir, module string, level Level, rotate *LogRotate) (*Log, error) {
 			return nil, fmt.Errorf("[InitLog] stats disk space: %s",
 				err.Error())
 		}
-		minRatio := float64(fs.Blocks*uint64(fs.
-			Bsize)) * DefaultHeadRatio / 1024 / 1024
+		var minRatio float64
+		if float64(fs.Bavail*uint64(fs.Bsize)) < float64(fs.Blocks*uint64(fs.Bsize))*DefaultHeadRatio {
+			minRatio = float64(fs.Bavail*uint64(fs.Bsize)) * DefaultHeadRatio / 1024 / 1024
+		} else {
+			minRatio = float64(fs.Blocks*uint64(fs.Bsize)) * DefaultHeadRatio / 1024 / 1024
+		}
 		rotate.SetHeadRoomMb(int64(math.Min(minRatio, DefaultHeadRoom)))
+
 		minRollingSize := int64(fs.Bavail * uint64(fs.Bsize) / uint64(len(levelPrefixes)))
 		if minRollingSize < DefaultMinRollingSize {
 			minRollingSize = DefaultMinRollingSize
