@@ -39,7 +39,7 @@ public class TestCfsClient {
             System.out.println("uid: " + stat.uid);
             System.out.println("gid: " + stat.gid);
 
-            int fd = mnt.open(targetPath, mnt.O_RDONLY, 0644);
+            int fd = mnt.open(targetPath, CfsMount.O_RDONLY, 0644);
 
             if (fd < 0) {
                 System.out.println("Open failed: " + fd);
@@ -75,7 +75,7 @@ public class TestCfsClient {
 
             mnt.close(fd);
         } else if (args[0].equals("write")) {
-            int fd = mnt.open(targetPath, mnt.O_RDWR | mnt.O_CREAT, 0644);
+            int fd = mnt.open(targetPath, CfsMount.O_RDWR | CfsMount.O_CREAT, 0644);
 
             if (fd < 0) {
                 System.out.println("Open failed: " + fd);
@@ -92,7 +92,7 @@ public class TestCfsClient {
             mnt.close(fd);
         } else if (args[0].equals("ls")) {
             mnt.chdir(targetPath);
-            int fd = mnt.open(".", mnt.O_RDWR, 0644);
+            int fd = mnt.open(".", CfsMount.O_RDWR, 0644);
 
             if (fd < 0) {
                 System.out.println("Open failed: " + fd);
@@ -115,7 +115,7 @@ public class TestCfsClient {
             System.out.println("num of entries: " + total_entry);
             mnt.close(fd);
         } else if (args[0].equals("chmod")) {
-            int fd = mnt.open(targetPath, mnt.O_RDWR, 0644);
+            int fd = mnt.open(targetPath, CfsMount.O_RDWR, 0644);
             if (fd < 0) {
                 System.out.println("Open failed: " + fd);
                 return;

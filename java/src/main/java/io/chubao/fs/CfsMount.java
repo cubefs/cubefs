@@ -8,33 +8,33 @@ import io.chubao.fs.CfsLibrary.DirentArray;
 
 public class CfsMount {
     // Open flags
-    public final int O_RDONLY = 0;
-    public final int O_WRONLY = 1;
-    public final int O_RDWR = 2;
-    public final int O_ACCMODE = 3;
-    public final int O_CREAT = 0100;
-    public final int O_TRUNC = 01000;
-    public final int O_APPEND = 02000;
-    public final int O_DIRECT = 040000;
+    public static final int O_RDONLY = 0;
+    public static final int O_WRONLY = 1;
+    public static final int O_RDWR = 2;
+    public static final int O_ACCMODE = 3;
+    public static final int O_CREAT = 0100;
+    public static final int O_TRUNC = 01000;
+    public static final int O_APPEND = 02000;
+    public static final int O_DIRECT = 040000;
 
     // Mode
-    public final int S_IFDIR = 0040000;
-    public final int S_IFREG = 0100000;
-    public final int S_IFLNK = 0120000;
+    public static final int S_IFDIR = 0040000;
+    public static final int S_IFREG = 0100000;
+    public static final int S_IFLNK = 0120000;
 
     // dType used in Dirent
-    public final int DT_UNKNOWN = 0x0;
-    public final int DT_DIR = 0x4;
-    public final int DT_REG = 0x8;
-    public final int DT_LNK = 0xa;
+    public static final int DT_UNKNOWN = 0x0;
+    public static final int DT_DIR = 0x4;
+    public static final int DT_REG = 0x8;
+    public static final int DT_LNK = 0xa;
 
     // Valid flags for setattr
     // Must be compatible with proto.Attr values
-    public final int SETATTR_MODE = 1;
-    public final int SETATTR_UID = 2;
-    public final int SETATTR_GID = 4;
-    public final int SETATTR_MTIME = 8;
-    public final int SETATTR_ATIME = 16;
+    public static final int SETATTR_MODE = 1;
+    public static final int SETATTR_UID = 2;
+    public static final int SETATTR_GID = 4;
+    public static final int SETATTR_MTIME = 8;
+    public static final int SETATTR_ATIME = 16;
 
     private CfsLibrary libcfs;
     private String libpath;
