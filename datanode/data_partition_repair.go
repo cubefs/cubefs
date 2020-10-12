@@ -396,7 +396,7 @@ func (dp *DataPartition) notifyFollower(wg *sync.WaitGroup, index int, members [
 	if err = p.WriteToConn(conn); err != nil {
 		return err
 	}
-	if err = p.ReadFromConn(conn, proto.NoReadDeadlineTime); err != nil {
+	if err = p.ReadFromConn(conn, proto.MaxWaitFollowerRepairTime); err != nil {
 		return err
 	}
 	return err
