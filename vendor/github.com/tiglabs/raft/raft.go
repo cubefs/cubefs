@@ -109,6 +109,7 @@ type raft struct {
 	prevHardSt        proto.HardState
 	peerState         peerState
 	pending           map[uint64]*Future
+	pendingCmd        map[uint64]proto.EntryType
 	snapping          map[uint64]*snapshotStatus
 	mStatus           *monitorStatus
 	propc             chan *proposal
@@ -149,6 +150,7 @@ func newRaft(config *Config, raftConfig *RaftConfig) (*raft, error) {
 		raftConfig:    raftConfig,
 		mStatus:       mStatus,
 		pending:       make(map[uint64]*Future),
+		pendingCmd:    make(map[uint64]proto.EntryType),
 		snapping:      make(map[uint64]*snapshotStatus),
 		recvc:         make(chan *proto.Message, config.ReqBufferSize),
 		applyc:        make(chan *apply, config.AppBufferSize),
@@ -230,7 +232,9 @@ func (s *raft) runApply() {
 			)
 			switch cmd := apply.command.(type) {
 			case *proto.ConfChange:
+				logger.Error("raft[%v] invoke ApplyMemberChange: cmd(%v) index(%v) futre(%v)", s.raftFsm.id, cmd, apply.index, apply.future)
 				resp, err = s.raftConfig.StateMachine.ApplyMemberChange(cmd, apply.index)
+				logger.Error("raft[%v] finish ApplyMemberChange: cmd(%v) index(%v) futre(%v)", s.raftFsm.id, cmd, apply.index, apply.future)
 			case []byte:
 				resp, err = s.raftConfig.StateMachine.Apply(cmd, apply.index)
 			}
@@ -290,6 +294,7 @@ func (s *raft) run() {
 			msg.From = s.config.NodeID
 			starti := s.raftFsm.raftLog.lastIndex() + 1
 			s.pending[starti] = pr.future
+			s.pendingCmd[starti] = pr.cmdType
 			msg.Entries = append(msg.Entries, &proto.Entry{Term: s.raftFsm.term, Index: starti, Type: pr.cmdType, Data: pr.data})
 			pool.returnProposal(pr)
 
@@ -299,6 +304,7 @@ func (s *raft) run() {
 				select {
 				case pr := <-s.propc:
 					s.pending[starti] = pr.future
+					s.pendingCmd[starti] = pr.cmdType
 					msg.Entries = append(msg.Entries, &proto.Entry{Term: s.raftFsm.term, Index: starti, Type: pr.cmdType, Data: pr.data})
 					pool.returnProposal(pr)
 				default:
@@ -306,6 +312,11 @@ func (s *raft) run() {
 				}
 				if flag {
 					break
+				}
+			}
+			for _, entry := range msg.Entries {
+				if entry.Type == proto.EntryConfChange {
+					logger.Error("raft[%v] step EntryConfChange: index(%v) term(%v)", s.raftFsm.id, entry.Index, entry.Term)
 				}
 			}
 			s.raftFsm.Step(msg)
@@ -677,6 +688,7 @@ func (s *raft) apply() {
 		if future, ok := s.pending[entry.Index]; ok {
 			apply.future = future
 			delete(s.pending, entry.Index)
+			delete(s.pendingCmd, entry.Index)
 		}
 		apply.readIndexes = s.raftFsm.readOnly.getReady(entry.Index)
 
@@ -729,6 +741,7 @@ func (s *raft) resetPending(err error) {
 		for k, v := range s.pending {
 			v.respond(nil, err)
 			delete(s.pending, k)
+			delete(s.pendingCmd, k)
 		}
 	}
 }
@@ -768,6 +781,11 @@ func (s *raft) getStatus() *Status {
 	default:
 	}
 
+	pendingCmd := make(map[uint64]proto.EntryType)
+	for k, v := range s.pendingCmd {
+		pendingCmd[k] = v
+	}
+
 	st := &Status{
 		ID:                s.raftFsm.id,
 		NodeID:            s.config.NodeID,
@@ -780,6 +798,7 @@ func (s *raft) getStatus() *Status {
 		State:             s.raftFsm.state.String(),
 		RestoringSnapshot: s.restoringSnapshot.Get(),
 		PendQueue:         len(s.pending),
+		PendCmd:           pendingCmd,
 		RecvQueue:         len(s.recvc),
 		AppQueue:          len(s.applyc),
 		Stopped:           stopped,
