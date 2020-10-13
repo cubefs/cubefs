@@ -20,9 +20,10 @@ import (
 	"math/rand"
 	"strings"
 
+	"time"
+
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
-	"time"
 )
 
 // NoLeader is a placeholder nodeID used when there is no leader.
@@ -162,6 +163,9 @@ func (r *raftFsm) StopFsm() {
 
 // raft main method
 func (r *raftFsm) Step(m *proto.Message) {
+	logger.Debug("[raftFsm->Step] [id: %v] start step message [logterm: %v, index: %v, term: %v]", r.id, m.LogTerm, m.Index, r.term)
+	defer logger.Debug("[raftFsm->Step] [id: %v] finish step message [logterm: %v, index: %v, term: %v]", r.id, m.LogTerm, m.Index, r.term)
+
 	if m.Type == proto.LocalMsgHup {
 		if r.state != stateLeader && r.promotable() {
 			ents, err := r.raftLog.slice(r.raftLog.applied+1, r.raftLog.committed+1, noLimit)
