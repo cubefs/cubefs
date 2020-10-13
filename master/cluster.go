@@ -1012,7 +1012,7 @@ func (c *Cluster) chooseTargetDataNodes(excludeZone string, excludeNodeSets []ui
 		localExcludeHosts := excludeHosts
 		for _, zone := range zones {
 			localExcludeHosts = append(localExcludeHosts, allocateZoneMap[zone]...)
-			selectedHosts, selectedPeers, e := zone.getAvailDataNodeHosts(excludeNodeSets, excludeHosts, 1)
+			selectedHosts, selectedPeers, e := zone.getAvailDataNodeHosts(excludeNodeSets, localExcludeHosts, 1)
 			if e != nil {
 				return nil, nil, errors.NewError(e)
 			}
@@ -2043,7 +2043,7 @@ func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []ui
 		localExcludeHosts := excludeHosts
 		for _, zone := range zones {
 			localExcludeHosts = append(localExcludeHosts, allocateZoneMap[zone]...)
-			selectedHosts, selectedPeers, e := zone.getAvailMetaNodeHosts(excludeNodeSets, excludeHosts, 1)
+			selectedHosts, selectedPeers, e := zone.getAvailMetaNodeHosts(excludeNodeSets, localExcludeHosts, 1)
 			if e != nil {
 				return nil, nil, errors.NewError(e)
 			}
