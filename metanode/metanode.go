@@ -54,6 +54,7 @@ type MetaNode struct {
 	raftStore         raftstore.RaftStore
 	raftHeartbeatPort string
 	raftReplicatePort string
+	tickInterval      int
 	zoneName          string
 	httpStopC         chan uint8
 	disks             map[string]*Disk
@@ -176,6 +177,12 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
 	m.zoneName = cfg.GetString(cfgZoneName)
 	configTotalMem, _ = strconv.ParseUint(cfg.GetString(cfgTotalMem), 10, 64)
+
+	m.tickInterval = int(cfg.GetFloat(cfgTickIntervalMs))
+	if m.tickInterval <= 300 {
+		log.LogWarnf("get config [%s]:[%v] less than 300 so set it to 500 ", cfgTickIntervalMs, cfg.GetString(cfgTickIntervalMs))
+		m.tickInterval = 500
+	}
 
 	if configTotalMem == 0 {
 		return fmt.Errorf("bad totalMem config,Recommended to be configured as 80 percent of physical machine memory")

@@ -37,10 +37,11 @@ func (m *MetaNode) startRaftServer() (err error) {
 	raftConf := &raftstore.Config{
 		NodeID:            m.nodeId,
 		RaftPath:          m.raftDir,
+		TickInterval:      m.tickInterval,
 		IPAddr:            m.localAddr,
 		HeartbeatPort:     heartbeatPort,
 		ReplicaPort:       replicaPort,
-		NumOfLogsToRetain: raftstore.DefaultNumOfLogsToRetain*2,
+		NumOfLogsToRetain: raftstore.DefaultNumOfLogsToRetain * 2,
 	}
 	m.raftStore, err = raftstore.NewRaftStore(raftConf)
 	if err != nil {

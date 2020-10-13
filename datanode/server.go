@@ -64,14 +64,15 @@ const (
 )
 
 const (
-	ConfigKeyLocalIP       = "localIP"       // string
-	ConfigKeyPort          = "port"          // int
-	ConfigKeyMasterAddr    = "masterAddr"    // array
-	ConfigKeyZone          = "zoneName"      // string
-	ConfigKeyDisks         = "disks"         // array
-	ConfigKeyRaftDir       = "raftDir"       // string
-	ConfigKeyRaftHeartbeat = "raftHeartbeat" // string
-	ConfigKeyRaftReplica   = "raftReplica"   // string
+	ConfigKeyLocalIP       = "localIP"        // string
+	ConfigKeyPort          = "port"           // int
+	ConfigKeyMasterAddr    = "masterAddr"     // array
+	ConfigKeyZone          = "zoneName"       // string
+	ConfigKeyDisks         = "disks"          // array
+	ConfigKeyRaftDir       = "raftDir"        // string
+	ConfigKeyRaftHeartbeat = "raftHeartbeat"  // string
+	ConfigKeyRaftReplica   = "raftReplica"    // string
+	cfgTickIntervalMs      = "tickIntervalMs" // int
 )
 
 // DataNode defines the structure of a data node.
@@ -87,6 +88,7 @@ type DataNode struct {
 	raftHeartbeat   string
 	raftReplica     string
 	raftStore       raftstore.RaftStore
+	tickInterval    int
 
 	tcpListener net.Listener
 	stopC       chan bool
@@ -194,6 +196,12 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	s.zoneName = cfg.GetString(ConfigKeyZone)
 	if s.zoneName == "" {
 		s.zoneName = DefaultZoneName
+	}
+
+	s.tickInterval = int(cfg.GetFloat(cfgTickIntervalMs))
+	if s.tickInterval <= 300 {
+		log.LogWarnf("get config [%s]:[%v] less than 300 so set it to 500 ", cfgTickIntervalMs, cfg.GetString(cfgTickIntervalMs))
+		s.tickInterval = 500
 	}
 
 	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterClient.Nodes())
