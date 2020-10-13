@@ -17,6 +17,7 @@ package master
 import (
 	"context"
 	"fmt"
+	syslog "log"
 	"net/http"
 	"net/http/httputil"
 	"regexp"
@@ -163,7 +164,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	if m.config.replicaPort <= 1024 {
 		m.config.replicaPort = raftstore.DefaultReplicaPort
 	}
-	fmt.Printf("heartbeatPort[%v],replicaPort[%v]\n", m.config.heartbeatPort, m.config.replicaPort)
+	syslog.Printf("heartbeatPort[%v],replicaPort[%v]\n", m.config.heartbeatPort, m.config.replicaPort)
 	if err = m.config.parsePeers(peerAddrs); err != nil {
 		return
 	}
@@ -250,7 +251,7 @@ func (m *Server) createRaftServer() (err error) {
 	if m.raftStore, err = raftstore.NewRaftStore(raftCfg); err != nil {
 		return errors.Trace(err, "NewRaftStore failed! id[%v] walPath[%v]", m.id, m.walDir)
 	}
-	fmt.Printf("peers[%v],tickInterval[%v],electionTick[%v]\n", m.config.peers, m.tickInterval, m.electionTick)
+	syslog.Printf("peers[%v],tickInterval[%v],electionTick[%v]\n", m.config.peers, m.tickInterval, m.electionTick)
 	m.initFsm()
 	partitionCfg := &raftstore.PartitionConfig{
 		ID:      GroupID,

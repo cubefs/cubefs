@@ -349,7 +349,7 @@ func (t *topology) allocZonesForMetaNode(zoneNum, replicaNum int, excludeZone []
 
 func (t *topology) allocZonesForDataNode(zoneNum, replicaNum int, excludeZone []string) (zones []*Zone, err error) {
 	zones = t.getAllZones()
-	fmt.Printf("len(zones) = %v \n", len(zones))
+	log.LogInfof("len(zones) = %v \n", len(zones))
 	if t.isSingleZone() {
 		return zones, nil
 	}
@@ -629,7 +629,7 @@ func (zone *Zone) canWriteForDataNode(replicaNum uint8) (can bool) {
 		}
 		return true
 	})
-	fmt.Printf("canWriteForDataNode leastAlive[%v],replicaNum[%v],count[%v]\n", leastAlive, replicaNum, zone.dataNodeCount())
+	log.LogInfof("canWriteForDataNode leastAlive[%v],replicaNum[%v],count[%v]\n", leastAlive, replicaNum, zone.dataNodeCount())
 	return
 }
 
