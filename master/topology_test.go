@@ -119,8 +119,8 @@ func TestAllocZones(t *testing.T) {
 	cluster := new(Cluster)
 	cluster.t = topo
 	cluster.cfg = newClusterConfig()
-	cluster.cfg.DataPartitionsRecoverPoolSize = defaultDataPartitionsRecoverPoolSize
-	cluster.cfg.MetaPartitionsRecoverPoolSize = defaultMetaPartitionsRecoverPoolSize
+	cluster.cfg.DataPartitionsRecoverPoolSize = maxDataPartitionsRecoverPoolSize
+	cluster.cfg.MetaPartitionsRecoverPoolSize = maxMetaPartitionsRecoverPoolSize
 
 	//don't cross zone
 	hosts, _, err := cluster.chooseTargetDataNodes("", nil, nil, replicaNum, "zone1")

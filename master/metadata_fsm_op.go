@@ -138,6 +138,7 @@ type volValue struct {
 	Authenticate      bool
 	EnableToken       bool
 	CrossZone         bool
+	AutoRepair        bool
 	ZoneName          string
 	OSSAccessKey      string
 	OSSSecretKey      string
@@ -162,6 +163,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		Owner:             vol.Owner,
 		FollowerRead:      vol.FollowerRead,
 		Authenticate:      vol.authenticate,
+		AutoRepair:        vol.autoRepair,
 		ZoneName:          vol.zoneName,
 		CrossZone:         vol.crossZone,
 		EnableToken:       vol.enableToken,
@@ -527,10 +529,10 @@ func (c *Cluster) updateMetaNodeDeleteWorkerSleepMs(val uint64) {
 }
 func (c *Cluster) updateRecoverPoolSize(dpPoolSize, mpPoolSize int32) {
 	if dpPoolSize == 0 {
-		dpPoolSize = defaultDataPartitionsRecoverPoolSize
+		dpPoolSize = defaultRecoverPoolSize
 	}
 	if mpPoolSize == 0 {
-		mpPoolSize = defaultMetaPartitionsRecoverPoolSize
+		mpPoolSize = defaultRecoverPoolSize
 	}
 	atomic.StoreInt32(&c.cfg.DataPartitionsRecoverPoolSize, dpPoolSize)
 	atomic.StoreInt32(&c.cfg.MetaPartitionsRecoverPoolSize, mpPoolSize)

@@ -119,9 +119,6 @@ func TestVolMultiZoneDowngrade(t *testing.T) {
 	server.cluster.checkDataNodeHeartbeat()
 	server.cluster.checkMetaNodeHeartbeat()
 
-	//test forbid auto recover by setting RecoverPoolSize=-1
-	server.cluster.cfg.MetaPartitionsRecoverPoolSize = -1
-	server.cluster.cfg.DataPartitionsRecoverPoolSize = -1
 	server.cluster.checkVolRepairDataPartitions()
 	server.cluster.checkVolRepairMetaPartitions()
 
@@ -136,8 +133,8 @@ func TestVolMultiZoneDowngrade(t *testing.T) {
 		t.Errorf("checkVolRepairMetaPartition is forbidden when recover pool size equals -1")
 	}*/
 	//test normal recover
-	server.cluster.cfg.MetaPartitionsRecoverPoolSize = defaultMetaPartitionsRecoverPoolSize
-	server.cluster.cfg.DataPartitionsRecoverPoolSize = defaultDataPartitionsRecoverPoolSize
+	server.cluster.cfg.MetaPartitionsRecoverPoolSize = maxMetaPartitionsRecoverPoolSize
+	server.cluster.cfg.DataPartitionsRecoverPoolSize = maxDataPartitionsRecoverPoolSize
 	server.cluster.checkVolRepairDataPartitions()
 	server.cluster.checkVolRepairMetaPartitions()
 	//wait for the partitions to be repaired
@@ -376,7 +373,7 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 	var volID uint64 = 1
 	var createTime = time.Now().Unix()
 	vol := newVol(volID, name, name, "", util.DefaultDataPartitionSize, 100, defaultReplicaNum,
-		defaultReplicaNum, false, false, false, createTime, "")
+		defaultReplicaNum, false, false, false, true, createTime, "")
 	// unavailable mp
 	mp1 := newMetaPartition(1, 1, defaultMaxMetaPartitionInodeID, 3, name, volID)
 	vol.addMetaPartition(mp1)

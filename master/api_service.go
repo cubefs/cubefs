@@ -691,6 +691,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		followerRead bool
 		authenticate bool
 		enableToken  bool
+		autoRepair   bool
 		zoneName     string
 		description  string
 		vol          *Vol
@@ -715,11 +716,11 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	if replicaNum == 0 {
 		replicaNum = int(vol.dpReplicaNum)
 	}
-	if followerRead, authenticate, enableToken, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
+	if followerRead, authenticate, enableToken, autoRepair, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), followerRead, authenticate, enableToken); err != nil {
+	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), followerRead, authenticate, enableToken, autoRepair); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -741,11 +742,12 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		followerRead bool
 		authenticate bool
 		enableToken  bool
+		autoRepair   bool
 		zoneName     string
 		description  string
 	)
 
-	if name, owner, zoneName, description, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, enableToken, err = parseRequestToCreateVol(r); err != nil {
+	if name, owner, zoneName, description, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, enableToken, autoRepair, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -754,7 +756,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, enableToken); err != nil {
+	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, enableToken, autoRepair); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -813,6 +815,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		Authenticate:       vol.authenticate,
 		EnableToken:        vol.enableToken,
 		CrossZone:          vol.crossZone,
+		AutoRepair:         vol.autoRepair,
 		Tokens:             vol.tokens,
 		RwDpCnt:            vol.dataPartitions.readableAndWritableCnt,
 		MpCnt:              len(vol.MetaPartitions),
@@ -1465,7 +1468,7 @@ func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, ca
 	return
 }
 
-func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authenticate, enableToken bool, err error) {
+func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authenticate, enableToken, autoRepair bool, err error) {
 	if followerReadStr := r.FormValue(followerReadKey); followerReadStr != "" {
 		if followerRead, err = strconv.ParseBool(followerReadStr); err != nil {
 			err = unmatchedKey(followerReadKey)
@@ -1490,10 +1493,18 @@ func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authent
 	} else {
 		enableToken = vol.enableToken
 	}
+	if autoRepairStr := r.FormValue(autoRepairKey); autoRepairStr != "" {
+		if autoRepair, err = strconv.ParseBool(autoRepairStr); err != nil {
+			err = unmatchedKey(autoRepairKey)
+			return
+		}
+	} else {
+		autoRepair = vol.autoRepair
+	}
 	return
 }
 
-func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, enableToken bool, err error) {
+func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, enableToken, autoRepair bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1539,7 +1550,9 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	if authenticate, err = extractAuthenticate(r); err != nil {
 		return
 	}
-
+	if autoRepair, err = extractAutoRepair(r); err != nil {
+		return
+	}
 	zoneName = r.FormValue(zoneNameKey)
 	enableToken = extractEnableToken(r)
 	description = r.FormValue(descriptionKey)
@@ -1730,13 +1743,13 @@ func extractAuthenticate(r *http.Request) (authenticate bool, err error) {
 	return
 }
 
-func extractCrossZone(r *http.Request) (crossZone bool, err error) {
+func extractAutoRepair(r *http.Request) (autoRepair bool, err error) {
 	var value string
-	if value = r.FormValue(crossZoneKey); value == "" {
-		crossZone = false
+	if value = r.FormValue(autoRepairKey); value == "" {
+		autoRepair = false
 		return
 	}
-	if crossZone, err = strconv.ParseBool(value); err != nil {
+	if autoRepair, err = strconv.ParseBool(value); err != nil {
 		return
 	}
 	return
