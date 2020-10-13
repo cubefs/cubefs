@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -77,6 +78,7 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 
 func newListCorruptDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 	var optEnableAutoFullfill bool
+	var optCheckAll bool
 	var cmd = &cobra.Command{
 		Use:   CliOpCheck,
 		Short: cmdCheckCorruptDataPartitionShort,
@@ -92,6 +94,13 @@ The "reset" command will be released in next version`,
 				dataNodes []*proto.DataNodeInfo
 				err       error
 			)
+			if optCheckAll {
+				err = checkAllDataPartitions(client)
+				if err != nil {
+					stdout("%v\n", err)
+				}
+				return
+			}
 			if diagnosis, err = client.AdminAPI().DiagnoseDataPartition(); err != nil {
 				stdout("%v\n", err)
 				return
@@ -148,23 +157,37 @@ The "reset" command will be released in next version`,
 						continue
 					}
 					var leaderRps map[uint64]*proto.ReplicaStatus
-					for _, r := range partition.Replicas {
+					var canAutoRepair bool
+					var peerStrings []string
+					canAutoRepair = true
+					for i, r := range partition.Replicas {
 						var rps map[uint64]*proto.ReplicaStatus
 						var dnPartition *proto.DNDataPartitionInfo
 						var err error
 						addr := strings.Split(r.Addr, ":")[0]
-						if dnPartition, err = client.NodeAPI().DataNodeGetPartition(client, addr, partition.PartitionID); err != nil {
+						if dnPartition, err = client.NodeAPI().DataNodeGetPartition(addr, partition.PartitionID); err != nil {
 							fmt.Printf(partitionInfoColorTablePattern+"\n",
-								"", "", "", r.Addr, fmt.Sprintf("%v/%v", "nil", partition.ReplicaNum), "get partition info failed")
+								"", "", "", fmt.Sprintf("%v(hosts)", r.Addr), fmt.Sprintf("%v/%v", "nil", partition.ReplicaNum), "get partition info failed")
 							continue
 						}
 						sort.Strings(dnPartition.Replicas)
 						fmt.Printf(partitionInfoColorTablePattern+"\n",
-							"", "", "", r.Addr, fmt.Sprintf("%v/%v", len(dnPartition.Replicas), partition.ReplicaNum), strings.Join(dnPartition.Replicas, "; "))
+							"", "", "", fmt.Sprintf("%v(hosts)", r.Addr), fmt.Sprintf("%v/%v", len(dnPartition.Replicas), partition.ReplicaNum), strings.Join(dnPartition.Replicas, "; "))
 
 						if rps = dnPartition.RaftStatus.Replicas; rps != nil {
 							leaderRps = rps
 						}
+						peers := convertPeersToArray(dnPartition.Peers)
+						sort.Strings(peers)
+						if i == 0 {
+							peerStrings = peers
+						} else {
+							if !isEqualStrings(peers, peerStrings) {
+								canAutoRepair = false
+							}
+						}
+						fmt.Printf(partitionInfoColorTablePattern+"\n",
+							"", "", "", fmt.Sprintf("%v(peers)", r.Addr), fmt.Sprintf("%v/%v", len(peers), partition.ReplicaNum), strings.Join(peers, "; "))
 					}
 					if len(leaderRps) != 3 || len(partition.Hosts) != 2 {
 						stdoutRed(fmt.Sprintf("raft peer number(expected is 3, but is %v) or replica number(expected is 2, but is %v) not match ", len(leaderRps), len(partition.Hosts)))
@@ -183,8 +206,10 @@ The "reset" command will be released in next version`,
 						continue
 					}
 					stdoutGreen(fmt.Sprintf(" The Lack Address is: %v", lackAddr))
-					sb.WriteString(fmt.Sprintf("cfs-cli datapartition add-replica %v %v\n", lackAddr[0], partition.PartitionID))
-					if optEnableAutoFullfill {
+					if canAutoRepair {
+						sb.WriteString(fmt.Sprintf("cfs-cli datapartition add-replica %v %v\n", lackAddr[0], partition.PartitionID))
+					}
+					if optEnableAutoFullfill && canAutoRepair {
 						stdoutGreen("     Auto Repair Begin:")
 						if err = client.AdminAPI().AddDataReplica(partition.PartitionID, lackAddr[0]); err != nil {
 							stdoutRed(fmt.Sprintf("%v err:%v", "     Failed.", err))
@@ -202,11 +227,104 @@ The "reset" command will be released in next version`,
 			return
 		},
 	}
-	cmd.Flags().BoolVar(&optEnableAutoFullfill, CliFlagEnableAutoFill, false, "Enable read form replica follower")
-
+	cmd.Flags().BoolVar(&optEnableAutoFullfill, CliFlagEnableAutoFill, false, "true - automatically full fill the missing replica")
+	cmd.Flags().BoolVar(&optCheckAll, "all", false, "true - check all partitions; false - only check partitions which lack of replica")
 	return cmd
 }
+func checkAllDataPartitions(client *master.MasterClient) (err error) {
+	var volInfo []*proto.VolInfo
+	if volInfo, err = client.AdminAPI().ListVols(""); err != nil {
+		stdout("%v\n", err)
+		return
+	}
+	stdout("\n")
+	stdout("%v\n", "[Partition peer info not valid]:")
+	stdout("%v\n", partitionInfoTableHeader)
+	for _, vol := range volInfo {
+		var volView *proto.VolView
+		if volView, err = client.ClientAPI().GetVolume(vol.Name, calcAuthKey(vol.Owner)); err != nil {
+			stdout("Found an invalid vol: %v\n", vol.Name)
+			continue
+		}
+		sort.SliceStable(volView.DataPartitions, func(i, j int) bool {
+			return volView.DataPartitions[i].PartitionID < volView.DataPartitions[j].PartitionID
+		})
+		var wg sync.WaitGroup
+		for _, dp := range volView.DataPartitions {
+			wg.Add(1)
+			go func(dp *proto.DataPartitionResponse) {
+				defer wg.Done()
+				var outPut string
+				var isHealthy bool
+				outPut, isHealthy, _ = checkDataPartition(dp.PartitionID, client)
+				if !isHealthy {
+					fmt.Printf(outPut)
+					stdoutGreen(strings.Repeat("_ ", len(partitionInfoTableHeader)/2+20) + "\n")
+				}
+			}(dp)
+		}
+		wg.Wait()
+	}
+	return
+}
+func checkDataPartition(pid uint64, client *master.MasterClient) (outPut string, isHealthy bool, err error) {
+	var partition *proto.DataPartitionInfo
+	var sb = strings.Builder{}
+	isHealthy = true
+	if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
+		sb.WriteString(fmt.Sprintf("Partition is not found, err:[%v]", err))
+		return
+	}
+	if partition != nil {
+		sb.WriteString(fmt.Sprintf("%v\n", formatDataPartitionInfoRow(partition)))
+		sort.Strings(partition.Hosts)
+		if len(partition.MissingNodes) > 0 || partition.Status == -1 || len(partition.Hosts) != int(partition.ReplicaNum) {
+			errMsg := fmt.Sprintf("The partition is not healthy according to the report message from master")
+			sb.WriteString(fmt.Sprintf("\033[1;40;31m%-8v\033[0m\n", errMsg))
+			isHealthy = false
+		}
+		var leaderRps map[uint64]*proto.ReplicaStatus
+		for _, r := range partition.Replicas {
+			var rps map[uint64]*proto.ReplicaStatus
+			var dnPartition *proto.DNDataPartitionInfo
+			var err error
+			addr := strings.Split(r.Addr, ":")[0]
+			if dnPartition, err = client.NodeAPI().DataNodeGetPartition(addr, partition.PartitionID); err != nil {
+				sb.WriteString(fmt.Sprintf(partitionInfoColorTablePattern+"\n",
+					"", "", "", fmt.Sprintf("%v", r.Addr), fmt.Sprintf("%v/%v", "nil", partition.ReplicaNum), fmt.Sprintf("get partition info failed, err:%v", err)))
+				isHealthy = false
+				continue
+			}
+			sort.Strings(dnPartition.Replicas)
+			sb.WriteString(fmt.Sprintf(partitionInfoColorTablePattern+"\n",
+				"", "", "", fmt.Sprintf("%v(hosts)", r.Addr), fmt.Sprintf("%v/%v", len(dnPartition.Replicas), partition.ReplicaNum), strings.Join(dnPartition.Replicas, "; ")))
 
+			if rps = dnPartition.RaftStatus.Replicas; rps != nil {
+				leaderRps = rps
+			}
+			peerStrings := convertPeersToArray(dnPartition.Peers)
+			sort.Strings(peerStrings)
+			sb.WriteString(fmt.Sprintf(partitionInfoColorTablePattern+"\n",
+				"", "", "", fmt.Sprintf("%v(peers)", r.Addr), fmt.Sprintf("%v/%v", len(peerStrings), partition.ReplicaNum), strings.Join(peerStrings, "; ")))
+			if !isEqualStrings(peerStrings, dnPartition.Replicas) {
+				isHealthy = false
+			}
+			if !isEqualStrings(partition.Hosts, peerStrings) {
+				isHealthy = false
+			}
+			if len(peerStrings) != int(partition.ReplicaNum) || len(dnPartition.Replicas) != int(partition.ReplicaNum) {
+				isHealthy = false
+			}
+		}
+		if len(leaderRps) == 0 {
+			isHealthy = false
+			errMsg := fmt.Sprintf("no raft leader")
+			sb.WriteString(fmt.Sprintf("\033[1;40;31m%-8v\033[0m\n", errMsg))
+		}
+	}
+	outPut = sb.String()
+	return
+}
 func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   CliOpDecommission + " [ADDRESS] [DATA PARTITION ID]",

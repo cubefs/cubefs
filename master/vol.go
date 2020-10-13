@@ -42,6 +42,7 @@ type Vol struct {
 	NeedToLowerReplica bool
 	FollowerRead       bool
 	authenticate       bool
+	autoRepair         bool
 	zoneName           string
 	crossZone          bool
 	enableToken        bool
@@ -59,7 +60,7 @@ type Vol struct {
 	sync.RWMutex
 }
 
-func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead, authenticate, enableToken bool, createTime int64, description string) (vol *Vol) {
+func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead, authenticate, enableToken, autoRepair bool, createTime int64, description string) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	if dpReplicaNum < defaultReplicaNum {
@@ -91,6 +92,7 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.mpsCache = make([]byte, 0)
 	vol.createTime = createTime
 	vol.enableToken = enableToken
+	vol.autoRepair = autoRepair
 	vol.tokens = make(map[string]*proto.Token, 0)
 	vol.description = description
 	return
@@ -109,6 +111,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.FollowerRead,
 		vv.Authenticate,
 		vv.EnableToken,
+		vv.AutoRepair,
 		vv.CreateTime,
 		vv.Description)
 	// overwrite oss secure

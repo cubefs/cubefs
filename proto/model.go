@@ -277,11 +277,12 @@ type DNDataPartitionInfo struct {
 	Replicas             []string      `json:"replicas"`
 	TinyDeleteRecordSize int64         `json:"tinyDeleteRecordSize"`
 	RaftStatus           *Status       `json:"raftStatus"`
+	Peers                []*Peer       `json:"peers"`
 }
 
 type MNMetaPartitionInfo struct {
-	LeaderAddr string `json:"leaderAddr"`
-	Peers      []Peer `json:"peers"`
-	NodeId     uint64 `json:"nodeId"`
-	Cursor     uint64 `json:"cursor"`
+	LeaderAddr string  `json:"leaderAddr"`
+	Peers      []*Peer `json:"peers"`
+	NodeId     uint64  `json:"nodeId"`
+	Cursor     uint64  `json:"cursor"`
 }

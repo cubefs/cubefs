@@ -60,6 +60,7 @@ const (
 
 func newVolListCmd(client *master.MasterClient) *cobra.Command {
 	var optKeyword string
+	var optDetailMod bool
 	var cmd = &cobra.Command{
 		Use:     CliOpList,
 		Short:   cmdVolListShort,
@@ -76,13 +77,27 @@ func newVolListCmd(client *master.MasterClient) *cobra.Command {
 			if vols, err = client.AdminAPI().ListVols(optKeyword); err != nil {
 				return
 			}
-			stdout("%v\n", volumeInfoTableHeader)
+			if optDetailMod {
+				stdout("%v\n", volumeDetailInfoTableHeader)
+			} else {
+				stdout("%v\n", volumeInfoTableHeader)
+			}
 			for _, vol := range vols {
-				stdout("%v\n", formatVolInfoTableRow(vol))
+				var vv *proto.SimpleVolView
+				if vv, err = client.AdminAPI().GetVolumeSimpleInfo(vol.Name); err != nil {
+					return
+				}
+				if optDetailMod {
+					stdout("%v\n", formatVolDetailInfoTableRow(vv, vol))
+				} else {
+					stdout("%v\n", formatVolInfoTableRow(vol))
+				}
 			}
 		},
 	}
+	cmd.Flags().BoolVarP(&optDetailMod, "detail-mod", "d", false, "list the volumes with empty zone name")
 	cmd.Flags().StringVar(&optKeyword, "keyword", "", "Specify keyword of volume name to filter")
+
 	return cmd
 }
 
@@ -103,6 +118,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optCapacity uint64
 	var optReplicas int
 	var optFollowerRead bool
+	var optAutoRepair bool
 	var optYes bool
 	var optZoneName string
 	var cmd = &cobra.Command{
@@ -124,6 +140,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  Capacity            : %v GB\n", optCapacity)
 				stdout("  Replicas            : %v\n", optReplicas)
 				stdout("  Allow follower read : %v\n", formatEnabledDisabled(optFollowerRead))
+				stdout("  Auto repair         : %v\n", formatEnabledDisabled(optAutoRepair))
+
 				stdout("  ZoneName            : %v\n", optZoneName)
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
@@ -134,7 +152,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
-			err = client.AdminAPI().CreateVolume(volumeName, userID, optMPCount, optDPSize, optCapacity, optReplicas, optFollowerRead, optZoneName)
+			err = client.AdminAPI().CreateVolume(volumeName, userID, optMPCount, optDPSize, optCapacity, optReplicas, optFollowerRead, optAutoRepair, optZoneName)
 			if err != nil {
 				errout("Create volume failed case:\n%v\n", err)
 				os.Exit(1)
@@ -148,6 +166,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Uint64Var(&optCapacity, CliFlagCapacity, cmdVolDefaultCapacity, "Specify volume capacity [Unit: GB]")
 	cmd.Flags().IntVar(&optReplicas, CliFlagReplicas, cmdVolDefaultReplicas, "Specify data partition replicas number")
 	cmd.Flags().BoolVar(&optFollowerRead, CliFlagEnableFollowerRead, cmdVolDefaultFollowerReader, "Enable read form replica follower")
+	cmd.Flags().BoolVar(&optAutoRepair, CliFlagAutoRepair, false, "Enable auto balance partition distribution according to zoneName")
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, cmdVolDefaultZoneName, "Specify volume zone name")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	return cmd
@@ -160,15 +179,18 @@ const (
 )
 
 func newVolSetCmd(client *master.MasterClient) *cobra.Command {
-	var optCapacity uint64
-	var optReplicas int
-	var optFollowerRead string
-	var optAuthenticate string
-	var optEnableToken string
-	var optZoneName string
-	var optYes bool
-	var confirmString = strings.Builder{}
-	var vv *proto.SimpleVolView
+	var (
+		optCapacity     uint64
+		optReplicas     int
+		optFollowerRead string
+		optAuthenticate string
+		optEnableToken  string
+		optAutoRepair   string
+		optZoneName     string
+		optYes          bool
+		confirmString   = strings.Builder{}
+		vv              *proto.SimpleVolView
+	)
 	var cmd = &cobra.Command{
 		Use:   CliOpSet + " [VOLUME NAME]",
 		Short: cmdVolSetShort,
@@ -235,15 +257,23 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  EnableToken         : %v\n", formatEnabledDisabled(vv.EnableToken)))
 			}
-			if vv.CrossZone == false && "" != optZoneName {
+			if optAutoRepair != "" {
+				isChange = true
+				var enable bool
+				if enable, err = strconv.ParseBool(optAutoRepair); err != nil {
+					return
+				}
+				confirmString.WriteString(fmt.Sprintf("  AutoRepair          : %v -> %v\n", formatEnabledDisabled(vv.AutoRepair), formatEnabledDisabled(enable)))
+				vv.AutoRepair = enable
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  AutoRepair          : %v\n", formatEnabledDisabled(vv.AutoRepair)))
+			}
+			if "" != optZoneName {
 				isChange = true
 				confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v -> %v\n", vv.ZoneName, optZoneName))
 				vv.ZoneName = optZoneName
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v\n", vv.ZoneName))
-			}
-			if vv.CrossZone == true && "" != optZoneName {
-				err = fmt.Errorf("Can not set zone name of the volume that cross zone\n")
 			}
 			if err != nil {
 				return
@@ -264,7 +294,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum),
-				vv.FollowerRead, vv.Authenticate, vv.EnableToken, calcAuthKey(vv.Owner), vv.ZoneName)
+				vv.FollowerRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair, calcAuthKey(vv.Owner), vv.ZoneName)
 			if err != nil {
 				return
 			}
@@ -285,6 +315,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optEnableToken, CliFlagEnableToken, "", "ReadOnly/ReadWrite token validation for fuse client")
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, "", "Specify volume zone name")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+	cmd.Flags().StringVar(&optAutoRepair, CliFlagAutoRepair, "", "Enable auto balance partition distribution according to zoneName")
+
 	return cmd
 }
 func newVolInfoCmd(client *master.MasterClient) *cobra.Command {

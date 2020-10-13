@@ -103,6 +103,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Authenticate         : %v\n", formatEnabledDisabled(svv.Authenticate)))
 	sb.WriteString(fmt.Sprintf("  Follower read        : %v\n", formatEnabledDisabled(svv.FollowerRead)))
 	sb.WriteString(fmt.Sprintf("  Cross zone           : %v\n", formatEnabledDisabled(svv.CrossZone)))
+	sb.WriteString(fmt.Sprintf("  Auto repair          : %v\n", formatEnabledDisabled(svv.AutoRepair)))
 	sb.WriteString(fmt.Sprintf("  Inode count          : %v\n", svv.InodeCount))
 	sb.WriteString(fmt.Sprintf("  Dentry count         : %v\n", svv.DentryCount))
 	sb.WriteString(fmt.Sprintf("  Max metaPartition ID : %v\n", svv.MaxMetaPartitionID))
@@ -136,6 +137,17 @@ func formatVolInfoTableRow(vi *proto.VolInfo) string {
 }
 
 var (
+	volumeDetailInfoTablePattern = "%-63v    %-20v    %-30v    %-10v    %-12v    %-8v    %-8v    %-8v    %-8v    %-10v"
+	volumeDetailInfoTableHeader  = fmt.Sprintf(volumeDetailInfoTablePattern, "VOLUME", "OWNER", "ZONE NAME", "CROSS ZONE", "INODE COUNT", "DP COUNT", "USED", "TOTAL", "STATUS", "CREATE TIME")
+)
+
+func formatVolDetailInfoTableRow(vv *proto.SimpleVolView, vi *proto.VolInfo) string {
+	return fmt.Sprintf(volumeDetailInfoTablePattern,
+		vv.Name, vv.Owner, vv.ZoneName, vv.CrossZone, vv.InodeCount, vv.DpCnt, formatSize(vi.UsedSize), formatSize(vi.TotalSize),
+		formatVolumeStatus(vi.Status), time.Unix(vi.CreateTime, 0).Local().Format(time.RFC1123))
+}
+
+var (
 	dataPartitionTablePattern = "%-8v    %-8v    %-10v    %-10v     %-18v    %-18v"
 	dataPartitionTableHeader  = fmt.Sprintf(dataPartitionTablePattern,
 		"ID", "REPLICAS", "STATUS", "ISRECOVER", "LEADER", "MEMBERS")
@@ -148,8 +160,8 @@ func formatDataPartitionTableRow(view *proto.DataPartitionResponse) string {
 }
 
 var (
-	partitionInfoTablePattern      = "%-8v    %-25v    %-10v    %-20v    %-10v    %-18v"
-	partitionInfoColorTablePattern = "%-8v    %-25v    %-10v    %-20v    \033[1;40;32m%-10v\033[0m    %-18v"
+	partitionInfoTablePattern      = "%-8v    %-25v    %-10v    %-28v    %-10v    %-18v"
+	partitionInfoColorTablePattern = "%-8v    %-25v    %-10v    %-28v    \033[1;40;32m%-10v\033[0m    %-18v"
 	partitionInfoTableHeader       = fmt.Sprintf(partitionInfoTablePattern,
 		"ID", "VOLUME", "STATUS", "POSITION", "REPLICANUM", "HOSTS")
 )
@@ -492,4 +504,25 @@ func contains(arr []string, element string) (ok bool) {
 		}
 	}
 	return
+}
+func convertPeersToArray(peers []*proto.Peer) (addrs []string) {
+	addrs = make([]string, 0)
+	for _, peer := range peers {
+		addrs = append(addrs, peer.Addr)
+	}
+	return
+}
+
+func isEqualStrings(strs1, strs2 []string) bool {
+	sort.Strings(strs1)
+	sort.Strings(strs2)
+	if len(strs1) != len(strs2) {
+		return false
+	}
+	for i, s := range strs1 {
+		if strs2[i] != s {
+			return false
+		}
+	}
+	return true
 }

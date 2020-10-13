@@ -109,6 +109,8 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.MetaNodeThreshold = defaultMetaPartitionMemUsageThreshold
 	cfg.metaNodeReservedMem = defaultMetaNodeReservedMem
 	cfg.diffSpaceUsage = defaultDiffSpaceUsage
+	cfg.DataPartitionsRecoverPoolSize = defaultRecoverPoolSize
+	cfg.MetaPartitionsRecoverPoolSize = defaultRecoverPoolSize
 	return
 }
 
