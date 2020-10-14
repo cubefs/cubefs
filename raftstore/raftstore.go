@@ -16,6 +16,7 @@ package raftstore
 
 import (
 	"fmt"
+	syslog "log"
 	"github.com/tiglabs/raft"
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
@@ -85,7 +86,7 @@ func newRaftLogger(dir string) {
 
 	raftLog, err := raftlog.NewLog(raftLogPath, "raft", "debug")
 	if err != nil {
-		fmt.Println("Fatal: failed to start the baud storage daemon - ", err)
+		syslog.Println("Fatal: failed to start the baud storage daemon - ", err)
 		return
 	}
 	logger.SetLogger(raftLog)

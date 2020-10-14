@@ -16,6 +16,7 @@ package master
 
 import (
 	"fmt"
+	syslog "log"
 	"strconv"
 	"strings"
 
@@ -134,7 +135,7 @@ func (cfg *clusterConfig) parsePeers(peerStr string) error {
 		}
 		cfg.peers = append(cfg.peers, raftstore.PeerAddress{Peer: proto.Peer{ID: id}, Address: ip, HeartbeatPort: int(cfg.heartbeatPort), ReplicaPort: int(cfg.replicaPort)})
 		address := fmt.Sprintf("%v:%v", ip, port)
-		fmt.Println(address)
+		syslog.Println(address)
 		AddrDatabase[id] = address
 	}
 	return nil

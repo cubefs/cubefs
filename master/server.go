@@ -197,7 +197,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	if m.retainLogs <= 0 {
 		m.retainLogs = DefaultRetainLogs
 	}
-	fmt.Println("retainLogs=", m.retainLogs)
+	syslog.Println("retainLogs=", m.retainLogs)
 
 	missingDataPartitionInterval := cfg.GetString(missingDataPartitionInterval)
 	if missingDataPartitionInterval != "" {
