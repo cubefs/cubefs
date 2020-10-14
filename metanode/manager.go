@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	syslog "log"
 	_ "net/http/pprof"
 	"os"
 	"path"
@@ -338,7 +339,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 }
 
 func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) (err error) {
-	fmt.Println(fmt.Sprintf("start load metaPartition %v", id))
+	syslog.Println(fmt.Sprintf("start load metaPartition %v", id))
 	partition.ForceSetMetaPartitionToLoadding()
 	if err = partition.Start(); err != nil {
 		log.LogErrorf("load meta partition %v fail: %v", id, err)

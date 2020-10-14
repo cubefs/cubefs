@@ -17,6 +17,7 @@ package authnode
 import (
 	"fmt"
 	"io/ioutil"
+	syslog "log"
 	"net/http"
 	"net/http/httputil"
 	"strconv"
@@ -116,7 +117,8 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	if m.config.replicaPort <= 1024 {
 		m.config.replicaPort = raftstore.DefaultReplicaPort
 	}
-	fmt.Printf("heartbeatPort[%v],replicaPort[%v]\n", m.config.heartbeatPort, m.config.replicaPort)
+	syslog.Printf("heartbeatPort[%v],replicaPort[%v]\n", m.config.heartbeatPort, m.config.replicaPort)
+
 	if err = m.config.parsePeers(peerAddrs); err != nil {
 		return
 	}
@@ -129,7 +131,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	if m.retainLogs <= 0 {
 		m.retainLogs = DefaultRetainLogs
 	}
-	fmt.Println("retainLogs=", m.retainLogs)
+	syslog.Println("retainLogs=", m.retainLogs)
 
 	m.tickInterval = int(cfg.GetFloat(cfgTickInterval))
 	m.electionTick = int(cfg.GetFloat(cfgElectionTick))
