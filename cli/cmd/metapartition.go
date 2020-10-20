@@ -96,7 +96,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			if optCheckAll {
 				err = checkAllMetaPartitions(client)
 				if err != nil {
-					stdout("%v\n", err)
+					errout("%v\n", err)
 				}
 				return
 			}
@@ -147,28 +147,30 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 					stdout("Partition not found, err:[%v]", err)
 					return
 				}
-				if partition != nil {
-					stdout("%v\n", formatMetaPartitionInfoRow(partition))
-					sort.Strings(partition.Hosts)
-					for _, r := range partition.Replicas {
-						var mnPartition *proto.MNMetaPartitionInfo
-						var err error
-						addr := strings.Split(r.Addr, ":")[0]
-						if mnPartition, err = client.NodeAPI().MetaNodeGetPartition(addr, partition.PartitionID); err != nil {
-							fmt.Printf(partitionInfoColorTablePattern+"\n",
-								"", "", "", r.Addr, fmt.Sprintf("%v/%v", 0, partition.ReplicaNum), "no data")
-							continue
-						}
-						mnHosts := make([]string, 0)
-						for _, peer := range mnPartition.Peers {
-							mnHosts = append(mnHosts, peer.Addr)
-						}
-						sort.Strings(mnHosts)
-						fmt.Printf(partitionInfoColorTablePattern+"\n",
-							"", "", "", r.Addr, fmt.Sprintf("%v/%v", len(mnPartition.Peers), partition.ReplicaNum), strings.Join(mnHosts, "; "))
-					}
-					fmt.Printf("\033[1;40;32m%-8v\033[0m", strings.Repeat("_ ", len(partitionInfoTableHeader)/2+5)+"\n")
+				if partition == nil {
+					stdout("Partition not found, err:[%v]", err)
+					return
 				}
+				stdout("%v\n", formatMetaPartitionInfoRow(partition))
+				sort.Strings(partition.Hosts)
+				for _, r := range partition.Replicas {
+					var mnPartition *proto.MNMetaPartitionInfo
+					var err error
+					addr := strings.Split(r.Addr, ":")[0]
+					if mnPartition, err = client.NodeAPI().MetaNodeGetPartition(addr, partition.PartitionID); err != nil {
+						fmt.Printf(partitionInfoColorTablePattern+"\n",
+							"", "", "", r.Addr, fmt.Sprintf("%v/%v", 0, partition.ReplicaNum), "no data")
+						continue
+					}
+					mnHosts := make([]string, 0)
+					for _, peer := range mnPartition.Peers {
+						mnHosts = append(mnHosts, peer.Addr)
+					}
+					sort.Strings(mnHosts)
+					fmt.Printf(partitionInfoColorTablePattern+"\n",
+						"", "", "", r.Addr, fmt.Sprintf("%v/%v", len(mnPartition.Peers), partition.ReplicaNum), strings.Join(mnHosts, "; "))
+				}
+				fmt.Printf("\033[1;40;32m%-8v\033[0m", strings.Repeat("_ ", len(partitionInfoTableHeader)/2+5)+"\n")
 			}
 			return
 		},
@@ -221,35 +223,37 @@ func checkMetaPartition(pid uint64, client *master.MasterClient) (outPut string,
 		sb.WriteString(fmt.Sprintf("Partition is not found, err:[%v]", err))
 		return
 	}
-	if partition != nil {
-		sb.WriteString(fmt.Sprintf("%v\n", formatMetaPartitionInfoRow(partition)))
-		sort.Strings(partition.Hosts)
-		if len(partition.MissNodes) > 0 || partition.Status == -1 || len(partition.Hosts) != int(partition.ReplicaNum) {
-			errMsg := fmt.Sprintf("The partition is unhealthy according to the report message from master")
-			sb.WriteString(fmt.Sprintf("\033[1;40;31m%-8v\033[0m\n", errMsg))
+	if partition == nil {
+		sb.WriteString(fmt.Sprintf("Partition is not found, err:[%v]", err))
+		return
+	}
+	sb.WriteString(fmt.Sprintf("%v\n", formatMetaPartitionInfoRow(partition)))
+	sort.Strings(partition.Hosts)
+	if len(partition.MissNodes) > 0 || partition.Status == -1 || len(partition.Hosts) != int(partition.ReplicaNum) {
+		errMsg := fmt.Sprintf("The partition is unhealthy according to the report message from master")
+		sb.WriteString(fmt.Sprintf("\033[1;40;31m%-8v\033[0m\n", errMsg))
+		isHealthy = false
+	}
+	for _, r := range partition.Replicas {
+		var mnPartition *proto.MNMetaPartitionInfo
+		var err error
+		addr := strings.Split(r.Addr, ":")[0]
+		if mnPartition, err = client.NodeAPI().MetaNodeGetPartition(addr, partition.PartitionID); err != nil {
+			sb.WriteString(fmt.Sprintf(partitionInfoColorTablePattern+"\n",
+				"", "", "", fmt.Sprintf("%v", r.Addr), fmt.Sprintf("%v/%v", "nil", partition.ReplicaNum), fmt.Sprintf("get partition info failed, err:%v", err)))
+			isHealthy = false
+			continue
+		}
+
+		peerStrings := convertPeersToArray(mnPartition.Peers)
+		sort.Strings(peerStrings)
+		sb.WriteString(fmt.Sprintf(partitionInfoColorTablePattern+"\n",
+			"", "", "", fmt.Sprintf("%v(peers)", r.Addr), fmt.Sprintf("%v/%v", len(peerStrings), partition.ReplicaNum), strings.Join(peerStrings, "; ")))
+		if !isEqualStrings(partition.Hosts, peerStrings) {
 			isHealthy = false
 		}
-		for _, r := range partition.Replicas {
-			var mnPartition *proto.MNMetaPartitionInfo
-			var err error
-			addr := strings.Split(r.Addr, ":")[0]
-			if mnPartition, err = client.NodeAPI().MetaNodeGetPartition(addr, partition.PartitionID); err != nil {
-				sb.WriteString(fmt.Sprintf(partitionInfoColorTablePattern+"\n",
-					"", "", "", fmt.Sprintf("%v", r.Addr), fmt.Sprintf("%v/%v", "nil", partition.ReplicaNum), fmt.Sprintf("get partition info failed, err:%v", err)))
-				isHealthy = false
-				continue
-			}
-
-			peerStrings := convertPeersToArray(mnPartition.Peers)
-			sort.Strings(peerStrings)
-			sb.WriteString(fmt.Sprintf(partitionInfoColorTablePattern+"\n",
-				"", "", "", fmt.Sprintf("%v(peers)", r.Addr), fmt.Sprintf("%v/%v", len(peerStrings), partition.ReplicaNum), strings.Join(peerStrings, "; ")))
-			if !isEqualStrings(partition.Hosts, peerStrings) {
-				isHealthy = false
-			}
-			if len(peerStrings) != int(partition.ReplicaNum) {
-				isHealthy = false
-			}
+		if len(peerStrings) != int(partition.ReplicaNum) {
+			isHealthy = false
 		}
 	}
 	outPut = sb.String()

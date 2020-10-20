@@ -71,7 +71,6 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 
 			if !userType.Valid() {
 				errout("Invalid user type.")
-				os.Exit(1)
 			}
 
 			// ask user for confirm
@@ -199,7 +198,6 @@ func newUserUpdateCmd(client *master.MasterClient) *cobra.Command {
 			var userInfo *proto.UserInfo
 			if userInfo, err = client.UserAPI().UpdateUser(&param); err != nil {
 				errout("Update user failed: %v\n", err)
-				os.Exit(1)
 			}
 
 			stdout("Update user success:\n")
@@ -243,7 +241,6 @@ func newUserDeleteCmd(client *master.MasterClient) *cobra.Command {
 
 			if err = client.UserAPI().DeleteUser(userID); err != nil {
 				errout("Delete user failed:\n%v\n", err)
-				os.Exit(1)
 			}
 			stdout("Delete user success.\n")
 			return
@@ -276,7 +273,6 @@ func newUserInfoCmd(client *master.MasterClient) *cobra.Command {
 			var userInfo *proto.UserInfo
 			if userInfo, err = client.UserAPI().GetUserInfo(userID); err != nil {
 				errout("Get user info failed: %v\n", err)
-				os.Exit(1)
 			}
 			printUserInfo(userInfo)
 		},
@@ -333,7 +329,6 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				if err != nil {
 					errout("Setup permission failed:\n%v\n", err)
-					os.Exit(1)
 				}
 			}()
 			var userInfo *proto.UserInfo
@@ -382,7 +377,6 @@ func newUserListCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				if err != nil {
 					errout("List cluster user failed: %v\n", err)
-					os.Exit(1)
 				}
 			}()
 			if users, err = client.UserAPI().ListUsers(optKeyword); err != nil {

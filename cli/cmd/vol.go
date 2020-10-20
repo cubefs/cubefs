@@ -71,7 +71,6 @@ func newVolListCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				if err != nil {
 					errout("List cluster volume failed:\n%v\n", err)
-					os.Exit(1)
 				}
 			}()
 			if vols, err = client.AdminAPI().ListVols(optKeyword); err != nil {
@@ -155,7 +154,6 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			err = client.AdminAPI().CreateVolume(volumeName, userID, optMPCount, optDPSize, optCapacity, optReplicas, optFollowerRead, optAutoRepair, optZoneName)
 			if err != nil {
 				errout("Create volume failed case:\n%v\n", err)
-				os.Exit(1)
 			}
 			stdout("Create volume success.\n")
 			return
@@ -336,7 +334,6 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 
 			if svv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
 				errout("Get volume info failed:\n%v\n", err)
-				os.Exit(1)
 			}
 			// print summary info
 			stdout("Summary:\n%s\n", formatSimpleVolView(svv))
@@ -418,12 +415,10 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 			var svv *proto.SimpleVolView
 			if svv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
 				errout("Delete volume failed:\n%v\n", err)
-				os.Exit(1)
 			}
 
 			if err = client.AdminAPI().DeleteVolume(volumeName, calcAuthKey(svv.Owner)); err != nil {
 				errout("Delete volume failed:\n%v\n", err)
-				os.Exit(1)
 			}
 			stdout("Delete volume success.\n")
 		},
@@ -459,7 +454,6 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				if err != nil {
 					errout("Transfer volume [%v] to user [%v] failed: %v\n", volume, userID, err)
-					os.Exit(1)
 				}
 			}()
 
@@ -520,7 +514,6 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				if err != nil {
 					errout("Create data partition failed: %v\n", err)
-					os.Exit(1)
 				}
 			}()
 			var count int64
