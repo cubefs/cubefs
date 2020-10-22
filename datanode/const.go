@@ -17,7 +17,7 @@ package datanode
 const (
 	IntervalToUpdateReplica       = 600 // interval to update the replica
 	IntervalToUpdatePartitionSize = 60  // interval to update the partition size
-	NumOfFilesToRecoverInParallel = 17  // number of files to be recovered simultaneously
+	NumOfFilesToRecoverInParallel = 10  // number of files to be recovered simultaneously
 )
 
 // Network protocol
@@ -61,6 +61,7 @@ const (
 	ActionStreamReadTinyDeleteRecord = "ActionStreamReadTinyDeleteRecord"
 	ActionSyncTinyDeleteRecord       = "ActionSyncTinyDeleteRecord"
 	ActionStreamReadTinyExtentRepair = "ActionStreamReadTinyExtentRepair"
+	ActionBatchMarkDelete            = "ActionBatchMarkDelete"
 )
 
 // Apply the raft log operation. Currently we only have the random write operation.
@@ -71,6 +72,10 @@ const (
 // Tiny extent has been put back to store
 const (
 	IsReleased = 1
+)
+
+const (
+	MinAvaliTinyExtentCnt = 5
 )
 
 // Sector size
@@ -92,5 +97,5 @@ const (
 	TinyExtentRepairReadResponseArgLen = 17
 	MaxSyncTinyDeleteBufferSize        = 2400000
 	MaxFullSyncTinyDeleteTime          = 3600 * 24
-	MinTinyExtentDeleteRecordSyncSize  = 4*1024 * 1024
+	MinTinyExtentDeleteRecordSyncSize  = 4 * 1024 * 1024
 )

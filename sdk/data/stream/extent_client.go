@@ -31,6 +31,7 @@ import (
 type AppendExtentKeyFunc func(inode uint64, key proto.ExtentKey) error
 type GetExtentsFunc func(inode uint64) (uint64, uint64, []proto.ExtentKey, error)
 type TruncateFunc func(inode, size uint64) error
+type EvictIcacheFunc func(inode uint64)
 
 const (
 	MaxMountRetryLimit = 5
@@ -79,11 +80,13 @@ type ExtentConfig struct {
 	Volume            string
 	Masters           []string
 	FollowerRead      bool
+	NearRead          bool
 	ReadRate          int64
 	WriteRate         int64
 	OnAppendExtentKey AppendExtentKeyFunc
 	OnGetExtents      GetExtentsFunc
 	OnTruncate        TruncateFunc
+	OnEvictIcache     EvictIcacheFunc
 }
 
 // ExtentClient defines the struct of the extent client.
@@ -98,7 +101,7 @@ type ExtentClient struct {
 	appendExtentKey AppendExtentKeyFunc
 	getExtents      GetExtentsFunc
 	truncate        TruncateFunc
-	followerRead    bool
+	evictIcache     EvictIcacheFunc //May be null, must check before using
 }
 
 // NewExtentClient returns a new extent client.
@@ -122,7 +125,9 @@ retry:
 	client.appendExtentKey = config.OnAppendExtentKey
 	client.getExtents = config.OnGetExtents
 	client.truncate = config.OnTruncate
-	client.followerRead = config.FollowerRead || client.dataWrapper.FollowerRead()
+	client.evictIcache = config.OnEvictIcache
+	client.dataWrapper.InitFollowerRead(config.FollowerRead)
+	client.dataWrapper.SetNearRead(config.NearRead)
 
 	var readLimit, writeLimit rate.Limit
 	if config.ReadRate <= 0 {
@@ -211,7 +216,7 @@ func (client *ExtentClient) SetFileSize(inode uint64, size int) {
 }
 
 // Write writes the data.
-func (client *ExtentClient) Write(inode uint64, offset int, data []byte, direct bool) (write int, err error) {
+func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags int) (write int, err error) {
 	prefix := fmt.Sprintf("Write{ino(%v)offset(%v)size(%v)}", inode, offset, len(data))
 
 	s := client.GetStreamer(inode)
@@ -224,7 +229,7 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte, direct 
 		s.GetExtents()
 	})
 
-	write, err = s.IssueWriteRequest(offset, data, direct)
+	write, err = s.IssueWriteRequest(offset, data, flags)
 	if err != nil {
 		err = errors.Trace(err, prefix)
 		log.LogError(errors.Stack(err))

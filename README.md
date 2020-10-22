@@ -9,7 +9,30 @@
 [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs?ref=badge_shield)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/2761/badge)](https://bestpractices.coreinfrastructure.org/projects/2761)
 
+|<img src="https://user-images.githubusercontent.com/5708406/91202310-31eaab80-e734-11ea-84fc-c1b1882ae71c.png" height="24"/>&nbsp;Community Meeting|
+|------------------|
+| The ChubaoFS Project holds bi-weekly community online meeting. To join or watch previous meeting notes and recordings, please see [meeting schedule](https://github.com/chubaofs/community/wiki/Meeting-Schedule) and [meeting minutes](https://github.com/chubaofs/community/wiki/Meeting-Agenda-and-Notes). |
+
+**Note**: The `master` branch may be in an *unstable or even broken state* during development.
+Please use [releases](https://github.com/chubaofs/chubaofs/releases) instead of the `master` branch in order to get a stable set of binaries.
+
 <div width="100%" style="text-align:center;"><img alt="ChubaoFS" src="https://user-images.githubusercontent.com/5708406/83598049-556de200-a59b-11ea-9a31-6daa1439f81a.png" height="200"/></div>
+
+## Contents
+
+- [Overview](#overview)
+- [Documents](#documents)
+- [Benchmark](#benchmark)
+- [Build ChubaoFS](#build-chubaofs)
+- [Yum Tools to Run a ChubaoFS Cluster for CentOS 7+](#yum-tools-to-run-a-chubaofs-cluster-for-centos-7)
+- [Run a ChubaoFS Cluster within Docker](#run-a-chubaofs-cluster-within-docker)
+- [Helm chart to Run a ChubaoFS Cluster in Kubernetes](#helm-chart-to-run-a-chubaofs-cluster-in-kubernetes)
+- [Reference](#reference)
+- [Contributing](#contributing)
+- [Reporting a security vulnerability](#reporting-a-security-vulnerability)
+- [Community](#community)
+- [Partners and Users](#partners-and-users)
+- [License](#license)
 
 ## Overview
 
@@ -35,7 +58,7 @@ Some key features of ChubaoFS include:
 
 We are committed to making ChubaoFS better and more mature. Please stay tuned. 
 
-## Document
+## Documents
 
 English version: https://chubaofs.readthedocs.io/en/latest/
 
@@ -58,11 +81,44 @@ Refer to [chubaofs.readthedocs.io](https://chubaofs.readthedocs.io/en/latest/eva
 
 ## Build ChubaoFS
 
+### Build for x86
 ```
 $ git clone http://github.com/chubaofs/chubaofs.git
 $ cd chubaofs
 $ make
 ```
+### Build for arm64 
+
+For example,the current chubaofs directory is /root/arm64/chubaofs,build.sh will auto download  follow source codes to vendor/dep directory :
+bzip2-1.0.6  lz4-1.9.2  zlib-1.2.11  zstd-1.4.5
+  gcc version as  v4 or v5:
+    ```
+    cd /root/arm64/chubaofs
+    export CPUTYPE=arm64_gcc4 && bash ./build.sh
+    ```
+
+  gcc version as  v9 :
+      ```
+    export CPUTYPE=arm64_gcc9 && bash ./build.sh
+      ```
+#### Also support cross compiler with docker:
+
+gcc version as  v4, support Ububtu 14.04 and up version,CentOS7.6 and up version. Check libstdc++.so.6 version must more than `GLIBCXX_3.4.19',if fail please update libstdc++. 
+
+```
+cd /root/arm64/chubaofs
+docker build --rm --tag arm64_gcc4_golang1_13_ubuntu_14_04_chubaofs ./build/compile/arm64/gcc4
+
+make dist-clean
+docker run  -v /root/arm64/chubaofs:/root/chubaofs arm64_gcc4_golang1_13_ubuntu_14_04_chubaofs /root/buildcfs.sh
+
+```
+ 
+Remove image:
+```
+docker image remove -f  arm64_gcc4_golang1_13_ubuntu_14_04_chubaofs
+```
+
 
 ## Yum Tools to Run a ChubaoFS Cluster for CentOS 7+
 
@@ -124,17 +180,18 @@ Start the resources of ChubaoFS cluster with script `install.sh`. (make sure the
 
 ```
 $ bash install.sh -h
-Usage: install.sh [-r --role datanode or metanode or master or monitor or client or all ] [-v --version 1.5.1 or latest]
+Usage: install.sh -r | --role [datanode | metanode | master | objectnode | console | monitor | client | all | createvol ] [2.1.0 or latest]
 $ bash install.sh -r master
 $ bash install.sh -r metanode
 $ bash install.sh -r datanode
 $ bash install.sh -r monitor
 $ bash install.sh -r client
+$ bash install.sh -r console
 ```
 
 Check mount point at `/cfs/mountpoint` on `client` node defined in `iplist`. 
 
-Open [http://10.196.0.1:8500](https:/github.com/chubaofs/chubaofs) through a browser for monitoring system(the IP of monitoring system is defined in `iplist`). 
+Open [http://[the IP of console system]](https:/github.com/chubaofs/chubaofs) through a browser for web console system(the IP of console system is defined in `iplist`).  In console default user is `root`, password is `ChubaoFSRoot`. In  monitor default user is `admin`,password is `123456`.
 
 ## Run a ChubaoFS Cluster within Docker
 
@@ -237,6 +294,15 @@ $ helm install chubaofs ./chubaofs -f ~/chubaofs.yaml
 Haifeng Liu, et al., CFS: A Distributed File System for Large Scale Container Platforms. SIGMOD‘19, June 30-July 5, 2019, Amsterdam, Netherlands. 
 
 For more information, please refer to https://dl.acm.org/citation.cfm?doid=3299869.3314046 and https://arxiv.org/abs/1911.03001
+
+## Contributing
+
+Recommend the standard GitHub flow based on forking and pull requests.<br>
+See [CONTRIBUTING.md](CONTRIBUTING.md#workflow) for detail.
+
+## Reporting a security vulnerability
+
+See [security disclosure process](security/README.md) for detail.
 
 ## Community
 

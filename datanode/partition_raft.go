@@ -109,7 +109,9 @@ func (dp *DataPartition) StartRaft() (err error) {
 	}
 
 	dp.raftPartition, err = dp.config.RaftStore.CreatePartition(pc)
-
+	if err == nil {
+		dp.ForceSetDataPartitionToFininshLoad()
+	}
 	return
 }
 
@@ -290,7 +292,7 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 }
 
 // Add a raft node.
-func (dp *DataPartition) addRaftNode(req *proto.DataPartitionDecommissionRequest, index uint64) (isUpdated bool, err error) {
+func (dp *DataPartition) addRaftNode(req *proto.AddDataPartitionRaftMemberRequest, index uint64) (isUpdated bool, err error) {
 	var (
 		heartbeatPort int
 		replicaPort   int
@@ -325,7 +327,11 @@ func (dp *DataPartition) addRaftNode(req *proto.DataPartitionDecommissionRequest
 }
 
 // Delete a raft node.
-func (dp *DataPartition) removeRaftNode(req *proto.DataPartitionDecommissionRequest, index uint64) (isUpdated bool, err error) {
+func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMemberRequest, index uint64) (isUpdated bool, err error) {
+	var canRemoveSelf bool
+	if canRemoveSelf, err = dp.canRemoveSelf(); err != nil {
+		return
+	}
 	peerIndex := -1
 	data, _ := json.Marshal(req)
 	isUpdated = false
@@ -354,7 +360,7 @@ func (dp *DataPartition) removeRaftNode(req *proto.DataPartitionDecommissionRequ
 		dp.config.Hosts = append(dp.config.Hosts[:hostIndex], dp.config.Hosts[hostIndex+1:]...)
 	}
 	dp.config.Peers = append(dp.config.Peers[:peerIndex], dp.config.Peers[peerIndex+1:]...)
-	if dp.config.NodeID == req.RemovePeer.ID {
+	if dp.config.NodeID == req.RemovePeer.ID && !dp.isLoadingDataPartition && canRemoveSelf {
 		dp.raftPartition.Delete()
 		dp.Disk().space.DeletePartition(dp.partitionID)
 		isUpdated = false
@@ -362,12 +368,6 @@ func (dp *DataPartition) removeRaftNode(req *proto.DataPartitionDecommissionRequ
 	log.LogInfof("Fininsh RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 		req.PartitionId, dp.config.NodeID, string(data))
 
-	return
-}
-
-// Update a raft node.
-func (dp *DataPartition) updateRaftNode(req *proto.DataPartitionDecommissionRequest, index uint64) (updated bool, err error) {
-	log.LogDebugf("[updateRaftNode]: not support.")
 	return
 }
 

@@ -73,11 +73,11 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	case proto.OpStreamRead:
 		s.handleStreamReadPacket(p, c, StreamRead)
 	case proto.OpStreamFollowerRead:
-		s.handleExtentRepaiReadPacket(p, c, StreamRead)
+		s.extentRepairReadPacket(p, c, StreamRead)
 	case proto.OpExtentRepairRead:
-		s.handleExtentRepaiReadPacket(p, c, RepairRead)
+		s.handleExtentRepairReadPacket(p, c, RepairRead)
 	case proto.OpTinyExtentRepairRead:
-		s.handleTinyExtentRepairRead(p, c)
+		s.handleTinyExtentRepairReadPacket(p, c)
 	case proto.OpMarkDelete:
 		s.handleMarkDeletePacket(p, c)
 	case proto.OpBatchDeleteExtent:
@@ -318,6 +318,13 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	var (
 		err error
 	)
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionBatchMarkDelete, err.Error())
+		} else {
+			p.PacketOkReply()
+		}
+	}()
 	partition := p.Object.(*DataPartition)
 	if p.ExtentType == proto.TinyExtentType {
 		ext := new(proto.TinyExtentDeleteRecord)
@@ -325,17 +332,12 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		if err == nil {
 			log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)",
 				p.PartitionID, p.ExtentID, ext.ExtentOffset, ext.Size)
-			err = partition.ExtentStore().MarkDelete(p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size))
+			partition.ExtentStore().MarkDelete(p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size))
 		}
 	} else {
 		log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v)",
 			p.PartitionID, p.ExtentID)
-		err = partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0)
-	}
-	if err != nil {
-		p.PackErrorBody(ActionMarkDelete, err.Error())
-	} else {
-		p.PacketOkReply()
+		partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0)
 	}
 
 	return
@@ -346,6 +348,14 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	var (
 		err error
 	)
+	defer func() {
+		if err != nil {
+			log.LogErrorf(fmt.Sprintf("(%v) error(%v) data (%v)", p.GetUniqueLogId(), err, string(p.Data)))
+			p.PackErrorBody(ActionBatchMarkDelete, err.Error())
+		} else {
+			p.PacketOkReply()
+		}
+	}()
 	partition := p.Object.(*DataPartition)
 	var exts []*proto.ExtentKey
 	err = json.Unmarshal(p.Data, &exts)
@@ -356,13 +366,6 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 			log.LogInfof(fmt.Sprintf("recive DeleteExtent (%v) from (%v)", ext, c.RemoteAddr().String()))
 			store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
 		}
-	}
-
-	if err != nil {
-		log.LogErrorf(fmt.Sprintf("(%v) error(%v) data (%v)", p.GetUniqueLogId(), err, string(p.Data)))
-		p.PackErrorBody(ActionMarkDelete, err.Error())
-	} else {
-		p.PacketOkReply()
 	}
 
 	return
@@ -461,12 +464,36 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 	if err = partition.CheckLeader(p, connect); err != nil {
 		return
 	}
-	s.handleExtentRepaiReadPacket(p, connect, isRepairRead)
+	s.extentRepairReadPacket(p, connect, isRepairRead)
 
 	return
 }
 
-func (s *DataNode) handleExtentRepaiReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
+func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
+	var (
+		err error
+	)
+
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionStreamRead, err.Error())
+			p.WriteToConn(connect)
+		}
+		fininshDoExtentRepair()
+	}()
+
+	err = requestDoExtentRepair()
+	if err != nil {
+		return
+	}
+	s.extentRepairReadPacket(p, connect, isRepairRead)
+}
+
+func (s *DataNode) handleTinyExtentRepairReadPacket(p *repl.Packet, connect net.Conn) {
+	s.tinyExtentRepairRead(p, connect)
+}
+
+func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
 	var (
 		err error
 	)
@@ -574,8 +601,8 @@ func (s *DataNode) attachAvaliSizeOnTinyExtentRepairRead(reply *repl.Packet, ava
 	binary.BigEndian.PutUint64(reply.Arg[9:17], avaliSize)
 }
 
-// Handle handleTinyExtentRepairRead packet.
-func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.Conn) {
+// Handle tinyExtentRepairRead packet.
+func (s *DataNode) tinyExtentRepairRead(request *repl.Packet, connect net.Conn) {
 	var (
 		err                 error
 		needReplySize       int64

@@ -16,6 +16,8 @@ package datanode
 
 import (
 	"encoding/json"
+	"github.com/chubaofs/chubaofs/util"
+	"math"
 	"net"
 	"sync"
 	"time"
@@ -228,6 +230,9 @@ func (dp *DataPartition) DoRepair(repairTasks []*DataPartitionRepairTask) {
 			log.LogWarnf("AutoRepairStatus is False,so cannot Create extent(%v)", extentInfo.String())
 			continue
 		}
+		if dp.ExtentStore().IsDeletedNormalExtent(extentInfo.FileID) {
+			continue
+		}
 		store.Create(extentInfo.FileID)
 	}
 	for _, extentInfo := range repairTasks[0].ExtentsToBeRepaired {
@@ -271,7 +276,7 @@ func (dp *DataPartition) sendAllTinyExtentsToC(extentType uint8, availableTinyEx
 func (dp *DataPartition) brokenTinyExtents() (brokenTinyExtents []uint64) {
 	brokenTinyExtents = make([]uint64, 0)
 	extentsToBeRepaired := MinTinyExtentsToRepair
-	if dp.extentStore.AvailableTinyExtentCnt() == 0 {
+	if dp.extentStore.AvailableTinyExtentCnt() <= MinAvaliTinyExtentCnt {
 		extentsToBeRepaired = storage.TinyExtentCount
 	}
 	for i := 0; i < extentsToBeRepaired; i++ {
@@ -286,6 +291,7 @@ func (dp *DataPartition) brokenTinyExtents() (brokenTinyExtents []uint64) {
 
 func (dp *DataPartition) prepareRepairTasks(repairTasks []*DataPartitionRepairTask) (availableTinyExtents []uint64, brokenTinyExtents []uint64) {
 	extentInfoMap := make(map[uint64]*storage.ExtentInfo)
+	deleteExtents := make(map[uint64]bool)
 	for index := 0; index < len(repairTasks); index++ {
 		repairTask := repairTasks[index]
 		if repairTask == nil {
@@ -293,6 +299,7 @@ func (dp *DataPartition) prepareRepairTasks(repairTasks []*DataPartitionRepairTa
 		}
 		for extentID, extentInfo := range repairTask.extents {
 			if extentInfo.IsDeleted {
+				deleteExtents[extentID] = true
 				continue
 			}
 			extentWithMaxSize, ok := extentInfoMap[extentID]
@@ -305,7 +312,13 @@ func (dp *DataPartition) prepareRepairTasks(repairTasks []*DataPartitionRepairTa
 			}
 		}
 	}
-
+	for extentID, _ := range deleteExtents {
+		extentInfo := extentInfoMap[extentID]
+		if extentInfo != nil {
+			extentInfo.IsDeleted = true
+			extentInfoMap[extentID] = extentInfo
+		}
+	}
 	dp.buildExtentCreationTasks(repairTasks, extentInfoMap)
 	availableTinyExtents, brokenTinyExtents = dp.buildExtentRepairTasks(repairTasks, extentInfoMap)
 	return
@@ -327,6 +340,9 @@ func (dp *DataPartition) buildExtentCreationTasks(repairTasks []*DataPartitionRe
 					continue
 				}
 				if extentInfo.IsDeleted {
+					continue
+				}
+				if dp.ExtentStore().IsDeletedNormalExtent(extentID) {
 					continue
 				}
 				ei := &storage.ExtentInfo{Source: extentInfo.Source, FileID: extentID, Size: extentInfo.Size}
@@ -354,6 +370,9 @@ func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepa
 				continue
 			}
 			if extentInfo.IsDeleted {
+				continue
+			}
+			if dp.ExtentStore().IsDeletedNormalExtent(extentID) {
 				continue
 			}
 			if extentInfo.Size < maxFileInfo.Size {
@@ -451,6 +470,10 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 		return errors.Trace(err, "streamRepairExtent Watermark error")
 	}
 
+	if dp.ExtentStore().IsDeletedNormalExtent(remoteExtentInfo.FileID) {
+		return nil
+	}
+
 	if localExtentInfo.Size >= remoteExtentInfo.Size {
 		return nil
 	}
@@ -458,6 +481,9 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	sizeDiff := remoteExtentInfo.Size - localExtentInfo.Size
 	request := repl.NewExtentRepairReadPacket(dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
 	if storage.IsTinyExtent(remoteExtentInfo.FileID) {
+		if sizeDiff >= math.MaxUint32 {
+			sizeDiff = math.MaxUint32 - util.MB
+		}
 		request = repl.NewTinyExtentRepairReadPacket(dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
 	}
 	var conn *net.TCPConn
@@ -517,7 +543,6 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 				remoteExtentInfo.Source, remoteExtentInfo.Size, currFixOffset, request.GetUniqueLogId(), reply.GetUniqueLogId())
 			return errors.Trace(err, "streamRepairExtent receive data error")
 		}
-
 		isEmptyResponse := false
 		// Write it to local extent file
 		if storage.IsTinyExtent(uint64(localExtentInfo.FileID)) {

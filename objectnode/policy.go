@@ -251,7 +251,7 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			}
 			var userPolicy = userInfo.Policy
 			isOwner = userPolicy.IsOwn(param.Bucket())
-			if !isOwner && !userPolicy.IsAuthorized(param.Bucket(), param.Action()) {
+			if !isOwner && !userPolicy.IsAuthorized(param.Bucket(), "", param.Action()) {
 				log.LogDebugf("policyCheck: user no permission: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
 					GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Action())
 				allowed = false

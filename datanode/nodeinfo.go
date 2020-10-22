@@ -1,7 +1,6 @@
 package datanode
 
 import (
-	"context"
 	"time"
 
 	"github.com/chubaofs/chubaofs/util/log"
@@ -15,8 +14,7 @@ const (
 )
 
 var (
-	nodeInfoStopC     = make(chan struct{}, 0)
-	deleteLimiteRater = rate.NewLimiter(rate.Inf, defaultMarkDeleteLimitBurst)
+	nodeInfoStopC = make(chan struct{}, 0)
 )
 
 func (m *DataNode) startUpdateNodeInfo() {
@@ -43,14 +41,9 @@ func (m *DataNode) updateNodeInfo() {
 		log.LogErrorf("[updateDataNodeInfo] %s", err.Error())
 		return
 	}
-	r := clusterInfo.DataNodeDeleteLimitRate
-	l := rate.Limit(r)
-	if r == 0 {
-		l = rate.Inf
-	}
-	deleteLimiteRater.SetLimit(l)
-}
-
-func DeleteLimiterWait() {
-	deleteLimiteRater.Wait(context.Background())
+	setLimiter(deleteLimiteRater, clusterInfo.DataNodeDeleteLimitRate)
+	setDoExtentRepair(int(clusterInfo.DataNodeAutoRepairLimitRate))
+	log.LogInfof("updateNodeInfo from master:"+
+		"deleteLimite(%v),autoRepairLimit(%v)", clusterInfo.DataNodeDeleteLimitRate,
+		clusterInfo.DataNodeAutoRepairLimitRate)
 }

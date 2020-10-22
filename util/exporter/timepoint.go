@@ -65,7 +65,7 @@ func (tp *TimePoint) Set() {
 		return
 	}
 	val := time.Since(tp.startTime).Nanoseconds()
-	tp.val = val
+	tp.val = float64(val)
 	tp.publish()
 }
 

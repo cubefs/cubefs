@@ -296,36 +296,37 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 		return nil, err
 	}
 
-	if args.FollowerRead == nil {
-		args.FollowerRead = &vol.FollowerRead
+	newArgs := getVolVarargs(vol)
+
+	if args.FollowerRead != nil {
+		newArgs.followerRead = *args.FollowerRead
 	}
 
-	if args.Authenticate == nil {
-		args.Authenticate = &vol.authenticate
+	if args.Authenticate != nil {
+		newArgs.authenticate = *args.Authenticate
 	}
 
-	if args.ZoneName == nil {
-		args.ZoneName = &vol.zoneName
+	if args.ZoneName != nil {
+		newArgs.zoneName = *args.ZoneName
 	}
 
-	if args.Capacity == nil {
-		args.Capacity = &vol.Capacity
+	if args.Capacity != nil {
+		newArgs.capacity = *args.Capacity
 	}
 
-	if args.ReplicaNum == nil {
-		v := uint64(vol.dpReplicaNum)
-		args.ReplicaNum = &v
+	if args.ReplicaNum != nil {
+		newArgs.dpReplicaNum = uint8(*args.ReplicaNum)
 	}
 
-	if args.EnableToken == nil {
-		args.EnableToken = &vol.enableToken
+	if args.EnableToken != nil {
+		newArgs.enableToken = *args.EnableToken
 	}
 
-	if args.Description == nil {
-		args.Description = &vol.description
+	if args.Description != nil {
+		newArgs.description = *args.Description
 	}
 
-	if err = s.cluster.updateVol(args.Name, args.AuthKey, *args.ZoneName, *args.Description, *args.Capacity, uint8(*args.ReplicaNum), *args.FollowerRead, *args.Authenticate, *args.EnableToken); err != nil {
+	if err = s.cluster.updateVol(args.Name, args.AuthKey, newArgs); err != nil {
 		return nil, err
 	}
 

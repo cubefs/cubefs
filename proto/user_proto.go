@@ -147,7 +147,7 @@ func (policy *UserPolicy) IsOwn(volume string) bool {
 	return false
 }
 
-func (policy *UserPolicy) IsAuthorized(volume string, action Action) bool {
+func (policy *UserPolicy) IsAuthorized(volume, subdir string, action Action) bool {
 	policy.mu.RLock()
 	defer policy.mu.RUnlock()
 	if len(policy.OwnVols) > 0 {
@@ -162,7 +162,7 @@ func (policy *UserPolicy) IsAuthorized(volume string, action Action) bool {
 		return false
 	}
 	for _, value := range values {
-		if perm := ParsePermission(value); !perm.IsNone() && perm.IsBuiltin() && BuiltinPermissionActions(perm).Contains(action) {
+		if perm := ParsePermission(value); !perm.IsNone() && perm.IsBuiltin() && perm.MatchSubdir(subdir) && BuiltinPermissionActions(perm).Contains(action) {
 			return true
 		}
 		if act := ParseAction(value); act == action {
@@ -311,6 +311,7 @@ type UserCreateParam struct {
 type UserPermUpdateParam struct {
 	UserID string   `json:"user_id"`
 	Volume string   `json:"volume"`
+	Subdir string   `json:"subdir"`
 	Policy []string `json:"policy"`
 }
 

@@ -81,8 +81,7 @@ func (mp *metaPartition) fsmUpdatePartition(end uint64) (status uint8,
 	return
 }
 
-func (mp *metaPartition) confAddNode(req *proto.
-	MetaPartitionDecommissionRequest, index uint64) (updated bool, err error) {
+func (mp *metaPartition) confAddNode(req *proto.AddMetaPartitionRaftMemberRequest, index uint64) (updated bool, err error) {
 	var (
 		heartbeatPort int
 		replicaPort   int
@@ -108,12 +107,15 @@ func (mp *metaPartition) confAddNode(req *proto.
 	return
 }
 
-func (mp *metaPartition) confRemoveNode(req *proto.MetaPartitionDecommissionRequest,
-	index uint64) (updated bool, err error) {
+func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMemberRequest, index uint64) (updated bool, err error) {
+	var canRemoveSelf bool
+	if canRemoveSelf, err = mp.canRemoveSelf(); err != nil {
+		return
+	}
 	peerIndex := -1
 	data, _ := json.Marshal(req)
 	log.LogInfof("Start RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
-		req.PartitionID, mp.config.NodeId, string(data))
+		req.PartitionId, mp.config.NodeId, string(data))
 	for i, peer := range mp.config.Peers {
 		if peer.ID == req.RemovePeer.ID {
 			updated = true
@@ -123,11 +125,11 @@ func (mp *metaPartition) confRemoveNode(req *proto.MetaPartitionDecommissionRequ
 	}
 	if !updated {
 		log.LogInfof("NoUpdate RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
-			req.PartitionID, mp.config.NodeId, string(data))
+			req.PartitionId, mp.config.NodeId, string(data))
 		return
 	}
 	mp.config.Peers = append(mp.config.Peers[:peerIndex], mp.config.Peers[peerIndex+1:]...)
-	if mp.config.NodeId == req.RemovePeer.ID {
+	if mp.config.NodeId == req.RemovePeer.ID && !mp.isLoadingMetaPartition && canRemoveSelf {
 		mp.Stop()
 		mp.DeleteRaft()
 		mp.manager.deletePartition(mp.GetBaseConfig().PartitionId)
@@ -135,12 +137,7 @@ func (mp *metaPartition) confRemoveNode(req *proto.MetaPartitionDecommissionRequ
 		updated = false
 	}
 	log.LogInfof("Fininsh RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
-		req.PartitionID, mp.config.NodeId, string(data))
-	return
-}
-
-func (mp *metaPartition) confUpdateNode(req *proto.MetaPartitionDecommissionRequest,
-	index uint64) (updated bool, err error) {
+		req.PartitionId, mp.config.NodeId, string(data))
 	return
 }
 
@@ -167,6 +164,7 @@ func (mp *metaPartition) delOldExtentFile(buf []byte) (err error) {
 	return
 }
 
+//
 func (mp *metaPartition) setExtentDeleteFileCursor(buf []byte) (err error) {
 	str := string(buf)
 	var (
@@ -228,23 +226,21 @@ func (mp *metaPartition) CanRemoveRaftMember(peer proto.Peer) error {
 	return fmt.Errorf("downReplicas(%v) too much,so donnot offline (%v)", downReplicas, peer)
 }
 
-
-
-func (mp *metaPartition)IsEquareCreateMetaPartitionRequst(request *proto.CreateMetaPartitionRequest) (err error){
-	if len(mp.config.Peers)!=len(request.Members){
-		return fmt.Errorf("Exsit unavali Partition(%v) partitionHosts(%v) requestHosts(%v)", mp.config.PartitionId, mp.config.Peers,request.Members)
+func (mp *metaPartition) IsEquareCreateMetaPartitionRequst(request *proto.CreateMetaPartitionRequest) (err error) {
+	if len(mp.config.Peers) != len(request.Members) {
+		return fmt.Errorf("Exsit unavali Partition(%v) partitionHosts(%v) requestHosts(%v)", mp.config.PartitionId, mp.config.Peers, request.Members)
 	}
-	if mp.config.Start!=request.Start || mp.config.End!=request.End {
-		return fmt.Errorf("Exsit unavali Partition(%v) range(%v-%v) requestRange(%v-%v)", mp.config.PartitionId, mp.config.Start,mp.config.End,request.Start,request.End)
+	if mp.config.Start != request.Start || mp.config.End != request.End {
+		return fmt.Errorf("Exsit unavali Partition(%v) range(%v-%v) requestRange(%v-%v)", mp.config.PartitionId, mp.config.Start, mp.config.End, request.Start, request.End)
 	}
-	for index,peer:=range mp.config.Peers {
-		requestPeer:=request.Members[index]
-		if requestPeer.ID!=peer.ID || requestPeer.Addr!=peer.Addr{
-			return fmt.Errorf("Exsit unavali Partition(%v) partitionHosts(%v) requestHosts(%v)", mp.config.PartitionId, mp.config.Peers,request.Members)
+	for index, peer := range mp.config.Peers {
+		requestPeer := request.Members[index]
+		if requestPeer.ID != peer.ID || requestPeer.Addr != peer.Addr {
+			return fmt.Errorf("Exsit unavali Partition(%v) partitionHosts(%v) requestHosts(%v)", mp.config.PartitionId, mp.config.Peers, request.Members)
 		}
 	}
-	if mp.config.VolName!=request.VolName {
-		return fmt.Errorf("Exsit unavali Partition(%v) VolName(%v) requestVolName(%v)", mp.config.PartitionId, mp.config.VolName,request.VolName)
+	if mp.config.VolName != request.VolName {
+		return fmt.Errorf("Exsit unavali Partition(%v) VolName(%v) requestVolName(%v)", mp.config.PartitionId, mp.config.VolName, request.VolName)
 	}
 
 	return

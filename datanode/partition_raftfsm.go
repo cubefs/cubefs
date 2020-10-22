@@ -18,10 +18,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/storage"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tiglabs/raft"
 	raftproto "github.com/tiglabs/raft/proto"
@@ -42,22 +44,42 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		dp.uploadApplyID(index)
 	}(index)
 
-	req := &proto.DataPartitionDecommissionRequest{}
-	if err = json.Unmarshal(confChange.Context, req); err != nil {
-		return
-	}
-
 	// Change memory the status
 	var (
 		isUpdated bool
 	)
 	switch confChange.Type {
 	case raftproto.ConfAddNode:
+		req := &proto.AddDataPartitionRaftMemberRequest{}
+		if err = json.Unmarshal(confChange.Context, req); err != nil {
+			return
+		}
 		isUpdated, err = dp.addRaftNode(req, index)
+		if isUpdated && err == nil {
+			// Perform the update replicas operation asynchronously after the execution of the member change applying
+			// related process.
+			updateWG := sync.WaitGroup{}
+			updateWG.Add(1)
+			defer updateWG.Done()
+			go func() {
+				updateWG.Wait()
+				if err = dp.updateReplicas(true); err != nil {
+					log.LogErrorf("ApplyMemberChange: update partition %v replicas failed: %v", dp.partitionID, err)
+					return
+				}
+				if dp.isLeader {
+					dp.ExtentStore().MoveAllToBrokenTinyExtentC(storage.TinyExtentCount)
+				}
+			}()
+		}
 	case raftproto.ConfRemoveNode:
+		req := &proto.RemoveDataPartitionRaftMemberRequest{}
+		if err = json.Unmarshal(confChange.Context, req); err != nil {
+			return
+		}
 		isUpdated, err = dp.removeRaftNode(req, index)
 	case raftproto.ConfUpdateNode:
-		isUpdated, err = dp.updateRaftNode(req, index)
+		log.LogDebugf("[updateRaftNode]: not support.")
 	}
 	if err != nil {
 		log.LogErrorf("action[ApplyMemberChange] dp(%v) type(%v) err(%v).", dp.partitionID, confChange.Type, err)
@@ -77,7 +99,7 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 // Note that the data in each data partition has already been saved on the disk. Therefore there is no need to take the
 // snapshot in this case.
 func (dp *DataPartition) Snapshot() (raftproto.Snapshot, error) {
-	snapIterator := NewItemIterator(dp.lastTruncateID)
+	snapIterator := NewItemIterator(dp.raftPartition.AppliedIndex())
 	log.LogInfof("SendSnapShot PartitionID(%v) Snapshot lastTruncateID(%v) currentApplyID(%v) firstCommitID(%v)",
 		dp.partitionID, dp.lastTruncateID, dp.appliedID, dp.raftPartition.CommittedIndex())
 	return snapIterator, nil

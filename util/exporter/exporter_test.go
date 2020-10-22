@@ -28,14 +28,14 @@ func TestNewCounter(t *testing.T) {
 			label := fmt.Sprintf("label-%d:name", i)
 			m := NewCounter(name)
 			if m != nil {
-				m.SetWithLabels(i, map[string]string{"volname": label, "cluster": name})
+				m.SetWithLabels(float64(i), map[string]string{"volname": label, "cluster": name})
 				t.Logf("metric: %v", m.name)
 			}
 			name2 := fmt.Sprintf("name_%d_counter", i%2)
 			c := NewGauge(name2)
 			if c != nil {
 				//c.Set(float64(i))
-				c.SetWithLabels(i, map[string]string{"volname": label, "cluster": name})
+				c.SetWithLabels(float64(i), map[string]string{"volname": label, "cluster": name})
 				t.Logf("metric: %v", name2)
 			}
 			exitCh <- i

@@ -185,6 +185,10 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 		break
 	}
 
+	if limit <= 0 && err != nil {
+		return nil, err
+	}
+
 	go mw.refresh()
 	return mw, nil
 }

@@ -113,8 +113,8 @@ type DataPartition struct {
 	snapshotMutex                 sync.RWMutex
 	intervalToUpdatePartitionSize int64
 	loadExtentHeaderStatus        int
-	FullSyncTinyDeleteTime        int64
 	DataPartitionCreateType       int
+	isLoadingDataPartition        bool
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
@@ -163,6 +163,14 @@ func (dp *DataPartition) IsEquareCreateDataPartitionRequst(request *proto.Create
 	return
 }
 
+func (dp *DataPartition) ForceSetDataPartitionToLoadding() {
+	dp.isLoadingDataPartition = true
+}
+
+func (dp *DataPartition) ForceSetDataPartitionToFininshLoad() {
+	dp.isLoadingDataPartition = false
+}
+
 // LoadDataPartition loads and returns a partition instance based on the specified directory.
 // It reads the partition metadata file stored under the specified directory
 // and creates the partition instance.
@@ -194,6 +202,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	if dp, err = newDataPartition(dpCfg, disk); err != nil {
 		return
 	}
+	dp.ForceSetDataPartitionToLoadding()
 	disk.space.AttachPartition(dp)
 	if err = dp.LoadAppliedID(); err != nil {
 		log.LogErrorf("action[loadApplyIndex] %v", err)
@@ -503,21 +512,10 @@ func (dp *DataPartition) actualSize(path string, finfo os.FileInfo) (size int64)
 }
 
 func (dp *DataPartition) computeUsage() {
-	var (
-		used  int64
-		files []os.FileInfo
-		err   error
-	)
 	if time.Now().Unix()-dp.intervalToUpdatePartitionSize < IntervalToUpdatePartitionSize {
 		return
 	}
-	if files, err = ioutil.ReadDir(dp.path); err != nil {
-		return
-	}
-	for _, file := range files {
-		used += dp.actualSize(dp.path, file)
-	}
-	dp.used = int(used)
+	dp.used = int(dp.ExtentStore().GetStoreUsedSize())
 	dp.intervalToUpdatePartitionSize = time.Now().Unix()
 }
 
@@ -554,7 +552,7 @@ func (dp *DataPartition) LaunchRepair(extentType uint8) {
 	if dp.partitionStatus == proto.Unavailable {
 		return
 	}
-	if err := dp.updateReplicas(); err != nil {
+	if err := dp.updateReplicas(false); err != nil {
 		log.LogErrorf("action[LaunchRepair] partition(%v) err(%v).", dp.partitionID, err)
 		return
 	}
@@ -567,8 +565,8 @@ func (dp *DataPartition) LaunchRepair(extentType uint8) {
 	dp.repair(extentType)
 }
 
-func (dp *DataPartition) updateReplicas() (err error) {
-	if time.Now().Unix()-dp.intervalToUpdateReplicas <= IntervalToUpdateReplica {
+func (dp *DataPartition) updateReplicas(isForce bool) (err error) {
+	if !isForce && time.Now().Unix()-dp.intervalToUpdateReplicas <= IntervalToUpdateReplica {
 		return
 	}
 	dp.isLeader = false
@@ -692,23 +690,43 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 		}
 	}
 	wg.Wait()
-	dp.doStreamFixTinyDeleteRecord(repairTask, time.Now().Unix()-dp.FullSyncTinyDeleteTime > MaxFullSyncTinyDeleteTime)
+	dp.doStreamFixTinyDeleteRecord(repairTask)
 }
 
-func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRepairTask, isFullSync bool) {
+func (dp *DataPartition) pushSyncDeleteRecordFromLeaderMesg() bool {
+	select {
+	case dp.Disk().syncTinyDeleteRecordFromLeaderOnEveryDisk <- true:
+		return true
+	default:
+		return false
+	}
+	return false
+}
+
+func (dp *DataPartition) consumeTinyDeleteRecordFromLeaderMesg() {
+	select {
+	case <-dp.Disk().syncTinyDeleteRecordFromLeaderOnEveryDisk:
+		return
+	default:
+		return
+	}
+}
+
+func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRepairTask) {
 	var (
 		localTinyDeleteFileSize int64
 		err                     error
 		conn                    *net.TCPConn
 	)
+	if !dp.pushSyncDeleteRecordFromLeaderMesg() {
+		return
+	}
 
-	if !isFullSync {
-		if localTinyDeleteFileSize, err = dp.extentStore.LoadTinyDeleteFileOffset(); err != nil {
-			return
-		}
-
-	} else {
-		dp.FullSyncTinyDeleteTime = time.Now().Unix()
+	defer func() {
+		dp.consumeTinyDeleteRecordFromLeaderMesg()
+	}()
+	if localTinyDeleteFileSize, err = dp.extentStore.LoadTinyDeleteFileOffset(); err != nil {
+		return
 	}
 
 	log.LogInfof(ActionSyncTinyDeleteRecord+" start PartitionID(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v)",
@@ -718,7 +736,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 		return
 	}
 
-	if !isFullSync && repairTask.LeaderTinyDeleteRecordFileSize-localTinyDeleteFileSize < MinTinyExtentDeleteRecordSyncSize {
+	if repairTask.LeaderTinyDeleteRecordFileSize-localTinyDeleteFileSize < MinTinyExtentDeleteRecordSyncSize {
 		return
 	}
 
@@ -768,7 +786,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 				continue
 			}
 			DeleteLimiterWait()
-			log.LogInfof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)", dp.partitionID, extentID, offset, size)
+			//log.LogInfof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)", dp.partitionID, extentID, offset, size)
 			store.MarkDelete(extentID, int64(offset), int64(size))
 		}
 	}
@@ -777,5 +795,30 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 // ChangeRaftMember is a wrapper function of changing the raft member.
 func (dp *DataPartition) ChangeRaftMember(changeType raftProto.ConfChangeType, peer raftProto.Peer, context []byte) (resp interface{}, err error) {
 	resp, err = dp.raftPartition.ChangeMember(changeType, peer, context)
+	return
+}
+
+//
+func (dp *DataPartition) canRemoveSelf() (canRemove bool, err error) {
+	var partition *proto.DataPartitionInfo
+	if partition, err = MasterClient.AdminAPI().GetDataPartition(dp.volumeID, dp.partitionID); err != nil {
+		log.LogErrorf("action[canRemoveSelf] err[%v]", err)
+		return
+	}
+	canRemove = false
+	var existInPeers bool
+	for _, peer := range partition.Peers {
+		if dp.config.NodeID == peer.ID {
+			existInPeers = true
+		}
+	}
+	if !existInPeers {
+		canRemove = true
+		return
+	}
+	if dp.config.NodeID == partition.OfflinePeerID {
+		canRemove = true
+		return
+	}
 	return
 }

@@ -122,6 +122,8 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 
 	f.super.ec.OpenStream(ino)
 
+	f.super.ec.RefreshExtentsCache(ino)
+
 	if f.super.keepCache {
 		resp.Flags |= fuse.OpenKeepCache
 	}
@@ -209,10 +211,18 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		f.super.ic.Delete(ino)
 	}()
 
-	var waitForFlush, enSyncWrite bool
+	var waitForFlush bool
+	var flags int
+
 	if isDirectIOEnabled(req.FileFlags) || (req.FileFlags&fuse.OpenSync != 0) {
 		waitForFlush = true
-		enSyncWrite = f.super.enSyncWrite
+		if f.super.enSyncWrite {
+			flags |= proto.FlagsSyncWrite
+		}
+	}
+
+	if req.FileFlags&fuse.OpenAppend != 0 {
+		flags |= proto.FlagsAppend
 	}
 
 	start := time.Now()
@@ -220,7 +230,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	metric := exporter.NewTPCnt("filewrite")
 	defer metric.Set(err)
 
-	size, err := f.super.ec.Write(ino, int(req.Offset), req.Data, enSyncWrite)
+	size, err := f.super.ec.Write(ino, int(req.Offset), req.Data, flags)
 	if err != nil {
 		msg := fmt.Sprintf("Write: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
 		f.super.handleError("Write", msg)
@@ -426,7 +436,6 @@ func (f *File) fileSize(ino uint64) (size int, gen uint64) {
 	log.LogDebugf("fileSize: ino(%v) fileSize(%v) gen(%v) valid(%v)", ino, size, gen, valid)
 
 	if !valid {
-		f.super.ic.Delete(ino)
 		if info, err := f.super.InodeGet(ino); err == nil {
 			size = int(info.Size)
 			gen = info.Generation

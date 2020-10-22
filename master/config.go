@@ -16,6 +16,7 @@ package master
 
 import (
 	"fmt"
+	syslog "log"
 	"strconv"
 	"strings"
 
@@ -85,6 +86,7 @@ type clusterConfig struct {
 	MetaNodeDeleteBatchCount            uint64 //metanode delete batch count
 	DataNodeDeleteLimitRate             uint64 //datanode delete limit rate
 	MetaNodeDeleteWorkerSleepMs         uint64 //datanode delete limit rate
+	DataNodeAutoRepairLimitRate         uint64 //datanode autorepair limit rate
 	peers                               []raftstore.PeerAddress
 	peerAddrs                           []string
 	heartbeatPort                       int64
@@ -133,7 +135,7 @@ func (cfg *clusterConfig) parsePeers(peerStr string) error {
 		}
 		cfg.peers = append(cfg.peers, raftstore.PeerAddress{Peer: proto.Peer{ID: id}, Address: ip, HeartbeatPort: int(cfg.heartbeatPort), ReplicaPort: int(cfg.replicaPort)})
 		address := fmt.Sprintf("%v:%v", ip, port)
-		fmt.Println(address)
+		syslog.Println(address)
 		AddrDatabase[id] = address
 	}
 	return nil

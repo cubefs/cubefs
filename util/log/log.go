@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math"
 	"net/http"
@@ -162,6 +163,7 @@ func (writer *asyncWriter) flushToFile() {
 					writer.file.Close()
 					writer.file = fp
 					writer.logSize = 0
+					_ = os.Chmod(writer.fileName, 0666)
 				}
 			}
 		}
@@ -188,6 +190,7 @@ func newAsyncWriter(fileName string, rollingSize int64) (*asyncWriter, error) {
 	if err != nil {
 		return nil, err
 	}
+	_ = os.Chmod(fileName, 0666)
 	w := &asyncWriter{
 		file:        fp,
 		fileName:    fileName,
@@ -270,6 +273,7 @@ func InitLog(dir, module string, level Level, rotate *LogRotate) (*Log, error) {
 			return nil, errors.New(dir + " is not a directory")
 		}
 	}
+	_ = os.Chmod(dir, 0766)
 	if rotate == nil {
 		rotate = NewLogRotate()
 		fs := syscall.Statfs_t{}
@@ -277,9 +281,14 @@ func InitLog(dir, module string, level Level, rotate *LogRotate) (*Log, error) {
 			return nil, fmt.Errorf("[InitLog] stats disk space: %s",
 				err.Error())
 		}
-		minRatio := float64(fs.Blocks*uint64(fs.
-			Bsize)) * DefaultHeadRatio / 1024 / 1024
+		var minRatio float64
+		if float64(fs.Bavail*uint64(fs.Bsize)) < float64(fs.Blocks*uint64(fs.Bsize))*DefaultHeadRatio {
+			minRatio = float64(fs.Bavail*uint64(fs.Bsize)) * DefaultHeadRatio / 1024 / 1024
+		} else {
+			minRatio = float64(fs.Blocks*uint64(fs.Bsize)) * DefaultHeadRatio / 1024 / 1024
+		}
 		rotate.SetHeadRoomMb(int64(math.Min(minRatio, DefaultHeadRoom)))
+
 		minRollingSize := int64(fs.Bavail * uint64(fs.Bsize) / uint64(len(levelPrefixes)))
 		if minRollingSize < DefaultMinRollingSize {
 			minRollingSize = DefaultMinRollingSize
@@ -660,28 +669,22 @@ func (l *Log) checkLogRotation(logDir, module string) {
 		l.errorLogger.SetRotation()
 		l.readLogger.SetRotation()
 		l.updateLogger.SetRotation()
+		l.criticalLogger.SetRotation()
 
 		l.lastRolledTime = now
 	}
 }
 
-func DeleteFileFilter(info os.FileInfo, noSpaceLeft int64) bool {
-	if noSpaceLeft < 0 {
-		return info.Mode().IsRegular() && strings.HasSuffix(info.Name(),
-			RolledExtension)
+func DeleteFileFilter(info os.FileInfo, diskSpaceLeft int64) bool {
+	if diskSpaceLeft <= 0 {
+		return info.Mode().IsRegular() && strings.HasSuffix(info.Name(), RolledExtension)
 	}
-	return time.Since(info.ModTime()) > MaxReservedDays
+	return time.Since(info.ModTime()) > MaxReservedDays && strings.HasSuffix(info.Name(), RolledExtension)
 }
 
 func (l *Log) removeLogFile(logDir string, diskSpaceLeft int64) (err error) {
 	// collect free file list
-	fp, err := os.Open(logDir)
-	if err != nil {
-		LogErrorf("error opening log directory: %s", err.Error())
-		return
-	}
-
-	fInfos, err := fp.Readdir(0)
+	fInfos, err := ioutil.ReadDir(logDir)
 	if err != nil {
 		LogErrorf("error read log directory files: %s", err.Error())
 		return

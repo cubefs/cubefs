@@ -51,7 +51,10 @@ const (
 	nodeDeleteBatchCountKey = "batchCount"
 	nodeMarkDeleteRateKey   = "markDeleteRate"
 	nodeDeleteWorkerSleepMs = "deleteWorkerSleepMs"
+	nodeAutoRepairRateKey   = "autoRepairRate"
 	descriptionKey          = "description"
+	dpSelectorNameKey       = "dpSelectorName"
+	dpSelectorParmKey       = "dpSelectorParm"
 )
 
 const (

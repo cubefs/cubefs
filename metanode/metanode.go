@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"os"
+	syslog "log"
 	"strings"
 	"time"
 
@@ -128,7 +129,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 
 	// check local partition compare with master ,if lack,then not start
 	if err = m.checkLocalPartitionMatchWithMaster(); err != nil {
-		fmt.Println(err)
+		syslog.Println(err)
 		exporter.Warning(err.Error())
 		return
 	}

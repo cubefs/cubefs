@@ -24,7 +24,7 @@ POLICY = '{' \
          '"Sid": "id-1",' \
          '"Effect": "Allow",' \
          '"Principal": {"AWS": ["arn:aws:iam::123456789012:root"]}, ' \
-         '"Action": ["s3:PutObject","s3:PutObjectAcl"], ' \
+         '"Action": ["s3:PutObject"], ' \
          '"Resource": ["arn:aws:s3:::acl3/*" ] ' \
          '}]}'
 

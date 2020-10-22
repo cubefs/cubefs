@@ -346,7 +346,6 @@ func TestUpdateVol(t *testing.T) {
 
 }
 
-
 func setVolCapacity(capacity uint64, url string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v",
 		hostAddr, url, commonVol.Name, capacity, buildAuthKey("cfs"))
