@@ -1553,7 +1553,9 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	if autoRepair, err = extractAutoRepair(r); err != nil {
 		return
 	}
-	zoneName = r.FormValue(zoneNameKey)
+	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
+		zoneName = DefaultZoneName
+	}
 	enableToken = extractEnableToken(r)
 	description = r.FormValue(descriptionKey)
 	return
