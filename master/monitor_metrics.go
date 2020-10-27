@@ -53,18 +53,23 @@ type monitorMetrics struct {
 	metaNodesTotal     *exporter.Gauge
 	metaNodesUsed      *exporter.Gauge
 	metaNodesIncreased *exporter.Gauge
-	volTotalSpace      *exporter.Gauge
-	volUsedSpace       *exporter.Gauge
-	volUsage           *exporter.Gauge
-	diskError          *exporter.Gauge
+	volTotalSpace      *exporter.GaugeVec
+	volUsedSpace       *exporter.GaugeVec
+	volUsage           *exporter.GaugeVec
+	diskError          *exporter.GaugeVec
 	dataNodesInactive  *exporter.Gauge
 	metaNodesInactive  *exporter.Gauge
-	volTotalGauge      *exporter.Gauge
-	volUsedGauge       *exporter.Gauge
+
+	volNames map[string]struct{}
+	badDisks map[string]string
+	//volNamesMutex sync.Mutex
 }
 
 func newMonitorMetrics(c *Cluster) *monitorMetrics {
-	return &monitorMetrics{cluster: c}
+	return &monitorMetrics{cluster: c,
+		volNames: make(map[string]struct{}),
+		badDisks: make(map[string]string),
+	}
 }
 
 func (mm *monitorMetrics) start() {
@@ -77,14 +82,12 @@ func (mm *monitorMetrics) start() {
 	mm.dataNodesCount = exporter.NewGauge(MetricDataNodesCount)
 	mm.metaNodesCount = exporter.NewGauge(MetricMetaNodesCount)
 	mm.volCount = exporter.NewGauge(MetricVolCount)
-	mm.volTotalSpace = exporter.NewGauge(MetricVolTotalGB)
-	mm.volUsedSpace = exporter.NewGauge(MetricVolUsedGB)
-	mm.volUsage = exporter.NewGauge(MetricVolUsageGB)
-	mm.diskError = exporter.NewGauge(MetricDiskError)
+	mm.volTotalSpace = exporter.NewGaugeVec(MetricVolTotalGB, "", []string{"volName"})
+	mm.volUsedSpace = exporter.NewGaugeVec(MetricVolUsedGB, "", []string{"volName"})
+	mm.volUsage = exporter.NewGaugeVec(MetricVolUsageGB, "", []string{"volName"})
+	mm.diskError = exporter.NewGaugeVec(MetricDiskError, "", []string{"addr", "path"})
 	mm.dataNodesInactive = exporter.NewGauge(MetricDataNodesInactive)
 	mm.metaNodesInactive = exporter.NewGauge(MetricMetaNodesInactive)
-	mm.volTotalGauge = exporter.NewGauge(MetricVolTotalGB)
-	mm.volUsedGauge = exporter.NewGauge(MetricVolUsedGB)
 	go mm.statMetrics()
 }
 
@@ -130,6 +133,12 @@ func (mm *monitorMetrics) doStat() {
 }
 
 func (mm *monitorMetrics) setVolMetrics() {
+	deleteVolNames := make(map[string]struct{})
+	for k, v := range mm.volNames {
+		deleteVolNames[k] = v
+		delete(mm.volNames, k)
+	}
+
 	mm.cluster.volStatInfo.Range(func(key, value interface{}) bool {
 		volStatInfo, ok := value.(*volStatInfo)
 		if !ok {
@@ -139,19 +148,38 @@ func (mm *monitorMetrics) setVolMetrics() {
 		if !ok {
 			return true
 		}
-		labels := map[string]string{"volName": volName}
-		mm.volTotalGauge.SetWithLabels(float64(volStatInfo.TotalSize), labels)
-		mm.volUsedGauge.SetWithLabels(float64(volStatInfo.UsedSize), labels)
+		mm.volNames[volName] = struct{}{}
+		if _, ok := deleteVolNames[volName]; ok {
+			delete(deleteVolNames, volName)
+		}
+
+		mm.volTotalSpace.SetWithLabelValues(float64(volStatInfo.TotalSize), volName)
+		mm.volUsedSpace.SetWithLabelValues(float64(volStatInfo.UsedSize), volName)
 		usedRatio, e := strconv.ParseFloat(volStatInfo.UsedRatio, 64)
 		if e == nil {
-			mm.volUsage.SetWithLabels(usedRatio, labels)
+			mm.volUsage.SetWithLabelValues(usedRatio, volName)
 		}
 
 		return true
 	})
+
+	for volName, _ := range deleteVolNames {
+		mm.deleteVolMetric(volName)
+	}
+}
+
+func (mm *monitorMetrics) deleteVolMetric(volName string) {
+	mm.volTotalSpace.DeleteLabelValues(volName)
+	mm.volUsedSpace.DeleteLabelValues(volName)
+	mm.volUsage.DeleteLabelValues(volName)
 }
 
 func (mm *monitorMetrics) setDiskErrorMetric() {
+	deleteBadDisks := make(map[string]string)
+	for k, v := range mm.badDisks {
+		deleteBadDisks[k] = v
+		delete(mm.badDisks, k)
+	}
 	mm.cluster.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode, ok := node.(*DataNode)
 		if !ok {
@@ -160,16 +188,20 @@ func (mm *monitorMetrics) setDiskErrorMetric() {
 		for _, badDisk := range dataNode.BadDisks {
 			for _, partition := range dataNode.DataPartitionReports {
 				if partition.DiskPath == badDisk {
-					labels := make(map[string]string, 0)
-					labels["addr"] = dataNode.Addr
-					labels["path"] = badDisk
-					mm.diskError.SetWithLabels(1, labels)
+					mm.diskError.SetWithLabelValues(1, dataNode.Addr, badDisk)
+					mm.badDisks[badDisk] = dataNode.Addr
+					delete(deleteBadDisks, badDisk)
 					break
 				}
 			}
 		}
+
 		return true
 	})
+
+	for k, v := range deleteBadDisks {
+		mm.diskError.DeleteLabelValues(v, k)
+	}
 }
 
 func (mm *monitorMetrics) setInactiveMetaNodesCount() {
@@ -202,7 +234,25 @@ func (mm *monitorMetrics) setInactiveDataNodesCount() {
 	mm.dataNodesInactive.Set(float64(inactiveDataNodesCount))
 }
 
+func (mm *monitorMetrics) clearVolMetrics() {
+	mm.cluster.volStatInfo.Range(func(key, value interface{}) bool {
+		if volName, ok := key.(string); ok {
+			mm.deleteVolMetric(volName)
+		}
+		return true
+	})
+}
+
+func (mm *monitorMetrics) clearDiskErrMetrics() {
+	for k, v := range mm.badDisks {
+		mm.diskError.DeleteLabelValues(v, k)
+	}
+}
+
 func (mm *monitorMetrics) resetAllMetrics() {
+	mm.clearVolMetrics()
+	mm.clearDiskErrMetrics()
+
 	mm.dataNodesCount.Set(0)
 	mm.metaNodesCount.Set(0)
 	mm.volCount.Set(0)
@@ -212,7 +262,7 @@ func (mm *monitorMetrics) resetAllMetrics() {
 	mm.metaNodesTotal.Set(0)
 	mm.metaNodesUsed.Set(0)
 	mm.metaNodesIncreased.Set(0)
-	mm.diskError.Set(0)
+	//mm.diskError.Set(0)
 	mm.dataNodesInactive.Set(0)
 	mm.metaNodesInactive.Set(0)
 }
