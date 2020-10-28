@@ -16,11 +16,9 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/log"
 	"os"
 	"path"
-
-	"github.com/chubaofs/chubaofs/proto"
+	"strings"
 
 	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/spf13/cobra"
@@ -35,22 +33,13 @@ type ChubaoFSCmd struct {
 }
 
 func NewRootCmd(client *master.MasterClient) *ChubaoFSCmd {
-	var optShowVersion bool
 	var cmd = &ChubaoFSCmd{
 		CFSCmd: &cobra.Command{
 			Use:   path.Base(os.Args[0]),
 			Short: cmdRootShort,
 			Args:  cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
-				if optShowVersion {
-					stdout(proto.DumpVersion("CLI"))
-					return
-				}
-			},
 		},
 	}
-
-	cmd.CFSCmd.Flags().BoolVarP(&optShowVersion, "version", "v", false, "Show version information")
 
 	cmd.CFSCmd.AddCommand(
 		cmd.newClusterCmd(client),
@@ -62,7 +51,6 @@ func NewRootCmd(client *master.MasterClient) *ChubaoFSCmd {
 		newMetaPartitionCmd(client),
 		newConfigCmd(),
 		newCompatibilityCmd(),
-		newZoneCmd(client),
 	)
 	return cmd
 }
@@ -71,13 +59,15 @@ func stdout(format string, a ...interface{}) {
 	_, _ = fmt.Fprintf(os.Stdout, format, a...)
 }
 
-func errout(format string, a ...interface{}) {
-	log.LogErrorf(format + "\n", a...)
-	_, _ = fmt.Fprintf(os.Stderr, format, a...)
-	OsExitWithLogFlush()
+func stdoutGreen(str string) {
+	fmt.Printf("\033[1;40;32m%-8v\033[0m\n", str)
 }
 
-func OsExitWithLogFlush() {
-	log.LogFlush()
-	os.Exit(1)
+func stdoutRed(str string) {
+	fmt.Printf("\033[1;40;31m%-8v\033[0m\n", str)
+	stdoutGreen(strings.Repeat("_ ", len(partitionInfoTableHeader)/2+10) + "\n")
+}
+
+func errout(format string, a ...interface{}) {
+	_, _ = fmt.Fprintf(os.Stderr, format, a...)
 }

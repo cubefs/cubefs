@@ -35,6 +35,7 @@ type MockMetaServer struct {
 	mc         *master.MasterClient
 	partitions map[uint64]*MockMetaPartition // Key: metaRangeId, Val: metaPartition
 	sync.RWMutex
+	stopC chan bool
 }
 
 func NewMockMetaServer(addr string, zoneName string) *MockMetaServer {
@@ -42,6 +43,7 @@ func NewMockMetaServer(addr string, zoneName string) *MockMetaServer {
 		TcpAddr: addr, partitions: make(map[uint64]*MockMetaPartition, 0),
 		ZoneName: zoneName,
 		mc:       master.NewMasterClient([]string{hostAddr}, false),
+		stopC:    make(chan bool),
 	}
 	return mms
 }
@@ -49,6 +51,10 @@ func NewMockMetaServer(addr string, zoneName string) *MockMetaServer {
 func (mms *MockMetaServer) Start() {
 	mms.register()
 	go mms.start()
+}
+
+func (mms *MockMetaServer) Stop() {
+	close(mms.stopC)
 }
 
 func (mms *MockMetaServer) register() {
@@ -75,6 +81,16 @@ func (mms *MockMetaServer) start() {
 	if err != nil {
 		panic(err)
 	}
+	defer listener.Close()
+	go func() {
+		for {
+			select {
+			case <-mms.stopC:
+				return
+			default:
+			}
+		}
+	}()
 	for {
 		conn, err := listener.Accept()
 		if err != nil {

@@ -361,8 +361,12 @@ func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMember
 	}
 	dp.config.Peers = append(dp.config.Peers[:peerIndex], dp.config.Peers[peerIndex+1:]...)
 	if dp.config.NodeID == req.RemovePeer.ID && !dp.isLoadingDataPartition && canRemoveSelf {
-		dp.raftPartition.Delete()
-		dp.Disk().space.DeletePartition(dp.partitionID)
+		if req.ReserveResource {
+			dp.Disk().space.DeletePartitionFromCache(dp.partitionID)
+		} else {
+			dp.raftPartition.Expired()
+			dp.Disk().space.ExpiredPartition(dp.partitionID)
+		}
 		isUpdated = false
 	}
 	log.LogInfof("Fininsh RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
@@ -475,6 +479,7 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 	raftConf := &raftstore.Config{
 		NodeID:            s.nodeID,
 		RaftPath:          s.raftDir,
+		TickInterval:      s.tickInterval,
 		IPAddr:            LocalIP,
 		HeartbeatPort:     heartbeatPort,
 		ReplicaPort:       replicatePort,

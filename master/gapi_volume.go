@@ -65,8 +65,9 @@ func (s *VolumeService) registerObject(schema *schemabuilder.Schema) {
 			FollowerRead:       vol.FollowerRead,
 			NeedToLowerReplica: vol.NeedToLowerReplica,
 			Authenticate:       vol.authenticate,
-			CrossZone:          vol.crossZone,
 			EnableToken:        vol.enableToken,
+			CrossZone:          vol.crossZone,
+			AutoRepair:         vol.autoRepair,
 			Tokens:             vol.tokens,
 			RwDpCnt:            vol.dataPartitions.readableAndWritableCnt,
 			MpCnt:              len(vol.MetaPartitions),
@@ -205,7 +206,7 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 		return nil, fmt.Errorf("[%s] not has permission to create volume for [%s]", uid, args.Owner)
 	}
 
-	vol, err := s.cluster.createVol(args.Name, args.Owner, args.ZoneName, args.Description, int(args.MpCount), int(args.DpReplicaNum), int(args.DataPartitionSize), int(args.Capacity), args.FollowerRead, args.Authenticate, args.CrossZone, args.EnableToken)
+	vol, err := s.cluster.createVol(args.Name, args.Owner, args.ZoneName, args.Description, int(args.MpCount), int(args.DpReplicaNum), int(args.DataPartitionSize), int(args.Capacity), args.FollowerRead, args.Authenticate, args.EnableToken, false)
 	if err != nil {
 		return nil, err
 	}
@@ -266,11 +267,11 @@ func (s *VolumeService) markDeleteVol(ctx context.Context, args struct {
 }
 
 func (s *VolumeService) updateVolume(ctx context.Context, args struct {
-	Name, AuthKey              string
-	ZoneName, Description      *string
-	Capacity, ReplicaNum       *uint64
-	EnableToken                *bool
-	FollowerRead, Authenticate *bool
+	Name, AuthKey                          string
+	ZoneName, Description                  *string
+	Capacity, ReplicaNum                   *uint64
+	EnableToken                            *bool
+	FollowerRead, Authenticate, AutoRepair *bool
 }) (*Vol, error) {
 	uid, perm, err := permissions(ctx, ADMIN|USER)
 	if err != nil {
@@ -326,7 +327,15 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 		newArgs.description = *args.Description
 	}
 
-	if err = s.cluster.updateVol(args.Name, args.AuthKey, newArgs); err != nil {
+	if args.AutoRepair == nil {
+		args.AutoRepair = &vol.autoRepair
+	}
+
+	if args.Description == nil {
+		args.Description = &vol.description
+	}
+
+	if err = s.cluster.updateVol(args.Name, args.AuthKey, *args.ZoneName, *args.Description, *args.Capacity, uint8(*args.ReplicaNum), *args.FollowerRead, *args.Authenticate, *args.EnableToken, *args.AutoRepair); err != nil {
 		return nil, err
 	}
 

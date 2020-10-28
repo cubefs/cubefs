@@ -77,7 +77,9 @@ func (mf *MetadataFsm) restore() {
 }
 
 func (mf *MetadataFsm) restoreApplied() {
-
+	defer func() {
+		log.LogInfof("action[restoreApplied],applyID[%v]", mf.applied)
+	}()
 	value, err := mf.store.Get(applied)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to restore applied err:%v", err.Error()))

@@ -15,13 +15,15 @@
 package cmd
 
 import (
-	"fmt"
+	"os"
 	"github.com/chubaofs/chubaofs/cli/api"
-	"github.com/chubaofs/chubaofs/metanode"
-	"github.com/chubaofs/chubaofs/proto"
 	"github.com/spf13/cobra"
-	"reflect"
+	"github.com/chubaofs/chubaofs/metanode"
+	"fmt"
 	"strconv"
+	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/proto"
+	"reflect"
 )
 
 const (
@@ -53,8 +55,8 @@ func newMetaCompatibilityCmd() *cobra.Command {
 		Aliases: []string{"meta"},
 		Args:    cobra.MinimumNArgs(3),
 		Run: func(cmd *cobra.Command, args []string) {
+			var err error
 			var (
-				err          error
 				snapshotPath = args[0]
 				host         = args[1]
 				pid          = args[2]
@@ -62,12 +64,15 @@ func newMetaCompatibilityCmd() *cobra.Command {
 			client := api.NewMetaHttpClient(host, false)
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Verify metadata consistency failed: %v\n", err)
+					log.LogError(err)
+					log.LogFlush()
+					os.Exit(1)
 				}
 			}()
 			id, err := strconv.ParseUint(pid, 10, 64)
 			if err != nil {
-				err = fmt.Errorf("parse pid[%v] failed: %v\n", pid, err)
+				errout("parse pid[%v] failed: %v\n", pid, err)
 				return
 			}
 			cursor, err := client.GetMetaPartition(id)
@@ -85,9 +90,11 @@ func newMetaCompatibilityCmd() *cobra.Command {
 			}
 			stdout("[Meta partition is %v, verify result]\n", id)
 			if err = verifyDentry(client, mp); err != nil {
+				stdout("%v\n", err)
 				return
 			}
 			if err = verifyInode(client, mp); err != nil {
+				stdout("%v\n", err)
 				return
 			}
 			stdout("All meta has checked\n")
@@ -104,27 +111,25 @@ func verifyDentry(client *api.MetaHttpClient, mp metanode.MetaPartition) (err er
 	mp.GetDentryTree().Ascend(func(d metanode.BtreeItem) bool {
 		dentry, ok := d.(*metanode.Dentry)
 		if !ok {
-			stdout("item type is not *metanode.Dentry \n")
+			stdout("item type is not *metanode.Dentry")
 			err = fmt.Errorf("item type is not *metanode.Dentry")
-			return true
+			return false
 		}
 		key := fmt.Sprintf("%v_%v", dentry.ParentId, dentry.Name)
 		oldDentry, ok := dentryMap[key]
 		if !ok {
-			stdout("dentry %v is not in old version \n", key)
+			stdout("dentry %v is not in old version", key)
 			err = fmt.Errorf("dentry %v is not in old version", key)
 			return false
 		}
 		if !reflect.DeepEqual(dentry, oldDentry) {
-			stdout("dentry %v is not equal with old version \n", key)
+			stdout("dentry %v is not equal with old version", key)
 			err = fmt.Errorf("dentry %v is not equal with old version,dentry[%v],oldDentry[%v]", key, dentry, oldDentry)
 			return false
 		}
 		return true
 	})
-	if err == nil {
-		stdout("The number of dentry is %v, all dentry are consistent \n", mp.GetDentryTree().Len())
-	}
+	stdout("The number of dentry is %v, all dentry are consistent \n", mp.GetDentryTree().Len())
 	return
 }
 
@@ -137,15 +142,12 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 	mp.GetInodeTree().Ascend(func(d metanode.BtreeItem) bool {
 		inode, ok := d.(*metanode.Inode)
 		if !ok {
-			stdout("item type is not *metanode.Inode \n")
-			err = fmt.Errorf("item type is not *metanode.Inode")
 			return true
 		}
 		oldInode, ok := inodesMap[inode.Inode]
 		if !ok {
 			stdout("inode %v is not in old version \n", inode.Inode)
-			err = fmt.Errorf("inode %v is not in old version", inode.Inode)
-			return false
+			return true
 		}
 		localInode = &api.Inode{
 			Inode:      inode.Inode,
@@ -169,13 +171,9 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 		})
 		if !reflect.DeepEqual(oldInode, localInode) {
 			stdout("inode %v is not equal with old version,inode[%v],oldInode[%v]\n", inode.Inode, inode, oldInode)
-			err = fmt.Errorf("inode %v is not equal with old version,inode[%v],oldInode[%v]\n", inode.Inode, inode, oldInode)
-			return false
 		}
 		return true
 	})
-	if err == nil {
-		stdout("The number of inodes is %v, all inodes are consistent \n", mp.GetInodeTree().Len())
-	}
+	stdout("The number of inodes is %v, all inodes are consistent \n", mp.GetInodeTree().Len())
 	return
 }

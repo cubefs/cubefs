@@ -21,6 +21,9 @@ import (
 	"github.com/spf13/cobra"
 	"sort"
 	"strconv"
+	"strings"
+	"sync"
+	"time"
 )
 
 const (
@@ -44,12 +47,12 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdDataPartitionGetShort              = "Display detail information of a data partition"
-	cmdCheckCorruptDataPartitionShort     = "Check and list unhealthy data partitions"
-	cmdDataPartitionDecommissionShort     = "Decommission a replication of the data partition to a new address"
-	cmdDataPartitionReplicateShort        = "Add a replication of the data partition on a new address"
-	cmdDataPartitionDeleteReplicaShort    = "Delete a replication of the data partition on a fixed address"
-	)
+	cmdDataPartitionGetShort           = "Display detail information of a data partition"
+	cmdCheckCorruptDataPartitionShort  = "Check out corrupt data partitions"
+	cmdDataPartitionDecommissionShort  = "Decommission a replication of the data partition to a new address"
+	cmdDataPartitionReplicateShort     = "Add a replication of the data partition on a new address"
+	cmdDataPartitionDeleteReplicaShort = "Delete a replication of the data partition on a fixed address"
+)
 
 func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
@@ -58,16 +61,10 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				err         error
-				partitionID uint64
-				partition   *proto.DataPartitionInfo
+				partition *proto.DataPartitionInfo
 			)
-			defer func() {
-				if err != nil {
-					errout("Error: %v", err)
-				}
-			}()
-			if partitionID, err = strconv.ParseUint(args[0], 10, 64); err != nil {
+			partitionID, err := strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
 				return
 			}
 			if partition, err = client.AdminAPI().GetDataPartition("", partitionID); err != nil {
@@ -80,6 +77,8 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newListCorruptDataPartitionCmd(client *master.MasterClient) *cobra.Command {
+	var optEnableAutoFullfill bool
+	var optCheckAll bool
 	var cmd = &cobra.Command{
 		Use:   CliOpCheck,
 		Short: cmdCheckCorruptDataPartitionShort,
@@ -91,25 +90,26 @@ you can use the "reset" command to fix the problem.The "reset" command may lead 
 The "reset" command will be released in next version`,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				diagnosis     *proto.DataPartitionDiagnosis
-				dataNodes     []*proto.DataNodeInfo
-				err           error
+				diagnosis *proto.DataPartitionDiagnosis
+				dataNodes []*proto.DataNodeInfo
+				err       error
 			)
-			defer func() {
+			if optCheckAll {
+				err = checkAllDataPartitions(client)
 				if err != nil {
-					errout("Error: %v", err)
+					stdout("%v\n", err)
 				}
-			}()
+				return
+			}
 			if diagnosis, err = client.AdminAPI().DiagnoseDataPartition(); err != nil {
+				stdout("%v\n", err)
 				return
 			}
 			stdout("[Inactive Data nodes]:\n")
 			stdout("%v\n", formatDataNodeDetailTableHeader())
 			for _, addr := range diagnosis.InactiveDataNodes {
 				var node *proto.DataNodeInfo
-				if node, err = client.NodeAPI().GetDataNode(addr); err != nil {
-					return
-				}
+				node, err = client.NodeAPI().GetDataNode(addr)
 				dataNodes = append(dataNodes, node)
 			}
 			sort.SliceStable(dataNodes, func(i, j int) bool {
@@ -118,7 +118,7 @@ The "reset" command will be released in next version`,
 			for _, node := range dataNodes {
 				stdout("%v\n", formatDataNodeDetail(node, true))
 			}
-			stdout("\n")
+			/*stdout("\n")
 			stdout("[Corrupt data partitions](no leader):\n")
 			stdout("%v\n", partitionInfoTableHeader)
 			sort.SliceStable(diagnosis.CorruptDataPartitionIDs, func(i, j int) bool {
@@ -127,11 +127,11 @@ The "reset" command will be released in next version`,
 			for _, pid := range diagnosis.CorruptDataPartitionIDs {
 				var partition *proto.DataPartitionInfo
 				if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
-					err = fmt.Errorf("Partition not found, err:[%v] ", err)
+					stdout("Partition not found, err:[%v]", err)
 					return
 				}
 				stdout("%v\n", formatDataPartitionInfoRow(partition))
-			}
+			}*/
 
 			stdout("\n")
 			stdout("%v\n", "[Partition lack replicas]:")
@@ -139,57 +139,206 @@ The "reset" command will be released in next version`,
 			sort.SliceStable(diagnosis.LackReplicaDataPartitionIDs, func(i, j int) bool {
 				return diagnosis.LackReplicaDataPartitionIDs[i] < diagnosis.LackReplicaDataPartitionIDs[j]
 			})
+			cv, _ := client.AdminAPI().GetCluster()
+			dns := cv.DataNodes
+			var sb = strings.Builder{}
+
 			for _, pid := range diagnosis.LackReplicaDataPartitionIDs {
 				var partition *proto.DataPartitionInfo
 				if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
-					err = fmt.Errorf("Partition not found, err:[%v] ", err)
+					stdout("Partition is not found, err:[%v]", err)
 					return
 				}
 				if partition != nil {
 					stdout("%v\n", formatDataPartitionInfoRow(partition))
+					sort.Strings(partition.Hosts)
+					if len(partition.MissingNodes) > 0 || partition.Status == -1 {
+						stdoutRed(fmt.Sprintf("partition not ready to repair"))
+						continue
+					}
+					var leaderRps map[uint64]*proto.ReplicaStatus
+					var canAutoRepair bool
+					var peerStrings []string
+					canAutoRepair = true
+					for i, r := range partition.Replicas {
+						var rps map[uint64]*proto.ReplicaStatus
+						var dnPartition *proto.DNDataPartitionInfo
+						var err error
+						addr := strings.Split(r.Addr, ":")[0]
+						if dnPartition, err = client.NodeAPI().DataNodeGetPartition(addr, partition.PartitionID); err != nil {
+							fmt.Printf(partitionInfoColorTablePattern+"\n",
+								"", "", "", fmt.Sprintf("%v(hosts)", r.Addr), fmt.Sprintf("%v/%v", "nil", partition.ReplicaNum), "get partition info failed")
+							continue
+						}
+						sort.Strings(dnPartition.Replicas)
+						fmt.Printf(partitionInfoColorTablePattern+"\n",
+							"", "", "", fmt.Sprintf("%v(hosts)", r.Addr), fmt.Sprintf("%v/%v", len(dnPartition.Replicas), partition.ReplicaNum), strings.Join(dnPartition.Replicas, "; "))
+
+						if rps = dnPartition.RaftStatus.Replicas; rps != nil {
+							leaderRps = rps
+						}
+						peers := convertPeersToArray(dnPartition.Peers)
+						sort.Strings(peers)
+						if i == 0 {
+							peerStrings = peers
+						} else {
+							if !isEqualStrings(peers, peerStrings) {
+								canAutoRepair = false
+							}
+						}
+						fmt.Printf(partitionInfoColorTablePattern+"\n",
+							"", "", "", fmt.Sprintf("%v(peers)", r.Addr), fmt.Sprintf("%v/%v", len(peers), partition.ReplicaNum), strings.Join(peers, "; "))
+					}
+					if len(leaderRps) != 3 || len(partition.Hosts) != 2 {
+						stdoutRed(fmt.Sprintf("raft peer number(expected is 3, but is %v) or replica number(expected is 2, but is %v) not match ", len(leaderRps), len(partition.Hosts)))
+						continue
+					}
+					var lackAddr []string
+					for _, dn := range dns {
+						if _, ok := leaderRps[dn.ID]; ok {
+							if !contains(partition.Hosts, dn.Addr) {
+								lackAddr = append(lackAddr, dn.Addr)
+							}
+						}
+					}
+					if len(lackAddr) != 1 {
+						stdoutRed(fmt.Sprintf("Not classic partition, please check and repair it manually"))
+						continue
+					}
+					stdoutGreen(fmt.Sprintf(" The Lack Address is: %v", lackAddr))
+					if canAutoRepair {
+						sb.WriteString(fmt.Sprintf("cfs-cli datapartition add-replica %v %v\n", lackAddr[0], partition.PartitionID))
+					}
+					if optEnableAutoFullfill && canAutoRepair {
+						stdoutGreen("     Auto Repair Begin:")
+						if err = client.AdminAPI().AddDataReplica(partition.PartitionID, lackAddr[0]); err != nil {
+							stdoutRed(fmt.Sprintf("%v err:%v", "     Failed.", err))
+							continue
+						}
+						stdoutGreen("     Done.")
+						time.Sleep(2 * time.Second)
+					}
+					stdoutGreen(strings.Repeat("_ ", len(partitionInfoTableHeader)/2+20) + "\n")
 				}
 			}
-
-
-			stdout("\n")
-			stdout("%v\n", "[Bad data partitions(decommission not completed)]:")
-			badPartitionTablePattern := "%-8v    %-10v\n"
-			stdout(badPartitionTablePattern, "PATH", "PARTITION ID")
-			for _, bdpv := range diagnosis.BadDataPartitionIDs {
-				sort.SliceStable(bdpv.PartitionIDs, func(i, j int) bool {
-					return bdpv.PartitionIDs[i] < bdpv.PartitionIDs[j]
-				})
-				for _, pid := range bdpv.PartitionIDs {
-					stdout(badPartitionTablePattern, bdpv.Path, pid)
-				}
+			if !optEnableAutoFullfill {
+				stdout(sb.String())
 			}
 			return
 		},
 	}
+	cmd.Flags().BoolVar(&optEnableAutoFullfill, CliFlagEnableAutoFill, false, "true - automatically full fill the missing replica")
+	cmd.Flags().BoolVar(&optCheckAll, "all", false, "true - check all partitions; false - only check partitions which lack of replica")
 	return cmd
 }
+func checkAllDataPartitions(client *master.MasterClient) (err error) {
+	var volInfo []*proto.VolInfo
+	if volInfo, err = client.AdminAPI().ListVols(""); err != nil {
+		stdout("%v\n", err)
+		return
+	}
+	stdout("\n")
+	stdout("%v\n", "[Partition peer info not valid]:")
+	stdout("%v\n", partitionInfoTableHeader)
+	for _, vol := range volInfo {
+		var volView *proto.VolView
+		if volView, err = client.ClientAPI().GetVolume(vol.Name, calcAuthKey(vol.Owner)); err != nil {
+			stdout("Found an invalid vol: %v\n", vol.Name)
+			continue
+		}
+		sort.SliceStable(volView.DataPartitions, func(i, j int) bool {
+			return volView.DataPartitions[i].PartitionID < volView.DataPartitions[j].PartitionID
+		})
+		var wg sync.WaitGroup
+		for _, dp := range volView.DataPartitions {
+			wg.Add(1)
+			go func(dp *proto.DataPartitionResponse) {
+				defer wg.Done()
+				var outPut string
+				var isHealthy bool
+				outPut, isHealthy, _ = checkDataPartition(dp.PartitionID, client)
+				if !isHealthy {
+					fmt.Printf(outPut)
+					stdoutGreen(strings.Repeat("_ ", len(partitionInfoTableHeader)/2+20) + "\n")
+				}
+			}(dp)
+		}
+		wg.Wait()
+	}
+	return
+}
+func checkDataPartition(pid uint64, client *master.MasterClient) (outPut string, isHealthy bool, err error) {
+	var partition *proto.DataPartitionInfo
+	var sb = strings.Builder{}
+	isHealthy = true
+	if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
+		sb.WriteString(fmt.Sprintf("Partition is not found, err:[%v]", err))
+		return
+	}
+	if partition != nil {
+		sb.WriteString(fmt.Sprintf("%v\n", formatDataPartitionInfoRow(partition)))
+		sort.Strings(partition.Hosts)
+		if len(partition.MissingNodes) > 0 || partition.Status == -1 || len(partition.Hosts) != int(partition.ReplicaNum) {
+			errMsg := fmt.Sprintf("The partition is not healthy according to the report message from master")
+			sb.WriteString(fmt.Sprintf("\033[1;40;31m%-8v\033[0m\n", errMsg))
+			isHealthy = false
+		}
+		var leaderRps map[uint64]*proto.ReplicaStatus
+		for _, r := range partition.Replicas {
+			var rps map[uint64]*proto.ReplicaStatus
+			var dnPartition *proto.DNDataPartitionInfo
+			var err error
+			addr := strings.Split(r.Addr, ":")[0]
+			if dnPartition, err = client.NodeAPI().DataNodeGetPartition(addr, partition.PartitionID); err != nil {
+				sb.WriteString(fmt.Sprintf(partitionInfoColorTablePattern+"\n",
+					"", "", "", fmt.Sprintf("%v", r.Addr), fmt.Sprintf("%v/%v", "nil", partition.ReplicaNum), fmt.Sprintf("get partition info failed, err:%v", err)))
+				isHealthy = false
+				continue
+			}
+			sort.Strings(dnPartition.Replicas)
+			sb.WriteString(fmt.Sprintf(partitionInfoColorTablePattern+"\n",
+				"", "", "", fmt.Sprintf("%v(hosts)", r.Addr), fmt.Sprintf("%v/%v", len(dnPartition.Replicas), partition.ReplicaNum), strings.Join(dnPartition.Replicas, "; ")))
 
+			if rps = dnPartition.RaftStatus.Replicas; rps != nil {
+				leaderRps = rps
+			}
+			peerStrings := convertPeersToArray(dnPartition.Peers)
+			sort.Strings(peerStrings)
+			sb.WriteString(fmt.Sprintf(partitionInfoColorTablePattern+"\n",
+				"", "", "", fmt.Sprintf("%v(peers)", r.Addr), fmt.Sprintf("%v/%v", len(peerStrings), partition.ReplicaNum), strings.Join(peerStrings, "; ")))
+			if !isEqualStrings(peerStrings, dnPartition.Replicas) {
+				isHealthy = false
+			}
+			if !isEqualStrings(partition.Hosts, peerStrings) {
+				isHealthy = false
+			}
+			if len(peerStrings) != int(partition.ReplicaNum) || len(dnPartition.Replicas) != int(partition.ReplicaNum) {
+				isHealthy = false
+			}
+		}
+		if len(leaderRps) == 0 {
+			isHealthy = false
+			errMsg := fmt.Sprintf("no raft leader")
+			sb.WriteString(fmt.Sprintf("\033[1;40;31m%-8v\033[0m\n", errMsg))
+		}
+	}
+	outPut = sb.String()
+	return
+}
 func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   CliOpDecommission + " [ADDRESS] [DATA PARTITION ID]",
 		Short: cmdDataPartitionDecommissionShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
-			var (
-				err         error
-				partitionID uint64
-			)
-			defer func() {
-				if err != nil {
-					errout("Error: %v", err)
-				}
-			}()
 			address := args[0]
-			partitionID, err = strconv.ParseUint(args[1], 10, 64)
+			partitionID, err := strconv.ParseUint(args[1], 10, 64)
 			if err != nil {
+				stdout("%v\n", err)
 				return
 			}
 			if err = client.AdminAPI().DecommissionDataPartition(partitionID, address); err != nil {
+				stdout("%v\n", err)
 				return
 			}
 		},
@@ -209,20 +358,14 @@ func newDataPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 		Short: cmdDataPartitionReplicateShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
-			var (
-				err         error
-				partitionID uint64
-			)
-			defer func() {
-				if err != nil {
-					errout("Error: %v", err)
-				}
-			}()
 			address := args[0]
-			if partitionID, err = strconv.ParseUint(args[1], 10, 64); err != nil {
+			partitionID, err := strconv.ParseUint(args[1], 10, 64)
+			if err != nil {
+				stdout("%v\n", err)
 				return
 			}
 			if err = client.AdminAPI().AddDataReplica(partitionID, address); err != nil {
+				stdout("%v\n", err)
 				return
 			}
 		},
@@ -242,20 +385,14 @@ func newDataPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 		Short: cmdDataPartitionDeleteReplicaShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
-			var (
-				err         error
-				partitionID uint64
-			)
-			defer func() {
-				if err != nil {
-					errout("Error: %v", err)
-				}
-			}()
 			address := args[0]
-			if partitionID, err = strconv.ParseUint(args[1], 10, 64); err != nil {
+			partitionID, err := strconv.ParseUint(args[1], 10, 64)
+			if err != nil {
+				stdout("%v\n", err)
 				return
 			}
 			if err = client.AdminAPI().DeleteDataReplica(partitionID, address); err != nil {
+				stdout("%v\n", err)
 				return
 			}
 		},
