@@ -40,8 +40,28 @@ var extentsFileHeader = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08}
 
 func (mp *metaPartition) startToDeleteExtents() {
 	fileList := synclist.New()
-	go mp.appendDelExtentsToFile(fileList)
-	go mp.deleteExtentsFromList(fileList)
+	go func() {
+		for {
+			select {
+			case <-mp.stopC:
+				return
+			default:
+				mp.appendDelExtentsToFile(fileList)
+				time.Sleep(10 * time.Second)
+			}
+		}
+	}()
+	go func() {
+		for {
+			select {
+			case <-mp.stopC:
+				return
+			default:
+				mp.deleteExtentsFromList(fileList)
+				time.Sleep(10 * time.Second)
+			}
+		}
+	}()
 }
 
 func (mp *metaPartition) appendDelExtentsToFile(fileList *synclist.SyncList) {
