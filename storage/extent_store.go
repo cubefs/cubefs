@@ -421,6 +421,9 @@ func (s *ExtentStore) PutNormalExtentToDeleteCache(extentID uint64) {
 
 func (s *ExtentStore) IsDeletedNormalExtent(extentID uint64) (ok bool) {
 	_, ok = s.hasDeleteNormalExtentsCache.Load(extentID)
+	s.eiMutex.Lock()
+	delete(s.extentInfoMap,extentID)
+	s.eiMutex.Unlock()
 	return
 }
 
@@ -473,35 +476,7 @@ func (s *ExtentStore) GetTinyExtentOffset(extentID uint64) (watermark int64, err
 	return
 }
 
-// Sector size
-const (
-	DiskSectorSize = 512
-)
 
-func (s *ExtentStore) GetStoreUsedSize() (used int64) {
-	extentInfoSlice := make([]*ExtentInfo, 0, s.GetExtentCount())
-	s.eiMutex.RLock()
-	for _, extentID := range s.extentInfoMap {
-		extentInfoSlice = append(extentInfoSlice, extentID)
-	}
-	s.eiMutex.RUnlock()
-	for _, einfo := range extentInfoSlice {
-		if einfo.IsDeleted {
-			continue
-		}
-		if IsTinyExtent(einfo.FileID) {
-			stat := new(syscall.Stat_t)
-			err := syscall.Stat(fmt.Sprintf("%v/%v", s.dataPath, einfo.FileID), stat)
-			if err != nil {
-				continue
-			}
-			used += (stat.Blocks * DiskSectorSize)
-		} else {
-			used += int64(einfo.Size)
-		}
-	}
-	return
-}
 
 // GetAllWatermarks returns all the watermarks.
 func (s *ExtentStore) GetAllWatermarks(filter ExtentFilter) (extents []*ExtentInfo, tinyDeleteFileSize int64, err error) {
@@ -997,5 +972,34 @@ func (s *ExtentStore) TinyExtentAvaliOffset(extentID uint64, offset int64) (newO
 	}()
 	newOffset, newEnd, err = e.tinyExtentAvaliOffset(offset)
 
+	return
+}
+
+const (
+	DiskSectorSize=512
+)
+
+func (s *ExtentStore)GetStoreUsedSize()(used int64){
+	extentInfoSlice := make([]*ExtentInfo, 0, s.GetExtentCount())
+	s.eiMutex.RLock()
+	for _, extentID := range s.extentInfoMap {
+		extentInfoSlice = append(extentInfoSlice, extentID)
+	}
+	s.eiMutex.RUnlock()
+	for _,einfo:=range extentInfoSlice{
+		if einfo.IsDeleted {
+			continue
+		}
+		if IsTinyExtent(einfo.FileID){
+			stat := new(syscall.Stat_t)
+			err := syscall.Stat(fmt.Sprintf("%v/%v", s.dataPath, einfo.FileID), stat)
+			if err != nil {
+				continue
+			}
+			used +=(stat.Blocks * DiskSectorSize)
+		}else {
+			used +=int64(einfo.Size)
+		}
+	}
 	return
 }

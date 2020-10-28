@@ -26,10 +26,11 @@ import (
 	"syscall"
 	"time"
 
+	"os"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
-	"os"
 )
 
 var (

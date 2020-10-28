@@ -20,8 +20,9 @@ func buildPanicVol() *Vol {
 		return nil
 	}
 	var createTime = time.Now().Unix() // record create time of this volume
-	vol := newVol(id, commonVol.Name, commonVol.Owner, "", commonVol.dataPartitionSize, commonVol.Capacity,
-		defaultReplicaNum, defaultReplicaNum, false, false, false, false, createTime, "")
+	vol := newVol(id, commonVol.Name, commonVol.Owner, testZone1+","+testZone2, commonVol.dataPartitionSize, commonVol.Capacity,
+		defaultReplicaNum, defaultReplicaNum, false, false, true, true, createTime, "")
+
 	vol.dataPartitions = nil
 	return vol
 }
@@ -114,6 +115,39 @@ func TestPanicCheckBadDiskRecovery(t *testing.T) {
 	dp := newDataPartition(partitionID, vol.dpReplicaNum, vol.Name, vol.ID)
 	c.BadDataPartitionIds.Store(fmt.Sprintf("%v", dp.PartitionID), dp)
 	c.scheduleToCheckDiskRecoveryProgress()
+}
+
+func TestPanicCheckMigratedDataPartitionsRecovery(t *testing.T) {
+	c := buildPanicCluster()
+	vol, err := c.getVol(commonVolName)
+	if err != nil {
+		t.Error(err)
+	}
+	partitionID, err := server.cluster.idAlloc.allocateDataPartitionID()
+	if err != nil {
+		t.Error(err)
+	}
+	dp := newDataPartition(partitionID, vol.dpReplicaNum, vol.Name, vol.ID)
+	c.MigratedDataPartitionIds.Store(fmt.Sprintf("%v", dp.PartitionID), dp)
+	c.checkMigratedDataPartitionsRecoveryProgress()
+}
+
+func TestPanicCheckMigratedMetaPartitionsRecovery(t *testing.T) {
+	c := buildPanicCluster()
+	vol, err := c.getVol(commonVolName)
+	if err != nil {
+		t.Error(err)
+	}
+	partitionID, err := server.cluster.idAlloc.allocateMetaPartitionID()
+	if err != nil {
+		t.Error(err)
+	}
+	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID)
+	vol.addMetaPartition(mp)
+	c.MigratedMetaPartitionIds.Store(fmt.Sprintf("%v", mp.PartitionID), mp)
+	mp = nil
+	c.checkMigratedMetaPartitionRecoveryProgress()
+	t.Logf("catched panic")
 }
 
 func TestCheckBadDiskRecovery(t *testing.T) {

@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"os"
 	"sort"
 	"strings"
 
@@ -58,7 +59,8 @@ func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("List cluster meta nodes failed: %v\n", err)
+					os.Exit(1)
 				}
 			}()
 			var view *proto.ClusterView
@@ -99,7 +101,8 @@ func newMetaNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 			var metanodeInfo *proto.MetaNodeInfo
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Show meta node info failed: %v\n", err)
+					os.Exit(1)
 				}
 			}()
 			nodeAddr = args[0]
@@ -129,7 +132,8 @@ func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 			var nodeAddr string
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("decommission meta node failed: %v\n", err)
+					os.Exit(1)
 				}
 			}()
 			nodeAddr = args[0]

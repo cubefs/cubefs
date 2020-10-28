@@ -43,6 +43,10 @@ const (
 	mds3Addr          = "127.0.0.1:9103"
 	mds4Addr          = "127.0.0.1:9104"
 	mds5Addr          = "127.0.0.1:9105"
+	mds6Addr          = "127.0.0.1:9106"
+	mds7Addr          = "127.0.0.1:9107"
+	mds8Addr          = "127.0.0.1:9108"
+	mds9Addr          = "127.0.0.1:9109"
 
 	mms1Addr      = "127.0.0.1:8101"
 	mms2Addr      = "127.0.0.1:8102"
@@ -50,9 +54,13 @@ const (
 	mms4Addr      = "127.0.0.1:8104"
 	mms5Addr      = "127.0.0.1:8105"
 	mms6Addr      = "127.0.0.1:8106"
+	mms7Addr      = "127.0.0.1:8107"
+	mms8Addr      = "127.0.0.1:8108"
+	mms9Addr      = "127.0.0.1:8109"
 	commonVolName = "commonVol"
 	testZone1     = "zone1"
 	testZone2     = "zone2"
+	testZone3     = "zone3"
 
 	testUserID  = "testUser"
 	ak          = "0123456789123456"
@@ -85,6 +93,7 @@ func createDefaultMasterServerForTest() *Server {
 	if err != nil {
 		panic(err)
 	}
+	testServer.config.nodeSetCapacity = defaultNodeSetCapacity
 	//add data node
 	addDataServer(mds1Addr, testZone1)
 	addDataServer(mds2Addr, testZone1)
@@ -98,11 +107,14 @@ func createDefaultMasterServerForTest() *Server {
 	addMetaServer(mms4Addr, testZone2)
 	addMetaServer(mms5Addr, testZone2)
 	time.Sleep(5 * time.Second)
+	testServer.cluster.cfg = newClusterConfig()
+	testServer.cluster.cfg.DataPartitionsRecoverPoolSize = maxDataPartitionsRecoverPoolSize
+	testServer.cluster.cfg.MetaPartitionsRecoverPoolSize = maxMetaPartitionsRecoverPoolSize
 	testServer.cluster.checkDataNodeHeartbeat()
 	testServer.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
-	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 100, false, false, false, false)
+	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 100, false, false, false, true)
 	if err != nil {
 		panic(err)
 	}
@@ -180,14 +192,28 @@ func createMasterServer(cfgJSON string) (server *Server, err error) {
 	return server, nil
 }
 
-func addDataServer(addr, zoneName string) {
-	mds := mocktest.NewMockDataServer(addr, zoneName)
+func addDataServer(addr, zoneName string) (mds *mocktest.MockDataServer) {
+	mds = mocktest.NewMockDataServer(addr, zoneName)
 	mds.Start()
+	return mds
 }
 
-func addMetaServer(addr, zoneName string) {
-	mms := mocktest.NewMockMetaServer(addr, zoneName)
+func stopDataServer(mds *mocktest.MockDataServer) {
+	dn, _ := server.cluster.dataNode(mds.TcpAddr)
+	server.cluster.delDataNodeFromCache(dn)
+	mds.Stop()
+}
+
+func addMetaServer(addr, zoneName string) (mms *mocktest.MockMetaServer) {
+	mms = mocktest.NewMockMetaServer(addr, zoneName)
 	mms.Start()
+	return mms
+}
+
+func stopMetaServer(mms *mocktest.MockMetaServer) {
+	mn, _ := server.cluster.metaNode(mms.TcpAddr)
+	server.cluster.deleteMetaNodeFromCache(mn)
+	mms.Stop()
 }
 
 func TestSetMetaNodeThreshold(t *testing.T) {
@@ -294,7 +320,7 @@ func decommissionDisk(addr, path string, t *testing.T) {
 
 func TestMarkDeleteVol(t *testing.T) {
 	name := "delVol"
-	createVol(name, t)
+	createVol(name, testZone2, t)
 	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey("cfs"))
 	process(reqURL, t)
 	userInfo, err := server.user.getUserInfo("cfs")
@@ -472,7 +498,7 @@ func TestGetMetaNode(t *testing.T) {
 
 func TestAddDataReplica(t *testing.T) {
 	partition := commonVol.dataPartitions.partitions[0]
-	dsAddr := "127.0.0.1:9106"
+	dsAddr := mds6Addr
 	addDataServer(dsAddr, "zone2")
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddDataReplica, partition.PartitionID, dsAddr)
 	process(reqURL, t)
@@ -499,7 +525,7 @@ func TestAddDataReplica(t *testing.T) {
 func TestRemoveDataReplica(t *testing.T) {
 	partition := commonVol.dataPartitions.partitions[0]
 	partition.isRecover = false
-	dsAddr := "127.0.0.1:9106"
+	dsAddr := mds6Addr
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteDataReplica, partition.PartitionID, dsAddr)
 	process(reqURL, t)
 	partition.RLock()
@@ -519,7 +545,7 @@ func TestAddMetaReplica(t *testing.T) {
 		t.Error("no meta partition")
 		return
 	}
-	msAddr := "127.0.0.1:8009"
+	msAddr := mms9Addr
 	addMetaServer(msAddr, testZone2)
 	server.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(2 * time.Second)
@@ -542,7 +568,7 @@ func TestRemoveMetaReplica(t *testing.T) {
 		return
 	}
 	partition.IsRecover = false
-	msAddr := "127.0.0.1:8009"
+	msAddr := mms9Addr
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteMetaReplica, partition.PartitionID, msAddr)
 	process(reqURL, t)
 	partition.RLock()

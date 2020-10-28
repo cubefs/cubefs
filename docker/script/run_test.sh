@@ -31,8 +31,10 @@ AuthKey="0e20229116d5a9a4a9e876806b514a85"
 init_cli() {
     cp ${cli} /usr/bin/
     cd ${conf_path}
-    ${cli} completion
+    ${cli} completion &> /dev/null
     echo 'source '${conf_path}'/cfs-cli.sh' >> ~/.bashrc
+    echo -n "cli tool  ... "
+    echo -e "\033[32mdone\033[0m"
 }
 check_cluster() {
     echo -n "Checking cluster  ... "
@@ -55,7 +57,7 @@ ensure_node_writable() {
     for i in $(seq 1 300) ; do
         ${cli} ${node} list &> /tmp/cli_${node}_list;
         res=`cat /tmp/cli_${node}_list | grep "Yes" | grep "Active" | wc -l`
-        if [[ ${res} -eq 4 ]]; then
+        if [[ ${res} -ge 4 ]]; then
             echo -e "\033[32mdone\033[0m"
             return
         fi
@@ -95,7 +97,7 @@ create_volume() {
         echo -e "\033[32mdone\033[0m"
         return
     fi
-    ${cli} volume create ${VolName} ${Owner} --capacity=30 -y > /dev/null
+    ${cli} volume create ${VolName} ${Owner} --zonename=zone-01 --capacity=30 -y > /dev/null
     if [[ $? -ne 0 ]]; then
         echo -e "\033[31mfail\033[0m"
         exit 1
@@ -146,7 +148,7 @@ print_error_info() {
 start_client() {
     echo -n "Starting client   ... "
     nohup /cfs/bin/cfs-client -c /cfs/conf/client.json >/cfs/log/cfs.out 2>&1 &
-    sleep 10
+    sleep 5
     res=$( stat $MntPoint | grep -q "Inode: 1" ; echo $? )
     if [[ $res -ne 0 ]] ; then
         echo -e "\033[31mfail\033[0m"
@@ -269,6 +271,6 @@ add_data_partitions ; sleep 3
 show_cluster_info
 start_client ; sleep 2
 run_ltptest
-run_s3_test
+#run_s3_test
 stop_client
 delete_volume

@@ -41,7 +41,7 @@ func TestSingleZone(t *testing.T) {
 	//single zone exclude,if it is a single zone excludeZones don't take effect
 	excludeZones := make([]string, 0)
 	excludeZones = append(excludeZones, zoneName)
-	zones, err := topo.allocZonesForDataNode(replicaNum, replicaNum, excludeZones)
+	zones, err := topo.allocZonesForDataNode(zoneName, replicaNum, excludeZones)
 	if err != nil {
 		t.Error(err)
 		return
@@ -52,12 +52,21 @@ func TestSingleZone(t *testing.T) {
 	}
 
 	//single zone normal
-	zones, err = topo.allocZonesForDataNode(replicaNum, replicaNum, nil)
+	zones, err = topo.allocZonesForDataNode(zoneName, replicaNum, nil)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 	newHosts, _, err := zones[0].getAvailDataNodeHosts(nil, nil, replicaNum)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	fmt.Println(newHosts)
+
+	// single zone with exclude hosts
+	excludeHosts := []string{mds1Addr, mds2Addr, mds3Addr}
+	newHosts, _, err = zones[0].getAvailDataNodeHosts(nil, excludeHosts, replicaNum)
 	if err != nil {
 		t.Error(err)
 		return
@@ -98,7 +107,7 @@ func TestAllocZones(t *testing.T) {
 	}
 	//only pass replica num
 	replicaNum := 2
-	zones, err := topo.allocZonesForDataNode(replicaNum, replicaNum, nil)
+	zones, err := topo.allocZonesForDataNode(zoneName3, replicaNum, nil)
 	if err != nil {
 		t.Error(err)
 		return
@@ -110,14 +119,17 @@ func TestAllocZones(t *testing.T) {
 	cluster := new(Cluster)
 	cluster.t = topo
 	cluster.cfg = newClusterConfig()
+	cluster.cfg.DataPartitionsRecoverPoolSize = maxDataPartitionsRecoverPoolSize
+	cluster.cfg.MetaPartitionsRecoverPoolSize = maxMetaPartitionsRecoverPoolSize
+
 	//don't cross zone
-	hosts, _, err := cluster.chooseTargetDataNodes("", nil, nil, replicaNum, 1, "")
+	hosts, _, err := cluster.chooseTargetDataNodes("", nil, nil, replicaNum, "zone1")
 	if err != nil {
 		t.Error(err)
 		return
 	}
 	//cross zone
-	hosts, _, err = cluster.chooseTargetDataNodes("", nil, nil, replicaNum, 2, "")
+	hosts, _, err = cluster.chooseTargetDataNodes("", nil, nil, replicaNum, "zone1,zone2,zone3")
 	if err != nil {
 		t.Error(err)
 		return
@@ -126,7 +138,7 @@ func TestAllocZones(t *testing.T) {
 	// after excluding zone3, alloc zones will be success
 	excludeZones := make([]string, 0)
 	excludeZones = append(excludeZones, zoneName3)
-	zones, err = topo.allocZonesForDataNode(2, replicaNum, excludeZones)
+	zones, err = topo.allocZonesForDataNode(zoneName3, replicaNum, excludeZones)
 	if err != nil {
 		t.Logf("allocZonesForDataNode failed,err[%v]", err)
 	}

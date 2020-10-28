@@ -64,7 +64,8 @@ const (
 	defaultMetaPartitionMemUsageThreshold      float32 = 0.75    // memory usage threshold on a meta partition
 	defaultMaxMetaPartitionCountOnEachNode             = 10000
 	defaultReplicaNum                                  = 3
-	defaultDiffSpaceUsage                              = 1024 * 1024 * 1024
+	defaultDiffSpaceUsage                              = 10 * 1024 * 1024 * 1024
+	defaultCrossZoneNum                                = 3
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)
@@ -92,6 +93,8 @@ type clusterConfig struct {
 	heartbeatPort                       int64
 	replicaPort                         int64
 	diffSpaceUsage                      uint64
+	DataPartitionsRecoverPoolSize       int32
+	MetaPartitionsRecoverPoolSize       int32
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -108,6 +111,8 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.MetaNodeThreshold = defaultMetaPartitionMemUsageThreshold
 	cfg.metaNodeReservedMem = defaultMetaNodeReservedMem
 	cfg.diffSpaceUsage = defaultDiffSpaceUsage
+	cfg.DataPartitionsRecoverPoolSize = defaultRecoverPoolSize
+	cfg.MetaPartitionsRecoverPoolSize = defaultRecoverPoolSize
 	return
 }
 

@@ -17,6 +17,13 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/cmd/common"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/raftstore"
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/chubaofs/chubaofs/util/log"
 	"io/ioutil"
 	"net"
 	syslog "log"
@@ -27,14 +34,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-
-	"github.com/chubaofs/chubaofs/cmd/common"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/raftstore"
-	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/exporter"
-	"github.com/chubaofs/chubaofs/util/log"
+	"time"
 )
 
 const partitionPrefix = "partition_"
@@ -120,7 +120,7 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
 	case proto.OpMetaLookup:
 		err = m.opMetaLookup(conn, p, remoteAddr)
 	case proto.OpDeleteMetaPartition:
-		err = m.opDeleteMetaPartition(conn, p, remoteAddr)
+		err = m.opExpiredMetaPartition(conn, p, remoteAddr)
 	case proto.OpUpdateMetaPartition:
 		err = m.opUpdateMetaPartition(conn, p, remoteAddr)
 	case proto.OpLoadMetaPartition:
@@ -246,9 +246,11 @@ func (m *metadataManager) loadPartitions() (err error) {
 	// Check metadataDir directory
 	fileInfo, err := os.Stat(m.rootDir)
 	if err != nil {
-		os.MkdirAll(m.rootDir, 0755)
-		err = nil
-		return
+		if os.IsNotExist(err) {
+			err = os.MkdirAll(m.rootDir, 0755)
+		} else {
+			return err
+		}
 	}
 	if !fileInfo.IsDir() {
 		err = errors.New("metadataDir must be directory")
@@ -257,7 +259,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 	// scan the data directory
 	fileInfoList, err := ioutil.ReadDir(m.rootDir)
 	if err != nil {
-		return
+		return err
 	}
 	var wg sync.WaitGroup
 	for _, fileInfo := range fileInfoList {
@@ -267,8 +269,27 @@ func (m *metadataManager) loadPartitions() (err error) {
 				log.LogErrorf("loadPartitions: find expired partition[%s], rename it and you can delete him manually",
 					fileInfo.Name())
 				oldName := path.Join(m.rootDir, fileInfo.Name())
-				newName := path.Join(m.rootDir, ExpiredPartitionPrefix+fileInfo.Name())
-				os.Rename(oldName, newName)
+				newName := path.Join(m.rootDir, ExpiredPartitionPrefix+fileInfo.Name()+"_"+strconv.FormatInt(time.Now().Unix(), 10))
+				if tempErr := os.Rename(oldName, newName); tempErr != nil {
+					log.LogErrorf("rename file has err:[%s]", tempErr.Error())
+				}
+
+				if len(fileInfo.Name()) > 10 && strings.HasPrefix(fileInfo.Name(), partitionPrefix) {
+					log.LogErrorf("loadPartitions: find expired partition[%s], rename raft file",
+						fileInfo.Name())
+					partitionId := fileInfo.Name()[len(partitionPrefix):]
+					oldRaftName := path.Join(m.metaNode.raftDir, partitionId)
+					newRaftName := path.Join(m.metaNode.raftDir, ExpiredPartitionPrefix+partitionId+"_"+strconv.FormatInt(time.Now().Unix(), 10))
+					log.LogErrorf("loadPartitions: find expired try rename raft file [%s] -> [%s]", oldRaftName, newRaftName)
+					if _, tempErr := os.Stat(oldRaftName); tempErr != nil {
+						log.LogWarnf("stat file [%s] has err:[%s]", oldRaftName, tempErr.Error())
+					} else {
+						if tempErr := os.Rename(oldRaftName, newRaftName); tempErr != nil {
+							log.LogErrorf("rename file has err:[%s]", tempErr.Error())
+						}
+					}
+				}
+
 				continue
 			}
 
@@ -417,6 +438,18 @@ func (m *metadataManager) deletePartition(id uint64) (err error) {
 		return
 	}
 	mp.Reset()
+	delete(m.partitions, id)
+	return
+}
+
+func (m *metadataManager) expiredPartition(id uint64) (err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	mp, has := m.partitions[id]
+	if !has {
+		return
+	}
+	mp.Expired()
 	delete(m.partitions, id)
 	return
 }
