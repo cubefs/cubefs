@@ -47,6 +47,7 @@ func (mp *metaPartition) startToDeleteExtents() {
 				return
 			default:
 				mp.appendDelExtentsToFile(fileList)
+				time.Sleep(10 * time.Second)
 			}
 		}
 	}()
@@ -57,6 +58,7 @@ func (mp *metaPartition) startToDeleteExtents() {
 				return
 			default:
 				mp.deleteExtentsFromList(fileList)
+				time.Sleep(10 * time.Second)
 			}
 		}
 	}()
