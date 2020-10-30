@@ -108,3 +108,33 @@ func (g *Gauge) SetWithLabels(val float64, labels map[string]string) {
 	g.labels = labels
 	g.Set(val)
 }
+
+type GaugeVec struct {
+	*prometheus.GaugeVec
+}
+
+func NewGaugeVec(name, help string, labels []string) *GaugeVec {
+	if !enabledPrometheus {
+		return nil
+	}
+	v := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: metricsName(name),
+			Help: help,
+		},
+		labels,
+	)
+
+	if err := prometheus.Register(v); err != nil {
+		log.LogErrorf("prometheus register gaugevec name:%v, labels:{%v} error: %v", name, labels, err)
+		return nil
+	}
+
+	return &GaugeVec{GaugeVec: v}
+}
+
+func (v *GaugeVec) SetWithLabelValues(val float64, lvs ...string) {
+	if m, err := v.GetMetricWithLabelValues(lvs...); err == nil {
+		m.Set(val)
+	}
+}
