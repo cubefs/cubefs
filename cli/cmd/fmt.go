@@ -203,8 +203,9 @@ func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
 	}
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("Learners :\n"))
+	sb.WriteString(fmt.Sprintf("%v\n", formatLearnerTableHeader()))
 	for _, learner := range partition.Learners {
-		sb.WriteString(fmt.Sprintf("  [%v]", learner))
+		sb.WriteString(fmt.Sprintf("%v\n", formatLearner(learner)))
 	}
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("Hosts :\n"))

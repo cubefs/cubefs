@@ -58,7 +58,7 @@ type DataPartitionMetadata struct {
 	CreateTime              string
 	Peers                   []proto.Peer
 	Hosts                   []string
-	Learners                []uint64
+	Learners                []proto.Learner
 	DataPartitionCreateType int
 	LastTruncateID          uint64
 }
@@ -159,13 +159,18 @@ func (dp *DataPartition) IsEquareCreateDataPartitionRequst(request *proto.Create
 	for index, peer := range dp.config.Peers {
 		requestPeer := request.Members[index]
 		if requestPeer.ID != peer.ID || requestPeer.Addr != peer.Addr {
-			return fmt.Errorf("Exsit unavali Partition(%v) partitionHosts(%v) requestHosts(%v)", dp.partitionID, dp.config.Peers, request.Members)
+			return fmt.Errorf("Exist unavali Partition(%v) partitionHosts(%v) requestHosts(%v)", dp.partitionID, dp.config.Peers, request.Members)
+		}
+	}
+	for index, learner := range dp.config.Learners {
+		requestLearner := request.Learners[index]
+		if requestLearner.ID != learner.ID || requestLearner.Addr != learner.Addr {
+			return fmt.Errorf("Exist unavali Partition(%v) partitionLearners(%v) requestLearners(%v)", dp.partitionID, dp.config.Learners, request.Learners)
 		}
 	}
 	if dp.config.VolName != request.VolumeId {
-		return fmt.Errorf("Exsit unavali Partition(%v) VolName(%v) requestVolName(%v)", dp.partitionID, dp.config.VolName, request.VolumeId)
+		return fmt.Errorf("Exist unavali Partition(%v) VolName(%v) requestVolName(%v)", dp.partitionID, dp.config.VolName, request.VolumeId)
 	}
-
 	return
 }
 
@@ -193,6 +198,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 		PartitionID:   meta.PartitionID,
 		Peers:         meta.Peers,
 		Hosts:         meta.Hosts,
+		Learners:      meta.Learners,
 		RaftStore:     disk.space.GetRaftStore(),
 		NodeID:        disk.space.GetNodeID(),
 		ClusterID:     disk.space.GetClusterID(),
@@ -300,6 +306,15 @@ func (dp *DataPartition) IsRaftLeader() (addr string, ok bool) {
 	return
 }
 
+func (dp *DataPartition) IsRaftLearner() bool {
+	for _, learner := range dp.config.Learners {
+		if learner.ID == dp.config.NodeID {
+			return true
+		}
+	}
+	return false
+}
+
 func (dp *DataPartition) Replicas() []string {
 	dp.replicasLock.RLock()
 	defer dp.replicasLock.RUnlock()
@@ -321,11 +336,22 @@ func (dp *DataPartition) getReplicaLen() int {
 	return len(dp.replicas)
 }
 
-func (dp *DataPartition) IsExsitReplica(addr string) bool {
+func (dp *DataPartition) IsExistReplica(addr string) bool {
 	dp.replicasLock.RLock()
 	defer dp.replicasLock.RUnlock()
 	for _, host := range dp.replicas {
 		if host == addr {
+			return true
+		}
+	}
+	return false
+}
+
+func (dp *DataPartition) IsExistLearner(tarLearner proto.Learner) bool {
+	dp.replicasLock.RLock()
+	defer dp.replicasLock.RUnlock()
+	for _, learner := range dp.config.Learners {
+		if learner.Addr == tarLearner.Addr && learner.ID == tarLearner.ID {
 			return true
 		}
 	}
@@ -425,6 +451,7 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 		PartitionSize:           dp.config.PartitionSize,
 		Peers:                   dp.config.Peers,
 		Hosts:                   dp.config.Hosts,
+		Learners:                dp.config.Learners,
 		DataPartitionCreateType: dp.DataPartitionCreateType,
 		CreateTime:              time.Now().Format(TimeLayout),
 		LastTruncateID:          dp.lastTruncateID,

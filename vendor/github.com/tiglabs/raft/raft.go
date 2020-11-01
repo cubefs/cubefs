@@ -911,6 +911,10 @@ func (s *raft) isLearnerReady(pr *replica, threshold uint8) bool {
 	if !s.raftFsm.checkLeaderLease() {
 		return false
 	}
+	if logger.IsEnableDebug() {
+		logger.Debug("raft[%v] leader[%v] promote learner[%v], leader match[%v]",
+			s.raftConfig.ID, s.config.NodeID, pr, leaderPr.match)
+	}
 	return true
 }
 
@@ -927,10 +931,8 @@ func (s *raft) promoteLearner() {
 			}
 			p := proto.Peer{ID: id}
 			s.proposeMemberChange(&proto.ConfChange{Type: proto.ConfPromoteLearner, Peer: p, Context: bytes}, future)
-			logger.Debug("raft[%v] leader[%v] auto promote learner[%v]", s.raftConfig.ID, s.config.NodeID, req)
-			if resp, err := future.Response(); err != nil {
-				logger.Error("raft[%v] leader[%v] auto promote learner[%v] resp[%v] err[%v]", s.raftConfig.ID, s.config.NodeID, id, resp, err)
-			}
+			resp, err := future.Response()
+			logger.Warn("raft[%v] leader[%v] auto promote learner[%v] resp[%v] err[%v]", s.raftConfig.ID, s.config.NodeID, id, resp, err)
 		}
 	}
 }

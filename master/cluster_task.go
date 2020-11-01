@@ -1255,8 +1255,12 @@ func (c *Cluster) removePromotedLearners(mp *MetaPartition, isLearner bool, node
 			}
 		}
 		if index != -1 {
-			mp.Learners = append(mp.Learners[:index], mp.Learners[index+1:]...)
-			if err := mp.persistToRocksDB("updateMetaPartitionOfflinePeerIDWithLock", mp.volName, mp.Hosts, mp.Peers, mp.Learners, c); err != nil {
+			newLearners := append(mp.Learners[:index], mp.Learners[index+1:]...)
+			oldLearners := make([]proto.Learner, len(mp.Learners))
+			copy(oldLearners, mp.Learners)
+			mp.Learners = newLearners
+			if err := c.syncUpdateMetaPartition(mp); err != nil {
+				mp.Learners = oldLearners
 				log.LogErrorf("mp[%v] auto remove learner [nodeID: %v] err: persist to rocksDB err [%v]", mp.PartitionID, nodeID, err)
 				return
 			}

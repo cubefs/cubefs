@@ -283,7 +283,9 @@ func stepElectionAck(r *raftFsm, m *proto.Message) {
 	case proto.RespMsgElectAck:
 		r.replicas[m.From].active = true
 		r.replicas[m.From].lastActive = time.Now()
-		r.acks[m.From] = true
+		if !r.replicas[m.From].isLearner {
+			r.acks[m.From] = true
+		}
 		if len(r.acks) >= r.quorum() {
 			r.becomeLeader()
 			r.bcastAppend()

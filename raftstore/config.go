@@ -66,7 +66,7 @@ type PartitionConfig struct {
 	Peers       []PeerAddress
 	SM          PartitionFsm
 	WalPath     string
-	Learners    []proto.Learner //todo
+	Learners    []proto.Learner
 	AutoPromote bool
 }
 

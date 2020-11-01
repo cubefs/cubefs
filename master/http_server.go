@@ -173,6 +173,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminPromoteMetaReplicaLearner).
 		HandlerFunc(m.promoteMetaReplicaLearner)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminAddDataReplicaLearner).
+		HandlerFunc(m.addDataReplicaLearner)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminPromoteDataReplicaLearner).
+		HandlerFunc(m.promoteDataReplicaLearner)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminDiagnoseMetaPartition).
 		HandlerFunc(m.diagnoseMetaPartition)
 

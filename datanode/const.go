@@ -58,8 +58,8 @@ const (
 	ActionDecommissionPartition           = "ActionDecommissionPartition"
 	ActionAddDataPartitionRaftMember      = "ActionAddDataPartitionRaftMember"
 	ActionRemoveDataPartitionRaftMember   = "ActionRemoveDataPartitionRaftMember"
+	ActionAddDataPartitionRaftLearner     = "ActionAddDataPartitionRaftLearner"
 	ActionPromoteDataPartitionRaftLearner = "ActionPromoteDataPartitionRaftLearner"
-	ActionResetDataPartitionRaftMember    = "ActionResetDataPartitionRaftMember"
 	ActionDataPartitionTryToLeader        = "ActionDataPartitionTryToLeader"
 
 	ActionCreateDataPartition        = "ActionCreateDataPartition"

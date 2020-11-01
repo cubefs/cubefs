@@ -94,6 +94,7 @@ type dataPartitionValue struct {
 	ReplicaNum    uint8
 	Hosts         string
 	Peers         []bsProto.Peer
+	Learners      []bsProto.Learner
 	Status        int8
 	VolID         uint64
 	VolName       string
@@ -113,6 +114,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		ReplicaNum:    dp.ReplicaNum,
 		Hosts:         dp.hostsToString(),
 		Peers:         dp.Peers,
+		Learners:      dp.Learners,
 		Status:        dp.Status,
 		VolID:         dp.VolID,
 		VolName:       dp.VolName,
@@ -749,9 +751,16 @@ func (c *Cluster) loadDataPartitions() (err error) {
 				dpv.Peers[i].ID = dn.(*DataNode).ID
 			}
 		}
+		for i := 0; i < len(dpv.Learners); i++ {
+			dn, ok := c.dataNodes.Load(dpv.Learners[i].Addr)
+			if ok && dn.(*DataNode).ID != dpv.Learners[i].ID {
+				dpv.Learners[i].ID = dn.(*DataNode).ID
+			}
+		}
 		dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.VolName, dpv.VolID)
 		dp.Hosts = strings.Split(dpv.Hosts, underlineSeparator)
 		dp.Peers = dpv.Peers
+		dp.Learners = dpv.Learners
 		dp.OfflinePeerID = dpv.OfflinePeerID
 		dp.isRecover = dpv.IsRecover
 		for _, rv := range dpv.Replicas {

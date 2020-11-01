@@ -21,7 +21,6 @@ import (
 	"github.com/tiglabs/raft/proto"
 	"github.com/tiglabs/raft/storage/wal"
 	raftlog "github.com/tiglabs/raft/util/log"
-	syslog "log"
 	"os"
 	"path"
 	"strconv"
