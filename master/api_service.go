@@ -769,15 +769,12 @@ func (m *Server) volExpand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newArgs := getVolVarargs(vol)
-	newArgs.capacity = uint64(capacity)
-
 	if err = m.cluster.updateVol(name, authKey, vol.zoneName,vol.description,uint64(capacity),
 		vol.dpReplicaNum,vol.FollowerRead,vol.authenticate,vol.enableToken,vol.autoRepair); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	msg = fmt.Sprintf("update vol[%v] successfully\n", name)
+	msg = fmt.Sprintf("expand vol[%v] successfully\n", name)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
@@ -803,19 +800,14 @@ func (m *Server) volShrink(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-
-	newArgs := getVolVarargs(vol)
-	newArgs.capacity = uint64(capacity)
-
 	if err = m.cluster.updateVol(name, authKey, vol.zoneName,vol.description,uint64(capacity),
 		vol.dpReplicaNum,vol.FollowerRead,vol.authenticate,vol.enableToken,vol.autoRepair); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	msg = fmt.Sprintf("update vol[%v] successfully\n", name)
+	msg = fmt.Sprintf("shrink vol[%v] successfully\n", name)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
-
 func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	var (
 		name         string
@@ -1557,7 +1549,6 @@ func parseRequestToDeleteVol(r *http.Request) (name, authKey string, err error) 
 
 }
 
-
 func parseRequestToUpdateVol(r *http.Request) (name, authKey string, replicaNum int, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -1570,10 +1561,6 @@ func parseRequestToUpdateVol(r *http.Request) (name, authKey string, replicaNum 
 	}
 	return
 }
-
-
-
-
 
 func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, capacity int, description string, err error) {
 	if err = r.ParseForm(); err != nil {
@@ -1647,7 +1634,6 @@ func parseRequestToSetVolCapacity(r *http.Request) (name, authKey string, capaci
 	}
 	return
 }
-
 
 func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, enableToken, autoRepair bool, err error) {
 	if err = r.ParseForm(); err != nil {
@@ -1941,8 +1927,6 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	}
 	return
 }
-
-
 
 func parseNodeInfoKey(params map[string]interface{}, key string, noParams bool, r *http.Request) (noPara bool, err error) {
 	var value string
