@@ -513,6 +513,7 @@ func convertPeersToArray(peers []*proto.Peer) (addrs []string) {
 	return
 }
 
+//if tow strings are equal
 func isEqualStrings(strs1, strs2 []string) bool {
 	sort.Strings(strs1)
 	sort.Strings(strs2)
