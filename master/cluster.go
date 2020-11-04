@@ -1898,6 +1898,9 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	} else {
 		dataPartitionSize = uint64(size) * util.GB
 	}
+	if zoneName == "" {
+		zoneName = DefaultZoneName
+	}
 	if err = c.validZone(zoneName, dpReplicaNum); err != nil {
 		goto errHandler
 	}
