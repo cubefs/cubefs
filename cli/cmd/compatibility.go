@@ -15,15 +15,13 @@
 package cmd
 
 import (
-	"os"
-	"github.com/chubaofs/chubaofs/cli/api"
-	"github.com/spf13/cobra"
-	"github.com/chubaofs/chubaofs/metanode"
 	"fmt"
-	"strconv"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/cli/api"
+	"github.com/chubaofs/chubaofs/metanode"
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/spf13/cobra"
 	"reflect"
+	"strconv"
 )
 
 const (
@@ -65,9 +63,6 @@ func newMetaCompatibilityCmd() *cobra.Command {
 			defer func() {
 				if err != nil {
 					errout("Verify metadata consistency failed: %v\n", err)
-					log.LogError(err)
-					log.LogFlush()
-					os.Exit(1)
 				}
 			}()
 			id, err := strconv.ParseUint(pid, 10, 64)

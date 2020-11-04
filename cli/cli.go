@@ -16,6 +16,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/log"
 	"os"
 
 	"github.com/chubaofs/chubaofs/cli/cmd"
@@ -31,6 +32,7 @@ var (
 
 func runCLI() (err error) {
 	var cfg *cmd.Config
+	defer log.LogFlush()
 	if cfg, err = cmd.LoadConfig(); err != nil {
 		return
 	}
@@ -75,7 +77,10 @@ following command to execute:
 
 func main() {
 	var err error
+	_, err = log.InitLog("/tmp/cfs", "cli", log.DebugLevel, nil)
+	defer log.LogFlush()
 	if err = runCLI(); err != nil {
+		log.LogFlush()
 		_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}

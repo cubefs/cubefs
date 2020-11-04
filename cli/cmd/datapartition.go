@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/spf13/cobra"
 	"sort"
 	"strconv"
@@ -97,7 +98,7 @@ The "reset" command will be released in next version`,
 			if optCheckAll {
 				err = checkAllDataPartitions(client)
 				if err != nil {
-					stdout("%v\n", err)
+					errout("%v\n", err)
 				}
 				return
 			}
@@ -146,80 +147,82 @@ The "reset" command will be released in next version`,
 			for _, pid := range diagnosis.LackReplicaDataPartitionIDs {
 				var partition *proto.DataPartitionInfo
 				if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
+					stdout("get partition error, err:[%v]", err)
+					return
+				}
+				if partition == nil {
 					stdout("Partition is not found, err:[%v]", err)
 					return
 				}
-				if partition != nil {
-					stdout("%v\n", formatDataPartitionInfoRow(partition))
-					sort.Strings(partition.Hosts)
-					if len(partition.MissingNodes) > 0 || partition.Status == -1 {
-						stdoutRed(fmt.Sprintf("partition not ready to repair"))
-						continue
-					}
-					var leaderRps map[uint64]*proto.ReplicaStatus
-					var canAutoRepair bool
-					var peerStrings []string
-					canAutoRepair = true
-					for i, r := range partition.Replicas {
-						var rps map[uint64]*proto.ReplicaStatus
-						var dnPartition *proto.DNDataPartitionInfo
-						var err error
-						addr := strings.Split(r.Addr, ":")[0]
-						if dnPartition, err = client.NodeAPI().DataNodeGetPartition(addr, partition.PartitionID); err != nil {
-							fmt.Printf(partitionInfoColorTablePattern+"\n",
-								"", "", "", fmt.Sprintf("%v(hosts)", r.Addr), fmt.Sprintf("%v/%v", "nil", partition.ReplicaNum), "get partition info failed")
-							continue
-						}
-						sort.Strings(dnPartition.Replicas)
-						fmt.Printf(partitionInfoColorTablePattern+"\n",
-							"", "", "", fmt.Sprintf("%v(hosts)", r.Addr), fmt.Sprintf("%v/%v", len(dnPartition.Replicas), partition.ReplicaNum), strings.Join(dnPartition.Replicas, "; "))
-
-						if rps = dnPartition.RaftStatus.Replicas; rps != nil {
-							leaderRps = rps
-						}
-						peers := convertPeersToArray(dnPartition.Peers)
-						sort.Strings(peers)
-						if i == 0 {
-							peerStrings = peers
-						} else {
-							if !isEqualStrings(peers, peerStrings) {
-								canAutoRepair = false
-							}
-						}
-						fmt.Printf(partitionInfoColorTablePattern+"\n",
-							"", "", "", fmt.Sprintf("%v(peers)", r.Addr), fmt.Sprintf("%v/%v", len(peers), partition.ReplicaNum), strings.Join(peers, "; "))
-					}
-					if len(leaderRps) != 3 || len(partition.Hosts) != 2 {
-						stdoutRed(fmt.Sprintf("raft peer number(expected is 3, but is %v) or replica number(expected is 2, but is %v) not match ", len(leaderRps), len(partition.Hosts)))
-						continue
-					}
-					var lackAddr []string
-					for _, dn := range dns {
-						if _, ok := leaderRps[dn.ID]; ok {
-							if !contains(partition.Hosts, dn.Addr) {
-								lackAddr = append(lackAddr, dn.Addr)
-							}
-						}
-					}
-					if len(lackAddr) != 1 {
-						stdoutRed(fmt.Sprintf("Not classic partition, please check and repair it manually"))
-						continue
-					}
-					stdoutGreen(fmt.Sprintf(" The Lack Address is: %v", lackAddr))
-					if canAutoRepair {
-						sb.WriteString(fmt.Sprintf("cfs-cli datapartition add-replica %v %v\n", lackAddr[0], partition.PartitionID))
-					}
-					if optEnableAutoFullfill && canAutoRepair {
-						stdoutGreen("     Auto Repair Begin:")
-						if err = client.AdminAPI().AddDataReplica(partition.PartitionID, lackAddr[0]); err != nil {
-							stdoutRed(fmt.Sprintf("%v err:%v", "     Failed.", err))
-							continue
-						}
-						stdoutGreen("     Done.")
-						time.Sleep(2 * time.Second)
-					}
-					stdoutGreen(strings.Repeat("_ ", len(partitionInfoTableHeader)/2+20) + "\n")
+				stdout("%v\n", formatDataPartitionInfoRow(partition))
+				sort.Strings(partition.Hosts)
+				if len(partition.MissingNodes) > 0 || partition.Status == -1 {
+					stdoutRed(fmt.Sprintf("partition not ready to repair"))
+					continue
 				}
+				var leaderRps map[uint64]*proto.ReplicaStatus
+				var canAutoRepair bool
+				var peerStrings []string
+				canAutoRepair = true
+				for i, r := range partition.Replicas {
+					var rps map[uint64]*proto.ReplicaStatus
+					var dnPartition *proto.DNDataPartitionInfo
+					var err error
+					addr := strings.Split(r.Addr, ":")[0]
+					if dnPartition, err = client.NodeAPI().DataNodeGetPartition(addr, partition.PartitionID); err != nil {
+						fmt.Printf(partitionInfoColorTablePattern+"\n",
+							"", "", "", fmt.Sprintf("%v(hosts)", r.Addr), fmt.Sprintf("%v/%v", "nil", partition.ReplicaNum), "get partition info failed")
+						continue
+					}
+					sort.Strings(dnPartition.Replicas)
+					fmt.Printf(partitionInfoColorTablePattern+"\n",
+						"", "", "", fmt.Sprintf("%v(hosts)", r.Addr), fmt.Sprintf("%v/%v", len(dnPartition.Replicas), partition.ReplicaNum), strings.Join(dnPartition.Replicas, "; "))
+
+					if rps = dnPartition.RaftStatus.Replicas; rps != nil {
+						leaderRps = rps
+					}
+					peers := convertPeersToArray(dnPartition.Peers)
+					sort.Strings(peers)
+					if i == 0 {
+						peerStrings = peers
+					} else {
+						if !isEqualStrings(peers, peerStrings) {
+							canAutoRepair = false
+						}
+					}
+					fmt.Printf(partitionInfoColorTablePattern+"\n",
+						"", "", "", fmt.Sprintf("%v(peers)", r.Addr), fmt.Sprintf("%v/%v", len(peers), partition.ReplicaNum), strings.Join(peers, "; "))
+				}
+				if len(leaderRps) != 3 || len(partition.Hosts) != 2 {
+					stdoutRed(fmt.Sprintf("raft peer number(expected is 3, but is %v) or replica number(expected is 2, but is %v) not match ", len(leaderRps), len(partition.Hosts)))
+					continue
+				}
+				var lackAddr []string
+				for _, dn := range dns {
+					if _, ok := leaderRps[dn.ID]; ok {
+						if !contains(partition.Hosts, dn.Addr) {
+							lackAddr = append(lackAddr, dn.Addr)
+						}
+					}
+				}
+				if len(lackAddr) != 1 {
+					stdoutRed(fmt.Sprintf("Not classic partition, please check and repair it manually"))
+					continue
+				}
+				stdoutGreen(fmt.Sprintf(" The Lack Address is: %v", lackAddr))
+				if canAutoRepair {
+					sb.WriteString(fmt.Sprintf("cfs-cli datapartition add-replica %v %v\n", lackAddr[0], partition.PartitionID))
+				}
+				if optEnableAutoFullfill && canAutoRepair {
+					stdoutGreen("     Auto Repair Begin:")
+					if err = client.AdminAPI().AddDataReplica(partition.PartitionID, lackAddr[0]); err != nil {
+						stdoutRed(fmt.Sprintf("%v err:%v", "     Failed.", err))
+						continue
+					}
+					stdoutGreen("     Done.")
+					time.Sleep(2 * time.Second)
+				}
+				stdoutGreen(strings.Repeat("_ ", len(partitionInfoTableHeader)/2+20) + "\n")
 			}
 			if !optEnableAutoFullfill {
 				stdout(sb.String())
@@ -272,55 +275,63 @@ func checkDataPartition(pid uint64, client *master.MasterClient) (outPut string,
 	var sb = strings.Builder{}
 	isHealthy = true
 	if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
+		sb.WriteString(fmt.Sprintf("get partition error, err:[%v]", err))
+		return
+	}
+	if partition == nil {
 		sb.WriteString(fmt.Sprintf("Partition is not found, err:[%v]", err))
 		return
 	}
-	if partition != nil {
-		sb.WriteString(fmt.Sprintf("%v\n", formatDataPartitionInfoRow(partition)))
-		sort.Strings(partition.Hosts)
-		if len(partition.MissingNodes) > 0 || partition.Status == -1 || len(partition.Hosts) != int(partition.ReplicaNum) {
-			errMsg := fmt.Sprintf("The partition is not healthy according to the report message from master")
-			sb.WriteString(fmt.Sprintf("\033[1;40;31m%-8v\033[0m\n", errMsg))
-			isHealthy = false
-		}
-		var leaderRps map[uint64]*proto.ReplicaStatus
-		for _, r := range partition.Replicas {
-			var rps map[uint64]*proto.ReplicaStatus
-			var dnPartition *proto.DNDataPartitionInfo
-			var err error
-			addr := strings.Split(r.Addr, ":")[0]
-			if dnPartition, err = client.NodeAPI().DataNodeGetPartition(addr, partition.PartitionID); err != nil {
-				sb.WriteString(fmt.Sprintf(partitionInfoColorTablePattern+"\n",
-					"", "", "", fmt.Sprintf("%v", r.Addr), fmt.Sprintf("%v/%v", "nil", partition.ReplicaNum), fmt.Sprintf("get partition info failed, err:%v", err)))
-				isHealthy = false
-				continue
-			}
-			sort.Strings(dnPartition.Replicas)
-			sb.WriteString(fmt.Sprintf(partitionInfoColorTablePattern+"\n",
-				"", "", "", fmt.Sprintf("%v(hosts)", r.Addr), fmt.Sprintf("%v/%v", len(dnPartition.Replicas), partition.ReplicaNum), strings.Join(dnPartition.Replicas, "; ")))
+	sb.WriteString(fmt.Sprintf("%v\n", formatDataPartitionInfoRow(partition)))
+	sort.Strings(partition.Hosts)
+	if len(partition.MissingNodes) > 0 || partition.Status == -1 || len(partition.Hosts) != int(partition.ReplicaNum) {
+		errMsg := fmt.Sprintf("The partition is not healthy according to the report message from master")
+		sb.WriteString(fmt.Sprintf("\033[1;40;31m%-8v\033[0m\n", errMsg))
+		isHealthy = false
+	}
+	if isEqual := checkUsedSizeDiff(partition.Replicas); !isEqual {
+		sb.WriteString(fmt.Sprintf("\033[1;40;31m%-8v\033[0m\n", "used size not equal"))
+		isHealthy = false
+	}
+	var leaderRps map[uint64]*proto.ReplicaStatus
+	for _, r := range partition.Replicas {
 
-			if rps = dnPartition.RaftStatus.Replicas; rps != nil {
-				leaderRps = rps
-			}
-			peerStrings := convertPeersToArray(dnPartition.Peers)
-			sort.Strings(peerStrings)
+		var rps map[uint64]*proto.ReplicaStatus
+		var dnPartition *proto.DNDataPartitionInfo
+		var err error
+		addr := strings.Split(r.Addr, ":")[0]
+		//check dataPartition by dataNode api
+		if dnPartition, err = client.NodeAPI().DataNodeGetPartition(addr, partition.PartitionID); err != nil {
 			sb.WriteString(fmt.Sprintf(partitionInfoColorTablePattern+"\n",
-				"", "", "", fmt.Sprintf("%v(peers)", r.Addr), fmt.Sprintf("%v/%v", len(peerStrings), partition.ReplicaNum), strings.Join(peerStrings, "; ")))
-			if !isEqualStrings(peerStrings, dnPartition.Replicas) {
-				isHealthy = false
-			}
-			if !isEqualStrings(partition.Hosts, peerStrings) {
-				isHealthy = false
-			}
-			if len(peerStrings) != int(partition.ReplicaNum) || len(dnPartition.Replicas) != int(partition.ReplicaNum) {
-				isHealthy = false
-			}
-		}
-		if len(leaderRps) == 0 {
+				"", "", "", fmt.Sprintf("%v", r.Addr), fmt.Sprintf("%v/%v", "nil", partition.ReplicaNum), fmt.Sprintf("get partition info failed, err:%v", err)))
 			isHealthy = false
-			errMsg := fmt.Sprintf("no raft leader")
-			sb.WriteString(fmt.Sprintf("\033[1;40;31m%-8v\033[0m\n", errMsg))
+			continue
 		}
+		sort.Strings(dnPartition.Replicas)
+		sb.WriteString(fmt.Sprintf(partitionInfoColorTablePattern+"\n",
+			"", "", "", fmt.Sprintf("%v(hosts)", r.Addr), fmt.Sprintf("%v/%v", len(dnPartition.Replicas), partition.ReplicaNum), strings.Join(dnPartition.Replicas, "; ")))
+
+		if rps = dnPartition.RaftStatus.Replicas; rps != nil {
+			leaderRps = rps
+		}
+		peerStrings := convertPeersToArray(dnPartition.Peers)
+		sort.Strings(peerStrings)
+		sb.WriteString(fmt.Sprintf(partitionInfoColorTablePattern+"\n",
+			"", "", "", fmt.Sprintf("%v(peers)", r.Addr), fmt.Sprintf("%v/%v", len(peerStrings), partition.ReplicaNum), strings.Join(peerStrings, "; ")))
+		if !isEqualStrings(peerStrings, dnPartition.Replicas) {
+			isHealthy = false
+		}
+		if !isEqualStrings(partition.Hosts, peerStrings) {
+			isHealthy = false
+		}
+		if len(peerStrings) != int(partition.ReplicaNum) || len(dnPartition.Replicas) != int(partition.ReplicaNum) {
+			isHealthy = false
+		}
+	}
+	if len(leaderRps) == 0 {
+		isHealthy = false
+		errMsg := fmt.Sprintf("no raft leader")
+		sb.WriteString(fmt.Sprintf("\033[1;40;31m%-8v\033[0m\n", errMsg))
 	}
 	outPut = sb.String()
 	return
@@ -404,4 +415,25 @@ func newDataPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 		},
 	}
 	return cmd
+}
+
+func checkUsedSizeDiff(replicas []*proto.DataReplica) (isEqual bool) {
+	if len(replicas) != 3 {
+		return
+	}
+	isEqual = true
+	for i, r := range replicas {
+		var diff uint64
+		if replicas[(i+1)%3].Used > r.Used {
+			diff = replicas[(i+1)%3].Used - r.Used
+		} else {
+			diff = r.Used - replicas[(i+1)%3].Used
+		}
+		if diff > r.Used/100 {
+			isEqual = false
+			log.LogDebugf("diff:%v  is larger than 1 percent of used space:%v \n", diff, r.Used/100)
+		}
+
+	}
+	return
 }
