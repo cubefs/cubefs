@@ -21,6 +21,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/chubaofs/chubaofs/util/log"
@@ -41,6 +42,7 @@ type ConsulRegisterInfo struct {
 	Address string   `json:"Address"`
 	Port    int64    `json:"Port"`
 	Tags    []string `json:"Tags"`
+	Meta 	map[string]string `json:",omitempty"`
 }
 
 // get consul id
@@ -49,7 +51,7 @@ func GetConsulId(app string, role string, host string, port int64) string {
 }
 
 // do consul register process
-func DoConsulRegisterProc(addr, app, role, cluster string, port int64) {
+func DoConsulRegisterProc(addr, app, role, cluster, meta string, port int64) {
 	if len(addr) <= 0 {
 		return
 	}
@@ -69,7 +71,7 @@ func DoConsulRegisterProc(addr, app, role, cluster string, port int64) {
 	}
 
 	client := &http.Client{}
-	req := makeRegisterReq(host, addr, app, role, cluster, port)
+	req := makeRegisterReq(host, addr, app, role, cluster, meta, port)
 	if req == nil {
 		log.LogErrorf("make register req error")
 		return
@@ -83,7 +85,7 @@ func DoConsulRegisterProc(addr, app, role, cluster string, port int64) {
 	for {
 		select {
 		case <-ticker.C:
-			req := makeRegisterReq(host, addr, app, role, cluster, port)
+			req := makeRegisterReq(host, addr, app, role, cluster, meta, port)
 			if req == nil {
 				log.LogErrorf("make register req error")
 				return
@@ -114,7 +116,7 @@ func GetLocalIpAddr() (ipaddr string, err error) {
 }
 
 // make a consul rest request
-func makeRegisterReq(host, addr, app, role, cluster string, port int64) (req *http.Request) {
+func makeRegisterReq(host, addr, app, role, cluster, meta string, port int64) (req *http.Request) {
 	id := GetConsulId(app, role, host, port)
 	url := addr + RegisterPath
 	cInfo := &ConsulRegisterInfo{
@@ -128,6 +130,12 @@ func makeRegisterReq(host, addr, app, role, cluster string, port int64) (req *ht
 			"cluster=" + cluster,
 		},
 	}
+
+	ok, metas := parseMetaStr(meta)
+	if ok {
+		cInfo.Meta = metas
+	}
+
 	cInfoBytes, err := json.Marshal(cInfo)
 	if err != nil {
 		log.LogErrorf("marshal error, %v", err.Error())
@@ -142,4 +150,22 @@ func makeRegisterReq(host, addr, app, role, cluster string, port int64) (req *ht
 	req.Close = true
 
 	return
+}
+
+// parse k1=v1;k2=v2 as a map
+func parseMetaStr(meta string) (bool, map[string]string) {
+	m := map[string]string{}
+
+	kvs := strings.Split(meta, ";")
+	for _, kv := range kvs {
+		arr := strings.Split(kv, "=")
+		if len(arr) != 2 {
+			log.LogWarnf("meta is invalid, not use %s", meta)
+			return false, m
+		}
+
+		m[arr[0]] = arr[1]
+	}
+
+	return true, m
 }

@@ -35,6 +35,7 @@ const (
 	ConfigKeyExporterEnable = "exporterEnable" //exporter enable
 	ConfigKeyExporterPort   = "exporterPort"   //exporter port
 	ConfigKeyConsulAddr     = "consulAddr"     //consul addr
+	ConfigKeyConsulMeta 	= "consulMeta" 		// consul meta
 	ChSize                  = 1024 * 10        //collect chan size
 )
 
@@ -111,7 +112,7 @@ func InitWithRouter(role string, cfg *config.Config, router *mux.Router, exPort 
 		Handler(promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
 			Timeout: 5 * time.Second,
 		}))
-	
+
 	namespace = AppName + "_" + role
 
 	collect()
@@ -125,6 +126,7 @@ func InitWithRouter(role string, cfg *config.Config, router *mux.Router, exPort 
 func RegistConsul(cluster string, role string, cfg *config.Config) {
 	clustername = replacer.Replace(cluster)
 	consulAddr := cfg.GetString(ConfigKeyConsulAddr)
+	consulMeta := cfg.GetString(ConfigKeyConsulMeta)
 
 	if exporterPort == int64(0) {
 		exporterPort = cfg.GetInt64(ConfigKeyExporterPort)
@@ -133,7 +135,7 @@ func RegistConsul(cluster string, role string, cfg *config.Config) {
 		if ok := strings.HasPrefix(consulAddr, "http"); !ok {
 			consulAddr = "http://" + consulAddr
 		}
-		go DoConsulRegisterProc(consulAddr, AppName, role, cluster, exporterPort)
+		go DoConsulRegisterProc(consulAddr, AppName, role, cluster, consulMeta, exporterPort)
 	}
 }
 
