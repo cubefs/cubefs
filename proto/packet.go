@@ -228,6 +228,10 @@ func (p *Packet) GetStoreType() (m string) {
 	return
 }
 
+func (p *Packet) GetOpMsgWithReqAndResult() (m string) {
+	return fmt.Sprintf("Req(%v)_(%v)_Result(%v)", p.ReqID, p.GetOpMsg(), p.GetResultMsg())
+}
+
 // GetOpMsg returns the operation type.
 func (p *Packet) GetOpMsg() (m string) {
 	switch p.Opcode {
