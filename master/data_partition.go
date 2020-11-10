@@ -164,7 +164,8 @@ func (partition *DataPartition) canBeOffLine(offlineAddr string) (err error) {
 		}
 	}
 
-	if len(otherLiveReplicas) < int(partition.ReplicaNum/2) {
+	if (partition.ReplicaNum == 2 && len(otherLiveReplicas) < 1) ||
+		len(otherLiveReplicas) < int(partition.ReplicaNum/2 + 1) {
 		msg = fmt.Sprintf(msg+" err:%v  liveReplicas:%v ", proto.ErrCannotBeOffLine, len(liveReplicas))
 		log.LogError(msg)
 		err = fmt.Errorf(msg)
