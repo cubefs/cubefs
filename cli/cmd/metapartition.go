@@ -21,9 +21,6 @@ import (
 	"github.com/spf13/cobra"
 	"sort"
 	"strconv"
-	"strings"
-	"sync"
-	"time"
 )
 
 const (
@@ -47,12 +44,12 @@ func newMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdMetaPartitionGetShort           = "Display detail information of a meta partition"
-	cmdCheckCorruptMetaPartitionShort  = "Check out corrupt meta partitions"
-	cmdMetaPartitionDecommissionShort  = "Decommission a replication of the meta partition to a new address"
-	cmdMetaPartitionReplicateShort     = "Add a replication of the meta partition on a new address"
-	cmdMetaPartitionDeleteReplicaShort = "Delete a replication of the meta partition on a fixed address"
-)
+	cmdMetaPartitionGetShort              = "Display detail information of a meta partition"
+	cmdCheckCorruptMetaPartitionShort     = "Check out corrupt meta partitions"
+	cmdMetaPartitionDecommissionShort     = "Decommission a replication of the meta partition to a new address"
+	cmdMetaPartitionReplicateShort        = "Add a replication of the meta partition on a new address"
+	cmdMetaPartitionDeleteReplicaShort    = "Delete a replication of the meta partition on a fixed address"
+	)
 
 func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
@@ -61,10 +58,16 @@ func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
+				err          error
+				partitionID  uint64
 				partition *proto.MetaPartitionInfo
 			)
-			partitionID, err := strconv.ParseUint(args[0], 10, 64)
-			if err != nil {
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+			if partitionID, err = strconv.ParseUint(args[0], 10, 64); err != nil {
 				return
 			}
 			if partition, err = client.ClientAPI().GetMetaPartition(partitionID); err != nil {
@@ -77,7 +80,6 @@ func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newListCorruptMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
-	var optCheckAll bool
 	var cmd = &cobra.Command{
 		Use:   CliOpCheck,
 		Short: cmdCheckCorruptMetaPartitionShort,
@@ -89,19 +91,17 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 "reset" command will be released in next version.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				diagnosis *proto.MetaPartitionDiagnosis
-				metaNodes []*proto.MetaNodeInfo
-				err       error
+				diagnosis     *proto.MetaPartitionDiagnosis
+				metaNodes     []*proto.MetaNodeInfo
+				err           error
 			)
-			if optCheckAll {
-				err = checkAllMetaPartitions(client)
+			defer func() {
 				if err != nil {
-					stdout("%v\n", err)
+					errout("Error: %v", err)
 				}
-				return
-			}
+			}()
 			if diagnosis, err = client.AdminAPI().DiagnoseMetaPartition(); err != nil {
-				stdout("%v\n", err)
+				return
 			}
 			stdout("[Inactive Meta nodes]:\n")
 			stdout("%v\n", formatMetaNodeDetailTableHeader())
@@ -129,146 +129,65 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			for _, pid := range diagnosis.CorruptMetaPartitionIDs {
 				var partition *proto.MetaPartitionInfo
 				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
-					stdout("Partition not found, err:[%v]", err)
+					err = fmt.Errorf("Partition not found, err:[%v] ", err)
 					return
 				}
 				stdout("%v\n", formatMetaPartitionInfoRow(partition))
 			}
 
 			stdout("\n")
-			stdout("%v\n", "[Partition lack replicas]:")
+			stdout("%v\n", "[Meta partition lack replicas]:")
 			stdout("%v\n", partitionInfoTableHeader)
 			sort.SliceStable(diagnosis.LackReplicaMetaPartitionIDs, func(i, j int) bool {
 				return diagnosis.LackReplicaMetaPartitionIDs[i] < diagnosis.LackReplicaMetaPartitionIDs[j]
 			})
 			for _, pid := range diagnosis.LackReplicaMetaPartitionIDs {
 				var partition *proto.MetaPartitionInfo
-				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
-					stdout("Partition not found, err:[%v]", err)
+				if partition, err = client.ClientAPI().GetMetaPartition( pid); err != nil {
+					err = fmt.Errorf("Partition not found, err:[%v] ", err)
 					return
 				}
 				if partition != nil {
 					stdout("%v\n", formatMetaPartitionInfoRow(partition))
-					sort.Strings(partition.Hosts)
-					for _, r := range partition.Replicas {
-						var mnPartition *proto.MNMetaPartitionInfo
-						var err error
-						addr := strings.Split(r.Addr, ":")[0]
-						if mnPartition, err = client.NodeAPI().MetaNodeGetPartition(addr, partition.PartitionID); err != nil {
-							fmt.Printf(partitionInfoColorTablePattern+"\n",
-								"", "", "", r.Addr, fmt.Sprintf("%v/%v", 0, partition.ReplicaNum), "no data")
-							continue
-						}
-						mnHosts := make([]string, 0)
-						for _, peer := range mnPartition.Peers {
-							mnHosts = append(mnHosts, peer.Addr)
-						}
-						sort.Strings(mnHosts)
-						fmt.Printf(partitionInfoColorTablePattern+"\n",
-							"", "", "", r.Addr, fmt.Sprintf("%v/%v", len(mnPartition.Peers), partition.ReplicaNum), strings.Join(mnHosts, "; "))
-					}
-					fmt.Printf("\033[1;40;32m%-8v\033[0m", strings.Repeat("_ ", len(partitionInfoTableHeader)/2+5)+"\n")
+				}
+			}
+
+			stdout("\n")
+			stdout("%v\n", "[Bad meta partitions(decommission not completed)]:")
+			badPartitionTablePattern := "%-8v    %-10v\n"
+			stdout(badPartitionTablePattern, "PATH", "PARTITION ID")
+			for _, bmpv := range diagnosis.BadMetaPartitionIDs {
+				sort.SliceStable(bmpv.PartitionIDs, func(i, j int) bool {
+					return bmpv.PartitionIDs[i] < bmpv.PartitionIDs[j]
+				})
+				for _, pid := range bmpv.PartitionIDs {
+					stdout(badPartitionTablePattern, bmpv.Path, pid)
 				}
 			}
 			return
 		},
 	}
-	cmd.Flags().BoolVar(&optCheckAll, "all", false, "true - check all partitions; false - only check partitions which lack of replica")
 	return cmd
 }
-func checkAllMetaPartitions(client *master.MasterClient) (err error) {
-	var volInfo []*proto.VolInfo
-	if volInfo, err = client.AdminAPI().ListVols(""); err != nil {
-		stdout("%v\n", err)
-		return
-	}
-	stdout("\n")
-	stdout("%v\n", "[Partition peer info not valid]:")
-	stdout("%v\n", partitionInfoTableHeader)
-	for _, vol := range volInfo {
-		var volView *proto.VolView
-		if volView, err = client.ClientAPI().GetVolume(vol.Name, calcAuthKey(vol.Owner)); err != nil {
-			stdout("Found an invalid vol: %v\n", vol.Name)
-			continue
-		}
-		sort.SliceStable(volView.MetaPartitions, func(i, j int) bool {
-			return volView.MetaPartitions[i].PartitionID < volView.MetaPartitions[j].PartitionID
-		})
-		var wg sync.WaitGroup
-		for _, mp := range volView.MetaPartitions {
-			wg.Add(1)
-			go func(mp *proto.MetaPartitionView) {
-				defer wg.Done()
-				var outPut string
-				var isHealthy bool
-				outPut, isHealthy, _ = checkMetaPartition(mp.PartitionID, client)
-				if !isHealthy {
-					fmt.Printf(outPut)
-					stdoutGreen(strings.Repeat("_ ", len(partitionInfoTableHeader)/2+20) + "\n")
-				}
-				time.Sleep(time.Millisecond * 10)
-			}(mp)
-		}
-		wg.Wait()
-	}
-	return
-}
-func checkMetaPartition(pid uint64, client *master.MasterClient) (outPut string, isHealthy bool, err error) {
-	var partition *proto.MetaPartitionInfo
-	var sb = strings.Builder{}
-	isHealthy = true
-	if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
-		sb.WriteString(fmt.Sprintf("Partition is not found, err:[%v]", err))
-		return
-	}
-	if partition != nil {
-		sb.WriteString(fmt.Sprintf("%v\n", formatMetaPartitionInfoRow(partition)))
-		sort.Strings(partition.Hosts)
-		if len(partition.MissNodes) > 0 || partition.Status == -1 || len(partition.Hosts) != int(partition.ReplicaNum) {
-			errMsg := fmt.Sprintf("The partition is unhealthy according to the report message from master")
-			sb.WriteString(fmt.Sprintf("\033[1;40;31m%-8v\033[0m\n", errMsg))
-			isHealthy = false
-		}
-		for _, r := range partition.Replicas {
-			var mnPartition *proto.MNMetaPartitionInfo
-			var err error
-			addr := strings.Split(r.Addr, ":")[0]
-			if mnPartition, err = client.NodeAPI().MetaNodeGetPartition(addr, partition.PartitionID); err != nil {
-				sb.WriteString(fmt.Sprintf(partitionInfoColorTablePattern+"\n",
-					"", "", "", fmt.Sprintf("%v", r.Addr), fmt.Sprintf("%v/%v", "nil", partition.ReplicaNum), fmt.Sprintf("get partition info failed, err:%v", err)))
-				isHealthy = false
-				continue
-			}
 
-			peerStrings := convertPeersToArray(mnPartition.Peers)
-			sort.Strings(peerStrings)
-			sb.WriteString(fmt.Sprintf(partitionInfoColorTablePattern+"\n",
-				"", "", "", fmt.Sprintf("%v(peers)", r.Addr), fmt.Sprintf("%v/%v", len(peerStrings), partition.ReplicaNum), strings.Join(peerStrings, "; ")))
-			if !isEqualStrings(partition.Hosts, peerStrings) {
-				isHealthy = false
-			}
-			if len(peerStrings) != int(partition.ReplicaNum) {
-				isHealthy = false
-			}
-		}
-	}
-	outPut = sb.String()
-	return
-}
 func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   CliOpDecommission + " [ADDRESS] [META PARTITION ID]",
 		Short: cmdMetaPartitionDecommissionShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err         error
+				partitionID uint64
+			)
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
 			address := args[0]
-			partitionID, err := strconv.ParseUint(args[1], 10, 64)
-			if err != nil {
-				stdout("%v\n", err)
-				return
-			}
+			partitionID, err = strconv.ParseUint(args[1], 10, 64)
 			if err = client.AdminAPI().DecommissionMetaPartition(partitionID, address); err != nil {
-				stdout("%v\n", err)
 				return
 			}
 		},
@@ -288,14 +207,18 @@ func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 		Short: cmdMetaPartitionReplicateShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err         error
+				partitionID uint64
+			)
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
 			address := args[0]
-			partitionID, err := strconv.ParseUint(args[1], 10, 64)
-			if err != nil {
-				stdout("%v\n", err)
-				return
-			}
+			partitionID, err = strconv.ParseUint(args[1], 10, 64)
 			if err = client.AdminAPI().AddMetaReplica(partitionID, address); err != nil {
-				stdout("%v\n", err)
 				return
 			}
 		},
@@ -315,14 +238,21 @@ func newMetaPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 		Short: cmdMetaPartitionDeleteReplicaShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err         error
+				partitionID uint64
+			)
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
 			address := args[0]
-			partitionID, err := strconv.ParseUint(args[1], 10, 64)
+			partitionID, err = strconv.ParseUint(args[1], 10, 64)
 			if err != nil {
-				stdout("%v\n", err)
 				return
 			}
 			if err = client.AdminAPI().DeleteMetaReplica(partitionID, address); err != nil {
-				stdout("%v\n", err)
 				return
 			}
 		},

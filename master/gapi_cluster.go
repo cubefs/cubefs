@@ -218,7 +218,7 @@ func (m *ClusterService) decommissionDataNode(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	if err := m.cluster.decommissionDataNode(node, "", false); err != nil {
+	if err := m.cluster.decommissionDataNode(node); err != nil {
 		return nil, err
 	}
 	rstMsg := fmt.Sprintf("decommission data node [%v] successfully", args.OffLineAddr)
@@ -236,7 +236,7 @@ func (m *ClusterService) decommissionMetaNode(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	if err = m.cluster.decommissionMetaNode(metaNode, false); err != nil {
+	if err = m.cluster.decommissionMetaNode(metaNode); err != nil {
 		return nil, err
 	}
 	log.LogInfof("decommissionMetaNode metaNode [%v] has offline successfully", args.OffLineAddr)
@@ -270,7 +270,7 @@ func (m *ClusterService) decommissionMetaPartition(ctx context.Context, args str
 	if err != nil {
 		return nil, err
 	}
-	if err := m.cluster.decommissionMetaPartition(args.NodeAddr, mp, getTargetAddressForMetaPartitionDecommission, false); err != nil {
+	if err := m.cluster.decommissionMetaPartition(args.NodeAddr, mp); err != nil {
 		return nil, err
 	}
 	log.LogInfof(proto.AdminDecommissionMetaPartition+" partitionID :%v  decommissionMetaPartition successfully", args.PartitionID)
@@ -611,8 +611,6 @@ func (m *ClusterService) makeClusterView() *proto.ClusterView {
 		LeaderAddr:          m.cluster.leaderInfo.addr,
 		DisableAutoAlloc:    m.cluster.DisableAutoAllocate,
 		MetaNodeThreshold:   m.cluster.cfg.MetaNodeThreshold,
-		DpRecoverPool:       m.cluster.cfg.DataPartitionsRecoverPoolSize,
-		MpRecoverPool:       m.cluster.cfg.MetaPartitionsRecoverPoolSize,
 		Applied:             m.cluster.fsm.applied,
 		MaxDataPartitionID:  m.cluster.idAlloc.dataPartitionID,
 		MaxMetaNodeID:       m.cluster.idAlloc.commonID,

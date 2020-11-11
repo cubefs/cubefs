@@ -59,19 +59,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getDirectory", m.getDirectoryHandler)
 	http.HandleFunc("/getAllDentry", m.getAllDentriesHandler)
 	http.HandleFunc("/getParams", m.getParamsHandler)
-	http.HandleFunc("/getDiskStat", m.getDiskStatHandler)
-
 	return
-}
-
-func (m *MetaNode) getDiskStatHandler(w http.ResponseWriter,
-	r *http.Request) {
-	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
-	resp.Data = m.getDiskStat()
-	data, _ := resp.Marshal()
-	if _, err := w.Write(data); err != nil {
-		log.LogErrorf("[getPartitionsHandler] response %s", err)
-	}
 }
 
 func (m *MetaNode) getParamsHandler(w http.ResponseWriter,

@@ -44,8 +44,6 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		dp.uploadApplyID(index)
 	}(index)
 
-	defer log.LogErrorf("[DataPartition->ApplyMemberChange] [partitionID: %v] finish apply [index: %v, changeType: %v, peer: %v]",
-		dp.partitionID, index, confChange.Type, confChange.Peer)
 	// Change memory the status
 	var (
 		isUpdated bool
