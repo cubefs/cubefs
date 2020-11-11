@@ -40,8 +40,9 @@ type MetaNode struct {
 	metaPartitionInfos        []*proto.MetaPartitionReport
 	MetaPartitionCount        int
 	NodeSetID                 uint64
-	sync.RWMutex              `graphql:"-"`
+	sync.RWMutex                                `graphql:"-"`
 	ToBeOffline               bool
+	ToBeMigrated              bool
 	PersistenceMetaPartitions []uint64
 }
 
@@ -89,7 +90,8 @@ func (metaNode *MetaNode) isWritable() (ok bool) {
 	metaNode.RLock()
 	defer metaNode.RUnlock()
 	if metaNode.IsActive && metaNode.MaxMemAvailWeight > gConfig.metaNodeReservedMem &&
-		!metaNode.reachesThreshold() && metaNode.MetaPartitionCount < defaultMaxMetaPartitionCountOnEachNode {
+		!metaNode.reachesThreshold() && metaNode.MetaPartitionCount < defaultMaxMetaPartitionCountOnEachNode &&
+		metaNode.ToBeOffline == false && metaNode.ToBeMigrated == false {
 		ok = true
 	}
 	return

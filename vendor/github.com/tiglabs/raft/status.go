@@ -17,6 +17,8 @@ package raft
 import (
 	"fmt"
 	"time"
+
+	"github.com/tiglabs/raft/proto"
 )
 
 // DownReplica  down replica
@@ -49,6 +51,7 @@ type Status struct {
 	Applied           uint64
 	Vote              uint64
 	PendQueue         int
+	PendCmd           map[uint64]proto.EntryType
 	RecvQueue         int
 	AppQueue          int
 	Stopped           bool

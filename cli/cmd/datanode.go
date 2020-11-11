@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"os"
 	"sort"
 	"strings"
 
@@ -57,7 +58,8 @@ func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("List cluster data nodes failed: %v\n", err)
+					os.Exit(1)
 				}
 			}()
 			var view *proto.ClusterView
@@ -98,7 +100,8 @@ func newDataNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 			var datanodeInfo *proto.DataNodeInfo
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Show data node info failed: %v\n", err)
+					os.Exit(1)
 				}
 			}()
 			nodeAddr = args[0]
@@ -129,7 +132,8 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 			var nodeAddr string
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("decommission data node failed, err[%v]\n", err)
+					os.Exit(1)
 				}
 			}()
 			nodeAddr = args[0]

@@ -34,8 +34,8 @@ const (
 	CliOpReset             = "reset"
 	CliOpReplicate         = "add-replica"
 	CliOpDelReplica        = "del-replica"
-	CliOpExpand              = "expand"
-	CliOpShrink              = "shrink"
+	CliOpExpand            = "expand"
+	CliOpShrink            = "shrink"
 
 	//Shorthand format of operation name
 	CliOpDecommissionShortHand = "dec"
@@ -59,8 +59,10 @@ const (
 	CliFlagReplicas           = "replicas"
 	CliFlagEnable             = "enable"
 	CliFlagEnableFollowerRead = "follower-read"
+	CliFlagAutoRepair         = "auto-repair"
 	CliFlagAuthenticate       = "authenticate"
 	CliFlagEnableToken        = "enable-token"
+	CliFlagEnableAutoFill     = "auto-fill"
 	CliFlagCapacity           = "capacity"
 	CliFlagThreshold          = "threshold"
 	CliFlagAddress            = "addr"
@@ -81,11 +83,4 @@ const (
 	ResourceMetaNodeShortHand      = "mn"
 	ResourceDataPartitionShortHand = "dp"
 	ResourceMetaPartitionShortHand = "mp"
-)
-type MasterOp int
-const (
-	OpExpandVol MasterOp = iota
-	OpShrinkVol
-	OpCreateVol
-	OpDeleteVol
 )
