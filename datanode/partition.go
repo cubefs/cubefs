@@ -794,6 +794,10 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 
 // ChangeRaftMember is a wrapper function of changing the raft member.
 func (dp *DataPartition) ChangeRaftMember(changeType raftProto.ConfChangeType, peer raftProto.Peer, context []byte) (resp interface{}, err error) {
+	log.LogErrorf("[DataPartition->ChangeRaftMember] [partitionID: %v] start [changeType: %v, peer: %v]", dp.partitionID, changeType, peer)
+	defer func() {
+		log.LogErrorf("[DataPartition->ChangeRaftMember] [partitionID: %v] finish [changeType: %v, peer: %v]", dp.partitionID, changeType, peer)
+	}()
 	resp, err = dp.raftPartition.ChangeMember(changeType, peer, context)
 	return
 }

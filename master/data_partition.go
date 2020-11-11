@@ -98,6 +98,29 @@ func (partition *DataPartition) tryToChangeLeader(c *Cluster, dataNode *DataNode
 	return
 }
 
+func (partition *DataPartition) prepareAddRaftMember(addPeer proto.Peer) (leaderAddr string, candidateAddrs []string, err error) {
+	partition.RLock()
+	defer partition.RUnlock()
+	if contains(partition.Hosts, addPeer.Addr) {
+		err = fmt.Errorf("vol[%v],data partition[%v] has contains host[%v]", partition.VolName, partition.PartitionID, addPeer.Addr)
+		return
+	}
+	candidateAddrs = make([]string, 0, len(partition.Hosts))
+	leaderAddr = partition.getLeaderAddr()
+	if leaderAddr != "" && contains(partition.Hosts, leaderAddr) {
+		candidateAddrs = append(candidateAddrs, leaderAddr)
+	} else {
+		leaderAddr = ""
+	}
+	for _, host := range partition.Hosts {
+		if host == leaderAddr {
+			continue
+		}
+		candidateAddrs = append(candidateAddrs, host)
+	}
+	return
+}
+
 func (partition *DataPartition) createTaskToTryToChangeLeader(addr string) (task *proto.AdminTask, err error) {
 	task = proto.NewAdminTask(proto.OpDataPartitionTryToLeader, addr, nil)
 	partition.resetTaskID(task)
@@ -141,9 +164,20 @@ func (partition *DataPartition) resetTaskID(t *proto.AdminTask) {
 }
 
 // Check if there is a replica missing or not.
-func (partition *DataPartition) hasMissingOneReplica(replicaNum int) (err error) {
-	hostNum := len(partition.Replicas)
-	if hostNum <= replicaNum-1 {
+func (partition *DataPartition) hasMissingOneReplica(offlineAddr string, replicaNum int) (err error) {
+	curHostCount := len(partition.Hosts)
+	for _, host := range partition.Hosts {
+		if host == offlineAddr {
+			curHostCount = curHostCount - 1
+		}
+	}
+	curReplicaCount := len(partition.Replicas)
+	for _, r := range partition.Replicas {
+		if r.Addr == offlineAddr {
+			curReplicaCount = curReplicaCount - 1
+		}
+	}
+	if curReplicaCount < replicaNum-1 || curHostCount < replicaNum-1 {
 		log.LogError(fmt.Sprintf("action[%v],partitionID:%v,err:%v",
 			"hasMissingOneReplica", partition.PartitionID, proto.ErrHasOneMissingReplica))
 		err = proto.ErrHasOneMissingReplica
@@ -596,8 +630,9 @@ func (partition *DataPartition) containsBadDisk(diskPath string, nodeAddr string
 }
 
 func (partition *DataPartition) getMinus() (minus float64) {
-	partition.RLock()
-	defer partition.RUnlock()
+	if len(partition.Replicas) == 0 {
+		return
+	}
 	used := partition.Replicas[0].Used
 	for _, replica := range partition.Replicas {
 		if math.Abs(float64(replica.Used)-float64(used)) > minus {
@@ -605,6 +640,23 @@ func (partition *DataPartition) getMinus() (minus float64) {
 		}
 	}
 	return minus
+}
+
+func (partition *DataPartition) getMinusOfFileCount() (minus float64) {
+	partition.RLock()
+	defer partition.RUnlock()
+	var sentry float64
+	for index, replica := range partition.Replicas {
+		if index == 0 {
+			sentry = float64(replica.FileCount)
+			continue
+		}
+		diff := math.Abs(float64(replica.FileCount) - sentry)
+		if diff > minus {
+			minus = diff
+		}
+	}
+	return
 }
 
 func (partition *DataPartition) getToBeDecommissionHost(replicaNum int) (host string) {
@@ -619,7 +671,9 @@ func (partition *DataPartition) getToBeDecommissionHost(replicaNum int) (host st
 }
 
 func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string) (err error) {
-	if err = c.removeDataReplica(partition, host, false); err != nil {
+	partition.offlineMutex.Lock()
+	defer partition.offlineMutex.Unlock()
+	if err = c.removeDataReplica(partition, host, false, false); err != nil {
 		return
 	}
 	partition.RLock()
@@ -682,4 +736,247 @@ func (partition *DataPartition) ToProto(c *Cluster) *proto.DataPartitionInfo {
 		OfflinePeerID:           partition.OfflinePeerID,
 		FilesWithMissingReplica: partition.FilesWithMissingReplica,
 	}
+}
+
+func (partition *DataPartition) isLatestReplica(addr string) (ok bool) {
+	hostsLen := len(partition.Hosts)
+	if hostsLen <= 1 {
+		return
+	}
+	latestAddr := partition.Hosts[hostsLen-1]
+	return latestAddr == addr
+}
+
+func (partition *DataPartition) isDataCatchUp() (ok bool) {
+	partition.RLock()
+	defer partition.RUnlock()
+	minus := partition.getMinus()
+	return minus < util.GB
+}
+
+func (partition *DataPartition) isDataCatchUpInStrictMode() (ok bool) {
+	partition.RLock()
+	defer partition.RUnlock()
+	minus := partition.getMinus()
+	if partition.used > 10*util.GB {
+		if minus < util.GB {
+			return true
+		}
+	} else if partition.used > util.GB {
+		if minus < 500*util.MB {
+			return true
+		}
+	} else {
+		if partition.used == 0 {
+			return true
+		}
+		percent := minus / float64(partition.used)
+		if partition.used > util.MB {
+			if percent < 0.5 {
+				return true
+			}
+		} else {
+			if percent < 0.7 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+//check if the data partition needs to rebalance zone
+func (partition *DataPartition) needToRebalanceZone(c *Cluster, zoneList []string) (isNeed bool, err error) {
+	var curZoneMap map[string]uint8
+	var curZoneList []string
+	curZoneList = make([]string, 0)
+	curZoneMap = make(map[string]uint8, 0)
+	if curZoneMap, err = partition.getDataZoneMap(c); err != nil {
+		return
+	}
+	for k := range curZoneMap {
+		curZoneList = append(curZoneList, k)
+	}
+	log.LogDebugf("action[needToRebalanceZone],data partitionID:%v,zone name:%v,current zones[%v]",
+		partition.PartitionID, zoneList, curZoneList)
+	if (len(zoneList) == 1 && len(curZoneMap) == 1) || (len(curZoneMap) == 2 && (len(zoneList) == 2 || len(zoneList) == 3)) {
+		isNeed = false
+		for zone := range curZoneMap {
+			if !contains(zoneList, zone) {
+				isNeed = true
+				return
+			}
+		}
+		return
+	}
+	isNeed = true
+	return
+}
+
+var getTargetAddressForBalanceDataPartitionZone = func(c *Cluster, offlineAddr string, dp *DataPartition, excludeNodeSets []uint64, zoneName string, destZone string) (oldAddr, newAddr string, err error) {
+	var (
+		offlineZoneName     string
+		targetZoneName      string
+		targetZone          *Zone
+		nodesetInTargetZone *nodeSet
+		addrInTargetZone    string
+		targetHosts         []string
+	)
+	if offlineZoneName, targetZoneName, err = dp.getOfflineAndTargetZone(c, zoneName); err != nil {
+		return
+	}
+	if offlineZoneName == "" || targetZoneName == "" {
+		err = fmt.Errorf("getOfflineAndTargetZone error, offlineZone[%v], targetZone[%v]", offlineZoneName, targetZoneName)
+		return
+	}
+	if targetZone, err = c.t.getZone(targetZoneName); err != nil {
+		return
+	}
+	if oldAddr, err = dp.getAddressByZoneName(c, offlineZoneName); err != nil {
+		return
+	}
+	if oldAddr == "" {
+		err = fmt.Errorf("can not find address to decommission")
+		return
+	}
+	if err = c.validateDecommissionDataPartition(dp, oldAddr); err != nil {
+		return
+	}
+	if addrInTargetZone, err = dp.getAddressByZoneName(c, targetZone.name); err != nil {
+		return
+	}
+	//if there is no replica in target zone, choose random nodeset in target zone
+	if addrInTargetZone == "" {
+		if targetHosts, _, err = targetZone.getAvailDataNodeHosts(nil, dp.Hosts, 1); err != nil {
+			return
+		}
+		if len(targetHosts) == 0 {
+			err = fmt.Errorf("no available space to find a target address")
+			return
+		}
+		newAddr = targetHosts[0]
+		return
+	}
+	//if there is a replica in target zone, choose the same nodeset with this replica
+	var targetNode *DataNode
+	if targetNode, err = c.dataNode(addrInTargetZone); err != nil {
+		return
+	}
+	if nodesetInTargetZone, err = targetZone.getNodeSet(targetNode.NodeSetID); err != nil {
+		return
+	}
+	if targetHosts, _, err = nodesetInTargetZone.getAvailDataNodeHosts(dp.Hosts, 1); err != nil {
+		// select data nodes from the other node set in same zone
+		excludeNodeSets = append(excludeNodeSets, nodesetInTargetZone.ID)
+		if targetHosts, _, err = targetZone.getAvailDataNodeHosts(excludeNodeSets, dp.Hosts, 1); err != nil {
+			return
+		}
+	}
+	if len(targetHosts) == 0 {
+		err = fmt.Errorf("no available space to find a target address")
+		return
+	}
+	newAddr = targetHosts[0]
+	log.LogInfof("action[balanceZone],data partitionID:%v,zone name:[%v],old address:[%v], new address:[%v]",
+		dp.PartitionID, zoneName, oldAddr, newAddr)
+	return
+}
+
+//
+func (partition *DataPartition) getOfflineAndTargetZone(c *Cluster, zoneName string) (offlineZone, targetZone string, err error) {
+	zoneList := strings.Split(zoneName, ",")
+	var currentZoneList []string
+	switch len(zoneList) {
+	case 1:
+		zoneList = append(make([]string, 0), zoneList[0], zoneList[0], zoneList[0])
+	case 2:
+		switch partition.PartitionID % 2 {
+		case 0:
+			zoneList = append(make([]string, 0), zoneList[0], zoneList[0], zoneList[1])
+		default:
+			zoneList = append(make([]string, 0), zoneList[1], zoneList[1], zoneList[0])
+		}
+		log.LogInfof("action[getSourceAndTargetZone],data partitionID:%v,zone name:[%v],chosen zoneList:%v",
+			partition.PartitionID, zoneName, zoneList)
+	case 3:
+		index := partition.PartitionID % 6
+		switch partition.PartitionID%6 < 3 {
+		case true:
+			zoneList = append(make([]string, 0), zoneList[index], zoneList[index], zoneList[(index+1)%3])
+		default:
+			zoneList = append(make([]string, 0), zoneList[(index+1)%3], zoneList[(index+1)%3], zoneList[index%3])
+		}
+		log.LogInfof("action[getSourceAndTargetZone],data partitionID:%v,zone name:[%v],chosen zoneList:%v",
+			partition.PartitionID, zoneName, zoneList)
+	default:
+		err = fmt.Errorf("partition zone num must be 1, 2 or 3")
+		return
+	}
+
+	if currentZoneList, err = partition.getZoneList(c); err != nil {
+		return
+	}
+	intersect := util.Intersect(zoneList, currentZoneList)
+	projectiveToZoneList := util.Projective(zoneList, intersect)
+	projectiveToCurZoneList := util.Projective(currentZoneList, intersect)
+	log.LogInfof("Current replica zoneList:%v, volume zoneName:%v ", currentZoneList, zoneList)
+	if len(projectiveToZoneList) == 0 || len(projectiveToCurZoneList) == 0 {
+		err = fmt.Errorf("action[getSourceAndTargetZone], Current replica zoneList:%v is consistent with the volume zoneName:%v, do not need to balance", currentZoneList, zoneList)
+		return
+	}
+	offlineZone = projectiveToCurZoneList[0]
+	targetZone = projectiveToZoneList[0]
+	return
+}
+
+func (partition *DataPartition) getAddressByZoneName(c *Cluster, zone string) (addr string, err error) {
+	for _, host := range partition.Hosts {
+		var dataNode *DataNode
+		var z *Zone
+		if dataNode, err = c.dataNode(host); err != nil {
+			return
+		}
+		if z, err = c.t.getZoneByDataNode(dataNode); err != nil {
+			return
+		}
+		if zone == z.name {
+			addr = host
+		}
+	}
+	return
+}
+
+func (partition *DataPartition) getZoneList(c *Cluster) (zoneList []string, err error) {
+	zoneList = make([]string, 0)
+	for _, host := range partition.Hosts {
+		var dataNode *DataNode
+		var zone *Zone
+		if dataNode, err = c.dataNode(host); err != nil {
+			return
+		}
+		if zone, err = c.t.getZoneByDataNode(dataNode); err != nil {
+			return
+		}
+		zoneList = append(zoneList, zone.name)
+	}
+	return
+}
+
+func (partition *DataPartition) getDataZoneMap(c *Cluster) (curZonesMap map[string]uint8, err error) {
+	curZonesMap = make(map[string]uint8, 0)
+	for _, host := range partition.Hosts {
+		var dataNode *DataNode
+		var zone *Zone
+		if dataNode, err = c.dataNode(host); err != nil {
+			return
+		}
+		if zone, err = c.t.getZoneByDataNode(dataNode); err != nil {
+			return
+		}
+		if _, ok := curZonesMap[zone.name]; !ok {
+			curZonesMap[zone.name] = 1
+		} else {
+			curZonesMap[zone.name] = curZonesMap[zone.name] + 1
+		}
+	}
+	return
 }

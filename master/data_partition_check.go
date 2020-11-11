@@ -180,17 +180,17 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) {
 	return
 }
 
-func (partition *DataPartition) checkReplicationTask(clusterID string, dataPartitionSize uint64) (tasks []*proto.AdminTask) {
+func (partition *DataPartition) checkReplicationTask(c *Cluster, dataPartitionSize uint64) {
 	var msg string
-	tasks = make([]*proto.AdminTask, 0)
 	if excessAddr, excessErr := partition.deleteIllegalReplica(); excessErr != nil {
 		msg = fmt.Sprintf("action[%v], partitionID:%v  Excess Replication"+
 			" On :%v  Err:%v  rocksDBRecords:%v",
 			deleteIllegalReplicaErr, partition.PartitionID, excessAddr, excessErr.Error(), partition.Hosts)
-		Warn(clusterID, msg)
-		partition.Lock()
-		partition.removeReplicaByAddr(excessAddr)
-		partition.Unlock()
+		Warn(c.Name, msg)
+		dn, _ := c.dataNode(excessAddr)
+		if dn != nil {
+			c.deleteDataReplica(partition, dn, false)
+		}
 	}
 	if partition.Status == proto.ReadWrite {
 		return
@@ -199,7 +199,7 @@ func (partition *DataPartition) checkReplicationTask(clusterID string, dataParti
 		msg = fmt.Sprintf("action[%v], partitionID:%v  Lack Replication"+
 			" On :%v  Err:%v  Hosts:%v  new task to create DataReplica",
 			addMissingReplicaErr, partition.PartitionID, lackAddr, lackErr.Error(), partition.Hosts)
-		Warn(clusterID, msg)
+		Warn(c.Name, msg)
 	} else {
 		partition.setToNormal()
 	}

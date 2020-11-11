@@ -130,14 +130,18 @@ func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMember
 	}
 	mp.config.Peers = append(mp.config.Peers[:peerIndex], mp.config.Peers[peerIndex+1:]...)
 	if mp.config.NodeId == req.RemovePeer.ID && !mp.isLoadingMetaPartition && canRemoveSelf {
-		mp.Stop()
-		mp.DeleteRaft()
-		mp.manager.deletePartition(mp.GetBaseConfig().PartitionId)
-		os.RemoveAll(mp.config.RootDir)
+		mp.ExpiredRaft()
+		mp.manager.expiredPartition(mp.GetBaseConfig().PartitionId)
 		updated = false
 	}
 	log.LogInfof("Fininsh RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 		req.PartitionId, mp.config.NodeId, string(data))
+
+	return
+}
+
+func (mp *metaPartition) confUpdateNode(req *proto.MetaPartitionDecommissionRequest,
+	index uint64) (updated bool, err error) {
 	return
 }
 

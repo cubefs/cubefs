@@ -249,7 +249,7 @@ func (s *DataNode) handlePacketToDeleteDataPartition(p *repl.Packet) {
 		if err != nil {
 			return
 		} else {
-			s.space.DeletePartition(request.PartitionId)
+			s.space.ExpiredPartition(request.PartitionId)
 		}
 	} else {
 		err = fmt.Errorf("illegal opcode ")
@@ -939,7 +939,6 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 	if err = decode.Decode(adminTask); err != nil {
 		return
 	}
-
 	reqData, err = json.Marshal(adminTask.Request)
 	p.AddMesgLog(string(reqData))
 	if err != nil {
@@ -948,7 +947,7 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 	if err = json.Unmarshal(reqData, req); err != nil {
 		return
 	}
-
+	req.ReserveResource = adminTask.ReserveResource
 	dp := s.space.Partition(req.PartitionId)
 	if dp == nil {
 		return
