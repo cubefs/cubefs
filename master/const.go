@@ -29,10 +29,6 @@ const (
 	idKey                   = "id"
 	countKey                = "count"
 	startKey                = "start"
-	endKey                  = "end"
-	nodeTypeKey             = "nodeType"
-	strictFlagKey           = "strict"
-	stateKey                = "state"
 	enableKey               = "enable"
 	thresholdKey            = "threshold"
 	dataPartitionSizeKey    = "size"
@@ -46,7 +42,7 @@ const (
 	akKey                   = "ak"
 	keywordsKey             = "keywords"
 	zoneNameKey             = "zoneName"
-	autoRepairKey           = "autoRepair"
+	crossZoneKey            = "crossZone"
 	tokenKey                = "token"
 	tokenTypeKey            = "tokenType"
 	enableTokenKey          = "enableToken"
@@ -59,14 +55,6 @@ const (
 	descriptionKey          = "description"
 	dpSelectorNameKey       = "dpSelectorName"
 	dpSelectorParmKey       = "dpSelectorParm"
-	dpRecoverPoolSizeKey    = "dpRecoverPool"
-	mpRecoverPoolSizeKey    = "mpRecoverPool"
-)
-
-const (
-	nodeTypeDataNode = "dataNode"
-	nodeTypeMetaNode = "metaNode"
-	nodeTypeAll      = "all"
 )
 
 const (
@@ -76,7 +64,6 @@ const (
 	dataNodeOfflineErr            = "dataNodeOfflineErr "
 	diskOfflineErr                = "diskOfflineErr "
 	handleDataPartitionOfflineErr = "handleDataPartitionOffLineErr "
-	balanceDataPartitionZoneErr   = "balanceDataPartitionZoneErr "
 )
 
 const (
@@ -109,10 +96,6 @@ const (
 	retrySendSyncTaskInternal                    = 3 * time.Second
 	defaultRangeOfCountDifferencesAllowed        = 50
 	defaultMinusOfMaxInodeID                     = 1000
-	defaultPercentMinusOfInodeCount              = 0.20
-	defaultRecoverPoolSize                       = -1
-	maxDataPartitionsRecoverPoolSize             = 50
-	maxMetaPartitionsRecoverPoolSize             = 30
 )
 
 const (

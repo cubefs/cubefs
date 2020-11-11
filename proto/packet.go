@@ -156,13 +156,12 @@ const (
 )
 
 const (
+	WriteDeadlineTime                 = 5
+	ReadDeadlineTime                  = 5
+	SyncSendTaskDeadlineTime          = 20
+	NoReadDeadlineTime                = -1
 	BatchDeleteExtentReadDeadLineTime = 120
-	WriteDeadlineTime            = 5
-	ReadDeadlineTime             = 5
-	SyncSendTaskDeadlineTime     = 20
-	NoReadDeadlineTime           = -1
-	MaxWaitFollowerRepairTime    = 60*30
-	GetAllWatermarksDeadLineTime = 60
+	GetAllWatermarksDeadLineTime      = 60
 )
 
 const (

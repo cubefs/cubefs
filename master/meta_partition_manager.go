@@ -134,10 +134,9 @@ func (c *Cluster) scheduleToCheckMetaPartitionRecoveryProgress() {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				if c.vols != nil {
 					c.checkMetaPartitionRecoveryProgress()
-					c.checkMigratedMetaPartitionRecoveryProgress()
 				}
 			}
-			time.Sleep(3 * time.Second * defaultIntervalToCheckDataPartition)
+			time.Sleep(time.Second * defaultIntervalToCheckDataPartition)
 		}
 	}()
 }
@@ -180,7 +179,7 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 		}
 
 		if len(newBadMpIds) == 0 {
-			Warn(c.Name, fmt.Sprintf("action[checkMetaPartitionRecoveryProgress] clusterID[%v],node[%v] has recovered success", c.Name, key))
+			Warn(c.Name, fmt.Sprintf("clusterID[%v],node[%v] has recovered success", c.Name, key))
 			c.BadMetaPartitionIds.Delete(key)
 		} else {
 			c.BadMetaPartitionIds.Store(key, newBadMpIds)

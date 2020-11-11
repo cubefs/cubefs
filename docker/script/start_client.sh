@@ -77,7 +77,7 @@ ensure_node_writable() {
     for i in $(seq 1 300) ; do
         ${cli} ${node} list &> /tmp/cli_${node}_list;
         res=`cat /tmp/cli_${node}_list | grep "Yes" | grep "Active" | wc -l`
-        if [[ ${res} -ge 3 ]]; then
+        if [[ ${res} -eq 4 ]]; then
             echo -e "\033[32mdone\033[0m"
             return
         fi
@@ -96,7 +96,7 @@ create_volume() {
         echo -e "\033[32mdone\033[0m"
         return
     fi
-    ${cli} volume create ${VolName} ${Owner} --zonename=zone-01 --capacity=30 -y > /dev/null
+    ${cli} volume create ${VolName} ${Owner} --capacity=30 -y > /dev/null
     if [[ $? -ne 0 ]]; then
         echo -e "\033[31mfail\033[0m"
         exit 1

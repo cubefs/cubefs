@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -27,6 +26,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
@@ -38,24 +38,12 @@ var (
 	ErrNoValidMaster = errors.New("no valid master")
 )
 
-type ClientType int
-
-const (
-	MASTER ClientType = iota
-	DATANODE
-	METANODE
-)
-
 type MasterClient struct {
 	sync.RWMutex
+	masters    []string
+	useSSL     bool
+	leaderAddr string
 	timeout    time.Duration
-	masters          []string
-	useSSL           bool
-	leaderAddr       string
-	nodeAddr         string
-	ClientType       ClientType
-	DataNodeProfPort uint16
-	MetaNodeProfPort uint16
 
 	adminAPI  *AdminAPI
 	clientAPI *ClientAPI
@@ -109,8 +97,8 @@ func (c *MasterClient) SetTimeout(timeout uint16) {
 }
 
 func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
-	requestAddr, nodes := c.prepareRequest()
-	host := requestAddr
+	leaderAddr, nodes := c.prepareRequest()
+	host := leaderAddr
 	for i := -1; i < len(nodes); i++ {
 		if i == -1 {
 			if host == "" {
@@ -153,7 +141,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			repsData, err = c.serveRequest(r)
 			return
 		case http.StatusOK:
-			if requestAddr != host {
+			if leaderAddr != host {
 				c.setLeader(host)
 			}
 			var body = &struct {
@@ -170,20 +158,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			if body.Code != 0 {
 				log.LogWarnf("serveRequest: code[%v], msg[%v], data[%v] ", body.Code, body.Msg, body.Data)
 				return nil, proto.ParseErrorCode(body.Code)
-				switch c.ClientType {
-				case MASTER:
-					// o represent proto.ErrCodeSuccess
-					if body.Code != 0 {
-						return nil, proto.ParseErrorCode(body.Code)
-					}
-				case DATANODE, METANODE:
-					// o represent proto.ErrCodeSuccess
-					if body.Code != 200 {
-						return nil, proto.ParseErrorCode(body.Code)
-					}
-				}
 			}
-
 			return []byte(body.Data), nil
 		default:
 			log.LogErrorf("serveRequest: unknown status: host(%v) uri(%v) status(%v) body(%s).",
@@ -205,16 +180,10 @@ func (c *MasterClient) Nodes() (nodes []string) {
 
 // prepareRequest returns the leader address and all master addresses.
 func (c *MasterClient) prepareRequest() (addr string, nodes []string) {
-	c.Lock()
-	switch c.ClientType {
-	case MASTER:
-		addr = c.leaderAddr
-		nodes = c.masters
-	case DATANODE, METANODE:
-		addr = c.nodeAddr
-		nodes = []string{addr}
-	}
-	c.Unlock()
+	c.RLock()
+	addr = c.leaderAddr
+	nodes = c.masters
+	c.RUnlock()
 	return
 }
 
@@ -284,18 +253,6 @@ func (c *MasterClient) mergeRequestUrl(url string, params map[string]string) str
 // NewMasterHelper returns a new MasterClient instance.
 func NewMasterClient(masters []string, useSSL bool) *MasterClient {
 	var mc = &MasterClient{masters: masters, useSSL: useSSL, timeout: requestTimeout}
-	mc.ClientType = MASTER
-	mc.adminAPI = &AdminAPI{mc: mc}
-	mc.clientAPI = &ClientAPI{mc: mc}
-	mc.nodeAPI = &NodeAPI{mc: mc}
-	mc.userAPI = &UserAPI{mc: mc}
-	return mc
-}
-
-// NewMasterHelper returns a new MasterClient instance.
-func NewNodeClient(node string, useSSL bool, clientType ClientType) *MasterClient {
-	var mc = &MasterClient{nodeAddr: node, useSSL: useSSL}
-	mc.ClientType = clientType
 	mc.adminAPI = &AdminAPI{mc: mc}
 	mc.clientAPI = &ClientAPI{mc: mc}
 	mc.nodeAPI = &NodeAPI{mc: mc}

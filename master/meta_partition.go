@@ -15,7 +15,6 @@
 package master
 
 import (
-	"github.com/chubaofs/chubaofs/util"
 	"sync"
 
 	"fmt"
@@ -58,8 +57,8 @@ type MetaPartition struct {
 	volName       string
 	Hosts         []string
 	Peers         []proto.Peer
-	MissNodes     map[string]int64
 	OfflinePeerID uint64
+	MissNodes     map[string]int64
 	LoadResponse  []*proto.MetaPartitionLoadResponse
 	offlineMutex  sync.RWMutex
 	sync.RWMutex
@@ -186,15 +185,13 @@ func (mp *MetaPartition) checkEnd(c *Cluster, maxPartitionID uint64) {
 		log.LogWarnf("action[checkEnd] vol[%v] not exist", mp.volName)
 		return
 	}
-	vol.createMpMutex.RLock()
-	defer vol.createMpMutex.RUnlock()
+	mp.Lock()
+	defer mp.Unlock()
 	curMaxPartitionID := vol.maxPartitionID()
 	if mp.PartitionID != curMaxPartitionID {
 		log.LogWarnf("action[checkEnd] partition[%v] not max partition[%v]", mp.PartitionID, curMaxPartitionID)
 		return
 	}
-	mp.Lock()
-	defer mp.Unlock()
 	if _, err = mp.getMetaReplicaLeader(); err != nil {
 		log.LogWarnf("action[checkEnd] partition[%v] no leader", mp.PartitionID)
 		return
@@ -302,12 +299,12 @@ func (mp *MetaPartition) checkReplicaNum(c *Cluster, volName string, replicaNum 
 	}
 }
 
-func (mp *MetaPartition) removeIllegalReplica() (excessAddr string, err error) {
-	mp.Lock()
-	defer mp.Unlock()
+func (mp *MetaPartition) removeIllegalReplica() (excessAddr string, t *proto.AdminTask, err error) {
+	mp.RLock()
+	defer mp.RUnlock()
 	for _, mr := range mp.Replicas {
 		if !contains(mp.Hosts, mr.Addr) {
-			excessAddr = mr.Addr
+			t = mr.createTaskToDeleteReplica(mp.PartitionID)
 			err = proto.ErrIllegalMetaReplica
 			break
 		}
@@ -365,20 +362,9 @@ func (mp *MetaPartition) canBeOffline(nodeAddr string, replicaNum int) (err erro
 }
 
 // Check if there is a replica missing or not.
-func (mp *MetaPartition) hasMissingOneReplica(offlineAddr string, replicaNum int) (err error) {
-	curHostCount := len(mp.Hosts)
-	for _, host := range mp.Hosts {
-		if host == offlineAddr {
-			curHostCount = curHostCount - 1
-		}
-	}
-	curReplicaCount := len(mp.Replicas)
-	for _, r := range mp.Replicas {
-		if r.Addr == offlineAddr {
-			curReplicaCount = curReplicaCount - 1
-		}
-	}
-	if curHostCount < replicaNum-1 || curReplicaCount < replicaNum-1 {
+func (mp *MetaPartition) hasMissingOneReplica(replicaNum int) (err error) {
+	hostNum := len(mp.Replicas)
+	if hostNum <= replicaNum-1 {
 		log.LogError(fmt.Sprintf("action[%v],partitionID:%v,err:%v",
 			"hasMissingOneReplica", mp.PartitionID, proto.ErrHasOneMissingReplica))
 		err = proto.ErrHasOneMissingReplica
@@ -484,22 +470,20 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 	}
 }
 
-func (mp *MetaPartition) replicaCreationTasks(c *Cluster, volName string) {
+func (mp *MetaPartition) replicaCreationTasks(clusterID, volName string) (tasks []*proto.AdminTask) {
 	var msg string
-	mp.offlineMutex.Lock()
-	defer mp.offlineMutex.Unlock()
-	if addr, err := mp.removeIllegalReplica(); err != nil {
+	tasks = make([]*proto.AdminTask, 0)
+	if addr, _, err := mp.removeIllegalReplica(); err != nil {
 		msg = fmt.Sprintf("action[%v],clusterID[%v] metaPartition:%v  excess replication"+
 			" on :%v  err:%v  persistenceHosts:%v",
-			deleteIllegalReplicaErr, c.Name, mp.PartitionID, addr, err.Error(), mp.Hosts)
+			deleteIllegalReplicaErr, clusterID, mp.PartitionID, addr, err.Error(), mp.Hosts)
 		log.LogWarn(msg)
-		c.deleteMetaReplica(mp, addr, true, false)
 	}
 	if addrs := mp.missingReplicaAddrs(); addrs != nil {
 		msg = fmt.Sprintf("action[missingReplicaAddrs],clusterID[%v] metaPartition:%v  lack replication"+
 			" on :%v Hosts:%v",
-			c.Name, mp.PartitionID, addrs, mp.Hosts)
-		Warn(c.Name, msg)
+			clusterID, mp.PartitionID, addrs, mp.Hosts)
+		Warn(clusterID, msg)
 	}
 
 	return
@@ -686,81 +670,6 @@ func (mp *MetaPartition) getMinusOfMaxInodeID() (minus float64) {
 	return
 }
 
-func (mp *MetaPartition) getPercentMinusOfInodeCount() (minus float64) {
-	mp.RLock()
-	defer mp.RUnlock()
-	var sentry float64
-	for index, replica := range mp.Replicas {
-		if index == 0 {
-			sentry = float64(replica.InodeCount)
-			continue
-		}
-		diff := math.Abs(float64(replica.InodeCount) - sentry)
-		if diff > minus {
-			minus = diff
-		}
-	}
-	minus = minus / sentry
-	return
-}
-
-func (mp *MetaPartition) getMinusOfInodeCount() (minus float64) {
-	mp.RLock()
-	defer mp.RUnlock()
-	var sentry float64
-	for index, replica := range mp.Replicas {
-		if index == 0 {
-			sentry = float64(replica.InodeCount)
-			continue
-		}
-		diff := math.Abs(float64(replica.InodeCount) - sentry)
-		if diff > minus {
-			minus = diff
-		}
-	}
-	return
-}
-
-func (mp *MetaPartition) getMinusOfDentryCount() (minus float64) {
-	mp.RLock()
-	defer mp.RUnlock()
-	if len(mp.Replicas) == 0 {
-		return 1
-	}
-	var sentry float64
-	for index, replica := range mp.Replicas {
-		if index == 0 {
-			sentry = float64(replica.DentryCount)
-			continue
-		}
-		diff := math.Abs(float64(replica.DentryCount) - sentry)
-		if diff > minus {
-			minus = diff
-		}
-	}
-	return
-}
-
-func (mp *MetaPartition) getMinusOfApplyID() (minus float64) {
-	mp.RLock()
-	defer mp.RUnlock()
-	if len(mp.LoadResponse) == 0 {
-		return 1
-	}
-	var sentry float64
-	for index, resp := range mp.LoadResponse {
-		if index == 0 {
-			sentry = float64(resp.ApplyID)
-			continue
-		}
-		diff := math.Abs(float64(resp.ApplyID) - sentry)
-		if diff > minus {
-			minus = diff
-		}
-	}
-	return
-}
-
 func (mp *MetaPartition) setMaxInodeID() {
 	var maxUsed uint64
 	for _, r := range mp.Replicas {
@@ -817,253 +726,6 @@ func (mp *MetaPartition) getLiveZones(offlineAddr string) (zones []string) {
 			continue
 		}
 		zones = append(zones, mr.metaNode.ZoneName)
-	}
-	return
-}
-
-func (mp *MetaPartition) isLatestReplica(addr string) (ok bool) {
-	hostsLen := len(mp.Hosts)
-	if hostsLen <= 1 {
-		return
-	}
-	latestAddr := mp.Hosts[hostsLen-1]
-	return latestAddr == addr
-}
-func (mp *MetaPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
-	var (
-		zoneList        []string
-		isNeedRebalance bool
-	)
-	mp.RLock()
-	defer mp.RUnlock()
-	var isValidZone bool
-	if isValidZone, err = c.isValidZone(vol.zoneName); err != nil {
-		return
-	}
-	if !isValidZone {
-		log.LogWarnf("action[RepairZone], vol[%v], zoneName[%v], mpReplicaNum[%v] can not be automatically repaired", vol.Name, vol.zoneName, vol.dpReplicaNum)
-		return
-	}
-	zoneList = strings.Split(vol.zoneName, ",")
-	if len(mp.Replicas) != int(vol.mpReplicaNum) {
-		log.LogWarnf("action[RepairZone], meta replica length[%v] not equal to mpReplicaNum[%v]", len(mp.Replicas), vol.mpReplicaNum)
-		return
-	}
-	if mp.IsRecover {
-		log.LogWarnf("action[RepairZone], meta partition[%v] is recovering", mp.PartitionID)
-		return
-	}
-
-	var mpInRecover uint64
-	mpInRecover = uint64(c.metaPartitionInRecovering())
-	if int32(mpInRecover) > c.cfg.MetaPartitionsRecoverPoolSize {
-		log.LogWarnf("action[repairMetaPartition] clusterID[%v]Recover pool is full, recover partition[%v], pool size[%v]", c.Name, mpInRecover, c.cfg.MetaPartitionsRecoverPoolSize)
-		return
-	}
-	rps := mp.getLiveReplicas()
-	if len(rps) < int(vol.mpReplicaNum) {
-		log.LogWarnf("action[RepairZone], vol[%v], zoneName[%v], live Replicas [%v] less than mpReplicaNum[%v], can not be automatically repaired", vol.Name, vol.zoneName, len(rps), vol.mpReplicaNum)
-		return
-	}
-
-	if isNeedRebalance, err = mp.needToRebalanceZone(c, zoneList); err != nil {
-		return
-	}
-	if !isNeedRebalance {
-		return
-	}
-
-	if err = c.sendRepairMetaPartitionTask(mp, BalanceMetaZone); err != nil {
-		log.LogErrorf("action[RepairZone] clusterID[%v] vol[%v] meta partition[%v] err[%v]", c.Name, vol.Name, mp.PartitionID, err)
-		return
-	}
-	return
-}
-
-var getTargetAddressForRepairMetaZone = func(c *Cluster, nodeAddr string, mp *MetaPartition, oldHosts []string, excludeNodeSets []uint64, zoneName string) (oldAddr, addAddr string, err error) {
-	var (
-		offlineZoneName     string
-		targetZoneName      string
-		addrInTargetZone    string
-		targetZone          *Zone
-		nodesetInTargetZone *nodeSet
-		targetHosts         []string
-	)
-	if offlineZoneName, targetZoneName, err = mp.getOfflineAndTargetZone(c, zoneName); err != nil {
-		return
-	}
-	if offlineZoneName == "" || targetZoneName == "" {
-		return
-	}
-	if targetZone, err = c.t.getZone(targetZoneName); err != nil {
-		return
-	}
-	if oldAddr, err = mp.getAddressByZoneName(c, offlineZoneName); err != nil {
-		return
-	}
-	if oldAddr == "" {
-		err = fmt.Errorf("can not find address to decommission")
-		return
-	}
-	if err = c.validateDecommissionMetaPartition(mp, oldAddr); err != nil {
-		return
-	}
-	if addrInTargetZone, err = mp.getAddressByZoneName(c, targetZone.name); err != nil {
-		return
-	}
-	//if there is no replica in target zone, choose random nodeset in target zone
-	if addrInTargetZone == "" {
-		if targetHosts, _, err = targetZone.getAvailMetaNodeHosts(nil, mp.Hosts, 1); err != nil {
-			return
-		}
-		if len(targetHosts) == 0 {
-			err = fmt.Errorf("no available space to find a target address")
-			return
-		}
-		addAddr = targetHosts[0]
-		return
-	}
-	var targetNode *MetaNode
-	//if there is a replica in target zone, choose the same nodeset with this replica
-	if targetNode, err = c.metaNode(addrInTargetZone); err != nil {
-		err = fmt.Errorf("action[getTargetAddressForRepairMetaZone] partitionID[%v], addr[%v] metaNode not exist", mp.PartitionID, addrInTargetZone)
-		return
-	}
-	if nodesetInTargetZone, err = targetZone.getNodeSet(targetNode.NodeSetID); err != nil {
-		return
-	}
-	if targetHosts, _, err = nodesetInTargetZone.getAvailMetaNodeHosts(mp.Hosts, 1); err != nil {
-		// select meta nodes from the other node set in same zone
-		excludeNodeSets = append(excludeNodeSets, nodesetInTargetZone.ID)
-		if targetHosts, _, err = targetZone.getAvailMetaNodeHosts(excludeNodeSets, mp.Hosts, 1); err != nil {
-			return
-		}
-	}
-	if len(targetHosts) == 0 {
-		err = fmt.Errorf("no available space to find a target address")
-		return
-	}
-	addAddr = targetHosts[0]
-	log.LogInfof("action[getTargetAddressForRepairMetaZone],meta partitionID:%v,zone name:[%v],old address:[%v], new address:[%v]",
-		mp.PartitionID, zoneName, oldAddr, addAddr)
-	return
-}
-
-//check if the meta partition needs to rebalance zone
-func (mp *MetaPartition) needToRebalanceZone(c *Cluster, zoneList []string) (isNeed bool, err error) {
-	var curZoneMap map[string]uint8
-	var curZoneList []string
-	curZoneMap = make(map[string]uint8, 0)
-	curZoneList = make([]string, 0)
-	if curZoneMap, err = mp.getMetaZoneMap(c); err != nil {
-		return
-	}
-	for k := range curZoneMap {
-		curZoneList = append(curZoneList, k)
-	}
-
-	log.LogInfof("action[needToRebalanceZone],meta partitionID:%v,zone name:%v,current zones[%v]",
-		mp.PartitionID, zoneList, curZoneList)
-	if len(curZoneMap) == len(zoneList) {
-		isNeed = false
-		for _, zone := range zoneList {
-			if _, ok := curZoneMap[zone]; !ok {
-				isNeed = true
-			}
-		}
-		return
-	}
-	isNeed = true
-	return
-}
-
-func (mp *MetaPartition) getOfflineAndTargetZone(c *Cluster, volZoneName string) (offlineZone, targetZone string, err error) {
-	zoneList := strings.Split(volZoneName, ",")
-	switch len(zoneList) {
-	case 1:
-		zoneList = append(make([]string, 0), zoneList[0], zoneList[0], zoneList[0])
-	case 2:
-		switch mp.PartitionID % 2 {
-		case 0:
-			zoneList = append(make([]string, 0), zoneList[0], zoneList[0], zoneList[1])
-		default:
-			zoneList = append(make([]string, 0), zoneList[1], zoneList[1], zoneList[0])
-		}
-		log.LogInfof("action[getSourceAndTargetZone],data partitionID:%v,zone name:[%v],chosen zoneList:%v",
-			mp.PartitionID, volZoneName, zoneList)
-	case 3:
-		log.LogInfof("action[getSourceAndTargetZone],data partitionID:%v,zone name:[%v],chosen zoneList:%v",
-			mp.PartitionID, volZoneName, zoneList)
-	default:
-		err = fmt.Errorf("partition zone num must be 1, 2 or 3")
-		return
-	}
-	var currentZoneList []string
-	if currentZoneList, err = mp.getZoneList(c); err != nil {
-		return
-	}
-	intersect := util.Intersect(zoneList, currentZoneList)
-	projectiveToZoneList := util.Projective(zoneList, intersect)
-	projectiveToCurZoneList := util.Projective(currentZoneList, intersect)
-	log.LogInfof("Current replica zoneList:%v, volume zoneName:%v ", currentZoneList, zoneList)
-	if len(projectiveToZoneList) == 0 || len(projectiveToCurZoneList) == 0 {
-		err = fmt.Errorf("action[getSourceAndTargetZone], Current replica zoneList:%v is consistent with the volume zoneName:%v, do not need to balance ", currentZoneList, zoneList)
-		return
-	}
-	offlineZone = projectiveToCurZoneList[0]
-	targetZone = projectiveToZoneList[0]
-	return
-}
-
-func (mp *MetaPartition) getAddressByZoneName(c *Cluster, zone string) (addr string, err error) {
-	for _, host := range mp.Hosts {
-		var metaNode *MetaNode
-		var z *Zone
-		if metaNode, err = c.metaNode(host); err != nil {
-			return
-		}
-		if z, err = c.t.getZoneByMetaNode(metaNode); err != nil {
-			return
-		}
-		if zone == z.name {
-			addr = host
-		}
-	}
-	return
-}
-
-func (mp *MetaPartition) getZoneList(c *Cluster) (zoneList []string, err error) {
-	zoneList = make([]string, 0)
-	for _, host := range mp.Hosts {
-		var metaNode *MetaNode
-		var zone *Zone
-		if metaNode, err = c.metaNode(host); err != nil {
-			return
-		}
-		if zone, err = c.t.getZoneByMetaNode(metaNode); err != nil {
-			return
-		}
-		zoneList = append(zoneList, zone.name)
-	}
-	return
-}
-
-func (mp *MetaPartition) getMetaZoneMap(c *Cluster) (curZonesMap map[string]uint8, err error) {
-	curZonesMap = make(map[string]uint8, 0)
-	for _, host := range mp.Hosts {
-		var metaNode *MetaNode
-		var zone *Zone
-		if metaNode, err = c.metaNode(host); err != nil {
-			return
-		}
-		if zone, err = c.t.getZoneByMetaNode(metaNode); err != nil {
-			return
-		}
-		if _, ok := curZonesMap[zone.name]; !ok {
-			curZonesMap[zone.name] = 1
-		} else {
-			curZonesMap[zone.name] = curZonesMap[zone.name] + 1
-		}
 	}
 	return
 }

@@ -39,7 +39,6 @@ const (
 	AdminListVols                  = "/vol/list"
 	AdminSetNodeInfo               = "/admin/setNodeInfo"
 	AdminGetNodeInfo               = "/admin/getNodeInfo"
-	AdminSetNodeState              = "/admin/setNodeState"
 
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
@@ -202,9 +201,8 @@ type AddDataPartitionRaftMemberRequest struct {
 
 // RemoveDataPartitionRaftMemberRequest defines the request of add raftMember a data partition.
 type RemoveDataPartitionRaftMemberRequest struct {
-	PartitionId     uint64
-	RemovePeer      Peer
-	ReserveResource bool
+	PartitionId uint64
+	RemovePeer  Peer
 }
 
 // AddMetaPartitionRaftMemberRequest defines the request of add raftMember a meta partition.
@@ -215,9 +213,8 @@ type AddMetaPartitionRaftMemberRequest struct {
 
 // RemoveMetaPartitionRaftMemberRequest defines the request of add raftMember a meta partition.
 type RemoveMetaPartitionRaftMemberRequest struct {
-	PartitionId     uint64
-	RemovePeer      Peer
-	ReserveResource bool
+	PartitionId uint64
+	RemovePeer  Peer
 }
 
 // LoadDataPartitionRequest defines the request of loading a data partition.
@@ -495,7 +492,6 @@ type SimpleVolView struct {
 	NeedToLowerReplica bool
 	Authenticate       bool
 	CrossZone          bool
-	AutoRepair         bool
 	CreateTime         string
 	EnableToken        bool
 	Tokens             map[string]*Token `graphql:"-"`
