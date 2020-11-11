@@ -16,18 +16,9 @@ package raftstore
 
 import (
 	"os"
-	"path"
-	"strconv"
-	"time"
-
-	"github.com/chubaofs/chubaofs/util/log"
 
 	"github.com/tiglabs/raft"
 	"github.com/tiglabs/raft/proto"
-)
-
-const (
-	ExpiredPartitionPrefix = "expired_"
 )
 
 // PartitionStatus is a type alias of raft.Status
@@ -54,9 +45,6 @@ type Partition interface {
 
 	// Delete stops and deletes the partition.
 	Delete() error
-
-	// Expired stops and marks specified partition as expired.
-	Expired() error
 
 	// Status returns the current raft status.
 	Status() (status *PartitionStatus)
@@ -122,31 +110,8 @@ func (p *partition) Delete() (err error) {
 	return
 }
 
-// Expired stops and marks specified partition as expired.
-// It renames data path to a new name which add 'expired_' as prefix and operation timestamp as suffix.
-// (e.g. '/path/1' to '/path/expired_1_1600054521')
-func (p *partition) Expired() (err error) {
-	if err = p.Stop(); err != nil {
-		return
-	}
-	var currentPath = path.Clean(p.walPath)
-	var newPath = path.Join(path.Dir(currentPath),
-		ExpiredPartitionPrefix+path.Base(currentPath)+"_"+strconv.FormatInt(time.Now().Unix(), 10))
-	if err = os.Rename(currentPath, newPath); err != nil {
-		log.LogErrorf("Expired: mark expired partition fail: partitionID(%v) path(%v) newPath(%v) err(%v)",
-			p.id, p.walPath, newPath, err)
-		return
-	}
-	log.LogInfof("ExpiredPartition: mark expired partition: partitionID(%v) path(%v) newPath(%v)",
-		p.id, p.walPath, newPath)
-	return
-}
-
 // Status returns the current raft status.
 func (p *partition) Status() (status *PartitionStatus) {
-	if p == nil || p.raft == nil {
-		return nil
-	}
 	status = p.raft.Status(p.id)
 	return
 }

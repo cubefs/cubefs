@@ -24,8 +24,6 @@ func TestDataPartition(t *testing.T) {
 	getDataPartition(partition.PartitionID, t)
 	loadDataPartitionTest(partition, t)
 	decommissionDataPartition(partition, t)
-	partition2 := commonVol.dataPartitions.partitions[1]
-	delDataReplicaTest(partition2, t)
 }
 
 func createDataPartition(vol *Vol, count int, t *testing.T) {
@@ -90,33 +88,4 @@ func loadDataPartitionTest(dp *DataPartition, t *testing.T) {
 	dp.getFileCount()
 	dp.validateCRC(server.cluster.Name)
 	dp.setToNormal()
-}
-func delDataReplicaTest(dp *DataPartition, t *testing.T) {
-	t.Logf("dpID[%v],hosts[%v],replica length[%v]", dp.PartitionID, dp.Hosts, len(dp.Replicas))
-	testAddr := mds9Addr
-	extraReplica := proto.DataReplica{
-		Status: 2,
-		Addr:   testAddr,
-	}
-	addDataServer(testAddr, testZone1)
-	dn, _ := server.cluster.dataNode(testAddr)
-	extraDataReplica := &DataReplica{
-		DataReplica: extraReplica,
-		dataNode:    dn,
-	}
-	dp.Replicas = append(dp.Replicas, extraDataReplica)
-	err := server.cluster.deleteDataReplica(dp, dn, false)
-	if err != nil {
-		t.Errorf("delete replica failed, err[%v]", err)
-	}
-	server.cluster.checkDataPartitions()
-	if len(dp.Replicas) != 3 {
-		t.Errorf("delete replica failed, expect replica length[%v], but is[%v]", 3, len(dp.Replicas))
-	}
-	for _, r := range dp.Replicas {
-		if testAddr == r.Addr {
-			t.Errorf("delete replica [%v] failed", testAddr)
-			return
-		}
-	}
 }

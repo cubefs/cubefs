@@ -16,17 +16,19 @@ package cmd
 
 import (
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/master"
+	sdk "github.com/chubaofs/chubaofs/sdk/master"
 )
 
-func validVols(client *master.MasterClient, toComplete string) []string {
+func validVols(client, complete interface{}) []string {
 	var (
 		validVols []string
 		vols      []*proto.VolInfo
 		err       error
 	)
-	if vols, err = client.AdminAPI().ListVols(toComplete); err != nil {
-		errout("Get volume list failed:\n%v\n", err)
+	clientSdk := client.(*sdk.MasterClient)
+	completeStr := complete.(string)
+	if vols, err = clientSdk.AdminAPI().ListVols(completeStr); err != nil {
+		errout("Error: %v", err)
 	}
 	for _, vol := range vols {
 		validVols = append(validVols, vol.Name)
@@ -34,7 +36,7 @@ func validVols(client *master.MasterClient, toComplete string) []string {
 	return validVols
 }
 
-func validDataNodes(client *master.MasterClient, toComplete string) []string {
+func validDataNodes(client *sdk.MasterClient, toComplete string) []string {
 	var (
 		validDataNodes []string
 		clusterView    *proto.ClusterView
@@ -42,7 +44,7 @@ func validDataNodes(client *master.MasterClient, toComplete string) []string {
 		err error
 	)
 	if clusterView, err = client.AdminAPI().GetCluster(); err != nil {
-		errout("Get data node list failed:\n%v\n", err)
+		errout("Error: %v", err)
 	}
 	for _, dn := range clusterView.DataNodes {
 		validDataNodes = append(validDataNodes, dn.Addr)
@@ -50,18 +52,47 @@ func validDataNodes(client *master.MasterClient, toComplete string) []string {
 	return validDataNodes
 }
 
-func validMetaNodes(client *master.MasterClient, toComplete string) []string {
+func validMetaNodes(client *sdk.MasterClient, toComplete string) []string {
 	var (
 		validMetaNodes []string
 		clusterView    *proto.ClusterView
-
 		err error
 	)
 	if clusterView, err = client.AdminAPI().GetCluster(); err != nil {
-		errout("Get meta node list failed:\n%v\n", err)
+		errout("Error: %v", err)
 	}
 	for _, mn := range clusterView.MetaNodes {
 		validMetaNodes = append(validMetaNodes, mn.Addr)
 	}
 	return validMetaNodes
+}
+
+func validUsers(client *sdk.MasterClient, toComplete string) []string {
+	var (
+		validUsers []string
+		users      []*proto.UserInfo
+		err        error
+	)
+	if users, err = client.UserAPI().ListUsers(toComplete); err != nil {
+		errout("Error: %v", err)
+	}
+	for _, user := range users {
+		validUsers = append(validUsers, user.UserID)
+	}
+	return validUsers
+}
+
+func validZones(client *sdk.MasterClient, toComplete string) []string {
+	var (
+		validZones []string
+		zones      []*proto.ZoneView
+		err        error
+	)
+	if zones, err = client.AdminAPI().ListZones(); err != nil {
+		errout("Error: %v", err)
+	}
+	for _, zone := range zones {
+		validZones = append(validZones, zone.Name)
+	}
+	return validZones
 }

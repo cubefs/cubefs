@@ -16,11 +16,11 @@ package main
 
 import (
 	"fmt"
-	"os"
-
 	"github.com/chubaofs/chubaofs/cli/cmd"
 	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/spf13/cobra"
+	"os"
 )
 
 var (
@@ -32,17 +32,19 @@ var (
 func runCLI() (err error) {
 	var cfg *cmd.Config
 	if cfg, err = cmd.LoadConfig(); err != nil {
+		fmt.Printf("init cli log err[%v]", err)
 		return
 	}
-	cfscli := setupCommands(cfg)
-	err = cfscli.Execute()
+	cfsCli := setupCommands(cfg)
+	if err = cfsCli.Execute(); err != nil {
+		log.LogErrorf("Command fail, err:%v", err)
+	}
 	return
 }
 
 func setupCommands(cfg *cmd.Config) *cobra.Command {
 	var mc = master.NewMasterClient(cfg.MasterAddr, false)
-	mc.DataNodeProfPort = cfg.DataNodeProfPort
-	mc.MetaNodeProfPort = cfg.MetaNodeProfPort
+	mc.SetTimeout(cfg.Timeout)
 	cfsRootCmd := cmd.NewRootCmd(mc)
 	var completionCmd = &cobra.Command{
 		Use:   "completion",
@@ -75,7 +77,10 @@ following command to execute:
 
 func main() {
 	var err error
+	_, err = log.InitLog("/tmp/cfs", "cli", log.DebugLevel, nil)
+	defer log.LogFlush()
 	if err = runCLI(); err != nil {
+		log.LogFlush()
 		_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}

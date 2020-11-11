@@ -32,28 +32,24 @@ import (
    transferred over the network. */
 
 type clusterValue struct {
+	Name                        string
+	Threshold                   float32
+	DisableAutoAllocate         bool
+	DataNodeDeleteLimitRate     uint64
+	MetaNodeDeleteBatchCount    uint64
+	MetaNodeDeleteWorkerSleepMs uint64
 	DataNodeAutoRepairLimitRate uint64
-	Name                              string
-	Threshold                         float32
-	DisableAutoAllocate               bool
-	DataNodeDeleteLimitRate           uint64
-	MetaNodeDeleteBatchCount          uint64
-	MetaNodeDeleteWorkerSleepMs       uint64
-	PoolSizeOfDataPartitionsInRecover int32
-	PoolSizeOfMetaPartitionsInRecover int32
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
 	cv = &clusterValue{
+		Name:                        c.Name,
+		Threshold:                   c.cfg.MetaNodeThreshold,
+		DataNodeDeleteLimitRate:     c.cfg.DataNodeDeleteLimitRate,
+		MetaNodeDeleteBatchCount:    c.cfg.MetaNodeDeleteBatchCount,
+		MetaNodeDeleteWorkerSleepMs: c.cfg.MetaNodeDeleteWorkerSleepMs,
 		DataNodeAutoRepairLimitRate: c.cfg.DataNodeAutoRepairLimitRate,
-		Name:                              c.Name,
-		Threshold:                         c.cfg.MetaNodeThreshold,
-		DataNodeDeleteLimitRate:           c.cfg.DataNodeDeleteLimitRate,
-		MetaNodeDeleteBatchCount:          c.cfg.MetaNodeDeleteBatchCount,
-		MetaNodeDeleteWorkerSleepMs:       c.cfg.MetaNodeDeleteWorkerSleepMs,
-		DisableAutoAllocate:               c.DisableAutoAllocate,
-		PoolSizeOfDataPartitionsInRecover: c.cfg.DataPartitionsRecoverPoolSize,
-		PoolSizeOfMetaPartitionsInRecover: c.cfg.MetaPartitionsRecoverPoolSize,
+		DisableAutoAllocate:         c.DisableAutoAllocate,
 	}
 	return cv
 }
@@ -138,9 +134,8 @@ type volValue struct {
 	Owner             string
 	FollowerRead      bool
 	Authenticate      bool
-	EnableToken       bool
 	CrossZone         bool
-	AutoRepair        bool
+	EnableToken       bool
 	ZoneName          string
 	OSSAccessKey      string
 	OSSSecretKey      string
@@ -167,9 +162,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		Owner:             vol.Owner,
 		FollowerRead:      vol.FollowerRead,
 		Authenticate:      vol.authenticate,
-		AutoRepair:        vol.autoRepair,
-		ZoneName:          vol.zoneName,
 		CrossZone:         vol.crossZone,
+		ZoneName:          vol.zoneName,
 		EnableToken:       vol.enableToken,
 		OSSAccessKey:      vol.OSSAccessKey,
 		OSSSecretKey:      vol.OSSSecretKey,
@@ -533,16 +527,7 @@ func (c *Cluster) updateMetaNodeDeleteBatchCount(val uint64) {
 func (c *Cluster) updateMetaNodeDeleteWorkerSleepMs(val uint64) {
 	atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, val)
 }
-func (c *Cluster) updateRecoverPoolSize(dpPoolSize, mpPoolSize int32) {
-	if dpPoolSize == 0 {
-		dpPoolSize = defaultRecoverPoolSize
-	}
-	if mpPoolSize == 0 {
-		mpPoolSize = defaultRecoverPoolSize
-	}
-	atomic.StoreInt32(&c.cfg.DataPartitionsRecoverPoolSize, dpPoolSize)
-	atomic.StoreInt32(&c.cfg.MetaPartitionsRecoverPoolSize, mpPoolSize)
-}
+
 func (c *Cluster) updateDataNodeAutoRepairLimit(val uint64) {
 	atomic.StoreUint64(&c.cfg.DataNodeAutoRepairLimitRate, val)
 }
@@ -564,13 +549,11 @@ func (c *Cluster) loadClusterValue() (err error) {
 			return err
 		}
 		c.cfg.MetaNodeThreshold = cv.Threshold
-		c.cfg.nodeSetCapacity = defaultNodeSetCapacity
 		c.DisableAutoAllocate = cv.DisableAutoAllocate
 		c.updateMetaNodeDeleteBatchCount(cv.MetaNodeDeleteBatchCount)
 		c.updateMetaNodeDeleteWorkerSleepMs(cv.MetaNodeDeleteWorkerSleepMs)
 		c.updateDataNodeDeleteLimitRate(cv.DataNodeDeleteLimitRate)
 		c.updateDataNodeAutoRepairLimit(cv.DataNodeAutoRepairLimitRate)
-		c.updateRecoverPoolSize(cv.PoolSizeOfDataPartitionsInRecover, cv.PoolSizeOfMetaPartitionsInRecover)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}
 	return
@@ -660,7 +643,7 @@ func (c *Cluster) loadMetaNodes() (err error) {
 			}
 		}
 		c.metaNodes.Store(metaNode.Addr, metaNode)
-		log.LogInfof("action[loadMetaNodes],metaNode[%v],id[%v],zone[%v],ns[%v]", metaNode.Addr, mnv.ID, mnv.ZoneName, mnv.NodeSetID)
+		log.LogInfof("action[loadMetaNodes],metaNode[%v], metaNodeID[%v],zone[%v],ns[%v]", metaNode.Addr, metaNode.ID, mnv.ZoneName, mnv.NodeSetID)
 	}
 	return
 }
@@ -677,13 +660,10 @@ func (c *Cluster) loadVols() (err error) {
 			err = fmt.Errorf("action[loadVols],value:%v,unmarshal err:%v", string(value), err)
 			return err
 		}
-		if !vv.CrossZone && vv.ZoneName == "" {
-			vv.ZoneName = DefaultZoneName
-		}
 		vol := newVolFromVolValue(vv)
 		vol.Status = vv.Status
 		c.putVol(vol)
-		log.LogInfof("action[loadVols],vol[%v],id[%v],status[%v]", vol.Name, vv.ID, vv.Status)
+		log.LogInfof("action[loadVols],vol[%v]", vol.Name)
 	}
 	return
 }
@@ -721,9 +701,6 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		mp.setPeers(mpv.Peers)
 		mp.OfflinePeerID = mpv.OfflinePeerID
 		mp.IsRecover = mpv.IsRecover
-		if mp.IsRecover {
-			c.putMigratedMetaPartitions("history", mp.PartitionID)
-		}
 		vol.addMetaPartition(mp)
 		log.LogInfof("action[loadMetaPartitions],vol[%v],mp[%v]", vol.Name, mp.PartitionID)
 	}
@@ -768,9 +745,6 @@ func (c *Cluster) loadDataPartitions() (err error) {
 				continue
 			}
 			dp.afterCreation(rv.Addr, rv.DiskPath, c)
-		}
-		if dp.isRecover {
-			c.putMigratedDataPartitionIDs(nil, "history", dp.PartitionID)
 		}
 		vol.dataPartitions.put(dp)
 		log.LogInfof("action[loadDataPartitions],vol[%v],dp[%v]", vol.Name, dp.PartitionID)
