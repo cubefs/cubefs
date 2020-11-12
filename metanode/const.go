@@ -137,16 +137,18 @@ const (
 
 // Configuration keys
 const (
-	cfgLocalIP           = "localIP"
-	cfgListen            = "listen"
-	cfgMetadataDir       = "metadataDir"
-	cfgRaftDir           = "raftDir"
-	cfgMasterAddrs       = "masterAddrs" // will be deprecated
-	cfgRaftHeartbeatPort = "raftHeartbeatPort"
-	cfgRaftReplicaPort   = "raftReplicaPort"
-	cfgDeleteBatchCount  = "deleteBatchCount"
-	cfgTotalMem          = "totalMem"
-	cfgZoneName          = "zoneName"
+	cfgLocalIP             = "localIP"
+	cfgListen              = "listen"
+	cfgMetadataDir         = "metadataDir"
+	cfgRaftDir             = "raftDir"
+	cfgIgnoreChecksumError = "ignoreChecksumError"
+	cfgChecksumFn          = "checksumFunc"
+	cfgMasterAddrs         = "masterAddrs" // will be deprecated
+	cfgRaftHeartbeatPort   = "raftHeartbeatPort"
+	cfgRaftReplicaPort     = "raftReplicaPort"
+	cfgDeleteBatchCount    = "deleteBatchCount"
+	cfgTotalMem            = "totalMem"
+	cfgZoneName            = "zoneName"
 
 	metaNodeDeleteBatchCountKey = "batchCount"
 )

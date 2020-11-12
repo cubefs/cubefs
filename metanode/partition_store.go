@@ -16,9 +16,11 @@ package metanode
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/hashfactory"
 	"hash/crc32"
 	"io"
 	"io/ioutil"
@@ -27,11 +29,9 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/chubaofs/chubaofs/util/log"
-
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
-	mmap "github.com/edsrzf/mmap-go"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const (
@@ -48,30 +48,76 @@ const (
 	metadataFileTmp = ".meta"
 )
 
+func getChecksumFileName(originName string) string {
+	return ".checksum." + originName
+}
+
+func (mp *metaPartition) loadChecksum(rootDir string, originFileName string) (sum []byte, checksumTyp string, err error) {
+	checksumFile := path.Join(rootDir, getChecksumFileName(originFileName))
+	sum, checksumTyp, err = readChecksumFromFile(checksumFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.LogInfof("[LoadChecksumFile]: checksum file %s not found", checksumFile)
+		} else {
+			log.LogErrorf("[LoadChecksumFile]: failed to open checksum file %s, %s", checksumFile, err)
+		}
+	}
+	log.LogInfof("[loadChecksumFile]: read checksum success checksum type %s, checksum %v", checksumTyp, sum)
+	return
+}
+
 func (mp *metaPartition) loadMetadata() (err error) {
 	metaFile := path.Join(mp.config.RootDir, metadataFile)
 	fp, err := os.OpenFile(metaFile, os.O_RDONLY, 0644)
 	if err != nil {
-		err = errors.NewErrorf("[loadMetadata]: OpenFile %s", err.Error())
+		err = errors.NewErrorf("[loadMetadata] OpenFile: %s", err.Error())
 		return
 	}
 	defer fp.Close()
-	data, err := ioutil.ReadAll(fp)
-	if err != nil || len(data) == 0 {
-		err = errors.NewErrorf("[loadMetadata]: ReadFile %s, data: %s", err.Error(),
-			string(data))
+
+	sum, typ, errload := mp.loadChecksum(mp.config.RootDir, metadataFile)
+	if !mp.config.IgnoreChecksumError && errload != nil && !os.IsNotExist(errload) {
+		return errors.NewErrorf("[loadMetadata] loadChecksum: %s", errload.Error())
+	}
+
+	var (
+		reader io.Reader = fp
+		data   []byte
+	)
+	if sum != nil {
+		hashFn := hashfactory.New(typ)
+		reader = io.TeeReader(fp, hashFn)
+		defer func() {
+			if err == nil {
+				if sum2 := hashFn.Sum(nil); !bytes.Equal(sum2, sum) {
+					log.LogErrorf("loadMetadata: checksum not equal, should be %s, actual is %s", sum, sum2)
+					if !mp.config.IgnoreChecksumError {
+						err = errors.NewErrorf("[loadMetadata]: Checksum failed")
+					}
+				}
+			}
+		}()
+	}
+	data, err = ioutil.ReadAll(reader)
+	if err != nil {
+		err = errors.NewErrorf("[loadMetadata]: ReadFile %s, data: %s", err.Error(), string(data))
 		return
 	}
+	if len(data) == 0 {
+		err = errors.NewErrorf("[loadMetadata]: empty data")
+		return
+	}
+
 	mConf := &MetaPartitionConfig{}
 	if err = json.Unmarshal(data, mConf); err != nil {
 		err = errors.NewErrorf("[loadMetadata]: Unmarshal MetaPartitionConfig %s",
 			err.Error())
 		return
 	}
-
 	if mConf.checkMeta() != nil {
 		return
 	}
+
 	mp.config.PartitionId = mConf.PartitionId
 	mp.config.VolName = mConf.VolName
 	mp.config.Start = mConf.Start
@@ -103,7 +149,26 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 		return
 	}
 	defer fp.Close()
-	reader := bufio.NewReaderSize(fp, 4*1024*1024)
+
+	sum, typ, errload := mp.loadChecksum(rootDir, inodeFile)
+	if !mp.config.IgnoreChecksumError && errload != nil && !os.IsNotExist(errload) {
+		return errors.NewErrorf("[loadInode] loadChecksum: %s", errload.Error())
+	}
+	reader := io.Reader(bufio.NewReaderSize(fp, 4*1024*1024))
+	if sum != nil {
+		hashFn := hashfactory.New(typ)
+		reader = io.TeeReader(reader, hashFn)
+		defer func() {
+			if err == nil {
+				if sum2 := hashFn.Sum(nil); !bytes.Equal(sum2, sum) {
+					log.LogErrorf("loadInode: checksum not equal, should be %s, actual is %s", sum, sum2)
+					if !mp.config.IgnoreChecksumError {
+						err = errors.NewErrorf("[loadInode] Checksum failed")
+					}
+				}
+			}
+		}()
+	}
 	inoBuf := make([]byte, 4)
 	for {
 		inoBuf = inoBuf[:4]
@@ -112,7 +177,7 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 		if err != nil {
 			if err == io.EOF {
 				err = nil
-				return
+				break
 			}
 			err = errors.NewErrorf("[loadInode] ReadHeader: %s", err.Error())
 			return
@@ -142,6 +207,7 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 		}
 		numInodes += 1
 	}
+	return nil
 }
 
 // Load dentry from the dentry snapshot.
@@ -167,9 +233,27 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 		err = errors.NewErrorf("[loadDentry] OpenFile: %s", err.Error())
 		return
 	}
-
 	defer fp.Close()
-	reader := bufio.NewReaderSize(fp, 4*1024*1024)
+
+	sum, typ, errload := mp.loadChecksum(rootDir, dentryFile)
+	if !mp.config.IgnoreChecksumError && errload != nil && !os.IsNotExist(errload) {
+		return errors.NewErrorf("[loadDentry] loadChecksum: %s", errload.Error())
+	}
+	reader := io.Reader(bufio.NewReaderSize(fp, 4*1024*1024))
+	if sum != nil {
+		hashFn := hashfactory.New(typ)
+		reader = io.TeeReader(reader, hashFn)
+		defer func() {
+			if err == nil {
+				if sum2 := hashFn.Sum(nil); !bytes.Equal(sum2, sum) {
+					log.LogErrorf("loadDentry: checksum not equal, should be %s, actual is %s", sum, sum2)
+					if !mp.config.IgnoreChecksumError {
+						err = errors.NewErrorf("[loadDentry] Checksum failed")
+					}
+				}
+			}
+		}()
+	}
 	dentryBuf := make([]byte, 4)
 	for {
 		dentryBuf = dentryBuf[:4]
@@ -178,7 +262,7 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 		if err != nil {
 			if err == io.EOF {
 				err = nil
-				return
+				break
 			}
 			err = errors.NewErrorf("[loadDentry] ReadHeader: %s", err.Error())
 			return
@@ -194,7 +278,7 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 		}
 		_, err = io.ReadFull(reader, dentryBuf)
 		if err != nil {
-			err = errors.NewErrorf("[loadDentry]: ReadBody: %s", err.Error())
+			err = errors.NewErrorf("[loadDentry] ReadBody: %s", err.Error())
 			return
 		}
 		dentry := &Dentry{}
@@ -208,6 +292,7 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 		}
 		numDentries += 1
 	}
+	return nil
 }
 
 func (mp *metaPartition) loadExtend(rootDir string) error {
@@ -220,42 +305,67 @@ func (mp *metaPartition) loadExtend(rootDir string) error {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		_ = fp.Close()
-	}()
-	var mem mmap.MMap
-	if mem, err = mmap.Map(fp, mmap.RDONLY, 0); err != nil {
-		return err
+	defer fp.Close()
+
+	sum, typ, errload := mp.loadChecksum(rootDir, extendFile)
+	if !mp.config.IgnoreChecksumError && errload != nil && !os.IsNotExist(errload) {
+		return errors.NewErrorf("[loadExtend] loadChecksum: %s", errload.Error())
 	}
-	defer func() {
-		_ = mem.Unmap()
-	}()
-	var offset, n int
+	reader := io.Reader(fp)
+	if sum != nil {
+		hashFn := hashfactory.New(typ)
+		reader = io.TeeReader(reader, hashFn)
+		defer func() {
+			if err == nil {
+				if sum2 := hashFn.Sum(nil); !bytes.Equal(sum2, sum) {
+					log.LogErrorf("loadExtend: checksum not equal, should be %s, actual is %s", sum, sum2)
+					if !mp.config.IgnoreChecksumError {
+						err = errors.NewErrorf("[loadExtend] Checksum failed")
+					}
+				}
+			}
+		}()
+	}
+	bufReader := bufio.NewReader(reader)
+
 	// read number of extends
 	var numExtends uint64
-	numExtends, n = binary.Uvarint(mem)
-	offset += n
+	numExtends, err = binary.ReadUvarint(bufReader)
+	if err != nil {
+		log.LogErrorf("loadExtend: failed to load numExtends: %s", err.Error())
+		return errors.NewErrorf("[loadDentry] ReadUvarint: %s", err.Error())
+	}
+	xattrBuf := make([]byte, 4096)
 	for i := uint64(0); i < numExtends; i++ {
 		// read length
 		var numBytes uint64
-		numBytes, n = binary.Uvarint(mem[offset:])
-		offset += n
+		if numBytes, err = binary.ReadUvarint(bufReader); err != nil {
+			log.LogErrorf("loadExtend: failed to load numBytes: %s", err.Error())
+			return errors.NewErrorf("[loadDentry] ReadUvarint: %s", err.Error())
+		}
+		if cap(xattrBuf) >= int(numBytes) {
+			xattrBuf = xattrBuf[:numBytes]
+		} else {
+			xattrBuf = make([]byte, numBytes)
+		}
+		if _, err = io.ReadFull(bufReader, xattrBuf); err != nil {
+			log.LogErrorf("loadExtend: failed to load extent: %s", err.Error())
+			return errors.NewErrorf("[loadExtend]  ReadFull: %s", err.Error())
+		}
 		var extend *Extend
-		if extend, err = NewExtendFromBytes(mem[offset : offset+int(numBytes)]); err != nil {
+		if extend, err = NewExtendFromBytes(xattrBuf); err != nil {
 			return err
 		}
 		log.LogDebugf("loadExtend: new extend from bytes: partitionID（%v) volume(%v) inode(%v)",
 			mp.config.PartitionId, mp.config.VolName, extend.inode)
 		_ = mp.fsmSetXAttr(extend)
-		offset += int(numBytes)
 	}
 	log.LogInfof("loadExtend: load complete: partitionID(%v) volume(%v) numExtends(%v) filename(%v)",
 		mp.config.PartitionId, mp.config.VolName, numExtends, filename)
 	return nil
 }
 
-func (mp *metaPartition) loadMultipart(rootDir string) error {
-	var err error
+func (mp *metaPartition) loadMultipart(rootDir string) (err error) {
 	filename := path.Join(rootDir, multipartFile)
 	if _, err = os.Stat(filename); err != nil {
 		return nil
@@ -264,31 +374,57 @@ func (mp *metaPartition) loadMultipart(rootDir string) error {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		_ = fp.Close()
-	}()
-	var mem mmap.MMap
-	if mem, err = mmap.Map(fp, mmap.RDONLY, 0); err != nil {
-		return err
+	defer fp.Close()
+
+	sum, typ, errload := mp.loadChecksum(rootDir, multipartFile)
+	if !mp.config.IgnoreChecksumError && errload != nil && !os.IsNotExist(errload) {
+		return errors.NewErrorf("[loadMultipart] loadChecksum: %s", errload.Error())
 	}
-	defer func() {
-		_ = mem.Unmap()
-	}()
-	var offset, n int
+	reader := io.Reader(fp)
+	if sum != nil {
+		hashFn := hashfactory.New(typ)
+		reader = io.TeeReader(reader, hashFn)
+		defer func() {
+			if err == nil {
+				if sum2 := hashFn.Sum(nil); !bytes.Equal(sum2, sum) {
+					log.LogErrorf("loadMultipart: checksum not equal, should be %s, actual is %s", sum, sum2)
+					if !mp.config.IgnoreChecksumError {
+						err = errors.NewErrorf("[loadMultipart] Checksum failed")
+					}
+				}
+			}
+		}()
+	}
+	bufReader := bufio.NewReader(reader)
+
 	// read number of extends
 	var numMultiparts uint64
-	numMultiparts, n = binary.Uvarint(mem)
-	offset += n
+	numMultiparts, err = binary.ReadUvarint(bufReader)
+	if err != nil {
+		log.LogErrorf("loadMultipart: failed to load numMultiparts: %s", err.Error())
+		return errors.NewErrorf("[loadMultipart] ReadUvarint: %s", err.Error())
+	}
+	multipartBuf := make([]byte, 4096)
 	for i := uint64(0); i < numMultiparts; i++ {
 		// read length
 		var numBytes uint64
-		numBytes, n = binary.Uvarint(mem[offset:])
-		offset += n
+		if numBytes, err = binary.ReadUvarint(bufReader); err != nil {
+			log.LogErrorf("loadMultipart: failed to load numBytes: %s", err.Error())
+			return errors.NewErrorf("[loadMultipart]  ReadUvarint: %s", err.Error())
+		}
+		if cap(multipartBuf) >= int(numBytes) {
+			multipartBuf = multipartBuf[:numBytes]
+		} else {
+			multipartBuf = make([]byte, numBytes)
+		}
+		if _, err = io.ReadFull(bufReader, multipartBuf); err != nil {
+			log.LogErrorf("loadMultipart: failed to load multipart: %s", err.Error())
+			return errors.NewErrorf("[loadMultipart]  ReadFull: %s", err.Error())
+		}
 		var multipart *Multipart
-		multipart = MultipartFromBytes(mem[offset : offset+int(numBytes)])
+		multipart = MultipartFromBytes(multipartBuf)
 		log.LogDebugf("loadMultipart: create multipart from bytes: partitionID（%v) multipartID(%v)", mp.config.PartitionId, multipart.id)
 		mp.fsmCreateMultipart(multipart)
-		offset += int(numBytes)
 	}
 	log.LogInfof("loadMultipart: load complete: partitionID(%v) numMultiparts(%v) filename(%v)",
 		mp.config.PartitionId, numMultiparts, filename)
@@ -301,7 +437,32 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 		err = nil
 		return
 	}
-	data, err := ioutil.ReadFile(filename)
+	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer fp.Close()
+
+	sum, typ, errload := mp.loadChecksum(rootDir, applyIDFile)
+	if !mp.config.IgnoreChecksumError && errload != nil && !os.IsNotExist(errload) {
+		return errors.NewErrorf("[loadApplyID] loadChecksum: %s", errload.Error())
+	}
+	reader := io.Reader(fp)
+	if sum != nil {
+		hashFn := hashfactory.New(typ)
+		reader = io.TeeReader(reader, hashFn)
+		defer func() {
+			if err == nil {
+				if sum2 := hashFn.Sum(nil); !bytes.Equal(sum2, sum) {
+					log.LogErrorf("loadApplyID: checksum not equal, should be %s, actual is %s", sum, sum2)
+					if !mp.config.IgnoreChecksumError {
+						err = errors.NewErrorf("[loadApplyID] Checksum failed")
+					}
+				}
+			}
+		}()
+	}
+	data, err := ioutil.ReadAll(reader)
 	if err != nil {
 		if err == os.ErrNotExist {
 			err = nil
@@ -324,13 +485,35 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 		err = errors.NewErrorf("[loadApplyID] ReadApplyID: %s", err.Error())
 		return
 	}
-
 	if cursor > atomic.LoadUint64(&mp.config.Cursor) {
 		atomic.StoreUint64(&mp.config.Cursor, cursor)
 	}
 	log.LogInfof("loadApplyID: load complete: partitionID(%v) volume(%v) applyID(%v) filename(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.applyID, filename)
 	return
+}
+
+func (mp *metaPartition) persistChecksum(sum []byte, typ string, root, originFileName string) (err error) {
+	checksumFileName := getChecksumFileName(originFileName)
+	tmpName := ".tmp" + checksumFileName
+	tmpFile := path.Join(root, tmpName)
+	if err = writeChecksumToFile(tmpFile, sum, typ); err != nil {
+		log.LogErrorf("persistChecksum: failed to persist checksum to tmpFile %s: %s", tmpFile, err)
+		return
+	}
+	defer func() {
+		if rmErr := os.Remove(tmpFile); rmErr != nil && !os.IsNotExist(rmErr) {
+			log.LogErrorf("persistChecksum: failed to delete checksum tmpFile %s: %s", tmpFile, rmErr)
+		}
+	}()
+	checksumFile := path.Join(root, checksumFileName)
+	err = os.Rename(tmpFile, checksumFile)
+	if err != nil {
+		log.LogErrorf("persistChecksum: failed to rename tmpFile %s to checksumFile %s", tmpFile, checksumFile)
+	} else {
+		log.LogInfof("persistChecksum: create checksumFile %s success", checksumFile)
+	}
+	return err
 }
 
 func (mp *metaPartition) persistMetadata() (err error) {
@@ -342,7 +525,7 @@ func (mp *metaPartition) persistMetadata() (err error) {
 	// TODO Unhandled errors
 	os.MkdirAll(mp.config.RootDir, 0755)
 	filename := path.Join(mp.config.RootDir, metadataFileTmp)
-	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0644)
 	if err != nil {
 		return
 	}
@@ -352,18 +535,31 @@ func (mp *metaPartition) persistMetadata() (err error) {
 		fp.Close()
 		os.Remove(filename)
 	}()
+	writer := io.Writer(fp)
+	if mp.genChecksumFn != nil {
+		hashFn := mp.genChecksumFn()
+		writer = io.MultiWriter(writer, hashFn)
+		defer func() {
+			if err == nil {
+				err = mp.persistChecksum(hashFn.Sum(nil), mp.config.ChecksumFunc, mp.config.RootDir, metadataFile)
+				if err != nil {
+					log.LogErrorf("persistMetadata: failed to persist metadata checksum: %s", err.Error())
+				}
+			}
+		}()
+	}
 
 	data, err := json.Marshal(mp.config)
 	if err != nil {
 		return
 	}
-	if _, err = fp.Write(data); err != nil {
+	if _, err = writer.Write(data); err != nil {
 		return
 	}
 	if err = os.Rename(filename, path.Join(mp.config.RootDir, metadataFile)); err != nil {
 		return
 	}
-	log.LogInfof("persistMetata: persist complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
+	log.LogInfof("persistMetadata: persist complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor)
 	return
 }
@@ -379,7 +575,22 @@ func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) 
 		err = fp.Sync()
 		fp.Close()
 	}()
-	if _, err = fp.WriteString(fmt.Sprintf("%d|%d", sm.applyIndex, atomic.LoadUint64(&mp.config.Cursor))); err != nil {
+	writer := io.Writer(fp)
+	if mp.genChecksumFn != nil {
+		hashFn := mp.genChecksumFn()
+		writer = io.MultiWriter(writer, hashFn)
+		defer func() {
+			if err == nil {
+				err = mp.persistChecksum(hashFn.Sum(nil), mp.config.ChecksumFunc, rootDir, applyIDFile)
+				if err != nil {
+					log.LogErrorf("storeApplyID: failed to persist applyId checksum: %s", err.Error())
+				}
+			}
+		}()
+	}
+
+	data := []byte(fmt.Sprintf("%d|%d", sm.applyIndex, atomic.LoadUint64(&mp.config.Cursor)))
+	if _, err = writer.Write(data); err != nil {
 		return
 	}
 	log.LogInfof("storeApplyID: store complete: partitionID(%v) volume(%v) applyID(%v)",
@@ -400,9 +611,24 @@ func (mp *metaPartition) storeInode(rootDir string,
 		// TODO Unhandled errors
 		fp.Close()
 	}()
+
+	crc32Sign := crc32.NewIEEE()
+	writer := io.MultiWriter(fp, crc32Sign)
+	if mp.genChecksumFn != nil {
+		hashFn := mp.genChecksumFn()
+		writer = io.MultiWriter(writer, hashFn)
+		defer func() {
+			if err == nil {
+				err = mp.persistChecksum(hashFn.Sum(nil), mp.config.ChecksumFunc, rootDir, inodeFile)
+				if err != nil {
+					log.LogErrorf("storeInode: failed to persist inode checksum: %s", err.Error())
+				}
+			}
+		}()
+	}
+
 	var data []byte
 	lenBuf := make([]byte, 4)
-	sign := crc32.NewIEEE()
 	sm.inodeTree.Ascend(func(i BtreeItem) bool {
 		ino := i.(*Inode)
 		if data, err = ino.Marshal(); err != nil {
@@ -410,22 +636,15 @@ func (mp *metaPartition) storeInode(rootDir string,
 		}
 		// set length
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
-		if _, err = fp.Write(lenBuf); err != nil {
+		if _, err = writer.Write(lenBuf); err != nil {
 			return false
 		}
-		if _, err = sign.Write(lenBuf); err != nil {
-			return false
-		}
-		// set body
-		if _, err = fp.Write(data); err != nil {
-			return false
-		}
-		if _, err = sign.Write(data); err != nil {
+		if _, err = writer.Write(data); err != nil {
 			return false
 		}
 		return true
 	})
-	crc = sign.Sum32()
+	crc = crc32Sign.Sum32()
 	log.LogInfof("storeInode: store complete: partitoinID(%v) volume(%v) numInodes(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.inodeTree.Len(), crc)
 	return
@@ -444,9 +663,24 @@ func (mp *metaPartition) storeDentry(rootDir string,
 		// TODO Unhandled errors
 		fp.Close()
 	}()
+
+	crc32Sign := crc32.NewIEEE()
+	writer := io.MultiWriter(fp, crc32Sign)
+	if mp.genChecksumFn != nil {
+		hashFn := mp.genChecksumFn()
+		writer = io.MultiWriter(writer, hashFn)
+		defer func() {
+			if err == nil {
+				err = mp.persistChecksum(hashFn.Sum(nil), mp.config.ChecksumFunc, rootDir, dentryFile)
+				if err != nil {
+					log.LogErrorf("storeDentry: failed to persist dentry checksum: %s", err.Error())
+				}
+			}
+		}()
+	}
+
 	var data []byte
 	lenBuf := make([]byte, 4)
-	sign := crc32.NewIEEE()
 	sm.dentryTree.Ascend(func(i BtreeItem) bool {
 		dentry := i.(*Dentry)
 		data, err = dentry.Marshal()
@@ -455,21 +689,15 @@ func (mp *metaPartition) storeDentry(rootDir string,
 		}
 		// set length
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
-		if _, err = fp.Write(lenBuf); err != nil {
+		if _, err = writer.Write(lenBuf); err != nil {
 			return false
 		}
-		if _, err = sign.Write(lenBuf); err != nil {
-			return false
-		}
-		if _, err = fp.Write(data); err != nil {
-			return false
-		}
-		if _, err = sign.Write(data); err != nil {
+		if _, err = writer.Write(data); err != nil {
 			return false
 		}
 		return true
 	})
-	crc = sign.Sum32()
+	crc = crc32Sign.Sum32()
 	log.LogInfof("storeDentry: store complete: partitoinID(%v) volume(%v) numDentries(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.dentryTree.Len(), crc)
 	return
@@ -489,16 +717,29 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 			err = closeErr
 		}
 	}()
-	var writer = bufio.NewWriterSize(f, 4*1024*1024)
-	var crc32 = crc32.NewIEEE()
-	var varintTmp = make([]byte, binary.MaxVarintLen64)
-	var n int
+	buffer := bufio.NewWriterSize(f, 4*1024*1024)
+	crc32Sign := crc32.NewIEEE()
+	writer := io.MultiWriter(buffer, crc32Sign)
+	if mp.genChecksumFn != nil {
+		hashFn := mp.genChecksumFn()
+		writer = io.MultiWriter(writer, hashFn)
+		defer func() {
+			if err == nil {
+				err = mp.persistChecksum(hashFn.Sum(nil), mp.config.ChecksumFunc, rootDir, extendFile)
+				if err != nil {
+					log.LogErrorf("storeExtend: failed to persist extend checksum: %s", err.Error())
+				}
+			}
+		}()
+	}
+
+	var (
+		varintTmp = make([]byte, binary.MaxVarintLen64)
+		n         int
+	)
 	// write number of extends
 	n = binary.PutUvarint(varintTmp, uint64(extendTree.Len()))
 	if _, err = writer.Write(varintTmp[:n]); err != nil {
-		return
-	}
-	if _, err = crc32.Write(varintTmp[:n]); err != nil {
 		return
 	}
 	extendTree.Ascend(func(i BtreeItem) bool {
@@ -512,14 +753,8 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 		if _, err = writer.Write(varintTmp[:n]); err != nil {
 			return false
 		}
-		if _, err = crc32.Write(varintTmp[:n]); err != nil {
-			return false
-		}
 		// write raw
 		if _, err = writer.Write(raw); err != nil {
-			return false
-		}
-		if _, err = crc32.Write(raw); err != nil {
 			return false
 		}
 		return true
@@ -528,13 +763,13 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 		return
 	}
 
-	if err = writer.Flush(); err != nil {
+	if err = buffer.Flush(); err != nil {
 		return
 	}
 	if err = f.Sync(); err != nil {
 		return
 	}
-	crc = crc32.Sum32()
+	crc = crc32Sign.Sum32()
 	log.LogInfof("storeExtend: store complete: partitoinID(%v) volume(%v) numExtends(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, extendTree.Len(), crc)
 	return
@@ -554,16 +789,30 @@ func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint3
 			err = closeErr
 		}
 	}()
-	var writer = bufio.NewWriterSize(f, 4*1024*1024)
-	var crc32 = crc32.NewIEEE()
-	var varintTmp = make([]byte, binary.MaxVarintLen64)
-	var n int
+
+	buffer := bufio.NewWriterSize(f, 4*1024*1024)
+	crc32Sign := crc32.NewIEEE()
+	writer := io.MultiWriter(buffer, crc32Sign)
+	if mp.genChecksumFn != nil {
+		hashFn := mp.genChecksumFn()
+		writer = io.MultiWriter(writer, hashFn)
+		defer func() {
+			if err == nil {
+				err = mp.persistChecksum(hashFn.Sum(nil), mp.config.ChecksumFunc, rootDir, multipartFile)
+				if err != nil {
+					log.LogErrorf("storeMultipart: failed to persist multipart checksum: %s", err.Error())
+				}
+			}
+		}()
+	}
+
+	var (
+		varintTmp = make([]byte, binary.MaxVarintLen64)
+		n         int
+	)
 	// write number of extends
 	n = binary.PutUvarint(varintTmp, uint64(multipartTree.Len()))
 	if _, err = writer.Write(varintTmp[:n]); err != nil {
-		return
-	}
-	if _, err = crc32.Write(varintTmp[:n]); err != nil {
 		return
 	}
 	multipartTree.Ascend(func(i BtreeItem) bool {
@@ -577,14 +826,8 @@ func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint3
 		if _, err = writer.Write(varintTmp[:n]); err != nil {
 			return false
 		}
-		if _, err = crc32.Write(varintTmp[:n]); err != nil {
-			return false
-		}
 		// write raw
 		if _, err = writer.Write(raw); err != nil {
-			return false
-		}
-		if _, err = crc32.Write(raw); err != nil {
 			return false
 		}
 		return true
@@ -593,13 +836,13 @@ func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint3
 		return
 	}
 
-	if err = writer.Flush(); err != nil {
+	if err = buffer.Flush(); err != nil {
 		return
 	}
 	if err = f.Sync(); err != nil {
 		return
 	}
-	crc = crc32.Sum32()
+	crc = crc32Sign.Sum32()
 	log.LogInfof("storeMultipart: store complete: partitoinID(%v) volume(%v) numMultiparts(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, multipartTree.Len(), crc)
 	return
