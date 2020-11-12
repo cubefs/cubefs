@@ -18,8 +18,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"net"
 	syslog "log"
+	"net"
 	_ "net/http/pprof"
 	"os"
 	"path"
@@ -51,23 +51,27 @@ type MetadataManager interface {
 
 // MetadataManagerConfig defines the configures in the metadata manager.
 type MetadataManagerConfig struct {
-	NodeID    uint64
-	RootDir   string
-	ZoneName  string
-	RaftStore raftstore.RaftStore
+	NodeID              uint64
+	RootDir             string
+	ChecksumFunc        string
+	IgnoreChecksumError bool
+	ZoneName            string
+	RaftStore           raftstore.RaftStore
 }
 
 type metadataManager struct {
-	nodeId             uint64
-	zoneName           string
-	rootDir            string
-	raftStore          raftstore.RaftStore
-	connPool           *util.ConnectPool
-	state              uint32
-	mu                 sync.RWMutex
-	partitions         map[uint64]MetaPartition // Key: metaRangeId, Val: metaPartition
-	metaNode           *MetaNode
-	flDeleteBatchCount atomic.Value
+	nodeId              uint64
+	zoneName            string
+	rootDir             string
+	checksumFunc        string
+	ignoreChecksumError bool
+	raftStore           raftstore.RaftStore
+	connPool            *util.ConnectPool
+	state               uint32
+	mu                  sync.RWMutex
+	partitions          map[uint64]MetaPartition // Key: metaRangeId, Val: metaPartition
+	metaNode            *MetaNode
+	flDeleteBatchCount  atomic.Value
 }
 
 // HandleMetadataOperation handles the metadata operations.
@@ -303,10 +307,12 @@ func (m *metadataManager) loadPartitions() (err error) {
 				}
 
 				partitionConfig := &MetaPartitionConfig{
-					NodeId:    m.nodeId,
-					RaftStore: m.raftStore,
-					RootDir:   path.Join(m.rootDir, fileName),
-					ConnPool:  m.connPool,
+					NodeId:              m.nodeId,
+					RaftStore:           m.raftStore,
+					RootDir:             path.Join(m.rootDir, fileName),
+					ChecksumFunc:        m.checksumFunc,
+					IgnoreChecksumError: m.ignoreChecksumError,
+					ConnPool:            m.connPool,
 				}
 				partitionConfig.AfterStop = func() {
 					m.detachPartition(id)
@@ -370,16 +376,18 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 	partitionId := fmt.Sprintf("%d", request.PartitionID)
 
 	mpc := &MetaPartitionConfig{
-		PartitionId: request.PartitionID,
-		VolName:     request.VolName,
-		Start:       request.Start,
-		End:         request.End,
-		Cursor:      request.Start,
-		Peers:       request.Members,
-		RaftStore:   m.raftStore,
-		NodeId:      m.nodeId,
-		RootDir:     path.Join(m.rootDir, partitionPrefix+partitionId),
-		ConnPool:    m.connPool,
+		PartitionId:         request.PartitionID,
+		VolName:             request.VolName,
+		Start:               request.Start,
+		End:                 request.End,
+		Peers:               request.Members,
+		Cursor:              request.Start,
+		NodeId:              m.nodeId,
+		RootDir:             path.Join(m.rootDir, partitionPrefix+partitionId),
+		ChecksumFunc:        m.checksumFunc,
+		IgnoreChecksumError: m.ignoreChecksumError,
+		RaftStore:           m.raftStore,
+		ConnPool:            m.connPool,
 	}
 	mpc.AfterStop = func() {
 		m.detachPartition(request.PartitionID)
@@ -448,12 +456,14 @@ func (m *metadataManager) MarshalJSON() (data []byte, err error) {
 // NewMetadataManager returns a new metadata manager.
 func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) MetadataManager {
 	return &metadataManager{
-		nodeId:     conf.NodeID,
-		zoneName:   conf.ZoneName,
-		rootDir:    conf.RootDir,
-		raftStore:  conf.RaftStore,
-		partitions: make(map[uint64]MetaPartition),
-		metaNode:   metaNode,
+		nodeId:              conf.NodeID,
+		zoneName:            conf.ZoneName,
+		rootDir:             conf.RootDir,
+		checksumFunc:        conf.ChecksumFunc,
+		ignoreChecksumError: conf.IgnoreChecksumError,
+		raftStore:           conf.RaftStore,
+		partitions:          make(map[uint64]MetaPartition),
+		metaNode:            metaNode,
 	}
 }
 

@@ -17,6 +17,7 @@ package metanode
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/chubaofs/chubaofs/util/hashfactory"
 	"sort"
 	"strconv"
 	"strings"
@@ -62,20 +63,22 @@ func (sp sortedPeers) Swap(i, j int) {
 // MetaPartitionConfig is used to create a meta partition.
 type MetaPartitionConfig struct {
 	// Identity for raftStore group. RaftStore nodes in the same raftStore group must have the same groupID.
-	PartitionId uint64              `json:"partition_id"`
-	VolName     string              `json:"vol_name"`
-	Start       uint64              `json:"start"` // Minimal Inode ID of this range. (Required during initialization)
-	End         uint64              `json:"end"`   // Maximal Inode ID of this range. (Required during initialization)
-	Peers       []proto.Peer        `json:"peers"` // Peers information of the raftStore
-	Cursor      uint64              `json:"-"`     // Cursor ID of the inode that have been assigned
-	NodeId      uint64              `json:"-"`
-	RootDir     string              `json:"-"`
-	BeforeStart func()              `json:"-"`
-	AfterStart  func()              `json:"-"`
-	BeforeStop  func()              `json:"-"`
-	AfterStop   func()              `json:"-"`
-	RaftStore   raftstore.RaftStore `json:"-"`
-	ConnPool    *util.ConnectPool   `json:"-"`
+	PartitionId         uint64              `json:"partition_id"`
+	VolName             string              `json:"vol_name"`
+	Start               uint64              `json:"start"` // Minimal Inode ID of this range. (Required during initialization)
+	End                 uint64              `json:"end"`   // Maximal Inode ID of this range. (Required during initialization)
+	Peers               []proto.Peer        `json:"peers"` // Peers information of the raftStore
+	Cursor              uint64              `json:"-"`     // Cursor ID of the inode that have been assigned
+	NodeId              uint64              `json:"-"`
+	RootDir             string              `json:"-"`
+	ChecksumFunc        string              `json:"-"`
+	IgnoreChecksumError bool                `json:"-"`
+	BeforeStart         func()              `json:"-"`
+	AfterStart          func()              `json:"-"`
+	BeforeStop          func()              `json:"-"`
+	AfterStop           func()              `json:"-"`
+	RaftStore           raftstore.RaftStore `json:"-"`
+	ConnPool            *util.ConnectPool   `json:"-"`
 }
 
 func (c *MetaPartitionConfig) checkMeta() (err error) {
@@ -218,6 +221,7 @@ type metaPartition struct {
 	vol                    *Vol
 	manager                *metadataManager
 	isLoadingMetaPartition bool
+	genChecksumFn          hashfactory.FactoryFunc
 }
 
 func (mp *metaPartition) ForceSetMetaPartitionToLoadding() {
@@ -376,6 +380,7 @@ func (mp *metaPartition) getRaftPort() (heartbeat, replica int, err error) {
 func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaPartition {
 	mp := &metaPartition{
 		config:        conf,
+		genChecksumFn: hashfactory.GetFactoryFunc(conf.ChecksumFunc),
 		dentryTree:    NewBtree(),
 		inodeTree:     NewBtree(),
 		extendTree:    NewBtree(),
@@ -668,6 +673,7 @@ func (mp *metaPartition) Reset() (err error) {
 
 	return
 }
+
 //
 func (mp *metaPartition) canRemoveSelf() (canRemove bool, err error) {
 	var partition *proto.MetaPartitionInfo

@@ -15,8 +15,9 @@
 package metanode
 
 import (
-	"os"
+	"github.com/chubaofs/chubaofs/util/hashfactory"
 	syslog "log"
+	"os"
 	"strings"
 	"time"
 
@@ -45,18 +46,20 @@ var (
 // The MetaNode manages the dentry and inode information of the meta partitions on a meta node.
 // The data consistency is ensured by Raft.
 type MetaNode struct {
-	nodeId            uint64
-	listen            string
-	metadataDir       string // root dir of the metaNode
-	raftDir           string // root dir of the raftStore log
-	metadataManager   MetadataManager
-	localAddr         string
-	clusterId         string
-	raftStore         raftstore.RaftStore
-	raftHeartbeatPort string
-	raftReplicatePort string
-	zoneName          string
-	httpStopC         chan uint8
+	nodeId              uint64
+	listen              string
+	metadataDir         string // root dir of the metaNode
+	raftDir             string // root dir of the raftStore log
+	ignoreChecksumError bool   // load snapshot with checksum check
+	checksumFunc        string // persist snapshot with checksum
+	metadataManager     MetadataManager
+	localAddr           string
+	clusterId           string
+	raftStore           raftstore.RaftStore
+	raftHeartbeatPort   string
+	raftReplicatePort   string
+	zoneName            string
+	httpStopC           chan uint8
 
 	control common.Control
 }
@@ -168,6 +171,8 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	serverPort = m.listen
 	m.metadataDir = cfg.GetString(cfgMetadataDir)
 	m.raftDir = cfg.GetString(cfgRaftDir)
+	m.ignoreChecksumError = cfg.GetBool(cfgIgnoreChecksumError)
+	m.checksumFunc = cfg.GetString(cfgChecksumFn)
 	m.raftHeartbeatPort = cfg.GetString(cfgRaftHeartbeatPort)
 	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
 	m.zoneName = cfg.GetString(cfgZoneName)
@@ -189,6 +194,9 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 
 	if m.metadataDir == "" {
 		return fmt.Errorf("bad metadataDir config")
+	}
+	if m.checksumFunc != "" && !hashfactory.Exist(m.checksumFunc) {
+		return fmt.Errorf("unknown checksum type %s", m.checksumFunc)
 	}
 	if m.listen == "" {
 		return fmt.Errorf("bad listen config")
@@ -258,10 +266,12 @@ func (m *MetaNode) startMetaManager() (err error) {
 	}
 	// load metadataManager
 	conf := MetadataManagerConfig{
-		NodeID:    m.nodeId,
-		RootDir:   m.metadataDir,
-		RaftStore: m.raftStore,
-		ZoneName:  m.zoneName,
+		NodeID:              m.nodeId,
+		RootDir:             m.metadataDir,
+		ChecksumFunc:        m.checksumFunc,
+		IgnoreChecksumError: m.ignoreChecksumError,
+		ZoneName:            m.zoneName,
+		RaftStore:           m.raftStore,
 	}
 	m.metadataManager = NewMetadataManager(conf, m)
 	if err = m.metadataManager.Start(); err == nil {
