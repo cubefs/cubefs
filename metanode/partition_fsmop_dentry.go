@@ -71,6 +71,7 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 	} else {
 		if !forceUpdate {
 			parIno.IncNLink()
+			parIno.SetMtime()
 		}
 	}
 
@@ -121,6 +122,7 @@ func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (
 					ino := item.(*Inode)
 					if !ino.ShouldDelete() {
 						item.(*Inode).DecNLink()
+						item.(*Inode).SetMtime()
 					}
 				}
 			})
