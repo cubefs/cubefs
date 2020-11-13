@@ -80,14 +80,17 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	}
 
 	var extentConfig = &stream.ExtentConfig{
-		Volume:            opt.Volname,
-		Masters:           masters,
-		FollowerRead:      opt.FollowerRead,
-		ReadRate:          opt.ReadRate,
-		WriteRate:         opt.WriteRate,
-		OnAppendExtentKey: s.mw.AppendExtentKey,
-		OnGetExtents:      s.mw.GetExtents,
-		OnTruncate:        s.mw.Truncate,
+		Volume:                   opt.Volname,
+		Masters:                  masters,
+		FollowerRead:             opt.FollowerRead,
+		ReadRate:                 opt.ReadRate,
+		WriteRate:                opt.WriteRate,
+		AlignSize:                opt.AlignSize,
+		MaxExtentNumPerAlignArea: opt.MaxExtentNumPerAlignArea,
+		ForceAlignMerge:          opt.ForceAlignMerge,
+		OnAppendExtentKey:        s.mw.AppendExtentKey,
+		OnGetExtents:             s.mw.GetExtents,
+		OnTruncate:               s.mw.Truncate,
 	}
 	s.ec, err = stream.NewExtentClient(extentConfig)
 	if err != nil {
