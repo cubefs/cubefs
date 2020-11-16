@@ -18,6 +18,7 @@ import (
 	"bufio"
 	"encoding/binary"
 	"io"
+	"math"
 	"os"
 
 	"github.com/tiglabs/raft/util"
@@ -98,8 +99,20 @@ func (r *recordReader) Read() (recStartOffset int64, rec record, err error) {
 		}
 		return
 	}
+
+	// Decode and validate record type
 	rec.recType = recordType(r.typeLenBuf[0])
+	if !rec.recType.Valid() {
+		err = NewCorruptError(r.filename, recStartOffset, "illegal record type")
+		return
+	}
+
+	// Decode and validate record data length
 	rec.dataLen = binary.BigEndian.Uint64(r.typeLenBuf[1:])
+	if rec.dataLen+4 <= 0 || rec.dataLen > math.MaxUint32 {
+		err = NewCorruptError(r.filename, recStartOffset, "illegal data length")
+		return
+	}
 
 	// read data and crc
 	// WARN：不可以用buffer pool，因为log entry等decode时没有进行拷贝

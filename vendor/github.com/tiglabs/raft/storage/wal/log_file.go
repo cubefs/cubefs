@@ -182,6 +182,26 @@ func (lf *logEntryFile) ReBuildIndex() (truncateOffset int64, err error) {
 	if err == io.EOF {
 		err = nil
 	}
+
+	var fixEntry = func() (err error) {
+		if err = lf.OpenWrite(); err != nil {
+			return
+		}
+		if lf.index.Len() == 0 {
+			err = lf.w.Truncate(0)
+			return
+		}
+		var lastIndexItem indexItem
+		if lastIndexItem, err = lf.index.Get(lf.index.Last()); err == nil {
+			err = lf.w.Truncate(int64(lastIndexItem.offset))
+		}
+		return
+	}
+
+	if IsErrCorrupt(err) || err == io.ErrUnexpectedEOF {
+		err = fixEntry()
+	}
+
 	if filesize != nextRecordOffset {
 		log.Warn("logName[%v],fileSize[%v],corrupt data after offset[%v]", lf.name, filesize, nextRecordOffset)
 	}
