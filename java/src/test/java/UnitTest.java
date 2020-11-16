@@ -3,7 +3,7 @@ import io.chubao.fs.CfsMount;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
-
+import io.chubao.exception.*;
 import static org.junit.Assert.*;
 
 public class UnitTest {
@@ -23,7 +23,7 @@ public class UnitTest {
 
     @Test
     //This test is about test unlink
-    public void testUnlink01(){
+    public void testUnlink01() throws FileNotFoundException {
         int fd =mnt.open("/testUnlink.txt",CfsMount.O_WRONLY|CfsMount.O_CREAT,0644);
         assertTrue(fd>0);
         //judge
@@ -33,7 +33,7 @@ public class UnitTest {
 
     @Test
     //This test is about open a non-existent file in O_WRONLY
-    public void testOpen02() {
+    public void testOpen02() throws FileNotFoundException {
         String targetPath = "/test01.txt";
         int fd = mnt.open(targetPath, CfsMount.O_WRONLY, 0644);
         assertTrue(fd < 0);
@@ -43,7 +43,7 @@ public class UnitTest {
    @Test
     //This test is about creat a non-existent file in mnt.O_WRONLY|mnt.O_CREAT
     //judge Whether it has been created
-    public void testOpen03(){
+    public void testOpen03() throws FileNotFoundException {
         String targetPath="/test02.txt";
         //creat ana empty file test02.txt
         int fd1 =mnt.open(targetPath,CfsMount.O_WRONLY|CfsMount.O_CREAT,0644);
@@ -64,7 +64,7 @@ public class UnitTest {
    @Test
    //This test is about open a existent file in O_WRONLY
    //judge Whether it can be opened
-   public void testOpen04(){
+   public void testOpen04() throws FileNotFoundException {
         String targetPath="/test03.txt";
         //creat an empty file test03.txt
         int fd =mnt.open(targetPath,CfsMount.O_WRONLY|CfsMount.O_CREAT,0644);
@@ -83,7 +83,7 @@ public class UnitTest {
     @Test
     //This test is about open a non-existent file in RDWR|APPEND
     //judge whether it can be open
-    public void testOpen05(){
+    public void testOpen05() throws FileNotFoundException {
         String targetPath="/test04.txt";
         //open this file
         int fd =mnt.open(targetPath,CfsMount.O_RDWR|CfsMount.O_APPEND,0644);
@@ -96,7 +96,7 @@ public class UnitTest {
      @Test
     //This test is about open a existent file in RDWR|CREAT
     //judge whether it can be open
-    public void testOpen06(){
+    public void testOpen06() throws FileNotFoundException {
         String targetPath="/test05.txt";
         //creat an empty file
         int fd =mnt.open(targetPath,CfsMount.O_WRONLY|CfsMount.O_CREAT,0644);
@@ -114,7 +114,7 @@ public class UnitTest {
 
      @Test
     //This test is about open a non-existent file in RDWR|CREAT
-    public void testOpen07(){
+    public void testOpen07() throws FileNotFoundException {
         String targetPath="/test06.txt";
         //creat a empty file test06.txt
         int fd =mnt.open(targetPath,CfsMount.O_RDWR|CfsMount.O_CREAT,0644);
@@ -132,7 +132,7 @@ public class UnitTest {
 
     @Test
     //This test is about open a 0 bytes file and read it content
-    public  void testRead08(){
+    public  void testRead08() throws FileNotFoundException {
         String targetPath="test07.txt";
         //creat an empty file test07.txt
         int fd =mnt.open(targetPath,CfsMount.O_WRONLY|CfsMount.O_CREAT,0644);
@@ -180,7 +180,7 @@ public class UnitTest {
 
     @Test
     //This test is about write 5 bytes content to exists file in WRONLY
-    public void testWrite09(){
+    public void testWrite09() throws FileNotFoundException {
         String targetPath="/test08.txt";
         //creat an empty file test08.txt
         int fd=mnt.open(targetPath,CfsMount.O_WRONLY|CfsMount.O_CREAT,0644);
@@ -215,7 +215,7 @@ public class UnitTest {
 
     @Test
     //This test is about open a 10 bytes file and read it offset=5 content
-    public  void testRead10(){
+    public  void testRead10() throws FileNotFoundException {
         //creat an empty file test09.txt
         String targetPath="/test09.txt";
         int fd = mnt.open(targetPath, CfsMount.O_WRONLY|CfsMount.O_CREAT, 0644);
@@ -244,11 +244,10 @@ public class UnitTest {
 
     }
 
-
     @Test
     //This test is about open a  10 bytes file  in RDWR|APPEND
     //Judge Whether write  "append" will write over the  10 bytes content
-    public void testWrite11(){
+    public void testWrite11() throws FileNotFoundException {
         String targetPath="/test10.txt";
         //creat an empty file
         int fd = mnt.open(targetPath,CfsMount.O_WRONLY|CfsMount.O_CREAT,0644);
@@ -286,11 +285,10 @@ public class UnitTest {
 
     }
 
-
     @Test
     //This test is about open a 10 bytes file in WRONLY while offset=5
     //write 5 bytes and judge whether it write correct
-    public void testWrite12(){
+    public void testWrite12() throws FileNotFoundException {
         String targetPath="/test11.txt";
 
         //creat an empty file
@@ -329,10 +327,9 @@ public class UnitTest {
 
     }
 
-
     @Test
     //This test is about write 10 bytes content to exists file in RDWR|CREAT
-    public void testWrite13(){
+    public void testWrite13() throws FileNotFoundException {
         String targetPath="/test12.txt";
         //creat an empty file
         int fd = mnt.open(targetPath,CfsMount.O_RDWR|CfsMount.O_CREAT,0644);
@@ -371,7 +368,6 @@ public class UnitTest {
 
     }
 
-
     @Test
     //This test is about getCwd
     public void testGetCwd14(){
@@ -381,7 +377,7 @@ public class UnitTest {
 
     @Test
     //This test is about mkdirs
-    public void testMkdirs15(){
+    public void testMkdirs15() throws IOException, FileNotFoundException {
         //make a dir testMkdir under "/"
         int jg=mnt.mkdirs("/testMkdirs",0644);
         assertEquals(jg,0);
@@ -393,52 +389,20 @@ public class UnitTest {
 
     @Test
     //This test is about rm an existent dir
-    public void testRmdir16(){
+    public void testRmdir16() throws IOException, FileNotFoundException {
         //make a dir testMkdir under "/"
         int jg=mnt.mkdirs("/testRmdir",0644);
         assertEquals(jg,0);
+
         int jg2=mnt.rmdir("/testRmdir");
        assertEquals(jg2,0);
 
     }
 
     @Test
-    //This test is about rm a non-existent dir
-    public void testRmdir17(){
-        int jg =mnt.rmdir("/testRmdir16");
-        assertTrue(jg<0);
-       // System.out.println(jg);
-    }
-
-    @Test
-    //rm a dir which contain two files
-    //unlink
-    public void testRmdir18(){
-        //make a dir testMkdir under "/",and two files under this dir
-        int jg=mnt.mkdirs("/testRmdir",0644);
-        assertEquals(jg,0);
-        int fd=mnt.open("/testRmdir/test01",CfsMount.O_WRONLY|CfsMount.O_CREAT,0644);
-        assertTrue(fd>0);
-        int fd2=mnt.open("/testRmdir/test02",CfsMount.O_WRONLY|CfsMount.O_CREAT,0644);
-        assertTrue(fd2>0);
-
-
-        int jg2=mnt.rmdir("/testRmdir");
-        //System.out.println(jg2);
-        assertTrue(jg2!=0);
-
-        int jg3=mnt.unlink("/testRmdir/test01");
-        assertEquals(jg3,0);
-        int jg4=mnt.unlink("/testRmdir/test02");
-        assertEquals(jg4,0);
-        int jg5=mnt.rmdir("/testRmdir");
-        assertEquals(jg5,0);
-    }
-
-    @Test
     //unlink
     //This test is about Chdir
-    public void testChdir19(){
+    public void testChdir17() throws FileNotFoundException, IOException {
         //current work dir is "/"
         String cwd1=mnt.getcwd();
         assertEquals(cwd1,"/");
@@ -463,10 +427,9 @@ public class UnitTest {
 
     }
 
-
     @Test
     //This test is about ls the directory entries in under /
-    public void testLs20(){
+    public void testLs18() throws FileNotFoundException, IOException {
         //first make a dir testLs
         int fd1 =mnt.mkdirs("/testLs",0644);
         //System.out.println(fd1);
@@ -512,10 +475,9 @@ public class UnitTest {
         assertEquals(ret4,0);
     }
 
-
    @Test
     //This test is about  test the SetAttr and getAttr
-    public void testSetAttr21(){
+    public void testSetAttr19() throws FileNotFoundException {
         CfsLibrary.StatInfo stat = new CfsLibrary.StatInfo();
         int ret = mnt.getAttr("/", stat);
         assertEquals(ret,0);
@@ -537,14 +499,14 @@ public class UnitTest {
 
     @Test
     //This test is about test rename an existent dir
-    public void testRename22(){
+    public void testRename20() throws IOException, FileNotFoundException {
         //make a dir /testRename
         int jg1=mnt.mkdirs("/testRename",0644);
         assertEquals(jg1,0);
 
         //rename this dir
         int jg2=mnt.rename("/testRename","/testRename1");
-        //System.out.println(jg2);
+        System.out.println(jg2);
         assertEquals(jg2,0);
 
         //judge
@@ -558,16 +520,8 @@ public class UnitTest {
     }
 
     @Test
-    //This test is about test rename an non-existent dir
-    public void testRename23(){
-        int jg= mnt.rename("/testRename21","/testRename21_1");
-        assertTrue(jg<0);
-        //System.out.println(jg);
-    }
-
-    @Test
     //This test is about rename a file
-    public void testRename24(){
+    public void testRename21() throws FileNotFoundException {
         //creat a file
         int fd = mnt.open("/testRename.txt", CfsMount.O_RDWR| CfsMount.O_CREAT,0644);
         assertTrue(fd>0);
@@ -583,7 +537,7 @@ public class UnitTest {
 
    @Test
    //This test is about creat a directory and all parents
-   public void testMkdirs(){
+   public void testMkdirs22() throws IOException, FileNotFoundException {
         int jg1 =mnt.mkdirs("/testMkdirs/test",0644);
         assertEquals(jg1,0);
         int jg2=mnt.rmdir("/testMkdirs/test");
@@ -594,7 +548,7 @@ public class UnitTest {
 
    @Test
    //This test is about fchmod
-   public void testFchmodChmod(){
+   public void testFchmodChmod23() throws FileNotFoundException {
         //creat a file in mode 0644
         int fd= mnt.open("/testFchmod.txt",CfsMount.O_RDWR|CfsMount.O_CREAT,0644);
         assertTrue(fd>0);

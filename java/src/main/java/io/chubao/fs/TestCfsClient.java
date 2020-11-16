@@ -1,11 +1,11 @@
 package io.chubao.fs;
 
+import io.chubao.exception.FileNotFoundException;
 import io.chubao.fs.CfsLibrary.Dirent;
 
 public class TestCfsClient {
-    public static void main(String[] args) {
+    public static void main(String[] args) throws FileNotFoundException {
         CfsMount mnt = new CfsMount("/usr/lib/libcfs.so");
-
         mnt.setClient("volName", "ltptest");
         mnt.setClient("masterAddr", "192.168.0.11:17010,192.168.0.12:17010,192.168.0.13:17010");
         mnt.setClient("logDir", "/home/liushuoran/log");
