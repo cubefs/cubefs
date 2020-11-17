@@ -61,7 +61,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getParams", m.getParamsHandler)
 	http.HandleFunc("/getDiskStat", m.getDiskStatHandler)
 
-	http.HandleFunc("/InodeReset", m.inodeReset)
+	http.HandleFunc("/cursorReset", m.cursorReset)
 
 	return
 }
@@ -125,6 +125,13 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 	msg["peers"] = conf.Peers
 	msg["nodeId"] = conf.NodeId
 	msg["cursor"] = conf.Cursor
+	msg["inode_count"] = mp.GetInodeTree().Len()
+	msg["dentry_count"] = mp.GetDentryTree().Len()
+	msg["multipart_count"] = mp.(*metaPartition).multipartTree.Len()
+	msg["extend_count"] = mp.(*metaPartition).extendTree.Len()
+	msg["free_list_count"] = mp.(*metaPartition).freeList.Len()
+	msg["cursor"] = mp.GetCursor()
+	_, msg["leader"] = mp.IsLeader()
 	resp.Data = msg
 	resp.Code = http.StatusOK
 	resp.Msg = http.StatusText(http.StatusOK)
@@ -187,13 +194,13 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // param need pid:partition id and vol:volume name
-func (m *MetaNode) inodeReset(w http.ResponseWriter, r *http.Request) {
+func (m *MetaNode) cursorReset(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
 		data, _ := resp.Marshal()
 		if _, err := w.Write(data); err != nil {
-			log.LogErrorf("[inodeReset] response %s", err)
+			log.LogErrorf("[cursorReset] response %s", err)
 		}
 	}()
 
@@ -210,21 +217,23 @@ func (m *MetaNode) inodeReset(w http.ResponseWriter, r *http.Request) {
 		resp.Msg = err.Error()
 		return
 	}
-	req := &proto.InodeResetRequest{
+	req := &proto.CursorResetRequest{
 		VolName:     vol,
 		PartitionId: pid,
 	}
-	p := &Packet{}
-	err = mp.(*metaPartition).InodeReset(req, p)
+	cursor, err := mp.(*metaPartition).CursorReset(req)
 	if err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()
 		return
 	}
-	resp.Code = http.StatusSeeOther
-	resp.Msg = p.GetResultMsg()
-	if len(p.Data) > 0 {
-		resp.Data = json.RawMessage(p.Data)
+	resp.Code = http.StatusOK
+	resp.Msg = "Ok"
+	resp.Data = map[string]interface{}{
+		"start":      mp.GetBaseConfig().Start,
+		"end":        mp.GetBaseConfig().End,
+		"cursor":     mp.GetBaseConfig().Cursor,
+		"new_cursor": cursor,
 	}
 	return
 }

@@ -1015,8 +1015,8 @@ func (m *metadataManager) opMetaDeleteInode(conn net.Conn, p *Packet,
 }
 
 // Handle Inode
-func (m *metadataManager) opMetaInodeReset(conn net.Conn, p *Packet, remoteAddr string) error {
-	req := &proto.InodeResetRequest{}
+func (m *metadataManager) opMetaCursorReset(conn net.Conn, p *Packet, remoteAddr string) error {
+	req := &proto.CursorResetRequest{}
 	if err := json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClient(conn, p)
@@ -1032,9 +1032,13 @@ func (m *metadataManager) opMetaInodeReset(conn net.Conn, p *Packet, remoteAddr 
 	if !m.serveProxy(conn, mp, p) {
 		return nil
 	}
-	err = mp.(*metaPartition).InodeReset(req, p)
+	if _, err = mp.(*metaPartition).CursorReset(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+	} else {
+		p.PacketOkReply()
+	}
 	_ = m.respondToClient(conn, p)
-	log.LogInfof("%s [opInodeReset] req: %d - %v, resp: %v, body: %s", remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	log.LogInfof("%s [opCursorReset] req: %d - %v, resp: %v, body: %s", remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return err
 }
 

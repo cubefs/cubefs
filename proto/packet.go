@@ -138,7 +138,7 @@ const (
 	OpMetaBatchEvictInode   uint8 = 0x93
 
 	//inode reset
-	OpMetaInodeReset uint8 = 0x94
+	OpMetaCursorReset uint8 = 0x94
 
 	// Commons
 	OpIntraGroupNetErr uint8 = 0xF3
@@ -384,8 +384,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpListMultiparts"
 	case OpBatchDeleteExtent:
 		m = "OpBatchDeleteExtent"
-	case OpMetaInodeReset:
-		m = "OpMetaInodeReset"
+	case OpMetaCursorReset:
+		m = "OpMetaCursorReset"
 	}
 	return
 }

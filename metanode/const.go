@@ -118,7 +118,7 @@ const (
 	opFSMUnlinkInodeBatch
 	opFSMEvictInodeBatch
 
-	opFSMInodeReset
+	opFSMCursorReset
 )
 
 var (
