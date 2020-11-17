@@ -17,6 +17,7 @@ package metanode
 import (
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -330,6 +331,28 @@ func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (
 	}
 	p.PacketOkReply()
 	return
+}
+
+func (mp *metaPartition) InodeReset(req *proto.InodeResetRequest, p *Packet) error {
+
+	if mp.config.VolName != req.VolName {
+		return fmt.Errorf("partition:[%d] reset vol name not equal mp:[%s] req:[%s]", mp.config.PartitionId, mp.config.VolName, req.VolName)
+	}
+	if mp.inodeTree.Len() != 0 {
+		return fmt.Errorf("partition:[%d] reset inode len must 0, but got [%d]", mp.config.PartitionId, mp.inodeTree.Len())
+	}
+	if mp.freeList.Len() != 0 {
+		return fmt.Errorf("partition:[%d] freeList len must 0, but got [%d]", mp.config.PartitionId, mp.inodeTree.Len())
+	}
+
+	_, err := mp.submit(opFSMInodeReset, make([]byte, 0))
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return err
+	}
+	p.PacketOkReply()
+
+	return nil
 }
 
 func (mp *metaPartition) DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet) (err error) {

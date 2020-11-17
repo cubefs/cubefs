@@ -61,6 +61,8 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getParams", m.getParamsHandler)
 	http.HandleFunc("/getDiskStat", m.getDiskStatHandler)
 
+	http.HandleFunc("/InodeReset", m.inodeReset)
+
 	return
 }
 
@@ -182,6 +184,49 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mp.GetInodeTree().Ascend(f)
+}
+
+// param need pid:partition id and vol:volume name
+func (m *MetaNode) inodeReset(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseForm()
+	resp := NewAPIResponse(http.StatusBadRequest, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[inodeReset] response %s", err)
+		}
+	}()
+
+	vol := r.FormValue("vol")
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+	req := &proto.InodeResetRequest{
+		VolName:     vol,
+		PartitionId: pid,
+	}
+	p := &Packet{}
+	err = mp.(*metaPartition).InodeReset(req, p)
+	if err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+	resp.Code = http.StatusSeeOther
+	resp.Msg = p.GetResultMsg()
+	if len(p.Data) > 0 {
+		resp.Data = json.RawMessage(p.Data)
+	}
+	return
 }
 
 func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {

@@ -137,6 +137,9 @@ const (
 	OpMetaBatchUnlinkInode  uint8 = 0x92
 	OpMetaBatchEvictInode   uint8 = 0x93
 
+	//inode reset
+	OpMetaInodeReset uint8 = 0x94
+
 	// Commons
 	OpIntraGroupNetErr uint8 = 0xF3
 	OpArgMismatchErr   uint8 = 0xF4
@@ -160,7 +163,7 @@ const (
 	ReadDeadlineTime             = 5
 	SyncSendTaskDeadlineTime     = 20
 	NoReadDeadlineTime           = -1
-	MaxWaitFollowerRepairTime    = 60*30
+	MaxWaitFollowerRepairTime    = 60 * 30
 	GetAllWatermarksDeadLineTime = 60
 )
 
@@ -381,6 +384,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpListMultiparts"
 	case OpBatchDeleteExtent:
 		m = "OpBatchDeleteExtent"
+	case OpMetaInodeReset:
+		m = "OpMetaInodeReset"
 	}
 	return
 }

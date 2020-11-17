@@ -17,6 +17,7 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -161,6 +162,21 @@ func (mp *metaPartition) internalDelete(val []byte) (err error) {
 			mp.config.PartitionId, ino.Inode)
 		mp.internalDeleteInode(ino)
 	}
+}
+
+func (mp *metaPartition) internalInodeReset(val []byte) (err error) {
+	if len(val) != 0 {
+		return
+	}
+	if mp.inodeTree.Len() != 0 {
+		return fmt.Errorf("partition:[%d] reset inode len must 0, but got [%d]", mp.config.PartitionId, mp.inodeTree.Len())
+	}
+	if mp.freeList.Len() != 0 {
+		return fmt.Errorf("partition:[%d] freeList len must 0, but got [%d]", mp.config.PartitionId, mp.inodeTree.Len())
+	}
+	mp.config.Cursor = mp.config.Start + 1
+	log.LogInfof("internalInodeReset: partitionID(%v)", mp.config.PartitionId)
+	return nil
 }
 
 func (mp *metaPartition) internalDeleteBatch(val []byte) error {

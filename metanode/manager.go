@@ -136,6 +136,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
 		err = m.opMetaBatchInodeGet(conn, p, remoteAddr)
 	case proto.OpMetaDeleteInode:
 		err = m.opMetaDeleteInode(conn, p, remoteAddr)
+	case proto.OpMetaInodeReset:
+		err = m.opMetaInodeReset(conn, p, remoteAddr)
 	case proto.OpMetaBatchDeleteInode:
 		err = m.opMetaBatchDeleteInode(conn, p, remoteAddr)
 	case proto.OpMetaBatchExtentsAdd:

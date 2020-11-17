@@ -1014,6 +1014,30 @@ func (m *metadataManager) opMetaDeleteInode(conn net.Conn, p *Packet,
 	return
 }
 
+// Handle Inode
+func (m *metadataManager) opMetaInodeReset(conn net.Conn, p *Packet, remoteAddr string) error {
+	req := &proto.InodeResetRequest{}
+	if err := json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+	}
+
+	if !m.serveProxy(conn, mp, p) {
+		return nil
+	}
+	err = mp.(*metaPartition).InodeReset(req, p)
+	_ = m.respondToClient(conn, p)
+	log.LogInfof("%s [opInodeReset] req: %d - %v, resp: %v, body: %s", remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return err
+}
+
 func (m *metadataManager) opMetaBatchDeleteInode(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
 	var req *proto.DeleteInodeBatchRequest
