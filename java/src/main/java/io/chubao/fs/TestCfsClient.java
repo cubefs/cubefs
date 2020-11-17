@@ -1,9 +1,10 @@
 package io.chubao.fs;
 
+import io.chubao.exception.FileNotFoundException;
 import io.chubao.fs.CfsLibrary.Dirent;
 
 public class TestCfsClient {
-    public static void main(String[] args) {
+    public static void main(String[] args) throws FileNotFoundException {
         CfsMount mnt = new CfsMount("/usr/lib/libcfs.so");
 
         mnt.setClient("volName", "ltptest");
