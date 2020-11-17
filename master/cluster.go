@@ -1786,7 +1786,8 @@ func (c *Cluster) deleteMetaNodeFromCache(metaNode *MetaNode) {
 	go metaNode.clean()
 }
 
-func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacity uint64, replicaNum uint8, followerRead, authenticate, enableToken, autoRepair bool) (err error) {
+func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacity uint64, replicaNum uint8,
+	followerRead, authenticate, enableToken, autoRepair bool, dpSelectorName, dpSelectorParm string) (err error) {
 	var (
 		vol             *Vol
 		serverAuthKey   string
@@ -1800,6 +1801,9 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		oldDescription  string
 		oldCrossZone    bool
 		zoneList        []string
+
+		oldDpSelectorName string
+		oldDpSelectorParm string
 	)
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[updateVol] err[%v]", err)
@@ -1852,6 +1856,8 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	oldEnableToken = vol.enableToken
 	oldAutoRepair = vol.autoRepair
 	oldDescription = vol.description
+	oldDpSelectorName = vol.dpSelectorName
+	oldDpSelectorParm = vol.dpSelectorParm
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
 	vol.authenticate = authenticate
@@ -1864,6 +1870,8 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	if replicaNum != 0 && replicaNum < vol.dpReplicaNum {
 		vol.dpReplicaNum = replicaNum
 	}
+	vol.dpSelectorName = dpSelectorName
+	vol.dpSelectorParm = dpSelectorParm
 	if err = c.syncUpdateVol(vol); err != nil {
 		vol.Capacity = oldCapacity
 		vol.dpReplicaNum = oldDpReplicaNum
@@ -1874,6 +1882,8 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		vol.crossZone = oldCrossZone
 		vol.autoRepair = oldAutoRepair
 		vol.description = oldDescription
+		vol.dpSelectorName = oldDpSelectorName
+		vol.dpSelectorParm = oldDpSelectorParm
 		log.LogErrorf("action[updateVol] vol[%v] err[%v]", name, err)
 		err = proto.ErrPersistenceByRaft
 		goto errHandler
@@ -1948,7 +1958,8 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	if err != nil {
 		goto errHandler
 	}
-	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum, followerRead, authenticate, enableToken, autoRepair, createTime, description)
+	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum, followerRead,
+		authenticate, enableToken, autoRepair, createTime, description, "", "")
 
 	// refresh oss secure
 	vol.refreshOSSSecure()

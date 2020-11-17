@@ -695,6 +695,9 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		zoneName     string
 		description  string
 		vol          *Vol
+
+		dpSelectorName string
+		dpSelectorParm string
 	)
 	if name, authKey, replicaNum, err = parseRequestToUpdateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -720,7 +723,14 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), followerRead, authenticate, enableToken, autoRepair); err != nil {
+	dpSelectorName, dpSelectorParm, err = parseDefaultSelectorToUpdateVol(r, vol)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum),
+		followerRead, authenticate, enableToken, autoRepair, dpSelectorName, dpSelectorParm); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -822,6 +832,8 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		DpCnt:              len(vol.dataPartitions.partitionMap),
 		CreateTime:         time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
 		Description:        vol.description,
+		DpSelectorName:     vol.dpSelectorName,
+		DpSelectorParm:     vol.dpSelectorParm,
 	}
 }
 
@@ -1501,6 +1513,25 @@ func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authent
 	} else {
 		autoRepair = vol.autoRepair
 	}
+	return
+}
+
+func parseDefaultSelectorToUpdateVol(r *http.Request, vol *Vol) (dpSelectorName, dpSelectorParm string, err error) {
+	err = r.ParseForm()
+	if err != nil {
+		return
+	}
+	dpSelectorName = r.FormValue(dpSelectorNameKey)
+	dpSelectorParm = r.FormValue(dpSelectorParmKey)
+	if (dpSelectorName == "") || (dpSelectorParm == "") {
+		if (dpSelectorName != "") || (dpSelectorParm != "") {
+			err = keyNotFound(dpSelectorNameKey + " or " + dpSelectorParmKey)
+			return
+		}
+		dpSelectorName = vol.dpSelectorName
+		dpSelectorParm = vol.dpSelectorParm
+	}
+
 	return
 }
 
