@@ -15,6 +15,8 @@
 package config
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -22,10 +24,16 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"unicode/utf8"
 )
 
 const (
 	DefaultConstConfigFile = "constcfg"
+)
+
+const (
+	CommentMarker rune = '#'
+	QuoteMarker   rune = '"'
 )
 
 // Config defines the struct of a configuration in general.
@@ -53,7 +61,7 @@ func LoadConfigFile(filename string) (*Config, error) {
 // LoadConfigString loads config information from a JSON string.
 func LoadConfigString(s string) *Config {
 	result := newConfig()
-	err := json.Unmarshal([]byte(s), &result.data)
+	err := result.parseBytes([]byte(s))
 	if err != nil {
 		log.Fatalf("error parsing config string %s: %s", s, err)
 	}
@@ -61,12 +69,55 @@ func LoadConfigString(s string) *Config {
 }
 
 func (c *Config) parse(fileName string) error {
-	jsonFileBytes, err := ioutil.ReadFile(fileName)
-	c.Raw = jsonFileBytes
-	if err == nil {
-		err = json.Unmarshal(jsonFileBytes, &c.data)
+	confBytes, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		return err
 	}
-	return err
+	return c.parseBytes(confBytes)
+}
+
+func (c *Config) parseBytes(confBytes []byte) error {
+	jsonRawBytes := trimComments(confBytes)
+	c.Raw = jsonRawBytes
+	return json.Unmarshal(jsonRawBytes, &c.data)
+}
+
+func trimComments(data []byte) (trimRes []byte) {
+	trimRes = make([]byte, 0, len(data))
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	for scanner.Scan() {
+		lineBytes := scanner.Bytes()
+		lineTrimRes := trimLineComments(lineBytes)
+		trimRes = append(trimRes, lineTrimRes...)
+	}
+	return trimRes
+}
+
+func trimLineComments(lineBytes []byte) []byte {
+	if len(lineBytes) == 0 {
+		return lineBytes
+	}
+	trimRes := make([]byte, 0, len(lineBytes))
+	quoteCnt := 0
+trimLoop:
+	for {
+		r, size := utf8.DecodeRune(lineBytes)
+		if size == 0 {
+			break
+		}
+		switch r {
+		case CommentMarker:
+			if quoteCnt%2 == 0 {
+				break trimLoop
+			}
+		case QuoteMarker:
+			quoteCnt += 1
+		}
+		trimRes = append(trimRes, lineBytes[:size]...)
+		lineBytes = lineBytes[size:]
+	}
+	trimRes = append(trimRes, '\n')
+	return trimRes
 }
 
 // GetString returns a string for the config key.
@@ -121,14 +172,7 @@ func (c *Config) GetBool(key string) bool {
 
 // GetBool returns a int value for the config key.
 func (c *Config) GetInt(key string) int64 {
-	x, present := c.data[key]
-	if !present {
-		return 0
-	}
-	if result, isInt := x.(int64); isInt {
-		return result
-	}
-	return 0
+	return c.GetInt64(key)
 }
 
 // GetBool returns a int64 value for the config key.
