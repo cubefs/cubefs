@@ -8,6 +8,7 @@ import io.chubao.fs.CfsLibrary.DirentArray;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.util.ArrayList;
 
 public class CfsMount {
     // Open flags
@@ -128,6 +129,40 @@ public class CfsMount {
         }
 
         return (int) arrSize;
+    }
+
+    public Dirent[] listdir(String dir) throws FileNotFoundException {
+        //Modify cwd to the target path
+        int result = chdir(dir);
+        if (result != SUCCESS) {
+            throw new FileNotFoundException("can't find valid path : " + dir + " code : " + result);
+        }
+        int fd = open(".", CfsMount.O_RDWR, 0644);
+        //dents is used to store the cyclically read dent
+        ArrayList<Dirent> dents = new ArrayList<Dirent>();
+        for (; ; ) {
+            Dirent dent = new Dirent();
+            //temp store the dent read by each readdir
+            Dirent[] temp = (Dirent[]) dent.toArray(2);
+            int n = readdir(fd, temp, 2);
+            if (n == 0) {
+                break;
+            } else if (n < 0) {
+                throw new FileNotFoundException("read dir fail: " + dir);
+            }
+            for (int i = 0; i < n; i++) {
+                dents.add(temp[i]);
+            }
+        }
+        close(fd);
+        //Modify the cwd to /
+        int result2 = chdir("/");
+        if (result2 != SUCCESS) {
+            throw new FileNotFoundException("can't find valid path : " + dir + " code : " + result2);
+        }
+        //Convert the Arraylist type to Dirent[] type
+        Dirent[] list = dents.toArray(new Dirent[dents.size()]);
+        return list;
     }
 
     public int mkdirs(String path, int mode) throws IOException {
