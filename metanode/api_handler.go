@@ -16,7 +16,6 @@ package metanode
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 
@@ -138,59 +137,74 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 }
 
 func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
+	resp := NewAPIResponse(http.StatusSeeOther, "")
 
+	if err := r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	shouldSkip := false
 	defer func() {
-		if err != nil {
-			msg := fmt.Sprintf("[getAllInodesHandler] err(%v)", err)
-			if _, e := w.Write([]byte(msg)); e != nil {
-				log.LogErrorf("[getAllInodesHandler] failed to write response: err(%v) msg(%v)", e, msg)
+		if !shouldSkip {
+			data, _ := resp.Marshal()
+			if _, err := w.Write(data); err != nil {
+				log.LogErrorf("[getAllInodeHandler] response %s", err)
 			}
 		}
 	}()
-
-	if err = r.ParseForm(); err != nil {
-		return
-	}
-	id, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
 	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
 		return
 	}
-	mp, err := m.metadataManager.GetPartition(id)
+	mp, err := m.metadataManager.GetPartition(pid)
 	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
 		return
 	}
 
-	var inode *Inode
+	buff := bytes.NewBufferString(`{"code": 200, "msg": "OK", "data":[`)
+	if _, err := w.Write(buff.Bytes()); err != nil {
+		return
+	}
+	buff.Reset()
+	var (
+		val       []byte
+		delimiter = []byte{',', '\n'}
+		isFirst   = true
+	)
 
-	f := func(i BtreeItem) bool {
-		var (
-			data []byte
-			e    error
-		)
-
-		if inode != nil {
-			if _, e = w.Write([]byte("\n")); e != nil {
-				log.LogErrorf("[getAllInodesHandler] failed to write response: %v", e)
+	mp.GetInodeTree().Ascend(func(i BtreeItem) bool {
+		if !isFirst {
+			if _, err = w.Write(delimiter); err != nil {
 				return false
 			}
+		} else {
+			isFirst = false
 		}
 
-		inode = i.(*Inode)
-		if data, e = inode.MarshalToJSON(); e != nil {
-			log.LogErrorf("[getAllInodesHandler] failed to marshal to json: %v", e)
+		val, err = json.Marshal(i)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
 			return false
 		}
-
-		if _, e = w.Write(data); e != nil {
-			log.LogErrorf("[getAllInodesHandler] failed to write response: %v", e)
+		if _, err = w.Write(val); err != nil {
 			return false
 		}
-
 		return true
+	})
+	shouldSkip = true
+	buff.WriteString(`]}`)
+	if _, err = w.Write(buff.Bytes()); err != nil {
+		log.LogErrorf("[getAllInodesHandler] response %s", err)
 	}
+	return
 
-	mp.GetInodeTree().Ascend(f)
 }
 
 // param need pid:partition id and vol:volume name
@@ -400,6 +414,7 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 		resp.Msg = err.Error()
 		return
 	}
+
 	buff := bytes.NewBufferString(`{"code": 200, "msg": "OK", "data":[`)
 	if _, err := w.Write(buff.Bytes()); err != nil {
 		return
