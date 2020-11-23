@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"hash/crc32"
@@ -104,9 +105,11 @@ type DataPartition struct {
 	lastTruncateID  uint64 // truncate id used in Raft
 	minAppliedID    uint64
 	maxAppliedID    uint64
-	stopRaftC       chan uint64
-	storeC          chan uint64
-	stopC           chan bool
+
+	stopOnce  sync.Once
+	stopRaftC chan uint64
+	storeC    chan uint64
+	stopC     chan bool
 
 	intervalToUpdateReplicas      int64 // interval to ask the master for updating the replica information
 	snapshot                      []*proto.File
@@ -345,12 +348,16 @@ func (dp *DataPartition) SnapShot() (files []*proto.File) {
 
 // Stop close the store and the raft store.
 func (dp *DataPartition) Stop() {
-	if dp.stopC != nil {
-		close(dp.stopC)
-	}
-	// Close the store and raftstore.
-	dp.extentStore.Close()
-	dp.stopRaft()
+	dp.stopOnce.Do(func() {
+		if dp.stopC != nil {
+			close(dp.stopC)
+		}
+		// Close the store and raftstore.
+		dp.extentStore.Close()
+		dp.stopRaft()
+		_ = dp.storeAppliedID(atomic.LoadUint64(&dp.appliedID))
+	})
+	return
 }
 
 // Disk returns the disk instance.

@@ -24,6 +24,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -201,7 +202,7 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 			truncateRaftLogTimer.Reset(time.Minute)
 
 		case <-storeAppliedIDTimer.C:
-			if err := dp.storeAppliedID(dp.appliedID); err != nil {
+			if err := dp.storeAppliedID(atomic.LoadUint64(&dp.appliedID)); err != nil {
 				err = errors.NewErrorf("[startSchedule]: dump partition=%d: %v", dp.config.PartitionID, err.Error())
 				log.LogErrorf(err.Error())
 			}
