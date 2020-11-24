@@ -26,6 +26,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data/wrapper"
 	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/btree"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 )
@@ -282,7 +283,14 @@ func (s *Streamer) write(data []byte, offset, size int, direct bool) (total int,
 		if req.ExtentKey != nil {
 			writeSize, err = s.doOverwrite(req, direct)
 		} else {
-			writeSize, err = s.doWrite(req.Data, req.FileOffset, req.Size, direct)
+			var newReq *ExtentRequest
+			err, newReq, writeSize = s.extentMerge(req)
+			if (err == nil) && (newReq != nil) {
+				total += writeSize
+				writeSize, err = s.doWrite(newReq.Data, newReq.FileOffset, newReq.Size, direct)
+			} else if (writeSize != req.Size) || (err != nil) {
+				writeSize, err = s.doWrite(req.Data, req.FileOffset, req.Size, direct)
+			}
 		}
 		if err != nil {
 			log.LogErrorf("Streamer write: ino(%v) err(%v)", s.inode, err)
@@ -568,4 +576,121 @@ func (s *Streamer) truncate(size int) error {
 
 func (s *Streamer) tinySizeLimit() int {
 	return util.DefaultTinySizeLimit
+}
+
+func (s *Streamer) extentMerge(req *ExtentRequest) (err error, newReq *ExtentRequest, writeSize int) {
+	if !s.isNeedMerge(req) {
+		return
+	}
+
+	defer func() {
+		if err != nil {
+			log.LogWarnf("extentMerge: extentMerge failed, err(%v), req(%v), newReq(%v), writeSize(%v)",
+				err, req, newReq, writeSize)
+		} else {
+			log.LogDebugf("extentMerge: extentMerge success, req(%v), newReq(%v), writeSize(%v)",
+				req, newReq, writeSize)
+		}
+	}()
+
+	alignSize := s.client.AlignSize()
+
+	mergeStart := req.FileOffset / alignSize * alignSize
+	preSize := req.FileOffset - mergeStart
+	mergeSize := alignSize
+	if preSize+req.Size < alignSize {
+		mergeSize = preSize + req.Size
+	}
+	mergeData := make([]byte, mergeSize)
+
+	_, err = s.read(mergeData, mergeStart, preSize)
+	if err != nil {
+		return
+	}
+
+	writeSize = mergeSize - preSize
+	copy(mergeData[preSize:], req.Data[:writeSize])
+
+	_, err = s.doWrite(mergeData, mergeStart, mergeSize, false)
+	if err != nil {
+		return
+	}
+
+	err = s.flush()
+	if err != nil {
+		return
+	}
+
+	if writeSize == req.Size {
+		return
+	}
+
+	newReqOffset := (req.FileOffset/alignSize + 1) * alignSize
+	newReqSize := req.FileOffset + req.Size - newReqOffset
+	if newReqSize > 0 {
+		newReq = NewExtentRequest(newReqOffset, newReqSize, req.Data[writeSize:], nil)
+	}
+	return
+}
+
+func (s *Streamer) isNeedMerge(req *ExtentRequest) bool {
+	alignSize := s.client.AlignSize()
+	maxExtent := s.client.MaxExtentNumPerAlignArea()
+	force := s.client.ForceAlignMerge()
+
+	if s.handler != nil {
+		return false
+	}
+
+	if req.Size >= alignSize {
+		return false
+	}
+
+	// If this req.FileOffset equal an alignArea start offset, it will nevel need merge.
+	if req.FileOffset == (req.FileOffset)/alignSize*alignSize {
+		return false
+	}
+
+	// In forceAlignMerge mode, when req across alignArea, it will always need merge.
+	if force && (req.FileOffset/alignSize != (req.FileOffset+req.Size)/alignSize) {
+		log.LogDebugf("isNeedMerge true: forceAlignMerge(%v), req(%v) across alignArea(%v).",
+			force, req, alignSize)
+		return true
+	}
+
+	if maxExtent == 0 {
+		return false
+	}
+
+	// Determine whether the current extent number has reached to maxExtent
+	alignStartOffset := req.FileOffset / alignSize * alignSize
+	alignEndOffset := alignStartOffset + alignSize - 1
+	pivot := &proto.ExtentKey{FileOffset: uint64(alignStartOffset)}
+	upper := &proto.ExtentKey{FileOffset: uint64(alignEndOffset)}
+	lower := &proto.ExtentKey{}
+
+	s.extents.RLock()
+	defer s.extents.RUnlock()
+
+	s.extents.root.DescendLessOrEqual(pivot, func(i btree.Item) bool {
+		ek := i.(*proto.ExtentKey)
+		lower.FileOffset = ek.FileOffset
+		return false
+	})
+
+	extentNum := int(0)
+	s.extents.root.AscendRange(lower, upper, func(i btree.Item) bool {
+		extentNum++
+		if extentNum >= maxExtent {
+			return false
+		}
+		return true
+	})
+
+	if extentNum >= maxExtent {
+		log.LogDebugf("isNeedMerge true: current extent numbers(%v) reached to maxExtent(%v).", extentNum, maxExtent)
+		return true
+	}
+
+	return false
 }

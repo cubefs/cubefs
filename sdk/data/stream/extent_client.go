@@ -41,6 +41,8 @@ const (
 
 	defaultWriteLimitRate  = rate.Inf
 	defaultWriteLimitBurst = 128
+
+	defaultMaxAlignSize = 128 * 1024
 )
 
 var (
@@ -76,14 +78,17 @@ func init() {
 }
 
 type ExtentConfig struct {
-	Volume            string
-	Masters           []string
-	FollowerRead      bool
-	ReadRate          int64
-	WriteRate         int64
-	OnAppendExtentKey AppendExtentKeyFunc
-	OnGetExtents      GetExtentsFunc
-	OnTruncate        TruncateFunc
+	Volume                   string
+	Masters                  []string
+	FollowerRead             bool
+	ReadRate                 int64
+	WriteRate                int64
+	AlignSize                int64
+	MaxExtentNumPerAlignArea int64
+	ForceAlignMerge          bool
+	OnAppendExtentKey        AppendExtentKeyFunc
+	OnGetExtents             GetExtentsFunc
+	OnTruncate               TruncateFunc
 }
 
 // ExtentClient defines the struct of the extent client.
@@ -99,6 +104,10 @@ type ExtentClient struct {
 	getExtents      GetExtentsFunc
 	truncate        TruncateFunc
 	followerRead    bool
+
+	alignSize                int64
+	maxExtentNumPerAlignArea int64
+	forceAlignMerge          bool
 }
 
 // NewExtentClient returns a new extent client.
@@ -138,6 +147,15 @@ retry:
 
 	client.readLimiter = rate.NewLimiter(readLimit, defaultReadLimitBurst)
 	client.writeLimiter = rate.NewLimiter(writeLimit, defaultWriteLimitBurst)
+
+	client.alignSize = config.AlignSize
+	if client.alignSize > defaultMaxAlignSize {
+		log.LogWarnf("config alignSize(%v) is too max, set it to default max value(%v).", client.alignSize,
+			defaultMaxAlignSize)
+		client.alignSize = defaultMaxAlignSize
+	}
+	client.maxExtentNumPerAlignArea = config.MaxExtentNumPerAlignArea
+	client.forceAlignMerge = config.ForceAlignMerge
 
 	return
 }
@@ -334,4 +352,16 @@ func (client *ExtentClient) Close() error {
 	}
 	client.dataWrapper.Stop()
 	return nil
+}
+
+func (c *ExtentClient) AlignSize() int {
+	return int(c.alignSize)
+}
+
+func (c *ExtentClient) MaxExtentNumPerAlignArea() int {
+	return int(c.maxExtentNumPerAlignArea)
+}
+
+func (c *ExtentClient) ForceAlignMerge() bool {
+	return c.forceAlignMerge
 }
