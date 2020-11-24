@@ -17,8 +17,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/chubaofs/chubaofs/console"
-	"github.com/chubaofs/chubaofs/proto"
 	syslog "log"
 	"net/http"
 	_ "net/http/pprof"
@@ -29,6 +27,9 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+
+	"github.com/chubaofs/chubaofs/console"
+	"github.com/chubaofs/chubaofs/proto"
 
 	sysutil "github.com/chubaofs/chubaofs/util/sys"
 
@@ -45,7 +46,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/ump"
 )
-
 
 const (
 	ConfigKeyRole       = "role"
@@ -124,7 +124,7 @@ func modifyOpenFiles() (err error) {
 func main() {
 	flag.Parse()
 
-	Version := proto.DumpVersion("Server",BranchName,CommitID,BuildTime)
+	Version := proto.DumpVersion("Server", BranchName, CommitID, BuildTime)
 	if *configVersion {
 		fmt.Printf("%v", Version)
 		os.Exit(0)
@@ -271,6 +271,7 @@ func main() {
 
 	// Block main goroutine until server shutdown.
 	server.Sync()
+	log.LogFlush()
 	os.Exit(0)
 }
 
