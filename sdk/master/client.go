@@ -177,7 +177,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			continue
 		}
 	}
-	err = ErrNoValidMaster
+	err = fmt.Errorf("send request err: clientType[%v], req addr[%v], req path[%v], err[%v]", c.ClientType, nodes, r.path, err)
 	return
 }
 
