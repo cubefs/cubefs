@@ -1306,9 +1306,6 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	if oldAddr, addAddr, err = chooseDataHostFunc(c, offlineAddr, dp, excludeNodeSets, vol.zoneName, destZoneName); err != nil {
 		goto errHandler
 	}
-	if dpReplica, err = dp.getReplica(oldAddr); err != nil {
-		goto errHandler
-	}
 	if err = c.removeDataReplica(dp, oldAddr, false, strictMode); err != nil {
 		return
 	}
@@ -1320,6 +1317,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	dp.isRecover = true
 	c.syncUpdateDataPartition(dp)
 	dp.Unlock()
+	dpReplica, _ = dp.getReplica(oldAddr)
 	if strictMode {
 		c.putMigratedDataPartitionIDs(dpReplica, oldAddr, dp.PartitionID)
 	} else {
