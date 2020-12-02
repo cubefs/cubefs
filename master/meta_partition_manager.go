@@ -17,9 +17,9 @@ package master
 import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/log"
+	"math"
 	"strconv"
 	"time"
-	"math"
 )
 
 func (c *Cluster) scheduleToLoadMetaPartitions() {
@@ -88,9 +88,9 @@ func (mp *MetaPartition) isSameApplyID() bool {
 
 func (mp *MetaPartition) checkInodeCount(clusterID string) {
 	isEqual := true
-	maxInode := mp.LoadResponse[0].MaxInode
+	inodeCount := mp.LoadResponse[0].InodeCount
 	for _, loadResponse := range mp.LoadResponse {
-		diff := math.Abs(float64(loadResponse.MaxInode) - float64(maxInode))
+		diff := math.Abs(float64(loadResponse.InodeCount) - float64(inodeCount))
 		if diff > defaultRangeOfCountDifferencesAllowed {
 			isEqual = false
 		}
@@ -99,9 +99,9 @@ func (mp *MetaPartition) checkInodeCount(clusterID string) {
 	if !isEqual {
 		msg := fmt.Sprintf("inode count is not equal,vol[%v],mpID[%v],", mp.volName, mp.PartitionID)
 		for _, lr := range mp.LoadResponse {
-			inodeCountStr := strconv.FormatUint(lr.MaxInode, 10)
+			inodeCountStr := strconv.FormatUint(lr.InodeCount, 10)
 			applyIDStr := strconv.FormatUint(uint64(lr.ApplyID), 10)
-			msg = msg + lr.Addr + " applyId[" + applyIDStr + "] maxInode[" + inodeCountStr + "],"
+			msg = msg + lr.Addr + " applyId[" + applyIDStr + "] inodeCount[" + inodeCountStr + "],"
 		}
 		Warn(clusterID, msg)
 	}
