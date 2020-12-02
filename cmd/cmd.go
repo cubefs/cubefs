@@ -265,6 +265,7 @@ func main() {
 
 	// Block main goroutine until server shutdown.
 	server.Sync()
+	log.LogFlush()
 	os.Exit(0)
 }
 

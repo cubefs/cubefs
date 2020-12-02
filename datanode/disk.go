@@ -115,7 +115,8 @@ func (d *Disk) computeUsage() (err error) {
 	d.Available = uint64(available)
 
 	//  used := math.Max(0, int64(total - available))
-	used := int64(total - available)
+	free := int64(fs.Bfree*uint64(fs.Bsize) - d.ReservedSpace)
+	used := int64(total - free)
 	if used < 0 {
 		used = 0
 	}
