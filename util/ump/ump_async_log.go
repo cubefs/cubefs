@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"strings"
 )
 
 type FunctionTp struct {
@@ -164,15 +163,7 @@ func (lw *LogWrite) backGroundWrite(umpType string) {
 	}
 }
 
-func initLogName(module, dataDir string) (err error) {
-	if dataDir != "" {
-		UmpDataDir = dataDir
-		if !strings.HasSuffix(UmpDataDir, "/") {
-			UmpDataDir += "/"
-		}
-	} else {
-		return fmt.Errorf("warnLogDir dir not config")
-	}
+func initLogName(module string) (err error) {
 	if err = os.MkdirAll(UmpDataDir, 0666); err != nil {
 		return
 	}
