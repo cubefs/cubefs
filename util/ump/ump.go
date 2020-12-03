@@ -58,8 +58,6 @@ var (
 
 func InitUmp(module string) (err error) {
 	if err = initLogName(module); err != nil {
-		enableUmp = false
-		err = nil
 		return
 	}
 
