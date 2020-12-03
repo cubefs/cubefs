@@ -29,4 +29,5 @@ ltptest:
   script:
     - docker/run_docker.sh --clean
     - docker/run_docker.sh -l
+    - docker/run_docker.sh --clean
 
