@@ -201,5 +201,6 @@ func (s *Super) umpFunctionKey(act string) string {
 
 func (s *Super) handleError(op, msg string) {
 	log.LogError(msg)
+	ump.Alarm(s.umpFunctionKey(op), msg)
 	ump.Alarm(s.umpKey(op), msg)
 }

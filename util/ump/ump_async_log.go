@@ -164,7 +164,7 @@ func (lw *LogWrite) backGroundWrite(umpType string) {
 }
 
 func initLogName(module string) (err error) {
-	if err = os.MkdirAll(UmpDataDir, 0666); err != nil {
+	if err = os.MkdirAll(UmpDataDir, 0777); err != nil {
 		return
 	}
 
