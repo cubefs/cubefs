@@ -67,10 +67,10 @@ func (s *DefaultRandomSelector) Refresh(partitions []*DataPartition) (err error)
 }
 
 func (s *DefaultRandomSelector) Select(exclude map[string]struct{}) (dp *DataPartition, err error) {
-	dp = s.getLocalLeaderDataPartition(exclude)
-	if dp != nil {
-		return dp, nil
-	}
+	//dp = s.getLocalLeaderDataPartition(exclude)
+	//if dp != nil {
+	//	return dp, nil
+	//}
 
 	s.RLock()
 	partitions := s.partitions
