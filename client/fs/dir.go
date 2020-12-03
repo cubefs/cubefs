@@ -15,7 +15,6 @@
 package fs
 
 import (
-	"errors"
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/ump"
 	"os"
@@ -169,7 +168,8 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) (err error) {
 	info, err := d.super.mw.Delete_ll(d.info.Inode, req.Name, req.Dir)
 	if err != nil {
 		log.LogErrorf("Remove: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
-		if errors.Is(err, syscall.EIO) {
+		//if errors.Is(err, syscall.EIO) {
+		if err == syscall.EIO {
 			msg := fmt.Sprintf("parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
 			d.super.handleError("Remove", msg)
 		}
