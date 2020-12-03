@@ -15,7 +15,6 @@
 package ump
 
 import (
-	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -58,14 +57,7 @@ var (
 )
 
 func InitUmp(module, dataDir string) (err error) {
-	if _, err = os.Stat(dataDir); err != nil {
-		enableUmp = false
-		err = nil
-		return
-	}
 	if err = initLogName(module, dataDir); err != nil {
-		enableUmp = false
-		err = nil
 		return
 	}
 

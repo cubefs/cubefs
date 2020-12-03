@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"strings"
 )
 
 type FunctionTp struct {
@@ -87,7 +86,7 @@ func (lw *LogWrite) initLogFp(sufixx string) (err error) {
 	lw.bf = bytes.NewBuffer([]byte{})
 	lw.jsonEncoder = json.NewEncoder(lw.bf)
 	lw.jsonEncoder.SetEscapeHTML(false)
-	if lw.logFp, err = os.OpenFile(lw.logName, LogFileOpt, 0666); err != nil {
+	if lw.logFp, err = os.OpenFile(lw.logName, LogFileOpt, 0777); err != nil {
 		return
 	}
 	if fi, err = lw.logFp.Stat(); err != nil {
@@ -165,15 +164,7 @@ func (lw *LogWrite) backGroundWrite(umpType string) {
 }
 
 func initLogName(module, dataDir string) (err error) {
-	if dataDir != "" {
-		UmpDataDir = dataDir
-		if !strings.HasSuffix(UmpDataDir, "/") {
-			UmpDataDir += "/"
-		}
-	} else {
-		return fmt.Errorf("warnLogDir dir not config")
-	}
-	if err = os.MkdirAll(UmpDataDir, 0666); err != nil {
+	if err = os.MkdirAll(UmpDataDir, 0777); err != nil {
 		return
 	}
 
