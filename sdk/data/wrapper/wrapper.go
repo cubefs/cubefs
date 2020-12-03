@@ -220,19 +220,13 @@ func (w *Wrapper) getRandomDataPartition(partitions []*DataPartition, exclude ma
 	return nil
 }
 
-func (w *Wrapper) getLocalLeaderDataPartition(exclude map[string]struct{}) *DataPartition {
-	w.RLock()
-	localLeaderPartitions := w.localLeaderPartitions
-	w.RUnlock()
-	return w.getRandomDataPartition(localLeaderPartitions, exclude)
-}
-
 // GetDataPartitionForWrite returns an available data partition for write.
 func (w *Wrapper) GetDataPartitionForWrite(exclude map[string]struct{}) (*DataPartition, error) {
-	dp := w.getLocalLeaderDataPartition(exclude)
-	if dp != nil {
-		return dp, nil
-	}
+	var dp *DataPartition
+	//dp := w.getLocalLeaderDataPartition(exclude)
+	//if dp != nil {
+	//	return dp, nil
+	//}
 
 	w.RLock()
 	rwPartitionGroups := w.rwPartition
