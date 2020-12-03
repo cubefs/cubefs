@@ -57,10 +57,14 @@ type Vol struct {
 	createMpMutex      sync.RWMutex
 	createTime         int64
 	description        string
+	dpSelectorName     string
+	dpSelectorParm     string
 	sync.RWMutex
 }
 
-func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead, authenticate, enableToken, autoRepair bool, createTime int64, description string) (vol *Vol) {
+func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8,
+	followerRead, authenticate, enableToken, autoRepair bool, createTime int64, description, dpSelectorName,
+	dpSelectorParm string) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	if dpReplicaNum < defaultReplicaNum {
@@ -95,6 +99,8 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.autoRepair = autoRepair
 	vol.tokens = make(map[string]*proto.Token, 0)
 	vol.description = description
+	vol.dpSelectorName = dpSelectorName
+	vol.dpSelectorParm = dpSelectorParm
 	return
 }
 
@@ -113,7 +119,9 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.EnableToken,
 		vv.AutoRepair,
 		vv.CreateTime,
-		vv.Description)
+		vv.Description,
+		vv.DpSelectorName,
+		vv.DpSelectorParm)
 	// overwrite oss secure
 	vol.OSSAccessKey, vol.OSSSecretKey = vv.OSSAccessKey, vv.OSSSecretKey
 	vol.Status = vv.Status

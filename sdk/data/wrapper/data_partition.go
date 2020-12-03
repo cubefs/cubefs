@@ -16,13 +16,15 @@ package wrapper
 
 import (
 	"fmt"
+	"net"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
-	"net"
-	"strings"
-	"syscall"
-	"time"
 )
 
 // DataPartition defines the wrapper of the data partition.
@@ -31,14 +33,72 @@ type DataPartition struct {
 	proto.DataPartitionResponse
 	RandomWrite   bool
 	PartitionType string
+	NearHosts     []string
 	ClientWrapper *Wrapper
 	Metrics       *DataPartitionMetrics
 }
 
 // DataPartitionMetrics defines the wrapper of the metrics related to the data partition.
 type DataPartitionMetrics struct {
-	WriteLatency float64
-	ReadLatency  float64
+	sync.RWMutex
+	AvgReadLatencyNano  int64
+	AvgWriteLatencyNano int64
+	SumReadLatencyNano  int64
+	SumWriteLatencyNano int64
+	ReadOpNum           int64
+	WriteOpNum          int64
+}
+
+func (dp *DataPartition) RecordWrite(startT int64) {
+	if startT == 0 {
+		log.LogWarnf("RecordWrite: invalid start time")
+		return
+	}
+	cost := time.Now().UnixNano() - startT
+
+	dp.Metrics.Lock()
+	defer dp.Metrics.Unlock()
+
+	dp.Metrics.WriteOpNum++
+	dp.Metrics.SumWriteLatencyNano += cost
+
+	return
+}
+
+func (dp *DataPartition) MetricsRefresh() {
+	dp.Metrics.Lock()
+	defer dp.Metrics.Unlock()
+
+	if dp.Metrics.ReadOpNum != 0 {
+		dp.Metrics.AvgReadLatencyNano = dp.Metrics.SumReadLatencyNano / dp.Metrics.ReadOpNum
+	} else {
+		dp.Metrics.AvgReadLatencyNano = 0
+	}
+
+	if dp.Metrics.WriteOpNum != 0 {
+		dp.Metrics.AvgWriteLatencyNano = dp.Metrics.SumWriteLatencyNano / dp.Metrics.WriteOpNum
+	} else {
+		dp.Metrics.AvgWriteLatencyNano = 0
+	}
+
+	dp.Metrics.SumReadLatencyNano = 0
+	dp.Metrics.SumWriteLatencyNano = 0
+	dp.Metrics.ReadOpNum = 0
+	dp.Metrics.WriteOpNum = 0
+}
+
+func (dp *DataPartition) GetAvgRead() int64 {
+	dp.Metrics.RLock()
+	defer dp.Metrics.RUnlock()
+
+	return dp.Metrics.AvgReadLatencyNano
+}
+
+func (dp *DataPartition) GetAvgWrite() int64 {
+	dp.Metrics.RLock()
+	defer dp.Metrics.RUnlock()
+
+	return dp.Metrics.AvgWriteLatencyNano
 }
 
 type DataPartitionSorter []*DataPartition
@@ -50,7 +110,7 @@ func (ds DataPartitionSorter) Swap(i, j int) {
 	ds[i], ds[j] = ds[j], ds[i]
 }
 func (ds DataPartitionSorter) Less(i, j int) bool {
-	return ds[i].Metrics.WriteLatency < ds[j].Metrics.WriteLatency
+	return ds[i].Metrics.AvgWriteLatencyNano < ds[j].Metrics.AvgWriteLatencyNano
 }
 
 // NewDataPartitionMetrics returns a new DataPartitionMetrics instance.
@@ -61,8 +121,8 @@ func NewDataPartitionMetrics() *DataPartitionMetrics {
 
 // String returns the string format of the data partition.
 func (dp *DataPartition) String() string {
-	return fmt.Sprintf("PartitionID(%v) Status(%v) ReplicaNum(%v) PartitionType(%v) Hosts(%v)",
-		dp.PartitionID, dp.Status, dp.ReplicaNum, dp.PartitionType, dp.Hosts)
+	return fmt.Sprintf("PartitionID(%v) Status(%v) ReplicaNum(%v) PartitionType(%v) Hosts(%v) NearHosts(%v)",
+		dp.PartitionID, dp.Status, dp.ReplicaNum, dp.PartitionType, dp.Hosts, dp.NearHosts)
 }
 
 func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {

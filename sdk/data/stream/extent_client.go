@@ -81,6 +81,7 @@ type ExtentConfig struct {
 	Volume                   string
 	Masters                  []string
 	FollowerRead             bool
+	NearRead                 bool
 	ReadRate                 int64
 	WriteRate                int64
 	AlignSize                int64
@@ -131,7 +132,8 @@ retry:
 	client.appendExtentKey = config.OnAppendExtentKey
 	client.getExtents = config.OnGetExtents
 	client.truncate = config.OnTruncate
-	client.followerRead = config.FollowerRead || client.dataWrapper.FollowerRead()
+	client.dataWrapper.InitFollowerRead(config.FollowerRead)
+	client.dataWrapper.SetNearRead(config.NearRead)
 
 	var readLimit, writeLimit rate.Limit
 	if config.ReadRate <= 0 {

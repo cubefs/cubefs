@@ -20,11 +20,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/errors"
-
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data/wrapper"
 	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
@@ -235,6 +234,7 @@ func (eh *ExtentHandler) sender() {
 			packet.Arg = ([]byte)(eh.dp.GetAllAddrs())
 			packet.ArgLen = uint32(len(packet.Arg))
 			packet.RemainingFollowers = uint8(len(eh.dp.Hosts) - 1)
+			packet.StartT = time.Now().UnixNano()
 
 			//log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
 
@@ -323,6 +323,8 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		eh.processReplyError(packet, errmsg)
 		return
 	}
+
+	eh.dp.RecordWrite(packet.StartT)
 
 	var (
 		extID, extOffset uint64
@@ -495,13 +497,18 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 			extID, err = eh.createExtent(dp)
 		}
 		if err != nil {
-			log.LogWarnf("allocateExtent: failed to create extent, eh(%v) err(%v)", eh, err)
+			log.LogWarnf("allocateExtent: delete dp[%v] caused by create extent failed, eh(%v) err(%v) exclude(%v)",
+				dp, eh, err, exclude)
+			eh.stream.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
 			dp.CheckAllHostsIsAvail(exclude)
 			continue
 		}
 
 		if conn, err = StreamConnPool.GetConnect(dp.Hosts[0]); err != nil {
-			log.LogWarnf("allocateExtent: failed to create connection, eh(%v) err(%v) dp(%v)", eh, err, dp)
+			log.LogWarnf("allocateExtent: failed to create connection, eh(%v) err(%v) dp(%v) exclude(%v)",
+				eh, err, dp, exclude)
+			// If storeMode is tinyExtentType and can't create connection, we also check host status.
+			dp.CheckAllHostsIsAvail(exclude)
 			continue
 		}
 

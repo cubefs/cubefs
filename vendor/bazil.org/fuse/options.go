@@ -320,3 +320,11 @@ func AllowNonEmptyMount() MountOption {
 		return nil
 	}
 }
+
+// PosixACL enable posix ACL supported.
+func PosixACL() MountOption {
+	return func(conf *mountConfig) error {
+		conf.initFlags |= InitPOSIXACL
+		return nil
+	}
+}

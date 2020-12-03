@@ -58,6 +58,8 @@ const (
 	descriptionKey          = "description"
 	dpRecoverPoolSizeKey    = "dpRecoverPool"
 	mpRecoverPoolSizeKey    = "mpRecoverPool"
+	dpSelectorNameKey       = "dpSelectorName"
+	dpSelectorParmKey       = "dpSelectorParm"
 )
 
 const (

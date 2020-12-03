@@ -45,9 +45,11 @@ const (
 	FsyncOnClose
 	MaxCPUs
 	EnableXattr
+	NearRead
 	AlignSize
 	MaxExtentNumPerAlignArea
 	ForceAlignMerge
+	EnablePosixACL
 
 	MaxMountOption
 )
@@ -95,6 +97,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[WriteCache] = MountOption{"writecache", "Enable FUSE writecache feature", "", false}
 	opts[KeepCache] = MountOption{"keepcache", "Enable FUSE keepcache feature", "", false}
 	opts[FollowerRead] = MountOption{"followerRead", "Enable read from follower", "", false}
+	opts[NearRead] = MountOption{"nearRead", "Enable read from nearest node", "", true}
 
 	opts[Authenticate] = MountOption{"authenticate", "Enable Authenticate", "", false}
 	opts[ClientKey] = MountOption{"clientKey", "Client Key", "", ""}
@@ -111,6 +114,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[FsyncOnClose] = MountOption{"fsyncOnClose", "Perform fsync upon file close", "", true}
 	opts[MaxCPUs] = MountOption{"maxcpus", "The maximum number of CPUs that can be executing", "", int64(-1)}
 	opts[EnableXattr] = MountOption{"enableXattr", "Enable xattr support", "", false}
+	opts[EnablePosixACL] = MountOption{"enablePosixACL", "enable posix ACL support", "", false}
 
 	opts[AlignSize] = MountOption{"alignSize", "align size when extent merge", "", int64(4096)}
 	opts[MaxExtentNumPerAlignArea] = MountOption{"maxExtentNumPerAlignArea", "max extent number per align area", "",
@@ -244,7 +248,9 @@ type MountOptions struct {
 	FsyncOnClose             bool
 	MaxCPUs                  int64
 	EnableXattr              bool
+	NearRead                 bool
 	AlignSize                int64
 	MaxExtentNumPerAlignArea int64
 	ForceAlignMerge          bool
+	EnablePosixACL           bool
 }
