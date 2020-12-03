@@ -15,6 +15,9 @@
 package fs
 
 import (
+	"errors"
+	"fmt"
+	"github.com/chubaofs/chubaofs/util/ump"
 	"os"
 	"syscall"
 	"time"
@@ -153,17 +156,23 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 }
 
 // Remove handles the remove request.
-func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
+func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) (err error) {
+	tpObject := ump.BeforeTP(d.super.umpFunctionKey("Remove"))
+	defer ump.AfterTP(tpObject, err)
+
 	start := time.Now()
 	d.dcache.Delete(req.Name)
 
-	var err error
 	metric := exporter.NewTPCnt("remove")
 	defer metric.Set(err)
 
 	info, err := d.super.mw.Delete_ll(d.info.Inode, req.Name, req.Dir)
 	if err != nil {
 		log.LogErrorf("Remove: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
+		if errors.Is(err, syscall.EIO) {
+			msg := fmt.Sprintf("parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
+			d.super.handleError("Remove", msg)
+		}
 		return ParseError(err)
 	}
 
