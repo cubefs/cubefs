@@ -56,8 +56,8 @@ var (
 	enableUmp = true
 )
 
-func InitUmp(module, dataDir string) (err error) {
-	if err = initLogName(module, dataDir); err != nil {
+func InitUmp(module string) (err error) {
+	if err = initLogName(module); err != nil {
 		return
 	}
 

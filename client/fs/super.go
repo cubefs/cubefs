@@ -197,7 +197,20 @@ func (s *Super) umpKey(act string) string {
 	return fmt.Sprintf("%v_fuseclient_%v", s.cluster, act)
 }
 
+func (s *Super) umpFunctionKey(act string) string {
+	return fmt.Sprintf("%s_%s_%s", s.cluster, s.volname, act)
+}
+
+func (s *Super) umpAlarmKey(act string) string {
+	return fmt.Sprintf("%s_%s_%s_warning", s.cluster, s.volname, act)
+}
+
 func (s *Super) handleError(op, msg string) {
 	log.LogError(msg)
-	ump.Alarm(s.umpKey(op), msg)
+
+	ump.Alarm(s.umpAlarmKey(op), msg)
+
+	errmsg := fmt.Sprintf("volume(%s) - %s", s.volname, msg)
+	ump.Alarm(s.umpKey(op), errmsg)
 }
+
