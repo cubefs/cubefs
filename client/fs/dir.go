@@ -165,15 +165,16 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) (err error) {
 	metric := exporter.NewTPCnt("remove")
 	defer metric.Set(err)
 
-	info, err := d.super.mw.Delete_ll(d.info.Inode, req.Name, req.Dir)
-	if err != nil {
-		log.LogErrorf("Remove: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
+	info, syserr := d.super.mw.Delete_ll(d.info.Inode, req.Name, req.Dir)
+	if syserr != nil {
+		log.LogErrorf("Remove: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, syserr)
 		//if errors.Is(err, syscall.EIO) {
-		if err == syscall.EIO {
-			msg := fmt.Sprintf("parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
+		if syserr == syscall.EIO {
+			msg := fmt.Sprintf("parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, syserr)
 			d.super.handleError("Remove", msg)
 		}
-		return ParseError(err)
+		err = ParseError(syserr)
+		return
 	}
 
 	d.super.ic.Delete(d.info.Inode)
