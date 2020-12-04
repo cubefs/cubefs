@@ -213,4 +213,3 @@ func (s *Super) handleError(op, msg string) {
 	errmsg := fmt.Sprintf("volume(%s) - %s", s.volname, msg)
 	ump.Alarm(s.umpKey(op), errmsg)
 }
-

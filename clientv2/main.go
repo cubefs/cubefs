@@ -285,7 +285,6 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.WriteRate = GlobalMountOptions[proto.WriteRate].GetInt64()
 	opt.EnSyncWrite = GlobalMountOptions[proto.EnSyncWrite].GetInt64()
 	opt.AutoInvalData = GlobalMountOptions[proto.AutoInvalData].GetInt64()
-	opt.UmpDatadir = GlobalMountOptions[proto.WarnLogDir].GetString()
 	opt.Rdonly = GlobalMountOptions[proto.Rdonly].GetBool()
 	opt.WriteCache = GlobalMountOptions[proto.WriteCache].GetBool()
 	opt.KeepCache = GlobalMountOptions[proto.KeepCache].GetBool()
