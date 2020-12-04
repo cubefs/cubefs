@@ -219,7 +219,6 @@ type MountOptions struct {
 	WriteRate     int64
 	EnSyncWrite   int64
 	AutoInvalData int64
-	UmpDatadir    string
 	Rdonly        bool
 	WriteCache    bool
 	KeepCache     bool

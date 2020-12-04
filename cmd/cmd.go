@@ -153,7 +153,6 @@ func main() {
 	logDir := cfg.GetString(ConfigKeyLogDir)
 	logLevel := cfg.GetString(ConfigKeyLogLevel)
 	profPort := cfg.GetString(ConfigKeyProfPort)
-	umpDatadir := cfg.GetString(ConfigKeyWarnLogDir)
 
 	// Init server instance with specified role configuration.
 	var (
@@ -233,7 +232,7 @@ func main() {
 
 	//for multi-cpu scheduling
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	if err = ump.InitUmp(role, umpDatadir); err != nil {
+	if err = ump.InitUmp(role); err != nil {
 		log.LogFlush()
 		daemonize.SignalOutcome(fmt.Errorf("Fatal: init warnLogDir fail:%v ", err))
 		os.Exit(1)

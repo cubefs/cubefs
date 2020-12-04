@@ -16,6 +16,7 @@ package fs
 
 import (
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/ump"
 	"io"
 	"time"
 
@@ -116,6 +117,9 @@ func (f *File) Forget() {
 
 // Open handles the open request.
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (handle fs.Handle, err error) {
+	tpObject := ump.BeforeTP(f.super.umpFunctionKey("Open"))
+	defer ump.AfterTP(tpObject, err)
+
 	ino := f.info.Inode
 	start := time.Now()
 
@@ -153,6 +157,9 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 
 // Read handles the read request.
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) (err error) {
+	tpObject := ump.BeforeTP(f.super.umpFunctionKey("Read"))
+	defer ump.AfterTP(tpObject, err)
+
 	log.LogDebugf("TRACE Read enter: ino(%v) offset(%v) reqsize(%v) req(%v)", f.info.Inode, req.Offset, req.Size, req)
 
 	start := time.Now()
@@ -184,6 +191,9 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 
 // Write handles the write request.
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) (err error) {
+	tpObject := ump.BeforeTP(f.super.umpFunctionKey("Write"))
+	defer ump.AfterTP(tpObject, err)
+
 	ino := f.info.Inode
 	reqlen := len(req.Data)
 	filesize, _ := f.fileSize(ino)
@@ -241,6 +251,9 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 
 // Flush only when fsyncOnClose is enabled.
 func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
+	tpObject := ump.BeforeTP(f.super.umpFunctionKey("Flush"))
+	defer ump.AfterTP(tpObject, err)
+
 	if !f.super.fsyncOnClose {
 		return fuse.ENOSYS
 	}
