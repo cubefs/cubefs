@@ -153,9 +153,9 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) (err error) {
 
 	info, syserr := d.super.mw.Delete_ll(d.info.Inode, req.Name, req.Dir)
 	if syserr != nil {
-		log.LogErrorf("Remove: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
+		log.LogErrorf("Remove: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, syserr)
 		if syserr == syscall.EIO {
-			msg := fmt.Sprintf("parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
+			msg := fmt.Sprintf("parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, syserr)
 			d.super.handleError("Remove", msg)
 		}
 		err = ParseError(syserr)

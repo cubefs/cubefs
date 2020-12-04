@@ -140,6 +140,7 @@ type CreateInodeResponse struct {
 	Info *InodeInfo `json:"info"`
 }
 
+
 // LinkInodeRequest defines the request to link an inode.
 type LinkInodeRequest struct {
 	VolName     string `json:"vol"`
