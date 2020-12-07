@@ -60,7 +60,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getParams", m.getParamsHandler)
 	http.HandleFunc("/getDiskStat", m.getDiskStatHandler)
 
-	http.HandleFunc("/cursorReset", m.cursorReset)
+	//http.HandleFunc("/cursorReset", m.cursorReset)
 
 	return
 }
