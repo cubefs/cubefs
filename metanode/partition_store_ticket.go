@@ -39,19 +39,23 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 	timerCursor := time.NewTimer(intervalToSyncCursor)
 	scheduleState := common.StateStopped
 	dumpFunc := func(msg *storeMsg) {
-		log.LogDebugf("[startSchedule] partitionId=%d: nowAppID"+
+		log.LogWarnf("[beforMetaPartitionStore] partitionId=%d: nowAppID"+
 			"=%d, applyID=%d", mp.config.PartitionId, curIndex,
 			msg.applyIndex)
 		if err := mp.store(msg); err == nil {
 			// truncate raft log
 			if mp.raftPartition != nil {
 				mp.raftPartition.Truncate(curIndex)
+				log.LogWarnf("[afterMetaPartitionStore] partitionId=%d: nowAppID"+
+					"=%d, applyID=%d", mp.config.PartitionId, curIndex,
+					msg.applyIndex)
+				curIndex = msg.applyIndex
 			} else {
 				// maybe happen when start load dentry
 				log.LogWarnf("[startSchedule] raftPartition is nil so skip" +
 					" truncate raft log")
 			}
-			curIndex = msg.applyIndex
+			
 		} else {
 			// retry again
 			mp.storeChan <- msg
