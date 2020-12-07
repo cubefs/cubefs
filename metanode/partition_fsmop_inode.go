@@ -17,7 +17,10 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
+	"fmt"
 	"io"
+	"sync/atomic"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -161,6 +164,33 @@ func (mp *metaPartition) internalDelete(val []byte) (err error) {
 			mp.config.PartitionId, ino.Inode)
 		mp.internalDeleteInode(ino)
 	}
+}
+
+func (mp *metaPartition) internalCursorReset(val []byte) (uint64, error) {
+	req := &proto.CursorResetRequest{}
+	if err := json.Unmarshal(val, req); err != nil {
+		return 0, err
+	}
+	if mp.config.VolName != req.VolName {
+		return 0, fmt.Errorf("partition:[%d] reset vol name not equal mp:[%s] req:[%s]", mp.config.PartitionId, mp.config.VolName, req.VolName)
+	}
+
+	if mp.freeList.Len() != 0 {
+		return 0, fmt.Errorf("partition:[%d] freeList len must 0, but got [%d]", mp.config.PartitionId, mp.inodeTree.Len())
+	}
+
+	if mp.inodeTree.Len() != 0 {
+		if mp.inodeTree.Len() == 1 && mp.inodeTree.Has(NewInode(1, 0)) { // if is root inode
+			atomic.StoreUint64(&mp.config.Cursor, mp.config.Start+2)
+		} else {
+			return 0, fmt.Errorf("partition:[%d] reset inode len must 0, but got [%d]", mp.config.PartitionId, mp.inodeTree.Len())
+		}
+	} else {
+		atomic.StoreUint64(&mp.config.Cursor, mp.config.Start+1)
+	}
+
+	log.LogInfof("internalCursorReset: partitionID(%v) reset to ", mp.config.PartitionId, mp.config.Cursor)
+	return mp.config.Cursor, nil
 }
 
 func (mp *metaPartition) internalDeleteBatch(val []byte) error {

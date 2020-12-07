@@ -17,7 +17,12 @@ package cmd
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/cli/api"
+	"github.com/chubaofs/chubaofs/metanode"
+	"io/ioutil"
+	"net/http"
 	"os"
 	"sort"
 	"strconv"
@@ -33,6 +38,7 @@ import (
 const (
 	cmdVolUse   = "volume [COMMAND]"
 	cmdVolShort = "Manage cluster volumes"
+	line        = "\n---------------------------------------------------\n"
 )
 
 func newVolCmd(client *master.MasterClient) *cobra.Command {
@@ -50,6 +56,7 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolTransferCmd(client),
 		newVolAddDPCmd(client),
 		newVolSetCmd(client),
+		newVolPartitionCheckCmd(client),
 	)
 	return cmd
 }
@@ -433,6 +440,171 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
+func newVolPartitionCheckCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   "partitionCheck [VOLUME NAME] [DIFF LIST(true/false)]",
+		Short: "check a volume's partitions count",
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var volumeName = args[0]
+			var isList = strings.ToLower(args[1])
+
+			info, err := client.AdminAPI().GetVolumeSimpleInfo(volumeName)
+			if err != nil {
+				errout("get volume failed:\n%v\n", err)
+				return
+			}
+
+			volume, err := client.ClientAPI().GetVolume(volumeName, calcAuthKey(info.Owner))
+			if err != nil {
+				errout("get volume list failed:\n%v\n", err)
+				return
+			}
+
+			diffInode := func(i, v *metanode.Inode) bool {
+				flag := i.Inode == v.Inode && i.Type == v.Type && i.Uid == v.Uid && i.Gid == v.Gid && i.Size == v.Size && i.Generation == v.Generation && i.CreateTime == v.CreateTime && i.ModifyTime == v.ModifyTime && i.NLink == v.NLink && i.Flag == v.Flag && i.Reserved == v.Reserved
+				if !flag {
+					return flag
+				}
+
+				if v.Extents.Size() != i.Extents.Size() {
+					return false
+				}
+
+				extentMap := make(map[uint64]*proto.ExtentKey)
+
+				v.Extents.Range(func(ek proto.ExtentKey) bool {
+					extentMap[ek.ExtentId] = &ek
+					return true
+				})
+
+				i.Extents.Range(func(ek proto.ExtentKey) bool {
+					vek := extentMap[ek.ExtentId]
+					return vek.ExtentId == ek.ExtentId && vek.Size == ek.Size && vek.PartitionId == ek.PartitionId && vek.FileOffset == ek.FileOffset && vek.CRC == ek.CRC && vek.ExtentOffset == ek.ExtentOffset
+				})
+
+				return flag
+			}
+
+			diffDentry := func(i, v *metanode.Dentry) bool {
+				return i.Type == v.Type && i.Inode == v.Inode && i.Name == v.Name && i.ParentId == v.ParentId
+			}
+
+			for _, mp := range volume.MetaPartitions {
+
+				var preAddr string
+				flag := true
+				var dentryCount, inodeCount, multipartCount float64 = -1, -1, -1
+				var preAllInode map[uint64]*metanode.Inode
+				var preAllDentry map[string]*metanode.Dentry
+
+				for _, addr := range mp.Members {
+					addr := strings.Split(addr, ":")[0]
+
+					resp, err := http.Get(fmt.Sprintf("http://%s:%d/getPartitionById?pid=%d", addr, client.MetaNodeProfPort, mp.PartitionID))
+					if err != nil {
+						errout("get partition list failed:\n%v\n", err)
+						return
+					}
+					all, err := ioutil.ReadAll(resp.Body)
+					if err != nil {
+						errout("get partition list failed:\n%v\n", err)
+						return
+					}
+
+					value := make(map[string]interface{})
+					err = json.Unmarshal(all, &value)
+					if err != nil {
+						errout("get partition info failed:\n%v\n", err)
+						return
+					}
+
+					if value["code"].(float64) != float64(200) {
+						errout("get partition info has err:[addr:%s , code:%d] \n", addr, value["code"])
+					}
+
+					data := value["data"].(map[string]interface{})
+
+					if preAddr == "" {
+						dentryCount, inodeCount, multipartCount = data["dentry_count"].(float64), data["inode_count"].(float64), data["multipart_count"].(float64)
+						preAddr = addr
+					} else {
+						if dentryCount != data["dentry_count"].(float64) {
+							flag = false
+							errout("partition:%d dentryCount not same source:%s target:%s\n", mp.PartitionID, preAddr, addr)
+						}
+						if inodeCount != data["inode_count"].(float64) {
+							flag = false
+							errout("partition:%d inodeCount not same source:%s target:%s\n", mp.PartitionID, preAddr, addr)
+						}
+						if multipartCount != data["multipart_count"].(float64) {
+							flag = false
+							errout("partition:%d multipartCount not same source:%s target:%s\n", mp.PartitionID, preAddr, addr)
+						}
+					}
+
+					if isList != "true" {
+						continue
+					}
+
+					metaClient := api.NewMetaHttpClient(fmt.Sprintf("%s:%d", addr, client.MetaNodeProfPort), false)
+
+					allInode, err := metaClient.GetAllInodes(mp.PartitionID)
+					if err != nil {
+						flag = false
+						errout("partition:%d list inode has err:%s target:%s err:%s\n", mp.PartitionID, err.Error(), addr)
+					}
+
+					if len(preAllInode) == 0 {
+						preAllInode = allInode
+					} else {
+						if len(preAllInode) != len(allInode) {
+							errout("partition:%d list inode len not same source:%d count:%d target:%s count:%d\n", mp.PartitionID, preAddr, len(preAllInode), addr, len(allInode))
+						}
+						for k, v := range allInode {
+							i := preAllInode[k]
+							if !diffInode(v, i) {
+								errout("partition:%d list inode not same %s:%v %s:%v\n", mp.PartitionID, preAddr, i, addr, v)
+							}
+						}
+					}
+
+					allDentry, err := metaClient.GetAllDentry(mp.PartitionID)
+					if preAllDentry == nil {
+						preAllDentry = allDentry
+					} else {
+						if len(preAllDentry) != len(allDentry) {
+							errout("partition:%d list dentry len not same source:%d count:%d target:%s count:%d\n", mp.PartitionID, preAddr, len(preAllDentry), addr, len(allDentry))
+						}
+						for k, v := range allDentry {
+							i := preAllDentry[k]
+							if !diffDentry(v, i) {
+								errout("partition:%d list dentry not same %s:%v %s:%v\n", mp.PartitionID, preAddr, i, addr, v)
+							}
+						}
+					}
+				}
+
+				if flag {
+					stdout("partition:%d is health."+line, mp.PartitionID)
+				} else {
+					stdout("partition:%d is not health."+line, mp.PartitionID)
+				}
+			}
+
+			stdout("Check volume partition end is list:%v.\n", isList == "true")
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	return cmd
+}
+
 const (
 	cmdVolTransferUse   = "transfer [VOLUME NAME] [USER ID]"
 	cmdVolTransferShort = "Transfer volume to another user. (Change owner of volume)"
@@ -492,8 +664,6 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 			}
 		},
 	}
-	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
-	cmd.Flags().BoolVarP(&optForce, "force", "f", false, "Force transfer without current owner check")
 	return cmd
 }
 

@@ -354,6 +354,12 @@ type DeleteInodeRequest struct {
 }
 
 // DeleteInodeRequest defines the request to delete an inode.
+type CursorResetRequest struct {
+	VolName     string `json:"vol"`
+	PartitionId uint64 `json:"pid"`
+}
+
+// DeleteInodeRequest defines the request to delete an inode.
 type DeleteInodeBatchRequest struct {
 	VolName     string   `json:"vol"`
 	PartitionId uint64   `json:"pid"`

@@ -133,7 +133,7 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 	if err != nil {
 		return
 	}
-	var localInode *api.Inode
+	var localInode *metanode.Inode
 	mp.GetInodeTree().Ascend(func(d metanode.BtreeItem) bool {
 		inode, ok := d.(*metanode.Inode)
 		if !ok {
@@ -144,7 +144,7 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 			stdout("inode %v is not in old version \n", inode.Inode)
 			return true
 		}
-		localInode = &api.Inode{
+		localInode = &metanode.Inode{
 			Inode:      inode.Inode,
 			Type:       inode.Type,
 			Uid:        inode.Uid,
@@ -158,10 +158,10 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 			NLink:      inode.NLink,
 			Flag:       inode.Flag,
 			Reserved:   inode.Reserved,
-			Extents:    make([]proto.ExtentKey, 0),
+			Extents:    metanode.NewSortedExtents(),
 		}
 		inode.Extents.Range(func(ek proto.ExtentKey) bool {
-			localInode.Extents = append(localInode.Extents, ek)
+			localInode.Extents.Append(ek)
 			return true
 		})
 		if !reflect.DeepEqual(oldInode, localInode) {

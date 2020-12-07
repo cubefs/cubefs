@@ -24,59 +24,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chubaofs/chubaofs/metanode"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/metanode"
-	"bufio"
-	"io"
 )
 
 const (
 	requestTimeout = 30 * time.Second
 )
-
-type Inode struct {
-	sync.RWMutex
-	Inode      uint64 // Inode ID
-	Type       uint32
-	Uid        uint32
-	Gid        uint32
-	Size       uint64
-	Generation uint64
-	CreateTime int64
-	AccessTime int64
-	ModifyTime int64
-	LinkTarget []byte // SymLink target name
-	NLink      uint32 // NodeLink counts
-	Flag       int32
-	Reserved   uint64 // reserved space
-	Extents    []proto.ExtentKey
-}
-
-// String returns the string format of the inode.
-func (i *Inode) String() string {
-	i.RLock()
-	defer i.RUnlock()
-	buff := bytes.NewBuffer(nil)
-	buff.Grow(128)
-	buff.WriteString("Inode{")
-	buff.WriteString(fmt.Sprintf("Inode[%d]", i.Inode))
-	buff.WriteString(fmt.Sprintf("Type[%d]", i.Type))
-	buff.WriteString(fmt.Sprintf("Uid[%d]", i.Uid))
-	buff.WriteString(fmt.Sprintf("Gid[%d]", i.Gid))
-	buff.WriteString(fmt.Sprintf("Size[%d]", i.Size))
-	buff.WriteString(fmt.Sprintf("Gen[%d]", i.Generation))
-	buff.WriteString(fmt.Sprintf("CT[%d]", i.CreateTime))
-	buff.WriteString(fmt.Sprintf("AT[%d]", i.AccessTime))
-	buff.WriteString(fmt.Sprintf("MT[%d]", i.ModifyTime))
-	buff.WriteString(fmt.Sprintf("LinkT[%s]", i.LinkTarget))
-	buff.WriteString(fmt.Sprintf("NLink[%d]", i.NLink))
-	buff.WriteString(fmt.Sprintf("Flag[%d]", i.Flag))
-	buff.WriteString(fmt.Sprintf("Reserved[%d]", i.Reserved))
-	buff.WriteString(fmt.Sprintf("Extents[%s]", i.Extents))
-	buff.WriteString("}")
-	return buff.String()
-}
 
 type MetaHttpClient struct {
 	sync.RWMutex
@@ -288,42 +243,44 @@ func parseToken(dec *json.Decoder, expectToken rune) (err error) {
 	return
 }
 
-func (mc *MetaHttpClient) GetAllInodes(pid uint64) (rstMap map[uint64]*Inode, err error, ) {
+func (mc *MetaHttpClient) GetAllInodes(pid uint64) (rstMap map[uint64]*metanode.Inode, err error, ) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[GetAllInodes],pid:%v,err:%v", pid, err)
 		}
 		log.LogFlush()
 	}()
-	reqURL := fmt.Sprintf("http://%v%v?pid=%v", mc.host, "/getAllInodes", pid)
-	log.LogDebugf("reqURL=%v", reqURL)
-	resp, err := http.Get(reqURL)
+
+	inodeMap := make(map[uint64]*metanode.Inode, 0)
+
+	request := newAPIRequest(http.MethodGet, "/getAllInodes")
+	request.params["pid"] = fmt.Sprintf("%v", pid)
+	respData, err := mc.serveRequest(request)
+	log.LogInfof("err:%v,respData:%v\n", err, string(respData))
 	if err != nil {
 		return
 	}
-	return unmarshalInodes(resp)
-}
 
-func unmarshalInodes(resp *http.Response) (rstMap map[uint64]*Inode, err error) {
-	bufReader := bufio.NewReader(resp.Body)
-	rstMap = make(map[uint64]*Inode)
-	var buf []byte
-	for {
-		buf, err = bufReader.ReadBytes('\n')
-		log.LogInfof("buf[%v],err[%v]", string(buf), err)
-		if err != nil && err != io.EOF {
-			return
-		}
-		inode := &Inode{}
-		if err1 := json.Unmarshal(buf, inode); err1 != nil {
-			err = err1
-			return
-		}
-		rstMap[inode.Inode] = inode
-		log.LogInfof("after unmarshal current inode[%v]", inode)
-		if err == io.EOF {
-			err = nil
-			return
-		}
+	dec := json.NewDecoder(bytes.NewBuffer(respData))
+	dec.UseNumber()
+
+	// It's the "items". We expect it to be an array
+	if err = parseToken(dec, '['); err != nil {
+		return
 	}
+	// Read items (large objects)
+	for dec.More() {
+		// Read next item (large object)
+		in := &metanode.Inode{}
+		if err = dec.Decode(in); err != nil {
+			return
+		}
+		inodeMap[in.Inode] = in
+	}
+	// Array closing delimiter
+	if err = parseToken(dec, ']'); err != nil {
+		return
+	}
+
+	return inodeMap, nil
 }
