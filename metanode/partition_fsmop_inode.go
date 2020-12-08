@@ -189,7 +189,7 @@ func (mp *metaPartition) internalCursorReset(val []byte) (uint64, error) {
 		atomic.StoreUint64(&mp.config.Cursor, mp.config.Start+1)
 	}
 
-	log.LogInfof("internalCursorReset: partitionID(%v) reset to ", mp.config.PartitionId, mp.config.Cursor)
+	log.LogInfof("internalCursorReset: partitionID(%v) reset to (%v) ", mp.config.PartitionId, mp.config.Cursor)
 	return mp.config.Cursor, nil
 }
 
