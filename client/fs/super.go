@@ -78,7 +78,11 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	if err != nil {
 		return nil, errors.Trace(err, "NewMetaWrapper failed!")
 	}
-
+	inodeExpiration := DefaultInodeExpiration
+	if opt.IcacheTimeout >= 0 {
+		inodeExpiration = time.Duration(opt.IcacheTimeout) * time.Second
+	}
+	s.ic = NewInodeCache(inodeExpiration, MaxInodeCache)
 	var extentConfig = &stream.ExtentConfig{
 		Volume:                   opt.Volname,
 		Masters:                  masters,
@@ -98,14 +102,10 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	if err != nil {
 		return nil, errors.Trace(err, "NewExtentClient failed!")
 	}
-
 	s.volname = opt.Volname
 	s.owner = opt.Owner
 	s.cluster = s.mw.Cluster()
-	inodeExpiration := DefaultInodeExpiration
-	if opt.IcacheTimeout >= 0 {
-		inodeExpiration = time.Duration(opt.IcacheTimeout) * time.Second
-	}
+
 	if opt.LookupValid >= 0 {
 		LookupValidDuration = time.Duration(opt.LookupValid) * time.Second
 	}
@@ -116,7 +116,6 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		s.enSyncWrite = true
 	}
 	s.keepCache = opt.KeepCache
-	s.ic = NewInodeCache(inodeExpiration, MaxInodeCache)
 	s.orphan = NewOrphanInodeList()
 	s.nodeCache = make(map[uint64]fs.Node)
 	s.disableDcache = opt.DisableDcache
