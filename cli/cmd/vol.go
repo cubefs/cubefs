@@ -553,14 +553,14 @@ func newVolPartitionCheckCmd(client *master.MasterClient) *cobra.Command {
 					allInode, err := metaClient.GetAllInodes(mp.PartitionID)
 					if err != nil {
 						flag = false
-						errout("partition:%d list inode has err:%s target:%s err:%s\n", mp.PartitionID, err.Error(), addr)
+						errout("partition:%d list inode has err:%s target:%s \n", mp.PartitionID, err.Error(), addr)
 					}
 
 					if len(preAllInode) == 0 {
 						preAllInode = allInode
 					} else {
 						if len(preAllInode) != len(allInode) {
-							errout("partition:%d list inode len not same source:%d count:%d target:%s count:%d\n", mp.PartitionID, preAddr, len(preAllInode), addr, len(allInode))
+							errout("partition:%d list inode len not same source:%s count:%d target:%s count:%d\n", mp.PartitionID, preAddr, len(preAllInode), addr, len(allInode))
 						}
 						for k, v := range allInode {
 							i := preAllInode[k]
@@ -575,7 +575,7 @@ func newVolPartitionCheckCmd(client *master.MasterClient) *cobra.Command {
 						preAllDentry = allDentry
 					} else {
 						if len(preAllDentry) != len(allDentry) {
-							errout("partition:%d list dentry len not same source:%d count:%d target:%s count:%d\n", mp.PartitionID, preAddr, len(preAllDentry), addr, len(allDentry))
+							errout("partition:%d list dentry len not same source:%s count:%d target:%s count:%d\n", mp.PartitionID, preAddr, len(preAllDentry), addr, len(allDentry))
 						}
 						for k, v := range allDentry {
 							i := preAllDentry[k]
