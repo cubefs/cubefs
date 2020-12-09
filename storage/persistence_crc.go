@@ -67,7 +67,7 @@ func (s *ExtentStore) PersistenceBaseExtentID(extentID uint64) (err error) {
 
 func (s *ExtentStore) GetPreAllocSpaceExtentIDOnVerfiyFile() (extentID uint64) {
 	value := make([]byte, 8)
-	_, err := s.metadataFp.WriteAt(value, 8)
+	_, err := s.metadataFp.ReadAt(value, 8)
 	if err != nil {
 		return
 	}
