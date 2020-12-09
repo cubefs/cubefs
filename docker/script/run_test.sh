@@ -97,7 +97,7 @@ create_volume() {
         echo -e "\033[32mdone\033[0m"
         return
     fi
-    ${cli} volume create ${VolName} ${Owner} --zonename=zone-01 --capacity=30 -y > /dev/null
+    ${cli} volume create ${VolName} ${Owner} --capacity=30 -y > /dev/null
     if [[ $? -ne 0 ]]; then
         echo -e "\033[31mfail\033[0m"
         exit 1
