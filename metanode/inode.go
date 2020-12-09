@@ -390,6 +390,7 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 // AppendExtents append the extent to the btree.
 func (i *Inode) AppendExtents(eks []proto.ExtentKey, ct int64) (delExtents []proto.ExtentKey) {
 	i.Lock()
+	oldFileSize := i.Extents.Size()
 	for _, ek := range eks {
 		delItems := i.Extents.Append(ek)
 		size := i.Extents.Size()
@@ -398,8 +399,11 @@ func (i *Inode) AppendExtents(eks []proto.ExtentKey, ct int64) (delExtents []pro
 		}
 		delExtents = append(delExtents, delItems...)
 	}
-	i.Generation++
 	i.ModifyTime = ct
+	currentFileSize:=i.Extents.Size()
+	if !(oldFileSize == currentFileSize && len(delExtents) == 0) {
+		i.Generation++
+	}
 	i.Unlock()
 	return
 }

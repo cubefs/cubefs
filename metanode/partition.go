@@ -673,7 +673,7 @@ func (mp *metaPartition) Expired() (err error) {
 		mp.delInodeFp.Sync()
 		mp.delInodeFp.Close()
 	}
-	
+
 	mp.inodeTree.Reset()
 	mp.dentryTree.Reset()
 	mp.config.Cursor = 0

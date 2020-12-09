@@ -55,7 +55,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				log.LogWarnf("[startSchedule] raftPartition is nil so skip" +
 					" truncate raft log")
 			}
-			
+
 		} else {
 			// retry again
 			mp.storeChan <- msg
