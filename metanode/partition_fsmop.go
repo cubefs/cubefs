@@ -82,7 +82,7 @@ func (mp *metaPartition) fsmUpdatePartition(end uint64) (status uint8,
 }
 
 func (mp *metaPartition) confAddNode(req *proto.
-AddMetaPartitionRaftMemberRequest, index uint64) (updated bool, err error) {
+	AddMetaPartitionRaftMemberRequest, index uint64) (updated bool, err error) {
 	var (
 		heartbeatPort int
 		replicaPort   int

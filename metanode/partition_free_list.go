@@ -28,14 +28,14 @@ import (
 )
 
 const (
-	AsyncDeleteInterval      = 10 * time.Second
-	UpdateVolTicket          = 2 * time.Minute
-	BatchCounts              = 128
-	OpenRWAppendOpt          = os.O_CREATE | os.O_RDWR | os.O_APPEND
-	TempFileValidTime        = 86400 //units: sec
-	DeleteInodeFileExtension = "INODE_DEL"
-	DeleteWorkerCnt          = 10
-	InodeNLink0DelayDeleteSeconds =  24*3600
+	AsyncDeleteInterval           = 10 * time.Second
+	UpdateVolTicket               = 2 * time.Minute
+	BatchCounts                   = 128
+	OpenRWAppendOpt               = os.O_CREATE | os.O_RDWR | os.O_APPEND
+	TempFileValidTime             = 86400 //units: sec
+	DeleteInodeFileExtension      = "INODE_DEL"
+	DeleteWorkerCnt               = 10
+	InodeNLink0DelayDeleteSeconds = 24 * 3600
 )
 
 func (mp *metaPartition) startFreeList() (err error) {
@@ -144,10 +144,10 @@ func (mp *metaPartition) deleteWorker() {
 
 // delete Extents by Partition,and find all successDelete inode
 func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents map[uint64][]*proto.ExtentKey,
-				allInodes []*Inode) (shouldCommit []*Inode,shouldPushToFreeList []*Inode) {
+	allInodes []*Inode) (shouldCommit []*Inode, shouldPushToFreeList []*Inode) {
 	occurErrors := make(map[uint64]error)
 	shouldCommit = make([]*Inode, 0, DeleteBatchCount())
-	shouldPushToFreeList=make([]*Inode,0)
+	shouldPushToFreeList = make([]*Inode, 0)
 	var (
 		wg   sync.WaitGroup
 		lock sync.Mutex
@@ -181,8 +181,8 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 		})
 		if successDeleteExtentCnt == inode.Extents.Len() {
 			shouldCommit = append(shouldCommit, inode)
-		}else {
-			shouldPushToFreeList=append(shouldPushToFreeList,inode)
+		} else {
+			shouldPushToFreeList = append(shouldPushToFreeList, inode)
 		}
 	}
 
@@ -197,7 +197,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		}
 	}()
 	shouldCommit := make([]*Inode, 0, DeleteBatchCount())
-	shouldRePushToFreeList:=make([]*Inode,0)
+	shouldRePushToFreeList := make([]*Inode, 0)
 	allDeleteExtents := make(map[string]uint64)
 	deleteExtentsByPartition := make(map[uint64][]*proto.ExtentKey)
 	allInodes := make([]*Inode, 0)
@@ -223,7 +223,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		})
 		allInodes = append(allInodes, inode)
 	}
-	shouldCommit,shouldRePushToFreeList = mp.batchDeleteExtentsByPartition(deleteExtentsByPartition, allInodes)
+	shouldCommit, shouldRePushToFreeList = mp.batchDeleteExtentsByPartition(deleteExtentsByPartition, allInodes)
 	bufSlice := make([]byte, 0, 8*len(shouldCommit))
 	for _, inode := range shouldCommit {
 		bufSlice = append(bufSlice, inode.MarshalKey()...)
@@ -241,13 +241,13 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		}
 	}
 	log.LogInfof("metaPartition(%v) deleteInodeCnt(%v) inodeCnt(%v)", mp.config.PartitionId, len(shouldCommit), mp.inodeTree.Len())
-	for _,inode:=range shouldRePushToFreeList {
+	for _, inode := range shouldRePushToFreeList {
 		mp.freeList.Push(inode.Inode)
 	}
 }
 
 func (mp *metaPartition) syncToRaftFollowersFreeInode(hasDeleteInodes []byte) (err error) {
-	if len(hasDeleteInodes)==0 {
+	if len(hasDeleteInodes) == 0 {
 		return
 	}
 	_, err = mp.submit(opFSMInternalDeleteInode, hasDeleteInodes)
