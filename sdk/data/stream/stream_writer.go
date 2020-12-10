@@ -494,6 +494,13 @@ func (s *Streamer) traverse() (err error) {
 		}
 		log.LogDebugf("Streamer traverse end: eh(%v)", eh)
 	}
+
+	if s.status >= StreamerError && s.dirtylist.Len() == 0 {
+		log.LogErrorf("Streamer traverse clean dirtyList success, set s(%v) status from (%v) to (%v)", s, s.status,
+			StreamerNormal)
+		atomic.StoreInt32(&s.status, StreamerNormal)
+	}
+
 	return
 }
 
