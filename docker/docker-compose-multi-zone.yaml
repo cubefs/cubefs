@@ -119,7 +119,7 @@ services:
       - ${DiskPath:-./docker_data}/metanode1/data:/cfs/data
       - ./bin:/cfs/bin:ro
       - ${DiskPath:-./docker_data}/metanode1/log:/cfs/log
-      - ./conf/metanode.json:/cfs/conf/metanode.json
+      - ./conf/metanode1.json:/cfs/conf/metanode.json
       - ./script/start_meta.sh:/cfs/script/start.sh
     command: /bin/bash /cfs/script/start.sh
     restart: on-failure
@@ -140,7 +140,7 @@ services:
       - ${DiskPath:-./docker_data}/metanode2/data:/cfs/data
       - ./bin:/cfs/bin:ro
       - ${DiskPath:-./docker_data}/metanode2/log:/cfs/log
-      - ./conf/metanode.json:/cfs/conf/metanode.json
+      - ./conf/metanode1.json:/cfs/conf/metanode.json
       - ./script/start_meta.sh:/cfs/script/start.sh
     command: /bin/bash /cfs/script/start.sh
     restart: on-failure
@@ -161,7 +161,7 @@ services:
       - ${DiskPath:-./docker_data}/metanode3/data:/cfs/data
       - ./bin:/cfs/bin:ro
       - ${DiskPath:-./docker_data}/metanode3/log:/cfs/log
-      - ./conf/metanode.json:/cfs/conf/metanode.json
+      - ./conf/metanode1.json:/cfs/conf/metanode.json
       - ./script/start_meta.sh:/cfs/script/start.sh
     command: /bin/bash /cfs/script/start.sh
     restart: on-failure
@@ -266,7 +266,7 @@ services:
       - ${DiskPath:-./docker_data}/datanode1/disk:/cfs/disk
       - ./bin:/cfs/bin:ro
       - ${DiskPath:-./docker_data}/datanode1/log:/cfs/log
-      - ./conf/datanode.json:/cfs/conf/datanode.json
+      - ./conf/datanode1.json:/cfs/conf/datanode.json
       - ./script/start_datanode.sh:/cfs/script/start.sh
     command: /bin/bash /cfs/script/start.sh
     restart: on-failure
@@ -287,7 +287,7 @@ services:
       - ${DiskPath:-./docker_data}/datanode2/disk:/cfs/disk
       - ./bin:/cfs/bin:ro
       - ${DiskPath:-./docker_data}/datanode2/log:/cfs/log
-      - ./conf/datanode.json:/cfs/conf/datanode.json
+      - ./conf/datanode1.json:/cfs/conf/datanode.json
       - ./script/start_datanode.sh:/cfs/script/start.sh
     command: /bin/sh /cfs/script/start.sh
     restart: on-failure
@@ -308,7 +308,7 @@ services:
       - ${DiskPath:-./docker_data}/datanode3/disk:/cfs/disk
       - ./bin:/cfs/bin:ro
       - ${DiskPath:-./docker_data}/datanode3/log:/cfs/log
-      - ./conf/datanode.json:/cfs/conf/datanode.json
+      - ./conf/datanode1.json:/cfs/conf/datanode.json
       - ./script/start_datanode.sh:/cfs/script/start.sh
     command: /bin/sh /cfs/script/start.sh
     restart: on-failure
