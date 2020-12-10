@@ -302,10 +302,13 @@ func (dp *DataPartition) Replicas() []string {
 	return dp.replicas
 }
 
-func (dp *DataPartition) getReplicaAddr(index int) string {
+func (dp *DataPartition) getReplicaAddr(index int) (string, error) {
 	dp.replicasLock.RLock()
 	defer dp.replicasLock.RUnlock()
-	return dp.replicas[index]
+	if index >= len(dp.replicas) {
+		return "", fmt.Errorf("unknow addr ,index (%v),ReplicasLen(%v)", index, len(dp.replicas))
+	}
+	return dp.replicas[index], nil
 }
 
 func (dp *DataPartition) getReplicaLen() int {
