@@ -579,7 +579,11 @@ func (dp *DataPartition) getLeaderPartitionSize(maxExtentID uint64) (size uint64
 
 	p := NewPacketToGetPartitionSize(dp.partitionID)
 	p.ExtentID = maxExtentID
-	target := dp.getReplicaAddr(0)
+	target, err := dp.getReplicaAddr(0)
+	if err != nil {
+		err = errors.Trace(err, " partition(%v) get LeaderHost failed ", dp.partitionID)
+		return
+	}
 	conn, err = gConnPool.GetConnect(target) //get remote connect
 	if err != nil {
 		err = errors.Trace(err, " partition(%v) get host(%v) connect", dp.partitionID, target)
@@ -615,7 +619,11 @@ func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize() (maxExtentID, Pa
 
 	p := NewPacketToGetMaxExtentIDAndPartitionSIze(dp.partitionID)
 
-	target := dp.getReplicaAddr(0)
+	target, err := dp.getReplicaAddr(0)
+	if err != nil {
+		err = errors.Trace(err, " partition(%v) get Leader failed ", dp.partitionID)
+		return
+	}
 	conn, err = gConnPool.GetConnect(target) //get remote connect
 	if err != nil {
 		err = errors.Trace(err, " partition(%v) get host(%v) connect", dp.partitionID, target)
@@ -648,7 +656,12 @@ func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize() (maxExtentID, Pa
 func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) {
 	for i := 0; i < dp.getReplicaLen(); i++ {
 		p := NewPacketToBroadcastMinAppliedID(dp.partitionID, minAppliedID)
-		replicaHostParts := strings.Split(dp.getReplicaAddr(i), ":")
+		var target string
+		if target, err = dp.getReplicaAddr(i); err != nil {
+			err = errors.Trace(err, " partition(%v) get FollowerHost failed ", dp.partitionID)
+			return err
+		}
+		replicaHostParts := strings.Split(target, ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
 		if LocalIP == replicaHost {
 			log.LogDebugf("partition(%v) local no send msg. localIP(%v) replicaHost(%v) appliedId(%v)",
@@ -656,7 +669,6 @@ func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) 
 			dp.minAppliedID = minAppliedID
 			continue
 		}
-		target := dp.getReplicaAddr(i)
 		var conn *net.TCPConn
 		conn, err = gConnPool.GetConnect(target)
 		if err != nil {
@@ -684,7 +696,12 @@ func (dp *DataPartition) getAllReplicaAppliedID() (allAppliedID []uint64, replyN
 	allAppliedID = make([]uint64, dp.getReplicaLen())
 	for i := 0; i < dp.getReplicaLen(); i++ {
 		p := NewPacketToGetAppliedID(dp.partitionID)
-		replicaHostParts := strings.Split(dp.getReplicaAddr(i), ":")
+		target, err := dp.getReplicaAddr(i)
+		if err != nil {
+			err = errors.Trace(err, " partition(%v) get FollowerHost failed ", dp.partitionID)
+			continue
+		}
+		replicaHostParts := strings.Split(target, ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
 		if LocalIP == replicaHost {
 			log.LogDebugf("partition(%v) local no send msg. localIP(%v) replicaHost(%v) appliedId(%v)",
@@ -693,7 +710,6 @@ func (dp *DataPartition) getAllReplicaAppliedID() (allAppliedID []uint64, replyN
 			replyNum++
 			continue
 		}
-		target := dp.getReplicaAddr(i)
 		appliedID, err := dp.getRemoteAppliedID(target, p)
 		if err != nil {
 			log.LogErrorf("partition(%v) getRemoteAppliedID Failed(%v).", dp.partitionID, err)
