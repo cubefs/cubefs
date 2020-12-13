@@ -214,7 +214,35 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 	}
 	eks := ino.Extents.CopyExtents()
 	delExtents := ino2.AppendExtents(eks, ino.ModifyTime)
-	log.LogInfof("fsmAppendExtents inode(%v) exts(%v)", ino2.Inode, delExtents)
+	log.LogInfof("fsmAppendExtents inode(%v) deleteExtents(%v)", ino2.Inode, delExtents)
+	mp.extDelCh <- delExtents
+	return
+}
+
+func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode) (status uint8) {
+	status = proto.OpOk
+	item := mp.inodeTree.CopyGet(ino)
+	if item == nil {
+		status = proto.OpNotExistErr
+		return
+	}
+	ino2 := item.(*Inode)
+	if ino2.ShouldDelete() {
+		status = proto.OpNotExistErr
+		return
+	}
+	var (
+		discardExtentKey []proto.ExtentKey
+	)
+	eks := ino.Extents.CopyExtents()
+	if len(eks) < 1 {
+		return
+	}
+	if len(eks) > 1 {
+		discardExtentKey = eks[1:]
+	}
+	delExtents, status := ino2.AppendExtentWithCheck(eks[0], ino.ModifyTime, discardExtentKey)
+	log.LogInfof("fsmAppendExtentWithCheck inode(%v) ek(%v) deleteExtents(%v) discardExtents(%v) status(%v)", ino2.Inode, eks[0], delExtents, discardExtentKey, status)
 	mp.extDelCh <- delExtents
 	return
 }
