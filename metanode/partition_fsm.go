@@ -135,6 +135,12 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		resp = mp.fsmAppendExtents(ino)
+	case opFSMExtentsAddWithCheck:
+		ino := NewInode(0, 0)
+		if err = ino.Unmarshal(msg.V); err != nil {
+			return
+		}
+		resp = mp.fsmAppendExtentsWithCheck(ino)
 	case opFSMStoreTick:
 		inodeTree := mp.getInodeTree()
 		dentryTree := mp.getDentryTree()

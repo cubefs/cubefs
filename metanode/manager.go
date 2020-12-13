@@ -110,6 +110,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
 		err = m.opMasterHeartbeat(conn, p, remoteAddr)
 	case proto.OpMetaExtentsAdd:
 		err = m.opMetaExtentsAdd(conn, p, remoteAddr)
+	case proto.OpMetaExtentAddWithCheck:
+		err = m.opMetaExtentAddWithCheck(conn, p, remoteAddr)
 	case proto.OpMetaExtentsList:
 		err = m.opMetaExtentsList(conn, p, remoteAddr)
 	case proto.OpMetaExtentsDel:
