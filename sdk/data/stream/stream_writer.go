@@ -429,7 +429,8 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 		return
 	}
 
-	s.extents.Append(ek, false)
+	// This ek is just a local cache for PrepareWriteRequest, so ignore discard eks here.
+	_ = s.extents.Append(ek, false)
 	total = size
 
 	log.LogDebugf("doWrite exit: ino(%v) offset(%v) size(%v) ek(%v)", s.inode, offset, size, ek)
