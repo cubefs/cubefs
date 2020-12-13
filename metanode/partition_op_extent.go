@@ -25,13 +25,38 @@ import (
 func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	ext := req.Extent
-	ino.Extents.Append(ext)
+	ino.Extents.Append(ext, nil)
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
 	resp, err := mp.submit(opFSMExtentsAdd, val)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	p.PacketErrorWithBody(resp.(uint8), nil)
+	return
+}
+
+// ExtentAppendWithCheck appends an extent with discard extents check.
+// Format: one valid extent key followed by non or several discard keys.
+func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithCheckRequest, p *Packet) (err error) {
+	ino := NewInode(req.Inode, 0)
+	ext := req.Extent
+	ino.Extents.Append(ext, nil)
+	//log.LogInfof("ExtentAppendWithCheck: ino(%v) ext(%v) discard(%v) eks(%v)", req.Inode, ext, req.DiscardExtents, ino.Extents.eks)
+	// Store discard extents right after the append extent key.
+	if len(req.DiscardExtents) != 0 {
+		ino.Extents.eks = append(ino.Extents.eks, req.DiscardExtents...)
+	}
+	val, err := ino.Marshal()
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	resp, err := mp.submit(opFSMExtentsAddWithCheck, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -92,7 +117,7 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 	ino := NewInode(req.Inode, 0)
 	extents := req.Extents
 	for _, extent := range extents {
-		ino.Extents.Append(extent)
+		ino.Extents.Append(extent, nil)
 	}
 	val, err := ino.Marshal()
 	if err != nil {

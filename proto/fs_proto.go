@@ -300,12 +300,20 @@ type ReadDirResponse struct {
 	Children []Dentry `json:"children"`
 }
 
-// BatchAppendExtentKeyRequest defines the request to append an extent key.
+// AppendExtentKeyRequest defines the request to append an extent key.
 type AppendExtentKeyRequest struct {
 	VolName     string    `json:"vol"`
 	PartitionID uint64    `json:"pid"`
 	Inode       uint64    `json:"ino"`
 	Extent      ExtentKey `json:"ek"`
+}
+
+type AppendExtentKeyWithCheckRequest struct {
+	VolName        string      `json:"vol"`
+	PartitionID    uint64      `json:"pid"`
+	Inode          uint64      `json:"ino"`
+	Extent         ExtentKey   `json:"ek"`
+	DiscardExtents []ExtentKey `json:"dek"`
 }
 
 // GetExtentsRequest defines the reques to get extents.

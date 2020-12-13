@@ -563,6 +563,37 @@ func (m *metadataManager) opMetaExtentsAdd(conn net.Conn, p *Packet,
 	return
 }
 
+// Append one extent with discard check
+func (m *metadataManager) opMetaExtentAddWithCheck(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
+	req := &proto.AppendExtentKeyWithCheckRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.ExtentAppendWithCheck(req, p)
+	m.respondToClient(conn, p)
+	if err != nil {
+		log.LogErrorf("%s [opMetaExtentAddWithCheck] ExtentAppendWithCheck: %s, "+
+			"response to client: %s", remoteAddr, err.Error(), p.GetResultMsg())
+	}
+	log.LogDebugf("%s [opMetaExtentAddWithCheck] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
 func (m *metadataManager) opMetaExtentsList(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
 	req := &proto.GetExtentsRequest{}

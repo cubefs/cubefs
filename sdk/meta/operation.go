@@ -455,16 +455,17 @@ func (mw *MetaWrapper) readdir(mp *MetaPartition, parentID uint64) (status int, 
 	return statusOK, resp.Children, nil
 }
 
-func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent proto.ExtentKey) (status int, err error) {
-	req := &proto.AppendExtentKeyRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		Inode:       inode,
-		Extent:      extent,
+func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent proto.ExtentKey, discard []proto.ExtentKey) (status int, err error) {
+	req := &proto.AppendExtentKeyWithCheckRequest{
+		VolName:        mw.volname,
+		PartitionID:    mp.PartitionID,
+		Inode:          inode,
+		Extent:         extent,
+		DiscardExtents: discard,
 	}
 
 	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaExtentsAdd
+	packet.Opcode = proto.OpMetaExtentAddWithCheck
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("appendExtentKey: req(%v) err(%v)", *req, err)
