@@ -231,6 +231,11 @@ type LoadDataPartitionResponse struct {
 	VolName           string
 }
 
+type SyncDataPartitionReplicasRequest struct {
+	PartitionId      uint64
+	PersistenceHosts []string
+}
+
 // File defines the file struct.
 type File struct {
 	Name     string
