@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/chubaofs/chubaofs/util/log"
 	"math/rand"
 	"strings"
 	"time"
@@ -43,6 +43,14 @@ func newCreateDataPartitionRequest(volName string, ID uint64, members []proto.Pe
 func newDeleteDataPartitionRequest(ID uint64) (req *proto.DeleteDataPartitionRequest) {
 	req = &proto.DeleteDataPartitionRequest{
 		PartitionId: ID,
+	}
+	return
+}
+
+func newSyncDataPartitionReplicasRequest(ID uint64, persistenceHosts []string) (req *proto.SyncDataPartitionReplicasRequest) {
+	req = &proto.SyncDataPartitionReplicasRequest{
+		PartitionId:      ID,
+		PersistenceHosts: persistenceHosts,
 	}
 	return
 }

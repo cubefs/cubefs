@@ -408,6 +408,8 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 	dp.Status = proto.ReadOnly
 	dp.isRecover = true
 	m.cluster.putBadDataPartitionIDs(nil, addr, dp.PartitionID)
+	go m.cluster.syncDataPartitionReplicasToDataNode(dp)
+
 	msg = fmt.Sprintf("data partitionID :%v  add replica [%v] successfully", partitionID, addr)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }

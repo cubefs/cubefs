@@ -158,6 +158,12 @@ func (partition *DataPartition) createTaskToDeleteDataPartition(addr string) (ta
 	return
 }
 
+func (partition *DataPartition) createTaskToSyncDataPartitionReplicas(addr string) (task *proto.AdminTask) {
+	task = proto.NewAdminTask(proto.OpSyncDataPartitionReplicas, addr, newSyncDataPartitionReplicasRequest(partition.PartitionID, partition.Hosts))
+	partition.resetTaskID(task)
+	return
+}
+
 func (partition *DataPartition) resetTaskID(t *proto.AdminTask) {
 	t.ID = fmt.Sprintf("%v_DataPartitionID[%v]", t.ID, partition.PartitionID)
 	t.PartitionID = partition.PartitionID
