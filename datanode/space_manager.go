@@ -363,6 +363,15 @@ func (manager *SpaceManager) ExpiredPartition(partitionID uint64) {
 		newPath)
 }
 
+func (manager *SpaceManager) SyncPartitionReplicas(partitionID uint64, hosts []string) {
+	dp := manager.Partition(partitionID)
+	if dp == nil {
+		return
+	}
+	dp.SyncReplicaHosts(hosts)
+	return
+}
+
 // DeletePartition deletes a partition from cache based on the partition id.
 func (manager *SpaceManager) DeletePartitionFromCache(dpID uint64) {
 	dp := manager.Partition(dpID)

@@ -114,6 +114,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handlePacketToReadTinyDeleteRecordFile(p, c)
 	case proto.OpBroadcastMinAppliedID:
 		s.handleBroadcastMinAppliedID(p)
+	case proto.OpSyncDataPartitionReplicas:
+		s.handlePacketToSyncDataPartitionReplicas(p)
 	default:
 		p.PackErrorBody(repl.ErrorUnknownOp.Error(), repl.ErrorUnknownOp.Error()+strconv.Itoa(int(p.Opcode)))
 	}
@@ -973,6 +975,36 @@ func (s *DataNode) handlePacketToDataPartitionTryToLeaderrr(p *repl.Packet) {
 	}
 	err = dp.raftPartition.TryToLeader(dp.partitionID)
 	return
+}
+
+func (s *DataNode) handlePacketToSyncDataPartitionReplicas(p *repl.Packet) {
+	var err error
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionSyncDataPartitionReplicas, err.Error())
+		}
+	}()
+	task := &proto.AdminTask{}
+	if err = json.Unmarshal(p.Data, task); err != nil {
+		err = fmt.Errorf("cannnot unmashal adminTask")
+		return
+	}
+	if task.OpCode != proto.OpSyncDataPartitionReplicas {
+		err = fmt.Errorf("from master Task[%v] failed,error unavali opcode(%v)", task.ToString(), task.OpCode)
+		return
+	}
+	request := &proto.SyncDataPartitionReplicasRequest{}
+	bytes, err := json.Marshal(task.Request)
+	if err != nil {
+		return
+	}
+	if err = json.Unmarshal(bytes, request); err != nil {
+		return
+	}
+	s.space.SyncPartitionReplicas(request.PartitionId, request.PersistenceHosts)
+	p.PacketOkReply()
+	return
+
 }
 
 func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet) (ok bool, err error) {

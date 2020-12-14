@@ -61,6 +61,7 @@ const (
 	ActionStreamReadTinyDeleteRecord = "ActionStreamReadTinyDeleteRecord"
 	ActionSyncTinyDeleteRecord       = "ActionSyncTinyDeleteRecord"
 	ActionStreamReadTinyExtentRepair = "ActionStreamReadTinyExtentRepair"
+	ActionSyncDataPartitionReplicas  = "ActionSyncDataPartitionReplicas"
 )
 
 // Apply the raft log operation. Currently we only have the random write operation.
