@@ -1323,6 +1323,9 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	} else {
 		c.putBadDataPartitionIDs(dpReplica, oldAddr, dp.PartitionID)
 	}
+	// update latest version of replica member info to all partition replica member
+	go c.syncDataPartitionReplicasToDataNode(dp)
+
 	return
 errHandler:
 	msg = errMsg + fmt.Sprintf("clusterID[%v] partitionID:%v  on Node:%v  "+
@@ -2461,4 +2464,29 @@ func (c *Cluster) sendRepairDataPartitionTask(dp *DataPartition, rType RepairTyp
 			cap(c.dpRepairChan)))
 	}
 	return
+}
+
+// send latest replica infos to DataNode
+func (c *Cluster) syncDataPartitionReplicasToDataNode(dp *DataPartition) {
+	wg := sync.WaitGroup{}
+	for _, host := range dp.Hosts {
+		wg.Add(1)
+		go func(target string, dp *DataPartition) {
+			defer wg.Done()
+			var err error
+			var targetDataNode *DataNode
+			//addDataNodeTasks
+			if targetDataNode, err = c.dataNode(target); err != nil {
+				log.LogWarnf("syncDataPartitionReplicasToDataNode: get data node [address: %v] failed: %v", target, err)
+				return
+			}
+			task := dp.createTaskToSyncDataPartitionReplicas(target)
+			if _, err = targetDataNode.TaskManager.syncSendAdminTask(task); err != nil {
+				log.LogWarnf("syncDataPartitionReplicasToDataNode: send task [address: %v, partitionID: %v] failed: %v",
+					target, dp.PartitionID, err)
+			}
+			return
+		}(host, dp)
+	}
+	wg.Wait()
 }

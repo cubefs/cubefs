@@ -18,12 +18,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/storage"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tiglabs/raft"
 	raftproto "github.com/tiglabs/raft/proto"
@@ -60,23 +58,6 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 			return
 		}
 		isUpdated, err = dp.addRaftNode(req, index)
-		if isUpdated && err == nil {
-			// Perform the update replicas operation asynchronously after the execution of the member change applying
-			// related process.
-			updateWG := sync.WaitGroup{}
-			updateWG.Add(1)
-			defer updateWG.Done()
-			go func() {
-				updateWG.Wait()
-				if err = dp.updateReplicas(true); err != nil {
-					log.LogErrorf("ApplyMemberChange: update partition %v replicas failed: %v", dp.partitionID, err)
-					return
-				}
-				if dp.isLeader {
-					dp.ExtentStore().MoveAllToBrokenTinyExtentC(storage.TinyExtentCount)
-				}
-			}()
-		}
 	case raftproto.ConfRemoveNode:
 		req := &proto.RemoveDataPartitionRaftMemberRequest{}
 		if err = json.Unmarshal(confChange.Context, req); err != nil {

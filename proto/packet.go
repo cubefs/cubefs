@@ -121,6 +121,7 @@ const (
 	OpAddDataPartitionRaftMember    uint8 = 0x67
 	OpRemoveDataPartitionRaftMember uint8 = 0x68
 	OpDataPartitionTryToLeader      uint8 = 0x69
+	OpSyncDataPartitionReplicas     uint8 = 0x6A
 
 	// Operations: MultipartInfo
 	OpCreateMultipart  uint8 = 0x70
@@ -386,6 +387,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpBatchDeleteExtent"
 	case OpMetaCursorReset:
 		m = "OpMetaCursorReset"
+	case OpSyncDataPartitionReplicas:
+		m = "OpSyncDataPartitionReplicas"
 	}
 	return
 }

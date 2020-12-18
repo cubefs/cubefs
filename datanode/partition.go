@@ -106,6 +106,8 @@ type DataPartition struct {
 	minAppliedID    uint64
 	maxAppliedID    uint64
 
+	repairC chan struct{}
+
 	stopOnce  sync.Once
 	stopRaftC chan uint64
 	storeC    chan uint64
@@ -231,6 +233,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		path:            dataPath,
 		partitionSize:   dpCfg.PartitionSize,
 		replicas:        make([]string, 0),
+		repairC:         make(chan struct{}, 1),
 		stopC:           make(chan bool, 0),
 		stopRaftC:       make(chan uint64, 0),
 		storeC:          make(chan uint64, 128),
@@ -435,29 +438,50 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 	err = os.Rename(fileName, path.Join(dp.Path(), DataPartitionMetadataFileName))
 	return
 }
+
+func (dp *DataPartition) Repair() {
+	select {
+	case dp.repairC <- struct{}{}:
+	default:
+	}
+}
+
 func (dp *DataPartition) statusUpdateScheduler() {
-	ticker := time.NewTicker(time.Minute)
+	repairTimer := time.NewTimer(time.Minute)
 	snapshotTicker := time.NewTicker(time.Minute * 5)
 	var index int
 	for {
+
 		select {
-		case <-ticker.C:
+		case <-dp.stopC:
+			repairTimer.Stop()
+			snapshotTicker.Stop()
+			return
+
+		case <-dp.repairC:
+			repairTimer.Stop()
+			log.LogDebugf("partition [%v] execute manual data repair for all extent", dp.partitionID)
+			dp.ExtentStore().MoveAllToBrokenTinyExtentC(storage.TinyExtentCount)
+			dp.runRepair(proto.TinyExtentType, false)
+			dp.runRepair(proto.NormalExtentType, false)
+			repairTimer.Reset(time.Minute)
+		case <-repairTimer.C:
 			index++
 			dp.statusUpdate()
 			if index >= math.MaxUint32 {
 				index = 0
 			}
 			if index%2 == 0 {
-				dp.LaunchRepair(proto.TinyExtentType)
+				log.LogDebugf("partition [%v] execute scheduled data repair [type: TinyExtent]", dp.partitionID)
+				dp.runRepair(proto.TinyExtentType, true)
 			} else {
-				dp.LaunchRepair(proto.NormalExtentType)
+				log.LogDebugf("partition [%v] execute scheduled data repair [type: NormalExtent]", dp.partitionID)
+				dp.runRepair(proto.NormalExtentType, true)
 			}
+			repairTimer.Reset(time.Minute)
 		case <-snapshotTicker.C:
 			dp.ReloadSnapshot()
-		case <-dp.stopC:
-			ticker.Stop()
-			snapshotTicker.Stop()
-			return
+
 		}
 	}
 }
@@ -548,15 +572,18 @@ func (dp *DataPartition) String() (m string) {
 	return fmt.Sprintf(DataPartitionPrefix+"_%v_%v", dp.partitionID, dp.partitionSize)
 }
 
-// LaunchRepair launches the repair of extents.
-func (dp *DataPartition) LaunchRepair(extentType uint8) {
+// runRepair launches the repair of extents.
+func (dp *DataPartition) runRepair(extentType uint8, fetchReplicas bool) {
 	if dp.partitionStatus == proto.Unavailable {
 		return
 	}
-	if err := dp.updateReplicas(false); err != nil {
-		log.LogErrorf("action[LaunchRepair] partition(%v) err(%v).", dp.partitionID, err)
-		return
+	if fetchReplicas {
+		if err := dp.updateReplicas(false); err != nil {
+			log.LogErrorf("action[runRepair] partition(%v) err(%v).", dp.partitionID, err)
+			return
+		}
 	}
+
 	if !dp.isLeader {
 		return
 	}
@@ -806,4 +833,29 @@ func (dp *DataPartition) canRemoveSelf() (canRemove bool, err error) {
 		return
 	}
 	return
+}
+
+func (dp *DataPartition) SyncReplicaHosts(replicas []string) {
+	if len(replicas) == 0 {
+		return
+	}
+	dp.isLeader = false
+	var leader bool // Whether current instance is the leader member.
+	if len(replicas) >= 1 {
+		leaderAddr := replicas[0]
+		leaderAddrParts := strings.Split(leaderAddr, ":")
+		if len(leaderAddrParts) == 2 && strings.TrimSpace(leaderAddrParts[0]) == LocalIP {
+			leader = true
+		}
+	}
+	dp.replicasLock.Lock()
+	dp.isLeader = leader
+	dp.replicas = replicas
+	dp.intervalToUpdateReplicas = time.Now().Unix()
+	dp.replicasLock.Unlock()
+	log.LogInfof("partition [%v] synchronized replica hosts from master [replicas: (%v), leader: %v]",
+		dp.partitionID, strings.Join(replicas, ","), leader)
+	if leader {
+		dp.Repair()
+	}
 }

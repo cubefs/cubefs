@@ -214,7 +214,7 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 // StartRaftAfterRepair starts the raft after repairing a partition.
 // It can only happens after all the extent files are repaired by the leader.
 // When the repair is finished, the local dp.partitionSize is same as the leader's dp.partitionSize.
-// The repair task can be done in statusUpdateScheduler->LaunchRepair.
+// The repair task can be done in statusUpdateScheduler->runRepair.
 func (dp *DataPartition) StartRaftAfterRepair() {
 	var (
 		initPartitionSize, initMaxExtentID uint64
