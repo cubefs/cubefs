@@ -301,19 +301,24 @@ func (p Permission) MatchSubdir(subdir string) bool {
 	}
 
 	s := strings.TrimPrefix(string(p), string(BuiltinPermissionPrefix))
-	var toCompare string
 
-	if subdirRegexp.MatchString(s) {
-		toCompare = strings.Split(s, ":")[0]
-	} else {
-		toCompare = ""
+	if !subdirRegexp.MatchString(s) {
+		if subdir == "" || subdir == "/" {
+			return true
+		} else {
+			return false
+		}
 	}
 
-	if (subdir == "" || subdir == "/") && (toCompare == "" || toCompare == "/") {
-		return true
+	toCompare := strings.Split(s, ":")
+	for i := 0; i < len(toCompare); i++ {
+		if (subdir == "" || subdir == "/") && (toCompare[i] == "" || toCompare[i] == "/") ||
+			subdir == toCompare[i] {
+			return true
+		}
 	}
 
-	return subdir == toCompare
+	return false
 }
 
 func (p Permission) IsCustom() bool {
