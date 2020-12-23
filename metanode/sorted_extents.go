@@ -10,7 +10,8 @@ import (
 
 type SortedExtents struct {
 	sync.RWMutex
-	eks []proto.ExtentKey
+	eks  []proto.ExtentKey
+	size uint64
 }
 
 func NewSortedExtents() *SortedExtents {
@@ -71,6 +72,11 @@ func (se *SortedExtents) Append(ek proto.ExtentKey, discard []proto.ExtentKey) (
 
 	se.Lock()
 	defer se.Unlock()
+	defer func() {
+		if status == proto.OpOk && ek.FileOffset+uint64(ek.Size) > se.size {
+			se.size = ek.FileOffset + uint64(ek.Size)
+		}
+	}()
 
 	if len(se.eks) <= 0 {
 		se.eks = append(se.eks, ek)
@@ -98,7 +104,7 @@ func (se *SortedExtents) Append(ek proto.ExtentKey, discard []proto.ExtentKey) (
 			startIndex = idx + 1
 			continue
 		}
-		if endOffset >= key.FileOffset+uint64(key.Size) {
+		if endOffset > key.FileOffset {
 			invalidExtents = append(invalidExtents, key)
 			continue
 		}
@@ -166,6 +172,7 @@ func (se *SortedExtents) Truncate(offset uint64) (deleteExtents []proto.ExtentKe
 			lastKey.Size = uint32(offset - lastKey.FileOffset)
 		}
 	}
+	se.size = offset
 	return
 }
 
@@ -179,12 +186,7 @@ func (se *SortedExtents) Len() int {
 func (se *SortedExtents) Size() uint64 {
 	se.RLock()
 	defer se.RUnlock()
-
-	last := len(se.eks)
-	if last <= 0 {
-		return uint64(0)
-	}
-	return se.eks[last-1].FileOffset + uint64(se.eks[last-1].Size)
+	return se.size
 }
 
 func (se *SortedExtents) Range(f func(ek proto.ExtentKey) bool) {
