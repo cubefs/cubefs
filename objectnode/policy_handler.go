@@ -16,15 +16,14 @@ package objectnode
 
 import (
 	"encoding/json"
-	"errors"
 	"io"
 	"io/ioutil"
 	"net/http"
 
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/gorilla/mux"
 )
 
+// https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketPolicy.html
 func (o *ObjectNode) getBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		err error
@@ -62,6 +61,7 @@ func (o *ObjectNode) getBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	return
 }
 
+// https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketPolicy.html
 func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		err error
@@ -113,21 +113,28 @@ func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	return
 }
 
+// https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketPolicy.html
 func (o *ObjectNode) deleteBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("delete bucket policy...")
-	var (
-		err error
-		ec  *ErrorCode
-	)
-	defer o.errorResponse(w, r, err, ec)
+	log.LogInfof("Delete bucket policy...")
 
-	vars := mux.Vars(r)
-	bucket := vars["bucket"]
-	if bucket == "" {
-		err = errors.New("")
-		ec = NoSuchBucket
+	var err error
+	var param = ParseRequestParam(r)
+	if param.Bucket() == "" {
+		_ = NoSuchBucket.ServeResponse(w, r)
 		return
 	}
-	// todo: implement
+	var vol *Volume
+	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
+		_ = NoSuchBucket.ServeResponse(w, r)
+		return
+	}
+
+	if err = deleteBucketPolicy(vol); err != nil {
+		_ = InternalErrorCode(err).ServeResponse(w, r)
+		return
+	}
+	vol.metaLoader.storePolicy(nil)
+
+	w.WriteHeader(http.StatusNoContent)
 	return
 }

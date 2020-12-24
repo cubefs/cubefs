@@ -112,20 +112,20 @@ func (o *ObjectNode) validateHeaderBySignatureAlgorithmV4(r *http.Request) (bool
 	}
 
 	var accessKey = req.Credential.AccessKey
-	var volume *Volume
-	if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
-		if volume, err = o.getVol(bucket); err != nil {
-			return false, err
-		}
-	}
 	var secretKey string
+	var bucket = mux.Vars(r)["bucket"]
 	if userInfo, err := o.getUserInfoByAccessKey(accessKey); err == nil {
 		secretKey = userInfo.SecretKey
-	} else if (err == proto.ErrUserNotExists || err == proto.ErrAccessKeyNotExists) && volume != nil {
+	} else if (err == proto.ErrUserNotExists || err == proto.ErrAccessKeyNotExists) &&
+		len(bucket) > 0 && GetActionFromContext(r) != proto.OSSCreateBucketAction {
 		// In order to be directly compatible with the signature verification of version 1.5
 		// (each volume has its own access key and secret key), if the user does not exist and
 		// the request specifies a volume, try to use the accesskey and secret key bound in the
 		// volume information for verification.
+		var volume *Volume
+		if volume, err = o.getVol(bucket); err != nil {
+			return false, err
+		}
 		if ak, sk := volume.OSSSecure(); ak == accessKey {
 			secretKey = sk
 		} else {
@@ -172,20 +172,20 @@ func (o *ObjectNode) validateUrlBySignatureAlgorithmV4(r *http.Request) (pass bo
 	}
 
 	var accessKey = req.Credential.AccessKey
-	var volume *Volume
-	if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
-		if volume, err = o.getVol(bucket); err != nil {
-			return false, err
-		}
-	}
 	var secretKey string
+	var bucket = mux.Vars(r)["bucket"]
 	if userInfo, err := o.getUserInfoByAccessKey(accessKey); err == nil {
 		secretKey = userInfo.SecretKey
-	} else if (err == proto.ErrUserNotExists || err == proto.ErrAccessKeyNotExists) && volume != nil {
+	} else if (err == proto.ErrUserNotExists || err == proto.ErrAccessKeyNotExists) &&
+		len(bucket) > 0 && GetActionFromContext(r) != proto.OSSCreateBucketAction {
 		// In order to be directly compatible with the signature verification of version 1.5
 		// (each volume has its own access key and secret key), if the user does not exist and
 		// the request specifies a volume, try to use the accesskey and secret key bound in the
 		// volume information for verification.
+		var volume *Volume
+		if volume, err = o.getVol(bucket); err != nil {
+			return false, err
+		}
 		if ak, sk := volume.OSSSecure(); ak == accessKey {
 			secretKey = sk
 		} else {

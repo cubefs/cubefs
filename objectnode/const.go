@@ -65,7 +65,7 @@ const (
 	HeaderNameXAmzDownloadPartCount   = "x-amz-mp-parts-count"
 	HeaderNameXAmzMetadataDirective   = "x-amz-metadata-directive"
 	HeaderNameXAmzBucketRegion        = "x-amz-bucket-region"
-	HeaderNameXAmzTaggingCount   	  = "x-amz-tagging-count"
+	HeaderNameXAmzTaggingCount        = "x-amz-tagging-count"
 
 	HeaderNameIfMatch           = "If-Match"
 	HeaderNameIfNoneMatch       = "If-None-Match"
@@ -103,6 +103,7 @@ const (
 	ParamPartNoMarker   = "part-number-marker"
 	ParamPartMaxUploads = "max-uploads"
 	ParamPartDelimiter  = "delimiter"
+	ParamEncodingType   = "encoding-type"
 
 	ParamResponseCacheControl       = "response-cache-control"
 	ParamResponseContentType        = "response-content-type"

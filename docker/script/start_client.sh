@@ -32,7 +32,7 @@ init_cli() {
     cd ${conf_path}
     ${cli} completion &> /dev/null
     echo 'source '${conf_path}'/cfs-cli.sh' >> ~/.bashrc
-    echo -n "cli tool  ... "
+    echo -n "Installing ChubaoFS cli tool  ... "
     echo -e "\033[32mdone\033[0m"
 }
 check_cluster() {
@@ -77,7 +77,7 @@ ensure_node_writable() {
     for i in $(seq 1 300) ; do
         ${cli} ${node} list &> /tmp/cli_${node}_list;
         res=`cat /tmp/cli_${node}_list | grep "Yes" | grep "Active" | wc -l`
-        if [[ ${res} -ge 3 ]]; then
+        if [[ ${res} -eq 4 ]]; then
             echo -e "\033[32mdone\033[0m"
             return
         fi

@@ -403,12 +403,12 @@ func checkPermission(opt *proto.MountOptions) (err error) {
 		if policy.IsOwn(opt.Volname) {
 			return
 		}
-		if policy.IsAuthorized(opt.Volname, proto.POSIXWriteAction) &&
-			policy.IsAuthorized(opt.Volname, proto.POSIXReadAction) {
+		if policy.IsAuthorized(opt.Volname, "", proto.POSIXWriteAction) &&
+			policy.IsAuthorized(opt.Volname, "", proto.POSIXReadAction) {
 			return
 		}
-		if policy.IsAuthorized(opt.Volname, proto.POSIXReadAction) &&
-			!policy.IsAuthorized(opt.Volname, proto.POSIXWriteAction) {
+		if policy.IsAuthorized(opt.Volname, "", proto.POSIXReadAction) &&
+			!policy.IsAuthorized(opt.Volname, "", proto.POSIXWriteAction) {
 			opt.Rdonly = true
 			return
 		}

@@ -25,14 +25,14 @@ type FSFileInfo struct {
 	Size         int64
 	Mode         os.FileMode
 	ModifyTime   time.Time
-	CreateTime time.Time
+	CreateTime   time.Time
 	ETag         string
 	Inode        uint64
 	MIMEType     string
 	Disposition  string
 	CacheControl string
 	Expires      string
-	Metadata   map[string]string `graphql:"-"` // User-defined metadata
+	Metadata     map[string]string `graphql:"-"` // User-defined metadata
 }
 
 type Prefixes []string
@@ -50,6 +50,13 @@ func (m PrefixMap) Prefixes() Prefixes {
 	}
 	sort.Strings(s)
 	return s
+}
+
+func (m PrefixMap) contain(prefix string) bool {
+	if _, ok := m[prefix]; ok {
+		return true
+	}
+	return false
 }
 
 type FSUpload struct {
