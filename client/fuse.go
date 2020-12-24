@@ -128,14 +128,14 @@ func main() {
 	exporter.Init(ModuleName, cfg)
 
 	level := parseLogLevel(opt.Loglvl)
-	_, err = log.InitLog(opt.Logpath, LoggerPrefix, level, nil)
+	_, err = log.InitLog(opt.Logpath, opt.Volname, level, nil)
 	if err != nil {
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
 	defer log.LogFlush()
 
-	outputFilePath := path.Join(opt.Logpath, LoggerPrefix, LoggerOutput)
+	outputFilePath := path.Join(opt.Logpath, opt.Volname, LoggerOutput)
 	outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
 	if err != nil {
 		daemonize.SignalOutcome(err)
