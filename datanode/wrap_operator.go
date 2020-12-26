@@ -73,7 +73,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	case proto.OpStreamRead:
 		s.handleStreamReadPacket(p, c, StreamRead)
 	case proto.OpStreamFollowerRead:
-		s.handleExtentRepaiReadPacket(p, c, StreamRead)
+		s.handleStreamFollowerReadPacket(p, c, StreamRead)
 	case proto.OpExtentRepairRead:
 		s.handleExtentRepaiReadPacket(p, c, RepairRead)
 	case proto.OpTinyExtentRepairRead:
@@ -463,6 +463,12 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 	if err = partition.CheckLeader(p, connect); err != nil {
 		return
 	}
+	s.handleExtentRepaiReadPacket(p, connect, isRepairRead)
+
+	return
+}
+
+func (s *DataNode) handleStreamFollowerReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
 	s.handleExtentRepaiReadPacket(p, connect, isRepairRead)
 
 	return
