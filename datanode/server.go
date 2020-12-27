@@ -90,10 +90,10 @@ type DataNode struct {
 	raftStore       raftstore.RaftStore
 	tickInterval    int
 
-	tcpListener net.Listener
-	stopC       chan bool
-
-	control common.Control
+	tcpListener              net.Listener
+	stopC                    chan bool
+	fixTinyDeleteRecordLimit uint64
+	control                  common.Control
 }
 
 func NewServer() *DataNode {

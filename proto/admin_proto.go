@@ -147,6 +147,7 @@ type ClusterInfo struct {
 	MetaNodeDeleteBatchCount    uint64
 	MetaNodeDeleteWorkerSleepMs uint64
 	DataNodeDeleteLimitRate     uint64
+	DiskSyncTinyDeleteRecordLimit uint64
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.

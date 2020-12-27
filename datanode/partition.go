@@ -728,6 +728,13 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 		conn                    *net.TCPConn
 	)
 
+	if !dp.Disk().canFinTinyDeleteRecord() {
+		return
+	}
+	defer func() {
+		dp.Disk().fininshFixTinyDeleteRecord()
+	}()
+
 	if !isFullSync {
 		if localTinyDeleteFileSize, err = dp.extentStore.LoadTinyDeleteFileOffset(); err != nil {
 			return
