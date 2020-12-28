@@ -57,9 +57,11 @@ type Disk struct {
 	Status        int // disk status such as READONLY
 	ReservedSpace uint64
 
-	RejectWrite  bool
-	partitionMap map[uint64]*DataPartition
-	space        *SpaceManager
+	RejectWrite              bool
+	partitionMap             map[uint64]*DataPartition
+	space                    *SpaceManager
+	fixTinyDeleteRecordCh    chan struct{}
+	fixTinyDeleteRecordLimit uint64
 }
 
 type PartitionVisitor func(dp *DataPartition)
@@ -75,6 +77,8 @@ func NewDisk(path string, reservedSpace uint64, maxErrCnt int, space *SpaceManag
 	d.computeUsage()
 	d.updateSpaceInfo()
 	d.startScheduleToUpdateSpaceInfo()
+	d.fixTinyDeleteRecordCh = make(chan struct{}, space.fixTinyDeleteRecordLimit)
+	d.fixTinyDeleteRecordLimit = space.fixTinyDeleteRecordLimit
 	return
 }
 
@@ -161,6 +165,7 @@ func (d *Disk) startScheduleToUpdateSpaceInfo() {
 				d.updateSpaceInfo()
 			case <-checkStatusTickser.C:
 				d.checkDiskStatus()
+				d.updateFixTinyDeleteRecordLimit()
 			}
 		}
 	}()
@@ -178,6 +183,14 @@ func (d *Disk) autoComputeExtentCrc() {
 			dp.extentStore.AutoComputeExtentCrc()
 		}
 		time.Sleep(time.Minute)
+	}
+}
+
+func (d *Disk) updateFixTinyDeleteRecordLimit() {
+	if d.fixTinyDeleteRecordLimit != d.space.fixTinyDeleteRecordLimit {
+		d.fixTinyDeleteRecordLimit = d.space.fixTinyDeleteRecordLimit
+		close(d.fixTinyDeleteRecordCh)
+		d.fixTinyDeleteRecordCh = make(chan struct{}, d.fixTinyDeleteRecordLimit)
 	}
 }
 
@@ -413,4 +426,17 @@ func isExpiredPartition(id uint64, partitions []uint64) bool {
 		}
 	}
 	return true
+}
+
+func (d *Disk) canFinTinyDeleteRecord() bool {
+	select {
+	case <-d.fixTinyDeleteRecordCh:
+		return true
+	default:
+		return false
+	}
+}
+
+func (d *Disk) fininshFixTinyDeleteRecord() {
+	d.fixTinyDeleteRecordCh <- struct{}{}
 }

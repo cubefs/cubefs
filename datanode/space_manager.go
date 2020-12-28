@@ -32,19 +32,20 @@ import (
 
 // SpaceManager manages the disk space.
 type SpaceManager struct {
-	clusterID            string
-	disks                map[string]*Disk
-	partitions           map[uint64]*DataPartition
-	raftStore            raftstore.RaftStore
-	nodeID               uint64
-	diskMutex            sync.RWMutex
-	partitionMutex       sync.RWMutex
-	stats                *Stats
-	stopC                chan bool
-	selectedIndex        int // TODO what is selected index
-	diskList             []string
-	dataNode             *DataNode
-	createPartitionMutex sync.RWMutex
+	clusterID                string
+	disks                    map[string]*Disk
+	partitions               map[uint64]*DataPartition
+	raftStore                raftstore.RaftStore
+	nodeID                   uint64
+	diskMutex                sync.RWMutex
+	partitionMutex           sync.RWMutex
+	stats                    *Stats
+	stopC                    chan bool
+	selectedIndex            int // TODO what is selected index
+	diskList                 []string
+	dataNode                 *DataNode
+	createPartitionMutex     sync.RWMutex
+	fixTinyDeleteRecordLimit uint64
 }
 
 // NewSpaceManager creates a new space manager.
@@ -57,6 +58,7 @@ func NewSpaceManager(dataNode *DataNode) *SpaceManager {
 	space.stats = NewStats(dataNode.zoneName)
 	space.stopC = make(chan bool, 0)
 	space.dataNode = dataNode
+	space.fixTinyDeleteRecordLimit = defaultFixTinyDeleteRecordLimit
 
 	go space.statUpdateScheduler()
 
@@ -426,4 +428,11 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			response.BadDisks = append(response.BadDisks, d.Path)
 		}
 	}
+}
+
+func (manager *SpaceManager) SetDiskFixTinyDeleteRecordLimit(newValue uint64) {
+	if newValue > 0 && manager.fixTinyDeleteRecordLimit != newValue {
+		manager.fixTinyDeleteRecordLimit = newValue
+	}
+	return
 }
