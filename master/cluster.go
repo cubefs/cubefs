@@ -1349,21 +1349,23 @@ func (partition *DataPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
 		return
 	}
 	if !isValidZone {
-		log.LogWarnf("action[RepairZone], vol[%v], zoneName[%v], dpReplicaNum[%v] can not be automatically repaired", vol.Name, vol.zoneName, vol.dpReplicaNum)
+		log.LogWarnf("action[RepairZone], vol[%v], zoneName[%v], partitionId[%v] dpReplicaNum[%v] can not be automatically repaired", vol.Name, vol.zoneName, partition.PartitionID, vol.dpReplicaNum)
 		return
 	}
 	rps := partition.liveReplicas(defaultDataPartitionTimeOutSec)
 	if len(rps) < int(vol.dpReplicaNum) {
-		log.LogWarnf("action[RepairZone], vol[%v], zoneName[%v], live Replicas [%v] less than dpReplicaNum[%v], can not be automatically repaired", vol.Name, vol.zoneName, len(rps), vol.dpReplicaNum)
+		log.LogWarnf("action[RepairZone], vol[%v], zoneName[%v], partitionId[%v] live Replicas [%v] less than dpReplicaNum[%v], can not be automatically repaired",
+			vol.Name, vol.zoneName, partition.PartitionID, len(rps), vol.dpReplicaNum)
 		return
 	}
 	zoneList = strings.Split(vol.zoneName, ",")
 	if len(partition.Replicas) != int(vol.dpReplicaNum) {
-		log.LogWarnf("action[RepairZone], data replica length[%v] not equal to dpReplicaNum[%v]", len(partition.Replicas), vol.dpReplicaNum)
+		log.LogWarnf("action[RepairZone], vol[%v], zoneName[%v], partitionId[%v] data replica length[%v] not equal to dpReplicaNum[%v]",
+			vol.Name, vol.zoneName, partition.PartitionID, len(partition.Replicas), vol.dpReplicaNum)
 		return
 	}
 	if partition.isRecover {
-		log.LogWarnf("action[RepairZone], data partition[%v] is recovering", partition.PartitionID)
+		log.LogWarnf("action[RepairZone], vol[%v], zoneName[%v], data partition[%v] is recovering", vol.Name, vol.zoneName, partition.PartitionID)
 		return
 	}
 	var dpInRecover int

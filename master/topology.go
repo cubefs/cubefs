@@ -361,7 +361,7 @@ func (t *topology) allocZonesForMetaNode(zoneName string, replicaNum int, exclud
 			if zone.status == unavailableZone {
 				continue
 			}
-			if zone.canWriteForDataNode(uint8(demandWriteNodes)) {
+			if zone.canWriteForMetaNode(uint8(demandWriteNodes)) {
 				candidateZones = append(candidateZones, zone)
 			}
 		}
