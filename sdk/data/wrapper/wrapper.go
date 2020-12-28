@@ -249,7 +249,13 @@ func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 	defer w.RUnlock()
 	dp, ok := w.partitions[partitionID]
 	if !ok {
-		return nil, fmt.Errorf("partition[%v] not exsit", partitionID)
+		w.RUnlock()
+		w.updateDataPartition(false)
+		w.RLock()
+		dp, ok = w.partitions[partitionID]
+		if !ok {
+			return nil, fmt.Errorf("partition[%v] not exsit", partitionID)
+		}
 	}
 	return dp, nil
 }
