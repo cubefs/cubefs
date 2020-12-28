@@ -164,7 +164,7 @@ Transfer Volume
 
 .. code-block:: bash
 
-   curl -H "Content-Type:application/json" -X POST --data '{"volume":"vol","user_src":"user1","user_dst":"user2","force":"true"}' "http://10.196.59.198:17010/user/transferVol"
+   curl -H "Content-Type:application/json" -X POST --data '{"volume":"vol","user_src":"user1","user_dst":"user2","force":true}' "http://10.196.59.198:17010/user/transferVol"
 
 Transfer the ownership of the specified volume. This operation removes the specified volume from the ``owner_vols`` of source user name and adds it to the ``owner_vols`` of target user name; At the same time, the value of the field ``Owner`` in the volume structure will also be updated to the target user ID.
 
