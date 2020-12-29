@@ -171,7 +171,7 @@ Transfer the ownership of the specified volume. This operation removes the speci
 .. csv-table:: body key
    :header: "Key", "Type", "Description", "Mandatory"
 
-   "volume", "string", "Volume name to be transfered", "Yes"
+   "volume", "string", "Volume name to be transferred", "Yes"
    "user_src", "string", "Original owner of the volume, and must be the same as the ``Owner`` of the volume", "Yes"
    "user_dst", "string", "Target user ID after transferring", "Yes"
-   "force", "bool", "Force to transfer the volume. If the value is set to true, even if the value of ``user_src`` is different from the value of the owner of the volume, the volume will also be transferred to the target user", "No"
+   "force", "bool", "Force to transfer the volume. If the value is set to true, even if the value of ``user_src`` is different from the value of the owner of the volume, the volume will also be transferred to the target user, but the original volume owner will not be modified", "No"
