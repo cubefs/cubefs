@@ -707,7 +707,7 @@ func (partition *DataPartition) getToBeDecommissionHost(replicaNum int) (host st
 func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string) (err error) {
 	partition.offlineMutex.Lock()
 	defer partition.offlineMutex.Unlock()
-	if err = c.removeDataReplica(partition, host, false, false); err != nil {
+	if _, _, err = c.removeDataReplica(partition, host, false, false); err != nil {
 		return
 	}
 	partition.RLock()

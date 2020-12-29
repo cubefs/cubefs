@@ -150,6 +150,7 @@ func (m *SnapshotMeta) Decode(datas []byte) {
 		m.Learners = make([]Learner, learnerSize)
 		start = start + learner_len_size
 		for i := uint32(0); i < learnerSize; i++ {
+			m.Learners[i] = Learner{PromConfig: &PromoteConfig{}}
 			m.Learners[i].Decode(datas[start:])
 			start = start + learner_size
 		}

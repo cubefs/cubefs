@@ -467,6 +467,7 @@ func (m *Server) deleteDataReplica(w http.ResponseWriter, r *http.Request) {
 		addr        string
 		dp          *DataPartition
 		partitionID uint64
+		isLearner   bool
 		err         error
 	)
 
@@ -481,11 +482,11 @@ func (m *Server) deleteDataReplica(w http.ResponseWriter, r *http.Request) {
 	}
 	dp.offlineMutex.Lock()
 	defer dp.offlineMutex.Unlock()
-	if err = m.cluster.removeDataReplica(dp, addr, true, false); err != nil {
+	if isLearner, _, err = m.cluster.removeDataReplica(dp, addr, true, false); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	msg = fmt.Sprintf("data partitionID :%v  delete replica [%v] successfully", partitionID, addr)
+	msg = fmt.Sprintf("data partitionID: %v  delete replica [%v] successfully, isLearner[%v]", partitionID, addr, isLearner)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
@@ -523,6 +524,7 @@ func (m *Server) deleteMetaReplica(w http.ResponseWriter, r *http.Request) {
 		addr        string
 		mp          *MetaPartition
 		partitionID uint64
+		isLearner   bool
 		err         error
 	)
 
@@ -537,11 +539,11 @@ func (m *Server) deleteMetaReplica(w http.ResponseWriter, r *http.Request) {
 	}
 	mp.offlineMutex.Lock()
 	defer mp.offlineMutex.Unlock()
-	if err = m.cluster.deleteMetaReplica(mp, addr, true, false); err != nil {
+	if isLearner, _, err = m.cluster.deleteMetaReplica(mp, addr, true, false); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	msg = fmt.Sprintf("meta partitionID :%v  delete replica [%v] successfully", partitionID, addr)
+	msg = fmt.Sprintf("meta partitionID: %v  delete replica [%v] successfully, isLearner[%v]", partitionID, addr, isLearner)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
@@ -1816,8 +1818,7 @@ func extractMetaPartitionIDAndAddr(r *http.Request) (ID uint64, addr string, err
 }
 
 func parseRequestToAddDataReplica(r *http.Request) (ID uint64, addr string, err error) {
-	ID, addr, err = extractDataPartitionIDAndAddr(r)
-	return
+	return extractDataPartitionIDAndAddr(r)
 }
 
 func parseRequestToRemoveDataReplica(r *http.Request) (ID uint64, addr string, err error) {
@@ -1910,10 +1911,6 @@ func parseRequestToLoadMetaPartition(r *http.Request) (partitionID uint64, err e
 
 func parseRequestToDecommissionMetaPartition(r *http.Request) (partitionID uint64, nodeAddr string, err error) {
 	return extractMetaPartitionIDAndAddr(r)
-}
-
-func parseRequestToReplicateMetaPartition(r *http.Request) (partitionID uint64, err error) {
-	return extractMetaPartitionID(r)
 }
 
 func parseAndExtractStatus(r *http.Request) (status bool, err error) {

@@ -912,8 +912,8 @@ func (s *raft) isLearnerReady(pr *replica, threshold uint8) bool {
 		return false
 	}
 	if logger.IsEnableDebug() {
-		logger.Debug("raft[%v] leader[%v] promote learner[%v], leader match[%v]",
-			s.raftConfig.ID, s.config.NodeID, pr, leaderPr.match)
+		logger.Debug("raft[%v] leader[%v] promote learner[%v], leader match[%v], threshold[%v]",
+			s.raftConfig.ID, s.config.NodeID, pr, leaderPr.match, threshold)
 	}
 	return true
 }
@@ -922,7 +922,7 @@ func (s *raft) promoteLearner() {
 	for id, pr := range s.raftFsm.replicas {
 		if pr.isLearner && pr.promConfig.AutoPromote {
 			future := newFuture()
-			lear := proto.Learner{ID: id, PromConfig: &proto.PromoteConfig{AutoPromote: true}}
+			lear := proto.Learner{ID: id, PromConfig: &proto.PromoteConfig{AutoPromote: true, PromThreshold: pr.promConfig.PromThreshold}}
 			req := &proto.ConfChangeLearnerReq{Id: s.raftConfig.ID, ChangeLearner: lear}
 			bytes, err := json.Marshal(req)
 			if err != nil {

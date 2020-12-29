@@ -1296,6 +1296,8 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		excludeNodeSets []uint64
 		msg             string
 		vol             *Vol
+		isLearner       bool
+		pmConfig        *proto.PromoteConfig
 	)
 	dp.offlineMutex.Lock()
 	defer dp.offlineMutex.Unlock()
@@ -1306,11 +1308,17 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	if oldAddr, addAddr, err = chooseDataHostFunc(c, offlineAddr, dp, excludeNodeSets, vol.zoneName, destZoneName); err != nil {
 		goto errHandler
 	}
-	if err = c.removeDataReplica(dp, oldAddr, false, strictMode); err != nil {
+	if isLearner, pmConfig, err = c.removeDataReplica(dp, oldAddr, false, strictMode); err != nil {
 		return
 	}
-	if err = c.addDataReplica(dp, addAddr); err != nil {
-		return
+	if isLearner {
+		if err = c.addDataReplicaLearner(dp, addAddr, pmConfig.AutoProm, pmConfig.PromThreshold); err != nil {
+			return
+		}
+	} else {
+		if err = c.addDataReplica(dp, addAddr); err != nil {
+			return
+		}
 	}
 	dp.Lock()
 	dp.Status = proto.ReadOnly
@@ -1580,7 +1588,7 @@ func (c *Cluster) createDataReplica(dp *DataPartition, addPeer proto.Peer) (err 
 	return
 }
 
-func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate, migrationMode bool) (err error) {
+func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate, migrationMode bool) (isLearner bool, pmConfig *proto.PromoteConfig, err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[removeDataReplica],vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
@@ -1602,7 +1610,7 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate, mi
 	}
 	removePeer := proto.Peer{ID: dataNode.ID, Addr: addr}
 
-	if err = c.removeDataPartitionRaftMember(dp, removePeer, migrationMode); err != nil {
+	if isLearner, pmConfig, err = c.removeDataPartitionRaftMember(dp, removePeer, migrationMode); err != nil {
 		return
 	}
 	if err = c.deleteDataReplica(dp, dataNode, migrationMode); err != nil {
@@ -1644,7 +1652,7 @@ func (c *Cluster) isRecovering(dp *DataPartition, addr string) (isRecover bool) 
 	return
 }
 
-func (c *Cluster) removeDataPartitionRaftMember(dp *DataPartition, removePeer proto.Peer, migrationMode bool) (err error) {
+func (c *Cluster) removeDataPartitionRaftMember(dp *DataPartition, removePeer proto.Peer, migrationMode bool) (isLearner bool, pmConfig *proto.PromoteConfig, err error) {
 	defer func() {
 		if err1 := c.updateDataPartitionOfflinePeerIDWithLock(dp, 0); err1 != nil {
 			err = errors.Trace(err, "updateDataPartitionOfflinePeerIDWithLock failed, err[%v]", err1)
@@ -1682,6 +1690,8 @@ func (c *Cluster) removeDataPartitionRaftMember(dp *DataPartition, removePeer pr
 	newLearners := make([]proto.Learner, 0)
 	for _, learner := range dp.Learners {
 		if learner.ID == removePeer.ID && learner.Addr == removePeer.Addr {
+			isLearner = true
+			pmConfig = learner.PmConfig
 			continue
 		}
 		newLearners = append(newLearners, learner)

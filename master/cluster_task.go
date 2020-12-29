@@ -103,6 +103,8 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, 
 		excludeNodeSets []uint64
 		oldHosts        []string
 		vol             *Vol
+		isLearner       bool
+		pmConfig        *proto.PromoteConfig
 	)
 	mp.offlineMutex.Lock()
 	defer mp.offlineMutex.Unlock()
@@ -115,11 +117,17 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, 
 	}
 
 	log.LogWarnf("action[decommissionMetaPartition],volName[%v],nodeAddr[%v],partitionID[%v] begin", mp.volName, nodeAddr, mp.PartitionID)
-	if err = c.deleteMetaReplica(mp, nodeAddr, false, strictMode); err != nil {
+	if isLearner, pmConfig, err = c.deleteMetaReplica(mp, nodeAddr, false, strictMode); err != nil {
 		goto errHandler
 	}
-	if err = c.addMetaReplica(mp, addAddr); err != nil {
-		goto errHandler
+	if isLearner {
+		if err = c.addMetaReplicaLearner(mp, addAddr, pmConfig.AutoProm, pmConfig.PromThreshold); err != nil {
+			goto errHandler
+		}
+	} else {
+		if err = c.addMetaReplica(mp, addAddr); err != nil {
+			goto errHandler
+		}
 	}
 	mp.IsRecover = true
 	if strictMode {
@@ -293,7 +301,7 @@ func (c *Cluster) checkLackReplicaMetaPartitions() (lackReplicaMetaPartitions []
 	return
 }
 
-func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, validate, migrationMode bool) (err error) {
+func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, validate, migrationMode bool) (isLearner bool, pmConfig *proto.PromoteConfig, err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[deleteMetaReplica],vol[%v],data partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
@@ -309,7 +317,7 @@ func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, valid
 		return
 	}
 	removePeer := proto.Peer{ID: metaNode.ID, Addr: addr}
-	if err = c.removeMetaPartitionRaftMember(partition, removePeer, migrationMode); err != nil {
+	if isLearner, pmConfig, err = c.removeMetaPartitionRaftMember(partition, removePeer, migrationMode); err != nil {
 		return
 	}
 	if err = c.deleteMetaPartition(partition, metaNode, migrationMode); err != nil {
@@ -339,7 +347,7 @@ func (c *Cluster) deleteMetaPartition(partition *MetaPartition, removeMetaNode *
 	return nil
 }
 
-func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, removePeer proto.Peer, migrationMode bool) (err error) {
+func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, removePeer proto.Peer, migrationMode bool) (isLearner bool, pmConfig *proto.PromoteConfig, err error) {
 	defer func() {
 		if err1 := c.updateMetaPartitionOfflinePeerIDWithLock(partition, 0); err1 != nil {
 			err = errors.Trace(err, "updateMetaPartitionOfflinePeerIDWithLock failed, err[%v]", err1)
@@ -385,6 +393,8 @@ func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, remove
 	}
 	for _, learner := range partition.Learners {
 		if learner.Addr == removePeer.Addr && learner.ID == removePeer.ID {
+			isLearner = true
+			pmConfig = learner.PmConfig
 			continue
 		}
 		newLearners = append(newLearners, learner)
