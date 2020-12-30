@@ -181,6 +181,7 @@ func (u *User) updateKey(param *proto.UserUpdateParam) (userInfo *proto.UserInfo
 	}
 	if param.SecretKey != "" {
 		if !proto.IsValidSK(param.SecretKey) {
+			userInfo.AccessKey = formerAK
 			err = proto.ErrInvalidSecretKey
 			return
 		}
