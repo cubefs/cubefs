@@ -393,7 +393,7 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 func (i *Inode) AppendExtents(eks []proto.ExtentKey, ct int64) (delExtents []proto.ExtentKey) {
 	i.Lock()
 	for _, ek := range eks {
-		delItems, _ := i.Extents.Append(ek, nil)
+		delItems := i.Extents.Append(ek)
 		size := i.Extents.Size()
 		if i.Size < size {
 			i.Size = size
@@ -409,7 +409,7 @@ func (i *Inode) AppendExtents(eks []proto.ExtentKey, ct int64) (delExtents []pro
 func (i *Inode) AppendExtentWithCheck(ek proto.ExtentKey, ct int64, discardExtents []proto.ExtentKey) (delExtents []proto.ExtentKey, status uint8) {
 	i.Lock()
 	defer i.Unlock()
-	delItems, status := i.Extents.Append(ek, discardExtents)
+	delItems, status := i.Extents.AppendWithCheck(ek, discardExtents)
 	if status != proto.OpOk {
 		return
 	}

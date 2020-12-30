@@ -66,7 +66,68 @@ func (se *SortedExtents) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
-func (se *SortedExtents) Append(ek proto.ExtentKey, discard []proto.ExtentKey) (deleteExtents []proto.ExtentKey, status uint8) {
+// To be deprecated
+func (se *SortedExtents) Append(ek proto.ExtentKey) (deleteExtents []proto.ExtentKey) {
+	endOffset := ek.FileOffset + uint64(ek.Size)
+
+	se.Lock()
+	defer se.Unlock()
+	defer func() {
+		if ek.FileOffset+uint64(ek.Size) > se.size {
+			se.size = ek.FileOffset + uint64(ek.Size)
+		}
+	}()
+
+	if len(se.eks) <= 0 {
+		se.eks = append(se.eks, ek)
+		return
+	}
+	lastKey := se.eks[len(se.eks)-1]
+	if lastKey.FileOffset+uint64(lastKey.Size) <= ek.FileOffset {
+		se.eks = append(se.eks, ek)
+		return
+	}
+	firstKey := se.eks[0]
+	if firstKey.FileOffset >= endOffset {
+		eks := se.doCopyExtents()
+		se.eks = se.eks[:0]
+		se.eks = append(se.eks, ek)
+		se.eks = append(se.eks, eks...)
+		return
+	}
+
+	var startIndex, endIndex int
+
+	invalidExtents := make([]proto.ExtentKey, 0)
+	for idx, key := range se.eks {
+		if ek.FileOffset > key.FileOffset {
+			startIndex = idx + 1
+			continue
+		}
+		if endOffset >= key.FileOffset+uint64(key.Size) {
+			invalidExtents = append(invalidExtents, key)
+			continue
+		}
+		break
+	}
+
+	endIndex = startIndex + len(invalidExtents)
+	upperExtents := make([]proto.ExtentKey, len(se.eks)-endIndex)
+	copy(upperExtents, se.eks[endIndex:])
+	se.eks = se.eks[:startIndex]
+	se.eks = append(se.eks, ek)
+	se.eks = append(se.eks, upperExtents...)
+	// check if ek and key are the same extent file with size extented
+	deleteExtents = make([]proto.ExtentKey, 0, len(invalidExtents))
+	for _, key := range invalidExtents {
+		if key.PartitionId != ek.PartitionId || key.ExtentId != ek.ExtentId {
+			deleteExtents = append(deleteExtents, key)
+		}
+	}
+	return
+}
+
+func (se *SortedExtents) AppendWithCheck(ek proto.ExtentKey, discard []proto.ExtentKey) (deleteExtents []proto.ExtentKey, status uint8) {
 	status = proto.OpOk
 	endOffset := ek.FileOffset + uint64(ek.Size)
 
