@@ -166,6 +166,8 @@ const (
 	NoReadDeadlineTime           = -1
 	MaxWaitFollowerRepairTime    = 60 * 30
 	GetAllWatermarksDeadLineTime = 60
+	MaxPacketProcessTime         = 5
+	MinReadDeadlineTime          = 1
 )
 
 const (
@@ -196,6 +198,9 @@ type Packet struct {
 	Arg                []byte // for create or append ops, the data contains the address
 	Data               []byte
 	StartT             int64
+	SendT              int64
+	WaitT              int64
+	RecvT              int64
 	mesg               string
 	HasPrepare         bool
 }
