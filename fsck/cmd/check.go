@@ -219,12 +219,18 @@ func analyze(ifile, dfile *os.File) (imap map[uint64]*Inode, dlist []*Dentry, er
 	 */
 	dec := json.NewDecoder(ifile)
 	for dec.More() {
-		inode := &Inode{Dens: make([]*Dentry, 0)}
-		if err = dec.Decode(inode); err != nil {
-			fmt.Printf("Unmarshal inode failed: %v", err)
+		body := &struct {
+			Code int32    `json:"code"`
+			Msg  string   `json:"msg"`
+			Data []*Inode `json:"data"`
+		}{}
+		if err = dec.Decode(body); err != nil {
+			err = fmt.Errorf("Decode inode failed: %v", err)
 			return
 		}
-		imap[inode.Inode] = inode
+		for _, inode := range body.Data {
+			imap[inode.Inode] = inode
+		}
 	}
 
 	/*
