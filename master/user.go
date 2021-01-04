@@ -186,8 +186,13 @@ func (u *User) updateKey(param *proto.UserUpdateParam) (userInfo *proto.UserInfo
 		}
 		userInfo.SecretKey = param.SecretKey
 	}
-	if param.Type.Valid() {
-		userInfo.UserType = param.Type
+	if param.Type != 0 {
+		if param.Type.Valid() {
+			userInfo.UserType = param.Type
+		} else {
+			err = proto.ErrInvalidUserType
+			return
+		}
 	}
 	if param.Description != "" {
 		userInfo.Description = param.Description
