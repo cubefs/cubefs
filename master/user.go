@@ -168,6 +168,7 @@ func (u *User) updateKey(param *proto.UserUpdateParam) (userInfo *proto.UserInfo
 		return
 	}
 	var formerAK = userInfo.AccessKey
+	var akMark, skMark, typeMark, describeMark int
 	if param.AccessKey != "" {
 		if !proto.IsValidAK(param.AccessKey) {
 			err = proto.ErrInvalidAccessKey
@@ -177,20 +178,20 @@ func (u *User) updateKey(param *proto.UserUpdateParam) (userInfo *proto.UserInfo
 			err = proto.ErrDuplicateAccessKey
 			return
 		}
-		userInfo.AccessKey = param.AccessKey
+		akMark = 1
 	}
 	if param.SecretKey != "" {
 		if !proto.IsValidSK(param.SecretKey) {
 			err = proto.ErrInvalidSecretKey
 			return
 		}
-		userInfo.SecretKey = param.SecretKey
+		skMark = 1
 	}
 	if param.Type.Valid() {
-		userInfo.UserType = param.Type
+		typeMark = 1
 	}
 	if param.Description != "" {
-		userInfo.Description = param.Description
+		describeMark = 1
 	}
 
 	var akUserBef *proto.AKUser
@@ -201,6 +202,18 @@ func (u *User) updateKey(param *proto.UserUpdateParam) (userInfo *proto.UserInfo
 	} else {
 		err = proto.ErrAccessKeyNotExists
 		return
+	}
+	if akMark == 1 {
+		userInfo.AccessKey = param.AccessKey
+	}
+	if skMark == 1 {
+		userInfo.SecretKey = param.SecretKey
+	}
+	if typeMark == 1 {
+		userInfo.UserType = param.Type
+	}
+	if describeMark == 1 {
+		userInfo.Description = param.Description
 	}
 
 	if len(strings.TrimSpace(param.Password)) != 0 {
