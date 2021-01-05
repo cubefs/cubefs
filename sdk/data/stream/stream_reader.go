@@ -125,7 +125,7 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 			}
 
 			if req.FileOffset+req.Size > filesize {
-				if req.FileOffset > filesize {
+				if req.FileOffset >= filesize {
 					return
 				}
 				req.Size = filesize - req.FileOffset

@@ -286,6 +286,9 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 
 // Fsync hanldes the fsync request.
 func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
+	tpObject := ump.BeforeTP(f.super.umpFunctionKey("Fsync"))
+	defer ump.AfterTP(tpObject, err)
+
 	log.LogDebugf("TRACE Fsync enter: ino(%v)", f.info.Inode)
 	start := time.Now()
 	err = f.super.ec.Flush(f.info.Inode)
@@ -301,7 +304,10 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 }
 
 // Setattr handles the setattr request.
-func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
+func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) (err error) {
+	tpObject := ump.BeforeTP(f.super.umpFunctionKey("Setattr"))
+	defer ump.AfterTP(tpObject, err)
+
 	ino := f.info.Inode
 	start := time.Now()
 	if req.Valid.Size() {

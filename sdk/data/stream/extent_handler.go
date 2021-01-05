@@ -243,6 +243,7 @@ func (eh *ExtentHandler) sender() {
 				eh.setClosed()
 				eh.setRecovery()
 			}
+			packet.SendT = time.Now().UnixNano()
 			eh.reply <- packet
 
 			log.LogDebugf("ExtentHandler sender: sent to the reply channel, eh(%v) packet(%v)", eh, packet)
@@ -297,8 +298,23 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		return
 	}
 
+	cost := time.Since(time.Unix(0, packet.StartT))
+	if cost > time.Second*proto.MaxPacketProcessTime {
+		errmsg := fmt.Sprintf("processReply: time-out(%v) before recieve, costFromStart(%v), costFromSend(%v) "+
+			"packet(%v)", time.Second*proto.MaxPacketProcessTime, cost, time.Since(time.Unix(0, packet.SendT)), packet)
+		eh.processReplyError(packet, errmsg)
+		return
+	}
+	packet.WaitT = time.Now().UnixNano()
+
 	reply := NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
-	err := reply.ReadFromConn(eh.conn, proto.ReadDeadlineTime)
+	readDeadLineTime := proto.ReadDeadlineTime - int(cost.Seconds())
+	if readDeadLineTime < proto.MinReadDeadlineTime {
+		readDeadLineTime = proto.MinReadDeadlineTime
+		log.LogWarnf("processReply: send or wait cost too long, costFromStart(%v), costFromSend(%v), packet(%v)",
+			cost, time.Since(time.Unix(0, packet.SendT)), packet)
+	}
+	err := reply.ReadFromConn(eh.conn, readDeadLineTime)
 	if err != nil {
 		eh.processReplyError(packet, err.Error())
 		return
@@ -324,6 +340,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		return
 	}
 
+	packet.RecvT = time.Now().UnixNano()
 	eh.dp.RecordWrite(packet.StartT)
 
 	var (
