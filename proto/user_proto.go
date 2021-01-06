@@ -198,19 +198,26 @@ func (policy *UserPolicy) RemoveOwnVol(volume string) {
 	}
 }
 
-func (policy *UserPolicy) AddAuthorizedVol(volume string, policies []string) { //todo check duplicate
+func (policy *UserPolicy) AddAuthorizedVol(volume string, policies []string) bool { //todo check duplicate
 	policy.mu.Lock()
 	defer policy.mu.Unlock()
+	var formerLength, afterLength int
 	newPolicies := make([]string, 0)
 	for _, policy := range policies {
+		formerLength = len(newPolicies)
 		if perm := ParsePermission(policy); !perm.IsNone() {
 			newPolicies = append(newPolicies, perm.String())
 		}
 		if act := ParseAction(policy); !act.IsNone() {
 			newPolicies = append(newPolicies, act.String())
 		}
+		afterLength = len(newPolicies)
+		if afterLength == formerLength {
+			return false
+		}
 	}
 	policy.AuthorizedVols[volume] = newPolicies
+	return true
 }
 
 func (policy *UserPolicy) RemoveAuthorizedVol(volume string) {

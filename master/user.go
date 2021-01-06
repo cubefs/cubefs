@@ -271,7 +271,10 @@ func (u *User) updatePolicy(params *proto.UserPermUpdateParam) (userInfo *proto.
 		err = proto.ErrIsOwner
 		return
 	}
-	userInfo.Policy.AddAuthorizedVol(params.Volume, params.Policy)
+	if !userInfo.Policy.AddAuthorizedVol(params.Volume, params.Policy) {
+		err = proto.ErrUnknownPolicy
+		return
+	}
 	if err = u.syncUpdateUserInfo(userInfo); err != nil {
 		err = proto.ErrPersistenceByRaft
 		return
