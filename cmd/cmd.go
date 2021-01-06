@@ -25,6 +25,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"syscall"
 
@@ -77,6 +78,10 @@ const (
 	LoggerOutput = "output.log"
 )
 
+const (
+	MaxThread = 40000
+)
+
 var (
 	CommitID   string
 	BranchName string
@@ -119,6 +124,10 @@ func modifyOpenFiles() (err error) {
 	}
 	syslog.Println("Rlimit Final", rLimit)
 	return
+}
+
+func  modifyMaxThreadLimit() {
+	debug.SetMaxThreads(MaxThread)
 }
 
 func main() {
@@ -236,6 +245,8 @@ func main() {
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
+	// Setup thread limit from 10,000 to 40,000
+	modifyMaxThreadLimit()
 
 	//for multi-cpu scheduling
 	runtime.GOMAXPROCS(runtime.NumCPU())
