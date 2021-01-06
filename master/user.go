@@ -187,8 +187,14 @@ func (u *User) updateKey(param *proto.UserUpdateParam) (userInfo *proto.UserInfo
 		}
 		skMark = 1
 	}
-	if param.Type.Valid() {
-		typeMark = 1
+	//Type == 0,do not modify type
+	if param.Type != 0 {
+		if param.Type.Valid() {
+			typeMark = 1
+		} else {
+			err = proto.ErrInvalidUserType
+			return
+		}
 	}
 	if param.Description != "" {
 		describeMark = 1
