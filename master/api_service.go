@@ -2000,8 +2000,9 @@ func volStat(vol *Vol) (stat *proto.VolStatInfo) {
 	if stat.UsedSize > stat.TotalSize {
 		stat.UsedSize = stat.TotalSize
 	}
+	stat.UsedRatio = fmt.Sprintf("%.2f", float64(stat.UsedSize)/float64(stat.TotalSize))
 	stat.EnableToken = vol.enableToken
-	log.LogDebugf("total[%v],usedSize[%v]", stat.TotalSize, stat.UsedSize)
+	log.LogDebugf("total[%v],usedSize[%v],usedRatio[%v]", stat.TotalSize, stat.UsedSize, stat.UsedRatio)
 	return
 }
 
