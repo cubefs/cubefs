@@ -81,7 +81,7 @@ Stat
 
 .. code-block:: bash
 
-   curl -v http://10.196.59.198:17010/client/volStat?name=test
+   curl -v "http://10.196.59.198:17010/client/volStat?name=test"
 
 
 Show the status information of volume.
@@ -118,7 +118,7 @@ Increase the quota of volume, or adjust other parameters.
 
    "name", "string", "volume name", "Yes"
    "authKey", "string", "calculates the 32-bit MD5 value of the owner field as authentication information", "Yes"
-   "capacity", "int", "the quota of vol, unit is GB", "Yes"
+   "capacity", "int", "the quota of vol, has to be 20 percent larger than the used space, unit is GB", "Yes"
    "zoneName", "string", "update zone name", "Yes"
    "enableToken","bool","whether to enable the token mechanism to control client permissions. ``False`` by default.", "No"
    "followerRead", "bool", "enable read from follower", "No"
