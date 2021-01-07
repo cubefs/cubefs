@@ -465,6 +465,10 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	if err != nil {
 		return errors.Trace(err, "streamRepairExtent Watermark error")
 	}
+	if !dp.Disk().canRepairOnDisk(){
+		return  errors.Trace(err,"limit on apply disk repair task")
+	}
+	defer dp.Disk().fininshRepairTask()
 
 	if localExtentInfo.Size >= remoteExtentInfo.Size {
 		return nil

@@ -62,6 +62,7 @@ type Disk struct {
 	space                    *SpaceManager
 	fixTinyDeleteRecordCh    chan struct{}
 	fixTinyDeleteRecordLimit uint64
+	repairTaskCh             chan struct{}
 }
 
 type PartitionVisitor func(dp *DataPartition)
@@ -79,6 +80,11 @@ func NewDisk(path string, reservedSpace uint64, maxErrCnt int, space *SpaceManag
 	d.startScheduleToUpdateSpaceInfo()
 	d.fixTinyDeleteRecordCh = make(chan struct{}, space.fixTinyDeleteRecordLimit)
 	d.fixTinyDeleteRecordLimit = space.fixTinyDeleteRecordLimit
+	d.repairTaskCh =make(chan struct{},MaxRepairTaskOnDisk)
+	for i:=0;i<MaxRepairTaskOnDisk;i++{
+		d.repairTaskCh <- struct{}{}
+	}
+
 	return
 }
 
@@ -88,6 +94,20 @@ func (d *Disk) PartitionCount() int {
 	defer d.RUnlock()
 	return len(d.partitionMap)
 }
+
+func (d *Disk)canRepairOnDisk() bool {
+	select {
+		case <-d.repairTaskCh:
+			return true
+	default:
+		return false
+	}
+}
+
+func (d *Disk) fininshRepairTask() {
+	d.repairTaskCh<- struct{}{}
+}
+
 
 // Compute the disk usage
 func (d *Disk) computeUsage() (err error) {
