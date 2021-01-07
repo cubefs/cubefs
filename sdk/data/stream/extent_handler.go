@@ -316,7 +316,10 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	}
 	err := reply.ReadFromConn(eh.conn, readDeadLineTime)
 	if err != nil {
-		eh.processReplyError(packet, err.Error())
+		errmsg := fmt.Sprintf("ReadFromConn timeout(%vs) err(%v) costBeforeRecv(%v) costFromStart(%v) costFromSend(%v)",
+			readDeadLineTime, err.Error(), cost, time.Since(time.Unix(0, packet.StartT)),
+			time.Since(time.Unix(0, packet.SendT)))
+		eh.processReplyError(packet, errmsg)
 		return
 	}
 
