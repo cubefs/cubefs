@@ -175,3 +175,17 @@ Transfer the ownership of the specified volume. This operation removes the speci
    "user_src", "string", "Original owner of the volume, and must be the same as the ``Owner`` of the volume", "Yes"
    "user_dst", "string", "Target user ID after transferring", "Yes"
    "force", "bool", "Force to transfer the volume. If the value is set to true, even if the value of ``user_src`` is different from the value of the owner of the volume, the volume will also be transferred to the target user, but the original volume owner will not be modified", "No"
+
+Get Users Of Volume
+-------------------
+
+.. code-block:: bash
+
+    curl -v "http://10.196.59.198:17010/vol/users?name=vol" | python -m json.tool
+
+Get all users of volume.
+
+.. csv-table:: body key
+   :header: "Key", "Type", "Description", "Mandatory"
+
+   "name", "string", "volume name", "Yes"
