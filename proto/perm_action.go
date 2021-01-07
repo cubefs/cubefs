@@ -15,6 +15,7 @@
 package proto
 
 import (
+	"path"
 	"regexp"
 	"strings"
 )
@@ -310,11 +311,29 @@ func (p Permission) MatchSubdir(subdir string) bool {
 		}
 	}
 
-	toCompare := strings.Split(s, ":")
-	for i := 0; i < len(toCompare); i++ {
-		if (subdir == "" || subdir == "/") && (toCompare[i] == "" || toCompare[i] == "/") ||
-			subdir == toCompare[i] {
+	pars := strings.Split(s, ":")
+	pars = pars[:len(pars)-1] //trim (Writable|ReadOnly) at the end
+	for _, toCmp := range pars {
+		if toCmp == "/" || toCmp == "" {
 			return true
+		}
+		subdir = path.Clean("/" + subdir)
+		toCmp = path.Clean("/" + toCmp)
+		if strings.HasPrefix(subdir, toCmp) {
+			tail := strings.TrimPrefix(subdir, toCmp)
+			//match case 1:
+			//subdir = "/a/b/c"
+			//toCmp  = "/a/b/c"
+			//tail   =       ""
+
+			//match case 2:
+			//subdir = "/a/b/c"
+			//toCmp  = "/a/b"
+			//tail   =     "/c"
+
+			if tail == "" || strings.HasPrefix(tail, "/") {
+				return true
+			}
 		}
 	}
 
