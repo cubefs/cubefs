@@ -48,7 +48,6 @@ fuse.json
    "rdonly", "bool", "Mount as read-only file system", "No"
    "writecache", "bool", "Leverage the write cache feature of kernel FUSE. Requires the kernel FUSE module to support write cache.", "No"
    "keepcache", "bool", "Keep kernel page cache. Requires the writecache option is enabled.", "No"
-   "token", "string", "Specify the capability of a client instance.", "No"
    "readRate", "int", "Read Rate Limit. Unlimited by default.", "No"
    "writeRate", "int", "Write Rate Limit. Unlimited by default.", "No"
    "followerRead", "bool", "Enable read from follower. False by default.", "No"
