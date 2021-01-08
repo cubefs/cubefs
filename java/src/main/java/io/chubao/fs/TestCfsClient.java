@@ -6,7 +6,7 @@ import java.io.FileNotFoundException;
 
 public class TestCfsClient {
     public static void main(String[] args) throws FileNotFoundException {
-        CfsMount mnt = new CfsMount("/usr/lib/libcfs.so");
+        CfsMount mnt = new CfsMount();
 
         mnt.setClient("volName", "ltptest");
         mnt.setClient("masterAddr", "192.168.0.11:17010,192.168.0.12:17010,192.168.0.13:17010");

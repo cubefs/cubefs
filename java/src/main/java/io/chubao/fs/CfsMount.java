@@ -43,12 +43,10 @@ public class CfsMount {
     public static final int SUCCESS = 0;
 
     private CfsLibrary libcfs;
-    private String libpath;
     private long cid; // client id allocated by libcfs library
 
-    public CfsMount(String path) {
-        libpath = path;
-        libcfs = (CfsLibrary) Native.load(libpath, CfsLibrary.class);
+    public CfsMount() {
+        libcfs = Native.load("/libcfs.so", CfsLibrary.class);
         cid = libcfs.cfs_new_client();
     }
 

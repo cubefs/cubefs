@@ -1,18 +1,10 @@
 # Usage
 
-### Build shared library
-
-```bash
-cd libsdk
-sh build.sh
-sudo cp libcfs.so /usr/lib/libcfs.so
-```
-
 ### Build jar with dependencies
 
 ```bash
 cd java
-mvn clean package
+./build.sh
 ```
 
 ### Deploy single-node cluster using docker
