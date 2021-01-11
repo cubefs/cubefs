@@ -583,7 +583,7 @@ func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err
 		return
 	}
 
-	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime*2); err != nil {
+	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
 		err = errors.Trace(err, "createExtent: failed to ReadFromConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])
 		return
 	}
