@@ -14,6 +14,13 @@ cd docker
 ./run_docker.sh -r
 ```
 
+### Run unit test
+
+```bash
+cd java
+mvn clean package
+```
+
 ## Run the java test program
 
 ```

@@ -5,5 +5,6 @@
 cd ../libsdk
 ./build.sh
 cp libcfs.so ../java/src/main/resources/
+#when mvn package ,skipping test
 cd ../java
-mvn clean package
+mvn clean package -Dmaven.test.skip=true
