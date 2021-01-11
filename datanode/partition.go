@@ -654,8 +654,6 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 			continue
 		}
 		if store.HasExtent(uint64(extentInfo.FileID)) {
-			info := &storage.ExtentInfo{Source: extentInfo.Source, FileID: extentInfo.FileID, Size: extentInfo.Size}
-			repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, info)
 			continue
 		}
 		if !AutoRepairStatus {
@@ -666,9 +664,12 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 		if err != nil {
 			continue
 		}
-		info := &storage.ExtentInfo{Source: extentInfo.Source, FileID: extentInfo.FileID, Size: extentInfo.Size}
-		repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, info)
 	}
+
+	if len(repairTask.ExtentsToBeRepaired) > 0 {
+		log.LogWarnf("tag1: repairTask.ExtentsToBeRepaired (%v)", repairTask.ExtentsToBeRepaired)
+	}
+
 	var (
 		wg           *sync.WaitGroup
 		recoverIndex int
