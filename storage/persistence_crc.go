@@ -16,6 +16,7 @@ package storage
 
 import (
 	"encoding/binary"
+	"io"
 	"sync/atomic"
 
 	"github.com/chubaofs/chubaofs/util"
@@ -115,5 +116,26 @@ func (s *ExtentStore) PersistenceHasDeleteExtent(extentID uint64) (err error) {
 	if _, err = s.normalExtentDeleteFp.Write(data); err != nil {
 		return
 	}
+	return
+}
+
+func (s *ExtentStore) GetHasDeleteExtent() (extentDes []ExtentDeleted, err error) {
+	data := make([]byte, 8)
+	offset := int64(0)
+	for ;; {
+		_, err = s.normalExtentDeleteFp.ReadAt(data, offset)
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+			}
+			return
+		}
+
+		extent := ExtentDeleted{}
+		extent.ExtentID = binary.BigEndian.Uint64(data)
+		extentDes = append(extentDes, extent)
+		offset += 8
+	}
+
 	return
 }
