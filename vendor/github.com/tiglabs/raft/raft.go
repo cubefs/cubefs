@@ -121,7 +121,7 @@ type raft struct {
 	tickc             chan struct{}
 	electc            chan struct{}
 	stopc             chan struct{}
-	done              chan struct{}
+	wg                sync.WaitGroup
 	mu                sync.Mutex
 }
 
@@ -160,7 +160,6 @@ func newRaft(config *Config, raftConfig *RaftConfig) (*raft, error) {
 		readyc:        make(chan struct{}, 1),
 		electc:        make(chan struct{}, 1),
 		stopc:         make(chan struct{}),
-		done:          make(chan struct{}),
 	}
 	raft.curApplied.Set(r.raftLog.applied)
 	raft.peerState.replace(raftConfig.Peers)
@@ -171,14 +170,8 @@ func newRaft(config *Config, raftConfig *RaftConfig) (*raft, error) {
 }
 
 func (s *raft) stop() {
-	select {
-	case <-s.done:
-		return
-	default:
-		s.doStop()
-	}
-	<-s.done
-
+	s.doStop()
+	s.wg.Wait()
 }
 
 func (s *raft) doStop() {
@@ -196,9 +189,11 @@ func (s *raft) doStop() {
 }
 
 func (s *raft) runApply() {
+	s.wg.Add(1)
 	defer func() {
 		s.doStop()
 		s.resetApply()
+		s.wg.Done()
 	}()
 
 	loopCount := 0
@@ -245,13 +240,14 @@ func (s *raft) runApply() {
 }
 
 func (s *raft) run() {
+	s.wg.Add(1)
 	defer func() {
 		s.doStop()
 		s.resetPending(ErrStopped)
 		s.raftFsm.readOnly.reset(ErrStopped)
 		s.stopSnapping()
 		s.raftConfig.Storage.Close()
-		close(s.done)
+		s.wg.Done()
 	}()
 
 	s.prevHardSt.Term = s.raftFsm.term
