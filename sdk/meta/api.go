@@ -123,15 +123,30 @@ func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid ui
 
 create_dentry:
 	status, err = mw.dcreate(parentMP, parentID, name, info.Inode, mode)
-	if (err == nil) && ((status == statusOK) || (status == statusExist)) {
+	if err == nil && status == statusOK {
 		return info, nil
+	}
+
+	if err == nil && status == statusExist {
+		newStatus, newInode, mode, newErr := mw.lookup(parentMP, parentID, name)
+		if newErr == nil && newStatus == statusOK {
+			if newInode == info.Inode {
+				return info, nil
+			} else {
+				mw.iunlink(mp, info.Inode)
+				mw.ievict(mp, info.Inode)
+				log.LogWarnf("Create_ll: dentry has allready been created by other client, newInode(%v), mode(%v)",
+					newInode, mode)
+			}
+		} else {
+			log.LogWarnf("Create_ll: check create_dentry failed, status(%v), err(%v)", newStatus, newErr)
+		}
 	}
 
 	// Unable to determin create dentry status, rollback may cause unexcepted result.
 	// So we return status error, user should check opration result manually or retry.
-	log.LogWarnf("Create_ll: create_dentry failed, can't determin dentry status, err(%v), status(%v), parentMP(%v),"+
-		" parentID(%v), name(%v), info.Inode(%v), mode(%v)",
-		err, status, parentMP, parentID, name, info.Inode, mode)
+	log.LogErrorf("Create_ll: create_dentry failed, err(%v), status(%v), parentMP(%v), parentID(%v), name(%v), "+
+		"info.Inode(%v), mode(%v)", err, status, parentMP, parentID, name, info.Inode, mode)
 	return nil, statusToErrno(status)
 }
 
