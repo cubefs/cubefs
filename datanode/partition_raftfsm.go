@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/storage"
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"net"
 	"sync/atomic"
 	"time"
@@ -40,7 +41,17 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 // It does not support updating an existing member at this point.
 func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, index uint64) (resp interface{}, err error) {
 	defer func(index uint64) {
-		dp.uploadApplyID(index)
+		if err == nil {
+			dp.uploadApplyID(index)
+		} else {
+			// only stop myself partition
+			if !IsDiskErr(err.Error()) {
+				dp.stopRaft()
+			}
+
+			err = fmt.Errorf("[ApplyMemberChange] ApplyID(%v) Partition(%v) apply err(%v)]", index, dp.partitionID, err)
+			exporter.Warning(err.Error())
+		}
 	}(index)
 
 	// Change memory the status
@@ -76,6 +87,7 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 	if isUpdated {
 		dp.DataPartitionCreateType = proto.NormalCreateDataPartition
 		if err = dp.PersistMetadata(); err != nil {
+			dp.checkIsDiskError(err)
 			log.LogErrorf("action[ApplyMemberChange] dp(%v) PersistMetadata err(%v).", dp.partitionID, err)
 			return
 		}
