@@ -44,13 +44,9 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		if err == nil {
 			dp.uploadApplyID(index)
 		} else {
-			// only stop myself partition
-			if !IsDiskErr(err.Error()) {
-				dp.stopRaft()
-			}
-
 			err = fmt.Errorf("[ApplyMemberChange] ApplyID(%v) Partition(%v) apply err(%v)]", index, dp.partitionID, err)
 			exporter.Warning(err.Error())
+			panic(newRaftApplyError(err))
 		}
 	}(index)
 
@@ -82,13 +78,18 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 	}
 	if err != nil {
 		log.LogErrorf("action[ApplyMemberChange] dp(%v) type(%v) err(%v).", dp.partitionID, confChange.Type, err)
+		if IsDiskErr(err.Error()) {
+			panic(newRaftApplyError(err))
+		}
 		return
 	}
 	if isUpdated {
 		dp.DataPartitionCreateType = proto.NormalCreateDataPartition
 		if err = dp.PersistMetadata(); err != nil {
-			dp.checkIsDiskError(err)
 			log.LogErrorf("action[ApplyMemberChange] dp(%v) PersistMetadata err(%v).", dp.partitionID, err)
+			if IsDiskErr(err.Error()) {
+				panic(newRaftApplyError(err))
+			}
 			return
 		}
 	}
@@ -114,7 +115,13 @@ func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftprot
 
 // HandleFatalEvent notifies the application when panic happens.
 func (dp *DataPartition) HandleFatalEvent(err *raft.FatalError) {
-	log.LogFatalf("action[HandleFatalEvent] err(%v).", err)
+	if isRaftApplyError(err.Err.Error()) {
+		dp.stopRaft()
+		dp.checkIsDiskError(err.Err)
+		log.LogCriticalf("action[HandleFatalEvent] err(%v).", err)
+	} else {
+		log.LogFatalf("action[HandleFatalEvent] err(%v).", err)
+	}
 }
 
 // HandleLeaderChange notifies the application when the raft leader has changed.

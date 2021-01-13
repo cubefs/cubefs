@@ -542,6 +542,14 @@ func (dp *DataPartition) checkIsDiskError(err error) (diskError bool) {
 	return
 }
 
+func newRaftApplyError(err error) error {
+	return errors.NewErrorf("[Custom Error]: unhandled raft apply error, err(%s)", err)
+}
+
+func isRaftApplyError(errMsg string) bool {
+	return strings.Contains(errMsg, "[Custom Error]: unhandled raft apply error")
+}
+
 // String returns the string format of the data partition information.
 func (dp *DataPartition) String() (m string) {
 	return fmt.Sprintf(DataPartitionPrefix+"_%v_%v", dp.partitionID, dp.partitionSize)
