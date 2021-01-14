@@ -102,16 +102,16 @@ public class TestCfsClient {
             }
 
             int total_entry = 0;
-            Dirent dent = new Dirent();
-            Dirent[] dents = (Dirent[]) dent.toArray(2);
             for (;;) {
+                Dirent dent = new Dirent();
+                Dirent[] dents = (Dirent[]) dent.toArray(2);
                 int n = mnt.readdir(fd, dents, 2);
                 if (n <= 0) {
                     break;
                 }
                 total_entry += n;
                 for (int i = 0; i < n; i++) {
-                    System.out.println("ino: " + dents[i].ino + " | d_type: " + dents[i].dType);
+                    System.out.println("ino: " + dents[i].ino + " | d_type: " + dents[i].dType + " |d_name: " + new String(dents[i].name));
                 }
             }
             System.out.println("num of entries: " + total_entry);

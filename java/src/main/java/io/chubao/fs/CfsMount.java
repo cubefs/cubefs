@@ -8,6 +8,9 @@ import io.chubao.fs.CfsLibrary.DirentArray;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 
 public class CfsMount {
     // Open flags
@@ -122,10 +125,29 @@ public class CfsMount {
         if (arrSize > 0) {
             for (int i = 0; i < (int) arrSize; i++) {
                 dents[i].read();
+                ArrayList<Byte> validName = new ArrayList<>();
+                for (int k = 0; k < 256; k++) {
+                    if (dents[i].name[k] != '\0')
+                        validName.add(dents[i].name[k]);
+                }
+                dents[i].name = listToByte(validName);
             }
         }
 
         return (int) arrSize;
+    }
+
+    private static byte[] listToByte(List<Byte> list) {
+        if (list == null || list.size() < 0)
+            return null;
+        byte[] bytes = new byte[list.size()];
+        int i = 0;
+        Iterator<Byte> iterator = list.iterator();
+        while (iterator.hasNext()) {
+            bytes[i] = iterator.next();
+            i++;
+        }
+        return bytes;
     }
 
     public int mkdirs(String path, int mode) throws IOException {
