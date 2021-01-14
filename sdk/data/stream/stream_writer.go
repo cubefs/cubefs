@@ -486,7 +486,11 @@ func (s *Streamer) traverse() (err error) {
 			}
 			err = eh.appendExtentKey()
 			if err != nil {
-				log.LogDebugf("Streamer traverse abort: appendExtentKey failed, eh(%v) err(%v)", eh, err)
+				log.LogWarnf("Streamer traverse abort: appendExtentKey failed, eh(%v) err(%v)", eh, err)
+				// set the streamer to error status to avoid further writes
+				if err == syscall.EIO {
+					atomic.StoreInt32(&eh.stream.status, StreamerError)
+				}
 				return
 			}
 			s.dirtylist.Remove(element)
