@@ -225,7 +225,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	for _, name := range vols {
 		stat, ok := m.cluster.volStatInfo.Load(name)
 		if !ok {
-			cv.VolStatInfo = append(cv.VolStatInfo, newVolStatInfo(name, 0, 0, "0.0001", false))
+			cv.VolStatInfo = append(cv.VolStatInfo, newVolStatInfo(name, 0, 0, "0.0001"))
 			continue
 		}
 		cv.VolStatInfo = append(cv.VolStatInfo, stat.(*volStatInfo))
@@ -577,7 +577,6 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		replicaNum     int
 		followerRead   bool
 		authenticate   bool
-		enableToken    bool
 		zoneName       string
 		description    string
 		dpSelectorName string
@@ -593,7 +592,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
-	if zoneName, capacity, replicaNum, enableToken, dpSelectorName, dpSelectorParm, err =
+	if zoneName, capacity, replicaNum, dpSelectorName, dpSelectorParm, err =
 		parseDefaultInfoToUpdateVol(r, vol); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -616,7 +615,6 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.capacity = capacity
 	newArgs.followerRead = followerRead
 	newArgs.authenticate = authenticate
-	newArgs.enableToken = enableToken
 	newArgs.dpSelectorName = dpSelectorName
 	newArgs.dpSelectorParm = dpSelectorParm
 
@@ -710,12 +708,11 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		followerRead bool
 		authenticate bool
 		crossZone    bool
-		enableToken  bool
 		zoneName     string
 		description  string
 	)
 
-	if name, owner, zoneName, description, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, crossZone, enableToken, err = parseRequestToCreateVol(r); err != nil {
+	if name, owner, zoneName, description, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, crossZone, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -724,7 +721,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, crossZone, enableToken); err != nil {
+	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, crossZone); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -782,8 +779,6 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		NeedToLowerReplica: vol.NeedToLowerReplica,
 		Authenticate:       vol.authenticate,
 		CrossZone:          vol.crossZone,
-		EnableToken:        vol.enableToken,
-		Tokens:             vol.tokens,
 		RwDpCnt:            vol.dataPartitions.readableAndWritableCnt,
 		MpCnt:              len(vol.MetaPartitions),
 		DpCnt:              len(vol.dataPartitions.partitionMap),
@@ -1395,7 +1390,7 @@ func parseRequestToUpdateVol(r *http.Request) (name, authKey, description string
 }
 
 func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, capacity uint64, replicaNum int,
-	enableToken bool, dpSelectorName string, dpSelectorParm string, err error) {
+	dpSelectorName string, dpSelectorParm string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1419,14 +1414,6 @@ func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, ca
 		}
 	} else {
 		replicaNum = int(vol.dpReplicaNum)
-	}
-	if enableTokenStr := r.FormValue(enableTokenKey); enableTokenStr != "" {
-		if enableToken, err = strconv.ParseBool(enableTokenStr); err != nil {
-			err = unmatchedKey(enableTokenKey)
-			return
-		}
-	} else {
-		enableToken = vol.enableToken
 	}
 	dpSelectorName = r.FormValue(dpSelectorNameKey)
 	dpSelectorParm = r.FormValue(dpSelectorParmKey)
@@ -1477,7 +1464,7 @@ func parseRequestToSetVolCapacity(r *http.Request) (name, authKey string, capaci
 	return
 }
 
-func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, crossZone, enableToken bool, err error) {
+func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, crossZone bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1524,16 +1511,7 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 		return
 	}
 	zoneName = r.FormValue(zoneNameKey)
-	enableToken = extractEnableToken(r)
 	description = r.FormValue(descriptionKey)
-	return
-}
-
-func extractEnableToken(r *http.Request) (enableToken bool) {
-	enableToken, err := strconv.ParseBool(r.FormValue(enableTokenKey))
-	if err != nil {
-		enableToken = false
-	}
 	return
 }
 
@@ -2000,7 +1978,6 @@ func volStat(vol *Vol) (stat *proto.VolStatInfo) {
 	if stat.UsedSize > stat.TotalSize {
 		stat.UsedSize = stat.TotalSize
 	}
-	stat.EnableToken = vol.enableToken
 	log.LogDebugf("total[%v],usedSize[%v]", stat.TotalSize, stat.UsedSize)
 	return
 }

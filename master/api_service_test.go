@@ -102,7 +102,7 @@ func createDefaultMasterServerForTest() *Server {
 	testServer.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
-	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 100, false, false, false, false)
+	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 100, false, false, false)
 	if err != nil {
 		panic(err)
 	}
@@ -327,20 +327,12 @@ func TestUpdateVol(t *testing.T) {
 		t.Errorf("expect FollowerRead is false, but is %v", vol.FollowerRead)
 		return
 	}
-	if vol.enableToken != false {
-		t.Errorf("expect enableToken is false, but is %v", vol.enableToken)
-		return
-	}
 
-	reqURL = fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v&followerRead=true&enableToken=true&zoneName=%v",
+	reqURL = fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v&followerRead=true&zoneName=%v",
 		hostAddr, proto.AdminUpdateVol, commonVol.Name, capacity, buildAuthKey("cfs"), commonVol.zoneName)
 	process(reqURL, t)
 	if vol.FollowerRead != true {
 		t.Errorf("expect FollowerRead is true, but is %v", vol.FollowerRead)
-		return
-	}
-	if vol.enableToken != true {
-		t.Errorf("expect enableToken is true, but is %v", vol.enableToken)
 		return
 	}
 
@@ -552,62 +544,6 @@ func TestRemoveMetaReplica(t *testing.T) {
 		return
 	}
 	partition.RUnlock()
-}
-
-func TestAddToken(t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v?name=%v&tokenType=%v&authKey=%v",
-		hostAddr, proto.TokenAddURI, commonVol.Name, proto.ReadWriteToken, buildAuthKey("cfs"))
-	fmt.Println(reqUrl)
-	process(reqUrl, t)
-}
-
-func TestDelToken(t *testing.T) {
-	for _, token := range commonVol.tokens {
-		reqUrl := fmt.Sprintf("%v%v?name=%v&token=%v&authKey=%v",
-			hostAddr, proto.TokenDelURI, commonVol.Name, token.Value, buildAuthKey("cfs"))
-		fmt.Println(reqUrl)
-		process(reqUrl, t)
-		_, ok := commonVol.tokens[token.Value]
-		if ok {
-			t.Errorf("delete token[%v] failed\n", token.Value)
-			return
-		}
-
-		reqUrl = fmt.Sprintf("%v%v?name=%v&tokenType=%v&authKey=%v",
-			hostAddr, proto.TokenAddURI, commonVol.Name, token.TokenType, buildAuthKey("cfs"))
-		fmt.Println(reqUrl)
-		process(reqUrl, t)
-	}
-}
-
-func TestUpdateToken(t *testing.T) {
-	var tokenType int8
-	for _, token := range commonVol.tokens {
-		if token.TokenType == proto.ReadWriteToken {
-			tokenType = proto.ReadOnlyToken
-		} else {
-			tokenType = proto.ReadWriteToken
-		}
-
-		reqUrl := fmt.Sprintf("%v%v?name=%v&token=%v&tokenType=%v&authKey=%v",
-			hostAddr, proto.TokenUpdateURI, commonVol.Name, token.Value, tokenType, buildAuthKey("cfs"))
-		fmt.Println(reqUrl)
-		process(reqUrl, t)
-		token := commonVol.tokens[token.Value]
-		if token.TokenType != tokenType {
-			t.Errorf("expect tokenType[%v],real tokenType[%v]\n", tokenType, token.TokenType)
-			return
-		}
-	}
-}
-
-func TestGetToken(t *testing.T) {
-	for _, token := range commonVol.tokens {
-		reqUrl := fmt.Sprintf("%v%v?name=%v&token=%v",
-			hostAddr, proto.TokenGetURI, commonVol.Name, token.Value)
-		fmt.Println(reqUrl)
-		process(reqUrl, t)
-	}
 }
 
 func TestClusterStat(t *testing.T) {

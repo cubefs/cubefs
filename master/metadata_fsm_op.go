@@ -135,7 +135,6 @@ type volValue struct {
 	FollowerRead      bool
 	Authenticate      bool
 	CrossZone         bool
-	EnableToken       bool
 	ZoneName          string
 	OSSAccessKey      string
 	OSSSecretKey      string
@@ -164,7 +163,6 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		Authenticate:      vol.authenticate,
 		CrossZone:         vol.crossZone,
 		ZoneName:          vol.zoneName,
-		EnableToken:       vol.enableToken,
 		OSSAccessKey:      vol.OSSAccessKey,
 		OSSSecretKey:      vol.OSSSecretKey,
 		CreateTime:        vol.createTime,
@@ -280,36 +278,11 @@ func (m *RaftCmd) setOpType() {
 		m.Op = opSyncAddAKUser
 	case volUserAcronym:
 		m.Op = opSyncAddVolUser
-	case tokenAcronym:
-		m.Op = OpSyncAddToken
 	default:
 		log.LogWarnf("action[setOpType] unknown opCode[%v]", keyArr[1])
 	}
 }
 
-func (c *Cluster) syncDeleteToken(token *bsProto.Token) (err error) {
-	return c.syncPutTokenInfo(OpSyncDelToken, token)
-}
-
-func (c *Cluster) syncAddToken(token *bsProto.Token) (err error) {
-	return c.syncPutTokenInfo(OpSyncAddToken, token)
-}
-
-func (c *Cluster) syncUpdateToken(token *bsProto.Token) (err error) {
-	return c.syncPutTokenInfo(OpSyncUpdateToken, token)
-}
-
-func (c *Cluster) syncPutTokenInfo(opType uint32, token *bsProto.Token) (err error) {
-	metadata := new(RaftCmd)
-	metadata.Op = opType
-	metadata.K = TokenPrefix + token.VolName + keySeparator + token.Value
-	tv := newTokenValue(token)
-	metadata.V, err = json.Marshal(tv)
-	if err != nil {
-		return
-	}
-	return c.submit(metadata)
-}
 
 //key=#c#name
 func (c *Cluster) syncPutCluster() (err error) {
@@ -752,34 +725,4 @@ func (c *Cluster) loadDataPartitions() (err error) {
 	return
 }
 
-func (c *Cluster) loadTokens() (err error) {
-	snapshot := c.fsm.store.RocksDBSnapshot()
-	it := c.fsm.store.Iterator(snapshot)
-	defer func() {
-		it.Close()
-		c.fsm.store.ReleaseSnapshot(snapshot)
-	}()
-	prefixKey := []byte(TokenPrefix)
-	it.Seek(prefixKey)
-	for ; it.ValidForPrefix(prefixKey); it.Next() {
-		encodedKey := it.Key()
-		encodedValue := it.Value()
-		tv := &TokenValue{}
-		if err = json.Unmarshal(encodedValue.Data(), tv); err != nil {
-			err = fmt.Errorf("action[loadTokens],value:%v,err:%v", encodedValue.Data(), err)
-			return err
-		}
-		vol, err1 := c.getVol(tv.VolName)
-		if err1 != nil {
-			// if vol not found,record log and continue
-			log.LogErrorf("action[loadTokens] err:%v", err1.Error())
-			continue
-		}
-		token := &bsProto.Token{VolName: tv.VolName, TokenType: tv.TokenType, Value: tv.Value}
-		vol.putToken(token)
-		encodedKey.Free()
-		encodedValue.Free()
-		log.LogInfof("action[loadTokens],vol[%v],token[%v]", vol.Name, token.Value)
-	}
-	return
-}
+

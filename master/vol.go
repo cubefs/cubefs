@@ -32,7 +32,6 @@ type VolVarargs struct {
 	dpReplicaNum   uint8
 	followerRead   bool
 	authenticate   bool
-	enableToken    bool
 	dpSelectorName string
 	dpSelectorParm string
 }
@@ -55,9 +54,6 @@ type Vol struct {
 	authenticate       bool
 	crossZone          bool
 	zoneName           string
-	enableToken        bool
-	tokens             map[string]*proto.Token
-	tokensLock         sync.RWMutex
 	MetaPartitions     map[uint64]*MetaPartition `graphql:"-"`
 	mpsLock            sync.RWMutex
 	dataPartitions     *DataPartitionMap
@@ -72,7 +68,7 @@ type Vol struct {
 	sync.RWMutex
 }
 
-func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead, authenticate, crossZone bool, enableToken bool, createTime int64, description string) (vol *Vol) {
+func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, followerRead, authenticate, crossZone bool, createTime int64, description string) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	if dpReplicaNum < defaultReplicaNum {
@@ -100,8 +96,6 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.viewCache = make([]byte, 0)
 	vol.mpsCache = make([]byte, 0)
 	vol.createTime = createTime
-	vol.enableToken = enableToken
-	vol.tokens = make(map[string]*proto.Token, 0)
 	vol.description = description
 	return
 }
@@ -119,7 +113,6 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.FollowerRead,
 		vv.Authenticate,
 		vv.CrossZone,
-		vv.EnableToken,
 		vv.CreateTime,
 		vv.Description)
 	// overwrite oss secure
@@ -134,29 +127,6 @@ func (vol *Vol) refreshOSSSecure() (key, secret string) {
 	vol.OSSAccessKey = util.RandomString(16, util.Numeric|util.LowerLetter|util.UpperLetter)
 	vol.OSSSecretKey = util.RandomString(32, util.Numeric|util.LowerLetter|util.UpperLetter)
 	return vol.OSSAccessKey, vol.OSSSecretKey
-}
-
-func (vol *Vol) getToken(token string) (tokenObj *proto.Token, err error) {
-	vol.tokensLock.Lock()
-	defer vol.tokensLock.Unlock()
-	tokenObj, ok := vol.tokens[token]
-	if !ok {
-		return nil, proto.ErrTokenNotFound
-	}
-	return
-}
-
-func (vol *Vol) deleteToken(token string) {
-	vol.tokensLock.RLock()
-	defer vol.tokensLock.RUnlock()
-	delete(vol.tokens, token)
-}
-
-func (vol *Vol) putToken(token *proto.Token) {
-	vol.tokensLock.Lock()
-	defer vol.tokensLock.Unlock()
-	vol.tokens[token.Value] = token
-	return
 }
 
 func (vol *Vol) addMetaPartition(mp *MetaPartition) {
@@ -607,19 +577,10 @@ func (vol *Vol) deleteVolFromStore(c *Cluster) (err error) {
 	// delete the metadata of the meta and data partitionMap first
 	vol.deleteDataPartitionsFromStore(c)
 	vol.deleteMetaPartitionsFromStore(c)
-	vol.deleteTokensFromStore(c)
 	// then delete the volume
 	c.deleteVol(vol.Name)
 	c.volStatInfo.Delete(vol.Name)
 	return
-}
-
-func (vol *Vol) deleteTokensFromStore(c *Cluster) {
-	vol.tokensLock.RLock()
-	defer vol.tokensLock.RUnlock()
-	for _, token := range vol.tokens {
-		c.syncDeleteToken(token)
-	}
 }
 
 func (vol *Vol) deleteMetaPartitionsFromStore(c *Cluster) {
@@ -819,7 +780,6 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		dpReplicaNum:   vol.dpReplicaNum,
 		followerRead:   vol.FollowerRead,
 		authenticate:   vol.authenticate,
-		enableToken:    vol.enableToken,
 		dpSelectorName: vol.dpSelectorName,
 		dpSelectorParm: vol.dpSelectorParm,
 	}
