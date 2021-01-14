@@ -168,19 +168,19 @@ func (se *SortedExtents) AppendWithCheck(ek proto.ExtentKey, discard []proto.Ext
 		}
 	}
 
-	//log.LogInfof("invalideExtents(%v) deleteExtents(%v) discardExtents(%v)", invalidExtents, deleteExtents, discard)
+	//log.LogInfof("invalidExtents(%v) deleteExtents(%v) discardExtents(%v)", invalidExtents, deleteExtents, discard)
 
 	if discard != nil {
 		if len(deleteExtents) != len(discard) {
-			return nil, proto.OpConflictExtentsErr
+			return deleteExtents, proto.OpConflictExtentsErr
 		}
 		for i := 0; i < len(discard); i++ {
 			if deleteExtents[i].PartitionId != discard[i].PartitionId || deleteExtents[i].ExtentId != discard[i].ExtentId || deleteExtents[i].ExtentOffset != discard[i].ExtentOffset {
-				return nil, proto.OpConflictExtentsErr
+				return deleteExtents, proto.OpConflictExtentsErr
 			}
 		}
 	} else if len(deleteExtents) != 0 {
-		return nil, proto.OpConflictExtentsErr
+		return deleteExtents, proto.OpConflictExtentsErr
 	}
 
 	endIndex = startIndex + len(invalidExtents)
