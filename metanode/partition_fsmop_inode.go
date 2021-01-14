@@ -242,8 +242,10 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode) (status uint8) {
 		discardExtentKey = eks[1:]
 	}
 	delExtents, status := ino2.AppendExtentWithCheck(eks[0], ino.ModifyTime, discardExtentKey)
+	if status == proto.OpOk {
+		mp.extDelCh <- delExtents
+	}
 	log.LogInfof("fsmAppendExtentWithCheck inode(%v) ek(%v) deleteExtents(%v) discardExtents(%v) status(%v)", ino2.Inode, eks[0], delExtents, discardExtentKey, status)
-	mp.extDelCh <- delExtents
 	return
 }
 

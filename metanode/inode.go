@@ -409,7 +409,7 @@ func (i *Inode) AppendExtents(eks []proto.ExtentKey, ct int64) (delExtents []pro
 func (i *Inode) AppendExtentWithCheck(ek proto.ExtentKey, ct int64, discardExtents []proto.ExtentKey) (delExtents []proto.ExtentKey, status uint8) {
 	i.Lock()
 	defer i.Unlock()
-	delItems, status := i.Extents.AppendWithCheck(ek, discardExtents)
+	delExtents, status = i.Extents.AppendWithCheck(ek, discardExtents)
 	if status != proto.OpOk {
 		return
 	}
@@ -417,7 +417,6 @@ func (i *Inode) AppendExtentWithCheck(ek proto.ExtentKey, ct int64, discardExten
 	if i.Size < size {
 		i.Size = size
 	}
-	delExtents = append(delExtents, delItems...)
 	i.Generation++
 	i.ModifyTime = ct
 	return
