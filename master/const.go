@@ -43,9 +43,6 @@ const (
 	keywordsKey             = "keywords"
 	zoneNameKey             = "zoneName"
 	crossZoneKey            = "crossZone"
-	tokenKey                = "token"
-	tokenTypeKey            = "tokenType"
-	enableTokenKey          = "enableToken"
 	userKey                 = "user"
 	nodeHostsKey            = "hosts"
 	nodeDeleteBatchCountKey = "batchCount"
@@ -136,10 +133,6 @@ const (
 	opSyncAddVolUser           uint32 = 0x1C
 	opSyncDeleteVolUser        uint32 = 0x1D
 	opSyncUpdateVolUser        uint32 = 0x1E
-
-	OpSyncAddToken    uint32 = 0x20
-	OpSyncDelToken    uint32 = 0x21
-	OpSyncUpdateToken uint32 = 0x22
 )
 
 const (
@@ -152,7 +145,6 @@ const (
 	volAcronym            = "vol"
 	clusterAcronym        = "c"
 	nodeSetAcronym        = "s"
-	tokenAcronym          = "t"
 	maxDataPartitionIDKey = keySeparator + "max_dp_id"
 	maxMetaPartitionIDKey = keySeparator + "max_mp_id"
 	maxCommonIDKey        = keySeparator + "max_common_id"
@@ -170,5 +162,4 @@ const (
 	akPrefix       = keySeparator + akAcronym + keySeparator
 	userPrefix     = keySeparator + userAcronym + keySeparator
 	volUserPrefix  = keySeparator + volUserAcronym + keySeparator
-	TokenPrefix    = keySeparator + tokenAcronym + keySeparator
 )

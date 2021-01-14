@@ -355,7 +355,6 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 			opt.TicketMess.CertFile = GlobalMountOptions[proto.CertFile].GetString()
 		}
 	}
-	opt.TokenKey = GlobalMountOptions[proto.TokenKey].GetString()
 	opt.AccessKey = GlobalMountOptions[proto.AccessKey].GetString()
 	opt.SecretKey = GlobalMountOptions[proto.SecretKey].GetString()
 	opt.DisableDcache = GlobalMountOptions[proto.DisableDcache].GetBool()
@@ -375,22 +374,6 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 
 func checkPermission(opt *proto.MountOptions) (err error) {
 	var mc = master.NewMasterClientFromString(opt.Master, false)
-
-	// Check token permission
-	var info *proto.VolStatInfo
-	if info, err = mc.ClientAPI().GetVolumeStat(opt.Volname); err != nil {
-		return
-	}
-	if info.EnableToken {
-		var token *proto.Token
-		if token, err = mc.ClientAPI().GetToken(opt.Volname, opt.TokenKey); err != nil {
-			log.LogWarnf("checkPermission: get token type failed: volume(%v) tokenKey(%v) err(%v)",
-				opt.Volname, opt.TokenKey, err)
-			return
-		}
-		log.LogInfof("checkPermission: get token: token(%v)", token)
-		opt.Rdonly = token.TokenType == int8(proto.ReadOnlyToken) || opt.Rdonly
-	}
 
 	// Check user access policy is enabled
 	if opt.AccessKey != "" {
