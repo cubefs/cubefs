@@ -304,11 +304,7 @@ func (p Permission) MatchSubdir(subdir string) bool {
 	s := strings.TrimPrefix(string(p), string(BuiltinPermissionPrefix))
 
 	if !subdirRegexp.MatchString(s) {
-		if subdir == "" || subdir == "/" {
-			return true
-		} else {
-			return false
-		}
+		return true
 	}
 
 	pars := strings.Split(s, ":")
