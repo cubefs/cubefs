@@ -178,4 +178,11 @@ public class CfsMount {
         return false;
     }
 
+    public boolean IsSymlink(int fileMode) {
+        if ((fileMode & S_IFLNK) == S_IFLNK) {
+            return true;
+        }
+        return false;
+    }
+
 }
