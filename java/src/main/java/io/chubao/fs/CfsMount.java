@@ -164,4 +164,18 @@ public class CfsMount {
         return libcfs.cfs_fchmod(this.cid, fd, mode);
     }
 
+    public boolean IsDir(int fileMode) {
+        if ((fileMode & S_IFDIR) == S_IFDIR) {
+            return true;
+        }
+        return false;
+    }
+
+    public boolean IsRegular(int fileMode) {
+        if ((fileMode & S_IFREG) == S_IFREG) {
+            return true;
+        }
+        return false;
+    }
+
 }
