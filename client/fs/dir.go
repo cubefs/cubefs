@@ -78,6 +78,10 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	return nil
 }
 
+func (d *Dir) NodeID() uint64 {
+	return d.info.Inode
+}
+
 // Create handles the create request.
 func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
 	start := time.Now()
@@ -95,10 +99,6 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	d.super.ic.Put(info)
 	child := NewFile(d.super, info)
 	d.super.ec.OpenStream(info.Inode)
-
-	d.super.fslock.Lock()
-	d.super.nodeCache[info.Inode] = child
-	d.super.fslock.Unlock()
 
 	if d.super.keepCache {
 		resp.Flags |= fuse.OpenKeepCache
@@ -120,10 +120,6 @@ func (d *Dir) Forget() {
 	}()
 
 	d.super.ic.Delete(ino)
-
-	d.super.fslock.Lock()
-	delete(d.super.nodeCache, ino)
-	d.super.fslock.Unlock()
 }
 
 // Mkdir handles the mkdir request.
@@ -142,10 +138,6 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 
 	d.super.ic.Put(info)
 	child := NewDir(d.super, info)
-
-	d.super.fslock.Lock()
-	d.super.nodeCache[info.Inode] = child
-	d.super.fslock.Unlock()
 
 	d.super.ic.Delete(d.info.Inode)
 
@@ -222,17 +214,12 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	}
 	mode := proto.OsMode(info.Mode)
 
-	d.super.fslock.Lock()
-	child, ok := d.super.nodeCache[ino]
-	if !ok {
-		if mode.IsDir() {
-			child = NewDir(d.super, info)
-		} else {
-			child = NewFile(d.super, info)
-		}
-		d.super.nodeCache[ino] = child
+	var child fs.Node
+	if mode.IsDir() {
+		child = NewDir(d.super, info)
+	} else {
+		child = NewFile(d.super, info)
 	}
-	d.super.fslock.Unlock()
 
 	resp.EntryValid = LookupValidDuration
 	return child, nil
@@ -356,10 +343,6 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 	d.super.ic.Put(info)
 	child := NewFile(d.super, info)
 
-	d.super.fslock.Lock()
-	d.super.nodeCache[info.Inode] = child
-	d.super.fslock.Unlock()
-
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Mknod: parent(%v) req(%v) ino(%v) (%v)ns", d.info.Inode, req, info.Inode, elapsed.Nanoseconds())
 	return child, nil
@@ -382,10 +365,6 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 
 	d.super.ic.Put(info)
 	child := NewFile(d.super, info)
-
-	d.super.fslock.Lock()
-	d.super.nodeCache[info.Inode] = child
-	d.super.fslock.Unlock()
 
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Symlink: parent(%v) req(%v) ino(%v) (%v)ns", parentIno, req, info.Inode, elapsed.Nanoseconds())
@@ -421,13 +400,7 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 
 	d.super.ic.Put(info)
 
-	d.super.fslock.Lock()
-	newFile, ok := d.super.nodeCache[info.Inode]
-	if !ok {
-		newFile = NewFile(d.super, info)
-		d.super.nodeCache[info.Inode] = newFile
-	}
-	d.super.fslock.Unlock()
+	newFile := NewFile(d.super, info)
 
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Link: parent(%v) name(%v) ino(%v) (%v)ns", d.info.Inode, req.NewName, info.Inode, elapsed.Nanoseconds())

@@ -82,6 +82,11 @@ func (t *tree) Attr(ctx context.Context, a *fuse.Attr) error {
 	return nil
 }
 
+func (t *tree) NodeID() uint64 {
+	panic("need to implement")
+	return 0
+}
+
 func (t *tree) Lookup(ctx context.Context, name string) (Node, error) {
 	n := t.lookup(name)
 	if n != nil {

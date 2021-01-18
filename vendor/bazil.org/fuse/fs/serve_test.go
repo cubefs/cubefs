@@ -2403,6 +2403,10 @@ func (i *invalidateAttr) Attr(ctx context.Context, a *fuse.Attr) error {
 	return nil
 }
 
+func (i *invalidateAttr) NodeID() uint64 {
+	return 0
+}
+
 func TestInvalidateNodeAttr(t *testing.T) {
 	// This test may see false positive failures when run under
 	// extreme memory pressure.
@@ -2744,6 +2748,10 @@ var _ fs.Node = (*invalidateEntryRoot)(nil)
 func (i *invalidateEntryRoot) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Mode = 0600 | os.ModeDir
 	return nil
+}
+
+func (i *invalidateEntryRoot) NodeID() uint64 {
+	return 0
 }
 
 var _ fs.NodeStringLookuper = (*invalidateEntryRoot)(nil)
