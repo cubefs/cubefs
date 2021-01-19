@@ -86,9 +86,11 @@ func (lw *LogWrite) initLogFp(sufixx string) (err error) {
 	lw.bf = bytes.NewBuffer([]byte{})
 	lw.jsonEncoder = json.NewEncoder(lw.bf)
 	lw.jsonEncoder.SetEscapeHTML(false)
-	if lw.logFp, err = os.OpenFile(lw.logName, LogFileOpt, 0666); err != nil {
+	if lw.logFp, err = os.OpenFile(lw.logName, LogFileOpt, 0777); err != nil {
 		return
 	}
+	os.Chmod(lw.logName, 0777)
+
 	if fi, err = lw.logFp.Stat(); err != nil {
 		return
 	}
@@ -113,10 +115,12 @@ func (lw *LogWrite) backGroundCheckFile() (err error) {
 	}
 	os.Rename(lw.logName, name)
 
-	if lw.logFp, err = os.OpenFile(lw.logName, LogFileOpt, 0666); err != nil {
+	if lw.logFp, err = os.OpenFile(lw.logName, LogFileOpt, 0777); err != nil {
 		lw.seq--
 		return
 	}
+	os.Chmod(lw.logName, 0777)
+
 	if err = os.Truncate(lw.logName, 0); err != nil {
 		lw.seq--
 		return
@@ -167,6 +171,7 @@ func initLogName(module string) (err error) {
 	if err = os.MkdirAll(UmpDataDir, 0777); err != nil {
 		return
 	}
+	os.Chmod(UmpDataDir, 0777)
 
 	if HostName, err = GetLocalIpAddr(); err != nil {
 		return
