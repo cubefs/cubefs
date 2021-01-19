@@ -157,6 +157,10 @@ func (s *Super) ClusterName() string {
 	return s.cluster
 }
 
+func (s *Super) VolName() string {
+	return s.volname
+}
+
 func (s *Super) GetRate(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(s.ec.GetRate()))
 }
