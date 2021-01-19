@@ -16,7 +16,6 @@ package wal
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"os"
 	"path"
@@ -57,7 +56,7 @@ func openLogEntryFile(dir string, name logFileName, isLastOne bool) (*logEntryFi
 	} else {
 		// 重建索引
 		toffset, err := lf.ReBuildIndex()
-		if err != nil {
+		if err != nil && err != io.ErrUnexpectedEOF && !IsErrCorrupt(err) {
 			return nil, err
 		}
 		// 打开写
@@ -65,7 +64,7 @@ func openLogEntryFile(dir string, name logFileName, isLastOne bool) (*logEntryFi
 			return nil, err
 		}
 		// 截断索引及后面的数据
-		if toffset > 0 {
+		if toffset >= 0 {
 			log.Warn("truncate last logfile's N@%d index at: %d", lf.name.seq, toffset)
 			if err := lf.w.Truncate(toffset); err != nil {
 				return nil, err
@@ -165,43 +164,14 @@ func (lf *logEntryFile) ReBuildIndex() (truncateOffset int64, err error) {
 			ent := &proto.Entry{}
 			ent.Decode(rec.data)
 			lf.index = lf.index.Append(uint32(offset), ent)
-		} else if rec.recType == recTypeIndex { // 处理写了index，但是没写footer或者下一个新日志文件没创建
-			var footer footerRecord
-			curIndexSize := int64(recordSize(lf.index))
-			footerSize := int64(recordSize(footer))
-			// index的大小+footer不大于文件大小，则截断
-			if filesize <= offset+curIndexSize+footerSize {
-				return offset, nil
-			} else {
-				return 0, NewCorruptError(lf.f.Name(), offset, "could not truncate last logfile's index")
-			}
 		} else {
-			return 0, NewCorruptError(lf.f.Name(), offset, fmt.Sprintf("wrong log entry record type: %s", rec.recType.String()))
+			// All valid log entries have been loaded
+			return offset, nil
 		}
 	}
 	if err == io.EOF {
 		err = nil
 	}
-
-	var fixEntry = func() (err error) {
-		if err = lf.OpenWrite(); err != nil {
-			return
-		}
-		if lf.index.Len() == 0 {
-			err = lf.w.Truncate(0)
-			return
-		}
-		var lastIndexItem indexItem
-		if lastIndexItem, err = lf.index.Get(lf.index.Last()); err == nil {
-			err = lf.w.Truncate(int64(lastIndexItem.offset))
-		}
-		return
-	}
-
-	if IsErrCorrupt(err) || err == io.ErrUnexpectedEOF {
-		err = fixEntry()
-	}
-
 	if filesize != nextRecordOffset {
 		log.Warn("logName[%v],fileSize[%v],corrupt data after offset[%v]", lf.name, filesize, nextRecordOffset)
 	}
