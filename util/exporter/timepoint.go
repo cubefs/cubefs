@@ -44,18 +44,11 @@ type TimePoint struct {
 	startTime time.Time
 }
 
-type TimePointCount struct {
-	tp  *TimePoint
-	cnt *Counter
-	to  *ump.TpObject
-}
-
 func NewTP(name string) (tp *TimePoint) {
-	if !enabledPrometheus {
-		return
-	}
 	tp = TPPool.Get().(*TimePoint)
 	tp.name = metricsName(name)
+	tp.labels = make(map[string]string)
+	tp.val = 0
 	tp.startTime = time.Now()
 	return
 }
@@ -67,6 +60,20 @@ func (tp *TimePoint) Set() {
 	val := time.Since(tp.startTime).Nanoseconds()
 	tp.val = float64(val)
 	tp.publish()
+}
+
+func (tp *TimePoint) SetWithLabels(labels map[string]string) {
+	if !enabledPrometheus {
+		return
+	}
+	tp.labels = labels
+	tp.Set()
+}
+
+type TimePointCount struct {
+	tp  *TimePoint
+	cnt *Counter
+	to  *ump.TpObject
 }
 
 func NewTPCnt(name string) (tpc *TimePointCount) {
@@ -83,9 +90,11 @@ func (tpc *TimePointCount) Set(err error) {
 	tpc.cnt.Add(1)
 }
 
-func (tp *TimePoint) publish() {
-	select {
-	case TPCh <- tp:
-	default:
+func (tpc *TimePointCount) SetWithLabels(err error, labels map[string]string) {
+	ump.AfterTP(tpc.to, err)
+	if !enabledPrometheus {
+		return
 	}
+	tpc.tp.SetWithLabels(labels)
+	tpc.cnt.AddWithLabels(1, labels)
 }

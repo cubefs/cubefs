@@ -40,6 +40,7 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target 
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaCreateInode
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("icreate: err(%v)", err)
@@ -85,6 +86,7 @@ func (mw *MetaWrapper) iunlink(mp *MetaPartition, inode uint64) (status int, inf
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaUnlinkInode
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("iunlink: ino(%v) err(%v)", inode, err)
@@ -126,6 +128,7 @@ func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64) (status int, err 
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaEvictInode
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogWarnf("ievict: ino(%v) err(%v)", inode, err)
@@ -167,6 +170,7 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaCreateDentry
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("dcreate: req(%v) err(%v)", *req, err)
@@ -207,6 +211,7 @@ func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, 
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaUpdateDentry
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("dupdate: req(%v) err(%v)", *req, err)
@@ -248,6 +253,7 @@ func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string) 
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaDeleteDentry
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("ddelete: req(%v) err(%v)", *req, err)
@@ -288,6 +294,7 @@ func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string) (
 	}
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaLookup
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("lookup: err(%v)", err)
@@ -334,6 +341,7 @@ func (mw *MetaWrapper) iget(mp *MetaPartition, inode uint64) (status int, info *
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaInodeGet
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("iget: req(%v) err(%v)", *req, err)
@@ -377,6 +385,7 @@ func (mw *MetaWrapper) batchIget(wg *sync.WaitGroup, mp *MetaPartition, inodes [
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaBatchInodeGet
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		return
@@ -423,6 +432,7 @@ func (mw *MetaWrapper) readdir(mp *MetaPartition, parentID uint64) (status int, 
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaReadDir
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("readdir: req(%v) err(%v)", *req, err)
@@ -465,6 +475,7 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaExtentsAdd
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("appendExtentKey: req(%v) err(%v)", *req, err)
@@ -496,6 +507,7 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64) (status int, 
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaExtentsList
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("getExtents: req(%v) err(%v)", *req, err)
@@ -537,6 +549,7 @@ func (mw *MetaWrapper) truncate(mp *MetaPartition, inode, size uint64) (status i
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaTruncate
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("truncate: ino(%v) size(%v) err(%v)", inode, size, err)
@@ -573,6 +586,7 @@ func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64) (status int, info 
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaLinkInode
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("ilink: req(%v) err(%v)", *req, err)
@@ -626,6 +640,7 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaSetattr
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("setattr: err(%v)", err)
@@ -663,6 +678,7 @@ func (mw *MetaWrapper) createMultipart(mp *MetaPartition, path string, extend ma
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpCreateMultipart
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("createMultipart: err(%v)", err)
@@ -705,6 +721,7 @@ func (mw *MetaWrapper) getMultipart(mp *MetaPartition, path, multipartId string)
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpGetMultipart
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("get session: err(%v)", err)
@@ -756,6 +773,7 @@ func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, path, multipartId str
 	log.LogDebugf("addMultipartPart: part(%v), req(%v)", part, req)
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpAddMultipartPart
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("addMultipartPart: marshal packet fail, err(%v)", err)
@@ -789,6 +807,7 @@ func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, err
 	}
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaDeleteInode
+	packet.PartitionID = mp.PartitionID
 	if err = packet.MarshalData(req); err != nil {
 		log.LogErrorf("delete inode: err[%v]", err)
 		return
@@ -823,6 +842,7 @@ func (mw *MetaWrapper) removeMultipart(mp *MetaPartition, path, multipartId stri
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpRemoveMultipart
+	packet.PartitionID = mp.PartitionID
 	if err = packet.MarshalData(req); err != nil {
 		log.LogErrorf("delete session: err[%v]", err)
 		return
@@ -857,6 +877,7 @@ func (mw *MetaWrapper) appendExtentKeys(mp *MetaPartition, inode uint64, extents
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaBatchExtentsAdd
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("batch append extent: req(%v) err(%v)", *req, err)
@@ -894,6 +915,7 @@ func (mw *MetaWrapper) setXAttr(mp *MetaPartition, inode uint64, name []byte, va
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaSetXAttr
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("setXAttr: matshal packet fail, err(%v)", err)
@@ -931,6 +953,7 @@ func (mw *MetaWrapper) getXAttr(mp *MetaPartition, inode uint64, name string) (v
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaGetXAttr
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("get xattr: req(%v) err(%v)", *req, err)
@@ -974,6 +997,7 @@ func (mw *MetaWrapper) removeXAttr(mp *MetaPartition, inode uint64, name string)
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaRemoveXAttr
+	packet.PartitionID = mp.PartitionID
 	if err = packet.MarshalData(req); err != nil {
 		log.LogErrorf("remove xattr: req(%v) err(%v)", *req, err)
 		return
@@ -1007,6 +1031,7 @@ func (mw *MetaWrapper) listXAttr(mp *MetaPartition, inode uint64) (keys []string
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaListXAttr
+	packet.PartitionID = mp.PartitionID
 	if err = packet.MarshalData(req); err != nil {
 		log.LogErrorf("list xattr: req(%v) err(%v)", *req, err)
 		return
@@ -1052,6 +1077,7 @@ func (mw *MetaWrapper) listMultiparts(mp *MetaPartition, prefix, delimiter, keyM
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpListMultiparts
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("list sessions : err(%v)", err)
@@ -1096,6 +1122,7 @@ func (mw *MetaWrapper) batchGetXAttr(mp *MetaPartition, inodes []uint64, keys []
 	}
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaBatchGetXAttr
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		return nil, err
