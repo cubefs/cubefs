@@ -5,11 +5,13 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/util/log"
+	"golang.org/x/time/rate"
 )
 
 const (
 	UpdateNodeInfoTicket     = 1 * time.Minute
 	DefaultDeleteBatchCounts = 128
+	DefaultReqLimitBurst     = 512
 )
 
 type NodeInfo struct {
@@ -20,6 +22,7 @@ var (
 	nodeInfo                   = &NodeInfo{}
 	nodeInfoStopC              = make(chan struct{}, 0)
 	deleteWorkerSleepMs uint64 = 0
+	reqLimitRater              = rate.NewLimiter(rate.Inf, DefaultReqLimitBurst)
 )
 
 func DeleteBatchCount() uint64 {
@@ -72,4 +75,10 @@ func (m *MetaNode) updateNodeInfo() {
 	}
 	updateDeleteBatchCount(clusterInfo.MetaNodeDeleteBatchCount)
 	updateDeleteWorkerSleepMs(clusterInfo.MetaNodeDeleteWorkerSleepMs)
+	r := clusterInfo.MetaNodeReqLimitRate
+	l := rate.Limit(r)
+	if r == 0 {
+		l = rate.Inf
+	}
+	reqLimitRater.SetLimit(l)
 }

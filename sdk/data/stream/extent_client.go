@@ -25,6 +25,7 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data/wrapper"
+	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -39,11 +40,11 @@ const (
 	MaxMountRetryLimit = 5
 	MountRetryInterval = time.Second * 5
 
-	defaultReadLimitRate  = rate.Inf
-	defaultReadLimitBurst = 128
-
+	defaultReadLimitRate   = rate.Inf
+	defaultReadLimitBurst  = 128
 	defaultWriteLimitRate  = rate.Inf
 	defaultWriteLimitBurst = 128
+	updateConfigTicket     = 1 * time.Minute
 
 	defaultMaxAlignSize = 128 * 1024
 )
@@ -56,6 +57,8 @@ var (
 	releaseRequestPool *sync.Pool
 	truncRequestPool   *sync.Pool
 	evictRequestPool   *sync.Pool
+
+	configStopC = make(chan struct{}, 0)
 )
 
 func init() {
@@ -102,8 +105,11 @@ type ExtentClient struct {
 	streamers    map[uint64]*Streamer
 	streamerLock sync.Mutex
 
-	readLimiter  *rate.Limiter
-	writeLimiter *rate.Limiter
+	originReadRate  int64
+	originWriteRate int64
+	readLimiter     *rate.Limiter
+	writeLimiter    *rate.Limiter
+	masterClient    *masterSDK.MasterClient
 
 	dataWrapper     *wrapper.Wrapper
 	appendExtentKey AppendExtentKeyFunc
@@ -153,15 +159,19 @@ retry:
 		readLimit = defaultReadLimitRate
 	} else {
 		readLimit = rate.Limit(config.ReadRate)
+		client.originReadRate = config.ReadRate
 	}
 	if config.WriteRate <= 0 {
 		writeLimit = defaultWriteLimitRate
 	} else {
 		writeLimit = rate.Limit(config.WriteRate)
+		client.originWriteRate = config.WriteRate
 	}
 
 	client.readLimiter = rate.NewLimiter(readLimit, defaultReadLimitBurst)
 	client.writeLimiter = rate.NewLimiter(writeLimit, defaultWriteLimitBurst)
+	client.masterClient = masterSDK.NewMasterClient(config.Masters, false)
+	go client.startUpdateConfig()
 
 	client.alignSize = config.AlignSize
 	if client.alignSize > defaultMaxAlignSize {
@@ -366,6 +376,55 @@ func setRate(lim *rate.Limiter, val int) string {
 	return "unlimited"
 }
 
+func (client *ExtentClient) startUpdateConfig() {
+	ticker := time.NewTicker(updateConfigTicket)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-configStopC:
+			return
+		case <-ticker.C:
+			client.updateConfig()
+		}
+	}
+}
+
+func (client *ExtentClient) stopUpdateConfig() {
+	configStopC <- struct{}{}
+}
+
+func (client *ExtentClient) updateConfig() {
+	clusterInfo, err := client.masterClient.AdminAPI().GetClusterInfo()
+	if err != nil {
+		log.LogErrorf("[updateConfig] %s", err.Error())
+		return
+	}
+	// If rate from master is 0, then restore the client rate
+	var readLimit, writeLimit rate.Limit
+	readRate := clusterInfo.ClientReadLimitRate
+	if readRate > 0 {
+		client.readLimiter.SetLimit(rate.Limit(readRate))
+	} else {
+		if client.originReadRate > 0 {
+			readLimit = rate.Limit(client.originReadRate)
+		} else {
+			readLimit = rate.Limit(defaultReadLimitRate)
+		}
+		client.readLimiter.SetLimit(readLimit)
+	}
+	writeRate := clusterInfo.ClientWriteLimitRate
+	if writeRate > 0 {
+		client.writeLimiter.SetLimit(rate.Limit(writeRate))
+	} else {
+		if client.originWriteRate > 0 {
+			writeLimit = rate.Limit(client.originWriteRate)
+		} else {
+			writeLimit = rate.Limit(defaultWriteLimitRate)
+		}
+		client.writeLimiter.SetLimit(writeLimit)
+	}
+}
+
 func (client *ExtentClient) Close() error {
 	// release streamers
 	var inodes []uint64
@@ -379,6 +438,7 @@ func (client *ExtentClient) Close() error {
 		_ = client.EvictStream(inode)
 	}
 	client.dataWrapper.Stop()
+	client.stopUpdateConfig()
 	return nil
 }
 

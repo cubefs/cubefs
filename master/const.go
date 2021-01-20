@@ -54,6 +54,10 @@ const (
 	nodeHostsKey            = "hosts"
 	nodeDeleteBatchCountKey = "batchCount"
 	nodeMarkDeleteRateKey   = "markDeleteRate"
+	dataNodeReqRateKey      = "dataNodeReqRate"
+	metaNodeReqRateKey      = "metaNodeReqRate"
+	clientReadRateKey       = "clientReadRate"
+	clientWriteRateKey      = "clientWriteRate"
 	nodeDeleteWorkerSleepMs = "deleteWorkerSleepMs"
 	descriptionKey          = "description"
 	dpRecoverPoolSizeKey    = "dpRecoverPool"
@@ -117,6 +121,10 @@ const (
 	maxMetaPartitionsRecoverPoolSize             = 30
 	defaultMinusOfNodeSetCount                   = 3
 	defaultLearnerPromThreshold                  = 90
+	minClientReadLimitRate                       = 100
+	minClientWriteLimitRate                      = 100
+	minMetaNodeReqLimitRate                      = 100
+	minDataNodeReqLimitRate                      = 100
 )
 
 const (

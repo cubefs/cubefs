@@ -16,6 +16,7 @@ package datanode
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -38,6 +39,7 @@ import (
 )
 
 func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
+	reqLimitRater.Wait(context.Background())
 	sz := p.Size
 	tpObject := exporter.NewTPCnt(p.GetOpMsg())
 	start := time.Now().UnixNano()
