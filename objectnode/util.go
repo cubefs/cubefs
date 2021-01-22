@@ -15,6 +15,7 @@
 package objectnode
 
 import (
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -39,6 +40,10 @@ var (
 
 	// Regular expression to match more than two consecutive path separators.
 	regexpDupSep = regexp.MustCompile("/{2,}")
+)
+
+var (
+	keyEscapedSkipBytes = []byte{'/', '*', '.', '-', '_'}
 )
 
 // PathItem defines path node attribute information,
@@ -219,6 +224,30 @@ func patternMatch(pattern, key string) bool {
 
 func wrapUnescapedQuot(src string) string {
 	return "\"" + src + "\""
+}
+
+func encodeKey(key, encodingType string) string {
+	var isKeyEscapedSkipByte = func(b byte) bool {
+		for _, skipByte := range keyEscapedSkipBytes {
+			if b == skipByte {
+				return true
+			}
+		}
+		return false
+	}
+	if strings.ToLower(encodingType) == "url" {
+		encodedKeyBuilder := strings.Builder{}
+		for i := 0; i < len(key); i++ {
+			b := byte(key[i])
+			if isKeyEscapedSkipByte(b) {
+				encodedKeyBuilder.Write([]byte{b})
+			} else {
+				encodedKeyBuilder.Write([]byte(url.QueryEscape(string(b))))
+			}
+		}
+		return encodedKeyBuilder.String()
+	}
+	return key
 }
 
 func SplitFileRange(size, blockSize int64) (ranges [][2]int64) {

@@ -23,35 +23,41 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-
 	"github.com/chubaofs/chubaofs/util/exporter"
-
-	"github.com/gorilla/mux"
-
 	"github.com/chubaofs/chubaofs/util/log"
-
 	"github.com/google/uuid"
+	"github.com/gorilla/mux"
 )
 
 var (
 	routeSNRegexp = regexp.MustCompile(":(\\w){32}$")
 )
 
-var (
-	monitoredStatusCode = []string{
-		strconv.Itoa(http.StatusBadRequest),
-		strconv.Itoa(http.StatusForbidden),
-		strconv.Itoa(http.StatusInternalServerError),
-	}
-)
-
-func IsMonitoredStatusCode(code string) bool {
-	for _, statusCode := range monitoredStatusCode {
-		if statusCode == code {
-			return true
-		}
+func IsMonitoredStatusCode(code int) bool {
+	if code > http.StatusInternalServerError {
+		return true
 	}
 	return false
+}
+
+func generateWarnDetail(r *http.Request, errorInfo string) string {
+	var (
+		action     proto.Action
+		bucket     string
+		object     string
+		requestID  string
+		statusCode int
+	)
+
+	var param = ParseRequestParam(r)
+	bucket = param.Bucket()
+	object = param.Object()
+	action = GetActionFromContext(r)
+	requestID = GetRequestID(r)
+	statusCode = GetStatusCodeFromContext(r)
+
+	return fmt.Sprintf("intenal error: status(%v) rerquestId(%v) action(%v) bucket(%v) object(%v) errorInfo(%v)",
+		statusCode, requestID, action.Name(), bucket, object, errorInfo)
 }
 
 // TraceMiddleware returns a middleware handler to trace request.
@@ -77,6 +83,8 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 			log.LogErrorf("traceMiddleware: generate request ID fail, remote(%v) url(%v) err(%v)",
 				r.RemoteAddr, r.URL.String(), err)
 			_ = InternalErrorCode(err).ServeResponse(w, r)
+			// export ump warn info
+			exporter.Warning(generateWarnDetail(r, err.Error()))
 			return
 		}
 
@@ -107,6 +115,7 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		var statusCode = GetStatusCodeFromContext(r)
 		if IsMonitoredStatusCode(statusCode) {
 			exporter.NewTPCnt(fmt.Sprintf("failed_%v", statusCode)).Set(nil)
+			exporter.Warning(generateWarnDetail(r, getResponseErrorMessage(r)))
 		}
 
 		// ===== post-handle start =====
