@@ -524,7 +524,7 @@ func TestAddMetaReplica(t *testing.T) {
 	process(reqURL, t)
 	partition.RLock()
 	if !contains(partition.Hosts, msAddr) {
-		t.Errorf("hosts[%v] should contains dsAddr[%v]", partition.Hosts, msAddr)
+		t.Errorf("hosts[%v] should contains msAddr[%v]", partition.Hosts, msAddr)
 		partition.RUnlock()
 		return
 	}
@@ -544,7 +544,141 @@ func TestRemoveMetaReplica(t *testing.T) {
 	process(reqURL, t)
 	partition.RLock()
 	if contains(partition.Hosts, msAddr) {
-		t.Errorf("hosts[%v] should contains dsAddr[%v]", partition.Hosts, msAddr)
+		t.Errorf("hosts[%v] should contains msAddr[%v]", partition.Hosts, msAddr)
+		partition.RUnlock()
+		return
+	}
+	partition.RUnlock()
+}
+
+func TestAddDataLearner(t *testing.T) {
+	partition := commonVol.dataPartitions.partitions[0]
+	dsAddr := mds6Addr
+	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddDataReplicaLearner, partition.PartitionID, dsAddr)
+	process(reqURL, t)
+	partition.RLock()
+	if !contains(partition.Hosts, dsAddr) || !containsLearner(partition.Learners, dsAddr) {
+		t.Errorf("hosts[%v] and learners[%v] should contains dsAddr[%v]", partition.Hosts, partition.Learners, dsAddr)
+		partition.RUnlock()
+		return
+	}
+	partition.RUnlock()
+	// remove
+	reqURL = fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteDataReplica, partition.PartitionID, dsAddr)
+	process(reqURL, t)
+	partition.RLock()
+	if contains(partition.Hosts, dsAddr) || containsLearner(partition.Learners, dsAddr) {
+		t.Errorf("hosts[%v] or learners[%v] shouldn't contains dsAddr[%v]", partition.Hosts, partition.Learners, dsAddr)
+		partition.RUnlock()
+		return
+	}
+	partition.RUnlock()
+}
+
+func TestPromoteDataLearner(t *testing.T) {
+	time.Sleep(2 * time.Second)
+	partition := commonVol.dataPartitions.partitions[0]
+	dsAddr := mds6Addr
+	// add
+	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddDataReplicaLearner, partition.PartitionID, dsAddr)
+	process(reqURL, t)
+	// promote
+	reqURL = fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminPromoteDataReplicaLearner, partition.PartitionID, dsAddr)
+	process(reqURL, t)
+	partition.RLock()
+	if !contains(partition.Hosts, dsAddr) || containsLearner(partition.Learners, dsAddr) {
+		t.Errorf("hosts[%v] should contains dsAddr[%v], but learners[%v] shouldn't contain", partition.Hosts, dsAddr, partition.Learners)
+		partition.RUnlock()
+		return
+	}
+	partition.RUnlock()
+	partition.isRecover = false
+	// remove
+	reqURL = fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteDataReplica, partition.PartitionID, dsAddr)
+	process(reqURL, t)
+	partition.RLock()
+	if contains(partition.Hosts, dsAddr) || containsLearner(partition.Learners, dsAddr) {
+		t.Errorf("hosts[%v] or learners[%v] shouldn't contains dsAddr[%v]", partition.Hosts, partition.Learners, dsAddr)
+		partition.RUnlock()
+		return
+	}
+	partition.isRecover = false
+	partition.RUnlock()
+}
+
+func TestAddMetaLearner(t *testing.T) {
+	maxPartitionID := commonVol.maxPartitionID()
+	partition := commonVol.MetaPartitions[maxPartitionID]
+	if partition == nil {
+		t.Error("no meta partition")
+		return
+	}
+	msAddr := mms9Addr
+	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddMetaReplicaLearner, partition.PartitionID, msAddr)
+	process(reqURL, t)
+	partition.RLock()
+	if !contains(partition.Hosts, msAddr) || !containsLearner(partition.Learners, msAddr) {
+		t.Errorf("hosts[%v] and learners[%v] should contains msAddr[%v]", partition.Hosts, partition.Learners, msAddr)
+		partition.RUnlock()
+		return
+	}
+	for i, replica := range partition.Replicas {
+		fmt.Println(fmt.Sprintf("replica[%v] addr: %v", i, replica.Addr))
+	}
+	partition.RUnlock()
+	// remove
+	reqURL = fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteMetaReplica, partition.PartitionID, msAddr)
+	process(reqURL, t)
+	partition.RLock()
+	if contains(partition.Hosts, msAddr) || containsLearner(partition.Learners, msAddr) {
+		t.Errorf("hosts[%v] or learners[%v] shouldn't contains msAddr[%v]", partition.Hosts, partition.Learners, msAddr)
+		partition.RUnlock()
+		return
+	}
+	partition.RUnlock()
+}
+
+func containsLearner(learners []proto.Learner, addr string) bool {
+	for _, learner := range learners {
+		if learner.Addr == addr {
+			return true
+		}
+	}
+	return false
+}
+
+func TestPromoteMetaLearner(t *testing.T) {
+	time.Sleep(2 * time.Second)
+	maxPartitionID := commonVol.maxPartitionID()
+	partition := commonVol.MetaPartitions[maxPartitionID]
+	if partition == nil {
+		t.Error("no meta partition")
+		return
+	}
+	msAddr := mms9Addr
+	// add
+	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddMetaReplicaLearner, partition.PartitionID, msAddr)
+	process(reqURL, t)
+	// promote
+	reqURL = fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminPromoteMetaReplicaLearner, partition.PartitionID, msAddr)
+	process(reqURL, t)
+	partition.RLock()
+	if !contains(partition.Hosts, msAddr) || containsLearner(partition.Learners, msAddr) {
+		t.Errorf("hosts[%v] should contains msAddr[%v], but learners[%v] shouldn't contain", partition.Hosts, msAddr, partition.Learners)
+		partition.RUnlock()
+		return
+	}
+	for i, replica := range partition.Replicas {
+		fmt.Println(fmt.Sprintf("replica[%v] addr: %v", i, replica.Addr))
+	}
+	partition.RUnlock()
+	partition.IsRecover = false
+	// remove
+	reqURL = fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteMetaReplica, partition.PartitionID, msAddr)
+	process(reqURL, t)
+	partition.RLock()
+	if contains(partition.Hosts, msAddr) || containsLearner(partition.Learners, msAddr) {
+		t.Errorf("hosts[%v] or learners[%v] shouldn't contains msAddr[%v]", partition.Hosts, partition.Learners, msAddr)
 		partition.RUnlock()
 		return
 	}

@@ -109,7 +109,7 @@ func (r *raftFsm) campaign(force bool) {
 	}
 
 	for id := range r.replicas {
-		if id == r.config.NodeID {
+		if id == r.config.NodeID || r.replicas[id].isLearner {
 			continue
 		}
 		li, lt := r.raftLog.lastIndexAndTerm()

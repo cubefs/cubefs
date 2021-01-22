@@ -283,7 +283,9 @@ func stepElectionAck(r *raftFsm, m *proto.Message) {
 	case proto.RespMsgElectAck:
 		r.replicas[m.From].active = true
 		r.replicas[m.From].lastActive = time.Now()
-		r.acks[m.From] = true
+		if !r.replicas[m.From].isLearner {
+			r.acks[m.From] = true
+		}
 		if len(r.acks) >= r.quorum() {
 			r.becomeLeader()
 			r.bcastAppend()
@@ -345,7 +347,7 @@ func (r *raftFsm) checkLeaderLease() bool {
 			continue
 		}
 
-		if r.replicas[id].active {
+		if r.replicas[id].active && !r.replicas[id].isLearner {
 			act++
 		}
 		r.replicas[id].active = false
@@ -419,7 +421,7 @@ func (r *raftFsm) sendAppend(to uint64) {
 		m.Type = proto.ReqMsgSnapShot
 		m.To = to
 		m.Snapshot = snapshot
-		snapMeta := proto.SnapshotMeta{Index: snapshot.ApplyIndex(), Peers: make([]proto.Peer, 0, len(r.replicas))}
+		snapMeta := proto.SnapshotMeta{Index: snapshot.ApplyIndex(), Peers: make([]proto.Peer, 0, len(r.replicas)), Learners: make([]proto.Learner, 0)}
 		if snapTerm, err := r.raftLog.term(snapMeta.Index); err != nil {
 			panic(AppPanicError(fmt.Sprintf("[raft->sendAppend][%v]failed to send snapshot to %v because snapshot is unavailable, error is: \r\n%v", r.id, to, err)))
 		} else {
@@ -427,6 +429,10 @@ func (r *raftFsm) sendAppend(to uint64) {
 		}
 		for _, p := range r.replicas {
 			snapMeta.Peers = append(snapMeta.Peers, p.peer)
+			if p.isLearner {
+				learner := proto.Learner{ID: p.peer.ID, PromConfig: p.promConfig}
+				snapMeta.Learners = append(snapMeta.Learners, learner)
+			}
 		}
 		m.SnapshotMeta = snapMeta
 		pr.becomeSnapshot(snapMeta.Index)
@@ -478,7 +484,7 @@ func (r *raftFsm) bcastReadOnly() {
 		logger.Debug("raft[%d] bcast readonly index: %d", r.id, index)
 	}
 	for id := range r.replicas {
-		if id == r.config.NodeID {
+		if id == r.config.NodeID || r.replicas[id].isLearner {
 			continue
 		}
 		msg := proto.GetMessage()

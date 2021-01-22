@@ -45,15 +45,19 @@ const (
 )
 
 const (
-	ConfAddNode    ConfChangeType = 0
-	ConfRemoveNode ConfChangeType = 1
-	ConfUpdateNode ConfChangeType = 2
+	ConfAddNode    		ConfChangeType = 0
+	ConfRemoveNode 		ConfChangeType = 1
+	ConfUpdateNode 		ConfChangeType = 2
+	ConfAddLearner 		ConfChangeType = 3
+	ConfPromoteLearner	ConfChangeType = 4
 
 	EntryNormal     EntryType = 0
 	EntryConfChange EntryType = 1
 
 	PeerNormal  PeerType = 0
 	PeerArbiter PeerType = 1
+
+	LearnerProgress = 90
 )
 
 // The Snapshot interface is supplied by the application to access the snapshot data of application.
@@ -69,9 +73,10 @@ type SnapIterator interface {
 }
 
 type SnapshotMeta struct {
-	Index uint64
-	Term  uint64
-	Peers []Peer
+	Index 		uint64
+	Term  		uint64
+	Peers 		[]Peer
+	Learners	[]Learner
 }
 
 type Peer struct {
@@ -79,6 +84,11 @@ type Peer struct {
 	Priority uint16
 	ID       uint64 // NodeID
 	PeerID   uint64 // Replica ID, unique over all raft groups and all replicas in the same group
+}
+
+type Learner struct {
+	ID			uint64			`json:"id"`	// NodeID
+	PromConfig	*PromoteConfig	`json:"promote_config"`
 }
 
 // HardState is the repl state,must persist to the storage.
@@ -125,6 +135,16 @@ type ConfChange struct {
 	Type    ConfChangeType
 	Peer    Peer
 	Context []byte
+}
+
+type PromoteConfig struct {
+	PromThreshold uint8	`json:"prom_threshold"`
+	AutoPromote   bool 	`json:"auto_prom"`
+}
+
+type ConfChangeLearnerReq struct {
+	Id				uint64	`json:"pid"`
+	ChangeLearner	Learner	`json:"learner"`
 }
 
 type HeartbeatContext []uint64
@@ -185,6 +205,10 @@ func (t ConfChangeType) String() string {
 		return "ConfRemoveNode"
 	case 2:
 		return "ConfUpdateNode"
+	case 3:
+		return "ConfAddLearner"
+	case 4:
+		return "ConfPromoteLearner"
 	}
 	return "unkown"
 }

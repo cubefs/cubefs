@@ -186,6 +186,6 @@ func (r *raftFsm) handleAppendEntries(m *proto.Message) {
 }
 
 func (r *raftFsm) promotable() bool {
-	_, ok := r.replicas[r.config.NodeID]
-	return ok
+	pr, ok := r.replicas[r.config.NodeID]
+	return ok && !pr.isLearner
 }

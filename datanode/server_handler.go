@@ -182,6 +182,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		FileCount            int                   `json:"fileCount"`
 		Replicas             []string              `json:"replicas"`
 		Peers                []proto.Peer          `json:"peers"`
+		Learners             []proto.Learner       `json:"learners"`
 		TinyDeleteRecordSize int64                 `json:"tinyDeleteRecordSize"`
 		RaftStatus           *raft.Status          `json:"raftStatus"`
 	}{
@@ -197,6 +198,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		TinyDeleteRecordSize: tinyDeleteRecordSize,
 		RaftStatus:           partition.raftPartition.Status(),
 		Peers:                partition.config.Peers,
+		Learners:             partition.config.Learners,
 	}
 	s.buildSuccessResp(w, result)
 }

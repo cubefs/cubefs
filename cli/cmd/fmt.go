@@ -202,6 +202,12 @@ func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
 		sb.WriteString(fmt.Sprintf("%v\n", formatPeer(peer)))
 	}
 	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("Learners :\n"))
+	sb.WriteString(fmt.Sprintf("%v\n", formatLearnerTableHeader()))
+	for _, learner := range partition.Learners {
+		sb.WriteString(fmt.Sprintf("%v\n", formatLearner(learner)))
+	}
+	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("Hosts :\n"))
 	for _, host := range partition.Hosts {
 		sb.WriteString(fmt.Sprintf("  [%v]", host))
@@ -242,8 +248,15 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 	}
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("Peers :\n"))
+	sb.WriteString(fmt.Sprintf("%v\n", formatPeerTableHeader()))
 	for _, peer := range partition.Peers {
 		sb.WriteString(fmt.Sprintf("%v\n", formatPeer(peer)))
+	}
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("Learners :\n"))
+	sb.WriteString(fmt.Sprintf("%v\n", formatLearnerTableHeader()))
+	for _, learner := range partition.Learners {
+		sb.WriteString(fmt.Sprintf("%v\n", formatLearner(learner)))
 	}
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("Hosts :\n"))
@@ -436,6 +449,16 @@ func formatPeerTableHeader() string {
 }
 func formatPeer(peer proto.Peer) string {
 	return fmt.Sprintf(peerTableRowPattern, peer.ID, peer.Addr)
+}
+
+var learnerTableRowPattern = "%-6v    %-18v    %-12v    %-6v"
+
+func formatLearnerTableHeader() string {
+	return fmt.Sprintf(learnerTableRowPattern, "ID", "ADDRESS", "AUTOPROMOTE", "THRESHOLD")
+}
+
+func formatLearner(learner proto.Learner) string {
+	return fmt.Sprintf(learnerTableRowPattern, learner.ID, learner.Addr, learner.PmConfig.AutoProm, learner.PmConfig.PromThreshold)
 }
 
 var dataNodeDetailTableRowPattern = "%-6v    %-6v    %-18v    %-6v    %-6v    %-6v    %-10v"

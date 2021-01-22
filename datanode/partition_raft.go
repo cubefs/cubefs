@@ -43,6 +43,7 @@ type dataPartitionCfg struct {
 	PartitionSize int                 `json:"partition_size"`
 	Peers         []proto.Peer        `json:"peers"`
 	Hosts         []string            `json:"hosts"`
+	Learners      []proto.Learner     `json:"learners"`
 	NodeID        uint64              `json:"-"`
 	RaftStore     raftstore.RaftStore `json:"-"`
 }
@@ -76,6 +77,7 @@ func (dp *DataPartition) StartRaft() (err error) {
 		heartbeatPort int
 		replicaPort   int
 		peers         []raftstore.PeerAddress
+		learners      []raftproto.Learner
 	)
 	defer func() {
 		if r := recover(); r != nil {
@@ -99,14 +101,22 @@ func (dp *DataPartition) StartRaft() (err error) {
 		}
 		peers = append(peers, rp)
 	}
+	for _, learner := range dp.config.Learners {
+		addLearner := raftproto.Learner{
+			ID:         learner.ID,
+			PromConfig: &raftproto.PromoteConfig{AutoPromote: learner.PmConfig.AutoProm, PromThreshold: learner.PmConfig.PromThreshold},
+		}
+		learners = append(learners, addLearner)
+	}
 	log.LogDebugf("start partition(%v) raft peers: %s path: %s",
 		dp.partitionID, peers, dp.path)
 	pc := &raftstore.PartitionConfig{
-		ID:      uint64(dp.partitionID),
-		Applied: dp.appliedID,
-		Peers:   peers,
-		SM:      dp,
-		WalPath: dp.path,
+		ID:       uint64(dp.partitionID),
+		Applied:  dp.appliedID,
+		Peers:    peers,
+		Learners: learners,
+		SM:       dp,
+		WalPath:  dp.path,
 	}
 
 	dp.raftPartition, err = dp.config.RaftStore.CreatePartition(pc)
@@ -124,6 +134,11 @@ func (dp *DataPartition) stopRaft() {
 }
 
 func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer) error {
+	for _, learner := range dp.config.Learners {
+		if learner.ID == peer.ID && learner.Addr == peer.Addr {
+			return nil
+		}
+	}
 	downReplicas := dp.config.RaftStore.RaftServer().GetDownReplicas(dp.partitionID)
 	hasExsit := false
 	for _, p := range dp.config.Peers {
@@ -144,7 +159,7 @@ func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer) error {
 		hasDownReplicasExcludePeer = append(hasDownReplicasExcludePeer, nodeID.NodeID)
 	}
 
-	sumReplicas := len(dp.config.Peers)
+	sumReplicas := len(dp.config.Peers) - len(dp.config.Learners)
 	if sumReplicas%2 == 1 {
 		if sumReplicas-len(hasDownReplicasExcludePeer) > (sumReplicas/2 + 1) {
 			return nil
@@ -359,7 +374,16 @@ func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMember
 		dp.config.Hosts = append(dp.config.Hosts[:hostIndex], dp.config.Hosts[hostIndex+1:]...)
 	}
 	dp.config.Peers = append(dp.config.Peers[:peerIndex], dp.config.Peers[peerIndex+1:]...)
-
+	learnerIndex := -1
+	for i, learner := range dp.config.Learners {
+		if learner.ID == req.RemovePeer.ID && learner.Addr == req.RemovePeer.Addr {
+			learnerIndex = i
+			break
+		}
+	}
+	if learnerIndex != -1 {
+		dp.config.Learners = append(dp.config.Learners[:learnerIndex], dp.config.Learners[learnerIndex+1:]...)
+	}
 	if dp.config.NodeID == req.RemovePeer.ID && canRemoveSelf {
 		if req.ReserveResource {
 			dp.Disk().space.DeletePartitionFromCache(dp.partitionID)
@@ -372,6 +396,72 @@ func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMember
 	log.LogInfof("Fininsh RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 		req.PartitionId, dp.config.NodeID, string(data))
 
+	return
+}
+
+// Add a raft learner.
+func (dp *DataPartition) addRaftLearner(req *proto.AddDataPartitionRaftLearnerRequest, index uint64) (isUpdated bool, err error) {
+	var (
+		heartbeatPort int
+		replicaPort   int
+	)
+	if heartbeatPort, replicaPort, err = dp.raftPort(); err != nil {
+		return
+	}
+
+	addPeer := false
+	for _, peer := range dp.config.Peers {
+		if peer.ID == req.AddLearner.ID {
+			addPeer = true
+			break
+		}
+	}
+	if !addPeer {
+		peer := proto.Peer{ID: req.AddLearner.ID, Addr: req.AddLearner.Addr}
+		dp.config.Peers = append(dp.config.Peers, peer)
+		dp.config.Hosts = append(dp.config.Hosts, peer.Addr)
+	}
+
+	addLearner := false
+	for _, learner := range dp.config.Learners {
+		if learner.ID == req.AddLearner.ID {
+			addLearner = true
+			break
+		}
+	}
+	if !addLearner {
+		dp.config.Learners = append(dp.config.Learners, req.AddLearner)
+	}
+	isUpdated = !addPeer || !addLearner
+	if !isUpdated {
+		return
+	}
+	log.LogInfof("addRaftLearner: partitionID(%v) nodeID(%v) index(%v) data(%v) ",
+		req.PartitionId, dp.config.NodeID, index, req)
+	dp.replicasLock.Lock()
+	dp.replicas = make([]string, len(dp.config.Hosts))
+	copy(dp.replicas, dp.config.Hosts)
+	dp.replicasLock.Unlock()
+	addr := strings.Split(req.AddLearner.Addr, ":")[0]
+	dp.config.RaftStore.AddNodeWithPort(req.AddLearner.ID, addr, heartbeatPort, replicaPort)
+	return
+}
+
+// Promote a raft learner.
+func (dp *DataPartition) promoteRaftLearner(req *proto.PromoteDataPartitionRaftLearnerRequest, index uint64) (isUpdated bool, err error) {
+	var promoteIndex int
+	for i, learner := range dp.config.Learners {
+		if learner.ID == req.PromoteLearner.ID {
+			isUpdated = true
+			promoteIndex = i
+			break
+		}
+	}
+	if isUpdated {
+		dp.config.Learners = append(dp.config.Learners[:promoteIndex], dp.config.Learners[promoteIndex+1:]...)
+		log.LogInfof("promoteRaftLearner: partitionID(%v) nodeID(%v) index(%v) data(%v), new learners(%v) ",
+			req.PartitionId, dp.config.NodeID, index, req, dp.config.Learners)
+	}
 	return
 }
 

@@ -32,7 +32,9 @@ type replica struct {
 	paused, active, pending             bool
 	match, next, committed, pendingSnap uint64
 
-	lastActive time.Time
+	lastActive 	time.Time
+	isLearner	bool
+	promConfig  *proto.PromoteConfig
 }
 
 func newReplica(peer proto.Peer, maxInflight int) *replica {
@@ -143,7 +145,8 @@ func (r *replica) isPaused() bool {
 }
 
 func (r *replica) String() string {
-	return fmt.Sprintf("next = %d, match = %d, commit = %d, state = %s, waiting = %v, pendingSnapshot = %d", r.next, r.match, r.committed, r.state, r.isPaused(), r.pendingSnap)
+	return fmt.Sprintf("next = %d, match = %d, commit = %d, state = %s, waiting = %v, pendingSnapshot = %d, isLearner = %v, pmConfig = %v",
+		r.next, r.match, r.committed, r.state, r.isPaused(), r.pendingSnap, r.isLearner, r.promConfig)
 }
 
 // inflight is the replication sliding window,avoid overflowing that sending buffer.

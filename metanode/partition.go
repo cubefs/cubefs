@@ -65,10 +65,11 @@ type MetaPartitionConfig struct {
 	// Identity for raftStore group. RaftStore nodes in the same raftStore group must have the same groupID.
 	PartitionId uint64              `json:"partition_id"`
 	VolName     string              `json:"vol_name"`
-	Start       uint64              `json:"start"` // Minimal Inode ID of this range. (Required during initialization)
-	End         uint64              `json:"end"`   // Maximal Inode ID of this range. (Required during initialization)
-	Peers       []proto.Peer        `json:"peers"` // Peers information of the raftStore
-	Cursor      uint64              `json:"-"`     // Cursor ID of the inode that have been assigned
+	Start       uint64              `json:"start"`    // Minimal Inode ID of this range. (Required during initialization)
+	End         uint64              `json:"end"`      // Maximal Inode ID of this range. (Required during initialization)
+	Peers       []proto.Peer        `json:"peers"`    // Peers information of the raftStore
+	Learners    []proto.Learner     `json:"learners"` // Learners information of the raftStore
+	Cursor      uint64              `json:"-"`        // Cursor ID of the inode that have been assigned
 	NodeId      uint64              `json:"-"`
 	RootDir     string              `json:"-"`
 	BeforeStart func()              `json:"-"`
@@ -170,6 +171,7 @@ type OpMeta interface {
 // OpPartition defines the interface for the partition operations.
 type OpPartition interface {
 	IsLeader() (leaderAddr string, isLeader bool)
+	IsLearner() bool
 	GetCursor() uint64
 	GetBaseConfig() MetaPartitionConfig
 	ResponseLoadMetaPartition(p *Packet) (err error)
@@ -180,7 +182,8 @@ type OpPartition interface {
 	UpdatePartition(req *UpdatePartitionReq, resp *UpdatePartitionResp) (err error)
 	DeleteRaft() error
 	ExpiredRaft() error
-	IsExsitPeer(peer proto.Peer) bool
+	IsExistPeer(peer proto.Peer) bool
+	IsExistLearner(learner proto.Learner) bool
 	TryToLeader(groupID uint64) error
 	CanRemoveRaftMember(peer proto.Peer) error
 	IsEquareCreateMetaPartitionRequst(request *proto.CreateMetaPartitionRequest) (err error)
@@ -304,6 +307,7 @@ func (mp *metaPartition) startRaft() (err error) {
 		heartbeatPort int
 		replicaPort   int
 		peers         []raftstore.PeerAddress
+		learners      []raftproto.Learner
 	)
 	if heartbeatPort, replicaPort, err = mp.getRaftPort(); err != nil {
 		return
@@ -322,11 +326,17 @@ func (mp *metaPartition) startRaft() (err error) {
 	}
 	log.LogDebugf("start partition id=%d raft peers: %s",
 		mp.config.PartitionId, peers)
+
+	for _, learner := range mp.config.Learners {
+		rl := raftproto.Learner{ID: learner.ID, PromConfig: &raftproto.PromoteConfig{AutoPromote: learner.PmConfig.AutoProm, PromThreshold: learner.PmConfig.PromThreshold}}
+		learners = append(learners, rl)
+	}
 	pc := &raftstore.PartitionConfig{
-		ID:      mp.config.PartitionId,
-		Applied: mp.applyID,
-		Peers:   peers,
-		SM:      mp,
+		ID:       mp.config.PartitionId,
+		Applied:  mp.applyID,
+		Peers:    peers,
+		Learners: learners,
+		SM:       mp,
 	}
 	mp.raftPartition, err = mp.config.RaftStore.CreatePartition(pc)
 	return
@@ -399,6 +409,15 @@ func (mp *metaPartition) IsLeader() (leaderAddr string, ok bool) {
 		}
 	}
 	return
+}
+
+func (mp *metaPartition) IsLearner() bool {
+	for _, learner := range mp.config.Learners {
+		if mp.config.NodeId == learner.ID {
+			return true
+		}
+	}
+	return false
 }
 
 func (mp *metaPartition) GetPeers() (peers []string) {
@@ -603,13 +622,29 @@ func (mp *metaPartition) DecommissionPartition(req []byte) (err error) {
 	return
 }
 
-func (mp *metaPartition) IsExsitPeer(peer proto.Peer) bool {
+func (mp *metaPartition) IsExistPeer(peer proto.Peer) bool {
 	for _, hasExsitPeer := range mp.config.Peers {
 		if hasExsitPeer.Addr == peer.Addr && hasExsitPeer.ID == peer.ID {
 			return true
 		}
 	}
 	return false
+}
+
+func (mp *metaPartition) IsExistLearner(learner proto.Learner) bool {
+	var existPeer bool
+	for _, hasExistPeer := range mp.config.Peers {
+		if hasExistPeer.Addr == learner.Addr && hasExistPeer.ID == learner.ID {
+			existPeer = true
+		}
+	}
+	var existLearner bool
+	for _, hasExistLearner := range mp.config.Learners {
+		if hasExistLearner.Addr == learner.Addr && hasExistLearner.ID == learner.ID {
+			existLearner = true
+		}
+	}
+	return existPeer && existLearner
 }
 
 func (mp *metaPartition) TryToLeader(groupID uint64) error {

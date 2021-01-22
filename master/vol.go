@@ -605,7 +605,7 @@ func (vol *Vol) deleteDataPartitionFromDataNode(c *Cluster, task *proto.AdminTas
 	dp.Lock()
 	dp.removeReplicaByAddr(dataNode.Addr)
 	dp.checkAndRemoveMissReplica(dataNode.Addr)
-	if err = dp.update("deleteDataReplica", dp.VolName, dp.Peers, dp.Hosts, c); err != nil {
+	if err = dp.update("deleteDataReplica", dp.VolName, dp.Peers, dp.Hosts, dp.Learners, c); err != nil {
 		dp.Unlock()
 		return
 	}

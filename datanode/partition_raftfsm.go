@@ -64,6 +64,18 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 			return
 		}
 		isUpdated, err = dp.removeRaftNode(req, index)
+	case raftproto.ConfAddLearner:
+		req := &proto.AddDataPartitionRaftLearnerRequest{}
+		if err = json.Unmarshal(confChange.Context, req); err != nil {
+			return
+		}
+		isUpdated, err = dp.addRaftLearner(req, index)
+	case raftproto.ConfPromoteLearner:
+		req := &proto.PromoteDataPartitionRaftLearnerRequest{}
+		if err = json.Unmarshal(confChange.Context, req); err != nil {
+			return
+		}
+		isUpdated, err = dp.promoteRaftLearner(req, index)
 	case raftproto.ConfUpdateNode:
 		log.LogDebugf("[updateRaftNode]: not support.")
 	}

@@ -368,7 +368,9 @@ func (p *Packet) IsMasterCommand() bool {
 		proto.OpAddDataPartitionRaftMember,
 		proto.OpRemoveDataPartitionRaftMember,
 		proto.OpDataPartitionTryToLeader,
-		proto.OpSyncDataPartitionReplicas:
+		proto.OpSyncDataPartitionReplicas,
+		proto.OpAddDataPartitionRaftLearner,
+		proto.OpPromoteDataPartitionRaftLearner:
 		return true
 	}
 	return false

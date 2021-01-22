@@ -29,12 +29,13 @@ var (
 )
 
 type RaftServer struct {
-	config *Config
-	ticker *time.Ticker
-	heartc chan *proto.Message
-	stopc  chan struct{}
-	mu     sync.RWMutex
-	rafts  map[uint64]*raft
+	config 		*Config
+	ticker 		*time.Ticker
+	pmTicker	*time.Ticker
+	heartc 		chan *proto.Message
+	stopc  		chan struct{}
+	mu     		sync.RWMutex
+	rafts  		map[uint64]*raft
 }
 
 func NewRaftServer(config *Config) (*RaftServer, error) {
@@ -45,6 +46,7 @@ func NewRaftServer(config *Config) (*RaftServer, error) {
 	rs := &RaftServer{
 		config: config,
 		ticker: time.NewTicker(config.TickInterval),
+		pmTicker:time.NewTicker(config.TickInterval * time.Duration(config.PromoteTick)),
 		rafts:  make(map[uint64]*raft),
 		heartc: make(chan *proto.Message, 512),
 		stopc:  make(chan struct{}),
@@ -91,6 +93,16 @@ func (rs *RaftServer) run() {
 				raft.tick()
 			}
 			rs.mu.RUnlock()
+
+		case <-rs.pmTicker.C:
+			rs.mu.RLock()
+			for _, raft := range rs.rafts {
+				if !raft.isLeader() {
+					continue
+				}
+				raft.promoteLearner()
+			}
+			rs.mu.RUnlock()
 		}
 	}
 }
@@ -106,6 +118,7 @@ func (rs *RaftServer) Stop() {
 	default:
 		close(rs.stopc)
 		rs.ticker.Stop()
+		rs.pmTicker.Stop()
 		wg := new(sync.WaitGroup)
 		for id, s := range rs.rafts {
 			delete(rs.rafts, id)
@@ -310,7 +323,7 @@ func (rs *RaftServer) GetDownReplicas(id uint64) (downReplicas []DownReplica) {
 	status := raft.status()
 	if status != nil && len(status.Replicas) > 0 {
 		for n, r := range status.Replicas {
-			if n == rs.config.NodeID {
+			if n == rs.config.NodeID || r.IsLearner {
 				continue
 			}
 			since := time.Since(r.LastActive)

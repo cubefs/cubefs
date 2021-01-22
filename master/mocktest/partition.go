@@ -18,4 +18,5 @@ type MockMetaPartition struct {
 	Cursor      uint64
 	VolName     string
 	Members     []proto.Peer
+	Learners    []proto.Learner
 }

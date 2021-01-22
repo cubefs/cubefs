@@ -17,13 +17,6 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/cmd/common"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/raftstore"
-	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/exporter"
-	"github.com/chubaofs/chubaofs/util/log"
 	"io/ioutil"
 	"net"
 	_ "net/http/pprof"
@@ -34,6 +27,14 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/chubaofs/chubaofs/cmd/common"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/raftstore"
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const partitionPrefix = "partition_"
@@ -130,6 +131,10 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
 		err = m.opAddMetaPartitionRaftMember(conn, p, remoteAddr)
 	case proto.OpRemoveMetaPartitionRaftMember:
 		err = m.opRemoveMetaPartitionRaftMember(conn, p, remoteAddr)
+	case proto.OpAddMetaPartitionRaftLearner:
+		err = m.opAddMetaPartitionRaftLearner(conn, p, remoteAddr)
+	case proto.OpPromoteMetaPartitionRaftLearner:
+		err = m.opPromoteMetaPartitionRaftLearner(conn, p, remoteAddr)
 	case proto.OpMetaPartitionTryToLeader:
 		err = m.opMetaPartitionTryToLeader(conn, p, remoteAddr)
 	case proto.OpMetaBatchInodeGet:
@@ -397,6 +402,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		End:         request.End,
 		Cursor:      request.Start,
 		Peers:       request.Members,
+		Learners:    request.Learners,
 		RaftStore:   m.raftStore,
 		NodeId:      m.nodeId,
 		RootDir:     path.Join(m.rootDir, partitionPrefix+partitionId),

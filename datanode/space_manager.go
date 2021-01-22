@@ -295,6 +295,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		VolName:       request.VolumeId,
 		Peers:         request.Members,
 		Hosts:         request.Hosts,
+		Learners:      request.Learners,
 		RaftStore:     manager.raftStore,
 		NodeID:        manager.nodeID,
 		ClusterID:     manager.clusterID,
@@ -416,8 +417,10 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			IsLeader:        isLeader,
 			ExtentCount:     partition.GetExtentCount(),
 			NeedCompare:     true,
+			IsLearner:       partition.IsRaftLearner(),
 		}
-		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v).", vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader)
+		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v) isLearner(%v).",
+			vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader, vr.IsLearner)
 		response.PartitionReports = append(response.PartitionReports, vr)
 		return true
 	})

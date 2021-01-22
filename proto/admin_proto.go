@@ -25,6 +25,8 @@ const (
 	AdminDiagnoseDataPartition     = "/dataPartition/diagnose"
 	AdminDeleteDataReplica         = "/dataReplica/delete"
 	AdminAddDataReplica            = "/dataReplica/add"
+	AdminAddDataReplicaLearner     = "/dataLearner/add"
+	AdminPromoteDataReplicaLearner = "/dataLearner/promote"
 	AdminDeleteVol                 = "/vol/delete"
 	AdminUpdateVol                 = "/vol/update"
 	AdminCreateVol                 = "/admin/createVol"
@@ -77,6 +79,8 @@ const (
 	AdminDecommissionMetaPartition = "/metaPartition/decommission"
 	AdminAddMetaReplica            = "/metaReplica/add"
 	AdminDeleteMetaReplica         = "/metaReplica/delete"
+	AdminAddMetaReplicaLearner     = "/metaLearner/add"
+	AdminPromoteMetaReplicaLearner = "/metaLearner/promote"
 
 	// Operation response
 	GetMetaNodeTaskResponse = "/metaNode/response" // Method: 'POST', ContentType: 'application/json'
@@ -158,6 +162,7 @@ type CreateDataPartitionRequest struct {
 	VolumeId      string
 	IsRandomWrite bool
 	Members       []Peer
+	Learners      []Learner
 	Hosts         []string
 	CreateType    int
 }
@@ -196,6 +201,12 @@ type AddDataPartitionRaftMemberRequest struct {
 	AddPeer     Peer
 }
 
+// PromoteDataPartitionRaftLearnerRequest defines the request of promote learner raftMember a data partition.
+type PromoteDataPartitionRaftLearnerRequest struct {
+	PartitionId    uint64  `json:"pid"`
+	PromoteLearner Learner `json:"learner"`
+}
+
 // RemoveDataPartitionRaftMemberRequest defines the request of add raftMember a data partition.
 type RemoveDataPartitionRaftMemberRequest struct {
 	PartitionId     uint64
@@ -203,10 +214,28 @@ type RemoveDataPartitionRaftMemberRequest struct {
 	ReserveResource bool
 }
 
+// AddDataPartitionRaftLearnerRequest defines the request of add raftLearner a data partition.
+type AddDataPartitionRaftLearnerRequest struct {
+	PartitionId uint64  `json:"pid"`
+	AddLearner  Learner `json:"learner"`
+}
+
 // AddMetaPartitionRaftMemberRequest defines the request of add raftMember a meta partition.
 type AddMetaPartitionRaftMemberRequest struct {
 	PartitionId uint64
 	AddPeer     Peer
+}
+
+// AddMetaPartitionRaftLearnerRequest defines the request of add raftLearner a meta partition.
+type AddMetaPartitionRaftLearnerRequest struct {
+	PartitionId uint64  `json:"pid"`
+	AddLearner  Learner `json:"learner"`
+}
+
+// AddMetaPartitionRaftLearnerRequest defines the request of add raftLearner a meta partition.
+type PromoteMetaPartitionRaftLearnerRequest struct {
+	PartitionId    uint64  `json:"pid"`
+	PromoteLearner Learner `json:"learner"`
 }
 
 // RemoveMetaPartitionRaftMemberRequest defines the request of add raftMember a meta partition.
@@ -278,6 +307,7 @@ type PartitionReport struct {
 	IsLeader        bool
 	ExtentCount     int
 	NeedCompare     bool
+	IsLearner       bool
 }
 
 // DataNodeHeartbeatResponse defines the response to the data node heartbeat.
@@ -307,6 +337,7 @@ type MetaPartitionReport struct {
 	VolName     string
 	InodeCnt    uint64
 	DentryCnt   uint64
+	IsLearner   bool
 }
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.

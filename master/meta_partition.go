@@ -58,6 +58,7 @@ type MetaPartition struct {
 	volName       string
 	Hosts         []string
 	Peers         []proto.Peer
+	Learners      []proto.Learner
 	MissNodes     map[string]int64
 	OfflinePeerID uint64
 	LoadResponse  []*proto.MetaPartitionLoadResponse
@@ -79,6 +80,7 @@ func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName 
 	mp.Status = proto.Unavailable
 	mp.MissNodes = make(map[string]int64, 0)
 	mp.Peers = make([]proto.Peer, 0)
+	mp.Learners = make([]proto.Learner, 0)
 	mp.Hosts = make([]string, 0)
 	mp.LoadResponse = make([]*proto.MetaPartitionLoadResponse, 0)
 	return
@@ -86,6 +88,10 @@ func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName 
 
 func (mp *MetaPartition) setPeers(peers []proto.Peer) {
 	mp.Peers = peers
+}
+
+func (mp *MetaPartition) setLearners(learners []proto.Learner) {
+	mp.Learners = learners
 }
 
 func (mp *MetaPartition) setHosts(hosts []string) {
@@ -403,22 +409,26 @@ func (mp *MetaPartition) getLiveReplicas() (liveReplicas []*MetaReplica) {
 	return
 }
 
-func (mp *MetaPartition) persistToRocksDB(action, volName string, newHosts []string, newPeers []proto.Peer, c *Cluster) (err error) {
+func (mp *MetaPartition) persistToRocksDB(action, volName string, newHosts []string, newPeers []proto.Peer, newLearners []proto.Learner, c *Cluster) (err error) {
 	oldHosts := make([]string, len(mp.Hosts))
 	copy(oldHosts, mp.Hosts)
 	oldPeers := make([]proto.Peer, len(mp.Peers))
 	copy(oldPeers, mp.Peers)
+	oldLearners := make([]proto.Learner, len(mp.Learners))
+	copy(oldLearners, mp.Learners)
 	mp.Hosts = newHosts
 	mp.Peers = newPeers
+	mp.Learners = newLearners
 	if err = c.syncUpdateMetaPartition(mp); err != nil {
 		mp.Hosts = oldHosts
 		mp.Peers = oldPeers
-		log.LogWarnf("action[%v_persist] failed,vol[%v] partitionID:%v  old hosts:%v new hosts:%v oldPeers:%v  newPeers:%v",
-			action, volName, mp.PartitionID, mp.Hosts, newHosts, mp.Peers, newPeers)
+		mp.Learners = oldLearners
+		log.LogWarnf("action[%v_persist] failed,vol[%v] partitionID:%v  old hosts:%v new hosts:%v  oldPeers:%v newPeers:%v  oldLearners:%v newLearners:%v",
+			action, volName, mp.PartitionID, mp.Hosts, newHosts, mp.Peers, newPeers, mp.Learners, newLearners)
 		return
 	}
-	log.LogWarnf("action[%v_persist] success,vol[%v] partitionID:%v  old hosts:%v  new hosts:%v oldPeers:%v  newPeers:%v ",
-		action, volName, mp.PartitionID, oldHosts, mp.Hosts, oldPeers, mp.Peers)
+	log.LogWarnf("action[%v_persist] success,vol[%v] partitionID:%v  old hosts:%v  new hosts:%v oldPeers:%v  newPeers:%v  oldLearners:%v newLearners:%v",
+		action, volName, mp.PartitionID, oldHosts, mp.Hosts, oldPeers, mp.Peers, oldLearners, mp.Learners)
 	return
 }
 
@@ -553,6 +563,7 @@ func (mp *MetaPartition) createTaskToCreateReplica(host string) (t *proto.AdminT
 		PartitionID: mp.PartitionID,
 		Members:     mp.Peers,
 		VolName:     mp.volName,
+		Learners:    mp.Learners,
 	}
 	t = proto.NewAdminTask(proto.OpCreateMetaPartition, host, req)
 	resetMetaPartitionTaskID(t, mp.PartitionID)
@@ -562,6 +573,20 @@ func (mp *MetaPartition) createTaskToCreateReplica(host string) (t *proto.AdminT
 func (mp *MetaPartition) createTaskToAddRaftMember(addPeer proto.Peer, leaderAddr string) (t *proto.AdminTask, err error) {
 	req := &proto.AddMetaPartitionRaftMemberRequest{PartitionId: mp.PartitionID, AddPeer: addPeer}
 	t = proto.NewAdminTask(proto.OpAddMetaPartitionRaftMember, leaderAddr, req)
+	resetMetaPartitionTaskID(t, mp.PartitionID)
+	return
+}
+
+func (mp *MetaPartition) createTaskToAddRaftLearner(addLearner proto.Learner, leaderAddr string) (t *proto.AdminTask, err error) {
+	req := &proto.AddMetaPartitionRaftLearnerRequest{PartitionId: mp.PartitionID, AddLearner: addLearner}
+	t = proto.NewAdminTask(proto.OpAddMetaPartitionRaftLearner, leaderAddr, req)
+	resetMetaPartitionTaskID(t, mp.PartitionID)
+	return
+}
+
+func (mp *MetaPartition) createTaskToPromoteRaftLearner(promoteLearner proto.Learner, leaderAddr string) (t *proto.AdminTask, err error) {
+	req := &proto.PromoteMetaPartitionRaftLearnerRequest{PartitionId: mp.PartitionID, PromoteLearner: promoteLearner}
+	t = proto.NewAdminTask(proto.OpPromoteMetaPartitionRaftLearner, leaderAddr, req)
 	resetMetaPartitionTaskID(t, mp.PartitionID)
 	return
 }
