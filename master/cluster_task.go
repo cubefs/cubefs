@@ -1252,6 +1252,123 @@ func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaParti
 	return
 }
 
+func (c *Cluster) adjustNodeSetForDataNode(zoneName, dataNodeAddr string, sourceID, targetID uint64) (err error) {
+	var (
+		source, target *nodeSet
+		dataNode       *DataNode
+		zone           *Zone
+	)
+	if zone, err = c.t.getZone(zoneName); err != nil {
+		return
+	}
+	if source, err = zone.getNodeSet(sourceID); err != nil {
+		return
+	}
+	if source.dataNodeCount() == 0 {
+		err = fmt.Errorf("action[adjustNodeSetForDataNode] space err, source count is 0")
+		return
+	}
+	if target, err = zone.getNodeSet(targetID); err != nil {
+		return
+	}
+	if source.zoneName != target.zoneName || sourceID == targetID {
+		err = fmt.Errorf("action[adjustNodeSetForDataNode] zoneName[%v,%v] not same or sourceID[%v] equal to targetID[%v]",
+			source.zoneName, target.zoneName, sourceID, targetID)
+		return
+	}
+	// select one node from source node set
+	if dataNodeAddr == "" {
+		source.dataNodes.Range(func(key, value interface{}) bool {
+			dataNodeAddr = key.(string)
+			return false
+		})
+	}
+	if dataNode, err = zone.getDataNode(dataNodeAddr); err != nil {
+		return
+	}
+	// start merge
+	zone.nsLock.Lock()
+	defer zone.nsLock.Unlock()
+	if dataNode.NodeSetID != source.ID {
+		err = fmt.Errorf("action[adjustNodeSetForDataNode] dataNode NodeSetID[%v] and sourceID[%v] not equal", dataNode.NodeSetID, source.ID)
+		return
+	}
+	targetNodeCount := target.dataNodeCount()
+	if targetNodeCount >= target.Capacity {
+		err = fmt.Errorf("action[adjustNodeSetForDataNode] target count[%v] no more space for new node", targetNodeCount)
+		return
+	}
+	oldNodeSetID := dataNode.NodeSetID
+	dataNode.NodeSetID = target.ID
+	if err = c.syncUpdateDataNode(dataNode); err != nil {
+		dataNode.NodeSetID = oldNodeSetID
+		err = fmt.Errorf("action[adjustNodeSetForDataNode] syncUpdateDataNode node[%v] err[%v]", dataNode.Addr, err)
+		return
+	}
+	source.deleteDataNode(dataNode)
+	target.putDataNode(dataNode)
+	return
+}
+
+func (c *Cluster) adjustNodeSetForMetaNode(zoneName, metaNodeAddr string, sourceID, targetID uint64) (err error) {
+	var (
+		source, target *nodeSet
+		metaNode       *MetaNode
+		zone           *Zone
+	)
+	if zone, err = c.t.getZone(zoneName); err != nil {
+		return
+	}
+	if source, err = zone.getNodeSet(sourceID); err != nil {
+		return
+	}
+	if source.metaNodeCount() == 0 {
+		err = fmt.Errorf("action[adjustNodeSetForMetaNode] space err, source count is 0")
+		return
+	}
+	if target, err = zone.getNodeSet(targetID); err != nil {
+		return
+	}
+	if source.zoneName != target.zoneName || sourceID == targetID {
+		err = fmt.Errorf("action[adjustNodeSetForMetaNode] zoneName[%v,%v] not same or sourceID[%v] equal to targetID[%v]",
+			source.zoneName, target.zoneName, sourceID, targetID)
+		return
+	}
+	// select one node from source node set
+	if metaNodeAddr == "" {
+		source.metaNodes.Range(func(key, value interface{}) bool {
+			metaNodeAddr = key.(string)
+			return false
+		})
+	}
+	if metaNode, err = zone.getMetaNode(metaNodeAddr); err != nil {
+		return
+	}
+	// start merge
+	zone.nsLock.Lock()
+	defer zone.nsLock.Unlock()
+	if metaNode.NodeSetID != source.ID {
+		err = fmt.Errorf("action[adjustNodeSetForMetaNode] metaNode NodeSetID[%v] and sourceID[%v] not equal", metaNode.NodeSetID, source.ID)
+		return
+	}
+	targetNodeCount := target.metaNodeCount()
+	if targetNodeCount >= target.Capacity {
+		err = fmt.Errorf("action[adjustNodeSetForMetaNode] target count[%v] no more space for new node", targetNodeCount)
+		return
+	}
+	oldNodeSetID := metaNode.NodeSetID
+	metaNode.NodeSetID = target.ID
+	if err = c.syncUpdateMetaNode(metaNode); err != nil {
+		metaNode.NodeSetID = oldNodeSetID
+		err = fmt.Errorf("action[adjustNodeSetForMetaNode] syncUpdateMetaNode node[%v] err[%v]", metaNode.Addr, err)
+		return
+	}
+	source.deleteMetaNode(metaNode)
+	target.putMetaNode(metaNode)
+	return
+}
+
+
 func (c *Cluster) removePromotedLearners(mp *MetaPartition, isLearner bool, nodeID uint64) {
 	mp.Lock()
 	defer mp.Unlock()

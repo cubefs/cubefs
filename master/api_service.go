@@ -197,6 +197,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		Name:                   m.cluster.Name,
 		LeaderAddr:             m.leaderInfo.addr,
 		DisableAutoAlloc:       m.cluster.DisableAutoAllocate,
+		AutoMergeNodeSet:       m.cluster.AutoMergeNodeSet,
 		MetaNodeThreshold:      m.cluster.cfg.MetaNodeThreshold,
 		DpRecoverPool:          m.cluster.cfg.DataPartitionsRecoverPoolSize,
 		MpRecoverPool:          m.cluster.cfg.MetaPartitionsRecoverPoolSize,
@@ -743,6 +744,100 @@ func parseRequestToSetNodeToOfflineState(r *http.Request) (startID, endID uint64
 		return
 	}
 	state, err = strconv.ParseBool(r.FormValue(stateKey))
+	return
+}
+
+func (m *Server) setupAutoMergeNodeSet(w http.ResponseWriter, r *http.Request) {
+	var (
+		status bool
+		err    error
+	)
+	if status, err = parseAndExtractStatus(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	m.cluster.AutoMergeNodeSet = status
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set setupAutoMergeNodeSet to %v successfully", status)))
+}
+
+func (m *Server) mergeNodeSet(w http.ResponseWriter, r *http.Request) {
+	var (
+		err        error
+		zoneName   string
+		nodeType   string
+		sourceID   uint64
+		targetID   uint64
+		nodeAddr   string
+		count      int
+		successNum int
+	)
+	if zoneName, nodeType, nodeAddr, sourceID, targetID, count, err = parseRequestToMergeNodeSet(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if nodeType == nodeTypeDataNode {
+		for i := 0; i < count; i++ {
+			if err = m.cluster.adjustNodeSetForDataNode(zoneName, nodeAddr, sourceID, targetID); err != nil {
+				break
+			}
+			successNum++
+		}
+	} else if nodeType == nodeTypeMetaNode {
+		for i := 0; i < count; i++ {
+			if err = m.cluster.adjustNodeSetForMetaNode(zoneName, nodeAddr, sourceID, targetID); err != nil {
+				break
+			}
+			successNum++
+		}
+	}
+	msg := fmt.Sprintf("type[%v], sourceID[%v], targetID[%v] success num[%v]", nodeType, sourceID, targetID, successNum)
+	if err != nil {
+		msg = fmt.Sprintf("type[%v], sourceID[%v], targetID[%v] success num[%v] err[%v]", nodeType, sourceID, targetID, successNum, err)
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func parseRequestToMergeNodeSet(r *http.Request) (zoneName, nodeType, nodeAddr string, sourceID, targetID uint64, count int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if zoneName, err = extractZoneName(r); err != nil {
+		return
+	}
+	nodeType = r.FormValue(nodeTypeKey)
+	if !(nodeType == nodeTypeDataNode || nodeType == nodeTypeMetaNode) {
+		err = fmt.Errorf("nodeType must be dataNode or metaNode ")
+		return
+	}
+	nodeAddr = r.FormValue(addrKey)
+
+	var value string
+	if value = r.FormValue(sourceKey); value == "" {
+		err = keyNotFound(sourceKey)
+		return
+	}
+	if sourceID, err = strconv.ParseUint(value, 10, 64); err != nil {
+		return
+	}
+	if value = r.FormValue(targetKey); value == "" {
+		err = keyNotFound(targetKey)
+		return
+	}
+	if targetID, err = strconv.ParseUint(value, 10, 64); err != nil {
+		return
+	}
+	if nodeAddr != "" {
+		count = 1
+		return
+	}
+	if value = r.FormValue(countKey); value == "" && nodeAddr == "" {
+		err = keyNotFound(countKey)
+		return
+	}
+	if count, err = strconv.Atoi(value); err != nil || count <= 0 {
+		err = fmt.Errorf("count should more than 0 ")
+		return
+	}
 	return
 }
 
