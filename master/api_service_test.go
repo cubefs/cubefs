@@ -112,6 +112,7 @@ func createDefaultMasterServerForTest() *Server {
 	testServer.cluster.cfg.MetaPartitionsRecoverPoolSize = maxMetaPartitionsRecoverPoolSize
 	testServer.cluster.checkDataNodeHeartbeat()
 	testServer.cluster.checkMetaNodeHeartbeat()
+	testServer.cluster.cfg.nodeSetCapacity = defaultNodeSetCapacity
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
 	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 100, false, false, false, false)
@@ -976,4 +977,131 @@ func TestListUsersOfVol(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.UsersOfVol, "test_create_vol")
 	fmt.Println(reqURL)
 	process(reqURL, t)
+}
+
+func TestMergeNodeSetAPI(t *testing.T) {
+	topo := server.cluster.t
+	zoneNodeSet1 := newZone("zone-ns1")
+	nodeSet1 := newNodeSet(501, 18, zoneNodeSet1.name)
+	nodeSet2 := newNodeSet(502, 18, zoneNodeSet1.name)
+	zoneNodeSet1.putNodeSet(nodeSet1)
+	zoneNodeSet1.putNodeSet(nodeSet2)
+	topo.putZone(zoneNodeSet1)
+	topo.putDataNode(createDataNodeForNodeSet(mds6Addr, zoneNodeSet1.name, server.cluster.Name, nodeSet1))
+	topo.putDataNode(createDataNodeForNodeSet(mds7Addr, zoneNodeSet1.name, server.cluster.Name, nodeSet1))
+	topo.putDataNode(createDataNodeForNodeSet(mds8Addr, zoneNodeSet1.name, server.cluster.Name, nodeSet1))
+	topo.putDataNode(createDataNodeForNodeSet(mds9Addr, zoneNodeSet1.name, server.cluster.Name, nodeSet1))
+	topo.putMetaNode(createMetaNodeForNodeSet(mms6Addr, zoneNodeSet1.name, server.cluster.Name, nodeSet1))
+	topo.putMetaNode(createMetaNodeForNodeSet(mms7Addr, zoneNodeSet1.name, server.cluster.Name, nodeSet1))
+	topo.putMetaNode(createMetaNodeForNodeSet(mms8Addr, zoneNodeSet1.name, server.cluster.Name, nodeSet1))
+	topo.putMetaNode(createMetaNodeForNodeSet(mms9Addr, zoneNodeSet1.name, server.cluster.Name, nodeSet1))
+
+	// with node addr
+	fmt.Printf("before merge dataNode [nodeSet:dataNodeCount] [%v:%v],[%v:%v]\n", nodeSet1.ID, nodeSet1.dataNodeCount(), nodeSet2.ID, nodeSet2.dataNodeCount())
+	reqURL := fmt.Sprintf("%v%v?nodeType=%v&zoneName=%v&source=%v&target=%v&addr=%v", hostAddr, proto.AdminMergeNodeSet,
+		"dataNode", zoneNodeSet1.name, nodeSet1.ID, nodeSet2.ID, mds6Addr)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	fmt.Printf("after merge dataNode [nodeSet:dataNodeCount] [%v:%v],[%v:%v]\n", nodeSet1.ID, nodeSet1.dataNodeCount(), nodeSet2.ID, nodeSet2.dataNodeCount())
+	_, existInNodeSet1 := nodeSet1.dataNodes.Load(mds6Addr)
+	_, existInNodeSet2 := nodeSet1.dataNodes.Load(mds6Addr)
+	fmt.Printf("node:%v,existInNodeSet1:%v,existInNodeSet2:%v\n", mds6Addr, existInNodeSet1, existInNodeSet2)
+
+	fmt.Printf("before merge metaNode [nodeSet:dataNodeCount] [%v:%v],[%v:%v]\n", nodeSet1.ID, nodeSet1.dataNodeCount(), nodeSet2.ID, nodeSet2.dataNodeCount())
+	reqURL = fmt.Sprintf("%v%v?nodeType=%v&zoneName=%v&source=%v&target=%v&addr=%v", hostAddr, proto.AdminMergeNodeSet,
+		"metaNode", zoneNodeSet1.name, nodeSet1.ID, nodeSet2.ID, mms9Addr)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	fmt.Printf("after merge metaNode [nodeSet:dataNodeCount] [%v:%v],[%v:%v]\n", nodeSet1.ID, nodeSet1.dataNodeCount(), nodeSet2.ID, nodeSet2.dataNodeCount())
+	_, existInNodeSet1 = nodeSet1.metaNodes.Load(mms9Addr)
+	_, existInNodeSet2 = nodeSet1.metaNodes.Load(mms9Addr)
+	fmt.Printf("node:%v,existInNodeSet1:%v,existInNodeSet2:%v\n", mms9Addr, existInNodeSet1, existInNodeSet2)
+
+	// with count
+	fmt.Printf("before batch merge dataNode [nodeSet:dataNodeCount] [%v:%v],[%v:%v]\n", nodeSet1.ID, nodeSet1.dataNodeCount(), nodeSet2.ID, nodeSet2.dataNodeCount())
+	reqURL = fmt.Sprintf("%v%v?nodeType=%v&zoneName=%v&source=%v&target=%v&count=2", hostAddr, proto.AdminMergeNodeSet,
+		"dataNode", zoneNodeSet1.name, nodeSet1.ID, nodeSet2.ID)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	fmt.Printf("after batch merge dataNode [nodeSet:dataNodeCount] [%v:%v],[%v:%v]\n", nodeSet1.ID, nodeSet1.dataNodeCount(), nodeSet2.ID, nodeSet2.dataNodeCount())
+
+	fmt.Printf("before batch merge metaNode [nodeSet:metaNodeCount] [%v:%v],[%v:%v]\n", nodeSet1.ID, nodeSet1.metaNodeCount(), nodeSet2.ID, nodeSet2.metaNodeCount())
+	reqURL = fmt.Sprintf("%v%v?nodeType=%v&zoneName=%v&source=%v&target=%v&count=9", hostAddr, proto.AdminMergeNodeSet,
+		"metaNode", zoneNodeSet1.name, nodeSet1.ID, nodeSet2.ID)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	fmt.Printf("after batch merge metaNode [nodeSet:metaNodeCount] [%v:%v],[%v:%v]\n", nodeSet1.ID, nodeSet1.metaNodeCount(), nodeSet2.ID, nodeSet2.metaNodeCount())
+
+}
+
+func TestCheckMergeZoneNodeset(t *testing.T) {
+	// test merge node set of zone automatically
+	topo := server.cluster.t
+	clusterID := server.cluster.Name
+	zoneNodeSet1, err := topo.getZone("zone-ns1")
+	if err != nil {
+		t.Errorf("topo getZone err:%v", err)
+	}
+	nodeSet3 := newNodeSet(503, 18, zoneNodeSet1.name)
+	zoneNodeSet1.putNodeSet(nodeSet3)
+	batchCreateDataNodeForNodeSet(topo, nodeSet3, zoneNodeSet1.name, clusterID, "127.0.0.1:3", 3)
+	batchCreateMetaNodeForNodeSet(topo, nodeSet3, zoneNodeSet1.name, clusterID, "127.0.0.1:3", 18)
+
+	nodeSet4 := newNodeSet(504, 18, zoneNodeSet1.name)
+	zoneNodeSet1.putNodeSet(nodeSet4)
+	batchCreateDataNodeForNodeSet(topo, nodeSet4, zoneNodeSet1.name, clusterID, "127.0.0.1:4", 9)
+	batchCreateMetaNodeForNodeSet(topo, nodeSet4, zoneNodeSet1.name, clusterID, "127.0.0.1:4", 8)
+
+	zoneNodeSet2 := newZone("zone-ns2")
+	nodeSet21 := newNodeSet(521, 18, zoneNodeSet2.name)
+	nodeSet22 := newNodeSet(522, 18, zoneNodeSet2.name)
+	nodeSet23 := newNodeSet(523, 18, zoneNodeSet2.name)
+	nodeSet24 := newNodeSet(524, 18, zoneNodeSet2.name)
+	nodeSet25 := newNodeSet(525, 18, zoneNodeSet2.name)
+	nodeSet26 := newNodeSet(526, 18, zoneNodeSet2.name)
+	nodeSet27 := newNodeSet(527, 18, zoneNodeSet2.name)
+	nodeSet28 := newNodeSet(528, 18, zoneNodeSet2.name)
+	nodeSet29 := newNodeSet(529, 18, zoneNodeSet2.name)
+	zoneNodeSet2.putNodeSet(nodeSet21)
+	zoneNodeSet2.putNodeSet(nodeSet22)
+	zoneNodeSet2.putNodeSet(nodeSet23)
+	zoneNodeSet2.putNodeSet(nodeSet24)
+	zoneNodeSet2.putNodeSet(nodeSet25)
+	zoneNodeSet2.putNodeSet(nodeSet26)
+	zoneNodeSet2.putNodeSet(nodeSet27)
+	zoneNodeSet2.putNodeSet(nodeSet28)
+	zoneNodeSet2.putNodeSet(nodeSet29)
+	topo.putZone(zoneNodeSet2)
+	batchCreateDataNodeForNodeSet(topo, nodeSet21, zoneNodeSet2.name, clusterID, "127.0.0.1:21", 18)
+	batchCreateDataNodeForNodeSet(topo, nodeSet22, zoneNodeSet2.name, clusterID, "127.0.0.1:22", 17)
+	batchCreateDataNodeForNodeSet(topo, nodeSet23, zoneNodeSet2.name, clusterID, "127.0.0.1:23", 3)
+	batchCreateDataNodeForNodeSet(topo, nodeSet24, zoneNodeSet2.name, clusterID, "127.0.0.1:24", 1)
+	batchCreateDataNodeForNodeSet(topo, nodeSet25, zoneNodeSet2.name, clusterID, "127.0.0.1:25", 1)
+	batchCreateDataNodeForNodeSet(topo, nodeSet26, zoneNodeSet2.name, clusterID, "127.0.0.1:26", 2)
+	batchCreateMetaNodeForNodeSet(topo, nodeSet21, zoneNodeSet2.name, clusterID, "127.0.0.1:221", 3)
+	batchCreateMetaNodeForNodeSet(topo, nodeSet22, zoneNodeSet2.name, clusterID, "127.0.0.1:222", 4)
+	batchCreateMetaNodeForNodeSet(topo, nodeSet24, zoneNodeSet2.name, clusterID, "127.0.0.1:223", 5)
+	batchCreateMetaNodeForNodeSet(topo, nodeSet25, zoneNodeSet2.name, clusterID, "127.0.0.1:224", 8)
+	batchCreateMetaNodeForNodeSet(topo, nodeSet26, zoneNodeSet2.name, clusterID, "127.0.0.1:225", 8)
+	batchCreateMetaNodeForNodeSet(topo, nodeSet27, zoneNodeSet2.name, clusterID, "127.0.0.1:226", 9)
+	batchCreateMetaNodeForNodeSet(topo, nodeSet28, zoneNodeSet2.name, clusterID, "127.0.0.1:227", 15)
+	batchCreateMetaNodeForNodeSet(topo, nodeSet29, zoneNodeSet2.name, clusterID, "127.0.0.1:228", 13)
+
+	fmt.Println("before auto merge, nodeSetCapacity:", server.cluster.cfg.nodeSetCapacity)
+	getZoneNodeSetStatus(zoneNodeSet1)
+	getZoneNodeSetStatus(zoneNodeSet2)
+	server.cluster.checkMergeZoneNodeset()
+	fmt.Println("after auto merge ")
+	getZoneNodeSetStatus(zoneNodeSet1)
+	getZoneNodeSetStatus(zoneNodeSet2)
+	fmt.Println("before auto merge with many times, nodeSetCapacity:", server.cluster.cfg.nodeSetCapacity)
+	getZoneNodeSetStatus(zoneNodeSet1)
+	getZoneNodeSetStatus(zoneNodeSet2)
+	for i := 0; i < 30; i++ {
+		server.cluster.checkMergeZoneNodeset()
+	}
+	fmt.Println("after auto merge with many times")
+	getZoneNodeSetStatus(zoneNodeSet1)
+	getZoneNodeSetStatus(zoneNodeSet2)
+
 }

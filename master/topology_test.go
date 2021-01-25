@@ -3,6 +3,7 @@ package master
 import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/util"
+	"strings"
 	"testing"
 	"time"
 )
@@ -17,6 +18,61 @@ func createDataNodeForTopo(addr, zoneName string, ns *nodeSet) (dn *DataNode) {
 	dn.ReportTime = time.Now()
 	dn.isActive = true
 	dn.NodeSetID = ns.ID
+	return
+}
+
+func getZoneNodeSetStatus(zone *Zone) {
+	zone.nsLock.RLock()
+	defer zone.nsLock.RUnlock()
+	dataNodeSb := new(strings.Builder)
+	metaNodeSb := new(strings.Builder)
+	dataNodeSb.WriteString(fmt.Sprintf("zone:%v  datanodeCount info ", zone.name))
+	metaNodeSb.WriteString(fmt.Sprintf("zone:%v  metanodeCount info ", zone.name))
+	for _, ns := range zone.nodeSetMap {
+		dataNodeSb.WriteString(fmt.Sprintf(" ns:%v:%v ", ns.ID, ns.dataNodeLen()))
+		metaNodeSb.WriteString(fmt.Sprintf(" ns:%v:%v ", ns.ID, ns.metaNodeLen()))
+	}
+	fmt.Println(dataNodeSb.String())
+	fmt.Println(metaNodeSb.String())
+}
+func batchCreateDataNodeForNodeSet(topo *topology, ns *nodeSet, zoneName, clusterID, baseAddr string, count int) {
+	if count > ns.Capacity-ns.dataNodeCount() {
+		count = ns.Capacity - ns.dataNodeCount()
+	}
+	for i := 0; i < count; i++ {
+		topo.putDataNode(createDataNodeForNodeSet(fmt.Sprintf("%v%v", baseAddr, i), zoneName, clusterID, ns))
+	}
+}
+func batchCreateMetaNodeForNodeSet(topo *topology, ns *nodeSet, zoneName, clusterID, baseAddr string, count int) {
+	if count > ns.Capacity-ns.metaNodeCount() {
+		count = ns.Capacity - ns.metaNodeCount()
+	}
+	for i := 0; i < count; i++ {
+		topo.putMetaNode(createMetaNodeForNodeSet(fmt.Sprintf("%v%v", baseAddr, i), zoneName, clusterID, ns))
+	}
+}
+func createDataNodeForNodeSet(addr, zoneName, clusterID string, ns *nodeSet) (dn *DataNode) {
+	dn = newDataNode(addr, zoneName, clusterID)
+	dn.ZoneName = zoneName
+	dn.Total = 1024 * util.GB
+	dn.Used = 10 * util.GB
+	dn.AvailableSpace = 1024 * util.GB
+	dn.Carry = 0.9
+	dn.ReportTime = time.Now()
+	dn.isActive = true
+	dn.NodeSetID = ns.ID
+	return
+}
+
+func createMetaNodeForNodeSet(addr, zoneName, clusterID string, ns *nodeSet) (mn *MetaNode) {
+	mn = newMetaNode(addr, zoneName, clusterID)
+	mn.ZoneName = zoneName
+	mn.Total = 1024 * util.GB
+	mn.Used = 10 * util.GB
+	mn.Carry = 0.9
+	mn.ReportTime = time.Now()
+	mn.IsActive = true
+	mn.NodeSetID = ns.ID
 	return
 }
 
