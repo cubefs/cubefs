@@ -60,6 +60,8 @@ const (
 	mpRecoverPoolSizeKey    = "mpRecoverPool"
 	dpSelectorNameKey       = "dpSelectorName"
 	dpSelectorParmKey       = "dpSelectorParm"
+	sourceKey               = "source"
+	targetKey               = "target"
 	autoKey                 = "auto"
 )
 
@@ -113,6 +115,7 @@ const (
 	defaultRecoverPoolSize                       = -1
 	maxDataPartitionsRecoverPoolSize             = 50
 	maxMetaPartitionsRecoverPoolSize             = 30
+	defaultMinusOfNodeSetCount                   = 3
 	defaultLearnerPromThreshold                  = 90
 )
 

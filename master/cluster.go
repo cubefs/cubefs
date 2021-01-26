@@ -54,6 +54,7 @@ type Cluster struct {
 	MigratedMetaPartitionIds  *sync.Map
 	MigratedDataPartitionIds  *sync.Map
 	DisableAutoAllocate       bool
+	AutoMergeNodeSet          bool
 	fsm                       *MetadataFsm
 	partition                 raftstore.Partition
 	MasterSecretKey           []byte
@@ -119,6 +120,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToReduceReplicaNum()
 	c.scheduleToRepairMultiZoneMetaPartitions()
 	c.scheduleToRepairMultiZoneDataPartitions()
+	c.scheduleToMergeZoneNodeset()
 
 }
 
@@ -2699,4 +2701,32 @@ func (c *Cluster) syncDataPartitionReplicasToDataNode(dp *DataPartition) {
 		}(host, dp)
 	}
 	wg.Wait()
+}
+
+func (c *Cluster) scheduleToMergeZoneNodeset() {
+	go func() {
+		for {
+			if c.partition != nil && c.partition.IsRaftLeader() {
+				if c.AutoMergeNodeSet {
+					c.checkMergeZoneNodeset()
+				}
+			}
+			time.Sleep(24 * time.Hour)
+		}
+	}()
+}
+
+func (c *Cluster) checkMergeZoneNodeset() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("checkMergeZoneNodeset occurred panic,err[%v]", r)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+				"checkMergeZoneNodeset occurred panic")
+		}
+	}()
+	zones := c.t.getAllZones()
+	for _, zone := range zones {
+		zone.mergeNodeSetForMetaNode(c)
+		zone.mergeNodeSetForDataNode(c)
+	}
 }

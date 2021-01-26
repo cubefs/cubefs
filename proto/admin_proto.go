@@ -40,6 +40,8 @@ const (
 	AdminSetNodeInfo               = "/admin/setNodeInfo"
 	AdminGetNodeInfo               = "/admin/getNodeInfo"
 	AdminSetNodeState              = "/admin/setNodeState"
+	AdminMergeNodeSet              = "/admin/mergeNodeSet"
+	AdminClusterAutoMergeNodeSet   = "/cluster/autoMergeNodeSet"
 
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"

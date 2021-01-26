@@ -187,6 +187,20 @@ func (nsc nodeSetCollection) Swap(i, j int) {
 	nsc[i], nsc[j] = nsc[j], nsc[i]
 }
 
+type nodeSetCollectionForDataNode []*nodeSet
+
+func (nsc nodeSetCollectionForDataNode) Len() int {
+	return len(nsc)
+}
+
+func (nsc nodeSetCollectionForDataNode) Less(i, j int) bool {
+	return nsc[i].dataNodeLen() < nsc[j].dataNodeLen()
+}
+
+func (nsc nodeSetCollectionForDataNode) Swap(i, j int) {
+	nsc[i], nsc[j] = nsc[j], nsc[i]
+}
+
 type nodeSet struct {
 	ID        uint64
 	Capacity  int
@@ -446,6 +460,15 @@ func (ns *nodeSet) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) 
 	return getAvailHosts(ns.dataNodes, excludeHosts, replicaNum, selectDataNode)
 }
 
+func (ns *nodeSet) metaNodeCount() int {
+	var count int
+	ns.metaNodes.Range(func(key, value interface{}) bool {
+		count++
+		return true
+	})
+	return count
+}
+
 // Zone stores all the zone related information
 type Zone struct {
 	name                string
@@ -535,6 +558,16 @@ func (zone *Zone) getAllNodeSet() (nsc nodeSetCollection) {
 	return
 }
 
+func (zone *Zone) getAllNodeSetForDataNode() (nsc nodeSetCollectionForDataNode) {
+	zone.nsLock.RLock()
+	defer zone.nsLock.RUnlock()
+	nsc = make(nodeSetCollectionForDataNode, 0)
+	for _, ns := range zone.nodeSetMap {
+		nsc = append(nsc, ns)
+	}
+	return
+}
+
 func (zone *Zone) getAvailNodeSetForMetaNode() (nset *nodeSet) {
 	allNodeSet := zone.getAllNodeSet()
 	sort.Sort(sort.Reverse(allNodeSet))
@@ -548,7 +581,8 @@ func (zone *Zone) getAvailNodeSetForMetaNode() (nset *nodeSet) {
 }
 
 func (zone *Zone) getAvailNodeSetForDataNode() (nset *nodeSet) {
-	allNodeSet := zone.getAllNodeSet()
+	allNodeSet := zone.getAllNodeSetForDataNode()
+	sort.Sort(sort.Reverse(allNodeSet))
 	for _, ns := range allNodeSet {
 		if ns.dataNodeLen() < ns.Capacity {
 			nset = ns
@@ -597,6 +631,16 @@ func (zone *Zone) putMetaNode(metaNode *MetaNode) (err error) {
 	zone.metaNodes.Store(metaNode.Addr, metaNode)
 	return
 }
+
+func (zone *Zone) getMetaNode(addr string) (metaNode *MetaNode, err error) {
+	value, ok := zone.metaNodes.Load(addr)
+	if !ok {
+		return nil, errors.Trace(metaNodeNotFound(addr), "%v not found", addr)
+	}
+	metaNode = value.(*MetaNode)
+	return
+}
+
 
 func (zone *Zone) deleteMetaNode(metaNode *MetaNode) (err error) {
 	ns, err := zone.getNodeSet(metaNode.NodeSetID)
@@ -736,5 +780,188 @@ func (zone *Zone) dataNodeCount() (len int) {
 		len++
 		return true
 	})
+	return
+}
+
+// 1.get all node set with avail space then sort them
+// 2.if only get two node set and the sum of their nodes more than 18(c.cfg.nodeSetCapacity),
+// if less than min count or the difference between the number of their nodes large than defaultMinusOfNodeSetCount,average distribution them
+// 3.fill large mode set by merging node from small node set to large node set
+// 4.if there is one node set less than c.cfg.nodeSetCapacity/2 -1, get the largest node set and average distribution them
+func (zone *Zone) mergeNodeSetForMetaNode(c *Cluster) {
+	if zone.isSingleNodeSet() {
+		return
+	}
+	nsc := make(nodeSetCollection, 0)
+	zone.nsLock.RLock()
+	for _, ns := range zone.nodeSetMap {
+		if ns.metaNodeLen() == 0 || ns.metaNodeLen() >= ns.Capacity {
+			continue
+		}
+		nsc = append(nsc, ns)
+	}
+	zone.nsLock.RUnlock()
+	sort.Sort(nsc)
+	if len(nsc) == 0 {
+		return
+	}
+	minNodeSetCount := c.cfg.nodeSetCapacity/2 - 1
+	if len(nsc) == 2 && nsc[0].metaNodeLen()+nsc[1].metaNodeLen() > c.cfg.nodeSetCapacity {
+		minusNodeCount := nsc[1].metaNodeLen() - nsc[0].metaNodeLen()
+		if nsc[0].metaNodeLen() < minNodeSetCount || minusNodeCount > defaultMinusOfNodeSetCount {
+			// Average distribution, merge node from large to small
+			avgCount := (nsc[0].metaNodeLen() + nsc[1].metaNodeLen()) / 2
+			successNum, err := zone.batchMergeNodeSetForMetaNode(c, avgCount-nsc[0].metaNodeLen(), nsc[1].ID, nsc[0].ID)
+			if err != nil {
+				log.LogErrorf("action[mergeNodeSetForMetaNode] repair two ns sourceID[%v], targetID[%v] success num[%v] err[%v]", nsc[1].ID, nsc[0].ID, successNum, err)
+				return
+			}
+			log.LogWarnf("action[mergeNodeSetForMetaNode] repair two ns sourceID[%v], targetID[%v] success num[%v] ", nsc[1].ID, nsc[0].ID, successNum)
+		}
+		return
+	}
+
+	small := 0
+	large := len(nsc) - 1
+	for small < large {
+		if nsc[small].metaNodeLen() == 0 {
+			small++
+			continue
+		}
+		if nsc[large].metaNodeLen() >= nsc[large].Capacity {
+			large--
+			continue
+		}
+		count := nsc[small].metaNodeLen()
+		lackCount := nsc[large].Capacity - nsc[large].metaNodeLen()
+		if count > lackCount {
+			count = lackCount
+		}
+		successNum, err := zone.batchMergeNodeSetForMetaNode(c, count, nsc[small].ID, nsc[large].ID)
+		if err != nil {
+			log.LogErrorf("action[mergeNodeSetForMetaNode] fill large ns sourceID[%v] targetID[%v] success num[%v] err[%v]", nsc[small].ID, nsc[large].ID, successNum, err)
+			return
+		}
+		log.LogWarnf("action[mergeNodeSetForMetaNode] fill large ns sourceID[%v] targetID[%v] success num[%v]", nsc[small].ID, nsc[large].ID, successNum)
+	}
+
+	if nsc[small].metaNodeLen() < minNodeSetCount && nsc[small].metaNodeLen() != 0 {
+		allNodeSet := zone.getAllNodeSet()
+		sort.Sort(sort.Reverse(allNodeSet))
+		if len(allNodeSet) == 0 {
+			return
+		}
+		largestNodeSet := allNodeSet[0]
+		// if can be merged to one node set or node set is same, return
+		if largestNodeSet.ID == nsc[small].ID || largestNodeSet.metaNodeLen()+nsc[small].metaNodeLen() <= largestNodeSet.Capacity {
+			return
+		}
+		avgCount := (nsc[small].metaNodeLen() + largestNodeSet.metaNodeLen()) / 2
+		successNum, err := zone.batchMergeNodeSetForMetaNode(c, avgCount-nsc[small].metaNodeLen(), largestNodeSet.ID, nsc[small].ID)
+		if err != nil {
+			log.LogErrorf("action[mergeNodeSetForMetaNode] repair too small ns sourceID[%v], targetID[%v] success num[%v] err[%v]", largestNodeSet.ID, nsc[small].ID, successNum, err)
+			return
+		}
+		log.LogWarnf("action[mergeNodeSetForMetaNode] repair too small ns sourceID[%v], targetID[%v] success num[%v] ", largestNodeSet.ID, nsc[small].ID, successNum)
+	}
+	return
+}
+
+func (zone *Zone) mergeNodeSetForDataNode(c *Cluster) {
+	if zone.isSingleNodeSet() {
+		return
+	}
+	nsc := make(nodeSetCollectionForDataNode, 0)
+	zone.nsLock.RLock()
+	for _, ns := range zone.nodeSetMap {
+		if ns.dataNodeLen() == 0 || ns.dataNodeLen() >= ns.Capacity {
+			continue
+		}
+		nsc = append(nsc, ns)
+	}
+	zone.nsLock.RUnlock()
+	sort.Sort(nsc)
+	if len(nsc) == 0 {
+		return
+	}
+	minNodeSetCount := c.cfg.nodeSetCapacity/2 - 1
+	if len(nsc) == 2 && nsc[0].dataNodeLen()+nsc[1].dataNodeLen() > c.cfg.nodeSetCapacity {
+		minusNodeCount := nsc[1].dataNodeLen() - nsc[0].dataNodeLen()
+		if nsc[0].dataNodeLen() < minNodeSetCount || minusNodeCount > defaultMinusOfNodeSetCount {
+			// Average distribution, merge node from large to small
+			avgCount := (nsc[0].dataNodeLen() + nsc[1].dataNodeLen()) / 2
+			successNum, err := zone.batchMergeNodeSetForDataNode(c, avgCount-nsc[0].dataNodeLen(), nsc[1].ID, nsc[0].ID)
+			if err != nil {
+				log.LogErrorf("action[mergeNodeSetForDataNode] repair two ns sourceID[%v], targetID[%v] success num[%v] err[%v]", nsc[1].ID, nsc[0].ID, successNum, err)
+				return
+			}
+			log.LogWarnf("action[mergeNodeSetForDataNode] repair two ns sourceID[%v], targetID[%v] success num[%v] ", nsc[1].ID, nsc[0].ID, successNum)
+		}
+		return
+	}
+
+	small := 0
+	large := len(nsc) - 1
+	for small < large {
+		if nsc[small].dataNodeLen() == 0 {
+			small++
+			continue
+		}
+		if nsc[large].dataNodeLen() >= nsc[large].Capacity {
+			large--
+			continue
+		}
+		count := nsc[small].dataNodeLen()
+		lackCount := nsc[large].Capacity - nsc[large].dataNodeLen()
+		if count > lackCount {
+			count = lackCount
+		}
+		successNum, err := zone.batchMergeNodeSetForDataNode(c, count, nsc[small].ID, nsc[large].ID)
+		if err != nil {
+			log.LogErrorf("action[mergeNodeSetForDataNode] fill large ns sourceID[%v] targetID[%v] success num[%v] err[%v]", nsc[small].ID, nsc[large].ID, successNum, err)
+			return
+		}
+		log.LogWarnf("action[mergeNodeSetForDataNode] fill large ns sourceID[%v] targetID[%v] success num[%v]", nsc[small].ID, nsc[large].ID, successNum)
+	}
+
+	if nsc[small].dataNodeLen() < minNodeSetCount && nsc[small].dataNodeLen() != 0 {
+		allNodeSet := zone.getAllNodeSetForDataNode()
+		sort.Sort(sort.Reverse(allNodeSet))
+		if len(allNodeSet) == 0 {
+			return
+		}
+		largestNodeSet := allNodeSet[0]
+		// if can be merged to one node set or node set is same, return
+		if largestNodeSet.ID == nsc[small].ID || largestNodeSet.dataNodeLen()+nsc[small].dataNodeLen() <= largestNodeSet.Capacity {
+			return
+		}
+		avgCount := (nsc[small].dataNodeLen() + largestNodeSet.dataNodeLen()) / 2
+		successNum, err := zone.batchMergeNodeSetForDataNode(c, avgCount-nsc[small].dataNodeLen(), largestNodeSet.ID, nsc[small].ID)
+		if err != nil {
+			log.LogErrorf("action[mergeNodeSetForDataNode] repair too small ns sourceID[%v], targetID[%v] success num[%v] err[%v]", largestNodeSet.ID, nsc[small].ID, successNum, err)
+			return
+		}
+		log.LogWarnf("action[mergeNodeSetForDataNode] repair too small ns sourceID[%v], targetID[%v] success num[%v] ", largestNodeSet.ID, nsc[small].ID, successNum)
+	}
+	return
+}
+
+func (zone *Zone) batchMergeNodeSetForMetaNode(c *Cluster, count int, sourceID, targetID uint64) (successNum int, err error) {
+	for i := 0; i < count; i++ {
+		if err = c.adjustNodeSetForMetaNode(zone.name, "", sourceID, targetID); err != nil {
+			return
+		}
+		successNum++
+	}
+	return
+}
+
+func (zone *Zone) batchMergeNodeSetForDataNode(c *Cluster, count int, sourceID, targetID uint64) (successNum int, err error) {
+	for i := 0; i < count; i++ {
+		if err = c.adjustNodeSetForDataNode(zone.name, "", sourceID, targetID); err != nil {
+			return
+		}
+		successNum++
+	}
 	return
 }
