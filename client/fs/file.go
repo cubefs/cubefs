@@ -89,6 +89,10 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	return nil
 }
 
+func (f *File) NodeID() uint64 {
+	return f.info.Inode
+}
+
 // Forget evicts the inode of the current file. This can only happen when the inode is on the orphan list.
 func (f *File) Forget() {
 	ino := f.info.Inode
@@ -97,10 +101,6 @@ func (f *File) Forget() {
 	}()
 
 	f.super.ic.Delete(ino)
-
-	f.super.fslock.Lock()
-	delete(f.super.nodeCache, ino)
-	f.super.fslock.Unlock()
 
 	if err := f.super.ec.EvictStream(ino); err != nil {
 		log.LogWarnf("Forget: stream not ready to evict, ino(%v) err(%v)", ino, err)

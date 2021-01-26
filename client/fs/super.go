@@ -19,7 +19,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"golang.org/x/net/context"
@@ -47,8 +46,8 @@ type Super struct {
 	enSyncWrite bool
 	keepCache   bool
 
-	nodeCache map[uint64]fs.Node
-	fslock    sync.Mutex
+	//nodeCache map[uint64]fs.Node
+	//fslock    sync.Mutex
 
 	disableDcache bool
 	fsyncOnClose  bool
@@ -117,7 +116,6 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	}
 	s.keepCache = opt.KeepCache
 	s.orphan = NewOrphanInodeList()
-	s.nodeCache = make(map[uint64]fs.Node)
 	s.disableDcache = opt.DisableDcache
 	s.fsyncOnClose = opt.FsyncOnClose
 	s.enableXattr = opt.EnableXattr

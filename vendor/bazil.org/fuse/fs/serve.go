@@ -107,6 +107,7 @@ type Node interface {
 	//
 	// The result may be cached for the duration set in Valid.
 	Attr(ctx context.Context, attr *fuse.Attr) error
+	NodeID() uint64
 }
 
 type NodeGetattrer interface {
@@ -355,7 +356,7 @@ func New(conn *fuse.Conn, config *Config) *Server {
 	s := &Server{
 		conn:         conn,
 		req:          map[fuse.RequestID]*serveRequest{},
-		nodeRef:      map[Node]fuse.NodeID{},
+		nodeRef:      map[uint64]fuse.NodeID{},
 		dynamicInode: GenerateDynamicInode,
 	}
 	if config != nil {
@@ -382,7 +383,7 @@ type Server struct {
 	meta       sync.Mutex
 	req        map[fuse.RequestID]*serveRequest
 	node       []*serveNode
-	nodeRef    map[Node]fuse.NodeID
+	nodeRef    map[uint64]fuse.NodeID
 	handle     []*serveHandle
 	freeNode   []fuse.NodeID
 	freeHandle []fuse.HandleID
@@ -409,7 +410,7 @@ func (s *Server) Serve(fs FS) error {
 	}
 	// Recognize the root node if it's ever returned from Lookup,
 	// passed to Invalidate, etc.
-	s.nodeRef[root] = 1
+	s.nodeRef[root.NodeID()] = 1
 	s.node = append(s.node, nil, &serveNode{
 		inode:      1,
 		generation: s.nodeGen,
@@ -498,7 +499,7 @@ func (c *Server) saveNode(inode uint64, node Node) (id fuse.NodeID, gen uint64) 
 	c.meta.Lock()
 	defer c.meta.Unlock()
 
-	if id, ok := c.nodeRef[node]; ok {
+	if id, ok := c.nodeRef[node.NodeID()]; ok {
 		sn := c.node[id]
 		sn.refs++
 		return id, sn.generation
@@ -515,7 +516,7 @@ func (c *Server) saveNode(inode uint64, node Node) (id fuse.NodeID, gen uint64) 
 		c.node = append(c.node, sn)
 	}
 	sn.generation = c.nodeGen
-	c.nodeRef[node] = id
+	c.nodeRef[node.NodeID()] = id
 	return id, sn.generation
 }
 
@@ -569,7 +570,7 @@ func (c *Server) dropNode(id fuse.NodeID, n uint64) (forget bool) {
 	if snode.refs == 0 {
 		snode.wg.Wait()
 		c.node[id] = nil
-		delete(c.nodeRef, snode.node)
+		delete(c.nodeRef, snode.node.NodeID())
 		c.freeNode = append(c.freeNode, id)
 		return true
 	}
@@ -1446,7 +1447,7 @@ func errstr(err error) string {
 
 func (s *Server) invalidateNode(node Node, off int64, size int64) error {
 	s.meta.Lock()
-	id, ok := s.nodeRef[node]
+	id, ok := s.nodeRef[node.NodeID()]
 	if ok {
 		snode := s.node[id]
 		snode.wg.Add(1)
@@ -1521,7 +1522,7 @@ func (i invalidateEntryDetail) String() string {
 // node.
 func (s *Server) InvalidateEntry(parent Node, name string) error {
 	s.meta.Lock()
-	id, ok := s.nodeRef[parent]
+	id, ok := s.nodeRef[parent.NodeID()]
 	if ok {
 		snode := s.node[id]
 		snode.wg.Add(1)
