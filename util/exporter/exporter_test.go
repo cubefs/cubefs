@@ -16,6 +16,7 @@ package exporter
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
@@ -51,4 +52,15 @@ func TestNewCounter(t *testing.T) {
 			return
 		}
 	}
+}
+
+func TestGetLocalIp(t *testing.T) {
+	_, err := GetLocalIpAddr("")
+	assert.NoError(t, err)
+
+	_, err = GetLocalIpAddr("127")
+	assert.Error(t, err)
+
+	_, err = GetLocalIpAddr("!127")
+	assert.NoError(t, err)
 }

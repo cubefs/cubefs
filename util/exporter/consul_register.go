@@ -21,6 +21,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -51,7 +52,7 @@ func GetConsulId(app string, role string, host string, port int64) string {
 }
 
 // do consul register process
-func DoConsulRegisterProc(addr, app, role, cluster, meta string, port int64) {
+func DoConsulRegisterProc(addr, app, role, cluster, meta, host string, port int64) {
 	if len(addr) <= 0 {
 		return
 	}
@@ -63,12 +64,6 @@ func DoConsulRegisterProc(addr, app, role, cluster, meta string, port int64) {
 		}
 		ticker.Stop()
 	}()
-
-	host, err := GetLocalIpAddr()
-	if err != nil {
-		log.LogErrorf("get local ip error, %v", err.Error())
-		return
-	}
 
 	client := &http.Client{}
 	req := makeRegisterReq(host, addr, app, role, cluster, meta, port)
@@ -99,7 +94,7 @@ func DoConsulRegisterProc(addr, app, role, cluster, meta string, port int64) {
 }
 
 // GetLocalIpAddr returns the local IP address.
-func GetLocalIpAddr() (ipaddr string, err error) {
+func GetLocalIpAddr(filter string) (ipaddr string, err error) {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
 		log.LogError("consul register get local ip failed, ", err)
@@ -108,11 +103,37 @@ func GetLocalIpAddr() (ipaddr string, err error) {
 	for _, addr := range addrs {
 		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
 			if ipnet.IP.To4() != nil {
-				return ipnet.IP.String(), nil
+				ip := ipnet.IP.String()
+
+				if filter != "" {
+					match, err := doFilter(filter, ip)
+					if err != nil {
+						return "", fmt.Errorf("regex match err, err %s", err.Error())
+					}
+
+					if !match {
+						continue
+					}
+				}
+
+				return ip, nil
 			}
 		}
 	}
 	return "", fmt.Errorf("cannot get local ip")
+}
+
+// use ! tag to represent to do negative filter
+func doFilter(filter, ip string) (ok bool, err error) {
+	// negative filter
+	if strings.HasPrefix(filter, "!") {
+		filter = filter[1:]
+		ok, err := regexp.MatchString(filter, ip)
+		return !ok, err
+	}
+
+	ok, err = regexp.MatchString(filter, ip)
+	return ok, err
 }
 
 // make a consul rest request
