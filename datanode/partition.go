@@ -311,6 +311,17 @@ func (dp *DataPartition) Replicas() []string {
 	return dp.replicas
 }
 
+func (dp *DataPartition) getReplicaCopy() []string {
+	dp.replicasLock.RLock()
+	defer dp.replicasLock.RUnlock()
+
+	var tmpCopy []string
+	tmpCopy = make([]string, len(dp.replicas))
+	copy(tmpCopy, dp.replicas)
+
+	return tmpCopy
+}
+
 func (dp *DataPartition) getReplicaAddr(index int) string {
 	dp.replicasLock.RLock()
 	defer dp.replicasLock.RUnlock()
