@@ -86,10 +86,10 @@ func (s *DefaultRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 }
 
 func (s *DefaultRandomSelector) RemoveDP(partitionID uint64) {
-	s.RLock()
+	s.Lock()
+	defer s.Unlock()
 	rwPartitionGroups := s.partitions
 	localLeaderPartitions := s.localLeaderPartitions
-	s.RUnlock()
 
 	var i int
 	for i = 0; i < len(rwPartitionGroups); i++ {
@@ -103,12 +103,8 @@ func (s *DefaultRandomSelector) RemoveDP(partitionID uint64) {
 	newRwPartition := make([]*DataPartition, 0)
 	newRwPartition = append(newRwPartition, rwPartitionGroups[:i]...)
 	newRwPartition = append(newRwPartition, rwPartitionGroups[i+1:]...)
-
-	defer func() {
-		s.Lock()
-		s.partitions = newRwPartition
-		s.Unlock()
-	}()
+	s.partitions = newRwPartition
+	log.LogWarnf("RemoveDP: dp(%v), count(%v)", partitionID, len(s.partitions))
 
 	for i = 0; i < len(localLeaderPartitions); i++ {
 		if localLeaderPartitions[i].PartitionID == partitionID {
@@ -121,9 +117,6 @@ func (s *DefaultRandomSelector) RemoveDP(partitionID uint64) {
 	newLocalLeaderPartitions := make([]*DataPartition, 0)
 	newLocalLeaderPartitions = append(newLocalLeaderPartitions, localLeaderPartitions[:i]...)
 	newLocalLeaderPartitions = append(newLocalLeaderPartitions, localLeaderPartitions[i+1:]...)
-
-	s.Lock()
-	defer s.Unlock()
 	s.localLeaderPartitions = newLocalLeaderPartitions
 
 	return

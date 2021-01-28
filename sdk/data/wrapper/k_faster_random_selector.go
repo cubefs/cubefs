@@ -62,7 +62,7 @@ func (s *KFasterRandomSelector) Name() string {
 }
 
 func (s *KFasterRandomSelector) Refresh(partitions []*DataPartition) (err error) {
-	kValue := (len(partitions)-1)*s.kValueHundred/100 + 1
+	kValue := s.updateKValue(partitions)
 	selectKminDataPartition(partitions, kValue)
 
 	s.Lock()
@@ -70,6 +70,12 @@ func (s *KFasterRandomSelector) Refresh(partitions []*DataPartition) (err error)
 
 	s.kValue = kValue
 	s.partitions = partitions
+
+	return
+}
+
+func (s *KFasterRandomSelector) updateKValue(partitions []*DataPartition) (kValue int) {
+	kValue = (len(partitions)-1)*s.kValueHundred/100 + 1
 	return
 }
 
@@ -122,9 +128,10 @@ func (s *KFasterRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 }
 
 func (s *KFasterRandomSelector) RemoveDP(partitionID uint64) {
-	s.RLock()
+	s.Lock()
+	defer s.Unlock()
+
 	partitions := s.partitions
-	s.RUnlock()
 
 	var i int
 	for i = 0; i < len(partitions); i++ {
@@ -139,7 +146,10 @@ func (s *KFasterRandomSelector) RemoveDP(partitionID uint64) {
 	newRwPartition = append(newRwPartition, partitions[:i]...)
 	newRwPartition = append(newRwPartition, partitions[i+1:]...)
 
-	s.Refresh(newRwPartition)
+	kValue := s.updateKValue(newRwPartition)
+	s.kValue = kValue
+	s.partitions = newRwPartition
+	log.LogWarnf("RemoveDP: dp(%v), count(%v)", partitionID, len(s.partitions))
 
 	return
 }
