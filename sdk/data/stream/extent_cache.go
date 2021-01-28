@@ -49,17 +49,19 @@ func NewExtentRequest(offset, size int, data []byte, ek *proto.ExtentKey) *Exten
 // ExtentCache defines the struct of the extent cache.
 type ExtentCache struct {
 	sync.RWMutex
-	inode uint64
-	gen   uint64 // generation number
-	size  uint64 // size of the cache
-	root  *btree.BTree
+	inode   uint64
+	gen     uint64 // generation number
+	size    uint64 // size of the cache
+	root    *btree.BTree
+	discard *btree.BTree
 }
 
 // NewExtentCache returns a new extent cache.
 func NewExtentCache(inode uint64) *ExtentCache {
 	return &ExtentCache{
-		inode: inode,
-		root:  btree.New(32),
+		inode:   inode,
+		root:    btree.New(32),
+		discard: btree.New(32),
 	}
 }
 
@@ -69,9 +71,9 @@ func (cache *ExtentCache) Refresh(inode uint64, getExtents GetExtentsFunc) error
 	if err != nil {
 		return err
 	}
-	//log.LogDebugf("Local ExtentCache before update: gen(%v) size(%v) extents(%v)", cache.gen, cache.size, cache.List())
+	//log.LogDebugf("Local ExtentCache before update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
 	cache.update(gen, size, extents)
-	//log.LogDebugf("Local ExtentCache after update: gen(%v) size(%v) extents(%v)", cache.gen, cache.size, cache.List())
+	//log.LogDebugf("Local ExtentCache after update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
 	return nil
 }
 
@@ -106,7 +108,7 @@ func (cache *ExtentCache) update(gen, size uint64, eks []proto.ExtentKey) {
 }
 
 // Append appends an extent key.
-func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) {
+func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) (discardExtents []proto.ExtentKey) {
 	ekEnd := ek.FileOffset + uint64(ek.Size)
 	lower := &proto.ExtentKey{FileOffset: ek.FileOffset}
 	upper := &proto.ExtentKey{FileOffset: ekEnd}
@@ -126,17 +128,39 @@ func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) {
 	// After deleting the data between lower and upper, we will do the append
 	for _, key := range discard {
 		cache.root.Delete(key)
+		if key.PartitionId != 0 && key.ExtentId != 0 && (key.PartitionId != ek.PartitionId || key.ExtentId != ek.ExtentId || ek.ExtentOffset != key.ExtentOffset) {
+			cache.discard.ReplaceOrInsert(key)
+			//log.LogDebugf("ExtentCache Append add to discard: ino(%v) ek(%v) discard(%v)", cache.inode, ek, key)
+		}
 	}
 
 	cache.root.ReplaceOrInsert(ek)
 	if sync {
 		cache.gen++
+		discardExtents = make([]proto.ExtentKey, 0, cache.discard.Len())
+		cache.discard.AscendRange(lower, upper, func(i btree.Item) bool {
+			found := i.(*proto.ExtentKey)
+			if found.PartitionId != ek.PartitionId || found.ExtentId != ek.ExtentId || found.ExtentOffset != ek.ExtentOffset {
+				discardExtents = append(discardExtents, *found)
+			}
+			return true
+		})
 	}
 	if ekEnd > cache.size {
 		cache.size = ekEnd
 	}
 
-	//log.LogDebugf("ExtentCache Append: ino(%v) ek(%v) discard(%v)", cache.inode, ek, discard)
+	log.LogDebugf("ExtentCache Append: ino(%v) sync(%v) ek(%v) discard(%v)", cache.inode, sync, ek, discard)
+	return
+}
+
+func (cache *ExtentCache) RemoveDiscard(discardExtents []proto.ExtentKey) {
+	cache.Lock()
+	defer cache.Unlock()
+	for _, ek := range discardExtents {
+		cache.discard.Delete(&ek)
+		//log.LogDebugf("ExtentCache ClearDiscard: ino(%v) discard(%v)", cache.inode, ek)
+	}
 }
 
 // Max returns the max extent key in the cache.

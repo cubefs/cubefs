@@ -131,6 +131,9 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	exporter.Init(ModuleName, cfg)
 	s.register(cfg)
 
+	// init limit
+	initRepairLimit()
+
 	// start the raft server
 	if err = s.startRaftServer(cfg); err != nil {
 		return
@@ -354,6 +357,8 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/stats", s.getStatAPI)
 	http.HandleFunc("/raftStatus", s.getRaftStatus)
 	http.HandleFunc("/setAutoRepairStatus", s.setAutoRepairStatus)
+	http.HandleFunc("/getTinyDeleted", s.getTinyDeleted)
+	http.HandleFunc("/getNormalDeleted", s.getNormalDeleted)
 }
 
 func (s *DataNode) startTCPService() (err error) {

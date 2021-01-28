@@ -729,6 +729,34 @@ func (s *ExtentStore) ReadTinyDeleteRecords(offset, size int64, data []byte) (cr
 	return
 }
 
+type ExtentDeleted struct{
+	ExtentID uint64   `json:"extentID"`
+	Offset   uint64	  `json:"offset"`
+	Size 	 uint64	  `json:"size"`
+}
+
+func (s *ExtentStore) GetHasDeleteTinyRecords() (extentDes []ExtentDeleted, err error) {
+	data := make([]byte, DeleteTinyRecordSize)
+	offset := int64(0)
+
+	for ;; {
+		_, err = s.tinyExtentDeleteFp.ReadAt(data, offset)
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+			}
+			return
+		}
+
+		extent := ExtentDeleted{}
+		extent.ExtentID, extent.Offset, extent.Size = UnMarshalTinyExtent(data)
+		extentDes = append(extentDes, extent)
+		offset += DeleteTinyRecordSize
+	}
+
+	return
+}
+
 // NextExtentID returns the next extentID. When the client sends the request to create an extent,
 // this function generates an unique extentID within the current partition.
 // This function can only be called by the leader.

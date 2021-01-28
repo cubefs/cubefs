@@ -408,10 +408,14 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 	//log.LogDebugf("appendExtentKey enter: eh(%v)", eh)
 	if eh.key != nil {
 		if eh.dirty {
-			eh.stream.extents.Append(eh.key, true)
-			err = eh.stream.client.appendExtentKey(eh.inode, *eh.key)
+			var discard []proto.ExtentKey
+			discard = eh.stream.extents.Append(eh.key, true)
+			err = eh.stream.client.appendExtentKey(eh.inode, *eh.key, discard)
+			if err == nil && len(discard) > 0 {
+				eh.stream.extents.RemoveDiscard(discard)
+			}
 		} else {
-			eh.stream.extents.Append(eh.key, false)
+			//_ = eh.stream.extents.Append(eh.key, false)
 		}
 	}
 	if err == nil {

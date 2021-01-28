@@ -91,13 +91,14 @@ const (
 	//Operations: MetaNode Leader -> MetaNode Follower
 	OpMetaFreeInodesOnRaftFollower uint8 = 0x32
 
-	OpMetaDeleteInode     uint8 = 0x33 // delete specified inode immediately and do not remove data.
-	OpMetaBatchExtentsAdd uint8 = 0x34 // for extents batch attachment
-	OpMetaSetXAttr        uint8 = 0x35
-	OpMetaGetXAttr        uint8 = 0x36
-	OpMetaRemoveXAttr     uint8 = 0x37
-	OpMetaListXAttr       uint8 = 0x38
-	OpMetaBatchGetXAttr   uint8 = 0x39
+	OpMetaDeleteInode        uint8 = 0x33 // delete specified inode immediately and do not remove data.
+	OpMetaBatchExtentsAdd    uint8 = 0x34 // for extents batch attachment
+	OpMetaSetXAttr           uint8 = 0x35
+	OpMetaGetXAttr           uint8 = 0x36
+	OpMetaRemoveXAttr        uint8 = 0x37
+	OpMetaListXAttr          uint8 = 0x38
+	OpMetaBatchGetXAttr      uint8 = 0x39
+	OpMetaExtentAddWithCheck uint8 = 0x3A // Append extent key with discard extents check
 
 	// Operations: Master -> MetaNode
 	OpCreateMetaPartition           uint8 = 0x40
@@ -138,19 +139,20 @@ const (
 	OpMetaBatchEvictInode   uint8 = 0x93
 
 	// Commons
-	OpIntraGroupNetErr uint8 = 0xF3
-	OpArgMismatchErr   uint8 = 0xF4
-	OpNotExistErr      uint8 = 0xF5
-	OpDiskNoSpaceErr   uint8 = 0xF6
-	OpDiskErr          uint8 = 0xF7
-	OpErr              uint8 = 0xF8
-	OpAgain            uint8 = 0xF9
-	OpExistErr         uint8 = 0xFA
-	OpInodeFullErr     uint8 = 0xFB
-	OpTryOtherAddr     uint8 = 0xFC
-	OpNotPerm          uint8 = 0xFD
-	OpNotEmtpy         uint8 = 0xFE
-	OpOk               uint8 = 0xF0
+	OpConflictExtentsErr uint8 = 0xF2
+	OpIntraGroupNetErr   uint8 = 0xF3
+	OpArgMismatchErr     uint8 = 0xF4
+	OpNotExistErr        uint8 = 0xF5
+	OpDiskNoSpaceErr     uint8 = 0xF6
+	OpDiskErr            uint8 = 0xF7
+	OpErr                uint8 = 0xF8
+	OpAgain              uint8 = 0xF9
+	OpExistErr           uint8 = 0xFA
+	OpInodeFullErr       uint8 = 0xFB
+	OpTryOtherAddr       uint8 = 0xFC
+	OpNotPerm            uint8 = 0xFD
+	OpNotEmtpy           uint8 = 0xFE
+	OpOk                 uint8 = 0xF0
 
 	OpPing uint8 = 0xFF
 )
@@ -255,6 +257,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpNotifyReplicasToRepair"
 	case OpExtentRepairRead:
 		m = "OpExtentRepairRead"
+	case OpConflictExtentsErr:
+		m = "ConflictExtentsErr"
 	case OpIntraGroupNetErr:
 		m = "IntraGroupNetErr"
 	case OpMetaCreateInode:
@@ -281,6 +285,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaBatchInodeGet"
 	case OpMetaExtentsAdd:
 		m = "OpMetaExtentsAdd"
+	case OpMetaExtentAddWithCheck:
+		m = "OpMetaExtentAddWithCheck"
 	case OpMetaExtentsDel:
 		m = "OpMetaExtentsDel"
 	case OpMetaExtentsList:
@@ -392,6 +398,8 @@ func (p *Packet) GetResultMsg() (m string) {
 	}
 
 	switch p.ResultCode {
+	case OpConflictExtentsErr:
+		m = "ConflictExtentsErr"
 	case OpIntraGroupNetErr:
 		m = "IntraGroupNetErr"
 	case OpDiskNoSpaceErr:
