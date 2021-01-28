@@ -20,6 +20,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data/wrapper"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
@@ -87,17 +88,33 @@ func (sc *StreamConn) String() string {
 // or the maximum number of retries is reached.
 func (sc *StreamConn) Send(req *Packet, getReply GetReplyFunc) (err error) {
 	for i := 0; i < StreamSendMaxRetry; i++ {
-		err = sc.sendToPartition(req, getReply)
+		err = sc.sendToPartition(req, getReply, true)
 		if err == nil {
 			return
 		}
 		log.LogWarnf("StreamConn Send: err(%v)", err)
 		time.Sleep(StreamSendSleepInterval)
 	}
+	if req.Opcode == proto.OpStreamFollowerRead || req.Opcode == proto.OpStreamRead {
+		targetHosts, isErr := chooseMaxAppliedDp(sc.dp.PartitionID, sc.dp.Hosts)
+		// try all hosts with same applied ID
+		if !isErr && len(targetHosts) > 0 {
+			for _, addr := range targetHosts {
+				sc.currAddr = addr
+				// need to read data with no leader
+				req.Opcode = proto.OpStreamFollowerRead
+				err = sc.sendToPartition(req, getReply, false)
+				if err == nil {
+					return
+				}
+				log.LogWarnf("StreamConn Send: err(%v), try next host", err)
+			}
+		}
+	}
 	return errors.New(fmt.Sprintf("StreamConn Send: retried %v times and still failed, sc(%v) reqPacket(%v)", StreamSendMaxRetry, sc, req))
 }
 
-func (sc *StreamConn) sendToPartition(req *Packet, getReply GetReplyFunc) (err error) {
+func (sc *StreamConn) sendToPartition(req *Packet, getReply GetReplyFunc, tryOther bool) (err error) {
 	conn, err := StreamConnPool.GetConnect(sc.currAddr)
 	if err == nil {
 		err = sc.sendToConn(conn, req, getReply)
@@ -112,6 +129,10 @@ func (sc *StreamConn) sendToPartition(req *Packet, getReply GetReplyFunc) (err e
 		}
 	} else {
 		log.LogWarnf("sendToPartition: get connection to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
+	}
+
+	if !tryOther {
+		return
 	}
 
 	hosts := sortByStatus(sc.dp, true)
@@ -146,6 +167,7 @@ func (sc *StreamConn) sendToConn(conn *net.TCPConn, req *Packet, getReply GetRep
 		if err != nil {
 			msg := fmt.Sprintf("sendToConn: failed to write to addr(%v) err(%v)", sc.currAddr, err)
 			log.LogWarn(msg)
+			err = TryOtherAddrError
 			break
 		}
 

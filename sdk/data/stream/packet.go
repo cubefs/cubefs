@@ -17,13 +17,14 @@ package stream
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/data/wrapper"
-	"github.com/chubaofs/chubaofs/util"
 	"hash/crc32"
 	"io"
 	"net"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/sdk/data/wrapper"
+	"github.com/chubaofs/chubaofs/util"
 )
 
 // Packet defines a wrapper of the packet in proto.
@@ -110,6 +111,19 @@ func NewCreateExtentPacket(dp *wrapper.DataPartition, inode uint64) *Packet {
 	binary.BigEndian.PutUint64(p.Data, inode)
 	p.Size = uint32(len(p.Data))
 	return p
+}
+
+// NewPacketToGetAppliedID returns a new packet to get the applied ID.
+func NewPacketToGetDpAppliedID(partitionID uint64) (p *Packet) {
+	p = new(Packet)
+	p.Opcode = proto.OpGetAppliedId
+	p.PartitionID = partitionID
+	p.Magic = proto.ProtoMagic
+	p.ReqID = proto.GenerateRequestID()
+	p.Arg = nil
+	p.ArgLen = 0
+	p.RemainingFollowers = 0
+	return
 }
 
 // NewReply returns a new reply packet. TODO rename to NewReplyPacket?

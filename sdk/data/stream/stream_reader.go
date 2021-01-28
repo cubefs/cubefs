@@ -15,13 +15,16 @@
 package stream
 
 import (
+	"encoding/binary"
 	"fmt"
-	"golang.org/x/net/context"
 	"io"
+	"net"
 	"sync"
 
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	"golang.org/x/net/context"
 )
 
 // One inode corresponds to one streamer. All the requests to the same inode will be queued.
@@ -157,6 +160,93 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 				}
 				break
 			}
+		}
+	}
+	return
+}
+
+func chooseMaxAppliedDp(pid uint64, hosts []string) (targetHosts []string, isErr bool) {
+	log.LogDebugf("chooseMaxAppliedDp because of no leader: pid[%v], hosts[%v]", pid, hosts)
+	appliedIDslice := make(map[string]uint64, len(hosts))
+	errSlice := make(map[string]bool)
+	var (
+		wg           sync.WaitGroup
+		lock         sync.Mutex
+		maxAppliedID uint64
+	)
+	for _, host := range hosts {
+		wg.Add(1)
+		go func(curAddr string) {
+			appliedID, err := getDpAppliedID(pid, curAddr)
+			ok := false
+			lock.Lock()
+			if err != nil {
+				errSlice[curAddr] = true
+			} else {
+				appliedIDslice[curAddr] = appliedID
+				ok = true
+			}
+			lock.Unlock()
+			log.LogDebugf("chooseMaxAppliedDp: get apply id[%v] ok[%v] from host[%v], pid[%v]", appliedID, ok, curAddr, pid)
+			wg.Done()
+		}(host)
+	}
+	wg.Wait()
+	if len(errSlice) >= (len(hosts)+1)/2 {
+		isErr = true
+		log.LogErrorf("chooseMaxAppliedDp err: dp[%v], hosts[%v], appliedID[%v]", pid, hosts, appliedIDslice)
+		return
+	}
+	targetHosts, maxAppliedID = getMaxApplyIDHosts(appliedIDslice)
+	log.LogDebugf("chooseMaxAppliedDp: get max apply id[%v] from hosts[%v], pid[%v]", maxAppliedID, targetHosts, pid)
+	return
+}
+
+func getDpAppliedID(pid uint64, addr string) (appliedID uint64, err error) {
+	var conn *net.TCPConn
+	if conn, err = StreamConnPool.GetConnect(addr); err != nil {
+		log.LogErrorf("getDpAppliedID: failed to create connection, pid(%v) dpHost(%v)", pid, addr)
+		return
+	}
+
+	defer func() {
+		if err != nil {
+			StreamConnPool.PutConnect(conn, true)
+		} else {
+			StreamConnPool.PutConnect(conn, false)
+		}
+	}()
+
+	p := NewPacketToGetDpAppliedID(pid)
+	if err = p.WriteToConn(conn); err != nil {
+		log.LogErrorf("getDpAppliedID: failed to WriteToConn, packet(%v) dpHost(%v)", p, addr)
+		return
+	}
+	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+		log.LogErrorf("getDpAppliedID: failed to ReadFromConn, packet(%v) dpHost(%v)", p, addr)
+		return
+	}
+	if p.ResultCode != proto.OpOk {
+		log.LogErrorf("getDpAppliedID: packet(%v) result code isn't ok(%v) from host(%v)", p, p.ResultCode, addr)
+		err = errors.New("getDpAppliedID error")
+		return
+	}
+
+	appliedID = binary.BigEndian.Uint64(p.Data)
+	return appliedID, nil
+}
+
+func getMaxApplyIDHosts(appliedIDslice map[string]uint64) (targetHosts []string, maxID uint64) {
+	maxID = uint64(0)
+	targetHosts = make([]string, 0)
+	for _, id := range appliedIDslice {
+		if id >= maxID {
+			maxID = id
+		}
+	}
+	for addr, id := range appliedIDslice {
+		if id == maxID {
+			targetHosts = append(targetHosts, addr)
 		}
 	}
 	return
