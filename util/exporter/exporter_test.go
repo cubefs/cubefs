@@ -52,3 +52,19 @@ func TestNewCounter(t *testing.T) {
 		}
 	}
 }
+
+func TestGetLocalIp(t *testing.T) {
+	_, err := GetLocalIpAddr("")
+	if err != nil {
+		t.Fail()
+	}
+	_, err = GetLocalIpAddr("127")
+	if err == nil {
+		t.Fail()
+	}
+
+	_, err = GetLocalIpAddr("!127")
+	if err != nil {
+		t.Fail()
+	}
+}
