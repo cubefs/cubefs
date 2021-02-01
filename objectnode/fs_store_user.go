@@ -218,7 +218,7 @@ func (us *CacheUserInfoLoader) LoadUser(accessKey string) (*proto.UserInfo, erro
 
 		userInfo, err = us.mc.UserAPI().GetAKInfo(accessKey)
 		if err != nil {
-			if err != proto.ErrUserNotExists && err != proto.ErrAccessKeyNotExists {
+			if err != proto.ErrUserNotExists && err != proto.ErrAccessKeyNotExists && err != proto.ErrParamError {
 				log.LogErrorf("LoadUser: fetch user info fail: err(%v)", err)
 				// if error occurred when loading user, and error is not NotExist, output an ump log
 				exporter.Warning(fmt.Sprintf("CacheUserInfoLoader load user info fail: accessKey(%v) err(%v)", accessKey, err))
