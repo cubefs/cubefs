@@ -173,7 +173,13 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	size, err := f.super.ec.Read(f.info.Inode, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
 	if err != nil && err != io.EOF {
 		msg := fmt.Sprintf("Read: ino(%v) req(%v) err(%v) size(%v)", f.info.Inode, req, err, size)
-		f.super.handleError("Read", msg)
+		log.LogError(msg)
+		go func() {
+			// if fail to get inode err, judge it and alarm
+			if _, errGet := f.super.InodeGet(f.info.Inode); errGet != fuse.ENOENT {
+				f.super.handleError("Read", msg)
+			}
+		}()
 		return fuse.EIO
 	}
 
@@ -275,7 +281,13 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	err = f.super.ec.Flush(f.info.Inode)
 	if err != nil {
 		msg := fmt.Sprintf("Flush: ino(%v) err(%v)", f.info.Inode, err)
-		f.super.handleError("Flush", msg)
+		log.LogError(msg)
+		go func() {
+			// if fail to get inode err, judge it and alarm
+			if _, errGet := f.super.InodeGet(f.info.Inode); errGet != fuse.ENOENT {
+				f.super.handleError("Flush", msg)
+			}
+		}()
 		return fuse.EIO
 	}
 	f.super.ic.Delete(f.info.Inode)
