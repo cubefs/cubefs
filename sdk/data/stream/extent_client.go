@@ -16,6 +16,7 @@ package stream
 
 import (
 	"fmt"
+	"github.com/chubaofs/chubaofs/util"
 	"sync"
 	"time"
 
@@ -86,6 +87,7 @@ type ExtentConfig struct {
 	ReadRate                 int64
 	WriteRate                int64
 	AlignSize                int64
+	TinySize                 int
 	MaxExtentNumPerAlignArea int64
 	ForceAlignMerge          bool
 	OnAppendExtentKey        AppendExtentKeyFunc
@@ -112,6 +114,8 @@ type ExtentClient struct {
 	alignSize                int64
 	maxExtentNumPerAlignArea int64
 	forceAlignMerge          bool
+
+	tinySize int
 }
 
 // NewExtentClient returns a new extent client.
@@ -138,6 +142,10 @@ retry:
 	client.evictIcache = config.OnEvictIcache
 	client.dataWrapper.InitFollowerRead(config.FollowerRead)
 	client.dataWrapper.SetNearRead(config.NearRead)
+	client.tinySize = config.TinySize
+	if client.tinySize == 0 {
+		client.tinySize = util.DefaultTinySizeLimit
+	}
 
 	var readLimit, writeLimit rate.Limit
 	if config.ReadRate <= 0 {

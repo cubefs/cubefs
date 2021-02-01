@@ -2323,6 +2323,7 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 		Volume:            config.Volume,
 		Masters:           config.Masters,
 		FollowerRead:      true,
+		TinySize:          util.MB * 8,
 		OnAppendExtentKey: metaWrapper.AppendExtentKey,
 		OnGetExtents:      metaWrapper.GetExtents,
 		OnTruncate:        metaWrapper.Truncate,

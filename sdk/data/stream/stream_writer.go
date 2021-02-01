@@ -578,7 +578,7 @@ func (s *Streamer) truncate(size int) error {
 }
 
 func (s *Streamer) tinySizeLimit() int {
-	return util.DefaultTinySizeLimit
+	return s.tinySize
 }
 
 func (s *Streamer) extentMerge(req *ExtentRequest) (err error, newReq *ExtentRequest, writeSize int) {
