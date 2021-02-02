@@ -178,6 +178,7 @@ func main() {
 		server = console.NewServer()
 		module = ModuleConsole
 	default:
+		fmt.Printf("Fatal: role mismatch: %v", role)
 		daemonize.SignalOutcome(fmt.Errorf("Fatal: role mismatch: %v", role))
 		os.Exit(1)
 	}
@@ -201,6 +202,7 @@ func main() {
 
 	_, err = log.InitLog(logDir, module, level, nil)
 	if err != nil {
+		fmt.Printf("Fatal: failed to init log - %v", err)
 		daemonize.SignalOutcome(fmt.Errorf("Fatal: failed to init log - %v", err))
 		os.Exit(1)
 	}
@@ -210,6 +212,7 @@ func main() {
 	outputFilePath := path.Join(logDir, module, LoggerOutput)
 	outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
 	if err != nil {
+		fmt.Printf("Fatal: fialed to open output path - %v", err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
@@ -220,6 +223,7 @@ func main() {
 	syslog.SetOutput(outputFile)
 
 	if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
+		syslog.Printf("Fatal: failed to redirect fd - %v", err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
@@ -228,6 +232,7 @@ func main() {
 
 	err = modifyOpenFiles()
 	if err != nil {
+		syslog.Printf("Fatal: failed to modify open files - %v", err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
@@ -236,6 +241,7 @@ func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	if err = ump.InitUmp(role, umpDatadir); err != nil {
 		log.LogFlush()
+		syslog.Printf("Fatal: failed to init ump warnLogDir - %v", err)
 		daemonize.SignalOutcome(fmt.Errorf("Fatal: init warnLogDir fail:%v ", err))
 		os.Exit(1)
 	}
@@ -246,6 +252,7 @@ func main() {
 			e := http.ListenAndServe(fmt.Sprintf(":%v", profPort), nil)
 			if e != nil {
 				log.LogFlush()
+				syslog.Printf("cannot listen pprof %v err %v", profPort, err)
 				daemonize.SignalOutcome(fmt.Errorf("cannot listen pprof %v err %v", profPort, err))
 				os.Exit(1)
 			}

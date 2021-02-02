@@ -109,6 +109,7 @@ func main() {
 	cfg, _ := config.LoadConfigFile(*configFile)
 	opt, err := parseMountOption(cfg)
 	if err != nil {
+		fmt.Printf("parse mount opt failed: %v\n", err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
@@ -124,6 +125,7 @@ func main() {
 	level := parseLogLevel(opt.Loglvl)
 	_, err = log.InitLog(opt.Logpath, LoggerPrefix, level, nil)
 	if err != nil {
+		fmt.Printf("Init log dir fail: %v\n", err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
@@ -132,6 +134,7 @@ func main() {
 	outputFilePath := path.Join(opt.Logpath, LoggerPrefix, LoggerOutput)
 	outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
 	if err != nil {
+		fmt.Printf("Open output file failed: %v\n", err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
@@ -151,6 +154,7 @@ func main() {
 	changeRlimit(defaultRlimit)
 
 	if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
+		syslog.Printf("Redirect fd failed: %v\n", err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
