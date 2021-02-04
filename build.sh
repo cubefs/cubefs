@@ -63,18 +63,18 @@ get_rocksdb_compress_dep() {
         tar zxf bzip2-1.0.6.tar.gz
     fi
 
-    if [ ! -d "${RootPath}/vendor/dep/zstd-1.4.5" ]; then
-        wget https://codeload.github.com/facebook/zstd/zip/v1.4.5
-        unzip v1.4.5
+    if [ ! -d "${RootPath}/vendor/dep/zstd-1.4.8" ]; then
+        wget https://codeload.github.com/facebook/zstd/zip/v1.4.8
+        unzip v1.4.8
     fi
 
-    if [ ! -d "${RootPath}/vendor/dep/lz4-1.9.2" ]; then
-        wget https://codeload.github.com/lz4/lz4/tar.gz/v1.9.2
-        tar zxf v1.9.2
+    if [ ! -d "${RootPath}/vendor/dep/lz4-1.9.3" ]; then
+        wget https://codeload.github.com/lz4/lz4/tar.gz/v1.9.3
+        tar zxf v1.9.3
     fi
 
 
-    #rm -rf zlib-1.2.11.tar.gz bzip2-1.0.6.tar.gz v1.4.5 v1.9.2
+    #rm -rf zlib-1.2.11.tar.gz bzip2-1.0.6.tar.gz v1.4.8 v1.9.3
     cd ${RootPath}     
    
 
