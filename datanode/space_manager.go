@@ -19,12 +19,13 @@ import (
 	"sync"
 	"time"
 
+	"math"
+	"os"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
-	"math"
-	"os"
 )
 
 // SpaceManager manages the disk space.
@@ -65,6 +66,34 @@ func (manager *SpaceManager) Stop() {
 		recover()
 	}()
 	close(manager.stopC)
+	// Parallel stop data partitions.
+	const maxParallelism = 128
+	var parallelism = int(math.Min(float64(maxParallelism), float64(len(manager.partitions))))
+	wg := sync.WaitGroup{}
+	partitionC := make(chan *DataPartition, parallelism)
+	wg.Add(1)
+	go func(c chan<- *DataPartition) {
+		defer wg.Done()
+		for _, partition := range manager.partitions {
+			c <- partition
+		}
+		close(c)
+	}(partitionC)
+
+	for i := 0; i < parallelism; i++ {
+		wg.Add(1)
+		go func(c <-chan *DataPartition) {
+			defer wg.Done()
+			var partition *DataPartition
+			for {
+				if partition = <-c; partition == nil {
+					return
+				}
+				partition.Stop()
+			}
+		}(partitionC)
+	}
+	wg.Wait()
 }
 
 func (manager *SpaceManager) SetNodeID(nodeID uint64) {
@@ -288,13 +317,18 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 
 // DeletePartition deletes a partition based on the partition id.
 func (manager *SpaceManager) DeletePartition(dpID uint64) {
-	dp := manager.Partition(dpID)
+
+	manager.partitionMutex.Lock()
+
+	dp := manager.partitions[dpID]
 	if dp == nil {
+		manager.partitionMutex.Unlock()
 		return
 	}
-	manager.partitionMutex.Lock()
+
 	delete(manager.partitions, dpID)
 	manager.partitionMutex.Unlock()
+
 	dp.Stop()
 	dp.Disk().DetachDataPartition(dp)
 	os.RemoveAll(dp.Path())

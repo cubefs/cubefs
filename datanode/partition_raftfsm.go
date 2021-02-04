@@ -17,12 +17,14 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/storage"
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/storage"
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tiglabs/raft"
 	raftproto "github.com/tiglabs/raft/proto"
@@ -40,7 +42,13 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 // It does not support updating an existing member at this point.
 func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, index uint64) (resp interface{}, err error) {
 	defer func(index uint64) {
-		dp.uploadApplyID(index)
+		if err == nil {
+			dp.uploadApplyID(index)
+		} else {
+			err = fmt.Errorf("[ApplyMemberChange] ApplyID(%v) Partition(%v) apply err(%v)]", index, dp.partitionID, err)
+			exporter.Warning(err.Error())
+			panic(newRaftApplyError(err))
+		}
 	}(index)
 
 	// Change memory the status
@@ -55,10 +63,21 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		}
 		isUpdated, err = dp.addRaftNode(req, index)
 		if isUpdated && err == nil {
-			dp.updateReplicas(true)
-			if dp.isLeader {
-				dp.ExtentStore().MoveAllToBrokenTinyExtentC(storage.TinyExtentCount)
-			}
+			// Perform the update replicas operation asynchronously after the execution of the member change applying
+			// related process.
+			updateWG := sync.WaitGroup{}
+			updateWG.Add(1)
+			defer updateWG.Done()
+			go func() {
+				updateWG.Wait()
+				if err = dp.updateReplicas(true); err != nil {
+					log.LogErrorf("ApplyMemberChange: update partition %v replicas failed: %v", dp.partitionID, err)
+					return
+				}
+				if dp.isLeader {
+					dp.ExtentStore().MoveAllToBrokenTinyExtentC(storage.TinyExtentCount)
+				}
+			}()
 		}
 	case raftproto.ConfRemoveNode:
 		req := &proto.RemoveDataPartitionRaftMemberRequest{}
@@ -71,12 +90,18 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 	}
 	if err != nil {
 		log.LogErrorf("action[ApplyMemberChange] dp(%v) type(%v) err(%v).", dp.partitionID, confChange.Type, err)
+		if IsDiskErr(err.Error()) {
+			panic(newRaftApplyError(err))
+		}
 		return
 	}
 	if isUpdated {
 		dp.DataPartitionCreateType = proto.NormalCreateDataPartition
 		if err = dp.PersistMetadata(); err != nil {
 			log.LogErrorf("action[ApplyMemberChange] dp(%v) PersistMetadata err(%v).", dp.partitionID, err)
+			if IsDiskErr(err.Error()) {
+				panic(newRaftApplyError(err))
+			}
 			return
 		}
 	}
@@ -102,7 +127,13 @@ func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftprot
 
 // HandleFatalEvent notifies the application when panic happens.
 func (dp *DataPartition) HandleFatalEvent(err *raft.FatalError) {
-	log.LogFatalf("action[HandleFatalEvent] err(%v).", err)
+	if isRaftApplyError(err.Err.Error()) {
+		dp.stopRaft()
+		dp.checkIsDiskError(err.Err)
+		log.LogCriticalf("action[HandleFatalEvent] err(%v).", err)
+	} else {
+		log.LogFatalf("action[HandleFatalEvent] err(%v).", err)
+	}
 }
 
 // HandleLeaderChange notifies the application when the raft leader has changed.

@@ -16,6 +16,7 @@ package storage
 
 import (
 	"encoding/binary"
+	"io"
 	"sync/atomic"
 
 	"github.com/chubaofs/chubaofs/util"
@@ -67,7 +68,7 @@ func (s *ExtentStore) PersistenceBaseExtentID(extentID uint64) (err error) {
 
 func (s *ExtentStore) GetPreAllocSpaceExtentIDOnVerfiyFile() (extentID uint64) {
 	value := make([]byte, 8)
-	_, err := s.metadataFp.WriteAt(value, 8)
+	_, err := s.metadataFp.ReadAt(value, 8)
 	if err != nil {
 		return
 	}
@@ -115,5 +116,26 @@ func (s *ExtentStore) PersistenceHasDeleteExtent(extentID uint64) (err error) {
 	if _, err = s.normalExtentDeleteFp.Write(data); err != nil {
 		return
 	}
+	return
+}
+
+func (s *ExtentStore) GetHasDeleteExtent() (extentDes []ExtentDeleted, err error) {
+	data := make([]byte, 8)
+	offset := int64(0)
+	for ;; {
+		_, err = s.normalExtentDeleteFp.ReadAt(data, offset)
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+			}
+			return
+		}
+
+		extent := ExtentDeleted{}
+		extent.ExtentID = binary.BigEndian.Uint64(data)
+		extentDes = append(extentDes, extent)
+		offset += 8
+	}
+
 	return
 }

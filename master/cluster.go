@@ -1196,29 +1196,13 @@ func (c *Cluster) buildAddDataPartitionRaftMemberTaskAndSyncSendTask(dp *DataPar
 }
 
 func (c *Cluster) addDataPartitionRaftMember(dp *DataPartition, addPeer proto.Peer) (err error) {
-	dp.Lock()
-	defer dp.Unlock()
-	if contains(dp.Hosts, addPeer.Addr) {
-		err = fmt.Errorf("vol[%v],data partition[%v] has contains host[%v]", dp.VolName, dp.PartitionID, addPeer.Addr)
-		return
-	}
-
 	var (
 		candidateAddrs []string
 		leaderAddr     string
 	)
-	candidateAddrs = make([]string, 0, len(dp.Hosts))
-	leaderAddr = dp.getLeaderAddr()
-	if leaderAddr != "" && contains(dp.Hosts, leaderAddr) {
-		candidateAddrs = append(candidateAddrs, leaderAddr)
-	} else {
-		leaderAddr = ""
-	}
-	for _, host := range dp.Hosts {
-		if host == leaderAddr {
-			continue
-		}
-		candidateAddrs = append(candidateAddrs, host)
+
+	if leaderAddr, candidateAddrs, err = dp.prepareAddRaftMember(addPeer); err != nil {
+		return
 	}
 	//send task to leader addr first,if need to retry,then send to other addr
 	for index, host := range candidateAddrs {
@@ -1236,6 +1220,8 @@ func (c *Cluster) addDataPartitionRaftMember(dp *DataPartition, addPeer proto.Pe
 	if err != nil {
 		return
 	}
+	dp.Lock()
+	defer dp.Unlock()
 	newHosts := make([]string, 0, len(dp.Hosts)+1)
 	newPeers := make([]proto.Peer, 0, len(dp.Peers)+1)
 	newHosts = append(dp.Hosts, addPeer.Addr)
@@ -1413,7 +1399,7 @@ func (c *Cluster) putBadMetaPartitions(addr string, partitionID uint64) {
 	c.BadMetaPartitionIds.Store(addr, newBadPartitionIDs)
 }
 
-func (c *Cluster) getBadMetaPartitionsView() (bmpvs []badPartitionView){
+func (c *Cluster) getBadMetaPartitionsView() (bmpvs []badPartitionView) {
 	bmpvs = make([]badPartitionView, 0)
 	c.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
 		badPartitionIds := value.([]uint64)
@@ -1441,7 +1427,7 @@ func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, addr string, part
 	c.BadDataPartitionIds.Store(key, newBadPartitionIDs)
 }
 
-func (c *Cluster) getBadDataPartitionsView() (bpvs []badPartitionView){
+func (c *Cluster) getBadDataPartitionsView() (bpvs []badPartitionView) {
 	bpvs = make([]badPartitionView, 0)
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
 		badDataPartitionIds := value.([]uint64)
@@ -1498,18 +1484,20 @@ func (c *Cluster) deleteMetaNodeFromCache(metaNode *MetaNode) {
 	go metaNode.clean()
 }
 
-func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacity uint64, replicaNum uint8, followerRead, authenticate, enableToken bool) (err error) {
+func (c *Cluster) updateVol(name, authKey string, newArgs *VolVarargs) (err error) {
 	var (
-		vol             *Vol
-		serverAuthKey   string
-		oldDpReplicaNum uint8
-		oldCapacity     uint64
-		oldFollowerRead bool
-		oldAuthenticate bool
-		oldEnableToken  bool
-		volUsedSpace    uint64
-		oldZoneName     string
-		oldDescription  string
+		vol               *Vol
+		serverAuthKey     string
+		oldDpReplicaNum   uint8
+		oldCapacity       uint64
+		oldFollowerRead   bool
+		oldAuthenticate   bool
+		oldEnableToken    bool
+		oldZoneName       string
+		oldDescription    string
+		oldDpSelectorName string
+		oldDpSelectorParm string
+		volUsedSpace      uint64
 	)
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[updateVol] err[%v]", err)
@@ -1523,15 +1511,17 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		return proto.ErrVolAuthKeyNotMatch
 	}
 	volUsedSpace = vol.totalUsedSpace()
-	if float64(capacity*util.GB) < float64(volUsedSpace)*1.2 {
-		err = fmt.Errorf("capacity[%v] has to be 20 percent larger than the used space[%v]", capacity, volUsedSpace/util.GB)
+	if float64(newArgs.capacity*util.GB) < float64(volUsedSpace)*1.2 {
+		err = fmt.Errorf("capacity[%v] has to be 20 percent larger than the used space[%v]", newArgs.capacity,
+			volUsedSpace/util.GB)
 		goto errHandler
 	}
-	if replicaNum > vol.dpReplicaNum {
-		err = fmt.Errorf("don't support new replicaNum[%v] larger than old dpReplicaNum[%v]", replicaNum, vol.dpReplicaNum)
+	if newArgs.dpReplicaNum > vol.dpReplicaNum {
+		err = fmt.Errorf("don't support new replicaNum[%v] larger than old dpReplicaNum[%v]", newArgs.dpReplicaNum,
+			vol.dpReplicaNum)
 		goto errHandler
 	}
-	if enableToken == true && len(vol.tokens) == 0 {
+	if newArgs.enableToken == true && len(vol.tokens) == 0 {
 		if err = c.createToken(vol, proto.ReadOnlyToken); err != nil {
 			goto errHandler
 		}
@@ -1540,35 +1530,42 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		}
 	}
 
-	oldZoneName = vol.zoneName
-	if vol.crossZone && zoneName != "" {
+	if vol.crossZone && newArgs.zoneName != "" {
 		err = fmt.Errorf("only the vol which don't across zones,can specified zoneName")
 		goto errHandler
 	}
-	if zoneName != "" {
-		_, err = c.t.getZone(zoneName)
+	if newArgs.zoneName != "" {
+		_, err = c.t.getZone(newArgs.zoneName)
 		if err != nil {
 			goto errHandler
 		}
 	}
-	vol.zoneName = zoneName
+
 	oldCapacity = vol.Capacity
 	oldDpReplicaNum = vol.dpReplicaNum
 	oldFollowerRead = vol.FollowerRead
 	oldAuthenticate = vol.authenticate
 	oldEnableToken = vol.enableToken
+	oldZoneName = vol.zoneName
 	oldDescription = vol.description
-	vol.Capacity = capacity
-	vol.FollowerRead = followerRead
-	vol.authenticate = authenticate
-	vol.enableToken = enableToken
-	if description != "" {
-		vol.description = description
+	oldDpSelectorName = vol.dpSelectorName
+	oldDpSelectorParm = vol.dpSelectorParm
+
+	vol.zoneName = newArgs.zoneName
+	vol.Capacity = newArgs.capacity
+	vol.FollowerRead = newArgs.followerRead
+	vol.authenticate = newArgs.authenticate
+	vol.enableToken = newArgs.enableToken
+	if newArgs.description != "" {
+		vol.description = newArgs.description
 	}
 	//only reduced replica num is supported
-	if replicaNum != 0 && replicaNum < vol.dpReplicaNum {
-		vol.dpReplicaNum = replicaNum
+	if newArgs.dpReplicaNum != 0 && newArgs.dpReplicaNum < vol.dpReplicaNum {
+		vol.dpReplicaNum = newArgs.dpReplicaNum
 	}
+	vol.dpSelectorName = newArgs.dpSelectorName
+	vol.dpSelectorParm = newArgs.dpSelectorParm
+
 	if err = c.syncUpdateVol(vol); err != nil {
 		vol.Capacity = oldCapacity
 		vol.dpReplicaNum = oldDpReplicaNum
@@ -1577,6 +1574,9 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		vol.enableToken = oldEnableToken
 		vol.zoneName = oldZoneName
 		vol.description = oldDescription
+		vol.dpSelectorName = oldDpSelectorName
+		vol.dpSelectorParm = oldDpSelectorParm
+
 		log.LogErrorf("action[updateVol] vol[%v] err[%v]", name, err)
 		err = proto.ErrPersistenceByRaft
 		goto errHandler

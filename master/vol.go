@@ -25,6 +25,18 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
+type VolVarargs struct {
+	zoneName       string
+	description    string
+	capacity       uint64 //GB
+	dpReplicaNum   uint8
+	followerRead   bool
+	authenticate   bool
+	enableToken    bool
+	dpSelectorName string
+	dpSelectorParm string
+}
+
 // Vol represents a set of meta partitionMap and data partitionMap
 type Vol struct {
 	ID                 uint64
@@ -55,6 +67,8 @@ type Vol struct {
 	createMpMutex      sync.RWMutex
 	createTime         int64
 	description        string
+	dpSelectorName     string
+	dpSelectorParm     string
 	sync.RWMutex
 }
 
@@ -111,6 +125,8 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	// overwrite oss secure
 	vol.OSSAccessKey, vol.OSSSecretKey = vv.OSSAccessKey, vv.OSSSecretKey
 	vol.Status = vv.Status
+	vol.dpSelectorName = vv.DpSelectorName
+	vol.dpSelectorParm = vv.DpSelectorParm
 	return vol
 }
 
@@ -793,4 +809,18 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	}
 	log.LogInfof("action[doCreateMetaPartition] success,volName[%v],partition[%v]", vol.Name, partitionID)
 	return
+}
+
+func getVolVarargs(vol *Vol) *VolVarargs {
+	return &VolVarargs{
+		zoneName:       vol.zoneName,
+		description:    vol.description,
+		capacity:       vol.Capacity,
+		dpReplicaNum:   vol.dpReplicaNum,
+		followerRead:   vol.FollowerRead,
+		authenticate:   vol.authenticate,
+		enableToken:    vol.enableToken,
+		dpSelectorName: vol.dpSelectorName,
+		dpSelectorParm: vol.dpSelectorParm,
+	}
 }

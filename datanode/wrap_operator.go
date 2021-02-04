@@ -478,14 +478,15 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		if err != nil {
 			p.PackErrorBody(ActionStreamRead, err.Error())
 			p.WriteToConn(connect)
+			fininshDoExtentRepair()
 		}
-		fininshDoExtentRepair()
 	}()
 
 	err = requestDoExtentRepair()
 	if err != nil {
 		return
 	}
+
 	s.extentRepairReadPacket(p, connect, isRepairRead)
 }
 
@@ -951,7 +952,6 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 
 	dp := s.space.Partition(req.PartitionId)
 	if dp == nil {
-		err = fmt.Errorf("partition %v not exsit", req.PartitionId)
 		return
 	}
 	p.PartitionID = req.PartitionId

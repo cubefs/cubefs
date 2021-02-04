@@ -131,9 +131,9 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 				req.Size = filesize - req.FileOffset
 				total += req.Size
 				err = io.EOF
-				if total == 0 {
-					log.LogErrorf("read: ino(%v) req(%v) filesize(%v)", s.inode, req, filesize)
-				}
+				//if total == 0 {
+				//	log.LogErrorf("read: ino(%v) req(%v) filesize(%v)", s.inode, req, filesize)
+				//}
 				return
 			}
 

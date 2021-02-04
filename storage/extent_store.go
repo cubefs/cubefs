@@ -408,6 +408,10 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	s.DeleteBlockCrc(extentID)
 	s.PutNormalExtentToDeleteCache(extentID)
 
+	s.eiMutex.Lock()
+	delete(s.extentInfoMap,extentID)
+	s.eiMutex.Unlock()
+
 	return
 }
 
@@ -475,7 +479,7 @@ const (
 )
 
 func (s *ExtentStore) GetStoreUsedSize() (used int64) {
-	extentInfoSlice := make([]*ExtentInfo, 0, len(s.extentInfoMap))
+	extentInfoSlice := make([]*ExtentInfo, 0, s.GetExtentCount())
 	s.eiMutex.RLock()
 	for _, extentID := range s.extentInfoMap {
 		extentInfoSlice = append(extentInfoSlice, extentID)
@@ -722,6 +726,34 @@ func (s *ExtentStore) ReadTinyDeleteRecords(offset, size int64, data []byte) (cr
 		err = nil
 		crc = crc32.ChecksumIEEE(data[:size])
 	}
+	return
+}
+
+type ExtentDeleted struct{
+	ExtentID uint64   `json:"extentID"`
+	Offset   uint64	  `json:"offset"`
+	Size 	 uint64	  `json:"size"`
+}
+
+func (s *ExtentStore) GetHasDeleteTinyRecords() (extentDes []ExtentDeleted, err error) {
+	data := make([]byte, DeleteTinyRecordSize)
+	offset := int64(0)
+
+	for ;; {
+		_, err = s.tinyExtentDeleteFp.ReadAt(data, offset)
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+			}
+			return
+		}
+
+		extent := ExtentDeleted{}
+		extent.ExtentID, extent.Offset, extent.Size = UnMarshalTinyExtent(data)
+		extentDes = append(extentDes, extent)
+		offset += DeleteTinyRecordSize
+	}
+
 	return
 }
 

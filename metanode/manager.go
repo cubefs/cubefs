@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	syslog "log"
 	_ "net/http/pprof"
 	"os"
 	"path"
@@ -110,6 +111,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
 		err = m.opMasterHeartbeat(conn, p, remoteAddr)
 	case proto.OpMetaExtentsAdd:
 		err = m.opMetaExtentsAdd(conn, p, remoteAddr)
+	case proto.OpMetaExtentAddWithCheck:
+		err = m.opMetaExtentAddWithCheck(conn, p, remoteAddr)
 	case proto.OpMetaExtentsList:
 		err = m.opMetaExtentsList(conn, p, remoteAddr)
 	case proto.OpMetaExtentsDel:
@@ -338,7 +341,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 }
 
 func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) (err error) {
-	fmt.Println(fmt.Sprintf("start load metaPartition %v", id))
+	syslog.Println(fmt.Sprintf("start load metaPartition %v", id))
 	partition.ForceSetMetaPartitionToLoadding()
 	if err = partition.Start(); err != nil {
 		log.LogErrorf("load meta partition %v fail: %v", id, err)

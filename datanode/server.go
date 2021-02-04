@@ -41,9 +41,10 @@ import (
 )
 
 var (
-	ErrIncorrectStoreType       = errors.New("Incorrect store type")
-	ErrNoSpaceToCreatePartition = errors.New("No disk space to create a data partition")
-	ErrNewSpaceManagerFailed    = errors.New("Creater new space manager failed")
+	ErrIncorrectStoreType          = errors.New("Incorrect store type")
+	ErrNoSpaceToCreatePartition    = errors.New("No disk space to create a data partition")
+	ErrNewSpaceManagerFailed       = errors.New("Creater new space manager failed")
+	ErrGetMasterDatanodeInfoFailed = errors.New("Failed to get datanode info from master")
 
 	LocalIP, serverPort string
 	gConnPool           = util.NewConnectPool()
@@ -130,6 +131,9 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	exporter.Init(ModuleName, cfg)
 	s.register(cfg)
 
+	// init limit
+	initRepairLimit()
+
 	// start the raft server
 	if err = s.startRaftServer(cfg); err != nil {
 		return
@@ -142,7 +146,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 
 	// check local partition compare with master ,if lack,then not start
 	if err = s.checkLocalPartitionMatchWithMaster(); err != nil {
-		fmt.Println(err)
+		log.LogError(err)
 		exporter.Warning(err.Error())
 		return
 	}
@@ -164,7 +168,7 @@ func doShutdown(server common.Server) {
 		return
 	}
 	close(s.stopC)
-
+	s.space.Stop()
 	s.stopUpdateNodeInfo()
 	s.stopTCPService()
 	s.stopRaftServer()
@@ -321,6 +325,10 @@ func (s *DataNode) checkLocalPartitionMatchWithMaster() (err error) {
 		}
 		break
 	}
+	if dataNode == nil {
+		err = ErrGetMasterDatanodeInfoFailed
+		return
+	}
 	dinfo := convert(dataNode)
 	if len(dinfo.PersistenceDataPartitions) == 0 {
 		return
@@ -349,6 +357,8 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/stats", s.getStatAPI)
 	http.HandleFunc("/raftStatus", s.getRaftStatus)
 	http.HandleFunc("/setAutoRepairStatus", s.setAutoRepairStatus)
+	http.HandleFunc("/getTinyDeleted", s.getTinyDeleted)
+	http.HandleFunc("/getNormalDeleted", s.getNormalDeleted)
 }
 
 func (s *DataNode) startTCPService() (err error) {

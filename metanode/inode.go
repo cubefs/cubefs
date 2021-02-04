@@ -406,6 +406,22 @@ func (i *Inode) AppendExtents(eks []proto.ExtentKey, ct int64) (delExtents []pro
 	return
 }
 
+func (i *Inode) AppendExtentWithCheck(ek proto.ExtentKey, ct int64, discardExtents []proto.ExtentKey) (delExtents []proto.ExtentKey, status uint8) {
+	i.Lock()
+	defer i.Unlock()
+	delExtents, status = i.Extents.AppendWithCheck(ek, discardExtents)
+	if status != proto.OpOk {
+		return
+	}
+	size := i.Extents.Size()
+	if i.Size < size {
+		i.Size = size
+	}
+	i.Generation++
+	i.ModifyTime = ct
+	return
+}
+
 func (i *Inode) ExtentsTruncate(length uint64, ct int64) (delExtents []proto.ExtentKey) {
 	i.Lock()
 	delExtents = i.Extents.Truncate(length)
@@ -516,4 +532,12 @@ func (i *Inode) DoReadFunc(fn func()) {
 	i.RLock()
 	fn()
 	i.RUnlock()
+}
+
+// SetMtime sets mtime to the current time.
+func (i *Inode) SetMtime() {
+	mtime := Now.GetCurrentTime().Unix()
+	i.Lock()
+	i.ModifyTime = mtime
+	i.Unlock()
 }

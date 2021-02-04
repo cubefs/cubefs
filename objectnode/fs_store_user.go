@@ -16,10 +16,11 @@ package objectnode
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/exporter"
 	"hash/crc32"
 	"sync"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util/exporter"
 
 	"github.com/chubaofs/chubaofs/sdk/master"
 
@@ -45,7 +46,7 @@ type StrictUserInfoStore struct {
 func (s *StrictUserInfoStore) LoadUser(accessKey string) (*proto.UserInfo, error) {
 	// if error occurred when loading user, and error is not NotExist, output an ump log
 	userInfo, err := s.mc.UserAPI().GetAKInfo(accessKey)
-	if err != proto.ErrUserNotExists && err != proto.ErrAccessKeyNotExists {
+	if err != nil && err != proto.ErrUserNotExists && err != proto.ErrAccessKeyNotExists {
 		log.LogErrorf("LoadUser: fetch user info fail: err(%v)", err)
 		exporter.Warning(fmt.Sprintf("StrictUserInfoStore load user fail: accessKey(%v) err(%v)", accessKey, err))
 	}

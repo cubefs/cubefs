@@ -429,7 +429,8 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 		return
 	}
 
-	s.extents.Append(ek, false)
+	// This ek is just a local cache for PrepareWriteRequest, so ignore discard eks here.
+	_ = s.extents.Append(ek, false)
 	total = size
 
 	log.LogDebugf("doWrite exit: ino(%v) offset(%v) size(%v) ek(%v)", s.inode, offset, size, ek)
@@ -485,7 +486,11 @@ func (s *Streamer) traverse() (err error) {
 			}
 			err = eh.appendExtentKey()
 			if err != nil {
-				log.LogDebugf("Streamer traverse abort: appendExtentKey failed, eh(%v) err(%v)", eh, err)
+				log.LogWarnf("Streamer traverse abort: appendExtentKey failed, eh(%v) err(%v)", eh, err)
+				// set the streamer to error status to avoid further writes
+				if err == syscall.EIO {
+					atomic.StoreInt32(&eh.stream.status, StreamerError)
+				}
 				return
 			}
 			s.dirtylist.Remove(element)

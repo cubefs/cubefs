@@ -844,13 +844,14 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	prefix := r.URL.Query().Get(ParamPrefix)
 	maxKeys := r.URL.Query().Get(ParamMaxKeys)
 	delimiter := r.URL.Query().Get(ParamPartDelimiter)
+	encodingType := r.URL.Query().Get(ParamEncodingType)
 
 	var maxKeysInt uint64
 	if maxKeys != "" {
 		maxKeysInt, err = strconv.ParseUint(maxKeys, 10, 16)
 		if err != nil {
 			log.LogErrorf("getBucketV1Handler: parse max key fail, requestID(%v) err(%v)", GetRequestID(r), err)
-			_ = InvalidArgument.ServeResponse(w, r)
+			errorCode = InvalidArgument
 			return
 		}
 		if maxKeysInt > MaxKeys {
@@ -858,6 +859,12 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 		}
 	} else {
 		maxKeysInt = uint64(MaxKeys)
+	}
+
+	// Validate encoding type option
+	if encodingType != "" && encodingType != "url" {
+		errorCode = InvalidArgument
+		return
 	}
 
 	var option = &ListFilesV1Option{
@@ -888,7 +895,7 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 			continue
 		}
 		content := &Content{
-			Key:          file.Path,
+			Key:          encodeKey(file.Path, encodingType),
 			LastModified: formatTimeISO(file.ModifyTime),
 			ETag:         wrapUnescapedQuot(file.ETag),
 			Size:         int(file.Size),
@@ -966,6 +973,7 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	contToken := r.URL.Query().Get(ParamContToken)
 	fetchOwner := r.URL.Query().Get(ParamFetchOwner)
 	startAfter := r.URL.Query().Get(ParamStartAfter)
+	encodingType := r.URL.Query().Get(ParamEncodingType)
 
 	var maxKeysInt uint64
 	if maxKeys != "" {
@@ -993,6 +1001,12 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 		}
 	} else {
 		fetchOwnerBool = false
+	}
+
+	// Validate encoding type option
+	if encodingType != "" && encodingType != "url" {
+		errorCode = InvalidArgument
+		return
 	}
 
 	var option = &ListFilesV2Option{
@@ -1028,7 +1042,7 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 				continue
 			}
 			content := &Content{
-				Key:          file.Path,
+				Key:          encodeKey(file.Path, encodingType),
 				LastModified: formatTimeISO(file.ModifyTime),
 				ETag:         wrapUnescapedQuot(file.ETag),
 				Size:         int(file.Size),

@@ -46,6 +46,7 @@ const (
 	statusError
 	statusInval
 	statusNotPerm
+	statusConflictExtents
 )
 
 const (
@@ -258,6 +259,8 @@ func parseStatus(result uint8) (status int) {
 		status = statusInval
 	case proto.OpNotPerm:
 		status = statusNotPerm
+	case proto.OpConflictExtentsErr:
+		status = statusConflictExtents
 	default:
 		status = statusError
 	}
@@ -283,6 +286,8 @@ func statusToErrno(status int) error {
 		return syscall.EPERM
 	case statusError:
 		return syscall.EAGAIN
+	case statusConflictExtents:
+		return syscall.EIO
 	default:
 	}
 	return syscall.EIO

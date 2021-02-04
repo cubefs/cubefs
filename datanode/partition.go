@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"hash/crc32"
@@ -104,9 +105,11 @@ type DataPartition struct {
 	lastTruncateID  uint64 // truncate id used in Raft
 	minAppliedID    uint64
 	maxAppliedID    uint64
-	stopRaftC       chan uint64
-	storeC          chan uint64
-	stopC           chan bool
+
+	stopOnce  sync.Once
+	stopRaftC chan uint64
+	storeC    chan uint64
+	stopC     chan bool
 
 	intervalToUpdateReplicas      int64 // interval to ask the master for updating the replica information
 	snapshot                      []*proto.File
@@ -354,12 +357,16 @@ func (dp *DataPartition) SnapShot() (files []*proto.File) {
 
 // Stop close the store and the raft store.
 func (dp *DataPartition) Stop() {
-	if dp.stopC != nil {
-		close(dp.stopC)
-	}
-	// Close the store and raftstore.
-	dp.extentStore.Close()
-	dp.stopRaft()
+	dp.stopOnce.Do(func() {
+		if dp.stopC != nil {
+			close(dp.stopC)
+		}
+		// Close the store and raftstore.
+		dp.extentStore.Close()
+		dp.stopRaft()
+		_ = dp.storeAppliedID(atomic.LoadUint64(&dp.appliedID))
+	})
+	return
 }
 
 // Disk returns the disk instance.
@@ -528,7 +535,7 @@ func (dp *DataPartition) checkIsDiskError(err error) (diskError bool) {
 		return
 	}
 	if IsDiskErr(err.Error()) {
-		mesg := fmt.Sprintf("disk path %v error on %v", dp.Path(), LocalIP)
+		mesg := fmt.Sprintf("checkIsDiskError disk path %v error on %v", dp.Path(), LocalIP)
 		exporter.Warning(mesg)
 		log.LogErrorf(mesg)
 		dp.stopRaft()
@@ -540,6 +547,14 @@ func (dp *DataPartition) checkIsDiskError(err error) (diskError bool) {
 		diskError = true
 	}
 	return
+}
+
+func newRaftApplyError(err error) error {
+	return errors.NewErrorf("[Custom Error]: unhandled raft apply error, err(%s)", err)
+}
+
+func isRaftApplyError(errMsg string) bool {
+	return strings.Contains(errMsg, "[Custom Error]: unhandled raft apply error")
 }
 
 // String returns the string format of the data partition information.
@@ -654,8 +669,6 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 			continue
 		}
 		if store.HasExtent(uint64(extentInfo.FileID)) {
-			info := &storage.ExtentInfo{Source: extentInfo.Source, FileID: extentInfo.FileID, Size: extentInfo.Size}
-			repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, info)
 			continue
 		}
 		if !AutoRepairStatus {
@@ -666,9 +679,12 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 		if err != nil {
 			continue
 		}
-		info := &storage.ExtentInfo{Source: extentInfo.Source, FileID: extentInfo.FileID, Size: extentInfo.Size}
-		repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, info)
 	}
+
+	if len(repairTask.ExtentsToBeRepaired) > 0 {
+		log.LogWarnf("tag1: repairTask.ExtentsToBeRepaired (%v)", repairTask.ExtentsToBeRepaired)
+	}
+
 	var (
 		wg           *sync.WaitGroup
 		recoverIndex int

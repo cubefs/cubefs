@@ -84,7 +84,7 @@ The object key like this is conflict in ChubaoFS.
 
 When the object being operated has conflicts with the existing object due to the above mode inconsistency, the ObjectNode will return a ``409`` status code to the client.
 
-.. code-block::
+.. code-block:: xml
 
     HTTP/1.1 409 Conflict
     x-amz-request-id: 79e92f6c1a134a7895b60acb018f63cc

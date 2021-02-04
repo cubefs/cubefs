@@ -37,6 +37,9 @@ func (r *raftFsm) becomeLeader() {
 	r.leader = r.config.NodeID
 	r.state = stateLeader
 	r.acks = nil
+	if pr, ok := r.replicas[r.config.NodeID]; ok {
+		pr.active = true
+	}
 
 	ents, err := r.raftLog.entries(r.raftLog.committed+1, noLimit)
 	if err != nil {
