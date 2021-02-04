@@ -47,6 +47,8 @@ type Streamer struct {
 	request chan interface{} // request channel, write/flush/close
 	done    chan struct{}    // stream writer is being closed
 
+	tinySize int
+
 	writeLock sync.Mutex
 }
 
@@ -59,6 +61,7 @@ func NewStreamer(client *ExtentClient, inode uint64) *Streamer {
 	s.request = make(chan interface{}, 64)
 	s.done = make(chan struct{})
 	s.dirtylist = NewDirtyExtentList()
+	s.tinySize = client.tinySize
 	go s.server()
 	return s
 }

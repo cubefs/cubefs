@@ -40,17 +40,17 @@ func (p *Packet) String() string {
 }
 
 // NewWritePacket returns a new write packet.
-func NewWritePacket(inode uint64, fileOffset, storeMode int) *Packet {
+func NewWritePacket(inode uint64, fileOffset, storeMode int, blksize int) *Packet {
 	p := new(Packet)
 	p.ReqID = proto.GenerateRequestID()
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpWrite
+	p.ExtentType = uint8(storeMode)
 	p.inode = inode
 	p.KernelOffset = uint64(fileOffset)
-	if storeMode == proto.TinyExtentType {
-		p.Data, _ = proto.Buffers.Get(util.DefaultTinySizeLimit)
-	} else {
-		p.Data, _ = proto.Buffers.Get(util.BlockSize)
+	var err error
+	if p.Data, err = proto.Buffers.Get(blksize); err != nil {
+		p.Data = make([]byte, blksize)
 	}
 	return p
 }
