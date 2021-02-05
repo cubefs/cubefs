@@ -291,7 +291,7 @@ build_libsdk() {
     pre_build_server
     case `uname` in
         Linux)
-            TargetFile=${1:-${BuildBinPath}/libsdk.so}
+            TargetFile=${1:-${BuildBinPath}/libcfs.so}
             ;;
         *)
             echo "Unsupported platform"
@@ -299,8 +299,16 @@ build_libsdk() {
             ;;
     esac
     pushd $SrcPath >/dev/null
-    echo -n "build libsdk       "
+    echo -n "build libsdk: libcfs.so       "
     go build $MODFLAGS -ldflags "${LDFlags}" -buildmode c-shared -o ${TargetFile} ${SrcPath}/libsdk/*.go && echo "success" || echo "failed"
+    popd >/dev/null
+
+    pushd $SrcPath/java >/dev/null
+    echo -n "build java libchubaofs        "  
+    mkdir -p $SrcPath/java/src/main/resources/
+    \cp  -rf ${TargetFile}  $SrcPath/java/src/main/resources/
+    mvn clean package 
+    \cp -rf $SrcPath/java/target/*.jar ${BuildBinPath}  && echo "build java libchubaofs         success" || echo "build java libchubaofs         failed"
     popd >/dev/null
 }
 
