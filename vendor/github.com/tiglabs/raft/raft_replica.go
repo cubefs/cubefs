@@ -33,6 +33,7 @@ type replica struct {
 	match, next, committed, pendingSnap uint64
 
 	lastActive time.Time
+	lastZombie time.Time
 }
 
 func newReplica(peer proto.Peer, maxInflight int) *replica {

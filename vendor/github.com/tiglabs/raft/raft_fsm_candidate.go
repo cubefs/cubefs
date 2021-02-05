@@ -27,12 +27,12 @@ func (r *raftFsm) becomeCandidate() {
 		panic(AppPanicError(fmt.Sprintf("[raft->becomeCandidate][%v] invalid transition [leader -> candidate].", r.id)))
 	}
 
+	r.monitorElection()
 	r.step = stepCandidate
 	r.reset(r.term+1, 0, false)
 	r.tick = r.tickElection
 	r.vote = r.config.NodeID
 	r.state = stateCandidate
-
 	if logger.IsEnableDebug() {
 		logger.Debug("raft[%v] became candidate at term %d.", r.id, r.term)
 	}
@@ -114,8 +114,8 @@ func (r *raftFsm) campaign(force bool) {
 		}
 		li, lt := r.raftLog.lastIndexAndTerm()
 		if logger.IsEnableDebug() {
-			logger.Debug("[raft->campaign][%v logterm: %d, index: %d] sent " +
-				"vote request to %v at term %d.   raftFSM[%p]", r.id, lt, li, id, r.term,r)
+			logger.Debug("[raft->campaign][%v logterm: %d, index: %d] sent "+
+				"vote request to %v at term %d.   raftFSM[%p]", r.id, lt, li, id, r.term, r)
 		}
 
 		m := proto.GetMessage()
