@@ -89,7 +89,7 @@ build_bzip2() {
 }
 
 build_lz4() {
-    ZstdSrcPath=${VendorPath}/dep/lz4-1.9.2
+    ZstdSrcPath=${VendorPath}/dep/lz4-1.9.3
     ZstdBuildPath=${BuildOutPath}/lz4
     found=$(find ${ZstdBuildPath}/lib -name liblz4.a 2>/dev/null | wc -l)
     if [ ${found} -eq 0 ] ; then
@@ -113,7 +113,7 @@ build_lz4() {
 
  # dep zlib,bz2,lz4
  build_zstd() {
-    ZstdSrcPath=${VendorPath}/dep/zstd-1.4.5
+    ZstdSrcPath=${VendorPath}/dep/zstd-1.4.8
     ZstdBuildPath=${BuildOutPath}/zstd
     found=$(find ${ZstdBuildPath}/lib -name libzstd.a 2>/dev/null | wc -l)
     if [ ${found} -eq 0 ] ; then
@@ -288,9 +288,10 @@ build_cli() {
 }
 
 build_libsdk() {
+    pre_build_server
     case `uname` in
         Linux)
-            TargetFile=${1:-${SrcPath}/libsdk.so}
+            TargetFile=${1:-${BuildBinPath}/libcfs.so}
             ;;
         *)
             echo "Unsupported platform"
@@ -298,8 +299,16 @@ build_libsdk() {
             ;;
     esac
     pushd $SrcPath >/dev/null
-    echo -n "build libsdk       "
-    go build $MODFLAGS -ldflags "${LDFlags}" -buildmode c-shared -o ${BuildBinPath}/$TargetFile ${SrcPath}/*.go && echo "success" | echo "failed"
+    echo -n "build libsdk: libcfs.so       "
+    go build $MODFLAGS -ldflags "${LDFlags}" -buildmode c-shared -o ${TargetFile} ${SrcPath}/libsdk/*.go && echo "success" || echo "failed"
+    popd >/dev/null
+
+    pushd $SrcPath/java >/dev/null
+    echo -n "build java libchubaofs        "
+    mkdir -p $SrcPath/java/src/main/resources/
+    \cp  -rf ${TargetFile}  $SrcPath/java/src/main/resources/
+    mvn clean package
+    \cp -rf $SrcPath/java/target/*.jar ${BuildBinPath}  && echo "build java libchubaofs         success" || echo "build java libchubaofs         failed"
     popd >/dev/null
 }
 
