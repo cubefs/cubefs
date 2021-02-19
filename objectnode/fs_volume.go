@@ -1198,7 +1198,7 @@ func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) er
 		return err
 	}
 
-	if err = v.ec.OpenStream(ino); err != nil {
+	if err = v.ec.OpenStreamWithSize(ino, int(offset+size)); err != nil {
 		log.LogErrorf("ReadFile: data open stream fail, Inode(%v) err(%v)", ino, err)
 		return err
 	}
@@ -1215,6 +1215,7 @@ func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) er
 
 	var n int
 	var tmp = make([]byte, 2*util.BlockSize)
+
 	for {
 		var rest = upper - uint64(offset)
 		if rest == 0 {
@@ -1238,7 +1239,7 @@ func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) er
 			}
 			offset += uint64(n)
 		}
-		if n == 0 || err == io.EOF {
+		if err == io.EOF {
 			break
 		}
 	}

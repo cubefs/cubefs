@@ -16,9 +16,10 @@ package stream
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util"
 	"sync"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util"
 
 	"golang.org/x/time/rate"
 
@@ -181,6 +182,19 @@ func (client *ExtentClient) OpenStream(inode uint64) error {
 	if !ok {
 		s = NewStreamer(client, inode)
 		client.streamers[inode] = s
+	}
+	return s.IssueOpenRequest()
+}
+
+func (client *ExtentClient) OpenStreamWithSize(inode uint64, size int) (err error) {
+	client.streamerLock.Lock()
+	s, ok := client.streamers[inode]
+	if !ok {
+		s = NewStreamer(client, inode)
+		client.streamers[inode] = s
+	}
+	if curSize, _ := s.extents.Size(); curSize < size {
+		_ = s.GetExtents()
 	}
 	return s.IssueOpenRequest()
 }
