@@ -77,9 +77,11 @@ func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) 
 		log.LogErrorf("[metaManager] getPacketLabels metric packet: %v, partitions: %v", p, m.partitions)
 		return
 	}
-	labels["partid"] = fmt.Sprintf("%d", p.PartitionID)
-	labels["vol"] = mp.GetBaseConfig().VolName
-	labels["op"] = p.GetOpMsg()
+	if exporter.EnablePid {
+		labels[exporter.PartId] = fmt.Sprintf("%d", p.PartitionID)
+	}
+	labels[exporter.Vol] = mp.GetBaseConfig().VolName
+	labels[exporter.Op] = p.GetOpMsg()
 
 	return
 }
@@ -88,7 +90,9 @@ func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) 
 func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) (err error) {
 	metric := exporter.NewTPCnt(p.GetOpMsg())
 	labels := m.getPacketLabels(p)
-	defer metric.SetWithLabels(err, labels)
+	defer func() {
+		metric.SetWithLabels(err, labels)
+	}()
 
 	switch p.Opcode {
 	case proto.OpMetaCreateInode:
