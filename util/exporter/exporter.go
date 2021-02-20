@@ -36,7 +36,15 @@ const (
 	ConfigKeyConsulAddr     = "consulAddr"     //consul addr
 	ConfigKeyConsulMeta     = "consulMeta"     // consul meta
 	ConfigKeyIpFilter       = "ipFilter"       // add ip filter
+	ConfigKeyEnablePid      = "enablePid"      // enable report partition id
 	ChSize                  = 1024 * 10        //collect chan size
+
+	// monitor label name
+	Vol    = "vol"
+	Disk   = "disk"
+	PartId = "partid"
+	Op     = "op"
+	Type   = "type"
 )
 
 var (
@@ -45,6 +53,7 @@ var (
 	modulename        string
 	exporterPort      int64
 	enabledPrometheus = false
+	EnablePid         = true
 	replacer          = strings.NewReplacer("-", "_", ".", "_", " ", "_", ",", "_", ":", "_")
 )
 
@@ -59,6 +68,10 @@ func Init(role string, cfg *config.Config) {
 		log.LogInfof("%v exporter disabled", role)
 		return
 	}
+
+	EnablePid = cfg.GetBoolWithDefault(ConfigKeyEnablePid, true)
+	log.LogInfo("enable report partition id info? ", EnablePid)
+
 	port := cfg.GetInt64(ConfigKeyExporterPort)
 	if port == 0 {
 		log.LogInfof("%v exporter port not set", port)
@@ -140,6 +153,6 @@ func collect() {
 	}
 	go collectCounter()
 	go collectGauge()
-	go collectTP()
+	go collectHistogram()
 	go collectAlarm()
 }

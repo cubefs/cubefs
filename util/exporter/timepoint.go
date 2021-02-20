@@ -26,21 +26,10 @@ var (
 	TPPool = &sync.Pool{New: func() interface{} {
 		return new(TimePoint)
 	}}
-	TPCh chan *TimePoint
 )
 
-func collectTP() {
-	TPCh = make(chan *TimePoint, ChSize)
-	for {
-		m := <-TPCh
-		metric := m.Metric()
-		metric.Set(float64(m.val))
-		TPPool.Put(m)
-	}
-}
-
 type TimePoint struct {
-	Gauge
+	Histogram
 	startTime time.Time
 }
 
@@ -84,6 +73,7 @@ func NewTPCnt(name string) (tpc *TimePointCount) {
 	return
 }
 
+// it should be invoked by defer func{set(err)}
 func (tpc *TimePointCount) Set(err error) {
 	ump.AfterTP(tpc.to, err)
 	tpc.tp.Set()
