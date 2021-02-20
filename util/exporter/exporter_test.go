@@ -16,14 +16,19 @@ package exporter
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 )
 
 func TestNewCounter(t *testing.T) {
 	N := 100
-	exitCh := make(chan int64, N)
+	wg := sync.WaitGroup{}
+	wg.Add(N)
+
 	for i := 0; i < N; i++ {
 		go func(i int64) {
+			defer wg.Done()
+
 			name := fmt.Sprintf("name_%d_gauge", i%2)
 			label := fmt.Sprintf("label-%d:name", i)
 			m := NewCounter(name)
@@ -38,19 +43,11 @@ func TestNewCounter(t *testing.T) {
 				c.SetWithLabels(float64(i), map[string]string{"volname": label, "cluster": name})
 				t.Logf("metric: %v", name2)
 			}
-			exitCh <- i
 
 		}(int64(i))
 	}
 
-	x := 0
-	select {
-	case <-exitCh:
-		x += 1
-		if x == N {
-			return
-		}
-	}
+	wg.Wait()
 }
 
 func TestGetLocalIp(t *testing.T) {
