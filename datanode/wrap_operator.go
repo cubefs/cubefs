@@ -40,10 +40,12 @@ import (
 func (s *DataNode) getPacketTpLabels(p *repl.Packet) map[string]string {
 	labels := make(map[string]string)
 	if part, ok := p.Object.(*DataPartition); ok {
-		labels["partid"] = fmt.Sprintf("%d", part.partitionID)
-		labels["vol"] = part.volumeID
-		labels["op"] = p.GetOpMsg()
-		labels["disk"] = part.path
+		labels[exporter.Vol] = part.volumeID
+		labels[exporter.Op] = p.GetOpMsg()
+		if exporter.EnablePid {
+			labels[exporter.PartId] = fmt.Sprintf("%d", part.partitionID)
+			labels[exporter.Disk] = part.path
+		}
 	}
 
 	return labels

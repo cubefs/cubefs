@@ -35,10 +35,13 @@ func (d *DataNode) registerMetrics() {
 }
 
 func GetIoMetricLabels(partition *DataPartition, tp string) map[string]string {
-	return map[string]string{
-		"disk":   partition.disk.Path,
-		"vol":    partition.volumeID,
-		"partid": fmt.Sprintf("%d", partition.partitionID),
-		"type":   tp,
+	labels := make(map[string]string)
+	labels[exporter.Vol] = partition.volumeID
+	labels[exporter.Type] = tp
+	labels[exporter.Disk] = partition.disk.Path
+	if exporter.EnablePid {
+		labels[exporter.PartId] = fmt.Sprintf("%d", partition.partitionID)
 	}
+
+	return labels
 }
