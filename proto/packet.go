@@ -98,6 +98,7 @@ const (
 	OpMetaRemoveXAttr     uint8 = 0x37
 	OpMetaListXAttr       uint8 = 0x38
 	OpMetaBatchGetXAttr   uint8 = 0x39
+	OpMetaGetAppliedID    uint8 = 0x3A
 
 	// Operations: Master -> MetaNode
 	OpCreateMetaPartition             uint8 = 0x40
@@ -113,19 +114,19 @@ const (
 	OpPromoteMetaPartitionRaftLearner uint8 = 0x4D
 
 	// Operations: Master -> DataNode
-	OpCreateDataPartition           	uint8 = 0x60
-	OpDeleteDataPartition           	uint8 = 0x61
-	OpLoadDataPartition             	uint8 = 0x62
-	OpDataNodeHeartbeat             	uint8 = 0x63
-	OpReplicateFile                 	uint8 = 0x64
-	OpDeleteFile                    	uint8 = 0x65
-	OpDecommissionDataPartition     	uint8 = 0x66
-	OpAddDataPartitionRaftMember    	uint8 = 0x67
-	OpRemoveDataPartitionRaftMember 	uint8 = 0x68
-	OpDataPartitionTryToLeader      	uint8 = 0x69
-	OpSyncDataPartitionReplicas     	uint8 = 0x6A
-	OpAddDataPartitionRaftLearner     	uint8 = 0x6B
-	OpPromoteDataPartitionRaftLearner	uint8 = 0x6C
+	OpCreateDataPartition             uint8 = 0x60
+	OpDeleteDataPartition             uint8 = 0x61
+	OpLoadDataPartition               uint8 = 0x62
+	OpDataNodeHeartbeat               uint8 = 0x63
+	OpReplicateFile                   uint8 = 0x64
+	OpDeleteFile                      uint8 = 0x65
+	OpDecommissionDataPartition       uint8 = 0x66
+	OpAddDataPartitionRaftMember      uint8 = 0x67
+	OpRemoveDataPartitionRaftMember   uint8 = 0x68
+	OpDataPartitionTryToLeader        uint8 = 0x69
+	OpSyncDataPartitionReplicas       uint8 = 0x6A
+	OpAddDataPartitionRaftLearner     uint8 = 0x6B
+	OpPromoteDataPartitionRaftLearner uint8 = 0x6C
 
 	// Operations: MultipartInfo
 	OpCreateMultipart  uint8 = 0x70
@@ -183,6 +184,8 @@ const (
 	NormalCreateDataPartition         = 0
 	DecommissionedCreateDataPartition = 1
 )
+
+const FollowerReadFlag = 'F'
 
 // Packet defines the packet structure.
 type Packet struct {
@@ -406,6 +409,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaCursorReset"
 	case OpSyncDataPartitionReplicas:
 		m = "OpSyncDataPartitionReplicas"
+	case OpMetaGetAppliedID:
+		m = "OpMetaGetAppliedID"
 	}
 	return
 }
@@ -734,4 +739,21 @@ func (p *Packet) LogMessage(action, remote string, start int64, err error) (m st
 // ShallRetry returns if we should retry the packet.
 func (p *Packet) ShouldRetry() bool {
 	return p.ResultCode == OpAgain || p.ResultCode == OpErr
+}
+
+func (p *Packet) IsReadMetaPkt() bool {
+	if p.Opcode == OpMetaLookup || p.Opcode == OpMetaInodeGet || p.Opcode == OpMetaBatchInodeGet ||
+		p.Opcode == OpMetaReadDir || p.Opcode == OpMetaExtentsList || p.Opcode == OpGetMultipart ||
+		p.Opcode == OpMetaGetXAttr || p.Opcode == OpMetaListXAttr || p.Opcode == OpListMultiparts ||
+		p.Opcode == OpMetaBatchGetXAttr {
+		return true
+	}
+	return false
+}
+
+func (p *Packet) IsFollowerReadMetaPkt() bool {
+	if p.ArgLen == 1 && p.Arg[0] == FollowerReadFlag {
+		return true
+	}
+	return false
 }

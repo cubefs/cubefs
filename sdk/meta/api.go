@@ -907,3 +907,56 @@ func (mw *MetaWrapper) XAttrsList_ll(inode uint64) ([]string, error) {
 
 	return keys, nil
 }
+
+func (mw *MetaWrapper) GetMaxAppliedIDHosts(mp *MetaPartition) (targetHosts []string, isErr bool) {
+	log.LogDebugf("getMaxAppliedIDHosts because of no leader: pid[%v], hosts[%v]", mp.PartitionID, mp.Members)
+	appliedIDslice := make(map[string]uint64, len(mp.Members))
+	errSlice := make(map[string]bool)
+	var (
+		wg           sync.WaitGroup
+		lock         sync.Mutex
+		maxAppliedID uint64
+	)
+	for _, addr := range mp.Members {
+		wg.Add(1)
+		go func(curAddr string) {
+			appliedID, err := mw.getAppliedID(mp, curAddr)
+			ok := false
+			lock.Lock()
+			if err != nil {
+				errSlice[curAddr] = true
+			} else {
+				appliedIDslice[curAddr] = appliedID
+				ok = true
+			}
+			lock.Unlock()
+			log.LogDebugf("getMaxAppliedIDHosts: get apply id[%v] ok[%v] from host[%v], pid[%v]", appliedID, ok, curAddr, mp.PartitionID)
+			wg.Done()
+		}(addr)
+	}
+	wg.Wait()
+	if len(errSlice) >= (len(mp.Members)+1)/2 {
+		isErr = true
+		log.LogErrorf("getMaxAppliedIDHosts err: mp[%v], hosts[%v], appliedID[%v]", mp.PartitionID, mp.Members, appliedIDslice)
+		return
+	}
+	targetHosts, maxAppliedID = getMaxApplyIDHosts(appliedIDslice)
+	log.LogDebugf("getMaxAppliedIDHosts: get max apply id[%v] from hosts[%v], pid[%v]", maxAppliedID, targetHosts, mp.PartitionID)
+	return
+}
+
+func getMaxApplyIDHosts(appliedIDslice map[string]uint64) (targetHosts []string, maxID uint64) {
+	maxID = uint64(0)
+	targetHosts = make([]string, 0)
+	for _, id := range appliedIDslice {
+		if id >= maxID {
+			maxID = id
+		}
+	}
+	for addr, id := range appliedIDslice {
+		if id == maxID {
+			targetHosts = append(targetHosts, addr)
+		}
+	}
+	return
+}

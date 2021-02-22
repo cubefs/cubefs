@@ -114,6 +114,21 @@ retry:
 		log.LogWarnf("sendToMetaPartition: req(%v) mp(%v) retry in (%v)", req, mp, SendRetryInterval)
 		time.Sleep(SendRetryInterval)
 	}
+	// compare applied ID of replicas and choose the max one
+	if req.IsReadMetaPkt() {
+		targetHosts, isErr := mw.GetMaxAppliedIDHosts(mp)
+		if !isErr && len(targetHosts) > 0 {
+			req.ArgLen = 1
+			req.Arg = make([]byte, req.ArgLen)
+			req.Arg[0] = proto.FollowerReadFlag
+			for _, host := range targetHosts {
+				resp, err = mw.sendToSpecifiedMpAddr(mp, host, req)
+				if err == nil {
+					goto out
+				}
+			}
+		}
+	}
 
 out:
 	if err != nil || resp == nil {
@@ -121,6 +136,42 @@ out:
 	}
 	log.LogDebugf("sendToMetaPartition successful: req(%v) mc(%v) resp(%v)", req, mc, resp)
 	return resp, nil
+}
+
+func (mw *MetaWrapper) sendToSpecifiedMpAddr(mp *MetaPartition, addr string, req *proto.Packet) (*proto.Packet, error) {
+	var (
+		resp  *proto.Packet
+		err   error
+		mc    *MetaConn
+		start time.Time
+	)
+	if addr == "" {
+		err = errors.New(fmt.Sprintf("sendToSpecifiedMpAddr failed: addr empty, req(%v) mp(%v)", req, mp))
+		return nil, err
+	}
+
+	log.LogDebugf("sendToSpecifiedMpAddr: pid(%v), addr(%v), packet(%v), args(%v)", mp.PartitionID, addr, req, string(req.Arg))
+	start = time.Now()
+	for i := 0; i < SendRetryLimit; i++ {
+		if time.Since(start) > SendTimeLimit {
+			log.LogWarnf("sendToSpecifiedMpAddr: retry timeout req(%v) mp(%v) time(%v)", req, mp, time.Since(start))
+			break
+		}
+		mc, err = mw.getConn(mp.PartitionID, addr)
+		if err != nil {
+			log.LogWarnf("sendToSpecifiedMpAddr: failed to connect, req(%v) mp(%v) mc(%v) err(%v) resp(%v)", req, mp, mc, err, resp)
+			continue
+		}
+		resp, err = mc.send(req)
+		mw.putConn(mc, err)
+		if err == nil {
+			log.LogDebugf("sendToSpecifiedMpAddr successful: req(%v) mc(%v) resp(%v)", req, mc, resp)
+			return resp, nil
+		}
+		log.LogWarnf("sendToSpecifiedMpAddr: failed req(%v) mp(%v) mc(%v) err(%v) resp(%v)", req, mp, mc, err, resp)
+		time.Sleep(SendRetryInterval)
+	}
+	return nil, err
 }
 
 func (mc *MetaConn) send(req *proto.Packet) (resp *proto.Packet, err error) {

@@ -15,6 +15,7 @@
 package meta
 
 import (
+	"encoding/binary"
 	"fmt"
 	"sync"
 
@@ -1124,4 +1125,35 @@ func (mw *MetaWrapper) batchGetXAttr(mp *MetaPartition, inodes []uint64, keys []
 	}
 
 	return resp.XAttrs, nil
+}
+
+func (mw *MetaWrapper) getAppliedID(mp *MetaPartition, addr string) (appliedID uint64, err error) {
+	req := &proto.GetAppliedIDRequest{
+		PartitionId: mp.PartitionID,
+	}
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaGetAppliedID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("getAppliedID err: (%v), req(%v)", err, *req)
+		return
+	}
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
+
+	packet, err = mw.sendToSpecifiedMpAddr(mp, addr, packet)
+	if err != nil || packet == nil {
+		log.LogErrorf("getAppliedID: packet(%v) mp(%v) addr(%v) req(%v) err(%v)", packet, mp, addr, *req, err)
+		err = errors.New("getAppliedID error")
+		return
+	}
+	status := parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogErrorf("getAppliedID: packet(%v) mp(%v) addr(%v) req(%v) result(%v)", packet, mp, addr, *req, packet.GetResultMsg())
+		err = errors.New("getAppliedID error")
+		return
+	}
+	appliedID = binary.BigEndian.Uint64(packet.Data)
+	return
 }
