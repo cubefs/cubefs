@@ -393,6 +393,36 @@ func (dp *DataPartition) Stop() {
 	return
 }
 
+func (dp *DataPartition) Delete() {
+	dp.Stop()
+	dp.Disk().DetachDataPartition(dp)
+	_ = dp.raftPartition.Delete()
+	_ = os.RemoveAll(dp.Path())
+}
+
+func (dp *DataPartition) Expired() {
+	dp.Stop()
+	dp.Disk().DetachDataPartition(dp)
+	_ = dp.raftPartition.Expired()
+	var currentPath = path.Clean(dp.path)
+	var newPath = path.Join(path.Dir(currentPath),
+		ExpiredPartitionPrefix+path.Base(currentPath)+"_"+strconv.FormatInt(time.Now().Unix(), 10))
+	if err := os.Rename(currentPath, newPath); err != nil {
+		log.LogErrorf("ExpiredPartition: mark expired partition fail: volume(%v) partitionID(%v) path(%v) newPath(%v) err(%v)",
+			dp.volumeID,
+			dp.partitionID,
+			dp.path,
+			newPath,
+			err)
+		return
+	}
+	log.LogInfof("ExpiredPartition: mark expired partition: volume(%v) partitionID(%v) path(%v) newPath(%v)",
+		dp.volumeID,
+		dp.partitionID,
+		dp.path,
+		newPath)
+}
+
 // Disk returns the disk instance.
 func (dp *DataPartition) Disk() *Disk {
 	return dp.disk

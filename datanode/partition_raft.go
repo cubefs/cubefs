@@ -127,8 +127,7 @@ func (dp *DataPartition) StartRaft() (err error) {
 func (dp *DataPartition) stopRaft() {
 	if dp.raftPartition != nil {
 		log.LogErrorf("[FATAL] stop raft partition(%v)", dp.partitionID)
-		dp.raftPartition.Stop()
-		dp.raftPartition = nil
+		_ = dp.raftPartition.Stop()
 	}
 	return
 }
