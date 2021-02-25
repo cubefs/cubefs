@@ -49,12 +49,18 @@ type DataPartitionMetrics struct {
 	WriteOpNum          int64
 }
 
-func (dp *DataPartition) RecordWrite(startT int64) {
+// If the connection fails, take punitive measures. Punish time is 5s.
+func (dp *DataPartition) RecordWrite(startT int64, punish bool) {
 	if startT == 0 {
 		log.LogWarnf("RecordWrite: invalid start time")
 		return
 	}
+
 	cost := time.Now().UnixNano() - startT
+	if punish {
+		cost += 5 * 1e9
+		log.LogWarnf("RecordWrite: dp[%v] punish write time[5s] because of error, avg[%v]ns", dp.PartitionID, dp.GetAvgWrite())
+	}
 
 	dp.Metrics.Lock()
 	defer dp.Metrics.Unlock()
@@ -76,9 +82,9 @@ func (dp *DataPartition) MetricsRefresh() {
 	}
 
 	if dp.Metrics.WriteOpNum != 0 {
-		dp.Metrics.AvgWriteLatencyNano = dp.Metrics.SumWriteLatencyNano / dp.Metrics.WriteOpNum
+		dp.Metrics.AvgWriteLatencyNano = (9*dp.Metrics.AvgWriteLatencyNano + dp.Metrics.SumWriteLatencyNano/dp.Metrics.WriteOpNum) / 10
 	} else {
-		dp.Metrics.AvgWriteLatencyNano = 0
+		dp.Metrics.AvgWriteLatencyNano = (9 * dp.Metrics.AvgWriteLatencyNano) / 10
 	}
 
 	dp.Metrics.SumReadLatencyNano = 0
@@ -127,21 +133,32 @@ func (dp *DataPartition) String() string {
 
 func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {
 	var (
-		conn net.Conn
-		err  error
+		wg   sync.WaitGroup
+		lock sync.Mutex
 	)
 	for i := 0; i < len(dp.Hosts); i++ {
 		host := dp.Hosts[i]
-		if conn, err = util.DailTimeOut(host, time.Second); err != nil {
-			log.LogWarnf("Dail to Host (%v) err(%v)", host, err.Error())
-			if strings.Contains(err.Error(), syscall.ECONNREFUSED.Error()) {
-				exclude[host] = struct{}{}
+		wg.Add(1)
+		go func(addr string) {
+			var (
+				conn net.Conn
+				err  error
+			)
+			defer wg.Done()
+			if conn, err = util.DailTimeOut(addr, time.Second); err != nil {
+				log.LogWarnf("Dail to Host (%v) err(%v)", addr, err.Error())
+				if strings.Contains(err.Error(), syscall.ECONNREFUSED.Error()) {
+					lock.Lock()
+					exclude[addr] = struct{}{}
+					lock.Unlock()
+				}
+			} else {
+				conn.Close()
 			}
-			continue
-		}
-		conn.Close()
+		}(host)
 	}
-
+	wg.Wait()
+	log.LogDebugf("CheckAllHostsIsAvail: dp(%v) exclude(%v)", dp.PartitionID, exclude)
 }
 
 // GetAllAddrs returns the addresses of all the replicas of the data partition.

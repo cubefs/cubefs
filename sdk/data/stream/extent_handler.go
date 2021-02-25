@@ -320,6 +320,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 			readDeadLineTime, err.Error(), cost, time.Since(time.Unix(0, packet.StartT)),
 			time.Since(time.Unix(0, packet.SendT)))
 		eh.processReplyError(packet, errmsg)
+		eh.dp.RecordWrite(packet.StartT, true)
 		return
 	}
 
@@ -328,23 +329,27 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	if reply.ResultCode != proto.OpOk {
 		errmsg := fmt.Sprintf("reply NOK: reply(%v)", reply)
 		eh.processReplyError(packet, errmsg)
+		eh.dp.RecordWrite(packet.StartT, true)
 		return
 	}
 
 	if !packet.isValidWriteReply(reply) {
 		errmsg := fmt.Sprintf("request and reply does not match: reply(%v)", reply)
 		eh.processReplyError(packet, errmsg)
+		eh.dp.RecordWrite(packet.StartT, true)
 		return
 	}
 
 	if reply.CRC != packet.CRC {
 		errmsg := fmt.Sprintf("inconsistent CRC: reqCRC(%v) replyCRC(%v) reply(%v) ", packet.CRC, reply.CRC, reply)
 		eh.processReplyError(packet, errmsg)
+		eh.dp.RecordWrite(packet.StartT, true)
 		return
 	}
 
 	packet.RecvT = time.Now().UnixNano()
-	eh.dp.RecordWrite(packet.StartT)
+
+	eh.dp.RecordWrite(packet.StartT, false)
 
 	var (
 		extID, extOffset uint64
