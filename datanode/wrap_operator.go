@@ -37,9 +37,24 @@ import (
 	raftProto "github.com/tiglabs/raft/proto"
 )
 
+func (s *DataNode) getPacketTpLabels(p *repl.Packet) map[string]string {
+	labels := make(map[string]string)
+	if part, ok := p.Object.(*DataPartition); ok {
+		labels[exporter.Vol] = part.volumeID
+		labels[exporter.Op] = p.GetOpMsg()
+		if exporter.EnablePid {
+			labels[exporter.PartId] = fmt.Sprintf("%d", part.partitionID)
+			labels[exporter.Disk] = part.path
+		}
+	}
+
+	return labels
+}
+
 func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	sz := p.Size
 	tpObject := exporter.NewTPCnt(p.GetOpMsg())
+	tpLabels := s.getPacketTpLabels(p)
 	start := time.Now().UnixNano()
 	defer func() {
 		resultSize := p.Size
@@ -63,7 +78,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 			}
 		}
 		p.Size = resultSize
-		tpObject.Set(err)
+		tpObject.SetWithLabels(err, tpLabels)
 	}()
 	switch p.Opcode {
 	case proto.OpCreateExtent:
@@ -382,6 +397,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		}
 	}()
 	partition := p.Object.(*DataPartition)
+	metricPartitionIOLabels := GetIoMetricLabels(partition, "write")
 	if partition.Available() <= 0 || partition.disk.Status == proto.ReadOnly || partition.IsRejectWrite() {
 		err = storage.NoSpaceError
 		return
@@ -391,13 +407,19 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 	}
 	store := partition.ExtentStore()
 	if p.ExtentType == proto.TinyExtentType {
+		partitionIOMetric := exporter.NewTPCnt(MetricPartitionIOName)
 		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
+		s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
+		partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
 		s.incDiskErrCnt(p.PartitionID, err, WriteFlag)
 		return
 	}
 
 	if p.Size <= util.BlockSize {
+		partitionIOMetric := exporter.NewTPCnt(MetricPartitionIOName)
 		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
+		s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
+		partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
 		partition.checkIsDiskError(err)
 	} else {
 		size := p.Size
@@ -409,7 +431,10 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			currSize := util.Min(int(size), util.BlockSize)
 			data := p.Data[offset : offset+currSize]
 			crc := crc32.ChecksumIEEE(data)
+			partitionIOMetric := exporter.NewTPCnt(MetricPartitionIOName)
 			err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite())
+			s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
+			partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
 			partition.checkIsDiskError(err)
 			if err != nil {
 				break
@@ -437,7 +462,11 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		err = raft.ErrNotLeader
 		return
 	}
+	metricPartitionIOLabels := GetIoMetricLabels(partition, "randwrite")
+	partitionIOMetric := exporter.NewTPCnt(MetricPartitionIOName)
 	err = partition.RandomWriteSubmit(p)
+	s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
+	partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
 	if err != nil && strings.Contains(err.Error(), raft.ErrNotLeader.Error()) {
 		err = raft.ErrNotLeader
 		return
@@ -447,7 +476,6 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		err = storage.TryAgainError
 		return
 	}
-
 }
 
 func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
@@ -508,7 +536,7 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 	needReplySize := p.Size
 	offset := p.ExtentOffset
 	store := partition.ExtentStore()
-
+	metricPartitionIOLabels := GetIoMetricLabels(partition, "read")
 	for {
 		if needReplySize <= 0 {
 			break
@@ -526,7 +554,10 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		reply.ExtentOffset = offset
 		p.Size = uint32(currReadSize)
 		p.ExtentOffset = offset
+		partitionIOMetric := exporter.NewTPCnt(MetricPartitionIOName)
 		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, isRepairRead)
+		s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
+		partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
 		partition.checkIsDiskError(err)
 		tpObject.Set(err)
 		p.CRC = reply.CRC
