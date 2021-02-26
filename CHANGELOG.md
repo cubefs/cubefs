@@ -1,3 +1,27 @@
+## Release v2.3.0 - 2021/02/26
+
+### _**UPGRAGDE NOTICE**_
+
+Note that when upgrading from versions prior to `v2.3.0` to version `v2.3.0` or beyond, servers(i.e. resource manager, metanode and datanode) must be upgraded before client(i.e. fuse client and objectnode) due to [#1098](https://github.com/chubaofs/chubaofs/pull/1098).
+
+### Feature
+* `client`: support multiple subdir permissions for an individual user. [#1051](https://github.com/chubaofs/chubaofs/pull/1051)
+* `sdk`: introducing libsdk so applications can embed the use of chubaofs to a single binary and no additional process is required at runtime. [#1082](https://github.com/chubaofs/chubaofs/pull/1082)
+
+### Enhancement
+
+* `datanode`: improve the shut down process of datanode so the raft apply id is persisted. [#1030](https://github.com/chubaofs/chubaofs/pull/1030)
+* `raft`: auto fix crc-mismatch raft log crc. [#1039](https://github.com/chubaofs/chubaofs/pull/1039)
+* improve stability of the whole system. [#1098](https://github.com/chubaofs/chubaofs/pull/1098)
+
+### Bug fix
+
+* `objectnode`: fix key encoding issue of S3 ListObjects API. [#953](https://github.com/chubaofs/chubaofs/pull/953)
+* `datanode`: fix data partition decommission timeout. [#972](https://github.com/chubaofs/chubaofs/pull/972)
+* `metanode`: change mtime of the directory when creating or deleting dentry. [#1000](https://github.com/chubaofs/chubaofs/pull/1000)
+* `datanode`: fix statfs deviation when using EXT4 as the underlying local filesystem for datanode. [#1031](https://github.com/chubaofs/chubaofs/pull/1031)
+* `client`: func sortHostsByDistance change dp's hosts. [#1106](https://github.com/chubaofs/chubaofs/pull/1106)
+
 ## Release v2.2.2 - 2020/09/22
 
 ### Feature
