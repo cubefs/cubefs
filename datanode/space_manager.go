@@ -16,13 +16,10 @@ package datanode
 
 import (
 	"fmt"
-	"path"
-	"strconv"
 	"sync"
 	"time"
 
 	"math"
-	"os"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
@@ -329,9 +326,7 @@ func (manager *SpaceManager) DeletePartition(dpID uint64) {
 	manager.partitionMutex.Lock()
 	delete(manager.partitions, dpID)
 	manager.partitionMutex.Unlock()
-	dp.Stop()
-	dp.Disk().DetachDataPartition(dp)
-	os.RemoveAll(dp.Path())
+	dp.Delete()
 }
 
 // ExpiredPartition marks specified partition as expired.
@@ -345,25 +340,7 @@ func (manager *SpaceManager) ExpiredPartition(partitionID uint64) {
 	manager.partitionMutex.Lock()
 	delete(manager.partitions, partitionID)
 	manager.partitionMutex.Unlock()
-	dp.Stop()
-	dp.Disk().DetachDataPartition(dp)
-	var currentPath = path.Clean(dp.Path())
-	var newPath = path.Join(path.Dir(currentPath),
-		ExpiredPartitionPrefix+path.Base(currentPath)+"_"+strconv.FormatInt(time.Now().Unix(), 10))
-	if err := os.Rename(currentPath, newPath); err != nil {
-		log.LogErrorf("ExpiredPartition: mark expired partition fail: volume(%v) partitionID(%v) path(%v) newPath(%v) err(%v)",
-			dp.volumeID,
-			dp.partitionID,
-			dp.path,
-			newPath,
-			err)
-		return
-	}
-	log.LogInfof("ExpiredPartition: mark expired partition: volume(%v) partitionID(%v) path(%v) newPath(%v)",
-		dp.volumeID,
-		dp.partitionID,
-		dp.path,
-		newPath)
+	dp.Expired()
 }
 
 func (manager *SpaceManager) SyncPartitionReplicas(partitionID uint64, hosts []string) {
