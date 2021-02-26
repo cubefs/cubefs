@@ -69,7 +69,8 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 					http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
 					return
 				}
-				if m.leaderInfo.addr == "" {
+				leaderID, _ := m.partition.LeaderTerm()
+				if m.leaderInfo.addr == "" || leaderID <= 0 {
 					log.LogErrorf("action[interceptor] no leader,request[%v]", r.URL)
 					http.Error(w, "no leader", http.StatusBadRequest)
 					return
