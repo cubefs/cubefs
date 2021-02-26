@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/storage"
 )
 
 type SortedExtents struct {
@@ -218,10 +219,43 @@ func (se *SortedExtents) Truncate(offset uint64) (deleteExtents []proto.ExtentKe
 	if numKeys > 0 {
 		lastKey := &se.eks[numKeys-1]
 		if lastKey.FileOffset+uint64(lastKey.Size) > offset {
+			// tiny extent, special
+			if storage.IsTinyExtent(lastKey.ExtentId) {
+				delExt := toDelTinyExtent(lastKey, offset)
+				if delExt != nil {
+					deleteExtents = append(deleteExtents, *delExt)
+				}
+			}
+
 			lastKey.Size = uint32(offset - lastKey.FileOffset)
+
 		}
 	}
 	return
+}
+
+func toDelTinyExtent(old *proto.ExtentKey, offset uint64) *proto.ExtentKey {
+	newSize := offset - old.FileOffset
+	eOff := old.ExtentOffset + newSize
+
+	if int(eOff)%storage.PageSize != 0 {
+		eOff += uint64(storage.PageSize - int(eOff)%storage.PageSize)
+	}
+
+	if eOff >= old.ExtentOffset+uint64(old.Size) {
+		return nil
+	}
+
+	eSize := uint32(old.ExtentOffset) + old.Size - uint32(eOff)
+
+	return &proto.ExtentKey{
+		FileOffset:   offset,
+		PartitionId:  old.PartitionId,
+		ExtentId:     old.ExtentId,
+		ExtentOffset: eOff,
+		Size:         eSize,
+		CRC:          0,
+	}
 }
 
 func (se *SortedExtents) Len() int {
