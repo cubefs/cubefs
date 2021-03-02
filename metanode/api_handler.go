@@ -132,6 +132,8 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 	msg["free_list_count"] = mp.(*metaPartition).freeList.Len()
 	msg["cursor"] = mp.GetCursor()
 	_, msg["leader"] = mp.IsLeader()
+	msg["apply_id"] = mp.GetAppliedID()
+	msg["raft_status"] = mp.(*metaPartition).raftPartition.Status()
 	resp.Data = msg
 	resp.Code = http.StatusOK
 	resp.Msg = http.StatusText(http.StatusOK)
