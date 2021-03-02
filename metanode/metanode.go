@@ -58,6 +58,7 @@ type MetaNode struct {
 	zoneName          string
 	httpStopC         chan uint8
 	metrics           *MetaNodeMetrics
+	tickInterval      int
 
 	control common.Control
 }
@@ -174,6 +175,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.raftDir = cfg.GetString(cfgRaftDir)
 	m.raftHeartbeatPort = cfg.GetString(cfgRaftHeartbeatPort)
 	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
+	m.tickInterval = int(cfg.GetFloat(cfgTickInterval))
 	m.zoneName = cfg.GetString(cfgZoneName)
 	configTotalMem, _ = strconv.ParseUint(cfg.GetString(cfgTotalMem), 10, 64)
 
