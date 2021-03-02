@@ -73,6 +73,7 @@ const (
 	ConfigKeyRaftDir       = "raftDir"       // string
 	ConfigKeyRaftHeartbeat = "raftHeartbeat" // string
 	ConfigKeyRaftReplica   = "raftReplica"   // string
+	CfgTickInterval        = "tickInterval"  // int
 )
 
 // DataNode defines the structure of a data node.
@@ -88,6 +89,7 @@ type DataNode struct {
 	raftHeartbeat   string
 	raftReplica     string
 	raftStore       raftstore.RaftStore
+	tickInterval    int
 
 	tcpListener net.Listener
 	stopC       chan bool

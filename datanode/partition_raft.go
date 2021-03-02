@@ -430,6 +430,7 @@ func (s *DataNode) parseRaftConfig(cfg *config.Config) (err error) {
 	if s.raftDir == "" {
 		return fmt.Errorf("bad raftDir config")
 	}
+	s.tickInterval = int(cfg.GetFloat(CfgTickInterval))
 	s.raftHeartbeat = cfg.GetString(ConfigKeyRaftHeartbeat)
 	s.raftReplica = cfg.GetString(ConfigKeyRaftReplica)
 	log.LogDebugf("[parseRaftConfig] load raftDir(%v).", s.raftDir)
@@ -480,6 +481,7 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 		HeartbeatPort:     heartbeatPort,
 		ReplicaPort:       replicatePort,
 		NumOfLogsToRetain: DefaultRaftLogsToRetain,
+		TickInterval:      s.tickInterval,
 	}
 	s.raftStore, err = raftstore.NewRaftStore(raftConf)
 	if err != nil {

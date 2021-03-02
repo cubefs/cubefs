@@ -149,6 +149,7 @@ const (
 	cfgDeleteBatchCount  = "deleteBatchCount"
 	cfgTotalMem          = "totalMem"
 	cfgZoneName          = "zoneName"
+	cfgTickInterval      = "tickInterval"
 
 	metaNodeDeleteBatchCountKey = "batchCount"
 )
