@@ -45,9 +45,10 @@ var (
 	ErrNoSpaceToCreatePartition = errors.New("No disk space to create a data partition")
 	ErrNewSpaceManagerFailed    = errors.New("Creater new space manager failed")
 
-	LocalIP, serverPort string
-	gConnPool           = util.NewConnectPool()
-	MasterClient        = masterSDK.NewMasterClient(nil, false)
+	LocalIP, serverPort   string
+	gConnPool             = util.NewConnectPool()
+	MasterClient          = masterSDK.NewMasterClient(nil, false)
+	gHasLoadDataPartition bool
 )
 
 const (
@@ -153,6 +154,12 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	if err = s.startTCPService(); err != nil {
 		return
 	}
+
+	// Start all loaded data partitions which managed by space manager,
+	// this operation will start raft partitions belong to data partitions.
+	s.space.StartPartitions()
+	gHasLoadDataPartition = true
+
 	go s.registerHandler()
 
 	go s.startUpdateNodeInfo()

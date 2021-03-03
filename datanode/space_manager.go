@@ -176,6 +176,18 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace uint64, maxErrC
 	return
 }
 
+func (manager *SpaceManager) StartPartitions() {
+	var err error
+	manager.partitionMutex.RLock()
+	defer manager.partitionMutex.RUnlock()
+	for id, partition := range manager.partitions {
+		if err = partition.Start(); err != nil {
+			log.LogErrorf("partition [id:%v, path:%v] start failed: %v", id, partition.path, err)
+			manager.DetachDataPartition(id)
+		}
+	}
+}
+
 func (manager *SpaceManager) GetDisk(path string) (d *Disk, err error) {
 	manager.diskMutex.RLock()
 	defer manager.diskMutex.RUnlock()
@@ -310,6 +322,9 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		return nil, ErrNoSpaceToCreatePartition
 	}
 	if dp, err = CreateDataPartition(dpCfg, disk, request); err != nil {
+		return
+	}
+	if err = dp.Start(); err != nil {
 		return
 	}
 	manager.partitions[dp.partitionID] = dp
