@@ -17,6 +17,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/errors"
 	syslog "log"
 	"net/http"
 	_ "net/http/pprof"
@@ -178,7 +179,9 @@ func main() {
 		server = console.NewServer()
 		module = ModuleConsole
 	default:
-		daemonize.SignalOutcome(fmt.Errorf("Fatal: role mismatch: %v", role))
+		err = errors.NewErrorf("Fatal: role mismatch: %s", role)
+		fmt.Println(err)
+		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
 
@@ -201,7 +204,9 @@ func main() {
 
 	_, err = log.InitLog(logDir, module, level, nil)
 	if err != nil {
-		daemonize.SignalOutcome(fmt.Errorf("Fatal: failed to init log - %v", err))
+		err = errors.NewErrorf("Fatal: failed to init log - %v", err)
+		fmt.Println(err)
+		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
 	defer log.LogFlush()
@@ -210,6 +215,8 @@ func main() {
 	outputFilePath := path.Join(logDir, module, LoggerOutput)
 	outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
 	if err != nil {
+		err = errors.NewErrorf("Fatal: failed to open output path - %v", err)
+		fmt.Println(err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
@@ -220,6 +227,8 @@ func main() {
 	syslog.SetOutput(outputFile)
 
 	if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
+		err = errors.NewErrorf("Fatal: failed to redirect fd - %v", err)
+		syslog.Println(err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
@@ -228,6 +237,8 @@ func main() {
 
 	err = modifyOpenFiles()
 	if err != nil {
+		err = errors.NewErrorf("Fatal: failed to modify open files - %v", err)
+		syslog.Println(err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
@@ -236,7 +247,9 @@ func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	if err = ump.InitUmp(role, umpDatadir); err != nil {
 		log.LogFlush()
-		daemonize.SignalOutcome(fmt.Errorf("Fatal: init warnLogDir fail:%v ", err))
+		err = errors.NewErrorf("Fatal: failed to init ump warnLogDir - %v", err)
+		syslog.Println(err)
+		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
 
@@ -246,7 +259,9 @@ func main() {
 			e := http.ListenAndServe(fmt.Sprintf(":%v", profPort), nil)
 			if e != nil {
 				log.LogFlush()
-				daemonize.SignalOutcome(fmt.Errorf("cannot listen pprof %v err %v", profPort, err))
+				err = errors.NewErrorf("cannot listen pprof %v err %v", profPort, err)
+				syslog.Println(err)
+				daemonize.SignalOutcome(err)
 				os.Exit(1)
 			}
 		}()
@@ -256,8 +271,9 @@ func main() {
 	err = server.Start(cfg)
 	if err != nil {
 		log.LogFlush()
-		syslog.Printf("Fatal: failed to start the ChubaoFS %v daemon err %v - ", role, err)
-		daemonize.SignalOutcome(fmt.Errorf("Fatal: failed to start the ChubaoFS %v daemon err %v - ", role, err))
+		err = errors.NewErrorf("Fatal: failed to start the ChubaoFS %s daemon err %v - ", role, err)
+		syslog.Println(err)
+		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
 

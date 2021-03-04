@@ -223,6 +223,7 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 			err = fmt.Errorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err(%v) retry[20]", raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err)
 			exporter.Warning(err.Error())
 			resp = proto.OpDiskErr
+			panic(newRaftApplyError(err))
 		}
 	}()
 	if dp.IsRejectWrite() {
@@ -236,13 +237,14 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 	}
 	log.LogDebugf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v)",
 		raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size)
+
 	for i := 0; i < 20; i++ {
 		err = dp.ExtentStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, storage.RandomWriteType, opItem.opcode == proto.OpSyncRandomWrite)
-		if dp.checkIsDiskError(err) {
-			return
-		}
 		if err == nil {
 			break
+		}
+		if IsDiskErr(err.Error()) {
+			panic(newRaftApplyError(err))
 		}
 		if strings.Contains(err.Error(), storage.ExtentNotFoundError.Error()) {
 			err = nil

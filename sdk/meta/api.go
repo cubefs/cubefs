@@ -42,27 +42,40 @@ const (
 )
 
 func (mw *MetaWrapper) GetRootIno(subdir string) (uint64, error) {
-	rootIno := proto.RootIno
-	if subdir == "" || subdir == "/" {
-		return rootIno, nil
+	rootIno, err := mw.LookupPath(subdir)
+	if err != nil {
+		return 0, fmt.Errorf("GetRootIno: Lookup failed, subdir(%v) err(%v)", subdir, err)
 	}
-
-	dirs := strings.Split(subdir, "/")
-	for idx, dir := range dirs {
-		if dir == "/" || dir == "" {
-			continue
-		}
-		child, mode, err := mw.Lookup_ll(rootIno, dir)
-		if err != nil {
-			return 0, fmt.Errorf("GetRootIno: Lookup failed, subdir(%v) idx(%v) dir(%v) err(%v)", subdir, idx, dir, err)
-		}
-		if !proto.IsDir(mode) {
-			return 0, fmt.Errorf("GetRootIno: not directory, subdir(%v) idx(%v) dir(%v) child(%v) mode(%v) err(%v)", subdir, idx, dir, child, mode, err)
-		}
-		rootIno = child
+	info, err := mw.InodeGet_ll(rootIno)
+	if err != nil {
+		return 0, fmt.Errorf("GetRootIno: InodeGet failed, subdir(%v) err(%v)", subdir, err)
+	}
+	if !proto.IsDir(info.Mode) {
+		return 0, fmt.Errorf("GetRootIno: not directory, subdir(%v) mode(%v) err(%v)", subdir, info.Mode, err)
 	}
 	syslog.Printf("GetRootIno: %v\n", rootIno)
 	return rootIno, nil
+}
+
+// Looks up absolute path and returns the ino
+func (mw *MetaWrapper) LookupPath(subdir string) (uint64, error) {
+	ino := proto.RootIno
+	if subdir == "" || subdir == "/" {
+		return ino, nil
+	}
+
+	dirs := strings.Split(subdir, "/")
+	for _, dir := range dirs {
+		if dir == "/" || dir == "" {
+			continue
+		}
+		child, _, err := mw.Lookup_ll(ino, dir)
+		if err != nil {
+			return 0, err
+		}
+		ino = child
+	}
+	return ino, nil
 }
 
 func (mw *MetaWrapper) Statfs() (total, used uint64) {
@@ -483,18 +496,18 @@ func (mw *MetaWrapper) DentryUpdate_ll(parentID uint64, name string, inode uint6
 }
 
 // Used as a callback by stream sdk
-func (mw *MetaWrapper) AppendExtentKey(inode uint64, ek proto.ExtentKey) error {
+func (mw *MetaWrapper) AppendExtentKey(inode uint64, ek proto.ExtentKey, discard []proto.ExtentKey) error {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		return syscall.ENOENT
 	}
 
-	status, err := mw.appendExtentKey(mp, inode, ek)
+	status, err := mw.appendExtentKey(mp, inode, ek, discard)
 	if err != nil || status != statusOK {
-		log.LogErrorf("AppendExtentKey: inode(%v) ek(%v) err(%v) status(%v)", inode, ek, err, status)
+		log.LogErrorf("AppendExtentKey: inode(%v) ek(%v) discard(%v) err(%v) status(%v)", inode, ek, discard, err, status)
 		return statusToErrno(status)
 	}
-	log.LogDebugf("AppendExtentKey: ino(%v) ek(%v)", inode, ek)
+	log.LogDebugf("AppendExtentKey: ino(%v) ek(%v) discard(%v)", inode, ek, discard)
 	return nil
 }
 
@@ -525,7 +538,7 @@ func (mw *MetaWrapper) GetExtents(inode uint64) (gen uint64, size uint64, extent
 		log.LogErrorf("GetExtents: ino(%v) err(%v) status(%v)", inode, err, status)
 		return 0, 0, nil, statusToErrno(status)
 	}
-	log.LogDebugf("GetExtents: ino(%v) gen(%v) size(%v)", inode, gen, size)
+	log.LogDebugf("GetExtents: ino(%v) gen(%v) size(%v) extents(%v)", inode, gen, size, extents)
 	return gen, size, extents, nil
 }
 

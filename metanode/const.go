@@ -117,6 +117,8 @@ const (
 	opFSMDeleteDentryBatch
 	opFSMUnlinkInodeBatch
 	opFSMEvictInodeBatch
+
+	opFSMExtentsAddWithCheck
 )
 
 var (

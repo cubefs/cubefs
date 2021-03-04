@@ -70,11 +70,29 @@ type metadataManager struct {
 	flDeleteBatchCount atomic.Value
 }
 
+func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) {
+	labels = make(map[string]string)
+	mp, err := m.getPartition(p.PartitionID)
+	if err != nil {
+		log.LogErrorf("[metaManager] getPacketLabels metric packet: %v, partitions: %v", p, m.partitions)
+		return
+	}
+	if exporter.EnablePid {
+		labels[exporter.PartId] = fmt.Sprintf("%d", p.PartitionID)
+	}
+	labels[exporter.Vol] = mp.GetBaseConfig().VolName
+	labels[exporter.Op] = p.GetOpMsg()
+
+	return
+}
+
 // HandleMetadataOperation handles the metadata operations.
-func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
-	remoteAddr string) (err error) {
+func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) (err error) {
 	metric := exporter.NewTPCnt(p.GetOpMsg())
-	defer metric.Set(err)
+	labels := m.getPacketLabels(p)
+	defer func() {
+		metric.SetWithLabels(err, labels)
+	}()
 
 	switch p.Opcode {
 	case proto.OpMetaCreateInode:
@@ -111,6 +129,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
 		err = m.opMasterHeartbeat(conn, p, remoteAddr)
 	case proto.OpMetaExtentsAdd:
 		err = m.opMetaExtentsAdd(conn, p, remoteAddr)
+	case proto.OpMetaExtentAddWithCheck:
+		err = m.opMetaExtentAddWithCheck(conn, p, remoteAddr)
 	case proto.OpMetaExtentsList:
 		err = m.opMetaExtentsList(conn, p, remoteAddr)
 	case proto.OpMetaExtentsDel:

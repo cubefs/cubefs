@@ -55,13 +55,18 @@ type raftFsm struct {
 	step        stepFunc
 	tick        func()
 	stopCh      chan struct{}
+
+	mo Monitor
+	//electionFirstBegin is used to mark the begin time of continuous election
+	//It is valid if and only if mo != nil.
+	electionFirstBegin time.Time
 }
 
-func (fsm *raftFsm)getReplicas()(m string) {
-	for id,_:=range fsm.replicas{
-		m+=fmt.Sprintf(" [%v] ,",id)
+func (fsm *raftFsm) getReplicas() (m string) {
+	for id, _ := range fsm.replicas {
+		m += fmt.Sprintf(" [%v] ,", id)
 	}
-	return  m
+	return m
 }
 
 func newRaftFsm(config *Config, raftConfig *RaftConfig) (*raftFsm, error) {
@@ -77,6 +82,7 @@ func newRaftFsm(config *Config, raftConfig *RaftConfig) (*raftFsm, error) {
 	r := &raftFsm{
 		id:       raftConfig.ID,
 		sm:       raftConfig.StateMachine,
+		mo:       raftConfig.Monitor,
 		config:   config,
 		leader:   NoLeader,
 		raftLog:  raftlog,
@@ -441,4 +447,31 @@ func numOfPendingConf(ents []*proto.Entry) int {
 		}
 	}
 	return n
+}
+
+func (r *raftFsm) monitorElection() {
+	if r.mo == nil {
+		return
+	}
+	now := time.Now()
+	if r.electionFirstBegin.IsZero() || r.state != stateCandidate {
+		//Record the time of the most recent lost of leader.
+		r.electionFirstBegin = now
+		return
+	}
+	//call r.mo.MonitorElection when r.leader==NoLeader continuously
+	r.mo.MonitorElection(r.id, r.getReplicas(), now.Sub(r.electionFirstBegin))
+}
+
+func (r *raftFsm) monitorZombie(peer *replica) {
+	if r.mo == nil {
+		return
+	}
+	now := time.Now()
+	if peer.lastZombie.Before(peer.lastActive) {
+		peer.lastZombie = now
+	}
+	if du := now.Sub(peer.lastZombie); du > 2*r.config.TickInterval {
+		r.mo.MonitorZombie(r.id, peer.peer, r.getReplicas(), du)
+	}
 }

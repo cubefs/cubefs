@@ -99,7 +99,9 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 
 		var startTime = time.Now()
 		metric := exporter.NewTPCnt(fmt.Sprintf("action_%v", action.Name()))
-		defer metric.Set(err)
+		defer func() {
+			metric.Set(err)
+		}()
 
 		// Check action is whether enabled.
 		if !action.IsNone() && !o.disabledActions.Contains(action) {

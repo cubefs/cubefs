@@ -34,7 +34,17 @@ const (
 	ConfigKeyExporterEnable = "exporterEnable" //exporter enable
 	ConfigKeyExporterPort   = "exporterPort"   //exporter port
 	ConfigKeyConsulAddr     = "consulAddr"     //consul addr
+	ConfigKeyConsulMeta     = "consulMeta"     // consul meta
+	ConfigKeyIpFilter       = "ipFilter"       // add ip filter
+	ConfigKeyEnablePid      = "enablePid"      // enable report partition id
 	ChSize                  = 1024 * 10        //collect chan size
+
+	// monitor label name
+	Vol    = "vol"
+	Disk   = "disk"
+	PartId = "partid"
+	Op     = "op"
+	Type   = "type"
 )
 
 var (
@@ -43,6 +53,7 @@ var (
 	modulename        string
 	exporterPort      int64
 	enabledPrometheus = false
+	EnablePid         = true
 	replacer          = strings.NewReplacer("-", "_", ".", "_", " ", "_", ",", "_", ":", "_")
 )
 
@@ -57,6 +68,10 @@ func Init(role string, cfg *config.Config) {
 		log.LogInfof("%v exporter disabled", role)
 		return
 	}
+
+	EnablePid = cfg.GetBoolWithDefault(ConfigKeyEnablePid, true)
+	log.LogInfo("enable report partition id info? ", EnablePid)
+
 	port := cfg.GetInt64(ConfigKeyExporterPort)
 	if port == 0 {
 		log.LogInfof("%v exporter port not set", port)
@@ -112,6 +127,14 @@ func InitWithRouter(role string, cfg *config.Config, router *mux.Router, exPort 
 func RegistConsul(cluster string, role string, cfg *config.Config) {
 	clustername = replacer.Replace(cluster)
 	consulAddr := cfg.GetString(ConfigKeyConsulAddr)
+	consulMeta := cfg.GetString(ConfigKeyConsulMeta)
+
+	ipFilter := cfg.GetString(ConfigKeyIpFilter)
+	host, err := GetLocalIpAddr(ipFilter)
+	if err != nil {
+		log.LogErrorf("get local ip error, %v", err.Error())
+		return
+	}
 
 	if exporterPort == int64(0) {
 		exporterPort = cfg.GetInt64(ConfigKeyExporterPort)
@@ -120,7 +143,7 @@ func RegistConsul(cluster string, role string, cfg *config.Config) {
 		if ok := strings.HasPrefix(consulAddr, "http"); !ok {
 			consulAddr = "http://" + consulAddr
 		}
-		go DoConsulRegisterProc(consulAddr, AppName, role, cluster, exporterPort)
+		go DoConsulRegisterProc(consulAddr, AppName, role, cluster, consulMeta, host, exporterPort)
 	}
 }
 
@@ -130,6 +153,6 @@ func collect() {
 	}
 	go collectCounter()
 	go collectGauge()
-	go collectTP()
+	go collectHistogram()
 	go collectAlarm()
 }

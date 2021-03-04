@@ -342,16 +342,18 @@ func (r *raftFsm) tickElectionAck() {
 
 func (r *raftFsm) checkLeaderLease() bool {
 	var act int
-	for id := range r.replicas {
-		if id == r.config.NodeID || r.replicas[id].state == replicaStateSnapshot {
+	for id, peer := range r.replicas {
+		if id == r.config.NodeID || peer.state == replicaStateSnapshot {
 			act++
 			continue
 		}
 
-		if r.replicas[id].active {
+		if peer.active {
+			peer.active = false
 			act++
+		} else {
+			r.monitorZombie(peer)
 		}
-		r.replicas[id].active = false
 	}
 
 	return act >= r.quorum()

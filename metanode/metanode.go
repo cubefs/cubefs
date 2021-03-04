@@ -57,6 +57,7 @@ type MetaNode struct {
 	raftReplicatePort string
 	zoneName          string
 	httpStopC         chan uint8
+	metrics           *MetaNodeMetrics
 
 	control common.Control
 }
@@ -113,6 +114,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.register(); err != nil {
 		return
 	}
+
 	if err = m.startRaftServer(); err != nil {
 		return
 	}
@@ -126,6 +128,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	go m.startUpdateNodeInfo()
 
 	exporter.Init(cfg.GetString("role"), cfg)
+	m.startStat()
 
 	// check local partition compare with master ,if lack,then not start
 	if err = m.checkLocalPartitionMatchWithMaster(); err != nil {
@@ -148,6 +151,7 @@ func doShutdown(s common.Server) {
 	}
 	m.stopUpdateNodeInfo()
 	// shutdown node and release the resource
+	m.stopStat()
 	m.stopServer()
 	m.stopMetaManager()
 	m.stopRaftServer()

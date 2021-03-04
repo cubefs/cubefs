@@ -12,3 +12,5 @@ tmp/
 docker/log
 console/html
 vendor/dep
+java/target
+java/src/main/resources/*.so

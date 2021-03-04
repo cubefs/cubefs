@@ -98,6 +98,29 @@ func (partition *DataPartition) tryToChangeLeader(c *Cluster, dataNode *DataNode
 	return
 }
 
+func (partition *DataPartition) prepareAddRaftMember(addPeer proto.Peer) (leaderAddr string, candidateAddrs []string, err error) {
+	partition.RLock()
+	defer partition.RUnlock()
+	if contains(partition.Hosts, addPeer.Addr) {
+		err = fmt.Errorf("vol[%v],data partition[%v] has contains host[%v]", partition.VolName, partition.PartitionID, addPeer.Addr)
+		return
+	}
+	candidateAddrs = make([]string, 0, len(partition.Hosts))
+	leaderAddr = partition.getLeaderAddr()
+	if leaderAddr != "" && contains(partition.Hosts, leaderAddr) {
+		candidateAddrs = append(candidateAddrs, leaderAddr)
+	} else {
+		leaderAddr = ""
+	}
+	for _, host := range partition.Hosts {
+		if host == leaderAddr {
+			continue
+		}
+		candidateAddrs = append(candidateAddrs, host)
+	}
+	return
+}
+
 func (partition *DataPartition) createTaskToTryToChangeLeader(addr string) (task *proto.AdminTask, err error) {
 	task = proto.NewAdminTask(proto.OpDataPartitionTryToLeader, addr, nil)
 	partition.resetTaskID(task)

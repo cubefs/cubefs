@@ -137,8 +137,8 @@ func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartiti
 	if err != nil {
 		return err
 	}
-
 	// new repair task for the leader
+
 	repairTasks[0] = NewDataPartitionRepairTask(extents, leaderTinyDeleteRecordFileSize, dp.getReplicaAddr(0), dp.getReplicaAddr(0))
 	repairTasks[0].addr = dp.getReplicaAddr(0)
 
