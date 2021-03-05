@@ -222,42 +222,6 @@ list_vol(){
 	parse_curl ${operation}
 }
 
-#add token
-add_token(){
-	volName=$1
-	tokenType=$2
-	Key=$3
-	operation="/token/add?name=${volName}&tokenType=${tokenType}&authKey=${Key}"
-	parse_curl ${operation}
-}
-
-#update token
-update_token(){
-	volName=$1
-	tokenValue=$2
-	tokenType=$3
-	Key=$4
-	operation="/token/update?name=${volName}&token=${tokenValue}&tokenType=${tokenType}&authKey=${Key}"
-	parse_curl ${operation}
-}
-
-#delete token
-delete_token(){
-	volName=$1
-	tokenValue=$2
-	Key=$3
-        operation="/token/delete?name=${volName}&token=${tokenValue}&authKey=${Key}"
-	parse_curl ${operation}
-}
-
-#get token
-get_token(){
-	volName=$1
-	tokenValue=$2
-	operation="/token/get?name=${volName}&token=${tokenValue}"
-	parse_curl ${operation}
-}
-
 #update zone
 update_zone(){
 	Name=$1

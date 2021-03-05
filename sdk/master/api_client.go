@@ -17,7 +17,6 @@ package master
 import (
 	"encoding/json"
 	"net/http"
-	"net/url"
 	"strconv"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -93,21 +92,6 @@ func (api *ClientAPI) GetVolumeStat(volName string) (info *proto.VolStatInfo, er
 	}
 	info = &proto.VolStatInfo{}
 	if err = json.Unmarshal(data, info); err != nil {
-		return
-	}
-	return
-}
-
-func (api *ClientAPI) GetToken(volName, tokenKey string) (token *proto.Token, err error) {
-	var request = newAPIRequest(http.MethodGet, proto.TokenGetURI)
-	request.addParam("name", volName)
-	request.addParam("token", url.QueryEscape(tokenKey))
-	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
-		return
-	}
-	token = &proto.Token{}
-	if err = json.Unmarshal(data, token); err != nil {
 		return
 	}
 	return
