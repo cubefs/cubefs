@@ -38,6 +38,8 @@ import (
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+
+	"smux"
 )
 
 var (
@@ -74,6 +76,12 @@ const (
 	ConfigKeyRaftHeartbeat = "raftHeartbeat" // string
 	ConfigKeyRaftReplica   = "raftReplica"   // string
 	CfgTickInterval        = "tickInterval"  // int
+	// smux Config
+	ConfigKeyEnableSmuxClient  = "enableSmuxConnPool" //bool
+	ConfigKeySmuxPortShift     = "smuxPortShift"      //int
+	ConfigKeySmuxMaxConn       = "smuxMaxConn"        //int
+	ConfigKeySmuxStreamPerConn = "smuxStreamPerConn"  //int
+	ConfigKeySmuxMaxBuffer     = "smuxMaxBuffer"      //int
 )
 
 // DataNode defines the structure of a data node.
@@ -93,6 +101,13 @@ type DataNode struct {
 
 	tcpListener net.Listener
 	stopC       chan bool
+
+	smuxPortShift      int
+	enableSmuxConnPool bool
+	smuxConnPool       *util.SmuxConnectPool
+	smuxListener       net.Listener
+	smuxServerConfig   *smux.Config
+	smuxConnPoolConfig *util.SmuxConnPoolConfig
 
 	metrics *DataNodeMetrics
 
@@ -136,6 +151,13 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	s.registerMetrics()
 	s.register(cfg)
 
+	//parse the smux config
+	if err = s.parseSmuxConfig(cfg); err != nil {
+		return
+	}
+	//smux connection pool must be created before initSpaceManager
+	s.initSmuxPool()
+
 	// init limit
 	initRepairLimit()
 
@@ -156,10 +178,16 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
-	// start tcp listening
+	// tcp listening & tcp connection pool
 	if err = s.startTCPService(); err != nil {
 		return
 	}
+
+	//smux listening & smux connection pool
+	if err = s.startSmuxService(cfg); err != nil {
+		return
+	}
+
 	go s.registerHandler()
 
 	go s.startUpdateNodeInfo()
@@ -177,6 +205,8 @@ func doShutdown(server common.Server) {
 	s.stopUpdateNodeInfo()
 	s.stopTCPService()
 	s.stopRaftServer()
+	s.stopSmuxService()
+	s.closeSmuxConnPool()
 }
 
 func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
@@ -364,6 +394,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/setAutoRepairStatus", s.setAutoRepairStatus)
 	http.HandleFunc("/getTinyDeleted", s.getTinyDeleted)
 	http.HandleFunc("/getNormalDeleted", s.getNormalDeleted)
+	http.HandleFunc("/getSmuxPoolStat", s.getSmuxPoolStat())
 }
 
 func (s *DataNode) startTCPService() (err error) {
@@ -405,7 +436,73 @@ func (s *DataNode) serveConn(conn net.Conn) {
 	c, _ := conn.(*net.TCPConn)
 	c.SetKeepAlive(true)
 	c.SetNoDelay(true)
-	packetProcessor := repl.NewReplProtocol(c, s.Prepare, s.OperatePacket, s.Post)
+	packetProcessor := repl.NewReplProtocol(conn, s.Prepare, s.OperatePacket, s.Post)
+	packetProcessor.ServerConn()
+}
+
+func (s *DataNode) startSmuxService(cfg *config.Config) (err error) {
+	log.LogInfo("Start: startSmuxService")
+	addr := fmt.Sprintf(":%v", s.port)
+	addr = util.ShiftAddrPort(addr, s.smuxPortShift)
+	log.LogInfof("SmuxListenAddr: (%v)", addr)
+
+	// server
+	l, err := net.Listen(NetworkProtocol, addr)
+	log.LogDebugf("action[startSmuxService] listen %v address(%v).", NetworkProtocol, addr)
+	if err != nil {
+		log.LogError("failed to listen smux addr, err:", err)
+		return
+	}
+	s.smuxListener = l
+	go func(ln net.Listener) {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				log.LogErrorf("action[startSmuxService] failed to accept, err:%s", err.Error())
+				break
+			}
+			log.LogDebugf("action[startSmuxService] accept connection from %s.", conn.RemoteAddr().String())
+			go s.serveSmuxConn(conn)
+		}
+	}(l)
+	return
+}
+
+func (s *DataNode) stopSmuxService() (err error) {
+	if s.smuxListener != nil {
+		s.smuxListener.Close()
+		log.LogDebugf("action[stopSmuxService] stop smux service.")
+	}
+	return
+}
+
+func (s *DataNode) serveSmuxConn(conn net.Conn) {
+	space := s.space
+	space.Stats().AddConnection()
+	c, _ := conn.(*net.TCPConn)
+	c.SetKeepAlive(true)
+	c.SetNoDelay(true)
+	var sess *smux.Session
+	var err error
+	sess, err = smux.Server(conn, s.smuxServerConfig)
+	if err != nil {
+		log.LogErrorf("action[serveSmuxConn] failed to serve smux connection, err(%v)", err)
+		return
+	}
+	defer sess.Close()
+	for {
+		stream, err := sess.AcceptStream()
+		if err != nil {
+			log.LogErrorf("action[serveSmuxConn] failed to accept smux stream, err(%v)", err)
+			break
+		}
+		go s.serveSmuxStream(stream)
+	}
+	return
+}
+
+func (s *DataNode) serveSmuxStream(stream *smux.Stream) {
+	packetProcessor := repl.NewReplProtocol(stream, s.Prepare, s.OperatePacket, s.Post)
 	packetProcessor.ServerConn()
 }
 
@@ -430,6 +527,116 @@ func (s *DataNode) incDiskErrCnt(partitionID uint64, err error, flag uint8) {
 	} else if flag == ReadFlag {
 		d.incReadErrCnt()
 	}
+}
+
+func (s *DataNode) parseSmuxConfig(cfg *config.Config) error {
+	s.enableSmuxConnPool = cfg.GetBool(ConfigKeyEnableSmuxClient)
+	s.smuxPortShift = int(cfg.GetInt64(ConfigKeySmuxPortShift))
+	if s.smuxPortShift == 0 {
+		s.smuxPortShift = util.DefaultSmuxPortShift
+	}
+	// smux server cfg
+	s.smuxServerConfig = util.DefaultSmuxConfig()
+	maxBuffer := cfg.GetInt64(ConfigKeySmuxMaxBuffer)
+	if maxBuffer > 0 {
+		s.smuxServerConfig.MaxReceiveBuffer = int(maxBuffer)
+		if s.smuxServerConfig.MaxStreamBuffer > int(maxBuffer) {
+			s.smuxServerConfig.MaxStreamBuffer = int(maxBuffer)
+		}
+		if err := smux.VerifyConfig(s.smuxServerConfig); err != nil {
+			return err
+		}
+	}
+
+	//smux conn pool config
+	if s.enableSmuxConnPool {
+		s.smuxConnPoolConfig = util.DefaultSmuxConnPoolConfig()
+		if maxBuffer > 0 {
+			s.smuxConnPoolConfig.MaxReceiveBuffer = int(maxBuffer)
+			if s.smuxConnPoolConfig.MaxStreamBuffer > int(maxBuffer) {
+				s.smuxConnPoolConfig.MaxStreamBuffer = int(maxBuffer)
+			}
+		}
+		maxConn := cfg.GetInt64(ConfigKeySmuxMaxConn)
+		if maxConn > 0 {
+			if s.smuxConnPoolConfig.ConnsPerAddr < int(maxConn) {
+				s.smuxConnPoolConfig.ConnsPerAddr = int(maxConn)
+			}
+		}
+		maxStreamPerConn := cfg.GetInt64(ConfigKeySmuxStreamPerConn)
+		if maxStreamPerConn > 0 {
+			s.smuxConnPoolConfig.StreamsPerConn = int(maxStreamPerConn)
+		}
+		if err := util.VerifySmuxPoolConfig(s.smuxConnPoolConfig); err != nil {
+			return err
+		}
+	}
+	log.LogDebugf("[parseSmuxConfig] load smuxPortShift(%v).", s.smuxPortShift)
+	log.LogDebugf("[parseSmuxConfig] load enableSmuxConnPool(%v).", s.enableSmuxConnPool)
+	log.LogDebugf("[parseSmuxConfig] load smuxServerConfig(%v).", s.smuxServerConfig)
+	log.LogDebugf("[parseSmuxConfig] load smuxConnPoolConfig(%v).", s.smuxConnPoolConfig)
+	return nil
+}
+
+var ErrInvalidSmuxAddr = errors.New("invalid smux addr")
+
+func (s *DataNode) getRepairConn(target string) (conn net.Conn, err error) {
+	if s.enableSmuxConnPool {
+		addr := util.ShiftAddrPort(target, s.smuxPortShift)
+		if len(addr) == 0 {
+			log.LogErrorf("can not shift target addr, target(%v), shift(%d)\n", target, s.smuxPortShift)
+			return nil, ErrInvalidSmuxAddr
+		}
+		conn, err = s.smuxConnPool.GetConnect(addr)
+		if err != nil {
+			log.LogErrorf("action[getRepairConn failed to get conn from gSmuxPool, using default, addr(%v), err(%v)\n", err)
+		} else {
+			log.LogDebugf("action[getRepairConn] got smux conn from gSmuxPool, addr(%v)\n", addr)
+			return
+		}
+	} else {
+		log.LogDebug("action[getRepairConn] getting repair conn from gConnPool")
+		conn, err = gConnPool.GetConnect(target)
+	}
+	return
+}
+
+func (s *DataNode) putRepairConn(conn net.Conn, forceClose bool) {
+	if conn == nil {
+		return
+	}
+	if s.enableSmuxConnPool {
+		if smuxConn, isSmuxConn := conn.(*smux.Stream); isSmuxConn {
+			log.LogDebug("action[putRepairConn] recycling smux conn to gSmuxPool")
+			s.smuxConnPool.PutConnect(smuxConn, forceClose)
+			return
+		}
+	} else {
+		if tcpConn, isTcpConn := conn.(*net.TCPConn); isTcpConn {
+			log.LogDebug("action[putRepairConn] recycling tcp conn to gConnPool")
+			gConnPool.PutConnect(tcpConn, forceClose)
+			return
+		}
+	}
+	log.LogWarn("action[putRepairConn] unknown conn type, conn(%v)\n", conn)
+	conn.Close()
+	return
+}
+
+func (s *DataNode) initSmuxPool() {
+	if s.enableSmuxConnPool {
+		log.LogInfof("Start: init smux conn pool")
+		s.smuxConnPool = util.NewSmuxConnectPool(s.smuxConnPoolConfig)
+	}
+	return
+}
+
+func (s *DataNode) closeSmuxConnPool() {
+	if s.smuxConnPool != nil {
+		s.smuxConnPool.Close()
+		log.LogDebugf("action[stopSmuxService] stop smux conn pool")
+	}
+	return
 }
 
 func IsDiskErr(errMsg string) bool {

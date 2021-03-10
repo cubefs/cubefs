@@ -321,6 +321,22 @@ func (s *DataNode) getNormalDeleted(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+func (s *DataNode) getSmuxPoolStat() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.enableSmuxConnPool {
+			s.buildFailureResp(w, 500, "smux pool not supported")
+			return
+		}
+		if s.smuxConnPool == nil {
+			s.buildFailureResp(w, 500, "smux pool now is nil")
+			return
+		}
+		stat := s.smuxConnPool.GetStat()
+		s.buildSuccessResp(w, stat)
+		return
+	}
+}
+
 func (s *DataNode) buildSuccessResp(w http.ResponseWriter, data interface{}) {
 	s.buildJSONResp(w, http.StatusOK, data, "")
 }

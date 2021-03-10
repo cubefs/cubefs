@@ -494,12 +494,12 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 		}
 		request = repl.NewTinyExtentRepairReadPacket(dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
 	}
-	var conn *net.TCPConn
-	conn, err = gConnPool.GetConnect(remoteExtentInfo.Source)
+	var conn net.Conn
+	conn, err = dp.getRepairConn(remoteExtentInfo.Source)
 	if err != nil {
 		return errors.Trace(err, "streamRepairExtent get conn from host(%v) error", remoteExtentInfo.Source)
 	}
-	defer gConnPool.PutConnect(conn, true)
+	defer dp.putRepairConn(conn, true)
 
 	if err = request.WriteToConn(conn); err != nil {
 		err = errors.Trace(err, "streamRepairExtent send streamRead to host(%v) error", remoteExtentInfo.Source)

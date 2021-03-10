@@ -45,7 +45,7 @@ type ReplProtocol struct {
 	toBeProcessedCh chan *Packet // the goroutine receives an available packet and then sends it to this channel
 	responseCh      chan *Packet // this chan is used to write response to the client
 
-	sourceConn *net.TCPConn
+	sourceConn net.Conn
 	exitC      chan bool
 	exited     int32
 	exitedMu   sync.RWMutex
@@ -54,7 +54,7 @@ type ReplProtocol struct {
 	lock             sync.RWMutex
 
 	prepareFunc  func(p *Packet) error                 // prepare packet
-	operatorFunc func(p *Packet, c *net.TCPConn) error // operator
+	operatorFunc func(p *Packet, c net.Conn) error // operator
 	postFunc     func(p *Packet) error                 // post-processing packet
 
 	isError int32
@@ -187,8 +187,8 @@ func (ft *FollowerTransport) Write(p *FollowerPacket) {
 	ft.sendCh <- p
 }
 
-func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet) error,
-	operatorFunc func(p *Packet, c *net.TCPConn) error, postFunc func(p *Packet) error) *ReplProtocol {
+func NewReplProtocol(inConn net.Conn, prepareFunc func(p *Packet) error,
+	operatorFunc func(p *Packet, c net.Conn) error, postFunc func(p *Packet) error) *ReplProtocol {
 	rp := new(ReplProtocol)
 	rp.packetList = list.New()
 	rp.ackCh = make(chan struct{}, RequestChanSize)
