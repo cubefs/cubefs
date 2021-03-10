@@ -357,7 +357,7 @@ func (l *Log) SetRotate(logDir string) error {
 	}
 	var minRatio float64
 	if float64(fs.Bavail * uint64(fs.Bsize)) < float64(fs.Blocks*uint64(fs.Bsize)) * DefaultHeadRatio {
-		minRatio = float64(fs.Bavail*uint64(fs.Bsize)) * DefaultHeadRatio / 1024 /1024
+		minRatio = float64(fs.Bavail*uint64(fs.Bsize)) / 1024 /1024
 	} else {
 		minRatio = float64(fs.Blocks*uint64(fs.Bsize)) * DefaultHeadRatio / 1024 / 1024
 	}
