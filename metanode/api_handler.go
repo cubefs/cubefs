@@ -59,6 +59,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getDirectory", m.getDirectoryHandler)
 	http.HandleFunc("/getAllDentry", m.getAllDentriesHandler)
 	http.HandleFunc("/getParams", m.getParamsHandler)
+	http.HandleFunc("/getSmuxStat", m.getSmuxStatHandler)
 	return
 }
 
@@ -71,6 +72,16 @@ func (m *MetaNode) getParamsHandler(w http.ResponseWriter,
 	data, _ := resp.Marshal()
 	if _, err := w.Write(data); err != nil {
 		log.LogErrorf("[getPartitionsHandler] response %s", err)
+	}
+}
+
+func (m *MetaNode) getSmuxStatHandler(w http.ResponseWriter,
+	r *http.Request) {
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	resp.Data = smuxPool.GetStat()
+	data, _ := resp.Marshal()
+	if _, err := w.Write(data); err != nil {
+		log.LogErrorf("[getSmuxStatHandler] response %s", err)
 	}
 }
 
