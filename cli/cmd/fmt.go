@@ -99,7 +99,6 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Create time          : %v\n", svv.CreateTime))
 	sb.WriteString(fmt.Sprintf("  Authenticate         : %v\n", formatEnabledDisabled(svv.Authenticate)))
 	sb.WriteString(fmt.Sprintf("  Follower read        : %v\n", formatEnabledDisabled(svv.FollowerRead)))
-	sb.WriteString(fmt.Sprintf("  Enable token         : %v\n", formatEnabledDisabled(svv.EnableToken)))
 	sb.WriteString(fmt.Sprintf("  Cross zone           : %v\n", formatEnabledDisabled(svv.CrossZone)))
 	sb.WriteString(fmt.Sprintf("  Inode count          : %v\n", svv.InodeCount))
 	sb.WriteString(fmt.Sprintf("  Dentry count         : %v\n", svv.DentryCount))
@@ -179,7 +178,7 @@ func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("Peers :\n"))
 	sb.WriteString(fmt.Sprintf("%v\n", formatPeerTableHeader()))
 	for _, peer := range partition.Peers {
-		sb.WriteString(fmt.Sprintf("%v\n", formatPeer( peer)))
+		sb.WriteString(fmt.Sprintf("%v\n", formatPeer(peer)))
 	}
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("Hosts :\n"))
@@ -223,7 +222,7 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("Peers :\n"))
 	for _, peer := range partition.Peers {
-		sb.WriteString(fmt.Sprintf("%v\n", formatPeer( peer)))
+		sb.WriteString(fmt.Sprintf("%v\n", formatPeer(peer)))
 	}
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("Hosts :\n"))
@@ -361,7 +360,7 @@ func formatTime(timeUnix int64) string {
 	return time.Unix(timeUnix, 0).Format("2006-01-02 15:04:05")
 }
 
-func formatTimeToString(t time.Time) string{
+func formatTimeToString(t time.Time) string {
 	return t.Format("2006-01-02 15:04:05")
 }
 
@@ -374,7 +373,7 @@ func formatDataReplicaTableHeader() string {
 func formatDataReplica(indentation string, replica *proto.DataReplica, rowTable bool) string {
 	if rowTable {
 		return fmt.Sprintf(dataReplicaTableRowPattern, replica.Addr, formatSize(replica.Used), formatSize(replica.Total),
-		replica.IsLeader, replica.FileCount, formatDataPartitionStatus(replica.Status), formatTime(replica.ReportTime))
+			replica.IsLeader, replica.FileCount, formatDataPartitionStatus(replica.Status), formatTime(replica.ReportTime))
 	}
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("%v- Addr           : %v\n", indentation, replica.Addr))
@@ -399,7 +398,7 @@ func formatMetaReplicaTableHeader() string {
 func formatMetaReplica(indentation string, replica *proto.MetaReplicaInfo, rowTable bool) string {
 	if rowTable {
 		return fmt.Sprintf(metaReplicaTableRowPattern, replica.Addr, replica.IsLeader, formatMetaPartitionStatus(replica.Status),
-		formatTime(replica.ReportTime))
+			formatTime(replica.ReportTime))
 	}
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("%v- Addr           : %v\n", indentation, replica.Addr))
@@ -409,8 +408,6 @@ func formatMetaReplica(indentation string, replica *proto.MetaReplicaInfo, rowTa
 	return sb.String()
 }
 
-
-
 var peerTableRowPattern = "%-6v    %-18v"
 
 func formatPeerTableHeader() string {
@@ -419,7 +416,6 @@ func formatPeerTableHeader() string {
 func formatPeer(peer proto.Peer) string {
 	return fmt.Sprintf(peerTableRowPattern, peer.ID, peer.Addr)
 }
-
 
 var dataNodeDetailTableRowPattern = "%-6v    %-6v    %-18v    %-6v    %-6v    %-6v    %-10v"
 
@@ -484,13 +480,13 @@ func formatZoneView(zv *proto.ZoneView) string {
 		sb.WriteString(fmt.Sprintf("NodeSet-%v:\n", index))
 		sb.WriteString(fmt.Sprintf("  DataNodes[%v]:\n", ns.DataNodeLen))
 		sb.WriteString(fmt.Sprintf("    %v\n", formatNodeViewTableHeader()))
-		for _, nv := range ns.DataNodes{
+		for _, nv := range ns.DataNodes {
 			sb.WriteString(fmt.Sprintf("    %v\n", formatNodeView(&nv, true)))
 		}
 		sb.WriteString(fmt.Sprintf("\n"))
 		sb.WriteString(fmt.Sprintf("  MetaNodes[%v]:\n", ns.MetaNodeLen))
 		sb.WriteString(fmt.Sprintf("    %v\n", formatNodeViewTableHeader()))
-		for _, nv := range ns.MetaNodes{
+		for _, nv := range ns.MetaNodes {
 			sb.WriteString(fmt.Sprintf("    %v\n", formatNodeView(&nv, true)))
 		}
 	}

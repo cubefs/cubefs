@@ -373,7 +373,6 @@ Update Configuration Online
     Flags:
           --authenticate string    Enable authenticate
           --capacity uint          Specify volume capacity [Unit: GB]
-          --enable-token string    ReadOnly/ReadWrite token validation for fuse client
           --follower-read string   Enable read form replica follower
       -h, --help                   help for set
           --replicas int           Specify volume replicas number

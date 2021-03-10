@@ -112,10 +112,6 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 
-	if err = m.cluster.loadTokens(); err != nil {
-		panic(err)
-	}
-
 	if err = m.cluster.loadMetaPartitions(); err != nil {
 		panic(err)
 	}

@@ -20,7 +20,6 @@ Create
    "capacity", "int", "the quota of vol, unit is GB", "Yes", "None"
    "owner", "string", "the owner of vol, and user ID of a user", "Yes", "None"
    "mpCount", "int", "the amount of initial meta partitions", "No", "3"
-   "enableToken","bool","whether to enable the token mechanism to control client permissions", "No", "false"
    "size", "int", "the size of data partitions, unit is GB", "No", "120"
    "followerRead", "bool", "enable read from follower", "No", "false"
    "crossZone", "bool", "cross zone or not. If it is true, parameter *zoneName* must be empty", "No", "false"
@@ -120,7 +119,6 @@ Increase the quota of volume, or adjust other parameters.
    "authKey", "string", "calculates the 32-bit MD5 value of the owner field as authentication information", "Yes"
    "capacity", "int", "the quota of vol, has to be 20 percent larger than the used space, unit is GB", "Yes"
    "zoneName", "string", "update zone name", "Yes"
-   "enableToken","bool","whether to enable the token mechanism to control client permissions. ``False`` by default.", "No"
    "followerRead", "bool", "enable read from follower", "No"
 
 List
@@ -160,76 +158,3 @@ response
        }
     ]
 
-Add Token
-------------
-
-.. code-block:: bash
-
-   curl -v "http://10.196.59.198:17010/token/add?name=test&tokenType=1&authKey=md5(owner)"
-
-Add the token that controls read and write permissions.
-
-.. csv-table:: Parameters
-   :header: "Parameter", "Type", "Description"
-
-   "name", "string", "the name of vol"
-   "tokenType", "int", "1 is readonly token, 2 is readWrite token"
-   "authKey", "string", "calculates the 32-bit MD5 value of the owner field as authentication information"
-
-Update Token
----------------
-
-.. code-block:: bash
-
-   curl -v "http://10.196.59.198:17010/token/update?name=test&token=xx&tokenType=1&authKey=md5(owner)"
-
-Update token type.
-
-.. csv-table:: Parameters
-   :header: "Parameter", "Type", "Description"
-
-   "name", "string", "the name of vol"
-   "token", "string","the token value"
-   "tokenType", "int", "1 is readonly token, 2 is readWrite token"
-   "authKey", "string", "calculates the 32-bit MD5 value of the owner field as authentication information"
-
-Delete Token
----------------
-
-.. code-block:: bash
-
-   curl -v "http://10.196.59.198:17010/token/delete?name=test&token=xx&authKey=md5(owner)"
-
-Delete specified token.
-
-.. csv-table:: Parameters
-   :header: "Parameter", "Type", "Description"
-
-   "name", "string", "the name of vol"
-   "token", "string","the token value"
-   "authKey", "string", "calculates the 32-bit MD5 value of the owner field as authentication information"
-
-Get Token
-------------
-
-.. code-block:: bash
-
-   curl -v "http://10.196.59.198:17010/token/get?name=test&token=xx"
-
-Show token information.
-
-.. csv-table:: Parameters
-   :header: "Parameter", "Type", "Description"
-
-   "name", "string", "the name of vol"
-   "token", "string","the token value"
-
-response
-
-.. code-block:: json
-
-   {
-       "TokenType":2,
-       "Value":"siBtuF9hbnNqXzJfMTU48si3nzU4MzE1Njk5MDM1NQ==",
-       "VolName":"test"
-   }
