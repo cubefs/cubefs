@@ -182,7 +182,7 @@ func parseMetaStr(meta string) (bool, map[string]string) {
 	for _, kv := range kvs {
 		arr := strings.Split(kv, "=")
 		if len(arr) != 2 {
-			log.LogWarnf("meta is invalid, not use %s", meta)
+			log.LogInfof("meta is invalid, can't use %s", meta)
 			return false, m
 		}
 

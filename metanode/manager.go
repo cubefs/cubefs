@@ -71,17 +71,25 @@ type metadataManager struct {
 }
 
 func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) {
+
 	labels = make(map[string]string)
-	mp, err := m.getPartition(p.PartitionID)
-	if err != nil {
-		log.LogErrorf("[metaManager] getPacketLabels metric packet: %v, partitions: %v", p, m.partitions)
+	labels[exporter.Op] = p.GetOpMsg()
+
+	if p.Opcode == proto.OpMetaNodeHeartbeat || p.Opcode == proto.OpCreateMetaPartition {
+		// no partition info
 		return
 	}
+
+	mp, err := m.getPartition(p.PartitionID)
+	if err != nil {
+		log.LogWarnf("[metaManager] getPacketLabels metric packet: %v, partitions: %v", p, m.partitions)
+		return
+	}
+
 	if exporter.EnablePid {
 		labels[exporter.PartId] = fmt.Sprintf("%d", p.PartitionID)
 	}
 	labels[exporter.Vol] = mp.GetBaseConfig().VolName
-	labels[exporter.Op] = p.GetOpMsg()
 
 	return
 }
