@@ -382,7 +382,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 				store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
 			} else {
 				log.LogInfof("delete limiter reach(%v), try again.", deleteLimiteRater.Limit())
-				err = errors.New("delete limit.")
+				err = storage.TryAgainError
 			}
 		}
 	}

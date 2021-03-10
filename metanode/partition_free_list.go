@@ -278,7 +278,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 
 	// try again.
 	if len(shouldRePushToFreeList) > 0 && deleteWorkerSleepMs == 0 {
-		time.Sleep(time.Duration(200) * time.Millisecond)
+		time.Sleep(time.Duration(1000) * time.Millisecond)
 	}
 }
 
@@ -389,9 +389,10 @@ func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, ext
 	conn, err := smuxPool.GetConnect(addr)
 	log.LogInfof("doBatchDeleteExtentsByPartition mp (%v) GetConnect (%v)", mp.config.PartitionId, addr)
 
+	ResultCode := proto.OpOk
 
 	defer func() {
-		if err != nil {
+		if err != nil && ResultCode != proto.OpAgain {
 			smuxPool.PutConnect(conn, ForceClosedConnect)
 		} else {
 			smuxPool.PutConnect(conn, NoClosedConnect)
@@ -416,10 +417,14 @@ func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, ext
 			p.GetUniqueLogId(), err.Error())
 		return
 	}
+
+	ResultCode = p.ResultCode
+
 	if p.ResultCode != proto.OpOk {
 		err = errors.NewErrorf("[deleteMarkedInodes] %s response: %s", p.GetUniqueLogId(),
 			p.GetResultMsg())
 	}
+
 	return
 }
 
