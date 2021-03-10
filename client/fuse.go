@@ -126,8 +126,6 @@ func main() {
 		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
 
-	exporter.Init(ModuleName, cfg)
-
 	level := parseLogLevel(opt.Loglvl)
 	_, err = log.InitLog(opt.Logpath, LoggerPrefix, level, nil)
 	if err != nil {
@@ -190,6 +188,7 @@ func main() {
 	}
 	defer fsConn.Close()
 
+	exporter.Init(ModuleName, cfg)
 	exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
 
 	if err = fs.Serve(fsConn, super); err != nil {
