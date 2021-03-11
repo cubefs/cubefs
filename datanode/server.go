@@ -109,6 +109,9 @@ type DataNode struct {
 	smuxServerConfig   *smux.Config
 	smuxConnPoolConfig *util.SmuxConnPoolConfig
 
+	getRepairConnFunc func(target string) (net.Conn, error)
+	putRepairConnFunc func(conn net.Conn, forceClose bool)
+
 	metrics *DataNodeMetrics
 
 	control common.Control
@@ -155,8 +158,8 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	if err = s.parseSmuxConfig(cfg); err != nil {
 		return
 	}
-	//smux connection pool must be created before initSpaceManager
-	s.initSmuxPool()
+	//connection pool must be created before initSpaceManager
+	s.initConnPool()
 
 	// init limit
 	initRepairLimit()
@@ -578,55 +581,29 @@ func (s *DataNode) parseSmuxConfig(cfg *config.Config) error {
 	return nil
 }
 
-var ErrInvalidSmuxAddr = errors.New("invalid smux addr")
-
-func (s *DataNode) getRepairConn(target string) (conn net.Conn, err error) {
-	if s.enableSmuxConnPool {
-		addr := util.ShiftAddrPort(target, s.smuxPortShift)
-		if len(addr) == 0 {
-			log.LogErrorf("can not shift target addr, target(%v), shift(%d)\n", target, s.smuxPortShift)
-			return nil, ErrInvalidSmuxAddr
-		}
-		conn, err = s.smuxConnPool.GetConnect(addr)
-		if err != nil {
-			log.LogErrorf("action[getRepairConn failed to get conn from gSmuxPool, using default, addr(%v), err(%v)\n", err)
-		} else {
-			log.LogDebugf("action[getRepairConn] got smux conn from gSmuxPool, addr(%v)\n", addr)
-			return
-		}
-	} else {
-		log.LogDebug("action[getRepairConn] getting repair conn from gConnPool")
-		conn, err = gConnPool.GetConnect(target)
-	}
-	return
-}
-
-func (s *DataNode) putRepairConn(conn net.Conn, forceClose bool) {
-	if conn == nil {
-		return
-	}
-	if s.enableSmuxConnPool {
-		if smuxConn, isSmuxConn := conn.(*smux.Stream); isSmuxConn {
-			log.LogDebug("action[putRepairConn] recycling smux conn to gSmuxPool")
-			s.smuxConnPool.PutConnect(smuxConn, forceClose)
-			return
-		}
-	} else {
-		if tcpConn, isTcpConn := conn.(*net.TCPConn); isTcpConn {
-			log.LogDebug("action[putRepairConn] recycling tcp conn to gConnPool")
-			gConnPool.PutConnect(tcpConn, forceClose)
-			return
-		}
-	}
-	log.LogWarn("action[putRepairConn] unknown conn type, conn(%v)\n", conn)
-	conn.Close()
-	return
-}
-
-func (s *DataNode) initSmuxPool() {
+func (s *DataNode) initConnPool() {
 	if s.enableSmuxConnPool {
 		log.LogInfof("Start: init smux conn pool")
 		s.smuxConnPool = util.NewSmuxConnectPool(s.smuxConnPoolConfig)
+		s.getRepairConnFunc = func(target string) (net.Conn, error) {
+			addr := util.ShiftAddrPort(target, s.smuxPortShift)
+			log.LogDebugf("[dataNode.getRepairConnFunc] get smux conn, addr(%v)", addr)
+			return s.smuxConnPool.GetConnect(addr)
+		}
+		s.putRepairConnFunc = func(conn net.Conn, forceClose bool) {
+			log.LogDebugf("[dataNode.putRepairConnFunc] put smux conn, addr(%v), forceClose(%v)", conn.RemoteAddr().String(), forceClose)
+			s.smuxConnPool.PutConnect(conn.(*smux.Stream), forceClose)
+		}
+	} else {
+		s.getRepairConnFunc = func(target string) (conn net.Conn, err error) {
+			log.LogDebugf("[dataNode.getRepairConnFunc] get tcp conn, addr(%v)", target)
+			return gConnPool.GetConnect(target)
+		}
+		s.putRepairConnFunc = func(conn net.Conn, forceClose bool) {
+			log.LogDebugf("[dataNode.putRepairConnFunc] put tcp conn, addr(%v), forceClose(%v)", conn.RemoteAddr().String(), forceClose)
+			gConnPool.PutConnect(conn.(*net.TCPConn), forceClose)
+			return
+		}
 	}
 	return
 }

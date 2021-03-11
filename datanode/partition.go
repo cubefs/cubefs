@@ -745,7 +745,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 	var (
 		localTinyDeleteFileSize int64
 		err                     error
-		conn                    *net.TCPConn
+		conn                    net.Conn
 	)
 	if !dp.pushSyncDeleteRecordFromLeaderMesg() {
 		return
@@ -775,10 +775,12 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 	}()
 
 	p := repl.NewPacketToReadTinyDeleteRecord(dp.partitionID, localTinyDeleteFileSize)
-	if conn, err = gConnPool.GetConnect(repairTask.LeaderAddr); err != nil {
+	if conn, err = dp.getRepairConn(repairTask.LeaderAddr); err != nil {
 		return
 	}
-	defer gConnPool.PutConnect(conn, true)
+	defer func() {
+		dp.putRepairConn(conn, err != nil)
+	}()
 	if err = p.WriteToConn(conn); err != nil {
 		return
 	}
@@ -853,10 +855,10 @@ func (dp *DataPartition) canRemoveSelf() (canRemove bool, err error) {
 }
 
 func (dp *DataPartition) getRepairConn(target string) (net.Conn, error) {
-	return dp.dataNode.getRepairConn(target)
+	return dp.dataNode.getRepairConnFunc(target)
 }
 
 func (dp *DataPartition) putRepairConn(conn net.Conn, forceClose bool) {
-	dp.dataNode.putRepairConn(conn, forceClose)
+	dp.dataNode.putRepairConnFunc(conn, forceClose)
 	return
 }

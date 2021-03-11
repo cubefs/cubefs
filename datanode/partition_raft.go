@@ -577,7 +577,9 @@ func (dp *DataPartition) getLeaderPartitionSize(maxExtentID uint64) (size uint64
 		err = errors.Trace(err, " partition(%v) get host(%v) connect", dp.partitionID, target)
 		return
 	}
-	defer gConnPool.PutConnect(conn, true)
+	defer func() {
+		gConnPool.PutConnect(conn, err != nil)
+	}()
 	err = p.WriteToConn(conn) // write command to the remote host
 	if err != nil {
 		err = errors.Trace(err, "partition(%v) write to host(%v)", dp.partitionID, target)
@@ -613,7 +615,9 @@ func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize() (maxExtentID, Pa
 		err = errors.Trace(err, " partition(%v) get host(%v) connect", dp.partitionID, target)
 		return
 	}
-	defer gConnPool.PutConnect(conn, true)
+	defer func() {
+		gConnPool.PutConnect(conn, err != nil)
+	}()
 	err = p.WriteToConn(conn) // write command to the remote host
 	if err != nil {
 		err = errors.Trace(err, "partition(%v) write to host(%v)", dp.partitionID, target)
@@ -654,17 +658,17 @@ func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) 
 		if err != nil {
 			return
 		}
-		defer gConnPool.PutConnect(conn, true)
 		err = p.WriteToConn(conn)
 		if err != nil {
+			gConnPool.PutConnect(conn, true)
 			return
 		}
 		err = p.ReadFromConn(conn, 60)
 		if err != nil {
+			gConnPool.PutConnect(conn, true)
 			return
 		}
-		gConnPool.PutConnect(conn, true)
-
+		gConnPool.PutConnect(conn, false)
 		log.LogDebugf("partition(%v) minAppliedID(%v)", dp.partitionID, minAppliedID)
 	}
 
@@ -717,7 +721,9 @@ func (dp *DataPartition) getRemoteAppliedID(target string, p *repl.Packet) (appl
 	if err != nil {
 		return
 	}
-	defer gConnPool.PutConnect(conn, true)
+	defer func() {
+		gConnPool.PutConnect(conn, err != nil)
+	}()
 	err = p.WriteToConn(conn) // write command to the remote host
 	if err != nil {
 		return

@@ -200,7 +200,9 @@ func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uin
 		err = errors.Trace(err, "getRemoteExtentInfo DataPartition(%v) get host(%v) connect", dp.partitionID, target)
 		return
 	}
-	defer gConnPool.PutConnect(conn, true)
+	defer func() {
+		gConnPool.PutConnect(conn, err != nil)
+	}()
 	err = p.WriteToConn(conn) // write command to the remote host
 	if err != nil {
 		err = errors.Trace(err, "getRemoteExtentInfo DataPartition(%v) write to host(%v)", dp.partitionID, target)
@@ -412,7 +414,9 @@ func (dp *DataPartition) notifyFollower(wg *sync.WaitGroup, index int, members [
 	if err != nil {
 		return err
 	}
-	defer gConnPool.PutConnect(conn, true)
+	defer func() {
+		gConnPool.PutConnect(conn, err != nil)
+	}()
 	if err = p.WriteToConn(conn); err != nil {
 		return err
 	}
@@ -499,7 +503,9 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	if err != nil {
 		return errors.Trace(err, "streamRepairExtent get conn from host(%v) error", remoteExtentInfo.Source)
 	}
-	defer dp.putRepairConn(conn, true)
+	defer func(){
+		dp.putRepairConn(conn, err != nil)
+	}()
 
 	if err = request.WriteToConn(conn); err != nil {
 		err = errors.Trace(err, "streamRepairExtent send streamRead to host(%v) error", remoteExtentInfo.Source)
