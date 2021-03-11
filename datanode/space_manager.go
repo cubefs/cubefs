@@ -77,7 +77,6 @@ func (manager *SpaceManager) Stop() {
 		for _, partition := range manager.partitions {
 			c <- partition
 		}
-		close(c)
 	}(partitionC)
 
 	for i := 0; i < parallelism; i++ {
@@ -93,7 +92,9 @@ func (manager *SpaceManager) Stop() {
 			}
 		}(partitionC)
 	}
+
 	wg.Wait()
+	close(partitionC)
 }
 
 func (manager *SpaceManager) SetNodeID(nodeID uint64) {
