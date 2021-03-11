@@ -31,6 +31,10 @@ const (
 	DefaultSmuxPortShift = 500
 )
 
+const (
+	defaultCreateInterval = int64(time.Microsecond * 200)
+)
+
 var (
 	ErrTooMuchSmuxStreams = errors.New("too much smux streams")
 )
@@ -70,7 +74,7 @@ func DefaultSmuxConnPoolConfig() *SmuxConnPoolConfig {
 	return &SmuxConnPoolConfig{
 		Config:            DefaultSmuxConfig(),
 		TotalStreams:      1000000,
-		StreamsPerConn:    8,
+		StreamsPerConn:    1,
 		ConnsPerAddr:      16,
 		PoolCapacity:      64,
 		DialTimeout:       time.Second * 10,
@@ -277,8 +281,6 @@ func (cp *SmuxConnectPool) GetStat() *SmuxConnPoolStat {
 	}
 	return stat
 }
-
-const defaultCreateInterval = int64(time.Microsecond * 100)
 
 type createSessCall struct {
 	idle   int64
