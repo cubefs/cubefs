@@ -15,7 +15,6 @@
 package metanode
 
 import (
-	"bytes"
 	"fmt"
 	"net"
 	"os"
@@ -382,17 +381,12 @@ func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, ext
 }
 
 func (mp *metaPartition) persistDeletedInodes(inos []uint64) {
-	if len(inos) == 0 {
-		return
-	}
 	if fileInfo, err := mp.delInodeFp.Stat(); err == nil && fileInfo.Size() >= maxDeleteInodeFileSize {
 		mp.delInodeFp.Truncate(0)
 	}
-	var buf bytes.Buffer
 	for _, ino := range inos {
-		buf.WriteString(fmt.Sprintf("%v\n", ino))
-	}
-	if _, err := mp.delInodeFp.WriteString(buf.String()); err != nil {
-		log.LogWarnf("[persistDeletedInodes] failed store inos=%v", inos)
+		if _, err := mp.delInodeFp.WriteString(fmt.Sprintf("%v\n", ino)); err != nil {
+			log.LogWarnf("[persistDeletedInodes] failed store ino=%v", ino)
+		}
 	}
 }
