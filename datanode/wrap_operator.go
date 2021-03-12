@@ -1042,7 +1042,7 @@ func (s *DataNode) handlePacketToDataPartitionTryToLeaderrr(p *repl.Packet) {
 
 func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet) (ok bool, err error) {
 	var (
-		conn       net.Conn
+		conn       *net.TCPConn
 		leaderAddr string
 	)
 
@@ -1057,12 +1057,12 @@ func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet) (ok bo
 	}
 
 	// forward the packet to the leader if local one is not the leader
-	conn, err = s.getRepairConnFunc(leaderAddr)
+	conn, err = gConnPool.GetConnect(leaderAddr)
 	if err != nil {
 		return
 	}
 	defer func() {
-		s.putRepairConnFunc(conn, err != nil)
+		gConnPool.PutConnect(conn, err != nil)
 	}()
 	err = p.WriteToConn(conn)
 	if err != nil {
