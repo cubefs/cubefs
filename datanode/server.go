@@ -489,14 +489,14 @@ func (s *DataNode) serveSmuxConn(conn net.Conn) {
 	var err error
 	sess, err = smux.Server(conn, s.smuxServerConfig)
 	if err != nil {
-		log.LogErrorf("action[serveSmuxConn] failed to serve smux connection, err(%v)", err)
+		log.LogErrorf("action[serveSmuxConn] failed to serve smux connection, addr(%v), err(%v)", c.RemoteAddr(), err)
 		return
 	}
 	defer sess.Close()
 	for {
 		stream, err := sess.AcceptStream()
 		if err != nil {
-			log.LogErrorf("action[serveSmuxConn] failed to accept smux stream, err(%v)", err)
+			log.LogErrorf("action[serveSmuxConn] failed to accept smux stream, addr(%v), err(%v)", c.RemoteAddr(), err)
 			break
 		}
 		go s.serveSmuxStream(stream)
