@@ -97,6 +97,7 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 			if err := p.WriteToConn(ft.conn); err != nil {
 				p.PackErrorBody(ActionSendToFollowers, err.Error())
 				p.respCh <- fmt.Errorf(string(p.Data[:p.Size]))
+				log.LogErrorf("serverWriteToFollower ft.addr(%v)",ft.addr)
 				ft.conn.Close()
 				continue
 			}
@@ -149,6 +150,7 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 		timeOut=proto.BatchDeleteExtentReadDeadLineTime
 	}
 	if err = reply.ReadFromConn(ft.conn, timeOut); err != nil {
+		log.LogErrorf("readFollowerResult ft.addr(%v), err(%v)",ft.addr, err.Error())
 		return
 	}
 
