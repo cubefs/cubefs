@@ -34,6 +34,8 @@ import (
 const (
 	HostsSeparator                = ","
 	RefreshMetaPartitionsInterval = time.Minute * 5
+	IdleConnTimeoutMeta           = 60 * 10 //seconds
+	ConnectTimeoutMeta            = 1       //seconds
 )
 
 const (
@@ -160,7 +162,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.ownerValidation = config.ValidateOwner
 	mw.mc = masterSDK.NewMasterClient(config.Masters, false)
 	mw.onAsyncTaskError = config.OnAsyncTaskError
-	mw.conns = util.NewConnectPool()
+	mw.conns = util.NewConnectPoolWithTimeout(IdleConnTimeoutMeta, ConnectTimeoutMeta)
 	mw.partitions = make(map[uint64]*MetaPartition)
 	mw.ranges = btree.New(32)
 	mw.rwPartitions = make([]*MetaPartition, 0)

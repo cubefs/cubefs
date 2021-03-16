@@ -496,3 +496,8 @@ type ListMultipartRequest struct {
 type ListMultipartResponse struct {
 	Multiparts []*MultipartInfo `json:"mps"`
 }
+
+type GetAppliedIDRequest struct {
+	VolName     string `json:"vol"`
+	PartitionId uint64 `json:"pid"`
+}

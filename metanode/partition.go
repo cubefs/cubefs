@@ -437,7 +437,7 @@ func (mp *metaPartition) GetCursor() uint64 {
 	return atomic.LoadUint64(&mp.config.Cursor)
 }
 
-// GetAppliedID returns applied ID of application layer
+// GetAppliedID returns applied ID of raft
 func (mp *metaPartition) GetAppliedID() uint64 {
 	return atomic.LoadUint64(&mp.applyID)
 }

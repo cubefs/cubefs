@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
@@ -1448,5 +1449,30 @@ func (m *metadataManager) opListMultipart(conn net.Conn, p *Packet, remote strin
 	}
 	err = mp.ListMultipart(req, p)
 	_ = m.respondToClient(conn, p)
+	return
+}
+
+func (m *metadataManager) opGetAppliedID(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	req := &GetAppliedIDReq{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		return
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		return
+	}
+	appliedID := mp.GetAppliedID()
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, appliedID)
+	p.PacketOkWithBody(buf)
+	m.respondToClient(conn, p)
+	log.LogDebugf("%s [opMetaGetAppliedID] req: %d - %v, req args: %v, resp: %v, body: %v",
+		remoteAddr, p.GetReqID(), req, string(p.Arg), p.GetResultMsg(), appliedID)
 	return
 }

@@ -37,6 +37,10 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 		reqID      = p.ReqID
 		reqOp      = p.Opcode
 	)
+	if p.IsReadMetaPkt() && p.IsFollowerReadMetaPkt() {
+		log.LogDebugf("read from follower: p(%v), arg(%v)", p, p.Arg)
+		return true
+	}
 	if leaderAddr, ok = mp.IsLeader(); ok {
 		return
 	}

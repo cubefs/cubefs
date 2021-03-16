@@ -82,6 +82,8 @@ type (
 	BatchEvictInodeReq = proto.BatchEvictInodeRequest
 	// Client -> MetaNode
 	SetattrRequest = proto.SetAttrRequest
+	// Client -> MetaNode
+	GetAppliedIDReq = proto.GetAppliedIDRequest
 )
 
 const (
