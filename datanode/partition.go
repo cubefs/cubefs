@@ -694,10 +694,6 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 		}
 	}
 
-	if len(repairTask.ExtentsToBeRepaired) > 0 {
-		log.LogWarnf("tag1: repairTask.ExtentsToBeRepaired (%v)", repairTask.ExtentsToBeRepaired)
-	}
-
 	var (
 		wg           *sync.WaitGroup
 		recoverIndex int
