@@ -46,6 +46,7 @@ type dataPartitionCfg struct {
 	Learners      []proto.Learner     `json:"learners"`
 	NodeID        uint64              `json:"-"`
 	RaftStore     raftstore.RaftStore `json:"-"`
+	CreationType  int                 `json:"-"`
 }
 
 func (dp *DataPartition) raftPort() (heartbeat, replica int, err error) {
@@ -71,8 +72,8 @@ func (dp *DataPartition) raftPort() (heartbeat, replica int, err error) {
 	return
 }
 
-// StartRaft start raft instance when data partition start or restore.
-func (dp *DataPartition) StartRaft() (err error) {
+// startRaft start raft instance when data partition start or restore.
+func (dp *DataPartition) startRaft() (err error) {
 	var (
 		heartbeatPort int
 		replicaPort   int
@@ -81,7 +82,7 @@ func (dp *DataPartition) StartRaft() (err error) {
 	)
 	defer func() {
 		if r := recover(); r != nil {
-			mesg := fmt.Sprintf("StartRaft(%v)  Raft Panic (%v)", dp.partitionID, r)
+			mesg := fmt.Sprintf("startRaft(%v)  Raft Panic (%v)", dp.partitionID, r)
 			panic(mesg)
 		}
 	}()
@@ -225,11 +226,11 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 	}
 }
 
-// StartRaftAfterRepair starts the raft after repairing a partition.
+// startRaftAfterRepair starts the raft after repairing a partition.
 // It can only happens after all the extent files are repaired by the leader.
 // When the repair is finished, the local dp.partitionSize is same as the leader's dp.partitionSize.
 // The repair task can be done in statusUpdateScheduler->runRepair.
-func (dp *DataPartition) StartRaftAfterRepair() {
+func (dp *DataPartition) startRaftAfterRepair() {
 	var (
 		initPartitionSize, initMaxExtentID uint64
 		currLeaderPartitionSize            uint64
@@ -241,7 +242,7 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 		case <-timer.C:
 			err = nil
 			if dp.isLeader { // primary does not need to wait repair
-				if err := dp.StartRaft(); err != nil {
+				if err := dp.startRaft(); err != nil {
 					log.LogErrorf("PartitionID(%v) leader start raft err(%v).", dp.partitionID, err)
 					timer.Reset(5 * time.Second)
 					continue
@@ -278,7 +279,7 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 			}
 			localSize := dp.extentStore.StoreSizeExtentID(initMaxExtentID)
 
-			log.LogInfof("StartRaftAfterRepair PartitionID(%v) initMaxExtentID(%v) initPartitionSize(%v) currLeaderPartitionSize(%v)"+
+			log.LogInfof("startRaftAfterRepair PartitionID(%v) initMaxExtentID(%v) initPartitionSize(%v) currLeaderPartitionSize(%v)"+
 				"localSize(%v)", dp.partitionID, initMaxExtentID, initPartitionSize, currLeaderPartitionSize, localSize)
 
 			if initPartitionSize > localSize {
@@ -290,7 +291,7 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 			// start raft
 			dp.DataPartitionCreateType = proto.NormalCreateDataPartition
 			dp.PersistMetadata()
-			if err := dp.StartRaft(); err != nil {
+			if err := dp.startRaft(); err != nil {
 				log.LogErrorf("PartitionID(%v) start raft err(%v). Retry after 20s.", dp.partitionID, err)
 				timer.Reset(5 * time.Second)
 				continue

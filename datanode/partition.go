@@ -129,17 +129,11 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 		return
 	}
 	dp.ForceLoadHeader()
-	if request.CreateType == proto.NormalCreateDataPartition {
-		err = dp.StartRaft()
-	} else {
-		go dp.StartRaftAfterRepair()
-	}
-	if err != nil {
-		return nil, err
-	}
+	//if err = dp.Start(); err != nil {
+	//	return nil, err
+	//}
 
 	// persist file metadata
-	go dp.StartRaftLoggingSchedule()
 	dp.DataPartitionCreateType = request.CreateType
 	err = dp.PersistMetadata()
 	disk.AddSize(uint64(dp.Size()))
@@ -202,6 +196,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 		RaftStore:     disk.space.GetRaftStore(),
 		NodeID:        disk.space.GetNodeID(),
 		ClusterID:     disk.space.GetClusterID(),
+		CreationType:  meta.DataPartitionCreateType,
 	}
 	if dp, err = newDataPartition(dpCfg, disk); err != nil {
 		return
@@ -213,17 +208,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	log.LogInfof("Action(LoadDataPartition) PartitionID(%v) meta(%v)", dp.partitionID, meta)
 	dp.DataPartitionCreateType = meta.DataPartitionCreateType
 	dp.lastTruncateID = meta.LastTruncateID
-	if meta.DataPartitionCreateType == proto.NormalCreateDataPartition {
-		err = dp.StartRaft()
-	} else {
-		go dp.StartRaftAfterRepair()
-	}
-	if err != nil {
-		log.LogErrorf("PartitionID(%v) start raft err(%v)..", dp.partitionID, err)
-		disk.space.DetachDataPartition(dp.partitionID)
-	}
 
-	go dp.StartRaftLoggingSchedule()
 	disk.AddSize(uint64(dp.Size()))
 	dp.ForceLoadHeader()
 	return
@@ -247,16 +232,33 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		snapshot:        make([]*proto.File, 0),
 		partitionStatus: proto.ReadWrite,
 		config:          dpCfg,
+
+		DataPartitionCreateType: dpCfg.CreationType,
 	}
 	partition.replicasInit()
 	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize)
 	if err != nil {
 		return
 	}
-
+	// Attach data partition to disk mapping
 	disk.AttachDataPartition(partition)
 	dp = partition
 	go partition.statusUpdateScheduler()
+	return
+}
+
+func (dp *DataPartition) Start() (err error) {
+	if dp.DataPartitionCreateType == proto.NormalCreateDataPartition {
+		err = dp.startRaft()
+	} else {
+		go dp.startRaftAfterRepair()
+	}
+	if err != nil {
+		log.LogErrorf("PartitionID(%v) start raft err(%v)..", dp.partitionID, err)
+		dp.disk.space.DetachDataPartition(dp.partitionID)
+		return
+	}
+	go dp.StartRaftLoggingSchedule()
 	return
 }
 
