@@ -173,6 +173,7 @@ type OpPartition interface {
 	IsLeader() (leaderAddr string, isLeader bool)
 	IsLearner() bool
 	GetCursor() uint64
+	GetAppliedID() uint64
 	GetBaseConfig() MetaPartitionConfig
 	ResponseLoadMetaPartition(p *Packet) (err error)
 	PersistMetadata() (err error)
@@ -434,6 +435,11 @@ func (mp *metaPartition) GetPeers() (peers []string) {
 // GetCursor returns the cursor stored in the config.
 func (mp *metaPartition) GetCursor() uint64 {
 	return atomic.LoadUint64(&mp.config.Cursor)
+}
+
+// GetAppliedID returns applied ID of application layer
+func (mp *metaPartition) GetAppliedID() uint64 {
+	return atomic.LoadUint64(&mp.applyID)
 }
 
 // PersistMetadata is the wrapper of persistMetadata.
