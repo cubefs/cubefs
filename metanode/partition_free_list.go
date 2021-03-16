@@ -36,6 +36,7 @@ const (
 	DeleteInodeFileExtension      = "INODE_DEL"
 	DeleteWorkerCnt               = 10
 	InodeNLink0DelayDeleteSeconds = 24 * 3600
+	maxDeleteInodeFileSize        = MB
 )
 
 func (mp *metaPartition) startFreeList() (err error) {
@@ -99,11 +100,11 @@ const (
 
 func (mp *metaPartition) deleteWorker() {
 	var (
-		idx      int
+		idx      uint64
 		isLeader bool
+		sleepCnt uint64
 	)
 	buffSlice := make([]uint64, 0, DeleteBatchCount())
-	var sleepCnt uint64
 	for {
 		buffSlice = buffSlice[:0]
 		select {
@@ -128,7 +129,7 @@ func (mp *metaPartition) deleteWorker() {
 		}
 
 		batchCount := DeleteBatchCount()
-		for idx = 0; idx < int(batchCount); idx++ {
+		for idx = 0; idx < batchCount; idx++ {
 			// batch get free inoded from the freeList
 			ino := mp.freeList.Pop()
 			if ino == 0 {
@@ -380,6 +381,9 @@ func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, ext
 }
 
 func (mp *metaPartition) persistDeletedInodes(inos []uint64) {
+	if fileInfo, err := mp.delInodeFp.Stat(); err == nil && fileInfo.Size() >= maxDeleteInodeFileSize {
+		mp.delInodeFp.Truncate(0)
+	}
 	for _, ino := range inos {
 		if _, err := mp.delInodeFp.WriteString(fmt.Sprintf("%v\n", ino)); err != nil {
 			log.LogWarnf("[persistDeletedInodes] failed store ino=%v", ino)
