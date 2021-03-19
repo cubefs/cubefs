@@ -17,7 +17,6 @@ package metanode
 import (
 	"encoding/json"
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/storage"
 )
 
 type Packet struct {
@@ -30,12 +29,10 @@ func NewPacketToDeleteExtent(dp *DataPartition, ext *proto.ExtentKey) *Packet {
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpMarkDelete
 	p.ExtentType = proto.NormalExtentType
-	p.PartitionID = uint64(dp.PartitionID)
-	if storage.IsTinyExtent(ext.ExtentId) {
-		p.ExtentType = proto.TinyExtentType
-		p.Data, _ = json.Marshal(ext)
-		p.Size = uint32(len(p.Data))
-	}
+	p.PartitionID = dp.PartitionID
+	p.Data, _ = json.Marshal(ext)
+	p.Size = uint32(len(p.Data))
+
 	p.ExtentID = ext.ExtentId
 	p.ReqID = proto.GenerateRequestID()
 	p.RemainingFollowers = uint8(len(dp.Hosts) - 1)

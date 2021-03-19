@@ -340,20 +340,23 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 			p.PacketOkReply()
 		}
 	}()
+
 	partition := p.Object.(*DataPartition)
-	if p.ExtentType == proto.TinyExtentType {
-		ext := new(proto.TinyExtentDeleteRecord)
+	if p.Size > 0 {
+		ext := new(proto.ExtentKey)
 		err = json.Unmarshal(p.Data, ext)
 		if err == nil {
 			log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)",
 				p.PartitionID, p.ExtentID, ext.ExtentOffset, ext.Size)
 			partition.ExtentStore().MarkDelete(p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size))
 		}
-	} else {
-		log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v)",
-			p.PartitionID, p.ExtentID)
-		partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0)
+
+		return
 	}
+
+	// in case old mark delete request for normal extent
+	log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v)", p.PartitionID, p.ExtentID)
+	partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0)
 
 	return
 }

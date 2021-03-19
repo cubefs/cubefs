@@ -798,9 +798,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 			extentID, offset, size := storage.UnMarshalTinyExtent(record)
 			localTinyDeleteFileSize += storage.DeleteTinyRecordSize
 			index++
-			if !storage.IsTinyExtent(extentID) {
-				continue
-			}
+
 			DeleteLimiterWait()
 			//log.LogInfof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)", dp.partitionID, extentID, offset, size)
 			store.MarkDelete(extentID, int64(offset), int64(size))

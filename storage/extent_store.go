@@ -409,10 +409,21 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	if ei == nil || ei.IsDeleted {
 		return
 	}
-	extentFilePath := path.Join(s.dataPath, strconv.FormatUint(extentID, 10))
-	if err = os.Remove(extentFilePath); err != nil {
+
+	if offset > 0 { // need to truncate
+		err = s.truncateNormalExtent(extentID, offset)
+		if err != nil {
+			log.LogErrorf("[MarkDeleteNormalExtent] truncate file fail, id %d, offset %d, size %d\n", extentID, offset, size)
+		}
 		return
 	}
+
+	extentFilePath := path.Join(s.dataPath, strconv.FormatUint(extentID, 10))
+	if err = os.Remove(extentFilePath); err != nil {
+		log.LogErrorf("[MarkDeleteNormalExtent] remove file fail, id %d, offset %d, size %d\n", extentID, offset, size)
+		return
+	}
+
 	s.PersistenceHasDeleteExtent(extentID)
 	ei.IsDeleted = true
 	ei.ModifyTime = time.Now().Unix()
@@ -425,6 +436,39 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	s.eiMutex.Unlock()
 
 	return
+}
+
+// use fallocate to truncate, in case concurrent repair happen
+func (s *ExtentStore) truncateNormalExtent(extentId uint64, offset int64) error {
+	e, err := s.extentWithHeaderByExtentID(extentId)
+	if err != nil {
+		log.LogWarn("[extent_truncate] get extent fail", extentId, err.Error())
+		return nil
+	}
+
+	if offset >= e.dataSize {
+		log.LogWarn("[extent_truncate] offset is bigger than dataSize", offset, e.dataSize)
+		return nil
+	}
+
+	size := e.dataSize - offset
+	_, err = e.file.Seek(offset, SEEK_DATA)
+	if err != nil {
+		if strings.Contains(err.Error(), syscall.ENXIO.Error()) {
+			log.LogWarn("[extent_truncate] offset is already been truncated", offset, err)
+			return nil
+		}
+
+		return err
+	}
+
+	err = fallocate(int(e.file.Fd()), FallocFLPunchHole|FallocFLKeepSize, offset, size)
+	log.LogInfof("[extent_truncate] truncate normal extent, path %s, offset %d, size %d\n", e.filePath, offset, size)
+
+	if err = s.RecordTinyDelete(extentId, offset, size); err != nil {
+		return err
+	}
+	return err
 }
 
 func (s *ExtentStore) PutNormalExtentToDeleteCache(extentID uint64) {
@@ -501,16 +545,12 @@ func (s *ExtentStore) GetStoreUsedSize() (used int64) {
 		if einfo.IsDeleted {
 			continue
 		}
-		if IsTinyExtent(einfo.FileID) {
-			stat := new(syscall.Stat_t)
-			err := syscall.Stat(fmt.Sprintf("%v/%v", s.dataPath, einfo.FileID), stat)
-			if err != nil {
-				continue
-			}
-			used += (stat.Blocks * DiskSectorSize)
-		} else {
-			used += int64(einfo.Size)
+		stat := new(syscall.Stat_t)
+		err := syscall.Stat(fmt.Sprintf("%v/%v", s.dataPath, einfo.FileID), stat)
+		if err != nil {
+			continue
 		}
+		used += (stat.Blocks * DiskSectorSize)
 	}
 	return
 }
