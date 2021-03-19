@@ -88,7 +88,7 @@ func TestTruncate01(t *testing.T) {
 	t.Logf("\ndel: %v\neks: %v", delExtents, se.eks)
 	delExtents = se.Truncate(500)
 	t.Logf("\ndel: %v\neks: %v", delExtents, se.eks)
-	if len(delExtents) != 1 || delExtents[0].ExtentId != 2 ||
+	if len(delExtents) != 2 ||
 		len(se.eks) != 1 || se.eks[0].ExtentId != 1 ||
 		se.Size() != 500 {
 		t.Fail()
