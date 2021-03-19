@@ -256,10 +256,13 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 			if mr.metaNode == nil {
 				continue
 			}
-			if !mr.metaNode.reachesThreshold() {
+			if !mr.metaNode.reachesThreshold() && mp.InodeCount < defaultMetaPartitionInodeIDStep {
 				continue
 			}
 			if mp.PartitionID == maxPartitionID {
+				msg := fmt.Sprintf("split[checkStatus],id:%v,status:%v,replicaNum:%v,InodeCount:%v",
+					mp.PartitionID, mp.Status, mp.ReplicaNum, mp.InodeCount)
+				log.LogInfo(msg)
 				doSplit = true
 			} else {
 				mp.Status = proto.ReadOnly
