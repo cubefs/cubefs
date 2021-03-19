@@ -218,10 +218,26 @@ func (se *SortedExtents) Truncate(offset uint64) (deleteExtents []proto.ExtentKe
 	if numKeys > 0 {
 		lastKey := &se.eks[numKeys-1]
 		if lastKey.FileOffset+uint64(lastKey.Size) > offset {
+			// need to truncate extent bigger than offset
+			deleteExtents = append(deleteExtents, toTruncExtent(lastKey, offset))
+
 			lastKey.Size = uint32(offset - lastKey.FileOffset)
 		}
 	}
 	return
+}
+
+func toTruncExtent(old *proto.ExtentKey, offset uint64) proto.ExtentKey {
+	newSize := old.FileOffset + uint64(old.Size) - offset
+
+	return proto.ExtentKey{
+		FileOffset:   offset,
+		PartitionId:  old.PartitionId,
+		ExtentId:     old.ExtentId,
+		ExtentOffset: old.ExtentOffset + offset - old.FileOffset,
+		Size:         uint32(newSize),
+		CRC:          0,
+	}
 }
 
 func (se *SortedExtents) Len() int {
