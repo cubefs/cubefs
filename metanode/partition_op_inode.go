@@ -23,6 +23,7 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/tracing"
+	"github.com/chubaofs/chubaofs/util/statistics"
 )
 
 func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
@@ -188,6 +189,8 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
 
+	mp.monitorData[statistics.ActionMetaInodeGet].UpdateData(0)
+
 	ino := NewInode(req.Inode, 0)
 	retMsg := mp.getInode(ino)
 	ino = retMsg.Msg
@@ -217,6 +220,8 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.InodeGetBatch")
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
+
+	mp.monitorData[statistics.ActionMetaBatchInodeGet].UpdateData(0)
 
 	resp := &proto.BatchInodeGetResponse{}
 	ino := NewInode(0, 0)

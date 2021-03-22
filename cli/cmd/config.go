@@ -37,6 +37,7 @@ var (
   "masterAddr": [
     "master.chubao.io"
   ],
+  "monitorAddr": "monitor.chubao.io",
   "dnProf": 17320,
   "mnProf": 17220
 }
@@ -45,6 +46,7 @@ var (
 
 type Config struct {
 	MasterAddr       []string `json:"masterAddr"`
+	MonitorAddr      string   `json:"monitorAddr"`
 	DataNodeProfPort uint16   `json:"dnProf"`
 	MetaNodeProfPort uint16   `json:"mnProf"`
 }
@@ -66,6 +68,7 @@ const (
 
 func newConfigSetCmd() *cobra.Command {
 	var optMasterHost string
+	var optMonitorHost string
 	var optDNProfPort uint16
 	var optMNProfPort uint16
 	var cmd = &cobra.Command{
@@ -74,14 +77,18 @@ func newConfigSetCmd() *cobra.Command {
 		Long:  `Set the config file`,
 		Run: func(cmd *cobra.Command, args []string) {
 			var masterHosts []string
+			var monitorHosts string
 			var config *Config
 			var err error
-			if optMasterHost == "" && optDNProfPort == 0 && optMNProfPort == 0 {
+			if optMasterHost == "" && optMonitorHost == "" && optDNProfPort == 0 && optMNProfPort == 0 {
 				stdout(fmt.Sprintf("No changes has been set. Input 'cfs-cli config set -h' for help.\n"))
 				return
 			}
 			if len(optMasterHost) != 0 {
 				masterHosts = append(masterHosts, optMasterHost)
+			}
+			if optMonitorHost != "" {
+				monitorHosts = optMonitorHost
 			}
 			if config, err = LoadConfig(); err != nil {
 				stdout("load config file failed")
@@ -89,6 +96,9 @@ func newConfigSetCmd() *cobra.Command {
 			}
 			if len(masterHosts) > 0 {
 				config.MasterAddr = masterHosts
+			}
+			if len(monitorHosts) > 0 {
+				config.MonitorAddr = monitorHosts
 			}
 			if optDNProfPort > 0 {
 				config.DataNodeProfPort = optDNProfPort
@@ -104,6 +114,7 @@ func newConfigSetCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&optMasterHost, "addr", "", "Specify master address [{HOST}:{PORT}]")
+	cmd.Flags().StringVar(&optMonitorHost, "monitorAddr", "", "Specify monitor address [{HOST}:{PORT}]")
 	cmd.Flags().Uint16Var(&optDNProfPort, "dnProf", 0, "Specify prof port for DataNode")
 	cmd.Flags().Uint16Var(&optMNProfPort, "mnProf", 0, "Specify prof port for DataNode")
 	return cmd
@@ -121,7 +132,7 @@ func newConfigInfoCmd() *cobra.Command {
 				os.Exit(1)
 			}
 			stdout(fmt.Sprintf("Config info:\n  %v\n", config.MasterAddr))
-
+			stdout(fmt.Sprintf("Monitor address:\n  %v\n", config.MonitorAddr))
 		},
 	}
 	cmd.Flags().StringVar(&optFilterWritable, "filter-writable", "", "Filter node writable status")

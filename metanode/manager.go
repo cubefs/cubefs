@@ -37,6 +37,7 @@ import (
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/statistics"
 	"github.com/chubaofs/chubaofs/util/tracing"
 )
 
@@ -50,6 +51,7 @@ type MetadataManager interface {
 	//CreatePartition(id string, start, end uint64, peers []proto.Peer) error
 	HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) error
 	GetPartition(id uint64) (MetaPartition, error)
+	SummaryMonitorData(reportTime int64) []*statistics.MonitorData
 }
 
 // MetadataManagerConfig defines the configures in the metadata manager.
@@ -555,6 +557,16 @@ func (s *metadataManager) rateLimit(conn net.Conn, p *Packet, remoteAddr string)
 	if ok {
 		limiter.Wait(ctx)
 	}
+}
+
+func (m *metadataManager) SummaryMonitorData(reportTime int64) []*statistics.MonitorData {
+	dataList := make([]*statistics.MonitorData, 0)
+	m.Range(func(i uint64, p MetaPartition) bool {
+		data := p.SumMonitorData(reportTime)
+		dataList = append(dataList, data...)
+		return true
+	})
+	return dataList
 }
 
 // NewMetadataManager returns a new metadata manager.

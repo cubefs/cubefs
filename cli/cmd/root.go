@@ -20,9 +20,9 @@ import (
 	"path"
 	"strings"
 
-	"github.com/chubaofs/chubaofs/util/log"
-
 	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/chubaofs/chubaofs/sdk/monitor"
+	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/spf13/cobra"
 )
 
@@ -34,7 +34,7 @@ type ChubaoFSCmd struct {
 	CFSCmd *cobra.Command
 }
 
-func NewRootCmd(client *master.MasterClient) *ChubaoFSCmd {
+func NewRootCmd(client *master.MasterClient, mClient *monitor.MonitorClient) *ChubaoFSCmd {
 	var cmd = &ChubaoFSCmd{
 		CFSCmd: &cobra.Command{
 			Use:   path.Base(os.Args[0]),
@@ -52,6 +52,7 @@ func NewRootCmd(client *master.MasterClient) *ChubaoFSCmd {
 		newDataNodeCmd(client),
 		newDataPartitionCmd(client),
 		newMetaPartitionCmd(client),
+		newMonitorNodeCmd(mClient),
 		newConfigCmd(),
 		newCompatibilityCmd(),
 		newParseRaftLogCmd(),

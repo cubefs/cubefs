@@ -1,125 +1,167 @@
 package statistics
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/log"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
-var lock sync.RWMutex
-var infoMap = new(sync.Map)
-var once sync.Once
-var address string
-var module string
+const (
+	defaultSummaryTime = 1 * time.Second
+	defaultReportTime  = 5 * time.Second
+)
 
-type reportInfo struct {
-	Addr       string
-	Model      string
-	Infos      []*info
-	ReportTime int64
+var (
+	StatisticsModule *Statistics
+	once             sync.Once
+)
+
+type Statistics struct {
+	module       string
+	address      string
+	sendList     []*MonitorData // store data per second
+	sendListLock sync.RWMutex
+	monitorAddr  string
+	reportTimer  time.Duration
 }
 
-type info struct {
-	lock        sync.Mutex
-	VolID       uint64
+type MonitorData struct {
+	VolName     string
 	PartitionID uint64
-	Action      string
-	MaxTime     int64
-	MinTime     int64
+	Action      int
+	ActionStr   string
+	Size        uint64 // the num of read/write byte
 	Count       uint64
+	ReportTime  int64
+	TimeStr     string
+	IsTotal     bool
 }
 
-func Report(action string, volID, partitionID uint64, useTimeD time.Duration) {
-	var (
-		load interface{}
-		ok   bool
-	)
-	key := fmt.Sprintf("%d-%d-%s", volID, partitionID, action)
-	useTime := int64(useTimeD / 1e6)
+type ReportInfo struct {
+	Addr   string
+	Module string
+	Infos  []*MonitorData
+}
 
-	lock.RLock()
-	load, ok = infoMap.Load(key)
-	lock.RUnlock()
-	if !ok {
-		lock.Lock()
-		if load, ok = infoMap.Load(key); !ok {
-			infoMap.Store(key, &info{
-				VolID:       volID,
-				PartitionID: partitionID,
-				Action:      action,
-				MaxTime:     useTime,
-				MinTime:     useTime,
-				Count:       1,
-			})
-			lock.Unlock()
-			return
-		}
-		lock.Unlock()
-	}
+func (data *MonitorData) String() string {
+	return fmt.Sprintf("{Vol(%v)Pid(%v)Action(%v)ActionNum(%v)Count(%v)Size(%v)ReportTime(%v)IsTotal(%v)}",
+		data.VolName, data.PartitionID, data.ActionStr, data.Action, data.Count, data.Size, data.ReportTime, data.IsTotal)
+}
 
-	info := load.(*info)
-
-	info.lock.Lock()
-	defer info.lock.Unlock()
-	info.Count += 1
-	if info.MaxTime < useTime {
-		info.MaxTime = useTime
-	}
-	if info.MinTime > useTime {
-		info.MinTime = useTime
+func newStatistics(monitorAddr, moduleName, nodeAddr string) *Statistics {
+	return &Statistics{
+		module:      moduleName,
+		address:     nodeAddr,
+		monitorAddr: monitorAddr,
+		sendList:    make([]*MonitorData, 0),
+		reportTimer: defaultReportTime,
 	}
 }
 
-func currentMap() *sync.Map {
-	lock.Lock()
-	defer lock.Unlock()
-
-	reportMap := infoMap
-	infoMap = new(sync.Map)
-	return reportMap
-}
-
-func StartReportJob(ctx context.Context, addr, moduleName string) {
+func InitStatistics(cfg *config.Config, moduleName, nodeAddr string, summaryFunc func(reportTime int64) []*MonitorData) {
+	monitorAddr := cfg.GetString(ConfigMonitorAddr)
+	if monitorAddr == "" {
+		return
+	}
 	once.Do(func() {
-		address = addr
-		module = moduleName
-		reportJob(ctx)
+		StatisticsModule = newStatistics(monitorAddr, moduleName, nodeAddr)
+		go StatisticsModule.summaryJob(summaryFunc)
+		go StatisticsModule.reportJob()
 	})
 }
 
-var TickerTime = 1 * time.Second
+func CloseStatistics() {
+	// todo
+}
 
-func reportJob(ctx context.Context) {
-	ticker := time.NewTicker(TickerTime)
+func InitMonitorData(module string) []*MonitorData {
+	var num int
+	switch module {
+	case ModelDataNode:
+		num = len(ActionDataMap)
+	case ModelMetaNode:
+		num = len(ActionMetaMap)
+	}
+	m := make([]*MonitorData, num)
+	for i := 0; i < num; i++ {
+		m[i] = &MonitorData{}
+	}
+	return m
+}
+
+func (data *MonitorData) UpdateData(dataSize uint64) {
+	if StatisticsModule == nil {
+		return
+	}
+	atomic.AddUint64(&data.Count, 1)
+	atomic.AddUint64(&data.Size, dataSize)
+}
+
+func (m *Statistics) summaryJob(summaryFunc func(reportTime int64) []*MonitorData) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.LogErrorf("Monitor: summary job panic(%v) module(%v) ip(%v)", err, m.module, m.address)
+		}
+	}()
+	sumTicker := time.NewTicker(defaultSummaryTime)
+	log.LogInfof("Monitor: start summary job, ticker(%v)", defaultSummaryTime)
+	for {
+		select {
+		case <-sumTicker.C:
+			reportTime := time.Now().Unix()
+			dataList := summaryFunc(reportTime)
+			m.sendListLock.Lock()
+			m.sendList = append(m.sendList, dataList...)
+			m.sendListLock.Unlock()
+			//case <-stopC:
+			//	log.LogWarnf("Monitor: stop summary job")
+			//	return
+		}
+	}
+}
+
+func (m *Statistics) reportJob() {
+	defer func() {
+		if err := recover(); err != nil {
+			log.LogErrorf("Monitor: report job panic(%v) module(%v) ip(%v)", err, m.module, m.address)
+		}
+	}()
+	ticker := time.NewTicker(m.reportTimer)
+	log.LogInfof("Monitor: start report job, ticker(%v)", m.reportTimer)
 	for {
 		select {
 		case <-ticker.C:
-			reportMap := currentMap()
-			go report(reportMap)
-			//do some thing
-		case <-ctx.Done():
-			log.LogWarnf("stop report statistics")
-			return
+			sendList := m.currentSendList()
+			if len(sendList) > 0 {
+				m.reportToMonitor(sendList)
+			}
+			//case <-stopC:
+			//	log.LogWarnf("Monitor: stop report job")
+			//	return
 		}
 	}
 }
 
-func report(reportMap *sync.Map) {
-	report := reportInfo{
-		Model:      module,
-		Addr:       address,
-		ReportTime: time.Now().UnixNano() / 1e6,
+func (m *Statistics) currentSendList() []*MonitorData {
+	m.sendListLock.Lock()
+	defer m.sendListLock.Unlock()
+
+	sendList := m.sendList
+	m.sendList = make([]*MonitorData, 0)
+	return sendList
+}
+
+func (m *Statistics) reportToMonitor(sendList []*MonitorData) {
+	report := &ReportInfo{
+		Module: m.module,
+		Addr:   m.address,
+		Infos:  sendList,
 	}
-
-	reportMap.Range(func(_key, value interface{}) bool {
-		report.Infos = append(report.Infos, value.(*info))
-		return true
-	})
-
-	//post ....
-	marshal, _ := json.Marshal(report)
-	fmt.Println(string(marshal))
+	data, _ := json.Marshal(report)
+	m.sendToMonitor(data)
 }

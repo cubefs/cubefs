@@ -33,6 +33,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/statistics"
 	"github.com/tiglabs/raft"
 	raftproto "github.com/tiglabs/raft/proto"
 )
@@ -58,6 +59,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 
 	switch msg.Op {
 	case opFSMCreateInode:
+		mp.monitorData[statistics.ActionMetaCreateInode].UpdateData(0)
+
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return
@@ -79,6 +82,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp = mp.fsmUnlinkInodeBatch(inodes)
 	case opFSMExtentTruncate:
+		mp.monitorData[statistics.ActionMetaTruncate].UpdateData(0)
+
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return
@@ -91,6 +96,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp = mp.fsmCreateLinkInode(ino)
 	case opFSMEvictInode:
+		mp.monitorData[statistics.ActionMetaEvictInode].UpdateData(0)
+
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return
@@ -110,12 +117,16 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		err = mp.fsmSetAttr(req)
 	case opFSMCreateDentry:
+		mp.monitorData[statistics.ActionMetaCreateDentry].UpdateData(0)
+
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
 		resp = mp.fsmCreateDentry(den, false)
 	case opFSMDeleteDentry:
+		mp.monitorData[statistics.ActionMetaDeleteDentry].UpdateData(0)
+
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
@@ -140,12 +151,16 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp, err = mp.fsmUpdatePartition(req.End)
 	case opFSMExtentsAdd:
+		mp.monitorData[statistics.ActionMetaExtentsAdd].UpdateData(0)
+
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return
 		}
 		resp = mp.fsmAppendExtents(ctx, ino)
 	case opFSMExtentsInsert:
+		mp.monitorData[statistics.ActionMetaExtentsInsert].UpdateData(0)
+
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return

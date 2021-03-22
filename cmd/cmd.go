@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/chubaofs/chubaofs/monitor"
 	syslog "log"
 	"net/http"
 	_ "net/http/pprof"
@@ -62,6 +63,7 @@ const (
 	RoleData    = "datanode"
 	RoleObject  = "objectnode"
 	RoleConsole = "console"
+	RoleMonitor = "monitor"
 )
 
 const (
@@ -70,6 +72,7 @@ const (
 	ModuleData    = "dataNode"
 	ModuleObject  = "objectNode"
 	ModuleConsole = "console"
+	ModuleMonitor = "monitor"
 )
 
 const (
@@ -206,6 +209,9 @@ func run() error {
 	case RoleConsole:
 		server = console.NewServer()
 		module = ModuleConsole
+	case RoleMonitor:
+		server = monitor.NewServer()
+		module = ModuleMonitor
 	default:
 		return daemonize.SignalOutcome(fmt.Errorf("Fatal: role mismatch: %v", role))
 	}

@@ -34,6 +34,7 @@ import (
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/statistics"
 	raftproto "github.com/tiglabs/raft/proto"
 )
 
@@ -199,6 +200,7 @@ type MetaPartition interface {
 	Stop()
 	OpMeta
 	LoadSnapshot(path string) error
+	SumMonitorData(reportTime int64) []*statistics.MonitorData
 }
 
 // metaPartition manages the range of the inode IDs.
@@ -225,6 +227,7 @@ type metaPartition struct {
 	extReset      chan struct{}
 	vol           *Vol
 	manager       *metadataManager
+	monitorData   []*statistics.MonitorData
 }
 
 // Start starts a meta partition.
@@ -392,6 +395,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) *meta
 		extReset:      make(chan struct{}),
 		vol:           NewVol(),
 		manager:       manager,
+		monitorData:   statistics.InitMonitorData(statistics.ModelMetaNode),
 	}
 	return mp
 }
@@ -783,4 +787,36 @@ func (mp *metaPartition) canRemoveSelf() (canRemove bool, err error) {
 		return
 	}
 	return
+}
+
+func (mp *metaPartition) SumMonitorData(reportTime int64) []*statistics.MonitorData {
+	dataList := make([]*statistics.MonitorData, 0)
+	totalCount := uint64(0)
+	for i := 0; i < len(mp.monitorData); i++ {
+		if atomic.LoadUint64(&mp.monitorData[i].Count) == 0 {
+			continue
+		}
+		data := &statistics.MonitorData{
+			VolName:     mp.config.VolName,
+			PartitionID: mp.config.PartitionId,
+			Action:      i,
+			ActionStr:   statistics.ActionMetaMap[i],
+			Size:        atomic.SwapUint64(&mp.monitorData[i].Size, 0),
+			Count:       atomic.SwapUint64(&mp.monitorData[i].Count, 0),
+			ReportTime:  reportTime,
+		}
+		dataList = append(dataList, data)
+		totalCount += data.Count
+	}
+	if totalCount > 0 {
+		totalData := &statistics.MonitorData{
+			VolName:     mp.config.VolName,
+			PartitionID: mp.config.PartitionId,
+			Count:       totalCount,
+			ReportTime:  reportTime,
+			IsTotal:     true,
+		}
+		dataList = append(dataList, totalData)
+	}
+	return dataList
 }

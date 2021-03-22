@@ -36,6 +36,17 @@ const (
 	CliOpDelReplica        = "del-replica"
 	CliOpAddLearner        = "add-learner"
 	CliOpPromoteLearner    = "promote-learner"
+	// monitor op
+	CliOpIPTopPartition      = "ip-top-partition"
+	CliOpTopPartitionOp      = "partition-op"
+	CliOpGetTopVolOp         = "vol-op"
+	CliOpGetTopVol           = "top-vol"
+	CliOpClusterTopIP        = "cluster-top-ip"
+	CliOpClusterTopVol       = "cluster-top-vol"
+	CliOpClusterTopPartition = "cluster-top-partition"
+	CliOpTopIPByOp           = "op-top-ip"
+	CliOpTopVolByOp          = "op-top-vol"
+	CliOpTopPartitionByOp    = "op-top-partition"
 
 	//Shorthand format of operation name
 	CliOpDecommissionShortHand = "dec"

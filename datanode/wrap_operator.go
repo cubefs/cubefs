@@ -33,6 +33,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/statistics"
 	"github.com/chubaofs/chubaofs/util/tracing"
 	"github.com/tiglabs/raft"
 	raftProto "github.com/tiglabs/raft/proto"
@@ -90,7 +91,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	case proto.OpStreamFollowerRead:
 		s.handleStreamFollowerReadPacket(p, c, StreamRead)
 	case proto.OpExtentRepairRead:
-		s.handleExtentRepaiReadPacket(p, c, RepairRead)
+		s.handleExtentRepairReadPacket(p, c, RepairRead)
 	case proto.OpTinyExtentRepairRead:
 		s.handleTinyExtentRepairRead(p, c)
 	case proto.OpMarkDelete:
@@ -401,14 +402,15 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 	p.SetCtx(tracer.Context())
 
 	var err error
+	partition := p.Object.(*DataPartition)
 	defer func() {
+		partition.monitorData[statistics.ActionAppendWrite].UpdateData(uint64(p.Size))
 		if err != nil {
 			p.PackErrorBody(ActionWrite, err.Error())
 		} else {
 			p.PacketOkReply()
 		}
 	}()
-	partition := p.Object.(*DataPartition)
 
 	if partition.Available() <= 0 || partition.disk.Status == proto.ReadOnly || partition.IsRejectWrite() {
 		err = storage.NoSpaceError
@@ -492,18 +494,18 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 	if err = partition.CheckLeader(p, connect); err != nil {
 		return
 	}
-	s.handleExtentRepaiReadPacket(p, connect, isRepairRead)
+	s.handleExtentRepairReadPacket(p, connect, isRepairRead)
 
 	return
 }
 
 func (s *DataNode) handleStreamFollowerReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
-	s.handleExtentRepaiReadPacket(p, connect, isRepairRead)
+	s.handleExtentRepairReadPacket(p, connect, isRepairRead)
 
 	return
 }
 
-func (s *DataNode) handleExtentRepaiReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
+func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
 	var (
 		err error
 	)
@@ -517,6 +519,12 @@ func (s *DataNode) handleExtentRepaiReadPacket(p *repl.Packet, connect net.Conn,
 	needReplySize := p.Size
 	offset := p.ExtentOffset
 	store := partition.ExtentStore()
+
+	action := statistics.ActionRead
+	if isRepairRead {
+		action = statistics.ActionRepairRead
+	}
+	partition.monitorData[action].UpdateData(uint64(p.Size))
 
 	for {
 		if needReplySize <= 0 {
@@ -650,6 +658,8 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 		needReplySize = int64(tinyExtentFinfoSize - uint64(request.ExtentOffset))
 	}
 	avaliReplySize := uint64(needReplySize)
+
+	partition.monitorData[statistics.ActionRepairRead].UpdateData(uint64(request.Size))
 
 	var (
 		newOffset, newEnd int64

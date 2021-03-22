@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/statistics"
 )
 
 func formatClusterView(cv *proto.ClusterView) string {
@@ -133,14 +134,13 @@ func formatInodeInfoView(inodeInfo *proto.InodeInfoView) string {
 
 var (
 	inodeExtentInfoTablePattern = "% -38v    % -20v    % -10v    % -30v    % -10v    % -10v"
-	inodeExtentInfoTableHeader  = fmt.Sprintf( inodeExtentInfoTablePattern, "  FileOffset", "  PartitionId", "  ExtentId", "  ExtentOffset", "  Size", "  CRC")
+	inodeExtentInfoTableHeader  = fmt.Sprintf(inodeExtentInfoTablePattern, "  FileOffset", "  PartitionId", "  ExtentId", "  ExtentOffset", "  Size", "  CRC")
 )
+
 func formatInodeExtentInfoTableRow(ie *proto.InodeExtentInfoView) string {
 	return fmt.Sprintf(inodeExtentInfoTablePattern,
 		ie.FileOffset, ie.PartitionId, ie.ExtentId, ie.ExtentOffset, formatSize(ie.Size), ie.CRC)
 }
-
-
 
 func formatVolumeStatus(status uint8) string {
 	switch status {
@@ -175,6 +175,7 @@ func formatVolDetailInfoTableRow(vv *proto.SimpleVolView, vi *proto.VolInfo) str
 		formatVolumeStatus(vi.Status), time.Unix(vi.CreateTime, 0).Local().Format(time.RFC1123))
 }
 
+// cfs-cli volume info [vol name] -m/-d
 var (
 	dataPartitionTablePattern = "%-8v    %-8v    %-10v    %-10v     %-18v    %-18v"
 	dataPartitionTableHeader  = fmt.Sprintf(dataPartitionTablePattern,
@@ -551,6 +552,25 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	return sb.String()
 }
 
+var (
+	monitorDataTableRowPattern = "%-10v    %-12v    %-14v    %-10v    %-10v    %-10v    %-16v"
+	MonitorDataTableHeader     = fmt.Sprintf(monitorDataTableRowPattern, "VOL", "PARTITION ID", "ACTIONSTR", "SIZE", "COUNT", "REPORTTIME", "TIMESTR")
+)
+
+func formatMonitorData(view *statistics.MonitorData) string {
+	return fmt.Sprintf(monitorDataTableRowPattern, view.VolName, view.PartitionID,
+		view.ActionStr, view.Size, view.Count, view.ReportTime, view.TimeStr)
+}
+
+var (
+	monitorQueryDataTableRowPattern = "%-12v    %-10v    %-12v"
+	monitorQueryDataTableHeader     = fmt.Sprintf(monitorQueryDataTableRowPattern, "ID", "TOLTAL", "VOL")
+)
+
+func formatMonitorQueryData(data *proto.QueryData) string {
+	return fmt.Sprintf(monitorQueryDataTableRowPattern, data.ID, data.Total, data.Vol)
+}
+
 func contains(arr []string, element string) (ok bool) {
 	if arr == nil || len(arr) == 0 {
 		return
@@ -593,4 +613,3 @@ func isEqualStrings(strs1, strs2 []string) bool {
 	}
 	return true
 }
-

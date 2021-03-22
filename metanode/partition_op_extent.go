@@ -23,6 +23,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/tracing"
 
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/statistics"
 )
 
 // ExtentAppend appends an extent.
@@ -75,6 +76,8 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.ExtentsList")
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
+
+	mp.monitorData[statistics.ActionMetaExtentsList].UpdateData(0)
 
 	ino := NewInode(req.Inode, 0)
 	retMsg := mp.getInode(ino)

@@ -40,6 +40,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/statistics"
 	raftProto "github.com/tiglabs/raft/proto"
 )
 
@@ -122,6 +123,8 @@ type DataPartition struct {
 	loadExtentHeaderStatus        int
 	FullSyncTinyDeleteTime        int64
 	DataPartitionCreateType       int
+
+	monitorData []*statistics.MonitorData
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
@@ -235,6 +238,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		partitionStatus:         proto.ReadWrite,
 		config:                  dpCfg,
 		DataPartitionCreateType: dpCfg.CreationType,
+		monitorData:             statistics.InitMonitorData(statistics.ModelDataNode),
 	}
 	partition.replicasInit()
 	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize)

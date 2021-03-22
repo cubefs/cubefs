@@ -85,6 +85,7 @@ var (
 	ErrNoLiveReplicas                  = errors.New("no live replicas to reset")
 	ErrVolWriteMutexUnable             = errors.New("vol write mutex is unable")
 	ErrVolWriteMutexOccupied           = errors.New("vol write mutex occupied")
+	ErrHBaseOperation                  = errors.New("hbase operation error")
 )
 
 // http response error code and error message definitions
@@ -152,6 +153,7 @@ const (
 	ErrCodeNoLiveReplicas
 	ErrCodeVolWriteMutexUnable
 	ErrCodeVolWriteMutexOccupied
+	ErrCodeHBaseOperation
 )
 
 // Err2CodeMap error map to code
@@ -217,6 +219,7 @@ var Err2CodeMap = map[error]int32{
 	ErrNoLiveReplicas:                  ErrCodeNoLiveReplicas,
 	ErrVolWriteMutexUnable:             ErrCodeVolWriteMutexUnable,
 	ErrVolWriteMutexOccupied:           ErrCodeVolWriteMutexOccupied,
+	ErrHBaseOperation:                  ErrCodeHBaseOperation,
 }
 
 func ParseErrorCode(code int32) error {
@@ -289,6 +292,7 @@ var code2ErrMap = map[int32]error{
 	ErrCodeNoLiveReplicas:                  ErrNoLiveReplicas,
 	ErrCodeVolWriteMutexUnable:             ErrVolWriteMutexUnable,
 	ErrCodeVolWriteMutexOccupied:           ErrVolWriteMutexOccupied,
+	ErrCodeHBaseOperation:                  ErrHBaseOperation,
 }
 
 type GeneralResp struct {

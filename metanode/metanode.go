@@ -30,6 +30,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/statistics"
 )
 
 var (
@@ -146,6 +147,9 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	}
 
 	exporter.RegistConsul(cfg)
+
+	statistics.InitStatistics(cfg, statistics.ModelMetaNode, m.localAddr, m.metadataManager.SummaryMonitorData)
+
 	return
 }
 

@@ -1,0 +1,9 @@
+{
+  "role": "monitor",
+  "listen": "81",
+  "prof": "7001",
+  "logDir": "/cfs/log",
+  "logLevel": "debug",
+  "cluster": "test",
+  "namespace": "test"
+}

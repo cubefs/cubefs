@@ -26,6 +26,7 @@ import (
 	"github.com/chubaofs/chubaofs/storage"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/statistics"
 	"github.com/chubaofs/chubaofs/util/tracing"
 	"github.com/tiglabs/raft"
 )
@@ -245,6 +246,8 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 		}
 		log.LogErrorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err(%v) retry(%v)", raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err, i)
 	}
+
+	dp.monitorData[statistics.ActionOverWrite].UpdateData(uint64(opItem.size))
 
 	return
 }

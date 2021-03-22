@@ -16,11 +16,12 @@ package main
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/log"
 	"os"
 
 	"github.com/chubaofs/chubaofs/cli/cmd"
 	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/chubaofs/chubaofs/sdk/monitor"
+	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/spf13/cobra"
 )
 
@@ -45,7 +46,8 @@ func setupCommands(cfg *cmd.Config) *cobra.Command {
 	var mc = master.NewMasterClient(cfg.MasterAddr, false)
 	mc.DataNodeProfPort = cfg.DataNodeProfPort
 	mc.MetaNodeProfPort = cfg.MetaNodeProfPort
-	cfsRootCmd := cmd.NewRootCmd(mc)
+	var monitorCli = monitor.NewMonitorClient(cfg.MonitorAddr, false)
+	cfsRootCmd := cmd.NewRootCmd(mc, monitorCli)
 	var completionCmd = &cobra.Command{
 		Use:   "completion",
 		Short: "Generate completion bash file",

@@ -24,6 +24,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -36,6 +37,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/statistics"
 )
 
 var (
@@ -162,6 +164,8 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	go s.registerHandler()
 
 	go s.startUpdateNodeInfo()
+
+	statistics.InitStatistics(cfg, statistics.ModelDataNode, LocalIP, s.summaryMonitorData)
 
 	return
 }
@@ -439,4 +443,41 @@ func IsDiskErr(errMsg string) bool {
 	}
 
 	return false
+}
+
+func (s *DataNode) summaryMonitorData(reportTime int64) []*statistics.MonitorData {
+	dataList := make([]*statistics.MonitorData, 0)
+	s.space.RangePartitions(func(partition *DataPartition) bool {
+		totalCount := uint64(0)
+		// each op
+		for i := 0; i < len(partition.monitorData); i++ {
+			if atomic.LoadUint64(&partition.monitorData[i].Count) == 0 {
+				continue
+			}
+			data := &statistics.MonitorData{
+				VolName:     partition.volumeID,
+				PartitionID: partition.partitionID,
+				Action:      i,
+				ActionStr:   statistics.ActionDataMap[i],
+				Size:        atomic.SwapUint64(&partition.monitorData[i].Size, 0),
+				Count:       atomic.SwapUint64(&partition.monitorData[i].Count, 0),
+				ReportTime:  reportTime,
+			}
+			dataList = append(dataList, data)
+			totalCount += data.Count
+		}
+		// total count
+		if totalCount > 0 {
+			totalData := &statistics.MonitorData{
+				VolName:     partition.volumeID,
+				PartitionID: partition.partitionID,
+				Count:       totalCount,
+				ReportTime:  reportTime,
+				IsTotal:     true,
+			}
+			dataList = append(dataList, totalData)
+		}
+		return true
+	})
+	return dataList
 }

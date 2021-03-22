@@ -19,6 +19,7 @@ import (
 	"fmt"
 
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/statistics"
 	"github.com/chubaofs/chubaofs/util/tracing"
 )
 
@@ -200,6 +201,8 @@ func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
 
+	mp.monitorData[statistics.ActionMetaReadDir].UpdateData(0)
+
 	resp := mp.readDir(p.Ctx(), req)
 	reply, err := json.Marshal(resp)
 	if err != nil {
@@ -215,6 +218,8 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.Lookup")
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
+
+	mp.monitorData[statistics.ActionMetaLookup].UpdateData(0)
 
 	dentry := &Dentry{
 		ParentId: req.ParentID,
