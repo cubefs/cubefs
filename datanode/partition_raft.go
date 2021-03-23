@@ -111,16 +111,20 @@ func (dp *DataPartition) StartRaft() (err error) {
 
 	dp.raftPartition, err = dp.config.RaftStore.CreatePartition(pc)
 	if err == nil {
+		dp.ForceSetRaftRunning()
 		dp.ForceSetDataPartitionToFininshLoad()
 	}
 	return
 }
 
+func (dp *DataPartition) raftStopped() bool {
+	return atomic.LoadInt32(&dp.raftStatus) == RaftStatusStopped
+}
+
 func (dp *DataPartition) stopRaft() {
-	if dp.raftPartition != nil {
+	if atomic.CompareAndSwapInt32(&dp.raftStatus, RaftStatusRunning, RaftStatusStopped) {
 		log.LogErrorf("[FATAL] stop raft partition(%v)", dp.partitionID)
 		dp.raftPartition.Stop()
-		dp.raftPartition = nil
 	}
 	return
 }
@@ -185,13 +189,13 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 			log.LogErrorf("action[ExtentRepair] stop raft partition(%v)_%v", dp.partitionID, extentID)
 
 		case <-getAppliedIDTimer.C:
-			if dp.raftPartition != nil {
+			if !dp.raftStopped() {
 				dp.updateMaxMinAppliedID()
 			}
 			getAppliedIDTimer.Reset(time.Minute * 1)
 
 		case <-truncateRaftLogTimer.C:
-			if dp.raftPartition == nil {
+			if dp.raftStopped() {
 				break
 			}
 

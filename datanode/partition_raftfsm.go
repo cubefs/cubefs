@@ -161,7 +161,7 @@ func (dp *DataPartition) HandleLeaderChange(leader uint64) {
 
 // Put submits the raft log to the raft store.
 func (dp *DataPartition) Put(key interface{}, val interface{}) (resp interface{}, err error) {
-	if dp.raftPartition == nil {
+	if dp.raftStopped() {
 		err = fmt.Errorf("%s key=%v", RaftNotStarted, key)
 		return
 	}

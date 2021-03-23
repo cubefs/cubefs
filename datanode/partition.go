@@ -51,6 +51,11 @@ const (
 	TimeLayout                    = "2006-01-02 15:04:05"
 )
 
+const (
+	RaftStatusStopped = 0
+	RaftStatusRunning = 1
+)
+
 type DataPartitionMetadata struct {
 	VolumeID                string
 	PartitionID             uint64
@@ -111,6 +116,8 @@ type DataPartition struct {
 	stopRaftC chan uint64
 	storeC    chan uint64
 	stopC     chan bool
+
+	raftStatus int32
 
 	intervalToUpdateReplicas      int64 // interval to ask the master for updating the replica information
 	snapshot                      []*proto.File
@@ -173,6 +180,10 @@ func (dp *DataPartition) ForceSetDataPartitionToLoadding() {
 
 func (dp *DataPartition) ForceSetDataPartitionToFininshLoad() {
 	dp.isLoadingDataPartition = false
+}
+
+func (dp *DataPartition) ForceSetRaftRunning() {
+	atomic.StoreInt32(&dp.raftStatus, RaftStatusRunning)
 }
 
 // LoadDataPartition loads and returns a partition instance based on the specified directory.
@@ -248,6 +259,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		snapshot:        make([]*proto.File, 0),
 		partitionStatus: proto.ReadWrite,
 		config:          dpCfg,
+		raftStatus:      RaftStatusStopped,
 	}
 	partition.replicasInit()
 	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize)
@@ -290,7 +302,7 @@ func (dp *DataPartition) Path() string {
 
 // IsRaftLeader tells if the given address belongs to the raft leader.
 func (dp *DataPartition) IsRaftLeader() (addr string, ok bool) {
-	if dp.raftPartition == nil {
+	if dp.raftStopped() {
 		return
 	}
 	leaderID, _ := dp.raftPartition.LeaderTerm()
