@@ -409,7 +409,11 @@ func (dp *DataPartition) notifyFollower(wg *sync.WaitGroup, index int, members [
 	conn, err = gConnPool.GetConnect(target)
 	defer func() {
 		wg.Done()
-		log.LogInfof(fmt.Sprintf(ActionNotifyFollowerToRepair+" to host(%v) Partition(%v) failed (%v)", target, dp.partitionID, err))
+		if err == nil {
+			log.LogInfof(ActionNotifyFollowerToRepair+" to host(%v) Partition(%v) done", target, dp.partitionID)
+		} else {
+			log.LogErrorf(ActionNotifyFollowerToRepair+" to host(%v) Partition(%v) failed", target, dp.partitionID, err)
+		}
 	}()
 	if err != nil {
 		return err
@@ -503,7 +507,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	if err != nil {
 		return errors.Trace(err, "streamRepairExtent get conn from host(%v) error", remoteExtentInfo.Source)
 	}
-	defer func(){
+	defer func() {
 		dp.putRepairConn(conn, err != nil)
 	}()
 
