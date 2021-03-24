@@ -15,18 +15,16 @@
 package metanode
 
 import (
+	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
-
-	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
-
-	"fmt"
-	"strconv"
 
 	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
+	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/errors"
@@ -120,7 +118,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.startRaftServer(); err != nil {
 		return
 	}
-	if err = m.startMetaManager(); err != nil {
+	if err = m.loadMetaPartitions(); err != nil {
 		return
 	}
 	if err = m.registerAPIHandler(); err != nil {
@@ -141,6 +139,11 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.startServer(); err != nil {
 		return
 	}
+
+	if err = m.startMetaPartitions(); err != nil {
+		return
+	}
+
 	exporter.RegistConsul(m.clusterId, cfg.GetString("role"), cfg)
 	return
 }
@@ -261,7 +264,7 @@ func (m *MetaNode) validConfig() (err error) {
 	return
 }
 
-func (m *MetaNode) startMetaManager() (err error) {
+func (m *MetaNode) loadMetaPartitions() (err error) {
 	if _, err = os.Stat(m.metadataDir); err != nil {
 		if err = os.MkdirAll(m.metadataDir, 0755); err != nil {
 			return
@@ -274,10 +277,10 @@ func (m *MetaNode) startMetaManager() (err error) {
 		RaftStore: m.raftStore,
 		ZoneName:  m.zoneName,
 	}
-	m.metadataManager = NewMetadataManager(conf, m)
-	if err = m.metadataManager.Start(); err == nil {
-		log.LogInfof("[startMetaManager] manager start finish.")
+	if m.metadataManager, err = NewMetadataManager(conf, m); err != nil {
+		log.LogErrorf("load metadata manager failed: %v", err)
 	}
+	log.LogInfof("load metadata manager finish.")
 	return
 }
 
@@ -313,6 +316,10 @@ func (m *MetaNode) register() (err error) {
 		m.nodeId = nodeID
 		return
 	}
+}
+
+func (m *MetaNode) startMetaPartitions() error {
+	return m.metadataManager.Start()
 }
 
 // NewServer creates a new meta node instance.
