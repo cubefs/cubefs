@@ -17,16 +17,15 @@ package metanode
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"os"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
-
-	"fmt"
-	"io/ioutil"
-	"os"
-	"path"
 
 	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/proto"
@@ -273,11 +272,6 @@ func (mp *metaPartition) onStart() (err error) {
 		}
 		mp.onStop()
 	}()
-	if err = mp.load(); err != nil {
-		err = errors.NewErrorf("[onStart]:load partition id=%d: %s",
-			mp.config.PartitionId, err.Error())
-		return
-	}
 	mp.startSchedule(mp.applyID)
 	if err = mp.startFreeList(); err != nil {
 		err = errors.NewErrorf("[onStart] start free list id=%d: %s",
@@ -374,8 +368,7 @@ func (mp *metaPartition) getRaftPort() (heartbeat, replica int, err error) {
 	return
 }
 
-// NewMetaPartition creates a new meta partition with the specified configuration.
-func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaPartition {
+func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) *metaPartition {
 	mp := &metaPartition{
 		config:        conf,
 		dentryTree:    NewBtree(),
@@ -391,6 +384,23 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 		manager:       manager,
 	}
 	return mp
+}
+
+// NewMetaPartition creates a new meta partition with the specified configuration.
+func CreateMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) (MetaPartition, error) {
+	mp := NewMetaPartition(conf, manager)
+	if err := mp.persistMetadata(); err != nil {
+		return nil, err
+	}
+	return mp, nil
+}
+
+func LoadMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) (MetaPartition, error) {
+	mp := NewMetaPartition(conf, manager)
+	if err := mp.load(); err != nil {
+		return nil, err
+	}
+	return mp, nil
 }
 
 // IsLeader returns the raft leader address and if the current meta partition is the leader.

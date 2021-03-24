@@ -210,7 +210,7 @@ func (m *metadataManager) Stop() {
 // onStart creates the connection pool and loads the partitions.
 func (m *metadataManager) onStart() (err error) {
 	m.connPool = util.NewConnectPool()
-	err = m.loadPartitions()
+	err = m.startPartitions()
 	return
 }
 
@@ -303,19 +303,19 @@ func (m *metadataManager) loadPartitions() (err error) {
 
 			wg.Add(1)
 			go func(fileName string) {
-				var errload error
+				var loadErr error
 				defer func() {
 					if r := recover(); r != nil {
 						log.LogErrorf("loadPartitions partition: %s, "+
-							"error: %s, failed: %v", fileName, errload, r)
+							"error: %s, failed: %v", fileName, loadErr, r)
 						log.LogFlush()
 						panic(r)
 					}
-					if errload != nil {
+					if loadErr != nil {
 						log.LogErrorf("loadPartitions partition: %s, "+
-							"error: %s", fileName, errload)
+							"error: %s", fileName, loadErr)
 						log.LogFlush()
-						panic(errload)
+						panic(loadErr)
 					}
 				}()
 				defer wg.Done()
@@ -325,8 +325,8 @@ func (m *metadataManager) loadPartitions() (err error) {
 				}
 				var id uint64
 				partitionId := fileName[len(partitionPrefix):]
-				id, errload = strconv.ParseUint(partitionId, 10, 64)
-				if errload != nil {
+				id, loadErr = strconv.ParseUint(partitionId, 10, 64)
+				if loadErr != nil {
 					log.LogWarnf("ignore path: %s,not partition", partitionId)
 					return
 				}
@@ -342,24 +342,25 @@ func (m *metadataManager) loadPartitions() (err error) {
 				}
 				// check snapshot dir or backup
 				snapshotDir := path.Join(partitionConfig.RootDir, snapshotDir)
-				if _, errload = os.Stat(snapshotDir); errload != nil {
+				if _, loadErr = os.Stat(snapshotDir); loadErr != nil {
 					backupDir := path.Join(partitionConfig.RootDir, snapshotBackup)
-					if _, errload = os.Stat(backupDir); errload == nil {
-						if errload = os.Rename(backupDir, snapshotDir); errload != nil {
-							errload = errors.Trace(errload,
+					if _, loadErr = os.Stat(backupDir); loadErr == nil {
+						if loadErr = os.Rename(backupDir, snapshotDir); loadErr != nil {
+							loadErr = errors.Trace(loadErr,
 								fmt.Sprintf(": fail recover backup snapshot %s",
 									snapshotDir))
 							return
 						}
 					}
-					errload = nil
+					loadErr = nil
 				}
-				partition := NewMetaPartition(partitionConfig, m)
-				errload = m.attachPartition(id, partition)
-				if errload != nil {
+				var partition MetaPartition
+				if partition, loadErr = LoadMetaPartition(partitionConfig, m); loadErr != nil {
 					log.LogErrorf("load partition id=%d failed: %s.",
-						id, errload.Error())
+						id, loadErr.Error())
+					return
 				}
+				m.attachPartition(id, partition)
 			}(fileInfo.Name())
 		}
 	}
@@ -367,16 +368,23 @@ func (m *metadataManager) loadPartitions() (err error) {
 	return
 }
 
-func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) (err error) {
-	fmt.Println(fmt.Sprintf("start load metaPartition %v", id))
-	if err = partition.Start(); err != nil {
-		log.LogErrorf("load meta partition %v fail: %v", id, err)
-		return
-	}
+func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.partitions[id] = partition
-	log.LogInfof("load meta partition %v success", id)
+	return
+}
+
+func (m *metadataManager) startPartitions() (err error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for id, partition := range m.partitions {
+		if err = partition.Start(); err != nil {
+			log.LogErrorf("partition[%v] start failed: %v", id, err)
+			return
+		}
+		log.LogInfof("partition[%v] start success", id)
+	}
 	return
 }
 
@@ -419,8 +427,8 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		return
 	}
 
-	partition := NewMetaPartition(mpc, m)
-	if err = partition.PersistMetadata(); err != nil {
+	var partition MetaPartition
+	if partition, err = CreateMetaPartition(mpc, m); err != nil {
 		err = errors.NewErrorf("[createPartition]->%s", err.Error())
 		return
 	}
@@ -487,8 +495,8 @@ func (m *metadataManager) MarshalJSON() (data []byte, err error) {
 }
 
 // NewMetadataManager returns a new metadata manager.
-func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) MetadataManager {
-	return &metadataManager{
+func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) (MetadataManager, error) {
+	mm := &metadataManager{
 		nodeId:     conf.NodeID,
 		zoneName:   conf.ZoneName,
 		rootDir:    conf.RootDir,
@@ -496,6 +504,10 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) Metadata
 		partitions: make(map[uint64]MetaPartition),
 		metaNode:   metaNode,
 	}
+	if err := mm.loadPartitions(); err != nil {
+		return nil, err
+	}
+	return mm, nil
 }
 
 // isExpiredPartition return whether one partition is expired
