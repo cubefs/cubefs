@@ -209,7 +209,6 @@ func (m *metadataManager) Stop() {
 
 // onStart creates the connection pool and loads the partitions.
 func (m *metadataManager) onStart() (err error) {
-	m.connPool = util.NewConnectPool()
 	err = m.startPartitions()
 	return
 }
@@ -503,6 +502,7 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) (Metadat
 		raftStore:  conf.RaftStore,
 		partitions: make(map[uint64]MetaPartition),
 		metaNode:   metaNode,
+		connPool:   util.NewConnectPool(),
 	}
 	if err := mm.loadPartitions(); err != nil {
 		return nil, err
