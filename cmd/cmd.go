@@ -15,6 +15,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	syslog "log"
@@ -82,6 +83,14 @@ const (
 	MaxThread = 40000
 )
 
+const (
+	HTTPAPIPATHStatus = "/status"
+)
+
+var (
+	startComplete = false
+)
+
 var (
 	CommitID   string
 	BranchName string
@@ -126,7 +135,7 @@ func modifyOpenFiles() (err error) {
 	return
 }
 
-func  modifyMaxThreadLimit() {
+func modifyMaxThreadLimit() {
 	debug.SetMaxThreads(MaxThread)
 }
 
@@ -259,6 +268,7 @@ func main() {
 	if profPort != "" {
 		go func() {
 			http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
+			http.HandleFunc(HTTPAPIPATHStatus, statusHandler)
 			e := http.ListenAndServe(fmt.Sprintf(":%v", profPort), nil)
 			if e != nil {
 				log.LogFlush()
@@ -276,6 +286,7 @@ func main() {
 		daemonize.SignalOutcome(fmt.Errorf("Fatal: failed to start the ChubaoFS %v daemon err %v - ", role, err))
 		os.Exit(1)
 	}
+	startComplete = true
 
 	daemonize.SignalOutcome(nil)
 
@@ -310,4 +321,11 @@ func startDaemon() error {
 	}
 
 	return nil
+}
+
+func statusHandler(w http.ResponseWriter, r *http.Request) {
+	var resp = struct{ StartComplete bool }{StartComplete: startComplete}
+	if marshaled, err := json.Marshal(&resp); err == nil {
+		_, _ = w.Write(marshaled)
+	}
 }
