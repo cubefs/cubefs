@@ -208,9 +208,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	info, err := d.super.InodeGet(ino)
 	if err != nil {
 		log.LogErrorf("Lookup: parent(%v) name(%v) ino(%v) err(%v)", d.info.Inode, req.Name, ino, err)
-		dummyInodeInfo := &proto.InodeInfo{Inode: ino}
-		dummyChild := NewFile(d.super, dummyInodeInfo)
-		return dummyChild, nil
+		return nil, ParseError(err)
 	}
 	mode := proto.OsMode(info.Mode)
 
