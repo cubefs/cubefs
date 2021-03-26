@@ -30,9 +30,8 @@ const (
 	FinishLoadDataPartitionExtentHeader = 1
 )
 
-
 const (
-	MaxRepairTaskOnDisk=10
+	MaxRepairTaskOnDisk = 10
 )
 
 // cmd response

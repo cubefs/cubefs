@@ -60,9 +60,9 @@ type Disk struct {
 	RejectWrite              bool
 	partitionMap             map[uint64]*DataPartition
 	space                    *SpaceManager
-	fixTinyDeleteRecordCh    chan struct{}
 	fixTinyDeleteRecordLimit uint64
-	repairTaskCh             chan struct{}
+	repairTaskLimit          uint64
+	limitLock                sync.Mutex
 }
 
 type PartitionVisitor func(dp *DataPartition)
@@ -78,12 +78,8 @@ func NewDisk(path string, reservedSpace uint64, maxErrCnt int, space *SpaceManag
 	d.computeUsage()
 	d.updateSpaceInfo()
 	d.startScheduleToUpdateSpaceInfo()
-	d.fixTinyDeleteRecordCh = make(chan struct{}, space.fixTinyDeleteRecordLimit)
 	d.fixTinyDeleteRecordLimit = space.fixTinyDeleteRecordLimit
-	d.repairTaskCh =make(chan struct{},MaxRepairTaskOnDisk)
-	for i:=0;i<MaxRepairTaskOnDisk;i++{
-		d.repairTaskCh <- struct{}{}
-	}
+	d.repairTaskLimit = MaxRepairTaskOnDisk
 
 	return
 }
@@ -95,19 +91,21 @@ func (d *Disk) PartitionCount() int {
 	return len(d.partitionMap)
 }
 
-func (d *Disk)canRepairOnDisk() bool {
-	select {
-		case <-d.repairTaskCh:
-			return true
-	default:
+func (d *Disk) canRepairOnDisk() bool {
+	d.limitLock.Lock()
+	defer d.limitLock.Unlock()
+	if d.repairTaskLimit<=0{
 		return false
 	}
+	d.repairTaskLimit=d.repairTaskLimit-1
+	return true
 }
 
 func (d *Disk) fininshRepairTask() {
-	d.repairTaskCh<- struct{}{}
+	d.limitLock.Lock()
+	defer d.limitLock.Unlock()
+	d.repairTaskLimit=d.repairTaskLimit+1
 }
-
 
 // Compute the disk usage
 func (d *Disk) computeUsage() (err error) {
@@ -207,10 +205,10 @@ func (d *Disk) autoComputeExtentCrc() {
 }
 
 func (d *Disk) updateFixTinyDeleteRecordLimit() {
+	d.limitLock.Lock()
+	defer d.limitLock.Unlock()
 	if d.fixTinyDeleteRecordLimit != d.space.fixTinyDeleteRecordLimit {
 		d.fixTinyDeleteRecordLimit = d.space.fixTinyDeleteRecordLimit
-		close(d.fixTinyDeleteRecordCh)
-		d.fixTinyDeleteRecordCh = make(chan struct{}, d.fixTinyDeleteRecordLimit)
 	}
 }
 
@@ -449,14 +447,17 @@ func isExpiredPartition(id uint64, partitions []uint64) bool {
 }
 
 func (d *Disk) canFinTinyDeleteRecord() bool {
-	select {
-	case <-d.fixTinyDeleteRecordCh:
-		return true
-	default:
+	d.limitLock.Lock()
+	defer d.limitLock.Unlock()
+	if d.fixTinyDeleteRecordLimit<=0 {
 		return false
 	}
+	d.fixTinyDeleteRecordLimit=d.fixTinyDeleteRecordLimit-1
+	return true
 }
 
 func (d *Disk) fininshFixTinyDeleteRecord() {
-	d.fixTinyDeleteRecordCh <- struct{}{}
+	d.limitLock.Lock()
+	defer d.limitLock.Unlock()
+	d.fixTinyDeleteRecordLimit=d.fixTinyDeleteRecordLimit+1
 }
