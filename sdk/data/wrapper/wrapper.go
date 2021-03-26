@@ -199,7 +199,7 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 		if w.followerRead && w.nearRead {
 			dp.NearHosts = w.sortHostsByDistance(dp.Hosts)
 		}
-		log.LogInfof("updateDataPartition: dp(%v)", dp)
+		//log.LogInfof("updateDataPartition: dp(%v)", dp)
 		w.replaceOrInsertPartition(dp)
 		if dp.Status == proto.ReadWrite {
 			dp.MetricsRefresh()
@@ -219,17 +219,19 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 }
 
 func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
-	var (
-		oldstatus int8
-	)
 	w.Lock()
+
 	old, ok := w.partitions[dp.PartitionID]
 	if ok {
-		oldstatus = old.Status
+		if old.Status != dp.Status || old.ReplicaNum != dp.ReplicaNum ||
+			strings.Join(old.Hosts, ",") != strings.Join(dp.Hosts, ",") ||
+			strings.Join(old.NearHosts, ",") != strings.Join(dp.NearHosts, ",") {
+			log.LogInfof("updateDataPartition: dp (%v) --> (%v)", old, dp)
+		}
 		old.Status = dp.Status
 		old.ReplicaNum = dp.ReplicaNum
 		old.Hosts = dp.Hosts
-		old.NearHosts = dp.Hosts
+		old.NearHosts = dp.NearHosts
 		dp.Metrics = old.Metrics
 	} else {
 		dp.Metrics = NewDataPartitionMetrics()
@@ -238,9 +240,6 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 
 	w.Unlock()
 
-	if ok && oldstatus != dp.Status {
-		log.LogInfof("partition: status change (%v) -> (%v)", old, dp)
-	}
 }
 
 // GetDataPartition returns the data partition based on the given partition ID.
