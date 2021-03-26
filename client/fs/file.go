@@ -16,19 +16,17 @@ package fs
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/ump"
 	"io"
+	"sync"
 	"time"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-	"golang.org/x/net/context"
-
-	"sync"
-
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/tracing"
+	"github.com/chubaofs/chubaofs/util/ump"
+	"golang.org/x/net/context"
 )
 
 // File defines the structure of a file.
@@ -64,8 +62,12 @@ func NewFile(s *Super, i *proto.InodeInfo) fs.Node {
 
 // Attr sets the attributes of a file.
 func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("File.Attr")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	ino := f.info.Inode
-	info, err := f.super.InodeGet(ino)
+	info, err := f.super.InodeGet(ctx, ino)
 	if err != nil {
 		log.LogErrorf("Attr: ino(%v) err(%v)", ino, err)
 		if err == fuse.ENOENT {
@@ -76,7 +78,7 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	}
 
 	fillAttr(info, a)
-	fileSize, gen := f.fileSize(ino)
+	fileSize, gen := f.fileSize(ctx, ino)
 	log.LogDebugf("Attr: ino(%v) fileSize(%v) gen(%v) inode.gen(%v)", ino, fileSize, gen, info.Generation)
 	if gen >= info.Generation {
 		a.Size = uint64(fileSize)
@@ -95,14 +97,18 @@ func (f *File) NodeID() uint64 {
 
 // Forget evicts the inode of the current file. This can only happen when the inode is on the orphan list.
 func (f *File) Forget() {
+	var tracer = tracing.NewTracer("File.Forget")
+	defer tracer.Finish()
+	var ctx = tracer.Context()
+
 	ino := f.info.Inode
 	defer func() {
 		log.LogDebugf("TRACE Forget: ino(%v)", ino)
 	}()
 
-	f.super.ic.Delete(ino)
+	f.super.ic.Delete(ctx, ino)
 
-	if err := f.super.ec.EvictStream(ino); err != nil {
+	if err := f.super.ec.EvictStream(ctx, ino); err != nil {
 		log.LogWarnf("Forget: stream not ready to evict, ino(%v) err(%v)", ino, err)
 		return
 	}
@@ -111,13 +117,17 @@ func (f *File) Forget() {
 		return
 	}
 
-	if err := f.super.mw.Evict(ino); err != nil {
+	if err := f.super.mw.Evict(ctx, ino); err != nil {
 		log.LogWarnf("Forget Evict: ino(%v) err(%v)", ino, err)
 	}
 }
 
 // Open handles the open request.
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (handle fs.Handle, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("File.Open")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	tpObject := ump.BeforeTP(f.super.umpFunctionKey("Open"))
 	defer ump.AfterTP(tpObject, err)
 
@@ -126,7 +136,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 
 	f.super.ec.OpenStream(ino)
 
-	f.super.ec.RefreshExtentsCache(ino)
+	f.super.ec.RefreshExtentsCache(ctx, ino)
 
 	if f.super.keepCache {
 		resp.Flags |= fuse.OpenKeepCache
@@ -139,6 +149,10 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 
 // Release handles the release request.
 func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("File.Release")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	ino := f.info.Inode
 	log.LogDebugf("TRACE Release enter: ino(%v) req(%v)", ino, req)
 
@@ -146,13 +160,13 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 
 	//log.LogDebugf("TRACE Release close stream: ino(%v) req(%v)", ino, req)
 
-	err = f.super.ec.CloseStream(ino)
+	err = f.super.ec.CloseStream(ctx, ino)
 	if err != nil {
 		log.LogErrorf("Release: close writer failed, ino(%v) req(%v) err(%v)", ino, req, err)
 		return fuse.EIO
 	}
 
-	f.super.ic.Delete(ino)
+	f.super.ic.Delete(ctx, ino)
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Release: ino(%v) req(%v) (%v)ns", ino, req, elapsed.Nanoseconds())
 	return nil
@@ -160,6 +174,10 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 
 // Read handles the read request.
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) (err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("File.Read")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	tpObject := ump.BeforeTP(f.super.umpFunctionKey("Read"))
 	defer ump.AfterTP(tpObject, err)
 
@@ -167,10 +185,12 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 
 	start := time.Now()
 
-	metric := exporter.NewTPCnt("fileread")
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricFuseOpTpc.GetWithLabelVals("fileread")
+		defer m.CountWithError(err)
+	}
 
-	size, err := f.super.ec.Read(f.info.Inode, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
+	size, err := f.super.ec.Read(ctx, f.info.Inode, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
 	if err != nil && err != io.EOF {
 		msg := fmt.Sprintf("Read: ino(%v) req(%v) err(%v) size(%v)", f.info.Inode, req, err, size)
 		f.super.handleErrorWithGetInode("Read", msg, f.info.Inode)
@@ -197,18 +217,22 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 
 // Write handles the write request.
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) (err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("File.Write")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	tpObject := ump.BeforeTP(f.super.umpFunctionKey("Write"))
 	defer ump.AfterTP(tpObject, err)
 
 	ino := f.info.Inode
 	reqlen := len(req.Data)
-	filesize, _ := f.fileSize(ino)
+	filesize, _ := f.fileSize(ctx, ino)
 
 	log.LogDebugf("TRACE Write enter: ino(%v) offset(%v) len(%v) filesize(%v) flags(%v) fileflags(%v) req(%v)", ino, req.Offset, reqlen, filesize, req.Flags, req.FileFlags, req)
 
 	if req.Offset > int64(filesize) && reqlen == 1 && req.Data[0] == 0 {
 		// workaround: posix_fallocate would write 1 byte if fallocate is not supported.
-		err = f.super.ec.Truncate(ino, int(req.Offset)+reqlen)
+		err = f.super.ec.Truncate(ctx, ino, int(req.Offset)+reqlen)
 		if err == nil {
 			resp.Size = reqlen
 		}
@@ -218,21 +242,22 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	}
 
 	defer func() {
-		f.super.ic.Delete(ino)
+		f.super.ic.Delete(ctx, ino)
 	}()
 
 	var waitForFlush, enSyncWrite bool
 	if isDirectIOEnabled(req.FileFlags) || (req.FileFlags&fuse.OpenSync != 0) {
 		waitForFlush = true
-		enSyncWrite = f.super.enSyncWrite
 	}
-
+	enSyncWrite = f.super.enSyncWrite
 	start := time.Now()
 
-	metric := exporter.NewTPCnt("filewrite")
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricFuseOpTpc.GetWithLabelVals("filewrite")
+		defer m.CountWithError(err)
+	}
 
-	size, err := f.super.ec.Write(ino, int(req.Offset), req.Data, enSyncWrite)
+	size, err := f.super.ec.Write(ctx, ino, int(req.Offset), req.Data, enSyncWrite)
 	if err != nil {
 		msg := fmt.Sprintf("Write: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
 		f.super.handleErrorWithGetInode("Write", msg, ino)
@@ -245,7 +270,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	}
 
 	if waitForFlush {
-		if err = f.super.ec.Flush(ino); err != nil {
+		if err = f.super.ec.Flush(ctx, ino); err != nil {
 			msg := fmt.Sprintf("Write: failed to wait for flush, ino(%v) offset(%v) len(%v) err(%v) req(%v)", ino, req.Offset, reqlen, err, req)
 			f.super.handleErrorWithGetInode("Wrtie", msg, ino)
 			return fuse.EIO
@@ -260,6 +285,10 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 
 // Flush only when fsyncOnClose is enabled.
 func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("File.Flush")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	tpObject := ump.BeforeTP(f.super.umpFunctionKey("Flush"))
 	defer ump.AfterTP(tpObject, err)
 
@@ -269,16 +298,18 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	log.LogDebugf("TRACE Flush enter: ino(%v)", f.info.Inode)
 	start := time.Now()
 
-	metric := exporter.NewTPCnt("filesync")
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricFuseOpTpc.GetWithLabelVals("fileFlush")
+		defer m.CountWithError(err)
+	}
 
-	err = f.super.ec.Flush(f.info.Inode)
+	err = f.super.ec.Flush(ctx, f.info.Inode)
 	if err != nil {
 		msg := fmt.Sprintf("Flush: ino(%v) err(%v)", f.info.Inode, err)
 		f.super.handleErrorWithGetInode("Flush", msg, f.info.Inode)
 		return fuse.EIO
 	}
-	f.super.ic.Delete(f.info.Inode)
+	f.super.ic.Delete(ctx, f.info.Inode)
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Flush: ino(%v) (%v)ns", f.info.Inode, elapsed.Nanoseconds())
 	return nil
@@ -288,16 +319,23 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 	tpObject := ump.BeforeTP(f.super.umpFunctionKey("Fsync"))
 	defer ump.AfterTP(tpObject, err)
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("File.Fsync")
+	defer tracer.Finish()
+	ctx = tracer.Context()
 
 	log.LogDebugf("TRACE Fsync enter: ino(%v)", f.info.Inode)
 	start := time.Now()
-	err = f.super.ec.Flush(f.info.Inode)
+	if metrics != nil {
+		m := metrics.MetricFuseOpTpc.GetWithLabelVals("fileFsync")
+		defer m.CountWithError(err)
+	}
+	err = f.super.ec.Flush(ctx, f.info.Inode)
 	if err != nil {
 		msg := fmt.Sprintf("Fsync: ino(%v) err(%v)", f.info.Inode, err)
 		f.super.handleErrorWithGetInode("Fsync", msg, f.info.Inode)
 		return fuse.EIO
 	}
-	f.super.ic.Delete(f.info.Inode)
+	f.super.ic.Delete(ctx, f.info.Inode)
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Fsync: ino(%v) (%v)ns", f.info.Inode, elapsed.Nanoseconds())
 	return nil
@@ -307,23 +345,26 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) (err error) {
 	tpObject := ump.BeforeTP(f.super.umpFunctionKey("Setattr"))
 	defer ump.AfterTP(tpObject, err)
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("File.Setattr")
+	defer tracer.Finish()
+	ctx = tracer.Context()
 
 	ino := f.info.Inode
 	start := time.Now()
 	if req.Valid.Size() {
-		if err := f.super.ec.Flush(ino); err != nil {
+		if err := f.super.ec.Flush(ctx, ino); err != nil {
 			log.LogErrorf("Setattr: truncate wait for flush ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
 		}
-		if err := f.super.ec.Truncate(ino, int(req.Size)); err != nil {
+		if err := f.super.ec.Truncate(ctx, ino, int(req.Size)); err != nil {
 			log.LogErrorf("Setattr: truncate ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
 		}
-		f.super.ic.Delete(ino)
-		f.super.ec.RefreshExtentsCache(ino)
+		f.super.ic.Delete(ctx, ino)
+		f.super.ec.RefreshExtentsCache(ctx, ino)
 	}
 
-	info, err := f.super.InodeGet(ino)
+	info, err := f.super.InodeGet(ctx, ino)
 	if err != nil {
 		log.LogErrorf("Setattr: InodeGet failed, ino(%v) err(%v)", ino, err)
 		return ParseError(err)
@@ -336,10 +377,10 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 	}
 
 	if valid := setattr(info, req); valid != 0 {
-		err = f.super.mw.Setattr(ino, valid, info.Mode, info.Uid, info.Gid, info.AccessTime.Unix(),
+		err = f.super.mw.Setattr(ctx, ino, valid, info.Mode, info.Uid, info.Gid, info.AccessTime.Unix(),
 			info.ModifyTime.Unix())
 		if err != nil {
-			f.super.ic.Delete(ino)
+			f.super.ic.Delete(ctx, ino)
 			return ParseError(err)
 		}
 	}
@@ -353,8 +394,12 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 
 // Readlink handles the readlink request.
 func (f *File) Readlink(ctx context.Context, req *fuse.ReadlinkRequest) (string, error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("File.Readlink")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	ino := f.info.Inode
-	info, err := f.super.InodeGet(ino)
+	info, err := f.super.InodeGet(ctx, ino)
 	if err != nil {
 		log.LogErrorf("Readlink: ino(%v) err(%v)", ino, err)
 		return "", ParseError(err)
@@ -365,6 +410,10 @@ func (f *File) Readlink(ctx context.Context, req *fuse.ReadlinkRequest) (string,
 
 // Getxattr has not been implemented yet.
 func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fuse.GetxattrResponse) error {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("File.Getxattr")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	if !f.super.enableXattr {
 		return fuse.ENOSYS
 	}
@@ -372,7 +421,7 @@ func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fu
 	name := req.Name
 	size := req.Size
 	pos := req.Position
-	info, err := f.super.mw.XAttrGet_ll(ino, name)
+	info, err := f.super.mw.XAttrGet_ll(ctx, ino, name)
 	if err != nil {
 		log.LogErrorf("GetXattr: ino(%v) name(%v) err(%v)", ino, name, err)
 		return ParseError(err)
@@ -391,6 +440,10 @@ func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fu
 
 // Listxattr has not been implemented yet.
 func (f *File) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *fuse.ListxattrResponse) error {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("File.Listxattr")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	if !f.super.enableXattr {
 		return fuse.ENOSYS
 	}
@@ -398,7 +451,7 @@ func (f *File) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *
 	_ = req.Size     // ignore currently
 	_ = req.Position // ignore currently
 
-	keys, err := f.super.mw.XAttrsList_ll(ino)
+	keys, err := f.super.mw.XAttrsList_ll(ctx, ino)
 	if err != nil {
 		log.LogErrorf("ListXattr: ino(%v) err(%v)", ino, err)
 		return ParseError(err)
@@ -412,6 +465,10 @@ func (f *File) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *
 
 // Setxattr has not been implemented yet.
 func (f *File) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("File.Setxattr")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	if !f.super.enableXattr {
 		return fuse.ENOSYS
 	}
@@ -419,7 +476,7 @@ func (f *File) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
 	name := req.Name
 	value := req.Xattr
 	// TODO： implement flag to improve compatible (Mofei Zhang)
-	if err := f.super.mw.XAttrSet_ll(ino, []byte(name), []byte(value)); err != nil {
+	if err := f.super.mw.XAttrSet_ll(ctx, ino, []byte(name), []byte(value)); err != nil {
 		log.LogErrorf("Setxattr: ino(%v) name(%v) err(%v)", ino, name, err)
 		return ParseError(err)
 	}
@@ -429,12 +486,16 @@ func (f *File) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
 
 // Removexattr has not been implemented yet.
 func (f *File) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) error {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("File.Removexattr")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	if !f.super.enableXattr {
 		return fuse.ENOSYS
 	}
 	ino := f.info.Inode
 	name := req.Name
-	if err := f.super.mw.XAttrDel_ll(ino, name); err != nil {
+	if err := f.super.mw.XAttrDel_ll(ctx, ino, name); err != nil {
 		log.LogErrorf("Removexattr: ino(%v) name(%v) err(%v)", ino, name, err)
 		return ParseError(err)
 	}
@@ -442,12 +503,12 @@ func (f *File) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) er
 	return nil
 }
 
-func (f *File) fileSize(ino uint64) (size int, gen uint64) {
+func (f *File) fileSize(ctx context.Context, ino uint64) (size int, gen uint64) {
 	size, gen, valid := f.super.ec.FileSize(ino)
 	log.LogDebugf("fileSize: ino(%v) fileSize(%v) gen(%v) valid(%v)", ino, size, gen, valid)
 
 	if !valid {
-		if info, err := f.super.InodeGet(ino); err == nil {
+		if info, err := f.super.InodeGet(ctx, ino); err == nil {
 			size = int(info.Size)
 			gen = info.Generation
 		}

@@ -51,6 +51,7 @@ func GetMessage() *Message {
 	msg.Snapshot = nil
 	msg.Context = nil
 	msg.Entries = msg.Entries[0:0]
+	msg.ctx = nil
 	return msg
 }
 

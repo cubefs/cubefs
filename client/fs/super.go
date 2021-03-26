@@ -21,17 +21,15 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/net/context"
-
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/data/stream"
+	"github.com/chubaofs/chubaofs/sdk/data"
 	"github.com/chubaofs/chubaofs/sdk/meta"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/ump"
+	"golang.org/x/net/context"
 )
 
 // Super defines the struct of a super block.
@@ -41,7 +39,7 @@ type Super struct {
 	owner       string
 	ic          *InodeCache
 	mw          *meta.MetaWrapper
-	ec          *stream.ExtentClient
+	ec          *data.ExtentClient
 	orphan      *OrphanInodeList
 	enSyncWrite bool
 	keepCache   bool
@@ -65,6 +63,7 @@ var (
 
 // NewSuper returns a new Super.
 func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
+
 	s = new(Super)
 	var masters = strings.Split(opt.Master, meta.HostsSeparator)
 	var metaConfig = &meta.MetaConfig{
@@ -84,7 +83,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		inodeExpiration = time.Duration(opt.IcacheTimeout) * time.Second
 	}
 	s.ic = NewInodeCache(inodeExpiration, MaxInodeCache)
-	var extentConfig = &stream.ExtentConfig{
+	var extentConfig = &data.ExtentConfig{
 		Volume:                   opt.Volname,
 		Masters:                  masters,
 		FollowerRead:             opt.FollowerRead,
@@ -96,12 +95,12 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		ForceAlignMerge:          opt.ForceAlignMerge,
 		ExtentSize:               int(opt.ExtentSize),
 		AutoFlush:                opt.AutoFlush,
-		OnAppendExtentKey:        s.mw.AppendExtentKey,
+		OnInsertExtentKey:        s.mw.InsertExtentKey,
 		OnGetExtents:             s.mw.GetExtents,
 		OnTruncate:               s.mw.Truncate,
 		OnEvictIcache:            s.ic.Delete,
 	}
-	s.ec, err = stream.NewExtentClient(extentConfig)
+	s.ec, err = data.NewExtentClient(extentConfig)
 	if err != nil {
 		return nil, errors.Trace(err, "NewExtentClient failed!")
 	}
@@ -137,7 +136,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 
 // Root returns the root directory where it resides.
 func (s *Super) Root() (fs.Node, error) {
-	inode, err := s.InodeGet(s.rootIno)
+	inode, err := s.InodeGet(context.Background(), s.rootIno)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +227,7 @@ func (s *Super) handleErrorWithGetInode(op, msg string, inode uint64) {
 
 	go func() {
 		// if failed to get inode, judge err and alarm
-		if _, errGet := s.InodeGet(inode); errGet != fuse.ENOENT {
+		if _, errGet := s.InodeGet(context.Background(), inode); errGet != fuse.ENOENT {
 			errmsg1 := fmt.Sprintf("act(%v) - %v", op, msg)
 			ump.Alarm(s.umpAlarmKey(), errmsg1)
 

@@ -17,6 +17,7 @@ package metanode
 import (
 	"bytes"
 	"container/list"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -222,8 +223,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 					status := mp.raftPartition.Status()
 					if status.State == "StateLeader" && !status.
 						RestoringSnapshot {
-						if _, err = mp.submit(opFSMInternalDelExtentFile,
-							[]byte(fileName)); err != nil {
+						if _, err = mp.submit(context.Background(), opFSMInternalDelExtentFile, "", []byte(fileName)); err != nil {
 							log.LogErrorf(
 								"[deleteExtentsFromList] partitionId=%d,"+
 									"delete old file: %s,status: %s", mp.config.PartitionId,
@@ -259,7 +259,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 				panic(err)
 			}
 			// delete dataPartition
-			if err = mp.doDeleteMarkedInodes(&ek); err != nil {
+			if err = mp.doDeleteMarkedInodes(context.Background(), &ek); err != nil {
 				eks := make([]proto.ExtentKey, 0)
 				eks = append(eks, ek)
 				mp.extDelCh <- eks
@@ -269,7 +269,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 		}
 		buff.Reset()
 		buff.WriteString(fmt.Sprintf("%s %d", fileName, cursor))
-		if _, err = mp.submit(opFSMInternalDelExtentCursor, buff.Bytes()); err != nil {
+		if _, err = mp.submit(context.Background(), opFSMInternalDelExtentCursor, "", buff.Bytes()); err != nil {
 			log.LogWarnf("[deleteExtentsFromList] partitionId=%d, %s",
 				mp.config.PartitionId, err.Error())
 		}

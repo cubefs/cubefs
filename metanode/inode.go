@@ -16,12 +16,16 @@ package metanode
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
 	"io"
+	"math"
 	"sync"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/tracing"
 )
 
 const (
@@ -174,7 +178,11 @@ func (i *Inode) Marshal() (result []byte, err error) {
 }
 
 // Unmarshal unmarshals the inode.
-func (i *Inode) Unmarshal(raw []byte) (err error) {
+func (i *Inode) Unmarshal(ctx context.Context, raw []byte) (err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Inode.Unmarshal")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	var (
 		keyLen uint32
 		valLen uint32
@@ -197,12 +205,16 @@ func (i *Inode) Unmarshal(raw []byte) (err error) {
 	if _, err = buff.Read(valBytes); err != nil {
 		return
 	}
-	err = i.UnmarshalValue(valBytes)
+	err = i.UnmarshalValue(ctx, valBytes)
 	return
 }
 
 // Marshal marshals the inodeBatch into a byte array.
-func (i InodeBatch) Marshal() ([]byte, error) {
+func (i InodeBatch) Marshal(ctx context.Context) ([]byte, error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("InodeBatch.Marshal").SetTag("len", len(i))
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	buff := bytes.NewBuffer(make([]byte, 0))
 	if err := binary.Write(buff, binary.BigEndian, uint32(len(i))); err != nil {
 		return nil, err
@@ -223,7 +235,11 @@ func (i InodeBatch) Marshal() ([]byte, error) {
 }
 
 // Unmarshal unmarshals the inodeBatch.
-func InodeBatchUnmarshal(raw []byte) (InodeBatch, error) {
+func InodeBatchUnmarshal(ctx context.Context, raw []byte) (InodeBatch, error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("InodeBatchUnmarshal")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	buff := bytes.NewBuffer(raw)
 	var batchLen uint32
 	if err := binary.Read(buff, binary.BigEndian, &batchLen); err != nil {
@@ -242,7 +258,7 @@ func InodeBatchUnmarshal(raw []byte) (InodeBatch, error) {
 			return nil, err
 		}
 		ino := NewInode(0, 0)
-		if err := ino.Unmarshal(data); err != nil {
+		if err := ino.Unmarshal(ctx, data); err != nil {
 			return nil, err
 		}
 		result = append(result, ino)
@@ -327,7 +343,10 @@ func (i *Inode) MarshalValue() (val []byte) {
 }
 
 // UnmarshalValue unmarshals the value from bytes.
-func (i *Inode) UnmarshalValue(val []byte) (err error) {
+func (i *Inode) UnmarshalValue(ctx context.Context, val []byte) (err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Inode.UnmarshalValue")
+	defer tracer.Finish()
+	ctx = tracer.Context()
 	buff := bytes.NewBuffer(val)
 	if err = binary.Read(buff, binary.BigEndian, &i.Type); err != nil {
 		return
@@ -381,18 +400,22 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	if i.Extents == nil {
 		i.Extents = NewSortedExtents()
 	}
-	if err = i.Extents.UnmarshalBinary(buff.Bytes()); err != nil {
+	if err = i.Extents.UnmarshalBinary(ctx, buff.Bytes()); err != nil {
 		return
 	}
 	return
 }
 
 // AppendExtents append the extent to the btree.
-func (i *Inode) AppendExtents(eks []proto.ExtentKey, ct int64) (delExtents []proto.ExtentKey) {
+func (i *Inode) AppendExtents(ctx context.Context, eks []proto.ExtentKey, ct int64) (delExtents []proto.ExtentKey) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Inode.AppendExtents")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	i.Lock()
 	oldFileSize := i.Extents.Size()
 	for _, ek := range eks {
-		delItems := i.Extents.Append(ek)
+		delItems := i.Extents.Append(ctx, ek)
 		size := i.Extents.Size()
 		if i.Size < size {
 			i.Size = size
@@ -400,11 +423,34 @@ func (i *Inode) AppendExtents(eks []proto.ExtentKey, ct int64) (delExtents []pro
 		delExtents = append(delExtents, delItems...)
 	}
 	i.ModifyTime = ct
-	currentFileSize:=i.Extents.Size()
+	currentFileSize := i.Extents.Size()
 	if !(oldFileSize == currentFileSize && len(delExtents) == 0) {
 		i.Generation++
 	}
 	i.Unlock()
+	return
+}
+
+func (i *Inode) InsertExtents(ctx context.Context, eks []proto.ExtentKey, ct int64) (delExtents []proto.ExtentKey) {
+	if len(eks) == 0 {
+		return
+	}
+
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Inode.InsertExtents").
+		SetTag("inode", i.Inode)
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
+	i.Lock()
+	defer i.Unlock()
+
+	for _, ek := range eks {
+		delExtents = append(delExtents, i.Extents.Insert(ctx, ek)...)
+	}
+	i.Size = uint64(math.Max(float64(i.Size), float64(i.Extents.Size())))
+	i.ModifyTime = ct
+	i.Generation++
+
 	return
 }
 

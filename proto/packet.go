@@ -15,6 +15,7 @@
 package proto
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -28,6 +29,7 @@ import (
 
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/buf"
+	"github.com/chubaofs/chubaofs/util/tracing"
 )
 
 var (
@@ -99,6 +101,7 @@ const (
 	OpMetaListXAttr       uint8 = 0x38
 	OpMetaBatchGetXAttr   uint8 = 0x39
 	OpMetaGetAppliedID    uint8 = 0x3A
+	OpMetaExtentsInsert   uint8 = 0x3B
 
 	// Operations: Master -> MetaNode
 	OpCreateMetaPartition             uint8 = 0x40
@@ -212,24 +215,38 @@ type Packet struct {
 	RecvT              int64
 	mesg               string
 	HasPrepare         bool
+	ctx                context.Context
 }
 
 // NewPacket returns a new packet.
-func NewPacket() *Packet {
+func NewPacket(ctx context.Context) *Packet {
 	p := new(Packet)
 	p.Magic = ProtoMagic
 	p.StartT = time.Now().UnixNano()
+	p.SetCtx(ctx)
+
 	return p
 }
 
 // NewPacketReqID returns a new packet with ReqID assigned.
-func NewPacketReqID() *Packet {
-	p := NewPacket()
+func NewPacketReqID(ctx context.Context) *Packet {
+	p := NewPacket(ctx)
 	p.ReqID = GenerateRequestID()
 	return p
 }
 
+func (p *Packet) Ctx() context.Context {
+	return p.ctx
+}
+
+func (p *Packet) SetCtx(ctx context.Context) {
+	p.ctx = ctx
+}
+
 func (p *Packet) String() string {
+	if p == nil {
+		return ""
+	}
 	return fmt.Sprintf("ReqID(%v)Op(%v)PartitionID(%v)ResultCode(%v)", p.ReqID, p.GetOpMsg(), p.PartitionID, p.GetResultMsg())
 }
 
@@ -299,6 +316,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaBatchInodeGet"
 	case OpMetaExtentsAdd:
 		m = "OpMetaExtentsAdd"
+	case OpMetaExtentsInsert:
+		m = "OpMetaExtentsInsert"
 	case OpMetaExtentsDel:
 		m = "OpMetaExtentsDel"
 	case OpMetaExtentsList:
@@ -550,6 +569,19 @@ func (p *Packet) WriteToNoDeadLineConn(c net.Conn) (err error) {
 
 // WriteToConn writes through the given connection.
 func (p *Packet) WriteToConn(c net.Conn) (err error) {
+
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("proto.Packet.WriteToConn").
+		SetTag("remote", c.RemoteAddr().String()).
+		SetTag("local", c.LocalAddr().String()).
+		SetTag("ReqID", p.GetReqID()).
+		SetTag("ReqOp", p.GetOpMsg())
+	defer func() {
+		tracer.SetTag("Arg", string(p.Arg))
+		tracer.SetTag("ArgLen", p.ArgLen)
+		tracer.Finish()
+	}()
+	p.SetCtx(tracer.Context())
+
 	c.SetWriteDeadline(time.Now().Add(WriteDeadlineTime * time.Second))
 	header, err := Buffers.Get(util.PacketHeaderSize)
 	if err != nil {
@@ -578,6 +610,18 @@ func ReadFull(c net.Conn, buf *[]byte, readSize int) (err error) {
 
 // ReadFromConn reads the data from the given connection.
 func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("proto.Packet.ReadFromConn")
+	defer func() {
+		tracer.SetTag("conn.remote", c.RemoteAddr().String())
+		tracer.SetTag("conn.local", c.LocalAddr().String())
+		tracer.SetTag("ReqID", p.GetReqID())
+		tracer.SetTag("ReqOp", p.GetOpMsg())
+		tracer.SetTag("Arg", string(p.Arg))
+		tracer.SetTag("ret.err", err)
+		tracer.Finish()
+	}()
+	p.SetCtx(tracer.Context())
+
 	if timeoutSec != NoReadDeadlineTime {
 		c.SetReadDeadline(time.Now().Add(time.Second * time.Duration(timeoutSec)))
 	} else {

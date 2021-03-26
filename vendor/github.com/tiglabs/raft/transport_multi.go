@@ -15,6 +15,8 @@
 package raft
 
 import (
+	"github.com/tiglabs/raft/tracing"
+
 	"github.com/tiglabs/raft/proto"
 	"github.com/tiglabs/raft/util"
 )
@@ -49,10 +51,16 @@ func (t *MultiTransport) Stop() {
 }
 
 func (t *MultiTransport) Send(m *proto.Message) {
-	// if m.IsElectionMsg() {
+	var tracer = tracing.TracerFromContext(m.Ctx()).ChildTracer("MultiTransport.Send")
+	defer tracer.Finish()
+	m.SetCtx(tracer.Context())
+
 	if m.IsHeartbeatMsg() {
 		t.heartbeat.send(m)
 	} else {
+		if m.IsAppendMsg() {
+			m.Context = proto.EncodeTransportContext(proto.TransportContext{Tracer: tracer})
+		}
 		t.replicate.send(m)
 	}
 }
@@ -61,10 +69,11 @@ func (t *MultiTransport) SendSnapshot(m *proto.Message, rs *snapshotStatus) {
 	t.replicate.sendSnapshot(m, rs)
 }
 
-func reciveMessage(r *util.BufferReader) (msg *proto.Message, err error) {
+func receiveMessage(r *util.BufferReader) (msg *proto.Message, err error) {
 	msg = proto.GetMessage()
 	if err = msg.Decode(r); err != nil {
 		proto.ReturnMessage(msg)
 	}
+
 	return
 }

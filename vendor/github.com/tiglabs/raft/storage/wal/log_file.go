@@ -16,9 +16,12 @@ package wal
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"path"
+
+	"github.com/tiglabs/raft/tracing"
 
 	"github.com/tiglabs/raft/proto"
 	"github.com/tiglabs/raft/util/log"
@@ -50,28 +53,37 @@ func openLogEntryFile(dir string, name logFileName, isLastOne bool) (*logEntryFi
 
 	if !isLastOne {
 		// 读取索引数据
-		if err = lf.ReadIndex(); err != nil {
-			return nil, err
+		err = lf.ReadIndex()
+		if err == nil {
+			return lf, nil
 		}
-	} else {
-		// 重建索引
-		toffset, err := lf.ReBuildIndex()
-		if err != nil && err != io.ErrUnexpectedEOF && !IsErrCorrupt(err) {
+		if err != io.ErrUnexpectedEOF && !IsErrCorrupt(err) {
 			return nil, err
-		}
-		// 打开写
-		if err = lf.OpenWrite(); err != nil {
-			return nil, err
-		}
-		// 截断索引及后面的数据
-		if toffset >= 0 {
-			log.Warn("truncate last logfile's N@%d index at: %d", lf.name.seq, toffset)
-			if err := lf.w.Truncate(toffset); err != nil {
-				return nil, err
-			}
 		}
 	}
 
+	// 重建索引
+	toffset, err := lf.ReBuildIndex()
+	if err != nil && err != io.ErrUnexpectedEOF && !IsErrCorrupt(err) {
+		return nil, err
+	}
+	// 打开写
+	if err = lf.OpenWrite(); err != nil {
+		return nil, err
+	}
+	// 截断索引及后面的数据
+	if toffset >= 0 {
+		log.Warn("truncate last logfile's N@%d index at: %d", lf.name.seq, toffset)
+		if err := lf.w.Truncate(toffset); err != nil {
+			return nil, err
+		}
+	}
+
+	if !isLastOne {
+		if err := lf.FinishWrite(nil); err != nil {
+			return nil, err
+		}
+	}
 	return lf, nil
 }
 
@@ -247,7 +259,10 @@ func (lf *logEntryFile) Truncate(index uint64) error {
 	return err
 }
 
-func (lf *logEntryFile) Save(ent *proto.Entry) error {
+func (lf *logEntryFile) Save(ctx context.Context, ent *proto.Entry) error {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("logEntryFile.Save").SetTag("dataLen", len(ent.Data))
+	defer tracer.Finish()
+
 	// 写入文件
 	offset := lf.w.Offset()
 	if err := lf.w.Write(recTypeLogEntry, ent); err != nil {
@@ -273,7 +288,10 @@ func (lf *logEntryFile) WriteOffset() int64 {
 	return lf.w.Offset()
 }
 
-func (lf *logEntryFile) Flush() error {
+func (lf *logEntryFile) Flush(ctx context.Context) error {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("logEntryFile.Flush")
+	defer tracer.Finish()
+
 	return lf.w.Flush()
 }
 
@@ -282,7 +300,10 @@ func (lf *logEntryFile) Sync() error {
 	return lf.w.Sync()
 }
 
-func (lf *logEntryFile) FinishWrite() error {
+func (lf *logEntryFile) FinishWrite(ctx context.Context) error {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("logEntryFile.FinishWrite")
+	defer tracer.Finish()
+
 	var err error
 
 	// write log index data
@@ -299,6 +320,8 @@ func (lf *logEntryFile) FinishWrite() error {
 		return err
 	}
 
+	var closeTracer = tracer.ChildTracer("logEntryFile.FinishWrite[close writer]")
+	defer closeTracer.Finish()
 	if err := lf.w.Close(); err != nil {
 		return err
 	}

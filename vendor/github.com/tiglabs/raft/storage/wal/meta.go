@@ -16,9 +16,10 @@ package wal
 
 import (
 	"encoding/binary"
-	"io"
 	"os"
 	"path"
+
+	"github.com/edsrzf/mmap-go"
 
 	"github.com/tiglabs/raft/proto"
 	"github.com/tiglabs/raft/util/bufalloc"
@@ -43,94 +44,107 @@ func (m *truncateMeta) Decode(b []byte) {
 	m.truncTerm = binary.BigEndian.Uint64(b[8:])
 }
 
-// 存储HardState和truncateMeta信息
+// Used to read and store Hard State and Truncate Mete information.
+// Data storage in this file will be read and modified by using mmap.
+//
+// The size of the data file is:
+// Hard State Size (24 bytes) + Truncate Meta Size (16 bytes) = 40 bytes.
+//
+// The first 24 bytes [0, 24) of the file are Hard Sate information.
+// The last 16 bytes [24, 40) are Truncate Meta information.
+//
+// Schematic diagram of data storage distribution:
+//
+// | Hard State | Truncate Meta |
+// 0           23               39
+//
 type metaFile struct {
 	f           *os.File
+	mm          mmap.MMap
 	truncOffset int64
 }
 
 func openMetaFile(dir string) (mf *metaFile, hs proto.HardState, meta truncateMeta, err error) {
-	f, err := os.OpenFile(path.Join(dir, "META"), os.O_RDWR|os.O_CREATE, 0600)
-	if err != nil {
+	var f *os.File
+	if f, err = os.OpenFile(path.Join(dir, "META"), os.O_RDWR|os.O_CREATE, 0600); err != nil {
 		return
 	}
+	defer func() {
+		if err != nil {
+			f.Close()
+		}
+	}()
+
+	var metaSize = hs.Size() + meta.Size()
+	var info os.FileInfo
+	if info, err = f.Stat(); err != nil {
+		return
+	}
+	if info.Size() != int64(metaSize) {
+		if err = f.Truncate(int64(metaSize)); err != nil {
+			return
+		}
+	}
+
+	var mm mmap.MMap
+	if mm, err = mmap.Map(f, mmap.RDWR, 0); err != nil {
+		return
+	}
+	defer func() {
+		if err != nil {
+			_ = mm.Unmap()
+		}
+	}()
 
 	mf = &metaFile{
 		f:           f,
+		mm:          mm,
 		truncOffset: int64(hs.Size()),
 	}
 
-	hs, meta, err = mf.load()
-	return mf, hs, meta, err
+	hs, meta = mf.load()
+	return mf, hs, meta, nil
 }
 
-func (mf *metaFile) load() (hs proto.HardState, meta truncateMeta, err error) {
-	// load hardstate
-	hs_size := int(hs.Size())
-	buffer := bufalloc.AllocBuffer(hs_size)
-	defer bufalloc.FreeBuffer(buffer)
+func (mf *metaFile) load() (hs proto.HardState, meta truncateMeta) {
+	// Load Hard State data and decode.
+	hs.Decode(mf.mm[0:hs.Size()])
 
-	buf := buffer.Alloc(hs_size)
-	n, err := mf.f.Read(buf)
-	if err != nil {
-		if err == io.EOF {
-			err = nil
-			return
-		}
-		return
-	}
-	if n != hs_size {
-		err = NewCorruptError("META", 0, "wrong hardstate data size")
-		return
-	}
-	hs.Decode(buf)
+	// Load Truncate Meta data and decode.
+	meta.Decode(mf.mm[hs.Size() : hs.Size()+meta.Size()])
 
-	// load trunc meta
-	buffer.Reset()
-	mt_size := int(meta.Size())
-	buf = buffer.Alloc(mt_size)
-	n, err = mf.f.Read(buf)
-	if err != nil {
-		if err == io.EOF {
-			err = nil
-			return
-		}
-		return
-	}
-	if n != mt_size {
-		err = NewCorruptError("META", 0, "wrong truncmeta data size")
-		return
-	}
-	meta.Decode(buf)
 	return
 }
 
-func (mf *metaFile) Close() error {
+func (mf *metaFile) Close() (err error) {
+	if err = mf.mm.Unmap(); err != nil {
+		return
+	}
 	return mf.f.Close()
 }
 
-func (mf *metaFile) SaveTruncateMeta(meta truncateMeta) error {
-	mt_size := int(meta.Size())
-	buffer := bufalloc.AllocBuffer(mt_size)
+func (mf *metaFile) SaveTruncateMeta(meta truncateMeta) {
+	// Encode truncate meta and write to file.
+	var metaSize = int(meta.Size())
+	buffer := bufalloc.AllocBuffer(metaSize)
 	defer bufalloc.FreeBuffer(buffer)
 
-	b := buffer.Alloc(mt_size)
+	var b = buffer.Alloc(metaSize)
 	meta.Encode(b)
-	_, err := mf.f.WriteAt(b, mf.truncOffset)
-	return err
+	copy(mf.mm[mf.truncOffset:mf.truncOffset+int64(meta.Size())], b)
 }
 
-func (mf *metaFile) SaveHardState(hs proto.HardState) error {
-	hs_size := int(hs.Size())
-	buffer := bufalloc.AllocBuffer(hs_size)
+func (mf *metaFile) SaveHardState(hs proto.HardState) {
+	// Encode hard state and write to file.
+	hsSize := int(hs.Size())
+	buffer := bufalloc.AllocBuffer(hsSize)
 	defer bufalloc.FreeBuffer(buffer)
 
-	b := buffer.Alloc(hs_size)
+	b := buffer.Alloc(hsSize)
 	hs.Encode(b)
-	_, err := mf.f.WriteAt(b, 0)
-	return err
+	copy(mf.mm[0:mf.truncOffset], b)
 }
 
 func (mf *metaFile) Sync() error {
-	return mf.f.Sync()
+	return mf.mm.Flush()
 }

@@ -16,9 +16,12 @@
 package raft
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"time"
+
+	"github.com/tiglabs/raft/tracing"
 
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
@@ -59,6 +62,22 @@ func (r *raftFsm) becomeLeader() {
 }
 
 func stepLeader(r *raftFsm, m *proto.Message) {
+	// Message tracers
+	var mt = tracing.TracerFromContext(m.Ctx()).ChildTracer("raftFsm.stepLeader[message]")
+	defer mt.Finish()
+	m.SetTagsToTracer(mt)
+	m.SetCtx(mt.Context())
+
+	// Entry tracers
+	var ets = tracing.NewTracers(len(m.Entries))
+	for _, e := range m.Entries {
+		et := tracing.TracerFromContext(e.Ctx()).ChildTracer("raftFsm.stepLeader[entry]")
+		e.SetTagsToTracer(et)
+		e.SetCtx(et.Context())
+		ets.AddTracer(et)
+	}
+	defer ets.Finish()
+
 	// These message types do not require any progress for m.From.
 	switch m.Type {
 	case proto.LocalMsgProp:
@@ -75,7 +94,7 @@ func stepLeader(r *raftFsm, m *proto.Message) {
 			}
 		}
 		r.appendEntry(m.Entries...)
-		r.bcastAppend()
+		r.bcastAppend(m.Ctx())
 		proto.ReturnMessage(m)
 		return
 
@@ -88,6 +107,7 @@ func stepLeader(r *raftFsm, m *proto.Message) {
 		nmsg.Type = proto.RespMsgVote
 		nmsg.To = m.From
 		nmsg.Reject = true
+		nmsg.SetCtx(m.Ctx())
 		r.send(nmsg)
 		proto.ReturnMessage(m)
 		return
@@ -114,7 +134,7 @@ func stepLeader(r *raftFsm, m *proto.Message) {
 				if pr.state == replicaStateReplicate {
 					pr.becomeProbe()
 				}
-				r.sendAppend(m.From)
+				r.sendAppend(m.Ctx(), m.From)
 			}
 		} else {
 			oldPaused := pr.isPaused()
@@ -131,10 +151,10 @@ func stepLeader(r *raftFsm, m *proto.Message) {
 					pr.inflight.freeTo(m.Index)
 				}
 
-				if r.maybeCommit() {
-					r.bcastAppend()
+				if r.maybeCommit(m.Ctx()) {
+					r.bcastAppend(m.Ctx())
 				} else if oldPaused {
-					r.sendAppend(m.From)
+					r.sendAppend(m.Ctx(), m.From)
 				}
 			}
 		}
@@ -146,7 +166,7 @@ func stepLeader(r *raftFsm, m *proto.Message) {
 			pr.inflight.freeFirstOne()
 		}
 		if !pr.pending && (pr.match < r.raftLog.lastIndex() || pr.committed < r.raftLog.committed) {
-			r.sendAppend(m.From)
+			r.sendAppend(m.Ctx(), m.From)
 		}
 
 		pr.active = true
@@ -164,10 +184,11 @@ func stepLeader(r *raftFsm, m *proto.Message) {
 			nmsg := proto.GetMessage()
 			nmsg.Type = proto.LeaseMsgTimeout
 			nmsg.To = id
+			nmsg.SetCtx(m.Ctx())
 			r.send(nmsg)
 		}
 		logger.Debug("[raft][%v] LeaseMsgOffline at term[%d] leader[%d].", r.id, r.term, r.leader)
-		r.becomeFollower(r.term, NoLeader)
+		r.becomeFollower(m.Ctx(), r.term, NoLeader)
 		proto.ReturnMessage(m)
 		return
 
@@ -235,6 +256,11 @@ func (r *raftFsm) becomeElectionAck() {
 }
 
 func stepElectionAck(r *raftFsm, m *proto.Message) {
+	var tracer = tracing.TracerFromContext(m.Ctx()).ChildTracer("raftFsm.stepElectionAck")
+	defer tracer.Finish()
+	m.SetTagsToTracer(tracer)
+	m.SetCtx(tracer.Context())
+
 	switch m.Type {
 	case proto.LocalMsgProp:
 		if logger.IsEnableDebug() {
@@ -244,20 +270,21 @@ func stepElectionAck(r *raftFsm, m *proto.Message) {
 		return
 
 	case proto.ReqMsgAppend:
-		r.becomeFollower(r.term, m.From)
+		r.becomeFollower(m.Ctx(), r.term, m.From)
 		r.handleAppendEntries(m)
 		proto.ReturnMessage(m)
 		return
 
 	case proto.ReqMsgHeartBeat:
-		r.becomeFollower(r.term, m.From)
+		r.becomeFollower(m.Ctx(), r.term, m.From)
 		return
 
 	case proto.ReqMsgElectAck:
-		r.becomeFollower(r.term, m.From)
+		r.becomeFollower(m.Ctx(), r.term, m.From)
 		nmsg := proto.GetMessage()
 		nmsg.Type = proto.RespMsgElectAck
 		nmsg.To = m.From
+		nmsg.SetCtx(m.Ctx())
 		r.send(nmsg)
 		proto.ReturnMessage(m)
 		return
@@ -276,6 +303,7 @@ func stepElectionAck(r *raftFsm, m *proto.Message) {
 		nmsg.Type = proto.RespMsgVote
 		nmsg.To = m.From
 		nmsg.Reject = true
+		nmsg.SetCtx(m.Ctx())
 		r.send(nmsg)
 		proto.ReturnMessage(m)
 		return
@@ -288,7 +316,7 @@ func stepElectionAck(r *raftFsm, m *proto.Message) {
 		}
 		if len(r.acks) >= r.quorum() {
 			r.becomeLeader()
-			r.bcastAppend()
+			r.bcastAppend(m.Ctx())
 		}
 		proto.ReturnMessage(m)
 		return
@@ -305,7 +333,7 @@ func (r *raftFsm) tickHeartbeat() {
 				logger.Warn("raft[%v] stepped down to follower since quorum is not active.", r.id)
 			}
 			logger.Debug("[raft][%v] heartbeat election timeout at term[%d] leader[%d].", r.id, r.term, r.leader)
-			r.becomeFollower(r.term, NoLeader)
+			r.becomeFollower(nil, r.term, NoLeader)
 		}
 	}
 
@@ -323,7 +351,7 @@ func (r *raftFsm) tickHeartbeat() {
 				r.replicas[id].resume()
 			}
 		}
-		r.bcastReadOnly()
+		r.bcastReadOnly(nil)
 	}
 }
 
@@ -358,7 +386,11 @@ func (r *raftFsm) checkLeaderLease(promoteLearnerCheck bool) bool {
 	return act >= r.quorum()
 }
 
-func (r *raftFsm) maybeCommit() bool {
+func (r *raftFsm) maybeCommit(ctx context.Context) bool {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("raftFsm.maybeCommit")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	mis := make(util.Uint64Slice, 0, len(r.replicas))
 	for _, rp := range r.replicas {
 		mis = append(mis, rp.match)
@@ -374,22 +406,26 @@ func (r *raftFsm) maybeCommit() bool {
 		if r.raftLog.zeroTermOnErrCompacted(r.raftLog.term(r.raftLog.committed)) == r.term {
 			r.readOnly.commit(r.raftLog.committed)
 		}
-		r.bcastReadOnly()
+		r.bcastReadOnly(ctx)
 	}
 
 	return isCommit
 }
 
-func (r *raftFsm) bcastAppend() {
+func (r *raftFsm) bcastAppend(ctx context.Context) {
 	for id := range r.replicas {
 		if id == r.config.NodeID {
 			continue
 		}
-		r.sendAppend(id)
+		r.sendAppend(ctx, id)
 	}
 }
 
-func (r *raftFsm) sendAppend(to uint64) {
+func (r *raftFsm) sendAppend(ctx context.Context, to uint64) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("raftFsm.sendAppend").SetTag("to", to)
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	pr := r.replicas[to]
 	if pr.isPaused() {
 		return
@@ -424,6 +460,7 @@ func (r *raftFsm) sendAppend(to uint64) {
 		m.To = to
 		m.Snapshot = snapshot
 		snapMeta := proto.SnapshotMeta{Index: snapshot.ApplyIndex(), Peers: make([]proto.Peer, 0, len(r.replicas)), Learners: make([]proto.Learner, 0)}
+		m.SetCtx(ctx)
 		if snapTerm, err := r.raftLog.term(snapMeta.Index); err != nil {
 			panic(AppPanicError(fmt.Sprintf("[raft->sendAppend][%v]failed to send snapshot to %v because snapshot is unavailable, error is: \r\n%v", r.id, to, err)))
 		} else {
@@ -451,6 +488,7 @@ func (r *raftFsm) sendAppend(to uint64) {
 		m.LogTerm = term
 		m.Commit = r.raftLog.committed
 		m.Entries = append(m.Entries, ents...)
+		m.SetCtx(ctx)
 
 		if n := len(m.Entries); n != 0 {
 			switch pr.state {
@@ -474,10 +512,10 @@ func (r *raftFsm) sendAppend(to uint64) {
 func (r *raftFsm) appendEntry(es ...*proto.Entry) {
 	r.raftLog.append(es...)
 	r.replicas[r.config.NodeID].maybeUpdate(r.raftLog.lastIndex(), r.raftLog.committed)
-	r.maybeCommit()
+	r.maybeCommit(nil)
 }
 
-func (r *raftFsm) bcastReadOnly() {
+func (r *raftFsm) bcastReadOnly(ctx context.Context) {
 	index := r.readOnly.lastPending()
 	if index == 0 {
 		return
@@ -493,6 +531,7 @@ func (r *raftFsm) bcastReadOnly() {
 		msg.Type = proto.ReqCheckQuorum
 		msg.To = id
 		msg.Index = index
+		msg.SetCtx(ctx)
 		r.send(msg)
 	}
 }

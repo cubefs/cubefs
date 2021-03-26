@@ -15,15 +15,16 @@
 package meta
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"syscall"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/errors"
-
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/tracing"
 )
 
 const (
@@ -45,7 +46,14 @@ func (mc *MetaConn) String() string {
 	return fmt.Sprintf("partitionID(%v) addr(%v)", mc.id, mc.addr)
 }
 
-func (mw *MetaWrapper) getConn(partitionID uint64, addr string) (*MetaConn, error) {
+func (mw *MetaWrapper) getConn(ctx context.Context, partitionID uint64, addr string) (*MetaConn, error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.getConn").
+		SetTag("volume", mw.volname).
+		SetTag("partitionID", partitionID).
+		SetTag("address", addr)
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	conn, err := mw.conns.GetConnect(addr)
 	if err != nil {
 		log.LogWarnf("GetConnect conn: addr(%v) err(%v)", addr, err)
@@ -56,38 +64,80 @@ func (mw *MetaWrapper) getConn(partitionID uint64, addr string) (*MetaConn, erro
 }
 
 func (mw *MetaWrapper) putConn(mc *MetaConn, err error) {
-	mw.conns.PutConnect(mc.conn, err != nil)
+	mw.conns.PutConnectWithErr(mc.conn, err)
 }
 
-func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet) (*proto.Packet, error) {
+func (mw *MetaWrapper) sendWriteToMP(ctx context.Context, mp *MetaPartition, req *proto.Packet) (resp *proto.Packet, err error) {
+	addr := mp.LeaderAddr
+	resp, err = mw.sendToMetaPartition(ctx, mp, req, addr)
+	return
+}
+
+func (mw *MetaWrapper) sendReadToMP(ctx context.Context, mp *MetaPartition, req *proto.Packet) (resp *proto.Packet, err error) {
+	addr := mp.LeaderAddr
+	resp, err = mw.sendToMetaPartition(ctx, mp, req, addr)
+	if err == nil && resp != nil {
+		return
+	}
+	log.LogWarnf("sendReadToMP: send to leader failed and try to read consistent, req(%v) mp(%v) err(%v) resp(%v)", req, mp, err, resp)
+	resp, err = mw.readConsistentFromHosts(ctx, mp, req)
+	return
+}
+
+func (mw *MetaWrapper) readConsistentFromHosts(ctx context.Context, mp *MetaPartition, req *proto.Packet) (resp *proto.Packet, err error) {
+	// compare applied ID of replicas and choose the max one
+	targetHosts, isErr := mw.GetMaxAppliedIDHosts(ctx, mp)
+	if !isErr && len(targetHosts) > 0 {
+		req.ArgLen = 1
+		req.Arg = make([]byte, req.ArgLen)
+		req.Arg[0] = proto.FollowerReadFlag
+		for _, host := range targetHosts {
+			resp, err = mw.sendToHost(ctx, mp, req, host)
+			if err == nil && resp.ResultCode == proto.OpOk {
+				return
+			}
+			log.LogWarnf("mp readConsistentFromHosts: failed req(%v) mp(%v) addr(%v) err(%v) resp(%v), try next host", req, mp, host, err, resp)
+		}
+	}
+	log.LogWarnf("mp readConsistentFromHosts exit: failed req(%v) mp(%v) isErr(%v) targetHosts(%v), try next host", req, mp, isErr, targetHosts)
+	return nil, errors.New(fmt.Sprintf("readConsistentFromHosts: failed, req(%v) mp(%v) isErr(%v) targetHosts(%v), try next host", req, mp, isErr, targetHosts))
+}
+
+func (mw *MetaWrapper) sendToMetaPartition(ctx context.Context, mp *MetaPartition, req *proto.Packet, addr string) (resp *proto.Packet, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.sendToMetaPartition").
+		SetTag("mpID", mp.PartitionID).
+		SetTag("reqID", req.ReqID).
+		SetTag("reqSize", req.Size).
+		SetTag("reqOp", req.GetOpMsg())
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	var (
-		resp  *proto.Packet
-		err   error
-		mc    *MetaConn
-		start time.Time
+		errMap map[int]error
+		start  time.Time
+		j      int
 	)
-	errs := make(map[int]error, len(mp.Members))
-	mp.Members = sortMembers(mp.LeaderAddr, mp.Members)
+	resp, err = mw.sendToHost(ctx, mp, req, addr)
+	if err == nil && !resp.ShouldRetry() {
+		goto out
+	}
+	log.LogWarnf("sendToMetaPartition: leader failed req(%v) mp(%v) addr(%v) err(%v) resp(%v)", req, mp, addr, err, resp)
+
+	errMap = make(map[int]error, len(mp.Members))
 	start = time.Now()
 
 	for i := 0; i < SendRetryLimit; i++ {
-		for j, addr := range mp.Members {
-			mc, err = mw.getConn(mp.PartitionID, addr)
-			errs[j] = err
-			if err != nil {
-				continue
-			}
-			resp, err = mc.send(req)
-			mw.putConn(mc, err)
+
+		for j, addr = range mp.Members {
+			resp, err = mw.sendToHost(ctx, mp, req, addr)
 			if err == nil && !resp.ShouldRetry() {
 				goto out
 			}
 			if err == nil {
-				errs[j] = errors.New(fmt.Sprintf("request should retry[%v]", resp.GetResultMsg()))
-			} else {
-				errs[j] = err
+				err = errors.New(fmt.Sprintf("request should retry[%v]", resp.GetResultMsg()))
 			}
-			log.LogWarnf("sendToMetaPartition: retry failed req(%v) mp(%v) mc(%v) errs(%v) resp(%v)", req, mp, mc, errs, resp)
+			errMap[j] = err
+			log.LogWarnf("sendToMetaPartition: retry failed req(%v) mp(%v) addr(%v) err(%v) resp(%v)", req, mp, addr, err, resp)
 		}
 		if time.Since(start) > SendTimeLimit {
 			log.LogWarnf("sendToMetaPartition: retry timeout req(%v) mp(%v) time(%v)", req, mp, time.Since(start))
@@ -96,82 +146,71 @@ func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet)
 		log.LogWarnf("sendToMetaPartition: req(%v) mp(%v) retry in (%v)", req, mp, SendRetryInterval)
 		time.Sleep(SendRetryInterval)
 	}
-	// compare applied ID of replicas and choose the max one
-	if req.IsReadMetaPkt() {
-		targetHosts, isErr := mw.GetMaxAppliedIDHosts(mp)
-		if !isErr && len(targetHosts) > 0 {
-			req.ArgLen = 1
-			req.Arg = make([]byte, req.ArgLen)
-			req.Arg[0] = proto.FollowerReadFlag
-			for _, host := range targetHosts {
-				resp, err = mw.sendToSpecifiedMpAddr(mp, host, req)
-				if err == nil {
-					goto out
-				}
-			}
-		}
-	}
 
 out:
 	if err != nil || resp == nil {
-		return nil, errors.New(fmt.Sprintf("sendToMetaPartition failed: req(%v) mp(%v) errs(%v) resp(%v)", req, mp, errs, resp))
+		return nil, errors.New(fmt.Sprintf("sendToMetaPartition failed: req(%v) mp(%v) errs(%v) resp(%v)", req, mp, errMap, resp))
 	}
-	log.LogDebugf("sendToMetaPartition successful: req(%v) mc(%v) resp(%v)", req, mc, resp)
+	log.LogDebugf("sendToMetaPartition successful: req(%v) mp(%v) addr(%v) resp(%v)", req, mp, addr, resp)
 	return resp, nil
 }
 
-func (mw *MetaWrapper) sendToSpecifiedMpAddr(mp *MetaPartition, addr string, req *proto.Packet) (*proto.Packet, error) {
-	var (
-		resp  *proto.Packet
-		err   error
-		mc    *MetaConn
-		start time.Time
-	)
+func (mw *MetaWrapper) sendToHost(ctx context.Context, mp *MetaPartition, req *proto.Packet, addr string) (resp *proto.Packet, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.sendToHost").
+		SetTag("mpID", mp.PartitionID).
+		SetTag("reqID", req.ReqID).
+		SetTag("reqSize", req.Size).
+		SetTag("reqOp", req.GetOpMsg()).
+		SetTag("address", addr)
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
+	var mc *MetaConn
 	if addr == "" {
-		err = errors.New(fmt.Sprintf("sendToSpecifiedMpAddr failed: addr empty, req(%v) mp(%v)", req, mp))
-		return nil, err
+		return nil, errors.New(fmt.Sprintf("sendToHost failed: leader addr empty, req(%v) mp(%v)", req, mp))
 	}
-
-	log.LogDebugf("sendToSpecifiedMpAddr: pid(%v), addr(%v), packet(%v), args(%v)", mp.PartitionID, addr, req, string(req.Arg))
-	start = time.Now()
-	for i := 0; i < SendRetryLimit; i++ {
-		if time.Since(start) > SendTimeLimit {
-			log.LogWarnf("sendToSpecifiedMpAddr: retry timeout req(%v) mp(%v) time(%v)", req, mp, time.Since(start))
-			break
-		}
-		mc, err = mw.getConn(mp.PartitionID, addr)
-		if err != nil {
-			log.LogWarnf("sendToSpecifiedMpAddr: failed to connect, req(%v) mp(%v) mc(%v) err(%v) resp(%v)", req, mp, mc, err, resp)
-			continue
-		}
-		resp, err = mc.send(req)
-		mw.putConn(mc, err)
-		if err == nil {
-			log.LogDebugf("sendToSpecifiedMpAddr successful: req(%v) mc(%v) resp(%v)", req, mc, resp)
-			return resp, nil
-		}
-		log.LogWarnf("sendToSpecifiedMpAddr: failed req(%v) mp(%v) mc(%v) err(%v) resp(%v)", req, mp, mc, err, resp)
-		time.Sleep(SendRetryInterval)
-	}
-	return nil, err
-}
-
-func (mc *MetaConn) send(req *proto.Packet) (resp *proto.Packet, err error) {
-	err = req.WriteToConn(mc.conn)
+	mc, err = mw.getConn(ctx, mp.PartitionID, addr)
 	if err != nil {
+		return
+	}
+	defer func() {
+		mw.putConn(mc, err)
+	}()
+
+	// Write to connection with tracing.
+	if err = func() (err error) {
+		var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaConn.send[WriteToConn]").
+			SetTag("remote", mc.conn.RemoteAddr().String())
+		defer tracer.Finish()
+		err = req.WriteToConn(mc.conn)
+		tracer.SetTag("error", err)
+		return
+	}(); err != nil {
 		return nil, errors.Trace(err, "Failed to write to conn, req(%v)", req)
 	}
-	resp = proto.NewPacket()
-	err = resp.ReadFromConn(mc.conn, proto.ReadDeadlineTime)
-	if err != nil {
+
+	resp = proto.NewPacket(req.Ctx())
+
+	// Read from connection with tracing.
+	if err = func() (err error) {
+		var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.send[ReadFromConn]").
+			SetTag("remote", mc.conn.RemoteAddr())
+		defer tracer.Finish()
+		err = resp.ReadFromConn(mc.conn, proto.ReadDeadlineTime)
+		tracer.SetTag("error", err)
+		return
+	}(); err != nil {
+		tracer.SetTag("error", err)
 		return nil, errors.Trace(err, "Failed to read from conn, req(%v)", req)
 	}
 	// Check if the ID and OpCode of the response are consistent with the request.
 	if resp.ReqID != req.ReqID || resp.Opcode != req.Opcode {
-		log.LogErrorf("send: the response packet mismatch with request: conn(%v to %v) req(%v) resp(%v)",
+		log.LogErrorf("sendToHost err: the response packet mismatch with request: conn(%v to %v) req(%v) resp(%v)",
 			mc.conn.LocalAddr(), mc.conn.RemoteAddr(), req, resp)
-		return nil, syscall.EBADMSG
+		err = syscall.EBADMSG
+		return nil, err
 	}
+	log.LogDebugf("sendToHost successful: mp(%v) addr(%v) req(%v) resp(%v)", mp, addr, req, resp)
 	return resp, nil
 }
 

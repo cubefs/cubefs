@@ -14,6 +14,12 @@
 
 package raft
 
+import (
+	"context"
+
+	"github.com/tiglabs/raft/tracing"
+)
+
 type respErr struct {
 	errCh chan error
 }
@@ -35,6 +41,7 @@ func (e *respErr) error() <-chan error {
 type Future struct {
 	respErr
 	respCh chan interface{}
+	ctx    context.Context
 }
 
 func newFuture() *Future {
@@ -46,6 +53,10 @@ func newFuture() *Future {
 }
 
 func (f *Future) respond(resp interface{}, err error) {
+	var tracer = tracing.TracerFromContext(f.ctx).ChildTracer("Future.respond")
+	defer tracer.Finish()
+	f.ctx = tracer.Context()
+
 	if err == nil {
 		f.respCh <- resp
 		close(f.respCh)
@@ -56,6 +67,10 @@ func (f *Future) respond(resp interface{}, err error) {
 
 // Response wait response
 func (f *Future) Response() (resp interface{}, err error) {
+	var tracer = tracing.TracerFromContext(f.ctx).ChildTracer("Future.Response")
+	defer tracer.Finish()
+	f.ctx = tracer.Context()
+
 	select {
 	case err = <-f.error():
 		return

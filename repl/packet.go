@@ -15,11 +15,14 @@
 package repl
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
 	"strings"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util/tracing"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/storage"
@@ -50,10 +53,11 @@ type FollowerPacket struct {
 	respCh chan error
 }
 
-func NewFollowerPacket() (fp *FollowerPacket) {
+func NewFollowerPacket(ctx context.Context) (fp *FollowerPacket) {
 	fp = new(FollowerPacket)
 	fp.respCh = make(chan error, 1)
 	fp.StartT = time.Now().UnixNano()
+	fp.SetCtx(ctx)
 	return fp
 }
 
@@ -166,48 +170,52 @@ func (p *Packet) resolveFollowersAddr() (err error) {
 	return
 }
 
-func NewPacket() (p *Packet) {
+func NewPacket(ctx context.Context) (p *Packet) {
 	p = new(Packet)
 	p.Magic = proto.ProtoMagic
 	p.StartT = time.Now().UnixNano()
 	p.NeedReply = true
+	p.SetCtx(ctx)
 	return
 }
 
-func NewPacketToGetAllWatermarks(partitionID uint64, extentType uint8) (p *Packet) {
+func NewPacketToGetAllWatermarks(ctx context.Context, partitionID uint64, extentType uint8) (p *Packet) {
 	p = new(Packet)
 	p.Opcode = proto.OpGetAllWatermarks
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
 	p.ReqID = proto.GenerateRequestID()
 	p.ExtentType = extentType
+	p.SetCtx(ctx)
 
 	return
 }
 
-func NewPacketToReadTinyDeleteRecord(partitionID uint64, offset int64) (p *Packet) {
+func NewPacketToReadTinyDeleteRecord(ctx context.Context, partitionID uint64, offset int64) (p *Packet) {
 	p = new(Packet)
 	p.Opcode = proto.OpReadTinyDeleteRecord
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
 	p.ReqID = proto.GenerateRequestID()
 	p.ExtentOffset = offset
+	p.SetCtx(ctx)
 
 	return
 }
 
-func NewReadTinyDeleteRecordResponsePacket(requestID int64, partitionID uint64) (p *Packet) {
+func NewReadTinyDeleteRecordResponsePacket(ctx context.Context, requestID int64, partitionID uint64) (p *Packet) {
 	p = new(Packet)
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpOk
 	p.ReqID = requestID
 	p.ExtentType = proto.NormalExtentType
+	p.SetCtx(ctx)
 
 	return
 }
 
-func NewExtentRepairReadPacket(partitionID uint64, extentID uint64, offset, size int) (p *Packet) {
+func NewExtentRepairReadPacket(ctx context.Context, partitionID uint64, extentID uint64, offset, size int) (p *Packet) {
 	p = new(Packet)
 	p.ExtentID = extentID
 	p.PartitionID = partitionID
@@ -217,11 +225,12 @@ func NewExtentRepairReadPacket(partitionID uint64, extentID uint64, offset, size
 	p.Opcode = proto.OpExtentRepairRead
 	p.ExtentType = proto.NormalExtentType
 	p.ReqID = proto.GenerateRequestID()
+	p.SetCtx(ctx)
 
 	return
 }
 
-func NewTinyExtentRepairReadPacket(partitionID uint64, extentID uint64, offset, size int) (p *Packet) {
+func NewTinyExtentRepairReadPacket(ctx context.Context, partitionID uint64, extentID uint64, offset, size int) (p *Packet) {
 	p = new(Packet)
 	p.ExtentID = extentID
 	p.PartitionID = partitionID
@@ -231,11 +240,12 @@ func NewTinyExtentRepairReadPacket(partitionID uint64, extentID uint64, offset, 
 	p.Opcode = proto.OpTinyExtentRepairRead
 	p.ExtentType = proto.TinyExtentType
 	p.ReqID = proto.GenerateRequestID()
+	p.SetCtx(ctx)
 
 	return
 }
 
-func NewTinyExtentStreamReadResponsePacket(requestID int64, partitionID uint64, extentID uint64) (p *Packet) {
+func NewTinyExtentStreamReadResponsePacket(ctx context.Context, requestID int64, partitionID uint64, extentID uint64) (p *Packet) {
 	p = new(Packet)
 	p.ExtentID = extentID
 	p.PartitionID = partitionID
@@ -244,11 +254,12 @@ func NewTinyExtentStreamReadResponsePacket(requestID int64, partitionID uint64, 
 	p.ReqID = requestID
 	p.ExtentType = proto.TinyExtentType
 	p.StartT = time.Now().UnixNano()
+	p.SetCtx(ctx)
 
 	return
 }
 
-func NewStreamReadResponsePacket(requestID int64, partitionID uint64, extentID uint64) (p *Packet) {
+func NewStreamReadResponsePacket(ctx context.Context, requestID int64, partitionID uint64, extentID uint64) (p *Packet) {
 	p = new(Packet)
 	p.ExtentID = extentID
 	p.PartitionID = partitionID
@@ -256,17 +267,19 @@ func NewStreamReadResponsePacket(requestID int64, partitionID uint64, extentID u
 	p.Opcode = proto.OpOk
 	p.ReqID = requestID
 	p.ExtentType = proto.NormalExtentType
+	p.SetCtx(ctx)
 
 	return
 }
 
-func NewPacketToNotifyExtentRepair(partitionID uint64) (p *Packet) {
+func NewPacketToNotifyExtentRepair(ctx context.Context, partitionID uint64) (p *Packet) {
 	p = new(Packet)
 	p.Opcode = proto.OpNotifyReplicasToRepair
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
 	p.ExtentType = proto.NormalExtentType
 	p.ReqID = proto.GenerateRequestID()
+	p.SetCtx(ctx)
 
 	return
 }
@@ -340,6 +353,18 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration) (er
 	if err = p.UnmarshalHeader(header); err != nil {
 		return
 	}
+
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("repl.Packet.ReadFromConn[Decode Packet]")
+	defer func() {
+		tracer.SetTag("conn.remote", c.RemoteAddr().String())
+		tracer.SetTag("conn.local", c.LocalAddr().String())
+		tracer.SetTag("ReqID", p.GetReqID())
+		tracer.SetTag("ReqOp", p.GetOpMsg())
+		tracer.SetTag("Arg", string(p.Arg))
+		tracer.SetTag("ret.err", err)
+		tracer.Finish()
+	}()
+	p.SetCtx(tracer.Context())
 
 	if p.ArgLen > 0 {
 		if err = proto.ReadFull(c, &p.Arg, int(p.ArgLen)); err != nil {

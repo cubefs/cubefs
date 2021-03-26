@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"github.com/chubaofs/chubaofs/cli/api"
 	"github.com/chubaofs/chubaofs/metanode"
@@ -161,7 +162,7 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 			Extents:    metanode.NewSortedExtents(),
 		}
 		inode.Extents.Range(func(ek proto.ExtentKey) bool {
-			localInode.Extents.Append(ek)
+			localInode.Extents.Append(context.Background(), ek)
 			return true
 		})
 		if !reflect.DeepEqual(oldInode, localInode) {

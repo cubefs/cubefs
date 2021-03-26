@@ -30,6 +30,7 @@ const noLimit = math.MaxUint64
 // raftLog is responsible for the operation of the log.
 type raftLog struct {
 	unstable           unstable
+	cache              unstable
 	storage            storage.Storage
 	committed, applied uint64
 }
@@ -47,8 +48,8 @@ func newRaftLog(storage storage.Storage) (*raftLog, error) {
 		return nil, err
 	}
 
-	log.unstable.offset = lastIndex + 1
-	log.unstable.entries = make([]*proto.Entry, 0, 256)
+	log.unstable = newUnstable(lastIndex + 1)
+	log.cache = newUnstable(lastIndex + 1)
 	log.committed = firstIndex - 1
 	log.applied = firstIndex - 1
 	return log, nil
@@ -184,6 +185,17 @@ func (l *raftLog) unstableEntries() []*proto.Entry {
 	return l.unstable.entries
 }
 
+func (l *raftLog) persist() (err error) {
+	if entries := l.unstableEntries(); len(entries) > 0 {
+		if err = l.storage.StoreEntries(entries); err != nil {
+			return
+		}
+		l.cache.truncateAndAppend(entries)
+		l.stableTo(entries[len(entries)-1].Index, entries[len(entries)-1].Term)
+	}
+	return
+}
+
 func (l *raftLog) nextEnts(maxSize uint64) (ents []*proto.Entry) {
 	off := util.Max(l.applied+1, l.firstIndex())
 	hi := l.committed + 1
@@ -235,6 +247,10 @@ func (l *raftLog) appliedTo(i uint64) {
 		panic(AppPanicError(errMsg))
 	}
 	l.applied = i
+
+	if term, err := l.term(i); err == nil {
+		l.cache.stableTo(i, term)
+	}
 }
 
 func (l *raftLog) stableTo(i, t uint64) { l.unstable.stableTo(i, t) }
@@ -251,6 +267,7 @@ func (l *raftLog) restore(index uint64) {
 	l.committed = index
 	l.applied = index
 	l.unstable.restore(index)
+	l.cache.restore(index)
 }
 
 func (l *raftLog) slice(lo, hi uint64, maxSize uint64) ([]*proto.Entry, error) {
@@ -263,8 +280,8 @@ func (l *raftLog) slice(lo, hi uint64, maxSize uint64) ([]*proto.Entry, error) {
 	}
 
 	var ents []*proto.Entry
-	if lo < l.unstable.offset {
-		storedhi := util.Min(hi, l.unstable.offset)
+	if lo < l.cache.offset {
+		storedhi := util.Min(hi, l.cache.offset)
 		storedEnts, cmp, err := l.storage.Entries(lo, storedhi, maxSize)
 		if cmp {
 			return nil, ErrCompacted
@@ -279,19 +296,66 @@ func (l *raftLog) slice(lo, hi uint64, maxSize uint64) ([]*proto.Entry, error) {
 		}
 		ents = storedEnts
 	}
-	if hi > l.unstable.offset {
-		unstable := l.unstable.slice(util.Max(lo, l.unstable.offset), hi)
-		if len(ents) > 0 {
-			ents = append([]*proto.Entry{}, ents...)
-			ents = append(ents, unstable...)
-		} else {
-			ents = unstable
+
+	if cachedHi, sure := l.cache.maybeLastIndex(); sure && hi > l.cache.offset {
+		readLo := util.Max(lo, l.cache.offset)
+		readHi := util.Min(hi, cachedHi+1)
+		if readLo < readHi {
+			if cachedEntries := l.cache.slice(readLo, readHi); len(cachedEntries) > 0 {
+				if len(ents) > 0 {
+					ents = append([]*proto.Entry{}, ents...)
+					ents = append(ents, cachedEntries...)
+				} else {
+					ents = cachedEntries
+				}
+			}
 		}
+
 	}
-	if maxSize == noLimit {
-		return ents, nil
+
+	if hi > l.unstable.offset {
+		if unstable := l.unstable.slice(util.Max(lo, l.unstable.offset), hi); len(unstable) > 0 {
+			if len(ents) > 0 {
+				ents = append([]*proto.Entry{}, ents...)
+				ents = append(ents, unstable...)
+			} else {
+				ents = unstable
+			}
+		}
+
 	}
+
 	return limitSize(ents, maxSize), nil
+
+	//if lo < l.unstable.offset {
+	//	storedhi := util.Min(hi, l.unstable.offset)
+	//	storedEnts, cmp, err := l.storage.Entries(lo, storedhi, maxSize)
+	//	if cmp {
+	//		return nil, ErrCompacted
+	//	} else if err != nil {
+	//		errMsg := fmt.Sprintf("[raftLog->slice]get entries[%d:%d) from storage err:[%v].", lo, storedhi, err)
+	//		logger.Error(errMsg)
+	//		panic(AppPanicError(errMsg))
+	//	}
+	//	// check if ents has reached the size limitation
+	//	if uint64(len(storedEnts)) < storedhi-lo {
+	//		return storedEnts, nil
+	//	}
+	//	ents = storedEnts
+	//}
+	//if hi > l.unstable.offset {
+	//	unstable := l.unstable.slice(util.Max(lo, l.unstable.offset), hi)
+	//	if len(ents) > 0 {
+	//		ents = append([]*proto.Entry{}, ents...)
+	//		ents = append(ents, unstable...)
+	//	} else {
+	//		ents = unstable
+	//	}
+	//}
+	//if maxSize == noLimit {
+	//	return ents, nil
+	//}
+	//return limitSize(ents, maxSize), nil
 }
 
 // l.firstIndex <= lo <= hi <= l.firstIndex + len(l.entries)

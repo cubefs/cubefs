@@ -15,6 +15,7 @@
 package datanode
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -243,7 +244,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 	// Attach data partition to disk mapping
 	disk.AttachDataPartition(partition)
 	dp = partition
-	go partition.statusUpdateScheduler()
+	go partition.statusUpdateScheduler(context.Background())
 	return
 }
 
@@ -518,7 +519,7 @@ func (dp *DataPartition) Repair() {
 	}
 }
 
-func (dp *DataPartition) statusUpdateScheduler() {
+func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 	repairTimer := time.NewTimer(time.Minute)
 	snapshotTicker := time.NewTicker(time.Minute * 5)
 	var index int
@@ -534,8 +535,8 @@ func (dp *DataPartition) statusUpdateScheduler() {
 			repairTimer.Stop()
 			log.LogDebugf("partition [%v] execute manual data repair for all extent", dp.partitionID)
 			dp.ExtentStore().MoveAllToBrokenTinyExtentC(storage.TinyExtentCount)
-			dp.runRepair(proto.TinyExtentType, false)
-			dp.runRepair(proto.NormalExtentType, false)
+			dp.runRepair(ctx, proto.TinyExtentType, false)
+			dp.runRepair(ctx, proto.NormalExtentType, false)
 			repairTimer.Reset(time.Minute)
 		case <-repairTimer.C:
 			index++
@@ -544,11 +545,9 @@ func (dp *DataPartition) statusUpdateScheduler() {
 				index = 0
 			}
 			if index%2 == 0 {
-				log.LogDebugf("partition [%v] execute scheduled data repair [type: TinyExtent]", dp.partitionID)
-				dp.runRepair(proto.TinyExtentType, true)
+				dp.runRepair(ctx, proto.TinyExtentType, true)
 			} else {
-				log.LogDebugf("partition [%v] execute scheduled data repair [type: NormalExtent]", dp.partitionID)
-				dp.runRepair(proto.NormalExtentType, true)
+				dp.runRepair(ctx, proto.NormalExtentType, true)
 			}
 			repairTimer.Reset(time.Minute)
 		case <-snapshotTicker.C:
@@ -645,7 +644,8 @@ func (dp *DataPartition) String() (m string) {
 }
 
 // runRepair launches the repair of extents.
-func (dp *DataPartition) runRepair(extentType uint8, fetchReplicas bool) {
+func (dp *DataPartition) runRepair(ctx context.Context, extentType uint8, fetchReplicas bool) {
+
 	if dp.partitionStatus == proto.Unavailable {
 		return
 	}
@@ -662,7 +662,7 @@ func (dp *DataPartition) runRepair(extentType uint8, fetchReplicas bool) {
 	if dp.extentStore.BrokenTinyExtentCnt() == 0 {
 		dp.extentStore.MoveAllToBrokenTinyExtentC(MinTinyExtentsToRepair)
 	}
-	dp.repair(extentType)
+	dp.repair(ctx, extentType)
 }
 
 func (dp *DataPartition) updateReplicas(isForce bool) (err error) {
@@ -782,7 +782,7 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 		wg.Add(1)
 
 		// repair the extents
-		go dp.doStreamExtentFixRepair(wg, extentInfo)
+		go dp.doStreamExtentFixRepair(context.Background(), wg, extentInfo)
 		recoverIndex++
 
 		if recoverIndex%NumOfFilesToRecoverInParallel == 0 {
@@ -790,10 +790,10 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 		}
 	}
 	wg.Wait()
-	dp.doStreamFixTinyDeleteRecord(repairTask, time.Now().Unix()-dp.FullSyncTinyDeleteTime > MaxFullSyncTinyDeleteTime)
+	dp.doStreamFixTinyDeleteRecord(context.Background(), repairTask, time.Now().Unix()-dp.FullSyncTinyDeleteTime > MaxFullSyncTinyDeleteTime)
 }
 
-func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRepairTask, isFullSync bool) {
+func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repairTask *DataPartitionRepairTask, isFullSync bool) {
 	var (
 		localTinyDeleteFileSize int64
 		err                     error
@@ -832,7 +832,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 			dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteRecordFileSize, repairTask.LeaderAddr, err)
 	}()
 
-	p := repl.NewPacketToReadTinyDeleteRecord(dp.partitionID, localTinyDeleteFileSize)
+	p := repl.NewPacketToReadTinyDeleteRecord(ctx, dp.partitionID, localTinyDeleteFileSize)
 	if conn, err = gConnPool.GetConnect(repairTask.LeaderAddr); err != nil {
 		return
 	}

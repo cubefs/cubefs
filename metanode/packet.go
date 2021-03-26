@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"context"
 	"encoding/json"
 	"net"
 	"strings"
@@ -43,8 +44,14 @@ func (p *Packet) Remote() string {
 	return p.remote
 }
 
+func NewPacket(ctx context.Context) *Packet {
+	p := &Packet{}
+	p.SetCtx(ctx)
+	return p
+}
+
 // NewPacketToDeleteExtent returns a new packet to delete the extent.
-func NewPacketToDeleteExtent(dp *DataPartition, ext *proto.ExtentKey) *Packet {
+func NewPacketToDeleteExtent(ctx context.Context, dp *DataPartition, ext *proto.ExtentKey) *Packet {
 	p := new(Packet)
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpMarkDelete
@@ -60,12 +67,13 @@ func NewPacketToDeleteExtent(dp *DataPartition, ext *proto.ExtentKey) *Packet {
 	p.RemainingFollowers = uint8(len(dp.Hosts) - 1)
 	p.Arg = ([]byte)(dp.GetAllAddrs())
 	p.ArgLen = uint32(len(p.Arg))
+	p.SetCtx(ctx)
 
 	return p
 }
 
 // NewPacketToBatchDeleteExtent returns a new packet to batch delete the extent.
-func NewPacketToBatchDeleteExtent(dp *DataPartition, exts []*proto.ExtentKey) *Packet {
+func NewPacketToBatchDeleteExtent(ctx context.Context, dp *DataPartition, exts []*proto.ExtentKey) *Packet {
 	p := new(Packet)
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpBatchDeleteExtent
@@ -77,12 +85,12 @@ func NewPacketToBatchDeleteExtent(dp *DataPartition, exts []*proto.ExtentKey) *P
 	p.RemainingFollowers = uint8(len(dp.Hosts) - 1)
 	p.Arg = ([]byte)(dp.GetAllAddrs())
 	p.ArgLen = uint32(len(p.Arg))
-
+	p.SetCtx(ctx)
 	return p
 }
 
 // NewPacketToDeleteExtent returns a new packet to delete the extent.
-func NewPacketToFreeInodeOnRaftFollower(partitionID uint64, freeInodes []byte) *Packet {
+func NewPacketToFreeInodeOnRaftFollower(ctx context.Context, partitionID uint64, freeInodes []byte) *Packet {
 	p := new(Packet)
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpMetaFreeInodesOnRaftFollower
@@ -92,6 +100,7 @@ func NewPacketToFreeInodeOnRaftFollower(partitionID uint64, freeInodes []byte) *
 	p.Data = make([]byte, len(freeInodes))
 	copy(p.Data, freeInodes)
 	p.Size = uint32(len(p.Data))
+	p.SetCtx(ctx)
 
 	return p
 }

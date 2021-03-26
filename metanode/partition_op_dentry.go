@@ -19,10 +19,15 @@ import (
 	"fmt"
 
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/tracing"
 )
 
 // CreateDentry returns a new dentry.
 func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.CreateDentry")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
 	if req.ParentID == req.Inode {
 		err = fmt.Errorf("parentId is equal inodeId")
 		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
@@ -39,7 +44,7 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 	if err != nil {
 		return
 	}
-	resp, err := mp.submit(opFSMCreateDentry, val)
+	resp, err := mp.submit(p.Ctx(), opFSMCreateDentry, p.Remote(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -50,6 +55,10 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 
 // DeleteDentry deletes a dentry.
 func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.DeleteDentry")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
 	dentry := &Dentry{
 		ParentId: req.ParentID,
 		Name:     req.Name,
@@ -59,7 +68,7 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err erro
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	r, err := mp.submitWithSrc(opFSMDeleteDentry, p.Remote(), val)
+	r, err := mp.submit(p.Ctx(), opFSMDeleteDentry, p.Remote(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -80,6 +89,9 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err erro
 
 // DeleteDentry deletes a dentry.
 func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.DeleteDentryBatch")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
 
 	db := make(DentryBatch, 0, len(req.Dens))
 
@@ -97,7 +109,7 @@ func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet)
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	r, err := mp.submitWithSrc(opFSMDeleteDentryBatch, p.Remote(), val)
+	r, err := mp.submit(p.Ctx(), opFSMDeleteDentryBatch, p.Remote(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return err
@@ -144,6 +156,10 @@ func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet)
 
 // UpdateDentry updates a dentry.
 func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.UpdateDentry")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
 	if req.ParentID == req.Inode {
 		err = fmt.Errorf("parentId is equal inodeId")
 		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
@@ -160,7 +176,7 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err erro
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMUpdateDentry, val)
+	resp, err := mp.submit(p.Ctx(), opFSMUpdateDentry, p.Remote(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -180,7 +196,11 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err erro
 
 // ReadDir reads the directory based on the given request.
 func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
-	resp := mp.readDir(req)
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.ReadDir")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
+	resp := mp.readDir(p.Ctx(), req)
 	reply, err := json.Marshal(resp)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -192,6 +212,10 @@ func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 
 // Lookup looks up the given dentry from the request.
 func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.Lookup")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
 	dentry := &Dentry{
 		ParentId: req.ParentID,
 		Name:     req.Name,

@@ -113,7 +113,14 @@ func (k *ExtentKey) UnMarshal(m string) (err error) {
 
 // TODO remove
 func (k *ExtentKey) GetExtentKey() (m string) {
-	return fmt.Sprintf("%v_%v_%v_%v_%v", k.PartitionId,k.FileOffset, k.ExtentId, k.ExtentOffset,k.Size)
+	return fmt.Sprintf("%v_%v_%v_%v_%v", k.PartitionId, k.FileOffset, k.ExtentId, k.ExtentOffset, k.Size)
+}
+
+// This method determines whether there is an overlapping relationship
+// between the two specified EK expression ranges based on following
+// comparison: upper1 >= lower2 && upper2 >= lower1 .
+func (k *ExtentKey) Overlap(o *ExtentKey) bool {
+	return k.FileOffset+uint64(k.Size) >= o.FileOffset && o.FileOffset+uint64(o.Size) >= k.FileOffset
 }
 
 type TinyExtentDeleteRecord struct {

@@ -16,6 +16,7 @@ package mocktest
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -109,7 +110,7 @@ func (mms *MockMetaServer) serveConn(rc net.Conn) {
 	}
 	conn.SetKeepAlive(true)
 	conn.SetNoDelay(true)
-	req := proto.NewPacket()
+	req := proto.NewPacket(context.Background())
 	err := req.ReadFromConn(conn, proto.NoReadDeadlineTime)
 	if err != nil {
 		fmt.Printf("remote [%v] err is [%v]\n", conn.RemoteAddr(), err)

@@ -15,10 +15,14 @@
 package raft
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"time"
 
+	"github.com/tiglabs/raft/tracing"
+
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
 	"github.com/tiglabs/raft/util"
@@ -29,13 +33,13 @@ var (
 )
 
 type RaftServer struct {
-	config 		*Config
-	ticker 		*time.Ticker
-	pmTicker	*time.Ticker
-	heartc 		chan *proto.Message
-	stopc  		chan struct{}
-	mu     		sync.RWMutex
-	rafts  		map[uint64]*raft
+	config   *Config
+	ticker   *time.Ticker
+	pmTicker *time.Ticker
+	heartc   chan *proto.Message
+	stopc    chan struct{}
+	mu       sync.RWMutex
+	rafts    map[uint64]*raft
 }
 
 func NewRaftServer(config *Config) (*RaftServer, error) {
@@ -44,18 +48,20 @@ func NewRaftServer(config *Config) (*RaftServer, error) {
 	}
 
 	rs := &RaftServer{
-		config: config,
-		ticker: time.NewTicker(config.TickInterval),
-		pmTicker:time.NewTicker(config.TickInterval * time.Duration(config.PromoteTick)),
-		rafts:  make(map[uint64]*raft),
-		heartc: make(chan *proto.Message, 512),
-		stopc:  make(chan struct{}),
+		config:   config,
+		ticker:   time.NewTicker(config.TickInterval),
+		pmTicker: time.NewTicker(config.TickInterval * time.Duration(config.PromoteTick)),
+		rafts:    make(map[uint64]*raft),
+		heartc:   make(chan *proto.Message, 512),
+		stopc:    make(chan struct{}),
 	}
 	if transport, err := NewMultiTransport(rs, &config.TransportConfig); err != nil {
 		return nil, err
 	} else {
 		rs.config.transport = transport
 	}
+
+	RegisterMetrics()
 
 	util.RunWorkerUtilStop(rs.run, rs.stopc)
 	return rs, nil
@@ -173,12 +179,24 @@ func (rs *RaftServer) RemoveRaft(id uint64) error {
 	return nil
 }
 
-func (rs *RaftServer) Submit(id uint64, cmd []byte) (future *Future) {
+func (rs *RaftServer) Submit(ctx context.Context, id uint64, cmd []byte) (future *Future) {
+	var tracer = tracing.TracerFromContext(ctx).
+		ChildTracer("RaftServer.Submit").
+		SetTag("id", id).
+		SetTag("cmdLen", len(cmd))
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	rs.mu.RLock()
 	raft, ok := rs.rafts[id]
 	rs.mu.RUnlock()
+	if exporter.IsEnabled() {
+		metric := Metrics().MetricRaftOpTpc.GetWithLabelVals("submit")
+		defer metric.Count()
+	}
 
 	future = newFuture()
+	future.ctx = ctx
 	if !ok {
 		future.respond(nil, ErrRaftNotExists)
 		return
@@ -438,7 +456,7 @@ func (rs *RaftServer) sendHeartbeat() {
 		msg.Type = proto.ReqMsgHeartBeat
 		msg.From = rs.config.NodeID
 		msg.To = to
-		msg.Context = proto.EncodeHBConext(ctx)
+		msg.Context = proto.EncodeHBContext(ctx)
 		rs.config.transport.Send(msg)
 	}
 }
@@ -459,7 +477,7 @@ func (rs *RaftServer) handleHeartbeat(m *proto.Message) {
 	msg.Type = proto.RespMsgHeartBeat
 	msg.From = rs.config.NodeID
 	msg.To = m.From
-	msg.Context = proto.EncodeHBConext(respCtx)
+	msg.Context = proto.EncodeHBContext(respCtx)
 	rs.config.transport.Send(msg)
 }
 

@@ -1,0 +1,17 @@
+{
+  "id": 1,
+  "addr": "11.51.26.226",
+  "groupNum": 3,
+  "peers": [
+    {"id": 1, "addr": "11.51.26.226"},
+    {"id": 2, "addr": "11.51.26.227"},
+    {"id": 3, "addr": "11.51.26.228"}
+  ],
+  "heartPort": "7001",
+  "replicaPort": "8001",
+  "listen": "9001",
+  "walDir": "/data2/rafttest/",
+  "logDir": "/export/Logs/raft",
+  "level": "debug",
+  "storeType": 1
+}

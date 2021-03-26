@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -144,6 +145,7 @@ type OpDentry interface {
 // OpExtent defines the interface for the extent operations.
 type OpExtent interface {
 	ExtentAppend(req *proto.AppendExtentKeyRequest, p *Packet) (err error)
+	ExtentInsert(req *proto.InsertExtentKeyRequest, p *Packet) (err error)
 	ExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error)
 	ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (err error)
 	BatchExtentAppend(req *proto.AppendExtentKeysRequest, p *Packet) (err error)
@@ -181,7 +183,7 @@ type OpPartition interface {
 	ApplyResetMember(req *proto.ResetMetaPartitionRaftMemberRequest) (updated bool, err error)
 	Reset() (err error)
 	Expired() error
-	UpdatePartition(req *UpdatePartitionReq, resp *UpdatePartitionResp) (err error)
+	UpdatePartition(ctx context.Context, req *UpdatePartitionReq, resp *UpdatePartitionResp) (err error)
 	DeleteRaft() error
 	ExpiredRaft() error
 	IsExistPeer(peer proto.Peer) bool
@@ -274,6 +276,12 @@ func (mp *metaPartition) onStart() (err error) {
 		}
 		mp.onStop()
 	}()
+	ctx := context.Background()
+	if err = mp.load(ctx); err != nil {
+		err = errors.NewErrorf("[onStart]:load partition id=%d: %s",
+			mp.config.PartitionId, err.Error())
+		return
+	}
 	mp.startSchedule(mp.applyID)
 	if err = mp.startFreeList(); err != nil {
 		err = errors.NewErrorf("[onStart] start free list id=%d: %s",
@@ -399,7 +407,7 @@ func CreateMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) (M
 
 func LoadMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) (MetaPartition, error) {
 	mp := NewMetaPartition(conf, manager)
-	if err := mp.load(); err != nil {
+	if err := mp.load(context.Background()); err != nil {
 		return nil, err
 	}
 	return mp, nil
@@ -462,7 +470,7 @@ func (mp *metaPartition) PersistMetadata() (err error) {
 }
 
 func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
-	if err = mp.loadInode(snapshotPath); err != nil {
+	if err = mp.loadInode(context.Background(), snapshotPath); err != nil {
 		return
 	}
 	if err = mp.loadDentry(snapshotPath); err != nil {
@@ -478,12 +486,12 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	return
 }
 
-func (mp *metaPartition) load() (err error) {
+func (mp *metaPartition) load(ctx context.Context) (err error) {
 	if err = mp.loadMetadata(); err != nil {
 		return
 	}
 	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
-	if err = mp.loadInode(snapshotPath); err != nil {
+	if err = mp.loadInode(ctx, snapshotPath); err != nil {
 		return
 	}
 	if err = mp.loadDentry(snapshotPath); err != nil {
@@ -616,7 +624,7 @@ func (mp *metaPartition) GetBaseConfig() MetaPartitionConfig {
 }
 
 // UpdatePartition updates the meta partition. TODO remove? no usage?
-func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
+func (mp *metaPartition) UpdatePartition(ctx context.Context, req *UpdatePartitionReq,
 	resp *UpdatePartitionResp) (err error) {
 	reqData, err := json.Marshal(req)
 	if err != nil {
@@ -624,7 +632,7 @@ func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
 		resp.Result = err.Error()
 		return
 	}
-	r, err := mp.submit(opFSMUpdatePartition, reqData)
+	r, err := mp.submit(ctx, opFSMUpdatePartition, "", reqData)
 	if err != nil {
 		resp.Status = proto.TaskFailed
 		resp.Result = err.Error()
@@ -632,7 +640,7 @@ func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
 	}
 	if status := r.(uint8); status != proto.OpOk {
 		resp.Status = proto.TaskFailed
-		p := &Packet{}
+		p := NewPacket(ctx)
 		p.ResultCode = status
 		err = errors.NewErrorf("[UpdatePartition]: %s", p.GetResultMsg())
 		resp.Result = p.GetResultMsg()
@@ -641,8 +649,8 @@ func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
 	return
 }
 
-func (mp *metaPartition) DecommissionPartition(req []byte) (err error) {
-	_, err = mp.submit(opFSMDecommissionPartition, req)
+func (mp *metaPartition) DecommissionPartition(ctx context.Context, req []byte) (err error) {
+	_, err = mp.submit(ctx, opFSMDecommissionPartition, "", req)
 	return
 }
 

@@ -15,7 +15,10 @@
 package proto
 
 import (
+	"context"
 	"fmt"
+
+	"github.com/tiglabs/raft/tracing"
 )
 
 type (
@@ -45,11 +48,11 @@ const (
 )
 
 const (
-	ConfAddNode    		ConfChangeType = 0
-	ConfRemoveNode 		ConfChangeType = 1
-	ConfUpdateNode 		ConfChangeType = 2
-	ConfAddLearner 		ConfChangeType = 3
-	ConfPromoteLearner	ConfChangeType = 4
+	ConfAddNode        ConfChangeType = 0
+	ConfRemoveNode     ConfChangeType = 1
+	ConfUpdateNode     ConfChangeType = 2
+	ConfAddLearner     ConfChangeType = 3
+	ConfPromoteLearner ConfChangeType = 4
 
 	EntryNormal     EntryType = 0
 	EntryConfChange EntryType = 1
@@ -73,10 +76,10 @@ type SnapIterator interface {
 }
 
 type SnapshotMeta struct {
-	Index 		uint64
-	Term  		uint64
-	Peers 		[]Peer
-	Learners	[]Learner
+	Index    uint64
+	Term     uint64
+	Peers    []Peer
+	Learners []Learner
 }
 
 type Peer struct {
@@ -87,8 +90,8 @@ type Peer struct {
 }
 
 type Learner struct {
-	ID			uint64			`json:"id"`	// NodeID
-	PromConfig	*PromoteConfig	`json:"promote_config"`
+	ID         uint64         `json:"id"` // NodeID
+	PromConfig *PromoteConfig `json:"promote_config"`
 }
 
 // HardState is the repl state,must persist to the storage.
@@ -104,6 +107,24 @@ type Entry struct {
 	Term  uint64
 	Index uint64
 	Data  []byte
+	ctx   context.Context // Tracer context
+}
+
+func (e *Entry) SetCtx(ctx context.Context) {
+	e.ctx = ctx
+}
+
+func (e *Entry) Ctx() context.Context {
+	return e.ctx
+}
+
+func (e *Entry) SetTagsToTracer(tracer tracing.Tracer) {
+	if tracer != nil {
+		tracer.SetTag("index", e.Index).
+			SetTag("term", e.Term).
+			SetTag("type", e.Type.String()).
+			SetTag("dataLen", len(e.Data))
+	}
 }
 
 // Message is the transport message.
@@ -123,12 +144,32 @@ type Message struct {
 	Entries      []*Entry
 	Context      []byte
 	Snapshot     Snapshot // No need for codec
+	ctx          context.Context
+}
+
+func (m *Message) Ctx() context.Context {
+	return m.ctx
+}
+func (m *Message) SetCtx(ctx context.Context) {
+	m.ctx = ctx
 }
 
 func (m *Message) ToString() (mesg string) {
 	return fmt.Sprintf("Mesg:[%v] type(%v) ForceVote(%v) Reject(%v) RejectIndex(%v) "+
 		"From(%v) To(%v) Term(%v) LogTrem(%v) Index(%v) Commit(%v)", m.ID, m.Type.String(), m.ForceVote,
 		m.Reject, m.RejectIndex, m.From, m.To, m.Term, m.LogTerm, m.Index, m.Commit)
+}
+
+func (m *Message) SetTagsToTracer(tracer tracing.Tracer) {
+	if tracer != nil {
+		tracer.SetTag("id", m.ID).
+			SetTag("index", m.Index).
+			SetTag("term", m.Term).
+			SetTag("commit", m.Commit).
+			SetTag("entriesLen", len(m.Entries)).
+			SetTag("type", m.Type.String()).
+			SetTag("to", m.To)
+	}
 }
 
 type ConfChange struct {
@@ -138,19 +179,23 @@ type ConfChange struct {
 }
 
 type PromoteConfig struct {
-	PromThreshold uint8	`json:"prom_threshold"`
-	AutoPromote   bool 	`json:"auto_prom"`
+	PromThreshold uint8 `json:"prom_threshold"`
+	AutoPromote   bool  `json:"auto_prom"`
 }
 
 type ConfChangeLearnerReq struct {
-	Id				uint64	`json:"pid"`
-	ChangeLearner	Learner	`json:"learner"`
+	Id            uint64  `json:"pid"`
+	ChangeLearner Learner `json:"learner"`
 }
 type ResetPeers struct {
 	NewPeers []Peer
 	Context  []byte
 }
 type HeartbeatContext []uint64
+
+type TransportContext struct {
+	Tracer tracing.Tracer // Codec order: 1
+}
 
 func (t MsgType) String() string {
 	switch t {
@@ -247,6 +292,15 @@ func (m *Message) IsElectionMsg() bool {
 
 func (m *Message) IsHeartbeatMsg() bool {
 	return m.Type == ReqMsgHeartBeat || m.Type == RespMsgHeartBeat
+}
+
+func (m *Message) IsAppendMsg() bool {
+	switch m.Type {
+	case ReqMsgAppend, RespMsgAppend:
+		return true
+	default:
+	}
+	return false
 }
 
 func (s *HardState) IsEmpty() bool {

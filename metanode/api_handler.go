@@ -238,7 +238,7 @@ func (m *MetaNode) cursorReset(w http.ResponseWriter, r *http.Request) {
 		VolName:     vol,
 		PartitionId: pid,
 	}
-	cursor, err := mp.(*metaPartition).CursorReset(req)
+	cursor, err := mp.(*metaPartition).CursorReset(r.Context(), req)
 	if err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()
@@ -284,7 +284,7 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 		PartitionID: pid,
 		Inode:       id,
 	}
-	p := &Packet{}
+	p := NewPacket(r.Context())
 	err = mp.InodeGet(req, p)
 	if err != nil {
 		resp.Code = http.StatusInternalServerError
@@ -329,7 +329,7 @@ func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter,
 		PartitionID: pid,
 		Inode:       id,
 	}
-	p := &Packet{}
+	p := NewPacket(r.Context())
 	if err = mp.ExtentsList(req, p); err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()
@@ -377,7 +377,7 @@ func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
 		ParentID:    pIno,
 		Name:        name,
 	}
-	p := &Packet{}
+	p := NewPacket(r.Context())
 	if err = mp.Lookup(req, p); err != nil {
 		resp.Code = http.StatusSeeOther
 		resp.Msg = err.Error()
@@ -484,7 +484,7 @@ func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
 	req := ReadDirReq{
 		ParentID: pIno,
 	}
-	p := &Packet{}
+	p := NewPacket(r.Context())
 	if err = mp.ReadDir(&req, p); err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()

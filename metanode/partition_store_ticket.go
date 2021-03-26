@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"context"
 	"encoding/binary"
 	"time"
 
@@ -59,8 +60,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 		} else {
 			// retry again
 			mp.storeChan <- msg
-			err = errors.NewErrorf("[startSchedule]: dump partition id=%d: %v",
-				mp.config.PartitionId, err.Error())
+			err = errors.NewErrorf("[startSchedule]: dump partition id=%d: %v", mp.config.PartitionId, err.Error())
 			log.LogErrorf(err.Error())
 			exporter.Warning(err.Error())
 		}
@@ -117,7 +117,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					timer.Reset(intervalToPersistData)
 					continue
 				}
-				if _, err := mp.submit(opFSMStoreTick, nil); err != nil {
+				if _, err := mp.submit(context.Background(), opFSMStoreTick, "", nil); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 					if _, ok := mp.IsLeader(); ok {
 						timer.Reset(intervalToPersistData)
@@ -130,7 +130,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				}
 				cursorBuf := make([]byte, 8)
 				binary.BigEndian.PutUint64(cursorBuf, mp.config.Cursor)
-				if _, err := mp.submit(opFSMSyncCursor, cursorBuf); err != nil {
+				if _, err := mp.submit(context.Background(), opFSMSyncCursor, "", cursorBuf); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 				}
 				timerCursor.Reset(intervalToSyncCursor)

@@ -1,0 +1,19 @@
+name: 'Setup GOPATH'
+description: 'Link repo into GOPATH and export $PROJECT var'
+runs:
+  using: "composite"
+  steps: 
+    - name: Setup GOPATH
+      shell: bash
+      run: |
+        export GOPATH=$(go env GOPATH)
+        export PROJECT=$GOPATH/src/github.com/uber/jaeger-client-go
+        mkdir -p $(dirname $PROJECT)
+        ln -s $(pwd) $PROJECT
+        # write to GH files to make vars available to later steps
+        echo "PROJECT=$PROJECT" >>"$GITHUB_ENV"
+        echo "GOPATH=$GOPATH" >>"$GITHUB_ENV"
+        echo "$GOPATH/bin" >>"$GITHUB_PATH"
+        # print summary 
+        echo "GOPATH=$GOPATH"
+        echo "PROJECT=$PROJECT"

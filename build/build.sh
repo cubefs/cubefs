@@ -104,7 +104,7 @@ run_test() {
     echo "*********************************";
 
     pushd $SrcPath >/dev/null
-    go test -covermode=set -coverprofile=/tmp/coverprofile.cov ./... ./vendor/github.com/tiglabs/raft/...
+    go test -covermode=set -coverprofile=/tmp/coverprofile.cov $(go list ./... ./vendor/github.com/tiglabs/raft/... | grep -v /client/bypass)
     ret=$?
 
     echo

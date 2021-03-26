@@ -15,6 +15,7 @@
 package objectnode
 
 import (
+	"context"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -422,7 +423,7 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 
 	// get multipart info
 	var multipartInfo *proto.MultipartInfo
-	if multipartInfo, err = vol.mw.GetMultipart_ll(param.object, uploadId); err != nil {
+	if multipartInfo, err = vol.mw.GetMultipart_ll(context.Background(), param.object, uploadId); err != nil {
 		log.LogErrorf("CompleteMultipart: meta get multipart fail: volume(%v) multipartID(%v) path(%v) err(%v)",
 			vol.name, uploadId, param.object, err)
 		if err == syscall.ENOENT {

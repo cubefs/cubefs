@@ -1,0 +1,56 @@
+name: "Unit Tests"
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  unit-tests:
+    strategy:
+      fail-fast: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-go@v2
+        with:
+          go-version: ^1.15
+      - name: Setup GOPATH
+        uses: ./.github/actions/setup-gopath
+      - name: Install dependencies and tools
+        run: |
+          cd $PROJECT
+          make install-ci USE_DEP=true
+          dep version
+      - name: Run tests
+        run: |
+          cd $PROJECT
+          make test-ci
+      - name: Upload coverage to codecov
+        uses: codecov/codecov-action@v1
+        with:
+          file: cover.out
+          fail_ci_if_error: true
+          verbose: true
+
+  unit-tests-glide:
+    strategy:
+      fail-fast: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-go@v2
+        with:
+          go-version: ^1.15
+      - name: Setup GOPATH
+        uses: ./.github/actions/setup-gopath
+      - name: Install dependencies and tools
+        run: |
+          cd $PROJECT
+          make install-ci USE_DEP=false USE_GLIDE=true
+          glide -v
+      - name: Run tests
+        run: |
+          cd $PROJECT
+          make test-ci

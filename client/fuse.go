@@ -18,13 +18,10 @@ package main
 // Usage: ./client -c fuse.json &
 //
 // Default mountpoint is specified in fuse.json, which is "/mnt".
-//
 
 import (
 	"flag"
 	"fmt"
-	"github.com/chubaofs/chubaofs/sdk/meta"
-	"github.com/chubaofs/chubaofs/util/version"
 	syslog "log"
 	"net/http"
 	_ "net/http/pprof"
@@ -38,19 +35,22 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/chubaofs/chubaofs/sdk/master"
-
-	sysutil "github.com/chubaofs/chubaofs/util/sys"
-
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
 	cfs "github.com/chubaofs/chubaofs/client/fs"
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/chubaofs/chubaofs/sdk/meta"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+	_ "github.com/chubaofs/chubaofs/util/log/http" // HTTP APIs for logging control
+	sysutil "github.com/chubaofs/chubaofs/util/sys"
+	"github.com/chubaofs/chubaofs/util/tracing"
+	_ "github.com/chubaofs/chubaofs/util/tracing/http" // HTTP APIs for tracing
 	"github.com/chubaofs/chubaofs/util/ump"
+	"github.com/chubaofs/chubaofs/util/version"
 	"github.com/jacobsa/daemonize"
 )
 
@@ -71,6 +71,7 @@ const (
 	ControlCommandSetRate      = "/rate/set"
 	ControlCommandGetRate      = "/rate/get"
 	ControlCommandFreeOSMemory = "/debug/freeosmemory"
+	ControlCommandTracing      = "/tracing"
 	Role                       = "Client"
 )
 
@@ -126,6 +127,12 @@ func main() {
 	} else {
 		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
+
+	//Init tracing
+	closer := tracing.TraceInit(ModuleName, cfg.GetString(config.CfgTracingsamplerType), cfg.GetFloat(config.CfgTracingsamplerParam), cfg.GetString(config.CfgTracingReportAddr))
+	defer func() {
+		_ = closer.Close()
+	}()
 
 	exporter.Init(ModuleName, cfg)
 
@@ -183,7 +190,10 @@ func main() {
 	}
 	defer fsConn.Close()
 
-	exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
+	if exporter.IsEnabled() {
+		exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
+		cfs.RegisterMetrics()
+	}
 
 	// report client version
 	var masters = strings.Split(opt.Master, meta.HostsSeparator)
@@ -257,9 +267,6 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 
 	http.HandleFunc(ControlCommandSetRate, super.SetRate)
 	http.HandleFunc(ControlCommandGetRate, super.GetRate)
-	http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
-	http.HandleFunc(log.SetLogMaxSizePath, log.SetLogSize)
-	http.HandleFunc(log.GetLogConfigPath, log.GetLogConfig)
 	http.HandleFunc(ControlCommandFreeOSMemory, freeOSMemory)
 	http.HandleFunc(log.GetLogPath, log.GetLog)
 

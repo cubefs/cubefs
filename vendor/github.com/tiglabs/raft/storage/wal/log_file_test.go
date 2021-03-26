@@ -15,6 +15,7 @@
 package wal
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -225,44 +226,51 @@ func TestAutoFixLastIndexLogEntryFile_BrokenLogEntry(t *testing.T) {
 		logFileName := logFileName{}
 		logFileName.ParseFrom(testLogFileName)
 
-		for testCount := 1; testCount <= 3; testCount++ {
-			var lf *logEntryFile
-			if lf, err = openLogEntryFile(
-				testPath,
-				logFileName,
-				true); err != nil {
-				t.Fatalf("[%v %v] open test log file fail: %v", sample.Desc, testCount, err)
-			}
+		// The log file is sufficient for the last file to have certain error correction processing capabilities.
+		for _, isLastOne := range []bool{true, false} {
 
-			// Validate first index
-			fi := lf.FirstIndex()
-			if fi != sample.FirstIndex {
-				t.Fatalf("[%v %v] first index mismatch: expect %v, actual %v", sample.Desc, testCount, sample.FirstIndex, fi)
-			}
-
-			// Validate last index
-			li := lf.LastIndex()
-			if li != sample.LastIndex {
-				t.Fatalf("[%v %v] last index mismatch: expect %v, actual %v", sample.Desc, testCount, sample.LastIndex, li)
-			}
-
-			// Validate each log entry
-			var e *proto.Entry
-			var entryIndex = 0
-			for i := fi; i > 0 && i <= li; i++ {
-				if e, err = lf.Get(i); err != nil {
-					t.Fatalf("[%v %v] get log entry fail: index %v, %v", sample.Desc, testCount, i, err)
+			// Check whether the repair and rebuild index logic has adverse effects
+			// on file data through three repeated opening tests.
+			for testCount := 1; testCount <= 3; testCount++ {
+				var lf *logEntryFile
+				if lf, err = openLogEntryFile(testPath, logFileName, isLastOne); err != nil {
+					t.Fatalf("[sample:%v, firstopen: %v, lastone: %v] open test log file fail: %v",
+						sample.Desc, testCount == 1, isLastOne, err)
 				}
-				var sampleEntry = sample.Entries[entryIndex]
-				if e.Index != sampleEntry.Index || e.Term != sampleEntry.Term || e.Type != sampleEntry.Type {
-					t.Fatalf("[%v %v] entry data mismatch: expact %v, actual %v",
-						sample.Desc, testCount,
-						fmt.Sprintf("%v_%v_%v", sampleEntry.Index, sampleEntry.Term, sampleEntry.Type),
-						fmt.Sprintf("%v_%v_%v", e.Index, e.Term, e.Type))
+
+				// Validate first index
+				fi := lf.FirstIndex()
+				if fi != sample.FirstIndex {
+					t.Fatalf("[sample: %v, firstopen: %v, lastone: %v] first index mismatch: expect %v, actual %v",
+						sample.Desc, testCount == 1, isLastOne, sample.FirstIndex, fi)
 				}
-				entryIndex++
+
+				// Validate last index
+				li := lf.LastIndex()
+				if li != sample.LastIndex {
+					t.Fatalf("[sample: %v, firstopen: %v, lastone: %v] last index mismatch: expect %v, actual %v",
+						sample.Desc, testCount == 1, isLastOne, sample.LastIndex, li)
+				}
+
+				// Validate each log entry
+				var e *proto.Entry
+				var entryIndex = 0
+				for i := fi; i > 0 && i <= li; i++ {
+					if e, err = lf.Get(i); err != nil {
+						t.Fatalf("[sample: %v, firstopen: %v, lastone: %v] get log entry fail: index %v, %v",
+							sample.Desc, testCount == 1, isLastOne, i, err)
+					}
+					var sampleEntry = sample.Entries[entryIndex]
+					if e.Index != sampleEntry.Index || e.Term != sampleEntry.Term || e.Type != sampleEntry.Type {
+						t.Fatalf("[sample: %v, firstopen: %v, lastone: %v] entry data mismatch: expact %v, actual %v",
+							sample.Desc, testCount == 1, isLastOne,
+							fmt.Sprintf("%v_%v_%v", sampleEntry.Index, sampleEntry.Term, sampleEntry.Type),
+							fmt.Sprintf("%v_%v_%v", e.Index, e.Term, e.Type))
+					}
+					entryIndex++
+				}
+				_ = lf.Close()
 			}
-			_ = lf.Close()
 		}
 
 		_ = os.Remove(path.Join(testPath, testLogFileName))
@@ -311,44 +319,49 @@ func TestAutoFixLastIndexLogEntryFile_BrokenIndex_MissingLastOneByte(t *testing.
 	// Load and validate log file
 	logFileName := logFileName{}
 	logFileName.ParseFrom(testLogFileName)
-	for testCount := 1; testCount <= 3; testCount++ {
-		var lf *logEntryFile
-		if lf, err = openLogEntryFile(
-			testPath,
-			logFileName,
-			true); err != nil {
-			t.Fatalf("open test log file fail: %v", err)
-		}
 
-		// Validate first index
-		fi := lf.FirstIndex()
-		if fi != firstIndex {
-			t.Fatalf("first index mismatch: expect %v, actual %v", firstIndex, fi)
-		}
+	// The log file is sufficient for the last file to have certain error correction processing capabilities.
+	for _, isLastOne := range []bool{true, false} {
 
-		// Validate last index
-		li := lf.LastIndex()
-		if li != lastIndex {
-			t.Fatalf("last index mismatch: expect %v, actual %v", lastIndex, li)
-		}
-
-		// Validate each log entry
-		var e *proto.Entry
-		var entryIndex = 0
-		for i := fi; i > 0 && i <= li; i++ {
-			if e, err = lf.Get(i); err != nil {
-				t.Fatalf("get log entry fail: index %v, %v", i, err)
+		// Check whether the repair and rebuild index logic has adverse effects
+		// on file data through three repeated opening tests.
+		for testCount := 1; testCount <= 3; testCount++ {
+			var lf *logEntryFile
+			if lf, err = openLogEntryFile(testPath, logFileName, isLastOne); err != nil {
+				t.Fatalf("open test log file fail: %v", err)
 			}
-			var sampleEntry = sampleEntries[entryIndex]
-			if e.Index != sampleEntry.Index || e.Term != sampleEntry.Term || e.Type != sampleEntry.Type {
-				t.Fatalf("entry data mismatch: expact %v, actual %v",
-					fmt.Sprintf("%v_%v_%v", sampleEntry.Index, sampleEntry.Term, sampleEntry.Type),
-					fmt.Sprintf("%v_%v_%v", e.Index, e.Term, e.Type))
+
+			// Validate first index
+			fi := lf.FirstIndex()
+			if fi != firstIndex {
+				t.Fatalf("first index mismatch: expect %v, actual %v", firstIndex, fi)
 			}
-			entryIndex++
+
+			// Validate last index
+			li := lf.LastIndex()
+			if li != lastIndex {
+				t.Fatalf("last index mismatch: expect %v, actual %v", lastIndex, li)
+			}
+
+			// Validate each log entry
+			var e *proto.Entry
+			var entryIndex = 0
+			for i := fi; i > 0 && i <= li; i++ {
+				if e, err = lf.Get(i); err != nil {
+					t.Fatalf("get log entry fail: index %v, %v", i, err)
+				}
+				var sampleEntry = sampleEntries[entryIndex]
+				if e.Index != sampleEntry.Index || e.Term != sampleEntry.Term || e.Type != sampleEntry.Type {
+					t.Fatalf("entry data mismatch: expact %v, actual %v",
+						fmt.Sprintf("%v_%v_%v", sampleEntry.Index, sampleEntry.Term, sampleEntry.Type),
+						fmt.Sprintf("%v_%v_%v", e.Index, e.Term, e.Type))
+				}
+				entryIndex++
+			}
+			_ = lf.Close()
 		}
-		_ = lf.Close()
 	}
+
 }
 
 func TestAutoFixLastIndexLogEntryFile_BrokenIndex_BrokenLastOneByte(t *testing.T) {
@@ -396,44 +409,49 @@ func TestAutoFixLastIndexLogEntryFile_BrokenIndex_BrokenLastOneByte(t *testing.T
 	// Load and validate log file
 	logFileName := logFileName{}
 	logFileName.ParseFrom(testLogFileName)
-	for testCount := 1; testCount <= 3; testCount++ {
-		var lf *logEntryFile
-		if lf, err = openLogEntryFile(
-			testPath,
-			logFileName,
-			true); err != nil {
-			t.Fatalf("open test log file fail: %v", err)
-		}
 
-		// Validate first index
-		fi := lf.FirstIndex()
-		if fi != firstIndex {
-			t.Fatalf("first index mismatch: expect %v, actual %v", firstIndex, fi)
-		}
+	// The log file is sufficient for the last file to have certain error correction processing capabilities.
+	for _, isLastOne := range []bool{true, false} {
 
-		// Validate last index
-		li := lf.LastIndex()
-		if li != lastIndex {
-			t.Fatalf("last index mismatch: expect %v, actual %v", lastIndex, li)
-		}
-
-		// Validate each log entry
-		var e *proto.Entry
-		var entryIndex = 0
-		for i := fi; i > 0 && i <= li; i++ {
-			if e, err = lf.Get(i); err != nil {
-				t.Fatalf("get log entry fail: index %v, %v", i, err)
+		// Check whether the repair and rebuild index logic has adverse effects
+		// on file data through three repeated opening tests.
+		for testCount := 1; testCount <= 3; testCount++ {
+			var lf *logEntryFile
+			if lf, err = openLogEntryFile(testPath, logFileName, isLastOne); err != nil {
+				t.Fatalf("open test log file fail: %v", err)
 			}
-			var sampleEntry = sampleEntries[entryIndex]
-			if e.Index != sampleEntry.Index || e.Term != sampleEntry.Term || e.Type != sampleEntry.Type {
-				t.Fatalf("entry data mismatch: expact %v, actual %v",
-					fmt.Sprintf("%v_%v_%v", sampleEntry.Index, sampleEntry.Term, sampleEntry.Type),
-					fmt.Sprintf("%v_%v_%v", e.Index, e.Term, e.Type))
+
+			// Validate first index
+			fi := lf.FirstIndex()
+			if fi != firstIndex {
+				t.Fatalf("first index mismatch: expect %v, actual %v", firstIndex, fi)
 			}
-			entryIndex++
+
+			// Validate last index
+			li := lf.LastIndex()
+			if li != lastIndex {
+				t.Fatalf("last index mismatch: expect %v, actual %v", lastIndex, li)
+			}
+
+			// Validate each log entry
+			var e *proto.Entry
+			var entryIndex = 0
+			for i := fi; i > 0 && i <= li; i++ {
+				if e, err = lf.Get(i); err != nil {
+					t.Fatalf("get log entry fail: index %v, %v", i, err)
+				}
+				var sampleEntry = sampleEntries[entryIndex]
+				if e.Index != sampleEntry.Index || e.Term != sampleEntry.Term || e.Type != sampleEntry.Type {
+					t.Fatalf("entry data mismatch: expact %v, actual %v",
+						fmt.Sprintf("%v_%v_%v", sampleEntry.Index, sampleEntry.Term, sampleEntry.Type),
+						fmt.Sprintf("%v_%v_%v", e.Index, e.Term, e.Type))
+				}
+				entryIndex++
+			}
+			_ = lf.Close()
 		}
-		_ = lf.Close()
 	}
+
 }
 
 func TestAutoFixLastIndexLogEntryFile_BrokenIndex_OneMoreByteAtTheEnd(t *testing.T) {
@@ -527,12 +545,12 @@ func generateLogEntryFileWithIndex(path, name string, entries []*proto.Entry) (e
 	}
 
 	for _, entry := range entries {
-		if err = lf.Save(entry); err != nil {
+		if err = lf.Save(context.Background(), entry); err != nil {
 			return
 		}
 	}
 
-	if err = lf.FinishWrite(); err != nil {
+	if err = lf.FinishWrite(nil); err != nil {
 		return
 	}
 	err = lf.Close()

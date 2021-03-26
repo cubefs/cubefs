@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -138,13 +139,13 @@ func (mp *metaPartition) deleteWorker() {
 			buffSlice = append(buffSlice, ino)
 		}
 		mp.persistDeletedInodes(buffSlice)
-		mp.deleteMarkedInodes(buffSlice)
+		mp.deleteMarkedInodes(context.Background(), buffSlice)
 		sleepCnt++
 	}
 }
 
 // delete Extents by Partition,and find all successDelete inode
-func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents map[uint64][]*proto.ExtentKey,
+func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, partitionDeleteExtents map[uint64][]*proto.ExtentKey,
 	allInodes []*Inode) (shouldCommit []*Inode, shouldPushToFreeList []*Inode) {
 	occurErrors := make(map[uint64]error)
 	shouldCommit = make([]*Inode, 0, DeleteBatchCount())
@@ -158,7 +159,7 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 	for partitionID, extents := range partitionDeleteExtents {
 		wg.Add(1)
 		go func(partitionID uint64, extents []*proto.ExtentKey) {
-			perr := mp.doBatchDeleteExtentsByPartition(partitionID, extents)
+			perr := mp.doBatchDeleteExtentsByPartition(ctx, partitionID, extents)
 			lock.Lock()
 			occurErrors[partitionID] = perr
 			lock.Unlock()
@@ -191,7 +192,7 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 }
 
 // Delete the marked inodes.
-func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
+func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint64) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogErrorf(fmt.Sprintf("metaPartition(%v) deleteMarkedInodes panic (%v)", mp.config.PartitionId, r))
@@ -224,12 +225,12 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		})
 		allInodes = append(allInodes, inode)
 	}
-	shouldCommit, shouldRePushToFreeList = mp.batchDeleteExtentsByPartition(deleteExtentsByPartition, allInodes)
+	shouldCommit, shouldRePushToFreeList = mp.batchDeleteExtentsByPartition(ctx, deleteExtentsByPartition, allInodes)
 	bufSlice := make([]byte, 0, 8*len(shouldCommit))
 	for _, inode := range shouldCommit {
 		bufSlice = append(bufSlice, inode.MarshalKey()...)
 	}
-	err := mp.syncToRaftFollowersFreeInode(bufSlice)
+	err := mp.syncToRaftFollowersFreeInode(ctx, bufSlice)
 	if err != nil {
 		log.LogWarnf("[deleteInodeTreeOnRaftPeers] raft commit inode list: %v, "+
 			"response %s", shouldCommit, err.Error())
@@ -247,16 +248,16 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 	}
 }
 
-func (mp *metaPartition) syncToRaftFollowersFreeInode(hasDeleteInodes []byte) (err error) {
+func (mp *metaPartition) syncToRaftFollowersFreeInode(ctx context.Context, hasDeleteInodes []byte) (err error) {
 	if len(hasDeleteInodes) == 0 {
 		return
 	}
-	_, err = mp.submit(opFSMInternalDeleteInode, hasDeleteInodes)
+	_, err = mp.submit(ctx, opFSMInternalDeleteInode, "", hasDeleteInodes)
 
 	return
 }
 
-func (mp *metaPartition) notifyRaftFollowerToFreeInodes(wg *sync.WaitGroup, target string, hasDeleteInodes []byte) (err error) {
+func (mp *metaPartition) notifyRaftFollowerToFreeInodes(ctx context.Context, wg *sync.WaitGroup, target string, hasDeleteInodes []byte) (err error) {
 	var conn *net.TCPConn
 	conn, err = mp.config.ConnPool.GetConnect(target)
 	defer func() {
@@ -271,7 +272,7 @@ func (mp *metaPartition) notifyRaftFollowerToFreeInodes(wg *sync.WaitGroup, targ
 	if err != nil {
 		return
 	}
-	request := NewPacketToFreeInodeOnRaftFollower(mp.config.PartitionId, hasDeleteInodes)
+	request := NewPacketToFreeInodeOnRaftFollower(ctx, mp.config.PartitionId, hasDeleteInodes)
 	if err = request.WriteToConn(conn); err != nil {
 		return
 	}
@@ -287,7 +288,7 @@ func (mp *metaPartition) notifyRaftFollowerToFreeInodes(wg *sync.WaitGroup, targ
 	return
 }
 
-func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) {
+func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, ext *proto.ExtentKey) (err error) {
 	// get the data node view
 	dp := mp.vol.GetPartition(ext.PartitionId)
 	if dp == nil {
@@ -312,7 +313,7 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 			err.Error(), ext.PartitionId, ext.ExtentId)
 		return
 	}
-	p := NewPacketToDeleteExtent(dp, ext)
+	p := NewPacketToDeleteExtent(ctx, dp, ext)
 	if err = p.WriteToConn(conn); err != nil {
 		err = errors.NewErrorf("write to dataNode %s, %s", p.GetUniqueLogId(),
 			err.Error())
@@ -330,7 +331,7 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 	return
 }
 
-func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, exts []*proto.ExtentKey) (err error) {
+func (mp *metaPartition) doBatchDeleteExtentsByPartition(ctx context.Context, partitionID uint64, exts []*proto.ExtentKey) (err error) {
 	// get the data node view
 	dp := mp.vol.GetPartition(partitionID)
 	if dp == nil {
@@ -362,7 +363,7 @@ func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, ext
 			err.Error(), partitionID)
 		return
 	}
-	p := NewPacketToBatchDeleteExtent(dp, exts)
+	p := NewPacketToBatchDeleteExtent(ctx, dp, exts)
 	if err = p.WriteToConn(conn); err != nil {
 		err = errors.NewErrorf("write to dataNode %s, %s", p.GetUniqueLogId(),
 			err.Error())

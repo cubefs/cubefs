@@ -12,5 +12,9 @@
   "ticketHost": "192.168.0.14:8080,192.168.0.15:8081,192.168.0.16:8082",
   "enableHTTPS": "false",
   "accessKey": "39bEF4RrAQgMj6RV",
-  "secretKey": "TRL6o3JL16YOqvZGIohBDFTHZDEcFsyd"
+  "secretKey": "TRL6o3JL16YOqvZGIohBDFTHZDEcFsyd",
+  "tracingSamplerType": "const",
+  "tracingSamplerParam": 1,
+  "tracingReportAddr": "172.20.189.87:6831",
+  "tracingFlag": true
 }

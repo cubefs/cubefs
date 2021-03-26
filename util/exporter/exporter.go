@@ -47,7 +47,10 @@ var (
 )
 
 func metricsName(name string) string {
-	return replacer.Replace(fmt.Sprintf("%s_%s", namespace, name))
+	if len(namespace) > 0 {
+		return replacer.Replace(fmt.Sprintf("%s_%s", namespace, name))
+	}
+	return name
 }
 
 // Init initializes the exporter.
@@ -62,6 +65,7 @@ func Init(role string, cfg *config.Config) {
 		log.LogInfof("%v exporter port not set", port)
 		return
 	}
+
 	exporterPort = port
 	enabledPrometheus = true
 	http.Handle(PromHandlerPattern, promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
@@ -109,7 +113,21 @@ func InitWithRouter(role string, cfg *config.Config, router *mux.Router, exPort 
 	log.LogInfof("exporter Start: %v %v", exporterPort, m)
 }
 
+func InitRole(cluster string, role string) {
+	clustername = replacer.Replace(cluster)
+	modulename = role
+}
+
+// is prometheus enabled
+func IsEnabled() bool {
+	return enabledPrometheus
+}
+
 func RegistConsul(cluster string, role string, cfg *config.Config) {
+	if !enabledPrometheus {
+		return
+	}
+
 	clustername = replacer.Replace(cluster)
 	consulAddr := cfg.GetString(ConfigKeyConsulAddr)
 

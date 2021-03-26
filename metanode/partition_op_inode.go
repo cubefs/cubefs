@@ -15,12 +15,14 @@
 package metanode
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/tracing"
 )
 
 func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
@@ -48,6 +50,10 @@ func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
 
 // CreateInode returns a new inode.
 func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.CreateInode")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
 	inoID, err := mp.nextInodeID()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpInodeFullErr, []byte(err.Error()))
@@ -62,7 +68,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMCreateInode, val)
+	resp, err := mp.submit(p.Ctx(), opFSMCreateInode, p.Remote(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -90,13 +96,17 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 
 // DeleteInode deletes an inode.
 func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.UnlinkInode")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
 	ino := NewInode(req.Inode, 0)
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	r, err := mp.submitWithSrc(opFSMUnlinkInode, p.Remote(), val)
+	r, err := mp.submit(p.Ctx(), opFSMUnlinkInode, p.Remote(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -120,6 +130,9 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 
 // DeleteInode deletes an inode.
 func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.UnlinkInodeBatch")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
 
 	if len(req.Inodes) == 0 {
 		return nil
@@ -131,12 +144,12 @@ func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (er
 		inodes = append(inodes, NewInode(id, 0))
 	}
 
-	val, err := inodes.Marshal()
+	val, err := inodes.Marshal(p.Ctx())
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	r, err := mp.submitWithSrc(opFSMUnlinkInodeBatch, p.Remote(), val)
+	r, err := mp.submit(p.Ctx(), opFSMUnlinkInodeBatch, p.Remote(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -171,6 +184,10 @@ func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (er
 
 // InodeGet executes the inodeGet command from the client.
 func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.InodeGet")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
 	ino := NewInode(req.Inode, 0)
 	retMsg := mp.getInode(ino)
 	ino = retMsg.Msg
@@ -197,6 +214,10 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 
 // InodeGetBatch executes the inodeBatchGet command from the client.
 func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.InodeGetBatch")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
 	resp := &proto.BatchInodeGetResponse{}
 	ino := NewInode(0, 0)
 	for _, inoId := range req.Inodes {
@@ -220,13 +241,17 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 
 // CreateInodeLink creates an inode link (e.g., soft link).
 func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.CreateInodeLink")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
 	ino := NewInode(req.Inode, 0)
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMCreateLinkInode, val)
+	resp, err := mp.submit(p.Ctx(), opFSMCreateLinkInode, p.Remote(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -254,13 +279,17 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err erro
 
 // EvictInode evicts an inode.
 func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.EvictInode")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
 	ino := NewInode(req.Inode, 0)
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMEvictInode, val)
+	resp, err := mp.submit(p.Ctx(), opFSMEvictInode, p.Remote(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -272,6 +301,9 @@ func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet) (err error) {
 
 // EvictInode evicts an inode.
 func (mp *metaPartition) EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.EvictInodeBatch")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
 
 	if len(req.Inodes) == 0 {
 		return nil
@@ -283,12 +315,12 @@ func (mp *metaPartition) EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (er
 		inodes = append(inodes, NewInode(id, 0))
 	}
 
-	val, err := inodes.Marshal()
+	val, err := inodes.Marshal(p.Ctx())
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMEvictInodeBatch, val)
+	resp, err := mp.submit(p.Ctx(), opFSMEvictInodeBatch, p.Remote(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -307,7 +339,11 @@ func (mp *metaPartition) EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (er
 
 // SetAttr set the inode attributes.
 func (mp *metaPartition) SetAttr(reqData []byte, p *Packet) (err error) {
-	_, err = mp.submit(opFSMSetAttr, reqData)
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.SetAttr")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
+	_, err = mp.submit(p.Ctx(), opFSMSetAttr, p.Remote(), reqData)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -322,9 +358,13 @@ func (mp *metaPartition) GetInodeTree() *BTree {
 }
 
 func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.DeleteInode")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
 	var bytes = make([]byte, 8)
 	binary.BigEndian.PutUint64(bytes, req.Inode)
-	_, err = mp.submit(opFSMInternalDeleteInode, bytes)
+	_, err = mp.submit(p.Ctx(), opFSMInternalDeleteInode, p.Remote(), bytes)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -333,7 +373,10 @@ func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (
 	return
 }
 
-func (mp *metaPartition) CursorReset(req *proto.CursorResetRequest) (uint64, error) {
+func (mp *metaPartition) CursorReset(ctx context.Context, req *proto.CursorResetRequest) (uint64, error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("metaPartition.CursorReset")
+	defer tracer.Finish()
+	ctx = tracer.Context()
 
 	if mp.config.VolName != req.VolName {
 		return 0, fmt.Errorf("before partition:[%d] reset vol name not equal mp:[%s] req:[%s]", mp.config.PartitionId, mp.config.VolName, req.VolName)
@@ -351,7 +394,7 @@ func (mp *metaPartition) CursorReset(req *proto.CursorResetRequest) (uint64, err
 	if err != nil {
 		return 0, err
 	}
-	cursor, err := mp.submit(opFSMCursorReset, data)
+	cursor, err := mp.submit(ctx, opFSMCursorReset, "", data)
 	if err != nil {
 		return 0, err
 	}
@@ -359,6 +402,10 @@ func (mp *metaPartition) CursorReset(req *proto.CursorResetRequest) (uint64, err
 }
 
 func (mp *metaPartition) DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.DeleteInodeBatch")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
 	if len(req.Inodes) == 0 {
 		return nil
 	}
@@ -369,12 +416,12 @@ func (mp *metaPartition) DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p 
 		inodes = append(inodes, NewInode(id, 0))
 	}
 
-	encoded, err := inodes.Marshal()
+	encoded, err := inodes.Marshal(p.Ctx())
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	_, err = mp.submit(opFSMInternalDeleteInodeBatch, encoded)
+	_, err = mp.submit(p.Ctx(), opFSMInternalDeleteInodeBatch, p.Remote(), encoded)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

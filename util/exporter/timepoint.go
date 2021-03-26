@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/util/ump"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -44,18 +45,11 @@ type TimePoint struct {
 	startTime time.Time
 }
 
-type TimePointCount struct {
-	tp  *TimePoint
-	cnt *Counter
-	to  *ump.TpObject
-}
-
 func NewTP(name string) (tp *TimePoint) {
-	if !enabledPrometheus {
-		return
-	}
 	tp = TPPool.Get().(*TimePoint)
 	tp.name = metricsName(name)
+	tp.labels = make(map[string]string)
+	tp.val = 0
 	tp.startTime = time.Now()
 	return
 }
@@ -67,6 +61,55 @@ func (tp *TimePoint) Set() {
 	val := time.Since(tp.startTime).Nanoseconds()
 	tp.val = val
 	tp.publish()
+}
+
+func (tp *TimePoint) SetWithLabels(labels map[string]string) {
+	if !enabledPrometheus {
+		return
+	}
+	tp.labels = labels
+	tp.Set()
+}
+
+type TimePointVec struct {
+	*GaugeVec
+}
+
+type TPMetric struct {
+	metric    prometheus.Gauge
+	startTime time.Time
+}
+
+func NewTPVec(name, help string, labels []string) (tp *TimePointVec) {
+	return &TimePointVec{
+		GaugeVec: NewGaugeVec(name, help, labels),
+	}
+}
+
+func (tpv *TimePointVec) GetWithLabelVals(lvs ...string) (*TPMetric, error) {
+	if m, err := tpv.GetMetricWithLabelValues(lvs...); err == nil {
+		return &TPMetric{
+			metric:    m,
+			startTime: time.Now(),
+		}, nil
+	} else {
+		return nil, err
+	}
+}
+
+func (tp *TPMetric) Set() {
+	if !enabledPrometheus {
+		return
+	}
+
+	val := float64(time.Since(tp.startTime).Nanoseconds())
+	tp.metric.Set(val)
+}
+
+type TimePointCount struct {
+	tp  *TimePoint
+	cnt *Counter
+	to  *ump.TpObject
 }
 
 func NewTPCnt(name string) (tpc *TimePointCount) {
@@ -83,9 +126,74 @@ func (tpc *TimePointCount) Set(err error) {
 	tpc.cnt.Add(1)
 }
 
-func (tp *TimePoint) publish() {
-	select {
-	case TPCh <- tp:
-	default:
+func (tpc *TimePointCount) SetWithLabels(err error, labels map[string]string) {
+	ump.AfterTP(tpc.to, err)
+	if !enabledPrometheus {
+		return
 	}
+	tpc.tp.SetWithLabels(labels)
+	tpc.cnt.AddWithLabels(1, labels)
+}
+
+type TimePointCountVec struct {
+	tpv  *TimePointVec
+	cntv *CounterVec
+	name string
+}
+
+func NewTPCntVec(name, help string, labels []string) (tpc *TimePointCountVec) {
+	return &TimePointCountVec{
+		tpv:  NewTPVec(name, help, labels),
+		cntv: NewCounterVec(fmt.Sprintf("%s_cnt", name), help, labels),
+		name: name,
+	}
+}
+
+type TPCMetric struct {
+	tp  *TPMetric
+	cnt prometheus.Counter
+	to  *ump.TpObject
+}
+
+func (tpc *TimePointCountVec) GetWithLabelVals(lvs ...string) *TPCMetric {
+	metric := &TPCMetric{
+		to: ump.BeforeTP(fmt.Sprintf("%v_%v_%v", clustername, modulename, tpc.name)),
+	}
+
+	if !enabledPrometheus {
+		return metric
+	}
+
+	if tp, err := tpc.tpv.GetWithLabelVals(lvs...); err == nil {
+		metric.tp = tp
+	}
+	if cnt, err := tpc.cntv.GetMetricWithLabelValues(lvs...); err == nil {
+		metric.cnt = cnt
+	}
+
+	return metric
+}
+
+func (tpc *TimePointCountVec) Put(m *TPCMetric) {
+	tpc.PutWithError(m, nil)
+}
+
+func (tpc *TimePointCountVec) PutWithError(m *TPCMetric, err error) {
+	m.CountWithError(err)
+	//release m
+}
+
+func (m *TPCMetric) Count() {
+	m.CountWithError(nil)
+}
+
+func (m *TPCMetric) CountWithError(err error) {
+	if m.to != nil {
+		ump.AfterTP(m.to, err)
+	}
+	if !enabledPrometheus {
+		return
+	}
+	m.tp.Set()
+	m.cnt.Add(1)
 }

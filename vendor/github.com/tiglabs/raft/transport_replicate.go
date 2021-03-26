@@ -15,6 +15,7 @@
 package raft
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -23,6 +24,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/tiglabs/raft/tracing"
 
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
@@ -118,8 +121,9 @@ func (t *replicateTransport) sendSnapshot(m *proto.Message, rs *snapshotStatus) 
 		err = fmt.Errorf("snapshot concurrency exceed the limit %v.", t.config.MaxSnapConcurrency)
 		return
 	}
-	if conn = getConn(m.To, Replicate, t.config.Resolver, 10*time.Minute, 1*time.Minute); conn == nil {
-		err = fmt.Errorf("can't get connection to %v.", m.To)
+
+	if conn, err = getConn(context.Background(), m.To, Replicate, t.config.Resolver, 10*time.Minute, 1*time.Minute); err != nil {
+		err = fmt.Errorf("can not get connection to %v: %v", m.To, err)
 		return
 	}
 
@@ -216,17 +220,24 @@ func (t *replicateTransport) handleConn(conn *util.ConnTimeout) {
 			case <-t.stopc:
 				return
 			default:
-				if msg, err := reciveMessage(bufRd); err != nil {
+				msg, err := receiveMessage(bufRd)
+				if err != nil {
 					return
-				} else {
-					//logger.Debug(fmt.Sprintf("Recive %v from (%v)", msg.ToString(), conn.RemoteAddr()))
-					if msg.Type == proto.ReqMsgSnapShot {
-						if err := t.handleSnapshot(msg, conn, bufRd); err != nil {
-							return
-						}
-					} else {
-						t.raftServer.reciveMessage(msg)
+				}
+				if msg.Type == proto.ReqMsgSnapShot {
+					if err := t.handleSnapshot(msg, conn, bufRd); err != nil {
+						return
 					}
+				} else {
+					func() {
+						if tracing.IsEnabled() && msg.IsAppendMsg() && len(msg.Context) > 0 {
+							var tracer = proto.DecodeTransportContext(msg.Context, "replicateTransport.handleConn[receiveMessage]").Tracer
+							tracing.FillGCState(tracer)
+							defer tracer.Finish()
+							msg.SetCtx(tracer.Context())
+						}
+						t.raftServer.reciveMessage(msg)
+					}()
 				}
 			}
 		}

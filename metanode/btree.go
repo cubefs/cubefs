@@ -48,9 +48,9 @@ func (b *BTree) Get(key BtreeItem) (item BtreeItem) {
 }
 
 func (b *BTree) CopyGet(key BtreeItem) (item BtreeItem) {
-	b.Lock()
+	b.RLock()
 	item = b.tree.CopyGet(key)
-	b.Unlock()
+	b.RUnlock()
 	return
 }
 
@@ -66,10 +66,13 @@ func (b *BTree) Find(key BtreeItem, fn func(i BtreeItem)) {
 }
 
 func (b *BTree) CopyFind(key BtreeItem, fn func(i BtreeItem)) {
-	b.Lock()
+	b.RLock()
 	item := b.tree.CopyGet(key)
+	b.RUnlock()
+	if item == nil {
+		return
+	}
 	fn(item)
-	b.Unlock()
 }
 
 // Has checks if the key exists in the btree.

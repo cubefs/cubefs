@@ -15,8 +15,11 @@
 package meta
 
 import (
+	"context"
 	"fmt"
+
 	"github.com/chubaofs/chubaofs/util/btree"
+	"github.com/chubaofs/chubaofs/util/tracing"
 )
 
 type MetaPartition struct {
@@ -77,7 +80,12 @@ func (mw *MetaWrapper) getPartitionByID(id uint64) *MetaPartition {
 	return mp
 }
 
-func (mw *MetaWrapper) getPartitionByInode(ino uint64) *MetaPartition {
+func (mw *MetaWrapper) getPartitionByInode(ctx context.Context, ino uint64) *MetaPartition {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.getPartitionByInode").
+		SetTag("ino", ino)
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	var mp *MetaPartition
 	mw.RLock()
 	defer mw.RUnlock()

@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"context"
 	"io"
 	"net"
 
@@ -64,8 +65,8 @@ func (m *MetaNode) stopServer() {
 func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
 	defer conn.Close()
 	c := conn.(*net.TCPConn)
-	c.SetKeepAlive(true)
-	c.SetNoDelay(true)
+	_ = c.SetKeepAlive(true) // Ignore error
+	_ = c.SetNoDelay(true)   // Ignore error
 	remoteAddr := conn.RemoteAddr().String()
 	for {
 		select {
@@ -73,7 +74,7 @@ func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
 			return
 		default:
 		}
-		p := &Packet{}
+		p := NewPacket(context.Background())
 		if err := p.ReadFromConn(conn, proto.NoReadDeadlineTime); err != nil {
 			if err != io.EOF {
 				log.LogError("serve MetaNode: ", err.Error())
@@ -86,8 +87,7 @@ func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
 	}
 }
 
-func (m *MetaNode) handlePacket(conn net.Conn, p *Packet,
-	remoteAddr string) (err error) {
+func (m *MetaNode) handlePacket(conn net.Conn, p *Packet, remoteAddr string) (err error) {
 	// Handle request
 	err = m.metadataManager.HandleMetadataOperation(conn, p, remoteAddr)
 	return

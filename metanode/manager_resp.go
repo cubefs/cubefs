@@ -21,6 +21,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/tracing"
 )
 
 // Reply operation results to the master.
@@ -44,6 +45,13 @@ func (m *metadataManager) respondToMaster(task *proto.AdminTask) (err error) {
 
 // Reply data through tcp connection to the client.
 func (m *metadataManager) respondToClient(conn net.Conn, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metadataManager.respondToClient").
+		SetTag("size", p.Size).
+		SetTag("op", p.GetOpMsg()).
+		SetTag("code", p.ResultCode)
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
 	// Handle panic
 	defer func() {
 		if r := recover(); r != nil {

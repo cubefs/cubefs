@@ -19,27 +19,62 @@ import (
 	"testing"
 )
 
-func TestNewCounter(t *testing.T) {
+//func TestNewCounter(t *testing.T) {
+//    N := 100
+//    exitCh := make(chan int64, N)
+//    for i := 0; i < N; i++ {
+//        go func(i int64) {
+//            name := fmt.Sprintf("name_%d_gauge", i%2)
+//            label := fmt.Sprintf("label-%d:name", i)
+//            m := NewCounter(name)
+//            if m != nil {
+//                m.SetWithLabels(i, map[string]string{"volname": label, "cluster": name})
+//                t.Logf("metric: %v", m.name)
+//            }
+//            name2 := fmt.Sprintf("name_%d_counter", i%2)
+//            c := NewGauge(name2)
+//            if c != nil {
+//                //c.Set(float64(i))
+//                c.SetWithLabels(i, map[string]string{"volname": label, "cluster": name})
+//                t.Logf("metric: %v", name2)
+//            }
+//            exitCh <- i
+
+//        }(int64(i))
+//    }
+
+//    x := 0
+//    select {
+//    case <-exitCh:
+//        x += 1
+//        if x == N {
+//            return
+//        }
+//    }
+//}
+
+func TestNewTPCntVec(t *testing.T) {
+	tpv := NewTPVec("tpv1", "", []string{})
+	if tpv == nil {
+		t.Logf("tpv is nil ")
+	}
+
 	N := 100
+	m1 := NewTPCntVec("metric_tpcnt_vec", "", []string{"count"})
+	if m1 == nil {
+		t.Logf("tpcv is nil ")
+	}
 	exitCh := make(chan int64, N)
 	for i := 0; i < N; i++ {
 		go func(i int64) {
-			name := fmt.Sprintf("name_%d_gauge", i%2)
-			label := fmt.Sprintf("label-%d:name", i)
-			m := NewCounter(name)
-			if m != nil {
-				m.SetWithLabels(i, map[string]string{"volname": label, "cluster": name})
-				t.Logf("metric: %v", m.name)
+			if m1 == nil {
+				t.Logf("tpcv go is nil ")
 			}
-			name2 := fmt.Sprintf("name_%d_counter", i%2)
-			c := NewGauge(name2)
-			if c != nil {
-				//c.Set(float64(i))
-				c.SetWithLabels(i, map[string]string{"volname": label, "cluster": name})
-				t.Logf("metric: %v", name2)
+			m := m1.GetWithLabelVals(fmt.Sprintf("%d", i))
+			if m != nil {
+				m.Count()
 			}
 			exitCh <- i
-
 		}(int64(i))
 	}
 

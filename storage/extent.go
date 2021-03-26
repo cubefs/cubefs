@@ -278,9 +278,9 @@ func (e *Extent) checkOffsetAndSize(offset, size int64) error {
 		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
 	}
 
-	if size > util.BlockSize {
-		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
-	}
+	//if size > util.BlockSize {
+	//	return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
+	//}
 	return nil
 }
 

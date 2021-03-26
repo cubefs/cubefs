@@ -376,63 +376,14 @@ func (l *Log) Flush() {
 	}
 }
 
-const (
-	SetLogLevelPath   = "/loglevel/set"
-	SetLogMaxSizePath = "/logSize/set"
-	GetLogConfigPath  = "/logConfig/get"
-)
-
-func SetLogLevel(w http.ResponseWriter, r *http.Request) {
-	var (
-		err error
-	)
-	if err = r.ParseForm(); err != nil {
-		buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	levelStr := r.FormValue("level")
-	var level Level
-	switch strings.ToLower(levelStr) {
-	case "debug":
-		level = DebugLevel
-	case "info", "read", "write":
-		level = InfoLevel
-	case "warn":
-		level = WarnLevel
-	case "error":
-		level = ErrorLevel
-	case "critical":
-		level = CriticalLevel
-	case "fatal":
-		level = FatalLevel
-	default:
-		err = fmt.Errorf("level only can be set :debug,info,warn,error,critical,read,write,fatal")
-		buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	gLog.level = Level(level)
-	buildSuccessResp(w, "set log level success")
+func SetLogLevel(level Level) {
+	gLog.level = level
 }
 
-func SetLogSize(w http.ResponseWriter, r *http.Request) {
-	var (
-		size int64
-		err  error
-	)
-	if err = r.ParseForm(); err != nil {
-		buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	sizeStr := r.FormValue("size")
-	if size, err = strconv.ParseInt(sizeStr, 10, 64); err != nil {
-		buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
+func SetLogMaxSize(size int64) (err error) {
 	fs := syscall.Statfs_t{}
-	if err := syscall.Statfs(gLog.dir, &fs); err != nil {
+	if err = syscall.Statfs(gLog.dir, &fs); err != nil {
 		err = fmt.Errorf("stats disk space: %s", err.Error())
-		buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if size <= 0 {
@@ -440,13 +391,11 @@ func SetLogSize(w http.ResponseWriter, r *http.Request) {
 	} else {
 		gLog.rotate.SetMaxUseSizeMb(size)
 	}
-
-	buildSuccessResp(w, fmt.Sprintf("set max log size [%v]MB", gLog.rotate.maxUseSize))
+	return
 }
 
-func GetLogConfig(w http.ResponseWriter, r *http.Request) {
-	buildSuccessResp(w, fmt.Sprintf("log config: level[%v], headRoom [%v]MB, rollingSize [%v]MB, maxUse [%v]MB",
-		gLog.level, gLog.rotate.headRoom, gLog.rotate.rollingSize/1024/1024, gLog.rotate.maxUseSize))
+func GetLogConfig(f func(level Level, headRoom, rollingSize, maxUseSize int64)) {
+	f(gLog.level, gLog.rotate.headRoom, gLog.rotate.rollingSize, gLog.rotate.maxUseSize)
 }
 
 func buildSuccessResp(w http.ResponseWriter, data interface{}) {

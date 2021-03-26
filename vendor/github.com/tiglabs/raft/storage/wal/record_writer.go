@@ -16,6 +16,7 @@ package wal
 
 import (
 	"encoding/binary"
+	"fmt"
 	"os"
 
 	"github.com/tiglabs/raft/util"
@@ -56,7 +57,7 @@ func (w *recordWriter) Write(recType recordType, data recordData) error {
 	prevLen := w.buf.Len()
 	data.Encode(w.buf)
 	if uint64(w.buf.Len()-prevLen) != data.Size() {
-		panic("fbase/raft/logstorage: unexpected data size when decode " + recType.String())
+		return NewCorruptError(w.f.Name(), w.offset, fmt.Sprintf("unexpected data size wnehn decode %v", recType))
 	}
 	// write crc
 	crc := util.NewCRC(w.buf.Bytes()[w.buf.Len()-int(data.Size()):])
@@ -117,6 +118,7 @@ func (w *recordWriter) Close() error {
 	}
 	if w.buf != nil {
 		bufalloc.FreeBuffer(w.buf)
+		w.buf = nil
 	}
 	return nil
 }

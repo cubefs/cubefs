@@ -15,18 +15,17 @@
 package datanode
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"regexp"
 	"runtime"
 	"strings"
 	"sync"
-	"time"
-
-	"errors"
-	"os"
 	"syscall"
+	"time"
 
 	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/proto"
@@ -78,23 +77,23 @@ const (
 
 // DataNode defines the structure of a data node.
 type DataNode struct {
-	space           *SpaceManager
-	port            string
-	zoneName        string
-	clusterID       string
-	localIP         string
-	localServerAddr string
-	nodeID          uint64
-	raftDir         string
-	raftHeartbeat   string
-	raftReplica     string
-	raftStore       raftstore.RaftStore
-	tickInterval    int
-
+	space                    *SpaceManager
+	port                     string
+	zoneName                 string
+	clusterID                string
+	localIP                  string
+	localServerAddr          string
+	nodeID                   uint64
+	raftDir                  string
+	raftHeartbeat            string
+	raftReplica              string
+	raftStore                raftstore.RaftStore
+	tickInterval             int
 	tcpListener              net.Listener
 	stopC                    chan bool
 	fixTinyDeleteRecordLimit uint64
 	control                  common.Control
+	metrics                  *DataNodeMetrics
 }
 
 func NewServer() *DataNode {
@@ -131,6 +130,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	}
 
 	exporter.Init(ModuleName, cfg)
+	s.registerMetrics()
 	s.register(cfg)
 
 	// start the raft server

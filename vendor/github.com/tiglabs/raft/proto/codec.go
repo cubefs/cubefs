@@ -14,9 +14,13 @@
 package proto
 
 import (
+	"bytes"
 	"encoding/binary"
 	"io"
 	"sort"
+
+	"github.com/opentracing/opentracing-go"
+	"github.com/tiglabs/raft/tracing"
 
 	"github.com/tiglabs/raft/util"
 )
@@ -28,7 +32,7 @@ const (
 	snapmeta_header uint64 = 20
 	message_header  uint64 = 68
 
-	learner_size	uint64 = 10
+	learner_size     uint64 = 10
 	learner_len_size uint64 = 4
 )
 
@@ -57,7 +61,7 @@ func (learner *Learner) Encode(datas []byte) {
 }
 
 func (learner *Learner) Decode(datas []byte) {
-	learner.PromConfig.AutoPromote = (datas[0] == 1)
+	learner.PromConfig.AutoPromote = datas[0] == 1
 	learner.PromConfig.PromThreshold = datas[1]
 	learner.ID = binary.BigEndian.Uint64(datas[2:])
 }
@@ -209,6 +213,14 @@ func (m *Message) Size() uint64 {
 }
 
 func (m *Message) Encode(w io.Writer) error {
+	if m.Ctx() != nil {
+		if span := opentracing.SpanFromContext(m.Ctx()); span != nil && span.Tracer() != nil {
+			span = span.Tracer().StartSpan("Message Encode", opentracing.ChildOf(span.Context())).SetTag("len", m.Size())
+			span.Finish()
+			m.SetCtx(opentracing.ContextWithSpan(m.Ctx(), span))
+		}
+	}
+
 	buf := getByteSlice()
 	defer returnByteSlice(buf)
 
@@ -279,8 +291,8 @@ func (m *Message) Decode(r *util.BufferReader) error {
 	ver := datas[0]
 	if ver == version1 {
 		m.Type = MsgType(datas[1])
-		m.ForceVote = (datas[2] == 1)
-		m.Reject = (datas[3] == 1)
+		m.ForceVote = datas[2] == 1
+		m.Reject = datas[3] == 1
 		m.RejectIndex = binary.BigEndian.Uint64(datas[4:])
 		m.ID = binary.BigEndian.Uint64(datas[12:])
 		m.From = binary.BigEndian.Uint64(datas[20:])
@@ -313,7 +325,7 @@ func (m *Message) Decode(r *util.BufferReader) error {
 	return nil
 }
 
-func EncodeHBConext(ctx HeartbeatContext) (buf []byte) {
+func EncodeHBContext(ctx HeartbeatContext) (buf []byte) {
 	sort.Slice(ctx, func(i, j int) bool {
 		return ctx[i] < ctx[j]
 	})
@@ -335,6 +347,43 @@ func DecodeHBContext(buf []byte) (ctx HeartbeatContext) {
 		ctx = append(ctx, id+prev)
 		prev = id + prev
 		buf = buf[n:]
+	}
+	return
+}
+
+func EncodeTransportContext(ctx TransportContext) []byte {
+	contextW := bytes.NewBuffer(nil)
+	varBuf := make([]byte, binary.MaxVarintLen64)
+	if ctx.Tracer != nil {
+		tracerW := bytes.NewBuffer(nil)
+		if err := ctx.Tracer.Inject(tracerW); err == nil {
+			n := binary.PutUvarint(varBuf, uint64(tracerW.Len()))
+			contextW.Write(varBuf[:n])
+			contextW.Write(tracerW.Bytes())
+		}
+	} else {
+		contextW.WriteByte(0)
+	}
+	return contextW.Bytes()
+}
+
+func DecodeTransportContext(buf []byte, tracerName string) (ctx TransportContext) {
+	r := bytes.NewBuffer(buf)
+	if r.Len() == 0 {
+		return
+	}
+	tracerLen, err := binary.ReadUvarint(r)
+	if err != nil {
+		return
+	}
+	if tracerLen > 0 {
+		tracerBuff := make([]byte, tracerLen)
+		if _, err := r.Read(tracerBuff); err != nil {
+			return
+		}
+		ctx.Tracer = tracing.ExtractTracer(bytes.NewBuffer(tracerBuff), tracerName)
+	} else {
+		ctx.Tracer = tracing.DefaultTracer()
 	}
 	return
 }

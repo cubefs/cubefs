@@ -28,14 +28,15 @@ const (
 )
 
 const (
-	BlockCount       = 1024
-	BlockSize        = 65536 * 2
-	ReadBlockSize    = BlockSize
-	PerBlockCrcSize  = 4
-	ExtentSize       = BlockCount * BlockSize
-	MinExtentSize    = BlockSize
-	PacketHeaderSize = 57
-	BlockHeaderSize  = 4096
+	BlockCount               = 1024
+	BlockSize                = 65536 * 2
+	ReadBlockSize            = BlockSize
+	PerBlockCrcSize          = 4
+	ExtentSize               = BlockCount * BlockSize
+	MinExtentSize            = BlockSize
+	PacketHeaderSize         = 57
+	BlockHeaderSize          = 4096
+	OverWritePacketSizeLimit = 512 * 1024 // Write up to 1MB of data at a time in MySQL
 )
 
 const (

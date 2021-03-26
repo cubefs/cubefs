@@ -15,21 +15,26 @@
 package meta
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"sync"
 
-	"github.com/chubaofs/chubaofs/util/errors"
-
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/tracing"
 )
 
 // API implementations
 //
 
-func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target []byte) (status int, info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) icreate(ctx context.Context, mp *MetaPartition, mode, uid, gid uint32, target []byte) (status int, info *proto.InodeInfo, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.icreate")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	req := &proto.CreateInodeRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -39,18 +44,21 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target 
 		Target:      target,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaCreateInode
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("icreate: err(%v)", err)
 		return
 	}
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogErrorf("icreate: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -77,25 +85,32 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target 
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) iunlink(mp *MetaPartition, inode uint64) (status int, info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) iunlink(ctx context.Context, mp *MetaPartition, inode uint64) (status int, info *proto.InodeInfo, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.iunlink")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	req := &proto.UnlinkInodeRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaUnlinkInode
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("iunlink: ino(%v) err(%v)", inode, err)
 		return
 	}
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogErrorf("iunlink: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -118,25 +133,32 @@ func (mw *MetaWrapper) iunlink(mp *MetaPartition, inode uint64) (status int, inf
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64) (status int, err error) {
+func (mw *MetaWrapper) ievict(ctx context.Context, mp *MetaPartition, inode uint64) (status int, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.ievict")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	req := &proto.EvictInodeRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaEvictInode
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogWarnf("ievict: ino(%v) err(%v)", inode, err)
 		return
 	}
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogWarnf("ievict: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -152,7 +174,11 @@ func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64) (status int, err 
 	return statusOK, nil
 }
 
-func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32) (status int, err error) {
+func (mw *MetaWrapper) dcreate(ctx context.Context, mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32) (status int, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.dcreate")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	if parentID == inode {
 		return statusExist, nil
 	}
@@ -166,18 +192,21 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 		Mode:        mode,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaCreateDentry
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("dcreate: req(%v) err(%v)", *req, err)
 		return
 	}
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogErrorf("dcreate: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -193,7 +222,11 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 	return
 }
 
-func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, newInode uint64) (status int, oldInode uint64, err error) {
+func (mw *MetaWrapper) dupdate(ctx context.Context, mp *MetaPartition, parentID uint64, name string, newInode uint64) (status int, oldInode uint64, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.dupdate")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	if parentID == newInode {
 		return statusExist, 0, nil
 	}
@@ -206,18 +239,21 @@ func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, 
 		Inode:       newInode,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaUpdateDentry
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("dupdate: req(%v) err(%v)", *req, err)
 		return
 	}
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogErrorf("dupdate: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -239,7 +275,11 @@ func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, 
 	return statusOK, resp.Inode, nil
 }
 
-func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string) (status int, inode uint64, err error) {
+func (mw *MetaWrapper) ddelete(ctx context.Context, mp *MetaPartition, parentID uint64, name string) (status int, inode uint64, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.ddelete")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	req := &proto.DeleteDentryRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -247,18 +287,21 @@ func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string) 
 		Name:        name,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaDeleteDentry
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("ddelete: req(%v) err(%v)", *req, err)
 		return
 	}
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogErrorf("ddelete: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -280,15 +323,20 @@ func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string) 
 	return statusOK, resp.Inode, nil
 }
 
-func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string) (status int, inode uint64, mode uint32, err error) {
+func (mw *MetaWrapper) lookup(ctx context.Context, mp *MetaPartition, parentID uint64, name string) (status int, inode uint64, mode uint32, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.lookup")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	req := &proto.LookupRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
 		ParentID:    parentID,
 		Name:        name,
 	}
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaLookup
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("lookup: err(%v)", err)
@@ -297,10 +345,12 @@ func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string) (
 
 	log.LogDebugf("lookup enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogErrorf("lookup: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -326,25 +376,32 @@ func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string) (
 	return statusOK, resp.Inode, resp.Mode, nil
 }
 
-func (mw *MetaWrapper) iget(mp *MetaPartition, inode uint64) (status int, info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) iget(ctx context.Context, mp *MetaPartition, inode uint64) (status int, info *proto.InodeInfo, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.iget")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	req := &proto.InodeGetRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaInodeGet
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("iget: req(%v) err(%v)", *req, err)
 		return
 	}
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogErrorf("iget: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -365,7 +422,11 @@ func (mw *MetaWrapper) iget(mp *MetaPartition, inode uint64) (status int, info *
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) batchIget(wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64, respCh chan []*proto.InodeInfo) {
+func (mw *MetaWrapper) batchIget(ctx context.Context, wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64, respCh chan []*proto.InodeInfo) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.batchIget")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	defer wg.Done()
 	var (
 		err error
@@ -376,17 +437,20 @@ func (mw *MetaWrapper) batchIget(wg *sync.WaitGroup, mp *MetaPartition, inodes [
 		Inodes:      inodes,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaBatchInodeGet
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		return
 	}
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogErrorf("batchIget: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -415,25 +479,32 @@ func (mw *MetaWrapper) batchIget(wg *sync.WaitGroup, mp *MetaPartition, inodes [
 	}
 }
 
-func (mw *MetaWrapper) readdir(mp *MetaPartition, parentID uint64) (status int, children []proto.Dentry, err error) {
+func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID uint64) (status int, children []proto.Dentry, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.readdir")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	req := &proto.ReadDirRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
 		ParentID:    parentID,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaReadDir
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("readdir: req(%v) err(%v)", *req, err)
 		return
 	}
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogErrorf("readdir: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -456,7 +527,11 @@ func (mw *MetaWrapper) readdir(mp *MetaPartition, parentID uint64) (status int, 
 	return statusOK, resp.Children, nil
 }
 
-func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent proto.ExtentKey) (status int, err error) {
+func (mw *MetaWrapper) appendExtentKey(ctx context.Context, mp *MetaPartition, inode uint64, extent proto.ExtentKey) (status int, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.appendExtentKey")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	req := &proto.AppendExtentKeyRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -464,18 +539,21 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 		Extent:      extent,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaExtentsAdd
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("appendExtentKey: req(%v) err(%v)", *req, err)
 		return
 	}
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogErrorf("appendExtentKey: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -488,25 +566,77 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 	return status, nil
 }
 
-func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64) (status int, gen, size uint64, extents []proto.ExtentKey, err error) {
+func (mw *MetaWrapper) insertExtentKey(ctx context.Context, mp *MetaPartition, inode uint64, ek proto.ExtentKey) (status int, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.insertExtentKey").
+		SetTag("mpID", mp.PartitionID).
+		SetTag("inode", inode).
+		SetTag("ek.FileOffset", ek.FileOffset).
+		SetTag("ek.PartitionId", ek.PartitionId).
+		SetTag("ek.ExtentId", ek.ExtentId).
+		SetTag("ek.ExtentOffset", ek.ExtentOffset).
+		SetTag("ek.Size", ek.Size)
+	defer tracer.Finish()
+
+	req := &proto.InsertExtentKeyRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		Inode:       inode,
+		Extent:      ek,
+	}
+
+	packet := proto.NewPacketReqID(ctx)
+	packet.Opcode = proto.OpMetaExtentsInsert
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("insertExtentKey: req(%v) err(%v)", *req, err)
+		return
+	}
+
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
+
+	packet, err = mw.sendWriteToMP(ctx, mp, packet)
+	if err != nil {
+		log.LogErrorf("insertExtentKey: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogErrorf("insertExtentKey: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	}
+	return status, nil
+}
+
+func (mw *MetaWrapper) getExtents(ctx context.Context, mp *MetaPartition, inode uint64) (status int, gen, size uint64, extents []proto.ExtentKey, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.getExtents")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	req := &proto.GetExtentsRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaExtentsList
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("getExtents: req(%v) err(%v)", *req, err)
 		return
 	}
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogErrorf("getExtents: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -528,7 +658,11 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64) (status int, 
 	return statusOK, resp.Generation, resp.Size, resp.Extents, nil
 }
 
-func (mw *MetaWrapper) truncate(mp *MetaPartition, inode, size uint64) (status int, err error) {
+func (mw *MetaWrapper) truncate(ctx context.Context, mp *MetaPartition, inode, size uint64) (status int, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.truncate")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	req := &proto.TruncateRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -536,8 +670,9 @@ func (mw *MetaWrapper) truncate(mp *MetaPartition, inode, size uint64) (status i
 		Size:        size,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaTruncate
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("truncate: ino(%v) size(%v) err(%v)", inode, size, err)
@@ -546,10 +681,12 @@ func (mw *MetaWrapper) truncate(mp *MetaPartition, inode, size uint64) (status i
 
 	log.LogDebugf("truncate enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogErrorf("truncate: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -565,15 +702,20 @@ func (mw *MetaWrapper) truncate(mp *MetaPartition, inode, size uint64) (status i
 	return statusOK, nil
 }
 
-func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64) (status int, info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) ilink(ctx context.Context, mp *MetaPartition, inode uint64) (status int, info *proto.InodeInfo, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.ilink")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	req := &proto.LinkInodeRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaLinkInode
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("ilink: req(%v) err(%v)", *req, err)
@@ -582,10 +724,12 @@ func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64) (status int, info 
 
 	log.LogDebugf("ilink enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogErrorf("ilink: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -612,7 +756,11 @@ func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64) (status int, info 
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid, gid uint32, atime, mtime int64) (status int, err error) {
+func (mw *MetaWrapper) setattr(ctx context.Context, mp *MetaPartition, inode uint64, valid, mode, uid, gid uint32, atime, mtime int64) (status int, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.setattr")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	req := &proto.SetAttrRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -625,8 +773,9 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 		ModifyTime:  mtime,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaSetattr
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("setattr: err(%v)", err)
@@ -635,10 +784,12 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 
 	log.LogDebugf("setattr enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogErrorf("setattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -654,7 +805,11 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 	return statusOK, nil
 }
 
-func (mw *MetaWrapper) createMultipart(mp *MetaPartition, path string, extend map[string]string) (status int, multipartId string, err error) {
+func (mw *MetaWrapper) createMultipart(ctx context.Context, mp *MetaPartition, path string, extend map[string]string) (status int, multipartId string, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.createMultipart")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	req := &proto.CreateMultipartRequest{
 		PartitionId: mp.PartitionID,
 		VolName:     mw.volname,
@@ -662,8 +817,9 @@ func (mw *MetaWrapper) createMultipart(mp *MetaPartition, path string, extend ma
 		Extend:      extend,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpCreateMultipart
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("createMultipart: err(%v)", err)
@@ -672,10 +828,12 @@ func (mw *MetaWrapper) createMultipart(mp *MetaPartition, path string, extend ma
 
 	log.LogDebugf("createMultipart enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogErrorf("createMultipart: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -696,7 +854,11 @@ func (mw *MetaWrapper) createMultipart(mp *MetaPartition, path string, extend ma
 	return statusOK, resp.Info.ID, nil
 }
 
-func (mw *MetaWrapper) getMultipart(mp *MetaPartition, path, multipartId string) (status int, info *proto.MultipartInfo, err error) {
+func (mw *MetaWrapper) getMultipart(ctx context.Context, mp *MetaPartition, path, multipartId string) (status int, info *proto.MultipartInfo, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.getMultipart")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	req := &proto.GetMultipartRequest{
 		PartitionId: mp.PartitionID,
 		VolName:     mw.volname,
@@ -704,8 +866,9 @@ func (mw *MetaWrapper) getMultipart(mp *MetaPartition, path, multipartId string)
 		MultipartId: multipartId,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpGetMultipart
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("get session: err(%v)", err)
@@ -714,10 +877,12 @@ func (mw *MetaWrapper) getMultipart(mp *MetaPartition, path, multipartId string)
 
 	log.LogDebugf("getMultipart enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogErrorf("getMultipart: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -739,10 +904,14 @@ func (mw *MetaWrapper) getMultipart(mp *MetaPartition, path, multipartId string)
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, path, multipartId string, partId uint16, size uint64, md5 string, indoe uint64) (status int, err error) {
+func (mw *MetaWrapper) addMultipartPart(ctx context.Context, mp *MetaPartition, path, multipartId string, partId uint16, size uint64, md5 string, inode uint64) (status int, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.addMultipartPart")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	part := &proto.MultipartPartInfo{
 		ID:    partId,
-		Inode: indoe,
+		Inode: inode,
 		MD5:   md5,
 		Size:  size,
 	}
@@ -755,8 +924,9 @@ func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, path, multipartId str
 		Part:        part,
 	}
 	log.LogDebugf("addMultipartPart: part(%v), req(%v)", part, req)
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpAddMultipartPart
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("addMultipartPart: marshal packet fail, err(%v)", err)
@@ -764,10 +934,13 @@ func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, path, multipartId str
 	}
 
 	log.LogDebugf("addMultipartPart entry: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
+
+	packet, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogErrorf("addMultipartPart: packet(%v) mp(%v) req(%v) part(%v) err(%v)", packet, mp, req, part, err)
 		return
@@ -782,24 +955,30 @@ func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, path, multipartId str
 	return statusOK, nil
 }
 
-func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, err error) {
+func (mw *MetaWrapper) idelete(ctx context.Context, mp *MetaPartition, inode uint64) (status int, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.idelete")
+	defer tracer.Finish()
+	ctx = tracer.Context()
 	req := &proto.DeleteInodeRequest{
 		VolName:     mw.volname,
 		PartitionId: mp.PartitionID,
 		Inode:       inode,
 	}
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaDeleteInode
+	packet.PartitionID = mp.PartitionID
 	if err = packet.MarshalData(req); err != nil {
 		log.LogErrorf("delete inode: err[%v]", err)
 		return
 	}
 	log.LogDebugf("delete inode: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogErrorf("delete inode: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -814,7 +993,11 @@ func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, err
 	return statusOK, nil
 }
 
-func (mw *MetaWrapper) removeMultipart(mp *MetaPartition, path, multipartId string) (status int, err error) {
+func (mw *MetaWrapper) removeMultipart(ctx context.Context, mp *MetaPartition, path, multipartId string) (status int, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.removeMultipart")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	req := &proto.RemoveMultipartRequest{
 		PartitionId: mp.PartitionID,
 		VolName:     mw.volname,
@@ -822,18 +1005,21 @@ func (mw *MetaWrapper) removeMultipart(mp *MetaPartition, path, multipartId stri
 		MultipartId: multipartId,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpRemoveMultipart
+	packet.PartitionID = mp.PartitionID
 	if err = packet.MarshalData(req); err != nil {
 		log.LogErrorf("delete session: err[%v]", err)
 		return
 	}
 	log.LogDebugf("delete session: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogErrorf("delete session: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -848,7 +1034,11 @@ func (mw *MetaWrapper) removeMultipart(mp *MetaPartition, path, multipartId stri
 	return statusOK, nil
 }
 
-func (mw *MetaWrapper) appendExtentKeys(mp *MetaPartition, inode uint64, extents []proto.ExtentKey) (status int, err error) {
+func (mw *MetaWrapper) appendExtentKeys(ctx context.Context, mp *MetaPartition, inode uint64, extents []proto.ExtentKey) (status int, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.appendExtentKeys")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	req := &proto.AppendExtentKeysRequest{
 		VolName:     mw.volname,
 		PartitionId: mp.PartitionID,
@@ -856,8 +1046,9 @@ func (mw *MetaWrapper) appendExtentKeys(mp *MetaPartition, inode uint64, extents
 		Extents:     extents,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaBatchExtentsAdd
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("batch append extent: req(%v) err(%v)", *req, err)
@@ -865,10 +1056,12 @@ func (mw *MetaWrapper) appendExtentKeys(mp *MetaPartition, inode uint64, extents
 	}
 	log.LogDebugf("appendExtentKeys: batch append extent: packet(%v) mp(%v) req(%v)", packet, mp, *req)
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogErrorf("batch append extent: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -884,7 +1077,11 @@ func (mw *MetaWrapper) appendExtentKeys(mp *MetaPartition, inode uint64, extents
 	return
 }
 
-func (mw *MetaWrapper) setXAttr(mp *MetaPartition, inode uint64, name []byte, value []byte) (status int, err error) {
+func (mw *MetaWrapper) setXAttr(ctx context.Context, mp *MetaPartition, inode uint64, name []byte, value []byte) (status int, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.setXAttr")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	req := &proto.SetXAttrRequest{
 		VolName:     mw.volname,
 		PartitionId: mp.PartitionID,
@@ -893,8 +1090,9 @@ func (mw *MetaWrapper) setXAttr(mp *MetaPartition, inode uint64, name []byte, va
 		Value:       string(value),
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaSetXAttr
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("setXAttr: matshal packet fail, err(%v)", err)
@@ -902,10 +1100,12 @@ func (mw *MetaWrapper) setXAttr(mp *MetaPartition, inode uint64, name []byte, va
 	}
 	log.LogDebugf("setXAttr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogErrorf("setXAttr: send to partition fail, packet(%v) mp(%v) req(%v) err(%v)",
 			packet, mp, *req, err)
@@ -922,7 +1122,11 @@ func (mw *MetaWrapper) setXAttr(mp *MetaPartition, inode uint64, name []byte, va
 	return
 }
 
-func (mw *MetaWrapper) getXAttr(mp *MetaPartition, inode uint64, name string) (value string, status int, err error) {
+func (mw *MetaWrapper) getXAttr(ctx context.Context, mp *MetaPartition, inode uint64, name string) (value string, status int, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.getXAttr")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	req := &proto.GetXAttrRequest{
 		VolName:     mw.volname,
 		PartitionId: mp.PartitionID,
@@ -930,8 +1134,9 @@ func (mw *MetaWrapper) getXAttr(mp *MetaPartition, inode uint64, name string) (v
 		Key:         name,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaGetXAttr
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("get xattr: req(%v) err(%v)", *req, err)
@@ -939,10 +1144,12 @@ func (mw *MetaWrapper) getXAttr(mp *MetaPartition, inode uint64, name string) (v
 	}
 	log.LogDebugf("get xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogErrorf("get xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -965,7 +1172,11 @@ func (mw *MetaWrapper) getXAttr(mp *MetaPartition, inode uint64, name string) (v
 	return
 }
 
-func (mw *MetaWrapper) removeXAttr(mp *MetaPartition, inode uint64, name string) (status int, err error) {
+func (mw *MetaWrapper) removeXAttr(ctx context.Context, mp *MetaPartition, inode uint64, name string) (status int, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.removeXAttr")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	req := &proto.RemoveXAttrRequest{
 		VolName:     mw.volname,
 		PartitionId: mp.PartitionID,
@@ -973,18 +1184,21 @@ func (mw *MetaWrapper) removeXAttr(mp *MetaPartition, inode uint64, name string)
 		Key:         name,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaRemoveXAttr
+	packet.PartitionID = mp.PartitionID
 	if err = packet.MarshalData(req); err != nil {
 		log.LogErrorf("remove xattr: req(%v) err(%v)", *req, err)
 		return
 	}
 	log.LogDebugf("remove xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	if packet, err = mw.sendToMetaPartition(mp, packet); err != nil {
+	if packet, err = mw.sendWriteToMP(ctx, mp, packet); err != nil {
 		log.LogErrorf("remove xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
@@ -999,25 +1213,32 @@ func (mw *MetaWrapper) removeXAttr(mp *MetaPartition, inode uint64, name string)
 	return
 }
 
-func (mw *MetaWrapper) listXAttr(mp *MetaPartition, inode uint64) (keys []string, status int, err error) {
+func (mw *MetaWrapper) listXAttr(ctx context.Context, mp *MetaPartition, inode uint64) (keys []string, status int, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.listXAttr")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	req := &proto.ListXAttrRequest{
 		VolName:     mw.volname,
 		PartitionId: mp.PartitionID,
 		Inode:       inode,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaListXAttr
+	packet.PartitionID = mp.PartitionID
 	if err = packet.MarshalData(req); err != nil {
 		log.LogErrorf("list xattr: req(%v) err(%v)", *req, err)
 		return
 	}
 	log.LogDebugf("list xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	if packet, err = mw.sendToMetaPartition(mp, packet); err != nil {
+	if packet, err = mw.sendReadToMP(ctx, mp, packet); err != nil {
 		log.LogErrorf("list xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
@@ -1040,7 +1261,11 @@ func (mw *MetaWrapper) listXAttr(mp *MetaPartition, inode uint64) (keys []string
 	return
 }
 
-func (mw *MetaWrapper) listMultiparts(mp *MetaPartition, prefix, delimiter, keyMarker string, multipartIdMarker string, maxUploads uint64) (status int, sessions *proto.ListMultipartResponse, err error) {
+func (mw *MetaWrapper) listMultiparts(ctx context.Context, mp *MetaPartition, prefix, delimiter, keyMarker string, multipartIdMarker string, maxUploads uint64) (status int, sessions *proto.ListMultipartResponse, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.listMultiparts")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	req := &proto.ListMultipartRequest{
 		VolName:           mw.volname,
 		PartitionId:       mp.PartitionID,
@@ -1051,8 +1276,9 @@ func (mw *MetaWrapper) listMultiparts(mp *MetaPartition, prefix, delimiter, keyM
 		Prefix:            prefix,
 	}
 
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpListMultiparts
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("list sessions : err(%v)", err)
@@ -1060,10 +1286,13 @@ func (mw *MetaWrapper) listMultiparts(mp *MetaPartition, prefix, delimiter, keyM
 	}
 
 	log.LogDebugf("listMultiparts enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
+
+	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogErrorf("listMultiparts: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -1085,7 +1314,11 @@ func (mw *MetaWrapper) listMultiparts(mp *MetaPartition, prefix, delimiter, keyM
 	return statusOK, resp, nil
 }
 
-func (mw *MetaWrapper) batchGetXAttr(mp *MetaPartition, inodes []uint64, keys []string) ([]*proto.XAttrInfo, error) {
+func (mw *MetaWrapper) batchGetXAttr(ctx context.Context, mp *MetaPartition, inodes []uint64, keys []string) ([]*proto.XAttrInfo, error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.batchGetXAttr")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	var (
 		err error
 	)
@@ -1095,17 +1328,20 @@ func (mw *MetaWrapper) batchGetXAttr(mp *MetaPartition, inodes []uint64, keys []
 		Inodes:      inodes,
 		Keys:        keys,
 	}
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaBatchGetXAttr
+	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
 		return nil, err
 	}
 
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
+	if metrics != nil {
+		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
+		defer m.CountWithError(err)
+	}
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
 		log.LogErrorf("batchGetXAttr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return nil, err
@@ -1127,11 +1363,15 @@ func (mw *MetaWrapper) batchGetXAttr(mp *MetaPartition, inodes []uint64, keys []
 	return resp.XAttrs, nil
 }
 
-func (mw *MetaWrapper) getAppliedID(mp *MetaPartition, addr string) (appliedID uint64, err error) {
+func (mw *MetaWrapper) getAppliedID(ctx context.Context, mp *MetaPartition, addr string) (appliedID uint64, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.getAppliedID")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	req := &proto.GetAppliedIDRequest{
 		PartitionId: mp.PartitionID,
 	}
-	packet := proto.NewPacketReqID()
+	packet := proto.NewPacketReqID(context.Background())
 	packet.Opcode = proto.OpMetaGetAppliedID
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -1142,7 +1382,7 @@ func (mw *MetaWrapper) getAppliedID(mp *MetaPartition, addr string) (appliedID u
 	metric := exporter.NewTPCnt(packet.GetOpMsg())
 	defer metric.Set(err)
 
-	packet, err = mw.sendToSpecifiedMpAddr(mp, addr, packet)
+	packet, err = mw.sendToHost(ctx, mp, packet, addr)
 	if err != nil || packet == nil {
 		log.LogErrorf("getAppliedID: packet(%v) mp(%v) addr(%v) req(%v) err(%v)", packet, mp, addr, *req, err)
 		err = errors.New("getAppliedID error")

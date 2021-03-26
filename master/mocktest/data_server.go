@@ -16,6 +16,7 @@ package mocktest
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -73,7 +74,7 @@ func (mds *MockDataServer) register() {
 	var err error
 	var nodeID uint64
 	var retry int
-	for retry < 3 {
+	for retry < 20 {
 		nodeID, err = mds.mc.NodeAPI().AddDataNode(mds.TcpAddr, mds.zoneName)
 		if err == nil {
 			break
@@ -119,7 +120,7 @@ func (mds *MockDataServer) serveConn(rc net.Conn) {
 	}
 	conn.SetKeepAlive(true)
 	conn.SetNoDelay(true)
-	req := proto.NewPacket()
+	req := proto.NewPacket(context.Background())
 	err := req.ReadFromConn(conn, proto.NoReadDeadlineTime)
 	if err != nil {
 		return

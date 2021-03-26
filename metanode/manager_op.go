@@ -565,6 +565,36 @@ func (m *metadataManager) opMetaExtentsAdd(conn net.Conn, p *Packet,
 	return
 }
 
+func (m *metadataManager) opMetaExtentsInsert(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
+	req := &proto.InsertExtentKeyRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.ExtentInsert(req, p)
+	m.respondToClient(conn, p)
+	if err != nil {
+		log.LogErrorf("%s [opMetaExtentsInsert] ExtentInsert: %s, "+
+			"response to client: %s", remoteAddr, err.Error(), p.GetResultMsg())
+	}
+	log.LogDebugf("%s [opMetaExtentsInsert] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
 func (m *metadataManager) opMetaExtentsList(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
 	req := &proto.GetExtentsRequest{}
@@ -719,7 +749,7 @@ func (m *metadataManager) opUpdateMetaPartition(conn net.Conn, p *Packet,
 		PartitionID: req.PartitionID,
 		End:         req.End,
 	}
-	err = mp.UpdatePartition(req, resp)
+	err = mp.UpdatePartition(p.Ctx(), req, resp)
 	adminTask.Response = resp
 	adminTask.Request = nil
 	m.respondToMaster(adminTask)
@@ -1223,7 +1253,7 @@ func (m *metadataManager) opMetaCursorReset(conn net.Conn, p *Packet, remoteAddr
 	if !m.serveProxy(conn, mp, p) {
 		return nil
 	}
-	if _, err = mp.(*metaPartition).CursorReset(req); err != nil {
+	if _, err = mp.(*metaPartition).CursorReset(p.Ctx(), req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 	} else {
 		p.PacketOkReply()

@@ -14,10 +14,14 @@
 package wal
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path"
 	"sort"
+	"sync"
+
+	"github.com/tiglabs/raft/tracing"
 
 	"math"
 
@@ -30,11 +34,17 @@ type logEntryStorage struct {
 
 	dir         string
 	filesize    int
+	syncRotate  bool
 	logfiles    []logFileName // 所有日志文件的名字
 	last        *logEntryFile
 	nextFileSeq uint64
 
-	cache *logFileCache
+	rotatingc chan struct{}
+	rotating  *logEntryFile
+	rotateMu  sync.RWMutex
+
+	cache  *logFileCache
+	cachec chan *logEntryFile
 }
 
 func openLogStorage(dir string, s *Storage) (*logEntryStorage, error) {
@@ -43,6 +53,9 @@ func openLogStorage(dir string, s *Storage) (*logEntryStorage, error) {
 		dir:         dir,
 		filesize:    s.c.GetFileSize(),
 		nextFileSeq: 1,
+		syncRotate:  s.c.GetSyncRotate(),
+		rotatingc:   make(chan struct{}, 1),
+		cachec:      make(chan *logEntryFile, s.c.GetFileCacheCapacity()),
 	}
 
 	// cache
@@ -151,18 +164,22 @@ func (ls *logEntryStorage) SaveEntries(ents []*proto.Entry) error {
 		return nil
 	}
 
-	if err := ls.truncateBack(ents[0].Index); err != nil {
+	var tracer = tracing.NewTracer("logEntryStorage.SaveEntries").SetTag("entriesLen", len(ents))
+	defer tracer.Finish()
+	var ctx = tracer.Context()
+
+	if err := ls.truncateBack(ctx, ents[0].Index); err != nil {
 		return err
 	}
 
 	for _, ent := range ents {
-		if err := ls.saveEntry(ent); err != nil {
+		if err := ls.saveEntry(ctx, ent); err != nil {
 			return err
 		}
 	}
 
 	// flush应用层内存中的，写入file
-	if err := ls.last.Flush(); err != nil {
+	if err := ls.last.Flush(ctx); err != nil {
 		return err
 	}
 
@@ -184,14 +201,25 @@ func (ls *logEntryStorage) TruncateFront(index uint64) error {
 		}
 	}
 
-	for i := 0; i <= truncFIndex; i++ {
-		if err := ls.remove(ls.logfiles[i]); err != nil {
-			return err
-		}
+	var deletions []logFileName
+	if truncFIndex >= 0 {
+		deletions = make([]logFileName, truncFIndex+1)
+		copy(deletions, ls.logfiles[:truncFIndex+1])
+		ls.logfiles = ls.logfiles[truncFIndex+1:]
 	}
 
-	if truncFIndex >= 0 {
-		ls.logfiles = ls.logfiles[truncFIndex+1:]
+	var remove = func(names []logFileName) {
+		go func(names []logFileName) {
+			for _, name := range names {
+				if err := ls.remove(name); err != nil {
+					log.Warn("remove log file [%v] fail: %v", name.String(), err)
+				}
+			}
+		}(names)
+	}
+
+	if len(deletions) > 0 {
+		remove(deletions)
 	}
 
 	return nil
@@ -218,7 +246,10 @@ func (ls *logEntryStorage) TruncateAll() error {
 }
 
 // truncateBack 从后面截断，用于删除冲突日志
-func (ls *logEntryStorage) truncateBack(index uint64) error {
+func (ls *logEntryStorage) truncateBack(ctx context.Context, index uint64) error {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("logEntryStorage.truncateBack").SetTag("index", index)
+	defer tracer.Finish()
+
 	if ls.LastIndex() < index {
 		return nil
 	}
@@ -244,7 +275,9 @@ func (ls *logEntryStorage) truncateBack(index uint64) error {
 		if err != nil {
 			return err
 		}
-		ls.cache.Delete(n, false)
+
+		_ = ls.cache.Delete(n, false)
+
 		ls.last = lf
 		if err := ls.last.OpenWrite(); err != nil {
 			return err
@@ -275,6 +308,14 @@ func (ls *logEntryStorage) get(name logFileName) (*logEntryFile, error) {
 	if name.seq == ls.last.Seq() {
 		return ls.last, nil
 	}
+	ls.maybeUpdateCache()
+	var rotating *logEntryFile
+	ls.rotateMu.RLock()
+	rotating = ls.rotating
+	ls.rotateMu.RUnlock()
+	if rotating != nil && rotating.Name() == name {
+		return rotating, nil
+	}
 	return ls.cache.Get(name)
 }
 
@@ -283,22 +324,64 @@ func (ls *logEntryStorage) remove(name logFileName) error {
 }
 
 // 写满了，新建一个新文件
-func (ls *logEntryStorage) rotate() error {
+func (ls *logEntryStorage) rotate(ctx context.Context) error {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("logEntryStorage.rotate")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	prevLast := ls.last.LastIndex()
 
-	if err := ls.last.FinishWrite(); err != nil {
-		return err
+	var finish = func(lf *logEntryFile) error {
+		if err := lf.FinishWrite(ctx); err != nil {
+			return err
+		}
+		return nil
 	}
-	if err := ls.last.Close(); err != nil {
+
+	perv := ls.last
+
+	var err error
+
+	if err = perv.Flush(ctx); err != nil {
 		return err
 	}
 
-	lf, err := ls.createNew(prevLast + 1)
+	var lf *logEntryFile
+	lf, err = ls.createNew(prevLast + 1)
 	if err != nil {
 		return err
 	}
+
 	ls.last = lf
 	ls.logfiles = append(ls.logfiles, lf.Name())
+
+	if !ls.asyncRotateEnabled() {
+		if err := finish(perv); err != nil {
+			return err
+		}
+		if err = ls.cache.Put(perv.Name(), perv); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	ls.rotatingc <- struct{}{}
+
+	ls.rotateMu.Lock()
+	ls.rotating = perv
+	ls.rotateMu.Unlock()
+
+	go func(lf *logEntryFile) {
+		defer func() {
+			ls.rotateMu.Lock()
+			ls.rotating = nil
+			ls.proposeUpdateCache(lf)
+			ls.rotateMu.Unlock()
+			<-ls.rotatingc
+		}()
+		_ = finish(lf)
+	}(perv)
+
 	return nil
 }
 
@@ -327,7 +410,14 @@ func (ls *logEntryStorage) locateFile(logindex uint64) (*logEntryFile, error) {
 	return ls.get(ls.logfiles[i])
 }
 
-func (ls *logEntryStorage) saveEntry(ent *proto.Entry) error {
+func (ls *logEntryStorage) saveEntry(ctx context.Context, ent *proto.Entry) error {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("logEntryStorage.saveEntry")
+	defer tracer.Finish()
+	ent.SetTagsToTracer(tracer)
+	ctx = tracer.Context()
+
+	ls.maybeUpdateCache()
+
 	// 检查日志是否连续
 	prevIndex := ls.LastIndex()
 	if prevIndex != 0 {
@@ -339,12 +429,12 @@ func (ls *logEntryStorage) saveEntry(ent *proto.Entry) error {
 	// 当期文件是否已经写满
 	woffset := ls.last.WriteOffset()
 	if uint64(woffset)+uint64(recordSize(ent)) > uint64(ls.filesize) {
-		if err := ls.rotate(); err != nil {
+		if err := ls.rotate(ctx); err != nil {
 			return err
 		}
 	}
 
-	if err := ls.last.Save(ent); err != nil {
+	if err := ls.last.Save(ctx, ent); err != nil {
 		return err
 	}
 
@@ -352,10 +442,46 @@ func (ls *logEntryStorage) saveEntry(ent *proto.Entry) error {
 }
 
 func (ls *logEntryStorage) Close() {
+	if ls.asyncRotateEnabled() {
+		// Wait for async rotate process finished.
+		ls.rotatingc <- struct{}{}
+		<-ls.rotatingc
+	}
+
+	ls.maybeUpdateCache()
 	if err := ls.cache.Close(); err != nil {
 		log.Warn("close log file cache error: %v", err)
 	}
+
 	if err := ls.last.Close(); err != nil {
 		log.Warn("close log file %s error: %v", ls.last.Name(), err)
 	}
+}
+
+func (ls *logEntryStorage) proposeUpdateCache(lf *logEntryFile) {
+	select {
+	case ls.cachec <- lf:
+		return
+	default:
+	}
+	_ = lf.Close()
+}
+
+func (ls *logEntryStorage) maybeUpdateCache() {
+	if !ls.asyncRotateEnabled() {
+		return
+	}
+	for {
+		select {
+		case lf := <-ls.cachec:
+			_ = ls.cache.Put(lf.Name(), lf)
+			continue
+		default:
+			return
+		}
+	}
+}
+
+func (ls *logEntryStorage) asyncRotateEnabled() bool {
+	return !ls.syncRotate
 }

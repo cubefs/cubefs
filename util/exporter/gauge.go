@@ -37,7 +37,6 @@ func collectGauge() {
 		m := <-GaugeCh
 		metric := m.Metric()
 		metric.Set(float64(m.val))
-		log.LogDebugf("collect metric %v", m)
 	}
 }
 
@@ -49,9 +48,6 @@ type Gauge struct {
 }
 
 func NewGauge(name string) (g *Gauge) {
-	if !enabledPrometheus {
-		return
-	}
 	g = new(Gauge)
 	g.name = metricsName(name)
 	return
@@ -117,9 +113,6 @@ type GaugeVec struct {
 }
 
 func NewGaugeVec(name, help string, labels []string) *GaugeVec {
-	if !enabledPrometheus {
-		return nil
-	}
 	v := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: metricsName(name),

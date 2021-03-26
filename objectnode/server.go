@@ -109,6 +109,8 @@ type ObjectNode struct {
 
 	encodedRegion []byte
 
+	metrics *ObjectNodeMetrics
+
 	control common.Control
 }
 
@@ -215,6 +217,8 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 
 	exporter.Init(cfg.GetString("role"), cfg)
 	exporter.RegistConsul(ci.Cluster, cfg.GetString("role"), cfg)
+
+	o.registerMetrics()
 
 	log.LogInfo("object subsystem start success")
 	return

@@ -15,7 +15,10 @@
 package fs
 
 import (
+	"context"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util/tracing"
 
 	"bazil.org/fuse"
 
@@ -27,13 +30,18 @@ const (
 	LogTimeFormat = "20060102150405000"
 )
 
-func (s *Super) InodeGet(ino uint64) (*proto.InodeInfo, error) {
-	info := s.ic.Get(ino)
+func (s *Super) InodeGet(ctx context.Context, ino uint64) (*proto.InodeInfo, error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Super.InodeGet").
+		SetTag("ino", ino)
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
+	info := s.ic.Get(ctx, ino)
 	if info != nil {
 		return info, nil
 	}
 
-	info, err := s.mw.InodeGet_ll(ino)
+	info, err := s.mw.InodeGet_ll(ctx, ino)
 	if err != nil || info == nil {
 		log.LogErrorf("InodeGet: ino(%v) err(%v) info(%v)", ino, err, info)
 		if err != nil {
@@ -43,7 +51,7 @@ func (s *Super) InodeGet(ino uint64) (*proto.InodeInfo, error) {
 		}
 	}
 	s.ic.Put(info)
-	s.ec.RefreshExtentsCache(ino)
+	s.ec.RefreshExtentsCache(ctx, ino)
 	return info, nil
 }
 

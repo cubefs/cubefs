@@ -22,6 +22,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tiglabs/raft/tracing"
+
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
 )
@@ -62,7 +64,7 @@ func (fsm *raftFsm) getReplicas() (m string) {
 	for id, _ := range fsm.replicas {
 		m += fmt.Sprintf(" [%v] ,", id)
 	}
-	return  m
+	return m
 }
 
 func newRaftFsm(config *Config, raftConfig *RaftConfig) (*raftFsm, error) {
@@ -131,15 +133,15 @@ func newRaftFsm(config *Config, raftConfig *RaftConfig) (*raftFsm, error) {
 			r.term = raftConfig.Term
 			r.state = stateLeader
 			r.becomeLeader()
-			r.bcastAppend()
+			r.bcastAppend(nil)
 		} else {
-			r.becomeFollower(r.term, NoLeader)
+			r.becomeFollower(nil, r.term, NoLeader)
 		}
 	} else {
 		if raftConfig.Leader == NoLeader {
-			r.becomeFollower(r.term, NoLeader)
+			r.becomeFollower(nil, r.term, NoLeader)
 		} else {
-			r.becomeFollower(raftConfig.Term, raftConfig.Leader)
+			r.becomeFollower(nil, raftConfig.Term, raftConfig.Leader)
 		}
 	}
 
@@ -174,6 +176,23 @@ func (r *raftFsm) StopFsm() {
 
 // raft main method
 func (r *raftFsm) Step(m *proto.Message) {
+
+	// Message tracer
+	var mt = tracing.TracerFromContext(m.Ctx()).ChildTracer("raftFsm.Step[message]]")
+	defer mt.Finish()
+	m.SetTagsToTracer(mt)
+	m.SetCtx(mt.Context())
+
+	// Entry tracers
+	var ets = tracing.NewTracers(len(m.Entries))
+	for _, e := range m.Entries {
+		et := tracing.TracerFromContext(e.Ctx()).ChildTracer("raftFsm.Step[entry]")
+		e.SetTagsToTracer(et)
+		e.SetCtx(et.Context())
+		ets.AddTracer(et)
+	}
+	defer ets.Finish()
+
 	if m.Type == proto.LocalMsgHup {
 		if r.state != stateLeader && r.promotable() {
 			ents, err := r.raftLog.slice(r.raftLog.applied+1, r.raftLog.committed+1, noLimit)
@@ -219,11 +238,12 @@ func (r *raftFsm) Step(m *proto.Message) {
 				nmsg := proto.GetMessage()
 				nmsg.Type = proto.LeaseMsgOffline
 				nmsg.To = r.leader
+				nmsg.SetCtx(m.Ctx())
 				r.send(nmsg)
 				return
 			}
 		}
-		r.becomeFollower(m.Term, lead)
+		r.becomeFollower(m.Ctx(), m.Term, lead)
 
 	case m.Term < r.term:
 		if logger.IsEnableDebug() {
@@ -377,10 +397,10 @@ func (r *raftFsm) removePeer(peer proto.Peer) {
 	delete(r.replicas, peer.ID)
 
 	if peer.ID == r.config.NodeID {
-		r.becomeFollower(r.term, NoLeader)
+		r.becomeFollower(nil, r.term, NoLeader)
 	} else if r.state == stateLeader && len(r.replicas) > 0 {
-		if r.maybeCommit() {
-			r.bcastAppend()
+		if r.maybeCommit(nil) {
+			r.bcastAppend(nil)
 		}
 	}
 }
@@ -506,7 +526,7 @@ func (r *raftFsm) addReadIndex(futures []*Future) {
 		}
 	}
 	r.readOnly.add(r.raftLog.committed, futures)
-	r.bcastReadOnly()
+	r.bcastReadOnly(nil)
 }
 
 func numOfPendingConf(ents []*proto.Entry) int {

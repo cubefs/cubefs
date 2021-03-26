@@ -29,7 +29,7 @@ type recordReadAt interface {
 	ReadAt(offset int64) (rec record, err error)
 }
 
-const defaultReadBufferedSize = 512
+const defaultReadBufferedSize = 4 * 1024
 
 type bufferedReader struct {
 	r *bufio.Reader
@@ -167,6 +167,10 @@ func (r *recordReader) ReadAt(offset int64) (rec record, err error) {
 	rec.dataLen = binary.BigEndian.Uint64(r.typeLenBuf[1:])
 
 	// read data and crc
+	if readLen := int(rec.dataLen + 4); readLen <= 0 || readLen > math.MaxInt32 {
+		err = NewCorruptError(r.filename, offset, "illegal data length")
+		return
+	}
 	rec.data = make([]byte, rec.dataLen+4)
 	n, err = r.sr.ReadAt(rec.data, offset+int64(n))
 	if err != nil {

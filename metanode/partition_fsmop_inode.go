@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -193,11 +194,11 @@ func (mp *metaPartition) internalCursorReset(val []byte) (uint64, error) {
 	return mp.config.Cursor, nil
 }
 
-func (mp *metaPartition) internalDeleteBatch(val []byte) error {
+func (mp *metaPartition) internalDeleteBatch(ctx context.Context, val []byte) error {
 	if len(val) == 0 {
 		return nil
 	}
-	inodes, err := InodeBatchUnmarshal(val)
+	inodes, err := InodeBatchUnmarshal(ctx, val)
 	if err != nil {
 		return nil
 	}
@@ -218,7 +219,7 @@ func (mp *metaPartition) internalDeleteInode(ino *Inode) {
 	return
 }
 
-func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
+func (mp *metaPartition) fsmAppendExtents(ctx context.Context, ino *Inode) (status uint8) {
 	status = proto.OpOk
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
@@ -231,8 +232,27 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 		return
 	}
 	eks := ino.Extents.CopyExtents()
-	delExtents := ino2.AppendExtents(eks, ino.ModifyTime)
+	delExtents := ino2.AppendExtents(ctx, eks, ino.ModifyTime)
 	log.LogInfof("fsmAppendExtents inode(%v) exts(%v)", ino2.Inode, delExtents)
+	mp.extDelCh <- delExtents
+	return
+}
+
+func (mp *metaPartition) fsmInsertExtents(ctx context.Context, ino *Inode) (status uint8) {
+	status = proto.OpOk
+	item := mp.inodeTree.CopyGet(ino)
+	if item == nil {
+		status = proto.OpNotExistErr
+		return
+	}
+	existIno := item.(*Inode)
+	if existIno.ShouldDelete() {
+		status = proto.OpNotExistErr
+		return
+	}
+	eks := ino.Extents.CopyExtents()
+	delExtents := existIno.InsertExtents(ctx, eks, ino.ModifyTime)
+	log.LogDebugf("fsm[%v] insert extents[inode:%v, delExtents:%v]", mp.config.PartitionId, existIno.Inode, delExtents)
 	mp.extDelCh <- delExtents
 	return
 }

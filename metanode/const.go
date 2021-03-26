@@ -121,6 +121,8 @@ const (
 	opFSMEvictInodeBatch
 
 	opFSMCursorReset
+
+	opFSMExtentsInsert
 )
 
 var (

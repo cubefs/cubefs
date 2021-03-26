@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"bufio"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -85,7 +86,7 @@ func (mp *metaPartition) loadMetadata() (err error) {
 	return
 }
 
-func (mp *metaPartition) loadInode(rootDir string) (err error) {
+func (mp *metaPartition) loadInode(ctx context.Context, rootDir string) (err error) {
 	var numInodes uint64
 	defer func() {
 		if err == nil {
@@ -132,7 +133,7 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 			return
 		}
 		ino := NewInode(0, 0)
-		if err = ino.Unmarshal(inoBuf); err != nil {
+		if err = ino.Unmarshal(ctx, inoBuf); err != nil {
 			err = errors.NewErrorf("[loadInode] Unmarshal: %s", err.Error())
 			return
 		}

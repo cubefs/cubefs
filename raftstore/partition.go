@@ -15,10 +15,13 @@
 package raftstore
 
 import (
+	"context"
 	"os"
 	"path"
 	"strconv"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util/tracing"
 
 	"github.com/chubaofs/chubaofs/util/log"
 
@@ -45,6 +48,8 @@ type PartitionFsm = raft.StateMachine
 type Partition interface {
 	// Submit submits command data to raft log.
 	Submit(cmd []byte) (resp interface{}, err error)
+
+	SubmitWithCtx(ctx context.Context, cmd []byte) (resp interface{}, err error)
 
 	// ChaneMember submits member change event and information to raft log.
 	ChangeMember(changeType proto.ConfChangeType, peer proto.Peer, context []byte) (resp interface{}, err error)
@@ -202,7 +207,22 @@ func (p *partition) Submit(cmd []byte) (resp interface{}, err error) {
 		err = raft.ErrNotLeader
 		return
 	}
-	future := p.raft.Submit(p.id, cmd)
+	future := p.raft.Submit(nil, p.id, cmd)
+	resp, err = future.Response()
+	return
+}
+
+func (p *partition) SubmitWithCtx(ctx context.Context, cmd []byte) (resp interface{}, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("partition.SubmitWithCtx").
+		SetTag("len", len(cmd))
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
+	if !p.IsRaftLeader() {
+		err = raft.ErrNotLeader
+		return
+	}
+	future := p.raft.Submit(ctx, p.id, cmd)
 	resp, err = future.Response()
 	return
 }

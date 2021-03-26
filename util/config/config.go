@@ -26,6 +26,10 @@ import (
 
 const (
 	DefaultConstConfigFile = "constcfg"
+
+	CfgTracingsamplerType  = "tracingSamplerType"  // type of tracing
+	CfgTracingsamplerParam = "tracingSamplerParam" // radio of tracing by type
+	CfgTracingReportAddr   = "tracingReportAddr"   // jeagert addr
 )
 
 // Config defines the struct of a configuration in general.

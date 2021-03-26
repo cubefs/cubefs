@@ -34,8 +34,8 @@ import (
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/tracing"
 )
 
 const partitionPrefix = "partition_"
@@ -71,13 +71,45 @@ type metadataManager struct {
 	flDeleteBatchCount atomic.Value
 }
 
-// HandleMetadataOperation handles the metadata operations.
-func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
-	remoteAddr string) (err error) {
-	m.rateLimit(conn, p, remoteAddr)
+func (m *metadataManager) getPacketLabelVals(p *Packet) (labels []string) {
+	labels = make([]string, 3)
+	mp, err := m.getPartition(p.PartitionID)
+	if err != nil {
+		log.LogErrorf("[metaManager] getPacketLabels metric packet: %v, partitions: %v", p, m.partitions)
+		return
+	}
 
-	metric := exporter.NewTPCnt(p.GetOpMsg())
-	defer metric.Set(err)
+	labels[0] = mp.GetBaseConfig().VolName
+	labels[1] = fmt.Sprintf("%d", p.PartitionID)
+	labels[2] = p.GetOpMsg()
+
+	return
+}
+
+// HandleMetadataOperation handles the metadata operations.
+func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	m.rateLimit(conn, p, remoteAddr)
+	if m.metaNode.metrics != nil {
+		labelVals := m.getPacketLabelVals(p)
+		metric := m.metaNode.metrics.MpOp.GetWithLabelVals(labelVals...)
+		defer metric.CountWithError(err)
+	}
+
+	const tracerName = "metadataManager.HandleMetadataOperation"
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer(tracerName).
+		SetTag("remote", conn.RemoteAddr().String()).
+		SetTag("reqID", p.GetReqID()).
+		SetTag("reqOp", p.GetOpMsg()).
+		SetTag("partitionID", p.PartitionID)
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
+	//now := time.Now()
+	//defer func() {
+	//	go func() {
+	//		statistics.Report(p.GetOpMsg(), 0, p.PartitionID, time.Now().Sub(now))
+	//	}()
+	//}()
 
 	switch p.Opcode {
 	case proto.OpMetaCreateInode:
@@ -114,6 +146,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
 		err = m.opMasterHeartbeat(conn, p, remoteAddr)
 	case proto.OpMetaExtentsAdd:
 		err = m.opMetaExtentsAdd(conn, p, remoteAddr)
+	case proto.OpMetaExtentsInsert:
+		err = m.opMetaExtentsInsert(conn, p, remoteAddr)
 	case proto.OpMetaExtentsList:
 		err = m.opMetaExtentsList(conn, p, remoteAddr)
 	case proto.OpMetaExtentsDel:

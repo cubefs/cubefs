@@ -18,20 +18,48 @@ import (
 	"encoding/json"
 	"os"
 
+	"github.com/chubaofs/chubaofs/util/tracing"
+
 	"github.com/chubaofs/chubaofs/proto"
 )
 
 // ExtentAppend appends an extent.
 func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.ExtentAppend")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
 	ino := NewInode(req.Inode, 0)
 	ext := req.Extent
-	ino.Extents.Append(ext)
+	ino.Extents.Append(p.Ctx(), ext)
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMExtentsAdd, val)
+	resp, err := mp.submit(p.Ctx(), opFSMExtentsAdd, p.Remote(), val)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	p.PacketErrorWithBody(resp.(uint8), nil)
+	return
+}
+
+func (mp *metaPartition) ExtentInsert(req *proto.InsertExtentKeyRequest, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.ExtentInsert")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
+	ino := NewInode(req.Inode, 0)
+	ext := req.Extent
+	ino.Extents.Insert(p.Ctx(), ext)
+	val, err := ino.Marshal()
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	resp, err := mp.submit(p.Ctx(), opFSMExtentsInsert, p.Remote(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -42,6 +70,10 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 
 // ExtentsList returns the list of extents.
 func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.ExtentsList")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
 	ino := NewInode(req.Inode, 0)
 	retMsg := mp.getInode(ino)
 	ino = retMsg.Msg
@@ -52,6 +84,10 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 	if status == proto.OpOk {
 		resp := &proto.GetExtentsResponse{}
 		ino.DoReadFunc(func() {
+			var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.ExtentsList")
+			defer tracer.Finish()
+			p.SetCtx(tracer.Context())
+
 			resp.Generation = ino.Generation
 			resp.Size = ino.Size
 			ino.Extents.Range(func(ek proto.ExtentKey) bool {
@@ -71,6 +107,10 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 
 // ExtentsTruncate truncates an extent.
 func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.ExtentsTruncate")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
 	ino := NewInode(req.Inode, proto.Mode(os.ModePerm))
 	ino.Size = req.Size
 	val, err := ino.Marshal()
@@ -78,7 +118,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (er
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMExtentTruncate, val)
+	resp, err := mp.submit(p.Ctx(), opFSMExtentTruncate, p.Remote(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -89,17 +129,21 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (er
 }
 
 func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.BatchExtentAppend")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
 	ino := NewInode(req.Inode, 0)
 	extents := req.Extents
 	for _, extent := range extents {
-		ino.Extents.Append(extent)
+		ino.Extents.Append(p.Ctx(), extent)
 	}
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMExtentsAdd, val)
+	resp, err := mp.submit(p.Ctx(), opFSMExtentsAdd, p.Remote(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

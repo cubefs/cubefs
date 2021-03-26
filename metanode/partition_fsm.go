@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -22,6 +23,8 @@ import (
 	"net"
 	"sync/atomic"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util/tracing"
 
 	"io/ioutil"
 	"os"
@@ -46,10 +49,17 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		return
 	}
 
+	var ctx = context.Background()
+	if tracing.IsEnabled() {
+		var tracer = tracing.NewTracer("metaPartition.Apply").SetTag("op", msg.Op)
+		defer tracer.Finish()
+		ctx = tracer.Context()
+	}
+
 	switch msg.Op {
 	case opFSMCreateInode:
 		ino := NewInode(0, 0)
-		if err = ino.Unmarshal(msg.V); err != nil {
+		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return
 		}
 		if mp.config.Cursor < ino.Inode {
@@ -58,36 +68,36 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		resp = mp.fsmCreateInode(ino)
 	case opFSMUnlinkInode:
 		ino := NewInode(0, 0)
-		if err = ino.Unmarshal(msg.V); err != nil {
+		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return
 		}
 		resp = mp.fsmUnlinkInode(ino)
 	case opFSMUnlinkInodeBatch:
-		inodes, err := InodeBatchUnmarshal(msg.V)
+		inodes, err := InodeBatchUnmarshal(ctx, msg.V)
 		if err != nil {
 			return nil, err
 		}
 		resp = mp.fsmUnlinkInodeBatch(inodes)
 	case opFSMExtentTruncate:
 		ino := NewInode(0, 0)
-		if err = ino.Unmarshal(msg.V); err != nil {
+		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return
 		}
 		resp = mp.fsmExtentsTruncate(ino)
 	case opFSMCreateLinkInode:
 		ino := NewInode(0, 0)
-		if err = ino.Unmarshal(msg.V); err != nil {
+		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return
 		}
 		resp = mp.fsmCreateLinkInode(ino)
 	case opFSMEvictInode:
 		ino := NewInode(0, 0)
-		if err = ino.Unmarshal(msg.V); err != nil {
+		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return
 		}
 		resp = mp.fsmEvictInode(ino)
 	case opFSMEvictInodeBatch:
-		inodes, err := InodeBatchUnmarshal(msg.V)
+		inodes, err := InodeBatchUnmarshal(ctx, msg.V)
 		if err != nil {
 			return nil, err
 		}
@@ -131,10 +141,16 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		resp, err = mp.fsmUpdatePartition(req.End)
 	case opFSMExtentsAdd:
 		ino := NewInode(0, 0)
-		if err = ino.Unmarshal(msg.V); err != nil {
+		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmAppendExtents(ino)
+		resp = mp.fsmAppendExtents(ctx, ino)
+	case opFSMExtentsInsert:
+		ino := NewInode(0, 0)
+		if err = ino.Unmarshal(ctx, msg.V); err != nil {
+			return
+		}
+		resp = mp.fsmInsertExtents(ctx, ino)
 	case opFSMStoreTick:
 		inodeTree := mp.getInodeTree()
 		dentryTree := mp.getDentryTree()
@@ -154,7 +170,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	case opFSMCursorReset:
 		resp, err = mp.internalCursorReset(msg.V)
 	case opFSMInternalDeleteInodeBatch:
-		err = mp.internalDeleteBatch(msg.V)
+		err = mp.internalDeleteBatch(ctx, msg.V)
 	case opFSMInternalDelExtentFile:
 		err = mp.delOldExtentFile(msg.V)
 	case opFSMInternalDelExtentCursor:
@@ -290,6 +306,8 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		}
 		log.LogErrorf("ApplySnapshot: stop with error: partitionID(%v) err(%v)", mp.config.PartitionId, err)
 	}()
+
+	ctx := context.Background()
 	for {
 		data, err = iter.Next()
 		if err != nil {
@@ -311,7 +329,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 
 			// TODO Unhandled errors
 			ino.UnmarshalKey(snap.K)
-			ino.UnmarshalValue(snap.V)
+			ino.UnmarshalValue(ctx, snap.V)
 			if cursor < ino.Inode {
 				cursor = ino.Inode
 			}
@@ -394,26 +412,13 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 		go mp.initInode(ino)
 	}
 }
+func (mp *metaPartition) submit(ctx context.Context, op uint32, from string, data []byte) (resp interface{}, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("metaPartition.submit").
+		SetTag("op", op).
+		SetTag("size", len(data))
+	defer tracer.Finish()
+	ctx = tracer.Context()
 
-// Put puts the given key-value pair (operation key and operation request) into the raft store.
-func (mp *metaPartition) submit(op uint32, data []byte) (resp interface{}, err error) {
-	snap := NewMetaItem(0, nil, nil)
-	snap.Op = op
-	if data != nil {
-		snap.V = data
-	}
-	cmd, err := snap.MarshalJson()
-	if err != nil {
-		return
-	}
-
-	// submit to the raft store
-	resp, err = mp.raftPartition.Submit(cmd)
-	return
-}
-
-// Put puts the given key-value pair (operation key and operation request) into the raft store.
-func (mp *metaPartition) submitWithSrc(op uint32, from string, data []byte) (resp interface{}, err error) {
 	snap := NewMetaItem(0, nil, nil)
 	snap.Op = op
 	if data != nil {
@@ -421,13 +426,15 @@ func (mp *metaPartition) submitWithSrc(op uint32, from string, data []byte) (res
 	}
 	snap.From = from
 	snap.Timestamp = time.Now().Unix()
+
 	cmd, err := snap.MarshalJson()
 	if err != nil {
 		return
 	}
 
 	// submit to the raft store
-	resp, err = mp.raftPartition.Submit(cmd)
+	resp, err = mp.raftPartition.SubmitWithCtx(ctx, cmd)
+
 	return
 }
 

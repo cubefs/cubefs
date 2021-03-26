@@ -303,6 +303,13 @@ type AppendExtentKeyRequest struct {
 	Extent      ExtentKey `json:"ek"`
 }
 
+type InsertExtentKeyRequest struct {
+	VolName     string    `json:"vol"`
+	PartitionID uint64    `json:"pid"`
+	Inode       uint64    `json:"ino"`
+	Extent      ExtentKey `json:"ek"`
+}
+
 // GetExtentsRequest defines the reques to get extents.
 type GetExtentsRequest struct {
 	VolName     string `json:"vol"`

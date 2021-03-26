@@ -15,6 +15,7 @@
 package master
 
 import (
+	"context"
 	"encoding/json"
 	"sync"
 	"time"
@@ -43,8 +44,8 @@ type AdminTaskManager struct {
 	targetAddr string
 	TaskMap    map[string]*proto.AdminTask
 	sync.RWMutex
-	exitCh     chan struct{}
-	connPool   *util.ConnectPool
+	exitCh   chan struct{}
+	connPool *util.ConnectPool
 }
 
 func newAdminTaskManager(targetAddr, clusterID string) (sender *AdminTaskManager) {
@@ -164,7 +165,7 @@ func (sender *AdminTaskManager) updateTaskInfo(task *proto.AdminTask, connSucces
 }
 
 func (sender *AdminTaskManager) buildPacket(task *proto.AdminTask) (packet *proto.Packet, err error) {
-	packet = proto.NewPacket()
+	packet = proto.NewPacket(context.Background())
 	packet.Opcode = task.OpCode
 	packet.ReqID = proto.GenerateRequestID()
 	packet.PartitionID = task.PartitionID

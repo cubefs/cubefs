@@ -15,11 +15,13 @@
 package raft
 
 import (
+	"context"
 	"runtime"
 	"sync"
 	"time"
 
-	//"fmt"
+	"github.com/tiglabs/raft/tracing"
+
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
 	"github.com/tiglabs/raft/util"
@@ -85,18 +87,38 @@ func (s *transportSender) stop() {
 }
 
 func (s *transportSender) loopSend(recvc chan *proto.Message) {
-	util.RunWorkerUtilStop(func() {
-		conn := getConn(s.nodeID, s.senderType, s.resolver, 0, 2*time.Second)
+	var loopSendFunc = func() {
+
+		var conn *util.ConnTimeout
+		var err error
+		if conn, err = getConn(context.Background(), s.nodeID, s.senderType, s.resolver, 0, 2*time.Second); err != nil {
+			logger.Error("[Transport] get connection [%v] to [%v] failed: %v", s.senderType, s.nodeID, err)
+		}
 		bufWr := util.NewBufferWriter(conn, 16*KB)
 
 		defer func() {
 			if conn != nil {
-				conn.Close()
+				_ = conn.Close()
 			}
 		}()
 
+		var tracers = tracing.NewTracers(16)
+
+		var flush = func() {
+			// flush write
+			if err == nil {
+				err = bufWr.Flush()
+			}
+			if err != nil {
+				logger.Error("[Transport] send message[%s] to %v[%s] error:[%v].", s.senderType, s.nodeID, conn.RemoteAddr(), err)
+				_ = conn.Close()
+				conn = nil
+			}
+			tracers.Finish()
+			tracers.Clean()
+		}
+
 		loopCount := 0
-		var err error
 		for {
 			loopCount = loopCount + 1
 			if loopCount > 8 {
@@ -109,9 +131,18 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 				return
 
 			case msg := <-recvc:
+				var tracer = tracing.TracerFromContext(msg.Ctx()).ChildTracer("transportSender.loopSend[message]")
+				msg.SetTagsToTracer(tracer)
+				msg.SetCtx(tracer.Context())
+				tracers.AddTracer(tracer)
+				for _, e := range msg.Entries {
+					et := tracing.TracerFromContext(e.Ctx()).ChildTracer("transportSender.loopSend[entry]")
+					e.SetTagsToTracer(et)
+					tracers.AddTracer(et)
+				}
+
 				if conn == nil {
-					conn = getConn(s.nodeID, s.senderType, s.resolver, 0, 2*time.Second)
-					if conn == nil {
+					if conn, err = getConn(msg.Ctx(), s.nodeID, s.senderType, s.resolver, 0, 2*time.Second); err != nil {
 						proto.ReturnMessage(msg)
 						// reset chan
 						for {
@@ -128,62 +159,70 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 					}
 					bufWr.Reset(conn)
 				}
-				err = msg.Encode(bufWr)
-				proto.ReturnMessage(msg)
-				if err != nil {
-					goto flush
+				if err = func() error {
+					defer proto.ReturnMessage(msg)
+					return msg.Encode(bufWr)
+				}(); err != nil {
+					flush()
+					continue
 				}
 				// group send message
-				flag := false
 				for i := 0; i < 16; i++ {
 					select {
 					case msg := <-recvc:
+						var tracer = tracing.TracerFromContext(msg.Ctx()).ChildTracer("transportSender.loopSend[send]")
+						msg.SetTagsToTracer(tracer)
+						msg.SetCtx(tracer.Context())
+						tracers.AddTracer(tracer)
+						for _, e := range msg.Entries {
+							et := tracing.TracerFromContext(e.Ctx()).ChildTracer("transportSender.loopSend[entry]")
+							e.SetTagsToTracer(et)
+							tracers.AddTracer(et)
+						}
 						err = msg.Encode(bufWr)
-						//logger.Debug(fmt.Sprintf("SendMesg %v to (%v) ", msg.ToString(), conn.RemoteAddr()))
 						proto.ReturnMessage(msg)
 						if err != nil {
-							goto flush
+							flush()
+							continue
 						}
 					default:
-						flag = true
 					}
-					if flag {
-						break
-					}
+					break
 				}
-			}
-
-		flush:
-			// flush write
-			if err == nil {
-				err = bufWr.Flush()
-			}
-			if err != nil {
-				logger.Error("[Transport]send message[%s] to %v[%s] error:[%v].", s.senderType, s.nodeID, conn.RemoteAddr(), err)
-				conn.Close()
-				conn = nil
+				flush()
 			}
 		}
-	}, s.stopc)
+	}
+	util.RunWorkerUtilStop(loopSendFunc, s.stopc)
 }
 
-func getConn(nodeID uint64, socketType SocketType, resolver SocketResolver, rdTime, wrTime time.Duration) (conn *util.ConnTimeout) {
-	var (
-		addr string
-		err  error
-	)
-	if addr, err = resolver.NodeAddress(nodeID, socketType); err == nil {
-		if conn, err = util.DialTimeout(addr, 2*time.Second); err == nil {
-			conn.SetReadTimeout(rdTime)
-			conn.SetWriteTimeout(wrTime)
+func getConn(ctx context.Context, nodeID uint64, socketType SocketType, resolver SocketResolver, rdTime, wrTime time.Duration) (conn *util.ConnTimeout, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("getConn").
+		SetTag("nodeID", nodeID).
+		SetTag("socketType", socketType.String())
+	defer tracer.Finish()
+
+	var addr string
+
+	defer func() {
+		if err != nil {
+			conn = nil
+			if logger.IsEnableDebug() {
+				logger.Debug("[Transport] get connection[%s] to %v[%s] failed: %s", socketType, nodeID, addr, err)
+			}
 		}
+	}()
+
+	if addr, err = resolver.NodeAddress(nodeID, socketType); err != nil {
+		return
 	}
 
-	if err != nil {
-		conn = nil
-		if logger.IsEnableDebug() {
-			logger.Debug("[Transport] get connection[%s] to %v[%s] failed,error is: %s", socketType, nodeID, addr, err)
-		}
+	if conn, err = util.DialTimeout(addr, 2*time.Second); err != nil {
+		return
 	}
+
+	conn.SetReadTimeout(rdTime)
+	conn.SetWriteTimeout(wrTime)
+
 	return
 }

@@ -16,15 +16,16 @@ package raftstore
 
 import (
 	"fmt"
+	"os"
+	"path"
+	"strconv"
+	"time"
+
 	"github.com/tiglabs/raft"
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
 	"github.com/tiglabs/raft/storage/wal"
 	raftlog "github.com/tiglabs/raft/util/log"
-	"os"
-	"path"
-	"strconv"
-	"time"
 )
 
 // RaftStore defines the interface for the raft store.

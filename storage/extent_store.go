@@ -15,6 +15,7 @@
 package storage
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io/ioutil"
@@ -22,6 +23,8 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+
+	"github.com/chubaofs/chubaofs/util/tracing"
 
 	"path"
 	"regexp"
@@ -293,7 +296,11 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 }
 
 // Write writes the given extent to the disk.
-func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32, writeType int, isSync bool) (err error) {
+func (s *ExtentStore) Write(ctx context.Context, extentID uint64, offset, size int64, data []byte, crc uint32, writeType int, isSync bool) (err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("ExtentStore.Write")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	var (
 		e  *Extent
 		ei *ExtentInfo
@@ -328,9 +335,9 @@ func (s *ExtentStore) checkOffsetAndSize(extentID uint64, offset, size int64) er
 		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
 	}
 
-	if size > util.BlockSize {
-		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
-	}
+	//if size > util.BlockSize {
+	//	return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
+	//}
 	return nil
 }
 
@@ -405,7 +412,7 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	s.DeleteBlockCrc(extentID)
 
 	s.eiMutex.Lock()
-	delete(s.extentInfoMap,extentID)
+	delete(s.extentInfoMap, extentID)
 	s.eiMutex.Unlock()
 
 	return
@@ -526,7 +533,7 @@ func (s *ExtentStore) initTinyExtent() (err error) {
 		if err == nil || strings.Contains(err.Error(), syscall.EEXIST.Error()) || err == ExtentExistsError {
 			err = nil
 			s.brokenTinyExtentC <- extentID
-			s.brokenTinyExtentMap.Store(extentID,true)
+			s.brokenTinyExtentMap.Store(extentID, true)
 			continue
 		}
 		return err
@@ -549,18 +556,18 @@ func (s *ExtentStore) GetAvailableTinyExtent() (extentID uint64, err error) {
 
 // SendToAvailableTinyExtentC sends the extent to the channel that stores the available tiny extents.
 func (s *ExtentStore) SendToAvailableTinyExtentC(extentID uint64) {
-	if _,ok:=s.availableTinyExtentMap.Load(extentID);!ok {
+	if _, ok := s.availableTinyExtentMap.Load(extentID); !ok {
 		s.availableTinyExtentC <- extentID
-		s.availableTinyExtentMap.Store(extentID,true)
+		s.availableTinyExtentMap.Store(extentID, true)
 	}
 }
 
 // SendAllToBrokenTinyExtentC sends all the extents to the channel that stores the broken extents.
 func (s *ExtentStore) SendAllToBrokenTinyExtentC(extentIds []uint64) {
 	for _, extentID := range extentIds {
-		if _,ok:=s.brokenTinyExtentMap.Load(extentID);!ok {
+		if _, ok := s.brokenTinyExtentMap.Load(extentID); !ok {
 			s.brokenTinyExtentC <- extentID
-			s.brokenTinyExtentMap.Store(extentID,true)
+			s.brokenTinyExtentMap.Store(extentID, true)
 		}
 
 	}
@@ -589,9 +596,9 @@ func (s *ExtentStore) MoveAllToBrokenTinyExtentC(cnt int) {
 
 // SendToBrokenTinyExtentC sends the given extent id to the channel.
 func (s *ExtentStore) SendToBrokenTinyExtentC(extentID uint64) {
-	if _,ok:=s.brokenTinyExtentMap.Load(extentID);!ok {
+	if _, ok := s.brokenTinyExtentMap.Load(extentID); !ok {
 		s.brokenTinyExtentC <- extentID
-		s.brokenTinyExtentMap.Store(extentID,true)
+		s.brokenTinyExtentMap.Store(extentID, true)
 	}
 
 }
@@ -942,29 +949,29 @@ func (s *ExtentStore) TinyExtentAvaliOffset(extentID uint64, offset int64) (newO
 }
 
 const (
-	DiskSectorSize=512
+	DiskSectorSize = 512
 )
 
-func (s *ExtentStore)GetStoreUsedSize()(used int64){
+func (s *ExtentStore) GetStoreUsedSize() (used int64) {
 	extentInfoSlice := make([]*ExtentInfo, 0, s.GetExtentCount())
 	s.eiMutex.RLock()
 	for _, extentID := range s.extentInfoMap {
 		extentInfoSlice = append(extentInfoSlice, extentID)
 	}
 	s.eiMutex.RUnlock()
-	for _,einfo:=range extentInfoSlice{
+	for _, einfo := range extentInfoSlice {
 		if einfo.IsDeleted {
 			continue
 		}
-		if IsTinyExtent(einfo.FileID){
+		if IsTinyExtent(einfo.FileID) {
 			stat := new(syscall.Stat_t)
 			err := syscall.Stat(fmt.Sprintf("%v/%v", s.dataPath, einfo.FileID), stat)
 			if err != nil {
 				continue
 			}
-			used +=(stat.Blocks * DiskSectorSize)
-		}else {
-			used +=int64(einfo.Size)
+			used += (stat.Blocks * DiskSectorSize)
+		} else {
+			used += int64(einfo.Size)
 		}
 	}
 	return

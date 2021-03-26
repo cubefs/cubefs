@@ -54,12 +54,23 @@ func (lc *logFileCache) Get(name logFileName) (lf *logEntryFile, err error) {
 	lc.m[name] = e
 
 	// keep capacity
-	for lc.l.Len() > lc.capacity {
-		e = lc.l.Back()
-		df := (e.Value).(*logEntryFile)
-		if err = lc.Delete(df.Name(), true); err != nil {
-			return nil, err
-		}
+	if err = lc.keepCapacity(); err != nil {
+		return nil, err
+	}
+	return
+}
+
+func (lc *logFileCache) Put(name logFileName, lf *logEntryFile) (err error) {
+	_, ok := lc.m[name]
+	if ok {
+		return
+	}
+	e := lc.l.PushFront(lf)
+	lc.m[name] = e
+
+	// keep capacity
+	if err = lc.keepCapacity(); err != nil {
+		return err
 	}
 	return
 }
@@ -79,6 +90,17 @@ func (lc *logFileCache) Delete(name logFileName, close bool) error {
 	delete(lc.m, lf.Name())
 	lc.l.Remove(e)
 	return nil
+}
+
+func (lc *logFileCache) keepCapacity() (err error) {
+	for lc.l.Len() > lc.capacity {
+		e := lc.l.Back()
+		df := (e.Value).(*logEntryFile)
+		if err = lc.Delete(df.Name(), true); err != nil {
+			return
+		}
+	}
+	return
 }
 
 func (lc *logFileCache) Close() (err error) {

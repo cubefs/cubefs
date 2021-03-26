@@ -15,6 +15,7 @@
 package main
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -34,15 +35,14 @@ func main() {
 	return
 }
 
-
-func readWal(name string){
+func readWal(name string) {
 	var (
 		fileOffset uint64
 		dataSize   uint64
 		dataString string
 	)
 
-	data,_:=ioutil.ReadFile(name)
+	data, _ := ioutil.ReadFile(name)
 	fmt.Println("data len", len(data))
 	var err error
 	fileOffset = 0
@@ -72,23 +72,23 @@ func readWal(name string){
 					return
 				}
 				dataString = fmt.Sprintf("opt:%v, k:%v, v:%v", cmd.Op, cmd.K, cmd.V)
-				if cmd.Op==0 {
+				if cmd.Op == 0 {
 					ino := metanode.NewInode(0, 0)
-					if err = ino.Unmarshal(cmd.V); err != nil {
+					if err = ino.Unmarshal(context.Background(), cmd.V); err != nil {
 						continue
 					}
-					if ino.Inode==33570077{
-						fmt.Println(fmt.Sprintf("create inode %v",ino))
+					if ino.Inode == 33570077 {
+						fmt.Println(fmt.Sprintf("create inode %v", ino))
 					}
 
-				}else if cmd.Op==17{
+				} else if cmd.Op == 17 {
 					req := &metanode.SetattrRequest{}
 					err = json.Unmarshal(cmd.V, req)
 					if err != nil {
 						continue
 					}
-					if req.Inode==33570077{
-						fmt.Println(fmt.Sprintf("set attr inode %v",req))
+					if req.Inode == 33570077 {
+						fmt.Println(fmt.Sprintf("set attr inode %v", req))
 					}
 				}
 

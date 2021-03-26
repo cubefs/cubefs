@@ -56,6 +56,7 @@ type MetaNode struct {
 	zoneName          string
 	httpStopC         chan uint8
 	disks             map[string]*Disk
+	metrics           *MetaNodeMetrics
 
 	control common.Control
 }
@@ -115,6 +116,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.register(); err != nil {
 		return
 	}
+
 	if err = m.startRaftServer(); err != nil {
 		return
 	}
@@ -144,7 +146,10 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
-	exporter.RegistConsul(m.clusterId, cfg.GetString("role"), cfg)
+	if exporter.IsEnabled() {
+		exporter.RegistConsul(m.clusterId, cfg.GetString("role"), cfg)
+		m.startStat()
+	}
 	return
 }
 
@@ -155,6 +160,7 @@ func doShutdown(s common.Server) {
 	}
 	m.stopUpdateNodeInfo()
 	// shutdown node and release the resource
+	m.stopStat()
 	m.stopServer()
 	m.stopMetaManager()
 	m.stopRaftServer()

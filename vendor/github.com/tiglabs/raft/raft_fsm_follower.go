@@ -16,13 +16,18 @@
 package raft
 
 import (
+	"context"
 	"math"
+
+	"github.com/tiglabs/raft/tracing"
 
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
 )
 
-func (r *raftFsm) becomeFollower(term, lead uint64) {
+func (r *raftFsm) becomeFollower(ctx context.Context, term, lead uint64) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("raftFsm.becomeFollower")
+	defer tracer.Finish()
 	r.step = stepFollower
 	r.reset(term, 0, false)
 	r.tick = r.tickElection
@@ -34,6 +39,10 @@ func (r *raftFsm) becomeFollower(term, lead uint64) {
 }
 
 func stepFollower(r *raftFsm, m *proto.Message) {
+	var tracer = tracing.TracerFromContext(m.Ctx()).ChildTracer("raftFsm.stepFollower")
+	defer tracer.Finish()
+	m.SetTagsToTracer(tracer)
+	m.SetCtx(tracer.Context())
 	switch m.Type {
 	case proto.LocalMsgProp:
 		if r.leader == NoLeader {
@@ -64,6 +73,7 @@ func stepFollower(r *raftFsm, m *proto.Message) {
 		nmsg := proto.GetMessage()
 		nmsg.Type = proto.RespMsgElectAck
 		nmsg.To = m.From
+		nmsg.SetCtx(m.Ctx())
 		r.send(nmsg)
 		proto.ReturnMessage(m)
 		return
@@ -79,6 +89,7 @@ func stepFollower(r *raftFsm, m *proto.Message) {
 		nmsg.Type = proto.RespCheckQuorum
 		nmsg.Index = m.Index
 		nmsg.To = m.From
+		nmsg.SetCtx(m.Ctx())
 		r.send(nmsg)
 		proto.ReturnMessage(m)
 		return
@@ -101,6 +112,7 @@ func stepFollower(r *raftFsm, m *proto.Message) {
 			nmsg := proto.GetMessage()
 			nmsg.Type = proto.RespMsgVote
 			nmsg.To = m.From
+			nmsg.SetCtx(m.Ctx())
 			r.send(nmsg)
 		} else {
 			if logger.IsEnableDebug() {
@@ -110,6 +122,7 @@ func stepFollower(r *raftFsm, m *proto.Message) {
 			nmsg.Type = proto.RespMsgVote
 			nmsg.To = m.From
 			nmsg.Reject = true
+			nmsg.SetCtx(m.Ctx())
 			r.send(nmsg)
 		}
 		proto.ReturnMessage(m)
@@ -121,6 +134,7 @@ func stepFollower(r *raftFsm, m *proto.Message) {
 			nmsg := proto.GetMessage()
 			nmsg.Type = proto.LocalMsgHup
 			nmsg.From = r.config.NodeID
+			nmsg.SetCtx(m.Ctx())
 			r.Step(nmsg)
 		}
 		proto.ReturnMessage(m)
@@ -152,12 +166,18 @@ func (r *raftFsm) tickElection() {
 }
 
 func (r *raftFsm) handleAppendEntries(m *proto.Message) {
+	var tracer = tracing.TracerFromContext(m.Ctx()).ChildTracer("raftFsm.handleAppendEntries]")
+	defer tracer.Finish()
+	m.SetTagsToTracer(tracer)
+	m.SetCtx(tracer.Context())
+
 	if m.Index < r.raftLog.committed {
 		nmsg := proto.GetMessage()
 		nmsg.Type = proto.RespMsgAppend
 		nmsg.To = m.From
 		nmsg.Index = r.raftLog.committed
 		nmsg.Commit = r.raftLog.committed
+		nmsg.SetCtx(m.Ctx())
 		r.send(nmsg)
 		return
 	}
@@ -168,6 +188,7 @@ func (r *raftFsm) handleAppendEntries(m *proto.Message) {
 		nmsg.To = m.From
 		nmsg.Index = mlastIndex
 		nmsg.Commit = r.raftLog.committed
+		nmsg.SetCtx(m.Ctx())
 		r.send(nmsg)
 	} else {
 		if logger.IsEnableDebug() {
@@ -181,6 +202,7 @@ func (r *raftFsm) handleAppendEntries(m *proto.Message) {
 		nmsg.Commit = r.raftLog.committed
 		nmsg.Reject = true
 		nmsg.RejectIndex = r.raftLog.lastIndex()
+		nmsg.SetCtx(m.Ctx())
 		r.send(nmsg)
 	}
 }

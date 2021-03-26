@@ -15,6 +15,7 @@
 package datanode
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sync/atomic"
@@ -131,12 +132,12 @@ func (dp *DataPartition) HandleLeaderChange(leader uint64) {
 }
 
 // Put submits the raft log to the raft store.
-func (dp *DataPartition) Put(key interface{}, val interface{}) (resp interface{}, err error) {
+func (dp *DataPartition) Put(ctx context.Context, key interface{}, val interface{}) (resp interface{}, err error) {
 	if dp.raftPartition == nil {
 		err = fmt.Errorf("%s key=%v", RaftNotStarted, key)
 		return
 	}
-	resp, err = dp.raftPartition.Submit(val.([]byte))
+	resp, err = dp.raftPartition.SubmitWithCtx(ctx, val.([]byte))
 	return
 }
 

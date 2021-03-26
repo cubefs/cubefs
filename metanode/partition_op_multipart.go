@@ -15,9 +15,12 @@
 package metanode
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util/tracing"
 
 	"github.com/chubaofs/chubaofs/util"
 
@@ -25,6 +28,10 @@ import (
 )
 
 func (mp *metaPartition) GetMultipart(req *proto.GetMultipartRequest, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.GetMultipart")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
 	item := mp.multipartTree.Get(&Multipart{key: req.Path, id: req.MultipartId})
 	if item == nil {
 		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
@@ -59,6 +66,10 @@ func (mp *metaPartition) GetMultipart(req *proto.GetMultipartRequest, p *Packet)
 }
 
 func (mp *metaPartition) AppendMultipart(req *proto.AddMultipartPartRequest, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.AppendMultipart")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
 	if req.Part == nil {
 		p.PacketOkReply()
 		return
@@ -82,7 +93,7 @@ func (mp *metaPartition) AppendMultipart(req *proto.AddMultipartPartRequest, p *
 		},
 	}
 	var resp interface{}
-	if resp, err = mp.putMultipart(opFSMAppendMultipart, multipart); err != nil {
+	if resp, err = mp.putMultipart(p.Ctx(), opFSMAppendMultipart, multipart); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
@@ -96,12 +107,16 @@ func (mp *metaPartition) AppendMultipart(req *proto.AddMultipartPartRequest, p *
 }
 
 func (mp *metaPartition) RemoveMultipart(req *proto.RemoveMultipartRequest, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.RemoveMultipart")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
 	multipart := &Multipart{
 		id:  req.MultipartId,
 		key: req.Path,
 	}
 	var resp interface{}
-	if resp, err = mp.putMultipart(opFSMRemoveMultipart, multipart); err != nil {
+	if resp, err = mp.putMultipart(p.Ctx(), opFSMRemoveMultipart, multipart); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
@@ -115,6 +130,10 @@ func (mp *metaPartition) RemoveMultipart(req *proto.RemoveMultipartRequest, p *P
 }
 
 func (mp *metaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.CreateMultipart")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
 	var (
 		multipartId string
 	)
@@ -132,7 +151,7 @@ func (mp *metaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *P
 		initTime: time.Now().Local(),
 		extend:   req.Extend,
 	}
-	if _, err = mp.putMultipart(opFSMCreateMultipart, multipart); err != nil {
+	if _, err = mp.putMultipart(p.Ctx(), opFSMCreateMultipart, multipart); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
@@ -153,6 +172,9 @@ func (mp *metaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *P
 }
 
 func (mp *metaPartition) ListMultipart(req *proto.ListMultipartRequest, p *Packet) (err error) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.ListMultipart")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
 
 	max := int(req.Max)
 	keyMarker := req.Marker
@@ -217,11 +239,11 @@ func (mp *metaPartition) ListMultipart(req *proto.ListMultipartRequest, p *Packe
 }
 
 // SendMultipart replicate specified multipart operation to raft.
-func (mp *metaPartition) putMultipart(op uint32, multipart *Multipart) (resp interface{}, err error) {
+func (mp *metaPartition) putMultipart(ctx context.Context, op uint32, multipart *Multipart) (resp interface{}, err error) {
 	var encoded []byte
 	if encoded, err = multipart.Bytes(); err != nil {
 		return
 	}
-	resp, err = mp.submit(op, encoded)
+	resp, err = mp.submit(ctx, op, "", encoded)
 	return
 }

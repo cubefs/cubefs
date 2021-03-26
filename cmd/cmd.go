@@ -18,10 +18,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/chubaofs/chubaofs/console"
-	"github.com/chubaofs/chubaofs/proto"
-	sysutil "github.com/chubaofs/chubaofs/util/sys"
-	"github.com/chubaofs/chubaofs/util/version"
 	syslog "log"
 	"net/http"
 	_ "net/http/pprof"
@@ -34,18 +30,23 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/chubaofs/chubaofs/objectnode"
-
-	"github.com/jacobsa/daemonize"
-
 	"github.com/chubaofs/chubaofs/authnode"
 	"github.com/chubaofs/chubaofs/cmd/common"
+	"github.com/chubaofs/chubaofs/console"
 	"github.com/chubaofs/chubaofs/datanode"
 	"github.com/chubaofs/chubaofs/master"
 	"github.com/chubaofs/chubaofs/metanode"
+	"github.com/chubaofs/chubaofs/objectnode"
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/log"
+	_ "github.com/chubaofs/chubaofs/util/log/http" // HTTP API for logging control
+	sysutil "github.com/chubaofs/chubaofs/util/sys"
+	"github.com/chubaofs/chubaofs/util/tracing"
+	_ "github.com/chubaofs/chubaofs/util/tracing/http" // HTTP API for tracing
 	"github.com/chubaofs/chubaofs/util/ump"
+	"github.com/chubaofs/chubaofs/util/version"
+	"github.com/jacobsa/daemonize"
 )
 
 const (
@@ -87,7 +88,9 @@ const (
 )
 
 var (
-	startComplete = false
+	startComplete         = false
+	HttpAPIPathSetTracing = "/tracing/set"
+	HttpAPIPathGetTracing = "/tracing/get"
 )
 
 var (
@@ -174,6 +177,12 @@ func main() {
 	logDir := cfg.GetString(ConfigKeyLogDir)
 	logLevel := cfg.GetString(ConfigKeyLogLevel)
 	profPort := cfg.GetString(ConfigKeyProfPort)
+
+	//Init tracing
+	closer := tracing.TraceInit(role, cfg.GetString(config.CfgTracingsamplerType), cfg.GetFloat(config.CfgTracingsamplerParam), cfg.GetString(config.CfgTracingReportAddr))
+	defer func() {
+		_ = closer.Close()
+	}()
 
 	// Init server instance with specified role configuration.
 	var (
@@ -266,7 +275,6 @@ func main() {
 
 	if profPort != "" {
 		go func() {
-			http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
 			http.HandleFunc(HTTPAPIPATHStatus, statusHandler)
 			e := http.ListenAndServe(fmt.Sprintf(":%v", profPort), nil)
 			if e != nil {

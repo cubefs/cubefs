@@ -19,15 +19,17 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"net"
+	"strings"
+	"syscall"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
 	"github.com/chubaofs/chubaofs/storage"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/tracing"
 	"github.com/tiglabs/raft"
-	"net"
-	"strings"
-	"syscall"
 )
 
 type RaftCmdItem struct {
@@ -214,6 +216,10 @@ func (si *ItemIterator) Next() (data []byte, err error) {
 
 // ApplyRandomWrite random write apply
 func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (resp interface{}, err error) {
+	var tracer = tracing.NewTracer("ApplyRandomWrite")
+	defer tracer.Finish()
+	var ctx = tracer.Context()
+
 	opItem := &rndWrtOpItem{}
 	defer func() {
 		if err == nil {
@@ -237,7 +243,7 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 	log.LogDebugf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v)",
 		raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size)
 	for i := 0; i < 20; i++ {
-		err = dp.ExtentStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, storage.RandomWriteType, opItem.opcode == proto.OpSyncRandomWrite)
+		err = dp.ExtentStore().Write(ctx, opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, storage.RandomWriteType, opItem.opcode == proto.OpSyncRandomWrite)
 		if dp.checkIsDiskError(err) {
 			return
 		}
@@ -256,6 +262,15 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 
 // RandomWriteSubmit submits the proposal to raft.
 func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
+	var tracer = tracing.TracerFromContext(pkg.Ctx()).ChildTracer("DataPartition RandomWriteSubmit").
+		SetTag("reqID", pkg.ReqID).
+		SetTag("extentID", pkg.ExtentID).
+		SetTag("offset", pkg.ExtentOffset).
+		SetTag("size", pkg.Size).
+		SetTag("crc", pkg.CRC)
+	defer tracer.Finish()
+	pkg.SetCtx(tracer.Context())
+
 	val, err := MarshalRandWriteRaftLog(pkg.Opcode, pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size), pkg.Data, pkg.CRC)
 	if err != nil {
 		return
@@ -263,7 +278,7 @@ func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 	var (
 		resp interface{}
 	)
-	if resp, err = dp.Put(nil, val); err != nil {
+	if resp, err = dp.Put(pkg.Ctx(), nil, val); err != nil {
 		return
 	}
 

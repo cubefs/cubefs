@@ -18,6 +18,8 @@ package raft
 import (
 	"fmt"
 
+	"github.com/tiglabs/raft/tracing"
+
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
 )
@@ -39,6 +41,10 @@ func (r *raftFsm) becomeCandidate() {
 }
 
 func stepCandidate(r *raftFsm, m *proto.Message) {
+	var tracer = tracing.TracerFromContext(m.Ctx()).ChildTracer("raftFsm.stepCandidate")
+	defer tracer.Finish()
+	m.SetTagsToTracer(tracer)
+	m.SetCtx(tracer.Context())
 	switch m.Type {
 	case proto.LocalMsgProp:
 		if logger.IsEnableDebug() {
@@ -48,20 +54,21 @@ func stepCandidate(r *raftFsm, m *proto.Message) {
 		return
 
 	case proto.ReqMsgAppend:
-		r.becomeFollower(r.term, m.From)
+		r.becomeFollower(m.Ctx(), r.term, m.From)
 		r.handleAppendEntries(m)
 		proto.ReturnMessage(m)
 		return
 
 	case proto.ReqMsgHeartBeat:
-		r.becomeFollower(r.term, m.From)
+		r.becomeFollower(m.Ctx(), r.term, m.From)
 		return
 
 	case proto.ReqMsgElectAck:
-		r.becomeFollower(r.term, m.From)
+		r.becomeFollower(m.Ctx(), r.term, m.From)
 		nmsg := proto.GetMessage()
 		nmsg.Type = proto.RespMsgElectAck
 		nmsg.To = m.From
+		nmsg.SetCtx(m.Ctx())
 		r.send(nmsg)
 		proto.ReturnMessage(m)
 		return
@@ -74,6 +81,7 @@ func stepCandidate(r *raftFsm, m *proto.Message) {
 		nmsg.Type = proto.RespMsgVote
 		nmsg.To = m.From
 		nmsg.Reject = true
+		nmsg.SetCtx(m.Ctx())
 		r.send(nmsg)
 		proto.ReturnMessage(m)
 		return
@@ -89,10 +97,10 @@ func stepCandidate(r *raftFsm, m *proto.Message) {
 				r.becomeElectionAck()
 			} else {
 				r.becomeLeader()
-				r.bcastAppend()
+				r.bcastAppend(m.Ctx())
 			}
 		case len(r.votes) - gr:
-			r.becomeFollower(r.term, NoLeader)
+			r.becomeFollower(m.Ctx(), r.term, NoLeader)
 		}
 	}
 }

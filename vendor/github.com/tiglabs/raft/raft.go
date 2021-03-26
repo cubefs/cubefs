@@ -24,7 +24,10 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/tiglabs/raft/tracing"
+
 	"github.com/chubaofs/chubaofs/util/exporter"
+
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
 	"github.com/tiglabs/raft/util"
@@ -229,15 +232,22 @@ func (s *raft) runApply() {
 				continue
 			}
 
+			var tracer = tracing.DefaultTracer()
+			if apply.future != nil {
+				tracer = tracing.TracerFromContext(apply.future.ctx).
+					ChildTracer("raft.runApply[applyc]").
+					SetTag("index", apply.index).
+					SetTag("term", apply.term)
+				apply.future.ctx = tracer.Context()
+			}
+
 			var (
 				err  error
 				resp interface{}
 			)
 			switch cmd := apply.command.(type) {
 			case *proto.ConfChange:
-				logger.Error("raft[%v] invoke ApplyMemberChange: cmd(%v) index(%v) futre(%v)", s.raftFsm.id, cmd, apply.index, apply.future)
 				resp, err = s.raftConfig.StateMachine.ApplyMemberChange(cmd, apply.index)
-				logger.Error("raft[%v] finish ApplyMemberChange: cmd(%v) index(%v) futre(%v)", s.raftFsm.id, cmd, apply.index, apply.future)
 			case []byte:
 				resp, err = s.raftConfig.StateMachine.Apply(cmd, apply.index)
 			}
@@ -250,6 +260,8 @@ func (s *raft) runApply() {
 			}
 			s.curApplied.Set(apply.index)
 			pool.returnApply(apply)
+
+			tracer.Finish()
 		}
 	}
 }
@@ -270,6 +282,7 @@ func (s *raft) run() {
 	s.maybeChange(true)
 
 	loopCount := 0
+	tracers := tracing.NewTracers(64)
 	var readyc chan struct{}
 	for {
 		if readyc == nil && s.containsUpdate() {
@@ -286,6 +299,9 @@ func (s *raft) run() {
 			s.maybeChange(true)
 
 		case pr := <-s.propc:
+			msgTracer := tracing.NewTracer("raft.run[prop][event]")
+			msgCtx := msgTracer.Context()
+
 			if s.raftFsm.leader != s.config.NodeID {
 				pr.future.respond(nil, ErrNotLeader)
 				pool.returnProposal(pr)
@@ -295,11 +311,22 @@ func (s *raft) run() {
 			msg := proto.GetMessage()
 			msg.Type = proto.LocalMsgProp
 			msg.From = s.config.NodeID
+			msg.SetCtx(msgCtx)
 			starti := s.raftFsm.raftLog.lastIndex() + 1
 			s.pending[starti] = pr.future
 			s.pendingCmd[starti] = pr.cmdType
-			msg.Entries = append(msg.Entries, &proto.Entry{Term: s.raftFsm.term, Index: starti, Type: pr.cmdType, Data: pr.data})
+
+			var tracer = tracing.TracerFromContext(pr.future.ctx).ChildTracer("raft.run[prop][entry]")
+			var e = &proto.Entry{Term: s.raftFsm.term, Index: starti, Type: pr.cmdType, Data: pr.data}
+			e.SetTagsToTracer(tracer)
+			e.SetCtx(tracer.Context())
+			tracers.AddTracer(tracer)
+
+			msg.Entries = append(msg.Entries, e)
 			pool.returnProposal(pr)
+
+			pr.future.ctx = tracer.Context()
+			msg.SetCtx(pr.future.ctx)
 
 			flag := false
 			for i := 1; i < 64; i++ {
@@ -308,7 +335,14 @@ func (s *raft) run() {
 				case pr := <-s.propc:
 					s.pending[starti] = pr.future
 					s.pendingCmd[starti] = pr.cmdType
-					msg.Entries = append(msg.Entries, &proto.Entry{Term: s.raftFsm.term, Index: starti, Type: pr.cmdType, Data: pr.data})
+
+					var tracer = tracing.TracerFromContext(pr.future.ctx).ChildTracer("raft.run[prop][entry]")
+					var e = &proto.Entry{Term: s.raftFsm.term, Index: starti, Type: pr.cmdType, Data: pr.data}
+					e.SetTagsToTracer(tracer)
+					e.SetCtx(tracer.Context())
+					tracers.AddTracer(tracer)
+
+					msg.Entries = append(msg.Entries, e)
 					pool.returnProposal(pr)
 				default:
 					flag = true
@@ -317,12 +351,11 @@ func (s *raft) run() {
 					break
 				}
 			}
-			for _, entry := range msg.Entries {
-				if entry.Type == proto.EntryConfChange {
-					logger.Error("raft[%v] step EntryConfChange: index(%v) term(%v)", s.raftFsm.id, entry.Index, entry.Term)
-				}
-			}
+
 			s.raftFsm.Step(msg)
+			tracers.Finish()
+			tracers.Clean()
+			msgTracer.Finish()
 
 		case m := <-s.recvc:
 			if _, ok := s.raftFsm.replicas[m.From]; ok || (!m.IsResponseMsg() && m.Type != proto.ReqMsgVote) ||
@@ -337,7 +370,11 @@ func (s *raft) run() {
 						s.raftFsm.Step(m)
 					}
 				default:
+					var tracer = tracing.TracerFromContext(m.Ctx()).ChildTracer("raft.run[recv]")
+					m.SetTagsToTracer(tracer)
+					m.SetCtx(tracer.Context())
 					s.raftFsm.Step(m)
+					tracer.Finish()
 				}
 				var respErr = true
 				if m.Type == proto.RespMsgAppend && m.Reject != true {
@@ -352,9 +389,23 @@ func (s *raft) run() {
 			s.handleSnapshot(snapReq)
 
 		case <-readyc:
-			s.persist()
-			s.apply()
+			var tracer = tracing.NewTracer("raft.run[ready]")
+
+			func() {
+				var tracer = tracer.ChildTracer("raft.run[ready][persist]")
+				defer tracer.Finish()
+				s.persist()
+			}()
+
+			func() {
+				var tracer = tracer.ChildTracer("raft.run[ready][apply]")
+				defer tracer.Finish()
+				s.apply()
+
+			}()
+
 			s.advance()
+
 			// Send all messages.
 			for _, msg := range s.raftFsm.msgs {
 				if msg.Type == proto.ReqMsgSnapShot {
@@ -371,6 +422,8 @@ func (s *raft) run() {
 				runtime.Gosched()
 			}
 
+			tracer.Finish()
+
 		case <-s.electc:
 			msg := proto.GetMessage()
 			msg.Type = proto.LocalMsgHup
@@ -383,6 +436,7 @@ func (s *raft) run() {
 			c <- s.getStatus()
 
 		case truncIndex := <-s.truncatec:
+			var tracer = tracing.NewTracer("raft.run[trunc]")
 			func() {
 				defer util.HandleCrash()
 
@@ -395,6 +449,7 @@ func (s *raft) run() {
 					}
 				}
 			}()
+			tracer.Finish()
 
 		case <-s.promtec:
 			s.promoteLearner()
@@ -495,6 +550,11 @@ func (s *raft) promote() {
 }
 
 func (s *raft) propose(cmd []byte, future *Future) {
+	var tracer = tracing.TracerFromContext(future.ctx).ChildTracer("raft.propose").
+		SetTag("len", len(cmd))
+	defer tracer.Finish()
+	future.ctx = tracer.Context()
+
 	if !s.isLeader() {
 		future.respond(nil, ErrNotLeader)
 		return
@@ -711,11 +771,14 @@ func (s *raft) maybeChange(respErr bool) {
 }
 
 func (s *raft) persist() {
-	unstableEntries := s.raftFsm.raftLog.unstableEntries()
-	if len(unstableEntries) > 0 {
-		if err := s.raftConfig.Storage.StoreEntries(unstableEntries); err != nil {
-			panic(AppPanicError(fmt.Sprintf("[raft->persist][%v] storage storeEntries err: [%v].", s.raftFsm.id, err)))
-		}
+
+	if exporter.IsEnabled() {
+		metric := Metrics().MetricRaftOpTpc.GetWithLabelVals("persist")
+		defer metric.Count()
+	}
+
+	if err := s.raftFsm.raftLog.persist(); err != nil {
+		panic(AppPanicError(fmt.Sprintf("[raft->persist][%v] storage storeEntries err: [%v].", s.raftFsm.id, err)))
 	}
 	if s.raftFsm.raftLog.committed != s.prevHardSt.Commit || s.raftFsm.term != s.prevHardSt.Term || s.raftFsm.vote != s.prevHardSt.Vote {
 		hs := proto.HardState{Term: s.raftFsm.term, Vote: s.raftFsm.vote, Commit: s.raftFsm.raftLog.committed}
@@ -753,6 +816,17 @@ func (s *raft) apply() {
 			delete(s.pending, entry.Index)
 			delete(s.pendingCmd, entry.Index)
 		}
+
+		var tracer = tracing.DefaultTracer()
+		if apply.future != nil {
+			tracer = tracing.TracerFromContext(apply.future.ctx).ChildTracer("raft.apply").
+				SetTag("index", apply.index).
+				SetTag("term", apply.term).
+				SetTag("type", entry.Type)
+
+			apply.future.ctx = tracer.Context()
+		}
+
 		apply.readIndexes = s.raftFsm.readOnly.getReady(entry.Index)
 
 		switch entry.Type {
@@ -772,6 +846,7 @@ func (s *raft) apply() {
 				logger.Warn("raft[%v] applying configuration change %v.", s.raftFsm.id, cc)
 			}
 		}
+
 		select {
 		case <-s.stopc:
 			if apply.future != nil {
@@ -782,15 +857,13 @@ func (s *raft) apply() {
 			}
 		case s.applyc <- apply:
 		}
+
+		tracer.Finish()
 	}
 }
 
 func (s *raft) advance() {
 	s.raftFsm.raftLog.appliedTo(s.raftFsm.raftLog.committed)
-	entries := s.raftFsm.raftLog.unstableEntries()
-	if len(entries) > 0 {
-		s.raftFsm.raftLog.stableTo(entries[len(entries)-1].Index, entries[len(entries)-1].Term)
-	}
 }
 
 func (s *raft) containsUpdate() bool {
@@ -870,17 +943,17 @@ func (s *raft) getStatus() *Status {
 		st.Replicas = make(map[uint64]*ReplicaStatus)
 		for id, p := range s.raftFsm.replicas {
 			st.Replicas[id] = &ReplicaStatus{
-				Match:       	p.match,
-				Commit:      	p.committed,
-				Next:        	p.next,
-				State:       	p.state.String(),
-				Snapshoting: 	p.state == replicaStateSnapshot,
-				Paused:      	p.paused,
-				Active:      	p.active,
-				LastActive:  	p.lastActive,
-				Inflight:    	p.count,
-				IsLearner:   	p.isLearner,
-				PromConfig: 	p.promConfig,
+				Match:       p.match,
+				Commit:      p.committed,
+				Next:        p.next,
+				State:       p.state.String(),
+				Snapshoting: p.state == replicaStateSnapshot,
+				Paused:      p.paused,
+				Active:      p.active,
+				LastActive:  p.lastActive,
+				Inflight:    p.count,
+				IsLearner:   p.isLearner,
+				PromConfig:  p.promConfig,
 			}
 		}
 	}

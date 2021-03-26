@@ -36,7 +36,7 @@ const (
 	defaultTickInterval    = time.Millisecond * 2000
 	defaultHeartbeatTick   = 1
 	defaultElectionTick    = 5
-	defaultPromoteTick	   = 11
+	defaultPromoteTick     = 11
 	defaultInflightMsgs    = 128
 	defaultSizeReqBuffer   = 2048
 	defaultSizeAppBuffer   = 2048
@@ -44,7 +44,7 @@ const (
 	defaultSizeSendBuffer  = 10240
 	defaultReplConcurrency = 5
 	defaultSnapConcurrency = 10
-	defaultSizePerMsg      = MB
+	defaultSizePerMsg      = 4 * MB
 	defaultHeartbeatAddr   = ":3016"
 	defaultReplicateAddr   = ":2015"
 )
@@ -70,13 +70,15 @@ type Config struct {
 	// We suggest to use ElectionTick = 10 * HeartbeatTick to avoid unnecessary leader switching.
 	// The default value is 10s.
 	ElectionTick int
+
 	// PromoteTick is the promotion of learners interval. A leader propose PromoteLearner configure change
 	// to promote learners every PromoteTick interval.
 	// PromoteTick must be greater than HeartbeatTick and ElectionTick.
 	// We suggest to set PromoteTick to prime number to avoid conflict between promote and tick,
 	// which will cause the replica to be set to inactive state during checkLeaderLease.
 	// The default value is 22s.
-	PromoteTick	int
+	PromoteTick int
+
 	// MaxSizePerMsg limits the max size of each append message.
 	// The default value is 1M.
 	MaxSizePerMsg uint64
@@ -141,7 +143,7 @@ type RaftConfig struct {
 	Peers        []proto.Peer
 	Storage      storage.Storage
 	StateMachine StateMachine
-	Learners	 []proto.Learner
+	Learners     []proto.Learner
 }
 
 // DefaultConfig returns a Config with usable defaults.
@@ -175,7 +177,7 @@ func (c *Config) validate() error {
 	if c.TransportConfig.Resolver == nil {
 		return errors.New("Resolver is required")
 	}
-	if c.MaxSizePerMsg > 4*MB {
+	if c.MaxSizePerMsg > 16*MB {
 		return errors.New("MaxSizePerMsg it too high")
 	}
 	if c.MaxInflightMsgs > 1024 {

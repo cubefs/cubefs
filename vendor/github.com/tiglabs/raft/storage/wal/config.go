@@ -17,9 +17,11 @@ package wal
 import "github.com/tiglabs/raft/util"
 
 const (
-	DefaultFileCacheCapacity = 2
+	DefaultFileCacheCapacity = 16
 	DefaultFileSize          = 32 * util.MB
 	DefaultSync              = false
+	DefaultSyncRotate        = false
+	DefaultSyncMeta          = false
 )
 
 // Config wal config
@@ -34,6 +36,11 @@ type Config struct {
 
 	// TruncateFirstDummy  初始化时添加一条日志然后截断
 	TruncateFirstDummy bool
+
+	SyncRotate bool
+
+	// Default value is false.
+	SyncMeta bool
 }
 
 func (c *Config) GetFileCacheCapacity() int {
@@ -63,6 +70,20 @@ func (c *Config) GetTruncateFirstDummy() bool {
 		return false
 	}
 	return c.TruncateFirstDummy
+}
+
+func (c *Config) GetSyncRotate() bool {
+	if c == nil {
+		return DefaultSyncRotate
+	}
+	return c.SyncRotate
+}
+
+func (c *Config) GetSyncMeta() bool {
+	if c == nil {
+		return DefaultSyncMeta
+	}
+	return c.SyncMeta
 }
 
 func (c *Config) dup() *Config {

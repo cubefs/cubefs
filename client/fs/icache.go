@@ -16,8 +16,11 @@ package fs
 
 import (
 	"container/list"
+	"context"
 	"sync"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util/tracing"
 
 	"github.com/chubaofs/chubaofs/proto"
 )
@@ -73,7 +76,12 @@ func (ic *InodeCache) Put(info *proto.InodeInfo) {
 }
 
 // Get returns the inode info based on the given inode number.
-func (ic *InodeCache) Get(ino uint64) *proto.InodeInfo {
+func (ic *InodeCache) Get(ctx context.Context, ino uint64) *proto.InodeInfo {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("InodeCache.Get").
+		SetTag("ino", ino)
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	ic.RLock()
 	element, ok := ic.cache[ino]
 	if !ok {
@@ -92,7 +100,7 @@ func (ic *InodeCache) Get(ino uint64) *proto.InodeInfo {
 }
 
 // Delete deletes the inode info based on the given inode number.
-func (ic *InodeCache) Delete(ino uint64) {
+func (ic *InodeCache) Delete(ctx context.Context, ino uint64) {
 	//log.LogDebugf("InodeCache Delete: ino(%v)", ino)
 	ic.Lock()
 	element, ok := ic.cache[ino]

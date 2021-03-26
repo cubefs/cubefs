@@ -121,3 +121,10 @@ func (u *unstable) mustCheckOutOfBounds(lo, hi uint64) {
 		panic(AppPanicError(errMsg))
 	}
 }
+
+func newUnstable(offset uint64) unstable {
+	return unstable{
+		offset:  offset,
+		entries: make([]*proto.Entry, 0, 256),
+	}
+}

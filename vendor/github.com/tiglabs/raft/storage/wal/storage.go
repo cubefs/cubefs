@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/tiglabs/raft/tracing"
+
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
 	"github.com/tiglabs/raft/util/log"
@@ -92,11 +94,12 @@ func (s *Storage) truncateFirstDummy() error {
 		truncTerm:  1,
 	}
 
-	if err = s.metafile.SaveTruncateMeta(meta); err != nil {
-		return err
-	}
-	if err = s.metafile.Sync(); err != nil {
-		return err
+	s.metafile.SaveTruncateMeta(meta)
+
+	if s.c.GetSyncMeta() {
+		if err = s.metafile.Sync(); err != nil {
+			return err
+		}
 	}
 
 	s.truncIndex = meta.truncIndex
@@ -168,9 +171,14 @@ func (s *Storage) StoreEntries(entries []*proto.Entry) error {
 
 // StoreHardState store the raft state to the repository.
 func (s *Storage) StoreHardState(st proto.HardState) error {
-	if err := s.metafile.SaveHardState(st); err != nil {
-		return err
-	}
+	var tracer = tracing.NewTracer("Storage.StoreHardState").
+		SetTag("term", st.Term).
+		SetTag("commit", st.Commit).
+		SetTag("vote", st.Vote)
+	defer tracer.Finish()
+
+	s.metafile.SaveHardState(st)
+
 	s.hardState = st
 
 	if s.c.GetSync() {
@@ -179,7 +187,7 @@ func (s *Storage) StoreHardState(st proto.HardState) error {
 			sync = true
 			s.prevCommit = st.Commit
 		}
-		if sync {
+		if sync && s.c.GetSyncMeta() {
 			if err := s.metafile.Sync(); err != nil {
 				return err
 			}
@@ -212,11 +220,12 @@ func (s *Storage) Truncate(index uint64) error {
 		truncIndex: index,
 		truncTerm:  term,
 	}
-	if err = s.metafile.SaveTruncateMeta(meta); err != nil {
-		return err
-	}
-	if err = s.metafile.Sync(); err != nil {
-		return err
+	s.metafile.SaveTruncateMeta(meta)
+
+	if s.c.GetSyncMeta() {
+		if err = s.metafile.Sync(); err != nil {
+			return err
+		}
 	}
 
 	// 截断日志文件
@@ -241,15 +250,14 @@ func (s *Storage) ApplySnapshot(meta proto.SnapshotMeta) error {
 
 	// 更新commit位置
 	s.hardState.Commit = meta.Index
-	if err := s.metafile.SaveHardState(s.hardState); err != nil {
-		return err
-	}
+	s.metafile.SaveHardState(s.hardState)
 
-	if err = s.metafile.SaveTruncateMeta(tMeta); err != nil {
-		return err
-	}
-	if err = s.metafile.Sync(); err != nil {
-		return err
+	s.metafile.SaveTruncateMeta(tMeta)
+
+	if s.c.GetSyncMeta() {
+		if err = s.metafile.Sync(); err != nil {
+			return err
+		}
 	}
 
 	if err = s.ls.TruncateAll(); err != nil {
@@ -266,7 +274,8 @@ func (s *Storage) ApplySnapshot(meta proto.SnapshotMeta) error {
 func (s *Storage) Close() {
 	if !s.closed {
 		s.ls.Close()
-		s.metafile.Close()
+		_ = s.metafile.Sync()
+		_ = s.metafile.Close()
 		s.closed = true
 	}
 }

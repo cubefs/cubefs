@@ -17,6 +17,8 @@ package metanode
 import (
 	"net"
 
+	"github.com/chubaofs/chubaofs/util/tracing"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 )
@@ -46,6 +48,11 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 	if leaderAddr, ok = mp.IsLeader(); ok {
 		return
 	}
+
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metadataManager serveProxy")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
 	if leaderAddr == "" {
 		err = ErrNoLeader
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))

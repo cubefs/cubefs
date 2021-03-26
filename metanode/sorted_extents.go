@@ -2,8 +2,12 @@ package metanode
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"sync"
+
+	"github.com/chubaofs/chubaofs/util/tracing"
 
 	"github.com/chubaofs/chubaofs/proto"
 )
@@ -45,7 +49,7 @@ func (se *SortedExtents) MarshalBinary() ([]byte, error) {
 	return data, nil
 }
 
-func (se *SortedExtents) UnmarshalBinary(data []byte) error {
+func (se *SortedExtents) UnmarshalBinary(ctx context.Context, data []byte) error {
 	var ek proto.ExtentKey
 
 	buf := bytes.NewBuffer(data)
@@ -56,12 +60,308 @@ func (se *SortedExtents) UnmarshalBinary(data []byte) error {
 		if err := ek.UnmarshalBinary(buf); err != nil {
 			return err
 		}
-		se.Append(ek)
+		se.Append(ctx, ek)
 	}
 	return nil
 }
 
-func (se *SortedExtents) Append(ek proto.ExtentKey) (deleteExtents []proto.ExtentKey) {
+// Insert makes insertion support for SortedExtentKeys.
+// This method will insert the specified ek into the correct position in the extent key chain,
+// adjust the existing extent keys in the chain before inserting, and perform the extent keys
+// that overlap with the extent keys to be inserted. Split, modify or exchange.
+// Finally, the completely useless extent keys are returned to the caller, and the data pointed
+// to by these completely useless extent keys can be safely deleted.
+//
+// Related unit test cases:
+//   1.TestSortedExtents_Insert01
+//   2.TestSortedExtents_Insert02
+//   3.TestSortedExtents_Insert03
+//   4.TestSortedExtents_Insert04
+// These test cases cover 100% of the this method.
+func (se *SortedExtents) Insert(ctx context.Context, ek proto.ExtentKey) (deleteExtents []proto.ExtentKey) {
+	if tracing.IsEnabled() {
+		var tracer = tracing.TracerFromContext(ctx).ChildTracer("SortedExtent.Update").
+			SetTag("ek.FileOffset", ek.FileOffset).
+			SetTag("ek.Size", ek.Size).
+			SetTag("ek.PartitionId", ek.PartitionId).
+			SetTag("ek.ExtentId", ek.ExtentId).
+			SetTag("ek.ExtentOffset", ek.ExtentOffset)
+		defer tracer.Finish()
+	}
+	se.RWMutex.Lock()
+	defer se.RWMutex.Unlock()
+
+	// -------------------------------------------------------------------------------------
+	// Sample:
+	//                        |=============================|
+	//                        ↑           ek                ↑
+	//                  ek.FileOffset             ek.FileOffset+ek.Size
+	//                        ↓                             ↓
+	//                        //////////////////////////////
+	//                              shadow (overlap area)
+	//                        ↓                             ↓
+	//     |===========|=============================================|=============|
+	//         cur-1   ↑                   cur                       ↑    cur+1
+	//          cur.FileOffset                              cur.FileOffset+cur.Size
+	//                 ↑______↑                             ↑________↑
+	//                fixedFront                             fixedBack
+	//                 ↓      ↓                             ↓        ↓
+	//     |===========|======|=============================|========|=============|
+	//        cur-1   fixedFront            ek               fixedBack    cur+1
+	//
+	// -------------------------------------------------------------------------------------
+	// About fixedFront(proto.ExtentKey):
+	//      FileOffset  :	cur.FileOffset
+	//      PartitionId :	cur.PartitionId
+	//      ExtentId    : 	cur.ExtentId
+	//      ExtentOffset: 	cur.ExtentOffset
+	// 		Size		: 	ek.FileOffset-cur.FileOffset
+	//
+	// -------------------------------------------------------------------------------------
+	// About fixedBack(proto.ExtentKey):
+	//		FileOffset: 	ek.FileOffset+ek.Size
+	//      PartitionId:	cur.PartitionId
+	//      ExtentId:		cur.ExtentId
+	// 		ExtentOffset:	cur.ExtentOffset+ek.FileOffset-cur.FileOffset+ek.Size
+	//		Size:			cur.Size-(ek.FileOffset-cur.FileOffset+ek.Size)
+	//
+	// -------------------------------------------------------------------------------------
+	// About the insert position:
+	//   In the process of traversing the extent key chain, if the insertion point is not found
+	//   and the FileOffset of the current node is greater than the extent key to be inserted,
+	//   it is currently the best insertion point. At this time, the extent key will be inserted
+	//   in front of the current node and the inserted state will be marked (set inserted to true).
+	//   This indicates that the insertion has been completed.
+	//   If the incomplete insertion is thrown after the traversal is completed (inserted is false),
+	//   it will inserted at the end.
+
+	var (
+		fixedFront, fixedBack *proto.ExtentKey
+		inserted              = false
+		maybeGarbage          map[string]proto.ExtentKey
+		index                 = 0
+		cur                   *proto.ExtentKey
+
+		// Previous overlap flag.
+		// In the process of traversing the extent key chain, this mark indicates whether
+		// the previously traversed extent key overlaps with the extent key which to be inserted.
+		// Through this mark, we can know in advance whether the conditions for terminating
+		// the traversal are met:
+		//
+		//       ek:                  |=====|
+		//                            ↓     ↓
+		//      eks:  |=====|......|=====|=====|=====|=====|.....|=====|
+		//             first              prev   cur  next        last
+		//                                 ↗      ↑     ↖           ↑
+		//  overlap:                    yes      no     no          no
+		//
+		// If the current extent key overlaps but does not currently overlap, it means that
+		// all subsequent extent keys that have not been traversed meet the requirement that
+		// the lower edge is greater than the upper boundary of the extent key to be inserted,
+		// and there will be no overlap relationship.
+		prevOverlap = false
+	)
+
+	// Try to quickly find the first overlapped position to improve traverse process.
+	if len(se.eks) > 0 {
+		if last := se.eks[len(se.eks)-1]; last.FileOffset+uint64(last.Size) <= ek.FileOffset {
+
+			// When the lower boundary of the extent key (ek) to be inserted exceeds the upper boundary
+			// of the last node in the extent key chain (se.eks), it indicates that the  best insertion
+			// position is at the end and has no overlap relationship with other nodes.
+			//
+			//    ek:                                 |=====|
+			//                                        ↓     ↓
+			//   eks:  |=====|......|=====|=====|     ///////
+			//          first              last ↓     ↓
+			//                                  ↓     ↓
+			//                         upper(last) <= lower(ek)
+			//
+			index = len(se.eks)
+		} else if ek.FileOffset >= se.eks[0].FileOffset+uint64(se.eks[0].Size) {
+
+			// Try to quickly find the first position that satisfies the overlap relationship based on
+			// binary search. If it is found successfully, the traversal process starts from this position,
+			// which can effectively improve the processing speed.
+			//
+			//      ek:                         |=====|
+			//                 first overlap    ↓     ↓
+			//                              ↘   ///////
+			//     eks:  |=====|......|=====|=====|=====|......|=====|
+			//            first         ↗   ↑  ↑      ↖         last
+			//  overlap:              no    ↑ yes      yes
+			//                              ↑
+			//                       best start index
+			//
+			if boostStart := findFirstOverlapPosition(se.eks, &ek); boostStart > 0 && boostStart < len(se.eks) {
+				index = boostStart
+			}
+		}
+	}
+
+	for {
+		if index >= len(se.eks) {
+			break
+		}
+		// Reset working variables.
+		fixedFront, fixedBack = nil, nil
+		cur = &se.eks[index]
+
+		if !inserted && (ek.FileOffset <= cur.FileOffset) {
+			if merged := se.insertOrMergeAt(index, ek); !merged {
+				index++
+			}
+			inserted = true
+			continue
+		}
+
+		if se.maybeMergeWithPrev(index) {
+			continue
+		}
+
+		// Check whether the two ExtentKeys overlap
+		if !cur.Overlap(&ek) {
+			if prevOverlap {
+				break
+			}
+			index++
+			continue
+		}
+		prevOverlap = true
+
+		if ek.FileOffset > cur.FileOffset {
+			fixedFront = &proto.ExtentKey{
+				FileOffset:   cur.FileOffset,
+				PartitionId:  cur.PartitionId,
+				ExtentId:     cur.ExtentId,
+				ExtentOffset: cur.ExtentOffset,
+				Size:         uint32(ek.FileOffset - cur.FileOffset),
+			}
+		}
+		if ek.FileOffset+uint64(ek.Size) < cur.FileOffset+uint64(cur.Size) {
+			fixedBack = &proto.ExtentKey{
+				FileOffset:   ek.FileOffset + uint64(ek.Size),
+				PartitionId:  cur.PartitionId,
+				ExtentId:     cur.ExtentId,
+				ExtentOffset: cur.ExtentOffset + ek.FileOffset - cur.FileOffset + uint64(ek.Size),
+				Size:         cur.Size - uint32(ek.FileOffset-cur.FileOffset+uint64(ek.Size)),
+			}
+		}
+
+		if fixedFront == nil && fixedBack == nil {
+			// That means the cur is totally overlap by the new extent key (ek).
+			// E.g.
+			//        |=================================================================|
+			//        ↓                              ek                                 ↓
+			//        ↓                |===========================|                    ↓
+			//        ↓                ↓             cur           ↓                    ↓
+			//   ek.FileOffset <= cur.FileOffset <= cur.FileOffset+cur.Size <= ek.FileOffset+ek.Size
+			//
+			// In this case the cur need be remove from extent key chan (se.eks).
+			if maybeGarbage == nil {
+				maybeGarbage = make(map[string]proto.ExtentKey)
+			}
+			maybeGarbage[fmt.Sprintf("%d_%d", cur.PartitionId, cur.ExtentId)] = *cur
+			if index == len(se.eks)-1 {
+				se.eks = se.eks[:index]
+			} else {
+				se.eks = append(se.eks[:index], se.eks[index+1:]...)
+			}
+			se.eks = append(se.eks)
+			continue // Continue and do not advance index cause of element removed
+		} else {
+			if fixedFront != nil {
+				// Make exchange between cur and fixedFront.
+				se.eks[index] = *fixedFront
+				if fixedBack != nil {
+					var eks []proto.ExtentKey
+					eks = append([]proto.ExtentKey{}, se.eks[:index+1]...)
+					eks = append(eks, *fixedBack)
+					eks = append(eks, se.eks[index+1:]...)
+					se.eks = eks
+				}
+			} else if fixedBack != nil {
+				// Make exchange between cur and fixedBack
+				se.eks[index] = *fixedBack
+			}
+		}
+
+		// Advance
+		index++
+	}
+
+	if !inserted {
+		// In the process of traversing eks, no suitable insertion position is found,
+		// indicating that the ek to be inserted should be at the end.
+		se.insertOrMergeAt(len(se.eks), ek)
+	}
+
+	// Analyze garbage
+	if len(maybeGarbage) > 0 {
+		for i := 0; i < len(se.eks); i++ {
+			k := fmt.Sprintf("%d_%d", se.eks[i].PartitionId, se.eks[i].ExtentId)
+			if _, exist := maybeGarbage[k]; exist {
+				delete(maybeGarbage, k)
+			}
+			if len(maybeGarbage) == 0 {
+				break
+			}
+		}
+		for _, garbage := range maybeGarbage {
+			deleteExtents = append(deleteExtents, garbage)
+		}
+	}
+
+	return
+}
+
+// Insert ek into the specified position in the ek chain, and check whether the data is continuous with
+// the ek data before the insertion position before inserting, and merge with it if it is continuous.
+func (se *SortedExtents) insertOrMergeAt(index int, ek proto.ExtentKey) (merged bool) {
+	if index > 0 &&
+		se.eks[index-1].PartitionId == ek.PartitionId &&
+		se.eks[index-1].ExtentId == ek.PartitionId &&
+		se.eks[index-1].FileOffset+uint64(se.eks[index-1].Size) == ek.FileOffset &&
+		se.eks[index-1].ExtentOffset+uint64(se.eks[index-1].Size) == ek.ExtentOffset {
+		se.eks[index-1].Size = se.eks[index-1].Size + ek.Size
+		merged = true
+	} else if index < len(se.eks) {
+		var eks []proto.ExtentKey
+		eks = append([]proto.ExtentKey{}, se.eks[:index]...)
+		eks = append(eks, ek)
+		eks = append(eks, se.eks[index:]...)
+		se.eks = eks
+	} else {
+		se.eks = append(se.eks, ek)
+	}
+	return
+}
+
+// Check whether the ek at the specified position can be merged with the previous ek,
+// and merge if the data is continuous.
+func (se *SortedExtents) maybeMergeWithPrev(index int) (merged bool) {
+	if index > 0 && index < len(se.eks) &&
+		se.eks[index-1].PartitionId == se.eks[index].PartitionId &&
+		se.eks[index-1].ExtentId == se.eks[index].PartitionId &&
+		se.eks[index-1].FileOffset+uint64(se.eks[index-1].Size) == se.eks[index].FileOffset &&
+		se.eks[index-1].ExtentOffset+uint64(se.eks[index-1].Size) == se.eks[index].ExtentOffset {
+		se.eks[index-1].Size = se.eks[index-1].Size + se.eks[index].Size
+		var eks []proto.ExtentKey
+		eks = append([]proto.ExtentKey{}, se.eks[:index]...)
+		if index+1 < len(se.eks) {
+			eks = append(eks, se.eks[index+1:]...)
+		}
+		se.eks = eks
+		merged = true
+	}
+	return
+}
+
+func (se *SortedExtents) Append(ctx context.Context, ek proto.ExtentKey) (deleteExtents []proto.ExtentKey) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("SortedExtents Append")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	endOffset := ek.FileOffset + uint64(ek.Size)
 
 	se.Lock()
@@ -197,4 +497,34 @@ func (se *SortedExtents) doCopyExtents() []proto.ExtentKey {
 	eks := make([]proto.ExtentKey, len(se.eks))
 	copy(eks, se.eks)
 	return eks
+}
+
+// This method is based on recursive binary search to find the first overlapping position.
+func findFirstOverlapPosition(eks []proto.ExtentKey, ek *proto.ExtentKey) int {
+	switch {
+	case len(eks) < 1:
+		return -1
+	case len(eks) == 1:
+		if ek.FileOffset < eks[0].FileOffset+uint64(eks[0].Size) {
+			return 0
+		} else {
+			return -1
+		}
+	default:
+	}
+	var (
+		mid        = len(eks) / 2
+		left       = eks[:mid]
+		right      = eks[mid:]
+		off, boost int
+	)
+	if leftLast := left[len(left)-1]; ek.FileOffset < leftLast.FileOffset+uint64(leftLast.Size) {
+		off, boost = 0, findFirstOverlapPosition(left, ek)
+	} else {
+		off, boost = mid, findFirstOverlapPosition(right, ek)
+	}
+	if boost >= 0 {
+		return off + boost
+	}
+	return -1
 }

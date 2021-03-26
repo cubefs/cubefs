@@ -24,6 +24,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/chubaofs/chubaofs/util/tracing"
+
 	"hash/crc32"
 	"strings"
 
@@ -42,7 +44,12 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	s.rateLimit(p, c)
 
 	sz := p.Size
-	tpObject := exporter.NewTPCnt(p.GetOpMsg())
+
+	if s.metrics != nil {
+		tpObject := s.metrics.MetricDPOpTpc.GetWithLabelVals(p.GetOpMsg())
+		defer tpObject.CountWithError(err)
+	}
+
 	start := time.Now().UnixNano()
 	defer func() {
 		resultSize := p.Size
@@ -66,8 +73,17 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 			}
 		}
 		p.Size = resultSize
-		tpObject.Set(err)
 	}()
+
+	if tracing.Tracing {
+		var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("DataNode.OperatePacket").
+			SetTag("op", p.GetOpMsg()).
+			SetTag("pid", p.PartitionID).
+			SetTag("reqID", p.ReqID)
+		defer tracer.Finish()
+		p.SetCtx(tracer.Context())
+	}
+
 	switch p.Opcode {
 	case proto.OpCreateExtent:
 		s.handlePacketToCreateExtent(p)
@@ -381,6 +397,10 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 
 // Handle OpWrite packet.
 func (s *DataNode) handleWritePacket(p *repl.Packet) {
+	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("DataNode handleWritePacket")
+	defer tracer.Finish()
+	p.SetCtx(tracer.Context())
+
 	var err error
 	defer func() {
 		if err != nil {
@@ -390,6 +410,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		}
 	}()
 	partition := p.Object.(*DataPartition)
+
 	if partition.Available() <= 0 || partition.disk.Status == proto.ReadOnly || partition.IsRejectWrite() {
 		err = storage.NoSpaceError
 		return
@@ -397,15 +418,46 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		err = storage.BrokenDiskError
 		return
 	}
+
+	var (
+		partitionIOMetric *exporter.TPCMetric
+		ioMetricLabels    []string
+	)
+
+	if s.metrics != nil {
+		ioMetricLabels = s.metrics.GetIoMetricLabelVals(partition, MetricDpIOTypeWrite)
+	}
+
 	store := partition.ExtentStore()
 	if p.ExtentType == proto.TinyExtentType {
-		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
+		//count io metrics
+		if s.metrics != nil {
+			partitionIOMetric = s.metrics.MetricIOTpc.GetWithLabelVals(ioMetricLabels...)
+		}
+		err = store.Write(p.Ctx(), p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
+		//add io bytes metrics
+		if s.metrics != nil {
+			partitionIOMetric.CountWithError(err)
+			s.metrics.MetricIOBytes.AddWithLabelValues(float64(p.Size), ioMetricLabels...)
+		}
+
 		s.incDiskErrCnt(p.PartitionID, err, WriteFlag)
 		return
 	}
 
 	if p.Size <= util.BlockSize {
-		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
+
+		if s.metrics != nil {
+			partitionIOMetric = s.metrics.MetricIOTpc.GetWithLabelVals(ioMetricLabels...)
+		}
+
+		err = store.Write(p.Ctx(), p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
+
+		if s.metrics != nil {
+			partitionIOMetric.CountWithError(err)
+			s.metrics.MetricIOBytes.AddWithLabelValues(float64(p.Size), ioMetricLabels...)
+		}
+
 		partition.checkIsDiskError(err)
 	} else {
 		size := p.Size
@@ -417,7 +469,18 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			currSize := util.Min(int(size), util.BlockSize)
 			data := p.Data[offset : offset+currSize]
 			crc := crc32.ChecksumIEEE(data)
-			err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite())
+
+			if s.metrics != nil {
+				partitionIOMetric = s.metrics.MetricIOTpc.GetWithLabelVals(ioMetricLabels...)
+			}
+
+			err = store.Write(p.Ctx(), p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite())
+
+			if s.metrics != nil {
+				partitionIOMetric.CountWithError(err)
+				s.metrics.MetricIOBytes.AddWithLabelValues(float64(p.Size), ioMetricLabels...)
+			}
+
 			partition.checkIsDiskError(err)
 			if err != nil {
 				break
@@ -445,7 +508,22 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		err = raft.ErrNotLeader
 		return
 	}
+	var (
+		partitionIOMetric          *exporter.TPCMetric
+		metricPartitionIOLabelVals []string
+	)
+	if s.metrics != nil {
+		metricPartitionIOLabelVals = s.metrics.GetIoMetricLabelVals(partition, MetricDpIOTypeRandWrite)
+		partitionIOMetric = s.metrics.MetricIOTpc.GetWithLabelVals(metricPartitionIOLabelVals...)
+
+	}
 	err = partition.RandomWriteSubmit(p)
+
+	if s.metrics != nil {
+		partitionIOMetric.CountWithError(err)
+		s.metrics.MetricIOBytes.AddWithLabelValues(float64(p.Size), metricPartitionIOLabelVals...)
+	}
+
 	if err != nil && strings.Contains(err.Error(), raft.ErrNotLeader.Error()) {
 		err = raft.ErrNotLeader
 		return
@@ -455,7 +533,6 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		err = storage.TryAgainError
 		return
 	}
-
 }
 
 func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
@@ -498,12 +575,19 @@ func (s *DataNode) handleExtentRepaiReadPacket(p *repl.Packet, connect net.Conn,
 	offset := p.ExtentOffset
 	store := partition.ExtentStore()
 
+	var (
+		metricPartitionIOLabelVals []string
+		partitionIOMetric          *exporter.TPCMetric
+	)
+	if s.metrics != nil {
+		metricPartitionIOLabelVals = s.metrics.GetIoMetricLabelVals(partition, MetricDpIOTypeRead)
+	}
 	for {
 		if needReplySize <= 0 {
 			break
 		}
 		err = nil
-		reply := repl.NewStreamReadResponsePacket(p.ReqID, p.PartitionID, p.ExtentID)
+		reply := repl.NewStreamReadResponsePacket(p.Ctx(), p.ReqID, p.PartitionID, p.ExtentID)
 		reply.StartT = p.StartT
 		currReadSize := uint32(util.Min(int(needReplySize), util.ReadBlockSize))
 		if currReadSize == util.ReadBlockSize {
@@ -511,13 +595,22 @@ func (s *DataNode) handleExtentRepaiReadPacket(p *repl.Packet, connect net.Conn,
 		} else {
 			reply.Data = make([]byte, currReadSize)
 		}
-		tpObject := exporter.NewTPCnt(p.GetOpMsg())
+
 		reply.ExtentOffset = offset
 		p.Size = uint32(currReadSize)
 		p.ExtentOffset = offset
+
+		if s.metrics != nil {
+			partitionIOMetric = s.metrics.MetricIOTpc.GetWithLabelVals(metricPartitionIOLabelVals...)
+		}
 		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, isRepairRead)
+		if s.metrics != nil {
+			partitionIOMetric.CountWithError(err)
+			s.metrics.MetricIOBytes.AddWithLabelValues(float64(p.Size), metricPartitionIOLabelVals...)
+		}
+
 		partition.checkIsDiskError(err)
-		tpObject.Set(err)
+
 		p.CRC = reply.CRC
 		if err != nil {
 			if currReadSize == util.ReadBlockSize {
@@ -636,7 +729,7 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 		if needReplySize <= 0 {
 			break
 		}
-		reply := repl.NewTinyExtentStreamReadResponsePacket(request.ReqID, request.PartitionID, request.ExtentID)
+		reply := repl.NewTinyExtentStreamReadResponsePacket(request.Ctx(), request.ReqID, request.PartitionID, request.ExtentID)
 		reply.ArgLen = TinyExtentRepairReadResponseArgLen
 		reply.Arg = make([]byte, TinyExtentRepairReadResponseArgLen)
 		s.attachAvaliSizeOnTinyExtentRepairRead(reply, avaliReplySize)
@@ -711,7 +804,7 @@ func (s *DataNode) handlePacketToReadTinyDeleteRecordFile(p *repl.Packet, connec
 	}
 	needReplySize := localTinyDeleteFileSize - p.ExtentOffset
 	offset := p.ExtentOffset
-	reply := repl.NewReadTinyDeleteRecordResponsePacket(p.ReqID, p.PartitionID)
+	reply := repl.NewReadTinyDeleteRecordResponsePacket(p.Ctx(), p.ReqID, p.PartitionID)
 	reply.StartT = time.Now().UnixNano()
 	for {
 		if needReplySize <= 0 {

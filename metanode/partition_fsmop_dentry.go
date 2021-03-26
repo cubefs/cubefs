@@ -15,8 +15,11 @@
 package metanode
 
 import (
-	"github.com/chubaofs/chubaofs/util/btree"
+	"context"
 	"strings"
+
+	"github.com/chubaofs/chubaofs/util/btree"
+	"github.com/chubaofs/chubaofs/util/tracing"
 
 	"github.com/chubaofs/chubaofs/proto"
 )
@@ -157,7 +160,11 @@ func (mp *metaPartition) getDentryTree() *BTree {
 	return mp.dentryTree.GetTree()
 }
 
-func (mp *metaPartition) readDir(req *ReadDirReq) (resp *ReadDirResp) {
+func (mp *metaPartition) readDir(ctx context.Context, req *ReadDirReq) (resp *ReadDirResp) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("metaPartition.readDir")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
 	resp = &ReadDirResp{}
 	begDentry := &Dentry{
 		ParentId: req.ParentID,
@@ -165,7 +172,10 @@ func (mp *metaPartition) readDir(req *ReadDirReq) (resp *ReadDirResp) {
 	endDentry := &Dentry{
 		ParentId: req.ParentID + 1,
 	}
+
+	count := 0
 	mp.dentryTree.AscendRange(begDentry, endDentry, func(i BtreeItem) bool {
+		count += 1
 		d := i.(*Dentry)
 		resp.Children = append(resp.Children, proto.Dentry{
 			Inode: d.Inode,
@@ -174,5 +184,6 @@ func (mp *metaPartition) readDir(req *ReadDirReq) (resp *ReadDirResp) {
 		})
 		return true
 	})
+	tracer.SetTag("count", count).SetTag("total", mp.dentryTree.Len()).SetTag("parentID", req.PartitionID)
 	return
 }

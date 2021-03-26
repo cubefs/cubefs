@@ -15,16 +15,16 @@
 package metanode
 
 import (
+	"context"
+	"encoding/binary"
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"os"
+	"path"
 	"sort"
 	"strings"
 	"time"
-
-	"encoding/binary"
-	"fmt"
-	"io/ioutil"
-	"path"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -32,6 +32,7 @@ import (
 
 func (mp *metaPartition) initInode(ino *Inode) {
 	for {
+
 		time.Sleep(10 * time.Nanosecond)
 		select {
 		case <-mp.stopC:
@@ -48,12 +49,14 @@ func (mp *metaPartition) initInode(ino *Inode) {
 			if err != nil {
 				log.LogFatalf("[initInode] marshal: %s", err.Error())
 			}
+
+			ctx := context.Background()
 			// put first root inode
-			resp, err := mp.submit(opFSMCreateInode, data)
+			resp, err := mp.submit(ctx, opFSMCreateInode, "", data)
 			if err != nil {
 				log.LogFatalf("[initInode] raft sync: %s", err.Error())
 			}
-			p := &Packet{}
+			p := NewPacket(ctx)
 			p.ResultCode = resp.(uint8)
 			log.LogDebugf("[initInode] raft sync: response status = %v.",
 				p.GetResultMsg())
@@ -148,8 +151,8 @@ func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMember
 		//} else {
 		//	mp.ExpiredRaft()
 		//}
-		mp.ExpiredRaft()
-		mp.manager.expiredPartition(mp.GetBaseConfig().PartitionId)
+		_ = mp.ExpiredRaft()
+		_ = mp.manager.expiredPartition(mp.GetBaseConfig().PartitionId)
 		updated = false
 	}
 	log.LogInfof("Finish RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
@@ -297,7 +300,7 @@ func (mp *metaPartition) delOldExtentFile(buf []byte) (err error) {
 		}
 		if f.Name() <= fileName {
 			// TODO Unhandled errors
-			os.Remove(path.Join(mp.config.RootDir, f.Name()))
+			_ = os.Remove(path.Join(mp.config.RootDir, f.Name()))
 			continue
 		}
 		break
@@ -373,22 +376,22 @@ func (mp *metaPartition) CanRemoveRaftMember(peer proto.Peer) error {
 
 func (mp *metaPartition) IsEquareCreateMetaPartitionRequst(request *proto.CreateMetaPartitionRequest) (err error) {
 	if len(mp.config.Peers) != len(request.Members) {
-		return fmt.Errorf("Exsit unavali Partition(%v) partitionHosts(%v) requestHosts(%v)", mp.config.PartitionId, mp.config.Peers, request.Members)
+		return fmt.Errorf("exsit unavali Partition(%v) partitionHosts(%v) requestHosts(%v)", mp.config.PartitionId, mp.config.Peers, request.Members)
 	}
 	if mp.config.Start != request.Start || mp.config.End != request.End {
-		return fmt.Errorf("Exsit unavali Partition(%v) range(%v-%v) requestRange(%v-%v)", mp.config.PartitionId, mp.config.Start, mp.config.End, request.Start, request.End)
+		return fmt.Errorf("exsit unavali Partition(%v) range(%v-%v) requestRange(%v-%v)", mp.config.PartitionId, mp.config.Start, mp.config.End, request.Start, request.End)
 	}
 	for index, peer := range mp.config.Peers {
 		requestPeer := request.Members[index]
 		if requestPeer.ID != peer.ID || requestPeer.Addr != peer.Addr {
-			return fmt.Errorf("Exsit unavali Partition(%v) partitionHosts(%v) requestHosts(%v)", mp.config.PartitionId, mp.config.Peers, request.Members)
+			return fmt.Errorf("exsit unavali Partition(%v) partitionHosts(%v) requestHosts(%v)", mp.config.PartitionId, mp.config.Peers, request.Members)
 		}
 	}
 	if mp.config.VolName != request.VolName {
-		return fmt.Errorf("Exsit unavali Partition(%v) VolName(%v) requestVolName(%v)", mp.config.PartitionId, mp.config.VolName, request.VolName)
+		return fmt.Errorf("exsit unavali Partition(%v) VolName(%v) requestVolName(%v)", mp.config.PartitionId, mp.config.VolName, request.VolName)
 	}
 	if len(mp.config.Learners) != len(request.Learners) {
-		return fmt.Errorf("Exsit unavali Partition(%v) partitionLearners(%v) requestLearners(%v)", mp.config.PartitionId, mp.config.Learners, request.Learners)
+		return fmt.Errorf("exsit unavali Partition(%v) partitionLearners(%v) requestLearners(%v)", mp.config.PartitionId, mp.config.Learners, request.Learners)
 	}
 
 	return

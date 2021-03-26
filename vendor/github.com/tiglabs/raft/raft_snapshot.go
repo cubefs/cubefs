@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/tiglabs/raft/tracing"
+
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
 	"github.com/tiglabs/raft/util"
@@ -119,6 +121,10 @@ func (s *raft) stopSnapping() {
 }
 
 func (s *raft) sendSnapshot(m *proto.Message) {
+	var tracer = tracing.TracerFromContext(m.Ctx()).ChildTracer("raft.sendSnapshot")
+	defer tracer.Finish()
+	m.SetCtx(tracer.Context())
+
 	util.RunWorker(func() {
 		defer func() {
 			s.removeSnapping(m.To)
@@ -127,6 +133,7 @@ func (s *raft) sendSnapshot(m *proto.Message) {
 		}()
 
 		// send snapshot
+		ctx := m.Ctx()
 		rs := newSnapshotStatus()
 		s.addSnapping(m.To, rs)
 		s.config.transport.SendSnapshot(m, rs)
@@ -141,6 +148,7 @@ func (s *raft) sendSnapshot(m *proto.Message) {
 			nmsg.ID = m.ID
 			nmsg.From = m.To
 			nmsg.Reject = (err != nil)
+			nmsg.SetCtx(ctx)
 			s.recvc <- nmsg
 		}
 	}, func(err interface{}) {
@@ -165,7 +173,7 @@ func (s *raft) handleSnapshot(req *snapshotRequest) {
 		return
 	}
 	if req.header.Term > s.raftFsm.term || s.raftFsm.state != stateFollower {
-		s.raftFsm.becomeFollower(req.header.Term, req.header.From)
+		s.raftFsm.becomeFollower(nil, req.header.Term, req.header.From)
 		s.maybeChange(true)
 	}
 	if !s.raftFsm.checkSnapshot(req.header.SnapshotMeta) {
@@ -177,6 +185,7 @@ func (s *raft) handleSnapshot(req *snapshotRequest) {
 		nmsg.To = req.header.From
 		nmsg.Index = s.raftFsm.raftLog.committed
 		nmsg.Commit = s.raftFsm.raftLog.committed
+		nmsg.SetCtx(req.header.Ctx())
 		s.raftFsm.send(nmsg)
 		return
 	}
@@ -203,5 +212,6 @@ func (s *raft) handleSnapshot(req *snapshotRequest) {
 	nmsg.To = req.header.From
 	nmsg.Index = s.raftFsm.raftLog.lastIndex()
 	nmsg.Commit = s.raftFsm.raftLog.committed
+	nmsg.SetCtx(req.header.Ctx())
 	s.raftFsm.send(nmsg)
 }
