@@ -9,10 +9,11 @@ import (
 )
 
 const (
-	defaultMarkDeleteLimitRate      = rate.Inf
-	defaultMarkDeleteLimitBurst     = 512
-	UpdateNodeInfoTicket            = 1 * time.Minute
-	defaultFixTinyDeleteRecordLimit = 50
+	defaultMarkDeleteLimitRate            = rate.Inf
+	defaultMarkDeleteLimitBurst           = 512
+	UpdateNodeInfoTicket                  = 1 * time.Minute
+	defaultFixTinyDeleteRecordLimitOnDisk = 50
+	defaultRepairTaskLimitOnDisk          = 10
 )
 
 var (
@@ -50,7 +51,8 @@ func (m *DataNode) updateNodeInfo() {
 		l = rate.Inf
 	}
 	deleteLimiteRater.SetLimit(l)
-	m.space.SetDiskFixTinyDeleteRecordLimit(clusterInfo.DiskSyncTinyDeleteRecordLimit)
+	m.space.SetDiskFixTinyDeleteRecordLimit(clusterInfo.DataNodeFixTinyDeleteRecordLimitOnDisk)
+	m.space.SetDiskRepairTaskLimit(clusterInfo.DataNodeRepairTaskLimitOnDisk)
 }
 
 func DeleteLimiterWait() {

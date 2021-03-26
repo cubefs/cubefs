@@ -16,20 +16,22 @@ package datanode
 
 import (
 	"encoding/json"
-	"github.com/chubaofs/chubaofs/util"
 	"math"
 	"net"
 	"sync"
 	"time"
 
+	"github.com/chubaofs/chubaofs/util"
+
 	"encoding/binary"
 	"fmt"
+	"hash/crc32"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
 	"github.com/chubaofs/chubaofs/storage"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"hash/crc32"
 )
 
 // DataPartitionRepairTask defines the reapir task for the data partition.
@@ -468,7 +470,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	if !dp.Disk().canRepairOnDisk() {
 		return errors.Trace(err, "limit on apply disk repair task")
 	}
-	defer dp.Disk().fininshRepairTask()
+	defer dp.Disk().finishRepairTask()
 
 	if localExtentInfo.Size >= remoteExtentInfo.Size {
 		return nil
