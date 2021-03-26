@@ -23,10 +23,6 @@ import (
 )
 
 var (
-	GaugePool = &sync.Pool{New: func() interface{} {
-		return new(Gauge)
-	}}
-
 	GaugeGroup sync.Map
 	GaugeCh    chan *Gauge
 )

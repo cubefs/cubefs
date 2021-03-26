@@ -33,8 +33,7 @@ type MetaNodeMetrics struct {
 
 func (m *MetaNode) startStat() {
 	m.metrics = &MetaNodeMetrics{
-		MetricMetaPartitionInodeCount: exporter.NewGauge("mpInodeCount"),
-		metricStopCh:                  make(chan struct{}, 0),
+		metricStopCh: make(chan struct{}, 0),
 	}
 
 	go m.collectPartitionMetrics()
@@ -46,7 +45,7 @@ func (m *MetaNode) upatePartitionMetrics(mp *metaPartition) {
 	}
 	it := mp.GetInodeTree()
 	if it != nil {
-		m.metrics.MetricMetaPartitionInodeCount.SetWithLabels(float64(it.Len()), labels)
+		exporter.NewGauge("mpInodeCount").SetWithLabels(float64(it.Len()), labels)
 	}
 }
 
