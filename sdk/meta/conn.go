@@ -63,33 +63,15 @@ func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet)
 	var (
 		resp  *proto.Packet
 		err   error
-		addr  string
 		mc    *MetaConn
 		start time.Time
 	)
 	errs := make(map[int]error, len(mp.Members))
-	var j int
-
-	addr = mp.LeaderAddr
-	if addr == "" {
-		err = errors.New(fmt.Sprintf("sendToMetaPartition failed: leader addr empty, req(%v) mp(%v)", req, mp))
-		goto retry
-	}
-	mc, err = mw.getConn(mp.PartitionID, addr)
-	if err != nil {
-		goto retry
-	}
-	resp, err = mc.send(req)
-	mw.putConn(mc, err)
-	if err == nil && !resp.ShouldRetry() {
-		goto out
-	}
-	log.LogWarnf("sendToMetaPartition: leader failed req(%v) mp(%v) mc(%v) err(%v) resp(%v)", req, mp, mc, err, resp)
-
-retry:
+	mp.Members = sortMembers(mp.LeaderAddr, mp.Members)
 	start = time.Now()
+
 	for i := 0; i < SendRetryLimit; i++ {
-		for j, addr = range mp.Members {
+		for j, addr := range mp.Members {
 			mc, err = mw.getConn(mp.PartitionID, addr)
 			errs[j] = err
 			if err != nil {
@@ -191,4 +173,17 @@ func (mc *MetaConn) send(req *proto.Packet) (resp *proto.Packet, err error) {
 		return nil, syscall.EBADMSG
 	}
 	return resp, nil
+}
+
+func sortMembers(leader string, members []string) []string {
+	if leader == "" {
+		return members
+	}
+	for i, addr := range members {
+		if addr == leader {
+			members[i], members[0] = members[0], members[i]
+			break
+		}
+	}
+	return members
 }
