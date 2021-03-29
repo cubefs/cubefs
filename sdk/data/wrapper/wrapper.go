@@ -224,8 +224,7 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 	old, ok := w.partitions[dp.PartitionID]
 	if ok {
 		if old.Status != dp.Status || old.ReplicaNum != dp.ReplicaNum ||
-			strings.Join(old.Hosts, ",") != strings.Join(dp.Hosts, ",") ||
-			strings.Join(old.NearHosts, ",") != strings.Join(dp.NearHosts, ",") {
+			strings.Join(old.Hosts, ",") != strings.Join(dp.Hosts, ",") {
 			log.LogInfof("updateDataPartition: dp (%v) --> (%v)", old, dp)
 		}
 		old.Status = dp.Status
@@ -236,6 +235,7 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 	} else {
 		dp.Metrics = NewDataPartitionMetrics()
 		w.partitions[dp.PartitionID] = dp
+		log.LogInfof("updateDataPartition: new dp (%v)", dp)
 	}
 
 	w.Unlock()
