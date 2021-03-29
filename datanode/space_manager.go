@@ -29,20 +29,23 @@ import (
 
 // SpaceManager manages the disk space.
 type SpaceManager struct {
-	clusterID                string
-	disks                    map[string]*Disk
-	partitions               map[uint64]*DataPartition
-	raftStore                raftstore.RaftStore
-	nodeID                   uint64
-	diskMutex                sync.RWMutex
-	partitionMutex           sync.RWMutex
-	stats                    *Stats
-	stopC                    chan bool
-	selectedIndex            int // TODO what is selected index
-	diskList                 []string
-	dataNode                 *DataNode
-	createPartitionMutex     sync.RWMutex
-	fixTinyDeleteRecordLimit uint64
+	clusterID            string
+	disks                map[string]*Disk
+	partitions           map[uint64]*DataPartition
+	raftStore            raftstore.RaftStore
+	nodeID               uint64
+	diskMutex            sync.RWMutex
+	partitionMutex       sync.RWMutex
+	stats                *Stats
+	stopC                chan bool
+	selectedIndex        int // TODO what is selected index
+	diskList             []string
+	dataNode             *DataNode
+	createPartitionMutex sync.RWMutex
+
+	// Parallel task limits on disk
+	fixTinyDeleteRecordLimitOnDisk uint64
+	repairTaskLimitOnDisk          uint64
 }
 
 // NewSpaceManager creates a new space manager.
@@ -55,7 +58,8 @@ func NewSpaceManager(dataNode *DataNode) *SpaceManager {
 	space.stats = NewStats(dataNode.zoneName)
 	space.stopC = make(chan bool, 0)
 	space.dataNode = dataNode
-	space.fixTinyDeleteRecordLimit = defaultFixTinyDeleteRecordLimit
+	space.fixTinyDeleteRecordLimitOnDisk = defaultFixTinyDeleteRecordLimitOnDisk
+	space.repairTaskLimitOnDisk = defaultRepairTaskLimitOnDisk
 
 	go space.statUpdateScheduler()
 
@@ -426,8 +430,14 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 }
 
 func (manager *SpaceManager) SetDiskFixTinyDeleteRecordLimit(newValue uint64) {
-	if newValue > 0 && manager.fixTinyDeleteRecordLimit != newValue {
-		manager.fixTinyDeleteRecordLimit = newValue
+	if newValue > 0 && manager.fixTinyDeleteRecordLimitOnDisk != newValue {
+		manager.fixTinyDeleteRecordLimitOnDisk = newValue
 	}
 	return
+}
+
+func (manager *SpaceManager) SetDiskRepairTaskLimit(newValue uint64) {
+	if newValue > 0 && manager.repairTaskLimitOnDisk != newValue {
+		manager.repairTaskLimitOnDisk = newValue
+	}
 }

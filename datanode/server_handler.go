@@ -42,6 +42,12 @@ func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {
 			Status      int    `json:"status"`
 			RestSize    uint64 `json:"restSize"`
 			Partitions  int    `json:"partitions"`
+
+			// Limits
+			RepairTaskLimit              uint64 `json:"repair_task_limit"`
+			ExecutingRepairTask          uint64 `json:"executing_repair_task"`
+			FixTinyDeleteRecordLimit     uint64 `json:"fix_tiny_delete_record_limit"`
+			ExecutingFixTinyDeleteRecord uint64 `json:"executing_fix_tiny_delete_record"`
 		}{
 			Path:        diskItem.Path,
 			Total:       diskItem.Total,
@@ -52,6 +58,11 @@ func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {
 			Status:      diskItem.Status,
 			RestSize:    diskItem.ReservedSpace,
 			Partitions:  diskItem.PartitionCount(),
+
+			FixTinyDeleteRecordLimit:     diskItem.fixTinyDeleteRecordLimit,
+			ExecutingFixTinyDeleteRecord: diskItem.executingFixTinyDeleteRecord,
+			RepairTaskLimit:              diskItem.repairTaskLimit,
+			ExecutingRepairTask:          diskItem.executingRepairTask,
 		}
 		disks = append(disks, disk)
 	}

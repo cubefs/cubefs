@@ -57,12 +57,16 @@ type Disk struct {
 	Status        int // disk status such as READONLY
 	ReservedSpace uint64
 
-	RejectWrite              bool
-	partitionMap             map[uint64]*DataPartition
-	space                    *SpaceManager
-	fixTinyDeleteRecordLimit uint64
-	repairTaskLimit          uint64
-	limitLock                sync.Mutex
+	RejectWrite  bool
+	partitionMap map[uint64]*DataPartition
+	space        *SpaceManager
+
+	// Parallel limit control
+	fixTinyDeleteRecordLimit     uint64 // Limit for parallel fix tiny delete record tasks
+	executingFixTinyDeleteRecord uint64 // Count of executing fix tiny delete record tasks
+	repairTaskLimit              uint64 // Limit for parallel data repair tasks
+	executingRepairTask          uint64 // Count of executing data repair tasks
+	limitLock                    sync.Mutex
 }
 
 type PartitionVisitor func(dp *DataPartition)
@@ -78,8 +82,8 @@ func NewDisk(path string, reservedSpace uint64, maxErrCnt int, space *SpaceManag
 	d.computeUsage()
 	d.updateSpaceInfo()
 	d.startScheduleToUpdateSpaceInfo()
-	d.fixTinyDeleteRecordLimit = space.fixTinyDeleteRecordLimit
-	d.repairTaskLimit = MaxRepairTaskOnDisk
+	d.fixTinyDeleteRecordLimit = space.fixTinyDeleteRecordLimitOnDisk
+	d.repairTaskLimit = space.repairTaskLimitOnDisk
 
 	return
 }
@@ -94,17 +98,22 @@ func (d *Disk) PartitionCount() int {
 func (d *Disk) canRepairOnDisk() bool {
 	d.limitLock.Lock()
 	defer d.limitLock.Unlock()
-	if d.repairTaskLimit<=0{
+	if d.repairTaskLimit <= 0 {
 		return false
 	}
-	d.repairTaskLimit=d.repairTaskLimit-1
+	if d.executingRepairTask >= d.repairTaskLimit {
+		return false
+	}
+	d.executingRepairTask++
 	return true
 }
 
-func (d *Disk) fininshRepairTask() {
+func (d *Disk) finishRepairTask() {
 	d.limitLock.Lock()
 	defer d.limitLock.Unlock()
-	d.repairTaskLimit=d.repairTaskLimit+1
+	if d.executingRepairTask > 0 {
+		d.executingRepairTask--
+	}
 }
 
 // Compute the disk usage
@@ -183,7 +192,7 @@ func (d *Disk) startScheduleToUpdateSpaceInfo() {
 				d.updateSpaceInfo()
 			case <-checkStatusTickser.C:
 				d.checkDiskStatus()
-				d.updateFixTinyDeleteRecordLimit()
+				d.updateTaskExecutionLimit()
 			}
 		}
 	}()
@@ -204,11 +213,14 @@ func (d *Disk) autoComputeExtentCrc() {
 	}
 }
 
-func (d *Disk) updateFixTinyDeleteRecordLimit() {
+func (d *Disk) updateTaskExecutionLimit() {
 	d.limitLock.Lock()
 	defer d.limitLock.Unlock()
-	if d.fixTinyDeleteRecordLimit != d.space.fixTinyDeleteRecordLimit {
-		d.fixTinyDeleteRecordLimit = d.space.fixTinyDeleteRecordLimit
+	if d.fixTinyDeleteRecordLimit != d.space.fixTinyDeleteRecordLimitOnDisk {
+		d.fixTinyDeleteRecordLimit = d.space.fixTinyDeleteRecordLimitOnDisk
+	}
+	if d.repairTaskLimit != d.space.repairTaskLimitOnDisk {
+		d.repairTaskLimit = d.space.repairTaskLimitOnDisk
 	}
 }
 
@@ -449,15 +461,17 @@ func isExpiredPartition(id uint64, partitions []uint64) bool {
 func (d *Disk) canFinTinyDeleteRecord() bool {
 	d.limitLock.Lock()
 	defer d.limitLock.Unlock()
-	if d.fixTinyDeleteRecordLimit<=0 {
+	if d.executingFixTinyDeleteRecord >= d.fixTinyDeleteRecordLimit {
 		return false
 	}
-	d.fixTinyDeleteRecordLimit=d.fixTinyDeleteRecordLimit-1
+	d.executingFixTinyDeleteRecord++
 	return true
 }
 
-func (d *Disk) fininshFixTinyDeleteRecord() {
+func (d *Disk) finishFixTinyDeleteRecord() {
 	d.limitLock.Lock()
 	defer d.limitLock.Unlock()
-	d.fixTinyDeleteRecordLimit=d.fixTinyDeleteRecordLimit+1
+	if d.executingFixTinyDeleteRecord > 0 {
+		d.executingFixTinyDeleteRecord--
+	}
 }

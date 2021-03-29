@@ -792,7 +792,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 		return
 	}
 	defer func() {
-		dp.Disk().fininshFixTinyDeleteRecord()
+		dp.Disk().finishFixTinyDeleteRecord()
 	}()
 
 	if !isFullSync {
