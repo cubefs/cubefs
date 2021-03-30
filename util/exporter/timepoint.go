@@ -35,7 +35,7 @@ type TimePoint struct {
 
 func NewTP(name string) (tp *TimePoint) {
 	tp = TPPool.Get().(*TimePoint)
-	tp.name = metricsName(name)
+	tp.name = fmt.Sprintf("%s_hist", metricsName(name))
 	tp.labels = make(map[string]string)
 	tp.val = 0
 	tp.startTime = time.Now()
