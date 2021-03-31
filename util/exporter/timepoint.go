@@ -16,16 +16,9 @@ package exporter
 
 import (
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/chubaofs/chubaofs/util/ump"
-)
-
-var (
-	TPPool = &sync.Pool{New: func() interface{} {
-		return new(TimePoint)
-	}}
 )
 
 type TimePoint struct {
@@ -34,7 +27,7 @@ type TimePoint struct {
 }
 
 func NewTP(name string) (tp *TimePoint) {
-	tp = TPPool.Get().(*TimePoint)
+	tp = new(TimePoint)
 	tp.name = fmt.Sprintf("%s_hist", metricsName(name))
 	tp.labels = make(map[string]string)
 	tp.val = 0
