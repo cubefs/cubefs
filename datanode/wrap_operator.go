@@ -39,6 +39,11 @@ import (
 
 func (s *DataNode) getPacketTpLabels(p *repl.Packet) map[string]string {
 	labels := make(map[string]string)
+	labels[exporter.Vol] = ""
+	labels[exporter.Op] = ""
+	labels[exporter.PartId] = ""
+	labels[exporter.Disk] = ""
+
 	if part, ok := p.Object.(*DataPartition); ok {
 		labels[exporter.Vol] = part.volumeID
 		labels[exporter.Op] = p.GetOpMsg()
@@ -555,7 +560,7 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		} else {
 			reply.Data = make([]byte, currReadSize)
 		}
-		tpObject := exporter.NewTPCnt(p.GetOpMsg())
+		tpObject := exporter.NewTPCnt(fmt.Sprintf("Repair_%s", p.GetOpMsg()))
 		reply.ExtentOffset = offset
 		p.Size = uint32(currReadSize)
 		p.ExtentOffset = offset

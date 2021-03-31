@@ -74,6 +74,8 @@ func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) 
 
 	labels = make(map[string]string)
 	labels[exporter.Op] = p.GetOpMsg()
+	labels[exporter.PartId] = ""
+	labels[exporter.Vol] = ""
 
 	if p.Opcode == proto.OpMetaNodeHeartbeat || p.Opcode == proto.OpCreateMetaPartition {
 		// no partition info
