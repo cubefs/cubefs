@@ -534,7 +534,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 
 		if reply.ResultCode != proto.OpOk {
 			err = errors.Trace(fmt.Errorf("unknow result code"),
-				"streamRepairExtent receive opcode error(%v) ,localExtentSize(%v) remoteExtentSize(%v)", string(reply.Data[:reply.Size]), currFixOffset, remoteExtentInfo.Size)
+				"streamRepairExtent receive opcode error(%v) ,localExtentSize(%v) remoteExtentSize(%v)", string(reply.Data[:intMin(len(reply.Data), int(reply.Size))]), currFixOffset, remoteExtentInfo.Size)
 			return
 		}
 
@@ -601,4 +601,12 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	}
 	return
 
+}
+
+func intMin(a, b int) int {
+	if a < b {
+		return a
+	} else {
+		return b
+	}
 }
