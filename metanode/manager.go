@@ -84,7 +84,7 @@ func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) 
 
 	mp, err := m.getPartition(p.PartitionID)
 	if err != nil {
-		log.LogWarnf("[metaManager] getPacketLabels metric packet: %v, partitions: %v", p, m.partitions)
+		log.LogInfof("[metaManager] getPacketLabels metric packet: %v, partitions: %v", p, m.partitions)
 		return
 	}
 
