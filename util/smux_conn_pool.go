@@ -17,12 +17,14 @@ package util
 import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/errors"
+	"io"
 	"net"
 	"smux"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 	"unsafe"
 )
@@ -53,6 +55,22 @@ func ShiftAddrPort(addr string, shift int) (afterShift string) {
 	}
 	afterShift = fmt.Sprintf("%s:%d", ip, portNum+shift)
 	return
+}
+
+//filter smux accept error
+func FilterSmuxAcceptError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if err.Error() == io.EOF.Error(){
+		return nil
+	}
+	if operr, ok := err.(*net.OpError); ok {
+		if operr.Err == syscall.ECONNRESET {
+			return nil
+		}
+	}
+	return err
 }
 
 const (

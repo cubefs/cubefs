@@ -496,7 +496,11 @@ func (s *DataNode) serveSmuxConn(conn net.Conn) {
 	for {
 		stream, err := sess.AcceptStream()
 		if err != nil {
-			log.LogErrorf("action[serveSmuxConn] failed to accept smux stream, addr(%v), err(%v)", c.RemoteAddr(), err)
+			if util.FilterSmuxAcceptError(err) != nil {
+				log.LogErrorf("action[startSmuxService] failed to accept, err: %s", err)
+			} else {
+				log.LogInfof("action[startSmuxService] accept done, err: %s", err)
+			}
 			break
 		}
 		go s.serveSmuxStream(stream)

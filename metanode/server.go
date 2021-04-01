@@ -98,7 +98,7 @@ func (m *MetaNode) handlePacket(conn net.Conn, p *Packet,
 func (m *MetaNode) startSmuxServer() (err error) {
 	// initialize and start the server.
 	m.smuxStopC = make(chan uint8)
-	addr := util.ShiftAddrPort(":" + m.listen, smuxPortShift)
+	addr := util.ShiftAddrPort(":"+m.listen, smuxPortShift)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return
@@ -163,7 +163,11 @@ func (m *MetaNode) serveSmuxConn(conn net.Conn, stopC chan uint8) {
 
 		stream, err := sess.AcceptStream()
 		if err != nil {
-			log.LogErrorf("action[serveSmuxConn] failed to accept smux stream, err(%v)", err)
+			if util.FilterSmuxAcceptError(err) != nil {
+				log.LogErrorf("action[startSmuxService] failed to accept, err: %s", err)
+			} else {
+				log.LogInfof("action[startSmuxService] accept done, err: %s", err)
+			}
 			break
 		}
 		go m.serveSmuxStream(stream, remoteAddr, stopC)
