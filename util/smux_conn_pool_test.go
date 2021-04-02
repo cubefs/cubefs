@@ -15,9 +15,6 @@ import (
 	"time"
 )
 
-var gTestPool = newPool()
-var gTestPoolV2 = newPoolV2()
-
 func init() {
 	go func() {
 		log.Println(http.ListenAndServe("0.0.0.0:9090", nil))
@@ -33,11 +30,13 @@ func setupServer(tb testing.TB) (addr string, stopfunc func(), err error) {
 		return "", nil, err
 	}
 	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go handleConnection(conn)
 		}
-		go handleConnection(conn)
 	}()
 	return ln.Addr().String(), func() { ln.Close() }, nil
 }
@@ -71,11 +70,13 @@ func setupServerV2(tb testing.TB) (addr string, stopfunc func(), err error) {
 		return "", nil, err
 	}
 	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go handleConnectionV2(conn)
 		}
-		go handleConnectionV2(conn)
 	}()
 	return ln.Addr().String(), func() { ln.Close() }, nil
 }
@@ -136,16 +137,17 @@ func TestVerifySmuxPoolConfig(t *testing.T) {
 }
 
 func TestEcho(t *testing.T) {
+	pool := newPool()
 	addr, stop, err := setupServer(t)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer stop()
-	stream, err := gTestPool.GetConnect(addr)
+	stream, err := pool.GetConnect(addr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer gTestPool.PutConnect(stream, true)
+	defer pool.PutConnect(stream, true)
 	const N = 100
 	buf := make([]byte, 10)
 	var sent string
@@ -166,6 +168,7 @@ func TestEcho(t *testing.T) {
 }
 
 func TestWriteTo(t *testing.T) {
+	pool := newPool()
 	const N = 1 << 20
 	// server
 	ln, err := net.Listen("tcp", "localhost:0")
@@ -206,8 +209,8 @@ func TestWriteTo(t *testing.T) {
 	}()
 
 	addr := ln.Addr().String()
-	stream, err := gTestPool.GetConnect(addr)
-	defer gTestPool.PutConnect(stream, true)
+	stream, err := pool.GetConnect(addr)
+	defer pool.PutConnect(stream, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,6 +238,7 @@ func TestWriteTo(t *testing.T) {
 }
 
 func TestWriteToV2(t *testing.T) {
+	poolV2 := newPoolV2()
 	config := smux.DefaultConfig()
 	config.Version = 2
 	const N = 1 << 20
@@ -277,11 +281,11 @@ func TestWriteToV2(t *testing.T) {
 	}()
 
 	addr := ln.Addr().String()
-	stream, err := gTestPoolV2.GetConnect(addr)
+	stream, err := poolV2.GetConnect(addr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer gTestPoolV2.PutConnect(stream, true)
+	defer poolV2.PutConnect(stream, true)
 
 	// client
 	sndbuf := make([]byte, N)
@@ -307,12 +311,13 @@ func TestWriteToV2(t *testing.T) {
 }
 
 func TestSpeed(t *testing.T) {
+	pool := newPool()
 	addr, stop, err := setupServer(t)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer stop()
-	stream, err := gTestPool.GetConnect(addr)
+	stream, err := pool.GetConnect(addr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +341,7 @@ func TestSpeed(t *testing.T) {
 				}
 			}
 		}
-		gTestPool.PutConnect(stream, true)
+		pool.PutConnect(stream, true)
 		t.Log("time for 16MB rtt", time.Since(start))
 		wg.Done()
 	}()
@@ -374,69 +379,61 @@ func TestTokenLimit(t *testing.T) {
 }
 
 func TestParallel(t *testing.T) {
+	pool := newPool()
 	addr, stop, err := setupServer(t)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer stop()
-	par := 10000
+	par := 1000
 	messages := 10
-	streams := make([]*smux.Stream, par)
-	for i := 0; i < par; i++ {
-		streams[i], err = gTestPool.GetConnect(addr)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	var wg sync.WaitGroup
+	wg := sync.WaitGroup{}
 	wg.Add(par)
 	for i := 0; i < par; i++ {
-		go func(stream *smux.Stream) {
-			defer gTestPool.PutConnect(stream, true)
-			buf := make([]byte, 4<<20)
+		stream, _ := pool.GetConnect(addr)
+		go func(s *smux.Stream) {
+			buf := make([]byte, 20)
 			for j := 0; j < messages; j++ {
 				msg := fmt.Sprintf("hello%v", j)
-				stream.Write([]byte(msg))
-				if _, err := stream.Read(buf); err != nil {
+				s.Write([]byte(msg))
+				if _, err := s.Read(buf); err != nil {
+					t.Log(err)
 					break
 				}
 			}
+			pool.PutConnect(s, false)
 			wg.Done()
-		}(streams[i])
+		}(stream)
 	}
 	wg.Wait()
 }
 
 func TestParallelV2(t *testing.T) {
+	poolV2 := newPoolV2()
 	addr, stop, err := setupServerV2(t)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer stop()
-	par := 10000
+	par := 1000
 	messages := 10
-	streams := make([]*smux.Stream, par)
-	for i := 0; i < par; i++ {
-		streams[i], err = gTestPoolV2.GetConnect(addr)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	var wg sync.WaitGroup
+	wg := sync.WaitGroup{}
 	wg.Add(par)
 	for i := 0; i < par; i++ {
-		go func(stream *smux.Stream) {
-			defer gTestPoolV2.PutConnect(stream, true)
+		stream, _ := poolV2.GetConnect(addr)
+		go func(s *smux.Stream) {
 			buf := make([]byte, 20)
 			for j := 0; j < messages; j++ {
 				msg := fmt.Sprintf("hello%v", j)
-				stream.Write([]byte(msg))
-				if _, err := stream.Read(buf); err != nil {
+				s.Write([]byte(msg))
+				if _, err := s.Read(buf); err != nil {
+					t.Log(err)
 					break
 				}
 			}
+			poolV2.PutConnect(s, false)
 			wg.Done()
-		}(streams[i])
+		}(stream)
 	}
 	wg.Wait()
 }
@@ -447,37 +444,28 @@ func TestSmuxConnectPool_GetStat(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stop()
-
-	for _, streamCnt := range []int{1, 10, 100, 1000, 10000, 100000} {
+	pool := newPool()
+	for _, streamCnt := range []int{1, 100, 10000} {
 		streams := make([]*smux.Stream, streamCnt)
 		for i := 0; i < streamCnt; i++ {
-			streams[i], err = gTestPool.GetConnect(addr)
+			streams[i], err = pool.GetConnect(addr)
 			if err != nil {
 				t.Fatal(err)
 			}
 		}
-		stat := gTestPool.GetStat()
+		stat := pool.GetStat()
 		output, _ := json.MarshalIndent(stat, "", "\t")
-		t.Logf("%s", string(output))
+		t.Logf("streamCnt:%d, stat:%s", streamCnt, string(output))
 		if stat.TotalStreams != streamCnt {
 			t.Fatal("stat.TotalStreams not correct!")
 		}
-		if stat.TotalSessions > gTestPool.cfg.ConnsPerAddr+5 {
+		if stat.TotalSessions > pool.cfg.ConnsPerAddr+5 {
 			t.Fatal("too much connections!")
 		}
-		streamLimitPerConn := (gTestPool.cfg.StreamsPerConn) + (streamCnt/gTestPool.cfg.ConnsPerAddr + 1)
-		for remoteAddr, poolStat := range stat.Pools {
-			for localAddr, streamPerSess := range poolStat.StreamsPerSession {
-				if streamPerSess > streamLimitPerConn {
-					t.Fatalf("remoteAddr(%v), localAddr(%v), streamPerSess(%v) > streamLimitPerConn(%v)\n",
-						remoteAddr, localAddr, streamPerSess, streamLimitPerConn)
-				}
-			}
-		}
 		for _, s := range streams {
-			gTestPool.PutConnect(s, true)
+			pool.PutConnect(s, true)
 		}
-		stat = gTestPool.GetStat()
+		stat = pool.GetStat()
 		if stat.TotalStreams > 0 {
 			t.Fatal("total streams not clean after closed")
 		}
@@ -485,22 +473,23 @@ func TestSmuxConnectPool_GetStat(t *testing.T) {
 }
 
 func TestConcurrentPutConn(t *testing.T) {
+	pool := newPool()
 	addr, stop, err := setupServer(t)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer stop()
-	numStreams := 3000
+	numStreams := 300
 	streams := make([]*smux.Stream, 0, numStreams)
 	var wg sync.WaitGroup
 	wg.Add(numStreams)
 	for i := 0; i < numStreams; i++ {
-		stream, _ := gTestPool.GetConnect(addr)
+		stream, _ := pool.GetConnect(addr)
 		streams = append(streams, stream)
 	}
 	for _, stream := range streams {
 		go func(stream *smux.Stream) {
-			gTestPool.PutConnect(stream, true)
+			pool.PutConnect(stream, true)
 			wg.Done()
 		}(stream)
 	}
@@ -508,16 +497,17 @@ func TestConcurrentPutConn(t *testing.T) {
 }
 
 func TestTinyReadBuffer(t *testing.T) {
+	pool := newPool()
 	addr, stop, err := setupServer(t)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer stop()
-	stream, err := gTestPool.GetConnect(addr)
+	stream, err := pool.GetConnect(addr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer gTestPool.PutConnect(stream, true)
+	defer pool.PutConnect(stream, true)
 	const N = 100
 	tinybuf := make([]byte, 6)
 	var sent string
@@ -550,10 +540,20 @@ func TestKeepAliveTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stop()
+	const sec = 5
 	cfg := DefaultSmuxConnPoolConfig()
-	par := 3000
-	streams := make([]*smux.Stream, 0, par)
-	streamsLk := sync.Mutex{}
+	cfg.StreamIdleTimeout = int64(sec * time.Second)
+	par := 1000
+	errAllowed := make(chan error, par/2)
+	notifyError := func(err error) {
+		t.Log(err)
+		select {
+		case errAllowed <- err:
+		default:
+			t.Fatal(err)
+		}
+		return
+	}
 	pool := NewSmuxConnectPool(cfg)
 	wg := sync.WaitGroup{}
 	wg.Add(par)
@@ -562,79 +562,42 @@ func TestKeepAliveTimeout(t *testing.T) {
 			defer wg.Done()
 			stream, err := pool.GetConnect(addr)
 			if err != nil {
-				t.Fatal(err)
+				notifyError(err)
+				return
 			}
-			streamsLk.Lock()
-			streams = append(streams, stream)
-			streamsLk.Unlock()
+			defer func() {
+				pool.PutConnect(stream, err != nil)
+			}()
 			buf := make([]byte, 10)
 			_, err = stream.Write(buf)
 			if err != nil {
-				t.Fatal(err)
+				notifyError(err)
+				return
 			}
 			_, err = stream.Read(buf)
 			if err != nil {
-				t.Fatal(err)
+				notifyError(err)
+				return
 			}
-			pool.PutConnect(stream, false)
 		}()
 	}
 	wg.Wait()
-	time.Sleep(60 * time.Second)
+	time.Sleep(sec * time.Second)
+	failedSec := 0
 	for pool.GetStat().TotalStreams > 0 || pool.GetStat().TotalSessions > 0 {
 		out, _ := json.MarshalIndent(pool.GetStat(), "", "\t")
-		t.Error(string(out))
-	}
-
-	t.Log("test session timeout success")
-}
-
-func TestKeepAliveIntervalMoreThanTimeout(t *testing.T) {
-	addr, stop, err := setupServer(t)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer stop()
-	cfg := DefaultSmuxConnPoolConfig()
-	par := 3000
-	streams := make([]*smux.Stream, 0, par)
-	streamsLk := sync.Mutex{}
-	pool := NewSmuxConnectPool(cfg)
-	wg := sync.WaitGroup{}
-	wg.Add(par)
-	for i := 0; i < par; i++ {
-		go func() {
-			defer wg.Done()
-			stream, err := pool.GetConnect(addr)
-			if err != nil {
-				t.Fatal(err)
-			}
-			streamsLk.Lock()
-			streams = append(streams, stream)
-			streamsLk.Unlock()
-			buf := make([]byte, 10)
-			_, err = stream.Write(buf)
-			if err != nil {
-				t.Fatal(err)
-			}
-			_, err = stream.Read(buf)
-			if err != nil {
-				t.Fatal(err)
-			}
-			pool.PutConnect(stream, false)
-		}()
-	}
-	wg.Wait()
-	time.Sleep(60 * time.Second)
-	for pool.GetStat().TotalStreams > 0 || pool.GetStat().TotalSessions > 0 {
-		out, _ := json.MarshalIndent(pool.GetStat(), "", "\t")
-		t.Error(string(out))
+		if failedSec > sec {
+			t.Fatalf("(%v), still not clean after sec(%v)", string(out), failedSec)
+		}
+		failedSec++
+		time.Sleep(time.Second)
 	}
 
 	t.Log("test session timeout success")
 }
 
 func TestServerEcho(t *testing.T) {
+	pool := newPool()
 	ln, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		t.Fatal(err)
@@ -675,7 +638,7 @@ func TestServerEcho(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	if stream, err := gTestPool.GetConnect(ln.Addr().String()); err == nil {
+	if stream, err := pool.GetConnect(ln.Addr().String()); err == nil {
 		buf := make([]byte, 65536)
 		for {
 			n, err := stream.Read(buf)
@@ -684,19 +647,20 @@ func TestServerEcho(t *testing.T) {
 			}
 			stream.Write(buf[:n])
 		}
-		gTestPool.PutConnect(stream, true)
+		pool.PutConnect(stream, true)
 	} else {
 		t.Fatal(err)
 	}
 }
 
 func TestSendWithoutRecv(t *testing.T) {
+	pool := newPool()
 	addr, stop, err := setupServer(t)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer stop()
-	stream, err := gTestPool.GetConnect(addr)
+	stream, err := pool.GetConnect(addr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -709,10 +673,11 @@ func TestSendWithoutRecv(t *testing.T) {
 	if _, err := stream.Read(buf); err != nil {
 		t.Fatal(err)
 	}
-	gTestPool.PutConnect(stream, true)
+	pool.PutConnect(stream, true)
 }
 
 func BenchmarkGetConn(b *testing.B) {
+	pool := newPool()
 	addr, stop, err := setupServer(b)
 	if err != nil {
 		b.Fatal(err)
@@ -720,7 +685,7 @@ func BenchmarkGetConn(b *testing.B) {
 	defer stop()
 	created := make([]*smux.Stream, 0, b.N)
 	for i := 0; i < b.N; i++ {
-		if stream, err := gTestPool.GetConnect(addr); err == nil {
+		if stream, err := pool.GetConnect(addr); err == nil {
 			if stream == nil {
 				panic("!!!")
 			}
@@ -730,17 +695,18 @@ func BenchmarkGetConn(b *testing.B) {
 		}
 	}
 	for _, s := range created {
-		gTestPool.PutConnect(s, true)
+		pool.PutConnect(s, true)
 	}
 	return
 }
 
 func BenchmarkParallelGetConn(b *testing.B) {
+	pool := newPool()
 	addr, stop, err := setupServer(b)
 	if err != nil {
 		b.Fatal(err)
 	}
-	par := 1000
+	par := 32
 	closeCh := make(chan struct{})
 	closeOnce := sync.Once{}
 	created := make(chan *smux.Stream, par)
@@ -765,7 +731,7 @@ func BenchmarkParallelGetConn(b *testing.B) {
 				case <-closeCh:
 					return
 				default:
-					if stream, err := gTestPool.GetConnect(addr); err == nil {
+					if stream, err := pool.GetConnect(addr); err == nil {
 						created <- stream
 					} else {
 						b.Fatal(err)
@@ -782,18 +748,17 @@ func BenchmarkParallelGetConn(b *testing.B) {
 				close(closeCh)
 			})
 		}
-		gTestPool.PutConnect(stream, true)
+		pool.PutConnect(stream, true)
 	}
 	return
 }
 
 func BenchmarkConnSmux(b *testing.B) {
-	cs, ss, err := getSmuxStreamPair()
+	cs, ss, recycle, err := getSmuxStreamPair()
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer cs.Close()
-	defer ss.Close()
+	defer recycle()
 	bench(b, cs, ss)
 }
 
@@ -807,11 +772,12 @@ func BenchmarkConnTCP(b *testing.B) {
 	bench(b, cs, ss)
 }
 
-func getSmuxStreamPair() (cs *smux.Stream, ss *smux.Stream, err error) {
+func getSmuxStreamPair() (cs *smux.Stream, ss *smux.Stream, recycle func(), err error) {
+	pool := newPool()
 	var lst net.Listener
 	lst, err = net.Listen("tcp", "localhost:0")
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	defer lst.Close()
 	done := make(chan error)
@@ -833,15 +799,18 @@ func getSmuxStreamPair() (cs *smux.Stream, ss *smux.Stream, err error) {
 		done <- rerr
 		close(done)
 	}()
-	cs, err = gTestPool.GetConnect(lst.Addr().String())
+	cs, err = pool.GetConnect(lst.Addr().String())
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	err = <-done
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return cs, ss, nil
+	return cs, ss, func() {
+		pool.PutConnect(cs, false)
+		ss.Close()
+	}, err
 }
 
 func getTCPConnectionPair() (net.Conn, net.Conn, error) {

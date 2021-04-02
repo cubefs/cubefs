@@ -62,7 +62,7 @@ func FilterSmuxAcceptError(err error) error {
 	if err == nil {
 		return nil
 	}
-	if err.Error() == io.EOF.Error(){
+	if err.Error() == io.EOF.Error() {
 		return nil
 	}
 	if operr, ok := err.(*net.OpError); ok {
@@ -407,6 +407,7 @@ tryCreateNewSess:
 
 func (p *SmuxPool) autoRelease() {
 	poolLen := len(p.objects)
+getFromPool:
 	for i := 0; i < poolLen; i++ {
 		select {
 		case obj := <-p.objects:
@@ -418,6 +419,8 @@ func (p *SmuxPool) autoRelease() {
 			} else {
 				p.PutStreamObjectToPool(obj)
 			}
+		default:
+			break getFromPool
 		}
 	}
 	p.sessionsLock.Lock()
