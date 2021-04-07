@@ -264,11 +264,19 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 	batchCount := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteBatchCount)
 	limitRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeDeleteLimitRate)
 	deleteSleepMs := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
+	metaNodeReqLimitRate := atomic.LoadUint64(&m.cluster.cfg.MetaNodeReqLimitRate)
+	dataNodeReqLimitRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeReqLimitRate)
+	clientReadLimitRate := atomic.LoadUint64(&m.cluster.cfg.ClientReadLimitRate)
+	clientWriteLimitRate := atomic.LoadUint64(&m.cluster.cfg.ClientWriteLimitRate)
 	cInfo := &proto.ClusterInfo{
 		Cluster:                     m.cluster.Name,
 		MetaNodeDeleteBatchCount:    batchCount,
 		MetaNodeDeleteWorkerSleepMs: deleteSleepMs,
+		MetaNodeReqLimitRate:        metaNodeReqLimitRate,
+		DataNodeReqLimitRate:        dataNodeReqLimitRate,
 		DataNodeDeleteLimitRate:     limitRate,
+		ClientReadLimitRate:         clientReadLimitRate,
+		ClientWriteLimitRate:        clientWriteLimitRate,
 		Ip:                          strings.Split(r.RemoteAddr, ":")[0],
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
@@ -1171,6 +1179,58 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := params[nodeMarkDeleteRateKey]; ok {
 		if v, ok := val.(uint64); ok {
 			if err = m.cluster.setDataNodeDeleteLimitRate(v); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+	if val, ok := params[dataNodeReqRateKey]; ok {
+		if v, ok := val.(uint64); ok {
+			if v > 0 && v < minDataNodeReqLimitRate {
+				err = errors.NewErrorf("parameter %s can't be less than %d", dataNodeReqRateKey, minDataNodeReqLimitRate)
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+			if err = m.cluster.setDataNodeReqLimitRate(v); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+	if val, ok := params[metaNodeReqRateKey]; ok {
+		if v, ok := val.(uint64); ok {
+			if v > 0 && v < minMetaNodeReqLimitRate {
+				err = errors.NewErrorf("parameter %s can't be less than %d", metaNodeReqRateKey, minMetaNodeReqLimitRate)
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+			if err = m.cluster.setMetaNodeReqLimitRate(v); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+	if val, ok := params[clientReadRateKey]; ok {
+		if v, ok := val.(uint64); ok {
+			if v > 0 && v < minClientReadLimitRate {
+				err = errors.NewErrorf("parameter %s can't be less than %d", clientReadRateKey, minClientReadLimitRate)
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+			if err = m.cluster.setClientReadLimitRate(v); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+	if val, ok := params[clientWriteRateKey]; ok {
+		if v, ok := val.(uint64); ok {
+			if v > 0 && v < minClientWriteLimitRate {
+				err = errors.NewErrorf("parameter %s can't be less than %d", clientWriteRateKey, minClientWriteLimitRate)
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+			if err = m.cluster.setClientWriteLimitRate(v); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -2101,12 +2161,25 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	if noParams, err = parseNodeInfoIntKey(params, mpRecoverPoolSizeKey, noParams, r); err != nil {
 		return
 	}
+	if noParams, err = parseNodeInfoKey(params, metaNodeReqRateKey, noParams, r); err != nil {
+		return
+	}
+	if noParams, err = parseNodeInfoKey(params, dataNodeReqRateKey, noParams, r); err != nil {
+		return
+	}
+	if noParams, err = parseNodeInfoKey(params, clientReadRateKey, noParams, r); err != nil {
+		return
+	}
+	if noParams, err = parseNodeInfoKey(params, clientWriteRateKey, noParams, r); err != nil {
+		return
+	}
 	if noParams {
 		err = keyNotFound(nodeDeleteBatchCountKey)
 		return
 	}
 	return
 }
+
 func parseNodeInfoKey(params map[string]interface{}, key string, noParams bool, r *http.Request) (noPara bool, err error) {
 	var value string
 	defer func() {
@@ -2124,6 +2197,7 @@ func parseNodeInfoKey(params map[string]interface{}, key string, noParams bool, 
 	}
 	return
 }
+
 func parseNodeInfoIntKey(params map[string]interface{}, key string, noParams bool, r *http.Request) (noPara bool, err error) {
 	var value string
 	defer func() {
@@ -2141,6 +2215,7 @@ func parseNodeInfoIntKey(params map[string]interface{}, key string, noParams boo
 	}
 	return
 }
+
 func validateRequestToCreateMetaPartition(r *http.Request) (volName string, start uint64, err error) {
 	if volName, err = extractName(r); err != nil {
 		return

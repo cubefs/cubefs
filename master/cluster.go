@@ -2504,6 +2504,54 @@ func (c *Cluster) setDataNodeDeleteLimitRate(val uint64) (err error) {
 	return
 }
 
+func (c *Cluster) setDataNodeReqLimitRate(val uint64) (err error) {
+	oldVal := atomic.LoadUint64(&c.cfg.DataNodeReqLimitRate)
+	atomic.StoreUint64(&c.cfg.DataNodeReqLimitRate, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setDataNodeReqLimitRate] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.DataNodeReqLimitRate, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setMetaNodeReqLimitRate(val uint64) (err error) {
+	oldVal := atomic.LoadUint64(&c.cfg.MetaNodeReqLimitRate)
+	atomic.StoreUint64(&c.cfg.MetaNodeReqLimitRate, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setMetaNodeReqLimitRate] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.MetaNodeReqLimitRate, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setClientReadLimitRate(val uint64) (err error) {
+	oldVal := atomic.LoadUint64(&c.cfg.ClientReadLimitRate)
+	atomic.StoreUint64(&c.cfg.ClientReadLimitRate, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setClientReadLimitRate] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.ClientReadLimitRate, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setClientWriteLimitRate(val uint64) (err error) {
+	oldVal := atomic.LoadUint64(&c.cfg.ClientWriteLimitRate)
+	atomic.StoreUint64(&c.cfg.ClientWriteLimitRate, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setClientWriteLimitRate] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.ClientWriteLimitRate, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
 func (c *Cluster) setMetaNodeDeleteWorkerSleepMs(val uint64) (err error) {
 	oldVal := atomic.LoadUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs)
 	atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, val)

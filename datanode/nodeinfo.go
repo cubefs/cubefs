@@ -14,11 +14,13 @@ const (
 	UpdateNodeInfoTicket                  = 1 * time.Minute
 	defaultFixTinyDeleteRecordLimitOnDisk = 50
 	defaultRepairTaskLimitOnDisk          = 10
+	defaultReqLimitBurst                  = 512
 )
 
 var (
 	nodeInfoStopC     = make(chan struct{}, 0)
 	deleteLimiteRater = rate.NewLimiter(rate.Inf, defaultMarkDeleteLimitBurst)
+	reqLimitRater     = rate.NewLimiter(rate.Inf, defaultReqLimitBurst)
 )
 
 func (m *DataNode) startUpdateNodeInfo() {
@@ -51,6 +53,13 @@ func (m *DataNode) updateNodeInfo() {
 		l = rate.Inf
 	}
 	deleteLimiteRater.SetLimit(l)
+
+	r = clusterInfo.DataNodeReqLimitRate
+	l = rate.Limit(r)
+	if r == 0 {
+		l = rate.Inf
+	}
+	reqLimitRater.SetLimit(l)
 	m.space.SetDiskFixTinyDeleteRecordLimit(clusterInfo.DataNodeFixTinyDeleteRecordLimitOnDisk)
 	m.space.SetDiskRepairTaskLimit(clusterInfo.DataNodeRepairTaskLimitOnDisk)
 }

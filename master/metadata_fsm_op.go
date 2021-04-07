@@ -36,8 +36,12 @@ type clusterValue struct {
 	Threshold                         float32
 	DisableAutoAllocate               bool
 	DataNodeDeleteLimitRate           uint64
+	DataNodeReqLimitRate              uint64
+	MetaNodeReqLimitRate              uint64
 	MetaNodeDeleteBatchCount          uint64
 	MetaNodeDeleteWorkerSleepMs       uint64
+	ClientReadLimitRate               uint64
+	ClientWriteLimitRate              uint64
 	PoolSizeOfDataPartitionsInRecover int32
 	PoolSizeOfMetaPartitionsInRecover int32
 }
@@ -47,8 +51,12 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		Name:                              c.Name,
 		Threshold:                         c.cfg.MetaNodeThreshold,
 		DataNodeDeleteLimitRate:           c.cfg.DataNodeDeleteLimitRate,
+		DataNodeReqLimitRate:              c.cfg.DataNodeReqLimitRate,
+		MetaNodeReqLimitRate:              c.cfg.MetaNodeReqLimitRate,
 		MetaNodeDeleteBatchCount:          c.cfg.MetaNodeDeleteBatchCount,
 		MetaNodeDeleteWorkerSleepMs:       c.cfg.MetaNodeDeleteWorkerSleepMs,
+		ClientReadLimitRate:               c.cfg.ClientReadLimitRate,
+		ClientWriteLimitRate:              c.cfg.ClientWriteLimitRate,
 		DisableAutoAllocate:               c.DisableAutoAllocate,
 		PoolSizeOfDataPartitionsInRecover: c.cfg.DataPartitionsRecoverPoolSize,
 		PoolSizeOfMetaPartitionsInRecover: c.cfg.MetaPartitionsRecoverPoolSize,
@@ -568,6 +576,10 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateMetaNodeDeleteBatchCount(cv.MetaNodeDeleteBatchCount)
 		c.updateMetaNodeDeleteWorkerSleepMs(cv.MetaNodeDeleteWorkerSleepMs)
 		c.updateDataNodeDeleteLimitRate(cv.DataNodeDeleteLimitRate)
+		atomic.StoreUint64(&c.cfg.DataNodeReqLimitRate, cv.DataNodeReqLimitRate)
+		atomic.StoreUint64(&c.cfg.MetaNodeReqLimitRate, cv.MetaNodeReqLimitRate)
+		atomic.StoreUint64(&c.cfg.ClientReadLimitRate, cv.ClientReadLimitRate)
+		atomic.StoreUint64(&c.cfg.ClientWriteLimitRate, cv.ClientWriteLimitRate)
 		c.updateRecoverPoolSize(cv.PoolSizeOfDataPartitionsInRecover, cv.PoolSizeOfMetaPartitionsInRecover)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}

@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -73,6 +74,7 @@ type metadataManager struct {
 // HandleMetadataOperation handles the metadata operations.
 func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
+	reqLimitRater.Wait(context.Background())
 	metric := exporter.NewTPCnt(p.GetOpMsg())
 	defer metric.Set(err)
 
