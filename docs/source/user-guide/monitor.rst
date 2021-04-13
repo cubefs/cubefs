@@ -20,7 +20,7 @@ ChubaoFS use prometheus as metrics collector. It simply config as follow in mast
 * ipFilter: it's a ip regular filter, exposed to consul, not necessary, default empty, which is used for multiple ip machine. it can support positive or negative filter, for example:
     * ipFilter="10.17.*", means that ip, regular match ipFilter, is ok
     * ipFilter="!10.17.*" means that ip, not regular match ipFilter, is ok
-* enablePid: whether to report partition id, default true; if there are too many dp or mp in your cluster, you can set it false
+* enablePid: whether to report partition id, default false; if you want to show dp or mp info in your cluster, you can set it true
 Using grafana as prometheus metrics web front：
 
 .. image:: ../pic/cfs-grafana-dashboard.png

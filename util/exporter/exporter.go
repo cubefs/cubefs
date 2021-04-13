@@ -53,7 +53,7 @@ var (
 	modulename        string
 	exporterPort      int64
 	enabledPrometheus = false
-	EnablePid         = true
+	EnablePid         = false
 	replacer          = strings.NewReplacer("-", "_", ".", "_", " ", "_", ",", "_", ":", "_")
 )
 
@@ -69,7 +69,7 @@ func Init(role string, cfg *config.Config) {
 		return
 	}
 
-	EnablePid = cfg.GetBoolWithDefault(ConfigKeyEnablePid, true)
+	EnablePid = cfg.GetBoolWithDefault(ConfigKeyEnablePid, false)
 	log.LogInfo("enable report partition id info? ", EnablePid)
 
 	port := cfg.GetInt64(ConfigKeyExporterPort)

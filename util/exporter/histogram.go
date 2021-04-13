@@ -47,7 +47,7 @@ func (g *Histogram) String() string {
 func (c *Histogram) Metric() prometheus.Histogram {
 	metric := prometheus.NewHistogram(
 		prometheus.HistogramOpts{
-			Name:        fmt.Sprintf("%s_hist", c.name),
+			Name:        c.name,
 			ConstLabels: c.labels,
 			Buckets:     buckets,
 		})

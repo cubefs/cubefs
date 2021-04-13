@@ -39,6 +39,11 @@ import (
 
 func (s *DataNode) getPacketTpLabels(p *repl.Packet) map[string]string {
 	labels := make(map[string]string)
+	labels[exporter.Vol] = ""
+	labels[exporter.Op] = ""
+	labels[exporter.PartId] = ""
+	labels[exporter.Disk] = ""
+
 	if part, ok := p.Object.(*DataPartition); ok {
 		labels[exporter.Vol] = part.volumeID
 		labels[exporter.Op] = p.GetOpMsg()
@@ -51,7 +56,7 @@ func (s *DataNode) getPacketTpLabels(p *repl.Packet) map[string]string {
 	return labels
 }
 
-func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
+func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 	sz := p.Size
 	tpObject := exporter.NewTPCnt(p.GetOpMsg())
 	tpLabels := s.getPacketTpLabels(p)
@@ -365,7 +370,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	)
 	defer func() {
 		if err != nil {
-			log.LogErrorf(fmt.Sprintf("(%v) error(%v) data (%v)", p.GetUniqueLogId(), err, string(p.Data)))
+			log.LogErrorf(fmt.Sprintf("(%v) error(%v).", p.GetUniqueLogId(), err))
 			p.PackErrorBody(ActionBatchMarkDelete, err.Error())
 		} else {
 			p.PacketOkReply()
@@ -377,9 +382,13 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	store := partition.ExtentStore()
 	if err == nil {
 		for _, ext := range exts {
-			DeleteLimiterWait()
-			log.LogInfof(fmt.Sprintf("recive DeleteExtent (%v) from (%v)", ext, c.RemoteAddr().String()))
-			store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
+			if deleteLimiteRater.Allow() {
+				log.LogInfof(fmt.Sprintf("recive DeleteExtent (%v) from (%v)", ext, c.RemoteAddr().String()))
+				store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
+			} else {
+				log.LogInfof("delete limiter reach(%v), remote (%v) try again.", deleteLimiteRater.Limit(), c.RemoteAddr().String())
+				err = storage.TryAgainError
+			}
 		}
 	}
 
@@ -476,6 +485,7 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		err = storage.TryAgainError
 		return
 	}
+
 }
 
 func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
@@ -550,7 +560,7 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		} else {
 			reply.Data = make([]byte, currReadSize)
 		}
-		tpObject := exporter.NewTPCnt(p.GetOpMsg())
+		tpObject := exporter.NewTPCnt(fmt.Sprintf("Repair_%s", p.GetOpMsg()))
 		reply.ExtentOffset = offset
 		p.Size = uint32(currReadSize)
 		p.ExtentOffset = offset
@@ -723,7 +733,7 @@ func (s *DataNode) tinyExtentRepairRead(request *repl.Packet, connect net.Conn) 
 	return
 }
 
-func (s *DataNode) handlePacketToReadTinyDeleteRecordFile(p *repl.Packet, connect *net.TCPConn) {
+func (s *DataNode) handlePacketToReadTinyDeleteRecordFile(p *repl.Packet, connect net.Conn) {
 	var (
 		err error
 	)
@@ -1056,7 +1066,9 @@ func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet) (ok bo
 	if err != nil {
 		return
 	}
-	defer gConnPool.PutConnect(conn, true)
+	defer func() {
+		gConnPool.PutConnect(conn, err != nil)
+	}()
 	err = p.WriteToConn(conn)
 	if err != nil {
 		return

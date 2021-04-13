@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/proto"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -156,6 +157,7 @@ func makeRegisterReq(host, addr, app, role, cluster, meta string, port int64) (r
 	if ok {
 		cInfo.Meta = metas
 		cInfo.Meta["cluster"] = cluster
+		cInfo.Meta["commit"] = proto.CommitID
 	}
 
 	cInfoBytes, err := json.Marshal(cInfo)
@@ -182,7 +184,7 @@ func parseMetaStr(meta string) (bool, map[string]string) {
 	for _, kv := range kvs {
 		arr := strings.Split(kv, "=")
 		if len(arr) != 2 {
-			log.LogWarnf("meta is invalid, not use %s", meta)
+			log.LogInfof("meta is invalid, can't use %s", meta)
 			return false, m
 		}
 

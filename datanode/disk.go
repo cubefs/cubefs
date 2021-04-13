@@ -60,6 +60,7 @@ type Disk struct {
 	partitionMap                              map[uint64]*DataPartition
 	syncTinyDeleteRecordFromLeaderOnEveryDisk chan bool
 	space                                     *SpaceManager
+	dataNode                                  *DataNode
 }
 
 const (
@@ -75,6 +76,7 @@ func NewDisk(path string, reservedSpace uint64, maxErrCnt int, space *SpaceManag
 	d.MaxErrCnt = maxErrCnt
 	d.RejectWrite = false
 	d.space = space
+	d.dataNode = space.dataNode
 	d.partitionMap = make(map[uint64]*DataPartition)
 	d.syncTinyDeleteRecordFromLeaderOnEveryDisk = make(chan bool, SyncTinyDeleteRecordFromLeaderOnEveryDisk)
 	d.computeUsage()

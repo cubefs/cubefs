@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"fmt"
+	"github.com/chubaofs/chubaofs/util"
 	"net"
 	"os"
 	"path"
@@ -35,7 +36,7 @@ const (
 	TempFileValidTime             = 86400 //units: sec
 	DeleteInodeFileExtension      = "INODE_DEL"
 	DeleteWorkerCnt               = 10
-	InodeNLink0DelayDeleteSeconds =  24*3600
+	InodeNLink0DelayDeleteSeconds = 24 * 3600
 )
 
 func (mp *metaPartition) startFreeList() (err error) {
@@ -128,6 +129,12 @@ func (mp *metaPartition) deleteWorker() {
 			continue
 		}
 
+		// do nothing.
+		if mp.freeList.Len() == 0 {
+			time.Sleep(time.Minute)
+			continue
+		}
+
 		batchCount := DeleteBatchCount()
 		delayDeleteInos := make([]uint64, 0)
 		for idx = 0; idx < int(batchCount); idx++ {
@@ -162,10 +169,10 @@ func (mp *metaPartition) deleteWorker() {
 
 // delete Extents by Partition,and find all successDelete inode
 func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents map[uint64][]*proto.ExtentKey,
-				allInodes []*Inode) (shouldCommit []*Inode,shouldPushToFreeList []*Inode) {
+	allInodes []*Inode) (shouldCommit []*Inode, shouldPushToFreeList []*Inode) {
 	occurErrors := make(map[uint64]error)
 	shouldCommit = make([]*Inode, 0, DeleteBatchCount())
-	shouldPushToFreeList=make([]*Inode,0)
+	shouldPushToFreeList = make([]*Inode, 0)
 	var (
 		wg   sync.WaitGroup
 		lock sync.Mutex
@@ -199,8 +206,8 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 		})
 		if successDeleteExtentCnt == inode.Extents.Len() {
 			shouldCommit = append(shouldCommit, inode)
-		}else {
-			shouldPushToFreeList=append(shouldPushToFreeList,inode)
+		} else {
+			shouldPushToFreeList = append(shouldPushToFreeList, inode)
 		}
 	}
 
@@ -214,8 +221,13 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 			log.LogErrorf(fmt.Sprintf("metaPartition(%v) deleteMarkedInodes panic (%v)", mp.config.PartitionId, r))
 		}
 	}()
+
+	if len(inoSlice) == 0 {
+		return
+	}
+
 	shouldCommit := make([]*Inode, 0, DeleteBatchCount())
-	shouldRePushToFreeList:=make([]*Inode,0)
+	shouldRePushToFreeList := make([]*Inode, 0)
 	allDeleteExtents := make(map[string]uint64)
 	deleteExtentsByPartition := make(map[uint64][]*proto.ExtentKey)
 	allInodes := make([]*Inode, 0)
@@ -242,7 +254,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		})
 		allInodes = append(allInodes, inode)
 	}
-	shouldCommit,shouldRePushToFreeList = mp.batchDeleteExtentsByPartition(deleteExtentsByPartition, allInodes)
+	shouldCommit, shouldRePushToFreeList = mp.batchDeleteExtentsByPartition(deleteExtentsByPartition, allInodes)
 	bufSlice := make([]byte, 0, 8*len(shouldCommit))
 	for _, inode := range shouldCommit {
 		bufSlice = append(bufSlice, inode.MarshalKey()...)
@@ -260,13 +272,18 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		}
 	}
 	log.LogInfof("metaPartition(%v) deleteInodeCnt(%v) inodeCnt(%v)", mp.config.PartitionId, len(shouldCommit), mp.inodeTree.Len())
-	for _,inode:=range shouldRePushToFreeList {
+	for _, inode := range shouldRePushToFreeList {
 		mp.freeList.Push(inode.Inode)
+	}
+
+	// try again.
+	if len(shouldRePushToFreeList) > 0 && deleteWorkerSleepMs == 0 {
+		time.Sleep(time.Duration(1000) * time.Millisecond)
 	}
 }
 
 func (mp *metaPartition) syncToRaftFollowersFreeInode(hasDeleteInodes []byte) (err error) {
-	if len(hasDeleteInodes)==0 {
+	if len(hasDeleteInodes) == 0 {
 		return
 	}
 	_, err = mp.submit(opFSMInternalDeleteInode, hasDeleteInodes)
@@ -313,15 +330,19 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 			ext.PartitionId)
 		return
 	}
+
 	// delete the data node
-	conn, err := mp.config.ConnPool.GetConnect(dp.Hosts[0])
+	addr := util.ShiftAddrPort(dp.Hosts[0], smuxPortShift)
+	conn, err := smuxPool.GetConnect(addr)
+	log.LogInfof("doDeleteMarkedInodes mp (%v) GetConnect (%v)", mp.config.PartitionId, addr)
 
 	defer func() {
 		if err != nil {
-			mp.config.ConnPool.PutConnect(conn, ForceClosedConnect)
+			smuxPool.PutConnect(conn, ForceClosedConnect)
 		} else {
-			mp.config.ConnPool.PutConnect(conn, NoClosedConnect)
+			smuxPool.PutConnect(conn, NoClosedConnect)
 		}
+		log.LogInfof("doDeleteMarkedInodes mp (%v) PutConnect (%v)", mp.config.PartitionId, addr)
 	}()
 
 	if err != nil {
@@ -364,14 +385,19 @@ func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, ext
 	}
 
 	// delete the data node
-	conn, err := mp.config.ConnPool.GetConnect(dp.Hosts[0])
+	addr := util.ShiftAddrPort(dp.Hosts[0], smuxPortShift)
+	conn, err := smuxPool.GetConnect(addr)
+	log.LogInfof("doBatchDeleteExtentsByPartition mp (%v) GetConnect (%v)", mp.config.PartitionId, addr)
+
+	ResultCode := proto.OpOk
 
 	defer func() {
-		if err != nil {
-			mp.config.ConnPool.PutConnect(conn, ForceClosedConnect)
+		if err != nil && ResultCode != proto.OpAgain {
+			smuxPool.PutConnect(conn, ForceClosedConnect)
 		} else {
-			mp.config.ConnPool.PutConnect(conn, NoClosedConnect)
+			smuxPool.PutConnect(conn, NoClosedConnect)
 		}
+		log.LogInfof("doBatchDeleteExtentsByPartition mp (%v) PutConnect (%v)", mp.config.PartitionId, addr)
 	}()
 
 	if err != nil {
@@ -391,10 +417,14 @@ func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, ext
 			p.GetUniqueLogId(), err.Error())
 		return
 	}
+
+	ResultCode = p.ResultCode
+
 	if p.ResultCode != proto.OpOk {
 		err = errors.NewErrorf("[deleteMarkedInodes] %s response: %s", p.GetUniqueLogId(),
 			p.GetResultMsg())
 	}
+
 	return
 }
 

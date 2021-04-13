@@ -106,12 +106,7 @@ func main() {
 	 * Must notify the parent process through SignalOutcome anyway.
 	 */
 
-	cfg, err := config.LoadConfigFile(*configFile)
-	if err != nil {
-		daemonize.SignalOutcome(err)
-		os.Exit(1)
-	}
-
+	cfg, _ := config.LoadConfigFile(*configFile)
 	opt, err := parseMountOption(cfg)
 	if err != nil {
 		err = errors.NewErrorf("parse mount opt failed: %v\n", err)
@@ -125,8 +120,6 @@ func main() {
 	} else {
 		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
-
-	exporter.Init(ModuleName, cfg)
 
 	level := parseLogLevel(opt.Loglvl)
 	_, err = log.InitLog(opt.Logpath, LoggerPrefix, level, nil)
@@ -190,6 +183,7 @@ func main() {
 	}
 	defer fsConn.Close()
 
+	exporter.Init(ModuleName, cfg)
 	exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
 
 	if err = fs.Serve(fsConn, super); err != nil {
