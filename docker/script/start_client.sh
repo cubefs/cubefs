@@ -124,8 +124,8 @@ start_client() {
     /cfs/bin/cfs-client -c  /cfs/conf/client.json
     for((i=0; i<$TryTimes; i++)) ; do
         sleep 2
-        sta=$(stat $MntPoint 2>/dev/null | tr ":：" " "  | awk '/Inode/{print $4}')
-        if [[ "x$sta" == "x1" ]] ; then
+        sta=$( mount | grep -q "$VolName on $MntPoint" ; echo $? )
+        if [[ $sta -eq 0 ]] ; then
             ok=1
 	        echo -e "\033[32mdone\033[0m"
             exit 0

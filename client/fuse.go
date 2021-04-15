@@ -354,6 +354,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.SecretKey = GlobalMountOptions[proto.SecretKey].GetString()
 	opt.DisableDcache = GlobalMountOptions[proto.DisableDcache].GetBool()
 	opt.SubDir = GlobalMountOptions[proto.SubDir].GetString()
+	opt.AutoMakeSubDir = GlobalMountOptions[proto.AutoMakeSubDir].GetBool()
 	opt.FsyncOnClose = GlobalMountOptions[proto.FsyncOnClose].GetBool()
 	opt.MaxCPUs = GlobalMountOptions[proto.MaxCPUs].GetInt64()
 	opt.EnableXattr = GlobalMountOptions[proto.EnableXattr].GetBool()

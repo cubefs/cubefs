@@ -147,7 +147,7 @@ start_client() {
     echo -n "Starting client   ... "
     nohup /cfs/bin/cfs-client -c /cfs/conf/client.json >/cfs/log/cfs.out 2>&1 &
     sleep 10
-    res=$( stat $MntPoint | grep -q "Inode: 1" ; echo $? )
+    res=$( mount | grep -q "$VolName on $MntPoint" ; echo $? )
     if [[ $res -ne 0 ]] ; then
         echo -e "\033[31mfail\033[0m"
         print_error_info
