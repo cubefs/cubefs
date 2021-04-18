@@ -623,34 +623,47 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 
 func (v *Volume) applyInodeToDEntry(parentId uint64, name string, inode uint64) (err error) {
 	var existMode uint32
-	_, existMode, err = v.mw.Lookup_ll(parentId, name)
-	if err != nil && err != syscall.ENOENT {
-		log.LogErrorf("applyInodeToDEntry: meta lookup fail: parentID(%v) name(%v) err(%v)", parentId, name, err)
+
+	for {
+		_, existMode, err = v.mw.Lookup_ll(parentId, name)
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("applyInodeToDEntry: meta lookup fail: parentID(%v) name(%v) err(%v)", parentId, name, err)
+			return
+		}
+
+		if err == syscall.ENOENT {
+			err = v.applyInodeToNewDentry(parentId, name, inode)
+			if err == syscall.EEXIST {
+				// The dentry used to not exist but have been created before appling inode to new dentry.
+				continue
+			}
+			if err != nil {
+				log.LogErrorf("applyInodeToDEntry: apply inode to new dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
+					parentId, name, inode, err)
+				return
+			}
+			log.LogDebugf("applyInodeToDEntry: apply inode to new dentry: parentID(%v) name(%v) inode(%v)",
+				parentId, name, inode)
+		} else {
+			if os.FileMode(existMode).IsDir() {
+				log.LogErrorf("applyInodeToDEntry: target mode conflict: parentID(%v) name(%v) mode(%v)",
+					parentId, name, os.FileMode(existMode).String())
+				err = syscall.EINVAL
+				return
+			}
+			err = v.applyInodeToExistDentry(parentId, name, inode)
+			if err == syscall.ENOENT {
+				// The dentry used to exist but have been deleted before applying inode to exist dentry.
+				continue
+			}
+			if err != nil {
+				log.LogErrorf("applyInodeToDEntry: apply inode to exist dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
+					parentId, name, inode, err)
+				return
+			}
+		}
 		return
 	}
-
-	if err == syscall.ENOENT {
-		if err = v.applyInodeToNewDentry(parentId, name, inode); err != nil {
-			log.LogErrorf("applyInodeToDEntry: apply inode to new dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
-				parentId, name, inode, err)
-			return
-		}
-		log.LogDebugf("applyInodeToDEntry: apply inode to new dentry: parentID(%v) name(%v) inode(%v)",
-			parentId, name, inode)
-	} else {
-		if os.FileMode(existMode).IsDir() {
-			log.LogErrorf("applyInodeToDEntry: target mode conflict: parentID(%v) name(%v) mode(%v)",
-				parentId, name, os.FileMode(existMode).String())
-			err = syscall.EINVAL
-			return
-		}
-		if err = v.applyInodeToExistDentry(parentId, name, inode); err != nil {
-			log.LogErrorf("applyInodeToDEntry: apply inode to exist dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
-				parentId, name, inode, err)
-			return
-		}
-	}
-	return
 }
 
 // DeletePath deletes the specified path.
