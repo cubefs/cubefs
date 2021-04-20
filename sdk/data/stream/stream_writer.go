@@ -16,7 +16,6 @@ package stream
 
 import (
 	"fmt"
-	"golang.org/x/net/context"
 	"hash/crc32"
 	"net"
 	"sync/atomic"
@@ -29,6 +28,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/btree"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	"golang.org/x/net/context"
 )
 
 const (
@@ -580,6 +580,10 @@ func (s *Streamer) truncate(size int) error {
 		s.extents.SetSize(uint64(size), true)
 		return nil
 	}
+
+	s.extents.Lock()
+	s.extents.gen = 0
+	s.extents.Unlock()
 
 	return s.GetExtents()
 }
