@@ -1132,8 +1132,10 @@ func (v *Volume) appendInodeHash(h hash.Hash, inode uint64, total uint64, preAll
 
 func (v *Volume) applyInodeToNewDentry(parentID uint64, name string, inode uint64) (err error) {
 	if err = v.mw.DentryCreate_ll(parentID, name, inode, DefaultFileMode); err != nil {
-		log.LogErrorf("applyInodeToNewDentry: meta dentry create fail: parentID(%v) name(%v) inode(%v) mode(%v) err(%v)",
-			parentID, name, inode, DefaultFileMode, err)
+		if err != syscall.EEXIST {
+			log.LogErrorf("applyInodeToNewDentry: meta dentry create fail: parentID(%v) name(%v) inode(%v) mode(%v) err(%v)",
+				parentID, name, inode, DefaultFileMode, err)
+		}
 		return err
 	}
 	return
