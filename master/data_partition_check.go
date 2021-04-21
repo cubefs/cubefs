@@ -19,8 +19,8 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
-	"time"
 	"math"
+	"time"
 )
 
 func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dpTimeOutSec int64) {
@@ -78,7 +78,9 @@ func (partition *DataPartition) checkReplicaStatus(timeOutSec int64) {
 	defer partition.Unlock()
 	for _, replica := range partition.Replicas {
 		if !replica.isLive(timeOutSec) {
-			replica.Status = proto.ReadOnly
+			if replica.Status != proto.Unavailable {
+				replica.Status = proto.ReadOnly
+			}
 		}
 	}
 }
