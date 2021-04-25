@@ -120,7 +120,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.fsyncOnClose = opt.FsyncOnClose
 	s.enableXattr = opt.EnableXattr
 
-	if s.rootIno, err = s.mw.GetRootIno(opt.SubDir); err != nil {
+	if s.rootIno, err = s.mw.GetRootIno(opt.SubDir, opt.AutoMakeSubDir); err != nil {
 		return nil, err
 	}
 

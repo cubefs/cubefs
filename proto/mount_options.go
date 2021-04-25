@@ -50,6 +50,7 @@ const (
 	MaxExtentNumPerAlignArea
 	ForceAlignMerge
 	EnablePosixACL
+	AutoMakeSubDir
 
 	MaxMountOption
 )
@@ -111,6 +112,7 @@ func InitMountOptions(opts []MountOption) {
 
 	opts[DisableDcache] = MountOption{"disableDcache", "Disable Dentry Cache", "", false}
 	opts[SubDir] = MountOption{"subdir", "Mount sub directory", "", ""}
+	opts[AutoMakeSubDir] = MountOption{"autoMakeSubdir", "Auto make non-existent subdir", "", false}
 	opts[FsyncOnClose] = MountOption{"fsyncOnClose", "Perform fsync upon file close", "", true}
 	opts[MaxCPUs] = MountOption{"maxcpus", "The maximum number of CPUs that can be executing", "", int64(-1)}
 	opts[EnableXattr] = MountOption{"enableXattr", "Enable xattr support", "", false}
@@ -245,6 +247,7 @@ type MountOptions struct {
 	SecretKey                string
 	DisableDcache            bool
 	SubDir                   string
+	AutoMakeSubDir           bool
 	FsyncOnClose             bool
 	MaxCPUs                  int64
 	EnableXattr              bool

@@ -17,6 +17,7 @@ package meta
 import (
 	"fmt"
 	syslog "log"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -33,7 +34,8 @@ import (
 // Low-level API, i.e. work with inode
 
 const (
-	BatchIgetRespBuf = 1000
+	BatchIgetRespBuf      = 1000
+	CreateSubDirDeepLimit = 5
 )
 
 const (
@@ -41,19 +43,26 @@ const (
 	OpenRetryLimit    = 1000
 )
 
-func (mw *MetaWrapper) GetRootIno(subdir string) (uint64, error) {
+func (mw *MetaWrapper) GetRootIno(subdir string, autoMakeDir bool) (uint64, error) {
 	rootIno := proto.RootIno
 	if subdir == "" || subdir == "/" {
 		return rootIno, nil
 	}
 
 	dirs := strings.Split(subdir, "/")
+	dirDeep := len(dirs)
 	for idx, dir := range dirs {
 		if dir == "/" || dir == "" {
 			continue
 		}
 		child, mode, err := mw.Lookup_ll(rootIno, dir)
 		if err != nil {
+			if autoMakeDir && err == syscall.ENOENT && (dirDeep-idx) < CreateSubDirDeepLimit {
+				// create directory
+				if rootIno, err = mw.MakeDirectory(rootIno, dir); err == nil {
+					continue
+				}
+			}
 			return 0, fmt.Errorf("GetRootIno: Lookup failed, subdir(%v) idx(%v) dir(%v) err(%v)", subdir, idx, dir, err)
 		}
 		if !proto.IsDir(mode) {
@@ -61,8 +70,26 @@ func (mw *MetaWrapper) GetRootIno(subdir string) (uint64, error) {
 		}
 		rootIno = child
 	}
-	syslog.Printf("GetRootIno: %v\n", rootIno)
+	syslog.Printf("GetRootIno: inode(%v) subdir(%v)\n", rootIno, subdir)
 	return rootIno, nil
+}
+
+func (mw *MetaWrapper) MakeDirectory(parIno uint64, dirName string) (uint64, error) {
+	inodeInfo, err := mw.Create_ll(parIno, dirName, proto.Mode(os.ModeDir|0755), 0, 0, nil)
+	if err != nil {
+		if err == syscall.EEXIST {
+			existInode, existMode, e := mw.Lookup_ll(parIno, dirName)
+			if e == nil && proto.IsDir(existMode) {
+				return existInode, nil
+			}
+			return 0, fmt.Errorf("MakeDirectory failed: create err(%v) lookup err(%v) existInode(%v) existMode(%v)", err, e, existInode, existMode)
+		}
+		return 0, fmt.Errorf("MakeDirectory failed: create err(%v)", err)
+	}
+	if !proto.IsDir(inodeInfo.Mode) {
+		return 0, fmt.Errorf("MakeDirectory failed: inode mode invalid")
+	}
+	return inodeInfo.Inode, nil
 }
 
 func (mw *MetaWrapper) Statfs() (total, used uint64) {
