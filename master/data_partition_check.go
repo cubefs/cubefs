@@ -154,8 +154,8 @@ func (partition *DataPartition) hasMissingDataPartition(addr string) (isMissing 
 	return
 }
 
-func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) {
-	diskErrorAddrs := make(map[string]string, 0)
+func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) (diskErrorAddrs map[string]string) {
+	diskErrorAddrs = make(map[string]string, 0)
 	partition.Lock()
 	defer partition.Unlock()
 	for _, addr := range partition.Hosts {

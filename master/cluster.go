@@ -63,6 +63,7 @@ type Cluster struct {
 	lastPermutationsForZone   uint8
 	dpRepairChan              chan *RepairTask
 	mpRepairChan              chan *RepairTask
+	DataNodeBadDisks          *sync.Map
 }
 type (
 	RepairType uint8
@@ -94,6 +95,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.BadMetaPartitionIds = new(sync.Map)
 	c.MigratedDataPartitionIds = new(sync.Map)
 	c.MigratedMetaPartitionIds = new(sync.Map)
+	c.DataNodeBadDisks = new(sync.Map)
 	c.dataNodeStatInfo = new(nodeStatInfo)
 	c.metaNodeStatInfo = new(nodeStatInfo)
 	c.zoneStatInfos = make(map[string]*proto.ZoneStat)
@@ -193,14 +195,17 @@ func (c *Cluster) checkDataPartitions() {
 		}
 	}()
 
+	allBadDisks := make([]map[string][]string, 0)
 	vols := c.allVols()
 	for _, vol := range vols {
-		readWrites := vol.checkDataPartitions(c)
+		readWrites, dataNodeBadDisksOfVol := vol.checkDataPartitions(c)
+		allBadDisks = append(allBadDisks, dataNodeBadDisksOfVol)
 		vol.dataPartitions.setReadWriteDataPartitions(readWrites, c.Name)
 		vol.dataPartitions.updateResponseCache(true, 0)
 		msg := fmt.Sprintf("action[checkDataPartitions],vol[%v] can readWrite partitions:%v  ", vol.Name, vol.dataPartitions.readableAndWritableCnt)
 		log.LogInfo(msg)
 	}
+	c.updateDataNodeBadDisks(allBadDisks)
 }
 
 func (c *Cluster) scheduleToLoadDataPartitions() {
@@ -2779,4 +2784,40 @@ func (c *Cluster) checkMergeZoneNodeset() {
 		zone.mergeNodeSetForMetaNode(c)
 		zone.mergeNodeSetForDataNode(c)
 	}
+}
+
+func (c *Cluster) updateDataNodeBadDisks(allBadDisks []map[string][]string) {
+	//map[string][]string, key: addr,value: diskPaths
+	datanodeBadDisks := new(sync.Map)
+	for _, dataNodeBadDisks := range allBadDisks {
+		for addr, badDisks := range dataNodeBadDisks {
+			diskPaths := make([]string, 0)
+			for _, diskPath := range badDisks {
+				if contains(diskPaths, diskPath) {
+					continue
+				}
+				diskPaths = append(diskPaths, diskPath)
+			}
+			datanodeBadDisks.Store(addr, diskPaths)
+		}
+	}
+	c.DataNodeBadDisks = datanodeBadDisks
+}
+
+func (c *Cluster) getDataNodeBadDisks() (allBadDisks []proto.DataNodeBadDisksView){
+	allBadDisks = make([]proto.DataNodeBadDisksView, 0)
+	c.DataNodeBadDisks.Range(func(key, value interface{}) bool {
+		addr, ok := key.(string)
+		if !ok {
+			return true
+		}
+		disks, ok := value.([]string)
+		if !ok {
+			return true
+		}
+		badDiskNode := proto.DataNodeBadDisksView{Addr: addr,BadDiskPath: disks}
+		allBadDisks = append(allBadDisks, badDiskNode)
+		return true
+	})
+	return
 }

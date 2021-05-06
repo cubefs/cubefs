@@ -622,6 +622,7 @@ func (m *ClusterService) makeClusterView() *proto.ClusterView {
 		VolStatInfo:         make([]*proto.VolStatInfo, 0),
 		BadPartitionIDs:     make([]proto.BadPartitionView, 0),
 		BadMetaPartitionIDs: make([]proto.BadPartitionView, 0),
+		DataNodeBadDisks:    make([]proto.DataNodeBadDisksView, 0),
 	}
 
 	vols := m.cluster.allVolNames()
@@ -629,6 +630,7 @@ func (m *ClusterService) makeClusterView() *proto.ClusterView {
 	cv.DataNodes = m.cluster.allDataNodes()
 	cv.DataNodeStatInfo = m.cluster.dataNodeStatInfo
 	cv.MetaNodeStatInfo = m.cluster.metaNodeStatInfo
+	cv.DataNodeBadDisks = m.cluster.getDataNodeBadDisks()
 	for _, name := range vols {
 		stat, ok := m.cluster.volStatInfo.Load(name)
 		if !ok {

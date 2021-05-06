@@ -212,6 +212,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		BadMetaPartitionIDs:    make([]proto.BadPartitionView, 0),
 		MigratedDataPartitions: make([]proto.BadPartitionView, 0),
 		MigratedMetaPartitions: make([]proto.BadPartitionView, 0),
+		DataNodeBadDisks:       make([]proto.DataNodeBadDisksView, 0),
 	}
 
 	vols := m.cluster.allVolNames()
@@ -255,6 +256,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		cv.MigratedMetaPartitions = append(cv.MigratedMetaPartitions, bpv)
 		return true
 	})
+	cv.DataNodeBadDisks = m.cluster.getDataNodeBadDisks()
 
 	sendOkReply(w, r, newSuccessHTTPReply(cv))
 }

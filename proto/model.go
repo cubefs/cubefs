@@ -119,6 +119,7 @@ type ClusterView struct {
 	MigratedMetaPartitions []BadPartitionView
 	MetaNodes              []NodeView
 	DataNodes              []NodeView
+	DataNodeBadDisks       []DataNodeBadDisksView
 }
 
 // NodeView provides the view of the data or meta node.
@@ -132,6 +133,11 @@ type NodeView struct {
 type BadPartitionView struct {
 	Path         string
 	PartitionIDs []uint64
+}
+
+type DataNodeBadDisksView struct {
+	Addr        string
+	BadDiskPath []string
 }
 
 type ClusterStatInfo struct {
