@@ -200,17 +200,27 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 			}
 
 			if dp.minAppliedID > dp.lastTruncateID { // Has changed
+				appliedID := atomic.LoadUint64(&dp.appliedID)
+				if err := dp.storeAppliedID(appliedID); err != nil {
+					log.LogErrorf("partition [%v] persist applied ID [%v] during scheduled truncate raft log failed: %v", dp.partitionID, appliedID, err)
+					truncateRaftLogTimer.Reset(time.Minute)
+					continue
+				}
 				dp.raftPartition.Truncate(dp.minAppliedID)
 				dp.lastTruncateID = dp.minAppliedID
-				dp.PersistMetadata()
-				log.LogInfof("PartitionID(%v) truncated RaftLog to (%v)", dp.partitionID, dp.minAppliedID)
+				if err := dp.PersistMetadata(); err != nil {
+					log.LogErrorf("partition [%v] persist metadata during scheduled truncate raft log failed: %v", dp.partitionID, err)
+					truncateRaftLogTimer.Reset(time.Minute)
+					continue
+				}
+				log.LogInfof("partition [%v] scheduled truncate raft log [applied: %v, truncated: %v]", dp.partitionID, appliedID, dp.minAppliedID)
 			}
 			truncateRaftLogTimer.Reset(time.Minute)
 
 		case <-storeAppliedIDTimer.C:
-			if err := dp.storeAppliedID(atomic.LoadUint64(&dp.appliedID)); err != nil {
-				err = errors.NewErrorf("[startSchedule]: dump partition=%d: %v", dp.config.PartitionID, err.Error())
-				log.LogErrorf(err.Error())
+			appliedID := atomic.LoadUint64(&dp.appliedID)
+			if err := dp.storeAppliedID(appliedID); err != nil {
+				log.LogErrorf("partition [%v] scheduled persist applied ID [%v] failed: %v", dp.partitionID, appliedID, err)
 			}
 			storeAppliedIDTimer.Reset(time.Second * 10)
 		}
