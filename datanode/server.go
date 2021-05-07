@@ -364,6 +364,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/stats", s.getStatAPI)
 	http.HandleFunc("/raftStatus", s.getRaftStatus)
 	http.HandleFunc("/setAutoRepairStatus", s.setAutoRepairStatus)
+	http.HandleFunc("/releasePartitions", s.releasePartitions)
 }
 
 func (s *DataNode) startTCPService() (err error) {

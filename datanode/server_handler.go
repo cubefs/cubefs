@@ -15,10 +15,16 @@
 package datanode
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/storage"
@@ -100,6 +106,58 @@ func (s *DataNode) setAutoRepairStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	AutoRepairStatus = autoRepair
 	s.buildSuccessResp(w, autoRepair)
+}
+
+/*
+ * release the space of mark delete data partitions of the whole node.
+ */
+func (s *DataNode) releasePartitions(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramAuthKey = "key"
+	)
+	var (
+		successVols []string
+		failedVols  []string
+		failedDisks []string
+	)
+	successVols = make([]string, 0)
+	failedVols = make([]string, 0)
+	failedDisks = make([]string, 0)
+	if err := r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	key := r.FormValue(paramAuthKey)
+	if !matchKey(key) {
+		err := fmt.Errorf("auth key not match: %v", key)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	for _, d := range s.space.disks {
+		fList, err := ioutil.ReadDir(d.Path)
+		if err != nil {
+			failedDisks = append(failedDisks, d.Path)
+			continue
+		}
+
+		for _, fInfo := range fList {
+			if !fInfo.IsDir() {
+				continue
+			}
+			if !strings.HasPrefix(fInfo.Name(), "expired_") {
+				continue
+			}
+			err = os.RemoveAll(d.Path + "/" + fInfo.Name())
+			if err != nil {
+				failedVols = append(failedVols, d.Path+":"+fInfo.Name())
+				continue
+			}
+			successVols = append(successVols, d.Path+":"+fInfo.Name())
+		}
+	}
+	s.buildSuccessResp(w, fmt.Sprintf("release partitions, success partitions: %v, failed partitions: %v, failed disks: %v", successVols, failedVols, failedDisks))
 }
 
 func (s *DataNode) getRaftStatus(w http.ResponseWriter, r *http.Request) {
@@ -309,4 +367,16 @@ func (s *DataNode) buildJSONResp(w http.ResponseWriter, code int, data interface
 		return
 	}
 	w.Write(jsonBody)
+}
+
+func matchKey(key string) bool {
+	return key == generateAuthKey()
+}
+
+func generateAuthKey() string {
+	date := time.Now().Format("2006-01-02 15")
+	h := md5.New()
+	h.Write([]byte(date))
+	cipherStr := h.Sum(nil)
+	return hex.EncodeToString(cipherStr)
 }
