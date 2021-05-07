@@ -248,16 +248,13 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 }
 
 func (dp *DataPartition) Start() (err error) {
-	if dp.DataPartitionCreateType == proto.NormalCreateDataPartition {
-		err = dp.startRaft()
-	} else {
+	if dp.DataPartitionCreateType != proto.NormalCreateDataPartition {
 		go dp.startRaftAfterRepair()
-	}
-	if err != nil {
-		log.LogErrorf("PartitionID(%v) start raft err(%v)..", dp.partitionID, err)
 		return
 	}
-	go dp.StartRaftLoggingSchedule()
+	if err = dp.startRaft(); err != nil {
+		log.LogErrorf("partition [%v] start raft failed: %v", dp.partitionID, err)
+	}
 	return
 }
 
