@@ -255,7 +255,6 @@ func (dp *DataPartition) Start() (err error) {
 	}
 	if err != nil {
 		log.LogErrorf("PartitionID(%v) start raft err(%v)..", dp.partitionID, err)
-		dp.disk.space.DetachDataPartition(dp.partitionID)
 		return
 	}
 	go dp.StartRaftLoggingSchedule()

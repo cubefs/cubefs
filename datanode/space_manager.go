@@ -187,7 +187,7 @@ func (manager *SpaceManager) StartPartitions() {
 	for id, partition := range manager.partitions {
 		if err = partition.Start(); err != nil {
 			log.LogErrorf("partition [id:%v, path:%v] start failed: %v", id, partition.path, err)
-			manager.DetachDataPartition(id)
+			delete(manager.partitions, id)
 		}
 	}
 }
