@@ -92,6 +92,7 @@ type ExtentConfig struct {
 	WriteRate                int64
 	AlignSize                int64
 	TinySize                 int
+	ExtentSize               int
 	MaxExtentNumPerAlignArea int64
 	ForceAlignMerge          bool
 	OnAppendExtentKey        AppendExtentKeyFunc
@@ -122,7 +123,8 @@ type ExtentClient struct {
 	maxExtentNumPerAlignArea int64
 	forceAlignMerge          bool
 
-	tinySize int
+	tinySize   int
+	extentSize int
 }
 
 // NewExtentClient returns a new extent client.
@@ -153,6 +155,7 @@ retry:
 	if client.tinySize == 0 {
 		client.tinySize = util.DefaultTinySizeLimit
 	}
+	client.SetExtentSize(config.ExtentSize)
 
 	var readLimit, writeLimit rate.Limit
 	if config.ReadRate <= 0 {
@@ -430,7 +433,7 @@ func (client *ExtentClient) Close() error {
 	var inodes []uint64
 	client.streamerLock.Lock()
 	inodes = make([]uint64, 0, len(client.streamers))
-	for inode, _ := range client.streamers {
+	for inode := range client.streamers {
 		inodes = append(inodes, inode)
 	}
 	client.streamerLock.Unlock()
@@ -452,4 +455,33 @@ func (c *ExtentClient) MaxExtentNumPerAlignArea() int {
 
 func (c *ExtentClient) ForceAlignMerge() bool {
 	return c.forceAlignMerge
+}
+
+func (c *ExtentClient) SetExtentSize(size int) {
+	if size == 0 {
+		c.extentSize = util.ExtentSize
+		return
+	}
+	if size > util.ExtentSize {
+		log.LogWarnf("too large extent size config %v, use default value %v", size, util.ExtentSize)
+		c.extentSize = util.ExtentSize
+		return
+	}
+	if size < util.MinExtentSize {
+		log.LogWarnf("too small extent size config %v, use default min value %v", size, util.MinExtentSize)
+		c.extentSize = util.MinExtentSize
+		return
+	}
+	if size&(size-1) != 0 {
+		for i := util.MinExtentSize; ; {
+			if i > size {
+				c.extentSize = i
+				break
+			}
+			i = i * 2
+		}
+		log.LogWarnf("invalid extent size %v, need power of 2, use value %v", size, c.extentSize)
+		return
+	}
+	c.extentSize = size
 }

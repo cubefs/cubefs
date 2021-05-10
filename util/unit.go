@@ -33,6 +33,7 @@ const (
 	ReadBlockSize    = BlockSize
 	PerBlockCrcSize  = 4
 	ExtentSize       = BlockCount * BlockSize
+	MinExtentSize    = BlockSize
 	PacketHeaderSize = 57
 	BlockHeaderSize  = 4096
 )
