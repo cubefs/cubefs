@@ -173,13 +173,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	size, err := f.super.ec.Read(f.info.Inode, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
 	if err != nil && err != io.EOF {
 		msg := fmt.Sprintf("Read: ino(%v) req(%v) err(%v) size(%v)", f.info.Inode, req, err, size)
-		log.LogError(msg)
-		go func() {
-			// if fail to get inode err, judge it and alarm
-			if _, errGet := f.super.InodeGet(f.info.Inode); errGet != fuse.ENOENT {
-				f.super.handleError("Read", msg)
-			}
-		}()
+		f.super.handleErrorWithGetInode("Read", msg, f.info.Inode)
 		return fuse.EIO
 	}
 
@@ -241,7 +235,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	size, err := f.super.ec.Write(ino, int(req.Offset), req.Data, enSyncWrite)
 	if err != nil {
 		msg := fmt.Sprintf("Write: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
-		f.super.handleError("Write", msg)
+		f.super.handleErrorWithGetInode("Write", msg, ino)
 		return fuse.EIO
 	}
 
@@ -253,7 +247,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	if waitForFlush {
 		if err = f.super.ec.Flush(ino); err != nil {
 			msg := fmt.Sprintf("Write: failed to wait for flush, ino(%v) offset(%v) len(%v) err(%v) req(%v)", ino, req.Offset, reqlen, err, req)
-			f.super.handleError("Wrtie", msg)
+			f.super.handleErrorWithGetInode("Wrtie", msg, ino)
 			return fuse.EIO
 		}
 	}
@@ -281,13 +275,7 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	err = f.super.ec.Flush(f.info.Inode)
 	if err != nil {
 		msg := fmt.Sprintf("Flush: ino(%v) err(%v)", f.info.Inode, err)
-		log.LogError(msg)
-		go func() {
-			// if fail to get inode err, judge it and alarm
-			if _, errGet := f.super.InodeGet(f.info.Inode); errGet != fuse.ENOENT {
-				f.super.handleError("Flush", msg)
-			}
-		}()
+		f.super.handleErrorWithGetInode("Flush", msg, f.info.Inode)
 		return fuse.EIO
 	}
 	f.super.ic.Delete(f.info.Inode)
@@ -306,7 +294,7 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 	err = f.super.ec.Flush(f.info.Inode)
 	if err != nil {
 		msg := fmt.Sprintf("Fsync: ino(%v) err(%v)", f.info.Inode, err)
-		f.super.handleError("Fsync", msg)
+		f.super.handleErrorWithGetInode("Fsync", msg, f.info.Inode)
 		return fuse.EIO
 	}
 	f.super.ic.Delete(f.info.Inode)

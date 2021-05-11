@@ -215,3 +215,19 @@ func (s *Super) handleError(op, msg string) {
 	errmsg2 := fmt.Sprintf("volume(%v) %v", s.volname, errmsg1)
 	ump.Alarm(s.umpKey(), errmsg2)
 }
+
+func (s *Super) handleErrorWithGetInode(op, msg string, inode uint64) {
+	log.LogError(msg)
+
+	go func() {
+		// if failed to get inode, judge err and alarm
+		if _, errGet := s.InodeGet(inode); errGet != fuse.ENOENT {
+			errmsg1 := fmt.Sprintf("act(%v) - %v", op, msg)
+			ump.Alarm(s.umpAlarmKey(), errmsg1)
+
+			errmsg2 := fmt.Sprintf("volume(%v) %v", s.volname, errmsg1)
+			ump.Alarm(s.umpKey(), errmsg2)
+		}
+	}()
+
+}

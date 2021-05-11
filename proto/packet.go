@@ -423,31 +423,31 @@ func (p *Packet) GetResultMsg() (m string) {
 
 	switch p.ResultCode {
 	case OpIntraGroupNetErr:
-		m = "IntraGroupNetErr"
+		m = "IntraGroupNetErr: " + p.GetRespData()
 	case OpDiskNoSpaceErr:
-		m = "DiskNoSpaceErr"
+		m = "DiskNoSpaceErr: " + p.GetRespData()
 	case OpDiskErr:
-		m = "DiskErr"
+		m = "DiskErr: " + p.GetRespData()
 	case OpErr:
-		m = "Err: " + string(p.Data)
+		m = "Err: " + p.GetRespData()
 	case OpAgain:
-		m = "Again: " + string(p.Data)
+		m = "Again: " + p.GetRespData()
 	case OpOk:
 		m = "Ok"
 	case OpExistErr:
-		m = "ExistErr"
+		m = "ExistErr: " + p.GetRespData()
 	case OpInodeFullErr:
-		m = "InodeFullErr"
+		m = "InodeFullErr: " + p.GetRespData()
 	case OpArgMismatchErr:
-		m = "ArgUnmatchErr"
+		m = "ArgUnmatchErr: " + p.GetRespData()
 	case OpNotExistErr:
-		m = "NotExistErr"
+		m = "NotExistErr: " + p.GetRespData()
 	case OpTryOtherAddr:
-		m = "TryOtherAddr"
+		m = "TryOtherAddr: " + p.GetRespData()
 	case OpNotPerm:
-		m = "NotPerm"
+		m = "NotPerm: " + p.GetRespData()
 	case OpNotEmtpy:
-		m = "DirNotEmpty"
+		m = "DirNotEmpty: " + p.GetRespData()
 	default:
 		return fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
 	}
@@ -456,6 +456,14 @@ func (p *Packet) GetResultMsg() (m string) {
 
 func (p *Packet) GetReqID() int64 {
 	return p.ReqID
+}
+
+func (p *Packet) GetRespData() (msg string) {
+	if len(p.Data) > 0 && p.Size < uint32(len(p.Data)) {
+		msgLen := util.Min(int(p.Size), 512)
+		msg = string(p.Data[:msgLen])
+	}
+	return msg
 }
 
 // MarshalHeader marshals the packet header.
