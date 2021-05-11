@@ -115,16 +115,21 @@ func getDataNodeMaxTotal(dataNodes *sync.Map) (maxTotal uint64) {
 type GetCarryNodes func(maxTotal uint64, excludeHosts []string, nodes *sync.Map) (weightedNodes SortedWeightedNodes, availCount int)
 
 func getAllCarryMetaNodes(maxTotal uint64, excludeHosts []string, metaNodes *sync.Map) (nodes SortedWeightedNodes, availCount int) {
+	log.LogInfof("getAllCarryMetaNodes")
 	nodes = make(SortedWeightedNodes, 0)
 	metaNodes.Range(func(key, value interface{}) bool {
+		log.LogInfof("getAllCarryMetaNodes [%v] ", key)
 		metaNode := value.(*MetaNode)
 		if contains(excludeHosts, metaNode.Addr) == true {
+			log.LogInfof("metaNode [%v] is excludeHosts", metaNode.Addr)
 			return true
 		}
 		if metaNode.isWritable() == false {
+			log.LogInfof("metaNode [%v] is not writeable", metaNode.Addr)
 			return true
 		}
 		if metaNode.isCarryNode() == true {
+			log.LogInfof("metaNode [%v] is CarryNode", metaNode.Addr)
 			availCount++
 		}
 		nt := new(weightedNode)
@@ -136,7 +141,7 @@ func getAllCarryMetaNodes(maxTotal uint64, excludeHosts []string, metaNodes *syn
 		}
 		nt.Ptr = metaNode
 		nodes = append(nodes, nt)
-
+		log.LogInfof("getAllCarryMetaNodes append [%v] ", nt.ID)
 		return true
 	})
 
@@ -148,10 +153,12 @@ func getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []string, dataNodes 
 	dataNodes.Range(func(key, value interface{}) bool {
 		dataNode := value.(*DataNode)
 		if contains(excludeHosts, dataNode.Addr) == true {
+			log.LogInfof("metaNode [%v] is excludeHosts", dataNode.Addr)
 			log.LogDebugf("contains return")
 			return true
 		}
 		if dataNode.isWriteAble() == false {
+			log.LogInfof("dataNode [%v] is not writeable", dataNode.Addr)
 			log.LogDebugf("isWritable return")
 			return true
 		}
@@ -212,7 +219,7 @@ func getAvailHosts(nodes *sync.Map, excludeHosts []string, replicaNum int, selec
 		peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr()}
 		peers = append(peers, peer)
 	}
-
+	log.LogInfof("action[getAvailHosts] peers[%v]", peers)
 	if newHosts, err = reshuffleHosts(orderHosts); err != nil {
 		err = fmt.Errorf("action[getAvailHosts] err:%v  orderHosts is nil", err.Error())
 		return
