@@ -20,7 +20,6 @@ import (
 	"net/http"
 	"regexp"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -52,12 +51,13 @@ var (
 )
 
 const (
-	DefaultZoneName         = proto.DefaultZoneName
-	DefaultRaftDir          = "raft"
-	DefaultRaftLogsToRetain = 10 // Count of raft logs per data partition
-	DefaultDiskMaxErr       = 1
-	DefaultDiskRetainMin    = 5 * util.GB  // GB
-	DefaultDiskRetainMax    = 30 * util.GB // GB
+	DefaultZoneName          = proto.DefaultZoneName
+	DefaultRaftDir           = "raft"
+	DefaultRaftLogsToRetain  = 10 // Count of raft logs per data partition
+	DefaultDiskMaxErr        = 1
+	DefaultDiskReservedSpace = 5 * util.GB // GB
+	DefaultDiskReservedRatio = float64(0.1)
+	DefaultDiskRetainMax     = 30 * util.GB // GB
 )
 
 const (
@@ -234,8 +234,8 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 
 		// format "PATH:RESET_SIZE
 		arr := strings.Split(d.(string), ":")
-		if len(arr) != 2 {
-			return errors.New("Invalid disk configuration. Example: PATH:RESERVE_SIZE")
+		if len(arr) == 0 {
+			return errors.New("Invalid disk configuration. Example: PATH[:RESERVE_SIZE]")
 		}
 		path := arr[0]
 		fileInfo, err := os.Stat(path)
@@ -245,20 +245,21 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		if !fileInfo.IsDir() {
 			return errors.New("Disk path is not dir")
 		}
-		reservedSpace, err := strconv.ParseUint(arr[1], 10, 64)
-		if err != nil {
-			return errors.New(fmt.Sprintf("Invalid disk reserved space. Error: %s", err.Error()))
-		}
-
-		if reservedSpace < DefaultDiskRetainMin {
-			reservedSpace = DefaultDiskRetainMin
-		}
 
 		wg.Add(1)
-		go func(wg *sync.WaitGroup, path string, reservedSpace uint64) {
+		go func(wg *sync.WaitGroup, path string) {
 			defer wg.Done()
-			s.space.LoadDisk(path, reservedSpace, DefaultDiskMaxErr)
-		}(&wg, path, reservedSpace)
+			var (
+				reserved uint64 = DefaultDiskReservedSpace
+				stateFS         = new(syscall.Statfs_t)
+			)
+			if err := syscall.Statfs(path, stateFS); err == nil {
+				reserved = uint64(float64(stateFS.Blocks*uint64(stateFS.Bsize)) * DefaultDiskReservedRatio)
+			}
+			log.LogInfof("disk [%v] load with option [ReservedSpace: %v, MaxErrorCount: %v",
+				path, reserved, DefaultDiskMaxErr)
+			s.space.LoadDisk(path, reserved, DefaultDiskMaxErr)
+		}(&wg, path)
 	}
 	wg.Wait()
 	return nil
