@@ -98,11 +98,28 @@ pre_build() {
 
 run_test() {
     pre_build
+
+    echo "*********************************";
+    echo "    Unit Tests with Coverage    ";
+    echo "*********************************";
+
     pushd $SrcPath >/dev/null
-    go test ./...
+    go test -covermode=set -coverprofile=/tmp/coverprofile.cov ./... ./vendor/github.com/tiglabs/raft/...
     ret=$?
+
+    echo
+    echo "Coverage Report"
+    echo "---------------------------------"
+    go tool cover -func=/tmp/coverprofile.cov
+    echo "---------------------------------"
+    echo
+
     popd >/dev/null
-    exit $ret
+    if [[ $ret -ne 0 ]]; then
+        echo -e "Unit test: \033[32mFAIL\033[0m"
+        exit $ret
+    fi
+    echo -e "Unit test: \033[32mPASS\033[0m"
 }
 
 build_server() {

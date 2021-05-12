@@ -132,9 +132,9 @@ add_data_partitions() {
 print_error_info() {
     echo "------ err ----"
     cat /cfs/log/cfs.out
-    cat /cfs/log/client/client_info.log
-    cat /cfs/log/client/client_error.log
-    cat /cfs/log/client/client_warn.log
+    cat /cfs/log/ltptest/ltptest_info.log
+    cat /cfs/log/ltptest/ltptest_error.log
+    cat /cfs/log/ltptest/ltptest_warn.log
     curl -s "http://$LeaderAddr/admin/getCluster" | jq
     mount
     df -h
@@ -232,27 +232,6 @@ run_s3_test() {
     echo "    S3 compatibility tests    ";
     echo "******************************";
 
-    # install system requirements
-    echo -n "Installing system requirements  ... "
-    apt-get update &>> /dev/null && apt-get install -y \
-        sudo \
-        python3 \
-        python3-pip &>> /dev/null
-    if [[ $? -ne 0 ]] ; then
-        echo -e "\033[31mfail\033[0m"
-        exit 1
-    fi
-    echo -e "\033[32mdone\033[0m"
-
-    # install python requirements
-    echo -n "Installing python requirements  ... "
-    pip3 install -r  ${work_path}/requirements.txt &>> /dev/null
-    if [[ $? -ne 0 ]] ; then
-        echo -e "\033[31mfail\033[0m"
-        exit 1
-    fi
-    echo -e "\033[32mdone\033[0m"
-
     python3 -m unittest2 discover ${work_path} "*.py" -v
     if [[ $? -ne 0 ]]; then
         exit 1
@@ -269,6 +248,6 @@ add_data_partitions ; sleep 3
 show_cluster_info
 start_client ; sleep 2
 run_ltptest
-#run_s3_test
+run_s3_test
 stop_client
 delete_volume
