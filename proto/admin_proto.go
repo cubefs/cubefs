@@ -46,6 +46,9 @@ const (
 	AdminSetNodeState              = "/admin/setNodeState"
 	AdminMergeNodeSet              = "/admin/mergeNodeSet"
 	AdminClusterAutoMergeNodeSet   = "/cluster/autoMergeNodeSet"
+	AdminApplyVolMutex             = "/vol/writeMutex/apply"
+	AdminReleaseVolMutex           = "/vol/writeMutex/release"
+	AdminGetVolMutex               = "/vol/writeMutex/get"
 
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
@@ -551,31 +554,32 @@ func NewMetaPartitionView(partitionID, start, end uint64, status int8) (mpView *
 
 // SimpleVolView defines the simple view of a volume
 type SimpleVolView struct {
-	ID                 uint64
-	Name               string
-	Owner              string
-	ZoneName           string
-	DpReplicaNum       uint8
-	MpReplicaNum       uint8
-	InodeCount         uint64
-	DentryCount        uint64
-	MaxMetaPartitionID uint64
-	Status             uint8
-	Capacity           uint64 // GB
-	RwDpCnt            int
-	MpCnt              int
-	DpCnt              int
-	FollowerRead       bool
-	NeedToLowerReplica bool
-	Authenticate       bool
-	CrossZone          bool
-	AutoRepair         bool
-	CreateTime         string
-	EnableToken        bool
-	Tokens             map[string]*Token `graphql:"-"`
-	Description        string
-	DpSelectorName     string
-	DpSelectorParm     string
+	ID                  uint64
+	Name                string
+	Owner               string
+	ZoneName            string
+	DpReplicaNum        uint8
+	MpReplicaNum        uint8
+	InodeCount          uint64
+	DentryCount         uint64
+	MaxMetaPartitionID  uint64
+	Status              uint8
+	Capacity            uint64 // GB
+	RwDpCnt             int
+	MpCnt               int
+	DpCnt               int
+	FollowerRead        bool
+	NeedToLowerReplica  bool
+	Authenticate        bool
+	VolWriteMutexEnable bool
+	CrossZone           bool
+	AutoRepair          bool
+	CreateTime          string
+	EnableToken         bool
+	Tokens              map[string]*Token `graphql:"-"`
+	Description         string
+	DpSelectorName      string
+	DpSelectorParm      string
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition

@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
@@ -49,21 +50,29 @@ type Vol struct {
 	tokens             map[string]*proto.Token
 	tokensLock         sync.RWMutex
 	MetaPartitions     map[uint64]*MetaPartition `graphql:"-"`
-	mpsLock            sync.RWMutex
-	dataPartitions     *DataPartitionMap
-	mpsCache           []byte
-	viewCache          []byte
-	createDpMutex      sync.RWMutex
-	createMpMutex      sync.RWMutex
-	createTime         int64
-	description        string
-	dpSelectorName     string
-	dpSelectorParm     string
+	mpsLock             sync.RWMutex
+	dataPartitions      *DataPartitionMap
+	mpsCache            []byte
+	viewCache           []byte
+	createDpMutex       sync.RWMutex
+	createMpMutex       sync.RWMutex
+	createTime          int64
+	description         string
+	dpSelectorName      string
+	dpSelectorParm      string
+	volWriteMutexEnable bool
+	volWriteMutex       sync.Mutex
+	volWriteMutexClient *VolWriteMutexClient
 	sync.RWMutex
 }
 
+type VolWriteMutexClient struct {
+	ClientIP  string
+	ApplyTime time.Time
+}
+
 func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8,
-	followerRead, authenticate, enableToken, autoRepair bool, createTime int64, description, dpSelectorName,
+	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable bool, createTime int64, description, dpSelectorName,
 	dpSelectorParm string) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
@@ -97,6 +106,7 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.createTime = createTime
 	vol.enableToken = enableToken
 	vol.autoRepair = autoRepair
+	vol.volWriteMutexEnable = volWriteMutexEnable
 	vol.tokens = make(map[string]*proto.Token, 0)
 	vol.description = description
 	vol.dpSelectorName = dpSelectorName
@@ -118,6 +128,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.Authenticate,
 		vv.EnableToken,
 		vv.AutoRepair,
+		vv.VolWriteMutexEnable,
 		vv.CreateTime,
 		vv.Description,
 		vv.DpSelectorName,
@@ -849,4 +860,42 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	}
 	log.LogInfof("action[doCreateMetaPartition] success,volName[%v],partition[%v]", vol.Name, partitionID)
 	return
+}
+
+func (vol *Vol) applyVolMutex(clientIP string) (err error) {
+	if !vol.volWriteMutexEnable {
+		return proto.ErrVolWriteMutexUnable
+	}
+	if vol.volWriteMutexClient != nil {
+		return proto.ErrVolWriteMutexOccupied
+	}
+	vol.volWriteMutex.Lock()
+	defer vol.volWriteMutex.Unlock()
+
+	clientInfo := &VolWriteMutexClient{
+		ClientIP:  clientIP,
+		ApplyTime: time.Now(),
+	}
+	vol.volWriteMutexClient = clientInfo
+	return
+}
+
+func (vol *Vol) releaseVolMutex() (err error) {
+	if !vol.volWriteMutexEnable {
+		return proto.ErrVolWriteMutexUnable
+	}
+	if vol.volWriteMutexClient == nil {
+		return
+	}
+	vol.volWriteMutex.Lock()
+	defer vol.volWriteMutex.Unlock()
+	vol.volWriteMutexClient = nil
+	return
+}
+
+func (vol *Vol) getVolMutexClientInfo() (err error, clientInfo *VolWriteMutexClient) {
+	if !vol.volWriteMutexEnable {
+		return proto.ErrVolWriteMutexUnable, nil
+	}
+	return nil, vol.volWriteMutexClient
 }

@@ -141,6 +141,15 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminListVols).
 		HandlerFunc(m.listVols)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminApplyVolMutex).
+		HandlerFunc(m.applyVolWriteMutex)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminReleaseVolMutex).
+		HandlerFunc(m.releaseVolWriteMutex)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminGetVolMutex).
+		HandlerFunc(m.getVolWriteMutexInfo)
 
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

@@ -303,7 +303,7 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas int,
 }
 
 func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int,
-	dpSize uint64, capacity uint64, replicas int, followerRead bool, autoRepair bool, zoneName string) (err error) {
+	dpSize uint64, capacity uint64, replicas int, followerRead bool, autoRepair bool, volWriteMutex bool, zoneName string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
@@ -312,6 +312,7 @@ func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int,
 	request.addParam("capacity", strconv.FormatUint(capacity, 10))
 	request.addParam("followerRead", strconv.FormatBool(followerRead))
 	request.addParam("autoRepair", strconv.FormatBool(autoRepair))
+	request.addParam("volWriteMutex", strconv.FormatBool(volWriteMutex))
 	request.addParam("zoneName", zoneName)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return

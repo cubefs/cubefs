@@ -153,3 +153,17 @@ func (api *ClientAPI) GetDataPartitions(volName string) (view *proto.DataPartiti
 	}
 	return
 }
+
+func (api *ClientAPI) ApplyVolMutex(volName string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminApplyVolMutex)
+	request.addParam("name", volName)
+	_, err = api.mc.serveRequest(request)
+	return
+}
+
+func (api *ClientAPI) ReleaseVolMutex(volName string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminReleaseVolMutex)
+	request.addParam("name", volName)
+	_, err = api.mc.serveRequest(request)
+	return
+}

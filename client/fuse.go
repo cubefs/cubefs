@@ -170,7 +170,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	registerInterceptedSignal(opt.MountPoint)
+	registerInterceptedSignal(opt)
 
 	if err = checkPermission(opt); err != nil {
 		syslog.Println("check permission failed: ", err)
@@ -178,6 +178,15 @@ func main() {
 		_ = daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
+
+	// check volume mutex is whether open, if true, apply volume mutex
+	if err = checkVolWriteMutex(opt); err != nil {
+		syslog.Println("check volume mutex permission failed: ", err)
+		log.LogFlush()
+		_ = daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+	defer releaseVolWriteMutex(opt)
 
 	fsConn, super, err := mount(opt)
 	if err != nil {
@@ -315,12 +324,14 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 	return
 }
 
-func registerInterceptedSignal(mnt string) {
+func registerInterceptedSignal(opt *proto.MountOptions) {
 	sigC := make(chan os.Signal, 1)
 	signal.Notify(sigC, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-sigC
 		syslog.Printf("Killed due to a received signal (%v)\n", sig)
+		// release volume write mutex
+		releaseVolWriteMutex(opt)
 		os.Exit(1)
 	}()
 }
@@ -434,6 +445,30 @@ func checkPermission(opt *proto.MountOptions) (err error) {
 		}
 		err = proto.ErrNoPermission
 		return
+	}
+	return
+}
+
+func checkVolWriteMutex(opt *proto.MountOptions) (err error) {
+	if opt.Rdonly {
+		return
+	}
+	var mc = master.NewMasterClientFromString(opt.Master, false)
+	err = mc.ClientAPI().ApplyVolMutex(opt.Volname)
+	if err == nil || err == proto.ErrVolWriteMutexUnable {
+		return nil
+	}
+	return
+}
+
+func releaseVolWriteMutex(opt *proto.MountOptions) (err error) {
+	if opt.Rdonly {
+		return
+	}
+	var mc = master.NewMasterClientFromString(opt.Master, false)
+	err = mc.ClientAPI().ReleaseVolMutex(opt.Volname)
+	if err == nil || err == proto.ErrVolWriteMutexUnable {
+		return nil
 	}
 	return
 }

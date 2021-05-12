@@ -150,26 +150,27 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 }
 
 type volValue struct {
-	ID                uint64
-	Name              string
-	ReplicaNum        uint8
-	DpReplicaNum      uint8
-	Status            uint8
-	DataPartitionSize uint64
-	Capacity          uint64
-	Owner             string
-	FollowerRead      bool
-	Authenticate      bool
-	EnableToken       bool
-	CrossZone         bool
-	AutoRepair        bool
-	ZoneName          string
-	OSSAccessKey      string
-	OSSSecretKey      string
-	CreateTime        int64
-	Description       string
-	DpSelectorName    string
-	DpSelectorParm    string
+	ID                  uint64
+	Name                string
+	ReplicaNum          uint8
+	DpReplicaNum        uint8
+	Status              uint8
+	DataPartitionSize   uint64
+	Capacity            uint64
+	Owner               string
+	FollowerRead        bool
+	Authenticate        bool
+	EnableToken         bool
+	CrossZone           bool
+	AutoRepair          bool
+	VolWriteMutexEnable bool
+	ZoneName            string
+	OSSAccessKey        string
+	OSSSecretKey        string
+	CreateTime          int64
+	Description         string
+	DpSelectorName      string
+	DpSelectorParm      string
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -179,26 +180,27 @@ func (v *volValue) Bytes() (raw []byte, err error) {
 
 func newVolValue(vol *Vol) (vv *volValue) {
 	vv = &volValue{
-		ID:                vol.ID,
-		Name:              vol.Name,
-		ReplicaNum:        vol.mpReplicaNum,
-		DpReplicaNum:      vol.dpReplicaNum,
-		Status:            vol.Status,
-		DataPartitionSize: vol.dataPartitionSize,
-		Capacity:          vol.Capacity,
-		Owner:             vol.Owner,
-		FollowerRead:      vol.FollowerRead,
-		Authenticate:      vol.authenticate,
-		AutoRepair:        vol.autoRepair,
-		ZoneName:          vol.zoneName,
-		CrossZone:         vol.crossZone,
-		EnableToken:       vol.enableToken,
-		OSSAccessKey:      vol.OSSAccessKey,
-		OSSSecretKey:      vol.OSSSecretKey,
-		CreateTime:        vol.createTime,
-		Description:       vol.description,
-		DpSelectorName:    vol.dpSelectorName,
-		DpSelectorParm:    vol.dpSelectorParm,
+		ID:                  vol.ID,
+		Name:                vol.Name,
+		ReplicaNum:          vol.mpReplicaNum,
+		DpReplicaNum:        vol.dpReplicaNum,
+		Status:              vol.Status,
+		DataPartitionSize:   vol.dataPartitionSize,
+		Capacity:            vol.Capacity,
+		Owner:               vol.Owner,
+		FollowerRead:        vol.FollowerRead,
+		Authenticate:        vol.authenticate,
+		AutoRepair:          vol.autoRepair,
+		VolWriteMutexEnable: vol.volWriteMutexEnable,
+		ZoneName:            vol.zoneName,
+		CrossZone:           vol.crossZone,
+		EnableToken:         vol.enableToken,
+		OSSAccessKey:        vol.OSSAccessKey,
+		OSSSecretKey:        vol.OSSSecretKey,
+		CreateTime:          vol.createTime,
+		Description:         vol.description,
+		DpSelectorName:      vol.dpSelectorName,
+		DpSelectorParm:      vol.dpSelectorParm,
 	}
 	return
 }
@@ -694,6 +696,7 @@ func (c *Cluster) loadVols() (err error) {
 		if !vv.CrossZone && vv.ZoneName == "" {
 			vv.ZoneName = DefaultZoneName
 		}
+		// TODO volume mutex
 		vol := newVolFromVolValue(vv)
 		vol.Status = vv.Status
 		c.putVol(vol)

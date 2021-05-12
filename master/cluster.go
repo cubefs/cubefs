@@ -2318,7 +2318,7 @@ errHandler:
 
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, enableToken, autoRepair bool) (vol *Vol, err error) {
+func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, enableToken, autoRepair,volWriteMutexEnable bool) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -2334,7 +2334,7 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	if err = c.validZone(zoneName, dpReplicaNum); err != nil {
 		goto errHandler
 	}
-	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, followerRead, authenticate, enableToken, autoRepair); err != nil {
+	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable); err != nil {
 		goto errHandler
 	}
 	if err = c.validZone(zoneName, int(vol.mpReplicaNum)); err != nil {
@@ -2365,7 +2365,7 @@ errHandler:
 	return
 }
 
-func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity uint64, dpReplicaNum int, followerRead, authenticate, enableToken, autoRepair bool) (vol *Vol, err error) {
+func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity uint64, dpReplicaNum int, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable bool) (vol *Vol, err error) {
 	var id uint64
 	c.createVolMutex.Lock()
 	defer c.createVolMutex.Unlock()
@@ -2379,7 +2379,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 		goto errHandler
 	}
 	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum, followerRead,
-		authenticate, enableToken, autoRepair, createTime, description, "", "")
+		authenticate, enableToken, autoRepair, volWriteMutexEnable, createTime, description, "", "")
 
 	// refresh oss secure
 	vol.refreshOSSSecure()

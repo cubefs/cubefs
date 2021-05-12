@@ -125,6 +125,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optReplicas int
 	var optFollowerRead bool
 	var optAutoRepair bool
+	var optVolWriteMutex bool
 	var optYes bool
 	var optZoneName string
 	var cmd = &cobra.Command{
@@ -147,6 +148,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  Replicas            : %v\n", optReplicas)
 				stdout("  Allow follower read : %v\n", formatEnabledDisabled(optFollowerRead))
 				stdout("  Auto repair         : %v\n", formatEnabledDisabled(optAutoRepair))
+				stdout("  Volume write mutex  : %v\n", formatEnabledDisabled(optVolWriteMutex))
 
 				stdout("  ZoneName            : %v\n", optZoneName)
 				stdout("\nConfirm (yes/no)[yes]: ")
@@ -158,7 +160,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
-			err = client.AdminAPI().CreateVolume(volumeName, userID, optMPCount, optDPSize, optCapacity, optReplicas, optFollowerRead, optAutoRepair, optZoneName)
+			err = client.AdminAPI().CreateVolume(volumeName, userID, optMPCount, optDPSize, optCapacity, optReplicas, optFollowerRead, optAutoRepair, optVolWriteMutex, optZoneName)
 			if err != nil {
 				errout("Create volume failed case:\n%v\n", err)
 			}
@@ -172,6 +174,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optReplicas, CliFlagReplicas, cmdVolDefaultReplicas, "Specify data partition replicas number")
 	cmd.Flags().BoolVar(&optFollowerRead, CliFlagEnableFollowerRead, cmdVolDefaultFollowerReader, "Enable read form replica follower")
 	cmd.Flags().BoolVar(&optAutoRepair, CliFlagAutoRepair, false, "Enable auto balance partition distribution according to zoneName")
+	cmd.Flags().BoolVar(&optVolWriteMutex, CliFlagVolWriteMutexEnable, false, "Enable only one client have volume exclusive write permission")
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, cmdVolDefaultZoneName, "Specify volume zone name")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	return cmd

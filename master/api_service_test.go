@@ -118,7 +118,7 @@ func createDefaultMasterServerForTest() *Server {
 	testServer.cluster.cfg.nodeSetCapacity = defaultNodeSetCapacity
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
-	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 100, false, false, false, false)
+	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 100, false, false, false, false, true)
 	if err != nil {
 		panic(err)
 	}
@@ -1215,4 +1215,50 @@ func TestCheckMergeZoneNodeset(t *testing.T) {
 	getZoneNodeSetStatus(zoneNodeSet1)
 	getZoneNodeSetStatus(zoneNodeSet2)
 
+}
+
+func TestApplyAndReleaseVolWriteMutex(t *testing.T) {
+	// apply volume write mutex
+	applyReqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminApplyVolMutex, commonVolName)
+	fmt.Println(applyReqURL)
+	applyReply := process(applyReqURL, t)
+	if applyReply.Data != "apply volume mutex success" {
+		t.Errorf("apply volume mutex failed, responseInfo: %v", applyReply.Data)
+	}
+	// release volume write mutex
+	releaseReqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminReleaseVolMutex, commonVolName)
+	fmt.Println(releaseReqURL)
+	releaseReply := process(releaseReqURL, t)
+	if releaseReply.Data != "release volume mutex success" {
+		t.Errorf("Release volume write mutest failed, errorInfo: %v", releaseReply.Data)
+	}
+}
+
+func TestGetNoVolWriteMutex(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminGetVolMutex, commonVolName)
+	fmt.Println(reqURL)
+	reply := process(reqURL, t)
+	if reply.Data != "no client info" {
+		t.Errorf("Got volume write mutex resopnse is not expected")
+	}
+}
+
+func TestGetVolWriteMutex(t *testing.T) {
+	// apply volume write mutex
+	applyReqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminApplyVolMutex, commonVolName)
+	fmt.Println(applyReqURL)
+	process(applyReqURL, t)
+	// get volume write mutex
+	getReqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminGetVolMutex, commonVolName)
+	fmt.Println(getReqURL)
+	reply := process(getReqURL, t)
+	if _, ok := reply.Data.(map[string]interface {}); !ok{
+		t.Errorf("Get volume write mutest failed, errorInfo: %v", reply.Data)
+	}
+	if _, ok := reply.Data.(map[string]interface {})["ApplyTime"]; !ok {
+		t.Errorf("Get volume write mutest failed, errorInfo: %v", reply.Data)
+	}
+	if _, ok := reply.Data.(map[string]interface {})["ClientIP"]; !ok {
+		t.Errorf("Get volume write mutest failed, errorInfo: %v", reply.Data)
+	}
 }

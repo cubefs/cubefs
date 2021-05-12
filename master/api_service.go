@@ -17,6 +17,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/iputil"
 	"net/http"
 	"strconv"
 	"sync/atomic"
@@ -1088,24 +1089,25 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		name         string
-		owner        string
-		err          error
-		msg          string
-		size         int
-		mpCount      int
-		dpReplicaNum int
-		capacity     int
-		vol          *Vol
-		followerRead bool
-		authenticate bool
-		enableToken  bool
-		autoRepair   bool
-		zoneName     string
-		description  string
+		name                string
+		owner               string
+		err                 error
+		msg                 string
+		size                int
+		mpCount             int
+		dpReplicaNum        int
+		capacity            int
+		vol                 *Vol
+		followerRead        bool
+		authenticate        bool
+		enableToken         bool
+		autoRepair          bool
+		volWriteMutexEnable bool
+		zoneName            string
+		description         string
 	)
 
-	if name, owner, zoneName, description, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, enableToken, autoRepair, err = parseRequestToCreateVol(r); err != nil {
+	if name, owner, zoneName, description, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1114,7 +1116,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, enableToken, autoRepair); err != nil {
+	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1164,24 +1166,25 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		DpReplicaNum:       vol.dpReplicaNum,
 		MpReplicaNum:       vol.mpReplicaNum,
 		InodeCount:         volInodeCount,
-		DentryCount:        volDentryCount,
-		MaxMetaPartitionID: maxPartitionID,
-		Status:             vol.Status,
-		Capacity:           vol.Capacity,
-		FollowerRead:       vol.FollowerRead,
-		NeedToLowerReplica: vol.NeedToLowerReplica,
-		Authenticate:       vol.authenticate,
-		EnableToken:        vol.enableToken,
-		CrossZone:          vol.crossZone,
-		AutoRepair:         vol.autoRepair,
-		Tokens:             vol.tokens,
-		RwDpCnt:            vol.dataPartitions.readableAndWritableCnt,
-		MpCnt:              len(vol.MetaPartitions),
-		DpCnt:              len(vol.dataPartitions.partitionMap),
-		CreateTime:         time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
-		Description:        vol.description,
-		DpSelectorName:     vol.dpSelectorName,
-		DpSelectorParm:     vol.dpSelectorParm,
+		DentryCount:         volDentryCount,
+		MaxMetaPartitionID:  maxPartitionID,
+		Status:              vol.Status,
+		Capacity:            vol.Capacity,
+		FollowerRead:        vol.FollowerRead,
+		NeedToLowerReplica:  vol.NeedToLowerReplica,
+		Authenticate:        vol.authenticate,
+		EnableToken:         vol.enableToken,
+		CrossZone:           vol.crossZone,
+		AutoRepair:          vol.autoRepair,
+		VolWriteMutexEnable: vol.volWriteMutexEnable,
+		Tokens:              vol.tokens,
+		RwDpCnt:             vol.dataPartitions.readableAndWritableCnt,
+		MpCnt:               len(vol.MetaPartitions),
+		DpCnt:               len(vol.dataPartitions.partitionMap),
+		CreateTime:          time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
+		Description:         vol.description,
+		DpSelectorName:      vol.dpSelectorName,
+		DpSelectorParm:      vol.dpSelectorParm,
 	}
 }
 
@@ -2191,7 +2194,7 @@ func parseDefaultSelectorToUpdateVol(r *http.Request, vol *Vol) (dpSelectorName,
 	return
 }
 
-func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, enableToken, autoRepair bool, err error) {
+func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2244,6 +2247,7 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 		zoneName = DefaultZoneName
 	}
 	enableToken = extractEnableToken(r)
+	volWriteMutexEnable = extractVolWriteMutex(r)
 	description = r.FormValue(descriptionKey)
 	return
 }
@@ -2254,6 +2258,14 @@ func extractEnableToken(r *http.Request) (enableToken bool) {
 		enableToken = false
 	}
 	return
+}
+
+func extractVolWriteMutex(r *http.Request) bool {
+	volWriteMutex, err := strconv.ParseBool(r.FormValue(volWriteMutexKey))
+	if err != nil {
+		volWriteMutex = false
+	}
+	return volWriteMutex
 }
 
 func parseRequestToCreateDataPartition(r *http.Request) (count int, name string, err error) {
@@ -2984,6 +2996,77 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))
+}
+
+func (m *Server) applyVolWriteMutex(w http.ResponseWriter, r *http.Request) {
+	var (
+		volName string
+		vol     *Vol
+		err     error
+	)
+	if volName, err = parseVolName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if vol, err = m.cluster.getVol(volName); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	clientIP := iputil.RealIP(r)
+	if err = vol.applyVolMutex(clientIP); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	log.LogInfof("apply volume mutex success, volume(%v), clientIP(%v)", volName, clientIP)
+	sendOkReply(w, r, newSuccessHTTPReply("apply volume mutex success"))
+}
+
+func (m *Server) releaseVolWriteMutex(w http.ResponseWriter, r *http.Request) {
+	var (
+		volName string
+		vol     *Vol
+		err     error
+	)
+	if volName, err = parseVolName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if vol, err = m.cluster.getVol(volName); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if err = vol.releaseVolMutex(); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	log.LogInfof("release volume mutex success, volume(%v)", volName)
+	sendOkReply(w, r, newSuccessHTTPReply("release volume mutex success"))
+}
+
+func (m *Server) getVolWriteMutexInfo(w http.ResponseWriter, r *http.Request) {
+	var (
+		volName string
+		vol     *Vol
+		err     error
+	)
+	if volName, err = parseVolName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if vol, err = m.cluster.getVol(volName); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	var clientInfo *VolWriteMutexClient
+	if err, clientInfo = vol.getVolMutexClientInfo(); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if clientInfo == nil {
+		sendOkReply(w, r, newSuccessHTTPReply("no client info"))
+	} else {
+		sendOkReply(w, r, newSuccessHTTPReply(clientInfo))
+	}
 }
 
 func parseAndExtractPartitionInfo(r *http.Request) (partitionID uint64, err error) {

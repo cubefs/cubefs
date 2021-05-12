@@ -74,6 +74,7 @@ const (
 	autoKey                     = "auto"
 	volumeKey                   = "volume"
 	opcodeKey                   = "opcode"
+	volWriteMutexKey            = "volWriteMutex"
 )
 
 const (

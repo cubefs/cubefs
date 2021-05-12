@@ -83,6 +83,8 @@ var (
 	ErrIsOwner                         = errors.New("user owns the volume")
 	ErrBadReplicaNoMoreThanHalf        = errors.New("live replica num more than half, can not be reset")
 	ErrNoLiveReplicas                  = errors.New("no live replicas to reset")
+	ErrVolWriteMutexUnable             = errors.New("vol write mutex is unable")
+	ErrVolWriteMutexOccupied           = errors.New("vol write mutex occupied")
 )
 
 // http response error code and error message definitions
@@ -148,6 +150,8 @@ const (
 	ErrCodeIsOwner
 	ErrCodeBadReplicaNoMoreThanHalf
 	ErrCodeNoLiveReplicas
+	ErrCodeVolWriteMutexUnable
+	ErrCodeVolWriteMutexOccupied
 )
 
 // Err2CodeMap error map to code
@@ -211,6 +215,8 @@ var Err2CodeMap = map[error]int32{
 	ErrIsOwner:                         ErrCodeIsOwner,
 	ErrBadReplicaNoMoreThanHalf:        ErrCodeBadReplicaNoMoreThanHalf,
 	ErrNoLiveReplicas:                  ErrCodeNoLiveReplicas,
+	ErrVolWriteMutexUnable:             ErrCodeVolWriteMutexUnable,
+	ErrVolWriteMutexOccupied:           ErrCodeVolWriteMutexOccupied,
 }
 
 func ParseErrorCode(code int32) error {
@@ -281,6 +287,8 @@ var code2ErrMap = map[int32]error{
 	ErrCodeIsOwner:                         ErrIsOwner,
 	ErrCodeBadReplicaNoMoreThanHalf:        ErrBadReplicaNoMoreThanHalf,
 	ErrCodeNoLiveReplicas:                  ErrNoLiveReplicas,
+	ErrCodeVolWriteMutexUnable:             ErrVolWriteMutexUnable,
+	ErrCodeVolWriteMutexOccupied:           ErrVolWriteMutexOccupied,
 }
 
 type GeneralResp struct {
