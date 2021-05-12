@@ -237,7 +237,8 @@ func (vol *Vol) initDataPartitions(c *Cluster) (err error) {
 	return
 }
 
-func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
+func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int, dataNodeBadDisksOfVol map[string][]string) {
+	dataNodeBadDisksOfVol = make(map[string][]string, 0)
 	if vol.getDataPartitionsCount() == 0 && vol.Status != markDelete {
 		c.batchCreateDataPartition(vol, 1)
 	}
@@ -252,7 +253,10 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 		if dp.Status == proto.ReadWrite {
 			cnt++
 		}
-		dp.checkDiskError(c.Name, c.leaderInfo.addr)
+		diskErrorAddrs := dp.checkDiskError(c.Name, c.leaderInfo.addr)
+		for addr, diskPath := range diskErrorAddrs {
+			dataNodeBadDisksOfVol[addr] = append(dataNodeBadDisksOfVol[addr], diskPath)
+		}
 		dp.checkReplicationTask(c, vol.dataPartitionSize)
 	}
 	return
