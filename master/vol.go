@@ -233,7 +233,27 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 
 func (vol *Vol) initDataPartitions(c *Cluster) (err error) {
 	// initialize k data partitionMap at a time
-	err = c.batchCreateDataPartition(vol, defaultInitDataPartitionCnt)
+	var wg sync.WaitGroup
+	errChannel := make(chan error, defaultInitDataPartitionCnt)
+	for i := 0; i < defaultInitDataPartitionCnt; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if c.DisableAutoAllocate {
+				return
+			}
+			if _, err = c.createDataPartition(vol.Name); err != nil {
+				log.LogErrorf("action[batchCreateDataPartition] after create [%v] data partition,occurred error,err[%v]", i, err)
+				errChannel <- err
+			}
+		}()
+	}
+	wg.Wait()
+	select {
+	case err = <-errChannel:
+		return
+	default:
+	}
 	return
 }
 
