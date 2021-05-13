@@ -92,7 +92,7 @@ func (c *Cluster) decommissionDisk(dataNode *DataNode, badDiskPath string, badPa
 		wg.Add(1)
 		go func(dp *DataPartition) {
 			defer wg.Done()
-			if err1 := c.decommissionDataPartition(dataNode.Addr, dp, getTargetAddressForDataPartitionDecommission, diskOfflineErr, "", false); err != nil {
+			if err1 := c.decommissionDataPartition(dataNode.Addr, dp, getTargetAddressForDataPartitionDecommission, diskOfflineErr, "", false); err1 != nil {
 				errChannel <- err1
 			}
 		}(dp)
@@ -103,8 +103,8 @@ func (c *Cluster) decommissionDisk(dataNode *DataNode, badDiskPath string, badPa
 		return
 	default:
 	}
-	msg = fmt.Sprintf("action[decommissionDisk],clusterID[%v] Node[%v] OffLine success",
-		c.Name, dataNode.Addr)
+	msg = fmt.Sprintf("action[decommissionDisk],clusterID[%v] Node[%v] disk[%v] OffLine success",
+		c.Name, dataNode.Addr, badDiskPath)
 	Warn(c.Name, msg)
 	return
 }
