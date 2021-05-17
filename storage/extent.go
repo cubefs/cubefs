@@ -47,7 +47,7 @@ type ExtentInfo struct {
 	Size       uint64 `json:"size"`
 	Crc        uint32 `json:"Crc"`
 	IsDeleted  bool   `json:"deleted"`
-	ModifyTime int64  `json:"modTime"`
+	ModifyTime int64  `json:"modTime"` // random write not update modify time
 	AccessTime int64  `json:"accessTime"`
 	Source     string `json:"src"`
 }
