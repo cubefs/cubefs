@@ -182,9 +182,21 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 func (ei *ExtentInfo) UpdateExtentInfo(extent *Extent, crc uint32) {
 	extent.Lock()
 	defer extent.Unlock()
-	if time.Now().Unix()-extent.ModifyTime() <= UpdateCrcInterval {
-		crc = 0
+
+	// check if file is modified according to os.ModTime
+	if crc != 0 {
+		stat, err := extent.file.Stat()
+		if err != nil {
+			log.LogErrorf("[UpdateExtentInfo] stat file error, set crc default, %v", err)
+			crc = 0
+		}
+
+		if time.Now().Unix()-stat.ModTime().Unix() <= UpdateCrcInterval {
+			log.LogWarn("[UpdateExtentInfo] file has been modified when update extent compute crc, so set crc default")
+			crc = 0
+		}
 	}
+
 	ei.Size = uint64(extent.dataSize)
 	if !IsTinyExtent(ei.FileID) {
 		atomic.StoreUint32(&ei.Crc, crc)
@@ -935,24 +947,33 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 	sort.Sort(ExtentInfoArr(extentInfos))
 
 	for _, ei := range extentInfos {
+
 		if ei == nil {
 			continue
 		}
+
 		if !IsTinyExtent(ei.FileID) && time.Now().Unix()-ei.ModifyTime > UpdateCrcInterval &&
-			ei.IsDeleted == false && ei.Size > 0 && ei.Crc == 0 {
+			!ei.IsDeleted && ei.Size > 0 && ei.Crc == 0 {
+
 			e, err := s.extentWithHeader(ei)
 			if err != nil {
+				log.LogError("[autoComputeExtentCrc] get extent error", err)
 				continue
 			}
+
 			extentCrc, err := e.autoComputeExtentCrc(s.PersistenceBlockCrc)
 			if err != nil {
+				log.LogError("[autoComputeExtentCrc] compute crc fail", err)
 				continue
 			}
+
 			ei.UpdateExtentInfo(e, extentCrc)
+
+			time.Sleep(time.Millisecond * 100)
 		}
-		time.Sleep(time.Millisecond * 100)
 	}
 
+	time.Sleep(time.Second)
 }
 
 func (s *ExtentStore) TinyExtentRecover(extentID uint64, offset, size int64, data []byte, crc uint32, isEmptyPacket bool) (err error) {
