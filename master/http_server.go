@@ -66,13 +66,13 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 						return
 					}
 					log.LogWarnf("action[interceptor] leader meta has not ready")
-					http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
+					http.Error(w, m.leaderInfo.addr, http.StatusInternalServerError)
 					return
 				}
 				leaderID, _ := m.partition.LeaderTerm()
 				if m.leaderInfo.addr == "" || leaderID <= 0 {
 					log.LogErrorf("action[interceptor] no leader,request[%v]", r.URL)
-					http.Error(w, "no leader", http.StatusBadRequest)
+					http.Error(w, "no leader", http.StatusInternalServerError)
 					return
 				}
 				m.proxy(w, r)
