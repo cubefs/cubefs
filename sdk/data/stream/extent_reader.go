@@ -100,6 +100,7 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 
 func (reader *ExtentReader) checkStreamReply(request *Packet, reply *Packet) (err error) {
 	if reply.ResultCode == proto.OpTryOtherAddr {
+		log.LogWarnf("checkStreamReply: return TryOtherAddrError, req(%v) reply(%v)", request, reply)
 		return TryOtherAddrError
 	}
 

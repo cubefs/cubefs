@@ -323,12 +323,12 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 	// the extent key needs to be updated because when preparing the requests,
 	// the obtained extent key could be a local key which can be inconsistent with the remote key.
 	req.ExtentKey = s.extents.Get(uint64(offset))
-	ekFileOffset := int(req.ExtentKey.FileOffset)
-	ekExtOffset := int(req.ExtentKey.ExtentOffset)
 	if req.ExtentKey == nil {
-		err = errors.New(fmt.Sprintf("doOverwrite: extent key not exist, ino(%v) ekFileOffset(%v) ek(%v)", s.inode, ekFileOffset, req.ExtentKey))
+		err = errors.New(fmt.Sprintf("doOverwrite: extent key not exist, ino(%v) fileOffset(%v)", s.inode, offset))
 		return
 	}
+	ekFileOffset := int(req.ExtentKey.FileOffset)
+	ekExtOffset := int(req.ExtentKey.ExtentOffset)
 
 	if dp, err = s.client.dataWrapper.GetDataPartition(req.ExtentKey.PartitionId); err != nil {
 		// TODO unhandled error
