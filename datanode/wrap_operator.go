@@ -517,6 +517,9 @@ func (s *DataNode) handleExtentRepaiReadPacket(p *repl.Packet, connect net.Conn,
 		tpObject.Set(err)
 		p.CRC = reply.CRC
 		if err != nil {
+			if currReadSize == util.ReadBlockSize {
+				proto.Buffers.Put(reply.Data)
+			}
 			return
 		}
 		reply.Size = uint32(currReadSize)
@@ -524,6 +527,9 @@ func (s *DataNode) handleExtentRepaiReadPacket(p *repl.Packet, connect net.Conn,
 		reply.Opcode = p.Opcode
 		p.ResultCode = proto.OpOk
 		if err = reply.WriteToConn(connect); err != nil {
+			if currReadSize == util.ReadBlockSize {
+				proto.Buffers.Put(reply.Data)
+			}
 			return
 		}
 		needReplySize -= currReadSize
@@ -656,12 +662,18 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 		reply.ExtentOffset = offset
 		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, false)
 		if err != nil {
+			if currReadSize == util.ReadBlockSize {
+				proto.Buffers.Put(reply.Data)
+			}
 			return
 		}
 		reply.Size = uint32(currReadSize)
 		reply.ResultCode = proto.OpOk
 		if err = reply.WriteToConn(connect); err != nil {
 			connect.Close()
+			if currReadSize == util.ReadBlockSize {
+				proto.Buffers.Put(reply.Data)
+			}
 			return
 		}
 		needReplySize -= int64(currReadSize)
