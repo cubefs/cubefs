@@ -174,7 +174,7 @@ func (s *Streamer) server() {
 		case request := <-s.request:
 			s.handleRequest(request)
 			s.idle = 0
-			s.traversed = 0
+			//s.traversed = 0
 		case <-s.done:
 			s.abort()
 			log.LogDebugf("done server: evict, ino(%v)", s.inode)
@@ -490,7 +490,11 @@ func (s *Streamer) traverse() (err error) {
 				log.LogDebugf("Streamer traverse skipped: traversed(%v) eh(%v)", s.traversed, eh)
 				continue
 			}
-			eh.setClosed()
+			// eh.setClosed()
+			eh.flushPacket()
+			eh.appendExtentKey()
+			s.traversed = 0
+			log.LogDebugf("Streamer traverse appendExtentKey: eh(%v)", eh)
 		}
 		log.LogDebugf("Streamer traverse end: eh(%v)", eh)
 	}
