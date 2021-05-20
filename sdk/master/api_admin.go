@@ -337,3 +337,27 @@ func (api *AdminAPI) SetMetaNodeThreshold(threshold float64) (err error) {
 	}
 	return
 }
+
+func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminSetNodeInfo)
+	if info.ClientReadLimitRate >= 0 {
+		request.addParam("clientReadRate", strconv.FormatInt(info.ClientReadLimitRate, 10))
+	}
+	if info.ClientWriteLimitRate >= 0 {
+		request.addParam("clientWriteRate", strconv.FormatInt(info.ClientWriteLimitRate, 10))
+	}
+	if info.MetaNodeReqLimitRate >= 0 {
+		request.addParam("metaNodeReqRate", strconv.FormatInt(info.MetaNodeReqLimitRate, 10))
+	}
+	if info.DataNodeReqLimitRate >= 0 {
+		request.addParam("dataNodeReqRate", strconv.FormatInt(info.DataNodeReqLimitRate, 10))
+	}
+	if info.DataNodeReqVolPartLimitRate >= 0 {
+		request.addParam("dataNodeReqVolPartRate", strconv.FormatInt(info.DataNodeReqVolPartLimitRate, 10))
+	}
+	request.addParam("volume", info.Volume)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}

@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/tiglabs/raft/proto"
@@ -86,6 +87,8 @@ type clusterConfig struct {
 	MetaNodeDeleteBatchCount            uint64 //metanode delete batch count
 	MetaNodeReqLimitRate                uint64
 	DataNodeReqLimitRate                uint64
+	DataNodeReqVolPartLimitRateMap      map[string]uint64
+	dataNodeReqVolPartLimitRateMapMutex sync.Mutex
 	DataNodeDeleteLimitRate             uint64 //datanode delete limit rate
 	MetaNodeDeleteWorkerSleepMs         uint64 //datanode delete limit rate
 	ClientReadLimitRate                 uint64
@@ -115,6 +118,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.diffSpaceUsage = defaultDiffSpaceUsage
 	cfg.DataPartitionsRecoverPoolSize = defaultRecoverPoolSize
 	cfg.MetaPartitionsRecoverPoolSize = defaultRecoverPoolSize
+	cfg.DataNodeReqVolPartLimitRateMap = make(map[string]uint64)
 	return
 }
 

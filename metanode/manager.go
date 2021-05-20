@@ -74,7 +74,11 @@ type metadataManager struct {
 // HandleMetadataOperation handles the metadata operations.
 func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
-	reqLimitRater.Wait(context.Background())
+	addrSlice := strings.Split(remoteAddr, ":")
+	_, isInternal := clusterMap[addrSlice[0]]
+	if !isInternal {
+		reqLimitRater.Wait(context.Background())
+	}
 	metric := exporter.NewTPCnt(p.GetOpMsg())
 	defer metric.Set(err)
 
