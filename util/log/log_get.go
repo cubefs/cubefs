@@ -32,7 +32,9 @@ const (
 	TooBigNum         = ", param num is too big, use default max num"
 	LossNum           = ", can't find num param, use default num"
 
-	GetLogPath = "/log/get"
+	GetLogPath      = "/log/get"
+	DefaultProfPort = 10090
+	MaxProfPort     = 65535
 
 	buffSize       = int64(4096)
 	maxLogLine     = 10000

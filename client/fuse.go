@@ -24,7 +24,6 @@ import (
 	"flag"
 	"fmt"
 	syslog "log"
-	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -33,6 +32,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -255,19 +255,15 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 	http.HandleFunc(log.GetLogPath, log.GetLog)
 
 	go func() {
-		if opt.Profport != "" {
-			syslog.Println("Start pprof with port:", opt.Profport)
-			http.ListenAndServe(":"+opt.Profport, nil)
-		} else {
-			pprofListener, err := net.Listen("tcp", ":0")
-			if err != nil {
-				daemonize.SignalOutcome(err)
-				os.Exit(1)
+		for port := log.DefaultProfPort; port <= log.MaxProfPort; port++ {
+			syslog.Println("Start pprof with port:", port)
+			if err := http.ListenAndServe(":"+strconv.Itoa(port), nil); err != nil {
+				syslog.Println("Start pprof err: ", err)
+				continue
 			}
-
-			syslog.Println("Start pprof with port:", pprofListener.Addr().(*net.TCPAddr).Port)
-			http.Serve(pprofListener, nil)
+			break
 		}
+		syslog.Println("Try all prof port failed!")
 	}()
 
 	if err = ump.InitUmp(fmt.Sprintf("%v_%v_%v", super.ClusterName(), super.VolName(), ModuleName)); err != nil {
