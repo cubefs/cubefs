@@ -152,7 +152,7 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 	// If this write request is not continuous, and cannot be merged
 	// into the extent handler, just close it and return error.
 	// In this case, the caller should try to create a new extent handler.
-	if eh.fileOffset+eh.size != offset || eh.size+size > util.ExtentSize ||
+	if eh.fileOffset+eh.size != offset || eh.size+size > eh.stream.extentSize ||
 		(eh.storeMode == proto.TinyExtentType && eh.size+size > blksize) {
 
 		err = errors.New("ExtentHandler: full or incontinuous")

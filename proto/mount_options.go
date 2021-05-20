@@ -51,6 +51,7 @@ const (
 	ForceAlignMerge
 	EnablePosixACL
 	AutoMakeSubDir
+	ExtentSize
 
 	MaxMountOption
 )
@@ -123,6 +124,7 @@ func InitMountOptions(opts []MountOption) {
 		int64(12)}
 	opts[ForceAlignMerge] = MountOption{"forceAlignMerge", "always merge extent when write at align region boundaries",
 		"", false}
+	opts[ExtentSize] = MountOption{"extentSize", "set extentSize for client", "", int64(0)}
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -187,7 +189,7 @@ func parseInt64(s string) int64 {
 }
 
 func parseBool(s string) bool {
-	var ret bool = false
+	var ret = false
 
 	if s == "true" {
 		ret = true
@@ -256,4 +258,5 @@ type MountOptions struct {
 	MaxExtentNumPerAlignArea int64
 	ForceAlignMerge          bool
 	EnablePosixACL           bool
+	ExtentSize               int64
 }
