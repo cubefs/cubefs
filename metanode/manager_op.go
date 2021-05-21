@@ -19,14 +19,15 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"net"
+	"os"
+	"runtime"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	raftProto "github.com/tiglabs/raft/proto"
-	"net"
-	"os"
-	"runtime"
 )
 
 const (

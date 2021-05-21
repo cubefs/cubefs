@@ -16,12 +16,31 @@ package metanode
 
 import (
 	"encoding/json"
+	"net"
+	"strings"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/storage"
 )
 
 type Packet struct {
 	proto.Packet
+	remote string
+}
+
+func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
+	if err = p.Packet.ReadFromConn(c, timeoutSec); err != nil {
+		return
+	}
+	if parts := strings.Split(c.RemoteAddr().String(), ":"); len(parts) > 1 {
+		// Split ip address and port.
+		p.remote = parts[0]
+	}
+	return
+}
+
+func (p *Packet) Remote() string {
+	return p.remote
 }
 
 // NewPacketToDeleteExtent returns a new packet to delete the extent.

@@ -412,6 +412,25 @@ func (mp *metaPartition) submit(op uint32, data []byte) (resp interface{}, err e
 	return
 }
 
+// Put puts the given key-value pair (operation key and operation request) into the raft store.
+func (mp *metaPartition) submitWithSrc(op uint32, from string, data []byte) (resp interface{}, err error) {
+	snap := NewMetaItem(0, nil, nil)
+	snap.Op = op
+	if data != nil {
+		snap.V = data
+	}
+	snap.From = from
+	snap.Timestamp = time.Now().Unix()
+	cmd, err := snap.MarshalJson()
+	if err != nil {
+		return
+	}
+
+	// submit to the raft store
+	resp, err = mp.raftPartition.Submit(cmd)
+	return
+}
+
 func (mp *metaPartition) uploadApplyID(applyId uint64) {
 	atomic.StoreUint64(&mp.applyID, applyId)
 }
