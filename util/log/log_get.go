@@ -34,7 +34,7 @@ const (
 
 	GetLogPath      = "/log/get"
 	DefaultProfPort = 10090
-	MaxProfPort     = 65535
+	MaxProfPort     = 10110
 
 	buffSize       = int64(4096)
 	maxLogLine     = 10000

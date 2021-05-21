@@ -264,6 +264,10 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 			break
 		}
 		syslog.Println("Try all prof port failed!")
+		if opt.Profport != "" {
+			syslog.Println("Start pprof with port:", opt.Profport)
+			http.ListenAndServe(":"+opt.Profport, nil)
+		}
 	}()
 
 	if err = ump.InitUmp(fmt.Sprintf("%v_%v_%v", super.ClusterName(), super.VolName(), ModuleName)); err != nil {
