@@ -113,87 +113,13 @@ make dist-clean
 docker run  -v /root/arm64/chubaofs:/root/chubaofs arm64_gcc4_golang1_13_ubuntu_14_04_chubaofs /root/buildcfs.sh
 
 ```
- 
+
 Remove image:
 ```
 docker image remove -f  arm64_gcc4_golang1_13_ubuntu_14_04_chubaofs
 ```
 
-
-## Yum Tools to Run a ChubaoFS Cluster for CentOS 7+
-
-The list of RPM packages dependencies can be installed with:
-
-```
-$ yum install http://storage.jd.com/chubaofsrpm/latest/cfs-install-latest-el7.x86_64.rpm
-$ cd /cfs/install
-$ tree -L 2
-.
-├── install_cfs.yml
-├── install.sh
-├── iplist
-├── src
-└── template
-    ├── client.json.j2
-    ├── create_vol.sh.j2
-    ├── datanode.json.j2
-    ├── grafana
-    ├── master.json.j2
-    └── metanode.json.j2
-```
-
-Set parameters of the ChubaoFS cluster in `iplist`. 
-
-1. `[master]`, `[datanode]`, `[metanode]`, `[monitor]`, `[client]` modules define IP addresses of each role. 
-
-2. `#datanode config` module defines parameters of DataNodes. `datanode_disks` defines `path` and `reserved space` separated by ":". The `path` is where the data store in, so make sure it exists and has at least 30GB of space; `reserved space` is the minimum free space(Bytes) reserved for the path.
-
-3. `[cfs:vars]` module defines parameters for SSH connection. So make sure the port, username and password for SSH connection is unified before start.
-
-4. `#metanode config` module defines parameters of MetaNodes. `metanode_totalMem` defines the maximum memory(Bytes) can be use by MetaNode process.
-
-```yaml
-[master]
-10.196.0.1
-10.196.0.2
-10.196.0.3
-[datanode]
-...
-[cfs:vars]
-ansible_ssh_port=22
-ansible_ssh_user=root
-ansible_ssh_pass="password"
-...
-#datanode config
-...
-datanode_disks =  '"/data0:10737418240","/data1:10737418240"'
-...
-#metanode config
-...
-metanode_totalMem = "28589934592"
-...
-```
-
-For more configurations please refer to [documentation](https://chubaofs.readthedocs.io/en/latest/user-guide/master.html).
-
-Start the resources of ChubaoFS cluster with script `install.sh`. (make sure the Master is started first)
-
-```
-$ bash install.sh -h
-Usage: install.sh -r | --role [datanode | metanode | master | objectnode | console | monitor | client | all | createvol ] [2.1.0 or latest]
-$ bash install.sh -r master
-$ bash install.sh -r metanode
-$ bash install.sh -r datanode
-$ bash install.sh -r monitor
-$ bash install.sh -r client
-$ bash install.sh -r console
-```
-
-Check mount point at `/cfs/mountpoint` on `client` node defined in `iplist`. 
-
-Open [http://[the IP of console system]](https:/github.com/chubaofs/chubaofs) through a browser for web console system(the IP of console system is defined in `iplist`).  In console default user is `root`, password is `ChubaoFSRoot`. In  monitor default user is `admin`,password is `123456`.
-
-## Run a ChubaoFS Cluster within Docker
+## Deploy a Demo Cluster using docker-compose
 
 A helper tool called `run_docker.sh` (under the `docker` directory) has been provided to run ChubaoFS with [docker-compose](https://docs.docker.com/compose/).
 
@@ -210,7 +136,7 @@ $ mount | grep chubaofs
 ```
 
 To view grafana monitor metrics, open http://127.0.0.1:3000 in browser and login with `admin/123456`.
- 
+
 To run server and client separately, use the following commands:
 
 ```
@@ -226,7 +152,11 @@ For more usage:
 $ docker/run_docker.sh -h
 ```
 
-## Helm chart to Run a ChubaoFS Cluster in Kubernetes 
+## Deploy a Production-ready Cluster
+
+Please refer to [Manual Deploy](https://chubaofs.readthedocs.io/en/latest/manual-deploy.html) for the fundamental steps of using ChubaoFS in production environments.
+
+## Helm chart to Deploy a Cluster in Kubernetes
 
 The [chubaofs-helm](https://github.com/chubaofs/chubaofs-helm) repository can help you deploy ChubaoFS cluster quickly in containers orchestrated by kubernetes.
 Kubernetes 1.12+ and Helm 3 are required. chubaofs-helm has already integrated ChubaoFS CSI plugin

@@ -6,7 +6,6 @@ Welcome to ChubaoFS(Chubao File System)
    :caption: Getting Started
 
    overview
-   user-guide/yum
    manual-deploy
 
 .. toctree::
@@ -31,7 +30,6 @@ Welcome to ChubaoFS(Chubao File System)
    user-guide/client
    user-guide/monitor
    user-guide/fuse
-   user-guide/yum
    user-guide/docker
 
 .. toctree::
