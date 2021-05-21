@@ -110,6 +110,7 @@ const (
 	OpAddMetaPartitionRaftMember      uint8 = 0x46
 	OpRemoveMetaPartitionRaftMember   uint8 = 0x47
 	OpMetaPartitionTryToLeader        uint8 = 0x48
+	OpResetMetaPartitionRaftMember    uint8 = 0x4B
 	OpAddMetaPartitionRaftLearner     uint8 = 0x4C
 	OpPromoteMetaPartitionRaftLearner uint8 = 0x4D
 
@@ -127,6 +128,7 @@ const (
 	OpSyncDataPartitionReplicas       uint8 = 0x6A
 	OpAddDataPartitionRaftLearner     uint8 = 0x6B
 	OpPromoteDataPartitionRaftLearner uint8 = 0x6C
+	OpResetDataPartitionRaftMember    uint8 = 0x6D
 
 	// Operations: MultipartInfo
 	OpCreateMultipart  uint8 = 0x70
@@ -365,6 +367,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpAddDataPartitionRaftLearner"
 	case OpPromoteDataPartitionRaftLearner:
 		m = "OpPromoteDataPartitionRaftLearner"
+	case OpResetDataPartitionRaftMember:
+		m = "OpResetDataPartitionRaftMember"
 	case OpAddMetaPartitionRaftMember:
 		m = "OpAddMetaPartitionRaftMember"
 	case OpRemoveMetaPartitionRaftMember:
@@ -373,6 +377,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpAddMetaPartitionRaftLearner"
 	case OpPromoteMetaPartitionRaftLearner:
 		m = "OpPromoteMetaPartitionRaftLearner"
+	case OpResetMetaPartitionRaftMember:
+		m = "OpResetMetaPartitionRaftMember"
 	case OpMetaPartitionTryToLeader:
 		m = "OpMetaPartitionTryToLeader"
 	case OpDataPartitionTryToLeader:

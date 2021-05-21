@@ -17,6 +17,7 @@ package master
 import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/log"
+	"strings"
 	"sync"
 	"time"
 )
@@ -43,6 +44,7 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				"checkDiskRecoveryProgress occurred panic")
 		}
 	}()
+	c.checkFulfillDataReplica()
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
 		badDataPartitionIds := value.([]uint64)
 		newBadDpIds := make([]uint64, 0)
@@ -55,10 +57,10 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 			if err != nil {
 				continue
 			}
-			if len(partition.Replicas) == 0 || len(partition.Replicas) < int(vol.dpReplicaNum) {
+			if len(partition.Replicas) == 0 {
 				continue
 			}
-			if partition.isDataCatchUp() {
+			if partition.isDataCatchUp() && len(partition.Replicas) >= int(vol.dpReplicaNum) {
 				partition.isRecover = false
 				partition.RLock()
 				c.syncUpdateDataPartition(partition)
@@ -78,6 +80,85 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 
 		return true
 	})
+
+}
+
+// Add replica for the partition whose replica number is less than replicaNum
+func (c *Cluster) checkFulfillDataReplica() {
+	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
+		badDataPartitionIds := value.([]uint64)
+		//badDiskAddr: '127.0.0.1:17210:/data1'
+		badDiskAddr := strings.Split(key.(string), ":")
+		if len(badDiskAddr) < 2 {
+			return true
+		}
+		newBadParitionIds := make([]uint64, 0)
+		for _, partitionID := range badDataPartitionIds {
+			var err error
+			var partition *DataPartition
+			if partition, err = c.getDataPartitionByID(partitionID); err != nil {
+				newBadParitionIds = append(newBadParitionIds, partitionID)
+				continue
+			}
+			if len(partition.Replicas) >= int(partition.ReplicaNum) || len(partition.Hosts) >= int(partition.ReplicaNum) {
+				newBadParitionIds = append(newBadParitionIds, partitionID)
+				continue
+			}
+			//Not until the learners promote strategy is enhanced to guarantee peers consistency, can we add more learners at the same time.
+			if len(partition.Learners) > 0 {
+				newBadParitionIds = append(newBadParitionIds, partitionID)
+				continue
+			}
+			if err = c.fulfillDataReplicaByLearner(partition, badDiskAddr[0]+":"+badDiskAddr[1], partitionID); err != nil {
+				log.LogWarnf(fmt.Sprintf("action[checkFulfillDataReplica], clusterID[%v], partitionID[%v], err[%v] ", c.Name, partitionID, err))
+				newBadParitionIds = append(newBadParitionIds, partitionID)
+				continue
+			}
+			//only if the len(replica + learner) equals to replicaNum, will we keep the badPartitionID to check the recover progress of this partition later
+			//if len(replica + learner) is less than replicaNum, we should discard this badDiskAddr to avoid add raft learner twice.
+			if len(partition.Replicas) < int(partition.ReplicaNum) {
+				continue
+			}
+			newBadParitionIds = append(newBadParitionIds, partitionID)
+		}
+		c.BadDataPartitionIds.Store(key, newBadParitionIds)
+		return true
+	})
+
+}
+
+//Raft instance will not start until the data has been synchronized by simple repair-read consensus algorithm, and it spends a long time.
+//The raft group can not come to an agreement with a leader, and the data partition will be unavailable.
+//Introducing raft learner can solve the problem.
+func (c *Cluster) fulfillDataReplicaByLearner(partition *DataPartition, badAddr string, partitionID uint64) (err error) {
+	var (
+		newAddr         string
+		excludeNodeSets []uint64
+	)
+	excludeNodeSets = make([]uint64, 0)
+	if leaderAddr := partition.getLeaderAddr(); leaderAddr == "" {
+		err = fmt.Errorf("Action[fulfillDataReplicaByLearner], partitionID[%v], no leader", partitionID)
+		return
+	}
+
+	if _, newAddr, err = getTargetAddressForDataPartitionDecommission(c, badAddr, partition, excludeNodeSets, "", false); err != nil {
+		return
+	}
+	if err = c.addDataReplicaLearner(partition, newAddr, true, 100); err != nil {
+		return
+	}
+	newPanicHost := make([]string, 0)
+	for _, h := range partition.PanicHosts {
+		if h == badAddr {
+			continue
+		}
+		newPanicHost = append(newPanicHost, h)
+	}
+	partition.Lock()
+	partition.PanicHosts = newPanicHost
+	c.syncUpdateDataPartition(partition)
+	partition.Unlock()
+	return
 }
 
 func (c *Cluster) decommissionDisk(dataNode *DataNode, badDiskPath string, badPartitions []*DataPartition) (err error) {

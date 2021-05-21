@@ -137,6 +137,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
 		err = m.opAddMetaPartitionRaftLearner(conn, p, remoteAddr)
 	case proto.OpPromoteMetaPartitionRaftLearner:
 		err = m.opPromoteMetaPartitionRaftLearner(conn, p, remoteAddr)
+	case proto.OpResetMetaPartitionRaftMember:
+		err = m.opResetMetaPartitionMember(conn, p, remoteAddr)
 	case proto.OpMetaPartitionTryToLeader:
 		err = m.opMetaPartitionTryToLeader(conn, p, remoteAddr)
 	case proto.OpMetaBatchInodeGet:

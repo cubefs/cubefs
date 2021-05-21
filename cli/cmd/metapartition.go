@@ -39,6 +39,7 @@ func newMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
 	cmd.AddCommand(
 		newMetaPartitionGetCmd(client),
 		newListCorruptMetaPartitionCmd(client),
+		newResetMetaPartitionCmd(client),
 		newMetaPartitionDecommissionCmd(client),
 		newMetaPartitionReplicateCmd(client),
 		newMetaPartitionDeleteReplicaCmd(client),
@@ -49,6 +50,7 @@ func newMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
 const (
 	cmdMetaPartitionGetShort           = "Display detail information of a meta partition"
 	cmdCheckCorruptMetaPartitionShort  = "Check out corrupt meta partitions"
+	cmdResetMetaPartitionShort         = "Reset corrupt meta partition"
 	cmdMetaPartitionDecommissionShort  = "Decommission a replication of the meta partition to a new address"
 	cmdMetaPartitionReplicateShort     = "Add a replication of the meta partition on a new address"
 	cmdMetaPartitionDeleteReplicaShort = "Delete a replication of the meta partition on a fixed address"
@@ -281,6 +283,43 @@ func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
 			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	return cmd
+}
+
+func newResetMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpReset + " [META PARTITION ID]",
+		Short: cmdResetMetaPartitionShort,
+		Long: `If more than half replicas of a partition are on the corrupt nodes, the few remaining replicas can 
+not reach an agreement with one leader. In this case, you can use the "metapartition reset" command
+to fix the problem, however this action may lead to data loss, be careful to do this.`,
+		Args: cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				confirm     string
+				partitionID uint64
+				err         error
+			)
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
+			partitionID, err = strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				return
+			}
+			stdout(fmt.Sprintf("The action may risk the danger of losing meta data, please confirm(y/n):"))
+			_, _ = fmt.Scanln(&confirm)
+			if "y" != confirm && "yes" != confirm {
+				return
+			}
+			if err = client.AdminAPI().ResetMetaPartition(partitionID); err != nil {
+				return
+			}
 		},
 	}
 	return cmd

@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -37,6 +38,7 @@ func newMetaNodeCmd(client *master.MasterClient) *cobra.Command {
 		newMetaNodeListCmd(client),
 		newMetaNodeInfoCmd(client),
 		newMetaNodeDecommissionCmd(client),
+		newResetMetaNodeCmd(client),
 	)
 	return cmd
 }
@@ -45,6 +47,7 @@ const (
 	cmdMetaNodeListShort             = "List information of meta nodes"
 	cmdMetaNodeInfoShort             = "Show information of meta nodes"
 	cmdMetaNodeDecommissionInfoShort = "Decommission partitions in a meta node to other nodes"
+	cmdResetMetaNodeShort            = "Reset corrupt meta partitions related to this node"
 )
 
 func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
@@ -138,6 +141,47 @@ func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 			}
 			stdout("Decommission meta node successfully\n")
 
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	return cmd
+}
+
+func newResetMetaNodeCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpReset + " [ADDRESS]",
+		Short: cmdResetMetaNodeShort,
+		Long: `If more than half replicas of a partition are on the corrupt nodes, the few remaining replicas can 
+not reach an agreement with one leader. In this case, you can use the "reset" command to fix the problem. This command
+is used to reset all the corrupt partitions related to a chosen corrupt node. However this action may lead to data 
+loss, be careful to do this.`,
+		Args: cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				address string
+				confirm string
+				err     error
+			)
+			defer func() {
+				if err != nil {
+					errout("Error:%v", err)
+					OsExitWithLogFlush()
+				}
+			}()
+			address = args[0]
+			stdout(fmt.Sprintf("The action may risk the danger of losing data, please confirm(y/n):"))
+			_, _ = fmt.Scanln(&confirm)
+			if "y" != confirm && "yes" != confirm {
+				return
+			}
+			if err = client.AdminAPI().ResetCorruptMetaNode(address); err != nil {
+				return
+			}
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {

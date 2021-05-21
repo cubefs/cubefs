@@ -72,9 +72,6 @@ type (
 const (
 	BalanceMetaZone RepairType = iota
 	BalanceDataZone
-	RepairMetaDecommission
-	RepairDataDecommission
-	RepairAddReplica
 )
 
 type RepairTask struct {
@@ -82,7 +79,7 @@ type RepairTask struct {
 	Pid         uint64
 	OfflineAddr string
 }
-type ChooseDataHostFunc func(c *Cluster, offlineAddr string, dp *DataPartition, excludeNodeSets []uint64, zoneName string, destZoneName string) (oldAddr, newAddr string, err error)
+type ChooseDataHostFunc func(c *Cluster, offlineAddr string, dp *DataPartition, excludeNodeSets []uint64, destZoneName string, validOfflineAddr bool) (oldAddr, newAddr string, err error)
 
 func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition raftstore.Partition, cfg *clusterConfig) (c *Cluster) {
 	c = new(Cluster)
@@ -665,12 +662,9 @@ func (c *Cluster) checkCorruptDataPartitions() (inactiveDataNodes []string, corr
 		return true
 	})
 	for _, addr := range inactiveDataNodes {
-		var dataNode *DataNode
-		if dataNode, err = c.dataNode(addr); err != nil {
-			return
-		}
-		for _, partition := range dataNode.PersistenceDataPartitions {
-			partitionMap[partition] = partitionMap[partition] + 1
+		partitions := c.getAllDataPartitionByDataNode(addr)
+		for _, partition := range partitions {
+			partitionMap[partition.PartitionID] = partitionMap[partition.PartitionID] + 1
 		}
 	}
 
@@ -679,7 +673,7 @@ func (c *Cluster) checkCorruptDataPartitions() (inactiveDataNodes []string, corr
 		if partition, err = c.getDataPartitionByID(partitionID); err != nil {
 			return
 		}
-		if badNum > partition.ReplicaNum/2 {
+		if badNum > partition.ReplicaNum/2 && badNum != partition.ReplicaNum {
 			corruptPartitions = append(corruptPartitions, partition)
 		}
 	}
@@ -700,6 +694,37 @@ func (c *Cluster) checkLackReplicaDataPartitions() (lackReplicaDataPartitions []
 		}
 	}
 	log.LogInfof("clusterID[%v] lackReplicaDataPartitions count:[%v]", c.Name, len(lackReplicaDataPartitions))
+	return
+}
+
+// check corrupt partitions related to this data node
+func (c *Cluster) checkCorruptDataNode(dataNode *DataNode) (corruptPartitions []*DataPartition, err error) {
+	var (
+		dataPartitions    []*DataPartition
+		dn                *DataNode
+		corruptPids       []uint64
+		corruptReplicaNum uint8
+	)
+	dataNode.RLock()
+	defer dataNode.RUnlock()
+	dataPartitions = c.getAllDataPartitionByDataNode(dataNode.Addr)
+	for _, partition := range dataPartitions {
+		corruptReplicaNum = 0
+		for _, host := range partition.Hosts {
+			if dn, err = c.dataNode(host); err != nil {
+				return
+			}
+			if !dn.isActive {
+				corruptReplicaNum = corruptReplicaNum + 1
+			}
+		}
+		if corruptReplicaNum > partition.ReplicaNum/2 && corruptReplicaNum != partition.ReplicaNum {
+			corruptPartitions = append(corruptPartitions, partition)
+			corruptPids = append(corruptPids, partition.PartitionID)
+		}
+	}
+	log.LogInfof("action[checkCorruptDataNode],clusterID[%v] dataNodeAddr:[%v], corrupt partitions%v",
+		c.Name, dataNode.Addr, corruptPids)
 	return
 }
 
@@ -1302,29 +1327,25 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		dpReplica       *DataReplica
 		excludeNodeSets []uint64
 		msg             string
-		vol             *Vol
 		isLearner       bool
 		pmConfig        *proto.PromoteConfig
 	)
 	dp.offlineMutex.Lock()
 	defer dp.offlineMutex.Unlock()
 	excludeNodeSets = make([]uint64, 0)
-	if vol, err = c.getVol(dp.VolName); err != nil {
-		goto errHandler
-	}
-	if oldAddr, addAddr, err = chooseDataHostFunc(c, offlineAddr, dp, excludeNodeSets, vol.zoneName, destZoneName); err != nil {
+	if oldAddr, addAddr, err = chooseDataHostFunc(c, offlineAddr, dp, excludeNodeSets, destZoneName, true); err != nil {
 		goto errHandler
 	}
 	if isLearner, pmConfig, err = c.removeDataReplica(dp, oldAddr, false, strictMode); err != nil {
-		return
+		goto errHandler
 	}
 	if isLearner {
 		if err = c.addDataReplicaLearner(dp, addAddr, pmConfig.AutoProm, pmConfig.PromThreshold); err != nil {
-			return
+			goto errHandler
 		}
 	} else {
 		if err = c.addDataReplica(dp, addAddr); err != nil {
-			return
+			goto errHandler
 		}
 	}
 	dp.Lock()
@@ -1401,7 +1422,7 @@ func (partition *DataPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
 	return
 }
 
-var getTargetAddressForDataPartitionDecommission = func(c *Cluster, offlineAddr string, dp *DataPartition, excludeNodeSets []uint64, zoneName string, destZoneName string) (oldAddr, newAddr string, err error) {
+var getTargetAddressForDataPartitionDecommission = func(c *Cluster, offlineAddr string, dp *DataPartition, excludeNodeSets []uint64, destZoneName string, validOfflineAddr bool) (oldAddr, newAddr string, err error) {
 	var (
 		dataNode    *DataNode
 		zone        *Zone
@@ -1409,11 +1430,17 @@ var getTargetAddressForDataPartitionDecommission = func(c *Cluster, offlineAddr 
 		ns          *nodeSet
 		excludeZone string
 		targetHosts []string
+		vol         *Vol
 	)
-	if err = c.validateDecommissionDataPartition(dp, offlineAddr); err != nil {
-		return
+	if validOfflineAddr {
+		if err = c.validateDecommissionDataPartition(dp, offlineAddr); err != nil {
+			return
+		}
 	}
 	if dataNode, err = c.dataNode(offlineAddr); err != nil {
+		return
+	}
+	if vol, err = c.getVol(dp.VolName); err != nil {
 		return
 	}
 	if destZoneName != "" {
@@ -1445,7 +1472,7 @@ var getTargetAddressForDataPartitionDecommission = func(c *Cluster, offlineAddr 
 				} else {
 					excludeZone = zones[0]
 				}
-				if targetHosts, _, err = c.chooseTargetDataNodes(excludeZone, excludeNodeSets, dp.Hosts, 1, zoneName); err != nil {
+				if targetHosts, _, err = c.chooseTargetDataNodes(excludeZone, excludeNodeSets, dp.Hosts, 1, vol.zoneName); err != nil {
 					return
 				}
 			}
@@ -1453,6 +1480,61 @@ var getTargetAddressForDataPartitionDecommission = func(c *Cluster, offlineAddr 
 	}
 	newAddr = targetHosts[0]
 	oldAddr = offlineAddr
+	return
+}
+
+func (c *Cluster) resetDataPartition(dp *DataPartition) (err error) {
+	var (
+		panicHosts []string
+		msg        string
+	)
+	dp.RLock()
+	for _, host := range dp.Hosts {
+		var dataNode *DataNode
+		if dataNode, err = c.dataNode(host); err != nil {
+			dp.RUnlock()
+			goto errHandler
+		}
+		if !dataNode.isActive {
+			panicHosts = append(panicHosts, host)
+		}
+	}
+	//Todo: maybe replaced by actual data replica number
+	if uint8(len(panicHosts)) < dp.ReplicaNum/2+dp.ReplicaNum%2 {
+		err = proto.ErrBadReplicaNoMoreThanHalf
+		dp.RUnlock()
+		goto errHandler
+	}
+	if uint8(len(panicHosts)) >= dp.ReplicaNum {
+		err = proto.ErrNoLiveReplicas
+		dp.RUnlock()
+		goto errHandler
+	}
+	dp.RUnlock()
+	if err = c.forceRemoveDataReplica(dp, panicHosts); err != nil {
+		goto errHandler
+	}
+	//record each badAddress, and update the badAddress by a new address in the same zone(nodeSet)
+	for _, address := range panicHosts {
+		c.putBadDataPartitionIDs(nil, address, dp.PartitionID)
+	}
+	dp.Lock()
+	dp.Status = proto.ReadOnly
+	dp.isRecover = true
+	dp.PanicHosts = panicHosts
+	c.syncUpdateDataPartition(dp)
+	dp.Unlock()
+	log.LogWarnf("clusterID[%v] partitionID:%v  panicHosts:%v reset success,PersistenceHosts:[%v]",
+		c.Name, dp.PartitionID, panicHosts, dp.Hosts)
+	return
+
+errHandler:
+	msg = fmt.Sprintf(" clusterID[%v] partitionID:%v  badHosts:%v  "+
+		"Err:%v , PersistenceHosts:%v  ",
+		c.Name, dp.PartitionID, panicHosts, err, dp.Hosts)
+	if err != nil {
+		Warn(c.Name, msg)
+	}
 	return
 }
 
@@ -1496,6 +1578,7 @@ func (c *Cluster) addDataReplica(dp *DataPartition, addr string) (err error) {
 		return
 	}
 	addPeer := proto.Peer{ID: dataNode.ID, Addr: addr}
+	// Todo: What if adding raft member success but creating replica failed?
 	if err = c.addDataPartitionRaftMember(dp, addPeer); err != nil {
 		return
 	}
@@ -1635,6 +1718,104 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate, mi
 	if err = dp.tryToChangeLeader(c, dataNode); err != nil {
 		return
 	}
+	return
+}
+func (c *Cluster) forceRemoveDataReplica(dp *DataPartition, addrs []string) (err error) {
+	var dataNode *DataNode
+	dp.RLock()
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[forceRemoveDataReplica],vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
+		}
+	}()
+	// Only after reset peers succeed in remote datanode, the meta data can be updated
+	newHosts := make([]string, 0, len(dp.Hosts)-len(addrs))
+	newPeers := make([]proto.Peer, 0, len(dp.Peers)-len(addrs))
+	for _, host := range dp.Hosts {
+		if contains(addrs, host) {
+			continue
+		}
+		newHosts = append(newHosts, host)
+	}
+	for _, host := range newHosts {
+		var dataNode *DataNode
+		dataNode, err = c.dataNode(host)
+		if err != nil {
+			dp.Unlock()
+			return
+		}
+		peer := proto.Peer{
+			ID:   dataNode.ID,
+			Addr: host,
+		}
+		newPeers = append(newPeers, peer)
+	}
+	dp.RUnlock()
+	for _, host := range newHosts {
+		if err = c.resetDataPartitionRaftMember(dp, newPeers, host); err != nil {
+			return
+		}
+	}
+	leaderAddr := dp.getLeaderAddrWithLock()
+	if !contains(newHosts, leaderAddr) {
+		if dataNode, err = c.dataNode(dp.Hosts[0]); err != nil {
+			log.LogErrorf("action[forceRemoveDataReplica],new peers[%v], old peers[%v], err[%v]", newPeers, dp.Peers, err)
+		}
+		if dataNode != nil {
+			if err = dp.tryToChangeLeader(c, dataNode); err != nil {
+				log.LogErrorf("action[forceRemoveDataReplica],new peers[%v], old peers[%v], err[%v]", newPeers, dp.Peers, err)
+			}
+		}
+	}
+	for _, addr := range addrs {
+		var newDataPartitions = make([]uint64, 0)
+
+		if dataNode, err = c.dataNode(addr); err != nil {
+			log.LogErrorf("action[forceRemoveDataReplica],new peers[%v], old peers[%v], err[%v]", newPeers, dp.Peers, err)
+			continue
+		}
+		if err = c.deleteDataReplica(dp, dataNode, false); err != nil {
+			log.LogErrorf("action[forceRemoveDataReplica],new peers[%v], old peers[%v], err[%v]", newPeers, dp.Peers, err)
+			continue
+		}
+		for _, pid := range dataNode.PersistenceDataPartitions {
+			if pid != dp.PartitionID {
+				newDataPartitions = append(newDataPartitions, pid)
+			}
+		}
+		log.LogInfof("action[forceRemoveDataReplica], node addr[%v], old partition ids[%v], new partition ids[%v]", addr, dataNode.PersistenceDataPartitions, newDataPartitions)
+		dataNode.Lock()
+		dataNode.PersistenceDataPartitions = newDataPartitions
+		dataNode.Unlock()
+	}
+	log.LogInfof("action[forceRemoveDataReplica],new peers[%v], old peers[%v], err[%v]", newPeers, dp.Peers, err)
+	return
+}
+
+func (c *Cluster) resetDataPartitionRaftMember(dp *DataPartition, newPeers []proto.Peer, host string) (err error) {
+	dp.Lock()
+	defer dp.Unlock()
+	task, err := dp.createTaskToResetRaftMembers(newPeers, host)
+	if err != nil {
+		return
+	}
+	var dataNode *DataNode
+	if dataNode, err = c.dataNode(host); err != nil {
+		return
+	}
+	if _, err = dataNode.TaskManager.syncSendAdminTask(task); err != nil {
+		log.LogErrorf("action[resetDataPartitionRaftMember] vol[%v], data partition[%v], newPeer[%v], err[%v]", dp.VolName, dp.PartitionID, newPeers, err)
+		return
+	}
+
+	newHosts := make([]string, 0)
+	for _, peer := range newPeers {
+		newHosts = append(newHosts, peer.Addr)
+	}
+	if err = dp.update("resetDataPartitionRaftMember", dp.VolName, newPeers, newHosts, dp.Learners, c); err != nil {
+		return
+	}
+	log.LogInfof("action[resetDataPartitionRaftMember] vol[%v], data partition[%v], newPeers[%v], err[%v]", dp.VolName, dp.PartitionID, newPeers, err)
 	return
 }
 
@@ -2804,7 +2985,7 @@ func (c *Cluster) updateDataNodeBadDisks(allBadDisks []map[string][]string) {
 	c.DataNodeBadDisks = datanodeBadDisks
 }
 
-func (c *Cluster) getDataNodeBadDisks() (allBadDisks []proto.DataNodeBadDisksView){
+func (c *Cluster) getDataNodeBadDisks() (allBadDisks []proto.DataNodeBadDisksView) {
 	allBadDisks = make([]proto.DataNodeBadDisksView, 0)
 	c.DataNodeBadDisks.Range(func(key, value interface{}) bool {
 		addr, ok := key.(string)
@@ -2815,7 +2996,7 @@ func (c *Cluster) getDataNodeBadDisks() (allBadDisks []proto.DataNodeBadDisksVie
 		if !ok {
 			return true
 		}
-		badDiskNode := proto.DataNodeBadDisksView{Addr: addr,BadDiskPath: disks}
+		badDiskNode := proto.DataNodeBadDisksView{Addr: addr, BadDiskPath: disks}
 		allBadDisks = append(allBadDisks, badDiskNode)
 		return true
 	})

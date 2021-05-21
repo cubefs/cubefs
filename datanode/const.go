@@ -56,6 +56,7 @@ const (
 	ActionAddDataPartitionRaftLearner     = "ActionAddDataPartitionRaftLearner"
 	ActionPromoteDataPartitionRaftLearner = "ActionPromoteDataPartitionRaftLearner"
 	ActionDataPartitionTryToLeader        = "ActionDataPartitionTryToLeader"
+	ActionResetDataPartitionRaftMember    = "ActionResetDataPartitionRaftMember"
 
 	ActionCreateDataPartition        = "ActionCreateDataPartition"
 	ActionLoadDataPartition          = "ActionLoadDataPartition"

@@ -76,6 +76,7 @@ type metaPartitionValue struct {
 	OfflinePeerID uint64
 	Peers         []bsProto.Peer
 	Learners      []bsProto.Learner
+	PanicHosts    []string
 	IsRecover     bool
 }
 
@@ -93,6 +94,7 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 		Learners:      mp.Learners,
 		OfflinePeerID: mp.OfflinePeerID,
 		IsRecover:     mp.IsRecover,
+		PanicHosts:    mp.PanicHosts,
 	}
 	return
 }
@@ -109,6 +111,7 @@ type dataPartitionValue struct {
 	OfflinePeerID uint64
 	Replicas      []*replicaValue
 	IsRecover     bool
+	PanicHosts    []string
 }
 
 type replicaValue struct {
@@ -127,6 +130,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		VolID:         dp.VolID,
 		VolName:       dp.VolName,
 		OfflinePeerID: dp.OfflinePeerID,
+		PanicHosts:    dp.PanicHosts,
 		Replicas:      make([]*replicaValue, 0),
 		IsRecover:     dp.isRecover,
 	}
@@ -714,7 +718,13 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		mp.setLearners(mpv.Learners)
 		mp.OfflinePeerID = mpv.OfflinePeerID
 		mp.IsRecover = mpv.IsRecover
-		if mp.IsRecover {
+		mp.PanicHosts = mpv.PanicHosts
+		if mp.IsRecover && len(mp.PanicHosts) > 0 {
+			for _, address := range mp.PanicHosts {
+				c.putBadMetaPartitions(address, mp.PartitionID)
+			}
+		}
+		if mp.IsRecover && len(mp.PanicHosts) == 0 {
 			c.putMigratedMetaPartitions("history", mp.PartitionID)
 		}
 		vol.addMetaPartition(mp)
@@ -751,13 +761,19 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		dp.Learners = dpv.Learners
 		dp.OfflinePeerID = dpv.OfflinePeerID
 		dp.isRecover = dpv.IsRecover
+		dp.PanicHosts = dpv.PanicHosts
 		for _, rv := range dpv.Replicas {
 			if !contains(dp.Hosts, rv.Addr) {
 				continue
 			}
 			dp.afterCreation(rv.Addr, rv.DiskPath, c)
 		}
-		if dp.isRecover {
+		if dp.isRecover && len(dp.PanicHosts) > 0 {
+			for _, address := range dp.PanicHosts {
+				c.putBadDataPartitionIDs(nil, address, dp.PartitionID)
+			}
+		}
+		if dp.isRecover && len(dp.PanicHosts) == 0 {
 			c.putMigratedDataPartitionIDs(nil, "history", dp.PartitionID)
 		}
 		vol.dataPartitions.put(dp)
