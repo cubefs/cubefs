@@ -62,13 +62,14 @@ type ReplProtocol struct {
 }
 
 type FollowerTransport struct {
-	addr     string
-	conn     net.Conn
-	sendCh   chan *FollowerPacket
-	recvCh   chan *FollowerPacket
-	exitCh   chan struct{}
-	exitedMu sync.RWMutex
-	isclosed int32
+	addr           string
+	conn           net.Conn
+	sendCh         chan *FollowerPacket
+	recvCh         chan *FollowerPacket
+	exitCh         chan struct{}
+	exitedMu       sync.RWMutex
+	isclosed       int32
+	lastActiveTime int64
 }
 
 func NewFollowersTransport(addr string) (ft *FollowerTransport, err error) {
@@ -84,6 +85,7 @@ func NewFollowersTransport(addr string) (ft *FollowerTransport, err error) {
 	ft.sendCh = make(chan *FollowerPacket, 200)
 	ft.recvCh = make(chan *FollowerPacket, 200)
 	ft.exitCh = make(chan struct{})
+	ft.lastActiveTime = time.Now().Unix()
 	go ft.serverWriteToFollower()
 	go ft.serverReadFromFollower()
 
@@ -94,6 +96,7 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 	for {
 		select {
 		case p := <-ft.sendCh:
+			atomic.StoreInt64(&ft.lastActiveTime,time.Now().Unix())
 			if err := p.WriteToConn(ft.conn); err != nil {
 				p.PackErrorBody(ActionSendToFollowers, err.Error())
 				p.respCh <- fmt.Errorf(string(p.Data[:p.Size]))
@@ -117,6 +120,7 @@ func (ft *FollowerTransport) serverReadFromFollower() {
 	for {
 		select {
 		case p := <-ft.recvCh:
+			atomic.StoreInt64(&ft.lastActiveTime,time.Now().Unix())
 			ft.readFollowerResult(p)
 		case <-ft.exitCh:
 			ft.exitedMu.Lock()
@@ -179,6 +183,14 @@ func (ft *FollowerTransport) Destory() {
 	close(ft.recvCh)
 }
 
+func (ft *FollowerTransport) needAutoDestory() (release bool) {
+	if time.Now().Unix()-atomic.LoadInt64(&ft.lastActiveTime) < FollowerTransportIdleTime {
+		return false
+	}
+	ft.Destory()
+	return true
+}
+
 func (ft *FollowerTransport) Write(p *FollowerPacket) {
 	ft.sendCh <- p
 }
@@ -199,7 +211,6 @@ func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet) error,
 	rp.exited = ReplRuning
 	rp.replId = proto.GenerateRequestID()
 	go rp.OperatorAndForwardPktGoRoutine()
-	go rp.ReceiveResponseFromFollowersGoRoutine()
 	go rp.writeResponseToClientGoRroutine()
 
 	return rp
@@ -234,22 +245,22 @@ func (rp *ReplProtocol) ServerConn() {
 }
 
 // Receive response from all followers.
-func (rp *ReplProtocol) ReceiveResponseFromFollowersGoRoutine() {
-	for {
-		select {
-		case <-rp.ackCh:
-			rp.checkLocalResultAndReciveAllFollowerResponse()
-		case <-rp.exitC:
-			rp.exitedMu.Lock()
-			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
-				rp.sourceConn.Close()
-				rp.cleanResource()
-			}
-			rp.exitedMu.Unlock()
-			return
-		}
-	}
-}
+//func (rp *ReplProtocol) ReceiveResponseFromFollowersGoRoutine() {
+//	for {
+//		select {
+//		case <-rp.ackCh:
+//			rp.checkLocalResultAndReciveAllFollowerResponse()
+//		case <-rp.exitC:
+//			rp.exitedMu.Lock()
+//			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
+//				rp.sourceConn.Close()
+//				rp.cleanResource()
+//			}
+//			rp.exitedMu.Unlock()
+//			return
+//		}
+//	}
+//}
 
 func (rp *ReplProtocol) setReplProtocolError(request *Packet, index int) {
 	atomic.StoreInt32(&rp.isError, ReplProtocolError)
@@ -303,6 +314,7 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, e
 //    Then notify receiveResponse to read the followers' responses.
 // 3. Read a reply from responseCh, and write to the client.
 func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
+	ticker := time.NewTicker(time.Minute)
 	for {
 		select {
 		case request := <-rp.toBeProcessedCh:
@@ -320,6 +332,8 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 					rp.putAck()
 				}
 			}
+		case <-ticker.C:
+			rp.autoReleaseFollowerTransport()
 		case <-rp.exitC:
 			rp.exitedMu.Lock()
 			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
@@ -333,9 +347,30 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 
 }
 
+func (rp *ReplProtocol) autoReleaseFollowerTransport() {
+	deleteTransportsKeys := make([]string, 0)
+	rp.lock.Lock()
+	if len(rp.followerConnects) == 0 {
+		rp.lock.Unlock()
+		return
+	}
+	for key, transport := range rp.followerConnects {
+		release := transport.needAutoDestory()
+		if release {
+			deleteTransportsKeys = append(deleteTransportsKeys, key)
+		}
+	}
+	for _, k := range deleteTransportsKeys {
+		delete(rp.followerConnects, k)
+	}
+	rp.lock.Unlock()
+}
+
 func (rp *ReplProtocol) writeResponseToClientGoRroutine() {
 	for {
 		select {
+		case <-rp.ackCh:
+			rp.checkLocalResultAndReciveAllFollowerResponse()
 		case request := <-rp.responseCh:
 			rp.writeResponse(request)
 		case <-rp.exitC:
@@ -433,6 +468,9 @@ func (rp *ReplProtocol) Stop() {
 func (rp *ReplProtocol) allocateFollowersConns(p *Packet, index int) (transport *FollowerTransport, err error) {
 	rp.lock.RLock()
 	transport = rp.followerConnects[p.followersAddrs[index]]
+	if transport!=nil {
+		atomic.StoreInt64(&transport.lastActiveTime,time.Now().Unix())
+	}
 	rp.lock.RUnlock()
 	if transport == nil {
 		transport, err = NewFollowersTransport(p.followersAddrs[index])

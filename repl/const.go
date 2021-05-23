@@ -38,9 +38,11 @@ const (
 const (
 	ReplRuning    = 2
 	ReplExiting   = 1
-	ReplHasExited = -3
+	ReplHasExited = -2
 
 	FollowerTransportRuning  = 2
 	FollowerTransportExiting = 1
 	FollowerTransportExited  = -1
+
+	FollowerTransportIdleTime = 120
 )
