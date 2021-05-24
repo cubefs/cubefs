@@ -1,6 +1,7 @@
 package metanode
 
 import (
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 
 const (
 	UpdateNodeInfoTicket     = 1 * time.Minute
+	UpdateClusterViewTicket  = 24 * time.Hour
 	DefaultDeleteBatchCounts = 128
 	DefaultReqLimitBurst     = 512
 )
@@ -23,6 +25,7 @@ var (
 	nodeInfoStopC              = make(chan struct{}, 0)
 	deleteWorkerSleepMs uint64 = 0
 	reqLimitRater              = rate.NewLimiter(rate.Inf, DefaultReqLimitBurst)
+	clusterMap                 = make(map[string]bool)
 )
 
 func DeleteBatchCount() uint64 {
@@ -50,7 +53,11 @@ func DeleteWorkerSleepMs() {
 
 func (m *MetaNode) startUpdateNodeInfo() {
 	ticker := time.NewTicker(UpdateNodeInfoTicket)
+	// call once on init before first tick
+	m.updateClusterMap()
+	clusterViewTicker := time.NewTicker(UpdateClusterViewTicket)
 	defer ticker.Stop()
+	defer clusterViewTicker.Stop()
 	for {
 		select {
 		case <-nodeInfoStopC:
@@ -58,6 +65,8 @@ func (m *MetaNode) startUpdateNodeInfo() {
 			return
 		case <-ticker.C:
 			m.updateNodeInfo()
+		case <-clusterViewTicker.C:
+			m.updateClusterMap()
 		}
 	}
 }
@@ -81,4 +90,26 @@ func (m *MetaNode) updateNodeInfo() {
 		l = rate.Inf
 	}
 	reqLimitRater.SetLimit(l)
+}
+
+func (m *MetaNode) updateClusterMap() {
+	cv, err := masterClient.AdminAPI().GetCluster()
+	if err != nil {
+		return
+	}
+	addrMap := make(map[string]bool, len(clusterMap))
+	var addrSlice []string
+	for _, node := range cv.MetaNodes {
+		addrSlice = strings.Split(node.Addr, ":")
+		addrMap[addrSlice[0]] = true
+	}
+	for _, node := range cv.DataNodes {
+		addrSlice = strings.Split(node.Addr, ":")
+		addrMap[addrSlice[0]] = true
+	}
+	for _, master := range masterClient.Nodes() {
+		addrSlice = strings.Split(master, ":")
+		addrMap[addrSlice[0]] = true
+	}
+	clusterMap = addrMap
 }

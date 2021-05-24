@@ -152,15 +152,16 @@ type RegisterMetaNodeResp struct {
 
 // ClusterInfo defines the cluster infomation.
 type ClusterInfo struct {
-	Cluster                     string
-	Ip                          string
-	MetaNodeDeleteBatchCount    uint64
-	MetaNodeDeleteWorkerSleepMs uint64
-	MetaNodeReqLimitRate        uint64
-	DataNodeReqLimitRate        uint64
-	DataNodeDeleteLimitRate     uint64
-	ClientReadLimitRate         uint64
-	ClientWriteLimitRate        uint64
+	Cluster                        string
+	Ip                             string
+	MetaNodeDeleteBatchCount       uint64
+	MetaNodeDeleteWorkerSleepMs    uint64
+	MetaNodeReqLimitRate           uint64
+	DataNodeReqLimitRate           uint64
+	DataNodeReqVolPartLimitRateMap map[string]uint64
+	DataNodeDeleteLimitRate        uint64
+	ClientReadLimitRate            uint64
+	ClientWriteLimitRate           uint64
 
 	DataNodeFixTinyDeleteRecordLimitOnDisk uint64
 	DataNodeRepairTaskLimitOnDisk          uint64
@@ -584,4 +585,14 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 		TotalSize:  totalSize,
 		UsedSize:   usedSize,
 	}
+}
+
+// RateLimitInfo defines the rate limit infomation
+type RateLimitInfo struct {
+	MetaNodeReqLimitRate        int64
+	DataNodeReqLimitRate        int64
+	Volume                      string
+	DataNodeReqVolPartLimitRate int64
+	ClientReadLimitRate         int64
+	ClientWriteLimitRate        int64
 }

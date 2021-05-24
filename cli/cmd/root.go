@@ -16,10 +16,11 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/log"
 	"os"
 	"path"
 	"strings"
+
+	"github.com/chubaofs/chubaofs/util/log"
 
 	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/spf13/cobra"
@@ -52,6 +53,7 @@ func NewRootCmd(client *master.MasterClient) *ChubaoFSCmd {
 		newMetaPartitionCmd(client),
 		newConfigCmd(),
 		newCompatibilityCmd(),
+		newRateLimitCmd(client),
 	)
 	return cmd
 }

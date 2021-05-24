@@ -36,10 +36,12 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tiglabs/raft"
 	raftProto "github.com/tiglabs/raft/proto"
+	"golang.org/x/time/rate"
 )
 
 func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
-	reqLimitRater.Wait(context.Background())
+	s.rateLimit(p, c)
+
 	sz := p.Size
 	tpObject := exporter.NewTPCnt(p.GetOpMsg())
 	start := time.Now().UnixNano()
@@ -1246,4 +1248,51 @@ func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet) (ok bo
 	}
 
 	return
+}
+
+func (s *DataNode) rateLimit(p *repl.Packet, c *net.TCPConn) {
+	addrSlice := strings.Split(c.RemoteAddr().String(), ":")
+	_, isInternal := clusterMap[addrSlice[0]]
+	log.LogDebugf("action[rateLimit] enter: Opcode(%v) remoteAddr(%v) clusterMap(%v) isInternal(%v)", p.Opcode, addrSlice[0], clusterMap, isInternal)
+	if isInternal {
+		return
+	}
+	reqLimitRater.Wait(context.Background())
+	//log.LogDebugf("action[rateLimit] process after reqLimit: Opcode(%v) reqRatelimit(%v)", p.Opcode, reqLimitRater.Limit())
+	partition, ok := p.Object.(*DataPartition)
+	if !ok {
+		return
+	}
+
+	reqVolPartLimitRaterMapMutex.Lock()
+	partLimitRaterMap, ok := reqVolPartLimitRaterMap[partition.volumeID]
+	if !ok {
+		r, ok := reqVolPartLimitRateMap[""]
+		var limit rate.Limit
+		if ok {
+			limit = rate.Limit(r)
+		} else {
+			limit = rate.Inf
+		}
+		partLimitRaterMap = make(map[uint64]*rate.Limiter)
+		partLimitRaterMap[partition.partitionID] = rate.NewLimiter(limit, defaultReqLimitBurst)
+		reqVolPartLimitRaterMap[partition.volumeID] = partLimitRaterMap
+	}
+
+	partLimitRater, ok := partLimitRaterMap[partition.partitionID]
+	if !ok {
+		r, ok := reqVolPartLimitRateMap[partition.volumeID]
+		var limit rate.Limit
+		if ok {
+			limit = rate.Limit(r)
+		} else {
+			limit = rate.Inf
+		}
+		partLimitRater = rate.NewLimiter(limit, defaultReqLimitBurst)
+		reqVolPartLimitRaterMap[partition.volumeID][partition.partitionID] = partLimitRater
+	}
+	reqVolPartLimitRaterMapMutex.Unlock()
+
+	partLimitRater.Wait(context.Background())
+	log.LogDebugf("action[rateLimit] process after partLimit: Opcode(%v) volume(%v) partition(%v) partRatelimit(%v)", p.Opcode, partition.volumeID, partition.partitionID, partLimitRater.Limit())
 }

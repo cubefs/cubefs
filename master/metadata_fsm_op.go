@@ -37,6 +37,7 @@ type clusterValue struct {
 	DisableAutoAllocate               bool
 	DataNodeDeleteLimitRate           uint64
 	DataNodeReqLimitRate              uint64
+	DataNodeReqVolPartLimitRateMap    map[string]uint64
 	MetaNodeReqLimitRate              uint64
 	MetaNodeDeleteBatchCount          uint64
 	MetaNodeDeleteWorkerSleepMs       uint64
@@ -52,6 +53,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		Threshold:                         c.cfg.MetaNodeThreshold,
 		DataNodeDeleteLimitRate:           c.cfg.DataNodeDeleteLimitRate,
 		DataNodeReqLimitRate:              c.cfg.DataNodeReqLimitRate,
+		DataNodeReqVolPartLimitRateMap:    c.cfg.DataNodeReqVolPartLimitRateMap,
 		MetaNodeReqLimitRate:              c.cfg.MetaNodeReqLimitRate,
 		MetaNodeDeleteBatchCount:          c.cfg.MetaNodeDeleteBatchCount,
 		MetaNodeDeleteWorkerSleepMs:       c.cfg.MetaNodeDeleteWorkerSleepMs,
@@ -581,6 +583,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateMetaNodeDeleteWorkerSleepMs(cv.MetaNodeDeleteWorkerSleepMs)
 		c.updateDataNodeDeleteLimitRate(cv.DataNodeDeleteLimitRate)
 		atomic.StoreUint64(&c.cfg.DataNodeReqLimitRate, cv.DataNodeReqLimitRate)
+		c.cfg.DataNodeReqVolPartLimitRateMap = cv.DataNodeReqVolPartLimitRateMap
 		atomic.StoreUint64(&c.cfg.MetaNodeReqLimitRate, cv.MetaNodeReqLimitRate)
 		atomic.StoreUint64(&c.cfg.ClientReadLimitRate, cv.ClientReadLimitRate)
 		atomic.StoreUint64(&c.cfg.ClientWriteLimitRate, cv.ClientWriteLimitRate)

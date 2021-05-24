@@ -2702,6 +2702,28 @@ func (c *Cluster) setDataNodeReqLimitRate(val uint64) (err error) {
 	return
 }
 
+func (c *Cluster) setDataNodeReqVolPartLimitRate(val uint64, vol string) (err error) {
+	c.cfg.dataNodeReqVolPartLimitRateMapMutex.Lock()
+	defer c.cfg.dataNodeReqVolPartLimitRateMapMutex.Unlock()
+	oldVal, ok := c.cfg.DataNodeReqVolPartLimitRateMap[vol]
+	if val > 0 {
+		c.cfg.DataNodeReqVolPartLimitRateMap[vol] = val
+	} else {
+		delete(c.cfg.DataNodeReqVolPartLimitRateMap, vol)
+	}
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setDataNodeReqVolPartLimitRate] err[%v]", err)
+		if ok {
+			c.cfg.DataNodeReqVolPartLimitRateMap[vol] = oldVal
+		} else {
+			delete(c.cfg.DataNodeReqVolPartLimitRateMap, vol)
+		}
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
 func (c *Cluster) setMetaNodeReqLimitRate(val uint64) (err error) {
 	oldVal := atomic.LoadUint64(&c.cfg.MetaNodeReqLimitRate)
 	atomic.StoreUint64(&c.cfg.MetaNodeReqLimitRate, val)
