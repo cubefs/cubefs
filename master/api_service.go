@@ -519,6 +519,7 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
+
 	if err = m.cluster.addMetaReplica(mp, addr); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -883,6 +884,33 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
+func (m *Server) resetDataPartition(w http.ResponseWriter, r *http.Request) {
+	var (
+		dp          *DataPartition
+		partitionID uint64
+		rstMsg      string
+		err         error
+	)
+	if partitionID, err = parseRequestToResetDataPartition(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
+		return
+	}
+	if err = m.cluster.resetDataPartition(dp); err != nil {
+		msg := fmt.Sprintf("resetDataPartition[%v] failed, err[%v]", dp.PartitionID, err)
+		log.LogErrorf(msg)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	rstMsg = fmt.Sprintf(proto.AdminResetDataPartition+" dataPartitionID :%v successfully", partitionID)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
 // Mark the volume as deleted, which will then be deleted later.
 func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 	var (
@@ -1157,6 +1185,41 @@ func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rstMsg = fmt.Sprintf("decommission data node [%v] successfully", offLineAddr)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) resetCorruptDataNode(w http.ResponseWriter, r *http.Request) {
+	var (
+		rstMsg     string
+		err        error
+		resetAddr  string
+		node       *DataNode
+		corruptDps []*DataPartition
+	)
+
+	if resetAddr, err = parseAndExtractNodeAddr(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if node, err = m.cluster.dataNode(resetAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
+	if node.isActive {
+		err = errors.NewErrorf("can not reset active node")
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if corruptDps, err = m.cluster.checkCorruptDataNode(node); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+	}
+	for _, dp := range corruptDps {
+		if err = m.cluster.resetDataPartition(dp); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+	rstMsg = fmt.Sprintf(proto.AdminResetCorruptDataNode+"successfully, node:[%v] count:[%v]", node.Addr, len(corruptDps))
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
@@ -1458,6 +1521,31 @@ func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Reques
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
+func (m *Server) resetMetaPartition(w http.ResponseWriter, r *http.Request) {
+	var (
+		mp          *MetaPartition
+		partitionID uint64
+		rstMsg      string
+		err         error
+	)
+	if partitionID, err = parseRequestToReplicateMetaPartition(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
+		return
+	}
+
+	if err = m.cluster.resetMetaPartition(mp); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	rstMsg = fmt.Sprintf(proto.AdminResetMetaPartition+" metaPartitionID :%v successfully", partitionID)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
 func (m *Server) loadMetaPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		msg         string
@@ -1510,6 +1598,41 @@ func (m *Server) decommissionMetaNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rstMsg = fmt.Sprintf("decommissionMetaNode metaNode [%v] has offline successfully", offLineAddr)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) resetCorruptMetaNode(w http.ResponseWriter, r *http.Request) {
+	var (
+		node       *MetaNode
+		addr       string
+		rstMsg     string
+		corruptMps []*MetaPartition
+		err        error
+	)
+	if addr, err = parseAndExtractNodeAddr(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if node, err = m.cluster.metaNode(addr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaNodeNotExists))
+		return
+	}
+	if node.IsActive {
+		err = errors.NewErrorf("can not reset active node")
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if corruptMps, err = m.cluster.checkCorruptMetaNode(node); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+	}
+	for _, mp := range corruptMps {
+		if err = m.cluster.resetMetaPartition(mp); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+	rstMsg = fmt.Sprintf(proto.AdminResetCorruptMetaNode+" node :%v successfully", node.Addr)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
@@ -1909,6 +2032,10 @@ func parseRequestToGetDataPartition(r *http.Request) (ID uint64, volName string,
 	return
 }
 
+func parseRequestToResetDataPartition(r *http.Request) (ID uint64, err error) {
+	return extractDataPartitionID(r)
+}
+
 func parseRequestToLoadDataPartition(r *http.Request) (ID uint64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -2068,6 +2195,10 @@ func parseRequestToLoadMetaPartition(r *http.Request) (partitionID uint64, err e
 
 func parseRequestToDecommissionMetaPartition(r *http.Request) (partitionID uint64, nodeAddr string, err error) {
 	return extractMetaPartitionIDAndAddr(r)
+}
+
+func parseRequestToReplicateMetaPartition(r *http.Request) (partitionID uint64, err error) {
+	return extractMetaPartitionID(r)
 }
 
 func parseAndExtractStatus(r *http.Request) (status bool, err error) {

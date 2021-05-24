@@ -61,8 +61,10 @@ type MetaPartition struct {
 	Learners      []proto.Learner
 	MissNodes     map[string]int64
 	OfflinePeerID uint64
-	LoadResponse  []*proto.MetaPartitionLoadResponse
-	offlineMutex  sync.RWMutex
+	//PanicHosts records the hosts discard by reset peer action.
+	PanicHosts   []string
+	LoadResponse []*proto.MetaPartitionLoadResponse
+	offlineMutex sync.RWMutex
 	sync.RWMutex
 }
 
@@ -82,6 +84,7 @@ func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName 
 	mp.Peers = make([]proto.Peer, 0)
 	mp.Learners = make([]proto.Learner, 0)
 	mp.Hosts = make([]string, 0)
+	mp.PanicHosts = make([]string, 0)
 	mp.LoadResponse = make([]*proto.MetaPartitionLoadResponse, 0)
 	return
 }
@@ -598,6 +601,13 @@ func (mp *MetaPartition) createTaskToRemoveRaftMember(removePeer proto.Peer) (t 
 	}
 	req := &proto.RemoveMetaPartitionRaftMemberRequest{PartitionId: mp.PartitionID, RemovePeer: removePeer}
 	t = proto.NewAdminTask(proto.OpRemoveMetaPartitionRaftMember, mr.Addr, req)
+	resetMetaPartitionTaskID(t, mp.PartitionID)
+	return
+}
+
+func (mp *MetaPartition) createTaskToResetRaftMembers(newPeers []proto.Peer, address string) (t *proto.AdminTask, err error) {
+	req := &proto.ResetMetaPartitionRaftMemberRequest{PartitionId: mp.PartitionID, NewPeers: newPeers}
+	t = proto.NewAdminTask(proto.OpResetMetaPartitionRaftMember, address, req)
 	resetMetaPartitionTaskID(t, mp.PartitionID)
 	return
 }

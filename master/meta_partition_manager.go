@@ -16,6 +16,7 @@ package master
 
 import (
 	"fmt"
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 	"math"
 	"strconv"
@@ -152,6 +153,7 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 	}()
 
 	var diff float64
+	c.checkFulfillMetaReplica()
 	c.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
 		badMetaPartitionIds := value.([]uint64)
 		newBadMpIds := make([]uint64, 0)
@@ -164,11 +166,11 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 			if err != nil {
 				continue
 			}
-			if len(partition.Replicas) == 0 || len(partition.Replicas) < int(vol.mpReplicaNum) {
+			if len(partition.Replicas) == 0 {
 				continue
 			}
 			diff = partition.getMinusOfMaxInodeID()
-			if diff < defaultMinusOfMaxInodeID {
+			if diff < defaultMinusOfMaxInodeID && int(vol.mpReplicaNum) <= len(partition.Replicas) {
 				partition.IsRecover = false
 				partition.RLock()
 				c.syncUpdateMetaPartition(partition)
@@ -188,4 +190,69 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 
 		return true
 	})
+}
+
+// Add replica for the partition whose replica number is less than replicaNum
+func (c *Cluster) checkFulfillMetaReplica() {
+	c.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
+		badMetaPartitionIds := value.([]uint64)
+		badAddr := key.(string)
+		newBadParitionIds := make([]uint64, 0)
+		for _, partitionID := range badMetaPartitionIds {
+			var err error
+			var partition *MetaPartition
+			if partition, err = c.getMetaPartitionByID(partitionID); err != nil {
+				newBadParitionIds = append(newBadParitionIds, partitionID)
+				continue
+			}
+			//len(partition.Hosts) >= int(partition.ReplicaNum) occurs when decommission failed, this need to be decommission again, do not fulfill replica
+			if len(partition.Replicas) >= int(partition.ReplicaNum) || len(partition.Hosts) >= int(partition.ReplicaNum) {
+				newBadParitionIds = append(newBadParitionIds, partitionID)
+				continue
+			}
+			if err = c.fulfillMetaReplica(partition, badAddr, partitionID); err != nil {
+				log.LogWarnf(fmt.Sprintf("action[checkFulfillMetaReplica], clusterID[%v], partitionID[%v], err[%v] ", c.Name, partitionID, err))
+				newBadParitionIds = append(newBadParitionIds, partitionID)
+				continue
+			}
+			//only if the len(replica + learner) equals to replicaNum, will we keep the badPartitionID to check the recover progress of this partition later
+			//if len(replica + learner) is less than replicaNum, we should discard this badDiskAddr to avoid add raft learner twice.
+			if len(partition.Replicas) < int(partition.ReplicaNum) {
+				continue
+			}
+			newBadParitionIds = append(newBadParitionIds, partitionID)
+		}
+		//Todo: write BadMetaPartitionIds to raft log
+		c.BadMetaPartitionIds.Store(key, newBadParitionIds)
+		return true
+	})
+
+}
+
+func (c *Cluster) fulfillMetaReplica(partition *MetaPartition, badAddr string, partitionID uint64) (err error) {
+	var (
+		newPeer proto.Peer
+	)
+	if _, err = partition.getMetaReplicaLeader(); err != nil {
+		err = fmt.Errorf("Action[fulfillMetaReplica], partitionID[%v], no leader, err[%v]", partitionID, err)
+		return
+	}
+	if newPeer, err = c.chooseTargetMetaPartitionHost(badAddr, partition); err != nil {
+		return
+	}
+	if err = c.addMetaReplica(partition, newPeer.Addr); err != nil {
+		return
+	}
+	newPanicHost := make([]string, 0)
+	for _, h := range partition.PanicHosts {
+		if h == badAddr {
+			continue
+		}
+		newPanicHost = append(newPanicHost, h)
+	}
+	partition.Lock()
+	partition.PanicHosts = newPanicHost
+	c.syncUpdateMetaPartition(partition)
+	partition.Unlock()
+	return
 }

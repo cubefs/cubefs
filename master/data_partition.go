@@ -49,6 +49,7 @@ type DataPartition struct {
 	createTime              int64
 	lastWarnTime            int64
 	OfflinePeerID           uint64
+	PanicHosts              []string
 	FileInCoreMap           map[string]*FileInCore
 	FilesWithMissingReplica map[string]int64 // key: file name, value: last time when a missing replica is found
 }
@@ -64,6 +65,7 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64)
 	partition.FileInCoreMap = make(map[string]*FileInCore, 0)
 	partition.FilesWithMissingReplica = make(map[string]int64)
 	partition.MissingNodes = make(map[string]int64)
+	partition.PanicHosts = make([]string, 0)
 
 	partition.Status = proto.ReadOnly
 	partition.VolName = volName
@@ -154,6 +156,11 @@ func (partition *DataPartition) createTaskToAddRaftLearner(addLearner proto.Lear
 
 func (partition *DataPartition) createTaskToPromoteRaftLearner(promoteLearner proto.Learner, leaderAddr string) (task *proto.AdminTask, err error) {
 	task = proto.NewAdminTask(proto.OpPromoteDataPartitionRaftLearner, leaderAddr, newPromoteDataPartitionRaftLearnerRequest(partition.PartitionID, promoteLearner))
+	partition.resetTaskID(task)
+	return
+}
+func (partition *DataPartition) createTaskToResetRaftMembers(newPeers []proto.Peer, address string) (task *proto.AdminTask, err error) {
+	task = proto.NewAdminTask(proto.OpResetDataPartitionRaftMember, address, newResetDataPartitionRaftMemberRequest(partition.PartitionID, newPeers))
 	partition.resetTaskID(task)
 	return
 }
@@ -557,7 +564,7 @@ func (partition *DataPartition) update(action, volName string, newPeers []proto.
 		return errors.Trace(err, "action[%v] update partition[%v] vol[%v] failed", action, partition.PartitionID, volName)
 	}
 	msg := fmt.Sprintf("action[%v] success,vol[%v] partitionID:%v "+
-		"oldHosts:%v, newHosts:%v, oldPeers[%v], newPeers[%v], oldLearners[%v], newLearners[%v]",
+		"oldHosts:%v newHosts:%v,oldPeers[%v],newPeers[%v], oldLearners[%v], newLearners[%v]",
 		action, volName, partition.PartitionID, orgHosts, partition.Hosts, oldPeers, partition.Peers, oldLearners, partition.Learners)
 	log.LogInfo(msg)
 	return
@@ -847,7 +854,7 @@ func (partition *DataPartition) needToRebalanceZone(c *Cluster, zoneList []strin
 	return
 }
 
-var getTargetAddressForBalanceDataPartitionZone = func(c *Cluster, offlineAddr string, dp *DataPartition, excludeNodeSets []uint64, zoneName string, destZone string) (oldAddr, newAddr string, err error) {
+var getTargetAddressForBalanceDataPartitionZone = func(c *Cluster, offlineAddr string, dp *DataPartition, excludeNodeSets []uint64, destZone string, validate bool) (oldAddr, newAddr string, err error) {
 	var (
 		offlineZoneName     string
 		targetZoneName      string
@@ -855,8 +862,12 @@ var getTargetAddressForBalanceDataPartitionZone = func(c *Cluster, offlineAddr s
 		nodesetInTargetZone *nodeSet
 		addrInTargetZone    string
 		targetHosts         []string
+		vol                 *Vol
 	)
-	if offlineZoneName, targetZoneName, err = dp.getOfflineAndTargetZone(c, zoneName); err != nil {
+	if vol, err = c.getVol(dp.VolName); err != nil {
+		return
+	}
+	if offlineZoneName, targetZoneName, err = dp.getOfflineAndTargetZone(c, vol.zoneName); err != nil {
 		return
 	}
 	if offlineZoneName == "" || targetZoneName == "" {
@@ -911,8 +922,8 @@ var getTargetAddressForBalanceDataPartitionZone = func(c *Cluster, offlineAddr s
 		return
 	}
 	newAddr = targetHosts[0]
-	log.LogInfof("action[balanceZone],data partitionID:%v,zone name:[%v],old address:[%v], new address:[%v]",
-		dp.PartitionID, zoneName, oldAddr, newAddr)
+	log.LogInfof("action[balanceZone],data partitionID:%v,vol zone name:[%v],old address:[%v], new address:[%v]",
+		dp.PartitionID, vol.zoneName, oldAddr, newAddr)
 	return
 }
 

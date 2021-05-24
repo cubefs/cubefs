@@ -510,6 +510,39 @@ func TestRemoveDataReplica(t *testing.T) {
 	partition.RUnlock()
 }
 
+func TestResetDataReplica(t *testing.T) {
+	partition := commonVol.dataPartitions.partitions[9]
+	var inActiveDataNode []*DataNode
+	var activeHosts []string
+	for i, host := range partition.Hosts {
+		if i < 2 {
+			dataNode, _ := server.cluster.dataNode(host)
+			dataNode.isActive = false
+			inActiveDataNode = append(inActiveDataNode, dataNode)
+			continue
+		}
+		activeHosts = append(activeHosts, host)
+	}
+	t.Logf("pid[%v] origin hosts[%v], active hosts[%v]", partition.PartitionID, partition.Hosts, activeHosts)
+	partition.isRecover = false
+	reqURL := fmt.Sprintf("%v%v?id=%v", hostAddr, proto.AdminResetDataPartition, partition.PartitionID)
+	process(reqURL, t)
+	partition.Lock()
+	defer partition.Unlock()
+	if len(partition.Hosts) != 1 {
+		t.Errorf("hosts[%v] reset peers of data partition failed", partition.Hosts)
+		return
+	}
+	partition.isRecover = false
+	for _, dataNode := range inActiveDataNode {
+		if contains(partition.Hosts, dataNode.Addr) {
+			t.Errorf("hosts[%v] should not contains inactiveAddr[%v]", partition.Hosts, dataNode.Addr)
+			return
+		}
+		dataNode.isActive = true
+	}
+}
+
 func TestAddMetaReplica(t *testing.T) {
 	maxPartitionID := commonVol.maxPartitionID()
 	partition := commonVol.MetaPartitions[maxPartitionID]
@@ -684,6 +717,42 @@ func TestPromoteMetaLearner(t *testing.T) {
 		return
 	}
 	partition.RUnlock()
+}
+
+func TestResetMetaReplica(t *testing.T) {
+	maxPartitionID := commonVol.maxPartitionID()
+	partition := commonVol.MetaPartitions[maxPartitionID]
+	if partition == nil {
+		t.Error("no meta partition")
+		return
+	}
+	var inActiveMetaNode []*MetaNode
+	for i, host := range partition.Hosts {
+		if i < 2 {
+			metaNode, _ := server.cluster.metaNode(host)
+			metaNode.IsActive = false
+			inActiveMetaNode = append(inActiveMetaNode, metaNode)
+		}
+	}
+	partition.IsRecover = false
+	reqURL := fmt.Sprintf("%v%v?id=%v", hostAddr, proto.AdminResetMetaPartition, partition.PartitionID)
+	process(reqURL, t)
+	partition.Lock()
+	defer partition.Unlock()
+
+	if len(partition.Hosts) != 1 {
+		t.Errorf("hosts[%v] reset peers of meta partition  failed", partition.Hosts)
+		return
+	}
+	partition.IsRecover = false
+	for _, metaNode := range inActiveMetaNode {
+		if contains(partition.Hosts, metaNode.Addr) {
+			t.Errorf("hosts[%v] should not contains inactiveAddr[%v]", partition.Hosts, metaNode.Addr)
+			return
+		}
+		metaNode.IsActive = true
+	}
+
 }
 
 func TestAddToken(t *testing.T) {

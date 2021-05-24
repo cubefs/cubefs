@@ -146,7 +146,10 @@ type ConfChangeLearnerReq struct {
 	Id				uint64	`json:"pid"`
 	ChangeLearner	Learner	`json:"learner"`
 }
-
+type ResetPeers struct {
+	NewPeers []Peer
+	Context  []byte
+}
 type HeartbeatContext []uint64
 
 func (t MsgType) String() string {

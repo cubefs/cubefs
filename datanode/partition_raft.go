@@ -22,6 +22,7 @@ import (
 	"net"
 	"os"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -383,6 +384,12 @@ func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMember
 	if hostIndex != -1 {
 		dp.config.Hosts = append(dp.config.Hosts[:hostIndex], dp.config.Hosts[hostIndex+1:]...)
 	}
+
+	dp.replicasLock.Lock()
+	dp.replicas = make([]string, len(dp.config.Hosts))
+	copy(dp.replicas, dp.config.Hosts)
+	dp.replicasLock.Unlock()
+
 	dp.config.Peers = append(dp.config.Peers[:peerIndex], dp.config.Peers[peerIndex+1:]...)
 	learnerIndex := -1
 	for i, learner := range dp.config.Learners {
@@ -406,6 +413,77 @@ func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMember
 	log.LogInfof("Fininsh RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 		req.PartitionId, dp.config.NodeID, string(data))
 
+	return
+}
+
+// Reset a raft node.
+func (dp *DataPartition) resetRaftNode(req *proto.ResetDataPartitionRaftMemberRequest) (isUpdated bool, err error) {
+	var (
+		newHostIndexes []int
+		newPeerIndexes []int
+		newHosts       []string
+		newPeers       []proto.Peer
+	)
+	data, _ := json.Marshal(req)
+	isUpdated = true
+	log.LogInfof("Start ResetRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+		req.PartitionId, dp.config.NodeID, string(data))
+
+	if len(req.NewPeers) >= len(dp.config.Peers) {
+		log.LogInfof("NoUpdate ResetRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+			req.PartitionId, dp.config.NodeID, string(data))
+		return
+	}
+	for _, peer := range req.NewPeers {
+		flag := false
+		for index, p := range dp.config.Peers {
+			if peer.ID == p.ID {
+				flag = true
+				newPeerIndexes = append(newPeerIndexes, index)
+				break
+			}
+		}
+		if !flag {
+			isUpdated = false
+			log.LogInfof("ResetRaftNode must be old node, PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+				req.PartitionId, dp.config.NodeID, string(data))
+			return
+		}
+	}
+	for _, peer := range req.NewPeers {
+		flag := false
+		for index, host := range dp.config.Hosts {
+			if peer.Addr == host {
+				flag = true
+				newHostIndexes = append(newHostIndexes, index)
+				break
+			}
+		}
+		if !flag {
+			isUpdated = false
+			log.LogInfof("ResetRaftNode must be old node, PartitionID(%v) nodeID(%v) OldHosts(%v)  do RaftLog (%v) ",
+				req.PartitionId, dp.config.NodeID, dp.config.Hosts, string(data))
+			return
+		}
+	}
+	newHosts = make([]string, len(newHostIndexes))
+	newPeers = make([]proto.Peer, len(newPeerIndexes))
+	dp.replicasLock.Lock()
+	sort.Ints(newHostIndexes)
+	for i, index := range newHostIndexes {
+		newHosts[i] = dp.config.Hosts[index]
+	}
+	dp.config.Hosts = newHosts
+	sort.Ints(newPeerIndexes)
+	for i, index := range newPeerIndexes {
+		newPeers[i] = dp.config.Peers[index]
+	}
+	dp.config.Peers = newPeers
+	dp.replicas = make([]string, len(dp.config.Hosts))
+	copy(dp.replicas, dp.config.Hosts)
+	dp.replicasLock.Unlock()
+	log.LogInfof("Finish ResetRaftNode  PartitionID(%v) nodeID(%v) newHosts(%v)  do RaftLog (%v) ",
+		req.PartitionId, dp.config.NodeID, newHosts, string(data))
 	return
 }
 

@@ -88,6 +88,14 @@ func newPromoteDataPartitionRaftLearnerRequest(ID uint64, promLearner proto.Lear
 	return
 }
 
+func newResetDataPartitionRaftMemberRequest(ID uint64, newPeers []proto.Peer) (req *proto.ResetDataPartitionRaftMemberRequest) {
+	req = &proto.ResetDataPartitionRaftMemberRequest{
+		PartitionId: ID,
+		NewPeers:    newPeers,
+	}
+	return
+}
+
 func newLoadDataPartitionMetricRequest(ID uint64) (req *proto.LoadDataPartitionRequest) {
 	req = &proto.LoadDataPartitionRequest{
 		PartitionId: ID,
