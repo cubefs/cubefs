@@ -315,6 +315,9 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, e
 // 3. Read a reply from responseCh, and write to the client.
 func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 	ticker := time.NewTicker(time.Minute)
+	defer func() {
+		ticker.Stop()
+	}()
 	for {
 		select {
 		case request := <-rp.toBeProcessedCh:
