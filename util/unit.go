@@ -14,7 +14,10 @@
 
 package util
 
-import "regexp"
+import (
+	"math"
+	"regexp"
+)
 
 const (
 	_  = iota
@@ -79,4 +82,9 @@ func isMatch(exp *regexp.Regexp, val interface{}) bool {
 	default:
 		return false
 	}
+}
+
+func FixedPoint(value float64, scale int) float64 {
+	decimal := math.Pow10(scale)
+	return float64(int(math.Round(value * decimal))) / decimal
 }

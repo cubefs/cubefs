@@ -19,6 +19,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -423,6 +424,55 @@ func (s *DataNode) buildJSONResp(w http.ResponseWriter, code int, data interface
 		return
 	}
 	w.Write(jsonBody)
+}
+
+func (s *DataNode) getStatInfo(w http.ResponseWriter, r *http.Request){
+	//get process stat info
+	cpuUsageList, maxCPUUsage := s.processStatInfo.GetProcessCPUStatInfo()
+	memoryUsedGBList, maxMemoryUsedGB, maxMemoryUsage := s.processStatInfo.GetProcessMemoryStatInfo()
+	//get disk info
+	disks := s.space.GetDisks()
+	diskList := make([]interface{}, 0, len(disks))
+	for _, disk := range disks {
+		diskInfo := &struct{
+			Path          string  `json:"path"`
+			TotalTB       float64 `json:"totalTB"`
+			UsedGB        float64 `json:"usedGB"`
+			UsedRatio     float64 `json:"usedRatio"`
+			ReservedSpace uint    `json:"reservedSpaceGB"`
+		}{
+			Path:          disk.Path,
+			TotalTB:       util.FixedPoint(float64(disk.Total) / util.TB, 1),
+			UsedGB:        util.FixedPoint(float64(disk.Used) / util.GB, 1),
+			UsedRatio:     util.FixedPoint(float64(disk.Used) / float64(disk.Total), 1),
+			ReservedSpace: uint(disk.ReservedSpace / util.GB),
+		}
+		diskList = append(diskList, diskInfo)
+	}
+	result := &struct {
+		Type           string        `json:"type"`
+		Zone           string        `json:"zone"`
+		Version        interface{}   `json:"versionInfo"`
+		StartTime      string        `json:"startTime"`
+		CPUUsageList   []float64     `json:"cpuUsageList"`
+		MaxCPUUsage    float64       `json:"maxCPUUsage"`
+		MemoryUsedList []float64     `json:"memoryUsedGBList"`
+		MaxMemoryUsed  float64       `json:"maxMemoryUsedGB"`
+		MaxMemoryUsage float64       `json:"maxMemoryUsage"`
+		DiskInfo       []interface{} `json:"diskInfo"`
+	}{
+		Type:           ModuleName,
+		Zone:           s.zoneName,
+		Version:        proto.MakeVersion("DataNode"),
+		StartTime:      s.processStatInfo.ProcessStartTime,
+		CPUUsageList:   cpuUsageList,
+		MaxCPUUsage:    maxCPUUsage,
+		MemoryUsedList: memoryUsedGBList,
+		MaxMemoryUsed:  maxMemoryUsedGB,
+		MaxMemoryUsage: maxMemoryUsage,
+		DiskInfo:       diskList,
+	}
+	s.buildSuccessResp(w, result)
 }
 
 func matchKey(key string) bool {
