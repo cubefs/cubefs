@@ -30,6 +30,7 @@ var (
 	ErrPeersEmpty    	= errors.New("peers are nil or empty")
 	ErrLearnerNotReady	= errors.New("raft learner is not ready.")
 	ErrUnmarshal		= errors.New("json unmarshl error")
+	ErrFullChannel		= errors.New("channel is full.")
 )
 
 type FatalError struct {

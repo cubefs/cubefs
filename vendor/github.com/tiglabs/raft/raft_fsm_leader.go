@@ -300,7 +300,7 @@ func (r *raftFsm) tickHeartbeat() {
 	r.electionElapsed++
 	if r.pastElectionTimeout() {
 		r.electionElapsed = 0
-		if r.config.LeaseCheck && !r.checkLeaderLease() {
+		if r.config.LeaseCheck && !r.checkLeaderLease(true) {
 			if logger.IsEnableWarn() {
 				logger.Warn("raft[%v] stepped down to follower since quorum is not active.", r.id)
 			}
@@ -339,7 +339,7 @@ func (r *raftFsm) tickElectionAck() {
 	}
 }
 
-func (r *raftFsm) checkLeaderLease() bool {
+func (r *raftFsm) checkLeaderLease(reset bool) bool {
 	var act int
 	for id := range r.replicas {
 		if id == r.config.NodeID || r.replicas[id].state == replicaStateSnapshot {
@@ -350,7 +350,9 @@ func (r *raftFsm) checkLeaderLease() bool {
 		if r.replicas[id].active && !r.replicas[id].isLearner {
 			act++
 		}
-		r.replicas[id].active = false
+		if reset {
+			r.replicas[id].active = false
+		}
 	}
 
 	return act >= r.quorum()
