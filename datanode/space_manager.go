@@ -182,12 +182,18 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace uint64, maxErrC
 
 func (manager *SpaceManager) StartPartitions() {
 	var err error
+	partitions:=make([]*DataPartition,0)
 	manager.partitionMutex.RLock()
-	defer manager.partitionMutex.RUnlock()
-	for id, partition := range manager.partitions {
-		if err = partition.Start(); err != nil {
-			log.LogErrorf("partition [id:%v, path:%v] start failed: %v", id, partition.path, err)
-			delete(manager.partitions, id)
+	for _, partition := range manager.partitions {
+		partitions=append(partitions,partition)
+	}
+	manager.partitionMutex.RUnlock()
+	for _, dp :=range partitions{
+		if err = dp.Start(); err != nil {
+			log.LogErrorf("dp [id:%v, path:%v] start failed: %v", dp.partitionID, dp.path, err)
+			manager.partitionMutex.Lock()
+			delete(manager.partitions, dp.partitionID)
+			manager.partitionMutex.Unlock()
 		}
 	}
 }
