@@ -486,10 +486,10 @@ func (s *Streamer) traverse() (err error) {
 			s.dirtylist.Remove(element)
 			eh.cleanup()
 		} else {
-			if s.traversed < streamWriterFlushPeriod {
-				log.LogDebugf("Streamer traverse skipped: traversed(%v) eh(%v)", s.traversed, eh)
-				continue
-			}
+			//if s.traversed < streamWriterFlushPeriod {
+			//	log.LogDebugf("Streamer traverse skipped: traversed(%v) eh(%v)", s.traversed, eh)
+			//	continue
+			//}
 			// eh.setClosed()
 			eh.flushPacket()
 			eh.appendExtentKey()
