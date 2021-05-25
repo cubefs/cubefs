@@ -383,16 +383,52 @@ func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) {
 }
 
 func (m *metadataManager) startPartitions() (err error) {
+	partitions:=make([]MetaPartition,0)
 	m.mu.RLock()
-	defer m.mu.RUnlock()
-	for id, partition := range m.partitions {
-		if err = partition.Start(); err != nil {
-			log.LogErrorf("partition[%v] start failed: %v", id, err)
-			return
-		}
-		log.LogInfof("partition[%v] start success", id)
+	for _, partition := range m.partitions {
+		partitions=append(partitions,partition)
 	}
-	return
+	m.mu.RUnlock()
+
+	var (
+		wg sync.WaitGroup
+		startErrs=make([]error,0)
+	)
+	for _, mp :=range partitions{
+		wg.Add(1)
+		go func(mp MetaPartition) {
+			defer wg.Done()
+			if err1 := mp.Start(); err1 != nil {
+				err1=fmt.Errorf("partition[%v] start failed: %v", mp.GetBaseConfig().PartitionId, err1)
+				log.LogErrorf(err1.Error())
+				startErrs=append(startErrs,err1)
+				return
+			}
+			log.LogInfof("partition[%v] start success",  mp.GetBaseConfig().PartitionId)
+		}(mp)
+	}
+	wg.Wait()
+	if len(startErrs)==0 {
+		return nil
+	}
+	var (
+		errMesg string
+	)
+	for _,err1:=range startErrs {
+		errMesg=fmt.Sprintf("%v ,%v",errMesg,err1.Error())
+	}
+	return fmt.Errorf(errMesg)
+	//
+	//m.mu.RLock()
+	//defer m.mu.RUnlock()
+	//for id, partition := range m.partitions {
+	//	if err = partition.Start(); err != nil {
+	//		log.LogErrorf("partition[%v] start failed: %v", id, err)
+	//		return
+	//	}
+	//	log.LogInfof("partition[%v] start success", id)
+	//}
+	//return
 }
 
 func (m *metadataManager) detachPartition(id uint64) (err error) {
