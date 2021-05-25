@@ -171,7 +171,7 @@ const (
 	ReadDeadlineTime             = 5
 	SyncSendTaskDeadlineTime     = 20
 	NoReadDeadlineTime           = -1
-	MaxWaitFollowerRepairTime    = 60 * 30
+	MaxWaitFollowerRepairTime    = 60 * 5
 	GetAllWatermarksDeadLineTime = 60
 	MaxPacketProcessTime         = 5
 	MinReadDeadlineTime          = 1
