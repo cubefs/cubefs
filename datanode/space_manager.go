@@ -188,14 +188,23 @@ func (manager *SpaceManager) StartPartitions() {
 		partitions=append(partitions,partition)
 	}
 	manager.partitionMutex.RUnlock()
+
+	var (
+		wg sync.WaitGroup
+	)
 	for _, dp :=range partitions{
-		if err = dp.Start(); err != nil {
-			log.LogErrorf("dp [id:%v, path:%v] start failed: %v", dp.partitionID, dp.path, err)
-			manager.partitionMutex.Lock()
-			delete(manager.partitions, dp.partitionID)
-			manager.partitionMutex.Unlock()
-		}
+		wg.Add(1)
+		go func(dp *DataPartition) {
+			defer wg.Done()
+			if err = dp.Start(); err != nil {
+				log.LogErrorf("dp [id:%v, path:%v] start failed: %v", dp.partitionID, dp.path, err)
+				manager.partitionMutex.Lock()
+				delete(manager.partitions, dp.partitionID)
+				manager.partitionMutex.Unlock()
+			}
+		}(dp)
 	}
+	wg.Wait()
 }
 
 func (manager *SpaceManager) GetDisk(path string) (d *Disk, err error) {
