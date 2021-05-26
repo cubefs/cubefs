@@ -37,7 +37,7 @@ const (
 	StreamReadConsistenceRetry   = 50
 	StreamReadConsistenceTimeout = 1 * time.Minute
 
-	IdleConnTimeoutData = 60 * 10
+	IdleConnTimeoutData = 30
 	ConnectTimeoutData  = 1
 )
 
