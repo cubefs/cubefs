@@ -430,6 +430,14 @@ func (dp *DataPartition) IsRejectWrite() bool {
 	return dp.Disk().RejectWrite
 }
 
+const (
+	MinDiskSpace=10*1024*1024*1024
+)
+
+func (dp *DataPartition) IsRejectRandomWrite() bool {
+	return dp.Disk().Available<MinDiskSpace
+}
+
 // Status returns the partition status.
 func (dp *DataPartition) Status() int {
 	return dp.partitionStatus
