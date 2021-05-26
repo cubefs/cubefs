@@ -24,6 +24,7 @@ import (
 // Keys in the request
 const (
 	addrKey                     = "addr"
+	destAddrKey               = "destAddr"
 	diskPathKey                 = "disk"
 	nameKey                     = "name"
 	idKey                       = "id"

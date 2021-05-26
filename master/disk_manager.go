@@ -173,7 +173,7 @@ func (c *Cluster) decommissionDisk(dataNode *DataNode, badDiskPath string, badPa
 		wg.Add(1)
 		go func(dp *DataPartition) {
 			defer wg.Done()
-			if err1 := c.decommissionDataPartition(dataNode.Addr, dp, getTargetAddressForDataPartitionDecommission, diskOfflineErr, "", false); err1 != nil {
+			if err1 := c.decommissionDataPartition(dataNode.Addr, dp, getTargetAddressForDataPartitionDecommission, diskOfflineErr, "", "", false); err1 != nil {
 				errChannel <- err1
 			}
 		}(dp)

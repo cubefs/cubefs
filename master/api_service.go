@@ -699,11 +699,12 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		rstMsg      string
 		dp          *DataPartition
 		addr        string
+		destAddr    string
 		partitionID uint64
 		err         error
 	)
 
-	if partitionID, addr, err = parseRequestToDecommissionDataPartition(r); err != nil {
+	if partitionID, addr, destAddr, err = parseRequestToDecommissionDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -711,7 +712,7 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
 		return
 	}
-	if err = m.cluster.decommissionDataPartition(addr, dp, getTargetAddressForDataPartitionDecommission, handleDataPartitionOfflineErr, "", false); err != nil {
+	if err = m.cluster.decommissionDataPartition(addr, dp, getTargetAddressForDataPartitionDecommission, handleDataPartitionOfflineErr, "", destAddr, false); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1673,11 +1674,12 @@ func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Reques
 	var (
 		partitionID uint64
 		nodeAddr    string
+		destAddr    string
 		mp          *MetaPartition
 		msg         string
 		err         error
 	)
-	if partitionID, nodeAddr, err = parseRequestToDecommissionMetaPartition(r); err != nil {
+	if partitionID, nodeAddr, destAddr, err = parseRequestToDecommissionMetaPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1685,7 +1687,7 @@ func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
-	if err = m.cluster.decommissionMetaPartition(nodeAddr, mp, getTargetAddressForMetaPartitionDecommission, false); err != nil {
+	if err = m.cluster.decommissionMetaPartition(nodeAddr, mp, getTargetAddressForMetaPartitionDecommission, destAddr, false); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2349,6 +2351,20 @@ func extractMetaPartitionIDAndAddr(r *http.Request) (ID uint64, addr string, err
 	return
 }
 
+func extractMetaPartitionIDAddrAndDestAddr(r *http.Request) (ID uint64, addr string, destAddr string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if ID, err = extractMetaPartitionID(r); err != nil {
+		return
+	}
+	if addr, err = extractNodeAddr(r); err != nil {
+		return
+	}
+	destAddr, _ = extractDestNodeAddr(r)
+	return
+}
+
 func parseRequestToAddDataReplica(r *http.Request) (ID uint64, addr string, err error) {
 	return extractDataPartitionIDAndAddr(r)
 }
@@ -2383,8 +2399,30 @@ func extractDataPartitionID(r *http.Request) (ID uint64, err error) {
 	return strconv.ParseUint(value, 10, 64)
 }
 
-func parseRequestToDecommissionDataPartition(r *http.Request) (ID uint64, nodeAddr string, err error) {
-	return extractDataPartitionIDAndAddr(r)
+func parseRequestToDecommissionDataPartition(r *http.Request) (ID uint64, nodeAddr string, destAddr string, err error) {
+	return extractDataPartitionIDAddrAndDestAddr(r)
+}
+
+func extractDataPartitionIDAddrAndDestAddr(r *http.Request) (ID uint64, addr string, destAddr string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if ID, err = extractDataPartitionID(r); err != nil {
+		return
+	}
+	if addr, err = extractNodeAddr(r); err != nil {
+		return
+	}
+	destAddr, _ = extractDestNodeAddr(r)
+	return
+}
+
+func extractDestNodeAddr(r *http.Request) (destAddr string, err error) {
+	if destAddr = r.FormValue(destAddrKey); destAddr == "" {
+		err = keyNotFound(destAddrKey)
+		return
+	}
+	return
 }
 
 func extractNodeAddr(r *http.Request) (nodeAddr string, err error) {
@@ -2441,8 +2479,8 @@ func parseRequestToLoadMetaPartition(r *http.Request) (partitionID uint64, err e
 	return
 }
 
-func parseRequestToDecommissionMetaPartition(r *http.Request) (partitionID uint64, nodeAddr string, err error) {
-	return extractMetaPartitionIDAndAddr(r)
+func parseRequestToDecommissionMetaPartition(r *http.Request) (partitionID uint64, nodeAddr string, destAddr string, err error) {
+	return extractMetaPartitionIDAddrAndDestAddr(r)
 }
 
 func parseRequestToReplicateMetaPartition(r *http.Request) (partitionID uint64, err error) {

@@ -270,7 +270,7 @@ func (m *ClusterService) decommissionMetaPartition(ctx context.Context, args str
 	if err != nil {
 		return nil, err
 	}
-	if err := m.cluster.decommissionMetaPartition(args.NodeAddr, mp, getTargetAddressForMetaPartitionDecommission, false); err != nil {
+	if err := m.cluster.decommissionMetaPartition(args.NodeAddr, mp, getTargetAddressForMetaPartitionDecommission, "", false); err != nil {
 		return nil, err
 	}
 	log.LogInfof(proto.AdminDecommissionMetaPartition+" partitionID :%v  decommissionMetaPartition successfully", args.PartitionID)

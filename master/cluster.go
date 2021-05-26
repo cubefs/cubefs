@@ -374,7 +374,7 @@ func (c *Cluster) repairDataPartition(wg sync.WaitGroup) {
 				}
 				switch task.RType {
 				case BalanceDataZone:
-					if err = c.decommissionDataPartition("", dp, getTargetAddressForBalanceDataPartitionZone, balanceDataPartitionZoneErr, "", false); err != nil {
+					if err = c.decommissionDataPartition("", dp, getTargetAddressForBalanceDataPartitionZone, balanceDataPartitionZoneErr, "", "", false); err != nil {
 						return
 					}
 					Warn(c.Name, fmt.Sprintf("action[repairDataPartition] clusterID[%v] vol[%v] data partition[%v] "+
@@ -409,7 +409,7 @@ func (c *Cluster) repairMetaPartition(wg sync.WaitGroup) {
 				}
 				switch task.RType {
 				case BalanceMetaZone:
-					if err = c.decommissionMetaPartition("", mp, getTargetAddressForRepairMetaZone, false); err != nil {
+					if err = c.decommissionMetaPartition("", mp, getTargetAddressForRepairMetaZone, "", false); err != nil {
 						return
 					}
 					Warn(c.Name, fmt.Sprintf("action[repairMetaPartition] clusterID[%v] vol[%v] meta partition[%v] "+
@@ -1280,7 +1280,7 @@ func (c *Cluster) decommissionDataNode(dataNode *DataNode, destZoneName string, 
 		wg.Add(1)
 		go func(dp *DataPartition) {
 			defer wg.Done()
-			if err1 := c.decommissionDataPartition(dataNode.Addr, dp, getTargetAddressForDataPartitionDecommission, dataNodeOfflineErr, destZoneName, strictFlag); err1 != nil {
+			if err1 := c.decommissionDataPartition(dataNode.Addr, dp, getTargetAddressForDataPartitionDecommission, dataNodeOfflineErr, destZoneName, "", strictFlag); err1 != nil {
 				errChannel <- err1
 			}
 		}(dp)
@@ -1322,7 +1322,7 @@ func (c *Cluster) delDataNodeFromCache(dataNode *DataNode) {
 // 4. synchronized create a new data partition
 // 5. Set the data partition as readOnly.
 // 6. persistent the new host list
-func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartition, chooseDataHostFunc ChooseDataHostFunc, errMsg, destZoneName string, strictMode bool) (err error) {
+func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartition, chooseDataHostFunc ChooseDataHostFunc, errMsg, destZoneName string, destAddr string, strictMode bool) (err error) {
 	var (
 		oldAddr         string
 		addAddr         string
@@ -1335,8 +1335,20 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	dp.offlineMutex.Lock()
 	defer dp.offlineMutex.Unlock()
 	excludeNodeSets = make([]uint64, 0)
-	if oldAddr, addAddr, err = chooseDataHostFunc(c, offlineAddr, dp, excludeNodeSets, destZoneName, true); err != nil {
-		goto errHandler
+	if destAddr != "" {
+		if contains(dp.Hosts, destAddr) {
+			err = fmt.Errorf("destinationAddr[%v] must be a new data node addr,oldHosts[%v]", destAddr, dp.Hosts)
+			goto errHandler
+		}
+		if _, err = c.dataNode(destAddr); err != nil {
+			goto errHandler
+		}
+		oldAddr = offlineAddr
+		addAddr = destAddr
+	} else {
+		if oldAddr, addAddr, err = chooseDataHostFunc(c, offlineAddr, dp, excludeNodeSets, destZoneName, true); err != nil {
+			goto errHandler
+		}
 	}
 	if isLearner, pmConfig, err = c.removeDataReplica(dp, oldAddr, false, strictMode); err != nil {
 		goto errHandler
@@ -2159,7 +2171,7 @@ func (c *Cluster) decommissionMetaNode(metaNode *MetaNode, strictMode bool) (err
 		wg.Add(1)
 		go func(mp *MetaPartition) {
 			defer wg.Done()
-			if err1 := c.decommissionMetaPartition(metaNode.Addr, mp, getTargetAddressForMetaPartitionDecommission, strictMode); err1 != nil {
+			if err1 := c.decommissionMetaPartition(metaNode.Addr, mp, getTargetAddressForMetaPartitionDecommission, "", strictMode); err1 != nil {
 				errChannel <- err1
 			}
 		}(mp)

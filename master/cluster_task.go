@@ -97,7 +97,7 @@ func (c *Cluster) loadDataPartition(dp *DataPartition) {
 // 3. synchronized decommission meta partition
 // 4. synchronized create a new meta partition
 // 5. persistent the new host list
-func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, chooseMetaHostFunc ChooseMetaHostFunc, strictMode bool) (err error) {
+func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, chooseMetaHostFunc ChooseMetaHostFunc, destAddr string, strictMode bool) (err error) {
 	var (
 		addAddr         string
 		excludeNodeSets []uint64
@@ -112,8 +112,19 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, 
 	if vol, err = c.getVol(mp.volName); err != nil {
 		goto errHandler
 	}
-	if nodeAddr, addAddr, err = chooseMetaHostFunc(c, nodeAddr, mp, oldHosts, excludeNodeSets, vol.zoneName); err != nil {
-		goto errHandler
+	if destAddr != "" {
+		if contains(mp.Hosts, destAddr) {
+			err = fmt.Errorf("destinationAddr[%v] must be a new meta node addr,oldHosts[%v]", destAddr, mp.Hosts)
+			goto errHandler
+		}
+		if _, err = c.metaNode(destAddr); err != nil {
+			goto errHandler
+		}
+		addAddr = destAddr
+	} else {
+		if nodeAddr, addAddr, err = chooseMetaHostFunc(c, nodeAddr, mp, oldHosts, excludeNodeSets, vol.zoneName); err != nil {
+			goto errHandler
+		}
 	}
 
 	log.LogWarnf("action[decommissionMetaPartition],volName[%v],nodeAddr[%v],partitionID[%v] begin", mp.volName, nodeAddr, mp.PartitionID)
