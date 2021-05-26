@@ -225,7 +225,7 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 			resp = proto.OpDiskErr
 		}
 	}()
-	if dp.IsRejectWrite() {
+	if dp.IsRejectRandomWrite() {
 		err = fmt.Errorf("partition(%v) disk(%v) err(%v)", dp.partitionID, dp.Disk().Path, syscall.ENOSPC)
 		return
 	}
