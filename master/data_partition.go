@@ -335,7 +335,7 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *proto.Dat
 
 func (partition *DataPartition) getLeaderAddr() (leaderAddr string) {
 	for _, replica := range partition.Replicas {
-		if replica.IsLeader {
+		if replica.IsLeader && replica.isActive(defaultNodeTimeOutSec) {
 			return replica.Addr
 		}
 	}

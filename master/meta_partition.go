@@ -293,7 +293,7 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 
 func (mp *MetaPartition) getMetaReplicaLeader() (mr *MetaReplica, err error) {
 	for _, mr = range mp.Replicas {
-		if mr.IsLeader {
+		if mr.IsLeader && mr.isActive() {
 			return
 		}
 	}
