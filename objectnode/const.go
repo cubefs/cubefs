@@ -37,6 +37,7 @@ const (
 	HeaderNameRange              = "Range"
 	HeaderNameExpect             = "Expect"
 	HeaderNameXForwardedExpect   = "X-Forwarded-Expect"
+	HeaderNameXForwardedRange    = "X-Forwarded-Range"
 	HeaderNameLocation           = "Location"
 	HeaderNameCacheControl       = "Cache-Control"
 	HeaderNameExpires            = "Expires"

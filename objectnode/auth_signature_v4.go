@@ -590,11 +590,20 @@ func buildCanonicalHeaderString(host string, headers http.Header, signedHeaders 
 		newHeaders.Add(n, headers.Get(n))
 	}
 	newHeaders.Add(HeaderNameHost, host)
+	log.LogDebugf("[buildCanonicalHeaderString] newHeaders(%v)", newHeaders)
 
 	canonicalHeaders := make([]string, 0)
 	sort.Strings(signedHeaders)
 	for _, signedHeaderName := range signedHeaders {
 		vals, ok := newHeaders[(http.CanonicalHeaderKey(signedHeaderName))]
+		// nginx rewrite range header using name 'x-amz-range'
+		if strings.ToLower(signedHeaderName) == strings.ToLower(HeaderNameRange) {
+			if xRangeVal, xok := newHeaders[http.CanonicalHeaderKey(HeaderNameXForwardedRange)]; xok {
+				vals, ok = xRangeVal, true
+				log.LogDebugf("[buildCanonicalHeaderString] using alternate header %v[%v] for canonical headers",
+					HeaderNameXForwardedRange, vals)
+			}
+		}
 		if ok {
 			sb := strings.Builder{}
 			sb.WriteString(strings.ToLower(signedHeaderName))
