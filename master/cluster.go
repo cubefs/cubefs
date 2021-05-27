@@ -1336,6 +1336,12 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	defer dp.offlineMutex.Unlock()
 	excludeNodeSets = make([]uint64, 0)
 	if destAddr != "" {
+		if err = c.validateDecommissionDataPartition(dp, offlineAddr); err != nil {
+			goto errHandler
+		}
+		if _, err = c.dataNode(offlineAddr); err != nil {
+			goto errHandler
+		}
 		if contains(dp.Hosts, destAddr) {
 			err = fmt.Errorf("destinationAddr[%v] must be a new data node addr,oldHosts[%v]", destAddr, dp.Hosts)
 			goto errHandler

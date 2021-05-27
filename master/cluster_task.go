@@ -113,6 +113,12 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, 
 		goto errHandler
 	}
 	if destAddr != "" {
+		if err = c.validateDecommissionMetaPartition(mp, nodeAddr); err != nil {
+			goto errHandler
+		}
+		if _, err = c.metaNode(nodeAddr); err != nil {
+			goto errHandler
+		}
 		if contains(mp.Hosts, destAddr) {
 			err = fmt.Errorf("destinationAddr[%v] must be a new meta node addr,oldHosts[%v]", destAddr, mp.Hosts)
 			goto errHandler
