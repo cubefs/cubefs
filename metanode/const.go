@@ -63,6 +63,9 @@ type (
 	// MetaNode -> Client read dir response
 	ReadDirResp      = proto.ReadDirResponse
 	ReadDirLimitResp = proto.ReadDirLimitResponse
+	ReadDirOnlyReq   = proto.ReadDirOnlyRequest
+	// MetaNode -> Client read dir response
+	ReadDirOnlyResp = proto.ReadDirOnlyResponse
 	// MetaNode -> Client lookup
 	LookupReq = proto.LookupRequest
 	// Client -> MetaNode lookup
@@ -121,6 +124,7 @@ const (
 	opFSMEvictInodeBatch
 
 	opFSMExtentsAddWithCheck
+	opFSMUpdateXAttr
 )
 
 var (

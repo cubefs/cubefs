@@ -175,6 +175,12 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		err = mp.fsmRemoveXAttr(extend)
+	case opFSMUpdateXAttr:
+		var extend *Extend
+		if extend, err = NewExtendFromBytes(msg.V); err != nil {
+			return
+		}
+		err = mp.fsmSetXAttr(extend)
 	case opFSMCreateMultipart:
 		var multipart *Multipart
 		multipart = MultipartFromBytes(msg.V)

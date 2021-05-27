@@ -29,6 +29,7 @@ import (
 type Streamer struct {
 	client *ExtentClient
 	inode  uint64
+	parentInode uint64
 
 	status int32
 
@@ -55,12 +56,17 @@ func NewStreamer(client *ExtentClient, inode uint64) *Streamer {
 	s := new(Streamer)
 	s.client = client
 	s.inode = inode
+	s.parentInode = 0
 	s.extents = NewExtentCache(inode)
 	s.request = make(chan interface{}, 64)
 	s.done = make(chan struct{})
 	s.dirtylist = NewDirtyExtentList()
 	go s.server()
 	return s
+}
+
+func (s *Streamer) SetParentInode(inode uint64) {
+	s.parentInode = inode
 }
 
 // String returns the string format of the streamer.

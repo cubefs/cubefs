@@ -410,7 +410,8 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 		if eh.dirty {
 			var discard []proto.ExtentKey
 			discard = eh.stream.extents.Append(eh.key, true)
-			err = eh.stream.client.appendExtentKey(eh.inode, *eh.key, discard)
+			fileSize, _, _ := eh.stream.client.FileSize(eh.inode)
+			err = eh.stream.client.appendExtentKey(fileSize, eh.stream.parentInode, eh.inode, *eh.key, discard)
 			if err == nil && len(discard) > 0 {
 				eh.stream.extents.RemoveDiscard(discard)
 			}

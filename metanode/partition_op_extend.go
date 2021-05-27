@@ -16,9 +16,61 @@ package metanode
 
 import (
 	"encoding/json"
+	"strconv"
+	"strings"
 
 	"github.com/chubaofs/chubaofs/proto"
 )
+
+func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (err error) {
+	newValueList := strings.Split(req.Value, ",")
+	filesInc, _ := strconv.ParseInt(newValueList[0], 10, 64)
+	dirsInc, _ := strconv.ParseInt(newValueList[1], 10, 64)
+	bytesInc, _ := strconv.ParseInt(newValueList[2], 10, 64)
+
+	treeItem := mp.extendTree.Get(NewExtend(req.Inode))
+	if treeItem != nil {
+		extend := treeItem.(*Extend)
+		if value, exist := extend.Get([]byte(req.Key)); exist {
+			oldValueList := strings.Split(string(value), ",")
+			oldFiles, _ := strconv.ParseInt(oldValueList[0], 10, 64)
+			oldDirs, _ := strconv.ParseInt(oldValueList[1], 10, 64)
+			oldBytes, _ := strconv.ParseInt(oldValueList[2], 10, 64)
+			newFiles := oldFiles + filesInc
+			newDirs := oldDirs + dirsInc
+			newBytes := oldBytes + bytesInc
+			newValue := strconv.FormatInt(int64(newFiles),10) + "," +
+				strconv.FormatInt(int64(newDirs),10) + "," +
+				strconv.FormatInt(int64(newBytes),10)
+			var extend = NewExtend(req.Inode)
+			extend.Put([]byte(req.Key), []byte(newValue))
+			if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
+				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+				return
+			}
+			p.PacketOkReply()
+			return
+		} else {
+			extend.Put([]byte(req.Key), []byte(req.Value))
+			if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
+				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+				return
+			}
+			p.PacketOkReply()
+			return
+		}
+	} else {
+		var extend = NewExtend(req.Inode)
+		extend.Put([]byte(req.Key), []byte(req.Value))
+		if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
+			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+			return
+		}
+		p.PacketOkReply()
+		return
+	}
+	return
+}
 
 func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err error) {
 	var extend = NewExtend(req.Inode)

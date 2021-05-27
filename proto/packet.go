@@ -155,7 +155,9 @@ const (
 	OpNotEmtpy           uint8 = 0xFE
 	OpOk                 uint8 = 0xF0
 
-	OpPing uint8 = 0xFF
+	OpPing            uint8 = 0xFF
+	OpMetaUpdateXAttr uint8 = 0x3B
+	OpMetaReadDirOnly uint8 = 0x3C
 )
 
 const (
@@ -178,14 +180,14 @@ const (
 )
 
 const (
-	VolumeTypeHot			= 0
-	VolumeTypeCold			= 1
+	VolumeTypeHot  = 0
+	VolumeTypeCold = 1
 )
 
 const (
-	PartitionTypeNormal			= 0
-	PartitionTypeCache			= 1
-	PartitionTypePreLoad		= 2
+	PartitionTypeNormal  = 0
+	PartitionTypeCache   = 1
+	PartitionTypePreLoad = 2
 )
 
 // Packet defines the packet structure.
@@ -389,6 +391,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaListXAttr"
 	case OpMetaBatchGetXAttr:
 		m = "OpMetaBatchGetXAttr"
+	case OpMetaUpdateXAttr:
+		m = "OpMetaUpdateXAttr"
 	case OpCreateMultipart:
 		m = "OpCreateMultipart"
 	case OpGetMultipart:

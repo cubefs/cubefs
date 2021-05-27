@@ -16,9 +16,9 @@ package meta
 
 import (
 	"fmt"
-	"sync"
-
 	"github.com/chubaofs/chubaofs/util/errors"
+	"strconv"
+	"sync"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/exporter"
@@ -1253,4 +1253,92 @@ func (mw *MetaWrapper) batchGetXAttr(mp *MetaPartition, inodes []uint64, keys []
 	}
 
 	return resp.XAttrs, nil
+}
+
+func (mw *MetaWrapper) readdironly(mp *MetaPartition, parentID uint64) (status int, children []proto.Dentry, err error) {
+	req := &proto.ReadDirOnlyRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		ParentID:    parentID,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaReadDirOnly
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("readdir: req(%v) err(%v)", *req, err)
+		return
+	}
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("readdir: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		children = make([]proto.Dentry, 0)
+		log.LogErrorf("readdir: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	resp := new(proto.ReadDirOnlyResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogErrorf("readdir: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
+		return
+	}
+	log.LogDebugf("readdir: packet(%v) mp(%v) req(%v)", packet, mp, *req)
+	return statusOK, resp.Children, nil
+}
+
+func (mw *MetaWrapper) updateXAttrs(mp *MetaPartition, inode uint64, filesInc int64, dirsInc int64, bytesInc int64) error {
+	var err error
+	key := "DirStat"
+	value := strconv.FormatInt(int64(filesInc),10) + "," + strconv.FormatInt(int64(dirsInc),10) + "," + strconv.FormatInt(int64(bytesInc),10)
+	req := &proto.UpdateXAttrRequest{
+		VolName: mw.volname,
+		PartitionId: mp.PartitionID,
+		Inode: inode,
+		Key: key,
+		Value: value,
+	}
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaUpdateXAttr
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("updateXAttr: matshal packet fail, err(%v)", err)
+		return err
+	}
+	log.LogDebugf("updateXAttr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("updateXAttr: send to partition fail, packet(%v) mp(%v) req(%v) err(%v)",
+			packet, mp, *req, err)
+		return err
+	}
+
+	status := parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogErrorf("updateXAttr: received fail status, packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return err
+	}
+
+	log.LogDebugf("updateXAttrs: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+
+	return nil
 }

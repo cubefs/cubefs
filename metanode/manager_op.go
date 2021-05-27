@@ -363,6 +363,32 @@ func (m *metadataManager) opMetaBatchUnlinkInode(conn net.Conn, p *Packet,
 	return
 }
 
+func (m *metadataManager) opReadDirOnly(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
+	req := &proto.ReadDirOnlyRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		return
+	}
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.ReadDirOnly(req, p)
+	m.respondToClient(conn, p)
+	log.LogDebugf("%s [%v]req: %v , resp: %v, body: %s", remoteAddr,
+		p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
 // Handle OpReadDir
 func (m *metadataManager) opReadDir(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
@@ -1067,6 +1093,31 @@ func (m *metadataManager) opMetaBatchDeleteInode(conn net.Conn, p *Packet,
 
 	_ = m.respondToClient(conn, p)
 
+	return
+}
+
+func (m *metadataManager) opMetaUpdateXAttr(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	req := &proto.UpdateXAttrRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.UpdateXAttr(req, p)
+	_ = m.respondToClient(conn, p)
+	log.LogDebugf("%s [opMetaSetXAttr] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
 

@@ -16,6 +16,7 @@ package stream
 
 import (
 	"fmt"
+	"github.com/chubaofs/chubaofs/sdk/meta"
 	"sync"
 	"time"
 
@@ -28,7 +29,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
-type AppendExtentKeyFunc func(inode uint64, key proto.ExtentKey, discard []proto.ExtentKey) error
+type AppendExtentKeyFunc func(fileSize int, parentInode, inode uint64, key proto.ExtentKey, discard []proto.ExtentKey) error
 type GetExtentsFunc func(inode uint64) (uint64, uint64, []proto.ExtentKey, error)
 type TruncateFunc func(inode, size uint64) error
 type EvictIcacheFunc func(inode uint64)
@@ -238,17 +239,21 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags i
 	return
 }
 
-func (client *ExtentClient) Truncate(inode uint64, size int) error {
+func (client *ExtentClient) Truncate(mw *meta.MetaWrapper, parentIno uint64, inode uint64, size int) error {
 	prefix := fmt.Sprintf("Truncate{ino(%v)size(%v)}", inode, size)
 	s := client.GetStreamer(inode)
 	if s == nil {
 		return fmt.Errorf("Prefix(%v): stream is not opened yet", prefix)
 	}
-
+	oldSize, _, _ := client.FileSize(inode)
 	err := s.IssueTruncRequest(size)
 	if err != nil {
 		err = errors.Trace(err, prefix)
 		log.LogError(errors.Stack(err))
+	}
+	sizeInc := size - oldSize
+	if sizeInc > 0 {
+		go mw.UpdateSummary_ll(parentIno, 0, 0, int64(sizeInc))
 	}
 	return err
 }

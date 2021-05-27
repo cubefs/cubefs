@@ -127,6 +127,7 @@ type OpExtend interface {
 	BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packet) (err error)
 	RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (err error)
 	ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err error)
+	UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (err error)
 }
 
 // OpDentry defines the interface for the dentry operations.
@@ -137,6 +138,7 @@ type OpDentry interface {
 	UpdateDentry(req *UpdateDentryReq, p *Packet) (err error)
 	ReadDir(req *ReadDirReq, p *Packet) (err error)
 	ReadDirLimit(req *ReadDirLimitReq, p *Packet) (err error)
+	ReadDirOnly(req *ReadDirOnlyReq, p *Packet) (err error)
 	Lookup(req *LookupReq, p *Packet) (err error)
 	GetDentryTree() *BTree
 }

@@ -93,7 +93,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	}
 
 	d.super.ic.Put(info)
-	child := NewFile(d.super, info)
+	child := NewFile(d.super, info, d.info.Inode)
 	d.super.ec.OpenStream(info.Inode)
 
 	d.super.fslock.Lock()
@@ -213,7 +213,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	if err != nil {
 		log.LogErrorf("Lookup: parent(%v) name(%v) ino(%v) err(%v)", d.info.Inode, req.Name, ino, err)
 		dummyInodeInfo := &proto.InodeInfo{Inode: ino}
-		dummyChild := NewFile(d.super, dummyInodeInfo)
+		dummyChild := NewFile(d.super, dummyInodeInfo, d.info.Inode)
 		return dummyChild, nil
 	}
 	mode := proto.OsMode(info.Mode)
@@ -224,7 +224,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		if mode.IsDir() {
 			child = NewDir(d.super, info)
 		} else {
-			child = NewFile(d.super, info)
+			child = NewFile(d.super, info, d.info.Inode)
 		}
 		d.super.nodeCache[ino] = child
 	}
@@ -356,7 +356,7 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 	}
 
 	d.super.ic.Put(info)
-	child := NewFile(d.super, info)
+	child := NewFile(d.super, info, d.info.Inode)
 
 	d.super.fslock.Lock()
 	d.super.nodeCache[info.Inode] = child
@@ -385,7 +385,7 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 	}
 
 	d.super.ic.Put(info)
-	child := NewFile(d.super, info)
+	child := NewFile(d.super, info, d.info.Inode)
 
 	d.super.fslock.Lock()
 	d.super.nodeCache[info.Inode] = child
@@ -430,7 +430,7 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 	d.super.fslock.Lock()
 	newFile, ok := d.super.nodeCache[info.Inode]
 	if !ok {
-		newFile = NewFile(d.super, info)
+		newFile = NewFile(d.super, info, d.info.Inode)
 		d.super.nodeCache[info.Inode] = newFile
 	}
 	d.super.fslock.Unlock()
