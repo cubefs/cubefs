@@ -50,6 +50,7 @@ const (
 	nodeMarkDeleteRateKey   = "markDeleteRate"
 	nodeDeleteWorkerSleepMs = "deleteWorkerSleepMs"
 	nodeAutoRepairRateKey   = "autoRepairRate"
+	clusterLoadFactor       = "loadFactor"
 	descriptionKey          = "description"
 	dpSelectorNameKey       = "dpSelectorName"
 	dpSelectorParmKey       = "dpSelectorParm"
@@ -157,6 +158,7 @@ const (
 	nodeSetAcronym        = "s"
 	nodeSetGrpAcronym     = "g"
 	domainAcronym         = "zoneDomain"
+	excludeDomainAcronym  = "zoneExclude"
 	maxDataPartitionIDKey = keySeparator + "max_dp_id"
 	maxMetaPartitionIDKey = keySeparator + "max_mp_id"
 	maxCommonIDKey        = keySeparator + "max_common_id"
@@ -169,6 +171,7 @@ const (
 	nodeSetPrefix         = keySeparator + nodeSetAcronym + keySeparator
 	nodeSetGrpPrefix      = keySeparator + nodeSetGrpAcronym + keySeparator
 	DomainPrefix          = keySeparator + domainAcronym + keySeparator
+	ExcludeDomainPrefix   = keySeparator + excludeDomainAcronym + keySeparator
 	akAcronym             = "ak"
 	userAcronym           = "user"
 	volUserAcronym        = "voluser"

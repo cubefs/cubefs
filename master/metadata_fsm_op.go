@@ -34,6 +34,7 @@ import (
 type clusterValue struct {
 	Name                        string
 	Threshold                   float32
+	LoadFactor                  float32
 	DisableAutoAllocate         bool
 	DataNodeDeleteLimitRate     uint64
 	MetaNodeDeleteBatchCount    uint64
@@ -45,6 +46,7 @@ type clusterValue struct {
 func newClusterValue(c *Cluster) (cv *clusterValue) {
 	cv = &clusterValue{
 		Name:                        c.Name,
+		LoadFactor:                  c.cfg.ClusterLoadFactor,
 		Threshold:                   c.cfg.MetaNodeThreshold,
 		DataNodeDeleteLimitRate:     c.cfg.DataNodeDeleteLimitRate,
 		MetaNodeDeleteBatchCount:    c.cfg.MetaNodeDeleteBatchCount,
@@ -230,7 +232,6 @@ type nodeSetGrpValue struct {
 	NodeSetsIds []uint64
 	Status      uint8
 }
-
 type zoneDomainValue struct {
 	ExcludeZoneMap      map[string]int
 	NeedFaultDomain     bool
@@ -569,6 +570,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 			return err
 		}
 		c.cfg.MetaNodeThreshold = cv.Threshold
+		c.cfg.ClusterLoadFactor = cv.LoadFactor
 		c.DisableAutoAllocate = cv.DisableAutoAllocate
 		c.updateMetaNodeDeleteBatchCount(cv.MetaNodeDeleteBatchCount)
 		c.updateMetaNodeDeleteWorkerSleepMs(cv.MetaNodeDeleteWorkerSleepMs)

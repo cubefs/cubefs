@@ -1734,7 +1734,7 @@ func (c *Cluster) createVol(name, owner, zoneName, description string,
 		readWriteDataPartitions int
 		newZoneName             string
 	)
-	if size == 0 {
+	if size*util.GB < util.DefaultDataPartitionSize {
 		dataPartitionSize = util.DefaultDataPartitionSize
 	} else {
 		dataPartitionSize = uint64(size) * util.GB
@@ -2044,6 +2044,18 @@ func (c *Cluster) setMetaNodeDeleteBatchCount(val uint64) (err error) {
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setMetaNodeDeleteBatchCount] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setClusterLoadFactor(factor float32) (err error) {
+	oldVal := c.cfg.ClusterLoadFactor
+	c.cfg.ClusterLoadFactor = factor
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setClusterLoadFactorErr] err[%v]", err)
+		c.cfg.ClusterLoadFactor = oldVal
 		err = proto.ErrPersistenceByRaft
 		return
 	}

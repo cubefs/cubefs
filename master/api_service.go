@@ -933,6 +933,17 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+
+	if val, ok := params[clusterLoadFactor]; ok {
+		if factor, ok := val.(float32); ok {
+			if err = m.cluster.setClusterLoadFactor(factor); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+		return
+	}
+
 	if val, ok := params[nodeMarkDeleteRateKey]; ok {
 		if v, ok := val.(uint64); ok {
 			if err = m.cluster.setDataNodeDeleteLimitRate(v); err != nil {
@@ -1347,6 +1358,7 @@ func (m *Server) getNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	resp[nodeMarkDeleteRateKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeDeleteLimitRate)
 	resp[nodeDeleteWorkerSleepMs] = fmt.Sprintf("%v", m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
 	resp[nodeAutoRepairRateKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeAutoRepairLimitRate)
+	resp[clusterLoadFactor] = fmt.Sprintf("%v", m.cluster.cfg.ClusterLoadFactor)
 
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
 }
@@ -2217,6 +2229,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		}
 		params[nodeDeleteBatchCountKey] = batchCount
 	}
+
 	if value = r.FormValue(nodeMarkDeleteRateKey); value != "" {
 		noParams = false
 		var val = uint64(0)
@@ -2249,6 +2262,18 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		}
 		params[nodeDeleteWorkerSleepMs] = val
 	}
+
+	if value = r.FormValue(clusterLoadFactor); value != "" {
+		noParams = false
+		valF, err := strconv.ParseFloat(value, 64)
+		if err != nil || valF < 1 {
+			err = unmatchedKey(clusterLoadFactor)
+			return nil, err
+		}
+
+		params[clusterLoadFactor] = valF
+	}
+
 	if noParams {
 		err = keyNotFound(nodeDeleteBatchCountKey)
 		return

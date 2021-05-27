@@ -17,7 +17,6 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
-	"golang.org/x/time/rate"
 	"io/ioutil"
 	"math"
 	"os"
@@ -100,7 +99,7 @@ type DataPartition struct {
 	partitionID     uint64
 	partitionStatus int
 	partitionSize   int
-	partitionType	int
+	partitionType   int
 	replicas        []string // addresses of the replicas
 	replicasLock    sync.RWMutex
 	disk            *Disk
@@ -896,13 +895,13 @@ func (dp *DataPartition) putRepairConn(conn net.Conn, forceClose bool) {
 }
 
 type SimpleVolView struct {
-	vv *proto.SimpleVolView
-	lastUpdateTime  time.Time
+	vv             *proto.SimpleVolView
+	lastUpdateTime time.Time
 }
 
 type VolMap struct {
 	sync.Mutex
-	volMap    map[string]*SimpleVolView
+	volMap map[string]*SimpleVolView
 }
 
 var volViews = VolMap{
@@ -910,10 +909,10 @@ var volViews = VolMap{
 	volMap: make(map[string]*SimpleVolView),
 }
 
-func (vo* VolMap) getSimpleVolView(VolumeID string) (vv *proto.SimpleVolView, err error){
+func (vo *VolMap) getSimpleVolView(VolumeID string) (vv *proto.SimpleVolView, err error) {
 
 	vo.Lock()
-	if volView, ok := vo.volMap[VolumeID]; ok && time.Since(volView.lastUpdateTime) < 5 * time.Minute {
+	if volView, ok := vo.volMap[VolumeID]; ok && time.Since(volView.lastUpdateTime) < 5*time.Minute {
 		vo.Unlock()
 		return volView.vv, nil
 	}
@@ -940,7 +939,7 @@ func (vo* VolMap) getSimpleVolView(VolumeID string) (vv *proto.SimpleVolView, er
 	return
 }
 
-func (dp *DataPartition) doEvict()  {
+func (dp *DataPartition) doEvict() {
 
 	// only cache or preload dp can't do evict.
 	if dp.partitionType != proto.PartitionTypeCache && dp.partitionType != proto.PartitionTypePreLoad {
