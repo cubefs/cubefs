@@ -516,7 +516,7 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 
 	if dp, err = s.client.dataWrapper.GetDataPartition(req.ExtentKey.PartitionId); err != nil {
 		// TODO unhandled error
-		errors.Trace(err, "doOverwrite: ino(%v) failed to get datapartition, ek(%v)", s.inode, req.ExtentKey)
+		err = errors.Trace(err, "doOverwrite: ino(%v) failed to get datapartition, ek(%v)", s.inode, req.ExtentKey)
 		return
 	}
 

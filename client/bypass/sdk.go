@@ -126,7 +126,7 @@ var (
 )
 
 const (
-	NormalExtentSize=32*1024*1024
+	NormalExtentSize = 32 * 1024 * 1024
 )
 
 func init() {
@@ -594,7 +594,8 @@ func cfs_fallocate(id C.int64_t, fd C.int, mode C.int, offset C.off_t, len C.off
 		if uint64(offset+len) <= info.Size {
 			return statusOK
 		}
-	} else if uint32(mode) == uint32(C.FALLOC_FL_KEEP_SIZE|C.FALLOC_FL_PUNCH_HOLE) {
+	} else if uint32(mode) == uint32(C.FALLOC_FL_KEEP_SIZE) || uint32(mode) == uint32(C.FALLOC_FL_KEEP_SIZE|C.FALLOC_FL_PUNCH_HOLE) {
+		// CFS does not support FALLOC_FL_PUNCH_HOLE for now. We cheat here.
 		return statusOK
 	} else {
 		// unimplemented
@@ -2635,7 +2636,7 @@ func (c *client) start() (err error) {
 		OnGetExtents:      mw.GetExtents,
 		OnTruncate:        mw.Truncate,
 		DisableAutoFlush:  true,
-		TinySize:    data.NoUseTinyExtent,
+		TinySize:          data.NoUseTinyExtent,
 	}); err != nil {
 		fmt.Println(err)
 		return

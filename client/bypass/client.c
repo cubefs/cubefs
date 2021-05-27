@@ -168,6 +168,8 @@ int renameat2(int olddirfd, const char *old_pathname,
 int renameat(int olddirfd, const char *old_pathname,
         int newdirfd, const char *new_pathname) {
 #endif
+    cfs_init();
+
     int is_cfs_old = 0;
     char *old_path = NULL;
     if((old_pathname != NULL && old_pathname[0] == '/') || olddirfd == AT_FDCWD) {
@@ -222,6 +224,8 @@ log:
 }
 
 int truncate(const char *pathname, off_t length) {
+    cfs_init();
+
     char *path = get_cfs_path(pathname);
     int re = (g_hook && path != NULL) ? cfs_re(cfs_truncate(g_cfs_client_id, path, length)) :
             real_truncate(pathname, length);
@@ -278,6 +282,8 @@ int mkdir(const char *pathname, mode_t mode) {
 }
 
 int mkdirat(int dirfd, const char *pathname, mode_t mode) {
+    cfs_init();
+
     int is_cfs = 0;
     char *path = NULL;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
@@ -296,6 +302,8 @@ int mkdirat(int dirfd, const char *pathname, mode_t mode) {
 }
 
 int rmdir(const char *pathname) {
+    cfs_init();
+
     char *path = get_cfs_path(pathname);
     int re = (g_hook && path != NULL) ? cfs_re(cfs_rmdir(g_cfs_client_id, path)) : real_rmdir(pathname);
     free(path);
@@ -451,6 +459,8 @@ log:
 }
 
 DIR *opendir(const char *pathname) {
+    cfs_init();
+
     char *path = get_cfs_path(pathname);
     if(!g_hook || path == NULL) {
         free(path);
@@ -567,6 +577,8 @@ int link(const char *old_pathname, const char *new_pathname) {
 // link between CFS and ordinary file is not allowed
 int linkat(int olddirfd, const char *old_pathname,
            int newdirfd, const char *new_pathname, int flags) {
+    cfs_init();
+
     int is_cfs_old = 0;
     char *old_path = NULL;
     if((old_pathname != NULL && old_pathname[0] == '/') || olddirfd == AT_FDCWD) {
@@ -611,6 +623,8 @@ int symlink(const char *target, const char *linkpath) {
 
 // symlink a CFS linkpath to ordinary file target is not allowed
 int symlinkat(const char *target, int dirfd, const char *linkpath) {
+    cfs_init();
+
     char *t = get_cfs_path(target);
     int is_cfs = 0;
     char *path = NULL;
@@ -642,6 +656,8 @@ int unlink(const char *pathname) {
 }
 
 int unlinkat(int dirfd, const char *pathname, int flags) {
+    cfs_init();
+
     int is_cfs = 0;
     char *path = NULL;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
@@ -667,6 +683,8 @@ ssize_t readlink(const char *pathname, char *buf, size_t size) {
 }
 
 ssize_t readlinkat(int dirfd, const char *pathname, char *buf, size_t size) {
+    cfs_init();
+
     int is_cfs = 0;
     char *path = NULL;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
@@ -723,6 +741,8 @@ int __xstat64(int ver, const char *pathname, struct stat64 *statbuf) {
 }
 
 int __lxstat(int ver, const char *pathname, struct stat *statbuf) {
+    cfs_init();
+
     char *path = get_cfs_path(pathname);
     int re = (g_hook && path != NULL) ? cfs_re(cfs_lstat(g_cfs_client_id, path, statbuf)) : real_lstat(ver, pathname, statbuf);
     free(path);
@@ -733,6 +753,8 @@ int __lxstat(int ver, const char *pathname, struct stat *statbuf) {
 }
 
 int __lxstat64(int ver, const char *pathname, struct stat64 *statbuf) {
+    cfs_init();
+
     char *path = get_cfs_path(pathname);
     int re = (g_hook && path != NULL) ? cfs_re(cfs_lstat64(g_cfs_client_id, path, statbuf)) :
              real_lstat64(ver, pathname, statbuf);
@@ -777,6 +799,8 @@ int __fxstat64(int ver, int fd, struct stat64 *statbuf) {
 }
 
 int __fxstatat(int ver, int dirfd, const char *pathname, struct stat *statbuf, int flags) {
+    cfs_init();
+
     int is_cfs = 0;
     char *path = NULL;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
@@ -798,6 +822,8 @@ int __fxstatat(int ver, int dirfd, const char *pathname, struct stat *statbuf, i
 }
 
 int __fxstatat64(int ver, int dirfd, const char *pathname, struct stat64 *statbuf, int flags) {
+    cfs_init();
+
     int is_cfs = 0;
     char *path = NULL;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
@@ -831,6 +857,8 @@ int fchmod(int fd, mode_t mode) {
 }
 
 int fchmodat(int dirfd, const char *pathname, mode_t mode, int flags) {
+    cfs_init();
+
     int is_cfs = 0;
     char *path = NULL;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
@@ -853,6 +881,8 @@ int chown(const char *pathname, uid_t owner, gid_t group) {
 }
 
 int lchown(const char *pathname, uid_t owner, gid_t group) {
+    cfs_init();
+
     char *path = get_cfs_path(pathname);
     int re = (g_hook && path != NULL) ? cfs_re(cfs_lchown(g_cfs_client_id, path, owner, group)) :
              real_lchown(pathname, owner, group);
@@ -873,6 +903,8 @@ int fchown(int fd, uid_t owner, gid_t group) {
 }
 
 int fchownat(int dirfd, const char *pathname, uid_t owner, gid_t group, int flags) {
+    cfs_init();
+
     int is_cfs = 0;
     char *path = NULL;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
@@ -891,6 +923,8 @@ int fchownat(int dirfd, const char *pathname, uid_t owner, gid_t group, int flag
 }
 
 int utime(const char *pathname, const struct utimbuf *times) {
+    cfs_init();
+
     struct timespec *pts;
     if(times != NULL) {
         struct timespec ts[2] = {times->actime, 0, times->modtime, 0};
@@ -904,6 +938,8 @@ int utime(const char *pathname, const struct utimbuf *times) {
 }
 
 int utimes(const char *pathname, const struct timeval *times) {
+    cfs_init();
+
     struct timespec *pts;
     if(times != NULL) {
         struct timespec ts[2] = {times[0].tv_sec, times[0].tv_usec*1000, times[1].tv_sec, times[1].tv_usec*1000};
@@ -917,6 +953,8 @@ int utimes(const char *pathname, const struct timeval *times) {
 }
 
 int futimesat(int dirfd, const char *pathname, const struct timeval times[2]) {
+    cfs_init();
+
     int is_cfs = 0;
     char *path = NULL;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
@@ -940,6 +978,8 @@ int futimesat(int dirfd, const char *pathname, const struct timeval times[2]) {
 }
 
 int utimensat(int dirfd, const char *pathname, const struct timespec times[2], int flags) {
+    cfs_init();
+
     int is_cfs = 0;
     char *path = NULL;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
