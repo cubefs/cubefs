@@ -2,6 +2,7 @@ package metanode
 
 import (
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -24,8 +25,19 @@ var (
 	nodeInfo                   = &NodeInfo{}
 	nodeInfoStopC              = make(chan struct{}, 0)
 	deleteWorkerSleepMs uint64 = 0
-	reqLimitRater              = rate.NewLimiter(rate.Inf, DefaultReqLimitBurst)
-	clusterMap                 = make(map[string]bool)
+
+	// request rate limit for entire data node
+	reqRateLimit   uint64
+	reqRateLimiter = rate.NewLimiter(rate.Inf, DefaultReqLimitBurst)
+
+	// request rate limit for opcode
+	reqOpRateLimitMap   = make(map[uint8]uint64)
+	reqOpRateLimiterMap = make(map[uint8]*rate.Limiter)
+
+	reqRateLimiterMapMutex sync.Mutex
+
+	// all cluster internal nodes
+	clusterMap = make(map[string]bool)
 )
 
 func DeleteBatchCount() uint64 {
@@ -76,20 +88,38 @@ func (m *MetaNode) stopUpdateNodeInfo() {
 }
 
 func (m *MetaNode) updateNodeInfo() {
-	//clusterInfo, err := getClusterInfo()
-	clusterInfo, err := masterClient.AdminAPI().GetClusterInfo()
+	limitInfo, err := masterClient.AdminAPI().GetLimitInfo()
 	if err != nil {
 		log.LogErrorf("[updateNodeInfo] %s", err.Error())
 		return
 	}
-	updateDeleteBatchCount(clusterInfo.MetaNodeDeleteBatchCount)
-	updateDeleteWorkerSleepMs(clusterInfo.MetaNodeDeleteWorkerSleepMs)
-	r := clusterInfo.MetaNodeReqLimitRate
-	l := rate.Limit(r)
-	if r == 0 {
+	updateDeleteBatchCount(limitInfo.MetaNodeDeleteBatchCount)
+	updateDeleteWorkerSleepMs(limitInfo.MetaNodeDeleteWorkerSleepMs)
+	reqRateLimit = limitInfo.MetaNodeReqRateLimit
+	l := rate.Limit(reqRateLimit)
+	if reqRateLimit == 0 {
 		l = rate.Inf
 	}
-	reqLimitRater.SetLimit(l)
+	reqRateLimiter.SetLimit(l)
+
+	reqRateLimiterMapMutex.Lock()
+	reqOpRateLimitMap = limitInfo.MetaNodeReqOpRateLimitMap
+	var deleteOp []uint8
+	for op, limiter := range reqOpRateLimiterMap {
+		r, ok := reqOpRateLimitMap[op]
+		if !ok {
+			r, ok = reqOpRateLimitMap[0]
+		}
+		if !ok {
+			deleteOp = append(deleteOp, op)
+			continue
+		}
+		limiter.SetLimit(rate.Limit(r))
+	}
+	for _, op := range deleteOp {
+		delete(reqOpRateLimiterMap, op)
+	}
+	reqRateLimiterMapMutex.Unlock()
 }
 
 func (m *MetaNode) updateClusterMap() {

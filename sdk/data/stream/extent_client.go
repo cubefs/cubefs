@@ -397,14 +397,14 @@ func (client *ExtentClient) stopUpdateConfig() {
 }
 
 func (client *ExtentClient) updateConfig() {
-	clusterInfo, err := client.masterClient.AdminAPI().GetClusterInfo()
+	limitInfo, err := client.masterClient.AdminAPI().GetLimitInfo()
 	if err != nil {
 		log.LogErrorf("[updateConfig] %s", err.Error())
 		return
 	}
 	// If rate from master is 0, then restore the client rate
 	var readLimit, writeLimit rate.Limit
-	readRate := clusterInfo.ClientReadLimitRate
+	readRate := limitInfo.ClientReadRateLimit
 	if readRate > 0 {
 		client.readLimiter.SetLimit(rate.Limit(readRate))
 	} else {
@@ -415,7 +415,7 @@ func (client *ExtentClient) updateConfig() {
 		}
 		client.readLimiter.SetLimit(readLimit)
 	}
-	writeRate := clusterInfo.ClientWriteLimitRate
+	writeRate := limitInfo.ClientWriteRateLimit
 	if writeRate > 0 {
 		client.writeLimiter.SetLimit(rate.Limit(writeRate))
 	} else {
