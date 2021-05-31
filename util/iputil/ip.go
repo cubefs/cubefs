@@ -108,14 +108,3 @@ const DEFAULT_MAX_DISTANCE = 128
 func GetDistance(a, b net.IP) int {
 	return DEFAULT_MAX_DISTANCE - commonPrefixLen(a, b)
 }
-
-func GetLocalIPByDial() (ip string, err error) {
-	var conn net.Conn
-	conn, err = net.Dial("udp", "jd.com:80")
-	if err != nil {
-		return
-	}
-	defer conn.Close()
-	ip = strings.Split(conn.LocalAddr().String(), ":")[0]
-	return
-}

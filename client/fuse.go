@@ -23,8 +23,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/chubaofs/chubaofs/sdk/meta"
-	"github.com/chubaofs/chubaofs/util/version"
 	syslog "log"
 	"net/http"
 	_ "net/http/pprof"
@@ -184,10 +182,6 @@ func main() {
 	defer fsConn.Close()
 
 	exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
-
-	// report client version
-	var masters = strings.Split(opt.Master, meta.HostsSeparator)
-	go version.ReportVersionSchedule(cfg, masters, dumpVersion)
 
 	if err = fs.Serve(fsConn, super); err != nil {
 		log.LogFlush()
