@@ -224,12 +224,16 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode) (status uint8) {
 	status = proto.OpOk
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
-		status = proto.OpNotExistErr
+		// delete extents directly if inode not exist
+		mp.extDelCh <- ino.Extents.CopyExtents()
+		log.LogWarn("[fsmAppendExtents] inode is already deleted, just del extents", ino.Inode)
 		return
 	}
 	ino2 := item.(*Inode)
 	if ino2.ShouldDelete() {
-		status = proto.OpNotExistErr
+		// delete extents directly if inode mark deleted
+		mp.extDelCh <- ino.Extents.CopyExtents()
+		log.LogWarn("[fsmAppendExtents] inode is already mark deleted, so just del extents", ino.Inode)
 		return
 	}
 	var (
