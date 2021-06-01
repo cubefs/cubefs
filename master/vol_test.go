@@ -2,11 +2,12 @@ package master
 
 import (
 	"fmt"
+	"testing"
+	"time"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
-	"testing"
-	"time"
 )
 
 func TestAutoCreateDataPartitions(t *testing.T) {
@@ -213,8 +214,24 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 	name := "TestConcurrentReadWriteDataPartitionMap"
 	var volID uint64 = 1
 	var createTime = time.Now().Unix()
-	vol := newVol(volID, name, name, "", util.DefaultDataPartitionSize, 100, defaultReplicaNum,
-		defaultReplicaNum, false, false, false, false, createTime, "")
+	vv := volValue{
+		ID:                volID,
+		Name:              name,
+		Owner:             name,
+		ZoneName:          "",
+		DataPartitionSize: util.DefaultDataPartitionSize,
+		Capacity:          100,
+		DpReplicaNum:      defaultReplicaNum,
+		ReplicaNum:        defaultReplicaNum,
+		FollowerRead:      false,
+		Authenticate:      false,
+		CrossZone:         false,
+		DefaultPriority:   false,
+		CreateTime:        createTime,
+		Description:       "",
+	}
+
+	vol := newVol(vv)
 	// unavailable mp
 	mp1 := newMetaPartition(1, 1, defaultMaxMetaPartitionInodeID, 3, name, volID)
 	vol.addMetaPartition(mp1)

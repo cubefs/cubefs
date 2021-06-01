@@ -39,17 +39,28 @@ type VolVarargs struct {
 
 // Vol represents a set of meta partitionMap and data partitionMap
 type Vol struct {
-	ID                 uint64
-	Name               string
-	Owner              string
-	OSSAccessKey       string
-	OSSSecretKey       string
-	dpReplicaNum       uint8
-	mpReplicaNum       uint8
-	Status             uint8
-	threshold          float32
-	dataPartitionSize  uint64
-	Capacity           uint64 // GB
+	ID                uint64
+	Name              string
+	Owner             string
+	OSSAccessKey      string
+	OSSSecretKey      string
+	dpReplicaNum      uint8
+	mpReplicaNum      uint8
+	Status            uint8
+	threshold         float32
+	dataPartitionSize uint64
+	Capacity          uint64 // GB
+	VolType           int
+
+	EbsBlkSize       int
+	EbsCapacity      int
+	CacheAction      int
+	CacheThreshold   int
+	CacheTTL         int
+	CacheHighWater   float64
+	CacheLowWater    float64
+	CacheLRUInterval int
+
 	NeedToLowerReplica bool
 	FollowerRead       bool
 	authenticate       bool
@@ -71,59 +82,54 @@ type Vol struct {
 	sync.RWMutex
 }
 
-func newVol(id uint64, name, owner, zoneName string,
-	dpSize, capacity uint64, dpReplicaNum,
-	mpReplicaNum uint8, followerRead, authenticate,
-	crossZone bool, defaultPriority bool,
-	createTime int64, description string) (vol *Vol) {
-	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
-	vol.dataPartitions = newDataPartitionMap(name)
-	if dpReplicaNum < defaultReplicaNum {
-		dpReplicaNum = defaultReplicaNum
+func isHot(volTyp int) bool {
+	return volTyp == hot
+}
+
+func isCode(volTyp int) bool {
+	return volTyp == cold
+}
+
+func newVol(vv volValue) (vol *Vol) {
+
+	vol = &Vol{ID: vv.ID, Name: vv.Name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
+
+	if vol.threshold <= 0 {
+		vol.threshold = defaultMetaPartitionMemUsageThreshold
 	}
-	vol.dpReplicaNum = dpReplicaNum
-	vol.threshold = defaultMetaPartitionMemUsageThreshold
-	if mpReplicaNum < defaultReplicaNum {
-		mpReplicaNum = defaultReplicaNum
-	}
-	vol.mpReplicaNum = mpReplicaNum
-	vol.Owner = owner
-	if dpSize == 0 {
-		dpSize = util.DefaultDataPartitionSize
-	}
-	if dpSize < util.GB {
-		dpSize = util.DefaultDataPartitionSize
-	}
-	vol.dataPartitionSize = dpSize
-	vol.Capacity = capacity
-	vol.FollowerRead = followerRead
-	vol.authenticate = authenticate
-	vol.crossZone = crossZone
-	vol.zoneName = zoneName
+
+	vol.dataPartitions = newDataPartitionMap(vv.Name)
+	vol.dpReplicaNum = vv.DpReplicaNum
+	vol.mpReplicaNum = vv.ReplicaNum
+	vol.Owner = vv.Owner
+
+	vol.dataPartitionSize = vv.DataPartitionSize
+	vol.Capacity = vv.Capacity
+	vol.FollowerRead = vv.FollowerRead
+	vol.authenticate = vv.Authenticate
+	vol.crossZone = vv.CrossZone
+	vol.zoneName = vv.ZoneName
 	vol.viewCache = make([]byte, 0)
 	vol.mpsCache = make([]byte, 0)
-	vol.createTime = createTime
-	vol.description = description
-	vol.defaultPriority = defaultPriority
+	vol.createTime = vv.CreateTime
+	vol.description = vv.Description
+	vol.defaultPriority = vv.DefaultPriority
+
+	vol.VolType = vv.VolType
+	vol.EbsBlkSize = vv.EbsBlkSize
+	vol.EbsCapacity = vv.EbsCapacity
+	vol.CacheAction = vv.CacheAction
+	vol.CacheThreshold = vv.CacheThreshold
+	vol.CacheTTL = vv.CacheTTL
+	vol.CacheHighWater = vv.CacheHighWater
+	vol.CacheLowWater = vv.CacheLowWater
+	vol.CacheLRUInterval = vv.CacheLRUInterval
+
 	return
 }
 
 func newVolFromVolValue(vv *volValue) (vol *Vol) {
-	vol = newVol(
-		vv.ID,
-		vv.Name,
-		vv.Owner,
-		vv.ZoneName,
-		vv.DataPartitionSize,
-		vv.Capacity,
-		vv.DpReplicaNum,
-		vv.ReplicaNum,
-		vv.FollowerRead,
-		vv.Authenticate,
-		vv.CrossZone,
-		vv.DefaultPriority,
-		vv.CreateTime,
-		vv.Description)
+	vol = newVol(*vv)
 	// overwrite oss secure
 	vol.OSSAccessKey, vol.OSSSecretKey = vv.OSSAccessKey, vv.OSSSecretKey
 	vol.Status = vv.Status

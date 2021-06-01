@@ -23,17 +23,28 @@ import (
 
 // Keys in the request
 const (
-	addrKey                 = "addr"
-	diskPathKey             = "disk"
-	nameKey                 = "name"
-	idKey                   = "id"
-	countKey                = "count"
-	startKey                = "start"
-	enableKey               = "enable"
-	thresholdKey            = "threshold"
-	dataPartitionSizeKey    = "size"
-	metaPartitionCountKey   = "mpCount"
-	volCapacityKey          = "capacity"
+	addrKey               = "addr"
+	diskPathKey           = "disk"
+	nameKey               = "name"
+	idKey                 = "id"
+	countKey              = "count"
+	startKey              = "start"
+	enableKey             = "enable"
+	thresholdKey          = "threshold"
+	dataPartitionSizeKey  = "size"
+	metaPartitionCountKey = "mpCount"
+	volCapacityKey        = "capacity"
+	volTypeKey            = "volType"
+
+	ebsBlkSizeKey       = "ebsBlkSize"
+	ebsCapacityKey      = "ebsCapacity"
+	cacheActionKey      = "cacheAction"
+	cacheThresholdKey   = "cacheThreshold"
+	cacheTTLKey         = "cacheTTL"
+	cacheHighWaterKey   = "cacheHighWater"
+	cacheLowWaterKey    = "cacheLowWater"
+	cacheLRUIntervalKey = "cacheLRUInterVal"
+
 	volOwnerKey             = "owner"
 	volAuthKey              = "authKey"
 	replicaNumKey           = "replicaNum"
@@ -109,6 +120,25 @@ const (
 	unavaliable                = 1
 	metaNodesUnavaliable       = 2
 	dataNodesUnavaliable       = 3
+)
+
+const (
+	hot  = 0
+	cold = 1
+)
+
+const (
+	defaultEbsBlkSize = 8 * 1024 * 1024
+
+	noCache = 0 // not use cache
+	rCache  = 1 // read data write back to cache
+	rwCache = 2 // read & write data both write back to cache
+
+	defaultCacheThreshold   = 10 * 1024 * 1024
+	defaultCacheTtl         = 30
+	defaultCacheHighWater   = 0.8
+	defaultCacheLowWater    = 0.6
+	defaultCacheLruInterval = 5
 )
 
 const (

@@ -1726,44 +1726,25 @@ func (c *Cluster) checkVolInfo(name string, crossZone bool, zoneName string) (ne
 
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name, owner, zoneName, description string,
-	mpCount, dpReplicaNum, size, capacity int,
-	followerRead, authenticate, crossZone, defaultPriority bool) (vol *Vol, err error) {
+func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 	var (
-		dataPartitionSize       uint64
 		readWriteDataPartitions int
-		newZoneName             string
 	)
-	if size*util.GB < util.DefaultDataPartitionSize {
-		dataPartitionSize = util.DefaultDataPartitionSize
-	} else {
-		dataPartitionSize = uint64(size) * util.GB
-	}
-	if zoneName != "" {
-		if _, err = c.t.getZone(zoneName); err != nil {
-			return
-		}
-	}
 
-	if newZoneName, err = c.checkVolInfo(name, crossZone, zoneName); err != nil {
-		return
-	}
-	zoneName = newZoneName
-	if vol, err = c.doCreateVol(name, owner, zoneName, description,
-		dataPartitionSize, uint64(capacity), dpReplicaNum,
-		followerRead, authenticate, crossZone,
-		defaultPriority); err != nil {
+	if vol, err = c.doCreateVol(req); err != nil {
 		goto errHandler
 	}
-	if err = vol.initMetaPartitions(c, mpCount); err != nil {
+
+	if err = vol.initMetaPartitions(c, req.mpCount); err != nil {
 		vol.Status = markDelete
 		if e := vol.deleteVolFromStore(c); e != nil {
 			log.LogErrorf("action[createVol] failed,vol[%v] err[%v]", vol.Name, e)
 		}
-		c.deleteVol(name)
+		c.deleteVol(req.name)
 		err = fmt.Errorf("action[createVol] initMetaPartitions failed,err[%v]", err)
 		goto errHandler
 	}
+
 	for retryCount := 0; readWriteDataPartitions < defaultInitDataPartitionCnt && retryCount < 3; retryCount++ {
 		_ = vol.initDataPartitions(c)
 		readWriteDataPartitions = len(vol.dataPartitions.partitionMap)
@@ -1771,45 +1752,80 @@ func (c *Cluster) createVol(name, owner, zoneName, description string,
 
 	vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
 	vol.updateViewCache(c)
-	log.LogInfof("action[createVol] vol[%v],readableAndWritableCnt[%v]", name, readWriteDataPartitions)
+	log.LogInfof("action[createVol] vol[%v],readableAndWritableCnt[%v]", req.name, readWriteDataPartitions)
 	return
 
 errHandler:
-	err = fmt.Errorf("action[createVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err)
+	err = fmt.Errorf("action[createVol], clusterID[%v] name:%v, err:%v ", c.Name, req.name, err)
 	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
 	return
 }
 
-func (c *Cluster) doCreateVol(name, owner, zoneName, description string,
-	dpSize, capacity uint64, dpReplicaNum int,
-	followerRead, authenticate, crossZone,
-	defaultPriority bool) (vol *Vol, err error) {
-	var id uint64
+func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
+
 	c.createVolMutex.Lock()
 	defer c.createVolMutex.Unlock()
+
 	var createTime = time.Now().Unix() // record unix seconds of volume create time
-	if _, err = c.getVol(name); err == nil {
+	var dataPartitionSize uint64
+
+	if req.size*util.GB < util.DefaultDataPartitionSize {
+		dataPartitionSize = util.DefaultDataPartitionSize
+	} else {
+		dataPartitionSize = uint64(req.size) * util.GB
+	}
+
+	vv := volValue{
+		Name:              req.name,
+		Owner:             req.owner,
+		ZoneName:          req.zoneName,
+		DataPartitionSize: dataPartitionSize,
+		Capacity:          uint64(req.capacity),
+		DpReplicaNum:      uint8(req.dpReplicaNum),
+		ReplicaNum:        defaultReplicaNum,
+		FollowerRead:      req.followerRead,
+		Authenticate:      req.authenticate,
+		CrossZone:         req.crossZone,
+		DefaultPriority:   req.defaultPriority,
+		CreateTime:        createTime,
+		Description:       req.description,
+
+		VolType:          req.volType,
+		EbsBlkSize:       req.coldArgs.objBlockSize,
+		EbsCapacity:      req.coldArgs.ebsCapacity,
+		CacheAction:      req.coldArgs.cacheAction,
+		CacheThreshold:   req.coldArgs.cacheThreshold,
+		CacheTTL:         req.coldArgs.cacheTtl,
+		CacheHighWater:   req.coldArgs.cacheHighWater,
+		CacheLowWater:    req.coldArgs.cacheLowWater,
+		CacheLRUInterval: req.coldArgs.cacheLRUInterval,
+	}
+
+	if _, err = c.getVol(req.name); err == nil {
 		err = proto.ErrDuplicateVol
 		goto errHandler
 	}
-	id, err = c.idAlloc.allocateCommonID()
+
+	vv.ID, err = c.idAlloc.allocateCommonID()
 	if err != nil {
 		goto errHandler
 	}
-	vol = newVol(id, name, owner, zoneName, dpSize,
-		capacity, uint8(dpReplicaNum), defaultReplicaNum,
-		followerRead, authenticate, crossZone,
-		defaultPriority, createTime, description)
+
+	vol = newVol(vv)
+
 	// refresh oss secure
 	vol.refreshOSSSecure()
+
 	if err = c.syncAddVol(vol); err != nil {
 		goto errHandler
 	}
 	c.putVol(vol)
+
 	return
+
 errHandler:
-	err = fmt.Errorf("action[doCreateVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
+	err = fmt.Errorf("action[doCreateVol], clusterID[%v] name:%v, err:%v ", c.Name, req.name, err.Error())
 	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
 	return

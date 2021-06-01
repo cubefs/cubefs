@@ -148,6 +148,16 @@ type volValue struct {
 	DpSelectorName    string
 	DpSelectorParm    string
 	DefaultPriority   bool
+	VolType           int
+
+	EbsBlkSize       int
+	EbsCapacity      int
+	CacheAction      int
+	CacheThreshold   int
+	CacheTTL         int
+	CacheHighWater   float64
+	CacheLowWater    float64
+	CacheLRUInterval int
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -156,6 +166,7 @@ func (v *volValue) Bytes() (raw []byte, err error) {
 }
 
 func newVolValue(vol *Vol) (vv *volValue) {
+
 	vv = &volValue{
 		ID:                vol.ID,
 		Name:              vol.Name,
@@ -177,7 +188,17 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		DpSelectorName:    vol.dpSelectorName,
 		DpSelectorParm:    vol.dpSelectorParm,
 		DefaultPriority:   vol.defaultPriority,
+
+		VolType:          vol.VolType,
+		EbsBlkSize:       vol.EbsBlkSize,
+		CacheAction:      vol.CacheAction,
+		CacheThreshold:   vol.CacheThreshold,
+		CacheTTL:         vol.CacheTTL,
+		CacheHighWater:   vol.CacheHighWater,
+		CacheLowWater:    vol.CacheLowWater,
+		CacheLRUInterval: vol.CacheLRUInterval,
 	}
+
 	return
 }
 
