@@ -57,8 +57,8 @@ type Vol struct {
 	CacheAction      int
 	CacheThreshold   int
 	CacheTTL         int
-	CacheHighWater   float64
-	CacheLowWater    float64
+	CacheHighWater   int
+	CacheLowWater    int
 	CacheLRUInterval int
 
 	NeedToLowerReplica bool
@@ -80,14 +80,6 @@ type Vol struct {
 	dpSelectorName     string
 	dpSelectorParm     string
 	sync.RWMutex
-}
-
-func isHot(volTyp int) bool {
-	return volTyp == hot
-}
-
-func isCode(volTyp int) bool {
-	return volTyp == cold
 }
 
 func newVol(vv volValue) (vol *Vol) {

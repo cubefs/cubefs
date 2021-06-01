@@ -491,15 +491,16 @@ type SimpleVolView struct {
 	DpSelectorName     string
 	DpSelectorParm     string
 	DefaultZonePrior   bool
-	Type               int
-	ObjBlockSize       int
-	CacheCapacity      int
-	CacheAction        int
-	CacheThreshold     int
-	CacheHighWater     int
-	CacheLowWater      int
-	CacheLruInterval   int
-	CacheTtl           int
+
+	VolType          int
+	ObjBlockSize     int
+	EbsCapacity      int
+	CacheAction      int
+	CacheThreshold   int
+	CacheHighWater   int
+	CacheLowWater    int
+	CacheLruInterval int
+	CacheTtl         int
 }
 type NodeSetInfo struct {
 	ID           uint64

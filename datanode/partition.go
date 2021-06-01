@@ -906,6 +906,21 @@ type VolMap struct {
 	volMap map[string]*SimpleVolView
 }
 
+// SortedExtentInfos defines an array sorted by AccessTime
+type SortedExtentInfos []*storage.ExtentInfo
+
+func (extInfos SortedExtentInfos) Len() int {
+	return len(extInfos)
+}
+
+func (extInfos SortedExtentInfos) Less(i, j int) bool {
+	return extInfos[i].AccessTime > extInfos[j].AccessTime
+}
+
+func (extInfos SortedExtentInfos) Swap(i, j int) {
+	extInfos[i], extInfos[j] = extInfos[j], extInfos[i]
+}
+
 var volViews = VolMap{
 	Mutex:  sync.Mutex{},
 	volMap: make(map[string]*SimpleVolView),
@@ -956,7 +971,7 @@ func (dp *DataPartition) doTtl(vv *proto.SimpleVolView) {
 				dp.extentStore.MarkDelete(extId, 0, 0)
 			}
 
-			log.LogDebugf("action[doTtl] ttl dp(%v) extent(%v).", dp.partitionID, extInfo)
+			log.LogDebugf("action[doTtl] ttl extent(%v).", extInfo)
 		}
 	}
 }
@@ -970,8 +985,8 @@ func (dp *DataPartition) doEvict(vv *proto.SimpleVolView) {
 
 	dieOut = false
 	if vv.CacheHighWater < vv.CacheLowWater || vv.CacheLowWater < 0 || vv.CacheHighWater > 100 {
-		log.LogErrorf("action[doEvict] invalid policy dp(%v), CacheHighWater(%v) CacheLowWater(%v).",
-			dp.partitionID, vv.CacheHighWater, vv.CacheLowWater)
+		log.LogErrorf("action[doEvict] invalid policy CacheHighWater(%v) CacheLowWater(%v).",
+			vv.CacheHighWater, vv.CacheLowWater)
 		return
 	}
 

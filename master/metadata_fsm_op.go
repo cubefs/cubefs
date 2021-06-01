@@ -155,8 +155,8 @@ type volValue struct {
 	CacheAction      int
 	CacheThreshold   int
 	CacheTTL         int
-	CacheHighWater   float64
-	CacheLowWater    float64
+	CacheHighWater   int
+	CacheLowWater    int
 	CacheLRUInterval int
 }
 

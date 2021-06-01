@@ -249,8 +249,8 @@ type coldVolArgs struct {
 	cacheAction      int
 	cacheThreshold   int
 	cacheTtl         int
-	cacheHighWater   float64
-	cacheLowWater    float64
+	cacheHighWater   int
+	cacheLowWater    int
 	cacheLRUInterval int
 }
 
@@ -305,11 +305,11 @@ func parseColdArgs(r *http.Request) (args coldVolArgs, err error) {
 		return
 	}
 
-	if args.cacheHighWater, err = extractFloat64(r, cacheHighWaterKey); err != nil {
+	if args.cacheHighWater, err = extractUint(r, cacheHighWaterKey); err != nil {
 		return
 	}
 
-	if args.cacheLowWater, err = extractFloat64(r, cacheLowWaterKey); err != nil {
+	if args.cacheLowWater, err = extractUint(r, cacheLowWaterKey); err != nil {
 		return
 	}
 

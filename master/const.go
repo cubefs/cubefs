@@ -123,11 +123,6 @@ const (
 )
 
 const (
-	hot  = 0
-	cold = 1
-)
-
-const (
 	defaultEbsBlkSize = 8 * 1024 * 1024
 
 	noCache = 0 // not use cache

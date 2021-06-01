@@ -729,14 +729,14 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 	}
 
 	switch req.volType {
-	case hot:
+	case proto.VolumeTypeHot:
 		if req.dpReplicaNum != defaultReplicaNum {
 			return fmt.Errorf("hot vol's replicaNum can only be 3,received replicaNum is[%v]", req.dpReplicaNum)
 		}
 
 		return nil
 
-	case cold:
+	case proto.VolumeTypeCold:
 
 		if req.dpReplicaNum == 0 {
 			req.dpReplicaNum = 1
@@ -874,6 +874,16 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		DpSelectorName:     vol.dpSelectorName,
 		DpSelectorParm:     vol.dpSelectorParm,
 		DefaultZonePrior:   vol.defaultPriority,
+
+		VolType:          vol.VolType,
+		ObjBlockSize:     vol.EbsBlkSize,
+		EbsCapacity:      vol.EbsCapacity,
+		CacheAction:      vol.CacheAction,
+		CacheThreshold:   vol.CacheThreshold,
+		CacheLruInterval: vol.CacheLRUInterval,
+		CacheTtl:         vol.CacheTTL,
+		CacheLowWater:    vol.CacheLowWater,
+		CacheHighWater:   vol.CacheHighWater,
 	}
 }
 
