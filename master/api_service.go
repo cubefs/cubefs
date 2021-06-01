@@ -247,6 +247,7 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 		DataNodeDeleteLimitRate:     limitRate,
 		DataNodeAutoRepairLimitRate: autoRepairRate,
 		Ip:                          strings.Split(r.RemoteAddr, ":")[0],
+		EbsAddr:                     m.ebsAddr,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }

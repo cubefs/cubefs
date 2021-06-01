@@ -42,6 +42,7 @@ const (
 	LogLevel          = "logLevel"
 	WalDir            = "walDir"
 	StoreDir          = "storeDir"
+	EbsAddr           = "ebsAddr"
 	GroupID           = 1
 	ModuleName        = "master"
 	CfgRetainLogs     = "retainLogs"
@@ -68,6 +69,7 @@ type Server struct {
 	port         string
 	walDir       string
 	storeDir     string
+	ebsAddr      string
 	retainLogs   uint64
 	tickInterval int
 	electionTick int
@@ -143,16 +145,20 @@ func (m *Server) Sync() {
 }
 
 func (m *Server) checkConfig(cfg *config.Config) (err error) {
+
 	m.clusterName = cfg.GetString(ClusterName)
 	m.ip = cfg.GetString(IP)
 	m.port = cfg.GetString(proto.ListenPort)
 	m.walDir = cfg.GetString(WalDir)
 	m.storeDir = cfg.GetString(StoreDir)
+	m.ebsAddr = cfg.GetString(EbsAddr)
 	peerAddrs := cfg.GetString(cfgPeers)
+
 	if m.ip == "" || m.port == "" || m.walDir == "" || m.storeDir == "" || m.clusterName == "" || peerAddrs == "" {
 		return fmt.Errorf("%v,err:%v,%v,%v,%v,%v,%v,%v", proto.ErrInvalidCfg, "one of (ip,listen,walDir,storeDir,clusterName) is null",
 			m.ip, m.port, m.walDir, m.storeDir, m.clusterName, peerAddrs)
 	}
+
 	if m.id, err = strconv.ParseUint(cfg.GetString(ID), 10, 64); err != nil {
 		return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 	}

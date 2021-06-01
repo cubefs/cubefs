@@ -140,6 +140,7 @@ type ClusterInfo struct {
 	MetaNodeDeleteWorkerSleepMs uint64
 	DataNodeDeleteLimitRate     uint64
 	DataNodeAutoRepairLimitRate uint64
+	EbsAddr                     string
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -490,8 +491,8 @@ type SimpleVolView struct {
 	DpSelectorName     string
 	DpSelectorParm     string
 	DefaultZonePrior   bool
-	Type   			   int
-	ObjBlockSize	   int
+	Type               int
+	ObjBlockSize       int
 	CacheCapacity      int
 	CacheAction        int
 	CacheThreshold     int
