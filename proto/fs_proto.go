@@ -82,6 +82,9 @@ func (info *InodeInfo) SetExpiration(e int64) {
 
 // String returns the string format of the inode.
 func (info *InodeInfo) String() string {
+	if info == nil {
+		return ""
+	}
 	return fmt.Sprintf("Inode(%v) Mode(%v) OsMode(%v) Nlink(%v) Size(%v) Uid(%v) Gid(%v) Gen(%v)", info.Inode, info.Mode, OsMode(info.Mode), info.Nlink, info.Size, info.Uid, info.Gid, info.Generation)
 }
 

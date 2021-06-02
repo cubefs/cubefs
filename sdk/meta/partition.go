@@ -41,6 +41,9 @@ func (mp *MetaPartition) Copy() btree.Item {
 }
 
 func (mp *MetaPartition) String() string {
+	if mp == nil {
+		return ""
+	}
 	return fmt.Sprintf("PartitionID(%v) Start(%v) End(%v) Members(%v) LeaderAddr(%v) Status(%v)", mp.PartitionID, mp.Start, mp.End, mp.Members, mp.LeaderAddr, mp.Status)
 }
 

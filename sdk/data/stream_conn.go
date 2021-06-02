@@ -87,6 +87,9 @@ func NewStreamConn(dp *DataPartition, follower bool) *StreamConn {
 
 // String returns the string format of the stream connection.
 func (sc *StreamConn) String() string {
+	if sc == nil {
+		return ""
+	}
 	return fmt.Sprintf("Partition(%v) CurrentAddr(%v) Hosts(%v)", sc.dp.PartitionID, sc.currAddr, sc.dp.Hosts)
 }
 

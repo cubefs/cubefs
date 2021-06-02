@@ -132,6 +132,9 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int) *ExtentHandle
 
 // String returns the string format of the extent handler.
 func (eh *ExtentHandler) String() string {
+	if eh == nil {
+		return ""
+	}
 	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)StoreMode(%v)}", eh.id, eh.inode, eh.fileOffset, eh.storeMode)
 }
 

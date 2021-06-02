@@ -78,6 +78,9 @@ func NewStreamer(client *ExtentClient, inode uint64, streamMap *ConcurrentStream
 
 // String returns the string format of the streamer.
 func (s *Streamer) String() string {
+	if s == nil {
+		return ""
+	}
 	return fmt.Sprintf("Streamer{ino(%v)}", s.inode)
 }
 

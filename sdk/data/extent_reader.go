@@ -17,6 +17,7 @@ package data
 import (
 	"context"
 	"fmt"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -43,6 +44,9 @@ func NewExtentReader(inode uint64, key *proto.ExtentKey, dp *DataPartition, foll
 
 // String returns the string format of the extent reader.
 func (er *ExtentReader) String() (m string) {
+	if er == nil {
+		return ""
+	}
 	return fmt.Sprintf("inode (%v) extentKey(%v)", er.inode,
 		er.key.Marshal())
 }

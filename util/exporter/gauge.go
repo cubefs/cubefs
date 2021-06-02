@@ -62,6 +62,9 @@ func (g *Gauge) Name() string {
 }
 
 func (g *Gauge) String() string {
+	if g == nil {
+		return "nil"
+	}
 	return fmt.Sprintf("{name: %s, labels: %s, val: %v}", g.name, stringMapToString(g.labels), g.val)
 }
 

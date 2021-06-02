@@ -36,6 +36,9 @@ type ExtentRequest struct {
 
 // String returns the string format of the extent request.
 func (er *ExtentRequest) String() string {
+	if er == nil {
+		return ""
+	}
 	return fmt.Sprintf("FileOffset(%v) Size(%v) ExtentKey(%v)", er.FileOffset, er.Size, er.ExtentKey)
 }
 

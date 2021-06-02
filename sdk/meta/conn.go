@@ -43,6 +43,9 @@ type MetaConn struct {
 //
 
 func (mc *MetaConn) String() string {
+	if mc == nil {
+		return ""
+	}
 	return fmt.Sprintf("partitionID(%v) addr(%v)", mc.id, mc.addr)
 }
 
