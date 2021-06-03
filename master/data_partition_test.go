@@ -48,7 +48,7 @@ func getDataPartition(id uint64, t *testing.T) {
 	fmt.Println(reqURL)
 	process(reqURL, t)
 }
-
+// test
 func decommissionDataPartition(dp *DataPartition, t *testing.T) {
 	offlineAddr := dp.Hosts[0]
 	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v",

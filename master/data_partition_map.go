@@ -54,7 +54,24 @@ func (dpMap *DataPartitionMap) get(ID uint64) (*DataPartition, error) {
 	}
 	return nil, proto.ErrDataPartitionNotExists
 }
+func (dpMap *DataPartitionMap) del(dp *DataPartition) {
+	dpMap.Lock()
+	defer dpMap.Unlock()
+	_, ok := dpMap.partitionMap[dp.PartitionID]
+	if !ok {
+		return
+	}
 
+	dataPartitions := make([]*DataPartition, 0)
+	for index, partition := range dpMap.partitions {
+		if partition.PartitionID == dp.PartitionID {
+			dataPartitions = append(dataPartitions, dpMap.partitions[:index]...)
+			dataPartitions = append(dataPartitions, dpMap.partitions[index+1:]...)
+			dpMap.partitions = dataPartitions
+			break
+		}
+	}
+}
 func (dpMap *DataPartitionMap) put(dp *DataPartition) {
 	dpMap.Lock()
 	defer dpMap.Unlock()

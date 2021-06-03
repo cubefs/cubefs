@@ -26,13 +26,20 @@ import (
 func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dpTimeOutSec int64) {
 	partition.Lock()
 	defer partition.Unlock()
-	liveReplicas := partition.getLiveReplicasFromHosts(dpTimeOutSec)
-	if len(partition.Replicas) > len(partition.Hosts) {
-		partition.Status = proto.ReadOnly
-		msg := fmt.Sprintf("action[extractStatus],partitionID:%v has exceed repica, replicaNum:%v  liveReplicas:%v   Status:%v  RocksDBHost:%v ",
-			partition.PartitionID, partition.ReplicaNum, len(liveReplicas), partition.Status, partition.Hosts)
-		Warn(clusterName, msg)
-		return
+	var liveReplicas []*DataReplica
+
+
+	if partition.PartitionType == proto.PartitionTypeNormal {
+		liveReplicas = partition.getLiveReplicasFromHosts(dpTimeOutSec)
+		if len(partition.Replicas) > len(partition.Hosts) {
+			partition.Status = proto.ReadOnly
+			msg := fmt.Sprintf("action[extractStatus],partitionID:%v has exceed repica, replicaNum:%v  liveReplicas:%v   Status:%v  RocksDBHost:%v ",
+				partition.PartitionID, partition.ReplicaNum, len(liveReplicas), partition.Status, partition.Hosts)
+			Warn(clusterName, msg)
+			return
+		}
+	} else {
+		liveReplicas = partition.getLiveReplicas(dpTimeOutSec)
 	}
 
 	switch len(liveReplicas) {
@@ -116,13 +123,14 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 			Warn(clusterID, msg)
 		}
 	}
-
-	for _, addr := range partition.Hosts {
-		if partition.hasMissingDataPartition(addr) == true && partition.needToAlarmMissingDataPartition(addr, dataPartitionWarnInterval) {
-			msg := fmt.Sprintf("action[checkMissErr],clusterID[%v] partitionID:%v  on Node:%v  "+
-				"miss time  > :%v  but server not exsit So Migrate", clusterID, partition.PartitionID, addr, dataPartitionMissSec)
-			msg = msg + fmt.Sprintf(" decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, addr)
-			Warn(clusterID, msg)
+	if partition.PartitionType == proto.PartitionTypeNormal {
+		for _, addr := range partition.Hosts {
+			if partition.hasMissingDataPartition(addr) == true && partition.needToAlarmMissingDataPartition(addr, dataPartitionWarnInterval) {
+				msg := fmt.Sprintf("action[checkMissErr],clusterID[%v] partitionID:%v  on Node:%v  "+
+					"miss time  > :%v  but server not exsit So Migrate", clusterID, partition.PartitionID, addr, dataPartitionMissSec)
+				msg = msg + fmt.Sprintf(" decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, addr)
+				Warn(clusterID, msg)
+			}
 		}
 	}
 }
@@ -156,13 +164,21 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) {
 	diskErrorAddrs := make(map[string]string, 0)
 	partition.Lock()
 	defer partition.Unlock()
-	for _, addr := range partition.Hosts {
-		replica, ok := partition.hasReplica(addr)
-		if !ok {
-			continue
+	if partition.PartitionType == proto.PartitionTypeNormal {
+		for _, addr := range partition.Hosts {
+			replica, ok := partition.hasReplica(addr)
+			if !ok {
+				continue
+			}
+			if replica.Status == proto.Unavailable {
+				diskErrorAddrs[replica.Addr] = replica.DiskPath
+			}
 		}
-		if replica.Status == proto.Unavailable {
-			diskErrorAddrs[replica.Addr] = replica.DiskPath
+	} else {
+		for _, replica := range partition.Replicas {
+			if replica.Status == proto.Unavailable {
+				diskErrorAddrs[replica.Addr] = replica.DiskPath
+			}
 		}
 	}
 

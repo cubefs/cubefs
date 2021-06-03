@@ -62,6 +62,13 @@ type Vol struct {
 	CacheLowWater    int
 	CacheLRUInterval int
 
+	PreloadCacheOn       bool
+	PreloadCacheTTL      int
+	PreloadCacheCapacity int
+	PreloadZoneName      string
+	PreloadReplicaNum    int
+
+
 	NeedToLowerReplica bool
 	FollowerRead       bool
 	authenticate       bool
@@ -212,17 +219,22 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 
 func (vol *Vol) initDataPartitions(c *Cluster) (err error) {
 	// initialize k data partitionMap at a time
-	err = c.batchCreateDataPartition(vol, defaultInitDataPartitionCnt)
+	err = c.batchCreateDataPartition(vol, defaultInitDataPartitionCnt, false)
 	return
 }
 
 func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	if vol.getDataPartitionsCount() == 0 && vol.Status != markDelete {
-		c.batchCreateDataPartition(vol, 1)
+		c.batchCreateDataPartition(vol, 1, false)
 	}
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
 	for _, dp := range vol.dataPartitions.partitionMap {
+		if dp.PartitionType == proto.PartitionTypePreLoad  {
+			if time.Now().Unix() - dp.createTime >dp.PartitionTTL {
+				vol.deleteDataPartition(c, dp)
+			}
+		}
 		dp.checkReplicaStatus(c.cfg.DataPartitionTimeOutSec)
 		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec)
 		dp.checkLeader(c.cfg.DataPartitionTimeOutSec)
@@ -267,6 +279,9 @@ func (vol *Vol) checkReplicaNum(c *Cluster) {
 		return
 	}
 	var err error
+	if isCold(vol.VolType) {
+		return
+	}
 	dps := vol.cloneDataPartitionMap()
 	for _, dp := range dps {
 		host := dp.getToBeDecommissionHost(int(vol.dpReplicaNum))
@@ -488,7 +503,7 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 
 		count := (maxSize-allocSize)/vol.dataPartitionSize + 1
 		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v]", vol.Name, count)
-		c.batchCreateDataPartition(vol, int(count))
+		c.batchCreateDataPartition(vol, int(count), false)
 		return
 	}
 
@@ -497,7 +512,7 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 		vol.dataPartitions.lastAutoCreateTime = time.Now()
 		count := vol.calculateExpansionNum()
 		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v]", vol.Name, count)
-		c.batchCreateDataPartition(vol, count)
+		c.batchCreateDataPartition(vol, count, false)
 	}
 }
 
@@ -590,6 +605,13 @@ func (vol *Vol) getViewCache() []byte {
 	vol.RLock()
 	defer vol.RUnlock()
 	return vol.viewCache
+}
+
+func (vol *Vol) deleteDataPartition(c *Cluster, dp *DataPartition) {
+	for _, replica := range dp.Replicas {
+		vol.deleteDataPartitionFromDataNode(c, dp.createTaskToDeleteDataPartition(replica.Addr))
+	}
+	vol.dataPartitions.del(dp)
 }
 
 // Periodically check the volume's status.
@@ -825,15 +847,15 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	)
 	errChannel := make(chan error, vol.mpReplicaNum)
 	if c.isFaultDomain(vol) {
-		if hosts, peers, err = c.getAvaliableHostFromNsGrp(vol.domainId, TypeMetaPartion, vol.mpReplicaNum); err != nil {
-			log.LogErrorf("action[doCreateMetaPartition] getAvaliableHostFromNsGrp err[%v]", err)
+		if hosts, peers, err = c.getHostFromDomainZone(vol.domainId, TypeMetaPartion, vol.mpReplicaNum); err != nil {
+			log.LogErrorf("action[doCreateMetaPartition] getHostFromDomainZone err[%v]", err)
 			return nil, errors.NewError(err)
 		}
 	} else {
 		var excludeZone []string
 		zoneNum := c.decideZoneNum(vol.crossZone)
-		if hosts, peers, err = c.chooseTargetNodes(TypeMetaPartion, excludeZone, nil, nil, int(vol.mpReplicaNum), zoneNum, vol.zoneName); err != nil {
-			log.LogErrorf("action[doCreateMetaPartition] chooseTargetNodes err[%v]", err)
+		if hosts, peers, err = c.getHostFromNormalZone(TypeMetaPartion, excludeZone, nil, nil, int(vol.mpReplicaNum), zoneNum, vol.zoneName); err != nil {
+			log.LogErrorf("action[doCreateMetaPartition] getHostFromNormalZone err[%v]", err)
 			return nil, errors.NewError(err)
 		}
 	}

@@ -30,7 +30,8 @@ import (
 // DataPartition represents the structure of storing the file contents.
 type DataPartition struct {
 	PartitionID    uint64
-	PartitionType  uint
+	PartitionType  int8
+	PartitionTTL   int64
 	LastLoadedTime int64
 	ReplicaNum     uint8
 	Status         int8
@@ -145,10 +146,11 @@ func (partition *DataPartition) createTaskToRemoveRaftMember(removePeer proto.Pe
 	return
 }
 
-func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64, dataPartitionType int, peers []proto.Peer, hosts []string, createType int) (task *proto.AdminTask) {
+func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64,
+	peers []proto.Peer, hosts []string, createType int, partitionType int8) (task *proto.AdminTask) {
 
 	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(
-		partition.VolName, partition.PartitionID, peers, int(dataPartitionSize), dataPartitionType, hosts, createType))
+		partition.VolName, partition.PartitionID, peers, int(dataPartitionSize), hosts, createType, partitionType))
 	partition.resetTaskID(task)
 	return
 }
@@ -287,6 +289,8 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *proto.Dat
 	partition.Lock()
 	defer partition.Unlock()
 	dpr.PartitionID = partition.PartitionID
+	dpr.PartitionType = partition.PartitionType
+	dpr.PartitionTTL = partition.PartitionTTL
 	dpr.Status = partition.Status
 	dpr.ReplicaNum = partition.ReplicaNum
 	dpr.Hosts = make([]string, len(partition.Hosts))
@@ -458,6 +462,18 @@ func (partition *DataPartition) getLiveReplicasFromHosts(timeOutSec int64) (repl
 		if !ok {
 			continue
 		}
+		if replica.isLive(timeOutSec) == true {
+			replicas = append(replicas, replica)
+		}
+	}
+
+	return
+}
+
+// get all the live replicas from the persistent hosts
+func (partition *DataPartition) getLiveReplicas(timeOutSec int64) (replicas []*DataReplica) {
+	replicas = make([]*DataReplica, 0)
+	for _, replica := range partition.Replicas {
 		if replica.isLive(timeOutSec) == true {
 			replicas = append(replicas, replica)
 		}

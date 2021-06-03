@@ -450,7 +450,7 @@ func (nsgm *DomainManager) buildNodeSetGrp(domainGrpManager *DomainNodeSetGrpMan
 	method[1] = buildNodeSetGrpOneZone
 	step := defaultNodeSetGrpStep
 
-	zoneCnt := nsgm.c.cfg.DomainNodeGrpBatchCnt
+	zoneCnt := nsgm.c.cfg.DefaultZoneCnt2BuildReplica
 	log.LogInfof("action[buildNodeSetGrp] zoncnt [%v]", zoneCnt)
 	if zoneCnt >= 3 {
 		zoneCnt = 3
@@ -1228,12 +1228,12 @@ func (zone *Zone) putNodeSet(ns *nodeSet) (err error) {
 func (zone *Zone) createNodeSet(c *Cluster) (ns *nodeSet, err error) {
 	cnt := 1
 	allNodeSet := zone.getAllNodeSet()
-	if c.FaultDomain && c.domainManager.init && c.cfg.DomainNodeGrpBatchCnt < defaultReplicaNum {
+	if c.FaultDomain && c.domainManager.init && c.cfg.DefaultZoneCnt2BuildReplica < defaultReplicaNum {
 		if _, ok := c.domainManager.excludeZoneListDomain[zone.name]; !ok {
-			if len(allNodeSet) < c.cfg.DomainNodeGrpBatchCnt {
+			if len(allNodeSet) < c.cfg.DefaultZoneCnt2BuildReplica {
 				log.LogInfof("action[createNodeSet] zone[%v] nodeset len:[%v] less then 3,create to 3 one time",
 					zone.name, len(allNodeSet))
-				cnt = c.cfg.DomainNodeGrpBatchCnt - len(allNodeSet)
+				cnt = c.cfg.DefaultZoneCnt2BuildReplica - len(allNodeSet)
 			}
 		}
 	}
@@ -1424,15 +1424,10 @@ func (zone *Zone) canWriteForDataNode(replicaNum uint8) (can bool) {
 	log.LogInfof("canWriteForDataNode leastAlive[%v],replicaNum[%v],count[%v]\n", leastAlive, replicaNum, zone.dataNodeCount())
 	return
 }
-func (zone *Zone) isUsedRatio(ratio float64) (can bool) {
+
+func (zone *Zone) getDataUsed() (dataNodeUsed  uint64, dataNodeTotal uint64) {
 	zone.RLock()
 	defer zone.RUnlock()
-	var (
-		dataNodeUsed  uint64
-		dataNodeTotal uint64
-		metaNodeUsed  uint64
-		metaNodeTotal uint64
-	)
 	zone.dataNodes.Range(func(addr, value interface{}) bool {
 		dataNode := value.(*DataNode)
 		if dataNode.isActive == true {
@@ -1444,10 +1439,13 @@ func (zone *Zone) isUsedRatio(ratio float64) (can bool) {
 		return true
 	})
 
-	if float64(dataNodeUsed)/float64(dataNodeTotal) > ratio {
-		log.LogInfof("action[isUsedRatio] zone[%v] dataNodeUsed [%v] total [%v], ratio[%v]", zone.name, dataNodeUsed, dataNodeTotal, ratio)
-		return true
-	}
+	return dataNodeUsed, dataNodeTotal
+}
+
+
+func (zone *Zone) getMetaUsed() (metaNodeUsed  uint64, metaNodeTotal uint64) {
+	zone.RLock()
+	defer zone.RUnlock()
 
 	zone.metaNodes.Range(func(addr, value interface{}) bool {
 		metaNode := value.(*MetaNode)
@@ -1459,9 +1457,32 @@ func (zone *Zone) isUsedRatio(ratio float64) (can bool) {
 		metaNodeTotal += metaNode.Total
 		return true
 	})
+	return metaNodeUsed, metaNodeTotal
+}
 
-	if float64(metaNodeUsed)/float64(metaNodeTotal) > ratio {
-		log.LogInfof("action[isUsedRatio] zone[%v] metaNodeUsed [%v] total [%v], ratio[%v]", zone.name, metaNodeUsed, metaNodeTotal, ratio)
+func (zone *Zone) getSpaceLeft(dataType uint32) (spaceLeft uint64) {
+	if dataType == TypeDataPartion {
+		dataNodeUsed, dataNodeTotal := zone.getDataUsed()
+		return dataNodeTotal - dataNodeUsed
+	} else {
+		metaNodeUsed, metaNodeTotal := zone.getMetaUsed()
+		return metaNodeTotal - metaNodeUsed
+	}
+}
+
+func (zone *Zone) isUsedRatio(ratio float64) (can bool) {
+	dataUsed, dataTotal := zone.getDataUsed()
+	dataRatio := float64(dataUsed)/float64(dataTotal)
+	if dataRatio >= ratio {
+		log.LogInfof("action[isUsedRatio] zone[%v] dataused raito [%v] ratio[%v]", zone.name, dataRatio, ratio)
+		return true
+	}
+
+	metaUsed, metaTotal := zone.getMetaUsed()
+	metaRatio := float64(metaUsed)/float64(metaTotal)
+
+	if metaRatio >= ratio {
+		log.LogInfof("action[isUsedRatio] zone[%v] metaused raito [%v] ratio[%v]", zone.name, metaRatio, ratio)
 		return true
 	}
 

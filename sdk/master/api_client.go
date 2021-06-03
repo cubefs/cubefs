@@ -137,3 +137,17 @@ func (api *ClientAPI) GetDataPartitions(volName string) (view *proto.DataPartiti
 	}
 	return
 }
+
+func (api *ClientAPI) GetPreLoadDataPartitions(volName string) (view *proto.DataPartitionsView, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.ClientDataPartitions)
+	request.addParam("name", volName)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	view = &proto.DataPartitionsView{}
+	if err = json.Unmarshal(data, view); err != nil {
+		return
+	}
+	return
+}

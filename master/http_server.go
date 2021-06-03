@@ -184,6 +184,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminCreateDataPartition).
 		HandlerFunc(m.createDataPartition)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminCreatePreLoadDataPartition).
+		HandlerFunc(m.createPreLoadDataPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminLoadDataPartition).
 		HandlerFunc(m.loadDataPartition)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

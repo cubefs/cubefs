@@ -145,7 +145,7 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) 
 				excludeZone = append(excludeZone, zones[0])
 			}
 			// choose a meta node in other zone
-			if _, newPeers, err = c.chooseTargetNodes(TypeMetaPartion, excludeZone, excludeNodeSets, oldHosts, 1, 1, ""); err != nil {
+			if _, newPeers, err = c.getHostFromNormalZone(TypeMetaPartion, excludeZone, excludeNodeSets, oldHosts, 1, 1, ""); err != nil {
 				goto errHandler
 			}
 		}
@@ -578,8 +578,11 @@ func (c *Cluster) doLoadDataPartition(dp *DataPartition) {
 	}
 
 	dp.getFileCount()
-	dp.validateCRC(c.Name)
-	dp.checkReplicaSize(c.Name, c.cfg.diffSpaceUsage)
+	if dp.PartitionType == proto.PartitionTypeNormal {
+		dp.validateCRC(c.Name)
+		dp.checkReplicaSize(c.Name,c.cfg.diffSpaceUsage)
+	}
+
 	dp.setToNormal()
 }
 

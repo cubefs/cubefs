@@ -94,19 +94,19 @@ type clusterConfig struct {
 	nodeSetCapacity                     int
 	MetaNodeThreshold                   float32
 	ClusterLoadFactor                   float32
-	MetaNodeDeleteBatchCount            uint64 //metanode delete batch count
-	DataNodeDeleteLimitRate             uint64 //datanode delete limit rate
-	MetaNodeDeleteWorkerSleepMs         uint64 //datanode delete limit rate
-	DataNodeAutoRepairLimitRate         uint64 //datanode autorepair limit rate
-	peers                               []raftstore.PeerAddress
-	peerAddrs                           []string
-	heartbeatPort                       int64
-	replicaPort                         int64
-	diffSpaceUsage                      uint64
-	faultDomain                         bool
-	DomainNodeGrpBatchCnt               int
-	DomainBuildAsPossible               bool
-	DataPartitionUsageThreshold         float64
+	MetaNodeDeleteBatchCount    uint64 //metanode delete batch count
+	DataNodeDeleteLimitRate     uint64 //datanode delete limit rate
+	MetaNodeDeleteWorkerSleepMs uint64 //datanode delete limit rate
+	DataNodeAutoRepairLimitRate uint64 //datanode autorepair limit rate
+	peers                       []raftstore.PeerAddress
+	peerAddrs                   []string
+	heartbeatPort               int64
+	replicaPort                 int64
+	diffSpaceUsage              uint64
+	faultDomain                 bool
+	DomainBuildAsPossible       bool
+	DefaultZoneCnt2BuildReplica int
+	DataPartitionUsageThreshold float64
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

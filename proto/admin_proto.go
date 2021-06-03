@@ -21,6 +21,7 @@ const (
 	AdminGetDataPartition          = "/dataPartition/get"
 	AdminLoadDataPartition         = "/dataPartition/load"
 	AdminCreateDataPartition       = "/dataPartition/create"
+	AdminCreatePreLoadDataPartition = "/dataPartition/createPreLoad"
 	AdminDecommissionDataPartition = "/dataPartition/decommission"
 	AdminDiagnoseDataPartition     = "/dataPartition/diagnose"
 	AdminDeleteDataReplica         = "/dataReplica/delete"
@@ -147,7 +148,7 @@ type ClusterInfo struct {
 
 // CreateDataPartitionRequest defines the request to create a data partition.
 type CreateDataPartitionRequest struct {
-	PartitionType int
+	PartitionType int8
 	PartitionId   uint64
 	PartitionSize int
 	VolumeId      string
@@ -385,6 +386,7 @@ type MetaPartitionLoadResponse struct {
 
 // DataPartitionResponse defines the response from a data node to the master that is related to a data partition.
 type DataPartitionResponse struct {
+	PartitionType int8
 	PartitionID uint64
 	Status      int8
 	ReplicaNum  uint8
@@ -392,6 +394,7 @@ type DataPartitionResponse struct {
 	LeaderAddr  string
 	Epoch       uint64
 	IsRecover   bool
+	PartitionTTL int64
 }
 
 // DataPartitionsView defines the view of a data partition

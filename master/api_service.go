@@ -274,6 +274,59 @@ func (m *Server) createMetaPartition(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprint("create meta partition successfully")))
 }
 
+func (m *Server) createPreLoadDataPartition(w http.ResponseWriter, r *http.Request) {
+
+	var (
+		rstMsg                     string
+		volName                    string
+		vol                        *Vol
+		err                        error
+	)
+	vol.PreloadZoneName = r.FormValue(zoneNameKey)
+	if volName = r.FormValue(nameKey); volName == "" {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+
+	if vol, err = m.cluster.getVol(volName); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	if vol.PreloadCacheTTL, err = extractUintWithDefault(r, cacheTTLKey, vol.CacheTTL); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	if vol.PreloadCacheCapacity, err = extractCapacity(r); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	if replicaStr := r.FormValue(replicaNumKey); replicaStr == "" {
+		vol.PreloadReplicaNum = defaultReplicaNum
+	} else if vol.PreloadReplicaNum, err = strconv.Atoi(replicaStr); err != nil {
+		err = unmatchedKey(replicaNumKey)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	if vol.PreloadReplicaNum, err = extractCapacity(r); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	err = m.cluster.batchCreatePreLoadDataPartition(vol)
+	rstMsg = fmt.Sprintf(" createDataPartition succeeeds. ")
+	if err != nil {
+		log.LogErrorf("create data partition fail: volume(%v) err(%v)", volName, err)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+
 func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		rstMsg                     string
@@ -296,7 +349,7 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	}
 	lastTotalDataPartitions = len(vol.dataPartitions.partitions)
 	clusterTotalDataPartitions = m.cluster.getDataPartitionCount()
-	err = m.cluster.batchCreateDataPartition(vol, reqCreateCount)
+	err = m.cluster.batchCreateDataPartition(vol, reqCreateCount, false)
 	rstMsg = fmt.Sprintf(" createDataPartition succeeeds. "+
 		"clusterLastTotalDataPartitions[%v],vol[%v] has %v data partitions previously and %v data partitions now",
 		clusterTotalDataPartitions, volName, lastTotalDataPartitions, len(vol.dataPartitions.partitions))

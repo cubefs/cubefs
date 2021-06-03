@@ -111,13 +111,13 @@ func TestAllocZones(t *testing.T) {
 	cluster.t = topo
 	cluster.cfg = newClusterConfig()
 	//don't cross zone
-	hosts, _, err := cluster.chooseTargetNodes("", nil, nil, replicaNum, 1, "")
+	hosts, _, err := cluster.getHostFromNormalZone("", nil, nil, replicaNum, 1, "")
 	if err != nil {
 		t.Error(err)
 		return
 	}
 	//cross zone
-	hosts, _, err = cluster.chooseTargetNodes("", nil, nil, replicaNum, 2, "")
+	hosts, _, err = cluster.getHostFromNormalZone("", nil, nil, replicaNum, 2, "")
 	if err != nil {
 		t.Error(err)
 		return
