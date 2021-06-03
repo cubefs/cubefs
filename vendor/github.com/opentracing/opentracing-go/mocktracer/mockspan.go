@@ -210,6 +210,10 @@ func (s *MockSpan) FinishWithOptions(opts opentracing.FinishOptions) {
 
 // String allows printing span for debugging
 func (s *MockSpan) String() string {
+	if s == nil {
+		return "<nil>"
+	}
+
 	return fmt.Sprintf(
 		"traceId=%d, spanId=%d, parentId=%d, sampled=%t, name=%s",
 		s.SpanContext.TraceID, s.SpanContext.SpanID, s.ParentID,

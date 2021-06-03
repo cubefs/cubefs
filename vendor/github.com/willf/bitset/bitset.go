@@ -300,6 +300,9 @@ func (b *BitSet) InsertAt(idx uint) *BitSet {
 
 // String creates a string representation of the Bitmap
 func (b *BitSet) String() string {
+	if b == nil {
+		return ""
+	}
 	// follows code from https://github.com/RoaringBitmap/roaring
 	var buffer bytes.Buffer
 	start := []byte("{")
