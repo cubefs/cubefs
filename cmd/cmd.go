@@ -18,6 +18,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/chubaofs/chubaofs/console"
+	"github.com/chubaofs/chubaofs/proto"
+	sysutil "github.com/chubaofs/chubaofs/util/sys"
+	"github.com/chubaofs/chubaofs/util/version"
 	syslog "log"
 	"net/http"
 	_ "net/http/pprof"
@@ -29,11 +33,6 @@ import (
 	"runtime/debug"
 	"strings"
 	"syscall"
-
-	"github.com/chubaofs/chubaofs/console"
-	"github.com/chubaofs/chubaofs/proto"
-
-	sysutil "github.com/chubaofs/chubaofs/util/sys"
 
 	"github.com/chubaofs/chubaofs/objectnode"
 
@@ -289,6 +288,11 @@ func main() {
 	startComplete = true
 
 	daemonize.SignalOutcome(nil)
+
+	// report server version
+	masters := cfg.GetStringSlice(proto.MasterAddr)
+	versionInfo := proto.DumpVersion(module, BranchName, CommitID, BuildTime)
+	go version.ReportVersionSchedule(cfg, masters, versionInfo)
 
 	// Block main goroutine until server shutdown.
 	server.Sync()
