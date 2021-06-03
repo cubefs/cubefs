@@ -197,7 +197,12 @@ func (rs *RaftServer) ChangeMember(id uint64, changeType proto.ConfChangeType, p
 		future.respond(nil, ErrRaftNotExists)
 		return
 	}
-	raft.proposeMemberChange(&proto.ConfChange{Type: changeType, Peer: peer, Context: context}, future, true)
+
+	if changeType == proto.ConfPromoteLearner {
+		raft.proposePromoteLearnerMemberChange(&proto.ConfChange{Type: changeType, Peer: peer, Context: context}, future, false)
+	} else {
+		raft.proposeMemberChange(&proto.ConfChange{Type: changeType, Peer: peer, Context: context}, future)
+	}
 	return
 }
 
