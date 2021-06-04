@@ -89,7 +89,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToCheckHeartbeat()
 	c.scheduleToCheckMetaPartitions()
 	c.scheduleToUpdateStatInfo()
-	c.scheduleToCheckAutoDataPartitionCreation()
+	c.scheduleToManageDp()
 	c.scheduleToCheckVolStatus()
 	c.scheduleToCheckDiskRecoveryProgress()
 	c.scheduleToCheckMetaPartitionRecoveryProgress()
@@ -133,11 +133,13 @@ func (c *Cluster) getAvaliableHostFromNsGrp(domainId uint64, createType uint32, 
 	return
 }
 
-func (c *Cluster) scheduleToCheckAutoDataPartitionCreation() {
+func (c *Cluster) scheduleToManageDp() {
 	go func() {
 		// check volumes after switching leader two minutes
 		time.Sleep(2 * time.Minute)
+
 		for {
+
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				vols := c.copyVols()
 				for _, vol := range vols {
@@ -145,6 +147,32 @@ func (c *Cluster) scheduleToCheckAutoDataPartitionCreation() {
 				}
 			}
 			time.Sleep(5 * time.Second)
+		}
+	}()
+
+	// schedule delete dataPartition
+	go func() {
+
+		time.Sleep(2 * time.Minute)
+
+		for {
+
+			if c.partition != nil && c.partition.IsRaftLeader() {
+
+				vols := c.copyVols()
+
+				for _, vol := range vols {
+
+					if isHot(vol.VolType) {
+
+						continue
+					}
+
+					vol.autoDeleteDp(c)
+				}
+			}
+
+			time.Sleep(2 * time.Minute)
 		}
 	}()
 }
@@ -1634,11 +1662,16 @@ func (c *Cluster) updateVol(name, authKey string, newArgs *VolVarargs) (err erro
 		return proto.ErrVolAuthKeyNotMatch
 	}
 
-	volUsedSpace = vol.totalUsedSpace()
-	if float64(newArgs.capacity*util.GB) < float64(volUsedSpace)*1.2 {
-		err = fmt.Errorf("capacity[%v] has to be 20 percent larger than the used space[%v]", newArgs.capacity,
-			volUsedSpace/util.GB)
-		goto errHandler
+	if isHot(vol.VolType) {
+
+		volUsedSpace = vol.totalUsedSpace()
+		if float64(newArgs.capacity*util.GB) < float64(volUsedSpace)*1.2 {
+
+			err = fmt.Errorf("capacity[%v] has to be 20 percent larger than the used space[%v]", newArgs.capacity,
+				volUsedSpace/util.GB)
+			goto errHandler
+		}
+
 	}
 
 	if newArgs.zoneName, err = c.checkZoneName(name, vol.crossZone, vol.defaultPriority, newArgs.zoneName); err != nil {

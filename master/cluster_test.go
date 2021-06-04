@@ -109,13 +109,13 @@ func TestPanicCheckAvailSpace(t *testing.T) {
 }
 
 func TestCheckCreateDataPartitions(t *testing.T) {
-	server.cluster.scheduleToCheckAutoDataPartitionCreation()
+	server.cluster.scheduleToManageDp()
 	//time.Sleep(150 * time.Second)
 }
 
 func TestPanicCheckCreateDataPartitions(t *testing.T) {
 	c := buildPanicCluster()
-	c.scheduleToCheckAutoDataPartitionCreation()
+	c.scheduleToManageDp()
 }
 
 func TestPanicCheckBadDiskRecovery(t *testing.T) {

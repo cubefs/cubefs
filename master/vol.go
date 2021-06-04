@@ -381,6 +381,38 @@ func (vol *Vol) capacity() uint64 {
 	return vol.Capacity
 }
 
+func (vol *Vol) autoDeleteDp(c *Cluster) {
+
+	if vol.dataPartitions == nil {
+		return
+	}
+
+	maxSize := vol.Capacity * util.GB * uint64(clusterLoadFactor*100) / 100
+	maxCnt := maxSize / vol.dataPartitionSize
+	if maxSize%vol.dataPartitionSize != 0 {
+		maxCnt++
+	}
+
+	for _, dp := range vol.dataPartitions.partitions {
+
+		if dp.PartitionType != proto.PartitionTypeCache {
+			continue
+		}
+
+		if maxCnt > 0 {
+			maxCnt--
+		}
+
+		log.LogInfof("[autoDeleteDp] start delete dp, id[%d], replica[%v]", dp.PartitionID, dp.Replicas)
+
+		for _, replica := range dp.Replicas {
+			task := dp.createTaskToDeleteDataPartition(replica.Addr)
+			vol.deleteMetaPartitionFromMetaNode(c, task)
+		}
+
+	}
+}
+
 func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 
 	defer func() {
@@ -446,7 +478,7 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 	if isCold(vol.VolType) {
 
 		vol.dataPartitions.lastAutoCreateTime = time.Now()
-		allocSize := vol.dataPartitionSize * uint64(vol.dataPartitions.readableAndWritableCnt)
+		allocSize := vol.dataPartitionSize * uint64(len(vol.dataPartitions.partitions))
 		maxSize := vol.Capacity * util.GB * uint64(clusterLoadFactor*100) / 100
 
 		if maxSize <= allocSize {

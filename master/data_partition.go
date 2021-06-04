@@ -30,6 +30,7 @@ import (
 // DataPartition represents the structure of storing the file contents.
 type DataPartition struct {
 	PartitionID    uint64
+	PartitionType  uint
 	LastLoadedTime int64
 	ReplicaNum     uint8
 	Status         int8
