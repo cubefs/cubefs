@@ -50,7 +50,7 @@ type Streamer struct {
 	request chan interface{} // request channel, write/flush/close
 	done    chan struct{}    // stream writer is being closed
 
-	tinySize int
+	tinySize   int
 	extentSize int
 
 	writeLock sync.Mutex
