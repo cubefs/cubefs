@@ -382,6 +382,7 @@ func (vol *Vol) capacity() uint64 {
 }
 
 func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
+
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogWarnf("checkAutoDataPartitionCreation occurred panic,err[%v]", r)
@@ -389,17 +390,11 @@ func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 				"checkAutoDataPartitionCreation occurred panic")
 		}
 	}()
-	if vol.status() == markDelete {
+
+	if !vol.needCreateDataPartition() {
 		return
 	}
-	if vol.capacity() == 0 {
-		return
-	}
-	usedSpace := vol.totalUsedSpace() / util.GB
-	if usedSpace >= vol.capacity() {
-		vol.setAllDataPartitionsToReadOnly()
-		return
-	}
+
 	vol.setStatus(normal)
 
 	if vol.status() == normal && !c.DisableAutoAllocate {
@@ -407,17 +402,66 @@ func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 	}
 }
 
+func (vol *Vol) needCreateDataPartition() bool {
+
+	if vol.status() == markDelete {
+		return false
+	}
+
+	if vol.capacity() == 0 {
+		return false
+	}
+
+	if isHot(vol.VolType) {
+		usedSpace := vol.totalUsedSpace() / util.GB
+		if usedSpace >= vol.capacity() {
+			vol.setAllDataPartitionsToReadOnly()
+			return false
+		}
+		return true
+	}
+
+	// cold
+	if vol.CacheAction == noCache {
+		return false
+	}
+
+	return true
+}
+
 func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
+
 	if vol.dataPartitions.lastAutoCreateTime.IsZero() ||
+
 		vol.dataPartitions.lastAutoCreateTime.After(time.Now()) {
 		vol.dataPartitions.lastAutoCreateTime = time.Now()
 		return
 	}
+
 	if time.Since(vol.dataPartitions.lastAutoCreateTime) < time.Minute {
+
+		return
+	}
+
+	if isCold(vol.VolType) {
+
+		vol.dataPartitions.lastAutoCreateTime = time.Now()
+		allocSize := vol.dataPartitionSize * uint64(vol.dataPartitions.readableAndWritableCnt)
+		maxSize := vol.Capacity * util.GB * uint64(clusterLoadFactor*100) / 100
+
+		if maxSize <= allocSize {
+			log.LogInfof("action[autoCreateDataPartitions] no need to create again, alloc [%d], max [%d]", allocSize, maxSize)
+			return
+		}
+
+		count := (maxSize-allocSize)/vol.dataPartitionSize + 1
+		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v]", vol.Name, count)
+		c.batchCreateDataPartition(vol, int(count))
 		return
 	}
 
 	if (vol.Capacity > 200000 && vol.dataPartitions.readableAndWritableCnt < 200) || vol.dataPartitions.readableAndWritableCnt < minNumOfRWDataPartitions {
+
 		vol.dataPartitions.lastAutoCreateTime = time.Now()
 		count := vol.calculateExpansionNum()
 		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v]", vol.Name, count)

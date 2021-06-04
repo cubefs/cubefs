@@ -240,6 +240,8 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 	limitRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeDeleteLimitRate)
 	deleteSleepMs := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
 	autoRepairRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeAutoRepairLimitRate)
+	loadFactor := m.cluster.cfg.ClusterLoadFactor
+
 	cInfo := &proto.ClusterInfo{
 		Cluster:                     m.cluster.Name,
 		MetaNodeDeleteBatchCount:    batchCount,
@@ -247,6 +249,7 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 		DataNodeDeleteLimitRate:     limitRate,
 		DataNodeAutoRepairLimitRate: autoRepairRate,
 		Ip:                          strings.Split(r.RemoteAddr, ":")[0],
+		LoadFactor:                  float64(loadFactor),
 		EbsAddr:                     m.ebsAddr,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
@@ -707,9 +710,8 @@ func (c *Cluster) checkZoneArgs(crossZone bool, zoneName string) error {
 func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 	switch req.volType {
 	case proto.VolumeTypeHot:
-		if req.dpReplicaNum != defaultReplicaNum {
-			return fmt.Errorf("hot vol's replicaNum can only be 3,received replicaNum is[%v]", req.dpReplicaNum)
-		}
+
+		req.dpReplicaNum = defaultReplicaNum
 
 		return nil
 
@@ -983,6 +985,7 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		params map[string]interface{}
 		err    error
 	)
+
 	if params, err = parseAndExtractSetNodeInfoParams(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -997,7 +1000,7 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if val, ok := params[clusterLoadFactor]; ok {
+	if val, ok := params[clusterLoadFactorKey]; ok {
 		if factor, ok := val.(float32); ok {
 			if err = m.cluster.setClusterLoadFactor(factor); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
@@ -1227,6 +1230,7 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 			nsStat.DataNodes = append(nsStat.DataNodes, dataNodeInfo)
 			return true
 		})
+
 		nsStat.DataUseRatio, _ = strconv.ParseFloat(fmt.Sprintf("%.2f", float64(nsStat.DataUsed)/float64(nsStat.DataTotal)), 64)
 
 		nsg.nodeSets[i].metaNodes.Range(func(key, value interface{}) bool {
@@ -1468,7 +1472,7 @@ func (m *Server) getNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	resp[nodeMarkDeleteRateKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeDeleteLimitRate)
 	resp[nodeDeleteWorkerSleepMs] = fmt.Sprintf("%v", m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
 	resp[nodeAutoRepairRateKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeAutoRepairLimitRate)
-	resp[clusterLoadFactor] = fmt.Sprintf("%v", m.cluster.cfg.ClusterLoadFactor)
+	resp[clusterLoadFactorKey] = fmt.Sprintf("%v", m.cluster.cfg.ClusterLoadFactor)
 
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
 }

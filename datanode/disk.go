@@ -238,19 +238,28 @@ func (d *Disk) updateSpaceInfo() (err error) {
 	if err = syscall.Statfs(d.Path, &statsInfo); err != nil {
 		d.incReadErrCnt()
 	}
+
 	if d.Status == proto.Unavailable {
+
 		mesg := fmt.Sprintf("disk path %v error on %v", d.Path, LocalIP)
 		log.LogErrorf(mesg)
 		exporter.Warning(mesg)
 		d.ForceExitRaftStore()
 	} else if d.Available <= 0 {
+
+		d.Status = proto.ReadOnly
+	} else if d.Total*uint64(loadFactor*100)/100 < d.Allocated {
+
 		d.Status = proto.ReadOnly
 	} else {
+
 		d.Status = proto.ReadWrite
 	}
+
 	log.LogDebugf("action[updateSpaceInfo] disk(%v) total(%v) available(%v) remain(%v) "+
 		"restSize(%v) maxErrs(%v) readErrs(%v) writeErrs(%v) status(%v)", d.Path,
 		d.Total, d.Available, d.Unallocated, d.ReservedSpace, d.MaxErrCnt, d.ReadErrCnt, d.WriteErrCnt, d.Status)
+
 	return
 }
 

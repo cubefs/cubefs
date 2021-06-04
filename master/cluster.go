@@ -189,6 +189,17 @@ func (c *Cluster) scheduleToCheckNodeSetGrpManagerStatus() {
 	}()
 }
 
+func (c *Cluster) scheduleToLoadDataPartitions() {
+	go func() {
+		for {
+			if c.partition != nil && c.partition.IsRaftLeader() {
+				c.doLoadDataPartitions()
+			}
+			time.Sleep(time.Second * 5)
+		}
+	}()
+}
+
 // Check the replica status of each data partition.
 func (c *Cluster) checkDataPartitions() {
 	defer func() {
@@ -208,17 +219,6 @@ func (c *Cluster) checkDataPartitions() {
 		msg := fmt.Sprintf("action[checkDataPartitions],vol[%v] can readWrite partitions:%v  ", vol.Name, vol.dataPartitions.readableAndWritableCnt)
 		log.LogInfo(msg)
 	}
-}
-
-func (c *Cluster) scheduleToLoadDataPartitions() {
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.doLoadDataPartitions()
-			}
-			time.Sleep(time.Second * 5)
-		}
-	}()
 }
 
 func (c *Cluster) doLoadDataPartitions() {
@@ -267,6 +267,12 @@ func (c *Cluster) scheduleToCheckHeartbeat() {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				c.checkLeaderAddr()
 				c.checkDataNodeHeartbeat()
+
+				// update load factor
+				if clusterLoadFactor != c.cfg.ClusterLoadFactor {
+					clusterLoadFactor = c.cfg.ClusterLoadFactor
+				}
+
 			}
 			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
 		}
@@ -1755,12 +1761,23 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 		goto errHandler
 	}
 
-	for retryCount := 0; readWriteDataPartitions < defaultInitDataPartitionCnt && retryCount < 3; retryCount++ {
-		_ = vol.initDataPartitions(c)
-		readWriteDataPartitions = len(vol.dataPartitions.partitionMap)
+	if vol.capacity() != 0 {
+
+		for retryCount := 0; readWriteDataPartitions < defaultInitDataPartitionCnt && retryCount < 3; retryCount++ {
+
+			_ = vol.initDataPartitions(c)
+			readWriteDataPartitions = len(vol.dataPartitions.partitionMap)
+		}
+
+		if len(vol.dataPartitions.partitionMap) <= defaultReplicaNum {
+			err = fmt.Errorf("action[createVol]  initDataPartitions failed")
+			goto errHandler
+		}
+
 	}
 
 	vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
+
 	vol.updateViewCache(c)
 	log.LogInfof("action[createVol] vol[%v],readableAndWritableCnt[%v]", req.name, readWriteDataPartitions)
 	return

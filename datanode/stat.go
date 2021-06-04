@@ -72,6 +72,7 @@ func (s *Stats) updateMetrics(
 	maxWeightsForCreatePartition, dataPartitionCnt uint64) {
 	s.Lock()
 	defer s.Unlock()
+
 	s.Total = total
 	s.Used = used
 	s.Available = available

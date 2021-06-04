@@ -41,6 +41,7 @@ type DataNode struct {
 	TaskManager               *AdminTaskManager `graphql:"-"`
 	DataPartitionReports      []*proto.PartitionReport
 	DataPartitionCount        uint32
+	TotalPartitionSize        uint64
 	NodeSetID                 uint64
 	PersistenceDataPartitions []uint64
 	BadDisks                  []string
@@ -91,6 +92,7 @@ func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse
 	dataNode.ZoneName = resp.ZoneName
 	dataNode.DataPartitionCount = resp.CreatedPartitionCnt
 	dataNode.DataPartitionReports = resp.PartitionReports
+	dataNode.TotalPartitionSize = resp.TotalPartitionSize
 	dataNode.BadDisks = resp.BadDisks
 	if dataNode.Total == 0 {
 		dataNode.UsageRatio = 0.0
@@ -105,11 +107,12 @@ func (dataNode *DataNode) isWriteAble() (ok bool) {
 	dataNode.RLock()
 	defer dataNode.RUnlock()
 
-	if dataNode.isActive == true && dataNode.AvailableSpace > 10*util.GB {
-		ok = true
+	maxCapacity := dataNode.Total * uint64(clusterLoadFactor*100) / 100
+	if dataNode.isActive == true && dataNode.AvailableSpace > 10*util.GB && maxCapacity < dataNode.TotalPartitionSize {
+		return true
 	}
 
-	return
+	return false
 }
 
 func (dataNode *DataNode) isWriteAbleWithSize(size uint64) (ok bool) {

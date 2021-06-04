@@ -433,41 +433,33 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
-	if mpCountStr := r.FormValue(metaPartitionCountKey); mpCountStr != "" {
-		if req.mpCount, err = strconv.Atoi(mpCountStr); err != nil {
-			req.mpCount = defaultInitMetaPartitionCount
-		}
-	}
-
-	if replicaStr := r.FormValue(replicaNumKey); replicaStr == "" {
-		req.dpReplicaNum = defaultReplicaNum
-	} else if req.dpReplicaNum, err = strconv.Atoi(replicaStr); err != nil {
-		err = unmatchedKey(replicaNumKey)
+	if req.mpCount, err = extractUintWithDefault(r, metaPartitionCountKey, defaultInitMetaPartitionCount); err != nil {
 		return
 	}
 
-	if sizeStr := r.FormValue(dataPartitionSizeKey); sizeStr != "" {
-		if req.size, err = strconv.Atoi(sizeStr); err != nil {
-			err = unmatchedKey(dataPartitionSizeKey)
-			return
-		}
+	if req.dpReplicaNum, err = extractUint(r, replicaNumKey); err != nil {
+		return
 	}
 
-	if req.capacity, err = extractCapacity(r); err != nil {
+	if req.size, err = extractUint(r, dataPartitionSizeKey); err != nil {
+		return
+	}
+
+	if req.capacity, err = extractUint(r, volCapacityKey); err != nil {
 		return
 	}
 
 	req.volType, _ = extractVolType(r)
 
-	if req.followerRead, err = extractFollowerRead(r); err != nil {
+	if req.followerRead, err = extractBoolWithDefault(r, followerReadKey, false); err != nil {
 		return
 	}
 
-	if req.authenticate, err = extractAuthenticate(r); err != nil {
+	if req.authenticate, err = extractBoolWithDefault(r, authenticateKey, false); err != nil {
 		return
 	}
 
-	if req.crossZone, err = extractCrossZone(r); err != nil {
+	if req.crossZone, err = extractBoolWithDefault(r, crossZoneKey, false); err != nil {
 		return
 	}
 
@@ -479,7 +471,9 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	}
 
 	req.zoneName = r.FormValue(zoneNameKey)
+
 	req.description = r.FormValue(descriptionKey)
+
 	return
 }
 
@@ -683,7 +677,6 @@ func extractDefaultDomainId(r *http.Request) (domainId uint64, err error) {
 	return
 }
 
-
 func extractDefaulPriority(r *http.Request) (defaultPrior bool, err error) {
 	var value string
 	if value = r.FormValue(defaultPriority); value == "" {
@@ -747,6 +740,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	var value string
 	noParams := true
 	params = make(map[string]interface{})
+
 	if value = r.FormValue(nodeDeleteBatchCountKey); value != "" {
 		noParams = false
 		var batchCount = uint64(0)
@@ -791,15 +785,15 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[nodeDeleteWorkerSleepMs] = val
 	}
 
-	if value = r.FormValue(clusterLoadFactor); value != "" {
+	if value = r.FormValue(clusterLoadFactorKey); value != "" {
 		noParams = false
 		valF, err := strconv.ParseFloat(value, 64)
 		if err != nil || valF < 1 {
-			err = unmatchedKey(clusterLoadFactor)
+			err = unmatchedKey(clusterLoadFactorKey)
 			return params, err
 		}
 
-		params[clusterLoadFactor] = valF
+		params[clusterLoadFactorKey] = valF
 	}
 
 	if noParams {

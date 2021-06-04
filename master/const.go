@@ -61,7 +61,7 @@ const (
 	nodeMarkDeleteRateKey   = "markDeleteRate"
 	nodeDeleteWorkerSleepMs = "deleteWorkerSleepMs"
 	nodeAutoRepairRateKey   = "autoRepairRate"
-	clusterLoadFactor       = "loadFactor"
+	clusterLoadFactorKey    = "loadFactor"
 	descriptionKey          = "description"
 	dpSelectorNameKey       = "dpSelectorName"
 	dpSelectorParmKey       = "dpSelectorParm"

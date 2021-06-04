@@ -49,6 +49,7 @@ var (
 	ErrGetMasterDatanodeInfoFailed = errors.New("Failed to get datanode info from master")
 
 	LocalIP, serverPort string
+	loadFactor          = proto.DefaultClusterLoadFactor
 	gConnPool           = util.NewConnectPool()
 	MasterClient        = masterSDK.NewMasterClient(nil, false)
 )

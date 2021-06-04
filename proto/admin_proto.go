@@ -141,6 +141,7 @@ type ClusterInfo struct {
 	MetaNodeDeleteWorkerSleepMs uint64
 	DataNodeDeleteLimitRate     uint64
 	DataNodeAutoRepairLimitRate uint64
+	LoadFactor                  float64
 	EbsAddr                     string
 }
 

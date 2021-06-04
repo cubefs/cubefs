@@ -23,7 +23,7 @@ func (m *DataNode) startUpdateNodeInfo() {
 	for {
 		select {
 		case <-nodeInfoStopC:
-			log.LogInfo("metanode nodeinfo goroutine stopped")
+			log.LogInfo("datanode nodeinfo goroutine stopped")
 			return
 		case <-ticker.C:
 			m.updateNodeInfo()
@@ -41,7 +41,14 @@ func (m *DataNode) updateNodeInfo() {
 		log.LogErrorf("[updateDataNodeInfo] %s", err.Error())
 		return
 	}
+
+	if clusterInfo.LoadFactor > 0 && clusterInfo.LoadFactor != loadFactor {
+		log.LogWarnf("[updateNodeInfo] update load factor from [%d] to [%d]", loadFactor, clusterInfo.LoadFactor)
+		loadFactor = clusterInfo.LoadFactor
+	}
+
 	setLimiter(deleteLimiteRater, clusterInfo.DataNodeDeleteLimitRate)
+
 	setDoExtentRepair(int(clusterInfo.DataNodeAutoRepairLimitRate))
 	log.LogInfof("updateNodeInfo from master:"+
 		"deleteLimite(%v),autoRepairLimit(%v)", clusterInfo.DataNodeDeleteLimitRate,
