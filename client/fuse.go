@@ -130,7 +130,7 @@ func main() {
 	exporter.Init(ModuleName, cfg)
 
 	level := parseLogLevel(opt.Loglvl)
-	_, err = log.InitLog(opt.Logpath, opt.Volname, level, nil)
+	_, err = log.InitLog(opt.Logpath, opt.Volname, level, log.NewClientLogRotate())
 	if err != nil {
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
@@ -258,6 +258,8 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 	http.HandleFunc(ControlCommandSetRate, super.SetRate)
 	http.HandleFunc(ControlCommandGetRate, super.GetRate)
 	http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
+	http.HandleFunc(log.SetLogMaxSizePath, log.SetLogSize)
+	http.HandleFunc(log.GetLogConfigPath, log.GetLogConfig)
 	http.HandleFunc(ControlCommandFreeOSMemory, freeOSMemory)
 	http.HandleFunc(log.GetLogPath, log.GetLog)
 
