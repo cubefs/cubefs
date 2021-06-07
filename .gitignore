@@ -14,3 +14,8 @@ console/html
 vendor/dep
 java/target
 java/src/main/resources/*.so
+build/install/src/cfs-*
+build/install/src/libcfs*
+build/install/src/libchubaofs*
+build/install/src/monitor
+build/install/template/grafana/provisioning/dashboards/chubaofs.json

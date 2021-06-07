@@ -1,0 +1,22 @@
+{
+    "role": "datanode",
+    "listen": "{{ datanode_listen }}",
+    "prof": "{{ datanode_prof }}",
+    "raftHeartbeat": "{{ datanode_raftHeartbeat }}",
+    "raftReplica": "{{ datanode_raftReplica }}",
+    "raftDir":   "{{ datanode_raftDir }}",
+    
+    "tickInterval": 500,
+    "enableSmuxConnPool": true,
+
+    "consulAddr": "{% set pk = groups['monitor'] %}{% for host in pk %}http://{% if loop.first %}{{ host }}:17085{% endif %}{% endfor %}",
+    "exporterPort": {{ datanode_exporterPort }},
+    "logDir": "{{ datanode_logDir }}",
+    "logLevel": "{{ datanode_logLevel }}",
+    "disks": [
+        {{ datanode_disks }}
+    ],
+    "masterAddr": [
+        {% set pk = groups['master'] %}{% for host in pk %}"{{ host }}:{{ master_listen }}"{% if not loop.last %},{% endif %}{% endfor %} 
+    ]
+}

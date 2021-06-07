@@ -1,0 +1,18 @@
+{
+    "clusterName": "{{ master_clusterName }}",
+    "id": "{% set pk = groups['master'] %}{% for host in pk %}{% if host == ansible_host %}{{ loop.index }}{% endif %}{% endfor %}",
+    "role": "master",
+    "ip": "{{ ansible_host }}",
+    "listen": "{{ master_listen }}",
+    "prof": "{{ master_prof }}",
+    "peers": "{% set pk = groups['master'] %}{% for host in pk %}{{ loop.index }}:{{ host }}:{{ master_listen }}{% if not loop.last %},{% endif %}{% endfor %}",
+    "retainLogs": "{{ master_retainLogs }}",
+    "consulAddr": "{% set pk = groups['monitor'] %}{% for host in pk %}http://{% if loop.first %}{{ host }}:17085{% endif %}{% endfor %}",
+    "exporterPort": {{ master_exporterPort }},
+    "logLevel": "{{ master_logLevel }}",
+    "logDir": "{{ master_logDir }}",
+    "walDir": "{{ master_walDir }}",
+    "storeDir": "{{ master_storeDir }}",
+    "metaNodeReservedMem": "{{ master_metaNodeReservedMem }}"
+}
+

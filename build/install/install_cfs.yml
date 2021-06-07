@@ -1,0 +1,134 @@
+- hosts: "{{ cfsrole }}"
+  vars:
+    cfsrole1: 1
+  tasks:
+    - name: Create a directory if it does not exist
+      file:
+        path: /cfs/{{ cfsrole }}
+        state: directory
+        mode: "0755"
+
+    - name: Install deps yum need epel-release
+      yum:
+        name: "{{ item }}"
+        state: installed
+      loop:
+        - libzstd
+        - fuse
+      when: ansible_os_family == "RedHat"
+
+    - name: Install deps apt
+      apt:
+        name: "{{ item }}"
+        state: installed
+      loop:
+        - zstd
+        - fuse
+      when: ansible_os_family == "Debian"
+
+    - name: copy  start stop shell
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        mode: "0755"
+      with_items:
+        - { src: "template/start.sh", dest: "/cfs/{{ cfsrole }}/start.sh" }
+        - { src: "template/stop.sh", dest: "/cfs/{{ cfsrole }}/stop.sh" }
+      when: cfsrole != "monitor"
+
+    - name: copy cfs-server
+      copy:
+        src: "src/cfs-server"
+        dest: "/cfs/{{ cfsrole }}/{{ cfsrole}}"
+        mode: "0755"
+      when: cfsrole != "client" and cfsrole != "monitor"
+
+    - name: copy  cfs-cli and cfs-authtool
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        mode: "0755"
+      with_items:
+        - { src: "src/cfs-cli", dest: "/cfs/{{ cfsrole }}/cfs-cli" }
+        - { src: "src/cfs-authtool", dest: "/cfs/{{ cfsrole }}/cfs-authtool" }
+      when: cfsrole == "master"
+
+    - name: copy cfs-client
+      copy:
+        src: "src/cfs-client"
+        dest: "/cfs/{{ cfsrole }}/{{ cfsrole}}"
+        mode: "0755"
+      when: cfsrole == "client"
+
+    - name: unarchive  cfs-monitor
+      unarchive:
+        src: "src/cfs-monitor.tar.gz"
+        dest: "/cfs/"
+      when: cfsrole == "monitor"
+
+    - name: patch prometheus
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        # mode: "0755"
+      with_items:
+        - {
+            src: "template/prometheus/start.sh",
+            dest: "/cfs/{{ cfsrole }}/prometheus/start.sh",
+            mode: "0755",
+          }
+        - {
+            src: "template/prometheus/stop.sh",
+            dest: "/cfs/{{ cfsrole }}/prometheus/stop.sh",
+            mode: "0755",
+          }
+        - {
+            src: "template/prometheus/prometheus.yml",
+            dest: "/cfs/{{ cfsrole }}/prometheus/prometheus.yml",
+          }
+        - {
+            src: "template/grafana/provisioning/dashboards/chubaofs.json",
+            dest: "/cfs/{{ cfsrole }}/grafana/provisioning/dashboards/chubaofs.json",
+          }
+        - {
+            src: "template/grafana/provisioning/dashboards/dashboard.yml",
+            dest: "/cfs/{{ cfsrole }}/grafana/provisioning/dashboards/dashboard.yml",
+          }
+        - {
+            src: "template/grafana/provisioning/datasources/datasource.yml",
+            dest: "/cfs/{{ cfsrole }}/grafana/provisioning/datasources/datasource.yml",
+          }
+
+      when: cfsrole == "monitor"
+
+    - name: copy config.json.j2 template
+      template:
+        src: "template/{{ cfsrole }}.json.j2"
+        dest: "/cfs/{{ cfsrole }}/config.json"
+      when: cfsrole != "monitor"
+
+    - name: copy cfs-client
+      copy:
+        src: "src/cfs-client"
+        dest: "/cfs/{{ cfsrole }}/"
+        mode: "0755"
+      when: cfsrole == "client"
+
+    - name: replace monitor config
+      shell: sed -i -e 's/192.168.0.[1-2]0[0-2]/'{{ ansible_ssh_host }}'/g' /cfs/monitor/consul/bin/start.sh /cfs/monitor/grafana/provisioning/datasources/datasource.yml /cfs/monitor/prometheus/prometheus.yml
+      when: cfsrole == "monitor"
+
+    - name: replace monitor default port config
+      shell: sed -i -e 's/:8500/:17085/g' /cfs/monitor/prometheus/prometheus.yml &&  sed -i -e 's/:9090/:17090/g' /cfs/monitor/grafana/provisioning/datasources/datasource.yml && sed -i -e 's/\/etc\/grafana\/provisioning\/dashboards/provisioning\/dashboards/g' /cfs/monitor/grafana/provisioning/dashboards/dashboard.yml
+      when: cfsrole == "monitor"
+
+    - name: replace start.sh and stop.sh
+      shell: sed -i -e 's/cfs-client/'{{ cfsrole }}'/g' /cfs/{{ cfsrole }}/start.sh /cfs/{{ cfsrole }}/stop.sh
+      when: cfsrole != "monitor"
+
+    - name: create mount path
+      shell: mkdir -p {{ client_mountPoint }}
+      when: cfsrole == "client"
+
+    - name: start {{ cfsrole }}
+      shell: /bin/bash /cfs/{{ cfsrole }}/start.sh

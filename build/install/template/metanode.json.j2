@@ -1,0 +1,21 @@
+{
+    "role": "metanode",
+    "listen": "{{ metanode_listen }}",
+    "prof": "{{ metanode_prof }}",
+    "raftHeartbeatPort": "{{ metanode_raftHeartbeatPort }}",
+    "raftReplicaPort": "{{ metanode_raftReplicaPort }}",
+
+    "tickInterval": 500,
+    "enableSmuxConnPool": true,
+
+    "consulAddr": "{% set pk = groups['monitor'] %}{% for host in pk %}http://{% if loop.first %}{{ host }}:17085{% endif %}{% endfor %}",
+    "exporterPort": {{ metanode_exporterPort }},
+    "logLevel": "{{ metanode_logLevel }}",
+    "logDir": "{{ metanode_logDir }}",
+    "totalMem":"{{ metanode_totalMem }}",
+    "metadataDir": "{{ metanode_metadataDir }}",
+    "raftDir": "{{ metanode_raftDir }}",        
+    "masterAddr": [
+        {% set pk = groups['master'] %}{% for host in pk %}"{{ host }}:{{ master_listen }}"{% if not loop.last %},{% endif %}{% endfor %} 
+    ]    
+}

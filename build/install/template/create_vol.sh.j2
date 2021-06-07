@@ -1,0 +1,2 @@
+
+curl -v "{% set pk = groups['master'] %}{% for host in pk %}http://{% if loop.first %}{{ host }}:{{ master_listen}}{% endif %}{% endfor %}/admin/createVol?name={{ client_volName }}&capacity=10000&owner={{ master_clusterName }}"

@@ -1,0 +1,104 @@
+[master]
+10.2.3.96
+10.2.3.99
+10.2.7.8
+
+[datanode]
+10.2.3.96
+10.2.3.99
+10.2.7.8
+
+
+[metanode]
+10.2.3.96
+10.2.3.99
+10.2.7.8
+
+
+[objectnode]
+10.2.3.99
+
+[console]
+10.2.7.8
+
+[monitor]
+10.2.3.96
+
+[client]
+10.2.3.96
+
+[cfs:children]
+master
+datanode
+metanode
+objectnode
+console
+monitor
+client
+
+[cfs:vars]
+ansible_ssh_port=22
+ansible_ssh_user=root
+ansible_ssh_pass="abc123"
+
+#master config
+master_clusterName = "chubaofs01"
+master_listen = "17010"
+master_prof = "17020"
+master_retainLogs = "2000"
+master_exporterPort = 17091
+master_logLevel = "info"
+master_logDir = "/cfs/master/log"
+master_walDir = "/cfs/master/data/wal"
+master_storeDir = "/cfs/master/data/store"
+master_metaNodeReservedMem = "1073741824"
+ 
+#datanode config
+datanode_listen = "17310"
+datanode_prof = "17320"
+datanode_raftHeartbeat = "17330"
+datanode_raftReplica = "17340"
+datanode_raftDir =   "/cfs/datanode/log"
+datanode_exporterPort = 17093
+datanode_logDir = "/cfs/datanode/log"
+datanode_logLevel = "warn"
+#Mount multiple disks(avaliable capacity must > 50GB) under directory /data/cfs/.
+#datanode_disks =  '"/cfs/disk0:10737418240"'
+datanode_disks =  '"/data/cfs/disk0:10737418240"'
+
+#metanode config
+metanode_listen = "17210"
+metanode_prof = "17220"
+metanode_raftHeartbeatPort = "17230"
+metanode_raftReplicaPort = "17240"
+metanode_exporterPort = 17092
+metanode_logLevel = "warn"
+metanode_logDir = "/cfs/metanode/log"
+# Recommended to be configured as 80 percent of physical machine memory
+metanode_totalMem ="1589934592"
+metanode_metadataDir = "/cfs/metanode/data/meta"
+metanode_raftDir = "/cfs/metanode/data/raft"
+
+#objectnode config
+objectnode_logLevel = "info"
+objectnode_logDir = "/cfs/objectnode/log"
+objectnode_listen = "80"
+objectnode_exporterPort = 17095
+objectnode_enableHTTPS = "false"
+objectnode_domains = "object.chubao.io"
+
+#console config
+console_logLevel = "info"
+console_logDir = "/cfs/console/log"
+console_listen = "17080"
+
+#client config
+client_mountPoint = "/cfs/mountpoint"
+client_volName = "ltptest"
+client_owner = "root"
+client_SizeGB= 10000
+client_logDir = "/cfs/client/log"
+client_logLevel = "info"
+client_exporterPort = 17094
+client_profPort = "17410"
+

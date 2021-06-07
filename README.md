@@ -20,19 +20,30 @@ Please use [releases](https://github.com/chubaofs/chubaofs/releases) instead of 
 
 ## Contents
 
-- [Overview](#overview)
-- [Documents](#documents)
-- [Benchmark](#benchmark)
-- [Build ChubaoFS](#build-chubaofs)
-- [Yum Tools to Run a ChubaoFS Cluster for CentOS 7+](#yum-tools-to-run-a-chubaofs-cluster-for-centos-7)
-- [Run a ChubaoFS Cluster within Docker](#run-a-chubaofs-cluster-within-docker)
-- [Helm chart to Run a ChubaoFS Cluster in Kubernetes](#helm-chart-to-run-a-chubaofs-cluster-in-kubernetes)
-- [Reference](#reference)
-- [Contributing](#contributing)
-- [Reporting a security vulnerability](#reporting-a-security-vulnerability)
-- [Community](#community)
-- [Partners and Users](#partners-and-users)
-- [License](#license)
+- [ChubaoFS](#chubaofs)
+  - [Contents](#contents)
+  - [Overview](#overview)
+  - [Documents](#documents)
+  - [Benchmark](#benchmark)
+  - [Build ChubaoFS](#build-chubaofs)
+    - [Build for x86](#build-for-x86)
+    - [Build for arm64](#build-for-arm64)
+      - [Also support cross compiler with docker:](#also-support-cross-compiler-with-docker)
+  - [Yum Tools to Run a ChubaoFS Cluster for CentOS 7+](#yum-tools-to-run-a-chubaofs-cluster-for-centos-7)
+  - [Ansible Tools to Run a ChubaoFS Cluster for latest compiled binary](#ansible-tools-to-run-a-chubaofs-cluster-for-latest-compiled-binary)
+  - [Run a ChubaoFS Cluster within Docker](#run-a-chubaofs-cluster-within-docker)
+  - [Helm chart to Run a ChubaoFS Cluster in Kubernetes](#helm-chart-to-run-a-chubaofs-cluster-in-kubernetes)
+    - [Download chubaofs-helm](#download-chubaofs-helm)
+    - [Copy kubeconfig file](#copy-kubeconfig-file)
+    - [Create configuration yaml file](#create-configuration-yaml-file)
+    - [Add labels to Kubernetes node](#add-labels-to-kubernetes-node)
+    - [Deploy ChubaoFS cluster](#deploy-chubaofs-cluster)
+  - [Reference](#reference)
+  - [Contributing](#contributing)
+  - [Reporting a security vulnerability](#reporting-a-security-vulnerability)
+  - [Community](#community)
+  - [Partners and Users](#partners-and-users)
+  - [License](#license)
 
 ## Overview
 
@@ -192,6 +203,10 @@ $ bash install.sh -r console
 Check mount point at `/cfs/mountpoint` on `client` node defined in `iplist`. 
 
 Open [http://[the IP of console system]](https:/github.com/chubaofs/chubaofs) through a browser for web console system(the IP of console system is defined in `iplist`).  In console default user is `root`, password is `ChubaoFSRoot`. In  monitor default user is `admin`,password is `123456`.
+
+## [Ansible Tools](build/install/README.md) to Run a ChubaoFS Cluster for latest compiled binary
+Use Ansible to deploy many hosts based on above yum Tools method 
+To deploy multiple hosts 
 
 ## Run a ChubaoFS Cluster within Docker
 

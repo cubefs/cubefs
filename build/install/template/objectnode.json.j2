@@ -1,0 +1,15 @@
+{
+    "role": "objectnode",
+    "logLevel": "{{ objectnode_logLevel }}",
+    "logDir": "{{ objectnode_logDir }}",
+    "listen": "{{ objectnode_listen }}",
+    "consulAddr": "{% set pk = groups['monitor'] %}{% for host in pk %}http://{% if loop.first %}{{ host }}:17085{% endif %}{% endfor %}",
+    "exporterPort": {{ objectnode_exporterPort }},
+    "masterAddr": [
+        {% set pk = groups['master'] %}{% for host in pk %}"{{ host }}:{{ master_listen }}"{% if not loop.last %},{% endif %}{% endfor %} 
+    ],
+    "enableHTTPS": "{{ objectnode_enableHTTPS }}",
+    "domains": [
+       "{{ objectnode_domains }}"
+    ]
+}

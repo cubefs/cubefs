@@ -1,0 +1,14 @@
+{
+    "role": "console",
+    "logLevel": "{{ console_logLevel }}",
+    "logDir": "{{ console_logDir }}",
+    "listen": "{{ console_listen }}",
+    "masterAddr": [
+        {% set pk = groups['master'] %}{% for host in pk %}"{{ host }}:{{ master_listen }}"{% if not loop.last %},{% endif %}{% endfor %} 
+    ],
+    "objectNodeDomain": "{{ objectnode_domains }}",
+    "monitor_addr": "{% set pk = groups['monitor'] %}{% for host in pk %}http://{% if loop.first %}{{ host }}:17090{% endif %}{% endfor %}",
+    "dashboard_addr": "{% set pk = groups['monitor'] %}{% for host in pk %}http://{% if loop.first %}{{ host }}:17088{% endif %}{% endfor %}",
+    "monitor_app": "cfs",
+    "monitor_cluster": "{{ master_clusterName }}"
+}

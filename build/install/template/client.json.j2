@@ -1,0 +1,12 @@
+{
+	"masterAddr": "{% set pk = groups['master'] %}{% for host in pk %}{{ host }}:{{ master_listen }}{% if not loop.last %},{% endif %}{% endfor %}",
+	"mountPoint": "{{ client_mountPoint }}",
+	"volName": "{{ client_volName }}",
+	"owner": "{{ client_owner }}",
+	"logDir": "{{ client_logDir }}",
+	"logLevel": "{{ client_logLevel }}",
+	"consulAddr": "{% set pk = groups['monitor'] %}{% for host in pk %}http://{% if loop.first %}{{ host }}:17085{% endif %}{% endfor %}",
+	"exporterPort": {{ client_exporterPort }},
+	"profPort": "{{ client_profPort }}"
+}
+
