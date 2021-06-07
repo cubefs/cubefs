@@ -16,46 +16,21 @@ package exporter
 
 import (
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/chubaofs/chubaofs/util/ump"
 )
 
-var (
-	TPPool = &sync.Pool{New: func() interface{} {
-		return new(TimePoint)
-	}}
-	TPCh chan *TimePoint
-)
-
-func collectTP() {
-	TPCh = make(chan *TimePoint, ChSize)
-	for {
-		m := <-TPCh
-		metric := m.Metric()
-		metric.Set(float64(m.val))
-		TPPool.Put(m)
-	}
-}
-
 type TimePoint struct {
-	Gauge
+	Histogram
 	startTime time.Time
 }
 
-type TimePointCount struct {
-	tp  *TimePoint
-	cnt *Counter
-	to  *ump.TpObject
-}
-
 func NewTP(name string) (tp *TimePoint) {
-	if !enabledPrometheus {
-		return
-	}
-	tp = TPPool.Get().(*TimePoint)
-	tp.name = metricsName(name)
+	tp = new(TimePoint)
+	tp.name = fmt.Sprintf("%s_hist", metricsName(name))
+	tp.labels = make(map[string]string)
+	tp.val = 0
 	tp.startTime = time.Now()
 	return
 }
@@ -69,6 +44,20 @@ func (tp *TimePoint) Set() {
 	tp.publish()
 }
 
+func (tp *TimePoint) SetWithLabels(labels map[string]string) {
+	if !enabledPrometheus {
+		return
+	}
+	tp.labels = labels
+	tp.Set()
+}
+
+type TimePointCount struct {
+	tp  *TimePoint
+	cnt *Counter
+	to  *ump.TpObject
+}
+
 func NewTPCnt(name string) (tpc *TimePointCount) {
 	tpc = new(TimePointCount)
 	tpc.to = ump.BeforeTP(fmt.Sprintf("%v_%v_%v", clustername, modulename, name))
@@ -77,15 +66,18 @@ func NewTPCnt(name string) (tpc *TimePointCount) {
 	return
 }
 
+// it should be invoked by defer func{set(err)}
 func (tpc *TimePointCount) Set(err error) {
 	ump.AfterTP(tpc.to, err)
 	tpc.tp.Set()
 	tpc.cnt.Add(1)
 }
 
-func (tp *TimePoint) publish() {
-	select {
-	case TPCh <- tp:
-	default:
+func (tpc *TimePointCount) SetWithLabels(err error, labels map[string]string) {
+	ump.AfterTP(tpc.to, err)
+	if !enabledPrometheus {
+		return
 	}
+	tpc.tp.SetWithLabels(labels)
+	tpc.cnt.AddWithLabels(1, labels)
 }

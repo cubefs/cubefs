@@ -23,10 +23,6 @@ import (
 )
 
 var (
-	GaugePool = &sync.Pool{New: func() interface{} {
-		return new(Gauge)
-	}}
-
 	GaugeGroup sync.Map
 	GaugeCh    chan *Gauge
 )
@@ -37,7 +33,7 @@ func collectGauge() {
 		m := <-GaugeCh
 		metric := m.Metric()
 		metric.Set(m.val)
-		log.LogDebugf("collect metric %v", m)
+		//log.LogDebugf("collect metric %v", m)
 	}
 }
 
@@ -49,9 +45,6 @@ type Gauge struct {
 }
 
 func NewGauge(name string) (g *Gauge) {
-	if !enabledPrometheus {
-		return
-	}
 	g = new(Gauge)
 	g.name = metricsName(name)
 	return

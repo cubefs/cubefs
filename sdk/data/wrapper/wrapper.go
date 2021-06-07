@@ -288,7 +288,10 @@ func (w *Wrapper) NearRead() bool {
 }
 
 // Sort hosts by distance form local
-func (w *Wrapper) sortHostsByDistance(hosts []string) []string {
+func (w *Wrapper) sortHostsByDistance(srcHosts []string) []string {
+	hosts := make([]string, len(srcHosts))
+	copy(hosts, srcHosts)
+
 	for i := 0; i < len(hosts); i++ {
 		for j := i + 1; j < len(hosts); j++ {
 			if distanceFromLocal(hosts[i]) > distanceFromLocal(hosts[j]) {

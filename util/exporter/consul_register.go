@@ -18,9 +18,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/proto"
 	"io/ioutil"
 	"net"
 	"net/http"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/chubaofs/chubaofs/util/log"
@@ -36,11 +39,12 @@ const (
  * optional for user when set prometheus exporter
  */
 type ConsulRegisterInfo struct {
-	Name    string   `json:"Name"`
-	ID      string   `json:"ID"`
-	Address string   `json:"Address"`
-	Port    int64    `json:"Port"`
-	Tags    []string `json:"Tags"`
+	Name    string            `json:"Name"`
+	ID      string            `json:"ID"`
+	Address string            `json:"Address"`
+	Port    int64             `json:"Port"`
+	Tags    []string          `json:"Tags"`
+	Meta    map[string]string `json:",omitempty"`
 }
 
 // get consul id
@@ -49,7 +53,7 @@ func GetConsulId(app string, role string, host string, port int64) string {
 }
 
 // do consul register process
-func DoConsulRegisterProc(addr, app, role, cluster string, port int64) {
+func DoConsulRegisterProc(addr, app, role, cluster, meta, host string, port int64) {
 	if len(addr) <= 0 {
 		return
 	}
@@ -62,14 +66,8 @@ func DoConsulRegisterProc(addr, app, role, cluster string, port int64) {
 		ticker.Stop()
 	}()
 
-	host, err := GetLocalIpAddr()
-	if err != nil {
-		log.LogErrorf("get local ip error, %v", err.Error())
-		return
-	}
-
 	client := &http.Client{}
-	req := makeRegisterReq(host, addr, app, role, cluster, port)
+	req := makeRegisterReq(host, addr, app, role, cluster, meta, port)
 	if req == nil {
 		log.LogErrorf("make register req error")
 		return
@@ -83,7 +81,7 @@ func DoConsulRegisterProc(addr, app, role, cluster string, port int64) {
 	for {
 		select {
 		case <-ticker.C:
-			req := makeRegisterReq(host, addr, app, role, cluster, port)
+			req := makeRegisterReq(host, addr, app, role, cluster, meta, port)
 			if req == nil {
 				log.LogErrorf("make register req error")
 				return
@@ -97,7 +95,7 @@ func DoConsulRegisterProc(addr, app, role, cluster string, port int64) {
 }
 
 // GetLocalIpAddr returns the local IP address.
-func GetLocalIpAddr() (ipaddr string, err error) {
+func GetLocalIpAddr(filter string) (ipaddr string, err error) {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
 		log.LogError("consul register get local ip failed, ", err)
@@ -106,15 +104,41 @@ func GetLocalIpAddr() (ipaddr string, err error) {
 	for _, addr := range addrs {
 		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
 			if ipnet.IP.To4() != nil {
-				return ipnet.IP.String(), nil
+				ip := ipnet.IP.String()
+
+				if filter != "" {
+					match, err := doFilter(filter, ip)
+					if err != nil {
+						return "", fmt.Errorf("regex match err, err %s", err.Error())
+					}
+
+					if !match {
+						continue
+					}
+				}
+
+				return ip, nil
 			}
 		}
 	}
 	return "", fmt.Errorf("cannot get local ip")
 }
 
+// use ! tag to represent to do negative filter
+func doFilter(filter, ip string) (ok bool, err error) {
+	// negative filter
+	if strings.HasPrefix(filter, "!") {
+		filter = filter[1:]
+		ok, err := regexp.MatchString(filter, ip)
+		return !ok, err
+	}
+
+	ok, err = regexp.MatchString(filter, ip)
+	return ok, err
+}
+
 // make a consul rest request
-func makeRegisterReq(host, addr, app, role, cluster string, port int64) (req *http.Request) {
+func makeRegisterReq(host, addr, app, role, cluster, meta string, port int64) (req *http.Request) {
 	id := GetConsulId(app, role, host, port)
 	url := addr + RegisterPath
 	cInfo := &ConsulRegisterInfo{
@@ -128,6 +152,14 @@ func makeRegisterReq(host, addr, app, role, cluster string, port int64) (req *ht
 			"cluster=" + cluster,
 		},
 	}
+
+	ok, metas := parseMetaStr(meta)
+	if ok {
+		cInfo.Meta = metas
+		cInfo.Meta["cluster"] = cluster
+		cInfo.Meta["commit"] = proto.CommitID
+	}
+
 	cInfoBytes, err := json.Marshal(cInfo)
 	if err != nil {
 		log.LogErrorf("marshal error, %v", err.Error())
@@ -142,4 +174,22 @@ func makeRegisterReq(host, addr, app, role, cluster string, port int64) (req *ht
 	req.Close = true
 
 	return
+}
+
+// parse k1=v1;k2=v2 as a map
+func parseMetaStr(meta string) (bool, map[string]string) {
+	m := map[string]string{}
+
+	kvs := strings.Split(meta, ";")
+	for _, kv := range kvs {
+		arr := strings.Split(kv, "=")
+		if len(arr) != 2 {
+			log.LogInfof("meta is invalid, can't use %s", meta)
+			return false, m
+		}
+
+		m[arr[0]] = arr[1]
+	}
+
+	return true, m
 }

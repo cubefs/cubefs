@@ -109,6 +109,8 @@ func main() {
 	cfg, _ := config.LoadConfigFile(*configFile)
 	opt, err := parseMountOption(cfg)
 	if err != nil {
+		err = errors.NewErrorf("parse mount opt failed: %v\n", err)
+		fmt.Println(err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
@@ -119,11 +121,11 @@ func main() {
 		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
 
-	exporter.Init(ModuleName, cfg)
-
 	level := parseLogLevel(opt.Loglvl)
 	_, err = log.InitLog(opt.Logpath, LoggerPrefix, level, nil)
 	if err != nil {
+		err = errors.NewErrorf("Init log dir fail: %v\n", err)
+		fmt.Println(err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
@@ -132,6 +134,8 @@ func main() {
 	outputFilePath := path.Join(opt.Logpath, LoggerPrefix, LoggerOutput)
 	outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
 	if err != nil {
+		err = errors.NewErrorf("Open output file failed: %v\n", err)
+		fmt.Println(err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
@@ -151,6 +155,8 @@ func main() {
 	changeRlimit(defaultRlimit)
 
 	if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
+		err = errors.NewErrorf("Redirect fd failed: %v\n", err)
+		syslog.Println(err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
@@ -158,7 +164,8 @@ func main() {
 	registerInterceptedSignal(opt.MountPoint)
 
 	if err = checkPermission(opt); err != nil {
-		syslog.Println("check permission failed: ", err)
+		err = errors.NewErrorf("check permission failed: %v", err)
+		syslog.Println(err)
 		log.LogFlush()
 		_ = daemonize.SignalOutcome(err)
 		os.Exit(1)
@@ -166,7 +173,8 @@ func main() {
 
 	fsConn, super, err := mount(opt)
 	if err != nil {
-		syslog.Println("mount failed: ", err)
+		err = errors.NewErrorf("mount failed: %v", err)
+		syslog.Println(err)
 		log.LogFlush()
 		_ = daemonize.SignalOutcome(err)
 		os.Exit(1)
@@ -175,6 +183,7 @@ func main() {
 	}
 	defer fsConn.Close()
 
+	exporter.Init(ModuleName, cfg)
 	exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
 
 	if err = fs.Serve(fsConn, super); err != nil {
@@ -340,7 +349,6 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 			opt.TicketMess.CertFile = GlobalMountOptions[proto.CertFile].GetString()
 		}
 	}
-	opt.TokenKey = GlobalMountOptions[proto.TokenKey].GetString()
 	opt.AccessKey = GlobalMountOptions[proto.AccessKey].GetString()
 	opt.SecretKey = GlobalMountOptions[proto.SecretKey].GetString()
 	opt.DisableDcache = GlobalMountOptions[proto.DisableDcache].GetBool()
@@ -360,22 +368,6 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 
 func checkPermission(opt *proto.MountOptions) (err error) {
 	var mc = master.NewMasterClientFromString(opt.Master, false)
-
-	// Check token permission
-	var info *proto.VolStatInfo
-	if info, err = mc.ClientAPI().GetVolumeStat(opt.Volname); err != nil {
-		return
-	}
-	if info.EnableToken {
-		var token *proto.Token
-		if token, err = mc.ClientAPI().GetToken(opt.Volname, opt.TokenKey); err != nil {
-			log.LogWarnf("checkPermission: get token type failed: volume(%v) tokenKey(%v) err(%v)",
-				opt.Volname, opt.TokenKey, err)
-			return
-		}
-		log.LogInfof("checkPermission: get token: token(%v)", token)
-		opt.Rdonly = token.TokenType == int8(proto.ReadOnlyToken) || opt.Rdonly
-	}
 
 	// Check user access policy is enabled
 	if opt.AccessKey != "" {

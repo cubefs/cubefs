@@ -256,13 +256,21 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 			if mr.metaNode == nil {
 				continue
 			}
-			if !mr.metaNode.reachesThreshold() {
+			if !mr.metaNode.reachesThreshold() && mp.InodeCount < defaultMetaPartitionInodeIDStep {
 				continue
 			}
 			if mp.PartitionID == maxPartitionID {
+				msg := fmt.Sprintf("split[checkStatus] need split,id:%v,status:%v,replicaNum:%v,InodeCount:%v",
+					mp.PartitionID, mp.Status, mp.ReplicaNum, mp.InodeCount)
+				log.LogInfo(msg)
 				doSplit = true
 			} else {
-				mp.Status = proto.ReadOnly
+				if(mr.metaNode.reachesThreshold() || mp.End - mp.MaxInodeID > 2 * defaultMetaPartitionInodeIDStep) {
+					msg := fmt.Sprintf("split[checkStatus],change state,id:%v,status:%v,replicaNum:%v,replicas:%v,persistenceHosts:%v, inodeCount:%v, MaxInodeID:%v, start:%v, end:%v",
+						mp.PartitionID, mp.Status, mp.ReplicaNum, len(liveReplicas), mp.Hosts, mp.InodeCount, mp.MaxInodeID, mp.Start, mp.End)
+						log.LogInfo(msg)
+					mp.Status = proto.ReadOnly
+				}
 			}
 		}
 	}

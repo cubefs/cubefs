@@ -70,11 +70,39 @@ type metadataManager struct {
 	flDeleteBatchCount atomic.Value
 }
 
+func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) {
+
+	labels = make(map[string]string)
+	labels[exporter.Op] = p.GetOpMsg()
+	labels[exporter.PartId] = ""
+	labels[exporter.Vol] = ""
+
+	if p.Opcode == proto.OpMetaNodeHeartbeat || p.Opcode == proto.OpCreateMetaPartition {
+		// no partition info
+		return
+	}
+
+	mp, err := m.getPartition(p.PartitionID)
+	if err != nil {
+		log.LogInfof("[metaManager] getPacketLabels metric packet: %v, partitions: %v", p, m.partitions)
+		return
+	}
+
+	if exporter.EnablePid {
+		labels[exporter.PartId] = fmt.Sprintf("%d", p.PartitionID)
+	}
+	labels[exporter.Vol] = mp.GetBaseConfig().VolName
+
+	return
+}
+
 // HandleMetadataOperation handles the metadata operations.
-func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet,
-	remoteAddr string) (err error) {
+func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) (err error) {
 	metric := exporter.NewTPCnt(p.GetOpMsg())
-	defer metric.Set(err)
+	labels := m.getPacketLabels(p)
+	defer func() {
+		metric.SetWithLabels(err, labels)
+	}()
 
 	switch p.Opcode {
 	case proto.OpMetaCreateInode:

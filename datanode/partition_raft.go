@@ -111,16 +111,20 @@ func (dp *DataPartition) StartRaft() (err error) {
 
 	dp.raftPartition, err = dp.config.RaftStore.CreatePartition(pc)
 	if err == nil {
+		dp.ForceSetRaftRunning()
 		dp.ForceSetDataPartitionToFininshLoad()
 	}
 	return
 }
 
+func (dp *DataPartition) raftStopped() bool {
+	return atomic.LoadInt32(&dp.raftStatus) == RaftStatusStopped
+}
+
 func (dp *DataPartition) stopRaft() {
-	if dp.raftPartition != nil {
+	if atomic.CompareAndSwapInt32(&dp.raftStatus, RaftStatusRunning, RaftStatusStopped) {
 		log.LogErrorf("[FATAL] stop raft partition(%v)", dp.partitionID)
 		dp.raftPartition.Stop()
-		dp.raftPartition = nil
 	}
 	return
 }
@@ -185,28 +189,38 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 			log.LogErrorf("action[ExtentRepair] stop raft partition(%v)_%v", dp.partitionID, extentID)
 
 		case <-getAppliedIDTimer.C:
-			if dp.raftPartition != nil {
+			if !dp.raftStopped() {
 				dp.updateMaxMinAppliedID()
 			}
 			getAppliedIDTimer.Reset(time.Minute * 1)
 
 		case <-truncateRaftLogTimer.C:
-			if dp.raftPartition == nil {
+			if dp.raftStopped() {
 				break
 			}
 
 			if dp.minAppliedID > dp.lastTruncateID { // Has changed
+				appliedID := atomic.LoadUint64(&dp.appliedID)
+				if err := dp.storeAppliedID(appliedID); err != nil {
+					log.LogErrorf("partition [%v] persist applied ID [%v] during scheduled truncate raft log failed: %v", dp.partitionID, appliedID, err)
+					truncateRaftLogTimer.Reset(time.Minute)
+					continue
+				}
 				dp.raftPartition.Truncate(dp.minAppliedID)
 				dp.lastTruncateID = dp.minAppliedID
-				dp.PersistMetadata()
-				log.LogInfof("PartitionID(%v) truncated RaftLog to (%v)", dp.partitionID, dp.minAppliedID)
+				if err := dp.PersistMetadata(); err != nil {
+					log.LogErrorf("partition [%v] persist metadata during scheduled truncate raft log failed: %v", dp.partitionID, err)
+					truncateRaftLogTimer.Reset(time.Minute)
+					continue
+				}
+				log.LogInfof("partition [%v] scheduled truncate raft log [applied: %v, truncated: %v]", dp.partitionID, appliedID, dp.minAppliedID)
 			}
 			truncateRaftLogTimer.Reset(time.Minute)
 
 		case <-storeAppliedIDTimer.C:
-			if err := dp.storeAppliedID(atomic.LoadUint64(&dp.appliedID)); err != nil {
-				err = errors.NewErrorf("[startSchedule]: dump partition=%d: %v", dp.config.PartitionID, err.Error())
-				log.LogErrorf(err.Error())
+			appliedID := atomic.LoadUint64(&dp.appliedID)
+			if err := dp.storeAppliedID(appliedID); err != nil {
+				log.LogErrorf("partition [%v] scheduled persist applied ID [%v] failed: %v", dp.partitionID, appliedID, err)
 			}
 			storeAppliedIDTimer.Reset(time.Second * 10)
 		}
@@ -430,6 +444,7 @@ func (s *DataNode) parseRaftConfig(cfg *config.Config) (err error) {
 	if s.raftDir == "" {
 		return fmt.Errorf("bad raftDir config")
 	}
+	s.tickInterval = int(cfg.GetFloat(CfgTickInterval))
 	s.raftHeartbeat = cfg.GetString(ConfigKeyRaftHeartbeat)
 	s.raftReplica = cfg.GetString(ConfigKeyRaftReplica)
 	log.LogDebugf("[parseRaftConfig] load raftDir(%v).", s.raftDir)
@@ -480,6 +495,7 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 		HeartbeatPort:     heartbeatPort,
 		ReplicaPort:       replicatePort,
 		NumOfLogsToRetain: DefaultRaftLogsToRetain,
+		TickInterval:      s.tickInterval,
 	}
 	s.raftStore, err = raftstore.NewRaftStore(raftConf)
 	if err != nil {
@@ -575,7 +591,9 @@ func (dp *DataPartition) getLeaderPartitionSize(maxExtentID uint64) (size uint64
 		err = errors.Trace(err, " partition(%v) get host(%v) connect", dp.partitionID, target)
 		return
 	}
-	defer gConnPool.PutConnect(conn, true)
+	defer func() {
+		gConnPool.PutConnect(conn, err != nil)
+	}()
 	err = p.WriteToConn(conn) // write command to the remote host
 	if err != nil {
 		err = errors.Trace(err, "partition(%v) write to host(%v)", dp.partitionID, target)
@@ -611,7 +629,9 @@ func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize() (maxExtentID, Pa
 		err = errors.Trace(err, " partition(%v) get host(%v) connect", dp.partitionID, target)
 		return
 	}
-	defer gConnPool.PutConnect(conn, true)
+	defer func() {
+		gConnPool.PutConnect(conn, err != nil)
+	}()
 	err = p.WriteToConn(conn) // write command to the remote host
 	if err != nil {
 		err = errors.Trace(err, "partition(%v) write to host(%v)", dp.partitionID, target)
@@ -652,17 +672,17 @@ func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) 
 		if err != nil {
 			return
 		}
-		defer gConnPool.PutConnect(conn, true)
 		err = p.WriteToConn(conn)
 		if err != nil {
+			gConnPool.PutConnect(conn, true)
 			return
 		}
 		err = p.ReadFromConn(conn, 60)
 		if err != nil {
+			gConnPool.PutConnect(conn, true)
 			return
 		}
-		gConnPool.PutConnect(conn, true)
-
+		gConnPool.PutConnect(conn, false)
 		log.LogDebugf("partition(%v) minAppliedID(%v)", dp.partitionID, minAppliedID)
 	}
 
@@ -715,7 +735,9 @@ func (dp *DataPartition) getRemoteAppliedID(target string, p *repl.Packet) (appl
 	if err != nil {
 		return
 	}
-	defer gConnPool.PutConnect(conn, true)
+	defer func() {
+		gConnPool.PutConnect(conn, err != nil)
+	}()
 	err = p.WriteToConn(conn) // write command to the remote host
 	if err != nil {
 		return

@@ -149,6 +149,11 @@ const (
 	cfgDeleteBatchCount  = "deleteBatchCount"
 	cfgTotalMem          = "totalMem"
 	cfgZoneName          = "zoneName"
+	cfgTickInterval      = "tickInterval"
+	cfgSmuxPortShift     = "smuxPortShift"     //int
+	cfgSmuxMaxConn       = "smuxMaxConn"       //int
+	cfgSmuxStreamPerConn = "smuxStreamPerConn" //int
+	cfgSmuxMaxBuffer     = "smuxMaxBuffer"     //int
 
 	metaNodeDeleteBatchCountKey = "batchCount"
 )

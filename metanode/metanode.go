@@ -15,8 +15,9 @@
 package metanode
 
 import (
-	"os"
 	syslog "log"
+	"os"
+	"smux"
 	"strings"
 	"time"
 
@@ -40,6 +41,9 @@ var (
 	masterClient   *masterSDK.MasterClient
 	configTotalMem uint64
 	serverPort     string
+	smuxPortShift  int
+	smuxPool       *util.SmuxConnectPool
+	smuxPoolCfg    = util.DefaultSmuxConnPoolConfig()
 )
 
 // The MetaNode manages the dentry and inode information of the meta partitions on a meta node.
@@ -57,6 +61,9 @@ type MetaNode struct {
 	raftReplicatePort string
 	zoneName          string
 	httpStopC         chan uint8
+	smuxStopC         chan uint8
+	metrics           *MetaNodeMetrics
+	tickInterval      int
 
 	control common.Control
 }
@@ -113,6 +120,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.register(); err != nil {
 		return
 	}
+
 	if err = m.startRaftServer(); err != nil {
 		return
 	}
@@ -126,6 +134,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	go m.startUpdateNodeInfo()
 
 	exporter.Init(cfg.GetString("role"), cfg)
+	m.startStat()
 
 	// check local partition compare with master ,if lack,then not start
 	if err = m.checkLocalPartitionMatchWithMaster(); err != nil {
@@ -137,6 +146,11 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.startServer(); err != nil {
 		return
 	}
+
+	if err = m.startSmuxServer(); err != nil {
+		return
+	}
+
 	exporter.RegistConsul(m.clusterId, cfg.GetString("role"), cfg)
 	return
 }
@@ -148,7 +162,9 @@ func doShutdown(s common.Server) {
 	}
 	m.stopUpdateNodeInfo()
 	// shutdown node and release the resource
+	m.stopStat()
 	m.stopServer()
+	m.stopSmuxServer()
 	m.stopMetaManager()
 	m.stopRaftServer()
 }
@@ -170,6 +186,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.raftDir = cfg.GetString(cfgRaftDir)
 	m.raftHeartbeatPort = cfg.GetString(cfgRaftHeartbeatPort)
 	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
+	m.tickInterval = int(cfg.GetFloat(cfgTickInterval))
 	m.zoneName = cfg.GetString(cfgZoneName)
 	configTotalMem, _ = strconv.ParseUint(cfg.GetString(cfgTotalMem), 10, 64)
 
@@ -222,6 +239,13 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("[parseConfig] load raftReplicatePort[%v].", m.raftReplicatePort)
 	log.LogInfof("[parseConfig] load zoneName[%v].", m.zoneName)
 
+	if err = m.parseSmuxConfig(cfg); err != nil {
+		return fmt.Errorf("parseSmuxConfig fail err %v", err)
+	} else {
+		log.LogInfof("Start: init smux conn pool (%v).", smuxPoolCfg)
+		smuxPool = util.NewSmuxConnectPool(smuxPoolCfg)
+	}
+
 	addrs := cfg.GetSlice(proto.MasterAddr)
 	masters := make([]string, 0, len(addrs))
 	for _, addr := range addrs {
@@ -230,6 +254,44 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	masterClient = masterSDK.NewMasterClient(masters, false)
 	err = m.validConfig()
 	return
+}
+
+func (m *MetaNode) parseSmuxConfig(cfg *config.Config) error {
+	// SMux port
+	smuxPortShift = int(cfg.GetInt64(cfgSmuxPortShift))
+	if smuxPortShift == 0 {
+		smuxPortShift = util.DefaultSmuxPortShift
+	}
+
+	// SMux buffer
+	var maxBuffer = cfg.GetInt64(cfgSmuxMaxBuffer)
+	if maxBuffer > 0 {
+		smuxPoolCfg.MaxReceiveBuffer = int(maxBuffer)
+		if smuxPoolCfg.MaxStreamBuffer > int(maxBuffer) {
+			smuxPoolCfg.MaxStreamBuffer = int(maxBuffer)
+		}
+
+		if err := smux.VerifyConfig(smuxPoolCfg.Config); err != nil {
+			return err
+		}
+	}
+
+	maxConn := cfg.GetInt64(cfgSmuxMaxConn)
+	if maxConn > 0 {
+		smuxPoolCfg.ConnsPerAddr = int(maxConn)
+	}
+
+	maxStreamPerConn := cfg.GetInt64(cfgSmuxStreamPerConn)
+	if maxStreamPerConn > 0 {
+		smuxPoolCfg.StreamsPerConn = int(maxStreamPerConn)
+	}
+
+	if err := util.VerifySmuxPoolConfig(smuxPoolCfg); err != nil {
+		return err
+	}
+
+	log.LogDebugf("[parseSmuxConfig] cfg %v.", smuxPoolCfg)
+	return nil
 }
 
 func (m *MetaNode) validConfig() (err error) {

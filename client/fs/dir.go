@@ -82,7 +82,9 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 
 	var err error
 	metric := exporter.NewTPCnt("filecreate")
-	defer metric.Set(err)
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
+	}()
 
 	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil)
 	if err != nil {
@@ -130,7 +132,9 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 
 	var err error
 	metric := exporter.NewTPCnt("mkdir")
-	defer metric.Set(err)
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
+	}()
 
 	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid, req.Gid, nil)
 	if err != nil {
@@ -159,7 +163,9 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 
 	var err error
 	metric := exporter.NewTPCnt("remove")
-	defer metric.Set(err)
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
+	}()
 
 	info, err := d.super.mw.Delete_ll(d.info.Inode, req.Name, req.Dir)
 	if err != nil {
@@ -234,7 +240,9 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 
 	var err error
 	metric := exporter.NewTPCnt("readdir")
-	defer metric.Set(err)
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
+	}()
 
 	children, err := d.super.mw.ReadDir_ll(d.info.Inode)
 	if err != nil {
@@ -284,7 +292,9 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 
 	var err error
 	metric := exporter.NewTPCnt("rename")
-	defer metric.Set(err)
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
+	}()
 
 	err = d.super.mw.Rename_ll(d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName)
 	if err != nil {
@@ -335,7 +345,9 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 
 	var err error
 	metric := exporter.NewTPCnt("mknod")
-	defer metric.Set(err)
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
+	}()
 
 	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode), req.Uid, req.Gid, nil)
 	if err != nil {
@@ -362,7 +374,9 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 
 	var err error
 	metric := exporter.NewTPCnt("symlink")
-	defer metric.Set(err)
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
+	}()
 
 	info, err := d.super.mw.Create_ll(parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid, req.Gid, []byte(req.Target))
 	if err != nil {
@@ -401,7 +415,9 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 
 	var err error
 	metric := exporter.NewTPCnt("link")
-	defer metric.Set(err)
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
+	}()
 
 	info, err := d.super.mw.Link(d.info.Inode, req.NewName, oldInode.Inode)
 	if err != nil {

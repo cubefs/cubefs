@@ -36,6 +36,17 @@ else
     failed=1
 fi
 
+echo -n 'Building ChubaoFS libsdk ... ';
+cd /go/src/github.com/chubaofs/chubaofs/libsdk;
+bash ./build.sh &>> /tmp/cfs_build_output;
+if [[ $? -eq 0 ]]; then
+    echo -e "\033[32mdone\033[0m";
+    mv libcfs.so /go/src/github.com/chubaofs/chubaofs/docker/bin/;
+else
+    echo -e "\033[31mfail\033[0m";
+    failed=1
+fi
+
 if [[ ${failed} -eq 1 ]]; then
     echo -e "\nbuild output:"
     cat /tmp/cfs_build_output;

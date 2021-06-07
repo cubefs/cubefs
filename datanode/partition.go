@@ -51,6 +51,11 @@ const (
 	TimeLayout                    = "2006-01-02 15:04:05"
 )
 
+const (
+	RaftStatusStopped = 0
+	RaftStatusRunning = 1
+)
+
 type DataPartitionMetadata struct {
 	VolumeID                string
 	PartitionID             uint64
@@ -94,6 +99,7 @@ type DataPartition struct {
 	replicas        []string // addresses of the replicas
 	replicasLock    sync.RWMutex
 	disk            *Disk
+	dataNode        *DataNode
 	isLeader        bool
 	isRaftLeader    bool
 	path            string
@@ -110,6 +116,8 @@ type DataPartition struct {
 	stopRaftC chan uint64
 	storeC    chan uint64
 	stopC     chan bool
+
+	raftStatus int32
 
 	intervalToUpdateReplicas      int64 // interval to ask the master for updating the replica information
 	snapshot                      []*proto.File
@@ -172,6 +180,10 @@ func (dp *DataPartition) ForceSetDataPartitionToLoadding() {
 
 func (dp *DataPartition) ForceSetDataPartitionToFininshLoad() {
 	dp.isLoadingDataPartition = false
+}
+
+func (dp *DataPartition) ForceSetRaftRunning() {
+	atomic.StoreInt32(&dp.raftStatus, RaftStatusRunning)
 }
 
 // LoadDataPartition loads and returns a partition instance based on the specified directory.
@@ -237,6 +249,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		clusterID:       dpCfg.ClusterID,
 		partitionID:     partitionID,
 		disk:            disk,
+		dataNode:        disk.dataNode,
 		path:            dataPath,
 		partitionSize:   dpCfg.PartitionSize,
 		replicas:        make([]string, 0),
@@ -246,6 +259,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		snapshot:        make([]*proto.File, 0),
 		partitionStatus: proto.ReadWrite,
 		config:          dpCfg,
+		raftStatus:      RaftStatusStopped,
 	}
 	partition.replicasInit()
 	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize)
@@ -288,7 +302,7 @@ func (dp *DataPartition) Path() string {
 
 // IsRaftLeader tells if the given address belongs to the raft leader.
 func (dp *DataPartition) IsRaftLeader() (addr string, ok bool) {
-	if dp.raftPartition == nil {
+	if dp.raftStopped() {
 		return
 	}
 	leaderID, _ := dp.raftPartition.LeaderTerm()
@@ -309,6 +323,17 @@ func (dp *DataPartition) Replicas() []string {
 	dp.replicasLock.RLock()
 	defer dp.replicasLock.RUnlock()
 	return dp.replicas
+}
+
+func (dp *DataPartition) getReplicaCopy() []string {
+	dp.replicasLock.RLock()
+	defer dp.replicasLock.RUnlock()
+
+	var tmpCopy []string
+	tmpCopy = make([]string, len(dp.replicas))
+	copy(tmpCopy, dp.replicas)
+
+	return tmpCopy
 }
 
 func (dp *DataPartition) getReplicaAddr(index int) string {
@@ -681,10 +706,6 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 		}
 	}
 
-	if len(repairTask.ExtentsToBeRepaired) > 0 {
-		log.LogWarnf("tag1: repairTask.ExtentsToBeRepaired (%v)", repairTask.ExtentsToBeRepaired)
-	}
-
 	var (
 		wg           *sync.WaitGroup
 		recoverIndex int
@@ -732,7 +753,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 	var (
 		localTinyDeleteFileSize int64
 		err                     error
-		conn                    *net.TCPConn
+		conn                    net.Conn
 	)
 	if !dp.pushSyncDeleteRecordFromLeaderMesg() {
 		return
@@ -762,10 +783,12 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 	}()
 
 	p := repl.NewPacketToReadTinyDeleteRecord(dp.partitionID, localTinyDeleteFileSize)
-	if conn, err = gConnPool.GetConnect(repairTask.LeaderAddr); err != nil {
+	if conn, err = dp.getRepairConn(repairTask.LeaderAddr); err != nil {
 		return
 	}
-	defer gConnPool.PutConnect(conn, true)
+	defer func() {
+		dp.putRepairConn(conn, err != nil)
+	}()
 	if err = p.WriteToConn(conn); err != nil {
 		return
 	}
@@ -836,5 +859,14 @@ func (dp *DataPartition) canRemoveSelf() (canRemove bool, err error) {
 		canRemove = true
 		return
 	}
+	return
+}
+
+func (dp *DataPartition) getRepairConn(target string) (net.Conn, error) {
+	return dp.dataNode.getRepairConnFunc(target)
+}
+
+func (dp *DataPartition) putRepairConn(conn net.Conn, forceClose bool) {
+	dp.dataNode.putRepairConnFunc(conn, forceClose)
 	return
 }
