@@ -735,7 +735,6 @@ func (dp *DataPartition) pushSyncDeleteRecordFromLeaderMesg() bool {
 	case dp.Disk().syncTinyDeleteRecordFromLeaderOnEveryDisk <- true:
 		return true
 	default:
-		return false
 	}
 	return false
 }
