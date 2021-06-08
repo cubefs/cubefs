@@ -15,9 +15,10 @@
 package metanode
 
 import (
-	"github.com/chubaofs/chubaofs/proto"
 	"net"
+	"runtime/debug"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 )
@@ -46,6 +47,7 @@ func (m *metadataManager) respondToClient(conn net.Conn, p *Packet) (err error) 
 	// Handle panic
 	defer func() {
 		if r := recover(); r != nil {
+			log.LogErrorf("respondToClient: panic occurred: %v\n%v", r, string(debug.Stack()))
 			switch data := r.(type) {
 			case error:
 				err = data
