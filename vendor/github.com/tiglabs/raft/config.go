@@ -36,7 +36,7 @@ const (
 	defaultTickInterval    = time.Millisecond * 2000
 	defaultHeartbeatTick   = 1
 	defaultElectionTick    = 5
-	defaultPromoteTick	   = 5
+	defaultPromoteTick	   = 11
 	defaultInflightMsgs    = 128
 	defaultSizeReqBuffer   = 2048
 	defaultSizeAppBuffer   = 2048
@@ -72,7 +72,10 @@ type Config struct {
 	ElectionTick int
 	// PromoteTick is the promotion of learners interval. A leader propose PromoteLearner configure change
 	// to promote learners every PromoteTick interval.
-	// The default value is 10s.
+	// PromoteTick must be greater than HeartbeatTick and ElectionTick.
+	// We suggest to set PromoteTick to prime number to avoid conflict between promote and tick,
+	// which will cause the replica to be set to inactive state during checkLeaderLease.
+	// The default value is 22s.
 	PromoteTick	int
 	// MaxSizePerMsg limits the max size of each append message.
 	// The default value is 1M.

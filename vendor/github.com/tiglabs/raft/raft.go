@@ -124,6 +124,7 @@ type raft struct {
 	readyc            chan struct{}
 	tickc             chan struct{}
 	electc            chan struct{}
+	promtec			  chan struct{}
 	stopc             chan struct{}
 	done              chan struct{}
 	mu                sync.Mutex
@@ -162,6 +163,7 @@ func newRaft(config *Config, raftConfig *RaftConfig) (*raft, error) {
 		statusc:       make(chan chan *Status, 1),
 		entryRequestC: make(chan *entryRequest, 16),
 		tickc:         make(chan struct{}, 64),
+		promtec:	   make(chan struct{}, 64),
 		readyc:        make(chan struct{}, 1),
 		electc:        make(chan struct{}, 1),
 		stopc:         make(chan struct{}),
@@ -394,6 +396,9 @@ func (s *raft) run() {
 				}
 			}()
 
+		case <-s.promtec:
+			s.promoteLearner()
+
 		case future := <-s.readIndexC:
 			futures := []*Future{future}
 			// handle in batch
@@ -477,6 +482,18 @@ func (s *raft) tick() {
 	}
 }
 
+func (s *raft) promote() {
+	if !s.isLeader() {
+		return
+	}
+	select {
+	case <-s.stopc:
+	case s.promtec <- struct{}{}:
+	default:
+		return
+	}
+}
+
 func (s *raft) propose(cmd []byte, future *Future) {
 	if !s.isLeader() {
 		future.respond(nil, ErrNotLeader)
@@ -501,20 +518,6 @@ func (s *raft) proposeMemberChange(cc *proto.ConfChange, future *Future) {
 		return
 	}
 
-	if cc.Type == proto.ConfPromoteLearner {
-		req := &proto.ConfChangeLearnerReq{}
-		if err := json.Unmarshal(cc.Context, req); err != nil {
-			logger.Error("raft[%v] json unmarshal ConfChangeLearnerReq Context[%s] err[%v]", s.raftFsm.id, string(cc.Context), err)
-			future.respond(nil, ErrUnmarshal)
-			return
-		}
-		replica, ok := s.raftFsm.replicas[cc.Peer.ID]
-		if !ok || !s.isLearnerReady(replica, req.ChangeLearner.PromConfig.PromThreshold) {
-			future.respond(nil, ErrLearnerNotReady)
-			return
-		}
-	}
-
 	pr := pool.getProposal()
 	pr.cmdType = proto.EntryConfChange
 	pr.future = future
@@ -525,6 +528,51 @@ func (s *raft) proposeMemberChange(cc *proto.ConfChange, future *Future) {
 		future.respond(nil, ErrStopped)
 	case s.propc <- pr:
 	}
+}
+
+// deal with 'ConfPromoteLearner' ConfChange
+func (s *raft) proposePromoteLearnerMemberChange(cc *proto.ConfChange, future *Future, autoPromote bool) {
+	if !s.isLeader() {
+		future.respond(nil, ErrNotLeader)
+		return
+	}
+
+	req := &proto.ConfChangeLearnerReq{}
+	if err := json.Unmarshal(cc.Context, req); err != nil {
+		logger.Error("raft[%v] json unmarshal ConfChangeLearnerReq Context[%s] err[%v]", s.raftFsm.id, string(cc.Context), err)
+		future.respond(nil, ErrUnmarshal)
+		return
+	}
+	replica, ok := s.raftFsm.replicas[cc.Peer.ID]
+	if !ok || !s.isLearnerReady(replica, req.ChangeLearner.PromConfig.PromThreshold) {
+		logger.Warn("raft[%v] promote learner[%s] err[%v]", s.raftFsm.id, string(cc.Context), ErrLearnerNotReady)
+		future.respond(nil, ErrLearnerNotReady)
+		return
+	}
+
+	pr := pool.getProposal()
+	pr.cmdType = proto.EntryConfChange
+	pr.future = future
+	pr.data = cc.Encode()
+
+	if autoPromote {
+		select {
+		case <-s.stopc:
+			future.respond(nil, ErrStopped)
+		case s.propc <- pr:
+		default:
+			logger.Warn("raft[%v] promote learner[%s] err[%v]", s.raftFsm.id, string(cc.Context), ErrFullChannel)
+			future.respond(nil, ErrFullChannel)
+			pool.returnProposal(pr)
+		}
+	} else {
+		select {
+		case <-s.stopc:
+			future.respond(nil, ErrStopped)
+		case s.propc <- pr:
+		}
+	}
+	return
 }
 
 func (s *raft) reciveMessage(m *proto.Message) {
@@ -912,7 +960,7 @@ func (s *raft) isLearnerReady(pr *replica, threshold uint8) bool {
 		return false
 	}
 	// todo learner as quorum?
-	if !s.raftFsm.checkLeaderLease() {
+	if !s.raftFsm.checkLeaderLease(true) {
 		return false
 	}
 	if logger.IsEnableDebug() {
@@ -934,9 +982,9 @@ func (s *raft) promoteLearner() {
 				continue
 			}
 			p := proto.Peer{ID: id}
-			s.proposeMemberChange(&proto.ConfChange{Type: proto.ConfPromoteLearner, Peer: p, Context: bytes}, future)
-			resp, err := future.Response()
-			logger.Warn("raft[%v] leader[%v] auto promote learner[%v] resp[%v] err[%v]", s.raftConfig.ID, s.config.NodeID, id, resp, err)
+			s.proposePromoteLearnerMemberChange(&proto.ConfChange{Type: proto.ConfPromoteLearner, Peer: p, Context: bytes}, future, true)
+			//resp, err := future.Response()
+			logger.Warn("raft[%v] leader[%v] auto promote learner[%v]", s.raftConfig.ID, s.config.NodeID, id)
 		}
 	}
 }

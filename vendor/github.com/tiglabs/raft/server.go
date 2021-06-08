@@ -97,10 +97,7 @@ func (rs *RaftServer) run() {
 		case <-rs.pmTicker.C:
 			rs.mu.RLock()
 			for _, raft := range rs.rafts {
-				if !raft.isLeader() {
-					continue
-				}
-				raft.promoteLearner()
+				raft.promote()
 			}
 			rs.mu.RUnlock()
 		}
@@ -200,7 +197,12 @@ func (rs *RaftServer) ChangeMember(id uint64, changeType proto.ConfChangeType, p
 		future.respond(nil, ErrRaftNotExists)
 		return
 	}
-	raft.proposeMemberChange(&proto.ConfChange{Type: changeType, Peer: peer, Context: context}, future)
+
+	if changeType == proto.ConfPromoteLearner {
+		raft.proposePromoteLearnerMemberChange(&proto.ConfChange{Type: changeType, Peer: peer, Context: context}, future, false)
+	} else {
+		raft.proposeMemberChange(&proto.ConfChange{Type: changeType, Peer: peer, Context: context}, future)
+	}
 	return
 }
 
