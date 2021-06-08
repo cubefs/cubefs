@@ -23,12 +23,19 @@ const (
 	DefaultHeadRoom = 50 * 1024
 	// DefaultHeadRatio The disk reserve space ratio
 	DefaultHeadRatio = 0.2
+	// Maximum used ratio occupied by the log module
+	DefaultClientMaxUseRatio = 0.2
+	// Maximum used space occupied by the log module
+	// Units: MB
+	DefaultClientMaxUsed = 10 * 1024
 )
 
 // A log can be rotated by the size or time.
 type LogRotate struct {
-	rollingSize int64 // the size of the rotated log // TODO we should either call rotate or rolling, but not both.
-	headRoom    int64 // capacity reserved for writing the next log on the disk
+	rollingSize int64   // the size of the rotated log // TODO we should either call rotate or rolling, but not both.
+	headRoom    int64   // capacity reserved for writing the next log on the disk
+	maxUseSize  int64   // limit the max size occupied by log files, only applicable to 'client' module
+	maxUseRatio float64 // limit the max used ratio occupied by log files, only applicable to 'client' module
 }
 
 // NewLogRotate returns a new LogRotate instance.
@@ -36,15 +43,31 @@ func NewLogRotate() *LogRotate {
 	return &LogRotate{
 		rollingSize: DefaultRollingSize,
 		headRoom:    DefaultHeadRoom,
+		maxUseSize:  -1,
+		maxUseRatio: 1,
 	}
 }
 
-// SetRollingSizeMb sets the rolling size in terms of MB.
-func (r *LogRotate) SetRollingSizeMb(size int64) {
+// NewClientLogRotate returns a new LogRotate instance for 'client', which limits the max used ratio of log module.
+func NewClientLogRotate() *LogRotate {
+	return &LogRotate{
+		rollingSize: DefaultRollingSize,
+		headRoom:    DefaultHeadRoom,
+		maxUseSize:  DefaultClientMaxUsed,
+		maxUseRatio: DefaultClientMaxUseRatio,
+	}
+}
+
+// SetRollingSizeByte sets the rolling size in terms of Byte.
+func (r *LogRotate) SetRollingSizeByte(size int64) {
 	r.rollingSize = size
 }
 
 // SetHeadRoomMb sets the headroom in terms of MB.
 func (r *LogRotate) SetHeadRoomMb(size int64) {
 	r.headRoom = size
+}
+
+func (r *LogRotate) SetMaxUseSizeMb(size int64) {
+	r.maxUseSize = size
 }

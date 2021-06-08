@@ -274,27 +274,37 @@ func InitLog(dir, module string, level Level, rotate *LogRotate) (*Log, error) {
 		}
 	}
 	_ = os.Chmod(dir, 0766)
+
 	if rotate == nil {
 		rotate = NewLogRotate()
-		fs := syscall.Statfs_t{}
-		if err := syscall.Statfs(dir, &fs); err != nil {
-			return nil, fmt.Errorf("[InitLog] stats disk space: %s",
-				err.Error())
-		}
-		var minRatio float64
-		if float64(fs.Bavail*uint64(fs.Bsize)) < float64(fs.Blocks*uint64(fs.Bsize))*DefaultHeadRatio {
-			minRatio = float64(fs.Bavail*uint64(fs.Bsize)) * DefaultHeadRatio / 1024 / 1024
-		} else {
-			minRatio = float64(fs.Blocks*uint64(fs.Bsize)) * DefaultHeadRatio / 1024 / 1024
-		}
-		rotate.SetHeadRoomMb(int64(math.Min(minRatio, DefaultHeadRoom)))
-
-		minRollingSize := int64(fs.Bavail * uint64(fs.Bsize) / uint64(len(levelPrefixes)))
-		if minRollingSize < DefaultMinRollingSize {
-			minRollingSize = DefaultMinRollingSize
-		}
-		rotate.SetRollingSizeMb(int64(math.Min(float64(minRollingSize), float64(DefaultRollingSize))))
 	}
+
+	fs := syscall.Statfs_t{}
+	if err := syscall.Statfs(dir, &fs); err != nil {
+		return nil, fmt.Errorf("[InitLog] stats disk space: %s",
+			err.Error())
+	}
+	var minRatio float64
+	if float64(fs.Bavail*uint64(fs.Bsize)) < float64(fs.Blocks*uint64(fs.Bsize))*DefaultHeadRatio {
+		minRatio = float64(fs.Bavail*uint64(fs.Bsize)) * DefaultHeadRatio / 1024 / 1024
+	} else {
+		minRatio = float64(fs.Blocks*uint64(fs.Bsize)) * DefaultHeadRatio / 1024 / 1024
+	}
+	rotate.SetHeadRoomMb(int64(math.Min(minRatio, float64(rotate.headRoom))))
+
+	maxUseSize := float64(fs.Blocks*uint64(fs.Bsize)) * rotate.maxUseRatio
+	if rotate.maxUseSize > 0 {
+		rotate.SetMaxUseSizeMb(int64(math.Min(maxUseSize/1024/1024, float64(rotate.maxUseSize))))
+	} else {
+		rotate.SetMaxUseSizeMb(int64(maxUseSize / 1024 / 1024))
+	}
+
+	minRollingSize := uint64(math.Min(float64(fs.Bavail*uint64(fs.Bsize)), float64(rotate.maxUseSize*1024*1024))) / uint64(len(levelPrefixes))
+	if minRollingSize < DefaultMinRollingSize {
+		minRollingSize = DefaultMinRollingSize
+	}
+	rotate.SetRollingSizeByte(int64(math.Min(float64(minRollingSize), float64(rotate.rollingSize))))
+
 	l.rotate = rotate
 	err = l.initLog(dir, module, level)
 	if err != nil {
@@ -367,7 +377,9 @@ func (l *Log) Flush() {
 }
 
 const (
-	SetLogLevelPath = "/loglevel/set"
+	SetLogLevelPath   = "/loglevel/set"
+	SetLogMaxSizePath = "/logSize/set"
+	GetLogConfigPath  = "/logConfig/get"
 )
 
 func SetLogLevel(w http.ResponseWriter, r *http.Request) {
@@ -400,6 +412,41 @@ func SetLogLevel(w http.ResponseWriter, r *http.Request) {
 	}
 	gLog.level = Level(level)
 	buildSuccessResp(w, "set log level success")
+}
+
+func SetLogSize(w http.ResponseWriter, r *http.Request) {
+	var (
+		size int64
+		err  error
+	)
+	if err = r.ParseForm(); err != nil {
+		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	sizeStr := r.FormValue("size")
+	if size, err = strconv.ParseInt(sizeStr, 10, 64); err != nil {
+		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	fs := syscall.Statfs_t{}
+	if err := syscall.Statfs(gLog.dir, &fs); err != nil {
+		err = fmt.Errorf("stats disk space: %s", err.Error())
+		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if size <= 0 {
+		gLog.rotate.SetMaxUseSizeMb(int64(fs.Blocks*uint64(fs.Bsize)) / 1024 / 1024)
+	} else {
+		gLog.rotate.SetMaxUseSizeMb(size)
+	}
+
+	buildSuccessResp(w, fmt.Sprintf("set max log size [%v]MB", gLog.rotate.maxUseSize))
+}
+
+func GetLogConfig(w http.ResponseWriter, r *http.Request) {
+	buildSuccessResp(w, fmt.Sprintf("log config: level[%v], headRoom [%v]MB, rollingSize [%v]MB, maxUse [%v]MB",
+		gLog.level, gLog.rotate.headRoom, gLog.rotate.rollingSize/1024/1024, gLog.rotate.maxUseSize))
 }
 
 func buildSuccessResp(w http.ResponseWriter, data interface{}) {
@@ -650,7 +697,8 @@ func (l *Log) checkLogRotation(logDir, module string) {
 		}
 		diskSpaceLeft := int64(fs.Bavail * uint64(fs.Bsize))
 		diskSpaceLeft -= l.rotate.headRoom * 1024 * 1024
-		err := l.removeLogFile(logDir, diskSpaceLeft)
+
+		err := l.removeLogFile(logDir, diskSpaceLeft, module)
 		if err != nil {
 			time.Sleep(DefaultRollingInterval)
 			continue
@@ -675,23 +723,27 @@ func (l *Log) checkLogRotation(logDir, module string) {
 	}
 }
 
-func DeleteFileFilter(info os.FileInfo, diskSpaceLeft int64) bool {
-	if diskSpaceLeft <= 0 {
+func DeleteFileFilter(info os.FileInfo, diskSpaceLeft, exceededUsed int64) bool {
+	if diskSpaceLeft <= 0 || exceededUsed >= 0 {
 		return info.Mode().IsRegular() && strings.HasSuffix(info.Name(), RolledExtension)
 	}
 	return time.Since(info.ModTime()) > MaxReservedDays && strings.HasSuffix(info.Name(), RolledExtension)
 }
 
-func (l *Log) removeLogFile(logDir string, diskSpaceLeft int64) (err error) {
+func (l *Log) removeLogFile(logDir string, diskSpaceLeft int64, module string) (err error) {
 	// collect free file list
 	fInfos, err := ioutil.ReadDir(logDir)
 	if err != nil {
 		LogErrorf("error read log directory files: %s", err.Error())
 		return
 	}
+
+	totalUsed := computeTotalUsed(fInfos, module)
+	exceededUsed := totalUsed - l.rotate.maxUseSize*1024*1024
+
 	var needDelFiles RolledFile
 	for _, info := range fInfos {
-		if DeleteFileFilter(info, diskSpaceLeft) {
+		if DeleteFileFilter(info, diskSpaceLeft, exceededUsed) {
 			needDelFiles = append(needDelFiles, info)
 		}
 	}
@@ -703,10 +755,21 @@ func (l *Log) removeLogFile(logDir string, diskSpaceLeft int64) (err error) {
 			continue
 		}
 		diskSpaceLeft += info.Size()
-		if diskSpaceLeft > 0 && time.Since(info.ModTime()) < MaxReservedDays {
+		exceededUsed -= info.Size()
+		if diskSpaceLeft > 0 && exceededUsed < 0 && time.Since(info.ModTime()) < MaxReservedDays {
 			break
 		}
 	}
 	err = nil
+	return
+}
+
+func computeTotalUsed(infos []os.FileInfo, module string) (size int64) {
+	size = 0
+	for _, info := range infos {
+		if !info.IsDir() && info.Mode().IsRegular() && strings.HasPrefix(info.Name(), module) {
+			size += info.Size()
+		}
+	}
 	return
 }
