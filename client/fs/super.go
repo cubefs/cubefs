@@ -93,6 +93,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		MaxExtentNumPerAlignArea: opt.MaxExtentNumPerAlignArea,
 		ForceAlignMerge:          opt.ForceAlignMerge,
 		ExtentSize:               int(opt.ExtentSize),
+		AutoFlush:                opt.AutoFlush,
 		OnAppendExtentKey:        s.mw.AppendExtentKey,
 		OnGetExtents:             s.mw.GetExtents,
 		OnTruncate:               s.mw.Truncate,

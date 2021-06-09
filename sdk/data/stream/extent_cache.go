@@ -143,8 +143,25 @@ func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) {
 func (cache *ExtentCache) Max() *proto.ExtentKey {
 	cache.RLock()
 	defer cache.RUnlock()
-	ek := cache.root.Max().(*proto.ExtentKey)
+	item := cache.root.Max()
+	if item == nil {
+		return nil
+	}
+	ek := item.(*proto.ExtentKey)
 	return ek
+}
+
+func (cache *ExtentCache) Pre(offset uint64) (ek *proto.ExtentKey) {
+	cache.RLock()
+	defer cache.RUnlock()
+
+	curr := &proto.ExtentKey{FileOffset: offset}
+	cache.root.AscendLessThan(curr, func(i btree.Item) bool {
+		ek = i.(*proto.ExtentKey)
+		return true
+	})
+
+	return
 }
 
 // Size returns the size of the cache.

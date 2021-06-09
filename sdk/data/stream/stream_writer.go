@@ -24,6 +24,7 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data/wrapper"
+	"github.com/chubaofs/chubaofs/storage"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/btree"
 	"github.com/chubaofs/chubaofs/util/errors"
@@ -44,8 +45,8 @@ const (
 )
 
 const (
-	streamWriterFlushPeriod       = 3
-	streamWriterIdleTimeoutPeriod = 10
+	streamWriterFlushPeriod       = 5
+	streamWriterIdleTimeoutPeriod = 4
 )
 
 // OpenRequest defines an open request.
@@ -166,7 +167,7 @@ func (s *Streamer) IssueEvictRequest() error {
 }
 
 func (s *Streamer) server() {
-	t := time.NewTicker(2 * time.Second)
+	t := time.NewTicker(5 * time.Second)
 	defer t.Stop()
 
 	for {
@@ -181,6 +182,9 @@ func (s *Streamer) server() {
 			return
 		case <-t.C:
 			s.traverse()
+			if s.client.autoFlush {
+				s.flush()
+			}
 			if s.refcnt <= 0 {
 				s.client.streamerLock.Lock()
 				if s.idle >= streamWriterIdleTimeoutPeriod && len(s.request) == 0 {
@@ -286,14 +290,7 @@ func (s *Streamer) write(data []byte, offset, size int, direct bool) (total int,
 		if req.ExtentKey != nil {
 			writeSize, err = s.doOverwrite(req, direct)
 		} else {
-			var newReq *ExtentRequest
-			err, newReq, writeSize = s.extentMerge(req)
-			if (err == nil) && (newReq != nil) {
-				total += writeSize
-				writeSize, err = s.doWrite(newReq.Data, newReq.FileOffset, newReq.Size, direct)
-			} else if (writeSize != req.Size) || (err != nil) {
-				writeSize, err = s.doWrite(req.Data, req.FileOffset, req.Size, direct)
-			}
+			writeSize, err = s.doWrite(req.Data, req.FileOffset, req.Size, direct)
 		}
 		if err != nil {
 			log.LogErrorf("Streamer write: ino(%v) err(%v)", s.inode, err)
@@ -388,22 +385,24 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 }
 
 func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total int, err error) {
-	var (
-		ek        *proto.ExtentKey
-		storeMode int
-	)
+	var ek *proto.ExtentKey
 
-	if offset+size > s.tinySizeLimit() {
-		storeMode = proto.NormalExtentType
-	} else {
-		storeMode = proto.TinyExtentType
-	}
-
-	log.LogDebugf("doWrite enter: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
+	log.LogDebugf("doWrite enter: ino(%v) offset(%v) size(%v)", s.inode, offset, size)
 
 	for i := 0; i < MaxNewHandlerRetry; i++ {
 		if s.handler == nil {
-			s.handler = NewExtentHandler(s, offset, storeMode)
+			storeMode := proto.TinyExtentType
+
+			if offset != 0 || offset+size > s.tinySizeLimit() {
+				storeMode = proto.NormalExtentType
+			}
+
+			log.LogDebugf("doWrite: NewExtentHandler ino(%v) offset(%v) size(%v) storeMode(%v)",
+				s.inode, offset, size, storeMode)
+
+			if !s.usePreExtentHandler(offset, size) {
+				s.handler = NewExtentHandler(s, offset, storeMode)
+			}
 			s.dirty = false
 		}
 
@@ -707,4 +706,45 @@ func (s *Streamer) isNeedMerge(req *ExtentRequest) bool {
 	}
 
 	return false
+}
+
+func (s *Streamer) usePreExtentHandler(offset, size int) bool {
+	preEk := s.extents.Pre(uint64(offset))
+	if preEk == nil ||
+		s.dirtylist.Len() != 0 ||
+		storage.IsTinyExtent(preEk.ExtentId) ||
+		preEk.Size >= util.ExtentSize ||
+		preEk.FileOffset+uint64(preEk.Size) != uint64(offset) ||
+		int(preEk.Size)+size > util.ExtentSize {
+		return false
+	}
+
+	log.LogDebugf("usePreExtentHandler: ino(%v) offset(%v) size(%v) preEk(%v)",
+		s.inode, offset, size, preEk)
+
+	var (
+		dp   *wrapper.DataPartition
+		conn *net.TCPConn
+		err  error
+	)
+
+	if dp, err = s.client.dataWrapper.GetDataPartition(preEk.PartitionId); err != nil {
+		log.LogWarnf("usePreExtentHandler: GetDataPartition(%v) failed, err(%v)", preEk.PartitionId, err)
+		return false
+	}
+
+	if conn, err = StreamConnPool.GetConnect(dp.Hosts[0]); err != nil {
+		log.LogWarnf("usePreExtentHandler: GetConnect(%v) failed, err(%v)", dp, err)
+		return false
+	}
+
+	s.handler = NewExtentHandler(s, int(preEk.FileOffset), proto.NormalExtentType)
+
+	s.handler.dp = dp
+	s.handler.extID = int(preEk.ExtentId)
+	s.handler.key = preEk
+	s.handler.size = int(preEk.Size)
+	s.handler.conn = conn
+
+	return true
 }

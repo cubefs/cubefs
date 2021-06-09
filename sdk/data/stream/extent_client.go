@@ -95,6 +95,7 @@ type ExtentConfig struct {
 	ExtentSize               int
 	MaxExtentNumPerAlignArea int64
 	ForceAlignMerge          bool
+	AutoFlush                bool
 	OnAppendExtentKey        AppendExtentKeyFunc
 	OnGetExtents             GetExtentsFunc
 	OnTruncate               TruncateFunc
@@ -125,6 +126,8 @@ type ExtentClient struct {
 
 	tinySize   int
 	extentSize int
+
+	autoFlush bool
 }
 
 // NewExtentClient returns a new extent client.
@@ -156,6 +159,7 @@ retry:
 		client.tinySize = util.DefaultTinySizeLimit
 	}
 	client.SetExtentSize(config.ExtentSize)
+	client.autoFlush = config.AutoFlush
 
 	var readLimit, writeLimit rate.Limit
 	if config.ReadRate <= 0 {
