@@ -40,6 +40,7 @@ const (
 	replicaPortKey                      = "replicaPort"
 	faultDomain                         = "faultDomain"
 	cfgDomainBatchGrpCnt                = "faultDomainGrpBatchCnt"
+	cfgDomainBuildAsPossible            = "faultDomainBuildAsPossible"
 )
 
 //default value
@@ -65,7 +66,8 @@ const (
 
 	defaultIntervalToAlarmMissingMetaPartition         = 10 * 60 // interval of checking if a replica is missing
 	defaultMetaPartitionMemUsageThreshold      float32 = 0.75    // memory usage threshold on a meta partition
-	defaultDataPartitionUsageThreshold         float64 = 0.75    // storage usage threshold on a data partition
+	defaultZoneUsageThreshold                  float64 = 0.90    // storage usage threshold on a data partition
+	defaultDomainUsageThreshold                float64 = 0.75    // storage usage threshold on a data partition
 	defaultMaxMetaPartitionCountOnEachNode             = 10000
 	defaultReplicaNum                                  = 3
 	defaultDiffSpaceUsage                              = 1024 * 1024 * 1024
@@ -99,6 +101,7 @@ type clusterConfig struct {
 	diffSpaceUsage                      uint64
 	faultDomain                         bool
 	DomainNodeGrpBatchCnt               int
+	DomainBuildAsPossible               bool
 	DataPartitionUsageThreshold         float64
 }
 

@@ -631,12 +631,12 @@ func (c *Cluster) putZoneDomain(init bool) (err error) {
 	if c.nodeSetGrpManager.dataRatioLimit > 0 {
 		domainValue.DataRatio = c.nodeSetGrpManager.dataRatioLimit
 	} else {
-		domainValue.DataRatio = defaultDataPartitionUsageThreshold
+		domainValue.DataRatio = defaultZoneUsageThreshold
 	}
 	if c.nodeSetGrpManager.excludeZoneUseRatio > 0 && c.nodeSetGrpManager.excludeZoneUseRatio <= 1{
 		domainValue.DataRatio = c.nodeSetGrpManager.excludeZoneUseRatio
 	} else {
-		domainValue.DataRatio = defaultDataPartitionUsageThreshold
+		domainValue.DataRatio = defaultZoneUsageThreshold
 	}
 
 	metadata.V, err = json.Marshal(domainValue)

@@ -712,7 +712,12 @@ func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int) (err error) {
 		if c.DisableAutoAllocate {
 			return
 		}
-		if _, err = c.createDataPartition(vol.Name); err != nil {
+		zoneNum := c.decideZoneNum(vol.crossZone)
+		//most of partitions are replicated across 3 zones,but a few partitions are replicated across 2 zones
+		if vol.crossZone && i%5 == 0 {
+			zoneNum = 2
+		}
+		if _, err = c.createDataPartition(vol.Name, zoneNum); err != nil {
 			log.LogErrorf("action[batchCreateDataPartition] after create [%v] data partition,occurred error,err[%v]", i, err)
 			break
 		}
@@ -749,7 +754,7 @@ func (c *Cluster) isFaultDomain( vol *Vol) bool{
 // 3. Communicate with the data node to synchronously create a data partition.
 // - If succeeded, replicate the data through raft and persist it to RocksDB.
 // - Otherwise, throw errors
-func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err error) {
+func (c *Cluster) createDataPartition(volName string, zoneNum int) (dp *DataPartition, err error) {
 	var (
 		vol         *Vol
 		partitionID uint64
@@ -770,7 +775,6 @@ func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err er
 			goto errHandler
 		}
 	} else {
-		zoneNum := c.decideZoneNum(vol.crossZone)
 		if targetHosts, targetPeers, err = c.chooseTargetDataNodes("", nil, nil, int(vol.dpReplicaNum), zoneNum, vol.zoneName); err != nil {
 			goto errHandler
 		}

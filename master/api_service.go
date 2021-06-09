@@ -875,6 +875,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		Addr:                      dataNode.Addr,
 		ReportTime:                dataNode.ReportTime,
 		IsActive:                  dataNode.isActive,
+		IsWriteAble:               dataNode.isWriteAble(),
 		UsageRatio:                dataNode.UsageRatio,
 		SelectedTimes:             dataNode.SelectedTimes,
 		Carry:                     dataNode.Carry,
@@ -1120,7 +1121,7 @@ func (m *Server) buildNodeSetGrpInfo(index int) *proto.SimpleNodeSetGrpInfo {
 	nsgStat.ID = nsg.ID
 	nsgStat.Status = nsg.status
 	for i := 0; i < len(nsg.nodeSets); i++ {
-		var nsStat proto.SimpleNodeSet
+		var nsStat proto.NodeSetInfo
 		nsStat.ID = nsg.nodeSets[i].ID
 		nsStat.Capacity = nsg.nodeSets[i].Capacity
 		nsStat.ZoneName = nsg.nodeSets[i].zoneName
@@ -1134,8 +1135,24 @@ func (m *Server) buildNodeSetGrpInfo(index int) *proto.SimpleNodeSetGrpInfo {
 			}
 			log.LogInfof("nodeset index[%v], datanode nodeset id[%v],zonename[%v], addr[%v] inner nodesetid[%v]",
 				i, nsStat.ID, node.ZoneName, node.Addr, node.NodeSetID)
-			nsStat.DataNodes = append(nsStat.DataNodes, proto.NodeView{ID: node.ID, Addr: node.Addr,
-				Status: node.isActive, IsWritable: node.isWriteAble()})
+
+			dataNodeInfo := &proto.DataNodeInfo{
+				Total:                     node.Total,
+				Used:                      node.Used,
+				AvailableSpace:            node.AvailableSpace,
+				ID:                        node.ID,
+				ZoneName:                  node.ZoneName,
+				Addr:                      node.Addr,
+				ReportTime:                node.ReportTime,
+				IsActive:                  node.isActive,
+				IsWriteAble:               node.isWriteAble(),
+				UsageRatio:                node.UsageRatio,
+				SelectedTimes:             node.SelectedTimes,
+				Carry:                     node.Carry,
+				DataPartitionCount:        node.DataPartitionCount,
+				NodeSetID:                 node.NodeSetID,
+			}
+			nsStat.DataNodes = append(nsStat.DataNodes, dataNodeInfo)
 			return true
 		})
 		nsStat.DataUseRatio , _ = strconv.ParseFloat(fmt.Sprintf("%.2f", float64(nsStat.DataUsed) / float64(nsStat.DataTotal)), 64)
@@ -1146,8 +1163,28 @@ func (m *Server) buildNodeSetGrpInfo(index int) *proto.SimpleNodeSetGrpInfo {
 			nsStat.MetaUsed += node.Used
 			log.LogInfof("nodeset index[%v], metanode nodeset id[%v],zonename[%v], addr[%v] inner nodesetid[%v]",
 				i, nsStat.ID, node.ZoneName, node.Addr, node.NodeSetID)
-			nsStat.MetaNodes = append(nsStat.MetaNodes, proto.NodeView{ID: node.ID, Addr: node.Addr,
-									Status: node.IsActive, IsWritable: node.isWritable()})
+
+			metaNodeInfo := &proto.MetaNodeInfo{
+				ID:                        node.ID,
+				Addr:                      node.Addr,
+				IsActive:                  node.IsActive,
+				IsWriteAble:               node.isWritable(),
+				ZoneName:                  node.ZoneName,
+				MaxMemAvailWeight:         node.MaxMemAvailWeight,
+				Total:                     node.Total,
+				Used:                      node.Used,
+				Ratio:                     node.Ratio,
+				SelectCount:               node.SelectCount,
+				Carry:                     node.Carry,
+				Threshold:                 node.Threshold,
+				ReportTime:                node.ReportTime,
+				MetaPartitionCount:        node.MetaPartitionCount,
+				NodeSetID:                 node.NodeSetID,
+				PersistenceMetaPartitions: node.PersistenceMetaPartitions,
+			}
+
+
+			nsStat.MetaNodes = append(nsStat.MetaNodes, metaNodeInfo)
 			return true
 		})
 		nsStat.MetaUseRatio, _ = strconv.ParseFloat(fmt.Sprintf("%.2f", float64(nsStat.MetaUsed) / float64(nsStat.MetaTotal)), 64)
@@ -1285,6 +1322,14 @@ func (m *Server) getNodeSetGrpInfoHandler(w http.ResponseWriter, r *http.Request
 		sendErrReply(w, r, newErrHTTPReply(err))
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(info))
+}
+func (m *Server) getIsDomainOn(w http.ResponseWriter, r *http.Request) {
+	type SimpleDomainInfo struct {
+		DomainOn       bool
+	}
+	nsglStat := new(SimpleDomainInfo)
+	nsglStat.DomainOn = m.cluster.FaultDomain
+	sendOkReply(w, r, newSuccessHTTPReply(nsglStat))
 }
 
 // get metanode some interval params
@@ -1495,6 +1540,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		ID:                        metaNode.ID,
 		Addr:                      metaNode.Addr,
 		IsActive:                  metaNode.IsActive,
+		IsWriteAble:               metaNode.isWritable(),
 		ZoneName:                  metaNode.ZoneName,
 		MaxMemAvailWeight:         metaNode.MaxMemAvailWeight,
 		Total:                     metaNode.Total,

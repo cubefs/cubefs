@@ -34,16 +34,17 @@ const (
 	AdminClusterFreeze             = "/cluster/freeze"
 	AdminClusterStat               = "/cluster/stat"
 	AdminGetIP                = "/admin/getIp"
-	AdminCreateMetaPartition  = "/metaPartition/create"
-	AdminSetMetaNodeThreshold = "/threshold/set"
-	AdminListVols             = "/vol/list"
-	AdminSetNodeInfo          = "/admin/setNodeInfo"
-	AdminGetNodeInfo          = "/admin/getNodeInfo"
-	AdminGetAllNodeSetGrpInfo = "/admin/getNodeAllSetGrpInfo"
-	AdminGetNodeSetGrpInfo    = "/admin/getNodeSetGrpInfo"
-	AdminUpdateNodeSetCapcity = "/admin/updateNodeSetCapcity"
-	AdminUpdateNodeSetId      = "/admin/updateNodeSetId"
-	AdminUpdateDataUseRatio   = "/admin/updateDataRatio"
+	AdminCreateMetaPartition      = "/metaPartition/create"
+	AdminSetMetaNodeThreshold     = "/threshold/set"
+	AdminListVols                 = "/vol/list"
+	AdminSetNodeInfo              = "/admin/setNodeInfo"
+	AdminGetNodeInfo              = "/admin/getNodeInfo"
+	AdminGetAllNodeSetGrpInfo     = "/admin/getDomainInfo"
+	AdminGetNodeSetGrpInfo        = "/admin/getDomainNodeSetGrpInfo"
+	AdminGetIsDomainOn            = "/admin/getIsDomainOn"
+	AdminUpdateNodeSetCapcity     = "/admin/updateNodeSetCapcity"
+	AdminUpdateNodeSetId          = "/admin/updateNodeSetId"
+	AdminUpdateDomainDataUseRatio = "/admin/updateDomainDataRatio"
 	AdminUpdateZoneExcludeRatio   = "/admin/updateZoneExcludeRatio"
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
@@ -490,7 +491,7 @@ type SimpleVolView struct {
 	DpSelectorParm     string
 	DefaultZonePrior   bool
 }
-type SimpleNodeSet struct {
+type NodeSetInfo struct {
 	ID        uint64
 	ZoneName  string
 	Capacity  int
@@ -498,15 +499,15 @@ type SimpleNodeSet struct {
 	MetaUseRatio float64
 	MetaUsed  uint64
 	MetaTotal uint64
-	MetaNodes []NodeView
+	MetaNodes []*MetaNodeInfo
 	DataUsed  uint64
 	DataTotal uint64
-	DataNodes []NodeView
+	DataNodes []*DataNodeInfo
 }
 type SimpleNodeSetGrpInfo struct {
 	ID        uint64
 	Status    uint8
-	NodeSetInfo []SimpleNodeSet
+	NodeSetInfo []NodeSetInfo
 }
 
 type SimpleNodeSetGrpInfoList struct {

@@ -180,6 +180,12 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	if m.config.nodeSetCapacity < 3 {
 		m.config.nodeSetCapacity = defaultNodeSetCapacity
 	}
+	m.config.DomainBuildAsPossible = false
+	if cfg.GetString(cfgDomainBatchGrpCnt) != "" {
+		if m.config.DomainBuildAsPossible, err = strconv.ParseBool(cfg.GetString(cfgDomainBuildAsPossible)); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
+	}
 	m.config.DomainNodeGrpBatchCnt = defaultNodeSetGrpBatchCnt
 	domainBatchGrpCnt := cfg.GetString(cfgDomainBatchGrpCnt)
 	if domainBatchGrpCnt != "" {
