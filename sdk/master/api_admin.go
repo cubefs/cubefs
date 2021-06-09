@@ -189,11 +189,12 @@ func (api *AdminAPI) AddDataReplica(dataPartitionID uint64, nodeAddr string) (er
 	return
 }
 
-func (api *AdminAPI) AddDataLearner(dataPartitionID uint64, nodeAddr string, autoPromote bool) (err error) {
+func (api *AdminAPI) AddDataLearner(dataPartitionID uint64, nodeAddr string, autoPromote bool, threshold uint8) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminAddDataReplicaLearner)
 	request.addParam("id", strconv.FormatUint(dataPartitionID, 10))
 	request.addParam("addr", nodeAddr)
 	request.addParam("auto", strconv.FormatBool(autoPromote))
+	request.addParam("threshold", strconv.FormatUint(uint64(threshold), 10))
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -230,11 +231,12 @@ func (api *AdminAPI) AddMetaReplica(metaPartitionID uint64, nodeAddr string) (er
 	return
 }
 
-func (api *AdminAPI) AddMetaReplicaLearner(metaPartitionID uint64, nodeAddr string, autoPromote bool) (err error) {
+func (api *AdminAPI) AddMetaReplicaLearner(metaPartitionID uint64, nodeAddr string, autoPromote bool, threshold uint8) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminAddMetaReplicaLearner)
 	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
 	request.addParam("addr", nodeAddr)
 	request.addParam("auto", strconv.FormatBool(autoPromote))
+	request.addParam("threshold", strconv.FormatUint(uint64(threshold), 10))
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}

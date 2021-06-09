@@ -33,6 +33,8 @@ const (
 	CliOpReset             = "reset"
 	CliOpReplicate         = "add-replica"
 	CliOpDelReplica        = "del-replica"
+	CliOpAddLearner        = "add-learner"
+	CliOpPromoteLearner    = "promote-learner"
 
 	//Shorthand format of operation name
 	CliOpDecommissionShortHand = "dec"
@@ -62,6 +64,7 @@ const (
 	CliFlagEnableAutoFill     = "auto-fill"
 	CliFlagCapacity           = "capacity"
 	CliFlagThreshold          = "threshold"
+	CliFlagAutoPromote        = "auto-promote"
 	CliFlagAddress            = "addr"
 	CliFlagDiskPath           = "path"
 	CliFlagAuthKey            = "authkey"
