@@ -28,7 +28,7 @@ const (
 	cmdRateLimitShort     = "Manage requests rate limit"
 	cmdRateLimitInfoShort = "Current rate limit"
 	cmdRateLimitSetShort  = "Set rate limit"
-	minLimitRate          = 100
+	minRate               = 100
 )
 
 func newRateLimitCmd(client *master.MasterClient) *cobra.Command {
@@ -49,8 +49,8 @@ func newRateLimitInfoCmd(client *master.MasterClient) *cobra.Command {
 		Short: cmdRateLimitInfoShort,
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
-			var info *proto.ClusterInfo
-			if info, err = client.AdminAPI().GetClusterInfo(); err != nil {
+			var info *proto.LimitInfo
+			if info, err = client.AdminAPI().GetLimitInfo(); err != nil {
 				errout("Get cluster info fail:\n%v\n", err)
 			}
 			stdout("[Cluster rate limit]\n")
@@ -68,12 +68,15 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 		Short: cmdRateLimitSetShort,
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
-			if (info.ClientReadLimitRate > 0 && info.ClientReadLimitRate < minLimitRate) ||
-				(info.ClientWriteLimitRate > 0 && info.ClientWriteLimitRate < minLimitRate) ||
-				(info.MetaNodeReqLimitRate > 0 && info.MetaNodeReqLimitRate < minLimitRate) ||
-				(info.DataNodeReqLimitRate > 0 && info.DataNodeReqLimitRate < minLimitRate) ||
-				(info.DataNodeReqVolPartLimitRate > 0 && info.DataNodeReqVolPartLimitRate < minLimitRate) {
-				errout("limit rate can't be less than %d\n", minLimitRate)
+			if (info.ClientReadRate > 0 && info.ClientReadRate < minRate) ||
+				(info.ClientWriteRate > 0 && info.ClientWriteRate < minRate) ||
+				(info.MetaNodeReqRate > 0 && info.MetaNodeReqRate < minRate) ||
+				(info.MetaNodeReqOpRate > 0 && info.MetaNodeReqOpRate < minRate) ||
+				(info.DataNodeReqRate > 0 && info.DataNodeReqRate < minRate) ||
+				(info.DataNodeReqOpRate > 0 && info.DataNodeReqOpRate < minRate) ||
+				(info.DataNodeReqVolPartRate > 0 && info.DataNodeReqVolPartRate < minRate) ||
+				(info.DataNodeReqVolOpPartRate > 0 && info.DataNodeReqVolOpPartRate < minRate) {
+				errout("limit rate can't be less than %d\n", minRate)
 			}
 			if err = client.AdminAPI().SetRateLimit(&info); err != nil {
 				errout("Set rate limit fail:\n%v\n", err)
@@ -81,23 +84,33 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			stdout("Set rate limit success.\n")
 		},
 	}
-	cmd.Flags().Int64Var(&info.MetaNodeReqLimitRate, "metaNodeReqRate", -1, "meta node request rate limit")
-	cmd.Flags().Int64Var(&info.DataNodeReqLimitRate, "dataNodeReqRate", -1, "data node request rate limit")
-	cmd.Flags().Int64Var(&info.DataNodeReqVolPartLimitRate, "dataNodeReqVolPartRate", -1, "data node per partition request rate limit for a given volume")
-	cmd.Flags().StringVar(&info.Volume, "volume", "", "volume")
-	cmd.Flags().Int64Var(&info.ClientReadLimitRate, "clientReadRate", -1, "client read rate limit")
-	cmd.Flags().Int64Var(&info.ClientWriteLimitRate, "clientWriteRate", -1, "client write limit rate")
+	cmd.Flags().StringVar(&info.Volume, "volume", "", "volume (empty volume acts as default)")
+	cmd.Flags().Int8Var(&info.Opcode, "opcode", -1, "opcode (zero opcode acts as default)")
+	cmd.Flags().Int64Var(&info.MetaNodeReqRate, "metaNodeReqRate", -1, "meta node request rate limit")
+	cmd.Flags().Int64Var(&info.MetaNodeReqOpRate, "metaNodeReqOpRate", -1, "meta node request rate limit for opcode")
+	cmd.Flags().Int64Var(&info.DataNodeReqRate, "dataNodeReqRate", -1, "data node request rate limit")
+	cmd.Flags().Int64Var(&info.DataNodeReqOpRate, "dataNodeReqOpRate", -1, "data node request rate limit for opcode")
+	cmd.Flags().Int64Var(&info.DataNodeReqVolPartRate, "dataNodeReqVolPartRate", -1, "data node per partition request rate limit for a given volume")
+	cmd.Flags().Int64Var(&info.DataNodeReqVolOpPartRate, "dataNodeReqVolOpPartRate", -1, "data node per partition request rate limit for a given volume & opcode")
+	cmd.Flags().Int64Var(&info.ClientReadRate, "clientReadRate", -1, "client read rate limit")
+	cmd.Flags().Int64Var(&info.ClientWriteRate, "clientWriteRate", -1, "client write limit rate")
 	return cmd
 }
 
-func formatRateLimitInfo(info *proto.ClusterInfo) string {
+func formatRateLimitInfo(info *proto.LimitInfo) string {
 	var sb = strings.Builder{}
-	sb.WriteString(fmt.Sprintf("  Cluster name              : %v\n", info.Cluster))
-	sb.WriteString(fmt.Sprintf("  MetaNodeReqRate           : %v\n", info.MetaNodeReqLimitRate))
-	sb.WriteString(fmt.Sprintf("  DataNodeReqRate           : %v\n", info.DataNodeReqLimitRate))
-	sb.WriteString(fmt.Sprintf("  DataNodeReqVolPartRateMap : %v\n", info.DataNodeReqVolPartLimitRateMap))
-	sb.WriteString(fmt.Sprintf("  (data node per patition request rate limit for a given volume, empty volume represent all other unspecified volumes)\n"))
-	sb.WriteString(fmt.Sprintf("  ClientReadRate            : %v\n", info.ClientReadLimitRate))
-	sb.WriteString(fmt.Sprintf("  ClientWriteRate           : %v\n", info.ClientWriteLimitRate))
+	sb.WriteString(fmt.Sprintf("  Cluster name                : %v\n", info.Cluster))
+	sb.WriteString(fmt.Sprintf("  MetaNodeReqRate             : %v\n", info.MetaNodeReqRateLimit))
+	sb.WriteString(fmt.Sprintf("  MetaNodeReqOpRateMap        : %v\n", info.MetaNodeReqOpRateLimitMap))
+	sb.WriteString(fmt.Sprintf("  (map[opcode]limit)\n"))
+	sb.WriteString(fmt.Sprintf("  DataNodeReqRate             : %v\n", info.DataNodeReqRateLimit))
+	sb.WriteString(fmt.Sprintf("  DataNodeReqOpRateMap        : %v\n", info.DataNodeReqOpRateLimitMap))
+	sb.WriteString(fmt.Sprintf("  (map[opcode]limit)\n"))
+	sb.WriteString(fmt.Sprintf("  DataNodeReqVolPartRateMap   : %v\n", info.DataNodeReqVolPartRateLimitMap))
+	sb.WriteString(fmt.Sprintf("  (map[volume]limit - per partition)\n"))
+	sb.WriteString(fmt.Sprintf("  DataNodeReqVolOpPartRateMap : %v\n", info.DataNodeReqVolOpPartRateLimitMap))
+	sb.WriteString(fmt.Sprintf("  (map[volume]map[opcode]limit - per partition)\n"))
+	sb.WriteString(fmt.Sprintf("  ClientReadRate              : %v\n", info.ClientReadRateLimit))
+	sb.WriteString(fmt.Sprintf("  ClientWriteRate             : %v\n", info.ClientWriteRateLimit))
 	return sb.String()
 }

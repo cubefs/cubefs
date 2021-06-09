@@ -2690,33 +2690,33 @@ func (c *Cluster) setDataNodeDeleteLimitRate(val uint64) (err error) {
 	return
 }
 
-func (c *Cluster) setDataNodeReqLimitRate(val uint64) (err error) {
-	oldVal := atomic.LoadUint64(&c.cfg.DataNodeReqLimitRate)
-	atomic.StoreUint64(&c.cfg.DataNodeReqLimitRate, val)
+func (c *Cluster) setDataNodeReqRateLimit(val uint64) (err error) {
+	oldVal := atomic.LoadUint64(&c.cfg.DataNodeReqRateLimit)
+	atomic.StoreUint64(&c.cfg.DataNodeReqRateLimit, val)
 	if err = c.syncPutCluster(); err != nil {
-		log.LogErrorf("action[setDataNodeReqLimitRate] err[%v]", err)
-		atomic.StoreUint64(&c.cfg.DataNodeReqLimitRate, oldVal)
+		log.LogErrorf("action[setDataNodeReqRateLimit] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.DataNodeReqRateLimit, oldVal)
 		err = proto.ErrPersistenceByRaft
 		return
 	}
 	return
 }
 
-func (c *Cluster) setDataNodeReqVolPartLimitRate(val uint64, vol string) (err error) {
-	c.cfg.dataNodeReqVolPartLimitRateMapMutex.Lock()
-	defer c.cfg.dataNodeReqVolPartLimitRateMapMutex.Unlock()
-	oldVal, ok := c.cfg.DataNodeReqVolPartLimitRateMap[vol]
+func (c *Cluster) setDataNodeReqOpRateLimit(val uint64, op uint8) (err error) {
+	c.cfg.reqRateLimitMapMutex.Lock()
+	defer c.cfg.reqRateLimitMapMutex.Unlock()
+	oldVal, ok := c.cfg.DataNodeReqOpRateLimitMap[op]
 	if val > 0 {
-		c.cfg.DataNodeReqVolPartLimitRateMap[vol] = val
+		c.cfg.DataNodeReqOpRateLimitMap[op] = val
 	} else {
-		delete(c.cfg.DataNodeReqVolPartLimitRateMap, vol)
+		delete(c.cfg.DataNodeReqOpRateLimitMap, op)
 	}
 	if err = c.syncPutCluster(); err != nil {
-		log.LogErrorf("action[setDataNodeReqVolPartLimitRate] err[%v]", err)
+		log.LogErrorf("action[setDataNodeReqOpRateLimit] err[%v]", err)
 		if ok {
-			c.cfg.DataNodeReqVolPartLimitRateMap[vol] = oldVal
+			c.cfg.DataNodeReqOpRateLimitMap[op] = oldVal
 		} else {
-			delete(c.cfg.DataNodeReqVolPartLimitRateMap, vol)
+			delete(c.cfg.DataNodeReqOpRateLimitMap, op)
 		}
 		err = proto.ErrPersistenceByRaft
 		return
@@ -2724,36 +2724,115 @@ func (c *Cluster) setDataNodeReqVolPartLimitRate(val uint64, vol string) (err er
 	return
 }
 
-func (c *Cluster) setMetaNodeReqLimitRate(val uint64) (err error) {
-	oldVal := atomic.LoadUint64(&c.cfg.MetaNodeReqLimitRate)
-	atomic.StoreUint64(&c.cfg.MetaNodeReqLimitRate, val)
+func (c *Cluster) setDataNodeReqVolPartRateLimit(val uint64, vol string) (err error) {
+	c.cfg.reqRateLimitMapMutex.Lock()
+	defer c.cfg.reqRateLimitMapMutex.Unlock()
+	oldVal, ok := c.cfg.DataNodeReqVolPartRateLimitMap[vol]
+	if val > 0 {
+		c.cfg.DataNodeReqVolPartRateLimitMap[vol] = val
+	} else {
+		delete(c.cfg.DataNodeReqVolPartRateLimitMap, vol)
+	}
 	if err = c.syncPutCluster(); err != nil {
-		log.LogErrorf("action[setMetaNodeReqLimitRate] err[%v]", err)
-		atomic.StoreUint64(&c.cfg.MetaNodeReqLimitRate, oldVal)
+		log.LogErrorf("action[setDataNodeReqVolPartRateLimit] err[%v]", err)
+		if ok {
+			c.cfg.DataNodeReqVolPartRateLimitMap[vol] = oldVal
+		} else {
+			delete(c.cfg.DataNodeReqVolPartRateLimitMap, vol)
+		}
 		err = proto.ErrPersistenceByRaft
 		return
 	}
 	return
 }
 
-func (c *Cluster) setClientReadLimitRate(val uint64) (err error) {
-	oldVal := atomic.LoadUint64(&c.cfg.ClientReadLimitRate)
-	atomic.StoreUint64(&c.cfg.ClientReadLimitRate, val)
+func (c *Cluster) setDataNodeReqVolOpPartRateLimit(val uint64, vol string, op uint8) (err error) {
+	c.cfg.reqRateLimitMapMutex.Lock()
+	defer c.cfg.reqRateLimitMapMutex.Unlock()
+	opMap, ok := c.cfg.DataNodeReqVolOpPartRateLimitMap[vol]
+	var oldVal uint64
+	if ok {
+		oldVal, ok = opMap[op]
+	} else {
+		opMap = make(map[uint8]uint64)
+		c.cfg.DataNodeReqVolOpPartRateLimitMap[vol] = opMap
+	}
+	if val > 0 {
+		opMap[op] = val
+	} else {
+		delete(opMap, op)
+		if len(opMap) == 0 {
+			delete(c.cfg.DataNodeReqVolOpPartRateLimitMap, vol)
+		}
+	}
 	if err = c.syncPutCluster(); err != nil {
-		log.LogErrorf("action[setClientReadLimitRate] err[%v]", err)
-		atomic.StoreUint64(&c.cfg.ClientReadLimitRate, oldVal)
+		log.LogErrorf("action[setDataNodeReqVolOpPartRateLimit] err[%v]", err)
+		if ok {
+			c.cfg.DataNodeReqVolOpPartRateLimitMap[vol][op] = oldVal
+		} else {
+			delete(opMap, op)
+			if len(opMap) == 0 {
+				delete(c.cfg.DataNodeReqVolOpPartRateLimitMap, vol)
+			}
+		}
 		err = proto.ErrPersistenceByRaft
 		return
 	}
 	return
 }
 
-func (c *Cluster) setClientWriteLimitRate(val uint64) (err error) {
-	oldVal := atomic.LoadUint64(&c.cfg.ClientWriteLimitRate)
-	atomic.StoreUint64(&c.cfg.ClientWriteLimitRate, val)
+func (c *Cluster) setMetaNodeReqRateLimit(val uint64) (err error) {
+	oldVal := atomic.LoadUint64(&c.cfg.MetaNodeReqRateLimit)
+	atomic.StoreUint64(&c.cfg.MetaNodeReqRateLimit, val)
 	if err = c.syncPutCluster(); err != nil {
-		log.LogErrorf("action[setClientWriteLimitRate] err[%v]", err)
-		atomic.StoreUint64(&c.cfg.ClientWriteLimitRate, oldVal)
+		log.LogErrorf("action[setMetaNodeReqRateLimit] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.MetaNodeReqRateLimit, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setMetaNodeReqOpRateLimit(val uint64, op uint8) (err error) {
+	c.cfg.reqRateLimitMapMutex.Lock()
+	defer c.cfg.reqRateLimitMapMutex.Unlock()
+	oldVal, ok := c.cfg.MetaNodeReqOpRateLimitMap[op]
+	if val > 0 {
+		c.cfg.MetaNodeReqOpRateLimitMap[op] = val
+	} else {
+		delete(c.cfg.MetaNodeReqOpRateLimitMap, op)
+	}
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setMetaNodeReqVolPartRateLimit] err[%v]", err)
+		if ok {
+			c.cfg.MetaNodeReqOpRateLimitMap[op] = oldVal
+		} else {
+			delete(c.cfg.MetaNodeReqOpRateLimitMap, op)
+		}
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setClientReadRateLimit(val uint64) (err error) {
+	oldVal := atomic.LoadUint64(&c.cfg.ClientReadRateLimit)
+	atomic.StoreUint64(&c.cfg.ClientReadRateLimit, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setClientReadRateLimit] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.ClientReadRateLimit, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setClientWriteRateLimit(val uint64) (err error) {
+	oldVal := atomic.LoadUint64(&c.cfg.ClientWriteRateLimit)
+	atomic.StoreUint64(&c.cfg.ClientWriteRateLimit, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setClientWriteRateLimit] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.ClientWriteRateLimit, oldVal)
 		err = proto.ErrPersistenceByRaft
 		return
 	}

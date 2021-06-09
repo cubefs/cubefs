@@ -263,26 +263,41 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 	m.cluster.loadClusterValue()
+	clientReadRateLimit := atomic.LoadUint64(&m.cluster.cfg.ClientReadRateLimit)
+	clientWriteRateLimit := atomic.LoadUint64(&m.cluster.cfg.ClientWriteRateLimit)
+	cInfo := &proto.ClusterInfo{
+		Cluster:              m.cluster.Name,
+		Ip:                   strings.Split(r.RemoteAddr, ":")[0],
+		ClientReadLimitRate:  clientReadRateLimit,
+		ClientWriteLimitRate: clientWriteRateLimit,
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
+}
+
+func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
+	m.cluster.loadClusterValue()
 	batchCount := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteBatchCount)
 	limitRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeDeleteLimitRate)
 	deleteSleepMs := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
-	metaNodeReqLimitRate := atomic.LoadUint64(&m.cluster.cfg.MetaNodeReqLimitRate)
-	dataNodeReqLimitRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeReqLimitRate)
-	clientReadLimitRate := atomic.LoadUint64(&m.cluster.cfg.ClientReadLimitRate)
-	clientWriteLimitRate := atomic.LoadUint64(&m.cluster.cfg.ClientWriteLimitRate)
-	m.cluster.cfg.dataNodeReqVolPartLimitRateMapMutex.Lock()
-	defer m.cluster.cfg.dataNodeReqVolPartLimitRateMapMutex.Unlock()
-	cInfo := &proto.ClusterInfo{
-		Cluster:                        m.cluster.Name,
-		MetaNodeDeleteBatchCount:       batchCount,
-		MetaNodeDeleteWorkerSleepMs:    deleteSleepMs,
-		MetaNodeReqLimitRate:           metaNodeReqLimitRate,
-		DataNodeReqLimitRate:           dataNodeReqLimitRate,
-		DataNodeReqVolPartLimitRateMap: m.cluster.cfg.DataNodeReqVolPartLimitRateMap,
-		DataNodeDeleteLimitRate:        limitRate,
-		ClientReadLimitRate:            clientReadLimitRate,
-		ClientWriteLimitRate:           clientWriteLimitRate,
-		Ip:                             strings.Split(r.RemoteAddr, ":")[0],
+	metaNodeReqRateLimit := atomic.LoadUint64(&m.cluster.cfg.MetaNodeReqRateLimit)
+	dataNodeReqRateLimit := atomic.LoadUint64(&m.cluster.cfg.DataNodeReqRateLimit)
+	clientReadRateLimit := atomic.LoadUint64(&m.cluster.cfg.ClientReadRateLimit)
+	clientWriteRateLimit := atomic.LoadUint64(&m.cluster.cfg.ClientWriteRateLimit)
+	m.cluster.cfg.reqRateLimitMapMutex.Lock()
+	defer m.cluster.cfg.reqRateLimitMapMutex.Unlock()
+	cInfo := &proto.LimitInfo{
+		Cluster:                          m.cluster.Name,
+		MetaNodeDeleteBatchCount:         batchCount,
+		MetaNodeDeleteWorkerSleepMs:      deleteSleepMs,
+		MetaNodeReqRateLimit:             metaNodeReqRateLimit,
+		MetaNodeReqOpRateLimitMap:        m.cluster.cfg.MetaNodeReqOpRateLimitMap,
+		DataNodeReqRateLimit:             dataNodeReqRateLimit,
+		DataNodeReqOpRateLimitMap:        m.cluster.cfg.DataNodeReqOpRateLimitMap,
+		DataNodeReqVolPartRateLimitMap:   m.cluster.cfg.DataNodeReqVolPartRateLimitMap,
+		DataNodeReqVolOpPartRateLimitMap: m.cluster.cfg.DataNodeReqVolOpPartRateLimitMap,
+		DataNodeDeleteLimitRate:          limitRate,
+		ClientReadRateLimit:              clientReadRateLimit,
+		ClientWriteRateLimit:             clientWriteRateLimit,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -1254,12 +1269,31 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if val, ok := params[dataNodeReqRateKey]; ok {
 		if v, ok := val.(uint64); ok {
-			if v > 0 && v < minLimitRate {
-				err = errors.NewErrorf("parameter %s can't be less than %d", dataNodeReqRateKey, minLimitRate)
+			if v > 0 && v < minRateLimit {
+				err = errors.NewErrorf("parameter %s can't be less than %d", dataNodeReqRateKey, minRateLimit)
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
-			if err = m.cluster.setDataNodeReqLimitRate(v); err != nil {
+			if err = m.cluster.setDataNodeReqRateLimit(v); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+	if val, ok := params[dataNodeReqOpRateKey]; ok {
+		if v, ok := val.(uint64); ok {
+			if v > 0 && v < minRateLimit {
+				err = errors.NewErrorf("parameter %s can't be less than %d", dataNodeReqOpRateKey, minRateLimit)
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+			var op uint64
+			if opcode, ok := params[opcodeKey]; ok {
+				if op, ok = opcode.(uint64); !ok {
+					op = 0
+				}
+			}
+			if err = m.cluster.setDataNodeReqOpRateLimit(v, uint8(op)); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -1267,8 +1301,8 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if val, ok := params[dataNodeReqVolPartRateKey]; ok {
 		if v, ok := val.(uint64); ok {
-			if v > 0 && v < minLimitRate {
-				err = errors.NewErrorf("parameter %s can't be less than %d", dataNodeReqVolPartRateKey, minLimitRate)
+			if v > 0 && v < minRateLimit {
+				err = errors.NewErrorf("parameter %s can't be less than %d", dataNodeReqVolPartRateKey, minRateLimit)
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -1278,7 +1312,32 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 					vol = volume_str
 				}
 			}
-			if err = m.cluster.setDataNodeReqVolPartLimitRate(v, vol); err != nil {
+			if err = m.cluster.setDataNodeReqVolPartRateLimit(v, vol); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+	if val, ok := params[dataNodeReqVolOpPartRateKey]; ok {
+		if v, ok := val.(uint64); ok {
+			if v > 0 && v < minRateLimit {
+				err = errors.NewErrorf("parameter %s can't be less than %d", dataNodeReqVolOpPartRateKey, minRateLimit)
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+			vol := ""
+			if volume, ok := params[volumeKey]; ok {
+				if volume_str, ok := volume.(string); ok {
+					vol = volume_str
+				}
+			}
+			var op uint64
+			if opcode, ok := params[opcodeKey]; ok {
+				if op, ok = opcode.(uint64); !ok {
+					op = 0
+				}
+			}
+			if err = m.cluster.setDataNodeReqVolOpPartRateLimit(v, vol, uint8(op)); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -1286,12 +1345,31 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if val, ok := params[metaNodeReqRateKey]; ok {
 		if v, ok := val.(uint64); ok {
-			if v > 0 && v < minLimitRate {
-				err = errors.NewErrorf("parameter %s can't be less than %d", metaNodeReqRateKey, minLimitRate)
+			if v > 0 && v < minRateLimit {
+				err = errors.NewErrorf("parameter %s can't be less than %d", metaNodeReqRateKey, minRateLimit)
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
-			if err = m.cluster.setMetaNodeReqLimitRate(v); err != nil {
+			if err = m.cluster.setMetaNodeReqRateLimit(v); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+	if val, ok := params[metaNodeReqOpRateKey]; ok {
+		if v, ok := val.(uint64); ok {
+			if v > 0 && v < minRateLimit {
+				err = errors.NewErrorf("parameter %s can't be less than %d", metaNodeReqOpRateKey, minRateLimit)
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+			var op uint64
+			if opcode, ok := params[opcodeKey]; ok {
+				if op, ok = opcode.(uint64); !ok {
+					op = 0
+				}
+			}
+			if err = m.cluster.setMetaNodeReqOpRateLimit(v, uint8(op)); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -1299,12 +1377,12 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if val, ok := params[clientReadRateKey]; ok {
 		if v, ok := val.(uint64); ok {
-			if v > 0 && v < minLimitRate {
-				err = errors.NewErrorf("parameter %s can't be less than %d", clientReadRateKey, minLimitRate)
+			if v > 0 && v < minRateLimit {
+				err = errors.NewErrorf("parameter %s can't be less than %d", clientReadRateKey, minRateLimit)
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
-			if err = m.cluster.setClientReadLimitRate(v); err != nil {
+			if err = m.cluster.setClientReadRateLimit(v); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -1312,12 +1390,12 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if val, ok := params[clientWriteRateKey]; ok {
 		if v, ok := val.(uint64); ok {
-			if v > 0 && v < minLimitRate {
-				err = errors.NewErrorf("parameter %s can't be less than %d", clientWriteRateKey, minLimitRate)
+			if v > 0 && v < minRateLimit {
+				err = errors.NewErrorf("parameter %s can't be less than %d", clientWriteRateKey, minRateLimit)
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
-			if err = m.cluster.setClientWriteLimitRate(v); err != nil {
+			if err = m.cluster.setClientWriteRateLimit(v); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -2318,14 +2396,27 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	if noParams, err = parseNodeInfoKey(params, metaNodeReqRateKey, noParams, r); err != nil {
 		return
 	}
+	if noParams, err = parseNodeInfoKey(params, metaNodeReqOpRateKey, noParams, r); err != nil {
+		return
+	}
 	if noParams, err = parseNodeInfoKey(params, dataNodeReqRateKey, noParams, r); err != nil {
+		return
+	}
+	if noParams, err = parseNodeInfoKey(params, dataNodeReqOpRateKey, noParams, r); err != nil {
 		return
 	}
 	if noParams, err = parseNodeInfoKey(params, dataNodeReqVolPartRateKey, noParams, r); err != nil {
 		return
-	}
-	if _, ok := params[dataNodeReqVolPartRateKey]; ok {
+	} else {
 		params[volumeKey] = r.FormValue(volumeKey)
+	}
+	if noParams, err = parseNodeInfoKey(params, dataNodeReqVolOpPartRateKey, noParams, r); err != nil {
+		return
+	} else {
+		params[volumeKey] = r.FormValue(volumeKey)
+	}
+	if noParams, err = parseNodeInfoKey(params, opcodeKey, noParams, r); err != nil {
+		return
 	}
 	if noParams, err = parseNodeInfoKey(params, clientReadRateKey, noParams, r); err != nil {
 		return

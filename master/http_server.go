@@ -18,10 +18,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/samsarahq/thunder/graphql"
-	"github.com/samsarahq/thunder/graphql/introspection"
 	"net/http"
 	"net/http/httputil"
+
+	"github.com/samsarahq/thunder/graphql"
+	"github.com/samsarahq/thunder/graphql/introspection"
 
 	"github.com/gorilla/mux"
 
@@ -97,6 +98,10 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Methods(http.MethodGet).
 		Path(proto.AdminGetIP).
 		HandlerFunc(m.getIPAddr)
+	router.NewRoute().Name(proto.AdminGetLimitInfo).
+		Methods(http.MethodGet).
+		Path(proto.AdminGetLimitInfo).
+		HandlerFunc(m.getLimitInfo)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminGetCluster).
 		HandlerFunc(m.getCluster)

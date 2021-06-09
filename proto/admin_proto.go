@@ -36,6 +36,7 @@ const (
 	AdminClusterFreeze             = "/cluster/freeze"
 	AdminClusterStat               = "/cluster/stat"
 	AdminGetIP                     = "/admin/getIp"
+	AdminGetLimitInfo              = "/admin/getLimitInfo"
 	AdminCreateMetaPartition       = "/metaPartition/create"
 	AdminSetMetaNodeThreshold      = "/threshold/set"
 	AdminListVols                  = "/vol/list"
@@ -152,16 +153,28 @@ type RegisterMetaNodeResp struct {
 
 // ClusterInfo defines the cluster infomation.
 type ClusterInfo struct {
-	Cluster                        string
-	Ip                             string
-	MetaNodeDeleteBatchCount       uint64
-	MetaNodeDeleteWorkerSleepMs    uint64
-	MetaNodeReqLimitRate           uint64
-	DataNodeReqLimitRate           uint64
-	DataNodeReqVolPartLimitRateMap map[string]uint64
-	DataNodeDeleteLimitRate        uint64
-	ClientReadLimitRate            uint64
-	ClientWriteLimitRate           uint64
+	Cluster string
+	Ip      string
+
+	// MUST keep for old version client
+	ClientReadLimitRate  uint64
+	ClientWriteLimitRate uint64
+}
+
+type LimitInfo struct {
+	Cluster                     string
+	MetaNodeDeleteBatchCount    uint64
+	MetaNodeDeleteWorkerSleepMs uint64
+
+	MetaNodeReqRateLimit             uint64
+	MetaNodeReqOpRateLimitMap        map[uint8]uint64
+	DataNodeReqRateLimit             uint64
+	DataNodeReqOpRateLimitMap        map[uint8]uint64
+	DataNodeReqVolPartRateLimitMap   map[string]uint64
+	DataNodeReqVolOpPartRateLimitMap map[string]map[uint8]uint64
+	DataNodeDeleteLimitRate          uint64
+	ClientReadRateLimit              uint64
+	ClientWriteRateLimit             uint64
 
 	DataNodeFixTinyDeleteRecordLimitOnDisk uint64
 	DataNodeRepairTaskLimitOnDisk          uint64
@@ -589,10 +602,14 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 
 // RateLimitInfo defines the rate limit infomation
 type RateLimitInfo struct {
-	MetaNodeReqLimitRate        int64
-	DataNodeReqLimitRate        int64
-	Volume                      string
-	DataNodeReqVolPartLimitRate int64
-	ClientReadLimitRate         int64
-	ClientWriteLimitRate        int64
+	Volume                   string
+	Opcode                   int8
+	MetaNodeReqRate          int64
+	MetaNodeReqOpRate        int64
+	DataNodeReqRate          int64
+	DataNodeReqOpRate        int64
+	DataNodeReqVolPartRate   int64
+	DataNodeReqVolOpPartRate int64
+	ClientReadRate           int64
+	ClientWriteRate          int64
 }

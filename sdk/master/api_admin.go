@@ -333,6 +333,19 @@ func (api *AdminAPI) GetClusterInfo() (ci *proto.ClusterInfo, err error) {
 	return
 }
 
+func (api *AdminAPI) GetLimitInfo() (ci *proto.LimitInfo, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminGetLimitInfo)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	ci = &proto.LimitInfo{}
+	if err = json.Unmarshal(data, &ci); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) CreateMetaPartition(volName string, inodeStart uint64) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateMetaPartition)
 	request.addParam("name", volName)
@@ -377,20 +390,32 @@ func (api *AdminAPI) SetMetaNodeThreshold(threshold float64) (err error) {
 
 func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminSetNodeInfo)
-	if info.ClientReadLimitRate >= 0 {
-		request.addParam("clientReadRate", strconv.FormatInt(info.ClientReadLimitRate, 10))
+	if info.Opcode >= 0 {
+		request.addParam("opcode", strconv.FormatInt(int64(info.Opcode), 10))
 	}
-	if info.ClientWriteLimitRate >= 0 {
-		request.addParam("clientWriteRate", strconv.FormatInt(info.ClientWriteLimitRate, 10))
+	if info.ClientReadRate >= 0 {
+		request.addParam("clientReadRate", strconv.FormatInt(info.ClientReadRate, 10))
 	}
-	if info.MetaNodeReqLimitRate >= 0 {
-		request.addParam("metaNodeReqRate", strconv.FormatInt(info.MetaNodeReqLimitRate, 10))
+	if info.ClientWriteRate >= 0 {
+		request.addParam("clientWriteRate", strconv.FormatInt(info.ClientWriteRate, 10))
 	}
-	if info.DataNodeReqLimitRate >= 0 {
-		request.addParam("dataNodeReqRate", strconv.FormatInt(info.DataNodeReqLimitRate, 10))
+	if info.MetaNodeReqRate >= 0 {
+		request.addParam("metaNodeReqRate", strconv.FormatInt(info.MetaNodeReqRate, 10))
 	}
-	if info.DataNodeReqVolPartLimitRate >= 0 {
-		request.addParam("dataNodeReqVolPartRate", strconv.FormatInt(info.DataNodeReqVolPartLimitRate, 10))
+	if info.MetaNodeReqOpRate >= 0 {
+		request.addParam("metaNodeReqOpRate", strconv.FormatInt(info.MetaNodeReqOpRate, 10))
+	}
+	if info.DataNodeReqRate >= 0 {
+		request.addParam("dataNodeReqRate", strconv.FormatInt(info.DataNodeReqRate, 10))
+	}
+	if info.DataNodeReqOpRate >= 0 {
+		request.addParam("dataNodeReqOpRate", strconv.FormatInt(info.DataNodeReqOpRate, 10))
+	}
+	if info.DataNodeReqVolPartRate >= 0 {
+		request.addParam("dataNodeReqVolPartRate", strconv.FormatInt(info.DataNodeReqVolPartRate, 10))
+	}
+	if info.DataNodeReqVolOpPartRate >= 0 {
+		request.addParam("dataNodeReqVolOpPartRate", strconv.FormatInt(info.DataNodeReqVolOpPartRate, 10))
 	}
 	request.addParam("volume", info.Volume)
 	if _, err = api.mc.serveRequest(request); err != nil {

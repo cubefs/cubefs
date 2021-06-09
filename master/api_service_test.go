@@ -252,6 +252,12 @@ func TestGetIpAndClusterName(t *testing.T) {
 	process(reqURL, t)
 }
 
+func TestGetLimitInfo(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+}
+
 func process(reqURL string, t *testing.T) (reply *proto.HTTPReply) {
 	resp, err := http.Get(reqURL)
 	if err != nil {
