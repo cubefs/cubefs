@@ -2635,7 +2635,6 @@ func (c *client) start() (err error) {
 		OnInsertExtentKey: mw.InsertExtentKey,
 		OnGetExtents:      mw.GetExtents,
 		OnTruncate:        mw.Truncate,
-		DisableAutoFlush:  true,
 		TinySize:          data.NoUseTinyExtent,
 	}); err != nil {
 		fmt.Println(err)
