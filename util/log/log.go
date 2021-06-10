@@ -692,7 +692,7 @@ func (l *Log) checkLogRotation(logDir, module string) {
 		// check disk space
 		fs := syscall.Statfs_t{}
 		if err := syscall.Statfs(logDir, &fs); err != nil {
-			LogErrorf("check disk space: %s", err.Error())
+			time.Sleep(DefaultRollingInterval)
 			continue
 		}
 		diskSpaceLeft := int64(fs.Bavail * uint64(fs.Bsize))
