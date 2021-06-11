@@ -182,9 +182,9 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 						err = msg.Encode(bufWr)
 						proto.ReturnMessage(msg)
 						if err != nil {
-							flush()
-							continue
+							break
 						}
+						continue
 					default:
 					}
 					break
