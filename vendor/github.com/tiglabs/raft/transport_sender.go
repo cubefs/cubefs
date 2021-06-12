@@ -167,33 +167,37 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 					continue
 				}
 				// group send message
-				for i := 0; i < 16; i++ {
-					select {
-					case msg := <-recvc:
-						var tracer = tracing.TracerFromContext(msg.Ctx()).ChildTracer("transportSender.loopSend[send]")
-						msg.SetTagsToTracer(tracer)
-						msg.SetCtx(tracer.Context())
-						tracers.AddTracer(tracer)
-						for _, e := range msg.Entries {
-							et := tracing.TracerFromContext(e.Ctx()).ChildTracer("transportSender.loopSend[entry]")
-							e.SetTagsToTracer(et)
-							tracers.AddTracer(et)
-						}
-						err = msg.Encode(bufWr)
-						proto.ReturnMessage(msg)
-						if err != nil {
-							break
-						}
-						continue
-					default:
-					}
-					break
-				}
+				err = s.groupSendMesg(recvc, bufWr, tracers)
 				flush()
 			}
 		}
 	}
 	util.RunWorkerUtilStop(loopSendFunc, s.stopc)
+}
+
+func (s *transportSender) groupSendMesg(recvc chan *proto.Message, bufWr *util.BufferWriter, tracers tracing.Tracers) (err error) {
+	for i := 0; i < 16; i++ {
+		select {
+		case msg := <-recvc:
+			var tracer = tracing.TracerFromContext(msg.Ctx()).ChildTracer("transportSender.loopSend[send]")
+			msg.SetTagsToTracer(tracer)
+			msg.SetCtx(tracer.Context())
+			tracers.AddTracer(tracer)
+			for _, e := range msg.Entries {
+				et := tracing.TracerFromContext(e.Ctx()).ChildTracer("transportSender.loopSend[entry]")
+				e.SetTagsToTracer(et)
+				tracers.AddTracer(et)
+			}
+			err = msg.Encode(bufWr)
+			proto.ReturnMessage(msg)
+			if err != nil {
+				return
+			}
+		default:
+			return
+		}
+	}
+	return
 }
 
 func getConn(ctx context.Context, nodeID uint64, socketType SocketType, resolver SocketResolver, rdTime, wrTime time.Duration) (conn *util.ConnTimeout, err error) {

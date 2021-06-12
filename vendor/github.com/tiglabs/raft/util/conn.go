@@ -82,6 +82,9 @@ func (c *ConnTimeout) Write(p []byte) (n int, err error) {
 }
 
 func (c *ConnTimeout) RemoteAddr() string {
+	if c==nil {
+		return "Conn is nil"
+	}
 	return c.addr
 }
 
