@@ -1375,7 +1375,7 @@ func (mw *MetaWrapper) getAppliedID(ctx context.Context, mp *MetaPartition, addr
 	packet.Opcode = proto.OpMetaGetAppliedID
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.LogErrorf("getAppliedID err: (%v), req(%v)", err, *req)
+		log.LogWarnf("getAppliedID err: (%v), req(%v)", err, *req)
 		return
 	}
 
@@ -1384,13 +1384,13 @@ func (mw *MetaWrapper) getAppliedID(ctx context.Context, mp *MetaPartition, addr
 
 	packet, err = mw.sendToHost(ctx, mp, packet, addr)
 	if err != nil || packet == nil {
-		log.LogErrorf("getAppliedID: packet(%v) mp(%v) addr(%v) req(%v) err(%v)", packet, mp, addr, *req, err)
+		log.LogWarnf("getAppliedID: packet(%v) mp(%v) addr(%v) req(%v) err(%v)", packet, mp, addr, *req, err)
 		err = errors.New("getAppliedID error")
 		return
 	}
 	status := parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("getAppliedID: packet(%v) mp(%v) addr(%v) req(%v) result(%v)", packet, mp, addr, *req, packet.GetResultMsg())
+		log.LogWarnf("getAppliedID: packet(%v) mp(%v) addr(%v) req(%v) result(%v)", packet, mp, addr, *req, packet.GetResultMsg())
 		err = errors.New("getAppliedID error")
 		return
 	}
