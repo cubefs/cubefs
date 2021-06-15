@@ -454,7 +454,7 @@ func (eh *ExtentHandler) appendExtentKey(ctx context.Context) (err error) {
 	defer tracer.Finish()
 	ctx = tracer.Context()
 
-	//log.LogDebugf("insertExtentKey enter: eh(%v)", eh)
+	log.LogDebugf("appendExtentKey enter: eh(%v) key(%v) dirty(%v)", eh, eh.key, eh.dirty)
 	if eh.key != nil {
 		if eh.dirty {
 			eh.stream.extents.Append(eh.key, true)
@@ -462,7 +462,7 @@ func (eh *ExtentHandler) appendExtentKey(ctx context.Context) (err error) {
 		} else {
 			// ExtentCache may not accurate here, so we get it from metanode
 			if eh.key.FileOffset+uint64(eh.key.Size) < eh.stream.extents.size {
-				log.LogWarnf("appendExtentKey: eh.key(%v) extentCache size(%v)", eh.key, eh.stream.extents.size)
+				log.LogWarnf("appendExtentKey: eh(%v) eh.key(%v) extentCache size(%v)", eh, eh.key, eh.stream.extents.size)
 			}
 			eh.stream.extents.Lock()
 			eh.stream.extents.gen = 0
@@ -474,7 +474,8 @@ func (eh *ExtentHandler) appendExtentKey(ctx context.Context) (err error) {
 	if err == nil {
 		eh.dirty = false
 	}
-	//log.LogDebugf("insertExtentKey exit: eh(%v)", eh)
+	log.LogDebugf("appendExtentKey exit: eh(%v) key(%v) dirty(%v) err(%v)", eh, eh.key, eh.dirty, err)
+
 	return
 }
 

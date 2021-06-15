@@ -396,10 +396,10 @@ func (s *Streamer) writeToExtent(ctx context.Context, oriReq *ExtentRequest, dp 
 			err = fmt.Errorf("err[%v]-packet[%v]-reply[%v]", err, packet, reply)
 			break
 		}
-		log.LogDebugf("writeToExtent: packet %v total %v currSize %v", packet, total, currSize)
+		log.LogDebugf("writeToExtent: inode %v packet %v total %v currSize %v", s.inode, packet, total, currSize)
 		total += currSize
 	}
-	log.LogDebugf("writeToExtent: oriReq %v dp %v extID %v total %v direct %v", oriReq, dp, extID, total, direct)
+	log.LogDebugf("writeToExtent: inode %v oriReq %v dp %v extID %v total %v direct %v", s.inode, oriReq, dp, extID, total, direct)
 	return
 }
 
@@ -410,7 +410,7 @@ func (s *Streamer) writeToNewExtent(ctx context.Context, oriReq *ExtentRequest, 
 			log.LogErrorf("writeToNewExtent: oriReq %v exceed max retry times(%v), err %v",
 				oriReq, MaxSelectDataPartitionForWrite, err)
 		}
-		log.LogDebugf("writeToNewExtent: oriReq %v direct %v", oriReq, direct)
+		log.LogDebugf("writeToNewExtent: inode %v, oriReq %v direct %v", s.inode, oriReq, direct)
 	}()
 
 	exclude := make(map[string]struct{})
@@ -480,7 +480,7 @@ func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool
 
 	err = s.GetExtents(ctx)
 
-	log.LogWarnf("doROW: total %v, oriReq %v, err %v, newEK %v", total, oriReq, err, newEK)
+	log.LogWarnf("doROW: inode %v, total %v, oriReq %v, err %v, newEK %v", s.inode, total, oriReq, err, newEK)
 
 	return
 }
@@ -742,6 +742,7 @@ func (s *Streamer) evict(ctx context.Context) error {
 		s.streamerMap.Unlock()
 		return errors.New(fmt.Sprintf("evict: streamer(%v) refcnt(%v)", s, s.refcnt))
 	}
+	log.LogDebugf("evict: inode(%v)", s.inode)
 	delete(s.streamerMap.streamers, s.inode)
 	s.streamerMap.Unlock()
 	return nil
