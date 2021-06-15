@@ -241,6 +241,7 @@ func newDomainNodeSetGrpManager() *DomainNodeSetGrpManager {
 		zoneAvailableNodeSet:  make(map[string]*list.List),
 		nsId2NsGrpMap:         make(map[uint64]int),
 		nsIdMap:               make(map[uint64]int),
+
 	}
 	return ns
 }
@@ -251,8 +252,8 @@ func newDomainManager(cls *Cluster) *DomainManager {
 		domainId2IndexMap:     make(map[uint64]int),
 		ZoneName2DomainIdMap:  make(map[string]uint64),
 		excludeZoneListDomain: make(map[string]int),
-		dataRatioLimit:        defaultDataPartitionUsageThreshold,
-		excludeZoneUseRatio:   defaultDataPartitionUsageThreshold,
+		dataRatioLimit:        defaultDomainUsageThreshold,
+		excludeZoneUseRatio:   defaultZoneUsageThreshold,
 	}
 	return ns
 }
@@ -274,6 +275,7 @@ func (nsgm *DomainManager) createDomain(zoneName string) (err error) {
 		}
 		nsgm.ZoneName2DomainIdMap[zoneList[i]] = grpRegion.domainId
 		nsgm.domainId2IndexMap[grpRegion.domainId] = len(nsgm.domainNodeSetGrpVec) - 1
+		log.LogInfof("action[createDomain] domainid [%v] zonename [%v] index [%v]", grpRegion.domainId, zoneList[i], len(nsgm.domainNodeSetGrpVec) - 1)
 	}
 	if err = nsgm.c.putZoneDomain(false); err != nil {
 		return fmt.Errorf("putZoneDomain err [%v]", err)
@@ -295,7 +297,7 @@ func (nsgm *DomainManager) checkExcludeZoneState() {
 			log.LogInfof("action[checkExcludeZoneState] zone name[%v],status[%v], index for datanode[%v],index for metanode[%v]",
 				zone.name, zone.status, zone.setIndexForDataNode, zone.setIndexForMetaNode)
 			if nsgm.excludeZoneUseRatio == 0 || nsgm.excludeZoneUseRatio > 1 {
-				nsgm.excludeZoneUseRatio = defaultDataPartitionUsageThreshold
+				nsgm.excludeZoneUseRatio = defaultZoneUsageThreshold
 			}
 			if zone.isUsedRatio(nsgm.excludeZoneUseRatio) {
 				if zone.status == normalZone {
@@ -450,22 +452,22 @@ func (nsgm *DomainManager) buildNodeSetGrp(domainGrpManager *DomainNodeSetGrpMan
 	method[1] = buildNodeSetGrpOneZone
 	step := defaultNodeSetGrpStep
 
-	zoneCnt := nsgm.c.cfg.DefaultZoneCnt2BuildReplica
+	zoneCnt := nsgm.c.cfg.DefaultNormalZoneCnt
+
 	log.LogInfof("action[buildNodeSetGrp] zoncnt [%v]", zoneCnt)
 	if zoneCnt >= 3 {
 		zoneCnt = 3
 	}
 
 	if zoneCnt > len(domainGrpManager.zoneAvailableNodeSet) {
-		if nsgm.c.cfg.DomainBuildAsPossible {
+		if nsgm.c.cfg.DomainBuildAsPossible || domainGrpManager.domainId > 0{
 			log.LogInfof("action[buildNodeSetGrp] zoncnt [%v]", zoneCnt)
 			zoneCnt = len(domainGrpManager.zoneAvailableNodeSet)
-		} else {
+		}else {
 			err = fmt.Errorf("action[buildNodeSetGrp] failed zone avaliable [%v] need [%v]", zoneCnt, len(domainGrpManager.zoneAvailableNodeSet))
 			log.LogErrorf("[%v]", err)
 			return
 		}
-
 	}
 	for {
 		log.LogInfof("action[buildNodeSetGrp] zoneCnt [%v] step [%v]", zoneCnt, step)
@@ -517,7 +519,6 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 		nsgIndex = (nsgIndex + 1) % len(domainGrpManager.nodeSetGrpMap)
 		nsg := domainGrpManager.nodeSetGrpMap[nsgIndex]
 
-
 		needReplicaNumArray := [3]int{1,2,3}
 		for _, needReplicaNum := range needReplicaNumArray {
 			var (
@@ -549,6 +550,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 						continue
 					}
 				}
+
 				hosts = append(hosts, host...)
 				peers = append(peers, peer...)
 				if int(replicaNum) == len(hosts) {
@@ -578,8 +580,8 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 	}
 	domainGrpManager := nsgm.domainNodeSetGrpVec[index]
 
-	log.LogInfof("action[getHostFromNodeSetGrp]  replicaNum[%v],type[%v], nsg cnt[%v], nsg status[%v]",
-				replicaNum, createType, len(domainGrpManager.nodeSetGrpMap), domainGrpManager.status)
+	log.LogInfof("action[getHostFromNodeSetGrp] domainId [%v] index [%v] replicaNum[%v],type[%v], nsg cnt[%v], nsg status[%v]",
+		domainId, index, replicaNum, createType, len(domainGrpManager.nodeSetGrpMap), domainGrpManager.status)
 
 	// this scenario is abnormal  may be caused by zone unavailable in high probability
 
@@ -591,7 +593,8 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 
 	if len(domainGrpManager.zoneAvailableNodeSet) != 0 {
 		if nsgm.buildNodeSetGrp(domainGrpManager); len(domainGrpManager.nodeSetGrpMap) == 0 {
-			log.LogInfof("action[getHostFromNodeSetGrp] no useable group build failed,err[%v]", err)
+			err = fmt.Errorf("no usable group")
+			log.LogErrorf("action[getHostFromNodeSetGrp] no useable group build failed,err[%v]", err)
 			return
 		}
 	} else if len(domainGrpManager.nodeSetGrpMap) == 0 {
@@ -865,20 +868,16 @@ func (nsgm *DomainManager) putNodeSet(ns *nodeSet, load bool) (err error){
 		return
 	}
 
-	if domainId, ok = nsgm.ZoneName2DomainIdMap[ns.zoneName]; ok {
-		if index, ok = nsgm.domainId2IndexMap[domainId]; !ok {
-			return fmt.Errorf("action[putNodeSet] domainId [%v] not found domainVec index", index)
-		}
-		nsGrp = nsgm.domainNodeSetGrpVec[index]
-	} else {
-		// default domain id zero
-		if index, ok =  nsgm.domainId2IndexMap[0]; !ok {
-			grpRegion := newDomainNodeSetGrpManager()
-			nsgm.domainNodeSetGrpVec = append(nsgm.domainNodeSetGrpVec, grpRegion)
-			index = len(nsgm.domainNodeSetGrpVec) - 1
-		}
-		nsGrp = nsgm.domainNodeSetGrpVec[index]
+	domainId = nsgm.ZoneName2DomainIdMap[ns.zoneName]
+	if index, ok = nsgm.domainId2IndexMap[domainId]; !ok {
+		grpRegion := newDomainNodeSetGrpManager()
+		nsgm.domainNodeSetGrpVec = append(nsgm.domainNodeSetGrpVec, grpRegion)
+		grpRegion.domainId = domainId
+		index = len(nsgm.domainNodeSetGrpVec) - 1
+		nsgm.domainId2IndexMap[domainId] = index
+		log.LogInfof("action[putNodeSet] build domainId[%v] zoneName [%v] index [%v]", domainId, ns.zoneName, index)
 	}
+	nsGrp = nsgm.domainNodeSetGrpVec[index]
 
 	if _, ok = nsGrp.nsIdMap[ns.ID]; ok {
 		log.LogInfof("action[DomainManager::putNodeSet]  zone[%v],nodesetid:[%v] already be put before load[%v]",
@@ -1228,12 +1227,13 @@ func (zone *Zone) putNodeSet(ns *nodeSet) (err error) {
 func (zone *Zone) createNodeSet(c *Cluster) (ns *nodeSet, err error) {
 	cnt := 1
 	allNodeSet := zone.getAllNodeSet()
-	if c.FaultDomain && c.domainManager.init && c.cfg.DefaultZoneCnt2BuildReplica < defaultReplicaNum {
+
+	if c.FaultDomain && c.domainManager.init && c.cfg.DefaultNormalZoneCnt < defaultReplicaNum {
 		if _, ok := c.domainManager.excludeZoneListDomain[zone.name]; !ok {
-			if len(allNodeSet) < c.cfg.DefaultZoneCnt2BuildReplica {
+			if len(allNodeSet) < c.cfg.DefaultNormalZoneCnt {
 				log.LogInfof("action[createNodeSet] zone[%v] nodeset len:[%v] less then 3,create to 3 one time",
 					zone.name, len(allNodeSet))
-				cnt = c.cfg.DefaultZoneCnt2BuildReplica - len(allNodeSet)
+				cnt = c.cfg.DefaultNormalZoneCnt - len(allNodeSet)
 			}
 		}
 	}

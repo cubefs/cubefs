@@ -67,14 +67,14 @@ const (
 	defaultIntervalToAlarmMissingMetaPartition         = 10 * 60 // interval of checking if a replica is missing
 	defaultMetaPartitionMemUsageThreshold      float32 = 0.75    // memory usage threshold on a meta partition
 
-	defaultZoneUsageThreshold              float64 = 0.90 // storage usage threshold on a data partition
-	defaultDomainUsageThreshold            float64 = 0.75 // storage usage threshold on a data partition
-	defaultDataPartitionUsageThreshold     float64 = 0.75 // storage usage threshold on a data partition
-	defaultClusterLoadFactor               float32 = 10
-	defaultMaxMetaPartitionCountOnEachNode         = 10000
-	defaultReplicaNum                              = 3
-	defaultDiffSpaceUsage                          = 1024 * 1024 * 1024
-	defaultNodeSetGrpStep                          = 1
+	defaultZoneUsageThreshold                  float64 = 0.90    // storage usage threshold on a data partition
+	defaultDomainUsageThreshold                float64 = 0.75    // storage usage threshold on a data partition
+	defaultClusterLoadFactor                   float32 = 10
+	defaultMaxMetaPartitionCountOnEachNode             = 10000
+	defaultReplicaNum                                  = 3
+	defaultDiffSpaceUsage                              = 1024 * 1024 * 1024
+	defaultNodeSetGrpStep                              = 1
+
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)
@@ -93,7 +93,9 @@ type clusterConfig struct {
 	numberOfDataPartitionsToLoad        int
 	nodeSetCapacity                     int
 	MetaNodeThreshold                   float32
+
 	ClusterLoadFactor                   float32
+
 	MetaNodeDeleteBatchCount    uint64 //metanode delete batch count
 	DataNodeDeleteLimitRate     uint64 //datanode delete limit rate
 	MetaNodeDeleteWorkerSleepMs uint64 //datanode delete limit rate
@@ -104,8 +106,8 @@ type clusterConfig struct {
 	replicaPort                 int64
 	diffSpaceUsage              uint64
 	faultDomain                 bool
+	DefaultNormalZoneCnt        int
 	DomainBuildAsPossible       bool
-	DefaultZoneCnt2BuildReplica int
 	DataPartitionUsageThreshold float64
 }
 

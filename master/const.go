@@ -54,7 +54,9 @@ const (
 	keywordsKey             = "keywords"
 	zoneNameKey             = "zoneName"
 	crossZoneKey            = "crossZone"
+
 	defaultPriority         = "unDomainZonesFirst"
+	normalZonesFirstKey     = "normalZonesFirst"
 	userKey                 = "user"
 	nodeHostsKey            = "hosts"
 	nodeDeleteBatchCountKey = "batchCount"
@@ -89,6 +91,7 @@ const (
 
 const (
 	defaultFaultDomainZoneCnt                    = 3
+	defaultNormalCrossZoneCnt                    = 3
 	defaultInitMetaPartitionCount                = 3
 	defaultMaxInitMetaPartitionCount             = 100
 	defaultMaxMetaPartitionInodeID        uint64 = 1<<63 - 1

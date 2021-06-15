@@ -115,6 +115,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.createTime = vv.CreateTime
 	vol.description = vv.Description
 	vol.defaultPriority = vv.DefaultPriority
+	vol.domainId = vv.DomainId
 
 	vol.VolType = vv.VolType
 	vol.EbsBlkSize = vv.EbsBlkSize
@@ -219,13 +220,13 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 
 func (vol *Vol) initDataPartitions(c *Cluster) (err error) {
 	// initialize k data partitionMap at a time
-	err = c.batchCreateDataPartition(vol, defaultInitDataPartitionCnt, false)
+	err = c.batchCreateDataPartition(vol, defaultInitDataPartitionCnt)
 	return
 }
 
 func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	if vol.getDataPartitionsCount() == 0 && vol.Status != markDelete {
-		c.batchCreateDataPartition(vol, 1, false)
+		c.batchCreateDataPartition(vol, 1)
 	}
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
@@ -503,7 +504,7 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 
 		count := (maxSize-allocSize)/vol.dataPartitionSize + 1
 		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v]", vol.Name, count)
-		c.batchCreateDataPartition(vol, int(count), false)
+		c.batchCreateDataPartition(vol, int(count))
 		return
 	}
 
@@ -512,7 +513,7 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 		vol.dataPartitions.lastAutoCreateTime = time.Now()
 		count := vol.calculateExpansionNum()
 		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v]", vol.Name, count)
-		c.batchCreateDataPartition(vol, count, false)
+		c.batchCreateDataPartition(vol, count)
 	}
 }
 

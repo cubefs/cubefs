@@ -148,6 +148,7 @@ type volValue struct {
 	DpSelectorName    string
 	DpSelectorParm    string
 	DefaultPriority   bool
+	DomainId          uint64
 	VolType           int
 
 	EbsBlkSize       int

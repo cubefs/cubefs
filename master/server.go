@@ -187,10 +187,12 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	if m.config.nodeSetCapacity < 3 {
 		m.config.nodeSetCapacity = defaultNodeSetCapacity
 	}
-	m.config.DefaultZoneCnt2BuildReplica = defaultNodeSetGrpBatchCnt
+
+	m.config.DefaultNormalZoneCnt = defaultNodeSetGrpBatchCnt
+	m.config.DomainBuildAsPossible = cfg.GetBoolWithDefault(cfgDomainBuildAsPossible, false)
 	domainBatchGrpCnt := cfg.GetString(cfgDomainBatchGrpCnt)
 	if domainBatchGrpCnt != "" {
-		if m.config.DefaultZoneCnt2BuildReplica, err = strconv.Atoi(domainBatchGrpCnt); err != nil {
+		if m.config.DefaultNormalZoneCnt, err = strconv.Atoi(domainBatchGrpCnt); err != nil {
 			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 		}
 	}

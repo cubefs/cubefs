@@ -105,18 +105,18 @@ func createDefaultMasterServerForTest() *Server {
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
 	req := &createVolReq{
-		name:               commonVolName,
-		owner:              "cfs",
-		size:               3,
-		mpCount:            3,
-		dpReplicaNum:       3,
-		capacity:           100,
-		followerRead:       false,
-		authenticate:       false,
-		crossZone:          false,
-		unDomainZonesFirst: false,
-		zoneName:           testZone2,
-		description:        "",
+		name:             commonVolName,
+		owner:            "cfs",
+		size:             3,
+		mpCount:          3,
+		dpReplicaNum:     3,
+		capacity:         100,
+		followerRead:     false,
+		authenticate:     false,
+		crossZone:        false,
+		normalZonesFirst: false,
+		zoneName:         testZone2,
+		description:      "",
 	}
 
 	vol, err := testServer.cluster.createVol(req)

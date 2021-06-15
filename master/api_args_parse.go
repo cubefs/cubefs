@@ -351,21 +351,21 @@ type coldVolArgs struct {
 }
 
 type createVolReq struct {
-	name               string
-	owner              string
-	size               int
-	mpCount            int
-	dpReplicaNum       int
-	capacity           int
-	vol                *Vol
-	followerRead       bool
-	authenticate       bool
-	crossZone          bool
-	unDomainZonesFirst bool
-	domainId           uint64
-	zoneName           string
-	description        string
-	volType            int
+	name             string
+	owner            string
+	size             int
+	mpCount          int
+	dpReplicaNum     int
+	capacity         int
+	followerRead     bool
+	authenticate     bool
+	crossZone        bool
+	normalZonesFirst bool
+	domainId         uint64
+	zoneName         string
+	description      string
+	volType          int
+	cachePath        string
 
 	// cold vol args
 	coldArgs coldVolArgs
@@ -465,16 +465,14 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
-	if req.unDomainZonesFirst, err = extractDefaulPriority(r); err != nil {
-		return
-	}
-	if req.domainId, err = extractDefaultDomainId(r); err != nil {
+
+	if req.normalZonesFirst, err = extractBoolWithDefault(r, normalZonesFirstKey, false); err != nil {
 		return
 	}
 
-	req.zoneName = r.FormValue(zoneNameKey)
-
-	req.description = r.FormValue(descriptionKey)
+	req.zoneName = extractStr(r, zoneNameKey)
+	req.description = extractStr(r, descriptionKey)
+	req.domainId, err = extractUint64WithDefault(r, domainIdKey, 0)
 
 	return
 }

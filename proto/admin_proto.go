@@ -22,32 +22,33 @@ const (
 	AdminLoadDataPartition         = "/dataPartition/load"
 	AdminCreateDataPartition       = "/dataPartition/create"
 	AdminCreatePreLoadDataPartition = "/dataPartition/createPreLoad"
-	AdminDecommissionDataPartition = "/dataPartition/decommission"
-	AdminDiagnoseDataPartition     = "/dataPartition/diagnose"
-	AdminDeleteDataReplica         = "/dataReplica/delete"
-	AdminAddDataReplica            = "/dataReplica/add"
-	AdminDeleteVol                 = "/vol/delete"
-	AdminUpdateVol                 = "/vol/update"
-	AdminVolShrink                 = "/vol/shrink"
-	AdminVolExpand                 = "/vol/expand"
-	AdminCreateVol                 = "/admin/createVol"
-	AdminGetVol                    = "/admin/getVol"
-	AdminClusterFreeze             = "/cluster/freeze"
-	AdminClusterStat               = "/cluster/stat"
-	AdminGetIP                = "/admin/getIp"
-	AdminCreateMetaPartition  = "/metaPartition/create"
-	AdminSetMetaNodeThreshold = "/threshold/set"
-	AdminListVols             = "/vol/list"
-	AdminSetNodeInfo          = "/admin/setNodeInfo"
-	AdminGetNodeInfo          = "/admin/getNodeInfo"
-	AdminDomainCreate	  = "/admin/createDomain"
-	AdminGetAllNodeSetGrpInfo = "/admin/getNodeAllSetGrpInfo"
-	AdminGetNodeSetGrpInfo    = "/admin/getNodeSetGrpInfo"
-	AdminGetIsDomainOn    	  = "/admin/getIsDomainOn"
-	AdminUpdateNodeSetCapcity = "/admin/updateNodeSetCapcity"
-	AdminUpdateNodeSetId      = "/admin/updateNodeSetId"
+	AdminDecommissionDataPartition  = "/dataPartition/decommission"
+	AdminDiagnoseDataPartition      = "/dataPartition/diagnose"
+	AdminDeleteDataReplica          = "/dataReplica/delete"
+	AdminAddDataReplica             = "/dataReplica/add"
+	AdminDeleteVol                  = "/vol/delete"
+	AdminUpdateVol                  = "/vol/update"
+	AdminVolShrink                  = "/vol/shrink"
+	AdminVolExpand                  = "/vol/expand"
+	AdminCreateVol                  = "/admin/createVol"
+	AdminGetVol                     = "/admin/getVol"
+	AdminClusterFreeze              = "/cluster/freeze"
+	AdminClusterStat                = "/cluster/stat"
+	AdminGetIP                      = "/admin/getIp"
+	AdminCreateMetaPartition        = "/metaPartition/create"
+	AdminSetMetaNodeThreshold       = "/threshold/set"
+	AdminListVols                   = "/vol/list"
+	AdminSetNodeInfo                = "/admin/setNodeInfo"
+	AdminGetNodeInfo                = "/admin/getNodeInfo"
+	AdminDomainCreate               = "/admin/createDomain"
+	AdminGetAllNodeSetGrpInfo       = "/admin/getDomainInfo"
+	AdminGetNodeSetGrpInfo          = "/admin/getDomainNodeSetGrpInfo"
+	AdminGetIsDomainOn              = "/admin/getIsDomainOn"
+	AdminUpdateNodeSetCapcity       = "/admin/updateNodeSetCapcity"
+	AdminUpdateNodeSetId            = "/admin/updateNodeSetId"
 	AdminUpdateDomainDataUseRatio   = "/admin/updateDomainDataRatio"
-	AdminUpdateZoneExcludeRatio   = "/admin/updateZoneExcludeRatio"
+	AdminUpdateZoneExcludeRatio     = "/admin/updateZoneExcludeRatio"
+
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
@@ -507,22 +508,24 @@ type SimpleVolView struct {
 	CacheLruInterval int
 	CacheTtl         int
 }
+
 type NodeSetInfo struct {
-	ID           uint64
-	ZoneName     string
-	Capacity     int
+	ID        uint64
+	ZoneName  string
+	Capacity  int
 	DataUseRatio float64
 	MetaUseRatio float64
-	MetaUsed     uint64
-	MetaTotal    uint64
-	MetaNodes    []*MetaNodeInfo
-	DataUsed     uint64
-	DataTotal    uint64
-	DataNodes    []*DataNodeInfo
+	MetaUsed  uint64
+	MetaTotal uint64
+	MetaNodes []*MetaNodeInfo
+	DataUsed  uint64
+	DataTotal uint64
+	DataNodes []*DataNodeInfo
 }
+
 type SimpleNodeSetGrpInfo struct {
-	ID          uint64
-	Status      uint8
+	ID        uint64
+	Status    uint8
 	NodeSetInfo []NodeSetInfo
 }
 

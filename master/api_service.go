@@ -277,21 +277,22 @@ func (m *Server) createMetaPartition(w http.ResponseWriter, r *http.Request) {
 func (m *Server) createPreLoadDataPartition(w http.ResponseWriter, r *http.Request) {
 
 	var (
-		rstMsg                     string
-		volName                    string
-		vol                        *Vol
-		err                        error
+		volName string
+		vol     *Vol
+		err     error
+		dps     []*DataPartition
+		dpsProto []*proto.DataPartitionInfo
 	)
-	vol.PreloadZoneName = r.FormValue(zoneNameKey)
 	if volName = r.FormValue(nameKey); volName == "" {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
 	}
-
+	log.LogInfof("action[createPreLoadDataPartition]")
 	if vol, err = m.cluster.getVol(volName); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+	vol.PreloadZoneName = r.FormValue(zoneNameKey)
 
 	if vol.PreloadCacheTTL, err = extractUintWithDefault(r, cacheTTLKey, vol.CacheTTL); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -316,14 +317,18 @@ func (m *Server) createPreLoadDataPartition(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	err = m.cluster.batchCreatePreLoadDataPartition(vol)
-	rstMsg = fmt.Sprintf(" createDataPartition succeeeds. ")
+	err, dps = m.cluster.batchCreatePreLoadDataPartition(vol)
 	if err != nil {
 		log.LogErrorf("create data partition fail: volume(%v) err(%v)", volName, err)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+	log.LogInfof("action[createPreLoadDataPartition] dps cnt[%v]  content[%v]", len(dps), dps)
+	for _, dp := range dps {
+		dpsProto = append(dpsProto, dp.ToProto(m.cluster))
+	}
+
+	_ = sendOkReply(w, r, newSuccessHTTPReply(dpsProto))
 }
 
 
@@ -349,7 +354,7 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	}
 	lastTotalDataPartitions = len(vol.dataPartitions.partitions)
 	clusterTotalDataPartitions = m.cluster.getDataPartitionCount()
-	err = m.cluster.batchCreateDataPartition(vol, reqCreateCount, false)
+	err = m.cluster.batchCreateDataPartition(vol, reqCreateCount)
 	rstMsg = fmt.Sprintf(" createDataPartition succeeeds. "+
 		"clusterLastTotalDataPartitions[%v],vol[%v] has %v data partitions previously and %v data partitions now",
 		clusterTotalDataPartitions, volName, lastTotalDataPartitions, len(vol.dataPartitions.partitions))
@@ -1267,6 +1272,7 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 			}
 			log.LogInfof("nodeset index[%v], datanode nodeset id[%v],zonename[%v], addr[%v] inner nodesetid[%v]",
 				i, nsStat.ID, node.ZoneName, node.Addr, node.NodeSetID)
+
 			dataNodeInfo := &proto.DataNodeInfo{
 				Total:                     node.Total,
 				Used:                      node.Used,
@@ -1296,7 +1302,7 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 			log.LogInfof("nodeset index[%v], metanode nodeset id[%v],zonename[%v], addr[%v] inner nodesetid[%v]",
 				i, nsStat.ID, node.ZoneName, node.Addr, node.NodeSetID)
 
-			metaNodeInfo := &proto.MetaNodeInfo{
+			metaNodeInfo :=  &proto.MetaNodeInfo{
 				ID:                        node.ID,
 				Addr:                      node.Addr,
 				IsActive:                  node.IsActive,
@@ -1312,10 +1318,7 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 				ReportTime:                node.ReportTime,
 				MetaPartitionCount:        node.MetaPartitionCount,
 				NodeSetID:                 node.NodeSetID,
-				PersistenceMetaPartitions: node.PersistenceMetaPartitions,
 			}
-
-
 			nsStat.MetaNodes = append(nsStat.MetaNodes, metaNodeInfo)
 			return true
 		})
