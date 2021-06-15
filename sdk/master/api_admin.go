@@ -335,14 +335,14 @@ func (api *AdminAPI) GetClusterInfo() (ci *proto.ClusterInfo, err error) {
 	return
 }
 
-func (api *AdminAPI) GetLimitInfo() (ci *proto.LimitInfo, err error) {
+func (api *AdminAPI) GetLimitInfo() (info *proto.LimitInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminGetLimitInfo)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
-	ci = &proto.LimitInfo{}
-	if err = json.Unmarshal(data, &ci); err != nil {
+	info = &proto.LimitInfo{}
+	if err = json.Unmarshal(data, &info); err != nil {
 		return
 	}
 	return

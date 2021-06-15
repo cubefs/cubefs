@@ -2,65 +2,84 @@ package datanode
 
 import (
 	"context"
+	"reflect"
 	"strings"
-	"sync"
 	"time"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 	"golang.org/x/time/rate"
 )
 
 const (
-	defaultMarkDeleteLimitRate            = rate.Inf
-	defaultMarkDeleteLimitBurst           = 512
-	UpdateNodeInfoTicket                  = 1 * time.Minute
+	DefaultMarkDeleteLimitBurst           = 512
+	UpdateDeleteLimitInfoTicket           = 1 * time.Minute
+	UpdateRateLimitInfoTicket             = 5 * time.Minute
 	UpdateClusterViewTicket               = 24 * time.Hour
-	defaultFixTinyDeleteRecordLimitOnDisk = 50
-	defaultRepairTaskLimitOnDisk          = 10
-	defaultReqLimitBurst                  = 512
+	DefaultFixTinyDeleteRecordLimitOnDisk = 50
+	DefaultRepairTaskLimitOnDisk          = 10
+	DefaultReqLimitBurst                  = 512
 )
 
 var (
 	nodeInfoStopC     = make(chan struct{}, 0)
-	deleteLimiteRater = rate.NewLimiter(rate.Inf, defaultMarkDeleteLimitBurst)
+	deleteLimiteRater = rate.NewLimiter(rate.Inf, DefaultMarkDeleteLimitBurst)
 
-	// request rate limit for entire data node
+	// request rate limiter for entire data node
 	reqRateLimit   uint64
-	reqRateLimiter = rate.NewLimiter(rate.Inf, defaultReqLimitBurst)
+	reqRateLimiter = rate.NewLimiter(rate.Inf, DefaultReqLimitBurst)
 
-	// request rate limit for opcode
+	// map[opcode]*rate.Limiter, request rate limiter for opcode
 	reqOpRateLimitMap   = make(map[uint8]uint64)
 	reqOpRateLimiterMap = make(map[uint8]*rate.Limiter)
 
-	// request rate limit of each data partition for volume
+	// map[volume]map[dp]*rate.Limiter, request rate limiter of each data partition for volume
 	reqVolPartRateLimitMap   = make(map[string]uint64)
 	reqVolPartRateLimiterMap = make(map[string]map[uint64]*rate.Limiter)
 
-	// request rate limit of each data partition for volume & opcode
+	// map[volume]map[opcode]map[dp]*rate.Limiter, request rate limiter of each data partition for volume & opcode
 	reqVolOpPartRateLimitMap   = make(map[string]map[uint8]uint64)
 	reqVolOpPartRateLimiterMap = make(map[string]map[uint8]map[uint64]*rate.Limiter)
 
-	isRateLimitOn          bool
-	reqRateLimiterMapMutex sync.Mutex
+	isRateLimitOn bool
 
 	// all cluster internal nodes
-	clusterMap = make(map[string]bool)
+	clusterMap     = make(map[string]bool)
+	limitInfo      *proto.LimitInfo
+	limitVolumeMap = make(map[string]bool)
+	limitOpcodeMap = map[uint8]bool{
+		proto.OpStreamRead:         true,
+		proto.OpStreamFollowerRead: true,
+		proto.OpWrite:              true,
+		proto.OpRandomWrite:        true,
+	}
+	// all partitions of a given volume
+	volumePartMap = make(map[string]map[uint64]bool)
 )
 
 func (m *DataNode) startUpdateNodeInfo() {
-	ticker := time.NewTicker(UpdateNodeInfoTicket)
+	deleteTicker := time.NewTicker(UpdateDeleteLimitInfoTicket)
+	rateLimitTicker := time.NewTicker(UpdateRateLimitInfoTicket)
+	clusterViewTicker := time.NewTicker(UpdateClusterViewTicket)
+	defer func() {
+		deleteTicker.Stop()
+		rateLimitTicker.Stop()
+		clusterViewTicker.Stop()
+	}()
+
 	// call once on init before first tick
 	m.updateClusterMap()
-	clusterViewTicker := time.NewTicker(UpdateClusterViewTicket)
-	defer ticker.Stop()
-	defer clusterViewTicker.Stop()
+	m.updateDeleteLimitInfo()
+	m.updateRateLimitInfo()
 	for {
 		select {
 		case <-nodeInfoStopC:
 			log.LogInfo("datanode nodeinfo goroutine stopped")
 			return
-		case <-ticker.C:
-			m.updateNodeInfo()
+		case <-deleteTicker.C:
+			m.updateDeleteLimitInfo()
+		case <-rateLimitTicker.C:
+			m.updateRateLimitInfo()
 		case <-clusterViewTicker.C:
 			m.updateClusterMap()
 		}
@@ -71,12 +90,14 @@ func (m *DataNode) stopUpdateNodeInfo() {
 	nodeInfoStopC <- struct{}{}
 }
 
-func (m *DataNode) updateNodeInfo() {
-	limitInfo, err := MasterClient.AdminAPI().GetLimitInfo()
+func (m *DataNode) updateDeleteLimitInfo() {
+	info, err := MasterClient.AdminAPI().GetLimitInfo()
 	if err != nil {
-		log.LogErrorf("[updateDataNodeInfo] %s", err.Error())
+		log.LogWarnf("[updateDeleteLimitInfo] get limit info err: %s", err.Error())
 		return
 	}
+
+	limitInfo = info
 	r := limitInfo.DataNodeDeleteLimitRate
 	l := rate.Limit(r)
 	if r == 0 {
@@ -84,100 +105,168 @@ func (m *DataNode) updateNodeInfo() {
 	}
 	deleteLimiteRater.SetLimit(l)
 
+	m.space.SetDiskFixTinyDeleteRecordLimit(limitInfo.DataNodeFixTinyDeleteRecordLimitOnDisk)
+	m.space.SetDiskRepairTaskLimit(limitInfo.DataNodeRepairTaskLimitOnDisk)
+}
+
+func (m *DataNode) updateRateLimitInfo() {
+	if limitInfo == nil {
+		return
+	}
+	volInfo, err := MasterClient.AdminAPI().ListVols("")
+	if err != nil {
+		log.LogWarnf("[updateRateLimitInfo] get volume list err: %s", err.Error())
+		return
+	}
+	volMap := make(map[string]bool)
+	for _, vol := range volInfo {
+		volMap[vol.Name] = true
+	}
+	limitVolumeMap = volMap
+
 	// Request rate limiter design:
 	// 1. Rate limit of a given object (volume/opcode/partition) can has a default value,
 	//    which is the value of the empty object.
 	// 2. When rate limit from master is changed or deleted,
 	//    change or delete the corresponding limiter if necessay (the default value doesn't exists).
-	// 3. When rate limit is added, delay the add of corresponding limiter to request handling.
+	// 3. Construct all limiter maps at limit info update, to avoid locking at request handling.
 
+	var (
+		r                        uint64
+		l                        rate.Limit
+		ok                       bool
+		partRateLimiterMap       map[uint64]*rate.Limiter
+		partMap                  map[uint64]bool
+		partitionID              uint64
+		tmpOpRateLimiterMap      map[uint8]*rate.Limiter
+		tmpVolPartRateLimiterMap map[string]map[uint64]*rate.Limiter
+	)
+
+	// update request rate limiter for entire data node
+	if reqRateLimit == limitInfo.DataNodeReqRateLimit {
+		goto reqOpRateLimiterLabel
+	}
 	reqRateLimit = limitInfo.DataNodeReqRateLimit
-	l = rate.Limit(reqRateLimit)
-	if reqRateLimit == 0 {
-		l = rate.Inf
+	l = rate.Inf
+	if reqRateLimit > 0 {
+		l = rate.Limit(reqRateLimit)
 	}
 	reqRateLimiter.SetLimit(l)
 
-	reqRateLimiterMapMutex.Lock()
+reqOpRateLimiterLabel:
+	// update request rate limiter for opcode
+	if reflect.DeepEqual(reqOpRateLimitMap, limitInfo.DataNodeReqOpRateLimitMap) {
+		goto reqVolPartRateLimiterLabel
+	}
 	reqOpRateLimitMap = limitInfo.DataNodeReqOpRateLimitMap
-	var deleteOp []uint8
-	for op, limiter := range reqOpRateLimiterMap {
-		r, ok := reqOpRateLimitMap[op]
+	tmpOpRateLimiterMap = make(map[uint8]*rate.Limiter)
+	for op, _ := range limitOpcodeMap {
+		r, ok = reqOpRateLimitMap[op]
 		if !ok {
 			r, ok = reqOpRateLimitMap[0]
 		}
 		if !ok {
-			deleteOp = append(deleteOp, op)
 			continue
 		}
-		limiter.SetLimit(rate.Limit(r))
+		tmpOpRateLimiterMap[op] = rate.NewLimiter(rate.Limit(r), DefaultReqLimitBurst)
 	}
-	for _, op := range deleteOp {
-		delete(reqOpRateLimiterMap, op)
-	}
+	reqOpRateLimiterMap = tmpOpRateLimiterMap
 
+reqVolPartRateLimiterLabel:
+	// update request rate limiter of each data partition for volume
+	if reflect.DeepEqual(reqVolPartRateLimitMap, limitInfo.DataNodeReqVolPartRateLimitMap) {
+		goto reqVolOpPartRateLimiterLabel
+	}
+	volumePartMap = m.getVolPartMap()
 	reqVolPartRateLimitMap = limitInfo.DataNodeReqVolPartRateLimitMap
-	var deleteVol []string
-	for vol, m := range reqVolPartRateLimiterMap {
-		r, ok := reqVolPartRateLimitMap[vol]
+	tmpVolPartRateLimiterMap = make(map[string]map[uint64]*rate.Limiter)
+	for vol, _ := range limitVolumeMap {
+		r, ok = reqVolPartRateLimitMap[vol]
 		if !ok {
 			r, ok = reqVolPartRateLimitMap[""]
 		}
 		if !ok {
-			deleteVol = append(deleteVol, vol)
 			continue
 		}
-		for _, limiter := range m {
-			limiter.SetLimit(rate.Limit(r))
+		partMap, ok = volumePartMap[vol]
+		if !ok {
+			continue
+		}
+		l = rate.Limit(r)
+		partRateLimiterMap = make(map[uint64]*rate.Limiter)
+		tmpVolPartRateLimiterMap[vol] = partRateLimiterMap
+		for partitionID, _ = range partMap {
+			partRateLimiterMap[partitionID] = rate.NewLimiter(l, DefaultReqLimitBurst)
 		}
 	}
-	for _, vol := range deleteVol {
-		delete(reqVolPartRateLimiterMap, vol)
-	}
+	reqVolPartRateLimiterMap = tmpVolPartRateLimiterMap
 
-	deleteVolOpMap := make(map[string][]uint8)
+reqVolOpPartRateLimiterLabel:
+	// update request rate limiter of each data partition for volume & opcode
+	if reflect.DeepEqual(reqVolOpPartRateLimitMap, limitInfo.DataNodeReqVolOpPartRateLimitMap) {
+		isRateLimitOn = (reqRateLimit > 0 ||
+			len(reqOpRateLimitMap) > 0 ||
+			len(reqVolPartRateLimitMap) > 0 ||
+			len(reqVolOpPartRateLimitMap) > 0)
+		return
+	}
+	volumePartMap = m.getVolPartMap()
 	reqVolOpPartRateLimitMap = limitInfo.DataNodeReqVolOpPartRateLimitMap
-	for vol, opPartRateLimiterMap := range reqVolOpPartRateLimiterMap {
+	tmpVolOpPartRateLimiterMap := make(map[string]map[uint8]map[uint64]*rate.Limiter)
+	for vol, _ := range limitVolumeMap {
 		opPartLimitMap, ok := reqVolOpPartRateLimitMap[vol]
 		if !ok {
 			opPartLimitMap, ok = reqVolOpPartRateLimitMap[""]
 		}
 		if !ok {
-			deleteVolOpMap[vol] = nil
 			continue
 		}
-		for op, m := range opPartRateLimiterMap {
-			r, ok := opPartLimitMap[op]
+		partMap, ok = volumePartMap[vol]
+		if !ok {
+			continue
+		}
+		opPartRateLimiterMap := make(map[uint8]map[uint64]*rate.Limiter)
+		tmpVolOpPartRateLimiterMap[vol] = opPartRateLimiterMap
+		for op, _ := range limitOpcodeMap {
+			r, ok = opPartLimitMap[op]
 			if !ok {
 				r, ok = opPartLimitMap[0]
 			}
 			if !ok {
-				deleteVolOpMap[vol] = append(deleteVolOpMap[vol], op)
 				continue
 			}
-			for _, limiter := range m {
-				limiter.SetLimit(rate.Limit(r))
+			l = rate.Limit(r)
+			partRateLimiterMap = make(map[uint64]*rate.Limiter)
+			opPartRateLimiterMap[op] = partRateLimiterMap
+			for partitionID, _ = range partMap {
+				partRateLimiterMap[partitionID] = rate.NewLimiter(l, DefaultReqLimitBurst)
 			}
 		}
 	}
-	for vol, opSlice := range deleteVolOpMap {
-		if opSlice == nil {
-			delete(reqVolOpPartRateLimiterMap, vol)
-		} else {
-			for _, op := range opSlice {
-				delete(reqVolOpPartRateLimiterMap[vol], op)
-			}
-		}
-	}
-	reqRateLimiterMapMutex.Unlock()
+	reqVolOpPartRateLimiterMap = tmpVolOpPartRateLimiterMap
 
 	isRateLimitOn = (reqRateLimit > 0 ||
 		len(reqOpRateLimitMap) > 0 ||
 		len(reqVolPartRateLimitMap) > 0 ||
 		len(reqVolOpPartRateLimitMap) > 0)
+}
 
-	m.space.SetDiskFixTinyDeleteRecordLimit(limitInfo.DataNodeFixTinyDeleteRecordLimitOnDisk)
-	m.space.SetDiskRepairTaskLimit(limitInfo.DataNodeRepairTaskLimitOnDisk)
+func (m *DataNode) getVolPartMap() map[string]map[uint64]bool {
+	volPartMap := make(map[string]map[uint64]bool)
+	var (
+		partMap map[uint64]bool
+		ok      bool
+	)
+	m.space.RangePartitions(func(dp *DataPartition) bool {
+		partMap, ok = volPartMap[dp.volumeID]
+		if !ok {
+			partMap = make(map[uint64]bool)
+			volPartMap[dp.volumeID] = partMap
+		}
+		partMap[dp.partitionID] = true
+		return true
+	})
+	return volPartMap
 }
 
 func (m *DataNode) updateClusterMap() {

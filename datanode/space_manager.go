@@ -58,8 +58,8 @@ func NewSpaceManager(dataNode *DataNode) *SpaceManager {
 	space.stats = NewStats(dataNode.zoneName)
 	space.stopC = make(chan bool, 0)
 	space.dataNode = dataNode
-	space.fixTinyDeleteRecordLimitOnDisk = defaultFixTinyDeleteRecordLimitOnDisk
-	space.repairTaskLimitOnDisk = defaultRepairTaskLimitOnDisk
+	space.fixTinyDeleteRecordLimitOnDisk = DefaultFixTinyDeleteRecordLimitOnDisk
+	space.repairTaskLimitOnDisk = DefaultRepairTaskLimitOnDisk
 
 	go space.statUpdateScheduler()
 
@@ -182,17 +182,17 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace uint64, maxErrC
 
 func (manager *SpaceManager) StartPartitions() {
 	var err error
-	partitions:=make([]*DataPartition,0)
+	partitions := make([]*DataPartition, 0)
 	manager.partitionMutex.RLock()
 	for _, partition := range manager.partitions {
-		partitions=append(partitions,partition)
+		partitions = append(partitions, partition)
 	}
 	manager.partitionMutex.RUnlock()
 
 	var (
 		wg sync.WaitGroup
 	)
-	for _, dp :=range partitions{
+	for _, dp := range partitions {
 		wg.Add(1)
 		go func(dp *DataPartition) {
 			defer wg.Done()

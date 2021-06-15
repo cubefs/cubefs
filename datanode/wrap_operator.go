@@ -36,7 +36,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tiglabs/raft"
 	raftProto "github.com/tiglabs/raft/proto"
-	"golang.org/x/time/rate"
 )
 
 func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
@@ -1258,146 +1257,46 @@ func (s *DataNode) rateLimit(p *repl.Packet, c *net.TCPConn) {
 	// ignore rate limit if request is from cluster internal nodes
 	addrSlice := strings.Split(c.RemoteAddr().String(), ":")
 	_, isInternal := clusterMap[addrSlice[0]]
-	//log.LogDebugf("action[rateLimit] enter: Opcode(%v) remoteAddr(%v) clusterMap(%v) isInternal(%v)", p.Opcode, addrSlice[0], clusterMap, isInternal)
 	if isInternal {
 		return
 	}
 
-	var (
-		r                    uint64
-		limiter              *rate.Limiter
-		allLimiter           []*rate.Limiter
-		partRateLimiterMap   map[uint64]*rate.Limiter
-		opPartRateLimiterMap map[uint8]map[uint64]*rate.Limiter
-		ok                   bool
-		// get rate limit from map[vol]limit
-		getVolPartLimitFunc = func(m map[string]uint64, vol string) (uint64, bool) {
-			r, ok := m[vol]
-			if !ok {
-				r, ok = m[""]
-			}
-			return r, ok
-		}
-		// get rate limit from map[vol][op]limit
-		getVolOpPartLimitFunc = func(m map[string]map[uint8]uint64, vol string, op uint8) (uint64, bool) {
-			opPartRateLimitMap, ok := m[vol]
-			if !ok {
-				opPartRateLimitMap, ok = m[""]
-			}
-			if !ok {
-				return 0, false
-			}
-			r, ok := opPartRateLimitMap[op]
-			if !ok {
-				r, ok = opPartRateLimitMap[0]
-			}
-			return r, ok
-		}
-	)
-
+	ctx := context.Background()
 	// request rate limit for entire data node
 	if reqRateLimit > 0 {
-		allLimiter = append(allLimiter, reqRateLimiter)
+		reqRateLimiter.Wait(ctx)
 	}
 
 	// request rate limit for opcode
-	reqRateLimiterMapMutex.Lock()
-	if len(reqOpRateLimitMap) == 0 {
-		goto reqVolPartLabel
-	}
-	limiter, ok = reqOpRateLimiterMap[p.Opcode]
-	if !ok {
-		r, ok = reqOpRateLimitMap[p.Opcode]
-		if !ok {
-			r, ok = reqOpRateLimitMap[0]
-		}
-		if !ok {
-			goto reqVolPartLabel
-		}
-		limiter = rate.NewLimiter(rate.Limit(r), defaultReqLimitBurst)
-		reqOpRateLimiterMap[p.Opcode] = limiter
-	}
-	allLimiter = append(allLimiter, limiter)
-
-reqVolPartLabel:
-	partition, ok := p.Object.(*DataPartition)
-	var volumeID string
-	var partitionID uint64
-	if !ok {
-		goto waitLabel
-	}
-	volumeID = partition.volumeID
-	partitionID = partition.partitionID
-
-	// request rate limit of each data partition for volume
-	if len(reqVolPartRateLimitMap) == 0 {
-		goto reqVolOpPartLabel
-	}
-	partRateLimiterMap, ok = reqVolPartRateLimiterMap[volumeID]
-	if !ok {
-		r, ok = getVolPartLimitFunc(reqVolPartRateLimitMap, volumeID)
-		if !ok {
-			goto reqVolOpPartLabel
-		}
-		partRateLimiterMap = make(map[uint64]*rate.Limiter)
-		partRateLimiterMap[partitionID] = rate.NewLimiter(rate.Limit(r), defaultReqLimitBurst)
-		reqVolPartRateLimiterMap[volumeID] = partRateLimiterMap
-	}
-	limiter, ok = partRateLimiterMap[partitionID]
-	if !ok {
-		r, ok = getVolPartLimitFunc(reqVolPartRateLimitMap, volumeID)
-		if !ok {
-			goto reqVolOpPartLabel
-		}
-		limiter = rate.NewLimiter(rate.Limit(r), defaultReqLimitBurst)
-		reqVolPartRateLimiterMap[volumeID][partitionID] = limiter
-	}
-	allLimiter = append(allLimiter, limiter)
-
-reqVolOpPartLabel:
-	// request rate limit of each data partition for volume & opcode
-	if len(reqVolOpPartRateLimitMap) == 0 {
-		goto waitLabel
-	}
-	opPartRateLimiterMap, ok = reqVolOpPartRateLimiterMap[volumeID]
-	if !ok {
-		r, ok := getVolOpPartLimitFunc(reqVolOpPartRateLimitMap, volumeID, p.Opcode)
-		if !ok {
-			goto waitLabel
-		}
-		opPartRateLimiterMap = make(map[uint8]map[uint64]*rate.Limiter)
-		opPartRateLimiterMap[p.Opcode] = make(map[uint64]*rate.Limiter)
-		opPartRateLimiterMap[p.Opcode][partitionID] = rate.NewLimiter(rate.Limit(r), defaultReqLimitBurst)
-		reqVolOpPartRateLimiterMap[volumeID] = opPartRateLimiterMap
-	}
-	partRateLimiterMap, ok = opPartRateLimiterMap[p.Opcode]
-	if !ok {
-		r, ok := getVolOpPartLimitFunc(reqVolOpPartRateLimitMap, volumeID, p.Opcode)
-		if !ok {
-			goto waitLabel
-		}
-		partRateLimiterMap = make(map[uint64]*rate.Limiter)
-		partRateLimiterMap[partitionID] = rate.NewLimiter(rate.Limit(r), defaultReqLimitBurst)
-		opPartRateLimiterMap[p.Opcode] = partRateLimiterMap
-	}
-	limiter, ok = partRateLimiterMap[partitionID]
-	if !ok {
-		r, ok := getVolOpPartLimitFunc(reqVolOpPartRateLimitMap, volumeID, p.Opcode)
-		if !ok {
-			goto waitLabel
-		}
-		limiter = rate.NewLimiter(rate.Limit(r), defaultReqLimitBurst)
-		partRateLimiterMap[partitionID] = limiter
-	}
-	allLimiter = append(allLimiter, limiter)
-
-waitLabel:
-	reqRateLimiterMapMutex.Unlock()
-	ctx := context.Background()
-	// delay limiter Wait() to reduce lock time
-	for _, limiter = range allLimiter {
-		//log.LogDebugf("action[rateLimit] limiter wait: Opcode(%v) volume(%v) partition(%v) limit(%v)", p.Opcode, volumeID, partitionID, limiter.Limit())
+	limiter, ok := reqOpRateLimiterMap[p.Opcode]
+	if ok {
 		limiter.Wait(ctx)
 	}
+
+	partition, ok := p.Object.(*DataPartition)
+	if !ok {
+		return
+	}
+	// request rate limit of each data partition for volume
+	partRateLimiterMap, ok := reqVolPartRateLimiterMap[partition.volumeID]
+	if ok {
+		limiter, ok = partRateLimiterMap[partition.partitionID]
+		if ok {
+			limiter.Wait(ctx)
+		}
+	}
+
+	// request rate limit of each data partition for volume & opcode
+	opPartRateLimiterMap, ok := reqVolOpPartRateLimiterMap[partition.volumeID]
+	if ok {
+		partRateLimiterMap, ok = opPartRateLimiterMap[p.Opcode]
+		if ok {
+			limiter, ok = partRateLimiterMap[partition.partitionID]
+			if ok {
+				limiter.Wait(ctx)
+			}
+		}
+	}
+
 	return
 }

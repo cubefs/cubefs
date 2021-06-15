@@ -1,20 +1,22 @@
 package metanode
 
 import (
+	"reflect"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 	"golang.org/x/time/rate"
 )
 
 const (
-	UpdateNodeInfoTicket     = 1 * time.Minute
-	UpdateClusterViewTicket  = 24 * time.Hour
-	DefaultDeleteBatchCounts = 128
-	DefaultReqLimitBurst     = 512
+	UpdateDeleteLimitInfoTicket = 1 * time.Minute
+	UpdateRateLimitInfoTicket   = 5 * time.Minute
+	UpdateClusterViewTicket     = 24 * time.Hour
+	DefaultDeleteBatchCounts    = 128
+	DefaultReqLimitBurst        = 512
 )
 
 type NodeInfo struct {
@@ -26,18 +28,27 @@ var (
 	nodeInfoStopC              = make(chan struct{}, 0)
 	deleteWorkerSleepMs uint64 = 0
 
-	// request rate limit for entire data node
+	// request rate limiter for entire meta node
 	reqRateLimit   uint64
 	reqRateLimiter = rate.NewLimiter(rate.Inf, DefaultReqLimitBurst)
 
-	// request rate limit for opcode
+	// map[opcode]*rate.Limiter, request rate limiter for opcode
 	reqOpRateLimitMap   = make(map[uint8]uint64)
 	reqOpRateLimiterMap = make(map[uint8]*rate.Limiter)
 
-	reqRateLimiterMapMutex sync.Mutex
+	isRateLimitOn bool
 
 	// all cluster internal nodes
-	clusterMap = make(map[string]bool)
+	clusterMap     = make(map[string]bool)
+	limitInfo      *proto.LimitInfo
+	limitOpcodeMap = map[uint8]bool{
+		proto.OpMetaCreateInode:     true,
+		proto.OpMetaInodeGet:        true,
+		proto.OpMetaCreateDentry:    true,
+		proto.OpMetaExtentsAdd:      true,
+		proto.OpMetaBatchExtentsAdd: true,
+		proto.OpMetaExtentsList:     true,
+	}
 )
 
 func DeleteBatchCount() uint64 {
@@ -64,19 +75,28 @@ func DeleteWorkerSleepMs() {
 }
 
 func (m *MetaNode) startUpdateNodeInfo() {
-	ticker := time.NewTicker(UpdateNodeInfoTicket)
+	deleteTicker := time.NewTicker(UpdateDeleteLimitInfoTicket)
+	rateLimitTicker := time.NewTicker(UpdateRateLimitInfoTicket)
+	clusterViewTicker := time.NewTicker(UpdateClusterViewTicket)
+	defer func() {
+		deleteTicker.Stop()
+		rateLimitTicker.Stop()
+		clusterViewTicker.Stop()
+	}()
+
 	// call once on init before first tick
 	m.updateClusterMap()
-	clusterViewTicker := time.NewTicker(UpdateClusterViewTicket)
-	defer ticker.Stop()
-	defer clusterViewTicker.Stop()
+	m.updateDeleteLimitInfo()
+	m.updateRateLimitInfo()
 	for {
 		select {
 		case <-nodeInfoStopC:
 			log.LogInfo("metanode nodeinfo gorutine stopped")
 			return
-		case <-ticker.C:
-			m.updateNodeInfo()
+		case <-deleteTicker.C:
+			m.updateDeleteLimitInfo()
+		case <-rateLimitTicker.C:
+			m.updateRateLimitInfo()
 		case <-clusterViewTicker.C:
 			m.updateClusterMap()
 		}
@@ -87,39 +107,60 @@ func (m *MetaNode) stopUpdateNodeInfo() {
 	nodeInfoStopC <- struct{}{}
 }
 
-func (m *MetaNode) updateNodeInfo() {
-	limitInfo, err := masterClient.AdminAPI().GetLimitInfo()
+func (m *MetaNode) updateDeleteLimitInfo() {
+	info, err := masterClient.AdminAPI().GetLimitInfo()
 	if err != nil {
-		log.LogErrorf("[updateNodeInfo] %s", err.Error())
+		log.LogErrorf("[updateDeleteLimitInfo] %s", err.Error())
 		return
 	}
+
+	limitInfo = info
 	updateDeleteBatchCount(limitInfo.MetaNodeDeleteBatchCount)
 	updateDeleteWorkerSleepMs(limitInfo.MetaNodeDeleteWorkerSleepMs)
+}
+
+func (m *MetaNode) updateRateLimitInfo() {
+	if limitInfo == nil {
+		return
+	}
+
+	var (
+		r                   uint64
+		l                   rate.Limit
+		ok                  bool
+		tmpOpRateLimiterMap map[uint8]*rate.Limiter
+	)
+
+	// update request rate limiter for entire meta node
 	reqRateLimit = limitInfo.MetaNodeReqRateLimit
-	l := rate.Limit(reqRateLimit)
+	l = rate.Limit(reqRateLimit)
 	if reqRateLimit == 0 {
 		l = rate.Inf
 	}
 	reqRateLimiter.SetLimit(l)
 
-	reqRateLimiterMapMutex.Lock()
-	reqOpRateLimitMap = limitInfo.MetaNodeReqOpRateLimitMap
-	var deleteOp []uint8
-	for op, limiter := range reqOpRateLimiterMap {
-		r, ok := reqOpRateLimitMap[op]
+	// update request rate limiter for opcode
+	if reflect.DeepEqual(reqOpRateLimitMap, limitInfo.DataNodeReqOpRateLimitMap) {
+		isRateLimitOn = (reqRateLimit > 0 ||
+			len(reqOpRateLimitMap) > 0)
+		return
+	}
+	reqOpRateLimitMap = limitInfo.DataNodeReqOpRateLimitMap
+	tmpOpRateLimiterMap = make(map[uint8]*rate.Limiter)
+	for op, _ := range limitOpcodeMap {
+		r, ok = reqOpRateLimitMap[op]
 		if !ok {
 			r, ok = reqOpRateLimitMap[0]
 		}
 		if !ok {
-			deleteOp = append(deleteOp, op)
 			continue
 		}
-		limiter.SetLimit(rate.Limit(r))
+		tmpOpRateLimiterMap[op] = rate.NewLimiter(rate.Limit(r), DefaultReqLimitBurst)
 	}
-	for _, op := range deleteOp {
-		delete(reqOpRateLimiterMap, op)
-	}
-	reqRateLimiterMapMutex.Unlock()
+	reqOpRateLimiterMap = tmpOpRateLimiterMap
+
+	isRateLimitOn = (reqRateLimit > 0 ||
+		len(reqOpRateLimitMap) > 0)
 }
 
 func (m *MetaNode) updateClusterMap() {

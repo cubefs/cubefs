@@ -36,7 +36,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
-	"golang.org/x/time/rate"
 )
 
 const partitionPrefix = "partition_"
@@ -500,6 +499,10 @@ func (m *metadataManager) MarshalJSON() (data []byte, err error) {
 }
 
 func (s *metadataManager) rateLimit(conn net.Conn, p *Packet, remoteAddr string) {
+	if !isRateLimitOn {
+		return
+	}
+
 	// ignore rate limit if request is from cluster internal nodes
 	addrSlice := strings.Split(remoteAddr, ":")
 	_, isInternal := clusterMap[addrSlice[0]]
@@ -513,31 +516,11 @@ func (s *metadataManager) rateLimit(conn net.Conn, p *Packet, remoteAddr string)
 		reqRateLimiter.Wait(ctx)
 	}
 
-	var (
-		r       uint64
-		limiter *rate.Limiter
-		ok      bool
-	)
-
 	// request rate limit for opcode
-	if len(reqOpRateLimitMap) == 0 {
-		return
+	limiter, ok := reqOpRateLimiterMap[p.Opcode]
+	if ok {
+		limiter.Wait(ctx)
 	}
-	reqRateLimiterMapMutex.Lock()
-	limiter, ok = reqOpRateLimiterMap[p.Opcode]
-	if !ok {
-		r, ok = reqOpRateLimitMap[p.Opcode]
-		if !ok {
-			r, ok = reqOpRateLimitMap[0]
-		}
-		if !ok {
-			return
-		}
-		limiter = rate.NewLimiter(rate.Limit(r), DefaultReqLimitBurst)
-		reqOpRateLimiterMap[p.Opcode] = limiter
-	}
-	reqRateLimiterMapMutex.Unlock()
-	limiter.Wait(ctx)
 }
 
 // NewMetadataManager returns a new metadata manager.
