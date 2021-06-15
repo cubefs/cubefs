@@ -1180,7 +1180,6 @@ func (m *Server) buildNodeSetGrpInfo(index int) *proto.SimpleNodeSetGrpInfo {
 				ReportTime:                node.ReportTime,
 				MetaPartitionCount:        node.MetaPartitionCount,
 				NodeSetID:                 node.NodeSetID,
-				PersistenceMetaPartitions: node.PersistenceMetaPartitions,
 			}
 
 
