@@ -21,10 +21,11 @@ type (
 )
 
 const (
-	stateFollower    fsmState = 0
-	stateCandidate            = 1
-	stateLeader               = 2
-	stateElectionACK          = 3
+	stateFollower     fsmState = 0
+	stateCandidate             = 1
+	stateLeader                = 2
+	stateElectionACK           = 3
+	StatePreCandidate          = 4
 
 	replicaStateProbe     replicaState = 0
 	replicaStateReplicate              = 1
@@ -41,6 +42,8 @@ func (st fsmState) String() string {
 		return "StateLeader"
 	case 3:
 		return "StateElectionACK"
+	case 4:
+		return "StatePreCandidate"
 	}
 	return ""
 }

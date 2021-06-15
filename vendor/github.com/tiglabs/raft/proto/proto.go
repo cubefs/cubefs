@@ -42,6 +42,8 @@ const (
 	LeaseMsgTimeout
 	ReqCheckQuorum
 	RespCheckQuorum
+	ReqMsgPreVote
+	RespMsgPreVote
 )
 
 const (
@@ -163,6 +165,10 @@ func (t MsgType) String() string {
 		return "ReqCheckQuorum"
 	case 15:
 		return "RespCheckQuorum"
+	case 16:
+		return "ReqMsgPreVote"
+	case 17:
+		return "RespMsgPreVote"
 	}
 	return "unkown"
 }
@@ -215,7 +221,8 @@ func (m *Message) IsResponseMsg() bool {
 
 func (m *Message) IsElectionMsg() bool {
 	return m.Type == ReqMsgHeartBeat || m.Type == RespMsgHeartBeat || m.Type == ReqMsgVote || m.Type == RespMsgVote ||
-		m.Type == ReqMsgElectAck || m.Type == RespMsgElectAck || m.Type == LeaseMsgOffline || m.Type == LeaseMsgTimeout
+		m.Type == ReqMsgElectAck || m.Type == RespMsgElectAck || m.Type == LeaseMsgOffline || m.Type == LeaseMsgTimeout ||
+		m.Type == ReqMsgPreVote || m.Type == RespMsgPreVote
 }
 
 func (m *Message) IsHeartbeatMsg() bool {

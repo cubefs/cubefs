@@ -17,12 +17,14 @@ package raft
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"strings"
 
+	"time"
+
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
-	"time"
 )
 
 // NoLeader is a placeholder nodeID used when there is no leader.
@@ -193,11 +195,54 @@ func (r *raftFsm) Step(m *proto.Message) {
 			if logger.IsEnableDebug() {
 				logger.Debug("[raft->Step][%v] is starting a new election at term[%d].", r.id, r.term)
 			}
-			r.campaign(m.ForceVote)
+			// pre-vote
+			r.campaign(m.ForceVote, true)
 		} else if logger.IsEnableDebug() && r.state == stateLeader {
 			logger.Debug("[raft->Step][%v] ignoring LocalMsgHup because already leader.", r.id)
 		}
 		return
+	} else if m.Type == proto.ReqMsgPreVote {
+		if logger.IsEnableDebug() {
+			logger.Debug("raft[%v] [logterm: %d, index: %d, vote: %v] received pre-voted for %v [logterm: %d, index: %d, term: %d] at term %d.", r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.vote, m.From, m.LogTerm, m.Index, m.Term, r.term)
+		}
+		if m.Term >= r.term {
+			fpri, lpri := uint16(math.MaxUint16), uint16(0)
+			if pr, ok := r.replicas[m.From]; ok {
+				fpri = pr.peer.Priority
+			}
+			if pr, ok := r.replicas[r.config.NodeID]; ok {
+				lpri = pr.peer.Priority
+			}
+			if logger.IsEnableDebug() {
+				logger.Debug("%v %v %v %v ", r.leader == NoLeader, r.raftLog.isUpToDate(m.Index, m.LogTerm, fpri, lpri), fpri, lpri)
+			}
+			if (!r.config.LeaseCheck || r.leader == NoLeader) && r.raftLog.isUpToDate(m.Index, m.LogTerm, fpri, lpri) {
+				r.electionElapsed = 0
+				if logger.IsEnableDebug() {
+					logger.Debug("raft[%v] [logterm: %d, index: %d, vote: %v] pre-voted for %v [logterm: %d, index: %d] at term %d.", r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.vote, m.From, m.LogTerm, m.Index, r.term)
+				}
+				r.vote = m.From
+				nmsg := proto.GetMessage()
+				nmsg.Type = proto.RespMsgPreVote
+				nmsg.To = m.From
+				r.send(nmsg)
+				proto.ReturnMessage(nmsg)
+				return
+			}
+		}
+		if logger.IsEnableDebug() {
+			logger.Debug("raft[%v] [logterm: %d, index: %d, vote: %v] rejected pre-vote from %v [logterm: %d, index: %d] at term %d.", r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.vote, m.From, m.LogTerm, m.Index, r.term)
+		}
+		nmsg := proto.GetMessage()
+		nmsg.Type = proto.RespMsgPreVote
+		nmsg.To = m.From
+		nmsg.Reject = true
+		r.send(nmsg)
+		proto.ReturnMessage(nmsg)
+		proto.ReturnMessage(m)
+		return
+	} else if m.Type == proto.RespMsgPreVote {
+		goto stepHandler
 	}
 
 	switch {
@@ -232,6 +277,7 @@ func (r *raftFsm) Step(m *proto.Message) {
 		}
 		return
 	}
+stepHandler:
 	r.step(r, m)
 }
 

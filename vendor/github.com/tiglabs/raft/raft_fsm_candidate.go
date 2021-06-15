@@ -38,6 +38,21 @@ func (r *raftFsm) becomeCandidate() {
 	}
 }
 
+func (r *raftFsm) becomePreCandidate() {
+	if r.state == stateLeader {
+		panic(AppPanicError(fmt.Sprintf("[raft->becomePreCandidate][%v] invalid transition [leader -> pre-candidate].", r.id)))
+	}
+
+	r.monitorElection()
+	r.step = stepCandidate
+	r.tick = r.tickElection
+	r.votes = map[uint64]bool{}
+	r.state = StatePreCandidate
+	if logger.IsEnableDebug() {
+		logger.Debug("raft[%v] became pre-candidate at term %d.", r.id, r.term)
+	}
+}
+
 func stepCandidate(r *raftFsm, m *proto.Message) {
 	switch m.Type {
 	case proto.LocalMsgProp:
@@ -63,6 +78,7 @@ func stepCandidate(r *raftFsm, m *proto.Message) {
 		nmsg.Type = proto.RespMsgElectAck
 		nmsg.To = m.From
 		r.send(nmsg)
+		proto.ReturnMessage(nmsg)
 		proto.ReturnMessage(m)
 		return
 
@@ -75,6 +91,7 @@ func stepCandidate(r *raftFsm, m *proto.Message) {
 		nmsg.To = m.From
 		nmsg.Reject = true
 		r.send(nmsg)
+		proto.ReturnMessage(nmsg)
 		proto.ReturnMessage(m)
 		return
 
@@ -94,12 +111,43 @@ func stepCandidate(r *raftFsm, m *proto.Message) {
 		case len(r.votes) - gr:
 			r.becomeFollower(r.term, NoLeader)
 		}
+		proto.ReturnMessage(m)
+		return
+
+	case proto.RespMsgPreVote:
+		gr := r.poll(m.From, !m.Reject)
+		if logger.IsEnableDebug() {
+			logger.Debug("raft[%v] [q:%d] has received %d pre-votes and %d pre-vote rejections.", r.id, r.quorum(), gr, len(r.votes)-gr)
+		}
+		switch r.quorum() {
+		case gr:
+			// campaign after pre-vote
+			r.campaign(m.ForceVote, false)
+		default:
+			r.becomeFollower(r.term, NoLeader)
+		}
+		proto.ReturnMessage(m)
+		return
 	}
 }
 
-func (r *raftFsm) campaign(force bool) {
-	r.becomeCandidate()
+func (r *raftFsm) campaign(force bool, preVote bool) {
+	var term uint64 = 0
+	msgType := proto.ReqMsgVote
+	if preVote {
+		r.becomePreCandidate()
+		msgType = proto.ReqMsgPreVote
+		term = r.term + 1
+	} else {
+		r.becomeCandidate()
+	}
+
 	if r.quorum() == r.poll(r.config.NodeID, true) {
+		if preVote {
+			r.campaign(force, false)
+			return
+		}
+
 		if r.config.LeaseCheck {
 			r.becomeElectionAck()
 		} else {
@@ -114,16 +162,17 @@ func (r *raftFsm) campaign(force bool) {
 		}
 		li, lt := r.raftLog.lastIndexAndTerm()
 		if logger.IsEnableDebug() {
-			logger.Debug("[raft->campaign][%v logterm: %d, index: %d] sent "+
-				"vote request to %v at term %d.   raftFSM[%p]", r.id, lt, li, id, r.term, r)
+			logger.Debug("[raft->campaign][%v logterm: %d, index: %d, prevote: %v] sent "+
+				"vote request to %v at term %d.   raftFSM[%p]", r.id, lt, li, preVote, id, r.term, r)
 		}
 
 		m := proto.GetMessage()
 		m.To = id
-		m.Type = proto.ReqMsgVote
+		m.Type = msgType
 		m.ForceVote = force
 		m.Index = li
 		m.LogTerm = lt
+		m.Term = term
 		r.send(m)
 	}
 }
