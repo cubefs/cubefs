@@ -2,6 +2,7 @@ package data
 
 import (
 	"encoding/json"
+	"github.com/chubaofs/chubaofs/util"
 	"net"
 	"net/http"
 	"strconv"
@@ -169,9 +170,10 @@ func TestStreamer_usePreExtentHandler(t *testing.T) {
 	testExtentCache.root.ReplaceOrInsert(ek5)
 
 	testFields := fields{
-		client:    testClient,
-		extents:   testExtentCache,
-		dirtylist: NewDirtyExtentList(),
+		client:     testClient,
+		extents:    testExtentCache,
+		dirtylist:  NewDirtyExtentList(),
+		extentSize: util.ExtentSize,
 	}
 
 	testFieldsWithNilExtents := testFields
