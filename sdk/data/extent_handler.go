@@ -63,7 +63,8 @@ type ExtentHandler struct {
 	packet *Packet
 
 	// Updated in *write* method ONLY.
-	size int
+	size         int
+	extentOffset int
 
 	// Pending packets in sender and receiver.
 	// Does not involve the packet in open handler.
@@ -161,7 +162,7 @@ func (eh *ExtentHandler) write(ctx context.Context, data []byte, offset, size in
 	// If this write request is not continuous, and cannot be merged
 	// into the extent handler, just close it and return error.
 	// In this case, the caller should try to create a new extent handler.
-	if eh.fileOffset+eh.size != offset || eh.size+size > eh.stream.extentSize ||
+	if eh.fileOffset+eh.size != offset || eh.extentOffset+eh.size+size > eh.stream.extentSize ||
 		(eh.storeMode == proto.TinyExtentType && eh.size+size > blksize) {
 
 		err = errors.New("ExtentHandler: full or incontinuous")

@@ -921,9 +921,9 @@ func (s *Streamer) usePreExtentHandler(offset, size int) bool {
 	if preEk == nil ||
 		s.dirtylist.Len() != 0 ||
 		storage.IsTinyExtent(preEk.ExtentId) ||
-		preEk.Size >= util.ExtentSize ||
+		int(preEk.Size)+int(preEk.ExtentOffset) >= s.extentSize ||
 		preEk.FileOffset+uint64(preEk.Size) != uint64(offset) ||
-		int(preEk.Size)+size > util.ExtentSize {
+		int(preEk.Size)+size > s.extentSize {
 		return false
 	}
 
@@ -953,6 +953,7 @@ func (s *Streamer) usePreExtentHandler(offset, size int) bool {
 	s.handler.key = preEk
 	s.handler.size = int(preEk.Size)
 	s.handler.conn = conn
+	s.handler.extentOffset = int(preEk.ExtentOffset)
 
 	return true
 }
