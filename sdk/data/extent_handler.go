@@ -234,7 +234,7 @@ func (eh *ExtentHandler) sender() {
 			// For ExtentStore, calculate the extent offset.
 			// For TinyStore, the extent offset is always 0 in the request packet,
 			// and the reply packet tells the real extent offset.
-			extOffset := int(packet.KernelOffset) - eh.fileOffset
+			extOffset := int(packet.KernelOffset) - eh.fileOffset + eh.extentOffset
 
 			// fill the packet according to the extent
 			packet.PartitionID = eh.dp.PartitionID
