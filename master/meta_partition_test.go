@@ -24,6 +24,15 @@ func TestMetaPartition(t *testing.T) {
 	server.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	decommissionMetaPartition(commonVol, maxPartitionID, t)
+	allMetaNodes := make([]string, 0)
+	server.cluster.metaNodes.Range(func(key, _ interface{}) bool {
+		if addr, ok := key.(string); ok {
+			allMetaNodes = append(allMetaNodes, addr)
+		}
+		return true
+	})
+	mp := commonVol.MetaPartitions[0]
+	decommissionMetaPartitionToDestAddr(mp, allMetaNodes, t)
 }
 
 func createMetaPartition(vol *Vol, t *testing.T) {
@@ -103,6 +112,30 @@ func decommissionMetaPartition(vol *Vol, id uint64, t *testing.T) {
 	}
 	if contains(mp.Hosts, offlineAddr) {
 		t.Errorf("decommissionMetaPartition failed,offlineAddr[%v],hosts[%v]", offlineAddr, mp.Hosts)
+		return
+	}
+}
+
+func decommissionMetaPartitionToDestAddr(mp *MetaPartition, allMetaNodes []string, t *testing.T) {
+	var destAddr string
+	for _, addr := range allMetaNodes {
+		if !contains(mp.Hosts, addr) {
+			destAddr = addr
+			break
+		}
+	}
+	offlineAddr := mp.Hosts[0]
+	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v&destAddr=%v",
+		hostAddr, proto.AdminDecommissionMetaPartition, mp.volName, mp.PartitionID, offlineAddr, destAddr)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	mp, err := server.cluster.getMetaPartitionByID(mp.PartitionID)
+	if err != nil {
+		t.Errorf("decommissionMetaPartitionToDestAddr,err [%v]", err)
+		return
+	}
+	if contains(mp.Hosts, offlineAddr) || !contains(mp.Hosts, destAddr) {
+		t.Errorf("decommissionMetaPartitionToDestAddr failed,offlineAddr[%v],destAddr[%v],hosts[%v]", offlineAddr, destAddr, mp.Hosts)
 		return
 	}
 }

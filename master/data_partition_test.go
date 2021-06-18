@@ -24,7 +24,15 @@ func TestDataPartition(t *testing.T) {
 	getDataPartition(partition.PartitionID, t)
 	loadDataPartitionTest(partition, t)
 	decommissionDataPartition(partition, t)
+	allDataNodes := make([]string, 0)
+	server.cluster.dataNodes.Range(func(key, _ interface{}) bool {
+		if addr, ok := key.(string); ok {
+			allDataNodes = append(allDataNodes, addr)
+		}
+		return true
+	})
 	partition2 := commonVol.dataPartitions.partitions[1]
+	decommissionDataPartitionToDestAddr(partition2, allDataNodes, t)
 	delDataReplicaTest(partition2, t)
 }
 
@@ -59,6 +67,25 @@ func decommissionDataPartition(dp *DataPartition, t *testing.T) {
 	process(reqURL, t)
 	if contains(dp.Hosts, offlineAddr) {
 		t.Errorf("decommissionDataPartition failed,offlineAddr[%v],hosts[%v]", offlineAddr, dp.Hosts)
+		return
+	}
+}
+
+func decommissionDataPartitionToDestAddr(dp *DataPartition, allDataNodes []string, t *testing.T) {
+	var destAddr string
+	for _, addr := range allDataNodes {
+		if !contains(dp.Hosts, addr) {
+			destAddr = addr
+			break
+		}
+	}
+	offlineAddr := dp.Hosts[0]
+	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v&destAddr=%v",
+		hostAddr, proto.AdminDecommissionDataPartition, dp.VolName, dp.PartitionID, offlineAddr, destAddr)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	if contains(dp.Hosts, offlineAddr) || !contains(dp.Hosts, destAddr) {
+		t.Errorf("decommissionDataPartitionToDestAddr failed,offlineAddr[%v],destAddr[%v],hosts[%v]", offlineAddr, destAddr, dp.Hosts)
 		return
 	}
 }
