@@ -44,17 +44,21 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newDataPartitionDecommissionCmd(client),
 		newDataPartitionReplicateCmd(client),
 		newDataPartitionDeleteReplicaCmd(client),
+		newDataPartitionAddLearnerCmd(client),
+		newDataPartitionPromoteLearnerCmd(client),
 	)
 	return cmd
 }
 
 const (
-	cmdDataPartitionGetShort           = "Display detail information of a data partition"
-	cmdCheckCorruptDataPartitionShort  = "Check and list unhealthy data partitions"
-	cmdResetDataPartitionShort         = "Reset corrupt data partition"
-	cmdDataPartitionDecommissionShort  = "Decommission a replication of the data partition to a new address"
-	cmdDataPartitionReplicateShort     = "Add a replication of the data partition on a new address"
-	cmdDataPartitionDeleteReplicaShort = "Delete a replication of the data partition on a fixed address"
+	cmdDataPartitionGetShort            = "Display detail information of a data partition"
+	cmdCheckCorruptDataPartitionShort   = "Check and list unhealthy data partitions"
+	cmdResetDataPartitionShort          = "Reset corrupt data partition"
+	cmdDataPartitionDecommissionShort   = "Decommission a replication of the data partition to a new address"
+	cmdDataPartitionReplicateShort      = "Add a replication of the data partition on a new address"
+	cmdDataPartitionDeleteReplicaShort  = "Delete a replication of the data partition on a fixed address"
+	cmdDataPartitionAddLearnerShort     = "Add a learner of the data partition on a new address"
+	cmdDataPartitionPromoteLearnerShort = "Promote the learner of the data partition on a fixed address"
 )
 
 func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
@@ -475,4 +479,77 @@ func checkUsedSizeDiff(replicas []*proto.DataReplica) (isEqual bool) {
 
 	}
 	return
+}
+
+func newDataPartitionAddLearnerCmd(client *master.MasterClient) *cobra.Command {
+	var (
+		optAutoPromote bool
+		optThreshold   uint8
+	)
+	const defaultLearnThreshold uint8 = 90
+	var cmd = &cobra.Command{
+		Use:   CliOpAddLearner + " [ADDRESS] [DATA PARTITION ID]",
+		Short: cmdDataPartitionAddLearnerShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				autoPromote bool
+				threshold   uint8
+			)
+			address := args[0]
+			partitionID, err := strconv.ParseUint(args[1], 10, 64)
+			if err != nil {
+				stdout("%v\n", err)
+				return
+			}
+			if optAutoPromote {
+				autoPromote = optAutoPromote
+			}
+			if optThreshold <= 0 || optThreshold > 100 {
+				threshold = defaultLearnThreshold
+			} else {
+				threshold = optThreshold
+			}
+			if err = client.AdminAPI().AddDataLearner(partitionID, address, autoPromote, threshold); err != nil {
+				stdout("%v\n", err)
+				return
+			}
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().Uint8VarP(&optThreshold, CliFlagThreshold, "t", 0, "Specify threshold of learner,(0,100],default 90")
+	cmd.Flags().BoolVarP(&optAutoPromote, CliFlagAutoPromote, "a", false, "Auto promote learner to peers")
+	return cmd
+}
+
+func newDataPartitionPromoteLearnerCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpPromoteLearner + " [ADDRESS] [DATA PARTITION ID]",
+		Short: cmdDataPartitionPromoteLearnerShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			address := args[0]
+			partitionID, err := strconv.ParseUint(args[1], 10, 64)
+			if err != nil {
+				stdout("%v\n", err)
+				return
+			}
+			if err = client.AdminAPI().PromoteDataLearner(partitionID, address); err != nil {
+				stdout("%v\n", err)
+				return
+			}
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	return cmd
 }

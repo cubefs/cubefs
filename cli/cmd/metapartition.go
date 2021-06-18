@@ -43,17 +43,21 @@ func newMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newMetaPartitionDecommissionCmd(client),
 		newMetaPartitionReplicateCmd(client),
 		newMetaPartitionDeleteReplicaCmd(client),
+		newMetaPartitionAddLearnerCmd(client),
+		newMetaPartitionPromoteLearnerCmd(client),
 	)
 	return cmd
 }
 
 const (
-	cmdMetaPartitionGetShort           = "Display detail information of a meta partition"
-	cmdCheckCorruptMetaPartitionShort  = "Check out corrupt meta partitions"
-	cmdResetMetaPartitionShort         = "Reset corrupt meta partition"
-	cmdMetaPartitionDecommissionShort  = "Decommission a replication of the meta partition to a new address"
-	cmdMetaPartitionReplicateShort     = "Add a replication of the meta partition on a new address"
-	cmdMetaPartitionDeleteReplicaShort = "Delete a replication of the meta partition on a fixed address"
+	cmdMetaPartitionGetShort            = "Display detail information of a meta partition"
+	cmdCheckCorruptMetaPartitionShort   = "Check out corrupt meta partitions"
+	cmdResetMetaPartitionShort          = "Reset corrupt meta partition"
+	cmdMetaPartitionDecommissionShort   = "Decommission a replication of the meta partition to a new address"
+	cmdMetaPartitionReplicateShort      = "Add a replication of the meta partition on a new address"
+	cmdMetaPartitionDeleteReplicaShort  = "Delete a replication of the meta partition on a fixed address"
+	cmdMetaPartitionAddLearnerShort     = "Add a learner of the meta partition on a new address"
+	cmdMetaPartitionPromoteLearnerShort = "Promote the learner of the meta partition on a fixed address"
 )
 
 func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
@@ -365,6 +369,79 @@ func newMetaPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 				return
 			}
 			if err = client.AdminAPI().DeleteMetaReplica(partitionID, address); err != nil {
+				stdout("%v\n", err)
+				return
+			}
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	return cmd
+}
+
+func newMetaPartitionAddLearnerCmd(client *master.MasterClient) *cobra.Command {
+	var (
+		optAutoPromote bool
+		optThreshold   uint8
+	)
+	const defaultLearnerThreshold uint8 = 90
+	var cmd = &cobra.Command{
+		Use:   CliOpAddLearner + " [ADDRESS] [META PARTITION ID]",
+		Short: cmdMetaPartitionAddLearnerShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			address := args[0]
+			partitionID, err := strconv.ParseUint(args[1], 10, 64)
+			if err != nil {
+				stdout("%v\n", err)
+				return
+			}
+			var (
+				autoPromote bool
+				threshold   uint8
+			)
+			if optAutoPromote {
+				autoPromote = optAutoPromote
+			}
+			if optThreshold <= 0 || optThreshold > 100 {
+				threshold = defaultLearnerThreshold
+			} else {
+				threshold = optThreshold
+			}
+			if err = client.AdminAPI().AddMetaReplicaLearner(partitionID, address, autoPromote, threshold); err != nil {
+				stdout("%v\n", err)
+				return
+			}
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().Uint8VarP(&optThreshold, CliFlagThreshold, "t", 0, "Specify threshold of learner,(0,100],default 90")
+	cmd.Flags().BoolVarP(&optAutoPromote, CliFlagAutoPromote, "a", false, "Auto promote learner to peers")
+	return cmd
+}
+
+func newMetaPartitionPromoteLearnerCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpPromoteLearner + " [ADDRESS] [META PARTITION ID]",
+		Short: cmdMetaPartitionPromoteLearnerShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			address := args[0]
+			partitionID, err := strconv.ParseUint(args[1], 10, 64)
+			if err != nil {
+				stdout("%v\n", err)
+				return
+			}
+			if err = client.AdminAPI().PromoteMetaReplicaLearner(partitionID, address); err != nil {
 				stdout("%v\n", err)
 				return
 			}
