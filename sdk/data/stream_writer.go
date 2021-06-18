@@ -456,6 +456,9 @@ func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool
 		return
 	}
 
+	// close handler in case of extent key overwriting in following append write
+	s.closeOpenHandler(ctx)
+
 	var dp *DataPartition
 	var extID int
 	dp, extID, total, err = s.writeToNewExtent(ctx, oriReq, direct)

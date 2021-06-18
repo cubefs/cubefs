@@ -2478,7 +2478,7 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	} else if f.flags&uint32(C.O_DSYNC) != 0 {
 		flagBuf.WriteString("O_DSYNC|")
 	}
-	log.LogDebugf("_cfs_write: id(%v) fd(%v) path(%v) ino(%v) size(%v) off(%v) flag(%v) re(%v)", id, fd, f.path, ino, size, off, strings.Trim(flagBuf.String(), "|"), re)
+	log.LogDebugf("_cfs_write: id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) re(%v)", id, fd, f.path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), re)
 	return
 }
 
