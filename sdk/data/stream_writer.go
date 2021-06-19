@@ -582,7 +582,8 @@ func (s *Streamer) doWrite(ctx context.Context, data []byte, offset, size int, d
 			log.LogDebugf("doWrite: NewExtentHandler ino(%v) offset(%v) size(%v) storeMode(%v)",
 				s.inode, offset, size, storeMode)
 
-			if !s.usePreExtentHandler(offset, size) {
+			// not use preExtent if once failed
+			if i > 0 || !s.usePreExtentHandler(offset, size) {
 				s.handler = NewExtentHandler(s, offset, storeMode)
 			}
 			s.dirty = false
@@ -924,9 +925,8 @@ func (s *Streamer) usePreExtentHandler(offset, size int) bool {
 	if preEk == nil ||
 		s.dirtylist.Len() != 0 ||
 		storage.IsTinyExtent(preEk.ExtentId) ||
-		int(preEk.Size)+int(preEk.ExtentOffset) >= s.extentSize ||
 		preEk.FileOffset+uint64(preEk.Size) != uint64(offset) ||
-		int(preEk.Size)+size > s.extentSize {
+		int(preEk.Size)+int(preEk.ExtentOffset)+size > s.extentSize {
 		return false
 	}
 
