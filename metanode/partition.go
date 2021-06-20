@@ -17,6 +17,7 @@ package metanode
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -190,6 +191,7 @@ type OpPartition interface {
 	IsExistLearner(learner proto.Learner) bool
 	TryToLeader(groupID uint64) error
 	CanRemoveRaftMember(peer proto.Peer) error
+	PacketAppliedID(p *Packet)
 	IsEquareCreateMetaPartitionRequst(request *proto.CreateMetaPartitionRequest) (err error)
 }
 
@@ -681,6 +683,14 @@ func (mp *metaPartition) IsExistLearner(learner proto.Learner) bool {
 
 func (mp *metaPartition) TryToLeader(groupID uint64) error {
 	return mp.raftPartition.TryToLeader(groupID)
+}
+
+//PacketAppliedID put appliedID to response packet
+func (mp *metaPartition) PacketAppliedID(p *Packet) {
+	appliedID := mp.GetAppliedID()
+	p.ArgLen = 8
+	p.Arg = make([]byte, p.ArgLen)
+	binary.BigEndian.PutUint64(p.Arg[0:p.ArgLen], appliedID)
 }
 
 // ResponseLoadMetaPartition loads the snapshot signature. TODO remove? no usage?

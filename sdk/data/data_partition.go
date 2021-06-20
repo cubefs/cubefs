@@ -15,6 +15,7 @@
 package data
 
 import (
+	"encoding/binary"
 	"fmt"
 	"net"
 	"strings"
@@ -277,35 +278,73 @@ func (dp *DataPartition) ReadConsistentFromHosts(sc *StreamConn, reqPacket *Pack
 	var (
 		targetHosts []string
 		errMap      map[string]error
-		isErr       bool
 	)
 	start := time.Now()
 
 	for i := 0; i < StreamReadConsistenceRetry; i++ {
 		errMap = make(map[string]error)
-		targetHosts, isErr = chooseMaxAppliedDp(reqPacket.Ctx(), sc.dp.PartitionID, sc.dp.Hosts)
-		// try all hosts with same applied ID
-		if !isErr && len(targetHosts) > 0 {
-			// need to read data with no leader
-			reqPacket.Opcode = proto.OpStreamFollowerRead
-			for _, addr := range targetHosts {
-				sc.currAddr = addr
-				readBytes, _, _, err = dp.sendReadCmdToDataPartition(sc, reqPacket, req)
-				if err == nil {
-					return
+		var (
+			curMaxAppliedID uint64
+			maxAidReadBytes int
+			maxAidAddr      string
+		)
+		maxAidData := make([]byte, 0)
+		maxAidCrcMap := make(map[uint32]int, 0)
+
+		// need to read data with no leader
+		reqPacket.Opcode = proto.OpStreamFollowerRead
+		for n, addr := range dp.Hosts {
+			sc.currAddr = addr
+			var reply *Packet
+			readBytes, reply, _, err = dp.sendReadCmdToDataPartition(sc, reqPacket, req)
+
+			if err == nil {
+				if reply.ArgLen < 8 {
+					log.LogWarnf("readConsistentFromHosts: err(%v), addr(%v), try next host", err, addr)
+					continue
 				}
-				errMap[addr] = err
-				log.LogWarnf("readConsistentFromHosts: err(%v), addr(%v), try next host", err, addr)
+				appliedID := binary.BigEndian.Uint64(reply.Arg[:8])
+				//update at first appliedID or at bigger appliedID
+				if len(maxAidCrcMap) == 0 || appliedID > curMaxAppliedID {
+					curMaxAppliedID = appliedID
+					maxAidCrcMap = make(map[uint32]int, 0)
+					maxAidCrcMap[reply.CRC] = 1
+					maxAidReadBytes = readBytes
+					maxAidData = make([]byte, readBytes)
+					copy(maxAidData, req.Data)
+				} else if appliedID == curMaxAppliedID {
+					maxAidCrcMap[reply.CRC] += 1
+				}
+				if n < len(dp.Hosts)-1 {
+					continue
+				}
+				if len(maxAidCrcMap) == 1 && len(errMap) < (len(dp.Hosts)+1)/2 {
+					copy(req.Data, maxAidData)
+					sc.currAddr = maxAidAddr
+					return maxAidReadBytes, nil
+				}
+				if len(maxAidCrcMap) > 1 {
+					log.LogWarnf("readConsistentFromHost failed: data copies with max_applied_id are not consistent sc(%v) reqPacket(%v) time(%v)", sc, reqPacket, time.Since(start))
+					goto errorDeal
+				}
+				if len(errMap) >= (len(dp.Hosts)+1)/2 {
+					log.LogWarnf("readConsistentFromHost failed: too much error packet from hosts sc(%v) reqPacket(%v) time(%v)", sc, reqPacket, time.Since(start))
+					goto errorDeal
+				}
 			}
+			errMap[addr] = err
+			log.LogWarnf("readConsistentFromHosts: err(%v), addr(%v), try next host", err, addr)
 		}
-		log.LogWarnf("readConsistentFromHost failed, try next round: sc(%v) reqPacket(%v) isErr(%v) targetHosts(%v) errMap(%v)", sc, reqPacket, isErr, targetHosts, errMap)
+		log.LogWarnf("readConsistentFromHost failed, try next round: sc(%v) reqPacket(%v) targetHosts(%v) errMap(%v)", sc, reqPacket, targetHosts, errMap)
 		if time.Since(start) > StreamReadConsistenceTimeout {
 			log.LogWarnf("readConsistentFromHost failed: retry timeout sc(%v) reqPacket(%v) time(%v)", sc, reqPacket, time.Since(start))
-			break
+			goto errorDeal
 		}
 	}
-	return readBytes, errors.New(fmt.Sprintf("readConsistentFromHosts: failed, sc(%v) reqPacket(%v) isErr(%v) targetHosts(%v) errMap(%v)",
-		sc, reqPacket, isErr, targetHosts, errMap))
+
+errorDeal:
+	return readBytes, errors.New(fmt.Sprintf("readConsistentFromHosts: failed, sc(%v) reqPacket(%v) targetHosts(%v) errMap(%v)",
+		sc, reqPacket, targetHosts, errMap))
 }
 
 func (dp *DataPartition) sendReadCmdToDataPartition(sc *StreamConn, reqPacket *Packet, req *ExtentRequest) (readBytes int, reply *Packet, tryOther bool, err error) {
