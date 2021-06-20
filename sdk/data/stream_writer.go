@@ -353,7 +353,7 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, dir
 			writeSize, err = s.doWrite(ctx, req.Data, req.FileOffset, req.Size, direct)
 		}
 		if err != nil {
-			log.LogErrorf("Streamer write: ino(%v) err(%v)", s.inode, err)
+			log.LogWarnf("Streamer write: ino(%v) err(%v)", s.inode, err)
 			break
 		}
 		total += writeSize
@@ -407,7 +407,7 @@ func (s *Streamer) writeToNewExtent(ctx context.Context, oriReq *ExtentRequest, 
 	extID, total int, err error) {
 	defer func() {
 		if err != nil {
-			log.LogErrorf("writeToNewExtent: oriReq %v exceed max retry times(%v), err %v",
+			log.LogWarnf("writeToNewExtent: oriReq %v exceed max retry times(%v), err %v",
 				oriReq, MaxSelectDataPartitionForWrite, err)
 		}
 		log.LogDebugf("writeToNewExtent: inode %v, oriReq %v direct %v", s.inode, oriReq, direct)
@@ -446,7 +446,7 @@ func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool
 	defer func() {
 		tracer.Finish()
 		if err != nil {
-			log.LogErrorf("doROW: total %v, oriReq %v, err %v", total, oriReq, err)
+			log.LogWarnf("doROW: total %v, oriReq %v, err %v", total, oriReq, err)
 		}
 	}()
 	ctx = tracer.Context()
@@ -602,7 +602,7 @@ func (s *Streamer) doWrite(ctx context.Context, data []byte, offset, size int, d
 	}
 
 	if err != nil || ek == nil {
-		log.LogErrorf("doWrite error: ino(%v) offset(%v) size(%v) err(%v) ek(%v)", s.inode, offset, size, err, ek)
+		log.LogWarnf("doWrite error: ino(%v) offset(%v) size(%v) err(%v) ek(%v)", s.inode, offset, size, err, ek)
 		return
 	}
 
@@ -628,7 +628,7 @@ func (s *Streamer) flush(ctx context.Context) (err error) {
 		log.LogDebugf("Streamer flush begin: eh(%v)", eh)
 		err = eh.flush(ctx)
 		if err != nil {
-			log.LogErrorf("Streamer flush failed: eh(%v)", eh)
+			log.LogWarnf("Streamer flush failed: eh(%v)", eh)
 			return
 		}
 		eh.stream.dirtylist.Remove(element)
@@ -673,7 +673,7 @@ func (s *Streamer) traverse() (err error) {
 			}
 			err = eh.appendExtentKey(ctx)
 			if err != nil {
-				log.LogDebugf("Streamer traverse abort: insertExtentKey failed, eh(%v) err(%v)", eh, err)
+				log.LogWarnf("Streamer traverse abort: insertExtentKey failed, eh(%v) err(%v)", eh, err)
 				return
 			}
 			s.dirtylist.Remove(element)
@@ -689,7 +689,7 @@ func (s *Streamer) traverse() (err error) {
 	}
 
 	if s.status >= StreamerError && s.dirtylist.Len() == 0 {
-		log.LogErrorf("Streamer traverse clean dirtyList success, set s(%v) status from (%v) to (%v)", s, s.status,
+		log.LogWarnf("Streamer traverse clean dirtyList success, set s(%v) status from (%v) to (%v)", s, s.status,
 			StreamerNormal)
 		atomic.StoreInt32(&s.status, StreamerNormal)
 	}

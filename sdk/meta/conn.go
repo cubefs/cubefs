@@ -30,7 +30,7 @@ import (
 const (
 	SendRetryLimit    = 100
 	SendRetryInterval = 100 * time.Millisecond
-	SendTimeLimit     = 20 * time.Second
+	SendTimeLimit     = 60 * time.Second
 )
 
 type MetaConn struct {
@@ -70,15 +70,15 @@ func (mw *MetaWrapper) putConn(mc *MetaConn, err error) {
 	mw.conns.PutConnectWithErr(mc.conn, err)
 }
 
-func (mw *MetaWrapper) sendWriteToMP(ctx context.Context, mp *MetaPartition, req *proto.Packet) (resp *proto.Packet, err error) {
+func (mw *MetaWrapper) sendWriteToMP(ctx context.Context, mp *MetaPartition, req *proto.Packet) (resp *proto.Packet, needCheckRead bool, err error) {
 	addr := mp.LeaderAddr
-	resp, err = mw.sendToMetaPartition(ctx, mp, req, addr)
+	resp, needCheckRead, err = mw.sendToMetaPartition(ctx, mp, req, addr)
 	return
 }
 
 func (mw *MetaWrapper) sendReadToMP(ctx context.Context, mp *MetaPartition, req *proto.Packet) (resp *proto.Packet, err error) {
 	addr := mp.LeaderAddr
-	resp, err = mw.sendToMetaPartition(ctx, mp, req, addr)
+	resp, _, err = mw.sendToMetaPartition(ctx, mp, req, addr)
 	if err == nil && resp != nil {
 		return
 	}
@@ -95,7 +95,7 @@ func (mw *MetaWrapper) readConsistentFromHosts(ctx context.Context, mp *MetaPart
 		req.Arg = make([]byte, req.ArgLen)
 		req.Arg[0] = proto.FollowerReadFlag
 		for _, host := range targetHosts {
-			resp, err = mw.sendToHost(ctx, mp, req, host)
+			resp, _, err = mw.sendToHost(ctx, mp, req, host)
 			if err == nil && resp.ResultCode == proto.OpOk {
 				return
 			}
@@ -106,7 +106,7 @@ func (mw *MetaWrapper) readConsistentFromHosts(ctx context.Context, mp *MetaPart
 	return nil, errors.New(fmt.Sprintf("readConsistentFromHosts: failed, req(%v) mp(%v) isErr(%v) targetHosts(%v), try next host", req, mp, isErr, targetHosts))
 }
 
-func (mw *MetaWrapper) sendToMetaPartition(ctx context.Context, mp *MetaPartition, req *proto.Packet, addr string) (resp *proto.Packet, err error) {
+func (mw *MetaWrapper) sendToMetaPartition(ctx context.Context, mp *MetaPartition, req *proto.Packet, addr string) (resp *proto.Packet, needCheckRead bool, err error) {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.sendToMetaPartition").
 		SetTag("mpID", mp.PartitionID).
 		SetTag("reqID", req.ReqID).
@@ -116,11 +116,13 @@ func (mw *MetaWrapper) sendToMetaPartition(ctx context.Context, mp *MetaPartitio
 	ctx = tracer.Context()
 
 	var (
-		errMap map[int]error
-		start  time.Time
-		j      int
+		errMap        map[int]error
+		start         time.Time
+		retryInterval time.Duration
+		needCheck     bool
+		j             int
 	)
-	resp, err = mw.sendToHost(ctx, mp, req, addr)
+	resp, _, err = mw.sendToHost(ctx, mp, req, addr)
 	if err == nil && !resp.ShouldRetry() {
 		goto out
 	}
@@ -128,11 +130,11 @@ func (mw *MetaWrapper) sendToMetaPartition(ctx context.Context, mp *MetaPartitio
 
 	errMap = make(map[int]error, len(mp.Members))
 	start = time.Now()
+	retryInterval = SendRetryInterval
 
 	for i := 0; i < SendRetryLimit; i++ {
-
 		for j, addr = range mp.Members {
-			resp, err = mw.sendToHost(ctx, mp, req, addr)
+			resp, needCheck, err = mw.sendToHost(ctx, mp, req, addr)
 			if err == nil && !resp.ShouldRetry() {
 				goto out
 			}
@@ -140,25 +142,29 @@ func (mw *MetaWrapper) sendToMetaPartition(ctx context.Context, mp *MetaPartitio
 				err = errors.New(fmt.Sprintf("request should retry[%v]", resp.GetResultMsg()))
 			}
 			errMap[j] = err
+			if needCheck {
+				needCheckRead = true
+			}
 			log.LogWarnf("sendToMetaPartition: retry failed req(%v) mp(%v) addr(%v) err(%v) resp(%v)", req, mp, addr, err, resp)
 		}
 		if time.Since(start) > SendTimeLimit {
 			log.LogWarnf("sendToMetaPartition: retry timeout req(%v) mp(%v) time(%v)", req, mp, time.Since(start))
 			break
 		}
-		log.LogWarnf("sendToMetaPartition: req(%v) mp(%v) retry in (%v)", req, mp, SendRetryInterval)
-		time.Sleep(SendRetryInterval)
+		log.LogWarnf("sendToMetaPartition: req(%v) mp(%v) retry in (%v)", req, mp, retryInterval)
+		time.Sleep(retryInterval)
+		retryInterval += SendRetryInterval
 	}
 
 out:
 	if err != nil || resp == nil {
-		return nil, errors.New(fmt.Sprintf("sendToMetaPartition failed: req(%v) mp(%v) errs(%v) resp(%v)", req, mp, errMap, resp))
+		return nil, needCheckRead, errors.New(fmt.Sprintf("sendToMetaPartition failed: req(%v) mp(%v) errs(%v) resp(%v)", req, mp, errMap, resp))
 	}
 	log.LogDebugf("sendToMetaPartition successful: req(%v) mp(%v) addr(%v) resp(%v)", req, mp, addr, resp)
-	return resp, nil
+	return resp, needCheckRead, nil
 }
 
-func (mw *MetaWrapper) sendToHost(ctx context.Context, mp *MetaPartition, req *proto.Packet, addr string) (resp *proto.Packet, err error) {
+func (mw *MetaWrapper) sendToHost(ctx context.Context, mp *MetaPartition, req *proto.Packet, addr string) (resp *proto.Packet, needReadConsistence bool, err error) {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.sendToHost").
 		SetTag("mpID", mp.PartitionID).
 		SetTag("reqID", req.ReqID).
@@ -170,7 +176,7 @@ func (mw *MetaWrapper) sendToHost(ctx context.Context, mp *MetaPartition, req *p
 
 	var mc *MetaConn
 	if addr == "" {
-		return nil, errors.New(fmt.Sprintf("sendToHost failed: leader addr empty, req(%v) mp(%v)", req, mp))
+		return nil, false, errors.New(fmt.Sprintf("sendToHost failed: leader addr empty, req(%v) mp(%v)", req, mp))
 	}
 	mc, err = mw.getConn(ctx, mp.PartitionID, addr)
 	if err != nil {
@@ -189,7 +195,7 @@ func (mw *MetaWrapper) sendToHost(ctx context.Context, mp *MetaPartition, req *p
 		tracer.SetTag("error", err)
 		return
 	}(); err != nil {
-		return nil, errors.Trace(err, "Failed to write to conn, req(%v)", req)
+		return nil, false, errors.Trace(err, "Failed to write to conn, req(%v)", req)
 	}
 
 	resp = proto.NewPacket(req.Ctx())
@@ -204,17 +210,17 @@ func (mw *MetaWrapper) sendToHost(ctx context.Context, mp *MetaPartition, req *p
 		return
 	}(); err != nil {
 		tracer.SetTag("error", err)
-		return nil, errors.Trace(err, "Failed to read from conn, req(%v)", req)
+		return nil, true, errors.Trace(err, "Failed to read from conn, req(%v)", req)
 	}
 	// Check if the ID and OpCode of the response are consistent with the request.
 	if resp.ReqID != req.ReqID || resp.Opcode != req.Opcode {
-		log.LogErrorf("sendToHost err: the response packet mismatch with request: conn(%v to %v) req(%v) resp(%v)",
+		log.LogWarnf("sendToHost err: the response packet mismatch with request: conn(%v to %v) req(%v) resp(%v)",
 			mc.conn.LocalAddr(), mc.conn.RemoteAddr(), req, resp)
 		err = syscall.EBADMSG
-		return nil, err
+		return nil, true, err
 	}
 	log.LogDebugf("sendToHost successful: mp(%v) addr(%v) req(%v) resp(%v)", mp, addr, req, resp)
-	return resp, nil
+	return resp, false, nil
 }
 
 func sortMembers(leader string, members []string) []string {

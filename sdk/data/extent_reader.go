@@ -67,7 +67,7 @@ func (er *ExtentReader) Read(ctx context.Context, req *ExtentRequest) (readBytes
 	readBytes, err = er.read(er.dp, reqPacket, req, er.followerRead)
 
 	if err != nil {
-		log.LogErrorf("Extent Reader Read: err(%v) req(%v) reqPacket(%v)", err, req, reqPacket)
+		log.LogWarnf("Extent Reader Read: err(%v) req(%v) reqPacket(%v)", err, req, reqPacket)
 	}
 
 	log.LogDebugf("ExtentReader Read exit: req(%v) reqPacket(%v) readBytes(%v) err(%v)", req, reqPacket, readBytes, err)

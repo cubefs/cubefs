@@ -181,7 +181,7 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 
 	var dpv *proto.DataPartitionsView
 	if dpv, err = w.mc.ClientAPI().GetDataPartitions(w.volName); err != nil {
-		log.LogErrorf("updateDataPartition: get data partitions fail: volume(%v) err(%v)", w.volName, err)
+		log.LogWarnf("updateDataPartition: get data partitions fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
 	log.LogInfof("updateDataPartition: get data partitions: volume(%v) partitions(%v)", w.volName, len(dpv.DataPartitions))
@@ -268,7 +268,7 @@ func (w *Wrapper) updateDataNodeStatus() (err error) {
 	var cv *proto.ClusterView
 	cv, err = w.mc.AdminAPI().GetCluster()
 	if err != nil {
-		log.LogErrorf("updateDataNodeStatus: get cluster fail: err(%v)", err)
+		log.LogWarnf("updateDataNodeStatus: get cluster fail: err(%v)", err)
 		return
 	}
 

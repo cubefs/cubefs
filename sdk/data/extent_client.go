@@ -313,7 +313,7 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset int,
 	write, err = s.IssueWriteRequest(ctx, offset, data, direct)
 	if err != nil {
 		err = errors.Trace(err, prefix)
-		log.LogError(errors.Stack(err))
+		log.LogWarnf(errors.Stack(err))
 		exporter.Warning(err.Error())
 	}
 	return

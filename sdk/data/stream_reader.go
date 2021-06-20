@@ -152,7 +152,7 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 				total += req.Size
 				err = io.EOF
 				if total == 0 {
-					log.LogErrorf("read: ino(%v) req(%v) filesize(%v)", s.inode, req, filesize)
+					log.LogWarnf("read: ino(%v) req(%v) filesize(%v)", s.inode, req, filesize)
 				}
 				return
 			}
@@ -170,7 +170,7 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 			total += readBytes
 			if err != nil || readBytes < req.Size {
 				if total == 0 {
-					log.LogErrorf("Stream read: ino(%v) req(%v) readBytes(%v) err(%v)", s.inode, req, readBytes, err)
+					log.LogWarnf("Stream read: ino(%v) req(%v) readBytes(%v) err(%v)", s.inode, req, readBytes, err)
 				}
 				break
 			}
