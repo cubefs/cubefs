@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	sdk "github.com/chubaofs/chubaofs/sdk/master"
@@ -9,8 +10,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"encoding/json"
-
 )
 
 const (
@@ -31,7 +30,6 @@ func newInodeCmd(client *sdk.MasterClient) *cobra.Command {
 	return cmd
 }
 
-
 func newInodeInfoCmd(client *sdk.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   cmdInodeInfoUse,
@@ -43,64 +41,29 @@ func newInodeInfoCmd(client *sdk.MasterClient) *cobra.Command {
 			var inodeNumber = args[1]
 			intNum, _ := strconv.Atoi(inodeNumber)
 			inodeUnint64Number := uint64(intNum)
-			fmt.Printf("inode to be queried is %s, volume_name is  %s: \n", inodeNumber, volumeName)
-			var svv *proto.SimpleVolView
+			//var svv *proto.SimpleVolView
 			defer func() {
 				if err != nil {
 					errout("Error: %v", err)
 				}
 			}()
-			if svv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
-				err = fmt.Errorf("Get volume info failed:\n%v\n", err)
-				return
-			}
-			// print summary info
-			stdout("Summary of Volume [%s] :\n%s\n",volumeName, formatSimpleVolView(svv))
-			// debug
-			//fmt.Printf("svv: %+v\n", svv)
-			metaPartitionCount := uint64(svv.MpCnt)
-			maxMetaPartitionID := svv.MaxMetaPartitionID
-			volumeOwer := svv.Owner
-			for i:= (maxMetaPartitionID - metaPartitionCount +1); i <= metaPartitionCount; i++ {
-				fmt.Printf("metaPartitionNumber is %d\n", i)
-			}
-
-			// print metadata detail
 			var views []*proto.MetaPartitionView
 			if views, err = client.ClientAPI().GetMetaPartitions(volumeName); err != nil {
 				err = fmt.Errorf("Get volume metadata detail information failed:\n%v\n", err)
 				return
 			}
 			for _, view := range views {
-				stdout("%v\n", formatMetaPartitionTableRow(view))
-				inodeCount := view.InodeCount
 				inodeStartNumber := view.Start
 				inodeEndNumber  := view.End
 				metaPartitionNumber := view.PartitionID
-
-				fmt.Printf("inodeStartNumber is %d, count is %d, end is %d \n",inodeStartNumber, inodeCount, view.End)
-				//inodeEndNumber := inodeStartNumber + inodeCount
 				if inodeStartNumber < inodeUnint64Number  && inodeUnint64Number <  inodeEndNumber{
-					// get inode information
-					fmt.Printf("inode to Requied is %d, partitionNumber is %d \n", inodeUnint64Number, metaPartitionNumber)
-					//var inodeTest  = sdk.newAPIRequest("GET", "getInode?pid=1&ino=33")
-
-					//if inodeTest == nil {
-					//
-					//}
-					var partition *proto.MetaPartitionInfo
-					if partition, err = client.ClientAPI().GetMetaPartition(metaPartitionNumber); err != nil {
-						return
-					}
-					fmt.Println("------------")
-					stdout(formatMetaPartitionInfo(partition))
-					fmt.Println("------------ leader",client.Leader())
-					//if partition, err = client.ClientAPI().GetInodeInfo(metaPartitionNumber, 22); err != nil {
-					//	return
-					//}
 					for _, addr := range view.Members{
 						addr := strings.Split(addr, ":")[0]
-						resp, err := http.Get(fmt.Sprintf("http://%s:%d/getInode?pid=%d&ino=%d", addr, client.MetaNodeProfPort, metaPartitionNumber, 12))
+						metaNodeProfPort := client.MetaNodeProfPort
+						if metaNodeProfPort == 0{
+							metaNodeProfPort = 17220
+						}
+						resp, err := http.Get(fmt.Sprintf("http://%s:%d/getInode?pid=%d&ino=%d", addr, metaNodeProfPort, metaPartitionNumber, inodeUnint64Number))
 						if err != nil {
 							errout("get partition list failed:\n%v\n", err)
 							return
@@ -117,18 +80,69 @@ func newInodeInfoCmd(client *sdk.MasterClient) *cobra.Command {
 							errout("get partition info failed:\n%v\n", err)
 							return
 						}
-						fmt.Printf("valule: %+v\n", value)
+						if value["msg"] != "Ok"{
+							errout("get inode information failed: %v\n", value["msg"])
+							return
+						}
+						data := value["data"].(map[string]interface{})
+						dataInfo := data["info"].(map[string]interface{})
+						var inodeInfoView *proto.InodeInfoView
+						inodeInfoView = &proto.InodeInfoView{
+							Ino:         uint64(dataInfo["ino"].(float64)),
+							PartitionID: metaPartitionNumber,
+							At:          dataInfo["at"].(string),
+							Ct:          dataInfo["ct"].(string),
+							Mt:          dataInfo["mt"].(string),
+							Nlink:       uint64(dataInfo["nlink"].(float64)),
+							Gen:         uint64(dataInfo["gen"].(float64)),
+							Gid:         uint64(dataInfo["gid"].(float64)),
+							Uid:         uint64(dataInfo["uid"].(float64)),
+							Mode:        uint64(dataInfo["mode"].(float64)),
+						}
+						stdout("Summary of inode  :\n%s\n",  formatInodeInfoView(inodeInfoView))
 
-					}
-					//volume, err := client.ClientAPI().GetVolume(volumeName,calcAuthKey(volumeOwer))
-					if err != nil {
-						errout("get volume list failed:\n%v\n", err)
+						// getExtentsByInode
+						resp, err = http.Get(fmt.Sprintf("http://%s:%d/getExtentsByInode?pid=%d&ino=%d", addr, metaNodeProfPort, metaPartitionNumber, inodeUnint64Number))
+						if err != nil {
+							errout("get partition list failed:\n%v\n", err)
+							return
+						}
+						all, err = ioutil.ReadAll(resp.Body)
+						if err != nil {
+							errout("get partition list failed:\n%v\n", err)
+							return
+						}
+
+						value = make(map[string]interface{})
+						err = json.Unmarshal(all, &value)
+						if err != nil {
+							errout("get partition info failed:\n%v\n", err)
+							return
+						}
+						if value["msg"] != "Ok"{
+							errout("get inode information failed: %v\n", value["msg"])
+							return
+						}
+						data = value["data"].(map[string]interface{})
+						if data["eks"] != nil {
+							dataEks := data["eks"].([]interface{})
+							stdout("Summary of inodeExtentInfo  :\n%s\n",  inodeExtentInfoTableHeader)
+							for _, ek := range dataEks{
+								inodeExtentInfo := ek.(map[string]interface{})
+								var inodeExtentInfoView *proto.InodeExtentInfoView
+								inodeExtentInfoView = &proto.InodeExtentInfoView{
+									FileOffset:   uint64(inodeExtentInfo["FileOffset"].(float64)),
+									PartitionId:  uint64(inodeExtentInfo["PartitionId"].(float64)),
+									ExtentId:     uint64(inodeExtentInfo["ExtentId"].(float64)),
+									ExtentOffset: uint64(inodeExtentInfo["ExtentOffset"].(float64)),
+									Size:         uint64(inodeExtentInfo["Size"].(float64)),
+									CRC:          uint64(inodeExtentInfo["CRC"].(float64)),
+								}
+								stdout("%v\n", formatInodeExtentInfoTableRow(inodeExtentInfoView))
+							}
+						}
 						return
 					}
-					fmt.Println("*********************" )
-
-					//fmt.Printf("%+v\n", metanode.OpInode.InodeGet())
-
 				}
 			}
 			return

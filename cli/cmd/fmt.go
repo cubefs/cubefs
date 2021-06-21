@@ -115,6 +115,33 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	return sb.String()
 }
 
+func formatInodeInfoView(inodeInfo *proto.InodeInfoView) string {
+
+	var sb = strings.Builder{}
+	sb.WriteString(fmt.Sprintf("  InodeNumber                 : %v\n", inodeInfo.Ino))
+	sb.WriteString(fmt.Sprintf("  PartitionID                 : %v\n", inodeInfo.PartitionID))
+	sb.WriteString(fmt.Sprintf("  AccessTime                  : %v\n", inodeInfo.At))
+	sb.WriteString(fmt.Sprintf("  CreateTime                  : %v\n", inodeInfo.Ct))
+	sb.WriteString(fmt.Sprintf("  ModifyTime                  : %v\n", inodeInfo.Mt))
+	sb.WriteString(fmt.Sprintf("  Nlink                       : %v\n", inodeInfo.Nlink))
+	sb.WriteString(fmt.Sprintf("  Gen                         : %v\n", inodeInfo.Gen))
+	sb.WriteString(fmt.Sprintf("  Gid                         : %v\n", inodeInfo.Gid))
+	sb.WriteString(fmt.Sprintf("  Uid                         : %v\n", inodeInfo.Uid))
+	sb.WriteString(fmt.Sprintf("  Mode                        : %v\n", inodeInfo.Mode))
+	return sb.String()
+}
+
+var (
+	inodeExtentInfoTablePattern = "% -38v    % -20v    % -10v    % -30v    % -10v    % -10v"
+	inodeExtentInfoTableHeader  = fmt.Sprintf( inodeExtentInfoTablePattern, "  FileOffset", "  PartitionId", "  ExtentId", "  ExtentOffset", "  Size", "  CRC")
+)
+func formatInodeExtentInfoTableRow(ie *proto.InodeExtentInfoView) string {
+	return fmt.Sprintf(inodeExtentInfoTablePattern,
+		ie.FileOffset, ie.PartitionId, ie.ExtentId, ie.ExtentOffset, formatSize(ie.Size), ie.CRC)
+}
+
+
+
 func formatVolumeStatus(status uint8) string {
 	switch status {
 	case 0:
@@ -566,3 +593,4 @@ func isEqualStrings(strs1, strs2 []string) bool {
 	}
 	return true
 }
+

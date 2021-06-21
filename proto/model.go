@@ -87,6 +87,30 @@ type MetaPartitionInfo struct {
 	LoadResponse  []*MetaPartitionLoadResponse
 }
 
+// InodeInfo define the information of inode
+type InodeInfoView struct {
+	Ino uint64
+	PartitionID uint64
+	At string
+	Ct string
+	Mt string
+	Nlink uint64
+	Gen uint64
+	Gid  uint64
+	Uid uint64
+	Mode uint64
+}
+
+// inodeExtentInfoView  define information of inodeExtentInfo
+type InodeExtentInfoView struct {
+	FileOffset   uint64
+	PartitionId  uint64
+	ExtentId     uint64
+	ExtentOffset uint64
+	Size         uint64
+	CRC          uint64
+}
+
 // MetaReplica defines the replica of a meta partition
 type MetaReplicaInfo struct {
 	Addr        string

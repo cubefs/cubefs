@@ -46,6 +46,7 @@ func NewRootCmd(client *master.MasterClient) *ChubaoFSCmd {
 	cmd.CFSCmd.AddCommand(
 		cmd.newClusterCmd(client),
 		newVolCmd(client),
+		newInodeCmd(client),
 		newUserCmd(client),
 		newMetaNodeCmd(client),
 		newDataNodeCmd(client),
