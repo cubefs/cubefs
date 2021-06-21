@@ -222,7 +222,7 @@ func (r *raftFsm) becomeElectionAck() {
 	logger.Debug("raft[%v] became election at term %d.", r.id, r.term)
 
 	r.step = stepElectionAck
-	r.reset(r.term, 0, false)
+	r.reset(r.term+1, 0, false)
 	r.tick = r.tickElectionAck
 	r.state = stateElectionACK
 	for id := range r.replicas {
