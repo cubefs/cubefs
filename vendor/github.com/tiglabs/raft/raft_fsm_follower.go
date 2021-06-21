@@ -70,7 +70,8 @@ func stepFollower(r *raftFsm, m *proto.Message) {
 
 	case proto.ReqCheckQuorum:
 		// TODO: remove this
-		if logger.IsEnableDebug() {
+		// Suppress logs if m.Index == 0
+		if m.Index != 0 && logger.IsEnableDebug() {
 			logger.Debug("raft[%d] recv check quorum from %d, index=%d", r.id, m.From, m.Index)
 		}
 		r.electionElapsed = 0

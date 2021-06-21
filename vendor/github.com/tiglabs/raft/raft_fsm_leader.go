@@ -202,7 +202,8 @@ func stepLeader(r *raftFsm, m *proto.Message) {
 
 	case proto.RespCheckQuorum:
 		// TODO: remove this when stable
-		if logger.IsEnableDebug() {
+		// Suppress logs if m.Index == 0
+		if m.Index != 0 && logger.IsEnableDebug() {
 			logger.Debug("raft[%d] recv check quorum resp from %d, index=%d", r.id, m.From, m.Index)
 		}
 		r.readOnly.recvAck(m.Index, m.From, r.quorum())
@@ -476,15 +477,16 @@ func (r *raftFsm) appendEntry(es ...*proto.Entry) {
 
 func (r *raftFsm) bcastReadOnly() {
 	index := r.readOnly.lastPending()
-	if index == 0 {
-		return
-	}
-	if logger.IsEnableDebug() {
-		logger.Debug("raft[%d] bcast readonly index: %d", r.id, index)
-	}
-	for id := range r.replicas {
+	for id, replica := range r.replicas {
 		if id == r.config.NodeID {
 			continue
+		}
+		if index == 0 && replica.active {
+			continue
+		}
+		// Suppress logs if index == 0
+		if index != 0 && logger.IsEnableDebug() {
+			logger.Debug("raft[%d] bcast readonly index: %d", r.id, index)
 		}
 		msg := proto.GetMessage()
 		msg.Type = proto.ReqCheckQuorum
