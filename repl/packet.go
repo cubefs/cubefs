@@ -17,6 +17,7 @@ package repl
 import (
 	"context"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/log"
 	"io"
 	"net"
 	"strings"
@@ -143,10 +144,12 @@ func (p *Packet) BeforeTp(clusterID string) (ok bool) {
 	return
 }
 
-func (p *Packet) resolveFollowersAddr() (err error) {
+func (p *Packet) resolveFollowersAddr(remoteAddr string) (err error) {
 	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionPreparePkt, err.Error())
+			log.LogErrorf("action[%v]  packet(%v) from remote(%v) error(%v)",
+				ActionPreparePkt,p.GetUniqueLogId(), remoteAddr,err.Error())
 		}
 	}()
 	if len(p.Arg) < int(p.ArgLen) {
