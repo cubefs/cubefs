@@ -29,6 +29,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/tracing"
+	"github.com/chubaofs/chubaofs/util/ump"
 	"golang.org/x/net/context"
 )
 
@@ -345,10 +346,7 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, dir
 	for _, req := range requests {
 		var writeSize int
 		if req.ExtentKey != nil {
-			writeSize, err = s.doOverwrite(ctx, req, direct)
-			if err != nil {
-				writeSize, err = s.doROW(ctx, req, direct)
-			}
+			writeSize = s.doOverWriteOrROW(ctx, req, direct)
 		} else {
 			writeSize, err = s.doWrite(ctx, req.Data, req.FileOffset, req.Size, direct)
 		}
@@ -364,6 +362,33 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, dir
 	}
 	log.LogDebugf("Streamer write exit: ino(%v) offset(%v) size(%v) done total(%v) err(%v)", s.inode, offset, size, total, err)
 	return
+}
+
+func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, direct bool) (writeSize int) {
+	var (
+		err    error
+		errmsg string
+		umpKey string
+	)
+	tryCount := 0
+	for {
+		tryCount++
+		if tryCount%100 == 0 {
+			log.LogWarnf("doOverWriteOrROW failed: try (%v)th times, ino(%v) req(%v)", tryCount, s.inode, req)
+		}
+		if writeSize, err = s.doOverwrite(ctx, req, direct); err == nil {
+			break
+		}
+		if writeSize, err = s.doROW(ctx, req, direct); err == nil {
+			break
+		}
+		log.LogWarnf("doOverWriteOrROW failed: ino(%v) err(%v) req(%v)", s.inode, err, req)
+		errmsg = fmt.Sprintf("volume(%v) doOverWrite and doROW err(%v), try count(%v)", s.client.dataWrapper.volName, err, tryCount)
+		umpKey = fmt.Sprintf("%v_client_warning", s.client.dataWrapper.clusterName)
+		ump.Alarm(umpKey, errmsg)
+		time.Sleep(1 * time.Second)
+	}
+	return writeSize
 }
 
 func (s *Streamer) writeToExtent(ctx context.Context, oriReq *ExtentRequest, dp *DataPartition, extID int,
@@ -423,6 +448,7 @@ func (s *Streamer) writeToNewExtent(ctx context.Context, oriReq *ExtentRequest, 
 
 		dp, err = s.client.dataWrapper.GetDataPartitionForWrite(exclude)
 		if err != nil {
+			time.Sleep(5 * time.Second)
 			continue
 		}
 		extID, err = CreateExtent(ctx, s.inode, dp)

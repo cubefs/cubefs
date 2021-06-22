@@ -26,6 +26,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/tracing"
+	"github.com/chubaofs/chubaofs/util/ump"
 )
 
 // State machines
@@ -307,7 +308,8 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		log.LogErrorf("processReply discard packet: handler is in error status, inflight(%v) eh(%v) packet(%v)", atomic.LoadInt32(&eh.inflight), eh, packet)
 		return
 	} else if status >= ExtentStatusRecovery {
-		if err := eh.recoverPacket(packet); err != nil {
+		errmsg := fmt.Sprintf("recover eh(%v) packet(%v)", eh, packet)
+		if err := eh.recoverPacket(packet, errmsg); err != nil {
 			eh.discardPacket(packet)
 			log.LogErrorf("processReply discard packet: handler is in recovery status, inflight(%v) eh(%v) packet(%v) err(%v)", atomic.LoadInt32(&eh.inflight), eh, packet, err)
 		}
@@ -401,11 +403,11 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
 	eh.setClosed()
 	eh.setRecovery()
-	if err := eh.recoverPacket(packet); err != nil {
+	if err := eh.recoverPacket(packet, errmsg); err != nil {
 		eh.discardPacket(packet)
 		log.LogErrorf("processReplyError discard packet: eh(%v) packet(%v) err(%v) errmsg(%v)", eh, packet, err, errmsg)
 	} else {
-		log.LogWarnf("processReplyError recover packet: from eh(%v) to recoverHandler(%v) packet(%v) errmsg(%v)", eh, eh.recoverHandler, packet, errmsg)
+		log.LogWarnf("processReplyError recover packet: from eh(%v) to recoverHandler(%v) packet(%v) errmsg(%v) errCount(%v)", eh, eh.recoverHandler, packet, errmsg, packet.errCount)
 	}
 }
 
@@ -508,10 +510,14 @@ func (eh *ExtentHandler) waitForFlush(ctx context.Context) {
 	}
 }
 
-func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
+func (eh *ExtentHandler) recoverPacket(packet *Packet, errmsg string) error {
 	packet.errCount++
-	if packet.errCount >= MaxPacketErrorCount {
-		return errors.New(fmt.Sprintf("recoverPacket failed: reach max error limit, eh(%v) packet(%v)", eh, packet))
+	if packet.errCount%50 == 0 {
+		log.LogWarnf("recoverPacket: try (%v)th times because of failing to write to extent, eh(%v) packet(%v)", packet.errCount, eh, packet)
+		umpMsg := fmt.Sprintf("volume(%v) append write recoverPacket err(%v), try count(%v)", eh.stream.client.dataWrapper.volName, errmsg, packet.errCount)
+		umpKey := fmt.Sprintf("%v_client_warning", eh.stream.client.dataWrapper.clusterName)
+		ump.Alarm(umpKey, umpMsg)
+		time.Sleep(1 * time.Second)
 	}
 
 	handler := eh.recoverHandler
@@ -553,11 +559,26 @@ func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
 	//log.LogDebugf("ExtentHandler allocateExtent enter: eh(%v)", eh)
 
 	exclude := make(map[string]struct{})
+	loopCount := 0
 
-	for i := 0; i < MaxSelectDataPartitionForWrite; i++ {
+	// loop for creating extent until successfully
+	for {
+		loopCount++
+		if loopCount%100 == 0 {
+			log.LogWarnf("allocateExtent: try (%v)th times because of failing to create extent, eh(%v) exclude(%v)", loopCount, eh, exclude)
+			umpMsg := fmt.Sprintf("volume(%v) create extent failed, eh(%v), try count(%v)", eh.stream.client.dataWrapper.volName, eh, loopCount)
+			umpKey := fmt.Sprintf("%v_client_warning", eh.stream.client.dataWrapper.clusterName)
+			ump.Alarm(umpKey, umpMsg)
+		}
 		if dp, err = eh.stream.client.dataWrapper.GetDataPartitionForWrite(exclude); err != nil {
 			log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v) exclude(%v) err(%v)", eh, exclude,
 				err)
+			if len(exclude) > 0 {
+				// if all dp is excluded, clean exclude map
+				exclude = make(map[string]struct{})
+				log.LogWarnf("allocateExtent: clean exclude because of no writable partition, eh(%v) exclude(%v)", eh, exclude)
+			}
+			time.Sleep(5 * time.Second)
 			continue
 		}
 
@@ -589,14 +610,6 @@ func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
 		//log.LogDebugf("ExtentHandler allocateExtent exit: eh(%v) dp(%v) extID(%v)", eh, dp, extID)
 		return nil
 	}
-
-	errmsg := fmt.Sprintf("allocateExtent failed: hit max retry limit")
-	if err != nil {
-		err = errors.Trace(err, errmsg)
-	} else {
-		err = errors.New(errmsg)
-	}
-	return err
 }
 
 func (eh *ExtentHandler) createConnection(dp *DataPartition) (*net.TCPConn, error) {
