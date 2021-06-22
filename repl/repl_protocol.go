@@ -59,8 +59,8 @@ type ReplProtocol struct {
 	operatorFunc func(p *Packet, c *net.TCPConn) error // operator
 	postFunc     func(p *Packet) error                 // post-processing packet
 
-	isError int32
-	replId  int64
+	isError   int32
+	replId    int64
 	stopError string
 }
 
@@ -104,7 +104,7 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 				p.PackErrorBody(ActionSendToFollowers, err.Error())
 				p.respCh <- fmt.Errorf(string(p.Data[:p.Size]))
 				_ = ft.conn.Close()
-				log.LogErrorf("request(%v) ActionSendToFollowers(%v) error(%v)",p.GetUniqueLogId(),ft.conn.RemoteAddr().String(),err.Error())
+				log.LogErrorf("request(%v) ActionSendToFollowers(%v) error(%v)", p.GetUniqueLogId(), ft.conn.RemoteAddr().String(), err.Error())
 				continue
 			}
 			ft.recvCh <- p
@@ -146,8 +146,8 @@ func (ft *FollowerTransport) readFollowerResult(ctx context.Context, request *Fo
 		request.respCh <- err
 		if err != nil {
 			_ = ft.conn.Close()
+			log.LogErrorf("request(%v) readFollowerResult(%v) error(%v)", request.GetUniqueLogId(), ft.conn.RemoteAddr().String(), err)
 		}
-		log.LogErrorf("request(%v) readFollowerResult(%v) error(%v)",request.GetUniqueLogId(),ft.conn.RemoteAddr().String(),err.Error())
 	}()
 	if request.IsErrPacket() {
 		err = fmt.Errorf(string(request.Data[:request.Size]))
@@ -286,16 +286,16 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 		defer tracer.Finish()
 		request.SetCtx(tracer.Context())
 	}
-	remoteAddr:= rp.sourceConn.RemoteAddr().String()
+	remoteAddr := rp.sourceConn.RemoteAddr().String()
 	log.LogDebugf("action[readPkgAndPrepare] packet(%v) from remote(%v) ",
-		request.GetUniqueLogId(),remoteAddr)
+		request.GetUniqueLogId(), remoteAddr)
 	if err = request.resolveFollowersAddr(remoteAddr); err != nil {
 		err = rp.putResponse(request)
 		return
 	}
 	if err = rp.prepareFunc(request); err != nil {
 		log.LogErrorf("%v  packet(%v) from remote(%v) error(%v)",
-			ActionPreparePkt,request.GetUniqueLogId(), remoteAddr,err.Error())
+			ActionPreparePkt, request.GetUniqueLogId(), remoteAddr, err.Error())
 		err = rp.putResponse(request)
 		return
 	}
@@ -477,8 +477,8 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 func (rp *ReplProtocol) Stop(stopErr error) {
 	rp.exitedMu.Lock()
 	defer rp.exitedMu.Unlock()
-	if stopErr!=nil && rp.stopError=="" {
-		rp.stopError=stopErr.Error()
+	if stopErr != nil && rp.stopError == "" {
+		rp.stopError = stopErr.Error()
 	}
 	if atomic.LoadInt32(&rp.exited) == ReplRuning {
 		if rp.exitC != nil {
@@ -532,7 +532,7 @@ func (rp *ReplProtocol) cleanToBeProcessCh() {
 		case p := <-rp.toBeProcessedCh:
 			_ = rp.postFunc(p)
 			p.clean()
-			log.LogErrorf("Action[cleanToBeProcessCh] request(%v) because (%v)",p.GetUniqueLogId(),rp.stopError)
+			log.LogErrorf("Action[cleanToBeProcessCh] request(%v) because (%v)", p.GetUniqueLogId(), rp.stopError)
 		default:
 			return
 		}
@@ -546,7 +546,7 @@ func (rp *ReplProtocol) cleanResponseCh() {
 		case p := <-rp.responseCh:
 			_ = rp.postFunc(p)
 			p.clean()
-			log.LogErrorf("Action[cleanResponseCh] request(%v) because (%v)",p.GetUniqueLogId(),rp.stopError)
+			log.LogErrorf("Action[cleanResponseCh] request(%v) because (%v)", p.GetUniqueLogId(), rp.stopError)
 		default:
 			return
 		}
@@ -559,7 +559,7 @@ func (rp *ReplProtocol) cleanResource() {
 	for e := rp.packetList.Front(); e != nil; e = e.Next() {
 		request := e.Value.(*Packet)
 		_ = rp.postFunc(request)
-		log.LogErrorf("Action[cleanResource] request(%v) because (%v)",request.GetUniqueLogId(),rp.stopError)
+		log.LogErrorf("Action[cleanResource] request(%v) because (%v)", request.GetUniqueLogId(), rp.stopError)
 		request.clean()
 	}
 	rp.cleanToBeProcessCh()
@@ -592,7 +592,7 @@ func (rp *ReplProtocol) putResponse(reply *Packet) (err error) {
 	case rp.responseCh <- reply:
 		return
 	default:
-		err=fmt.Errorf("request(%v) response Chan has full (%v) ", reply.GetUniqueLogId(),len(rp.responseCh))
+		err = fmt.Errorf("request(%v) response Chan has full (%v) ", reply.GetUniqueLogId(), len(rp.responseCh))
 		log.LogErrorf(err.Error())
 		return err
 	}
@@ -603,7 +603,7 @@ func (rp *ReplProtocol) putToBeProcess(request *Packet) (err error) {
 	case rp.toBeProcessedCh <- request:
 		return
 	default:
-		err=fmt.Errorf("request(%v)  toBeProcessedCh Chan has full (%v)",request.GetUniqueLogId(), len(rp.toBeProcessedCh))
+		err = fmt.Errorf("request(%v)  toBeProcessedCh Chan has full (%v)", request.GetUniqueLogId(), len(rp.toBeProcessedCh))
 		log.LogErrorf(err.Error())
 		return err
 	}
@@ -614,7 +614,7 @@ func (rp *ReplProtocol) putAck(request *Packet) (err error) {
 	case rp.ackCh <- struct{}{}:
 		return
 	default:
-		err=fmt.Errorf("request(%v) ack Chan has full (%v)",request.GetUniqueLogId(), len(rp.ackCh))
+		err = fmt.Errorf("request(%v) ack Chan has full (%v)", request.GetUniqueLogId(), len(rp.ackCh))
 		log.LogErrorf(err.Error())
 		return err
 	}
