@@ -300,31 +300,38 @@ func (r *raftFsm) applyConfChange(cc *proto.ConfChange) {
 	}
 }
 func (r *raftFsm) applyResetPeer(rp *proto.ResetPeers) {
-	if r.state == stateLeader {
-		logger.Warn("raft[%v] ignore reset peers in case of leader exists", r.id)
+	if r.state == stateLeader && r.pendingConf == true {
+		logger.Warn("raft[%v] applyResetPeer waiting current conf change", r.id)
 		return
 	}
-	if len(rp.NewPeers) > len(r.replicas)/2 {
-		logger.Warn("raft[%v] ignore reset more than half of old peers", r.id)
+	if len(rp.NewPeers) == 0 {
+		logger.Warn("raft[%v] ignore reset to empty peers", r.id)
 		return
 	}
-
-	for _, peer := range rp.NewPeers {
-		replica, ok := r.replicas[peer.ID]
-		if !ok {
-			logger.Info("raft[%v] ignore reset peer[%v], current[%v]", r.id, peer.String(), replica.peer.String())
-			return
-		} else if replica.peer.PeerID != peer.PeerID {
-			if logger.IsEnableInfo() {
+	if len(rp.NewPeers) == len(r.replicas) {
+		var flag bool
+		for _, peer := range rp.NewPeers {
+			replica, ok := r.replicas[peer.ID]
+			if !ok {
+				flag = true
 				logger.Info("raft[%v] ignore reset peer[%v], current[%v]", r.id, peer.String(), replica.peer.String())
+				break
 			}
+			if replica.peer.PeerID != peer.PeerID {
+				if logger.IsEnableInfo() {
+					logger.Info("raft[%v] ignore reset peer[%v], current[%v]", r.id, peer.String(), replica.peer.String())
+				}
+				return
+			}
+		}
+		if !flag {
+			logger.Info("raft[%v] applyResetPeer no change", r.id)
 			return
 		}
 	}
-	r.reset(r.term+1, 0, false)
-	r.acks = nil
+	//todo: support reset peer which is not in replicas
 	for _, replica := range r.replicas {
-		flag := false
+		var flag bool
 		for _, peer := range rp.NewPeers {
 			if replica.peer.ID == peer.ID {
 				flag = true
@@ -334,7 +341,8 @@ func (r *raftFsm) applyResetPeer(rp *proto.ResetPeers) {
 			delete(r.replicas, replica.peer.ID)
 		}
 	}
-
+	r.reset(r.term+1, 0, false)
+	r.acks = nil
 }
 
 func (r *raftFsm) addPeer(peer proto.Peer, isLearner bool, promConfig *proto.PromoteConfig) {

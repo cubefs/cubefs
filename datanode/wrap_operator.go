@@ -956,7 +956,7 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 	}
 	p.PartitionID = req.PartitionId
 
-	if !dp.IsExistReplica(req.RemovePeer.Addr) {
+	if !req.RaftOnly && !dp.IsExistReplica(req.RemovePeer.Addr) {
 		log.LogInfof("handlePacketToRemoveDataPartitionRaftMember recive MasterCommand: %v "+
 			"RemoveRaftPeer(%v) has not exsit", string(reqData), req.RemovePeer.Addr)
 		return
@@ -966,8 +966,10 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 	if !isRaftLeader {
 		return
 	}
-	if err = dp.CanRemoveRaftMember(req.RemovePeer); err != nil {
-		return
+	if !req.RaftOnly {
+		if err = dp.CanRemoveRaftMember(req.RemovePeer); err != nil {
+			return
+		}
 	}
 	if req.RemovePeer.ID != 0 {
 		_, err = dp.ChangeRaftMember(raftProto.ConfRemoveNode, raftProto.Peer{ID: req.RemovePeer.ID}, reqData)

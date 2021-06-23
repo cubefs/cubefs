@@ -80,3 +80,10 @@ const (
 	ResourceDataPartitionShortHand = "dp"
 	ResourceMetaPartitionShortHand = "mp"
 )
+
+const (
+	UsedSizeNotEqualErr         = "used size not equal"
+	RaftNoLeader                = "no raft leader"
+	ReplicaNotConsistent        = "replica number not consistent"
+	PartitionNotHealthyInMaster = "partition not healthy in master"
+)

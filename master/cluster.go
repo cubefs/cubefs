@@ -698,28 +698,30 @@ func (c *Cluster) checkLackReplicaDataPartitions() (lackReplicaDataPartitions []
 }
 
 // check corrupt partitions related to this data node
-func (c *Cluster) checkCorruptDataNode(dataNode *DataNode) (corruptPartitions []*DataPartition, err error) {
+func (c *Cluster) checkCorruptDataNode(dataNode *DataNode) (corruptPartitions []*DataPartition, panicHostsList [][]string, err error) {
 	var (
-		dataPartitions    []*DataPartition
-		dn                *DataNode
-		corruptPids       []uint64
-		corruptReplicaNum uint8
+		dataPartitions []*DataPartition
+		dn             *DataNode
+		corruptPids    []uint64
 	)
+	corruptPartitions = make([]*DataPartition, 0)
+	panicHostsList = make([][]string, 0)
 	dataNode.RLock()
 	defer dataNode.RUnlock()
 	dataPartitions = c.getAllDataPartitionByDataNode(dataNode.Addr)
 	for _, partition := range dataPartitions {
-		corruptReplicaNum = 0
+		panicHosts := make([]string, 0)
 		for _, host := range partition.Hosts {
 			if dn, err = c.dataNode(host); err != nil {
 				return
 			}
 			if !dn.isActive {
-				corruptReplicaNum = corruptReplicaNum + 1
+				panicHosts = append(panicHosts, host)
 			}
 		}
-		if corruptReplicaNum > partition.ReplicaNum/2 && corruptReplicaNum != partition.ReplicaNum {
+		if len(panicHosts) > int(partition.ReplicaNum/2) && len(panicHosts) != int(partition.ReplicaNum) {
 			corruptPartitions = append(corruptPartitions, partition)
+			panicHostsList = append(panicHostsList, panicHosts)
 			corruptPids = append(corruptPids, partition.PartitionID)
 		}
 	}
@@ -1483,36 +1485,13 @@ var getTargetAddressForDataPartitionDecommission = func(c *Cluster, offlineAddr 
 	return
 }
 
-func (c *Cluster) resetDataPartition(dp *DataPartition) (err error) {
-	var (
-		panicHosts []string
-		msg        string
-	)
-	dp.RLock()
-	for _, host := range dp.Hosts {
-		var dataNode *DataNode
-		if dataNode, err = c.dataNode(host); err != nil {
-			dp.RUnlock()
-			goto errHandler
-		}
-		if !dataNode.isActive {
-			panicHosts = append(panicHosts, host)
-		}
-	}
-	//Todo: maybe replaced by actual data replica number
-	if uint8(len(panicHosts)) < dp.ReplicaNum/2+dp.ReplicaNum%2 {
-		err = proto.ErrBadReplicaNoMoreThanHalf
-		dp.RUnlock()
-		goto errHandler
-	}
-	if uint8(len(panicHosts)) >= dp.ReplicaNum {
-		err = proto.ErrNoLiveReplicas
-		dp.RUnlock()
-		goto errHandler
-	}
-	dp.RUnlock()
+func (c *Cluster) resetDataPartition(dp *DataPartition, panicHosts []string) (err error) {
+	var msg string
 	if err = c.forceRemoveDataReplica(dp, panicHosts); err != nil {
 		goto errHandler
+	}
+	if len(panicHosts) == 0 {
+		return
 	}
 	//record each badAddress, and update the badAddress by a new address in the same zone(nodeSet)
 	for _, address := range panicHosts {
@@ -1720,24 +1699,19 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate, mi
 	}
 	return
 }
-func (c *Cluster) forceRemoveDataReplica(dp *DataPartition, addrs []string) (err error) {
-	var dataNode *DataNode
+func (c *Cluster) forceRemoveDataReplica(dp *DataPartition, panicHosts []string) (err error) {
 	dp.RLock()
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[forceRemoveDataReplica],vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
 		}
 	}()
-	// Only after reset peers succeed in remote datanode, the meta data can be updated
-	newHosts := make([]string, 0, len(dp.Hosts)-len(addrs))
-	newPeers := make([]proto.Peer, 0, len(dp.Peers)-len(addrs))
+	//Only after reset peers succeed in remote datanode, the meta data can be updated
+	newPeers := make([]proto.Peer, 0, len(dp.Peers)-len(panicHosts))
 	for _, host := range dp.Hosts {
-		if contains(addrs, host) {
+		if contains(panicHosts, host) {
 			continue
 		}
-		newHosts = append(newHosts, host)
-	}
-	for _, host := range newHosts {
 		var dataNode *DataNode
 		dataNode, err = c.dataNode(host)
 		if err != nil {
@@ -1751,29 +1725,30 @@ func (c *Cluster) forceRemoveDataReplica(dp *DataPartition, addrs []string) (err
 		newPeers = append(newPeers, peer)
 	}
 	dp.RUnlock()
-	for _, host := range newHosts {
-		if err = c.resetDataPartitionRaftMember(dp, newPeers, host); err != nil {
+	for _, peer := range newPeers {
+		if err = c.resetDataPartitionRaftMember(dp, newPeers, peer.Addr); err != nil {
 			return
 		}
 	}
-	leaderAddr := dp.getLeaderAddrWithLock()
-	if !contains(newHosts, leaderAddr) {
+	/*	//try to change leader after  reset raft members
 		if dataNode, err = c.dataNode(dp.Hosts[0]); err != nil {
 			log.LogErrorf("action[forceRemoveDataReplica],new peers[%v], old peers[%v], err[%v]", newPeers, dp.Peers, err)
+			return
 		}
 		if dataNode != nil {
 			if err = dp.tryToChangeLeader(c, dataNode); err != nil {
 				log.LogErrorf("action[forceRemoveDataReplica],new peers[%v], old peers[%v], err[%v]", newPeers, dp.Peers, err)
 			}
-		}
-	}
-	for _, addr := range addrs {
-		var newDataPartitions = make([]uint64, 0)
+		}*/
 
+	for _, addr := range panicHosts {
+		var newDataPartitions = make([]uint64, 0)
+		var dataNode *DataNode
 		if dataNode, err = c.dataNode(addr); err != nil {
 			log.LogErrorf("action[forceRemoveDataReplica],new peers[%v], old peers[%v], err[%v]", newPeers, dp.Peers, err)
 			continue
 		}
+		//try to delete the excess replica
 		if err = c.deleteDataReplica(dp, dataNode, false); err != nil {
 			log.LogErrorf("action[forceRemoveDataReplica],new peers[%v], old peers[%v], err[%v]", newPeers, dp.Peers, err)
 			continue
@@ -1787,11 +1762,14 @@ func (c *Cluster) forceRemoveDataReplica(dp *DataPartition, addrs []string) (err
 		dataNode.Lock()
 		dataNode.PersistenceDataPartitions = newDataPartitions
 		dataNode.Unlock()
+		_ = c.removeDataPartitionRaftOnly(dp, proto.Peer{ID: dataNode.ID, Addr: addr})
 	}
+
 	log.LogInfof("action[forceRemoveDataReplica],new peers[%v], old peers[%v], err[%v]", newPeers, dp.Peers, err)
 	return
 }
 
+//the order of newPeers must be consistent with former
 func (c *Cluster) resetDataPartitionRaftMember(dp *DataPartition, newPeers []proto.Peer, host string) (err error) {
 	dp.Lock()
 	defer dp.Unlock()
@@ -1892,6 +1870,29 @@ func (c *Cluster) removeDataPartitionRaftMember(dp *DataPartition, removePeer pr
 		return
 	}
 	dp.Unlock()
+	return
+}
+
+//This function is used to remove the redundant raft member or just apply an excess raft log, without any changement to the fsm
+func (c *Cluster) removeDataPartitionRaftOnly(dp *DataPartition, removePeer proto.Peer) (err error) {
+	dp.Lock()
+	defer dp.Unlock()
+	task := dp.createTaskToRemoveRaftOnly(removePeer)
+	var leaderDataNode *DataNode
+	for _, host := range dp.Hosts {
+		if leaderDataNode, err = c.dataNode(host); err != nil {
+			return
+		}
+		task.OperatorAddr = host
+		_, err = leaderDataNode.TaskManager.syncSendAdminTask(task)
+		if err == nil {
+			break
+		}
+		time.Sleep(retrySendSyncTaskInternal)
+	}
+	if err != nil {
+		log.LogErrorf("action[removeDataPartitionRaftOnly] vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
+	}
 	return
 }
 

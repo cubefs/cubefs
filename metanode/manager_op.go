@@ -1017,7 +1017,7 @@ func (m *metadataManager) opRemoveMetaPartitionRaftMember(conn net.Conn,
 		return err
 	}
 
-	if !mp.IsExistPeer(req.RemovePeer) {
+	if !req.RaftOnly && !mp.IsExistPeer(req.RemovePeer) {
 		p.PacketOkReply()
 		m.respondToClient(conn, p)
 		return
@@ -1034,12 +1034,14 @@ func (m *metadataManager) opRemoveMetaPartitionRaftMember(conn net.Conn,
 		m.respondToClient(conn, p)
 		return
 	}
-	if err = mp.CanRemoveRaftMember(req.RemovePeer); err != nil {
-		err = errors.NewErrorf("[opRemoveMetaPartitionRaftMember]: partitionID= %d, "+
-			"Marshal %s", req.PartitionId, fmt.Sprintf("unavali RemovePeerID %v", req.RemovePeer.ID))
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClient(conn, p)
-		return
+	if !req.RaftOnly {
+		if err = mp.CanRemoveRaftMember(req.RemovePeer); err != nil {
+			err = errors.NewErrorf("[opRemoveMetaPartitionRaftMember]: partitionID= %d, "+
+				"Marshal %s", req.PartitionId, fmt.Sprintf("unavali RemovePeerID %v", req.RemovePeer.ID))
+			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+			m.respondToClient(conn, p)
+			return
+		}
 	}
 	if req.RemovePeer.ID == 0 {
 		err = errors.NewErrorf("[opRemoveMetaPartitionRaftMember]: partitionID= %d, "+
@@ -1107,7 +1109,17 @@ func (m *metadataManager) opResetMetaPartitionMember(conn net.Conn,
 		peers = append(peers, raftProto.Peer{ID: peer.ID})
 	}
 	err = mp.ResetMember(peers, reqData)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
 	updated, err = mp.ApplyResetMember(req)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
 	if updated {
 		if err = mp.PersistMetadata(); err != nil {
 			log.LogErrorf("action[opResetMetaPartitionMember] err[%v].", err)

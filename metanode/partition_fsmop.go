@@ -159,8 +159,10 @@ func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMember
 
 func (mp *metaPartition) ApplyResetMember(req *proto.ResetMetaPartitionRaftMemberRequest) (updated bool, err error) {
 	var (
-		newPeerIndexes []int
-		newPeers       []proto.Peer
+		newPeerIndexes    []int
+		newLearnerIndexes []int
+		newPeers          []proto.Peer
+		newLearners       []proto.Learner
 	)
 	data, _ := json.Marshal(req)
 	updated = true
@@ -187,17 +189,34 @@ func (mp *metaPartition) ApplyResetMember(req *proto.ResetMetaPartitionRaftMembe
 			return
 		}
 	}
+	for _, peer := range req.NewPeers {
+		for index, l := range mp.config.Learners {
+			if peer.ID == l.ID {
+				newLearnerIndexes = append(newLearnerIndexes, index)
+				break
+			}
+		}
+	}
 	if !updated {
 		log.LogInfof("NoUpdate ResetRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 			req.PartitionId, mp.config.NodeId, string(data))
 		return
 	}
+
 	newPeers = make([]proto.Peer, len(newPeerIndexes))
+	newLearners = make([]proto.Learner, len(newLearnerIndexes))
 	sort.Ints(newPeerIndexes)
 	for i, index := range newPeerIndexes {
 		newPeers[i] = mp.config.Peers[index]
 	}
 	mp.config.Peers = newPeers
+
+	sort.Ints(newLearnerIndexes)
+	for i, index := range newLearnerIndexes {
+		newLearners[i] = mp.config.Learners[index]
+	}
+	mp.config.Learners = newLearners
+
 	log.LogInfof("Finish ResetRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 		req.PartitionId, mp.config.NodeId, string(data))
 	return

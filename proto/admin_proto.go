@@ -24,6 +24,7 @@ const (
 	AdminDecommissionDataPartition = "/dataPartition/decommission"
 	AdminDiagnoseDataPartition     = "/dataPartition/diagnose"
 	AdminResetDataPartition        = "/dataPartition/reset"
+	AdminManualResetDataPartition  = "/dataPartition/manualReset"
 	AdminResetCorruptDataNode      = "/dataNode/reset"
 	AdminDeleteDataReplica         = "/dataReplica/delete"
 	AdminAddDataReplica            = "/dataReplica/add"
@@ -82,6 +83,7 @@ const (
 	AdminLoadMetaPartition         = "/metaPartition/load"
 	AdminDiagnoseMetaPartition     = "/metaPartition/diagnose"
 	AdminResetMetaPartition        = "/metaPartition/reset"
+	AdminManualResetMetaPartition  = "/metaPartition/manualReset"
 	AdminResetCorruptMetaNode      = "/metaNode/reset"
 	AdminDecommissionMetaPartition = "/metaPartition/decommission"
 	AdminAddMetaReplica            = "/metaReplica/add"
@@ -238,6 +240,7 @@ type RemoveDataPartitionRaftMemberRequest struct {
 	PartitionId     uint64
 	RemovePeer      Peer
 	ReserveResource bool
+	RaftOnly        bool
 }
 
 // AddDataPartitionRaftLearnerRequest defines the request of add raftLearner a data partition.
@@ -275,6 +278,7 @@ type RemoveMetaPartitionRaftMemberRequest struct {
 	PartitionId     uint64
 	RemovePeer      Peer
 	ReserveResource bool
+	RaftOnly        bool
 }
 
 // ResetMetaPartitionRaftMemberRequest defines the request of reset raftMembers of a meta partition.

@@ -86,6 +86,7 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 func newListCorruptDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 	var optEnableAutoFullfill bool
 	var optCheckAll bool
+	var optDiffSizeThreshold int
 	var cmd = &cobra.Command{
 		Use:   CliOpCheck,
 		Short: cmdCheckCorruptDataPartitionShort,
@@ -102,7 +103,7 @@ The "reset" command will be released in next version`,
 				err       error
 			)
 			if optCheckAll {
-				err = checkAllDataPartitions(client)
+				err = checkAllDataPartitions(client, optDiffSizeThreshold)
 				if err != nil {
 					errout("%v\n", err)
 				}
@@ -151,25 +152,23 @@ The "reset" command will be released in next version`,
 			var sb = strings.Builder{}
 
 			for _, pid := range diagnosis.LackReplicaDataPartitionIDs {
-				var partition *proto.DataPartitionInfo
-				if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
+				var (
+					partition     *proto.DataPartitionInfo
+					leaderRps     map[uint64]*proto.ReplicaStatus
+					canAutoRepair bool
+					peerStrings   []string
+				)
+				canAutoRepair = true
+				if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil || partition == nil {
 					stdout("get partition error, err:[%v]", err)
 					return
 				}
-				if partition == nil {
-					stdout("Partition is not found, err:[%v]", err)
-					return
-				}
-				stdout("%v\n", formatDataPartitionInfoRow(partition))
+				stdout("%v", formatDataPartitionInfoRow(partition))
 				sort.Strings(partition.Hosts)
 				if len(partition.MissingNodes) > 0 || partition.Status == -1 {
 					stdoutRed(fmt.Sprintf("partition not ready to repair"))
 					continue
 				}
-				var leaderRps map[uint64]*proto.ReplicaStatus
-				var canAutoRepair bool
-				var peerStrings []string
-				canAutoRepair = true
 				for i, r := range partition.Replicas {
 					var rps map[uint64]*proto.ReplicaStatus
 					var dnPartition *proto.DNDataPartitionInfo
@@ -197,7 +196,7 @@ The "reset" command will be released in next version`,
 						}
 					}
 					fmt.Printf(partitionInfoColorTablePattern+"\n",
-						"", "", "", fmt.Sprintf("%v(peers)", r.Addr), fmt.Sprintf("%v/%v", len(peers), partition.ReplicaNum), strings.Join(peers, "; "))
+						"", "", "", fmt.Sprintf("%v(peers)", r.Addr), fmt.Sprintf("%v/%v", len(peers), partition.ReplicaNum), strings.Join(peers, ","))
 				}
 				if len(leaderRps) != 3 || len(partition.Hosts) != 2 {
 					stdoutRed(fmt.Sprintf("raft peer number(expected is 3, but is %v) or replica number(expected is 2, but is %v) not match ", len(leaderRps), len(partition.Hosts)))
@@ -236,12 +235,17 @@ The "reset" command will be released in next version`,
 			return
 		},
 	}
+	cmd.Flags().IntVar(&optDiffSizeThreshold, CliFlagThreshold, 20, "if the diff size larger than this, report the volume")
 	cmd.Flags().BoolVar(&optEnableAutoFullfill, CliFlagEnableAutoFill, false, "true - automatically full fill the missing replica")
 	cmd.Flags().BoolVar(&optCheckAll, "all", false, "true - check all partitions; false - only check partitions which lack of replica")
 	return cmd
 }
-func checkAllDataPartitions(client *master.MasterClient) (err error) {
-	var volInfo []*proto.VolInfo
+func checkAllDataPartitions(client *master.MasterClient, optDiffSizeThreshold int) (err error) {
+	var (
+		volInfo          []*proto.VolInfo
+		sizeNotEqualPids []uint64
+		noLeaderPids     []uint64
+	)
 	if volInfo, err = client.AdminAPI().ListVols(""); err != nil {
 		stdout("%v\n", err)
 		return
@@ -250,7 +254,11 @@ func checkAllDataPartitions(client *master.MasterClient) (err error) {
 	stdout("%v\n", "[Partition peer info not valid]:")
 	stdout("%v\n", partitionInfoTableHeader)
 	for _, vol := range volInfo {
-		var volView *proto.VolView
+		var (
+			volView *proto.VolView
+			volLock sync.Mutex
+			wg      sync.WaitGroup
+		)
 		if volView, err = client.ClientAPI().GetVolume(vol.Name, calcAuthKey(vol.Owner)); err != nil {
 			stdout("Found an invalid vol: %v\n", vol.Name)
 			continue
@@ -258,91 +266,124 @@ func checkAllDataPartitions(client *master.MasterClient) (err error) {
 		sort.SliceStable(volView.DataPartitions, func(i, j int) bool {
 			return volView.DataPartitions[i].PartitionID < volView.DataPartitions[j].PartitionID
 		})
-		var wg sync.WaitGroup
 		for _, dp := range volView.DataPartitions {
 			wg.Add(1)
 			go func(dp *proto.DataPartitionResponse) {
 				defer wg.Done()
 				var outPut string
 				var isHealthy bool
-				outPut, isHealthy, _ = checkDataPartition(dp.PartitionID, client)
+				outPut, isHealthy, _ = checkDataPartition(dp.PartitionID, client, optDiffSizeThreshold)
 				if !isHealthy {
-					fmt.Printf(outPut)
-					stdoutGreen(strings.Repeat("_ ", len(partitionInfoTableHeader)/2+20) + "\n")
+					volLock.Lock()
+					if outPut == UsedSizeNotEqualErr {
+						sizeNotEqualPids = append(sizeNotEqualPids, dp.PartitionID)
+					} else if outPut == RaftNoLeader {
+						noLeaderPids = append(noLeaderPids, dp.PartitionID)
+					} else {
+						fmt.Printf(outPut)
+						//stdoutGreen(strings.Repeat("_ ", len(partitionInfoTableHeader)/2+20) + "\n")
+						fmt.Printf(strings.Repeat("_ ", len(partitionInfoTableHeader)/2+20) + "\n")
+					}
+					volLock.Unlock()
 				}
 			}(dp)
 		}
 		wg.Wait()
 	}
+	if len(noLeaderPids) > 0 {
+		fmt.Printf("raft leader status get failed dps[%v]: %v\n", len(noLeaderPids), noLeaderPids)
+	}
+	if len(sizeNotEqualPids) > 0 {
+		fmt.Printf("used size diff larger than %v percent not equal dps[%v]: %v\n", optDiffSizeThreshold, len(sizeNotEqualPids), sizeNotEqualPids)
+	}
 	return
 }
-func checkDataPartition(pid uint64, client *master.MasterClient) (outPut string, isHealthy bool, err error) {
-	var partition *proto.DataPartitionInfo
-	var sb = strings.Builder{}
-	isHealthy = true
-	if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
-		sb.WriteString(fmt.Sprintf("get partition error, err:[%v]", err))
+func checkDataPartition(pid uint64, client *master.MasterClient, optDiffSizeThreshold int) (outPut string, isHealthy bool, err error) {
+	var (
+		partition    *proto.DataPartitionInfo
+		errorReports []string
+		leaderStatus *proto.Status
+		sb           = strings.Builder{}
+	)
+	defer func() {
+		isHealthy = true
+		if len(errorReports) > 0 {
+			isHealthy = false
+			//mark \033[1;40;31m%-8v\033[0m\n
+			if len(errorReports) == 1 && errorReports[0] == UsedSizeNotEqualErr {
+				outPut = errorReports[0]
+				return
+			}
+			if len(errorReports) == 1 && errorReports[0] == RaftNoLeader {
+				outPut = errorReports[0]
+				return
+			}
+			if len(errorReports) == 2 && errorReports[0] == UsedSizeNotEqualErr && errorReports[1] == RaftNoLeader {
+				outPut = errorReports[0]
+				return
+			}
+			for i, msg := range errorReports {
+				sb.WriteString(fmt.Sprintf("%-8v\n", fmt.Sprintf("error %v: %v", i+1, msg)))
+			}
+		}
+		outPut = sb.String()
+	}()
+	if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil || partition == nil {
+		errorReports = append(errorReports, fmt.Sprintf("get partition error, err:[%v]", err))
 		return
 	}
-	if partition == nil {
-		sb.WriteString(fmt.Sprintf("Partition is not found, err:[%v]", err))
-		return
-	}
-	sb.WriteString(fmt.Sprintf("%v\n", formatDataPartitionInfoRow(partition)))
+	sb.WriteString(fmt.Sprintf("%v", formatDataPartitionInfoRow(partition)))
 	sort.Strings(partition.Hosts)
 	if len(partition.MissingNodes) > 0 || partition.Status == -1 || len(partition.Hosts) != int(partition.ReplicaNum) {
-		errMsg := fmt.Sprintf("The partition is not healthy according to the report message from master")
-		sb.WriteString(fmt.Sprintf("\033[1;40;31m%-8v\033[0m\n", errMsg))
-		isHealthy = false
+		errorReports = append(errorReports, PartitionNotHealthyInMaster)
 	}
-	if isEqual := checkUsedSizeDiff(partition.Replicas); !isEqual {
-		sb.WriteString(fmt.Sprintf("\033[1;40;31m%-8v\033[0m\n", "used size not equal"))
-		isHealthy = false
+	if !checkUsedSizeDiff(partition.Replicas, optDiffSizeThreshold, partition.PartitionID) {
+		errorReports = append(errorReports, UsedSizeNotEqualErr)
 	}
-	var leaderRps map[uint64]*proto.ReplicaStatus
 	for _, r := range partition.Replicas {
-
-		var rps map[uint64]*proto.ReplicaStatus
 		var dnPartition *proto.DNDataPartitionInfo
-		var err error
+		var err1 error
 		addr := strings.Split(r.Addr, ":")[0]
 		//check dataPartition by dataNode api
-		if dnPartition, err = client.NodeAPI().DataNodeGetPartition(addr, partition.PartitionID); err != nil {
-			sb.WriteString(fmt.Sprintf(partitionInfoColorTablePattern+"\n",
-				"", "", "", fmt.Sprintf("%v", r.Addr), fmt.Sprintf("%v/%v", "nil", partition.ReplicaNum), fmt.Sprintf("get partition info failed, err:%v", err)))
-			isHealthy = false
+		for i := 0; i < 3; i++ {
+			if dnPartition, err1 = client.NodeAPI().DataNodeGetPartition(addr, partition.PartitionID); err1 == nil {
+				break
+			}
+			time.Sleep(1 * time.Second)
+		}
+		if err1 != nil || dnPartition == nil {
+			errorReports = append(errorReports, fmt.Sprintf("get partition[%v] failed in addr[%v], err:%v", partition.PartitionID, addr, err))
 			continue
 		}
-		sort.Strings(dnPartition.Replicas)
-		sb.WriteString(fmt.Sprintf(partitionInfoColorTablePattern+"\n",
-			"", "", "", fmt.Sprintf("%v(hosts)", r.Addr), fmt.Sprintf("%v/%v", len(dnPartition.Replicas), partition.ReplicaNum), strings.Join(dnPartition.Replicas, "; ")))
-
-		if rps = dnPartition.RaftStatus.Replicas; rps != nil {
-			leaderRps = rps
+		//RaftStatus Only exists on leader
+		if dnPartition.RaftStatus != nil && dnPartition.RaftStatus.NodeID == dnPartition.RaftStatus.Leader {
+			leaderStatus = dnPartition.RaftStatus
 		}
+		//print the hosts,peers,learners detail info
 		peerStrings := convertPeersToArray(dnPartition.Peers)
+		learnerStrings := convertLearnersToArray(dnPartition.Learners)
 		sort.Strings(peerStrings)
-		sb.WriteString(fmt.Sprintf(partitionInfoColorTablePattern+"\n",
-			"", "", "", fmt.Sprintf("%v(peers)", r.Addr), fmt.Sprintf("%v/%v", len(peerStrings), partition.ReplicaNum), strings.Join(peerStrings, "; ")))
-		if !isEqualStrings(peerStrings, dnPartition.Replicas) {
-			isHealthy = false
+		sort.Strings(dnPartition.Replicas)
+		sort.Strings(learnerStrings)
+		sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n",
+			"", "", "", fmt.Sprintf("%-22v", r.Addr), fmt.Sprintf("%v/%v", len(dnPartition.Replicas), partition.ReplicaNum), "(hosts)"+strings.Join(dnPartition.Replicas, ",")))
+		sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n",
+			"", "", "", fmt.Sprintf("%-22v", ""), fmt.Sprintf("%v/%v", len(peerStrings), partition.ReplicaNum), "(peers)"+strings.Join(peerStrings, ",")))
+		if len(dnPartition.Learners) > 0 {
+			sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n",
+				"", "", "", fmt.Sprintf("%-22v", ""), fmt.Sprintf("%v/%v", len(learnerStrings), len(partition.Learners)), "(learners)"+strings.Join(learnerStrings, ",")))
 		}
-		if !isEqualStrings(partition.Hosts, peerStrings) {
-			isHealthy = false
-		}
-		if len(peerStrings) != int(partition.ReplicaNum) || len(dnPartition.Replicas) != int(partition.ReplicaNum) {
-			isHealthy = false
+		if !isEqualStrings(peerStrings, dnPartition.Replicas) || !isEqualStrings(partition.Hosts, peerStrings) || len(dnPartition.Replicas) != int(partition.ReplicaNum) || len(partition.Learners) != len(dnPartition.Learners) {
+			errorReports = append(errorReports, fmt.Sprintf(ReplicaNotConsistent+" on host[%v]", r.Addr))
 		}
 	}
-	if len(leaderRps) == 0 {
-		isHealthy = false
-		errMsg := fmt.Sprintf("no raft leader")
-		sb.WriteString(fmt.Sprintf("\033[1;40;31m%-8v\033[0m\n", errMsg))
+	if leaderStatus == nil || len(leaderStatus.Replicas) == 0 {
+		errorReports = append(errorReports, RaftNoLeader)
 	}
-	outPut = sb.String()
 	return
 }
 func newResetDataPartitionCmd(client *master.MasterClient) *cobra.Command {
+	var optManualResetAddrs string
 	var cmd = &cobra.Command{
 		Use:   CliOpReset + " [DATA PARTITION ID]",
 		Short: cmdResetDataPartitionShort,
@@ -371,11 +412,19 @@ this action may lead to data loss, be careful to do this.`,
 			if "y" != confirm && "yes" != confirm {
 				return
 			}
-			if err = client.AdminAPI().ResetDataPartition(partitionID); err != nil {
-				return
+			if "" != optManualResetAddrs {
+				if err = client.AdminAPI().ManualResetDataPartition(partitionID, optManualResetAddrs); err != nil {
+					return
+				}
+			} else {
+				if err = client.AdminAPI().ResetDataPartition(partitionID); err != nil {
+					return
+				}
 			}
 		},
 	}
+	cmd.Flags().StringVar(&optManualResetAddrs, CliFlagAddress, "", "reset raft members according to the addr, split by ',' ")
+
 	return cmd
 }
 
@@ -460,23 +509,26 @@ func newDataPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 	return cmd
 }
 
-func checkUsedSizeDiff(replicas []*proto.DataReplica) (isEqual bool) {
-	if len(replicas) != 3 {
-		return
+func checkUsedSizeDiff(replicas []*proto.DataReplica, percent int, id uint64) (isEqual bool) {
+	if len(replicas) < 2 {
+		return true
+	}
+	if percent < 1 {
+		percent = 1
+	}
+	if percent > 99 {
+		percent = 99
 	}
 	isEqual = true
-	for i, r := range replicas {
-		var diff uint64
-		if replicas[(i+1)%3].Used > r.Used {
-			diff = replicas[(i+1)%3].Used - r.Used
-		} else {
-			diff = r.Used - replicas[(i+1)%3].Used
-		}
-		if diff > r.Used/100 {
-			isEqual = false
-			log.LogDebugf("diff:%v  is larger than 1 percent of used space:%v \n", diff, r.Used/100)
-		}
-
+	var sizeArr []int
+	for _, r := range replicas {
+		sizeArr = append(sizeArr, int(r.Used))
+	}
+	sort.Ints(sizeArr)
+	diff := sizeArr[len(sizeArr)-1] - sizeArr[0]
+	if diff*100/percent > sizeArr[len(sizeArr)-1] {
+		isEqual = false
+		log.LogDebugf("pid: %v diff:%v is larger than 1 percent, sizeArray:%v \n", id, diff, sizeArr)
 	}
 	return
 }
@@ -548,7 +600,7 @@ func newDataPartitionPromoteLearnerCmd(client *master.MasterClient) *cobra.Comma
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	return cmd

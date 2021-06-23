@@ -191,6 +191,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminResetMetaPartition).
 		HandlerFunc(m.resetMetaPartition)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminManualResetMetaPartition).
+		HandlerFunc(m.manualResetMetaPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminResetCorruptMetaNode).
 		HandlerFunc(m.resetCorruptMetaNode)
 
@@ -213,6 +216,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminResetDataPartition).
 		HandlerFunc(m.resetDataPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminManualResetDataPartition).
+		HandlerFunc(m.manualResetDataPartition)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.ClientDataPartitions).
 		HandlerFunc(m.getDataPartitions)

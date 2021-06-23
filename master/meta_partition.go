@@ -599,8 +599,15 @@ func (mp *MetaPartition) createTaskToRemoveRaftMember(removePeer proto.Peer) (t 
 	if err != nil {
 		return nil, errors.NewError(err)
 	}
-	req := &proto.RemoveMetaPartitionRaftMemberRequest{PartitionId: mp.PartitionID, RemovePeer: removePeer}
+	req := &proto.RemoveMetaPartitionRaftMemberRequest{PartitionId: mp.PartitionID, RemovePeer: removePeer, RaftOnly: false}
 	t = proto.NewAdminTask(proto.OpRemoveMetaPartitionRaftMember, mr.Addr, req)
+	resetMetaPartitionTaskID(t, mp.PartitionID)
+	return
+}
+
+func (mp *MetaPartition) createTaskToRemoveRaftOnly(removePeer proto.Peer) (t *proto.AdminTask) {
+	req := &proto.RemoveMetaPartitionRaftMemberRequest{PartitionId: mp.PartitionID, RemovePeer: removePeer, RaftOnly: true}
+	t = proto.NewAdminTask(proto.OpRemoveMetaPartitionRaftMember, "", req)
 	resetMetaPartitionTaskID(t, mp.PartitionID)
 	return
 }

@@ -64,10 +64,11 @@ func newAddDataPartitionRaftMemberRequest(ID uint64, addPeer proto.Peer) (req *p
 	return
 }
 
-func newRemoveDataPartitionRaftMemberRequest(ID uint64, removePeer proto.Peer) (req *proto.RemoveDataPartitionRaftMemberRequest) {
+func newRemoveDataPartitionRaftMemberRequest(ID uint64, removePeer proto.Peer, raftOnly bool) (req *proto.RemoveDataPartitionRaftMemberRequest) {
 	req = &proto.RemoveDataPartitionRaftMemberRequest{
 		PartitionId: ID,
 		RemovePeer:  removePeer,
+		RaftOnly:    raftOnly,
 	}
 	return
 }

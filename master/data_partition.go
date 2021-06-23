@@ -143,7 +143,13 @@ func (partition *DataPartition) createTaskToRemoveRaftMember(removePeer proto.Pe
 		err = proto.ErrNoLeader
 		return
 	}
-	task = proto.NewAdminTask(proto.OpRemoveDataPartitionRaftMember, leaderAddr, newRemoveDataPartitionRaftMemberRequest(partition.PartitionID, removePeer))
+	task = proto.NewAdminTask(proto.OpRemoveDataPartitionRaftMember, leaderAddr, newRemoveDataPartitionRaftMemberRequest(partition.PartitionID, removePeer, false))
+	partition.resetTaskID(task)
+	return
+}
+
+func (partition *DataPartition) createTaskToRemoveRaftOnly(removePeer proto.Peer) (task *proto.AdminTask) {
+	task = proto.NewAdminTask(proto.OpRemoveDataPartitionRaftMember, "", newRemoveDataPartitionRaftMemberRequest(partition.PartitionID, removePeer, true))
 	partition.resetTaskID(task)
 	return
 }

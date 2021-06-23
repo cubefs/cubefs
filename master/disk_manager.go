@@ -144,7 +144,7 @@ func (c *Cluster) fulfillDataReplicaByLearner(partition *DataPartition, badAddr 
 	if _, newAddr, err = getTargetAddressForDataPartitionDecommission(c, badAddr, partition, excludeNodeSets, "", false); err != nil {
 		return
 	}
-	if err = c.addDataReplicaLearner(partition, newAddr, true, 100); err != nil {
+	if err = c.addDataReplicaLearner(partition, newAddr, true, 90); err != nil {
 		return
 	}
 	newPanicHost := make([]string, 0)

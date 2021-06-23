@@ -419,10 +419,12 @@ func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMember
 // Reset a raft node.
 func (dp *DataPartition) resetRaftNode(req *proto.ResetDataPartitionRaftMemberRequest) (isUpdated bool, err error) {
 	var (
-		newHostIndexes []int
-		newPeerIndexes []int
-		newHosts       []string
-		newPeers       []proto.Peer
+		newHostIndexes    []int
+		newPeerIndexes    []int
+		newLearnerIndexes []int
+		newHosts          []string
+		newPeers          []proto.Peer
+		newLearners       []proto.Learner
 	)
 	data, _ := json.Marshal(req)
 	isUpdated = true
@@ -466,19 +468,36 @@ func (dp *DataPartition) resetRaftNode(req *proto.ResetDataPartitionRaftMemberRe
 			return
 		}
 	}
+	for _, peer := range req.NewPeers {
+		for index, l := range dp.config.Learners {
+			if peer.ID == l.ID {
+				newLearnerIndexes = append(newLearnerIndexes, index)
+				break
+			}
+		}
+	}
 	newHosts = make([]string, len(newHostIndexes))
 	newPeers = make([]proto.Peer, len(newPeerIndexes))
+	newLearners = make([]proto.Learner, len(newLearnerIndexes))
 	dp.replicasLock.Lock()
 	sort.Ints(newHostIndexes)
 	for i, index := range newHostIndexes {
 		newHosts[i] = dp.config.Hosts[index]
 	}
 	dp.config.Hosts = newHosts
+
 	sort.Ints(newPeerIndexes)
 	for i, index := range newPeerIndexes {
 		newPeers[i] = dp.config.Peers[index]
 	}
 	dp.config.Peers = newPeers
+
+	sort.Ints(newLearnerIndexes)
+	for i, index := range newLearnerIndexes {
+		newLearners[i] = dp.config.Learners[index]
+	}
+	dp.config.Learners = newLearners
+
 	dp.replicas = make([]string, len(dp.config.Hosts))
 	copy(dp.replicas, dp.config.Hosts)
 	dp.replicasLock.Unlock()

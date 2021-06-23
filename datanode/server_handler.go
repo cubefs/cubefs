@@ -240,6 +240,10 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	var raftStatus *raft.Status
+	if partition.raftPartition != nil {
+		raftStatus = partition.raftPartition.Status()
+	}
 	result := &struct {
 		VolName              string                `json:"volName"`
 		ID                   uint64                `json:"id"`
@@ -265,7 +269,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		FileCount:            len(files),
 		Replicas:             partition.Replicas(),
 		TinyDeleteRecordSize: tinyDeleteRecordSize,
-		RaftStatus:           partition.raftPartition.Status(),
+		RaftStatus:           raftStatus,
 		Peers:                partition.config.Peers,
 		Learners:             partition.config.Learners,
 	}

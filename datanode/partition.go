@@ -394,14 +394,22 @@ func (dp *DataPartition) Stop() {
 func (dp *DataPartition) Delete() {
 	dp.Stop()
 	dp.Disk().DetachDataPartition(dp)
-	_ = dp.raftPartition.Delete()
+	if dp.raftPartition != nil {
+		_ = dp.raftPartition.Delete()
+	} else {
+		log.LogWarnf("action[Delete] raft instance not ready! dp:%v", dp.config.PartitionID)
+	}
 	_ = os.RemoveAll(dp.Path())
 }
 
 func (dp *DataPartition) Expired() {
 	dp.Stop()
 	dp.Disk().DetachDataPartition(dp)
-	_ = dp.raftPartition.Expired()
+	if dp.raftPartition != nil {
+		_ = dp.raftPartition.Expired()
+	} else {
+		log.LogWarnf("action[ExpiredPartition] raft instance not ready! dp:%v", dp.config.PartitionID)
+	}
 	var currentPath = path.Clean(dp.path)
 	var newPath = path.Join(path.Dir(currentPath),
 		ExpiredPartitionPrefix+path.Base(currentPath)+"_"+strconv.FormatInt(time.Now().Unix(), 10))
@@ -431,11 +439,11 @@ func (dp *DataPartition) IsRejectWrite() bool {
 }
 
 const (
-	MinDiskSpace=10*1024*1024*1024
+	MinDiskSpace = 10 * 1024 * 1024 * 1024
 )
 
 func (dp *DataPartition) IsRejectRandomWrite() bool {
-	return dp.Disk().Available<MinDiskSpace
+	return dp.Disk().Available < MinDiskSpace
 }
 
 // Status returns the partition status.
@@ -933,6 +941,9 @@ func (dp *DataPartition) SyncReplicaHosts(replicas []string) {
 
 // ResetRaftMember is a wrapper function of changing the raft member.
 func (dp *DataPartition) ResetRaftMember(peers []raftProto.Peer, context []byte) (err error) {
+	if dp.raftPartition == nil {
+		return fmt.Errorf("raft instance not ready")
+	}
 	err = dp.raftPartition.ResetMember(peers, context)
 	return
 }

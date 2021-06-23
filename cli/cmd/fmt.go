@@ -169,15 +169,23 @@ var (
 func formatDataPartitionInfoRow(partition *proto.DataPartitionInfo) string {
 	var sb = strings.Builder{}
 	sort.Strings(partition.Hosts)
-	sb.WriteString(fmt.Sprintf(partitionInfoTablePattern,
-		partition.PartitionID, partition.VolName, formatDataPartitionStatus(partition.Status), "Master", fmt.Sprintf("%v/%v", len(partition.Hosts), partition.ReplicaNum), strings.Join(partition.Hosts, "; ")))
+	sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n",
+		partition.PartitionID, partition.VolName, formatDataPartitionStatus(partition.Status), "master", fmt.Sprintf("%v/%v", len(partition.Hosts), partition.ReplicaNum), "(hosts)"+strings.Join(partition.Hosts, ",")))
+	if len(partition.Learners) > 0 {
+		sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n",
+			"", "", "", "master", fmt.Sprintf("%v/%v", len(partition.Learners), len(partition.Learners)), "(learners)"+strings.Join(convertLearnersToArray(partition.Learners), ",")))
+	}
 	return sb.String()
 }
 
 func formatMetaPartitionInfoRow(partition *proto.MetaPartitionInfo) string {
 	var sb = strings.Builder{}
-	sb.WriteString(fmt.Sprintf(partitionInfoTablePattern,
-		partition.PartitionID, partition.VolName, formatDataPartitionStatus(partition.Status), "Master", fmt.Sprintf("%v/%v", len(partition.Hosts), partition.ReplicaNum), strings.Join(partition.Hosts, "; ")))
+	sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n",
+		partition.PartitionID, partition.VolName, formatDataPartitionStatus(partition.Status), "master", fmt.Sprintf("%v/%v", len(partition.Hosts), partition.ReplicaNum), "(hosts)"+strings.Join(partition.Hosts, ",")))
+	if len(partition.Learners) > 0 {
+		sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n",
+			"", "", "", "master", fmt.Sprintf("%v/%v", len(partition.Learners), len(partition.Learners)), "(learners)"+strings.Join(convertLearnersToArray(partition.Learners), ",")))
+	}
 	return sb.String()
 }
 
@@ -528,9 +536,16 @@ func contains(arr []string, element string) (ok bool) {
 	}
 	return
 }
-func convertPeersToArray(peers []*proto.Peer) (addrs []string) {
+func convertPeersToArray(peers []proto.Peer) (addrs []string) {
 	addrs = make([]string, 0)
 	for _, peer := range peers {
+		addrs = append(addrs, peer.Addr)
+	}
+	return
+}
+func convertLearnersToArray(learners []proto.Learner) (addrs []string) {
+	addrs = make([]string, 0)
+	for _, peer := range learners {
 		addrs = append(addrs, peer.Addr)
 	}
 	return
