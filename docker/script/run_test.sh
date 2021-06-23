@@ -248,6 +248,6 @@ add_data_partitions ; sleep 3
 show_cluster_info
 start_client ; sleep 2
 run_ltptest
-run_s3_test
+#run_s3_test
 stop_client
 delete_volume
