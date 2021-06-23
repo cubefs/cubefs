@@ -742,16 +742,17 @@ func (c *Cluster) markDeleteVol(name, authKey string) (err error) {
 	return
 }
 
-func (c *Cluster) batchCreatePreLoadDataPartition(vol *Vol) (err error, dps []*DataPartition) {
+func (c *Cluster) batchCreatePreLoadDataPartition(vol *Vol, preload *DataPartitionPreLoad) (err error, dps []*DataPartition) {
 	if isHot(vol.VolType) {
 		return fmt.Errorf("vol type is not warm"), nil
 	}
-	reqCreateCount := (vol.PreloadCacheCapacity-1)/(util.DefaultDataPartitionSize/util.GB) + 1
+
+	reqCreateCount := (preload.preloadCacheCapacity-1)/(util.DefaultDataPartitionSize/util.GB) + 1
 
 	for i := 0; i < reqCreateCount; i++ {
 		log.LogErrorf("create preload data partition (%v) total (%v)", i, reqCreateCount)
 		var dp *DataPartition
-		if dp, err = c.createDataPartition(vol.Name, true); err != nil {
+		if dp, err = c.createDataPartition(vol.Name, preload); err != nil {
 			log.LogErrorf("create preload data partition fail: volume(%v) err(%v)", vol.Name, err)
 			return err, nil
 		}
@@ -767,7 +768,7 @@ func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int) (err error) {
 			return
 		}
 
-		if _, err = c.createDataPartition(vol.Name, false); err != nil {
+		if _, err = c.createDataPartition(vol.Name, nil); err != nil {
 			log.LogErrorf("action[batchCreateDataPartition] after create [%v] data partition,occurred error,err[%v]", i, err)
 			break
 		}
@@ -808,8 +809,8 @@ func (c *Cluster) isFaultDomain(vol *Vol) bool {
 // - If succeeded, replicate the data through raft and persist it to RocksDB.
 // - Otherwise, throw errors
 
-func (c *Cluster) createDataPartition(volName string, isPreload bool) (dp *DataPartition, err error) {
-	log.LogInfof("action[createDataPartition] isPreload [%v]", isPreload)
+func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreLoad) (dp *DataPartition, err error) {
+	log.LogInfof("action[createDataPartition] preload [%v]", preload)
 	var (
 		vol         *Vol
 		partitionID uint64
@@ -818,28 +819,35 @@ func (c *Cluster) createDataPartition(volName string, isPreload bool) (dp *DataP
 		wg          sync.WaitGroup
 	)
 
+	dpReplicaNum := vol.dpReplicaNum
+	zoneName := vol.zoneName
+	if preload != nil {
+		dpReplicaNum = uint8(preload.preloadReplicaNum)
+		zoneName = preload.preloadZoneName
+	}
+
 	if vol, err = c.getVol(volName); err != nil {
 		return
 	}
 	vol.createDpMutex.Lock()
 	defer vol.createDpMutex.Unlock()
-	errChannel := make(chan error, vol.dpReplicaNum)
+	errChannel := make(chan error, dpReplicaNum)
 	if c.isFaultDomain(vol) {
-		if targetHosts, targetPeers, err = c.getHostFromDomainZone(vol.domainId, TypeDataPartion, vol.dpReplicaNum); err != nil {
+		if targetHosts, targetPeers, err = c.getHostFromDomainZone(vol.domainId, TypeDataPartion, dpReplicaNum); err != nil {
 			goto errHandler
 		}
 	} else {
 		zoneNum := c.decideZoneNum(vol.crossZone)
 		var zonesExclude []string
 		if targetHosts, targetPeers, err = c.getHostFromNormalZone(TypeDataPartion, zonesExclude, nil, nil,
-			int(vol.dpReplicaNum), zoneNum, vol.zoneName); err != nil {
+			int(dpReplicaNum), zoneNum, zoneName); err != nil {
 			goto errHandler
 		}
 	}
 	if partitionID, err = c.idAlloc.allocateDataPartitionID(); err != nil {
 		goto errHandler
 	}
-	dp = newDataPartition(partitionID, vol.dpReplicaNum, volName, vol.ID)
+	dp = newDataPartition(partitionID, dpReplicaNum, volName, vol.ID)
 	dp.Hosts = targetHosts
 	dp.Peers = targetPeers
 	for _, host := range targetHosts {
@@ -850,6 +858,10 @@ func (c *Cluster) createDataPartition(volName string, isPreload bool) (dp *DataP
 			}()
 
 			var diskPath string
+			var isPreload bool
+			if preload != nil {
+				isPreload = true
+			}
 			dp.PartitionType = proto.GetDpType(vol.VolType, isPreload)
 
 			if diskPath, err = c.syncCreateDataPartitionToDataNode(host, vol.dataPartitionSize,

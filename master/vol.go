@@ -63,11 +63,6 @@ type Vol struct {
 	CacheLRUInterval int
 
 	PreloadCacheOn       bool
-	PreloadCacheTTL      int
-	PreloadCacheCapacity int
-	PreloadZoneName      string
-	PreloadReplicaNum    int
-
 	NeedToLowerReplica bool
 	FollowerRead       bool
 	authenticate       bool
@@ -234,7 +229,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	for _, dp := range vol.dataPartitions.partitionMap {
 
 		if proto.IsPreLoadDp(dp.PartitionType) {
-			if time.Now().Unix()-dp.createTime > dp.PartitionTTL {
+			if time.Now().Unix()-dp.createTime > int64(dp.preloadCacheTTL) {
 				vol.deleteDataPartition(c, dp)
 			}
 		}

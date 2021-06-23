@@ -283,7 +283,9 @@ func (m *Server) createPreLoadDataPartition(w http.ResponseWriter, r *http.Reque
 		err     error
 		dps     []*DataPartition
 		dpsProto []*proto.DataPartitionInfo
+		preload  *DataPartitionPreLoad
 	)
+	preload = new(DataPartitionPreLoad)
 	if volName = r.FormValue(nameKey); volName == "" {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
@@ -293,32 +295,32 @@ func (m *Server) createPreLoadDataPartition(w http.ResponseWriter, r *http.Reque
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	vol.PreloadZoneName = r.FormValue(zoneNameKey)
+	preload.preloadZoneName = r.FormValue(zoneNameKey)
 
-	if vol.PreloadCacheTTL, err = extractUintWithDefault(r, cacheTTLKey, vol.CacheTTL); err != nil {
+	if preload.preloadCacheTTL, err = extractUint64WithDefault(r, cacheTTLKey, uint64(vol.CacheTTL)); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
-	if vol.PreloadCacheCapacity, err = extractCapacity(r); err != nil {
+	if preload.preloadCacheCapacity, err = extractUint(r, volCapacityKey); err != nil || preload.preloadCacheTTL == 0 {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
 	if replicaStr := r.FormValue(replicaNumKey); replicaStr == "" {
-		vol.PreloadReplicaNum = defaultReplicaNum
-	} else if vol.PreloadReplicaNum, err = strconv.Atoi(replicaStr); err != nil {
+		preload.preloadReplicaNum = defaultReplicaNum
+	} else if preload.preloadReplicaNum, err = strconv.Atoi(replicaStr); err != nil {
 		err = unmatchedKey(replicaNumKey)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
-	if vol.PreloadReplicaNum, err = extractCapacity(r); err != nil {
+	if preload.preloadCacheCapacity, err = extractUint(r, volCapacityKey); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
-	err, dps = m.cluster.batchCreatePreLoadDataPartition(vol)
+	err, dps = m.cluster.batchCreatePreLoadDataPartition(vol, preload)
 	if err != nil {
 		log.LogErrorf("create data partition fail: volume(%v) err(%v)", volName, err)
 		sendErrReply(w, r, newErrHTTPReply(err))

@@ -52,6 +52,14 @@ type DataPartition struct {
 	OfflinePeerID           uint64
 	FileInCoreMap           map[string]*FileInCore
 	FilesWithMissingReplica map[string]int64 // key: file name, value: last time when a missing replica is found
+	DataPartitionPreLoad
+}
+
+type DataPartitionPreLoad struct {
+	preloadCacheTTL      uint64
+	preloadCacheCapacity int
+	preloadReplicaNum    int
+	preloadZoneName      string
 }
 
 func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64) (partition *DataPartition) {
