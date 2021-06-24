@@ -36,14 +36,14 @@ parser.add_argument('--profPort', default='10094', help='port for profiling (def
 #parser.add_argument('--tracingSamplerParam', default='0.1', help='(default: 0.1)')
 parser.add_argument('--tracingSamplerType', default='const', help='(default: const)')
 parser.add_argument('--tracingSamplerParam', default='1', help='(default: 1)')
-parser.add_argument('--tracingReportAddr')
-
+parser.add_argument('--tracingReportAddr', default='jaegermysqlcfs.jd.local:6831', help='(default: jaegermysqlcfs.jd.local:6831)')
 parser.add_argument('--libDir', default='/usr/lib64', help='(default: /usr/lib64)')
-parser.add_argument('--appName', default='mysql', help='(default: mysql)')
 args = parser.parse_args()
+if args.ignorePath is None:
+    args.ignorePath = ''
 
 os.system('mkdir -p {0}'.format(args.configDir))
 with open('{0}/cfs_client.ini'.format(args.configDir), 'w') as f:
-    f.write('mountPoint={0}\nignorePath={1}\nmasterAddr={2}\nvolName={3}\nowner={4}\nfollowerRead={5}\nlogDir={6}\nlogLevel={7}\nprofPort={8}\ntracingSamplerType={9}\ntracingSamplerParam={10}\ntracingReportAddr={11}\nappName={12}'.format(args.mountPoint, args.ignorePath, args.masterAddr, args.volName, args.owner, args.followerRead, args.logDir, args.logLevel, args.profPort, args.tracingSamplerType, args.tracingSamplerParam, args.tracingReportAddr, args.appName))
+    f.write('mountPoint={0}\nignorePath={1}\nmasterAddr={2}\nvolName={3}\nowner={4}\nfollowerRead={5}\nlogDir={6}\nlogLevel={7}\nprofPort={8}\ntracingSamplerType={9}\ntracingSamplerParam={10}\ntracingReportAddr={11}\n'.format(args.mountPoint, args.ignorePath, args.masterAddr, args.volName, args.owner, args.followerRead, args.logDir, args.logLevel, args.profPort, args.tracingSamplerType, args.tracingSamplerParam, args.tracingReportAddr))
 
 os.system('wget --quiet -O libcfs.tar.gz http://storage.jd.local/cfs-client-lib/libcfs.tar.gz && tar xzf libcfs.tar.gz && chmod 755 libcfssdk.so libcfsclient.so && mv libcfssdk.so libcfsclient.so {0} && rm -f libcfs.tar.gz argparse.py*'.format(args.libDir))

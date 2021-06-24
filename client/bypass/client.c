@@ -1176,9 +1176,7 @@ int faccessat(int dirfd, const char *pathname, int mode, int flags) {
     const char *cfs_path = (path == NULL) ? pathname : path;
     int re;
     if(g_hook && is_cfs) {
-        // For MySQL, set AT_SYMLINK_NOFOLLOW flag to improve performance
-        int cfs_flags = (g_app == MYSQL) ? flags | AT_SYMLINK_NOFOLLOW : flags;
-        re = cfs_re(cfs_faccessat(g_cfs_client_id, dirfd, cfs_path, mode, cfs_flags));
+        re = cfs_re(cfs_faccessat(g_cfs_client_id, dirfd, cfs_path, mode, flags));
     } else {
         re = real_faccessat(dirfd, pathname, mode, flags);
     }

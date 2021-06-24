@@ -137,12 +137,10 @@ func (s *Streamer) IssueWriteRequest(ctx context.Context, offset int, data []byt
 	tracer.Finish()
 
 	<-request.done
-	var tracer1 = tracing.TracerFromContext(ctx).ChildTracer("StreamWrite.IssueWriteRequest.1")
 	atomic.AddInt32(&s.writeOp, -1)
 	err = request.err
 	write = request.writeBytes
 	writeRequestPool.Put(request)
-	tracer1.Finish()
 	return
 }
 

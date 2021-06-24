@@ -76,6 +76,7 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data"
+	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/sdk/meta"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -250,6 +251,7 @@ type client struct {
 	fdlock sync.RWMutex
 
 	// server info
+	mc *master.MasterClient
 	mw *meta.MetaWrapper
 	ec *data.ExtentClient
 }
@@ -271,6 +273,9 @@ func cfs_new_client(conf *C.cfs_config_t) C.int64_t {
 //export cfs_close_client
 func cfs_close_client(id C.int64_t) {
 	if c, exist := getClient(int64(id)); exist {
+		if c.mc != nil {
+			_ = c.mc.ClientAPI().ReleaseVolMutex(c.volName)
+		}
 		if c.ec != nil {
 			_ = c.ec.Close(context.Background())
 		}
@@ -315,16 +320,15 @@ func cfs_close(id C.int64_t, fd C.int) {
 //export cfs_open
 func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) (re C.int) {
 	defer func() {
-		if err := recover(); err != nil && err != syscall.ENOENT {
-			log.LogErrorf("cfs_open: id(%v) path(%v) flags(%v) mode(%v) err(%v) re(%v)", id, C.GoString(path), flags, mode, err, re)
+		if re < 0 && re != errorToStatus(syscall.ENOENT) {
+			log.LogErrorf("cfs_open: id(%v) path(%v) flags(%v) mode(%v) re(%v)", id, C.GoString(path), flags, mode, re)
 			log.LogFlush()
 		}
 	}()
 
 	c, exist := getClient(int64(id))
 	if !exist {
-		re = statusEINVAL
-		panic("invalid id")
+		return statusEINVAL
 	}
 
 	var tracer = tracing.NewTracer("cfs_open").
@@ -348,31 +352,26 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) (re C.int)
 		dirpath, name := gopath.Split(absPath)
 		dirInode, err := c.mw.LookupPath(ctx, dirpath)
 		if err != nil {
-			re = errorToStatus(err)
-			panic(err)
+			return errorToStatus(err)
 		}
 		if len(name) == 0 {
-			re = statusEINVAL
-			panic("empty name")
+			return statusEINVAL
 		}
 		inode, _, err := c.mw.Lookup_ll(ctx, dirInode, name)
 		var newInfo *proto.InodeInfo
 		if err == nil {
 			if fuseFlags&uint32(C.O_EXCL) != 0 {
-				re = statusEEXIST
-				panic("file exist")
+				return statusEEXIST
 			} else {
 				newInfo, err = c.mw.InodeGet_ll(ctx, inode)
 			}
 		} else if err == syscall.ENOENT {
 			newInfo, err = c.mw.Create_ll(ctx, dirInode, name, fuseMode, uint32(os.Getuid()), uint32(os.Getgid()), nil)
 			if err != nil {
-				re = errorToStatus(err)
-				panic(err)
+				return errorToStatus(err)
 			}
 		} else {
-			re = errorToStatus(err)
-			panic(err)
+			return errorToStatus(err)
 		}
 		info = newInfo
 	} else {
@@ -383,16 +382,14 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) (re C.int)
 			newInfo, err = c.lookupPath(ctx, absPath)
 		}
 		if err != nil {
-			re = errorToStatus(err)
-			panic(err)
+			return errorToStatus(err)
 		}
 		info = newInfo
 	}
 
 	f := c.allocFD(info.Inode, fuseFlags, info.Mode, info.Target)
 	if f == nil {
-		re = statusEMFILE
-		panic("no available fd")
+		return statusEMFILE
 	}
 
 	if proto.IsRegular(info.Mode) {
@@ -401,22 +398,19 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) (re C.int)
 			if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
 				c.closeStream(f)
 				c.releaseFD(f.fd)
-				re = statusEACCES
-				panic("trunc not allowed")
+				return statusEACCES
 			}
 			if err := c.ec.Truncate(ctx, f.ino, 0); err != nil {
 				c.closeStream(f)
 				c.releaseFD(f.fd)
-				re = statusEIO
-				panic(err)
+				return statusEIO
 			}
 			info.Size = 0
 		}
 	}
 	f.size = info.Size
 	f.path = absPath
-	re = C.int(f.fd)
-	return
+	return C.int(f.fd)
 }
 
 //export cfs_openat
@@ -564,7 +558,16 @@ func cfs_ftruncate(id C.int64_t, fd C.int, len C.off_t) C.int {
 }
 
 //export cfs_fallocate
-func cfs_fallocate(id C.int64_t, fd C.int, mode C.int, offset C.off_t, len C.off_t) C.int {
+func cfs_fallocate(id C.int64_t, fd C.int, mode C.int, offset C.off_t, len C.off_t) (re C.int) {
+	var path string
+	var ino, size uint64
+	defer func() {
+		if re < 0 {
+			log.LogErrorf("cfs_fallocate: id(%v) fd(%v) path(%v) ino(%v) size(%v) mode(%v) offset(%v) len(%v) re(%v)", id, fd, path, ino, size, mode, offset, len, re)
+			log.LogFlush()
+		}
+	}()
+
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -574,6 +577,8 @@ func cfs_fallocate(id C.int64_t, fd C.int, mode C.int, offset C.off_t, len C.off
 	if f == nil {
 		return statusEBADFD
 	}
+	path = f.path
+	ino = f.ino
 
 	var tracer = tracing.NewTracer("cfs_fallocate").
 		SetTag("volume", c.volName).
@@ -589,15 +594,16 @@ func cfs_fallocate(id C.int64_t, fd C.int, mode C.int, offset C.off_t, len C.off
 	if err != nil {
 		return errorToStatus(err)
 	}
+	size = info.Size
 
 	if uint32(mode) == 0 {
 		if uint64(offset+len) <= info.Size {
 			return statusOK
 		}
-	} else if uint32(mode) == uint32(C.FALLOC_FL_KEEP_SIZE) || uint32(mode) == uint32(C.FALLOC_FL_KEEP_SIZE|C.FALLOC_FL_PUNCH_HOLE) {
-		// CFS does not support FALLOC_FL_PUNCH_HOLE for now. We cheat here.
+	} else if uint32(mode) == uint32(C.FALLOC_FL_KEEP_SIZE) {
 		return statusOK
 	} else {
+		// CFS does not support FALLOC_FL_PUNCH_HOLE for now.
 		// unimplemented
 		return statusEINVAL
 	}
@@ -650,30 +656,27 @@ func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) C.
 func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 	var path string
 	defer func() {
-		if err := recover(); err != nil {
-			log.LogErrorf("cfs_flush: id(%v) fd(%v) path(%v) err(%v) re(%v)", id, fd, path, err, re)
+		if re < 0 {
+			log.LogErrorf("cfs_flush: id(%v) fd(%v) path(%v) re(%v)", id, fd, path, re)
 			log.LogFlush()
 		}
 	}()
 
-	re = statusOK
 	c, exist := getClient(int64(id))
 	if !exist {
-		re = statusEINVAL
-		panic("invalid id")
+		return statusEINVAL
 	}
 
 	f := c.getFile(uint(fd))
 	if f == nil {
-		re = statusEBADFD
-		panic("invalid fd")
+		return statusEBADFD
 	}
 	path = f.path
 
 	if !proto.IsRegular(f.mode) {
 		// Some application may call fdatasync() after open a directory.
 		// In this situation, CFS will do nothing.
-		return
+		return statusOK
 	}
 
 	var tracer = tracing.NewTracer("cfs_flush").
@@ -686,11 +689,10 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 	defer tpc.Set(nil)
 
 	if err := c.ec.Flush(ctx, f.ino); err != nil {
-		re = statusEIO
-		panic(err)
+		return statusEIO
 	}
 	log.LogDebugf("cfs_flush: id(%v) fd(%v) path(%v) re(%v)", id, fd, f.path, re)
-	return
+	return statusOK
 }
 
 /*
@@ -1162,17 +1164,15 @@ func cfs_stat(id C.int64_t, path *C.char, stat *C.struct_stat) C.int {
 
 func _cfs_stat(id C.int64_t, path *C.char, stat *C.struct_stat, flags C.int) (re C.int) {
 	defer func() {
-		if err := recover(); err != nil && err != syscall.ENOENT {
-			log.LogErrorf("_cfs_stat: id(%v) path(%v) flags(%v) err(%v) re(%v)", id, C.GoString(path), flags, err, re)
+		if re < 0 && re != errorToStatus(syscall.ENOENT) {
+			log.LogErrorf("_cfs_stat: id(%v) path(%v) flags(%v) re(%v)", id, C.GoString(path), flags, re)
 			log.LogFlush()
 		}
 	}()
 
-	re = statusOK
 	c, exist := getClient(int64(id))
 	if !exist {
-		re = statusEINVAL
-		panic("invalid id")
+		return statusEINVAL
 	}
 
 	var tracer = tracing.NewTracer("cfs_stat").
@@ -1189,8 +1189,7 @@ func _cfs_stat(id C.int64_t, path *C.char, stat *C.struct_stat, flags C.int) (re
 		info, err = c.lookupPath(ctx, absPath)
 	}
 	if err != nil {
-		re = errorToStatus(err)
-		panic(err)
+		return errorToStatus(err)
 	}
 
 	// fill up the stat
@@ -1234,7 +1233,7 @@ func _cfs_stat(id C.int64_t, path *C.char, stat *C.struct_stat, flags C.int) (re
 	st_ctim.tv_sec = C.time_t(t / 1e9)
 	st_ctim.tv_nsec = C.long(t % 1e9)
 	stat.st_ctim = st_ctim
-	return
+	return statusOK
 }
 
 //export cfs_stat64
@@ -1244,17 +1243,15 @@ func cfs_stat64(id C.int64_t, path *C.char, stat *C.struct_stat64) C.int {
 
 func _cfs_stat64(id C.int64_t, path *C.char, stat *C.struct_stat64, flags C.int) (re C.int) {
 	defer func() {
-		if err := recover(); err != nil && err != syscall.ENOENT {
-			log.LogErrorf("_cfs_stat64: id(%v) path(%v) flags(%v) err(%v) re(%v)", id, C.GoString(path), flags, err, re)
+		if re < 0 && re != errorToStatus(syscall.ENOENT) {
+			log.LogErrorf("_cfs_stat64: id(%v) path(%v) flags(%v) re(%v)", id, C.GoString(path), flags, re)
 			log.LogFlush()
 		}
 	}()
 
-	re = statusOK
 	c, exist := getClient(int64(id))
 	if !exist {
-		re = statusEINVAL
-		panic("invalid id")
+		return statusEINVAL
 	}
 
 	var tracer = tracing.NewTracer("cfs_stat64").
@@ -1271,8 +1268,7 @@ func _cfs_stat64(id C.int64_t, path *C.char, stat *C.struct_stat64, flags C.int)
 		info, err = c.lookupPath(ctx, absPath)
 	}
 	if err != nil {
-		re = errorToStatus(err)
-		panic(err)
+		return errorToStatus(err)
 	}
 
 	// fill up the stat
@@ -1316,7 +1312,7 @@ func _cfs_stat64(id C.int64_t, path *C.char, stat *C.struct_stat64, flags C.int)
 	st_ctim.tv_sec = C.time_t(t / 1e9)
 	st_ctim.tv_nsec = C.long(t % 1e9)
 	stat.st_ctim = st_ctim
-	return
+	return statusOK
 }
 
 //export cfs_lstat
@@ -1661,8 +1657,8 @@ func cfs_access(id C.int64_t, path *C.char, mode C.int) C.int {
 //export cfs_faccessat
 func cfs_faccessat(id C.int64_t, dirfd C.int, path *C.char, mode C.int, flags C.int) (re C.int) {
 	defer func() {
-		if err := recover(); err != nil && err != syscall.ENOENT {
-			log.LogErrorf("cfs_faccessat: id(%v) dirfd(%v) path(%v) mode(%v) flags(%v) err(%v) re(%v)", id, dirfd, C.GoString(path), mode, flags, err, re)
+		if re < 0 && re != errorToStatus(syscall.ENOENT) {
+			log.LogErrorf("cfs_faccessat: id(%v) dirfd(%v) path(%v) mode(%v) flags(%v) re(%v)", id, dirfd, C.GoString(path), mode, flags, re)
 			log.LogFlush()
 		}
 	}()
@@ -1670,8 +1666,7 @@ func cfs_faccessat(id C.int64_t, dirfd C.int, path *C.char, mode C.int, flags C.
 	re = statusOK
 	c, exist := getClient(int64(id))
 	if !exist {
-		re = statusEINVAL
-		panic("invalid id")
+		return statusEINVAL
 	}
 
 	var tracer = tracing.NewTracer("cfs_faccessat").
@@ -1680,11 +1675,9 @@ func cfs_faccessat(id C.int64_t, dirfd C.int, path *C.char, mode C.int, flags C.
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	var err error
 	absPath, err := c.absPathAt(dirfd, path)
 	if err != nil {
-		re = statusEINVAL
-		panic(err)
+		return statusEINVAL
 	}
 	inode, err := c.mw.LookupPath(ctx, absPath)
 	var info *proto.InodeInfo
@@ -1697,10 +1690,9 @@ func cfs_faccessat(id C.int64_t, dirfd C.int, path *C.char, mode C.int, flags C.
 		inode, err = c.mw.LookupPath(ctx, absPath)
 	}
 	if err != nil {
-		re = errorToStatus(err)
-		panic(err)
+		return errorToStatus(err)
 	}
-	return
+	return statusOK
 }
 
 /*
@@ -2269,22 +2261,20 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 	var path string
 	var ino uint64
 	defer func() {
-		if err := recover(); err != nil {
-			log.LogErrorf("_cfs_read: id(%v) fd(%v) path(%v) ino(%v) size(%v) off(%v) err(%v) re(%v)", id, fd, path, ino, size, off, err, re)
+		if re < 0 {
+			log.LogErrorf("_cfs_read: id(%v) fd(%v) path(%v) ino(%v) size(%v) off(%v) re(%v)", id, fd, path, ino, size, off, re)
 			log.LogFlush()
 		}
 	}()
 
 	c, exist := getClient(int64(id))
 	if !exist {
-		re = C.ssize_t(statusEINVAL)
-		panic("invalid id")
+		return C.ssize_t(statusEINVAL)
 	}
 
 	f := c.getFile(uint(fd))
 	if f == nil {
-		re = C.ssize_t(statusEBADFD)
-		panic("invalid fd")
+		return C.ssize_t(statusEBADFD)
 	}
 	path = f.path
 	ino = f.ino
@@ -2301,8 +2291,7 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 
 	accFlags := f.flags & uint32(C.O_ACCMODE)
 	if accFlags == uint32(C.O_WRONLY) {
-		re = C.ssize_t(statusEACCES)
-		panic(fmt.Sprintf("invalid flags(%v)", f.flags))
+		return C.ssize_t(statusEACCES)
 	}
 
 	var buffer []byte
@@ -2319,16 +2308,13 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 	}
 	n, err := c.ec.Read(ctx, f.ino, buffer, offset, len(buffer))
 	if err != nil && err != io.EOF {
-		re = C.ssize_t(statusEIO)
-		panic(err)
-	} else {
-		re = C.ssize_t(n)
+		return C.ssize_t(statusEIO)
 	}
 
 	if off < 0 {
 		f.pos += uint64(n)
 	}
-	return
+	return C.ssize_t(n)
 }
 
 //export cfs_readv
@@ -2385,8 +2371,8 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	var path string
 	var ino uint64
 	defer func() {
-		if err := recover(); err != nil {
-			log.LogErrorf("_cfs_write: id(%v) fd(%v) path(%v) ino(%v) size(%v) off(%v) err(%v) re(%v)", id, fd, path, ino, size, off, err, re)
+		if re < 0 {
+			log.LogErrorf("_cfs_write: id(%v) fd(%v) path(%v) ino(%v) size(%v) off(%v) re(%v)", id, fd, path, ino, size, off, re)
 			log.LogFlush()
 		}
 	}()
@@ -2397,14 +2383,12 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 
 	c, exist := getClient(int64(id))
 	if !exist {
-		re = C.ssize_t(statusEINVAL)
-		panic("invalid id")
+		return C.ssize_t(statusEINVAL)
 	}
 
 	f := c.getFile(uint(fd))
 	if f == nil {
-		re = C.ssize_t(statusEBADFD)
-		panic("invalid fd")
+		return C.ssize_t(statusEBADFD)
 	}
 	path = f.path
 	ino = f.ino
@@ -2421,8 +2405,7 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 
 	accFlags := f.flags & uint32(C.O_ACCMODE)
 	if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
-		re = C.ssize_t(statusEACCES)
-		panic(fmt.Sprintf("invalid flags(%v)", f.flags))
+		return C.ssize_t(statusEACCES)
 	}
 
 	var buffer []byte
@@ -2447,16 +2430,12 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 
 	n, err := c.ec.Write(ctx, f.ino, offset, buffer, false)
 	if err != nil {
-		re = C.ssize_t(statusEIO)
-		panic(err)
-	} else {
-		re = C.ssize_t(n)
+		return C.ssize_t(statusEIO)
 	}
 
 	if flush {
 		if err = c.ec.Flush(ctx, f.ino); err != nil {
-			re = C.ssize_t(statusEIO)
-			panic(err)
+			return C.ssize_t(statusEIO)
 		}
 	}
 
@@ -2479,7 +2458,7 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		flagBuf.WriteString("O_DSYNC|")
 	}
 	log.LogDebugf("_cfs_write: id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) re(%v)", id, fd, f.path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), re)
-	return
+	return C.ssize_t(n)
 }
 
 //export cfs_writev
@@ -2615,8 +2594,18 @@ func (c *client) start() (err error) {
 	cmd, _ := os.Executable()
 	syslog.Printf("ChubaoFS Kernel Bypass Client\nCMD: %s\nBranch: %s\nCommit: %s\nDebug: %s\nBuild: %s %s %s %s\n\n", cmd, BranchName, CommitID, Debug, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime)
 
+	masters := strings.Split(c.masterAddr, ",")
+	mc := master.NewMasterClient(masters, false)
+	err = mc.ClientAPI().ApplyVolMutex(c.volName)
+	if err == proto.ErrVolWriteMutexUnable {
+		err = nil
+	}
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
 	var mw *meta.MetaWrapper
-	var masters = strings.Split(c.masterAddr, ",")
 	if mw, err = meta.NewMetaWrapper(&meta.MetaConfig{
 		Volume:        c.volName,
 		Masters:       masters,
@@ -2641,6 +2630,7 @@ func (c *client) start() (err error) {
 		return
 	}
 
+	c.mc = mc
 	c.mw = mw
 	c.ec = ec
 

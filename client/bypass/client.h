@@ -261,8 +261,6 @@ static const bool g_hook = true;
 
 static char *g_mount_point;
 static char *g_ignore_path;
-enum APP { UNKNOWN, MYSQL };
-static enum APP g_app;
 static cfs_config_t g_cfs_config;
 static const char *CFS_CFG_PATH = "cfs_client.ini";
 static const char *CFS_CFG_PATH_JED = "/export/servers/cfs/cfs_client.ini";
@@ -298,10 +296,6 @@ static int config_handler(void* user, const char* section,
         pconfig->tracing_sampler_param = strdup(value);
     } else if (MATCH("", "tracingReportAddr")) {
         pconfig->tracing_report_addr = strdup(value);
-    } else if (MATCH("", "appName")) {
-        if(strcmp(value, "mysql")) {
-            g_app = MYSQL;
-        }
     } else {
         return 0;  /* unknown section/name, error */
     }
