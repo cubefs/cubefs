@@ -562,8 +562,7 @@ func (s *DataNode) handleStreamFollowerReadPacket(p *repl.Packet, connect net.Co
 
 func (s *DataNode) handleExtentRepaiReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
 	var (
-		err         error
-		firstPacket bool
+		err error
 	)
 	defer func() {
 		if err != nil {
@@ -623,13 +622,6 @@ func (s *DataNode) handleExtentRepaiReadPacket(p *repl.Packet, connect net.Conn,
 		reply.ResultCode = proto.OpOk
 		reply.Opcode = p.Opcode
 		p.ResultCode = proto.OpOk
-		if !firstPacket {
-			appliedID := partition.GetAppliedID()
-			reply.ArgLen = 8
-			reply.Arg = make([]byte, reply.ArgLen)
-			binary.BigEndian.PutUint64(reply.Arg[:reply.ArgLen], appliedID)
-			firstPacket = true
-		}
 		if err = reply.WriteToConn(connect); err != nil {
 			if currReadSize == util.ReadBlockSize {
 				proto.Buffers.Put(reply.Data)

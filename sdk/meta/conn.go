@@ -16,7 +16,6 @@ package meta
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"net"
 	"syscall"
@@ -88,40 +87,23 @@ func (mw *MetaWrapper) sendReadToMP(ctx context.Context, mp *MetaPartition, req 
 	return
 }
 
-//find metadata with max applied id, no need to check crc between all metadata because the access time may be different from different members
 func (mw *MetaWrapper) readConsistentFromHosts(ctx context.Context, mp *MetaPartition, req *proto.Packet) (resp *proto.Packet, err error) {
-	var (
-		curMaxAppliedID uint64
-		curMaxAidResp   *proto.Packet
-	)
-	errMap := make([]error, 0)
-
-	req.ArgLen = 1
-	req.Arg = make([]byte, req.ArgLen)
-	req.Arg[0] = proto.FollowerReadFlag
-
-	for n, host := range mp.Members {
-		resp, _, err = mw.sendToHost(ctx, mp, req, host)
-		if err == nil && resp.ResultCode == proto.OpOk {
-			if resp.ArgLen < 8 {
-				log.LogWarnf("mp readConsistentFromHosts: failed req(%v) mp(%v) addr(%v) err(%v) resp(%v), resp_arg_len(%v) too small, may be old version, try next host", req, mp, host, err, resp, resp.ArgLen)
-				continue
+	// compare applied ID of replicas and choose the max one
+	targetHosts, isErr := mw.GetMaxAppliedIDHosts(ctx, mp)
+	if !isErr && len(targetHosts) > 0 {
+		req.ArgLen = 1
+		req.Arg = make([]byte, req.ArgLen)
+		req.Arg[0] = proto.FollowerReadFlag
+		for _, host := range targetHosts {
+			resp, _, err = mw.sendToHost(ctx, mp, req, host)
+			if err == nil && resp.ResultCode == proto.OpOk {
+				return
 			}
-			appliedID := binary.BigEndian.Uint64(resp.Arg[:8])
-			// update at first or at bigger appliedID
-			if curMaxAidResp == nil || appliedID > curMaxAppliedID {
-				curMaxAppliedID = appliedID
-				curMaxAidResp = resp
-			}
-			if n == len(mp.Members)-1 && len(errMap) < (len(mp.Members)+1)/2 {
-				return curMaxAidResp, nil
-			}
-			continue
+			log.LogWarnf("mp readConsistentFromHosts: failed req(%v) mp(%v) addr(%v) err(%v) resp(%v), try next host", req, mp, host, err, resp)
 		}
-		log.LogWarnf("mp readConsistentFromHosts: failed req(%v) mp(%v) addr(%v) err(%v) resp(%v), try next host", req, mp, host, err, resp)
 	}
-	log.LogWarnf("mp readConsistentFromHosts exit: failed req(%v) mp(%v) targetHosts(%v), valid data no more than half, try later", req, mp, mp.Members)
-	return nil, errors.New(fmt.Sprintf("readConsistentFromHosts: failed, req(%v) mp(%v) targetHosts(%v), valid data no more than half, try later", req, mp, mp.Members))
+	log.LogWarnf("mp readConsistentFromHosts exit: failed req(%v) mp(%v) isErr(%v) targetHosts(%v), try next host", req, mp, isErr, targetHosts)
+	return nil, errors.New(fmt.Sprintf("readConsistentFromHosts: failed, req(%v) mp(%v) isErr(%v) targetHosts(%v), try next host", req, mp, isErr, targetHosts))
 }
 
 func (mw *MetaWrapper) sendToMetaPartition(ctx context.Context, mp *MetaPartition, req *proto.Packet, addr string) (resp *proto.Packet, needCheckRead bool, err error) {

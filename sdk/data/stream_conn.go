@@ -15,7 +15,6 @@
 package data
 
 import (
-	"encoding/binary"
 	"fmt"
 	"hash/crc32"
 	"net"
@@ -183,9 +182,7 @@ func getReadReply(conn *net.TCPConn, reqPacket *Packet, req *ExtentRequest) (rea
 	var tracer = tracing.TracerFromContext(reqPacket.Ctx()).ChildTracer("StreamConn.getReadReply").
 		SetTag("remote", conn.RemoteAddr().String())
 	defer tracer.Finish()
-	var appliedID uint64
-	appliedIDFinder := false
-	crcArray := make([]byte, 0)
+
 	readBytes = 0
 	for readBytes < int(reqPacket.Size) {
 		replyPacket := NewReply(reqPacket.Ctx(), reqPacket.ReqID, reqPacket.PartitionID, reqPacket.ExtentID)
@@ -206,28 +203,9 @@ func getReadReply(conn *net.TCPConn, reqPacket *Packet, req *ExtentRequest) (rea
 			return readBytes, replyPacket, false, e
 		}
 
-		buf := make([]byte, 4)
-		binary.BigEndian.PutUint32(buf, replyPacket.CRC)
-		crcArray = append(crcArray, buf...)
-
-		if !appliedIDFinder {
-			if replyPacket.ArgLen < 8 {
-				log.LogWarnf("getReadReply: ino(%v) req(%v) readBytes(%v) arg_len(%v) too small, may be old version", reqPacket.inode, reqPacket, readBytes, reqPacket.ArgLen)
-				return readBytes, replyPacket, true, e
-			}
-			appliedID = binary.BigEndian.Uint64(replyPacket.Arg[:8])
-			appliedIDFinder = true
-		}
 		readBytes += int(replyPacket.Size)
 	}
-	reply = NewReply(reqPacket.Ctx(), reqPacket.ReqID, reqPacket.PartitionID, reqPacket.ExtentID)
-	reply.CRC = crc32.ChecksumIEEE(crcArray)
-
-	reply.ArgLen = 8
-	reply.Arg = make([]byte, reply.ArgLen)
-	binary.BigEndian.PutUint64(reply.Arg[:reply.ArgLen], appliedID)
-
-	return readBytes, reply, false, nil
+	return readBytes, nil, false, nil
 }
 
 func checkReadReplyValid(request *Packet, reply *Packet) (err error) {

@@ -385,11 +385,7 @@ func (m *metadataManager) opReadDir(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	isFollowerRead := p.IsFollowerReadMetaPkt()
 	err = mp.ReadDir(req, p)
-	if isFollowerRead {
-		mp.PacketAppliedID(p)
-	}
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [%v]req: %v , resp: %v, body: %s", remoteAddr,
 		p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -415,12 +411,8 @@ func (m *metadataManager) opMetaInodeGet(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	isFollowerRead := p.IsFollowerReadMetaPkt()
 	if err = mp.InodeGet(req, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
-	}
-	if isFollowerRead {
-		mp.PacketAppliedID(p)
 	}
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opMetaInodeGet] req: %d - %v; resp: %v, body: %s",
@@ -536,11 +528,7 @@ func (m *metadataManager) opMetaLookup(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	isFollowerRead := p.IsFollowerReadMetaPkt()
 	err = mp.Lookup(req, p)
-	if isFollowerRead {
-		mp.PacketAppliedID(p)
-	}
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opMetaLookup] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -626,11 +614,8 @@ func (m *metadataManager) opMetaExtentsList(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	isFollowerRead := p.IsFollowerReadMetaPkt()
+
 	err = mp.ExtentsList(req, p)
-	if isFollowerRead {
-		mp.PacketAppliedID(p)
-	}
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opMetaExtentsList] req: %d - %v; resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -1199,11 +1184,7 @@ func (m *metadataManager) opMetaBatchInodeGet(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	isFollowerRead := p.IsFollowerReadMetaPkt()
 	err = mp.InodeGetBatch(req, p)
-	if isFollowerRead {
-		mp.PacketAppliedID(p)
-	}
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opMetaBatchInodeGet] req: %d - %v, resp: %v, "+
 		"body: %s", remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -1354,11 +1335,7 @@ func (m *metadataManager) opMetaGetXAttr(conn net.Conn, p *Packet, remoteAddr st
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	isFollowerRead := p.IsFollowerReadMetaPkt()
 	err = mp.GetXAttr(req, p)
-	if isFollowerRead {
-		mp.PacketAppliedID(p)
-	}
 	_ = m.respondToClient(conn, p)
 	log.LogDebugf("%s [opMetaGetXAttr] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -1383,11 +1360,7 @@ func (m *metadataManager) opMetaBatchGetXAttr(conn net.Conn, p *Packet, remoteAd
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	isFollowerRead := p.IsFollowerReadMetaPkt()
 	err = mp.BatchGetXAttr(req, p)
-	if isFollowerRead {
-		mp.PacketAppliedID(p)
-	}
 	_ = m.respondToClient(conn, p)
 	log.LogDebugf("%s [opMetaBatchGetXAttr req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -1437,11 +1410,7 @@ func (m *metadataManager) opMetaListXAttr(conn net.Conn, p *Packet, remoteAddr s
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	isFollowerRead := p.IsFollowerReadMetaPkt()
 	err = mp.ListXAttr(req, p)
-	if isFollowerRead {
-		mp.PacketAppliedID(p)
-	}
 	_ = m.respondToClient(conn, p)
 	log.LogDebugf("%s [opMetaGetXAttr] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -1538,11 +1507,7 @@ func (m *metadataManager) opGetMultipart(conn net.Conn, p *Packet, remote string
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	isFollowerRead := p.IsFollowerReadMetaPkt()
 	err = mp.GetMultipart(req, p)
-	if isFollowerRead {
-		mp.PacketAppliedID(p)
-	}
 	_ = m.respondToClient(conn, p)
 	return
 }
@@ -1587,11 +1552,7 @@ func (m *metadataManager) opListMultipart(conn net.Conn, p *Packet, remote strin
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	isFollowerRead := p.IsFollowerReadMetaPkt()
 	err = mp.ListMultipart(req, p)
-	if isFollowerRead {
-		mp.PacketAppliedID(p)
-	}
 	_ = m.respondToClient(conn, p)
 	return
 }
