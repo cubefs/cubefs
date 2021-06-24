@@ -2586,11 +2586,15 @@ func (c *client) start() (err error) {
 		fmt.Println(err)
 		return
 	}
+	syslog.SetOutput(outputFile)
 	defer func() {
+		if err != nil {
+			syslog.Printf("start kernel bypass client failed: err(%v)\n", err)
+		}
 		outputFile.Sync()
 		outputFile.Close()
 	}()
-	syslog.SetOutput(outputFile)
+
 	cmd, _ := os.Executable()
 	syslog.Printf("ChubaoFS Kernel Bypass Client\nCMD: %s\nBranch: %s\nCommit: %s\nDebug: %s\nBuild: %s %s %s %s\n\n", cmd, BranchName, CommitID, Debug, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime)
 
