@@ -31,6 +31,9 @@ const (
 	SendRetryLimit    = 100
 	SendRetryInterval = 100 * time.Millisecond
 	SendTimeLimit     = 60 * time.Second
+
+	ReadConsistenceRetryLimit   = 50
+	ReadConsistenceRetryTimeout = 60 * time.Second
 )
 
 type MetaConn struct {
@@ -88,22 +91,37 @@ func (mw *MetaWrapper) sendReadToMP(ctx context.Context, mp *MetaPartition, req 
 }
 
 func (mw *MetaWrapper) readConsistentFromHosts(ctx context.Context, mp *MetaPartition, req *proto.Packet) (resp *proto.Packet, err error) {
+	var (
+		targetHosts []string
+		errMap      map[string]error
+		isErr       bool
+	)
+	start := time.Now()
 	// compare applied ID of replicas and choose the max one
-	targetHosts, isErr := mw.GetMaxAppliedIDHosts(ctx, mp)
-	if !isErr && len(targetHosts) > 0 {
-		req.ArgLen = 1
-		req.Arg = make([]byte, req.ArgLen)
-		req.Arg[0] = proto.FollowerReadFlag
-		for _, host := range targetHosts {
-			resp, _, err = mw.sendToHost(ctx, mp, req, host)
-			if err == nil && resp.ResultCode == proto.OpOk {
-				return
+	for i := 0; i < ReadConsistenceRetryLimit; i++ {
+		errMap = make(map[string]error)
+		targetHosts, isErr = mw.GetMaxAppliedIDHosts(ctx, mp)
+		if !isErr && len(targetHosts) > 0 {
+			req.ArgLen = 1
+			req.Arg = make([]byte, req.ArgLen)
+			req.Arg[0] = proto.FollowerReadFlag
+			for _, host := range targetHosts {
+				resp, _, err = mw.sendToHost(ctx, mp, req, host)
+				if err == nil && !resp.ShouldRetry() {
+					return
+				}
+				errMap[host] = errors.NewErrorf("err(%v) resp(%v)", err, resp)
+				log.LogWarnf("mp readConsistentFromHosts: failed req(%v) mp(%v) addr(%v) err(%v) resp(%v), try next host", req, mp, host, err, resp)
 			}
-			log.LogWarnf("mp readConsistentFromHosts: failed req(%v) mp(%v) addr(%v) err(%v) resp(%v), try next host", req, mp, host, err, resp)
+		}
+		log.LogWarnf("mp readConsistentFromHosts failed: try next round, req(%v) isErr(%v) targetHosts(%v) errMap(%v)", req, isErr, targetHosts, errMap)
+		if time.Since(start) > ReadConsistenceRetryTimeout {
+			log.LogWarnf("mp readConsistentFromHosts: retry timeout, req(%v) mp(%v) time(%v)", req, mp, time.Since(start))
+			break
 		}
 	}
-	log.LogWarnf("mp readConsistentFromHosts exit: failed req(%v) mp(%v) isErr(%v) targetHosts(%v), try next host", req, mp, isErr, targetHosts)
-	return nil, errors.New(fmt.Sprintf("readConsistentFromHosts: failed, req(%v) mp(%v) isErr(%v) targetHosts(%v), try next host", req, mp, isErr, targetHosts))
+	log.LogWarnf("mp readConsistentFromHosts exit: failed req(%v) mp(%v) isErr(%v) targetHosts(%v) errMap(%v)", req, mp, isErr, targetHosts, errMap)
+	return nil, errors.New(fmt.Sprintf("readConsistentFromHosts: failed, req(%v) mp(%v) isErr(%v) targetHosts(%v) errMap(%v)", req, mp, isErr, targetHosts, errMap))
 }
 
 func (mw *MetaWrapper) sendToMetaPartition(ctx context.Context, mp *MetaPartition, req *proto.Packet, addr string) (resp *proto.Packet, needCheckRead bool, err error) {
@@ -164,7 +182,7 @@ out:
 	return resp, needCheckRead, nil
 }
 
-func (mw *MetaWrapper) sendToHost(ctx context.Context, mp *MetaPartition, req *proto.Packet, addr string) (resp *proto.Packet, needReadConsistence bool, err error) {
+func (mw *MetaWrapper) sendToHost(ctx context.Context, mp *MetaPartition, req *proto.Packet, addr string) (resp *proto.Packet, needCheckRead bool, err error) {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.sendToHost").
 		SetTag("mpID", mp.PartitionID).
 		SetTag("reqID", req.ReqID).

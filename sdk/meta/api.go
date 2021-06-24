@@ -1129,6 +1129,7 @@ func (mw *MetaWrapper) GetMaxAppliedIDHosts(ctx context.Context, mp *MetaPartiti
 	log.LogDebugf("getMaxAppliedIDHosts because of no leader: pid[%v], hosts[%v]", mp.PartitionID, mp.Members)
 	appliedIDslice := make(map[string]uint64, len(mp.Members))
 	errSlice := make(map[string]bool)
+	isErr = false
 	var (
 		wg           sync.WaitGroup
 		lock         sync.Mutex
