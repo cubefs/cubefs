@@ -64,6 +64,7 @@ import (
 	gopath "path"
 	"reflect"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -320,8 +321,12 @@ func cfs_close(id C.int64_t, fd C.int) {
 //export cfs_open
 func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) (re C.int) {
 	defer func() {
-		if re < 0 && re != errorToStatus(syscall.ENOENT) {
-			log.LogErrorf("cfs_open: id(%v) path(%v) flags(%v) mode(%v) re(%v)", id, C.GoString(path), flags, mode, re)
+		if err := recover(); err != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
+			var stack string
+			if err != nil {
+				stack = ":\n" + string(debug.Stack())
+			}
+			log.LogErrorf("cfs_open: id(%v) path(%v) flags(%v) mode(%v) re(%v) err(%v)%s", id, C.GoString(path), flags, mode, re, err, stack)
 			log.LogFlush()
 		}
 	}()
@@ -562,8 +567,12 @@ func cfs_fallocate(id C.int64_t, fd C.int, mode C.int, offset C.off_t, len C.off
 	var path string
 	var ino, size uint64
 	defer func() {
-		if re < 0 {
-			log.LogErrorf("cfs_fallocate: id(%v) fd(%v) path(%v) ino(%v) size(%v) mode(%v) offset(%v) len(%v) re(%v)", id, fd, path, ino, size, mode, offset, len, re)
+		if err := recover(); err != nil || re < 0 {
+			var stack string
+			if err != nil {
+				stack = ":\n" + string(debug.Stack())
+			}
+			log.LogErrorf("cfs_fallocate: id(%v) fd(%v) path(%v) ino(%v) size(%v) mode(%v) offset(%v) len(%v) re(%v) err(%v)%s", id, fd, path, ino, size, mode, offset, len, re, err, stack)
 			log.LogFlush()
 		}
 	}()
@@ -600,10 +609,11 @@ func cfs_fallocate(id C.int64_t, fd C.int, mode C.int, offset C.off_t, len C.off
 		if uint64(offset+len) <= info.Size {
 			return statusOK
 		}
-	} else if uint32(mode) == uint32(C.FALLOC_FL_KEEP_SIZE) {
+	} else if uint32(mode) == uint32(C.FALLOC_FL_KEEP_SIZE) ||
+		uint32(mode) == uint32(C.FALLOC_FL_KEEP_SIZE|C.FALLOC_FL_PUNCH_HOLE) {
+		// CFS does not support FALLOC_FL_PUNCH_HOLE for now. We cheat here.
 		return statusOK
 	} else {
-		// CFS does not support FALLOC_FL_PUNCH_HOLE for now.
 		// unimplemented
 		return statusEINVAL
 	}
@@ -656,8 +666,12 @@ func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) C.
 func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 	var path string
 	defer func() {
-		if re < 0 {
-			log.LogErrorf("cfs_flush: id(%v) fd(%v) path(%v) re(%v)", id, fd, path, re)
+		if err := recover(); err != nil || re < 0 {
+			var stack string
+			if err != nil {
+				stack = ":\n" + string(debug.Stack())
+			}
+			log.LogErrorf("cfs_flush: id(%v) fd(%v) path(%v) re(%v) err(%v)%s", id, fd, path, re, err, stack)
 			log.LogFlush()
 		}
 	}()
@@ -1164,8 +1178,12 @@ func cfs_stat(id C.int64_t, path *C.char, stat *C.struct_stat) C.int {
 
 func _cfs_stat(id C.int64_t, path *C.char, stat *C.struct_stat, flags C.int) (re C.int) {
 	defer func() {
-		if re < 0 && re != errorToStatus(syscall.ENOENT) {
-			log.LogErrorf("_cfs_stat: id(%v) path(%v) flags(%v) re(%v)", id, C.GoString(path), flags, re)
+		if err := recover(); err != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
+			var stack string
+			if err != nil {
+				stack = ":\n" + string(debug.Stack())
+			}
+			log.LogErrorf("_cfs_stat: id(%v) path(%v) flags(%v) re(%v) err(%v)%s", id, C.GoString(path), flags, re, err, stack)
 			log.LogFlush()
 		}
 	}()
@@ -1243,8 +1261,12 @@ func cfs_stat64(id C.int64_t, path *C.char, stat *C.struct_stat64) C.int {
 
 func _cfs_stat64(id C.int64_t, path *C.char, stat *C.struct_stat64, flags C.int) (re C.int) {
 	defer func() {
-		if re < 0 && re != errorToStatus(syscall.ENOENT) {
-			log.LogErrorf("_cfs_stat64: id(%v) path(%v) flags(%v) re(%v)", id, C.GoString(path), flags, re)
+		if err := recover(); err != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
+			var stack string
+			if err != nil {
+				stack = ":\n" + string(debug.Stack())
+			}
+			log.LogErrorf("_cfs_stat64: id(%v) path(%v) flags(%v) re(%v) err(%v)%s", id, C.GoString(path), flags, re, err, stack)
 			log.LogFlush()
 		}
 	}()
@@ -1657,8 +1679,12 @@ func cfs_access(id C.int64_t, path *C.char, mode C.int) C.int {
 //export cfs_faccessat
 func cfs_faccessat(id C.int64_t, dirfd C.int, path *C.char, mode C.int, flags C.int) (re C.int) {
 	defer func() {
-		if re < 0 && re != errorToStatus(syscall.ENOENT) {
-			log.LogErrorf("cfs_faccessat: id(%v) dirfd(%v) path(%v) mode(%v) flags(%v) re(%v)", id, dirfd, C.GoString(path), mode, flags, re)
+		if err := recover(); err != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
+			var stack string
+			if err != nil {
+				stack = ":\n" + string(debug.Stack())
+			}
+			log.LogErrorf("cfs_faccessat: id(%v) dirfd(%v) path(%v) mode(%v) flags(%v) re(%v) err(%v)%s", id, dirfd, C.GoString(path), mode, flags, re, err, stack)
 			log.LogFlush()
 		}
 	}()
@@ -2261,8 +2287,12 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 	var path string
 	var ino uint64
 	defer func() {
-		if re < 0 {
-			log.LogErrorf("_cfs_read: id(%v) fd(%v) path(%v) ino(%v) size(%v) off(%v) re(%v)", id, fd, path, ino, size, off, re)
+		if err := recover(); err != nil || re < 0 {
+			var stack string
+			if err != nil {
+				stack = ":\n" + string(debug.Stack())
+			}
+			log.LogErrorf("_cfs_read: id(%v) fd(%v) path(%v) ino(%v) size(%v) off(%v) re(%v) err(%v)%s", id, fd, path, ino, size, off, re, err, stack)
 			log.LogFlush()
 		}
 	}()
@@ -2371,8 +2401,12 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	var path string
 	var ino uint64
 	defer func() {
-		if re < 0 {
-			log.LogErrorf("_cfs_write: id(%v) fd(%v) path(%v) ino(%v) size(%v) off(%v) re(%v)", id, fd, path, ino, size, off, re)
+		if err := recover(); err != nil || re < 0 {
+			var stack string
+			if err != nil {
+				stack = ":\n" + string(debug.Stack())
+			}
+			log.LogErrorf("_cfs_write: id(%v) fd(%v) path(%v) ino(%v) size(%v) off(%v) re(%v) err(%v)%s", id, fd, path, ino, size, off, re, err, stack)
 			log.LogFlush()
 		}
 	}()
