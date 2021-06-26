@@ -151,6 +151,15 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) (err error) {
 	tpObject := ump.BeforeTP(d.super.umpFunctionKey("Remove"))
 	defer ump.AfterTP(tpObject, err)
 
+	if len(d.super.delProcessPath) > 0 {
+		delProcPath, errStat := os.Readlink(fmt.Sprintf("/proc/%v/exe", req.Pid))
+		if errStat != nil || !contains(d.super.delProcessPath, delProcPath) {
+			log.LogErrorf("Remove: pid(%v) process(%v) is not permitted err(%v), parent(%v) name(%v)", req.Pid, delProcPath, errStat, d.info.Inode, req.Name)
+			return fuse.EPERM
+		}
+		log.LogDebugf("Remove: allow process pid(%v) path(%v) to delete file, parent(%v) name(%v)", req.Pid, delProcPath, d.info.Inode, req.Name)
+	}
+
 	start := time.Now()
 	d.dcache.Delete(req.Name)
 
@@ -423,4 +432,18 @@ func (d *Dir) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
 // Removexattr has not been implemented yet.
 func (d *Dir) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) error {
 	return fuse.ENOSYS
+}
+
+func contains(arr []string, element string) (ok bool) {
+	if arr == nil || len(arr) == 0 {
+		return
+	}
+
+	for _, e := range arr {
+		if e == element {
+			ok = true
+			break
+		}
+	}
+	return
 }

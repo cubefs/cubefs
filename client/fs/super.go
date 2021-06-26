@@ -53,6 +53,8 @@ type Super struct {
 	fsyncOnClose  bool
 	enableXattr   bool
 	rootIno       uint64
+
+	delProcessPath []string
 }
 
 // Functions that Super needs to implement
@@ -121,6 +123,9 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.disableDcache = opt.DisableDcache
 	s.fsyncOnClose = opt.FsyncOnClose
 	s.enableXattr = opt.EnableXattr
+	if opt.DelProcessPath != "" {
+		s.delProcessPath = strings.Split(opt.DelProcessPath, ",")
+	}
 
 	if s.rootIno, err = s.mw.GetRootIno(opt.SubDir, opt.AutoMakeSubDir); err != nil {
 		return nil, err

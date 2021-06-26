@@ -53,6 +53,7 @@ const (
 	AutoMakeSubDir
 	ExtentSize
 	AutoFlush
+	DeleteProcessAbsoPath
 
 	MaxMountOption
 )
@@ -127,6 +128,7 @@ func InitMountOptions(opts []MountOption) {
 		"", false}
 	opts[ExtentSize] = MountOption{"extentSize", "set extentSize for client", "", int64(0)}
 	opts[AutoFlush] = MountOption{"autoFlush", "set autoFlush for client", "", true}
+	opts[DeleteProcessAbsoPath] = MountOption{"delProcessAbsoPath", "the absolute path of the process which is allowed to delete files", "", ""}
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -262,4 +264,5 @@ type MountOptions struct {
 	EnablePosixACL           bool
 	ExtentSize               int64
 	AutoFlush                bool
+	DelProcessPath           string
 }
