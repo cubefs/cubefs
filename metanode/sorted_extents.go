@@ -4,22 +4,23 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
+	"sort"
 	"sync"
 
-	"github.com/chubaofs/chubaofs/util/tracing"
-
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/tracing"
 )
 
 type SortedExtents struct {
 	sync.RWMutex
 	eks []proto.ExtentKey
+	set ExtentKeySet
 }
 
 func NewSortedExtents() *SortedExtents {
 	return &SortedExtents{
 		eks: make([]proto.ExtentKey, 0),
+		set: NewExtentKeySet(),
 	}
 }
 
@@ -91,6 +92,12 @@ func (se *SortedExtents) Insert(ctx context.Context, ek proto.ExtentKey) (delete
 	se.RWMutex.Lock()
 	defer se.RWMutex.Unlock()
 
+	defer func() {
+		if se.set.Length() > 0 {
+			se.set.Reset()
+		}
+	}()
+
 	// -------------------------------------------------------------------------------------
 	// Sample:
 	//                        |=============================|
@@ -138,7 +145,6 @@ func (se *SortedExtents) Insert(ctx context.Context, ek proto.ExtentKey) (delete
 	var (
 		fixedFront, fixedBack *proto.ExtentKey
 		inserted              = false
-		maybeGarbage          map[string]proto.ExtentKey
 		index                 = 0
 		cur                   *proto.ExtentKey
 
@@ -258,10 +264,7 @@ func (se *SortedExtents) Insert(ctx context.Context, ek proto.ExtentKey) (delete
 			//   ek.FileOffset <= cur.FileOffset <= cur.FileOffset+cur.Size <= ek.FileOffset+ek.Size
 			//
 			// In this case the cur need be remove from extent key chan (se.eks).
-			if maybeGarbage == nil {
-				maybeGarbage = make(map[string]proto.ExtentKey)
-			}
-			maybeGarbage[fmt.Sprintf("%d_%d", cur.PartitionId, cur.ExtentId)] = *cur
+			se.set.Put(cur)
 			if index == len(se.eks)-1 {
 				se.eks = se.eks[:index]
 			} else {
@@ -297,19 +300,14 @@ func (se *SortedExtents) Insert(ctx context.Context, ek proto.ExtentKey) (delete
 	}
 
 	// Analyze garbage
-	if len(maybeGarbage) > 0 {
+	if se.set.Length() > 0 {
 		for i := 0; i < len(se.eks); i++ {
-			k := fmt.Sprintf("%d_%d", se.eks[i].PartitionId, se.eks[i].ExtentId)
-			if _, exist := maybeGarbage[k]; exist {
-				delete(maybeGarbage, k)
-			}
-			if len(maybeGarbage) == 0 {
+			se.set.Remove(&se.eks[i])
+			if se.set.Length() == 0 {
 				break
 			}
 		}
-		for _, garbage := range maybeGarbage {
-			deleteExtents = append(deleteExtents, garbage)
-		}
+		deleteExtents = se.set.ToExtentKeys()
 	}
 
 	return
@@ -527,4 +525,61 @@ func findFirstOverlapPosition(eks []proto.ExtentKey, ek *proto.ExtentKey) int {
 		return off + boost
 	}
 	return -1
+}
+
+type ExtentKeySet []proto.ExtentKey
+
+func (s ExtentKeySet) sort() {
+	sort.SliceStable(s, func(i, j int) bool {
+		return s[i].PartitionId < s[j].PartitionId ||
+			(s[i].PartitionId == s[j].PartitionId &&
+				s[i].ExtentId < s[j].ExtentId)
+	})
+}
+
+func (s ExtentKeySet) search(ek *proto.ExtentKey) (i int, found bool) {
+	i = sort.Search(len(s), func(i int) bool {
+		return ek.PartitionId < s[i].PartitionId || (ek.PartitionId == s[i].PartitionId && ek.ExtentId <= s[i].ExtentId)
+	})
+	found = i >= 0 && i < len(s) && ek.PartitionId == s[i].PartitionId && ek.ExtentId == s[i].ExtentId
+	return
+}
+
+func (s *ExtentKeySet) Put(ek *proto.ExtentKey) {
+	if _, found := s.search(ek); !found {
+		*s = append(*s, *ek)
+		s.sort()
+	}
+}
+
+func (s ExtentKeySet) Has(ek *proto.ExtentKey) (has bool) {
+	_, has = s.search(ek)
+	return
+}
+
+func (s *ExtentKeySet) Remove(ek *proto.ExtentKey) {
+	if i, found := s.search(ek); found {
+		if i == len(*s)-1 {
+			*s = (*s)[:i]
+			return
+		}
+		*s = append((*s)[:i], (*s)[i+1:]...)
+	}
+	return
+}
+
+func (s ExtentKeySet) ToExtentKeys() []proto.ExtentKey {
+	return s
+}
+
+func (s ExtentKeySet) Length() int {
+	return len(s)
+}
+
+func (s *ExtentKeySet) Reset() {
+	*s = (*s)[:0]
+}
+
+func NewExtentKeySet() ExtentKeySet {
+	return ExtentKeySet(make([]proto.ExtentKey, 0))
 }

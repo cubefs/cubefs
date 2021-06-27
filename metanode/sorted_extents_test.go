@@ -181,18 +181,20 @@ func TestSortedExtents_Insert01(t *testing.T) {
 //   3.        |=====| 100_4_1_0_100
 //   4.              |=====| 200_5_1_0_100
 //   5.        |=====| 100_6_1_0_100
+//   6.  |=================| 0_7_1_0_300
 //
 // Expected result:
-//          100_6_1_0_100
+//          0_7_1_0_300
 //                ↓
-//       |=====|=====|=====|
-//          ↗           ↖
-//    0_1_1_0_100   200_5_1_0_100
+//       |=================|
 //
 // Expected deleted extent keys:
 //   1.        |=====| 100_2_1_0_100
 //   2.              |=====| 200_3_1_0_100
-//   2.        |=====| 100_4_1_0_100
+//   3.        |=====| 100_4_1_0_100
+//   4.  |=====| 0_1_1_0_100
+//   5.              |=====| 200_5_1_0_100
+//   6.        |=====| 100_6_1_0_100
 //
 // Reference:
 //       *-----+-----+-----+-----+-----+--->
@@ -207,19 +209,21 @@ func TestSortedExtents_Insert02(t *testing.T) {
 			{FileOffset: 100, PartitionId: 4, ExtentId: 1, ExtentOffset: 0, Size: 100},
 			{FileOffset: 200, PartitionId: 5, ExtentId: 1, ExtentOffset: 0, Size: 100},
 			{FileOffset: 100, PartitionId: 6, ExtentId: 1, ExtentOffset: 0, Size: 100},
+			{FileOffset: 0, PartitionId: 7, ExtentId: 1, ExtentOffset: 0, Size: 300},
 		}
 	)
 	// Expected
 	var (
 		expectedEks = []proto.ExtentKey{
-			{FileOffset: 0, PartitionId: 1, ExtentId: 1, ExtentOffset: 0, Size: 100},
-			{FileOffset: 100, PartitionId: 6, ExtentId: 1, ExtentOffset: 0, Size: 100},
-			{FileOffset: 200, PartitionId: 5, ExtentId: 1, ExtentOffset: 0, Size: 100},
+			{FileOffset: 0, PartitionId: 7, ExtentId: 1, ExtentOffset: 0, Size: 300},
 		}
 		expectedDelEks = []proto.ExtentKey{
 			{FileOffset: 100, PartitionId: 2, ExtentId: 1, ExtentOffset: 0, Size: 100},
 			{FileOffset: 200, PartitionId: 3, ExtentId: 1, ExtentOffset: 0, Size: 100},
 			{FileOffset: 100, PartitionId: 4, ExtentId: 1, ExtentOffset: 0, Size: 100},
+			{FileOffset: 0, PartitionId: 1, ExtentId: 1, ExtentOffset: 0, Size: 100},
+			{FileOffset: 200, PartitionId: 5, ExtentId: 1, ExtentOffset: 0, Size: 100},
+			{FileOffset: 100, PartitionId: 6, ExtentId: 1, ExtentOffset: 0, Size: 100},
 		}
 	)
 
@@ -266,10 +270,10 @@ func TestSortedExtents_Insert02(t *testing.T) {
 //   1.        |=====| 100_2_1_0_100
 //   2.              |=====| 200_3_1_0_100
 //   3.     |=====| 60_4_1_0_100
-//   4.  |======| 0_6_1_0_120
-//   5.                       |==| 360_7_1_0_40
-//   6.    |=| 40_8_1_0_20
-//   7.  |=| 0_9_1_0_40
+//   4.  |======| 0_5_1_0_120
+//   5.                       |==| 360_6_1_0_40
+//   6.    |=| 40_7_1_0_20
+//   7.  |=| 0_8_1_0_40
 //
 // Expected result:
 //     ek1   ek3  ek5
