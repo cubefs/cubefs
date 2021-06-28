@@ -278,7 +278,7 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	delExtents := i.ExtentsTruncate(ino.Size, ino.ModifyTime)
 
 	// now we should delete the extent
-	log.LogInfof("fsm(%v) ExtentsTruncate inode(%v) exts(%v)", mp.config.PartitionId, i.Inode, delExtents)
+	log.LogInfof("fsm(%v) ExtentsTruncate inode(%v) size(%v) delExtents(%v)", mp.config.PartitionId, i.Inode, ino.Size, delExtents)
 	mp.extDelCh <- delExtents
 	return
 }
