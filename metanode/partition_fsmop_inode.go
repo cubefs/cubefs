@@ -129,7 +129,6 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 	if inode.IsEmptyDir() {
 		mp.inodeTree.Delete(inode)
 	}
-
 	inode.DecNLink()
 	return
 }
@@ -233,7 +232,7 @@ func (mp *metaPartition) fsmAppendExtents(ctx context.Context, ino *Inode) (stat
 	}
 	eks := ino.Extents.CopyExtents()
 	delExtents := ino2.AppendExtents(ctx, eks, ino.ModifyTime)
-	log.LogInfof("fsmAppendExtents inode(%v) exts(%v)", ino2.Inode, delExtents)
+	log.LogInfof("fsm(%v) AppendExtents inode(%v) exts(%v)", mp.config.PartitionId, ino2.Inode, delExtents)
 	mp.extDelCh <- delExtents
 	return
 }
@@ -252,7 +251,7 @@ func (mp *metaPartition) fsmInsertExtents(ctx context.Context, ino *Inode) (stat
 	}
 	eks := ino.Extents.CopyExtents()
 	delExtents := existIno.InsertExtents(ctx, eks, ino.ModifyTime)
-	log.LogDebugf("fsm[%v] insert extents[inode:%v, delExtents:%v]", mp.config.PartitionId, existIno.Inode, delExtents)
+	log.LogInfof("fsm(%v) InsertExtents inode(%v) exts(%v)", mp.config.PartitionId, existIno.Inode, delExtents)
 	mp.extDelCh <- delExtents
 	return
 }
@@ -279,7 +278,7 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	delExtents := i.ExtentsTruncate(ino.Size, ino.ModifyTime)
 
 	// now we should delete the extent
-	log.LogInfof("fsmExtentsTruncate inode(%v) exts(%v)", i.Inode, delExtents)
+	log.LogInfof("fsm(%v) ExtentsTruncate inode(%v) exts(%v)", mp.config.PartitionId, i.Inode, delExtents)
 	mp.extDelCh <- delExtents
 	return
 }
