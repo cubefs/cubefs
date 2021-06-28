@@ -122,14 +122,14 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			r.path)
 		resp, err = c.httpRequest(r.method, url, r.params, r.header, r.body)
 		if err != nil {
-			log.LogErrorf("serveRequest: send http request fail: method(%v) url(%v) err(%v)", r.method, url, err)
+			log.LogWarnf("serveRequest: send http request fail: method(%v) url(%v) err(%v)", r.method, url, err)
 			continue
 		}
 		stateCode := resp.StatusCode
 		repsData, err = ioutil.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		if err != nil {
-			log.LogErrorf("serveRequest: read http response body fail: err(%v)", err)
+			log.LogWarnf("serveRequest: read http response body fail: err(%v)", err)
 			continue
 		}
 		switch stateCode {
@@ -174,7 +174,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 
 			return []byte(body.Data), nil
 		default:
-			log.LogErrorf("serveRequest: unknown status: host(%v) uri(%v) status(%v) body(%s).",
+			log.LogWarnf("serveRequest: unknown status: host(%v) uri(%v) status(%v) body(%s).",
 				resp.Request.URL.String(), host, stateCode, strings.Replace(string(repsData), "\n", "", -1))
 			continue
 		}
