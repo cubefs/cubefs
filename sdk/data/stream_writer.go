@@ -795,7 +795,7 @@ func (s *Streamer) truncate(ctx context.Context, size int) error {
 	defer tracer.Finish()
 	ctx = tracer.Context()
 
-	//s.closeOpenHandler(ctx)
+	s.closeOpenHandler(ctx)
 	err := s.flush(ctx)
 	if err != nil {
 		return err
