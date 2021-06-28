@@ -807,6 +807,7 @@ func (s *Streamer) truncate(ctx context.Context, size int) error {
 	}
 
 	oldsize, _ := s.extents.Size()
+	log.LogDebugf("streamer truncate: inode(%v) oldsize(%v) size(%v)", s.inode, oldsize, size)
 	if oldsize <= size {
 		s.extents.SetSize(uint64(size), true)
 		return nil

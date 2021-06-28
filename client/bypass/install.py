@@ -1,7 +1,7 @@
 #!/usr/bin/python
 import os
 # for python < 2.7
-os.system("wget --quiet -O argparse.py http://storage.jd.local/cfs-client-lib/argparse.py")
+os.system("wget --quiet -O argparse.py http://storage.jd.local/dpgimage/libcfs_mysql/argparse.py")
 import argparse
 
 parser = argparse.ArgumentParser(prog = 'install', description = 
@@ -30,7 +30,7 @@ parser.add_argument('--volName', required=True)
 parser.add_argument('--owner', required=True)
 parser.add_argument('--followerRead', default='false', help='enable to read from follower nodes (default: false)')
 parser.add_argument('--logDir', default='/export/data/mysql/log', help='log dir (default: /export/data/mysql/log)')
-parser.add_argument('--logLevel', default='info', help='log level, debug|info|warn|error (default: info)')
+parser.add_argument('--logLevel', default='warn', help='log level, debug|info|warn|error (default: warn)')
 parser.add_argument('--profPort', default='10094', help='port for profiling (default: 10094)')
 #parser.add_argument('--tracingSamplerType', default='probabilistic', help='(default: probabilistic)')
 #parser.add_argument('--tracingSamplerParam', default='0.1', help='(default: 0.1)')
@@ -46,4 +46,4 @@ os.system('mkdir -p {0}'.format(args.configDir))
 with open('{0}/cfs_client.ini'.format(args.configDir), 'w') as f:
     f.write('mountPoint={0}\nignorePath={1}\nmasterAddr={2}\nvolName={3}\nowner={4}\nfollowerRead={5}\nlogDir={6}\nlogLevel={7}\nprofPort={8}\ntracingSamplerType={9}\ntracingSamplerParam={10}\ntracingReportAddr={11}\n'.format(args.mountPoint, args.ignorePath, args.masterAddr, args.volName, args.owner, args.followerRead, args.logDir, args.logLevel, args.profPort, args.tracingSamplerType, args.tracingSamplerParam, args.tracingReportAddr))
 
-os.system('wget --quiet -O libcfs.tar.gz http://storage.jd.local/cfs-client-lib/libcfs.tar.gz && tar xzf libcfs.tar.gz && chmod 755 libcfssdk.so libcfsclient.so && mv libcfssdk.so libcfsclient.so {0} && rm -f libcfs.tar.gz argparse.py*'.format(args.libDir))
+os.system('wget --quiet -O libcfs.tar.gz http://storage.jd.local/dpgimage/libcfs_mysql/libcfs.tar.gz && tar xzf libcfs.tar.gz && chmod 755 libcfssdk.so libcfsclient.so && mv libcfssdk.so libcfsclient.so {0} && rm -f libcfs.tar.gz argparse.py*'.format(args.libDir))

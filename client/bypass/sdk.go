@@ -510,7 +510,19 @@ func cfs_renameat(id C.int64_t, fromDirfd C.int, from *C.char, toDirfd C.int, to
 }
 
 //export cfs_truncate
-func cfs_truncate(id C.int64_t, path *C.char, len C.off_t) C.int {
+func cfs_truncate(id C.int64_t, path *C.char, len C.off_t) (re C.int) {
+	var inode uint64
+	defer func() {
+		if err := recover(); err != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
+			var stack string
+			if err != nil {
+				stack = ":\n" + string(debug.Stack())
+			}
+			log.LogErrorf("cfs_truncate: id(%v) path(%v) ino(%v) len(%v) re(%v) err(%v)%s", id, C.GoString(path), inode, len, re, err, stack)
+			log.LogFlush()
+		}
+	}()
+
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -532,11 +544,25 @@ func cfs_truncate(id C.int64_t, path *C.char, len C.off_t) C.int {
 	if err != nil {
 		return errorToStatus(err)
 	}
+	log.LogDebugf("cfs_truncate: id(%v) path(%v) ino(%v) len(%v)", id, C.GoString(path), inode, len)
 	return statusOK
 }
 
 //export cfs_ftruncate
-func cfs_ftruncate(id C.int64_t, fd C.int, len C.off_t) C.int {
+func cfs_ftruncate(id C.int64_t, fd C.int, len C.off_t) (re C.int) {
+	var path string
+	var ino uint64
+	defer func() {
+		if err := recover(); err != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
+			var stack string
+			if err != nil {
+				stack = ":\n" + string(debug.Stack())
+			}
+			log.LogErrorf("cfs_ftruncate: id(%v) fd(%v) path(%v) ino(%v) len(%v) re(%v) err(%v)%s", id, fd, path, ino, len, re, err, stack)
+			log.LogFlush()
+		}
+	}()
+
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -546,6 +572,8 @@ func cfs_ftruncate(id C.int64_t, fd C.int, len C.off_t) C.int {
 	if f == nil {
 		return statusEBADFD
 	}
+	path = f.path
+	ino = f.ino
 
 	var tracer = tracing.NewTracer("cfs_ftruncate").
 		SetTag("volume", c.volName).
@@ -559,6 +587,7 @@ func cfs_ftruncate(id C.int64_t, fd C.int, len C.off_t) C.int {
 	if err != nil {
 		return errorToStatus(err)
 	}
+	log.LogDebugf("cfs_ftruncate: id(%v) fd(%v) path(%v) ino(%v) len(%v)", id, fd, path, ino, len)
 	return statusOK
 }
 
@@ -622,11 +651,25 @@ func cfs_fallocate(id C.int64_t, fd C.int, mode C.int, offset C.off_t, len C.off
 	if err != nil {
 		return errorToStatus(err)
 	}
+	log.LogDebugf("cfs_fallocate: id(%v) fd(%v) path(%v) ino(%v) size(%v) mode(%v) offset(%v) len(%v)", id, fd, path, ino, size, mode, offset, len)
 	return statusOK
 }
 
 //export cfs_posix_fallocate
-func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) C.int {
+func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) (re C.int) {
+	var path string
+	var ino, size uint64
+	defer func() {
+		if err := recover(); err != nil || re < 0 {
+			var stack string
+			if err != nil {
+				stack = ":\n" + string(debug.Stack())
+			}
+			log.LogErrorf("cfs_posix_fallocate: id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) len(%v) re(%v) err(%v)%s", id, fd, path, ino, size, offset, len, re, err, stack)
+			log.LogFlush()
+		}
+	}()
+
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -636,6 +679,8 @@ func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) C.
 	if f == nil {
 		return statusEBADFD
 	}
+	path = f.path
+	ino = f.ino
 
 	var tracer = tracing.NewTracer("cfs_posix_fallocate").
 		SetTag("volume", c.volName).
@@ -659,6 +704,7 @@ func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) C.
 	if err != nil {
 		return errorToStatus(err)
 	}
+	log.LogDebugf("cfs_posix_fallocate: id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) len(%v)", id, fd, path, ino, size, offset, len)
 	return statusOK
 }
 
