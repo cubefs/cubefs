@@ -250,8 +250,11 @@ func (mp *metaPartition) fsmInsertExtents(ctx context.Context, ino *Inode) (stat
 		return
 	}
 	eks := ino.Extents.CopyExtents()
+	oldSize := existIno.Size
 	delExtents := existIno.InsertExtents(ctx, eks, ino.ModifyTime)
-	log.LogInfof("fsm(%v) InsertExtents inode(%v) exts(%v)", mp.config.PartitionId, existIno.Inode, delExtents)
+	newSize := existIno.Size
+	log.LogInfof("fsm(%v) InsertExtents inode(%v) eks(insert: %v, deleted: %v) size(old: %v, new: %v)",
+		mp.config.PartitionId, existIno.Inode, eks, delExtents, oldSize, newSize)
 	mp.extDelCh <- delExtents
 	return
 }
@@ -274,11 +277,13 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 		resp.Status = proto.OpArgMismatchErr
 		return
 	}
-
+	oldSize := i.Size
 	delExtents := i.ExtentsTruncate(ino.Size, ino.ModifyTime)
+	newSize := i.Size
 
 	// now we should delete the extent
-	log.LogInfof("fsm(%v) ExtentsTruncate inode(%v) size(%v) delExtents(%v)", mp.config.PartitionId, i.Inode, ino.Size, delExtents)
+	log.LogInfof("fsm(%v) ExtentsTruncate inode(%v) size(old: %v, new: %v, req: %v) delExtents(%v)",
+		mp.config.PartitionId, i.Inode, oldSize, newSize, ino.Size, delExtents)
 	mp.extDelCh <- delExtents
 	return
 }

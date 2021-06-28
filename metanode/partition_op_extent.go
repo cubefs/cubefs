@@ -18,6 +18,8 @@ import (
 	"encoding/json"
 	"os"
 
+	"github.com/chubaofs/chubaofs/util/log"
+
 	"github.com/chubaofs/chubaofs/util/tracing"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -110,6 +112,8 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (er
 	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.ExtentsTruncate")
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
+
+	log.LogDebugf("partition(%v) extents truncate (reqID: %v, inode: %v, size: %v)", mp.config.PartitionId, p.ReqID, req.Inode, req.Size)
 
 	ino := NewInode(req.Inode, proto.Mode(os.ModePerm))
 	ino.Size = req.Size
