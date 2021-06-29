@@ -1155,7 +1155,7 @@ func (mw *MetaWrapper) GetMaxAppliedIDHosts(ctx context.Context, mp *MetaPartiti
 	wg.Wait()
 	if len(errSlice) >= (len(mp.Members)+1)/2 {
 		isErr = true
-		log.LogErrorf("getMaxAppliedIDHosts err: mp[%v], hosts[%v], appliedID[%v]", mp.PartitionID, mp.Members, appliedIDslice)
+		log.LogWarnf("getMaxAppliedIDHosts err: mp[%v], hosts[%v], appliedID[%v]", mp.PartitionID, mp.Members, appliedIDslice)
 		return
 	}
 	targetHosts, maxAppliedID = getMaxApplyIDHosts(appliedIDslice)

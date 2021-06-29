@@ -449,7 +449,7 @@ func (client *ExtentClient) stopUpdateConfig() {
 func (client *ExtentClient) updateConfig() {
 	limitInfo, err := client.masterClient.AdminAPI().GetLimitInfo()
 	if err != nil {
-		log.LogErrorf("[updateConfig] %s", err.Error())
+		log.LogWarnf("[updateConfig] %s", err.Error())
 		return
 	}
 	// If rate from master is 0, then restore the client rate
