@@ -412,6 +412,7 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) (re C.int)
 			}
 			info.Size = 0
 		}
+		c.ec.RefreshExtentsCache(ctx, f.ino)
 	}
 	f.size = info.Size
 	f.path = absPath
@@ -695,6 +696,7 @@ func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) (r
 	if err != nil {
 		return errorToStatus(err)
 	}
+	size = info.Size
 
 	if uint64(offset+len) <= info.Size {
 		return statusOK
