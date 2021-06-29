@@ -24,15 +24,7 @@ func TestMetaPartition(t *testing.T) {
 	server.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	decommissionMetaPartition(commonVol, maxPartitionID, t)
-	allMetaNodes := make([]string, 0)
-	server.cluster.metaNodes.Range(func(key, _ interface{}) bool {
-		if addr, ok := key.(string); ok {
-			allMetaNodes = append(allMetaNodes, addr)
-		}
-		return true
-	})
-	mp := commonVol.MetaPartitions[0]
-	decommissionMetaPartitionToDestAddr(mp, allMetaNodes, t)
+	decommissionMetaPartitionToDestAddr(commonVol, maxPartitionID, t)
 }
 
 func createMetaPartition(vol *Vol, t *testing.T) {
@@ -116,26 +108,30 @@ func decommissionMetaPartition(vol *Vol, id uint64, t *testing.T) {
 	}
 }
 
-func decommissionMetaPartitionToDestAddr(mp *MetaPartition, allMetaNodes []string, t *testing.T) {
-	var destAddr string
-	for _, addr := range allMetaNodes {
-		if !contains(mp.Hosts, addr) {
-			destAddr = addr
-			break
-		}
+func decommissionMetaPartitionToDestAddr(vol *Vol, id uint64, t *testing.T) {
+	msAddr := mms10Addr
+	addMetaServer(msAddr, testZone2)
+	server.cluster.checkMetaNodeHeartbeat()
+	time.Sleep(5 * time.Second)
+	vol, err := server.cluster.getVol(vol.Name)
+	if err != nil {
+		t.Error(err)
+		return
 	}
-	offlineAddr := mp.Hosts[0]
+	mp, err := vol.metaPartition(id)
+	if err != nil {
+		t.Errorf("decommissionMetaPartition,err [%v]", err)
+		return
+	}
+	mp.IsRecover = false
+	offlineAddr := mp.Hosts[len(mp.Hosts)-1]
 	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v&destAddr=%v",
-		hostAddr, proto.AdminDecommissionMetaPartition, mp.volName, mp.PartitionID, offlineAddr, destAddr)
+		hostAddr, proto.AdminDecommissionMetaPartition, mp.volName, mp.PartitionID, offlineAddr, msAddr)
 	fmt.Println(reqURL)
 	process(reqURL, t)
-	mp, err := server.cluster.getMetaPartitionByID(mp.PartitionID)
-	if err != nil {
-		t.Errorf("decommissionMetaPartitionToDestAddr,err [%v]", err)
+	if contains(mp.Hosts, offlineAddr) || !contains(mp.Hosts, msAddr) {
+		t.Errorf("decommissionMetaPartitionToDestAddr failed,offlineAddr[%v],destAddr[%v],hosts[%v]", offlineAddr, msAddr, mp.Hosts)
 		return
 	}
-	if contains(mp.Hosts, offlineAddr) || !contains(mp.Hosts, destAddr) {
-		t.Errorf("decommissionMetaPartitionToDestAddr failed,offlineAddr[%v],destAddr[%v],hosts[%v]", offlineAddr, destAddr, mp.Hosts)
-		return
-	}
+	fmt.Printf("decommissionMetaPartitionToDestAddr,offlineAddr[%v],destAddr[%v],hosts[%v]\n", offlineAddr, msAddr, mp.Hosts)
 }

@@ -189,3 +189,93 @@ func (c *Cluster) decommissionDisk(dataNode *DataNode, badDiskPath string, badPa
 	Warn(c.Name, msg)
 	return
 }
+
+func (c *Cluster) checkDecommissionBadDiskDataPartitions(dataNode *DataNode, badDiskPath string) {
+	msg := fmt.Sprintf("action[checkDecommissionBadDiskDataPartitions], Node[%v] OffLine,disk[%v]", dataNode.Addr, badDiskPath)
+	log.LogWarn(msg)
+	inRecoveringDps := make([]uint64, 0)
+	toBeOfflineDpChan := make(chan *BadDiskDataPartition, diskErrDataPartitionOfflineBatchCount)
+	defer close(toBeOfflineDpChan)
+	go c.decommissionBadDiskDataPartitions(toBeOfflineDpChan, dataNode.Addr, badDiskPath)
+	for {
+		inRecoveringDps = c.checkIfDPIdIsInRecovering(inRecoveringDps)
+		maxOfflineDpCount := cap(toBeOfflineDpChan) - len(toBeOfflineDpChan) - len(inRecoveringDps)
+		if maxOfflineDpCount <= 0 {
+			continue
+		}
+		badPartitions := dataNode.badPartitions(badDiskPath, c)
+		if len(badPartitions) == 0 {
+			break
+		}
+		offlineDpCount := 0
+		for _, dp := range badPartitions {
+			if offlineDpCount >= maxOfflineDpCount {
+				break
+			}
+			toBeOfflineDpChan <- &BadDiskDataPartition{dp: dp, diskErrAddr: dataNode.Addr}
+			inRecoveringDps = append(inRecoveringDps, dp.PartitionID)
+			offlineDpCount++
+		}
+		if maxOfflineDpCount >= len(badPartitions) {
+			break
+		}
+		time.Sleep(time.Second * defaultIntervalToCheckDataPartition)
+	}
+	msg = fmt.Sprintf("action[checkDecommissionBadDiskDataPartitions],clusterID[%v] Node[%v] disk[%v] OffLine success",
+		c.Name, dataNode.Addr, badDiskPath)
+	Warn(c.Name, msg)
+	return
+}
+
+func (c *Cluster) decommissionBadDiskDataPartitions(toBeOfflineDpChan <-chan *BadDiskDataPartition, nodeAddr, diskPath string) {
+	var (
+		badDp *BadDiskDataPartition
+		err   error
+		ok    bool
+	)
+	successDpIds := make([]uint64, 0)
+	failedDpIds := make([]uint64, 0)
+	defer func() {
+		if len(successDpIds) != 0 || len(failedDpIds) != 0 {
+			rstMsg := fmt.Sprintf("decommissionBadDiskDataPartitions node[%v] disk[%v], successDpIds[%v] failedDpIds[%v]",
+				nodeAddr, diskPath, successDpIds, failedDpIds)
+			Warn(c.Name, rstMsg)
+		}
+	}()
+	for {
+		select {
+		case badDp, ok = <-toBeOfflineDpChan:
+			if !ok {
+				return
+			}
+			err = c.decommissionDataPartition(badDp.diskErrAddr, badDp.dp, getTargetAddressForDataPartitionDecommission, diskAutoOfflineErr, "", "", false)
+			if err != nil {
+				failedDpIds = append(failedDpIds, badDp.dp.PartitionID)
+			} else {
+				successDpIds = append(successDpIds, badDp.dp.PartitionID)
+			}
+		}
+	}
+}
+
+func (c *Cluster) checkIfDPIdIsInRecovering(dpIds []uint64) (inRecoveringDps []uint64) {
+	inRecoveringDps = make([]uint64, 0)
+	if len(dpIds) == 0 {
+		return
+	}
+	allInRecoveringDPIds := make(map[uint64]bool, 0)
+	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
+		if badDataPartitionIds, ok := value.([]uint64); ok {
+			for _, dataPartitionId := range badDataPartitionIds {
+				allInRecoveringDPIds[dataPartitionId] = true
+			}
+		}
+		return true
+	})
+	for _, recoveringDp := range dpIds {
+		if allInRecoveringDPIds[recoveringDp] {
+			inRecoveringDps = append(inRecoveringDps, recoveringDp)
+		}
+	}
+	return
+}

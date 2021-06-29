@@ -1551,6 +1551,7 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 		node                  *DataNode
 		rstMsg                string
 		offLineAddr, diskPath string
+		auto                  bool
 		err                   error
 		badPartitionIds       []uint64
 		badPartitions         []*DataPartition
@@ -1560,7 +1561,7 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-
+	auto = extractAuto(r)
 	if node, err = m.cluster.dataNode(offLineAddr); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
 		return
@@ -1574,6 +1575,13 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, bdp := range badPartitions {
 		badPartitionIds = append(badPartitionIds, bdp.PartitionID)
+	}
+	if auto {
+		go m.cluster.checkDecommissionBadDiskDataPartitions(node, diskPath)
+		rstMsg = fmt.Sprintf("receive decommissionDisk node[%v] disk[%v], badPartitionIds[%v] will be offline in background",
+			node.Addr, diskPath, badPartitionIds)
+		sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+		return
 	}
 	rstMsg = fmt.Sprintf("receive decommissionDisk node[%v] disk[%v], badPartitionIds[%v] has offline successfully",
 		node.Addr, diskPath, badPartitionIds)

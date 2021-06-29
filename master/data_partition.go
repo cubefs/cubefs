@@ -27,6 +27,11 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
+type BadDiskDataPartition struct {
+	dp          *DataPartition
+	diskErrAddr string
+}
+
 // DataPartition represents the structure of storing the file contents.
 type DataPartition struct {
 	PartitionID    uint64

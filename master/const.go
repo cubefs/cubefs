@@ -24,7 +24,7 @@ import (
 // Keys in the request
 const (
 	addrKey                     = "addr"
-	destAddrKey               = "destAddr"
+	destAddrKey                 = "destAddr"
 	diskPathKey                 = "disk"
 	nameKey                     = "name"
 	idKey                       = "id"
@@ -88,6 +88,7 @@ const (
 	checkDataPartitionDiskErr     = "checkDataPartitionDiskErr  "
 	dataNodeOfflineErr            = "dataNodeOfflineErr "
 	diskOfflineErr                = "diskOfflineErr "
+	diskAutoOfflineErr            = "diskAutoOfflineErr "
 	handleDataPartitionOfflineErr = "handleDataPartitionOffLineErr "
 	balanceDataPartitionZoneErr   = "balanceDataPartitionZoneErr "
 )
@@ -129,6 +130,7 @@ const (
 	defaultMinusOfNodeSetCount                   = 3
 	defaultLearnerPromThreshold                  = 90
 	minRateLimit                                 = 100
+	diskErrDataPartitionOfflineBatchCount        = 200
 )
 
 const (

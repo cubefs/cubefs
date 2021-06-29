@@ -47,6 +47,7 @@ const (
 	mds7Addr          = "127.0.0.1:9107"
 	mds8Addr          = "127.0.0.1:9108"
 	mds9Addr          = "127.0.0.1:9109"
+	mds10Addr         = "127.0.0.1:9110"
 
 	mms1Addr      = "127.0.0.1:8101"
 	mms2Addr      = "127.0.0.1:8102"
@@ -57,6 +58,7 @@ const (
 	mms7Addr      = "127.0.0.1:8107"
 	mms8Addr      = "127.0.0.1:8108"
 	mms9Addr      = "127.0.0.1:8109"
+	mms10Addr     = "127.0.0.1:8110"
 	commonVolName = "commonVol"
 	testZone1     = "zone1"
 	testZone2     = "zone2"
@@ -100,6 +102,7 @@ func createDefaultMasterServerForTest() *Server {
 	addDataServer(mds3Addr, testZone2)
 	addDataServer(mds4Addr, testZone2)
 	addDataServer(mds5Addr, testZone2)
+	addDataServer(mds6Addr, testZone2)
 	// add meta node
 	addMetaServer(mms1Addr, testZone1)
 	addMetaServer(mms2Addr, testZone1)
@@ -292,10 +295,42 @@ func TestDisk(t *testing.T) {
 	addr := mds5Addr
 	disk := "/cfs"
 	decommissionDisk(addr, disk, t)
+	decommissionDiskWithAuto(mds6Addr, disk, t)
 }
 
 func decommissionDisk(addr, path string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?addr=%v&disk=%v",
+		hostAddr, proto.DecommissionDisk, addr, path)
+	fmt.Println(reqURL)
+	resp, err := http.Get(reqURL)
+	if err != nil {
+		t.Errorf("err is %v", err)
+		return
+	}
+	fmt.Println(resp.StatusCode)
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Errorf("err is %v", err)
+		return
+	}
+	fmt.Println(string(body))
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status code[%v]", resp.StatusCode)
+		return
+	}
+	reply := &proto.HTTPReply{}
+	if err = json.Unmarshal(body, reply); err != nil {
+		t.Error(err)
+		return
+	}
+	server.cluster.checkDataNodeHeartbeat()
+	time.Sleep(5 * time.Second)
+	server.cluster.checkDiskRecoveryProgress()
+}
+
+func decommissionDiskWithAuto(addr, path string, t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v?addr=%v&disk=%v&auto=true",
 		hostAddr, proto.DecommissionDisk, addr, path)
 	fmt.Println(reqURL)
 	resp, err := http.Get(reqURL)
@@ -438,6 +473,7 @@ func TestDataPartitionDecommission(t *testing.T) {
 	server.cluster.checkDataNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	partition := commonVol.dataPartitions.partitions[0]
+	partition.isRecover = false
 	offlineAddr := partition.Hosts[0]
 	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v",
 		hostAddr, proto.AdminDecommissionDataPartition, commonVol.Name, partition.PartitionID, offlineAddr)
@@ -476,7 +512,7 @@ func TestGetMetaNode(t *testing.T) {
 
 func TestAddDataReplica(t *testing.T) {
 	partition := commonVol.dataPartitions.partitions[0]
-	dsAddr := mds6Addr
+	dsAddr := mds10Addr
 	addDataServer(dsAddr, "zone2")
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddDataReplica, partition.PartitionID, dsAddr)
 	process(reqURL, t)
@@ -503,7 +539,7 @@ func TestAddDataReplica(t *testing.T) {
 func TestRemoveDataReplica(t *testing.T) {
 	partition := commonVol.dataPartitions.partitions[0]
 	partition.isRecover = false
-	dsAddr := mds6Addr
+	dsAddr := mds10Addr
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteDataReplica, partition.PartitionID, dsAddr)
 	process(reqURL, t)
 	partition.RLock()
@@ -593,7 +629,7 @@ func TestRemoveMetaReplica(t *testing.T) {
 
 func TestAddDataLearner(t *testing.T) {
 	partition := commonVol.dataPartitions.partitions[0]
-	dsAddr := mds6Addr
+	dsAddr := mds10Addr
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddDataReplicaLearner, partition.PartitionID, dsAddr)
 	process(reqURL, t)
 	partition.RLock()
@@ -618,7 +654,7 @@ func TestAddDataLearner(t *testing.T) {
 func TestPromoteDataLearner(t *testing.T) {
 	time.Sleep(2 * time.Second)
 	partition := commonVol.dataPartitions.partitions[0]
-	dsAddr := mds6Addr
+	dsAddr := mds10Addr
 	// add
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddDataReplicaLearner, partition.PartitionID, dsAddr)
 	process(reqURL, t)
