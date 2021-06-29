@@ -1755,6 +1755,9 @@ func cfs_faccessat(id C.int64_t, dirfd C.int, path *C.char, mode C.int, flags C.
 	var info *proto.InodeInfo
 	for err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) {
 		info, err = c.mw.InodeGet_ll(ctx, inode)
+		if err != nil {
+			return errorToStatus(err)
+		}
 		if !proto.IsSymlink(info.Mode) {
 			break
 		}
