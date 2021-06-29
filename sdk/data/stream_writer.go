@@ -801,14 +801,15 @@ func (s *Streamer) truncate(ctx context.Context, size int) error {
 		return err
 	}
 
-	err = s.client.truncate(ctx, s.inode, uint64(size))
+	oldSize, _ := s.extents.Size()
+	log.LogDebugf("streamer truncate: inode(%v) oldSize(%v) size(%v)", s.inode, oldSize, size)
+
+	err = s.client.truncate(ctx, s.inode, uint64(oldSize), uint64(size))
 	if err != nil {
 		return err
 	}
 
-	oldsize, _ := s.extents.Size()
-	log.LogDebugf("streamer truncate: inode(%v) oldsize(%v) size(%v)", s.inode, oldsize, size)
-	if oldsize <= size {
+	if oldSize <= size {
 		s.extents.SetSize(uint64(size), true)
 		return nil
 	}

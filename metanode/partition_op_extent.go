@@ -113,10 +113,15 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (er
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
 
-	log.LogDebugf("partition(%v) extents truncate (reqID: %v, inode: %v, size: %v)", mp.config.PartitionId, p.ReqID, req.Inode, req.Size)
+	log.LogDebugf("partition(%v) extents truncate (reqID: %v, inode: %v, version %v, oldSize %v, size: %v)",
+		mp.config.PartitionId, p.ReqID, req.Inode, req.Version, req.OldSize, req.Size)
 
 	ino := NewInode(req.Inode, proto.Mode(os.ModePerm))
 	ino.Size = req.Size
+	// we use CreateTime store req.Version in opFSMExtentTruncate request
+	ino.CreateTime = int64(req.Version)
+	// we use AccessTime store req.OldSize in opFSMExtentTruncate request
+	ino.AccessTime = int64(req.OldSize)
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))

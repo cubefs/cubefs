@@ -278,6 +278,14 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 		return
 	}
 	oldSize := i.Size
+	// we use CreateTime store req.Version in opFSMExtentTruncate request
+	// we use AccessTime store req.OldSize in opFSMExtentTruncate request
+	if ino.CreateTime == proto.TruncateRequestVersion_1 && oldSize != uint64(ino.AccessTime) {
+		log.LogWarnf("fsm(%v) ExtentsTruncate error, inode(%v) req oldSize(%v) mismatch file size(%v)",
+			mp.config.PartitionId, i.Inode, ino.AccessTime, i.Size)
+		resp.Status = proto.OpArgMismatchErr
+		return
+	}
 	delExtents := i.ExtentsTruncate(ino.Size, ino.ModifyTime)
 	newSize := i.Size
 

@@ -327,12 +327,16 @@ type GetExtentsResponse struct {
 	Extents    []ExtentKey `json:"eks"`
 }
 
+const TruncateRequestVersion_1 = 1
+
 // TruncateRequest defines the request to truncate.
 type TruncateRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	Size        uint64 `json:"sz"`
+	OldSize     uint64 `json:"oldSize"`
+	Version     uint64 `json:"version"`
 }
 
 // SetAttrRequest defines the request to set attribute.

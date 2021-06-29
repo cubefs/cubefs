@@ -685,7 +685,7 @@ func (mw *MetaWrapper) getExtents(ctx context.Context, mp *MetaPartition, inode 
 	return statusOK, resp.Generation, resp.Size, resp.Extents, nil
 }
 
-func (mw *MetaWrapper) truncate(ctx context.Context, mp *MetaPartition, inode, size uint64) (status int, err error) {
+func (mw *MetaWrapper) truncate(ctx context.Context, mp *MetaPartition, inode, oldSize, size uint64) (status int, err error) {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.truncate")
 	defer tracer.Finish()
 	ctx = tracer.Context()
@@ -695,6 +695,8 @@ func (mw *MetaWrapper) truncate(ctx context.Context, mp *MetaPartition, inode, s
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
 		Size:        size,
+		Version:     proto.TruncateRequestVersion_1,
+		OldSize:     oldSize,
 	}
 
 	packet := proto.NewPacketReqID(ctx)

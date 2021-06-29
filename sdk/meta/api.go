@@ -679,7 +679,7 @@ func (mw *MetaWrapper) GetExtents(ctx context.Context, inode uint64) (gen uint64
 	return gen, size, extents, nil
 }
 
-func (mw *MetaWrapper) Truncate(ctx context.Context, inode, size uint64) error {
+func (mw *MetaWrapper) Truncate(ctx context.Context, inode, oldSize, size uint64) error {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.Truncate")
 	defer tracer.Finish()
 	ctx = tracer.Context()
@@ -690,7 +690,7 @@ func (mw *MetaWrapper) Truncate(ctx context.Context, inode, size uint64) error {
 		return syscall.ENOENT
 	}
 
-	status, err := mw.truncate(ctx, mp, inode, size)
+	status, err := mw.truncate(ctx, mp, inode, oldSize, size)
 	if err != nil || status != statusOK {
 		return statusToErrno(status)
 	}
