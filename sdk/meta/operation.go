@@ -725,6 +725,8 @@ func (mw *MetaWrapper) truncate(ctx context.Context, mp *MetaPartition, inode, o
 	// truncate may recieve statusInval caused by repeat execution on metanode
 	if status == statusInval {
 		getStatus, getInfo, getErr := mw.iget(ctx, mp, inode)
+		log.LogWarnf("truncate: truncate failed[packet(%v) mp(%v) req(%v)], but inode(%v) size correct",
+			packet, mp, req, getInfo)
 		if getErr == nil && getStatus == statusOK && getInfo.Size == size {
 			log.LogWarnf("truncate: truncate failed[packet(%v) mp(%v) req(%v)], but inode(%v) size correct",
 				packet, mp, req, getInfo)
