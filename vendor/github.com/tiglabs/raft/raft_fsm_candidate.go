@@ -16,9 +16,7 @@
 package raft
 
 import (
-	"context"
 	"fmt"
-	"sort"
 
 	"github.com/tiglabs/raft/tracing"
 
@@ -107,29 +105,7 @@ func stepCandidate(r *raftFsm, m *proto.Message) {
 	}
 }
 
-func (r *raftFsm) isNeedBecomeFollower() bool {
-	if r.state == stateCandidate {
-		peerIDs := make([]uint64, 0, len(r.replicas))
-		for peerID := range r.replicas {
-			peerIDs = append(peerIDs, peerID)
-		}
-		sort.SliceStable(peerIDs, func(i, j int) bool {
-			return peerIDs[i] < peerIDs[j]
-		})
-		return peerIDs[int(r.term)%len(peerIDs)] == r.config.NodeID
-	}
-	return false
-}
-
 func (r *raftFsm) campaign(force bool) {
-	if r.isNeedBecomeFollower() {
-		if logger.IsEnableDebug() {
-			logger.Debug("[raft->campaign][%v] need degrade to follower at term %d", r.id, r.term)
-		}
-		r.becomeFollower(context.Background(), r.term, NoLeader)
-		return
-	}
-
 	r.becomeCandidate()
 	if r.quorum() == r.poll(r.config.NodeID, true) {
 		if r.config.LeaseCheck {
