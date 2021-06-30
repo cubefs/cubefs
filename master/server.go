@@ -35,20 +35,21 @@ import (
 
 // configuration keys
 const (
-	ClusterName       = "clusterName"
-	ID                = "id"
-	IP                = "ip"
-	Port              = "port"
-	LogLevel          = "logLevel"
-	WalDir            = "walDir"
-	StoreDir          = "storeDir"
-	GroupID           = 1
-	ModuleName        = "master"
-	CfgRetainLogs     = "retainLogs"
-	DefaultRetainLogs = 20000
-	cfgTickInterval   = "tickInterval"
-	cfgElectionTick   = "electionTick"
-	SecretKey         = "masterServiceKey"
+	ClusterName        = "clusterName"
+	ID                 = "id"
+	IP                 = "ip"
+	Port               = "port"
+	LogLevel           = "logLevel"
+	WalDir             = "walDir"
+	StoreDir           = "storeDir"
+	GroupID            = 1
+	ModuleName         = "master"
+	CfgRetainLogs      = "retainLogs"
+	DefaultRetainLogs  = 20000
+	cfgTickInterval    = "tickInterval"
+	cfgRaftRecvBufSize = "raftRecvBufSize"
+	cfgElectionTick    = "electionTick"
+	SecretKey          = "masterServiceKey"
 )
 
 var (
@@ -62,27 +63,28 @@ var (
 
 // Server represents the server in a cluster
 type Server struct {
-	id           uint64
-	clusterName  string
-	ip           string
-	port         string
-	walDir       string
-	storeDir     string
-	retainLogs   uint64
-	tickInterval int
-	electionTick int
-	leaderInfo   *LeaderInfo
-	config       *clusterConfig
-	cluster      *Cluster
-	user         *User
-	rocksDBStore *raftstore.RocksDBStore
-	raftStore    raftstore.RaftStore
-	fsm          *MetadataFsm
-	partition    raftstore.Partition
-	wg           sync.WaitGroup
-	reverseProxy *httputil.ReverseProxy
-	metaReady    bool
-	apiServer    *http.Server
+	id              uint64
+	clusterName     string
+	ip              string
+	port            string
+	walDir          string
+	storeDir        string
+	retainLogs      uint64
+	tickInterval    int
+	raftRecvBufSize int
+	electionTick    int
+	leaderInfo      *LeaderInfo
+	config          *clusterConfig
+	cluster         *Cluster
+	user            *User
+	rocksDBStore    *raftstore.RocksDBStore
+	raftStore       raftstore.RaftStore
+	fsm             *MetadataFsm
+	partition       raftstore.Partition
+	wg              sync.WaitGroup
+	reverseProxy    *httputil.ReverseProxy
+	metaReady       bool
+	apiServer       *http.Server
 }
 
 // NewServer creates a new server
@@ -228,6 +230,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 		}
 	}
 	m.tickInterval = int(cfg.GetFloat(cfgTickInterval))
+	m.raftRecvBufSize = int(cfg.GetInt(cfgRaftRecvBufSize))
 	m.electionTick = int(cfg.GetFloat(cfgElectionTick))
 	if m.tickInterval <= 300 {
 		m.tickInterval = 500
@@ -247,6 +250,7 @@ func (m *Server) createRaftServer() (err error) {
 		ReplicaPort:       int(m.config.replicaPort),
 		TickInterval:      m.tickInterval,
 		ElectionTick:      m.electionTick,
+		RecvBufSize:       m.raftRecvBufSize,
 	}
 	if m.raftStore, err = raftstore.NewRaftStore(raftCfg); err != nil {
 		return errors.Trace(err, "NewRaftStore failed! id[%v] walPath[%v]", m.id, m.walDir)

@@ -150,6 +150,7 @@ const (
 	cfgTotalMem          = "totalMem"
 	cfgZoneName          = "zoneName"
 	cfgTickInterval      = "tickInterval"
+	cfgRaftRecvBufSize   = "raftRecvBufSize"
 	cfgSmuxPortShift     = "smuxPortShift"     //int
 	cfgSmuxMaxConn       = "smuxMaxConn"       //int
 	cfgSmuxStreamPerConn = "smuxStreamPerConn" //int

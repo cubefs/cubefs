@@ -64,6 +64,7 @@ type MetaNode struct {
 	smuxStopC         chan uint8
 	metrics           *MetaNodeMetrics
 	tickInterval      int
+	raftRecvBufSize   int
 
 	control common.Control
 }
@@ -187,6 +188,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.raftHeartbeatPort = cfg.GetString(cfgRaftHeartbeatPort)
 	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
 	m.tickInterval = int(cfg.GetFloat(cfgTickInterval))
+	m.raftRecvBufSize = int(cfg.GetInt(cfgRaftRecvBufSize))
 	m.zoneName = cfg.GetString(cfgZoneName)
 	configTotalMem, _ = strconv.ParseUint(cfg.GetString(cfgTotalMem), 10, 64)
 

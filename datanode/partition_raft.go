@@ -447,6 +447,7 @@ func (s *DataNode) parseRaftConfig(cfg *config.Config) (err error) {
 	s.tickInterval = int(cfg.GetFloat(CfgTickInterval))
 	s.raftHeartbeat = cfg.GetString(ConfigKeyRaftHeartbeat)
 	s.raftReplica = cfg.GetString(ConfigKeyRaftReplica)
+	s.raftRecvBufSize = int(cfg.GetInt(CfgRaftRecvBufSize))
 	log.LogDebugf("[parseRaftConfig] load raftDir(%v).", s.raftDir)
 	log.LogDebugf("[parseRaftConfig] load raftHearbeat(%v).", s.raftHeartbeat)
 	log.LogDebugf("[parseRaftConfig] load raftReplica(%v).", s.raftReplica)
@@ -496,6 +497,7 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 		ReplicaPort:       replicatePort,
 		NumOfLogsToRetain: DefaultRaftLogsToRetain,
 		TickInterval:      s.tickInterval,
+		RecvBufSize:       s.raftRecvBufSize,
 	}
 	s.raftStore, err = raftstore.NewRaftStore(raftConf)
 	if err != nil {
