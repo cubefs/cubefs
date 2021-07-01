@@ -435,7 +435,18 @@ func cfs_openat(id C.int64_t, dirfd C.int, path *C.char, flags C.int, mode C.mod
 }
 
 //export cfs_rename
-func cfs_rename(id C.int64_t, from *C.char, to *C.char) C.int {
+func cfs_rename(id C.int64_t, from *C.char, to *C.char) (re C.int) {
+	defer func() {
+		if err := recover(); err != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
+			var stack string
+			if err != nil {
+				stack = ":\n" + string(debug.Stack())
+			}
+			log.LogErrorf("cfs_rename: id(%v) from(%v) to(%v) re(%v) err(%v)%s", id, C.GoString(from), C.GoString(to), re, err, stack)
+			log.LogFlush()
+		}
+	}()
+
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -713,13 +724,14 @@ func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) (r
 //export cfs_flush
 func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 	var path string
+	var ino uint64
 	defer func() {
 		if err := recover(); err != nil || re < 0 {
 			var stack string
 			if err != nil {
 				stack = ":\n" + string(debug.Stack())
 			}
-			log.LogErrorf("cfs_flush: id(%v) fd(%v) path(%v) re(%v) err(%v)%s", id, fd, path, re, err, stack)
+			log.LogErrorf("cfs_flush: id(%v) fd(%v) path(%v) ino(%v) re(%v) err(%v)%s", id, fd, path, ino, re, err, stack)
 			log.LogFlush()
 		}
 	}()
@@ -734,6 +746,7 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 		return statusEBADFD
 	}
 	path = f.path
+	ino = f.ino
 
 	if !proto.IsRegular(f.mode) {
 		// Some application may call fdatasync() after open a directory.
@@ -762,7 +775,18 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
  */
 
 //export cfs_mkdirs
-func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) C.int {
+func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) (re C.int) {
+	defer func() {
+		if err := recover(); err != nil || re < 0 {
+			var stack string
+			if err != nil {
+				stack = ":\n" + string(debug.Stack())
+			}
+			log.LogErrorf("cfs_mkdirs: id(%v) path(%v) mode(%v) re(%v) err(%v)%s", id, C.GoString(path), mode, re, err, stack)
+			log.LogFlush()
+		}
+	}()
+
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -822,7 +846,18 @@ func cfs_mkdirsat(id C.int64_t, dirfd C.int, path *C.char, mode C.mode_t) C.int 
 }
 
 //export cfs_rmdir
-func cfs_rmdir(id C.int64_t, path *C.char) C.int {
+func cfs_rmdir(id C.int64_t, path *C.char) (re C.int) {
+	defer func() {
+		if err := recover(); err != nil || re < 0 {
+			var stack string
+			if err != nil {
+				stack = ":\n" + string(debug.Stack())
+			}
+			log.LogErrorf("cfs_rmdir: id(%v) path(%v) re(%v) err(%v)%s", id, C.GoString(path), re, err, stack)
+			log.LogFlush()
+		}
+	}()
+
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -1002,7 +1037,18 @@ func cfs_getdents(id C.int64_t, fd C.int, buf unsafe.Pointer, count C.int) (n C.
  */
 
 //export cfs_link
-func cfs_link(id C.int64_t, oldpath *C.char, newpath *C.char) C.int {
+func cfs_link(id C.int64_t, oldpath *C.char, newpath *C.char) (re C.int) {
+	defer func() {
+		if err := recover(); err != nil || re < 0 {
+			var stack string
+			if err != nil {
+				stack = ":\n" + string(debug.Stack())
+			}
+			log.LogErrorf("cfs_link: id(%v) oldpath(%v) newpath(%v) re(%v) err(%v)%s", id, C.GoString(oldpath), C.GoString(newpath), re, err, stack)
+			log.LogFlush()
+		}
+	}()
+
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -1055,7 +1101,18 @@ func cfs_linkat(id C.int64_t, oldDirfd C.int, oldPath *C.char,
 }
 
 //export cfs_symlink
-func cfs_symlink(id C.int64_t, target *C.char, linkPath *C.char) C.int {
+func cfs_symlink(id C.int64_t, target *C.char, linkPath *C.char) (re C.int) {
+	defer func() {
+		if err := recover(); err != nil || re < 0 {
+			var stack string
+			if err != nil {
+				stack = ":\n" + string(debug.Stack())
+			}
+			log.LogErrorf("cfs_symlink: id(%v) target(%v) linkPath(%v) re(%v) err(%v)%s", id, C.GoString(target), C.GoString(linkPath), re, err, stack)
+			log.LogFlush()
+		}
+	}()
+
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -1104,7 +1161,18 @@ func cfs_symlinkat(id C.int64_t, target *C.char, dirfd C.int, linkPath *C.char) 
 }
 
 //export cfs_unlink
-func cfs_unlink(id C.int64_t, path *C.char) C.int {
+func cfs_unlink(id C.int64_t, path *C.char) (re C.int) {
+	defer func() {
+		if err := recover(); err != nil || re < 0 {
+			var stack string
+			if err != nil {
+				stack = ":\n" + string(debug.Stack())
+			}
+			log.LogErrorf("cfs_unlink: id(%v) path(%v) re(%v) err(%v)%s", id, C.GoString(path), re, err, stack)
+			log.LogFlush()
+		}
+	}()
+
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -1225,13 +1293,14 @@ func cfs_stat(id C.int64_t, path *C.char, stat *C.struct_stat) C.int {
 }
 
 func _cfs_stat(id C.int64_t, path *C.char, stat *C.struct_stat, flags C.int) (re C.int) {
+	var ino uint64
 	defer func() {
 		if err := recover(); err != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
 			var stack string
 			if err != nil {
 				stack = ":\n" + string(debug.Stack())
 			}
-			log.LogErrorf("_cfs_stat: id(%v) path(%v) flags(%v) re(%v) err(%v)%s", id, C.GoString(path), flags, re, err, stack)
+			log.LogErrorf("_cfs_stat: id(%v) path(%v) ino(%v) flags(%v) re(%v) err(%v)%s", id, C.GoString(path), ino, flags, re, err, stack)
 			log.LogFlush()
 		}
 	}()
@@ -1257,6 +1326,7 @@ func _cfs_stat(id C.int64_t, path *C.char, stat *C.struct_stat, flags C.int) (re
 	if err != nil {
 		return errorToStatus(err)
 	}
+	ino = info.Inode
 
 	// fill up the stat
 	stat.st_dev = 0
@@ -1308,13 +1378,14 @@ func cfs_stat64(id C.int64_t, path *C.char, stat *C.struct_stat64) C.int {
 }
 
 func _cfs_stat64(id C.int64_t, path *C.char, stat *C.struct_stat64, flags C.int) (re C.int) {
+	var ino uint64
 	defer func() {
 		if err := recover(); err != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
 			var stack string
 			if err != nil {
 				stack = ":\n" + string(debug.Stack())
 			}
-			log.LogErrorf("_cfs_stat64: id(%v) path(%v) flags(%v) re(%v) err(%v)%s", id, C.GoString(path), flags, re, err, stack)
+			log.LogErrorf("_cfs_stat64: id(%v) path(%v) ino(%v) flags(%v) re(%v) err(%v)%s", id, C.GoString(path), ino, flags, re, err, stack)
 			log.LogFlush()
 		}
 	}()
@@ -1340,6 +1411,7 @@ func _cfs_stat64(id C.int64_t, path *C.char, stat *C.struct_stat64, flags C.int)
 	if err != nil {
 		return errorToStatus(err)
 	}
+	ino = info.Inode
 
 	// fill up the stat
 	stat.st_dev = 0
