@@ -219,7 +219,7 @@ func (c *Cluster) checkDecommissionBadDiskDataPartitions(dataNode *DataNode, bad
 		if maxOfflineDpCount >= len(badPartitions) {
 			break
 		}
-		time.Sleep(time.Second * defaultIntervalToCheckDataPartition)
+		time.Sleep(5 * time.Second * defaultIntervalToCheckDataPartition)
 	}
 	msg = fmt.Sprintf("action[checkDecommissionBadDiskDataPartitions],clusterID[%v] Node[%v] disk[%v] OffLine success",
 		c.Name, dataNode.Addr, badDiskPath)
