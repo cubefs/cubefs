@@ -393,6 +393,15 @@ func (dp *DataPartition) Stop() {
 }
 
 func (dp *DataPartition) Delete() {
+	if dp==nil {
+		return
+	}
+	defer func() {
+		if r:=recover();r!=nil {
+			mesg := fmt.Sprintf("DataPartition(%v) Delete panic(%v)", dp.partitionID,r)
+			log.LogWarnf(mesg)
+		}
+	}()
 	dp.Stop()
 	dp.Disk().DetachDataPartition(dp)
 	if dp.raftPartition != nil {
@@ -404,6 +413,16 @@ func (dp *DataPartition) Delete() {
 }
 
 func (dp *DataPartition) Expired() {
+	if dp==nil {
+		return
+	}
+	defer func() {
+		if r:=recover();r!=nil {
+			mesg := fmt.Sprintf("DataPartition(%v) Expired panic(%v)", dp.partitionID,r)
+			log.LogWarnf(mesg)
+		}
+	}()
+
 	dp.Stop()
 	dp.Disk().DetachDataPartition(dp)
 	if dp.raftPartition != nil {
