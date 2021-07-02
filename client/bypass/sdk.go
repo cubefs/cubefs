@@ -773,7 +773,7 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 	if err := c.ec.Flush(ctx, f.ino); err != nil {
 		return statusEIO
 	}
-	log.LogDebugf("cfs_flush: id(%v) fd(%v) path(%v) re(%v) elapsed(%d us)", id, fd, f.path, re, time.Since(start).Microseconds())
+	log.LogDebugf("cfs_flush: id(%v) fd(%v) path(%v) re(%v) elapsed(%d us)", id, fd, f.path, re, int64(time.Since(start))/1e3)
 	return statusOK
 }
 
@@ -2628,7 +2628,7 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	} else if f.flags&uint32(C.O_DSYNC) != 0 {
 		flagBuf.WriteString("O_DSYNC|")
 	}
-	log.LogDebugf("_cfs_write: id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) re(%v) elapsed(%s us)", id, fd, f.path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), re, time.Since(start).Microseconds())
+	log.LogDebugf("_cfs_write: id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) re(%v) elapsed(%s us)", id, fd, f.path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), re, int64(time.Since(start))/1e3)
 	return C.ssize_t(n)
 }
 
