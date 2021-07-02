@@ -736,6 +736,7 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 		}
 	}()
 
+	start := time.Now()
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -760,13 +761,19 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpc := exporter.NewTPCnt("cfs_flush")
+	name := "cfs_flush"
+	if strings.HasPrefix(f.path, "ib_logfile") {
+		name = "cfs_flush_redolog"
+	} else if strings.HasPrefix(f.path, "mysql-bin") {
+		name = "cfs_flush_binlog"
+	}
+	tpc := exporter.NewTPCnt(name)
 	defer tpc.Set(nil)
 
 	if err := c.ec.Flush(ctx, f.ino); err != nil {
 		return statusEIO
 	}
-	log.LogDebugf("cfs_flush: id(%v) fd(%v) path(%v) re(%v)", id, fd, f.path, re)
+	log.LogDebugf("cfs_flush: id(%v) fd(%v) path(%v) re(%v) elapsed(%d us)", id, fd, f.path, re, time.Since(start).Microseconds())
 	return statusOK
 }
 
@@ -2534,6 +2541,7 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		}
 	}()
 
+	start := time.Now()
 	once.Do(func() {
 		signal.Ignore(syscall.SIGHUP, syscall.SIGTERM)
 	})
@@ -2557,7 +2565,13 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpc := exporter.NewTPCnt("cfs_write")
+	name := "cfs_write"
+	if strings.HasPrefix(f.path, "ib_logfile") {
+		name = "cfs_write_redolog"
+	} else if strings.HasPrefix(f.path, "mysql-bin") {
+		name = "cfs_write_binlog"
+	}
+	tpc := exporter.NewTPCnt(name)
 	defer tpc.Set(nil)
 
 	accFlags := f.flags & uint32(C.O_ACCMODE)
@@ -2614,7 +2628,7 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	} else if f.flags&uint32(C.O_DSYNC) != 0 {
 		flagBuf.WriteString("O_DSYNC|")
 	}
-	log.LogDebugf("_cfs_write: id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) re(%v)", id, fd, f.path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), re)
+	log.LogDebugf("_cfs_write: id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) re(%v) elapsed(%s us)", id, fd, f.path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), re, time.Since(start).Microseconds())
 	return C.ssize_t(n)
 }
 
