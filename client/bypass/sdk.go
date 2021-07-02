@@ -762,9 +762,9 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 	var ctx = tracer.Context()
 
 	name := "cfs_flush"
-	if strings.HasPrefix(f.path, "ib_logfile") {
+	if strings.Contains(f.path, "ib_logfile") {
 		name = "cfs_flush_redolog"
-	} else if strings.HasPrefix(f.path, "mysql-bin") {
+	} else if strings.Contains(f.path, "mysql-bin") {
 		name = "cfs_flush_binlog"
 	}
 	tpc := exporter.NewTPCnt(name)
@@ -2566,9 +2566,9 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	var ctx = tracer.Context()
 
 	name := "cfs_write"
-	if strings.HasPrefix(f.path, "ib_logfile") {
+	if strings.Contains(f.path, "ib_logfile") {
 		name = "cfs_write_redolog"
-	} else if strings.HasPrefix(f.path, "mysql-bin") {
+	} else if strings.Contains(f.path, "mysql-bin") {
 		name = "cfs_write_binlog"
 	}
 	tpc := exporter.NewTPCnt(name)
