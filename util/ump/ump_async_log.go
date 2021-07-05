@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync/atomic"
 )
 
 type FunctionTp struct {
@@ -61,7 +62,7 @@ const (
 var (
 	FunctionTpLogWrite    = &LogWrite{logCh: make(chan interface{}, ChSize)}
 	SystemAliveLogWrite   = &LogWrite{logCh: make(chan interface{}, ChSize)}
-	BusinessAlarmLogWrite = &LogWrite{logCh: make(chan interface{}, ChSize)}
+	BusinessAlarmLogWrite = &LogWrite{logCh: make(chan interface{}, ChSize), empty: make(chan struct{}, 1)}
 	UmpDataDir            = "/export/home/tomcat/UMP-Monitor/logs/"
 )
 
@@ -75,6 +76,10 @@ type LogWrite struct {
 	sigCh       chan bool
 	bf          *bytes.Buffer
 	jsonEncoder *json.Encoder
+	// pending log
+	inflight int32
+	// Issue a signal to this channel when inflight hits zero.
+	empty chan struct{}
 }
 
 func (lw *LogWrite) initLogFp(sufixx string) (err error) {
@@ -164,6 +169,12 @@ func (lw *LogWrite) backGroundWrite(umpType string) {
 		lw.logFp.Write(body)
 		lw.logSize += (int64)(len(body))
 		body = make([]byte, 0)
+		if umpType == BusinessAlarmType && atomic.AddInt32(&lw.inflight, -1) <= 0 {
+			select {
+			case lw.empty <- struct{}{}:
+			default:
+			}
+		}
 	}
 }
 

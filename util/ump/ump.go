@@ -17,6 +17,7 @@ package ump
 import (
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -133,7 +134,23 @@ func Alarm(key, detail string) {
 
 	select {
 	case BusinessAlarmLogWrite.logCh <- alarm:
+		atomic.AddInt32(&BusinessAlarmLogWrite.inflight, 1)
 	default:
 	}
 	return
+}
+
+func FlushAlarm() {
+	if atomic.LoadInt32(&BusinessAlarmLogWrite.inflight) <= 0 {
+		return
+	}
+
+	for {
+		select {
+		case <-BusinessAlarmLogWrite.empty:
+			if atomic.LoadInt32(&BusinessAlarmLogWrite.inflight) <= 0 {
+				return
+			}
+		}
+	}
 }
