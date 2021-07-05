@@ -16,7 +16,9 @@ package exporter
 
 import (
 	"fmt"
+	"github.com/chubaofs/chubaofs/proto"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +28,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/client_golang/prometheus/push"
 )
 
 const (
@@ -37,6 +40,7 @@ const (
 	ConfigKeyConsulMeta     = "consulMeta"     // consul meta
 	ConfigKeyIpFilter       = "ipFilter"       // add ip filter
 	ConfigKeyEnablePid      = "enablePid"      // enable report partition id
+	ConfigKeyPushAddr       = "pushAddr"       // enable push data to gateway
 	ChSize                  = 1024 * 10        //collect chan size
 
 	// monitor label name
@@ -53,8 +57,10 @@ var (
 	modulename        string
 	exporterPort      int64
 	enabledPrometheus = false
+	enablePush        = false
 	EnablePid         = false
 	replacer          = strings.NewReplacer("-", "_", ".", "_", " ", "_", ",", "_", ":", "_")
+	registry          = prometheus.NewRegistry()
 )
 
 func metricsName(name string) string {
@@ -79,6 +85,11 @@ func Init(role string, cfg *config.Config) {
 	}
 	exporterPort = port
 	enabledPrometheus = true
+	
+	if len(cfg.GetString(ConfigKeyPushAddr)) > 0 {
+               	enablePush = true
+        }
+
 	http.Handle(PromHandlerPattern, promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
 		Timeout: 5 * time.Second,
 	}))
@@ -125,16 +136,22 @@ func InitWithRouter(role string, cfg *config.Config, router *mux.Router, exPort 
 }
 
 func RegistConsul(cluster string, role string, cfg *config.Config) {
-	clustername = replacer.Replace(cluster)
-	consulAddr := cfg.GetString(ConfigKeyConsulAddr)
-	consulMeta := cfg.GetString(ConfigKeyConsulMeta)
-
 	ipFilter := cfg.GetString(ConfigKeyIpFilter)
 	host, err := GetLocalIpAddr(ipFilter)
 	if err != nil {
 		log.LogErrorf("get local ip error, %v", err.Error())
 		return
 	}
+
+	if enablePush {
+		log.LogWarnf("[RegisterConsul] use auto push data strategy, not register consul")
+		autoPush(cfg.GetString(ConfigKeyPushAddr), role, cluster, host)
+		return
+	}
+
+	clustername = replacer.Replace(cluster)
+	consulAddr := cfg.GetString(ConfigKeyConsulAddr)
+	consulMeta := cfg.GetString(ConfigKeyConsulMeta)
 
 	if exporterPort == int64(0) {
 		exporterPort = cfg.GetInt64(ConfigKeyExporterPort)
@@ -145,6 +162,36 @@ func RegistConsul(cluster string, role string, cfg *config.Config) {
 		}
 		go DoConsulRegisterProc(consulAddr, AppName, role, cluster, consulMeta, host, exporterPort)
 	}
+}
+
+func autoPush(pushAddr, role, cluster, ip string) {
+
+	pid := os.Getpid()
+
+	pusher := push.New(pushAddr, "cbfs").
+		Gatherer(registry).
+		Grouping("cip", ip).
+		Grouping("role", role).
+		Grouping("cluster", cluster).
+		Grouping("pid", strconv.Itoa(pid)).
+		Grouping("commit", proto.CommitID).
+		Grouping("app", AppName)
+
+	log.LogInfof("start push data, ip %s, addr %s, role %s, cluster %s", ip, pushAddr, role, cluster)
+
+	ticker := time.NewTicker(time.Second * 30)
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				err := pusher.Push()
+				if err != nil {
+					log.LogWarnf("push monitor data to %s err, %s", pushAddr, err.Error())
+				}
+			}
+		}
+	}()
+
 }
 
 func collect() {
