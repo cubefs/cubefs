@@ -26,6 +26,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/iputil"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/ump"
 )
 
 var (
@@ -308,4 +309,14 @@ func distanceFromLocal(b string) int {
 	remote := strings.Split(b, ":")[0]
 
 	return iputil.GetDistance(net.ParseIP(LocalIP), net.ParseIP(remote))
+}
+
+func handleUmpAlarm(cluster, vol, act, msg string) {
+	umpKeyCluster := fmt.Sprintf("%s_client_warning", cluster)
+	umpMsgCluster := fmt.Sprintf("volume(%s) %s", vol, msg)
+	ump.Alarm(umpKeyCluster, umpMsgCluster)
+
+	umpKeyVol := fmt.Sprintf("%s_%s_warning", cluster, vol)
+	umpMsgVol := fmt.Sprintf("act(%s) - %s", act, msg)
+	ump.Alarm(umpKeyVol, umpMsgVol)
 }

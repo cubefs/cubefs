@@ -29,7 +29,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/tracing"
-	"github.com/chubaofs/chubaofs/util/ump"
 	"golang.org/x/net/context"
 )
 
@@ -366,7 +365,6 @@ func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, dir
 	var (
 		err    error
 		errmsg string
-		umpKey string
 	)
 	tryCount := 0
 	for {
@@ -381,9 +379,8 @@ func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, dir
 			break
 		}
 		log.LogWarnf("doOverWriteOrROW failed: ino(%v) err(%v) req(%v)", s.inode, err, req)
-		errmsg = fmt.Sprintf("volume(%v) doOverWrite and doROW err(%v), try count(%v)", s.client.dataWrapper.volName, err, tryCount)
-		umpKey = fmt.Sprintf("%v_client_warning", s.client.dataWrapper.clusterName)
-		ump.Alarm(umpKey, errmsg)
+		errmsg = fmt.Sprintf("doOverWrite and doROW err(%v) inode(%v) req(%v) try count(%v)", err, s.inode, req, tryCount)
+		handleUmpAlarm(s.client.dataWrapper.clusterName, s.client.dataWrapper.volName, "doOverWriteOrROW", errmsg)
 		time.Sleep(1 * time.Second)
 	}
 	return writeSize

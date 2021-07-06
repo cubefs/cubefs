@@ -26,7 +26,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/tracing"
-	"github.com/chubaofs/chubaofs/util/ump"
 )
 
 // State machines
@@ -514,9 +513,8 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet, errmsg string) error {
 	packet.errCount++
 	if packet.errCount%50 == 0 {
 		log.LogWarnf("recoverPacket: try (%v)th times because of failing to write to extent, eh(%v) packet(%v)", packet.errCount, eh, packet)
-		umpMsg := fmt.Sprintf("volume(%v) append write recoverPacket err(%v), try count(%v)", eh.stream.client.dataWrapper.volName, errmsg, packet.errCount)
-		umpKey := fmt.Sprintf("%v_client_warning", eh.stream.client.dataWrapper.clusterName)
-		ump.Alarm(umpKey, umpMsg)
+		umpMsg := fmt.Sprintf("append write recoverPacket err(%v) eh(%v) packet(%v) try count(%v)", errmsg, eh, packet, packet.errCount)
+		handleUmpAlarm(eh.stream.client.dataWrapper.clusterName, eh.stream.client.dataWrapper.volName, "recoverPacket", umpMsg)
 		time.Sleep(1 * time.Second)
 	}
 
@@ -564,11 +562,10 @@ func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
 	// loop for creating extent until successfully
 	for {
 		loopCount++
-		if loopCount%100 == 0 {
+		if loopCount%50 == 0 {
 			log.LogWarnf("allocateExtent: try (%v)th times because of failing to create extent, eh(%v) exclude(%v)", loopCount, eh, exclude)
-			umpMsg := fmt.Sprintf("volume(%v) create extent failed, eh(%v), try count(%v)", eh.stream.client.dataWrapper.volName, eh, loopCount)
-			umpKey := fmt.Sprintf("%v_client_warning", eh.stream.client.dataWrapper.clusterName)
-			ump.Alarm(umpKey, umpMsg)
+			umpMsg := fmt.Sprintf("create extent failed, eh(%v), try count(%v)", eh, loopCount)
+			handleUmpAlarm(eh.stream.client.dataWrapper.clusterName, eh.stream.client.dataWrapper.volName, "allocateExtent", umpMsg)
 		}
 		if dp, err = eh.stream.client.dataWrapper.GetDataPartitionForWrite(exclude); err != nil {
 			log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v) exclude(%v) err(%v)", eh, exclude,
