@@ -179,7 +179,7 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 	return
 }
 
-func chooseMaxAppliedDp(ctx context.Context, pid uint64, hosts []string) (targetHosts []string, isErr bool) {
+func chooseMaxAppliedDp(ctx context.Context, pid uint64, hosts []string, reqPacket *Packet) (targetHosts []string, isErr bool) {
 	isErr = false
 	appliedIDslice := make(map[string]uint64, len(hosts))
 	errSlice := make(map[string]error)
@@ -191,7 +191,7 @@ func chooseMaxAppliedDp(ctx context.Context, pid uint64, hosts []string) (target
 	for _, host := range hosts {
 		wg.Add(1)
 		go func(curAddr string) {
-			appliedID, err := getDpAppliedID(ctx, pid, curAddr)
+			appliedID, err := getDpAppliedID(ctx, pid, curAddr, reqPacket)
 			ok := false
 			lock.Lock()
 			if err != nil {
@@ -208,22 +208,22 @@ func chooseMaxAppliedDp(ctx context.Context, pid uint64, hosts []string) (target
 	wg.Wait()
 	if len(errSlice) >= (len(hosts)+1)/2 {
 		isErr = true
-		log.LogWarnf("chooseMaxAppliedDp err: dp[%v], hosts[%v], appliedID[%v], errMap[%v]", pid, hosts, appliedIDslice, errSlice)
+		log.LogWarnf("chooseMaxAppliedDp err: reqPacket[%v] dp[%v], hosts[%v], appliedID[%v], errMap[%v]", reqPacket, pid, hosts, appliedIDslice, errSlice)
 		return
 	}
 	targetHosts, maxAppliedID = getMaxApplyIDHosts(appliedIDslice)
-	log.LogDebugf("chooseMaxAppliedDp: get max apply id[%v] from hosts[%v], pid[%v]", maxAppliedID, targetHosts, pid)
+	log.LogDebugf("chooseMaxAppliedDp: get max apply id[%v] from hosts[%v], pid[%v], reqPacket[%v]", maxAppliedID, targetHosts, pid, reqPacket)
 	return
 }
 
-func getDpAppliedID(ctx context.Context, pid uint64, addr string) (appliedID uint64, err error) {
+func getDpAppliedID(ctx context.Context, pid uint64, addr string, orgPacket *Packet) (appliedID uint64, err error) {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Streamer.getDpAppliedID")
 	defer tracer.Finish()
 	ctx = tracer.Context()
 
 	var conn *net.TCPConn
 	if conn, err = StreamConnPool.GetConnect(addr); err != nil {
-		log.LogWarnf("getDpAppliedID: failed to create connection, pid(%v) dpHost(%v) err(%v)", pid, addr, err)
+		log.LogWarnf("getDpAppliedID: failed to create connection, orgPacket(%v) pid(%v) dpHost(%v) err(%v)", orgPacket, pid, addr, err)
 		return
 	}
 
@@ -233,16 +233,16 @@ func getDpAppliedID(ctx context.Context, pid uint64, addr string) (appliedID uin
 
 	p := NewPacketToGetDpAppliedID(ctx, pid)
 	if err = p.WriteToConn(conn); err != nil {
-		log.LogWarnf("getDpAppliedID: failed to WriteToConn, packet(%v) dpHost(%v) err(%v)", p, addr, err)
+		log.LogWarnf("getDpAppliedID: failed to WriteToConn, packet(%v) dpHost(%v) orgPacket(%v) err(%v)", p, addr, orgPacket, err)
 		return
 	}
 	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
-		log.LogWarnf("getDpAppliedID: failed to ReadFromConn, packet(%v) dpHost(%v) err(%v)", p, addr, err)
+		log.LogWarnf("getDpAppliedID: failed to ReadFromConn, packet(%v) dpHost(%v) orgPacket(%v) err(%v)", p, addr, orgPacket, err)
 		return
 	}
 	if p.ResultCode != proto.OpOk {
-		log.LogWarnf("getDpAppliedID: packet(%v) result code isn't ok(%v) from host(%v)", p, p.ResultCode, addr)
-		err = errors.New("getDpAppliedID error")
+		log.LogWarnf("getDpAppliedID: packet(%v) result code isn't ok(%v) from host(%v) orgPacket(%v)", p, p.ResultCode, addr, orgPacket)
+		err = errors.NewErrorf("getDpAppliedID error: addr(%v) resultCode(%v) is not ok", addr, p.ResultCode)
 		return
 	}
 

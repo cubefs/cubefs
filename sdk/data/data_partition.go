@@ -283,7 +283,7 @@ func (dp *DataPartition) ReadConsistentFromHosts(sc *StreamConn, reqPacket *Pack
 
 	for i := 0; i < StreamReadConsistenceRetry; i++ {
 		errMap = make(map[string]error)
-		targetHosts, isErr = chooseMaxAppliedDp(reqPacket.Ctx(), sc.dp.PartitionID, sc.dp.Hosts)
+		targetHosts, isErr = chooseMaxAppliedDp(reqPacket.Ctx(), sc.dp.PartitionID, sc.dp.Hosts, reqPacket)
 		// try all hosts with same applied ID
 		if !isErr && len(targetHosts) > 0 {
 			// need to read data with no leader
