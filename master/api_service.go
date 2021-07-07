@@ -430,6 +430,8 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
 		return
 	}
+	dp.offlineMutex.Lock()
+	defer dp.offlineMutex.Unlock()
 
 	if err = m.cluster.addDataReplica(dp, addr); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -538,6 +540,8 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
+	mp.offlineMutex.Lock()
+	defer mp.offlineMutex.Unlock()
 
 	if err = m.cluster.addMetaReplica(mp, addr); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -598,6 +602,8 @@ func (m *Server) addMetaReplicaLearner(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
+	mp.offlineMutex.Lock()
+	defer mp.offlineMutex.Unlock()
 	if err = m.cluster.addMetaReplicaLearner(mp, addr, auto, threshold); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -644,7 +650,6 @@ func (m *Server) addDataReplicaLearner(w http.ResponseWriter, r *http.Request) {
 		threshold   uint8
 		err         error
 	)
-
 	if partitionID, addr, auto, threshold, err = parseRequestToAddDataReplicaLearner(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -654,6 +659,9 @@ func (m *Server) addDataReplicaLearner(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
 		return
 	}
+	dp.offlineMutex.Lock()
+	defer dp.offlineMutex.Unlock()
+
 	if err = m.cluster.addDataReplicaLearner(dp, addr, auto, threshold); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -1159,13 +1167,13 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 	}
 	maxPartitionID := vol.maxPartitionID()
 	return &proto.SimpleVolView{
-		ID:                 vol.ID,
-		Name:               vol.Name,
-		Owner:              vol.Owner,
-		ZoneName:           vol.zoneName,
-		DpReplicaNum:       vol.dpReplicaNum,
-		MpReplicaNum:       vol.mpReplicaNum,
-		InodeCount:         volInodeCount,
+		ID:                  vol.ID,
+		Name:                vol.Name,
+		Owner:               vol.Owner,
+		ZoneName:            vol.zoneName,
+		DpReplicaNum:        vol.dpReplicaNum,
+		MpReplicaNum:        vol.mpReplicaNum,
+		InodeCount:          volInodeCount,
 		DentryCount:         volDentryCount,
 		MaxMetaPartitionID:  maxPartitionID,
 		Status:              vol.Status,

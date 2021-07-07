@@ -94,32 +94,10 @@ func (c *Cluster) checkFulfillDataReplica() {
 		}
 		newBadParitionIds := make([]uint64, 0)
 		for _, partitionID := range badDataPartitionIds {
-			var err error
-			var partition *DataPartition
-			if partition, err = c.getDataPartitionByID(partitionID); err != nil {
+			isPushBackToBadIDs := c.fulfillDataReplica(partitionID, badDiskAddr[0]+":"+badDiskAddr[1])
+			if isPushBackToBadIDs {
 				newBadParitionIds = append(newBadParitionIds, partitionID)
-				continue
 			}
-			if len(partition.Replicas) >= int(partition.ReplicaNum) || len(partition.Hosts) >= int(partition.ReplicaNum) {
-				newBadParitionIds = append(newBadParitionIds, partitionID)
-				continue
-			}
-			//Not until the learners promote strategy is enhanced to guarantee peers consistency, can we add more learners at the same time.
-			if len(partition.Learners) > 0 {
-				newBadParitionIds = append(newBadParitionIds, partitionID)
-				continue
-			}
-			if err = c.fulfillDataReplicaByLearner(partition, badDiskAddr[0]+":"+badDiskAddr[1], partitionID); err != nil {
-				log.LogWarnf(fmt.Sprintf("action[checkFulfillDataReplica], clusterID[%v], partitionID[%v], err[%v] ", c.Name, partitionID, err))
-				newBadParitionIds = append(newBadParitionIds, partitionID)
-				continue
-			}
-			//only if the len(replica + learner) equals to replicaNum, will we keep the badPartitionID to check the recover progress of this partition later
-			//if len(replica + learner) is less than replicaNum, we should discard this badDiskAddr to avoid add raft learner twice.
-			if len(partition.Replicas) < int(partition.ReplicaNum) {
-				continue
-			}
-			newBadParitionIds = append(newBadParitionIds, partitionID)
 		}
 		c.BadDataPartitionIds.Store(key, newBadParitionIds)
 		return true
@@ -130,22 +108,48 @@ func (c *Cluster) checkFulfillDataReplica() {
 //Raft instance will not start until the data has been synchronized by simple repair-read consensus algorithm, and it spends a long time.
 //The raft group can not come to an agreement with a leader, and the data partition will be unavailable.
 //Introducing raft learner can solve the problem.
-func (c *Cluster) fulfillDataReplicaByLearner(partition *DataPartition, badAddr string, partitionID uint64) (err error) {
+func (c *Cluster) fulfillDataReplica(partitionID uint64, badAddr string) (isPushBackToBadIDs bool) {
 	var (
 		newAddr         string
 		excludeNodeSets []uint64
+		partition       *DataPartition
+		err             error
 	)
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[fulfillDataReplica], clusterID[%v], partitionID[%v], err[%v] ", c.Name, partitionID, err)
+		}
+	}()
 	excludeNodeSets = make([]uint64, 0)
-	if leaderAddr := partition.getLeaderAddr(); leaderAddr == "" {
-		err = fmt.Errorf("Action[fulfillDataReplicaByLearner], partitionID[%v], no leader", partitionID)
+	isPushBackToBadIDs = true
+	if partition, err = c.getDataPartitionByID(partitionID); err != nil {
 		return
 	}
+	partition.offlineMutex.Lock()
+	defer partition.offlineMutex.Unlock()
 
+	if len(partition.Replicas) >= int(partition.ReplicaNum) || len(partition.Hosts) >= int(partition.ReplicaNum) {
+		return
+	}
+	//Not until the learners promote strategy is enhanced to guarantee peers consistency, can we add more learners at the same time.
+	if len(partition.Learners) > 0 {
+		return
+	}
+	if leaderAddr := partition.getLeaderAddr(); leaderAddr == "" {
+		return
+	}
 	if _, newAddr, err = getTargetAddressForDataPartitionDecommission(c, badAddr, partition, excludeNodeSets, "", false); err != nil {
 		return
 	}
-	if err = c.addDataReplicaLearner(partition, newAddr, true, 90); err != nil {
-		return
+	//if there is only one live replica, add learner can avoid no leader
+	if len(partition.Replicas) == 1 {
+		if err = c.addDataReplicaLearner(partition, newAddr, true, 90); err != nil {
+			return
+		}
+	} else {
+		if err = c.addDataReplica(partition, newAddr); err != nil {
+			return
+		}
 	}
 	newPanicHost := make([]string, 0)
 	for _, h := range partition.PanicHosts {
@@ -158,6 +162,9 @@ func (c *Cluster) fulfillDataReplicaByLearner(partition *DataPartition, badAddr 
 	partition.PanicHosts = newPanicHost
 	c.syncUpdateDataPartition(partition)
 	partition.Unlock()
+	//if len(replica) >= replicaNum, keep badDiskAddr to check recover later
+	//if len(replica) <  replicaNum, discard badDiskAddr to avoid add replica by the same badDiskAddr twice.
+	isPushBackToBadIDs = len(partition.Replicas) >= int(partition.ReplicaNum)
 	return
 }
 

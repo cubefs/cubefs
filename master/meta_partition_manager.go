@@ -199,28 +199,10 @@ func (c *Cluster) checkFulfillMetaReplica() {
 		badAddr := key.(string)
 		newBadParitionIds := make([]uint64, 0)
 		for _, partitionID := range badMetaPartitionIds {
-			var err error
-			var partition *MetaPartition
-			if partition, err = c.getMetaPartitionByID(partitionID); err != nil {
+			isPushBackToBadIDs := c.fulfillMetaReplica(partitionID, badAddr)
+			if isPushBackToBadIDs {
 				newBadParitionIds = append(newBadParitionIds, partitionID)
-				continue
 			}
-			//len(partition.Hosts) >= int(partition.ReplicaNum) occurs when decommission failed, this need to be decommission again, do not fulfill replica
-			if len(partition.Replicas) >= int(partition.ReplicaNum) || len(partition.Hosts) >= int(partition.ReplicaNum) {
-				newBadParitionIds = append(newBadParitionIds, partitionID)
-				continue
-			}
-			if err = c.fulfillMetaReplica(partition, badAddr, partitionID); err != nil {
-				log.LogWarnf(fmt.Sprintf("action[checkFulfillMetaReplica], clusterID[%v], partitionID[%v], err[%v] ", c.Name, partitionID, err))
-				newBadParitionIds = append(newBadParitionIds, partitionID)
-				continue
-			}
-			//only if the len(replica + learner) equals to replicaNum, will we keep the badPartitionID to check the recover progress of this partition later
-			//if len(replica + learner) is less than replicaNum, we should discard this badDiskAddr to avoid add raft learner twice.
-			if len(partition.Replicas) < int(partition.ReplicaNum) {
-				continue
-			}
-			newBadParitionIds = append(newBadParitionIds, partitionID)
 		}
 		//Todo: write BadMetaPartitionIds to raft log
 		c.BadMetaPartitionIds.Store(key, newBadParitionIds)
@@ -229,12 +211,29 @@ func (c *Cluster) checkFulfillMetaReplica() {
 
 }
 
-func (c *Cluster) fulfillMetaReplica(partition *MetaPartition, badAddr string, partitionID uint64) (err error) {
+func (c *Cluster) fulfillMetaReplica(partitionID uint64, badAddr string) (isPushBackToBadIDs bool) {
 	var (
-		newPeer proto.Peer
+		newPeer   proto.Peer
+		partition *MetaPartition
+		err       error
 	)
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[fulfillMetaReplica], clusterID[%v], partitionID[%v], err[%v] ", c.Name, partitionID, err)
+		}
+	}()
+	isPushBackToBadIDs = true
+	if partition, err = c.getMetaPartitionByID(partitionID); err != nil {
+		return
+	}
+	partition.offlineMutex.Lock()
+	defer partition.offlineMutex.Unlock()
+
+	//len(partition.Hosts) >= int(partition.ReplicaNum) occurs when decommission failed, this need to be decommission again, do not fulfill replica
+	if len(partition.Replicas) >= int(partition.ReplicaNum) || len(partition.Hosts) >= int(partition.ReplicaNum) {
+		return
+	}
 	if _, err = partition.getMetaReplicaLeader(); err != nil {
-		err = fmt.Errorf("Action[fulfillMetaReplica], partitionID[%v], no leader, err[%v]", partitionID, err)
 		return
 	}
 	if newPeer, err = c.chooseTargetMetaPartitionHost(badAddr, partition); err != nil {
@@ -254,5 +253,8 @@ func (c *Cluster) fulfillMetaReplica(partition *MetaPartition, badAddr string, p
 	partition.PanicHosts = newPanicHost
 	c.syncUpdateMetaPartition(partition)
 	partition.Unlock()
+	//if len(replica) >= replicaNum, keep badDiskAddr to check recover later
+	//if len(replica) <  replicaNum, discard badDiskAddr to avoid add replica by the same badDiskAddr twice.
+	isPushBackToBadIDs = len(partition.Replicas) >= int(partition.ReplicaNum)
 	return
 }
