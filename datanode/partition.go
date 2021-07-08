@@ -320,20 +320,16 @@ func (dp *DataPartition) Replicas() []string {
 	return dp.replicas
 }
 
-func (dp *DataPartition) getReplicaAddr(index int) (string, error) {
+
+
+func (dp *DataPartition) getReplicaClone() (newReplicas []string) {
 	dp.replicasLock.RLock()
 	defer dp.replicasLock.RUnlock()
-	if index >= len(dp.replicas) {
-		return "", fmt.Errorf("unknow addr ,index (%v),ReplicasLen(%v)", index, len(dp.replicas))
-	}
-	return dp.replicas[index], nil
+	newReplicas=make([]string,len(dp.replicas))
+	copy(newReplicas,dp.replicas)
+	return
 }
 
-func (dp *DataPartition) getReplicaLen() int {
-	dp.replicasLock.RLock()
-	defer dp.replicasLock.RUnlock()
-	return len(dp.replicas)
-}
 
 func (dp *DataPartition) IsExistReplica(addr string) bool {
 	dp.replicasLock.RLock()
