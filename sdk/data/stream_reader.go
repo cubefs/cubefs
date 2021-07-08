@@ -137,7 +137,7 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 	}
 
 	filesize, _ := s.extents.Size()
-	log.LogDebugf("read: ino(%v) requests(%v) filesize(%v)", s.inode, requests, filesize)
+	log.LogDebugf("Stream read: ino(%v) userExpectOffset(%v) userExpectSize(%v) requests(%v) filesize(%v)", s.inode, offset,size,requests, filesize)
 	for _, req := range requests {
 		if req.ExtentKey == nil {
 			for i := range req.Data {
@@ -152,25 +152,25 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 				total += req.Size
 				err = io.EOF
 				if total == 0 {
-					log.LogWarnf("read: ino(%v) req(%v) filesize(%v)", s.inode, req, filesize)
+					log.LogWarnf("Stream read: ino(%v) userExpectOffset(%v) userExpectSize(%v) req(%v) filesize(%v)", s.inode,offset,size, req, filesize)
 				}
 				return
 			}
 
 			// Reading a hole, just fill zero
 			total += req.Size
-			log.LogDebugf("Stream read hole: ino(%v) req(%v) total(%v)", s.inode, req, total)
+			log.LogDebugf("Stream read hole: ino(%v) userExpectOffset(%v) userExpectSize(%v) req(%v) total(%v)", s.inode, offset,size, req, total)
 		} else {
 			reader, err = s.GetExtentReader(req.ExtentKey)
 			if err != nil {
 				break
 			}
 			readBytes, err = reader.Read(ctx, req)
-			log.LogDebugf("Stream read: ino(%v) req(%v) readBytes(%v) err(%v)", s.inode, req, readBytes, err)
+			log.LogDebugf("Stream read: ino(%v) userExpectOffset(%v) userExpectSize(%v) req(%v) readBytes(%v) err(%v)", s.inode, offset,size,req, readBytes, err)
 			total += readBytes
 			if err != nil || readBytes < req.Size {
 				if total == 0 {
-					log.LogWarnf("Stream read: ino(%v) req(%v) readBytes(%v) err(%v)", s.inode, req, readBytes, err)
+					log.LogWarnf("Stream read: ino(%v) userExpectOffset(%v) userExpectSize(%v) req(%v) readBytes(%v) err(%v)", s.inode,offset,size, req, readBytes, err)
 				}
 				break
 			}
