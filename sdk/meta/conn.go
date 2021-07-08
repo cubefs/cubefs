@@ -75,19 +75,46 @@ func (mw *MetaWrapper) putConn(mc *MetaConn, err error) {
 
 func (mw *MetaWrapper) sendWriteToMP(ctx context.Context, mp *MetaPartition, req *proto.Packet) (resp *proto.Packet, needCheckRead bool, err error) {
 	addr := mp.LeaderAddr
-	resp, needCheckRead, err = mw.sendToMetaPartition(ctx, mp, req, addr)
-	return
+	retryCount := 0
+	for {
+		retryCount++
+		resp, needCheckRead, err = mw.sendToMetaPartition(ctx, mp, req, addr)
+		if err == nil && !resp.ShouldRetry() {
+			return
+		}
+		// operations don't need to retry
+		if req.Opcode == proto.OpMetaCreateInode || !mw.InfiniteRetry {
+			return
+		}
+		log.LogWarnf("sendWriteToMP: err(%v) resp(%v) req(%v) mp(%v) retry time(%v)", err, resp, req, mp, retryCount)
+		umpMsg := fmt.Sprintf("send write(%v) to mp(%v) err(%v) resp(%v) retry time(%v)", req, mp, err, resp, retryCount)
+		handleUmpAlarm(mw.cluster, mw.volname, req.GetOpMsg(), umpMsg)
+		time.Sleep(SendRetryInterval)
+	}
 }
 
 func (mw *MetaWrapper) sendReadToMP(ctx context.Context, mp *MetaPartition, req *proto.Packet) (resp *proto.Packet, err error) {
 	addr := mp.LeaderAddr
-	resp, _, err = mw.sendToMetaPartition(ctx, mp, req, addr)
-	if err == nil && resp != nil {
-		return
+	retryCount := 0
+	for {
+		retryCount++
+		resp, _, err = mw.sendToMetaPartition(ctx, mp, req, addr)
+		if err == nil && !resp.ShouldRetry() {
+			return
+		}
+		log.LogWarnf("sendReadToMP: send to leader failed and try to read consistent, req(%v) mp(%v) err(%v) resp(%v)", req, mp, err, resp)
+		resp, err = mw.readConsistentFromHosts(ctx, mp, req)
+		if err == nil && !resp.ShouldRetry() {
+			return
+		}
+		if !mw.InfiniteRetry {
+			return
+		}
+		log.LogWarnf("sendReadToMP: err(%v) resp(%v) req(%v) mp(%v) retry time(%v)", err, resp, req, mp, retryCount)
+		umpMsg := fmt.Sprintf("send read(%v) to mp(%v) err(%v) resp(%v) retry time(%v)", req, mp, err, resp, retryCount)
+		handleUmpAlarm(mw.cluster, mw.volname, req.GetOpMsg(), umpMsg)
+		time.Sleep(SendRetryInterval)
 	}
-	log.LogWarnf("sendReadToMP: send to leader failed and try to read consistent, req(%v) mp(%v) err(%v) resp(%v)", req, mp, err, resp)
-	resp, err = mw.readConsistentFromHosts(ctx, mp, req)
-	return
 }
 
 func (mw *MetaWrapper) readConsistentFromHosts(ctx context.Context, mp *MetaPartition, req *proto.Packet) (resp *proto.Packet, err error) {

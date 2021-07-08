@@ -2924,6 +2924,7 @@ func (c *client) start() (err error) {
 		Masters:       masters,
 		ValidateOwner: true,
 		Owner:         c.owner,
+		InfiniteRetry: true,
 	}); err != nil {
 		fmt.Println(err)
 		return

@@ -30,6 +30,7 @@ import (
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/tracing"
+	"github.com/chubaofs/chubaofs/util/ump"
 )
 
 // Low-level API, i.e. work with inode
@@ -168,18 +169,28 @@ func (mw *MetaWrapper) Create_ll(ctx context.Context, parentID uint64, name stri
 	//		}
 	//	}
 
-	rwPartitions = mw.getRWPartitions()
-	length := len(rwPartitions)
-	epoch := atomic.AddUint64(&mw.epoch, 1)
-	for i := 0; i < length; i++ {
-		index := (int(epoch) + i) % length
-		mp = rwPartitions[index]
-		status, info, err = mw.icreate(ctx, mp, mode, uid, gid, target)
-		if err == nil && status == statusOK {
-			goto create_dentry
+	retryCount := 0
+	for {
+		retryCount++
+		rwPartitions = mw.getRWPartitions()
+		length := len(rwPartitions)
+		epoch := atomic.AddUint64(&mw.epoch, 1)
+		for i := 0; i < length; i++ {
+			index := (int(epoch) + i) % length
+			mp = rwPartitions[index]
+			status, info, err = mw.icreate(ctx, mp, mode, uid, gid, target)
+			if err == nil && status == statusOK {
+				goto create_dentry
+			}
 		}
+		if !mw.InfiniteRetry {
+			return nil, syscall.ENOMEM
+		}
+		log.LogWarnf("Create_ll: create inode failed, err(%v) status(%v) parentID(%v) name(%v) retry time(%v)", err, status, parentID, name, retryCount)
+		umpMsg := fmt.Sprintf("CreateInode err(%v) status(%v) parentID(%v) name(%v) retry time(%v)", err, status, parentID, name, retryCount)
+		handleUmpAlarm(mw.cluster, mw.volname, "CreateInode", umpMsg)
+		time.Sleep(SendRetryInterval)
 	}
-	return nil, syscall.ENOMEM
 
 create_dentry:
 	status, err = mw.dcreate(ctx, parentMP, parentID, name, info.Inode, mode)
@@ -1177,4 +1188,14 @@ func getMaxApplyIDHosts(appliedIDslice map[string]uint64) (targetHosts []string,
 		}
 	}
 	return
+}
+
+func handleUmpAlarm(cluster, vol, act, msg string) {
+	umpKeyCluster := fmt.Sprintf("%s_client_warning", cluster)
+	umpMsgCluster := fmt.Sprintf("volume(%s) %s", vol, msg)
+	ump.Alarm(umpKeyCluster, umpMsgCluster)
+
+	umpKeyVol := fmt.Sprintf("%s_%s_warning", cluster, vol)
+	umpMsgVol := fmt.Sprintf("act(%s) - %s", act, msg)
+	ump.Alarm(umpKeyVol, umpMsgVol)
 }
