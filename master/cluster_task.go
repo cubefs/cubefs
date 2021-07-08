@@ -526,8 +526,8 @@ func (c *Cluster) deleteMetaPartition(partition *MetaPartition, removeMetaNode *
 	partition.Lock()
 	mr, err := partition.getMetaReplica(removeMetaNode.Addr)
 	if err != nil {
-		partition.Unlock()
-		return
+		log.LogErrorf("action[deleteMetaPartition] vol[%v] meta partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
+		mr = newMetaReplica(partition.Start, partition.End, removeMetaNode)
 	}
 	task := mr.createTaskToDeleteReplica(partition.PartitionID)
 	partition.removeReplicaByAddr(removeMetaNode.Addr)
@@ -538,7 +538,7 @@ func (c *Cluster) deleteMetaPartition(partition *MetaPartition, removeMetaNode *
 	}
 	_, err = removeMetaNode.Sender.syncSendAdminTask(task)
 	if err != nil {
-		log.LogErrorf("action[deleteMetaPartition] vol[%v],data partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
+		log.LogErrorf("action[deleteMetaPartition] vol[%v],meta partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
 	}
 	return nil
 }
