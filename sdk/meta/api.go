@@ -652,7 +652,7 @@ func (mw *MetaWrapper) InsertExtentKey(ctx context.Context, inode uint64, ek pro
 
 	status, err := mw.insertExtentKey(ctx, mp, inode, ek)
 	if err != nil || status != statusOK {
-		log.LogErrorf("InsertExtentKey: inode(%v) ek(%v) err(%v) status(%v)", inode, ek, err, status)
+		log.LogWarnf("InsertExtentKey: inode(%v) ek(%v) err(%v) status(%v)", inode, ek, err, status)
 		return statusToErrno(status)
 	}
 	log.LogDebugf("InsertExtentKey: ino(%v) ek(%v)", inode, ek)

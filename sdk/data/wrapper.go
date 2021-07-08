@@ -243,6 +243,42 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 
 }
 
+func (w *Wrapper) getDataPartitionByPid(partitionID uint64) (err error) {
+	var dpInfo *proto.DataPartitionInfo
+	if dpInfo, err = w.mc.AdminAPI().GetDataPartition(w.volName, partitionID); err != nil {
+		log.LogWarnf("getDataPartitionByPid: err(%v) pid(%v) vol(%v)", err, partitionID, w.volName)
+		return
+	}
+	var convert = func(dpInfo *proto.DataPartitionInfo) *DataPartition {
+		return &DataPartition{
+			ClientWrapper: w,
+			DataPartitionResponse: proto.DataPartitionResponse{
+				PartitionID: dpInfo.PartitionID,
+				Status:      dpInfo.Status,
+				ReplicaNum:  dpInfo.ReplicaNum,
+				Hosts:       dpInfo.Hosts,
+				LeaderAddr:  getDpInfoLeaderAddr(dpInfo),
+			},
+		}
+	}
+	dp := convert(dpInfo)
+	if w.followerRead && w.nearRead {
+		dp.NearHosts = w.sortHostsByDistance(dp.Hosts)
+	}
+	log.LogInfof("getDataPartitionByPid: dp(%v) leader(%v)", dp, dp.LeaderAddr)
+	w.replaceOrInsertPartition(dp)
+	return nil
+}
+
+func getDpInfoLeaderAddr(partition *proto.DataPartitionInfo) (leaderAddr string) {
+	for _, replica := range partition.Replicas {
+		if replica.IsLeader {
+			return replica.Addr
+		}
+	}
+	return
+}
+
 // GetDataPartition returns the data partition based on the given partition ID.
 func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 	w.RLock()
@@ -250,7 +286,7 @@ func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 	dp, ok := w.partitions[partitionID]
 	if !ok {
 		w.RUnlock()
-		w.updateDataPartition(false)
+		w.getDataPartitionByPid(partitionID)
 		w.RLock()
 		dp, ok = w.partitions[partitionID]
 		if !ok {
