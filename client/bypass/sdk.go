@@ -323,12 +323,15 @@ func cfs_close(id C.int64_t, fd C.int) {
 
 //export cfs_open
 func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) (re C.int) {
-	var c *client
+	var (
+		c   *client
+		err error
+	)
 	defer func() {
-		if err := recover(); err != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
+		if r := recover(); r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
 			var stack string
-			if err != nil {
-				stack = ":\n" + string(debug.Stack())
+			if r != nil {
+				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
 			msg := fmt.Sprintf("id(%v) path(%v) flags(%v) mode(%v) re(%v) err(%v)%s", id, C.GoString(path), flags, mode, re, err, stack)
 			handleError(c, "cfs_open", msg)
@@ -388,7 +391,6 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) (re C.int)
 		info = newInfo
 	} else {
 		var newInfo *proto.InodeInfo
-		var err error
 		for newInfo, err = c.lookupPath(ctx, absPath); err == nil && fuseFlags&uint32(C.O_NOFOLLOW) == 0 && proto.IsSymlink(newInfo.Mode); {
 			absPath := c.absPath(string(newInfo.Target))
 			newInfo, err = c.lookupPath(ctx, absPath)
@@ -412,7 +414,7 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) (re C.int)
 				c.releaseFD(f.fd)
 				return statusEACCES
 			}
-			if err := c.ec.Truncate(ctx, f.ino, 0); err != nil {
+			if err = c.ec.Truncate(ctx, f.ino, 0); err != nil {
 				c.closeStream(f)
 				c.releaseFD(f.fd)
 				return statusEIO
@@ -443,12 +445,15 @@ func cfs_openat(id C.int64_t, dirfd C.int, path *C.char, flags C.int, mode C.mod
 
 //export cfs_rename
 func cfs_rename(id C.int64_t, from *C.char, to *C.char) (re C.int) {
-	var c *client
+	var (
+		c   *client
+		err error
+	)
 	defer func() {
-		if err := recover(); err != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
+		if r := recover(); r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
 			var stack string
-			if err != nil {
-				stack = ":\n" + string(debug.Stack())
+			if r != nil {
+				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
 			msg := fmt.Sprintf("id(%v) from(%v) to(%v) re(%v) err(%v)%s", id, C.GoString(from), C.GoString(to), re, err, stack)
 			handleError(c, "cfs_rename", msg)
@@ -537,15 +542,18 @@ func cfs_truncate(id C.int64_t, path *C.char, len C.off_t) (re C.int) {
 	var (
 		c     *client
 		inode uint64
+		err   error
 	)
 	defer func() {
-		if err := recover(); err != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
+		msg := fmt.Sprintf("id(%v) path(%v) ino(%v) len(%v) re(%v) err(%v)", id, C.GoString(path), inode, len, re, err)
+		if r := recover(); r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
 			var stack string
-			if err != nil {
-				stack = ":\n" + string(debug.Stack())
+			if r != nil {
+				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
-			msg := fmt.Sprintf("id(%v) path(%v) ino(%v) len(%v) re(%v) err(%v)%s", id, C.GoString(path), inode, len, re, err, stack)
-			handleError(c, "cfs_truncate", msg)
+			handleError(c, "cfs_truncate", fmt.Sprintf("%s%s", msg, stack))
+		} else {
+			log.LogDebugf("cfs_truncate: %s", msg)
 		}
 	}()
 
@@ -564,7 +572,7 @@ func cfs_truncate(id C.int64_t, path *C.char, len C.off_t) (re C.int) {
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_truncate"))
 	defer ump.AfterTP(tpObject, nil)
 
-	inode, err := c.mw.LookupPath(ctx, c.absPath(C.GoString(path)))
+	inode, err = c.mw.LookupPath(ctx, c.absPath(C.GoString(path)))
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -573,7 +581,6 @@ func cfs_truncate(id C.int64_t, path *C.char, len C.off_t) (re C.int) {
 	if err != nil {
 		return errorToStatus(err)
 	}
-	log.LogDebugf("cfs_truncate: id(%v) path(%v) ino(%v) len(%v)", id, C.GoString(path), inode, len)
 	return statusOK
 }
 
@@ -583,15 +590,18 @@ func cfs_ftruncate(id C.int64_t, fd C.int, len C.off_t) (re C.int) {
 		c    *client
 		path string
 		ino  uint64
+		err  error
 	)
 	defer func() {
-		if err := recover(); err != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
+		msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) len(%v) re(%v) err(%v)", id, fd, path, ino, len, re, err)
+		if r := recover(); r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
 			var stack string
-			if err != nil {
-				stack = ":\n" + string(debug.Stack())
+			if r != nil {
+				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
-			msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) len(%v) re(%v) err(%v)%s", id, fd, path, ino, len, re, err, stack)
-			handleError(c, "cfs_ftruncate", msg)
+			handleError(c, "cfs_ftruncate", fmt.Sprintf("%s%s", msg, stack))
+		} else {
+			log.LogDebugf("cfs_ftruncate: %s", msg)
 		}
 	}()
 
@@ -618,11 +628,10 @@ func cfs_ftruncate(id C.int64_t, fd C.int, len C.off_t) (re C.int) {
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_ftruncate"))
 	defer ump.AfterTP(tpObject, nil)
 
-	err := c.ec.Truncate(ctx, f.ino, int(len))
+	err = c.ec.Truncate(ctx, f.ino, int(len))
 	if err != nil {
 		return errorToStatus(err)
 	}
-	log.LogDebugf("cfs_ftruncate: id(%v) fd(%v) path(%v) ino(%v) len(%v)", id, fd, path, ino, len)
 	return statusOK
 }
 
@@ -632,15 +641,18 @@ func cfs_fallocate(id C.int64_t, fd C.int, mode C.int, offset C.off_t, len C.off
 		c         *client
 		path      string
 		ino, size uint64
+		err       error
 	)
 	defer func() {
-		if err := recover(); err != nil || re < 0 {
+		msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) mode(%v) offset(%v) len(%v) re(%v) err(%v)", id, fd, path, ino, size, mode, offset, len, re, err)
+		if r := recover(); r != nil || re < 0 {
 			var stack string
-			if err != nil {
-				stack = ":\n" + string(debug.Stack())
+			if r != nil {
+				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
-			msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) mode(%v) offset(%v) len(%v) re(%v) err(%v)%s", id, fd, path, ino, size, mode, offset, len, re, err, stack)
-			handleError(c, "cfs_fallocate", msg)
+			handleError(c, "cfs_fallocate", fmt.Sprintf("%s%s", msg, stack))
+		} else {
+			log.LogDebugf("cfs_fallocate: %s", msg)
 		}
 	}()
 
@@ -692,7 +704,6 @@ func cfs_fallocate(id C.int64_t, fd C.int, mode C.int, offset C.off_t, len C.off
 	if err != nil {
 		return errorToStatus(err)
 	}
-	log.LogDebugf("cfs_fallocate: id(%v) fd(%v) path(%v) ino(%v) size(%v) mode(%v) offset(%v) len(%v)", id, fd, path, ino, size, mode, offset, len)
 	return statusOK
 }
 
@@ -702,15 +713,18 @@ func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) (r
 		c         *client
 		path      string
 		ino, size uint64
+		err       error
 	)
 	defer func() {
-		if err := recover(); err != nil || re < 0 {
+		msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) len(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, len, re, err)
+		if r := recover(); r != nil || re < 0 {
 			var stack string
-			if err != nil {
-				stack = ":\n" + string(debug.Stack())
+			if r != nil {
+				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
-			msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) len(%v) re(%v) err(%v)%s", id, fd, path, ino, size, offset, len, re, err, stack)
-			handleError(c, "cfs_posix_fallocate", msg)
+			handleError(c, "cfs_posix_fallocate", fmt.Sprintf("%s%s", msg, stack))
+		} else {
+			log.LogDebugf("cfs_posix_fallocate: %s", msg)
 		}
 	}()
 
@@ -752,7 +766,6 @@ func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) (r
 	if err != nil {
 		return errorToStatus(err)
 	}
-	log.LogDebugf("cfs_posix_fallocate: id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) len(%v)", id, fd, path, ino, size, offset, len)
 	return statusOK
 }
 
@@ -762,19 +775,21 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 		c    *client
 		path string
 		ino  uint64
+		err  error
 	)
 	defer func() {
-		if err := recover(); err != nil || re < 0 {
+		msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) re(%v) err(%v)", id, fd, path, ino, re, err)
+		if r := recover(); r != nil || re < 0 {
 			var stack string
-			if err != nil {
-				stack = ":\n" + string(debug.Stack())
+			if r != nil {
+				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
-			msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) re(%v) err(%v)%s", id, fd, path, ino, re, err, stack)
-			handleError(c, "cfs_flush", msg)
+			handleError(c, "cfs_flush", fmt.Sprintf("%s%s", msg, stack))
+		} else {
+			log.LogDebugf("cfs_flush: %s", msg)
 		}
 	}()
 
-	start := time.Now()
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -808,10 +823,9 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 	tpObject := ump.BeforeTP(c.umpFunctionKey(name))
 	defer ump.AfterTP(tpObject, nil)
 
-	if err := c.ec.Flush(ctx, f.ino); err != nil {
+	if err = c.ec.Flush(ctx, f.ino); err != nil {
 		return statusEIO
 	}
-	log.LogDebugf("cfs_flush: id(%v) fd(%v) path(%v) re(%v) elapsed(%d us)", id, fd, f.path, re, int64(time.Since(start))/1e3)
 	return statusOK
 }
 
@@ -821,12 +835,15 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 
 //export cfs_mkdirs
 func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) (re C.int) {
-	var c *client
+	var (
+		c   *client
+		err error
+	)
 	defer func() {
-		if err := recover(); err != nil || re < 0 {
+		if r := recover(); r != nil || re < 0 {
 			var stack string
-			if err != nil {
-				stack = ":\n" + string(debug.Stack())
+			if r != nil {
+				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
 			msg := fmt.Sprintf("id(%v) path(%v) mode(%v) re(%v) err(%v)%s", id, C.GoString(path), mode, re, err, stack)
 			handleError(c, "cfs_mkdirs", msg)
@@ -896,12 +913,15 @@ func cfs_mkdirsat(id C.int64_t, dirfd C.int, path *C.char, mode C.mode_t) C.int 
 
 //export cfs_rmdir
 func cfs_rmdir(id C.int64_t, path *C.char) (re C.int) {
-	var c *client
+	var (
+		c   *client
+		err error
+	)
 	defer func() {
-		if err := recover(); err != nil || re < 0 {
+		if r := recover(); r != nil || re < 0 {
 			var stack string
-			if err != nil {
-				stack = ":\n" + string(debug.Stack())
+			if r != nil {
+				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
 			msg := fmt.Sprintf("id(%v) path(%v) re(%v) err(%v)%s", id, C.GoString(path), re, err, stack)
 			handleError(c, "cfs_rmdir", msg)
@@ -1091,12 +1111,15 @@ func cfs_getdents(id C.int64_t, fd C.int, buf unsafe.Pointer, count C.int) (n C.
 
 //export cfs_link
 func cfs_link(id C.int64_t, oldpath *C.char, newpath *C.char) (re C.int) {
-	var c *client
+	var (
+		c   *client
+		err error
+	)
 	defer func() {
-		if err := recover(); err != nil || re < 0 {
+		if r := recover(); r != nil || re < 0 {
 			var stack string
-			if err != nil {
-				stack = ":\n" + string(debug.Stack())
+			if r != nil {
+				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
 			msg := fmt.Sprintf("id(%v) oldpath(%v) newpath(%v) re(%v) err(%v)%s", id, C.GoString(oldpath), C.GoString(newpath), re, err, stack)
 			handleError(c, "cfs_link", msg)
@@ -1159,12 +1182,15 @@ func cfs_linkat(id C.int64_t, oldDirfd C.int, oldPath *C.char,
 
 //export cfs_symlink
 func cfs_symlink(id C.int64_t, target *C.char, linkPath *C.char) (re C.int) {
-	var c *client
+	var (
+		c   *client
+		err error
+	)
 	defer func() {
-		if err := recover(); err != nil || re < 0 {
+		if r := recover(); r != nil || re < 0 {
 			var stack string
-			if err != nil {
-				stack = ":\n" + string(debug.Stack())
+			if r != nil {
+				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
 			msg := fmt.Sprintf("id(%v) target(%v) linkPath(%v) re(%v) err(%v)%s", id, C.GoString(target), C.GoString(linkPath), re, err, stack)
 			handleError(c, "cfs_symlink", msg)
@@ -1223,15 +1249,20 @@ func cfs_symlinkat(id C.int64_t, target *C.char, dirfd C.int, linkPath *C.char) 
 
 //export cfs_unlink
 func cfs_unlink(id C.int64_t, path *C.char) (re C.int) {
-	var c *client
+	var (
+		c   *client
+		err error
+	)
 	defer func() {
-		if err := recover(); err != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
+		msg := fmt.Sprintf("id(%v) path(%v) re(%v) err(%v)", id, C.GoString(path), re, err)
+		if r := recover(); r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
 			var stack string
-			if err != nil {
-				stack = ":\n" + string(debug.Stack())
+			if r != nil {
+				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
-			msg := fmt.Sprintf("id(%v) path(%v) re(%v) err(%v)%s", id, C.GoString(path), re, err, stack)
-			handleError(c, "cfs_unlink", msg)
+			handleError(c, "cfs_unlink", fmt.Sprintf("%s%s", msg, stack))
+		} else {
+			log.LogDebugf("cfs_unlink: %s", msg)
 		}
 	}()
 
@@ -1363,12 +1394,13 @@ func _cfs_stat(id C.int64_t, path *C.char, stat *C.struct_stat, flags C.int) (re
 	var (
 		c   *client
 		ino uint64
+		err error
 	)
 	defer func() {
-		if err := recover(); err != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
+		if r := recover(); r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
 			var stack string
-			if err != nil {
-				stack = ":\n" + string(debug.Stack())
+			if r != nil {
+				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
 			msg := fmt.Sprintf("id(%v) path(%v) ino(%v) flags(%v) re(%v) err(%v)%s", id, C.GoString(path), ino, flags, re, err, stack)
 			handleError(c, "_cfs_stat", msg)
@@ -1391,7 +1423,6 @@ func _cfs_stat(id C.int64_t, path *C.char, stat *C.struct_stat, flags C.int) (re
 
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
-	var err error
 	for info, err = c.lookupPath(ctx, absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
 		absPath := c.absPath(string(info.Target))
 		info, err = c.lookupPath(ctx, absPath)
@@ -1454,12 +1485,13 @@ func _cfs_stat64(id C.int64_t, path *C.char, stat *C.struct_stat64, flags C.int)
 	var (
 		c   *client
 		ino uint64
+		err error
 	)
 	defer func() {
-		if err := recover(); err != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
+		if r := recover(); r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
 			var stack string
-			if err != nil {
-				stack = ":\n" + string(debug.Stack())
+			if r != nil {
+				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
 			msg := fmt.Sprintf("id(%v) path(%v) ino(%v) flags(%v) re(%v) err(%v)%s", id, C.GoString(path), ino, flags, re, err, stack)
 			handleError(c, "_cfs_stat64", msg)
@@ -1482,7 +1514,6 @@ func _cfs_stat64(id C.int64_t, path *C.char, stat *C.struct_stat64, flags C.int)
 
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
-	var err error
 	for info, err = c.lookupPath(ctx, absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
 		absPath = c.absPath(string(info.Target))
 		info, err = c.lookupPath(ctx, absPath)
@@ -1892,12 +1923,15 @@ func cfs_access(id C.int64_t, path *C.char, mode C.int) C.int {
 
 //export cfs_faccessat
 func cfs_faccessat(id C.int64_t, dirfd C.int, path *C.char, mode C.int, flags C.int) (re C.int) {
-	var c *client
+	var (
+		c   *client
+		err error
+	)
 	defer func() {
-		if err := recover(); err != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
+		if r := recover(); r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
 			var stack string
-			if err != nil {
-				stack = ":\n" + string(debug.Stack())
+			if r != nil {
+				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
 			msg := fmt.Sprintf("id(%v) dirfd(%v) path(%v) mode(%v) flags(%v) re(%v) err(%v)%s", id, dirfd, C.GoString(path), mode, flags, re, err, stack)
 			handleError(c, "cfs_faccessat", msg)
@@ -2506,18 +2540,22 @@ func cfs_pread(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 
 func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.off_t) (re C.ssize_t) {
 	var (
-		c    *client
-		path string
-		ino  uint64
+		c      *client
+		path   string
+		ino    uint64
+		err    error
+		offset int
 	)
 	defer func() {
-		if err := recover(); err != nil || int(re) != int(size) {
+		msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, re, err)
+		if r := recover(); r != nil || re < 0 {
 			var stack string
-			if err != nil {
-				stack = ":\n" + string(debug.Stack())
+			if r != nil {
+				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
-			msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) off(%v) re(%v) err(%v)%s", id, fd, path, ino, size, off, re, err, stack)
-			handleError(c, "_cfs_read", msg)
+			handleError(c, "_cfs_read", fmt.Sprintf("%s%s", msg, stack))
+		} else {
+			log.LogDebugf("_cfs_read: %s", msg)
 		}
 	}()
 
@@ -2556,7 +2594,7 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 	hdr.Cap = int(size)
 
 	// off >= 0 stands for pread
-	offset := int(off)
+	offset = int(off)
 	if off < 0 {
 		offset = int(f.pos)
 	}
@@ -2623,22 +2661,26 @@ func cfs_pwrite(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 
 func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.off_t) (re C.ssize_t) {
 	var (
-		c    *client
-		path string
-		ino  uint64
+		c       *client
+		path    string
+		ino     uint64
+		err     error
+		offset  int
+		flagBuf bytes.Buffer
 	)
 	defer func() {
-		if err := recover(); err != nil || re < 0 {
+		msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), re, err)
+		if r := recover(); r != nil || re < 0 {
 			var stack string
-			if err != nil {
-				stack = ":\n" + string(debug.Stack())
+			if r != nil {
+				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
-			msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) off(%v) re(%v) err(%v)%s", id, fd, path, ino, size, off, re, err, stack)
-			handleError(c, "_cfs_write", msg)
+			handleError(c, "_cfs_write", fmt.Sprintf("%s%s", msg, stack))
+		} else {
+			log.LogDebugf("_cfs_write: %s", msg)
 		}
 	}()
 
-	start := time.Now()
 	once.Do(func() {
 		signal.Ignore(syscall.SIGHUP, syscall.SIGTERM)
 	})
@@ -2654,6 +2696,14 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	}
 	path = f.path
 	ino = f.ino
+
+	if f.flags&uint32(C.O_DIRECT) != 0 {
+		flagBuf.WriteString("O_DIRECT|")
+	} else if f.flags&uint32(C.O_SYNC) != 0 {
+		flagBuf.WriteString("O_SYNC|")
+	} else if f.flags&uint32(C.O_DSYNC) != 0 {
+		flagBuf.WriteString("O_DSYNC|")
+	}
 
 	var tracer = tracing.NewTracer("cfs_write").
 		SetTag("volume", c.volName).
@@ -2688,7 +2738,7 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	}
 
 	// off >= 0 stands for pwrite
-	offset := int(off)
+	offset = int(off)
 	if off < 0 {
 		if f.flags&uint32(C.O_APPEND) != 0 {
 			f.pos = f.size
@@ -2717,15 +2767,6 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 			f.size = uint64(off) + uint64(n)
 		}
 	}
-	var flagBuf bytes.Buffer
-	if f.flags&uint32(C.O_DIRECT) != 0 {
-		flagBuf.WriteString("O_DIRECT|")
-	} else if f.flags&uint32(C.O_SYNC) != 0 {
-		flagBuf.WriteString("O_SYNC|")
-	} else if f.flags&uint32(C.O_DSYNC) != 0 {
-		flagBuf.WriteString("O_DSYNC|")
-	}
-	log.LogDebugf("_cfs_write: id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) re(%v) elapsed(%s us)", id, fd, f.path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), re, int64(time.Since(start))/1e3)
 	return C.ssize_t(n)
 }
 
