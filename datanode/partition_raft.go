@@ -895,8 +895,9 @@ func (dp *DataPartition) broadcastMinAppliedID(ctx context.Context, minAppliedID
 
 // Get all replica applied ids
 func (dp *DataPartition) getAllReplicaAppliedID(ctx context.Context) (allAppliedID []uint64, replyNum uint8) {
-	allAppliedID = make([]uint64, dp.getReplicaLen())
-	for i := 0; i < dp.getReplicaLen(); i++ {
+	replicaLen := dp.getReplicaLen()
+	allAppliedID = make([]uint64, replicaLen)
+	for i := 0; i < replicaLen; i++ {
 		p := NewPacketToGetAppliedID(ctx, dp.partitionID)
 		target, err := dp.getReplicaAddr(i)
 		if err != nil {
