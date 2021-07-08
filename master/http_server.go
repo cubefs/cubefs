@@ -44,6 +44,7 @@ func (m *Server) startHTTPService(modulename string, cfg *config.Config) {
 	var serveAPI = func() {
 		if err := server.ListenAndServe(); err != nil {
 			log.LogErrorf("serveAPI: serve http server failed: err(%v)", err)
+			panic(err)
 			return
 		}
 	}
