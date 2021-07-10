@@ -614,6 +614,7 @@ type RateLimitInfo struct {
 	Opcode                   int8
 	MetaNodeReqRate          int64
 	MetaNodeReqOpRate        int64
+	DataNodeRepairTaskCount  uint64
 	DataNodeReqRate          int64
 	DataNodeReqOpRate        int64
 	DataNodeReqVolPartRate   int64

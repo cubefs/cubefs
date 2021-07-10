@@ -415,6 +415,7 @@ func (api *AdminAPI) SetMetaNodeThreshold(threshold float64) (err error) {
 
 func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminSetNodeInfo)
+	request.addParam("dataNodeRepairTaskCount", strconv.FormatUint(info.DataNodeRepairTaskCount, 10))
 	if info.Opcode >= 0 {
 		request.addParam("opcode", strconv.FormatInt(int64(info.Opcode), 10))
 	}

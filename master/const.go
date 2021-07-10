@@ -55,6 +55,7 @@ const (
 	nodeHostsKey                = "hosts"
 	nodeDeleteBatchCountKey     = "batchCount"
 	nodeMarkDeleteRateKey       = "markDeleteRate"
+	dataNodeRepairTaskCountKey  = "dataNodeRepairTaskCount"
 	dataNodeReqRateKey          = "dataNodeReqRate"
 	dataNodeReqOpRateKey        = "dataNodeReqOpRate"
 	dataNodeReqVolPartRateKey   = "dataNodeReqVolPartRate"

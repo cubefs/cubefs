@@ -2318,7 +2318,7 @@ errHandler:
 
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, enableToken, autoRepair,volWriteMutexEnable bool) (vol *Vol, err error) {
+func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable bool) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -2703,6 +2703,18 @@ func (c *Cluster) setDataNodeDeleteLimitRate(val uint64) (err error) {
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setDataNodeDeleteLimitRate] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setDataNodeRepairTaskCount(val uint64) (err error) {
+	oldVal := atomic.LoadUint64(&c.cfg.DataNodeRepairTaskCount)
+	atomic.StoreUint64(&c.cfg.DataNodeRepairTaskCount, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setDataNodeRepairTaskCount] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.DataNodeRepairTaskCount, oldVal)
 		err = proto.ErrPersistenceByRaft
 		return
 	}

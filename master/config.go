@@ -93,7 +93,8 @@ type clusterConfig struct {
 	DataNodeReqVolOpPartRateLimitMap    map[string]map[uint8]uint64
 	reqRateLimitMapMutex                sync.Mutex
 	DataNodeDeleteLimitRate             uint64 //datanode delete limit rate
-	MetaNodeDeleteWorkerSleepMs         uint64 //datanode delete limit rate
+	DataNodeRepairTaskCount             uint64
+	MetaNodeDeleteWorkerSleepMs         uint64
 	ClientReadRateLimit                 uint64
 	ClientWriteRateLimit                uint64
 	peers                               []raftstore.PeerAddress

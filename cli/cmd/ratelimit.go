@@ -84,6 +84,7 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			stdout("Set rate limit success.\n")
 		},
 	}
+	cmd.Flags().Uint64Var(&info.DataNodeRepairTaskCount, "dataNodeRepairTaskCount", 0, "data node repair task count")
 	cmd.Flags().StringVar(&info.Volume, "volume", "", "volume (empty volume acts as default)")
 	cmd.Flags().Int8Var(&info.Opcode, "opcode", -1, "opcode (zero opcode acts as default)")
 	cmd.Flags().Int64Var(&info.MetaNodeReqRate, "metaNodeReqRate", -1, "meta node request rate limit")
@@ -103,6 +104,7 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  MetaNodeReqRate             : %v\n", info.MetaNodeReqRateLimit))
 	sb.WriteString(fmt.Sprintf("  MetaNodeReqOpRateMap        : %v\n", info.MetaNodeReqOpRateLimitMap))
 	sb.WriteString(fmt.Sprintf("  (map[opcode]limit)\n"))
+	sb.WriteString(fmt.Sprintf("  DataNodeRepairTaskCount     : %v\n", info.DataNodeRepairTaskLimitOnDisk))
 	sb.WriteString(fmt.Sprintf("  DataNodeReqRate             : %v\n", info.DataNodeReqRateLimit))
 	sb.WriteString(fmt.Sprintf("  DataNodeReqOpRateMap        : %v\n", info.DataNodeReqOpRateLimitMap))
 	sb.WriteString(fmt.Sprintf("  (map[opcode]limit)\n"))

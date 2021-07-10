@@ -17,11 +17,12 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/iputil"
 	"net/http"
 	"strconv"
 	"sync/atomic"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util/iputil"
 
 	"bytes"
 	"io/ioutil"
@@ -278,7 +279,8 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 	m.cluster.loadClusterValue()
 	batchCount := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteBatchCount)
-	limitRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeDeleteLimitRate)
+	deleteLimitRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeDeleteLimitRate)
+	repairTaskCount := atomic.LoadUint64(&m.cluster.cfg.DataNodeRepairTaskCount)
 	deleteSleepMs := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
 	metaNodeReqRateLimit := atomic.LoadUint64(&m.cluster.cfg.MetaNodeReqRateLimit)
 	dataNodeReqRateLimit := atomic.LoadUint64(&m.cluster.cfg.DataNodeReqRateLimit)
@@ -292,11 +294,12 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		MetaNodeDeleteWorkerSleepMs:      deleteSleepMs,
 		MetaNodeReqRateLimit:             metaNodeReqRateLimit,
 		MetaNodeReqOpRateLimitMap:        m.cluster.cfg.MetaNodeReqOpRateLimitMap,
+		DataNodeDeleteLimitRate:          deleteLimitRate,
+		DataNodeRepairTaskLimitOnDisk:    repairTaskCount,
 		DataNodeReqRateLimit:             dataNodeReqRateLimit,
 		DataNodeReqOpRateLimitMap:        m.cluster.cfg.DataNodeReqOpRateLimitMap,
 		DataNodeReqVolPartRateLimitMap:   m.cluster.cfg.DataNodeReqVolPartRateLimitMap,
 		DataNodeReqVolOpPartRateLimitMap: m.cluster.cfg.DataNodeReqVolOpPartRateLimitMap,
-		DataNodeDeleteLimitRate:          limitRate,
 		ClientReadRateLimit:              clientReadRateLimit,
 		ClientWriteRateLimit:             clientWriteRateLimit,
 	}
@@ -1347,6 +1350,14 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := params[nodeMarkDeleteRateKey]; ok {
 		if v, ok := val.(uint64); ok {
 			if err = m.cluster.setDataNodeDeleteLimitRate(v); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+	if val, ok := params[dataNodeRepairTaskCountKey]; ok {
+		if v, ok := val.(uint64); ok {
+			if err = m.cluster.setDataNodeRepairTaskCount(v); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -2605,6 +2616,9 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	}
 
 	if noParams, err = parseNodeInfoKey(params, nodeMarkDeleteRateKey, noParams, r); err != nil {
+		return
+	}
+	if noParams, err = parseNodeInfoKey(params, dataNodeRepairTaskCountKey, noParams, r); err != nil {
 		return
 	}
 	if noParams, err = parseNodeInfoKey(params, nodeDeleteWorkerSleepMs, noParams, r); err != nil {

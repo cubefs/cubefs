@@ -36,6 +36,7 @@ type clusterValue struct {
 	Threshold                         float32
 	DisableAutoAllocate               bool
 	DataNodeDeleteLimitRate           uint64
+	DataNodeRepairTaskCount           uint64
 	DataNodeReqRateLimit              uint64
 	DataNodeReqOpRateLimitMap         map[uint8]uint64
 	DataNodeReqVolPartRateLimitMap    map[string]uint64
@@ -55,6 +56,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		Name:                              c.Name,
 		Threshold:                         c.cfg.MetaNodeThreshold,
 		DataNodeDeleteLimitRate:           c.cfg.DataNodeDeleteLimitRate,
+		DataNodeRepairTaskCount:           c.cfg.DataNodeRepairTaskCount,
 		DataNodeReqRateLimit:              c.cfg.DataNodeReqRateLimit,
 		DataNodeReqOpRateLimitMap:         c.cfg.DataNodeReqOpRateLimitMap,
 		DataNodeReqVolPartRateLimitMap:    c.cfg.DataNodeReqVolPartRateLimitMap,
