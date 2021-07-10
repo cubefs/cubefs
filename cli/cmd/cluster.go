@@ -88,7 +88,7 @@ func newClusterStatCmd(client *master.MasterClient) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
 				err error
-			    cs  *proto.ClusterStatInfo
+				cs  *proto.ClusterStatInfo
 			)
 			defer func() {
 				if err != nil {
@@ -109,10 +109,10 @@ func newClusterStatCmd(client *master.MasterClient) *cobra.Command {
 
 func newClusterFreezeCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   CliOpFreeze + " [ENABLE]",
+		Use:       CliOpFreeze + " [ENABLE]",
 		ValidArgs: []string{"true", "false"},
-		Short: cmdClusterFreezeShort,
-		Args:  cobra.MinimumNArgs(1),
+		Short:     cmdClusterFreezeShort,
+		Args:      cobra.MinimumNArgs(1),
 		Long: `Turn on or off the automatic allocation of the data partitions. 
 If 'freeze=false', ChubaoFS WILL automatically allocate new data partitions for the volume when:
   1. the used space is below the max capacity,
@@ -121,8 +121,8 @@ If 'freeze=false', ChubaoFS WILL automatically allocate new data partitions for 
 If 'freeze=true', ChubaoFS WILL NOT automatically allocate new data partitions `,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				err error
-			    enable bool
+				err    error
+				enable bool
 			)
 			defer func() {
 				if err != nil {
@@ -155,8 +155,8 @@ func newClusterSetThresholdCmd(client *master.MasterClient) *cobra.Command {
 If the memory usage reaches this threshold, all the mata partition will be readOnly.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				err error
-			    threshold float64
+				err       error
+				threshold float64
 			)
 			defer func() {
 				if err != nil {
