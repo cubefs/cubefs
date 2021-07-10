@@ -446,6 +446,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 
 func (manager *SpaceManager) SetDiskFixTinyDeleteRecordLimit(newValue uint64) {
 	if newValue > 0 && manager.fixTinyDeleteRecordLimitOnDisk != newValue {
+		log.LogInfof("action[spaceManager] change DiskFixTinyDeleteRecordLimit from (%v) to (%v)",manager.repairTaskLimitOnDisk,newValue)
 		manager.fixTinyDeleteRecordLimitOnDisk = newValue
 	}
 	return
@@ -453,6 +454,7 @@ func (manager *SpaceManager) SetDiskFixTinyDeleteRecordLimit(newValue uint64) {
 
 func (manager *SpaceManager) SetDiskRepairTaskLimit(newValue uint64) {
 	if newValue > 0 && manager.repairTaskLimitOnDisk != newValue {
+		log.LogInfof("action[spaceManager] change DiskRepairTaskLimit from (%v) to (%v)",manager.repairTaskLimitOnDisk,newValue)
 		manager.repairTaskLimitOnDisk = newValue
 	}
 }
