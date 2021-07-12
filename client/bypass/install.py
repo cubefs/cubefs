@@ -19,13 +19,13 @@ CFS_CONFIG_PATH={configDir}/cfs_client.ini will enable CFS support.
 cp -r someLocalDir /cfs_test)
 
 Notice:
-Some shell features are not supported, e.g. cd, file globbing.
+Some shell features are not supported, e.g. cd, file globbing, mkdir -p.
 And mv is not supported for coreutils under version 8.31.
 ''')
 parser.add_argument('--configDir', default='/export/servers/cfs', help='directory for client config file (default: /export/servers/cfs)')
 parser.add_argument('--mountPoint', default='/export/data/mysql', help='mount point (default: /export/data/mysql)')
 parser.add_argument('--ignorePath', help='add ignore path at mountPoint, separated by commas')
-parser.add_argument('--masterAddr', required=True)
+parser.add_argument('--masterAddr', default='cn.elasticdb.jd.local')
 parser.add_argument('--volName', required=True)
 parser.add_argument('--owner', required=True)
 parser.add_argument('--followerRead', default='false', help='enable to read from follower nodes (default: false)')

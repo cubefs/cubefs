@@ -77,6 +77,7 @@ typedef DIR *(*opendir_t)(const char *name);
 typedef DIR *(*fdopendir_t)(int fd);
 typedef struct dirent *(*readdir_t)(DIR *dirp);
 typedef int (*closedir_t)(DIR *dirp);
+typedef char *(*realpath_t)(const char *path, char *resolved_path);
 
 typedef int (*link_t)(const char *oldpath, const char *newpath);
 typedef int (*linkat_t)(int olddirfd, const char *oldpath, int newdirfd, const char *newpath, int flags);
@@ -167,6 +168,7 @@ static opendir_t real_opendir;
 static fdopendir_t real_fdopendir;
 static readdir_t real_readdir;
 static closedir_t real_closedir;
+static realpath_t real_realpath;
 
 static link_t real_link;
 static linkat_t real_linkat;

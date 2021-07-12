@@ -333,6 +333,10 @@ int mkdirat(int dirfd, const char *pathname, mode_t mode) {
     int re = g_hook && is_cfs ? cfs_re(cfs_mkdirsat(g_cfs_client_id, dirfd, cfs_path, mode)) :
         real_mkdirat(dirfd, pathname, mode);
     free(path);
+
+    #ifdef _CFS_DEBUG
+    printf("hook %s, is_cfs:%d, dirfd: %d, pathname:%s, mode:%d, re:%d\n", __func__, is_cfs > 0, dirfd, pathname == NULL ? "" : pathname, mode, re);
+    #endif
     return re;
 }
 
@@ -635,6 +639,51 @@ int closedir(DIR *dirp) {
     }
 }
 
+char *realpath(const char *path, char *resolved_path) {
+    if(!g_cfs_inited) {
+        real_realpath = dlsym(RTLD_NEXT, "realpath");
+        return real_realpath(path, resolved_path);
+    }
+
+    char *re = NULL;
+    char *clean_path = get_clean_path(path);
+    if(clean_path == NULL) {
+        goto log;
+    }
+
+    char *abs_path = clean_path;
+    if(path[0] != '/') {
+        char *cwd = getcwd(NULL, 0);
+        if(cwd == NULL) {
+            free(clean_path);
+            goto log;
+        }
+        abs_path = cat_path(cwd, clean_path);
+        free(cwd);
+        free(clean_path);
+        if(abs_path == NULL) {
+            goto log;
+        }
+    }
+    if(strlen(abs_path) >= PATH_MAX) {
+        free(abs_path);
+        errno = ENAMETOOLONG;
+        goto log;
+    }
+    if(resolved_path != NULL) {
+        memcpy(resolved_path, abs_path, strlen(abs_path)+1);
+        free(abs_path);
+        re = resolved_path;
+    } else {
+        re = abs_path;
+    }
+
+    log:
+    #ifdef _CFS_DEBUG
+    printf("hook %s, path:%s, resolved_path:%s, re:%s\n", __func__, path == NULL ? "" : path, resolved_path == NULL ? "" : resolved_path, re == NULL ? "" : re);
+    #endif
+    return re;
+}
 
 /*
  * Link operations
@@ -1876,6 +1925,7 @@ static void cfs_init() {
     real_fdopendir = dlsym(RTLD_NEXT, "fopendir");
     real_readdir = dlsym(RTLD_NEXT, "readdir");
     real_closedir = dlsym(RTLD_NEXT, "closedir");
+    real_realpath = dlsym(RTLD_NEXT, "realpath");
 
     real_link = dlsym(RTLD_NEXT, "link");
     real_linkat = dlsym(RTLD_NEXT, "linkat");
