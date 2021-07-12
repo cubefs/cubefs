@@ -178,10 +178,10 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 	}
 	for _, dp := range dps {
 		dp.RLock()
-		if len(dp.Replicas) == 0 {
+		if !dp.isDataCatchUp() || len(dp.Replicas) < int(vol.dpReplicaNum) {
 			dpsLen--
 			dp.RUnlock()
-			return
+			continue
 		}
 		addr := dp.Replicas[0].dataNode.Addr
 		server.cluster.putBadDataPartitionIDs(dp.Replicas[0], addr, dp.PartitionID)
@@ -193,7 +193,7 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 		count = count + len(badDataPartitionIds)
 		return true
 	})
-
+	t.Logf("bad data partitions count:%v", count)
 	if count != dpsLen {
 		t.Errorf("expect bad partition num[%v],real num[%v]", dpsLen, count)
 		return
