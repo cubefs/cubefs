@@ -14,18 +14,17 @@
 package proto
 
 import (
+	"math/rand"
 	"sync"
+	"time"
+)
+
+const (
+	MsgPoolCnt=64
 )
 
 var (
-	msgPool = &sync.Pool{
-		New: func() interface{} {
-			return &Message{
-				Entries: make([]*Entry, 0, 128),
-			}
-		},
-	}
-
+	msgPool [MsgPoolCnt]*sync.Pool
 	bytePool = &sync.Pool{
 		New: func() interface{} {
 			return make([]byte, 128)
@@ -33,8 +32,23 @@ var (
 	}
 )
 
+func init() {
+	rand.Seed(time.Now().UnixNano())
+	for index:=0;index<MsgPoolCnt;index++{
+		msgPool[index]=&sync.Pool{
+			New: func() interface{} {
+				return &Message{
+					Entries: make([]*Entry, 0, 128),
+				}
+			},
+		}
+	}
+}
+
 func GetMessage() *Message {
-	msg := msgPool.Get().(*Message)
+	rand.Seed(time.Now().UnixNano())
+	index:=rand.Uint64()%MsgPoolCnt
+	msg := msgPool[index].Get().(*Message)
 	msg.Reject = false
 	msg.RejectIndex = 0
 	msg.ID = 0
@@ -52,12 +66,13 @@ func GetMessage() *Message {
 	msg.Context = nil
 	msg.Entries = msg.Entries[0:0]
 	msg.ctx = nil
+	msg.magic=uint8(index)
 	return msg
 }
 
 func ReturnMessage(msg *Message) {
 	if msg != nil {
-		msgPool.Put(msg)
+		msgPool[msg.magic].Put(msg)
 	}
 }
 

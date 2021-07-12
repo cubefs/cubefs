@@ -145,6 +145,7 @@ type Message struct {
 	Context      []byte
 	Snapshot     Snapshot // No need for codec
 	ctx          context.Context
+	magic       uint8
 }
 
 func (m *Message) Ctx() context.Context {
