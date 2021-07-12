@@ -18,20 +18,109 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"flag"
 	"fmt"
-	"github.com/chubaofs/chubaofs/metanode"
 	"io/ioutil"
+	"os"
+	"path"
+	"regexp"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/chubaofs/chubaofs/metanode"
 )
 
 type OpKvData struct {
-	Op uint32 `json:"op"`
-	K  string `json:"k"`
-	V  []byte `json:"v"`
+	Op        uint32 `json:"op"`
+	K         string `json:"k"`
+	V         []byte `json:"v"`
+	From      string `json:"frm"` // The address of the client that initiated the operation.
+	Timestamp int64  `json:"ts"`  // Timestamp of operation
+}
+
+var (
+	errorLogfile string
+	raftLog      = flag.String("f", "/data/raft/1/0000000000000001-0000000000000001.log", "config raft log path")
+	raftDir      = flag.String("d", "", "config raft log dir, handle all logs in this dir")
+)
+
+type ByModTime []os.FileInfo
+
+func (f ByModTime) Less(i, j int) bool {
+	return f[i].ModTime().Before(f[j].ModTime())
+}
+
+func (f ByModTime) Len() int {
+	return len(f)
+}
+
+func (f ByModTime) Swap(i, j int) {
+	f[i], f[j] = f[j], f[i]
 }
 
 func main() {
+	flag.Parse()
+
+	var err error
 	fmt.Println("Read raft wal record")
-	readWal("/home/guowl/1394/0000000000000001-0000000000000001.log")
+	errorLogfile, err = creatParseRaftErrorLog()
+	if err != nil {
+		fmt.Printf("creat a errorLogfile[%v] failed, err[%v]\n", errorLogfile, err)
+		return
+	}
+	// 有d优先d，屏蔽f； 没d 处理 f
+	if *raftDir != "" {
+		_, err = os.Stat(*raftDir)
+		if os.IsNotExist(err) {
+			fmt.Printf("raftLogDir[%v] doesn't exist\n", *raftDir)
+			return
+		}
+		var (
+			files   []os.FileInfo
+			logFile ByModTime
+		)
+		if files, err = ioutil.ReadDir(*raftDir); err != nil {
+			fmt.Printf("Read raftLogDir[%v] err[%v]\n", *raftDir, err)
+			return
+		}
+		for _, f := range files {
+			if strings.HasSuffix(f.Name(), ".log") {
+				match, _ := regexp.MatchString("\\d{16}-\\d{16}.log", f.Name())
+				if match {
+					logFile = append(logFile, f)
+				}
+			}
+		}
+		if len(logFile) < 1 {
+			fmt.Printf("raftLogDir[%v] doesn't have raftLog\n", *raftDir)
+			return
+		}
+		sort.Sort(logFile)
+		for _, file := range logFile {
+			readWal(path.Join(*raftDir, file.Name()))
+		}
+		return
+	}
+	_, err = os.Stat(*raftLog)
+	if os.IsNotExist(err) {
+		fmt.Printf("raftLogFile[%v] doesn't exist\n", *raftLog)
+		return
+	}
+	readWal(*raftLog)
+	return
+}
+
+func creatParseRaftErrorLog() (file string, err error) {
+	dir := path.Join(".", "parseRaft")
+	_, err = os.Stat(dir)
+	if os.IsNotExist(err) {
+		os.MkdirAll(dir, 0755)
+	}
+	file = path.Join(dir, "error.log")
+	if _, err = os.Create(file); err != nil {
+		return
+	}
 	return
 }
 
@@ -43,6 +132,7 @@ func readWal(name string) {
 	)
 
 	data, _ := ioutil.ReadFile(name)
+	fmt.Printf("parsing raftlog[%v]\n", name)
 	fmt.Println("data len", len(data))
 	var err error
 	fileOffset = 0
@@ -51,7 +141,6 @@ func readWal(name string) {
 		if fileOffset >= uint64(len(data)) {
 			return
 		}
-
 		dataSize = 0
 		dataTemp := data[fileOffset:]
 		//first byte is record type
@@ -64,6 +153,7 @@ func readWal(name string) {
 		term := binary.BigEndian.Uint64(dataTemp[10:18])
 		index := binary.BigEndian.Uint64(dataTemp[18:26])
 
+		// dataSize >17, 1 opType + 8 term + 8 index, and data
 		if dataSize > 17 {
 			if opType == 0 {
 				cmd := new(OpKvData)
@@ -72,40 +162,106 @@ func readWal(name string) {
 					return
 				}
 				dataString = fmt.Sprintf("opt:%v, k:%v, v:%v", cmd.Op, cmd.K, cmd.V)
-				if cmd.Op == 0 {
-					ino := metanode.NewInode(0, 0)
-					if err = ino.Unmarshal(context.Background(), cmd.V); err != nil {
-						continue
-					}
-					if ino.Inode == 33570077 {
-						fmt.Println(fmt.Sprintf("create inode %v", ino))
-					}
-
-				} else if cmd.Op == 17 {
-					req := &metanode.SetattrRequest{}
-					err = json.Unmarshal(cmd.V, req)
-					if err != nil {
-						continue
-					}
-					if req.Inode == 33570077 {
-						fmt.Println(fmt.Sprintf("set attr inode %v", req))
-					}
+				if err = parseKvdataOp(cmd); err != nil {
+					fmt.Printf("readwal: parse raft Kvdata Op failed: err[%v]\n", err)
+					continue
 				}
-
 			} else if opType == 1 {
 				cType := dataTemp[26]
 				pType := dataTemp[27]
 				prt := binary.BigEndian.Uint16(dataTemp[28:30])
 				pid := binary.BigEndian.Uint64(dataTemp[30:38])
 				dataString = fmt.Sprintf("cngType:%v, peerType:%v, priority:%v, id:%v", cType, pType, prt, pid)
+			} else {
+				fmt.Printf("opType[%v] is not 0or1\n", opType)
 			}
-
+		} else if dataSize < 17 {
+			fmt.Printf("dataSize[%v] < 17, the wrong content\n", dataSize)
+			return
 		}
-		crcOffset := 9 + dataSize
-		crc := binary.BigEndian.Uint32(dataTemp[crcOffset : crcOffset+4])
+		crcOffset := 9 + dataSize                                         // 最前面 1+8 加数据长度的偏移
+		crc := binary.BigEndian.Uint32(dataTemp[crcOffset : crcOffset+4]) // ctx   context.Context 4 bytes
 		fmt.Sprintf("recType[%v] dataSize[%v] opType[%v] term[%v] index[%v] data[%v] crc[%x]", recordType, dataSize, opType, term, index, dataString, crc)
 		recordSize := 1 + 8 + dataSize + 4
 		fileOffset = fileOffset + recordSize
 	}
 
+}
+
+func parseKvdataOp(cmd *OpKvData) (err error) {
+	switch cmd.Op {
+	case opFSMCreateInode:
+		ino := metanode.NewInode(0, 0)
+		if err = ino.Unmarshal(context.Background(), cmd.V); err != nil {
+			writeIntoLog(errorLogfile, err.Error())
+			return
+		}
+		fmt.Println(fmt.Sprintf("create inode %v", ino))
+		fmt.Println(fmt.Sprintf("ip[%v], time[%v]", cmd.From, timeStampToString(cmd.Timestamp)))
+	case opFSMUnlinkInode:
+		ino := metanode.NewInode(0, 0)
+		if err = ino.Unmarshal(context.Background(), cmd.V); err != nil {
+			writeIntoLog(errorLogfile, err.Error())
+			return
+		}
+		fmt.Println(fmt.Sprintf("unlink inode %v", ino))
+		fmt.Println(fmt.Sprintf("ip[%v], time[%v]", cmd.From, timeStampToString(cmd.Timestamp)))
+	case opFSMCreateDentry:
+		den := &metanode.Dentry{}
+		if err = den.Unmarshal(cmd.V); err != nil {
+			writeIntoLog(errorLogfile, err.Error())
+			return
+		}
+		fmt.Println(fmt.Sprintf("create dentry {ParentId[%v]Name[%v]Inode[%v]Type[%v]}", den.ParentId, den.Name,
+			den.Inode, den.Type))
+		fmt.Println(fmt.Sprintf("ip[%v], time[%v]", cmd.From, timeStampToString(cmd.Timestamp)))
+	case opFSMDeleteDentry:
+		den := &metanode.Dentry{}
+		if err = den.Unmarshal(cmd.V); err != nil {
+			writeIntoLog(errorLogfile, err.Error())
+			return
+		}
+		fmt.Println(fmt.Sprintf("delete dentry {ParentId[%v]Name[%v]Inode[%v]Type[%v]}", den.ParentId, den.Name,
+			den.Inode, den.Type))
+		fmt.Println(fmt.Sprintf("ip[%v], time[%v]", cmd.From, timeStampToString(cmd.Timestamp)))
+	case opFSMExtentTruncate:
+		ino := metanode.NewInode(0, 0)
+		if err = ino.Unmarshal(context.Background(), cmd.V); err != nil {
+			writeIntoLog(errorLogfile, err.Error())
+			return
+		}
+		fmt.Println(fmt.Sprintf("extent truncate %v", ino))
+		fmt.Println(fmt.Sprintf("ip[%v], time[%v]", cmd.From, timeStampToString(cmd.Timestamp)))
+	case opFSMEvictInode:
+		ino := metanode.NewInode(0, 0)
+		if err = ino.Unmarshal(context.Background(), cmd.V); err != nil {
+			writeIntoLog(errorLogfile, err.Error())
+			return
+		}
+		fmt.Println(fmt.Sprintf("evict inode %v", ino))
+		fmt.Println(fmt.Sprintf("ip[%v], time[%v]", cmd.From, timeStampToString(cmd.Timestamp)))
+	default:
+		return
+	}
+	return
+}
+
+func writeIntoLog(logName string, info string) (err error) {
+	var (
+		fd *os.File
+	)
+	if fd, err = os.Open(logName); err != nil {
+		fmt.Printf("Open errorLogfile[%v] failed, err[%v]\n", logName, err)
+		return
+	}
+	defer fd.Close()
+	if _, err = fd.WriteString(info); err != nil {
+		fmt.Printf("Write errorLogfile[%v] failed, err[%v]\n", logName, err)
+		return
+	}
+	return
+}
+
+func timeStampToString(timeStamp int64) string {
+	return time.Unix(timeStamp, 0).Format("2006-01-02 15:04:05")
 }

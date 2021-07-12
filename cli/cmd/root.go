@@ -54,6 +54,7 @@ func NewRootCmd(client *master.MasterClient) *ChubaoFSCmd {
 		newMetaPartitionCmd(client),
 		newConfigCmd(),
 		newCompatibilityCmd(),
+		newParseRaftLogCmd(),
 		newRateLimitCmd(client),
 	)
 	return cmd

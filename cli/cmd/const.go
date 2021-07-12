@@ -89,3 +89,43 @@ const (
 	ReplicaNotConsistent        = "replica number not consistent"
 	PartitionNotHealthyInMaster = "partition not healthy in master"
 )
+
+// for parse raft log
+const (
+	opFSMCreateInode uint32 = iota
+	opFSMUnlinkInode
+	opFSMCreateDentry
+	opFSMDeleteDentry
+	opFSMDeletePartition
+	opFSMUpdatePartition
+	opFSMDecommissionPartition
+	opFSMExtentsAdd
+	opFSMStoreTick
+	startStoreTick
+	stopStoreTick
+	opFSMUpdateDentry
+	opFSMExtentTruncate
+	opFSMCreateLinkInode
+	opFSMEvictInode
+	opFSMInternalDeleteInode
+	opFSMSetAttr
+	opFSMInternalDelExtentFile
+	opFSMInternalDelExtentCursor
+	opExtentFileSnapshot
+	opFSMSetXAttr
+	opFSMRemoveXAttr
+	opFSMCreateMultipart
+	opFSMRemoveMultipart
+	opFSMAppendMultipart
+	opFSMSyncCursor
+
+	//supplement action
+	opFSMInternalDeleteInodeBatch
+	opFSMDeleteDentryBatch
+	opFSMUnlinkInodeBatch
+	opFSMEvictInodeBatch
+
+	opFSMCursorReset
+
+	opFSMExtentsInsert
+)
