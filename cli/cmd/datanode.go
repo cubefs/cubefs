@@ -37,16 +37,18 @@ func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
 		newDataNodeListCmd(client),
 		newDataNodeInfoCmd(client),
 		newDataNodeDecommissionCmd(client),
+		newDataNodeDiskDecommissionCmd(client),
 		newResetDataNodeCmd(client),
 	)
 	return cmd
 }
 
 const (
-	cmdDataNodeListShort             = "List information of data nodes"
-	cmdDataNodeInfoShort             = "Show information of a data node"
-	cmdDataNodeDecommissionInfoShort = "decommission partitions in a data node to others"
-	cmdResetDataNodeShort            = "Reset corrupt data partitions related to this node"
+	cmdDataNodeListShort                 = "List information of data nodes"
+	cmdDataNodeInfoShort                 = "Show information of a data node"
+	cmdDataNodeDecommissionInfoShort     = "decommission partitions in a data node to others"
+	cmdDataNodeDiskDecommissionInfoShort = "decommission disk of partitions in a data node to others"
+	cmdResetDataNodeShort                = "Reset corrupt data partitions related to this node"
 )
 
 func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
@@ -122,7 +124,6 @@ func newDataNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
-	var diskAddr string
 	var cmd = &cobra.Command{
 		Use:   CliOpDecommission + " [NODE ADDRESS]",
 		Short: cmdDataNodeDecommissionInfoShort,
@@ -136,17 +137,41 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}()
 			nodeAddr = args[0]
-			if len(diskAddr) == 0 {
-				if err = client.NodeAPI().DataNodeDecommission(nodeAddr); err != nil {
-					return
-				}
-				stdout("Decommission data node successfully\n")
-			} else {
-				if err = client.NodeAPI().DataNodeDiskDecommission(nodeAddr, diskAddr); err != nil {
-					return
-				}
-				stdout("Decommission disk successfully\n")
+			if err = client.NodeAPI().DataNodeDecommission(nodeAddr); err != nil {
+				return
 			}
+			stdout("Decommission data node successfully\n")
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	return cmd
+}
+
+func newDataNodeDiskDecommissionCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpDecommission + " [NODE ADDRESS]" + "[DISK ADDRESS]",
+		Short: cmdDataNodeDiskDecommissionInfoShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var nodeAddr string
+			var diskAddr string
+			defer func() {
+				if err != nil {
+					errout("decommission disk failed, err[%v]\n", err)
+				}
+			}()
+			nodeAddr = args[0]
+			diskAddr = args[1]
+			if err = client.NodeAPI().DataNodeDiskDecommission(nodeAddr, diskAddr); err != nil {
+				return
+			}
+			stdout("Decommission disk successfully\n")
 
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -156,7 +181,6 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
-	cmd.Flags().StringVar(&diskAddr, "diskAddr", "", "disk offline")
 	return cmd
 }
 
