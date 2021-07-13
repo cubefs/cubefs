@@ -32,6 +32,7 @@ import (
 const (
 	RoleMaster           = "master"
 	RoleClient           = "client"
+	KeyRole              = "role"
 	KeyVersion           = "version"
 	KeyMasterListenPort  = "listen"
 	KeyMasterAddr        = "masterAddr"
@@ -115,9 +116,15 @@ func init() {
 //! * if node ignoreCommon config is true, don't use cluster common config
 //! * else if node config map exist key, use node config
 //! * else add cluster common config key: value
-func (cluster *ClusterConfig) updateNodeConfig(nodeConfig map[string]interface{}) {
+func (cluster *ClusterConfig) updateNodeConfig(role, clusterName string, nodeConfig map[string]interface{}, ignoreCommon bool) {
 	if cluster.Version != "" {
 		nodeConfig[KeyVersion] = cluster.Version
+	}
+	nodeConfig[KeyRole] = role
+	nodeConfig[KeyMasterClusterName] = clusterName
+
+	if ignoreCommon {
+		return
 	}
 	for k, v := range cluster.Config {
 		if nodeConfig[k] == nil {
@@ -202,9 +209,7 @@ func genCfgCmd(cmd *cobra.Command, args []string) {
 			node.Config[KeyMasterAddr] = masterAddrs
 		}
 
-		if !node.IgnoreCommon {
-			clusterConfig.updateNodeConfig(node.Config)
-		}
+		clusterConfig.updateNodeConfig(node.Role, clusterConfig.Name, node.Config, node.IgnoreCommon)
 
 		cfgFilePath := path.Join(optGenCfgOutDir, fmt.Sprintf("%s.json", node.Role))
 		if err = storeConfig2Json(cfgFilePath, node.Config); err != nil {
@@ -253,18 +258,17 @@ func getMasterAddrsAndPeers(masterHosts []string, masterListen string) (masterAd
 
 func generateMasterCfgJson(clusterConfig *ClusterConfig, masterPeers string) (err error) {
 	//generate master config json
-	clusterConfig.Master.Config[KeyMasterClusterName] = clusterConfig.Name
-	clusterConfig.Master.Config[KeyMasterPeers] = masterPeers
+	masterConfig := clusterConfig.Master
+	//masterConfig.Config[KeyMasterClusterName] = clusterConfig.Name
+	masterConfig.Config[KeyMasterPeers] = masterPeers
 	for i, host := range clusterConfig.Master.Hosts {
-		if !clusterConfig.Master.IgnoreCommon {
-			clusterConfig.updateNodeConfig(clusterConfig.Master.Config)
-		}
+		clusterConfig.updateNodeConfig(RoleMaster, clusterConfig.Name, masterConfig.Config, masterConfig.IgnoreCommon)
 
-		clusterConfig.Master.Config["id"] = fmt.Sprintf("%d", i+1)
-		clusterConfig.Master.Config["ip"] = host
+		masterConfig.Config["id"] = fmt.Sprintf("%d", i+1)
+		masterConfig.Config["ip"] = host
 
-		masterCfgFile := path.Join(optGenCfgOutDir, fmt.Sprintf("%s-%s.json", RoleMaster, host))
-		if err = storeConfig2Json(masterCfgFile, clusterConfig.Master.Config); err != nil {
+		masterCfgFile := path.Join(optGenCfgOutDir, fmt.Sprintf("%s/%s.json", RoleMaster, host))
+		if err = storeConfig2Json(masterCfgFile, masterConfig.Config); err != nil {
 			return
 		}
 	}
