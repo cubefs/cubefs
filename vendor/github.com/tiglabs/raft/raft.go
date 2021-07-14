@@ -127,7 +127,7 @@ type raft struct {
 	readyc            chan struct{}
 	tickc             chan struct{}
 	electc            chan struct{}
-	promtec			  chan struct{}
+	promtec           chan struct{}
 	stopc             chan struct{}
 	done              chan struct{}
 	mu                sync.Mutex
@@ -166,7 +166,7 @@ func newRaft(config *Config, raftConfig *RaftConfig) (*raft, error) {
 		statusc:       make(chan chan *Status, 1),
 		entryRequestC: make(chan *entryRequest, 16),
 		tickc:         make(chan struct{}, 64),
-		promtec:	   make(chan struct{}, 64),
+		promtec:       make(chan struct{}, 64),
 		readyc:        make(chan struct{}, 1),
 		electc:        make(chan struct{}, 1),
 		stopc:         make(chan struct{}),
@@ -771,11 +771,6 @@ func (s *raft) maybeChange(respErr bool) {
 }
 
 func (s *raft) persist() {
-
-	if exporter.IsEnabled() {
-		metric := Metrics().MetricRaftOpTpc.GetWithLabelVals("persist")
-		defer metric.Count()
-	}
 
 	if err := s.raftFsm.raftLog.persist(); err != nil {
 		panic(AppPanicError(fmt.Sprintf("[raft->persist][%v] storage storeEntries err: [%v].", s.raftFsm.id, err)))

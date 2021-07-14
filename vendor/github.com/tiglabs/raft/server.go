@@ -22,7 +22,6 @@ import (
 
 	"github.com/tiglabs/raft/tracing"
 
-	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
 	"github.com/tiglabs/raft/util"
@@ -60,8 +59,6 @@ func NewRaftServer(config *Config) (*RaftServer, error) {
 	} else {
 		rs.config.transport = transport
 	}
-
-	RegisterMetrics()
 
 	util.RunWorkerUtilStop(rs.run, rs.stopc)
 	return rs, nil
@@ -190,10 +187,6 @@ func (rs *RaftServer) Submit(ctx context.Context, id uint64, cmd []byte) (future
 	rs.mu.RLock()
 	raft, ok := rs.rafts[id]
 	rs.mu.RUnlock()
-	if exporter.IsEnabled() {
-		metric := Metrics().MetricRaftOpTpc.GetWithLabelVals("submit")
-		defer metric.Count()
-	}
 
 	future = newFuture()
 	future.ctx = ctx

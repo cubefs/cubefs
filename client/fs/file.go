@@ -23,6 +23,7 @@ import (
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/tracing"
 	"github.com/chubaofs/chubaofs/util/ump"
@@ -185,10 +186,8 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 
 	start := time.Now()
 
-	if metrics != nil {
-		m := metrics.MetricFuseOpTpc.GetWithLabelVals("fileread")
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt("fileread")
+	defer metric.Set(err)
 
 	size, err := f.super.ec.Read(ctx, f.info.Inode, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
 	if err != nil && err != io.EOF {
@@ -252,10 +251,8 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	enSyncWrite = f.super.enSyncWrite
 	start := time.Now()
 
-	if metrics != nil {
-		m := metrics.MetricFuseOpTpc.GetWithLabelVals("filewrite")
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt("filewrite")
+	defer metric.Set(err)
 
 	size, err := f.super.ec.Write(ctx, ino, int(req.Offset), req.Data, enSyncWrite)
 	if err != nil {
@@ -298,10 +295,8 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	log.LogDebugf("TRACE Flush enter: ino(%v)", f.info.Inode)
 	start := time.Now()
 
-	if metrics != nil {
-		m := metrics.MetricFuseOpTpc.GetWithLabelVals("fileFlush")
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt("filesync")
+	defer metric.Set(err)
 
 	err = f.super.ec.Flush(ctx, f.info.Inode)
 	if err != nil {
@@ -325,10 +320,7 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 
 	log.LogDebugf("TRACE Fsync enter: ino(%v)", f.info.Inode)
 	start := time.Now()
-	if metrics != nil {
-		m := metrics.MetricFuseOpTpc.GetWithLabelVals("fileFsync")
-		defer m.CountWithError(err)
-	}
+
 	err = f.super.ec.Flush(ctx, f.info.Inode)
 	if err != nil {
 		msg := fmt.Sprintf("Fsync: ino(%v) err(%v)", f.info.Inode, err)

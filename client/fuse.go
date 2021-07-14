@@ -199,10 +199,7 @@ func main() {
 	}
 	defer fsConn.Close()
 
-	if exporter.IsEnabled() {
-		exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
-		cfs.RegisterMetrics()
-	}
+	exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
 
 	// report client version
 	var masters = strings.Split(opt.Master, meta.HostsSeparator)

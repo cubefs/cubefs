@@ -93,7 +93,6 @@ type DataNode struct {
 	stopC                    chan bool
 	fixTinyDeleteRecordLimit uint64
 	control                  common.Control
-	metrics                  *DataNodeMetrics
 }
 
 func NewServer() *DataNode {
@@ -130,7 +129,6 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	}
 
 	exporter.Init(ModuleName, cfg)
-	s.registerMetrics()
 	s.register(cfg)
 
 	// start the raft server

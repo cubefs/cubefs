@@ -53,10 +53,8 @@ func (mw *MetaWrapper) icreate(ctx context.Context, mp *MetaPartition, mode, uid
 		return
 	}
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -105,10 +103,8 @@ func (mw *MetaWrapper) iunlink(ctx context.Context, mp *MetaPartition, inode uin
 		return
 	}
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -153,10 +149,8 @@ func (mw *MetaWrapper) ievict(ctx context.Context, mp *MetaPartition, inode uint
 		return
 	}
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -201,10 +195,8 @@ func (mw *MetaWrapper) dcreate(ctx context.Context, mp *MetaPartition, parentID 
 		return
 	}
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	var needCheckRead bool
 	packet, needCheckRead, err = mw.sendWriteToMP(ctx, mp, packet)
@@ -257,10 +249,8 @@ func (mw *MetaWrapper) dupdate(ctx context.Context, mp *MetaPartition, parentID 
 		return
 	}
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -305,10 +295,8 @@ func (mw *MetaWrapper) ddelete(ctx context.Context, mp *MetaPartition, parentID 
 		return
 	}
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -354,10 +342,8 @@ func (mw *MetaWrapper) lookup(ctx context.Context, mp *MetaPartition, parentID u
 
 	log.LogDebugf("lookup enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
@@ -405,10 +391,8 @@ func (mw *MetaWrapper) iget(ctx context.Context, mp *MetaPartition, inode uint64
 		return
 	}
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
@@ -454,10 +438,8 @@ func (mw *MetaWrapper) batchIget(ctx context.Context, wg *sync.WaitGroup, mp *Me
 		return
 	}
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
@@ -508,10 +490,8 @@ func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID 
 		return
 	}
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
@@ -557,10 +537,8 @@ func (mw *MetaWrapper) appendExtentKey(ctx context.Context, mp *MetaPartition, i
 		return
 	}
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	var needCheckRead bool
 	packet, needCheckRead, err = mw.sendWriteToMP(ctx, mp, packet)
@@ -611,10 +589,8 @@ func (mw *MetaWrapper) insertExtentKey(ctx context.Context, mp *MetaPartition, i
 		return
 	}
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	var needCheckRead bool
 	packet, needCheckRead, err = mw.sendWriteToMP(ctx, mp, packet)
@@ -658,10 +634,8 @@ func (mw *MetaWrapper) getExtents(ctx context.Context, mp *MetaPartition, inode 
 		return
 	}
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
@@ -710,10 +684,8 @@ func (mw *MetaWrapper) truncate(ctx context.Context, mp *MetaPartition, inode, o
 
 	log.LogDebugf("truncate enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -764,10 +736,8 @@ func (mw *MetaWrapper) ilink(ctx context.Context, mp *MetaPartition, inode uint6
 
 	log.LogDebugf("ilink enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -824,10 +794,8 @@ func (mw *MetaWrapper) setattr(ctx context.Context, mp *MetaPartition, inode uin
 
 	log.LogDebugf("setattr enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -868,10 +836,8 @@ func (mw *MetaWrapper) createMultipart(ctx context.Context, mp *MetaPartition, p
 
 	log.LogDebugf("createMultipart enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -917,10 +883,8 @@ func (mw *MetaWrapper) getMultipart(ctx context.Context, mp *MetaPartition, path
 
 	log.LogDebugf("getMultipart enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
@@ -975,10 +939,8 @@ func (mw *MetaWrapper) addMultipartPart(ctx context.Context, mp *MetaPartition, 
 
 	log.LogDebugf("addMultipartPart entry: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -1013,10 +975,8 @@ func (mw *MetaWrapper) idelete(ctx context.Context, mp *MetaPartition, inode uin
 	}
 	log.LogDebugf("delete inode: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -1054,10 +1014,8 @@ func (mw *MetaWrapper) removeMultipart(ctx context.Context, mp *MetaPartition, p
 	}
 	log.LogDebugf("delete session: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -1096,10 +1054,8 @@ func (mw *MetaWrapper) appendExtentKeys(ctx context.Context, mp *MetaPartition, 
 	}
 	log.LogDebugf("appendExtentKeys: batch append extent: packet(%v) mp(%v) req(%v)", packet, mp, *req)
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -1140,10 +1096,8 @@ func (mw *MetaWrapper) setXAttr(ctx context.Context, mp *MetaPartition, inode ui
 	}
 	log.LogDebugf("setXAttr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, _, err = mw.sendWriteToMP(ctx, mp, packet)
 	if err != nil {
@@ -1184,10 +1138,8 @@ func (mw *MetaWrapper) getXAttr(ctx context.Context, mp *MetaPartition, inode ui
 	}
 	log.LogDebugf("get xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
@@ -1233,10 +1185,8 @@ func (mw *MetaWrapper) removeXAttr(ctx context.Context, mp *MetaPartition, inode
 	}
 	log.LogDebugf("remove xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	if packet, _, err = mw.sendWriteToMP(ctx, mp, packet); err != nil {
 		log.LogWarnf("remove xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
@@ -1273,10 +1223,8 @@ func (mw *MetaWrapper) listXAttr(ctx context.Context, mp *MetaPartition, inode u
 	}
 	log.LogDebugf("list xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	if packet, err = mw.sendReadToMP(ctx, mp, packet); err != nil {
 		log.LogWarnf("list xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
@@ -1327,10 +1275,8 @@ func (mw *MetaWrapper) listMultiparts(ctx context.Context, mp *MetaPartition, pr
 
 	log.LogDebugf("listMultiparts enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {
@@ -1376,10 +1322,8 @@ func (mw *MetaWrapper) batchGetXAttr(ctx context.Context, mp *MetaPartition, ino
 		return nil, err
 	}
 
-	if metrics != nil {
-		m := metrics.MetricOpTpc.GetWithLabelVals(packet.GetOpMsg())
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
 
 	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil {

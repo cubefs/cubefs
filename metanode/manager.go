@@ -29,6 +29,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/chubaofs/chubaofs/util/exporter"
+
 	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
@@ -89,11 +91,9 @@ func (m *metadataManager) getPacketLabelVals(p *Packet) (labels []string) {
 // HandleMetadataOperation handles the metadata operations.
 func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) (err error) {
 	m.rateLimit(conn, p, remoteAddr)
-	if m.metaNode.metrics != nil {
-		labelVals := m.getPacketLabelVals(p)
-		metric := m.metaNode.metrics.MpOp.GetWithLabelVals(labelVals...)
-		defer metric.CountWithError(err)
-	}
+
+	metric := exporter.NewTPCnt(p.GetOpMsg())
+	defer metric.Set(err)
 
 	const tracerName = "metadataManager.HandleMetadataOperation"
 	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer(tracerName).

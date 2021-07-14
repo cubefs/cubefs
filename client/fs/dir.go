@@ -20,16 +20,15 @@ import (
 	"syscall"
 	"time"
 
+	"bazil.org/fuse"
+	"bazil.org/fuse/fs"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/tracing"
 	"github.com/chubaofs/chubaofs/util/ump"
 	"github.com/opentracing/opentracing-go"
-
-	"bazil.org/fuse"
-	"bazil.org/fuse/fs"
 	"golang.org/x/net/context"
-
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
 )
 
 // Dir defines the structure of a directory
@@ -97,11 +96,8 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	start := time.Now()
 
 	var err error
-
-	if metrics != nil {
-		m := metrics.MetricFuseOpTpc.GetWithLabelVals("filecreate")
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt("filecreate")
+	defer metric.Set(err)
 
 	info, err := d.super.mw.Create_ll(ctx, d.info.Inode, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil)
 	if err != nil {
@@ -150,10 +146,8 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 	start := time.Now()
 
 	var err error
-	if metrics != nil {
-		m := metrics.MetricFuseOpTpc.GetWithLabelVals("mkdir")
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt("mkdir")
+	defer metric.Set(err)
 
 	info, err := d.super.mw.Create_ll(ctx, d.info.Inode, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid, req.Gid, nil)
 	if err != nil {
@@ -192,10 +186,8 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) (err error) {
 
 	start := time.Now()
 	d.dcache.Delete(req.Name)
-	if metrics != nil {
-		m := metrics.MetricFuseOpTpc.GetWithLabelVals("remove")
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt("remove")
+	defer metric.Set(err)
 
 	info, syserr := d.super.mw.Delete_ll(ctx, d.info.Inode, req.Name, req.Dir)
 	if syserr != nil {
@@ -279,11 +271,8 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	start := time.Now()
 
 	var err error
-
-	if metrics != nil {
-		m := metrics.MetricFuseOpTpc.GetWithLabelVals("readdir")
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt("readdir")
+	defer metric.Set(err)
 
 	children, err := d.super.mw.ReadDir_ll(ctx, d.info.Inode)
 	if err != nil {
@@ -336,11 +325,8 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 	d.dcache.Delete(req.OldName)
 
 	var err error
-
-	if metrics != nil {
-		m := metrics.MetricFuseOpTpc.GetWithLabelVals("rename")
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt("rename")
+	defer metric.Set(err)
 
 	err = d.super.mw.Rename_ll(ctx, d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName)
 	if err != nil {
@@ -400,11 +386,8 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 	start := time.Now()
 
 	var err error
-
-	if metrics != nil {
-		m := metrics.MetricFuseOpTpc.GetWithLabelVals("mknod")
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt("mknod")
+	defer metric.Set(err)
 
 	info, err := d.super.mw.Create_ll(ctx, d.info.Inode, req.Name, proto.Mode(req.Mode), req.Uid, req.Gid, nil)
 	if err != nil {
@@ -431,11 +414,8 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 	start := time.Now()
 
 	var err error
-
-	if metrics != nil {
-		m := metrics.MetricFuseOpTpc.GetWithLabelVals("symlink")
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt("symlink")
+	defer metric.Set(err)
 
 	info, err := d.super.mw.Create_ll(ctx, parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid, req.Gid, []byte(req.Target))
 	if err != nil {
@@ -474,10 +454,8 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 	start := time.Now()
 
 	var err error
-	if metrics != nil {
-		m := metrics.MetricFuseOpTpc.GetWithLabelVals("symlink")
-		defer m.CountWithError(err)
-	}
+	metric := exporter.NewTPCnt("link")
+	defer metric.Set(err)
 
 	info, err := d.super.mw.Link(ctx, d.info.Inode, req.NewName, oldInode.Inode)
 	if err != nil {
