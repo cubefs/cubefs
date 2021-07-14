@@ -154,7 +154,7 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 
 func newDataNodeDiskDecommissionCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   CliOpDecommission + " [NODE ADDRESS]" + "[DISK ADDRESS]",
+		Use:   CliOpDecommissionDisk + " [NODE ADDRESS]" + "[DISK ADDRESS]",
 		Short: cmdDataNodeDiskDecommissionInfoShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -172,7 +172,6 @@ func newDataNodeDiskDecommissionCmd(client *master.MasterClient) *cobra.Command 
 				return
 			}
 			stdout("Decommission disk successfully\n")
-
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
