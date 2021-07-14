@@ -1712,7 +1712,7 @@ func (c *Cluster) checkVolInfo(name string, crossZone bool, zoneName string) (ne
 					}
 				}
 				if !isExcludeZone {
-					return newZoneName, fmt.Errorf("action[checkVolInfo] the zonename[%v] not execluded domain name.should not be assigned")
+					return newZoneName, fmt.Errorf("action[checkVolInfo] the zonename not execluded domain name.should not be assigned")
 				}
 			}
 		}
@@ -1764,10 +1764,7 @@ func (c *Cluster) createVol(name, owner, zoneName, description string,
 		_ = vol.initDataPartitions(c)
 		readWriteDataPartitions = len(vol.dataPartitions.partitionMap)
 	}
-	if len(vol.dataPartitions.partitionMap) <= defaultReplicaNum {
-		err = fmt.Errorf("action[createVol]  initDataPartitions failed")
-		goto errHandler
-	}
+
 	vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
 	vol.updateViewCache(c)
 	log.LogInfof("action[createVol] vol[%v],readableAndWritableCnt[%v]", name, readWriteDataPartitions)

@@ -17,6 +17,7 @@ func TestAutoCreateDataPartitions(t *testing.T) {
 	commonVol.Capacity = 300 * util.TB
 	dpCount := len(commonVol.dataPartitions.partitions)
 	commonVol.dataPartitions.readableAndWritableCnt = 0
+	commonVol.dataPartitions.lastAutoCreateTime = time.Now().Add(-time.Minute)
 	server.cluster.DisableAutoAllocate = false
 	t.Logf("status[%v],disableAutoAlloc[%v],cap[%v]\n",
 		commonVol.Status, server.cluster.DisableAutoAllocate, commonVol.Capacity)

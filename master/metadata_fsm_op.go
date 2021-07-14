@@ -694,7 +694,7 @@ func (c *Cluster) loadNodeSetGrps() (err error) {
 	for _, value := range result {
 		nsv := &nodeSetGrpValue{}
 		if err = json.Unmarshal(value, nsv); err != nil {
-			log.LogFatal("action[loadNodeSets], unmarshal err:%v", err.Error())
+			log.LogFatalf("action[loadNodeSets], unmarshal err:%v", err.Error())
 			return err
 		}
 		log.LogInfof("action[loadNodeSetGrps] get result nsv id[%v],status[%v],ids[%v]", nsv.ID, nsv.Status,nsv.NodeSetsIds)
