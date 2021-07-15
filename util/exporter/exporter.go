@@ -38,6 +38,7 @@ const (
 )
 
 var (
+	inited            bool
 	namespace         string
 	clustername       string
 	modulename        string
@@ -54,8 +55,15 @@ func metricsName(name string) string {
 }
 
 // Init initializes the exporter.
-func Init(role string, cfg *config.Config) {
+func Init(cluster, role string, cfg *config.Config) {
+	defer func() {
+		inited = true
+		log.LogInfof("exporter [cluster: %v, role: %v, exporterPort: %v] inited.", clustername, modulename, exporterPort)
+	}()
+
+	clustername = cluster
 	modulename = role
+
 	if !cfg.GetBoolWithDefault(ConfigKeyExporterEnable, true) {
 		log.LogInfof("%v exporter disabled", role)
 		return
@@ -84,8 +92,6 @@ func Init(role string, cfg *config.Config) {
 
 	m := NewGauge("start_time")
 	m.Set(time.Now().Unix() * 1000)
-
-	log.LogInfof("exporter Start: %v", addr)
 }
 
 // Init initializes the exporter.
@@ -123,22 +129,35 @@ func IsEnabled() bool {
 	return enabledPrometheus
 }
 
-func RegistConsul(cluster string, role string, cfg *config.Config) {
-	if !enabledPrometheus {
+func RegistConsul(cfg *config.Config) {
+	if !inited || !enabledPrometheus {
+		log.LogInfof("skip consul registration cause exporter not inited or prometheus not enabled.")
 		return
 	}
 
-	clustername = replacer.Replace(cluster)
 	consulAddr := cfg.GetString(ConfigKeyConsulAddr)
+
+	if len(consulAddr) == 0 {
+		log.LogInfof("skip consul registration cause configured consul address is illegal.")
+		return
+	}
 
 	if exporterPort == int64(0) {
 		exporterPort = cfg.GetInt64(ConfigKeyExporterPort)
 	}
+
+	if exporterPort <= 0 {
+		log.LogInfof("skip consul registration cause configured export port is illegal.")
+		return
+	}
+
 	if exporterPort != int64(0) && len(consulAddr) > 0 {
 		if ok := strings.HasPrefix(consulAddr, "http"); !ok {
 			consulAddr = "http://" + consulAddr
 		}
-		go DoConsulRegisterProc(consulAddr, AppName, role, cluster, exporterPort)
+		go DoConsulRegisterProc(consulAddr, AppName, modulename, clustername, exporterPort)
+		log.LogInfof("consul registered [addr %v, app: %v, role: %v, cluster: %v, port: %v]",
+			consulAddr, AppName, modulename, clustername, exporterPort)
 	}
 }
 

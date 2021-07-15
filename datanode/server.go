@@ -128,8 +128,9 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
-	exporter.Init(ModuleName, cfg)
 	s.register(cfg)
+	exporter.Init(s.clusterID, ModuleName, cfg)
+	exporter.RegistConsul(cfg)
 
 	// start the raft server
 	if err = s.startRaftServer(cfg); err != nil {
@@ -304,7 +305,6 @@ func (s *DataNode) register(cfg *config.Config) {
 				timer.Reset(2 * time.Second)
 				continue
 			}
-			exporter.RegistConsul(s.clusterID, ModuleName, cfg)
 			s.nodeID = nodeID
 			log.LogDebugf("register: register DataNode: nodeID(%v)", s.nodeID)
 			return

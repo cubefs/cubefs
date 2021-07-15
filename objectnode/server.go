@@ -213,8 +213,8 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
-	exporter.Init(cfg.GetString("role"), cfg)
-	exporter.RegistConsul(ci.Cluster, cfg.GetString("role"), cfg)
+	exporter.Init(ci.Cluster, cfg.GetString("role"), cfg)
+	exporter.RegistConsul(cfg)
 
 	log.LogInfo("object subsystem start success")
 	return

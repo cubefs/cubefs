@@ -134,8 +134,6 @@ func main() {
 		_ = closer.Close()
 	}()
 
-	exporter.Init(ModuleName, cfg)
-
 	level := parseLogLevel(opt.Loglvl)
 	_, err = log.InitLog(opt.Logpath, opt.Volname, level, log.NewClientLogRotate())
 	if err != nil {
@@ -199,7 +197,8 @@ func main() {
 	}
 	defer fsConn.Close()
 
-	exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
+	exporter.Init(super.ClusterName(), ModuleName, cfg)
+	exporter.RegistConsul(cfg)
 
 	// report client version
 	var masters = strings.Split(opt.Master, meta.HostsSeparator)
