@@ -245,11 +245,6 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 		}
 	}
 
-	if offsetInBlock == 0 && size == util.BlockSize {
-		err = crcFunc(e, int(blockNo), crc)
-		return
-	}
-
 	if offsetInBlock+size <= util.BlockSize {
 		err = crcFunc(e, int(blockNo), 0)
 		return
