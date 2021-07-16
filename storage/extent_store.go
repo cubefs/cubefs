@@ -183,16 +183,10 @@ func (ei *ExtentInfo) UpdateExtentInfo(extent *Extent, crc uint32) {
 	extent.Lock()
 	defer extent.Unlock()
 
-	// check if file is modified according to os.ModTime
+	// check if file is modified according to changeTime
 	if crc != 0 {
-		stat, err := extent.file.Stat()
-		if err != nil {
-			log.LogErrorf("[UpdateExtentInfo] stat file error, set crc default, %v", err)
-			crc = 0
-		}
-
-		if time.Now().Unix()-stat.ModTime().Unix() <= UpdateCrcInterval {
-			log.LogWarn("[UpdateExtentInfo] file has been modified when update extent compute crc, so set crc default")
+		if time.Now().Unix()- extent.changeTime <= UpdateCrcInterval {
+			log.LogInfof("[UpdateExtentInfo] file has been modified when update extent compute crc, so set crc default", extent.filePath)
 			crc = 0
 		}
 	}

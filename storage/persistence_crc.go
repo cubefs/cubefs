@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"io"
 	"sync/atomic"
+	"time"
 
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -40,7 +41,18 @@ func (arr BlockCrcArr) Swap(i, j int)      { arr[i], arr[j] = arr[j], arr[i] }
 type UpdateCrcFunc func(e *Extent, blockNo int, crc uint32) (err error)
 type GetExtentCrcFunc func(extentID uint64) (crc uint32, err error)
 
+// make use persist block crc is atomic
 func (s *ExtentStore) PersistenceBlockCrc(e *Extent, blockNo int, blockCrc uint32) (err error) {
+	e.Lock()
+	defer e.Unlock()
+
+	if blockCrc != 0 {
+		if time.Now().Unix()- e.changeTime <= UpdateCrcInterval {
+			log.LogInfof("[UpdateExtentInfo] file %s has been modified when updating block crc, not update", e.filePath)
+			return
+		}
+	}
+
 	startIdx := blockNo * util.PerBlockCrcSize
 	endIdx := startIdx + util.PerBlockCrcSize
 	binary.BigEndian.PutUint32(e.header[startIdx:endIdx], blockCrc)

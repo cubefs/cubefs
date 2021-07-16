@@ -67,6 +67,7 @@ type Extent struct {
 	filePath   string
 	extentID   uint64
 	modifyTime int64
+	changeTime int64 // change when append write or random write, same as file os's modifyTime
 	dataSize   int64
 	hasClose   int32
 	header     []byte
@@ -127,6 +128,7 @@ func (e *Extent) InitToFS() (err error) {
 		return
 	}
 	atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
+	atomic.StoreInt64(&e.changeTime, time.Now().Unix())
 	e.dataSize = 0
 	return
 }
@@ -156,6 +158,7 @@ func (e *Extent) RestoreFromFS() (err error) {
 	}
 	e.dataSize = info.Size()
 	atomic.StoreInt64(&e.modifyTime, info.ModTime().Unix())
+	atomic.StoreInt64(&e.changeTime, info.ModTime().Unix())
 	return
 }
 
@@ -220,9 +223,13 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 	if err = e.checkOffsetAndSize(offset, size); err != nil {
 		return
 	}
+
 	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
 		return
 	}
+
+	atomic.StoreInt64(&e.changeTime, time.Now().Unix())
+
 	blockNo := offset / util.BlockSize
 	offsetInBlock := offset % util.BlockSize
 	defer func() {
@@ -231,19 +238,23 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 			e.dataSize = int64(math.Max(float64(e.dataSize), float64(offset+size)))
 		}
 	}()
+
 	if isSync {
 		if err = e.file.Sync(); err != nil {
 			return
 		}
 	}
+
 	if offsetInBlock == 0 && size == util.BlockSize {
 		err = crcFunc(e, int(blockNo), crc)
 		return
 	}
+
 	if offsetInBlock+size <= util.BlockSize {
 		err = crcFunc(e, int(blockNo), 0)
 		return
 	}
+
 	if err = crcFunc(e, int(blockNo), 0); err == nil {
 		err = crcFunc(e, int(blockNo+1), 0)
 	}
