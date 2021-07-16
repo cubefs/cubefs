@@ -90,13 +90,13 @@ func (dp *DataPartition) repair(ctx context.Context, extentType uint8) {
 			return
 		}
 	}
-	replicas:=dp.getReplicaClone()
-	if len(replicas)==0 {
+	replicas := dp.getReplicaClone()
+	if len(replicas) == 0 {
 		log.LogErrorf("action[repair] partition(%v) replicas is nil.", dp.partitionID)
 		return
 	}
 	repairTasks := make([]*DataPartitionRepairTask, len(replicas))
-	err := dp.buildDataPartitionRepairTask(ctx, repairTasks, replicas,extentType, tinyExtents)
+	err := dp.buildDataPartitionRepairTask(ctx, repairTasks, replicas, extentType, tinyExtents)
 
 	if err != nil {
 		log.LogErrorf(errors.Stack(err))
@@ -138,20 +138,20 @@ func (dp *DataPartition) repair(ctx context.Context, extentType uint8) {
 		dp.extentStore.BrokenTinyExtentCnt(), (end-start)/int64(time.Millisecond), MasterClient.Nodes())
 }
 
-func (dp *DataPartition) buildDataPartitionRepairTask(ctx context.Context, repairTasks []*DataPartitionRepairTask,replicas []string, extentType uint8, tinyExtents []uint64) (err error) {
+func (dp *DataPartition) buildDataPartitionRepairTask(ctx context.Context, repairTasks []*DataPartitionRepairTask, replicas []string, extentType uint8, tinyExtents []uint64) (err error) {
 	// get the local extent info
 	extents, leaderTinyDeleteRecordFileSize, err := dp.getLocalExtentInfo(extentType, tinyExtents)
 	if err != nil {
 		return err
 	}
-	leaderAddr:=replicas[0]
+	leaderAddr := replicas[0]
 	// new repair task for the leader
 	repairTasks[0] = NewDataPartitionRepairTask(extents, leaderTinyDeleteRecordFileSize, leaderAddr, leaderAddr)
 	repairTasks[0].addr = leaderAddr
 
 	// new repair tasks for the followers
 	for index := 1; index < len(replicas); index++ {
-		followerAddr:=replicas[index]
+		followerAddr := replicas[index]
 		extents, err := dp.getRemoteExtentInfo(ctx, extentType, tinyExtents, followerAddr)
 		if err != nil {
 			log.LogErrorf("buildDataPartitionRepairTask PartitionID(%v) on (%v) err(%v)", dp.partitionID, followerAddr, err)
@@ -390,12 +390,12 @@ func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepa
 func (dp *DataPartition) notifyFollower(ctx context.Context, wg *sync.WaitGroup, index int, members []*DataPartitionRepairTask) (err error) {
 	p := repl.NewPacketToNotifyExtentRepair(ctx, dp.partitionID) // notify all the followers to repair
 	var conn *net.TCPConn
-	replicas:=dp.getReplicaClone()
-	if index>=len(replicas) {
+	replicas := dp.getReplicaClone()
+	if index >= len(replicas) {
 		err = errors.Trace(err, " partition(%v) get FollowerHost failed ", dp.partitionID)
 		return err
 	}
-	target:=replicas[index]
+	target := replicas[index]
 	p.Data, _ = json.Marshal(members[index])
 	p.Size = uint32(len(p.Data))
 	conn, err = gConnPool.GetConnect(target)

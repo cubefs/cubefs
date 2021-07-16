@@ -16,7 +16,9 @@ package storage
 
 import (
 	"context"
+	"crypto/md5"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -919,6 +921,27 @@ func (s *ExtentStore) TinyExtentGetFinfoSize(extentID uint64) (size uint64, err 
 		return 0, err
 	}
 	size = uint64(finfo.Size())
+
+	return
+}
+
+func (s *ExtentStore) ComputeMd5Sum(extentID uint64) (md5Sum string, err error) {
+	extentIDAbsPath := path.Join(s.dataPath, strconv.FormatUint(extentID, 10))
+	fp, err := os.Open(extentIDAbsPath)
+	if err != nil {
+		err = fmt.Errorf("open %v error %v", extentIDAbsPath, err)
+		return
+	}
+	defer func() {
+		fp.Close()
+	}()
+	md5Writer := md5.New()
+	_, err = io.Copy(md5Writer, fp)
+	if err != nil {
+		err = fmt.Errorf("ioCopy %v error %v", extentIDAbsPath, err)
+		return
+	}
+	md5Sum = hex.EncodeToString(md5Writer.Sum(nil))
 
 	return
 }

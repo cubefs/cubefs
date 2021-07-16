@@ -320,16 +320,13 @@ func (dp *DataPartition) Replicas() []string {
 	return dp.replicas
 }
 
-
-
 func (dp *DataPartition) getReplicaClone() (newReplicas []string) {
 	dp.replicasLock.RLock()
 	defer dp.replicasLock.RUnlock()
-	newReplicas=make([]string,len(dp.replicas))
-	copy(newReplicas,dp.replicas)
+	newReplicas = make([]string, len(dp.replicas))
+	copy(newReplicas, dp.replicas)
 	return
 }
-
 
 func (dp *DataPartition) IsExistReplica(addr string) bool {
 	dp.replicasLock.RLock()
@@ -389,12 +386,12 @@ func (dp *DataPartition) Stop() {
 }
 
 func (dp *DataPartition) Delete() {
-	if dp==nil {
+	if dp == nil {
 		return
 	}
 	defer func() {
-		if r:=recover();r!=nil {
-			mesg := fmt.Sprintf("DataPartition(%v) Delete panic(%v)", dp.partitionID,r)
+		if r := recover(); r != nil {
+			mesg := fmt.Sprintf("DataPartition(%v) Delete panic(%v)", dp.partitionID, r)
 			log.LogWarnf(mesg)
 		}
 	}()
@@ -409,12 +406,12 @@ func (dp *DataPartition) Delete() {
 }
 
 func (dp *DataPartition) Expired() {
-	if dp==nil {
+	if dp == nil {
 		return
 	}
 	defer func() {
-		if r:=recover();r!=nil {
-			mesg := fmt.Sprintf("DataPartition(%v) Expired panic(%v)", dp.partitionID,r)
+		if r := recover(); r != nil {
+			mesg := fmt.Sprintf("DataPartition(%v) Expired panic(%v)", dp.partitionID, r)
 			log.LogWarnf(mesg)
 		}
 	}()

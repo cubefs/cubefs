@@ -210,6 +210,58 @@ func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 	s.buildSuccessResp(w, result)
 }
 
+func (s *DataNode) getExtentMd5Sum(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramPartitionID = "id"
+		paramExtentID    = "extent"
+	)
+	var (
+		err                   error
+		partitionID, extentID uint64
+		md5Sum                string
+	)
+	if err = r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if partitionID, err = strconv.ParseUint(r.FormValue(paramPartitionID), 10, 64); err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramPartitionID, err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if extentID, err = strconv.ParseUint(r.FormValue(paramExtentID), 10, 64); err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramExtentID, err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	partition := s.space.Partition(partitionID)
+	if partition == nil {
+		s.buildFailureResp(w, http.StatusNotFound, fmt.Sprintf("partition(%v) not exist", partitionID))
+		return
+	}
+	exsit := partition.ExtentStore().HasExtent(extentID)
+	if !exsit {
+		s.buildFailureResp(w, http.StatusNotFound, fmt.Sprintf("partition(%v) extentID(%v) not exist", partitionID, extentID))
+		return
+	}
+	md5Sum, err = partition.ExtentStore().ComputeMd5Sum(extentID)
+	if err != nil {
+		s.buildFailureResp(w, http.StatusInternalServerError, fmt.Sprintf("partition(%v) extentID(%v) computeMD5 failed %v", partitionID, extentID, err))
+		return
+	}
+	result := &struct {
+		PartitionID uint64 `json:"PartitionID"`
+		ExtentID    uint64 `json:"ExtentID"`
+		Md5Sum      string `json:"md5"`
+	}{
+		PartitionID: partitionID,
+		ExtentID:    extentID,
+		Md5Sum:      md5Sum,
+	}
+	s.buildSuccessResp(w, result)
+}
+
 func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 	const (
 		paramPartitionID = "id"

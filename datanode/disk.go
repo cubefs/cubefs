@@ -217,11 +217,11 @@ func (d *Disk) updateTaskExecutionLimit() {
 	d.limitLock.Lock()
 	defer d.limitLock.Unlock()
 	if d.fixTinyDeleteRecordLimit != d.space.fixTinyDeleteRecordLimitOnDisk {
-		log.LogInfof("action[updateTaskExecutionLimit] disk(%v) change fixTinyDeleteRecordLimit from(%v) to (%v)",d.Path,d.fixTinyDeleteRecordLimit,d.space.fixTinyDeleteRecordLimitOnDisk )
+		log.LogInfof("action[updateTaskExecutionLimit] disk(%v) change fixTinyDeleteRecordLimit from(%v) to (%v)", d.Path, d.fixTinyDeleteRecordLimit, d.space.fixTinyDeleteRecordLimitOnDisk)
 		d.fixTinyDeleteRecordLimit = d.space.fixTinyDeleteRecordLimitOnDisk
 	}
 	if d.repairTaskLimit != d.space.repairTaskLimitOnDisk {
-		log.LogInfof("action[updateTaskExecutionLimit] disk(%v) change repairTaskLimit from(%v) to (%v)",d.Path,d.repairTaskLimit,d.space.repairTaskLimitOnDisk )
+		log.LogInfof("action[updateTaskExecutionLimit] disk(%v) change repairTaskLimit from(%v) to (%v)", d.Path, d.repairTaskLimit, d.space.repairTaskLimitOnDisk)
 		d.repairTaskLimit = d.space.repairTaskLimitOnDisk
 	}
 }

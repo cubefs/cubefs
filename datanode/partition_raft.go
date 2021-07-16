@@ -264,7 +264,7 @@ func (dp *DataPartition) startRaftAfterRepair() {
 			}
 
 			// wait for dp.replicas to be updated
-			relicas:=dp.getReplicaClone()
+			relicas := dp.getReplicaClone()
 			if len(relicas) == 0 {
 				log.LogErrorf("action[startRaftAfterRepair] partition(%v) replicas is nil.", dp.partitionID)
 				timer.Reset(5 * time.Second)
@@ -783,12 +783,12 @@ func (dp *DataPartition) getLeaderPartitionSize(ctx context.Context, maxExtentID
 
 	p := NewPacketToGetPartitionSize(ctx, dp.partitionID)
 	p.ExtentID = maxExtentID
-	replicas:=dp.getReplicaClone()
-	if len(replicas)==0{
+	replicas := dp.getReplicaClone()
+	if len(replicas) == 0 {
 		err = errors.Trace(err, " partition(%v) get LeaderHost failed ", dp.partitionID)
 		return
 	}
-	target:=replicas[0]
+	target := replicas[0]
 	conn, err = gConnPool.GetConnect(target) //get remote connect
 	if err != nil {
 		err = errors.Trace(err, " partition(%v) get host(%v) connect", dp.partitionID, target)
@@ -823,12 +823,12 @@ func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize(ctx context.Contex
 	)
 
 	p := NewPacketToGetMaxExtentIDAndPartitionSIze(ctx, dp.partitionID)
-	replicas:=dp.getReplicaClone()
-	if len(replicas)==0{
+	replicas := dp.getReplicaClone()
+	if len(replicas) == 0 {
 		err = errors.Trace(err, " partition(%v) get Leader failed ", dp.partitionID)
 		return
 	}
-	target:=replicas[0]
+	target := replicas[0]
 	conn, err = gConnPool.GetConnect(target) //get remote connect
 	if err != nil {
 		err = errors.Trace(err, " partition(%v) get host(%v) connect", dp.partitionID, target)
@@ -859,15 +859,15 @@ func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize(ctx context.Contex
 }
 
 func (dp *DataPartition) broadcastMinAppliedID(ctx context.Context, minAppliedID uint64) (err error) {
-	replicas:=dp.getReplicaClone()
-	if len(replicas)==0 {
+	replicas := dp.getReplicaClone()
+	if len(replicas) == 0 {
 		err = errors.Trace(err, " partition(%v) get replicas failed,replicas is nil. ", dp.partitionID)
 		log.LogErrorf(err.Error())
 		return
 	}
 	for i := 0; i < len(replicas); i++ {
 		p := NewPacketToBroadcastMinAppliedID(ctx, dp.partitionID, minAppliedID)
-		target:=replicas[i]
+		target := replicas[i]
 		replicaHostParts := strings.Split(target, ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
 		if LocalIP == replicaHost {
@@ -900,15 +900,15 @@ func (dp *DataPartition) broadcastMinAppliedID(ctx context.Context, minAppliedID
 
 // Get all replica applied ids
 func (dp *DataPartition) getAllReplicaAppliedID(ctx context.Context) (allAppliedID []uint64, replyNum uint8) {
-	replicas:=dp.getReplicaClone()
-	if len(replicas)==0 {
+	replicas := dp.getReplicaClone()
+	if len(replicas) == 0 {
 		log.LogErrorf("action[getAllReplicaAppliedID] partition(%v) replicas is nil.", dp.partitionID)
 		return
 	}
 	allAppliedID = make([]uint64, len(replicas))
 	for i := 0; i < len(replicas); i++ {
 		p := NewPacketToGetAppliedID(ctx, dp.partitionID)
-		target:=replicas[i]
+		target := replicas[i]
 		replicaHostParts := strings.Split(target, ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
 		if LocalIP == replicaHost {
