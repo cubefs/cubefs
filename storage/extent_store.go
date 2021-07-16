@@ -890,6 +890,39 @@ func (s *ExtentStore) ScanBlocks(extentID uint64) (bcs []*BlockCrc, err error) {
 	return
 }
 
+// reset crc to ask calc extent crc from disk again
+func (s *ExtentStore) ResetCrc(extentId uint64) error {
+	if IsTinyExtent(extentId) {
+		return fmt.Errorf("not support tiny extent, %d", extentId)
+	}
+
+	// clear header
+	e, err := s.extent(extentId)
+	if err != nil {
+		return fmt.Errorf("get extent error, %s, %s", e.filePath, err.Error())
+	}
+	e.header = make([]byte, util.BlockHeaderSize)
+
+	// cal extent crc again
+	extentCrc, err := e.autoComputeExtentCrc(s.PersistenceBlockCrc)
+	if err != nil {
+		return fmt.Errorf("compute extent crc error, %s, err %s", e.filePath, err)
+	}
+
+	s.eiMutex.RLock()
+	ei, ok := s.extentInfoMap[extentId]
+	s.eiMutex.RUnlock()
+	if !ok {
+		return fmt.Errorf("can't get extent info, %d", extentId)
+	}
+
+	// reset extent crc directly
+	atomic.StoreUint32(&ei.Crc, extentCrc)
+
+	log.LogWarnf("update extent (%s) crc to (%d)", e.filePath, extentCrc)
+	return nil
+}
+
 type ExtentInfoArr []*ExtentInfo
 
 func (arr ExtentInfoArr) Len() int           { return len(arr) }

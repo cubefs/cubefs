@@ -265,6 +265,43 @@ func (s *DataNode) getBlockCrcAPI(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+func (s *DataNode) resetExtentCrcApi(w http.ResponseWriter, r *http.Request) {
+	var (
+		partitionID uint64
+		extentID    int
+		err         error
+	)
+
+	if err = r.ParseForm(); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if partitionID, err = strconv.ParseUint(r.FormValue("partitionID"), 10, 64); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if extentID, err = strconv.Atoi(r.FormValue("extentID")); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	partition := s.space.Partition(partitionID)
+	if partition == nil {
+		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
+		return
+	}
+
+	if err = partition.ExtentStore().ResetCrc(uint64(extentID)); err != nil {
+		s.buildFailureResp(w, 500, err.Error())
+		return
+	}
+
+	s.buildSuccessResp(w, fmt.Sprintf("reset extent crc success %d", extentID))
+	return
+}
+
 func (s *DataNode) getTinyDeleted(w http.ResponseWriter, r *http.Request) {
 	var (
 		partitionID uint64
