@@ -67,7 +67,7 @@ type Extent struct {
 	filePath   string
 	extentID   uint64
 	modifyTime int64
-	changeTime int64 // change when append write or random write, same as file os's modifyTime
+	changeTime int64 // change whenever append write or random write happens, same as file os's modifyTime
 	dataSize   int64
 	hasClose   int32
 	header     []byte

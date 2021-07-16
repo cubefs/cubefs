@@ -186,7 +186,7 @@ func (ei *ExtentInfo) UpdateExtentInfo(extent *Extent, crc uint32) {
 	// check if file is modified according to changeTime
 	if crc != 0 {
 		if time.Now().Unix()- extent.changeTime <= UpdateCrcInterval {
-			log.LogInfof("[UpdateExtentInfo] file has been modified when update extent compute crc, so set crc default", extent.filePath)
+			log.LogWarnf("[UpdateExtentInfo] file has been modified when update extent compute crc, so set crc default", extent.filePath)
 			crc = 0
 		}
 	}
@@ -985,6 +985,11 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 			e, err := s.extentWithHeader(ei)
 			if err != nil {
 				log.LogError("[autoComputeExtentCrc] get extent error", err)
+				continue
+			}
+
+			// change time check
+			if time.Now().Unix() - e.changeTime < UpdateCrcInterval {
 				continue
 			}
 

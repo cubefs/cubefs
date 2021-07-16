@@ -48,7 +48,7 @@ func (s *ExtentStore) PersistenceBlockCrc(e *Extent, blockNo int, blockCrc uint3
 
 	if blockCrc != 0 {
 		if time.Now().Unix()- e.changeTime <= UpdateCrcInterval {
-			log.LogInfof("[UpdateExtentInfo] file %s has been modified when updating block crc, not update", e.filePath)
+			log.LogWarnf("[UpdateExtentInfo] file %s has been modified when updating block crc, not update", e.filePath)
 			return
 		}
 	}
