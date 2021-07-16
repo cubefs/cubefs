@@ -81,6 +81,7 @@ var (
 	ErrInvalidAccessKey                = errors.New("invalid access key")
 	ErrInvalidSecretKey                = errors.New("invalid secret key")
 	ErrIsOwner                         = errors.New("user owns the volume")
+	ErrUnknownPolicy                   = errors.New("unknown policy")
 )
 
 // http response error code and error message definitions
