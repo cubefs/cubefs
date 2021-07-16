@@ -313,7 +313,7 @@ func cfs_close(id C.int64_t, fd C.int) {
 	var ctx = tracer.Context()
 
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_close"))
-	defer ump.AfterTP(tpObject, nil)
+	defer ump.AfterTPUs(tpObject, nil)
 
 	if f != nil {
 		c.ec.Flush(ctx, f.ino)
@@ -352,7 +352,7 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) (re C.int)
 	var ctx = tracer.Context()
 
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_open"))
-	defer ump.AfterTP(tpObject, nil)
+	defer ump.AfterTPUs(tpObject, nil)
 
 	fuseMode := uint32(mode) & uint32(0777)
 	fuseFlags := uint32(flags) &^ uint32(0x8000)
@@ -472,7 +472,7 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) (re C.int) {
 	var ctx = tracer.Context()
 
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_rename"))
-	defer ump.AfterTP(tpObject, nil)
+	defer ump.AfterTPUs(tpObject, nil)
 
 	absFrom := c.absPath(C.GoString(from))
 	absTo := c.absPath(C.GoString(to))
@@ -570,7 +570,7 @@ func cfs_truncate(id C.int64_t, path *C.char, len C.off_t) (re C.int) {
 	var ctx = tracer.Context()
 
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_truncate"))
-	defer ump.AfterTP(tpObject, nil)
+	defer ump.AfterTPUs(tpObject, nil)
 
 	inode, err = c.mw.LookupPath(ctx, c.absPath(C.GoString(path)))
 	if err != nil {
@@ -626,7 +626,7 @@ func cfs_ftruncate(id C.int64_t, fd C.int, len C.off_t) (re C.int) {
 	var ctx = tracer.Context()
 
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_ftruncate"))
-	defer ump.AfterTP(tpObject, nil)
+	defer ump.AfterTPUs(tpObject, nil)
 
 	err = c.ec.Truncate(ctx, f.ino, int(len))
 	if err != nil {
@@ -679,7 +679,7 @@ func cfs_fallocate(id C.int64_t, fd C.int, mode C.int, offset C.off_t, len C.off
 	var ctx = tracer.Context()
 
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_fallocate"))
-	defer ump.AfterTP(tpObject, nil)
+	defer ump.AfterTPUs(tpObject, nil)
 
 	info, err := c.mw.InodeGet_ll(ctx, f.ino)
 	if err != nil {
@@ -750,7 +750,7 @@ func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) (r
 	var ctx = tracer.Context()
 
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_posix_fallocate"))
-	defer ump.AfterTP(tpObject, nil)
+	defer ump.AfterTPUs(tpObject, nil)
 
 	info, err := c.mw.InodeGet_ll(ctx, f.ino)
 	if err != nil {
@@ -820,8 +820,12 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 	} else if strings.Contains(f.path, "mysql-bin") {
 		name = "cfs_flush_binlog"
 	}
-	tpObject := ump.BeforeTP(c.umpFunctionKey(name))
-	defer ump.AfterTP(tpObject, nil)
+	tpObject1 := ump.BeforeTP(c.umpFunctionKey(name))
+	tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKey(name))
+	defer func() {
+		ump.AfterTPUs(tpObject1, nil)
+		ump.AfterTPUs(tpObject2, nil)
+	}()
 
 	if err = c.ec.Flush(ctx, f.ino); err != nil {
 		return statusEIO
@@ -868,7 +872,7 @@ func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) (re C.int) {
 	var ctx = tracer.Context()
 
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_mkdirs"))
-	defer ump.AfterTP(tpObject, nil)
+	defer ump.AfterTPUs(tpObject, nil)
 
 	pino := proto.RootIno
 	dirs := strings.Split(dirpath, "/")
@@ -940,7 +944,7 @@ func cfs_rmdir(id C.int64_t, path *C.char) (re C.int) {
 	var ctx = tracer.Context()
 
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_rmdir"))
-	defer ump.AfterTP(tpObject, nil)
+	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
 	if absPath == "/" {
@@ -1139,7 +1143,7 @@ func cfs_link(id C.int64_t, oldpath *C.char, newpath *C.char) (re C.int) {
 	var ctx = tracer.Context()
 
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_link"))
-	defer ump.AfterTP(tpObject, nil)
+	defer ump.AfterTPUs(tpObject, nil)
 
 	inode, err := c.mw.LookupPath(ctx, c.absPath(C.GoString(oldpath)))
 	if err != nil {
@@ -1210,7 +1214,7 @@ func cfs_symlink(id C.int64_t, target *C.char, linkPath *C.char) (re C.int) {
 	var ctx = tracer.Context()
 
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_symlink"))
-	defer ump.AfterTP(tpObject, nil)
+	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(linkPath))
 	dirpath, name := gopath.Split(absPath)
@@ -1278,7 +1282,7 @@ func cfs_unlink(id C.int64_t, path *C.char) (re C.int) {
 	var ctx = tracer.Context()
 
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_unlink"))
-	defer ump.AfterTP(tpObject, nil)
+	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
 	info, err := c.lookupPath(ctx, absPath)
@@ -1342,7 +1346,7 @@ func cfs_readlink(id C.int64_t, path *C.char, buf *C.char, size C.size_t) C.ssiz
 	var ctx = tracer.Context()
 
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_readlink"))
-	defer ump.AfterTP(tpObject, nil)
+	defer ump.AfterTPUs(tpObject, nil)
 
 	info, err := c.lookupPath(ctx, c.absPath(C.GoString(path)))
 	if err != nil {
@@ -1419,7 +1423,7 @@ func _cfs_stat(id C.int64_t, path *C.char, stat *C.struct_stat, flags C.int) (re
 	var ctx = tracer.Context()
 
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_stat"))
-	defer ump.AfterTP(tpObject, nil)
+	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
@@ -1510,7 +1514,7 @@ func _cfs_stat64(id C.int64_t, path *C.char, stat *C.struct_stat64, flags C.int)
 	var ctx = tracer.Context()
 
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_stat64"))
-	defer ump.AfterTP(tpObject, nil)
+	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
@@ -1653,7 +1657,7 @@ func _cfs_chmod(id C.int64_t, path *C.char, mode C.mode_t, flags C.int) C.int {
 	var ctx = tracer.Context()
 
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_chmod"))
-	defer ump.AfterTP(tpObject, nil)
+	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
@@ -1695,7 +1699,7 @@ func cfs_fchmod(id C.int64_t, fd C.int, mode C.mode_t) C.int {
 	var ctx = tracer.Context()
 
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_fchmod"))
-	defer ump.AfterTP(tpObject, nil)
+	defer ump.AfterTPUs(tpObject, nil)
 
 	info, err := c.mw.InodeGet_ll(ctx, f.ino)
 	if err != nil {
@@ -1749,7 +1753,7 @@ func _cfs_chown(id C.int64_t, path *C.char, uid C.uid_t, gid C.gid_t, flags C.in
 	var ctx = tracer.Context()
 
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_chown"))
-	defer ump.AfterTP(tpObject, nil)
+	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
@@ -1792,7 +1796,7 @@ func cfs_fchown(id C.int64_t, fd C.int, uid C.uid_t, gid C.gid_t) C.int {
 	var ctx = tracer.Context()
 
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_fchown"))
-	defer ump.AfterTP(tpObject, nil)
+	defer ump.AfterTPUs(tpObject, nil)
 
 	info, err := c.mw.InodeGet_ll(ctx, f.ino)
 	if err != nil {
@@ -1835,7 +1839,7 @@ func cfs_utimens(id C.int64_t, path *C.char, times *C.struct_timespec, flags C.i
 	var ctx = tracer.Context()
 
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_utimens"))
-	defer ump.AfterTP(tpObject, nil)
+	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
@@ -1951,7 +1955,7 @@ func cfs_faccessat(id C.int64_t, dirfd C.int, path *C.char, mode C.int, flags C.
 	var ctx = tracer.Context()
 
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_faccessat"))
-	defer ump.AfterTP(tpObject, nil)
+	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath, err := c.absPathAt(dirfd, path)
 	if err != nil {
@@ -2578,8 +2582,12 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_read"))
-	defer ump.AfterTP(tpObject, nil)
+	tpObject1 := ump.BeforeTP(c.umpFunctionKey("cfs_read"))
+	tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKey("cfs_read"))
+	defer func() {
+		ump.AfterTPUs(tpObject1, nil)
+		ump.AfterTPUs(tpObject2, nil)
+	}()
 
 	accFlags := f.flags & uint32(C.O_ACCMODE)
 	if accFlags == uint32(C.O_WRONLY) {
@@ -2718,8 +2726,12 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	} else if strings.Contains(f.path, "mysql-bin") {
 		name = "cfs_write_binlog"
 	}
-	tpObject := ump.BeforeTP(c.umpFunctionKey(name))
-	defer ump.AfterTP(tpObject, nil)
+	tpObject1 := ump.BeforeTP(c.umpFunctionKey(name))
+	tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKey(name))
+	defer func() {
+		ump.AfterTPUs(tpObject1, nil)
+		ump.AfterTPUs(tpObject2, nil)
+	}()
 
 	accFlags := f.flags & uint32(C.O_ACCMODE)
 	if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
@@ -3035,6 +3047,10 @@ func (c *client) closeStream(f *file) {
 
 func (c *client) umpFunctionKey(act string) string {
 	return fmt.Sprintf("%s_%s_%s", c.mw.Cluster(), c.volName, act)
+}
+
+func (c *client) umpFunctionGeneralKey(act string) string {
+	return fmt.Sprintf("%s_%s_%s", c.mw.Cluster(), moduleName, act)
 }
 
 func handleError(c *client, act, msg string) {

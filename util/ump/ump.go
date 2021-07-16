@@ -101,6 +101,25 @@ func AfterTP(o *TpObject, err error) {
 	return
 }
 
+func AfterTPUs(o *TpObject, err error) {
+	if !enableUmp {
+		return
+	}
+	tp := o.UmpType.(*FunctionTp)
+	tp.ElapsedTime = strconv.FormatInt((int64)(time.Since(o.StartTime)/1e3), 10)
+	TpObjectPool.Put(o)
+	tp.ProcessState = "0"
+	if err != nil {
+		tp.ProcessState = "1"
+	}
+	select {
+	case FunctionTpLogWrite.logCh <- tp:
+	default:
+	}
+
+	return
+}
+
 func Alive(key string) {
 	if !enableUmp {
 		return
