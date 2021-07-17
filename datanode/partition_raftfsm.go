@@ -30,8 +30,31 @@ import (
 
 // Apply puts the data onto the disk.
 func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
-	resp, err = dp.ApplyRandomWrite(command, index)
+	opItem, err := UnmarshalRandWriteRaftLog(command)
+	if err != nil {
+		err = fmt.Errorf("[Apply] ApplyID(%v) Partition(%v) unmarshal failed(%v)", index, dp.partitionID, err)
+		log.LogErrorf(err.Error())
+		resp = proto.OpErr
+		return
+	}
+	if opItem.opcode == proto.OpEnableTruncateRaftLog {
+		resp, err = dp.ApplyEnableTruncateRaftLog(opItem, index)
+	} else {
+		resp, err = dp.ApplyRandomWrite(opItem, index)
+	}
 	return
+}
+
+func (dp *DataPartition) disableTruncateRaftLog() {
+	dp.disAbleTruncateRaftLogLock.Lock()
+	defer dp.disAbleTruncateRaftLogLock.Unlock()
+	log.LogInfof("action[disableTruncateRaftLog] dp(%v) "+
+		"currentDisableTruncateRaftLog(%v)  disable truncateRaftLog ,current commitID(%v) applyID(%v)",
+		dp.config.DisableTruncateRaftLog, dp.partitionID, dp.raftPartition.CommittedIndex(), dp.appliedID)
+	if dp.config.DisableTruncateRaftLog == false {
+		dp.config.DisableTruncateRaftLog = true
+		dp.PersistMetadata()
+	}
 }
 
 // ApplyMemberChange supports adding new raft member or deleting an existing raft member.
@@ -50,14 +73,17 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 	var (
 		isUpdated bool
 	)
+
 	switch confChange.Type {
 	case raftproto.ConfAddNode:
+		dp.disableTruncateRaftLog()
 		req := &proto.AddDataPartitionRaftMemberRequest{}
 		if err = json.Unmarshal(confChange.Context, req); err != nil {
 			return
 		}
 		isUpdated, err = dp.addRaftNode(req, index)
 	case raftproto.ConfRemoveNode:
+		dp.disableTruncateRaftLog()
 		req := &proto.RemoveDataPartitionRaftMemberRequest{}
 		if err = json.Unmarshal(confChange.Context, req); err != nil {
 			return

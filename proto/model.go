@@ -89,16 +89,16 @@ type MetaPartitionInfo struct {
 
 // InodeInfo define the information of inode
 type InodeInfoView struct {
-	Ino uint64
+	Ino         uint64
 	PartitionID uint64
-	At string
-	Ct string
-	Mt string
-	Nlink uint64
-	Gen uint64
-	Gid  uint64
-	Uid uint64
-	Mode uint64
+	At          string
+	Ct          string
+	Mt          string
+	Nlink       uint64
+	Gen         uint64
+	Gid         uint64
+	Uid         uint64
+	Mode        uint64
 }
 
 // inodeExtentInfoView  define information of inodeExtentInfo

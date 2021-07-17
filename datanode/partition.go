@@ -122,6 +122,8 @@ type DataPartition struct {
 	loadExtentHeaderStatus        int
 	FullSyncTinyDeleteTime        int64
 	DataPartitionCreateType       int
+
+	disAbleTruncateRaftLogLock sync.Mutex
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
@@ -135,8 +137,13 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 	//}
 
 	// persist file metadata
+	dp.disAbleTruncateRaftLogLock.Lock()
 	dp.DataPartitionCreateType = request.CreateType
+	if request.CreateType == proto.DecommissionedCreateDataPartition {
+		dp.config.DisableTruncateRaftLog = true
+	}
 	err = dp.PersistMetadata()
+	dp.disAbleTruncateRaftLogLock.Unlock()
 	disk.AddSize(uint64(dp.Size()))
 	return
 }

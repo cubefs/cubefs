@@ -69,6 +69,7 @@ const (
 	OpReadTinyDeleteRecord           uint8 = 0x14
 	OpTinyExtentRepairRead           uint8 = 0x15
 	OpGetMaxExtentIDAndPartitionSize uint8 = 0x16
+	OpEnableTruncateRaftLog          uint8 = 0x17
 
 	// Operations: Client -> MetaNode.
 	OpMetaCreateInode   uint8 = 0x20
@@ -436,6 +437,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpSyncDataPartitionReplicas"
 	case OpMetaGetAppliedID:
 		m = "OpMetaGetAppliedID"
+	case OpEnableTruncateRaftLog:
+		m = "OpEnableTruncateRaftLog"
 	}
 	return
 }

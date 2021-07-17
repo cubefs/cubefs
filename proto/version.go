@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	BaseVersion="2.3.1"
+	BaseVersion = "2.3.1"
 )
 
 type VersionInfo struct {
@@ -26,6 +26,6 @@ type VersionInfo struct {
 	ZkAddr           string `json:"zkAddr"`
 }
 
-func DumpVersion(role,branchName,commitID,buildTime string) string {
-	return fmt.Sprintf("ChubaoFS %s\nBranch: %s\nVersion: %s\nCommit: %s\nBuild: %s %s %s %s\n", role,branchName, BaseVersion,commitID,runtime.Version(), runtime.GOOS, runtime.GOARCH, buildTime)
+func DumpVersion(role, branchName, commitID, buildTime string) string {
+	return fmt.Sprintf("ChubaoFS %s\nBranch: %s\nVersion: %s\nCommit: %s\nBuild: %s %s %s %s\n", role, branchName, BaseVersion, commitID, runtime.Version(), runtime.GOOS, runtime.GOARCH, buildTime)
 }

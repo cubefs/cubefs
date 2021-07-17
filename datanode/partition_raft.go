@@ -39,16 +39,17 @@ import (
 )
 
 type dataPartitionCfg struct {
-	VolName       string              `json:"vol_name"`
-	ClusterID     string              `json:"cluster_id"`
-	PartitionID   uint64              `json:"partition_id"`
-	PartitionSize int                 `json:"partition_size"`
-	Peers         []proto.Peer        `json:"peers"`
-	Hosts         []string            `json:"hosts"`
-	Learners      []proto.Learner     `json:"learners"`
-	NodeID        uint64              `json:"-"`
-	RaftStore     raftstore.RaftStore `json:"-"`
-	CreationType  int                 `json:"-"`
+	VolName                string              `json:"vol_name"`
+	ClusterID              string              `json:"cluster_id"`
+	PartitionID            uint64              `json:"partition_id"`
+	PartitionSize          int                 `json:"partition_size"`
+	Peers                  []proto.Peer        `json:"peers"`
+	Hosts                  []string            `json:"hosts"`
+	Learners               []proto.Learner     `json:"learners"`
+	NodeID                 uint64              `json:"-"`
+	RaftStore              raftstore.RaftStore `json:"-"`
+	CreationType           int                 `json:"-"`
+	DisableTruncateRaftLog bool                `json:"disable_truncate_raftlog"`
 }
 
 func (dp *DataPartition) raftPort() (heartbeat, replica int, err error) {
@@ -200,21 +201,32 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 			log.LogErrorf("action[ExtentRepair] stop raft partition(%v)_%v", dp.partitionID, extentID)
 
 		case <-getAppliedIDTimer.C:
+			dp.disAbleTruncateRaftLogLock.Lock()
+			if dp.config.DisableTruncateRaftLog {
+				dp.disAbleTruncateRaftLogLock.Unlock()
+				continue
+			}
 			if dp.raftPartition != nil {
 				dp.updateMaxMinAppliedID(context.Background())
 			}
+			dp.disAbleTruncateRaftLogLock.Unlock()
 			getAppliedIDTimer.Reset(time.Minute * 1)
 
 		case <-truncateRaftLogTimer.C:
 			if dp.raftPartition == nil {
 				break
 			}
-
+			dp.disAbleTruncateRaftLogLock.Lock()
+			if dp.config.DisableTruncateRaftLog {
+				dp.disAbleTruncateRaftLogLock.Unlock()
+				continue
+			}
 			if dp.minAppliedID > dp.lastTruncateID { // Has changed
 				appliedID := atomic.LoadUint64(&dp.appliedID)
 				if err := dp.storeAppliedID(appliedID); err != nil {
 					log.LogErrorf("partition [%v] scheduled store applied ID [%v] failed: %v", dp.partitionID, appliedID, err)
 					truncateRaftLogTimer.Reset(time.Minute)
+					dp.disAbleTruncateRaftLogLock.Unlock()
 					continue
 				}
 				dp.raftPartition.Truncate(dp.minAppliedID)
@@ -222,10 +234,12 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 				if err := dp.PersistMetadata(); err != nil {
 					log.LogErrorf("partition [%v] scheduled persist metadata failed: %v", dp.partitionID, err)
 					truncateRaftLogTimer.Reset(time.Minute)
+					dp.disAbleTruncateRaftLogLock.Unlock()
 					continue
 				}
 				log.LogInfof("partition [%v] scheduled truncate raft log [applied: %v, truncated: %v]", dp.partitionID, appliedID, dp.minAppliedID)
 			}
+			dp.disAbleTruncateRaftLogLock.Unlock()
 			truncateRaftLogTimer.Reset(time.Minute)
 
 		case <-storeAppliedIDTimer.C:
@@ -311,12 +325,25 @@ func (dp *DataPartition) startRaftAfterRepair() {
 				continue
 			}
 			log.LogInfof("PartitionID(%v) raft started.", dp.partitionID)
+			dp.enableTruncateRaftLog()
 			return
 		case <-dp.stopC:
 			timer.Stop()
 			return
 		}
 	}
+}
+
+type EnableTruncateRaftLogCmd struct {
+	PartitionID           uint64
+	EnableTruncateRaftLog bool
+}
+
+func (dp *DataPartition) enableTruncateRaftLog() {
+	val, _ := MarshalRandWriteRaftLog(proto.OpEnableTruncateRaftLog, 0, 0, 0, nil, 0)
+	dp.Put(nil, nil, val)
+	log.LogInfof("action[submit EnableTruncateRaftLog] dp(%v) ", dp.partitionID)
+	return
 }
 
 // Add a raft node.
