@@ -62,6 +62,7 @@ type DataPartitionMetadata struct {
 	Learners                []proto.Learner
 	DataPartitionCreateType int
 	LastTruncateID          uint64
+	DisableTruncateRaftLog  bool
 }
 
 type sortedPeers []proto.Peer
@@ -195,20 +196,22 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	}
 
 	dpCfg := &dataPartitionCfg{
-		VolName:       meta.VolumeID,
-		PartitionSize: meta.PartitionSize,
-		PartitionID:   meta.PartitionID,
-		Peers:         meta.Peers,
-		Hosts:         meta.Hosts,
-		Learners:      meta.Learners,
-		RaftStore:     disk.space.GetRaftStore(),
-		NodeID:        disk.space.GetNodeID(),
-		ClusterID:     disk.space.GetClusterID(),
-		CreationType:  meta.DataPartitionCreateType,
+		VolName:                meta.VolumeID,
+		PartitionSize:          meta.PartitionSize,
+		PartitionID:            meta.PartitionID,
+		Peers:                  meta.Peers,
+		Hosts:                  meta.Hosts,
+		Learners:               meta.Learners,
+		RaftStore:              disk.space.GetRaftStore(),
+		NodeID:                 disk.space.GetNodeID(),
+		ClusterID:              disk.space.GetClusterID(),
+		CreationType:           meta.DataPartitionCreateType,
+		DisableTruncateRaftLog: meta.DisableTruncateRaftLog,
 	}
 	if dp, err = newDataPartition(dpCfg, disk); err != nil {
 		return
 	}
+	dp.PersistMetadata()
 	disk.space.AttachPartition(dp)
 	if err = dp.LoadAppliedID(); err != nil {
 		log.LogErrorf("action[loadApplyIndex] %v", err)
@@ -226,21 +229,20 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 	partitionID := dpCfg.PartitionID
 	dataPath := path.Join(disk.Path, fmt.Sprintf(DataPartitionPrefix+"_%v_%v", partitionID, dpCfg.PartitionSize))
 	partition := &DataPartition{
-		volumeID:        dpCfg.VolName,
-		clusterID:       dpCfg.ClusterID,
-		partitionID:     partitionID,
-		disk:            disk,
-		path:            dataPath,
-		partitionSize:   dpCfg.PartitionSize,
-		replicas:        make([]string, 0),
-		repairC:         make(chan struct{}, 1),
-		stopC:           make(chan bool, 0),
-		stopRaftC:       make(chan uint64, 0),
-		storeC:          make(chan uint64, 128),
-		snapshot:        make([]*proto.File, 0),
-		partitionStatus: proto.ReadWrite,
-		config:          dpCfg,
-
+		volumeID:                dpCfg.VolName,
+		clusterID:               dpCfg.ClusterID,
+		partitionID:             partitionID,
+		disk:                    disk,
+		path:                    dataPath,
+		partitionSize:           dpCfg.PartitionSize,
+		replicas:                make([]string, 0),
+		repairC:                 make(chan struct{}, 1),
+		stopC:                   make(chan bool, 0),
+		stopRaftC:               make(chan uint64, 0),
+		storeC:                  make(chan uint64, 128),
+		snapshot:                make([]*proto.File, 0),
+		partitionStatus:         proto.ReadWrite,
+		config:                  dpCfg,
 		DataPartitionCreateType: dpCfg.CreationType,
 	}
 	partition.replicasInit()
@@ -519,6 +521,7 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 		DataPartitionCreateType: dp.DataPartitionCreateType,
 		CreateTime:              time.Now().Format(TimeLayout),
 		LastTruncateID:          dp.lastTruncateID,
+		DisableTruncateRaftLog:  dp.config.DisableTruncateRaftLog,
 	}
 	if metaData, err = json.Marshal(md); err != nil {
 		return
