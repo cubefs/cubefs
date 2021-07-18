@@ -594,6 +594,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		atomic.StoreUint64(&c.cfg.MetaNodeReqRateLimit, cv.MetaNodeReqRateLimit)
 		c.cfg.MetaNodeReqOpRateLimitMap = cv.MetaNodeReqOpRateLimitMap
 		c.updateDataNodeDeleteLimitRate(cv.DataNodeDeleteLimitRate)
+		atomic.StoreUint64(&c.cfg.DataNodeRepairTaskCount, cv.DataNodeRepairTaskCount)
 		atomic.StoreUint64(&c.cfg.DataNodeReqRateLimit, cv.DataNodeReqRateLimit)
 		c.cfg.DataNodeReqOpRateLimitMap = cv.DataNodeReqOpRateLimitMap
 		c.cfg.DataNodeReqVolPartRateLimitMap = cv.DataNodeReqVolPartRateLimitMap
