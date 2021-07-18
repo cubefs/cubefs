@@ -215,6 +215,8 @@ func (si *ItemIterator) Next() (data []byte, err error) {
 }
 
 func (dp *DataPartition) ApplyEnableTruncateRaftLog(opItem *rndWrtOpItem, raftApplyID uint64) (resp interface{}, err error) {
+	cmd:=new(EnableTruncateRaftLogCmd)
+	err=json.Unmarshal(opItem.data,cmd)
 	defer func() {
 		if err == nil {
 			resp = proto.OpOk
@@ -225,15 +227,21 @@ func (dp *DataPartition) ApplyEnableTruncateRaftLog(opItem *rndWrtOpItem, raftAp
 			resp = proto.OpDiskErr
 		}
 		log.LogInfof("action[ApplyEnableTruncateRaftLog] dp(%v) "+
-			"pervDisableTruncateRaftLog(%v)  enableTruncateRaftLog ,current commitID(%v) applyID(%v)",
-			dp.config.DisableTruncateRaftLog, dp.partitionID, dp.raftPartition.CommittedIndex(), dp.appliedID)
+			"recvcmd(%v)  enableTruncateRaftLog ,current commitID(%v) applyID(%v)",
+			dp.partitionID, string(opItem.data), dp.raftPartition.CommittedIndex(), dp.appliedID)
 	}()
-	if opItem.opcode == proto.OpEnableTruncateRaftLog {
-		dp.disAbleTruncateRaftLogLock.Lock()
-		dp.config.DisableTruncateRaftLog = false
-		err = dp.PersistMetadata()
-		dp.disAbleTruncateRaftLogLock.Unlock()
+	if err!=nil {
+		return
 	}
+	if dp.partitionID!=cmd.PartitionID {
+		err=fmt.Errorf("cmd(%v) but unavali dp(%v)",cmd,dp.partitionID)
+		return
+	}
+	dp.disAbleTruncateRaftLogLock.Lock()
+	dp.config.DisableTruncateRaftLog = false
+	err = dp.PersistMetadata()
+	dp.disAbleTruncateRaftLogLock.Unlock()
+
 	return
 }
 
@@ -250,13 +258,14 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 			err = fmt.Errorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err(%v) retry[20]", raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err)
 			exporter.Warning(err.Error())
 			resp = proto.OpDiskErr
+			log.LogErrorf(err.Error())
 		}
 	}()
 	if dp.IsRejectRandomWrite() {
 		err = fmt.Errorf("partition(%v) disk(%v) err(%v)", dp.partitionID, dp.Disk().Path, syscall.ENOSPC)
 		return
 	}
-	log.LogDebugf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v)",
+	log.LogWritef("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v)",
 		raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size)
 	for i := 0; i < 20; i++ {
 		err = dp.ExtentStore().Write(ctx, opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, storage.RandomWriteType, opItem.opcode == proto.OpSyncRandomWrite)

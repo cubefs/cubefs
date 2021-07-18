@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
 	"io/ioutil"
 	"net"
 	"os"
@@ -335,14 +336,35 @@ func (dp *DataPartition) startRaftAfterRepair() {
 }
 
 type EnableTruncateRaftLogCmd struct {
-	PartitionID           uint64
-	EnableTruncateRaftLog bool
+	PartitionID            uint64
+	DisableTruncateRaftLog bool
 }
 
 func (dp *DataPartition) enableTruncateRaftLog() {
-	val, _ := MarshalRandWriteRaftLog(proto.OpEnableTruncateRaftLog, 0, 0, 0, nil, 0)
-	dp.Put(nil, nil, val)
-	log.LogInfof("action[submit EnableTruncateRaftLog] dp(%v) ", dp.partitionID)
+	var (
+		val []byte
+		err error
+		resp interface{}
+	)
+	cmd:=new(EnableTruncateRaftLogCmd)
+	cmd.PartitionID=dp.partitionID
+	cmd.DisableTruncateRaftLog =false
+	data,_:=json.Marshal(cmd)
+	crc:=crc32.ChecksumIEEE(data)
+	defer func() {
+		if err!=nil {
+			log.LogErrorf("action[submit DisableTruncateRaftLog] dp(%v) cmd (%v) error(%v)", dp.partitionID,cmd,err)
+		}
+	}()
+	val, err = MarshalRandWriteRaftLog(proto.OpEnableTruncateRaftLog, 0, 0, int64(len(data)), data, crc)
+	if err!=nil {
+		err=fmt.Errorf("MarshalRandWriteRaftLog error (%v)",err)
+		return
+	}
+	if resp, err = dp.Put(nil, nil, val); err != nil {
+		return
+	}
+	log.LogInfof("action[submit DisableTruncateRaftLog]  dp(%v) cmd(%v) resp(%v) ", dp.partitionID, cmd,resp.(uint8))
 	return
 }
 

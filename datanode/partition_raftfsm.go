@@ -48,13 +48,13 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 func (dp *DataPartition) disableTruncateRaftLog() {
 	dp.disAbleTruncateRaftLogLock.Lock()
 	defer dp.disAbleTruncateRaftLogLock.Unlock()
-	log.LogInfof("action[disableTruncateRaftLog] dp(%v) "+
-		"currentDisableTruncateRaftLog(%v)  disable truncateRaftLog ,current commitID(%v) applyID(%v)",
-		dp.config.DisableTruncateRaftLog, dp.partitionID, dp.raftPartition.CommittedIndex(), dp.appliedID)
 	if dp.config.DisableTruncateRaftLog == false {
 		dp.config.DisableTruncateRaftLog = true
 		dp.PersistMetadata()
 	}
+	log.LogInfof("action[disableTruncateRaftLog] dp(%v) "+
+		"enableTruncateRaftLog(%v) ,current commitID(%v) applyID(%v)",
+		dp.partitionID, dp.config.DisableTruncateRaftLog,dp.raftPartition.CommittedIndex(), dp.appliedID)
 }
 
 // ApplyMemberChange supports adding new raft member or deleting an existing raft member.
@@ -122,16 +122,16 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 // Note that the data in each data partition has already been saved on the disk. Therefore there is no need to take the
 // snapshot in this case.
 func (dp *DataPartition) Snapshot() (raftproto.Snapshot, error) {
-	snapIterator := NewItemIterator(dp.raftPartition.AppliedIndex())
+	snapIterator := NewItemIterator(dp.lastTruncateID)
 	log.LogInfof("SendSnapShot PartitionID(%v) Snapshot lastTruncateID(%v) currentApplyID(%v) firstCommitID(%v)",
-		dp.partitionID, dp.lastTruncateID, dp.appliedID, dp.raftPartition.CommittedIndex())
+		dp.partitionID, dp.lastTruncateID, dp.appliedID, dp.lastTruncateID)
 	return snapIterator, nil
 }
 
 // ApplySnapshot asks the raft leader for the snapshot data to recover the contents on the local disk.
 func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftproto.SnapIterator) (err error) {
 	// Never delete the raft log which hadn't applied, so snapshot no need.
-	log.LogInfof("PartitionID(%v) ApplySnapshot to (%v)", dp.partitionID, dp.raftPartition.CommittedIndex())
+	log.LogInfof("PartitionID(%v) ApplySnapshot from(%v)", dp.partitionID, dp.raftPartition.CommittedIndex())
 	return
 }
 
