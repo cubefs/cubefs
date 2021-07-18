@@ -215,8 +215,8 @@ func (si *ItemIterator) Next() (data []byte, err error) {
 }
 
 func (dp *DataPartition) ApplyEnableTruncateRaftLog(opItem *rndWrtOpItem, raftApplyID uint64) (resp interface{}, err error) {
-	cmd:=new(EnableTruncateRaftLogCmd)
-	err=json.Unmarshal(opItem.data,cmd)
+	cmd := new(EnableTruncateRaftLogCmd)
+	err = json.Unmarshal(opItem.data, cmd)
 	defer func() {
 		if err == nil {
 			resp = proto.OpOk
@@ -227,14 +227,14 @@ func (dp *DataPartition) ApplyEnableTruncateRaftLog(opItem *rndWrtOpItem, raftAp
 			resp = proto.OpDiskErr
 		}
 		log.LogInfof("action[ApplyEnableTruncateRaftLog] dp(%v) "+
-			"recvcmd(%v)  enableTruncateRaftLog ,current commitID(%v) applyID(%v)",
-			dp.partitionID, string(opItem.data), dp.raftPartition.CommittedIndex(), dp.appliedID)
+			"recvcmd(%v)  submitEnableTruncateRaftLogToLeader ,current commitID(%v) applyID(%v),err(%v)",
+			dp.partitionID, string(opItem.data), dp.raftPartition.CommittedIndex(), dp.appliedID, err)
 	}()
-	if err!=nil {
+	if err != nil {
 		return
 	}
-	if dp.partitionID!=cmd.PartitionID {
-		err=fmt.Errorf("cmd(%v) but unavali dp(%v)",cmd,dp.partitionID)
+	if dp.partitionID != cmd.PartitionID {
+		err = fmt.Errorf("cmd(%v) but unavali dp(%v)", cmd, dp.partitionID)
 		return
 	}
 	dp.disAbleTruncateRaftLogLock.Lock()

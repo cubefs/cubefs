@@ -195,7 +195,7 @@ func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 			Used:     dp.Used(),
 			Status:   dp.Status(),
 			Path:     dp.Path(),
-			Replicas: dp.Replicas(),
+			Replicas: dp.getReplicaClone(),
 		}
 		partitions = append(partitions, partition)
 		return true
@@ -319,7 +319,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		Path:                 partition.Path(),
 		Files:                files,
 		FileCount:            len(files),
-		Replicas:             partition.Replicas(),
+		Replicas:             partition.getReplicaClone(),
 		TinyDeleteRecordSize: tinyDeleteRecordSize,
 		RaftStatus:           raftStatus,
 		Peers:                partition.config.Peers,

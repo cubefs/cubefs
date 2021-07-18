@@ -58,13 +58,14 @@ const (
 	ActionDataPartitionTryToLeader        = "ActionDataPartitionTryToLeader"
 	ActionResetDataPartitionRaftMember    = "ActionResetDataPartitionRaftMember"
 
-	ActionCreateDataPartition        = "ActionCreateDataPartition"
-	ActionLoadDataPartition          = "ActionLoadDataPartition"
-	ActionDeleteDataPartition        = "ActionDeleteDataPartition"
-	ActionStreamReadTinyDeleteRecord = "ActionStreamReadTinyDeleteRecord"
-	ActionSyncTinyDeleteRecord       = "ActionSyncTinyDeleteRecord"
-	ActionStreamReadTinyExtentRepair = "ActionStreamReadTinyExtentRepair"
-	ActionSyncDataPartitionReplicas  = "ActionSyncDataPartitionReplicas"
+	ActionCreateDataPartition                = "ActionCreateDataPartition"
+	ActionLoadDataPartition                  = "ActionLoadDataPartition"
+	ActionDeleteDataPartition                = "ActionDeleteDataPartition"
+	ActionStreamReadTinyDeleteRecord         = "ActionStreamReadTinyDeleteRecord"
+	ActionSyncTinyDeleteRecord               = "ActionSyncTinyDeleteRecord"
+	ActionStreamReadTinyExtentRepair         = "ActionStreamReadTinyExtentRepair"
+	ActionSyncDataPartitionReplicas          = "ActionSyncDataPartitionReplicas"
+	ActionEnableDataPartitionTruncateRaftLog = "ActionEnableDataPartitionTruncateRaftLog"
 )
 
 // Apply the raft log operation. Currently we only have the random write operation.

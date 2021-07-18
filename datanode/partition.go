@@ -323,12 +323,6 @@ func (dp *DataPartition) IsRaftLearner() bool {
 	return false
 }
 
-func (dp *DataPartition) Replicas() []string {
-	dp.replicasLock.RLock()
-	defer dp.replicasLock.RUnlock()
-	return dp.replicas
-}
-
 func (dp *DataPartition) getReplicaClone() (newReplicas []string) {
 	dp.replicasLock.RLock()
 	defer dp.replicasLock.RUnlock()

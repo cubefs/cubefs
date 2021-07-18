@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"hash/crc32"
 	"io/ioutil"
 	"net"
@@ -326,7 +327,7 @@ func (dp *DataPartition) startRaftAfterRepair() {
 				continue
 			}
 			log.LogInfof("PartitionID(%v) raft started.", dp.partitionID)
-			dp.enableTruncateRaftLog()
+			dp.loopSendEnableTruncateRaftLogToRaftLeader()
 			return
 		case <-dp.stopC:
 			timer.Stop()
@@ -340,31 +341,81 @@ type EnableTruncateRaftLogCmd struct {
 	DisableTruncateRaftLog bool
 }
 
-func (dp *DataPartition) enableTruncateRaftLog() {
+func (dp *DataPartition) loopSendEnableTruncateRaftLogToRaftLeader() (err error) {
+	for {
+		select {
+		case <-dp.stopC:
+			return
+		default:
+			err = dp.sendEnableTruncateRaftLogToRaftLeader()
+			if err == nil {
+				log.LogInfof("action[loopSendEnableTruncateRaftLogToRaftLeader] dp(%v) success ", dp.partitionID)
+				return
+			}
+			exporter.Warning(err.Error())
+			time.Sleep(time.Second * 5)
+		}
+	}
+}
+
+func (dp *DataPartition) sendEnableTruncateRaftLogToRaftLeader() (err error) {
+	replicas := dp.getReplicaClone()
+	for _, h := range replicas {
+		p := repl.NewEnableTruncateRaftPacket(dp.partitionID)
+		err = nil
+		var conn *net.TCPConn
+		if conn, err = gConnPool.GetConnect(h); err != nil {
+			err = fmt.Errorf("action[sendEnableTruncateRaftLogToRaftLeader] dp(%v) getConnect(%v) error (%v) ", dp.partitionID, h, err)
+			log.LogErrorf(err.Error())
+			continue
+		}
+		if err = p.WriteToConn(conn); err != nil {
+			err = fmt.Errorf("action[sendEnableTruncateRaftLogToRaftLeader] dp(%v) WriteToConn(%v) error (%v) ", dp.partitionID, h, err)
+			log.LogErrorf(err.Error())
+			gConnPool.PutConnectWithErr(conn, err)
+			continue
+		}
+		if err = p.ReadFromConn(conn, 10); err != nil {
+			err = fmt.Errorf("action[sendEnableTruncateRaftLogToRaftLeader] dp(%v) ReadFromConn(%v) error (%v) ", dp.partitionID, h, err)
+			log.LogErrorf(err.Error())
+			gConnPool.PutConnectWithErr(conn, err)
+			continue
+		}
+		if p.ResultCode != proto.OpOk {
+			err = fmt.Errorf("action[sendEnableTruncateRaftLogToRaftLeader] dp(%v) host(%v) submit failed  error (%v) ", dp.partitionID, h, string(p.Data[:p.Size]))
+			log.LogErrorf(err.Error())
+			gConnPool.PutConnectWithErr(conn, err)
+			continue
+		}
+		gConnPool.PutConnectWithErr(conn, nil)
+		return nil
+	}
+
+	return
+}
+
+func (dp *DataPartition) submitEnableTruncateRaftLogToLeader() (err error) {
 	var (
-		val []byte
-		err error
+		val  []byte
 		resp interface{}
 	)
-	cmd:=new(EnableTruncateRaftLogCmd)
-	cmd.PartitionID=dp.partitionID
-	cmd.DisableTruncateRaftLog =false
-	data,_:=json.Marshal(cmd)
-	crc:=crc32.ChecksumIEEE(data)
+	cmd := new(EnableTruncateRaftLogCmd)
+	cmd.PartitionID = dp.partitionID
+	cmd.DisableTruncateRaftLog = false
+	data, _ := json.Marshal(cmd)
+	crc := crc32.ChecksumIEEE(data)
 	defer func() {
-		if err!=nil {
-			log.LogErrorf("action[submit DisableTruncateRaftLog] dp(%v) cmd (%v) error(%v)", dp.partitionID,cmd,err)
-		}
+		log.LogInfof("action[submitEnableTruncateRaftLogToLeader] dp(%v) cmd (%v) error(%v)", dp.partitionID, cmd, err)
 	}()
 	val, err = MarshalRandWriteRaftLog(proto.OpEnableTruncateRaftLog, 0, 0, int64(len(data)), data, crc)
-	if err!=nil {
-		err=fmt.Errorf("MarshalRandWriteRaftLog error (%v)",err)
+	if err != nil {
+		err = fmt.Errorf("MarshalRandWriteRaftLog error (%v)", err)
 		return
 	}
 	if resp, err = dp.Put(nil, nil, val); err != nil {
 		return
 	}
-	log.LogInfof("action[submit DisableTruncateRaftLog]  dp(%v) cmd(%v) resp(%v) ", dp.partitionID, cmd,resp.(uint8))
+	log.LogInfof("action[submitEnableTruncateRaftLogToLeader]  dp(%v) cmd(%v) resp(%v) ", dp.partitionID, cmd, resp.(uint8))
 	return
 }
 

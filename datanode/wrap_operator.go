@@ -123,6 +123,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handlePacketToAddDataPartitionRaftLearner(p)
 	case proto.OpPromoteDataPartitionRaftLearner:
 		s.handlePacketToPromoteDataPartitionRaftLearner(p)
+	case proto.OpEnableTruncateRaftLog:
+		s.handlePacketToEnableTruncateRaftLog(p)
 	case proto.OpResetDataPartitionRaftMember:
 		s.handlePacketToResetDataPartitionRaftMember(p)
 	case proto.OpDataPartitionTryToLeader:
@@ -1002,6 +1004,35 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 	return
 }
 
+func (s *DataNode) handlePacketToEnableTruncateRaftLog(p *repl.Packet) {
+	var (
+		err          error
+		isRaftLeader bool
+		req          = new(EnableTruncateRaftLogCmd)
+	)
+
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionEnableDataPartitionTruncateRaftLog, err.Error())
+		} else {
+			p.PacketOkReply()
+		}
+	}()
+	dp := s.space.Partition(p.PartitionID)
+	if dp == nil {
+		err = proto.ErrDataPartitionNotExists
+		return
+	}
+	p.PartitionID = req.PartitionID
+	isRaftLeader, err = s.forwardToRaftLeaderWithTimeOut(dp, p)
+	if !isRaftLeader {
+		return
+	}
+	err = dp.submitEnableTruncateRaftLogToLeader()
+
+	return
+}
+
 func (s *DataNode) handlePacketToResetDataPartitionRaftMember(p *repl.Packet) {
 	var (
 		err       error
@@ -1267,6 +1298,39 @@ func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet) (ok bo
 		return
 	}
 	if err = p.ReadFromConn(conn, proto.NoReadDeadlineTime); err != nil {
+		return
+	}
+
+	return
+}
+
+func (s *DataNode) forwardToRaftLeaderWithTimeOut(dp *DataPartition, p *repl.Packet) (ok bool, err error) {
+	var (
+		conn       *net.TCPConn
+		leaderAddr string
+	)
+
+	if leaderAddr, ok = dp.IsRaftLeader(); ok {
+		return
+	}
+
+	// return NoLeaderError if leaderAddr is nil
+	if leaderAddr == "" {
+		err = storage.NoLeaderError
+		return
+	}
+
+	// forward the packet to the leader if local one is not the leader
+	conn, err = gConnPool.GetConnect(leaderAddr)
+	if err != nil {
+		return
+	}
+	defer gConnPool.PutConnect(conn, true)
+	err = p.WriteToConn(conn)
+	if err != nil {
+		return
+	}
+	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
 		return
 	}
 

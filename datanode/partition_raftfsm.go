@@ -53,8 +53,8 @@ func (dp *DataPartition) disableTruncateRaftLog() {
 		dp.PersistMetadata()
 	}
 	log.LogInfof("action[disableTruncateRaftLog] dp(%v) "+
-		"enableTruncateRaftLog(%v) ,current commitID(%v) applyID(%v)",
-		dp.partitionID, dp.config.DisableTruncateRaftLog,dp.raftPartition.CommittedIndex(), dp.appliedID)
+		"submitEnableTruncateRaftLogToLeader(%v) ,current commitID(%v) applyID(%v)",
+		dp.partitionID, dp.config.DisableTruncateRaftLog, dp.raftPartition.CommittedIndex(), dp.appliedID)
 }
 
 // ApplyMemberChange supports adding new raft member or deleting an existing raft member.
