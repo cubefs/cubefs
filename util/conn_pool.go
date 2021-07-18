@@ -136,11 +136,15 @@ func (cp *ConnectPool) PutConnect(c *net.TCPConn, forceClose bool) {
 
 func (cp *ConnectPool) PutConnectWithErr(c *net.TCPConn, err error) {
 	cp.PutConnect(c, err != nil)
+	remoteAddr:="connect is nil"
+	if c!=nil{
+		remoteAddr=c.RemoteAddr().String()
+	}
 	// If connect failed because of server restart, release all connection
 	if err != nil {
 		errStr := strings.ToLower(err.Error())
 		if strings.Contains(errStr, "broken pipe") || strings.Contains(errStr, "connection reset by peer") {
-			cp.ClearConnectPool(c.RemoteAddr().String())
+			cp.ClearConnectPool(remoteAddr)
 		}
 	}
 }
