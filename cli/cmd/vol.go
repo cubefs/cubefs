@@ -123,7 +123,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("Create a new volume:\n")
 				stdout("  Name                : %v\n", volumeName)
 				stdout("  Owner               : %v\n", userID)
-				stdout("  Dara partition size : %v GB\n", optDPSize)
+				stdout("  Data partition size : %v GB\n", optDPSize)
 				stdout("  Meta partition count: %v\n", optMPCount)
 				stdout("  Capacity            : %v GB\n", optCapacity)
 				stdout("  Replicas            : %v\n", optReplicas)
