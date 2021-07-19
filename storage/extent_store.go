@@ -186,7 +186,7 @@ func (ei *ExtentInfo) UpdateExtentInfo(extent *Extent, crc uint32) {
 	// check if file is modified according to changeTime
 	if crc != 0 {
 		if time.Now().Unix()- extent.changeTime <= UpdateCrcInterval {
-			log.LogWarnf("[UpdateExtentInfo] file has been modified when update extent compute crc, so set crc default", extent.filePath)
+			log.LogWarnf("[UpdateExtentInfo] file has been modified when update extent [%s] compute crc, so set crc default", extent.filePath)
 			crc = 0
 		}
 	}
