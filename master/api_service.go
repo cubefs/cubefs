@@ -282,7 +282,6 @@ func (m *Server) createPreLoadDataPartition(w http.ResponseWriter, r *http.Reque
 		vol     *Vol
 		err     error
 		dps     []*DataPartition
-		dpsProto []*proto.DataPartitionInfo
 		preload  *DataPartitionPreLoad
 	)
 	preload = new(DataPartitionPreLoad)
@@ -326,12 +325,27 @@ func (m *Server) createPreLoadDataPartition(w http.ResponseWriter, r *http.Reque
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	log.LogInfof("action[createPreLoadDataPartition] dps cnt[%v]  content[%v]", len(dps), dps)
-	for _, dp := range dps {
-		dpsProto = append(dpsProto, dp.ToProto(m.cluster))
+	if len(dps) == 0 {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("create zero datapartition")))
+		return
 	}
 
-	_ = sendOkReply(w, r, newSuccessHTTPReply(dpsProto))
+	dpResps := make([]*proto.DataPartitionResponse, 0)
+	log.LogInfof("action[createPreLoadDataPartition] dps cnt[%v]  content[%v]", len(dps), dps)
+	for _, dp := range dps {
+		dpResp := dp.convertToDataPartitionResponse()
+		dpResps = append(dpResps, dpResp)
+	}
+
+	cv := proto.NewDataPartitionsView()
+	cv.DataPartitions = dpResps
+	reply := newSuccessHTTPReply(cv)
+	if body, err := json.Marshal(reply); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrMarshalData))
+		return
+	} else {
+		send(w, r, body)
+	}
 }
 
 
