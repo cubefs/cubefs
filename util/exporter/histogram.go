@@ -13,6 +13,7 @@ var (
 
 	HistogramGroup sync.Map
 	HistogramCh    chan *Histogram
+	once           = sync.Once{}
 )
 
 func collectHistogram() {
@@ -45,6 +46,12 @@ func (g *Histogram) String() string {
 }
 
 func (c *Histogram) Metric() prometheus.Histogram {
+	if enablePush {
+		once.Do(func() {
+			buckets = []float64{1, 300, 1000, 5000, 500000, 2500000}
+		})
+	}
+
 	metric := prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Name:        c.name,
@@ -54,13 +61,20 @@ func (c *Histogram) Metric() prometheus.Histogram {
 
 	key := c.Key()
 	actualMetric, load := HistogramGroup.LoadOrStore(key, metric)
-	if !load {
-		err := prometheus.Register(actualMetric.(prometheus.Collector))
-		if err == nil {
-			log.LogInfof("register metric %v", c.Name())
-		} else {
-			log.LogErrorf("register metric %v, %v", c.Name(), err)
-		}
+	if load {
+		return actualMetric.(prometheus.Histogram)
+	}
+
+	if enablePush {
+		registry.MustRegister(actualMetric.(prometheus.Collector))
+		return actualMetric.(prometheus.Histogram)
+	}
+
+	err := prometheus.Register(actualMetric.(prometheus.Collector))
+	if err == nil {
+		log.LogInfof("register metric %v", c.Name())
+	} else {
+		log.LogErrorf("register metric %v, %v", c.Name(), err)
 	}
 
 	return actualMetric.(prometheus.Histogram)

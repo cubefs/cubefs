@@ -78,12 +78,20 @@ func (c *Counter) Metric() prometheus.Counter {
 			ConstLabels: c.labels,
 		})
 	key := c.Key()
+
 	actualMetric, load := CounterGroup.LoadOrStore(key, metric)
-	if !load {
-		err := prometheus.Register(actualMetric.(prometheus.Collector))
-		if err == nil {
-			log.LogInfo("register metric ", c.name)
-		}
+	if load {
+		return actualMetric.(prometheus.Counter)
+	}
+
+	if enablePush {
+		registry.MustRegister(actualMetric.(prometheus.Collector))
+		return actualMetric.(prometheus.Counter)
+	}
+
+	err := prometheus.Register(actualMetric.(prometheus.Collector))
+	if err == nil {
+		log.LogInfo("register metric ", c.name)
 	}
 
 	return actualMetric.(prometheus.Counter)
