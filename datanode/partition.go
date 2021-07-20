@@ -763,6 +763,9 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 			log.LogWarnf("AutoRepairStatus is False,so cannot Create extent(%v)", extentInfo.String())
 			continue
 		}
+
+		dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
+
 		err := store.Create(uint64(extentInfo.FileID))
 		if err != nil {
 			continue
@@ -887,6 +890,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 				continue
 			}
 			DeleteLimiterWait()
+			dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
 			//log.LogInfof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)", dp.partitionID, extentID, offset, size)
 			store.MarkDelete(extentID, int64(offset), int64(size))
 		}

@@ -50,6 +50,10 @@ type DataNode struct {
 	ToBeOffline               bool
 	RdOnly                    bool
 	MigrateLock               sync.RWMutex
+	QosIopsRLimit             uint64
+	QosIopsWLimit             uint64
+	QosFlowRLimit             uint64
+	QosFlowWLimit             uint64
 }
 
 func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
@@ -189,11 +193,16 @@ func (dataNode *DataNode) clean() {
 	dataNode.TaskManager.exitCh <- struct{}{}
 }
 
-func (dataNode *DataNode) createHeartbeatTask(masterAddr string) (task *proto.AdminTask) {
+func (dataNode *DataNode) createHeartbeatTask(masterAddr string, enableDiskQos bool) (task *proto.AdminTask) {
 	request := &proto.HeartBeatRequest{
 		CurrTime:   time.Now().Unix(),
 		MasterAddr: masterAddr,
 	}
+	request.EnableDiskQos = enableDiskQos
+	request.QosIopsReadLimit = dataNode.QosIopsRLimit
+	request.QosIopsWriteLimit = dataNode.QosIopsWLimit
+	request.QosFlowReadLimit = dataNode.QosFlowRLimit
+	request.QosFlowWriteLimit = dataNode.QosFlowWLimit
 	task = proto.NewAdminTask(proto.OpDataNodeHeartbeat, dataNode.Addr, request)
 	return
 }

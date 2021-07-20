@@ -123,6 +123,7 @@ const (
 	OpAddDataPartitionRaftMember    uint8 = 0x67
 	OpRemoveDataPartitionRaftMember uint8 = 0x68
 	OpDataPartitionTryToLeader      uint8 = 0x69
+	OpQos                           uint8 = 0x6A
 
 	// Operations: MultipartInfo
 	OpCreateMultipart  uint8 = 0x70

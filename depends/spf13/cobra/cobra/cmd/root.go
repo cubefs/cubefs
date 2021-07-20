@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	// Used for flags.
+	// Allocated for flags.
 	cfgFile     string
 	userLicense string
 

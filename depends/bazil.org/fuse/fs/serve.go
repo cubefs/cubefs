@@ -406,7 +406,7 @@ type Server struct {
 	freeHandle []fuse.HandleID
 	nodeGen    uint64
 
-	// Used to ensure worker goroutines finish before Serve returns
+	// Allocated to ensure worker goroutines finish before Serve returns
 	wg sync.WaitGroup
 }
 

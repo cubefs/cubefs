@@ -290,6 +290,10 @@ func (s *Streamer) write(data []byte, offset, size, flags int) (total int, err e
 	ctx := context.Background()
 	s.client.writeLimiter.Wait(ctx)
 
+	if flags&proto.FlagsCache == 0 {
+		s.client.LimitManager.WriteAlloc(ctx, size)
+	}
+
 	requests := s.extents.PrepareWriteRequests(offset, size, data)
 	log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)
 

@@ -118,7 +118,7 @@ func (s *DataNode) addExtentInfo(p *repl.Packet) error {
 		}
 		p.ExtentID, err = store.NextExtentID()
 		if err != nil {
-			return fmt.Errorf("addExtentInfo partition %v alloc NextExtentId error %v", p.PartitionID, err)
+			return fmt.Errorf("addExtentInfo partition %v allocCheckLimit NextExtentId error %v", p.PartitionID, err)
 		}
 	} else if p.IsLeaderPacket() && p.IsMarkDeleteExtentOperation() && p.IsTinyExtentType() {
 		record := new(proto.TinyExtentDeleteRecord)

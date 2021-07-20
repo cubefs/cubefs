@@ -17,6 +17,7 @@ package util
 import (
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 const (
@@ -63,6 +64,15 @@ func IsIPV4(val interface{}) bool {
 	ip4Pattern := `((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)`
 	ip4 := regexpCompile(ip4Pattern)
 	return isMatch(ip4, val)
+}
+
+func GetIp(addr string) (ip string) {
+	var arr []string
+	if arr = strings.Split(addr, ":"); len(arr) < 2 {
+		return
+	}
+	ip = strings.Trim(arr[0], " ")
+	return ip
 }
 
 func regexpCompile(str string) *regexp.Regexp {

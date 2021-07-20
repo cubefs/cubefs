@@ -69,6 +69,15 @@ const (
 	ClientVolStat        = "/client/volStat"
 	ClientMetaPartitions = "/client/metaPartitions"
 
+	// qos api
+	QosGetStatus           = "/qos/getStatus"
+	QosGetClientsLimitInfo = "/qos/getClientsInfo"
+	QosGetZoneLimitInfo    = "/qos/getZoneLimit" // include disk enable
+	QosUpdate              = "/qos/update" // include disk enable
+	QosUpdateMagnify       = "/qos/updateMagnify"
+	QosUpdateClientParam   = "/qos/updateClientParam"
+	QosUpdateZoneLimit     = "/qos/updateZoneLimit" // include disk enable
+	QosUpload              = "/admin/qosUpload"
 	//raft node APIs
 	AddRaftNode    = "/raftNode/add"
 	RemoveRaftNode = "/raftNode/remove"
@@ -257,10 +266,19 @@ type LoadMetaPartitionMetricResponse struct {
 	Result   string
 }
 
+type QosToDataNode struct {
+	EnableDiskQos     bool
+	QosIopsReadLimit  uint64
+	QosIopsWriteLimit uint64
+	QosFlowReadLimit  uint64
+	QosFlowWriteLimit uint64
+}
+
 // HeartBeatRequest define the heartbeat request.
 type HeartBeatRequest struct {
 	CurrTime   int64
 	MasterAddr string
+	QosToDataNode
 }
 
 // PartitionReport defines the partition report.
@@ -274,6 +292,15 @@ type PartitionReport struct {
 	IsLeader        bool
 	ExtentCount     int
 	NeedCompare     bool
+}
+
+type DataNodeQosResponse struct {
+	IopsRLimit uint64
+	IopsWLimit uint64
+	FlowRlimit uint64
+	FlowWlimit uint64
+	Status     uint8
+	Result     string
 }
 
 // DataNodeHeartbeatResponse defines the response to the data node heartbeat.
@@ -479,6 +506,79 @@ func NewMetaPartitionView(partitionID, start, end uint64, status int8) (mpView *
 	mpView.Status = status
 	mpView.Members = make([]string, 0)
 	return
+}
+
+const (
+	QosStateNormal   uint8 = 0x01
+	QosStateHitLimit uint8 = 0x02
+)
+
+const (
+	IopsReadType  uint32 = 0x01
+	IopsWriteType uint32 = 0x02
+	FlowReadType  uint32 = 0x03
+	FlowWriteType uint32 = 0x04
+)
+
+const (
+	QosDefaultClientCnt uint32 = 100
+	QosDefaultDiskMaxFLowLimit int = 0x7FFFFFFF
+	QosDefaultDiskMaxIoLimit int = 100000
+)
+
+func QosTypeString(factorType uint32) string {
+	switch factorType {
+	case IopsReadType:
+		return "IopsRead"
+	case IopsWriteType:
+		return "IopsWrite"
+	case FlowReadType:
+		return "FlowRead"
+	case FlowWriteType:
+		return "FlowWrite"
+	}
+	return "unkown"
+}
+
+type ClientLimitInfo struct {
+	UsedLimit  uint64
+	UsedBuffer uint64
+	Used       uint64
+	Need       uint64
+}
+
+type ClientReportLimitInfo struct {
+	Ver       int8
+	ID        uint64
+	FactorMap map[uint32]*ClientLimitInfo
+	Host      string
+	Status    uint8
+	Reserved  string
+}
+
+func NewClientReportLimitInfo() *ClientReportLimitInfo {
+	return &ClientReportLimitInfo{
+		FactorMap: make(map[uint32]*ClientLimitInfo, 0),
+	}
+}
+
+type LimitRsp2Client struct {
+	Ver           int8
+	ID            uint64
+	Enable        bool
+	ReqPeriod     uint32
+	HitTriggerCnt uint8
+	FactorMap     map[uint32]*ClientLimitInfo
+	Magnify       map[uint32]uint32
+	Reserved      string
+}
+
+func NewLimitRsp2Client() *LimitRsp2Client {
+	limit := &LimitRsp2Client{
+		FactorMap: make(map[uint32]*ClientLimitInfo, 0),
+		Magnify:   make(map[uint32]uint32, 0),
+	}
+	return limit
 }
 
 // SimpleVolView defines the simple view of a volume

@@ -26,7 +26,7 @@ import (
 
 // Sample output:
 //
-//     Filesystem  1024-blocks Used Available Capacity iused ifree %iused  Mounted on
+//     Filesystem  1024-blocks Allocated Available Capacity iused ifree %iused  Mounted on
 //     fake@bucket          32   16        16    50%       0     0  100%   /Users/jacobsa/tmp/mp
 //
 var gDfOutputRegexp = regexp.MustCompile(`^\S+\s+(\d+)\s+(\d+)\s+(\d+)\s+\d+%\s+\d+\s+\d+\s+\d+%.*$`)

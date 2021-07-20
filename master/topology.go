@@ -1204,7 +1204,18 @@ type Zone struct {
 	metaNodes           *sync.Map
 	nodeSetMap          map[uint64]*nodeSet
 	nsLock              sync.RWMutex
+	QosIopsRLimit       uint64
+	QosIopsWLimit       uint64
+	QosFlowRLimit       uint64
+	QosFlowWLimit       uint64
 	sync.RWMutex
+}
+type zoneValue struct {
+	Name          string
+	QosIopsRLimit uint64
+	QosIopsWLimit uint64
+	QosFlowRLimit uint64
+	QosFlowWLimit uint64
 }
 
 func newZone(name string) (zone *Zone) {
@@ -1227,6 +1238,16 @@ func printZonesName(zones []*Zone) string {
 	}
 
 	return str
+}
+
+func (zone *Zone) getFsmValue() *zoneValue {
+	return &zoneValue{
+		Name:          zone.name,
+		QosIopsRLimit: zone.QosIopsRLimit,
+		QosIopsWLimit: zone.QosIopsWLimit,
+		QosFlowRLimit: zone.QosFlowRLimit,
+		QosFlowWLimit: zone.QosFlowWLimit,
+	}
 }
 
 func (zone *Zone) setStatus(status int) {
@@ -1638,6 +1659,63 @@ func (zone *Zone) getAvailNodeHosts(nodeType uint32, excludeNodeSets []uint64, e
 	}
 
 	return ns.getAvailMetaNodeHosts(excludeHosts, replicaNum)
+}
+
+func (zone *Zone) updateDataNodeQosLimit(cluster *Cluster, qosParam *qosArgs) error {
+	var err error
+	if qosParam.flowRVal > 0 {
+		zone.QosFlowRLimit = qosParam.flowRVal
+	}
+	if qosParam.flowWVal > 0 {
+		zone.QosFlowWLimit = qosParam.flowWVal
+	}
+	if qosParam.iopsRVal > 0 {
+		zone.QosIopsRLimit = qosParam.iopsRVal
+	}
+	if qosParam.iopsWVal > 0 {
+		zone.QosIopsWLimit = qosParam.iopsWVal
+	}
+
+	if err = cluster.sycnPutZoneInfo(zone); err != nil {
+		return err
+	}
+	zone.dataNodes.Range(func(key, value interface{}) bool {
+		dataNode := value.(*DataNode)
+		if qosParam.flowRVal > 0 {
+			dataNode.QosFlowRLimit = qosParam.flowRVal
+		}
+		if qosParam.flowWVal > 0 {
+			dataNode.QosFlowWLimit = qosParam.flowWVal
+		}
+		if qosParam.iopsRVal > 0 {
+			dataNode.QosIopsRLimit = qosParam.iopsRVal
+		}
+		if qosParam.iopsWVal > 0 {
+			dataNode.QosIopsWLimit = qosParam.iopsWVal
+		}
+		return true
+	})
+	return nil
+}
+
+func (zone *Zone) loadDataNodeQosLimit() {
+
+	zone.dataNodes.Range(func(key, value interface{}) bool {
+		dataNode := value.(*DataNode)
+		if zone.QosFlowRLimit > 0 {
+			dataNode.QosFlowRLimit = zone.QosFlowRLimit
+		}
+		if zone.QosFlowWLimit > 0 {
+			dataNode.QosFlowWLimit = zone.QosFlowWLimit
+		}
+		if zone.QosIopsRLimit > 0 {
+			dataNode.QosIopsRLimit = zone.QosIopsRLimit
+		}
+		if zone.QosIopsWLimit > 0 {
+			dataNode.QosIopsWLimit = zone.QosIopsWLimit
+		}
+		return true
+	})
 }
 
 func (zone *Zone) dataNodeCount() (len int) {

@@ -78,6 +78,14 @@ const (
 	forceKey                = "force"
 	raftForceDelKey         = "raftForceDel"
 	enablePosixAclKey       = "enablePosixAcl"
+	QosEnableKey            = "qosEnable"
+	DiskEnableKey           = "diskenable"
+	IopsWKey                = "iopsWKey"
+	IopsRKey                = "iopsRKey"
+	FlowWKey                = "flowWKey"
+	FlowRKey                = "flowRKey"
+	ClientReqPeriod         = "reqPeriod"
+	ClientTriggerCnt        = "triggerCnt"
 )
 
 const (
@@ -96,6 +104,10 @@ const (
 const (
 	LRUCacheSize    = 3 << 30
 	WriteBufferSize = 4 * util.MB
+	MinFlowLimit    = 1 * util.MB
+	MinIoLimit      = 100
+	MinMagnify      = 10
+	MaxMagnify      = 100
 )
 
 const (
@@ -125,6 +137,13 @@ const (
 	defaultMigrateDpCnt                          = 50
 	defaultMigrateMpCnt                          = 15
 	defaultMaxReplicaCnt                         = 16
+	defaultIopsRLimit                     uint64 = 1 << 16
+	defaultIopsWLimit                     uint64 = 1 << 16
+	defaultFlowWLimit                     uint64 = 1 << 35
+	defaultFlowRLimit                     uint64 = 1 << 35
+	defaultLimitTypeCnt                          = 4
+	defaultClientTriggerHitCnt                   = 1
+	defaultClientReqPeriodSeconds                = 1
 )
 
 const (
@@ -180,6 +199,7 @@ const (
 	opSyncNodeSetGrp           uint32 = 0x1F
 	opSyncDataPartitionsView   uint32 = 0x20
 	opSyncExclueDomain         uint32 = 0x23
+	opSyncUpdateZone           uint32 = 0x24
 )
 
 const (
@@ -193,6 +213,7 @@ const (
 	clusterAcronym        = "c"
 	nodeSetAcronym        = "s"
 	nodeSetGrpAcronym     = "g"
+	zoneAcronym           = "zone"
 	domainAcronym         = "zoneDomain"
 	maxDataPartitionIDKey = keySeparator + "max_dp_id"
 	maxMetaPartitionIDKey = keySeparator + "max_mp_id"
@@ -206,6 +227,7 @@ const (
 	nodeSetPrefix         = keySeparator + nodeSetAcronym + keySeparator
 	nodeSetGrpPrefix      = keySeparator + nodeSetGrpAcronym + keySeparator
 	DomainPrefix          = keySeparator + domainAcronym + keySeparator
+	zonePrefix            = keySeparator + zoneAcronym + keySeparator
 	akAcronym             = "ak"
 	userAcronym           = "user"
 	volUserAcronym        = "voluser"

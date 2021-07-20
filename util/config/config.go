@@ -157,6 +157,15 @@ func (c *Config) GetInt64(key string) int64 {
 	return 0
 }
 
+// GetBool returns a int64 value for the config key.
+func (c *Config) GetInt64WithDefault(key string, defaultVal int64) int64 {
+	if val := c.GetInt64(key); val == 0 {
+		return defaultVal
+	} else {
+		return val
+	}
+}
+
 // GetSlice returns an array for the config key.
 func (c *Config) GetSlice(key string) []interface{} {
 	result, present := c.data[key]

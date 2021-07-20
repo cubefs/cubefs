@@ -95,6 +95,9 @@ const (
 	ConfigKeySmuxMaxConn       = "smuxMaxConn"        //int
 	ConfigKeySmuxStreamPerConn = "smuxStreamPerConn"  //int
 	ConfigKeySmuxMaxBuffer     = "smuxMaxBuffer"      //int
+
+	//rate limit control enable
+	ConfigDiskQosEnable = "diskQosEnable" //bool
 )
 
 // DataNode defines the structure of a data node.
@@ -132,6 +135,13 @@ type DataNode struct {
 	metricsCnt     uint64
 
 	control common.Control
+
+	diskQosEnable           bool
+	diskQosEnableFromMaster bool
+	diskIopsReadLimit       uint64
+	diskIopsWriteLimit      uint64
+	diskFlowReadLimit       uint64
+	diskFlowWriteLimit      uint64
 }
 
 func NewServer() *DataNode {
@@ -262,6 +272,16 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	return
 }
 
+func (s *DataNode) initQosLimit(cfg *config.Config) {
+	s.space.dataNode.diskQosEnable = cfg.GetBoolWithDefault(ConfigDiskQosEnable, true)
+	log.LogWarnf("action[initQosLimit] set qos value [%v] ,other param use default value", s.space.dataNode.diskQosEnable)
+}
+
+func (s *DataNode) updateQosLimit() {
+	for _, disk := range s.space.disks {
+		disk.updateQosLimiter()
+	}
+}
 func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	s.startTime = time.Now().Unix()
 	s.space = NewSpaceManager(s)
@@ -273,6 +293,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	s.space.SetRaftStore(s.raftStore)
 	s.space.SetNodeID(s.nodeID)
 	s.space.SetClusterID(s.clusterID)
+	s.initQosLimit(cfg)
 
 	diskRdonlySpace := uint64(cfg.GetInt64(CfgDiskRdonlySpace))
 	if diskRdonlySpace < DefaultDiskRetainMin {
@@ -313,6 +334,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 			s.space.LoadDisk(path, reservedSpace, diskRdonlySpace, DefaultDiskMaxErr)
 		}(&wg, path, reservedSpace)
 	}
+
 	wg.Wait()
 	return nil
 }
@@ -448,6 +470,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/getSmuxPoolStat", s.getSmuxPoolStat())
 	http.HandleFunc("/setMetricsDegrade", s.setMetricsDegrade)
 	http.HandleFunc("/getMetricsDegrade", s.getMetricsDegrade)
+	http.HandleFunc("/qosEnable", s.setQosEnable())
 }
 
 func (s *DataNode) startTCPService() (err error) {

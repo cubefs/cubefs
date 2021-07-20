@@ -37,6 +37,12 @@ type DataPartitionView struct {
 	DataPartitions []*DataPartition
 }
 
+type SimpleClientInfo interface {
+	GetFlowInfo() (*proto.ClientReportLimitInfo, bool)
+	UpdateFlowInfo(limit *proto.LimitRsp2Client)
+	SetClientID(id uint64) error
+}
+
 // Wrapper TODO rename. This name does not reflect what it is doing.
 type Wrapper struct {
 	sync.RWMutex
@@ -63,7 +69,7 @@ type Wrapper struct {
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
-func NewDataPartitionWrapper(volName string, masters []string, preload bool) (w *Wrapper, err error) {
+func NewDataPartitionWrapper(clientInfo SimpleClientInfo, volName string, masters []string, preload bool) (w *Wrapper, err error) {
 	w = new(Wrapper)
 	w.stopC = make(chan struct{})
 	w.masters = masters
@@ -76,10 +82,14 @@ func NewDataPartitionWrapper(volName string, masters []string, preload bool) (w 
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
 	}
-	if err = w.getSimpleVolView(); err != nil {
+
+	if err = w.GetSimpleVolView(); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
 	}
+
+	w.UploadFlowInfo(clientInfo, true)
+
 	if err = w.initDpSelector(); err != nil {
 		log.LogErrorf("NewDataPartitionWrapper: init initDpSelector failed, [%v]", err)
 	}
@@ -90,6 +100,7 @@ func NewDataPartitionWrapper(volName string, masters []string, preload bool) (w 
 	if err = w.updateDataNodeStatus(); err != nil {
 		log.LogErrorf("NewDataPartitionWrapper: init DataNodeStatus failed, [%v]", err)
 	}
+	go w.uploadFlowInfoByTick(clientInfo)
 	go w.update()
 	return
 }
@@ -121,11 +132,11 @@ func (w *Wrapper) updateClusterInfo() (err error) {
 	return
 }
 
-func (w *Wrapper) getSimpleVolView() (err error) {
+func (w *Wrapper) GetSimpleVolView() (err error) {
 	var view *proto.SimpleVolView
 
 	if view, err = w.mc.AdminAPI().GetVolumeSimpleInfo(w.volName); err != nil {
-		log.LogWarnf("getSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
+		log.LogWarnf("GetSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
 	w.followerRead = view.FollowerRead
@@ -134,12 +145,25 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	w.volType = view.VolType
 	w.EnablePosixAcl = view.EnablePosixAcl
 
-	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
+	log.LogInfof("GetSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
 		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) createTime(%v) dpSelectorName(%v) "+
-		"dpSelectorParm(%v)",
+		"dpSelectorParm(%v) qoslimit client id(%v)",
 		view.ID, view.Name, view.Owner, view.Status, view.Capacity, view.MpReplicaNum, view.DpReplicaNum, view.MpCnt,
 		view.DpCnt, view.FollowerRead, view.CreateTime, view.DpSelectorName, view.DpSelectorParm)
-	return nil
+
+	return
+}
+
+func (w *Wrapper) uploadFlowInfoByTick(clientInfo SimpleClientInfo) {
+	ticker := time.NewTicker(3 * time.Second)
+	for {
+		select {
+		case <-ticker.C:
+			w.UploadFlowInfo(clientInfo, false)
+		case <-w.stopC:
+			return
+		}
+	}
 }
 
 func (w *Wrapper) update() {
@@ -147,7 +171,7 @@ func (w *Wrapper) update() {
 	for {
 		select {
 		case <-ticker.C:
-			w.updateSimpleVolView()
+			w.UpdateSimpleVolView()
 			w.updateDataPartition(false)
 			w.updateDataNodeStatus()
 		case <-w.stopC:
@@ -156,7 +180,34 @@ func (w *Wrapper) update() {
 	}
 }
 
-func (w *Wrapper) updateSimpleVolView() (err error) {
+func (w *Wrapper) UploadFlowInfo(clientInfo SimpleClientInfo, init bool) (err error) {
+	var limitRsp *proto.LimitRsp2Client
+	log.LogInfof("action[UploadFlowInfo] tick!")
+	flowInfo, isNeedReport := clientInfo.GetFlowInfo()
+	if !isNeedReport {
+		log.LogInfof("action[UploadFlowInfo] no need report!")
+		return nil
+	}
+
+	if limitRsp, err = w.mc.AdminAPI().UploadFlowInfo(w.volName, flowInfo); err != nil {
+		log.LogWarnf("UpdateSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
+		return
+	}
+	log.LogInfof("action[UploadFlowInfo] init %v get rsp id [%v]", init, limitRsp.ID)
+	if init {
+		if limitRsp.ID == 0 {
+			err = fmt.Errorf("init client get id 0")
+			log.LogInfof("action[UploadFlowInfo] err %v", err.Error())
+			return
+		}
+		log.LogInfof("action[UploadFlowInfo] get id %v", limitRsp.ID)
+		clientInfo.SetClientID(limitRsp.ID)
+	}
+	clientInfo.UpdateFlowInfo(limitRsp)
+	return
+}
+
+func (w *Wrapper) UpdateSimpleVolView() (err error) {
 	var view *proto.SimpleVolView
 	if view, err = w.mc.AdminAPI().GetVolumeSimpleInfo(w.volName); err != nil {
 		log.LogWarnf("updateSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
@@ -164,13 +215,13 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 	}
 
 	if w.followerRead != view.FollowerRead && !w.followerReadClientCfg {
-		log.LogInfof("updateSimpleVolView: update followerRead from old(%v) to new(%v)",
+		log.LogDebugf("UpdateSimpleVolView: update followerRead from old(%v) to new(%v)",
 			w.followerRead, view.FollowerRead)
 		w.followerRead = view.FollowerRead
 	}
 
 	if w.dpSelectorName != view.DpSelectorName || w.dpSelectorParm != view.DpSelectorParm {
-		log.LogInfof("updateSimpleVolView: update dpSelector from old(%v %v) to new(%v %v)",
+		log.LogDebugf("UpdateSimpleVolView: update dpSelector from old(%v %v) to new(%v %v)",
 			w.dpSelectorName, w.dpSelectorParm, view.DpSelectorName, view.DpSelectorParm)
 		w.Lock()
 		w.dpSelectorName = view.DpSelectorName
@@ -181,6 +232,7 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 
 	return nil
 }
+
 func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.DataPartitionResponse) (err error) {
 
 	var convert = func(response *proto.DataPartitionResponse) *DataPartition {

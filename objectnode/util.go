@@ -53,7 +53,7 @@ type PathItem struct {
 	IsDirectory bool
 }
 
-// PathIterator is a path iterator. Used to sequentially iterate each path node from a complete path.
+// PathIterator is a path iterator. Allocated to sequentially iterate each path node from a complete path.
 type PathIterator struct {
 	cursor int
 	path   string

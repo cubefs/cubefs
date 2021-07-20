@@ -123,11 +123,11 @@ type MetaWrapper struct {
 	closeCh   chan struct{}
 	closeOnce sync.Once
 
-	// Used to signal the go routines which are waiting for partition view update
+	// Allocated to signal the go routines which are waiting for partition view update
 	partMutex sync.Mutex
 	partCond  *sync.Cond
 
-	// Used to trigger and throttle instant partition updates
+	// Allocated to trigger and throttle instant partition updates
 	forceUpdate      chan struct{}
 	forceUpdateLimit *rate.Limiter
 	EnableSummary    bool
