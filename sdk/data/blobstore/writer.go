@@ -17,6 +17,7 @@ package blobstore
 import (
 	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/sdk/data/manager"
 	"github.com/cubefs/cubefs/util/buf"
 	"sync"
 	"sync/atomic"
@@ -59,6 +60,7 @@ type Writer struct {
 	cacheThreshold int
 	dirty          bool
 	blockPosition  int
+	limitManager   *manager.LimitManager
 }
 
 func NewWriter(config ClientConfig) (writer *Writer) {
@@ -84,6 +86,8 @@ func NewWriter(config ClientConfig) (writer *Writer) {
 	writer.cacheThreshold = config.CacheThreshold
 	writer.dirty = false
 	writer.AllocateCache()
+	writer.limitManager = writer.ec.LimitManager
+
 	return
 }
 
@@ -257,6 +261,7 @@ func (writer *Writer) writeSlice(ctx context.Context, wSlice *rwSlice, wg bool) 
 	if wg {
 		defer writer.wg.Done()
 	}
+	writer.limitManager.WriteAlloc(ctx, int(wSlice.size))
 	log.LogDebugf("TRACE blobStore,writeSlice to ebs. ino(%v) fileOffset(%v) len(%v)", writer.ino, wSlice.fileOffset, wSlice.size)
 	location, err := writer.ebsc.Write(ctx, writer.volName, wSlice.Data, wSlice.size)
 	if err != nil {
@@ -301,7 +306,7 @@ func (writer *Writer) asyncCache(ino uint64, offset int, data []byte) {
 	}()
 
 	log.LogDebugf("TRACE asyncCache Enter,fileOffset(%v) len(%v)", offset, len(data))
-	write, err := writer.ec.Write(ino, offset, data, 0)
+	write, err := writer.ec.Write(ino, offset, data, proto.FlagsCache)
 	log.LogDebugf("TRACE asyncCache Exit,write(%v) err(%v)", write, err)
 
 }

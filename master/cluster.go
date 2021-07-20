@@ -62,6 +62,7 @@ type Cluster struct {
 	zoneIdxMux          sync.Mutex //
 	zoneList            []string
 	followerReadManager *followerReadManager
+	diskQosEnable       bool
 }
 
 type followerReadManager struct {
@@ -153,6 +154,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToUpdateStatInfo()
 	c.scheduleToManageDp()
 	c.scheduleToCheckVolStatus()
+	c.scheduleToCheckVolQos()
 	c.scheduleToCheckDiskRecoveryProgress()
 	c.scheduleToCheckMetaPartitionRecoveryProgress()
 	c.scheduleToLoadMetaPartitions()
@@ -283,6 +285,21 @@ func (c *Cluster) scheduleToCheckFollowerReadCache() {
 	}()
 }
 
+func (c *Cluster) scheduleToCheckVolQos() {
+	go func() {
+		//check vols after switching leader two minutes
+		for {
+			if c.partition.IsRaftLeader() {
+				vols := c.copyVols()
+				for _, vol := range vols {
+					vol.checkQos()
+				}
+			}
+			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckQos))
+		}
+	}()
+}
+
 func (c *Cluster) scheduleToCheckNodeSetGrpManagerStatus() {
 	go func() {
 		for {
@@ -401,7 +418,7 @@ func (c *Cluster) checkDataNodeHeartbeat() {
 	c.dataNodes.Range(func(addr, dataNode interface{}) bool {
 		node := dataNode.(*DataNode)
 		node.checkLiveness()
-		task := node.createHeartbeatTask(c.masterAddr())
+		task := node.createHeartbeatTask(c.masterAddr(), c.diskQosEnable)
 		tasks = append(tasks, task)
 		return true
 	})
@@ -2453,6 +2470,12 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		CacheLowWater:    req.coldArgs.cacheLowWater,
 		CacheLRUInterval: req.coldArgs.cacheLRUInterval,
 		CacheRule:        req.coldArgs.cacheRule,
+
+		VolQosEnable: req.qosLimitArgs.qosEnable,
+		IopsRLimit:   req.qosLimitArgs.iopsRVal,
+		IopsWLimit:   req.qosLimitArgs.iopsWVal,
+		FlowRlimit:   req.qosLimitArgs.flowRVal,
+		FlowWlimit:   req.qosLimitArgs.flowWVal,
 	}
 
 	log.LogInfof("[doCreateVol] volView, %v", vv)

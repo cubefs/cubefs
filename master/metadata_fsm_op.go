@@ -42,6 +42,7 @@ type clusterValue struct {
 	DataNodeAutoRepairLimitRate uint64
 	MaxDpCntLimit               uint64
 	FaultDomain                 bool
+	DiskQosEnable               bool
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -56,6 +57,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DisableAutoAllocate:         c.DisableAutoAllocate,
 		MaxDpCntLimit:               c.cfg.MaxDpCntLimit,
 		FaultDomain:                 c.FaultDomain,
+		DiskQosEnable:               c.diskQosEnable,
 	}
 	return cv
 }
@@ -146,18 +148,19 @@ type volValue struct {
 	Owner             string
 	FollowerRead      bool
 	Authenticate      bool
-	CrossZone         bool
-	DomainOn          bool
-	ZoneName          string
-	OSSAccessKey      string
-	OSSSecretKey      string
-	CreateTime        int64
-	Description       string
-	DpSelectorName    string
-	DpSelectorParm    string
-	DefaultPriority   bool
-	DomainId          uint64
-	VolType           int
+
+	CrossZone       bool
+	DomainOn        bool
+	ZoneName        string
+	OSSAccessKey    string
+	OSSSecretKey    string
+	CreateTime      int64
+	Description     string
+	DpSelectorName  string
+	DpSelectorParm  string
+	DefaultPriority bool
+	DomainId        uint64
+	VolType         int
 
 	EbsBlkSize       int
 	CacheCapacity    uint64
@@ -170,6 +173,11 @@ type volValue struct {
 	CacheRule        string
 
 	EnablePosixAcl bool
+	VolQosEnable                                           bool
+	DiskQosEnable                                          bool
+	IopsRLimit, IopsWLimit, FlowRlimit, FlowWlimit         uint64
+	IopsRMagnify, IopsWMagnify, FlowRMagnify, FlowWMagnify uint32
+	ClientReqPeriod, ClientHitTriggerCnt                   uint32
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -178,7 +186,6 @@ func (v *volValue) Bytes() (raw []byte, err error) {
 }
 
 func newVolValue(vol *Vol) (vv *volValue) {
-
 	vv = &volValue{
 		ID:                vol.ID,
 		Name:              vol.Name,
@@ -202,16 +209,27 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		DefaultPriority:   vol.defaultPriority,
 		EnablePosixAcl:    vol.enablePosixAcl,
 
-		VolType:          vol.VolType,
-		EbsBlkSize:       vol.EbsBlkSize,
-		CacheCapacity:    vol.CacheCapacity,
-		CacheAction:      vol.CacheAction,
-		CacheThreshold:   vol.CacheThreshold,
-		CacheTTL:         vol.CacheTTL,
-		CacheHighWater:   vol.CacheHighWater,
-		CacheLowWater:    vol.CacheLowWater,
-		CacheLRUInterval: vol.CacheLRUInterval,
-		CacheRule:        vol.CacheRule,
+		VolType:             vol.VolType,
+		EbsBlkSize:          vol.EbsBlkSize,
+		CacheCapacity:       vol.CacheCapacity,
+		CacheAction:         vol.CacheAction,
+		CacheThreshold:      vol.CacheThreshold,
+		CacheTTL:            vol.CacheTTL,
+		CacheHighWater:      vol.CacheHighWater,
+		CacheLowWater:       vol.CacheLowWater,
+		CacheLRUInterval:    vol.CacheLRUInterval,
+		CacheRule:           vol.CacheRule,
+		VolQosEnable:        vol.qosManager.qosEnable,
+		IopsRLimit:          vol.qosManager.getQosLimit(bsProto.IopsReadType),
+		IopsWLimit:          vol.qosManager.getQosLimit(bsProto.IopsWriteType),
+		FlowRlimit:          vol.qosManager.getQosLimit(bsProto.FlowReadType),
+		FlowWlimit:          vol.qosManager.getQosLimit(bsProto.FlowWriteType),
+		IopsRMagnify:        vol.qosManager.getQosMagnify(bsProto.IopsReadType),
+		IopsWMagnify:        vol.qosManager.getQosMagnify(bsProto.IopsWriteType),
+		FlowRMagnify:        vol.qosManager.getQosMagnify(bsProto.FlowReadType),
+		FlowWMagnify:        vol.qosManager.getQosMagnify(bsProto.FlowWriteType),
+		ClientReqPeriod:     vol.qosManager.ClientReqPeriod,
+		ClientHitTriggerCnt: vol.qosManager.ClientHitTriggerCnt,
 	}
 
 	return
@@ -385,7 +403,7 @@ func (c *Cluster) syncUpdateNodeSet(nset *nodeSet) (err error) {
 }
 
 func (c *Cluster) putNodeSetInfo(opType uint32, nset *nodeSet) (err error) {
-	log.LogInfof("action[putNodeSetInfo], type:[%v], ID:[%v], name:[%v]", opType, nset.ID, nset.zoneName)
+	log.LogInfof("action[putNodeSetInfo], type:[%v], gridId:[%v], name:[%v]", opType, nset.ID, nset.zoneName)
 	metadata := new(RaftCmd)
 	metadata.Op = opType
 	metadata.K = nodeSetPrefix + strconv.FormatUint(nset.ID, 10)
@@ -459,6 +477,22 @@ func (c *Cluster) syncUpdateVol(vol *Vol) (err error) {
 
 func (c *Cluster) syncDeleteVol(vol *Vol) (err error) {
 	return c.syncPutVolInfo(opSyncDeleteVol, vol)
+}
+
+func (c *Cluster) sycnPutZoneInfo(zone *Zone) error {
+	var err error
+	metadata := new(RaftCmd)
+	metadata.Op = opSyncUpdateZone
+	metadata.K = zonePrefix + zone.name
+	vv := zone.getFsmValue()
+	if vv.Name == "" {
+		vv.Name = DefaultZoneName
+	}
+	log.LogInfof("action[sycnPutZoneInfo] zone name %v", vv.Name)
+	if metadata.V, err = json.Marshal(vv); err != nil {
+		return errors.New(err.Error())
+	}
+	return c.submit(metadata)
 }
 
 func (c *Cluster) syncPutVolInfo(opType uint32, vol *Vol) (err error) {
@@ -607,6 +641,37 @@ func (c *Cluster) updateMaxDpCntLimit(val uint64) {
 	maxDpCntOneNode = uint32(val)
 }
 
+func (c *Cluster) loadZoneValue() (err error) {
+	var ok bool
+	result, err := c.fsm.store.SeekForPrefix([]byte(zonePrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadZoneValue],err:%v", err.Error())
+		return err
+	}
+	for _, value := range result {
+		cv := &zoneValue{}
+		if err = json.Unmarshal(value, cv); err != nil {
+			log.LogErrorf("action[loadZoneValue], unmarshal err:%v", err.Error())
+			continue
+		}
+		var zoneInfo interface{}
+		if zoneInfo, ok = c.t.zoneMap.Load(cv.Name); !ok {
+			log.LogErrorf("action[loadZoneValue], zonename [%v] not found", cv.Name)
+			continue
+		}
+		zone := zoneInfo.(*Zone)
+		zone.QosFlowRLimit = cv.QosFlowRLimit
+		zone.QosIopsWLimit = cv.QosIopsWLimit
+		zone.QosFlowWLimit = cv.QosFlowWLimit
+		zone.QosIopsRLimit = cv.QosIopsRLimit
+		log.LogInfof("action[loadZoneValue] load zonename[%v] with limit [%v,%v,%v,%v]",
+			zone.name, cv.QosFlowRLimit, cv.QosIopsWLimit, cv.QosFlowWLimit, cv.QosIopsRLimit)
+		zone.loadDataNodeQosLimit()
+	}
+
+	return
+}
+
 func (c *Cluster) loadClusterValue() (err error) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(clusterPrefix))
 	if err != nil {
@@ -622,6 +687,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.cfg.MetaNodeThreshold = cv.Threshold
 		c.cfg.ClusterLoadFactor = cv.LoadFactor
 		c.DisableAutoAllocate = cv.DisableAutoAllocate
+		c.diskQosEnable = cv.DiskQosEnable
 		c.updateMetaNodeDeleteBatchCount(cv.MetaNodeDeleteBatchCount)
 		c.updateMetaNodeDeleteWorkerSleepMs(cv.MetaNodeDeleteWorkerSleepMs)
 		c.updateDataNodeDeleteLimitRate(cv.DataNodeDeleteLimitRate)
@@ -916,7 +982,7 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 			continue
 		}
 		if vol.ID != mpv.VolID {
-			Warn(c.Name, fmt.Sprintf("action[loadMetaPartitions] has duplicate vol[%v],vol.ID[%v],mpv.VolID[%v]", mpv.VolName, vol.ID, mpv.VolID))
+			Warn(c.Name, fmt.Sprintf("action[loadMetaPartitions] has duplicate vol[%v],vol.gridId[%v],mpv.VolID[%v]", mpv.VolName, vol.ID, mpv.VolID))
 			continue
 		}
 		for i := 0; i < len(mpv.Peers); i++ {
@@ -964,7 +1030,7 @@ func (c *Cluster) loadDataPartitions() (err error) {
 			continue
 		}
 		if vol.ID != dpv.VolID {
-			Warn(c.Name, fmt.Sprintf("action[loadDataPartitions] has duplicate vol[%v],vol.ID[%v],mpv.VolID[%v]", dpv.VolName, vol.ID, dpv.VolID))
+			Warn(c.Name, fmt.Sprintf("action[loadDataPartitions] has duplicate vol[%v],vol.gridId[%v],mpv.VolID[%v]", dpv.VolName, vol.ID, dpv.VolID))
 			continue
 		}
 		for i := 0; i < len(dpv.Peers); i++ {

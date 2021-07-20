@@ -320,7 +320,6 @@ func (s *Super) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fuse.
 func (s *Super) ClusterName() string {
 	return s.cluster
 }
-
 func (s *Super) GetRate(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(s.ec.GetRate()))
 }
@@ -392,7 +391,7 @@ func (s *Super) SetSuspend(w http.ResponseWriter, r *http.Request) {
 
 	sockaddr := r.FormValue("sock")
 	if sockaddr == "" {
-		err = fmt.Errorf("Need parameter 'sock' for IPC")
+		err = fmt.Errorf("NeedAfterAlloc parameter 'sock' for IPC")
 		replyFail(w, r, err.Error())
 		return
 	}

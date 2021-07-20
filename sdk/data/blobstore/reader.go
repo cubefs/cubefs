@@ -17,6 +17,7 @@ package blobstore
 import (
 	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/sdk/data/manager"
 	"io"
 	"os"
 	"sync"
@@ -82,6 +83,7 @@ type Reader struct {
 	fileLength      uint64
 	valid           bool
 	inflightL2cache sync.Map
+	limitManager    *manager.LimitManager
 }
 
 type ClientConfig struct {
@@ -122,6 +124,7 @@ func NewReader(config ClientConfig) (reader *Reader) {
 		reader.ec.UpdateDataPartitionForColdVolume()
 	}
 
+	reader.limitManager = reader.ec.LimitManager
 	return
 }
 
@@ -331,6 +334,7 @@ func (reader *Reader) readSliceRange(ctx context.Context, rs *rwSlice) (err erro
 		log.LogDebugf("TRACE blobStore readSliceRange. cfs block miss.extentKey=%v,err=%v", rs.extentKey, err)
 	}
 
+	reader.limitManager.ReadAlloc(ctx, int(rs.rSize))
 	readN, err = reader.ebs.Read(ctx, reader.volName, buf, rs.rOffset, uint64(rs.rSize), rs.objExtentKey)
 	if err != nil {
 		reader.err <- err
@@ -369,6 +373,9 @@ func (reader *Reader) asyncCache(ctx context.Context, cacheKey string, objExtent
 	reader.inflightL2cache.Store(cacheKey, true)
 	defer reader.inflightL2cache.Delete(cacheKey)
 
+	// qos control
+	reader.limitManager.ReadAlloc(ctx, int(objExtentKey.Size))
+
 	buf := make([]byte, objExtentKey.Size)
 	read, err := reader.ebs.Read(ctx, reader.volName, buf, 0, uint64(len(buf)), objExtentKey)
 	if err != nil || read != len(buf) {
@@ -378,7 +385,7 @@ func (reader *Reader) asyncCache(ctx context.Context, cacheKey string, objExtent
 	}
 
 	if reader.needCacheL2() {
-		reader.ec.Write(reader.ino, int(objExtentKey.FileOffset), buf, 0)
+		reader.ec.Write(reader.ino, int(objExtentKey.FileOffset), buf, proto.FlagsCache)
 		log.LogDebugf("TRACE blobStore asyncCache(L2) Exit. cacheKey=%v", cacheKey)
 		return
 	}

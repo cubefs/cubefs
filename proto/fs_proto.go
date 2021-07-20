@@ -29,6 +29,7 @@ const (
 const (
 	FlagsSyncWrite int = 1 << iota
 	FlagsAppend
+	FlagsCache
 )
 
 // Mode returns the fileMode.

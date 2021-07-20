@@ -17,6 +17,8 @@ package stream
 import (
 	"container/list"
 	"fmt"
+	"github.com/cubefs/cubefs/sdk/data/manager"
+	"golang.org/x/time/rate"
 	"sync"
 	"syscall"
 	"time"
@@ -131,6 +133,7 @@ type ExtentClient struct {
 	bcacheDir       string
 	BcacheHealth    bool
 	preload         bool
+	LimitManager    *manager.LimitManager
 	dataWrapper     *wrapper.Wrapper
 	appendExtentKey AppendExtentKeyFunc
 	getExtents      GetExtentsFunc
@@ -202,10 +205,11 @@ func (client *ExtentClient) backgroundEvictStream() {
 // NewExtentClient returns a new extent client.
 func NewExtentClient(config *ExtentConfig) (client *ExtentClient, err error) {
 	client = new(ExtentClient)
-
+	client.LimitManager = manager.NewLimitManager(client)
+	client.LimitManager.WrapperUpdate = client.UploadFlowInfo
 	limit := MaxMountRetryLimit
 retry:
-	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(config.Volume, config.Masters, config.Preload)
+	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(client, config.Volume, config.Masters, config.Preload)
 	if err != nil {
 		if limit <= 0 {
 			return nil, errors.Trace(err, "Init data wrapper failed!")
@@ -245,7 +249,6 @@ retry:
 	} else {
 		writeLimit = rate.Limit(config.WriteRate)
 	}
-
 	client.readLimiter = rate.NewLimiter(readLimit, defaultReadLimitBurst)
 	client.writeLimiter = rate.NewLimiter(writeLimit, defaultWriteLimitBurst)
 
@@ -272,6 +275,22 @@ retry:
 
 func (client *ExtentClient) GetEnablePosixAcl() bool {
 	return client.dataWrapper.EnablePosixAcl
+}
+
+func (client *ExtentClient) GetFlowInfo() (*proto.ClientReportLimitInfo, bool) {
+	log.LogInfof("action[ExtentClient.GetFlowInfo]")
+	return client.LimitManager.GetFlowInfo()
+}
+
+func (client *ExtentClient) UpdateFlowInfo(limit *proto.LimitRsp2Client) {
+	log.LogInfof("action[UpdateFlowInfo.UpdateFlowInfo]")
+	client.LimitManager.SetClientLimit(limit)
+	return
+}
+
+func (client *ExtentClient) SetClientID(id uint64) (err error) {
+	client.LimitManager.ID = id
+	return
 }
 
 // Open request shall grab the lock until request is sent to the request channel
@@ -618,4 +637,8 @@ func (client *ExtentClient) UpdateDataPartitionForColdVolume() error {
 
 func (client *ExtentClient) IsPreloadMode() bool {
 	return client.preload
+}
+
+func (client *ExtentClient) UploadFlowInfo(clientInfo wrapper.SimpleClientInfo) error {
+	return client.dataWrapper.UploadFlowInfo(clientInfo, false)
 }

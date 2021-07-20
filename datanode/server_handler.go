@@ -328,6 +328,25 @@ func (s *DataNode) getNormalDeleted(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+func (s *DataNode) setQosEnable() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var (
+			err    error
+			enable bool
+		)
+		if err = r.ParseForm(); err != nil {
+			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if enable, err = strconv.ParseBool(r.FormValue("enable")); err != nil {
+			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		s.diskQosEnable = enable
+		s.buildSuccessResp(w, "success")
+	}
+}
+
 func (s *DataNode) getSmuxPoolStat() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !s.enableSmuxConnPool {

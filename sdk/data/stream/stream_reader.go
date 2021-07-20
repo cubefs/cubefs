@@ -123,7 +123,7 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 
 	ctx := context.Background()
 	s.client.readLimiter.Wait(ctx)
-
+	s.client.LimitManager.ReadAlloc(ctx, size)
 	requests = s.extents.PrepareReadRequests(offset, size, data)
 	for _, req := range requests {
 		if req.ExtentKey == nil {

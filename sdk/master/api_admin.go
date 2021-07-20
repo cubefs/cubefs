@@ -16,6 +16,8 @@ package master
 
 import (
 	"encoding/json"
+	"fmt"
+	"github.com/cubefs/cubefs/util/log"
 	"net/http"
 	"strconv"
 
@@ -349,6 +351,51 @@ func (api *AdminAPI) CreateDefaultVolume(volName, owner string) (err error) {
 func (api *AdminAPI) GetVolumeSimpleInfo(volName string) (vv *proto.SimpleVolView, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminGetVol)
 	request.addParam("name", volName)
+	var buf []byte
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	vv = &proto.SimpleVolView{}
+	if err = json.Unmarshal(buf, &vv); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) UploadFlowInfo(volName string,
+	flowInfo *proto.ClientReportLimitInfo) (vv *proto.LimitRsp2Client, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.QosUpload)
+	request.addParam("name", volName)
+	if flowInfo == nil {
+		return nil, fmt.Errorf("flowinfo is nil")
+	}
+
+	request.addParam("qosEnable", "true")
+	var encoded []byte
+	if encoded, err = json.Marshal(flowInfo); err != nil {
+		log.LogInfof("action[GetVolumeSimpleInfoWithFlowInfo] flowinfo failed")
+		return
+	}
+
+	request.addBody(encoded)
+	var buf []byte
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+
+	vv = &proto.LimitRsp2Client{}
+	if err = json.Unmarshal(buf, &vv); err != nil {
+		return
+	}
+	log.LogInfof("action[UploadFlowInfo] enable %v", vv.Enable)
+	return
+}
+
+func (api *AdminAPI) GetVolumeSimpleInfoWithFlowInfo(volName string) (vv *proto.SimpleVolView, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminGetVol)
+	request.addParam("name", volName)
+	request.addParam("init", "true")
+
 	var buf []byte
 	if buf, err = api.mc.serveRequest(request); err != nil {
 		return

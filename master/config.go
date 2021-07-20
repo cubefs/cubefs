@@ -51,6 +51,7 @@ const (
 	defaultIntervalToCheck                     = 60
 	defaultIntervalToCheckHeartbeat            = 6
 	defaultIntervalToCheckDataPartition        = 5
+	defaultIntervalToCheckQos                  = 3
 	defaultIntervalToCheckCrc                  = 20 * defaultIntervalToCheck // in terms of seconds
 	noHeartBeatTimes                           = 3                           // number of times that no heartbeat reported
 	defaultNodeTimeOutSec                      = noHeartBeatTimes * defaultIntervalToCheckHeartbeat
@@ -86,6 +87,7 @@ type clusterConfig struct {
 	PeriodToLoadALLDataPartitions       int64
 	metaNodeReservedMem                 uint64
 	IntervalToCheckDataPartition        int // seconds
+	IntervalToCheckQos                  int // seconds
 	numberOfDataPartitionsToFree        int
 	numberOfDataPartitionsToLoad        int
 	nodeSetCapacity                     int
@@ -115,6 +117,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.MissingDataPartitionInterval = defaultMissingDataPartitionInterval
 	cfg.DataPartitionTimeOutSec = defaultDataPartitionTimeOutSec
 	cfg.IntervalToCheckDataPartition = defaultIntervalToCheckDataPartition
+	cfg.IntervalToCheckQos = defaultIntervalToCheckQos
 	cfg.IntervalToAlarmMissingDataPartition = defaultIntervalToAlarmMissingDataPartition
 	cfg.numberOfDataPartitionsToLoad = defaultNumberOfDataPartitionsToLoad
 	cfg.PeriodToLoadALLDataPartitions = defaultPeriodToLoadAllDataPartitions

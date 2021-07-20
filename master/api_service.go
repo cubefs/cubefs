@@ -364,6 +364,310 @@ func (m *Server) createPreLoadDataPartition(w http.ResponseWriter, r *http.Reque
 	cv.DataPartitions = dpResps
 	sendOkReply(w, r, newSuccessHTTPReply(cv))
 }
+func (m *Server) getQosStatus(w http.ResponseWriter, r *http.Request) {
+	var (
+		volName string
+		err     error
+		vol     *Vol
+	)
+	if volName, err = extractName(r); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+	if vol, err = m.cluster.getVol(volName); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(vol.getQosStatus()))
+}
+
+func (m *Server) getClientQosInfo(w http.ResponseWriter, r *http.Request) {
+	var (
+		volName string
+		err     error
+		vol     *Vol
+		host    string
+		id      uint64
+	)
+	if volName, err = extractName(r); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+	if vol, err = m.cluster.getVol(volName); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+
+	if host = r.FormValue(addrKey); host != "" {
+		if !checkIp(host) {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("addr not legal").Error()})
+			return
+		}
+	}
+
+	if value := r.FormValue(idKey); value != "" {
+		if id, err = strconv.ParseUint(value, 10, 64); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+	var rsp interface{}
+	if rsp, err = vol.getClientLimitInfo(id, util.GetIp(host)); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+	} else {
+		sendOkReply(w, r, newSuccessHTTPReply(rsp))
+	}
+}
+
+func (m *Server) QosUpdateClientParam(w http.ResponseWriter, r *http.Request) {
+	var (
+		volName            string
+		value              string
+		period, triggerCnt uint64
+		err                error
+		vol                *Vol
+	)
+	if volName, err = extractName(r); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if vol, err = m.cluster.getVol(volName); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+	if value = r.FormValue(ClientReqPeriod); value != "" {
+		if period, err = strconv.ParseUint(value, 10, 64); err != nil || period == 0 {
+			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("wrong param of peroid")))
+		}
+	}
+	if value = r.FormValue(ClientTriggerCnt); value != "" {
+		if triggerCnt, err = strconv.ParseUint(value, 10, 64); err != nil || triggerCnt == 0 {
+			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("wrong param of triggerCnt")))
+		}
+	}
+	if err = vol.updateClientParam(m.cluster, period, triggerCnt); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+	}
+	sendOkReply(w, r, newSuccessHTTPReply("success"))
+}
+
+func parseRequestQos(r *http.Request, isMagnify bool) (qosParam *qosArgs, err error) {
+	qosParam = &qosArgs{}
+
+	var value int
+	var flowFmt int
+
+	if isMagnify {
+		flowFmt = 1
+	} else {
+		flowFmt = util.MB
+	}
+
+	if qosEnableStr := r.FormValue(QosEnableKey); qosEnableStr != "" {
+		qosParam.qosEnable, _ = strconv.ParseBool(qosEnableStr)
+	}
+	if iopsRLimitStr := r.FormValue(IopsRKey); iopsRLimitStr != "" {
+		log.LogInfof("actin[parseRequestQos] iopsRLimitStr %v", iopsRLimitStr)
+		if value, err = strconv.Atoi(iopsRLimitStr); err == nil {
+			qosParam.iopsRVal = uint64(value)
+			if !isMagnify && qosParam.iopsRVal < MinIoLimit {
+				err = fmt.Errorf("iops read %v need larger than 100", value)
+				return
+			}
+			if isMagnify && (qosParam.iopsRVal < MinMagnify || qosParam.iopsRVal > MaxMagnify) {
+				err = fmt.Errorf("iops read magnify %v must between %v and %v", value, MinMagnify, MaxMagnify)
+				log.LogErrorf("acttion[parseRequestQos] %v",err.Error())
+				return
+			}
+		}
+	}
+
+	if iopsWLimitStr := r.FormValue(IopsWKey); iopsWLimitStr != "" {
+		log.LogInfof("actin[parseRequestQos] iopsWLimitStr %v", iopsWLimitStr)
+		if value, err = strconv.Atoi(iopsWLimitStr); err == nil {
+			qosParam.iopsWVal = uint64(value)
+			if !isMagnify && qosParam.iopsWVal < MinIoLimit {
+				err = fmt.Errorf("iops %v write write io larger than 100", value)
+				return
+			}
+			if isMagnify && (qosParam.iopsWVal < MinMagnify || qosParam.iopsWVal > MaxMagnify) {
+				err = fmt.Errorf("iops write magnify %v must between %v and %v", value, MinMagnify, MaxMagnify)
+				log.LogErrorf("acttion[parseRequestQos] %v",err.Error())
+				return
+			}
+		}
+	}
+
+	if flowRLimitStr := r.FormValue(FlowRKey); flowRLimitStr != "" {
+		log.LogInfof("actin[parseRequestQos] flowRLimitStr %v", flowRLimitStr)
+		if value, err = strconv.Atoi(flowRLimitStr); err == nil {
+			qosParam.flowRVal = uint64(value * flowFmt)
+			if !isMagnify && qosParam.flowRVal < MinFlowLimit {
+				err = fmt.Errorf("flow read %v must larger than 100", value)
+				return
+			}
+			if isMagnify && (qosParam.flowRVal < MinMagnify || qosParam.flowRVal > MaxMagnify) {
+				err = fmt.Errorf("flow read magnify %v must between %v and %v", value, MinMagnify, MaxMagnify)
+				log.LogErrorf("acttion[parseRequestQos] %v",err.Error())
+				return
+			}
+		}
+	}
+	if flowWLimitStr := r.FormValue(FlowWKey); flowWLimitStr != "" {
+		log.LogInfof("actin[parseRequestQos] flowWLimitStr %v", flowWLimitStr)
+		if value, err = strconv.Atoi(flowWLimitStr); err == nil {
+			qosParam.flowWVal = uint64(value * flowFmt)
+			if !isMagnify && qosParam.flowWVal < MinFlowLimit {
+				err = fmt.Errorf("flow write %v must larger than 100", value)
+				log.LogErrorf("acttion[parseRequestQos] %v",err.Error())
+				return
+			}
+			if isMagnify && (qosParam.flowWVal < MinMagnify || qosParam.flowWVal > MaxMagnify) {
+				err = fmt.Errorf("flow write magnify %v must between %v and %v", value, MinMagnify, MaxMagnify)
+				log.LogErrorf("acttion[parseRequestQos] %v",err.Error())
+				return
+			}
+		}
+	}
+
+	log.LogInfof("action[parseRequestQos] result %v", qosParam)
+
+	return
+}
+
+func (m *Server) QosUpdateMagnify(w http.ResponseWriter, r *http.Request) {
+	var (
+		volName     string
+		err         error
+		vol         *Vol
+		magnifyArgs *qosArgs
+	)
+	if volName, err = extractName(r); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	if vol, err = m.cluster.getVol(volName); err == nil {
+		if magnifyArgs, err = parseRequestQos(r, true); err == nil {
+			_ = vol.volQosUpdateMagnify(m.cluster, magnifyArgs)
+			sendOkReply(w, r, newSuccessHTTPReply("success"))
+		}
+	}
+	sendErrReply(w, r, newErrHTTPReply(err))
+}
+
+// flowRVal, flowWVal take MB as unit
+func (m *Server) QosUpdateZoneLimit(w http.ResponseWriter, r *http.Request) {
+	var (
+		value    interface{}
+		ok       bool
+		err      error
+		qosParam *qosArgs
+	)
+	var zoneName string
+	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
+		zoneName = DefaultZoneName
+	}
+	if qosParam, err = parseRequestQos(r, false); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	if value, ok = m.cluster.t.zoneMap.Load(zoneName); !ok {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("zonename [%v] not found", zoneName)))
+		return
+	}
+	zone := value.(*Zone)
+	zone.updateDataNodeQosLimit(m.cluster, qosParam)
+
+	sendOkReply(w, r, newSuccessHTTPReply("success"))
+}
+
+// flowRVal, flowWVal take MB as unit
+func (m *Server) QosGetZoneLimit(w http.ResponseWriter, r *http.Request) {
+	var (
+		value    interface{}
+		ok       bool
+	)
+	var zoneName string
+	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
+		zoneName = DefaultZoneName
+	}
+
+	if value, ok = m.cluster.t.zoneMap.Load(zoneName); !ok {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("zonename [%v] not found", zoneName)))
+		return
+	}
+	zone := value.(*Zone)
+
+	type qosZoneStatus struct {
+		Zone string
+		DiskLimitEnable bool
+		IopsRVal      uint64
+		IopsWVal      uint64
+		FlowRVal      uint64
+		FlowWVal      uint64
+	}
+
+	zoneSt := &qosZoneStatus{
+		Zone:zoneName,
+		DiskLimitEnable: m.cluster.diskQosEnable,
+		IopsRVal: zone.QosIopsRLimit,
+		IopsWVal: zone.QosIopsWLimit,
+		FlowRVal: zone.QosFlowRLimit,
+		FlowWVal: zone.QosFlowWLimit,
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(zoneSt))
+}
+
+func (m *Server) QosUpdate(w http.ResponseWriter, r *http.Request) {
+	var (
+		volName   string
+		err       error
+		vol       *Vol
+		enable    bool
+		value     string
+		limitArgs *qosArgs
+	)
+	if volName, err = extractName(r); err == nil {
+		if vol, err = m.cluster.getVol(volName); err != nil {
+			goto RET
+		}
+		if value = r.FormValue(QosEnableKey); value != "" {
+			if enable, err = strconv.ParseBool(value); err != nil {
+				goto RET
+			}
+
+			if err = vol.volQosEnable(m.cluster, enable); err != nil {
+				goto RET
+			}
+			log.LogInfof("action[DiskQosUpdate] update qos eanble [%v]", enable)
+		}
+		if limitArgs, err = parseRequestQos(r, false); err == nil && limitArgs.isArgsWork() {
+			if err = vol.volQosUpdateLimit(m.cluster, limitArgs); err != nil {
+				goto RET
+			}
+			log.LogInfof("action[DiskQosUpdate] update qos limit [%v] [%v] [%v] [%v] [%v]", enable,
+				limitArgs.iopsRVal, limitArgs.iopsWVal, limitArgs.flowRVal, limitArgs.flowWVal)
+		}
+	}
+
+	if value = r.FormValue(DiskEnableKey); value != "" {
+		if enable, err = strconv.ParseBool(value); err == nil {
+			log.LogInfof("action[DiskQosUpdate] enable be set [%v]", enable)
+			m.cluster.diskQosEnable = enable
+			err = m.cluster.syncPutCluster()
+		}
+	}
+RET:
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	_ = sendOkReply(w, r, newSuccessHTTPReply("success"))
+	return
+}
 
 func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	var (
@@ -975,12 +1279,54 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
+func (m *Server) qosUpload(w http.ResponseWriter, r *http.Request) {
+	var (
+		err   error
+		name  string
+		vol   *Vol
+		limit *proto.LimitRsp2Client
+	)
+	if name, err = parseAndExtractName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if vol, err = m.cluster.getVol(name); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+
+	qosEnableStr := r.FormValue(QosEnableKey)
+	if qosEnableStr == "" {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrParamError))
+		return
+	}
+	// qos upload may called by client init,thus use qosEnable param to identify it weather need to calc by master
+	log.LogInfof("action[qosUpload] qosEnableStr:[%v]", qosEnableStr)
+	if qosEnable, _ := strconv.ParseBool(qosEnableStr); qosEnable {
+		log.LogInfof("action[qosUpload] qosEnableStr:[%v] qosEnabled", qosEnableStr)
+		if clientInfo, err := parseQosInfo(r); err == nil {
+			log.LogInfof("action[qosUpload] cliInfoMgrMap [%v],clientInfo id[%v] clientInfo.Host %v, remote addr", clientInfo.ID, clientInfo.Host, r.RemoteAddr)
+			if clientInfo.ID == 0 {
+				if limit, err = vol.qosManager.init(m.cluster, clientInfo.Host); err != nil {
+					sendErrReply(w, r, newErrHTTPReply(err))
+				}
+			} else if limit, err = vol.qosManager.HandleClientQosReq(clientInfo, clientInfo.ID); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+			}
+		} else {
+			log.LogInfof("action[qosUpload] qosEnableStr:[%v] err [%v]", err)
+		}
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(limit))
+}
+
 func (m *Server) getVolSimpleInfo(w http.ResponseWriter, r *http.Request) {
 	var (
 		err     error
 		name    string
 		vol     *Vol
-		volView *proto.SimpleVolView
 	)
 
 	if name, err = parseAndExtractName(r); err != nil {
@@ -993,7 +1339,8 @@ func (m *Server) getVolSimpleInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	volView = newSimpleView(vol)
+	volView := newSimpleView(vol)
+
 	sendOkReply(w, r, newSuccessHTTPReply(volView))
 }
 

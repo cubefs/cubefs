@@ -106,7 +106,7 @@ func (partition *DataPartition) checkReplicaNotHaveStatus(liveReplicas []*DataRe
 func (partition *DataPartition) checkReplicaEqualStatus(liveReplicas []*DataReplica, status int8) (equal bool) {
 	for _, replica := range liveReplicas {
 		if replica.Status != status {
-			log.LogInfof("action[checkReplicaEqualStatus] partition %v replica %v status %v dst status %v",
+			log.LogDebugf("action[checkReplicaEqualStatus] partition %v replica %v status %v dst status %v",
 				partition.PartitionID, replica.Addr, replica.Status, status)
 			return
 		}

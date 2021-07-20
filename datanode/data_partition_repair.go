@@ -235,6 +235,9 @@ func (dp *DataPartition) DoRepair(repairTasks []*DataPartitionRepairTask) {
 		if dp.ExtentStore().IsDeletedNormalExtent(extentInfo.FileID) {
 			continue
 		}
+
+		dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
+
 		store.Create(extentInfo.FileID)
 	}
 	for _, extentInfo := range repairTasks[0].ExtentsToBeRepaired {
@@ -583,6 +586,10 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 				currRecoverySize = binary.BigEndian.Uint64(reply.Arg[1:9])
 				reply.Size = uint32(currRecoverySize)
 			}
+
+			dp.disk.allocCheckLimit(proto.FlowWriteType, uint32(reply.Size))
+			dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
+
 			err = store.TinyExtentRecover(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(currRecoverySize), reply.Data, reply.CRC, isEmptyResponse)
 			if hasRecoverySize+currRecoverySize >= remoteAvaliSize {
 				log.LogInfof("streamRepairTinyExtent(%v) recover fininsh,remoteAvaliSize(%v) "+
@@ -591,6 +598,9 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 				break
 			}
 		} else {
+			dp.disk.allocCheckLimit(proto.FlowWriteType, uint32(reply.Size))
+			dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
+
 			err = store.Write(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.Size), reply.Data, reply.CRC, storage.AppendWriteType, BufferWrite)
 		}
 

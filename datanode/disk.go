@@ -16,6 +16,8 @@ package datanode
 
 import (
 	"fmt"
+	"golang.org/x/net/context"
+	"golang.org/x/time/rate"
 	"path"
 	"regexp"
 	"strconv"
@@ -64,6 +66,8 @@ type Disk struct {
 	syncTinyDeleteRecordFromLeaderOnEveryDisk chan bool
 	space                                     *SpaceManager
 	dataNode                                  *DataNode
+
+	limitFactor map[uint32]*rate.Limiter
 }
 
 const (
@@ -86,7 +90,38 @@ func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, 
 	d.computeUsage()
 	d.updateSpaceInfo()
 	d.startScheduleToUpdateSpaceInfo()
+
+	d.limitFactor = make(map[uint32]*rate.Limiter, 0)
+	d.limitFactor[proto.FlowReadType] = rate.NewLimiter(rate.Inf, proto.QosDefaultDiskMaxFLowLimit)
+	d.limitFactor[proto.FlowWriteType] = rate.NewLimiter(rate.Inf, proto.QosDefaultDiskMaxFLowLimit)
+	d.limitFactor[proto.IopsReadType] = rate.NewLimiter(rate.Inf, proto.QosDefaultDiskMaxIoLimit)
+	d.limitFactor[proto.IopsWriteType] = rate.NewLimiter(rate.Inf, proto.QosDefaultDiskMaxIoLimit)
+
 	return
+}
+
+func (d *Disk) updateQosLimiter() {
+	if d.dataNode.diskFlowReadLimit > 0 {
+		d.limitFactor[proto.FlowReadType].SetLimit(rate.Limit(d.dataNode.diskFlowReadLimit))
+	}
+	if d.dataNode.diskFlowWriteLimit > 0 {
+		d.limitFactor[proto.FlowWriteType].SetLimit(rate.Limit(d.dataNode.diskFlowWriteLimit))
+	}
+	if d.dataNode.diskIopsReadLimit > 0 {
+		d.limitFactor[proto.IopsReadType].SetLimit(rate.Limit(d.dataNode.diskIopsReadLimit))
+	}
+	if d.dataNode.diskIopsWriteLimit > 0 {
+		d.limitFactor[proto.IopsWriteType].SetLimit(rate.Limit(d.dataNode.diskIopsWriteLimit))
+	}
+}
+
+func (d *Disk) allocCheckLimit(factorType uint32, used uint32) error {
+	if !(d.dataNode.diskQosEnableFromMaster && d.dataNode.diskQosEnable) {
+		return nil
+	}
+	ctx := context.Background()
+	d.limitFactor[factorType].WaitN(ctx, int(used))
+	return nil
 }
 
 // PartitionCount returns the number of partitions in the partition map.

@@ -339,7 +339,7 @@ func main() {
 	syslog.SetOutput(outputFile)
 
 	if *configRestoreFuse {
-		syslog.Println("Need restore fuse")
+		syslog.Println("NeedAfterAlloc restore fuse")
 		opt.NeedRestoreFuse = true
 	}
 

@@ -108,8 +108,8 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	us := &UserService{user: m.user, cluster: m.cluster}
 	m.registerHandler(router, proto.AdminUserAPI, us.Schema())
 
-	vs := &VolumeService{user: m.user, cluster: m.cluster}
-	m.registerHandler(router, proto.AdminVolumeAPI, vs.Schema())
+	//vs := &VolumeService{user: m.user, cluster: m.cluster}
+	//m.registerHandler(router, proto.AdminVolumeAPI, vs.Schema())
 
 	// cluster management APIs
 	router.NewRoute().Name(proto.AdminGetIP).
@@ -186,6 +186,30 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.ClientMetaPartition).
 		HandlerFunc(m.getMetaPartition)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.QosUpload).
+		HandlerFunc(m.qosUpload)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.QosGetStatus).
+		HandlerFunc(m.getQosStatus)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.QosGetClientsLimitInfo).
+		HandlerFunc(m.getClientQosInfo)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.QosUpdate).
+		HandlerFunc(m.QosUpdate)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.QosUpdateZoneLimit).
+		HandlerFunc(m.QosUpdateZoneLimit)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.QosGetZoneLimitInfo).
+		HandlerFunc(m.QosGetZoneLimit)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.QosUpdateMagnify).
+		HandlerFunc(m.QosUpdateMagnify)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.QosUpdateClientParam).
+		HandlerFunc(m.QosUpdateClientParam)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminCreateMetaPartition).
 		HandlerFunc(m.createMetaPartition)

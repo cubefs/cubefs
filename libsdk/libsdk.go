@@ -1109,18 +1109,20 @@ func (c *client) start() (err error) {
 		c.bc = bcache.NewBcacheClient()
 	}
 	var ebsc *blobstore.BlobStoreClient
-	if ebsc, err = blobstore.NewEbsClient(access.Config{
-		ConnMode: access.NoLimitConnMode,
-		Consul: api.Config{
-			Address: c.ebsEndpoint,
-		},
-		MaxSizePutOnce: MaxSizePutOnce,
-		Logger: &access.Logger{
-			Filename: gopath.Join(c.logDir, "libcfs/ebs.log"),
-		},
-	}); err != nil {
-		return
-	}
+        if c.ebsEndpoint != "" {
+		if ebsc, err = blobstore.NewEbsClient(access.Config{
+			ConnMode: access.NoLimitConnMode,
+			Consul: api.Config{
+				Address: c.ebsEndpoint,
+			},
+			MaxSizePutOnce: MaxSizePutOnce,
+			Logger: &access.Logger{
+				Filename: gopath.Join(c.logDir, "libcfs/ebs.log"),
+			},
+		}); err != nil {
+			return
+		}
+	}	
 	var mw *meta.MetaWrapper
 	if mw, err = meta.NewMetaWrapper(&meta.MetaConfig{
 		Volume:        c.volName,

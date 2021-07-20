@@ -440,7 +440,7 @@ func formatDataReplica(indentation string, replica *proto.DataReplica, rowTable 
 	}
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("%v- Addr           : %v\n", indentation, replica.Addr))
-	sb.WriteString(fmt.Sprintf("%v  Used           : %v\n", indentation, formatSize(replica.Used)))
+	sb.WriteString(fmt.Sprintf("%v  Allocated           : %v\n", indentation, formatSize(replica.Used)))
 	sb.WriteString(fmt.Sprintf("%v  Total          : %v\n", indentation, formatSize(replica.Total)))
 	sb.WriteString(fmt.Sprintf("%v  IsLeader       : %v\n", indentation, replica.IsLeader))
 	sb.WriteString(fmt.Sprintf("%v  FileCount      : %v\n", indentation, replica.FileCount))
@@ -495,8 +495,8 @@ func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  ID                  : %v\n", dn.ID))
 	sb.WriteString(fmt.Sprintf("  Address             : %v\n", dn.Addr))
 	sb.WriteString(fmt.Sprintf("  Carry               : %v\n", dn.Carry))
-	sb.WriteString(fmt.Sprintf("  Used ratio          : %v\n", dn.UsageRatio))
-	sb.WriteString(fmt.Sprintf("  Used                : %v\n", formatSize(dn.Used)))
+	sb.WriteString(fmt.Sprintf("  Allocated ratio          : %v\n", dn.UsageRatio))
+	sb.WriteString(fmt.Sprintf("  Allocated                : %v\n", formatSize(dn.Used)))
 	sb.WriteString(fmt.Sprintf("  Available           : %v\n", formatSize(dn.AvailableSpace)))
 	sb.WriteString(fmt.Sprintf("  Total               : %v\n", formatSize(dn.Total)))
 	sb.WriteString(fmt.Sprintf("  Zone                : %v\n", dn.ZoneName))
@@ -524,7 +524,7 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Carry               : %v\n", mn.Carry))
 	sb.WriteString(fmt.Sprintf("  Threshold           : %v\n", mn.Threshold))
 	sb.WriteString(fmt.Sprintf("  MaxMemAvailWeight   : %v\n", formatSize(mn.MaxMemAvailWeight)))
-	sb.WriteString(fmt.Sprintf("  Used                : %v\n", formatSize(mn.Used)))
+	sb.WriteString(fmt.Sprintf("  Allocated                : %v\n", formatSize(mn.Used)))
 	sb.WriteString(fmt.Sprintf("  Total               : %v\n", formatSize(mn.Total)))
 	sb.WriteString(fmt.Sprintf("  Zone                : %v\n", mn.ZoneName))
 	sb.WriteString(fmt.Sprintf("  IsActive            : %v\n", formatNodeStatus(mn.IsActive)))

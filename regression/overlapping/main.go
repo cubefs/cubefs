@@ -43,7 +43,7 @@ func main() {
 	}
 	defer file2.Close()
 
-	// Need to write to normal extent, so avoid writing to the beginning 1M
+	// NeedAfterAlloc to write to normal extent, so avoid writing to the beginning 1M
 	file1.Seek(1*1024*1024, 0)
 	file2.Seek(1*1024*1024, 0)
 

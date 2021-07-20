@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -401,6 +402,19 @@ func parseRequestToSetVolCapacity(r *http.Request) (name, authKey string, capaci
 	return
 }
 
+type qosArgs struct {
+	qosEnable     bool
+	diskQosEnable bool
+	iopsRVal      uint64
+	iopsWVal      uint64
+	flowRVal      uint64
+	flowWVal      uint64
+}
+
+func (qos *qosArgs) isArgsWork() bool {
+	return (qos.iopsRVal | qos.iopsWVal | qos.flowRVal | qos.flowWVal) > 0
+}
+
 type coldVolArgs struct {
 	objBlockSize     int
 	cacheCap         uint64
@@ -414,21 +428,23 @@ type coldVolArgs struct {
 }
 
 type createVolReq struct {
-	name             string
-	owner            string
-	size             int
-	mpCount          int
-	dpReplicaNum     int
-	capacity         int
-	followerRead     bool
-	authenticate     bool
-	crossZone        bool
-	normalZonesFirst bool
-	domainId         uint64
-	zoneName         string
-	description      string
-	volType          int
-	enablePosixAcl   bool
+	name                                 string
+	owner                                string
+	size                                 int
+	mpCount                              int
+	dpReplicaNum                         int
+	capacity                             int
+	followerRead                         bool
+	authenticate                         bool
+	crossZone                            bool
+	normalZonesFirst                     bool
+	domainId                             uint64
+	zoneName                             string
+	description                          string
+	volType                              int
+	enablePosixAcl                       bool
+	qosLimitArgs                         *qosArgs
+	clientReqPeriod, clientHitTriggerCnt uint32
 	// cold vol args
 	coldArgs coldVolArgs
 }
@@ -542,6 +558,9 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
+	if req.qosLimitArgs, err = parseRequestQos(r, false); err != nil {
+		return err
+	}
 	req.zoneName = extractStr(r, zoneNameKey)
 	req.description = extractStr(r, descriptionKey)
 	req.domainId, err = extractUint64WithDefault(r, domainIdKey, 0)
@@ -922,6 +941,17 @@ func parseVolStatReq(r *http.Request) (name string, ver int, err error) {
 		return
 	}
 
+	return
+}
+
+func parseQosInfo(r *http.Request) (info *proto.ClientReportLimitInfo, err error) {
+	info = proto.NewClientReportLimitInfo()
+	var body []byte
+	if body, err = ioutil.ReadAll(r.Body); err != nil {
+		return
+	}
+	log.LogInfof("action[parseQosInfo] body len:[%v],crc:[%v]", len(body), crc32.ChecksumIEEE(body))
+	err = json.Unmarshal(body, info)
 	return
 }
 
