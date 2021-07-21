@@ -30,7 +30,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/chubaofs/chubaofs/authnode"
 	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/console"
 	"github.com/chubaofs/chubaofs/datanode"
@@ -61,7 +60,6 @@ const (
 	RoleMaster  = "master"
 	RoleMeta    = "metanode"
 	RoleData    = "datanode"
-	RoleAuth    = "authnode"
 	RoleObject  = "objectnode"
 	RoleConsole = "console"
 )
@@ -70,7 +68,6 @@ const (
 	ModuleMaster  = "master"
 	ModuleMeta    = "metaNode"
 	ModuleData    = "dataNode"
-	ModuleAuth    = "authNode"
 	ModuleObject  = "objectNode"
 	ModuleConsole = "console"
 )
@@ -199,9 +196,6 @@ func main() {
 	case RoleData:
 		server = datanode.NewServer()
 		module = ModuleData
-	case RoleAuth:
-		server = authnode.NewServer()
-		module = ModuleAuth
 	case RoleObject:
 		server = objectnode.NewServer()
 		module = ModuleObject
