@@ -20,7 +20,9 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"sync/atomic"
+	"time"
 )
 
 type FunctionTp struct {
@@ -29,6 +31,19 @@ type FunctionTp struct {
 	HostName     string `json:"hostname"`
 	ProcessState string `json:"processState"`
 	ElapsedTime  string `json:"elapsedTime"`
+}
+
+type FunctionTpGroupBy struct {
+	currTime     time.Time
+	Time         string
+	Key          string
+	HostName     string
+	ProcessState string
+	ElapsedTime  string
+	Count        string
+
+	elapsedTime int64
+	count       int64
 }
 
 type SystemAlive struct {
@@ -47,23 +62,25 @@ type BusinessAlarm struct {
 }
 
 const (
-	FunctionTpSufixx    = "tp.log"
-	SystemAliveSufixx   = "alive.log"
-	BusinessAlarmSufixx = "business.log"
-	LogFileOpt          = os.O_RDWR | os.O_CREATE | os.O_APPEND
-	ChSize              = 102400
-	BusinessAlarmType   = "BusinessAlarm"
-	SystemAliveType     = "SystemAlive"
-	FunctionTpType      = "FunctionTp"
-	HostNameFile        = "/proc/sys/kernel/hostname"
-	MaxLogSize          = 1024 * 1024 * 10
+	FunctionTpSufixx        = "tp.log"
+	FunctionTpGroupBySufixx = "groupby_tp.log"
+	SystemAliveSufixx       = "alive.log"
+	BusinessAlarmSufixx     = "business.log"
+	LogFileOpt              = os.O_RDWR | os.O_CREATE | os.O_APPEND
+	ChSize                  = 102400
+	BusinessAlarmType       = "BusinessAlarm"
+	SystemAliveType         = "SystemAlive"
+	FunctionTpType          = "FunctionTp"
+	HostNameFile            = "/proc/sys/kernel/hostname"
+	MaxLogSize              = 1024 * 1024 * 10
 )
 
 var (
-	FunctionTpLogWrite    = &LogWrite{logCh: make(chan interface{}, ChSize)}
-	SystemAliveLogWrite   = &LogWrite{logCh: make(chan interface{}, ChSize)}
-	BusinessAlarmLogWrite = &LogWrite{logCh: make(chan interface{}, ChSize), empty: make(chan struct{}, 1)}
-	UmpDataDir            = "/export/home/tomcat/UMP-Monitor/logs/"
+	FunctionTpLogWrite        = &LogWrite{logCh: make(chan interface{}, ChSize)}
+	FunctionTpGroupByLogWrite = &LogWrite{logCh: make(chan interface{}, ChSize)}
+	SystemAliveLogWrite       = &LogWrite{logCh: make(chan interface{}, ChSize)}
+	BusinessAlarmLogWrite     = &LogWrite{logCh: make(chan interface{}, ChSize), empty: make(chan struct{}, 1)}
+	UmpDataDir                = "/export/home/tomcat/UMP-Monitor/logs/"
 )
 
 type LogWrite struct {
@@ -135,6 +152,35 @@ func (lw *LogWrite) backGroundCheckFile() (err error) {
 	return
 }
 
+func (lw *LogWrite) backGroupWriteForGroupByTP() {
+
+	for {
+		var (
+			body []byte
+		)
+		time.Sleep(time.Second * 5)
+		FuncationTPMap.Range(func(key, value interface{}) bool {
+			v := value.(*FunctionTpGroupBy)
+			v.Count = strconv.FormatInt(v.count, 10)
+			v.Time = v.currTime.Format(LogTimeForMat)
+			v.ElapsedTime = strconv.FormatInt(v.elapsedTime/v.count, 10)
+			lw.jsonEncoder.Encode(v)
+			FunctionTpGroupByPool.Put(v)
+			body = append(body, lw.bf.Bytes()...)
+			lw.bf.Reset()
+			FuncationTPMap.Delete(key.(string))
+			return true
+		})
+		if lw.backGroundCheckFile() != nil {
+			continue
+		}
+		lw.logFp.Write(body)
+		lw.logSize += (int64)(len(body))
+		body = make([]byte, 0)
+	}
+	return
+}
+
 func (lw *LogWrite) backGroundWrite(umpType string) {
 
 	for {
@@ -191,7 +237,9 @@ func initLogName(module string) (err error) {
 	if err = FunctionTpLogWrite.initLogFp(module + "_" + FunctionTpSufixx); err != nil {
 		return
 	}
-
+	if err = FunctionTpGroupByLogWrite.initLogFp(module + "_" + FunctionTpGroupBySufixx); err != nil {
+		return
+	}
 	if err = SystemAliveLogWrite.initLogFp(module + "_" + SystemAliveSufixx); err != nil {
 		return
 	}
@@ -224,4 +272,5 @@ func backGroudWrite() {
 	go FunctionTpLogWrite.backGroundWrite(FunctionTpType)
 	go SystemAliveLogWrite.backGroundWrite(SystemAliveType)
 	go BusinessAlarmLogWrite.backGroundWrite(BusinessAlarmType)
+	go FunctionTpGroupByLogWrite.backGroupWriteForGroupByTP()
 }

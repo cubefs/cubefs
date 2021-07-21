@@ -54,6 +54,9 @@ var (
 	FunctionTpPool = &sync.Pool{New: func() interface{} {
 		return new(FunctionTp)
 	}}
+	FunctionTpGroupByPool = &sync.Pool{New: func() interface{} {
+		return new(FunctionTpGroupBy)
+	}}
 	enableUmp = true
 )
 
@@ -67,6 +70,7 @@ func InitUmp(module string) (err error) {
 }
 
 func BeforeTP(key string) (o *TpObject) {
+	return BeforeTPGroupBy(key)
 	if !enableUmp {
 		return
 	}
@@ -82,7 +86,26 @@ func BeforeTP(key string) (o *TpObject) {
 	return
 }
 
+func BeforeTPGroupBy(key string) (o *TpObject) {
+	if !enableUmp {
+		return
+	}
+
+	o = TpObjectPool.Get().(*TpObject)
+	o.StartTime = time.Now()
+	tp := FunctionTpGroupByPool.Get().(*FunctionTpGroupBy)
+	tp.HostName = HostName
+	tp.currTime = o.StartTime
+	tp.Key = key
+	tp.ProcessState = "0"
+	o.UmpType = tp
+
+	return
+}
+
 func AfterTP(o *TpObject, err error) {
+	AfterTPGroupBy(o, err)
+	return
 	if !enableUmp {
 		return
 	}
@@ -101,7 +124,37 @@ func AfterTP(o *TpObject, err error) {
 	return
 }
 
+func AfterTPGroupBy(o *TpObject, err error) {
+	if !enableUmp {
+		return
+	}
+	tp := o.UmpType.(*FunctionTpGroupBy)
+	tp.elapsedTime = (int64)(time.Since(o.StartTime) / 1e6)
+	TpObjectPool.Put(o)
+	tp.ProcessState = "0"
+	if err != nil {
+		tp.ProcessState = "1"
+	}
+	tp.count = 1
+	mkey := tp.Key + "_" + strconv.FormatInt(time.Now().Unix(), 10)
+	v, ok := FuncationTPMap.Load(mkey)
+	if !ok {
+		FuncationTPMap.Store(mkey, tp)
+	} else {
+		atomic.AddInt64(&v.(*FunctionTpGroupBy).count, 1)
+		atomic.AddInt64(&v.(*FunctionTpGroupBy).elapsedTime, tp.elapsedTime)
+	}
+
+	return
+}
+
+var (
+	FuncationTPMap sync.Map
+)
+
 func AfterTPUs(o *TpObject, err error) {
+	AfterTPUsGroupBy(o, err)
+	return
 	if !enableUmp {
 		return
 	}
@@ -115,6 +168,30 @@ func AfterTPUs(o *TpObject, err error) {
 	select {
 	case FunctionTpLogWrite.logCh <- tp:
 	default:
+	}
+
+	return
+}
+
+func AfterTPUsGroupBy(o *TpObject, err error) {
+	if !enableUmp {
+		return
+	}
+	tp := o.UmpType.(*FunctionTpGroupBy)
+	tp.elapsedTime = (int64)(time.Since(o.StartTime) / 1e3)
+	TpObjectPool.Put(o)
+	tp.ProcessState = "0"
+	if err != nil {
+		tp.ProcessState = "1"
+	}
+	tp.count = 1
+	mkey := tp.Key + "_" + strconv.FormatInt(time.Now().Unix(), 10)
+	v, ok := FuncationTPMap.Load(mkey)
+	if !ok {
+		FuncationTPMap.Store(mkey, tp)
+	} else {
+		atomic.AddInt64(&v.(*FunctionTpGroupBy).count, 1)
+		atomic.AddInt64(&v.(*FunctionTpGroupBy).elapsedTime, tp.elapsedTime)
 	}
 
 	return
