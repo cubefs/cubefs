@@ -27,7 +27,8 @@ var (
 		return new(Alarm)
 	}}
 	//AlarmGroup  sync.Map
-	AlarmCh chan *Alarm
+	AlarmCh    chan *Alarm
+	warningKey string
 )
 
 func collectAlarm() {
@@ -43,14 +44,16 @@ type Alarm struct {
 }
 
 func Warning(detail string) (a *Alarm) {
-	key := fmt.Sprintf("%v_%v_warning", clustername, modulename)
-	ump.Alarm(key, detail)
-	log.LogCritical(key, detail)
+	if warningKey =="" {
+		warningKey =fmt.Sprintf("%v_%v_warning", clustername, modulename)
+	}
+	ump.Alarm(warningKey, detail)
+	log.LogCritical(warningKey, detail)
 	if !enabledPrometheus {
 		return
 	}
 	a = AlarmPool.Get().(*Alarm)
-	a.name = metricsName(key)
+	a.name = metricsName(warningKey)
 	a.Add(1)
 	return
 }
