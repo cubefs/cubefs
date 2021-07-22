@@ -724,8 +724,8 @@ func (s *Streamer) closeOpenHandler(ctx context.Context) {
 		if s.dirtylist.Len() < MaxDirtyListLen {
 			s.handler.flushPacket(ctx)
 		} else {
-			// TODO unhandled error
-			s.handler.flush(ctx)
+			// flush all handler when close current handler, to prevent extent key overwriting
+			s.flush(ctx)
 		}
 
 		if !s.dirty {
