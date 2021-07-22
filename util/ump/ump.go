@@ -99,7 +99,7 @@ func AfterTP(o *TpObject, err error) {
 		tp.ProcessState = "1"
 	}
 	tp.count = 1
-	internalKey:=tp.elapsedTime/100
+	internalKey:=tp.elapsedTime/50
 	index:=internalKey%int64(FunctionTPMapCount)
 	mkey := tp.Key + "_" + strconv.FormatInt( internalKey,10)
 	v, ok := FuncationTPMap[index].Load(mkey)
@@ -133,7 +133,7 @@ func AfterTPUs(o *TpObject, err error) {
 		tp.ProcessState = "1"
 	}
 	tp.count = 1
-	internalKey:=tp.elapsedTime/100
+	internalKey:=tp.elapsedTime/50
 	index:=internalKey%int64(FunctionTPMapCount)
 	mkey := tp.Key + "_" + strconv.FormatInt( internalKey,10)
 	v, ok := FuncationTPMap[index].Load(mkey)
