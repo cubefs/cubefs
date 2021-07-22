@@ -122,7 +122,11 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 // Note that the data in each data partition has already been saved on the disk. Therefore there is no need to take the
 // snapshot in this case.
 func (dp *DataPartition) Snapshot() (raftproto.Snapshot, error) {
-	snapIterator := NewItemIterator(dp.lastTruncateID)
+	var snapApplyID = dp.lastTruncateID
+	if raftStatus := dp.raftPartition.Status(); raftStatus != nil && dp.lastTruncateID < raftStatus.Log.FirstIndex-1 {
+		dp.lastTruncateID = raftStatus.Log.FirstIndex - 1
+	}
+	snapIterator := NewItemIterator(snapApplyID)
 	log.LogInfof("SendSnapShot PartitionID(%v) Snapshot lastTruncateID(%v) currentApplyID(%v) firstCommitID(%v)",
 		dp.partitionID, dp.lastTruncateID, dp.appliedID, dp.lastTruncateID)
 	return snapIterator, nil

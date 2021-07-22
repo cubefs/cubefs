@@ -933,6 +933,10 @@ func (s *raft) getStatus() *Status {
 		RecvQueue:         len(s.recvc),
 		AppQueue:          len(s.applyc),
 		Stopped:           stopped,
+		Log: LogStatus{
+			FirstIndex: s.raftFsm.raftLog.firstIndex(),
+			LastIndex:  s.raftFsm.raftLog.lastIndex(),
+		},
 	}
 	if s.raftFsm.state == stateLeader {
 		st.Replicas = make(map[uint64]*ReplicaStatus)

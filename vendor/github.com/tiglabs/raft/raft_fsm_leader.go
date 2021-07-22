@@ -451,8 +451,13 @@ func (r *raftFsm) sendAppend(ctx context.Context, to uint64) {
 		}
 
 		snapshot, err := r.sm.Snapshot()
-		if err != nil || snapshot.ApplyIndex() < fi-1 {
-			panic(AppPanicError(fmt.Sprintf("[raft->sendAppend][%v]failed to send snapshot[%d] to %v because snapshot is unavailable, error is: \r\n%v", r.id, snapshot.ApplyIndex(), to, err)))
+		if err != nil {
+			panic(AppPanicError(fmt.Sprintf("[raft->sendAppend][%v]failed to send snapshot to %v because snapshot is unavailable, error is: %v",
+				r.id, to, err)))
+		}
+		if snapshot.ApplyIndex() < fi-1 {
+			panic(AppPanicError(fmt.Sprintf("[raft-sendAppend][%v] failed to send snapshot to %v because illegal apply index [%v].",
+				r.id, to, snapshot.ApplyIndex())))
 		}
 
 		m = proto.GetMessage()
