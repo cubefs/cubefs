@@ -70,23 +70,6 @@ func InitUmp(module string) (err error) {
 }
 
 func BeforeTP(key string) (o *TpObject) {
-	return BeforeTPGroupBy(key)
-	if !enableUmp {
-		return
-	}
-	o = TpObjectPool.Get().(*TpObject)
-	o.StartTime = time.Now()
-	tp := FunctionTpPool.Get().(*FunctionTp)
-	tp.HostName = HostName
-	tp.Time = time.Now().Format(LogTimeForMat)
-	tp.Key = key
-	tp.ProcessState = "0"
-	o.UmpType = tp
-
-	return
-}
-
-func BeforeTPGroupBy(key string) (o *TpObject) {
 	if !enableUmp {
 		return
 	}
@@ -103,28 +86,8 @@ func BeforeTPGroupBy(key string) (o *TpObject) {
 	return
 }
 
+
 func AfterTP(o *TpObject, err error) {
-	AfterTPGroupBy(o, err)
-	return
-	if !enableUmp {
-		return
-	}
-	tp := o.UmpType.(*FunctionTp)
-	tp.ElapsedTime = strconv.FormatInt((int64)(time.Since(o.StartTime)/1e6), 10)
-	TpObjectPool.Put(o)
-	tp.ProcessState = "0"
-	if err != nil {
-		tp.ProcessState = "1"
-	}
-	select {
-	case FunctionTpLogWrite.logCh <- tp:
-	default:
-	}
-
-	return
-}
-
-func AfterTPGroupBy(o *TpObject, err error) {
 	if !enableUmp {
 		return
 	}
@@ -136,44 +99,29 @@ func AfterTPGroupBy(o *TpObject, err error) {
 		tp.ProcessState = "1"
 	}
 	tp.count = 1
-	mkey := tp.Key + "_" + strconv.FormatInt(time.Now().Unix(), 10)
-	v, ok := FuncationTPMap.Load(mkey)
+	internalKey:=tp.elapsedTime/100
+	index:=internalKey%int64(FunctionTPMapCount)
+	mkey := tp.Key + "_" + strconv.FormatInt( internalKey,10)
+	v, ok := FuncationTPMap[index].Load(mkey)
 	if !ok {
-		FuncationTPMap.Store(mkey, tp)
+		FuncationTPMap[index].Store(mkey, tp)
 	} else {
 		atomic.AddInt64(&v.(*FunctionTpGroupBy).count, 1)
 		atomic.AddInt64(&v.(*FunctionTpGroupBy).elapsedTime, tp.elapsedTime)
 	}
-
-	return
 }
+
 
 var (
-	FuncationTPMap sync.Map
+	FunctionTPMapCount=16
+	FuncationTPMap []sync.Map
 )
 
-func AfterTPUs(o *TpObject, err error) {
-	AfterTPUsGroupBy(o, err)
-	return
-	if !enableUmp {
-		return
-	}
-	tp := o.UmpType.(*FunctionTp)
-	tp.ElapsedTime = strconv.FormatInt((int64)(time.Since(o.StartTime)/1e3), 10)
-	TpObjectPool.Put(o)
-	tp.ProcessState = "0"
-	if err != nil {
-		tp.ProcessState = "1"
-	}
-	select {
-	case FunctionTpLogWrite.logCh <- tp:
-	default:
-	}
-
-	return
+func init() {
+	FuncationTPMap=make([]sync.Map,FunctionTPMapCount)
 }
 
-func AfterTPUsGroupBy(o *TpObject, err error) {
+func AfterTPUs(o *TpObject, err error) {
 	if !enableUmp {
 		return
 	}
@@ -185,17 +133,19 @@ func AfterTPUsGroupBy(o *TpObject, err error) {
 		tp.ProcessState = "1"
 	}
 	tp.count = 1
-	mkey := tp.Key + "_" + strconv.FormatInt(time.Now().Unix(), 10)
-	v, ok := FuncationTPMap.Load(mkey)
+	internalKey:=tp.elapsedTime/100
+	index:=internalKey%int64(FunctionTPMapCount)
+	mkey := tp.Key + "_" + strconv.FormatInt( internalKey,10)
+	v, ok := FuncationTPMap[index].Load(mkey)
 	if !ok {
-		FuncationTPMap.Store(mkey, tp)
+		FuncationTPMap[index].Store(mkey, tp)
 	} else {
 		atomic.AddInt64(&v.(*FunctionTpGroupBy).count, 1)
 		atomic.AddInt64(&v.(*FunctionTpGroupBy).elapsedTime, tp.elapsedTime)
 	}
-
 	return
 }
+
 
 func Alive(key string) {
 	if !enableUmp {

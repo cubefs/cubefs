@@ -44,8 +44,8 @@ func BenchmarkAfterTPUsGroupBy(b *testing.B) {
 func parallelUmpWriteGroupBy(b *testing.B, wg *sync.WaitGroup) {
 	key := fmt.Sprintf("datanode_write")
 	for i := 0; i < b.N; i++ {
-		o := BeforeTPGroupBy(key)
-		AfterTPUsGroupBy(o, nil)
+		o := BeforeTP(key)
+		AfterTPUs(o, nil)
 	}
 	wg.Done()
 }

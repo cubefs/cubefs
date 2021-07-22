@@ -159,18 +159,22 @@ func (lw *LogWrite) backGroupWriteForGroupByTP() {
 			body []byte
 		)
 		time.Sleep(time.Second * 5)
-		FuncationTPMap.Range(func(key, value interface{}) bool {
-			v := value.(*FunctionTpGroupBy)
-			v.Count = strconv.FormatInt(v.count, 10)
-			v.Time = v.currTime.Format(LogTimeForMat)
-			v.ElapsedTime = strconv.FormatInt(v.elapsedTime/v.count, 10)
-			lw.jsonEncoder.Encode(v)
-			FunctionTpGroupByPool.Put(v)
-			body = append(body, lw.bf.Bytes()...)
-			lw.bf.Reset()
-			FuncationTPMap.Delete(key.(string))
-			return true
-		})
+		for index:=0;index<FunctionTPMapCount;index++{
+			FuncationTPMap[index].Range(func(key, value interface{}) bool {
+				v := value.(*FunctionTpGroupBy)
+				v.Count = strconv.FormatInt(v.count, 10)
+				v.Time = v.currTime.Format(LogTimeForMat)
+				v.ElapsedTime = strconv.FormatInt(v.elapsedTime/v.count, 10)
+				lw.jsonEncoder.Encode(v)
+				FunctionTpGroupByPool.Put(v)
+				body = append(body, lw.bf.Bytes()...)
+				lw.bf.Reset()
+				FuncationTPMap[index].Delete(key.(string))
+				return true
+			})
+			time.Sleep(time.Second)
+		}
+
 		if lw.backGroundCheckFile() != nil {
 			continue
 		}
