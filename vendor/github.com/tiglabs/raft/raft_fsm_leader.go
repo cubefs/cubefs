@@ -455,16 +455,19 @@ func (r *raftFsm) sendAppend(ctx context.Context, to uint64) {
 			panic(AppPanicError(fmt.Sprintf("[raft->sendAppend][%v]failed to send snapshot to %v because snapshot is unavailable, error is: %v",
 				r.id, to, err)))
 		}
-		if snapshot.ApplyIndex() < fi-1 {
-			panic(AppPanicError(fmt.Sprintf("[raft-sendAppend][%v] failed to send snapshot to %v because illegal apply index [%v].",
-				r.id, to, snapshot.ApplyIndex())))
+		var snapApplyIndex = snapshot.ApplyIndex()
+		if snapApplyIndex < fi-1 {
+			if logger.IsEnableWarn() {
+				logger.Warn("[raft->sendAppend][%v] snapshot apply index [%v] less than first index [%v] - 1, change to [%v]", r.id, snapApplyIndex, fi, fi-1)
+			}
+			snapApplyIndex = fi - 1
 		}
 
 		m = proto.GetMessage()
 		m.Type = proto.ReqMsgSnapShot
 		m.To = to
 		m.Snapshot = snapshot
-		snapMeta := proto.SnapshotMeta{Index: snapshot.ApplyIndex(), Peers: make([]proto.Peer, 0, len(r.replicas)), Learners: make([]proto.Learner, 0)}
+		snapMeta := proto.SnapshotMeta{Index: snapApplyIndex, Peers: make([]proto.Peer, 0, len(r.replicas)), Learners: make([]proto.Learner, 0)}
 		m.SetCtx(ctx)
 		if snapTerm, err := r.raftLog.term(snapMeta.Index); err != nil {
 			panic(AppPanicError(fmt.Sprintf("[raft->sendAppend][%v]failed to send snapshot to %v because snapshot is unavailable, error is: \r\n%v", r.id, to, err)))
