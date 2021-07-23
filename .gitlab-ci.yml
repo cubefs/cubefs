@@ -6,7 +6,7 @@ before_script:
 stages:
   - unittest
   - build
-  - ltptest
+  - citests
 
 build_main:
   stage: build
@@ -22,12 +22,11 @@ unittest:
   script:
     - docker/run_docker.sh -t
 
-ltptest:
-  stage: ltptest
+citests:
+  stage: citests
   tags:
     - docker
   script:
     - docker/run_docker.sh --clean
-    - docker/run_docker.sh -l
+    - docker/run_docker.sh --ci-tests
     - docker/run_docker.sh --clean
-

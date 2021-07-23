@@ -16,7 +16,7 @@ Usage: ./run_docker.sh [ -h | --help ] [ -d | --disk </disk/path> ] [ -l | --ltp
     -s, --server            start ChubaoFS servers docker image
     -c, --client            start ChubaoFS client docker image
     -m, --monitor           start monitor web ui
-    -l, --ltptest           run ltp test
+    --ci-tests              run ci tests, include ltp tests and s3 tests
     -r, --run               run servers, client and monitor
     --clean                 cleanup old docker image
 EOF
@@ -38,6 +38,12 @@ build() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml run build
 }
 
+# Build for CI tests
+# In this mode, application ELF will be built by using 'go test -c' command instead of orginal 'go build' command
+build_test() {
+    docker-compose -f ${RootPath}/docker/docker-compose.yml run build_test	
+}
+
 # start server
 start_servers() {
     isDiskAvailable $DiskPath
@@ -53,14 +59,20 @@ start_monitor() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml up -d monitor
 }
 
-start_ltptest() {
+start_ci_tests() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml run client
 }
 
-run_ltptest() {
-    build
+cover_analyze() {
+    docker-compose -f ${RootPath}/docker/docker-compose.yml run cover_analyze
+}
+
+run_ci_tests() {
+    build_test
     start_servers
-    start_ltptest
+    start_ci_tests
+    clean
+    cover_analyze
     clean
 }
 
@@ -82,11 +94,14 @@ for opt in ${ARGS[*]} ; do
         -b|--build)
             cmd=build
             ;;
+    	--build-test)
+    	    cmd=build_test
+	    ;;	    
         -t|--test)
             cmd=run_test
             ;;
-        -l|--ltptest)
-            cmd=run_ltptest
+        --ci-tests)
+            cmd=run_ci_tests
             ;;
         -r|--run)
             cmd=run
@@ -144,10 +159,11 @@ case "-$cmd" in
     -help) help ;;
     -run) run ;;
     -build) build ;;
+    -build_test) build_test ;;
     -run_servers) start_servers ;;
     -run_client) start_client ;;
     -run_monitor) start_monitor ;;
-    -run_ltptest) run_ltptest ;;
+    -run_ci_tests) run_ci_tests ;;
     -run_test) run_unit_test ;;
     -clean) clean ;;
     *) help ;;

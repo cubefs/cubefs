@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httputil"
 
@@ -32,24 +33,23 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
-func (m *Server) startHTTPService(modulename string, cfg *config.Config) {
+func (m *Server) startHTTPService(modulename string, cfg *config.Config) (err error) {
 	router := mux.NewRouter().SkipClean(true)
 	m.registerAPIRoutes(router)
 	m.registerAPIMiddleware(router)
 	exporter.InitWithRouter(modulename, cfg, router, m.port)
-	var server = &http.Server{
-		Addr:    colonSplit + m.port,
-		Handler: router,
+	var listener net.Listener
+	if listener, err = net.Listen("tcp", colonSplit+m.port); err != nil {
+		return
 	}
-	var serveAPI = func() {
-		if err := server.ListenAndServe(); err != nil {
-			log.LogErrorf("serveAPI: serve http server failed: err(%v)", err)
-			panic(err)
+	var serveAPI = func(ln net.Listener) {
+		if err := http.Serve(ln, router); err != nil && err != http.ErrServerClosed {
+			log.LogErrorf("serve http API: serve http server failed: err(%v)", err)
 			return
 		}
 	}
-	go serveAPI()
-	m.apiServer = server
+	go serveAPI(listener)
+	m.apiListener = listener
 	return
 }
 

@@ -87,26 +87,26 @@ class TransferTest(S3TestCase):
         self.assert_delete_object_result(
             result=self.s3.delete_object(Bucket=BUCKET, Key=KEY_PREFIX))
 
-    def test_transfer_scene1__50mb(self):
+    def test_transfer_scene1__10mb(self):
         """
-        This test tests transfer (upload and download) a 50MB size file by using multipart feature.
+        This test tests transfer (upload and download) a 10MB size file by using multipart feature.
         :return: None
         """
-        self.__test_transfer(size=50 * 1024 * 1024)
+        self.__test_transfer(size=10 * 1024 * 1024)
 
-    def test_transfer_scene2_100mb(self):
+    def test_transfer_scene2__20mb(self):
         """
-        This test tests transfer (upload and download) a 100MB size file by using multipart feature.
+        This test tests transfer (upload and download) a 20MB size file by using multipart feature.
+        :return: None
+        """
+        self.__test_transfer(size=20 * 1024 * 1024)
+
+    def test_transfer_scene3__40mb(self):
+        """
+        This test tests transfer (upload and download) a 40MB size file by using multipart feature.
         :return: None
         """
         self.__test_transfer(size=100 * 1024 * 1024)
-
-    def test_transfer_scene3_200mb(self):
-        """
-        This test tests transfer (upload and download) a 200MB size file by using multipart feature.
-        :return: None
-        """
-        self.__test_transfer(size=200 * 1024 * 1024)
 
     def upload(self, bucket_name, object_name, body):
         self.s3.put_object(Bucket=bucket_name,
@@ -188,22 +188,22 @@ class TransferTest(S3TestCase):
             self.assertEqual(file_c, file_size)
             self.assertTrue(head_res[HEADER_NAME_ETAG].endswith("-{}".format(part_count)))
 
-    def test_simulation_10_30M(self):
+    def test_simulation_10_20M(self):
         """
-        This test tests simulate java sdk to parallel download with part size 10M and file size 30M, that
+        This test tests simulate java sdk to parallel download with part size 10M and file size 20M, that
         :return: None
         """
         part_size = 10 * 1024 * 1024  # 10M
-        file_size = 30 * 1024 * 1024  # 30M
+        file_size = 20 * 1024 * 1024  # 20M
         self.__simulation_java_parallel_download(part_size_const=part_size, file_size=file_size)
 
-    def test_simulation_10_35M(self):
+    def test_simulation_10_25M(self):
         """
         This test tests simulate java sdk to parallel download with part size 10M and file size 35M.
         :return: None
         """
         part_size = 10 * 1024 * 1024  # 10M
-        file_size = 35 * 1024 * 1024  # 35M
+        file_size = 25 * 1024 * 1024  # 25M
         self.__simulation_java_parallel_download(part_size_const=part_size, file_size=file_size)
 
     def test_simulation_part_number(self):

@@ -148,93 +148,93 @@ class ObjectPutTest(S3TestCase):
 
     def test_put_objects_override_scene1___1kb(self):
         """
-        This test uploads 200 file objects with a size of 1KB (override same file)
+        This test uploads 50 file objects with a size of 1KB (override same file)
         :return:
         """
         self.__do_test_put_objects_override(
             file_size=1024,
-            file_num=200)
+            file_num=50)
 
     def test_put_objects_override_scene2__10kb(self):
         """
-        This test uploads 100 file objects with a size of 10KB (override same file)
+        This test uploads 20 file objects with a size of 10KB (override same file)
         :return:
         """
         self.__do_test_put_objects_override(
             file_size=1024 * 10,
-            file_num=100)
+            file_num=20)
 
     def test_put_objects_override_scene3_100kb(self):
         """
-        This test uploads 50 file objects with a size of 100KB (override same file)
+        This test uploads 10 file objects with a size of 100KB (override same file)
         :return:
         """
         self.__do_test_put_objects_override(
             file_size=1024 * 100,
-            file_num=50)
+            file_num=10)
 
     def test_put_objects_override_scene4___1mb(self):
         """
-        This test uploads 10 file objects with a size of 1MB (override same file)
+        This test uploads 5 file objects with a size of 1MB (override same file)
         :return:
         """
         self.__do_test_put_objects_override(
             file_size=1024 * 1024,
-            file_num=10)
+            file_num=5)
 
     def test_put_objects_override_scene5__10mb(self):
         """
-        This test uploads 5 file objects with a size of 10MB (override same file)
+        This test uploads 2 file objects with a size of 10MB (override same file)
         :return:
         """
         self.__do_test_put_objects_override(
             file_size=1024 * 1024 * 10,
-            file_num=5)
+            file_num=2)
 
     def test_put_objects_independent_scene1___1kb(self):
         """
-        This test uploads 200 file objects with a size of 1KB (difference file)
+        This test uploads 50 file objects with a size of 1KB (difference file)
         :return:
         """
         self.__do_test_put_objects_independent(
             file_size=1024,
-            file_num=200)
+            file_num=50)
 
     def test_put_objects_independent_scene2__10kb(self):
         """
-        This test uploads 100 file objects with a size of 10KB (difference file)
+        This test uploads 20 file objects with a size of 10KB (difference file)
         :return:
         """
         self.__do_test_put_objects_independent(
             file_size=1024 * 10,
-            file_num=100)
+            file_num=20)
 
     def test_put_objects_independent_scene3_100kb(self):
         """
-        This test uploads 50 file objects with a size of 100KB (difference file)
+        This test uploads 10 file objects with a size of 100KB (difference file)
         :return:
         """
         self.__do_test_put_objects_independent(
             file_size=1024 * 100,
-            file_num=50)
+            file_num=10)
 
     def test_put_objects_independent_scene4___1mb(self):
         """
-        This test uploads 10 file objects with a size of 1MB (difference file)
+        This test uploads 5 file objects with a size of 1MB (difference file)
         :return:
         """
         self.__do_test_put_objects_independent(
             file_size=1024 * 1024,
-            file_num=10)
+            file_num=5)
 
     def test_put_objects_independent_scene5__10mb(self):
         """
-        This test uploads 5 file objects with a size of 10MB (difference file)
+        This test uploads 2 file objects with a size of 10MB (difference file)
         :return:
         """
         self.__do_test_put_objects_independent(
             file_size=1024 * 1024 * 10,
-            file_num=5)
+            file_num=2)
 
     def test_put_object_conflict_scene1(self):
         """

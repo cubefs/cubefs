@@ -22,6 +22,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/exporter"
@@ -201,8 +202,13 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 
 	// Get cluster info from master
 	var ci *proto.ClusterInfo
-	if ci, err = o.mc.AdminAPI().GetClusterInfo(); err != nil {
-		return
+	for {
+		if ci, err = o.mc.AdminAPI().GetClusterInfo(); err != nil {
+			log.LogErrorf("fetch cluster info from master service failed and will retry after 1s, error message: %v", err)
+			time.Sleep(time.Second * 1)
+			continue
+		}
+		break
 	}
 	o.updateRegion(ci.Cluster)
 	log.LogInfof("handleStart: get cluster information: region(%v)", o.region)

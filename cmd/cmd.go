@@ -139,12 +139,18 @@ func modifyMaxThreadLimit() {
 }
 
 func main() {
+	if err := run(); err != nil {
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	flag.Parse()
 
 	Version := proto.DumpVersion("Server", BranchName, CommitID, BuildTime)
 	if *configVersion {
 		fmt.Printf("%v", Version)
-		os.Exit(0)
+		return nil
 	}
 
 	/*
@@ -153,16 +159,14 @@ func main() {
 	 */
 	cfg, err := config.LoadConfigFile(*configFile)
 	if err != nil {
-		daemonize.SignalOutcome(err)
-		os.Exit(1)
+		return daemonize.SignalOutcome(err)
 	}
 
 	if !*configForeground {
 		if err := startDaemon(); err != nil {
 			fmt.Printf("Server start failed: %v\n", err)
-			os.Exit(1)
+			return err
 		}
-		os.Exit(0)
 	}
 
 	/*
@@ -203,8 +207,7 @@ func main() {
 		server = console.NewServer()
 		module = ModuleConsole
 	default:
-		daemonize.SignalOutcome(fmt.Errorf("Fatal: role mismatch: %v", role))
-		os.Exit(1)
+		return daemonize.SignalOutcome(fmt.Errorf("Fatal: role mismatch: %v", role))
 	}
 
 	// Init logging
@@ -226,8 +229,7 @@ func main() {
 
 	_, err = log.InitLog(logDir, module, level, nil)
 	if err != nil {
-		daemonize.SignalOutcome(fmt.Errorf("Fatal: failed to init log - %v", err))
-		os.Exit(1)
+		return daemonize.SignalOutcome(fmt.Errorf("Fatal: failed to init log - %v", err))
 	}
 	defer log.LogFlush()
 
@@ -235,8 +237,7 @@ func main() {
 	outputFilePath := path.Join(logDir, module, LoggerOutput)
 	outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
 	if err != nil {
-		daemonize.SignalOutcome(err)
-		os.Exit(1)
+		return daemonize.SignalOutcome(err)
 	}
 	defer func() {
 		outputFile.Sync()
@@ -245,16 +246,14 @@ func main() {
 	syslog.SetOutput(outputFile)
 
 	if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
-		daemonize.SignalOutcome(err)
-		os.Exit(1)
+		return daemonize.SignalOutcome(err)
 	}
 
 	syslog.Printf("Hello, ChubaoFS Storage\n%s\n", Version)
 
 	err = modifyOpenFiles()
 	if err != nil {
-		daemonize.SignalOutcome(err)
-		os.Exit(1)
+		return daemonize.SignalOutcome(err)
 	}
 	// Setup thread limit from 10,000 to 40,000
 	modifyMaxThreadLimit()
@@ -263,8 +262,7 @@ func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	if err = ump.InitUmp(role); err != nil {
 		log.LogFlush()
-		daemonize.SignalOutcome(fmt.Errorf("Fatal: init warnLogDir fail:%v ", err))
-		os.Exit(1)
+		return daemonize.SignalOutcome(fmt.Errorf("Fatal: init warnLogDir fail:%v ", err))
 	}
 
 	if profPort != "" {
@@ -273,8 +271,7 @@ func main() {
 			e := http.ListenAndServe(fmt.Sprintf(":%v", profPort), nil)
 			if e != nil {
 				log.LogFlush()
-				daemonize.SignalOutcome(fmt.Errorf("cannot listen pprof %v err %v", profPort, err))
-				os.Exit(1)
+				_ = daemonize.SignalOutcome(fmt.Errorf("cannot listen pprof %v err %v", profPort, err))
 			}
 		}()
 	}
@@ -284,8 +281,7 @@ func main() {
 	if err != nil {
 		log.LogFlush()
 		syslog.Printf("Fatal: failed to start the ChubaoFS %v daemon err %v - ", role, err)
-		daemonize.SignalOutcome(fmt.Errorf("Fatal: failed to start the ChubaoFS %v daemon err %v - ", role, err))
-		os.Exit(1)
+		return daemonize.SignalOutcome(fmt.Errorf("Fatal: failed to start the ChubaoFS %v daemon err %v - ", role, err))
 	}
 	startComplete = true
 
@@ -299,7 +295,7 @@ func main() {
 	// Block main goroutine until server shutdown.
 	server.Sync()
 	log.LogFlush()
-	os.Exit(0)
+	return nil
 }
 
 func startDaemon() error {

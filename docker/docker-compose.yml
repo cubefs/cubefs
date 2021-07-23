@@ -51,11 +51,14 @@ services:
             - ${DiskPath:-./docker_data}/master1/data:/cfs/data
             - ./bin:/cfs/bin:ro
             - ${DiskPath:-./docker_data}/master1/log:/cfs/log
+            - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/master1.json:/cfs/conf/master.json
             - ./script/start_master.sh:/cfs/script/start.sh
-        command: /bin/sh /cfs/script/start.sh
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/master.json -test.coverprofile=/cfs/coverage/node_master1.cov
         restart: on-failure
         privileged: true
+        environment:
+          - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.11
@@ -72,11 +75,14 @@ services:
             - ${DiskPath:-./docker_data}/master2/data:/cfs/data
             - ./bin:/cfs/bin:ro
             - ${DiskPath:-./docker_data}/master2/log:/cfs/log
+            - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/master2.json:/cfs/conf/master.json
             - ./script/start_master.sh:/cfs/script/start.sh
-        command: /bin/sh /cfs/script/start.sh
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/master.json -test.coverprofile=/cfs/coverage/node_master2.cov
         restart: on-failure
         privileged: true
+        environment:
+          - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.12
@@ -92,11 +98,14 @@ services:
             - ${DiskPath:-./docker_data}/master3/data:/cfs/data
             - ./bin:/cfs/bin:ro
             - ${DiskPath:-./docker_data}/master3/log:/cfs/log
+            - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/master3.json:/cfs/conf/master.json
             - ./script/start_master.sh:/cfs/script/start.sh
-        command: /bin/sh /cfs/script/start.sh
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/master.json -test.coverprofile=/cfs/coverage/node_master3.cov
         restart: on-failure
         privileged: true
+        environment:
+          - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.13
@@ -113,11 +122,14 @@ services:
             - ${DiskPath:-./docker_data}/metanode1/data:/cfs/data
             - ./bin:/cfs/bin:ro
             - ${DiskPath:-./docker_data}/metanode1/log:/cfs/log
+            - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
-        command: /bin/bash /cfs/script/start.sh
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/metanode.json -test.coverprofile=/cfs/coverage/node_metanode1.cov
         restart: on-failure
         privileged: true
+        environment:
+          - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.21
@@ -134,11 +146,14 @@ services:
             - ${DiskPath:-./docker_data}/metanode2/data:/cfs/data
             - ./bin:/cfs/bin:ro
             - ${DiskPath:-./docker_data}/metanode2/log:/cfs/log
+            - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
-        command: /bin/bash /cfs/script/start.sh
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/metanode.json -test.coverprofile=/cfs/coverage/node_metanode2.cov
         restart: on-failure
         privileged: true
+        environment:
+          - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.22
@@ -155,11 +170,14 @@ services:
             - ${DiskPath:-./docker_data}/metanode3/data:/cfs/data
             - ./bin:/cfs/bin:ro
             - ${DiskPath:-./docker_data}/metanode3/log:/cfs/log
+            - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
-        command: /bin/bash /cfs/script/start.sh
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/metanode.json -test.coverprofile=/cfs/coverage/node_metanode3.cov
         restart: on-failure
         privileged: true
+        environment:
+          - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.23
@@ -176,11 +194,14 @@ services:
             - ${DiskPath:-./docker_data}/metanode4/data:/cfs/data
             - ./bin:/cfs/bin:ro
             - ${DiskPath:-./docker_data}/metanode4/log:/cfs/log
+            - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
-        command: /bin/bash /cfs/script/start.sh
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/metanode.json -test.coverprofile=/cfs/coverage/node_metanode4.cov
         restart: on-failure
         privileged: true
+        environment:
+          - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.24
@@ -197,11 +218,14 @@ services:
             - ${DiskPath:-./docker_data}/datanode1/disk:/cfs/disk
             - ./bin:/cfs/bin:ro
             - ${DiskPath:-./docker_data}/datanode1/log:/cfs/log
+            - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
-        command: /bin/bash /cfs/script/start.sh
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/datanode.json -test.coverprofile=/cfs/coverage/node_datanode1.cov
         restart: on-failure
         privileged: true
+        environment:
+          - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.31
@@ -218,11 +242,14 @@ services:
             - ${DiskPath:-./docker_data}/datanode2/disk:/cfs/disk
             - ./bin:/cfs/bin:ro
             - ${DiskPath:-./docker_data}/datanode2/log:/cfs/log
+            - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
-        command: /bin/sh /cfs/script/start.sh
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/datanode.json -test.coverprofile=/cfs/coverage/node_datanode2.cov
         restart: on-failure
         privileged: true
+        environment:
+          - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.32
@@ -239,11 +266,14 @@ services:
             - ${DiskPath:-./docker_data}/datanode3/disk:/cfs/disk
             - ./bin:/cfs/bin:ro
             - ${DiskPath:-./docker_data}/datanode3/log:/cfs/log
+            - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
-        command: /bin/sh /cfs/script/start.sh
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/datanode.json -test.coverprofile=/cfs/coverage/node_datanode3.cov
         restart: on-failure
         privileged: true
+        environment:
+          - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.33
@@ -260,11 +290,14 @@ services:
             - ${DiskPath:-./docker_data}/datanode4/disk:/cfs/disk
             - ./bin:/cfs/bin:ro
             - ${DiskPath:-./docker_data}/datanode4/log:/cfs/log
+            - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
-        command: /bin/sh /cfs/script/start.sh
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/datanode.json -test.coverprofile=/cfs/coverage/node_datanode4.cov
         restart: on-failure
         privileged: true
+        environment:
+          - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.34
@@ -277,9 +310,10 @@ services:
         volumes:
             - ./bin:/cfs/bin:ro
             - ${DiskPath:-./docker_data}/objectnode1/log:/cfs/log
+            - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/objectnode.json:/cfs/conf/objectnode.json
             - ./script/start_objectnode.sh:/cfs/script/start.sh
-        command: /bin/sh /cfs/script/start.sh
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/objectnode.json -test.coverprofile=/cfs/coverage/node_objectnode1.cov
         restart: on-failure
         privileged: true
         environment:
@@ -296,9 +330,10 @@ services:
         volumes:
             - ./bin:/cfs/bin:ro
             - ${DiskPath:-./docker_data}/objectnode2/log:/cfs/log
+            - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/objectnode.json:/cfs/conf/objectnode.json
             - ./script/start_objectnode.sh:/cfs/script/start.sh
-        command: /bin/sh /cfs/script/start.sh
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/objectnode.json -test.coverprofile=/cfs/coverage/node_objectnode2.cov
         restart: on-failure
         privileged: true
         environment:
@@ -315,9 +350,10 @@ services:
         volumes:
             - ./bin:/cfs/bin:ro
             - ${DiskPath:-./docker_data}/objectnode3/log:/cfs/log
+            - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/objectnode.json:/cfs/conf/objectnode.json
             - ./script/start_objectnode.sh:/cfs/script/start.sh
-        command: /bin/sh /cfs/script/start.sh
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/objectnode.json -test.coverprofile=/cfs/coverage/node_objectnode3.cov
         restart: on-failure
         privileged: true
         environment:
@@ -336,7 +372,7 @@ services:
           - ${DiskPath:-./docker_data}/console/log:/cfs/log
           - ./conf/console.json:/cfs/conf/console.json
           - ./script/start_console.sh:/cfs/script/start.sh
-        command: /bin/sh /cfs/script/start.sh
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/console.json
         restart: on-failure
         privileged: true
         networks:
@@ -425,6 +461,16 @@ services:
         networks:
             extnetwork:
 
+    build_test:
+        image: chubaofs/cfs-base:1.3
+        volumes:
+            - ../:/go/src/github.com/chubaofs/chubaofs
+        command:
+            /bin/bash /go/src/github.com/chubaofs/chubaofs/docker/script/build.sh test
+        networks:
+            extnetwork:
+
+
     unit_test:
         image: chubaofs/cfs-base:1.3
         volumes:
@@ -436,5 +482,15 @@ services:
                 set -e;
                 mkdir -p /go/src/github.com/chubaofs/chubaofs/docker/bin &&
                 cd /go/src/github.com/chubaofs/chubaofs && make test
+        networks:
+            extnetwork:
+
+    cover_analyze:
+        image: chubaofs/cfs-base:1.3
+        volumes:
+            - ./script/analyze_coverage.sh:/cfs/script/analyze_coverage.sh:ro
+            - ../:/go/src/github.com/chubaofs/chubaofs
+            - ./docker_data/coverage:/cfs/coverage
+        command: /bin/bash /cfs/script/analyze_coverage.sh
         networks:
             extnetwork:

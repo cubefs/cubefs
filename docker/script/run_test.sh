@@ -120,7 +120,7 @@ show_cluster_info() {
 
 add_data_partitions() {
     echo -n "Increasing DPs    ... "
-    ${cli} vol add-dp ${VolName} 20 &> /dev/null
+    ${cli} vol add-dp ${VolName} 2 &> /dev/null
     if [[ $? -eq 0 ]] ; then
         echo -e "\033[32mdone\033[0m"
         return
@@ -248,6 +248,6 @@ add_data_partitions ; sleep 3
 show_cluster_info
 start_client ; sleep 2
 run_ltptest
-#run_s3_test
+run_s3_test
 stop_client
 delete_volume
