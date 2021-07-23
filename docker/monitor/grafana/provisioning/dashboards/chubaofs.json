@@ -15,7 +15,7 @@
   "editable": true,
   "gnetId": null,
   "graphTooltip": 0,
-  "iteration": 1613789087580,
+  "iteration": 1627369955001,
   "links": [],
   "panels": [
     {
@@ -1645,9 +1645,10 @@
           "repeatDirection": "h",
           "scopedVars": {
             "iotype": {
+              "isNone": true,
               "selected": true,
-              "text": "write",
-              "value": "write"
+              "text": "None",
+              "value": ""
             }
           },
           "seriesOverrides": [
@@ -1696,6 +1697,386 @@
               "format": "percentunit",
               "logBase": 1,
               "show": true
+            }
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
+        },
+        {
+          "aliasColors": {},
+          "bars": false,
+          "dashLength": 10,
+          "dashes": false,
+          "datasource": null,
+          "description": "top k volume inode count",
+          "fill": 1,
+          "fillGradient": 0,
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 0,
+            "y": 36
+          },
+          "id": 310,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "nullPointMode": "null",
+          "options": {
+            "dataLinks": []
+          },
+          "percentage": false,
+          "pointradius": 5,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [
+            {
+              "alias": "/rate.*/",
+              "yaxis": 2
+            }
+          ],
+          "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "topk($topk, cfs_master_vol_meta_count{app=\"$app\",cluster=\"$cluster\", type=\"mp\", instance=\"$master_instance\"})",
+              "format": "time_series",
+              "intervalFactor": 1,
+              "legendFormat": "{{volName}}",
+              "refId": "C"
+            },
+            {
+              "expr": "topk($topk, rate(cfs_master_vol_meta_count{app=\"$app\",cluster=\"$cluster\", type=\"mp\", instance=\"$master_instance\"}[1m]))",
+              "format": "time_series",
+              "intervalFactor": 1,
+              "legendFormat": "rate_{{volName}}",
+              "refId": "A"
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeRegions": [],
+          "timeShift": null,
+          "title": "VolumeMPCount",
+          "tooltip": {
+            "shared": true,
+            "sort": 2,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "buckets": null,
+            "mode": "time",
+            "name": null,
+            "show": false,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "format": "none",
+              "logBase": 1,
+              "show": false
+            },
+            {
+              "format": "cps",
+              "logBase": 1,
+              "show": false
+            }
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
+        },
+        {
+          "aliasColors": {},
+          "bars": false,
+          "dashLength": 10,
+          "dashes": false,
+          "datasource": null,
+          "description": "top k volume inode count",
+          "fill": 1,
+          "fillGradient": 0,
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 6,
+            "y": 36
+          },
+          "id": 309,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "nullPointMode": "null",
+          "options": {
+            "dataLinks": []
+          },
+          "percentage": false,
+          "pointradius": 5,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [
+            {
+              "alias": "/rate.*/",
+              "yaxis": 2
+            }
+          ],
+          "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "topk($topk, cfs_master_vol_meta_count{app=\"$app\",cluster=\"$cluster\", type=\"dp\", instance=\"$master_instance\"})",
+              "format": "time_series",
+              "intervalFactor": 1,
+              "legendFormat": "{{volName}}",
+              "refId": "C"
+            },
+            {
+              "expr": "topk($topk, rate(cfs_master_vol_meta_count{app=\"$app\",cluster=\"$cluster\", type=\"dp\", instance=\"$master_instance\"}[1m]))",
+              "format": "time_series",
+              "intervalFactor": 1,
+              "legendFormat": "rate_{{volName}}",
+              "refId": "A"
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeRegions": [],
+          "timeShift": null,
+          "title": "VolumeDPCount",
+          "tooltip": {
+            "shared": true,
+            "sort": 2,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "buckets": null,
+            "mode": "time",
+            "name": null,
+            "show": false,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "format": "none",
+              "logBase": 1,
+              "show": false
+            },
+            {
+              "format": "cps",
+              "logBase": 1,
+              "show": false
+            }
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
+        },
+        {
+          "aliasColors": {},
+          "bars": false,
+          "dashLength": 10,
+          "dashes": false,
+          "datasource": null,
+          "description": "top k volume inode count",
+          "fill": 1,
+          "fillGradient": 0,
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 12,
+            "y": 36
+          },
+          "id": 307,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "nullPointMode": "null",
+          "options": {
+            "dataLinks": []
+          },
+          "percentage": false,
+          "pointradius": 5,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [
+            {
+              "alias": "/rate.*/",
+              "yaxis": 2
+            }
+          ],
+          "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "topk($topk, cfs_master_vol_meta_count{app=\"$app\",cluster=\"$cluster\", type=\"inode\", instance=\"$master_instance\"})",
+              "format": "time_series",
+              "intervalFactor": 1,
+              "legendFormat": "{{volName}}",
+              "refId": "C"
+            },
+            {
+              "expr": "topk($topk, rate(cfs_master_vol_meta_count{app=\"$app\",cluster=\"$cluster\", type=\"inode\", instance=\"$master_instance\"}[1m]))",
+              "format": "time_series",
+              "intervalFactor": 1,
+              "legendFormat": "rate_{{volName}}",
+              "refId": "A"
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeRegions": [],
+          "timeShift": null,
+          "title": "VolumeInodeCount",
+          "tooltip": {
+            "shared": true,
+            "sort": 2,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "buckets": null,
+            "mode": "time",
+            "name": null,
+            "show": false,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "format": "none",
+              "logBase": 1,
+              "show": false
+            },
+            {
+              "format": "cps",
+              "logBase": 1,
+              "show": false
+            }
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
+        },
+        {
+          "aliasColors": {},
+          "bars": false,
+          "dashLength": 10,
+          "dashes": false,
+          "datasource": null,
+          "description": "top k volume inode count",
+          "fill": 1,
+          "fillGradient": 0,
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 18,
+            "y": 36
+          },
+          "id": 308,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "nullPointMode": "null",
+          "options": {
+            "dataLinks": []
+          },
+          "percentage": false,
+          "pointradius": 5,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [
+            {
+              "alias": "/rate.*/",
+              "yaxis": 2
+            }
+          ],
+          "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "topk($topk, cfs_master_vol_meta_count{app=\"$app\",cluster=\"$cluster\", type=\"dentry\", instance=\"$master_instance\"})",
+              "format": "time_series",
+              "intervalFactor": 1,
+              "legendFormat": "{{volName}}",
+              "refId": "C"
+            },
+            {
+              "expr": "topk($topk, rate(cfs_master_vol_meta_count{app=\"$app\",cluster=\"$cluster\", type=\"dentry\", instance=\"$master_instance\"}[1m]))",
+              "format": "time_series",
+              "intervalFactor": 1,
+              "legendFormat": "rate_{{volName}}",
+              "refId": "A"
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeRegions": [],
+          "timeShift": null,
+          "title": "VolumeDentryCount",
+          "tooltip": {
+            "shared": true,
+            "sort": 2,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "buckets": null,
+            "mode": "time",
+            "name": null,
+            "show": false,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "format": "none",
+              "logBase": 1,
+              "show": false
+            },
+            {
+              "format": "cps",
+              "logBase": 1,
+              "show": false
             }
           ],
           "yaxis": {
@@ -2641,14 +3022,14 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "topk($topk, sum(rate(cfs_metanode_[[mnOp]]_count{app=\"$app\", cluster=\"$cluster\"}[1m])) by (instance, op))",
+              "expr": "topk($topk, sum(rate(cfs_metanode_[[mnOp]]_hist_count{app=\"$app\", cluster=\"$cluster\"}[1m])) by (instance, op))",
               "format": "time_series",
               "intervalFactor": 1,
               "legendFormat": "{{instance}}",
               "refId": "B"
             },
             {
-              "expr": "sum(rate(cfs_metanode_[[mnOp]]_count{app=\"$app\", cluster=\"$cluster\"}[1m]))",
+              "expr": "sum(rate(cfs_metanode_[[mnOp]]_hist_count{app=\"$app\", cluster=\"$cluster\"}[1m]))",
               "format": "time_series",
               "intervalFactor": 1,
               "legendFormat": "sum",
@@ -2866,14 +3247,14 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "topk($topk, sum(rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m])) by (instance, op))",
+              "expr": "topk($topk, sum(rate(cfs_dataNode_[[dnOp]]_hist_count{app=~\"$app\", cluster=\"$cluster\"}[5m])) by (instance, op))",
               "format": "time_series",
               "intervalFactor": 1,
               "legendFormat": "{{instance}}",
               "refId": "P"
             },
             {
-              "expr": "sum(rate(cfs_dataNode_[[dnOp]]_count{app=~\"$app\", cluster=\"$cluster\"}[1m]))",
+              "expr": "sum(rate(cfs_dataNode_[[dnOp]]_hist_count{app=~\"$app\", cluster=\"$cluster\"}[5m]))",
               "format": "time_series",
               "intervalFactor": 1,
               "legendFormat": "sum",
@@ -5660,7 +6041,6 @@
       {
         "allValue": null,
         "current": {
-          "selected": true,
           "text": "chubaofs01",
           "value": "chubaofs01"
         },
@@ -5686,7 +6066,6 @@
       {
         "allValue": null,
         "current": {
-          "selected": true,
           "text": "metanode",
           "value": "metanode"
         },
@@ -6432,9 +6811,8 @@
       {
         "allValue": null,
         "current": {
-          "selected": true,
-          "text": "192.168.0.23:9500",
-          "value": "192.168.0.23:9500"
+          "text": "192.168.0.21:9500",
+          "value": "192.168.0.21:9500"
         },
         "datasource": "Prometheus",
         "definition": "label_values(up{app=\"$app\", role=\"$role\", cluster=\"$cluster\"}, instance)",
@@ -6458,9 +6836,8 @@
       {
         "allValue": null,
         "current": {
-          "selected": true,
-          "text": "192.168.0.23",
-          "value": "192.168.0.23"
+          "text": "192.168.0.21",
+          "value": "192.168.0.21"
         },
         "datasource": "Prometheus",
         "definition": "label_values(go_info{instance=\"$instance\", cluster=\"$cluster\"}, instance)",
@@ -6484,7 +6861,6 @@
       {
         "allValue": null,
         "current": {
-          "selected": true,
           "text": "192.168.0.11:17010",
           "value": "192.168.0.11:17010"
         },
@@ -6510,10 +6886,9 @@
       {
         "allValue": null,
         "current": {
-          "text": "write",
-          "value": [
-            "write"
-          ]
+          "isNone": true,
+          "text": "None",
+          "value": ""
         },
         "datasource": "Prometheus",
         "definition": "label_values(cfs_dataNode_dataPartitionIOBytes{app=\"$app\",cluster=\"$cluster\"}, type)",
