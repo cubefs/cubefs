@@ -213,6 +213,10 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 	if err = e.checkOffsetAndSize(offset, size); err != nil {
 		return
 	}
+	if err = e.checkWriteParameter(offset, size, writeType); err != nil {
+		return
+	}
+
 	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
 		return
 	}
@@ -277,10 +281,19 @@ func (e *Extent) checkOffsetAndSize(offset, size int64) error {
 	if offset >= util.BlockCount*util.BlockSize || size == 0 {
 		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
 	}
-
 	//if size > util.BlockSize {
 	//	return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
 	//}
+	return nil
+}
+
+func (e *Extent) checkWriteParameter(offset, size int64, writeType int) error {
+	if IsAppendWrite(writeType) && offset != e.dataSize {
+		return NewParameterMismatchErr(fmt.Sprintf("illegal append: offset=%v size=%v extentsize=%v", offset, size, e.dataSize))
+	}
+	if IsRandomWrite(writeType) && offset+size > e.dataSize {
+		return NewParameterMismatchErr(fmt.Sprintf("illegal overwrite: offset=%v size=%v extentsize=%v", offset, size, e.dataSize))
+	}
 	return nil
 }
 
