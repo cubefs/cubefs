@@ -23,8 +23,8 @@ import (
 )
 
 func TestMemberWithNoLease(t *testing.T) {
-	f, w := getLogFile("", "changemember_nolease.log")
 	servers := initTestServer(peers, false, true, 1)
+	f, w := getLogFile("", "changemember_nolease.log")
 	defer func() {
 		w.Flush()
 		f.Close()
@@ -90,8 +90,8 @@ func TestMemberWithNoLease(t *testing.T) {
 }
 
 func TestMemberWithLease(t *testing.T) {
-	f, w := getLogFile("", "changemember_lease.log")
 	servers := initTestServer(peers, true, true, 1)
+	f, w := getLogFile("", "changemember_lease.log")
 	defer func() {
 		w.Flush()
 		f.Close()

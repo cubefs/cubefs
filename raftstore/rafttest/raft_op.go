@@ -105,7 +105,7 @@ func putDataWithRetry(servers []*testServer, startIndex int, keysize int, w *buf
 					continue
 				}
 				if vget, err := server.sm[1].Get(k); err != nil || vget != v {
-					t.Fatalf("get Value err: %v", err)
+					t.Errorf("get Value err: %v", err)
 				}
 				done = true
 				break

@@ -9,8 +9,8 @@ import (
 )
 
 func TestLinearWithMemberChange(t *testing.T) {
-	f, w := getLogFile("", "linearWithMemberChange.log")
 	servers := initTestServer(peers, true, true, 1)
+	f, w := getLogFile("", "linearWithMemberChange.log")
 	defer func() {
 		w.Flush()
 		f.Close()
@@ -30,10 +30,10 @@ func TestLinearWithMemberChange(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func(len int) {
+		defer wg.Done()
 		if _, err := leadServer.putData(1, len, PutDataStep, w); err != nil {
 			t.Fatal(err)
 		}
-		wg.Done()
 	}(dataLen)
 	dataLen += PutDataStep
 	// test add member
@@ -41,16 +41,17 @@ func TestLinearWithMemberChange(t *testing.T) {
 	servers = append(servers, newServer)
 	printStatus(servers, w)
 	wg.Wait()
+	leadServer = waitElect(servers, 1, w)
 	compareTwoServers(leadServer, newServer, w, t)
 	printStatus(servers, w)
 
 	// test delete member
 	wg.Add(1)
 	go func(len int) {
+		defer wg.Done()
 		if _, err := leadServer.putData(1, len, PutDataStep, w); err != nil {
 			t.Fatal(err)
 		}
-		wg.Done()
 	}(dataLen)
 	// delete node
 	newServers := make([]*testServer, 0)
@@ -135,8 +136,8 @@ func TestLinearWithMemberChange(t *testing.T) {
 //}
 
 func TestLinearWithLeaderChange(t *testing.T) {
-	f, w := getLogFile("", "linearWithLeaderChange.log")
 	servers := initTestServer(peers, true, false, 1)
+	f, w := getLogFile("", "linearWithLeaderChange.log")
 	defer func() {
 		w.Flush()
 		f.Close()
@@ -156,8 +157,8 @@ func TestLinearWithLeaderChange(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func(len int) {
+		defer wg.Done()
 		putDataWithRetry(servers, len, PutDataStep, w, t)
-		wg.Done()
 	}(dataLen)
 	dataLen += PutDataStep
 
@@ -182,8 +183,8 @@ func TestLinearWithLeaderChange(t *testing.T) {
 }
 
 func TestLinearWithFollowerDown(t *testing.T) {
-	f, w := getLogFile("", "linearWithFollowerDown.log")
 	servers := initTestServer(peers, true, false, 1)
+	f, w := getLogFile("", "linearWithFollowerDown.log")
 	defer func() {
 		w.Flush()
 		f.Close()
@@ -203,10 +204,10 @@ func TestLinearWithFollowerDown(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func(len int) {
+		defer wg.Done()
 		if _, err := leadServer.putData(1, len, PutDataStep, w); err != nil {
 			t.Fatal(err)
 		}
-		wg.Done()
 	}(dataLen)
 	dataLen += PutDataStep
 
@@ -236,8 +237,8 @@ func TestLinearWithFollowerDown(t *testing.T) {
 }
 
 func TestLinearWithLeaderDown(t *testing.T) {
-	f, w := getLogFile("", "linearWithLeaderDown.log")
 	servers := initTestServer(peers, true, false, 1)
+	f, w := getLogFile("", "linearWithLeaderDown.log")
 	defer func() {
 		w.Flush()
 		f.Close()
@@ -297,8 +298,8 @@ func restartLeader(servers []*testServer, w *bufio.Writer) (leaderServer *testSe
 }
 
 func TestLinearWithDelLeader(t *testing.T) {
-	f, w := getLogFile("", "linearWithDelLeader.log")
 	servers := initTestServer(peers, true, false, 1)
+	f, w := getLogFile("", "linearWithDelLeader.log")
 	defer func() {
 		w.Flush()
 		f.Close()

@@ -24,8 +24,8 @@ import (
 )
 
 func TestWithoutLeaseAndDown(t *testing.T) {
-	f, w := getLogFile("", "withoutLeaseAndDown.log")
 	servers := initTestServer(peers, false, true, 1)
+	f, w := getLogFile("", "withoutLeaseAndDown.log")
 
 	defer func() {
 		w.Flush()
@@ -142,8 +142,8 @@ func TestWithoutLeaseAndDown(t *testing.T) {
 }
 
 func TestWithLeaseAndDown(t *testing.T) {
-	f, w := getLogFile("", "withLeaseAndDown.log")
 	servers := initTestServer(peers, true, true, 1)
+	f, w := getLogFile("", "withLeaseAndDown.log")
 	defer func() {
 		w.Flush()
 		f.Close()
@@ -277,9 +277,9 @@ func TestWithLeaseAndDown(t *testing.T) {
 }
 
 func TestWithPriorityAndDown(t *testing.T) {
-	f, w := getLogFile("", "withPriorityAndDown.log")
 	peers := []proto.Peer{{ID: 1, Priority: 1}, {ID: 2, Priority: 3}, {ID: 3, Priority: 2}}
 	servers := initTestServer(peers, false, true, 1)
+	f, w := getLogFile("", "withPriorityAndDown.log")
 	defer func() {
 		w.Flush()
 		f.Close()

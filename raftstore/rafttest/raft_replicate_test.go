@@ -35,13 +35,14 @@ func verifyRedoValue(nid uint64, ms *memoryStatemachine) {
 
 func TestLeaderReplWithoutLease(t *testing.T) {
 	var servers []*testServer
+	servers = initTestServer(peers, false, true, 1)
+
 	f, w := getLogFile("", "leaderReplWithoutLease.log")
 	defer func() {
 		w.Flush()
 		f.Close()
 	}()
 
-	servers = initTestServer(peers, false, true, 1)
 	defer func() {
 		for _, server := range servers {
 			server.raft.Stop()
@@ -152,8 +153,8 @@ func TestLeaderReplWithoutLease(t *testing.T) {
 }
 
 func TestLeaderReplWithLease(t *testing.T) {
-	f, w := getLogFile("", "leaderReplWithLease.log")
 	servers := initTestServer(peers, true, false, 1)
+	f, w := getLogFile("", "leaderReplWithLease.log")
 	defer func() {
 		w.Flush()
 		f.Close()
@@ -267,8 +268,8 @@ func TestLeaderReplWithLease(t *testing.T) {
 }
 
 func TestFollowerRepl(t *testing.T) {
-	f, w := getLogFile("", "followerRepl.log")
 	servers := initTestServer(peers, false, false, 1)
+	f, w := getLogFile("", "followerRepl.log")
 	defer func() {
 		w.Flush()
 		f.Close()

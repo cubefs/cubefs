@@ -14,8 +14,8 @@ var (
 )
 
 func TestPutBigValue(t *testing.T) {
-	f, w := getLogFile("", "putBigValue.log")
 	servers := initTestServer(peers, true, false, groupNum)
+	f, w := getLogFile("", "putBigValue.log")
 	time.Sleep(time.Second)
 
 	defer func() {
