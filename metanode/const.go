@@ -59,8 +59,10 @@ type (
 	UpdateDentryResp = proto.UpdateDentryResponse
 	// Client -> MetaNode read dir request
 	ReadDirReq = proto.ReadDirRequest
+	ReadDirOnlyReq = proto.ReadDirOnlyRequest
 	// MetaNode -> Client read dir response
 	ReadDirResp = proto.ReadDirResponse
+	ReadDirOnlyResp = proto.ReadDirOnlyResponse
 	// MetaNode -> Client lookup
 	LookupReq = proto.LookupRequest
 	// Client -> MetaNode lookup
@@ -119,6 +121,8 @@ const (
 	opFSMEvictInodeBatch
 
 	opFSMExtentsAddWithCheck
+
+	opFSMUpdateSummaryInfo
 )
 
 var (

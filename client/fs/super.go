@@ -54,6 +54,7 @@ type Super struct {
 	fsyncOnClose  bool
 	enableXattr   bool
 	rootIno       uint64
+	sc *SummaryCache
 }
 
 // Functions that Super needs to implement
@@ -73,6 +74,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		Authenticate:  opt.Authenticate,
 		TicketMess:    opt.TicketMess,
 		ValidateOwner: opt.Authenticate || opt.AccessKey == "",
+		EnableSummary: opt.EnableSummary,
 	}
 	s.mw, err = meta.NewMetaWrapper(metaConfig)
 	if err != nil {
@@ -102,6 +104,10 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.disableDcache = opt.DisableDcache
 	s.fsyncOnClose = opt.FsyncOnClose
 	s.enableXattr = opt.EnableXattr
+
+	if opt.EnableSummary {
+		s.sc = NewSummaryCache(DefaultSummaryExpiration, MaxSummaryCache)
+	}
 
 	var extentConfig = &stream.ExtentConfig{
 		Volume:            opt.Volname,

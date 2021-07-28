@@ -155,6 +155,8 @@ const (
 	OpOk                 uint8 = 0xF0
 
 	OpPing uint8 = 0xFF
+	OpMetaUpdateSummaryInfo         uint8 = 0x3B
+	OpMetaReadDirOnly				uint8 = 0x3C
 )
 
 const (

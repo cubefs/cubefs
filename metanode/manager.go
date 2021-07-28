@@ -133,6 +133,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opUpdateDentry(conn, p, remoteAddr)
 	case proto.OpMetaReadDir:
 		err = m.opReadDir(conn, p, remoteAddr)
+	case proto.OpMetaReadDirOnly:
+		err = m.opReadDirOnly(conn, p, remoteAddr)
 	case proto.OpCreateMetaPartition:
 		err = m.opCreateMetaPartition(conn, p, remoteAddr)
 	case proto.OpMetaNodeHeartbeat:
@@ -182,6 +184,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opMetaRemoveXAttr(conn, p, remoteAddr)
 	case proto.OpMetaListXAttr:
 		err = m.opMetaListXAttr(conn, p, remoteAddr)
+	case proto.OpMetaUpdateSummaryInfo:
+		err = m.opMetaUpdateSummaryInfo(conn, p, remoteAddr)
 	// operations for multipart session
 	case proto.OpCreateMultipart:
 		err = m.opCreateMultipart(conn, p, remoteAddr)

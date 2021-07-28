@@ -178,6 +178,17 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err erro
 	return
 }
 
+func (mp *metaPartition) ReadDirOnly(req *ReadDirOnlyReq, p *Packet) (err error) {
+	resp := mp.readDirOnly(req)
+	reply, err := json.Marshal(resp)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	p.PacketOkWithBody(reply)
+	return
+}
+
 // ReadDir reads the directory based on the given request.
 func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 	resp := mp.readDir(req)
