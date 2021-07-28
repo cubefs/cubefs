@@ -1,0 +1,25 @@
+# This is a basic workflow to help you get started with Actions
+
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Prepare base docker image
+        run: |
+          docker pull nginx:1.17.8
+          docker build -t chubaofs/cfs-base:1.2 -f docker/Dockerfile docker
+
+      - name: Build and run CI tests
+        run: |
+          docker/run_docker.sh -t
+          docker/run_docker.sh -l
