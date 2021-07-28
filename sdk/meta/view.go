@@ -136,6 +136,7 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 	}
 	atomic.StoreUint64(&mw.totalSize, info.TotalSize)
 	atomic.StoreUint64(&mw.usedSize, info.UsedSize)
+	atomic.StoreUint64(&mw.inodeCount, info.InodeCount)
 	log.LogInfof("VolStatInfo: info(%v)", info)
 	return
 }

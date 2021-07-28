@@ -156,6 +156,7 @@ type VolStatInfo struct {
 	UsedSize    uint64
 	UsedRatio   string
 	EnableToken bool
+	InodeCount  uint64
 }
 
 // DataPartition represents the structure of storing the file contents.

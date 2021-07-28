@@ -140,13 +140,16 @@ func (s *Super) Root() (fs.Node, error) {
 
 // Statfs handles the Statfs request and returns a set of statistics.
 func (s *Super) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fuse.StatfsResponse) error {
-	total, used := s.mw.Statfs()
+	const defaultMaxMetaPartitionInodeID uint64 = 1<<63 - 1
+	total, used, inodeCount := s.mw.Statfs()
 	resp.Blocks = total / uint64(DefaultBlksize)
 	resp.Bfree = (total - used) / uint64(DefaultBlksize)
 	resp.Bavail = resp.Bfree
 	resp.Bsize = DefaultBlksize
 	resp.Namelen = DefaultMaxNameLen
 	resp.Frsize = DefaultBlksize
+	resp.Files = inodeCount
+	resp.Ffree = defaultMaxMetaPartitionInodeID - inodeCount
 	return nil
 }
 
