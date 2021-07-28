@@ -107,8 +107,9 @@ type MetaWrapper struct {
 	rwPartitions []*MetaPartition
 	epoch        uint64
 
-	totalSize uint64
-	usedSize  uint64
+	totalSize  uint64
+	usedSize   uint64
+	inodeCount uint64
 
 	authenticate bool
 	Ticket       auth.Ticket
