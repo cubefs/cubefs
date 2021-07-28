@@ -223,8 +223,8 @@ func (cache *ExtentCache) Get(offset uint64) (ret *proto.ExtentKey) {
 	return ret
 }
 
-// PrepareReadRequests classifies the incoming request.
-func (cache *ExtentCache) PrepareReadRequests(offset, size int, data []byte) []*ExtentRequest {
+// PrepareRequests classifies the incoming request.
+func (cache *ExtentCache) PrepareRequests(offset, size int, data []byte) []*ExtentRequest {
 	requests := make([]*ExtentRequest, 0)
 	pivot := &proto.ExtentKey{FileOffset: uint64(offset)}
 	upper := &proto.ExtentKey{FileOffset: uint64(offset + size)}
@@ -246,7 +246,7 @@ func (cache *ExtentCache) PrepareReadRequests(offset, size int, data []byte) []*
 		ekStart := int(ek.FileOffset)
 		ekEnd := int(ek.FileOffset) + int(ek.Size)
 
-		log.LogDebugf("PrepareReadRequests: ino(%v) start(%v) end(%v) ekStart(%v) ekEnd(%v)", cache.inode, start, end, ekStart, ekEnd)
+		log.LogDebugf("PrepareRequests: ino(%v) start(%v) end(%v) ekStart(%v) ekEnd(%v)", cache.inode, start, end, ekStart, ekEnd)
 
 		if start < ekStart {
 			if end <= ekStart {
@@ -291,79 +291,7 @@ func (cache *ExtentCache) PrepareReadRequests(offset, size int, data []byte) []*
 		}
 	})
 
-	log.LogDebugf("PrepareReadRequests: ino(%v) start(%v) end(%v)", cache.inode, start, end)
-	if start < end {
-		// add hole (start, end)
-		req := NewExtentRequest(start, end-start, data[start-offset:end-offset], nil)
-		requests = append(requests, req)
-	}
-
-	return requests
-}
-
-// PrepareWriteRequests TODO explain
-func (cache *ExtentCache) PrepareWriteRequests(offset, size int, data []byte) []*ExtentRequest {
-	requests := make([]*ExtentRequest, 0)
-	pivot := &proto.ExtentKey{FileOffset: uint64(offset)}
-	upper := &proto.ExtentKey{FileOffset: uint64(offset + size)}
-	start := offset
-	end := offset + size
-
-	cache.RLock()
-	defer cache.RUnlock()
-
-	lower := &proto.ExtentKey{}
-	cache.root.DescendLessOrEqual(pivot, func(i btree.Item) bool {
-		ek := i.(*proto.ExtentKey)
-		lower.FileOffset = ek.FileOffset
-		return false
-	})
-
-	cache.root.AscendRange(lower, upper, func(i btree.Item) bool {
-		ek := i.(*proto.ExtentKey)
-		ekStart := int(ek.FileOffset)
-		ekEnd := int(ek.FileOffset) + int(ek.Size)
-
-		log.LogDebugf("PrepareWriteRequests: ino(%v) start(%v) end(%v) ekStart(%v) ekEnd(%v)", cache.inode, start, end, ekStart, ekEnd)
-
-		if start <= ekStart {
-			if end <= ekStart {
-				return false
-			} else if end < ekEnd {
-				var req *ExtentRequest
-				if start < ekStart {
-					// add hole (start, ekStart)
-					req = NewExtentRequest(start, ekStart-start, data[start-offset:ekStart-offset], nil)
-					requests = append(requests, req)
-				}
-				// add non-hole (ekStart, end)
-				req = NewExtentRequest(ekStart, end-ekStart, data[ekStart-offset:end-offset], ek)
-				requests = append(requests, req)
-				start = end
-				return false
-			} else {
-				return true
-			}
-		} else if start < ekEnd {
-			if end <= ekEnd {
-				// add non-hole (start, end)
-				req := NewExtentRequest(start, end-start, data[start-offset:end-offset], ek)
-				requests = append(requests, req)
-				start = end
-				return false
-			} else {
-				// add non-hole (start, ekEnd), start = ekEnd
-				req := NewExtentRequest(start, ekEnd-start, data[start-offset:ekEnd-offset], ek)
-				requests = append(requests, req)
-				start = ekEnd
-				return true
-			}
-		} else {
-			return true
-		}
-	})
-
-	log.LogDebugf("PrepareWriteRequests: ino(%v) start(%v) end(%v)", cache.inode, start, end)
+	log.LogDebugf("PrepareRequests: ino(%v) start(%v) end(%v)", cache.inode, start, end)
 	if start < end {
 		// add hole (start, end)
 		req := NewExtentRequest(start, end-start, data[start-offset:end-offset], nil)
