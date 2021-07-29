@@ -25,7 +25,8 @@ This page contains a list of organizations who are using ChubaoFS in production 
 | [BEIKE](https://www.ke.com) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
 | [Reconova](http://www.reconova.com) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
 | [LinkSure Network](https://cn.wifi.com) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
-| [360Search](https://www.so.com) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
+| [Qihoo 360](https://www.so.com) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
+| [Xiaomi](https://www.mi.com/global/) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
 | [Sinosoft](http://www.sinosoft.com.cn) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
 | [DADA](https://about.imdada.cn) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
 | [Club Factory](https://www.wholeeprime.com/) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
