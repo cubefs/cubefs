@@ -24,6 +24,8 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 )
 
+const readDirMax  = 1000	// the maximum number of children that can be returned per operation
+
 type DentryResponse struct {
 	Status uint8
 	Msg    *Dentry
@@ -168,15 +170,20 @@ func (mp *metaPartition) readDir(ctx context.Context, req *ReadDirReq) (resp *Re
 	resp = &ReadDirResp{}
 	begDentry := &Dentry{
 		ParentId: req.ParentID,
+		Name:	  req.Marker,
 	}
 	endDentry := &Dentry{
 		ParentId: req.ParentID + 1,
 	}
 
-	count := 0
+	count := uint64(0)
 	mp.dentryTree.AscendRange(begDentry, endDentry, func(i BtreeItem) bool {
 		count += 1
 		d := i.(*Dentry)
+		if req.IsBatch && count > readDirMax {
+			resp.NextMarker = d.Name
+			return false
+		}
 		resp.Children = append(resp.Children, proto.Dentry{
 			Inode: d.Inode,
 			Type:  d.Type,

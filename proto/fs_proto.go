@@ -288,14 +288,17 @@ type BatchInodeGetResponse struct {
 
 // ReadDirRequest defines the request to read dir.
 type ReadDirRequest struct {
-	VolName     string `json:"vol"`
-	PartitionID uint64 `json:"pid"`
-	ParentID    uint64 `json:"pino"`
+	VolName     string 	`json:"vol"`
+	PartitionID uint64 	`json:"pid"`
+	ParentID    uint64 	`json:"pino"`
+	Marker      string 	`json:"marker"` // the name of child from which the operation begins
+	IsBatch		bool	`json:"is_batch"`
 }
 
 // ReadDirResponse defines the response to the request of reading dir.
 type ReadDirResponse struct {
-	Children []Dentry `json:"children"`
+	Children   []Dentry `json:"children"`
+	NextMarker string   `json:"next_marker"` // the name of child from which the next operation begins
 }
 
 // BatchAppendExtentKeyRequest defines the request to append an extent key.

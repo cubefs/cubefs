@@ -475,45 +475,52 @@ func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID 
 	defer tracer.Finish()
 	ctx = tracer.Context()
 
-	req := &proto.ReadDirRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		ParentID:    parentID,
-	}
+	marker := ""
+	children = make([]proto.Dentry, 0)
 
-	packet := proto.NewPacketReqID(ctx)
-	packet.Opcode = proto.OpMetaReadDir
-	packet.PartitionID = mp.PartitionID
-	err = packet.MarshalData(req)
-	if err != nil {
-		log.LogWarnf("readdir: req(%v) err(%v)", *req, err)
-		return
-	}
-
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	metric := exporter.NewTPCnt("OpMetaReadDir")
 	defer metric.Set(err)
 
-	packet, err = mw.sendReadToMP(ctx, mp, packet)
-	if err != nil {
-		log.LogWarnf("readdir: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
-		return
+	for {
+		req := &proto.ReadDirRequest{
+			VolName:     	mw.volname,
+			PartitionID:	mp.PartitionID,
+			ParentID:    	parentID,
+			Marker:		 	marker,
+			IsBatch:		true,
+		}
+		packet := proto.NewPacketReqID(ctx)
+		packet.Opcode = proto.OpMetaReadDir
+		packet.PartitionID = mp.PartitionID
+		err = packet.MarshalData(req)
+		if err != nil {
+			log.LogWarnf("readdir: req(%v) err(%v)", *req, err)
+			return
+		}
+		packet, err = mw.sendReadToMP(ctx, mp, packet)
+		if err != nil {
+			log.LogWarnf("readdir: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+			return
+		}
+		status = parseStatus(packet.ResultCode)
+		if status != statusOK {
+			log.LogWarnf("readdir: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+			return
+		}
+		resp := new(proto.ReadDirResponse)
+		err = packet.UnmarshalData(resp)
+		if err != nil {
+			log.LogWarnf("readdir: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
+			return
+		}
+		log.LogDebugf("readdir: packet(%v) mp(%v) req(%v) current dentry count(%v)", packet, mp, *req, len(resp.Children))
+		children = append(children, resp.Children...)
+		if resp.NextMarker == "" {
+			break
+		}
+		marker = resp.NextMarker
 	}
-
-	status = parseStatus(packet.ResultCode)
-	if status != statusOK {
-		children = make([]proto.Dentry, 0)
-		log.LogWarnf("readdir: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
-		return
-	}
-
-	resp := new(proto.ReadDirResponse)
-	err = packet.UnmarshalData(resp)
-	if err != nil {
-		log.LogWarnf("readdir: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
-		return
-	}
-	log.LogDebugf("readdir: packet(%v) mp(%v) req(%v)", packet, mp, *req)
-	return statusOK, resp.Children, nil
+	return statusOK, children, nil
 }
 
 //func (mw *MetaWrapper) appendExtentKey(ctx context.Context, mp *MetaPartition, inode uint64, extent proto.ExtentKey) (status int, err error) {
