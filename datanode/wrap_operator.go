@@ -123,8 +123,6 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handlePacketToAddDataPartitionRaftLearner(p)
 	case proto.OpPromoteDataPartitionRaftLearner:
 		s.handlePacketToPromoteDataPartitionRaftLearner(p)
-	case proto.OpEnableTruncateRaftLog:
-		s.handlePacketToEnableTruncateRaftLog(p)
 	case proto.OpResetDataPartitionRaftMember:
 		s.handlePacketToResetDataPartitionRaftMember(p)
 	case proto.OpDataPartitionTryToLeader:
@@ -1001,35 +999,6 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 			return
 		}
 	}
-	return
-}
-
-func (s *DataNode) handlePacketToEnableTruncateRaftLog(p *repl.Packet) {
-	var (
-		err          error
-		isRaftLeader bool
-		req          = new(EnableTruncateRaftLogCmd)
-	)
-
-	defer func() {
-		if err != nil {
-			p.PackErrorBody(ActionEnableDataPartitionTruncateRaftLog, err.Error())
-		} else {
-			p.PacketOkReply()
-		}
-	}()
-	dp := s.space.Partition(p.PartitionID)
-	if dp == nil {
-		err = proto.ErrDataPartitionNotExists
-		return
-	}
-	p.PartitionID = req.PartitionID
-	isRaftLeader, err = s.forwardToRaftLeaderWithTimeOut(dp, p)
-	if !isRaftLeader {
-		return
-	}
-	err = dp.submitEnableTruncateRaftLogToLeader()
-
 	return
 }
 

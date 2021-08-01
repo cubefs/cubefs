@@ -233,17 +233,6 @@ func NewExtentRepairReadPacket(ctx context.Context, partitionID uint64, extentID
 	return
 }
 
-func NewEnableTruncateRaftPacket(partitionID uint64) (p *Packet) {
-	p = new(Packet)
-	p.PartitionID = partitionID
-	p.Magic = proto.ProtoMagic
-	p.Opcode = proto.OpEnableTruncateRaftLog
-	p.ExtentType = proto.NormalExtentType
-	p.ReqID = proto.GenerateRequestID()
-
-	return
-}
-
 func NewTinyExtentRepairReadPacket(ctx context.Context, partitionID uint64, extentID uint64, offset, size int) (p *Packet) {
 	p = new(Packet)
 	p.ExtentID = extentID

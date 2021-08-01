@@ -62,7 +62,6 @@ type DataPartitionMetadata struct {
 	Learners                []proto.Learner
 	DataPartitionCreateType int
 	LastTruncateID          uint64
-	DisableTruncateRaftLog  bool
 }
 
 type sortedPeers []proto.Peer
@@ -123,8 +122,6 @@ type DataPartition struct {
 	loadExtentHeaderStatus        int
 	FullSyncTinyDeleteTime        int64
 	DataPartitionCreateType       int
-
-	disAbleTruncateRaftLogLock sync.Mutex
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
@@ -138,13 +135,8 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 	//}
 
 	// persist file metadata
-	dp.disAbleTruncateRaftLogLock.Lock()
 	dp.DataPartitionCreateType = request.CreateType
-	if request.CreateType == proto.DecommissionedCreateDataPartition {
-		dp.config.DisableTruncateRaftLog = true
-	}
 	err = dp.PersistMetadata()
-	dp.disAbleTruncateRaftLogLock.Unlock()
 	disk.AddSize(uint64(dp.Size()))
 	return
 }
@@ -196,17 +188,16 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	}
 
 	dpCfg := &dataPartitionCfg{
-		VolName:                meta.VolumeID,
-		PartitionSize:          meta.PartitionSize,
-		PartitionID:            meta.PartitionID,
-		Peers:                  meta.Peers,
-		Hosts:                  meta.Hosts,
-		Learners:               meta.Learners,
-		RaftStore:              disk.space.GetRaftStore(),
-		NodeID:                 disk.space.GetNodeID(),
-		ClusterID:              disk.space.GetClusterID(),
-		CreationType:           meta.DataPartitionCreateType,
-		DisableTruncateRaftLog: meta.DisableTruncateRaftLog,
+		VolName:       meta.VolumeID,
+		PartitionSize: meta.PartitionSize,
+		PartitionID:   meta.PartitionID,
+		Peers:         meta.Peers,
+		Hosts:         meta.Hosts,
+		Learners:      meta.Learners,
+		RaftStore:     disk.space.GetRaftStore(),
+		NodeID:        disk.space.GetNodeID(),
+		ClusterID:     disk.space.GetClusterID(),
+		CreationType:  meta.DataPartitionCreateType,
 	}
 	if dp, err = newDataPartition(dpCfg, disk); err != nil {
 		return
@@ -515,7 +506,6 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 		DataPartitionCreateType: dp.DataPartitionCreateType,
 		CreateTime:              time.Now().Format(TimeLayout),
 		LastTruncateID:          dp.lastTruncateID,
-		DisableTruncateRaftLog:  dp.config.DisableTruncateRaftLog,
 	}
 	if metaData, err = json.Marshal(md); err != nil {
 		return
