@@ -643,7 +643,17 @@ func (s *raft) apply() {
 			cc.Decode(entry.Data)
 			apply.command = cc
 			// repl apply
-			s.raftFsm.applyConfChange(cc)
+			peerChange := cc.Peer
+			worked := s.raftFsm.applyConfChange(cc)
+			if cc.Type == proto.ConfRemoveNode && worked {
+				if _, ok := s.raftFsm.replicas[peerChange.PeerID]; !ok {
+					if logger.IsEnableWarn() {
+						logger.Warn("raft[%v] applying configuration peer [%v] be removed and stop snapshot", s.raftFsm.id, peerChange)
+					}
+					s.removeSnapping(peerChange.PeerID)
+				}
+			}
+
 			s.peerState.change(cc)
 			if logger.IsEnableWarn() {
 				logger.Warn("raft[%v] applying configuration change %v.", s.raftFsm.id, cc)

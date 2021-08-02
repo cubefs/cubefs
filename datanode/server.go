@@ -397,12 +397,34 @@ func (s *DataNode) checkLocalPartitionMatchWithMaster() (err error) {
 	if len(dinfo.PersistenceDataPartitions) == 0 {
 		return
 	}
-	lackPartitions := make([]uint64, 0)
+	lackPartitionsNeedCheck := make([]uint64, 0)
 	for _, partitionID := range dinfo.PersistenceDataPartitions {
 		dp := s.space.Partition(partitionID)
 		if dp == nil {
-			lackPartitions = append(lackPartitions, partitionID)
+			lackPartitionsNeedCheck = append(lackPartitionsNeedCheck, partitionID)
 		}
+	}
+	if len(lackPartitionsNeedCheck) == 0 {
+		return
+	}
+	lackPartitions := make([]uint64, 0)
+	for _, lackPartitionID := range lackPartitionsNeedCheck {
+		var dp *proto.DataPartitionInfo
+		for i := 0; i < 3; i++ {
+			if dp, err = MasterClient.AdminAPI().GetDataPartitionById(lackPartitionID); err != nil {
+				log.LogErrorf("checkLocalPartitionMatchWithMaster error %v", err)
+				continue
+			}
+			break
+		}
+		if err != nil {
+			return
+		}
+		if dp.ReplicaNum != 1 {
+			lackPartitions = append(lackPartitions, lackPartitionID)
+			continue
+		}
+		log.LogInfof("action[checkLocalPartitionMatchWithMaster] dp [%v] replicaNum [%v] ignore local error", dp.PartitionID, dp.ReplicaNum)
 	}
 	if len(lackPartitions) == 0 {
 		return

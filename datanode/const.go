@@ -93,6 +93,15 @@ const (
 )
 
 const (
+	DecommsionEnter         = 1
+	DecommsionWaitAddRes    = 2
+	DecommsionWaitAddResFin = 3
+	DecommsionRemoveNew     = 4
+	DecommsionRemoveOld     = 5
+	DecommsionErr           = 6
+)
+
+const (
 	EmptyResponse                      = 'E'
 	TinyExtentRepairReadResponseArgLen = 17
 	MaxSyncTinyDeleteBufferSize        = 2400000

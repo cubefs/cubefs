@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/logger"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/util"
 )
@@ -51,9 +52,11 @@ func newReplica(peer proto.Peer, maxInflight int) *replica {
 }
 
 func (r *replica) resetState(state replicaState) {
+	logger.Debug("raft resetState from [%v]", r)
 	r.paused = false
 	r.pendingSnap = 0
 	r.state = state
+	logger.Debug("raft resetState to [%v]", r)
 	r.reset()
 }
 

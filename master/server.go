@@ -35,23 +35,23 @@ import (
 
 // configuration keys
 const (
-	ClusterName       = "clusterName"
-	ID                = "id"
-	IP                = "ip"
-	Port              = "port"
-	LogLevel          = "logLevel"
-	WalDir            = "walDir"
-	StoreDir          = "storeDir"
-	EbsAddrKey        = "ebsAddr"
-	EbsServicePathKey = "ebsServicePath"
-	GroupID           = 1
-	ModuleName        = "master"
-	CfgRetainLogs     = "retainLogs"
-	DefaultRetainLogs = 20000
-	cfgTickInterval   = "tickInterval"
+	ClusterName        = "clusterName"
+	ID                 = "id"
+	IP                 = "ip"
+	Port               = "port"
+	LogLevel           = "logLevel"
+	WalDir             = "walDir"
+	StoreDir           = "storeDir"
+	EbsAddrKey         = "ebsAddr"
+	EbsServicePathKey  = "ebsServicePath"
+	GroupID            = 1
+	ModuleName         = "master"
+	CfgRetainLogs      = "retainLogs"
+	DefaultRetainLogs  = 20000
+	cfgTickInterval    = "tickInterval"
 	cfgRaftRecvBufSize = "raftRecvBufSize"
-	cfgElectionTick   = "electionTick"
-	SecretKey         = "masterServiceKey"
+	cfgElectionTick    = "electionTick"
+	SecretKey          = "masterServiceKey"
 )
 
 var (
@@ -89,30 +89,30 @@ func setOverSoldFactor(factor float32) {
 
 // Server represents the server in a cluster
 type Server struct {
-	id           uint64
-	clusterName  string
-	ip           string
-	port         string
-	walDir       string
-	storeDir     string
-	ebsAddr      string
-	servicePath  string
-	retainLogs   uint64
-	tickInterval int
+	id              uint64
+	clusterName     string
+	ip              string
+	port            string
+	walDir          string
+	storeDir        string
+	ebsAddr         string
+	servicePath     string
+	retainLogs      uint64
+	tickInterval    int
 	raftRecvBufSize int
-	electionTick int
-	leaderInfo   *LeaderInfo
-	config       *clusterConfig
-	cluster      *Cluster
-	user         *User
-	rocksDBStore *raftstore.RocksDBStore
-	raftStore    raftstore.RaftStore
-	fsm          *MetadataFsm
-	partition    raftstore.Partition
-	wg           sync.WaitGroup
-	reverseProxy *httputil.ReverseProxy
-	metaReady    bool
-	apiServer    *http.Server
+	electionTick    int
+	leaderInfo      *LeaderInfo
+	config          *clusterConfig
+	cluster         *Cluster
+	user            *User
+	rocksDBStore    *raftstore.RocksDBStore
+	raftStore       raftstore.RaftStore
+	fsm             *MetadataFsm
+	partition       raftstore.Partition
+	wg              sync.WaitGroup
+	reverseProxy    *httputil.ReverseProxy
+	metaReady       bool
+	apiServer       *http.Server
 }
 
 // NewServer creates a new server

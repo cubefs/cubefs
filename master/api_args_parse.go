@@ -326,6 +326,20 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 		req.dpSelectorName = vol.dpSelectorName
 		req.dpSelectorParm = vol.dpSelectorParm
 	}
+	var replicaNum int
+	if replicaNumStr := r.FormValue(replicaNumKey); replicaNumStr != "" {
+		if replicaNum, err = strconv.Atoi(replicaNumStr); err != nil {
+			err = unmatchedKey(replicaNumKey)
+			return
+		}
+	} else {
+		replicaNum = int(vol.dpReplicaNum)
+	}
+
+	if replicaNum != 0 && replicaNum != int(vol.dpReplicaNum) {
+		err = fmt.Errorf("replicaNum cann't be changed")
+		return
+	}
 
 	if proto.IsCold(vol.VolType) {
 		req.followRead = true

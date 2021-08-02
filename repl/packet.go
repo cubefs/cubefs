@@ -16,6 +16,7 @@ package repl
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/log"
 	"io"
 	"net"
 	"strings"
@@ -160,6 +161,7 @@ func (p *Packet) resolveFollowersAddr() (err error) {
 	p.OrgBuffer = p.Data
 	if followerNum > 0 {
 		p.followersAddrs = followerAddrs[:int(followerNum)]
+		log.LogInfof("action[resolveFollowersAddr] %v", p.followersAddrs)
 	}
 	if p.RemainingFollowers < 0 {
 		err = ErrBadNodes

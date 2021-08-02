@@ -111,7 +111,8 @@ func stepLeader(r *raftFsm, m *proto.Message) {
 
 		if m.Reject {
 			if logger.IsEnableDebug() {
-				logger.Debug("raft[%v] received msgApp rejection(lastindex: %d) from %v for index %d.", r.id, m.RejectIndex, m.From, m.Index)
+				logger.Debug("raft[%v, %v, %v, %v] received msgApp rejection(lastindex: %d) from %v for index %d commit %v. replica info [%v,%v,%v,%v]",
+					r.id, r.raftLog.firstIndex(), r.raftLog.lastIndex(), r.raftLog.committed, m.RejectIndex, m.From, m.Index, m.Commit, pr.state, pr.next, pr.committed, pr.match)
 			}
 			if pr.maybeDecrTo(m.Index, m.RejectIndex, m.Commit) {
 				if pr.state == replicaStateReplicate {

@@ -94,6 +94,20 @@ func (api *AdminAPI) GetDataPartition(volName string, partitionID uint64) (parti
 	return
 }
 
+func (api *AdminAPI) GetDataPartitionById(partitionID uint64) (partition *proto.DataPartitionInfo, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminGetDataPartition)
+	request.addParam("id", strconv.Itoa(int(partitionID)))
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	partition = &proto.DataPartitionInfo{}
+	if err = json.Unmarshal(data, partition); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) DiagnoseDataPartition() (diagnosis *proto.DataPartitionDiagnosis, err error) {
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.AdminDiagnoseDataPartition)
