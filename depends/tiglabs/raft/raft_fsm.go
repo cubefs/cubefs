@@ -20,10 +20,9 @@ import (
 	"math/rand"
 	"strings"
 
-	"time"
-
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/logger"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
+	"time"
 )
 
 // NoLeader is a placeholder nodeID used when there is no leader.
@@ -278,7 +277,7 @@ func (r *raftFsm) recoverCommit() error {
 	return nil
 }
 
-func (r *raftFsm) applyConfChange(cc *proto.ConfChange) {
+func (r *raftFsm) applyConfChange(cc *proto.ConfChange) (ok bool) {
 	if cc.Peer.ID == NoLeader {
 		r.pendingConf = false
 		return
@@ -288,10 +287,11 @@ func (r *raftFsm) applyConfChange(cc *proto.ConfChange) {
 	case proto.ConfAddNode:
 		r.addPeer(cc.Peer)
 	case proto.ConfRemoveNode:
-		r.removePeer(cc.Peer)
+		return r.removePeer(cc.Peer)
 	case proto.ConfUpdateNode:
 		r.updatePeer(cc.Peer)
 	}
+	return
 }
 
 func (r *raftFsm) addPeer(peer proto.Peer) {
@@ -306,7 +306,7 @@ func (r *raftFsm) addPeer(peer proto.Peer) {
 	}
 }
 
-func (r *raftFsm) removePeer(peer proto.Peer) {
+func (r *raftFsm) removePeer(peer proto.Peer) (ok bool) {
 	r.pendingConf = false
 
 	replica, ok := r.replicas[peer.ID]
@@ -320,6 +320,7 @@ func (r *raftFsm) removePeer(peer proto.Peer) {
 	}
 
 	delete(r.replicas, peer.ID)
+	ok = true
 
 	if peer.ID == r.config.NodeID {
 		r.becomeFollower(r.term, NoLeader)
@@ -328,6 +329,7 @@ func (r *raftFsm) removePeer(peer proto.Peer) {
 			r.bcastAppend()
 		}
 	}
+	return
 }
 
 func (r *raftFsm) updatePeer(peer proto.Peer) {

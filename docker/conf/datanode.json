@@ -9,7 +9,7 @@
   "exporterPort": 9500,
   "cell": "cell-01",
   "logDir": "/cfs/log",
-  "logLevel": "info",
+  "logLevel": "debug",
   "disks": [
     "/cfs/disk:10737418240"
   ],

@@ -872,7 +872,7 @@ func (nsgm *DomainManager) putNodeSet(ns *nodeSet, load bool) (err error) {
 		return
 	}
 
-	if domainId,ok  = nsgm.ZoneName2DomainIdMap[ns.zoneName]; !ok {
+	if domainId, ok = nsgm.ZoneName2DomainIdMap[ns.zoneName]; !ok {
 		domainId = 0 // no domainid be set before;therefore, put it to default domain
 		nsgm.ZoneName2DomainIdMap[ns.zoneName] = 0
 	}
@@ -919,7 +919,7 @@ func (nsgm *DomainManager) putNodeSet(ns *nodeSet, load bool) (err error) {
 	return
 }
 
-type 	nodeSet struct {
+type nodeSet struct {
 	ID        uint64
 	Capacity  int
 	zoneName  string
@@ -1265,7 +1265,7 @@ func (zone *Zone) createNodeSet(c *Cluster) (ns *nodeSet, err error) {
 	if c.FaultDomain && c.domainManager.init && c.cfg.DefaultNormalZoneCnt < defaultReplicaNum {
 		if _, ok := c.domainManager.excludeZoneListDomain[zone.name]; !ok {
 			dstNsCnt := 0
-			if c.cfg.DefaultNormalZoneCnt == 1 {  // one zone support domain need 3 nodeset at begin
+			if c.cfg.DefaultNormalZoneCnt == 1 { // one zone support domain need 3 nodeset at begin
 				dstNsCnt = 3
 			} else {
 				dstNsCnt = 2 // two zone construct domain need 2 nodeset for each

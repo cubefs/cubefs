@@ -602,12 +602,21 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
 		return
 	}
+	if dp.isSingleReplica() {
+		rstMsg = fmt.Sprintf(proto.AdminDecommissionDataPartition+" dataPartitionID :%v  is single replica on node:%v async running,need check later",
+			partitionID, addr)
+		go m.cluster.decommissionDataPartition(addr, dp, handleDataPartitionOfflineErr)
+		sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+		return
+	}
 	if err = m.cluster.decommissionDataPartition(addr, dp, handleDataPartitionOfflineErr); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	rstMsg = fmt.Sprintf(proto.AdminDecommissionDataPartition+" dataPartitionID :%v  on node:%v successfully", partitionID, addr)
-	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+	if !dp.isSingleReplica() {
+		rstMsg = fmt.Sprintf(proto.AdminDecommissionDataPartition+" dataPartitionID :%v  on node:%v successfully", partitionID, addr)
+		sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+	}
 }
 
 func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
@@ -696,6 +705,10 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 
 	if err = parseVolUpdateReq(r, vol, req); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if vol.dpReplicaNum == 1 && !req.followRead {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "single replica must enable follower read"})
 		return
 	}
 
@@ -823,20 +836,17 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 	}
 
 	if proto.IsHot(req.volType) {
-		req.dpReplicaNum = defaultReplicaNum
+		if req.dpReplicaNum == 0 {
+			req.dpReplicaNum = defaultReplicaNum
+		}
+
+		if req.dpReplicaNum != 1 && req.dpReplicaNum != 3 {
+			return fmt.Errorf("hot vol's replicaNum can only be 1 or 3, received replicaNum is[%v]", req.dpReplicaNum)
+		}
 		return nil
 	}
 
-	if req.dpReplicaNum == 0 {
-		req.dpReplicaNum = 1
-	}
-
-	if req.dpReplicaNum < 1 || req.dpReplicaNum > 3 {
-		return fmt.Errorf("cold vol's replicaNum can only be  between 1-3, received replicaNum is[%v]", req.dpReplicaNum)
-	}
-
 	req.followerRead = true
-
 	args := req.coldArgs
 
 	if args.objBlockSize == 0 {
@@ -1149,6 +1159,32 @@ func (m *Server) migrateDataNodeHandler(w http.ResponseWriter, r *http.Request) 
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
+// Decommission a data node. This will decommission all the data partition on that node.
+func (m *Server) cancelDecommissionDataNode(w http.ResponseWriter, r *http.Request) {
+	var (
+		node        *DataNode
+		rstMsg      string
+		offLineAddr string
+		err         error
+	)
+
+	if offLineAddr, err = parseAndExtractNodeAddr(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if node, err = m.cluster.dataNode(offLineAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
+	if err = m.cluster.decommissionCancel(node); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	rstMsg = fmt.Sprintf("cancel decommission data node [%v] successfully", offLineAddr)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
 func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		params map[string]interface{}
@@ -1318,7 +1354,7 @@ func (m *Server) updateNodesetId(zoneName string, destNodesetId uint64, nodeType
 }
 
 func (m *Server) setNodeRdOnly(addr string, nodeType uint32, rdOnly bool) (err error) {
-	if nodeType == TypeDataPartion {
+	if nodeType == TypeDataPartition {
 		m.cluster.dnMutex.Lock()
 		defer m.cluster.dnMutex.Unlock()
 		value, ok := m.cluster.dataNodes.Load(addr)
@@ -1953,7 +1989,6 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(metaNodeInfo))
 }
-
 
 func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Request) {
 	var (

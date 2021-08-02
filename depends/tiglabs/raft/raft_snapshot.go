@@ -68,6 +68,7 @@ func (r *snapshotReader) Next() ([]byte, error) {
 	}
 
 	// read size header
+	r.reader.Reset()
 	var buf []byte
 	if buf, r.err = r.reader.ReadFull(4); r.err != nil {
 		return nil, r.err
@@ -79,6 +80,7 @@ func (r *snapshotReader) Next() ([]byte, error) {
 	}
 
 	// read data
+	r.reader.Reset()
 	if buf, r.err = r.reader.ReadFull(int(size)); r.err != nil {
 		return nil, r.err
 	}
@@ -119,11 +121,16 @@ func (s *raft) stopSnapping() {
 func (s *raft) sendSnapshot(m *proto.Message) {
 	util.RunWorker(func() {
 		defer func() {
+			logger.Debug(" [raft] [%v term: %d] raftFm[%p] raftReplicas[%v] stop send snapshot "+
+				"without the replica from [%v]. to [%v]",
+				s.raftFsm.id, s.raftFsm.term, s.raftFsm, s.raftFsm.getReplicas(), m.Type, m.From, m.To)
 			s.removeSnapping(m.To)
 			m.Snapshot.Close()
 			proto.ReturnMessage(m)
 		}()
-
+		logger.Debug(" [raft] [%v term: %d] raftFm[%p] raftReplicas[%v] send snapshot "+
+			"without the replica from [%v ] to [%v].",
+			s.raftFsm.id, s.raftFsm.term, s.raftFsm, s.raftFsm.getReplicas(), m.Type, m.From, m.To)
 		// send snapshot
 		rs := newSnapshotStatus()
 		s.addSnapping(m.To, rs)

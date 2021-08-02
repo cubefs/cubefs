@@ -234,6 +234,7 @@ func (m *metadataManager) opCreateDentry(conn net.Conn, p *Packet,
 	}
 	err = mp.CreateDentry(req, p)
 	m.respondToClient(conn, p)
+
 	log.LogDebugf("%s [opCreateDentry] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return

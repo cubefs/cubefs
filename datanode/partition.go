@@ -251,20 +251,15 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 
 func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, err error) {
 	partitionID := dpCfg.PartitionID
-
 	var dataPath string
 
 	if proto.IsNormalDp(dpCfg.PartitionType) {
-
 		dataPath = path.Join(disk.Path, fmt.Sprintf(DataPartitionPrefix+"_%v_%v", partitionID, dpCfg.PartitionSize))
 	} else if proto.IsCacheDp(dpCfg.PartitionType) {
-
 		dataPath = path.Join(disk.Path, fmt.Sprintf(CachePartitionPrefix+"_%v_%v", partitionID, dpCfg.PartitionSize))
 	} else if proto.IsPreLoadDp(dpCfg.PartitionType) {
-
 		dataPath = path.Join(disk.Path, fmt.Sprintf(PreLoadPartitionPrefix+"_%v_%v", partitionID, dpCfg.PartitionSize))
 	} else {
-
 		return nil, fmt.Errorf("newDataPartition fail, dataPartitionCfg(%v)", dpCfg)
 	}
 
@@ -450,6 +445,9 @@ func (dp *DataPartition) Disk() *Disk {
 
 // Status returns the partition status.
 func (dp *DataPartition) Status() int {
+	if dp.isNormalType() && dp.raftStatus == RaftStatusStopped {
+		return proto.Unavailable
+	}
 	return dp.partitionStatus
 }
 
@@ -559,10 +557,12 @@ func (dp *DataPartition) statusUpdate() {
 	if dp.isNormalType() && dp.extentStore.GetExtentCount() >= storage.MaxExtentCount {
 		status = proto.ReadOnly
 	}
-	if dp.Status() == proto.Unavailable {
+	if dp.isNormalType() && dp.raftStatus == RaftStatusStopped {
 		status = proto.Unavailable
 	}
 
+	log.LogInfof("action[statusUpdate] dp %v raft status %v dp.status %v, status %v, dis status %v, res:%v",
+		dp.partitionID, dp.raftStatus, dp.Status(), status, float64(dp.disk.Status), int(math.Min(float64(status), float64(dp.disk.Status))))
 	dp.partitionStatus = int(math.Min(float64(status), float64(dp.disk.Status)))
 }
 
@@ -927,7 +927,6 @@ func (dp *DataPartition) putRepairConn(conn net.Conn, forceClose bool) {
 }
 
 func (dp *DataPartition) isNormalType() bool {
-
 	return proto.IsNormalDp(dp.partitionType)
 }
 

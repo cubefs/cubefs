@@ -292,7 +292,7 @@ func newNodeSetValue(nset *nodeSet) (nsv *nodeSetValue) {
 }
 func newNodeSetGrpValue(nset *nodeSetGroup) (nsv *domainNodeSetGrpValue) {
 	nsv = &domainNodeSetGrpValue{
-		DomainId: 	 nset.domainId,
+		DomainId:    nset.domainId,
 		ID:          nset.ID,
 		NodeSetsIds: nset.nodeSetsIds,
 		Status:      nset.status,

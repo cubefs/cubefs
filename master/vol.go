@@ -84,7 +84,7 @@ type Vol struct {
 	dpSelectorParm     string
 	domainId           uint64
 
-	volLock            sync.RWMutex
+	volLock sync.RWMutex
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -319,7 +319,11 @@ func (vol *Vol) checkReplicaNum(c *Cluster) {
 			continue
 		}
 		if err = dp.removeOneReplicaByHost(c, host); err != nil {
-			log.LogErrorf("action[checkReplicaNum],vol[%v],err[%v]", vol.Name, err)
+			if dp.isSingleReplica() && len(dp.Hosts) > 1 {
+				log.LogWarnf("action[checkReplicaNum] removeOneReplicaByHost host [%v],vol[%v],err[%v]", host, vol.Name, err)
+				continue
+			}
+			log.LogErrorf("action[checkReplicaNum] removeOneReplicaByHost host [%v],vol[%v],err[%v]", host, vol.Name, err)
 			continue
 		}
 	}
@@ -470,8 +474,8 @@ func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 	}
 
 	vol.setStatus(normal)
-
-	if vol.status() == normal && !c.DisableAutoAllocate {
+	log.LogInfof("action[autoCreateDataPartitions] vol[%v] before autoCreateDataPartitions", vol.Name)
+	if !c.DisableAutoAllocate {
 		vol.autoCreateDataPartitions(c)
 	}
 }
