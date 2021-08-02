@@ -287,6 +287,9 @@ func (se *SortedExtents) Insert(ctx context.Context, ek proto.ExtentKey) (delete
 				// Make exchange between cur and fixedBack
 				se.eks[index] = *fixedBack
 			}
+			if se.maybeMergeWithPrev(index) {
+				continue
+			}
 		}
 
 		// Advance

@@ -513,6 +513,77 @@ func TestSortedExtents_Insert05(t *testing.T) {
 	}
 }
 
+// Scenario:
+//   Insert the same ek repeatedly.
+//
+// Sample Format:
+//   FileOffset_PartitionId_ExtentId_ExtentOffset_Size
+//
+// Insert order:
+//   0.  |=====| 0_1_1_0_100
+//   4.  |=====| 0_1_1_0_100
+//   5.  |===| 0_1_1_0_60
+//   6.    |===| 40_1_1_40_60
+//
+// Expected result:
+//
+//       |=====|
+//          ↑
+//     0_1_1_0_100
+//
+//
+// Expected deleted extent keys:
+//   none
+//
+// Reference:
+//       *-----+-----+-----+-----+-----+--->
+//       0    100   200   300   400   500
+func TestSortedExtents_Insert06(t *testing.T) {
+	// Samples
+	var (
+		order = []proto.ExtentKey{
+			{FileOffset: 0, PartitionId: 1, ExtentId: 1, ExtentOffset: 0, Size: 100},
+			{FileOffset: 0, PartitionId: 1, ExtentId: 1, ExtentOffset: 0, Size: 100},
+			{FileOffset: 0, PartitionId: 1, ExtentId: 1, ExtentOffset: 0, Size: 60},
+			{FileOffset: 40, PartitionId: 1, ExtentId: 1, ExtentOffset: 40, Size: 60},
+		}
+	)
+	// Expected
+	var (
+		expectedEks = []proto.ExtentKey{
+			{FileOffset: 0, PartitionId: 1, ExtentId: 1, ExtentOffset: 0, Size: 100},
+		}
+		expectedDelEks []proto.ExtentKey
+	)
+
+	ctx := context.Background()
+	se := NewSortedExtents()
+	delEks := make([]proto.ExtentKey, 0)
+	for _, ek := range order {
+		delEks = append(delEks, se.Insert(ctx, ek)...)
+	}
+
+	// Validate result
+	if len(se.eks) != len(expectedEks) {
+		t.Fatalf("number of ek mismatch: expect %v, actual %v", len(expectedEks), len(se.eks))
+	}
+	for i := 0; i < len(expectedEks); i++ {
+		if !reflect.DeepEqual(se.eks[i], expectedEks[i]) {
+			t.Fatalf("ek[%v] mismatch: expect %v, actual %v", i, expectedEks[i], se.eks[i])
+		}
+	}
+
+	if len(delEks) != len(expectedDelEks) {
+		t.Fatalf("number of delete extents mismatch: expect %v, actual %v", len(expectedDelEks), len(delEks))
+	}
+
+	for i := 0; i < len(expectedDelEks); i++ {
+		if !reflect.DeepEqual(delEks[i], expectedDelEks[i]) {
+			t.Fatalf("deleted ek[%v] mismatch: expect %v, actual %v", i, expectedDelEks[i], delEks[i])
+		}
+	}
+}
+
 func BenchmarkSortedExtents_Insert(b *testing.B) {
 	ctx := context.Background()
 	se := NewSortedExtents()
