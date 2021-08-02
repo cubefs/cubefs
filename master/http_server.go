@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/buf"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -388,10 +389,13 @@ func ErrResponse(w http.ResponseWriter, err error) {
 }
 
 func (m *Server) newReverseProxy() *httputil.ReverseProxy {
-	return &httputil.ReverseProxy{Director: func(request *http.Request) {
-		request.URL.Scheme = "http"
-		request.URL.Host = m.leaderInfo.addr
-	}}
+	return &httputil.ReverseProxy{
+		Director: func(request *http.Request) {
+			request.URL.Scheme = "http"
+			request.URL.Host = m.leaderInfo.addr
+		},
+		BufferPool: buf.NewBytePool(10000, 32*1024),
+	}
 }
 
 func (m *Server) proxy(w http.ResponseWriter, r *http.Request) {
