@@ -296,10 +296,10 @@ func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 	return dp, nil
 }
 
-// WarningMsg returns the warning message that contains the cluster name.
-func (w *Wrapper) WarningMsg() string {
-	return fmt.Sprintf("%s_client_warning", w.clusterName)
-}
+//// WarningMsg returns the warning message that contains the cluster name.
+//func (w *Wrapper) WarningMsg() string {
+//	return fmt.Sprintf("%s_client_warning", w.clusterName)
+//}
 
 func (w *Wrapper) updateDataNodeStatus() (err error) {
 	var cv *proto.ClusterView

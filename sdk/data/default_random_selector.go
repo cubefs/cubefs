@@ -122,12 +122,12 @@ func (s *DefaultRandomSelector) RemoveDP(partitionID uint64) {
 	return
 }
 
-func (s *DefaultRandomSelector) getLocalLeaderDataPartition(exclude map[string]struct{}) *DataPartition {
-	s.RLock()
-	localLeaderPartitions := s.localLeaderPartitions
-	s.RUnlock()
-	return s.getRandomDataPartition(localLeaderPartitions, exclude)
-}
+//func (s *DefaultRandomSelector) getLocalLeaderDataPartition(exclude map[string]struct{}) *DataPartition {
+//	s.RLock()
+//	localLeaderPartitions := s.localLeaderPartitions
+//	s.RUnlock()
+//	return s.getRandomDataPartition(localLeaderPartitions, exclude)
+//}
 
 func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartition, exclude map[string]struct{}) (
 	dp *DataPartition) {

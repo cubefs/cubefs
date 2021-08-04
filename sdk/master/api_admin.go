@@ -151,15 +151,15 @@ func (api *AdminAPI) ResetCorruptMetaNode(nodeAddr string) (err error) {
 	return
 }
 
-func (api *AdminAPI) LoadDataPartition(volName string, partitionID uint64) (err error) {
-	var request = newAPIRequest(http.MethodGet, proto.AdminLoadDataPartition)
-	request.addParam("id", strconv.Itoa(int(partitionID)))
-	request.addParam("name", volName)
-	if _, err = api.mc.serveRequest(request); err != nil {
-		return
-	}
-	return
-}
+//func (api *AdminAPI) LoadDataPartition(volName string, partitionID uint64) (err error) {
+//	var request = newAPIRequest(http.MethodGet, proto.AdminLoadDataPartition)
+//	request.addParam("id", strconv.Itoa(int(partitionID)))
+//	request.addParam("name", volName)
+//	if _, err = api.mc.serveRequest(request); err != nil {
+//		return
+//	}
+//	return
+//}
 
 func (api *AdminAPI) CreateDataPartition(volName string, count int) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateDataPartition)

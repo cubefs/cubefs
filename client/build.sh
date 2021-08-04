@@ -5,4 +5,6 @@ BuildTime=`date +%Y-%m-%d\ %H:%M`
 
 [[ "-$GOPATH" == "-" ]] && { echo "GOPATH not set"; exit 1 ; }
 
-go build -ldflags "-X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}'" -o cfs-client
+# go build -ldflags "-X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}'" -o cfs-client
+
+go test -c -covermode=atomic -coverpkg="../..." -ldflags "-X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}'" -o cfs-client

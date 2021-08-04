@@ -120,14 +120,14 @@ func (api *UserAPI) RemovePolicy(param *proto.UserPermRemoveParam) (userInfo *pr
 	return
 }
 
-func (api *UserAPI) DeleteVolPolicy(vol string) (err error) {
-	var request = newAPIRequest(http.MethodPost, proto.UserDeleteVolPolicy)
-	request.addParam("name", vol)
-	if _, err = api.mc.serveRequest(request); err != nil {
-		return
-	}
-	return
-}
+//func (api *UserAPI) DeleteVolPolicy(vol string) (err error) {
+//	var request = newAPIRequest(http.MethodPost, proto.UserDeleteVolPolicy)
+//	request.addParam("name", vol)
+//	if _, err = api.mc.serveRequest(request); err != nil {
+//		return
+//	}
+//	return
+//}
 
 func (api *UserAPI) TransferVol(param *proto.UserTransferVolParam) (userInfo *proto.UserInfo, err error) {
 	var request = newAPIRequest(http.MethodPost, proto.UserTransferVol)
@@ -161,16 +161,16 @@ func (api *UserAPI) ListUsers(keywords string) (users []*proto.UserInfo, err err
 	return
 }
 
-func (api *UserAPI) ListUsersOfVol(vol string) (users []string, err error) {
-	var request = newAPIRequest(http.MethodGet, proto.UsersOfVol)
-	request.addParam("name", vol)
-	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
-		return
-	}
-	users = make([]string, 0)
-	if err = json.Unmarshal(data, &users); err != nil {
-		return
-	}
-	return
-}
+//func (api *UserAPI) ListUsersOfVol(vol string) (users []string, err error) {
+//	var request = newAPIRequest(http.MethodGet, proto.UsersOfVol)
+//	request.addParam("name", vol)
+//	var data []byte
+//	if data, err = api.mc.serveRequest(request); err != nil {
+//		return
+//	}
+//	users = make([]string, 0)
+//	if err = json.Unmarshal(data, &users); err != nil {
+//		return
+//	}
+//	return
+//}

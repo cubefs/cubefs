@@ -276,13 +276,13 @@ func (client *ExtentClient) FileSize(inode uint64) (size int, gen uint64, valid 
 }
 
 // SetFileSize set the file size.
-func (client *ExtentClient) SetFileSize(inode uint64, size int) {
-	s := client.GetStreamer(inode)
-	if s != nil {
-		log.LogDebugf("SetFileSize: ino(%v) size(%v)", inode, size)
-		s.extents.SetSize(uint64(size), true)
-	}
-}
+//func (client *ExtentClient) SetFileSize(inode uint64, size int) {
+//	s := client.GetStreamer(inode)
+//	if s != nil {
+//		log.LogDebugf("SetFileSize: ino(%v) size(%v)", inode, size)
+//		s.extents.SetSize(uint64(size), true)
+//	}
+//}
 
 // Write writes the data.
 func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset int, data []byte, direct bool) (write int, err error) {
@@ -493,17 +493,17 @@ func (client *ExtentClient) Close(ctx context.Context) error {
 	return nil
 }
 
-func (c *ExtentClient) AlignSize() int {
-	return int(c.alignSize)
-}
-
-func (c *ExtentClient) MaxExtentNumPerAlignArea() int {
-	return int(c.maxExtentNumPerAlignArea)
-}
-
-func (c *ExtentClient) ForceAlignMerge() bool {
-	return c.forceAlignMerge
-}
+//func (c *ExtentClient) AlignSize() int {
+//	return int(c.alignSize)
+//}
+//
+//func (c *ExtentClient) MaxExtentNumPerAlignArea() int {
+//	return int(c.maxExtentNumPerAlignArea)
+//}
+//
+//func (c *ExtentClient) ForceAlignMerge() bool {
+//	return c.forceAlignMerge
+//}
 
 func (c *ExtentClient) SetExtentSize(size int) {
 	if size == 0 {

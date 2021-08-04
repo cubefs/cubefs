@@ -609,17 +609,17 @@ func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
 	}
 }
 
-func (eh *ExtentHandler) createConnection(dp *DataPartition) (*net.TCPConn, error) {
-	conn, err := net.DialTimeout("tcp", dp.Hosts[0], time.Second)
-	if err != nil {
-		return nil, err
-	}
-	connect := conn.(*net.TCPConn)
-	// TODO unhandled error
-	connect.SetKeepAlive(true)
-	connect.SetNoDelay(true)
-	return connect, nil
-}
+//func (eh *ExtentHandler) createConnection(dp *DataPartition) (*net.TCPConn, error) {
+//	conn, err := net.DialTimeout("tcp", dp.Hosts[0], time.Second)
+//	if err != nil {
+//		return nil, err
+//	}
+//	connect := conn.(*net.TCPConn)
+//	// TODO unhandled error
+//	connect.SetKeepAlive(true)
+//	connect.SetNoDelay(true)
+//	return connect, nil
+//}
 
 func (eh *ExtentHandler) ehCreateExtent(ctx context.Context, dp *DataPartition) (extID int, err error) {
 	return CreateExtent(ctx, eh.inode, dp)

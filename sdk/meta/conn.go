@@ -268,15 +268,15 @@ func (mw *MetaWrapper) sendToHost(ctx context.Context, mp *MetaPartition, req *p
 	return resp, false, nil
 }
 
-func sortMembers(leader string, members []string) []string {
-	if leader == "" {
-		return members
-	}
-	for i, addr := range members {
-		if addr == leader {
-			members[i], members[0] = members[0], members[i]
-			break
-		}
-	}
-	return members
-}
+//func sortMembers(leader string, members []string) []string {
+//	if leader == "" {
+//		return members
+//	}
+//	for i, addr := range members {
+//		if addr == leader {
+//			members[i], members[0] = members[0], members[i]
+//			break
+//		}
+//	}
+//	return members
+//}

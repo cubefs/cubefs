@@ -388,10 +388,12 @@ services:
             - ./conf/hosts:/etc/hosts:ro
             - ./conf/client.json:/cfs/conf/client.json
             - ${DiskPath:-./docker_data}/client/log:/cfs/log
+            - ${DiskPath:-./docker_data}/coverage:/cfs/coverage
             - ./script/run_test.sh:/cfs/script/start.sh
             - ./script/start_client.sh:/cfs/script/start_client.sh
             - ./ltp/runtest/fs:/opt/ltp/runtest/fs
             - ./s3tests:/opt/s3tests:ro
+            - ../:/go/src/github.com/chubaofs/chubaofs
         privileged: true
         devices:
             - /dev/fuse:/dev/fuse:rwm

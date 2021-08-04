@@ -19,6 +19,7 @@ mkdir -p /cfs/bin /cfs/log /cfs/mnt
 src_path=/go/src/github.com/chubaofs/cfs
 cli=/cfs/bin/cfs-cli
 conf_path=/cfs/conf
+cover_path=/cfs/coverage
 
 Master1Addr="192.168.0.11:17010"
 LeaderAddr=""
@@ -145,7 +146,7 @@ print_error_info() {
 
 start_client() {
     echo -n "Starting client   ... "
-    nohup /cfs/bin/cfs-client -c /cfs/conf/client.json >/cfs/log/cfs.out 2>&1 &
+    nohup /cfs/bin/cfs-client -test.coverprofile=ltptest.cov -test.outputdir=${cover_path} -c /cfs/conf/client.json >/cfs/log/cfs.out 2>&1 &
     sleep 10
     res=$( mount | grep -q "$VolName on $MntPoint" ; echo $? )
     if [[ $res -ne 0 ]] ; then
@@ -198,6 +199,14 @@ wait_proc_done() {
 }
 
 run_ltptest() {
+    go test /go/src/github.com/chubaofs/chubaofs/sdk/... -covermode=atomic -coverprofile=${cover_path}/unittestcover.cov
+    ret=$?
+    if [[ $ret -ne 0 ]]; then
+        echo -e "Unit test: \033[32mFAIL\033[0m"
+        exit $ret
+    fi
+    echo -e "Unit test: \033[32mPASS\033[0m"
+
     echo "Running LTP test"
     echo "************************";
     echo "        LTP test        ";
@@ -211,7 +220,8 @@ run_ltptest() {
 
 stop_client() {
     echo -n "Stopping client   ... "
-    umount ${MntPoint} && echo -e "\033[32mdone\033[0m" || { echo -e "\033[31mfail\033[0m"; exit 1; }
+    umount ${MntPoint}
+    echo -e "\033[32mdone\033[0m" || { echo -e "\033[31mfail\033[0m"; exit 1; }
 }
 
 delete_volume() {
@@ -249,5 +259,5 @@ show_cluster_info
 start_client ; sleep 2
 run_ltptest
 run_s3_test
-stop_client
+stop_client ; sleep 20
 delete_volume

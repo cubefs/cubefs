@@ -2,14 +2,21 @@ package data
 
 import (
 	"encoding/json"
-	"github.com/chubaofs/chubaofs/util"
+	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 	"sync"
+	"syscall"
 	"testing"
 
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/sdk/meta"
+	"github.com/chubaofs/chubaofs/util"
+	"golang.org/x/net/context"
 )
 
 type HTTPReply struct {
@@ -268,5 +275,189 @@ func TestStreamer_usePreExtentHandler(t *testing.T) {
 				t.Errorf("usePreExtentHandler() = %v, want %v, name %v", got, tt.want, tt.name)
 			}
 		})
+	}
+}
+
+func creatHelper(t *testing.T) (mw *meta.MetaWrapper, ec *ExtentClient, err error) {
+	if mw, err = meta.NewMetaWrapper(&meta.MetaConfig{
+		Volume:        ltptestVolume,
+		Masters:       strings.Split(ltptestMaster, ","),
+		ValidateOwner: true,
+		Owner:         ltptestVolume,
+	}); err != nil {
+		t.Fatalf("NewMetaWrapper failed: err(%v) vol(%v)", err, ltptestVolume)
+	}
+	if ec, err = NewExtentClient(&ExtentConfig{
+		Volume:            ltptestVolume,
+		Masters:           strings.Split(ltptestMaster, ","),
+		FollowerRead:      false,
+		OnInsertExtentKey: mw.InsertExtentKey,
+		OnGetExtents:      mw.GetExtents,
+		OnTruncate:        mw.Truncate,
+	}); err != nil {
+		t.Fatalf("NewExtentClient failed: err(%v), vol(%v)", err, ltptestVolume)
+	}
+	return mw, ec, nil
+}
+
+func TestROW(t *testing.T) {
+	var (
+		testROWFilePath = "/cfs/mnt/testROW.txt"
+		originData      = "Origin test ROW file"
+		writeData       = "ROW is Writing......"
+		mw              *meta.MetaWrapper
+		ec              *ExtentClient
+		err             error
+	)
+	ctx := context.Background()
+	mw, ec, err = creatHelper(t)
+	if err != nil {
+		t.Fatalf("create help metaWrapper and extentClient failed: err(%v), metaWrapper(%v), extentclient(%v)",
+			err, mw, ec)
+	}
+	ROWFile, err := os.Create(testROWFilePath)
+	if err != nil {
+		t.Fatalf("create ROW testFile failed: err(%v), file(%v)", err, testROWFilePath)
+	}
+	defer ROWFile.Close()
+	writeBytes := []byte(originData)
+	writeOffset := int64(0)
+	_, err = ROWFile.WriteAt(writeBytes, writeOffset)
+	if err != nil {
+		t.Fatalf("write ROW testFile failed: err(%v), file(%v)", err, testROWFilePath)
+	}
+	ROWFile.Sync()
+	beforeRow, _ := ioutil.ReadFile(testROWFilePath)
+	fmt.Printf("before ROW: %v\n", string(beforeRow))
+	var fInfo os.FileInfo
+	if fInfo, err = os.Stat(testROWFilePath); err != nil {
+		t.Fatalf("stat ROW testFile failed: err(%v), file(%v)", err, testROWFilePath)
+	}
+	inode := fInfo.Sys().(*syscall.Stat_t).Ino
+	streamMap := ec.streamerConcurrentMap.GetMapSegment(inode)
+	streamer := NewStreamer(ec, inode, streamMap)
+	_, _, eks, err := mw.GetExtents(ctx, inode)
+	if err != nil {
+		t.Fatalf("GetExtents filed: err(%v) inode(%v)", err, inode)
+	}
+	for _, ek := range eks {
+		req := &ExtentRequest{
+			FileOffset: int(ek.FileOffset),
+			Size:       int(ek.Size),
+			Data:       []byte(writeData),
+			ExtentKey:  &ek,
+		}
+		_, err = streamer.doROW(ctx, req, false)
+		if err != nil {
+			t.Fatalf("doROW failed: err(%v), req(%v)", err, req)
+		}
+	}
+	//ROWFile, _ = os.Open(testROWFilePath)
+	//readBytes := make([]byte, len(writeBytes))
+	//readOffset := int64(0)
+	//_, err = ROWFile.ReadAt(readBytes, readOffset)
+	readBytes, err := ioutil.ReadFile(testROWFilePath)
+	if err != nil {
+		t.Errorf("read ROW testFile failed: err(%v)", err)
+	}
+	if string(readBytes) != writeData {
+		t.Fatalf("ROW is failed: err(%v), read data(%v)", err, string(readBytes))
+	}
+	fmt.Printf("after ROW : %v\n", string(readBytes))
+	streamer.done <- struct{}{}
+	if err = ec.Close(context.Background()); err != nil {
+		t.Errorf("close ExtentClient failed: err(%v), vol(%v)", err, ltptestVolume)
+	}
+}
+
+func TestWrite_DataConsistency(t *testing.T) {
+	var (
+		testFile = "/cfs/mnt/write.txt"
+		fInfo    os.FileInfo
+		dp       *DataPartition
+		ek       proto.ExtentKey
+		err      error
+	)
+	file, err := os.Create(testFile)
+	if err != nil {
+		t.Fatalf("create testFile failed: err(%v), file(%v)", err, testFile)
+	}
+	defer file.Close()
+	// append write
+	fileOffset := 0
+	for i := 0; i < 3; i++ {
+		n, _ := file.WriteAt([]byte(" aaaa aaaa"), int64(fileOffset))
+		fileOffset += n
+	}
+	// append write at 30~50
+	_, err = file.WriteAt([]byte(" aaaa aaaa aaaa aaaa"), int64(fileOffset))
+	if err != nil {
+		t.Fatalf("first append write failed: err(%v)", err)
+	}
+	file.Sync()
+	//overwrite
+	_, err = file.WriteAt([]byte("overwrite is writing"), int64(fileOffset))
+	if err != nil {
+		t.Fatalf("overwrite failed: err(%v)", err)
+	}
+	file.Sync()
+	//truncate
+	if err = file.Truncate(int64(fileOffset)); err != nil {
+		t.Fatalf("truncate file failed: err(%v)", err)
+	}
+	file.Sync()
+	//append write again
+	size, err := file.WriteAt([]byte("lastTime appendWrite"), int64(fileOffset))
+	if err != nil {
+		t.Fatalf("last append write failed: err(%v)", err)
+	}
+	file.Sync()
+
+	mw, ec, err := creatHelper(t)
+
+	if fInfo, err = os.Stat(testFile); err != nil {
+		t.Fatalf("stat file: err(%v) file(%v)", err, testFile)
+	}
+	sysStat := fInfo.Sys().(*syscall.Stat_t)
+	streamMap := ec.streamerConcurrentMap.GetMapSegment(sysStat.Ino)
+	streamer := NewStreamer(ec, sysStat.Ino, streamMap)
+	if _, _, eks, err := mw.GetExtents(context.Background(), sysStat.Ino); err != nil {
+		t.Fatalf("GetExtents filed: err(%v) inode(%v)", err, sysStat.Ino)
+	} else {
+		for _, ek = range eks {
+			if ek.FileOffset == uint64(fileOffset) {
+				break
+			}
+		}
+	}
+	fmt.Printf("------ek's FileOffset(%v)\n", ek.FileOffset)
+	if dp, err = streamer.client.dataWrapper.GetDataPartition(ek.PartitionId); err != nil {
+		t.Fatalf("GetDataPartition err(%v), pid(%v)", err, ek.PartitionId)
+	}
+	sc := NewStreamConn(dp, false)
+	host := sortByStatus(sc.dp, true)
+	data := make([]byte, size)
+	req := NewExtentRequest(fileOffset, size, data, &ek)
+	reqPacket := NewReadPacket(context.Background(), &ek, int(ek.ExtentOffset), req.Size, streamer.inode, req.FileOffset, true)
+	// read from three replicas, check if same
+	readMap := make(map[string]string)
+	for _, addr := range host {
+		fmt.Printf("read from (%v), reqPacket(%v)\n", addr, reqPacket)
+		sc.currAddr = addr
+		_, _, _, readErr := dp.sendReadCmdToDataPartition(sc, reqPacket, req)
+		if readErr == nil {
+			readMap[addr] = string(req.Data)
+		} else {
+			readMap[addr] = readErr.Error()
+		}
+		want := "lastTime appendWrite"
+		if readMap[addr] != want {
+			t.Errorf("Inconsistent data: readAddr(%v), readWords(%v), want(%v)\n", addr, readMap[addr], want)
+		}
+	}
+
+	streamer.done <- struct{}{}
+	if err = ec.Close(context.Background()); err != nil {
+		t.Errorf("close ExtentClient failed: err(%v), vol(%v)", err, ltptestVolume)
 	}
 }

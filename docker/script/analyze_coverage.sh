@@ -60,8 +60,8 @@ function analyze_coverage() {
 
     # 获取源码版本信息
     pushd ${source_code_dir} > /dev/null
-    branch_name=`git rev-parse --abbrev-ref HEAD`
-    commit_id=`git rev-parse HEAD`
+    branch_name=$(git rev-parse --abbrev-ref HEAD)
+    commit_id=$(git rev-parse HEAD)
     popd > /dev/null
 
     if [[ ! -d ${cover_dir} ]]; then
@@ -71,13 +71,32 @@ function analyze_coverage() {
 
     pushd ${cover_dir} > /dev/null
 
-    # 合并拆分覆盖率源文件
-    source_cov_files=`ls node_*.cov`
+    # merge cov files; merge duplicate lines
     touch ${summary_cover_file} && echo "mode: atomic" > ${summary_cover_file}
-    for cov_file in `echo ${source_cov_files}`; do
-        tail -n +2 ${cov_file} | egrep -v "chubaofs/console|chubaofs/sdk/graphql" >> ${summary_cover_file}
-        echo "[INFO] Node coverage source ${cov_file} merged to ${summary_cover_file}"
-    done;
+    tmp=merge_cover_tmp
+    grep -h -Ev "^mode:|chubaofs/console|chubaofs/sdk/graphql|chubaofs/vendor" "${cover_dir}"/*.cov | sort > "$tmp"
+
+    current=""
+    count=0
+    while read line; do
+        block=$(echo "$line" | cut -d ' ' -f1-2)
+        num=$(echo "$line" | cut -d ' ' -f3)
+        if [ "$current" == "" ]; then
+            current=$block
+            count=$num
+        elif [ "$block" == "$current" ]; then
+            count=$(($count + $num))
+        else
+            echo "$current" $count >> ${summary_cover_file}
+            current=$block
+            count=$num
+        fi
+    done < "$tmp"
+
+    if [ "$current" != "" ]; then
+        echo "$current" "$count" >> ${summary_cover_file}
+    fi
+    rm -f "$tmp"
     go tool cover -func=${summary_cover_file} -o ${summary_report_text}
     go tool cover -html=${summary_cover_file} -o ${summary_report_html}
 
@@ -101,12 +120,12 @@ function analyze_coverage() {
     grep "github.com/chubaofs/chubaofs/objectnode" ${summary_cover_file} >> ${mod_object_cover_file}
     go tool cover -func=${mod_object_cover_file} -o ${mod_object_report_text}
 
-    total_coverage=`tail -n 1 ${summary_report_text} | grep -i "total" | awk '{print$3}'`
-    mod_sdk_coverage=`tail -n 1 ${mod_sdk_report_text} | grep -i "total" | awk '{print$3}'`
-    mod_master_coverage=`tail -n 1 ${mod_master_report_text} | grep -i "total" | awk '{print$3}'`
-    mod_meta_coverage=`tail -n 1 ${mod_meta_report_text} | grep -i "total" | awk '{print$3}'`
-    mod_data_coverage=`tail -n 1 ${mod_data_report_text} | grep -i "total" | awk '{print$3}'`
-    mod_object_coverage=`tail -n 1 ${mod_object_report_text} | grep -i "total" | awk '{print$3}'`
+    total_coverage=$(tail -n 1 ${summary_report_text} | grep -i "total" | awk '{print$3}')
+    mod_sdk_coverage=$(tail -n 1 ${mod_sdk_report_text} | grep -i "total" | awk '{print$3}')
+    mod_master_coverage=$(tail -n 1 ${mod_master_report_text} | grep -i "total" | awk '{print$3}')
+    mod_meta_coverage=$(tail -n 1 ${mod_meta_report_text} | grep -i "total" | awk '{print$3}')
+    mod_data_coverage=$(tail -n 1 ${mod_data_report_text} | grep -i "total" | awk '{print$3}')
+    mod_object_coverage=$(tail -n 1 ${mod_object_report_text} | grep -i "total" | awk '{print$3}')
     echo "----------------------------------------------------------------------"
     echo "                         Coverage Report                              "
     echo "branch    : ${branch_name}"
@@ -122,8 +141,8 @@ function analyze_coverage() {
     # 将整体报告打包压缩上传到OSS
     tar zcvf summary_coverage.tar.gz ${summary_report_text} ${summary_report_html} > /dev/null
     oss_key="chubaofs_ci_coverage_report_${branch_name}_${commit_id}.tar.gz"
-    url=`upload_to_oss summary_coverage.tar.gz ${oss_key}`
-    if [[ $? -eq 0 ]]; then
+    url=$(upload_to_oss summary_coverage.tar.gz "${oss_key}")
+    if [[ $? ]]; then
         echo "Detail report uploaded to OSS: ${url}"
     else
         echo "Detail report upload failed"

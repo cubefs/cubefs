@@ -95,12 +95,12 @@ func (dp *DataPartition) MetricsRefresh() {
 	dp.Metrics.WriteOpNum = 0
 }
 
-func (dp *DataPartition) GetAvgRead() int64 {
-	dp.Metrics.RLock()
-	defer dp.Metrics.RUnlock()
-
-	return dp.Metrics.AvgReadLatencyNano
-}
+//func (dp *DataPartition) GetAvgRead() int64 {
+//	dp.Metrics.RLock()
+//	defer dp.Metrics.RUnlock()
+//
+//	return dp.Metrics.AvgReadLatencyNano
+//}
 
 func (dp *DataPartition) GetAvgWrite() int64 {
 	dp.Metrics.RLock()
@@ -111,15 +111,15 @@ func (dp *DataPartition) GetAvgWrite() int64 {
 
 type DataPartitionSorter []*DataPartition
 
-func (ds DataPartitionSorter) Len() int {
-	return len(ds)
-}
-func (ds DataPartitionSorter) Swap(i, j int) {
-	ds[i], ds[j] = ds[j], ds[i]
-}
-func (ds DataPartitionSorter) Less(i, j int) bool {
-	return ds[i].Metrics.AvgWriteLatencyNano < ds[j].Metrics.AvgWriteLatencyNano
-}
+//func (ds DataPartitionSorter) Len() int {
+//	return len(ds)
+//}
+//func (ds DataPartitionSorter) Swap(i, j int) {
+//	ds[i], ds[j] = ds[j], ds[i]
+//}
+//func (ds DataPartitionSorter) Less(i, j int) bool {
+//	return ds[i].Metrics.AvgWriteLatencyNano < ds[j].Metrics.AvgWriteLatencyNano
+//}
 
 // NewDataPartitionMetrics returns a new DataPartitionMetrics instance.
 func NewDataPartitionMetrics() *DataPartitionMetrics {

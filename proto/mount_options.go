@@ -46,9 +46,9 @@ const (
 	MaxCPUs
 	EnableXattr
 	NearRead
-	AlignSize
-	MaxExtentNumPerAlignArea
-	ForceAlignMerge
+	// AlignSize
+	// MaxExtentNumPerAlignArea
+	// ForceAlignMerge
 	EnablePosixACL
 	AutoMakeSubDir
 	ExtentSize
@@ -121,11 +121,11 @@ func InitMountOptions(opts []MountOption) {
 	opts[EnableXattr] = MountOption{"enableXattr", "Enable xattr support", "", false}
 	opts[EnablePosixACL] = MountOption{"enablePosixACL", "enable posix ACL support", "", false}
 
-	opts[AlignSize] = MountOption{"alignSize", "align size when extent merge", "", int64(4096)}
-	opts[MaxExtentNumPerAlignArea] = MountOption{"maxExtentNumPerAlignArea", "max extent number per align area", "",
-		int64(12)}
-	opts[ForceAlignMerge] = MountOption{"forceAlignMerge", "always merge extent when write at align region boundaries",
-		"", false}
+	//opts[AlignSize] = MountOption{"alignSize", "align size when extent merge", "", int64(4096)}
+	//opts[MaxExtentNumPerAlignArea] = MountOption{"maxExtentNumPerAlignArea", "max extent number per align area", "",
+	//	int64(12)}
+	//opts[ForceAlignMerge] = MountOption{"forceAlignMerge", "always merge extent when write at align region boundaries",
+	//	"", false}
 	opts[ExtentSize] = MountOption{"extentSize", "set extentSize for client", "", int64(0)}
 	opts[AutoFlush] = MountOption{"autoFlush", "set autoFlush for client", "", true}
 	opts[DeleteProcessAbsoPath] = MountOption{"delProcessAbsoPath", "the absolute path of the process which is allowed to delete files", "", ""}

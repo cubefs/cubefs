@@ -133,22 +133,22 @@ func (mw *MetaWrapper) getRWPartitions() []*MetaPartition {
 
 // GetConnect the partition whose Start is Larger than ino.
 // Return nil if no successive partition.
-func (mw *MetaWrapper) getNextPartition(ino uint64) *MetaPartition {
-	var mp *MetaPartition
-	mw.RLock()
-	defer mw.RUnlock()
-
-	pivot := &MetaPartition{Start: ino + 1}
-	mw.ranges.AscendGreaterOrEqual(pivot, func(i btree.Item) bool {
-		mp = i.(*MetaPartition)
-		return false
-	})
-
-	return mp
-}
-
-func (mw *MetaWrapper) getLatestPartition() *MetaPartition {
-	mw.RLock()
-	defer mw.RUnlock()
-	return mw.ranges.Max().(*MetaPartition)
-}
+//func (mw *MetaWrapper) getNextPartition(ino uint64) *MetaPartition {
+//	var mp *MetaPartition
+//	mw.RLock()
+//	defer mw.RUnlock()
+//
+//	pivot := &MetaPartition{Start: ino + 1}
+//	mw.ranges.AscendGreaterOrEqual(pivot, func(i btree.Item) bool {
+//		mp = i.(*MetaPartition)
+//		return false
+//	})
+//
+//	return mp
+//}
+//
+//func (mw *MetaWrapper) getLatestPartition() *MetaPartition {
+//	mw.RLock()
+//	defer mw.RUnlock()
+//	return mw.ranges.Max().(*MetaPartition)
+//}

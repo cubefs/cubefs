@@ -150,16 +150,16 @@ func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) {
 }
 
 // Max returns the max extent key in the cache.
-func (cache *ExtentCache) Max() *proto.ExtentKey {
-	cache.RLock()
-	defer cache.RUnlock()
-	item := cache.root.Max()
-	if item == nil {
-		return nil
-	}
-	ek := item.(*proto.ExtentKey)
-	return ek
-}
+//func (cache *ExtentCache) Max() *proto.ExtentKey {
+//	cache.RLock()
+//	defer cache.RUnlock()
+//	item := cache.root.Max()
+//	if item == nil {
+//		return nil
+//	}
+//	ek := item.(*proto.ExtentKey)
+//	return ek
+//}
 
 func (cache *ExtentCache) Pre(offset uint64) (ek *proto.ExtentKey) {
 	cache.RLock()

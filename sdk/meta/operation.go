@@ -516,51 +516,51 @@ func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID 
 	return statusOK, resp.Children, nil
 }
 
-func (mw *MetaWrapper) appendExtentKey(ctx context.Context, mp *MetaPartition, inode uint64, extent proto.ExtentKey) (status int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.appendExtentKey")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
-	req := &proto.AppendExtentKeyRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		Inode:       inode,
-		Extent:      extent,
-	}
-
-	packet := proto.NewPacketReqID(ctx)
-	packet.Opcode = proto.OpMetaExtentsAdd
-	packet.PartitionID = mp.PartitionID
-	err = packet.MarshalData(req)
-	if err != nil {
-		log.LogWarnf("appendExtentKey: req(%v) err(%v)", *req, err)
-		return
-	}
-
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer metric.Set(err)
-
-	var needCheckRead bool
-	packet, needCheckRead, err = mw.sendWriteToMP(ctx, mp, packet)
-	if err != nil {
-		if needCheckRead {
-			log.LogWarnf("appendExtentKey: check results, mp(%v) req(%v)", mp, *req)
-			newStatus, _, _, newExtents, newErr := mw.getExtents(ctx, mp, inode)
-			if newErr == nil && newStatus == statusOK && containsExtent(newExtents, extent) {
-				log.LogWarnf("appendExtentKey: check results successfully, mp(%v) req(%v)", mp, *req)
-				return statusOK, nil
-			}
-		}
-		log.LogWarnf("appendExtentKey: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
-		return
-	}
-
-	status = parseStatus(packet.ResultCode)
-	if status != statusOK {
-		log.LogWarnf("appendExtentKey: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
-	}
-	return status, nil
-}
+//func (mw *MetaWrapper) appendExtentKey(ctx context.Context, mp *MetaPartition, inode uint64, extent proto.ExtentKey) (status int, err error) {
+//	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.appendExtentKey")
+//	defer tracer.Finish()
+//	ctx = tracer.Context()
+//
+//	req := &proto.AppendExtentKeyRequest{
+//		VolName:     mw.volname,
+//		PartitionID: mp.PartitionID,
+//		Inode:       inode,
+//		Extent:      extent,
+//	}
+//
+//	packet := proto.NewPacketReqID(ctx)
+//	packet.Opcode = proto.OpMetaExtentsAdd
+//	packet.PartitionID = mp.PartitionID
+//	err = packet.MarshalData(req)
+//	if err != nil {
+//		log.LogWarnf("appendExtentKey: req(%v) err(%v)", *req, err)
+//		return
+//	}
+//
+//	metric := exporter.NewTPCnt(packet.GetOpMsg())
+//	defer metric.Set(err)
+//
+//	var needCheckRead bool
+//	packet, needCheckRead, err = mw.sendWriteToMP(ctx, mp, packet)
+//	if err != nil {
+//		if needCheckRead {
+//			log.LogWarnf("appendExtentKey: check results, mp(%v) req(%v)", mp, *req)
+//			newStatus, _, _, newExtents, newErr := mw.getExtents(ctx, mp, inode)
+//			if newErr == nil && newStatus == statusOK && containsExtent(newExtents, extent) {
+//				log.LogWarnf("appendExtentKey: check results successfully, mp(%v) req(%v)", mp, *req)
+//				return statusOK, nil
+//			}
+//		}
+//		log.LogWarnf("appendExtentKey: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+//		return
+//	}
+//
+//	status = parseStatus(packet.ResultCode)
+//	if status != statusOK {
+//		log.LogWarnf("appendExtentKey: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+//	}
+//	return status, nil
+//}
 
 func (mw *MetaWrapper) insertExtentKey(ctx context.Context, mp *MetaPartition, inode uint64, ek proto.ExtentKey) (status int, err error) {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.insertExtentKey").

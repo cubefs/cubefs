@@ -606,24 +606,24 @@ func (mw *MetaWrapper) DentryUpdate_ll(ctx context.Context, parentID uint64, nam
 }
 
 // Used as a callback by stream sdk
-func (mw *MetaWrapper) AppendExtentKey(ctx context.Context, inode uint64, ek proto.ExtentKey) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.AppendExtentKey")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
-	mp := mw.getPartitionByInode(ctx, inode)
-	if mp == nil {
-		return syscall.ENOENT
-	}
-
-	status, err := mw.appendExtentKey(ctx, mp, inode, ek)
-	if err != nil || status != statusOK {
-		log.LogErrorf("AppendExtentKey: inode(%v) ek(%v) err(%v) status(%v)", inode, ek, err, status)
-		return statusToErrno(status)
-	}
-	log.LogDebugf("AppendExtentKey: ino(%v) ek(%v)", inode, ek)
-	return nil
-}
+//func (mw *MetaWrapper) AppendExtentKey(ctx context.Context, inode uint64, ek proto.ExtentKey) error {
+//	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.AppendExtentKey")
+//	defer tracer.Finish()
+//	ctx = tracer.Context()
+//
+//	mp := mw.getPartitionByInode(ctx, inode)
+//	if mp == nil {
+//		return syscall.ENOENT
+//	}
+//
+//	status, err := mw.appendExtentKey(ctx, mp, inode, ek)
+//	if err != nil || status != statusOK {
+//		log.LogErrorf("AppendExtentKey: inode(%v) ek(%v) err(%v) status(%v)", inode, ek, err, status)
+//		return statusToErrno(status)
+//	}
+//	log.LogDebugf("AppendExtentKey: ino(%v) ek(%v)", inode, ek)
+//	return nil
+//}
 
 // AppendExtentKeys append multiple extent key into specified inode with single request.
 func (mw *MetaWrapper) AppendExtentKeys(ctx context.Context, inode uint64, eks []proto.ExtentKey) error {
