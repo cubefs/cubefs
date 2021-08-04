@@ -166,7 +166,7 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 	}
 
 	s.extentInfoMap = make(map[uint64]*ExtentInfo, 0)
-	s.cache = NewExtentCache(100)
+	s.cache = NewExtentCache(32, time.Minute*5)
 	if err = s.initBaseFileID(); err != nil {
 		err = fmt.Errorf("init base field ID: %v", err)
 		return
@@ -229,7 +229,7 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 }
 
 // Create creates an extent.
-func (s *ExtentStore) Create(extentID uint64) (err error) {
+func (s *ExtentStore) Create(extentID uint64, putCache bool) (err error) {
 	var e *Extent
 	name := path.Join(s.dataPath, strconv.Itoa(int(extentID)))
 	if s.HasExtent(extentID) {
@@ -242,7 +242,13 @@ func (s *ExtentStore) Create(extentID uint64) (err error) {
 	if err != nil {
 		return err
 	}
-	s.cache.Put(e)
+	if putCache {
+		s.cache.Put(e)
+	} else {
+		defer func() {
+			_ = e.Close()
+		}()
+	}
 	extInfo := &ExtentInfo{FileID: extentID}
 	extInfo.UpdateExtentInfo(e, 0)
 	s.eiMutex.Lock()
@@ -387,21 +393,23 @@ func (s *ExtentStore) tinyDelete(e *Extent, offset, size int64) (err error) {
 // MarkDelete marks the given extent as deleted.
 func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error) {
 	var (
-		e  *Extent
 		ei *ExtentInfo
 	)
 
 	s.eiMutex.RLock()
 	ei = s.extentInfoMap[extentID]
 	s.eiMutex.RUnlock()
-	if e, err = s.extentWithHeader(ei); err != nil {
-		return nil
+	if ei == nil || ei.IsDeleted {
+		err = ExtentNotFoundError
+		return
 	}
-
 	if IsTinyExtent(extentID) {
+		var e *Extent
+		if e, err = s.extentWithHeader(ei); err != nil {
+			return
+		}
 		return s.tinyDelete(e, offset, size)
 	}
-	e.Close()
 	s.cache.Del(extentID)
 	extentFilePath := path.Join(s.dataPath, strconv.FormatUint(extentID, 10))
 	if err = os.Remove(extentFilePath); err != nil {
@@ -410,7 +418,6 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	s.PersistenceHasDeleteExtent(extentID)
 	ei.IsDeleted = true
 	ei.ModifyTime = time.Now().Unix()
-	s.cache.Del(e.extentID)
 	s.DeleteBlockCrc(extentID)
 
 	s.eiMutex.Lock()
@@ -531,7 +538,7 @@ func (s *ExtentStore) initTinyExtent() (err error) {
 	var extentID uint64
 
 	for extentID = TinyExtentStartID; extentID < TinyExtentStartID+TinyExtentCount; extentID++ {
-		err = s.Create(extentID)
+		err = s.Create(extentID, false)
 		if err == nil || strings.Contains(err.Error(), syscall.EEXIST.Error()) || err == ExtentExistsError {
 			err = nil
 			s.brokenTinyExtentC <- extentID
@@ -998,4 +1005,8 @@ func (s *ExtentStore) GetStoreUsedSize() (used int64) {
 		}
 	}
 	return
+}
+
+func (s *ExtentStore) EvictExpiredCache() {
+	s.cache.EvictExpired()
 }

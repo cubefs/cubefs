@@ -17,6 +17,7 @@ package storage
 import (
 	"container/list"
 	"sync"
+	"time"
 )
 
 // ExtentMapItem stores the extent entity pointer and the element
@@ -24,41 +25,38 @@ import (
 type ExtentMapItem struct {
 	e       *Extent
 	element *list.Element
+
+	latestActive int64
 }
 
 // ExtentCache is an implementation of the ExtentCache with LRU support.
 type ExtentCache struct {
-	extentMap   map[uint64]*ExtentMapItem
-	extentList  *list.List
-	tinyExtents map[uint64]*Extent
-	tinyLock    sync.RWMutex
-	lock        sync.RWMutex
-	capacity    int
+	extentMap  map[uint64]*ExtentMapItem
+	extentList *list.List
+	lock       sync.RWMutex
+	capacity   int
+	ttl        int64
 }
 
 // NewExtentCache creates and returns a new ExtentCache instance.
-func NewExtentCache(capacity int) *ExtentCache {
+func NewExtentCache(capacity int, ttl time.Duration) *ExtentCache {
 	return &ExtentCache{
-		extentMap:   make(map[uint64]*ExtentMapItem),
-		extentList:  list.New(),
-		capacity:    capacity,
-		tinyExtents: make(map[uint64]*Extent),
+		extentMap:  make(map[uint64]*ExtentMapItem),
+		extentList: list.New(),
+		capacity:   capacity,
+		ttl:        int64(ttl),
 	}
 }
 
 // Put puts an extent object into the cache.
 func (cache *ExtentCache) Put(e *Extent) {
-	if IsTinyExtent(e.extentID) {
-		cache.tinyLock.Lock()
-		cache.tinyExtents[e.extentID] = e
-		cache.tinyLock.Unlock()
-		return
-	}
 	cache.lock.Lock()
 	defer cache.lock.Unlock()
 	item := &ExtentMapItem{
 		e:       e,
 		element: cache.extentList.PushBack(e),
+
+		latestActive: time.Now().UnixNano(),
 	}
 	cache.extentMap[e.extentID] = item
 	cache.evict()
@@ -66,21 +64,14 @@ func (cache *ExtentCache) Put(e *Extent) {
 
 // Get gets the extent from the cache.
 func (cache *ExtentCache) Get(extentID uint64) (e *Extent, ok bool) {
-	if IsTinyExtent(extentID) {
-		cache.tinyLock.RLock()
-		e, ok = cache.tinyExtents[extentID]
-		cache.tinyLock.RUnlock()
-		return
-	}
 	cache.lock.Lock()
 	defer cache.lock.Unlock()
 	var (
 		item *ExtentMapItem
 	)
 	if item, ok = cache.extentMap[extentID]; ok {
-		if !IsTinyExtent(extentID) {
-			cache.extentList.MoveToBack(item.element)
-		}
+		item.latestActive = time.Now().UnixNano()
+		cache.extentList.MoveToBack(item.element)
 		e = item.e
 	}
 	return
@@ -88,9 +79,6 @@ func (cache *ExtentCache) Get(extentID uint64) (e *Extent, ok bool) {
 
 // Del deletes the extent stored in the cache.
 func (cache *ExtentCache) Del(extentID uint64) {
-	if IsTinyExtent(extentID) {
-		return
-	}
 	cache.lock.Lock()
 	defer cache.lock.Unlock()
 	var (
@@ -107,10 +95,6 @@ func (cache *ExtentCache) Del(extentID uint64) {
 
 // Clear closes all the extents stored in the cache.
 func (cache *ExtentCache) Clear() {
-	for _, extent := range cache.tinyExtents {
-
-		extent.Close()
-	}
 	cache.lock.Lock()
 	defer cache.lock.Unlock()
 	for e := cache.extentList.Front(); e != nil; {
@@ -141,9 +125,6 @@ func (cache *ExtentCache) evict() {
 	for i := 0; i < needRemove; i++ {
 		if e := cache.extentList.Front(); e != nil {
 			front := e.Value.(*Extent)
-			if IsTinyExtent(front.extentID) {
-				continue
-			}
 			delete(cache.extentMap, front.extentID)
 			cache.extentList.Remove(e)
 			front.Close()
@@ -151,11 +132,41 @@ func (cache *ExtentCache) evict() {
 	}
 }
 
+func (cache *ExtentCache) EvictExpired() {
+	if cache.ttl == 0 {
+		return
+	}
+	var nowUnixNano = time.Now().UnixNano()
+	var expiredMap = make([]*list.Element, 0)
+
+	// 检查Cache的过期节点
+	cache.lock.RLock()
+	for element := cache.extentList.Front(); element != nil; element = element.Next() {
+		extent := element.Value.(*Extent)
+		item, has := cache.extentMap[extent.extentID]
+		if !has || nowUnixNano-item.latestActive > cache.ttl {
+			expiredMap = append(expiredMap, element)
+			continue
+		}
+		break
+	}
+	cache.lock.RUnlock()
+
+	// 释放过期节点FD
+	if len(expiredMap) > 0 {
+		cache.lock.Lock()
+		for _, element := range expiredMap {
+			extent := element.Value.(*Extent)
+			delete(cache.extentMap, extent.extentID)
+			cache.extentList.Remove(element)
+			_ = extent.Close()
+		}
+		cache.lock.Unlock()
+	}
+}
+
 // Flush synchronizes the extent stored in the cache to the disk.
 func (cache *ExtentCache) Flush() {
-	for _, extent := range cache.tinyExtents {
-		extent.Flush()
-	}
 	cache.lock.RLock()
 	defer cache.lock.RUnlock()
 	for _, item := range cache.extentMap {

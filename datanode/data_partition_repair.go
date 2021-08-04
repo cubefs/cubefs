@@ -239,7 +239,7 @@ func (dp *DataPartition) DoRepair(ctx context.Context, repairTasks []*DataPartit
 			log.LogWarnf("AutoRepairStatus is False,so cannot Create extent(%v)", extentInfo.String())
 			continue
 		}
-		store.Create(extentInfo.FileID)
+		store.Create(extentInfo.FileID, true)
 	}
 	for _, extentInfo := range repairTasks[0].ExtentsToBeRepaired {
 		err := dp.streamRepairExtent(ctx, extentInfo)

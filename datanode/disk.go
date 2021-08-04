@@ -81,7 +81,7 @@ func NewDisk(path string, reservedSpace uint64, maxErrCnt int, space *SpaceManag
 	d.partitionMap = make(map[uint64]*DataPartition)
 	d.computeUsage()
 	d.updateSpaceInfo()
-	d.startScheduleToUpdateSpaceInfo()
+	d.startScheduler()
 	d.fixTinyDeleteRecordLimit = space.fixTinyDeleteRecordLimitOnDisk
 	d.repairTaskLimit = space.repairTaskLimitOnDisk
 
@@ -177,22 +177,28 @@ func (d *Disk) incWriteErrCnt() {
 	atomic.AddUint64(&d.WriteErrCnt, 1)
 }
 
-func (d *Disk) startScheduleToUpdateSpaceInfo() {
+func (d *Disk) startScheduler() {
 	go func() {
-		updateSpaceInfoTicker := time.NewTicker(5 * time.Second)
-		checkStatusTickser := time.NewTicker(time.Minute * 2)
+		var (
+			updateSpaceInfoTicker = time.NewTicker(5 * time.Second)
+			checkStatusTicker     = time.NewTicker(time.Minute * 2)
+			evictFDTicker         = time.NewTicker(time.Minute * 5)
+		)
 		defer func() {
 			updateSpaceInfoTicker.Stop()
-			checkStatusTickser.Stop()
+			checkStatusTicker.Stop()
+			evictFDTicker.Stop()
 		}()
 		for {
 			select {
 			case <-updateSpaceInfoTicker.C:
 				d.computeUsage()
 				d.updateSpaceInfo()
-			case <-checkStatusTickser.C:
+			case <-checkStatusTicker.C:
 				d.checkDiskStatus()
 				d.updateTaskExecutionLimit()
+			case <-evictFDTicker.C:
+				d.evictFileDescriptor()
 			}
 		}
 	}()
@@ -475,5 +481,18 @@ func (d *Disk) finishFixTinyDeleteRecord() {
 	defer d.limitLock.Unlock()
 	if d.executingFixTinyDeleteRecord > 0 {
 		d.executingFixTinyDeleteRecord--
+	}
+}
+
+func (d *Disk) evictFileDescriptor() {
+	d.RLock()
+	var partitions = make([]*DataPartition, 0, len(d.partitionMap))
+	for _, partition := range d.partitionMap {
+		partitions = append(partitions, partition)
+	}
+	d.RUnlock()
+
+	for _, partition := range partitions {
+		partition.EvictExpiredFileDescriptor()
 	}
 }

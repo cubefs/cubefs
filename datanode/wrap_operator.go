@@ -162,7 +162,7 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 		err = storage.BrokenDiskError
 		return
 	}
-	err = partition.ExtentStore().Create(p.ExtentID)
+	err = partition.ExtentStore().Create(p.ExtentID, true)
 
 	return
 }

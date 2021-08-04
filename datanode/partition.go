@@ -768,7 +768,7 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 			log.LogWarnf("AutoRepairStatus is False,so cannot Create extent(%v)", extentInfo.String())
 			continue
 		}
-		err := store.Create(uint64(extentInfo.FileID))
+		err := store.Create(uint64(extentInfo.FileID), true)
 		if err != nil {
 			continue
 		}
@@ -952,4 +952,8 @@ func (dp *DataPartition) ResetRaftMember(peers []raftProto.Peer, context []byte)
 	}
 	err = dp.raftPartition.ResetMember(peers, context)
 	return
+}
+
+func (dp *DataPartition) EvictExpiredFileDescriptor() {
+	dp.extentStore.EvictExpiredCache()
 }

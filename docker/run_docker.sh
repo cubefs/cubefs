@@ -13,6 +13,7 @@ Usage: ./run_docker.sh [ -h | --help ] [ -d | --disk </disk/path> ] [ -l | --ltp
     -h, --help              show help info
     -d, --disk </disk/path>     set ChubaoFS DataNode local disk path
     -b, --build             build ChubaoFS server and client
+    --build-test            build ChubaoFS server and client in testing mode
     -s, --server            start ChubaoFS servers docker image
     -c, --client            start ChubaoFS client docker image
     -m, --monitor           start monitor web ui
