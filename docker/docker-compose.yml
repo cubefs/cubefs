@@ -54,7 +54,7 @@ services:
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/master1.json:/cfs/conf/master.json
             - ./script/start_master.sh:/cfs/script/start.sh
-        command: /cfs/bin/cfs-server -f -c /cfs/conf/master.json -test.coverprofile=/cfs/coverage/node_master1.cov
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/master.json -test.outputdir=/cfs/coverage/ -test.coverprofile=node_master1.cov
         restart: on-failure
         privileged: true
         environment:
@@ -78,7 +78,7 @@ services:
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/master2.json:/cfs/conf/master.json
             - ./script/start_master.sh:/cfs/script/start.sh
-        command: /cfs/bin/cfs-server -f -c /cfs/conf/master.json -test.coverprofile=/cfs/coverage/node_master2.cov
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/master.json -test.outputdir=/cfs/coverage/ -test.coverprofile=node_master2.cov
         restart: on-failure
         privileged: true
         environment:
@@ -101,7 +101,7 @@ services:
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/master3.json:/cfs/conf/master.json
             - ./script/start_master.sh:/cfs/script/start.sh
-        command: /cfs/bin/cfs-server -f -c /cfs/conf/master.json -test.coverprofile=/cfs/coverage/node_master3.cov
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/master.json -test.outputdir=/cfs/coverage/ -test.coverprofile=node_master3.cov
         restart: on-failure
         privileged: true
         environment:
@@ -125,7 +125,7 @@ services:
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
-        command: /cfs/bin/cfs-server -f -c /cfs/conf/metanode.json -test.coverprofile=/cfs/coverage/node_metanode1.cov
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/metanode.json -test.outputdir=/cfs/coverage/ -test.coverprofile=node_metanode1.cov
         restart: on-failure
         privileged: true
         environment:
@@ -149,7 +149,7 @@ services:
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
-        command: /cfs/bin/cfs-server -f -c /cfs/conf/metanode.json -test.coverprofile=/cfs/coverage/node_metanode2.cov
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/metanode.json -test.outputdir=/cfs/coverage/ -test.coverprofile=node_metanode2.cov
         restart: on-failure
         privileged: true
         environment:
@@ -173,7 +173,7 @@ services:
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
-        command: /cfs/bin/cfs-server -f -c /cfs/conf/metanode.json -test.coverprofile=/cfs/coverage/node_metanode3.cov
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/metanode.json -test.outputdir=/cfs/coverage/ -test.coverprofile=node_metanode3.cov
         restart: on-failure
         privileged: true
         environment:
@@ -197,7 +197,7 @@ services:
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
-        command: /cfs/bin/cfs-server -f -c /cfs/conf/metanode.json -test.coverprofile=/cfs/coverage/node_metanode4.cov
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/metanode.json -test.outputdir=/cfs/coverage/ -test.coverprofile=node_metanode4.cov
         restart: on-failure
         privileged: true
         environment:
@@ -221,7 +221,7 @@ services:
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
-        command: /cfs/bin/cfs-server -f -c /cfs/conf/datanode.json -test.coverprofile=/cfs/coverage/node_datanode1.cov
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/datanode.json -test.outputdir=/cfs/coverage/ -test.coverprofile=node_datanode1.cov
         restart: on-failure
         privileged: true
         environment:
@@ -245,7 +245,7 @@ services:
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
-        command: /cfs/bin/cfs-server -f -c /cfs/conf/datanode.json -test.coverprofile=/cfs/coverage/node_datanode2.cov
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/datanode.json -test.outputdir=/cfs/coverage/ -test.coverprofile=node_datanode2.cov
         restart: on-failure
         privileged: true
         environment:
@@ -269,7 +269,7 @@ services:
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
-        command: /cfs/bin/cfs-server -f -c /cfs/conf/datanode.json -test.coverprofile=/cfs/coverage/node_datanode3.cov
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/datanode.json -test.outputdir=/cfs/coverage/ -test.coverprofile=node_datanode3.cov
         restart: on-failure
         privileged: true
         environment:
@@ -293,7 +293,7 @@ services:
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/datanode.json:/cfs/conf/datanode.json
             - ./script/start_datanode.sh:/cfs/script/start.sh
-        command: /cfs/bin/cfs-server -f -c /cfs/conf/datanode.json -test.coverprofile=/cfs/coverage/node_datanode4.cov
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/datanode.json -test.outputdir=/cfs/coverage/ -test.coverprofile=node_datanode4.cov
         restart: on-failure
         privileged: true
         environment:
@@ -313,7 +313,7 @@ services:
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/objectnode.json:/cfs/conf/objectnode.json
             - ./script/start_objectnode.sh:/cfs/script/start.sh
-        command: /cfs/bin/cfs-server -f -c /cfs/conf/objectnode.json -test.coverprofile=/cfs/coverage/node_objectnode1.cov
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/objectnode.json -test.outputdir=/cfs/coverage/ -test.coverprofile=node_objectnode1.cov
         restart: on-failure
         privileged: true
         environment:
@@ -333,7 +333,7 @@ services:
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/objectnode.json:/cfs/conf/objectnode.json
             - ./script/start_objectnode.sh:/cfs/script/start.sh
-        command: /cfs/bin/cfs-server -f -c /cfs/conf/objectnode.json -test.coverprofile=/cfs/coverage/node_objectnode2.cov
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/objectnode.json -test.outputdir=/cfs/coverage/ -test.coverprofile=node_objectnode2.cov
         restart: on-failure
         privileged: true
         environment:
@@ -353,7 +353,7 @@ services:
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/objectnode.json:/cfs/conf/objectnode.json
             - ./script/start_objectnode.sh:/cfs/script/start.sh
-        command: /cfs/bin/cfs-server -f -c /cfs/conf/objectnode.json -test.coverprofile=/cfs/coverage/node_objectnode3.cov
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/objectnode.json -test.outputdir=/cfs/coverage/ -test.coverprofile=node_objectnode3.cov
         restart: on-failure
         privileged: true
         environment:
