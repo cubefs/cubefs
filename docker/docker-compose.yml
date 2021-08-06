@@ -492,8 +492,11 @@ services:
         image: chubaofs/cfs-base:1.3
         volumes:
             - ./script/analyze_coverage.sh:/cfs/script/analyze_coverage.sh:ro
+            #- ./script/analyze_coverage_total.py:/cfs/script/analyze_coverage_total.py:ro
             - ../:/go/src/github.com/chubaofs/chubaofs
             - ./docker_data/coverage:/cfs/coverage
         command: /bin/bash /cfs/script/analyze_coverage.sh
+        #command: python3 /cfs/script/analyze_coverage_total.py
+
         networks:
             extnetwork:
