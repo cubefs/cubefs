@@ -162,6 +162,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	for _, fileInfo := range fileInfos {
 		if !fileInfo.IsDir() && strings.HasPrefix(fileInfo.Name(), prefixDelExtent) {
 			filenames = append(filenames, fileInfo.Name())
+			continue
 		}
 		if !fileInfo.IsDir() && strings.HasPrefix(fileInfo.Name(), prefixDelExtentV2) {
 			filenames = append(filenames, fileInfo.Name())
