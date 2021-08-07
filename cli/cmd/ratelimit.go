@@ -44,13 +44,14 @@ func newRateLimitCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newRateLimitInfoCmd(client *master.MasterClient) *cobra.Command {
+	var vol string
 	var cmd = &cobra.Command{
 		Use:   CliOpInfo,
 		Short: cmdRateLimitInfoShort,
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			var info *proto.LimitInfo
-			if info, err = client.AdminAPI().GetLimitInfo(); err != nil {
+			if info, err = client.AdminAPI().GetLimitInfo(vol); err != nil {
 				errout("Get cluster info fail:\n%v\n", err)
 			}
 			stdout("[Cluster rate limit]\n")
@@ -58,6 +59,7 @@ func newRateLimitInfoCmd(client *master.MasterClient) *cobra.Command {
 			stdout("\n")
 		},
 	}
+	cmd.Flags().StringVar(&vol, "volume", "", "volume (empty volume acts as default)")
 	return cmd
 }
 
@@ -78,12 +80,18 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 				(info.DataNodeReqVolOpPartRate > 0 && info.DataNodeReqVolOpPartRate < minRate) {
 				errout("limit rate can't be less than %d\n", minRate)
 			}
+			if info.ClientVolOpRate < -2 {
+				errout("client meta op limit rate can't be less than %d\n", -1)
+			}
 			msg := ""
 			if info.ClientReadRate >= 0 {
 				msg += fmt.Sprintf("clientReadRate: %d, ", info.ClientReadRate)
 			}
 			if info.ClientWriteRate >= 0 {
 				msg += fmt.Sprintf("clientWriteRate: %d, ", info.ClientWriteRate)
+			}
+			if info.ClientVolOpRate > -2 {
+				msg += fmt.Sprintf("clientVolOpRate: %v, ", info.ClientVolOpRate)
 			}
 			if info.DataNodeRepairTaskCount > 0 {
 				msg += fmt.Sprintf("dataNodeRepairTaskCount: %d, ", info.DataNodeRepairTaskCount)
@@ -127,6 +135,7 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&info.DataNodeReqVolOpPartRate, "dataNodeReqVolOpPartRate", -1, "data node per partition request rate limit for a given volume & opcode")
 	cmd.Flags().Int64Var(&info.ClientReadRate, "clientReadRate", -1, "client read rate limit")
 	cmd.Flags().Int64Var(&info.ClientWriteRate, "clientWriteRate", -1, "client write limit rate")
+	cmd.Flags().Int64Var(&info.ClientVolOpRate, "clientVolOpRate", -2, "client meta op limit rate. '-1': unlimit, '0': disable")
 	return cmd
 }
 
@@ -146,5 +155,7 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  (map[volume]map[opcode]limit - per partition)\n"))
 	sb.WriteString(fmt.Sprintf("  ClientReadRate              : %v\n", info.ClientReadRateLimit))
 	sb.WriteString(fmt.Sprintf("  ClientWriteRate             : %v\n", info.ClientWriteRateLimit))
+	sb.WriteString(fmt.Sprintf("  ClientVolOpRate             : %v\n", info.ClientVolOpRateLimit))
+	sb.WriteString(fmt.Sprintf("  (map[opcode]limit of specified volume)\n"))
 	return sb.String()
 }

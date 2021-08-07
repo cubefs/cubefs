@@ -70,6 +70,7 @@ const (
 
 	ControlCommandSetRate      = "/rate/set"
 	ControlCommandGetRate      = "/rate/get"
+	ControlCommandGetOpRate	   = "/opRate/get"
 	ControlCommandFreeOSMemory = "/debug/freeosmemory"
 	ControlCommandTracing      = "/tracing"
 	Role                       = "Client"
@@ -272,6 +273,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 
 	http.HandleFunc(ControlCommandSetRate, super.SetRate)
 	http.HandleFunc(ControlCommandGetRate, super.GetRate)
+	http.HandleFunc(ControlCommandGetOpRate, super.GetOpRate)
 	http.HandleFunc(ControlCommandFreeOSMemory, freeOSMemory)
 	http.HandleFunc(log.GetLogPath, log.GetLog)
 

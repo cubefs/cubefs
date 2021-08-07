@@ -2870,6 +2870,39 @@ func (c *Cluster) setClientWriteRateLimit(val uint64) (err error) {
 	return
 }
 
+func (c *Cluster) setClientVolOpRateLimit(val int64, vol string, op uint8) (err error) {
+	c.cfg.reqRateLimitMapMutex.Lock()
+	defer c.cfg.reqRateLimitMapMutex.Unlock()
+
+	var (
+		oldVal 	int64
+		opExist	bool
+	)
+	opMap, volExist := c.cfg.ClientVolOpRateLimitMap[vol]
+	if !volExist {
+		opMap = make(map[uint8]int64)
+		c.cfg.ClientVolOpRateLimitMap[vol] = opMap
+	} else {
+		oldVal, opExist = opMap[op]
+	}
+
+	opMap[op] = val
+	if val < 0 {
+		delete(opMap, op)
+	}
+	log.LogDebugf("setClientVolOpRateLimit: vol(%v) op(%v) val(%v)", vol, op, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setClientVolOpRateLimit] err[%v]", err)
+		c.cfg.ClientVolOpRateLimitMap[vol][op] = oldVal
+		if !volExist || !opExist {
+			delete(c.cfg.ClientVolOpRateLimitMap[vol], op)
+		}
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
 func (c *Cluster) setMetaNodeDeleteWorkerSleepMs(val uint64) (err error) {
 	oldVal := atomic.LoadUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs)
 	atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, val)

@@ -294,7 +294,9 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 			Type:  ParseType(child.Type),
 			Name:  child.Name,
 		}
-		inodes = append(inodes, child.Inode)
+		if len(inodes) < 10000 {
+			inodes = append(inodes, child.Inode)
+		}
 		dirents = append(dirents, dentry)
 		dcache.Put(child.Name, child.Inode)
 	}

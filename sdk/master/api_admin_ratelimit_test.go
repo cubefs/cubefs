@@ -6,7 +6,7 @@ import (
 )
 
 func TestGetLimitInfo(t *testing.T) {
-	info, err := testMc.AdminAPI().GetLimitInfo()
+	info, err := testMc.AdminAPI().GetLimitInfo("")
 	if err != nil {
 		t.Fatalf("GetLimitInfo failed, info %v, err %v", info, err)
 	}

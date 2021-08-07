@@ -108,7 +108,7 @@ func (m *MetaNode) stopUpdateNodeInfo() {
 }
 
 func (m *MetaNode) updateDeleteLimitInfo() {
-	info, err := masterClient.AdminAPI().GetLimitInfo()
+	info, err := masterClient.AdminAPI().GetLimitInfo("")
 	if err != nil {
 		log.LogErrorf("[updateDeleteLimitInfo] %s", err.Error())
 		return

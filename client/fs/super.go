@@ -198,6 +198,10 @@ func (s *Super) SetRate(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Super) GetOpRate(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte(s.mw.GetOpLimitRate()))
+}
+
 func (s *Super) exporterKey(act string) string {
 	return fmt.Sprintf("%v_fuseclient_%v", s.cluster, act)
 }

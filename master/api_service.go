@@ -278,6 +278,7 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
+	vol := r.FormValue(nameKey)
 	m.cluster.loadClusterValue()
 	batchCount := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteBatchCount)
 	deleteLimitRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeDeleteLimitRate)
@@ -303,6 +304,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		DataNodeReqVolOpPartRateLimitMap: m.cluster.cfg.DataNodeReqVolOpPartRateLimitMap,
 		ClientReadRateLimit:              clientReadRateLimit,
 		ClientWriteRateLimit:             clientWriteRateLimit,
+		ClientVolOpRateLimit:			  m.cluster.cfg.ClientVolOpRateLimitMap[vol],
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -1501,6 +1503,37 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if val, ok := params[clientVolOpRateKey]; ok {
+		if v, ok := val.(int64); ok {
+			var (
+				vol	string
+				op 	uint64
+			)
+			if volume, ok := params[volumeKey]; ok {
+				if volume_str, ok := volume.(string); ok {
+					vol = volume_str
+				}
+			}
+			if opcode, ok := params[opcodeKey]; ok {
+				if op, ok = opcode.(uint64); !ok {
+					op = 0
+				}
+			}
+			if op <= 0 || op > 255 {
+				err = errors.NewErrorf("value range of parameter %v is 0~255", clientVolOpRateKey)
+				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+				return
+			}
+			if _, err = m.cluster.getVol(vol); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+			if err = m.cluster.setClientVolOpRateLimit(v, vol, uint8(op)); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
 	if val, ok := params[nodeDeleteWorkerSleepMs]; ok {
 		if v, ok := val.(uint64); ok {
 			if err = m.cluster.setMetaNodeDeleteWorkerSleepMs(v); err != nil {
@@ -2664,6 +2697,11 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	}
 	if noParams, err = parseNodeInfoKey(params, clientWriteRateKey, noParams, r); err != nil {
 		return
+	}
+	if noParams, err = parseNodeInfoIntKey(params, clientVolOpRateKey, noParams, r); err != nil {
+		return
+	} else {
+		params[volumeKey] = r.FormValue(volumeKey)
 	}
 	if noParams {
 		err = keyNotFound(nodeDeleteBatchCountKey)

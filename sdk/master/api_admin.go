@@ -365,8 +365,9 @@ func (api *AdminAPI) GetClusterInfo() (ci *proto.ClusterInfo, err error) {
 	return
 }
 
-func (api *AdminAPI) GetLimitInfo() (info *proto.LimitInfo, err error) {
+func (api *AdminAPI) GetLimitInfo(volName string) (info *proto.LimitInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminGetLimitInfo)
+	request.addParam("name", volName)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -430,6 +431,9 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	}
 	if info.ClientWriteRate >= 0 {
 		request.addParam("clientWriteRate", strconv.FormatInt(info.ClientWriteRate, 10))
+	}
+	if info.ClientVolOpRate >= -1 {
+		request.addParam("clientVolOpRate", strconv.FormatInt(info.ClientVolOpRate, 10))
 	}
 	if info.MetaNodeReqRate >= 0 {
 		request.addParam("metaNodeReqRate", strconv.FormatInt(info.MetaNodeReqRate, 10))

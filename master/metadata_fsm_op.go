@@ -47,6 +47,7 @@ type clusterValue struct {
 	MetaNodeDeleteWorkerSleepMs       uint64
 	ClientReadRateLimit               uint64
 	ClientWriteRateLimit              uint64
+	ClientVolOpRateLimitMap           map[string]map[uint8]int64
 	PoolSizeOfDataPartitionsInRecover int32
 	PoolSizeOfMetaPartitionsInRecover int32
 }
@@ -67,6 +68,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MetaNodeDeleteWorkerSleepMs:       c.cfg.MetaNodeDeleteWorkerSleepMs,
 		ClientReadRateLimit:               c.cfg.ClientReadRateLimit,
 		ClientWriteRateLimit:              c.cfg.ClientWriteRateLimit,
+		ClientVolOpRateLimitMap:		   c.cfg.ClientVolOpRateLimitMap,
 		DisableAutoAllocate:               c.DisableAutoAllocate,
 		PoolSizeOfDataPartitionsInRecover: c.cfg.DataPartitionsRecoverPoolSize,
 		PoolSizeOfMetaPartitionsInRecover: c.cfg.MetaPartitionsRecoverPoolSize,
@@ -600,6 +602,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.cfg.DataNodeReqVolOpPartRateLimitMap = cv.DataNodeReqVolOpPartRateLimitMap
 		atomic.StoreUint64(&c.cfg.ClientReadRateLimit, cv.ClientReadRateLimit)
 		atomic.StoreUint64(&c.cfg.ClientWriteRateLimit, cv.ClientWriteRateLimit)
+		c.cfg.ClientVolOpRateLimitMap = cv.ClientVolOpRateLimitMap
 		c.updateRecoverPoolSize(cv.PoolSizeOfDataPartitionsInRecover, cv.PoolSizeOfMetaPartitionsInRecover)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}

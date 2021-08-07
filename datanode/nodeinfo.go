@@ -92,7 +92,7 @@ func (m *DataNode) stopUpdateNodeInfo() {
 }
 
 func (m *DataNode) updateDeleteLimitInfo() {
-	info, err := MasterClient.AdminAPI().GetLimitInfo()
+	info, err := MasterClient.AdminAPI().GetLimitInfo("")
 	if err != nil {
 		log.LogWarnf("[updateDeleteLimitInfo] get limit info err: %s", err.Error())
 		return

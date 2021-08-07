@@ -64,6 +64,7 @@ const (
 	metaNodeReqOpRateKey        = "metaNodeReqOpRate"
 	clientReadRateKey           = "clientReadRate"
 	clientWriteRateKey          = "clientWriteRate"
+	clientVolOpRateKey			= "clientVolOpRate"
 	nodeDeleteWorkerSleepMs     = "deleteWorkerSleepMs"
 	descriptionKey              = "description"
 	dpRecoverPoolSizeKey        = "dpRecoverPool"

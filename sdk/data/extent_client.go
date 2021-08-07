@@ -462,7 +462,7 @@ func (client *ExtentClient) stopUpdateConfig() {
 }
 
 func (client *ExtentClient) updateConfig() {
-	limitInfo, err := client.masterClient.AdminAPI().GetLimitInfo()
+	limitInfo, err := client.masterClient.AdminAPI().GetLimitInfo(client.dataWrapper.volName)
 	if err != nil {
 		log.LogWarnf("[updateConfig] %s", err.Error())
 		return

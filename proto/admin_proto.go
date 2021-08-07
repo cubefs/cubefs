@@ -189,6 +189,7 @@ type LimitInfo struct {
 	DataNodeDeleteLimitRate          uint64
 	ClientReadRateLimit              uint64
 	ClientWriteRateLimit             uint64
+	ClientVolOpRateLimit		 	 map[uint8]int64	// less than 0: no limit; equal 0: disable op
 
 	DataNodeFixTinyDeleteRecordLimitOnDisk uint64
 	DataNodeRepairTaskLimitOnDisk          uint64
@@ -630,4 +631,5 @@ type RateLimitInfo struct {
 	DataNodeReqVolOpPartRate int64
 	ClientReadRate           int64
 	ClientWriteRate          int64
+	ClientVolOpRate			 int64
 }

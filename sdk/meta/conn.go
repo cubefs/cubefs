@@ -74,6 +74,11 @@ func (mw *MetaWrapper) putConn(mc *MetaConn, err error) {
 }
 
 func (mw *MetaWrapper) sendWriteToMP(ctx context.Context, mp *MetaPartition, req *proto.Packet) (resp *proto.Packet, needCheckRead bool, err error) {
+	if err = mw.checkLimiter(ctx, req.Opcode); err != nil {
+		log.LogWarnf("sendWriteToMP: check limit err(%v) req(%v)", err, req)
+		return
+	}
+
 	addr := mp.LeaderAddr
 	retryCount := 0
 	for {
@@ -94,6 +99,11 @@ func (mw *MetaWrapper) sendWriteToMP(ctx context.Context, mp *MetaPartition, req
 }
 
 func (mw *MetaWrapper) sendReadToMP(ctx context.Context, mp *MetaPartition, req *proto.Packet) (resp *proto.Packet, err error) {
+	if err = mw.checkLimiter(ctx, req.Opcode); err != nil {
+		log.LogWarnf("sendReadToMP: check limit err(%v) req(%v)", err, req)
+		return
+	}
+
 	addr := mp.LeaderAddr
 	retryCount := 0
 	for {

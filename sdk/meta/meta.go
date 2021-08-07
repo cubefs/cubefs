@@ -15,6 +15,8 @@
 package meta
 
 import (
+	"context"
+	"fmt"
 	"sync"
 	"syscall"
 	"time"
@@ -28,6 +30,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/auth"
 	"github.com/chubaofs/chubaofs/util/btree"
 	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const (
@@ -58,6 +61,8 @@ const (
 	 * i.e. only one force update request is allowed every 5 sec.
 	 */
 	MinForceUpdateMetaPartitionsInterval = 5
+
+	defaultOpLimitBurst    = 128
 )
 
 type AsyncTaskErrorFunc func(err error)
@@ -128,6 +133,9 @@ type MetaWrapper struct {
 	// Used to trigger and throttle instant partition updates
 	forceUpdate      chan struct{}
 	forceUpdateLimit *rate.Limiter
+	// meta op limit rate
+	opLimiter		map[uint8]*rate.Limiter		// key: op
+	limitMapMutex	sync.RWMutex
 	// infinite retry send to mp
 	InfiniteRetry bool
 }
@@ -173,6 +181,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.forceUpdate = make(chan struct{}, 1)
 	mw.forceUpdateLimit = rate.NewLimiter(1, MinForceUpdateMetaPartitionsInterval)
 	mw.InfiniteRetry = config.InfiniteRetry
+	mw.opLimiter = make(map[uint8]*rate.Limiter)
 
 	limit := MaxMountRetryLimit
 
@@ -192,6 +201,9 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	}
 
 	go mw.refresh()
+
+	go mw.startUpdateLimiterConfig()
+
 	return mw, nil
 }
 
@@ -238,7 +250,92 @@ func (mw *MetaWrapper) Cluster() string {
 //func (mw *MetaWrapper) LocalIP() string {
 //	return mw.localIP
 //}
-//
+
+func (mw *MetaWrapper) startUpdateLimiterConfig() {
+	mw.updateLimiterConfig()
+
+	updateConfigTicket := time.Second * 120
+	ticker := time.NewTicker(updateConfigTicket)
+	defer ticker.Stop()
+	for {
+		select {
+		case <- mw.closeCh:
+			return
+		case <- ticker.C:
+			mw.updateLimiterConfig()
+		}
+	}
+}
+
+func (mw *MetaWrapper) updateLimiterConfig() {
+	limitInfo, err := mw.mc.AdminAPI().GetLimitInfo(mw.volname)
+	if err != nil {
+		log.LogWarnf("meta: updateLimiterConfig err(%s)", err.Error())
+		return
+	}
+	mw.limitMapMutex.Lock()
+	// delete op which not stored on master
+	for op, _ := range mw.opLimiter {
+		if _, exist := limitInfo.ClientVolOpRateLimit[op]; !exist {
+			delete(mw.opLimiter, op)
+		}
+	}
+	for op, val := range limitInfo.ClientVolOpRateLimit {
+		if val < 0 {
+			delete(mw.opLimiter, op)
+			continue
+		}
+		if opLimit, ok := mw.opLimiter[op]; ok {
+			opLimit.SetLimit(rate.Limit(val))
+			opLimit.SetBurst(int(val))
+		} else {
+			mw.opLimiter[op] = rate.NewLimiter(rate.Limit(val), int(val))
+		}
+	}
+	log.LogInfof("updateLimiterConfig: vol(%v) opLimiter(%v)", mw.volname, mw.opLimiter)
+	mw.limitMapMutex.Unlock()
+}
+
+func (mw *MetaWrapper) checkLimiter(ctx context.Context, opCode uint8) error {
+	limiter := mw.getOpLimiter(opCode)
+	if limiter != nil {
+		log.LogDebugf("check limiter begin: op(%v) limit(%v) burst(%v)", opCode, limiter.Limit(), limiter.Burst())
+		if limiter.Burst() == 0 {
+			return syscall.EPERM
+		}
+		limitErr := limiter.Wait(ctx)
+		log.LogDebugf("check limiter end: op(%v) limit(%v) burst(%v) err(%v)", opCode, limiter.Limit(), limiter.Burst(), limitErr)
+	}
+	return nil
+}
+
+func (mw *MetaWrapper) getOpLimiter(op uint8) (limiter *rate.Limiter) {
+	mw.limitMapMutex.RLock()
+	limiter = mw.opLimiter[op]
+	mw.limitMapMutex.RUnlock()
+	return
+}
+
+func (mw *MetaWrapper) GetOpLimitRate() string {
+	res := ""
+	p := proto.NewPacket(context.Background())
+	for op, limiter := range mw.opLimiter {
+		var limit string
+		val := limiter.Limit()
+		burst := limiter.Burst()
+		if val == 0 {
+			limit = "disable"
+		} else if val > 0 {
+			limit = fmt.Sprintf("%v/s", val)
+		} else {
+			limit = "unLimit"
+		}
+		p.Opcode = op
+		res = fmt.Sprintf("%vop: %v, limit: %v, burst: %v\n", res, p.GetOpMsg(), limit, burst)
+	}
+	return res
+}
+
 //func (mw *MetaWrapper) exporterKey(act string) string {
 //	return fmt.Sprintf("%s_sdk_meta_%s", mw.cluster, act)
 //}
