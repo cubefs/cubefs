@@ -504,7 +504,7 @@ func (mw *MetaWrapper) AppendExtentKey(inode uint64, ek proto.ExtentKey, discard
 
 	status, err := mw.appendExtentKey(mp, inode, ek, discard)
 	if err != nil || status != statusOK {
-		log.LogErrorf("AppendExtentKey: inode(%v) ek(%v) discard(%v) err(%v) status(%v)", inode, ek, discard, err, status)
+		log.LogErrorf("AppendExtentKey: inode(%v) ek(%v) local discard(%v) err(%v) status(%v)", inode, ek, discard, err, status)
 		return statusToErrno(status)
 	}
 	log.LogDebugf("AppendExtentKey: ino(%v) ek(%v) discard(%v)", inode, ek, discard)
