@@ -24,14 +24,14 @@ EOF
     exit 0
 }
 
-
 clean() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml down
+    docker-compose -f ${RootPath}/docker/docker-compose-test.yml down
 }
 
 # unit test
 run_unit_test() {
-    docker-compose -f ${RootPath}/docker/docker-compose.yml run unit_test
+    docker-compose -f ${RootPath}/docker/docker-compose-test.yml run unit_test
 }
 
 # build
@@ -42,7 +42,14 @@ build() {
 # Build for CI tests
 # In this mode, application ELF will be built by using 'go test -c' command instead of orginal 'go build' command
 build_test() {
-    docker-compose -f ${RootPath}/docker/docker-compose.yml run build_test	
+    docker-compose -f ${RootPath}/docker/docker-compose-test.yml run build_test
+}
+
+# start server for ci tests
+start_servers_test() {
+    isDiskAvailable $DiskPath
+    mkdir -p ${DiskPath}/disk/{1..4}
+    docker-compose -f ${RootPath}/docker/docker-compose-test.yml up -d servers
 }
 
 # start server
@@ -60,18 +67,18 @@ start_monitor() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml up -d monitor
 }
 
-start_ci_tests() {
-    docker-compose -f ${RootPath}/docker/docker-compose.yml run client
+start_ci_test() {
+    docker-compose -f ${RootPath}/docker/docker-compose-test.yml run client
 }
 
 cover_analyze() {
-    docker-compose -f ${RootPath}/docker/docker-compose.yml run cover_analyze
+    docker-compose -f ${RootPath}/docker/docker-compose-test.yml run cover_analyze
 }
 
 run_ci_tests() {
     build_test
-    start_servers
-    start_ci_tests
+    start_servers_test
+    start_ci_test
     clean
     cover_analyze
     clean

@@ -55,14 +55,14 @@ create_cluster_user() {
     echo -n "Creating user     ... "
     # check user exist
     ${cli} user info ${Owner} &> /dev/null
-    if [[ $? ]] ; then
+    if [[ $? -eq 0 ]] ; then
         echo -e "\033[32m done\033[0m"
         return
     fi
     # try create user
     for i in $(seq 1 300) ; do
         ${cli} user create ${Owner} --access-key=${AccessKey} --secret-key=${SecretKey} -y > /tmp/cli_user_create
-        if [[ $? ]] ; then
+        if [[ $? -eq 0 ]] ; then
             echo -e "\033[32m done\033[0m"
             return
         fi
@@ -93,12 +93,12 @@ create_volume() {
     echo -n "Creating volume   ... "
     # check volume exist
     ${cli} volume info ${VolName} &> /dev/null
-    if [[ $? ]]; then
+    if [[ $? -eq 0 ]]; then
         echo -e "\033[32m done\033[0m"
         return
     fi
     ${cli} volume create ${VolName} ${Owner} --capacity=30 -y > /dev/null
-    if [[ $? ]]; then
+    if [[ $? -ne 0 ]]; then
         echo -e "\033[31m fail\033[0m"
         exit 1
     fi

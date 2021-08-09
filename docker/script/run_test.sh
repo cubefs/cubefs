@@ -199,7 +199,7 @@ wait_proc_done() {
 }
 
 run_ltptest() {
-    go test /go/src/github.com/chubaofs/chubaofs/sdk/... -covermode=atomic -coverprofile=${cover_path}/unittestcover.cov
+    go test /go/src/github.com/chubaofs/chubaofs/sdk/... -covermode=atomic -coverprofile=${cover_path}/sdkunittestcover.cov
     ret=$?
     if [[ $ret -ne 0 ]]; then
         echo -e "Unit test: \033[32mFAIL\033[0m"

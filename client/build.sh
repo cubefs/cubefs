@@ -3,8 +3,14 @@ BranchName=`git rev-parse --abbrev-ref HEAD`
 CommitID=`git rev-parse HEAD`
 BuildTime=`date +%Y-%m-%d\ %H:%M`
 
-[[ "-$GOPATH" == "-" ]] && { echo "GOPATH not set"; exit 1 ; }
+build_opt=$1
 
-# go build -ldflags "-X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}'" -o cfs-client
+[[ "-$GOPATH" == "-" ]] && { echo "GOPATH not set"; exit 1; }
 
-go test -c -covermode=atomic -coverpkg="../..." -ldflags "-X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}'" -o cfs-client
+case ${build_opt} in
+	test)
+    go test -c -covermode=atomic -coverpkg="../..." -ldflags "-X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}'" -o cfs-client
+		;;
+	*)
+    go build -ldflags "-X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}'" -o cfs-client
+esac

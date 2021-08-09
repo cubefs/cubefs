@@ -24,7 +24,7 @@ phony := all
 all: build
 
 phony += build server authtool client client2 cli
-build: server authtool client cli
+build: server client cli
 
 server: $(BIN_SERVER)
 

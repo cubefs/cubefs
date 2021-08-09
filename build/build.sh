@@ -104,13 +104,13 @@ run_test() {
     echo "*********************************";
 
     pushd $SrcPath >/dev/null
-    go test -covermode=set -coverprofile=/tmp/coverprofile.cov $(go list ./... ./vendor/github.com/tiglabs/raft/... | grep -v /client | grep -v /sdk)
+    go test -covermode=set -coverprofile=/cfs/coverage/unittest.cov $(go list ./... ./vendor/github.com/tiglabs/raft/... | grep -v /client | grep -v /sdk)
     ret=$?
 
     echo
     echo "Coverage Report"
     echo "---------------------------------"
-    go tool cover -func=/tmp/coverprofile.cov
+    go tool cover -func=/cfs/coverage/unittest.cov
     echo "---------------------------------"
     echo
 
