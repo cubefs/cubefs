@@ -73,6 +73,20 @@ func NewConnectPoolWithTimeout(idleConnTimeout time.Duration, connectTimeout int
 	return cp
 }
 
+func NewConnectPoolWithTimeoutAndCap(min, max int, idleConnTimeout, connectTimeout int64) (cp *ConnectPool) {
+	cp = &ConnectPool{
+		pools:          make(map[string]*Pool),
+		mincap:         min,
+		maxcap:         max,
+		timeout:        idleConnTimeout * int64(time.Second),
+		connectTimeout: connectTimeout,
+		closeCh:        make(chan struct{}),
+	}
+	go cp.autoRelease()
+
+	return cp
+}
+
 func DailTimeOut(target string, timeout time.Duration) (c *net.TCPConn, err error) {
 	var connect net.Conn
 	connect, err = net.DialTimeout("tcp", target, timeout)
@@ -136,9 +150,9 @@ func (cp *ConnectPool) PutConnect(c *net.TCPConn, forceClose bool) {
 
 func (cp *ConnectPool) PutConnectWithErr(c *net.TCPConn, err error) {
 	cp.PutConnect(c, err != nil)
-	remoteAddr:="connect is nil"
-	if c!=nil{
-		remoteAddr=c.RemoteAddr().String()
+	remoteAddr := "connect is nil"
+	if c != nil {
+		remoteAddr = c.RemoteAddr().String()
 	}
 	// If connect failed because of server restart, release all connection
 	if err != nil {

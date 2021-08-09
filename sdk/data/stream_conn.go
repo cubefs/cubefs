@@ -51,7 +51,7 @@ type StreamConn struct {
 
 var (
 	//StreamConnPool = util.NewConnectPool()
-	StreamConnPool = util.NewConnectPoolWithTimeout(IdleConnTimeoutData, ConnectTimeoutData)
+	StreamConnPool = util.NewConnectPoolWithTimeoutAndCap(0, 10, IdleConnTimeoutData, ConnectTimeoutData)
 )
 
 // NewStreamConn returns a new stream connection.
