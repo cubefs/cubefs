@@ -41,7 +41,8 @@ type OpKvData struct {
 
 var (
 	errorLogfile string
-	raftLog      = flag.String("f", "/data/raft/1/0000000000000001-0000000000000001.log", "config raft log path")
+	h            = flag.Bool("h", false, "this for help")
+	raftLog      = flag.String("f", "", "config raft log path, [../cfs/data/raft/0000000000000000-0000000000000001.log]")
 	raftDir      = flag.String("d", "", "config raft log dir, handle all logs in this dir")
 )
 
@@ -59,8 +60,18 @@ func (f ByModTime) Swap(i, j int) {
 	f[i], f[j] = f[j], f[i]
 }
 
+func usage() {
+	fmt.Println("Usage: ./readwal [-h] [-f file] [-d dir]")
+	fmt.Println("Options:")
+	flag.PrintDefaults()
+}
+
 func main() {
 	flag.Parse()
+	if *h {
+		flag.Usage = usage
+		flag.Usage()
+	}
 
 	var err error
 	fmt.Println("Read raft wal record")
@@ -102,12 +113,14 @@ func main() {
 		}
 		return
 	}
-	_, err = os.Stat(*raftLog)
-	if os.IsNotExist(err) {
-		fmt.Printf("raftLogFile[%v] doesn't exist\n", *raftLog)
-		return
+	if *raftLog != "" {
+		_, err = os.Stat(*raftLog)
+		if os.IsNotExist(err) {
+			fmt.Printf("raftLogFile[%v] doesn't exist\n", *raftLog)
+			return
+		}
+		readWal(*raftLog)
 	}
-	readWal(*raftLog)
 	return
 }
 
