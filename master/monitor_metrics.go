@@ -15,6 +15,7 @@
 package master
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 
@@ -161,6 +162,9 @@ func (mm *monitorMetrics) setVolMetrics() {
 		usedRatio, e := strconv.ParseFloat(volStatInfo.UsedRatio, 64)
 		if e == nil {
 			mm.volUsage.SetWithLabelValues(usedRatio, volName)
+		}
+		if usedRatio > volWarnUsedRatio {
+			WarnBySpecialKey("vol size used too high", fmt.Sprintf("vol: %v(total: %v, used: %v) has used(%v) to be full", volName, volStatInfo.TotalSize, volStatInfo.UsedRatio, volStatInfo.UsedSize))
 		}
 
 		return true
