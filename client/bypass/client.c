@@ -61,13 +61,21 @@ int close(int fd) {
         }
         #endif
         if(!in_use) {
+            #ifdef DUP_TO_LOCAL
+            re = real_close(fd & ~CFS_FD_MASK);
+            if(re < 0) {
+                goto log;
+            }
+            #endif
             re = cfs_re(cfs_close(g_cfs_client_id, fd & ~CFS_FD_MASK));
         }
     } else {
         re = real_close(fd);
     }
+
+log:
     #ifdef _CFS_DEBUG
-    printf("hook %s, is_cfs:%d, fd:%d, re:%d\n", __func__, is_cfs > 0, fd & ~CFS_FD_MASK, re);
+    log_debug("hook %s, is_cfs:%d, fd:%d, re:%d\n", __func__, is_cfs > 0, fd & ~CFS_FD_MASK, re);
     #endif
     return re;
 }
@@ -114,9 +122,21 @@ int openat(int dirfd, const char *pathname, int flags, ...) {
     }
 
     const char *cfs_path = (path == NULL) ? pathname : path;
-    int fd = g_hook && is_cfs ? cfs_re(cfs_openat(g_cfs_client_id, dirfd, cfs_path, flags, mode)) :
-            real_openat(dirfd, pathname, flags, mode);
-    free(path);
+    int fd;
+    if(g_hook && is_cfs) {
+        #ifdef DUP_TO_LOCAL
+        fd = real_openat(dirfd, pathname, flags, mode);
+        if(fd < 0) {
+            goto log;
+        }
+        fd = cfs_re(cfs_openat_fd(g_cfs_client_id, dirfd, cfs_path, flags, mode, fd));
+        #else
+        fd = cfs_re(cfs_openat(g_cfs_client_id, dirfd, cfs_path, flags, mode));
+        #endif
+    } else {
+        fd = real_openat(dirfd, pathname, flags, mode);
+    }
+
     if(fd < 0) {
         goto log;
     }
@@ -131,14 +151,11 @@ int openat(int dirfd, const char *pathname, int flags, ...) {
         goto log;
     }
 
-log: ;// labels can only be followed by statements
+log:
+    free(path);
     #ifdef _CFS_DEBUG
-    time_t raw_time = time(NULL);
-    struct tm *ptm = localtime(&raw_time);
-    char buf[20];
-    strftime(buf, 20, "%F %H:%M:%S", ptm);
-    printf("%s hook %s, is_cfs:%d, dirfd:%d, pathname:%s, flags:%#x(%s%s%s%s%s%s%s), re:%d\n", 
-    buf, __func__, is_cfs, dirfd, pathname, flags, flags&O_RDONLY?"O_RDONLY|":"", 
+    log_debug("hook %s, is_cfs:%d, dirfd:%d, pathname:%s, flags:%#x(%s%s%s%s%s%s%s), re:%d\n", 
+    __func__, is_cfs, dirfd, pathname, flags, flags&O_RDONLY?"O_RDONLY|":"", 
     flags&O_WRONLY?"O_WRONLY|":"", flags&O_RDWR?"O_RDWR|":"", flags&O_CREAT?"O_CREAT|":"", 
     flags&O_DIRECT?"O_DIRECT|":"", flags&O_SYNC?"O_SYNC|":"", flags&O_DSYNC?"O_DSYNC":"", fd);
     #endif
@@ -219,6 +236,16 @@ int renameat(int olddirfd, const char *old_pathname,
             goto log;
         }
         #endif
+        #ifdef DUP_TO_LOCAL
+        #ifdef USE_RENAMEAT2
+        re = real_renameat2(olddirfd, old_pathname, newdirfd, new_pathname, flags);
+        #else
+        re = real_renameat(olddirfd, old_pathname, newdirfd, new_pathname);
+        #endif
+        if(re < 0) {
+            goto log;
+        }
+        #endif
         re = cfs_re(cfs_renameat(g_cfs_client_id, olddirfd, cfs_old_path, newdirfd, cfs_new_path));
     } else if(!g_hook || (!is_cfs_old && !is_cfs_new)) {
         #ifdef USE_RENAMEAT2
@@ -232,7 +259,7 @@ log:
     free(old_path);
     free(new_path);
     #ifdef _CFS_DEBUG
-    printf("hook %s, olddirfd:%d, old_pathname:%s, is_cfs_old:%d, newdirfd:%d, new_pathname:%s, is_cfs_new:%d, flags:%#x, re:%d\n", __func__, olddirfd, old_pathname, is_cfs_old, newdirfd, new_pathname, is_cfs_new, flags, re);
+    log_debug("hook %s, olddirfd:%d, old_pathname:%s, is_cfs_old:%d, newdirfd:%d, new_pathname:%s, is_cfs_new:%d, flags:%#x, re:%d\n", __func__, olddirfd, old_pathname, is_cfs_old, newdirfd, new_pathname, is_cfs_new, flags, re);
     #endif
     return re;
 }
@@ -244,9 +271,24 @@ int truncate(const char *pathname, off_t length) {
     }
 
     char *path = get_cfs_path(pathname);
-    int re = (g_hook && path != NULL) ? cfs_re(cfs_truncate(g_cfs_client_id, path, length)) :
-            real_truncate(pathname, length);
+    int re;
+    if(g_hook && path != NULL) {
+        #ifdef DUP_TO_LOCAL
+        re = real_truncate(pathname, length);
+        if(re < 0) {
+            goto log;
+        }
+        #endif
+        re = cfs_re(cfs_truncate(g_cfs_client_id, path, length));
+    } else {
+        re = real_truncate(pathname, length);
+    }
+
+log:
     free(path);
+    #ifdef _CFS_DEBUG
+    log_debug("hook %s, is_cfs:%d, pathname:%s, length:%d, re:%d\n", __func__, path != NULL, pathname, re);
+    #endif
     return re;
 }
 
@@ -263,7 +305,24 @@ int ftruncate(int fd, off_t length) {
     #endif
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    return g_hook && is_cfs ? cfs_re(cfs_ftruncate(g_cfs_client_id, fd, length)) : real_ftruncate(fd, length);
+    int re;
+    if(g_hook && is_cfs) {
+        #ifdef DUP_TO_LOCAL
+        re = real_ftruncate(fd, length);
+        if(re < 0) {
+            goto log;
+        }
+        #endif
+        re = cfs_re(cfs_ftruncate(g_cfs_client_id, fd, length));
+    } else {
+        re = real_ftruncate(fd, length);
+    }
+
+log:
+    #ifdef _CFS_DEBUG
+    log_debug("hook %s, is_cfs:%d, fd:%d, length:%d, re:%d\n", __func__, is_cfs > 0, fd, length, re);
+    #endif
+    return re;
 }
 weak_alias (ftruncate, ftruncate64)
 
@@ -280,9 +339,24 @@ int fallocate(int fd, int mode, off_t offset, off_t len) {
     #endif
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    return g_hook && is_cfs ? 
-        cfs_re(cfs_fallocate(g_cfs_client_id, fd, mode, offset, len)) : 
-        real_fallocate(fd, mode, offset, len);
+    int re;
+    if(g_hook && is_cfs) {
+        #ifdef DUP_TO_LOCAL
+        re = real_fallocate(fd, mode, offset, len);
+        if(re < 0) {
+            goto log;
+        }
+        #endif
+        re = cfs_re(cfs_fallocate(g_cfs_client_id, fd, mode, offset, len));
+    } else {
+        re = real_fallocate(fd, mode, offset, len);
+    }
+
+log:
+    #ifdef _CFS_DEBUG
+    log_debug("hook %s, is_cfs:%d, fd:%d, mode:%#X, offset:%d, len:%d, re:%d\n", __func__, is_cfs > 0, fd, mode, offset, len, re);
+    #endif
+    return re;
 }
 weak_alias (fallocate, fallocate64)
 
@@ -299,9 +373,24 @@ int posix_fallocate(int fd, off_t offset, off_t len) {
     #endif
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    return g_hook && is_cfs ? 
-        cfs_re(cfs_posix_fallocate(g_cfs_client_id, fd, offset, len)) : 
-        real_posix_fallocate(fd, offset, len);
+    int re;
+    if(g_hook && is_cfs) {
+        #ifdef DUP_TO_LOCAL
+        re = real_posix_fallocate(fd, offset, len);
+        if(re < 0) {
+            goto log;
+        }
+        #endif
+        re = cfs_re(cfs_posix_fallocate(g_cfs_client_id, fd, offset, len));
+    } else {
+        re = real_posix_fallocate(fd, offset, len);
+    }
+
+log:
+    #ifdef _CFS_DEBUG
+    log_debug("hook %s, is_cfs:%d, fd:%d, offset:%d, len:%d, re:%d\n", __func__, is_cfs > 0, fd, offset, len, re);
+    #endif
+    return re;
 }
 weak_alias (posix_fallocate, posix_fallocate64)
 
@@ -330,12 +419,23 @@ int mkdirat(int dirfd, const char *pathname, mode_t mode) {
     }
 
     const char *cfs_path = (path == NULL) ? pathname : path;
-    int re = g_hook && is_cfs ? cfs_re(cfs_mkdirsat(g_cfs_client_id, dirfd, cfs_path, mode)) :
-        real_mkdirat(dirfd, pathname, mode);
-    free(path);
+    int re;
+    if(g_hook && is_cfs) {
+        #ifdef DUP_TO_LOCAL
+        re = real_mkdirat(dirfd, pathname, mode);
+        if(re < 0) {
+            goto log;
+        }
+        #endif
+        re = cfs_re(cfs_mkdirsat(g_cfs_client_id, dirfd, cfs_path, mode));
+    } else {
+        re = real_mkdirat(dirfd, pathname, mode);
+    }
 
+log:
+    free(path);
     #ifdef _CFS_DEBUG
-    printf("hook %s, is_cfs:%d, dirfd: %d, pathname:%s, mode:%d, re:%d\n", __func__, is_cfs > 0, dirfd, pathname == NULL ? "" : pathname, mode, re);
+    log_debug("hook %s, is_cfs:%d, dirfd: %d, pathname:%s, mode:%d, re:%d\n", __func__, is_cfs > 0, dirfd, pathname == NULL ? "" : pathname, mode, re);
     #endif
     return re;
 }
@@ -347,8 +447,24 @@ int rmdir(const char *pathname) {
     }
 
     char *path = get_cfs_path(pathname);
-    int re = (g_hook && path != NULL) ? cfs_re(cfs_rmdir(g_cfs_client_id, path)) : real_rmdir(pathname);
+    int re;
+    if(g_hook && path != NULL) {
+        #ifdef DUP_TO_LOCAL
+        re = real_rmdir(pathname);
+        if(re < 0) {
+            goto log;
+        }
+        #endif
+        re = cfs_re(cfs_rmdir(g_cfs_client_id, path));
+    } else {
+        re = real_rmdir(pathname);
+    }
+
+log:
     free(path);
+    #ifdef _CFS_DEBUG
+    log_debug("hook %s, is_cfs:%d, pathname:%s, re:%d\n", __func__, path != NULL, pathname == NULL ? "" : pathname, re);
+    #endif
     return re;
 }
 
@@ -419,7 +535,7 @@ char *getcwd(char *buf, size_t size) {
 
 log:
     #ifdef _CFS_DEBUG
-    printf("hook %s, re: %s\n", __func__, re == NULL ? "" : re);
+    log_debug("hook %s, re: %s\n", __func__, re == NULL ? "" : re);
     #endif
     return re;
 }
@@ -453,6 +569,13 @@ int chdir(const char *pathname) {
 
     char *cfs_path = get_cfs_path(abs_path);
     if(g_hook && cfs_path != NULL) {
+        #ifdef DUP_TO_LOCAL
+        re = real_chdir(abs_path);
+        if(re < 0) {
+            free(abs_path);
+            goto log;
+        }
+        #endif
         free(abs_path);
         re = cfs_re(cfs_chdir(g_cfs_client_id, cfs_path));
         if(re == 0) {
@@ -476,7 +599,7 @@ int chdir(const char *pathname) {
 
 log:
     #ifdef _CFS_DEBUG
-    printf("hook %s, pathname:%s, re:%d\n", __func__, pathname == NULL ? "" : pathname, re);
+    log_debug("hook %s, pathname:%s, re:%d\n", __func__, pathname == NULL ? "" : pathname, re);
     #endif
     return re;
 }
@@ -498,6 +621,12 @@ int fchdir(int fd) {
         goto log;
     }
 
+    #ifdef DUP_TO_LOCAL
+    re = real_fchdir(fd);
+    if(re < 0) {
+        goto log;
+    }
+    #endif
     char *buf = (char *) malloc(PATH_MAX);
     re = cfs_re(cfs_fchdir(g_cfs_client_id, fd, buf, PATH_MAX));
     if (re == 0) {
@@ -510,7 +639,7 @@ int fchdir(int fd) {
 
 log:
     #ifdef _CFS_DEBUG
-    printf("hook %s, is_cfs:%d, fd:%d, re:%d\n", __func__, is_cfs>0, fd, re);
+    log_debug("hook %s, is_cfs:%d, fd:%d, re:%d\n", __func__, is_cfs>0, fd, re);
     #endif
     return re;
 }
@@ -582,7 +711,7 @@ struct dirent *readdir(DIR *dirp) {
     }
 
     #ifdef _CFS_DEBUG
-    printf("hook %s\n", __func__);
+    log_debug("hook %s\n", __func__);
     #endif
     if(dirp == NULL) {
         errno = EBADF;
@@ -630,13 +759,14 @@ int closedir(DIR *dirp) {
 
     int is_cfs = dirp->fd & CFS_FD_MASK;
     dirp->fd &= ~CFS_FD_MASK;
+    int re;
     if(!g_hook || !is_cfs) {
-        return real_closedir(dirp);
+        re = real_closedir(dirp);
     } else {
-        int re = cfs_re(cfs_close(g_cfs_client_id, dirp->fd));
+        re = cfs_re(cfs_close(g_cfs_client_id, dirp->fd));
         free(dirp);
-        return re;
     }
+    return re;
 }
 
 char *realpath(const char *path, char *resolved_path) {
@@ -678,9 +808,9 @@ char *realpath(const char *path, char *resolved_path) {
         re = abs_path;
     }
 
-    log:
+log:
     #ifdef _CFS_DEBUG
-    printf("hook %s, path:%s, resolved_path:%s, re:%s\n", __func__, path == NULL ? "" : path, resolved_path == NULL ? "" : resolved_path, re == NULL ? "" : re);
+    log_debug("hook %s, path:%s, resolved_path:%s, re:%s\n", __func__, path == NULL ? "" : path, resolved_path == NULL ? "" : resolved_path, re == NULL ? "" : re);
     #endif
     return re;
 }
@@ -734,7 +864,7 @@ int linkat(int olddirfd, const char *old_pathname,
     free(old_path);
     free(new_path);
     #ifdef _CFS_DEBUG
-    printf("hook %s, olddirfd:%d, old_pathname:%s, is_cfs_old:%d, newdirfd:%d, new_pathname:%s, is_cfs_new:%d, flags:%#x, re:%d\n", __func__, olddirfd, old_pathname, is_cfs_old, newdirfd, new_pathname, is_cfs_new, flags, re);
+    log_debug("hook %s, olddirfd:%d, old_pathname:%s, is_cfs_old:%d, newdirfd:%d, new_pathname:%s, is_cfs_new:%d, flags:%#x, re:%d\n", __func__, olddirfd, old_pathname, is_cfs_old, newdirfd, new_pathname, is_cfs_new, flags, re);
     #endif
     return re;
 }
@@ -772,7 +902,7 @@ int symlinkat(const char *target, int dirfd, const char *linkpath) {
     free(t);
     free(path);
     #ifdef _CFS_DEBUG
-    printf("hook %s, target:%s, dirfd:%d, linkpath:%s, re:%d\n", __func__, target, dirfd, linkpath, re);
+    log_debug("hook %s, target:%s, dirfd:%d, linkpath:%s, re:%d\n", __func__, target, dirfd, linkpath, re);
     #endif
     return re;
 }
@@ -798,11 +928,23 @@ int unlinkat(int dirfd, const char *pathname, int flags) {
     }
 
     const char *cfs_path = (path == NULL) ? pathname : path;
-    int re = g_hook && is_cfs ? cfs_re(cfs_unlinkat(g_cfs_client_id, dirfd, cfs_path, flags)) :
-           real_unlinkat(dirfd, pathname, flags);
+    int re;
+    if(g_hook && is_cfs) {
+        #ifdef DUP_TO_LOCAL
+        re = real_unlinkat(dirfd, pathname, flags);
+        if(re < 0) {
+            goto log;
+        }
+        #endif
+        re = cfs_re(cfs_unlinkat(g_cfs_client_id, dirfd, cfs_path, flags));
+    } else {
+        re = real_unlinkat(dirfd, pathname, flags);
+    }
+
+log:
     free(path);
     #ifdef _CFS_DEBUG
-    printf("hook %s, dirfd:%d, pathname:%s, flags:%#x, re:%d\n", __func__, dirfd, pathname, flags, re);
+    log_debug("hook %s, dirfd:%d, pathname:%s, flags:%#x, re:%d\n", __func__, dirfd, pathname, flags, re);
     #endif
     return re;
 }
@@ -858,7 +1000,7 @@ int __xstat(int ver, const char *pathname, struct stat *statbuf) {
     int re = (g_hook && path != NULL) ? cfs_re(cfs_stat(g_cfs_client_id, path, statbuf)) : real_stat(ver, pathname, statbuf);
     free(path);
     #ifdef _CFS_DEBUG
-    printf("hook %s, is_cfs:%d, pathname:%s, re:%d\n", __func__, path != NULL, pathname, re);
+    log_debug("hook %s, is_cfs:%d, pathname:%s, re:%d\n", __func__, path != NULL, pathname, re);
     #endif
     return re;
 }
@@ -873,7 +1015,7 @@ int __xstat64(int ver, const char *pathname, struct stat64 *statbuf) {
     int re = (g_hook && path != NULL) ? cfs_re(cfs_stat64(g_cfs_client_id, path, statbuf)) : real_stat64(ver, pathname, statbuf);
     free(path);
     #ifdef _CFS_DEBUG
-    printf("hook %s, is_cfs:%d, pathname:%s, re:%d\n", __func__, path != NULL, pathname, re);
+    log_debug("hook %s, is_cfs:%d, pathname:%s, re:%d\n", __func__, path != NULL, pathname, re);
     #endif
     return re;
 }
@@ -888,7 +1030,7 @@ int __lxstat(int ver, const char *pathname, struct stat *statbuf) {
     int re = (g_hook && path != NULL) ? cfs_re(cfs_lstat(g_cfs_client_id, path, statbuf)) : real_lstat(ver, pathname, statbuf);
     free(path);
     #ifdef _CFS_DEBUG
-    printf("hook %s, is_cfs:%d, pathname:%s, re:%d\n", __func__, path != NULL, pathname, re);
+    log_debug("hook %s, is_cfs:%d, pathname:%s, re:%d\n", __func__, path != NULL, pathname, re);
     #endif
     return re;
 }
@@ -904,7 +1046,7 @@ int __lxstat64(int ver, const char *pathname, struct stat64 *statbuf) {
              real_lstat64(ver, pathname, statbuf);
     free(path);
     #ifdef _CFS_DEBUG
-    printf("hook %s, is_cfs:%d, pathname:%s, re:%d\n", __func__, path != NULL, pathname, re);
+    log_debug("hook %s, is_cfs:%d, pathname:%s, re:%d\n", __func__, path != NULL, pathname, re);
     #endif
     return re;
 }
@@ -924,7 +1066,7 @@ int __fxstat(int ver, int fd, struct stat *statbuf) {
     fd = fd & ~CFS_FD_MASK;
     int re = g_hook && is_cfs ? cfs_re(cfs_fstat(g_cfs_client_id, fd, statbuf)) : real_fstat(ver, fd, statbuf);
     #ifdef _CFS_DEBUG
-    printf("hook %s, is_cfs:%d, fd:%d, re:%d\n", __func__, is_cfs > 0, fd, re);
+    log_debug("hook %s, is_cfs:%d, fd:%d, re:%d\n", __func__, is_cfs > 0, fd, re);
     #endif
     return re;
 }
@@ -945,7 +1087,7 @@ int __fxstat64(int ver, int fd, struct stat64 *statbuf) {
     int re = g_hook && is_cfs ? cfs_re(cfs_fstat64(g_cfs_client_id, fd, statbuf)) :
         real_fstat64(ver, fd, statbuf);
     #ifdef _CFS_DEBUG
-    printf("hook %s, is_cfs:%d, fd:%d, re:%d\n", __func__, is_cfs > 0, fd, re);
+    log_debug("hook %s, is_cfs:%d, fd:%d, re:%d\n", __func__, is_cfs > 0, fd, re);
     #endif
     return re;
 }
@@ -971,7 +1113,7 @@ int __fxstatat(int ver, int dirfd, const char *pathname, struct stat *statbuf, i
              real_fstatat(ver, dirfd, pathname, statbuf, flags);
     free(path);
     #ifdef _CFS_DEBUG
-    printf("hook %s, dirfd:%d, pathname:%s, re:%d\n", __func__, dirfd, pathname, re);
+    log_debug("hook %s, dirfd:%d, pathname:%s, re:%d\n", __func__, dirfd, pathname, re);
     #endif
     return re;
 }
@@ -1232,12 +1374,8 @@ int faccessat(int dirfd, const char *pathname, int mode, int flags) {
 
     free(path);
     #ifdef _CFS_DEBUG
-    time_t raw_time = time(NULL);
-    struct tm *ptm = localtime(&raw_time);
-    char buf[20];
-    strftime(buf, 20, "%F %H:%M:%S", ptm);
-    printf("%s hook %s, is_cfs:%d, dirfd:%d, pathname:%s, mode:%d, flags:%#x, re:%d\n", 
-    buf, __func__, is_cfs, dirfd, pathname, mode, flags, re);
+    log_debug("hook %s, is_cfs:%d, dirfd:%d, pathname:%s, mode:%d, flags:%#x, re:%d\n", 
+    __func__, is_cfs, dirfd, pathname, mode, flags, re);
     #endif
     return re;
 }
@@ -1421,6 +1559,12 @@ int fcntl(int fd, int cmd, ...) {
     fd = fd & ~CFS_FD_MASK;
     int re;
     if(g_hook && is_cfs) {
+        #ifdef DUP_TO_LOCAL
+        re = real_fcntl(fd, cmd, arg);
+        if(re < 0) {
+            goto log;
+        }
+        #endif
         if(cmd == F_SETLK || cmd == F_SETLKW) {
             re = cfs_fcntl_lock(g_cfs_client_id, fd, cmd, (struct flock *)arg);
         } else {
@@ -1432,12 +1576,15 @@ int fcntl(int fd, int cmd, ...) {
     }
 
     if(re < 0) {
-        return re;
+        goto log;
     }
     if(g_hook && is_cfs && (cmd == F_DUPFD || cmd == F_DUPFD_CLOEXEC)) {
         re |= CFS_FD_MASK;
     }
+
+log:
     #ifdef _CFS_DEBUG
+    ; // labels can only be followed by statements
     char *cmdstr;
     switch(cmd) {
         case F_DUPFD:
@@ -1468,7 +1615,7 @@ int fcntl(int fd, int cmd, ...) {
         cmdstr = "F_GETLK";
         break;
     }
-    printf("hook %s, is_cfs:%d, fd:%d, cmd:%d(%s), arg:%u(%s), re:%d\n", __func__, is_cfs>0, fd, cmd, 
+    log_debug("hook %s, is_cfs:%d, fd:%d, cmd:%d(%s), arg:%u(%s), re:%d\n", __func__, is_cfs>0, fd, cmd, 
     cmdstr, (intptr_t)arg, (cmd==F_SETFL&&(intptr_t)arg&O_DIRECT)?"O_DIRECT":"", re);
     #endif
     return re;
@@ -1494,6 +1641,12 @@ int dup2(int oldfd, int newfd) {
         if(newfd < 0 || newfd >= CFS_FD_MAP_SIZE) {
             goto log;
         }
+        #ifdef DUP_TO_LOCAL
+        re = real_dup2(oldfd & ~CFS_FD_MASK, newfd);
+        if(re < 0) {
+            goto log;
+        }
+        #endif
         g_cfs_fd_map[newfd] = oldfd;
         re = newfd;
     } else {
@@ -1502,7 +1655,7 @@ int dup2(int oldfd, int newfd) {
 
 log:
     #ifdef _CFS_DEBUG
-    printf("hook %s, is_cfs:%d, oldfd:%d, newfd:%d, re:%d\n", __func__, is_cfs > 0, oldfd, newfd, re);
+    log_debug("hook %s, is_cfs:%d, oldfd:%d, newfd:%d, re:%d\n", __func__, is_cfs > 0, oldfd, newfd, re);
     #endif
     return re;
 }
@@ -1525,6 +1678,12 @@ int dup3(int oldfd, int newfd, int flags) {
         if(newfd < 0 || newfd >= CFS_FD_MAP_SIZE) {
             goto log;
         }
+        #ifdef DUP_TO_LOCAL
+        re = real_dup3(oldfd & ~CFS_FD_MASK, newfd, flags);
+        if(re < 0) {
+            goto log;
+        }
+        #endif
         g_cfs_fd_map[newfd] = oldfd;
         re = newfd;
     } else {
@@ -1533,7 +1692,7 @@ int dup3(int oldfd, int newfd, int flags) {
 
 log:
     #ifdef _CFS_DEBUG
-    printf("hook %s, is_cfs:%d, oldfd:%d, newfd:%d, flags:%#x, re:%d\n", __func__, is_cfs > 0, oldfd, newfd, flags, re);
+    log_debug("hook %s, is_cfs:%d, oldfd:%d, newfd:%d, flags:%#x, re:%d\n", __func__, is_cfs > 0, oldfd, newfd, flags, re);
     #endif
     return re;
 }
@@ -1557,9 +1716,49 @@ ssize_t read(int fd, void *buf, size_t count) {
     #endif
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    ssize_t re = g_hook && is_cfs ? cfs_sre(cfs_read(g_cfs_client_id, fd, buf, count)) : real_read(fd, buf, count);
+    ssize_t re;
+    if(g_hook && is_cfs) {
+        #ifdef DUP_TO_LOCAL
+        off_t offset = lseek(fd, 0, SEEK_CUR);
+        re = real_read(fd, buf, count);
+        if(re <= 0) {
+            goto log;
+        }
+        void *buf_copy = malloc(count);
+        if(buf_copy == NULL) {
+            re = -1;
+            goto log;
+        }
+        re = cfs_sre(cfs_read(g_cfs_client_id, fd, buf_copy, count));
+        if(re <= 0) {
+            goto log;
+        }
+        if(memcmp(buf, buf_copy, re)) {
+            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, count:%d, offset:%d\n", __func__, is_cfs > 0, fd, count, offset);
+            int total = 0;
+            for(int i = 0; i < re; i++) {
+                if(((unsigned char*)buf)[i] != ((unsigned char*)buf_copy)[i]) {
+                    if(++total > 64) {
+                        break;
+                    }
+                    printf("i: %x, local: %x, CFS: %x, ", i, ((unsigned char*)buf)[i], ((unsigned char*)buf_copy)[i]);
+                }
+            }
+            printf("\n");
+            re = -1;
+            cfs_flush_log();
+        }
+        free(buf_copy);
+        #else
+        re = cfs_sre(cfs_read(g_cfs_client_id, fd, buf, count));
+        #endif
+    } else {
+        re = real_read(fd, buf, count);
+    }
+
+log:
     #ifdef _CFS_DEBUG
-    printf("hook %s, is_cfs:%d, fd:%d, count:%d, re:%d\n", __func__, is_cfs > 0, fd, count, re);
+    log_debug("hook %s, is_cfs:%d, fd:%d, count:%d, re:%d\n", __func__, is_cfs > 0, fd, count, re);
     #endif
     return re;
 }
@@ -1577,10 +1776,39 @@ ssize_t readv(int fd, const struct iovec *iov, int iovcnt) {
     #endif
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    ssize_t re = g_hook && is_cfs ? cfs_sre(cfs_readv(g_cfs_client_id, fd, iov, iovcnt)) :
-        real_readv(fd, iov, iovcnt);
+    ssize_t re;
+    if(g_hook && is_cfs) {
+        re = cfs_sre(cfs_readv(g_cfs_client_id, fd, iov, iovcnt));
+        #ifdef DUP_TO_LOCAL
+        if(re <= 0) {
+            goto log;
+        }
+        struct iovec iov_local[iovcnt];
+        for(int i = 0; i < iovcnt; i++) {
+            iov_local[i].iov_base = malloc(iov[i].iov_len);
+            iov_local[i].iov_len = iov[i].iov_len;
+        }
+        off_t offset = lseek(fd, 0, SEEK_CUR);
+        re = real_readv(fd, iov_local, iovcnt);
+        if(re <= 0) {
+            goto log;
+        }
+        for(int i = 0; i < iovcnt; i++) {
+            if(memcmp(iov[i].iov_base, iov_local[i].iov_base, iov[i].iov_len)) {
+                re = -1;
+                cfs_flush_log();
+                log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, offset:%d, iovcnt:%d, iov_idx:%d, iov_len:%d\n", __func__, is_cfs > 0, fd, offset, iovcnt, i, iov[i].iov_len);
+            }
+            free(iov_local[i].iov_base);
+        }
+        #endif
+    } else {
+        re = real_readv(fd, iov, iovcnt);
+    }
+
+log:
     #ifdef _CFS_DEBUG
-    printf("hook %s, is_cfs:%d, fd:%d, iovcnt:%d, re:%d\n", __func__, is_cfs > 0, fd, iovcnt, re);
+    log_debug("hook %s, is_cfs:%d, fd:%d, iovcnt:%d, re:%d\n", __func__, is_cfs > 0, fd, iovcnt, re);
     #endif
     return re;
 }
@@ -1598,10 +1826,48 @@ ssize_t pread(int fd, void *buf, size_t count, off_t offset) {
     #endif
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    ssize_t re = g_hook && is_cfs ? cfs_sre(cfs_pread(g_cfs_client_id, fd, buf, count, offset)) :
-        real_pread(fd, buf, count, offset);
+    ssize_t re;
+    if(g_hook && is_cfs) {
+        #ifdef DUP_TO_LOCAL
+        re = real_pread(fd, buf, count, offset);
+        if(re <= 0) {
+            goto log;
+        }
+        void *buf_copy = malloc(count);
+        if(buf_copy == NULL) {
+            re = -1;
+            goto log;
+        }
+        re = cfs_sre(cfs_pread(g_cfs_client_id, fd, buf_copy, count, offset));
+        if(re <= 0) {
+            goto log;
+        }
+        if(memcmp(buf, buf_copy, re)) {
+            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, count:%d, offset:%d\n", __func__, is_cfs > 0, fd, count, offset);
+            int total = 0;
+            for(int i = 0; i < re; i++) {
+                if(++total > 64) {
+                    break;
+                }
+                if(((unsigned char*)buf)[i] != ((unsigned char*)buf_copy)[i]) {
+                    printf("i: %x, local: %x, CFS: %x, ", i, ((unsigned char*)buf)[i], ((unsigned char*)buf_copy)[i]);
+                }
+            }
+            printf("\n");
+            re = -1;
+            cfs_flush_log();
+        }
+        free(buf_copy);
+        #else
+        re = cfs_sre(cfs_pread(g_cfs_client_id, fd, buf, count, offset));
+        #endif
+    } else {
+        re = real_pread(fd, buf, count, offset);
+    }
+
+log:
     #ifdef _CFS_DEBUG
-    printf("hook %s, is_cfs:%d, fd:%d, count:%d, offset:%d, re:%d\n", __func__, is_cfs > 0, fd, count, offset, re);
+    log_debug("hook %s, is_cfs:%d, fd:%d, count:%d, offset:%d, re:%d\n", __func__, is_cfs > 0, fd, count, offset, re);
     #endif
     return re;
 }
@@ -1620,10 +1886,38 @@ ssize_t preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset) {
     #endif
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    ssize_t re = g_hook && is_cfs ? cfs_sre(cfs_preadv(g_cfs_client_id, fd, iov, iovcnt, offset)) :
-        real_preadv(fd, iov, iovcnt, offset);
+    ssize_t re;
+    if(g_hook && is_cfs) {
+        re = cfs_sre(cfs_preadv(g_cfs_client_id, fd, iov, iovcnt, offset));
+        #ifdef DUP_TO_LOCAL
+        if(re <= 0) {
+            goto log;
+        }
+        struct iovec iov_local[iovcnt];
+        for(int i = 0; i < iovcnt; i++) {
+            iov_local[i].iov_base = malloc(iov[i].iov_len);
+            iov_local[i].iov_len = iov[i].iov_len;
+        }
+        re = real_preadv(fd, iov_local, iovcnt, offset);
+        if(re <= 0) {
+            goto log;
+        }
+        for(int i = 0; i < iovcnt; i++) {
+            if(memcmp(iov[i].iov_base, iov_local[i].iov_base, iov[i].iov_len)) {
+                re = -1;
+                cfs_flush_log();
+                log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, iovcnt:%d, offset:%d, iov_idx: %d\n", __func__, is_cfs > 0, fd, iovcnt, offset, i);
+            }
+            free(iov_local[i].iov_base);
+        }
+        #endif
+    } else {
+        re = real_preadv(fd, iov, iovcnt, offset);
+    }
+
+log:
     #ifdef _CFS_DEBUG
-    printf("hook %s, is_cfs:%d, fd:%d, iovcnt:%d, offset:%d, re:%d\n", __func__, is_cfs > 0, fd, iovcnt, offset, re);
+    log_debug("hook %s, is_cfs:%d, fd:%d, iovcnt:%d, offset:%d, re:%d\n", __func__, is_cfs > 0, fd, iovcnt, offset, re);
     #endif
     return re;
 }
@@ -1641,13 +1935,33 @@ ssize_t write(int fd, const void *buf, size_t count) {
     #endif
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    ssize_t re = g_hook && is_cfs ? cfs_sre(cfs_write(g_cfs_client_id, fd, buf, count)) :
-        real_write(fd, buf, count);
+    ssize_t re;
+    off_t offset = -1;
+    if(g_hook && is_cfs) {
+        #ifdef DUP_TO_LOCAL
+        offset = lseek(fd, 0, SEEK_CUR);
+        re = real_write(fd, buf, count);
+        if(re < 0) {
+            goto log;
+        }
+        void *buf_copy = malloc(count);
+        if(buf_copy == NULL) {
+            re = -1;
+            goto log;
+        }
+        memcpy(buf_copy, buf, count);
+        re = cfs_sre(cfs_write(g_cfs_client_id, fd, buf_copy, count));
+        free(buf_copy);
+        #else
+        re = cfs_sre(cfs_write(g_cfs_client_id, fd, buf, count));
+        #endif
+    } else {
+        re = real_write(fd, buf, count);
+    }
+
+log:
     #ifdef _CFS_DEBUG
-    // printf CANNOT be used here, otherwise will cause circular dependency
-    char str[100];
-    sprintf(str, "hook %s, is_cfs:%d, fd:%d, count:%d, re:%d\n", __func__, is_cfs > 0, fd, count, re);
-    real_write(1, str, strlen(str));
+    log_debug("hook %s, is_cfs:%d, fd:%d, count:%d, offset:%d, re:%d\n", __func__, is_cfs > 0, fd, count, offset, re);
     #endif
     return re;
 }
@@ -1665,10 +1979,22 @@ ssize_t writev(int fd, const struct iovec *iov, int iovcnt) {
     #endif
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    ssize_t re =  g_hook && is_cfs ? cfs_sre(cfs_writev(g_cfs_client_id, fd, iov, iovcnt)) :
-        real_writev(fd, iov, iovcnt);
+    ssize_t re;
+    if(g_hook && is_cfs) {
+        #ifdef DUP_TO_LOCAL
+        re = real_writev(fd, iov, iovcnt);
+        if(re < 0) {
+            goto log;
+        }
+        #endif
+        re = cfs_sre(cfs_writev(g_cfs_client_id, fd, iov, iovcnt));
+    } else {
+        re = real_writev(fd, iov, iovcnt);
+    }
+
+log:
     #ifdef _CFS_DEBUG
-    printf("hook %s, is_cfs:%d, fd:%d, iovcnt:%d, re:%d\n", __func__, is_cfs > 0, fd, iovcnt, re);
+    log_debug("hook %s, is_cfs:%d, fd:%d, iovcnt:%d, re:%d\n", __func__, is_cfs > 0, fd, iovcnt, re);
     #endif
     return re;
 }
@@ -1686,10 +2012,31 @@ ssize_t pwrite(int fd, const void *buf, size_t count, off_t offset) {
     #endif
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    ssize_t re = g_hook && is_cfs ? cfs_sre(cfs_pwrite(g_cfs_client_id, fd, buf, count, offset)) :
-        real_pwrite(fd, buf, count, offset);
+    ssize_t re;
+    if(g_hook && is_cfs) {
+        #ifdef DUP_TO_LOCAL
+        re = real_pwrite(fd, buf, count, offset);
+        if(re < 0) {
+            goto log;
+        }
+        void *buf_copy = malloc(count);
+        if(buf_copy == NULL) {
+            re = -1;
+            goto log;
+        }
+        memcpy(buf_copy, buf, count);
+        re = cfs_sre(cfs_pwrite(g_cfs_client_id, fd, buf_copy, count, offset));
+        free(buf_copy);
+        #else
+        re = cfs_sre(cfs_pwrite(g_cfs_client_id, fd, buf, count, offset));
+        #endif
+    } else {
+        re = real_pwrite(fd, buf, count, offset);
+    }
+
+log:
     #ifdef _CFS_DEBUG
-    printf("hook %s, is_cfs:%d, fd:%d, count:%d, offset:%d, re:%d\n", __func__, is_cfs > 0, fd, count, offset, re);
+    log_debug("hook %s, is_cfs:%d, fd:%d, count:%d, offset:%d, re:%d\n", __func__, is_cfs > 0, fd, count, offset, re);
     #endif
     return re;
 }
@@ -1708,10 +2055,22 @@ ssize_t pwritev(int fd, const struct iovec *iov, int iovcnt, off_t offset) {
     #endif
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    ssize_t re = g_hook && is_cfs ? cfs_sre(cfs_pwritev(g_cfs_client_id, fd, iov, iovcnt, offset)) :
-        real_pwritev(fd, iov, iovcnt, offset);
+    ssize_t re;
+    if(g_hook && is_cfs) {
+        #ifdef DUP_TO_LOCAL
+        re = real_pwritev(fd, iov, iovcnt, offset);
+        if(re < 0) {
+            goto log;
+        }
+        #endif
+        re = cfs_sre(cfs_pwritev(g_cfs_client_id, fd, iov, iovcnt, offset));
+    } else {
+        re = real_pwritev(fd, iov, iovcnt, offset);
+    }
+
+log:
     #ifdef _CFS_DEBUG
-    printf("hook %s, is_cfs:%d, fd:%d, iovcnt:%d, offset:%d, re:%d\n", __func__, is_cfs > 0, fd, iovcnt, offset, re);
+    log_debug("hook %s, is_cfs:%d, fd:%d, iovcnt:%d, offset:%d, re:%d\n", __func__, is_cfs > 0, fd, iovcnt, offset, re);
     #endif
     return re;
 }
@@ -1731,16 +2090,29 @@ off_t lseek(int fd, off_t offset, int whence) {
     fd = fd & ~CFS_FD_MASK;
     off_t re;
     if(g_hook && is_cfs) {
+        #ifdef DUP_TO_LOCAL
+        re = real_lseek(fd, offset, whence);
+        if(re < 0) {
+            goto log;
+        }
+        off_t re_cfs = cfs_lseek(g_cfs_client_id, fd, offset, whence);
+        if(re_cfs != re) {
+            log_debug("hook %s, re from CFS and local is not consistent. is_cfs:%d, fd:%d, offset:%d, whence:%d, re:%d, re_cfs:%d\n", __func__, is_cfs > 0, fd, offset, whence, re, re_cfs);
+        }
+        #else
         re = cfs_lseek(g_cfs_client_id, fd, offset, whence);
         if(re < 0) {
             errno = -re;
             re = -1;
         }
+        #endif
     } else {
         re = real_lseek(fd, offset, whence);
     }
+
+log:
     #ifdef _CFS_DEBUG
-    printf("hook %s, is_cfs:%d, fd:%d, offset:%d, whence:%d, re:%d\n", __func__, is_cfs > 0, fd, offset, whence, re);
+    log_debug("hook %s, is_cfs:%d, fd:%d, offset:%d, whence:%d, re:%d\n", __func__, is_cfs > 0, fd, offset, whence, re);
     #endif
     return re;
 }
@@ -1764,9 +2136,22 @@ int fdatasync(int fd) {
     #endif
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    int re = g_hook && is_cfs ? cfs_re(cfs_flush(g_cfs_client_id, fd)) : real_fdatasync(fd);
+    int re;
+    if(g_hook && is_cfs) {
+        #ifdef DUP_TO_LOCAL
+        re = real_fdatasync(fd);
+        if(re < 0) {
+            goto log;
+        }
+        #endif
+        re = cfs_re(cfs_flush(g_cfs_client_id, fd));
+    } else {
+        re = real_fdatasync(fd);
+    }
+
+log:
     #ifdef _CFS_DEBUG
-    printf("hook %s, is_cfs:%d, fd:%d, re:%d\n", __func__, is_cfs > 0, fd, re);
+    log_debug("hook %s, is_cfs:%d, fd:%d, re:%d\n", __func__, is_cfs > 0, fd, re);
     #endif
     return re;
 }
@@ -1784,9 +2169,22 @@ int fsync(int fd) {
     #endif
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    int re = g_hook && is_cfs ? cfs_re(cfs_flush(g_cfs_client_id, fd)) : real_fsync(fd);
+    int re;
+    if(g_hook && is_cfs) {
+        #ifdef DUP_TO_LOCAL
+        re = real_fsync(fd);
+        if(re < 0) {
+            goto log;
+        }
+        #endif
+        re = cfs_re(cfs_flush(g_cfs_client_id, fd));
+    } else {
+        re = real_fsync(fd);
+    }
+
+log:
     #ifdef _CFS_DEBUG
-    printf("hook %s, is_cfs:%d, fd:%d, re:%d\n", __func__, is_cfs > 0, fd, re);
+    log_debug("hook %s, is_cfs:%d, fd:%d, re:%d\n", __func__, is_cfs > 0, fd, re);
     #endif
     return re;
 }
@@ -1802,7 +2200,7 @@ void abort() {
     }
 
     #ifdef _CFS_DEBUG
-    printf("hook %s\n", __func__);
+    log_debug("hook %s\n", __func__);
     #endif
     cfs_flush_log();
     // abort is marked with __attribute__((noreturn)) by GCC.
@@ -1818,7 +2216,7 @@ void _exit(int status) {
     }
 
     #ifdef _CFS_DEBUG
-    printf("hook %s\n", __func__);
+    log_debug("hook %s\n", __func__);
     #endif
     cfs_flush_log();
     // _exit is marked with __attribute__((noreturn)) by GCC.
@@ -1834,7 +2232,7 @@ void exit(int status) {
     }
 
     #ifdef _CFS_DEBUG
-    printf("hook %s\n", __func__);
+    log_debug("hook %s\n", __func__);
     #endif
     cfs_flush_log();
     // exit is marked with __attribute__((noreturn)) by GCC.
@@ -1871,7 +2269,7 @@ int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact)
 
 log:
     #ifdef _CFS_DEBUG
-    printf("hook %s, hook_action:%d, signum:%d, re:%d\n", __func__, hook_action, signum, re);
+    log_debug("hook %s, hook_action:%d, signum:%d, re:%d\n", __func__, hook_action, signum, re);
     #endif
     return re;
 }

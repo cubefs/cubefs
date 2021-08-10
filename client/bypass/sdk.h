@@ -60,6 +60,7 @@ void cfs_flush_log();
 int cfs_close(int64_t id, int fd);
 int cfs_open(int64_t id, const char *path, int flags, mode_t mode);
 int cfs_openat(int64_t id, int dirfd, const char *path, int flags, mode_t mode);
+int cfs_openat_fd(int64_t id, int dirfd, const char *path, int flags, mode_t mode, int fd);
 int cfs_rename(int64_t id, const char *from, const char *to);
 int cfs_renameat(int64_t id, int fromdirfd, const char *from, int todirfd, const char *to);
 int cfs_truncate(int64_t id, const char *path, off_t len);

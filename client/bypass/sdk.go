@@ -300,11 +300,23 @@ func cfs_flush_log() {
 
 //export cfs_close
 func cfs_close(id C.int64_t, fd C.int) {
+	var (
+		path string
+		ino  uint64
+	)
+	defer func() {
+		log.LogDebugf("cfs_close: id(%v) fd(%v) path(%v) ino(%v)", id, fd, path, ino)
+	}()
 	c, exist := getClient(int64(id))
 	if !exist {
 		return
 	}
 	f := c.releaseFD(uint(fd))
+	if f == nil {
+		return
+	}
+	path = f.path
+	ino = f.ino
 
 	var tracer = tracing.NewTracer("cfs_close").
 		SetTag("fd", uint(fd)).
@@ -315,26 +327,31 @@ func cfs_close(id C.int64_t, fd C.int) {
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_close"))
 	defer ump.AfterTPUs(tpObject, nil)
 
-	if f != nil {
-		c.ec.Flush(ctx, f.ino)
-		c.closeStream(f)
-	}
+	c.ec.Flush(ctx, f.ino)
+	c.closeStream(f)
 }
 
 //export cfs_open
 func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) (re C.int) {
+	return _cfs_open(id, path, flags, mode, -1)
+}
+
+func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int) (re C.int) {
 	var (
 		c   *client
+		ino uint64
 		err error
 	)
 	defer func() {
+		msg := fmt.Sprintf("id(%v) path(%v) ino(%v) flags(%v) mode(%v) fd(%v) re(%v) err(%v)", id, C.GoString(path), ino, flags, mode, fd, re, err)
 		if r := recover(); r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
 			var stack string
 			if r != nil {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
-			msg := fmt.Sprintf("id(%v) path(%v) flags(%v) mode(%v) re(%v) err(%v)%s", id, C.GoString(path), flags, mode, re, err, stack)
-			handleError(c, "cfs_open", msg)
+			handleError(c, "cfs_open", fmt.Sprintf("%s%s", msg, stack))
+		} else {
+			log.LogDebugf("cfs_open: %s", msg)
 		}
 	}()
 
@@ -401,7 +418,8 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) (re C.int)
 		info = newInfo
 	}
 
-	f := c.allocFD(info.Inode, fuseFlags, info.Mode, info.Target)
+	ino = info.Inode
+	f := c.allocFD(info.Inode, fuseFlags, info.Mode, info.Target, int(fd))
 	if f == nil {
 		return statusEMFILE
 	}
@@ -440,7 +458,22 @@ func cfs_openat(id C.int64_t, dirfd C.int, path *C.char, flags C.int, mode C.mod
 		return statusEINVAL
 	}
 
-	return cfs_open(id, C.CString(absPath), flags, mode)
+	return _cfs_open(id, C.CString(absPath), flags, mode, -1)
+}
+
+//export cfs_openat_fd
+func cfs_openat_fd(id C.int64_t, dirfd C.int, path *C.char, flags C.int, mode C.mode_t, fd C.int) C.int {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return statusEINVAL
+	}
+
+	absPath, err := c.absPathAt(dirfd, path)
+	if err != nil {
+		return statusEINVAL
+	}
+
+	return _cfs_open(id, C.CString(absPath), flags, mode, fd)
 }
 
 //export cfs_rename
@@ -450,13 +483,15 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) (re C.int) {
 		err error
 	)
 	defer func() {
+		msg := fmt.Sprintf("id(%v) from(%v) to(%v) re(%v) err(%v)", id, C.GoString(from), C.GoString(to), re, err)
 		if r := recover(); r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
 			var stack string
 			if r != nil {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
-			msg := fmt.Sprintf("id(%v) from(%v) to(%v) re(%v) err(%v)%s", id, C.GoString(from), C.GoString(to), re, err, stack)
-			handleError(c, "cfs_rename", msg)
+			handleError(c, "cfs_rename", fmt.Sprintf("%s%s", msg, stack))
+		} else {
+			log.LogDebugf("cfs_rename: %s", msg)
 		}
 	}()
 
@@ -922,13 +957,15 @@ func cfs_rmdir(id C.int64_t, path *C.char) (re C.int) {
 		err error
 	)
 	defer func() {
+		msg := fmt.Sprintf("id(%v) path(%v) re(%v) err(%v)", id, C.GoString(path), re, err)
 		if r := recover(); r != nil || re < 0 {
 			var stack string
 			if r != nil {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
-			msg := fmt.Sprintf("id(%v) path(%v) re(%v) err(%v)%s", id, C.GoString(path), re, err, stack)
-			handleError(c, "cfs_rmdir", msg)
+			handleError(c, "cfs_rmdir", fmt.Sprintf("%s%s", msg, stack))
+		} else {
+			log.LogDebugf("cfs_rmdir: %s", msg)
 		}
 	}()
 
@@ -973,7 +1010,11 @@ func cfs_getcwd(id C.int64_t) *C.char {
 }
 
 //export cfs_chdir
-func cfs_chdir(id C.int64_t, path *C.char) C.int {
+func cfs_chdir(id C.int64_t, path *C.char) (re C.int) {
+	var ino uint64
+	defer func() {
+		log.LogDebugf("cfs_chdir: id(%v) path(%v) ino(%v) re(%v)", id, path, ino, re)
+	}()
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -990,6 +1031,7 @@ func cfs_chdir(id C.int64_t, path *C.char) C.int {
 	if err != nil {
 		return errorToStatus(err)
 	}
+	ino = dirInfo.Inode
 	if !proto.IsDir(dirInfo.Mode) {
 		return statusENOTDIR
 	}
@@ -998,7 +1040,14 @@ func cfs_chdir(id C.int64_t, path *C.char) C.int {
 }
 
 //export cfs_fchdir
-func cfs_fchdir(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.int) C.int {
+func cfs_fchdir(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.int) (re C.int) {
+	var (
+		path string
+		ino  uint64
+	)
+	defer func() {
+		log.LogDebugf("cfs_fchdir: id(%v) fd(%v) path(%v) ino(%v)", id, path, ino)
+	}()
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -1008,6 +1057,8 @@ func cfs_fchdir(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.int) C.int {
 	if f == nil || f.path == "" {
 		return statusEBADFD
 	}
+	path = f.path
+	ino = f.ino
 
 	if !proto.IsDir(f.mode) {
 		return statusENOTDIR
@@ -1255,10 +1306,11 @@ func cfs_symlinkat(id C.int64_t, target *C.char, dirfd C.int, linkPath *C.char) 
 func cfs_unlink(id C.int64_t, path *C.char) (re C.int) {
 	var (
 		c   *client
+		ino uint64
 		err error
 	)
 	defer func() {
-		msg := fmt.Sprintf("id(%v) path(%v) re(%v) err(%v)", id, C.GoString(path), re, err)
+		msg := fmt.Sprintf("id(%v) path(%v) ino(%v) re(%v) err(%v)", id, C.GoString(path), ino, re, err)
 		if r := recover(); r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
 			var stack string
 			if r != nil {
@@ -1289,6 +1341,7 @@ func cfs_unlink(id C.int64_t, path *C.char) (re C.int) {
 	if err != nil {
 		return errorToStatus(err)
 	}
+	ino = info.Inode
 	if proto.IsDir(info.Mode) {
 		return statusEPERM
 	}
@@ -1407,7 +1460,7 @@ func _cfs_stat(id C.int64_t, path *C.char, stat *C.struct_stat, flags C.int) (re
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
 			msg := fmt.Sprintf("id(%v) path(%v) ino(%v) flags(%v) re(%v) err(%v)%s", id, C.GoString(path), ino, flags, re, err, stack)
-			handleError(c, "_cfs_stat", msg)
+			handleError(c, "cfs_stat", msg)
 		}
 	}()
 
@@ -1498,7 +1551,7 @@ func _cfs_stat64(id C.int64_t, path *C.char, stat *C.struct_stat64, flags C.int)
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
 			msg := fmt.Sprintf("id(%v) path(%v) ino(%v) flags(%v) re(%v) err(%v)%s", id, C.GoString(path), ino, flags, re, err, stack)
-			handleError(c, "_cfs_stat64", msg)
+			handleError(c, "cfs_stat64", msg)
 		}
 	}()
 
@@ -2557,9 +2610,9 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 			if r != nil {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
-			handleError(c, "_cfs_read", fmt.Sprintf("%s%s", msg, stack))
+			handleError(c, "cfs_read", fmt.Sprintf("%s%s", msg, stack))
 		} else {
-			log.LogDebugf("_cfs_read: %s", msg)
+			log.LogDebugf("cfs_read: %s", msg)
 		}
 	}()
 
@@ -2683,9 +2736,9 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 			if r != nil {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
-			handleError(c, "_cfs_write", fmt.Sprintf("%s%s", msg, stack))
+			handleError(c, "cfs_write", fmt.Sprintf("%s%s", msg, stack))
 		} else {
-			log.LogDebugf("_cfs_write: %s", msg)
+			log.LogDebugf("cfs_write: %s", msg)
 		}
 	}()
 
@@ -2834,7 +2887,14 @@ func _cfs_writev(id C.int64_t, fd C.int, iov *C.struct_iovec, iovcnt C.int, off 
 }
 
 //export cfs_lseek
-func cfs_lseek(id C.int64_t, fd C.int, offset C.off64_t, whence C.int) C.off64_t {
+func cfs_lseek(id C.int64_t, fd C.int, offset C.off64_t, whence C.int) (re C.off64_t) {
+	var (
+		path string
+		ino  uint64
+	)
+	defer func() {
+		log.LogDebugf("cfs_lseek: id(%v) fd(%v) path(%v) ino(%v) offset(%v) whence(%v) re(%v)", id, fd, path, ino, offset, whence, re)
+	}()
 	c, exist := getClient(int64(id))
 	if !exist {
 		return C.off64_t(statusEINVAL)
@@ -2844,6 +2904,8 @@ func cfs_lseek(id C.int64_t, fd C.int, offset C.off64_t, whence C.int) C.off64_t
 	if f == nil {
 		return C.off64_t(statusEBADFD)
 	}
+	path = f.path
+	ino = f.ino
 
 	if whence == C.int(C.SEEK_SET) {
 		f.pos = uint64(offset)
@@ -2980,16 +3042,24 @@ func (c *client) start() (err error) {
 	return
 }
 
-func (c *client) allocFD(ino uint64, flags, mode uint32, target []byte) *file {
+func (c *client) allocFD(ino uint64, flags, mode uint32, target []byte, fd int) *file {
 	c.fdlock.Lock()
 	defer c.fdlock.Unlock()
-	fd, ok := c.fdset.NextClear(0)
-	if !ok || fd > maxFdNum {
-		return nil
+	var (
+		ok      bool
+		real_fd uint
+	)
+	if fd <= 0 {
+		real_fd, ok = c.fdset.NextClear(0)
+		if !ok || real_fd > maxFdNum {
+			return nil
+		}
+		c.fdset.Set(real_fd)
+	} else {
+		real_fd = uint(fd)
 	}
-	c.fdset.Set(fd)
-	f := &file{fd: fd, ino: ino, flags: flags, mode: mode, target: target}
-	c.fdmap[fd] = f
+	f := &file{fd: real_fd, ino: ino, flags: flags, mode: mode, target: target}
+	c.fdmap[real_fd] = f
 	return f
 }
 

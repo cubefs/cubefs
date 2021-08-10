@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
@@ -494,6 +495,21 @@ static char *get_cfs_path(const char *pathname) {
     result[len_result == 0 ? 1 : len_result] = '\0';
     free(real_path);
     return result;
+}
+
+void log_debug(const char* message, ...) {
+    va_list args;
+    va_start(args, message);
+    va_end(args);
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    struct tm *ptm = localtime(&now.tv_sec);
+    char buf[27];
+    strftime(buf, 20, "%F %H:%M:%S", ptm);
+    sprintf(buf + 19, ".%d", now.tv_usec);
+    buf[26] = '\0';
+    printf("%s [debug] ", buf);
+    vprintf(message, args);
 }
 
 // process returned int from cfs functions
