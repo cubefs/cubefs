@@ -41,6 +41,39 @@ func (api *AdminAPI) GetCluster() (cv *proto.ClusterView, err error) {
 
 	return
 }
+
+func (api *AdminAPI) GetClusterNodeInfo() (cn *proto.ClusterNodeInfo, err error) {
+	var buf []byte
+
+	var request = newAPIRequest(http.MethodGet, proto.AdminGetNodeInfo)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+
+	cn = &proto.ClusterNodeInfo{}
+	if err = json.Unmarshal(buf, &cn); err != nil {
+		return
+	}
+
+	return
+}
+
+func (api *AdminAPI) GetClusterIP() (cp *proto.ClusterIP, err error) {
+	var buf []byte
+
+	var request = newAPIRequest(http.MethodGet, proto.AdminGetIP)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+
+	cp = &proto.ClusterIP{}
+	if err = json.Unmarshal(buf, &cp); err != nil {
+		return
+	}
+
+	return
+}
+
 func (api *AdminAPI) GetClusterStat() (cs *proto.ClusterStatInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminClusterStat)
 	request.addHeader("isTimeOut", "false")
@@ -224,15 +257,24 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 	return
 }
 
-func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas int, followerRead, authenticate bool, authKey, zoneName string) (err error) {
+func (api *AdminAPI) UpdateVolume(volName, description, auth, zoneName string, capacity uint64, followerRead bool,
+	ebsBlkSize int, CacheCap uint64, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater, cacheLRUInterval int) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
-	request.addParam("authKey", authKey)
-	request.addParam("capacity", strconv.FormatUint(capacity, 10))
-	request.addParam("replicaNum", strconv.Itoa(replicas))
-	request.addParam("followerRead", strconv.FormatBool(followerRead))
-	request.addParam("authenticate", strconv.FormatBool(authenticate))
+	request.addParam("description", description)
+	request.addParam("authKey", auth)
 	request.addParam("zoneName", zoneName)
+	request.addParam("capacity", strconv.FormatUint(capacity, 10))
+	request.addParam("followerRead", strconv.FormatBool(followerRead))
+	request.addParam("ebsBlkSize", strconv.Itoa(ebsBlkSize))
+	request.addParam("cacheCap", strconv.FormatUint(CacheCap, 10))
+	request.addParam("cacheAction", strconv.Itoa(cacheAction))
+	request.addParam("cacheThreshold", strconv.Itoa(cacheThreshold))
+	request.addParam("cacheTTL", strconv.Itoa(cacheTTL))
+	request.addParam("cacheHighWater", strconv.Itoa(cacheHighWater))
+	request.addParam("cacheLowWater", strconv.Itoa(cacheLowWater))
+	request.addParam("cacheLRUInterval", strconv.Itoa(cacheLRUInterval))
+
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -261,18 +303,30 @@ func (api *AdminAPI) VolExpand(volName string, capacity uint64, authKey string) 
 	return
 }
 
-func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int,
-	dpSize uint64, capacity uint64, replicas int, followerRead bool, zoneName string, crossZone bool, volType int) (err error) {
+func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, crossZone bool, business string,
+	mpCount, replicaNum, size, volType int, followerRead bool, zoneName, cacheRuleKey string, ebsBlkSize,
+	cacheCapacity, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater, cacheLRUInterval int) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
-	request.addParam("mpCount", strconv.Itoa(mpCount))
-	request.addParam("size", strconv.FormatUint(dpSize, 10))
 	request.addParam("capacity", strconv.FormatUint(capacity, 10))
+	request.addParam("crossZone", strconv.FormatBool(crossZone))
+	request.addParam("business", business)
+	request.addParam("mpCount", strconv.Itoa(mpCount))
+	request.addParam("replicaNum", strconv.Itoa(replicaNum))
+	request.addParam("size", strconv.Itoa(size))
+	request.addParam("volType", strconv.Itoa(volType))
 	request.addParam("followerRead", strconv.FormatBool(followerRead))
 	request.addParam("zoneName", zoneName)
-	request.addParam("crossZone", strconv.FormatBool(crossZone))
-	request.addParam("volType", strconv.Itoa(volType))
+	request.addParam("cacheRuleKey", cacheRuleKey)
+	request.addParam("ebsBlkSize", strconv.Itoa(ebsBlkSize))
+	request.addParam("cacheCap", strconv.Itoa(cacheCapacity))
+	request.addParam("cacheAction", strconv.Itoa(cacheAction))
+	request.addParam("cacheThreshold", strconv.Itoa(cacheThreshold))
+	request.addParam("cacheTTL", strconv.Itoa(cacheTTL))
+	request.addParam("cacheHighWater", strconv.Itoa(cacheHighWater))
+	request.addParam("cacheLowWater", strconv.Itoa(cacheLowWater))
+	request.addParam("cacheLRUInterval", strconv.Itoa(cacheLRUInterval))
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
