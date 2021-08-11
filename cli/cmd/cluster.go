@@ -62,15 +62,24 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			var cv *proto.ClusterView
+			var cn *proto.ClusterNodeInfo
+			var cp *proto.ClusterIP
 			var delPara map[string]string
 			if cv, err = client.AdminAPI().GetCluster(); err != nil {
 				errout("Error: %v", err)
 			}
+			if cn, err = client.AdminAPI().GetClusterNodeInfo(); err != nil {
+				errout("Error: %v", err)
+			}
+			if cp, err = client.AdminAPI().GetClusterIP(); err != nil {
+				errout("Error: %v", err)
+			}
 			stdout("[Cluster]\n")
-			stdout(formatClusterView(cv))
+			stdout(formatClusterView(cv, cn, cp))
 			if delPara, err = client.AdminAPI().GetDeleteParas(); err != nil {
 				errout("Error: %v", err)
 			}
+
 			stdout(fmt.Sprintf("  BatchCount         : %v\n", delPara[nodeDeleteBatchCountKey]))
 			stdout(fmt.Sprintf("  MarkDeleteRate     : %v\n", delPara[nodeMarkDeleteRateKey]))
 			stdout(fmt.Sprintf("  DeleteWorkerSleepMs: %v\n", delPara[nodeDeleteWorkerSleepMs]))
