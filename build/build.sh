@@ -104,7 +104,7 @@ run_test() {
     echo "*********************************";
 
     pushd $SrcPath >/dev/null
-    go test -covermode=set -coverprofile=/cfs/coverage/unittest.cov $(go list ./... ./vendor/github.com/tiglabs/raft/... | grep -v /client | grep -v /sdk)
+    go test -covermode=set -coverprofile=/cfs/coverage/unittest.cov $(go list ./... ./vendor/github.com/tiglabs/raft/... | egrep -v "/client|/sdk|/cmd" )
     ret=$?
 
     echo
