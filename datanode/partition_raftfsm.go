@@ -45,7 +45,9 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 // It does not support updating an existing member at this point.
 func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, index uint64) (resp interface{}, err error) {
 	defer func(index uint64) {
-		dp.uploadApplyID(index)
+		if err==nil {
+			dp.uploadApplyID(index)
+		}
 	}(index)
 
 	log.LogErrorf("[DataPartition->ApplyMemberChange] [partitionID: %v] start apply [index: %v, changeType: %v, peer: %v]",
