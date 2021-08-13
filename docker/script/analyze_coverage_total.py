@@ -14,7 +14,6 @@
 
 # -*- coding: utf-8 -*-
 import os
-import requests
 import subprocess
 import time
 
@@ -199,6 +198,7 @@ def PrintReport():
 def ExecCommandAndGetResultStr(command):
     return subprocess.getoutput(command)
 
+
 def UploadToOss():
     os.system("tar zcvf summary_coverage.tar.gz %s %s > /dev/null" % (summary_report_text, summary_report_html))
 
@@ -216,17 +216,21 @@ def UploadToOss():
     content_md5 = ExecCommandAndGetResultStr("md5sum summary_coverage.tar.gz | cut -d ' ' -f1")
     sign_str = "PUT\n%s\napplication/octet-stream\n%s\n/%s" % (content_md5, gmt_date, oss_full_path)
     sign = ExecCommandAndGetResultStr(
-        'echo -ne ' + sign_str + ' | openssl dgst -hmac ' + secret_key + ' -sha1 -binary | base64')
+        'printf  "' + sign_str + '" | openssl dgst -hmac "' + secret_key + '" -sha1 -binary | base64')
 
-    if '0' in ExecCommandAndGetResultStr('curl -X PUT \
+    Authorization = "Authorization: jingdong %s:%s" % (access_key, sign)
+    command = 'curl -X PUT \
         -T ' + file_name + ' \
         -H "Content-Type: application/octet-stream"  \
         -H "Content-MD5: ' + content_md5 + '" \
-        -H \'Connection:Keep-Alive\' \
+        -H "Connection:Keep-Alive" \
         -H "Date: ' + gmt_date + '" \
-        -H "Authorization:jingdong' + access_key + ':' + sign + '" \
+        -H "' + Authorization + '" \
         -H "Host: ' + oss_domain + '" \
-        http://' + oss_ip + '/' + oss_full_path + ' 2>/dev/null'):
+        http://' + oss_ip + '/' + oss_full_path + ''
+    result = ExecCommandAndGetResultStr(command)
+
+    if '0' in result:
         print("Detail report uploaded to OSS: http://%s/%s" % (oss_domain, oss_full_path))
 
     else:
