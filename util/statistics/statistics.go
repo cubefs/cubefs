@@ -77,7 +77,7 @@ func InitStatistics(cfg *config.Config, moduleName, nodeAddr string, summaryFunc
 	targetNodeAddr = nodeAddr
 	targetSummaryFunc = summaryFunc
 	monitorAddr := cfg.GetString(ConfigMonitorAddr)
-	if monitorAddr == "" {
+	if monitorAddr == "" || StatisticsModule != nil {
 		return
 	}
 	once.Do(func() {

@@ -34,6 +34,7 @@ func httpAPIStartMonitorHandler(w http.ResponseWriter, r *http.Request) {
 func httpAPIStopMonitorHandler(w http.ResponseWriter, r *http.Request) {
 	if StatisticsModule != nil {
 		StatisticsModule.CloseStatistics()
+		StatisticsModule = nil
 		w.Write([]byte("close monitor successfully"))
 	} else {
 		w.Write([]byte("monitor address is not configured"))

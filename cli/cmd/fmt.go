@@ -564,7 +564,7 @@ func formatMonitorData(view *statistics.MonitorData) string {
 
 var (
 	monitorQueryDataTableRowPattern = "%-12v    %-10v    %-12v"
-	monitorQueryDataTableHeader     = fmt.Sprintf(monitorQueryDataTableRowPattern, "ID", "TOLTAL", "VOL")
+	monitorQueryDataTableHeader     = fmt.Sprintf(monitorQueryDataTableRowPattern, "ID", "TOTAL", "VOL")
 )
 
 func formatMonitorQueryData(data *proto.QueryData) string {
