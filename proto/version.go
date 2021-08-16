@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	BaseVersion = "2.3.1"
+	BaseVersion = "2.4.9"
 )
 
 type VersionInfo struct {
