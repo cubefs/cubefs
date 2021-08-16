@@ -195,10 +195,12 @@ func (m *Monitor) startHTTPService() {
 		Addr:    colonSplit + m.port,
 		Handler: router,
 	}
-	if err := server.ListenAndServe(); err != nil {
-		log.LogErrorf("serveAPI: serve http server failed: err(%v)", err)
-		return
-	}
+	go func() {
+		if err := server.ListenAndServe(); err != nil {
+			log.LogErrorf("serveAPI: serve http server failed: err(%v)", err)
+			return
+		}
+	}()
 	log.LogDebugf("startHTTPService successfully: port(%v)", m.port)
 	m.apiServer = server
 	return

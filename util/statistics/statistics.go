@@ -17,8 +17,11 @@ const (
 )
 
 var (
-	StatisticsModule *Statistics
-	once             sync.Once
+	StatisticsModule 	*Statistics
+	once             	sync.Once
+	targetModuleName	string
+	targetNodeAddr 		string
+	targetSummaryFunc 	func(reportTime int64) []*MonitorData
 )
 
 type Statistics struct {
@@ -28,6 +31,7 @@ type Statistics struct {
 	sendListLock sync.RWMutex
 	monitorAddr  string
 	reportTimer  time.Duration
+	stopC		 chan bool
 }
 
 type MonitorData struct {
@@ -48,6 +52,10 @@ type ReportInfo struct {
 	Infos  []*MonitorData
 }
 
+func (m *Statistics) String() string {
+	return fmt.Sprintf("{Module(%v) IP(%v) MonitorAddr(%v)}", m.module, m.address, m.monitorAddr)
+}
+
 func (data *MonitorData) String() string {
 	return fmt.Sprintf("{Vol(%v)Pid(%v)Action(%v)ActionNum(%v)Count(%v)Size(%v)ReportTime(%v)IsTotal(%v)}",
 		data.VolName, data.PartitionID, data.ActionStr, data.Action, data.Count, data.Size, data.ReportTime, data.IsTotal)
@@ -60,10 +68,14 @@ func newStatistics(monitorAddr, moduleName, nodeAddr string) *Statistics {
 		monitorAddr: monitorAddr,
 		sendList:    make([]*MonitorData, 0),
 		reportTimer: defaultReportTime,
+		stopC:		 make(chan bool),
 	}
 }
 
 func InitStatistics(cfg *config.Config, moduleName, nodeAddr string, summaryFunc func(reportTime int64) []*MonitorData) {
+	targetModuleName = moduleName
+	targetNodeAddr = nodeAddr
+	targetSummaryFunc = summaryFunc
 	monitorAddr := cfg.GetString(ConfigMonitorAddr)
 	if monitorAddr == "" {
 		return
@@ -75,8 +87,10 @@ func InitStatistics(cfg *config.Config, moduleName, nodeAddr string, summaryFunc
 	})
 }
 
-func CloseStatistics() {
-	// todo
+func (m *Statistics) CloseStatistics() {
+	if m.stopC != nil {
+		close(m.stopC)
+	}
 }
 
 func InitMonitorData(module string) []*MonitorData {
@@ -118,9 +132,9 @@ func (m *Statistics) summaryJob(summaryFunc func(reportTime int64) []*MonitorDat
 			m.sendListLock.Lock()
 			m.sendList = append(m.sendList, dataList...)
 			m.sendListLock.Unlock()
-			//case <-stopC:
-			//	log.LogWarnf("Monitor: stop summary job")
-			//	return
+		case <-m.stopC:
+			log.LogWarnf("Monitor: stop summary job")
+			return
 		}
 	}
 }
@@ -140,9 +154,9 @@ func (m *Statistics) reportJob() {
 			if len(sendList) > 0 {
 				m.reportToMonitor(sendList)
 			}
-			//case <-stopC:
-			//	log.LogWarnf("Monitor: stop report job")
-			//	return
+		case <-m.stopC:
+			log.LogWarnf("Monitor: stop report job")
+			return
 		}
 	}
 }
