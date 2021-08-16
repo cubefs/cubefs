@@ -36,8 +36,8 @@ public interface CfsLibrary extends Library {
     }
 
     class SummaryInfo extends Structure {
-            public int files;
-            public int subdirs;
+            public long files;
+            public long subdirs;
             public long fbytes;
 
             public SummaryInfo() {
@@ -118,13 +118,15 @@ public interface CfsLibrary extends Library {
 
     int cfs_setattr(long id, String path, StatInfo stat, int mask);
 
-    FdInfo.ByValue cfs_open(long id, String path, int flags, int mode, int uid, int gid);
+    int cfs_open(long id, String path, int flags, int mode);
+    FdInfo.ByValue cfs_open_withpino(long id, String path, int flags, int mode, int uid, int gid);
 
     int cfs_flush(long id, int fd);
 
     void cfs_close(long id, int fd);
 
-    long cfs_write(long parentIno, long id, int fd, byte[] buf, long size, long offset);
+    long cfs_write(long id, int fd, byte[] buf, long size, long offset);
+    long cfs_write_withpino(long parentIno, long id, int fd, byte[] buf, long size, long offset);
 
     long cfs_read(long id, int fd, byte[] buf, long size, long offset);
 

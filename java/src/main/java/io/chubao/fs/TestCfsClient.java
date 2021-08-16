@@ -9,9 +9,9 @@ public class TestCfsClient {
     public static void main(String[] args) throws FileNotFoundException {
         CfsMount mnt = new CfsMount();
 
-        mnt.setClient("volName", "ltptest");
-        mnt.setClient("masterAddr", "192.168.0.11:17010,192.168.0.12:17010,192.168.0.13:17010");
-        mnt.setClient("logDir", "/home/liushuoran/log");
+        mnt.setClient("volName", "test");
+        mnt.setClient("masterAddr", "192.168.2.152:17010,192.168.2.154:17010,192.168.2.155:17010");
+        mnt.setClient("logDir", "/cfs/libsdk/log");
         mnt.setClient("logLeval", "info");
         int ret = mnt.startClient();
         if (ret < 0) {

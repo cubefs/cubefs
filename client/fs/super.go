@@ -74,7 +74,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		Authenticate:  opt.Authenticate,
 		TicketMess:    opt.TicketMess,
 		ValidateOwner: opt.Authenticate || opt.AccessKey == "",
-		EnableSummary: opt.EnableSummary,
+		EnableSummary: opt.EnableSummary && opt.EnableXattr, // enable both summary and xattr
 	}
 	s.mw, err = meta.NewMetaWrapper(metaConfig)
 	if err != nil {

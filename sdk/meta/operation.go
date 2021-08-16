@@ -1224,10 +1224,10 @@ func (mw *MetaWrapper) updateSummaryInfo(mp *MetaPartition, inode uint64, filesI
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.LogErrorf("updateXAttr: matshal packet fail, err(%v)", err)
+		log.LogErrorf("updateSummaryInfo: matshal packet fail, err(%v)", err)
 		return err
 	}
-	log.LogDebugf("updateXAttr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+	log.LogDebugf("updateSummaryInfo: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 
 	metric := exporter.NewTPCnt(packet.GetOpMsg())
 	defer func() {
@@ -1236,18 +1236,18 @@ func (mw *MetaWrapper) updateSummaryInfo(mp *MetaPartition, inode uint64, filesI
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("updateXAttr: send to partition fail, packet(%v) mp(%v) req(%v) err(%v)",
+		log.LogErrorf("updateSummaryInfo: send to partition fail, packet(%v) mp(%v) req(%v) err(%v)",
 			packet, mp, *req, err)
 		return err
 	}
 
 	status := parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("updateXAttr: received fail status, packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		log.LogErrorf("updateSummaryInfo: received fail status, packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return err
 	}
 
-	log.LogDebugf("updateXAttrs: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	log.LogDebugf("updateSummaryInfo: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 
 	return nil
 }
@@ -1264,7 +1264,7 @@ func (mw *MetaWrapper) readdironly(mp *MetaPartition, parentID uint64) (status i
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.LogErrorf("readdir: req(%v) err(%v)", *req, err)
+		log.LogErrorf("readdironly: req(%v) err(%v)", *req, err)
 		return
 	}
 
@@ -1275,23 +1275,23 @@ func (mw *MetaWrapper) readdironly(mp *MetaPartition, parentID uint64) (status i
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("readdir: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		log.LogErrorf("readdironly: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
 		children = make([]proto.Dentry, 0)
-		log.LogErrorf("readdir: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		log.LogErrorf("readdironly: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
 
 	resp := new(proto.ReadDirOnlyResponse)
 	err = packet.UnmarshalData(resp)
 	if err != nil {
-		log.LogErrorf("readdir: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
+		log.LogErrorf("readdironly: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
 		return
 	}
-	log.LogDebugf("readdir: packet(%v) mp(%v) req(%v)", packet, mp, *req)
+	log.LogDebugf("readdironly: packet(%v) mp(%v) req(%v)", packet, mp, *req)
 	return statusOK, resp.Children, nil
 }

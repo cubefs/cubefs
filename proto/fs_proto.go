@@ -23,7 +23,7 @@ import (
 
 const (
 	RootIno = uint64(1)
-	SummaryKey = "cfs.dir.summary"
+	SummaryKey = "cbfs.dir.summary"
 )
 
 const (
