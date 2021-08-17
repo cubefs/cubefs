@@ -287,6 +287,14 @@ build_cli() {
     popd >/dev/null
 }
 
+build_fsck() {
+    pre_build
+    pushd $SrcPath >/dev/null
+    echo -n "build cfs-fsck      "
+    go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-fsck ${SrcPath}/fsck/*.go  && echo "success" || echo "failed"
+    popd >/dev/null
+}
+
 build_libsdk() {
     pre_build_server
     case `uname` in
@@ -348,6 +356,9 @@ case "$cmd" in
         ;;
     "cli")
         build_cli
+        ;;
+    "fsck")
+        build_fsck
         ;;
     "libsdk")
         build_libsdk

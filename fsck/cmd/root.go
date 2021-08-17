@@ -15,17 +15,26 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/spf13/cobra"
 )
 
 func NewRootCmd() *cobra.Command {
+	var optShowVersion bool
 	var c = &cobra.Command{
 		Use:   path.Base(os.Args[0]),
 		Short: "ChubaoFS fsck tool",
 		Args:  cobra.MinimumNArgs(0),
+		Run: func(cmd *cobra.Command, args []string) {
+			if optShowVersion {
+				_, _ = fmt.Fprintf(os.Stdout, proto.DumpVersion("FSCK"))
+				return
+			}
+		},
 	}
 
 	c.AddCommand(
@@ -34,9 +43,10 @@ func NewRootCmd() *cobra.Command {
 	)
 
 	c.PersistentFlags().StringVarP(&MasterAddr, "master", "m", "", "master addresses")
-	c.PersistentFlags().StringVarP(&VolName, "vol", "v", "", "volume name")
+	c.PersistentFlags().StringVarP(&VolName, "vol", "V", "", "volume name")
 	c.PersistentFlags().StringVarP(&InodesFile, "inode-list", "i", "", "inode list file")
 	c.PersistentFlags().StringVarP(&DensFile, "dentry-list", "d", "", "dentry list file")
 	c.PersistentFlags().StringVarP(&MetaPort, "mport", "", "", "prof port of metanode")
+	c.Flags().BoolVarP(&optShowVersion, "version", "v", false, "Show version information")
 	return c
 }
