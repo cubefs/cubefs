@@ -160,6 +160,24 @@ func (o *ObjectNode) authMiddleware(next http.Handler) http.Handler {
 				pass bool
 				err  error
 			)
+			// check bucket public read
+			if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
+				var volume *Volume
+				if volume, err = o.getVol(bucket); err != nil {
+					if err == proto.ErrVolNotExists {
+						_ = NoSuchBucket.ServeResponse(w, r)
+						return
+					}
+					_ = InternalErrorCode(err).ServeResponse(w, r)
+					return
+				}
+				if volume != nil && volume.isPublicRead() && currentAction.IsReadOnlyAction() {
+					log.LogDebugf("authMiddleware: bucket is PublicRead: requestID(%v) volume(%v) action(%v)",
+						GetRequestID(r), bucket, currentAction)
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
 			//  check auth type
 			if isHeaderUsingSignatureAlgorithmV4(r) {
 				// using signature algorithm version 4 in header

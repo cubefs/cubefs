@@ -36,11 +36,12 @@ const (
 )
 
 type VolumeView struct {
-	Name           string
-	Owner          string
-	MetaPartitions []*MetaPartition
-	OSSSecure      *OSSSecure
-	CreateTime     int64
+	Name            string
+	Owner           string
+	MetaPartitions  []*MetaPartition
+	OSSSecure       *OSSSecure
+	OSSBucketPolicy uint8
+	CreateTime      int64
 }
 
 type OSSSecure struct {
@@ -85,11 +86,12 @@ func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 	}
 	var convert = func(volView *proto.VolView) *VolumeView {
 		result := &VolumeView{
-			Name:           volView.Name,
-			Owner:          volView.Owner,
-			MetaPartitions: make([]*MetaPartition, len(volView.MetaPartitions)),
-			OSSSecure:      &OSSSecure{},
-			CreateTime:     volView.CreateTime,
+			Name:            volView.Name,
+			Owner:           volView.Owner,
+			MetaPartitions:  make([]*MetaPartition, len(volView.MetaPartitions)),
+			OSSSecure:       &OSSSecure{},
+			OSSBucketPolicy: volView.OSSBucketPolicy,
+			CreateTime:      volView.CreateTime,
 		}
 		if volView.OSSSecure != nil {
 			result.OSSSecure.AccessKey = volView.OSSSecure.AccessKey
@@ -159,6 +161,7 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 		}
 	}
 	mw.ossSecure = view.OSSSecure
+	mw.ossBucketPolicy = view.OSSBucketPolicy
 	mw.volCreateTime = view.CreateTime
 
 	if len(rwPartitions) == 0 {

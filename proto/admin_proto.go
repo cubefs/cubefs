@@ -147,6 +147,11 @@ const DbBackMaster = "dbbak.jd.local"
 
 var IsDbBack bool = false
 
+const (
+	OSSBucketPolicyPrivate = iota
+	OSSBucketPolicyPublicRead
+)
+
 type Token struct {
 	TokenType int8
 	Value     string
@@ -523,14 +528,15 @@ type OSSSecure struct {
 
 // VolView defines the view of a volume
 type VolView struct {
-	Name           string
-	Owner          string
-	Status         uint8
-	FollowerRead   bool
-	MetaPartitions []*MetaPartitionView
-	DataPartitions []*DataPartitionResponse
-	OSSSecure      *OSSSecure
-	CreateTime     int64
+	Name            string
+	Owner           string
+	Status          uint8
+	FollowerRead    bool
+	MetaPartitions  []*MetaPartitionView
+	DataPartitions  []*DataPartitionResponse
+	OSSSecure       *OSSSecure
+	OSSBucketPolicy uint8
+	CreateTime      int64
 }
 
 func (v *VolView) SetOwner(owner string) {
@@ -539,6 +545,10 @@ func (v *VolView) SetOwner(owner string) {
 
 func (v *VolView) SetOSSSecure(accessKey, secretKey string) {
 	v.OSSSecure = &OSSSecure{AccessKey: accessKey, SecretKey: secretKey}
+}
+
+func (v *VolView) SetOSSBucketPolicy(ossBucketPolicy uint8) {
+	v.OSSBucketPolicy = ossBucketPolicy
 }
 
 func NewVolView(name string, status uint8, followerRead bool, createTime int64) (view *VolView) {
@@ -590,6 +600,7 @@ type SimpleVolView struct {
 	Description         string
 	DpSelectorName      string
 	DpSelectorParm      string
+	OSSBucketPolicy     uint8
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition

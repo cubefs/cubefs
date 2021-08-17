@@ -175,6 +175,7 @@ type volValue struct {
 	Description         string
 	DpSelectorName      string
 	DpSelectorParm      string
+	OSSBucketPolicy     uint8
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -205,6 +206,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		Description:         vol.description,
 		DpSelectorName:      vol.dpSelectorName,
 		DpSelectorParm:      vol.dpSelectorParm,
+		OSSBucketPolicy:     vol.OSSBucketPolicy,
 	}
 	return
 }

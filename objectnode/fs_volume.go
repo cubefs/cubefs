@@ -2317,6 +2317,10 @@ func (v *Volume) copyFile(parentID uint64, newFileName string, sourceFileInode u
 	return
 }
 
+func (v *Volume) isPublicRead() bool {
+	return v.mw != nil && v.mw.OSSBucketPolicy() == proto.OSSBucketPolicyPublicRead
+}
+
 func NewVolume(config *VolumeConfig) (*Volume, error) {
 	var err error
 	var metaConfig = &meta.MetaConfig{

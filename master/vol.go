@@ -34,6 +34,7 @@ type Vol struct {
 	Owner              string
 	OSSAccessKey       string
 	OSSSecretKey       string
+	OSSBucketPolicy    uint8
 	dpReplicaNum       uint8
 	mpReplicaNum       uint8
 	Status             uint8
@@ -137,6 +138,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.OSSAccessKey, vol.OSSSecretKey = vv.OSSAccessKey, vv.OSSSecretKey
 	vol.Status = vv.Status
 	vol.crossZone = vv.CrossZone
+	vol.OSSBucketPolicy = vv.OSSBucketPolicy
 
 	return vol
 }
@@ -528,6 +530,7 @@ func (vol *Vol) updateViewCache(c *Cluster) {
 	view := proto.NewVolView(vol.Name, vol.Status, vol.FollowerRead, vol.createTime)
 	view.SetOwner(vol.Owner)
 	view.SetOSSSecure(vol.OSSAccessKey, vol.OSSSecretKey)
+	view.SetOSSBucketPolicy(vol.OSSBucketPolicy)
 	mpViews := vol.getMetaPartitionsView()
 	view.MetaPartitions = mpViews
 	mpViewsReply := newSuccessHTTPReply(mpViews)

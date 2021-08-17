@@ -1064,6 +1064,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 
 		dpSelectorName string
 		dpSelectorParm string
+		ossBucketPolicy uint8
 	)
 	if name, authKey, replicaNum, err = parseRequestToUpdateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1094,9 +1095,14 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	ossBucketPolicy, err = parseOSSBucketPolicyToUpdateVol(r, vol)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
 
 	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum),
-		followerRead, authenticate, enableToken, autoRepair, dpSelectorName, dpSelectorParm); err != nil {
+		followerRead, authenticate, enableToken, autoRepair, dpSelectorName, dpSelectorParm, ossBucketPolicy); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1202,6 +1208,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		Description:         vol.description,
 		DpSelectorName:      vol.dpSelectorName,
 		DpSelectorParm:      vol.dpSelectorParm,
+		OSSBucketPolicy:     vol.OSSBucketPolicy,
 	}
 }
 
@@ -2247,6 +2254,27 @@ func parseDefaultSelectorToUpdateVol(r *http.Request, vol *Vol) (dpSelectorName,
 		dpSelectorParm = vol.dpSelectorParm
 	}
 
+	return
+}
+
+func parseOSSBucketPolicyToUpdateVol(r *http.Request, vol *Vol) (ossBucketPolicy uint8, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if bucketPolicyStr := r.FormValue(bucketPolicyKey); bucketPolicyStr != "" {
+		bucketPolicy, err1 := strconv.ParseUint(bucketPolicyStr, 10, 64)
+		if err1 != nil {
+			err = unmatchedKey(bucketPolicyKey)
+			return
+		}
+		ossBucketPolicy = uint8(bucketPolicy)
+		if ossBucketPolicy != proto.OSSBucketPolicyPrivate && ossBucketPolicy != proto.OSSBucketPolicyPublicRead {
+			err = fmt.Errorf("parameter %s should be %v or %v", bucketPolicyKey, proto.OSSBucketPolicyPrivate, proto.OSSBucketPolicyPublicRead)
+			return
+		}
+	} else {
+		ossBucketPolicy = vol.OSSBucketPolicy
+	}
 	return
 }
 

@@ -93,6 +93,7 @@ type MetaWrapper struct {
 	volCreateTime   int64
 	owner           string
 	ownerValidation bool
+	ossBucketPolicy uint8
 	mc              *masterSDK.MasterClient
 	ac              *authSDK.AuthClient
 	conns           *util.ConnectPool
@@ -233,6 +234,10 @@ func (mw *MetaWrapper) OSSSecure() (accessKey, secretKey string) {
 
 func (mw *MetaWrapper) VolCreateTime() int64 {
 	return mw.volCreateTime
+}
+
+func (mw *MetaWrapper) OSSBucketPolicy() uint8 {
+	return mw.ossBucketPolicy
 }
 
 func (mw *MetaWrapper) Close() error {

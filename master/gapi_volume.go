@@ -345,7 +345,7 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 
 	if err = s.cluster.updateVol(args.Name, args.AuthKey, *args.ZoneName, *args.Description, *args.Capacity,
 		uint8(*args.ReplicaNum), *args.FollowerRead, *args.Authenticate, *args.EnableToken, *args.AutoRepair,
-		vol.dpSelectorName, vol.dpSelectorParm); err != nil {
+		vol.dpSelectorName, vol.dpSelectorParm, vol.OSSBucketPolicy); err != nil {
 		return nil, err
 	}
 

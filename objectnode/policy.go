@@ -239,6 +239,13 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 		}
+		// check bucket public read
+		if volume != nil && volume.isPublicRead() && param.Action().IsReadOnlyAction() {
+			log.LogDebugf("policyCheck: bucket is PublicRead: requestID(%v) volume(%v) action(%v)",
+				GetRequestID(r), param.Bucket(), param.Action())
+			allowed = true
+			return
+		}
 		var userInfo *proto.UserInfo
 		isOwner := false
 		if userInfo, err = o.getUserInfoByAccessKey(param.AccessKey()); err == nil {

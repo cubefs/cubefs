@@ -42,6 +42,17 @@ func (a Action) Name() string {
 	return a.String()[loc[1]:]
 }
 
+func (a Action) IsReadOnlyAction() bool {
+	if a.IsNone() {
+		return false
+	}
+	actions, ok := builtinPermissionActionsMap[BuiltinPermissionReadOnly]
+	if !ok {
+		return false
+	}
+	return actions.Contains(a)
+}
+
 const (
 	ActionPrefix      = "action:"
 	OSSActionPrefix   = ActionPrefix + "oss:"

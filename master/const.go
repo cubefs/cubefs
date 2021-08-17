@@ -71,6 +71,7 @@ const (
 	mpRecoverPoolSizeKey        = "mpRecoverPool"
 	dpSelectorNameKey           = "dpSelectorName"
 	dpSelectorParmKey           = "dpSelectorParm"
+	bucketPolicyKey             = "bucketPolicy"
 	sourceKey                   = "source"
 	targetKey                   = "target"
 	autoKey                     = "auto"

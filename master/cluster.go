@@ -2207,7 +2207,7 @@ func (c *Cluster) deleteMetaNodeFromCache(metaNode *MetaNode) {
 }
 
 func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacity uint64, replicaNum uint8,
-	followerRead, authenticate, enableToken, autoRepair bool, dpSelectorName, dpSelectorParm string) (err error) {
+	followerRead, authenticate, enableToken, autoRepair bool, dpSelectorName, dpSelectorParm string, ossBucketPolicy uint8) (err error) {
 	var (
 		vol             *Vol
 		serverAuthKey   string
@@ -2224,6 +2224,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 
 		oldDpSelectorName string
 		oldDpSelectorParm string
+		oldOSSBucketPolicy uint8
 	)
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[updateVol] err[%v]", err)
@@ -2278,6 +2279,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	oldDescription = vol.description
 	oldDpSelectorName = vol.dpSelectorName
 	oldDpSelectorParm = vol.dpSelectorParm
+	oldOSSBucketPolicy = vol.OSSBucketPolicy
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
 	vol.authenticate = authenticate
@@ -2292,6 +2294,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	}
 	vol.dpSelectorName = dpSelectorName
 	vol.dpSelectorParm = dpSelectorParm
+	vol.OSSBucketPolicy = ossBucketPolicy
 	if err = c.syncUpdateVol(vol); err != nil {
 		vol.Capacity = oldCapacity
 		vol.dpReplicaNum = oldDpReplicaNum
@@ -2304,6 +2307,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		vol.description = oldDescription
 		vol.dpSelectorName = oldDpSelectorName
 		vol.dpSelectorParm = oldDpSelectorParm
+		vol.OSSBucketPolicy = oldOSSBucketPolicy
 		log.LogErrorf("action[updateVol] vol[%v] err[%v]", name, err)
 		err = proto.ErrPersistenceByRaft
 		goto errHandler
