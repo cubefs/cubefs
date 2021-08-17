@@ -19,12 +19,14 @@ const (
 var (
 	StatisticsModule 	*Statistics
 	once             	sync.Once
+	targetCluster		string
 	targetModuleName	string
 	targetNodeAddr 		string
 	targetSummaryFunc 	func(reportTime int64) []*MonitorData
 )
 
 type Statistics struct {
+	cluster		 string
 	module       string
 	address      string
 	sendList     []*MonitorData // store data per second
@@ -47,13 +49,14 @@ type MonitorData struct {
 }
 
 type ReportInfo struct {
-	Addr   string
-	Module string
-	Infos  []*MonitorData
+	Cluster	string
+	Addr   	string
+	Module 	string
+	Infos  	[]*MonitorData
 }
 
 func (m *Statistics) String() string {
-	return fmt.Sprintf("{Module(%v) IP(%v) MonitorAddr(%v)}", m.module, m.address, m.monitorAddr)
+	return fmt.Sprintf("{Cluster(%v) Module(%v) IP(%v) MonitorAddr(%v)}", m.cluster, m.module, m.address, m.monitorAddr)
 }
 
 func (data *MonitorData) String() string {
@@ -61,8 +64,9 @@ func (data *MonitorData) String() string {
 		data.VolName, data.PartitionID, data.ActionStr, data.Action, data.Count, data.Size, data.ReportTime, data.IsTotal)
 }
 
-func newStatistics(monitorAddr, moduleName, nodeAddr string) *Statistics {
+func newStatistics(monitorAddr, cluster, moduleName, nodeAddr string) *Statistics {
 	return &Statistics{
+		cluster: 	 cluster,
 		module:      moduleName,
 		address:     nodeAddr,
 		monitorAddr: monitorAddr,
@@ -72,7 +76,8 @@ func newStatistics(monitorAddr, moduleName, nodeAddr string) *Statistics {
 	}
 }
 
-func InitStatistics(cfg *config.Config, moduleName, nodeAddr string, summaryFunc func(reportTime int64) []*MonitorData) {
+func InitStatistics(cfg *config.Config, cluster, moduleName, nodeAddr string, summaryFunc func(reportTime int64) []*MonitorData) {
+	targetCluster = cluster
 	targetModuleName = moduleName
 	targetNodeAddr = nodeAddr
 	targetSummaryFunc = summaryFunc
@@ -81,7 +86,7 @@ func InitStatistics(cfg *config.Config, moduleName, nodeAddr string, summaryFunc
 		return
 	}
 	once.Do(func() {
-		StatisticsModule = newStatistics(monitorAddr, moduleName, nodeAddr)
+		StatisticsModule = newStatistics(monitorAddr, cluster, moduleName, nodeAddr)
 		go StatisticsModule.summaryJob(summaryFunc)
 		go StatisticsModule.reportJob()
 	})
@@ -172,9 +177,10 @@ func (m *Statistics) currentSendList() []*MonitorData {
 
 func (m *Statistics) reportToMonitor(sendList []*MonitorData) {
 	report := &ReportInfo{
-		Module: m.module,
-		Addr:   m.address,
-		Infos:  sendList,
+		Cluster:	m.cluster,
+		Module: 	m.module,
+		Addr:   	m.address,
+		Infos:  	sendList,
 	}
 	data, _ := json.Marshal(report)
 	m.sendToMonitor(data)

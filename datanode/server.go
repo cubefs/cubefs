@@ -165,7 +165,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 
 	go s.startUpdateNodeInfo()
 
-	statistics.InitStatistics(cfg, statistics.ModelDataNode, LocalIP, s.summaryMonitorData)
+	statistics.InitStatistics(cfg, s.clusterID, statistics.ModelDataNode, LocalIP, s.summaryMonitorData)
 
 	return
 }

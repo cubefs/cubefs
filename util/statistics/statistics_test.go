@@ -89,7 +89,7 @@ func TestStatistics(t *testing.T) {
 		"monitorAddr": "127.0.0.1:8800"
 	}`
 	cfg := config.LoadConfigString(cfgJson)
-	InitStatistics(cfg, "metaNode", "127.0.0.1", SummaryMonitorData)
+	InitStatistics(cfg, "test", "metaNode", "127.0.0.1", SummaryMonitorData)
 
 	helper(1, t)
 	time.Sleep(time.Second * 1)

@@ -148,7 +148,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 
 	exporter.RegistConsul(cfg)
 
-	statistics.InitStatistics(cfg, statistics.ModelMetaNode, m.localAddr, m.metadataManager.SummaryMonitorData)
+	statistics.InitStatistics(cfg, m.clusterId, statistics.ModelMetaNode, m.localAddr, m.metadataManager.SummaryMonitorData)
 
 	return
 }

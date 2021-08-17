@@ -24,7 +24,7 @@ func httpAPIStartMonitorHandler(w http.ResponseWriter, r *http.Request) {
 	if monitorAddr == "" || StatisticsModule != nil {
 		return
 	}
-	StatisticsModule = newStatistics(monitorAddr, targetModuleName, targetNodeAddr)
+	StatisticsModule = newStatistics(monitorAddr, targetCluster, targetModuleName, targetNodeAddr)
 	go StatisticsModule.summaryJob(targetSummaryFunc)
 	go StatisticsModule.reportJob()
 
