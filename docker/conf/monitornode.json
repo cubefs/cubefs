@@ -4,6 +4,8 @@
   "prof": "7001",
   "logDir": "/cfs/log",
   "logLevel": "debug",
-  "cluster": "test",
-  "namespace": "test"
+  "namespace": "test",
+  "cluster": "chubaofs01",
+  "thriftAddr": "127.0.0.1:9091",
+  "producerNum": "10"
 }

@@ -485,7 +485,7 @@ services:
     nginx:
         image: nginx:1.17.8
         ports:
-            - "80:80"
+            - "8081:80"
         volumes:
             - ./conf/nginx.conf:/etc/nginx/nginx.conf:ro
         command: /bin/bash -c "nginx -g 'daemon off;'"

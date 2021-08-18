@@ -41,11 +41,12 @@ type MonitorData struct {
 	PartitionID uint64
 	Action      int
 	ActionStr   string
-	Size        uint64 // the num of read/write byte
+	Size        uint64	// the num of read/write byte
 	Count       uint64
 	ReportTime  int64
 	TimeStr     string
 	IsTotal     bool
+	DiskPath	string	// disk of dp
 }
 
 type ReportInfo struct {
@@ -60,8 +61,8 @@ func (m *Statistics) String() string {
 }
 
 func (data *MonitorData) String() string {
-	return fmt.Sprintf("{Vol(%v)Pid(%v)Action(%v)ActionNum(%v)Count(%v)Size(%v)ReportTime(%v)IsTotal(%v)}",
-		data.VolName, data.PartitionID, data.ActionStr, data.Action, data.Count, data.Size, data.ReportTime, data.IsTotal)
+	return fmt.Sprintf("{Vol(%v)Pid(%v)Action(%v)ActionNum(%v)Count(%v)Size(%v)Disk(%v)ReportTime(%v)IsTotal(%v)}",
+		data.VolName, data.PartitionID, data.ActionStr, data.Action, data.Count, data.Size, data.DiskPath, data.ReportTime, data.IsTotal)
 }
 
 func newStatistics(monitorAddr, cluster, moduleName, nodeAddr string) *Statistics {

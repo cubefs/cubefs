@@ -14,12 +14,6 @@
 
 package proto
 
-import "github.com/chubaofs/chubaofs/util/statistics"
-
-type MonitorView struct {
-	Monitors []*statistics.MonitorData
-}
-
 type QueryHTTPReply struct {
 	Code int32        `json:"code"`
 	Msg  string       `json:"msg"`
@@ -27,9 +21,12 @@ type QueryHTTPReply struct {
 }
 
 type QueryData struct {
-	ID    interface{} `json:"ID"`
-	Total uint64      `json:"TOTAL"`
-	Vol   string      `json:"VOL"`
+	Pid		uint64	`json:"PID"`
+	Vol   	string  `json:"VOL"`
+	IP		string	`json:"IP"`
+	Op		string	`json:"OP"`
+	Count	uint64	`json:"TOTAL_COUNT"`
+	Size 	uint64  `json:"TOTAL_SIZE"`
 }
 
 type QueryView struct {

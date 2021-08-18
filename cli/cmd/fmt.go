@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/statistics"
 )
 
 func formatClusterView(cv *proto.ClusterView) string {
@@ -585,22 +584,12 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 }
 
 var (
-	monitorDataTableRowPattern = "%-10v    %-12v    %-14v    %-10v    %-10v    %-10v    %-16v"
-	MonitorDataTableHeader     = fmt.Sprintf(monitorDataTableRowPattern, "VOL", "PARTITION ID", "ACTIONSTR", "SIZE", "COUNT", "REPORTTIME", "TIMESTR")
-)
-
-func formatMonitorData(view *statistics.MonitorData) string {
-	return fmt.Sprintf(monitorDataTableRowPattern, view.VolName, view.PartitionID,
-		view.ActionStr, view.Size, view.Count, view.ReportTime, view.TimeStr)
-}
-
-var (
-	monitorQueryDataTableRowPattern = "%-12v    %-10v    %-12v"
-	monitorQueryDataTableHeader     = fmt.Sprintf(monitorQueryDataTableRowPattern, "ID", "TOTAL", "VOL")
+	monitorQueryDataTableRowPattern = "%-10v    %-60v    %-20v    %-15v    %-10v    %-10v"
+	monitorQueryDataTableHeader     = fmt.Sprintf(monitorQueryDataTableRowPattern, "PID", "VOL", "IP", "OP", "COUNT", "SIZE(unit: MB)")
 )
 
 func formatMonitorQueryData(data *proto.QueryData) string {
-	return fmt.Sprintf(monitorQueryDataTableRowPattern, data.ID, data.Total, data.Vol)
+	return fmt.Sprintf(monitorQueryDataTableRowPattern, data.Pid, data.Vol, data.IP, data.Op, data.Count, data.Size/1024/1024)
 }
 
 func contains(arr []string, element string) (ok bool) {

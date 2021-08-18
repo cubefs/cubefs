@@ -4,37 +4,39 @@ const (
 	colonSplit        = ":"
 	ConfigCluster     = "cluster"
 	ConfigListenPort  = "listen"
-	ConfigHBaseZK     = "zkQuorum"
-	ConfigZKRoot      = "zkRoot"
+	ConfigThriftAddr  = "thriftAddr"
 	ConfigNamespace   = "namespace"
 	ConfigQueryIP     = "queryIP"
 	ConfigTopic       = "topic"
 	ConfigJMQAddress  = "jmqAddr"
 	ConfigJMQClientID = "jmqClientId"
+	ConfigProducerNum = "producerNum"
+	ConfigExpiredDay  = "tableExpiredDay"
 
-	nodeIPKey   = "ip"
-	moduleKey   = "module"
-	opKey       = "op"
-	timeKey     = "time"
-	timeUnitKey = "unit"
-	volKey      = "vol"
-	pidKey      = "pid"
-
-	tableKey = "table"
-	startKey = "start"
-	endKey   = "end"
-	limitKey = "limit"
+	nodeIPKey    = "ip"
+	moduleKey    = "module"
+	opKey        = "op"
+	timeKey      = "time"
+	groupKey     = "group"
+	orderKey     = "order"
+	volKey       = "vol"
+	pidKey       = "pid"
+	clusterKey   = "cluster"
+	tableUnitKey = "tableUnit"
+	tableKey     = "table"
+	startKey     = "start"
+	endKey       = "end"
+	limitKey     = "limit"
 )
 
 const (
-	defaultTimeUnit = "minute"
-	defaultTable    = "minute"
-	defaultLimit    = 10
+	defaultTableUnit	= "minute"
+	defaultLimit    	= 10
 
-	defaultZkRoot    = "/hbase"
-	defaultNamespace = "default"
-	defaultQueryIP   = "11.56.17.222"
+	defaultThriftAddr	= "127.0.0.1:9091"
+	defaultNamespace 	= "default"
+	defaultQueryIP   	= "11.56.17.222"
+	defaultProducerNum 	= 3
 
-	topK       = 10
 	timeLayout = "20060102150405"
 )

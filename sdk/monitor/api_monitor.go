@@ -27,76 +27,14 @@ type MonitorAPI struct {
 	mc *MonitorClient
 }
 
-func (api *MonitorAPI) GetIPTopPartition(nodeAddr string, moduleType string, timestamp string) (view *proto.MonitorView, err error) {
-	var request = newAPIRequest(http.MethodPost, statistics.MonitorIPTopPartition)
-	request.addParam("ip", nodeAddr)
-	request.addParam("module", moduleType)
-	request.addParam("time", timestamp)
-	var data []byte
-	if data, err = api.mc.serveMonitorRequest(request); err != nil {
-		return
-	}
-	view = &proto.MonitorView{}
-	if err = json.Unmarshal(data, view); err != nil {
-		return
-	}
-	return
-}
-
-func (api *MonitorAPI) GetTopPartitionOp(nodeAddr string, moduleType string, timestamp string, partitionId string) (view *proto.MonitorView, err error) {
-	var request = newAPIRequest(http.MethodPost, statistics.MonitorTopPartitionOp)
-	request.addParam("ip", nodeAddr)
-	request.addParam("module", moduleType)
-	request.addParam("time", timestamp)
-	request.addParam("pid", partitionId)
-	var data []byte
-	if data, err = api.mc.serveMonitorRequest(request); err != nil {
-		return
-	}
-	view = &proto.MonitorView{}
-	if err = json.Unmarshal(data, view); err != nil {
-		return
-	}
-	return
-}
-func (api *MonitorAPI) GetTopVol(moduleType string, timestamp string, unit string) (view *proto.MonitorView, err error) {
-	var request = newAPIRequest(http.MethodPost, statistics.MonitorTopVol)
-	request.addParam("module", moduleType)
-	request.addParam("time", timestamp)
-	request.addParam("unit", unit)
-	var data []byte
-	if data, err = api.mc.serveMonitorRequest(request); err != nil {
-		return
-	}
-	view = &proto.MonitorView{}
-	if err = json.Unmarshal(data, view); err != nil {
-		return
-	}
-	return
-}
-
-func (api *MonitorAPI) GetTopVolOp(volName string, timeStamp string, unit string) (view *proto.MonitorView, err error) {
-	var request = newAPIRequest(http.MethodPost, statistics.MonitorTopVolOp)
-	request.addParam("vol", volName)
-	request.addParam("time", timeStamp)
-	request.addParam("unit", unit)
-	var data []byte
-	if data, err = api.mc.serveMonitorRequest(request); err != nil {
-		return
-	}
-	view = &proto.MonitorView{}
-	if err = json.Unmarshal(data, view); err != nil {
-		return
-	}
-	return
-}
-
-func (api *MonitorAPI) GetClusterTopIP(table, module, start, end string, limit int) (view *proto.QueryView, err error) {
+func (api *MonitorAPI) GetClusterTopIP(table, cluster, module, start, end, order string, limit int) (view *proto.QueryView, err error) {
 	var request = newAPIRequest(http.MethodGet, statistics.MonitorClusterTopIP)
-	request.addParam("table", table)
+	request.addParam("tableUnit", table)
+	request.addParam("cluster", cluster)
 	request.addParam("module", module)
 	request.addParam("start", start)
 	request.addParam("end", end)
+	request.addParam("order", order)
 	request.addParam("limit", strconv.Itoa(limit))
 	var data []byte
 	if data, err = api.mc.serveMonitorRequest(request); err != nil {
@@ -109,12 +47,14 @@ func (api *MonitorAPI) GetClusterTopIP(table, module, start, end string, limit i
 	return
 }
 
-func (api *MonitorAPI) GetClusterTopVol(table, module, start, end string, limit int) (view *proto.QueryView, err error) {
+func (api *MonitorAPI) GetClusterTopVol(table, cluster, module, start, end, order string, limit int) (view *proto.QueryView, err error) {
 	var request = newAPIRequest(http.MethodGet, statistics.MonitorClusterTopVol)
-	request.addParam("table", table)
+	request.addParam("tableUnit", table)
+	request.addParam("cluster", cluster)
 	request.addParam("module", module)
 	request.addParam("start", start)
 	request.addParam("end", end)
+	request.addParam("order", order)
 	request.addParam("limit", strconv.Itoa(limit))
 	var data []byte
 	if data, err = api.mc.serveMonitorRequest(request); err != nil {
@@ -127,30 +67,14 @@ func (api *MonitorAPI) GetClusterTopVol(table, module, start, end string, limit 
 	return
 }
 
-func (api *MonitorAPI) GetClusterTopPartition(table, module, start, end string, limit int) (view *proto.QueryView, err error) {
-	var request = newAPIRequest(http.MethodGet, statistics.MonitorClusterTopPartition)
-	request.addParam("table", table)
-	request.addParam("module", module)
-	request.addParam("start", start)
-	request.addParam("end", end)
-	request.addParam("limit", strconv.Itoa(limit))
-	var data []byte
-	if data, err = api.mc.serveMonitorRequest(request); err != nil {
-		return
-	}
-	view = &proto.QueryView{}
-	if err = json.Unmarshal(data, view); err != nil {
-		return
-	}
-	return
-}
-
-func (api *MonitorAPI) GetOpTopIP(table, op, start, end string, limit int) (view *proto.QueryView, err error) {
+func (api *MonitorAPI) GetOpTopIP(table, cluster, op, start, end, order string, limit int) (view *proto.QueryView, err error) {
 	var request = newAPIRequest(http.MethodGet, statistics.MonitorOpTopIP)
-	request.addParam("table", table)
+	request.addParam("tableUnit", table)
+	request.addParam("cluster", cluster)
 	request.addParam("op", op)
 	request.addParam("start", start)
 	request.addParam("end", end)
+	request.addParam("order", order)
 	request.addParam("limit", strconv.Itoa(limit))
 	var data []byte
 	if data, err = api.mc.serveMonitorRequest(request); err != nil {
@@ -163,12 +87,14 @@ func (api *MonitorAPI) GetOpTopIP(table, op, start, end string, limit int) (view
 	return
 }
 
-func (api *MonitorAPI) GetOpTopVol(table, op, start, end string, limit int) (view *proto.QueryView, err error) {
+func (api *MonitorAPI) GetOpTopVol(table, cluster, op, start, end, order string, limit int) (view *proto.QueryView, err error) {
 	var request = newAPIRequest(http.MethodGet, statistics.MonitorOpTopVol)
-	request.addParam("table", table)
+	request.addParam("tableUnit", table)
+	request.addParam("cluster", cluster)
 	request.addParam("op", op)
 	request.addParam("start", start)
 	request.addParam("end", end)
+	request.addParam("order", order)
 	request.addParam("limit", strconv.Itoa(limit))
 	var data []byte
 	if data, err = api.mc.serveMonitorRequest(request); err != nil {
@@ -181,13 +107,63 @@ func (api *MonitorAPI) GetOpTopVol(table, op, start, end string, limit int) (vie
 	return
 }
 
-func (api *MonitorAPI) GetOpTopPartition(table, op, start, end string, limit int) (view *proto.QueryView, err error) {
-	var request = newAPIRequest(http.MethodGet, statistics.MonitorOpTopPartition)
+func (api *MonitorAPI) GetTopPartition(table, cluster, module, start, end string, limit int, group, order, ip, op string) (view *proto.QueryView, err error) {
+	var request = newAPIRequest(http.MethodGet, statistics.MonitorTopPartition)
 	request.addParam("table", table)
-	request.addParam("op", op)
+	request.addParam("cluster", cluster)
+	request.addParam("module", module)
 	request.addParam("start", start)
 	request.addParam("end", end)
 	request.addParam("limit", strconv.Itoa(limit))
+	request.addParam("group", group)
+	request.addParam("order", order)
+	request.addParam("ip", ip)
+	request.addParam("op", op)
+	var data []byte
+	if data, err = api.mc.serveMonitorRequest(request); err != nil {
+		return
+	}
+	view = &proto.QueryView{}
+	if err = json.Unmarshal(data, view); err != nil {
+		return
+	}
+	return
+}
+
+func (api *MonitorAPI) GetTopOp(table, cluster, module, start, end string, limit int, order, ip, vol, pid string) (view *proto.QueryView, err error) {
+	var request = newAPIRequest(http.MethodGet, statistics.MonitorTopOp)
+	request.addParam("table", table)
+	request.addParam("cluster", cluster)
+	request.addParam("module", module)
+	request.addParam("start", start)
+	request.addParam("end", end)
+	request.addParam("limit", strconv.Itoa(limit))
+	request.addParam("order", order)
+	request.addParam("ip", ip)
+	request.addParam("vol", vol)
+	request.addParam("pid", pid)
+	var data []byte
+	if data, err = api.mc.serveMonitorRequest(request); err != nil {
+		return
+	}
+	view = &proto.QueryView{}
+	if err = json.Unmarshal(data, view); err != nil {
+		return
+	}
+	return
+}
+
+func (api *MonitorAPI) GetTopIP(table, cluster, module, start, end string, limit int, order, op, vol string) (view *proto.QueryView, err error) {
+	var request = newAPIRequest(http.MethodGet, statistics.MonitorTopIP)
+	request.addParam("table", table)
+	request.addParam("cluster", cluster)
+	request.addParam("module", module)
+	request.addParam("start", start)
+	request.addParam("end", end)
+	request.addParam("limit", strconv.Itoa(limit))
+	request.addParam("order", order)
+	request.addParam("vol", vol)
+	request.addParam("op", op)
 	var data []byte
 	if data, err = api.mc.serveMonitorRequest(request); err != nil {
 		return

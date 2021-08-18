@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/statistics"
-	"github.com/tsuna/gohbase/hrpc"
 )
 
 func (m *Monitor) collect(w http.ResponseWriter, r *http.Request) {
@@ -32,33 +32,47 @@ func (m *Monitor) collect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// send to jmq4
-	if m.mqProducer != nil {
+	if m.mqProducer != nil && contains(m.clusters, reportInfo.Cluster) {
+		epoch := atomic.AddUint64(&m.mqProducer.epoch, 1)
+		index := epoch % uint64(m.mqProducer.produceNum)
 		select {
-		case m.mqProducer.msgChan <- reportInfo:
+		case m.mqProducer.msgChan[index] <- reportInfo:
 		default:
 			break
 		}
 	}
 
 	// insert HBase
-	m.PutDataToHBase(reportInfo)
+	m.countData(reportInfo)
 
 	sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "insert hbase successfully"})
 }
 
-func (m *Monitor) getClusterTopIP(w http.ResponseWriter, r *http.Request) {
-	var (
-		table, module, start, end string
-		limit                     int
-		reply                     *proto.QueryHTTPReply
-		err                       error
-	)
-	table, module, start, end, limit, err = parseClusterQueryParams(r)
+func (m *Monitor) setCluster(w http.ResponseWriter, r *http.Request) {
+	cluster, err := extractCluster(r)
 	if err != nil {
 		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	url := m.generateClusterQueryUrl("cfsIPTopN", table, module, start, end, limit)
+	if len(cluster) > 0 {
+		m.clusters = strings.Split(cluster, ",")
+	}
+	sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: fmt.Sprintf("set cluster to (%v)", m.clusters)})
+}
+
+func (m *Monitor) getClusterTopIP(w http.ResponseWriter, r *http.Request) {
+	var (
+		tableUnit, cluster, module, start, end, order string
+		limit                                         int
+		reply                                         *proto.QueryHTTPReply
+		err                                           error
+	)
+	tableUnit, cluster, module, start, end, order, limit, err = parseClusterQueryParams(r)
+	if err != nil {
+		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	url := m.generateClusterQueryUrl("cfsIPTopN", tableUnit, cluster, module, start, end, order, limit)
 	if reply, err = requestQuery(url); err != nil {
 		log.LogErrorf("getClusterTopIP: requestQuery failed, err(%v) url(%v)", err, url)
 		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeHBaseOperation, Msg: err.Error()})
@@ -70,17 +84,17 @@ func (m *Monitor) getClusterTopIP(w http.ResponseWriter, r *http.Request) {
 
 func (m *Monitor) getClusterTopVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		table, module, start, end string
-		limit                     int
-		reply                     *proto.QueryHTTPReply
-		err                       error
+		tableUnit, cluster, module, start, end, order string
+		limit                                         int
+		reply                                         *proto.QueryHTTPReply
+		err                                           error
 	)
-	table, module, start, end, limit, err = parseClusterQueryParams(r)
+	tableUnit, cluster, module, start, end, order, limit, err = parseClusterQueryParams(r)
 	if err != nil {
 		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	url := m.generateClusterQueryUrl("cfsVolTopN", table, module, start, end, limit)
+	url := m.generateClusterQueryUrl("cfsVolTopN", tableUnit, cluster, module, start, end, order, limit)
 	if reply, err = requestQuery(url); err != nil {
 		log.LogErrorf("getClusterTopVol: requestQuery failed, err(%v) url(%v)", err, url)
 		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeHBaseOperation, Msg: err.Error()})
@@ -90,41 +104,19 @@ func (m *Monitor) getClusterTopVol(w http.ResponseWriter, r *http.Request) {
 	sendReply(w, r, &proto.HTTPReply{Code: reply.Code, Data: queryView, Msg: reply.Msg})
 }
 
-func (m *Monitor) getClusterTopPartition(w http.ResponseWriter, r *http.Request) {
-	var (
-		table, module, start, end string
-		limit                     int
-		reply                     *proto.QueryHTTPReply
-		err                       error
-	)
-	table, module, start, end, limit, err = parseClusterQueryParams(r)
-	if err != nil {
-		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-	url := m.generateClusterQueryUrl("cfsPartitionTopN", table, module, start, end, limit)
-	if reply, err = requestQuery(url); err != nil {
-		log.LogErrorf("getClusterTopPartition: requestQuery failed, err(%v) url(%v)", err, url)
-		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeHBaseOperation, Msg: err.Error()})
-		return
-	}
-	queryView := &proto.QueryView{Data: reply.Data}
-	sendReply(w, r, &proto.HTTPReply{Code: reply.Code, Data: queryView, Msg: reply.Msg})
-}
-
 func (m *Monitor) getOpTopIP(w http.ResponseWriter, r *http.Request) {
 	var (
-		table, op, start, end string
-		limit                 int
-		reply                 *proto.QueryHTTPReply
-		err                   error
+		tableUnit, cluster, op, start, end, order string
+		limit                                     int
+		reply                                     *proto.QueryHTTPReply
+		err                                       error
 	)
-	table, op, start, end, limit, err = parseOpQueryParams(r)
+	tableUnit, cluster, op, start, end, order, limit, err = parseOpQueryParams(r)
 	if err != nil {
 		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	url := m.generateOpQueryUrl("cfsIPOpTopN", table, op, start, end, limit)
+	url := m.generateOpQueryUrl("cfsIPOpTopN", tableUnit, cluster, op, start, end, order, limit)
 	if reply, err = requestQuery(url); err != nil {
 		log.LogErrorf("getOpTopIP: requestQuery failed, err(%v) url(%v)", err, url)
 		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeHBaseOperation, Msg: err.Error()})
@@ -136,17 +128,17 @@ func (m *Monitor) getOpTopIP(w http.ResponseWriter, r *http.Request) {
 
 func (m *Monitor) getOpTopVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		table, op, start, end string
-		limit                 int
-		reply                 *proto.QueryHTTPReply
-		err                   error
+		tableUnit, cluster, op, start, end, order string
+		limit                                     int
+		reply                                     *proto.QueryHTTPReply
+		err                                       error
 	)
-	table, op, start, end, limit, err = parseOpQueryParams(r)
+	tableUnit, cluster, op, start, end, order, limit, err = parseOpQueryParams(r)
 	if err != nil {
 		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	url := m.generateOpQueryUrl("cfsVolOpTopN", table, op, start, end, limit)
+	url := m.generateOpQueryUrl("cfsVolOpTopN", tableUnit, cluster, op, start, end, order, limit)
 	if reply, err = requestQuery(url); err != nil {
 		log.LogErrorf("getOpTopVol: requestQuery failed, err(%v) url(%v)", err, url)
 		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeHBaseOperation, Msg: err.Error()})
@@ -156,21 +148,27 @@ func (m *Monitor) getOpTopVol(w http.ResponseWriter, r *http.Request) {
 	sendReply(w, r, &proto.HTTPReply{Code: reply.Code, Data: queryView, Msg: reply.Msg})
 }
 
-func (m *Monitor) getOpTopPartition(w http.ResponseWriter, r *http.Request) {
+func (m *Monitor) getTopPartition(w http.ResponseWriter, r *http.Request) {
 	var (
-		table, op, start, end string
-		limit                 int
-		reply                 *proto.QueryHTTPReply
-		err                   error
+		table, cluster, module, start, end, order string
+		limit                                     int
+		reply                                     *proto.QueryHTTPReply
+		err                                       error
 	)
-	table, op, start, end, limit, err = parseOpQueryParams(r)
+	_, cluster, module, start, end, order, limit, err = parseClusterQueryParams(r)
 	if err != nil {
 		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	url := m.generateOpQueryUrl("cfsPartitionOpTopN", table, op, start, end, limit)
+	table, group, ip, op, _, _ := parsePartitionQueryParams(r)
+	if table == "" {
+		if table, err = getPartitionQueryTable(start, end); err != nil {
+			return
+		}
+	}
+	url := m.generatePartitionQueryUrl("cfsPartitionTopN", table, cluster, module, start, end, limit, group, order, ip, op, "", "")
 	if reply, err = requestQuery(url); err != nil {
-		log.LogErrorf("getOpTopPartition: requestQuery failed, err(%v) url(%v)", err, url)
+		log.LogErrorf("getTopPartition: requestQuery failed, err(%v) url(%v)", err, url)
 		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeHBaseOperation, Msg: err.Error()})
 		return
 	}
@@ -178,237 +176,100 @@ func (m *Monitor) getOpTopPartition(w http.ResponseWriter, r *http.Request) {
 	sendReply(w, r, &proto.HTTPReply{Code: reply.Code, Data: queryView, Msg: reply.Msg})
 }
 
-func (m *Monitor) getIPTopPartition(w http.ResponseWriter, r *http.Request) {
+func (m *Monitor) getTopOp(w http.ResponseWriter, r *http.Request) {
 	var (
-		ip        string
-		module    string
-		timeStr   string
-		tableName string
-		results   []*hrpc.Result
-		err       error
+		table, cluster, module, start, end, order string
+		limit                                     int
+		reply                                     *proto.QueryHTTPReply
+		err                                       error
 	)
-	if ip, module, timeStr, err = parseRowKeyFields(r); err != nil {
+	_, cluster, module, start, end, order, limit, err = parseClusterQueryParams(r)
+	if err != nil {
 		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if tableName, err = getTableNameByTimeStr(m.cluster, timeStr); err != nil {
-		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-	prefixKey := fmt.Sprintf("total,%v,%v,%v", module, ip, timeStr)
-	// row key: **total,module,ip,time,vol,pid**
-	if results, err = m.hbase.ScanTableWithPrefixKey(m.hbase.namespace+":"+tableName, prefixKey); err != nil {
-		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeHBaseOperation, Msg: err.Error()})
-		return
-	}
-	dataResults := parseDataFromHBaseResults(results, timeStr)
-	log.LogDebugf("get results num(%v)", len(dataResults))
-	top := selectKmaxCount(dataResults, topK)
-	rangeDescAmongK(dataResults[:top])
-	v := &proto.MonitorView{Monitors: dataResults[:top]}
-	sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Data: v, Msg: "getIPTopPartition successfully"})
-}
-
-func (m *Monitor) getTopPartitionOp(w http.ResponseWriter, r *http.Request) {
-	var (
-		ip        string
-		module    string
-		pid       string
-		timeStr   string
-		tableName string
-		results   []*hrpc.Result
-		err       error
-	)
-	if ip, module, timeStr, err = parseRowKeyFields(r); err != nil {
-		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-	if pid, err = extractPid(r); err != nil {
-		return
-	}
-	if tableName, err = getTableNameByTimeStr(m.cluster, timeStr); err != nil {
-		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-	prefixKey := fmt.Sprintf("%v,%v,%v,%v", module, ip, timeStr, pid)
-	// row key: **module,ip,time,pid,op,vol**
-	if results, err = m.hbase.ScanTableWithPrefixKey(m.hbase.namespace+":"+tableName, prefixKey); err != nil {
-		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeHBaseOperation, Msg: err.Error()})
-		return
-	}
-	dataResults := parseDataFromHBaseResults(results, timeStr)
-	log.LogDebugf("get results num(%v), res(%v)", len(dataResults), dataResults) // todo remove
-	top := selectKmaxCount(dataResults, topK)
-	rangeDescAmongK(dataResults[:top])
-	v := &proto.MonitorView{Monitors: dataResults[:top]}
-	sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Data: v, Msg: "getTopPartitionOp successfully"})
-}
-
-func (m *Monitor) getTopVol(w http.ResponseWriter, r *http.Request) {
-	var (
-		module   string
-		timeStr  string
-		timeUnit string
-		results  []*hrpc.Result
-		err      error
-	)
-	if module, err = extractModule(r); err != nil {
-		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-	if timeStr, err = extractTimeStr(r); err != nil {
-		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-	if timeUnit, err = extractTimeUnit(r); err != nil {
-		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-	// tableName： CLUSTER_OPERATION_COUNT_SECOND_TABLE
-	tableName := fmt.Sprintf("CLUSTER_OPERATION_COUNT_%v_TABLE", strings.ToUpper(timeUnit))
-	prefixKey := fmt.Sprintf("%v,%v,%v,", module, timeStr, m.cluster)
-	// row key: **module,timeStr,clusterName,volumeName**
-	if results, err = m.hbase.ScanTableWithPrefixKey(tableName, prefixKey); err != nil {
-		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeHBaseOperation, Msg: err.Error()})
-		return
-	}
-	dataResults := parseDataFromHBaseResults(results, timeStr)
-	log.LogDebugf("get results num(%v), table(%v)", len(dataResults), tableName)
-	top := selectKmaxCount(dataResults, topK)
-	rangeDescAmongK(dataResults[:top])
-	v := &proto.MonitorView{Monitors: dataResults[:top]}
-	sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Data: v, Msg: "getTopVol successfully"})
-}
-
-// find the most frequency operation of specific vol
-func (m *Monitor) getTopVolOp(w http.ResponseWriter, r *http.Request) {
-	var (
-		vol        string
-		timeStr    string
-		timeUnit   string
-		tableNames []string
-		results    []*hrpc.Result
-		err        error
-	)
-	if vol, err = extractVol(r); err != nil {
-		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-	if timeStr, err = extractTimeStr(r); err != nil {
-		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-	if timeUnit, err = extractTimeUnit(r); err != nil {
-		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-	// tableName：clusterName_action_timeUnit_Table
-	tableNames = getOpTableName(m.cluster, timeUnit)
-	if len(tableNames) < 1 {
-		log.LogErrorf("getOpTableName: No cluster:(%v) Action Table", m.cluster)
-		return
-	}
-	// rowKey: ** timeStr,volName**
-	rowKey := fmt.Sprintf("%v,%v", timeStr, vol)
-
-	for _, tableName := range tableNames {
-		var result *hrpc.Result
-		if result, err = m.hbase.GetEntireData(tableName, rowKey); err != nil {
-			sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeHBaseOperation, Msg: err.Error()})
-			log.LogErrorf("getOpTableName: No This Table(%v) In Cluster(%v)", tableName, m.cluster)
+	table, _, ip, _, pid, vol := parsePartitionQueryParams(r)
+	if table == "" {
+		if table, err = getPartitionQueryTable(start, end); err != nil {
 			return
 		}
-		if result != nil {
-			if result.Cells == nil {
-				continue
-			} else {
-				results = append(results, result)
-			}
-		}
 	}
-	if len(results) < 1 {
-		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeHBaseOperation, Msg: "get results failed, no data from OPERATION_table"})
-		log.LogErrorf("getTopVolOp: get results failed, no data from OPERATION_TABLE, rowKey[%v]", rowKey)
+	url := m.generatePartitionQueryUrl("cfsPartitionTopOp", table, cluster, module, start, end, limit, "", order, ip, "", vol, pid)
+	if reply, err = requestQuery(url); err != nil {
+		log.LogErrorf("getTopPartition: requestQuery failed, err(%v) url(%v)", err, url)
+		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeHBaseOperation, Msg: err.Error()})
 		return
 	}
-	dataResults := parseDataFromHBaseResults(results, timeStr)
-	log.LogDebugf("get results num(%v), results(%v)", len(dataResults), dataResults)
-	top := selectKmaxCount(dataResults, topK)
-	rangeDescAmongK(dataResults[:top])
-	v := &proto.MonitorView{Monitors: dataResults[:top]}
-	sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Data: v, Msg: "getTopVolOp successfully"})
+	queryView := &proto.QueryView{Data: reply.Data}
+	sendReply(w, r, &proto.HTTPReply{Code: reply.Code, Data: queryView, Msg: reply.Msg})
 }
 
-func parseRowKeyFields(r *http.Request) (ip, module string, timeStr string, err error) {
-	if ip, err = extractNodeIP(r); err != nil {
+func (m *Monitor) getTopIP(w http.ResponseWriter, r *http.Request) {
+	var (
+		table, cluster, module, start, end, order string
+		limit                                     int
+		reply                                     *proto.QueryHTTPReply
+		err                                       error
+	)
+	_, cluster, module, start, end, order, limit, err = parseClusterQueryParams(r)
+	if err != nil {
+		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if module, err = extractModule(r); err != nil {
+	table, _, _, op, _, vol := parsePartitionQueryParams(r)
+	if table == "" {
+		if table, err = getPartitionQueryTable(start, end); err != nil {
+			return
+		}
+	}
+	url := m.generatePartitionQueryUrl("cfsPartitionTopIP", table, cluster, module, start, end, limit, "", order, "", op, vol, "")
+	if reply, err = requestQuery(url); err != nil {
+		log.LogErrorf("getTopPartition: requestQuery failed, err(%v) url(%v)", err, url)
+		sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeHBaseOperation, Msg: err.Error()})
 		return
 	}
-	if timeStr, err = extractTimeStr(r); err != nil {
+	queryView := &proto.QueryView{Data: reply.Data}
+	sendReply(w, r, &proto.HTTPReply{Code: reply.Code, Data: queryView, Msg: reply.Msg})
+}
+
+// table name format: **cfs_monitor_20060102150000**
+func getPartitionQueryTable(start string, end string) (table string, err error) {
+	var (
+		startTime	time.Time
+		endTime		time.Time
+	)
+	if startTime, err = time.ParseInLocation(timeLayout, start, time.Local); err != nil {
 		return
+	}
+	if endTime, err = time.ParseInLocation(timeLayout, end, time.Local); err != nil {
+		return
+	}
+	startHour := getTimeOnHour(startTime)
+	endHour := getTimeOnHour(endTime)
+	if startHour == endHour {
+		table = strings.ToLower(getTableName(startHour))
+		return
+	}
+	// compare time difference, use table which has more data
+	if endHour - startTime.Unix() > endTime.Unix() - endHour {
+		table = strings.ToLower(getTableName(startHour))
+	} else {
+		table = strings.ToLower(getTableName(endHour))
 	}
 	return
-}
-
-func swap(m []*statistics.MonitorData, i int, j int) {
-	m[i], m[j] = m[j], m[i]
-}
-
-func partByPrivot(monitorData []*statistics.MonitorData, low, high int) int {
-	var i, j int
-	for {
-		for i = low + 1; i < high; i++ {
-			if monitorData[i].Count < monitorData[low].Count {
-				break
-			}
-		}
-		for j = high; j > low; j-- {
-			if monitorData[j].Count >= monitorData[low].Count {
-				break
-			}
-		}
-		if i >= j {
-			break
-		}
-		swap(monitorData, i, j)
-	}
-	if low != j {
-		swap(monitorData, low, j)
-	}
-	return j
-}
-
-func selectKmaxCount(monitorData []*statistics.MonitorData, k int) (top int) {
-	if len(monitorData) <= k {
-		return len(monitorData)
-	}
-	low, high := 0, len(monitorData)-1
-	for {
-		privot := partByPrivot(monitorData, low, high)
-		if privot < k {
-			low = privot + 1
-		} else if privot > k {
-			high = privot - 1
-		} else {
-			return k
-		}
-	}
-}
-
-func rangeDescAmongK(dataArray []*statistics.MonitorData) {
-	if len(dataArray) < 1 {
-		return
-	}
-	sort.SliceStable(dataArray, func(i, j int) bool {
-		return dataArray[i].Count > dataArray[j].Count
-	})
 }
 
 func extractNodeIP(r *http.Request) (ip string, err error) {
 	if ip = r.FormValue(nodeIPKey); ip == "" {
 		err = keyNotFound(nodeIPKey)
+		return
+	}
+	return
+}
+
+func extractCluster(r *http.Request) (cluster string, err error) {
+	if cluster = r.FormValue(clusterKey); cluster == "" {
+		err = keyNotFound(clusterKey)
 		return
 	}
 	return
@@ -446,40 +307,6 @@ func extractTimeStr(r *http.Request) (timeStr string, err error) {
 	return
 }
 
-func extractTimeUnit(r *http.Request) (unit string, err error) {
-	if unit = r.FormValue(timeUnitKey); unit == "" {
-		//unit = defaultTimeUnit
-		timeStr, _ := extractTimeStr(r)
-		var (
-			timeStrNum uint64
-			count      int
-		)
-		timeStrNum, err = strconv.ParseUint(timeStr, 10, 64)
-		if err != nil {
-			return
-		}
-
-		for timeStrNum%uint64(10) == 0 {
-			timeStrNum /= uint64(10)
-			count += 1
-		}
-
-		if 0 <= count && count < 2 {
-			unit = "second"
-		} else if 2 <= count && count < 4 {
-			unit = defaultTimeUnit
-		} else if 4 <= count && count < 6 {
-			unit = "hour"
-		} else if 6 <= count && count < 8 {
-			unit = "day"
-		} else {
-			err = wrongTimeStr(timeStr)
-			return
-		}
-	}
-	return
-}
-
 func extractVol(r *http.Request) (vol string, err error) {
 	if vol = r.FormValue(volKey); vol == "" {
 		err = keyNotFound(volKey)
@@ -495,7 +322,10 @@ func wrongTimeStr(name string) (err error) {
 	return errors.NewErrorf("timeStr(%v) is illegal", name)
 }
 
-func parseClusterQueryParams(r *http.Request) (table, module, start, end string, limit int, err error) {
+func parseClusterQueryParams(r *http.Request) (table, cluster, module, start, end, order string, limit int, err error) {
+	if cluster, err = extractCluster(r); err != nil {
+		return
+	}
 	if module, err = extractModule(r); err != nil {
 		return
 	}
@@ -505,12 +335,16 @@ func parseClusterQueryParams(r *http.Request) (table, module, start, end string,
 	if end, err = extractEndTime(r); err != nil {
 		return
 	}
-	table = extractTable(r)
+	table = extractTableUnit(r)
 	limit = extractLimit(r)
+	order, _ = extractOrder(r)
 	return
 }
 
-func parseOpQueryParams(r *http.Request) (table, op, start, end string, limit int, err error) {
+func parseOpQueryParams(r *http.Request) (table, cluster, op, start, end, order string, limit int, err error) {
+	if cluster, err = extractCluster(r); err != nil {
+		return
+	}
 	if op, err = extractOperate(r); err != nil {
 		return
 	}
@@ -520,26 +354,51 @@ func parseOpQueryParams(r *http.Request) (table, op, start, end string, limit in
 	if end, err = extractEndTime(r); err != nil {
 		return
 	}
-	table = extractTable(r)
+	table = extractTableUnit(r)
 	limit = extractLimit(r)
+	order, _ = extractOrder(r)
 	return
 }
 
-func (m *Monitor) generateClusterQueryUrl(querySQL, table, module, start, end string, limit int) string {
-	url := fmt.Sprintf("http://%v/queryJson/%v?cluster=%v&table=%v&module=%v&start=%v&end=%v&limit=%v",
-		m.queryIP, querySQL, m.cluster, table, module, start, end, limit)
+func parsePartitionQueryParams(r *http.Request) (table, group, ip, op, pid, vol string) {
+	table, _ = extractTable(r)
+	group, _ = extractGroup(r)
+	ip, _ = extractNodeIP(r)
+	op, _ = extractOperate(r)
+	pid, _ = extractPid(r)
+	vol, _ = extractVol(r)
+	return
+}
+
+func (m *Monitor) generateClusterQueryUrl(querySQL, table, cluster, module, start, end, order string, limit int) string {
+	url := fmt.Sprintf("http://%v/queryJson/%v?cluster=%v&table=%v&module=%v&start=%v&end=%v&order=%v&limit=%v",
+		m.queryIP, querySQL, cluster, table, module, start, end, order, limit)
 	return url
 }
 
-func (m *Monitor) generateOpQueryUrl(querySQL, table, op, start, end string, limit int) string {
-	url := fmt.Sprintf("http://%v/queryJson/%v?cluster=%v&table=%v&op=%v&start=%v&end=%v&limit=%v",
-		m.queryIP, querySQL, m.cluster, table, op, start, end, limit)
+func (m *Monitor) generateOpQueryUrl(querySQL, table, cluster, op, start, end, order string, limit int) string {
+	url := fmt.Sprintf("http://%v/queryJson/%v?cluster=%v&table=%v&op=%v&start=%v&end=%v&order=%v&limit=%v",
+		m.queryIP, querySQL, cluster, table, op, start, end, order, limit)
 	return url
 }
 
-func extractTable(r *http.Request) (table string) {
+func (m *Monitor) generatePartitionQueryUrl(querySQL, table, cluster, module, start, end string, limit int, group, order, ip, op, vol, pid string) string {
+	url := fmt.Sprintf("http://%v/queryJson/%v?cluster=%v&table=%v&module=%v&start=%v&end=%v&limit=%v&group=%v&order=%v&ip=%v&op=%v&vol=%v&pid=%v",
+		m.queryIP, querySQL, cluster, table, module, start, end, limit, group, order, ip, op, vol, pid)
+	return url
+}
+
+func extractTableUnit(r *http.Request) (tableUnit string) {
+	if tableUnit = r.FormValue(tableUnitKey); tableUnit == "" {
+		tableUnit = defaultTableUnit
+		return
+	}
+	return
+}
+
+func extractTable(r *http.Request) (table string, err error) {
 	if table = r.FormValue(tableKey); table == "" {
-		table = defaultTable
+		err = keyNotFound(tableKey)
 		return
 	}
 	return
@@ -571,6 +430,36 @@ func extractEndTime(r *http.Request) (end string, err error) {
 	if end = r.FormValue(endKey); end == "" {
 		err = keyNotFound(endKey)
 		return
+	}
+	return
+}
+
+func extractGroup(r *http.Request) (group string, err error) {
+	if group = r.FormValue(groupKey); group == "" {
+		err = keyNotFound(groupKey)
+		return
+	}
+	return
+}
+
+func extractOrder(r *http.Request) (order string, err error) {
+	if order = r.FormValue(orderKey); order == "" {
+		err = keyNotFound(orderKey)
+		return
+	}
+	return
+}
+
+func contains(arr []string, element string) (ok bool) {
+	if arr == nil || len(arr) == 0 {
+		return
+	}
+
+	for _, e := range arr {
+		if e == element {
+			ok = true
+			break
+		}
 	}
 	return
 }

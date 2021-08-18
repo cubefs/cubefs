@@ -491,6 +491,7 @@ func (s *DataNode) summaryMonitorData(reportTime int64) []*statistics.MonitorDat
 			data := &statistics.MonitorData{
 				VolName:     partition.volumeID,
 				PartitionID: partition.partitionID,
+				DiskPath:	 partition.Disk().Path,
 				Action:      i,
 				ActionStr:   statistics.ActionDataMap[i],
 				Size:        atomic.SwapUint64(&partition.monitorData[i].Size, 0),

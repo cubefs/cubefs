@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strings"
+	"time"
 
 	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/util/config"
@@ -12,7 +14,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/statistics"
 	"github.com/gorilla/mux"
-	"github.com/tsuna/gohbase"
 )
 
 var (
@@ -22,13 +23,11 @@ var (
 )
 
 type Monitor struct {
-	cluster    string
 	port       string
-	zkQuorum   string
-	zkRoot     string
+	thriftAddr string
 	namespace  string
 	queryIP    string
-	hbase      *HBaseClient
+	clusters   []string
 	apiServer  *http.Server
 	jmqConfig  *JMQConfig
 	mqProducer *MQProducer
@@ -63,13 +62,11 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.parseConfig(cfg); err != nil {
 		return
 	}
-	// init HBase
-	m.initHBaseClient()
 	// create table
 	if err = m.initHBaseTable(); err != nil {
 		return
 	}
-	if m.mqProducer, err = initMQProducer(m.cluster, m.jmqConfig); err != nil {
+	if m.mqProducer, err = initMQProducer(m.jmqConfig); err != nil {
 		return
 	}
 	// start http service
@@ -90,38 +87,40 @@ func doShutdown(s common.Server) {
 		}
 	}
 	// 2. MQProducer
-	m.mqProducer.closeMQProducer()
+	if m.mqProducer != nil {
+		m.mqProducer.closeMQProducer()
+	}
 	close(m.stopC)
 	return
 }
 
 func (m *Monitor) parseConfig(cfg *config.Config) (err error) {
-	m.cluster = cfg.GetString(ConfigCluster)
+	clusters := cfg.GetString(ConfigCluster)
+	m.clusters = strings.Split(clusters, ",")
+
 	listen := cfg.GetString(ConfigListenPort)
 	if !regexpListen.MatchString(listen) {
 		return fmt.Errorf("Port must be a string only contains numbers.")
 	}
 	m.port = listen
 
-	zkQuorum := cfg.GetString(ConfigHBaseZK)
-	if zkQuorum != "" {
-		m.zkQuorum = zkQuorum
-	} else {
-		log.LogErrorf("Can not creat HBaseClient if no zkQuorum in conf, plz set")
-		return
+	thriftAddr := cfg.GetString(ConfigThriftAddr)
+	if thriftAddr == "" {
+		thriftAddr = defaultThriftAddr
 	}
+	m.thriftAddr = thriftAddr
 
-	zkRoot := cfg.GetString(ConfigZKRoot)
-	if zkRoot != "" {
-		m.zkRoot = zkRoot
-	} else {
-		m.zkRoot = defaultZkRoot
-	}
 	namespace := cfg.GetString(ConfigNamespace)
 	if namespace == "" {
 		namespace = defaultNamespace
 	}
 	m.namespace = namespace
+
+	tableExpiredDay := cfg.GetInt64(ConfigExpiredDay)
+	if tableExpiredDay > 0 {
+		TableClearTime = time.Duration(tableExpiredDay) * 24 * time.Hour
+	}
+
 	queryIP := cfg.GetString(ConfigQueryIP)
 	if queryIP == "" {
 		queryIP = defaultQueryIP
@@ -129,30 +128,31 @@ func (m *Monitor) parseConfig(cfg *config.Config) (err error) {
 	m.queryIP = queryIP
 
 	m.jmqConfig = &JMQConfig{}
-	m.jmqConfig.topic = cfg.GetString(ConfigTopic)
+	topic := cfg.GetString(ConfigTopic)
+	m.jmqConfig.topic = strings.Split(topic, ",")
 	m.jmqConfig.address = cfg.GetString(ConfigJMQAddress)
 	m.jmqConfig.clientID = cfg.GetString(ConfigJMQClientID)
+	m.jmqConfig.produceNum = cfg.GetInt64(ConfigProducerNum)
+	if m.jmqConfig.produceNum <= 0 {
+		m.jmqConfig.produceNum = defaultProducerNum
+	}
 
-	log.LogDebugf("action[parseConfig] load listen port(%v).", m.port)
-	log.LogDebugf("action[parseConfig] load cluster name(%v).", m.cluster)
-	log.LogDebugf("action[parseConfig] load query ip(%v).", m.queryIP)
-	log.LogDebugf("action[parseConfig] load zk quorum(%v).", m.zkQuorum)
-	log.LogDebugf("action[parseConfig] load zk root(%v).", m.zkRoot)
+	log.LogInfof("action[parseConfig] load listen port(%v).", m.port)
+	log.LogInfof("action[parseConfig] load cluster name(%v).", m.clusters)
+	log.LogInfof("action[parseConfig] load table expired time(%v).", TableClearTime)
+	log.LogInfof("action[parseConfig] load query ip(%v).", m.queryIP)
+	log.LogInfof("action[parseConfig] load thrift server address(%v).", m.thriftAddr)
+	log.LogInfof("action[parseConfig] load producer num(%v).", m.jmqConfig.produceNum)
 	return
-}
-
-func (m *Monitor) initHBaseClient() {
-	m.hbase = &HBaseClient{}
-	m.hbase.namespace = m.namespace
-	m.hbase.cluster = m.cluster
-	m.hbase.adminClient = gohbase.NewAdminClient(m.zkQuorum, gohbase.ZookeeperRoot(m.zkRoot))
-	m.hbase.client = gohbase.NewClient(m.zkQuorum, gohbase.ZookeeperRoot(m.zkRoot))
 }
 
 func (m *Monitor) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(statistics.MonitorCollect).
 		HandlerFunc(m.collect)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(statistics.MonitorCluster).
+		HandlerFunc(m.setCluster)
 
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(statistics.MonitorClusterTopIP).
@@ -161,31 +161,20 @@ func (m *Monitor) registerAPIRoutes(router *mux.Router) {
 		Path(statistics.MonitorClusterTopVol).
 		HandlerFunc(m.getClusterTopVol)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(statistics.MonitorClusterTopPartition).
-		HandlerFunc(m.getClusterTopPartition)
-	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(statistics.MonitorOpTopIP).
 		HandlerFunc(m.getOpTopIP)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(statistics.MonitorOpTopVol).
 		HandlerFunc(m.getOpTopVol)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(statistics.MonitorOpTopPartition).
-		HandlerFunc(m.getOpTopPartition)
-
+		Path(statistics.MonitorTopPartition).
+		HandlerFunc(m.getTopPartition)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(statistics.MonitorIPTopPartition).
-		HandlerFunc(m.getIPTopPartition)
+		Path(statistics.MonitorTopOp).
+		HandlerFunc(m.getTopOp)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(statistics.MonitorTopPartitionOp).
-		HandlerFunc(m.getTopPartitionOp)
-	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(statistics.MonitorTopVol).
-		HandlerFunc(m.getTopVol)
-	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(statistics.MonitorTopVolOp).
-		HandlerFunc(m.getTopVolOp)
-
+		Path(statistics.MonitorTopIP).
+		HandlerFunc(m.getTopIP)
 }
 
 func (m *Monitor) startHTTPService() {

@@ -52,7 +52,7 @@ func NewRootCmd(client *master.MasterClient, mClient *monitor.MonitorClient) *Ch
 		newDataNodeCmd(client),
 		newDataPartitionCmd(client),
 		newMetaPartitionCmd(client),
-		newMonitorNodeCmd(mClient),
+		newMonitorNodeCmd(client, mClient),
 		newConfigCmd(),
 		newCompatibilityCmd(),
 		newParseRaftLogCmd(),

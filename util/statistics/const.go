@@ -12,18 +12,15 @@ const (
 const (
 	// Monitor API
 	MonitorCollect = "/collect"
+	MonitorCluster = "/cluster/set"
 
-	MonitorIPTopPartition = "/ip/partition/top"
-	MonitorTopPartitionOp = "/partitionOp/top"
-	MonitorTopVol         = "/vol/top"
-	MonitorTopVolOp       = "/volOp/top"
-
-	MonitorClusterTopVol       = "/cluster/top/vol"
-	MonitorClusterTopIP        = "/cluster/top/ip"
-	MonitorClusterTopPartition = "/cluster/top/partition"
-	MonitorOpTopVol            = "/op/top/vol"
-	MonitorOpTopIP             = "/op/top/ip"
-	MonitorOpTopPartition      = "/op/top/partition"
+	MonitorClusterTopVol	= "/cluster/top/vol"
+	MonitorClusterTopIP  	= "/cluster/top/ip"
+	MonitorOpTopVol      	= "/op/top/vol"
+	MonitorOpTopIP       	= "/op/top/ip"
+	MonitorTopPartition  	= "/top/partition"
+	MonitorTopOp  			= "/top/op"
+	MonitorTopIP  			= "/top/ip"
 )
 
 const (
@@ -38,7 +35,7 @@ var ActionDataMap = map[int]string{
 	ActionRead:        "read",
 	ActionRepairRead:  "repairRead",
 	ActionAppendWrite: "appendWrite",
-	ActionOverWrite:   "overwrite",
+	ActionOverWrite:   "overWrite",
 	ActionRepairWrite: "repairWrite",
 }
 

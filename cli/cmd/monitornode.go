@@ -15,207 +15,192 @@
 package cmd
 
 import (
+	"time"
+
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/sdk/monitor"
 	"github.com/spf13/cobra"
 )
 
-// cfs-cli monitor top-partition
-//                 top-partitionOp
-//                 top-vol
-//                 top-volOp
 const (
 	cmdMonitorNodeUse   = "monitor [COMMAND]"
 	cmdMonitorNodeShort = "Manage monitor nodes"
+	defaultClusterName 	= "spark"
+
+	timeLayout = "20060102150405"
 )
 
-func newMonitorNodeCmd(client *monitor.MonitorClient) *cobra.Command {
+func newMonitorNodeCmd(client *master.MasterClient, mClient *monitor.MonitorClient) *cobra.Command {
+	clusterName := defaultClusterName
+	clusterView, _ := client.AdminAPI().GetCluster()
+	if clusterView != nil {
+		clusterName = clusterView.Name
+	}
+
 	var cmd = &cobra.Command{
 		Use:   cmdMonitorNodeUse,
 		Short: cmdMonitorNodeShort,
 	}
 	cmd.AddCommand(
-		newMonitorClusterTopIPCmd(client),
-		newMonitorClusterTopVolCmd(client),
-		newMonitorClusterTopPartitionCmd(client),
-		newMonitorOpTopIPCmd(client),
-		newMonitorOpTopVolCmd(client),
-		newMonitorOpTopPartitionCmd(client),
-		//newMonitorTopVolCmd(client),
-		newMonitorIPTopPartitionCmd(client),
-		//newMonitorTopPartitionOpCmd(client),
-		//newMonitorTopVolOpCmd(client),
+		newMonitorClusterTopIPCmd(clusterName, mClient),
+		newMonitorClusterTopVolCmd(clusterName, mClient),
+		newMonitorClusterTopPartitionCmd(clusterName, mClient),
+		newMonitorClusterTopOpCmd(clusterName, mClient),
+		newMonitorOpTopIPCmd(clusterName, mClient),
+		newMonitorOpTopVolCmd(clusterName, mClient),
+		newMonitorOpTopPartitionCmd(clusterName, mClient),
 	)
 	return cmd
 }
 
 const (
-	cmdMonitorTopPartitionShort   = "List the most frequently operated partition in node"
-	cmdMonitorTopPartitionOpShort = "List the most frequency operation of specific partition"
-	cmdMonitorTopVolShort         = "List the most frequently operated volume in the cluster"
-	cmdMonitorTopVolOpShort       = "List the most frequency operation of specific vol"
-
 	cmdMonitorClusterTopIPShort        = "List the most frequently operated ip in the cluster"
 	cmdMonitorClusterTopVolShort       = "List the most frequently operated vol in the cluster"
 	cmdMonitorClusterTopPartitionShort = "List the most frequently operated partition in the cluster"
+	cmdMonitorClusterTopOpShort		   = "List the most frequently operated operation in the cluster"
 	cmdMonitorOpTopIPShort             = "List the most frequently operated ip in the cluster by specified op"
 	cmdMonitorOpTopVolShort            = "List the most frequently operated vol in the cluster by specified op"
 	cmdMonitorOpTopPartitionShort      = "List the most frequently operated partition in the cluster by specified op"
 )
 
-func newMonitorIPTopPartitionCmd(client *monitor.MonitorClient) *cobra.Command {
+func newMonitorClusterTopIPCmd(cluster string, client *monitor.MonitorClient) *cobra.Command {
+	var (
+		opTable string
+		opLimit int
+		opStart string
+		opEnd   string
+		opOrder string
+		opVol   string
+	)
 	var cmd = &cobra.Command{
-		Use:   CliOpIPTopPartition + " [NODE ADDR] [MODULE] [TIMESTAMP]",
-		Short: cmdMonitorTopPartitionShort,
-		Long:  ``,
-		Args:  cobra.MinimumNArgs(3),
+		Use:   CliOpClusterTopIP + " [MODULE]",
+		Short: cmdMonitorClusterTopIPShort,
+		Long:  `Users are required to specify the module: 'metanode' or 'datanode'`,
+		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			nodeAddr := args[0]
-			module := args[1]
-			timeStr := args[2]
 			var (
-				data *proto.MonitorView
+				view *proto.QueryView
 				err  error
-			)
-			if data, err = client.MonitorAPI().GetIPTopPartition(nodeAddr, module, timeStr); err != nil {
-				stdout("%v\n", err)
-				return
-			}
-			stdout("%v\n", MonitorDataTableHeader)
-			for _, md := range data.Monitors {
-				stdout("%v\n", formatMonitorData(md))
-			}
-		},
-		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		},
-	}
-	return cmd
-}
-
-func newMonitorTopPartitionOpCmd(client *monitor.MonitorClient) *cobra.Command {
-	var cmd = &cobra.Command{
-		Use:   CliOpTopPartitionOp + " [NODE ADDR] [MODULE] [TIMESTAMP] [PID]",
-		Short: cmdMonitorTopPartitionOpShort,
-		Long:  ``,
-		Args:  cobra.MinimumNArgs(4),
-		Run: func(cmd *cobra.Command, args []string) {
-			nodeAddr := args[0]
-			module := args[1]
-			timeStr := args[2]
-			pid := args[3]
-			var (
-				data *proto.MonitorView
-				err  error
-			)
-			if data, err = client.MonitorAPI().GetTopPartitionOp(nodeAddr, module, timeStr, pid); err != nil {
-				stdout("%v\n", err)
-				return
-			}
-			stdout("%v\n", MonitorDataTableHeader)
-			for _, md := range data.Monitors {
-				stdout("%v\n", formatMonitorData(md))
-			}
-		},
-		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		},
-	}
-	return cmd
-}
-
-func newMonitorTopVolCmd(client *monitor.MonitorClient) *cobra.Command {
-	var opTimeunit string
-	var cmd = &cobra.Command{
-		Use:   CliOpGetTopVol + " [MODULE] [TIMESTAMP]",
-		Short: cmdMonitorTopVolShort,
-		Long: `Users are required to specify the module type(data/meta), statistical level (day, hour, minute and second) 
-               and approximate timeStamp(20210508120000) to query`,
-		Args: cobra.MinimumNArgs(2),
-		Run: func(cmd *cobra.Command, args []string) {
-			var (
-				timeunit string
-				data     *proto.MonitorView
-				err      error
 			)
 			module := args[0]
-			timeStr := args[1]
-			if opTimeunit != "" {
-				timeunit = opTimeunit
+			if opStart == "" || opEnd == "" {
+				now := time.Now()
+				opStart = now.Add(-5 * time.Minute).Format(timeLayout)
+				opEnd = now.Format(timeLayout)
+			}
+			if opVol == "" {
+				if view, err = client.MonitorAPI().GetClusterTopIP(opTable, cluster, module, opStart, opEnd, opOrder, opLimit); err != nil {
+					stdout("%v\n", err)
+					return
+				}
 			} else {
-				timeunit = ""
+				if view, err = client.MonitorAPI().GetTopIP("", cluster, module, opStart, opEnd, opLimit, opOrder, "", opVol); err != nil {
+					stdout("%v\n", err)
+					return
+				}
 			}
-			if data, err = client.MonitorAPI().GetTopVol(module, timeStr, timeunit); err != nil {
-				stdout("%v\n", err)
-				return
-			}
-			stdout("%v\n", MonitorDataTableHeader)
-			for _, md := range data.Monitors {
-				stdout("%v\n", formatMonitorData(md))
+			stdout("%v\n", monitorQueryDataTableHeader)
+			for _, data := range view.Data {
+				stdout("%v\n", formatMonitorQueryData(data))
 			}
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		},
 	}
-	cmd.Flags().StringVarP(&opTimeunit, "timeunit", "t", "", "Specify the table-level of query: day/hour/minute/second")
+	cmd.Flags().StringVarP(&opStart, "starttime", "s", "", "Specify the start time to query, format[20210902120000]. 'starttime' and 'endtime' need to be specified at the same time. Default [5 minutes ago].")
+	cmd.Flags().StringVarP(&opEnd, "endtime", "e", "", "Specify the end time to query, format[20210902120000]. 'starttime' and 'endtime' need to be specified at the same time. Default [now].")
+	cmd.Flags().StringVarP(&opTable, "table", "t", "", "Specify the table-level of query: day/hour/minute/second. Default [minute].")
+	cmd.Flags().IntVarP(&opLimit, "limit", "l", 10, "Limit the number of query data. Default [10].")
+	cmd.Flags().StringVar(&opOrder, "order", "count", "Specify order by 'count' or 'size'(only for 'datanode'). Default by [count].")
+	cmd.Flags().StringVarP(&opVol, "vol", "v", "", "Specify volume name to query.")
 	return cmd
 }
 
-func newMonitorTopVolOpCmd(client *monitor.MonitorClient) *cobra.Command {
-	var opTimeunit string
+func newMonitorClusterTopVolCmd(cluster string, client *monitor.MonitorClient) *cobra.Command {
+	var (
+		opTable string
+		opLimit int
+		opStart	string
+		opEnd	string
+		opOrder	string
+		opIP	string
+	)
 	var cmd = &cobra.Command{
-		Use:   CliOpGetTopVolOp + " [VOL NAME] [TIMESTAMP]",
-		Short: cmdMonitorTopVolOpShort,
-		Long:  `Users are required to specify the volName, and approximate timestamp(20210508120000) to query`,
+		Use:   CliOpClusterTopVol + " [MODULE]",
+		Short: cmdMonitorClusterTopVolShort,
+		Long:  `Users are required to specify the module: 'metanode' or 'datanode'`,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				view *proto.QueryView
+				err  error
+			)
+			module := args[0]
+			if opStart == "" || opEnd == "" {
+				now := time.Now()
+				opStart = now.Add(-5 * time.Minute).Format(timeLayout)
+				opEnd = now.Format(timeLayout)
+			}
+			if opIP == "" {
+				if view, err = client.MonitorAPI().GetClusterTopVol(opTable, cluster, module, opStart, opEnd, opOrder, opLimit); err != nil {
+					stdout("%v\n", err)
+					return
+				}
+			} else {
+				if view, err = client.MonitorAPI().GetTopPartition("", cluster, module, opStart, opEnd, opLimit, "vol", opOrder, opIP, ""); err != nil {
+					stdout("%v\n", err)
+					return
+				}
+			}
+			stdout("%v\n", monitorQueryDataTableHeader)
+			for _, data := range view.Data {
+				stdout("%v\n", formatMonitorQueryData(data))
+			}
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().StringVarP(&opStart, "starttime", "s", "", "Specify the start time to query, format[20210902120000]. 'starttime' and 'endtime' need to be specified at the same time. Default [5 minutes ago].")
+	cmd.Flags().StringVarP(&opEnd, "endtime", "e", "", "Specify the end time to query, format[20210902120000]. 'starttime' and 'endtime' need to be specified at the same time. Default [now].")
+	cmd.Flags().StringVarP(&opTable, "table", "t", "", "Specify the table-level of query: day/hour/minute/second. Default [minute].")
+	cmd.Flags().IntVarP(&opLimit, "limit", "l", 10, "Limit the number of query data. Default [10].")
+	cmd.Flags().StringVar(&opOrder, "order", "count", "Specify order by 'count' or 'size'(only for 'datanode'). Default by [count].")
+	cmd.Flags().StringVar(&opIP, "ip", "", "Specify ip to query. format[xx.xx.xx.xx].")
+	return cmd
+}
+
+func newMonitorOpTopIPCmd(cluster string, client *monitor.MonitorClient) *cobra.Command {
+	var (
+		opLimit int
+		opStart	string
+		opEnd	string
+		opOrder	string
+		opVol	string
+	)
+	var cmd = &cobra.Command{
+		Use:   CliOpTopIPByOp + " [MODULE] [OPERATION]",
+		Short: cmdMonitorOpTopIPShort,
+		Long:  `Users are required to specify the module: 'metanode' or 'datanode'.
+Specify the operation, choose one of the following:
+[Data operation]: read/appendWrite/overWrite/repairRead/repairWrite
+[Meta operation]: createInode/evictInode/createDentry/deleteDentry/lookup/readDir/inodeGet/batchInodeGet/addExtents/listExtents/truncate/insertExtent`,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				timeunit string
-				data     *proto.MonitorView
-				err      error
-			)
-			vol := args[0]
-			timeStr := args[1]
-			if opTimeunit != "" {
-				timeunit = opTimeunit
-			} else {
-				timeunit = ""
-			}
-			if data, err = client.MonitorAPI().GetTopVolOp(vol, timeStr, timeunit); err != nil {
-				stdout("%v\n", err)
-				return
-			}
-			stdout("%v\n", MonitorDataTableHeader)
-			for _, md := range data.Monitors {
-				stdout("%v\n", formatMonitorData(md))
-			}
-		},
-		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		},
-	}
-	cmd.Flags().StringVarP(&opTimeunit, "timeunit", "t", "", "Specify the table-level of query: day/hour/minute/second")
-	return cmd
-}
-
-func newMonitorClusterTopIPCmd(client *monitor.MonitorClient) *cobra.Command {
-	var opTable string
-	var opLimit int
-	var cmd = &cobra.Command{
-		Use:   CliOpClusterTopIP + " [MODULE] [STARTTIME] [ENDTIME]",
-		Short: cmdMonitorClusterTopIPShort,
-		Long:  `Users are required to specify the module('metanode' or 'datanode'), start time and end time(20210508120000) to query`,
-		Args:  cobra.MinimumNArgs(3),
-		Run: func(cmd *cobra.Command, args []string) {
-			var (
 				view *proto.QueryView
 				err  error
 			)
 			module := args[0]
-			start := args[1]
-			end := args[2]
-			if view, err = client.MonitorAPI().GetClusterTopIP(opTable, module, start, end, opLimit); err != nil {
+			op := args[1]
+			if opStart == "" || opEnd == "" {
+				now := time.Now()
+				opStart = now.Add(-5 * time.Minute).Format(timeLayout)
+				opEnd = now.Format(timeLayout)
+			}
+			if view, err = client.MonitorAPI().GetTopIP("", cluster, module, opStart, opEnd, opLimit, opOrder, op, opVol); err != nil {
 				stdout("%v\n", err)
 				return
 			}
@@ -228,130 +213,43 @@ func newMonitorClusterTopIPCmd(client *monitor.MonitorClient) *cobra.Command {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		},
 	}
-	cmd.Flags().StringVarP(&opTable, "table", "t", "", "Specify the table-level of query: day/hour/minute/second. Default [minute]")
-	cmd.Flags().IntVarP(&opLimit, "limit", "l", 0, "Limit the number of query data. Default [10]")
+	cmd.Flags().StringVarP(&opStart, "starttime", "s", "", "Specify the start time to query, format[20210902120000]. 'starttime' and 'endtime' need to be specified at the same time. Default [5 minutes ago].")
+	cmd.Flags().StringVarP(&opEnd, "endtime", "e", "", "Specify the end time to query, format[20210902120000]. 'starttime' and 'endtime' need to be specified at the same time. Default [now].")
+	cmd.Flags().IntVarP(&opLimit, "limit", "l", 10, "Limit the number of query data. Default [10].")
+	cmd.Flags().StringVar(&opOrder, "order", "count", "Specify order by 'count' or 'size'(only for 'datanode'). Default by [count].")
+	cmd.Flags().StringVarP(&opVol, "vol", "v", "", "Specify volume name to query.")
 	return cmd
 }
 
-func newMonitorClusterTopVolCmd(client *monitor.MonitorClient) *cobra.Command {
-	var opTable string
-	var opLimit int
+func newMonitorOpTopVolCmd(cluster string, client *monitor.MonitorClient) *cobra.Command {
+	var (
+		opLimit int
+		opStart	string
+		opEnd	string
+		opOrder	string
+		opIP	string
+	)
 	var cmd = &cobra.Command{
-		Use:   CliOpClusterTopVol + " [MODULE] [STARTTIME] [ENDTIME]",
-		Short: cmdMonitorClusterTopVolShort,
-		Long:  `Users are required to specify the module('metanode' or 'datanode'), start time and end time(20210508120000) to query`,
-		Args:  cobra.MinimumNArgs(3),
-		Run: func(cmd *cobra.Command, args []string) {
-			var (
-				view *proto.QueryView
-				err  error
-			)
-			module := args[0]
-			start := args[1]
-			end := args[2]
-			if view, err = client.MonitorAPI().GetClusterTopVol(opTable, module, start, end, opLimit); err != nil {
-				stdout("%v\n", err)
-				return
-			}
-			stdout("%v\n", monitorQueryDataTableHeader)
-			for _, data := range view.Data {
-				stdout("%v\n", formatMonitorQueryData(data))
-			}
-		},
-		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		},
-	}
-	cmd.Flags().StringVarP(&opTable, "table", "t", "", "Specify the table-level of query: day/hour/minute/second. Default [minute]")
-	cmd.Flags().IntVarP(&opLimit, "limit", "l", 0, "Limit the number of query data. Default [10]")
-	return cmd
-}
-
-func newMonitorClusterTopPartitionCmd(client *monitor.MonitorClient) *cobra.Command {
-	var opTable string
-	var opLimit int
-	var cmd = &cobra.Command{
-		Use:   CliOpClusterTopPartition + " [MODULE] [STARTTIME] [ENDTIME]",
-		Short: cmdMonitorClusterTopPartitionShort,
-		Long:  `Users are required to specify the module('metanode' or 'datanode'), start time and end time(20210508120000) to query`,
-		Args:  cobra.MinimumNArgs(3),
-		Run: func(cmd *cobra.Command, args []string) {
-			var (
-				view *proto.QueryView
-				err  error
-			)
-			module := args[0]
-			start := args[1]
-			end := args[2]
-			if view, err = client.MonitorAPI().GetClusterTopPartition(opTable, module, start, end, opLimit); err != nil {
-				stdout("%v\n", err)
-				return
-			}
-			stdout("%v\n", monitorQueryDataTableHeader)
-			for _, data := range view.Data {
-				stdout("%v\n", formatMonitorQueryData(data))
-			}
-		},
-		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		},
-	}
-	cmd.Flags().StringVarP(&opTable, "table", "t", "", "Specify the table-level of query: day/hour/minute/second. Default [minute]")
-	cmd.Flags().IntVarP(&opLimit, "limit", "l", 0, "Limit the number of query data. Default [10]")
-	return cmd
-}
-
-func newMonitorOpTopIPCmd(client *monitor.MonitorClient) *cobra.Command {
-	var opTable string
-	var opLimit int
-	var cmd = &cobra.Command{
-		Use:   CliOpTopIPByOp + " [OPERATION] [STARTTIME] [ENDTIME]",
-		Short: cmdMonitorOpTopIPShort,
-		Long:  `Users are required to specify the operation, start time and end time(20210508120000) to query`,
-		Args:  cobra.MinimumNArgs(3),
-		Run: func(cmd *cobra.Command, args []string) {
-			var (
-				view *proto.QueryView
-				err  error
-			)
-			op := args[0]
-			start := args[1]
-			end := args[2]
-			if view, err = client.MonitorAPI().GetOpTopIP(opTable, op, start, end, opLimit); err != nil {
-				stdout("%v\n", err)
-				return
-			}
-			stdout("%v\n", monitorQueryDataTableHeader)
-			for _, data := range view.Data {
-				stdout("%v\n", formatMonitorQueryData(data))
-			}
-		},
-		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		},
-	}
-	cmd.Flags().StringVarP(&opTable, "table", "t", "", "Specify the table-level of query: day/hour/minute/second. Default [minute]")
-	cmd.Flags().IntVarP(&opLimit, "limit", "l", 0, "Limit the number of query data. Default [10]")
-	return cmd
-}
-
-func newMonitorOpTopVolCmd(client *monitor.MonitorClient) *cobra.Command {
-	var opTable string
-	var opLimit int
-	var cmd = &cobra.Command{
-		Use:   CliOpTopVolByOp + " [OPERATION] [STARTTIME] [ENDTIME]",
+		Use:   CliOpTopVolByOp + " [MODULE] [OPERATION]",
 		Short: cmdMonitorOpTopVolShort,
-		Long:  `Users are required to specify the operation, start time and end time(20210508120000) to query`,
-		Args:  cobra.MinimumNArgs(3),
+		Long:  `Users are required to specify the module: 'metanode' or 'datanode'.
+Users are required to specify the operation, choose one of the following:
+[Data operation]: read/appendWrite/overWrite/repairRead/repairWrite
+[Meta operation]: createInode/evictInode/createDentry/deleteDentry/lookup/readDir/inodeGet/batchInodeGet/addExtents/listExtents/truncate/insertExtent`,
+		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
 				view *proto.QueryView
 				err  error
 			)
-			op := args[0]
-			start := args[1]
-			end := args[2]
-			if view, err = client.MonitorAPI().GetOpTopVol(opTable, op, start, end, opLimit); err != nil {
+			module := args[0]
+			op := args[1]
+			if opStart == "" || opEnd == "" {
+				now := time.Now()
+				opStart = now.Add(-5 * time.Minute).Format(timeLayout)
+				opEnd = now.Format(timeLayout)
+			}
+			if view, err = client.MonitorAPI().GetTopPartition("", cluster, module, opStart, opEnd, opLimit, "vol", opOrder, opIP, op); err != nil {
 				stdout("%v\n", err)
 				return
 			}
@@ -364,28 +262,39 @@ func newMonitorOpTopVolCmd(client *monitor.MonitorClient) *cobra.Command {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		},
 	}
-	cmd.Flags().StringVarP(&opTable, "table", "t", "", "Specify the table-level of query: day/hour/minute/second. Default [minute]")
-	cmd.Flags().IntVarP(&opLimit, "limit", "l", 0, "Limit the number of query data. Default [10]")
+	cmd.Flags().StringVarP(&opStart, "starttime", "s", "", "Specify the start time to query, format[20210902120000]. 'starttime' and 'endtime' need to be specified at the same time. Default [5 minutes ago].")
+	cmd.Flags().StringVarP(&opEnd, "endtime", "e", "", "Specify the end time to query, format[20210902120000]. 'starttime' and 'endtime' need to be specified at the same time. Default [now].")
+	cmd.Flags().IntVarP(&opLimit, "limit", "l", 10, "Limit the number of query data. Default [10].")
+	cmd.Flags().StringVar(&opOrder, "order", "count", "Specify order by 'count' or 'size'(only for 'datanode'). Default by [count].")
+	cmd.Flags().StringVar(&opIP, "ip", "", "Specify ip to query. format[xx.xx.xx.xx].")
 	return cmd
 }
 
-func newMonitorOpTopPartitionCmd(client *monitor.MonitorClient) *cobra.Command {
-	var opTable string
-	var opLimit int
+func newMonitorClusterTopPartitionCmd(cluster string, client *monitor.MonitorClient) *cobra.Command {
+	var (
+		opLimit int
+		opStart	string
+		opEnd	string
+		opOrder	string
+		opIP	string
+	)
 	var cmd = &cobra.Command{
-		Use:   CliOpTopPartitionByOp + " [OPERATION] [STARTTIME] [ENDTIME]",
-		Short: cmdMonitorOpTopPartitionShort,
-		Long:  `Users are required to specify the operation, start time and end time(20210508120000) to query`,
-		Args:  cobra.MinimumNArgs(3),
+		Use:   CliOpClusterTopPartition + " [MODULE]",
+		Short: cmdMonitorClusterTopPartitionShort,
+		Long:  `Users are required to specify the module: 'metanode' or 'datanode'`,
+		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
 				view *proto.QueryView
 				err  error
 			)
-			op := args[0]
-			start := args[1]
-			end := args[2]
-			if view, err = client.MonitorAPI().GetOpTopPartition(opTable, op, start, end, opLimit); err != nil {
+			module := args[0]
+			if opStart == "" || opEnd == "" {
+				now := time.Now()
+				opStart = now.Add(-5 * time.Minute).Format(timeLayout)
+				opEnd = now.Format(timeLayout)
+			}
+			if view, err = client.MonitorAPI().GetTopPartition("", cluster, module, opStart, opEnd, opLimit, "pid", opOrder, opIP, ""); err != nil {
 				stdout("%v\n", err)
 				return
 			}
@@ -398,7 +307,108 @@ func newMonitorOpTopPartitionCmd(client *monitor.MonitorClient) *cobra.Command {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		},
 	}
-	cmd.Flags().StringVarP(&opTable, "table", "t", "", "Specify the table-level of query: day/hour/minute/second. Default [minute]")
-	cmd.Flags().IntVarP(&opLimit, "limit", "l", 0, "Limit the number of query data. Default [10]")
+	cmd.Flags().StringVarP(&opStart, "starttime", "s", "", "Specify the start time to query, format[20210902120000]. 'starttime' and 'endtime' need to be specified at the same time. Default [5 minutes ago].")
+	cmd.Flags().StringVarP(&opEnd, "endtime", "e", "", "Specify the end time to query, format[20210902120000]. 'starttime' and 'endtime' need to be specified at the same time. Default [now].")
+	cmd.Flags().StringVar(&opOrder, "order", "count", "Specify order by 'count' or 'size'(only for 'datanode'). Default by [count].")
+	cmd.Flags().StringVar(&opIP, "ip", "", "Specify ip to query. format[xx.xx.xx.xx].")
+	cmd.Flags().IntVarP(&opLimit, "limit", "l", 10, "Limit the number of query data. Default [10].")
+	return cmd
+}
+
+func newMonitorOpTopPartitionCmd(cluster string, client *monitor.MonitorClient) *cobra.Command {
+	var (
+		opLimit int
+		opStart	string
+		opEnd	string
+		opOrder	string
+		opIP	string
+	)
+	var cmd = &cobra.Command{
+		Use:   CliOpTopPartitionByOp + " [MODULE] [OPERATION]",
+		Short: cmdMonitorOpTopPartitionShort,
+		Long:  `Users are required to specify the module: 'metanode' or 'datanode.'
+Users are required to specify the operation, choose one of the following:
+[Data operation]: read/appendWrite/overWrite/repairRead/repairWrite
+[Meta operation]: createInode/evictInode/createDentry/deleteDentry/lookup/readDir/inodeGet/batchInodeGet/addExtents/listExtents/truncate/insertExtent`,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				view *proto.QueryView
+				err  error
+			)
+			module := args[0]
+			op := args[1]
+			if opStart == "" || opEnd == "" {
+				now := time.Now()
+				opStart = now.Add(-5 * time.Minute).Format(timeLayout)
+				opEnd = now.Format(timeLayout)
+			}
+			if view, err = client.MonitorAPI().GetTopPartition("", cluster, module, opStart, opEnd, opLimit, "pid", opOrder, opIP, op); err != nil {
+				stdout("%v\n", err)
+				return
+			}
+			stdout("%v\n", monitorQueryDataTableHeader)
+			for _, data := range view.Data {
+				stdout("%v\n", formatMonitorQueryData(data))
+			}
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().StringVarP(&opStart, "starttime", "s", "", "Specify the start time to query, format[20210902120000]. 'starttime' and 'endtime' need to be specified at the same time. Default [5 minutes ago].")
+	cmd.Flags().StringVarP(&opEnd, "endtime", "e", "", "Specify the end time to query, format[20210902120000]. 'starttime' and 'endtime' need to be specified at the same time. Default [now].")
+	cmd.Flags().StringVar(&opOrder, "order", "count", "Specify order by 'count' or 'size'(only for 'datanode'). Default by [count].")
+	cmd.Flags().StringVar(&opIP, "ip", "", "Specify ip to query. format[xx.xx.xx.xx].")
+	cmd.Flags().IntVarP(&opLimit, "limit", "l", 10, "Limit the number of query data. Default [10].")
+	return cmd
+}
+
+func newMonitorClusterTopOpCmd(cluster string, client *monitor.MonitorClient) *cobra.Command {
+	var (
+		opLimit int
+		opStart	string
+		opEnd	string
+		opOrder	string
+		opIP	string
+		opVol	string
+		opPid	string
+	)
+	var cmd = &cobra.Command{
+		Use:   CliOpClusterTopOp + " [MODULE]",
+		Short: cmdMonitorClusterTopOpShort,
+		Long:  `Users are required to specify the module: 'metanode' or 'datanode'`,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				view *proto.QueryView
+				err  error
+			)
+			module := args[0]
+			if opStart == "" || opEnd == "" {
+				now := time.Now()
+				opStart = now.Add(-5 * time.Minute).Format(timeLayout)
+				opEnd = now.Format(timeLayout)
+			}
+			if view, err = client.MonitorAPI().GetTopOp("", cluster, module, opStart, opEnd, opLimit, opOrder, opIP, opVol, opPid); err != nil {
+				stdout("%v\n", err)
+				return
+			}
+			stdout("%v\n", monitorQueryDataTableHeader)
+			for _, data := range view.Data {
+				stdout("%v\n", formatMonitorQueryData(data))
+			}
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().StringVarP(&opStart, "starttime", "s", "", "Specify the start time to query, format[20210902120000]. 'starttime' and 'endtime' need to be specified at the same time. Default 5 minutes ago.")
+	cmd.Flags().StringVarP(&opEnd, "endtime", "e", "", "Specify the end time to query, format[20210902120000]. 'starttime' and 'endtime' need to be specified at the same time. Default now.")
+	cmd.Flags().StringVar(&opOrder, "order", "count", "Specify order by 'count' or 'size'(only for 'datanode'). Default by [count].")
+	cmd.Flags().StringVar(&opIP, "ip", "", "Specify ip to query. format[xx.xx.xx.xx].")
+	cmd.Flags().StringVarP(&opVol, "vol", "v", "", "Specify volume name to query.")
+	cmd.Flags().StringVarP(&opPid, "pid", "p", "", "Specify partition id to query.")
+	cmd.Flags().IntVarP(&opLimit, "limit", "l", 10, "Limit the number of query data. Default [10].")
 	return cmd
 }

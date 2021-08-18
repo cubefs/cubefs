@@ -44,6 +44,7 @@ const (
 	CliOpClusterTopIP        = "cluster-top-ip"
 	CliOpClusterTopVol       = "cluster-top-vol"
 	CliOpClusterTopPartition = "cluster-top-partition"
+	CliOpClusterTopOp 		 = "cluster-top-op"
 	CliOpTopIPByOp           = "op-top-ip"
 	CliOpTopVolByOp          = "op-top-vol"
 	CliOpTopPartitionByOp    = "op-top-partition"
