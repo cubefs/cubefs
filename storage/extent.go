@@ -155,6 +155,28 @@ func (e *Extent) RestoreFromFS() (err error) {
 	return
 }
 
+// RestoreFromFS restores the entity data and status from the file stored on the filesystem.
+func (e *Extent) getStatFromFS() (err error) {
+	var (
+		info os.FileInfo
+	)
+	if info, err = os.Stat(e.filePath); err != nil {
+		err = fmt.Errorf("stat file %v: %v", e.file.Name(), err)
+		return
+	}
+	if IsTinyExtent(e.extentID) {
+		watermark := info.Size()
+		if watermark%PageSize != 0 {
+			watermark = watermark + (PageSize - watermark%PageSize)
+		}
+		e.dataSize = watermark
+		return
+	}
+	e.dataSize = info.Size()
+	atomic.StoreInt64(&e.modifyTime, info.ModTime().Unix())
+	return
+}
+
 // Size returns length of the extent (not including the header).
 func (e *Extent) Size() (size int64) {
 	return e.dataSize

@@ -280,7 +280,7 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 		if extentID, isExtent = s.ExtentID(f.Name()); !isExtent {
 			continue
 		}
-		if e, loadErr = s.extent(extentID); loadErr != nil {
+		if e, loadErr = s.initExtentInfo(extentID); loadErr != nil {
 			continue
 		}
 		ei = &ExtentInfo{FileID: extentID}
@@ -804,6 +804,17 @@ func (s *ExtentStore) loadExtentFromDisk(extentID uint64, putCache bool) (e *Ext
 	}
 	err = nil
 	s.cache.Put(e)
+
+	return
+}
+
+func (s *ExtentStore) initExtentInfo(extentID uint64) (e *Extent, err error) {
+	name := path.Join(s.dataPath, strconv.Itoa(int(extentID)))
+	e = NewExtentInCore(name, extentID)
+	if err = e.getStatFromFS(); err != nil {
+		err = fmt.Errorf("restore from file %v system: %v", name, err)
+		return
+	}
 
 	return
 }
