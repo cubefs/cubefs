@@ -811,6 +811,13 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 	dp.doStreamFixTinyDeleteRecord(context.Background(), repairTask, time.Now().Unix()-dp.FullSyncTinyDeleteTime > MaxFullSyncTinyDeleteTime)
 }
 
+type TinyDeleteRecord struct {
+	extentID uint64
+	offset uint64
+	size uint64
+}
+
+type TinyDeleteRecordArr []TinyDeleteRecord
 func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repairTask *DataPartitionRepairTask, isFullSync bool) {
 	var (
 		localTinyDeleteFileSize int64
@@ -882,6 +889,11 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 			return
 		}
 		var index int
+		var allTinyDeleteRecordsArr [storage.TinyExtentCount+1]TinyDeleteRecordArr
+		for currTinyExtentID := storage.TinyExtentStartID; currTinyExtentID < storage.TinyExtentStartID+storage.TinyExtentCount; currTinyExtentID++ {
+			allTinyDeleteRecordsArr[currTinyExtentID] = make([]TinyDeleteRecord, 0)
+		}
+
 		for (index+1)*storage.DeleteTinyRecordSize <= int(p.Size) {
 			record := p.Data[index*storage.DeleteTinyRecordSize : (index+1)*storage.DeleteTinyRecordSize]
 			extentID, offset, size := storage.UnMarshalTinyExtent(record)
@@ -891,8 +903,25 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 				continue
 			}
 			DeleteLimiterWait()
-			log.LogInfof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)", dp.partitionID, extentID, offset, size)
-			store.MarkDelete(extentID, int64(offset), int64(size))
+			dr := TinyDeleteRecord{
+				extentID: extentID,
+				offset:   offset,
+				size:     size,
+			}
+			allTinyDeleteRecordsArr[extentID] = append(allTinyDeleteRecordsArr[extentID], dr)
+		}
+		for currTinyExtentID := storage.TinyExtentStartID; currTinyExtentID < storage.TinyExtentStartID+storage.TinyExtentCount; currTinyExtentID++ {
+			currentDeleteRecords := allTinyDeleteRecordsArr[currTinyExtentID]
+			for _, dr := range currentDeleteRecords {
+				if dr.extentID!=uint64(currTinyExtentID){
+					continue
+				}
+				if !storage.IsTinyExtent(dr.extentID) {
+					continue
+				}
+				log.LogInfof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)", dp.partitionID, dr.extentID, dr.offset, dr.size)
+				store.MarkDelete(dr.extentID, int64(dr.offset), int64(dr.size))
+			}
 		}
 	}
 }
