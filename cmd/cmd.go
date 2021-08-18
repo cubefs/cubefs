@@ -162,7 +162,8 @@ func run() error {
 	 */
 	cfg, err := config.LoadConfigFile(*configFile)
 	if err != nil {
-		return daemonize.SignalOutcome(err)
+		_ = daemonize.SignalOutcome(err)
+		return err
 	}
 
 	if !*configForeground {
@@ -213,7 +214,8 @@ func run() error {
 		server = monitor.NewServer()
 		module = ModuleMonitor
 	default:
-		return daemonize.SignalOutcome(fmt.Errorf("Fatal: role mismatch: %v", role))
+		_ = daemonize.SignalOutcome(fmt.Errorf("Fatal: role mismatch: %v", role))
+		return fmt.Errorf("unknown role: %v", role)
 	}
 
 	// Init logging
@@ -235,7 +237,8 @@ func run() error {
 
 	_, err = log.InitLog(logDir, module, level, nil)
 	if err != nil {
-		return daemonize.SignalOutcome(fmt.Errorf("Fatal: failed to init log - %v", err))
+		_ = daemonize.SignalOutcome(fmt.Errorf("Fatal: failed to init log - %v", err))
+		return err
 	}
 	defer log.LogFlush()
 
@@ -243,7 +246,8 @@ func run() error {
 	outputFilePath := path.Join(logDir, module, LoggerOutput)
 	outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
 	if err != nil {
-		return daemonize.SignalOutcome(err)
+		_ = daemonize.SignalOutcome(err)
+		return err
 	}
 	defer func() {
 		outputFile.Sync()
@@ -252,14 +256,16 @@ func run() error {
 	syslog.SetOutput(outputFile)
 
 	if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
-		return daemonize.SignalOutcome(err)
+		_ = daemonize.SignalOutcome(err)
+		return err
 	}
 
 	syslog.Printf("Hello, ChubaoFS Storage\n%s\n", Version)
 
 	err = modifyOpenFiles()
 	if err != nil {
-		return daemonize.SignalOutcome(err)
+		_ = daemonize.SignalOutcome(err)
+		return err
 	}
 	// Setup thread limit from 10,000 to 40,000
 	modifyMaxThreadLimit()
@@ -268,7 +274,8 @@ func run() error {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	if err = ump.InitUmp(role); err != nil {
 		log.LogFlush()
-		return daemonize.SignalOutcome(fmt.Errorf("Fatal: init warnLogDir fail:%v ", err))
+		_ = daemonize.SignalOutcome(fmt.Errorf("Fatal: init warnLogDir fail:%v ", err))
+		return err
 	}
 
 	if profPort != "" {
@@ -283,15 +290,15 @@ func run() error {
 	}
 
 	interceptSignal(server)
-	err = server.Start(cfg)
-	if err != nil {
+	if err = server.Start(cfg); err != nil {
 		log.LogFlush()
 		syslog.Printf("Fatal: failed to start the ChubaoFS %v daemon err %v - ", role, err)
-		return daemonize.SignalOutcome(fmt.Errorf("Fatal: failed to start the ChubaoFS %v daemon err %v - ", role, err))
+		_ = daemonize.SignalOutcome(fmt.Errorf("Fatal: failed to start the ChubaoFS %v daemon err %v - ", role, err))
+		return err
 	}
 	startComplete = true
 
-	daemonize.SignalOutcome(nil)
+	_ = daemonize.SignalOutcome(nil)
 
 	// report server version
 	masters := cfg.GetStringSlice(proto.MasterAddr)
