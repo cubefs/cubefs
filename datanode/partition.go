@@ -252,7 +252,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		return
 	}
 	rand.Seed(time.Now().UnixNano())
-	dp.FullSyncTinyDeleteTime=time.Now().Unix()-(rand.Int63n(DelayFullSyncTinyDeleteTimeRandom))
+	partition.FullSyncTinyDeleteTime=time.Now().Unix()-(rand.Int63n(DelayFullSyncTinyDeleteTimeRandom))
 	// Attach data partition to disk mapping
 	disk.AttachDataPartition(partition)
 	dp = partition
