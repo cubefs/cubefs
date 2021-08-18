@@ -26,6 +26,10 @@ import (
 func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dpTimeOutSec int64) {
 	partition.Lock()
 	defer partition.Unlock()
+	if partition.isRecover {
+		partition.Status = proto.ReadOnly
+		return
+	}
 	liveReplicas := partition.getLiveReplicasFromHosts(dpTimeOutSec)
 	if len(partition.Replicas) > len(partition.Hosts) {
 		partition.Status = proto.ReadOnly
