@@ -18,8 +18,8 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/chubaofs/chubaofs/monitor"
 	syslog "log"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -30,6 +30,8 @@ import (
 	"runtime/debug"
 	"strings"
 	"syscall"
+
+	"github.com/chubaofs/chubaofs/monitor"
 
 	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/console"
@@ -256,7 +258,10 @@ func run() error {
 	syslog.SetOutput(outputFile)
 
 	if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
-		_ = daemonize.SignalOutcome(err)
+		log.LogErrorf("redirect stderr to %v failed: %v", outputFilePath, err)
+		log.LogFlush()
+		syslog.Printf("Fatal: redirect stderr to %v failed: %v", outputFilePath, err)
+		_ = daemonize.SignalOutcome(fmt.Errorf("refiect stderr to %v failed: %v", outputFilePath, err))
 		return err
 	}
 
@@ -264,7 +269,10 @@ func run() error {
 
 	err = modifyOpenFiles()
 	if err != nil {
-		_ = daemonize.SignalOutcome(err)
+		log.LogErrorf("modify open files limit failed: %v", err)
+		log.LogFlush()
+		syslog.Printf("Fatal: modify open files limit failed: %v ", err)
+		_ = daemonize.SignalOutcome(fmt.Errorf("modify open files limit failed: %v", err))
 		return err
 	}
 	// Setup thread limit from 10,000 to 40,000
@@ -273,24 +281,33 @@ func run() error {
 	//for multi-cpu scheduling
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	if err = ump.InitUmp(role); err != nil {
+		log.LogErrorf("init ump failed: %v", err)
 		log.LogFlush()
-		_ = daemonize.SignalOutcome(fmt.Errorf("Fatal: init warnLogDir fail:%v ", err))
+		syslog.Printf("Fatal: init ump failed: %v ", err)
+		_ = daemonize.SignalOutcome(fmt.Errorf("init ump failed: %v ", err))
 		return err
 	}
 
+	var profNetListener net.Listener = nil
 	if profPort != "" {
+		http.HandleFunc(HTTPAPIPATHStatus, statusHandler)
+		// 监听prof端口
+		if profNetListener, err = net.Listen("tcp", fmt.Sprintf(":%v", profPort)); err != nil {
+			log.LogErrorf("listen prof port %v failed: %v", profPort, err)
+			log.LogFlush()
+			syslog.Printf("Fatal: listen prof port %v failed: %v", profPort, err)
+			_ = daemonize.SignalOutcome(fmt.Errorf("listen prof port %v failed: %v", profPort, err))
+			return err
+		}
+		// 在prof端口监听上启动http API.
 		go func() {
-			http.HandleFunc(HTTPAPIPATHStatus, statusHandler)
-			e := http.ListenAndServe(fmt.Sprintf(":%v", profPort), nil)
-			if e != nil {
-				log.LogFlush()
-				_ = daemonize.SignalOutcome(fmt.Errorf("cannot listen pprof %v err %v", profPort, err))
-			}
+			_ = http.Serve(profNetListener, http.DefaultServeMux)
 		}()
 	}
 
 	interceptSignal(server)
 	if err = server.Start(cfg); err != nil {
+		log.LogErrorf("start service %v failed: %v", role, err)
 		log.LogFlush()
 		syslog.Printf("Fatal: failed to start the ChubaoFS %v daemon err %v - ", role, err)
 		_ = daemonize.SignalOutcome(fmt.Errorf("Fatal: failed to start the ChubaoFS %v daemon err %v - ", role, err))
@@ -308,6 +325,12 @@ func run() error {
 	// Block main goroutine until server shutdown.
 	server.Sync()
 	log.LogFlush()
+
+	if profNetListener != nil {
+		// 关闭prof端口监听
+		_ = profNetListener.Close()
+	}
+
 	return nil
 }
 
