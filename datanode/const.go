@@ -100,6 +100,7 @@ const (
 	EmptyResponse                      = 'E'
 	TinyExtentRepairReadResponseArgLen = 17
 	MaxSyncTinyDeleteBufferSize        = 2400000
-	MaxFullSyncTinyDeleteTime          = 3600 * 24
+	MaxFullSyncTinyDeleteTime          = 3600 * 24 * 2
+	MinSyncTinyDeleteTime              = 3600
 	MinTinyExtentDeleteRecordSyncSize  = 4 * 1024 * 1024
 )

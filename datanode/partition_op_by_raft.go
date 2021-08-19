@@ -19,8 +19,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"net"
-	"strings"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
 	"github.com/chubaofs/chubaofs/storage"
@@ -29,6 +27,8 @@ import (
 	"github.com/chubaofs/chubaofs/util/statistics"
 	"github.com/chubaofs/chubaofs/util/tracing"
 	"github.com/tiglabs/raft"
+	"net"
+	"strings"
 )
 
 type RaftCmdItem struct {
@@ -212,7 +212,6 @@ func (si *ItemIterator) Next() (data []byte, err error) {
 	data = appIDBuf[:]
 	return
 }
-
 
 // ApplyRandomWrite random write apply
 func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint64) (resp interface{}, err error) {

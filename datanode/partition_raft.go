@@ -318,8 +318,6 @@ func (dp *DataPartition) startRaftAfterRepair() {
 	}
 }
 
-
-
 // Add a raft node.
 func (dp *DataPartition) addRaftNode(req *proto.AddDataPartitionRaftMemberRequest, index uint64) (isUpdated bool, err error) {
 	var (
