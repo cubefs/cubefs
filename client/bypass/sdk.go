@@ -607,7 +607,8 @@ func cfs_truncate(id C.int64_t, path *C.char, len C.off_t) (re C.int) {
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_truncate"))
 	defer ump.AfterTPUs(tpObject, nil)
 
-	inode, err = c.mw.LookupPath(ctx, c.absPath(C.GoString(path)))
+	absPath := c.absPath(C.GoString(path))
+	inode, err = c.mw.LookupPath(ctx, absPath)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -616,6 +617,7 @@ func cfs_truncate(id C.int64_t, path *C.char, len C.off_t) (re C.int) {
 	if err != nil {
 		return errorToStatus(err)
 	}
+	c.updateSizeByPath(absPath, uint64(len))
 	return statusOK
 }
 
@@ -667,6 +669,7 @@ func cfs_ftruncate(id C.int64_t, fd C.int, len C.off_t) (re C.int) {
 	if err != nil {
 		return errorToStatus(err)
 	}
+	f.size = uint64(len)
 	return statusOK
 }
 
@@ -739,6 +742,7 @@ func cfs_fallocate(id C.int64_t, fd C.int, mode C.int, offset C.off_t, len C.off
 	if err != nil {
 		return errorToStatus(err)
 	}
+	f.size = uint64(offset + len)
 	return statusOK
 }
 
@@ -801,6 +805,7 @@ func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) (r
 	if err != nil {
 		return errorToStatus(err)
 	}
+	f.size = uint64(offset + len)
 	return statusOK
 }
 
@@ -3068,6 +3073,16 @@ func (c *client) getFile(fd uint) *file {
 	f := c.fdmap[fd]
 	c.fdlock.Unlock()
 	return f
+}
+
+func (c *client) updateSizeByPath(path string, size uint64) {
+	c.fdlock.Lock()
+	for _, file := range c.fdmap {
+		if path == file.path {
+			file.size = size
+		}
+	}
+	c.fdlock.Unlock()
 }
 
 func (c *client) releaseFD(fd uint) *file {
