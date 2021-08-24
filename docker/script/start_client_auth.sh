@@ -100,7 +100,7 @@ start_client() {
         sta=$(stat $MntPoint 2>/dev/null | tr ":：" " "  | awk '/Inode/{print $4}')
         if [[ "x$sta" == "x1" ]] ; then
             ok=1
-	        echo "ok"
+            echo "ok"
             exit 0
         fi
     done

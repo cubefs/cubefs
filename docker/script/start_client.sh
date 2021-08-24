@@ -140,7 +140,7 @@ start_client() {
         sta=$(stat $MntPoint 2>/dev/null | tr ":：" " "  | awk '/Inode/{print $4}')
         if [[ "x$sta" == "x1" ]] ; then
             ok=1
-	        echo -e "\033[32mdone\033[0m"
+            echo -e "\033[32mdone\033[0m"
             exit 0
         fi
     done
