@@ -25,6 +25,7 @@ ltptest:
   tags:
     - cfs
   script:
+    - docker/run_docker.sh --clean
     - rm -rf docker/docker_data/*
     - docker/run_docker.sh -l
 

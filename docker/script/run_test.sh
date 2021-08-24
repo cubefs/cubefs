@@ -239,29 +239,16 @@ run_s3_test() {
     echo "    S3 compatibility tests    ";
     echo "******************************";
 
-    # install system requirements
-    echo -n "Installing system requirements  ... "
-    apt-get update &>> /dev/null && apt-get install -y \
-        sudo \
-        python3 \
-        python3-pip &>> /dev/null
-    if [[ $? -ne 0 ]] ; then
-        echo -e "\033[31mfail\033[0m"
-        exit 1
-    fi
-    echo -e "\033[32mdone\033[0m"
-
-    # install python requirements
     echo -n "Installing python requirements  ... "
     pip3 install -r  ${work_path}/requirements.txt &>> /dev/null
     if [[ $? -ne 0 ]] ; then
         echo -e "\033[31mfail\033[0m"
         exit 1
     fi
-    echo -e "\033[32mdone\033[0m"
 
     python3 -m unittest2 discover ${work_path} "*.py" -v
     if [[ $? -ne 0 ]]; then
+        echo -e "\033[31m s3 unittest FAILED \033[0m"
         exit 1
     fi
 }

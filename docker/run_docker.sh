@@ -3,6 +3,7 @@ set -e
 RootPath=$(cd $(dirname $0)/..; pwd)
 GOPATH=/go
 export DiskPath="$RootPath/docker/docker_data"
+export CBFS_DOCKER_IMAGE=ghcr.io/chubaofs/cbfs-base:1.1
 
 MIN_DNDISK_AVAIL_SIZE_GB=10
 
@@ -27,6 +28,12 @@ EOF
 clean() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml down
 }
+
+build_images() {
+  ${RootPath}/docker/build_docker.sh
+}
+
+build_images
 
 # unit test
 run_unit_test() {
@@ -143,13 +150,14 @@ done
 case "-$cmd" in
     -help) help ;;
     -run) run ;;
+    -mkimg|--mkimag) build_images ;;
     -build) build ;;
     -run_servers) start_servers ;;
     -run_client) start_client ;;
     -run_monitor) start_monitor ;;
     -run_ltptest) run_ltptest ;;
     -run_test) run_unit_test ;;
-    -clean) clean ;;
+    -clean|--clean) clean ;;
     *) help ;;
 esac
 

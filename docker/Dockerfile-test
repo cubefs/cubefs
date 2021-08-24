@@ -1,0 +1,14 @@
+FROM ghcr.io/chubaofs/cbfs-base:1.0
+
+# install requirements for s3-compatible tests
+RUN apt-get update && \
+    apt-get install -y sudo python3 python3-pip
+RUN pip3 install boto3 unittest2 requests
+
+COPY requirements.txt /src/requirements.txt
+
+RUN pip3 install -r  /src/requirements.txt &>> /dev/null
+
+# cleanup environment
+RUN rm -rf /var/lib/apt/lists/* \
+        && apt-get clean
