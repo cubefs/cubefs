@@ -37,6 +37,7 @@ typedef struct {
     const char* log_dir;
     // debug|info|warn|error
     const char* log_level;
+    const char* app;
 
     // following are optional parameters for profiling
     const char* prof_port;

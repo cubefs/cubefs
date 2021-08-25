@@ -299,7 +299,7 @@ func (client *ExtentClient) FileSize(inode uint64) (size int, gen uint64, valid 
 //}
 
 // Write writes the data.
-func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset int, data []byte, direct bool) (write int, isROW bool, err error) {
+func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset int, data []byte, direct bool, overWriteBuffer bool) (write int, isROW bool, err error) {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("ExtentClient.Write").
 		SetTag("arg.inode", inode).
 		SetTag("arg.offset", offset).
@@ -327,7 +327,25 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset int,
 		s.GetExtents(ctx)
 	})
 
-	write, isROW, err = s.IssueWriteRequest(ctx, offset, data, direct)
+	if overWriteBuffer {
+		requests := s.extents.PrepareRequests(offset, len(data), data)
+		hasAppendWrite := false
+		for _, req := range requests {
+			if req.ExtentKey == nil {
+				hasAppendWrite = true
+				break
+			}
+		}
+		if hasAppendWrite {
+			write, _, err = s.IssueWriteRequest(ctx, offset, data, direct, overWriteBuffer)
+		} else {
+			for _, req := range requests {
+				write += s.appendOverWriteReq(ctx, req, direct)
+			}
+		}
+	} else {
+		write, _, err = s.IssueWriteRequest(ctx, offset, data, direct, overWriteBuffer)
+	}
 	if err != nil {
 		err = errors.Trace(err, prefix)
 		log.LogWarnf(errors.Stack(err))

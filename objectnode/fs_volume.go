@@ -1062,7 +1062,7 @@ func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash) (size 
 			return
 		}
 		if readN > 0 {
-			if writeN, _, err = v.ec.Write(context.Background(), inode, offset, buf[:readN], false); err != nil {
+			if writeN, _, err = v.ec.Write(context.Background(), inode, offset, buf[:readN], false, false); err != nil {
 				log.LogErrorf("streamWrite: data write tmp file fail, inode(%v) offset(%v) err(%v)", inode, offset, err)
 				exporter.Warning(fmt.Sprintf("write data fail: volume(%v) inode(%v) offset(%v) size(%v) err(%v)",
 					v.name, inode, offset, readN, err))
@@ -2171,7 +2171,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			return
 		}
 		if readN > 0 {
-			if writeN, _, err = v.ec.Write(context.Background(), tInodeInfo.Inode, writeOffset, buf[:readN], false); err != nil {
+			if writeN, _, err = v.ec.Write(context.Background(), tInodeInfo.Inode, writeOffset, buf[:readN], false, false); err != nil {
 				log.LogErrorf("CopyFile: write target path from source fail, volume(%v) path(%v) inode(%v) target offset(%v) err(%v)",
 					v.name, targetPath, tInodeInfo.Inode, writeOffset, err)
 				return

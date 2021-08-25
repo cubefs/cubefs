@@ -54,6 +54,9 @@ type Streamer struct {
 	request chan interface{} // request channel, write/flush/close
 	done    chan struct{}    // stream writer is being closed
 
+	overWriteReq      []*OverWriteRequest
+	overWriteReqMutex sync.Mutex
+
 	tinySize   int
 	extentSize int
 

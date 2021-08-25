@@ -75,7 +75,13 @@ int close(int fd) {
 
 log:
     #ifdef _CFS_DEBUG
-    log_debug("hook %s, is_cfs:%d, fd:%d, re:%d\n", __func__, is_cfs > 0, fd & ~CFS_FD_MASK, re);
+    ; // labels can only be followed by statements
+    ENTRY *entry = getFdEntry(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, re:%d\n", __func__, is_cfs > 0, fd & ~CFS_FD_MASK, entry && entry->data ? (char *)entry->data : "", re);
+    if(entry) {
+        free(entry->data);
+        entry->data = NULL;
+    }
     #endif
     return re;
 }
@@ -154,6 +160,7 @@ int openat(int dirfd, const char *pathname, int flags, ...) {
 log:
     free(path);
     #ifdef _CFS_DEBUG
+    addFdEntry(fd, strdup(pathname));
     log_debug("hook %s, is_cfs:%d, dirfd:%d, pathname:%s, flags:%#x(%s%s%s%s%s%s%s), re:%d\n", 
     __func__, is_cfs, dirfd, pathname, flags, flags&O_RDONLY?"O_RDONLY|":"", 
     flags&O_WRONLY?"O_WRONLY|":"", flags&O_RDWR?"O_RDWR|":"", flags&O_CREAT?"O_CREAT|":"", 
@@ -320,7 +327,9 @@ int ftruncate(int fd, off_t length) {
 
 log:
     #ifdef _CFS_DEBUG
-    log_debug("hook %s, is_cfs:%d, fd:%d, length:%d, re:%d\n", __func__, is_cfs > 0, fd, length, re);
+    ; // labels can only be followed by statements
+    ENTRY *entry = getFdEntry(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, length:%d, re:%d\n", __func__, is_cfs > 0, fd, entry && entry->data ? (char *)entry->data : "", length, re);
     #endif
     return re;
 }
@@ -354,7 +363,9 @@ int fallocate(int fd, int mode, off_t offset, off_t len) {
 
 log:
     #ifdef _CFS_DEBUG
-    log_debug("hook %s, is_cfs:%d, fd:%d, mode:%#X, offset:%d, len:%d, re:%d\n", __func__, is_cfs > 0, fd, mode, offset, len, re);
+    ; // labels can only be followed by statements
+    ENTRY *entry = getFdEntry(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, mode:%#X, offset:%d, len:%d, re:%d\n", __func__, is_cfs > 0, fd, entry && entry->data ? (char *)entry->data : "", mode, offset, len, re);
     #endif
     return re;
 }
@@ -388,7 +399,9 @@ int posix_fallocate(int fd, off_t offset, off_t len) {
 
 log:
     #ifdef _CFS_DEBUG
-    log_debug("hook %s, is_cfs:%d, fd:%d, offset:%d, len:%d, re:%d\n", __func__, is_cfs > 0, fd, offset, len, re);
+    ; // labels can only be followed by statements
+    ENTRY *entry = getFdEntry(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, offset:%d, len:%d, re:%d\n", __func__, is_cfs > 0, fd, entry && entry->data ? (char *)entry->data : "", offset, len, re);
     #endif
     return re;
 }
@@ -1714,12 +1727,16 @@ ssize_t read(int fd, void *buf, size_t count) {
         fd = g_cfs_fd_map[fd];
     }
     #endif
+
+    #if defined(_CFS_DEBUG) || defined(DUP_TO_LOCAL)
+    off_t offset = lseek(fd, 0, SEEK_CUR);
+    #endif
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
     ssize_t re;
+
     if(g_hook && is_cfs) {
         #ifdef DUP_TO_LOCAL
-        off_t offset = lseek(fd, 0, SEEK_CUR);
         re = real_read(fd, buf, count);
         if(re <= 0) {
             goto log;
@@ -1758,7 +1775,9 @@ ssize_t read(int fd, void *buf, size_t count) {
 
 log:
     #ifdef _CFS_DEBUG
-    log_debug("hook %s, is_cfs:%d, fd:%d, count:%d, re:%d\n", __func__, is_cfs > 0, fd, count, re);
+    ; // labels can only be followed by statements
+    ENTRY *entry = getFdEntry(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path: %s, count:%d, offset:%d, re:%d\n", __func__, is_cfs > 0, fd, entry && entry->data ? (char *)entry->data : "", count, offset, re);
     #endif
     return re;
 }
@@ -1808,7 +1827,9 @@ ssize_t readv(int fd, const struct iovec *iov, int iovcnt) {
 
 log:
     #ifdef _CFS_DEBUG
-    log_debug("hook %s, is_cfs:%d, fd:%d, iovcnt:%d, re:%d\n", __func__, is_cfs > 0, fd, iovcnt, re);
+    ; // labels can only be followed by statements
+    ENTRY *entry = getFdEntry(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, iovcnt:%d, re:%d\n", __func__, is_cfs > 0, fd, entry && entry->data ? (char *)entry->data : "", iovcnt, re);
     #endif
     return re;
 }
@@ -1867,7 +1888,9 @@ ssize_t pread(int fd, void *buf, size_t count, off_t offset) {
 
 log:
     #ifdef _CFS_DEBUG
-    log_debug("hook %s, is_cfs:%d, fd:%d, count:%d, offset:%d, re:%d\n", __func__, is_cfs > 0, fd, count, offset, re);
+    ; // labels can only be followed by statements
+    ENTRY *entry = getFdEntry(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, count:%d, offset:%d, re:%d\n", __func__, is_cfs > 0, fd, entry && entry->data ? (char *)entry->data : "", count, offset, re);
     #endif
     return re;
 }
@@ -1917,7 +1940,9 @@ ssize_t preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset) {
 
 log:
     #ifdef _CFS_DEBUG
-    log_debug("hook %s, is_cfs:%d, fd:%d, iovcnt:%d, offset:%d, re:%d\n", __func__, is_cfs > 0, fd, iovcnt, offset, re);
+    ; // labels can only be followed by statements
+    ENTRY *entry = getFdEntry(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, iovcnt:%d, offset:%d, re:%d\n", __func__, is_cfs > 0, fd, entry && entry->data ? (char *)entry->data : "", iovcnt, offset, re);
     #endif
     return re;
 }
@@ -1933,13 +1958,16 @@ ssize_t write(int fd, const void *buf, size_t count) {
         fd = g_cfs_fd_map[fd];
     }
     #endif
+
+    #ifdef _CFS_DEBUG
+    off_t offset = lseek(fd, 0, SEEK_CUR);
+    #endif
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
     ssize_t re;
-    off_t offset = -1;
+
     if(g_hook && is_cfs) {
         #ifdef DUP_TO_LOCAL
-        offset = lseek(fd, 0, SEEK_CUR);
         re = real_write(fd, buf, count);
         if(re < 0) {
             goto log;
@@ -1961,7 +1989,9 @@ ssize_t write(int fd, const void *buf, size_t count) {
 
 log:
     #ifdef _CFS_DEBUG
-    log_debug("hook %s, is_cfs:%d, fd:%d, count:%d, offset:%d, re:%d\n", __func__, is_cfs > 0, fd, count, offset, re);
+    ; // labels can only be followed by statements
+    ENTRY *entry = getFdEntry(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, count:%d, offset:%d, re:%d\n", __func__, is_cfs > 0, fd, entry && entry->data ? (char *)entry->data : "", count, offset, re);
     #endif
     return re;
 }
@@ -1994,7 +2024,9 @@ ssize_t writev(int fd, const struct iovec *iov, int iovcnt) {
 
 log:
     #ifdef _CFS_DEBUG
-    log_debug("hook %s, is_cfs:%d, fd:%d, iovcnt:%d, re:%d\n", __func__, is_cfs > 0, fd, iovcnt, re);
+    ; // labels can only be followed by statements
+    ENTRY *entry = getFdEntry(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, iovcnt:%d, re:%d\n", __func__, is_cfs > 0, fd, entry && entry->data ? (char *)entry->data : "", iovcnt, re);
     #endif
     return re;
 }
@@ -2036,7 +2068,9 @@ ssize_t pwrite(int fd, const void *buf, size_t count, off_t offset) {
 
 log:
     #ifdef _CFS_DEBUG
-    log_debug("hook %s, is_cfs:%d, fd:%d, count:%d, offset:%d, re:%d\n", __func__, is_cfs > 0, fd, count, offset, re);
+    ; // labels can only be followed by statements
+    ENTRY *entry = getFdEntry(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, count:%d, offset:%d, re:%d\n", __func__, is_cfs > 0, fd, entry && entry->data ? (char *)entry->data : "", count, offset, re);
     #endif
     return re;
 }
@@ -2070,7 +2104,9 @@ ssize_t pwritev(int fd, const struct iovec *iov, int iovcnt, off_t offset) {
 
 log:
     #ifdef _CFS_DEBUG
-    log_debug("hook %s, is_cfs:%d, fd:%d, iovcnt:%d, offset:%d, re:%d\n", __func__, is_cfs > 0, fd, iovcnt, offset, re);
+    ; // labels can only be followed by statements
+    ENTRY *entry = getFdEntry(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, iovcnt:%d, offset:%d, re:%d\n", __func__, is_cfs > 0, fd, entry && entry->data ? (char *)entry->data : "", iovcnt, offset, re);
     #endif
     return re;
 }
@@ -2112,7 +2148,9 @@ off_t lseek(int fd, off_t offset, int whence) {
 
 log:
     #ifdef _CFS_DEBUG
-    log_debug("hook %s, is_cfs:%d, fd:%d, offset:%d, whence:%d, re:%d\n", __func__, is_cfs > 0, fd, offset, whence, re);
+    ; // labels can only be followed by statements
+    ENTRY *entry = getFdEntry(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, offset:%d, whence:%d, re:%d\n", __func__, is_cfs > 0, fd, entry && entry->data ? (char *)entry->data : "", offset, whence, re);
     #endif
     return re;
 }
@@ -2151,7 +2189,9 @@ int fdatasync(int fd) {
 
 log:
     #ifdef _CFS_DEBUG
-    log_debug("hook %s, is_cfs:%d, fd:%d, re:%d\n", __func__, is_cfs > 0, fd, re);
+    ; // labels can only be followed by statements
+    ENTRY *entry = getFdEntry(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, re:%d\n", __func__, is_cfs > 0, fd, entry && entry->data ? (char *)entry->data : "", re);
     #endif
     return re;
 }
@@ -2184,7 +2224,9 @@ int fsync(int fd) {
 
 log:
     #ifdef _CFS_DEBUG
-    log_debug("hook %s, is_cfs:%d, fd:%d, re:%d\n", __func__, is_cfs > 0, fd, re);
+    ; // labels can only be followed by statements
+    ENTRY *entry = getFdEntry(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, re:%d\n", __func__, is_cfs > 0, fd, entry && entry->data ? (char *)entry->data : "", re);
     #endif
     return re;
 }
@@ -2288,6 +2330,8 @@ __attribute__((constructor)) static void setup(void) {
 
 __attribute__((destructor)) static void destroy(void) {
     #ifdef _CFS_DEBUG
+    // the elements are NOT freed here
+    hdestroy_r(&g_fdmap);
     printf("destructor\n");
     #endif
     cfs_close_client(g_cfs_client_id);
@@ -2299,6 +2343,7 @@ static void cfs_init() {
     }
 
     #ifdef _CFS_DEBUG
+    hcreate_r(FD_MAP_SIZE, &g_fdmap);
     printf("constructor\n");
     #endif
 

@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <search.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -268,6 +269,68 @@ static cfs_config_t g_cfs_config;
 static const char *CFS_CFG_PATH = "cfs_client.ini";
 static const char *CFS_CFG_PATH_JED = "/export/servers/cfs/cfs_client.ini";
 
+#ifdef _CFS_DEBUG
+// map for each open fd to its pathname, to print pathname in debug log
+static struct hsearch_data g_fdmap = {0};
+#define FD_MAP_SIZE 100
+
+static char *str_int(int i) {
+    int len = snprintf(NULL, 0, "%d", i);
+    char *key = malloc(len + 1);
+    if(key == NULL) {
+        return NULL;
+    }
+    snprintf(key, len + 1, "%d", i);
+    return key;
+}
+
+static ENTRY *getFdEntry(int fd) {
+    char *key = str_int(fd);
+    if(key == NULL) {
+        return NULL;
+    }
+    ENTRY *entry = malloc(sizeof(ENTRY));
+    if(entry == NULL) {
+        free(key);
+        return NULL;
+    }
+    memset(entry, 0, sizeof(ENTRY));
+    entry->key = key;
+    if(!hsearch_r(*entry, FIND, &entry, &g_fdmap)) {
+        free(entry);
+        entry = NULL;
+    }
+    free(key);
+    return entry;
+}
+
+static int addFdEntry(int fd, char *path) {
+    ENTRY *entry = getFdEntry(fd);
+    if(entry != NULL) {
+        free(entry->data);
+        entry->data = path;
+        return 1;
+    }
+    char *key = str_int(fd);
+    if(key == NULL) {
+        return 0;
+    }
+    entry = malloc(sizeof(ENTRY));
+    if(entry == NULL) {
+        return 0;
+    }
+    memset(entry, 0, sizeof(ENTRY));
+    entry->key = key;
+    entry->data = path;
+    int re = hsearch_r(*entry, ENTER, &entry, &g_fdmap);
+    if(!re) {
+        free(key);
+        free(entry);
+    }
+    return re;
+}
+#endif
+
 //static void (*g_sa_handler[30])(int);
 
 static int config_handler(void* user, const char* section,
@@ -291,6 +354,8 @@ static int config_handler(void* user, const char* section,
         pconfig->log_dir = strdup(value);
     } else if (MATCH("", "logLevel")) {
         pconfig->log_level = strdup(value);
+    } else if (MATCH("", "app")) {
+        pconfig->app = strdup(value);
     } else if (MATCH("", "profPort")) {
         pconfig->prof_port = strdup(value);
     } else if (MATCH("", "tracingSamplerType")) {
@@ -497,16 +562,22 @@ static char *get_cfs_path(const char *pathname) {
     return result;
 }
 
-void log_debug(const char* message, ...) {
+static void log_debug(const char* message, ...) {
     va_list args;
     va_start(args, message);
+    /*
+    char *func = va_arg(args, char *);
+    va_end(args);
+    if(!strstr(func, "write")) return;
+    va_start(args, message);
+    */
     va_end(args);
     struct timeval now;
     gettimeofday(&now, NULL);
     struct tm *ptm = localtime(&now.tv_sec);
     char buf[27];
     strftime(buf, 20, "%F %H:%M:%S", ptm);
-    sprintf(buf + 19, ".%d", now.tv_usec);
+    sprintf(buf + 19, ".%.6d", now.tv_usec);
     buf[26] = '\0';
     printf("%s [debug] ", buf);
     vprintf(message, args);

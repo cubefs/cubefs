@@ -56,15 +56,26 @@ type OpenRequest struct {
 
 // WriteRequest defines a write request.
 type WriteRequest struct {
-	fileOffset int
-	size       int
-	data       []byte
-	direct     bool
-	writeBytes int
-	isROW	   bool
-	err        error
-	done       chan struct{}
-	ctx        context.Context
+	fileOffset      int
+	size            int
+	data            []byte
+	direct          bool
+	overWriteBuffer bool
+	writeBytes      int
+	isROW           bool
+	err             error
+	done            chan struct{}
+	ctx             context.Context
+}
+
+type FlushOverWriteRequest struct {
+	write []*OverWriteRequest
+	flush *FlushRequest
+}
+
+type OverWriteRequest struct {
+	direct bool
+	oriReq *ExtentRequest
 }
 
 // FlushRequest defines a flush request.
@@ -114,7 +125,7 @@ func (s *Streamer) IssueOpenRequest() error {
 	return nil
 }
 
-func (s *Streamer) IssueWriteRequest(ctx context.Context, offset int, data []byte, direct bool) (write int, isROW bool, err error) {
+func (s *Streamer) IssueWriteRequest(ctx context.Context, offset int, data []byte, direct bool, overWriteBuffer bool) (write int, isROW bool, err error) {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("StreamWrite.IssueWriteRequest").
 		SetTag("arg.inode", s.inode).
 		SetTag("arg.offset", offset).
@@ -134,6 +145,7 @@ func (s *Streamer) IssueWriteRequest(ctx context.Context, offset int, data []byt
 	request.fileOffset = offset
 	request.size = len(data)
 	request.direct = direct
+	request.overWriteBuffer = overWriteBuffer
 	request.done = make(chan struct{}, 1)
 	request.isROW = false
 	request.ctx = ctx
@@ -157,7 +169,7 @@ func (s *Streamer) IssueFlushRequest(ctx context.Context) error {
 	defer tracer.Finish()
 	ctx = tracer.Context()
 
-	if atomic.LoadInt32(&s.writeOp) <= 0 && s.dirtylist.Len() <= 0 {
+	if atomic.LoadInt32(&s.writeOp) <= 0 && s.dirtylist.Len() <= 0 && len(s.overWriteReq) == 0 {
 		return nil
 	}
 
@@ -300,44 +312,61 @@ func (s *Streamer) abortRequest(request interface{}) {
 
 func (s *Streamer) handleRequest(ctx context.Context, request interface{}) {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Streamer.handleRequest")
+	tracer.SetTag("inode", s.inode)
 	defer tracer.Finish()
 
 	switch request := request.(type) {
 	case *OpenRequest:
-		tracer.SetTag("open", true)
+		tracer.SetTag("type", "open")
 		s.open()
 		request.done <- struct{}{}
+		break
 	case *WriteRequest:
-		tracer.SetTag("write", true)
+		tracer.SetTag("type", "write")
 		tracer.SetTag("offset", request.fileOffset)
 		tracer.SetTag("size", request.size)
-		request.writeBytes, request.isROW, request.err = s.write(request.ctx, request.data, request.fileOffset, request.size, request.direct)
+		request.writeBytes, request.isROW, request.err = s.write(request.ctx, request.data, request.fileOffset, request.size, request.direct, request.overWriteBuffer)
 		request.done <- struct{}{}
+		break
 	case *TruncRequest:
-		tracer.SetTag("trunc", true)
+		tracer.SetTag("type", "trunc")
 		request.err = s.truncate(request.ctx, request.size)
 		request.done <- struct{}{}
+		break
 	case *FlushRequest:
-		tracer.SetTag("flush", true)
+		tracer.SetTag("type", "flush")
 		request.err = s.flush(request.ctx)
+		if len(s.overWriteReq) > 0 {
+			s.overWriteReqMutex.Lock()
+			overWriteReq := s.overWriteReq
+			s.overWriteReq = nil
+			s.overWriteReqMutex.Unlock()
+			for _, req := range overWriteReq {
+				s.doOverWriteOrROW(request.ctx, req.oriReq, req.direct)
+			}
+		}
 		request.done <- struct{}{}
+		break
 	case *ReleaseRequest:
-		tracer.SetTag("release", true)
+		tracer.SetTag("type", "release")
 		request.err = s.release(request.ctx)
 		request.done <- struct{}{}
+		break
 	case *EvictRequest:
-		tracer.SetTag("evict", true)
+		tracer.SetTag("type", "evict")
 		request.err = s.evict(request.ctx)
 		request.done <- struct{}{}
+		break
 	case *ExtentMergeRequest:
 		tracer.SetTag("extentMerge", true)
 		request.finish, request.err = s.extentMerge(request.ctx)
 		request.done <- struct{}{}
+		break
 	default:
 	}
 }
 
-func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, direct bool) (total int, isROW bool, err error) {
+func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, direct bool, overWriteBuffer bool) (total int, isROW bool, err error) {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Streamer.write").
 		SetTag("offset", offset).
 		SetTag("size", size).
@@ -352,10 +381,15 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, dir
 	requests := s.extents.PrepareRequests(offset, size, data)
 	log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)
 
+	needFlush := false
 	for _, req := range requests {
-		if req.ExtentKey == nil {
-			continue
+		if req.ExtentKey != nil && req.ExtentKey.PartitionId == 0 {
+			needFlush = true
+			break
 		}
+	}
+
+	if needFlush {
 		err = s.flush(ctx)
 		if err != nil {
 			return
@@ -366,11 +400,15 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, dir
 
 	for _, req := range requests {
 		var (
-			writeSize 	int
-			rowFlag		bool
+			writeSize int
+			rowFlag   bool
 		)
 		if req.ExtentKey != nil {
-			writeSize, rowFlag = s.doOverWriteOrROW(ctx, req, direct)
+			if overWriteBuffer {
+				writeSize = s.appendOverWriteReq(ctx, req, direct)
+			} else {
+				writeSize, rowFlag = s.doOverWriteOrROW(ctx, req, direct)
+			}
 		} else {
 			writeSize, err = s.doWrite(ctx, req.Data, req.FileOffset, req.Size, direct)
 		}
@@ -663,6 +701,52 @@ func (s *Streamer) doWrite(ctx context.Context, data []byte, offset, size int, d
 	total = size
 
 	log.LogDebugf("doWrite exit: ino(%v) offset(%v) size(%v) ek(%v)", s.inode, offset, size, ek)
+	return
+}
+
+func (s *Streamer) appendOverWriteReq(ctx context.Context, oriReq *ExtentRequest, direct bool) (writeSize int) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Streamer.appendOverWriteReq")
+	defer tracer.Finish()
+
+	var (
+		req     *OverWriteRequest = &OverWriteRequest{oriReq: oriReq, direct: direct}
+		lastReq *OverWriteRequest
+		offset  int
+	)
+	writeSize = oriReq.Size
+
+	s.overWriteReqMutex.Lock()
+	defer s.overWriteReqMutex.Unlock()
+	if len(s.overWriteReq) == 0 {
+		goto append
+	}
+	lastReq = s.overWriteReq[len(s.overWriteReq)-1]
+	if req.oriReq.ExtentKey.PartitionId != lastReq.oriReq.ExtentKey.PartitionId ||
+		req.oriReq.ExtentKey.ExtentId != lastReq.oriReq.ExtentKey.ExtentId ||
+		req.oriReq.FileOffset < lastReq.oriReq.FileOffset ||
+		req.oriReq.FileOffset > lastReq.oriReq.FileOffset+lastReq.oriReq.Size {
+		goto append
+	}
+
+	offset = req.oriReq.FileOffset - lastReq.oriReq.FileOffset
+	if req.oriReq.FileOffset+req.oriReq.Size <= lastReq.oriReq.FileOffset+lastReq.oriReq.Size {
+		copy(lastReq.oriReq.Data[offset:offset+req.oriReq.Size], req.oriReq.Data)
+	} else if req.oriReq.FileOffset == lastReq.oriReq.FileOffset+lastReq.oriReq.Size {
+		lastReq.oriReq.Data = append(lastReq.oriReq.Data, req.oriReq.Data...)
+		lastReq.oriReq.Size = len(lastReq.oriReq.Data)
+	} else {
+		copy(lastReq.oriReq.Data[offset:], req.oriReq.Data[:lastReq.oriReq.Size-offset])
+		lastReq.oriReq.Data = append(lastReq.oriReq.Data, req.oriReq.Data[lastReq.oriReq.Size-offset:]...)
+		lastReq.oriReq.Size = len(lastReq.oriReq.Data)
+	}
+	return
+
+append:
+	data := make([]byte, len(req.oriReq.Data))
+	copy(data, req.oriReq.Data)
+	req.oriReq.Data = data
+	s.overWriteReq = append(s.overWriteReq, req)
+	//log.LogDebugf("appendOverWriteReq: ino(%v) req(%v)", s.inode, oriReq)
 	return
 }
 

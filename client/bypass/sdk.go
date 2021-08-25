@@ -39,6 +39,7 @@ typedef struct {
     const char* follower_read;
     const char* log_dir;
     const char* log_level;
+	const char* app;
     const char* prof_port;
     const char* tracing_sampler_type;
     const char* tracing_sampler_param;
@@ -101,9 +102,13 @@ const (
 )
 
 const (
-	defaultBlkSize      = uint32(1) << 12
-	maxFdNum       uint = 1024000
-	moduleName          = "kbpclient"
+	normalExtentSize      = 32 * 1024 * 1024
+	defaultBlkSize        = uint32(1) << 12
+	maxFdNum         uint = 1024000
+	moduleName            = "kbpclient"
+	redologPrefix         = "ib_logfile"
+	binlogPrefix          = "mysql-bin"
+	appMysql8             = "mysql_8"
 )
 
 var (
@@ -130,13 +135,9 @@ var (
 	statusENODATA = errorToStatus(syscall.ENODATA)
 )
 
-const (
-	NormalExtentSize = 32 * 1024 * 1024
-)
-
 func init() {
 	os.Setenv("GODEBUG", "madvdontneed=1")
-	data.SetNormalExtentSize(NormalExtentSize)
+	data.SetNormalExtentSize(normalExtentSize)
 	gClientManager = &clientManager{
 		clients: make(map[int64]*client),
 	}
@@ -176,6 +177,7 @@ func newClient(conf *C.cfs_config_t) *client {
 	}
 	c.logDir = C.GoString(conf.log_dir)
 	c.logLevel = C.GoString(conf.log_level)
+	c.app = C.GoString(conf.app)
 	c.profPort = parseProfPortArray(C.GoString(conf.prof_port))
 	c.readProcErrMap = make(map[uint64]int)
 	c.tracingSamplerType = C.GoString(conf.tracing_sampler_type)
@@ -253,6 +255,7 @@ type client struct {
 	followerRead bool
 	logDir       string
 	logLevel     string
+	app          string
 
 	// profiling config
 	profPort        []uint64 // the first is the port of main mysqld, the others are the ports of read processes
@@ -875,9 +878,9 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 	var ctx = tracer.Context()
 
 	name := "cfs_flush"
-	if strings.Contains(f.path, "ib_logfile") {
+	if strings.Contains(f.path, redologPrefix) {
 		name = "cfs_flush_redolog"
-	} else if strings.Contains(f.path, "mysql-bin") {
+	} else if strings.Contains(f.path, binlogPrefix) {
 		name = "cfs_flush_binlog"
 	}
 	tpObject1 := ump.BeforeTP(c.umpFunctionKey(name))
@@ -1407,7 +1410,25 @@ func cfs_unlinkat(id C.int64_t, dirfd C.int, path *C.char, flags C.int) C.int {
 }
 
 //export cfs_readlink
-func cfs_readlink(id C.int64_t, path *C.char, buf *C.char, size C.size_t) C.ssize_t {
+func cfs_readlink(id C.int64_t, path *C.char, buf *C.char, size C.size_t) (re C.ssize_t) {
+	var (
+		c   *client
+		ino uint64
+		err error
+	)
+	defer func() {
+		msg := fmt.Sprintf("id(%v) path(%v) ino(%v) size(%v) re(%v) err(%v)", id, C.GoString(path), ino, size, re, err)
+		if r := recover(); r != nil || (re < 0 && re != C.ssize_t(errorToStatus(syscall.ENOENT)) && re != C.ssize_t(statusEINVAL)) {
+			var stack string
+			if r != nil {
+				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
+			}
+			handleError(c, "cfs_readlink", fmt.Sprintf("%s%s", msg, stack))
+		} else {
+			log.LogDebugf("cfs_readlink: %s", msg)
+		}
+	}()
+
 	if int(size) < 0 {
 		return C.ssize_t(statusEINVAL)
 	}
@@ -1433,6 +1454,7 @@ func cfs_readlink(id C.int64_t, path *C.char, buf *C.char, size C.size_t) C.ssiz
 	if !proto.IsSymlink(info.Mode) {
 		return C.ssize_t(statusEINVAL)
 	}
+	ino = info.Inode
 
 	if len(info.Target) < int(size) {
 		size = C.size_t(len(info.Target))
@@ -2700,6 +2722,13 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 	if err != nil && err != io.EOF {
 		return C.ssize_t(statusEIO)
 	}
+	if n < int(size) {
+		c.ec.RefreshExtentsCache(ctx, f.ino)
+		n, err = c.ec.Read(ctx, f.ino, buffer, offset, len(buffer))
+	}
+	if err != nil && err != io.EOF {
+		return C.ssize_t(statusEIO)
+	}
 
 	if off < 0 {
 		f.pos += uint64(n)
@@ -2774,6 +2803,8 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
 			handleError(c, "cfs_write", fmt.Sprintf("%s%s", msg, stack))
+		} else if re < C.ssize_t(size) {
+			log.LogWarnf("cfs_write: %s", msg)
 		} else {
 			log.LogDebugf("cfs_write: %s", msg)
 		}
@@ -2811,9 +2842,13 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	var ctx = tracer.Context()
 
 	name := "cfs_write"
-	if strings.Contains(f.path, "ib_logfile") {
+	overWriteBuffer := false
+	if strings.Contains(f.path, redologPrefix) {
 		name = "cfs_write_redolog"
-	} else if strings.Contains(f.path, "mysql-bin") {
+		if c.app == appMysql8 {
+			overWriteBuffer = true
+		}
+	} else if strings.Contains(f.path, binlogPrefix) {
 		name = "cfs_write_binlog"
 	}
 	tpObject1 := ump.BeforeTP(c.umpFunctionKey(name))
@@ -2848,7 +2883,7 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		offset = int(f.pos)
 	}
 
-	n, isROW, err := c.ec.Write(ctx, f.ino, offset, buffer, false)
+	n, isROW, err := c.ec.Write(ctx, f.ino, offset, buffer, false, overWriteBuffer)
 	if err != nil {
 		return C.ssize_t(statusEIO)
 	}
@@ -2986,7 +3021,7 @@ func (c *client) absPathAt(dirfd C.int, path *C.char) (string, error) {
 }
 
 func (c *client) start() (err error) {
-	level := log.ErrorLevel
+	level := log.WarnLevel
 	if c.logLevel == "debug" {
 		level = log.DebugLevel
 	} else if c.logLevel == "info" {
