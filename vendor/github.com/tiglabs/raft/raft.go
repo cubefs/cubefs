@@ -404,8 +404,8 @@ func (s *raft) run() {
 
 			}()
 
-			s.advance()
-
+			
+          
 			// Send all messages.
 			for _, msg := range s.raftFsm.msgs {
 				if msg.Type == proto.ReqMsgSnapShot {
@@ -785,6 +785,7 @@ func (s *raft) persist() {
 }
 
 func (s *raft) apply() {
+         
 	committedEntries := s.raftFsm.raftLog.nextEnts(noLimit)
 	// check ready read index
 	if len(committedEntries) == 0 {
@@ -855,8 +856,13 @@ func (s *raft) apply() {
 
 		tracer.Finish()
 	}
-}
 
+        if len(committedEntries) > 0 {
+           var latestApplied = committedEntries[len(committedEntries)-1].Index
+           s.raftFsm.raftLog.appliedTo(latestApplied)
+        }
+}
+//advance has been merged with apply
 func (s *raft) advance() {
 	s.raftFsm.raftLog.appliedTo(s.raftFsm.raftLog.committed)
 }
