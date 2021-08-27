@@ -182,6 +182,9 @@ wait_proc_done() {
             if grep -q "TFAIL " $logfile_tmp ; then
                 exit 1
             fi
+            if grep -q "INFO: ltp-pan reported all tests PASS" $logfile_tmp; then
+                return 0
+            fi
         fi
         if [[ $pout -ge $checktime ]] ; then
             echo -n "."
@@ -197,6 +200,8 @@ wait_proc_done() {
     if [[ "-$ret" != "-0" ]] ; then
         exit $ret
     fi
+    echo "Not all tests passed"
+    exit 1
 }
 
 run_ltptest() {

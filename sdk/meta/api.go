@@ -86,9 +86,10 @@ func (mw *MetaWrapper) LookupPath(subdir string) (uint64, error) {
 	return ino, nil
 }
 
-func (mw *MetaWrapper) Statfs() (total, used uint64) {
+func (mw *MetaWrapper) Statfs() (total, used, inodeCount uint64) {
 	total = atomic.LoadUint64(&mw.totalSize)
 	used = atomic.LoadUint64(&mw.usedSize)
+	inodeCount = atomic.LoadUint64(&mw.inodeCount)
 	return
 }
 

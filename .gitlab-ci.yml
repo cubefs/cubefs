@@ -1,51 +1,30 @@
 before_script:
-  - go version
-  - echo $CI_PROJECT_DIR
-  - export GOPATH=/export/workspace/go
-  - echo $GOPATH
-  - export CFS_SRC_PROJECT=$GOPATH/src/github.com/chubaofs
-  - export CFS_SRC_PATH=${CFS_SRC_PROJECT}/chubaofs
-  - export CI_HOME=/export/App/cfsci
-  - echo ${CI_COMMIT_REF_NAME}
-  - rm -fr ${CFS_SRC_PATH}
-  - ln -s $CI_PROJECT_DIR ${CFS_SRC_PROJECT}
-  - echo ${CI_PROJECT_DIR} ${CFS_SRC_PATH}
-  - cd ${CFS_SRC_PATH}
+  - cd $CI_PROJECT_DIR
 
 stages:
   - build
-  - deploy
-  - restart
+  - unit_test
   - ltptest
 
-build_main:
+build:
   stage: build
   tags:
     - cfs
   script:
-    - sh /export/App/cfsci/scripts/build.sh
+    - docker/run_docker.sh -b
 
-deploy:
-  stage: deploy
+unit_test:
+  stage: unit_test
   tags:
     - cfs
   script:
-    - sh /export/App/cfsci/scripts/deploy.sh
-
-restart:
-  stage: restart
-  tags:
-    - cfs
-  script:
-    - sh /export/App/cfsci/scripts/stop-ltp.sh
-    - sh /export/App/cfsci/scripts/stop-client.sh
-    - sh /export/App/cfsci/scripts/stop-server.sh
-    - sh /export/App/cfsci/scripts/start-server.sh
-    - sh /export/App/cfsci/scripts/start-client.sh
+    - docker/run_docker.sh -t
 
 ltptest:
   stage: ltptest
   tags:
     - cfs
   script:
-    - sh /export/App/cfsci/scripts/start-ltp.sh
+    - rm -rf docker/docker_data/*
+    - docker/run_docker.sh -l
+
