@@ -3035,8 +3035,14 @@ func (m *Server) applyVolWriteMutex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	clientIP := iputil.RealIP(r)
-	if err = vol.applyVolMutex(clientIP); err != nil {
+	err = vol.applyVolMutex(clientIP)
+
+	if err != nil && err != proto.ErrVolWriteMutexUnable {
 		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if err != nil && err == proto.ErrVolWriteMutexUnable {
+		sendOkReply(w, r, newSuccessHTTPReply(err.Error()))
 		return
 	}
 	log.LogInfof("apply volume mutex success, volume(%v), clientIP(%v)", volName, clientIP)
@@ -3057,8 +3063,14 @@ func (m *Server) releaseVolWriteMutex(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if err = vol.releaseVolMutex(); err != nil {
+
+	err = vol.releaseVolMutex()
+	if err != nil && err != proto.ErrVolWriteMutexUnable {
 		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if err != nil && err == proto.ErrVolWriteMutexUnable {
+		sendOkReply(w, r, newSuccessHTTPReply(err.Error()))
 		return
 	}
 	log.LogInfof("release volume mutex success, volume(%v)", volName)
@@ -3080,8 +3092,14 @@ func (m *Server) getVolWriteMutexInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var clientInfo *VolWriteMutexClient
-	if err, clientInfo = vol.getVolMutexClientInfo(); err != nil {
+
+	err, clientInfo = vol.getVolMutexClientInfo()
+	if err != nil && err != proto.ErrVolWriteMutexUnable {
 		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if err != nil && err == proto.ErrVolWriteMutexUnable {
+		sendOkReply(w, r, newSuccessHTTPReply(err.Error()))
 		return
 	}
 	if clientInfo == nil {
