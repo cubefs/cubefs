@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/chubaofs/chubaofs/proto"
 	sdk "github.com/chubaofs/chubaofs/sdk/master"
@@ -168,6 +170,7 @@ type ExtentMd5 struct {
 }
 
 func newCheckReplicaCmd(client *sdk.MasterClient) *cobra.Command {
+	var concurrency uint64
 	var cmd = &cobra.Command{
 		Use:   cmdCheckReplicaUse,
 		Short: cmdCheckReplicaShort,
@@ -184,8 +187,9 @@ func newCheckReplicaCmd(client *sdk.MasterClient) *cobra.Command {
 				}
 				inodes = append(inodes, uint64(ino))
 			}
+			var checkedExtent sync.Map
 			for _, inode := range inodes {
-				checkInode(client, volumeName, inode)
+				checkInode(client, volumeName, inode, checkedExtent, concurrency)
 			}
 			return
 		},
@@ -196,52 +200,100 @@ func newCheckReplicaCmd(client *sdk.MasterClient) *cobra.Command {
 			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	cmd.Flags().Uint64Var(&concurrency, "concurrency", 1, "max concurrent checking extent")
 	return cmd
 }
 
-func checkInode(client *sdk.MasterClient, vol string, inode uint64) {
+func checkInode(client *sdk.MasterClient, vol string, inode uint64, checkedExtent sync.Map, concurrency uint64) {
 	var err error
-	defer func() {
-		if err != nil {
-			errout("checkInode failed: %v", err)
-		}
-	}()
 	var (
 		extentsResp *proto.GetExtentsResponse
 		errCount    int = 0
-		partition   *proto.DataPartitionInfo
-		extentMd5   *ExtentMd5
+		wg          sync.WaitGroup
 	)
 	extentsResp, err = getExtentsByInode(client, vol, inode)
 	if err != nil {
 		return
 	}
+
 	stdout("begin check, inode: %d, extent count: %d\n", inode, len(extentsResp.Extents))
-	for _, ek := range extentsResp.Extents {
-		partition, err = client.AdminAPI().GetDataPartition("", ek.PartitionId)
-		if err != nil {
-			return
+	ekCh := make(chan proto.ExtentKey)
+	wg.Add(len(extentsResp.Extents))
+	go func() {
+		for _, ek := range extentsResp.Extents {
+			ekCh <- ek
 		}
-		var preDatanode string
-		var preMd5 string
-		for idx, replica := range partition.Replicas {
-			datanode := strings.ReplaceAll(replica.Addr, "17030", "17031")
-			extentMd5, err = getExtentMd5(datanode, ek.PartitionId, ek.ExtentId)
-			if err != nil {
-				return
+		close(ekCh)
+	}()
+	var idx int32
+	for i := 0; i < int(concurrency); i++ {
+		go func(client *sdk.MasterClient, checkedExtent sync.Map) {
+			for ek := range ekCh {
+				checkExtent(client, &ek, checkedExtent)
+				atomic.AddInt32(&idx, 1)
+				if idx%100 == 0 {
+					stdout("%d extents checked\n", idx)
+				}
+				wg.Done()
 			}
-			msg := fmt.Sprintf("dp: %d, extent: %d, datanode: %s, md5: %s\n", ek.PartitionId, ek.ExtentId, datanode, extentMd5.Md5)
-			if idx == 0 || extentMd5.Md5 == preMd5 {
-				stdout(msg)
-			} else {
-				errout("ERROR %s, preDatanode: %s, preMd5: %s\n", msg, preDatanode, preMd5)
-				errCount++
-			}
-			preDatanode = datanode
-			preMd5 = extentMd5.Md5
+		}(client, checkedExtent)
+	}
+	wg.Wait()
+	stdout("finish check, inode: %d, err count: %d\n", inode, errCount)
+}
+
+func checkExtent(client *sdk.MasterClient, ek *proto.ExtentKey, checkedExtent sync.Map) bool {
+	var (
+		ok    bool
+		ekStr string = fmt.Sprintf("%d-%d", ek.PartitionId, ek.ExtentId)
+	)
+	if _, ok = checkedExtent.LoadOrStore(ekStr, true); ok {
+		return true
+	}
+	partition, err := client.AdminAPI().GetDataPartition("", ek.PartitionId)
+	if err != nil {
+		stdout("GetDataPartition PartitionId(%v) err(%v)\n", ek.PartitionId, err)
+		return false
+	}
+
+	var (
+		replicas = make([]struct {
+			partitionId uint64
+			extentId    uint64
+			datanode    string
+			md5         string
+		}, len(partition.Replicas))
+		md5Map = make(map[string]int)
+	)
+	for idx, replica := range partition.Replicas {
+		datanode := fmt.Sprintf("%s:%d", strings.Split(replica.Addr, ":")[0], client.DataNodeProfPort)
+		extentMd5, err := getExtentMd5(datanode, ek.PartitionId, ek.ExtentId)
+		if err != nil {
+			stdout("getExtentMd5 datanode(%v) PartitionId(%v) ExtentId(%v) err(%v)\n", datanode, ek.PartitionId, ek.ExtentId, err)
+			return false
+		}
+		replicas[idx].partitionId = ek.PartitionId
+		replicas[idx].extentId = ek.ExtentId
+		replicas[idx].datanode = datanode
+		replicas[idx].md5 = extentMd5.Md5
+		if _, ok = md5Map[replicas[idx].md5]; ok {
+			md5Map[replicas[idx].md5]++
+		} else {
+			md5Map[replicas[idx].md5] = 1
 		}
 	}
-	stdout("finish check, inode: %d, err count: %d\n", inode, errCount)
+	if len(md5Map) == 1 {
+		return true
+	}
+	for _, r := range replicas {
+		msg := fmt.Sprintf("dp: %d, extent: %d, datanode: %s, md5: %s\n", r.partitionId, r.extentId, r.datanode, r.md5)
+		if _, ok = md5Map[r.md5]; ok && md5Map[r.md5] > len(partition.Replicas)/2 {
+			stdout(msg)
+		} else {
+			stdout("ERROR %s", msg)
+		}
+	}
+	return false
 }
 
 func getExtentsByInode(client *sdk.MasterClient, vol string, inode uint64) (re *proto.GetExtentsResponse, err error) {
@@ -280,14 +332,26 @@ func getExtentsByInode(client *sdk.MasterClient, vol string, inode uint64) (re *
 }
 
 func getExtentMd5(datanode string, dpId uint64, extentId uint64) (re *ExtentMd5, err error) {
-	resp, _ := http.Get(fmt.Sprintf("http://%s/computeExtentMd5?id=%d&extent=%d", datanode, dpId, extentId))
-	respData, _ := ioutil.ReadAll(resp.Body)
-	var data []byte
-	if data, err = parseResp(respData); err != nil {
+	var (
+		resp *http.Response
+		data []byte
+		url  string = fmt.Sprintf("http://%s/computeExtentMd5?id=%d&extent=%d", datanode, dpId, extentId)
+	)
+	if resp, err = http.Get(url); err != nil {
+		return
+	}
+	if data, err = ioutil.ReadAll(resp.Body); err != nil {
+		return
+	}
+	if data, err = parseResp(data); err != nil {
 		return
 	}
 	re = &ExtentMd5{}
 	if err = json.Unmarshal(data, &re); err != nil {
+		return
+	}
+	if re == nil {
+		err = fmt.Errorf("Get %s data: %s", url, string(data))
 		return
 	}
 	return

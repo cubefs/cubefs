@@ -324,7 +324,7 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, dir
 
 	s.client.writeLimiter.Wait(ctx)
 
-	requests := s.extents.PrepareWriteRequests(offset, size, data)
+	requests := s.extents.PrepareRequests(offset, size, data)
 	log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)
 
 	for _, req := range requests {
@@ -335,7 +335,7 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, dir
 		if err != nil {
 			return
 		}
-		requests = s.extents.PrepareWriteRequests(offset, size, data)
+		requests = s.extents.PrepareRequests(offset, size, data)
 		log.LogDebugf("Streamer write: ino(%v) prepared requests after flush(%v)", s.inode, requests)
 	}
 

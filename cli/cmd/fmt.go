@@ -133,13 +133,13 @@ func formatInodeInfoView(inodeInfo *proto.InodeInfoView) string {
 }
 
 var (
-	inodeExtentInfoTablePattern = "% -38v    % -20v    % -10v    % -30v    % -10v    % -10v"
-	inodeExtentInfoTableHeader  = fmt.Sprintf(inodeExtentInfoTablePattern, "  FileOffset", "  PartitionId", "  ExtentId", "  ExtentOffset", "  Size", "  CRC")
+	inodeExtentInfoTablePattern = "% -15v    % -15v    % -15v    % -10v    % -15v    % -10v    % -10v"
+	inodeExtentInfoTableHeader  = fmt.Sprintf(inodeExtentInfoTablePattern, "EkStart", "EkEnd", "PartitionId", "ExtentId", "ExtentOffset", "Size", "CRC")
 )
 
 func formatInodeExtentInfoTableRow(ie *proto.InodeExtentInfoView) string {
 	return fmt.Sprintf(inodeExtentInfoTablePattern,
-		ie.FileOffset, ie.PartitionId, ie.ExtentId, ie.ExtentOffset, formatSize(ie.Size), ie.CRC)
+		formatIntWithThousandComma(int64(ie.FileOffset)), formatIntWithThousandComma(int64(ie.FileOffset+ie.Size)), ie.PartitionId, ie.ExtentId, ie.ExtentOffset, formatSize(ie.Size), ie.CRC)
 }
 
 func formatVolumeStatus(status uint8) string {
@@ -425,6 +425,36 @@ func fixUnit(curSize uint64, curUnitIndex int) (newSize uint64, newUnitIndex int
 func formatSize(size uint64) string {
 	fixedSize, fixedUnitIndex := fixUnit(size, 0)
 	return fmt.Sprintf("%v %v", fixedSize, units[fixedUnitIndex])
+}
+
+func formatIntWithThousandComma(n int64) string {
+	var (
+		groupSize int  = 3
+		grouping  byte = ','
+	)
+
+	in := strconv.FormatInt(n, 10)
+	numOfDigits := len(in)
+	if n < 0 {
+		numOfDigits-- // First character is the - sign (not a digit)
+	}
+	numOfCommas := (numOfDigits - 1) / groupSize
+
+	out := make([]byte, len(in)+numOfCommas)
+	if n < 0 {
+		in, out[0] = in[1:], '-'
+	}
+
+	for i, j, k := len(in)-1, len(out)-1, 0; ; i, j = i-1, j-1 {
+		out[j] = in[i]
+		if i == 0 {
+			return string(out)
+		}
+		if k++; k == groupSize {
+			j, k = j-1, 0
+			out[j] = grouping
+		}
+	}
 }
 
 func formatTime(timeUnix int64) string {
