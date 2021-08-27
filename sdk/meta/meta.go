@@ -76,6 +76,7 @@ type MetaConfig struct {
 	TicketMess       auth.TicketMess
 	ValidateOwner    bool
 	OnAsyncTaskError AsyncTaskErrorFunc
+	EnableSummary	 bool
 }
 
 type MetaWrapper struct {
@@ -127,6 +128,7 @@ type MetaWrapper struct {
 	// Used to trigger and throttle instant partition updates
 	forceUpdate      chan struct{}
 	forceUpdateLimit *rate.Limiter
+	EnableSummary	bool
 }
 
 //the ticket from authnode
@@ -169,6 +171,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.partCond = sync.NewCond(&mw.partMutex)
 	mw.forceUpdate = make(chan struct{}, 1)
 	mw.forceUpdateLimit = rate.NewLimiter(1, MinForceUpdateMetaPartitionsInterval)
+	mw.EnableSummary = config.EnableSummary
 
 	limit := MaxMountRetryLimit
 

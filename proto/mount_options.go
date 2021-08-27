@@ -47,6 +47,7 @@ const (
 	EnableXattr
 	NearRead
 	EnablePosixACL
+	EnableSummary
 
 	MaxMountOption
 )
@@ -112,6 +113,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[MaxCPUs] = MountOption{"maxcpus", "The maximum number of CPUs that can be executing", "", int64(-1)}
 	opts[EnableXattr] = MountOption{"enableXattr", "Enable xattr support", "", false}
 	opts[EnablePosixACL] = MountOption{"enablePosixACL", "enable posix ACL support", "", false}
+	opts[EnableSummary] = MountOption{"enableSummary", "enable content summary", "", false}
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -241,4 +243,5 @@ type MountOptions struct {
 	EnableXattr    bool
 	NearRead       bool
 	EnablePosixACL bool
+	EnableSummary  bool
 }
