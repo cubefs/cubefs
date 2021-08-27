@@ -149,7 +149,37 @@ func (i *Inode) Copy() BtreeItem {
 func (i *Inode) MarshalToJSON() ([]byte, error) {
 	i.RLock()
 	defer i.RUnlock()
-	return json.Marshal(i)
+	return json.Marshal(struct {
+		Inode      uint64
+		Type       uint32
+		Uid        uint32
+		Gid        uint32
+		Size       uint64
+		Generation uint64
+		CreateTime int64
+		AccessTime int64
+		ModifyTime int64
+		LinkTarget []byte
+		NLink      uint32
+		Flag       int32
+		Reserved   uint64
+		Extents    []proto.ExtentKey
+	}{
+		i.Inode,
+		i.Type,
+		i.Uid,
+		i.Gid,
+		i.Size,
+		i.Generation,
+		i.CreateTime,
+		i.AccessTime,
+		i.ModifyTime,
+		i.LinkTarget[:],
+		i.NLink,
+		i.Flag,
+		i.Reserved,
+		i.Extents.eks[:],
+	})
 }
 
 // Marshal marshals the inode into a byte array.
