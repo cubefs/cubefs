@@ -40,21 +40,15 @@ func TestGetMetaPartitions(t *testing.T) {
 func TestApplyVolMutex(t *testing.T) {
 	testVolName := "ltptest"
 	err := testMc.ClientAPI().ApplyVolMutex(testVolName)
-	if err == nil {
-		t.Fatalf("expected err, but nil")
-	}
-	if err.Error() != "vol write mutex is unable" {
-		t.Fatalf("expected err: 'vol write mutex is unable', but it's not")
+	if err != nil {
+		t.Fatalf("unexpected err")
 	}
 }
 
 func TestReleaseVolMutex(t *testing.T) {
 	testVolName := "ltptest"
 	err := testMc.ClientAPI().ReleaseVolMutex(testVolName)
-	if err == nil {
-		t.Fatalf("expected err, but nil")
-	}
-	if err.Error() != "vol write mutex is unable" {
-		t.Fatalf("expected err: 'vol write mutex is unable', but it's not")
+	if err != nil {
+		t.Fatalf("unexpected err")
 	}
 }
