@@ -136,7 +136,7 @@ func MkdirAll(name string) (err error) {
 	return os.MkdirAll(name, 0755)
 }
 
-func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *ExtentStore, err error) {
+func NewExtentStore(dataDir string, partitionID uint64, storeSize int, cacheCapacity int, ln CacheListener) (s *ExtentStore, err error) {
 	s = new(ExtentStore)
 	s.dataPath = dataDir
 	s.partitionID = partitionID
@@ -166,7 +166,7 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 	}
 
 	s.extentInfoMap = make(map[uint64]*ExtentInfo, 0)
-	s.cache = NewExtentCache(64, time.Minute*5)
+	s.cache = NewExtentCache(cacheCapacity, time.Minute*5, ln)
 	if err = s.initBaseFileID(); err != nil {
 		err = fmt.Errorf("init base field ID: %v", err)
 		return
@@ -1020,4 +1020,8 @@ func (s *ExtentStore) GetStoreUsedSize() (used int64) {
 
 func (s *ExtentStore) EvictExpiredCache() {
 	s.cache.EvictExpired()
+}
+
+func (s *ExtentStore) ForceEvictCache(ratio Ratio) {
+	s.cache.ForceEvict(ratio)
 }

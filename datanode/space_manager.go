@@ -158,8 +158,12 @@ func (manager *SpaceManager) Stats() *Stats {
 
 func (manager *SpaceManager) LoadDisk(path string, reservedSpace uint64, maxErrCnt int) (err error) {
 	var (
-		disk    *Disk
-		visitor PartitionVisitor
+		disk        *Disk
+		visitor     PartitionVisitor
+		diskFDLimit = FDLimit{
+			MaxFDLimit:      DiskMaxFDLimit,
+			ForceEvictRatio: DiskForceEvictFDRatio,
+		}
 	)
 	log.LogDebugf("action[LoadDisk] load disk from path(%v).", path)
 	visitor = func(dp *DataPartition) {
@@ -171,7 +175,8 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace uint64, maxErrC
 		}
 	}
 	if _, err = manager.GetDisk(path); err != nil {
-		disk = NewDisk(path, reservedSpace, maxErrCnt, manager)
+
+		disk = NewDisk(path, reservedSpace, maxErrCnt, diskFDLimit, manager)
 		disk.RestorePartition(visitor)
 		manager.putDisk(disk)
 		err = nil

@@ -247,7 +247,17 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		monitorData:             statistics.InitMonitorData(statistics.ModelDataNode),
 	}
 	partition.replicasInit()
-	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize)
+
+	var cacheListener storage.CacheListener = func(event storage.CacheEvent, e *storage.Extent) {
+		switch event {
+		case storage.CacheEvent_Add:
+			disk.IncreaseFDCount()
+		case storage.CacheEvent_Evict:
+			disk.DecreaseFDCount()
+		}
+	}
+
+	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize, CacheCapacityPerPartition, cacheListener)
 	if err != nil {
 		return
 	}
@@ -825,7 +835,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 		localTinyDeleteFileSize int64
 		err                     error
 		conn                    *net.TCPConn
-		isRealSync             bool
+		isRealSync              bool
 	)
 
 	if !dp.Disk().canFinTinyDeleteRecord() {
@@ -834,16 +844,16 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 	defer func() {
 		dp.Disk().finishFixTinyDeleteRecord()
 	}()
-	log.LogInfof(ActionSyncTinyDeleteRecord+" start PartitionID(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) " +
+	log.LogInfof(ActionSyncTinyDeleteRecord+" start PartitionID(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) "+
 		"leaderAddr(%v) ,lastSyncTinyDeleteTime(%v) currentTime(%v) fullSyncTinyDeleteTime(%v) isFullSync(%v)",
 		dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteRecordFileSize, repairTask.LeaderAddr,
-		dp.lastSyncTinyDeleteTime,time.Now().Unix(),dp.FullSyncTinyDeleteTime,isFullSync)
+		dp.lastSyncTinyDeleteTime, time.Now().Unix(), dp.FullSyncTinyDeleteTime, isFullSync)
 
 	defer func() {
-		log.LogInfof(ActionSyncTinyDeleteRecord+" end PartitionID(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v) " +
+		log.LogInfof(ActionSyncTinyDeleteRecord+" end PartitionID(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v) "+
 			"err(%v), lastSyncTinyDeleteTime(%v) currentTime(%v) fullSyncTinyDeleteTime(%v) isFullSync(%v) isRealSync(%v)\",",
-			dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteRecordFileSize, repairTask.LeaderAddr,err,
-			dp.lastSyncTinyDeleteTime,time.Now().Unix(),dp.FullSyncTinyDeleteTime,isFullSync,isRealSync)
+			dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteRecordFileSize, repairTask.LeaderAddr, err,
+			dp.lastSyncTinyDeleteTime, time.Now().Unix(), dp.FullSyncTinyDeleteTime, isFullSync, isRealSync)
 	}()
 	if !isFullSync {
 		if localTinyDeleteFileSize, err = dp.extentStore.LoadTinyDeleteFileOffset(); err != nil {
@@ -864,7 +874,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 	if !isFullSync && repairTask.LeaderTinyDeleteRecordFileSize-localTinyDeleteFileSize < MinTinyExtentDeleteRecordSyncSize {
 		return
 	}
-	isRealSync=true
+	isRealSync = true
 	dp.lastSyncTinyDeleteTime = time.Now().Unix()
 	p := repl.NewPacketToReadTinyDeleteRecord(ctx, dp.partitionID, localTinyDeleteFileSize)
 	if conn, err = gConnPool.GetConnect(repairTask.LeaderAddr); err != nil {
@@ -1006,4 +1016,8 @@ func (dp *DataPartition) ResetRaftMember(peers []raftProto.Peer, context []byte)
 
 func (dp *DataPartition) EvictExpiredFileDescriptor() {
 	dp.extentStore.EvictExpiredCache()
+}
+
+func (dp *DataPartition) ForceEvictFileDescriptor(ratio storage.Ratio) {
+	dp.extentStore.ForceEvictCache(ratio)
 }

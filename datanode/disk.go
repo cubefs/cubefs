@@ -26,6 +26,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/chubaofs/chubaofs/storage"
+
 	"os"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -39,6 +41,11 @@ var (
 )
 
 const ExpiredPartitionPrefix = "expired_"
+
+type FDLimit struct {
+	MaxFDLimit      uint64  // 触发强制FD淘汰策略的阈值
+	ForceEvictRatio float64 // 强制FD淘汰比例
+}
 
 // Disk represents the structure of the disk
 type Disk struct {
@@ -67,11 +74,15 @@ type Disk struct {
 	repairTaskLimit              uint64 // Limit for parallel data repair tasks
 	executingRepairTask          uint64 // Count of executing data repair tasks
 	limitLock                    sync.Mutex
+
+	// Runtime statistics
+	fdCount int64
+	fdLimit FDLimit
 }
 
 type PartitionVisitor func(dp *DataPartition)
 
-func NewDisk(path string, reservedSpace uint64, maxErrCnt int, space *SpaceManager) (d *Disk) {
+func NewDisk(path string, reservedSpace uint64, maxErrCnt int, fdLimit FDLimit, space *SpaceManager) (d *Disk) {
 	d = new(Disk)
 	d.Path = path
 	d.ReservedSpace = reservedSpace
@@ -79,13 +90,22 @@ func NewDisk(path string, reservedSpace uint64, maxErrCnt int, space *SpaceManag
 	d.RejectWrite = false
 	d.space = space
 	d.partitionMap = make(map[uint64]*DataPartition)
+	d.fixTinyDeleteRecordLimit = space.fixTinyDeleteRecordLimitOnDisk
+	d.repairTaskLimit = space.repairTaskLimitOnDisk
+	d.fdCount = 0
+	d.fdLimit = fdLimit
 	d.computeUsage()
 	d.updateSpaceInfo()
 	d.startScheduler()
-	d.fixTinyDeleteRecordLimit = space.fixTinyDeleteRecordLimitOnDisk
-	d.repairTaskLimit = space.repairTaskLimitOnDisk
-
 	return
+}
+
+func (d *Disk) IncreaseFDCount() {
+	atomic.AddInt64(&d.fdCount, 1)
+}
+
+func (d *Disk) DecreaseFDCount() {
+	atomic.AddInt64(&d.fdCount, -1)
 }
 
 // PartitionCount returns the number of partitions in the partition map.
@@ -164,7 +184,8 @@ func (d *Disk) computeUsage() (err error) {
 	}
 	d.Unallocated = uint64(unallocated)
 
-	log.LogDebugf("action[computeUsage] disk(%v) all(%v) available(%v) used(%v)", d.Path, d.Total, d.Available, d.Used)
+	log.LogDebugf("action[computeUsage] disk(%v) all(%v) available(%v) used(%v)",
+		d.Path, d.Total, d.Available, d.Used)
 
 	return
 }
@@ -183,11 +204,13 @@ func (d *Disk) startScheduler() {
 			updateSpaceInfoTicker = time.NewTicker(5 * time.Second)
 			checkStatusTicker     = time.NewTicker(time.Minute * 2)
 			evictFDTicker         = time.NewTicker(time.Minute * 5)
+			forceEvictFDTicker    = time.NewTicker(time.Second * 10)
 		)
 		defer func() {
 			updateSpaceInfoTicker.Stop()
 			checkStatusTicker.Stop()
 			evictFDTicker.Stop()
+			forceEvictFDTicker.Stop()
 		}()
 		for {
 			select {
@@ -198,7 +221,9 @@ func (d *Disk) startScheduler() {
 				d.checkDiskStatus()
 				d.updateTaskExecutionLimit()
 			case <-evictFDTicker.C:
-				d.evictFileDescriptor()
+				d.evictExpiredFileDescriptor()
+			case <-forceEvictFDTicker.C:
+				d.forceEvictFileDescriptor()
 			}
 		}
 	}()
@@ -484,7 +509,7 @@ func (d *Disk) finishFixTinyDeleteRecord() {
 	}
 }
 
-func (d *Disk) evictFileDescriptor() {
+func (d *Disk) evictExpiredFileDescriptor() {
 	d.RLock()
 	var partitions = make([]*DataPartition, 0, len(d.partitionMap))
 	for _, partition := range d.partitionMap {
@@ -495,4 +520,26 @@ func (d *Disk) evictFileDescriptor() {
 	for _, partition := range partitions {
 		partition.EvictExpiredFileDescriptor()
 	}
+}
+
+func (d *Disk) forceEvictFileDescriptor() {
+	var count = atomic.LoadInt64(&d.fdCount)
+	log.LogDebugf("action[forceEvictFileDescriptor] disk [%v] current FD count [%v]",
+		d.Path, count)
+	if d.fdLimit.MaxFDLimit == 0 || uint64(count) <= d.fdLimit.MaxFDLimit {
+		return
+	}
+
+	d.RLock()
+	var partitions = make([]*DataPartition, 0, len(d.partitionMap))
+	for _, partition := range d.partitionMap {
+		partitions = append(partitions, partition)
+	}
+	d.RUnlock()
+	var ratio = storage.NewRatio(d.fdLimit.ForceEvictRatio)
+	for _, partition := range partitions {
+		partition.ForceEvictFileDescriptor(ratio)
+	}
+	log.LogDebugf("action[forceEvictFileDescriptor] disk [%v] evicted FD count [%v -> %v]",
+		d.Path, count, atomic.LoadInt64(&d.fdCount))
 }
