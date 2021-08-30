@@ -20,11 +20,14 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"github.com/spf13/cast"
 	"io"
 	"io/ioutil"
 	"os"
 	"path"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -38,6 +41,7 @@ const (
 )
 
 var extentsFileHeader = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08}
+var writeDeleteExtentsLock = &sync.Mutex{}
 
 func (mp *metaPartition) startToDeleteExtents() {
 	fileList := synclist.New()
@@ -59,16 +63,36 @@ func (mp *metaPartition) appendDelExtentsToFile(fileList *synclist.SyncList) {
 		err      error
 	)
 LOOP:
-	finfos, err := ioutil.ReadDir(mp.config.RootDir)
+	allFileInfos, err := ioutil.ReadDir(mp.config.RootDir)
 	if err != nil {
 		panic(err)
 	}
+
+	finfos := make([]os.FileInfo, 0, len(allFileInfos))
+	for _, info := range allFileInfos {
+		if strings.HasPrefix(info.Name(), prefixDelExtent) && !info.IsDir() {
+			if _, err := delExtNameID(info.Name()); err != nil {
+				log.LogErrorf("partition:[%d] load file:[%s] format err so skip", mp.config.PartitionId, info.Name())
+				continue
+			}
+			finfos = append(finfos, info)
+		}
+	}
+
+	sort.Slice(finfos, func(i, j int) bool {
+		in, _ := delExtNameID(finfos[i].Name())
+		jn, _ := delExtNameID(finfos[j].Name())
+		return jn > in
+	})
+
 	for _, info := range finfos {
 		if strings.HasPrefix(info.Name(), prefixDelExtent) {
+			log.LogInfof("path:[%s] append file:[%s] to fileList ", mp.config.RootDir, info.Name())
 			fileList.PushBack(info.Name())
 			fileSize = info.Size()
 		}
 	}
+
 	lastItem := fileList.Back()
 	if lastItem == nil {
 		fileName = fmt.Sprintf("%s_%d", prefixDelExtent, idx)
@@ -80,8 +104,15 @@ LOOP:
 		// TODO Unhandled errors
 		fp.Write(extentsFileHeader)
 		fileList.PushBack(fileName)
+		log.LogInfof("partition:[%d] startToDeleteExtents star idx:[%d]", mp.config.PartitionId, idx)
 	} else {
 		fileName = lastItem.Value.(string)
+		if id, err := delExtNameID(fileName); err != nil {
+			log.LogErrorf("del extent partition:[%d] Name:[%s] to id has err:[%s] list size:[%d]", mp.config.PartitionId, fileName, err.Error(), fileList.Len())
+		} else {
+			idx = int64(id)
+		}
+		log.LogInfof("partition:[%d] startToDeleteExtents star idx:[%d]", mp.config.PartitionId, idx)
 		fp, err = os.OpenFile(path.Join(mp.config.RootDir, fileName),
 			os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 		if err != nil {
@@ -118,10 +149,21 @@ LOOP:
 				mp.extDelCh <- eks
 				continue
 			}
-			if fileSize >= maxDeleteExtentSize {
+			if info, err := fp.Stat(); err != nil {
+				panic(err)
+			} else {
+				fileSize = info.Size()
+			}
+
+			if fileSize >= maxDeleteExtentSize || (int(fileSize)-len(extentsFileHeader))%proto.ExtentLength != 0 {
 				// TODO Unhandled errors
 				// close old File
 				fp.Close()
+
+				if (int(fileSize)-len(extentsFileHeader))%proto.ExtentLength != 0 {
+					log.LogErrorf("delete extents partition:[%d] fileName:[%s] fileSize:[%d] size not a multiple of ExtentLength", mp.config.PartitionId, fileName, fileSize)
+				}
+
 				idx += 1
 				fileName = fmt.Sprintf("%s_%d", prefixDelExtent, idx)
 				fp, err = os.OpenFile(path.Join(mp.config.RootDir, fileName),
@@ -136,9 +178,13 @@ LOOP:
 				fileList.PushBack(fileName)
 			}
 			// write file
+			writeDeleteExtentsLock.Lock()
 			if _, err = fp.Write(buf); err != nil {
+				writeDeleteExtentsLock.Unlock()
 				panic(err)
 			}
+			writeDeleteExtentsLock.Unlock()
+
 			fileSize += int64(len(buf))
 		}
 	}
@@ -186,7 +232,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 		buf := make([]byte, MB)
 		fp, err := os.OpenFile(file, os.O_RDWR, 0644)
 		if err != nil {
-			log.LogErrorf("[deleteExtentsFromList] openFile %v error: %v", file, err)
+			log.LogErrorf("partition:[%d] [deleteExtentsFromList] openFile %v error: %v", mp.config.PartitionId, file, err)
 			fileList.Remove(element)
 			goto LOOP
 		}
@@ -199,10 +245,15 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			continue
 		}
 		cursor := binary.BigEndian.Uint64(buf[:8])
-		if size := uint64(fileInfo.Size()) - cursor; size < MB {
+
+		writeDeleteExtentsLock.Lock()
+		fileSize := fileInfo.Size()
+		writeDeleteExtentsLock.Unlock()
+
+		if size := fileSize - int64(cursor); size < MB {
 			if size <= 0 {
-				size = uint64(proto.ExtentLength)
-			} else if size > 0 && size < uint64(proto.ExtentLength) {
+				size = int64(proto.ExtentLength)
+			} else if size > 0 && size < int64(proto.ExtentLength) {
 				errStr := fmt.Sprintf(
 					"[deleteExtentsFromList] partitionId=%d, %s file corrupted!",
 					mp.config.PartitionId, fileName)
@@ -262,7 +313,9 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			if err = mp.doDeleteMarkedInodes(context.Background(), &ek); err != nil {
 				eks := make([]proto.ExtentKey, 0)
 				eks = append(eks, ek)
-				mp.extDelCh <- eks
+				if !strings.Contains(err.Error(), "NotExistErr") {
+					mp.extDelCh <- eks
+				}
 				log.LogWarnf("[deleteExtentsFromList] partitionId=%d, %s",
 					mp.config.PartitionId, err.Error())
 			}
@@ -277,4 +330,9 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			mp.config.PartitionId, fileName, cursor)
 		goto LOOP
 	}
+}
+
+func delExtNameID(name string) (id uint64, err error) {
+	id, err = cast.ToUint64E(strings.ReplaceAll(name, prefixDelExtent+"_", ""))
+	return
 }
