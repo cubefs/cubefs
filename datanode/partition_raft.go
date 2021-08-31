@@ -986,6 +986,11 @@ func (dp *DataPartition) updateMaxMinAppliedID(ctx context.Context) {
 		return
 	}
 
+	// only update maxMinAppliedID if number of replica is odd when using raft
+	if len(dp.replicas)%2 == 0 {
+		return
+	}
+
 	allAppliedID, replyNum := dp.getAllReplicaAppliedID(ctx)
 	if replyNum == 0 {
 		log.LogDebugf("[updateMaxMinAppliedID] PartitionID(%v) Get appliedId failed!", dp.partitionID)
