@@ -103,4 +103,7 @@ const (
 	MaxFullSyncTinyDeleteTime          = 3600 * 24 * 2
 	MinSyncTinyDeleteTime              = 3600
 	MinTinyExtentDeleteRecordSyncSize  = 4 * 1024 * 1024
+	DiskMaxFDLimit                     = 20000
+	DiskForceEvictFDRatio              = 0.25
+	CacheCapacityPerPartition          = 256
 )
