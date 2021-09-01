@@ -3,14 +3,14 @@
   "logDir": "/cfs/log/",
   "logLevel": "debug",
   "listen": "80",
+  "metaExporterPort": "9500",
+  "dataExporterPort": "9500",
   "masterAddr": [
     "192.168.0.11:17010",
     "192.168.0.12:17010",
     "192.168.0.13:17010"
   ],
   "objectNodeDomain": "object.chubao.io",
-  "monitor_addr": "http://192.168.0.102:9090",
-  "dashboard_addr": "http://grafana.chubao.io",
-  "monitor_app": "cfs",
-  "monitor_cluster": "chubaofs01"
+  "monitorAddr": "http://192.168.0.102:9090",
+  "monitorCluster": "chubaofs01"
 }

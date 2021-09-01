@@ -96,6 +96,18 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	m.registerHandler(router, proto.AdminVolumeAPI, vs.Schema())
 
 	// cluster management APIs
+	router.NewRoute().Name(proto.VersionPath).
+		Methods(http.MethodGet).
+		Path(proto.VersionPath).
+		HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			version := proto.MakeVersion("master")
+			marshal, _ := json.Marshal(version)
+			if _, err := w.Write(marshal); err != nil {
+				log.LogErrorf("write version has err:[%s]", err.Error())
+			}
+		})
+
+	// cluster management APIs
 	router.NewRoute().Name(proto.AdminGetIP).
 		Methods(http.MethodGet).
 		Path(proto.AdminGetIP).

@@ -481,6 +481,27 @@ func LogInfof(format string, v ...interface{}) {
 	gLog.infoLogger.Output(2, s)
 }
 
+func LogIfNotNil(e error) {
+	if e == nil {
+		return
+	}
+	if gLog == nil {
+		return
+	}
+
+	if gLog.level == DebugLevel {
+		if ErrorLevel&gLog.level != gLog.level {
+			return
+		}
+		s := fmt.Sprintln(e.Error())
+		s = gLog.SetPrefix(s, levelPrefixes[2])
+		gLog.errorLogger.Output(2, s)
+	} else {
+		gLog.errorLogger.Output(2, e.Error())
+	}
+
+}
+
 // LogError logs the errors.
 func LogError(v ...interface{}) {
 	if gLog == nil {
