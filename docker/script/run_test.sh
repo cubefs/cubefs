@@ -160,8 +160,7 @@ wait_proc_done() {
     proc_name=$1
     pid=$( ps -ef | grep "$proc_name" | grep -v "grep" | awk '{print $2}' )
     logfile=$2
-    logfile2=${logfile}-2
-    logfile3=${logfile}-3
+    logfile_tmp=${logfile}-tmp
     maxtime=${3:-3000}
     checktime=${4:-60}
     retfile=${5:-"/tmp/ltpret"}
@@ -178,8 +177,14 @@ wait_proc_done() {
         ((pout+=1))
         if [ $(cat $logfile | wc -l) -gt 0  ] ; then
             pout=0
-            cat $logfile > $logfile2 && cat $logfile2 >> $logfile3 && > $logfile
-            cat $logfile2 && rm -f $logfile2
+            cat $logfile > $logfile_tmp && > $logfile
+            cat $logfile_tmp
+            if grep -q "TFAIL " $logfile_tmp ; then
+                exit 1
+            fi
+            if grep -q "INFO: ltp-pan reported all tests PASS" $logfile_tmp; then
+                return 0
+            fi
         fi
         if [[ $pout -ge $checktime ]] ; then
             echo -n "."
@@ -195,6 +200,8 @@ wait_proc_done() {
     if [[ "-$ret" != "-0" ]] ; then
         exit $ret
     fi
+    echo "Not all tests passed"
+    exit 1
 }
 
 run_ltptest() {

@@ -78,9 +78,10 @@ func (mw *MetaWrapper) LookupPath(subdir string) (uint64, error) {
 	return ino, nil
 }
 
-func (mw *MetaWrapper) Statfs() (total, used uint64) {
+func (mw *MetaWrapper) Statfs() (total, used, inodeCount uint64) {
 	total = atomic.LoadUint64(&mw.totalSize)
 	used = atomic.LoadUint64(&mw.usedSize)
+	inodeCount = atomic.LoadUint64(&mw.inodeCount)
 	return
 }
 
@@ -504,7 +505,7 @@ func (mw *MetaWrapper) AppendExtentKey(inode uint64, ek proto.ExtentKey, discard
 
 	status, err := mw.appendExtentKey(mp, inode, ek, discard)
 	if err != nil || status != statusOK {
-		log.LogErrorf("AppendExtentKey: inode(%v) ek(%v) discard(%v) err(%v) status(%v)", inode, ek, discard, err, status)
+		log.LogErrorf("AppendExtentKey: inode(%v) ek(%v) local discard(%v) err(%v) status(%v)", inode, ek, discard, err, status)
 		return statusToErrno(status)
 	}
 	log.LogDebugf("AppendExtentKey: ino(%v) ek(%v) discard(%v)", inode, ek, discard)
