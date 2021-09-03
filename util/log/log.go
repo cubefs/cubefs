@@ -490,9 +490,6 @@ func LogIfNotNil(e error) {
 	}
 
 	if gLog.level == DebugLevel {
-		if ErrorLevel&gLog.level != gLog.level {
-			return
-		}
 		s := fmt.Sprintln(e.Error())
 		s = gLog.SetPrefix(s, levelPrefixes[2])
 		gLog.errorLogger.Output(2, s)
