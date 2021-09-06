@@ -3,6 +3,10 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"github.com/chubaofs/chubaofs/console/cutil"
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/sdk/graphql/client"
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/graphql/schemabuilder"
 	"io/ioutil"
@@ -14,31 +18,152 @@ import (
 )
 
 type MonitorService struct {
-	Address        string
-	App            string
-	Cluster        string
-	MasterInstance string
-	DashboardAddr  string
+	cfg *cutil.ConsoleConfig
+	cli *client.MasterGClient
 }
 
-func NewMonitorService(addr, app, cluster, masterInstance string, dashboardAddr string) *MonitorService {
+func NewMonitorService(cfg *cutil.ConsoleConfig, cli *client.MasterGClient) *MonitorService {
+
 	return &MonitorService{
-		Address:        addr,
-		App:            app,
-		Cluster:        cluster,
-		MasterInstance: masterInstance,
-		DashboardAddr:  dashboardAddr,
+		cfg: cfg,
+		cli: cli,
 	}
 }
 
-func (fs *MonitorService) empty(ctx context.Context, args struct {
+func (ms *MonitorService) empty(ctx context.Context, args struct {
 	Empty bool
 }) bool {
 	return args.Empty
 }
 
-func (fs *MonitorService) Dashboard(ctx context.Context, args struct{}) string {
-	return fs.DashboardAddr
+type MachineVersion struct {
+	IP          string
+	VersionValue *proto.VersionValue
+	Message     string
+}
+
+func ErrMachineVersion(ip string, model string, err error) *MachineVersion {
+	return &MachineVersion{
+		IP: ip,
+		VersionValue: &proto.VersionValue{
+			Model: model,
+		},
+		Message: err.Error(),
+	}
+}
+
+func (ms *MonitorService) VersionCheck(ctx context.Context, args struct{}) ([]*MachineVersion, error) {
+	var result []*MachineVersion
+
+	vi := proto.MakeVersion("console")
+	result = append(result, &MachineVersion{
+		IP:          "self",
+		VersionValue: &vi,
+		Message:     "success",
+	})
+
+	query, err := ms.cli.Query(ctx, proto.AdminClusterAPI, client.NewRequest(ctx, `{
+		clusterView{
+			dataNodes{
+				addr
+			},
+			metaNodes{
+				addr
+			}
+		}
+	}`))
+
+	if err != nil {
+		return nil, err
+	}
+
+	for _, m := range ms.cfg.MasterAddr {
+		ip := strings.Split(m, ":")[0]
+		get, err := http.Get(fmt.Sprintf("http://%s/version", m))
+		if err != nil {
+			result = append(result, ErrMachineVersion(ip, "master", err))
+			continue
+		}
+
+		all, err := ioutil.ReadAll(get.Body)
+		if err != nil {
+			result = append(result, ErrMachineVersion(ip, "master", err))
+			continue
+		}
+
+		vi := &proto.VersionValue{}
+
+		if err := json.Unmarshal(all, vi); err != nil {
+			result = append(result, ErrMachineVersion(ip, "master", err))
+			continue
+		}
+
+		result = append(result, &MachineVersion{
+			IP:          ip,
+			VersionValue: vi,
+			Message:     "success",
+		})
+	}
+
+	dList := query.GetValue("clusterView", "dataNodes").([]interface{})
+	for _, d := range dList {
+		ip := strings.Split(d.(map[string]interface{})["addr"].(string), ":")[0]
+		get, err := http.Get(fmt.Sprintf("http://%s:%s/version", ip, ms.cfg.DataExporterPort))
+		if err != nil {
+			result = append(result, ErrMachineVersion(ip, "data", err))
+			continue
+		}
+
+		all, err := ioutil.ReadAll(get.Body)
+		if err != nil {
+			result = append(result, ErrMachineVersion(ip, "data", err))
+			continue
+		}
+
+		vi := &proto.VersionValue{}
+
+		if err := json.Unmarshal(all, vi); err != nil {
+			result = append(result, ErrMachineVersion(ip, "data", err))
+			continue
+		}
+
+		result = append(result, &MachineVersion{
+			IP:          ip,
+			VersionValue: vi,
+			Message:     "success",
+		})
+	}
+
+	mList := query.GetValue("clusterView", "metaNodes").([]interface{})
+	for _, m := range mList {
+		ip := strings.Split(m.(map[string]interface{})["addr"].(string), ":")[0]
+		get, err := http.Get(fmt.Sprintf("http://%s:%s/version", ip, ms.cfg.DataExporterPort))
+		if err != nil {
+			result = append(result, ErrMachineVersion(ip, "meta", err))
+			continue
+		}
+
+		all, err := ioutil.ReadAll(get.Body)
+		if err != nil {
+			result = append(result, ErrMachineVersion(ip, "meta", err))
+			continue
+		}
+
+		vi := &proto.VersionValue{}
+
+		if err := json.Unmarshal(all, vi); err != nil {
+			result = append(result, ErrMachineVersion(ip, "meta", err))
+			continue
+		}
+
+		result = append(result, &MachineVersion{
+			IP:          ip,
+			VersionValue: vi,
+			Message:     "success",
+		})
+	}
+
+	return result, nil
 }
 
 func (ms *MonitorService) RangeQuery(ctx context.Context, args struct {
@@ -48,10 +173,7 @@ func (ms *MonitorService) RangeQuery(ctx context.Context, args struct {
 	Step  uint32
 }) (string, error) {
 
-	args.Query = strings.ReplaceAll(args.Query, "$app", ms.App)
-	args.Query = strings.ReplaceAll(args.Query, "$cluster", ms.Cluster)
-	args.Query = strings.ReplaceAll(args.Query, "$master_instance", ms.MasterInstance)
-	args.Query = strings.ReplaceAll(args.Query, "$instance", ms.MasterInstance)
+	args.Query = strings.ReplaceAll(args.Query, "$cluster", ms.cfg.MonitorCluster)
 
 	param := url.Values{}
 	param.Set("query", args.Query)
@@ -59,7 +181,7 @@ func (ms *MonitorService) RangeQuery(ctx context.Context, args struct {
 	param.Set("end", strconv.Itoa(int(args.End)))
 	param.Set("step", strconv.Itoa(int(args.Step)))
 
-	resp, err := http.DefaultClient.Get(ms.Address + "/api/v1/query_range?" + param.Encode())
+	resp, err := http.DefaultClient.Get(ms.cfg.MonitorAddr + "/api/v1/query_range?" + param.Encode())
 
 	if err != nil {
 		return "", err
@@ -82,10 +204,7 @@ func (ms *MonitorService) RangeQueryURL(ctx context.Context, args struct {
 		return "", err
 	}
 
-	args.Query = strings.ReplaceAll(args.Query, "$app", ms.App)
-	args.Query = strings.ReplaceAll(args.Query, "$cluster", ms.Cluster)
-	args.Query = strings.ReplaceAll(args.Query, "$instance", ms.MasterInstance)
-	args.Query = strings.ReplaceAll(args.Query, "$master_instance", ms.MasterInstance)
+	args.Query = strings.ReplaceAll(args.Query, "$cluster", ms.cfg.MonitorCluster)
 
 	param := url.Values{}
 	param.Set("query", args.Query)
@@ -93,7 +212,7 @@ func (ms *MonitorService) RangeQueryURL(ctx context.Context, args struct {
 	param.Set("end", strconv.Itoa(int(args.End)))
 	param.Set("step", strconv.Itoa(int(args.Step)))
 
-	return ms.Address + "/api/v1/query_range?" + param.Encode(), nil
+	return ms.cfg.MonitorAddr + "/api/v1/query_range?" + param.Encode(), nil
 }
 
 func (ms *MonitorService) Query(ctx context.Context, args struct {
@@ -105,15 +224,12 @@ func (ms *MonitorService) Query(ctx context.Context, args struct {
 		return "", err
 	}
 
-	args.Query = strings.ReplaceAll(args.Query, "$app", ms.App)
-	args.Query = strings.ReplaceAll(args.Query, "$cluster", ms.Cluster)
-	args.Query = strings.ReplaceAll(args.Query, "$instance", ms.MasterInstance)
-	args.Query = strings.ReplaceAll(args.Query, "$master_instance", ms.MasterInstance)
+	args.Query = strings.ReplaceAll(args.Query, "$cluster", ms.cfg.MonitorCluster)
 
 	param := url.Values{}
 	param.Set("query", args.Query)
 
-	resp, err := http.DefaultClient.Get(ms.Address + "/api/v1/query?" + param.Encode())
+	resp, err := http.DefaultClient.Get(ms.cfg.MonitorAddr + "/api/v1/query?" + param.Encode())
 
 	if err != nil {
 		return "", err
@@ -149,14 +265,13 @@ func (ms *MonitorService) FuseClientList(ctx context.Context, args struct{}) ([]
 	}
 
 	query := `up{app="$app", role="fuseclient", cluster="$cluster"}`
-	query = strings.ReplaceAll(query, "$app", ms.App)
-	query = strings.ReplaceAll(query, "$cluster", ms.Cluster)
+	query = strings.ReplaceAll(query, "$cluster", ms.cfg.MonitorCluster)
 
 	param := url.Values{}
 	param.Set("query", query)
 	param.Set("time", strconv.Itoa(int(time.Now().Unix())))
 
-	resp, err := http.DefaultClient.Get(ms.Address + "/api/v1/query?" + param.Encode())
+	resp, err := http.DefaultClient.Get(ms.cfg.MonitorAddr + "/api/v1/query?" + param.Encode())
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +309,8 @@ func (ms *MonitorService) Schema() *graphql.Schema {
 	query.FieldFunc("RangeQuery", ms.RangeQuery)
 	query.FieldFunc("RangeQueryURL", ms.RangeQueryURL)
 	query.FieldFunc("_empty", ms.empty)
-	query.FieldFunc("Dashboard", ms.Dashboard)
 	query.FieldFunc("FuseClientList", ms.FuseClientList)
+	query.FieldFunc("VersionCheck", ms.VersionCheck)
+
 	return schema.MustBuild()
 }

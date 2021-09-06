@@ -1,0 +1,295 @@
+@charset "utf-8";
+/* CSS Document */
+
+/* ===== 头部 ===== */
+.header {
+  position: relative;
+  z-index: 100;
+  width: 100%;
+  height: 60px;
+  padding: 0 20px;
+  line-height: 60px;
+  background-color: #fff;
+  box-shadow: 0 1px 5px 0 rgba(131,131,131,0.2);
+  box-sizing: border-box;
+  color: #fff;
+}
+.header .right {
+  float: right;
+}
+.header .link {
+  float: left;
+  height: 60px;
+}
+.header .link i{
+  width: 24px;
+  height: 60px;
+  font-size: 24px;
+  color: #CBCBCB;
+  float: left;
+}
+.header .link .en-icon {
+  background: url("../../assets/images/en-img.png") left center no-repeat;
+  background-size: 24px 24px;
+}
+.header .link .zh-icon {
+  background: url("../../assets/images/zh-img.png") left center no-repeat;
+  background-size: 24px 24px;
+}
+.header .link i.file-icon {
+  background: url("../../assets/images/file-img.png") left center no-repeat;
+  background-size: 20px 20px;
+}
+.header .link i.warn-icon {
+  background: url("../../assets/images/warn-img.png") left center no-repeat;
+  background-size: 16px 20px;
+}
+.header .link i.warn-icon:hover {
+  background: url("../../assets/images/warn-img-hover.png") left center no-repeat;
+  background-size: 16px 20px;
+  transition: all .5s ease;
+}
+.header .user {
+  line-height: 60px;
+  padding: 0 5px 0 20px;
+  cursor: pointer;
+  float: right;
+  border-left: 1px solid #e0e0e0;
+}
+.header .user .head-icon {
+  display: inline-block;
+  width: 38px;
+  height: 38px;
+  overflow: hidden;
+  margin-right: 5px;
+  vertical-align: middle;
+  border-radius: 50%;
+  background: #E4E4E4;
+}
+.header .user .head-icon img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* ===== 主结构 ===== */
+.content {
+  margin: 15px;
+  padding: 15px;
+  min-height: 500px;
+  overflow: hidden;
+  background-color: #fff;
+}
+/* ===== 主内容区域 ===== */
+.cluster {
+  width: 100%;
+  overflow: hidden;
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px 0 rgba(172, 215, 255, 0.11);
+  padding: 20px;
+  box-sizing: border-box
+}
+/* ===== 侧导航设置 ===== */
+.el-menu{
+  background-color: #fff;
+  color: #07268D;
+  padding: 0 15px;
+}
+.el-menu-item-group__title {
+  padding: 0;
+}
+.el-menu-item {
+  margin-bottom: 20px;
+  height: 35px;
+  line-height: 32px;
+  color: #D5D7DB;
+  border-radius: 18px;
+}
+.el-submenu__title {
+  color: #D5D7DB;
+}
+.el-submenu .el-menu-item {
+  background-color: #fff;
+  color: #07268D;
+}
+.el-submenu__title:hover {
+  background-color: transparent;
+  border-radius: 18px;
+}
+
+.el-menu-item:focus, .el-menu-item:hover {
+  background-color: transparent;
+  color: #fff;
+}
+
+.el-menu-item.is-active {
+  background-color: #fff;
+  border-radius: 18px;
+  color: #07268D;
+}
+
+/* ===== element table ===== */
+.el-table {
+  font-size: 12px;
+  color: #222;
+}
+.el-table thead {
+  color: #222;
+  font-weight: bold;
+}
+.el-table th{
+  background: rgba(244,246,252,1);
+}
+
+/* ===== element pagination ===== */
+.page-tips{
+  line-height: 32px;
+  font-family: Helvetica;
+  font-size: 14px;
+  color: rgba(96,98,102,1);
+}
+
+.el-pagination{
+  font-weight: normal;
+}
+.el-pager li.active{
+  color:#07268D;
+}
+/* ===== element input ===== */
+.el-input__inner {
+  height: 32px;
+  line-height: 32px;
+  border-radius: 2px;
+}
+.el-input__icon {
+  line-height: 32px;
+}
+
+/* ===== element button ===== */
+.el-button {
+  padding: 8px 20px;
+  border-radius: 2px;
+}
+.el-table .cell .el-button {
+  margin-left: 5px;
+  padding: 0 8px 0 0;
+  color: #466BE4;
+  border-right: 1px solid #466BE4;
+}
+.el-table .cell .el-button:last-child {
+  border-right: 0;
+}
+
+/* ===== element dialog ===== */
+.el-dialog__header {
+  padding-bottom: 20px;
+  border-bottom: 1px solid #EBEEF5;
+}
+
+/* ===== element message-box ===== */
+.el-message-box {
+  width: 500px;
+}
+.el-message-box__header {
+  padding-bottom: 20px;
+  border-bottom: 1px solid #EBEEF5;
+}
+.el-message-box__content {
+  padding: 30px 15px;
+}
+
+/* ===== element form ===== */
+.el-form-item__label {
+  line-height: 0;
+  padding: 0;
+  color: #333;
+}
+
+/* ===== element el-checkbox ===== */
+.author .el-checkbox {
+  display: block;
+  margin-bottom: 15px;
+}
+
+/* ===== element el-upload ===== */
+.volume .el-upload-dragger {
+  width: 530px !important;
+}
+
+/* ===== other public styles ===== */
+.delete-tip {
+  padding-bottom: 20px;
+  line-height: 30px;
+  text-align: center;
+  color: #333;
+}
+.delete-tip .warn img {
+  padding-right: 5px;
+  width: 20px;
+  height: 20px;
+}
+.inline-block{
+  display: inline-block;
+}
+
+/* ===== dashboard public styles ===== */
+.dash-con .metrics {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.dash-con .metrics li {
+  width: calc( 50% - 10px);
+  margin-right: 10px;
+  margin-bottom: 20px;
+  box-sizing: border-box;
+  height: 305px;
+  border-radius: 4px;
+  border: 1px solid #F1F1F1;
+  text-align: center;
+  box-shadow: 0 2px 5px 0 rgba(85,85,85,0.13);
+}
+.dash-con .metrics .last-li{
+  width: 100%;
+}
+.dash-con .metrics li h4{
+  padding: 14px;
+  font-weight: 600;
+  font-size: 14px;
+  color: rgba(51,51,51,1);
+}
+.dash-con .metrics li h4 span{
+  max-width: calc(100% - 50px);
+  display: inline-block;
+  word-break: keep-all;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dash-con .metrics li .charts-block{
+  height: calc(100% - 45px);
+  visibility: hidden;
+}
+.dash-con .metrics li .visible{
+  visibility: visible;
+}
+.cont-tips{
+  font-size: 20px;
+  margin-top: 100px;
+}
+.cont-loading{
+  text-align: center;
+  font-size: 20px;
+  margin-top: 100px;
+}
+.dash-sel-b {
+  min-width: 250px;
+}
+.dash-sel-b .el-select{
+  width: 100%;
+}
+@media screen and (max-width: 1200px) {
+  .dash-con .metrics li {
+    width: 100%;
+  }
+}

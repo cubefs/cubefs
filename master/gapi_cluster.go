@@ -148,6 +148,31 @@ func (s *ClusterService) registerObject(schema *schemabuilder.Schema) {
 		return n.metaPartitionInfos
 	})
 
+	object = schema.Object("metaPartition", MetaPartition{})
+	object.FieldFunc("missNodes", func(ctx context.Context, n *MetaPartition) []string {
+		var addrs []string
+		n.RLock()
+		defer n.RUnlock()
+		for addr, _ := range n.MissNodes {
+			addrs = append(addrs, addr)
+		}
+		return addrs
+	})
+	object.FieldFunc("volName", func(ctx context.Context, n *MetaPartition) string {
+		return n.volName
+	})
+
+	object = schema.Object("dataPartition", DataPartition{})
+	object.FieldFunc("missNodes", func(ctx context.Context, n *DataPartition) []string {
+		var addrs []string
+		n.RLock()
+		defer n.RUnlock()
+		for addr, _ := range n.MissingNodes {
+			addrs = append(addrs, addr)
+		}
+		return addrs
+	})
+
 }
 
 func (s *ClusterService) registerQuery(schema *schemabuilder.Schema) {
@@ -161,6 +186,8 @@ func (s *ClusterService) registerQuery(schema *schemabuilder.Schema) {
 	query.FieldFunc("masterList", s.masterList)
 	query.FieldFunc("getTopology", s.getTopology)
 	query.FieldFunc("alarmList", s.alarmList)
+	query.FieldFunc("metaPartitionList", s.metaPartitionList)
+	query.FieldFunc("dataPartitionList", s.dataPartitionList)
 }
 
 func (s *ClusterService) registerMutation(schema *schemabuilder.Schema) {
@@ -430,6 +457,22 @@ func (s *ClusterService) metaNodeList(ctx context.Context, args struct{}) ([]*Me
 		return true
 	})
 	return all, nil
+}
+
+func (s *ClusterService) metaPartitionList(ctx context.Context, args struct{}) ([]*MetaPartition, error) {
+	var result []*MetaPartition
+	for _, vol := range s.cluster.allVols() {
+		result = append(result, vol.allMetaPartition()...)
+	}
+	return result, nil
+}
+
+func (s *ClusterService) dataPartitionList(ctx context.Context, args struct{}) ([]*DataPartition, error) {
+	var result []*DataPartition
+	for _, vol := range s.cluster.allVols() {
+		result = append(result, vol.allDataPartition()...)
+	}
+	return result, nil
 }
 
 func (m *ClusterService) addMetaNode(ctx context.Context, args struct {

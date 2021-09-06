@@ -97,6 +97,19 @@ func (s *VolumeService) registerObject(schema *schemabuilder.Schema) {
 		return v.createTime, nil
 	})
 
+	object.FieldFunc("inodeCount", func(ctx context.Context, v *Vol) (int64, error) {
+		if _, _, err := permissions(ctx, USER|ADMIN); err != nil {
+			return 0, err
+		}
+		var count uint64 = 0
+		v.mpsLock.RLock()
+		defer v.mpsLock.RUnlock()
+		for _, p := range v.MetaPartitions {
+			count += p.InodeCount
+		}
+		return int64(count), nil
+	})
+
 }
 
 func (s *VolumeService) registerQuery(schema *schemabuilder.Schema) {
@@ -191,7 +204,7 @@ func (s *VolumeService) volPermission(ctx context.Context, args struct {
 func (s *VolumeService) createVolume(ctx context.Context, args struct {
 	Name, Owner, ZoneName, Description                 string
 	Capacity, DataPartitionSize, MpCount, DpReplicaNum uint64
-	FollowerRead, Authenticate, CrossZone, EnableToken, VolMutex bool
+	FollowerRead, Authenticate, CrossZone, EnableToken bool
 }) (*Vol, error) {
 	uid, per, err := permissions(ctx, ADMIN|USER)
 	if err != nil {
@@ -206,7 +219,7 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 		return nil, fmt.Errorf("[%s] not has permission to create volume for [%s]", uid, args.Owner)
 	}
 
-	vol, err := s.cluster.createVol(args.Name, args.Owner, args.ZoneName, args.Description, int(args.MpCount), int(args.DpReplicaNum), int(args.DataPartitionSize), int(args.Capacity), args.FollowerRead, args.Authenticate, args.EnableToken, false, args.VolMutex)
+	vol, err := s.cluster.createVol(args.Name, args.Owner, args.ZoneName, args.Description, int(args.MpCount), int(args.DpReplicaNum), int(args.DataPartitionSize), int(args.Capacity), args.FollowerRead, args.Authenticate, args.EnableToken, false, false)
 	if err != nil {
 		return nil, err
 	}

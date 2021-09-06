@@ -47,7 +47,6 @@ func TestServer(t *testing.T) {
 		"listen": "8989",
 		"masterAddr": ["127.0.0.1:8080"],
 		"monitor_addr" :"http://cfsthanos-yf01.cfsmon.svc.zyx02.n.jd.local",
-		"monitor_app": "cfs",
 		"monitor_cluster": "spark"
 	}`)
 

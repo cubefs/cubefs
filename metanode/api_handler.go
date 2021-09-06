@@ -47,6 +47,13 @@ func (api *APIResponse) Marshal() ([]byte, error) {
 
 // register the APIs
 func (m *MetaNode) registerAPIHandler() (err error) {
+	http.HandleFunc(proto.VersionPath, func(w http.ResponseWriter, _ *http.Request) {
+		version := proto.MakeVersion("MetaNode")
+		marshal, _ := json.Marshal(version)
+		if _, err := w.Write(marshal); err != nil {
+			log.LogErrorf("write version has err:[%s]", err.Error())
+		}
+	})
 	http.HandleFunc("/getPartitions", m.getPartitionsHandler)
 	http.HandleFunc("/getPartitionById", m.getPartitionByIDHandler)
 	http.HandleFunc("/getInode", m.getInodeHandler)

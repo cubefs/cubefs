@@ -16,6 +16,9 @@ package proto
 
 // api
 const (
+	// All
+	VersionPath = "/version"
+
 	// Admin APIs
 	AdminGetCluster                = "/admin/getCluster"
 	AdminGetDataPartition          = "/dataPartition/get"

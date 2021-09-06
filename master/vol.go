@@ -181,6 +181,23 @@ func (vol *Vol) addMetaPartition(mp *MetaPartition) {
 	vol.MetaPartitions[mp.PartitionID] = mp
 }
 
+func (vol *Vol) allMetaPartition() []*MetaPartition {
+	vol.mpsLock.RLock()
+	defer vol.mpsLock.RUnlock()
+	result := make([]*MetaPartition, 0, len(vol.MetaPartitions))
+	for _, mp := range vol.MetaPartitions {
+		result = append(result, mp)
+	}
+	return result
+}
+
+func (vol *Vol) allDataPartition() []*DataPartition {
+	dps := vol.dataPartitions
+	dps.RLock()
+	defer dps.RUnlock()
+	return append([]*DataPartition{}, dps.partitions...)
+}
+
 func (vol *Vol) metaPartition(partitionID uint64) (mp *MetaPartition, err error) {
 	vol.mpsLock.RLock()
 	defer vol.mpsLock.RUnlock()
