@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/master"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/iputil"
@@ -106,8 +105,12 @@ func reportVersion(cfg *config.Config, masterAddr []string, version string) (err
 	return
 }
 
+const (
+	ClusterName       = "clusterName"
+)
+
 func getCluster(cfg *config.Config, masterAddr []string) string {
-	cluster := cfg.GetString(master.ClusterName)
+	cluster := cfg.GetString(ClusterName)
 	if cluster == "" {
 		cluster = strings.Join(masterAddr, ",")
 	}
