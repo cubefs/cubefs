@@ -122,7 +122,7 @@ const (
 	maxNumberOfDataPartitionsForExpansion        = 100
 	EmptyCrcValue                         uint32 = 4045511210
 	DefaultZoneName                              = proto.DefaultZoneName
-	retrySendSyncTaskInternal                    = 3 * time.Second
+	retrySendSyncTaskInternal                    = 5 * time.Second
 	defaultRangeOfCountDifferencesAllowed        = 50
 	defaultMinusOfMaxInodeID                     = 1000
 	defaultPercentMinusOfInodeCount              = 0.20
