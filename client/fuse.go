@@ -276,6 +276,16 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 	http.HandleFunc(log.GetLogPath, log.GetLog)
 
 	go func() {
+		if opt.Profport != "" {
+			syslog.Println("Start pprof with port:", opt.Profport)
+			if err := http.ListenAndServe(":"+opt.Profport, nil); err == nil {
+				return
+			}
+		}
+
+		syslog.Printf("Start with config pprof[%v] falied, try %v to %v\n", opt.Profport, log.DefaultProfPort,
+			log.MaxProfPort)
+
 		for port := log.DefaultProfPort; port <= log.MaxProfPort; port++ {
 			syslog.Println("Start pprof with port:", port)
 			if err := http.ListenAndServe(":"+strconv.Itoa(port), nil); err != nil {
@@ -283,11 +293,6 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 				continue
 			}
 			break
-		}
-		syslog.Println("Try all prof port failed!")
-		if opt.Profport != "" {
-			syslog.Println("Start pprof with port:", opt.Profport)
-			http.ListenAndServe(":"+opt.Profport, nil)
 		}
 	}()
 
