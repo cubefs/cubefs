@@ -1212,6 +1212,10 @@ func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) er
 		return err
 	}
 
+	if offset >= inoInfo.Size {
+		return nil
+	}
+
 	if err = v.ec.OpenStreamWithSize(ino, int(offset+size)); err != nil {
 		log.LogErrorf("ReadFile: data open stream fail, Inode(%v) err(%v)", ino, err)
 		return err
@@ -1253,7 +1257,7 @@ func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) er
 			}
 			offset += uint64(n)
 		}
-		if err == io.EOF {
+		if n == 0 || err == io.EOF {
 			break
 		}
 	}
