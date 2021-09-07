@@ -174,7 +174,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 		}
 	}
-	if m.config.nodeSetCapacity < 3 {
+	if m.config.nodeSetCapacity < 64 {
 		m.config.nodeSetCapacity = defaultNodeSetCapacity
 	}
 

@@ -200,6 +200,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		LeaderAddr:             m.leaderInfo.addr,
 		DisableAutoAlloc:       m.cluster.DisableAutoAllocate,
 		AutoMergeNodeSet:       m.cluster.AutoMergeNodeSet,
+		NodeSetCapacity:        m.cluster.cfg.nodeSetCapacity,
 		MetaNodeThreshold:      m.cluster.cfg.MetaNodeThreshold,
 		DpRecoverPool:          m.cluster.cfg.DataPartitionsRecoverPoolSize,
 		MpRecoverPool:          m.cluster.cfg.MetaPartitionsRecoverPoolSize,
@@ -800,6 +801,9 @@ func (m *Server) setupAutoMergeNodeSet(w http.ResponseWriter, r *http.Request) {
 	}
 	m.cluster.AutoMergeNodeSet = status
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set setupAutoMergeNodeSet to %v successfully", status)))
+	if m.cluster.AutoMergeNodeSet {
+		m.cluster.checkMergeZoneNodeset()
+	}
 }
 
 func (m *Server) mergeNodeSet(w http.ResponseWriter, r *http.Request) {

@@ -587,7 +587,6 @@ func (c *Cluster) loadClusterValue() (err error) {
 			return err
 		}
 		c.cfg.MetaNodeThreshold = cv.Threshold
-		c.cfg.nodeSetCapacity = defaultNodeSetCapacity
 		c.DisableAutoAllocate = cv.DisableAutoAllocate
 		c.updateMetaNodeDeleteBatchCount(cv.MetaNodeDeleteBatchCount)
 		c.updateMetaNodeDeleteWorkerSleepMs(cv.MetaNodeDeleteWorkerSleepMs)

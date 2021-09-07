@@ -128,7 +128,7 @@ func createDefaultMasterServerForTest() *Server {
 	}
 	commonVol = vol
 	fmt.Printf("vol[%v] has created\n", commonVol.Name)
-
+	fmt.Println("nodeCap is", testServer.cluster.cfg.nodeSetCapacity)
 	if err = createUserWithPolicy(testServer); err != nil {
 		panic(err)
 	}
@@ -1252,13 +1252,13 @@ func TestGetVolWriteMutex(t *testing.T) {
 	getReqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminGetVolMutex, commonVolName)
 	fmt.Println(getReqURL)
 	reply := process(getReqURL, t)
-	if _, ok := reply.Data.(map[string]interface {}); !ok{
+	if _, ok := reply.Data.(map[string]interface{}); !ok {
 		t.Errorf("Get volume write mutest failed, errorInfo: %v", reply.Data)
 	}
-	if _, ok := reply.Data.(map[string]interface {})["ApplyTime"]; !ok {
+	if _, ok := reply.Data.(map[string]interface{})["ApplyTime"]; !ok {
 		t.Errorf("Get volume write mutest failed, errorInfo: %v", reply.Data)
 	}
-	if _, ok := reply.Data.(map[string]interface {})["ClientIP"]; !ok {
+	if _, ok := reply.Data.(map[string]interface{})["ClientIP"]; !ok {
 		t.Errorf("Get volume write mutest failed, errorInfo: %v", reply.Data)
 	}
 }

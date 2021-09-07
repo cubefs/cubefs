@@ -127,6 +127,7 @@ type ClusterView struct {
 	LeaderAddr             string
 	DisableAutoAlloc       bool
 	AutoMergeNodeSet       bool
+	NodeSetCapacity        int
 	MetaNodeThreshold      float32
 	DpRecoverPool          int32
 	MpRecoverPool          int32
