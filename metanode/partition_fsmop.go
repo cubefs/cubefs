@@ -86,7 +86,7 @@ func (mp *metaPartition) fsmUpdatePartition(end uint64) (status uint8,
 }
 
 func (mp *metaPartition) confAddNode(req *proto.
-	AddMetaPartitionRaftMemberRequest, index uint64) (updated bool, err error) {
+AddMetaPartitionRaftMemberRequest, index uint64) (updated bool, err error) {
 	var (
 		heartbeatPort int
 		replicaPort   int
@@ -287,10 +287,18 @@ func (mp *metaPartition) confUpdateNode(req *proto.MetaPartitionDecommissionRequ
 
 func (mp *metaPartition) delOldExtentFile(buf []byte) (err error) {
 	fileName := string(buf)
+	id, e := delExtNameID(fileName)
+	if e != nil {
+		err = fmt.Errorf("load file:[%s] format err:[%v] so skip", fileName, e)
+		log.LogErrorf(err.Error())
+		return
+	}
+
 	infos, err := ioutil.ReadDir(mp.config.RootDir)
 	if err != nil {
 		return
 	}
+
 	for _, f := range infos {
 		if f.IsDir() {
 			continue
@@ -298,12 +306,14 @@ func (mp *metaPartition) delOldExtentFile(buf []byte) (err error) {
 		if !strings.HasPrefix(f.Name(), prefixDelExtent) {
 			continue
 		}
-		if f.Name() <= fileName {
-			// TODO Unhandled errors
-			_ = os.Remove(path.Join(mp.config.RootDir, f.Name()))
+		fid, e := delExtNameID(f.Name())
+		if e != nil {
+			log.LogErrorf("load file:[%s] format err:[%v] so skip", fileName, e)
 			continue
 		}
-		break
+		if fid <= id {
+			_ = os.Remove(path.Join(mp.config.RootDir, f.Name()))
+		}
 	}
 	return
 }
