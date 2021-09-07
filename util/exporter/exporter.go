@@ -16,12 +16,13 @@ package exporter
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
 
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -78,29 +79,33 @@ func Init(role string, cfg *config.Config) {
 	EnablePid = cfg.GetBoolWithDefault(ConfigKeyEnablePid, false)
 	log.LogInfo("enable report partition id info? ", EnablePid)
 
+	if len(cfg.GetString(ConfigKeyPushAddr)) > 0 {
+		enablePush = true
+	}
+
 	port := cfg.GetInt64(ConfigKeyExporterPort)
-	if port == 0 {
-		log.LogInfof("%v exporter port not set", port)
+	if port == 0 && !enablePush {
+		log.LogInfof("%v exporter port and pushAddr not set", port)
 		return
 	}
+
 	exporterPort = port
 	enabledPrometheus = true
-	
-	if len(cfg.GetString(ConfigKeyPushAddr)) > 0 {
-               	enablePush = true
-        }
 
 	http.Handle(PromHandlerPattern, promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
 		Timeout: 5 * time.Second,
 	}))
+
 	namespace = AppName + "_" + role
 	addr := fmt.Sprintf(":%d", port)
-	go func() {
-		err := http.ListenAndServe(addr, nil)
-		if err != nil {
-			log.LogError("exporter http serve error: ", err)
-		}
-	}()
+	if port != 0 {
+		go func() {
+			err := http.ListenAndServe(addr, nil)
+			if err != nil {
+				log.LogError("exporter http serve error: ", err)
+			}
+		}()
+	}
 
 	collect()
 
