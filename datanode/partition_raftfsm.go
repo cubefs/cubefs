@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"sync/atomic"
 
+	"github.com/chubaofs/chubaofs/util/exporter"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tiglabs/raft"
@@ -30,10 +32,27 @@ import (
 
 // Apply puts the data onto the disk.
 func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
-	opItem, err := UnmarshalRandWriteRaftLog(command)
-	if err != nil {
-		err = fmt.Errorf("[Apply] ApplyID(%v) Partition(%v) unmarshal failed(%v)", index, dp.partitionID, err)
-		log.LogErrorf(err.Error())
+	defer func() {
+		if err == nil || !IsSysErr(err) {
+			dp.uploadApplyID(index)
+		}
+		if err != nil {
+			if IsSysErr(err) {
+				msg := fmt.Sprintf("partition [id: %v, disk: %v] apply command [index: %v] occurred system error and will be stop: %v",
+					dp.partitionID, dp.Disk().Path, index, err)
+				log.LogErrorf(msg)
+				exporter.Warning(msg)
+				dp.Disk().space.DetachDataPartition(dp.partitionID)
+				dp.Disk().DetachDataPartition(dp)
+				dp.Stop()
+				return
+			}
+			log.LogWarnf("partition [id: %v, disk: %v] apply command [index: %v] failed: %v",
+				dp.partitionID, dp.Disk().Path, index, err)
+		}
+	}()
+	var opItem *rndWrtOpItem
+	if opItem, err = UnmarshalRandWriteRaftLog(command); err != nil {
 		resp = proto.OpErr
 		return
 	}
@@ -45,13 +64,18 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 // It does not support updating an existing member at this point.
 func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, index uint64) (resp interface{}, err error) {
 	defer func(index uint64) {
+		if err != nil {
+			msg := fmt.Sprintf("partition [id: %v, disk: %v] apply member change [index: %v] failed and will be stop: %v",
+				dp.partitionID, dp.Disk().Path, index, err)
+			log.LogErrorf(msg)
+			exporter.Warning(msg)
+			dp.Disk().DetachDataPartition(dp)
+			dp.Stop()
+			return
+		}
 		dp.uploadApplyID(index)
+		log.LogWarnf("partition [id: %v, disk: %v] apply member change [index: %v] %v %v", dp.partitionID, dp.Disk(), index, confChange.Type, confChange.Peer)
 	}(index)
-
-	log.LogErrorf("[DataPartition->ApplyMemberChange] [partitionID: %v] start apply [index: %v, changeType: %v, peer: %v]",
-		dp.partitionID, index, confChange.Type, confChange.Peer)
-	defer log.LogErrorf("[DataPartition->ApplyMemberChange] [partitionID: %v] finish apply [index: %v, changeType: %v, peer: %v]",
-		dp.partitionID, index, confChange.Type, confChange.Peer)
 
 	// Change memory the status
 	var (

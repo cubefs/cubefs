@@ -19,6 +19,9 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"net"
+	"strings"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
 	"github.com/chubaofs/chubaofs/storage"
@@ -27,8 +30,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/statistics"
 	"github.com/chubaofs/chubaofs/util/tracing"
 	"github.com/tiglabs/raft"
-	"net"
-	"strings"
 )
 
 type RaftCmdItem struct {
@@ -221,12 +222,11 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 	defer func() {
 		if err == nil {
 			resp = proto.OpOk
-			dp.uploadApplyID(raftApplyID)
 		} else {
-			err = fmt.Errorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err(%v) retry[20]", raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err)
-			exporter.Warning(err.Error())
+			var msg = fmt.Sprintf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err(%v) retry[20]", raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err)
+			exporter.Warning(msg)
 			resp = proto.OpDiskErr
-			log.LogErrorf(err.Error())
+			log.LogErrorf(msg)
 		}
 	}()
 	log.LogWritef("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v)_CRC(%v)",
@@ -239,8 +239,8 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 		if err == nil {
 			break
 		}
-		if strings.Contains(err.Error(),"illegal") {
-			err=nil
+		if strings.Contains(err.Error(), "illegal") {
+			err = nil
 			break
 		}
 		if strings.Contains(err.Error(), storage.ExtentNotFoundError.Error()) {

@@ -21,6 +21,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"reflect"
 	"regexp"
 	"runtime"
 	"strings"
@@ -452,6 +453,17 @@ func (s *DataNode) incDiskErrCnt(partitionID uint64, err error, flag uint8) {
 	} else if flag == ReadFlag {
 		d.incReadErrCnt()
 	}
+}
+
+var (
+	staticReflectedErrnoType = reflect.TypeOf(syscall.Errno(0))
+)
+
+func IsSysErr(err error) (is bool) {
+	if err == nil {
+		return
+	}
+	return reflect.TypeOf(err) == staticReflectedErrnoType
 }
 
 func IsDiskErr(errMsg string) bool {

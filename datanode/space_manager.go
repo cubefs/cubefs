@@ -19,6 +19,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chubaofs/chubaofs/util/exporter"
+
 	"math"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -203,10 +205,13 @@ func (manager *SpaceManager) StartPartitions() {
 		go func(dp *DataPartition) {
 			defer wg.Done()
 			if err = dp.Start(); err != nil {
-				log.LogErrorf("dp [id:%v, path:%v] start failed: %v", dp.partitionID, dp.path, err)
 				manager.partitionMutex.Lock()
 				delete(manager.partitions, dp.partitionID)
 				manager.partitionMutex.Unlock()
+				dp.Disk().DetachDataPartition(dp)
+				msg := fmt.Sprintf("partition [id: %v, disk: %v] start failed: %v", dp.partitionID, dp.Disk().Path, err)
+				log.LogErrorf(msg)
+				exporter.Warning(msg)
 			}
 		}(dp)
 	}

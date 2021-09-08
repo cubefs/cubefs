@@ -410,8 +410,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor, parallelism int) {
 	}
 
 	var (
-		partitionID   uint64
-		partitionSize int
+		partitionID uint64
 	)
 
 	fileInfoList, err := ioutil.ReadDir(d.Path)
@@ -462,7 +461,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor, parallelism int) {
 				continue
 			}
 
-			if partitionID, partitionSize, err = unmarshalPartitionName(filename); err != nil {
+			if partitionID, _, err = unmarshalPartitionName(filename); err != nil {
 				log.LogErrorf("action[RestorePartition] unmarshal partitionName(%v) from disk(%v) err(%v) ",
 					filename, d.Path, err.Error())
 				continue
