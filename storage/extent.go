@@ -156,14 +156,7 @@ func (e *Extent) RestoreFromFS() (err error) {
 }
 
 // RestoreFromFS restores the entity data and status from the file stored on the filesystem.
-func (e *Extent) getStatFromFS() (err error) {
-	var (
-		info os.FileInfo
-	)
-	if info, err = os.Stat(e.filePath); err != nil {
-		err = fmt.Errorf("stat file %v: %v", e.file.Name(), err)
-		return
-	}
+func (e *Extent) getStatFromFS(info os.FileInfo) (err error) {
 	if IsTinyExtent(e.extentID) {
 		watermark := info.Size()
 		if watermark%PageSize != 0 {
