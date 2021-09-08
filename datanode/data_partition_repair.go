@@ -389,6 +389,9 @@ func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepa
 }
 
 func (dp *DataPartition) notifyFollower(ctx context.Context, wg *sync.WaitGroup, index int, members []*DataPartitionRepairTask) (err error) {
+	defer func() {
+		wg.Done()
+	}()
 	p := repl.NewPacketToNotifyExtentRepair(ctx, dp.partitionID) // notify all the followers to repair
 	var conn *net.TCPConn
 	replicas := dp.getReplicaClone()
@@ -401,7 +404,6 @@ func (dp *DataPartition) notifyFollower(ctx context.Context, wg *sync.WaitGroup,
 	p.Size = uint32(len(p.Data))
 	conn, err = gConnPool.GetConnect(target)
 	defer func() {
-		wg.Done()
 		log.LogInfof(fmt.Sprintf(ActionNotifyFollowerToRepair+" to host(%v) Partition(%v) failed (%v)", target, dp.partitionID, err))
 	}()
 	if err != nil {
