@@ -262,6 +262,11 @@ func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 	defer tracer.Finish()
 	pkg.SetCtx(tracer.Context())
 
+	err = dp.ExtentStore().CheckIsAvaliRandomWrite(pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size))
+	if err != nil {
+		return err
+	}
+
 	val, err := MarshalRandWriteRaftLog(pkg.Opcode, pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size), pkg.Data, pkg.CRC)
 	if err != nil {
 		return

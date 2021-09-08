@@ -700,6 +700,16 @@ func (s *ExtentStore) ReadTinyDeleteRecords(offset, size int64, data []byte) (cr
 	return
 }
 
+func (s *ExtentStore) CheckIsAvaliRandomWrite(extentID uint64, offset, size int64) (err error) {
+	var e *Extent
+	e, err = s.extentWithHeaderByExtentID(extentID)
+	if err != nil {
+		return
+	}
+	err = e.checkWriteParameter(offset, size, RandomWriteType)
+	return
+}
+
 // NextExtentID returns the next extentID. When the client sends the request to create an extent,
 // this function generates an unique extentID within the current partition.
 // This function can only be called by the leader.
