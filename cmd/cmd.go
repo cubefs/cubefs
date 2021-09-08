@@ -30,6 +30,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/chubaofs/chubaofs/monitor"
 
@@ -91,6 +92,7 @@ const (
 
 var (
 	startComplete         = false
+	startCost             time.Duration
 	HttpAPIPathSetTracing = "/tracing/set"
 	HttpAPIPathGetTracing = "/tracing/get"
 )
@@ -306,6 +308,8 @@ func run() error {
 	}
 
 	interceptSignal(server)
+
+	var startTime = time.Now()
 	if err = server.Start(cfg); err != nil {
 		log.LogErrorf("start service %v failed: %v", role, err)
 		log.LogFlush()
@@ -314,6 +318,7 @@ func run() error {
 		return err
 	}
 	startComplete = true
+	startCost = time.Since(startTime)
 
 	_ = daemonize.SignalOutcome(nil)
 
@@ -362,7 +367,13 @@ func startDaemon() error {
 }
 
 func statusHandler(w http.ResponseWriter, r *http.Request) {
-	var resp = struct{ StartComplete bool }{StartComplete: startComplete}
+	var resp = struct {
+		StartComplete bool
+		StarCost      time.Duration
+	}{
+		StartComplete: startComplete,
+		StarCost:      startCost,
+	}
 	if marshaled, err := json.Marshal(&resp); err == nil {
 		_, _ = w.Write(marshaled)
 	}
