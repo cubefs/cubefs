@@ -240,6 +240,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	s.space.SetClusterID(s.clusterID)
 
 	var wg sync.WaitGroup
+	var startTime = time.Now()
 	for _, d := range cfg.GetSlice(ConfigKeyDisks) {
 		log.LogDebugf("action[startSpaceManager] load disk raw config(%v).", d)
 
@@ -273,6 +274,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		}(&wg, path)
 	}
 	wg.Wait()
+	log.LogInfof("space manager loaded all disk cost [%v]", time.Since(startTime))
 	return nil
 }
 
