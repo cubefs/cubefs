@@ -176,7 +176,9 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace uint64, maxErrC
 	}
 	if _, err = manager.GetDisk(path); err != nil {
 		disk = NewDisk(path, reservedSpace, maxErrCnt, diskFDLimit, manager)
-		disk.RestorePartition(visitor,DiskLoadPartitionParallelism)
+		startTime := time.Now()
+		disk.RestorePartition(visitor, DiskLoadPartitionParallelism)
+		log.LogInfof("disk [%v] load compete cost [%v]", path, time.Since(startTime))
 		manager.putDisk(disk)
 		err = nil
 		go disk.autoComputeExtentCrc()

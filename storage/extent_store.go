@@ -34,7 +34,6 @@ import (
 
 	"hash/crc32"
 	"io"
-	"runtime"
 	"sort"
 	"strings"
 	"syscall"
@@ -299,7 +298,6 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 	}
 	atomic.StoreUint64(&s.baseExtentID, baseFileID)
 	log.LogInfof("datadir(%v) maxBaseId(%v)", s.dataPath, baseFileID)
-	runtime.GC()
 	return nil
 }
 

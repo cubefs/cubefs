@@ -447,7 +447,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor, parallelism int) {
 					exporter.Warning(msg)
 					return
 				}
-				log.LogDebugf("load partition [%v] complete cost [%v]",
+				log.LogInfof("partition [%v] load complete cost [%v]",
 					partitionFullPath, time.Since(startTime))
 				if visitor != nil {
 					visitor(partition)

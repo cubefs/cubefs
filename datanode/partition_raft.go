@@ -601,10 +601,6 @@ func (dp *DataPartition) storeAppliedID(applyIndex uint64) (err error) {
 // LoadAppliedID loads the applied IDs to the memory.
 func (dp *DataPartition) LoadAppliedID() (err error) {
 	filename := path.Join(dp.Path(), ApplyIndexFile)
-	if _, err = os.Stat(filename); err != nil {
-		err = nil
-		return
-	}
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
 		if err == os.ErrNotExist {
