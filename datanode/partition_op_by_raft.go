@@ -239,6 +239,10 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 		if err == nil {
 			break
 		}
+		if strings.Contains(err.Error(),"illegal") {
+			err=nil
+			break
+		}
 		if strings.Contains(err.Error(), storage.ExtentNotFoundError.Error()) {
 			err = nil
 			return
