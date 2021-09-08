@@ -130,8 +130,9 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	if err = s.parseConfig(cfg); err != nil {
 		return
 	}
-
+	log.LogErrorf("doStart parseConfig fininsh")
 	s.register(cfg)
+	log.LogErrorf("doStart register fininsh")
 	exporter.Init(s.clusterID, ModuleName, cfg)
 	exporter.RegistConsul(cfg)
 
@@ -139,11 +140,13 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	if err = s.startRaftServer(cfg); err != nil {
 		return
 	}
+	log.LogErrorf("doStart startRaftServer fininsh")
 
 	// create space manager (disk, partition, etc.)
 	if err = s.startSpaceManager(cfg); err != nil {
 		return
 	}
+	log.LogErrorf("doStart startSpaceManager fininsh")
 
 	// check local partition compare with master ,if lack,then not start
 	if err = s.checkLocalPartitionMatchWithMaster(); err != nil {
@@ -151,15 +154,19 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		exporter.Warning(err.Error())
 		return
 	}
+	log.LogErrorf("doStart checkLocalPartitionMatchWithMaster fininsh")
 
 	// start tcp listening
 	if err = s.startTCPService(); err != nil {
 		return
 	}
 
+	log.LogErrorf("doStart startTCPService fininsh")
+
 	// Start all loaded data partitions which managed by space manager,
 	// this operation will start raft partitions belong to data partitions.
 	s.space.StartPartitions()
+	log.LogErrorf("doStart start dataPartition raft  fininsh")
 	gHasLoadDataPartition = true
 
 	go s.registerHandler()
