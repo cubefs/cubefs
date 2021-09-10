@@ -39,13 +39,18 @@ func GetProcessCPUUsage(pid int) (usage float64, err error) {
 }
 
 func GetCPUCoreNumber() (n int) {
-	if _, err := os.Stat(containerConfigFilePath); err != nil {
-		//physical machine
-		n, _ = cpu.Counts(false)
+	var err error
+	defer func(){
+		if err != nil || n == 0 {
+			n, _ = cpu.Counts(false)
+		}
+	}()
+
+	if _, err = os.Stat(containerConfigFilePath); err != nil {
 		return
 	}
 
-	//container
+	//get cpu core number from container config file, if failed, get by cpu.Counts()
 	fp, err := os.OpenFile(containerConfigFilePath, os.O_RDONLY, 0644)
 	if err != nil {
 		return
