@@ -245,6 +245,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
 
+	//TODO: replace to ReadDirLimit_ll
 	children, err := d.super.mw.ReadDir_ll(d.info.Inode)
 	if err != nil {
 		log.LogErrorf("Readdir: ino(%v) err(%v)", d.info.Inode, err)
@@ -473,7 +474,7 @@ func (d *Dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fus
 		files := summaryInfo.Files
 		subdirs := summaryInfo.Subdirs
 		fbytes := summaryInfo.Fbytes
-		summaryStr := "Files:" + strconv.FormatInt(int64(files),10) + "," +
+		summaryStr := "Files:" + strconv.FormatInt(int64(files), 10) + "," +
 			"Dirs:" + strconv.FormatInt(int64(subdirs), 10) + "," +
 			"Bytes:" + strconv.FormatInt(int64(fbytes), 10)
 		value = []byte(summaryStr)

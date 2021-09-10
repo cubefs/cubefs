@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	RootIno = uint64(1)
+	RootIno    = uint64(1)
 	SummaryKey = "cbfs.dir.summary"
 )
 
@@ -79,9 +79,9 @@ type InodeInfo struct {
 }
 
 type SummaryInfo struct {
-	Files   int64	`json:"files"`
-	Subdirs int64	`json:"subdirs"`
-	Fbytes  int64	`json:"fbytes"`
+	Files   int64 `json:"files"`
+	Subdirs int64 `json:"subdirs"`
+	Fbytes  int64 `json:"fbytes"`
 }
 
 func (info *InodeInfo) Expiration() int64 {
@@ -317,6 +317,19 @@ type ReadDirOnlyResponse struct {
 	Children []Dentry `json:"children"`
 }
 
+// ReadDirRequest defines the request to read dir.
+type ReadDirLimitRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	ParentID    uint64 `json:"pino"`
+	Name        string `json:"name"`
+	Limit       uint64 `json:"limit"`
+}
+
+type ReadDirLimitResponse struct {
+	Children []Dentry `json:"children"`
+}
+
 // AppendExtentKeyRequest defines the request to append an extent key.
 type AppendExtentKeyRequest struct {
 	VolName     string    `json:"vol"`
@@ -526,7 +539,7 @@ type UpdateSummaryInfoRequest struct {
 	PartitionId uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	Key         string `json:"key"`
-	FileInc	int64	`json:"fileinc"`
-	DirInc	int64 	`json:"dirinc"`
-	ByteInc int64 	`json:"byteinc"`
+	FileInc     int64  `json:"fileinc"`
+	DirInc      int64  `json:"dirinc"`
+	ByteInc     int64  `json:"byteinc"`
 }

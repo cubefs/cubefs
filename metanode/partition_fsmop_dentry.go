@@ -180,6 +180,39 @@ func (mp *metaPartition) readDir(req *ReadDirReq) (resp *ReadDirResp) {
 	return
 }
 
+// read dentry from btree by limit count
+// if req.Name == "" and req.Limit == 0, it become readDir
+// else if req.Name != "" and req.Limit == 0, return dentries from pid:name to pid+1
+// else if req.Nmae == "" and req.Limit != 0, return dentries from pid with limit count
+// else if req.Name != "" and req.Limit != 0, return dentries from pid:name to pid:xxxx with limit count
+//
+func (mp *metaPartition) readDirLimit(req *ReadDirLimitReq) (resp *ReadDirLimitResp) {
+	resp = &ReadDirLimitResp{}
+	begDentry := &Dentry{
+		ParentId: req.ParentID,
+	}
+	if len(req.Name) > 0 {
+		begDentry.Name = req.Name
+	}
+	endDentry := &Dentry{
+		ParentId: req.ParentID + 1,
+	}
+	mp.dentryTree.AscendRange(begDentry, endDentry, func(i BtreeItem) bool {
+		d := i.(*Dentry)
+		childrenCount := uint64(len(resp.Children))
+		if req.Limit > 0 && childrenCount > req.Limit {
+			return false
+		}
+		resp.Children = append(resp.Children, proto.Dentry{
+			Inode: d.Inode,
+			Type:  d.Type,
+			Name:  d.Name,
+		})
+		return true
+	})
+	return
+}
+
 func (mp *metaPartition) readDirOnly(req *ReadDirOnlyReq) (resp *ReadDirOnlyResp) {
 	resp = &ReadDirOnlyResp{}
 	begDentry := &Dentry{
