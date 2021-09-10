@@ -686,7 +686,7 @@ func (v *Volume) DeletePath(path string) (err error) {
 	if mode.IsDir() {
 		// Check if the directory is empty and cannot delete non-empty directories.
 		var dentries []proto.Dentry
-		dentries, err = v.mw.ReadDir_ll(ino)
+		dentries, err = v.mw.ReadDirLimit_ll(ino, "", 1)
 		if err != nil || len(dentries) > 0 {
 			return
 		}
@@ -1669,16 +1669,16 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 		// Add check to marker, if request contain marker, current path must greater than marker,
 		// otherwise can not put it to prefix map
 		if (len(marker) > 0 && currentPath > marker) || len(marker) == 0 {
-			fileInfo := &FSFileInfo{
-				Inode: parentId,
-				Path:  currentPath,
-			}
 			// If the number of matches reaches the threshold given by maxKey,
 			// stop scanning and return results.
 			// To get the next marker, first compare the result counts with the max key
-			// it means that when result count reach the amx key, continue to find the next key as the next marker
+			// it means that when result count reach the max key, continue to find the next key as the next marker
 			if rc >= maxKeys {
 				return fileInfos, prefixMap, currentPath, rc, nil
+			}
+			fileInfo := &FSFileInfo{
+				Inode: parentId,
+				Path:  currentPath,
 			}
 			fileInfos = append(fileInfos, fileInfo)
 			rc++
@@ -1690,7 +1690,16 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 	// If got the syscall.ENOENT error when invoke readdir, it means that the above situation has occurred.
 	// At this time, stops process and returns success.
 	var children []proto.Dentry
-	children, err = v.mw.ReadDir_ll(parentId)
+
+	fromName := ""
+	if marker != "" {
+		markerNames := strings.Split(marker, pathSep)
+		if len(markerNames) > 0 {
+			fromName = markerNames[len(markerNames)-1]
+		}
+	}
+
+	children, err = v.mw.ReadDirLimit_ll(parentId, fromName, maxKeys+1) // one more for nextMarker
 	if err != nil && err != syscall.ENOENT {
 		return fileInfos, prefixMap, "", 0, err
 	}
@@ -1739,12 +1748,13 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 			}
 		}
 
+		if rc >= maxKeys {
+			nextMarker = path
+			return fileInfos, prefixMap, nextMarker, rc, nil
+		}
 		fileInfo := &FSFileInfo{
 			Inode: child.Inode,
 			Path:  path,
-		}
-		if rc >= maxKeys {
-			return fileInfos, prefixMap, path, rc, nil
 		}
 		fileInfos = append(fileInfos, fileInfo)
 		rc++
