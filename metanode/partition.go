@@ -279,12 +279,6 @@ func (mp *metaPartition) onStart() (err error) {
 		}
 		mp.onStop()
 	}()
-	ctx := context.Background()
-	if err = mp.load(ctx); err != nil {
-		err = errors.NewErrorf("[onStart]:load partition id=%d: %s",
-			mp.config.PartitionId, err.Error())
-		return
-	}
 	mp.startSchedule(mp.applyID)
 	if err = mp.startFreeList(); err != nil {
 		err = errors.NewErrorf("[onStart] start free list id=%d: %s",
