@@ -416,6 +416,33 @@ func (m *metadataManager) opReadDir(conn net.Conn, p *Packet,
 	return
 }
 
+// Handle OpReadDirLimit
+func (m *metadataManager) opReadDirLimit(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
+	req := &proto.ReadDirLimitRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		return
+	}
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.ReadDirLimit(req, p)
+	m.respondToClient(conn, p)
+	log.LogDebugf("%s [%v]req: %v , resp: %v, body: %s", remoteAddr,
+		p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
 func (m *metadataManager) opMetaInodeGet(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
 	req := &InodeGetReq{}
