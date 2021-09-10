@@ -434,6 +434,10 @@ func (s *DataNode) getStatInfo(w http.ResponseWriter, r *http.Request){
 	disks := s.space.GetDisks()
 	diskList := make([]interface{}, 0, len(disks))
 	for _, disk := range disks {
+		diskTotal, err := util.GetDiskTotal(disk.Path)
+		if err != nil {
+			diskTotal = disk.Total
+		}
 		diskInfo := &struct{
 			Path          string  `json:"path"`
 			TotalTB       float64 `json:"totalTB"`
@@ -442,7 +446,7 @@ func (s *DataNode) getStatInfo(w http.ResponseWriter, r *http.Request){
 			ReservedSpace uint    `json:"reservedSpaceGB"`
 		}{
 			Path:          disk.Path,
-			TotalTB:       util.FixedPoint(float64(disk.Total) / util.TB, 1),
+			TotalTB:       util.FixedPoint(float64(diskTotal) / util.TB, 1),
 			UsedGB:        util.FixedPoint(float64(disk.Used) / util.GB, 1),
 			UsedRatio:     util.FixedPoint(float64(disk.Used) / float64(disk.Total), 1),
 			ReservedSpace: uint(disk.ReservedSpace / util.GB),
@@ -456,6 +460,7 @@ func (s *DataNode) getStatInfo(w http.ResponseWriter, r *http.Request){
 		StartTime      string        `json:"startTime"`
 		CPUUsageList   []float64     `json:"cpuUsageList"`
 		MaxCPUUsage    float64       `json:"maxCPUUsage"`
+		CPUCoreNumber int            `json:"cpuCoreNumber"`
 		MemoryUsedList []float64     `json:"memoryUsedGBList"`
 		MaxMemoryUsed  float64       `json:"maxMemoryUsedGB"`
 		MaxMemoryUsage float64       `json:"maxMemoryUsage"`
@@ -467,6 +472,7 @@ func (s *DataNode) getStatInfo(w http.ResponseWriter, r *http.Request){
 		StartTime:      s.processStatInfo.ProcessStartTime,
 		CPUUsageList:   cpuUsageList,
 		MaxCPUUsage:    maxCPUUsage,
+		CPUCoreNumber:  util.GetCPUCoreNumber(),
 		MemoryUsedList: memoryUsedGBList,
 		MaxMemoryUsed:  maxMemoryUsedGB,
 		MaxMemoryUsage: maxMemoryUsage,

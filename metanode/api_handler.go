@@ -543,6 +543,7 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request){
 		"statTime":         m.processStatInfo.ProcessStartTime,
 		"cpuUsageList":     cpuUsageList,
 		"maxCPUUsage":      maxCPUUsage,
+		"cpuCoreNumber":    util.GetCPUCoreNumber(),
 		"memoryUsedGBList": memoryUsedGBList,
 		"maxMemoryUsedGB":  maxMemoryUsedGB,
 		"maxMemoryUsage":   maxMemoryUsage,
