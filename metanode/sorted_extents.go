@@ -321,7 +321,7 @@ func (se *SortedExtents) Insert(ctx context.Context, ek proto.ExtentKey) (delete
 func (se *SortedExtents) insertOrMergeAt(index int, ek proto.ExtentKey) (merged bool) {
 	if index > 0 &&
 		se.eks[index-1].PartitionId == ek.PartitionId &&
-		se.eks[index-1].ExtentId == ek.PartitionId &&
+		se.eks[index-1].ExtentId == ek.ExtentId &&
 		se.eks[index-1].FileOffset+uint64(se.eks[index-1].Size) == ek.FileOffset &&
 		se.eks[index-1].ExtentOffset+uint64(se.eks[index-1].Size) == ek.ExtentOffset {
 		se.eks[index-1].Size = se.eks[index-1].Size + ek.Size
@@ -343,7 +343,7 @@ func (se *SortedExtents) insertOrMergeAt(index int, ek proto.ExtentKey) (merged 
 func (se *SortedExtents) maybeMergeWithPrev(index int) (merged bool) {
 	if index > 0 && index < len(se.eks) &&
 		se.eks[index-1].PartitionId == se.eks[index].PartitionId &&
-		se.eks[index-1].ExtentId == se.eks[index].PartitionId &&
+		se.eks[index-1].ExtentId == se.eks[index].ExtentId &&
 		se.eks[index-1].FileOffset+uint64(se.eks[index-1].Size) == se.eks[index].FileOffset &&
 		se.eks[index-1].ExtentOffset+uint64(se.eks[index-1].Size) == se.eks[index].ExtentOffset {
 		se.eks[index-1].Size = se.eks[index-1].Size + se.eks[index].Size
