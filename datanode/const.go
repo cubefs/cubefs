@@ -106,4 +106,5 @@ const (
 	DiskMaxFDLimit                     = 20000
 	DiskForceEvictFDRatio              = 0.25
 	CacheCapacityPerPartition          = 256
+	DiskLoadPartitionParallelism       = 10
 )

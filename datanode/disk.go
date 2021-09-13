@@ -386,7 +386,7 @@ func (d *Disk) isPartitionDir(filename string) (isPartitionDir bool) {
 }
 
 // RestorePartition reads the files stored on the local disk and restores the data partitions.
-func (d *Disk) RestorePartition(visitor PartitionVisitor) {
+func (d *Disk) RestorePartition(visitor PartitionVisitor, parallelism int) {
 	var convert = func(node *proto.DataNodeInfo) *DataNodeInfo {
 		result := &DataNodeInfo{}
 		result.Addr = node.Addr
@@ -420,52 +420,67 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 		return
 	}
 
-	var wg sync.WaitGroup
-	for _, fileInfo := range fileInfoList {
-		filename := fileInfo.Name()
-		if !d.isPartitionDir(filename) {
-			continue
-		}
-
-		if partitionID, partitionSize, err = unmarshalPartitionName(filename); err != nil {
-			log.LogErrorf("action[RestorePartition] unmarshal partitionName(%v) from disk(%v) err(%v) ",
-				filename, d.Path, err.Error())
-			continue
-		}
-		log.LogDebugf("acton[RestorePartition] disk(%v) path(%v) PartitionID(%v) partitionSize(%v).",
-			d.Path, fileInfo.Name(), partitionID, partitionSize)
-
-		if isExpiredPartition(partitionID, dinfo.PersistenceDataPartitions) {
-			log.LogErrorf("action[RestorePartition]: find expired partition[%s], rename it and you can delete it "+
-				"manually", filename)
-			oldName := path.Join(d.Path, filename)
-			newName := path.Join(d.Path, ExpiredPartitionPrefix+filename)
-			os.Rename(oldName, newName)
-			continue
-		}
-
-		wg.Add(1)
-
-		go func(partitionID uint64, filename string) {
-			var (
-				dp  *DataPartition
-				err error
-			)
-			defer wg.Done()
-			if dp, err = LoadDataPartition(path.Join(d.Path, filename), d); err != nil {
-				mesg := fmt.Sprintf("action[RestorePartition] new partition(%v) err(%v) ",
-					partitionID, err.Error())
-				log.LogError(mesg)
-				exporter.Warning(mesg)
-				return
-			}
-			if visitor != nil {
-				visitor(dp)
-			}
-
-		}(partitionID, filename)
+	if parallelism < 1 {
+		parallelism = 1
 	}
-	wg.Wait()
+	var loadWaitGroup = new(sync.WaitGroup)
+	var filenameCh = make(chan string, parallelism)
+	for i := 0; i < parallelism; i++ {
+		loadWaitGroup.Add(1)
+		go func() {
+			defer loadWaitGroup.Done()
+			var (
+				filename  string
+				partition *DataPartition
+				loadErr   error
+			)
+			for {
+				if filename = <-filenameCh; len(filename) == 0 {
+					return
+				}
+				partitionFullPath := path.Join(d.Path, filename)
+				startTime := time.Now()
+				if partition, loadErr = LoadDataPartition(partitionFullPath, d); loadErr != nil {
+					msg := fmt.Sprintf("load partition [%v] failed: %v",
+						partitionFullPath, loadErr)
+					log.LogError(msg)
+					exporter.Warning(msg)
+					return
+				}
+				log.LogDebugf("load partition [%v] complete cost [%v]",
+					partitionFullPath, time.Since(startTime))
+				if visitor != nil {
+					visitor(partition)
+				}
+			}
+		}()
+	}
+	go func() {
+		for _, fileInfo := range fileInfoList {
+			filename := fileInfo.Name()
+			if !d.isPartitionDir(filename) {
+				continue
+			}
+
+			if partitionID, partitionSize, err = unmarshalPartitionName(filename); err != nil {
+				log.LogErrorf("action[RestorePartition] unmarshal partitionName(%v) from disk(%v) err(%v) ",
+					filename, d.Path, err.Error())
+				continue
+			}
+			if isExpiredPartition(partitionID, dinfo.PersistenceDataPartitions) {
+				log.LogErrorf("action[RestorePartition]: find expired partition[%s], rename it and you can delete it "+
+					"manually", filename)
+				oldName := path.Join(d.Path, filename)
+				newName := path.Join(d.Path, ExpiredPartitionPrefix+filename)
+				_ = os.Rename(oldName, newName)
+				continue
+			}
+			filenameCh <- filename
+		}
+		close(filenameCh)
+	}()
+
+	loadWaitGroup.Wait()
 }
 
 func (d *Disk) AddSize(size uint64) {

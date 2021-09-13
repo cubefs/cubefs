@@ -207,7 +207,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	if dp, err = newDataPartition(dpCfg, disk); err != nil {
 		return
 	}
-	dp.PersistMetadata()
+	// dp.PersistMetadata()
 	disk.space.AttachPartition(dp)
 	if err = dp.LoadAppliedID(); err != nil {
 		log.LogErrorf("action[loadApplyIndex] %v", err)
