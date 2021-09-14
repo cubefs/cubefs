@@ -1,0 +1,65 @@
+name: Tests
+
+on:
+  push:
+    branches:
+    - master
+  pull_request:
+    branches:
+    - master
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        go-version: [1.14, 1.15, 1.16]
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Install Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: ${{ matrix.go-version }}
+
+    - name: Check out code
+      uses: actions/checkout@v2
+
+    - name: Check formatting
+      if: matrix.go-version == '1.16'
+      run: diff -u <(echo -n) <(gofmt -d .)
+
+    - name: Check Go modules
+      if: matrix.go-version == '1.16'
+      run: |
+        go mod tidy
+        git diff --exit-code
+
+    - name: Build (cross-compile)
+      run: |
+        GOOS=darwin go build ./...
+        GOOS=dragonfly go build ./...
+        GOOS=freebsd go build ./...
+        GOOS=linux go build ./...
+        GOOS=netbsd go build ./...
+        GOOS=openbsd go build ./...
+        GOOS=solaris go build ./...
+        GOOS=windows go build ./...
+
+  test:
+    strategy:
+      matrix:
+        go-version: [1.14, 1.15, 1.16]
+        platform: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+    - name: Install Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: ${{ matrix.go-version }}
+
+    - name: Check out code
+      uses: actions/checkout@v2
+
+    - name: Test (native)
+      run: go test -v ./...

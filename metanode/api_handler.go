@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"encoding/json"
+	"github.com/chubaofs/chubaofs/util"
 	"net/http"
 	"strconv"
 
@@ -66,6 +67,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getAllDentry", m.getAllDentriesHandler)
 	http.HandleFunc("/getParams", m.getParamsHandler)
 	http.HandleFunc("/getDiskStat", m.getDiskStatHandler)
+	http.HandleFunc("/stat/info", m.getStatInfo)
 
 	//http.HandleFunc("/cursorReset", m.cursorReset)
 
@@ -503,4 +505,52 @@ func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
 		resp.Data = json.RawMessage(p.Data)
 	}
 	return
+}
+
+func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request){
+	resp := NewAPIResponse(http.StatusBadRequest, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getStatInfoHandler] response %s", err)
+		}
+	}()
+	//get process stat info
+	cpuUsageList, maxCPUUsage := m.processStatInfo.GetProcessCPUStatInfo()
+	memoryUsedGBList, maxMemoryUsedGB, maxMemoryUsage := m.processStatInfo.GetProcessMemoryStatInfo()
+	//get disk info
+	disks := m.getDiskStat()
+	diskList := make([]interface{}, 0, len(disks))
+	for _, disk := range disks {
+		diskInfo := &struct{
+			Path          string  `json:"path"`
+			TotalTB       float64 `json:"totalTB"`
+			UsedGB        float64 `json:"usedGB"`
+			UsedRatio     float64 `json:"usedRatio"`
+			ReservedSpace uint    `json:"reservedSpaceGB"`
+		}{
+			Path:      disk.Path,
+			TotalTB:   util.FixedPoint(disk.Total / util.TB, 1),
+			UsedGB:    util.FixedPoint(disk.Used / util.GB, 1),
+			UsedRatio: util.FixedPoint(disk.Used / disk.Total, 1),
+		}
+		diskList = append(diskList, diskInfo)
+	}
+	msg := map[string]interface{}{
+		"type":             "metaNode",
+		"zone":             m.zoneName,
+		"versionInfo":      proto.MakeVersion("MetaNode"),
+		"statTime":         m.processStatInfo.ProcessStartTime,
+		"cpuUsageList":     cpuUsageList,
+		"maxCPUUsage":      maxCPUUsage,
+		"cpuCoreNumber":    util.GetCPUCoreNumber(),
+		"memoryUsedGBList": memoryUsedGBList,
+		"maxMemoryUsedGB":  maxMemoryUsedGB,
+		"maxMemoryUsage":   maxMemoryUsage,
+		"diskInfo":         diskList,
+
+	}
+	resp.Data = msg
+	resp.Code = http.StatusOK
+	resp.Msg = http.StatusText(http.StatusOK)
 }

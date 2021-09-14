@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 	"strings"
+	"github.com/chubaofs/chubaofs/util/statinfo"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -293,4 +294,10 @@ func (m *DataNode) updateClusterMap() {
 
 func DeleteLimiterWait() {
 	deleteLimiteRater.Wait(context.Background())
+}
+
+func (m *DataNode) startUpdateProcessStatInfo () {
+	m.processStatInfo = statinfo.NewProcessStatInfo()
+	m.processStatInfo.ProcessStartTime = time.Now().Format("2006-01-02 15:04:05")
+	go m.processStatInfo.UpdateStatInfoSchedule()
 }

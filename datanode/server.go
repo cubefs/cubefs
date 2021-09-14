@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/statinfo"
 	"net"
 	"net/http"
 	"os"
@@ -97,6 +98,7 @@ type DataNode struct {
 	stopC                    chan bool
 	fixTinyDeleteRecordLimit uint64
 	control                  common.Control
+	processStatInfo  *statinfo.ProcessStatInfo
 }
 
 func NewServer() *DataNode {
@@ -175,6 +177,8 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	go s.startUpdateNodeInfo()
 
 	statistics.InitStatistics(cfg, s.clusterID, statistics.ModelDataNode, LocalIP, s.summaryMonitorData)
+
+	go s.startUpdateProcessStatInfo()
 
 	return
 }
@@ -387,6 +391,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/setAutoRepairStatus", s.setAutoRepairStatus)
 	http.HandleFunc("/releasePartitions", s.releasePartitions)
 	http.HandleFunc("/computeExtentMd5", s.getExtentMd5Sum)
+	http.HandleFunc("/stat/info", s.getStatInfo)
 }
 
 func (s *DataNode) startTCPService() (err error) {

@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/statinfo"
 	"os"
 	"strconv"
 	"strings"
@@ -57,6 +58,7 @@ type MetaNode struct {
 	zoneName          string
 	httpStopC         chan uint8
 	disks             map[string]*Disk
+	processStatInfo   *statinfo.ProcessStatInfo
 
 	control common.Control
 }
@@ -149,6 +151,8 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	exporter.RegistConsul(cfg)
 
 	statistics.InitStatistics(cfg, m.clusterId, statistics.ModelMetaNode, m.localAddr, m.metadataManager.SummaryMonitorData)
+
+	go m.startUpdateProcessStatInfo()
 
 	return
 }
@@ -325,6 +329,12 @@ func (m *MetaNode) register() (err error) {
 
 func (m *MetaNode) startMetaPartitions() error {
 	return m.metadataManager.Start()
+}
+
+func (m *MetaNode) startUpdateProcessStatInfo () {
+	m.processStatInfo = statinfo.NewProcessStatInfo()
+	m.processStatInfo.ProcessStartTime = time.Now().Format("2006-01-02 15:04:05")
+	go m.processStatInfo.UpdateStatInfoSchedule()
 }
 
 // NewServer creates a new meta node instance.
