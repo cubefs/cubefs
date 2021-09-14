@@ -374,6 +374,7 @@ func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, dir
 		if writeSize, err = s.doOverwrite(ctx, req, direct); err == nil {
 			break
 		}
+		log.LogWarnf("doOverWrite failed: ino(%v) err(%v) req(%v)", s.inode, err, req)
 		if writeSize, err = s.doROW(ctx, req, direct); err == nil {
 			break
 		}
@@ -501,9 +502,9 @@ func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool
 	s.extents.gen = 0
 	s.extents.Unlock()
 
-	err = s.GetExtents(ctx)
+	getExtentsErr := s.GetExtents(ctx)
 
-	log.LogWarnf("doROW: inode %v, total %v, oriReq %v, err %v, newEK %v", s.inode, total, oriReq, err, newEK)
+	log.LogWarnf("doROW: inode %v, total %v, oriReq %v, getExtentsErr %v, newEK %v", s.inode, total, oriReq, getExtentsErr, newEK)
 
 	return
 }
@@ -975,7 +976,14 @@ func (s *Streamer) usePreExtentHandler(offset, size int) bool {
 
 	s.handler.dp = dp
 	s.handler.extID = int(preEk.ExtentId)
-	s.handler.key = preEk
+	s.handler.key = &proto.ExtentKey{
+		FileOffset:   preEk.FileOffset,
+		PartitionId:  preEk.PartitionId,
+		ExtentId:     preEk.ExtentId,
+		ExtentOffset: preEk.ExtentOffset,
+		Size:         preEk.Size,
+		CRC:          preEk.CRC,
+	}
 	s.handler.size = int(preEk.Size)
 	s.handler.conn = conn
 	s.handler.extentOffset = int(preEk.ExtentOffset)

@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -87,8 +88,9 @@ type ExtentHandler struct {
 	// Created and updated in *receiver* ONLY.
 	// Not protected by lock, therefore can be used ONLY when there is no
 	// pending and new packets.
-	key   *proto.ExtentKey
-	dirty bool // indicate if open handler is dirty.
+	key   	*proto.ExtentKey
+	dirty 	bool // indicate if open handler is dirty.
+	ekMutex	sync.Mutex
 
 	// Created in receiver ONLY in recovery status.
 	// Will not be changed once assigned.
@@ -381,6 +383,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		extOffset = packet.KernelOffset - uint64(eh.fileOffset)
 	}
 
+	eh.ekMutex.Lock()
 	if eh.key == nil {
 		eh.key = &proto.ExtentKey{
 			FileOffset:   uint64(eh.fileOffset),
@@ -396,6 +399,8 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	proto.Buffers.Put(packet.Data)
 	packet.Data = nil
 	eh.dirty = true
+	eh.ekMutex.Unlock()
+
 	return
 }
 
@@ -437,6 +442,7 @@ func (eh *ExtentHandler) flush(ctx context.Context) (err error) {
 func (eh *ExtentHandler) cleanup() (err error) {
 	eh.doneSender <- struct{}{}
 	eh.doneReceiver <- struct{}{}
+
 	if eh.conn != nil {
 		conn := eh.conn
 		eh.conn = nil
@@ -456,26 +462,47 @@ func (eh *ExtentHandler) appendExtentKey(ctx context.Context) (err error) {
 	defer tracer.Finish()
 	ctx = tracer.Context()
 
-	log.LogDebugf("appendExtentKey enter: eh(%v) key(%v) dirty(%v)", eh, eh.key, eh.dirty)
-	if eh.key != nil {
-		if eh.dirty {
-			eh.stream.extents.Append(eh.key, true)
-			err = eh.stream.client.insertExtentKey(ctx, eh.inode, *eh.key)
-		} else {
-			// ExtentCache may not accurate here, so we get it from metanode
-			if eh.key.FileOffset+uint64(eh.key.Size) < eh.stream.extents.size {
-				log.LogWarnf("appendExtentKey: eh(%v) eh.key(%v) extentCache size(%v)", eh, eh.key, eh.stream.extents.size)
-			}
-			eh.stream.extents.Lock()
-			eh.stream.extents.gen = 0
-			eh.stream.extents.Unlock()
+	eh.ekMutex.Lock()
+	if eh.key == nil {
+		eh.ekMutex.Unlock()
+		return
+	}
+	ek := &proto.ExtentKey{
+		FileOffset:   eh.key.FileOffset,
+		PartitionId:  eh.key.PartitionId,
+		ExtentId:     eh.key.ExtentId,
+		ExtentOffset: eh.key.ExtentOffset,
+		Size:         eh.key.Size,
+		CRC:          eh.key.CRC,
+	}
+	dirty := eh.dirty
+	eh.ekMutex.Unlock()
 
-			err = eh.stream.GetExtents(ctx)
+	log.LogDebugf("appendExtentKey enter: eh(%v) key(%v) dirty(%v)", eh, ek, dirty)
+
+	if dirty {
+		eh.stream.extents.Append(ek, true)
+		err = eh.stream.client.insertExtentKey(ctx, eh.inode, *ek)
+		if err == nil {
+			eh.ekMutex.Lock()
+			if ek.GetExtentKey() == eh.key.GetExtentKey() {
+				eh.dirty = false
+			} else {
+				log.LogErrorf("appendExtentKey not consistent: eh(%v) original ek(%v), now ek(%v)", eh, ek, eh.key)
+			}
+			eh.ekMutex.Unlock()
+		}
+	} else {
+		eh.stream.extents.Lock()
+		eh.stream.extents.gen = 0
+		eh.stream.extents.Unlock()
+
+		getExtentsErr := eh.stream.GetExtents(ctx)
+		if getExtentsErr != nil {
+			log.LogWarnf("appendExtentKey getExtents failed: err(%v) eh(%v) eh.key(%v)", getExtentsErr, eh, ek)
 		}
 	}
-	if err == nil {
-		eh.dirty = false
-	}
+
 	log.LogDebugf("appendExtentKey exit: eh(%v) key(%v) dirty(%v) err(%v)", eh, eh.key, eh.dirty, err)
 
 	return
