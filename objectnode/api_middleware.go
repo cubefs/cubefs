@@ -15,6 +15,7 @@
 package objectnode
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -99,7 +100,18 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 
 		var startTime = time.Now()
 		metric := exporter.NewTPCnt(fmt.Sprintf("action_%v", action.Name()))
-		defer metric.Set(err)
+		defer func() {
+			// failed request monitor
+			var err error = nil
+			var statusCode = GetStatusCodeFromContext(r)
+			if IsMonitoredStatusCode(statusCode) {
+				exporter.NewTPCnt(fmt.Sprintf("failed_%v", statusCode)).Set(nil)
+				var errorMessage = getResponseErrorMessage(r)
+				exporter.Warning(generateWarnDetail(r, errorMessage))
+				err = errors.New(errorMessage)
+			}
+			metric.Set(err)
+		}()
 
 		// Check action is whether enabled.
 		if !action.IsNone() && !o.disabledActions.Contains(action) {
@@ -111,31 +123,25 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 			_ = AccessDenied.ServeResponse(w, r)
 		}
 
-		// failed request monitor
-		var statusCode = GetStatusCodeFromContext(r)
-		if IsMonitoredStatusCode(statusCode) {
-			exporter.NewTPCnt(fmt.Sprintf("failed_%v", statusCode)).Set(nil)
-			exporter.Warning(generateWarnDetail(r, getResponseErrorMessage(r)))
-		}
-
-		// ===== post-handle start =====
-		var headerToString = func(header http.Header) string {
-			var sb = strings.Builder{}
-			for k := range header {
-				if sb.Len() != 0 {
-					sb.WriteString(",")
+		if log.IsDebugEnabled() {
+			var headerToString = func(header http.Header) string {
+				var sb = strings.Builder{}
+				for k := range header {
+					if sb.Len() != 0 {
+						sb.WriteString(",")
+					}
+					sb.WriteString(fmt.Sprintf("%v:[%v]", k, header.Get(k)))
 				}
-				sb.WriteString(fmt.Sprintf("%v:[%v]", k, header.Get(k)))
+				return "{" + sb.String() + "}"
 			}
-			return "{" + sb.String() + "}"
+
+			log.LogDebugf("traceMiddleware: "+
+				"action(%v) requestID(%v) host(%v) method(%v) url(%v) header(%v) "+
+				"remote(%v) cost(%v)",
+				action.Name(), requestID, r.Host, r.Method, r.URL.String(), headerToString(r.Header),
+				getRequestIP(r), time.Since(startTime))
 		}
 
-		log.LogDebugf("traceMiddleware: "+
-			"action(%v) requestID(%v) host(%v) method(%v) url(%v) header(%v) "+
-			"remote(%v) cost(%v)",
-			action.Name(), requestID, r.Host, r.Method, r.URL.String(), headerToString(r.Header),
-			getRequestIP(r), time.Since(startTime))
-		// ==== post-handle finish =====
 	}
 	return handlerFunc
 }

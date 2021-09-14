@@ -525,6 +525,10 @@ func LogErrorf(format string, v ...interface{}) {
 	gLog.errorLogger.Print(s)
 }
 
+func IsDebugEnabled() bool {
+	return DebugLevel&gLog.level == gLog.level
+}
+
 // LogDebug logs the debug information.
 func LogDebug(v ...interface{}) {
 	if gLog == nil {
