@@ -57,7 +57,7 @@ func TestMetaPartitionAPI(t *testing.T) {
 	//Decommission Meta Partition
 	for i := 0; i == 0 || i < count && err != nil; i++ {
 		err = testMc.AdminAPI().DecommissionMetaPartition(testMetaPartitionID, nonLeaderAddr)
-		time.Sleep(time.Duration(1)*time.Second)
+		time.Sleep(time.Duration(1+i/2)*time.Second)
 	}
 	if err != nil {
 		t.Fatalf("DecommissionMetaPartition failed, err %v", err)
