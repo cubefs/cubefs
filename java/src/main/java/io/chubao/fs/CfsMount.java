@@ -86,20 +86,20 @@ public class CfsMount {
         return result;
     }
 
-    public CfsLibrary.FdInfo.ByValue open(String path, int flags, int mode) throws IOException {
-        CfsLibrary.FdInfo.ByValue fdInfo = libcfs.cfs_open_withpino(this.cid, path, flags, mode, 0, 0);
-        if (fdInfo.fd < 0) {
-            throw new IOException("open failed : " + path + " code : " + fdInfo.fd);
+    public int open(String path, int flags, int mode) throws FileNotFoundException {
+        int result = libcfs.cfs_open(this.cid, path, flags, mode);
+        if (result < 0) {
+            throw new FileNotFoundException("open failed : " + path + " code : " + result);
         }
-        return fdInfo;
+        return result;
     }
 
     public void close(int fd) {
         libcfs.cfs_close(this.cid, fd);
     }
 
-    public long write(long parentIno, int fd, byte []buf, long size, long offset) {
-        return libcfs.cfs_write_withpino(parentIno, this.cid, fd, buf, size, offset);
+    public long write(int fd, byte[] buf, long size, long offset) {
+        return libcfs.cfs_write(this.cid, fd, buf, size, offset);
     }
 
     public long read(int fd, byte[] buf, long size, long offset) {
