@@ -53,11 +53,6 @@ struct cfs_summary_info {
     int64_t fbytes;
 };
 
-struct fd_with_pino {
-    int32_t fd;
-    uint64_t parentIno;
-};
-
 */
 import "C"
 
@@ -157,6 +152,7 @@ func removeClient(id int64) {
 type file struct {
 	fd    uint
 	ino   uint64
+	pino  uint64
 	flags uint32
 	mode  uint32
 
@@ -378,6 +374,7 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
 
 	var info *proto.InodeInfo
 	var parentIno uint64
+
 	/*
 	 * Note that the rwx mode is ignored when using libsdk
 	 */
@@ -404,20 +401,20 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
 		}
 		info = newInfo
 	} else {
-		newInfo, err := c.lookupPath(absPath)
-		if err != nil {
-			return errorToStatus(err)
-		}
-		info = newInfo
 		dirpath, _ := gopath.Split(absPath)
 		dirInfo, err := c.lookupPath(dirpath)
 		if err != nil {
 			return errorToStatus(err)
 		}
-		parentIno = dirInfo.Inode
+		parentIno = dirInfo.Inode // parent inode
+		newInfo, err := c.lookupPath(absPath)
+		if err != nil {
+			return errorToStatus(err)
+		}
+		info = newInfo
 	}
 
-	f := c.allocFD(info.Inode, fuseFlags, fuseMode)
+	f := c.allocFD(info.Inode, parentIno, fuseFlags, fuseMode)
 	if f == nil {
 		return statusEMFILE
 	}
@@ -430,7 +427,7 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
 				c.releaseFD(f.fd)
 				return statusEACCES
 			}
-			if err := c.truncate(parentIno, f, 0); err != nil {
+			if err := c.truncate(f, 0); err != nil {
 				c.closeStream(f)
 				c.releaseFD(f.fd)
 				return statusEIO
@@ -441,46 +438,6 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
 	return C.int(f.fd)
 }
 
-//export cfs_open_withpino
-func cfs_open_withpino(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.struct_fd_with_pino {
-	var parentIno uint64
-	var ino C.int
-
-	ino = cfs_open(id, path, flags, mode)
-	if ino <= 0 {
-		retErr := C.struct_fd_with_pino{
-			fd:        ino,
-			parentIno: C.ulong(0),
-		}
-		return retErr
-	}
-
-	c, exist := getClient(int64(id))
-	if !exist {
-		ret_err := C.struct_fd_with_pino{
-			fd:        statusEINVAL,
-			parentIno: C.ulong(0),
-		}
-		return ret_err
-	}
-
-	absPath := c.absPath(C.GoString(path))
-	dirpath, _ := gopath.Split(absPath)
-	dirInfo, err := c.lookupPath(dirpath)
-	if err != nil {
-		ret_err := C.struct_fd_with_pino{
-			fd:        C.int(errorToStatus(err)),
-			parentIno: C.ulong(0),
-		}
-		return ret_err
-	}
-	parentIno = dirInfo.Inode // parent inode
-	ret_fd_withpino := C.struct_fd_with_pino{
-		fd:        ino,
-		parentIno: C.ulong(parentIno),
-	}
-	return ret_fd_withpino
-}
 
 //export cfs_flush
 func cfs_flush(id C.int64_t, fd C.int) C.int {
@@ -560,20 +517,6 @@ func cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 	}
 
 	return C.ssize_t(n)
-}
-
-//export cfs_write_withpino
-func cfs_write_withpino(parentIno C.uint64_t, id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.off_t) C.ssize_t {
-	c, exist := getClient(int64(id))
-	if !exist {
-		return C.ssize_t(statusEINVAL)
-	}
-	f := c.getFile(uint(fd))
-	if f == nil {
-		return C.ssize_t(statusEBADFD)
-	}
-	c.ec.GetStreamer(f.ino).SetParentInode(uint64(parentIno)) // set the parent inodes
-	return cfs_write(id, fd, buf, size, off)
 }
 
 //export cfs_read
@@ -904,7 +847,7 @@ func (c *client) start() (err error) {
 	return nil
 }
 
-func (c *client) allocFD(ino uint64, flags, mode uint32) *file {
+func (c *client) allocFD(ino, pino uint64, flags, mode uint32) *file {
 	c.fdlock.Lock()
 	defer c.fdlock.Unlock()
 	fd, ok := c.fdset.NextClear(0)
@@ -912,7 +855,7 @@ func (c *client) allocFD(ino uint64, flags, mode uint32) *file {
 		return nil
 	}
 	c.fdset.Set(fd)
-	f := &file{fd: fd, ino: ino, flags: flags, mode: mode}
+	f := &file{fd: fd, ino: ino, pino: pino, flags: flags, mode: mode}
 	c.fdmap[fd] = f
 	return f
 }
@@ -983,8 +926,8 @@ func (c *client) flush(f *file) error {
 	return c.ec.Flush(f.ino)
 }
 
-func (c *client) truncate(parentID uint64, f *file, size int) error {
-	err := c.ec.Truncate(c.mw, parentID, f.ino, size)
+func (c *client) truncate(f *file, size int) error {
+	err := c.ec.Truncate(c.mw, f.pino, f.ino, size)
 	if err != nil {
 		return err
 	}
@@ -992,6 +935,7 @@ func (c *client) truncate(parentID uint64, f *file, size int) error {
 }
 
 func (c *client) write(f *file, offset int, data []byte, flags int) (n int, err error) {
+	c.ec.GetStreamer(f.ino).SetParentInode(f.pino) // set the parent inode
 	n, err = c.ec.Write(f.ino, offset, data, flags)
 	if err != nil {
 		return 0, err
