@@ -36,36 +36,21 @@ public interface CfsLibrary extends Library {
     }
 
     class SummaryInfo extends Structure {
-            public long files;
-            public long subdirs;
-            public long fbytes;
+        public long files;
+        public long subdirs;
+        public long fbytes;
 
-            public SummaryInfo() {
-                super();
-            }
-            public static class ByValue extends  SummaryInfo implements Structure.ByValue {}
-            public static class ByReference extends SummaryInfo implements Structure.ByReference {}
-
-            @Override
-            protected List<String> getFieldOrder() {
-                return Arrays.asList(new String[] { "files", "subdirs", "fbytes" });
-            }
+        public SummaryInfo() {
+            super();
         }
+        public static class ByValue extends  SummaryInfo implements Structure.ByValue {}
+        public static class ByReference extends SummaryInfo implements Structure.ByReference {}
 
-        class FdInfo extends Structure {
-            public int fd;
-            public long parentIno;
-            public FdInfo() {
-                super();
-            }
-            public static class ByValue extends FdInfo implements Structure.ByValue {}
-            public static class ByReference extends FdInfo implements Structure.ByReference {}
-
-            @Override
-            protected List<String> getFieldOrder() {
-                return Arrays.asList(new String[] { "fd", "parentIno" });
-            }
+        @Override
+        protected List<String> getFieldOrder() {
+            return Arrays.asList(new String[] { "files", "subdirs", "fbytes" });
         }
+    }
 
     public class Dirent extends Structure {
         // note that the field layout should be aligned with cfs_dirent
@@ -119,14 +104,12 @@ public interface CfsLibrary extends Library {
     int cfs_setattr(long id, String path, StatInfo stat, int mask);
 
     int cfs_open(long id, String path, int flags, int mode);
-    FdInfo.ByValue cfs_open_withpino(long id, String path, int flags, int mode, int uid, int gid);
 
     int cfs_flush(long id, int fd);
 
     void cfs_close(long id, int fd);
 
     long cfs_write(long id, int fd, byte[] buf, long size, long offset);
-    long cfs_write_withpino(long parentIno, long id, int fd, byte[] buf, long size, long offset);
 
     long cfs_read(long id, int fd, byte[] buf, long size, long offset);
 
