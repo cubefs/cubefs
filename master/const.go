@@ -133,6 +133,8 @@ const (
 	defaultLearnerPromThreshold                  = 90
 	minRateLimit                                 = 100
 	diskErrDataPartitionOfflineBatchCount        = 200
+	defaultHighUsedRatioDataNodesThreshold       = 0.85
+	defaultHighUsedRatioMetaNodesThreshold       = 0.85
 )
 
 const (

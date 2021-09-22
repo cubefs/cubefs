@@ -58,7 +58,13 @@ func (c *Cluster) updateStatInfo() {
 }
 
 func (c *Cluster) updateZoneStatInfo() {
+	var (
+		highUsedRatioDataNodes int
+		highUsedRatioMetaNodes int
+	)
 	for _, zone := range c.t.zones {
+		highUsedRatioDataNodes = 0
+		highUsedRatioMetaNodes = 0
 		zs := newZoneStatInfo()
 		c.zoneStatInfos[zone.name] = zs
 		zone.dataNodes.Range(func(key, value interface{}) bool {
@@ -69,6 +75,9 @@ func (c *Cluster) updateZoneStatInfo() {
 			}
 			zs.DataNodeStat.Total += float64(node.Total) / float64(util.GB)
 			zs.DataNodeStat.Used += float64(node.Used) / float64(util.GB)
+			if node.UsageRatio >= defaultHighUsedRatioDataNodesThreshold {
+				highUsedRatioDataNodes++
+			}
 			return true
 		})
 		zs.DataNodeStat.Total = fixedPoint(zs.DataNodeStat.Total, 2)
@@ -78,6 +87,7 @@ func (c *Cluster) updateZoneStatInfo() {
 			zs.DataNodeStat.Total = 1
 		}
 		zs.DataNodeStat.UsedRatio = fixedPoint(float64(zs.DataNodeStat.Used)/float64(zs.DataNodeStat.Total), 2)
+		zs.DataNodeStat.HighUsedRatioNodes = highUsedRatioDataNodes
 		zone.metaNodes.Range(func(key, value interface{}) bool {
 			zs.MetaNodeStat.TotalNodes++
 			node := value.(*MetaNode)
@@ -86,6 +96,9 @@ func (c *Cluster) updateZoneStatInfo() {
 			}
 			zs.MetaNodeStat.Total += float64(node.Total) / float64(util.GB)
 			zs.MetaNodeStat.Used += float64(node.Used) / float64(util.GB)
+			if node.Ratio > defaultHighUsedRatioMetaNodesThreshold {
+				highUsedRatioMetaNodes++
+			}
 			return true
 		})
 		zs.MetaNodeStat.Total = fixedPoint(zs.MetaNodeStat.Total, 2)
@@ -95,6 +108,7 @@ func (c *Cluster) updateZoneStatInfo() {
 			zs.MetaNodeStat.Total = 1
 		}
 		zs.MetaNodeStat.UsedRatio = fixedPoint(float64(zs.MetaNodeStat.Used)/float64(zs.MetaNodeStat.Total), 2)
+		zs.MetaNodeStat.HighUsedRatioNodes = highUsedRatioMetaNodes
 	}
 }
 
@@ -105,13 +119,23 @@ func fixedPoint(x float64, scale int) float64 {
 
 func (c *Cluster) updateDataNodeStatInfo() {
 	var (
-		total uint64
-		used  uint64
+		total              uint64
+		used               uint64
+		totalNodes         int
+		writableNodes      int
+		highUsedRatioNodes int
 	)
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
 		total = total + dataNode.Total
 		used = used + dataNode.Used
+		totalNodes++
+		if dataNode.isActive && dataNode.isWriteAble() {
+			writableNodes++
+		}
+		if dataNode.UsageRatio >= defaultHighUsedRatioDataNodesThreshold {
+			highUsedRatioNodes++
+		}
 		return true
 	})
 	if total <= 0 {
@@ -127,17 +151,30 @@ func (c *Cluster) updateDataNodeStatInfo() {
 	c.dataNodeStatInfo.IncreasedGB = int64(usedGB) - int64(c.dataNodeStatInfo.UsedGB)
 	c.dataNodeStatInfo.UsedGB = usedGB
 	c.dataNodeStatInfo.UsedRatio = strconv.FormatFloat(usedRate, 'f', 3, 32)
+	c.dataNodeStatInfo.TotalNodes = totalNodes
+	c.dataNodeStatInfo.WritableNodes = writableNodes
+	c.dataNodeStatInfo.HighUsedRatioNodes = highUsedRatioNodes
 }
 
 func (c *Cluster) updateMetaNodeStatInfo() {
 	var (
-		total uint64
-		used  uint64
+		total              uint64
+		used               uint64
+		totalNodes         int
+		writableNodes      int
+		highUsedRatioNodes int
 	)
 	c.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode := node.(*MetaNode)
 		total = total + metaNode.Total
 		used = used + metaNode.Used
+		totalNodes++
+		if metaNode.IsActive && metaNode.isWritable() {
+			writableNodes++
+		}
+		if metaNode.Ratio > defaultHighUsedRatioMetaNodesThreshold {
+			highUsedRatioNodes++
+		}
 		return true
 	})
 	if total <= 0 {
@@ -153,6 +190,9 @@ func (c *Cluster) updateMetaNodeStatInfo() {
 	c.metaNodeStatInfo.IncreasedGB = int64(newUsed) - int64(c.metaNodeStatInfo.UsedGB)
 	c.metaNodeStatInfo.UsedGB = newUsed
 	c.metaNodeStatInfo.UsedRatio = strconv.FormatFloat(useRate, 'f', 3, 32)
+	c.metaNodeStatInfo.TotalNodes = totalNodes
+	c.metaNodeStatInfo.WritableNodes = writableNodes
+	c.metaNodeStatInfo.HighUsedRatioNodes = highUsedRatioNodes
 }
 
 func (c *Cluster) updateVolStatInfo() {

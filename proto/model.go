@@ -176,19 +176,23 @@ type ZoneStat struct {
 	MetaNodeStat *ZoneNodesStat
 }
 type ZoneNodesStat struct {
-	Total         float64 `json:"TotalGB"`
-	Used          float64 `json:"UsedGB"`
-	Avail         float64 `json:"AvailGB"`
-	UsedRatio     float64
-	TotalNodes    int
-	WritableNodes int
+	Total              float64 `json:"TotalGB"`
+	Used               float64 `json:"UsedGB"`
+	Avail              float64 `json:"AvailGB"`
+	UsedRatio          float64
+	TotalNodes         int
+	WritableNodes      int
+	HighUsedRatioNodes int
 }
 
 type NodeStatInfo struct {
-	TotalGB     uint64
-	UsedGB      uint64
-	IncreasedGB int64
-	UsedRatio   string
+	TotalGB            uint64
+	UsedGB             uint64
+	IncreasedGB        int64
+	UsedRatio          string
+	TotalNodes         int
+	WritableNodes      int
+	HighUsedRatioNodes int
 }
 
 type VolStatInfo struct {
