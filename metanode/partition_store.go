@@ -20,18 +20,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
-	"io"
 	"io/ioutil"
 	"os"
 	"path"
 	"strings"
 	"sync/atomic"
 
-	"github.com/chubaofs/chubaofs/util/log"
+	mmap "github.com/edsrzf/mmap-go"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
-	mmap "github.com/edsrzf/mmap-go"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const (
@@ -103,38 +102,49 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 		return
 	}
 	defer fp.Close()
-	reader := bufio.NewReaderSize(fp, 4*1024*1024)
-	inoBuf := make([]byte, 4)
-	for {
-		inoBuf = inoBuf[:4]
-		// first read length
-		_, err = io.ReadFull(reader, inoBuf)
-		if err != nil {
-			if err == io.EOF {
-				err = nil
-				return
-			}
-			err = errors.NewErrorf("[loadInode] ReadHeader: %s", err.Error())
-			return
-		}
-		length := binary.BigEndian.Uint32(inoBuf)
 
-		// next read body
-		if uint32(cap(inoBuf)) >= length {
-			inoBuf = inoBuf[:length]
-		} else {
-			inoBuf = make([]byte, length)
+	stat, err := fp.Stat()
+	if err != nil {
+		return
+	}
+	if stat.Size() < 1 {
+		log.LogInfof("[loadInode] file(%v) size 0", filename)
+		return
+	}
+
+	var data mmap.MMap
+	if data, err = mmap.Map(fp, mmap.RDONLY, 0); err != nil {
+		log.LogErrorf("[loadInode] map(%v) error: %v", filename, err)
+		err = errors.NewErrorf("[loadInode] map : %s", err.Error())
+		return err
+	}
+	defer func() {
+		_ = data.Unmap()
+	}()
+
+	startOff := uint64(0)
+	for {
+		endOff := startOff + 4
+		if uint64(len(data)) < endOff {
+			break
 		}
-		_, err = io.ReadFull(reader, inoBuf)
-		if err != nil {
-			err = errors.NewErrorf("[loadInode] ReadBody: %s", err.Error())
-			return
+		length := binary.BigEndian.Uint32(data[startOff:endOff])
+
+		startOff = endOff
+		endOff = startOff + uint64(length)
+		if uint64(len(data)) < endOff {
+			log.LogErrorf("[loadInode] file (%v) numInode(%v) offset: %v length %v lack data (fileSize: %v) ", filename, numInodes, startOff, length, cap(data))
+			err = errors.NewErrorf("[loadInode] filedata : %v", startOff)
+			break
 		}
+
 		ino := NewInode(0, 0)
-		if err = ino.Unmarshal(inoBuf); err != nil {
+		if err = ino.Unmarshal(data[startOff:endOff]); err != nil {
 			err = errors.NewErrorf("[loadInode] Unmarshal: %s", err.Error())
 			return
 		}
+		startOff = endOff
+
 		mp.fsmCreateInode(ino)
 		mp.checkAndInsertFreeList(ino)
 		if mp.config.Cursor < ino.Inode {
@@ -142,6 +152,7 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 		}
 		numInodes += 1
 	}
+	return
 }
 
 // Load dentry from the dentry snapshot.
@@ -169,45 +180,56 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 	}
 
 	defer fp.Close()
-	reader := bufio.NewReaderSize(fp, 4*1024*1024)
-	dentryBuf := make([]byte, 4)
+
+	stat, err := fp.Stat()
+	if err != nil {
+		return
+	}
+	if stat.Size() < 1 {
+		log.LogInfof("[loadDentry] file(%v) size 0", filename)
+		return
+	}
+
+	var data mmap.MMap
+	if data, err = mmap.Map(fp, mmap.RDONLY, 0); err != nil {
+		log.LogErrorf("[loadDentry] map(%v) error: %s", filename, err.Error())
+		err = errors.NewErrorf("[loadDentry] map : %s", err.Error())
+		return err
+	}
+	defer func() {
+		_ = data.Unmap()
+	}()
+
+	startOff := uint64(0)
 	for {
-		dentryBuf = dentryBuf[:4]
-		// First Read 4byte header length
-		_, err = io.ReadFull(reader, dentryBuf)
-		if err != nil {
-			if err == io.EOF {
-				err = nil
-				return
-			}
-			err = errors.NewErrorf("[loadDentry] ReadHeader: %s", err.Error())
-			return
+		endOff := startOff + 4
+		if uint64(len(data)) < endOff {
+			break
+		}
+		length := binary.BigEndian.Uint32(data[startOff:endOff])
+
+		startOff = endOff
+		endOff = startOff + uint64(length)
+		if uint64(len(data)) < endOff {
+			log.LogErrorf("[loadDentry] file (%v) numDentry(%v) offset: %v length %v lack data (fileSize: %v) ", filename, numDentries, startOff, length, cap(data))
+			err = errors.NewErrorf("[loadDentry] filedata : %v", startOff)
+			break
 		}
 
-		length := binary.BigEndian.Uint32(dentryBuf)
-
-		// next read body
-		if uint32(cap(dentryBuf)) >= length {
-			dentryBuf = dentryBuf[:length]
-		} else {
-			dentryBuf = make([]byte, length)
-		}
-		_, err = io.ReadFull(reader, dentryBuf)
-		if err != nil {
-			err = errors.NewErrorf("[loadDentry]: ReadBody: %s", err.Error())
-			return
-		}
 		dentry := &Dentry{}
-		if err = dentry.Unmarshal(dentryBuf); err != nil {
+		if err = dentry.Unmarshal(data[startOff:endOff]); err != nil {
 			err = errors.NewErrorf("[loadDentry] Unmarshal: %s", err.Error())
 			return
 		}
+		startOff = endOff
+
 		if status := mp.fsmCreateDentry(dentry, true); status != proto.OpOk {
 			err = errors.NewErrorf("[loadDentry] createDentry dentry: %v, resp code: %d", dentry, status)
 			return
 		}
 		numDentries += 1
 	}
+	return
 }
 
 func (mp *metaPartition) loadExtend(rootDir string) error {
@@ -223,6 +245,17 @@ func (mp *metaPartition) loadExtend(rootDir string) error {
 	defer func() {
 		_ = fp.Close()
 	}()
+
+	//check file size
+	stat, err := fp.Stat()
+	if err != nil {
+		return err
+	}
+	if stat.Size() < 1 {
+		log.LogWarnf("[loadExtend] file(%v) size < 1", filename)
+		return nil
+	}
+
 	var mem mmap.MMap
 	if mem, err = mmap.Map(fp, mmap.RDONLY, 0); err != nil {
 		return err
@@ -267,6 +300,16 @@ func (mp *metaPartition) loadMultipart(rootDir string) error {
 	defer func() {
 		_ = fp.Close()
 	}()
+
+	stat, err := fp.Stat()
+	if err != nil {
+		return err
+	}
+	if stat.Size() < 1 {
+		log.LogWarnf("[loadMultiipart] file(%v) size < 1", filename)
+		return nil
+	}
+
 	var mem mmap.MMap
 	if mem, err = mmap.Map(fp, mmap.RDONLY, 0); err != nil {
 		return err

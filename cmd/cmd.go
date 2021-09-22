@@ -17,7 +17,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/errors"
 	syslog "log"
 	"net/http"
 	_ "net/http/pprof"
@@ -28,23 +27,22 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
-
-	"github.com/chubaofs/chubaofs/console"
-	"github.com/chubaofs/chubaofs/proto"
-
-	sysutil "github.com/chubaofs/chubaofs/util/sys"
-
-	"github.com/chubaofs/chubaofs/objectnode"
+	"time"
 
 	"github.com/jacobsa/daemonize"
 
 	"github.com/chubaofs/chubaofs/authnode"
 	"github.com/chubaofs/chubaofs/cmd/common"
+	"github.com/chubaofs/chubaofs/console"
 	"github.com/chubaofs/chubaofs/datanode"
 	"github.com/chubaofs/chubaofs/master"
 	"github.com/chubaofs/chubaofs/metanode"
+	"github.com/chubaofs/chubaofs/objectnode"
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	sysutil "github.com/chubaofs/chubaofs/util/sys"
 	"github.com/chubaofs/chubaofs/util/ump"
 )
 
@@ -268,6 +266,8 @@ func main() {
 	}
 
 	interceptSignal(server)
+
+	startingTime := time.Now().UTC()
 	err = server.Start(cfg)
 	if err != nil {
 		log.LogFlush()
@@ -276,6 +276,9 @@ func main() {
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
+
+	startDuration := time.Now().UTC().Sub(startingTime).Seconds()
+	log.LogInfof("Chubaofs Server(%v) boot success, time: %vs ", role, startDuration)
 
 	daemonize.SignalOutcome(nil)
 

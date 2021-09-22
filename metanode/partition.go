@@ -222,7 +222,7 @@ type metaPartition struct {
 	vol                    *Vol
 	manager                *metadataManager
 	isLoadingMetaPartition bool
-	summaryLock			   sync.Mutex
+	summaryLock            sync.Mutex
 }
 
 func (mp *metaPartition) ForceSetMetaPartitionToLoadding() {
@@ -460,20 +460,7 @@ func (mp *metaPartition) load() (err error) {
 		return
 	}
 	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
-	if err = mp.loadInode(snapshotPath); err != nil {
-		return
-	}
-	if err = mp.loadDentry(snapshotPath); err != nil {
-		return
-	}
-	if err = mp.loadExtend(snapshotPath); err != nil {
-		return
-	}
-	if err = mp.loadMultipart(snapshotPath); err != nil {
-		return
-	}
-	err = mp.loadApplyID(snapshotPath)
-	return
+	return mp.LoadSnapshot(snapshotPath)
 }
 
 func (mp *metaPartition) store(sm *storeMsg) (err error) {
