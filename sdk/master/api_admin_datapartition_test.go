@@ -55,7 +55,7 @@ func TestDataPartitionAPI(t *testing.T) {
 
 	//Decommission Data Partition
 	wrongAddr := "127.0.0.1:9980"
-	err = testMc.AdminAPI().DecommissionDataPartition(testDataPartitionID, wrongAddr)
+	err = testMc.AdminAPI().DecommissionDataPartition(testDataPartitionID, wrongAddr, "")
 	if err == nil {
 		t.Fatalf("expected err, but nil")
 	}

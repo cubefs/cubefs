@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/chubaofs/chubaofs/proto"
 )
@@ -171,20 +172,26 @@ func (api *AdminAPI) CreateDataPartition(volName string, count int) (err error) 
 	return
 }
 
-func (api *AdminAPI) DecommissionDataPartition(dataPartitionID uint64, nodeAddr string) (err error) {
+func (api *AdminAPI) DecommissionDataPartition(dataPartitionID uint64, nodeAddr, destAddr string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminDecommissionDataPartition)
 	request.addParam("id", strconv.FormatUint(dataPartitionID, 10))
 	request.addParam("addr", nodeAddr)
+	if len(strings.TrimSpace(destAddr)) != 0 {
+		request.addParam("destAddr", destAddr)
+	}
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
 }
 
-func (api *AdminAPI) DecommissionMetaPartition(metaPartitionID uint64, nodeAddr string) (err error) {
+func (api *AdminAPI) DecommissionMetaPartition(metaPartitionID uint64, nodeAddr, destAddr string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminDecommissionMetaPartition)
 	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
 	request.addParam("addr", nodeAddr)
+	if len(strings.TrimSpace(destAddr)) != 0 {
+		request.addParam("destAddr", destAddr)
+	}
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}

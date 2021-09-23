@@ -282,17 +282,21 @@ func checkMetaPartition(pid uint64, client *master.MasterClient) (outPut string,
 }
 func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   CliOpDecommission + " [ADDRESS] [META PARTITION ID]",
+		Use:   CliOpDecommission + " [ADDRESS] [META PARTITION ID] [DestAddr] ",
 		Short: cmdMetaPartitionDecommissionShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
+			var destAddr string
+			if len(args) >= 3 {
+				destAddr = args[2]
+			}
 			address := args[0]
 			partitionID, err := strconv.ParseUint(args[1], 10, 64)
 			if err != nil {
 				stdout("%v\n", err)
 				return
 			}
-			if err = client.AdminAPI().DecommissionMetaPartition(partitionID, address); err != nil {
+			if err = client.AdminAPI().DecommissionMetaPartition(partitionID, address, destAddr); err != nil {
 				stdout("%v\n", err)
 				return
 			}
