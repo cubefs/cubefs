@@ -409,7 +409,7 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	s.PutNormalExtentToDeleteCache(extentID)
 
 	s.eiMutex.Lock()
-	delete(s.extentInfoMap,extentID)
+	delete(s.extentInfoMap, extentID)
 	s.eiMutex.Unlock()
 
 	return
@@ -729,17 +729,17 @@ func (s *ExtentStore) ReadTinyDeleteRecords(offset, size int64, data []byte) (cr
 	return
 }
 
-type ExtentDeleted struct{
-	ExtentID uint64   `json:"extentID"`
-	Offset   uint64	  `json:"offset"`
-	Size 	 uint64	  `json:"size"`
+type ExtentDeleted struct {
+	ExtentID uint64 `json:"extentID"`
+	Offset   uint64 `json:"offset"`
+	Size     uint64 `json:"size"`
 }
 
 func (s *ExtentStore) GetHasDeleteTinyRecords() (extentDes []ExtentDeleted, err error) {
 	data := make([]byte, DeleteTinyRecordSize)
 	offset := int64(0)
 
-	for ;; {
+	for {
 		_, err = s.tinyExtentDeleteFp.ReadAt(data, offset)
 		if err != nil {
 			if err == io.EOF {

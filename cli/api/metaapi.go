@@ -24,10 +24,10 @@ import (
 	"sync"
 	"time"
 
+	"bufio"
+	"github.com/chubaofs/chubaofs/metanode"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/metanode"
-	"bufio"
 	"io"
 )
 
@@ -231,7 +231,7 @@ func (mc *MetaHttpClient) GetMetaPartition(pid uint64) (cursor uint64, err error
 	return body.Cursor, nil
 }
 
-func (mc *MetaHttpClient) GetAllDentry(pid uint64) (dentryMap map[string]*metanode.Dentry, err error, ) {
+func (mc *MetaHttpClient) GetAllDentry(pid uint64) (dentryMap map[string]*metanode.Dentry, err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[GetAllDentry],pid:%v,err:%v", pid, err)
@@ -281,7 +281,7 @@ func parseToken(dec *json.Decoder, expectToken rune) (err error) {
 	return
 }
 
-func (mc *MetaHttpClient) GetAllInodes(pid uint64) (rstMap map[uint64]*Inode, err error, ) {
+func (mc *MetaHttpClient) GetAllInodes(pid uint64) (rstMap map[uint64]*Inode, err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[GetAllInodes],pid:%v,err:%v", pid, err)

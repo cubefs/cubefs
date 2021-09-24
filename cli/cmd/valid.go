@@ -56,7 +56,7 @@ func validMetaNodes(client *sdk.MasterClient, toComplete string) []string {
 	var (
 		validMetaNodes []string
 		clusterView    *proto.ClusterView
-		err error
+		err            error
 	)
 	if clusterView, err = client.AdminAPI().GetCluster(); err != nil {
 		errout("Error: %v", err)
