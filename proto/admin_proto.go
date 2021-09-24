@@ -46,6 +46,7 @@ const (
 	AdminUpdateNodeSetId           = "/admin/updateNodeSetId"
 	AdminUpdateDomainDataUseRatio  = "/admin/updateDomainDataRatio"
 	AdminUpdateZoneExcludeRatio    = "/admin/updateZoneExcludeRatio"
+	AdminSetNodeRdOnly             = "/admin/setNodeRdOnly"
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"

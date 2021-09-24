@@ -18,10 +18,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/samsarahq/thunder/graphql"
-	"github.com/samsarahq/thunder/graphql/introspection"
 	"net/http"
 	"net/http/httputil"
+
+	"github.com/samsarahq/thunder/graphql"
+	"github.com/samsarahq/thunder/graphql/introspection"
 
 	"github.com/gorilla/mux"
 
@@ -265,6 +266,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminUpdateZoneExcludeRatio).
 		HandlerFunc(m.updateZoneExcludeRatioHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetNodeRdOnly).
+		HandlerFunc(m.setNodeRdOnlyHandler)
 
 	// user management APIs
 	router.NewRoute().Methods(http.MethodPost).
