@@ -231,3 +231,9 @@ func getNearestHost(dp *wrapper.DataPartition) string {
 	}
 	return dp.LeaderAddr
 }
+
+func NewStreamConnByHost(host string) *StreamConn {
+	return &StreamConn{
+		currAddr: host,
+	}
+}
