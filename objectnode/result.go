@@ -236,7 +236,7 @@ type Tag struct {
 
 type Tagging struct {
 	XMLName xml.Name `json:"-"`
-	TagSet  []Tag   `xml:"TagSet>Tag,omitempty" json:"ts"`
+	TagSet  []Tag    `xml:"TagSet>Tag,omitempty" json:"ts"`
 }
 
 func (t Tagging) Encode() string {

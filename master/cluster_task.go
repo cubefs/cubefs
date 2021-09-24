@@ -326,7 +326,7 @@ func (c *Cluster) deleteMetaPartition(partition *MetaPartition, removeMetaNode *
 func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, removePeer proto.Peer) (err error) {
 	partition.offlineMutex.Lock()
 	defer partition.offlineMutex.Unlock()
-	defer func(){
+	defer func() {
 		if err1 := c.updateMetaPartitionOfflinePeerIDWithLock(partition, 0); err1 != nil {
 			err = errors.Trace(err, "updateMetaPartitionOfflinePeerIDWithLock failed, err[%v]", err1)
 		}
@@ -383,7 +383,7 @@ func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, remove
 	return
 }
 
-func (c *Cluster) updateMetaPartitionOfflinePeerIDWithLock(mp *MetaPartition, peerID uint64) (err error){
+func (c *Cluster) updateMetaPartitionOfflinePeerIDWithLock(mp *MetaPartition, peerID uint64) (err error) {
 	mp.Lock()
 	defer mp.Unlock()
 	mp.OfflinePeerID = peerID
@@ -579,7 +579,7 @@ func (c *Cluster) doLoadDataPartition(dp *DataPartition) {
 
 	dp.getFileCount()
 	dp.validateCRC(c.Name)
-	dp.checkReplicaSize(c.Name,c.cfg.diffSpaceUsage)
+	dp.checkReplicaSize(c.Name, c.cfg.diffSpaceUsage)
 	dp.setToNormal()
 }
 

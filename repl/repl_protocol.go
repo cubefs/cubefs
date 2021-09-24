@@ -53,9 +53,9 @@ type ReplProtocol struct {
 	followerConnects map[string]*FollowerTransport
 	lock             sync.RWMutex
 
-	prepareFunc  func(p *Packet) error                 // prepare packet
+	prepareFunc  func(p *Packet) error             // prepare packet
 	operatorFunc func(p *Packet, c net.Conn) error // operator
-	postFunc     func(p *Packet) error                 // post-processing packet
+	postFunc     func(p *Packet) error             // post-processing packet
 
 	isError int32
 	replId  int64
@@ -97,7 +97,7 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 			if err := p.WriteToConn(ft.conn); err != nil {
 				p.PackErrorBody(ActionSendToFollowers, err.Error())
 				p.respCh <- fmt.Errorf(string(p.Data[:p.Size]))
-				log.LogErrorf("serverWriteToFollower ft.addr(%v), err (%v)",ft.addr, err.Error())
+				log.LogErrorf("serverWriteToFollower ft.addr(%v), err (%v)", ft.addr, err.Error())
 				ft.conn.Close()
 				continue
 			}
@@ -145,12 +145,12 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 		err = fmt.Errorf(string(request.Data[:request.Size]))
 		return
 	}
-	timeOut:=proto.ReadDeadlineTime
-	if request.IsBatchDeleteExtents(){
-		timeOut=proto.BatchDeleteExtentReadDeadLineTime
+	timeOut := proto.ReadDeadlineTime
+	if request.IsBatchDeleteExtents() {
+		timeOut = proto.BatchDeleteExtentReadDeadLineTime
 	}
 	if err = reply.ReadFromConn(ft.conn, timeOut); err != nil {
-		log.LogErrorf("readFollowerResult ft.addr(%v), err(%v)",ft.addr, err.Error())
+		log.LogErrorf("readFollowerResult ft.addr(%v), err(%v)", ft.addr, err.Error())
 		return
 	}
 

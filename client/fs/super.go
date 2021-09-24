@@ -54,7 +54,7 @@ type Super struct {
 	fsyncOnClose  bool
 	enableXattr   bool
 	rootIno       uint64
-	sc *SummaryCache
+	sc            *SummaryCache
 }
 
 // Functions that Super needs to implement

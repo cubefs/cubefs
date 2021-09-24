@@ -170,11 +170,11 @@ type client struct {
 	id int64
 
 	// mount config
-	volName      string
-	masterAddr   string
-	followerRead bool
-	logDir       string
-	logLevel     string
+	volName       string
+	masterAddr    string
+	followerRead  bool
+	logDir        string
+	logLevel      string
 	enableSummary bool
 
 	// runtime context
@@ -437,7 +437,6 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
 
 	return C.int(f.fd)
 }
-
 
 //export cfs_flush
 func cfs_flush(id C.int64_t, fd C.int) C.int {

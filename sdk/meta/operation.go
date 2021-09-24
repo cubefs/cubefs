@@ -1211,13 +1211,13 @@ func (mw *MetaWrapper) batchGetXAttr(mp *MetaPartition, inodes []uint64, keys []
 func (mw *MetaWrapper) updateSummaryInfo(mp *MetaPartition, inode uint64, filesInc int64, dirsInc int64, bytesInc int64) error {
 	var err error
 	req := &proto.UpdateSummaryInfoRequest{
-		VolName: mw.volname,
+		VolName:     mw.volname,
 		PartitionId: mp.PartitionID,
-		Inode: inode,
-		Key: proto.SummaryKey,
-		FileInc: filesInc,
-		DirInc: dirsInc,
-		ByteInc: bytesInc,
+		Inode:       inode,
+		Key:         proto.SummaryKey,
+		FileInc:     filesInc,
+		DirInc:      dirsInc,
+		ByteInc:     bytesInc,
 	}
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaUpdateSummaryInfo

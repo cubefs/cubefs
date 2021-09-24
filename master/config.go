@@ -52,7 +52,7 @@ const (
 	defaultIntervalToCheckHeartbeat            = 6
 	defaultIntervalToCheckDataPartition        = 5
 	defaultIntervalToCheckCrc                  = 20 * defaultIntervalToCheck // in terms of seconds
-	noHeartBeatTimes                           = 3                                    // number of times that no heartbeat reported
+	noHeartBeatTimes                           = 3                           // number of times that no heartbeat reported
 	defaultNodeTimeOutSec                      = noHeartBeatTimes * defaultIntervalToCheckHeartbeat
 	defaultDataPartitionTimeOutSec             = 5 * defaultIntervalToCheckHeartbeat
 	defaultMissingDataPartitionInterval        = 24 * 3600

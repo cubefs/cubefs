@@ -63,10 +63,10 @@ func (api *AdminAPI) ListZones() (zoneViews []*proto.ZoneView, err error) {
 	}
 	return
 }
-func (api *AdminAPI) Topo() (topo *proto.TopologyView, err error ){
+func (api *AdminAPI) Topo() (topo *proto.TopologyView, err error) {
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.GetTopologyView)
-	if buf, err = api.mc.serveRequest(request); err != nil{
+	if buf, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	topo = &proto.TopologyView{}

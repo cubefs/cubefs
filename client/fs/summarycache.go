@@ -8,35 +8,35 @@ import (
 )
 
 const (
-	MinSummaryCacheEvictNum = 10
-	MaxSummaryCacheEvictNum = 200000
+	MinSummaryCacheEvictNum   = 10
+	MaxSummaryCacheEvictNum   = 200000
 	SummaryBgEvictionInterval = 2 * time.Minute
-	DefaultSummaryExpiration = 2 * time.Minute
-	MaxSummaryCache = 1000000
+	DefaultSummaryExpiration  = 2 * time.Minute
+	MaxSummaryCache           = 1000000
 )
 
 // SummaryCache defines the structure of the content-summary cache.
 type SummaryCache struct {
 	sync.RWMutex
-	cache 		map[uint64]*list.Element
-	lruList 	*list.List
-	expiration 	time.Duration
-	maxElements	int
+	cache       map[uint64]*list.Element
+	lruList     *list.List
+	expiration  time.Duration
+	maxElements int
 }
 
 // summaryCacheElement defines the structure of the content-summary cache's element.
 type summaryCacheElement struct {
-	ino			uint64
-	info		*proto.SummaryInfo
-	expiration	int64
+	ino        uint64
+	info       *proto.SummaryInfo
+	expiration int64
 }
 
 // NewSummaryCache returns a new content-summary cache.
 func NewSummaryCache(exp time.Duration, maxElement int) *SummaryCache {
 	sc := &SummaryCache{
-		cache: make(map[uint64]*list.Element),
-		lruList: list.New(),
-		expiration: exp,
+		cache:       make(map[uint64]*list.Element),
+		lruList:     list.New(),
+		expiration:  exp,
 		maxElements: maxElement,
 	}
 	go sc.backgroundEviction()
@@ -55,8 +55,8 @@ func (sc *SummaryCache) Put(inode uint64, summaryInfo *proto.SummaryInfo) {
 		sc.evict(true)
 	}
 	element := sc.lruList.PushFront(&summaryCacheElement{
-		ino: inode,
-		info: summaryInfo,
+		ino:        inode,
+		info:       summaryInfo,
 		expiration: time.Now().Add(sc.expiration).UnixNano(),
 	})
 	sc.cache[inode] = element
@@ -141,5 +141,3 @@ func cacheExpired(info *summaryCacheElement) bool {
 	}
 	return false
 }
-
-

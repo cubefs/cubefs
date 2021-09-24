@@ -92,8 +92,8 @@ const (
 	cmdVolDefaultCapacity       = 10 // 100GB
 	cmdVolDefaultReplicas       = 3
 	cmdVolDefaultFollowerReader = true
-	cmdVolDefaultZoneName = ""
-	cmdVolDefaultCrossZone = false
+	cmdVolDefaultZoneName       = ""
+	cmdVolDefaultCrossZone      = false
 )
 
 func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
