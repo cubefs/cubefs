@@ -52,6 +52,8 @@ const (
 	descriptionKey          = "description"
 	dpSelectorNameKey       = "dpSelectorName"
 	dpSelectorParmKey       = "dpSelectorParm"
+	nodeTypeKey             = "nodeType"
+	rdOnlyKey               = "rdOnly"
 )
 
 const (

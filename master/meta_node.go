@@ -43,6 +43,7 @@ type MetaNode struct {
 	sync.RWMutex              `graphql:"-"`
 	ToBeOffline               bool
 	PersistenceMetaPartitions []uint64
+	RdOnly                    bool
 }
 
 func newMetaNode(addr, zoneName, clusterID string) (node *MetaNode) {
@@ -89,7 +90,8 @@ func (metaNode *MetaNode) isWritable() (ok bool) {
 	metaNode.RLock()
 	defer metaNode.RUnlock()
 	if metaNode.IsActive && metaNode.MaxMemAvailWeight > gConfig.metaNodeReservedMem &&
-		!metaNode.reachesThreshold() && metaNode.MetaPartitionCount < defaultMaxMetaPartitionCountOnEachNode {
+		!metaNode.reachesThreshold() && metaNode.MetaPartitionCount < defaultMaxMetaPartitionCountOnEachNode &&
+		!metaNode.RdOnly {
 		ok = true
 	}
 	return

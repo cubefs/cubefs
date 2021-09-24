@@ -842,6 +842,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		NodeSetID:                 dataNode.NodeSetID,
 		PersistenceDataPartitions: dataNode.PersistenceDataPartitions,
 		BadDisks:                  dataNode.BadDisks,
+		RdOnly:                    dataNode.RdOnly,
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(dataNodeInfo))
@@ -919,6 +920,116 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set nodeinfo params %v successfully", params)))
 
+}
+
+const (
+	TypeMetaPartion uint32 = 0x01
+	TypeDataPartion uint32 = 0x02
+)
+
+func (m *Server) setNodeRdOnly(addr string, nodeType uint32, rdOnly bool) (err error) {
+	if nodeType == TypeDataPartion {
+		value, ok := m.cluster.dataNodes.Load(addr)
+		if !ok {
+			return fmt.Errorf("[setNodeRdOnly] data node %s is not exist", addr)
+		}
+
+		dataNode := value.(*DataNode)
+		oldRdOnly := dataNode.RdOnly
+		dataNode.RdOnly = rdOnly
+
+		if err = m.cluster.syncUpdateDataNode(dataNode); err != nil {
+			dataNode.RdOnly = oldRdOnly
+			return fmt.Errorf("[setNodeRdOnly] syncUpdateDataNode err(%s)", err.Error())
+		}
+
+		return
+	}
+
+	value, ok := m.cluster.metaNodes.Load(addr)
+	if !ok {
+		return fmt.Errorf("[setNodeRdOnly] meta node %s is not exist", addr)
+	}
+
+	metaNode := value.(*MetaNode)
+	oldRdOnly := metaNode.RdOnly
+	metaNode.RdOnly = rdOnly
+
+	if err = m.cluster.syncUpdateMetaNode(metaNode); err != nil {
+		metaNode.RdOnly = oldRdOnly
+		return fmt.Errorf("[setNodeRdOnly] syncUpdateMetaNode err(%s)", err.Error())
+	}
+
+	return
+}
+
+func parseSetNodeRdOnlyParam(r *http.Request) (addr string, nodeType int, rdOnly bool, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if addr = r.FormValue(addrKey); addr == "" {
+		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is empty", addrKey)
+		return
+	}
+
+	if nodeType, err = parseNodeType(r); err != nil {
+		return
+	}
+
+	val := r.FormValue(rdOnlyKey)
+	if val == "" {
+		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is empty", rdOnlyKey)
+		return
+	}
+
+	if rdOnly, err = strconv.ParseBool(val); err != nil {
+		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is not bool value %s", rdOnlyKey, val)
+		return
+	}
+
+	return
+}
+
+func parseNodeType(r *http.Request) (nodeType int, err error) {
+	var val string
+	if val = r.FormValue(nodeTypeKey); val == "" {
+		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is empty", nodeTypeKey)
+		return
+	}
+
+	if nodeType, err = strconv.Atoi(val); err != nil {
+		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is not number, err %s", nodeTypeKey, err.Error())
+		return
+	}
+
+	if nodeType != int(TypeDataPartion) && nodeType != int(TypeMetaPartion) {
+		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is not legal, must be %d or %d", nodeTypeKey, TypeDataPartion, TypeMetaPartion)
+		return
+	}
+
+	return
+}
+
+func (m *Server) setNodeRdOnlyHandler(w http.ResponseWriter, r *http.Request) {
+
+	addr, nodeType, rdOnly, err := parseSetNodeRdOnlyParam(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	log.LogInfof("[setNodeRdOnlyHandler] set node %s to rdOnly(%v)", addr, rdOnly)
+
+	err = m.setNodeRdOnly(addr, uint32(nodeType), rdOnly)
+	if err != nil {
+		log.LogErrorf("[setNodeRdOnlyHandler] set node %s to rdOnly %v, err (%s)", addr, rdOnly, err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("[setNodeRdOnlyHandler] set node %s to rdOnly(%v) success", addr, rdOnly)))
+	return
 }
 
 // get metanode some interval params
@@ -1110,6 +1221,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		MetaPartitionCount:        metaNode.MetaPartitionCount,
 		NodeSetID:                 metaNode.NodeSetID,
 		PersistenceMetaPartitions: metaNode.PersistenceMetaPartitions,
+		RdOnly:                    metaNode.RdOnly,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(metaNodeInfo))
 }

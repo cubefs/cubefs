@@ -80,6 +80,11 @@ func (partition *DataPartition) checkReplicaStatus(timeOutSec int64) {
 	for _, replica := range partition.Replicas {
 		if !replica.isLive(timeOutSec) {
 			replica.Status = proto.ReadOnly
+			continue
+		}
+
+		if replica.dataNode.RdOnly && replica.Status == proto.ReadWrite {
+			replica.Status = proto.ReadOnly
 		}
 	}
 }

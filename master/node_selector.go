@@ -118,14 +118,20 @@ type GetCarryNodes func(maxTotal uint64, excludeHosts []string, nodes *sync.Map)
 func getAllCarryMetaNodes(maxTotal uint64, excludeHosts []string, metaNodes *sync.Map) (nodes SortedWeightedNodes, availCount int) {
 	nodes = make(SortedWeightedNodes, 0)
 	metaNodes.Range(func(key, value interface{}) bool {
+		log.LogInfof("[getAllCarryMetaNodes] getAllCarryMetaNodes [%v] ", key)
 		metaNode := value.(*MetaNode)
 		if contains(excludeHosts, metaNode.Addr) == true {
+			log.LogInfof("[getAllCarryMetaNodes] metaNode [%v] is excludeHosts", metaNode.Addr)
 			return true
 		}
-		if metaNode.isWritable() == false {
+
+		if !metaNode.isWritable() {
+			log.LogInfof("[getAllCarryMetaNodes] metaNode [%v] is not writeable", metaNode.Addr)
 			return true
 		}
+
 		if metaNode.isCarryNode() == true {
+			log.LogInfof("[getAllCarryMetaNodes] metaNode [%v] is CarryNode", metaNode.Addr)
 			availCount++
 		}
 		nt := new(weightedNode)
@@ -149,13 +155,17 @@ func getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []string, dataNodes 
 	dataNodes.Range(func(key, value interface{}) bool {
 		dataNode := value.(*DataNode)
 		if contains(excludeHosts, dataNode.Addr) == true {
+			log.LogInfof("[getAvailCarryDataNodeTab] dataNode [%v] is excludeHosts", dataNode.Addr)
 			log.LogDebugf("contains return")
 			return true
 		}
-		if dataNode.isWriteAble() == false {
+
+		if !dataNode.isWriteAble() {
+			log.LogInfof("[getAvailCarryDataNodeTab] dataNode [%v] is not writeable", dataNode.Addr)
 			log.LogDebugf("isWritable return")
 			return true
 		}
+
 		if dataNode.isAvailCarryNode() == true {
 			availCount++
 		}

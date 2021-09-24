@@ -186,6 +186,7 @@ type dataNodeValue struct {
 	NodeSetID uint64
 	Addr      string
 	ZoneName  string
+	RdOnly    bool
 }
 
 func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
@@ -194,6 +195,7 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		NodeSetID: dataNode.NodeSetID,
 		Addr:      dataNode.Addr,
 		ZoneName:  dataNode.ZoneName,
+		RdOnly:    dataNode.RdOnly,
 	}
 }
 
@@ -202,6 +204,7 @@ type metaNodeValue struct {
 	NodeSetID uint64
 	Addr      string
 	ZoneName  string
+	RdOnly    bool
 }
 
 func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
@@ -210,6 +213,7 @@ func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
 		NodeSetID: metaNode.NodeSetID,
 		Addr:      metaNode.Addr,
 		ZoneName:  metaNode.ZoneName,
+		RdOnly:    metaNode.RdOnly,
 	}
 }
 
@@ -578,6 +582,7 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode := newDataNode(dnv.Addr, dnv.ZoneName, c.Name)
 		dataNode.ID = dnv.ID
 		dataNode.NodeSetID = dnv.NodeSetID
+		dataNode.RdOnly = dnv.RdOnly
 		olddn, ok := c.dataNodes.Load(dataNode.Addr)
 		if ok {
 			if olddn.(*DataNode).ID <= dataNode.ID {
@@ -608,6 +613,8 @@ func (c *Cluster) loadMetaNodes() (err error) {
 		metaNode := newMetaNode(mnv.Addr, mnv.ZoneName, c.Name)
 		metaNode.ID = mnv.ID
 		metaNode.NodeSetID = mnv.NodeSetID
+		metaNode.RdOnly = mnv.RdOnly
+
 		oldmn, ok := c.metaNodes.Load(metaNode.Addr)
 		if ok {
 			if oldmn.(*MetaNode).ID <= metaNode.ID {

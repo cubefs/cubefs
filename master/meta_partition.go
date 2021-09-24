@@ -641,6 +641,10 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 	mr.InodeCount = mgr.InodeCnt
 	mr.DentryCount = mgr.DentryCnt
 	mr.setLastReportTime()
+
+	if mr.metaNode.RdOnly && mr.Status == proto.ReadWrite {
+		mr.Status = proto.ReadOnly
+	}
 }
 
 func (mp *MetaPartition) afterCreation(nodeAddr string, c *Cluster) (err error) {
