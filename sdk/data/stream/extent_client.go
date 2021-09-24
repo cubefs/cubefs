@@ -258,7 +258,7 @@ func (client *ExtentClient) Truncate(mw *meta.MetaWrapper, parentIno uint64, ino
 		log.LogError(errors.Stack(err))
 	}
 	if mw.EnableSummary {
-		go mw.UpdateSummary_ll(parentIno, 0, 0, int64(size) - int64(oldSize))
+		go mw.UpdateSummary_ll(parentIno, 0, 0, int64(size)-int64(oldSize))
 	}
 
 	return err

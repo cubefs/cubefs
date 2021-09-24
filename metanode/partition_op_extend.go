@@ -42,11 +42,11 @@ func (mp *metaPartition) UpdateSummaryInfo(req *proto.UpdateSummaryInfoRequest, 
 			newDir := oldDir + dirInc
 			newByte := oldByte + byteInc
 			builder.Reset()
-			builder.WriteString(strconv.FormatInt(newFile,10))
+			builder.WriteString(strconv.FormatInt(newFile, 10))
 			builder.WriteString(",")
-			builder.WriteString(strconv.FormatInt(newDir,10))
+			builder.WriteString(strconv.FormatInt(newDir, 10))
 			builder.WriteString(",")
-			builder.WriteString(strconv.FormatInt(newByte,10))
+			builder.WriteString(strconv.FormatInt(newByte, 10))
 			var extend = NewExtend(req.Inode)
 			extend.Put([]byte(req.Key), []byte(builder.String()))
 			if _, err = mp.putExtend(opFSMUpdateSummaryInfo, extend); err != nil {
@@ -57,11 +57,11 @@ func (mp *metaPartition) UpdateSummaryInfo(req *proto.UpdateSummaryInfoRequest, 
 			return
 		} else {
 			builder.Reset()
-			builder.WriteString(strconv.FormatInt(req.FileInc,10))
+			builder.WriteString(strconv.FormatInt(req.FileInc, 10))
 			builder.WriteString(",")
-			builder.WriteString(strconv.FormatInt(req.DirInc,10))
+			builder.WriteString(strconv.FormatInt(req.DirInc, 10))
 			builder.WriteString(",")
-			builder.WriteString(strconv.FormatInt(req.ByteInc,10))
+			builder.WriteString(strconv.FormatInt(req.ByteInc, 10))
 			extend.Put([]byte(req.Key), []byte(builder.String()))
 			if _, err = mp.putExtend(opFSMUpdateSummaryInfo, extend); err != nil {
 				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -72,11 +72,11 @@ func (mp *metaPartition) UpdateSummaryInfo(req *proto.UpdateSummaryInfoRequest, 
 		}
 	} else {
 		builder.Reset()
-		builder.WriteString(strconv.FormatInt(req.FileInc,10))
+		builder.WriteString(strconv.FormatInt(req.FileInc, 10))
 		builder.WriteString(",")
-		builder.WriteString(strconv.FormatInt(req.DirInc,10))
+		builder.WriteString(strconv.FormatInt(req.DirInc, 10))
 		builder.WriteString(",")
-		builder.WriteString(strconv.FormatInt(req.ByteInc,10))
+		builder.WriteString(strconv.FormatInt(req.ByteInc, 10))
 		var extend = NewExtend(req.Inode)
 		extend.Put([]byte(req.Key), []byte(builder.String()))
 		if _, err = mp.putExtend(opFSMUpdateSummaryInfo, extend); err != nil {

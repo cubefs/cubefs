@@ -207,7 +207,7 @@ var Err2CodeMap = map[error]int32{
 	ErrInvalidAccessKey:                ErrCodeInvalidAccessKey,
 	ErrInvalidSecretKey:                ErrCodeInvalidSecretKey,
 	ErrIsOwner:                         ErrCodeIsOwner,
-	ErrZoneNum:							ErrCodeZoneNumError,
+	ErrZoneNum:                         ErrCodeZoneNumError,
 }
 
 func ParseErrorCode(code int32) error {
@@ -276,7 +276,7 @@ var code2ErrMap = map[int32]error{
 	ErrCodeInvalidAccessKey:                ErrInvalidAccessKey,
 	ErrCodeInvalidSecretKey:                ErrInvalidSecretKey,
 	ErrCodeIsOwner:                         ErrIsOwner,
-	ErrCodeZoneNumError:					ErrZoneNum,
+	ErrCodeZoneNumError:                    ErrZoneNum,
 }
 
 type GeneralResp struct {

@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	RootIno = uint64(1)
+	RootIno    = uint64(1)
 	SummaryKey = "cbfs.dir.summary"
 )
 
@@ -79,9 +79,9 @@ type InodeInfo struct {
 }
 
 type SummaryInfo struct {
-	Files   int64	`json:"files"`
-	Subdirs int64	`json:"subdirs"`
-	Fbytes  int64	`json:"fbytes"`
+	Files   int64 `json:"files"`
+	Subdirs int64 `json:"subdirs"`
+	Fbytes  int64 `json:"fbytes"`
 }
 
 func (info *InodeInfo) Expiration() int64 {
@@ -526,7 +526,7 @@ type UpdateSummaryInfoRequest struct {
 	PartitionId uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	Key         string `json:"key"`
-	FileInc	int64	`json:"fileinc"`
-	DirInc	int64 	`json:"dirinc"`
-	ByteInc int64 	`json:"byteinc"`
+	FileInc     int64  `json:"fileinc"`
+	DirInc      int64  `json:"dirinc"`
+	ByteInc     int64  `json:"byteinc"`
 }

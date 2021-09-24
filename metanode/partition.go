@@ -222,7 +222,7 @@ type metaPartition struct {
 	vol                    *Vol
 	manager                *metadataManager
 	isLoadingMetaPartition bool
-	summaryLock			   sync.Mutex
+	summaryLock            sync.Mutex
 }
 
 func (mp *metaPartition) ForceSetMetaPartitionToLoadding() {

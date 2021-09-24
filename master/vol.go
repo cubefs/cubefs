@@ -72,10 +72,10 @@ type Vol struct {
 }
 
 func newVol(id uint64, name, owner, zoneName string,
-			dpSize, capacity uint64, dpReplicaNum,
-			mpReplicaNum uint8, followerRead, authenticate,
-			crossZone bool, defaultPriority bool,
-			createTime int64, description string) (vol *Vol) {
+	dpSize, capacity uint64, dpReplicaNum,
+	mpReplicaNum uint8, followerRead, authenticate,
+	crossZone bool, defaultPriority bool,
+	createTime int64, description string) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	if dpReplicaNum < defaultReplicaNum {
@@ -294,8 +294,8 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 		doSplit = mp.checkStatus(c.Name, true, int(vol.mpReplicaNum), maxPartitionID)
 		if doSplit {
 			nextStart := mp.MaxInodeID + defaultMetaPartitionInodeIDStep
-			log.LogInfof(c.Name, fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits start[%v] maxinodeid:[%v] default step:[%v],nextStart[%v]", 
-				c.Name, vol.Name, mp.PartitionID, mp.Start ,mp.MaxInodeID ,defaultMetaPartitionInodeIDStep, nextStart))
+			log.LogInfof(c.Name, fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits start[%v] maxinodeid:[%v] default step:[%v],nextStart[%v]",
+				c.Name, vol.Name, mp.PartitionID, mp.Start, mp.MaxInodeID, defaultMetaPartitionInodeIDStep, nextStart))
 			if err = vol.splitMetaPartition(c, mp, nextStart); err != nil {
 				Warn(c.Name, fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits failed,err[%v]", c.Name, vol.Name, mp.PartitionID, err))
 			}
@@ -409,7 +409,7 @@ func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 
 func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 	if vol.dataPartitions.lastAutoCreateTime.IsZero() ||
-			vol.dataPartitions.lastAutoCreateTime.After(time.Now()) {
+		vol.dataPartitions.lastAutoCreateTime.After(time.Now()) {
 		vol.dataPartitions.lastAutoCreateTime = time.Now()
 		return
 	}
@@ -739,7 +739,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	)
 	errChannel := make(chan error, vol.mpReplicaNum)
 	if c.isFaultDomain(vol) {
-		if hosts, peers, err  = c.getAvaliableHostFromNsGrp(TypeMetaPartion, vol.mpReplicaNum); err != nil {
+		if hosts, peers, err = c.getAvaliableHostFromNsGrp(TypeMetaPartion, vol.mpReplicaNum); err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] getAvaliableHostFromNsGrp err[%v]", err)
 			return nil, errors.NewError(err)
 		}

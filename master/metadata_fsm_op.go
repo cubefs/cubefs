@@ -39,7 +39,7 @@ type clusterValue struct {
 	MetaNodeDeleteBatchCount    uint64
 	MetaNodeDeleteWorkerSleepMs uint64
 	DataNodeAutoRepairLimitRate uint64
-	FaultDomain					bool
+	FaultDomain                 bool
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -226,17 +226,18 @@ type nodeSetValue struct {
 }
 
 type nodeSetGrpValue struct {
-	ID       	uint64
+	ID          uint64
 	NodeSetsIds []uint64
-	Status    	uint8
+	Status      uint8
 }
 
 type zoneDomainValue struct {
-	ExcludeZoneMap  map[string]int
-	NeedFaultDomain bool
-	DataRatio       float64
-	ExcludeZoneUseRatio    float64
+	ExcludeZoneMap      map[string]int
+	NeedFaultDomain     bool
+	DataRatio           float64
+	ExcludeZoneUseRatio float64
 }
+
 func newZoneDomainValue() (ev *zoneDomainValue) {
 	ev = &zoneDomainValue{
 		ExcludeZoneMap: make(map[string]int),
@@ -253,12 +254,13 @@ func newNodeSetValue(nset *nodeSet) (nsv *nodeSetValue) {
 }
 func newNodeSetGrpValue(nset *nodeSetGroup) (nsv *nodeSetGrpValue) {
 	nsv = &nodeSetGrpValue{
-		ID:       nset.ID,
+		ID:          nset.ID,
 		NodeSetsIds: nset.nodeSetsIds,
-		Status: nset.status,
+		Status:      nset.status,
 	}
 	return
 }
+
 // RaftCmd defines the Raft commands.
 type RaftCmd struct {
 	Op uint32 `json:"op"`
@@ -313,7 +315,6 @@ func (m *RaftCmd) setOpType() {
 		log.LogWarnf("action[setOpType] unknown opCode[%v]", keyArr[1])
 	}
 }
-
 
 //key=#c#name
 func (c *Cluster) syncPutCluster() (err error) {
@@ -601,15 +602,16 @@ func (c *Cluster) loadNodeSets() (err error) {
 			c.t.putZoneIfAbsent(zone)
 		}
 		zone.putNodeSet(ns)
-		log.LogInfof("action[addNodeSetGrp] nodeSet[%v]",ns.ID)
+		log.LogInfof("action[addNodeSetGrp] nodeSet[%v]", ns.ID)
 		if err = c.addNodeSetGrp(ns, true); err != nil {
-			log.LogErrorf("action[createNodeSet] nodeSet[%v] err[%v]",ns.ID, err)
+			log.LogErrorf("action[createNodeSet] nodeSet[%v] err[%v]", ns.ID, err)
 			return err
 		}
 		log.LogInfof("action[loadNodeSets], nsId[%v],zone[%v]", ns.ID, zone.name)
 	}
 	return nil
 }
+
 // put exclude zone only be used one time when master update and restart
 func (c *Cluster) putZoneDomain(init bool) (err error) {
 	log.LogInfof("action[putZoneDomain]")
@@ -633,7 +635,7 @@ func (c *Cluster) putZoneDomain(init bool) (err error) {
 	} else {
 		domainValue.DataRatio = defaultZoneUsageThreshold
 	}
-	if c.nodeSetGrpManager.excludeZoneUseRatio > 0 && c.nodeSetGrpManager.excludeZoneUseRatio <= 1{
+	if c.nodeSetGrpManager.excludeZoneUseRatio > 0 && c.nodeSetGrpManager.excludeZoneUseRatio <= 1 {
 		domainValue.DataRatio = c.nodeSetGrpManager.excludeZoneUseRatio
 	} else {
 		domainValue.DataRatio = defaultZoneUsageThreshold
@@ -656,7 +658,7 @@ func (c *Cluster) loadZoneDomain() (ok bool, err error) {
 	if len(result) == 0 {
 		err = fmt.Errorf("action[loadZoneDomain],err:not found")
 		log.LogInfof("action[loadZoneDomain] err[%v]", err)
-		return false,nil
+		return false, nil
 	}
 	for _, value := range result {
 		nsv := &zoneDomainValue{}
@@ -686,7 +688,7 @@ func (c *Cluster) loadNodeSetGrps() (err error) {
 		log.LogInfof("action[loadNodeSetGrps] seek failed, nsgId[%v]", err)
 		return err
 	}
-	if len(result) > 0  {
+	if len(result) > 0 {
 		log.LogInfof("action[loadNodeSetGrps] get result len[%v]", len(result))
 		c.nodeSetGrpManager.start()
 	}
@@ -697,7 +699,7 @@ func (c *Cluster) loadNodeSetGrps() (err error) {
 			log.LogFatalf("action[loadNodeSets], unmarshal err:%v", err.Error())
 			return err
 		}
-		log.LogInfof("action[loadNodeSetGrps] get result nsv id[%v],status[%v],ids[%v]", nsv.ID, nsv.Status,nsv.NodeSetsIds)
+		log.LogInfof("action[loadNodeSetGrps] get result nsv id[%v],status[%v],ids[%v]", nsv.ID, nsv.Status, nsv.NodeSetsIds)
 		nsg := newNodeSetGrp(c)
 		nsg.nodeSetsIds = nsv.NodeSetsIds
 		nsg.ID = nsv.ID
@@ -877,5 +879,3 @@ func (c *Cluster) loadDataPartitions() (err error) {
 	}
 	return
 }
-
-

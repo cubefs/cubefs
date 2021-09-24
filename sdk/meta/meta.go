@@ -76,7 +76,7 @@ type MetaConfig struct {
 	TicketMess       auth.TicketMess
 	ValidateOwner    bool
 	OnAsyncTaskError AsyncTaskErrorFunc
-	EnableSummary	 bool
+	EnableSummary    bool
 }
 
 type MetaWrapper struct {
@@ -128,7 +128,7 @@ type MetaWrapper struct {
 	// Used to trigger and throttle instant partition updates
 	forceUpdate      chan struct{}
 	forceUpdateLimit *rate.Limiter
-	EnableSummary	bool
+	EnableSummary    bool
 }
 
 //the ticket from authnode

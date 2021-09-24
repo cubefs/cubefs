@@ -32,8 +32,8 @@ import (
 
 // File defines the structure of a file.
 type File struct {
-	super *Super
-	info  *proto.InodeInfo
+	super     *Super
+	info      *proto.InodeInfo
 	parentIno uint64
 	sync.RWMutex
 }
