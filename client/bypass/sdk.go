@@ -2665,6 +2665,14 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 		offset = int(f.pos)
 	}
 	n, err := c.ec.Read(ctx, f.ino, buffer, offset, len(buffer))
+	extentNotExist := err != nil && strings.Contains(err.Error(), "extent does not exist")
+	if err != nil && err != io.EOF && !extentNotExist {
+		return C.ssize_t(statusEIO)
+	}
+	if extentNotExist || n < int(size) {
+		c.ec.RefreshExtentsCache(ctx, f.ino)
+		n, err = c.ec.Read(ctx, f.ino, buffer, offset, len(buffer))
+	}
 	if err != nil && err != io.EOF {
 		return C.ssize_t(statusEIO)
 	}
