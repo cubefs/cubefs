@@ -47,10 +47,11 @@ type Super struct {
 	//nodeCache map[uint64]fs.Node
 	//fslock    sync.Mutex
 
-	disableDcache bool
-	fsyncOnClose  bool
-	enableXattr   bool
-	rootIno       uint64
+	disableDcache            bool
+	fsyncOnClose             bool
+	enableXattr              bool
+	noBatchGetInodeOnReaddir bool
+	rootIno                  uint64
 
 	delProcessPath []string
 }
@@ -122,6 +123,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.disableDcache = opt.DisableDcache
 	s.fsyncOnClose = opt.FsyncOnClose
 	s.enableXattr = opt.EnableXattr
+	s.noBatchGetInodeOnReaddir = opt.NoBatchGetInodeOnReaddir
 	if opt.DelProcessPath != "" {
 		s.delProcessPath = strings.Split(opt.DelProcessPath, ",")
 	}

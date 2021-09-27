@@ -299,9 +299,12 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		dcache.Put(child.Name, child.Inode)
 	}
 
-	infos := d.super.mw.BatchInodeGet(ctx, inodes)
-	for _, info := range infos {
-		d.super.ic.Put(info)
+	// batch get inode info is only useful when using stat/fstat to all files, or in shell ls command
+	if !d.super.noBatchGetInodeOnReaddir {
+		infos := d.super.mw.BatchInodeGet(ctx, inodes)
+		for _, info := range infos {
+			d.super.ic.Put(info)
+		}
 	}
 	d.dcache = dcache
 

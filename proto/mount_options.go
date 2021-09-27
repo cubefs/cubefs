@@ -54,6 +54,7 @@ const (
 	ExtentSize
 	AutoFlush
 	DeleteProcessAbsoPath
+	NoBatchGetInodeOnReaddir
 
 	MaxMountOption
 )
@@ -120,6 +121,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[MaxCPUs] = MountOption{"maxcpus", "The maximum number of CPUs that can be executing", "", int64(-1)}
 	opts[EnableXattr] = MountOption{"enableXattr", "Enable xattr support", "", false}
 	opts[EnablePosixACL] = MountOption{"enablePosixACL", "enable posix ACL support", "", false}
+	opts[NoBatchGetInodeOnReaddir] = MountOption{"noBatchGetInodeOnReaddir", "Not batch get inode info when readdir", "", false}
 
 	//opts[AlignSize] = MountOption{"alignSize", "align size when extent merge", "", int64(4096)}
 	//opts[MaxExtentNumPerAlignArea] = MountOption{"maxExtentNumPerAlignArea", "max extent number per align area", "",
@@ -265,4 +267,5 @@ type MountOptions struct {
 	ExtentSize               int64
 	AutoFlush                bool
 	DelProcessPath           string
+	NoBatchGetInodeOnReaddir bool
 }
