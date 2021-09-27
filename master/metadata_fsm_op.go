@@ -283,7 +283,6 @@ func (m *RaftCmd) setOpType() {
 	}
 }
 
-
 //key=#c#name
 func (c *Cluster) syncPutCluster() (err error) {
 	metadata := new(RaftCmd)
@@ -724,5 +723,3 @@ func (c *Cluster) loadDataPartitions() (err error) {
 	}
 	return
 }
-
-

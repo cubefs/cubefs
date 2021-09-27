@@ -122,7 +122,7 @@ func (s *ExtentStore) PersistenceHasDeleteExtent(extentID uint64) (err error) {
 func (s *ExtentStore) GetHasDeleteExtent() (extentDes []ExtentDeleted, err error) {
 	data := make([]byte, 8)
 	offset := int64(0)
-	for ;; {
+	for {
 		_, err = s.normalExtentDeleteFp.ReadAt(data, offset)
 		if err != nil {
 			if err == io.EOF {

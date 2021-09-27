@@ -7,10 +7,10 @@ import (
 )
 
 var (
-	deleteLimiteRater       = rate.NewLimiter(rate.Inf, defaultMarkDeleteLimitBurst)
-	MaxExtentRepairLimit    = 20000
-	MinExtentRepairLimit    = 5
-	CurExtentRepairLimit    = MaxExtentRepairLimit
+	deleteLimiteRater      = rate.NewLimiter(rate.Inf, defaultMarkDeleteLimitBurst)
+	MaxExtentRepairLimit   = 20000
+	MinExtentRepairLimit   = 5
+	CurExtentRepairLimit   = MaxExtentRepairLimit
 	extentRepairLimitRater chan struct{}
 )
 
