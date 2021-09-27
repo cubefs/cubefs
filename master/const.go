@@ -128,6 +128,13 @@ const (
 )
 
 const (
+	MetricRoleMaster     = "master"
+	MetricRoleMetaNode   = "metaNode"
+	MetricRoleDataNode   = "dataNode"
+	MetricRoleObjectNode = "objectNode"
+)
+
+const (
 	deleteIllegalReplicaErr       = "deleteIllegalReplicaErr "
 	addMissingReplicaErr          = "addMissingReplicaErr "
 	checkDataPartitionDiskErr     = "checkDataPartitionDiskErr  "
