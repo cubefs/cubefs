@@ -97,6 +97,10 @@ func (metaNode *MetaNode) isWritable() (ok bool) {
 	return
 }
 
+func (metaNode *MetaNode) isMixedMetaNode() bool {
+	return IsMixedMetaNode(metaNode.Addr)
+}
+
 // A carry node is the meta node whose carry is greater than one.
 func (metaNode *MetaNode) isCarryNode() (ok bool) {
 	metaNode.RLock()

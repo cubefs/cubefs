@@ -121,6 +121,9 @@ func getAllCarryMetaNodes(maxTotal uint64, excludeHosts []string, metaNodes *syn
 		if contains(excludeHosts, metaNode.Addr) == true {
 			return true
 		}
+		if metaNode.isMixedMetaNode() {
+			return true
+		}
 		if metaNode.isWritable() == false {
 			return true
 		}
