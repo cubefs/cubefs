@@ -34,6 +34,7 @@ const (
 	MetricMetaNodesIncreasedGB = "metaNodes_increased_GB"
 	MetricDataNodesCount       = "dataNodes_count"
 	MetricMetaNodesCount       = "metaNodes_count"
+	MetricNodeStat             = "node_stat"
 	MetricVolCount             = "vol_count"
 	MetricVolTotalGB           = "vol_total_GB"
 	MetricVolUsedGB            = "vol_used_GB"
@@ -55,6 +56,7 @@ type monitorMetrics struct {
 	metaNodesTotal     *exporter.Gauge
 	metaNodesUsed      *exporter.Gauge
 	metaNodesIncreased *exporter.Gauge
+	nodeStat           *exporter.GaugeVec
 	volTotalSpace      *exporter.GaugeVec
 	volUsedSpace       *exporter.GaugeVec
 	volUsage           *exporter.GaugeVec
@@ -69,7 +71,8 @@ type monitorMetrics struct {
 }
 
 func newMonitorMetrics(c *Cluster) *monitorMetrics {
-	return &monitorMetrics{cluster: c,
+	return &monitorMetrics{
+		cluster:  c,
 		volNames: make(map[string]struct{}),
 		badDisks: make(map[string]string),
 	}
@@ -90,6 +93,7 @@ func (mm *monitorMetrics) start() {
 	mm.volUsage = exporter.NewGaugeVec(MetricVolUsageGB, "", []string{"volName"})
 	mm.volMetaCount = exporter.NewGaugeVec(MetricVolMetaCount, "", []string{"volName", "type"})
 	mm.diskError = exporter.NewGaugeVec(MetricDiskError, "", []string{"addr", "path"})
+	mm.nodeStat = exporter.NewGaugeVec(MetricNodeStat, "", []string{"type", "addr", "stat"})
 	mm.dataNodesInactive = exporter.NewGauge(MetricDataNodesInactive)
 	mm.metaNodesInactive = exporter.NewGauge(MetricMetaNodesInactive)
 	go mm.statMetrics()
@@ -132,8 +136,8 @@ func (mm *monitorMetrics) doStat() {
 	mm.metaNodesIncreased.Set(float64(mm.cluster.metaNodeStatInfo.IncreasedGB))
 	mm.setVolMetrics()
 	mm.setDiskErrorMetric()
-	mm.setInactiveDataNodesCount()
-	mm.setInactiveMetaNodesCount()
+	mm.updateDataNodesStat()
+	mm.updateMetaNodesStat()
 }
 
 func (mm *monitorMetrics) setVolMetrics() {
@@ -230,7 +234,7 @@ func (mm *monitorMetrics) setDiskErrorMetric() {
 	}
 }
 
-func (mm *monitorMetrics) setInactiveMetaNodesCount() {
+func (mm *monitorMetrics) updateMetaNodesStat() {
 	var inactiveMetaNodesCount int64
 	mm.cluster.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode, ok := node.(*MetaNode)
@@ -240,12 +244,22 @@ func (mm *monitorMetrics) setInactiveMetaNodesCount() {
 		if !metaNode.IsActive {
 			inactiveMetaNodesCount++
 		}
+		mm.nodeStat.SetWithLabelValues(metaNode.Ratio, MetricRoleMetaNode, metaNode.Addr, "usageRatio")
+		mm.nodeStat.SetWithLabelValues(float64(metaNode.Total), MetricRoleMetaNode, metaNode.Addr, "memTotal")
+		mm.nodeStat.SetWithLabelValues(float64(metaNode.Used), MetricRoleMetaNode, metaNode.Addr, "memUsed")
+		mm.nodeStat.SetWithLabelValues(float64(metaNode.MetaPartitionCount), MetricRoleMetaNode, metaNode.Addr, "mpCount")
+		mm.nodeStat.SetWithLabelValues(float64(metaNode.Carry), MetricRoleMetaNode, metaNode.Addr, "carry")
+		mm.nodeStat.SetWithLabelValues(float64(metaNode.Threshold), MetricRoleMetaNode, metaNode.Addr, "threshold")
+		mm.nodeStat.SetBoolWithLabelValues(metaNode.isWritable(), MetricRoleMetaNode, metaNode.Addr, "writable")
+		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsActive, MetricRoleMetaNode, metaNode.Addr, "active")
+
 		return true
 	})
+
 	mm.metaNodesInactive.Set(float64(inactiveMetaNodesCount))
 }
 
-func (mm *monitorMetrics) setInactiveDataNodesCount() {
+func (mm *monitorMetrics) updateDataNodesStat() {
 	var inactiveDataNodesCount int64
 	mm.cluster.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode, ok := node.(*DataNode)
@@ -255,6 +269,15 @@ func (mm *monitorMetrics) setInactiveDataNodesCount() {
 		if !dataNode.isActive {
 			inactiveDataNodesCount++
 		}
+		mm.nodeStat.SetWithLabelValues(float64(dataNode.DataPartitionCount), MetricRoleDataNode, dataNode.Addr, "dpCount")
+		mm.nodeStat.SetWithLabelValues(float64(dataNode.Total), MetricRoleDataNode, dataNode.Addr, "diskTotal")
+		mm.nodeStat.SetWithLabelValues(float64(dataNode.Used), MetricRoleDataNode, dataNode.Addr, "diskUsed")
+		mm.nodeStat.SetWithLabelValues(float64(dataNode.AvailableSpace), MetricRoleDataNode, dataNode.Addr, "diskAvail")
+		mm.nodeStat.SetWithLabelValues(dataNode.UsageRatio, MetricRoleDataNode, dataNode.Addr, "usageRatio")
+		mm.nodeStat.SetWithLabelValues(dataNode.Carry, MetricRoleDataNode, dataNode.Addr, "carry")
+		mm.nodeStat.SetWithLabelValues(float64(len(dataNode.BadDisks)), MetricRoleDataNode, dataNode.Addr, "badDiskCount")
+		mm.nodeStat.SetBoolWithLabelValues(dataNode.isActive, MetricRoleDataNode, dataNode.Addr, "active")
+		mm.nodeStat.SetBoolWithLabelValues(dataNode.isWriteAble(), MetricRoleDataNode, dataNode.Addr, "writable")
 		return true
 	})
 	mm.dataNodesInactive.Set(float64(inactiveDataNodesCount))

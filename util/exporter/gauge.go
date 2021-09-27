@@ -141,3 +141,11 @@ func (v *GaugeVec) SetWithLabelValues(val float64, lvs ...string) {
 		m.Set(val)
 	}
 }
+
+func (v *GaugeVec) SetBoolWithLabelValues(val bool, lvs ...string) {
+	if val {
+		v.SetWithLabelValues(float64(1), lvs...)
+	} else {
+		v.SetWithLabelValues(0, lvs...)
+	}
+}
