@@ -1656,6 +1656,8 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 	var err error
 	var nextMarker string
 
+	log.LogDebugf("recursiveScan enter: fileInfos(%v) parentId(%v) prefix(%v) marker(%v) delimiter(%v)", fileInfos, parentId, prefix, marker, delimiter)
+
 	var currentPath = strings.Join(dirs, pathSep) + pathSep
 
 	if len(dirs) > 0 && prefix != "" && strings.HasSuffix(currentPath, prefix) {
@@ -1685,19 +1687,41 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 		}
 	}
 
+	// The "prefix" needs to be extracted as marker when it is larger than "marker".
+	// So extract prefixMarker in this layer.
+	prefixMarker := ""
+	if prefix != "" {
+		if len(dirs) == 0 {
+			prefixMarker = prefix
+		} else if strings.HasPrefix(prefix, currentPath) {
+			prefixMarker = strings.TrimPrefix(prefix, currentPath)
+		}
+	}
+
+	// To be sent in the readdirlimit request as a search start point.
+	fromName := ""
+	// Marker in this layer, shall be compared with prefixMarker to
+	// determine which one should be used as the search start point.
+	currentMarker := ""
+	if marker != "" {
+		markerNames := strings.Split(marker, pathSep)
+		if len(markerNames) > len(dirs) {
+			currentMarker = markerNames[len(dirs)]
+		}
+		if prefixMarker > currentMarker {
+			fromName = prefixMarker
+		} else {
+			fromName = currentMarker
+		}
+	} else if prefixMarker != "" {
+		fromName = prefixMarker
+	}
+
 	// During the process of scanning the child nodes of the current directory, there may be other
 	// parallel operations that may delete the current directory.
 	// If got the syscall.ENOENT error when invoke readdir, it means that the above situation has occurred.
 	// At this time, stops process and returns success.
 	var children []proto.Dentry
-
-	fromName := ""
-	if marker != "" {
-		markerNames := strings.Split(marker, pathSep)
-		if len(markerNames) > 0 {
-			fromName = markerNames[len(markerNames)-1]
-		}
-	}
 
 	children, err = v.mw.ReadDirLimit_ll(parentId, fromName, maxKeys+1) // one more for nextMarker
 	if err != nil && err != syscall.ENOENT {
@@ -1706,6 +1730,8 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 	if err == syscall.ENOENT {
 		return fileInfos, prefixMap, "", 0, nil
 	}
+
+	log.LogDebugf("recursiveScan: ReadDirLimit_ll, parentId(%v) fromName(%v), maxKey(%v) children(%v)", parentId, fromName, maxKeys, children)
 
 	for _, child := range children {
 		var path = strings.Join(append(dirs, child.Name), pathSep)
@@ -1769,6 +1795,7 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 			}
 		}
 	}
+	log.LogDebugf("recursiveScan exit: fileInfos(%v) parentId(%v) prefixMap(%v) nextMarker(%v) rc(%v)", fileInfos, parentId, prefixMap, nextMarker, rc)
 	return fileInfos, prefixMap, nextMarker, rc, nil
 }
 
