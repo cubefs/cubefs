@@ -17,9 +17,8 @@ package metanode
 import (
 	"strings"
 
-	"github.com/chubaofs/chubaofs/util/btree"
-
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/btree"
 )
 
 type DentryResponse struct {
@@ -199,15 +198,15 @@ func (mp *metaPartition) readDirLimit(req *ReadDirLimitReq) (resp *ReadDirLimitR
 	}
 	mp.dentryTree.AscendRange(startDentry, endDentry, func(i BtreeItem) bool {
 		d := i.(*Dentry)
-		childrenCount := uint64(len(resp.Children))
-		if req.Limit > 0 && childrenCount > req.Limit {
-			return false
-		}
 		resp.Children = append(resp.Children, proto.Dentry{
 			Inode: d.Inode,
 			Type:  d.Type,
 			Name:  d.Name,
 		})
+		// Limit == 0 means no limit.
+		if req.Limit > 0 && uint64(len(resp.Children)) >= req.Limit {
+			return false
+		}
 		return true
 	})
 	return
