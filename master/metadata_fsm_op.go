@@ -550,13 +550,19 @@ func (c *Cluster) loadNodeSets() (err error) {
 		if nsv.ZoneName == "" {
 			nsv.ZoneName = DefaultZoneName
 		}
-		ns := newNodeSet(nsv.ID, c.cfg.nodeSetCapacity, nsv.ZoneName)
+		cap := nsv.Capacity
+		if cap < 3 {
+			cap = c.cfg.nodeSetCapacity
+		}
+
+		ns := newNodeSet(nsv.ID, cap, nsv.ZoneName)
 		zone, err := c.t.getZone(nsv.ZoneName)
 		if err != nil {
 			log.LogErrorf("action[loadNodeSets], getZone err:%v", err)
 			zone = newZone(nsv.ZoneName)
 			c.t.putZoneIfAbsent(zone)
 		}
+
 		zone.putNodeSet(ns)
 		log.LogInfof("action[loadNodeSets], nsId[%v],zone[%v]", ns.ID, zone.name)
 	}

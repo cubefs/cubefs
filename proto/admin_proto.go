@@ -68,10 +68,12 @@ const (
 	// Node APIs
 	AddDataNode                    = "/dataNode/add"
 	DecommissionDataNode           = "/dataNode/decommission"
+	MigrateDataNode                = "/dataNode/migrate"
 	DecommissionDisk               = "/disk/decommission"
 	GetDataNode                    = "/dataNode/get"
 	AddMetaNode                    = "/metaNode/add"
 	DecommissionMetaNode           = "/metaNode/decommission"
+	MigrateMetaNode                = "/metaNode/migrate"
 	GetMetaNode                    = "/metaNode/get"
 	AdminUpdateMetaNode            = "/metaNode/update"
 	AdminUpdateDataNode            = "/dataNode/update"

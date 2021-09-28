@@ -45,6 +45,7 @@ type DataNode struct {
 	BadDisks                  []string
 	ToBeOffline               bool
 	RdOnly                    bool
+	MigrateLock               sync.RWMutex
 }
 
 func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {

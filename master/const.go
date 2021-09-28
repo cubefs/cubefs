@@ -54,6 +54,8 @@ const (
 	dpSelectorParmKey       = "dpSelectorParm"
 	nodeTypeKey             = "nodeType"
 	rdOnlyKey               = "rdOnly"
+	srcAddrKey              = "srcAddr"
+	targetAddrKey           = "targetAddr"
 )
 
 const (

@@ -120,7 +120,7 @@ func getAllCarryMetaNodes(maxTotal uint64, excludeHosts []string, metaNodes *syn
 	metaNodes.Range(func(key, value interface{}) bool {
 		log.LogInfof("[getAllCarryMetaNodes] getAllCarryMetaNodes [%v] ", key)
 		metaNode := value.(*MetaNode)
-		if contains(excludeHosts, metaNode.Addr) == true {
+		if contains(excludeHosts, metaNode.Addr) {
 			log.LogInfof("[getAllCarryMetaNodes] metaNode [%v] is excludeHosts", metaNode.Addr)
 			return true
 		}
@@ -130,7 +130,7 @@ func getAllCarryMetaNodes(maxTotal uint64, excludeHosts []string, metaNodes *syn
 			return true
 		}
 
-		if metaNode.isCarryNode() == true {
+		if metaNode.isCarryNode() {
 			log.LogInfof("[getAllCarryMetaNodes] metaNode [%v] is CarryNode", metaNode.Addr)
 			availCount++
 		}
@@ -154,7 +154,7 @@ func getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []string, dataNodes 
 	nodeTabs = make(SortedWeightedNodes, 0)
 	dataNodes.Range(func(key, value interface{}) bool {
 		dataNode := value.(*DataNode)
-		if contains(excludeHosts, dataNode.Addr) == true {
+		if contains(excludeHosts, dataNode.Addr) {
 			log.LogInfof("[getAvailCarryDataNodeTab] dataNode [%v] is excludeHosts", dataNode.Addr)
 			log.LogDebugf("contains return")
 			return true
@@ -166,7 +166,7 @@ func getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []string, dataNodes 
 			return true
 		}
 
-		if dataNode.isAvailCarryNode() == true {
+		if dataNode.isAvailCarryNode() {
 			availCount++
 		}
 		nt := new(weightedNode)
