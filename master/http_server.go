@@ -204,6 +204,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.DecommissionMetaNode).
 		HandlerFunc(m.decommissionMetaNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.MigrateMetaNode).
+		HandlerFunc(m.migrateMetaNodeHandler)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetMetaNode).
 		HandlerFunc(m.getMetaNode)
@@ -233,6 +236,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.DecommissionDataNode).
 		HandlerFunc(m.decommissionDataNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.MigrateDataNode).
+		HandlerFunc(m.migrateDataNodeHandler)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetDataNode).
 		HandlerFunc(m.getDataNode)

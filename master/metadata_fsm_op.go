@@ -598,13 +598,19 @@ func (c *Cluster) loadNodeSets() (err error) {
 		if nsv.ZoneName == "" {
 			nsv.ZoneName = DefaultZoneName
 		}
-		ns := newNodeSet(nsv.ID, c.cfg.nodeSetCapacity, nsv.ZoneName)
+		cap := nsv.Capacity
+		if cap < 3 {
+			cap = c.cfg.nodeSetCapacity
+		}
+
+		ns := newNodeSet(nsv.ID, cap, nsv.ZoneName)
 		zone, err := c.t.getZone(nsv.ZoneName)
 		if err != nil {
 			log.LogErrorf("action[loadNodeSets], getZone err:%v", err)
 			zone = newZone(nsv.ZoneName)
 			c.t.putZoneIfAbsent(zone)
 		}
+
 		zone.putNodeSet(ns)
 		log.LogInfof("action[addNodeSetGrp] nodeSet[%v]", ns.ID)
 		if err = c.addNodeSetGrp(ns, true); err != nil {
@@ -700,7 +706,7 @@ func (c *Cluster) loadNodeSetGrps() (err error) {
 	for _, value := range result {
 		nsv := &nodeSetGrpValue{}
 		if err = json.Unmarshal(value, nsv); err != nil {
-			log.LogFatalf("action[loadNodeSets], unmarshal err:%v", err.Error())
+			log.LogFatalf("action[loadNodeSets], unmarshal err:%s", err.Error())
 			return err
 		}
 		log.LogInfof("action[loadNodeSetGrps] get result nsv id[%v],status[%v],ids[%v]", nsv.ID, nsv.Status, nsv.NodeSetsIds)

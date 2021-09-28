@@ -56,6 +56,8 @@ const (
 	nodeTypeKey             = "nodeType"
 	ratio                   = "ratio"
 	rdOnlyKey               = "rdOnly"
+	srcAddrKey              = "srcAddr"
+	targetAddrKey           = "targetAddr"
 )
 
 const (

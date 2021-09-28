@@ -44,6 +44,7 @@ type MetaNode struct {
 	ToBeOffline               bool
 	PersistenceMetaPartitions []uint64
 	RdOnly                    bool
+	MigrateLock               sync.RWMutex
 }
 
 func newMetaNode(addr, zoneName, clusterID string) (node *MetaNode) {
