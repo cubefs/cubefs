@@ -643,68 +643,100 @@ func (mp *metaPartition) storeDentry(rootDir string, sm *storeMsg) (crc [2]uint3
 	return
 }
 
-func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, err error) {
-	var extendTree = sm.extendTree
-	var fp = path.Join(rootDir, extendFileLarge)
-	var f *os.File
-	f, err = os.OpenFile(fp, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
-	if err != nil {
+func storeToSnapshot2(fp *os.File, crc hash.Hash32, data []byte, length []byte) (err error) {
+	// set length
+	if _, err = fp.Write(length); err != nil {
 		return
 	}
-	defer func() {
-		closeErr := f.Close()
-		if err == nil && closeErr != nil {
-			err = closeErr
-		}
-	}()
-	var writer = bufio.NewWriterSize(f, 4*1024*1024)
-	var crc32 = crc32.NewIEEE()
-	var varintTmp = make([]byte, binary.MaxVarintLen64)
-	var n int
-	// write number of extends
-	n = binary.PutUvarint(varintTmp, uint64(extendTree.Len()))
-	if _, err = writer.Write(varintTmp[:n]); err != nil {
+	if _, err = crc.Write(length); err != nil {
 		return
 	}
-	if _, err = crc32.Write(varintTmp[:n]); err != nil {
+	// set body
+	if _, err = fp.Write(data); err != nil {
 		return
 	}
-	extendTree.Ascend(func(i BtreeItem) bool {
+	if _, err = crc.Write(data); err != nil {
+		return
+	}
+	return
+}
+
+func storeDummyNum(fp *os.File, crc hash.Hash32) (err error) {
+	// write a dummy extend number to the fileLarge
+	varintTmp := make([]byte, binary.MaxVarintLen64)
+	n := binary.PutUvarint(varintTmp, 0)
+	if _, err = fp.Write(varintTmp[:n]); err != nil {
+		return
+	}
+	if _, err = crc.Write(varintTmp[:n]); err != nil {
+		return
+	}
+	return
+}
+
+func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc [2]uint32, err error) {
+	var (
+		fpLarge  *os.File
+		fpSmall  *os.File
+		posSmall int64
+		hdr      *SmallFileHeader
+	)
+
+	defer closeSnapshotFiles(fpSmall, fpLarge)
+
+	if fpSmall, fpLarge, err = prepareSnapshotFiles(rootDir, extendFileSmall, extendFileLarge); err != nil {
+		return
+	}
+
+	var data []byte
+	signLarge := crc32.NewIEEE()
+	signSmall := crc32.NewIEEE()
+
+	if err = storeDummyNum(fpLarge, signLarge); err != nil {
+		return
+	}
+	if hdr, err = storeSmallFileHeader(fpSmall, signSmall); err != nil {
+		return
+	}
+	posSmall += smallFileHeaderSize
+
+	varintTmp := make([]byte, binary.MaxVarintLen64)
+	sm.extendTree.Ascend(func(i BtreeItem) bool {
 		e := i.(*Extend)
-		var raw []byte
-		if raw, err = e.Bytes(); err != nil {
+		if data, err = e.Bytes(); err != nil {
 			return false
 		}
-		// write length
-		n = binary.PutUvarint(varintTmp, uint64(len(raw)))
-		if _, err = writer.Write(varintTmp[:n]); err != nil {
+
+		n := binary.PutUvarint(varintTmp, uint64(len(data)))
+		if int64(n)+int64(len(data)) > int64(hdr.blockSize) {
+			if err = storeToSnapshot2(fpLarge, signLarge, data, varintTmp[:n]); err != nil {
+				return false
+			}
+			return true
+		}
+
+		if (posSmall%int64(hdr.blockSize))+int64(n)+int64(len(data)) > int64(hdr.blockSize) {
+			// round up to blockSize alignment
+			posSmall = (posSmall + int64(hdr.blockSize) - 1) / int64(hdr.blockSize) * int64(hdr.blockSize)
+			fpSmall.Seek(posSmall, os.SEEK_SET)
+		}
+		if err = storeToSnapshot2(fpSmall, signSmall, data, varintTmp[:n]); err != nil {
 			return false
 		}
-		if _, err = crc32.Write(varintTmp[:n]); err != nil {
-			return false
-		}
-		// write raw
-		if _, err = writer.Write(raw); err != nil {
-			return false
-		}
-		if _, err = crc32.Write(raw); err != nil {
-			return false
-		}
+
+		posSmall += (int64(n) + int64(len(data)))
 		return true
 	})
 	if err != nil {
 		return
 	}
 
-	if err = writer.Flush(); err != nil {
-		return
-	}
-	if err = f.Sync(); err != nil {
-		return
-	}
-	crc = crc32.Sum32()
+	crc[0] = signLarge.Sum32()
+	crc[1] = signSmall.Sum32()
+
 	log.LogInfof("storeExtend: store complete: partitoinID(%v) volume(%v) numExtends(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, extendTree.Len(), crc)
+		mp.config.PartitionId, mp.config.VolName, sm.extendTree.Len(), crc)
+
 	return
 }
 
