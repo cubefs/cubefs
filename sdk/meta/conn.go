@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	SendRetryLimit    = 100
+	SendRetryLimit    = 200
 	SendRetryInterval = 100 * time.Millisecond
 	SendTimeLimit     = 20 * time.Second
 )
