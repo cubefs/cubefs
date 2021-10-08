@@ -460,19 +460,7 @@ func (mp *metaPartition) load() (err error) {
 		return
 	}
 	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
-	if err = mp.loadInode(snapshotPath); err != nil {
-		return
-	}
-	if err = mp.loadDentry(snapshotPath); err != nil {
-		return
-	}
-	if err = mp.loadExtend(snapshotPath); err != nil {
-		return
-	}
-	if err = mp.loadMultipart(snapshotPath); err != nil {
-		return
-	}
-	err = mp.loadApplyID(snapshotPath)
+	err = mp.LoadSnapshot(snapshotPath)
 	return
 }
 
