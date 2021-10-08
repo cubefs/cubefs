@@ -587,45 +587,57 @@ func (mp *metaPartition) storeInode(rootDir string, sm *storeMsg) (crc [2]uint32
 	return
 }
 
-func (mp *metaPartition) storeDentry(rootDir string,
-	sm *storeMsg) (crc uint32, err error) {
-	filename := path.Join(rootDir, dentryFileLarge)
-	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
-		O_CREATE, 0755)
-	if err != nil {
+func (mp *metaPartition) storeDentry(rootDir string, sm *storeMsg) (crc [2]uint32, err error) {
+	var (
+		fpLarge  *os.File
+		fpSmall  *os.File
+		posSmall int64
+		hdr      *SmallFileHeader
+	)
+
+	defer closeSnapshotFiles(fpSmall, fpLarge)
+
+	if fpSmall, fpLarge, err = prepareSnapshotFiles(rootDir, dentryFileSmall, dentryFileLarge); err != nil {
 		return
 	}
-	defer func() {
-		err = fp.Sync()
-		// TODO Unhandled errors
-		fp.Close()
-	}()
+
 	var data []byte
-	lenBuf := make([]byte, 4)
-	sign := crc32.NewIEEE()
+	signLarge := crc32.NewIEEE()
+	signSmall := crc32.NewIEEE()
+	if hdr, err = storeSmallFileHeader(fpSmall, signSmall); err != nil {
+		return
+	}
+	posSmall += smallFileHeaderSize
+
 	sm.dentryTree.Ascend(func(i BtreeItem) bool {
 		dentry := i.(*Dentry)
 		data, err = dentry.Marshal()
 		if err != nil {
 			return false
 		}
-		// set length
-		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
-		if _, err = fp.Write(lenBuf); err != nil {
+
+		if 4+int64(len(data)) > int64(hdr.blockSize) {
+			if err = storeToSnapshot(fpLarge, signLarge, data); err != nil {
+				return false
+			}
+			return true
+		}
+
+		if (posSmall%int64(hdr.blockSize))+4+int64(len(data)) > int64(hdr.blockSize) {
+			// round up to blockSize alignment
+			posSmall = (posSmall + int64(hdr.blockSize) - 1) / int64(hdr.blockSize) * int64(hdr.blockSize)
+			fpSmall.Seek(posSmall, os.SEEK_SET)
+		}
+		if err = storeToSnapshot(fpSmall, signSmall, data); err != nil {
 			return false
 		}
-		if _, err = sign.Write(lenBuf); err != nil {
-			return false
-		}
-		if _, err = fp.Write(data); err != nil {
-			return false
-		}
-		if _, err = sign.Write(data); err != nil {
-			return false
-		}
+
+		posSmall += (4 + int64(len(data)))
 		return true
 	})
-	crc = sign.Sum32()
+	crc[0] = signLarge.Sum32()
+	crc[1] = signSmall.Sum32()
+
 	log.LogInfof("storeDentry: store complete: partitoinID(%v) volume(%v) numDentries(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.dentryTree.Len(), crc)
 	return
