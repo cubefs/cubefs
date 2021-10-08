@@ -78,13 +78,45 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 				(info.DataNodeReqVolOpPartRate > 0 && info.DataNodeReqVolOpPartRate < minRate) {
 				errout("limit rate can't be less than %d\n", minRate)
 			}
+			msg := ""
+			if info.ClientReadRate >= 0 {
+				msg += fmt.Sprintf("clientReadRate: %d, ", info.ClientReadRate)
+			}
+			if info.ClientWriteRate >= 0 {
+				msg += fmt.Sprintf("clientWriteRate: %d, ", info.ClientWriteRate)
+			}
+			if info.DataNodeRepairTaskCount > 0 {
+				msg += fmt.Sprintf("dataNodeRepairTaskCount: %d, ", info.DataNodeRepairTaskCount)
+			}
+			if info.MetaNodeReqRate >= 0 {
+				msg += fmt.Sprintf("metaNodeReqRate: %d, ", info.MetaNodeReqRate)
+			}
+			if info.MetaNodeReqOpRate >= 0 {
+				msg += fmt.Sprintf("metaNodeReqOpRate: %d, opcode: %d, ", info.MetaNodeReqOpRate, info.Opcode)
+			}
+			if info.DataNodeReqRate >= 0 {
+				msg += fmt.Sprintf("dataNodeReqRate: %d, ", info.DataNodeReqRate)
+			}
+			if info.DataNodeReqOpRate >= 0 {
+				msg += fmt.Sprintf("dataNodeReqOpRate: %d, opcode: %d, ", info.DataNodeReqOpRate, info.Opcode)
+			}
+			if info.DataNodeReqVolPartRate >= 0 {
+				msg += fmt.Sprintf("dataNodeReqVolPartRate: %d, volume: %s, ", info.DataNodeReqOpRate, info.Volume)
+			}
+			if info.DataNodeReqVolOpPartRate >= 0 {
+				msg += fmt.Sprintf("dataNodeReqVolOpPartRate: %d, volume: %s, opcode: %d, ", info.DataNodeReqVolOpPartRate, info.Volume, info.Opcode)
+			}
+			if msg == "" {
+				stdout("No valid parameters.\n")
+				return
+			}
 			if err = client.AdminAPI().SetRateLimit(&info); err != nil {
 				errout("Set rate limit fail:\n%v\n", err)
 			}
-			stdout("Set rate limit success.\n")
+			stdout("Set rate limit success: %s.\n", strings.TrimRight(msg, " ,"))
 		},
 	}
-	cmd.Flags().Uint64Var(&info.DataNodeRepairTaskCount, "dataNodeRepairTaskCount", 0, "data node repair task count")
+	cmd.Flags().Int64Var(&info.DataNodeRepairTaskCount, "dataNodeRepairTaskCount", -1, "data node repair task count")
 	cmd.Flags().StringVar(&info.Volume, "volume", "", "volume (empty volume acts as default)")
 	cmd.Flags().Int8Var(&info.Opcode, "opcode", -1, "opcode (zero opcode acts as default)")
 	cmd.Flags().Int64Var(&info.MetaNodeReqRate, "metaNodeReqRate", -1, "meta node request rate limit")

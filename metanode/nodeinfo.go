@@ -140,12 +140,12 @@ func (m *MetaNode) updateRateLimitInfo() {
 	reqRateLimiter.SetLimit(l)
 
 	// update request rate limiter for opcode
-	if reflect.DeepEqual(reqOpRateLimitMap, limitInfo.DataNodeReqOpRateLimitMap) {
+	if reflect.DeepEqual(reqOpRateLimitMap, limitInfo.MetaNodeReqOpRateLimitMap) {
 		isRateLimitOn = (reqRateLimit > 0 ||
 			len(reqOpRateLimitMap) > 0)
 		return
 	}
-	reqOpRateLimitMap = limitInfo.DataNodeReqOpRateLimitMap
+	reqOpRateLimitMap = limitInfo.MetaNodeReqOpRateLimitMap
 	tmpOpRateLimiterMap = make(map[uint8]*rate.Limiter)
 	for op, _ := range limitOpcodeMap {
 		r, ok = reqOpRateLimitMap[op]
