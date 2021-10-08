@@ -482,21 +482,23 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		}
 	}()
 	var crcBuffer = bytes.NewBuffer(make([]byte, 0, 16))
-	var storeFuncs = []func(dir string, sm *storeMsg) (uint32, error){
+	var storeFuncs = []func(dir string, sm *storeMsg) ([2]uint32, error){
 		mp.storeInode,
 		mp.storeDentry,
 		mp.storeExtend,
 		mp.storeMultipart,
 	}
 	for _, storeFunc := range storeFuncs {
-		var crc uint32
+		var crc [2]uint32
 		if crc, err = storeFunc(tmpDir, sm); err != nil {
 			return
 		}
-		if crcBuffer.Len() != 0 {
-			crcBuffer.WriteString(" ")
+		for _, v := range crc {
+			if crcBuffer.Len() != 0 {
+				crcBuffer.WriteString(" ")
+			}
+			crcBuffer.WriteString(fmt.Sprintf("%d", v))
 		}
-		crcBuffer.WriteString(fmt.Sprintf("%d", crc))
 	}
 	if err = mp.storeApplyID(tmpDir, sm); err != nil {
 		return
