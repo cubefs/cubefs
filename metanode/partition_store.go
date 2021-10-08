@@ -461,69 +461,32 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 }
 
 // Load dentry from the dentry snapshot.
+func loadOneDentry(mp *metaPartition, data []byte, cursor *loadCursor, index int) (err error) {
+	dentry := &Dentry{}
+	if err = dentry.Unmarshal(data); err != nil {
+		err = errors.NewErrorf("[loadOneDentry] Unmarshal: %s", err.Error())
+		return
+	}
+	if status := mp.fsmCreateDentry(dentry, true); status != proto.OpOk {
+		err = errors.NewErrorf("[loadOneDentry] createDentry dentry: %v, resp code: %d", dentry, status)
+		return
+	}
+	return
+}
+
+// Load dentry from the dentry snapshot.
 func (mp *metaPartition) loadDentry(rootDir string) (err error) {
-	var numDentries uint64
-	defer func() {
-		if err == nil {
-			log.LogInfof("loadDentry: load complete: partitonID(%v) volume(%v) numDentries(%v)",
-				mp.config.PartitionId, mp.config.VolName, numDentries)
+	cursor := &loadCursor{loader: loadOneDentry}
+	err = mp.loadSnapshotFiles(rootDir, dentryFileSmall, dentryFileLarge, cursor)
+	if err == nil {
+		if cursor.isErr != 0 {
+			err = errors.New("Failed to load Dentry snapshot")
 		}
-	}()
-	filename := path.Join(rootDir, dentryFileLarge)
-	if _, err = os.Stat(filename); err != nil {
-		err = nil
-		return
 	}
-	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
-	if err != nil {
-		if err == os.ErrNotExist {
-			err = nil
-			return
-		}
-		err = errors.NewErrorf("[loadDentry] OpenFile: %s", err.Error())
-		return
-	}
-
-	defer fp.Close()
-	reader := bufio.NewReaderSize(fp, 4*1024*1024)
-	dentryBuf := make([]byte, 4)
-	for {
-		dentryBuf = dentryBuf[:4]
-		// First Read 4byte header length
-		_, err = io.ReadFull(reader, dentryBuf)
-		if err != nil {
-			if err == io.EOF {
-				err = nil
-				return
-			}
-			err = errors.NewErrorf("[loadDentry] ReadHeader: %s", err.Error())
-			return
-		}
-
-		length := binary.BigEndian.Uint32(dentryBuf)
-
-		// next read body
-		if uint32(cap(dentryBuf)) >= length {
-			dentryBuf = dentryBuf[:length]
-		} else {
-			dentryBuf = make([]byte, length)
-		}
-		_, err = io.ReadFull(reader, dentryBuf)
-		if err != nil {
-			err = errors.NewErrorf("[loadDentry]: ReadBody: %s", err.Error())
-			return
-		}
-		dentry := &Dentry{}
-		if err = dentry.Unmarshal(dentryBuf); err != nil {
-			err = errors.NewErrorf("[loadDentry] Unmarshal: %s", err.Error())
-			return
-		}
-		if status := mp.fsmCreateDentry(dentry, true); status != proto.OpOk {
-			err = errors.NewErrorf("[loadDentry] createDentry dentry: %v, resp code: %d", dentry, status)
-			return
-		}
-		numDentries += 1
-	}
+	_, numDentries := cursor.getResult()
+	log.LogInfof("loadDentry: load complete: partitonID(%v) volume(%v) numDentries(%v) err %v",
+		mp.config.PartitionId, mp.config.VolName, numDentries, err)
+	return
 }
 
 func (mp *metaPartition) loadExtend(rootDir string) error {
