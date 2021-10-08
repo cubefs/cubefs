@@ -740,45 +740,27 @@ func (mp *metaPartition) loadExtend(rootDir string) (err error) {
 	return
 }
 
-func (mp *metaPartition) loadMultipart(rootDir string) error {
-	var err error
-	filename := path.Join(rootDir, multipartFileLarge)
-	if _, err = os.Stat(filename); err != nil {
-		return nil
+func loadOneMultipart(mp *metaPartition, data []byte, cursor *loadCursor, index int) (err error) {
+	multipart := MultipartFromBytes(data)
+	if status := mp.fsmCreateMultipart(multipart); status != proto.OpOk {
+		err = errors.NewErrorf("[loadOneMultipartBlock] createMultipart id: %v key: %v, resp code: %d", multipart.id, multipart.key, status)
+		return
 	}
-	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
-	if err != nil {
-		return err
+	return
+}
+
+func (mp *metaPartition) loadMultipart(rootDir string) (err error) {
+	cursor := &loadCursor{loader: loadOneMultipart}
+	err = mp.loadSnapshotFiles2(rootDir, multipartFileSmall, multipartFileLarge, cursor)
+	if err == nil {
+		if cursor.isErr != 0 {
+			err = errors.New("Failed to load Mutipart snapshot")
+		}
 	}
-	defer func() {
-		_ = fp.Close()
-	}()
-	var mem mmap.MMap
-	if mem, err = mmap.Map(fp, mmap.RDONLY, 0); err != nil {
-		return err
-	}
-	defer func() {
-		_ = mem.Unmap()
-	}()
-	var offset, n int
-	// read number of extends
-	var numMultiparts uint64
-	numMultiparts, n = binary.Uvarint(mem)
-	offset += n
-	for i := uint64(0); i < numMultiparts; i++ {
-		// read length
-		var numBytes uint64
-		numBytes, n = binary.Uvarint(mem[offset:])
-		offset += n
-		var multipart *Multipart
-		multipart = MultipartFromBytes(mem[offset : offset+int(numBytes)])
-		log.LogDebugf("loadMultipart: create multipart from bytes: partitionID（%v) multipartID(%v)", mp.config.PartitionId, multipart.id)
-		mp.fsmCreateMultipart(multipart)
-		offset += int(numBytes)
-	}
-	log.LogInfof("loadMultipart: load complete: partitionID(%v) numMultiparts(%v) filename(%v)",
-		mp.config.PartitionId, numMultiparts, filename)
-	return nil
+	_, numMultiparts := cursor.getResult()
+	log.LogInfof("loadMultipart: load complete: partitionID(%v) volume(%v) numMultiparts(%v) err(%v)",
+		mp.config.PartitionId, mp.config.VolName, numMultiparts, err)
+	return
 }
 
 func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
