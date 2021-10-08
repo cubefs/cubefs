@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"hash"
 	"hash/crc32"
 	"io"
 	"io/ioutil"
@@ -446,47 +447,143 @@ func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) 
 	return
 }
 
-func (mp *metaPartition) storeInode(rootDir string,
-	sm *storeMsg) (crc uint32, err error) {
-	filename := path.Join(rootDir, inodeFileLarge)
-	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
-		O_CREATE, 0755)
+func prepareSnapshotFiles(dir, small, large string) (fpSmall, fpLarge *os.File, err error) {
+	fileLarge := path.Join(dir, large)
+	fpLarge, err = os.OpenFile(fileLarge, os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0755)
 	if err != nil {
+		log.LogErrorf("[prepareSnapshotFiles]: file %s OpenFile: %v", fileLarge, err)
 		return
 	}
-	defer func() {
-		err = fp.Sync()
+
+	fileSmall := path.Join(dir, small)
+	fpSmall, err = os.OpenFile(fileSmall, os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0755)
+	if err != nil {
+		log.LogErrorf("[prepareSnapshotFiles]: file %s OpenFile: %v", fileSmall, err)
+		return
+	}
+
+	return
+}
+
+func closeSnapshotFiles(fp1, fp2 *os.File) {
+	if fp1 != nil {
+		_ = fp1.Sync()
 		// TODO Unhandled errors
-		fp.Close()
-	}()
+		fp1.Close()
+	}
+
+	if fp2 != nil {
+		_ = fp2.Sync()
+		// TODO Unhandled errors
+		fp2.Close()
+	}
+}
+
+func storeSmallFileHeader(fp *os.File, crc hash.Hash32) (hdr *SmallFileHeader, err error) {
 	var data []byte
+
+	defer func() {
+		if err != nil {
+			log.LogErrorf("[storeSmallFileHeader]: file %v err %v", fp.Name(), err)
+		}
+	}()
+
+	hdr = &SmallFileHeader{version: smallFileFormatVersion, blockSize: snapshotBlockSize}
+	if data, err = hdr.Marshal(); err != nil {
+		return
+	}
+	if len(data) != smallFileHeaderSize {
+		err = errors.NewErrorf("Invalid header size %v", len(data))
+		return
+	}
+	if _, err = fp.Write(data); err != nil {
+		return
+	}
+	if _, err = crc.Write(data); err != nil {
+		return
+	}
+	return
+}
+
+func storeToSnapshot(fp *os.File, crc hash.Hash32, data []byte) (err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("[storeToSnapshot]: file %s store: %v", fp.Name(), err)
+		}
+	}()
+
 	lenBuf := make([]byte, 4)
-	sign := crc32.NewIEEE()
+	// set length
+	binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
+	if _, err = fp.Write(lenBuf); err != nil {
+		return
+	}
+	if _, err = crc.Write(lenBuf); err != nil {
+		return
+	}
+	// set body
+	if _, err = fp.Write(data); err != nil {
+		return
+	}
+	if _, err = crc.Write(data); err != nil {
+		return
+	}
+	return
+}
+
+func (mp *metaPartition) storeInode(rootDir string, sm *storeMsg) (crc [2]uint32, err error) {
+	var (
+		fpLarge  *os.File
+		fpSmall  *os.File
+		posSmall int64
+		hdr      *SmallFileHeader
+	)
+
+	defer closeSnapshotFiles(fpSmall, fpLarge)
+
+	if fpSmall, fpLarge, err = prepareSnapshotFiles(rootDir, inodeFileSmall, inodeFileLarge); err != nil {
+		return
+	}
+
+	var data []byte
+	signLarge := crc32.NewIEEE()
+	signSmall := crc32.NewIEEE()
+	if hdr, err = storeSmallFileHeader(fpSmall, signSmall); err != nil {
+		return
+	}
+	posSmall += smallFileHeaderSize
+
 	sm.inodeTree.Ascend(func(i BtreeItem) bool {
 		ino := i.(*Inode)
 		if data, err = ino.Marshal(); err != nil {
 			return false
 		}
-		// set length
-		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
-		if _, err = fp.Write(lenBuf); err != nil {
+
+		if 4+int64(len(data)) > int64(hdr.blockSize) {
+			if err = storeToSnapshot(fpLarge, signLarge, data); err != nil {
+				return false
+			}
+			return true
+		}
+
+		if (posSmall%int64(hdr.blockSize))+4+int64(len(data)) > int64(hdr.blockSize) {
+			// round up to blockSize alignment
+			posSmall = (posSmall + int64(hdr.blockSize) - 1) / int64(hdr.blockSize) * int64(hdr.blockSize)
+			fpSmall.Seek(posSmall, os.SEEK_SET)
+		}
+		if err = storeToSnapshot(fpSmall, signSmall, data); err != nil {
 			return false
 		}
-		if _, err = sign.Write(lenBuf); err != nil {
-			return false
-		}
-		// set body
-		if _, err = fp.Write(data); err != nil {
-			return false
-		}
-		if _, err = sign.Write(data); err != nil {
-			return false
-		}
+
+		posSmall += (4 + int64(len(data)))
 		return true
 	})
-	crc = sign.Sum32()
+	crc[0] = signLarge.Sum32()
+	crc[1] = signSmall.Sum32()
+
 	log.LogInfof("storeInode: store complete: partitoinID(%v) volume(%v) numInodes(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.inodeTree.Len(), crc)
+
 	return
 }
 
