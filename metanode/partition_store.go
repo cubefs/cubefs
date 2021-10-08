@@ -108,6 +108,55 @@ func (hdr *SmallFileHeader) Unmarshal(data []byte) (err error) {
 	return nil
 }
 
+// NOTE: index & count are atomic values
+type perRoutineCursor struct {
+	max   uint64
+	count uint64
+}
+
+type loadCursor struct {
+	index    int64
+	isErr    int32
+	hdr      *SmallFileHeader
+	loader   func(mp *metaPartition, data []byte, cursor *loadCursor, index int) (err error)
+	routines []perRoutineCursor
+}
+
+func (cursor *loadCursor) newRoutineCursors(nr int64) {
+	tmp := make([]perRoutineCursor, nr)
+	cursor.routines = append(cursor.routines, tmp...)
+}
+
+func (cursor *loadCursor) getIndex() int64 {
+	index := atomic.AddInt64(&cursor.index, 1) - 1
+	return index
+}
+
+func (cursor *loadCursor) getResult() (max, count uint64) {
+	for _, routine := range cursor.routines {
+		if routine.max > max {
+			max = routine.max
+		}
+
+		count += routine.count
+	}
+	return
+}
+
+func (cursor *loadCursor) setMax(i int, ino uint64) {
+	if cursor.routines[i].max < ino {
+		cursor.routines[i].max = ino
+	}
+}
+
+func (cursor *loadCursor) incCount(i int) {
+	cursor.routines[i].count++
+}
+
+func (cursor *loadCursor) setError() {
+	atomic.CompareAndSwapInt32(&cursor.isErr, 0, 1)
+}
+
 func (mp *metaPartition) loadMetadata() (err error) {
 	metaFile := path.Join(mp.config.RootDir, metadataFile)
 	fp, err := os.OpenFile(metaFile, os.O_RDONLY, 0644)
