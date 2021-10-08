@@ -27,6 +27,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/chubaofs/chubaofs/util/log"
@@ -190,6 +191,243 @@ func (mp *metaPartition) loadMetadata() (err error) {
 
 	log.LogInfof("loadMetadata: load complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor)
+	return
+}
+
+func (mp *metaPartition) loadOneBlock(file *os.File, cursor *loadCursor, i int) (err error) {
+	var (
+		start uint32
+		end   uint32
+		left  uint32
+		rsize int
+	)
+
+	index := cursor.getIndex()
+
+	data := make([]byte, cursor.hdr.blockSize)
+	rsize, err = file.ReadAt(data, index*int64(cursor.hdr.blockSize))
+	if err != nil && err != io.EOF {
+		log.LogErrorf("[loadOneBlock]: file %v read blk %v fail: %v", file.Name(), index, err)
+		return
+	} else if err == io.EOF && rsize == 0 {
+		return
+	}
+
+	if rsize < int(cursor.hdr.blockSize) {
+		left = uint32(rsize)
+	} else {
+		left = cursor.hdr.blockSize
+	}
+	end = 4
+	if index == 0 {
+		left -= smallFileHeaderSize
+		start += smallFileHeaderSize
+		end += smallFileHeaderSize
+	}
+	for {
+		if left <= 4 {
+			// reach the end of this block
+			break
+		}
+
+		// get length of this data
+		buf := data[start:end]
+		length := binary.BigEndian.Uint32(buf)
+		if length == 0 {
+			// reach the end of this block
+			break
+		} else if length+4 > left {
+			err = errors.NewErrorf("[loadOneBlock]: file %v invalid length %v at offset %v in block %v",
+				file.Name(), length, start, index)
+			return
+		}
+
+		start += 4
+		end += length
+
+		// get and load data
+		buf = data[start:end]
+		if err = cursor.loader(mp, buf, cursor, i); err != nil {
+			log.LogErrorf("[loadOneBlock] file %v blk %v offset %v len %v loader: %v",
+				file.Name(), index, start, end-start, err)
+			return
+		}
+
+		cursor.incCount(i)
+
+		left -= 4 + length
+		start = end
+		end += 4
+	}
+
+	return
+}
+
+func (mp *metaPartition) loadBlocks(file *os.File, cursor *loadCursor, wg *sync.WaitGroup, i int) {
+	var err error
+
+	defer func() {
+		if err != nil {
+			log.LogErrorf("[loadBlocks]: err %v", err)
+			cursor.setError()
+		}
+		wg.Done()
+	}()
+
+	for {
+		err = mp.loadOneBlock(file, cursor, i)
+		if err == nil {
+			continue
+		}
+
+		if err == io.EOF {
+			err = nil
+		}
+		return
+	}
+}
+
+func (mp *metaPartition) loadSmall(filename string, cursor *loadCursor) (err error) {
+	var wg sync.WaitGroup
+
+	log.LogDebugf("[loadSmall]: load %s", filename)
+	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	if err != nil {
+		log.LogErrorf("[loadSmall]: File %s OpenFile: %v", filename, err)
+		return
+	}
+	defer func() {
+		wg.Wait()
+		fp.Close()
+	}()
+
+	st, err := os.Stat(filename)
+	if err != nil {
+		log.LogErrorf("[loadSmall]: File %s Stat: %v", filename, err)
+		return
+	}
+
+	hdr := &SmallFileHeader{}
+	data := make([]byte, smallFileHeaderSize)
+	if _, err = fp.ReadAt(data, 0); err != nil {
+		log.LogErrorf("[loadSmall]: File %s ReadHeader: %v", filename, err)
+		return
+	}
+	if err = hdr.Unmarshal(data); err != nil {
+		log.LogErrorf("[loadSmall]: File %s Unmarshal: %v", filename, err)
+		return
+	}
+	log.LogDebugf("File %s format version %v blockSize %v", filename, hdr.version, hdr.blockSize)
+	cursor.hdr = hdr
+
+	/* calc how many goroutines are needed */
+	routineNR := st.Size() / int64(hdr.blockSize)
+	if routineNR >= snapshotLoadRoutineMax {
+		routineNR = snapshotLoadRoutineMax
+	} else if st.Size()%int64(hdr.blockSize) != 0 {
+		routineNR++
+	}
+	routineIndex := len(cursor.routines)
+	cursor.newRoutineCursors(routineNR)
+	log.LogDebugf("[loadSmall]: File %s loader routines %v", filename, routineNR)
+
+	for i := 0; i < int(routineNR); i++ {
+		wg.Add(1)
+		go mp.loadBlocks(fp, cursor, &wg, routineIndex+i)
+	}
+
+	return nil
+}
+
+func (mp *metaPartition) loadLarge(filename string, cursor *loadCursor, wg *sync.WaitGroup) {
+	var err error
+
+	defer func() {
+		if err != nil {
+			cursor.setError()
+		}
+		wg.Done()
+	}()
+
+	log.LogDebugf("[loadLarge]: load %s", filename)
+	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	if err != nil {
+		log.LogErrorf("[loadLarge]: File %s OpenFile: %v", filename, err)
+		return
+	}
+	defer fp.Close()
+
+	reader := bufio.NewReaderSize(fp, 4*1024*1024)
+	buff := make([]byte, 4)
+	for {
+		buff = buff[:4]
+		// first read length
+		_, err = io.ReadFull(reader, buff)
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+				return
+			}
+			log.LogErrorf("[loadLarge]: File %s ReadHeader: %v", filename, err)
+			return
+		}
+
+		length := binary.BigEndian.Uint32(buff)
+
+		// next read body
+		if uint32(cap(buff)) >= length {
+			buff = buff[:length]
+		} else {
+			buff = make([]byte, length)
+		}
+		_, err = io.ReadFull(reader, buff)
+		if err != nil {
+			log.LogErrorf("[loadLarge]: File %s ReadBody: %v", filename, err)
+			return
+		}
+		if err = cursor.loader(mp, buff, cursor, 0); err != nil {
+			log.LogErrorf("[loadLarge]: File %s loader: %s", filename, err)
+			return
+		}
+
+		cursor.incCount(0)
+	}
+	return
+}
+
+func (mp *metaPartition) loadSnapshotFiles(dir, small, large string, cursor *loadCursor) (err error) {
+	var (
+		stLarge os.FileInfo
+		stSmall os.FileInfo
+		wg      sync.WaitGroup
+	)
+
+	fileLarge := path.Join(dir, large)
+	if stLarge, err = os.Stat(fileLarge); err != nil {
+		if !os.IsNotExist(err) {
+			log.LogErrorf("[loadSnapshotFiles]: File %s Stat: %v\n", fileLarge, err)
+			return
+		}
+		err = nil
+	} else if stLarge.Size() > 0 {
+		wg.Add(1)
+		cursor.newRoutineCursors(1)
+		go mp.loadLarge(fileLarge, cursor, &wg)
+	}
+
+	fileSmall := path.Join(dir, small)
+	if stSmall, err = os.Stat(fileSmall); err != nil {
+		if !os.IsNotExist(err) {
+			log.LogErrorf("[loadSnapshotFiles]: File %s Stat: %v\n", fileSmall, err)
+			return
+		}
+		return nil
+	} else if stSmall.Size() <= smallFileHeaderSize {
+		return
+	}
+
+	mp.loadSmall(fileSmall, cursor)
+
 	return
 }
 
