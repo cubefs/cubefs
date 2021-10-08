@@ -716,48 +716,28 @@ func (mp *metaPartition) loadSnapshotFiles2(dir, small, large string, cursor *lo
 	return
 }
 
-func (mp *metaPartition) loadExtend(rootDir string) error {
-	var err error
-	filename := path.Join(rootDir, extendFileLarge)
-	if _, err = os.Stat(filename); err != nil {
-		return nil
+func loadOneExtend(mp *metaPartition, data []byte, cursor *loadCursor, index int) (err error) {
+	var extend *Extend
+	if extend, err = NewExtendFromBytes(data); err != nil {
+		return
 	}
-	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = fp.Close()
-	}()
-	var mem mmap.MMap
-	if mem, err = mmap.Map(fp, mmap.RDONLY, 0); err != nil {
-		return err
-	}
-	defer func() {
-		_ = mem.Unmap()
-	}()
-	var offset, n int
-	// read number of extends
-	var numExtends uint64
-	numExtends, n = binary.Uvarint(mem)
-	offset += n
-	for i := uint64(0); i < numExtends; i++ {
-		// read length
-		var numBytes uint64
-		numBytes, n = binary.Uvarint(mem[offset:])
-		offset += n
-		var extend *Extend
-		if extend, err = NewExtendFromBytes(mem[offset : offset+int(numBytes)]); err != nil {
-			return err
+
+	_ = mp.fsmSetXAttr(extend)
+	return
+}
+
+func (mp *metaPartition) loadExtend(rootDir string) (err error) {
+	cursor := &loadCursor{loader: loadOneExtend}
+	err = mp.loadSnapshotFiles2(rootDir, extendFileSmall, extendFileLarge, cursor)
+	if err == nil {
+		if cursor.isErr != 0 {
+			err = errors.New("Failed to load Extend snapshot")
 		}
-		log.LogDebugf("loadExtend: new extend from bytes: partitionID（%v) volume(%v) inode(%v)",
-			mp.config.PartitionId, mp.config.VolName, extend.inode)
-		_ = mp.fsmSetXAttr(extend)
-		offset += int(numBytes)
 	}
-	log.LogInfof("loadExtend: load complete: partitionID(%v) volume(%v) numExtends(%v) filename(%v)",
-		mp.config.PartitionId, mp.config.VolName, numExtends, filename)
-	return nil
+	_, numExtends := cursor.getResult()
+	log.LogInfof("loadExtend: load complete: partitionID(%v) volume(%v) numExtends(%v) err(%v)",
+		mp.config.PartitionId, mp.config.VolName, numExtends, err)
+	return
 }
 
 func (mp *metaPartition) loadMultipart(rootDir string) error {
