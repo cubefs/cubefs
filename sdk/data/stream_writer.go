@@ -61,6 +61,7 @@ type WriteRequest struct {
 	data       []byte
 	direct     bool
 	writeBytes int
+	isROW	   bool
 	err        error
 	done       chan struct{}
 	ctx        context.Context
@@ -106,7 +107,7 @@ func (s *Streamer) IssueOpenRequest() error {
 	return nil
 }
 
-func (s *Streamer) IssueWriteRequest(ctx context.Context, offset int, data []byte, direct bool) (write int, err error) {
+func (s *Streamer) IssueWriteRequest(ctx context.Context, offset int, data []byte, direct bool) (write int, isROW bool, err error) {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("StreamWrite.IssueWriteRequest").
 		SetTag("arg.inode", s.inode).
 		SetTag("arg.offset", offset).
@@ -116,7 +117,7 @@ func (s *Streamer) IssueWriteRequest(ctx context.Context, offset int, data []byt
 	if atomic.LoadInt32(&s.status) >= StreamerError {
 		tracer.SetTag("ret.err", "StreamerError")
 		tracer.Finish()
-		return 0, errors.New(fmt.Sprintf("IssueWriteRequest: stream writer in error status, ino(%v)", s.inode))
+		return 0, false, errors.New(fmt.Sprintf("IssueWriteRequest: stream writer in error status, ino(%v)", s.inode))
 	}
 
 	s.writeLock.Lock()
@@ -127,6 +128,7 @@ func (s *Streamer) IssueWriteRequest(ctx context.Context, offset int, data []byt
 	request.size = len(data)
 	request.direct = direct
 	request.done = make(chan struct{}, 1)
+	request.isROW = false
 	request.ctx = ctx
 	tracer.SetTag("request.channel.len", len(s.request))
 	s.request <- request
@@ -138,6 +140,7 @@ func (s *Streamer) IssueWriteRequest(ctx context.Context, offset int, data []byt
 	atomic.AddInt32(&s.writeOp, -1)
 	err = request.err
 	write = request.writeBytes
+	isROW = request.isROW
 	writeRequestPool.Put(request)
 	return
 }
@@ -290,7 +293,7 @@ func (s *Streamer) handleRequest(ctx context.Context, request interface{}) {
 		tracer.SetTag("write", true)
 		tracer.SetTag("offset", request.fileOffset)
 		tracer.SetTag("size", request.size)
-		request.writeBytes, request.err = s.write(request.ctx, request.data, request.fileOffset, request.size, request.direct)
+		request.writeBytes, request.isROW, request.err = s.write(request.ctx, request.data, request.fileOffset, request.size, request.direct)
 		request.done <- struct{}{}
 	case *TruncRequest:
 		tracer.SetTag("trunc", true)
@@ -312,7 +315,7 @@ func (s *Streamer) handleRequest(ctx context.Context, request interface{}) {
 	}
 }
 
-func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, direct bool) (total int, err error) {
+func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, direct bool) (total int, isROW bool, err error) {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Streamer.write").
 		SetTag("offset", offset).
 		SetTag("size", size).
@@ -340,9 +343,12 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, dir
 	}
 
 	for _, req := range requests {
-		var writeSize int
+		var (
+			writeSize 	int
+			rowFlag		bool
+		)
 		if req.ExtentKey != nil {
-			writeSize = s.doOverWriteOrROW(ctx, req, direct)
+			writeSize, rowFlag = s.doOverWriteOrROW(ctx, req, direct)
 		} else {
 			writeSize, err = s.doWrite(ctx, req.Data, req.FileOffset, req.Size, direct)
 		}
@@ -350,17 +356,20 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, dir
 			log.LogWarnf("Streamer write: ino(%v) err(%v)", s.inode, err)
 			break
 		}
+		if rowFlag {
+			isROW = rowFlag
+		}
 		total += writeSize
 	}
 	if filesize, _ := s.extents.Size(); offset+total > filesize {
 		s.extents.SetSize(uint64(offset+total), false)
 		log.LogDebugf("Streamer write: ino(%v) filesize changed to (%v)", s.inode, offset+total)
 	}
-	log.LogDebugf("Streamer write exit: ino(%v) offset(%v) size(%v) done total(%v) err(%v)", s.inode, offset, size, total, err)
+	log.LogDebugf("Streamer write exit: ino(%v) offset(%v) size(%v) done total(%v) isROW(%v) err(%v)", s.inode, offset, size, total, isROW, err)
 	return
 }
 
-func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, direct bool) (writeSize int) {
+func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, direct bool) (writeSize int, isROW bool) {
 	var (
 		err    error
 		errmsg string
@@ -376,6 +385,7 @@ func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, dir
 		}
 		log.LogWarnf("doOverWrite failed: ino(%v) err(%v) req(%v)", s.inode, err, req)
 		if writeSize, err = s.doROW(ctx, req, direct); err == nil {
+			isROW = true
 			break
 		}
 		log.LogWarnf("doOverWriteOrROW failed: ino(%v) err(%v) req(%v)", s.inode, err, req)
@@ -383,7 +393,7 @@ func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, dir
 		handleUmpAlarm(s.client.dataWrapper.clusterName, s.client.dataWrapper.volName, "doOverWriteOrROW", errmsg)
 		time.Sleep(1 * time.Second)
 	}
-	return writeSize
+	return writeSize, isROW
 }
 
 func (s *Streamer) writeToExtent(ctx context.Context, oriReq *ExtentRequest, dp *DataPartition, extID int,

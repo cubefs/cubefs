@@ -254,7 +254,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	metric := exporter.NewTPCnt("filewrite")
 	defer metric.Set(err)
 
-	size, err := f.super.ec.Write(ctx, ino, int(req.Offset), req.Data, enSyncWrite)
+	size, _, err := f.super.ec.Write(ctx, ino, int(req.Offset), req.Data, enSyncWrite)
 	if err != nil {
 		msg := fmt.Sprintf("Write: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
 		f.super.handleErrorWithGetInode("Write", msg, ino)

@@ -51,7 +51,6 @@ import "C"
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	syslog "log"
@@ -62,6 +61,7 @@ import (
 	"os/signal"
 	"path"
 	gopath "path"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"runtime/debug"
@@ -173,7 +173,8 @@ func newClient(conf *C.cfs_config_t) *client {
 	}
 	c.logDir = C.GoString(conf.log_dir)
 	c.logLevel = C.GoString(conf.log_level)
-	c.profPort = C.GoString(conf.prof_port)
+	c.profPort = parseProfPortArray(C.GoString(conf.prof_port))
+	c.readProcErrMap = make(map[uint64]int)
 	c.tracingSamplerType = C.GoString(conf.tracing_sampler_type)
 	if val, err := strconv.ParseFloat(C.GoString(conf.tracing_sampler_param), 64); err == nil {
 		c.tracingSamplerParam = val
@@ -188,6 +189,18 @@ func newClient(conf *C.cfs_config_t) *client {
 	gClientManager.mu.Unlock()
 
 	return c
+}
+
+func parseProfPortArray(portStr string) (portList []uint64) {
+	portList = make([]uint64, 0)
+	portArray := strings.Split(portStr, ",")
+	for _, portStr := range portArray {
+		port, err := strconv.ParseUint(portStr, 10, 64)
+		if err == nil && port > 0 {
+			portList = append(portList, port)
+		}
+	}
+	return portList
 }
 
 func getClient(id int64) (c *client, exist bool) {
@@ -239,11 +252,15 @@ type client struct {
 	logLevel     string
 
 	// profiling config
-	profPort            string
-	tracingSamplerType  string
-	tracingSamplerParam float64
-	tracingReportAddr   string
-	tracingFlag         bool
+	profPort            []uint64		// the first is the port of main mysqld, the others are the ports of read processes
+	listenPort			uint64
+	readProcErrMap 		map[uint64]int	// key: port, value: count of error
+	readProcMapLock		sync.Mutex
+
+	tracingSamplerType     	string
+	tracingSamplerParam 	float64
+	tracingReportAddr   	string
+	tracingFlag         	bool
 
 	// runtime context
 	cwd    string // current working directory
@@ -1459,13 +1476,15 @@ func _cfs_stat(id C.int64_t, path *C.char, stat *C.struct_stat, flags C.int) (re
 		err error
 	)
 	defer func() {
+		msg := fmt.Sprintf("id(%v) path(%v) ino(%v) flags(%v) re(%v) err(%v)", id, C.GoString(path), ino, flags, re, err)
 		if r := recover(); r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
 			var stack string
 			if r != nil {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
-			msg := fmt.Sprintf("id(%v) path(%v) ino(%v) flags(%v) re(%v) err(%v)%s", id, C.GoString(path), ino, flags, re, err, stack)
-			handleError(c, "cfs_stat", msg)
+			handleError(c, "cfs_stat", fmt.Sprintf("%s%s", msg, stack))
+		} else {
+			log.LogDebugf("cfs_stat: %s", msg)
 		}
 	}()
 
@@ -1550,13 +1569,15 @@ func _cfs_stat64(id C.int64_t, path *C.char, stat *C.struct_stat64, flags C.int)
 		err error
 	)
 	defer func() {
+		msg := fmt.Sprintf("id(%v) path(%v) ino(%v) flags(%v) re(%v) err(%v)", id, C.GoString(path), ino, flags, re, err)
 		if r := recover(); r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
 			var stack string
 			if r != nil {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
-			msg := fmt.Sprintf("id(%v) path(%v) ino(%v) flags(%v) re(%v) err(%v)%s", id, C.GoString(path), ino, flags, re, err, stack)
-			handleError(c, "cfs_stat64", msg)
+			handleError(c, "cfs_stat64", fmt.Sprintf("%s%s", msg, stack))
+		} else {
+			log.LogDebugf("cfs_stat64: %s", msg)
 		}
 	}()
 
@@ -2824,7 +2845,7 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		offset = int(f.pos)
 	}
 
-	n, err := c.ec.Write(ctx, f.ino, offset, buffer, false)
+	n, isROW, err := c.ec.Write(ctx, f.ino, offset, buffer, false)
 	if err != nil {
 		return C.ssize_t(statusEIO)
 	}
@@ -2833,6 +2854,10 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		if err = c.ec.Flush(ctx, f.ino); err != nil {
 			return C.ssize_t(statusEIO)
 		}
+	}
+
+	if isROW && isMysql() {
+		c.broadcastAllReadProcess(f.ino)
 	}
 
 	if off < 0 {
@@ -2994,6 +3019,18 @@ func (c *client) start() (err error) {
 	cmd, _ := os.Executable()
 	syslog.Printf("ChubaoFS Kernel Bypass Client\nCMD: %s\nBranch: %s\nCommit: %s\nDebug: %s\nBuild: %s %s %s %s\n\n", cmd, BranchName, CommitID, Debug, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime)
 
+	if len(c.profPort) < 1 {
+		err = fmt.Errorf("empty prof port")
+		fmt.Println(err)
+		return
+	}
+	if len(c.profPort) == 1 || isMysql() {
+		c.listenPort = c.profPort[0]
+	}
+	if isMysql() {
+		c.initReadPortMap()
+	}
+
 	masters := strings.Split(c.masterAddr, ",")
 	mc := master.NewMasterClient(masters, false)
 	err = mc.ClientAPI().ApplyVolMutex(c.volName)
@@ -3039,12 +3076,28 @@ func (c *client) start() (err error) {
 	tracing.TraceInit(moduleName, c.tracingSamplerType, c.tracingSamplerParam, c.tracingReportAddr)
 
 	go func() {
-		if c.profPort != "" {
-			http.ListenAndServe(":"+c.profPort, nil)
+		var listenErr error
+		if c.listenPort != 0 {
+			listenErr = http.ListenAndServe(fmt.Sprintf(":%v", c.listenPort), nil)
+		} else {
+			for i := 1; i < len(c.profPort); i++ {
+				c.listenPort = c.profPort[i]
+				c.registerReadProcStatus(c.listenPort, true)
+				if listenErr = http.ListenAndServe(fmt.Sprintf(":%v", c.listenPort), nil); listenErr != nil {
+					continue
+				}
+			}
+			c.listenPort = 0
+		}
+		if listenErr != nil && isMysql() {
+			fmt.Println(listenErr)
+			os.Exit(1)
 		}
 	}()
 	http.HandleFunc(log.GetLogPath, log.GetLog)
-	http.HandleFunc("/version", GetVersion)
+	http.HandleFunc("/version", GetVersionHandleFunc)
+	http.HandleFunc(ControlReadProcessRegister, c.registerReadProcStatusHandleFunc)
+	http.HandleFunc(ControlBroadcastRefreshExtents, c.broadcastRefreshExtentsHandleFunc)
 
 	// metric
 	if err = ump.InitUmp(moduleName); err != nil {
@@ -3146,6 +3199,29 @@ func (c *client) umpFunctionGeneralKey(act string) string {
 	return fmt.Sprintf("%s_%s_%s", c.mw.Cluster(), moduleName, act)
 }
 
+func (c *client) initReadPortMap() {
+	for i := 1; i < len(c.profPort); i++ {
+		port := c.profPort[i]
+		if port != c.listenPort && port != 0 {
+			c.readProcErrMap[port] = 0
+		}
+	}
+	log.LogInfof("initReadPortMap: readProcessMap(%v)", c.readProcErrMap)
+}
+
+func (c *client) broadcastAllReadProcess(ino uint64) {
+	c.readProcMapLock.Lock()
+	log.LogInfof("broadcastAllReadProcess: readProcessMap(%v)", c.readProcErrMap)
+	for readPort, errCount := range c.readProcErrMap {
+		if errCount > 10 {
+			delete(c.readProcErrMap, readPort)
+			continue
+		}
+		c.broadcastRefreshExtents(readPort, c.volName, ino)
+	}
+	c.readProcMapLock.Unlock()
+}
+
 func handleError(c *client, act, msg string) {
 	log.LogErrorf("%s: %s", act, msg)
 	log.LogFlush()
@@ -3162,22 +3238,9 @@ func handleError(c *client, act, msg string) {
 	}
 }
 
-func GetVersion(w http.ResponseWriter, r *http.Request) {
-	var resp = struct {
-		Branch string
-		Commit string
-		Debug  string
-		Build  string
-	}{
-		Branch: BranchName,
-		Commit: CommitID,
-		Debug:  Debug,
-		Build:  fmt.Sprintf("%s %s %s %s", runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime),
-	}
-	var encoded []byte
-	encoded, _ = json.Marshal(&resp)
-	w.Write(encoded)
-	return
+func isMysql() bool {
+	processName := filepath.Base(os.Args[0])
+	return strings.Contains(processName, "mysqld")
 }
 
 func main() {}

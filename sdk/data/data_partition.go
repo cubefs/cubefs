@@ -353,8 +353,14 @@ func (dp *DataPartition) OverWrite(sc *StreamConn, req *Packet, reply *Packet) (
 		return
 	}
 
-	if err != nil || reply.ResultCode == proto.OpTryOtherAddr {
-		hosts := sortByStatus(sc.dp, true)
+	if err == nil && reply.ResultCode != proto.OpTryOtherAddr {
+		err = errors.New(fmt.Sprintf("OverWrite failed: sc(%v) resultCode(%v) reply(%v) reqPacket(%v)", sc, reply.GetResultMsg(), reply, req))
+		return
+	}
+
+	hosts := sortByStatus(sc.dp, true)
+	startTime := time.Now()
+	for i := 0; i < StreamSendOverWriteMaxRetry; i++ {
 		for _, addr := range hosts {
 			log.LogWarnf("OverWrite: try addr(%v) reqPacket(%v)", addr, req)
 			sc.currAddr = addr
@@ -364,7 +370,8 @@ func (dp *DataPartition) OverWrite(sc *StreamConn, req *Packet, reply *Packet) (
 				return
 			}
 			if err == nil && reply.ResultCode != proto.OpTryOtherAddr {
-				break
+				err = errors.New(fmt.Sprintf("OverWrite failed: sc(%v) errMap(%v) reply(%v) reqPacket(%v)", sc, errMap, reply, req))
+				return
 			}
 			if err == nil {
 				err = errors.New(reply.GetResultMsg())
@@ -372,7 +379,14 @@ func (dp *DataPartition) OverWrite(sc *StreamConn, req *Packet, reply *Packet) (
 			errMap[addr] = err
 			log.LogWarnf("OverWrite: try addr(%v) failed! err(%v) reply(%v) reqPacket(%v) ", addr, err, reply, req)
 		}
+		if time.Since(startTime) > StreamSendOverWriteTimeout {
+			log.LogWarnf("OverWrite: retry timeout req(%v) time(%v)", req, time.Since(startTime))
+			break
+		}
+		log.LogWarnf("OverWrite: errMap(%v), reqPacket(%v), try the next round", errMap, req)
+		time.Sleep(StreamSendSleepInterval)
 	}
+
 
 	return errors.New(fmt.Sprintf("OverWrite failed: sc(%v) errMap(%v) reply(%v) reqPacket(%v)", sc, errMap, reply, req))
 }

@@ -285,7 +285,7 @@ func (client *ExtentClient) FileSize(inode uint64) (size int, gen uint64, valid 
 //}
 
 // Write writes the data.
-func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset int, data []byte, direct bool) (write int, err error) {
+func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset int, data []byte, direct bool) (write int, isROW bool, err error) {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("ExtentClient.Write").
 		SetTag("arg.inode", inode).
 		SetTag("arg.offset", offset).
@@ -299,13 +299,13 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset int,
 	ctx = tracer.Context()
 
 	if client.dataWrapper.volNotExists {
-		return 0, proto.ErrVolNotExists
+		return 0, false, proto.ErrVolNotExists
 	}
 
 	prefix := fmt.Sprintf("Write{ino(%v)offset(%v)size(%v)}", inode, offset, len(data))
 	s := client.GetStreamer(inode)
 	if s == nil {
-		return 0, fmt.Errorf("Prefix(%v): stream is not opened yet", prefix)
+		return 0, false, fmt.Errorf("Prefix(%v): stream is not opened yet", prefix)
 	}
 
 	s.once.Do(func() {
@@ -313,7 +313,7 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset int,
 		s.GetExtents(ctx)
 	})
 
-	write, err = s.IssueWriteRequest(ctx, offset, data, direct)
+	write, isROW, err = s.IssueWriteRequest(ctx, offset, data, direct)
 	if err != nil {
 		err = errors.Trace(err, prefix)
 		log.LogWarnf(errors.Stack(err))
