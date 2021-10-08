@@ -489,6 +489,233 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 	return
 }
 
+func (mp *metaPartition) loadOneBlock2(file *os.File, cursor *loadCursor, i int) (err error) {
+	var (
+		start uint32
+		end   uint32
+		left  uint32
+		rsize int
+	)
+
+	index := cursor.getIndex()
+
+	data := make([]byte, cursor.hdr.blockSize)
+	rsize, err = file.ReadAt(data, index*int64(cursor.hdr.blockSize))
+	if err != nil && err != io.EOF {
+		log.LogErrorf("[loadOneBlock2]: file %v read blk %v fail: %v", file.Name(), index, err)
+		return
+	} else if err == io.EOF && rsize == 0 {
+		return
+	}
+
+	if rsize < int(cursor.hdr.blockSize) {
+		left = uint32(rsize)
+	} else {
+		left = cursor.hdr.blockSize
+	}
+	if index == 0 {
+		left -= smallFileHeaderSize
+		start += smallFileHeaderSize
+		end += smallFileHeaderSize
+	}
+	for {
+		if left == 0 {
+			// reach the end of this block
+			break
+		}
+
+		// get length of this data
+		length, n := binary.Uvarint(data[start:])
+		if length == 0 {
+			// reach the end of this block
+			break
+		} else if length+uint64(n) > uint64(left) {
+			err = errors.NewErrorf("[loadOneBlock2]: file %v invalid length %v at offset %v in block %v",
+				file.Name(), length, start, index)
+			return
+		}
+
+		start += uint32(n)
+		end += (uint32(n) + uint32(length))
+
+		// get data
+		buf := data[start:end]
+		if err = cursor.loader(mp, buf, cursor, i); err != nil {
+			log.LogErrorf("[loadOneBlock2] file %v blk %v offset %v len %v loader: %v",
+				file.Name(), index, start, end-start, err)
+			return
+		}
+
+		cursor.incCount(i)
+
+		left -= uint32(n) + (end - start)
+		start = end
+	}
+
+	return
+}
+
+func (mp *metaPartition) loadBlocks2(file *os.File, cursor *loadCursor, wg *sync.WaitGroup, i int) {
+	var err error
+
+	defer func() {
+		if err != nil {
+			log.LogErrorf("[loadBlocks2]: err %v", err)
+			cursor.setError()
+		}
+		wg.Done()
+	}()
+
+	for {
+		err = mp.loadOneBlock2(file, cursor, i)
+		if err == nil {
+			continue
+		}
+
+		if err == io.EOF {
+			err = nil
+		}
+		return
+	}
+}
+
+func (mp *metaPartition) loadSmall2(filename string, cursor *loadCursor) (err error) {
+	var wg sync.WaitGroup
+
+	log.LogDebugf("[loadSmall2]: load %s", filename)
+	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	if err != nil {
+		log.LogErrorf("[loadSmall2]: File %s OpenFile: %v", filename, err)
+		return
+	}
+	defer func() {
+		wg.Wait()
+		fp.Close()
+	}()
+
+	st, err := os.Stat(filename)
+	if err != nil {
+		log.LogErrorf("[loadSmall2]: File %s Stat: %v", filename, err)
+		return
+	}
+
+	hdr := &SmallFileHeader{}
+	data := make([]byte, smallFileHeaderSize)
+	if _, err = fp.ReadAt(data, 0); err != nil {
+		log.LogErrorf("[loadSmall2]: File %s ReadHeader: %v", filename, err)
+		return
+	}
+	if err = hdr.Unmarshal(data); err != nil {
+		log.LogErrorf("[loadSmall2]: File %s Unmarshal: %v", filename, err)
+		return
+	}
+	log.LogDebugf("File %s format version %v blockSize %v", filename, hdr.version, hdr.blockSize)
+	cursor.hdr = hdr
+
+	/* calc how many goroutines are needed */
+	routineNR := st.Size() / int64(hdr.blockSize)
+	if routineNR >= snapshotLoadRoutineMax {
+		routineNR = snapshotLoadRoutineMax
+	} else if st.Size()%int64(hdr.blockSize) != 0 {
+		routineNR++
+	}
+	routineIndex := len(cursor.routines)
+	cursor.newRoutineCursors(routineNR)
+	log.LogDebugf("[loadSmall2]: File %s loader routines %v", filename, routineNR)
+
+	for i := 0; i < int(routineNR); i++ {
+		wg.Add(1)
+		go mp.loadBlocks2(fp, cursor, &wg, routineIndex+i)
+	}
+
+	return nil
+}
+
+func (mp *metaPartition) loadLarge2(filename string, cursor *loadCursor, wg *sync.WaitGroup) {
+	var (
+		err error
+		mem mmap.MMap
+	)
+
+	defer func() {
+		if err != nil {
+			cursor.setError()
+		}
+		wg.Done()
+	}()
+
+	log.LogDebugf("[loadLarge]: load %s", filename)
+	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	if err != nil {
+		log.LogErrorf("[loadLarge2]: File %s OpenFile: %v", filename, err)
+		return
+	}
+	defer fp.Close()
+
+	if mem, err = mmap.Map(fp, mmap.RDONLY, 0); err != nil {
+		log.LogErrorf("[loadLarge2]: File %s Map: %v", filename, err)
+		return
+	}
+	defer func() {
+		_ = mem.Unmap()
+	}()
+
+	// read number of extends
+	_, n := binary.Uvarint(mem)
+	offset := n
+	for {
+		// read length
+		var numBytes uint64
+		numBytes, n = binary.Uvarint(mem[offset:])
+		if numBytes == 0 {
+			break
+		}
+		offset += n
+		if err = cursor.loader(mp, mem[offset:offset+int(numBytes)], cursor, 0); err != nil {
+			log.LogErrorf("[loadLarge2]: File %s loader: %s", filename, err.Error())
+			return
+		}
+		offset += int(numBytes)
+		cursor.incCount(0)
+	}
+	return
+}
+
+func (mp *metaPartition) loadSnapshotFiles2(dir, small, large string, cursor *loadCursor) (err error) {
+	var (
+		stLarge os.FileInfo
+		stSmall os.FileInfo
+		wg      sync.WaitGroup
+	)
+
+	fileLarge := path.Join(dir, large)
+	if stLarge, err = os.Stat(fileLarge); err != nil {
+		if !os.IsNotExist(err) {
+			log.LogErrorf("[loadSnapshotFiles2]: File %s Stat: %v\n", fileLarge, err)
+			return
+		}
+		err = nil
+	} else if stLarge.Size() > 0 {
+		wg.Add(1)
+		cursor.newRoutineCursors(1)
+		go mp.loadLarge2(fileLarge, cursor, &wg)
+	}
+
+	fileSmall := path.Join(dir, small)
+	if stSmall, err = os.Stat(fileSmall); err != nil {
+		if !os.IsNotExist(err) {
+			log.LogErrorf("[loadSnapshotFiles2]: File %s Stat: %v\n", fileSmall, err)
+			return
+		}
+		return nil
+	} else if stSmall.Size() <= smallFileHeaderSize {
+		return
+	}
+
+	mp.loadSmall2(fileSmall, cursor)
+	return
+}
+
 func (mp *metaPartition) loadExtend(rootDir string) error {
 	var err error
 	filename := path.Join(rootDir, extendFileLarge)
