@@ -651,7 +651,8 @@ func (mp *metaPartition) Reset() (err error) {
 	mp.applyID = 0
 
 	// remove files
-	filenames := []string{applyIDFile, dentryFile, inodeFile, extendFile, multipartFile}
+	filenames := []string{applyIDFile, dentryFileLarge, dentryFileSmall, inodeFileLarge,
+		inodeFileSmall, extendFileLarge, extendFileSmall, multipartFileLarge, multipartFileSmall}
 	for _, filename := range filenames {
 		filepath := path.Join(mp.config.RootDir, filename)
 		if err = os.Remove(filepath); err != nil {

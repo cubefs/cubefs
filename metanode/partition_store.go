@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -35,18 +36,76 @@ import (
 )
 
 const (
-	snapshotDir     = "snapshot"
-	snapshotDirTmp  = ".snapshot"
-	snapshotBackup  = ".snapshot_backup"
-	inodeFile       = "inode"
-	dentryFile      = "dentry"
-	extendFile      = "extend"
-	multipartFile   = "multipart"
-	applyIDFile     = "apply"
-	SnapshotSign    = ".sign"
-	metadataFile    = "meta"
-	metadataFileTmp = ".meta"
+	snapshotDir        = "snapshot"
+	snapshotDirTmp     = ".snapshot"
+	snapshotBackup     = ".snapshot_backup"
+	inodeFileLarge     = "inode"
+	inodeFileSmall     = "inode_small"
+	dentryFileLarge    = "dentry"
+	dentryFileSmall    = "dentry_small"
+	extendFileLarge    = "extend"
+	extendFileSmall    = "extend_small"
+	multipartFileLarge = "multipart"
+	multipartFileSmall = "multipart_small"
+	applyIDFile        = "apply"
+	SnapshotSign       = ".sign"
+	metadataFile       = "meta"
+	metadataFileTmp    = ".meta"
+
+	smallFileFormatVersion = 1
+	smallFileHeaderSize    = 32
+	snapshotBlockSize      = 64 * 1024 * 1024
+	snapshotLoadRoutineMax = 32
 )
+
+type SmallFileHeader struct {
+	version   uint32
+	blockSize uint32
+	reserved1 uint64
+	reserved2 uint64
+	reserved3 uint64
+}
+
+func (hdr *SmallFileHeader) Marshal() (data []byte, err error) {
+	buff := bytes.NewBuffer(make([]byte, 0, smallFileHeaderSize))
+	if err = binary.Write(buff, binary.BigEndian, hdr.version); err != nil {
+		return
+	}
+	if err = binary.Write(buff, binary.BigEndian, hdr.blockSize); err != nil {
+		return
+	}
+	switch hdr.version {
+	case 1:
+		if err = binary.Write(buff, binary.BigEndian, hdr.reserved1); err != nil {
+			return
+		}
+		if err = binary.Write(buff, binary.BigEndian, hdr.reserved2); err != nil {
+			return
+		}
+		if err = binary.Write(buff, binary.BigEndian, hdr.reserved3); err != nil {
+			return
+		}
+	default:
+		err = errors.NewErrorf("Invalid format version %v", hdr.version)
+	}
+	data = buff.Bytes()
+	return
+}
+
+func (hdr *SmallFileHeader) Unmarshal(data []byte) (err error) {
+	if len(data) != smallFileHeaderSize {
+		err = errors.NewErrorf("Invalid Small File Header")
+		return
+	}
+	buff := bytes.NewBuffer(data)
+	if err = binary.Read(buff, binary.BigEndian, &hdr.version); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &hdr.blockSize); err != nil {
+		return
+	}
+	return nil
+}
 
 func (mp *metaPartition) loadMetadata() (err error) {
 	metaFile := path.Join(mp.config.RootDir, metadataFile)
@@ -92,7 +151,7 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 				mp.config.PartitionId, mp.config.VolName, numInodes)
 		}
 	}()
-	filename := path.Join(rootDir, inodeFile)
+	filename := path.Join(rootDir, inodeFileLarge)
 	if _, err = os.Stat(filename); err != nil {
 		err = nil
 		return
@@ -153,7 +212,7 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 				mp.config.PartitionId, mp.config.VolName, numDentries)
 		}
 	}()
-	filename := path.Join(rootDir, dentryFile)
+	filename := path.Join(rootDir, dentryFileLarge)
 	if _, err = os.Stat(filename); err != nil {
 		err = nil
 		return
@@ -212,7 +271,7 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 
 func (mp *metaPartition) loadExtend(rootDir string) error {
 	var err error
-	filename := path.Join(rootDir, extendFile)
+	filename := path.Join(rootDir, extendFileLarge)
 	if _, err = os.Stat(filename); err != nil {
 		return nil
 	}
@@ -256,7 +315,7 @@ func (mp *metaPartition) loadExtend(rootDir string) error {
 
 func (mp *metaPartition) loadMultipart(rootDir string) error {
 	var err error
-	filename := path.Join(rootDir, multipartFile)
+	filename := path.Join(rootDir, multipartFileLarge)
 	if _, err = os.Stat(filename); err != nil {
 		return nil
 	}
@@ -389,7 +448,7 @@ func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) 
 
 func (mp *metaPartition) storeInode(rootDir string,
 	sm *storeMsg) (crc uint32, err error) {
-	filename := path.Join(rootDir, inodeFile)
+	filename := path.Join(rootDir, inodeFileLarge)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
 		O_CREATE, 0755)
 	if err != nil {
@@ -433,7 +492,7 @@ func (mp *metaPartition) storeInode(rootDir string,
 
 func (mp *metaPartition) storeDentry(rootDir string,
 	sm *storeMsg) (crc uint32, err error) {
-	filename := path.Join(rootDir, dentryFile)
+	filename := path.Join(rootDir, dentryFileLarge)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
 		O_CREATE, 0755)
 	if err != nil {
@@ -477,7 +536,7 @@ func (mp *metaPartition) storeDentry(rootDir string,
 
 func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, err error) {
 	var extendTree = sm.extendTree
-	var fp = path.Join(rootDir, extendFile)
+	var fp = path.Join(rootDir, extendFileLarge)
 	var f *os.File
 	f, err = os.OpenFile(fp, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
 	if err != nil {
@@ -542,7 +601,7 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 
 func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint32, err error) {
 	var multipartTree = sm.multipartTree
-	var fp = path.Join(rootDir, multipartFile)
+	var fp = path.Join(rootDir, multipartFileLarge)
 	var f *os.File
 	f, err = os.OpenFile(fp, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
 	if err != nil {
