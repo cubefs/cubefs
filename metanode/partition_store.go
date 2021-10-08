@@ -431,64 +431,33 @@ func (mp *metaPartition) loadSnapshotFiles(dir, small, large string, cursor *loa
 	return
 }
 
-func (mp *metaPartition) loadInode(rootDir string) (err error) {
-	var numInodes uint64
-	defer func() {
-		if err == nil {
-			log.LogInfof("loadInode: load complete: partitonID(%v) volume(%v) numInodes(%v)",
-				mp.config.PartitionId, mp.config.VolName, numInodes)
-		}
-	}()
-	filename := path.Join(rootDir, inodeFileLarge)
-	if _, err = os.Stat(filename); err != nil {
-		err = nil
+func loadOneInode(mp *metaPartition, data []byte, cursor *loadCursor, index int) (err error) {
+	ino := NewInode(0, 0)
+	if err = ino.Unmarshal(data); err != nil {
+		err = errors.NewErrorf("[loadOneInode] Unmarshal: %s", err.Error())
 		return
 	}
-	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
-	if err != nil {
-		err = errors.NewErrorf("[loadInode] OpenFile: %s", err.Error())
-		return
-	}
-	defer fp.Close()
-	reader := bufio.NewReaderSize(fp, 4*1024*1024)
-	inoBuf := make([]byte, 4)
-	for {
-		inoBuf = inoBuf[:4]
-		// first read length
-		_, err = io.ReadFull(reader, inoBuf)
-		if err != nil {
-			if err == io.EOF {
-				err = nil
-				return
-			}
-			err = errors.NewErrorf("[loadInode] ReadHeader: %s", err.Error())
-			return
-		}
-		length := binary.BigEndian.Uint32(inoBuf)
+	mp.fsmCreateInode(ino)
+	mp.checkAndInsertFreeList(ino)
+	cursor.setMax(index, ino.Inode)
+	return
+}
 
-		// next read body
-		if uint32(cap(inoBuf)) >= length {
-			inoBuf = inoBuf[:length]
-		} else {
-			inoBuf = make([]byte, length)
+func (mp *metaPartition) loadInode(rootDir string) (err error) {
+	cursor := &loadCursor{loader: loadOneInode}
+	err = mp.loadSnapshotFiles(rootDir, inodeFileSmall, inodeFileLarge, cursor)
+	if err == nil {
+		if cursor.isErr != 0 {
+			err = errors.New("Failed to load Inode snapshot")
 		}
-		_, err = io.ReadFull(reader, inoBuf)
-		if err != nil {
-			err = errors.NewErrorf("[loadInode] ReadBody: %s", err.Error())
-			return
-		}
-		ino := NewInode(0, 0)
-		if err = ino.Unmarshal(inoBuf); err != nil {
-			err = errors.NewErrorf("[loadInode] Unmarshal: %s", err.Error())
-			return
-		}
-		mp.fsmCreateInode(ino)
-		mp.checkAndInsertFreeList(ino)
-		if mp.config.Cursor < ino.Inode {
-			mp.config.Cursor = ino.Inode
-		}
-		numInodes += 1
 	}
+	max, numInodes := cursor.getResult()
+	if err != nil {
+		mp.config.Cursor = max
+	}
+	log.LogInfof("loadInode: load complete: partitonID(%v) volume(%v) numInodes(%v) err %v",
+		mp.config.PartitionId, mp.config.VolName, numInodes, err)
+	return
 }
 
 // Load dentry from the dentry snapshot.
