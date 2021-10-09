@@ -92,6 +92,15 @@ func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newMetaNodeInfoCmd(client *master.MasterClient) *cobra.Command {
+	type dentryCount struct {
+		partitionID uint64
+		dentryCount uint64
+	}
+	var (
+		optDentry       bool
+		dentryCountList []*dentryCount
+		mp              *proto.MetaPartitionInfo
+	)
 	var cmd = &cobra.Command{
 		Use:   CliOpInfo + " [NODE ADDRESS]",
 		Short: cmdMetaNodeInfoShort,
@@ -111,7 +120,23 @@ func newMetaNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 			}
 			stdout("[Meta node info]\n")
 			stdout(formatMetaNodeDetail(metanodeInfo, false))
-
+			if !optDentry {
+				return
+			}
+			for _, mpId := range metanodeInfo.PersistenceMetaPartitions {
+				if mp, err = client.ClientAPI().GetMetaPartition(mpId); err != nil {
+					continue
+				}
+				dentryCountList = append(dentryCountList, &dentryCount{partitionID: mp.PartitionID, dentryCount: mp.DentryCount})
+			}
+			sort.Slice(dentryCountList, func(i, j int) bool {
+				return dentryCountList[i].dentryCount > dentryCountList[j].dentryCount
+			})
+			var sb = strings.Builder{}
+			for i := range dentryCountList {
+				sb.WriteString(fmt.Sprintf("%d:%d ", dentryCountList[i].partitionID, dentryCountList[i].dentryCount))
+			}
+			stdout("  Dentry Counts       : [%v]\n", sb.String())
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -120,6 +145,7 @@ func newMetaNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	cmd.Flags().BoolVarP(&optDentry, "dentry", "d", false, "Display meta partition dentry count")
 	return cmd
 }
 func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {

@@ -277,6 +277,8 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("Start         : %v\n", partition.Start))
 	sb.WriteString(fmt.Sprintf("End           : %v\n", partition.End))
 	sb.WriteString(fmt.Sprintf("MaxInodeID    : %v\n", partition.MaxInodeID))
+	sb.WriteString(fmt.Sprintf("InodeCount    : %v\n", partition.InodeCount))
+	sb.WriteString(fmt.Sprintf("DentryCount   : %v\n", partition.DentryCount))
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("Replicas : \n"))
 	sb.WriteString(fmt.Sprintf("%v\n", formatMetaReplicaTableHeader()))
