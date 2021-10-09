@@ -56,7 +56,6 @@ const (
 
 	smallFileFormatVersion = 1
 	smallFileHeaderSize    = 32
-	snapshotBlockSize      = 64 * 1024 * 1024
 	snapshotLoadRoutineMax = 32
 )
 
@@ -888,7 +887,7 @@ func closeSnapshotFiles(fp1, fp2 *os.File) {
 	}
 }
 
-func storeSmallFileHeader(fp *os.File, crc hash.Hash32) (hdr *SmallFileHeader, err error) {
+func storeSmallFileHeader(fp *os.File, crc hash.Hash32, version uint32, blkSize uint32) (hdr *SmallFileHeader, err error) {
 	var data []byte
 
 	defer func() {
@@ -897,7 +896,7 @@ func storeSmallFileHeader(fp *os.File, crc hash.Hash32) (hdr *SmallFileHeader, e
 		}
 	}()
 
-	hdr = &SmallFileHeader{version: smallFileFormatVersion, blockSize: snapshotBlockSize}
+	hdr = &SmallFileHeader{version: version, blockSize: blkSize * MB}
 	if data, err = hdr.Marshal(); err != nil {
 		return
 	}
@@ -940,6 +939,10 @@ func storeToSnapshot(fp *os.File, crc hash.Hash32, data []byte) (err error) {
 	return
 }
 
+func forceLargeMetaFile(mp *metaPartition) bool {
+	return mp.config.MetaFileBlock == 0
+}
+
 func (mp *metaPartition) storeInode(rootDir string, sm *storeMsg) (crc [2]uint32, err error) {
 	var (
 		fpLarge  *os.File
@@ -957,7 +960,7 @@ func (mp *metaPartition) storeInode(rootDir string, sm *storeMsg) (crc [2]uint32
 	var data []byte
 	signLarge := crc32.NewIEEE()
 	signSmall := crc32.NewIEEE()
-	if hdr, err = storeSmallFileHeader(fpSmall, signSmall); err != nil {
+	if hdr, err = storeSmallFileHeader(fpSmall, signSmall, smallFileFormatVersion, mp.config.MetaFileBlock); err != nil {
 		return
 	}
 	posSmall += smallFileHeaderSize
@@ -968,7 +971,7 @@ func (mp *metaPartition) storeInode(rootDir string, sm *storeMsg) (crc [2]uint32
 			return false
 		}
 
-		if 4+int64(len(data)) > int64(hdr.blockSize) {
+		if forceLargeMetaFile(mp) || 4+int64(len(data)) > int64(hdr.blockSize) {
 			if err = storeToSnapshot(fpLarge, signLarge, data); err != nil {
 				return false
 			}
@@ -990,8 +993,8 @@ func (mp *metaPartition) storeInode(rootDir string, sm *storeMsg) (crc [2]uint32
 	crc[0] = signLarge.Sum32()
 	crc[1] = signSmall.Sum32()
 
-	log.LogInfof("storeInode: store complete: partitoinID(%v) volume(%v) numInodes(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.inodeTree.Len(), crc)
+	log.LogInfof("storeInode: store complete: partitoinID(%v) volume(%v) numInodes(%v) crc(%v) blkSize(%v)",
+		mp.config.PartitionId, mp.config.VolName, sm.inodeTree.Len(), crc, hdr.blockSize)
 
 	return
 }
@@ -1013,7 +1016,7 @@ func (mp *metaPartition) storeDentry(rootDir string, sm *storeMsg) (crc [2]uint3
 	var data []byte
 	signLarge := crc32.NewIEEE()
 	signSmall := crc32.NewIEEE()
-	if hdr, err = storeSmallFileHeader(fpSmall, signSmall); err != nil {
+	if hdr, err = storeSmallFileHeader(fpSmall, signSmall, smallFileFormatVersion, mp.config.MetaFileBlock); err != nil {
 		return
 	}
 	posSmall += smallFileHeaderSize
@@ -1025,7 +1028,7 @@ func (mp *metaPartition) storeDentry(rootDir string, sm *storeMsg) (crc [2]uint3
 			return false
 		}
 
-		if 4+int64(len(data)) > int64(hdr.blockSize) {
+		if forceLargeMetaFile(mp) || 4+int64(len(data)) > int64(hdr.blockSize) {
 			if err = storeToSnapshot(fpLarge, signLarge, data); err != nil {
 				return false
 			}
@@ -1047,8 +1050,8 @@ func (mp *metaPartition) storeDentry(rootDir string, sm *storeMsg) (crc [2]uint3
 	crc[0] = signLarge.Sum32()
 	crc[1] = signSmall.Sum32()
 
-	log.LogInfof("storeDentry: store complete: partitoinID(%v) volume(%v) numDentries(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.dentryTree.Len(), crc)
+	log.LogInfof("storeDentry: store complete: partitoinID(%v) volume(%v) numDentries(%v) crc(%v) blkSize(%v)",
+		mp.config.PartitionId, mp.config.VolName, sm.dentryTree.Len(), crc, hdr.blockSize)
 	return
 }
 
@@ -1104,7 +1107,7 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc [2]uint3
 	if err = storeDummyNum(fpLarge, signLarge); err != nil {
 		return
 	}
-	if hdr, err = storeSmallFileHeader(fpSmall, signSmall); err != nil {
+	if hdr, err = storeSmallFileHeader(fpSmall, signSmall, smallFileFormatVersion, mp.config.MetaFileBlock); err != nil {
 		return
 	}
 	posSmall += smallFileHeaderSize
@@ -1117,7 +1120,7 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc [2]uint3
 		}
 
 		n := binary.PutUvarint(varintTmp, uint64(len(data)))
-		if int64(n)+int64(len(data)) > int64(hdr.blockSize) {
+		if forceLargeMetaFile(mp) || int64(n)+int64(len(data)) > int64(hdr.blockSize) {
 			if err = storeToSnapshot2(fpLarge, signLarge, data, varintTmp[:n]); err != nil {
 				return false
 			}
@@ -1143,8 +1146,8 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc [2]uint3
 	crc[0] = signLarge.Sum32()
 	crc[1] = signSmall.Sum32()
 
-	log.LogInfof("storeExtend: store complete: partitoinID(%v) volume(%v) numExtends(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.extendTree.Len(), crc)
+	log.LogInfof("storeExtend: store complete: partitoinID(%v) volume(%v) numExtends(%v) crc(%v) blkSize(%v)",
+		mp.config.PartitionId, mp.config.VolName, sm.extendTree.Len(), crc, hdr.blockSize)
 
 	return
 }
@@ -1170,7 +1173,7 @@ func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc [2]ui
 	if err = storeDummyNum(fpLarge, signLarge); err != nil {
 		return
 	}
-	if hdr, err = storeSmallFileHeader(fpSmall, signSmall); err != nil {
+	if hdr, err = storeSmallFileHeader(fpSmall, signSmall, smallFileFormatVersion, mp.config.MetaFileBlock); err != nil {
 		return
 	}
 	posSmall += smallFileHeaderSize
@@ -1182,7 +1185,7 @@ func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc [2]ui
 			return false
 		}
 		n := binary.PutUvarint(varintTmp, uint64(len(data)))
-		if int64(n)+int64(len(data)) > int64(hdr.blockSize) {
+		if forceLargeMetaFile(mp) || int64(n)+int64(len(data)) > int64(hdr.blockSize) {
 			if err = storeToSnapshot2(fpLarge, signLarge, data, varintTmp[:n]); err != nil {
 				return false
 			}
@@ -1208,8 +1211,8 @@ func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc [2]ui
 	crc[0] = signLarge.Sum32()
 	crc[1] = signSmall.Sum32()
 
-	log.LogInfof("storeMultipart: store complete: partitoinID(%v) volume(%v) numMultiparts(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.multipartTree.Len(), crc)
+	log.LogInfof("storeMultipart: store complete: partitoinID(%v) volume(%v) numMultiparts(%v) crc(%v) blkSize(%v)",
+		mp.config.PartitionId, mp.config.VolName, sm.multipartTree.Len(), crc, hdr.blockSize)
 
 	return
 }
