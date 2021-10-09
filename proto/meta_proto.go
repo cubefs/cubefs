@@ -14,6 +14,8 @@
 
 package proto
 
+const DefaultMetaFileBlockMax = 4096
+
 // CreateNameSpaceRequest defines the request to create a name space.
 type CreateNameSpaceRequest struct {
 	Name string
@@ -33,12 +35,13 @@ type Peer struct {
 
 // CreateMetaPartitionRequest defines the request to create a meta partition.
 type CreateMetaPartitionRequest struct {
-	MetaId      string
-	VolName     string
-	Start       uint64
-	End         uint64
-	PartitionID uint64
-	Members     []Peer
+	MetaId        string
+	VolName       string
+	Start         uint64
+	End           uint64
+	PartitionID   uint64
+	MetaFileBlock uint32
+	Members       []Peer
 }
 
 // CreateMetaPartitionResponse defines the response to the request of creating a meta partition.

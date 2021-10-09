@@ -404,16 +404,17 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 	partitionId := fmt.Sprintf("%d", request.PartitionID)
 
 	mpc := &MetaPartitionConfig{
-		PartitionId: request.PartitionID,
-		VolName:     request.VolName,
-		Start:       request.Start,
-		End:         request.End,
-		Cursor:      request.Start,
-		Peers:       request.Members,
-		RaftStore:   m.raftStore,
-		NodeId:      m.nodeId,
-		RootDir:     path.Join(m.rootDir, partitionPrefix+partitionId),
-		ConnPool:    m.connPool,
+		PartitionId:   request.PartitionID,
+		VolName:       request.VolName,
+		Start:         request.Start,
+		End:           request.End,
+		Cursor:        request.Start,
+		MetaFileBlock: request.MetaFileBlock,
+		Peers:         request.Members,
+		RaftStore:     m.raftStore,
+		NodeId:        m.nodeId,
+		RootDir:       path.Join(m.rootDir, partitionPrefix+partitionId),
+		ConnPool:      m.connPool,
 	}
 	mpc.AfterStop = func() {
 		m.detachPartition(request.PartitionID)

@@ -19,13 +19,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/rand"
+	"strings"
+	"time"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
-	"math/rand"
-	"strings"
-	"time"
 )
 
 func newCreateDataPartitionRequest(volName string, ID uint64, members []proto.Peer, dataPartitionSize int, hosts []string, createType int) (req *proto.CreateDataPartitionRequest) {
@@ -172,6 +173,10 @@ func WarnBySpecialKey(key, msg string) {
 
 func keyNotFound(name string) (err error) {
 	return errors.NewErrorf("parameter %v not found", name)
+}
+
+func keyInvalid(name string) (err error) {
+	return errors.NewErrorf("parameter %v invalid", name)
 }
 
 func unmatchedKey(name string) (err error) {

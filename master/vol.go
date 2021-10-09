@@ -50,6 +50,7 @@ type Vol struct {
 	threshold          float32
 	dataPartitionSize  uint64
 	Capacity           uint64 // GB
+	MetaFileBlock      uint32 // MB
 	NeedToLowerReplica bool
 	FollowerRead       bool
 	authenticate       bool
@@ -72,9 +73,8 @@ type Vol struct {
 }
 
 func newVol(id uint64, name, owner, zoneName string,
-	dpSize, capacity uint64, dpReplicaNum,
-	mpReplicaNum uint8, followerRead, authenticate,
-	crossZone bool, defaultPriority bool,
+	dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8, metaFileBlock uint32,
+	followerRead, authenticate, crossZone, defaultPriority bool,
 	createTime int64, description string) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
@@ -96,6 +96,7 @@ func newVol(id uint64, name, owner, zoneName string,
 	}
 	vol.dataPartitionSize = dpSize
 	vol.Capacity = capacity
+	vol.MetaFileBlock = metaFileBlock
 	vol.FollowerRead = followerRead
 	vol.authenticate = authenticate
 	vol.crossZone = crossZone
@@ -118,6 +119,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.Capacity,
 		vv.DpReplicaNum,
 		vv.ReplicaNum,
+		vv.MetaFileBlock,
 		vv.FollowerRead,
 		vv.Authenticate,
 		vv.CrossZone,
@@ -754,7 +756,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	if partitionID, err = c.idAlloc.allocateMetaPartitionID(); err != nil {
 		return nil, errors.NewError(err)
 	}
-	mp = newMetaPartition(partitionID, start, end, vol.mpReplicaNum, vol.Name, vol.ID)
+	mp = newMetaPartition(partitionID, start, end, vol.mpReplicaNum, vol.Name, vol.ID, vol.MetaFileBlock)
 	mp.setHosts(hosts)
 	mp.setPeers(peers)
 	for _, host := range hosts {

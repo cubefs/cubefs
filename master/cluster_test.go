@@ -2,9 +2,10 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
 	"testing"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 func buildPanicCluster() *Cluster {
@@ -21,7 +22,7 @@ func buildPanicVol() *Vol {
 	}
 	var createTime = time.Now().Unix() // record create time of this volume
 	vol := newVol(id, commonVol.Name, commonVol.Owner, "", commonVol.dataPartitionSize, commonVol.Capacity,
-		defaultReplicaNum, defaultReplicaNum, false, false, false, false, createTime, "")
+		defaultReplicaNum, defaultReplicaNum, 0, false, false, false, false, createTime, "")
 	vol.dataPartitions = nil
 	return vol
 }
@@ -74,7 +75,7 @@ func TestPanicCheckMetaPartitions(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID)
+	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID, 0)
 	vol.addMetaPartition(mp)
 	mp = nil
 	c.checkMetaPartitions()
@@ -187,7 +188,7 @@ func TestPanicCheckBadMetaPartitionRecovery(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	dp := newMetaPartition(partitionID, 0, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID)
+	dp := newMetaPartition(partitionID, 0, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID, 0)
 	c.BadMetaPartitionIds.Store(fmt.Sprintf("%v", dp.PartitionID), dp)
 	c.scheduleToCheckMetaPartitionRecoveryProgress()
 }

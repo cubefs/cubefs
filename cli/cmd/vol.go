@@ -94,6 +94,7 @@ const (
 	cmdVolDefaultFollowerReader = true
 	cmdVolDefaultZoneName       = ""
 	cmdVolDefaultCrossZone      = false
+	cmdVolDefaultMetaFileBlock  = 0 // MB
 )
 
 func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
@@ -105,6 +106,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optYes bool
 	var optCrossZone bool
 	var optZoneName string
+	var optMetaFileBlock uint64
 	var cmd = &cobra.Command{
 		Use:   cmdVolCreateUse,
 		Short: cmdVolCreateShort,
@@ -129,7 +131,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  Replicas            : %v\n", optReplicas)
 				stdout("  Allow follower read : %v\n", formatEnabledDisabled(optFollowerRead))
 				stdout("  ZoneName            : %v\n", optZoneName)
-				stdout("  CrossZone            : %v\n", optCrossZone)
+				stdout("  CrossZone           : %v\n", optCrossZone)
+				stdout("  Metafile block size : %v MB\n", optMetaFileBlock)
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -141,7 +144,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 
 			err = client.AdminAPI().CreateVolume(
 				volumeName, userID, optMPCount, optDPSize,
-				optCapacity, optReplicas, optFollowerRead, optZoneName, optCrossZone)
+				optCapacity, optReplicas, optFollowerRead, optZoneName,
+				optCrossZone, optMetaFileBlock)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
 				return
@@ -158,6 +162,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, cmdVolDefaultZoneName, "Specify volume zone name")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	cmd.Flags().BoolVar(&optCrossZone, CliFlagCrossZone, cmdVolDefaultCrossZone, "Disable cross zone")
+	cmd.Flags().Uint64Var(&optMetaFileBlock, CliFlagMetaFileBlock, cmdVolDefaultMetaFileBlock, "Meta file block size")
 
 	return cmd
 }

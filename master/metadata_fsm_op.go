@@ -68,6 +68,7 @@ type metaPartitionValue struct {
 	OfflinePeerID uint64
 	Peers         []bsProto.Peer
 	IsRecover     bool
+	MetaFileBlock uint32
 }
 
 func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
@@ -83,6 +84,7 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 		Peers:         mp.Peers,
 		OfflinePeerID: mp.OfflinePeerID,
 		IsRecover:     mp.IsRecover,
+		MetaFileBlock: mp.MetaFileBlock,
 	}
 	return
 }
@@ -133,6 +135,7 @@ type volValue struct {
 	Status            uint8
 	DataPartitionSize uint64
 	Capacity          uint64
+	MetaFileBlock     uint32
 	Owner             string
 	FollowerRead      bool
 	Authenticate      bool
@@ -162,6 +165,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		Status:            vol.Status,
 		DataPartitionSize: vol.dataPartitionSize,
 		Capacity:          vol.Capacity,
+		MetaFileBlock:     vol.MetaFileBlock,
 		Owner:             vol.Owner,
 		FollowerRead:      vol.FollowerRead,
 		Authenticate:      vol.authenticate,
@@ -824,7 +828,7 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 				mpv.Peers[i].ID = mn.(*MetaNode).ID
 			}
 		}
-		mp := newMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, vol.mpReplicaNum, vol.Name, mpv.VolID)
+		mp := newMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, vol.mpReplicaNum, vol.Name, mpv.VolID, vol.MetaFileBlock)
 		mp.setHosts(strings.Split(mpv.Hosts, underlineSeparator))
 		mp.setPeers(mpv.Peers)
 		mp.OfflinePeerID = mpv.OfflinePeerID

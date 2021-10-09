@@ -1727,7 +1727,7 @@ func (c *Cluster) checkVolInfo(name string, crossZone bool, zoneName string) (ne
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
 func (c *Cluster) createVol(name, owner, zoneName, description string,
-	mpCount, dpReplicaNum, size, capacity int,
+	mpCount, dpReplicaNum, size, capacity, metaFileBlock int,
 	followerRead, authenticate, crossZone, defaultPriority bool) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
@@ -1750,9 +1750,8 @@ func (c *Cluster) createVol(name, owner, zoneName, description string,
 	}
 	zoneName = newZoneName
 	if vol, err = c.doCreateVol(name, owner, zoneName, description,
-		dataPartitionSize, uint64(capacity), dpReplicaNum,
-		followerRead, authenticate, crossZone,
-		defaultPriority); err != nil {
+		dataPartitionSize, uint64(capacity), dpReplicaNum, uint32(metaFileBlock),
+		followerRead, authenticate, crossZone, defaultPriority); err != nil {
 		goto errHandler
 	}
 	if err = vol.initMetaPartitions(c, mpCount); err != nil {
@@ -1782,9 +1781,8 @@ errHandler:
 }
 
 func (c *Cluster) doCreateVol(name, owner, zoneName, description string,
-	dpSize, capacity uint64, dpReplicaNum int,
-	followerRead, authenticate, crossZone,
-	defaultPriority bool) (vol *Vol, err error) {
+	dpSize, capacity uint64, dpReplicaNum int, metaFileBlock uint32,
+	followerRead, authenticate, crossZone, defaultPriority bool) (vol *Vol, err error) {
 	var id uint64
 	c.createVolMutex.Lock()
 	defer c.createVolMutex.Unlock()
@@ -1798,9 +1796,9 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string,
 		goto errHandler
 	}
 	vol = newVol(id, name, owner, zoneName, dpSize,
-		capacity, uint8(dpReplicaNum), defaultReplicaNum,
-		followerRead, authenticate, crossZone,
-		defaultPriority, createTime, description)
+		capacity, uint8(dpReplicaNum), defaultReplicaNum, metaFileBlock,
+		followerRead, authenticate, crossZone, defaultPriority,
+		createTime, description)
 	// refresh oss secure
 	vol.refreshOSSSecure()
 	if err = c.syncAddVol(vol); err != nil {

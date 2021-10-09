@@ -63,20 +63,21 @@ func (sp sortedPeers) Swap(i, j int) {
 // MetaPartitionConfig is used to create a meta partition.
 type MetaPartitionConfig struct {
 	// Identity for raftStore group. RaftStore nodes in the same raftStore group must have the same groupID.
-	PartitionId uint64              `json:"partition_id"`
-	VolName     string              `json:"vol_name"`
-	Start       uint64              `json:"start"` // Minimal Inode ID of this range. (Required during initialization)
-	End         uint64              `json:"end"`   // Maximal Inode ID of this range. (Required during initialization)
-	Peers       []proto.Peer        `json:"peers"` // Peers information of the raftStore
-	Cursor      uint64              `json:"-"`     // Cursor ID of the inode that have been assigned
-	NodeId      uint64              `json:"-"`
-	RootDir     string              `json:"-"`
-	BeforeStart func()              `json:"-"`
-	AfterStart  func()              `json:"-"`
-	BeforeStop  func()              `json:"-"`
-	AfterStop   func()              `json:"-"`
-	RaftStore   raftstore.RaftStore `json:"-"`
-	ConnPool    *util.ConnectPool   `json:"-"`
+	PartitionId   uint64              `json:"partition_id"`
+	VolName       string              `json:"vol_name"`
+	Start         uint64              `json:"start"` // Minimal Inode ID of this range. (Required during initialization)
+	End           uint64              `json:"end"`   // Maximal Inode ID of this range. (Required during initialization)
+	MetaFileBlock uint32              `json:"metafile_block"`
+	Peers         []proto.Peer        `json:"peers"` // Peers information of the raftStore
+	Cursor        uint64              `json:"-"`     // Cursor ID of the inode that have been assigned
+	NodeId        uint64              `json:"-"`
+	RootDir       string              `json:"-"`
+	BeforeStart   func()              `json:"-"`
+	AfterStart    func()              `json:"-"`
+	BeforeStop    func()              `json:"-"`
+	AfterStop     func()              `json:"-"`
+	RaftStore     raftstore.RaftStore `json:"-"`
+	ConnPool      *util.ConnectPool   `json:"-"`
 }
 
 func (c *MetaPartitionConfig) checkMeta() (err error) {
@@ -93,6 +94,11 @@ func (c *MetaPartitionConfig) checkMeta() (err error) {
 		err = errors.NewErrorf("[checkMeta]: end=%v, "+
 			"start=%v; end <= start", c.End, c.Start)
 		return
+	}
+	if c.MetaFileBlock > proto.DefaultMetaFileBlockMax {
+		log.LogWarnf("[checkMeta]: MetaFileBlock=%v larger than %v, change to 0",
+			c.MetaFileBlock, proto.DefaultMetaFileBlockMax)
+		c.MetaFileBlock = 0
 	}
 	if len(c.Peers) <= 0 {
 		err = errors.NewErrorf("[checkMeta]: must have peers, now peers is 0")

@@ -18,12 +18,13 @@ import (
 	"sync"
 
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
 	"math"
 	"strings"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 // MetaReplica defines the replica of a meta partition
@@ -49,6 +50,7 @@ type MetaPartition struct {
 	MaxInodeID    uint64
 	InodeCount    uint64
 	DentryCount   uint64
+	MetaFileBlock uint32
 	Replicas      []*MetaReplica
 	ReplicaNum    uint8
 	Status        int8
@@ -71,7 +73,7 @@ func newMetaReplica(start, end uint64, metaNode *MetaNode) (mr *MetaReplica) {
 	return
 }
 
-func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName string, volID uint64) (mp *MetaPartition) {
+func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName string, volID uint64, metaFileBlock uint32) (mp *MetaPartition) {
 	mp = &MetaPartition{PartitionID: partitionID, Start: start, End: end, volName: volName, volID: volID}
 	mp.ReplicaNum = replicaNum
 	mp.Replicas = make([]*MetaReplica, 0)
@@ -80,6 +82,7 @@ func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName 
 	mp.Peers = make([]proto.Peer, 0)
 	mp.Hosts = make([]string, 0)
 	mp.LoadResponse = make([]*proto.MetaPartitionLoadResponse, 0)
+	mp.MetaFileBlock = metaFileBlock
 	return
 }
 
@@ -501,11 +504,12 @@ func (mp *MetaPartition) buildNewMetaPartitionTasks(specifyAddrs []string, peers
 	tasks = make([]*proto.AdminTask, 0)
 	hosts := make([]string, 0)
 	req := &proto.CreateMetaPartitionRequest{
-		Start:       mp.Start,
-		End:         mp.End,
-		PartitionID: mp.PartitionID,
-		Members:     peers,
-		VolName:     volName,
+		Start:         mp.Start,
+		End:           mp.End,
+		PartitionID:   mp.PartitionID,
+		Members:       peers,
+		VolName:       volName,
+		MetaFileBlock: mp.MetaFileBlock,
 	}
 	if specifyAddrs == nil {
 		hosts = mp.Hosts

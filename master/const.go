@@ -34,6 +34,7 @@ const (
 	dataPartitionSizeKey    = "size"
 	metaPartitionCountKey   = "mpCount"
 	volCapacityKey          = "capacity"
+	metaFileBlockKey        = "metaFileBlock"
 	volOwnerKey             = "owner"
 	volAuthKey              = "authKey"
 	replicaNumKey           = "replicaNum"

@@ -712,25 +712,25 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		defaultPriority bool
 		zoneName        string
 		description     string
+		metaFileBlock   int
 	)
 
 	if name, owner, zoneName, description,
-		mpCount, dpReplicaNum, size,
-		capacity, followerRead,
-		authenticate, crossZone, defaultPriority,
+		mpCount, dpReplicaNum, size, capacity, metaFileBlock,
+		followerRead, authenticate, crossZone, defaultPriority,
 		err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	log.LogInfof("DEBUG: volume %v blksize %v", name, metaFileBlock)
 	if !(dpReplicaNum == 2 || dpReplicaNum == 3) {
 		err = fmt.Errorf("replicaNum can only be 2 and 3,received replicaNum is[%v]", dpReplicaNum)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 	if vol, err = m.cluster.createVol(name, owner, zoneName, description,
-		mpCount, dpReplicaNum, size, capacity,
-		followerRead, authenticate, crossZone,
-		defaultPriority); err != nil {
+		mpCount, dpReplicaNum, size, capacity, metaFileBlock,
+		followerRead, authenticate, crossZone, defaultPriority); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1906,9 +1906,8 @@ func parseRequestToSetVolCapacity(r *http.Request) (name, authKey string, capaci
 }
 
 func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string,
-	mpCount, dpReplicaNum, size,
-	capacity int, followerRead,
-	authenticate, crossZone, defaultPriority bool,
+	mpCount, dpReplicaNum, size, capacity, metaFileBlock int,
+	followerRead, authenticate, crossZone, defaultPriority bool,
 	err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -1936,6 +1935,17 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	if sizeStr := r.FormValue(dataPartitionSizeKey); sizeStr != "" {
 		if size, err = strconv.Atoi(sizeStr); err != nil {
 			err = unmatchedKey(dataPartitionSizeKey)
+			return
+		}
+	}
+
+	if metaFileBlockStr := r.FormValue(metaFileBlockKey); metaFileBlockStr != "" {
+		if metaFileBlock, err = strconv.Atoi(metaFileBlockStr); err != nil {
+			err = unmatchedKey(metaFileBlockKey)
+			return
+		}
+		if metaFileBlock > proto.DefaultMetaFileBlockMax {
+			err = keyInvalid(metaFileBlockKey)
 			return
 		}
 	}
