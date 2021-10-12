@@ -20,6 +20,7 @@ import (
 	"github.com/chubaofs/chubaofs/cli/api"
 	"github.com/chubaofs/chubaofs/metanode"
 	"github.com/chubaofs/chubaofs/proto"
+	se "github.com/chubaofs/chubaofs/util/sortedextent"
 	"github.com/spf13/cobra"
 	"reflect"
 	"strconv"
@@ -170,7 +171,7 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 			NLink:      inode.NLink,
 			Flag:       inode.Flag,
 			Reserved:   inode.Reserved,
-			Extents:    metanode.NewSortedExtents(),
+			Extents:    se.NewSortedExtents(),
 		}
 		inode.Extents.Range(func(ek proto.ExtentKey) bool {
 			localInode.Extents.Append(context.Background(), ek)

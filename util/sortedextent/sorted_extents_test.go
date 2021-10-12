@@ -1,4 +1,4 @@
-package metanode
+package sortedextent
 
 import (
 	"context"
@@ -641,84 +641,6 @@ func TestSortedExtents_Insert06(t *testing.T) {
 			{FileOffset: 0, PartitionId: 1, ExtentId: 1, ExtentOffset: 0, Size: 100},
 		}
 		expectedDelEks []proto.ExtentKey
-	)
-
-	ctx := context.Background()
-	se := NewSortedExtents()
-	delEks := make([]proto.ExtentKey, 0)
-	for _, ek := range order {
-		delEks = append(delEks, se.Insert(ctx, ek)...)
-	}
-
-	// Validate result
-	if len(se.eks) != len(expectedEks) {
-		t.Fatalf("number of ek mismatch: expect %v, actual %v", len(expectedEks), len(se.eks))
-	}
-	for i := 0; i < len(expectedEks); i++ {
-		if !reflect.DeepEqual(se.eks[i], expectedEks[i]) {
-			t.Fatalf("ek[%v] mismatch: expect %v, actual %v", i, expectedEks[i], se.eks[i])
-		}
-	}
-
-	if len(delEks) != len(expectedDelEks) {
-		t.Fatalf("number of delete extents mismatch: expect %v, actual %v", len(expectedDelEks), len(delEks))
-	}
-
-	for i := 0; i < len(expectedDelEks); i++ {
-		if !reflect.DeepEqual(delEks[i], expectedDelEks[i]) {
-			t.Fatalf("deleted ek[%v] mismatch: expect %v, actual %v", i, expectedDelEks[i], delEks[i])
-		}
-	}
-}
-
-// Scenario:
-//   Recurrence of production environment problem scenarios.
-//
-// Sample Format:
-//   FileOffset_PartitionId_ExtentId_ExtentOffset_Size
-//
-// Insert order:
-//   0.  |==================================| 0_2187_1062_0_12582912
-//   4.  |=====| 0_2188_1069_0_16384
-//   5.  |=====| 0_2187_2187_0_16384
-//   6.              |=====| 32768_2190_6028_0_16384
-//
-// Expected result:
-//   16384_2187_1062_16384_16384
-//               ↘       ↙  32768_2190_6028_0_16384
-//       |=====|=====|=====|================|
-//          ↑                      ↑
-//     0_2187_2187_0_16384     49152_2187_1062_49152_12533760
-//
-//
-// Expected deleted extent keys:
-//
-//       |=====| 0_2188_1069_0_16384
-//
-// Reference:
-//       *-----+-----+-----+-----+-----+--->
-//       0    100   200   300   400   500
-func TestSortedExtents_Insert07(t *testing.T) {
-	// Samples
-	var (
-		order = []proto.ExtentKey{
-			{FileOffset: 0, PartitionId: 2187, ExtentId: 1062, ExtentOffset: 0, Size: 12582912},
-			{FileOffset: 0, PartitionId: 2188, ExtentId: 1069, ExtentOffset: 0, Size: 16384},
-			{FileOffset: 0, PartitionId: 2187, ExtentId: 2187, ExtentOffset: 0, Size: 16384},
-			{FileOffset: 32768, PartitionId: 2190, ExtentId: 6028, ExtentOffset: 0, Size: 16384},
-		}
-	)
-	// Expected
-	var (
-		expectedEks = []proto.ExtentKey{
-			{FileOffset: 0, PartitionId: 2187, ExtentId: 2187, ExtentOffset: 0, Size: 16384},
-			{FileOffset: 16384, PartitionId: 2187, ExtentId: 1062, ExtentOffset: 16384, Size: 16384},
-			{FileOffset: 32768, PartitionId: 2190, ExtentId: 6028, ExtentOffset: 0, Size: 16384},
-			{FileOffset: 49152, PartitionId: 2187, ExtentId: 1062, ExtentOffset: 49152, Size: 12533760},
-		}
-		expectedDelEks = []proto.ExtentKey{
-			{FileOffset: 0, PartitionId: 2188, ExtentId: 1069, ExtentOffset: 0, Size: 16384},
-		}
 	)
 
 	ctx := context.Background()

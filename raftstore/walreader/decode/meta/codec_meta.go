@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/metanode"
+	se "github.com/chubaofs/chubaofs/util/sortedextent"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore/walreader/common"
 )
@@ -264,7 +265,7 @@ func (decoder *MetadataCommandDecoder) DecodeCommand(command []byte) (values com
 	return
 }
 
-func (decoder *MetadataCommandDecoder) formatExtentKeys(extents *metanode.SortedExtents) string {
+func (decoder *MetadataCommandDecoder) formatExtentKeys(extents *se.SortedExtents) string {
 	sb := strings.Builder{}
 	extents.Range(func(ek proto.ExtentKey) bool {
 		if sb.Len() > 0 {

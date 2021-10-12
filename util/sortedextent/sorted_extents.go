@@ -1,16 +1,15 @@
-package metanode
+package sortedextent
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/log"
 	"sort"
 	"sync"
 
 	"github.com/chubaofs/chubaofs/proto"
-
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 type SortedExtents struct {
@@ -24,6 +23,16 @@ func NewSortedExtents() *SortedExtents {
 		eks: make([]proto.ExtentKey, 0),
 		set: NewExtentKeySet(),
 	}
+}
+
+func (se *SortedExtents) Update(eks []proto.ExtentKey) {
+	se.RWMutex.Lock()
+	defer se.RWMutex.Unlock()
+
+	se.eks = se.eks[:0]
+	se.eks = append(se.eks, eks...)
+
+	return
 }
 
 func (se *SortedExtents) String() string {
@@ -57,7 +66,7 @@ func (se *SortedExtents) MarshalBinaryV2() ([]byte, error) {
 
 	se.RLock()
 	defer se.RUnlock()
-	data = make([]byte, len(se.eks) * proto.ExtentLength)
+	data = make([]byte, len(se.eks)*proto.ExtentLength)
 
 	for _, ek := range se.eks {
 		ekdata, err := ek.MarshalBinaryV2()
@@ -87,11 +96,11 @@ func (se *SortedExtents) UnmarshalBinary(ctx context.Context, data []byte) error
 
 func (se *SortedExtents) UnmarshalBinaryV2(ctx context.Context, data []byte) error {
 	var ek proto.ExtentKey
-	for start := 0; start < len(data);{
-		if len(data[start:]) < proto.ExtentLength{
+	for start := 0; start < len(data); {
+		if len(data[start:]) < proto.ExtentLength {
 			return fmt.Errorf("extentLength buff err, need at least %d, but buff len:%d", proto.ExtentLength, len(data))
 		}
-		if err := ek.UnmarshalBinaryV2(data[start : start + proto.ExtentLength]); err != nil {
+		if err := ek.UnmarshalBinaryV2(data[start : start+proto.ExtentLength]); err != nil {
 			return err
 		}
 		se.Append(ctx, ek)
@@ -384,7 +393,6 @@ func (se *SortedExtents) maybeMergeWithPrev(index int) (merged bool) {
 }
 
 func (se *SortedExtents) Append(ctx context.Context, ek proto.ExtentKey) (deleteExtents []proto.ExtentKey) {
-
 	endOffset := ek.FileOffset + uint64(ek.Size)
 
 	se.Lock()

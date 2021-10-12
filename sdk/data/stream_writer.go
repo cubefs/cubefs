@@ -568,15 +568,11 @@ func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool
 		Size:        uint32(oriReq.Size),
 	}
 
+	s.extents.Insert(newEK, true)
 	err = s.client.insertExtentKey(ctx, s.inode, *newEK, false)
 	if err != nil {
 		return
 	}
-	s.extents.Lock()
-	s.extents.gen = 0
-	s.extents.Unlock()
-
-	getExtentsErr := s.GetExtents(ctx)
 
 	log.LogDebugf("doROW: inode %v, total %v, oriReq %v, getExtentsErr %v, newEK %v", s.inode, total, oriReq, getExtentsErr, newEK)
 
@@ -690,7 +686,7 @@ func (s *Streamer) doWrite(ctx context.Context, data []byte, offset, size int, d
 		return
 	}
 
-	s.extents.Append(ek, false)
+	s.extents.Insert(ek, false)
 	total = size
 	if log.IsDebugEnabled() {
 		log.LogDebugf("doWrite exit: ino(%v) offset(%v) size(%v) ek(%v)", s.inode, offset, size, ek)

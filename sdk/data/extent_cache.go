@@ -23,6 +23,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/btree"
 	"github.com/chubaofs/chubaofs/util/log"
+	se "github.com/chubaofs/chubaofs/util/sortedextent"
 )
 
 // ExtentRequest defines the struct for the request of read or write an extent.
@@ -57,7 +58,7 @@ type ExtentCache struct {
 	inode       uint64
 	gen         uint64 // generation number
 	size        uint64 // size of the cache
-	root        *btree.BTree
+	root        *se.SortedExtents
 	refreshTime time.Time        // the last time to update extent cache
 	ek          *proto.ExtentKey // temporary ek
 }
@@ -66,7 +67,7 @@ type ExtentCache struct {
 func NewExtentCache(inode uint64) *ExtentCache {
 	return &ExtentCache{
 		inode: inode,
-		root:  btree.New(32),
+		root:  se.NewSortedExtents(),
 	}
 }
 
@@ -107,11 +108,7 @@ func (cache *ExtentCache) update(gen, size uint64, eks []proto.ExtentKey) {
 
 	cache.gen = gen
 	cache.size = size
-	cache.root.Clear(false)
-	for _, ek := range eks {
-		extent := ek
-		cache.root.ReplaceOrInsert(&extent)
-	}
+	cache.root.Update(eks)
 	// append local temporary ek to prevent read unconsistency
 	if cache.ek != nil {
 		cache.append(cache.ek, false)
@@ -142,24 +139,30 @@ func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) {
 
 func (cache *ExtentCache) append(ek *proto.ExtentKey, sync bool) {
 	ekEnd := ek.FileOffset + uint64(ek.Size)
-	lower := &proto.ExtentKey{FileOffset: ek.FileOffset}
-	upper := &proto.ExtentKey{FileOffset: ekEnd}
-	discard := make([]*proto.ExtentKey, 0)
 
-	// When doing the append, we do not care about the data after the file offset.
-	// Those data will be overwritten by the current extent anyway.
-	cache.root.AscendRange(lower, upper, func(i btree.Item) bool {
-		found := i.(*proto.ExtentKey)
-		discard = append(discard, found)
-		return true
-	})
+	cache.Lock()
+	defer cache.Unlock()
 
-	// After deleting the data between lower and upper, we will do the append
-	for _, key := range discard {
-		cache.root.Delete(key)
+	deleteExtents := cache.root.Append(nil, *ek)
+	if sync {
+		cache.gen++
+	}
+	if ekEnd > cache.size {
+		cache.size = ekEnd
 	}
 
-	cache.root.ReplaceOrInsert(ek)
+	log.LogDebugf("ExtentCache Append: ino(%v) ek(%v) deleteEks(%v)", cache.inode, ek, deleteExtents)
+}
+
+func (cache *ExtentCache) Insert(ek *proto.ExtentKey, sync bool) {
+	ekEnd := ek.FileOffset + uint64(ek.Size)
+
+	cache.Lock()
+	defer cache.Unlock()
+
+	deleteExtents := cache.root.Insert(nil, *ek)
+
+	// todo gen
 	if sync {
 		cache.gen++
 		cache.ek = nil
@@ -170,30 +173,24 @@ func (cache *ExtentCache) append(ek *proto.ExtentKey, sync bool) {
 		cache.size = ekEnd
 	}
 
-	log.LogDebugf("ExtentCache append: ino(%v) ek(%v) sync(%v) discard(%v)", cache.inode, ek, sync, discard)
+	log.LogDebugf("ExtentCache Insert: ino(%v) ek(%v) deleteEks(%v)", cache.inode, ek, deleteExtents)
 }
 
-// Max returns the max extent key in the cache.
-//func (cache *ExtentCache) Max() *proto.ExtentKey {
-//	cache.RLock()
-//	defer cache.RUnlock()
-//	item := cache.root.Max()
-//	if item == nil {
-//		return nil
-//	}
-//	ek := item.(*proto.ExtentKey)
-//	return ek
-//}
-
 func (cache *ExtentCache) Pre(offset uint64) (ek *proto.ExtentKey) {
+	var preEk proto.ExtentKey
 	cache.RLock()
 	defer cache.RUnlock()
 
-	curr := &proto.ExtentKey{FileOffset: offset}
-	cache.root.AscendLessThan(curr, func(i btree.Item) bool {
-		ek = i.(*proto.ExtentKey)
+	cache.root.Range(func(pre proto.ExtentKey) bool {
+		if pre.FileOffset >= offset {
+
+			return false
+		}
+		preEk = pre
 		return true
 	})
+
+	ek = &preEk
 
 	return
 }
@@ -216,34 +213,30 @@ func (cache *ExtentCache) SetSize(size uint64, sync bool) {
 }
 
 // List returns a list of the extents in the cache.
-func (cache *ExtentCache) List() []*proto.ExtentKey {
+func (cache *ExtentCache) List() []proto.ExtentKey {
 	cache.RLock()
-	root := cache.root.Clone()
+	extents := cache.root.CopyExtents()
 	cache.RUnlock()
 
-	extents := make([]*proto.ExtentKey, 0, root.Len())
-	root.Ascend(func(i btree.Item) bool {
-		ek := i.(*proto.ExtentKey)
-		extents = append(extents, ek)
-		return true
-	})
 	return extents
 }
 
 // Get returns the extent key based on the given offset.
 func (cache *ExtentCache) Get(offset uint64) (ret *proto.ExtentKey) {
-	pivot := &proto.ExtentKey{FileOffset: offset}
 	cache.RLock()
 	defer cache.RUnlock()
 
-	cache.root.DescendLessOrEqual(pivot, func(i btree.Item) bool {
-		ek := i.(*proto.ExtentKey)
-		//log.LogDebugf("ExtentCache GetConnect: ino(%v) ek(%v) offset(%v)", cache.inode, ek, offset)
+	cache.root.Range(func(ek proto.ExtentKey) bool {
+
+		log.LogDebugf("ExtentCache GetConnect: ino(%v) ek(%v) offset(%v)", cache.inode, ek, offset)
 		if offset >= ek.FileOffset && offset < ek.FileOffset+uint64(ek.Size) {
-			ret = ek
+			ret = &ek
+			return false
 		}
-		return false
+		return true
+
 	})
+
 	return ret
 }
 
@@ -267,20 +260,17 @@ func (cache *ExtentCache) PrepareRequests(offset, size int, data []byte) (reques
 	cache.RLock()
 	defer cache.RUnlock()
 
-	cache.root.DescendLessOrEqual(pivot, func(i btree.Item) bool {
-		ek := i.(*proto.ExtentKey)
-		lower.FileOffset = ek.FileOffset
-		return false
-	})
-
 	fileSize = int(cache.size)
-	cache.root.AscendRange(lower, upper, func(i btree.Item) bool {
-		ek := i.(*proto.ExtentKey)
+	cache.root.Range(func(ek proto.ExtentKey) bool {
 		ekStart := int(ek.FileOffset)
 		ekEnd := int(ek.FileOffset) + int(ek.Size)
-		if log.IsDebugEnabled() {
-			log.LogDebugf("PrepareRequests: ino(%v) start(%v) end(%v) ekStart(%v) ekEnd(%v)", cache.inode, start, end, ekStart, ekEnd)
+
+		log.LogDebugf("PrepareRequests: ino(%v) start(%v) end(%v) ekStart(%v) ekEnd(%v)", cache.inode, start, end, ekStart, ekEnd)
+
+		if end <= ekStart {
+			return false
 		}
+
 		if start < ekStart {
 			if end <= ekStart {
 				return false
@@ -289,7 +279,7 @@ func (cache *ExtentCache) PrepareRequests(offset, size int, data []byte) (reques
 				req := NewExtentRequest(start, ekStart-start, data[start-offset:ekStart-offset], nil)
 				requests = append(requests, req)
 				// add non-hole (ekStart, end)
-				req = NewExtentRequest(ekStart, end-ekStart, data[ekStart-offset:end-offset], ek)
+				req = NewExtentRequest(ekStart, end-ekStart, data[ekStart-offset:end-offset], &ek)
 				requests = append(requests, req)
 				start = end
 				return false
@@ -299,7 +289,7 @@ func (cache *ExtentCache) PrepareRequests(offset, size int, data []byte) (reques
 				requests = append(requests, req)
 
 				// add non-hole (ekStart, ekEnd)
-				req = NewExtentRequest(ekStart, ekEnd-ekStart, data[ekStart-offset:ekEnd-offset], ek)
+				req = NewExtentRequest(ekStart, ekEnd-ekStart, data[ekStart-offset:ekEnd-offset], &ek)
 				requests = append(requests, req)
 
 				start = ekEnd
@@ -308,13 +298,13 @@ func (cache *ExtentCache) PrepareRequests(offset, size int, data []byte) (reques
 		} else if start < ekEnd {
 			if end <= ekEnd {
 				// add non-hole (start, end)
-				req := NewExtentRequest(start, end-start, data[start-offset:end-offset], ek)
+				req := NewExtentRequest(start, end-start, data[start-offset:end-offset], &ek)
 				requests = append(requests, req)
 				start = end
 				return false
 			} else {
 				// add non-hole (start, ekEnd), start = ekEnd
-				req := NewExtentRequest(start, ekEnd-start, data[start-offset:ekEnd-offset], ek)
+				req := NewExtentRequest(start, ekEnd-start, data[start-offset:ekEnd-offset], &ek)
 				requests = append(requests, req)
 				start = ekEnd
 				return true
