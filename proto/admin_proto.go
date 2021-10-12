@@ -73,6 +73,8 @@ const (
 	ClientVolStat        = "/client/volStat"
 	ClientMetaPartitions = "/client/metaPartitions"
 
+	ClientDataPartitionsDbBack = "/client/dataPartitions"
+
 	//raft node APIs
 	AddRaftNode    = "/raftNode/add"
 	RemoveRaftNode = "/raftNode/remove"
@@ -140,6 +142,10 @@ const (
 	ReadOnlyToken  = 1
 	ReadWriteToken = 2
 )
+
+const DbBackMaster = "dbbak.jd.local"
+
+var IsDbBack bool = false
 
 type Token struct {
 	TokenType int8

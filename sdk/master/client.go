@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -27,6 +26,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
@@ -147,6 +147,9 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 		case http.StatusOK:
 			if requestAddr != host {
 				c.setLeader(host)
+			}
+			if proto.IsDbBack {
+				return repsData, nil
 			}
 			var body = &struct {
 				Code int32           `json:"code"`

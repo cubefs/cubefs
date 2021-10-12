@@ -141,7 +141,11 @@ func (api *ClientAPI) GetMetaPartitions(volName string) (views []*proto.MetaPart
 }
 
 func (api *ClientAPI) GetDataPartitions(volName string) (view *proto.DataPartitionsView, err error) {
-	var request = newAPIRequest(http.MethodGet, proto.ClientDataPartitions)
+	path := proto.ClientDataPartitions
+	if proto.IsDbBack {
+		path = proto.ClientDataPartitionsDbBack
+	}
+	var request = newAPIRequest(http.MethodGet, path)
 	request.addParam("name", volName)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {

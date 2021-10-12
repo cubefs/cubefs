@@ -19,6 +19,7 @@ import (
 	"os"
 
 	"github.com/chubaofs/chubaofs/cli/cmd"
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/sdk/monitor"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -36,6 +37,9 @@ func runCLI() (err error) {
 	defer log.LogFlush()
 	if cfg, err = cmd.LoadConfig(); err != nil {
 		return
+	}
+	if len(cfg.MasterAddr) > 0 && cfg.MasterAddr[0] == proto.DbBackMaster {
+		proto.IsDbBack = true
 	}
 	cfscli := setupCommands(cfg)
 	err = cfscli.Execute()
