@@ -60,6 +60,8 @@ fuse.json
    "enableXattr", "bool", "Enable xattr support. False by default.", "No"
    "nearRead", "bool", "Enable read from the nearer datanode. True by default, but only take effect when followerRead is enabled.", "No"
    "enablePosixACL", "bool", "Enable posix ACL support. False by default.", "No"
+   "enableSummary", "bool", "Enable content summary. False by default.", "No"
+   "enableUnixPermission", "bool", "Enable unix permission check support. False by default.", "No"
 
 Mount
 -----
