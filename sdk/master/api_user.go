@@ -18,6 +18,9 @@ func (api *UserAPI) CreateUser(param *proto.UserCreateParam) (userInfo *proto.Us
 		return
 	}
 	request.addBody(reqBody)
+	if err = api.mc.generateSignature(request); err != nil {
+		return
+	}
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -32,6 +35,9 @@ func (api *UserAPI) CreateUser(param *proto.UserCreateParam) (userInfo *proto.Us
 func (api *UserAPI) DeleteUser(userID string) (err error) {
 	var request = newAPIRequest(http.MethodPost, proto.UserDelete)
 	request.addParam("user", userID)
+	if err = api.mc.generateSignature(request); err != nil {
+		return
+	}
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -45,6 +51,9 @@ func (api *UserAPI) UpdateUser(param *proto.UserUpdateParam) (userInfo *proto.Us
 		return
 	}
 	request.addBody(reqBody)
+	if err = api.mc.generateSignature(request); err != nil {
+		return
+	}
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -59,6 +68,9 @@ func (api *UserAPI) UpdateUser(param *proto.UserUpdateParam) (userInfo *proto.Us
 func (api *UserAPI) GetAKInfo(accesskey string) (userInfo *proto.UserInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.UserGetAKInfo)
 	request.addParam("ak", accesskey)
+	if err = api.mc.generateSignature(request); err != nil {
+		return
+	}
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -73,6 +85,9 @@ func (api *UserAPI) GetAKInfo(accesskey string) (userInfo *proto.UserInfo, err e
 func (api *UserAPI) GetUserInfo(userID string) (userInfo *proto.UserInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.UserGetInfo)
 	request.addParam("user", userID)
+	if err = api.mc.generateSignature(request); err != nil {
+		return
+	}
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -91,6 +106,9 @@ func (api *UserAPI) UpdatePolicy(param *proto.UserPermUpdateParam) (userInfo *pr
 		return
 	}
 	request.addBody(reqBody)
+	if err = api.mc.generateSignature(request); err != nil {
+		return
+	}
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -109,6 +127,9 @@ func (api *UserAPI) RemovePolicy(param *proto.UserPermRemoveParam) (userInfo *pr
 		return
 	}
 	request.addBody(reqBody)
+	if err = api.mc.generateSignature(request); err != nil {
+		return
+	}
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -123,6 +144,9 @@ func (api *UserAPI) RemovePolicy(param *proto.UserPermRemoveParam) (userInfo *pr
 func (api *UserAPI) DeleteVolPolicy(vol string) (err error) {
 	var request = newAPIRequest(http.MethodPost, proto.UserDeleteVolPolicy)
 	request.addParam("name", vol)
+	if err = api.mc.generateSignature(request); err != nil {
+		return
+	}
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -150,6 +174,9 @@ func (api *UserAPI) TransferVol(param *proto.UserTransferVolParam) (userInfo *pr
 func (api *UserAPI) ListUsers(keywords string) (users []*proto.UserInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.UserList)
 	request.addParam("keywords", keywords)
+	if err = api.mc.generateSignature(request); err != nil {
+		return
+	}
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
