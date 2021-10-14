@@ -177,12 +177,13 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	var confirmString = strings.Builder{}
 	var vv *proto.SimpleVolView
 	var cmd = &cobra.Command{
-		Use:   CliOpSet + " [VOLUME NAME]",
+		Use:   CliOpSet + " [VOLUME NAME] [OWNER]",
 		Short: cmdVolSetShort,
-		Args:  cobra.MinimumNArgs(1),
+		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			var volumeName = args[0]
+			var owner = args[1]
 			var isChange = false
 			defer func() {
 				if err != nil {
@@ -271,7 +272,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum),
-				vv.FollowerRead, vv.Authenticate, vv.EnableToken, calcAuthKey(vv.Owner), vv.ZoneName)
+				vv.FollowerRead, vv.Authenticate, vv.EnableToken, calcAuthKey(owner), vv.ZoneName)
 			if err != nil {
 				return
 			}
@@ -373,7 +374,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdVolDeleteUse   = "delete [VOLUME NAME]"
+	cmdVolDeleteUse   = "delete [VOLUME NAME] [OWNER]"
 	cmdVolDeleteShort = "Delete a volume from cluster"
 )
 
@@ -384,10 +385,11 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   cmdVolDeleteUse,
 		Short: cmdVolDeleteShort,
-		Args:  cobra.MinimumNArgs(1),
+		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			var volumeName = args[0]
+			var owner = args[1]
 			defer func() {
 				if err != nil {
 					errout("Error: %v", err)
@@ -404,13 +406,7 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
-			var svv *proto.SimpleVolView
-			if svv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
-				err = fmt.Errorf("Delete volume failed:\n%v\n", err)
-				return
-			}
-
-			if err = client.AdminAPI().DeleteVolume(volumeName, calcAuthKey(svv.Owner)); err != nil {
+			if err = client.AdminAPI().DeleteVolume(volumeName, calcAuthKey(owner)); err != nil {
 				err = fmt.Errorf("Delete volume failed:\n%v\n", err)
 				return
 			}
@@ -428,7 +424,7 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdVolTransferUse   = "transfer [VOLUME NAME] [USER ID]"
+	cmdVolTransferUse   = "transfer [VOLUME NAME] [USER ID] [OWNER]"
 	cmdVolTransferShort = "Transfer volume to another user. (Change owner of volume)"
 )
 
@@ -439,11 +435,12 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 		Use:     cmdVolTransferUse,
 		Short:   cmdVolTransferShort,
 		Aliases: []string{"trans"},
-		Args:    cobra.MinimumNArgs(2),
+		Args:    cobra.MinimumNArgs(3),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			var volume = args[0]
 			var userID = args[1]
+			var owner = args[2]
 
 			defer func() {
 				if err != nil {
@@ -477,7 +474,7 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 			}
 			var param = proto.UserTransferVolParam{
 				Volume:  volume,
-				UserSrc: volSimpleView.Owner,
+				UserSrc: owner,
 				UserDst: userInfo.UserID,
 				Force:   optForce,
 			}
@@ -550,12 +547,13 @@ func newVolShrinkCmd(client *master.MasterClient) *cobra.Command {
 
 func newVolSetCapacityCmd(use, short string, r clientHandler) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   use + " [VOLUME] [CAPACITY]",
+		Use:   use + " [VOLUME] [CAPACITY] [OWNER]",
 		Short: short,
-		Args:  cobra.MinimumNArgs(2),
+		Args:  cobra.MinimumNArgs(3),
 		Run: func(cmd *cobra.Command, args []string) {
 			var name = args[0]
 			var capacityStr = args[1]
+			var owner = args[2]
 			var err error
 			defer func() {
 				if err != nil {
@@ -567,7 +565,7 @@ func newVolSetCapacityCmd(use, short string, r clientHandler) *cobra.Command {
 				return
 			}
 			volume.name = name
-			if err = volume.excuteHttp(); err != nil {
+			if err = volume.excuteHttp(owner); err != nil {
 				return
 			}
 			return

@@ -56,7 +56,6 @@ func (s *VolumeService) registerObject(schema *schemabuilder.Schema) {
 		return &proto.SimpleVolView{
 			ID:                 vol.ID,
 			Name:               vol.Name,
-			Owner:              vol.Owner,
 			ZoneName:           vol.zoneName,
 			DpReplicaNum:       vol.dpReplicaNum,
 			MpReplicaNum:       vol.mpReplicaNum,

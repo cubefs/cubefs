@@ -223,7 +223,7 @@ stop_client() {
 
 delete_volume() {
     echo -n "Deleting volume   ... "
-    ${cli} volume delete ${VolName} -y &> /dev/null
+    ${cli} volume delete ${VolName} ${Owner} -y &> /dev/null
     if [[ $? -eq 0 ]]; then
         echo -e "\033[32mdone\033[0m"
         return

@@ -52,7 +52,7 @@ const (
 
 	//Flags
 	CliFlagName               = "name"
-	CliFlagOnwer              = "user"
+	CliFlagOwner              = "owner"
 	CliFlagDataPartitionSize  = "dp-size"
 	CliFlagDataPartitionCount = "dp-count"
 	CliFlagMetaPartitionCount = "mp-count"

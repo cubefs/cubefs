@@ -128,10 +128,10 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	w.dpSelectorName = view.DpSelectorName
 	w.dpSelectorParm = view.DpSelectorParm
 
-	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
+	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) status(%v) capacity(%v) "+
 		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) createTime(%v) dpSelectorName(%v) "+
 		"dpSelectorParm(%v)",
-		view.ID, view.Name, view.Owner, view.Status, view.Capacity, view.MpReplicaNum, view.DpReplicaNum, view.MpCnt,
+		view.ID, view.Name, view.Status, view.Capacity, view.MpReplicaNum, view.DpReplicaNum, view.MpCnt,
 		view.DpCnt, view.FollowerRead, view.CreateTime, view.DpSelectorName, view.DpSelectorParm)
 	return nil
 }
