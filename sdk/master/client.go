@@ -45,6 +45,7 @@ type MasterClient struct {
 	leaderAddr string
 	timeout    time.Duration
 
+	users     []*proto.AuthUser
 	adminAPI  *AdminAPI
 	clientAPI *ClientAPI
 	nodeAPI   *NodeAPI
@@ -93,6 +94,12 @@ func (c *MasterClient) setLeader(addr string) {
 func (c *MasterClient) SetTimeout(timeout uint16) {
 	c.Lock()
 	c.timeout = time.Duration(timeout) * time.Second
+	c.Unlock()
+}
+
+func (c *MasterClient) SetUsers(users []*proto.AuthUser) {
+	c.Lock()
+	c.users = users
 	c.Unlock()
 }
 
@@ -167,6 +174,35 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 		}
 	}
 	err = ErrNoValidMaster
+	return
+}
+
+func (c *MasterClient) generateSignature(r *request) (err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("failed to generate signature for Path(%v): %v", r.path, err)
+		}
+	}()
+
+	if c.users == nil || len(c.users) == 0 || r.path == "" {
+		err = errors.New("invalid request parameters")
+		return
+	}
+	signs := make([]*proto.AuthSignature, 0)
+	for _, user := range c.users {
+		var sign *proto.AuthSignature
+		if sign, err = user.GenerateSignature(r.path); err != nil {
+			return
+		}
+		signs = append(signs, sign)
+	}
+
+	var signature []byte
+	if signature, err = json.Marshal(signs); err != nil {
+		return
+	}
+
+	r.addParam("signature", string(signature[:]))
 	return
 }
 
