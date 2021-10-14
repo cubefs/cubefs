@@ -43,6 +43,7 @@ const (
 )
 
 const (
+	SummaryKey             = "DirStat"
 	MaxSummaryGoroutineNum = 120
 	BatchGetBufLen         = 500
 	BatchSize              = 200
@@ -1001,7 +1002,7 @@ func (mw *MetaWrapper) UpdateSummary_ll(parentIno uint64, filesInc int64, dirsIn
 		return
 	}
 	for cnt := 0; cnt < UpdateSummaryRetry; cnt++ {
-		err := mw.updateSummaryInfo(mp, parentIno, filesInc, dirsInc, bytesInc)
+		err := mw.updateXAttrs(mp, parentIno, filesInc, dirsInc, bytesInc)
 		if err == nil {
 			return
 		}
@@ -1022,14 +1023,20 @@ func (mw *MetaWrapper) ReadDirOnly_ll(parentID uint64) ([]proto.Dentry, error) {
 	return children, nil
 }
 
-func (mw *MetaWrapper) GetSummary_ll(parentIno uint64, path string, goroutineNum int32) (proto.SummaryInfo, error) {
+type SummaryInfo struct {
+	Files   int64
+	Subdirs int64
+	Fbytes  int64
+}
+
+func (mw *MetaWrapper) GetSummary_ll(parentIno uint64, path string, goroutineNum int32) (SummaryInfo, error) {
 	if goroutineNum > MaxSummaryGoroutineNum {
 		goroutineNum = MaxSummaryGoroutineNum
 	}
 	if goroutineNum <= 0 {
 		goroutineNum = 1
 	}
-	var summaryInfo proto.SummaryInfo
+	var summaryInfo SummaryInfo
 	var wg sync.WaitGroup
 	var currentGoroutineNum int32 = 0
 	if mw.EnableSummary {
@@ -1045,7 +1052,7 @@ func (mw *MetaWrapper) GetSummary_ll(parentIno uint64, path string, goroutineNum
 		mw.getBatchSummaryInfo(&summaryInfo, inodeCh)
 		return summaryInfo, nil
 	} else {
-		summaryCh := make(chan proto.SummaryInfo, BatchGetBufLen)
+		summaryCh := make(chan SummaryInfo, BatchGetBufLen)
 		wg.Add(1)
 		atomic.AddInt32(&currentGoroutineNum, 1)
 		go mw.getSummaryInfo(parentIno, path, summaryCh, &wg, &currentGoroutineNum, true, goroutineNum)
@@ -1087,12 +1094,12 @@ func (mw *MetaWrapper) getDirInfo(parentIno uint64, path string, inodeCh chan<- 
 	}
 }
 
-func (mw *MetaWrapper) getBatchSummaryInfo(summaryInfo *proto.SummaryInfo, inodeCh <-chan uint64) {
+func (mw *MetaWrapper) getBatchSummaryInfo(summaryInfo *SummaryInfo, inodeCh <-chan uint64) {
 	var inodes []uint64
 	var keys []string
 	for inode := range inodeCh {
 		inodes = append(inodes, inode)
-		keys = append(keys, proto.SummaryKey)
+		keys = append(keys, SummaryKey)
 		if len(inodes) < BatchSize {
 			continue
 		}
@@ -1104,8 +1111,8 @@ func (mw *MetaWrapper) getBatchSummaryInfo(summaryInfo *proto.SummaryInfo, inode
 		inodes = inodes[0:0]
 		keys = keys[0:0]
 		for _, xattrInfo := range xattrInfos {
-			if xattrInfo.XAttrs[proto.SummaryKey] != "" {
-				summaryList := strings.Split(xattrInfo.XAttrs[proto.SummaryKey], ",")
+			if xattrInfo.XAttrs[SummaryKey] != "" {
+				summaryList := strings.Split(xattrInfo.XAttrs[SummaryKey], ",")
 				files, _ := strconv.ParseInt(summaryList[0], 10, 64)
 				subdirs, _ := strconv.ParseInt(summaryList[1], 10, 64)
 				fbytes, _ := strconv.ParseInt(summaryList[2], 10, 64)
@@ -1121,8 +1128,8 @@ func (mw *MetaWrapper) getBatchSummaryInfo(summaryInfo *proto.SummaryInfo, inode
 		return
 	}
 	for _, xattrInfo := range xattrInfos {
-		if xattrInfo.XAttrs[proto.SummaryKey] != "" {
-			summaryList := strings.Split(xattrInfo.XAttrs[proto.SummaryKey], ",")
+		if xattrInfo.XAttrs[SummaryKey] != "" {
+			summaryList := strings.Split(xattrInfo.XAttrs[SummaryKey], ",")
 			files, _ := strconv.ParseInt(summaryList[0], 10, 64)
 			subdirs, _ := strconv.ParseInt(summaryList[1], 10, 64)
 			fbytes, _ := strconv.ParseInt(summaryList[2], 10, 64)
@@ -1134,7 +1141,7 @@ func (mw *MetaWrapper) getBatchSummaryInfo(summaryInfo *proto.SummaryInfo, inode
 	return
 }
 
-func (mw *MetaWrapper) getSummaryInfo(parentIno uint64, path string, summaryCh chan<- proto.SummaryInfo, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool, goroutineNum int32) {
+func (mw *MetaWrapper) getSummaryInfo(parentIno uint64, path string, summaryCh chan<- SummaryInfo, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool, goroutineNum int32) {
 	log.LogDebugf("The dir to summary : [ %v ]", path)
 	defer func() {
 		if newGoroutine {
@@ -1143,7 +1150,7 @@ func (mw *MetaWrapper) getSummaryInfo(parentIno uint64, path string, summaryCh c
 		}
 	}()
 
-	retSummaryInfo := proto.SummaryInfo{0, 0, 0}
+	retSummaryInfo := SummaryInfo{0, 0, 0}
 	var dentryList []proto.Dentry
 	var filesList []uint64
 	children, err := mw.ReadDir_ll(parentIno)
@@ -1211,27 +1218,27 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, path string, wg *sync.Wa
 			wg.Done()
 		}
 	}()
-	summaryXAttrInfo, err := mw.XAttrGet_ll(parentIno, proto.SummaryKey)
+	summaryXAttrInfo, err := mw.XAttrGet_ll(parentIno, SummaryKey)
 	if err != nil {
-		log.LogErrorf("RefreshSummary_ll: xattr get failed, pino(%v) key(%v) err(%v)", parentIno, proto.SummaryKey, err)
+		log.LogErrorf("RefreshSummary_ll: xattr get failed, pino(%v) key(%v) err(%v)", parentIno, SummaryKey, err)
 		return
 	}
-	oldSummaryInfo := proto.SummaryInfo{0, 0, 0}
-	if summaryXAttrInfo.XAttrs[proto.SummaryKey] != "" {
-		summaryList := strings.Split(summaryXAttrInfo.XAttrs[proto.SummaryKey], ",")
+	oldSummaryInfo := SummaryInfo{0, 0, 0}
+	if summaryXAttrInfo.XAttrs[SummaryKey] != "" {
+		summaryList := strings.Split(summaryXAttrInfo.XAttrs[SummaryKey], ",")
 		files, _ := strconv.ParseInt(summaryList[0], 10, 64)
 		subdirs, _ := strconv.ParseInt(summaryList[1], 10, 64)
 		fbytes, _ := strconv.ParseInt(summaryList[2], 10, 64)
-		oldSummaryInfo = proto.SummaryInfo{
+		oldSummaryInfo = SummaryInfo{
 			Files:   files,
 			Subdirs: subdirs,
 			Fbytes:  fbytes,
 		}
 	} else {
-		oldSummaryInfo = proto.SummaryInfo{0, 0, 0}
+		oldSummaryInfo = SummaryInfo{0, 0, 0}
 	}
 
-	newSummaryInfo := proto.SummaryInfo{0, 0, 0}
+	newSummaryInfo := SummaryInfo{0, 0, 0}
 	var dentryList []proto.Dentry
 	var filesList []uint64
 	children, err := mw.ReadDir_ll(parentIno)

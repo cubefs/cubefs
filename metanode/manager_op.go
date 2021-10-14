@@ -1194,8 +1194,8 @@ func (m *metadataManager) opMetaListXAttr(conn net.Conn, p *Packet, remoteAddr s
 	return
 }
 
-func (m *metadataManager) opMetaUpdateSummaryInfo(conn net.Conn, p *Packet, remoteAddr string) (err error) {
-	req := &proto.UpdateSummaryInfoRequest{}
+func (m *metadataManager) opMetaUpdateXAttr(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	req := &proto.UpdateXAttrRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClient(conn, p)
@@ -1212,7 +1212,7 @@ func (m *metadataManager) opMetaUpdateSummaryInfo(conn net.Conn, p *Packet, remo
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	err = mp.UpdateSummaryInfo(req, p)
+	err = mp.UpdateXAttr(req, p)
 	_ = m.respondToClient(conn, p)
 	log.LogDebugf("%s [opMetaSetXAttr] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)

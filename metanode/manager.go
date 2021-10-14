@@ -184,8 +184,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opMetaRemoveXAttr(conn, p, remoteAddr)
 	case proto.OpMetaListXAttr:
 		err = m.opMetaListXAttr(conn, p, remoteAddr)
-	case proto.OpMetaUpdateSummaryInfo:
-		err = m.opMetaUpdateSummaryInfo(conn, p, remoteAddr)
+	case proto.OpMetaUpdateXAttr:
+		err = m.opMetaUpdateXAttr(conn, p, remoteAddr)
 	// operations for multipart session
 	case proto.OpCreateMultipart:
 		err = m.opCreateMultipart(conn, p, remoteAddr)

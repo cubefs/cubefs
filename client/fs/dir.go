@@ -15,6 +15,7 @@
 package fs
 
 import (
+	"github.com/chubaofs/chubaofs/sdk/meta"
 	"os"
 	"strconv"
 	"syscall"
@@ -455,9 +456,11 @@ func (d *Dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fus
 	var info *proto.XAttrInfo
 	var err error
 
-	if name == proto.SummaryKey {
-
-		var summaryInfo proto.SummaryInfo
+	if name == meta.SummaryKey {
+		if !d.super.mw.EnableSummary {
+			return fuse.ENOSYS
+		}
+		var summaryInfo meta.SummaryInfo
 		cacheSummaryInfo := d.super.sc.Get(ino)
 		if cacheSummaryInfo != nil {
 			summaryInfo = *cacheSummaryInfo
@@ -500,15 +503,69 @@ func (d *Dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fus
 
 // Listxattr has not been implemented yet.
 func (d *Dir) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *fuse.ListxattrResponse) error {
-	return fuse.ENOSYS
+	if !d.super.enableXattr {
+		return fuse.ENOSYS
+	}
+
+	ino := d.info.Inode
+	_ = req.Size     // ignore currently
+	_ = req.Position // ignore currently
+
+	keys, err := d.super.mw.XAttrsList_ll(ino)
+	if err != nil {
+		log.LogErrorf("ListXattr: ino(%v) err(%v)", ino, err)
+		return ParseError(err)
+	}
+	for _, key := range keys {
+		resp.Append(key)
+	}
+	log.LogDebugf("TRACE Listxattr: ino(%v)", ino)
+	return nil
+
 }
 
 // Setxattr has not been implemented yet.
 func (d *Dir) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
-	return fuse.ENOSYS
+	if !d.super.enableXattr {
+		return fuse.ENOSYS
+	}
+
+	ino := d.info.Inode
+	name := req.Name
+	value := req.Xattr
+
+	if name == meta.SummaryKey {
+		log.LogErrorf("Set 'DirStat' is not supported.")
+		return fuse.ENOSYS
+	}
+	// TODO： implement flag to improve compatible (Mofei Zhang)
+	if err := d.super.mw.XAttrSet_ll(ino, []byte(name), []byte(value)); err != nil {
+		log.LogErrorf("Setxattr: ino(%v) name(%v) err(%v)", ino, name, err)
+		return ParseError(err)
+	}
+	log.LogDebugf("TRACE Setxattr: ino(%v) name(%v)", ino, name)
+	return nil
+
 }
 
 // Removexattr has not been implemented yet.
 func (d *Dir) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) error {
-	return fuse.ENOSYS
+	if !d.super.enableXattr {
+		return fuse.ENOSYS
+	}
+
+	ino := d.info.Inode
+	name := req.Name
+
+	if name == meta.SummaryKey {
+		log.LogErrorf("Remove 'DirStat' is not supported.")
+		return fuse.ENOSYS
+	}
+	if err := d.super.mw.XAttrDel_ll(ino, name); err != nil {
+		log.LogErrorf("Removexattr: ino(%v) name(%v) err(%v)", ino, name, err)
+		return ParseError(err)
+	}
+	log.LogDebugf("TRACE RemoveXattr: ino(%v) name(%v)", ino, name)
+	return nil
+
 }

@@ -126,7 +126,6 @@ func newClient() *client {
 		fdmap: make(map[uint]*file),
 		fdset: bitset.New(maxFdNum),
 		cwd:   "/",
-		sc:    fs.NewSummaryCache(fs.DefaultSummaryExpiration, fs.MaxSummaryCache),
 	}
 
 	gClientManager.mu.Lock()
@@ -745,7 +744,9 @@ func cfs_getsummary(id C.int64_t, path *C.char, summary *C.struct_cfs_summary_in
 	if !exist {
 		return statusEINVAL
 	}
-
+	if !c.enableSummary {
+		return statusEINVAL
+	}
 	info, err := c.lookupPath(c.absPath(C.GoString(path)))
 	if err != nil {
 		return errorToStatus(err)
@@ -817,6 +818,10 @@ func (c *client) start() (err error) {
 
 	if c.logDir != "" {
 		log.InitLog(c.logDir, "libcfs", log.InfoLevel, nil)
+	}
+
+	if c.enableSummary {
+		c.sc = fs.NewSummaryCache(fs.DefaultSummaryExpiration, fs.MaxSummaryCache)
 	}
 
 	var mw *meta.MetaWrapper
