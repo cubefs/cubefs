@@ -55,6 +55,7 @@ const (
 	dpSelectorParmKey       = "dpSelectorParm"
 	nodeTypeKey             = "nodeType"
 	ratio                   = "ratio"
+	signatureKey            = "signature"
 )
 
 const (

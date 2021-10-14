@@ -15,6 +15,25 @@ type AuthUser struct {
 type AuthSignature struct {
 	UserID    string
 	Signature string
+	isRoot    bool
+}
+
+func (sign *AuthSignature) SetRoot() {
+	sign.isRoot = true
+}
+
+func (sign *AuthSignature) IsRoot() bool {
+	return sign.isRoot
+}
+
+func (verifySign *AuthSignature) Compare(sign *AuthSignature) (err error) {
+	if verifySign.UserID != sign.UserID {
+		return ErrInvalidUserID
+	}
+	if verifySign.Signature != sign.Signature {
+		return ErrInvalidSignature
+	}
+	return
 }
 
 func (user *AuthUser) GenerateSignature(path string) (*AuthSignature, error) {
