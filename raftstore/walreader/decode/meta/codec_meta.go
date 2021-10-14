@@ -232,7 +232,7 @@ func (decoder *MetadataCommandDecoder) DecodeCommand(command []byte) (values com
 		columnValOp.SetValue("UpdateDentry")
 		columnValAttrs.SetValue(fmt.Sprintf("parent: %v, name: %v, inode: %v, type: %v", den.ParentId, den.Name, den.Inode, den.Type))
 	default:
-		columnValOp.SetValue(strconv.Itoa(int(int(opKVData.Op))))
+		columnValOp.SetValue(strconv.Itoa(int(opKVData.Op)))
 		columnValAttrs.SetValue("N/A")
 	}
 	values = common.NewColumnValues()

@@ -4,6 +4,7 @@ import (
 	"github.com/chubaofs/chubaofs/raftstore/walreader/common"
 	"github.com/chubaofs/chubaofs/raftstore/walreader/decode/data"
 	"github.com/chubaofs/chubaofs/raftstore/walreader/decode/meta"
+	"github.com/chubaofs/chubaofs/raftstore/walreader/decode/meta_dbback"
 )
 
 type LogCommandDecoder interface {
@@ -43,5 +44,8 @@ func init() {
 	})
 	RegisterDecoder(data.DecoderName, func() (decoder LogCommandDecoder, e error) {
 		return &data.DataCommandDecoder{}, nil
+	})
+	RegisterDecoder(meta_dbback.DecoderName, func() (decoder LogCommandDecoder, e error) {
+		return &meta_dbback.MetadataCommandDecoder{}, nil
 	})
 }
