@@ -216,6 +216,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		VolStatInfo:         make([]*proto.VolStatInfo, 0),
 		BadPartitionIDs:     make([]proto.BadPartitionView, 0),
 		BadMetaPartitionIDs: make([]proto.BadPartitionView, 0),
+		EnableSimpleAuth:    m.config.enableSimpleAuth,
 	}
 
 	vols := m.cluster.allVolNames()

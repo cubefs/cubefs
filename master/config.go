@@ -103,6 +103,7 @@ type clusterConfig struct {
 	DomainNodeGrpBatchCnt               int
 	DomainBuildAsPossible               bool
 	DataPartitionUsageThreshold         float64
+	enableSimpleAuth                    bool
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
