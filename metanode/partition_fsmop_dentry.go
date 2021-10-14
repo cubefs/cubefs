@@ -17,9 +17,8 @@ package metanode
 import (
 	"strings"
 
-	"github.com/chubaofs/chubaofs/util/btree"
-
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/btree"
 )
 
 type DentryResponse struct {
@@ -175,6 +174,39 @@ func (mp *metaPartition) readDir(req *ReadDirReq) (resp *ReadDirResp) {
 			Type:  d.Type,
 			Name:  d.Name,
 		})
+		return true
+	})
+	return
+}
+
+// Read dentry from btree by limit count
+// if req.Marker == "" and req.Limit == 0, it becomes readDir
+// else if req.Marker != "" and req.Limit == 0, return dentries from pid:name to pid+1
+// else if req.Marker == "" and req.Limit != 0, return dentries from pid with limit count
+// else if req.Marker != "" and req.Limit != 0, return dentries from pid:marker to pid:xxxx with limit count
+//
+func (mp *metaPartition) readDirLimit(req *ReadDirLimitReq) (resp *ReadDirLimitResp) {
+	resp = &ReadDirLimitResp{}
+	startDentry := &Dentry{
+		ParentId: req.ParentID,
+	}
+	if len(req.Marker) > 0 {
+		startDentry.Name = req.Marker
+	}
+	endDentry := &Dentry{
+		ParentId: req.ParentID + 1,
+	}
+	mp.dentryTree.AscendRange(startDentry, endDentry, func(i BtreeItem) bool {
+		d := i.(*Dentry)
+		resp.Children = append(resp.Children, proto.Dentry{
+			Inode: d.Inode,
+			Type:  d.Type,
+			Name:  d.Name,
+		})
+		// Limit == 0 means no limit.
+		if req.Limit > 0 && uint64(len(resp.Children)) >= req.Limit {
+			return false
+		}
 		return true
 	})
 	return

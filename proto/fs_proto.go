@@ -317,6 +317,19 @@ type ReadDirOnlyResponse struct {
 	Children []Dentry `json:"children"`
 }
 
+// ReadDirLimitRequest defines the request to read dir with limited dentries.
+type ReadDirLimitRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	ParentID    uint64 `json:"pino"`
+	Marker      string `json:"marker"`
+	Limit       uint64 `json:"limit"`
+}
+
+type ReadDirLimitResponse struct {
+	Children []Dentry `json:"children"`
+}
+
 // AppendExtentKeyRequest defines the request to append an extent key.
 type AppendExtentKeyRequest struct {
 	VolName     string    `json:"vol"`

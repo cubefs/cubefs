@@ -515,6 +515,7 @@ func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID
 	return nil
 }
 
+// Read all dentries with parentID
 func (mw *MetaWrapper) ReadDir_ll(parentID uint64) ([]proto.Dentry, error) {
 	parentMP := mw.getPartitionByInode(parentID)
 	if parentMP == nil {
@@ -522,6 +523,20 @@ func (mw *MetaWrapper) ReadDir_ll(parentID uint64) ([]proto.Dentry, error) {
 	}
 
 	status, children, err := mw.readdir(parentMP, parentID)
+	if err != nil || status != statusOK {
+		return nil, statusToErrno(status)
+	}
+	return children, nil
+}
+
+// Read limit count dentries with parentID, start from string
+func (mw *MetaWrapper) ReadDirLimit_ll(parentID uint64, from string, limit uint64) ([]proto.Dentry, error) {
+	parentMP := mw.getPartitionByInode(parentID)
+	if parentMP == nil {
+		return nil, syscall.ENOENT
+	}
+
+	status, children, err := mw.readdirlimit(parentMP, parentID, from, limit)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
