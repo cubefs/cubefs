@@ -160,6 +160,9 @@ func (api *UserAPI) TransferVol(param *proto.UserTransferVolParam) (userInfo *pr
 		return
 	}
 	request.addBody(reqBody)
+	if err = api.mc.generateSignature(request); err != nil {
+		return
+	}
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return

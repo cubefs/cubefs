@@ -299,12 +299,25 @@ func (m *Server) transferUserVol(w http.ResponseWriter, r *http.Request) {
 		bytes    []byte
 		vol      *Vol
 		userInfo *proto.UserInfo
+		signs    []*proto.AuthSignature
 		err      error
 	)
 	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
+	if m.enableSimpleAuth() {
+		if signs, err = m.parseSignatures(r); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		if err = m.verifySignatures(signs, r.URL.EscapedPath(), "", AuthRootPermission); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeNoPermission, Msg: err.Error()})
+			return
+		}
+	}
+
 	var param = proto.UserTransferVolParam{}
 	if err = json.Unmarshal(bytes, &param); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
