@@ -122,7 +122,7 @@ const (
 
 	opFSMExtentsAddWithCheck
 
-	opFSMUpdateSummaryInfo
+	opFSMUpdateXAttr
 )
 
 var (

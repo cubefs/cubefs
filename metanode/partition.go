@@ -128,7 +128,7 @@ type OpExtend interface {
 	BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packet) (err error)
 	RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (err error)
 	ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err error)
-	UpdateSummaryInfo(req *proto.UpdateSummaryInfoRequest, p *Packet) (err error)
+	UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (err error)
 }
 
 // OpDentry defines the interface for the dentry operations.
@@ -222,7 +222,7 @@ type metaPartition struct {
 	vol                    *Vol
 	manager                *metadataManager
 	isLoadingMetaPartition bool
-	summaryLock            sync.Mutex
+	xattrLock              sync.Mutex
 }
 
 func (mp *metaPartition) ForceSetMetaPartitionToLoadding() {

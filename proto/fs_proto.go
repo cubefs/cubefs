@@ -22,8 +22,7 @@ import (
 )
 
 const (
-	RootIno    = uint64(1)
-	SummaryKey = "cbfs.dir.summary"
+	RootIno = uint64(1)
 )
 
 const (
@@ -76,12 +75,6 @@ type InodeInfo struct {
 	Target     []byte    `json:"tgt"`
 
 	expiration int64
-}
-
-type SummaryInfo struct {
-	Files   int64 `json:"files"`
-	Subdirs int64 `json:"subdirs"`
-	Fbytes  int64 `json:"fbytes"`
 }
 
 func (info *InodeInfo) Expiration() int64 {
@@ -521,12 +514,10 @@ type ListMultipartResponse struct {
 	Multiparts []*MultipartInfo `json:"mps"`
 }
 
-type UpdateSummaryInfoRequest struct {
+type UpdateXAttrRequest struct {
 	VolName     string `json:"vol"`
 	PartitionId uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	Key         string `json:"key"`
-	FileInc     int64  `json:"fileinc"`
-	DirInc      int64  `json:"dirinc"`
-	ByteInc     int64  `json:"byteinc"`
+	Value       string `json:"val"`
 }

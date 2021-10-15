@@ -16,6 +16,7 @@ package meta
 
 import (
 	"fmt"
+	"strconv"
 	"sync"
 
 	"github.com/chubaofs/chubaofs/util/errors"
@@ -1208,26 +1209,26 @@ func (mw *MetaWrapper) batchGetXAttr(mp *MetaPartition, inodes []uint64, keys []
 	return resp.XAttrs, nil
 }
 
-func (mw *MetaWrapper) updateSummaryInfo(mp *MetaPartition, inode uint64, filesInc int64, dirsInc int64, bytesInc int64) error {
+func (mw *MetaWrapper) updateXAttrs(mp *MetaPartition, inode uint64, filesInc int64, dirsInc int64, bytesInc int64) error {
 	var err error
-	req := &proto.UpdateSummaryInfoRequest{
+
+	value := strconv.FormatInt(int64(filesInc), 10) + "," + strconv.FormatInt(int64(dirsInc), 10) + "," + strconv.FormatInt(int64(bytesInc), 10)
+	req := &proto.UpdateXAttrRequest{
 		VolName:     mw.volname,
 		PartitionId: mp.PartitionID,
 		Inode:       inode,
-		Key:         proto.SummaryKey,
-		FileInc:     filesInc,
-		DirInc:      dirsInc,
-		ByteInc:     bytesInc,
+		Key:         SummaryKey,
+		Value:       value,
 	}
 	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaUpdateSummaryInfo
+	packet.Opcode = proto.OpMetaUpdateXAttr
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.LogErrorf("updateSummaryInfo: matshal packet fail, err(%v)", err)
+		log.LogErrorf("updateXAttr: matshal packet fail, err(%v)", err)
 		return err
 	}
-	log.LogDebugf("updateSummaryInfo: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+	log.LogDebugf("updateXAttr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 
 	metric := exporter.NewTPCnt(packet.GetOpMsg())
 	defer func() {
@@ -1236,18 +1237,18 @@ func (mw *MetaWrapper) updateSummaryInfo(mp *MetaPartition, inode uint64, filesI
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("updateSummaryInfo: send to partition fail, packet(%v) mp(%v) req(%v) err(%v)",
+		log.LogErrorf("updateXAttr: send to partition fail, packet(%v) mp(%v) req(%v) err(%v)",
 			packet, mp, *req, err)
 		return err
 	}
 
 	status := parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogErrorf("updateSummaryInfo: received fail status, packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		log.LogErrorf("updateXAttr: received fail status, packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return err
 	}
 
-	log.LogDebugf("updateSummaryInfo: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	log.LogDebugf("updateXAttrs: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 
 	return nil
 }
