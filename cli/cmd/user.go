@@ -360,9 +360,6 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 			if userInfo, err = client.UserAPI().GetUserInfo(userID); err != nil {
 				return
 			}
-			if _, err = client.AdminAPI().GetVolumeSimpleInfo(volume); err != nil {
-				return
-			}
 			if perm.IsNone() {
 				param := proto.NewUserPermRemoveParam(userID, volume)
 				userInfo, err = client.UserAPI().RemovePolicy(param)
