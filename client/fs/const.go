@@ -40,6 +40,7 @@ const (
 const (
 	// the expiration duration of the dentry in the cache (used internally)
 	DentryValidDuration = 5 * time.Second
+	DefaultReaddirLimit = 1024
 )
 
 const (
