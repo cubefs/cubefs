@@ -881,6 +881,12 @@ func (m *Server) migrateDataNodeHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if limit > defaultMigrateDpCnt {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError,
+			Msg: fmt.Sprintf("limit %d can't be bigger than %d", limit, defaultMigrateDpCnt)})
+		return
+	}
+
 	srcNode, err := m.cluster.dataNode(srcAddr)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeDataNodeNotExists, Msg: err.Error()})
@@ -1335,12 +1341,6 @@ func parseMigrateNodeParam(r *http.Request) (srcAddr, targetAddr string, limit i
 		return
 	}
 
-	val := r.FormValue(countKey)
-	if val == "" {
-		limit = 0
-		return
-	}
-
 	limit, err = parseUintParam(r, countKey)
 	if err != nil {
 		return
@@ -1370,6 +1370,12 @@ func (m *Server) migrateMetaNodeHandler(w http.ResponseWriter, r *http.Request) 
 	srcAddr, targetAddr, limit, err := parseMigrateNodeParam(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if limit > defaultMigrateMpCnt {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError,
+			Msg: fmt.Sprintf("limit %d can't be bigger than %d", limit, defaultMigrateMpCnt)})
 		return
 	}
 

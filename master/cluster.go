@@ -1014,7 +1014,11 @@ func (c *Cluster) migrateDataNode(srcAddr, targetAddr string, limit int) (err er
 		return fmt.Errorf("migrateDataNode no partition can migrate from [%s] to [%s]", srcAddr, targetAddr)
 	}
 
-	if limit <= 0 || limit > len(toBeOffLinePartitions) {
+	if limit <= 0 {
+		limit = defaultMigrateDpCnt
+	}
+
+	if targetAddr == "" || limit > len(toBeOffLinePartitions) {
 		limit = len(toBeOffLinePartitions)
 	}
 
@@ -1534,7 +1538,11 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 		return fmt.Errorf("migrateMataNode no partition can migrate from [%s] to [%s]", srcAddr, targetAddr)
 	}
 
-	if limit <= 0 || limit > len(toBeOfflineMps) {
+	if limit <= 0 {
+		limit = defaultMigrateMpCnt
+	}
+
+	if targetAddr == "" || limit > len(toBeOfflineMps) {
 		limit = len(toBeOfflineMps)
 	}
 
