@@ -101,6 +101,8 @@ const (
 	defaultRangeOfCountDifferencesAllowed        = 50
 	defaultMinusOfMaxInodeID                     = 1000
 	defaultNodeSetGrpBatchCnt                    = 3
+	defaultMigrateDpCnt                          = 50
+	defaultMigrateMpCnt                          = 15
 )
 
 const (
