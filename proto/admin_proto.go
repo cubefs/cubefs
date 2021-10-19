@@ -476,7 +476,6 @@ type SimpleVolView struct {
 	Authenticate       bool
 	CrossZone          bool
 	CreateTime         string
-	EnableToken        bool
 	Description        string
 	DpSelectorName     string
 	DpSelectorParm     string
