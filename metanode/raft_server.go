@@ -24,7 +24,11 @@ import (
 
 // StartRaftServer initializes the address resolver and the raftStore server instance.
 func (m *MetaNode) startRaftServer() (err error) {
-	if _, err = os.Stat(m.raftDir); err != nil {
+	_, err = os.Stat(m.raftDir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return
+		}
 		if err = os.MkdirAll(m.raftDir, 0755); err != nil {
 			err = errors.NewErrorf("create raft server dir: %s", err.Error())
 			return
