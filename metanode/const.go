@@ -58,9 +58,11 @@ type (
 	// MetaNode -> Client updateDentry response
 	UpdateDentryResp = proto.UpdateDentryResponse
 	// Client -> MetaNode read dir request
-	ReadDirReq = proto.ReadDirRequest
+	ReadDirReq      = proto.ReadDirRequest
+	ReadDirLimitReq = proto.ReadDirLimitRequest
 	// MetaNode -> Client read dir response
-	ReadDirResp = proto.ReadDirResponse
+	ReadDirResp      = proto.ReadDirResponse
+	ReadDirLimitResp = proto.ReadDirLimitResponse
 	// MetaNode -> Client lookup
 	LookupReq = proto.LookupRequest
 	// Client -> MetaNode lookup

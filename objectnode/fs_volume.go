@@ -686,7 +686,7 @@ func (v *Volume) DeletePath(path string) (err error) {
 	if mode.IsDir() {
 		// Check if the directory is empty and cannot delete non-empty directories.
 		var dentries []proto.Dentry
-		dentries, err = v.mw.ReadDir_ll(ino)
+		dentries, err = v.mw.ReadDirLimit_ll(ino, "", 1)
 		if err != nil || len(dentries) > 0 {
 			return
 		}
@@ -1656,6 +1656,8 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 	var err error
 	var nextMarker string
 
+	log.LogDebugf("recursiveScan enter: fileInfos(%v) parentId(%v) prefix(%v) marker(%v) delimiter(%v)", fileInfos, parentId, prefix, marker, delimiter)
+
 	var currentPath = strings.Join(dirs, pathSep) + pathSep
 
 	if len(dirs) > 0 && prefix != "" && strings.HasSuffix(currentPath, prefix) {
@@ -1669,20 +1671,50 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 		// Add check to marker, if request contain marker, current path must greater than marker,
 		// otherwise can not put it to prefix map
 		if (len(marker) > 0 && currentPath > marker) || len(marker) == 0 {
+			// If the number of matches reaches the threshold given by maxKey,
+			// stop scanning and return results.
+			// To get the next marker, first compare the result counts with the max key
+			// it means that when result count reach the max key, continue to find the next key as the next marker
+			if rc >= maxKeys {
+				return fileInfos, prefixMap, currentPath, rc, nil
+			}
 			fileInfo := &FSFileInfo{
 				Inode: parentId,
 				Path:  currentPath,
 			}
-			// If the number of matches reaches the threshold given by maxKey,
-			// stop scanning and return results.
-			// To get the next marker, first compare the result counts with the max key
-			// it means that when result count reach the amx key, continue to find the next key as the next marker
-			if rc >= maxKeys {
-				return fileInfos, prefixMap, currentPath, rc, nil
-			}
 			fileInfos = append(fileInfos, fileInfo)
 			rc++
 		}
+	}
+
+	// The "prefix" needs to be extracted as marker when it is larger than "marker".
+	// So extract prefixMarker in this layer.
+	prefixMarker := ""
+	if prefix != "" {
+		if len(dirs) == 0 {
+			prefixMarker = prefix
+		} else if strings.HasPrefix(prefix, currentPath) {
+			prefixMarker = strings.TrimPrefix(prefix, currentPath)
+		}
+	}
+
+	// To be sent in the readdirlimit request as a search start point.
+	fromName := ""
+	// Marker in this layer, shall be compared with prefixMarker to
+	// determine which one should be used as the search start point.
+	currentMarker := ""
+	if marker != "" {
+		markerNames := strings.Split(marker, pathSep)
+		if len(markerNames) > len(dirs) {
+			currentMarker = markerNames[len(dirs)]
+		}
+		if prefixMarker > currentMarker {
+			fromName = prefixMarker
+		} else {
+			fromName = currentMarker
+		}
+	} else if prefixMarker != "" {
+		fromName = prefixMarker
 	}
 
 	// During the process of scanning the child nodes of the current directory, there may be other
@@ -1690,13 +1722,16 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 	// If got the syscall.ENOENT error when invoke readdir, it means that the above situation has occurred.
 	// At this time, stops process and returns success.
 	var children []proto.Dentry
-	children, err = v.mw.ReadDir_ll(parentId)
+
+	children, err = v.mw.ReadDirLimit_ll(parentId, fromName, maxKeys+1) // one more for nextMarker
 	if err != nil && err != syscall.ENOENT {
 		return fileInfos, prefixMap, "", 0, err
 	}
 	if err == syscall.ENOENT {
 		return fileInfos, prefixMap, "", 0, nil
 	}
+
+	log.LogDebugf("recursiveScan: ReadDirLimit_ll, parentId(%v) fromName(%v), maxKey(%v) children(%v)", parentId, fromName, maxKeys, children)
 
 	for _, child := range children {
 		var path = strings.Join(append(dirs, child.Name), pathSep)
@@ -1739,12 +1774,13 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 			}
 		}
 
+		if rc >= maxKeys {
+			nextMarker = path
+			return fileInfos, prefixMap, nextMarker, rc, nil
+		}
 		fileInfo := &FSFileInfo{
 			Inode: child.Inode,
 			Path:  path,
-		}
-		if rc >= maxKeys {
-			return fileInfos, prefixMap, path, rc, nil
 		}
 		fileInfos = append(fileInfos, fileInfo)
 		rc++
@@ -1759,6 +1795,7 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 			}
 		}
 	}
+	log.LogDebugf("recursiveScan exit: fileInfos(%v) parentId(%v) prefixMap(%v) nextMarker(%v) rc(%v)", fileInfos, parentId, prefixMap, nextMarker, rc)
 	return fileInfos, prefixMap, nextMarker, rc, nil
 }
 
