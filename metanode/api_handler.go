@@ -142,7 +142,7 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 	msg["cursor"] = mp.GetCursor()
 	_, msg["leader"] = mp.IsLeader()
 	msg["apply_id"] = mp.GetAppliedID()
-	msg["raft_status"] = mp.(*metaPartition).raftPartition.Status()
+	msg["raft_status"] = m.raftStore.RaftStatus(pid)
 	resp.Data = msg
 	resp.Code = http.StatusOK
 	resp.Msg = http.StatusText(http.StatusOK)
