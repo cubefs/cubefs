@@ -34,7 +34,7 @@ type Vol struct {
 	Owner              string
 	OSSAccessKey       string
 	OSSSecretKey       string
-	OSSBucketPolicy    uint8
+	OSSBucketPolicy    proto.BucketAccessPolicy
 	dpReplicaNum       uint8
 	mpReplicaNum       uint8
 	Status             uint8

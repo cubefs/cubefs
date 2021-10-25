@@ -175,7 +175,7 @@ type volValue struct {
 	Description         string
 	DpSelectorName      string
 	DpSelectorParm      string
-	OSSBucketPolicy     uint8
+	OSSBucketPolicy     bsProto.BucketAccessPolicy
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {

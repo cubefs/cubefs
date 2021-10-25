@@ -40,7 +40,7 @@ type VolumeView struct {
 	Owner           string
 	MetaPartitions  []*MetaPartition
 	OSSSecure       *OSSSecure
-	OSSBucketPolicy uint8
+	OSSBucketPolicy proto.BucketAccessPolicy
 	CreateTime      int64
 }
 

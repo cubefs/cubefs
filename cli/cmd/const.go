@@ -72,6 +72,7 @@ const (
 	CliFlagEnable              = "enable"
 	CliFlagEnableFollowerRead  = "follower-read"
 	CliFlagAutoRepair          = "auto-repair"
+	CliFlagOSSBucketPolicy     = "bucket-policy"
 	CliFlagVolWriteMutexEnable = "vol-write-mutex"
 	CliFlagAuthenticate        = "authenticate"
 	CliFlagEnableToken         = "enable-token"

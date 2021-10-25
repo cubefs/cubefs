@@ -194,6 +194,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		optAuthenticate string
 		optEnableToken  string
 		optAutoRepair   string
+		optBucketPolicy string
 		optZoneName     string
 		optYes          bool
 		confirmString   = strings.Builder{}
@@ -276,6 +277,19 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  AutoRepair          : %v\n", formatEnabledDisabled(vv.AutoRepair)))
 			}
+			if optBucketPolicy != "" {
+				isChange = true
+				var bucketPolicyUint uint64
+				var bucketPolicy proto.BucketAccessPolicy
+				if bucketPolicyUint, err = strconv.ParseUint(optBucketPolicy, 10, 64); err != nil {
+					return
+				}
+				bucketPolicy = proto.BucketAccessPolicy(bucketPolicyUint)
+				confirmString.WriteString(fmt.Sprintf("  OSSBucketPolicy     : %s -> %s\n", vv.OSSBucketPolicy, bucketPolicy))
+				vv.OSSBucketPolicy = bucketPolicy
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  OSSBucketPolicy     : %s\n", vv.OSSBucketPolicy))
+			}
 			if "" != optZoneName {
 				isChange = true
 				confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v -> %v\n", vv.ZoneName, optZoneName))
@@ -302,7 +316,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum),
-				vv.FollowerRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair, calcAuthKey(vv.Owner), vv.ZoneName)
+				vv.FollowerRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair, calcAuthKey(vv.Owner), vv.ZoneName, uint8(vv.OSSBucketPolicy))
 			if err != nil {
 				return
 			}
@@ -324,6 +338,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, "", "Specify volume zone name")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	cmd.Flags().StringVar(&optAutoRepair, CliFlagAutoRepair, "", "Enable auto balance partition distribution according to zoneName")
+	cmd.Flags().StringVar(&optBucketPolicy, CliFlagOSSBucketPolicy, "", "set bucket access policy for S3(0 for private 1 for public-read)")
 
 	return cmd
 }

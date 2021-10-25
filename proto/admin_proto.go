@@ -147,8 +147,21 @@ const DbBackMaster = "dbbak.jd.local"
 
 var IsDbBack bool = false
 
+type BucketAccessPolicy uint8
+
+func (p BucketAccessPolicy) String() string {
+	switch p {
+	case OSSBucketPolicyPrivate:
+		return "private"
+	case OSSBucketPolicyPublicRead:
+		return "public-read"
+	default:
+	}
+	return "unknown"
+}
+
 const (
-	OSSBucketPolicyPrivate = iota
+	OSSBucketPolicyPrivate BucketAccessPolicy = iota
 	OSSBucketPolicyPublicRead
 )
 
@@ -535,7 +548,7 @@ type VolView struct {
 	MetaPartitions  []*MetaPartitionView
 	DataPartitions  []*DataPartitionResponse
 	OSSSecure       *OSSSecure
-	OSSBucketPolicy uint8
+	OSSBucketPolicy BucketAccessPolicy
 	CreateTime      int64
 }
 
@@ -547,7 +560,7 @@ func (v *VolView) SetOSSSecure(accessKey, secretKey string) {
 	v.OSSSecure = &OSSSecure{AccessKey: accessKey, SecretKey: secretKey}
 }
 
-func (v *VolView) SetOSSBucketPolicy(ossBucketPolicy uint8) {
+func (v *VolView) SetOSSBucketPolicy(ossBucketPolicy BucketAccessPolicy) {
 	v.OSSBucketPolicy = ossBucketPolicy
 }
 
@@ -600,7 +613,7 @@ type SimpleVolView struct {
 	Description         string
 	DpSelectorName      string
 	DpSelectorParm      string
-	OSSBucketPolicy     uint8
+	OSSBucketPolicy     BucketAccessPolicy
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition

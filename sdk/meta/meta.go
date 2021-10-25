@@ -93,7 +93,7 @@ type MetaWrapper struct {
 	volCreateTime   int64
 	owner           string
 	ownerValidation bool
-	ossBucketPolicy uint8
+	ossBucketPolicy proto.BucketAccessPolicy
 	mc              *masterSDK.MasterClient
 	ac              *authSDK.AuthClient
 	conns           *util.ConnectPool
@@ -236,7 +236,7 @@ func (mw *MetaWrapper) VolCreateTime() int64 {
 	return mw.volCreateTime
 }
 
-func (mw *MetaWrapper) OSSBucketPolicy() uint8 {
+func (mw *MetaWrapper) OSSBucketPolicy() proto.BucketAccessPolicy {
 	return mw.ossBucketPolicy
 }
 

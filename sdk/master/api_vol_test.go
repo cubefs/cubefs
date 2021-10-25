@@ -37,7 +37,7 @@ func TestUpdateVol(t *testing.T) {
 	authKey := calcAuthKey(testOwner)
 	extentCap := uint64(2)
 	updateFollowerRead := false
-	err := testMc.AdminAPI().UpdateVolume(testVolName, extentCap, testReplicas, updateFollowerRead, false, false, false, authKey, testZoneName)
+	err := testMc.AdminAPI().UpdateVolume(testVolName, extentCap, testReplicas, updateFollowerRead, false, false, false, authKey, testZoneName, 0)
 	if err != nil {
 		t.Errorf("update vol failed: err(%v) vol(%v)", err, testVolName)
 	}

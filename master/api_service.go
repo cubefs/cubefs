@@ -1064,7 +1064,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 
 		dpSelectorName string
 		dpSelectorParm string
-		ossBucketPolicy uint8
+		ossBucketPolicy proto.BucketAccessPolicy
 	)
 	if name, authKey, replicaNum, err = parseRequestToUpdateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -2257,7 +2257,7 @@ func parseDefaultSelectorToUpdateVol(r *http.Request, vol *Vol) (dpSelectorName,
 	return
 }
 
-func parseOSSBucketPolicyToUpdateVol(r *http.Request, vol *Vol) (ossBucketPolicy uint8, err error) {
+func parseOSSBucketPolicyToUpdateVol(r *http.Request, vol *Vol) (ossBucketPolicy proto.BucketAccessPolicy, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2267,7 +2267,7 @@ func parseOSSBucketPolicyToUpdateVol(r *http.Request, vol *Vol) (ossBucketPolicy
 			err = unmatchedKey(bucketPolicyKey)
 			return
 		}
-		ossBucketPolicy = uint8(bucketPolicy)
+		ossBucketPolicy = proto.BucketAccessPolicy(bucketPolicy)
 		if ossBucketPolicy != proto.OSSBucketPolicyPrivate && ossBucketPolicy != proto.OSSBucketPolicyPublicRead {
 			err = fmt.Errorf("parameter %s should be %v or %v", bucketPolicyKey, proto.OSSBucketPolicyPrivate, proto.OSSBucketPolicyPublicRead)
 			return

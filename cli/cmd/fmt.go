@@ -111,7 +111,8 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Meta partition count : %v\n", svv.MpCnt))
 	sb.WriteString(fmt.Sprintf("  Meta replicas        : %v\n", svv.MpReplicaNum))
 	sb.WriteString(fmt.Sprintf("  Data partition count : %v\n", svv.DpCnt))
-	sb.WriteString(fmt.Sprintf("  Data replicas        : %v", svv.DpReplicaNum))
+	sb.WriteString(fmt.Sprintf("  Data replicas        : %v\n", svv.DpReplicaNum))
+	sb.WriteString(fmt.Sprintf("  OSS bucket policy    : %s", svv.OSSBucketPolicy))
 	return sb.String()
 }
 

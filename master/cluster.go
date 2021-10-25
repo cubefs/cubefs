@@ -2207,7 +2207,7 @@ func (c *Cluster) deleteMetaNodeFromCache(metaNode *MetaNode) {
 }
 
 func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacity uint64, replicaNum uint8,
-	followerRead, authenticate, enableToken, autoRepair bool, dpSelectorName, dpSelectorParm string, ossBucketPolicy uint8) (err error) {
+	followerRead, authenticate, enableToken, autoRepair bool, dpSelectorName, dpSelectorParm string, ossBucketPolicy proto.BucketAccessPolicy) (err error) {
 	var (
 		vol             *Vol
 		serverAuthKey   string
@@ -2224,7 +2224,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 
 		oldDpSelectorName string
 		oldDpSelectorParm string
-		oldOSSBucketPolicy uint8
+		oldOSSBucketPolicy proto.BucketAccessPolicy
 	)
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[updateVol] err[%v]", err)
