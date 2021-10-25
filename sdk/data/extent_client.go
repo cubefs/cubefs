@@ -298,8 +298,11 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset int,
 	}()
 	ctx = tracer.Context()
 
-	prefix := fmt.Sprintf("Write{ino(%v)offset(%v)size(%v)}", inode, offset, len(data))
+	if client.dataWrapper.volNotExists {
+		return 0, proto.ErrVolNotExists
+	}
 
+	prefix := fmt.Sprintf("Write{ino(%v)offset(%v)size(%v)}", inode, offset, len(data))
 	s := client.GetStreamer(inode)
 	if s == nil {
 		return 0, fmt.Errorf("Prefix(%v): stream is not opened yet", prefix)
@@ -326,6 +329,10 @@ func (client *ExtentClient) Truncate(ctx context.Context, inode uint64, size int
 	defer tracer.Finish()
 	ctx = tracer.Context()
 
+	if client.dataWrapper.volNotExists {
+		return proto.ErrVolNotExists
+	}
+
 	prefix := fmt.Sprintf("Truncate{ino(%v)size(%v)}", inode, size)
 	s := client.GetStreamer(inode)
 	if s == nil {
@@ -345,6 +352,10 @@ func (client *ExtentClient) Flush(ctx context.Context, inode uint64) error {
 		SetTag("ino", inode)
 	defer tracer.Finish()
 	ctx = tracer.Context()
+
+	if client.dataWrapper.volNotExists {
+		return proto.ErrVolNotExists
+	}
 
 	s := client.GetStreamer(inode)
 	if s == nil {
@@ -367,6 +378,10 @@ func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte,
 
 	if size == 0 {
 		return
+	}
+
+	if client.dataWrapper.volNotExists {
+		return 0, proto.ErrVolNotExists
 	}
 
 	s := client.GetStreamer(inode)

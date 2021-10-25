@@ -91,6 +91,7 @@ type MetaWrapper struct {
 	mc              *masterSDK.MasterClient
 	ac              *authSDK.AuthClient
 	conns           *util.ConnectPool
+	volNotExists    bool
 
 	// Callback handler for handling asynchronous task errors.
 	onAsyncTaskError AsyncTaskErrorFunc

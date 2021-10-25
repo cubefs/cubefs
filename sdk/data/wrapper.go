@@ -44,6 +44,7 @@ type Wrapper struct {
 	clusterName           string
 	volName               string
 	masters               []string
+	volNotExists          bool
 	partitions            map[uint64]*DataPartition
 	followerRead          bool
 	followerReadClientCfg bool
@@ -179,11 +180,16 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 }
 
 func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
-
 	var dpv *proto.DataPartitionsView
 	if dpv, err = w.mc.ClientAPI().GetDataPartitions(w.volName); err != nil {
+		if err == proto.ErrVolNotExists {
+			w.partitions = make(map[uint64]*DataPartition)
+			w.volNotExists = true
+		}
 		log.LogWarnf("updateDataPartition: get data partitions fail: volume(%v) err(%v)", w.volName, err)
 		return
+	} else {
+		w.volNotExists = false
 	}
 	log.LogInfof("updateDataPartition: get data partitions: volume(%v) partitions(%v)", w.volName, len(dpv.DataPartitions))
 

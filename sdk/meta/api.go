@@ -78,7 +78,6 @@ func (mw *MetaWrapper) GetRootIno(subdir string, autoMakeDir bool) (uint64, erro
 
 // Looks up absolute path and returns the ino
 func (mw *MetaWrapper) LookupPath(ctx context.Context, subdir string) (uint64, error) {
-
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.LookupPath").
 		SetTag("volume", mw.volname).
 		SetTag("subdir", subdir)
@@ -140,6 +139,10 @@ func (mw *MetaWrapper) Create_ll(ctx context.Context, parentID uint64, name stri
 		mp           *MetaPartition
 		rwPartitions []*MetaPartition
 	)
+
+	if mw.volNotExists {
+		return nil, proto.ErrVolNotExists
+	}
 
 	parentMP := mw.getPartitionByInode(ctx, parentID)
 	if parentMP == nil {
@@ -226,6 +229,10 @@ func (mw *MetaWrapper) Lookup_ll(ctx context.Context, parentID uint64, name stri
 	defer tracer.Finish()
 	ctx = tracer.Context()
 
+	if mw.volNotExists {
+		return 0, 0, proto.ErrVolNotExists
+	}
+
 	parentMP := mw.getPartitionByInode(ctx, parentID)
 	if parentMP == nil {
 		log.LogErrorf("Lookup_ll: No parent partition, parentID(%v) name(%v)", parentID, name)
@@ -243,6 +250,10 @@ func (mw *MetaWrapper) InodeGet_ll(ctx context.Context, inode uint64) (*proto.In
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.InodeGet_ll")
 	defer tracer.Finish()
 	ctx = tracer.Context()
+
+	if mw.volNotExists {
+		return nil, proto.ErrVolNotExists
+	}
 
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
@@ -556,6 +567,10 @@ func (mw *MetaWrapper) ReadDir_ll(ctx context.Context, parentID uint64) ([]proto
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.ReadDir_ll")
 	defer tracer.Finish()
 	ctx = tracer.Context()
+
+	if mw.volNotExists {
+		return nil, proto.ErrVolNotExists
+	}
 
 	parentMP := mw.getPartitionByInode(ctx, parentID)
 	if parentMP == nil {

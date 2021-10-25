@@ -20,7 +20,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -30,7 +29,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/cryptoutil"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/jacobsa/daemonize"
 )
 
 const (
@@ -128,7 +126,6 @@ func (mw *MetaWrapper) updateClusterInfo() (err error) {
 }
 
 func (mw *MetaWrapper) updateVolStatInfo() (err error) {
-
 	var info *proto.VolStatInfo
 	if info, err = mw.mc.ClientAPI().GetVolumeStat(mw.volname); err != nil {
 		log.LogWarnf("updateVolStatInfo: get volume status fail: volume(%v) err(%v)", mw.volname, err)
@@ -144,24 +141,13 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 	view, err := mw.fetchVolumeView()
 	if err != nil {
 		log.LogInfof("error: %v", err.Error())
-		switch err {
-		case proto.ErrExpiredTicket:
-			// TODO: bad logic, remove later (Mofei Zhang)
-			if e := mw.updateTicket(); e != nil {
-				log.LogFlush()
-				daemonize.SignalOutcome(err)
-				os.Exit(1)
-			}
-			log.LogInfof("updateTicket: ok!")
-			return err
-		case proto.ErrInvalidTicket:
-			// TODO: bad logic, remove later (Mofei Zhang)
-			log.LogFlush()
-			daemonize.SignalOutcome(err)
-			os.Exit(1)
-		default:
-			return err
+		if err == proto.ErrVolNotExists {
+			mw.volNotExists = true
+			mw.partitions = make(map[uint64]*MetaPartition)
 		}
+		return err
+	} else {
+		mw.volNotExists = false
 	}
 
 	rwPartitions := make([]*MetaPartition, 0)
