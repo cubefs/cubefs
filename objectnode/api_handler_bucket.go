@@ -136,7 +136,7 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	type listBucketsOutput struct {
-		XMLName xml.Name `xml:"ListAllMyBucketsResult"`
+		XMLName xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ ListAllMyBucketsResult"`
 		Owner   Owner    `xml:"Owner"`
 		Buckets []bucket `xml:"Buckets>Bucket"`
 	}

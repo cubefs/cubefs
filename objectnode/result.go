@@ -16,8 +16,9 @@ package objectnode
 
 import (
 	"encoding/xml"
-	"github.com/chubaofs/chubaofs/util/log"
 	"net/url"
+
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 func MarshalXMLEntity(entity interface{}) ([]byte, error) {
@@ -38,7 +39,7 @@ func UnmarshalXMLEntity(bytes []byte, data interface{}) error {
 }
 
 type CopyObjectResult struct {
-	XMLName      xml.Name `xml:"CopyObjectResult"`
+	XMLName      xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ CopyObjectResult"`
 	ETag         string   `xml:"ETag"`
 	LastModified string   `xml:"LastModified"`
 }
@@ -60,20 +61,20 @@ type Error struct {
 }
 
 type DeleteResult struct {
-	XMLName xml.Name  `json:"DeleteResult"`
+	XMLName xml.Name  `json:"http://s3.amazonaws.com/doc/2006-03-01/ DeleteResult"`
 	Deleted []Deleted `xml:"Deleted,omitempty"`
 	Error   []Error   `xml:"Error,omitempty"`
 }
 
 type InitMultipartResult struct {
-	XMLName  xml.Name `xml:"InitiateMultipartUploadResult"`
+	XMLName  xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ InitiateMultipartUploadResult"`
 	Bucket   string   `xml:"Bucket"`
 	Key      string   `xml:"Key"`
 	UploadId string   `xml:"UploadId"`
 }
 
 type CompleteMultipartResult struct {
-	XMLName  xml.Name `xml:"CompleteMultipartUploadResult"`
+	XMLName  xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ CompleteMultipartUploadResult"`
 	Location string   `xml:"Location"`
 	Bucket   string   `xml:"Bucket"`
 	Key      string   `xml:"Key"`
@@ -104,7 +105,7 @@ type Part struct {
 }
 
 type ListPartsResult struct {
-	XMLName          xml.Name     `xml:"ListPartsResult"`
+	XMLName          xml.Name     `xml:"http://s3.amazonaws.com/doc/2006-03-01/ ListPartsResult"`
 	Bucket           string       `xml:"Bucket"`
 	Key              string       `xml:"Key"`
 	UploadId         string       `xml:"UploadId"`
@@ -123,7 +124,7 @@ type CommonPrefix struct {
 }
 
 type ListUploadsResult struct {
-	XMLName            xml.Name        `xml:"ListMultipartUploadsResult"`
+	XMLName            xml.Name        `xml:"http://s3.amazonaws.com/doc/2006-03-01/ ListMultipartUploadsResult"`
 	Bucket             string          `xml:"Bucket"`
 	KeyMarker          string          `xml:"KeyMarker"`
 	UploadIdMarker     string          `xml:"UploadIdMarker"`
@@ -147,7 +148,7 @@ type Content struct {
 }
 
 type ListBucketResult struct {
-	XMLName        xml.Name        `xml:"ListBucketResult"`
+	XMLName        xml.Name        `xml:"http://s3.amazonaws.com/doc/2006-03-01/ ListBucketResult"`
 	Bucket         string          `xml:"Name"`
 	Prefix         string          `xml:"Prefix"`
 	Marker         string          `xml:"Marker"`
@@ -210,13 +211,13 @@ type DeleteRequest struct {
 }
 
 type CopyResult struct {
-	XMLName      xml.Name `xml:"CopyObjectResult"`
+	XMLName      xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ CopyObjectResult"`
 	LastModified string   `xml:"LastModified,omitempty"`
 	ETag         string   `xml:"ETag,omitempty"`
 }
 
 type ListBucketResultV2 struct {
-	XMLName        xml.Name        `xml:"ListBucketResult"`
+	XMLName        xml.Name        `xml:"http://s3.amazonaws.com/doc/2006-03-01/ ListBucketResult"`
 	Name           string          `xml:"Name"`
 	Prefix         string          `xml:"Prefix,omitempty"`
 	Token          string          `xml:"ContinuationToken,omitempty"`
@@ -299,12 +300,12 @@ type PutXAttrRequest struct {
 }
 
 type GetXAttrOutput struct {
-	XMLName xml.Name `xml:"GetXAttrOutput"`
+	XMLName xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ GetXAttrOutput"`
 	XAttr   *XAttr   `xml:"XAttr"`
 }
 
 type ListXAttrsOutput struct {
-	XMLName xml.Name `xml:"ListXAttrsResult"`
+	XMLName xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ ListXAttrsResult"`
 	Keys    []string `xml:"Keys"`
 }
 

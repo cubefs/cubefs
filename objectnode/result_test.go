@@ -22,6 +22,22 @@ import (
 	"time"
 )
 
+func TestXmlMarshal_ListBucketResultV2(t *testing.T) {
+	result := &ListBucketResultV2{
+		Name:     "bucket_name",
+		KeyCount: uint64(1),
+		MaxKeys:  uint64(10),
+		Contents: []*Content{
+			&Content{},
+		},
+	}
+	if marshaled, marshalErr := MarshalXMLEntity(result); marshalErr != nil {
+		t.Fatalf("marshal fail cause: %v", marshalErr)
+	} else {
+		t.Logf("marshal result: %v", string(marshaled))
+	}
+}
+
 func TestXmlMarshal_CopyObjectResult(t *testing.T) {
 	result := &CopyObjectResult{
 		ETag:         "etag_value",
