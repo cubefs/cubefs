@@ -14,15 +14,12 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/net/context"
-	"golang.org/x/time/rate"
-)
-
-import (
 	"bytes"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fuseutil"
+	"golang.org/x/net/context"
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -292,6 +289,10 @@ type HandleFlusher interface {
 
 type HandleReadAller interface {
 	ReadAll(ctx context.Context) ([]byte, error)
+}
+
+type HandleReadDirer interface {
+	ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) ([]fuse.Dirent, error)
 }
 
 type HandleReadDirAller interface {
@@ -1213,13 +1214,34 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 		s := &fuse.ReadResponse{}
 		if r.Dir {
 			s.Data = make([]byte, r.Size)
-			if h, ok := handle.(HandleReadDirAller); ok {
-				// detect rewinddir(3) or similar seek and refresh
-				// contents
-				if r.Offset == 0 {
-					shandle.readData = nil
-				}
 
+			// detect rewinddir(3) or similar seek and refresh
+			// contents
+			if r.Offset == 0 {
+				shandle.readData = nil
+			}
+
+			if h, ok := handle.(HandleReadDirer); ok {
+				var noMore bool
+
+				for !noMore && ((shandle.readData == nil) || (r.Offset+int64(r.Size) > int64(len(shandle.readData)))) {
+					dirs, err := h.ReadDir(ctx, r, s)
+					if err != nil {
+						if err == io.EOF {
+							noMore = true
+							err = nil
+						} else {
+							return err
+						}
+					}
+					for _, dir := range dirs {
+						if dir.Inode == 0 {
+							dir.Inode = c.dynamicInode(snode.inode, dir.Name)
+						}
+						shandle.readData = fuse.AppendDirent(shandle.readData, dir)
+					}
+				}
+			} else if h, ok := handle.(HandleReadDirAller); ok {
 				if shandle.readData == nil {
 					dirs, err := h.ReadDirAll(ctx)
 					if err != nil {
@@ -1234,11 +1256,8 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 					}
 					shandle.readData = data
 				}
-				fuseutil.HandleRead(r, s, shandle.readData)
-				done(s)
-				r.Respond(s)
-				return nil
 			}
+			fuseutil.HandleRead(r, s, shandle.readData)
 		} else {
 			s.Data = fuse.GetBlockBuf(r.Size)
 			if h, ok := handle.(HandleReadAller); ok {
