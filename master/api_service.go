@@ -1520,7 +1520,7 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if op <= 0 || op > 255 {
-				err = errors.NewErrorf("value range of parameter %v is 0~255", clientVolOpRateKey)
+				err = errors.NewErrorf("value range of parameter %v is 0~255", opcodeKey)
 				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 				return
 			}

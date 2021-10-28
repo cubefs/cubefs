@@ -14,9 +14,25 @@ func TestGetLimitInfo(t *testing.T) {
 
 func TestSetRateLimit(t *testing.T) {
 	testVolName := "ltptest"
-	info := proto.RateLimitInfo{Volume: testVolName}
+	info := proto.RateLimitInfo{
+		Volume: 			testVolName,
+		ClientVolOpRate: 	-2,
+	}
 	err := testMc.AdminAPI().SetRateLimit(&info)
 	if err != nil {
 		t.Fatalf("SetRateLimit failed, err %v", err)
+	}
+}
+
+func TestSetClientReaddirOpRateLimit(t *testing.T) {
+	testVolName := "ltptest"
+	info := proto.RateLimitInfo{
+		Volume: 			testVolName,
+		Opcode:				0x26,
+		ClientVolOpRate: 	-1,
+	}
+	err := testMc.AdminAPI().SetRateLimit(&info)
+	if err != nil {
+		t.Fatalf("Set readdir rate limit failed, err %v", err)
 	}
 }
