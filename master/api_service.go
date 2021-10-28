@@ -456,6 +456,7 @@ func (m *Server) deleteMetaReplica(w http.ResponseWriter, r *http.Request) {
 		mp          *MetaPartition
 		partitionID uint64
 		err         error
+		force       bool
 	)
 
 	if partitionID, addr, err = parseRequestToRemoveMetaReplica(r); err != nil {
@@ -468,7 +469,14 @@ func (m *Server) deleteMetaReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = m.cluster.deleteMetaReplica(mp, addr, true); err != nil {
+	validate := true
+	var value string
+	if value = r.FormValue(forceKey); value != "" {
+		if force, err = strconv.ParseBool(value); err==nil && force {
+			validate = false
+		}
+	}
+	if err = m.cluster.deleteMetaReplica(mp, addr, validate); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

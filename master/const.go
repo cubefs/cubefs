@@ -58,6 +58,7 @@ const (
 	rdOnlyKey               = "rdOnly"
 	srcAddrKey              = "srcAddr"
 	targetAddrKey           = "targetAddr"
+	forceKey                = "force"
 )
 
 const (
