@@ -466,7 +466,6 @@ func NewMetaPartitionView(partitionID, start, end uint64, status int8) (mpView *
 type SimpleVolView struct {
 	ID                 uint64
 	Name               string
-	Owner              string
 	ZoneName           string
 	DpReplicaNum       uint8
 	MpReplicaNum       uint8

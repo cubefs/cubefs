@@ -92,7 +92,6 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID                   : %v\n", svv.ID))
 	sb.WriteString(fmt.Sprintf("  Name                 : %v\n", svv.Name))
-	sb.WriteString(fmt.Sprintf("  Owner                : %v\n", svv.Owner))
 	sb.WriteString(fmt.Sprintf("  Zone                 : %v\n", svv.ZoneName))
 	sb.WriteString(fmt.Sprintf("  Status               : %v\n", formatVolumeStatus(svv.Status)))
 	sb.WriteString(fmt.Sprintf("  Capacity             : %v GB\n", svv.Capacity))

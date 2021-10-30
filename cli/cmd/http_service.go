@@ -1,12 +1,11 @@
 package cmd
 
 import (
-	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
 )
 
 type clientHandler interface {
-	excuteHttp() (err error)
+	excuteHttp(owner string) (err error)
 }
 
 type volumeClient struct {
@@ -23,28 +22,18 @@ func NewVolumeClient(opCode MasterOp, client *master.MasterClient) (vol *volumeC
 	return
 }
 
-func (vol *volumeClient) excuteHttp() (err error) {
+func (vol *volumeClient) excuteHttp(owner string) (err error) {
 	switch vol.opCode {
 	case OpExpandVol:
-		var vv *proto.SimpleVolView
-		if vv, err = vol.client.AdminAPI().GetVolumeSimpleInfo(vol.name); err != nil {
-			return
-		}
-		if err = vol.client.AdminAPI().VolExpand(vol.name, vol.capacity, calcAuthKey(vv.Owner)); err != nil {
+		if err = vol.client.AdminAPI().VolExpand(vol.name, vol.capacity, calcAuthKey(owner)); err != nil {
 			return
 		}
 	case OpShrinkVol:
-		var vv *proto.SimpleVolView
-		if vv, err = vol.client.AdminAPI().GetVolumeSimpleInfo(vol.name); err != nil {
-			return
-		}
-		if err = vol.client.AdminAPI().VolShrink(vol.name, vol.capacity, calcAuthKey(vv.Owner)); err != nil {
+		if err = vol.client.AdminAPI().VolShrink(vol.name, vol.capacity, calcAuthKey(owner)); err != nil {
 			return
 		}
 	case OpDeleteVol:
 	default:
-
 	}
-
 	return
 }
