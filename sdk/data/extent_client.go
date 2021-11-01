@@ -469,8 +469,11 @@ func (client *ExtentClient) updateConfig() {
 	}
 	// If rate from master is 0, then restore the client rate
 	var readLimit, writeLimit rate.Limit
-	readRate := limitInfo.ClientReadRateLimit
-	if readRate > 0 {
+	readRate, ok := limitInfo.ClientReadVolRateLimitMap[client.dataWrapper.volName]
+	if !ok {
+		readRate, ok = limitInfo.ClientReadVolRateLimitMap[""]
+	}
+	if ok && readRate > 0 {
 		client.readLimiter.SetLimit(rate.Limit(readRate))
 	} else {
 		if client.originReadRate > 0 {
@@ -480,8 +483,11 @@ func (client *ExtentClient) updateConfig() {
 		}
 		client.readLimiter.SetLimit(readLimit)
 	}
-	writeRate := limitInfo.ClientWriteRateLimit
-	if writeRate > 0 {
+	writeRate, ok := limitInfo.ClientWriteVolRateLimitMap[client.dataWrapper.volName]
+	if !ok {
+		writeRate, ok = limitInfo.ClientWriteVolRateLimitMap[""]
+	}
+	if ok && writeRate > 0 {
 		client.writeLimiter.SetLimit(rate.Limit(writeRate))
 	} else {
 		if client.originWriteRate > 0 {

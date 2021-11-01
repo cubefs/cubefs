@@ -4,8 +4,9 @@ import (
 	"context"
 	"reflect"
 	"strings"
-	"github.com/chubaofs/chubaofs/util/statinfo"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util/statinfo"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -136,6 +137,7 @@ func (m *DataNode) updateRateLimitInfo() {
 		r                        uint64
 		l                        rate.Limit
 		ok                       bool
+		opRateLimitMap           map[uint8]uint64
 		partRateLimiterMap       map[uint64]*rate.Limiter
 		partMap                  map[uint64]bool
 		partitionID              uint64
@@ -143,11 +145,18 @@ func (m *DataNode) updateRateLimitInfo() {
 		tmpVolPartRateLimiterMap map[string]map[uint64]*rate.Limiter
 	)
 
-	// update request rate limiter for entire data node
-	if reqRateLimit == limitInfo.DataNodeReqRateLimit {
+	// update request rate limiter for zone
+	r, ok = limitInfo.DataNodeReqZoneRateLimitMap[m.zoneName]
+	if !ok {
+		r, ok = limitInfo.DataNodeReqZoneRateLimitMap[""]
+	}
+	if !ok {
+		reqRateLimit = 0
+		goto reqOpRateLimiterLabel
+	} else if reqRateLimit == r {
 		goto reqOpRateLimiterLabel
 	}
-	reqRateLimit = limitInfo.DataNodeReqRateLimit
+	reqRateLimit = r
 	l = rate.Inf
 	if reqRateLimit > 0 {
 		l = rate.Limit(reqRateLimit)
@@ -156,12 +165,19 @@ func (m *DataNode) updateRateLimitInfo() {
 
 reqOpRateLimiterLabel:
 	// update request rate limiter for opcode
-	if reflect.DeepEqual(reqOpRateLimitMap, limitInfo.DataNodeReqOpRateLimitMap) {
+	opRateLimitMap, ok = limitInfo.DataNodeReqZoneOpRateLimitMap[m.zoneName]
+	if !ok {
+		opRateLimitMap, ok = limitInfo.DataNodeReqZoneOpRateLimitMap[m.zoneName]
+	}
+	if !ok {
+		reqOpRateLimitMap = make(map[uint8]uint64)
+		goto reqVolPartRateLimiterLabel
+	} else if reflect.DeepEqual(reqOpRateLimitMap, opRateLimitMap) {
 		goto reqVolPartRateLimiterLabel
 	}
-	reqOpRateLimitMap = limitInfo.DataNodeReqOpRateLimitMap
+	reqOpRateLimitMap = opRateLimitMap
 	tmpOpRateLimiterMap = make(map[uint8]*rate.Limiter)
-	for op, _ := range limitOpcodeMap {
+	for op := range limitOpcodeMap {
 		r, ok = reqOpRateLimitMap[op]
 		if !ok {
 			r, ok = reqOpRateLimitMap[0]
@@ -296,7 +312,7 @@ func DeleteLimiterWait() {
 	deleteLimiteRater.Wait(context.Background())
 }
 
-func (m *DataNode) startUpdateProcessStatInfo () {
+func (m *DataNode) startUpdateProcessStatInfo() {
 	m.processStatInfo = statinfo.NewProcessStatInfo()
 	m.processStatInfo.ProcessStartTime = time.Now().Format("2006-01-02 15:04:05")
 	go m.processStatInfo.UpdateStatInfoSchedule()

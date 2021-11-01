@@ -37,16 +37,16 @@ type clusterValue struct {
 	DisableAutoAllocate               bool
 	DataNodeDeleteLimitRate           uint64
 	DataNodeRepairTaskCount           uint64
-	DataNodeReqRateLimit              uint64
-	DataNodeReqOpRateLimitMap         map[uint8]uint64
+	DataNodeReqZoneRateLimitMap       map[string]uint64
+	DataNodeReqZoneOpRateLimitMap     map[string]map[uint8]uint64
 	DataNodeReqVolPartRateLimitMap    map[string]uint64
 	DataNodeReqVolOpPartRateLimitMap  map[string]map[uint8]uint64
 	MetaNodeReqRateLimit              uint64
 	MetaNodeReqOpRateLimitMap         map[uint8]uint64
 	MetaNodeDeleteBatchCount          uint64
 	MetaNodeDeleteWorkerSleepMs       uint64
-	ClientReadRateLimit               uint64
-	ClientWriteRateLimit              uint64
+	ClientReadVolRateLimitMap         map[string]uint64
+	ClientWriteVolRateLimitMap        map[string]uint64
 	ClientVolOpRateLimitMap           map[string]map[uint8]int64
 	PoolSizeOfDataPartitionsInRecover int32
 	PoolSizeOfMetaPartitionsInRecover int32
@@ -58,16 +58,16 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		Threshold:                         c.cfg.MetaNodeThreshold,
 		DataNodeDeleteLimitRate:           c.cfg.DataNodeDeleteLimitRate,
 		DataNodeRepairTaskCount:           c.cfg.DataNodeRepairTaskCount,
-		DataNodeReqRateLimit:              c.cfg.DataNodeReqRateLimit,
-		DataNodeReqOpRateLimitMap:         c.cfg.DataNodeReqOpRateLimitMap,
+		DataNodeReqZoneRateLimitMap:       c.cfg.DataNodeReqZoneRateLimitMap,
+		DataNodeReqZoneOpRateLimitMap:     c.cfg.DataNodeReqZoneOpRateLimitMap,
 		DataNodeReqVolPartRateLimitMap:    c.cfg.DataNodeReqVolPartRateLimitMap,
 		DataNodeReqVolOpPartRateLimitMap:  c.cfg.DataNodeReqVolOpPartRateLimitMap,
 		MetaNodeReqRateLimit:              c.cfg.MetaNodeReqRateLimit,
 		MetaNodeReqOpRateLimitMap:         c.cfg.MetaNodeReqOpRateLimitMap,
 		MetaNodeDeleteBatchCount:          c.cfg.MetaNodeDeleteBatchCount,
 		MetaNodeDeleteWorkerSleepMs:       c.cfg.MetaNodeDeleteWorkerSleepMs,
-		ClientReadRateLimit:               c.cfg.ClientReadRateLimit,
-		ClientWriteRateLimit:              c.cfg.ClientWriteRateLimit,
+		ClientReadVolRateLimitMap:         c.cfg.ClientReadVolRateLimitMap,
+		ClientWriteVolRateLimitMap:        c.cfg.ClientWriteVolRateLimitMap,
 		ClientVolOpRateLimitMap:           c.cfg.ClientVolOpRateLimitMap,
 		DisableAutoAllocate:               c.DisableAutoAllocate,
 		PoolSizeOfDataPartitionsInRecover: c.cfg.DataPartitionsRecoverPoolSize,
@@ -601,10 +601,13 @@ func (c *Cluster) loadClusterValue() (err error) {
 		}
 		c.updateDataNodeDeleteLimitRate(cv.DataNodeDeleteLimitRate)
 		atomic.StoreUint64(&c.cfg.DataNodeRepairTaskCount, cv.DataNodeRepairTaskCount)
-		atomic.StoreUint64(&c.cfg.DataNodeReqRateLimit, cv.DataNodeReqRateLimit)
-		c.cfg.DataNodeReqOpRateLimitMap = cv.DataNodeReqOpRateLimitMap
-		if c.cfg.DataNodeReqOpRateLimitMap == nil {
-			c.cfg.DataNodeReqOpRateLimitMap = make(map[uint8]uint64)
+		c.cfg.DataNodeReqZoneRateLimitMap = cv.DataNodeReqZoneRateLimitMap
+		if c.cfg.DataNodeReqZoneRateLimitMap == nil {
+			c.cfg.DataNodeReqZoneRateLimitMap = make(map[string]uint64)
+		}
+		c.cfg.DataNodeReqZoneOpRateLimitMap = cv.DataNodeReqZoneOpRateLimitMap
+		if c.cfg.DataNodeReqZoneOpRateLimitMap == nil {
+			c.cfg.DataNodeReqZoneOpRateLimitMap = make(map[string]map[uint8]uint64)
 		}
 		c.cfg.DataNodeReqVolPartRateLimitMap = cv.DataNodeReqVolPartRateLimitMap
 		if c.cfg.DataNodeReqVolPartRateLimitMap == nil {
@@ -614,8 +617,14 @@ func (c *Cluster) loadClusterValue() (err error) {
 		if c.cfg.DataNodeReqVolOpPartRateLimitMap == nil {
 			c.cfg.DataNodeReqVolOpPartRateLimitMap = make(map[string]map[uint8]uint64)
 		}
-		atomic.StoreUint64(&c.cfg.ClientReadRateLimit, cv.ClientReadRateLimit)
-		atomic.StoreUint64(&c.cfg.ClientWriteRateLimit, cv.ClientWriteRateLimit)
+		c.cfg.ClientReadVolRateLimitMap = cv.ClientReadVolRateLimitMap
+		if c.cfg.ClientReadVolRateLimitMap == nil {
+			c.cfg.ClientReadVolRateLimitMap = make(map[string]uint64)
+		}
+		c.cfg.ClientWriteVolRateLimitMap = cv.ClientWriteVolRateLimitMap
+		if c.cfg.ClientWriteVolRateLimitMap == nil {
+			c.cfg.ClientWriteVolRateLimitMap = make(map[string]uint64)
+		}
 		c.cfg.ClientVolOpRateLimitMap = cv.ClientVolOpRateLimitMap
 		if c.cfg.ClientVolOpRateLimitMap == nil {
 			c.cfg.ClientVolOpRateLimitMap = make(map[string]map[uint8]int64)

@@ -87,24 +87,24 @@ type clusterConfig struct {
 	MetaNodeDeleteBatchCount            uint64 //metanode delete batch count
 	MetaNodeReqRateLimit                uint64
 	MetaNodeReqOpRateLimitMap           map[uint8]uint64
-	DataNodeReqRateLimit             	uint64
-	DataNodeReqOpRateLimitMap       	map[uint8]uint64
-	DataNodeReqVolPartRateLimitMap   	map[string]uint64
-	DataNodeReqVolOpPartRateLimitMap 	map[string]map[uint8]uint64
-	reqRateLimitMapMutex             	sync.Mutex
-	DataNodeDeleteLimitRate          	uint64 //datanode delete limit rate
-	DataNodeRepairTaskCount          	uint64
-	MetaNodeDeleteWorkerSleepMs      	uint64
-	ClientReadRateLimit              	uint64
-	ClientWriteRateLimit             	uint64
-	ClientVolOpRateLimitMap          	map[string]map[uint8]int64
-	peers                            	[]raftstore.PeerAddress
-	peerAddrs                        	[]string
-	heartbeatPort                    	int64
-	replicaPort                      	int64
-	diffSpaceUsage                   	uint64
-	DataPartitionsRecoverPoolSize    	int32
-	MetaPartitionsRecoverPoolSize    	int32
+	DataNodeReqZoneRateLimitMap         map[string]uint64
+	DataNodeReqZoneOpRateLimitMap       map[string]map[uint8]uint64
+	DataNodeReqVolPartRateLimitMap      map[string]uint64
+	DataNodeReqVolOpPartRateLimitMap    map[string]map[uint8]uint64
+	reqRateLimitMapMutex                sync.Mutex
+	DataNodeDeleteLimitRate             uint64 //datanode delete limit rate
+	DataNodeRepairTaskCount             uint64
+	MetaNodeDeleteWorkerSleepMs         uint64
+	ClientReadVolRateLimitMap           map[string]uint64
+	ClientWriteVolRateLimitMap          map[string]uint64
+	ClientVolOpRateLimitMap             map[string]map[uint8]int64
+	peers                               []raftstore.PeerAddress
+	peerAddrs                           []string
+	heartbeatPort                       int64
+	replicaPort                         int64
+	diffSpaceUsage                      uint64
+	DataPartitionsRecoverPoolSize       int32
+	MetaPartitionsRecoverPoolSize       int32
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -124,9 +124,12 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.DataPartitionsRecoverPoolSize = defaultRecoverPoolSize
 	cfg.MetaPartitionsRecoverPoolSize = defaultRecoverPoolSize
 	cfg.MetaNodeReqOpRateLimitMap = make(map[uint8]uint64)
-	cfg.DataNodeReqOpRateLimitMap = make(map[uint8]uint64)
+	cfg.DataNodeReqZoneRateLimitMap = make(map[string]uint64)
+	cfg.DataNodeReqZoneOpRateLimitMap = make(map[string]map[uint8]uint64)
 	cfg.DataNodeReqVolPartRateLimitMap = make(map[string]uint64)
 	cfg.DataNodeReqVolOpPartRateLimitMap = make(map[string]map[uint8]uint64)
+	cfg.ClientReadVolRateLimitMap = make(map[string]uint64)
+	cfg.ClientWriteVolRateLimitMap = make(map[string]uint64)
 	cfg.ClientVolOpRateLimitMap = make(map[string]map[uint8]int64)
 	return
 }

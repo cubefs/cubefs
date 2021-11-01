@@ -62,9 +62,9 @@ const (
 	dataNodeReqVolOpPartRateKey = "dataNodeReqVolOpPartRate"
 	metaNodeReqRateKey          = "metaNodeReqRate"
 	metaNodeReqOpRateKey        = "metaNodeReqOpRate"
-	clientReadRateKey           = "clientReadRate"
-	clientWriteRateKey          = "clientWriteRate"
-	clientVolOpRateKey			= "clientVolOpRate"
+	clientReadVolRateKey        = "clientReadVolRate"
+	clientWriteVolRateKey       = "clientWriteVolRate"
+	clientVolOpRateKey          = "clientVolOpRate"
 	nodeDeleteWorkerSleepMs     = "deleteWorkerSleepMs"
 	descriptionKey              = "description"
 	dpRecoverPoolSizeKey        = "dpRecoverPool"
@@ -107,36 +107,37 @@ const (
 )
 
 const (
-	defaultInitMetaPartitionCount                = 5
-	defaultMaxInitMetaPartitionCount             = 100
-	defaultMaxMetaPartitionInodeID        uint64 = 1<<63 - 1
-	defaultMetaPartitionInodeIDStep       uint64 = 1 << 24
-	defaultMetaNodeReservedMem            uint64 = 1 << 30
-	runtimeStackBufSize                          = 4096
-	spaceAvailableRate                           = 0.90
-	defaultNodeSetCapacity                       = 128
-	minNumOfRWDataPartitions                     = 10
-	intervalToCheckMissingReplica                = 600
-	intervalToWarnDataPartition                  = 600
-	intervalToLoadDataPartition                  = 12 * 60 * 60
-	defaultInitDataPartitionCnt                  = 10
-	volExpansionRatio                            = 0.1
-	maxNumberOfDataPartitionsForExpansion        = 100
-	EmptyCrcValue                         uint32 = 4045511210
-	DefaultZoneName                              = proto.DefaultZoneName
-	retrySendSyncTaskInternal                    = 5 * time.Second
-	defaultRangeOfCountDifferencesAllowed        = 50
-	defaultMinusOfMaxInodeID                     = 1000
-	defaultPercentMinusOfInodeCount              = 0.20
-	defaultRecoverPoolSize                       = -1
-	maxDataPartitionsRecoverPoolSize             = 50
-	maxMetaPartitionsRecoverPoolSize             = 30
-	defaultMinusOfNodeSetCount                   = 3
-	defaultLearnerPromThreshold                  = 90
-	minRateLimit                                 = 100
-	diskErrDataPartitionOfflineBatchCount        = 200
-	defaultHighUsedRatioDataNodesThreshold       = 0.85
-	defaultHighUsedRatioMetaNodesThreshold       = 0.85
+	defaultInitMetaPartitionCount                 = 5
+	defaultMaxInitMetaPartitionCount              = 100
+	defaultMaxMetaPartitionInodeID         uint64 = 1<<63 - 1
+	defaultMetaPartitionInodeIDStep        uint64 = 1 << 24
+	defaultMetaNodeReservedMem             uint64 = 1 << 30
+	runtimeStackBufSize                           = 4096
+	spaceAvailableRate                            = 0.90
+	defaultNodeSetCapacity                        = 128
+	minNumOfRWDataPartitions                      = 10
+	intervalToCheckMissingReplica                 = 600
+	intervalToWarnDataPartition                   = 600
+	intervalToLoadDataPartition                   = 12 * 60 * 60
+	defaultInitDataPartitionCnt                   = 10
+	volExpansionRatio                             = 0.1
+	maxNumberOfDataPartitionsForExpansion         = 100
+	EmptyCrcValue                          uint32 = 4045511210
+	DefaultZoneName                               = proto.DefaultZoneName
+	retrySendSyncTaskInternal                     = 5 * time.Second
+	defaultRangeOfCountDifferencesAllowed         = 50
+	defaultMinusOfMaxInodeID                      = 1000
+	defaultPercentMinusOfInodeCount               = 0.20
+	defaultRecoverPoolSize                        = -1
+	maxDataPartitionsRecoverPoolSize              = 50
+	maxMetaPartitionsRecoverPoolSize              = 30
+	defaultMinusOfNodeSetCount                    = 3
+	defaultLearnerPromThreshold                   = 90
+	minRateLimit                                  = 100
+	minPartRateLimit                              = 1
+	diskErrDataPartitionOfflineBatchCount         = 200
+	defaultHighUsedRatioDataNodesThreshold        = 0.85
+	defaultHighUsedRatioMetaNodesThreshold        = 0.85
 )
 
 const (

@@ -29,6 +29,7 @@ const (
 	cmdRateLimitInfoShort = "Current rate limit"
 	cmdRateLimitSetShort  = "Set rate limit"
 	minRate               = 100
+	minPartRate           = 1
 )
 
 func newRateLimitCmd(client *master.MasterClient) *cobra.Command {
@@ -70,25 +71,27 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 		Short: cmdRateLimitSetShort,
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
-			if (info.ClientReadRate > 0 && info.ClientReadRate < minRate) ||
-				(info.ClientWriteRate > 0 && info.ClientWriteRate < minRate) ||
+			if (info.ClientReadVolRate > 0 && info.ClientReadVolRate < minRate) ||
+				(info.ClientWriteVolRate > 0 && info.ClientWriteVolRate < minRate) ||
 				(info.MetaNodeReqRate > 0 && info.MetaNodeReqRate < minRate) ||
 				(info.MetaNodeReqOpRate > 0 && info.MetaNodeReqOpRate < minRate) ||
 				(info.DataNodeReqRate > 0 && info.DataNodeReqRate < minRate) ||
-				(info.DataNodeReqOpRate > 0 && info.DataNodeReqOpRate < minRate) ||
-				(info.DataNodeReqVolPartRate > 0 && info.DataNodeReqVolPartRate < minRate) ||
-				(info.DataNodeReqVolOpPartRate > 0 && info.DataNodeReqVolOpPartRate < minRate) {
+				(info.DataNodeReqOpRate > 0 && info.DataNodeReqOpRate < minRate) {
 				errout("limit rate can't be less than %d\n", minRate)
+			}
+			if (info.DataNodeReqVolPartRate > 0 && info.DataNodeReqVolPartRate < minPartRate) ||
+				(info.DataNodeReqVolOpPartRate > 0 && info.DataNodeReqVolOpPartRate < minPartRate) {
+				errout("limit rate can't be less than %d\n", minPartRate)
 			}
 			if info.ClientVolOpRate < -2 {
 				errout("client meta op limit rate can't be less than %d\n", -1)
 			}
 			msg := ""
-			if info.ClientReadRate >= 0 {
-				msg += fmt.Sprintf("clientReadRate: %d, ", info.ClientReadRate)
+			if info.ClientReadVolRate >= 0 {
+				msg += fmt.Sprintf("clientReadVolRate: %d, volume: %s, ", info.ClientReadVolRate, info.Volume)
 			}
-			if info.ClientWriteRate >= 0 {
-				msg += fmt.Sprintf("clientWriteRate: %d, ", info.ClientWriteRate)
+			if info.ClientWriteVolRate >= 0 {
+				msg += fmt.Sprintf("clientWriteVolRate: %d, volume: %s, ", info.ClientWriteVolRate, info.Volume)
 			}
 			if info.ClientVolOpRate > -2 {
 				msg += fmt.Sprintf("clientVolOpRate: %v, ", info.ClientVolOpRate)
@@ -103,38 +106,39 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 				msg += fmt.Sprintf("metaNodeReqOpRate: %d, opcode: %d, ", info.MetaNodeReqOpRate, info.Opcode)
 			}
 			if info.DataNodeReqRate >= 0 {
-				msg += fmt.Sprintf("dataNodeReqRate: %d, ", info.DataNodeReqRate)
+				msg += fmt.Sprintf("dataNodeReqZoneRate: %d, zone: %s, ", info.DataNodeReqRate, info.ZoneName)
 			}
 			if info.DataNodeReqOpRate >= 0 {
-				msg += fmt.Sprintf("dataNodeReqOpRate: %d, opcode: %d, ", info.DataNodeReqOpRate, info.Opcode)
+				msg += fmt.Sprintf("dataNodeReqZoneOpRate: %d, zone: %s, opcode: %d, ", info.DataNodeReqOpRate, info.ZoneName, info.Opcode)
 			}
 			if info.DataNodeReqVolPartRate >= 0 {
-				msg += fmt.Sprintf("dataNodeReqVolPartRate: %d, volume: %s, ", info.DataNodeReqOpRate, info.Volume)
+				msg += fmt.Sprintf("dataNodeReqVolPartRate: %d, volume: %s, ", info.DataNodeReqVolPartRate, info.Volume)
 			}
 			if info.DataNodeReqVolOpPartRate >= 0 {
 				msg += fmt.Sprintf("dataNodeReqVolOpPartRate: %d, volume: %s, opcode: %d, ", info.DataNodeReqVolOpPartRate, info.Volume, info.Opcode)
 			}
 			if msg == "" {
-				stdout("No valid parameters.\n")
+				stdout("No valid parameters\n")
 				return
 			}
 			if err = client.AdminAPI().SetRateLimit(&info); err != nil {
 				errout("Set rate limit fail:\n%v\n", err)
 			}
-			stdout("Set rate limit success: %s.\n", strings.TrimRight(msg, " ,"))
+			stdout("Set rate limit success: %s\n", strings.TrimRight(msg, " ,"))
 		},
 	}
 	cmd.Flags().Int64Var(&info.DataNodeRepairTaskCount, "dataNodeRepairTaskCount", -1, "data node repair task count")
+	cmd.Flags().StringVar(&info.ZoneName, "zone", "", "zone (empty zone acts as default)")
 	cmd.Flags().StringVar(&info.Volume, "volume", "", "volume (empty volume acts as default)")
 	cmd.Flags().Int8Var(&info.Opcode, "opcode", -1, "opcode (zero opcode acts as default)")
 	cmd.Flags().Int64Var(&info.MetaNodeReqRate, "metaNodeReqRate", -1, "meta node request rate limit")
 	cmd.Flags().Int64Var(&info.MetaNodeReqOpRate, "metaNodeReqOpRate", -1, "meta node request rate limit for opcode")
-	cmd.Flags().Int64Var(&info.DataNodeReqRate, "dataNodeReqRate", -1, "data node request rate limit")
-	cmd.Flags().Int64Var(&info.DataNodeReqOpRate, "dataNodeReqOpRate", -1, "data node request rate limit for opcode")
+	cmd.Flags().Int64Var(&info.DataNodeReqRate, "dataNodeReqZoneRate", -1, "data node request rate limit")
+	cmd.Flags().Int64Var(&info.DataNodeReqOpRate, "dataNodeReqZoneOpRate", -1, "data node request rate limit for opcode")
 	cmd.Flags().Int64Var(&info.DataNodeReqVolPartRate, "dataNodeReqVolPartRate", -1, "data node per partition request rate limit for a given volume")
 	cmd.Flags().Int64Var(&info.DataNodeReqVolOpPartRate, "dataNodeReqVolOpPartRate", -1, "data node per partition request rate limit for a given volume & opcode")
-	cmd.Flags().Int64Var(&info.ClientReadRate, "clientReadRate", -1, "client read rate limit")
-	cmd.Flags().Int64Var(&info.ClientWriteRate, "clientWriteRate", -1, "client write limit rate")
+	cmd.Flags().Int64Var(&info.ClientReadVolRate, "clientReadVolRate", -1, "client read rate limit for volume")
+	cmd.Flags().Int64Var(&info.ClientWriteVolRate, "clientWriteVolRate", -1, "client write limit rate for volume")
 	cmd.Flags().Int64Var(&info.ClientVolOpRate, "clientVolOpRate", -2, "client meta op limit rate. '-1': unlimit, '0': disable")
 	return cmd
 }
@@ -145,16 +149,22 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  MetaNodeReqRate             : %v\n", info.MetaNodeReqRateLimit))
 	sb.WriteString(fmt.Sprintf("  MetaNodeReqOpRateMap        : %v\n", info.MetaNodeReqOpRateLimitMap))
 	sb.WriteString(fmt.Sprintf("  (map[opcode]limit)\n"))
+	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("  DataNodeRepairTaskCount     : %v\n", info.DataNodeRepairTaskLimitOnDisk))
-	sb.WriteString(fmt.Sprintf("  DataNodeReqRate             : %v\n", info.DataNodeReqRateLimit))
-	sb.WriteString(fmt.Sprintf("  DataNodeReqOpRateMap        : %v\n", info.DataNodeReqOpRateLimitMap))
-	sb.WriteString(fmt.Sprintf("  (map[opcode]limit)\n"))
+	sb.WriteString(fmt.Sprintf("  DataNodeReqZoneRateMap      : %v\n", info.DataNodeReqZoneRateLimitMap))
+	sb.WriteString(fmt.Sprintf("  (map[zone]limit)\n"))
+	sb.WriteString(fmt.Sprintf("  DataNodeReqZoneOpRateMap    : %v\n", info.DataNodeReqZoneOpRateLimitMap))
+	sb.WriteString(fmt.Sprintf("  (map[zone]map[opcode]limit)\n"))
+	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("  DataNodeReqVolPartRateMap   : %v\n", info.DataNodeReqVolPartRateLimitMap))
 	sb.WriteString(fmt.Sprintf("  (map[volume]limit - per partition)\n"))
 	sb.WriteString(fmt.Sprintf("  DataNodeReqVolOpPartRateMap : %v\n", info.DataNodeReqVolOpPartRateLimitMap))
 	sb.WriteString(fmt.Sprintf("  (map[volume]map[opcode]limit - per partition)\n"))
-	sb.WriteString(fmt.Sprintf("  ClientReadRate              : %v\n", info.ClientReadRateLimit))
-	sb.WriteString(fmt.Sprintf("  ClientWriteRate             : %v\n", info.ClientWriteRateLimit))
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("  ClientReadVolRateMap        : %v\n", info.ClientReadVolRateLimitMap))
+	sb.WriteString(fmt.Sprintf("  (map[volume]limit of specified volume)\n"))
+	sb.WriteString(fmt.Sprintf("  ClientWriteVolRateMap       : %v\n", info.ClientWriteVolRateLimitMap))
+	sb.WriteString(fmt.Sprintf("  (map[volume]limit of specified volume)\n"))
 	sb.WriteString(fmt.Sprintf("  ClientVolOpRate             : %v\n", info.ClientVolOpRateLimit))
 	sb.WriteString(fmt.Sprintf("  (map[opcode]limit of specified volume)\n"))
 	return sb.String()

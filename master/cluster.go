@@ -2725,33 +2725,56 @@ func (c *Cluster) setDataNodeRepairTaskCount(val uint64) (err error) {
 	return
 }
 
-func (c *Cluster) setDataNodeReqRateLimit(val uint64) (err error) {
-	oldVal := atomic.LoadUint64(&c.cfg.DataNodeReqRateLimit)
-	atomic.StoreUint64(&c.cfg.DataNodeReqRateLimit, val)
+func (c *Cluster) setDataNodeReqRateLimit(val uint64, zone string) (err error) {
+	c.cfg.reqRateLimitMapMutex.Lock()
+	defer c.cfg.reqRateLimitMapMutex.Unlock()
+	oldVal, ok := c.cfg.DataNodeReqZoneRateLimitMap[zone]
+	if val > 0 {
+		c.cfg.DataNodeReqZoneRateLimitMap[zone] = val
+	} else {
+		delete(c.cfg.DataNodeReqZoneRateLimitMap, zone)
+	}
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setDataNodeReqRateLimit] err[%v]", err)
-		atomic.StoreUint64(&c.cfg.DataNodeReqRateLimit, oldVal)
+		if ok {
+			c.cfg.DataNodeReqZoneRateLimitMap[zone] = oldVal
+		} else {
+			delete(c.cfg.DataNodeReqZoneRateLimitMap, zone)
+		}
 		err = proto.ErrPersistenceByRaft
 		return
 	}
 	return
 }
 
-func (c *Cluster) setDataNodeReqOpRateLimit(val uint64, op uint8) (err error) {
+func (c *Cluster) setDataNodeReqOpRateLimit(val uint64, zone string, op uint8) (err error) {
 	c.cfg.reqRateLimitMapMutex.Lock()
 	defer c.cfg.reqRateLimitMapMutex.Unlock()
-	oldVal, ok := c.cfg.DataNodeReqOpRateLimitMap[op]
-	if val > 0 {
-		c.cfg.DataNodeReqOpRateLimitMap[op] = val
+	opMap, ok := c.cfg.DataNodeReqZoneOpRateLimitMap[zone]
+	var oldVal uint64
+	if ok {
+		oldVal, ok = opMap[op]
 	} else {
-		delete(c.cfg.DataNodeReqOpRateLimitMap, op)
+		opMap = make(map[uint8]uint64)
+		c.cfg.DataNodeReqZoneOpRateLimitMap[zone] = opMap
+	}
+	if val > 0 {
+		opMap[op] = val
+	} else {
+		delete(opMap, op)
+		if len(opMap) == 0 {
+			delete(c.cfg.DataNodeReqZoneOpRateLimitMap, zone)
+		}
 	}
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setDataNodeReqOpRateLimit] err[%v]", err)
 		if ok {
-			c.cfg.DataNodeReqOpRateLimitMap[op] = oldVal
+			c.cfg.DataNodeReqZoneOpRateLimitMap[zone][op] = oldVal
 		} else {
-			delete(c.cfg.DataNodeReqOpRateLimitMap, op)
+			delete(opMap, op)
+			if len(opMap) == 0 {
+				delete(c.cfg.DataNodeReqZoneOpRateLimitMap, zone)
+			}
 		}
 		err = proto.ErrPersistenceByRaft
 		return
@@ -2850,24 +2873,44 @@ func (c *Cluster) setMetaNodeReqOpRateLimit(val uint64, op uint8) (err error) {
 	return
 }
 
-func (c *Cluster) setClientReadRateLimit(val uint64) (err error) {
-	oldVal := atomic.LoadUint64(&c.cfg.ClientReadRateLimit)
-	atomic.StoreUint64(&c.cfg.ClientReadRateLimit, val)
+func (c *Cluster) setClientReadVolRateLimit(val uint64, vol string) (err error) {
+	c.cfg.reqRateLimitMapMutex.Lock()
+	defer c.cfg.reqRateLimitMapMutex.Unlock()
+	oldVal, ok := c.cfg.ClientReadVolRateLimitMap[vol]
+	if val > 0 {
+		c.cfg.ClientReadVolRateLimitMap[vol] = val
+	} else {
+		delete(c.cfg.ClientReadVolRateLimitMap, vol)
+	}
 	if err = c.syncPutCluster(); err != nil {
-		log.LogErrorf("action[setClientReadRateLimit] err[%v]", err)
-		atomic.StoreUint64(&c.cfg.ClientReadRateLimit, oldVal)
+		log.LogErrorf("action[setClientReadVolRateLimit] err[%v]", err)
+		if ok {
+			c.cfg.ClientReadVolRateLimitMap[vol] = oldVal
+		} else {
+			delete(c.cfg.ClientReadVolRateLimitMap, vol)
+		}
 		err = proto.ErrPersistenceByRaft
 		return
 	}
 	return
 }
 
-func (c *Cluster) setClientWriteRateLimit(val uint64) (err error) {
-	oldVal := atomic.LoadUint64(&c.cfg.ClientWriteRateLimit)
-	atomic.StoreUint64(&c.cfg.ClientWriteRateLimit, val)
+func (c *Cluster) setClientWriteVolRateLimit(val uint64, vol string) (err error) {
+	c.cfg.reqRateLimitMapMutex.Lock()
+	defer c.cfg.reqRateLimitMapMutex.Unlock()
+	oldVal, ok := c.cfg.ClientWriteVolRateLimitMap[vol]
+	if val > 0 {
+		c.cfg.ClientWriteVolRateLimitMap[vol] = val
+	} else {
+		delete(c.cfg.ClientWriteVolRateLimitMap, vol)
+	}
 	if err = c.syncPutCluster(); err != nil {
-		log.LogErrorf("action[setClientWriteRateLimit] err[%v]", err)
-		atomic.StoreUint64(&c.cfg.ClientWriteRateLimit, oldVal)
+		log.LogErrorf("action[setClientWriteVolRateLimit] err[%v]", err)
+		if ok {
+			c.cfg.ClientWriteVolRateLimitMap[vol] = oldVal
+		} else {
+			delete(c.cfg.ClientWriteVolRateLimitMap, vol)
+		}
 		err = proto.ErrPersistenceByRaft
 		return
 	}
@@ -2879,8 +2922,8 @@ func (c *Cluster) setClientVolOpRateLimit(val int64, vol string, op uint8) (err 
 	defer c.cfg.reqRateLimitMapMutex.Unlock()
 
 	var (
-		oldVal 	int64
-		opExist	bool
+		oldVal  int64
+		opExist bool
 	)
 	opMap, volExist := c.cfg.ClientVolOpRateLimitMap[vol]
 	if !volExist {

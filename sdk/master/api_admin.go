@@ -427,11 +427,11 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.Opcode >= 0 {
 		request.addParam("opcode", strconv.FormatInt(int64(info.Opcode), 10))
 	}
-	if info.ClientReadRate >= 0 {
-		request.addParam("clientReadRate", strconv.FormatInt(info.ClientReadRate, 10))
+	if info.ClientReadVolRate >= 0 {
+		request.addParam("clientReadVolRate", strconv.FormatInt(info.ClientReadVolRate, 10))
 	}
-	if info.ClientWriteRate >= 0 {
-		request.addParam("clientWriteRate", strconv.FormatInt(info.ClientWriteRate, 10))
+	if info.ClientWriteVolRate >= 0 {
+		request.addParam("clientWriteVolRate", strconv.FormatInt(info.ClientWriteVolRate, 10))
 	}
 	if info.ClientVolOpRate >= -1 {
 		request.addParam("clientVolOpRate", strconv.FormatInt(info.ClientVolOpRate, 10))
@@ -458,6 +458,7 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 		request.addParam("dataNodeReqVolOpPartRate", strconv.FormatInt(info.DataNodeReqVolOpPartRate, 10))
 	}
 	request.addParam("volume", info.Volume)
+	request.addParam("zoneName", info.ZoneName)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
