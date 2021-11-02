@@ -63,7 +63,7 @@ func ParseError(err error) fuse.Errno {
 	case fuse.Errno:
 		return v
 	default:
-		return fuse.ENOSYS
+		return fuse.EIO
 	}
 }
 
