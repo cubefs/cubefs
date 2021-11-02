@@ -18,20 +18,24 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/samsarahq/thunder/graphql"
-	"github.com/samsarahq/thunder/graphql/introspection"
 	"net/http"
 	"net/http/httputil"
+	"strconv"
+
+	"github.com/samsarahq/thunder/graphql"
+	"github.com/samsarahq/thunder/graphql/introspection"
 
 	"github.com/gorilla/mux"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
 func (m *Server) startHTTPService(modulename string, cfg *config.Config) {
+	var err error
 	router := mux.NewRouter().SkipClean(true)
 	m.registerAPIRoutes(router)
 	m.registerAPIMiddleware(router)
@@ -41,12 +45,53 @@ func (m *Server) startHTTPService(modulename string, cfg *config.Config) {
 		Handler: router,
 	}
 	var serveAPI = func() {
-		if err := server.ListenAndServe(); err != nil {
+		if err = server.ListenAndServe(); err != nil {
 			log.LogErrorf("serveAPI: serve http server failed: err(%v)", err)
 			return
 		}
 	}
+	var localAPI = func() {
+		var getRootUserInfo = func(w http.ResponseWriter, r *http.Request) {
+			var rootInfo *proto.UserInfo
+			if !m.partition.IsRaftLeader() {
+				log.LogWarnf("I'm not raft leader")
+				err := errors.NewErrorf("not leader")
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+
+			if !m.metaReady {
+				log.LogWarnf("leader is not ready")
+				err := errors.NewErrorf("leader not ready")
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+
+			if rootInfo, err = m.user.getUserInfo("root"); err != nil {
+				log.LogErrorf("get root user info failed: err(%v)", err)
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+			sendOkReply(w, r, newSuccessHTTPReply(rootInfo))
+		}
+
+		var switchSimpleAuth = func(w http.ResponseWriter, r *http.Request) {
+			m.config.enableSimpleAuth = !m.config.enableSimpleAuth
+			msg := fmt.Sprintf("switch enableSimpleAuth to %v", m.config.enableSimpleAuth)
+			sendOkReply(w, r, newSuccessHTTPReply(msg))
+		}
+
+		http.HandleFunc("/admin/getRoot", getRootUserInfo)
+		http.HandleFunc("/admin/switchSimpleAuth", switchSimpleAuth)
+		newPort, _ := strconv.ParseInt(m.port, 0, 64)
+		newPort++
+		if err = http.ListenAndServe(fmt.Sprintf("127.0.0.1:%v", newPort), nil); err != nil {
+			log.LogErrorf("localAPI: local http server failed: err(%v)", err)
+			return
+		}
+	}
 	go serveAPI()
+	go localAPI()
 	m.apiServer = server
 	return
 }
