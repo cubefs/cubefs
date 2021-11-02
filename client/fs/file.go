@@ -145,7 +145,7 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 	err = f.super.ec.CloseStream(ino)
 	if err != nil {
 		log.LogErrorf("Release: close writer failed, ino(%v) req(%v) err(%v)", ino, req, err)
-		return fuse.EIO
+		return ParseError(err)
 	}
 
 	f.super.ic.Delete(ino)
@@ -169,7 +169,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	if err != nil && err != io.EOF {
 		msg := fmt.Sprintf("Read: ino(%v) req(%v) err(%v) size(%v)", f.info.Inode, req, err, size)
 		f.super.handleError("Read", msg)
-		return fuse.EIO
+		return ParseError(err)
 	}
 
 	if size > req.Size {
@@ -238,7 +238,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	if err != nil {
 		msg := fmt.Sprintf("Write: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
 		f.super.handleError("Write", msg)
-		return fuse.EIO
+		return ParseError(err)
 	}
 
 	resp.Size = size
@@ -250,7 +250,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		if err = f.super.ec.Flush(ino); err != nil {
 			msg := fmt.Sprintf("Write: failed to wait for flush, ino(%v) offset(%v) len(%v) err(%v) req(%v)", ino, req.Offset, reqlen, err, req)
 			f.super.handleError("Wrtie", msg)
-			return fuse.EIO
+			return ParseError(err)
 		}
 	}
 
@@ -277,7 +277,7 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	if err != nil {
 		msg := fmt.Sprintf("Flush: ino(%v) err(%v)", f.info.Inode, err)
 		f.super.handleError("Flush", msg)
-		return fuse.EIO
+		return ParseError(err)
 	}
 	f.super.ic.Delete(f.info.Inode)
 	elapsed := time.Since(start)
@@ -293,7 +293,7 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 	if err != nil {
 		msg := fmt.Sprintf("Fsync: ino(%v) err(%v)", f.info.Inode, err)
 		f.super.handleError("Fsync", msg)
-		return fuse.EIO
+		return ParseError(err)
 	}
 	f.super.ic.Delete(f.info.Inode)
 	elapsed := time.Since(start)
