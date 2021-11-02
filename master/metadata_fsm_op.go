@@ -68,7 +68,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MetaNodeDeleteWorkerSleepMs:       c.cfg.MetaNodeDeleteWorkerSleepMs,
 		ClientReadRateLimit:               c.cfg.ClientReadRateLimit,
 		ClientWriteRateLimit:              c.cfg.ClientWriteRateLimit,
-		ClientVolOpRateLimitMap:		   c.cfg.ClientVolOpRateLimitMap,
+		ClientVolOpRateLimitMap:           c.cfg.ClientVolOpRateLimitMap,
 		DisableAutoAllocate:               c.DisableAutoAllocate,
 		PoolSizeOfDataPartitionsInRecover: c.cfg.DataPartitionsRecoverPoolSize,
 		PoolSizeOfMetaPartitionsInRecover: c.cfg.MetaPartitionsRecoverPoolSize,
@@ -594,15 +594,30 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateMetaNodeDeleteWorkerSleepMs(cv.MetaNodeDeleteWorkerSleepMs)
 		atomic.StoreUint64(&c.cfg.MetaNodeReqRateLimit, cv.MetaNodeReqRateLimit)
 		c.cfg.MetaNodeReqOpRateLimitMap = cv.MetaNodeReqOpRateLimitMap
+		if c.cfg.MetaNodeReqOpRateLimitMap == nil {
+			c.cfg.MetaNodeReqOpRateLimitMap = make(map[uint8]uint64)
+		}
 		c.updateDataNodeDeleteLimitRate(cv.DataNodeDeleteLimitRate)
 		atomic.StoreUint64(&c.cfg.DataNodeRepairTaskCount, cv.DataNodeRepairTaskCount)
 		atomic.StoreUint64(&c.cfg.DataNodeReqRateLimit, cv.DataNodeReqRateLimit)
 		c.cfg.DataNodeReqOpRateLimitMap = cv.DataNodeReqOpRateLimitMap
+		if c.cfg.DataNodeReqOpRateLimitMap == nil {
+			c.cfg.DataNodeReqOpRateLimitMap = make(map[uint8]uint64)
+		}
 		c.cfg.DataNodeReqVolPartRateLimitMap = cv.DataNodeReqVolPartRateLimitMap
+		if c.cfg.DataNodeReqVolPartRateLimitMap == nil {
+			c.cfg.DataNodeReqVolPartRateLimitMap = make(map[string]uint64)
+		}
 		c.cfg.DataNodeReqVolOpPartRateLimitMap = cv.DataNodeReqVolOpPartRateLimitMap
+		if c.cfg.DataNodeReqVolOpPartRateLimitMap == nil {
+			c.cfg.DataNodeReqVolOpPartRateLimitMap = make(map[string]map[uint8]uint64)
+		}
 		atomic.StoreUint64(&c.cfg.ClientReadRateLimit, cv.ClientReadRateLimit)
 		atomic.StoreUint64(&c.cfg.ClientWriteRateLimit, cv.ClientWriteRateLimit)
 		c.cfg.ClientVolOpRateLimitMap = cv.ClientVolOpRateLimitMap
+		if c.cfg.ClientVolOpRateLimitMap == nil {
+			c.cfg.ClientVolOpRateLimitMap = make(map[string]map[uint8]int64)
+		}
 		c.updateRecoverPoolSize(cv.PoolSizeOfDataPartitionsInRecover, cv.PoolSizeOfMetaPartitionsInRecover)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}
