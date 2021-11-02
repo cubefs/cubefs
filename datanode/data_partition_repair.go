@@ -166,28 +166,15 @@ func (dp *DataPartition) buildDataPartitionRepairTask(ctx context.Context, repai
 }
 
 func (dp *DataPartition) getLocalExtentInfo(extentType uint8, tinyExtents []uint64) (extents []*storage.ExtentInfo, leaderTinyDeleteRecordFileSize int64, err error) {
-	localExtents := make([]*storage.ExtentInfo, 0)
-	extents = make([]*storage.ExtentInfo, 0)
-
 	if extentType == proto.NormalExtentType {
-		localExtents, leaderTinyDeleteRecordFileSize, err = dp.extentStore.GetAllWatermarks(storage.NormalExtentFilter())
+		extents, leaderTinyDeleteRecordFileSize, err = dp.extentStore.GetAllWatermarks(storage.NormalExtentFilter())
 	} else {
-		localExtents, leaderTinyDeleteRecordFileSize, err = dp.extentStore.GetAllWatermarks(storage.TinyExtentFilter(tinyExtents))
+		extents, leaderTinyDeleteRecordFileSize, err = dp.extentStore.GetAllWatermarks(storage.TinyExtentFilter(tinyExtents))
 	}
 	if err != nil {
 		err = errors.Trace(err, "getLocalExtentInfo extent DataPartition(%v) GetAllWaterMark", dp.partitionID)
 		return
 	}
-	data, err := json.Marshal(localExtents)
-	if err != nil {
-		err = errors.Trace(err, "getLocalExtentInfo extent DataPartition(%v) GetAllWaterMark", dp.partitionID)
-		return
-	}
-
-	if err = json.Unmarshal(data, &extents); err != nil {
-		err = errors.Trace(err, "getLocalExtentInfo extent DataPartition(%v) GetAllWaterMark", dp.partitionID)
-	}
-
 	return
 }
 
