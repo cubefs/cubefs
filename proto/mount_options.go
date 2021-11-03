@@ -37,7 +37,6 @@ const (
 	TicketHost
 	EnableHTTPS
 	CertFile
-	TokenKey
 	AccessKey
 	SecretKey
 	DisableDcache
@@ -104,7 +103,6 @@ func InitMountOptions(opts []MountOption) {
 	opts[EnableHTTPS] = MountOption{"enableHTTPS", "Enable HTTPS", "", false}
 	opts[CertFile] = MountOption{"certFile", "Cert File", "", ""}
 
-	opts[TokenKey] = MountOption{"token", "Token Key", "", ""}
 	opts[AccessKey] = MountOption{"accessKey", "Access Key", "", ""}
 	opts[SecretKey] = MountOption{"secretKey", "Secret Key", "", ""}
 
@@ -235,7 +233,6 @@ type MountOptions struct {
 	FollowerRead         bool
 	Authenticate         bool
 	TicketMess           auth.TicketMess
-	TokenKey             string
 	AccessKey            string
 	SecretKey            string
 	DisableDcache        bool
