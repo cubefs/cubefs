@@ -17,7 +17,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/errors"
 	syslog "log"
 	"net/http"
 	_ "net/http/pprof"
@@ -28,6 +27,8 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+
+	"github.com/chubaofs/chubaofs/util/errors"
 
 	"github.com/chubaofs/chubaofs/console"
 	"github.com/chubaofs/chubaofs/proto"
@@ -270,8 +271,12 @@ func main() {
 	interceptSignal(server)
 	err = server.Start(cfg)
 	if err != nil {
-		log.LogFlush()
 		err = errors.NewErrorf("Fatal: failed to start the ChubaoFS %s daemon err %v - ", role, err)
+		warnMsg := fmt.Sprintf("ChubaoFS role(%v) boot failed, err: %v\n", role, err)
+		log.LogWarn(warnMsg)
+		ump.Alarm("ChubaoFS boot failed", warnMsg)
+		log.LogFlush()
+
 		syslog.Println(err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
