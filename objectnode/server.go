@@ -79,6 +79,10 @@ const (
 
 	disabledActions               = "disabledActions"
 	configSignatureIgnoredActions = "signatureIgnoredActions"
+
+	configUser      = "user"
+	configAccessKey = "accessKey"
+	configSecretKey = "secretKey"
 )
 
 // Default of configuration value
@@ -176,9 +180,18 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 	strict := cfg.GetBool(configStrict)
 	log.LogInfof("loadConfig: strict: %v", strict)
 
+	// parse auth user
+	userID := cfg.GetString(configUser)
+	accessKey := cfg.GetString(configAccessKey)
+	secretKey := cfg.GetString(configSecretKey)
+	user := &proto.AuthUser{userID, accessKey, secretKey}
+	users := make([]*proto.AuthUser, 0)
+	users = append(users, user)
+
 	o.mc = master.NewMasterClient(masters, false)
+	//o.mc.SetUsers(users)
 	o.vm = NewVolumeManager(masters, strict)
-	o.userStore = NewUserInfoStore(masters, strict)
+	o.userStore = NewUserInfoStore(masters, strict, users)
 
 	return
 }

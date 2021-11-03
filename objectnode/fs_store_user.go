@@ -73,8 +73,9 @@ func (s *CacheUserInfoStore) LoadUser(accessKey string) (*proto.UserInfo, error)
 	return s.selectLoader(accessKey).LoadUser(accessKey)
 }
 
-func NewUserInfoStore(masters []string, strict bool) UserInfoStore {
+func NewUserInfoStore(masters []string, strict bool, users []*proto.AuthUser) UserInfoStore {
 	mc := master.NewMasterClient(masters, false)
+	mc.SetUsers(users)
 	if strict {
 		return &StrictUserInfoStore{
 			mc: mc,
