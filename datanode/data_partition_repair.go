@@ -15,6 +15,7 @@
 package datanode
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"math"
@@ -180,42 +181,105 @@ func (dp *DataPartition) getLocalExtentInfo(extentType uint8, tinyExtents []uint
 
 func (dp *DataPartition) getRemoteExtentInfo(ctx context.Context, extentType uint8, tinyExtents []uint64,
 	target string) (extentFiles []*storage.ExtentInfo, err error) {
-	p := repl.NewPacketToGetAllWatermarks(ctx, dp.partitionID, extentType)
-	extentFiles = make([]*storage.ExtentInfo, 0)
-	if extentType == proto.TinyExtentType {
-		p.Data, err = json.Marshal(tinyExtents)
-		if err != nil {
-			err = errors.Trace(err, "getRemoteExtentInfo DataPartition(%v) GetAllWatermarks", dp.partitionID)
+
+	// v1使用json序列化
+	var version1Func = func() (extents []*storage.ExtentInfo, err error) {
+		var packet = repl.NewPacketToGetAllWatermarks(ctx, dp.partitionID, extentType)
+		if extentType == proto.TinyExtentType {
+			if packet.Data, err = json.Marshal(tinyExtents); err != nil {
+				err = errors.Trace(err, "marshal json failed")
+				return
+			}
+			packet.Size = uint32(len(packet.Data))
+		}
+		var conn *net.TCPConn
+		if conn, err = gConnPool.GetConnect(target); err != nil {
+			err = errors.Trace(err, "get connection failed")
 			return
 		}
-		p.Size = uint32(len(p.Data))
-	}
-	var conn *net.TCPConn
-	conn, err = gConnPool.GetConnect(target) // get remote connection
-	if err != nil {
-		err = errors.Trace(err, "getRemoteExtentInfo DataPartition(%v) get host(%v) connect", dp.partitionID, target)
-		return
-	}
-	defer gConnPool.PutConnect(conn, true)
-	err = p.WriteToConn(conn) // write command to the remote host
-	if err != nil {
-		err = errors.Trace(err, "getRemoteExtentInfo DataPartition(%v) write to host(%v)", dp.partitionID, target)
-		return
-	}
-	reply := new(repl.Packet)
-	reply.SetCtx(ctx)
-	err = reply.ReadFromConn(conn, proto.GetAllWatermarksDeadLineTime) // read the response
-	if err != nil {
-		err = errors.Trace(err, "getRemoteExtentInfo DataPartition(%v) read from host(%v)", dp.partitionID, target)
-		return
-	}
-	err = json.Unmarshal(reply.Data[:reply.Size], &extentFiles)
-	if err != nil {
-		err = errors.Trace(err, "getRemoteExtentInfo DataPartition(%v) unmarshal json(%v) from host(%v)",
-			dp.partitionID, string(reply.Data[:reply.Size]), target)
+		defer func() {
+			gConnPool.PutConnectWithErr(conn, err)
+		}()
+		if err = packet.WriteToConn(conn); err != nil {
+			err = errors.Trace(err, "write packet to connection failed")
+			return
+		}
+		var reply = new(repl.Packet)
+		reply.SetCtx(ctx)
+		if err = reply.ReadFromConn(conn, proto.GetAllWatermarksDeadLineTime); err != nil {
+			err = errors.Trace(err, "read reply from connection failed")
+			return
+		}
+		if reply.ResultCode != proto.OpOk {
+			err = errors.NewErrorf("reply result code: %v", reply.GetOpMsg())
+			return
+		}
+		extents = make([]*storage.ExtentInfo, 0)
+		if err = json.Unmarshal(reply.Data[:reply.Size], &extents); err != nil {
+			err = errors.Trace(err, "unmarshal reply data failed")
+			return
+		}
 		return
 	}
 
+	// v2使用二进制序列化
+	var version2Func = func() (extents []*storage.ExtentInfo, err error) {
+		var packet = repl.NewPacketToGetAllWatermarksV2(ctx, dp.partitionID, extentType)
+		if extentType == proto.TinyExtentType {
+			var buffer = bytes.NewBuffer(make([]byte, 0, len(tinyExtents)*8))
+			for _, extentID := range tinyExtents {
+				if err = binary.Write(buffer, binary.BigEndian, extentID); err != nil {
+					err = errors.Trace(err, "binary encode failed")
+					return
+				}
+			}
+			packet.Data = buffer.Bytes()
+			packet.Size = uint32(len(packet.Data))
+		}
+		var conn *net.TCPConn
+		if conn, err = gConnPool.GetConnect(target); err != nil {
+			err = errors.Trace(err, "get connection failed")
+			return
+		}
+		defer func() {
+			gConnPool.PutConnectWithErr(conn, err)
+		}()
+		if err = packet.WriteToConn(conn); err != nil {
+			err = errors.Trace(err, "write packet to connection failed")
+			return
+		}
+		var reply = new(repl.Packet)
+		reply.SetCtx(ctx)
+		if err = reply.ReadFromConn(conn, proto.GetAllWatermarksDeadLineTime); err != nil {
+			err = errors.Trace(err, "read reply from connection failed")
+			return
+		}
+		if reply.ResultCode != proto.OpOk {
+			err = errors.NewErrorf("reply result code: %v", reply.GetOpMsg())
+			return
+		}
+		if reply.Size%16 != 0 {
+			// 合法的data长度与16对其，每16个字节存储一个Extent信息，[0:8)为FileID，[8:16)为Size。
+			err = errors.NewErrorf("illegal result data length: %v", len(reply.Data))
+			return
+		}
+		extents = make([]*storage.ExtentInfo, 0, len(reply.Data)/16)
+		for index := 0; index < int(reply.Size)/16; index++ {
+			var offset = index * 16
+			var extentID = binary.BigEndian.Uint64(reply.Data[offset:])
+			var size = binary.BigEndian.Uint64(reply.Data[offset+8:])
+			extents = append(extents, &storage.ExtentInfo{FileID: extentID, Size: size})
+		}
+		return
+	}
+
+	// 首先尝试使用V2版本获取远端Extent信息, 失败后则尝试使用V1版本获取信息，以保证集群灰度过程中修复功能依然可以兼容。
+	if extentFiles, err = version2Func(); err != nil {
+		log.LogWarnf("partition [%v] get remote [%v] extent info by version 2 method failed and will retry by using version 1 method: %v", err)
+		if extentFiles, err = version1Func(); err != nil {
+			log.LogErrorf("partition [%v] get remote [%v] extent info failed by both version 1 and version 2 method: %v", err)
+		}
+	}
 	return
 }
 

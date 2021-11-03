@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -104,6 +105,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handlePacketToNotifyExtentRepair(p)
 	case proto.OpGetAllWatermarks:
 		s.handlePacketToGetAllWatermarks(p)
+	case proto.OpGetAllWatermarksV2:
+		s.handlePacketToGetAllWatermarksV2(p)
 	case proto.OpCreateDataPartition:
 		s.handlePacketToCreateDataPartition(p)
 	case proto.OpLoadDataPartition:
@@ -602,6 +605,58 @@ func (s *DataNode) handlePacketToGetAllWatermarks(p *repl.Packet) {
 		buf, err = json.Marshal(fInfoList)
 		p.PacketOkWithBody(buf)
 	}
+	return
+}
+
+// V2使用二进制编解码
+func (s *DataNode) handlePacketToGetAllWatermarksV2(p *repl.Packet) {
+	var (
+		fInfoList []*storage.ExtentInfo
+		err       error
+	)
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionGetAllExtentWatermarksV2, err.Error())
+		}
+	}()
+	partition := p.Object.(*DataPartition)
+	store := partition.ExtentStore()
+	if p.ExtentType == proto.NormalExtentType {
+		fInfoList, _, err = store.GetAllWatermarks(storage.NormalExtentFilter())
+	} else {
+		var extentIDs = make([]uint64, 0, len(p.Data) / 8)
+		var extentID uint64
+		var reader = bytes.NewReader(p.Data)
+		for {
+			err = binary.Read(reader, binary.BigEndian, &extentID)
+			if err == io.EOF {
+				err = nil
+				break
+			}
+			if err != nil {
+				return
+			}
+			extentIDs = append(extentIDs, extentID)
+		}
+		fInfoList, _, err = store.GetAllWatermarks(storage.TinyExtentFilter(extentIDs))
+	}
+	if err != nil {
+		return
+	}
+
+	var buf = bytes.NewBuffer(make([]byte, 0, len(fInfoList)* 16))
+	for _, info := range fInfoList {
+		if info.IsDeleted {
+			continue
+		}
+		if err = binary.Write(buf, binary.BigEndian, info.FileID); err != nil {
+			return
+		}
+		if err = binary.Write(buf, binary.BigEndian, info.Size); err != nil {
+			return
+		}
+	}
+	p.PacketOkWithBody(buf.Bytes())
 	return
 }
 
