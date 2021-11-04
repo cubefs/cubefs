@@ -21,6 +21,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/chubaofs/chubaofs/util/tracing"
@@ -47,6 +48,7 @@ type Packet struct {
 	TpObject        *exporter.TimePointCount
 	NeedReply       bool
 	OrgBuffer       []byte
+	isUseBufferPool int64
 }
 
 type FollowerPacket struct {
@@ -104,18 +106,22 @@ func (p *Packet) AfterTp() (ok bool) {
 	return
 }
 
+const (
+	PacketUseBufferPool   = 1
+	PacketNoUseBufferPool = 0
+)
+
 func (p *Packet) clean() {
-	if p.Data == nil {
-		return
-	}
-	p.Object = nil
-	p.TpObject = nil
-	p.Data = nil
-	p.Arg = nil
-	if p.OrgBuffer != nil && len(p.OrgBuffer) == util.BlockSize && p.IsWriteOperation() {
+	if atomic.LoadInt64(&p.isUseBufferPool) == PacketUseBufferPool {
 		proto.Buffers.Put(p.OrgBuffer)
+		p.Object = nil
+		p.TpObject = nil
+		p.Data = nil
+		p.Arg = nil
+		p.followerPackets = nil
 		p.OrgBuffer = nil
 	}
+	atomic.StoreInt64(&p.isUseBufferPool, PacketNoUseBufferPool)
 }
 
 func copyPacket(src *Packet, dst *FollowerPacket) {
@@ -149,7 +155,7 @@ func (p *Packet) resolveFollowersAddr(remoteAddr string) (err error) {
 		if err != nil {
 			p.PackErrorBody(ActionPreparePkt, err.Error())
 			log.LogErrorf("action[%v]  packet(%v) from remote(%v) error(%v)",
-				ActionPreparePkt,p.GetUniqueLogId(), remoteAddr,err.Error())
+				ActionPreparePkt, p.GetUniqueLogId(), remoteAddr, err.Error())
 		}
 	}()
 	if len(p.Arg) < int(p.ArgLen) {
@@ -332,6 +338,7 @@ func (p *Packet) PackErrorBody(action, msg string) {
 func (p *Packet) ReadFull(c net.Conn, opcode uint8, readSize int) (err error) {
 	if p.IsWriteOperation() && readSize == util.BlockSize {
 		p.Data, _ = proto.Buffers.Get(readSize)
+		atomic.StoreInt64(&p.isUseBufferPool, PacketUseBufferPool)
 	} else {
 		p.Data = make([]byte, readSize)
 	}
