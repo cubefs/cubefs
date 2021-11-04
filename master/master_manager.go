@@ -47,6 +47,7 @@ func (m *Server) handleLeaderChange(leader uint64) {
 		}
 		m.cluster.checkDataNodeHeartbeat()
 		m.cluster.checkMetaNodeHeartbeat()
+		m.cluster.followerReadManager.reSet()
 	} else {
 		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr))
@@ -80,6 +81,21 @@ func (m *Server) handleApplySnapshot() {
 	m.fsm.restore()
 	m.restoreIDAlloc()
 	return
+}
+
+func (m *Server) handleRaftUserCmd(opt uint32, key string, cmdMap map[string][]byte) (err error) {
+	log.LogInfof("action[handleRaftUserCmd] opt %v, key %v, map len %v", opt, key, len(cmdMap))
+	switch opt {
+	case opSyncDataPartitionsView:
+		// cluster may not have been init when the raft log recovery,message can be ignored,
+		// Later, we can consider changing their two priorities
+		if m.cluster != nil {
+			m.cluster.followerReadManager.updateVolViewFromLeader(key, cmdMap[key])
+		}
+	default:
+		log.LogErrorf("action[handleRaftUserCmd] opt %v not supported,key %v, map len %v", opt, key, len(cmdMap))
+	}
+	return nil
 }
 
 func (m *Server) restoreIDAlloc() {

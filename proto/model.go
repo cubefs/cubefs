@@ -175,6 +175,7 @@ type DataPartitionInfo struct {
 	VolID                   uint64
 	OfflinePeerID           uint64
 	FileInCoreMap           map[string]*FileInCore
+	IsRecover               bool
 	FilesWithMissingReplica map[string]int64 // key: file name, value: last time when a missing replica is found
 }
 

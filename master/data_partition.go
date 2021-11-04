@@ -701,6 +701,7 @@ func (partition *DataPartition) ToProto(c *Cluster) *proto.DataPartitionInfo {
 		VolID:                   partition.VolID,
 		FileInCoreMap:           fileInCoreMap,
 		OfflinePeerID:           partition.OfflinePeerID,
+		IsRecover:               partition.isRecover,
 		FilesWithMissingReplica: partition.FilesWithMissingReplica,
 	}
 }

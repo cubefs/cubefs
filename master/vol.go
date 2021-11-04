@@ -447,6 +447,21 @@ func (vol *Vol) totalUsedSpace() uint64 {
 	return vol.dataPartitions.totalUsedSpace()
 }
 
+func (vol *Vol) asyncSendViewCacheToFollower(c *Cluster) {
+	var err error
+	log.LogInfof("action[asyncSendPartitionsToFollower]")
+
+	metadata := new(RaftCmd)
+	metadata.Op = opSyncDataPartitionsView
+	metadata.K = vol.Name
+	metadata.V = vol.dataPartitions.getDataPartitionResponseCache()
+
+	if err = c.submit(metadata); err != nil {
+		log.LogErrorf("action[asyncSendPartitionsToFollower] error [%v]", err)
+	}
+	log.LogInfof("action[asyncSendPartitionsToFollower] finished")
+}
+
 func (vol *Vol) updateViewCache(c *Cluster) {
 	view := proto.NewVolView(vol.Name, vol.Status, vol.FollowerRead, vol.createTime)
 	view.SetOwner(vol.Owner)
@@ -460,8 +475,8 @@ func (vol *Vol) updateViewCache(c *Cluster) {
 		return
 	}
 	vol.setMpsCache(mpsBody)
-	dpResps := vol.dataPartitions.getDataPartitionsView(0)
-	view.DataPartitions = dpResps
+	// dpResps := vol.dataPartitions.getDataPartitionsView(0)
+	// view.DataPartitions = dpResps
 	view.DomainOn = vol.domainOn
 	viewReply := newSuccessHTTPReply(view)
 	body, err := json.Marshal(viewReply)
@@ -470,6 +485,7 @@ func (vol *Vol) updateViewCache(c *Cluster) {
 		return
 	}
 	vol.setViewCache(body)
+	go vol.asyncSendViewCacheToFollower(c)
 }
 
 func (vol *Vol) getMetaPartitionsView() (mpViews []*proto.MetaPartitionView) {

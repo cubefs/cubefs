@@ -60,6 +60,65 @@ type Cluster struct {
 	lastMasterZoneForDataNode string
 	lastMasterZoneForMetaNode string
 	zoneList                  []string
+	followerReadManager       *followerReadManager
+}
+
+type followerReadManager struct {
+	volDataPartitionsView map[string][]byte
+	status                map[string]bool
+	lastUpdateTick        map[string]time.Time
+	rwMutex               sync.RWMutex
+}
+
+func newFollowerReadManager() (mgr *followerReadManager) {
+	mgr = new(followerReadManager)
+	mgr.volDataPartitionsView = make(map[string][]byte)
+	mgr.status = make(map[string]bool)
+	mgr.lastUpdateTick = make(map[string]time.Time)
+	return
+}
+
+func (mgr *followerReadManager) reSet() {
+	mgr.rwMutex.Lock()
+	defer mgr.rwMutex.Unlock()
+
+	mgr.volDataPartitionsView = make(map[string][]byte)
+	mgr.status = make(map[string]bool)
+}
+func (mgr *followerReadManager) checkStatus() {
+	mgr.rwMutex.Lock()
+	defer mgr.rwMutex.Unlock()
+
+	timeNow := time.Now()
+	for volNm, lastTime := range mgr.lastUpdateTick {
+		if lastTime.Before(timeNow.Add(-time.Second * 10)) {
+			mgr.status[volNm] = false
+			log.LogInfof("action[checkStatus] volume %v expired last time %v, now %v", volNm, lastTime, timeNow)
+		}
+	}
+}
+
+func (mgr *followerReadManager) updateVolViewFromLeader(key string, value []byte) {
+	mgr.rwMutex.Lock()
+	defer mgr.rwMutex.Unlock()
+
+	log.LogInfof("action[updateVolViewFromLeader] volume %v be updated", key)
+	mgr.volDataPartitionsView[key] = value
+	mgr.status[key] = true
+	mgr.lastUpdateTick[key] = time.Now()
+}
+
+func (mgr *followerReadManager) getVolViewAsFollower(key string) (value []byte, ok bool) {
+	mgr.rwMutex.Lock()
+	defer mgr.rwMutex.Unlock()
+	value, ok = mgr.volDataPartitionsView[key]
+	return
+}
+
+func (mgr *followerReadManager) IsVolViewReady(volName string) bool {
+	mgr.rwMutex.Lock()
+	defer mgr.rwMutex.Unlock()
+	return mgr.status[volName]
 }
 
 func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition raftstore.Partition, cfg *clusterConfig) (c *Cluster) {
@@ -75,6 +134,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.metaNodeStatInfo = new(nodeStatInfo)
 	c.FaultDomain = cfg.faultDomain
 	c.zoneStatInfos = make(map[string]*proto.ZoneStat)
+	c.followerReadManager = newFollowerReadManager()
 	c.fsm = fsm
 	c.partition = partition
 	c.idAlloc = newIDAllocator(c.fsm.store, c.partition)
@@ -96,6 +156,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToLoadMetaPartitions()
 	c.scheduleToReduceReplicaNum()
 	c.scheduleToCheckNodeSetGrpManagerStatus()
+	c.scheduleToCheckFollowerReadCache()
 }
 
 func (c *Cluster) masterAddr() (addr string) {
@@ -174,7 +235,18 @@ func (c *Cluster) scheduleToCheckVolStatus() {
 		}
 	}()
 }
-
+func (c *Cluster) scheduleToCheckFollowerReadCache() {
+	go func() {
+		for {
+			if c.partition.IsRaftLeader() {
+				time.Sleep(time.Minute)
+				continue
+			}
+			c.followerReadManager.checkStatus()
+			time.Sleep(5 * time.Second)
+		}
+	}()
+}
 func (c *Cluster) scheduleToCheckNodeSetGrpManagerStatus() {
 	go func() {
 		for {
@@ -206,6 +278,7 @@ func (c *Cluster) checkDataPartitions() {
 		vol.dataPartitions.setReadWriteDataPartitions(readWrites, c.Name)
 		vol.dataPartitions.
 			updateResponseCache(true, 0)
+		go vol.asyncSendViewCacheToFollower(c)
 		msg := fmt.Sprintf("action[checkDataPartitions],vol[%v] can readWrite partitions:%v  ", vol.Name, vol.dataPartitions.readableAndWritableCnt)
 		log.LogInfo(msg)
 	}
