@@ -142,7 +142,6 @@ func (ft *FollowerTransport) serverReadFromFollower(ctx context.Context) {
 func (ft *FollowerTransport) readFollowerResult(ctx context.Context, request *FollowerPacket) (err error) {
 	reply := NewPacket(ctx)
 	defer func() {
-		reply.clean()
 		request.respCh <- err
 		if err != nil {
 			_ = ft.conn.Close()
@@ -173,6 +172,28 @@ func (ft *FollowerTransport) readFollowerResult(ctx context.Context, request *Fo
 	return
 }
 
+func (ft *FollowerTransport) cleanSendChan() {
+	for {
+		select {
+		case r := <-ft.sendCh:
+			r.Data = nil
+		default:
+			return
+		}
+	}
+}
+
+func (ft *FollowerTransport) cleanRecvChan() {
+	for {
+		select {
+		case r := <-ft.recvCh:
+			r.Data = nil
+		default:
+			return
+		}
+	}
+}
+
 func (ft *FollowerTransport) Destory() {
 	ft.exitedMu.Lock()
 	atomic.StoreInt32(&ft.isclosed, FollowerTransportExiting)
@@ -184,6 +205,8 @@ func (ft *FollowerTransport) Destory() {
 		}
 		time.Sleep(time.Millisecond)
 	}
+	ft.cleanSendChan()
+	ft.cleanRecvChan()
 	close(ft.sendCh)
 	close(ft.recvCh)
 }
@@ -434,6 +457,7 @@ func (rp *ReplProtocol) checkLocalResultAndReciveAllFollowerResponse() {
 	}
 	for index := 0; index < len(request.followersAddrs); index++ {
 		followerPacket := request.followerPackets[index]
+		followerPacket.Data=nil
 		err := <-followerPacket.respCh
 		if err != nil {
 			request.PackErrorBody(ActionReceiveFromFollower, err.Error())
