@@ -38,6 +38,7 @@ type Cluster struct {
 	createVolMutex            sync.RWMutex // create volume mutex
 	mnMutex                   sync.RWMutex // meta node mutex
 	dnMutex                   sync.RWMutex // data node mutex
+	badPartitionMutex         sync.RWMutex // BadDataPartitionIds and BadMetaPartitionIds operate mutex
 	leaderInfo                *LeaderInfo
 	cfg                       *clusterConfig
 	retainLogs                uint64
@@ -1469,6 +1470,9 @@ func (c *Cluster) deleteDataReplica(dp *DataPartition, dataNode *DataNode) (err 
 }
 
 func (c *Cluster) putBadMetaPartitions(addr string, partitionID uint64) {
+	c.badPartitionMutex.Lock()
+	defer c.badPartitionMutex.Unlock()
+
 	newBadPartitionIDs := make([]uint64, 0)
 	badPartitionIDs, ok := c.BadMetaPartitionIds.Load(addr)
 	if ok {
@@ -1479,6 +1483,9 @@ func (c *Cluster) putBadMetaPartitions(addr string, partitionID uint64) {
 }
 
 func (c *Cluster) getBadMetaPartitionsView() (bmpvs []badPartitionView) {
+	c.badPartitionMutex.Lock()
+	defer c.badPartitionMutex.Unlock()
+
 	bmpvs = make([]badPartitionView, 0)
 	c.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
 		badPartitionIds := value.([]uint64)
@@ -1491,6 +1498,9 @@ func (c *Cluster) getBadMetaPartitionsView() (bmpvs []badPartitionView) {
 }
 
 func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, addr string, partitionID uint64) {
+	c.badPartitionMutex.Lock()
+	defer c.badPartitionMutex.Unlock()
+
 	var key string
 	newBadPartitionIDs := make([]uint64, 0)
 	if replica != nil {
@@ -1507,6 +1517,9 @@ func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, addr string, part
 }
 
 func (c *Cluster) getBadDataPartitionsView() (bpvs []badPartitionView) {
+	c.badPartitionMutex.Lock()
+	defer c.badPartitionMutex.Unlock()
+
 	bpvs = make([]badPartitionView, 0)
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
 		badDataPartitionIds := value.([]uint64)
