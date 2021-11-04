@@ -2637,6 +2637,20 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	log.LogInfof("action[getDataPartitions] tmp is leader[%v]", m.cluster.partition.IsRaftLeader())
+	if !m.cluster.partition.IsRaftLeader() {
+		var ok bool
+		m.cluster.followerReadManager.rwMutex.Lock()
+		defer m.cluster.followerReadManager.rwMutex.Unlock()
+
+		if body, ok = m.cluster.followerReadManager.volDataPartitionsView[name]; !ok {
+			log.LogErrorf("action[getDataPartitions] volume [%v] not get partitions info", name)
+			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("follower volume info not found")))
+			return
+		}
+		send(w, r, body)
+		return
+	}
 	if vol, err = m.cluster.getVol(name); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return

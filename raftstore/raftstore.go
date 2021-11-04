@@ -176,6 +176,7 @@ func (s *raftStore) CreatePartition(cfg *PartitionConfig) (p Partition, err erro
 			peerAddress.ReplicaPort,
 		)
 	}
+	logger.Info("action[raftstore:CreatePartition] raft config applied [%v]", cfg.Applied)
 	rc := &raft.RaftConfig{
 		ID:           cfg.ID,
 		Peers:        peers,

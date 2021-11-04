@@ -16,6 +16,7 @@ package master
 
 import (
 	"encoding/json"
+	"math/rand"
 	"net/http"
 	"strconv"
 
@@ -127,6 +128,12 @@ func (api *ClientAPI) GetMetaPartitions(volName string) (views []*proto.MetaPart
 func (api *ClientAPI) GetDataPartitions(volName string) (view *proto.DataPartitionsView, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.ClientDataPartitions)
 	request.addParam("name", volName)
+
+	lastLeader := api.mc.leaderAddr
+	defer api.mc.setLeader(lastLeader)
+	randIndex := rand.Intn(len(api.mc.masters))
+
+	api.mc.setLeader(api.mc.masters[randIndex])
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return

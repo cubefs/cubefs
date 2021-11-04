@@ -52,6 +52,22 @@ func (m *Server) startHTTPService(modulename string, cfg *config.Config) {
 	return
 }
 
+func (m *Server) isFollowerRead(r *http.Request) (followerRead bool) {
+	followerRead = false
+	if r.URL.Path == proto.ClientDataPartitions && !m.partition.IsRaftLeader() {
+		if volName, err := parseAndExtractName(r); err == nil {
+			log.LogInfof("action[interceptor] followerRead vol[%v]", volName)
+			if m.cluster.followerReadManager.IsVolViewReady(volName) {
+				followerRead = true
+				log.LogInfof("action[interceptor] followerRead [%v], GetName[%v] IsRaftLeader[%v]",
+					followerRead, r.URL.Path, m.partition.IsRaftLeader())
+				return
+			}
+		}
+	}
+	return
+}
+
 func (m *Server) registerAPIMiddleware(route *mux.Router) {
 	var interceptor mux.MiddlewareFunc = func(next http.Handler) http.Handler {
 		return http.HandlerFunc(
@@ -61,8 +77,11 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 					next.ServeHTTP(w, r)
 					return
 				}
-				if m.partition.IsRaftLeader() {
-					if m.metaReady {
+
+				isFollowerRead := m.isFollowerRead(r)
+				if m.partition.IsRaftLeader() || isFollowerRead {
+					if m.metaReady || isFollowerRead {
+						log.LogDebugf("action[interceptor] request, method[%v] path[%v] query[%v]", r.Method, r.URL.Path, r.URL.Query())
 						next.ServeHTTP(w, r)
 						return
 					}
@@ -196,7 +215,6 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.ClientDataPartitions).
 		HandlerFunc(m.getDataPartitions)
-
 	// meta node management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AddMetaNode).
