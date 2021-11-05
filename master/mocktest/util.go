@@ -20,7 +20,7 @@ func responseAckOKToMaster(conn net.Conn, p *proto.Packet, data []byte) error {
 	} else {
 		p.PacketOkReply()
 	}
-	return p.WriteToConn(conn)
+	return p.WriteToConn(conn, proto.WriteDeadlineTime)
 }
 
 func responseAckErrToMaster(conn net.Conn, p *proto.Packet, err error) error {
@@ -28,7 +28,7 @@ func responseAckErrToMaster(conn net.Conn, p *proto.Packet, err error) error {
 	buf := []byte(err.Error())
 	p.PacketErrorWithBody(status, buf)
 	p.ResultCode = proto.TaskFailed
-	return p.WriteToConn(conn)
+	return p.WriteToConn(conn, proto.WriteDeadlineTime)
 }
 
 func PostToMaster(method, url string, reqData []byte) (resp *http.Response, err error) {

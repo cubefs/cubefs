@@ -26,7 +26,6 @@ import (
 	"github.com/chubaofs/chubaofs/sdk/meta"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/tracing"
 	"golang.org/x/time/rate"
@@ -346,11 +345,6 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset int,
 		}
 	} else {
 		write, _, err = s.IssueWriteRequest(ctx, offset, data, direct, overWriteBuffer)
-	}
-	if err != nil {
-		err = errors.Trace(err, prefix)
-		log.LogWarnf(errors.Stack(err))
-		exporter.Warning(err.Error())
 	}
 	return
 }

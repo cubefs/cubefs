@@ -33,11 +33,13 @@ import (
 type DataPartition struct {
 	// Will not be changed
 	proto.DataPartitionResponse
-	RandomWrite   bool
-	PartitionType string
-	NearHosts     []string
-	ClientWrapper *Wrapper
-	Metrics       *DataPartitionMetrics
+	RandomWrite        bool
+	PartitionType      string
+	NearHosts          []string
+	CrossRegionMetrics *CrossRegionMetrics
+	ClientWrapper      *Wrapper
+	Metrics            *DataPartitionMetrics
+	hostErrMap         sync.Map //key: host; value: last error access time
 }
 
 // DataPartitionMetrics defines the wrapper of the metrics related to the data partition.
@@ -132,8 +134,8 @@ func (dp *DataPartition) String() string {
 	if dp == nil {
 		return ""
 	}
-	return fmt.Sprintf("PartitionID(%v) Status(%v) ReplicaNum(%v) PartitionType(%v) Hosts(%v) NearHosts(%v)",
-		dp.PartitionID, dp.Status, dp.ReplicaNum, dp.PartitionType, dp.Hosts, dp.NearHosts)
+	return fmt.Sprintf("PartitionID(%v) Status(%v) ReplicaNum(%v) PartitionType(%v) Hosts(%v) NearHosts(%v) CrossRegionMetrics(%v)",
+		dp.PartitionID, dp.Status, dp.ReplicaNum, dp.PartitionType, dp.Hosts, dp.NearHosts, dp.CrossRegionMetrics)
 }
 
 func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {
@@ -150,7 +152,7 @@ func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {
 				err  error
 			)
 			defer wg.Done()
-			if conn, err = util.DailTimeOut(addr, time.Second); err != nil {
+			if conn, err = util.DailTimeOut(addr, time.Duration(ConnectTimeoutDataMs)*time.Millisecond); err != nil {
 				log.LogWarnf("Dail to Host (%v) err(%v)", addr, err.Error())
 				if strings.Contains(err.Error(), syscall.ECONNREFUSED.Error()) {
 					lock.Lock()
@@ -167,15 +169,26 @@ func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {
 }
 
 // GetAllAddrs returns the addresses of all the replicas of the data partition.
-func (dp *DataPartition) GetAllAddrs() string {
-	return strings.Join(dp.Hosts[1:], proto.AddrSplit) + proto.AddrSplit
+func (dp *DataPartition) GetAllHosts() []string {
+	return dp.Hosts
 }
 
-func isExcluded(dp *DataPartition, exclude map[string]struct{}) bool {
+func isExcluded(dp *DataPartition, exclude map[string]struct{}, quorum int) bool {
+	if _, exist := exclude[dp.Hosts[0]]; exist {
+		return true
+	}
+	aliveCount := 0
 	for _, host := range dp.Hosts {
-		if _, exist := exclude[host]; exist {
-			return true
+		if _, exist := exclude[host]; !exist {
+			aliveCount++
 		}
+	}
+	// 'quorum == 0' means all hosts must succeed
+	if quorum <= 0 && aliveCount < len(dp.Hosts) {
+		return true
+	}
+	if quorum > 0 && aliveCount < quorum {
+		return true
 	}
 	return false
 }
@@ -202,7 +215,7 @@ func (dp *DataPartition) LeaderRead(reqPacket *Packet, req *ExtentRequest) (sc *
 	log.LogDebugf("LeaderRead: send to addr(%v), reqPacket(%v)", sc.currAddr, reqPacket)
 
 	if tryOther || (reply != nil && reply.ResultCode == proto.OpTryOtherAddr) {
-		hosts := sortByStatus(sc.dp, true)
+		hosts := sortByStatus(sc.dp, sc.currAddr)
 		for _, addr := range hosts {
 			log.LogWarnf("LeaderRead: try addr(%v) reqPacket(%v)", addr, reqPacket)
 			sc.currAddr = addr
@@ -242,9 +255,9 @@ func (dp *DataPartition) FollowerRead(reqPacket *Packet, req *ExtentRequest) (sc
 	}
 	errMap[sc.currAddr] = err
 
+	hosts := sortByStatus(sc.dp, sc.currAddr)
 	startTime := time.Now()
 	for i := 0; i < StreamSendReadMaxRetry; i++ {
-		hosts := sortByStatus(sc.dp, true)
 		for _, addr := range hosts {
 			log.LogWarnf("FollowerRead: try addr(%v) reqPacket(%v)", addr, reqPacket)
 			sc.currAddr = addr
@@ -321,13 +334,19 @@ func (dp *DataPartition) sendReadCmdToDataPartition(sc *StreamConn, reqPacket *P
 	var conn *net.TCPConn
 	defer func() {
 		StreamConnPool.PutConnectWithErr(conn, err)
+		if dp.ClientWrapper.CrossRegionHATypeQuorum() {
+			// 'tryOther' means network failure
+			dp.updateCrossRegionMetrics(sc.currAddr, tryOther)
+		}
 	}()
 	if conn, err = sc.sendToDataPartition(reqPacket); err != nil {
+		dp.hostErrMap.Store(sc.currAddr, time.Now().UnixNano())
 		log.LogWarnf("sendReadCmdToDataPartition: send to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, reqPacket, err)
 		tryOther = true
 		return
 	}
 	if readBytes, reply, tryOther, err = getReadReply(conn, reqPacket, req); err != nil {
+		dp.hostErrMap.Store(sc.currAddr, time.Now().UnixNano())
 		log.LogWarnf("sendReadCmdToDataPartition: getReply error and RETURN, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, reqPacket, err)
 		return
 	}
@@ -362,8 +381,8 @@ func (dp *DataPartition) OverWrite(sc *StreamConn, req *Packet, reply *Packet) (
 		return
 	}
 
-	hosts := sortByStatus(sc.dp, true)
-	//startTime := time.Now()
+	hosts := sortByStatus(sc.dp, sc.currAddr)
+	startTime := time.Now()
 	for i := 0; i < StreamSendOverWriteMaxRetry; i++ {
 		for _, addr := range hosts {
 			log.LogWarnf("OverWrite: try addr(%v) reqPacket(%v)", addr, req)
@@ -383,11 +402,11 @@ func (dp *DataPartition) OverWrite(sc *StreamConn, req *Packet, reply *Packet) (
 			errMap[addr] = err
 			log.LogWarnf("OverWrite: try addr(%v) failed! err(%v) reply(%v) reqPacket(%v) ", addr, err, reply, req)
 		}
-		//if time.Since(startTime) > StreamSendOverWriteTimeout {
-		//	log.LogWarnf("OverWrite: retry timeout req(%v) time(%v)", req, time.Since(startTime))
-		//	break
-		//}
-		//log.LogWarnf("OverWrite: errMap(%v), reqPacket(%v), try the next round", errMap, req)
+		if time.Since(startTime) > StreamSendOverWriteTimeout {
+			log.LogWarnf("OverWrite: retry timeout req(%v) time(%v)", req, time.Since(startTime))
+			break
+		}
+		log.LogWarnf("OverWrite: errMap(%v), reqPacket(%v), try the next round", errMap, req)
 		//time.Sleep(StreamSendSleepInterval)
 	}
 
@@ -400,13 +419,29 @@ func (dp *DataPartition) OverWriteToDataPartitionLeader(sc *StreamConn, req *Pac
 		StreamConnPool.PutConnectWithErr(conn, err)
 	}()
 	if conn, err = sc.sendToDataPartition(req); err != nil {
+		dp.hostErrMap.Store(sc.currAddr, time.Now().UnixNano())
 		log.LogWarnf("OverWriteToDataPartitionLeader: send to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 		return
 	}
 	reply.SetCtx(req.Ctx())
-	if err = reply.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+	if err = reply.ReadFromConn(conn, ReadTimeoutData); err != nil {
+		dp.hostErrMap.Store(sc.currAddr, time.Now().UnixNano())
 		log.LogWarnf("OverWriteToDataPartitionLeader: getReply error and RETURN, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 		return
 	}
 	return
+}
+
+func (dp *DataPartition) getEpochReadHost(hosts []string) (err error, addr string) {
+	hostsStatus := dp.ClientWrapper.HostsStatus
+	epoch := dp.Epoch
+	dp.Epoch += 1
+	for retry := 0; retry < len(hosts); retry++ {
+		addr = hosts[(epoch+uint64(retry)) % uint64(len(hosts))]
+		active, ok := hostsStatus[addr]
+		if ok && active {
+			return nil, addr
+		}
+	}
+	return fmt.Errorf("getEpochReadHost failed: no available host"), ""
 }

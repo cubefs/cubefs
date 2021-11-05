@@ -1,9 +1,10 @@
 package master
 
 import (
-	"github.com/chubaofs/chubaofs/proto"
 	"testing"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 func TestDataPartitionAPI(t *testing.T) {
@@ -14,7 +15,7 @@ func TestDataPartitionAPI(t *testing.T) {
 	testVolCount := 1
 	for i := 0; i == 0 || i < count && err != nil; i++ {
 		err = testMc.AdminAPI().CreateDataPartition(testVolName, testVolCount)
-		time.Sleep(time.Duration(1)*time.Second)
+		time.Sleep(time.Duration(1) * time.Second)
 	}
 	if err != nil {
 		t.Fatalf("CreateDataPartition failed, err %v", err)
@@ -72,7 +73,7 @@ func TestDataPartitionAPI(t *testing.T) {
 	//Delete Data Replica
 	for i := 0; i == 0 || i < count && err != nil; i++ {
 		err = testMc.AdminAPI().DeleteDataReplica(testDataPartitionID, nonLeaderAddr)
-		time.Sleep(time.Duration(1)*time.Second)
+		time.Sleep(time.Duration(1) * time.Second)
 	}
 	if err != nil {
 		t.Fatalf("DeleteDataReplica failed, err %v", err)
@@ -80,8 +81,8 @@ func TestDataPartitionAPI(t *testing.T) {
 
 	//Add Data Replica
 	for i := 0; i == 0 || i < count && err != nil; i++ {
-		err = testMc.AdminAPI().AddDataReplica(testDataPartitionID, nonLeaderAddr)
-		time.Sleep(time.Duration(1)*time.Second)
+		err = testMc.AdminAPI().AddDataReplica(testDataPartitionID, nonLeaderAddr, 0)
+		time.Sleep(time.Duration(1) * time.Second)
 	}
 	if err != nil {
 		t.Fatalf("AddDataReplica failed, err %v", err)
@@ -92,7 +93,7 @@ func TestDataPartitionAPI(t *testing.T) {
 	var threshold uint8 = 10
 	for i := 0; i == 0 || i < count && err != nil; i++ {
 		err = testMc.AdminAPI().AddDataLearner(testDataPartitionID, newAddr, autoPromote, threshold)
-		time.Sleep(time.Duration(1)*time.Second)
+		time.Sleep(time.Duration(1) * time.Second)
 	}
 	if err != nil {
 		t.Fatalf("AddDataLearner failed, err %v", err)
@@ -107,7 +108,7 @@ func TestDataPartitionAPI(t *testing.T) {
 	//Delete Data Replica
 	for i := 0; i == 0 || i < count && err != nil; i++ {
 		err = testMc.AdminAPI().DeleteDataReplica(testDataPartitionID, newAddr)
-		time.Sleep(time.Duration(1)*time.Second)
+		time.Sleep(time.Duration(1) * time.Second)
 	}
 	if err != nil {
 		t.Fatalf("DeleteDataReplica failed, err %v", err)
@@ -132,11 +133,11 @@ func TestDataPartitionAPI(t *testing.T) {
 	}
 }
 
-func findNewAddr(replicas []*proto.DataReplica, nodes []proto.NodeView) string{
+func findNewAddr(replicas []*proto.DataReplica, nodes []proto.NodeView) string {
 	newAddr := ""
 	for _, i := range nodes {
 		flag := false
-		for _, j := range replicas{
+		for _, j := range replicas {
 			if i.Addr == j.Addr {
 				flag = true
 				break

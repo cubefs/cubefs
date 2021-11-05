@@ -39,10 +39,13 @@ const (
 	dataPartitionSizeKey        = "size"
 	metaPartitionCountKey       = "mpCount"
 	volCapacityKey              = "capacity"
+	dpWritableThresholdKey      = "dpWriteableThreshold"
 	volOwnerKey                 = "owner"
 	volAuthKey                  = "authKey"
 	replicaNumKey               = "replicaNum"
+	mpReplicaNumKey             = "mpReplicaNum"
 	followerReadKey             = "followerRead"
+	forceROWKey                 = "forceROW"
 	authenticateKey             = "authenticate"
 	akKey                       = "ak"
 	keywordsKey                 = "keywords"
@@ -82,12 +85,23 @@ const (
 	extentMergeInoKey           = "extentMergeIno"
 	extentMergeSleepMsKey       = "extentMergeSleepMs"
 	fixTinyDeleteRecordKey      = "fixTinyDeleteRecordKey"
+	crossRegionHAKey            = "crossRegion"
+	regionNameKey               = "regionName"
+	regionTypeKey               = "regionType"
+	addReplicaTypeKey           = "addReplicaType"
+	convertModeKey              = "convertMode"
+	partitionTypeKey            = "partitionType"
 )
 
 const (
 	nodeTypeDataNode = "dataNode"
 	nodeTypeMetaNode = "metaNode"
 	nodeTypeAll      = "all"
+)
+
+const (
+	partitionTypeDataPartition = "dataPartition"
+	partitionTypeMetaPartition = "metaPartition"
 )
 
 const (
@@ -103,6 +117,7 @@ const (
 
 const (
 	underlineSeparator = "_"
+	commaSeparator     = ","
 )
 
 const (
@@ -111,37 +126,42 @@ const (
 )
 
 const (
-	defaultInitMetaPartitionCount                 = 5
-	defaultMaxInitMetaPartitionCount              = 100
-	defaultMaxMetaPartitionInodeID         uint64 = 1<<63 - 1
-	defaultMetaPartitionInodeIDStep        uint64 = 1 << 24
-	defaultMetaNodeReservedMem             uint64 = 1 << 30
-	runtimeStackBufSize                           = 4096
-	spaceAvailableRate                            = 0.90
-	defaultNodeSetCapacity                        = 256
-	minNumOfRWDataPartitions                      = 10
-	intervalToCheckMissingReplica                 = 600
-	intervalToWarnDataPartition                   = 600
-	intervalToLoadDataPartition                   = 12 * 60 * 60
-	defaultInitDataPartitionCnt                   = 10
-	volExpansionRatio                             = 0.1
-	maxNumberOfDataPartitionsForExpansion         = 100
-	EmptyCrcValue                          uint32 = 4045511210
-	DefaultZoneName                               = proto.DefaultZoneName
-	retrySendSyncTaskInternal                     = 5 * time.Second
-	defaultRangeOfCountDifferencesAllowed         = 50
-	defaultMinusOfMaxInodeID                      = 1000
-	defaultPercentMinusOfInodeCount               = 0.20
-	defaultRecoverPoolSize                        = -1
-	maxDataPartitionsRecoverPoolSize              = 50
-	maxMetaPartitionsRecoverPoolSize              = 30
-	defaultMinusOfNodeSetCount                    = 3
-	defaultLearnerPromThreshold                   = 90
-	minRateLimit                                  = 100
-	minPartRateLimit                              = 1
-	diskErrDataPartitionOfflineBatchCount         = 200
-	defaultHighUsedRatioDataNodesThreshold        = 0.85
-	defaultHighUsedRatioMetaNodesThreshold        = 0.85
+	defaultInitMetaPartitionCount                      = 5
+	defaultMaxInitMetaPartitionCount                   = 100
+	defaultMaxMetaPartitionInodeID              uint64 = 1<<63 - 1
+	defaultMetaPartitionInodeIDStep             uint64 = 1 << 24
+	defaultMetaNodeReservedMem                  uint64 = 1 << 30
+	runtimeStackBufSize                                = 4096
+	spaceAvailableRate                                 = 0.90
+	defaultNodeSetCapacity                             = 256
+	minNumOfRWDataPartitions                           = 10
+	intervalToCheckMissingReplica                      = 600
+	intervalToWarnDataPartition                        = 600
+	intervalToLoadDataPartition                        = 12 * 60 * 60
+	defaultInitDataPartitionCnt                        = 10
+	volExpansionRatio                                  = 0.1
+	maxNumberOfDataPartitionsForExpansion              = 100
+	EmptyCrcValue                               uint32 = 4045511210
+	DefaultZoneName                                    = proto.DefaultZoneName
+	retrySendSyncTaskInternal                          = 5 * time.Second
+	defaultRangeOfCountDifferencesAllowed              = 50
+	defaultMinusOfMaxInodeID                           = 1000
+	defaultPercentMinusOfInodeCount                    = 0.20
+	defaultRecoverPoolSize                             = -1
+	maxDataPartitionsRecoverPoolSize                   = 50
+	maxMetaPartitionsRecoverPoolSize                   = 30
+	defaultMinusOfNodeSetCount                         = 3
+	defaultLearnerPromThreshold                        = 90
+	minRateLimit                                       = 100
+	minPartRateLimit                                   = 1
+	diskErrDataPartitionOfflineBatchCount              = 200
+	defaultHighUsedRatioDataNodesThreshold             = 0.85
+	defaultHighUsedRatioMetaNodesThreshold             = 0.85
+	defaultQuorumDataPartitionMasterRegionCount        = 3
+	defaultQuorumMetaPartitionMasterRegionCount        = 3
+	defaultQuorumMetaPartitionLearnerReplicaNum        = 2
+	maxQuorumVolDataPartitionReplicaNum                = 5
+	defaultMinDpWriteableThreshold                = 0.5
 )
 
 const (
@@ -183,9 +203,12 @@ const (
 	opSyncDeleteVolUser        uint32 = 0x1D
 	opSyncUpdateVolUser        uint32 = 0x1E
 
-	OpSyncAddToken    uint32 = 0x20
-	OpSyncDelToken    uint32 = 0x21
-	OpSyncUpdateToken uint32 = 0x22
+	OpSyncAddToken     uint32 = 0x20
+	OpSyncDelToken     uint32 = 0x21
+	OpSyncUpdateToken  uint32 = 0x22
+	OpSyncAddRegion    uint32 = 0x23
+	OpSyncUpdateRegion uint32 = 0x24
+	OpSyncDelRegion    uint32 = 0x25
 )
 
 const (
@@ -196,6 +219,7 @@ const (
 	dataPartitionAcronym  = "dp"
 	metaPartitionAcronym  = "mp"
 	volAcronym            = "vol"
+	regionAcronym         = "region"
 	clusterAcronym        = "c"
 	nodeSetAcronym        = "s"
 	tokenAcronym          = "t"
@@ -206,6 +230,7 @@ const (
 	dataNodePrefix        = keySeparator + dataNodeAcronym + keySeparator
 	dataPartitionPrefix   = keySeparator + dataPartitionAcronym + keySeparator
 	volPrefix             = keySeparator + volAcronym + keySeparator
+	regionPrefix          = keySeparator + regionAcronym + keySeparator
 	metaPartitionPrefix   = keySeparator + metaPartitionAcronym + keySeparator
 	clusterPrefix         = keySeparator + clusterAcronym + keySeparator
 	nodeSetPrefix         = keySeparator + nodeSetAcronym + keySeparator

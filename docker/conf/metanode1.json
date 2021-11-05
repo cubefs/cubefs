@@ -10,7 +10,6 @@
   "logLevel": "info",
   "logDir": "/cfs/log",
   "warnLogDir": "/cfs/log",
-  "zoneName": "zone-01",
   "totalMem": "536870912",
   "metadataDir": "/cfs/data/meta",
   "raftDir": "/cfs/data/raft",

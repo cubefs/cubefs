@@ -37,12 +37,13 @@ const (
 )
 
 type VolumeView struct {
-	Name            string
-	Owner           string
-	MetaPartitions  []*MetaPartition
-	OSSSecure       *OSSSecure
-	OSSBucketPolicy proto.BucketAccessPolicy
-	CreateTime      int64
+	Name            	string
+	Owner           	string
+	MetaPartitions  	[]*MetaPartition
+	OSSSecure       	*OSSSecure
+	OSSBucketPolicy 	proto.BucketAccessPolicy
+	CreateTime      	int64
+	CrossRegionHAType	proto.CrossRegionHAType
 }
 
 type OSSSecure struct {
@@ -93,6 +94,7 @@ func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 			OSSSecure:       &OSSSecure{},
 			OSSBucketPolicy: volView.OSSBucketPolicy,
 			CreateTime:      volView.CreateTime,
+			CrossRegionHAType: volView.CrossRegionHAType,
 		}
 		if volView.OSSSecure != nil {
 			result.OSSSecure.AccessKey = volView.OSSSecure.AccessKey
@@ -104,6 +106,7 @@ func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 				Start:       mp.Start,
 				End:         mp.End,
 				Members:     mp.Members,
+				Learners:    mp.Learners,
 				LeaderAddr:  mp.LeaderAddr,
 				Status:      mp.Status,
 			}
@@ -164,6 +167,7 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 	mw.ossSecure = view.OSSSecure
 	mw.ossBucketPolicy = view.OSSBucketPolicy
 	mw.volCreateTime = view.CreateTime
+	mw.crossRegionHAType = view.CrossRegionHAType
 
 	if len(rwPartitions) == 0 {
 		log.LogInfof("updateMetaPartition: no valid partitions")
@@ -188,6 +192,7 @@ func (mw *MetaWrapper) updateMetaPartitionsWithNoCache() error {
 			Start:       view.Start,
 			End:         view.End,
 			Members:     view.Members,
+			Learners: 	 view.Learners,
 			LeaderAddr:  view.LeaderAddr,
 			Status:      view.Status,
 		}

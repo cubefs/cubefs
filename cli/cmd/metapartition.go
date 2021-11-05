@@ -29,6 +29,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/chubaofs/chubaofs/sdk/meta"
+	"github.com/spf13/cobra"
 )
 
 const (
@@ -176,7 +181,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 					addr := strings.Split(r.Addr, ":")[0]
 					if mnPartition, err = client.NodeAPI().MetaNodeGetPartition(addr, partition.PartitionID); err != nil {
 						fmt.Printf(partitionInfoColorTablePattern+"\n",
-							"", "", "", r.Addr, fmt.Sprintf("%v/%v", 0, partition.ReplicaNum), "no data")
+							"", "", "", r.Addr, fmt.Sprintf("%v/%v", 0, partition.ReplicaNum+partition.LearnerNum), "no data")
 						continue
 					}
 					mnHosts := make([]string, 0)
@@ -185,7 +190,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 					}
 					sort.Strings(mnHosts)
 					fmt.Printf(partitionInfoColorTablePattern+"\n",
-						"", "", "", r.Addr, fmt.Sprintf("%v/%v", len(mnPartition.Peers), partition.ReplicaNum), strings.Join(mnHosts, "; "))
+						"", "", "", r.Addr, fmt.Sprintf("%v/%v", len(mnPartition.Peers), partition.ReplicaNum+partition.LearnerNum), strings.Join(mnHosts, "; "))
 				}
 				fmt.Printf("\033[1;40;32m%-8v\033[0m", strings.Repeat("_ ", len(partitionInfoTableHeader)/2+5)+"\n")
 			}
@@ -264,7 +269,7 @@ func checkMetaPartition(pid uint64, client *master.MasterClient) (outPut string,
 	}
 	sb.WriteString(fmt.Sprintf("%v", formatMetaPartitionInfoRow(partition)))
 	sort.Strings(partition.Hosts)
-	if len(partition.MissNodes) > 0 || partition.Status == -1 || len(partition.Hosts) != int(partition.ReplicaNum) {
+	if len(partition.MissNodes) > 0 || partition.Status == -1 || len(partition.Hosts) != int(partition.ReplicaNum+partition.LearnerNum) {
 		errorReports = append(errorReports, fmt.Sprintf("partition is unhealthy in master"))
 	}
 	for _, r := range partition.Replicas {
@@ -284,13 +289,13 @@ func checkMetaPartition(pid uint64, client *master.MasterClient) (outPut string,
 		peerStrings := convertPeersToArray(mnPartition.Peers)
 		learnerStrings := convertLearnersToArray(mnPartition.Learners)
 		sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n",
-			"", "", "", fmt.Sprintf("%-22v", r.Addr), fmt.Sprintf("%v/%v", len(peerStrings), partition.ReplicaNum), "(peer)"+strings.Join(peerStrings, ",")))
+			"", "", "", fmt.Sprintf("%-22v", r.Addr), fmt.Sprintf("%v/%v", len(peerStrings), partition.ReplicaNum+partition.LearnerNum), "(peer)"+strings.Join(peerStrings, ",")))
 		if len(learnerStrings) > 0 {
 			sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n",
-				"", "", "", fmt.Sprintf("%-22v", r.Addr), fmt.Sprintf("%v/%v", len(learnerStrings), len(partition.Learners)), "(learner)"+strings.Join(learnerStrings, ",")))
+				"", "", "", fmt.Sprintf("%-22v", r.Addr), fmt.Sprintf("%v/%v", len(learnerStrings), partition.LearnerNum), "(learner)"+strings.Join(learnerStrings, ",")))
 		}
 		sort.Strings(peerStrings)
-		if !isEqualStrings(partition.Hosts, peerStrings) || len(peerStrings) != int(partition.ReplicaNum) || len(partition.Learners) != len(learnerStrings) {
+		if !isEqualStrings(partition.Hosts, peerStrings) || len(peerStrings) != int(partition.ReplicaNum+partition.LearnerNum) || len(partition.Learners) != len(learnerStrings) {
 			errorReports = append(errorReports, fmt.Sprintf(ReplicaNotConsistent+" on host[%v]", r.Addr))
 		}
 	}
@@ -373,18 +378,42 @@ to fix the problem, however this action may lead to data loss, be careful to do 
 }
 
 func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
+	var optAddReplicaType string
 	var cmd = &cobra.Command{
-		Use:   CliOpReplicate + " [ADDRESS] [META PARTITION ID]",
+		Use:   CliOpReplicate + " [META PARTITION ID] [ADDRESS]",
 		Short: cmdMetaPartitionReplicateShort,
-		Args:  cobra.MinimumNArgs(2),
+		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			address := args[0]
-			partitionID, err := strconv.ParseUint(args[1], 10, 64)
+			var address string
+			if len(args) == 1 && optAddReplicaType == "" {
+				stdout("there must be at least 2 args or use add-replica-type flag\n")
+				return
+			}
+			partitionID, err := strconv.ParseUint(args[0], 10, 64)
 			if err != nil {
 				stdout("%v\n", err)
 				return
 			}
-			if err = client.AdminAPI().AddMetaReplica(partitionID, address); err != nil {
+			if len(args) >= 2 {
+				address = args[1]
+			}
+			var addReplicaType proto.AddReplicaType
+			if optAddReplicaType != "" {
+				var addReplicaTypeUint uint64
+				if addReplicaTypeUint, err = strconv.ParseUint(optAddReplicaType, 10, 64); err != nil {
+					stdout("%v\n", err)
+					return
+				}
+				addReplicaType = proto.AddReplicaType(addReplicaTypeUint)
+				if addReplicaType != proto.AutoChooseAddrForQuorumVol && addReplicaType != proto.DefaultAddReplicaType {
+					err = fmt.Errorf("region type should be %d(%s) or %d(%s)",
+						proto.AutoChooseAddrForQuorumVol, proto.AutoChooseAddrForQuorumVol, proto.DefaultAddReplicaType, proto.DefaultAddReplicaType)
+					stdout("%v\n", err)
+					return
+				}
+				stdout("partitionID:%v add replica type:%s\n", partitionID, addReplicaType)
+			}
+			if err = client.AdminAPI().AddMetaReplica(partitionID, address, addReplicaType); err != nil {
 				stdout("%v\n", err)
 				return
 			}
@@ -396,6 +425,9 @@ func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+
+	cmd.Flags().StringVar(&optAddReplicaType, CliFlagAddReplicaType, "",
+		fmt.Sprintf("Set add replica type[%d(%s)]", proto.AutoChooseAddrForQuorumVol, proto.AutoChooseAddrForQuorumVol))
 	return cmd
 }
 
@@ -428,20 +460,44 @@ func newMetaPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 
 func newMetaPartitionAddLearnerCmd(client *master.MasterClient) *cobra.Command {
 	var (
-		optAutoPromote bool
-		optThreshold   uint8
+		optAutoPromote    bool
+		optThreshold      uint8
+		optAddReplicaType string
 	)
 	const defaultLearnerThreshold uint8 = 90
 	var cmd = &cobra.Command{
-		Use:   CliOpAddLearner + " [ADDRESS] [META PARTITION ID]",
+		Use:   CliOpAddLearner + " [META PARTITION ID] [ADDRESS]",
 		Short: cmdMetaPartitionAddLearnerShort,
-		Args:  cobra.MinimumNArgs(2),
+		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			address := args[0]
-			partitionID, err := strconv.ParseUint(args[1], 10, 64)
+			var address string
+			if len(args) == 1 && optAddReplicaType == "" {
+				stdout("there must be at least 2 args or use add-replica-type flag\n")
+				return
+			}
+			partitionID, err := strconv.ParseUint(args[0], 10, 64)
 			if err != nil {
 				stdout("%v\n", err)
 				return
+			}
+			if len(args) >= 2 {
+				address = args[1]
+			}
+			var addReplicaType proto.AddReplicaType
+			if optAddReplicaType != "" {
+				var addReplicaTypeUint uint64
+				if addReplicaTypeUint, err = strconv.ParseUint(optAddReplicaType, 10, 64); err != nil {
+					stdout("%v\n", err)
+					return
+				}
+				addReplicaType = proto.AddReplicaType(addReplicaTypeUint)
+				if addReplicaType != proto.AutoChooseAddrForQuorumVol && addReplicaType != proto.DefaultAddReplicaType {
+					err = fmt.Errorf("region type should be %d(%s) or %d(%s)",
+						proto.AutoChooseAddrForQuorumVol, proto.AutoChooseAddrForQuorumVol, proto.DefaultAddReplicaType, proto.DefaultAddReplicaType)
+					stdout("%v\n", err)
+					return
+				}
+				stdout("partitionID:%v add replica type:%s\n", partitionID, addReplicaType)
 			}
 			var (
 				autoPromote bool
@@ -455,7 +511,7 @@ func newMetaPartitionAddLearnerCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				threshold = optThreshold
 			}
-			if err = client.AdminAPI().AddMetaReplicaLearner(partitionID, address, autoPromote, threshold); err != nil {
+			if err = client.AdminAPI().AddMetaReplicaLearner(partitionID, address, autoPromote, threshold, addReplicaType); err != nil {
 				stdout("%v\n", err)
 				return
 			}
@@ -469,6 +525,8 @@ func newMetaPartitionAddLearnerCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().Uint8VarP(&optThreshold, CliFlagThreshold, "t", 0, "Specify threshold of learner,(0,100],default 90")
 	cmd.Flags().BoolVarP(&optAutoPromote, CliFlagAutoPromote, "a", false, "Auto promote learner to peers")
+	cmd.Flags().StringVar(&optAddReplicaType, CliFlagAddReplicaType, "",
+		fmt.Sprintf("Set add replica type[%d(%s)]", proto.AutoChooseAddrForQuorumVol, proto.AutoChooseAddrForQuorumVol))
 	return cmd
 }
 
@@ -499,7 +557,7 @@ func newMetaPartitionPromoteLearnerCmd(client *master.MasterClient) *cobra.Comma
 	return cmd
 }
 
-func newMetaPartitionResetCursorCmd(client *master.MasterClient)  *cobra.Command {
+func newMetaPartitionResetCursorCmd(client *master.MasterClient) *cobra.Command {
 	var optForce bool
 	var cmd = &cobra.Command{
 		Use:   CliOpResetCursor + " [META PARTITION ID] [inode]",
@@ -541,7 +599,7 @@ func newMetaPartitionResetCursorCmd(client *master.MasterClient)  *cobra.Command
 
 			stdout("reset success, mp[%v], start: %v, end:%v, cursor:%v\n", partitionID, resp.Start, resp.End, resp.Cursor)
 		},
-			ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
@@ -552,10 +610,10 @@ func newMetaPartitionResetCursorCmd(client *master.MasterClient)  *cobra.Command
 	return cmd
 }
 
-func newMetaPartitionListAllInoCmd(client *master.MasterClient)  *cobra.Command {
+func newMetaPartitionListAllInoCmd(client *master.MasterClient) *cobra.Command {
 	var optDisplay bool
-	var optMode    uint32
-	var optStTime  int64
+	var optMode uint32
+	var optStTime int64
 	var optEndTime int64
 	var cmd = &cobra.Command{
 		Use:   CliOpListMpAllInos + " [META PARTITION ID]",
@@ -591,7 +649,7 @@ func newMetaPartitionListAllInoCmd(client *master.MasterClient)  *cobra.Command 
 			stdout("list all inodes success, mp[%v], count:%v\n", partitionID, resp.Count)
 			if optDisplay {
 				for i, ino := range resp.Inodes {
-					if i % 5 == 0{
+					if i%5 == 0 {
 						stdout("\n")
 					}
 					stdout("%d\t", ino)

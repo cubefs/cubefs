@@ -16,15 +16,16 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/spf13/cobra"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/spf13/cobra"
 )
 
 const (
@@ -230,7 +231,7 @@ The "reset" command will be released in next version`,
 				}
 				if optEnableAutoFullfill && canAutoRepair {
 					stdoutGreen("     Auto Repair Begin:")
-					if err = client.AdminAPI().AddDataReplica(partition.PartitionID, lackAddr[0]); err != nil {
+					if err = client.AdminAPI().AddDataReplica(partition.PartitionID, lackAddr[0], 0); err != nil {
 						stdoutRed(fmt.Sprintf("%v err:%v", "     Failed.", err))
 						continue
 					}
@@ -476,18 +477,42 @@ func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 }
 
 func newDataPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
+	var optAddReplicaType string
 	var cmd = &cobra.Command{
-		Use:   CliOpReplicate + " [ADDRESS] [DATA PARTITION ID]",
+		Use:   CliOpReplicate + " [DATA PARTITION ID] [ADDRESS]",
 		Short: cmdDataPartitionReplicateShort,
-		Args:  cobra.MinimumNArgs(2),
+		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			address := args[0]
-			partitionID, err := strconv.ParseUint(args[1], 10, 64)
+			var address string
+			if len(args) == 1 && optAddReplicaType == "" {
+				stdout("there must be at least 2 args or use add-replica-type flag\n")
+				return
+			}
+			partitionID, err := strconv.ParseUint(args[0], 10, 64)
 			if err != nil {
 				stdout("%v\n", err)
 				return
 			}
-			if err = client.AdminAPI().AddDataReplica(partitionID, address); err != nil {
+			if len(args) >= 2 {
+				address = args[1]
+			}
+			var addReplicaType proto.AddReplicaType
+			if optAddReplicaType != "" {
+				var addReplicaTypeUint uint64
+				if addReplicaTypeUint, err = strconv.ParseUint(optAddReplicaType, 10, 64); err != nil {
+					stdout("%v\n", err)
+					return
+				}
+				addReplicaType = proto.AddReplicaType(addReplicaTypeUint)
+				if addReplicaType != proto.AutoChooseAddrForQuorumVol && addReplicaType != proto.DefaultAddReplicaType {
+					err = fmt.Errorf("region type should be %d(%s) or %d(%s)",
+						proto.AutoChooseAddrForQuorumVol, proto.AutoChooseAddrForQuorumVol, proto.DefaultAddReplicaType, proto.DefaultAddReplicaType)
+					stdout("%v\n", err)
+					return
+				}
+				stdout("partitionID:%v add replica type:%s\n", partitionID, addReplicaType)
+			}
+			if err = client.AdminAPI().AddDataReplica(partitionID, address, addReplicaType); err != nil {
 				stdout("%v\n", err)
 				return
 			}
@@ -499,6 +524,9 @@ func newDataPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+
+	cmd.Flags().StringVar(&optAddReplicaType, CliFlagAddReplicaType, "",
+		fmt.Sprintf("Set add replica type[%d(%s)]", proto.AutoChooseAddrForQuorumVol, proto.AutoChooseAddrForQuorumVol))
 	return cmd
 }
 

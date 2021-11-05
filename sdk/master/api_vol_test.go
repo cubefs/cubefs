@@ -14,7 +14,9 @@ var (
 	testDpSize        uint64 = 120
 	testCapacity      uint64 = 1
 	testReplicas             = 3
+	testMpReplicas           = 3
 	testFollowerRead         = true
+	testForceROW			 = false
 	testAutoRepair           = false
 	testVolWriteMutex        = false
 	testZoneName             = "default"
@@ -22,7 +24,8 @@ var (
 )
 
 func TestVolCreate(t *testing.T) {
-	err := testMc.AdminAPI().CreateVolume(testVolName, testOwner, testMpcount, testDpSize, testCapacity, testReplicas, testFollowerRead, testAutoRepair, testVolWriteMutex, testZoneName)
+	err := testMc.AdminAPI().CreateVolume(testVolName, testOwner, testMpcount, testDpSize, testCapacity,
+		testReplicas, testMpReplicas, testFollowerRead, testAutoRepair, testVolWriteMutex, testForceROW, testZoneName, 0)
 	if err != nil {
 		t.Errorf("create vol failed: err(%v) vol(%v)", err, testVolName)
 	}
@@ -37,7 +40,7 @@ func TestUpdateVol(t *testing.T) {
 	authKey := calcAuthKey(testOwner)
 	extentCap := uint64(2)
 	updateFollowerRead := false
-	err := testMc.AdminAPI().UpdateVolume(testVolName, extentCap, testReplicas, updateFollowerRead, false, false, false, authKey, testZoneName, 0)
+	err := testMc.AdminAPI().UpdateVolume(testVolName, extentCap, testReplicas, testMpReplicas, updateFollowerRead, false, false, false, false, authKey, testZoneName, 0, 0)
 	if err != nil {
 		t.Errorf("update vol failed: err(%v) vol(%v)", err, testVolName)
 	}

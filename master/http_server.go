@@ -18,10 +18,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/buf"
 	"net"
 	"net/http"
 	"net/http/httputil"
+
+	"github.com/chubaofs/chubaofs/util/buf"
 
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/graphql/introspection"
@@ -164,6 +165,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminGetVolMutex).
 		HandlerFunc(m.getVolWriteMutexInfo)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetVolConvertMode).
+		HandlerFunc(m.setVolConvertMode)
 
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -346,6 +350,21 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetAllZones).
 		HandlerFunc(m.listZone)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.SetZoneRegion).
+		HandlerFunc(m.setZoneRegion)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.UpdateRegion).
+		HandlerFunc(m.updateRegion)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.GetRegionView).
+		HandlerFunc(m.getRegion)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.RegionList).
+		HandlerFunc(m.regionList)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.CreateRegion).
+		HandlerFunc(m.addRegion)
 
 	// APIs for token-based client permissions control
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

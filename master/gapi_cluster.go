@@ -5,10 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/samsarahq/thunder/graphql"
-	"github.com/samsarahq/thunder/graphql/schemabuilder"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -16,6 +12,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/samsarahq/thunder/graphql"
+	"github.com/samsarahq/thunder/graphql/schemabuilder"
 )
 
 type ClusterService struct {
@@ -323,11 +324,14 @@ func (m *ClusterService) getTopology(ctx context.Context, args struct{}) (*proto
 		return nil, err
 	}
 	tv := &TopologyView{
-		Zones: make([]*ZoneView, 0),
+		Zones:   make([]*ZoneView, 0),
+		Regions: m.cluster.t.getRegionViews(),
 	}
+	defaultRegionView := proto.NewRegionView("default")
 	zones := m.cluster.t.getAllZones()
 	for _, zone := range zones {
 		cv := newZoneView(zone.name)
+		cv.Region = zone.regionName
 		cv.Status = zone.getStatusToString()
 		tv.Zones = append(tv.Zones, cv)
 		nsc := zone.getAllNodeSet()
@@ -345,6 +349,12 @@ func (m *ClusterService) getTopology(ctx context.Context, args struct{}) (*proto
 				return true
 			})
 		}
+		if zone.regionName == "" {
+			defaultRegionView.Zones = append(defaultRegionView.Zones, zone.name)
+		}
+	}
+	if len(defaultRegionView.Zones) != 0 {
+		tv.Regions = append(tv.Regions, defaultRegionView)
 	}
 
 	bs, e := json.Marshal(tv)

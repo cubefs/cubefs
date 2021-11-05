@@ -32,18 +32,20 @@ func init() {
 	_ = RegisterDataPartitionSelector(DefaultRandomSelectorName, newDefaultRandomSelector)
 }
 
-func newDefaultRandomSelector(_ string) (selector DataPartitionSelector, e error) {
+func newDefaultRandomSelector(param *DpSelectorParam) (selector DataPartitionSelector, e error) {
 	selector = &DefaultRandomSelector{
-		localLeaderPartitions: make([]*DataPartition, 0),
-		partitions:            make([]*DataPartition, 0),
+		localLeaderPartitions: 	make([]*DataPartition, 0),
+		partitions:            	make([]*DataPartition, 0),
+		param: 					param,
 	}
 	return
 }
 
 type DefaultRandomSelector struct {
 	sync.RWMutex
-	localLeaderPartitions []*DataPartition
-	partitions            []*DataPartition
+	localLeaderPartitions 	[]*DataPartition
+	partitions            	[]*DataPartition
+	param					*DpSelectorParam
 }
 
 func (s *DefaultRandomSelector) Name() string {
@@ -139,7 +141,7 @@ func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartiti
 	rand.Seed(time.Now().UnixNano())
 	index := rand.Intn(length)
 	dp = partitions[index]
-	if !isExcluded(dp, exclude) {
+	if !isExcluded(dp, exclude, s.param.quorum) {
 		log.LogDebugf("DefaultRandomSelector: select dp[%v], index %v", dp, index)
 		return dp
 	}
@@ -149,7 +151,7 @@ func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartiti
 	var currIndex int
 	for i := 0; i < length; i++ {
 		currIndex = (index + i) % length
-		if !isExcluded(partitions[currIndex], exclude) {
+		if !isExcluded(partitions[currIndex], exclude, s.param.quorum) {
 			log.LogDebugf("DefaultRandomSelector: select dp[%v], index %v", partitions[currIndex], currIndex)
 			return partitions[currIndex]
 		}

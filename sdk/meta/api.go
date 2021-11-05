@@ -1152,13 +1152,9 @@ func (mw *MetaWrapper) XAttrsList_ll(ctx context.Context, inode uint64) ([]strin
 	return keys, nil
 }
 
-func (mw *MetaWrapper) GetMaxAppliedIDHosts(ctx context.Context, mp *MetaPartition) (targetHosts []string, isErr bool) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.GetMaxAppliedIDHosts")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
-	log.LogDebugf("getMaxAppliedIDHosts because of no leader: pid[%v], hosts[%v]", mp.PartitionID, mp.Members)
-	appliedIDslice := make(map[string]uint64, len(mp.Members))
+func (mw *MetaWrapper) getTargetHosts(ctx context.Context, mp *MetaPartition, members []string, judgeErrNum int) (targetHosts []string, isErr bool) {
+	log.LogDebugf("getTargetHosts because of no leader: mp[%v] members[%v] judgeErrNum[%v]", mp, members, judgeErrNum)
+	appliedIDslice := make(map[string]uint64, len(members))
 	errSlice := make(map[string]bool)
 	isErr = false
 	var (
@@ -1166,7 +1162,7 @@ func (mw *MetaWrapper) GetMaxAppliedIDHosts(ctx context.Context, mp *MetaPartiti
 		lock         sync.Mutex
 		maxAppliedID uint64
 	)
-	for _, addr := range mp.Members {
+	for _, addr := range members {
 		wg.Add(1)
 		go func(curAddr string) {
 			appliedID, err := mw.getAppliedID(ctx, mp, curAddr)
@@ -1179,19 +1175,30 @@ func (mw *MetaWrapper) GetMaxAppliedIDHosts(ctx context.Context, mp *MetaPartiti
 				ok = true
 			}
 			lock.Unlock()
-			log.LogDebugf("getMaxAppliedIDHosts: get apply id[%v] ok[%v] from host[%v], pid[%v]", appliedID, ok, curAddr, mp.PartitionID)
+			log.LogDebugf("getTargetHosts: get apply id[%v] ok[%v] from host[%v], pid[%v]", appliedID, ok, curAddr, mp.PartitionID)
 			wg.Done()
 		}(addr)
 	}
 	wg.Wait()
-	if len(errSlice) >= (len(mp.Members)+1)/2 {
+	if len(errSlice) >= judgeErrNum {
 		isErr = true
-		log.LogWarnf("getMaxAppliedIDHosts err: mp[%v], hosts[%v], appliedID[%v]", mp.PartitionID, mp.Members, appliedIDslice)
+		log.LogWarnf("getTargetHosts err: mp[%v], hosts[%v], appliedID[%v], judgeErrNum[%v]",
+			mp.PartitionID, members, appliedIDslice, judgeErrNum)
 		return
 	}
 	targetHosts, maxAppliedID = getMaxApplyIDHosts(appliedIDslice)
-	log.LogDebugf("getMaxAppliedIDHosts: get max apply id[%v] from hosts[%v], pid[%v]", maxAppliedID, targetHosts, mp.PartitionID)
-	return
+	log.LogDebugf("getTargetHosts: get max apply id[%v] from hosts[%v], pid[%v]", maxAppliedID, targetHosts, mp.PartitionID)
+	return targetHosts, isErr
+}
+
+func excludeLearner(mp *MetaPartition) (members []string) {
+	members = make([]string, 0)
+	for _, host := range mp.Members {
+		if !contains(mp.Learners, host) {
+			members = append(members, host)
+		}
+	}
+	return members
 }
 
 func getMaxApplyIDHosts(appliedIDslice map[string]uint64) (targetHosts []string, maxID uint64) {
@@ -1218,4 +1225,18 @@ func handleUmpAlarm(cluster, vol, act, msg string) {
 	umpKeyVol := fmt.Sprintf("%s_%s_warning", cluster, vol)
 	umpMsgVol := fmt.Sprintf("act(%s) - %s", act, msg)
 	ump.Alarm(umpKeyVol, umpMsgVol)
+}
+
+func contains(arr []string, element string) (ok bool) {
+	if arr == nil || len(arr) == 0 {
+		return
+	}
+
+	for _, e := range arr {
+		if e == element {
+			ok = true
+			break
+		}
+	}
+	return
 }

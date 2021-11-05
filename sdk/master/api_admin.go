@@ -208,10 +208,13 @@ func (api *AdminAPI) DeleteDataReplica(dataPartitionID uint64, nodeAddr string) 
 	return
 }
 
-func (api *AdminAPI) AddDataReplica(dataPartitionID uint64, nodeAddr string) (err error) {
+func (api *AdminAPI) AddDataReplica(dataPartitionID uint64, nodeAddr string, addReplicaType proto.AddReplicaType) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminAddDataReplica)
 	request.addParam("id", strconv.FormatUint(dataPartitionID, 10))
 	request.addParam("addr", nodeAddr)
+	if addReplicaType != 0 {
+		request.addParam("addReplicaType", strconv.Itoa(int(addReplicaType)))
+	}
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -250,22 +253,28 @@ func (api *AdminAPI) DeleteMetaReplica(metaPartitionID uint64, nodeAddr string) 
 	return
 }
 
-func (api *AdminAPI) AddMetaReplica(metaPartitionID uint64, nodeAddr string) (err error) {
+func (api *AdminAPI) AddMetaReplica(metaPartitionID uint64, nodeAddr string, addReplicaType proto.AddReplicaType) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminAddMetaReplica)
 	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
 	request.addParam("addr", nodeAddr)
+	if addReplicaType != 0 {
+		request.addParam("addReplicaType", strconv.Itoa(int(addReplicaType)))
+	}
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
 }
 
-func (api *AdminAPI) AddMetaReplicaLearner(metaPartitionID uint64, nodeAddr string, autoPromote bool, threshold uint8) (err error) {
+func (api *AdminAPI) AddMetaReplicaLearner(metaPartitionID uint64, nodeAddr string, autoPromote bool, threshold uint8, addReplicaType proto.AddReplicaType) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminAddMetaReplicaLearner)
 	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
 	request.addParam("addr", nodeAddr)
 	request.addParam("auto", strconv.FormatBool(autoPromote))
 	request.addParam("threshold", strconv.FormatUint(uint64(threshold), 10))
+	if addReplicaType != 0 {
+		request.addParam("addReplicaType", strconv.Itoa(int(addReplicaType)))
+	}
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -292,26 +301,30 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 	return
 }
 
-func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas int, followerRead, authenticate, enableToken, autoRepair bool, authKey, zoneName string, bucketPolicy uint8) (err error) {
+func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpReplicas int,
+	followerRead, authenticate, enableToken, autoRepair, forceROW bool, authKey, zoneName string, bucketPolicy, crossRegionHAType uint8) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
 	request.addParam("capacity", strconv.FormatUint(capacity, 10))
 	request.addParam("replicaNum", strconv.Itoa(replicas))
+	request.addParam("mpReplicaNum", strconv.Itoa(mpReplicas))
 	request.addParam("followerRead", strconv.FormatBool(followerRead))
+	request.addParam("forceROW", strconv.FormatBool(forceROW))
 	request.addParam("authenticate", strconv.FormatBool(authenticate))
 	request.addParam("enableToken", strconv.FormatBool(enableToken))
 	request.addParam("autoRepair", strconv.FormatBool(autoRepair))
 	request.addParam("zoneName", zoneName)
 	request.addParam("bucketPolicy", strconv.Itoa(int(bucketPolicy)))
+	request.addParam("crossRegion", strconv.Itoa(int(crossRegionHAType)))
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
 }
 
-func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int,
-	dpSize uint64, capacity uint64, replicas int, followerRead bool, autoRepair bool, volWriteMutex bool, zoneName string) (err error) {
+func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int, dpSize, capacity uint64, replicas, mpReplicas int,
+	followerRead, autoRepair, volWriteMutex, forceROW bool, zoneName string, crossRegionHAType uint8) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
@@ -319,7 +332,11 @@ func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int,
 	request.addParam("size", strconv.FormatUint(dpSize, 10))
 	request.addParam("capacity", strconv.FormatUint(capacity, 10))
 	request.addParam("followerRead", strconv.FormatBool(followerRead))
+	request.addParam("forceROW", strconv.FormatBool(forceROW))
+	request.addParam("crossRegion", strconv.Itoa(int(crossRegionHAType)))
 	request.addParam("autoRepair", strconv.FormatBool(autoRepair))
+	request.addParam("replicaNum", strconv.Itoa(replicas))
+	request.addParam("mpReplicaNum", strconv.Itoa(mpReplicas))
 	request.addParam("volWriteMutex", strconv.FormatBool(volWriteMutex))
 	request.addParam("zoneName", zoneName)
 	if _, err = api.mc.serveRequest(request); err != nil {
@@ -471,6 +488,76 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	}
 	request.addParam("volume", info.Volume)
 	request.addParam("zoneName", info.ZoneName)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) ZoneList() (zoneViews []*proto.ZoneView, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.GetAllZones)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	zoneViews = make([]*proto.ZoneView, 0)
+	if err = json.Unmarshal(data, &zoneViews); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) GetRegionView(regionName string) (rv *proto.RegionView, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.GetRegionView)
+	request.addParam("regionName", regionName)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	rv = &proto.RegionView{}
+	if err = json.Unmarshal(data, rv); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) RegionList() (regionViews []*proto.RegionView, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.RegionList)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	regionViews = make([]*proto.RegionView, 0)
+	if err = json.Unmarshal(data, &regionViews); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) CreateRegion(regionName string, regionType uint8) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.CreateRegion)
+	request.addParam("regionName", regionName)
+	request.addParam("regionType", strconv.Itoa(int(regionType)))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) UpdateRegion(regionName string, regionType uint8) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.UpdateRegion)
+	request.addParam("regionName", regionName)
+	request.addParam("regionType", strconv.Itoa(int(regionType)))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) SetZoneRegion(zoneName, regionName string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.SetZoneRegion)
+	request.addParam("zoneName", zoneName)
+	request.addParam("regionName", regionName)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}

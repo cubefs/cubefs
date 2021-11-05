@@ -83,9 +83,6 @@ func (mw *MetaWrapper) sendWriteToMP(ctx context.Context, mp *MetaPartition, req
 	retryCount := 0
 	for {
 		retryCount++
-		if retryCount > 1 {
-			break
-		}
 		resp, needCheckRead, err = mw.sendToMetaPartition(ctx, mp, req, addr)
 		if err == nil && !resp.ShouldRetry() {
 			return
@@ -99,7 +96,6 @@ func (mw *MetaWrapper) sendWriteToMP(ctx context.Context, mp *MetaPartition, req
 		handleUmpAlarm(mw.cluster, mw.volname, req.GetOpMsg(), umpMsg)
 		time.Sleep(SendRetryInterval)
 	}
-	return
 }
 
 func (mw *MetaWrapper) sendReadToMP(ctx context.Context, mp *MetaPartition, req *proto.Packet) (resp *proto.Packet, err error) {
@@ -117,9 +113,15 @@ func (mw *MetaWrapper) sendReadToMP(ctx context.Context, mp *MetaPartition, req 
 			return
 		}
 		log.LogWarnf("sendReadToMP: send to leader failed and try to read consistent, req(%v) mp(%v) err(%v) resp(%v)", req, mp, err, resp)
-		resp, err = mw.readConsistentFromHosts(ctx, mp, req)
+		resp, err = mw.readConsistentFromHosts(ctx, mp, req, true)
 		if err == nil && !resp.ShouldRetry() {
 			return
+		}
+		if mw.CrossRegionHATypeQuorum() {
+			resp, err = mw.readConsistentFromHosts(ctx, mp, req, false)
+			if err == nil && !resp.ShouldRetry() {
+				return
+			}
 		}
 		if !mw.InfiniteRetry {
 			return
@@ -131,7 +133,7 @@ func (mw *MetaWrapper) sendReadToMP(ctx context.Context, mp *MetaPartition, req 
 	}
 }
 
-func (mw *MetaWrapper) readConsistentFromHosts(ctx context.Context, mp *MetaPartition, req *proto.Packet) (resp *proto.Packet, err error) {
+func (mw *MetaWrapper) readConsistentFromHosts(ctx context.Context, mp *MetaPartition, req *proto.Packet, strongConsistency bool) (resp *proto.Packet, err error) {
 	var (
 		targetHosts []string
 		errMap      map[string]error
@@ -141,7 +143,12 @@ func (mw *MetaWrapper) readConsistentFromHosts(ctx context.Context, mp *MetaPart
 	// compare applied ID of replicas and choose the max one
 	for i := 0; i < ReadConsistenceRetryLimit; i++ {
 		errMap = make(map[string]error)
-		targetHosts, isErr = mw.GetMaxAppliedIDHosts(ctx, mp)
+		if strongConsistency {
+			members := excludeLearner(mp)
+			targetHosts, isErr = mw.getTargetHosts(ctx, mp, members, (len(members)+1)/2)
+		} else {
+			targetHosts, isErr = mw.getTargetHosts(ctx, mp, mp.Members, len(mp.Members)-1)
+		}
 		if !isErr && len(targetHosts) > 0 {
 			req.ArgLen = 1
 			req.Arg = make([]byte, req.ArgLen)
@@ -250,7 +257,7 @@ func (mw *MetaWrapper) sendToHost(ctx context.Context, mp *MetaPartition, req *p
 		var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaConn.send[WriteToConn]").
 			SetTag("remote", mc.conn.RemoteAddr().String())
 		defer tracer.Finish()
-		err = req.WriteToConn(mc.conn)
+		err = req.WriteToConn(mc.conn, WriteTimeoutMeta)
 		tracer.SetTag("error", err)
 		return
 	}(); err != nil {
@@ -264,7 +271,7 @@ func (mw *MetaWrapper) sendToHost(ctx context.Context, mp *MetaPartition, req *p
 		var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.send[ReadFromConn]").
 			SetTag("remote", mc.conn.RemoteAddr())
 		defer tracer.Finish()
-		err = resp.ReadFromConn(mc.conn, proto.ReadDeadlineTime)
+		err = resp.ReadFromConn(mc.conn, ReadTimeoutMeta)
 		tracer.SetTag("error", err)
 		return
 	}(); err != nil {

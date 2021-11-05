@@ -22,7 +22,7 @@ import (
 )
 
 // This type defines the constructor used to create and initialize the selector.
-type DataPartitionSelectorConstructor = func(param string) (DataPartitionSelector, error)
+type DataPartitionSelectorConstructor = func(param *DpSelectorParam) (DataPartitionSelector, error)
 
 // DataPartitionSelector is the interface defines the methods necessary to implement
 // a selector for data partition selecting.
@@ -38,6 +38,11 @@ type DataPartitionSelector interface {
 
 	// RemoveDP removes specified data partition.
 	RemoveDP(partitionID uint64)
+}
+
+type DpSelectorParam struct {
+	kValue	string
+	quorum	int
 }
 
 var (
@@ -58,7 +63,7 @@ func RegisterDataPartitionSelector(name string, constructor DataPartitionSelecto
 	return nil
 }
 
-func newDataPartitionSelector(name string, param string) (newDpSelector DataPartitionSelector, err error) {
+func newDataPartitionSelector(name string, param *DpSelectorParam) (newDpSelector DataPartitionSelector, err error) {
 	var clearName = strings.TrimSpace(strings.ToLower(name))
 	constructor, exist := dataPartitionSelectorConstructors[clearName]
 	if !exist {
@@ -74,8 +79,12 @@ func (w *Wrapper) initDpSelector() (err error) {
 		log.LogWarnf("initDpSelector: can not find dp selector[%v], use default selector", w.dpSelectorName)
 		selectorName = DefaultRandomSelectorName
 	}
+	dpSelectorParam := &DpSelectorParam{
+		kValue: w.dpSelectorParm,
+		quorum: w.quorum,
+	}
 	var selector DataPartitionSelector
-	if selector, err = newDataPartitionSelector(selectorName, w.dpSelectorParm); err != nil {
+	if selector, err = newDataPartitionSelector(selectorName, dpSelectorParam); err != nil {
 		log.LogErrorf("initDpSelector: dpSelector[%v] init failed caused by [%v], use default selector", w.dpSelectorName,
 			err)
 		return
@@ -96,14 +105,18 @@ func (w *Wrapper) refreshDpSelector(partitions []*DataPartition) {
 			log.LogWarnf("refreshDpSelector: can not find dp selector[%v], use default selector", w.dpSelectorName)
 			selectorName = DefaultRandomSelectorName
 		}
-		newDpSelector, err := newDataPartitionSelector(selectorName, w.dpSelectorParm)
+		dpSelectorParam := &DpSelectorParam{
+			kValue: w.dpSelectorParm,
+			quorum: w.quorum,
+		}
+		newDpSelector, err := newDataPartitionSelector(selectorName, dpSelectorParam)
 		if err != nil {
-			log.LogErrorf("refreshDpSelector: change dpSelector to [%v %v] failed caused by [%v],"+
+			log.LogErrorf("refreshDpSelector: change dpSelector to [%v %v %v] failed caused by [%v],"+
 				" use last valid selector. Please change dpSelector config through master.",
-				w.dpSelectorName, w.dpSelectorParm, err)
+				w.dpSelectorName, w.dpSelectorParm, w.quorum, err)
 		} else {
 			w.Lock()
-			log.LogInfof("refreshDpSelector: change dpSelector to [%v %v]", w.dpSelectorName, w.dpSelectorParm)
+			log.LogInfof("refreshDpSelector: change dpSelector to [%v %v %v]", w.dpSelectorName, w.dpSelectorParm, w.quorum)
 			w.dpSelector = newDpSelector
 			w.dpSelectorChanged = false
 			dpSelector = newDpSelector

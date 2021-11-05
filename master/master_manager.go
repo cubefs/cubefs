@@ -100,6 +100,9 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 
+	if err = m.cluster.loadRegions(); err != nil {
+		panic(err)
+	}
 	if err = m.cluster.loadDataNodes(); err != nil {
 		panic(err)
 	}

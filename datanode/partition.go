@@ -64,6 +64,7 @@ type DataPartitionMetadata struct {
 	Learners                []proto.Learner
 	DataPartitionCreateType int
 	LastTruncateID          uint64
+	VolumeHAType            proto.CrossRegionHAType
 }
 
 type sortedPeers []proto.Peer
@@ -110,7 +111,8 @@ type DataPartition struct {
 	minAppliedID    uint64
 	maxAppliedID    uint64
 
-	repairC chan struct{}
+	repairC         chan struct{}
+	fetchVolHATypeC chan struct{}
 
 	stopOnce  sync.Once
 	stopRaftC chan uint64
@@ -127,6 +129,8 @@ type DataPartition struct {
 	DataPartitionCreateType       int
 
 	monitorData []*statistics.MonitorData
+
+	persistMetadataSync chan struct{}
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
@@ -203,6 +207,8 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 		NodeID:        disk.space.GetNodeID(),
 		ClusterID:     disk.space.GetClusterID(),
 		CreationType:  meta.DataPartitionCreateType,
+
+		VolHAType: meta.VolumeHAType,
 	}
 	if dp, err = newDataPartition(dpCfg, disk, false); err != nil {
 		return
@@ -218,6 +224,10 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 
 	disk.AddSize(uint64(dp.Size()))
 	dp.ForceLoadHeader()
+	if (len(dp.config.Hosts) > 3 && dp.config.VolHAType == proto.DefaultCrossRegionHAType) ||
+		(len(dp.config.Hosts) <= 3 && dp.config.VolHAType == proto.CrossRegionHATypeQuorum) {
+		dp.ProposeFetchVolHAType()
+	}
 	return
 }
 
@@ -237,6 +247,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 		partitionSize:           dpCfg.PartitionSize,
 		replicas:                make([]string, 0),
 		repairC:                 make(chan struct{}, 1),
+		fetchVolHATypeC:         make(chan struct{}, 1),
 		stopC:                   make(chan bool, 0),
 		stopRaftC:               make(chan uint64, 0),
 		storeC:                  make(chan uint64, 128),
@@ -245,6 +256,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 		config:                  dpCfg,
 		DataPartitionCreateType: dpCfg.CreationType,
 		monitorData:             statistics.InitMonitorData(statistics.ModelDataNode),
+		persistMetadataSync:     make(chan struct{}, 1),
 	}
 	partition.replicasInit()
 
@@ -325,6 +337,11 @@ func (dp *DataPartition) IsRaftLeader() (addr string, ok bool) {
 			return
 		}
 	}
+	return
+}
+
+func (dp *DataPartition) IsRandomWriteDisabled() (disabled bool) {
+	disabled = dp.config.VolHAType == proto.CrossRegionHATypeQuorum
 	return
 }
 
@@ -502,42 +519,57 @@ func (dp *DataPartition) ForceLoadHeader() {
 
 // PersistMetadata persists the file metadata on the disk.
 func (dp *DataPartition) PersistMetadata() (err error) {
-	var (
-		metadataFile *os.File
-		metaData     []byte
-	)
-	fileName := path.Join(dp.Path(), TempMetadataFileName)
-	if metadataFile, err = os.OpenFile(fileName, os.O_CREATE|os.O_RDWR, 0666); err != nil {
+	dp.persistMetadataSync <- struct{}{}
+	defer func() {
+		<-dp.persistMetadataSync
+	}()
+	originFileName := path.Join(dp.path, DataPartitionMetadataFileName)
+	tempFileName := path.Join(dp.path, TempMetadataFileName)
+
+	var metadata = new(DataPartitionMetadata)
+	if originData, err := ioutil.ReadFile(originFileName); err == nil {
+		_ = json.Unmarshal(originData, metadata)
+	}
+	sp := sortedPeers(dp.config.Peers)
+	sort.Sort(sp)
+	metadata.VolumeID = dp.config.VolName
+	metadata.PartitionID = dp.config.PartitionID
+	metadata.PartitionSize = dp.config.PartitionSize
+	metadata.Peers = dp.config.Peers
+	metadata.Hosts = dp.config.Hosts
+	metadata.Learners = dp.config.Learners
+	metadata.DataPartitionCreateType = dp.DataPartitionCreateType
+	metadata.VolumeHAType = dp.config.VolHAType
+	if metadata.CreateTime == "" {
+		metadata.CreateTime = time.Now().Format(TimeLayout)
+	}
+	if dp.lastTruncateID > metadata.LastTruncateID {
+		metadata.LastTruncateID = dp.lastTruncateID
+	}
+	var newData []byte
+	if newData, err = json.Marshal(metadata); err != nil {
+		return
+	}
+	var tempFile *os.File
+	if tempFile, err = os.OpenFile(tempFileName, os.O_CREATE|os.O_RDWR, 0666); err != nil {
 		return
 	}
 	defer func() {
-		metadataFile.Sync()
-		metadataFile.Close()
-		os.Remove(fileName)
+		_ = tempFile.Close()
+		if err != nil {
+			_ = os.Remove(tempFileName)
+		}
 	}()
-
-	sp := sortedPeers(dp.config.Peers)
-	sort.Sort(sp)
-
-	md := &DataPartitionMetadata{
-		VolumeID:                dp.config.VolName,
-		PartitionID:             dp.config.PartitionID,
-		PartitionSize:           dp.config.PartitionSize,
-		Peers:                   dp.config.Peers,
-		Hosts:                   dp.config.Hosts,
-		Learners:                dp.config.Learners,
-		DataPartitionCreateType: dp.DataPartitionCreateType,
-		CreateTime:              time.Now().Format(TimeLayout),
-		LastTruncateID:          dp.lastTruncateID,
-	}
-	if metaData, err = json.Marshal(md); err != nil {
+	if _, err = tempFile.Write(newData); err != nil {
 		return
 	}
-	if _, err = metadataFile.Write(metaData); err != nil {
+	if err = tempFile.Sync(); err != nil {
 		return
 	}
-	log.LogInfof("PersistMetadata DataPartition(%v) data(%v)", dp.partitionID, string(metaData))
-	err = os.Rename(fileName, path.Join(dp.Path(), DataPartitionMetadataFileName))
+	if err = os.Rename(tempFileName, originFileName); err != nil {
+		return
+	}
+	log.LogInfof("PersistMetadata DataPartition(%v) data(%v)", dp.partitionID, string(newData))
 	return
 }
 
@@ -548,9 +580,18 @@ func (dp *DataPartition) Repair() {
 	}
 }
 
+func (dp *DataPartition) ProposeFetchVolHAType() {
+	select {
+	case dp.fetchVolHATypeC <- struct{}{}:
+	default:
+	}
+}
+
 func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 	repairTimer := time.NewTimer(time.Minute)
 	validateCRCTimer := time.NewTimer(DefaultIntervalDataPartitionValidateCRC)
+	retryFetchVolHATypeTimer := time.NewTimer(0)
+	retryFetchVolHATypeTimer.Stop()
 	var index int
 	for {
 
@@ -582,8 +623,30 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 		case <-validateCRCTimer.C:
 			dp.runValidateCRC(ctx)
 			validateCRCTimer.Reset(DefaultIntervalDataPartitionValidateCRC)
+		case <-dp.fetchVolHATypeC:
+			if err := dp.fetchVolHATypeFromMaster(); err != nil {
+				retryFetchVolHATypeTimer.Reset(time.Minute)
+			}
+		case <-retryFetchVolHATypeTimer.C:
+			if err := dp.fetchVolHATypeFromMaster(); err != nil {
+				retryFetchVolHATypeTimer.Reset(time.Minute)
+			}
 		}
 	}
+}
+
+func (dp *DataPartition) fetchVolHATypeFromMaster() (err error) {
+	var simpleVolView *proto.SimpleVolView
+	if simpleVolView, err = MasterClient.AdminAPI().GetVolumeSimpleInfo(dp.volumeID); err != nil {
+		return
+	}
+	if dp.config.VolHAType != simpleVolView.CrossRegionHAType {
+		dp.config.VolHAType = simpleVolView.CrossRegionHAType
+		if err = dp.PersistMetadata(); err != nil {
+			return
+		}
+	}
+	return
 }
 
 func (dp *DataPartition) statusUpdate() {
@@ -884,7 +947,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 		return
 	}
 	defer gConnPool.PutConnect(conn, true)
-	if err = p.WriteToConn(conn); err != nil {
+	if err = p.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
 		return
 	}
 	store := dp.extentStore

@@ -63,6 +63,8 @@ func (s *VolumeService) registerObject(schema *schemabuilder.Schema) {
 			Status:             vol.Status,
 			Capacity:           vol.Capacity,
 			FollowerRead:       vol.FollowerRead,
+			ForceROW:           vol.ForceROW,
+			CrossRegionHAType:  vol.CrossRegionHAType,
 			NeedToLowerReplica: vol.NeedToLowerReplica,
 			Authenticate:       vol.authenticate,
 			EnableToken:        vol.enableToken,
@@ -74,6 +76,7 @@ func (s *VolumeService) registerObject(schema *schemabuilder.Schema) {
 			DpCnt:              len(vol.dataPartitions.partitionMap),
 			CreateTime:         time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
 			Description:        vol.description,
+			Quorum:             vol.getDataPartitionQuorum(),
 		}, nil
 	})
 
@@ -219,7 +222,7 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 		return nil, fmt.Errorf("[%s] not has permission to create volume for [%s]", uid, args.Owner)
 	}
 
-	vol, err := s.cluster.createVol(args.Name, args.Owner, args.ZoneName, args.Description, int(args.MpCount), int(args.DpReplicaNum), int(args.DataPartitionSize), int(args.Capacity), args.FollowerRead, args.Authenticate, args.EnableToken, false, false)
+	vol, err := s.cluster.createVol(args.Name, args.Owner, args.ZoneName, args.Description, int(args.MpCount), int(args.DpReplicaNum), defaultReplicaNum, int(args.DataPartitionSize), int(args.Capacity), args.FollowerRead, args.Authenticate, args.EnableToken, false, false, false, 0, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -283,7 +286,7 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 	Name, AuthKey                          string
 	ZoneName, Description                  *string
 	Capacity, ReplicaNum                   *uint64
-	EnableToken                            *bool
+	EnableToken, ForceROW                  *bool
 	FollowerRead, Authenticate, AutoRepair *bool
 }) (*Vol, error) {
 	uid, perm, err := permissions(ctx, ADMIN|USER)
@@ -312,6 +315,10 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 
 	if args.FollowerRead == nil {
 		args.FollowerRead = &vol.FollowerRead
+	}
+
+	if args.ForceROW == nil {
+		args.ForceROW = &vol.ForceROW
 	}
 
 	if args.Authenticate == nil {
@@ -344,8 +351,8 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 	}
 
 	if err = s.cluster.updateVol(args.Name, args.AuthKey, *args.ZoneName, *args.Description, *args.Capacity,
-		uint8(*args.ReplicaNum), *args.FollowerRead, *args.Authenticate, *args.EnableToken, *args.AutoRepair,
-		vol.dpSelectorName, vol.dpSelectorParm, vol.OSSBucketPolicy); err != nil {
+		uint8(*args.ReplicaNum), vol.mpReplicaNum, *args.FollowerRead, *args.Authenticate, *args.EnableToken, *args.AutoRepair, *args.ForceROW,
+		vol.dpSelectorName, vol.dpSelectorParm, vol.OSSBucketPolicy, vol.CrossRegionHAType, vol.dpWriteableThreshold); err != nil {
 		return nil, err
 	}
 

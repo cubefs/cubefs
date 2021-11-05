@@ -115,7 +115,7 @@ func (dp *DataPartition) getRemoteExtentInfoForValidateCRC(ctx context.Context, 
 	defer func() {
 		gConnPool.PutConnectWithErr(conn, err)
 	}()
-	if err = packet.WriteToConn(conn); err != nil {
+	if err = packet.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
 		err = errors.Trace(err, "write packet to connection failed")
 		return
 	}

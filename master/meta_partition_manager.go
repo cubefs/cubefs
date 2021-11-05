@@ -16,11 +16,12 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
 	"math"
 	"strconv"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 func (c *Cluster) scheduleToLoadMetaPartitions() {
@@ -153,6 +154,7 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 	}()
 
 	var diff float64
+	var normalReplicaCount int
 	c.checkFulfillMetaReplica()
 	c.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
 		badMetaPartitionIds := value.([]uint64)
@@ -169,8 +171,8 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 			if len(partition.Replicas) == 0 {
 				continue
 			}
-			diff = partition.getMinusOfMaxInodeID()
-			if diff < defaultMinusOfMaxInodeID && int(vol.mpReplicaNum) <= len(partition.Replicas) {
+			diff, normalReplicaCount = partition.getMinusOfMaxInodeID()
+			if diff < defaultMinusOfMaxInodeID && int(vol.mpReplicaNum) <= normalReplicaCount {
 				partition.IsRecover = false
 				partition.RLock()
 				c.syncUpdateMetaPartition(partition)

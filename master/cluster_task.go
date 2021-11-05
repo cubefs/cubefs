@@ -105,6 +105,7 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, 
 		vol             *Vol
 		isLearner       bool
 		pmConfig        *proto.PromoteConfig
+		regionType      proto.RegionType
 	)
 	mp.offlineMutex.Lock()
 	defer mp.offlineMutex.Unlock()
@@ -137,20 +138,32 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, 
 	if isLearner, pmConfig, err = c.deleteMetaReplica(mp, nodeAddr, false, strictMode); err != nil {
 		goto errHandler
 	}
+	// if the vol is quorum type and the zone of addAddr is slave region zone, add to learner replica
+	if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
+		if regionType, err = c.getMetaNodeRegionType(addAddr); err != nil {
+			return
+		}
+		if regionType == proto.SlaveRegion {
+			isLearner = true
+			pmConfig = &proto.PromoteConfig{AutoProm: false, PromThreshold: 100}
+		}
+	}
 	if isLearner {
-		if err = c.addMetaReplicaLearner(mp, addAddr, pmConfig.AutoProm, pmConfig.PromThreshold); err != nil {
+		if err = c.addMetaReplicaLearner(mp, addAddr, pmConfig.AutoProm, pmConfig.PromThreshold, false); err != nil {
 			goto errHandler
 		}
 	} else {
 		if err = c.addMetaReplica(mp, addAddr); err != nil {
 			goto errHandler
 		}
+		mp.IsRecover = true
 	}
-	mp.IsRecover = true
 	if strictMode {
 		c.putMigratedMetaPartitions(nodeAddr, mp.PartitionID)
 	} else {
-		c.putBadMetaPartitions(nodeAddr, mp.PartitionID)
+		if !isLearner {
+			c.putBadMetaPartitions(nodeAddr, mp.PartitionID)
+		}
 	}
 	mp.RLock()
 	c.syncUpdateMetaPartition(mp)
@@ -175,9 +188,13 @@ var getTargetAddressForMetaPartitionDecommission = func(c *Cluster, nodeAddr str
 		ns          *nodeSet
 		newPeers    []proto.Peer
 		excludeZone string
+		vol         *Vol
 	)
 	oldAddr = nodeAddr
 
+	if vol, err = c.getVol(mp.volName); err != nil {
+		return
+	}
 	if err = c.validateDecommissionMetaPartition(mp, nodeAddr); err != nil {
 		return
 	}
@@ -194,6 +211,18 @@ var getTargetAddressForMetaPartitionDecommission = func(c *Cluster, nodeAddr str
 		// choose a meta node in other node set in the same zone
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
 		if _, newPeers, err = zone.getAvailMetaNodeHosts(excludeNodeSets, oldHosts, 1); err != nil {
+			if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
+				//select meta nodes from the other zones in the same region type
+				_, newPeers, err = c.chooseTargetMetaNodesFromSameRegionTypeOfOfflineReplica(zone.regionName, vol.zoneName,
+					1, excludeNodeSets, oldHosts)
+				if err != nil {
+					return
+				}
+				if len(newPeers) > 0 {
+					addAddr = newPeers[0].Addr
+				}
+				return
+			}
 			zones = mp.getLiveZones(nodeAddr)
 			if len(zones) == 0 {
 				excludeZone = zone.name
@@ -232,6 +261,11 @@ func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr 
 		return
 	}
 
+	if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
+		if mp.isLearnerReplica(nodeAddr) {
+			return
+		}
+	}
 	if mp.IsRecover && !mp.isLatestReplica(nodeAddr) {
 		err = fmt.Errorf("vol[%v],meta partition[%v] is recovering,[%v] can't be decommissioned", vol.Name, mp.PartitionID, nodeAddr)
 		return
@@ -283,7 +317,11 @@ func (c *Cluster) checkCorruptMetaNode(metaNode *MetaNode) (corruptPartitions []
 	metaPartitions = c.getAllMetaPartitionByMetaNode(metaNode.Addr)
 	for _, partition := range metaPartitions {
 		panicHosts := make([]string, 0)
+		learnerHosts := partition.getLearnerHosts()
 		for _, host := range partition.Hosts {
+			if contains(learnerHosts, host) {
+				continue
+			}
 			if mn, err = c.metaNode(host); err != nil {
 				return
 			}
@@ -306,7 +344,7 @@ func (c *Cluster) checkLackReplicaMetaPartitions() (lackReplicaMetaPartitions []
 	vols := c.copyVols()
 	for _, vol := range vols {
 		for _, mp := range vol.MetaPartitions {
-			if mp.ReplicaNum > uint8(len(mp.Hosts)) {
+			if mp.ReplicaNum+mp.LearnerNum > uint8(len(mp.Hosts)) {
 				lackReplicaMetaPartitions = append(lackReplicaMetaPartitions, mp)
 			}
 		}
@@ -358,6 +396,7 @@ func (c *Cluster) chooseTargetMetaPartitionHost(oldAddr string, mp *MetaPartitio
 		metaNode        *MetaNode
 		zone            *Zone
 		ns              *nodeSet
+		vol             *Vol
 		newPeers        []proto.Peer
 		oldHosts        []string
 		excludeZone     string
@@ -378,6 +417,21 @@ func (c *Cluster) chooseTargetMetaPartitionHost(oldAddr string, mp *MetaPartitio
 		// choose a meta node in other node set in the same zone
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
 		if _, newPeers, err = zone.getAvailMetaNodeHosts(excludeNodeSets, oldHosts, 1); err != nil {
+			if vol, err = c.getVol(mp.volName); err != nil {
+				goto errHandler
+			}
+			if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
+				//select meta nodes from the other zones in the same region type
+				_, newPeers, err = c.chooseTargetMetaNodesFromSameRegionTypeOfOfflineReplica(zone.regionName, vol.zoneName,
+					1, excludeNodeSets, oldHosts)
+				if err != nil {
+					return
+				}
+				if len(newPeers) > 0 {
+					newPeer = newPeers[0]
+				}
+				return
+			}
 			zones = mp.getLiveZones(oldAddr)
 			if len(zones) == 0 {
 				excludeZone = zone.name
@@ -385,7 +439,7 @@ func (c *Cluster) chooseTargetMetaPartitionHost(oldAddr string, mp *MetaPartitio
 				excludeZone = zones[0]
 			}
 			// choose a meta node in other zone
-			if _, newPeers, err = c.chooseTargetMetaHosts(excludeZone, excludeNodeSets, oldHosts, 1, ""); err != nil {
+			if _, newPeers, err = c.chooseTargetMetaHosts(excludeZone, excludeNodeSets, oldHosts, 1, "", false); err != nil {
 				goto errHandler
 			}
 		}
@@ -652,6 +706,10 @@ func (c *Cluster) addMetaReplica(partition *MetaPartition, addr string) (err err
 			log.LogErrorf("action[addMetaReplica], vol[%v], meta partition[%v], err[%v]", partition.volName, partition.PartitionID, err)
 		}
 	}()
+	volCrossRegionHAType, err := c.getVolCrossRegionHAType(partition.volName)
+	if err != nil {
+		return
+	}
 	partition.Lock()
 	defer partition.Unlock()
 	if contains(partition.Hosts, addr) {
@@ -668,7 +726,13 @@ func (c *Cluster) addMetaReplica(partition *MetaPartition, addr string) (err err
 	}
 	newHosts := make([]string, 0, len(partition.Hosts)+1)
 	newPeers := make([]proto.Peer, 0, len(partition.Hosts)+1)
-	newHosts = append(partition.Hosts, addPeer.Addr)
+	if IsCrossRegionHATypeQuorum(volCrossRegionHAType) {
+		if newHosts, _, err = partition.getNewHostsWithAddedPeer(c, addPeer.Addr); err != nil {
+			return
+		}
+	} else {
+		newHosts = append(partition.Hosts, addPeer.Addr)
+	}
 	newPeers = append(partition.Peers, addPeer)
 	if err = partition.persistToRocksDB("addMetaReplica", partition.volName, newHosts, newPeers, partition.Learners, c); err != nil {
 		return
@@ -682,12 +746,25 @@ func (c *Cluster) addMetaReplica(partition *MetaPartition, addr string) (err err
 	return
 }
 
-func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, addr string, autoProm bool, threshold uint8) (err error) {
+func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, addr string, autoProm bool, threshold uint8, isNeedIncreaseMPLearnerNum bool) (err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[addMetaReplicaLearner], vol[%v], meta partition[%v], err[%v]", partition.volName, partition.PartitionID, err)
 		}
 	}()
+
+	var (
+		volCrossRegionHAType proto.CrossRegionHAType
+		volMPLearnerNum      uint8
+		oldMPLearnerNum      uint8
+		isLearnerNumChanged  bool
+	)
+	vol, err := c.getVol(partition.volName)
+	volCrossRegionHAType = vol.CrossRegionHAType
+	volMPLearnerNum = vol.mpLearnerNum
+	if err != nil {
+		return
+	}
 	partition.Lock()
 	defer partition.Unlock()
 	if contains(partition.Hosts, addr) {
@@ -706,10 +783,28 @@ func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, addr string, a
 	newHosts := make([]string, 0, len(partition.Hosts)+1)
 	newPeers := make([]proto.Peer, 0, len(partition.Hosts)+1)
 	newLearners := make([]proto.Learner, 0, len(partition.Learners)+1)
-	newHosts = append(partition.Hosts, addLearner.Addr)
+	if IsCrossRegionHATypeQuorum(volCrossRegionHAType) {
+		if newHosts, _, err = partition.getNewHostsWithAddedPeer(c, addPeer.Addr); err != nil {
+			return
+		}
+	} else {
+		newHosts = append(partition.Hosts, addLearner.Addr)
+	}
 	newPeers = append(partition.Peers, addPeer)
 	newLearners = append(partition.Learners, addLearner)
+
+	oldMPLearnerNum = partition.LearnerNum
+	if isNeedIncreaseMPLearnerNum {
+		newLearnerNum := uint8(len(newLearners))
+		if partition.LearnerNum < newLearnerNum && newLearnerNum <= volMPLearnerNum {
+			isLearnerNumChanged = true
+			partition.LearnerNum = newLearnerNum
+		}
+	}
 	if err = partition.persistToRocksDB("addMetaReplicaLearner", partition.volName, newHosts, newPeers, newLearners, c); err != nil {
+		if isLearnerNumChanged {
+			partition.LearnerNum = oldMPLearnerNum
+		}
 		return
 	}
 	if err = c.createMetaReplica(partition, addPeer); err != nil {

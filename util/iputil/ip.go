@@ -19,6 +19,9 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
+
+	"github.com/go-ping/ping"
 )
 
 var cidrs []*net.IPNet
@@ -118,4 +121,22 @@ func GetLocalIPByDial() (ip string, err error) {
 	defer conn.Close()
 	ip = strings.Split(conn.LocalAddr().String(), ":")[0]
 	return
+}
+
+func PingWithTimeout(addr string, count int, timeout time.Duration) (avgTime time.Duration, err error) {
+	pinger, err := ping.NewPinger(addr)
+	if err != nil {
+		return
+	}
+	pinger.Timeout = timeout
+	pinger.Count = count
+	pinger.Interval = 50 * time.Microsecond
+	pinger.SetPrivileged(true)
+	// Blocks until finished.
+	err = pinger.Run()
+	if err != nil {
+		return
+	}
+	stats := pinger.Statistics()
+	return stats.AvgRtt, nil
 }

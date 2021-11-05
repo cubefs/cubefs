@@ -21,11 +21,12 @@ import (
 	"time"
 
 	"fmt"
+	"net"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"net"
 )
 
 //const
@@ -55,7 +56,7 @@ func newAdminTaskManager(targetAddr, clusterID string) (sender *AdminTaskManager
 		clusterID:  clusterID,
 		TaskMap:    make(map[string]*proto.AdminTask),
 		exitCh:     make(chan struct{}, 1),
-		connPool:   util.NewConnectPoolWithTimeout(idleConnTimeout, connectTimeout),
+		connPool:   util.NewConnectPoolWithTimeout(idleConnTimeout, connectTimeout*1000),
 	}
 	go sender.process()
 
@@ -183,7 +184,7 @@ func (sender *AdminTaskManager) sendAdminTask(task *proto.AdminTask, conn net.Co
 	if err != nil {
 		return errors.Trace(err, "action[sendAdminTask build packet failed,task:%v]", task.ID)
 	}
-	if err = packet.WriteToConn(conn); err != nil {
+	if err = packet.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
 		return errors.Trace(err, "action[sendAdminTask],WriteToConn failed,task:%v", task.ID)
 	}
 	if err = packet.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
@@ -212,7 +213,7 @@ func (sender *AdminTaskManager) syncSendAdminTask(task *proto.AdminTask) (packet
 			sender.putConn(conn, true)
 		}
 	}()
-	if err = packet.WriteToConn(conn); err != nil {
+	if err = packet.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
 		return nil, errors.Trace(err, "action[syncSendAdminTask],WriteToConn failed,task:%v,reqID[%v]", task.ID, packet.ReqID)
 	}
 	if err = packet.ReadFromConn(conn, proto.SyncSendTaskDeadlineTime); err != nil {

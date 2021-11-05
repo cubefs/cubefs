@@ -117,6 +117,8 @@ const (
 	cmdVolDefaultCapacity       = 10 // 100GB
 	cmdVolDefaultReplicas       = 3
 	cmdVolDefaultFollowerReader = true
+	cmdVolDefaultForceROW		= false
+	cmdVolDefaultCrossRegionHA  = 0
 	cmdVolDefaultZoneName       = "default"
 )
 
@@ -125,7 +127,10 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optDPSize uint64
 	var optCapacity uint64
 	var optReplicas int
+	var optMpReplicas int
 	var optFollowerRead bool
+	var optForceROW	bool
+	var optCrossRegionHAType uint8
 	var optAutoRepair bool
 	var optVolWriteMutex bool
 	var optYes bool
@@ -148,7 +153,10 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  Meta partition count: %v\n", optMPCount)
 				stdout("  Capacity            : %v GB\n", optCapacity)
 				stdout("  Replicas            : %v\n", optReplicas)
+				stdout("  MpReplicas          : %v\n", optMpReplicas)
 				stdout("  Allow follower read : %v\n", formatEnabledDisabled(optFollowerRead))
+				stdout("  Force ROW           : %v\n", formatEnabledDisabled(optForceROW))
+				stdout("  Cross Region HA     : %s\n", proto.CrossRegionHAType(optCrossRegionHAType))
 				stdout("  Auto repair         : %v\n", formatEnabledDisabled(optAutoRepair))
 				stdout("  Volume write mutex  : %v\n", formatEnabledDisabled(optVolWriteMutex))
 
@@ -162,7 +170,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
-			err = client.AdminAPI().CreateVolume(volumeName, userID, optMPCount, optDPSize, optCapacity, optReplicas, optFollowerRead, optAutoRepair, optVolWriteMutex, optZoneName)
+			err = client.AdminAPI().CreateVolume(volumeName, userID, optMPCount, optDPSize, optCapacity,
+				optReplicas, optMpReplicas, optFollowerRead, optAutoRepair, optVolWriteMutex, optForceROW, optZoneName, optCrossRegionHAType)
 			if err != nil {
 				errout("Create volume failed case:\n%v\n", err)
 			}
@@ -174,7 +183,11 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Uint64Var(&optDPSize, CliFlagDataPartitionSize, cmdVolDefaultDPSize, "Specify size of data partition size [Unit: GB]")
 	cmd.Flags().Uint64Var(&optCapacity, CliFlagCapacity, cmdVolDefaultCapacity, "Specify volume capacity [Unit: GB]")
 	cmd.Flags().IntVar(&optReplicas, CliFlagReplicas, cmdVolDefaultReplicas, "Specify data partition replicas number")
+	cmd.Flags().IntVar(&optMpReplicas, CliFlagMpReplicas, cmdVolDefaultReplicas, "Specify meta partition replicas number")
 	cmd.Flags().BoolVar(&optFollowerRead, CliFlagEnableFollowerRead, cmdVolDefaultFollowerReader, "Enable read form replica follower")
+	cmd.Flags().BoolVar(&optForceROW, CliFlagEnableForceROW, cmdVolDefaultForceROW, "Use ROW instead of overwrite")
+	cmd.Flags().Uint8Var(&optCrossRegionHAType, CliFlagEnableCrossRegionHA, cmdVolDefaultCrossRegionHA,
+		"Set cross region high available type(0 for default, 1 for quorum)")
 	cmd.Flags().BoolVar(&optAutoRepair, CliFlagAutoRepair, false, "Enable auto balance partition distribution according to zoneName")
 	cmd.Flags().BoolVar(&optVolWriteMutex, CliFlagVolWriteMutexEnable, false, "Enable only one client have volume exclusive write permission")
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, cmdVolDefaultZoneName, "Specify volume zone name")
@@ -190,17 +203,20 @@ const (
 
 func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	var (
-		optCapacity     uint64
-		optReplicas     int
-		optFollowerRead string
-		optAuthenticate string
-		optEnableToken  string
-		optAutoRepair   string
-		optBucketPolicy string
-		optZoneName     string
-		optYes          bool
-		confirmString   = strings.Builder{}
-		vv              *proto.SimpleVolView
+		optCapacity          uint64
+		optReplicas          int
+		optMpReplicas        int
+		optFollowerRead      string
+		optForceROW          string
+		optAuthenticate      string
+		optEnableToken       string
+		optAutoRepair        string
+		optBucketPolicy      string
+		optCrossRegionHAType string
+		optZoneName          string
+		optYes               bool
+		confirmString        = strings.Builder{}
+		vv                   *proto.SimpleVolView
 	)
 	var cmd = &cobra.Command{
 		Use:   CliOpSet + " [VOLUME NAME]",
@@ -229,11 +245,19 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			}
 			if optReplicas > 0 {
 				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  Replicas            : %v -> %v\n", vv.DpReplicaNum, optReplicas))
+				confirmString.WriteString(fmt.Sprintf("  Dp Replicas         : %v -> %v\n", vv.DpReplicaNum, optReplicas))
 				vv.DpReplicaNum = uint8(optReplicas)
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  Replicas            : %v\n", vv.DpReplicaNum))
+				confirmString.WriteString(fmt.Sprintf("  Dp Replicas         : %v\n", vv.DpReplicaNum))
 			}
+			if optMpReplicas > 0 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  Mp Replicas         : %v -> %v\n", vv.MpReplicaNum, optMpReplicas))
+				vv.MpReplicaNum = uint8(optMpReplicas)
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Mp Replicas         : %v\n", vv.MpReplicaNum))
+			}
+
 			if optFollowerRead != "" {
 				isChange = true
 				var enable bool
@@ -244,6 +268,17 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				vv.FollowerRead = enable
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  Allow follower read : %v\n", formatEnabledDisabled(vv.FollowerRead)))
+			}
+			if optForceROW != "" {
+				isChange = true
+				var enable bool
+				if enable, err = strconv.ParseBool(optForceROW); err != nil {
+					return
+				}
+				confirmString.WriteString(fmt.Sprintf("  Force ROW           : %v -> %v\n", formatEnabledDisabled(vv.ForceROW), formatEnabledDisabled(enable)))
+				vv.ForceROW = enable
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Force ROW           : %v\n", formatEnabledDisabled(vv.ForceROW)))
 			}
 
 			if optAuthenticate != "" {
@@ -292,6 +327,19 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  OSSBucketPolicy     : %s\n", vv.OSSBucketPolicy))
 			}
+			if optCrossRegionHAType != "" {
+				isChange = true
+				var crossRegionHATypeUint uint64
+				var crossRegionHAType proto.CrossRegionHAType
+				if crossRegionHATypeUint, err = strconv.ParseUint(optCrossRegionHAType, 10, 64); err != nil {
+					return
+				}
+				crossRegionHAType = proto.CrossRegionHAType(crossRegionHATypeUint)
+				confirmString.WriteString(fmt.Sprintf("  CrossRegionHAType   : %s -> %s\n", vv.CrossRegionHAType, crossRegionHAType))
+				vv.CrossRegionHAType = crossRegionHAType
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  CrossRegionHAType   : %s\n", vv.CrossRegionHAType))
+			}
 			if "" != optZoneName {
 				isChange = true
 				confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v -> %v\n", vv.ZoneName, optZoneName))
@@ -317,8 +365,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
-			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum),
-				vv.FollowerRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair, calcAuthKey(vv.Owner), vv.ZoneName, uint8(vv.OSSBucketPolicy))
+			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum), int(vv.MpReplicaNum),
+				vv.FollowerRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair, vv.ForceROW, calcAuthKey(vv.Owner), vv.ZoneName, uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType))
 			if err != nil {
 				return
 			}
@@ -334,13 +382,17 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().Uint64Var(&optCapacity, CliFlagCapacity, 0, "Specify volume capacity [Unit: GB]")
 	cmd.Flags().IntVar(&optReplicas, CliFlagReplicas, 0, "Specify data partition replicas number")
+	cmd.Flags().IntVar(&optMpReplicas, CliFlagMpReplicas, 0, "Specify meta partition replicas number")
 	cmd.Flags().StringVar(&optFollowerRead, CliFlagEnableFollowerRead, "", "Enable read form replica follower")
+	cmd.Flags().StringVar(&optForceROW, CliFlagEnableForceROW, "", "Enable only row instead of overwrite")
+	cmd.Flags().StringVar(&optCrossRegionHAType, CliFlagEnableCrossRegionHA, "",
+		"Set cross region high available type(0 for default, 1 for quorum)")
 	cmd.Flags().StringVar(&optAuthenticate, CliFlagAuthenticate, "", "Enable authenticate")
 	cmd.Flags().StringVar(&optEnableToken, CliFlagEnableToken, "", "ReadOnly/ReadWrite token validation for fuse client")
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, "", "Specify volume zone name")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	cmd.Flags().StringVar(&optAutoRepair, CliFlagAutoRepair, "", "Enable auto balance partition distribution according to zoneName")
-	cmd.Flags().StringVar(&optBucketPolicy, CliFlagOSSBucketPolicy, "", "set bucket access policy for S3(0 for private 1 for public-read)")
+	cmd.Flags().StringVar(&optBucketPolicy, CliFlagOSSBucketPolicy, "", "Set bucket access policy for S3(0 for private 1 for public-read)")
 
 	return cmd
 }

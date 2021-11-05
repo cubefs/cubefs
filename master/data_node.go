@@ -43,6 +43,7 @@ type DataNode struct {
 	NodeSetID                 uint64
 	PersistenceDataPartitions []uint64
 	BadDisks                  []string
+	DiskInfos                 map[string]*proto.DiskInfo `graphql:"-"`
 	ToBeOffline               bool
 	ToBeMigrated              bool
 }
@@ -54,6 +55,7 @@ func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
 	dataNode.Addr = addr
 	dataNode.ZoneName = zoneName
 	dataNode.TaskManager = newAdminTaskManager(dataNode.Addr, clusterID)
+	dataNode.DiskInfos = make(map[string]*proto.DiskInfo, 0)
 	return
 }
 
@@ -90,6 +92,7 @@ func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse
 	dataNode.DataPartitionCount = resp.CreatedPartitionCnt
 	dataNode.DataPartitionReports = resp.PartitionReports
 	dataNode.BadDisks = resp.BadDisks
+	dataNode.DiskInfos = resp.DiskInfos
 	if dataNode.Total == 0 {
 		dataNode.UsageRatio = 0.0
 	} else {
@@ -157,4 +160,17 @@ func (dataNode *DataNode) createHeartbeatTask(masterAddr string) (task *proto.Ad
 	}
 	task = proto.NewAdminTask(proto.OpDataNodeHeartbeat, dataNode.Addr, request)
 	return
+}
+
+func (dataNode *DataNode) isReachThresholdByDisk(diskPath string, threshold float64) bool {
+	dataNode.RLock()
+	defer dataNode.RUnlock()
+	if dataNode.DiskInfos == nil {
+		return false
+	}
+	disk, ok := dataNode.DiskInfos[diskPath]
+	if !ok {
+		return false
+	}
+	return disk.UsageRatio > threshold
 }

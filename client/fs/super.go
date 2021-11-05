@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"bazil.org/fuse"
@@ -233,8 +234,10 @@ func (s *Super) handleErrorWithGetInode(op, msg string, inode uint64) {
 	log.LogError(msg)
 
 	go func() {
-		// if failed to get inode, judge err and alarm
-		if _, errGet := s.InodeGet(context.Background(), inode); errGet != fuse.ENOENT {
+		// if failed to get inode, judge err and alarm;
+		// if succeed to get inode, alarm msg err;
+		// if inode not exists, not alarm
+		if _, err := s.mw.InodeGet_ll(context.Background(), inode); err != syscall.ENOENT {
 			errmsg1 := fmt.Sprintf("act(%v) - %v", op, msg)
 			ump.Alarm(s.umpAlarmKey(), errmsg1)
 

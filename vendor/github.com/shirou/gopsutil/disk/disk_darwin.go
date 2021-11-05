@@ -61,9 +61,9 @@ func PartitionsWithContext(ctx context.Context, all bool) ([]PartitionStat, erro
 			opts += ",nodev"
 		}
 		d := PartitionStat{
-			Device:     common.ByteToString(stat.Mntfromname[:]),
-			Mountpoint: common.ByteToString(stat.Mntonname[:]),
-			Fstype:     common.ByteToString(stat.Fstypename[:]),
+			Device:     common.Int8ToString(stat.Mntfromname[:]),
+			Mountpoint: common.Int8ToString(stat.Mntonname[:]),
+			Fstype:     common.Int8ToString(stat.Fstypename[:]),
 			Opts:       opts,
 		}
 
@@ -74,5 +74,5 @@ func PartitionsWithContext(ctx context.Context, all bool) ([]PartitionStat, erro
 }
 
 func getFsType(stat unix.Statfs_t) string {
-	return common.ByteToString(stat.Fstypename[:])
+	return common.Int8ToString(stat.Fstypename[:])
 }

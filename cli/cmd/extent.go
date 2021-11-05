@@ -538,7 +538,7 @@ func batchDeleteExtent(partitionId uint64, extents []uint64) (err error) {
 		}
 	}
 	packet := metanode.NewPacketToBatchDeleteExtent(context.Background(), dp, eks)
-	if err = packet.WriteToConn(conn); err != nil {
+	if err = packet.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
 		stdout("write to dataNode error: %v, logId: %s\n", err, packet.GetUniqueLogId())
 		return
 	}

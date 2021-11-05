@@ -1,0 +1,46 @@
+---
+executors:
+  golang:
+    docker:
+    - image: cimg/go:1.15
+
+version: 2.1
+jobs:
+  build:
+    executor: golang
+    steps:
+      - checkout
+      - run: go mod download
+      - run: curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.31.0
+      - run: golangci-lint run
+      - run: make
+      - run: curl -sfL https://install.goreleaser.com/github.com/goreleaser/goreleaser.sh | BINDIR=/home/circleci/.local/bin sh
+      - run: goreleaser release --skip-publish --snapshot
+      - store_artifacts:
+          path: dist
+
+  release:
+    executor: golang
+
+    steps:
+    - checkout
+    - run: go mod download
+    - run: curl -sfL https://install.goreleaser.com/github.com/goreleaser/goreleaser.sh | BINDIR=/home/circleci/.local/bin sh
+    - run: goreleaser release
+
+workflows:
+  version: 2
+  stuff:
+    jobs:
+    - build:
+        filters:
+          tags:
+            only: /.*/
+    - release:
+        requires:
+        - build
+        filters:
+          tags:
+            only: /^v.*/
+          branches:
+            ignore: /.*/

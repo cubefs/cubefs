@@ -50,6 +50,7 @@ type Wrapper struct {
 	followerRead          bool
 	followerReadClientCfg bool
 	nearRead              bool
+	forceROW              bool
 	dpSelectorChanged     bool
 	dpSelectorName        string
 	dpSelectorParm        string
@@ -60,6 +61,10 @@ type Wrapper struct {
 	dpSelector DataPartitionSelector
 
 	HostsStatus map[string]bool
+
+	crossRegionHAType      proto.CrossRegionHAType
+	crossRegionHostLatency sync.Map // key: host, value: ping time
+	quorum                 int
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
@@ -89,7 +94,10 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 	if err = w.updateDataNodeStatus(); err != nil {
 		log.LogErrorf("NewDataPartitionWrapper: init DataNodeStatus failed, [%v]", err)
 	}
+
 	go w.update()
+	go w.updateCrossRegionHostStatus()
+
 	return
 }
 
@@ -128,14 +136,17 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 		return
 	}
 	w.followerRead = view.FollowerRead
+	w.forceROW = view.ForceROW
 	w.dpSelectorName = view.DpSelectorName
 	w.dpSelectorParm = view.DpSelectorParm
+	w.crossRegionHAType = view.CrossRegionHAType
+	w.quorum = view.Quorum
 
 	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
-		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) createTime(%v) dpSelectorName(%v) "+
-		"dpSelectorParm(%v)",
+		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) forceROW(%v) createTime(%v) dpSelectorName(%v) "+
+		"dpSelectorParm(%v) quorum(%v)",
 		view.ID, view.Name, view.Owner, view.Status, view.Capacity, view.MpReplicaNum, view.DpReplicaNum, view.MpCnt,
-		view.DpCnt, view.FollowerRead, view.CreateTime, view.DpSelectorName, view.DpSelectorParm)
+		view.DpCnt, view.FollowerRead, view.ForceROW, view.CreateTime, view.DpSelectorName, view.DpSelectorParm, view.Quorum)
 	return nil
 }
 
@@ -185,14 +196,25 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 		w.followerRead = view.FollowerRead
 	}
 
-	if w.dpSelectorName != view.DpSelectorName || w.dpSelectorParm != view.DpSelectorParm {
-		log.LogInfof("updateSimpleVolView: update dpSelector from old(%v %v) to new(%v %v)",
-			w.dpSelectorName, w.dpSelectorParm, view.DpSelectorName, view.DpSelectorParm)
+	if w.dpSelectorName != view.DpSelectorName || w.dpSelectorParm != view.DpSelectorParm || w.quorum != view.Quorum {
+		log.LogInfof("updateSimpleVolView: update dpSelector from old(%v %v) to new(%v %v), update quorum from old(%v) to new(%v)",
+			w.dpSelectorName, w.dpSelectorParm, view.DpSelectorName, view.DpSelectorParm, w.quorum, view.Quorum)
 		w.Lock()
 		w.dpSelectorName = view.DpSelectorName
 		w.dpSelectorParm = view.DpSelectorParm
+		w.quorum = view.Quorum
 		w.dpSelectorChanged = true
 		w.Unlock()
+	}
+
+	if w.forceROW != view.ForceROW {
+		log.LogInfof("updateSimpleVolView: update forceROW from old(%v) to new(%v)", w.forceROW, view.ForceROW)
+		w.forceROW = view.ForceROW
+	}
+
+	if w.crossRegionHAType != view.CrossRegionHAType {
+		log.LogInfof("updateSimpleVolView: update crossRegionHAType from old(%v) to new(%v)", w.crossRegionHAType, view.CrossRegionHAType)
+		w.crossRegionHAType = view.CrossRegionHAType
 	}
 
 	return nil
@@ -214,8 +236,9 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 
 	var convert = func(response *proto.DataPartitionResponse) *DataPartition {
 		return &DataPartition{
-			DataPartitionResponse: *response,
-			ClientWrapper:         w,
+			DataPartitionResponse:	*response,
+			ClientWrapper:         	w,
+			CrossRegionMetrics: 	NewCrossRegionMetrics(),
 		}
 	}
 
@@ -225,9 +248,6 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 		if len(dp.Hosts) == 0 {
 			log.LogWarnf("updateDataPartition: no host in dp(%v)", dp)
 			continue
-		}
-		if w.followerRead && w.nearRead {
-			dp.NearHosts = w.sortHostsByDistance(dp.Hosts)
 		}
 		//log.LogInfof("updateDataPartition: dp(%v)", dp)
 		w.replaceOrInsertPartition(dp)
@@ -249,8 +269,15 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 }
 
 func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
-	w.Lock()
+	if w.CrossRegionHATypeQuorum() {
+		w.initCrossRegionHostStatus(dp)
+		dp.CrossRegionMetrics.CrossRegionHosts = w.classifyCrossRegionHosts(dp.Hosts)
+		log.LogDebugf("classifyCrossRegionHosts: dp(%v) hosts(%v) crossRegionMetrics(%v)", dp.PartitionID, dp.Hosts, dp.CrossRegionMetrics)
+	} else if w.followerRead && w.nearRead {
+		dp.NearHosts = w.sortHostsByDistance(dp.Hosts)
+	}
 
+	w.Lock()
 	old, ok := w.partitions[dp.PartitionID]
 	if ok {
 		if old.Status != dp.Status || old.ReplicaNum != dp.ReplicaNum ||
@@ -261,13 +288,13 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 		old.ReplicaNum = dp.ReplicaNum
 		old.Hosts = dp.Hosts
 		old.NearHosts = dp.NearHosts
+		old.CrossRegionMetrics.CrossRegionHosts = dp.CrossRegionMetrics.CrossRegionHosts
 		dp.Metrics = old.Metrics
 	} else {
 		dp.Metrics = NewDataPartitionMetrics()
 		w.partitions[dp.PartitionID] = dp
 		log.LogInfof("updateDataPartition: new dp (%v)", dp)
 	}
-
 	w.Unlock()
 
 }
@@ -288,12 +315,10 @@ func (w *Wrapper) getDataPartitionByPid(partitionID uint64) (err error) {
 				Hosts:       dpInfo.Hosts,
 				LeaderAddr:  getDpInfoLeaderAddr(dpInfo),
 			},
+			CrossRegionMetrics: NewCrossRegionMetrics(),
 		}
 	}
 	dp := convert(dpInfo)
-	if w.followerRead && w.nearRead {
-		dp.NearHosts = w.sortHostsByDistance(dp.Hosts)
-	}
 	log.LogInfof("getDataPartitionByPid: dp(%v) leader(%v)", dp, dp.LeaderAddr)
 	w.replaceOrInsertPartition(dp)
 	return nil
@@ -356,6 +381,10 @@ func (w *Wrapper) SetNearRead(nearRead bool) {
 
 func (w *Wrapper) NearRead() bool {
 	return w.nearRead
+}
+
+func (w *Wrapper) CrossRegionHATypeQuorum() bool {
+	return w.crossRegionHAType == proto.CrossRegionHATypeQuorum
 }
 
 // Sort hosts by distance form local

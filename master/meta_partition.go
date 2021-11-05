@@ -15,16 +15,18 @@
 package master
 
 import (
-	"github.com/chubaofs/chubaofs/util"
 	"sync"
 
+	"github.com/chubaofs/chubaofs/util"
+
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
 	"math"
 	"strings"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 // MetaReplica defines the replica of a meta partition
@@ -40,6 +42,7 @@ type MetaReplica struct {
 	ReportTime  int64
 	Status      int8 // unavailable, readOnly, readWrite
 	IsLeader    bool
+	IsLearner   bool
 	metaNode    *MetaNode
 }
 
@@ -51,9 +54,10 @@ type MetaPartition struct {
 	MaxInodeID    uint64
 	InodeCount    uint64
 	DentryCount   uint64
-	MaxExistIno	  uint64
+	MaxExistIno   uint64
 	Replicas      []*MetaReplica
 	ReplicaNum    uint8
+	LearnerNum    uint8
 	Status        int8
 	IsRecover     bool
 	volID         uint64
@@ -77,9 +81,10 @@ func newMetaReplica(start, end uint64, metaNode *MetaNode) (mr *MetaReplica) {
 	return
 }
 
-func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName string, volID uint64) (mp *MetaPartition) {
+func newMetaPartition(partitionID, start, end uint64, replicaNum, learnerNum uint8, volName string, volID uint64) (mp *MetaPartition) {
 	mp = &MetaPartition{PartitionID: partitionID, Start: start, End: end, volName: volName, volID: volID}
 	mp.ReplicaNum = replicaNum
+	mp.LearnerNum = learnerNum
 	mp.Replicas = make([]*MetaReplica, 0)
 	mp.Status = proto.Unavailable
 	mp.MissNodes = make(map[string]int64, 0)
@@ -378,14 +383,23 @@ func (mp *MetaPartition) canBeOffline(nodeAddr string, replicaNum int) (err erro
 
 // Check if there is a replica missing or not.
 func (mp *MetaPartition) hasMissingOneReplica(offlineAddr string, replicaNum int) (err error) {
+	learnerHosts := mp.getLearnerHosts()
 	curHostCount := len(mp.Hosts)
 	for _, host := range mp.Hosts {
+		if contains(learnerHosts, host) {
+			curHostCount = curHostCount - 1
+			continue
+		}
 		if host == offlineAddr {
 			curHostCount = curHostCount - 1
 		}
 	}
 	curReplicaCount := len(mp.Replicas)
 	for _, r := range mp.Replicas {
+		if r.IsLearner {
+			curReplicaCount = curReplicaCount - 1
+			continue
+		}
 		if r.Addr == offlineAddr {
 			curReplicaCount = curReplicaCount - 1
 		}
@@ -406,8 +420,15 @@ func (mp *MetaPartition) getLiveReplicasAddr(liveReplicas []*MetaReplica) (addrs
 	return
 }
 func (mp *MetaPartition) getLiveReplicas() (liveReplicas []*MetaReplica) {
+	learnerHosts := mp.getLearnerHosts()
 	liveReplicas = make([]*MetaReplica, 0)
 	for _, mr := range mp.Replicas {
+		if mr.IsLearner {
+			continue
+		}
+		if contains(learnerHosts, mr.Addr) {
+			continue
+		}
 		if mr.isActive() {
 			liveReplicas = append(liveReplicas, mr)
 		}
@@ -530,6 +551,7 @@ func (mp *MetaPartition) buildNewMetaPartitionTasks(specifyAddrs []string, peers
 		PartitionID: mp.PartitionID,
 		Members:     peers,
 		VolName:     volName,
+		Learners:    mp.Learners,
 	}
 	if specifyAddrs == nil {
 		hosts = mp.Hosts
@@ -685,6 +707,7 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 	mr.InodeCount = mgr.InodeCnt
 	mr.DentryCount = mgr.DentryCnt
 	mr.MaxExistIno = mgr.ExistMaxInodeID
+	mr.IsLearner = mgr.IsLearner
 	mr.setLastReportTime()
 }
 
@@ -715,19 +738,34 @@ func (mp *MetaPartition) addOrReplaceLoadResponse(response *proto.MetaPartitionL
 	mp.LoadResponse = loadResponse
 }
 
-func (mp *MetaPartition) getMinusOfMaxInodeID() (minus float64) {
+func (mp *MetaPartition) getMinusOfMaxInodeID() (minus float64, normalReplicaCount int) {
 	mp.RLock()
 	defer mp.RUnlock()
-	var sentry float64
+	var sentry uint64
 	for index, replica := range mp.Replicas {
-		if index == 0 {
-			sentry = float64(replica.MaxInodeID)
+		if replica.IsLearner {
 			continue
 		}
-		diff := math.Abs(float64(replica.MaxInodeID) - sentry)
+		normalReplicaCount++
+		if index == 0 || sentry == 0 {
+			sentry = replica.MaxInodeID
+			continue
+		}
+		diff := math.Abs(float64(replica.MaxInodeID) - float64(sentry))
 		if diff > minus {
 			minus = diff
 		}
+	}
+	return
+}
+
+func (mp *MetaPartition) getNormalReplicas() (normalReplicas []*MetaReplica) {
+	normalReplicas = make([]*MetaReplica, 0)
+	for _, replica := range mp.Replicas {
+		if replica.IsLearner {
+			continue
+		}
+		normalReplicas = append(normalReplicas, replica)
 	}
 	return
 }
@@ -885,11 +923,28 @@ func (mp *MetaPartition) isLatestReplica(addr string) (ok bool) {
 	latestAddr := mp.Hosts[hostsLen-1]
 	return latestAddr == addr
 }
+
+func (mp *MetaPartition) isLearnerReplica(addr string) (ok bool) {
+	for _, learner := range mp.Learners {
+		if learner.Addr == addr {
+			return true
+		}
+	}
+	return
+}
+
 func (mp *MetaPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
 	var (
-		zoneList        []string
-		isNeedRebalance bool
+		zoneList             []string
+		masterRegionZoneName []string
+		isNeedRebalance      bool
 	)
+	isCrossRegionHATypeQuorumVol := IsCrossRegionHATypeQuorum(vol.CrossRegionHAType)
+	if isCrossRegionHATypeQuorumVol {
+		if masterRegionZoneName, _, err = c.getMasterAndSlaveRegionZoneName(vol.zoneName); err != nil {
+			return
+		}
+	}
 	mp.RLock()
 	defer mp.RUnlock()
 	var isValidZone bool
@@ -897,12 +952,16 @@ func (mp *MetaPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
 		return
 	}
 	if !isValidZone {
-		log.LogWarnf("action[RepairZone], vol[%v], zoneName[%v], mpReplicaNum[%v] can not be automatically repaired", vol.Name, vol.zoneName, vol.dpReplicaNum)
+		log.LogWarnf("action[RepairZone], vol[%v], zoneName[%v], mpReplicaNum[%v] can not be automatically repaired", vol.Name, vol.zoneName, vol.mpReplicaNum)
 		return
 	}
 	zoneList = strings.Split(vol.zoneName, ",")
-	if len(mp.Replicas) != int(vol.mpReplicaNum) {
-		log.LogWarnf("action[RepairZone], meta replica length[%v] not equal to mpReplicaNum[%v]", len(mp.Replicas), vol.mpReplicaNum)
+	if isCrossRegionHATypeQuorumVol {
+		zoneList = masterRegionZoneName
+	}
+	normalReplicas := mp.getNormalReplicas()
+	if len(normalReplicas) != int(vol.mpReplicaNum) {
+		log.LogWarnf("action[RepairZone], meta replica normalReplicas[%v] not equal to mpReplicaNum[%v]", len(normalReplicas), vol.mpReplicaNum)
 		return
 	}
 	if mp.IsRecover {
@@ -922,7 +981,7 @@ func (mp *MetaPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
 		return
 	}
 
-	if isNeedRebalance, err = mp.needToRebalanceZone(c, zoneList); err != nil {
+	if isNeedRebalance, err = mp.needToRebalanceZone(c, zoneList, vol.CrossRegionHAType); err != nil {
 		return
 	}
 	if !isNeedRebalance {
@@ -944,8 +1003,12 @@ var getTargetAddressForRepairMetaZone = func(c *Cluster, nodeAddr string, mp *Me
 		targetZone          *Zone
 		nodesetInTargetZone *nodeSet
 		targetHosts         []string
+		vol                 *Vol
 	)
-	if offlineZoneName, targetZoneName, err = mp.getOfflineAndTargetZone(c, zoneName); err != nil {
+	if vol, err = c.getVol(mp.volName); err != nil {
+		return
+	}
+	if offlineZoneName, targetZoneName, err = mp.getOfflineAndTargetZone(c, zoneName, IsCrossRegionHATypeQuorum(vol.CrossRegionHAType)); err != nil {
 		return
 	}
 	if offlineZoneName == "" || targetZoneName == "" {
@@ -1006,13 +1069,19 @@ var getTargetAddressForRepairMetaZone = func(c *Cluster, nodeAddr string, mp *Me
 }
 
 //check if the meta partition needs to rebalance zone
-func (mp *MetaPartition) needToRebalanceZone(c *Cluster, zoneList []string) (isNeed bool, err error) {
+func (mp *MetaPartition) needToRebalanceZone(c *Cluster, zoneList []string, volCrossRegionHAType proto.CrossRegionHAType) (isNeed bool, err error) {
 	var curZoneMap map[string]uint8
 	var curZoneList []string
 	curZoneMap = make(map[string]uint8, 0)
 	curZoneList = make([]string, 0)
-	if curZoneMap, err = mp.getMetaZoneMap(c); err != nil {
-		return
+	if IsCrossRegionHATypeQuorum(volCrossRegionHAType) {
+		if curZoneMap, err = mp.getMetaMasterRegionZoneMap(c); err != nil {
+			return
+		}
+	} else {
+		if curZoneMap, err = mp.getMetaZoneMap(c); err != nil {
+			return
+		}
 	}
 	for k := range curZoneMap {
 		curZoneList = append(curZoneList, k)
@@ -1033,8 +1102,13 @@ func (mp *MetaPartition) needToRebalanceZone(c *Cluster, zoneList []string) (isN
 	return
 }
 
-func (mp *MetaPartition) getOfflineAndTargetZone(c *Cluster, volZoneName string) (offlineZone, targetZone string, err error) {
+func (mp *MetaPartition) getOfflineAndTargetZone(c *Cluster, volZoneName string, isCrossRegionHATypeQuorumVol bool) (offlineZone, targetZone string, err error) {
 	zoneList := strings.Split(volZoneName, ",")
+	if isCrossRegionHATypeQuorumVol {
+		if zoneList, _, err = c.getMasterAndSlaveRegionZoneName(volZoneName); err != nil {
+			return
+		}
+	}
 	switch len(zoneList) {
 	case 1:
 		zoneList = append(make([]string, 0), zoneList[0], zoneList[0], zoneList[0])
@@ -1055,8 +1129,14 @@ func (mp *MetaPartition) getOfflineAndTargetZone(c *Cluster, volZoneName string)
 		return
 	}
 	var currentZoneList []string
-	if currentZoneList, err = mp.getZoneList(c); err != nil {
-		return
+	if isCrossRegionHATypeQuorumVol {
+		if currentZoneList, err = mp.getMasterRegionZoneList(c); err != nil {
+			return
+		}
+	} else {
+		if currentZoneList, err = mp.getZoneList(c); err != nil {
+			return
+		}
 	}
 	intersect := util.Intersect(zoneList, currentZoneList)
 	projectiveToZoneList := util.Projective(zoneList, intersect)
@@ -1120,6 +1200,91 @@ func (mp *MetaPartition) getMetaZoneMap(c *Cluster) (curZonesMap map[string]uint
 		} else {
 			curZonesMap[zone.name] = curZonesMap[zone.name] + 1
 		}
+	}
+	return
+}
+
+// getNewHostsWithAddedPeer is used in add new replica which is covered with partition Lock, so need not use this lock again
+func (mp *MetaPartition) getNewHostsWithAddedPeer(c *Cluster, addPeerAddr string) (newHosts []string, addPeerRegionType proto.RegionType, err error) {
+	newHosts = make([]string, 0, len(mp.Hosts)+1)
+	addPeerRegionType, err = c.getMetaNodeRegionType(addPeerAddr)
+	if err != nil {
+		return
+	}
+	masterRegionHosts, slaveRegionHosts, err := c.getMasterAndSlaveRegionAddrsFromMetaNodeAddrs(mp.Hosts)
+	if err != nil {
+		return
+	}
+
+	newHosts = append(newHosts, masterRegionHosts...)
+	switch addPeerRegionType {
+	case proto.MasterRegion:
+		newHosts = append(newHosts, addPeerAddr)
+		newHosts = append(newHosts, slaveRegionHosts...)
+	case proto.SlaveRegion:
+		newHosts = append(newHosts, slaveRegionHosts...)
+		newHosts = append(newHosts, addPeerAddr)
+	default:
+		err = fmt.Errorf("action[getNewHostsWithAddedPeer] addr:%v, region type:%v is wrong", addPeerAddr, addPeerRegionType)
+		return
+	}
+	if len(newHosts) != len(mp.Hosts)+1 {
+		err = fmt.Errorf("action[getNewHostsWithAddedPeer] newHosts:%v count is not equal to %d, masterRegionHosts:%v slaveRegionHosts:%v",
+			newHosts, len(mp.Hosts)+1, masterRegionHosts, slaveRegionHosts)
+		return
+	}
+	return
+}
+
+func (mp *MetaPartition) getMetaMasterRegionZoneMap(c *Cluster) (curMasterRegionZonesMap map[string]uint8, err error) {
+	curMasterRegionZonesMap = make(map[string]uint8, 0)
+	for _, host := range mp.Hosts {
+		var metaNode *MetaNode
+		var region *Region
+		if metaNode, err = c.metaNode(host); err != nil {
+			return
+		}
+		if region, err = c.getRegionOfZoneName(metaNode.ZoneName); err != nil {
+			return
+		}
+		if region.isMasterRegion() {
+			curMasterRegionZonesMap[metaNode.ZoneName]++
+		}
+	}
+	return
+}
+
+// get master region zone list of hosts, there may be duplicate zones
+func (mp *MetaPartition) getMasterRegionZoneList(c *Cluster) (masterRegionZoneList []string, err error) {
+	masterRegionZoneList = make([]string, 0)
+	for _, host := range mp.Hosts {
+		var metaNode *MetaNode
+		var region *Region
+		if metaNode, err = c.metaNode(host); err != nil {
+			return
+		}
+		if region, err = c.getRegionOfZoneName(metaNode.ZoneName); err != nil {
+			return
+		}
+		if region.isMasterRegion() {
+			masterRegionZoneList = append(masterRegionZoneList, metaNode.ZoneName)
+		}
+	}
+	return
+}
+
+func (mp *MetaPartition) canAddReplicaForCrossRegionQuorumVol(replicaNum int) bool {
+	diff, _ := mp.getMinusOfMaxInodeID()
+	if len(mp.Hosts) < replicaNum && diff < defaultMinusOfMaxInodeID {
+		return true
+	}
+	return false
+}
+
+func (mp *MetaPartition) getLearnerHosts() (learnerHosts []string) {
+	learnerHosts = make([]string, 0)
+	for _, learner := range mp.Learners {
+		learnerHosts = append(learnerHosts, learner.Addr)
 	}
 	return
 }

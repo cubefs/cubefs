@@ -207,7 +207,7 @@ func (mds *MockDataServer) handleDecommissionDataPartition(conn net.Conn, p *pro
 			responseAckErrToMaster(conn, p, err)
 		} else {
 			p.PacketOkWithBody([]byte("/cfs"))
-			p.WriteToConn(conn)
+			p.WriteToConn(conn, proto.WriteDeadlineTime)
 		}
 	}()
 	// Marshal request body.
@@ -277,6 +277,7 @@ func (mds *MockDataServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, ta
 
 	response.ZoneName = mds.zoneName
 	response.PartitionReports = make([]*proto.PartitionReport, 0)
+	response.DiskInfos = make(map[string]*proto.DiskInfo, 0)
 
 	for _, partition := range mds.partitions {
 		vr := &proto.PartitionReport{
@@ -291,6 +292,13 @@ func (mds *MockDataServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, ta
 			VolName:         partition.VolName,
 		}
 		response.PartitionReports = append(response.PartitionReports, vr)
+	}
+	response.DiskInfos["/cfs"] = &proto.DiskInfo{
+		Total:         10 * util.TB,
+		Used:          8 * util.TB,
+		ReservedSpace: 0,
+		Status:        0,
+		Path:          "/cfs",
 	}
 
 	task.Response = response

@@ -8,7 +8,7 @@
   "consulAddr": "http://192.168.0.101:8500",
   "exporterPort": 9500,
   "tickIntervalMs": 500,
-  "zoneName": "zone-02",
+  "zoneName": "zone-01",
   "logDir": "/cfs/log",
   "logLevel": "info",
   "disks": [

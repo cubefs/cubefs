@@ -69,6 +69,7 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 				dp.partitionID, dp.Disk().Path, index, err)
 			log.LogErrorf(msg)
 			exporter.Warning(msg)
+			dp.Disk().space.DetachDataPartition(dp.partitionID)
 			dp.Disk().DetachDataPartition(dp)
 			dp.Stop()
 			return
@@ -121,6 +122,7 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 			return
 		}
 	}
+	dp.ProposeFetchVolHAType()
 	return
 }
 

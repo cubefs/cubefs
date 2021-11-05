@@ -52,11 +52,15 @@ func TestMetaConsistenceRead(t *testing.T) {
 		t.Fatalf("packet marshal data: err(%v) packet(%v)", err, packet)
 	}
 
-	consistResp := getExtentsByConsistenceRead(t, mw, mp, packet)
+	consistResp1 := getExtentsByConsistenceRead(t, mw, mp, packet, true)
 	leaderResp := getExtentsByLeaderRead(t, mw, mp, packet)
+	if consistResp1.Size != leaderResp.Size || consistResp1.Generation != leaderResp.Generation || !equalExtents(consistResp1, leaderResp) {
+		t.Fatalf("data is not consistent: consistResp1(%v) leaderResp(%v)", consistResp1, leaderResp)
+	}
 
-	if consistResp.Size != leaderResp.Size || consistResp.Generation != leaderResp.Generation || !equalExtents(consistResp, leaderResp) {
-		t.Fatalf("data is not consistent: consistResp(%v) leaderResp(%v)", consistResp, leaderResp)
+	consistResp2 := getExtentsByConsistenceRead(t, mw, mp, packet, false)
+	if consistResp2.Size != leaderResp.Size || consistResp2.Generation != leaderResp.Generation || !equalExtents(consistResp2, leaderResp) {
+		t.Fatalf("data is not consistent: consistResp1(%v) leaderResp(%v)", consistResp1, leaderResp)
 	}
 }
 
@@ -92,12 +96,12 @@ func equalExtents(consistResp *proto.GetExtentsResponse, leaderResp *proto.GetEx
 	return true
 }
 
-func getExtentsByConsistenceRead(t *testing.T, mw *MetaWrapper, mp *MetaPartition, packet *proto.Packet) (resp *proto.GetExtentsResponse) {
+func getExtentsByConsistenceRead(t *testing.T, mw *MetaWrapper, mp *MetaPartition, packet *proto.Packet, strongConsist bool) (resp *proto.GetExtentsResponse) {
 	var (
 		respPacket *proto.Packet
 		err        error
 	)
-	if respPacket, err = mw.readConsistentFromHosts(context.Background(), mp, packet); err != nil {
+	if respPacket, err = mw.readConsistentFromHosts(context.Background(), mp, packet, strongConsist); err != nil {
 		t.Fatalf("getExtentsByConsistenceRead: err(%v) mp(%v) reqPacket(%v)", err, mp, packet)
 	}
 	if status := parseStatus(respPacket.ResultCode); status != statusOK {
@@ -126,6 +130,19 @@ func getExtentsByLeaderRead(t *testing.T, mw *MetaWrapper, mp *MetaPartition, pa
 	err = respPacket.UnmarshalData(resp)
 	if err != nil {
 		t.Fatalf("getExtentsByLeaderRead: response packet unmarshal data err(%v) resp(%v)", err, respPacket)
+	}
+	return
+}
+
+func TestExcludeLeaner(t *testing.T) {
+	mp := &MetaPartition{
+		PartitionID: 99,
+		Members:     []string{"192.168.0.21:17020", "192.168.0.22:17020", "192.168.0.23:17020", "192.168.0.24:17020", "192.168.0.25:17020"},
+		Learners:    []string{"192.168.0.21:17020", "192.168.0.25:17020"},
+	}
+	voters := excludeLearner(mp)
+	if strings.Join(voters, ",") != strings.Join([]string{"192.168.0.22:17020", "192.168.0.23:17020", "192.168.0.24:17020"}, ",") {
+		t.Fatalf("TestExcludeLeaner: failed, actual(%v)", voters)
 	}
 	return
 }

@@ -175,6 +175,7 @@ func run() error {
 			fmt.Printf("Server start failed: %v\n", err)
 			return err
 		}
+		return nil
 	}
 
 	/*

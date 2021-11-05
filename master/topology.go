@@ -16,12 +16,13 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 type topology struct {
@@ -32,6 +33,13 @@ type topology struct {
 	zoneIndexForMetaNode int
 	zones                []*Zone
 	zoneLock             sync.RWMutex
+	regionMap            *sync.Map //regionName:*Region
+}
+
+type Region struct {
+	Name       string
+	RegionType proto.RegionType
+	ZoneMap    *sync.Map // key:zoneName
 }
 
 func newTopology() (t *topology) {
@@ -40,6 +48,7 @@ func newTopology() (t *topology) {
 	t.dataNodes = new(sync.Map)
 	t.metaNodes = new(sync.Map)
 	t.zones = make([]*Zone, 0)
+	t.regionMap = new(sync.Map)
 	return
 }
 
@@ -56,6 +65,10 @@ func (t *topology) clear() {
 	})
 	t.metaNodes.Range(func(key, value interface{}) bool {
 		t.metaNodes.Delete(key)
+		return true
+	})
+	t.regionMap.Range(func(key, value interface{}) bool {
+		t.regionMap.Delete(key)
 		return true
 	})
 }
@@ -341,7 +354,7 @@ func calculateDemandWriteNodes(zoneNum, replicaNum int) (demandWriteNodes int) {
 	return
 }
 
-func (t *topology) allocZonesForMetaNode(zoneName string, replicaNum int, excludeZone []string) (candidateZones []*Zone, err error) {
+func (t *topology) allocZonesForMetaNode(clusterID, zoneName string, replicaNum int, excludeZone []string, isStrict bool) (candidateZones []*Zone, err error) {
 	var initCandidateZones []*Zone
 	initCandidateZones = make([]*Zone, 0)
 	zoneList := strings.Split(zoneName, ",")
@@ -372,7 +385,7 @@ func (t *topology) allocZonesForMetaNode(zoneName string, replicaNum int, exclud
 		}
 	}
 	//if there is no space in the zone for single zone partition, randomly choose another zone
-	if len(candidateZones) < 1 && len(zoneList) == 1 {
+	if !isStrict && len(candidateZones) < 1 && len(zoneList) == 1 {
 		initCandidateZones = t.getAllZones()
 		for _, zone := range initCandidateZones {
 			if zone.status == unavailableZone {
@@ -386,8 +399,13 @@ func (t *topology) allocZonesForMetaNode(zoneName string, replicaNum int, exclud
 
 	//if across zone,candidateZones must be larger than or equal with 2,otherwise,must have a candidate zone
 	if (replicaNum == 3 && len(zoneList) >= 2 && len(candidateZones) < 2) || len(candidateZones) < 1 {
-		log.LogError(fmt.Sprintf("action[allocZonesForMetaNode],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],err:%v",
-			len(zoneList), len(candidateZones), demandWriteNodes, proto.ErrNoZoneToCreateMetaPartition))
+		log.LogError(fmt.Sprintf("action[allocZonesForMetaNode],zoneName[%v],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],isStrict[%v],err:%v",
+			zoneName, len(zoneList), len(candidateZones), demandWriteNodes, isStrict, proto.ErrNoZoneToCreateMetaPartition))
+		if isStrict {
+			msg := fmt.Sprintf("action[allocZonesForMetaNode],zoneName[%v],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],isStrict[%v],err:%v",
+				zoneName, len(zoneList), len(candidateZones), demandWriteNodes, isStrict, proto.ErrNoZoneToCreateMetaPartition)
+			Warn(clusterID, msg)
+		}
 		return nil, proto.ErrNoZoneToCreateMetaPartition
 	}
 	err = nil
@@ -395,7 +413,7 @@ func (t *topology) allocZonesForMetaNode(zoneName string, replicaNum int, exclud
 }
 
 //allocate zones according to the specified zoneName and replicaNum
-func (t *topology) allocZonesForDataNode(zoneName string, replicaNum int, excludeZone []string) (candidateZones []*Zone, err error) {
+func (t *topology) allocZonesForDataNode(clusterID, zoneName string, replicaNum int, excludeZone []string, isStrict bool) (candidateZones []*Zone, err error) {
 	var initCandidateZones []*Zone
 	initCandidateZones = make([]*Zone, 0)
 	zoneList := strings.Split(zoneName, ",")
@@ -426,7 +444,7 @@ func (t *topology) allocZonesForDataNode(zoneName string, replicaNum int, exclud
 		}
 	}
 	//if there is no space in the zone for single zone partition, randomly choose a zone from all zones
-	if len(candidateZones) < 1 && len(zoneList) == 1 {
+	if !isStrict && len(candidateZones) < 1 && len(zoneList) == 1 {
 		initCandidateZones = t.getAllZones()
 		for _, zone := range initCandidateZones {
 			if zone.status == unavailableZone {
@@ -442,8 +460,13 @@ func (t *topology) allocZonesForDataNode(zoneName string, replicaNum int, exclud
 	}
 	//if across zone,candidateZones must be larger than or equal with 2, if not across zone, must have one candidate zone
 	if (replicaNum == 3 && len(zoneList) >= 2 && len(candidateZones) < 2) || len(candidateZones) < 1 {
-		log.LogError(fmt.Sprintf("action[allocZonesForDataNode],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],err:%v",
-			len(zoneList), len(candidateZones), demandWriteNodes, proto.ErrNoZoneToCreateDataPartition))
+		log.LogError(fmt.Sprintf("action[allocZonesForDataNode],zoneName[%v],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],isStrict[%v],err:%v",
+			zoneName, len(zoneList), len(candidateZones), demandWriteNodes, isStrict, proto.ErrNoZoneToCreateDataPartition))
+		if isStrict {
+			msg := fmt.Sprintf("action[allocZonesForDataNode],zoneName[%v],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],isStrict[%v],err:%v",
+				zoneName, len(zoneList), len(candidateZones), demandWriteNodes, isStrict, proto.ErrNoZoneToCreateDataPartition)
+			Warn(clusterID, msg)
+		}
 		return nil, errors.NewError(proto.ErrNoZoneToCreateDataPartition)
 	}
 	err = nil
@@ -475,6 +498,7 @@ func (ns *nodeSet) metaNodeCount() int {
 // Zone stores all the zone related information
 type Zone struct {
 	name                string
+	regionName          string
 	setIndexForDataNode int
 	setIndexForMetaNode int
 	status              int
@@ -643,7 +667,6 @@ func (zone *Zone) getMetaNode(addr string) (metaNode *MetaNode, err error) {
 	metaNode = value.(*MetaNode)
 	return
 }
-
 
 func (zone *Zone) deleteMetaNode(metaNode *MetaNode) (err error) {
 	ns, err := zone.getNodeSet(metaNode.NodeSetID)
@@ -970,4 +993,139 @@ func (zone *Zone) batchMergeNodeSetForDataNode(c *Cluster, count int, sourceID, 
 		successNum++
 	}
 	return
+}
+
+func newRegion(name string, regionType proto.RegionType) (region *Region) {
+	region = &Region{
+		Name:       name,
+		RegionType: regionType,
+	}
+	region.ZoneMap = new(sync.Map)
+	return
+}
+
+func newRegionFromRegionValue(rv *regionValue) (region *Region) {
+	region = &Region{
+		Name:       rv.Name,
+		RegionType: rv.RegionType,
+		ZoneMap:    new(sync.Map),
+	}
+	for _, zoneName := range rv.Zones {
+		region.ZoneMap.Store(zoneName, true)
+	}
+	return
+}
+
+func (t *topology) createRegion(name string, regionType proto.RegionType, c *Cluster) (region *Region, err error) {
+	if _, ok := t.regionMap.Load(name); ok {
+		return nil, fmt.Errorf("region[%v] has exist", name)
+	}
+	region = newRegion(name, regionType)
+	if err = c.syncAddRegion(region); err != nil {
+		return
+	}
+	if err = t.putRegion(region); err != nil {
+		return
+	}
+	return
+}
+
+func (t *topology) putRegion(region *Region) (err error) {
+	if _, ok := t.regionMap.Load(region.Name); ok {
+		return fmt.Errorf("region[%v] has exist", region.Name)
+	}
+	t.regionMap.Store(region.Name, region)
+	return
+}
+
+func (t *topology) putRegionIfAbsent(region *Region) (beStoredRegion *Region) {
+	if value, ok := t.regionMap.Load(region.Name); ok {
+		if beStoredRegion, ok = value.(*Region); ok {
+			return
+		}
+	}
+	t.regionMap.Store(region.Name, region)
+	beStoredRegion = region
+	return
+}
+
+func (t *topology) getRegion(name string) (region *Region, err error) {
+	if name == "" {
+		return nil, fmt.Errorf("region name is empty")
+	}
+	value, ok := t.regionMap.Load(name)
+	if !ok {
+		return nil, fmt.Errorf("region[%v] is not found", name)
+	}
+	region, ok = value.(*Region)
+	if !ok || region == nil {
+		return nil, fmt.Errorf("region[%v] is not found", name)
+	}
+	return
+}
+
+func (region *Region) addZone(zoneName string, c *Cluster) (err error) {
+	if _, ok := region.ZoneMap.Load(zoneName); ok {
+		return
+	}
+	region.ZoneMap.Store(zoneName, true)
+	if err = c.syncUpdateRegion(region); err != nil {
+		region.ZoneMap.Delete(zoneName)
+		log.LogErrorf("action[addZone] region[%v] zoneName[%v] err[%v]", region.Name, zoneName, err)
+		return
+	}
+	return
+}
+
+func (region *Region) deleteZone(zoneName string, c *Cluster) (err error) {
+	value, ok := region.ZoneMap.Load(zoneName)
+	if !ok {
+		return
+	}
+	region.ZoneMap.Delete(zoneName)
+	if err = c.syncUpdateRegion(region); err != nil {
+		region.ZoneMap.Store(zoneName, value)
+		log.LogErrorf("action[deleteZone] region[%v] zoneName[%v] err[%v]", region.Name, zoneName, err)
+		return
+	}
+	return
+}
+
+func (region *Region) getZones() (zones []string) {
+	zones = make([]string, 0)
+	region.ZoneMap.Range(func(key, _ interface{}) bool {
+		zoneName, ok := key.(string)
+		if !ok {
+			return true
+		}
+		zones = append(zones, zoneName)
+		return true
+	})
+	return
+}
+
+func (t *topology) getRegionViews() (regionViews []*proto.RegionView) {
+	regionViews = make([]*proto.RegionView, 0)
+	t.regionMap.Range(func(_, value interface{}) bool {
+		region, ok := value.(*Region)
+		if !ok {
+			return true
+		}
+		regionView := &proto.RegionView{
+			Name:       region.Name,
+			RegionType: region.RegionType,
+			Zones:      region.getZones(),
+		}
+		regionViews = append(regionViews, regionView)
+		return true
+	})
+	return
+}
+
+func (region *Region) isMasterRegion() bool {
+	return region.RegionType == proto.MasterRegion
+}
+
+func (region *Region) isSlaveRegion() bool {
+	return region.RegionType == proto.SlaveRegion
 }

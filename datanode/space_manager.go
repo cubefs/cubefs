@@ -384,6 +384,8 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		NodeID:        manager.nodeID,
 		ClusterID:     manager.clusterID,
 		PartitionSize: request.PartitionSize,
+
+		VolHAType: request.VolumeHAType,
 	}
 	dp = manager.partitions[dpCfg.PartitionID]
 	if dp != nil {
@@ -403,7 +405,6 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		return
 	}
 	manager.partitions[dp.partitionID] = dp
-
 	return
 }
 
@@ -467,6 +468,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	response.MaxCapacity = stat.MaxCapacityToCreatePartition
 	response.RemainingCapacity = stat.RemainingCapacityToCreatePartition
 	response.BadDisks = make([]string, 0)
+	response.DiskInfos = make(map[string]*proto.DiskInfo, 0)
 	stat.Unlock()
 
 	response.ZoneName = s.zoneName
@@ -493,7 +495,14 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	})
 
 	disks := space.GetDisks()
+	var usageRatio float64
 	for _, d := range disks {
+		usageRatio = 0
+		if d.Total != 0 {
+			usageRatio = float64(d.Used) / float64(d.Total)
+		}
+		dInfo := &proto.DiskInfo{Total: d.Total, Used: d.Used, ReservedSpace: d.ReservedSpace, Status: d.Status, Path: d.Path, UsageRatio: usageRatio}
+		response.DiskInfos[d.Path] = dInfo
 		if d.Status == proto.Unavailable {
 			response.BadDisks = append(response.BadDisks, d.Path)
 		}

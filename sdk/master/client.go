@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	netUrl "net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -50,6 +51,7 @@ type MasterClient struct {
 	sync.RWMutex
 	masters          []string
 	useSSL           bool
+	timeout			 time.Duration
 	leaderAddr       string
 	nodeAddr         string
 	ClientType       ClientType
@@ -111,8 +113,11 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 		} else {
 			host = nodes[i]
 		}
-		var resp *http.Response
-		var schema string
+		var (
+			resp 	*http.Response
+			timeout	bool
+			schema 	string
+		)
 		if c.useSSL {
 			schema = "https"
 		} else {
@@ -120,7 +125,11 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 		}
 		var url = fmt.Sprintf("%s://%s%s", schema, host,
 			r.path)
-		resp, err = c.httpRequest(r.method, url, r.params, r.header, r.body)
+		resp, err, timeout = c.httpRequest(r.method, url, r.params, r.header, r.body)
+		if timeout {
+			log.LogWarnf("serveRequest: send http request timeout: method(%v) url(%v) err(%v)", r.method, url, err)
+			break
+		}
 		if err != nil {
 			log.LogWarnf("serveRequest: send http request fail: method(%v) url(%v) err(%v)", r.method, url, err)
 			continue
@@ -209,7 +218,7 @@ func (c *MasterClient) prepareRequest() (addr string, nodes []string) {
 	return
 }
 
-func (c *MasterClient) httpRequest(method, url string, param, header map[string]string, reqData []byte) (resp *http.Response, err error) {
+func (c *MasterClient) httpRequest(method, url string, param, header map[string]string, reqData []byte) (resp *http.Response, err error, timeout bool) {
 	client := http.DefaultClient
 	reader := bytes.NewReader(reqData)
 	if header["isTimeOut"] != "" {
@@ -218,14 +227,14 @@ func (c *MasterClient) httpRequest(method, url string, param, header map[string]
 			return
 		}
 		if isTimeOut {
-			client.Timeout = requestTimeout
+			client.Timeout = c.timeout
 		}
 	} else {
-		client.Timeout = requestTimeout
+		client.Timeout = c.timeout
 	}
 	var req *http.Request
 	fullUrl := c.mergeRequestUrl(url, param)
-	log.LogDebugf("httpRequest: merge request url: method(%v) url(%v) bodyLength[%v].", method, fullUrl, len(reqData))
+	log.LogDebugf("httpRequest: merge request url: method(%v) url(%v) timeout(%v) bodyLength[%v].", method, fullUrl, client.Timeout, len(reqData))
 	if req, err = http.NewRequest(method, fullUrl, reader); err != nil {
 		return
 	}
@@ -235,6 +244,9 @@ func (c *MasterClient) httpRequest(method, url string, param, header map[string]
 		req.Header.Set(k, v)
 	}
 	resp, err = client.Do(req)
+	if err != nil {
+		timeout = err.(*netUrl.Error).Timeout()
+	}
 	return
 }
 
@@ -272,9 +284,9 @@ func (c *MasterClient) mergeRequestUrl(url string, params map[string]string) str
 	return url
 }
 
-// NewMasterHelper returns a new MasterClient instance.
+// NewMasterClient returns a new MasterClient instance.
 func NewMasterClient(masters []string, useSSL bool) *MasterClient {
-	var mc = &MasterClient{masters: masters, useSSL: useSSL}
+	var mc = &MasterClient{masters: masters, useSSL: useSSL, timeout: requestTimeout}
 	mc.ClientType = MASTER
 	mc.adminAPI = &AdminAPI{mc: mc}
 	mc.clientAPI = &ClientAPI{mc: mc}
@@ -283,9 +295,16 @@ func NewMasterClient(masters []string, useSSL bool) *MasterClient {
 	return mc
 }
 
-// NewMasterHelper returns a new MasterClient instance.
+// NewMasterClientWithoutTimeout returns a new MasterClient instance without timeout.
+func NewMasterClientWithoutTimeout(masters []string, useSSL bool) *MasterClient {
+	mc := NewMasterClient(masters, useSSL)
+	mc.timeout = time.Duration(0)
+	return mc
+}
+
+// NewNodeClient returns a new MasterClient instance.
 func NewNodeClient(node string, useSSL bool, clientType ClientType) *MasterClient {
-	var mc = &MasterClient{nodeAddr: node, useSSL: useSSL}
+	var mc = &MasterClient{nodeAddr: node, useSSL: useSSL, timeout: requestTimeout}
 	mc.ClientType = clientType
 	mc.adminAPI = &AdminAPI{mc: mc}
 	mc.clientAPI = &ClientAPI{mc: mc}

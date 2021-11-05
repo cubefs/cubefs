@@ -29,28 +29,32 @@ import (
 
 // Vol represents a set of meta partitionMap and data partitionMap
 type Vol struct {
-	ID                 uint64
-	Name               string
-	Owner              string
-	OSSAccessKey       string
-	OSSSecretKey       string
-	OSSBucketPolicy    proto.BucketAccessPolicy
-	dpReplicaNum       uint8
-	mpReplicaNum       uint8
-	Status             uint8
-	threshold          float32
-	dataPartitionSize  uint64
-	Capacity           uint64 // GB
-	NeedToLowerReplica bool
-	FollowerRead       bool
-	authenticate       bool
-	autoRepair         bool
-	zoneName           string
-	crossZone          bool
-	enableToken        bool
-	tokens             map[string]*proto.Token
-	tokensLock         sync.RWMutex
-	MetaPartitions     map[uint64]*MetaPartition `graphql:"-"`
+	ID                  uint64
+	Name                string
+	Owner               string
+	OSSAccessKey        string
+	OSSSecretKey        string
+	OSSBucketPolicy     proto.BucketAccessPolicy
+	dpReplicaNum        uint8
+	mpReplicaNum        uint8
+	dpLearnerNum        uint8
+	mpLearnerNum        uint8
+	Status              uint8
+	mpMemUsageThreshold  float32
+	dataPartitionSize   uint64
+	Capacity            uint64 // GB
+	NeedToLowerReplica  bool
+	FollowerRead        bool
+	ForceROW            bool
+	authenticate        bool
+	autoRepair          bool
+	zoneName            string
+	crossZone           bool
+	CrossRegionHAType   proto.CrossRegionHAType
+	enableToken         bool
+	tokens              map[string]*proto.Token
+	tokensLock          sync.RWMutex
+	MetaPartitions      map[uint64]*MetaPartition `graphql:"-"`
 	mpsLock             sync.RWMutex
 	dataPartitions      *DataPartitionMap
 	mpsCache            []byte
@@ -58,9 +62,12 @@ type Vol struct {
 	createDpMutex       sync.RWMutex
 	createMpMutex       sync.RWMutex
 	createTime          int64
+	dpWriteableThreshold float64
 	description         string
 	dpSelectorName      string
 	dpSelectorParm      string
+	DPConvertMode       proto.ConvertMode
+	MPConvertMode       proto.ConvertMode
 	volWriteMutexEnable bool
 	volWriteMutex       sync.Mutex
 	volWriteMutexClient *VolWriteMutexClient
@@ -73,15 +80,15 @@ type VolWriteMutexClient struct {
 }
 
 func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8,
-	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable bool, createTime int64, description, dpSelectorName,
-	dpSelectorParm string) (vol *Vol) {
+	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW bool, createTime int64, description, dpSelectorName,
+	dpSelectorParm string, crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	if dpReplicaNum < defaultReplicaNum {
 		dpReplicaNum = defaultReplicaNum
 	}
 	vol.dpReplicaNum = dpReplicaNum
-	vol.threshold = defaultMetaPartitionMemUsageThreshold
+	vol.mpMemUsageThreshold = defaultMetaPartitionMemUsageThreshold
 	if mpReplicaNum < defaultReplicaNum {
 		mpReplicaNum = defaultReplicaNum
 	}
@@ -100,6 +107,7 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.dataPartitionSize = dpSize
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
+	vol.ForceROW = forceROW
 	vol.authenticate = authenticate
 	vol.zoneName = zoneName
 	vol.viewCache = make([]byte, 0)
@@ -112,6 +120,10 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.description = description
 	vol.dpSelectorName = dpSelectorName
 	vol.dpSelectorParm = dpSelectorParm
+	vol.dpWriteableThreshold = dpWriteableThreshold
+	vol.CrossRegionHAType = crossRegionHAType
+	vol.dpLearnerNum = dpLearnerNum
+	vol.mpLearnerNum = mpLearnerNum
 	return
 }
 
@@ -130,15 +142,22 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.EnableToken,
 		vv.AutoRepair,
 		vv.VolWriteMutexEnable,
+		vv.ForceROW,
 		vv.CreateTime,
 		vv.Description,
 		vv.DpSelectorName,
-		vv.DpSelectorParm)
+		vv.DpSelectorParm,
+		vv.CrossRegionHAType,
+		vv.DpLearnerNum,
+		vv.MpLearnerNum,
+		vv.DpWriteableThreshold)
 	// overwrite oss secure
 	vol.OSSAccessKey, vol.OSSSecretKey = vv.OSSAccessKey, vv.OSSSecretKey
 	vol.Status = vv.Status
 	vol.crossZone = vv.CrossZone
 	vol.OSSBucketPolicy = vv.OSSBucketPolicy
+	vol.DPConvertMode = vv.DPConvertMode
+	vol.MPConvertMode = vv.MPConvertMode
 
 	return vol
 }
@@ -296,7 +315,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int, dataNodeBadDisksOfVol 
 	defer vol.dataPartitions.RUnlock()
 	for _, dp := range vol.dataPartitions.partitionMap {
 		dp.checkReplicaStatus(c.cfg.DataPartitionTimeOutSec)
-		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec)
+		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec, vol.dpWriteableThreshold, vol.CrossRegionHAType, vol.getDataPartitionQuorum())
 		dp.checkLeader(c.cfg.DataPartitionTimeOutSec)
 		dp.checkMissingReplicas(c.Name, c.leaderInfo.addr, c.cfg.MissingDataPartitionInterval, c.cfg.IntervalToAlarmMissingDataPartition)
 		dp.checkReplicaNumAndSize(c, vol)
@@ -341,7 +360,7 @@ func (vol *Vol) checkReplicaNum(c *Cluster) {
 	var err error
 	dps := vol.cloneDataPartitionMap()
 	for _, dp := range dps {
-		host := dp.getToBeDecommissionHost(int(vol.dpReplicaNum))
+		host := dp.getToBeDecommissionHost(int(vol.dpReplicaNum + vol.dpLearnerNum))
 		if host == "" {
 			continue
 		}
@@ -528,6 +547,8 @@ func (vol *Vol) totalUsedSpace() uint64 {
 
 func (vol *Vol) updateViewCache(c *Cluster) {
 	view := proto.NewVolView(vol.Name, vol.Status, vol.FollowerRead, vol.createTime)
+	view.ForceROW = vol.ForceROW
+	view.CrossRegionHAType = vol.CrossRegionHAType
 	view.SetOwner(vol.Owner)
 	view.SetOSSSecure(vol.OSSAccessKey, vol.OSSSecretKey)
 	view.SetOSSBucketPolicy(vol.OSSBucketPolicy)
@@ -823,20 +844,32 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 		hosts       []string
 		partitionID uint64
 		peers       []proto.Peer
+		learners    []proto.Learner
 		wg          sync.WaitGroup
 	)
-	errChannel := make(chan error, vol.mpReplicaNum)
-	if hosts, peers, err = c.chooseTargetMetaHosts("", nil, nil, int(vol.mpReplicaNum), vol.zoneName); err != nil {
-		log.LogErrorf("action[doCreateMetaPartition] chooseTargetMetaHosts err[%v]", err)
-		return nil, errors.NewError(err)
+	learners = make([]proto.Learner, 0)
+	errChannel := make(chan error, vol.mpReplicaNum+vol.mpLearnerNum)
+	if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
+		if hosts, peers, learners, err = c.chooseTargetMetaHostsForCreateQuorumMetaPartition(int(vol.mpReplicaNum), int(vol.mpLearnerNum), vol.zoneName); err != nil {
+			log.LogErrorf("action[doCreateMetaPartition] chooseTargetMetaHosts for cross region quorum vol,err[%v]", err)
+			return nil, errors.NewError(err)
+		}
+	} else {
+		if hosts, peers, err = c.chooseTargetMetaHosts("", nil, nil, int(vol.mpReplicaNum), vol.zoneName, false); err != nil {
+			log.LogErrorf("action[doCreateMetaPartition] chooseTargetMetaHosts err[%v]", err)
+			return nil, errors.NewError(err)
+		}
+		//mpLearnerNum of vol is always 0 for other type vols except cross region quorum vol.
+		//if it will be used in other vol, should choose new learner replica
 	}
 	log.LogInfof("target meta hosts:%v,peers:%v", hosts, peers)
 	if partitionID, err = c.idAlloc.allocateMetaPartitionID(); err != nil {
 		return nil, errors.NewError(err)
 	}
-	mp = newMetaPartition(partitionID, start, end, vol.mpReplicaNum, vol.Name, vol.ID)
+	mp = newMetaPartition(partitionID, start, end, vol.mpReplicaNum, vol.mpLearnerNum, vol.Name, vol.ID)
 	mp.setHosts(hosts)
 	mp.setPeers(peers)
+	mp.setLearners(learners)
 	for _, host := range hosts {
 		wg.Add(1)
 		go func(host string) {
@@ -918,4 +951,18 @@ func (vol *Vol) getVolMutexClientInfo() (err error, clientInfo *VolWriteMutexCli
 		return proto.ErrVolWriteMutexUnable, nil
 	}
 	return nil, vol.volWriteMutexClient
+}
+
+func (vol *Vol) getDataPartitionQuorum() (quorum int) {
+	switch vol.CrossRegionHAType {
+	case proto.CrossRegionHATypeQuorum:
+		if vol.dpReplicaNum <= 3 {
+			quorum = int(vol.dpReplicaNum)
+		} else {
+			quorum = int(vol.dpReplicaNum/2 + 1)
+		}
+	default:
+		quorum = int(vol.dpReplicaNum)
+	}
+	return
 }

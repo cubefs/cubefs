@@ -49,6 +49,8 @@ type dataPartitionCfg struct {
 	NodeID        uint64              `json:"-"`
 	RaftStore     raftstore.RaftStore `json:"-"`
 	CreationType  int                 `json:"-"`
+
+	VolHAType proto.CrossRegionHAType `json:"vol_ha_type"`
 }
 
 func (dp *DataPartition) raftPort() (heartbeat, replica int, err error) {
@@ -604,7 +606,7 @@ func (dp *DataPartition) LoadAppliedID() (err error) {
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
 		if os.IsNotExist(err) {
-			err=nil
+			err = nil
 			return
 		}
 		err = errors.NewErrorf("[loadApplyIndex] OpenFile: %s", err.Error())
@@ -790,7 +792,7 @@ func (dp *DataPartition) getLeaderPartitionSize(ctx context.Context, maxExtentID
 		return
 	}
 	defer gConnPool.PutConnect(conn, true)
-	err = p.WriteToConn(conn) // write command to the remote host
+	err = p.WriteToConn(conn, proto.WriteDeadlineTime) // write command to the remote host
 	if err != nil {
 		err = errors.Trace(err, "partition(%v) write to host(%v)", dp.partitionID, target)
 		return
@@ -830,7 +832,7 @@ func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize(ctx context.Contex
 		return
 	}
 	defer gConnPool.PutConnect(conn, true)
-	err = p.WriteToConn(conn) // write command to the remote host
+	err = p.WriteToConn(conn, proto.WriteDeadlineTime) // write command to the remote host
 	if err != nil {
 		err = errors.Trace(err, "partition(%v) write to host(%v)", dp.partitionID, target)
 		return
@@ -877,7 +879,7 @@ func (dp *DataPartition) broadcastMinAppliedID(ctx context.Context, minAppliedID
 			return
 		}
 		defer gConnPool.PutConnect(conn, true)
-		err = p.WriteToConn(conn)
+		err = p.WriteToConn(conn, proto.WriteDeadlineTime)
 		if err != nil {
 			return
 		}
@@ -945,7 +947,7 @@ func (dp *DataPartition) getRemoteAppliedID(target string, p *repl.Packet) (appl
 		return
 	}
 	defer gConnPool.PutConnect(conn, true)
-	err = p.WriteToConn(conn) // write command to the remote host
+	err = p.WriteToConn(conn, proto.WriteDeadlineTime) // write command to the remote host
 	if err != nil {
 		return
 	}

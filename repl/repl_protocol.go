@@ -56,7 +56,7 @@ type ReplProtocol struct {
 	followerConnects map[string]*FollowerTransport
 	lock             sync.RWMutex
 
-	prepareFunc  func(p *Packet,remote string) error                 // prepare packet
+	prepareFunc  func(p *Packet, remote string) error  // prepare packet
 	operatorFunc func(p *Packet, c *net.TCPConn) error // operator
 	postFunc     func(p *Packet) error                 // post-processing packet
 
@@ -66,9 +66,9 @@ type ReplProtocol struct {
 	allThreadStatsLock   sync.Mutex
 	getNumFromBufferPool int64
 	putNumToBufferPool   int64
-	isError   int32
-	remote    string
-	stopError string
+	isError              int32
+	remote               string
+	stopError            string
 }
 
 type FollowerTransport struct {
@@ -125,16 +125,16 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 		select {
 		case p := <-ft.sendCh:
 			atomic.StoreInt64(&ft.lastActiveTime, time.Now().Unix())
-			if err := p.WriteToConn(ft.conn); err != nil {
+			if err := p.WriteToConn(ft.conn, proto.WriteDeadlineTime); err != nil {
 				p.Data = nil
-				p.respCh <- fmt.Errorf(ActionSendToFollowers+" follower(%v) error(%v)", ft.addr, err.Error())
+				p.errorCh <- fmt.Errorf(ActionSendToFollowers+" follower(%v) error(%v)", ft.addr, err.Error())
 				_ = ft.conn.Close()
 				log.LogErrorf("request(%v) ActionSendToFollowers(%v) error(%v)", p.GetUniqueLogId(), ft.conn.RemoteAddr().String(), err.Error())
 				continue
 			}
 			p.Data = nil
 			if err := ft.PutRequestToRecvCh(p); err != nil {
-				p.respCh <- fmt.Errorf(ActionSendToFollowers+" follower(%v) error(%v)", ft.addr, err.Error())
+				p.errorCh <- fmt.Errorf(ActionSendToFollowers+" follower(%v) error(%v)", ft.addr, err.Error())
 				_ = ft.conn.Close()
 				log.LogErrorf("request(%v) ActionSendToFollowers(%v) error(%v)", p.GetUniqueLogId(), ft.conn.RemoteAddr().String(), err.Error())
 				continue
@@ -174,11 +174,12 @@ func (ft *FollowerTransport) serverReadFromFollower(ctx context.Context) {
 func (ft *FollowerTransport) readFollowerResult(ctx context.Context, request *FollowerPacket) (err error) {
 	reply := NewPacket(ctx)
 	defer func() {
-		request.respCh <- err
 		request.Data = nil
+		request.errorCh <- err
 		if err != nil {
 			_ = ft.conn.Close()
 			log.LogErrorf("request(%v) readFollowerResult(%v) error(%v)", request.GetUniqueLogId(), ft.conn.RemoteAddr().String(), err)
+			return
 		}
 	}()
 	request.Data = nil
@@ -260,7 +261,7 @@ func (ft *FollowerTransport) Write(p *FollowerPacket) (err error) {
 	return
 }
 
-func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet,remote string) error,
+func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet, remote string) error,
 	operatorFunc func(p *Packet, c *net.TCPConn) error, postFunc func(p *Packet) error) *ReplProtocol {
 	rp := new(ReplProtocol)
 	rp.packetList = list.New()
@@ -367,9 +368,9 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 		err = rp.putResponse(request)
 		return
 	}
-	if err = rp.prepareFunc(request,rp.sourceConn.RemoteAddr().String()); err != nil {
-		err=fmt.Errorf("%v  packet(%v) from remote(%v) error(%v)",
-		ActionPreparePkt, request.GetUniqueLogId(), rp.remote, err.Error())
+	if err = rp.prepareFunc(request, rp.sourceConn.RemoteAddr().String()); err != nil {
+		err = fmt.Errorf("%v  packet(%v) from remote(%v) error(%v)",
+			ActionPreparePkt, request.GetUniqueLogId(), rp.remote, err.Error())
 		log.LogErrorf(err.Error())
 		err = rp.putResponse(request)
 		return
@@ -379,27 +380,59 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	return
 }
 
-func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, err error) {
+func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (err error) {
 	if tracing.IsEnabled() {
 		tracer := tracing.TracerFromContext(request.Ctx()).ChildTracer("repl.sendRequestToAllFollowers")
 		defer tracer.Finish()
 		request.SetCtx(tracer.Context())
 	}
 
-	for index = 0; index < len(request.followersAddrs); index++ {
-		var transport *FollowerTransport
-		if transport, err = rp.allocateFollowersConns(request, index); err != nil {
-			request.PackErrorBody(ActionSendToFollowers, err.Error())
-			return
+	var failure = 0
+	var maxFailure int
+	if request.quorum > 0 && len(request.followersAddrs)+1 >= request.quorum {
+		maxFailure = len(request.followersAddrs) - (request.quorum - 1)
+	} else {
+		maxFailure = 0
+	}
+	request.errorCh = make(chan error, len(request.followersAddrs))
+	var forwardErr error
+	var multiErr error
+	var incFailure = func(err error) {
+		failure += 1
+		request.errorCh <- err
+		if multiErr == nil {
+			multiErr = err
+		} else {
+			multiErr = fmt.Errorf("%v: %v", err, multiErr)
 		}
-		followerRequest := NewFollowerPacket(request.Ctx())
+	}
+	for index := 0; index < len(request.followersAddrs); index++ {
+		var transport *FollowerTransport
+		if transport, forwardErr = rp.allocateFollowersConns(request, index); forwardErr != nil {
+			incFailure(forwardErr)
+			if failure > maxFailure {
+				err = forwardErr
+				request.PackErrorBody(ActionSendToFollowers, fmt.Sprintf("send to followers meet max failure: %v", multiErr))
+				log.LogErrorf("packet[id: %v, op: %v, followers: %v, quorum: %v] send to followers meet max failure: %v",
+					request.ReqID, request.GetOpMsg(), len(request.followersAddrs), request.quorum, multiErr)
+				return
+			}
+			continue
+		}
+		followerRequest := NewFollowerPacket(request.Ctx(), request)
 		copyPacket(request, followerRequest)
 		followerRequest.RemainingFollowers = 0
 		request.followerPackets[index] = followerRequest
-		err = transport.Write(followerRequest)
-		if err != nil {
-			request.PackErrorBody(ActionSendToFollowers, err.Error())
-			return
+		if forwardErr = transport.Write(followerRequest); forwardErr != nil {
+			incFailure(err)
+			if failure > maxFailure {
+				err = forwardErr
+				request.PackErrorBody(ActionSendToFollowers, fmt.Sprintf("send to followers meet max failure: %v", multiErr))
+				log.LogErrorf("packet[id: %v, op: %v, followers: %v, quorum: %v] send to followers meet max failure: %v",
+					request.ReqID, request.GetOpMsg(), len(request.followersAddrs), request.quorum, multiErr)
+				return
+			}
+			err = nil
 		}
 	}
 
@@ -423,19 +456,7 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 	for {
 		select {
 		case request := <-rp.toBeProcessedCh:
-			if !request.IsForwardPacket() {
-				_ = rp.operatorFunc(request, rp.sourceConn)
-				_ = rp.putResponse(request)
-			} else {
-				_, err := rp.sendRequestToAllFollowers(request)
-				if err != nil {
-					_ = rp.putResponse(request)
-				} else {
-					rp.pushPacketToList(request)
-					_ = rp.operatorFunc(request, rp.sourceConn)
-					_ = rp.putAck(request)
-				}
-			}
+			rp.processRequest(request)
 		case <-ticker.C:
 			rp.autoReleaseFollowerTransport()
 		case <-rp.exitC:
@@ -452,6 +473,22 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 		}
 	}
 
+}
+
+func (rp *ReplProtocol) processRequest(request *Packet) {
+	if !request.IsForwardPacket() {
+		_ = rp.operatorFunc(request, rp.sourceConn)
+		_ = rp.putResponse(request)
+		return
+	}
+
+	if err := rp.sendRequestToAllFollowers(request); err != nil {
+		_ = rp.putResponse(request)
+		return
+	}
+	rp.pushPacketToList(request)
+	_ = rp.operatorFunc(request, rp.sourceConn)
+	_ = rp.putAck(request)
 }
 
 func (rp *ReplProtocol) autoReleaseFollowerTransport() {
@@ -480,7 +517,7 @@ func (rp *ReplProtocol) writeResponseToClientGoRroutine() {
 	for {
 		select {
 		case <-rp.ackCh:
-			rp.checkLocalResultAndReciveAllFollowerResponse()
+			rp.checkLocalResultAndReceiveAllFollowerResponse()
 		case request := <-rp.responseCh:
 			rp.writeResponse(request)
 		case <-rp.exitC:
@@ -556,7 +593,7 @@ func (rp *ReplProtocol) operatorFuncWithWaitGroup(wg *sync.WaitGroup, request *P
 // Read a packet from the list, scan all the connections of the followers of this packet and read the responses.
 // If failed to read the response, then mark the packet as failure, and delete it from the list.
 // If all the reads succeed, then mark the packet as success.
-func (rp *ReplProtocol) checkLocalResultAndReciveAllFollowerResponse() {
+func (rp *ReplProtocol) checkLocalResultAndReceiveAllFollowerResponse() {
 	var (
 		e *list.Element
 	)
@@ -571,15 +608,58 @@ func (rp *ReplProtocol) checkLocalResultAndReciveAllFollowerResponse() {
 	if request.IsErrPacket() {
 		return
 	}
-	for index := 0; index < len(request.followersAddrs); index++ {
-		followerPacket := request.followerPackets[index]
-		err := <-followerPacket.respCh
-		followerPacket.Data = nil
-		if err != nil {
-			request.PackErrorBody(ActionReceiveFromFollower, err.Error())
-			return
-		}
+	var (
+		// 向Follower转发复制链路的成功与失败计数器
+		forwardSuccess = 0
+		forwardFailure = 0
 
+		// 最小成功数量，判定成功的边界数值，既当成功的数量满足该数值(大于等于)，则可判定为成功
+		// 数值计算原则:
+		// 若启用了quorum且quorum有效时，该数值等于quorum-1 (quorum意为本地执行及Follower响应成功的最小阈值, 以下逻辑仅检查Follower响应，所以减去1)；
+		// 否则该值为Follower数量
+		minForwardSuccess int
+
+		// 最大失败数量，判定失败的边界数值，既当失败的数量超过该数值(大于)，则可判定为失败。
+		// 数值计算原则:
+		// 若启用了quorum且quorum有效时，该数值等于Follower数量+1-quorum；否则改制为0，即任何失败均判定该消息主备复制失败。
+		maxForwardFailure int
+
+		multiError error
+	)
+	if request.quorum > 0 && len(request.followersAddrs)+1 >= request.quorum {
+		// Quorum有效
+		minForwardSuccess = request.quorum - 1
+		maxForwardFailure = len(request.followersAddrs) + 1 - request.quorum
+	} else {
+		// Quorum未设置或无效
+		minForwardSuccess = len(request.followersAddrs)
+		maxForwardFailure = 0
+	}
+
+	for index := 0; index < len(request.followersAddrs); index++ {
+		if forwardErr := <-request.errorCh; forwardErr != nil {
+			// 来自某Follower的失败响应
+
+			// 组合所有错误
+			if multiError == nil {
+				multiError = forwardErr
+			} else {
+				multiError = fmt.Errorf("%v: %v", forwardErr, multiError)
+			}
+			if forwardFailure += 1; forwardFailure > maxForwardFailure {
+				// 已失败数量超过了允许范围内的最大失败数量，判定为失败
+				request.PackErrorBody(ActionReceiveFromFollower, fmt.Sprintf("follower response meet max failure: %v", multiError))
+				log.LogErrorf("packet[id: %v, op: %v, followers: %v, quorum: %v] follower response meet max failure: %v",
+					request.ReqID, request.GetOpMsg(), len(request.followersAddrs), request.quorum, multiError)
+				return
+			}
+		} else {
+			// 来自某Follower的成功响应
+			if forwardSuccess += 1; forwardSuccess >= minForwardSuccess {
+				// 已成功数量满足了最小成功数量要求，判定为成功
+				return
+			}
+		}
 	}
 	return
 }
@@ -600,11 +680,11 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 		log.LogErrorf(err.Error())
 	}
 
-	if err = reply.WriteToConn(rp.sourceConn); err != nil {
+	if err = reply.WriteToConn(rp.sourceConn, proto.WriteDeadlineTime); err != nil {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, fmt.Sprintf("local(%v)->remote(%v)", rp.sourceConn.LocalAddr().String(),
 			rp.sourceConn.RemoteAddr().String()), reply.StartT, err))
-		err=fmt.Errorf("ReplProtocol(%v) ReplProtocalID (%v) will exit error(%v)",
-			rp.sourceConn.RemoteAddr(),rp.remote,err)
+		err = fmt.Errorf("ReplProtocol(%v) ReplProtocalID (%v) will exit error(%v)",
+			rp.sourceConn.RemoteAddr(), rp.remote, err)
 		log.LogErrorf(err.Error())
 		rp.Stop(err)
 	}
@@ -619,13 +699,9 @@ func (rp *ReplProtocol) Stop(stopErr error) {
 	if stopErr != nil && rp.stopError == "" {
 		rp.stopError = stopErr.Error()
 	}
-	if atomic.LoadInt32(&rp.exited) == ReplRuning {
-		if rp.exitC != nil {
-			close(rp.exitC)
-		}
-		atomic.StoreInt32(&rp.exited, ReplExiting)
+	if atomic.CompareAndSwapInt32(&rp.exited, ReplRuning, ReplExiting) && rp.exitC != nil {
+		close(rp.exitC)
 	}
-
 }
 
 // Allocate the connections to the followers. We use partitionId + extentId + followerAddr as the key.

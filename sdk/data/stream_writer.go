@@ -430,17 +430,19 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, dir
 }
 
 func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, direct bool) (writeSize int, isROW bool, err error) {
-	var	errmsg	string
+	var errmsg string
 	tryCount := 0
 	for {
 		tryCount++
 		if tryCount%100 == 0 {
 			log.LogWarnf("doOverWriteOrROW failed: try (%v)th times, ino(%v) req(%v)", tryCount, s.inode, req)
 		}
-		if writeSize, err = s.doOverwrite(ctx, req, direct); err == nil {
-			break
+		if s.enableOverwrite() {
+			if writeSize, err = s.doOverwrite(ctx, req, direct); err == nil {
+				break
+			}
+			log.LogWarnf("doOverWrite failed: ino(%v) err(%v) req(%v)", s.inode, err, req)
 		}
-		log.LogWarnf("doOverWrite failed: ino(%v) err(%v) req(%v)", s.inode, err, req)
 		if writeSize, err = s.doROW(ctx, req, direct); err == nil {
 			isROW = true
 			break
@@ -454,6 +456,10 @@ func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, dir
 		time.Sleep(1 * time.Second)
 	}
 	return writeSize, isROW, err
+}
+
+func (s *Streamer) enableOverwrite() bool {
+	return !s.isForceROW() && !s.client.dataWrapper.CrossRegionHATypeQuorum()
 }
 
 func (s *Streamer) writeToExtent(ctx context.Context, oriReq *ExtentRequest, dp *DataPartition, extID int,
@@ -470,18 +476,18 @@ func (s *Streamer) writeToExtent(ctx context.Context, oriReq *ExtentRequest, dp 
 
 	for total < size {
 		currSize := util.Min(size-total, util.OverWritePacketSizeLimit)
-		packet := NewROWPacket(ctx, dp, s.inode, extID, oriReq.FileOffset+total, total, currSize)
+		packet := NewROWPacket(ctx, dp, s.client.dataWrapper.quorum, s.inode, extID, oriReq.FileOffset+total, total, currSize)
 		if direct {
 			packet.Opcode = proto.OpSyncWrite
 		}
 		packet.Data = oriReq.Data[total : total+currSize]
 		packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
-		err = packet.WriteToConn(conn)
+		err = packet.WriteToConn(conn, WriteTimeoutData)
 		if err != nil {
 			break
 		}
 		reply := NewReply(packet.Ctx(), packet.ReqID, packet.PartitionID, packet.ExtentID)
-		err = reply.ReadFromConn(conn, proto.ReadDeadlineTime)
+		err = reply.ReadFromConn(conn, ReadTimeoutData)
 		if err != nil || reply.ResultCode != proto.OpOk || !packet.isValidWriteReply(reply) || reply.CRC != packet.CRC {
 			err = fmt.Errorf("err[%v]-packet[%v]-reply[%v]", err, packet, reply)
 			break
@@ -506,17 +512,27 @@ func (s *Streamer) writeToNewExtent(ctx context.Context, oriReq *ExtentRequest, 
 	exclude := make(map[string]struct{})
 	for i := 0; i < MaxSelectDataPartitionForWrite; i++ {
 		if err != nil {
-			log.LogWarnf("writeToNewExtent: oriReq %v, dp %v, extID %v, total %v, err %v, retry(%v/%v)",
-				oriReq, dp, extID, total, err, i, MaxSelectDataPartitionForWrite)
+			if dp != nil {
+				s.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
+				dp.CheckAllHostsIsAvail(exclude)
+			}
+			log.LogWarnf("writeToNewExtent: stream %v, oriReq %v, dp %v, extID %v, total %v, err %v, retry(%v/%v) exclude(%v)",
+				s, oriReq, dp, extID, total, err, i, MaxSelectDataPartitionForWrite, exclude)
 			dp, extID, total = nil, 0, 0
 		}
 
 		dp, err = s.client.dataWrapper.GetDataPartitionForWrite(exclude)
 		if err != nil {
+			if len(exclude) > 0 {
+				// if all dp is excluded, clean exclude map
+				log.LogWarnf("writeToNewExtent: clean exclude because no writable partition, stream(%v) oriReq(%v) exclude(%v)",
+					s, oriReq, exclude)
+				exclude = make(map[string]struct{})
+			}
 			time.Sleep(5 * time.Second)
 			continue
 		}
-		extID, err = CreateExtent(ctx, s.inode, dp)
+		extID, err = CreateExtent(ctx, s.inode, dp, s.client.dataWrapper.quorum)
 		if err != nil {
 			continue
 		}
@@ -574,7 +590,7 @@ func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool
 
 	getExtentsErr := s.GetExtents(ctx)
 
-	log.LogWarnf("doROW: inode %v, total %v, oriReq %v, getExtentsErr %v, newEK %v", s.inode, total, oriReq, getExtentsErr, newEK)
+	log.LogDebugf("doROW: inode %v, total %v, oriReq %v, getExtentsErr %v, newEK %v", s.inode, total, oriReq, getExtentsErr, newEK)
 
 	return
 }
@@ -1149,4 +1165,8 @@ func (s *Streamer) usePreExtentHandler(offset, size int) bool {
 	s.handler.extentOffset = int(preEk.ExtentOffset)
 
 	return true
+}
+
+func (s *Streamer) isForceROW() bool {
+	return s.client.dataWrapper.forceROW
 }

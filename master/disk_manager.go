@@ -16,10 +16,12 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/log"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 func (c *Cluster) scheduleToCheckDiskRecoveryProgress() {
@@ -60,7 +62,14 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 			if len(partition.Replicas) == 0 {
 				continue
 			}
-			if partition.isDataCatchUp() && len(partition.Replicas) >= int(vol.dpReplicaNum) {
+			replicaNum := vol.dpReplicaNum
+			if vol.DPConvertMode == proto.IncreaseReplicaNum && vol.dpReplicaNum == maxQuorumVolDataPartitionReplicaNum {
+				replicaNum = partition.ReplicaNum
+				if replicaNum < defaultReplicaNum {
+					replicaNum = defaultReplicaNum
+				}
+			}
+			if partition.isDataCatchUp() && len(partition.Replicas) >= int(replicaNum) {
 				partition.isRecover = false
 				partition.RLock()
 				c.syncUpdateDataPartition(partition)
@@ -147,7 +156,7 @@ func (c *Cluster) fulfillDataReplica(partitionID uint64, badAddr string) (isPush
 			return
 		}
 	} else {
-		if err = c.addDataReplica(partition, newAddr); err != nil {
+		if err = c.addDataReplica(partition, newAddr, false); err != nil {
 			return
 		}
 	}

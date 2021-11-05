@@ -435,7 +435,10 @@ func TestWrite_DataConsistency(t *testing.T) {
 		t.Fatalf("GetDataPartition err(%v), pid(%v)", err, ek.PartitionId)
 	}
 	sc := NewStreamConn(dp, false)
-	host := sortByStatus(sc.dp, true)
+	host := sortByStatus(sc.dp, sc.dp.Hosts[len(sc.dp.Hosts)-2])
+	if host[len(host)-1] != sc.dp.Hosts[len(sc.dp.Hosts)-2] {
+		t.Fatalf("TestWrite_DataConsistency failed: expect host(%v) at the end but hosts(%v)", sc.dp.Hosts[len(sc.dp.Hosts)-2], host)
+	}
 	data := make([]byte, size)
 	req := NewExtentRequest(fileOffset, size, data, &ek)
 	reqPacket := NewReadPacket(context.Background(), &ek, int(ek.ExtentOffset), req.Size, streamer.inode, req.FileOffset, true)

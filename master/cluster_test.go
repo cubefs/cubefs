@@ -2,9 +2,10 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
 	"testing"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 func buildPanicCluster() *Cluster {
@@ -22,7 +23,7 @@ func buildPanicVol() *Vol {
 	var createTime = time.Now().Unix() // record create time of this volume
 	vol := newVol(id, commonVol.Name, commonVol.Owner, testZone1+","+testZone2, commonVol.dataPartitionSize, commonVol.Capacity,
 		defaultReplicaNum, defaultReplicaNum, false, false, true,
-		true, false, createTime, "","","")
+		true, false, false, createTime, "", "", "", 0, 0, 0, 0.0)
 
 	vol.dataPartitions = nil
 	return vol
@@ -76,7 +77,7 @@ func TestPanicCheckMetaPartitions(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID)
+	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.mpLearnerNum, vol.Name, vol.ID)
 	vol.addMetaPartition(mp)
 	mp = nil
 	c.checkMetaPartitions()
@@ -143,7 +144,7 @@ func TestPanicCheckMigratedMetaPartitionsRecovery(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID)
+	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.mpLearnerNum, vol.Name, vol.ID)
 	vol.addMetaPartition(mp)
 	c.MigratedMetaPartitionIds.Store(fmt.Sprintf("%v", mp.PartitionID), mp)
 	mp = nil
@@ -154,11 +155,6 @@ func TestPanicCheckMigratedMetaPartitionsRecovery(t *testing.T) {
 func TestCheckBadDiskRecovery(t *testing.T) {
 	server.cluster.checkDataNodeHeartbeat()
 	time.Sleep(5 * time.Second)
-	//clear
-	server.cluster.BadDataPartitionIds.Range(func(key, value interface{}) bool {
-		server.cluster.BadDataPartitionIds.Delete(key)
-		return true
-	})
 	vol, err := server.cluster.getVol(commonVolName)
 	if err != nil {
 		t.Error(err)
@@ -176,6 +172,11 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 		t.Errorf("dpsLen[%v],dpsMapLen[%v]", dpsLen, dpsMapLen)
 		return
 	}
+	//clear
+	server.cluster.BadDataPartitionIds.Range(func(key, value interface{}) bool {
+		server.cluster.BadDataPartitionIds.Delete(key)
+		return true
+	})
 	for _, dp := range dps {
 		dp.RLock()
 		if !dp.isDataCatchUp() || len(dp.Replicas) < int(vol.dpReplicaNum) {
@@ -185,12 +186,14 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 		}
 		addr := dp.Replicas[0].dataNode.Addr
 		server.cluster.putBadDataPartitionIDs(dp.Replicas[0], addr, dp.PartitionID)
+		t.Logf("Data Partition ID:%v", dp.PartitionID)
 		dp.RUnlock()
 	}
 	count := 0
 	server.cluster.BadDataPartitionIds.Range(func(key, value interface{}) bool {
 		badDataPartitionIds := value.([]uint64)
 		count = count + len(badDataPartitionIds)
+		t.Logf("BadDataPartitionIds:%v", badDataPartitionIds)
 		return true
 	})
 	t.Logf("bad data partitions count:%v", count)
@@ -222,7 +225,7 @@ func TestPanicCheckBadMetaPartitionRecovery(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	dp := newMetaPartition(partitionID, 0, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID)
+	dp := newMetaPartition(partitionID, 0, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.mpLearnerNum, vol.Name, vol.ID)
 	c.BadMetaPartitionIds.Store(fmt.Sprintf("%v", dp.PartitionID), dp)
 	c.scheduleToCheckMetaPartitionRecoveryProgress()
 }

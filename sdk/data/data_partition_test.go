@@ -74,3 +74,96 @@ func TestKmin(t *testing.T) {
 	}
 	fmt.Println()
 }
+
+func TestExcludeDp(t *testing.T) {
+	testsForExcludeDp := []struct {
+		name    		string
+		hosts   		[]string
+		excludeMap		map[string]struct{}
+		quorum			int
+		expectExclude	bool
+	}{
+		{
+			name: "test3quorum_no_exclude",
+			hosts: []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030"},
+			excludeMap: map[string]struct{}{},
+			quorum: 3,
+			expectExclude: false,
+		},
+		{
+			name: "test3quorum_exclude",
+			hosts: []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030"},
+			excludeMap: map[string]struct{}{"192.168.0.32:17030":{}},
+			quorum: 3,
+			expectExclude: true,
+		},
+		{
+			name: "test0quorum_3host_no_exclude",
+			hosts: []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030"},
+			excludeMap: map[string]struct{}{},
+			quorum: 0,
+			expectExclude: false,
+		},
+		{
+			name: "test0quorum_5host_no_exclude",
+			hosts: []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030", "192.168.0.34:17030", "192.168.0.35:17030"},
+			excludeMap: map[string]struct{}{},
+			quorum: 0,
+			expectExclude: false,
+		},
+		{
+			name: "test0quorum_3host",
+			hosts: []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030"},
+			excludeMap: map[string]struct{}{"192.168.0.33:17030":{}},
+			quorum: 0,
+			expectExclude: true,
+		},
+		{
+			name: "test0quorum_5host",
+			hosts: []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030", "192.168.0.34:17030", "192.168.0.35:17030"},
+			excludeMap: map[string]struct{}{"192.168.0.33:17030":{}, "192.168.0.32:17030":{}},
+			quorum: 0,
+			expectExclude: true,
+		},
+		{
+			name: "test3quorum_5host_01",
+			hosts: []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030", "192.168.0.34:17030", "192.168.0.35:17030"},
+			excludeMap: map[string]struct{}{},
+			quorum: 3,
+			expectExclude: false,
+		},
+		{
+			name: "test3quorum_5host_01",
+			hosts: []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030", "192.168.0.34:17030", "192.168.0.35:17030"},
+			excludeMap: map[string]struct{}{"192.168.0.32:17030":{}, "192.168.0.33:17030":{}},
+			quorum: 3,
+			expectExclude: false,
+		},
+		{
+			name: "test3quorum_5host_02",
+			hosts: []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030", "192.168.0.34:17030", "192.168.0.35:17030"},
+			excludeMap: map[string]struct{}{"192.168.0.31:17030":{}},
+			quorum: 3,
+			expectExclude: true,
+		},
+		{
+			name: "test3quorum_5host_02",
+			hosts: []string{"192.168.0.31:17030", "192.168.0.32:17030", "192.168.0.33:17030", "192.168.0.34:17030", "192.168.0.35:17030"},
+			excludeMap: map[string]struct{}{"192.168.0.34:17030":{}, "192.168.0.32:17030":{}, "192.168.0.33:17030":{}},
+			quorum: 3,
+			expectExclude: true,
+		},
+	}
+
+	for _, tt := range testsForExcludeDp {
+		t.Run(tt.name, func(t *testing.T) {
+			dp := &DataPartition{}
+			dp.Hosts = tt.hosts
+			exclude := isExcluded(dp, tt.excludeMap, tt.quorum)
+			if exclude != tt.expectExclude {
+				t.Errorf("TestExcludeDp: test(%v) expect(%v) but(%v)", tt.name, tt.expectExclude, exclude)
+				return
+			}
+		})
+	}
+}

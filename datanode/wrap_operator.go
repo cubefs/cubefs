@@ -468,6 +468,10 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		}
 	}()
 	partition := p.Object.(*DataPartition)
+	if partition.IsRandomWriteDisabled() {
+		err = proto.ErrOperationDisabled
+		return
+	}
 	_, isLeader := partition.IsRaftLeader()
 	if !isLeader {
 		err = raft.ErrNotLeader
@@ -492,7 +496,7 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionStreamRead, err.Error())
-			p.WriteToConn(connect)
+			p.WriteToConn(connect, proto.WriteDeadlineTime)
 		}
 	}()
 	partition := p.Object.(*DataPartition)
@@ -520,7 +524,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 				p.LogMessage(p.GetOpMsg(), connect.RemoteAddr().String(), p.StartT, err))
 			log.LogErrorf(logContent)
 			p.PackErrorBody(ActionStreamRead, err.Error())
-			p.WriteToConn(connect)
+			p.WriteToConn(connect, proto.WriteDeadlineTime)
 		}
 	}()
 	partition := p.Object.(*DataPartition)
@@ -584,7 +588,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 					tp.Set(netErr)
 				}()
 			}
-			netErr = reply.WriteToConn(connect)
+			netErr = reply.WriteToConn(connect, proto.WriteDeadlineTime)
 			return netErr
 		}()
 		if err != nil {
@@ -720,7 +724,7 @@ func (s *DataNode) writeEmptyPacketOnTinyExtentRepairRead(reply *repl.Packet, ne
 	reply.ExtentOffset = currentOffset
 	reply.Arg[0] = EmptyResponse
 	binary.BigEndian.PutUint64(reply.Arg[1:9], uint64(replySize))
-	err = reply.WriteToConn(connect)
+	err = reply.WriteToConn(connect, proto.WriteDeadlineTime)
 	reply.Size = uint32(replySize)
 	logContent := fmt.Sprintf("action[operatePacket] %v.",
 		reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
@@ -744,7 +748,7 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 	defer func() {
 		if err != nil {
 			request.PackErrorBody(ActionStreamReadTinyExtentRepair, err.Error())
-			request.WriteToConn(connect)
+			request.WriteToConn(connect, proto.WriteDeadlineTime)
 		}
 	}()
 	if !storage.IsTinyExtent(request.ExtentID) {
@@ -810,7 +814,7 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 		}
 		reply.Size = uint32(currReadSize)
 		reply.ResultCode = proto.OpOk
-		if err = reply.WriteToConn(connect); err != nil {
+		if err = reply.WriteToConn(connect, proto.WriteDeadlineTime); err != nil {
 			connect.Close()
 			if currReadSize == util.ReadBlockSize {
 				proto.Buffers.Put(reply.Data)
@@ -838,7 +842,7 @@ func (s *DataNode) handlePacketToReadTinyDeleteRecordFile(p *repl.Packet, connec
 	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionStreamReadTinyDeleteRecord, err.Error())
-			p.WriteToConn(connect)
+			p.WriteToConn(connect, proto.WriteDeadlineTime)
 		}
 	}()
 	partition := p.Object.(*DataPartition)
@@ -867,7 +871,7 @@ func (s *DataNode) handlePacketToReadTinyDeleteRecordFile(p *repl.Packet, connec
 		}
 		reply.Size = uint32(currReadSize)
 		reply.ResultCode = proto.OpOk
-		if err = reply.WriteToConn(connect); err != nil {
+		if err = reply.WriteToConn(connect, proto.WriteDeadlineTime); err != nil {
 			return
 		}
 		needReplySize -= int64(currReadSize)
@@ -1409,7 +1413,7 @@ func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet) (ok bo
 		return
 	}
 	defer gConnPool.PutConnect(conn, true)
-	err = p.WriteToConn(conn)
+	err = p.WriteToConn(conn, proto.WriteDeadlineTime)
 	if err != nil {
 		return
 	}
@@ -1442,7 +1446,7 @@ func (s *DataNode) forwardToRaftLeaderWithTimeOut(dp *DataPartition, p *repl.Pac
 		return
 	}
 	defer gConnPool.PutConnect(conn, true)
-	err = p.WriteToConn(conn)
+	err = p.WriteToConn(conn, proto.WriteDeadlineTime)
 	if err != nil {
 		return
 	}

@@ -66,7 +66,7 @@ func (m *metadataManager) respondToClient(conn net.Conn, p *Packet) (err error) 
 	}()
 
 	// process data and send reply though specified tcp connection.
-	err = p.WriteToConn(conn)
+	err = p.WriteToConn(conn, proto.WriteDeadlineTime)
 	if err != nil {
 		log.LogErrorf("response to client[%s], "+
 			"request[%s], response packet[%s]",
@@ -78,7 +78,7 @@ func (m *metadataManager) respondToClient(conn net.Conn, p *Packet) (err error) 
 func (m *metadataManager) responseAckOKToMaster(conn net.Conn, p *Packet) {
 	go func() {
 		p.PacketOkReply()
-		if err := p.WriteToConn(conn); err != nil {
+		if err := p.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
 			log.LogErrorf("ack master response: %s", err.Error())
 		}
 	}()

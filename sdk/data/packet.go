@@ -23,6 +23,8 @@ import (
 	"net"
 	"time"
 
+	"github.com/chubaofs/chubaofs/repl"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 )
@@ -34,13 +36,22 @@ type Packet struct {
 	errCount int
 }
 
+func (p *Packet) SetupReplArg(allHost []string, quorum int) {
+	var followers []string
+	if len(allHost) > 1 {
+		followers = allHost[1:]
+	}
+	p.Arg = repl.EncodeReplPacketArg(followers, quorum)
+	p.ArgLen = uint32(len(p.Arg))
+}
+
 // String returns the string format of the packet.
 func (p *Packet) String() string {
 	if p == nil {
 		return ""
 	}
-	return fmt.Sprintf("ReqID(%v)Op(%v)Inode(%v)FileOffset(%v)Size(%v)PartitionID(%v)ExtentID(%v)ExtentOffset(%v)CRC(%v)ResultCode(%v)",
-		p.ReqID, p.GetOpMsg(), p.inode, p.KernelOffset, p.Size, p.PartitionID, p.ExtentID, p.ExtentOffset, p.CRC, p.GetResultMsg())
+	return fmt.Sprintf("ResultCode(%v)ReqID(%v)Op(%v)Inode(%v)FileOffset(%v)Size(%v)PartitionID(%v)ExtentID(%v)ExtentOffset(%v)CRC(%v)",
+		p.GetResultMsg(), p.ReqID, p.GetOpMsg(), p.inode, p.KernelOffset, p.Size, p.PartitionID, p.ExtentID, p.ExtentOffset, p.CRC)
 }
 
 // NewWritePacket returns a new write packet.
@@ -61,7 +72,7 @@ func NewWritePacket(ctx context.Context, inode uint64, fileOffset, storeMode int
 }
 
 // NewWritePacket returns a new write packet.
-func NewROWPacket(ctx context.Context, dp *DataPartition, inode uint64, extID, fileOffset, extentOffset, size int) *Packet {
+func NewROWPacket(ctx context.Context, dp *DataPartition, quorum int, inode uint64, extID, fileOffset, extentOffset, size int) *Packet {
 	p := new(Packet)
 	p.ReqID = proto.GenerateRequestID()
 	p.Magic = proto.ProtoMagic
@@ -69,8 +80,6 @@ func NewROWPacket(ctx context.Context, dp *DataPartition, inode uint64, extID, f
 	p.ExtentType = proto.NormalExtentType
 	p.PartitionID = dp.PartitionID
 	p.ExtentID = uint64(extID)
-	p.Arg = ([]byte)(dp.GetAllAddrs())
-	p.ArgLen = uint32(len(p.Arg))
 	p.RemainingFollowers = uint8(len(dp.Hosts) - 1)
 	p.KernelOffset = uint64(fileOffset)
 	p.ExtentOffset = int64(extentOffset)
@@ -78,6 +87,7 @@ func NewROWPacket(ctx context.Context, dp *DataPartition, inode uint64, extID, f
 	p.inode = inode
 
 	p.SetCtx(ctx)
+	p.SetupReplArg(dp.GetAllHosts(), quorum)
 	return p
 }
 
@@ -123,13 +133,11 @@ func NewReadPacket(ctx context.Context, key *proto.ExtentKey, extentOffset, size
 }
 
 // NewCreateExtentPacket returns a new packet to create extent.
-func NewCreateExtentPacket(ctx context.Context, dp *DataPartition, inode uint64) *Packet {
+func NewCreateExtentPacket(ctx context.Context, dp *DataPartition, quorum int, inode uint64) *Packet {
 	p := new(Packet)
 	p.PartitionID = dp.PartitionID
 	p.Magic = proto.ProtoMagic
 	p.ExtentType = proto.NormalExtentType
-	p.Arg = ([]byte)(dp.GetAllAddrs())
-	p.ArgLen = uint32(len(p.Arg))
 	p.RemainingFollowers = uint8(len(dp.Hosts) - 1)
 	p.ReqID = proto.GenerateRequestID()
 	p.Opcode = proto.OpCreateExtent
@@ -137,6 +145,7 @@ func NewCreateExtentPacket(ctx context.Context, dp *DataPartition, inode uint64)
 	binary.BigEndian.PutUint64(p.Data, inode)
 	p.Size = uint32(len(p.Data))
 	p.SetCtx(ctx)
+	p.SetupReplArg(dp.GetAllHosts(), quorum)
 	return p
 }
 
@@ -182,7 +191,7 @@ func (p *Packet) isValidReadReply(q *Packet) bool {
 
 func (p *Packet) writeToConn(conn net.Conn) error {
 	p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
-	return p.WriteToConn(conn)
+	return p.WriteToConn(conn, WriteTimeoutData)
 }
 
 func (p *Packet) readFromConn(c net.Conn, deadlineTime time.Duration) (err error) {

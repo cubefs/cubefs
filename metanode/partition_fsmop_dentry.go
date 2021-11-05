@@ -51,7 +51,7 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 	status = proto.OpOk
 
 	if err := mp.isInoOutOfRange(dentry.ParentId); err != nil {
-		return  proto.OpInodeOutOfRange
+		return proto.OpInodeOutOfRange
 	}
 
 	item := mp.inodeTree.CopyGet(NewInode(dentry.ParentId, 0))

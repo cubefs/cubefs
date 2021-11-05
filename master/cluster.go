@@ -801,6 +801,15 @@ func (c *Cluster) markDeleteVol(name, authKey string) (err error) {
 	return
 }
 
+func (c *Cluster) getVolCrossRegionHAType(volName string) (volCrossRegionHAType proto.CrossRegionHAType, err error) {
+	vol, err := c.getVol(volName)
+	if err != nil {
+		return
+	}
+	volCrossRegionHAType = vol.CrossRegionHAType
+	return
+}
+
 func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int) (err error) {
 	for i := 0; i < reqCount; i++ {
 		if c.DisableAutoAllocate {
@@ -834,9 +843,16 @@ func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err er
 	}
 	vol.createDpMutex.Lock()
 	defer vol.createDpMutex.Unlock()
-	errChannel := make(chan error, vol.dpReplicaNum)
-	if targetHosts, targetPeers, err = c.chooseTargetDataNodes("", nil, nil, int(vol.dpReplicaNum), vol.zoneName); err != nil {
-		goto errHandler
+	errChannel := make(chan error, vol.dpReplicaNum+vol.dpLearnerNum)
+	if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
+		if targetHosts, targetPeers, err = c.chooseTargetDataNodesForCreateQuorumDataPartition(int(vol.dpReplicaNum), vol.zoneName); err != nil {
+			goto errHandler
+		}
+	} else {
+		if targetHosts, targetPeers, err = c.chooseTargetDataNodes(nil, nil, nil, int(vol.dpReplicaNum), vol.zoneName, false); err != nil {
+			goto errHandler
+		}
+		// vol.dpLearnerNum is 0 now. if it will be used in the feature, should choose new learner replica
 	}
 	if partitionID, err = c.idAlloc.allocateDataPartitionID(); err != nil {
 		goto errHandler
@@ -851,7 +867,7 @@ func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err er
 				wg.Done()
 			}()
 			var diskPath string
-			if diskPath, err = c.syncCreateDataPartitionToDataNode(host, vol.dataPartitionSize, dp, dp.Peers, dp.Hosts, dp.Learners, proto.NormalCreateDataPartition); err != nil {
+			if diskPath, err = c.syncCreateDataPartitionToDataNode(host, vol.dataPartitionSize, dp, dp.Peers, dp.Hosts, dp.Learners, proto.NormalCreateDataPartition, vol.CrossRegionHAType); err != nil {
 				errChannel <- err
 				return
 			}
@@ -900,8 +916,10 @@ errHandler:
 	return
 }
 
-func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp *DataPartition, peers []proto.Peer, hosts []string, learners []proto.Learner, createType int) (diskPath string, err error) {
-	task := dp.createTaskToCreateDataPartition(host, size, peers, hosts, learners, createType)
+func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp *DataPartition, peers []proto.Peer,
+	hosts []string, learners []proto.Learner, createType int, volumeHAType proto.CrossRegionHAType) (
+	diskPath string, err error) {
+	task := dp.createTaskToCreateDataPartition(host, size, peers, hosts, learners, createType, volumeHAType)
 	dataNode, err := c.dataNode(host)
 	if err != nil {
 		return
@@ -972,9 +990,6 @@ func (c *Cluster) validZone(zoneName string, replicaNum int) (err error) {
 	if len(zoneList) > replicaNum {
 		err = fmt.Errorf("can not specify zone number[%v] more than replica number[%v]", len(zoneList), replicaNum)
 	}
-	if len(zoneList) > defaultReplicaNum {
-		err = fmt.Errorf("can not specify zone number[%v] more than %v", len(zoneList), defaultReplicaNum)
-	}
 	//if length of zoneList more than 1, there should not be duplicate zone names
 	for i := 0; i < len(zoneList)-1; i++ {
 		if zoneList[i] == zoneList[i+1] {
@@ -985,25 +1000,46 @@ func (c *Cluster) validZone(zoneName string, replicaNum int) (err error) {
 	return
 }
 
-func (c *Cluster) chooseTargetDataNodes(excludeZone string, excludeNodeSets []uint64, excludeHosts []string, replicaNum int, zoneName string) (hosts []string, peers []proto.Peer, err error) {
+func (c *Cluster) validCrossRegionHA(volZoneName string) (err error) {
+	if volZoneName == "" {
+		return fmt.Errorf("zone name is empty")
+	}
+	zoneList := strings.Split(volZoneName, ",")
+	zoneNameMap := make(map[string]bool, len(zoneList))
+	for _, name := range zoneList {
+		zoneNameMap[name] = true
+	}
+	if len(zoneNameMap) <= 1 {
+		return fmt.Errorf("can not cross region, onle one zones:%v", zoneList)
+	}
+	masterRegionZoneName, slaveRegionZone, err := c.getMasterAndSlaveRegionZoneName(volZoneName)
+	if err != nil {
+		return
+	}
+	if len(masterRegionZoneName) < 2 || len(slaveRegionZone) == 0 {
+		return fmt.Errorf("there must be at least two master and one slave region zone for cross region vol")
+	}
+	return
+}
+
+func (c *Cluster) chooseTargetDataNodes(excludeZones []string, excludeNodeSets []uint64, excludeHosts []string, replicaNum int, zoneName string, isStrict bool) (hosts []string, peers []proto.Peer, err error) {
 
 	var (
 		zones []*Zone
 	)
 	allocateZoneMap := make(map[*Zone][]string, 0)
 	hasAllocateNum := 0
-	excludeZones := make([]string, 0)
 	hosts = make([]string, 0)
 	peers = make([]proto.Peer, 0)
+	if excludeZones == nil {
+		excludeZones = make([]string, 0)
+	}
 	if excludeHosts == nil {
 		excludeHosts = make([]string, 0)
 	}
 
-	if excludeZone != "" {
-		excludeZones = append(excludeZones, excludeZone)
-	}
 	zoneList := strings.Split(zoneName, ",")
-	if zones, err = c.t.allocZonesForDataNode(zoneName, replicaNum, excludeZones); err != nil {
+	if zones, err = c.t.allocZonesForDataNode(c.Name, zoneName, replicaNum, excludeZones, isStrict); err != nil {
 		return
 	}
 
@@ -1366,7 +1402,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 			goto errHandler
 		}
 	} else {
-		if err = c.addDataReplica(dp, addAddr); err != nil {
+		if err = c.addDataReplica(dp, addAddr, false); err != nil {
 			goto errHandler
 		}
 	}
@@ -1397,9 +1433,16 @@ errHandler:
 }
 func (partition *DataPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
 	var (
-		zoneList      []string
-		isNeedBalance bool
+		zoneList             []string
+		masterRegionZoneName []string
+		isNeedBalance        bool
 	)
+	isCrossRegionHATypeQuorumVol := IsCrossRegionHATypeQuorum(vol.CrossRegionHAType)
+	if isCrossRegionHATypeQuorumVol {
+		if masterRegionZoneName, _, err = c.getMasterAndSlaveRegionZoneName(vol.zoneName); err != nil {
+			return
+		}
+	}
 	partition.RLock()
 	defer partition.RUnlock()
 	var isValidZone bool
@@ -1417,7 +1460,10 @@ func (partition *DataPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
 		return
 	}
 	zoneList = strings.Split(vol.zoneName, ",")
-	if len(partition.Replicas) != int(vol.dpReplicaNum) {
+	if isCrossRegionHATypeQuorumVol {
+		zoneList = masterRegionZoneName
+	}
+	if len(partition.Replicas) != int(vol.dpReplicaNum+vol.dpLearnerNum) {
 		log.LogWarnf("action[RepairZone], vol[%v], zoneName[%v], partitionId[%v] data replica length[%v] not equal to dpReplicaNum[%v]",
 			vol.Name, vol.zoneName, partition.PartitionID, len(partition.Replicas), vol.dpReplicaNum)
 		return
@@ -1432,7 +1478,7 @@ func (partition *DataPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
 		log.LogWarnf("action[repairDataPartition] clusterID[%v] Recover pool is full, recover partition[%v], pool size[%v]", c.Name, dpInRecover, c.cfg.DataPartitionsRecoverPoolSize)
 		return
 	}
-	if isNeedBalance, err = partition.needToRebalanceZone(c, zoneList); err != nil {
+	if isNeedBalance, err = partition.needToRebalanceZone(c, zoneList, vol.CrossRegionHAType); err != nil {
 		return
 	}
 	if !isNeedBalance {
@@ -1487,6 +1533,16 @@ var getTargetAddressForDataPartitionDecommission = func(c *Cluster, offlineAddr 
 			// select data nodes from the other node set in same zone
 			excludeNodeSets = append(excludeNodeSets, ns.ID)
 			if targetHosts, _, err = zone.getAvailDataNodeHosts(excludeNodeSets, dp.Hosts, 1); err != nil {
+				if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
+					//select data nodes from the other zones in the same region type
+					targetHosts, _, err = c.chooseTargetDataNodesFromSameRegionTypeOfOfflineReplica(zone.regionName, vol.zoneName, 1, excludeNodeSets, dp.Hosts)
+					if err != nil {
+						return
+					}
+					newAddr = targetHosts[0]
+					oldAddr = offlineAddr
+					return
+				}
 				// select data nodes from the other zone
 				zones = dp.getLiveZones(dataNode.Addr)
 				if len(zones) == 0 {
@@ -1494,7 +1550,7 @@ var getTargetAddressForDataPartitionDecommission = func(c *Cluster, offlineAddr 
 				} else {
 					excludeZone = zones[0]
 				}
-				if targetHosts, _, err = c.chooseTargetDataNodes(excludeZone, excludeNodeSets, dp.Hosts, 1, vol.zoneName); err != nil {
+				if targetHosts, _, err = c.chooseTargetDataNodes([]string{excludeZone}, excludeNodeSets, dp.Hosts, 1, vol.zoneName, false); err != nil {
 					return
 				}
 			}
@@ -1550,7 +1606,14 @@ func (c *Cluster) validateDecommissionDataPartition(dp *DataPartition, offlineAd
 		return
 	}
 
-	if err = dp.hasMissingOneReplica(offlineAddr, int(vol.dpReplicaNum)); err != nil {
+	replicaNum := vol.dpReplicaNum
+	if vol.DPConvertMode == proto.IncreaseReplicaNum && vol.dpReplicaNum == maxQuorumVolDataPartitionReplicaNum {
+		replicaNum = dp.ReplicaNum
+		if replicaNum < defaultReplicaNum {
+			replicaNum = defaultReplicaNum
+		}
+	}
+	if err = dp.hasMissingOneReplica(offlineAddr, int(replicaNum)); err != nil {
 		return
 	}
 
@@ -1566,7 +1629,7 @@ func (c *Cluster) validateDecommissionDataPartition(dp *DataPartition, offlineAd
 	return
 }
 
-func (c *Cluster) addDataReplica(dp *DataPartition, addr string) (err error) {
+func (c *Cluster) addDataReplica(dp *DataPartition, addr string, isNeedIncreaseDPReplicaNum bool) (err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[addDataReplica],vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
@@ -1578,7 +1641,7 @@ func (c *Cluster) addDataReplica(dp *DataPartition, addr string) (err error) {
 	}
 	addPeer := proto.Peer{ID: dataNode.ID, Addr: addr}
 	// Todo: What if adding raft member success but creating replica failed?
-	if err = c.addDataPartitionRaftMember(dp, addPeer); err != nil {
+	if err = c.addDataPartitionRaftMember(dp, addPeer, isNeedIncreaseDPReplicaNum); err != nil {
 		return
 	}
 
@@ -1614,11 +1677,24 @@ func (c *Cluster) buildAddDataPartitionRaftMemberTaskAndSyncSendTask(dp *DataPar
 	return
 }
 
-func (c *Cluster) addDataPartitionRaftMember(dp *DataPartition, addPeer proto.Peer) (err error) {
+func (c *Cluster) addDataPartitionRaftMember(dp *DataPartition, addPeer proto.Peer, isNeedIncreaseDPReplicaNum bool) (err error) {
 	var (
-		leaderAddr     string
-		candidateAddrs []string
+		leaderAddr           string
+		candidateAddrs       []string
+		volCrossRegionHAType proto.CrossRegionHAType
+		volDPReplicaNum      uint8
+		oldDPReplicaNum      uint8
+		isReplicaNumChanged  bool
 	)
+	vol, err := c.getVol(dp.VolName)
+	if err != nil {
+		return
+	}
+	volCrossRegionHAType = vol.CrossRegionHAType
+	volDPReplicaNum = vol.dpReplicaNum
+	if err != nil {
+		return
+	}
 	if leaderAddr, candidateAddrs, err = dp.prepareAddRaftMember(addPeer); err != nil {
 		return
 	}
@@ -1641,9 +1717,28 @@ func (c *Cluster) addDataPartitionRaftMember(dp *DataPartition, addPeer proto.Pe
 	dp.Lock()
 	newHosts := make([]string, 0, len(dp.Hosts)+1)
 	newPeers := make([]proto.Peer, 0, len(dp.Peers)+1)
-	newHosts = append(dp.Hosts, addPeer.Addr)
+	if IsCrossRegionHATypeQuorum(volCrossRegionHAType) {
+		if newHosts, _, err = dp.getNewHostsWithAddedPeer(c, addPeer.Addr); err != nil {
+			dp.Unlock()
+			return
+		}
+	} else {
+		newHosts = append(dp.Hosts, addPeer.Addr)
+	}
 	newPeers = append(dp.Peers, addPeer)
+
+	oldDPReplicaNum = dp.ReplicaNum
+	if isNeedIncreaseDPReplicaNum {
+		newReplicaNum := uint8(len(newHosts))
+		if dp.ReplicaNum < newReplicaNum && newReplicaNum <= volDPReplicaNum {
+			isReplicaNumChanged = true
+			dp.ReplicaNum = newReplicaNum
+		}
+	}
 	if err = dp.update("addDataPartitionRaftMember", dp.VolName, newPeers, newHosts, dp.Learners, c); err != nil {
+		if isReplicaNumChanged {
+			dp.ReplicaNum = oldDPReplicaNum
+		}
 		dp.Unlock()
 		return
 	}
@@ -1664,7 +1759,7 @@ func (c *Cluster) createDataReplica(dp *DataPartition, addPeer proto.Peer) (err 
 	learners := make([]proto.Learner, len(dp.Learners))
 	copy(learners, dp.Learners)
 	dp.RUnlock()
-	diskPath, err := c.syncCreateDataPartitionToDataNode(addPeer.Addr, vol.dataPartitionSize, dp, peers, hosts, learners, proto.DecommissionedCreateDataPartition)
+	diskPath, err := c.syncCreateDataPartitionToDataNode(addPeer.Addr, vol.dataPartitionSize, dp, peers, hosts, learners, proto.DecommissionedCreateDataPartition, vol.CrossRegionHAType)
 	if err != nil {
 		return
 	}
@@ -1735,7 +1830,7 @@ func (c *Cluster) forceRemoveDataReplica(dp *DataPartition, panicHosts []string)
 		var dataNode *DataNode
 		dataNode, err = c.dataNode(host)
 		if err != nil {
-			dp.Unlock()
+			dp.RUnlock()
 			return
 		}
 		peer := proto.Peer{
@@ -1974,6 +2069,10 @@ func (c *Cluster) addDataPartitionRaftLearner(dp *DataPartition, addPeer proto.P
 		candidateAddrs []string
 		leaderAddr     string
 	)
+	volCrossRegionHAType, err := c.getVolCrossRegionHAType(dp.VolName)
+	if err != nil {
+		return
+	}
 	if leaderAddr, candidateAddrs, err = dp.prepareAddRaftMember(addPeer); err != nil {
 		return
 	}
@@ -1997,7 +2096,14 @@ func (c *Cluster) addDataPartitionRaftLearner(dp *DataPartition, addPeer proto.P
 	newHosts := make([]string, 0, len(dp.Hosts)+1)
 	newPeers := make([]proto.Peer, 0, len(dp.Peers)+1)
 	newLearners := make([]proto.Learner, 0, len(dp.Learners)+1)
-	newHosts = append(dp.Hosts, addLearner.Addr)
+	if IsCrossRegionHATypeQuorum(volCrossRegionHAType) {
+		if newHosts, _, err = dp.getNewHostsWithAddedPeer(c, addPeer.Addr); err != nil {
+			dp.Unlock()
+			return
+		}
+	} else {
+		newHosts = append(dp.Hosts, addLearner.Addr)
+	}
 	newPeers = append(dp.Peers, addPeer)
 	newLearners = append(dp.Learners, addLearner)
 	if err = dp.update("addDataPartitionRaftLearner", dp.VolName, newPeers, newHosts, newLearners, c); err != nil {
@@ -2208,14 +2314,16 @@ func (c *Cluster) deleteMetaNodeFromCache(metaNode *MetaNode) {
 	go metaNode.clean()
 }
 
-func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacity uint64, replicaNum uint8,
-	followerRead, authenticate, enableToken, autoRepair bool, dpSelectorName, dpSelectorParm string, ossBucketPolicy proto.BucketAccessPolicy) (err error) {
+func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacity uint64, replicaNum, mpReplicaNum uint8,
+	followerRead, authenticate, enableToken, autoRepair, forceROW bool, dpSelectorName, dpSelectorParm string, ossBucketPolicy proto.BucketAccessPolicy, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64) (err error) {
 	var (
 		vol             *Vol
 		serverAuthKey   string
 		oldDpReplicaNum uint8
+		oldMpReplicaNum uint8
 		oldCapacity     uint64
 		oldFollowerRead bool
+		oldForceROW     bool
 		oldAuthenticate bool
 		oldEnableToken  bool
 		oldAutoRepair   bool
@@ -2224,14 +2332,24 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		oldCrossZone    bool
 		zoneList        []string
 
-		oldDpSelectorName  string
-		oldDpSelectorParm  string
-		oldOSSBucketPolicy proto.BucketAccessPolicy
+		oldDpSelectorName       string
+		oldDpSelectorParm       string
+		oldDpWriteableThreshold float64
+		oldOSSBucketPolicy      proto.BucketAccessPolicy
+		oldCrossRegionHAType    proto.CrossRegionHAType
+		oldDPConvertMode        proto.ConvertMode
+		oldMPConvertMode        proto.ConvertMode
+		oldMpLearnerNum         uint8
 	)
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[updateVol] err[%v]", err)
 		err = proto.ErrVolNotExists
 		goto errHandler
+	}
+	if IsCrossRegionHATypeQuorum(crossRegionHAType) {
+		if err = c.validCrossRegionHA(zoneName); err != nil {
+			goto errHandler
+		}
 	}
 	vol.Lock()
 	defer vol.Unlock()
@@ -2243,8 +2361,25 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		err = fmt.Errorf("capacity[%v] less than old capacity[%v]", capacity, vol.Capacity)
 		goto errHandler
 	}
-	if replicaNum > vol.dpReplicaNum {
-		err = fmt.Errorf("don't support new replicaNum[%v] larger than old dpReplicaNum[%v]", replicaNum, vol.dpReplicaNum)
+	if replicaNum == 0 || mpReplicaNum == 0 {
+		err = fmt.Errorf("new replicaNum[%v] or replicaNum[%v] can not be 0", replicaNum, mpReplicaNum)
+		goto errHandler
+	}
+	oldMpLearnerNum = vol.mpLearnerNum
+	if IsCrossRegionHATypeQuorum(crossRegionHAType) {
+		if replicaNum != maxQuorumVolDataPartitionReplicaNum {
+			err = fmt.Errorf("for cross region quorum vol, dp replicaNum should be 5")
+			goto errHandler
+		}
+		if mpReplicaNum != defaultQuorumMetaPartitionMasterRegionCount {
+			err = fmt.Errorf("for cross region quorum vol, mpReplicaNum should be 3")
+			goto errHandler
+		}
+		vol.mpLearnerNum = defaultQuorumMetaPartitionLearnerReplicaNum
+	}
+	if !IsCrossRegionHATypeQuorum(crossRegionHAType) && replicaNum > vol.dpReplicaNum {
+		err = fmt.Errorf("don't support new replicaNum[%v] larger than old dpReplicaNum[%v] for crossRegionHAType[%s]",
+			replicaNum, vol.dpReplicaNum, crossRegionHAType)
 		goto errHandler
 	}
 	if enableToken == true && len(vol.tokens) == 0 {
@@ -2260,7 +2395,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		if err = c.validZone(zoneName, int(replicaNum)); err != nil {
 			goto errHandler
 		}
-		if err = c.validZone(zoneName, int(vol.mpReplicaNum)); err != nil {
+		if err = c.validZone(zoneName, int(vol.mpReplicaNum+vol.mpLearnerNum)); err != nil {
 			goto errHandler
 		}
 		vol.zoneName = zoneName
@@ -2274,7 +2409,9 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	}
 	oldCapacity = vol.Capacity
 	oldDpReplicaNum = vol.dpReplicaNum
+	oldMpReplicaNum = vol.mpReplicaNum
 	oldFollowerRead = vol.FollowerRead
+	oldForceROW = vol.ForceROW
 	oldAuthenticate = vol.authenticate
 	oldEnableToken = vol.enableToken
 	oldAutoRepair = vol.autoRepair
@@ -2282,25 +2419,43 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	oldDpSelectorName = vol.dpSelectorName
 	oldDpSelectorParm = vol.dpSelectorParm
 	oldOSSBucketPolicy = vol.OSSBucketPolicy
+	oldCrossRegionHAType = vol.CrossRegionHAType
+	oldDPConvertMode = vol.DPConvertMode
+	oldMPConvertMode = vol.MPConvertMode
+
+	oldDpWriteableThreshold = vol.dpWriteableThreshold
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
+	vol.ForceROW = forceROW
 	vol.authenticate = authenticate
 	vol.enableToken = enableToken
 	vol.autoRepair = autoRepair
+	vol.CrossRegionHAType = crossRegionHAType
 	if description != "" {
 		vol.description = description
 	}
-	//only reduced replica num is supported
-	if replicaNum != 0 && replicaNum < vol.dpReplicaNum {
+	//for normal vol, only reduced dp replica num is supported
+	if replicaNum != 0 && (replicaNum < vol.dpReplicaNum || IsCrossRegionHATypeQuorum(crossRegionHAType)) {
+		if replicaNum > vol.dpReplicaNum {
+			vol.DPConvertMode = proto.IncreaseReplicaNum
+		}
 		vol.dpReplicaNum = replicaNum
+	}
+	// only can increase mp replica num
+	if mpReplicaNum > vol.mpReplicaNum {
+		vol.mpReplicaNum = mpReplicaNum
+		vol.MPConvertMode = proto.IncreaseReplicaNum
 	}
 	vol.dpSelectorName = dpSelectorName
 	vol.dpSelectorParm = dpSelectorParm
 	vol.OSSBucketPolicy = ossBucketPolicy
+	vol.dpWriteableThreshold = dpWriteableThreshold
 	if err = c.syncUpdateVol(vol); err != nil {
 		vol.Capacity = oldCapacity
 		vol.dpReplicaNum = oldDpReplicaNum
+		vol.mpReplicaNum = oldMpReplicaNum
 		vol.FollowerRead = oldFollowerRead
+		vol.ForceROW = oldForceROW
 		vol.authenticate = oldAuthenticate
 		vol.enableToken = oldEnableToken
 		vol.zoneName = oldZoneName
@@ -2310,6 +2465,11 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		vol.dpSelectorName = oldDpSelectorName
 		vol.dpSelectorParm = oldDpSelectorParm
 		vol.OSSBucketPolicy = oldOSSBucketPolicy
+		vol.CrossRegionHAType = oldCrossRegionHAType
+		vol.DPConvertMode = oldDPConvertMode
+		vol.MPConvertMode = oldMPConvertMode
+		vol.mpLearnerNum = oldMpLearnerNum
+		vol.dpWriteableThreshold = oldDpWriteableThreshold
 		log.LogErrorf("action[updateVol] vol[%v] err[%v]", name, err)
 		err = proto.ErrPersistenceByRaft
 		goto errHandler
@@ -2324,10 +2484,12 @@ errHandler:
 
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable bool) (vol *Vol, err error) {
+func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, mpReplicaNum, size, capacity int,
+	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW bool, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
+		mpLearnerNum            uint8
 	)
 	if size == 0 {
 		dataPartitionSize = util.DefaultDataPartitionSize
@@ -2337,13 +2499,28 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	if zoneName == "" {
 		zoneName = DefaultZoneName
 	}
+	if IsCrossRegionHATypeQuorum(crossRegionHAType) {
+		if dpReplicaNum != maxQuorumVolDataPartitionReplicaNum {
+			err = fmt.Errorf("for cross region quorum vol, dp replicaNum should be 5")
+			goto errHandler
+		}
+		if mpReplicaNum != defaultQuorumMetaPartitionMasterRegionCount {
+			err = fmt.Errorf("for cross region quorum vol, mpReplicaNum should be 3")
+			goto errHandler
+		}
+		mpLearnerNum = defaultQuorumMetaPartitionLearnerReplicaNum
+		if err = c.validCrossRegionHA(zoneName); err != nil {
+			goto errHandler
+		}
+	}
 	if err = c.validZone(zoneName, dpReplicaNum); err != nil {
 		goto errHandler
 	}
-	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable); err != nil {
+	if err = c.validZone(zoneName, mpReplicaNum+int(mpLearnerNum)); err != nil {
 		goto errHandler
 	}
-	if err = c.validZone(zoneName, int(vol.mpReplicaNum)); err != nil {
+	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, mpReplicaNum,
+		followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, crossRegionHAType, 0, mpLearnerNum, dpWriteableThreshold); err != nil {
 		goto errHandler
 	}
 	if err = vol.initMetaPartitions(c, mpCount); err != nil {
@@ -2371,7 +2548,8 @@ errHandler:
 	return
 }
 
-func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity uint64, dpReplicaNum int, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable bool) (vol *Vol, err error) {
+func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum int,
+	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW bool, crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64) (vol *Vol, err error) {
 	var id uint64
 	c.createVolMutex.Lock()
 	defer c.createVolMutex.Unlock()
@@ -2384,8 +2562,8 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	if err != nil {
 		goto errHandler
 	}
-	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), defaultReplicaNum, followerRead,
-		authenticate, enableToken, autoRepair, volWriteMutexEnable, createTime, description, "", "")
+	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), uint8(mpReplicaNum), followerRead,
+		authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, createTime, description, "", "", crossRegionHAType, dpLearnerNum, mpLearnerNum, dpWriteableThreshold)
 
 	// refresh oss secure
 	vol.refreshOSSSecure()
@@ -2443,7 +2621,7 @@ func (c *Cluster) updateInodeIDRange(volName string, start uint64) (err error) {
 }
 
 // Choose the target hosts from the available zones and meta nodes.
-func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []uint64, excludeHosts []string, replicaNum int, zoneName string) (hosts []string, peers []proto.Peer, err error) {
+func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []uint64, excludeHosts []string, replicaNum int, zoneName string, isStrict bool) (hosts []string, peers []proto.Peer, err error) {
 	var (
 		zones []*Zone
 	)
@@ -2458,7 +2636,7 @@ func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []ui
 	if excludeZone != "" {
 		excludeZones = append(excludeZones, excludeZone)
 	}
-	if zones, err = c.t.allocZonesForMetaNode(zoneName, replicaNum, excludeZones); err != nil {
+	if zones, err = c.t.allocZonesForMetaNode(c.Name, zoneName, replicaNum, excludeZones, isStrict); err != nil {
 		return
 	}
 	zoneList := strings.Split(zoneName, ",")
@@ -3314,4 +3492,437 @@ func (c *Cluster) handleDataNodeValidateCRCReport(dpCrcInfo *proto.DataPartition
 			}
 		}
 	}
+}
+
+func (c *Cluster) updateRegion(regionName string, regionType proto.RegionType) (err error) {
+	region, err := c.t.getRegion(regionName)
+	if err != nil {
+		return
+	}
+	oldRegionType := region.RegionType
+
+	region.RegionType = regionType
+	if err = c.syncUpdateRegion(region); err != nil {
+		region.RegionType = oldRegionType
+		log.LogErrorf("action[updateRegion] region[%v] err[%v]", region.Name, err)
+		return
+	}
+	return
+}
+
+func IsCrossRegionHATypeQuorum(crossRegionHAType proto.CrossRegionHAType) bool {
+	return crossRegionHAType == proto.CrossRegionHATypeQuorum
+}
+
+func (c *Cluster) setZoneRegion(zoneName, newRegionName string) (err error) {
+	var zone *Zone
+	if zone, err = c.t.getZone(zoneName); err != nil {
+		return
+	}
+	targetRegion, err := c.t.getRegion(newRegionName)
+	if err != nil {
+		return
+	}
+	c.t.regionMap.Range(func(_, value interface{}) bool {
+		region, ok := value.(*Region)
+		if !ok || region == nil {
+			return true
+		}
+		if err = region.deleteZone(zoneName, c); err != nil {
+			return false
+		}
+		return true
+	})
+
+	//oldRegionName := zone.regionName
+	zone.regionName = newRegionName
+	if err = targetRegion.addZone(zoneName, c); err != nil {
+		zone.regionName = ""
+		return
+	}
+	return
+}
+
+func (c *Cluster) chooseTargetMetaHostsForCreateQuorumMetaPartition(replicaNum, learnerReplicaNum int, zoneName string) (hosts []string, peers []proto.Peer,
+	learners []proto.Learner, err error) {
+	masterRegionZoneName, slaveRegionZoneName, err := c.getMasterAndSlaveRegionZoneName(zoneName)
+	if err != nil {
+		return
+	}
+	learners = make([]proto.Learner, 0)
+	masterRegionHosts, masterRegionPeers, err := c.chooseTargetMetaHosts("", nil, nil,
+		replicaNum, strings.Join(masterRegionZoneName, ","), true)
+	if err != nil {
+		err = fmt.Errorf("choose master region hosts failed, err:%v", err)
+		return
+	}
+	hosts = append(hosts, masterRegionHosts...)
+	peers = append(peers, masterRegionPeers...)
+
+	slaveReplicaNum := learnerReplicaNum
+	if slaveReplicaNum <= 0 {
+		return
+	}
+	slaveRegionHosts, slaveRegionPeers, err := c.chooseTargetMetaHosts("", nil, nil,
+		slaveReplicaNum, strings.Join(slaveRegionZoneName, ","), true)
+	if err != nil {
+		err = fmt.Errorf("choose slave region hosts failed, err:%v", err)
+		return
+	}
+	hosts = append(hosts, slaveRegionHosts...)
+	peers = append(peers, slaveRegionPeers...)
+	for _, slaveRegionHost := range slaveRegionHosts {
+		var metaNode *MetaNode
+		if metaNode, err = c.metaNode(slaveRegionHost); err != nil {
+			return
+		}
+		addLearner := proto.Learner{ID: metaNode.ID, Addr: slaveRegionHost, PmConfig: &proto.PromoteConfig{AutoProm: false, PromThreshold: 100}}
+		learners = append(learners, addLearner)
+	}
+	return
+}
+
+func (c *Cluster) chooseTargetDataNodesForCreateQuorumDataPartition(replicaNum int, zoneName string) (hosts []string, peers []proto.Peer, err error) {
+	masterRegionZoneName, slaveRegionZoneName, err := c.getMasterAndSlaveRegionZoneName(zoneName)
+	if err != nil {
+		return
+	}
+	masterRegionHosts, masterRegionPeers, err := c.chooseTargetDataNodes(nil, nil, nil,
+		defaultQuorumDataPartitionMasterRegionCount, strings.Join(masterRegionZoneName, ","), true)
+	if err != nil {
+		err = fmt.Errorf("choose master region hosts failed, err:%v", err)
+		return
+	}
+	hosts = append(hosts, masterRegionHosts...)
+	peers = append(peers, masterRegionPeers...)
+
+	slaveReplicaNum := replicaNum - defaultQuorumDataPartitionMasterRegionCount
+	if slaveReplicaNum <= 0 {
+		return
+	}
+	slaveRegionHosts, slaveRegionPeers, err := c.chooseTargetDataNodes(nil, nil, nil,
+		slaveReplicaNum, convertSliceToVolZoneName(slaveRegionZoneName), true)
+	if err != nil {
+		err = fmt.Errorf("choose slave region hosts failed, err:%v", err)
+		return
+	}
+	hosts = append(hosts, slaveRegionHosts...)
+	peers = append(peers, slaveRegionPeers...)
+	return
+}
+
+func (c *Cluster) getMasterAndSlaveRegionZoneName(volZoneName string) (masterRegionZoneName, slaveRegionZoneName []string, err error) {
+	var (
+		region *Region
+	)
+	masterRegionZoneName = make([]string, 0)
+	slaveRegionZoneName = make([]string, 0)
+
+	zoneList := strings.Split(volZoneName, ",")
+	for _, zoneName := range zoneList {
+		if region, err = c.getRegionOfZoneName(zoneName); err != nil {
+			return
+		}
+		switch region.RegionType {
+		case proto.MasterRegion:
+			if !contains(masterRegionZoneName, zoneName) {
+				masterRegionZoneName = append(masterRegionZoneName, zoneName)
+			}
+		case proto.SlaveRegion:
+			if !contains(slaveRegionZoneName, zoneName) {
+				slaveRegionZoneName = append(slaveRegionZoneName, zoneName)
+			}
+		default:
+			err = fmt.Errorf("action[getMasterAndSlaveRegionZoneName] zoneName:%v, region:%v type:%v is wrong", zoneName, region, region.RegionType)
+			return
+		}
+	}
+	log.LogDebugf("action[getMasterAndSlaveRegionZoneName] volZoneName:%v masterRegionZoneName:%v slaveRegionZoneName:%v",
+		volZoneName, masterRegionZoneName, slaveRegionZoneName)
+	return
+}
+
+func (c *Cluster) getRegionOfZoneName(zoneName string) (region *Region, err error) {
+	zone, err := c.t.getZone(zoneName)
+	if err != nil {
+		return
+	}
+	if region, err = c.t.getRegion(zone.regionName); err != nil {
+		err = fmt.Errorf("action[getRegionOfZoneName] zone:%v region:%v err:%v", zoneName, zone.regionName, err)
+		return
+	}
+	return
+}
+
+func (c *Cluster) chooseTargetDataNodesFromSameRegionTypeOfOfflineReplica(offlineReplicaRegionName, volZoneName string, replicaNum int,
+	excludeNodeSets []uint64, dpHosts []string) (hosts []string, peers []proto.Peer, err error) {
+	var targetZoneNames string
+	region, err := c.t.getRegion(offlineReplicaRegionName)
+	if err != nil {
+		return
+	}
+	masterRegionZoneName, slaveRegionZoneName, err := c.getMasterAndSlaveRegionZoneName(volZoneName)
+	if err != nil {
+		return
+	}
+	switch region.RegionType {
+	case proto.MasterRegion:
+		targetZoneNames = convertSliceToVolZoneName(masterRegionZoneName)
+	case proto.SlaveRegion:
+		targetZoneNames = convertSliceToVolZoneName(slaveRegionZoneName)
+	default:
+		err = fmt.Errorf("action[chooseTargetDataNodesFromSameRegionTypeOfOfflineReplica] offline replica region name:%v, region:%v type:%v is wrong",
+			offlineReplicaRegionName, region.Name, region.RegionType)
+		return
+	}
+	if hosts, peers, err = c.chooseTargetDataNodes(nil, excludeNodeSets, dpHosts, replicaNum, targetZoneNames, true); err != nil {
+		return
+	}
+	return
+}
+
+func (c *Cluster) chooseTargetMetaNodesFromSameRegionTypeOfOfflineReplica(offlineReplicaRegionName, volZoneName string, replicaNum int,
+	excludeNodeSets []uint64, oldHosts []string) (hosts []string, peers []proto.Peer, err error) {
+	var targetZoneNames string
+	region, err := c.t.getRegion(offlineReplicaRegionName)
+	if err != nil {
+		return
+	}
+	masterRegionZoneName, slaveRegionZoneName, err := c.getMasterAndSlaveRegionZoneName(volZoneName)
+	if err != nil {
+		return
+	}
+	switch region.RegionType {
+	case proto.MasterRegion:
+		targetZoneNames = convertSliceToVolZoneName(masterRegionZoneName)
+	case proto.SlaveRegion:
+		targetZoneNames = convertSliceToVolZoneName(slaveRegionZoneName)
+	default:
+		err = fmt.Errorf("action[chooseTargetMetaNodesFromSameRegionTypeOfOfflineReplica] offline replica region name:%v, region:%v type:%v is wrong",
+			offlineReplicaRegionName, region.Name, region.RegionType)
+		return
+	}
+	if hosts, peers, err = c.chooseTargetMetaHosts("", excludeNodeSets, oldHosts, replicaNum, targetZoneNames, true); err != nil {
+		return
+	}
+	return
+}
+
+func convertSliceToVolZoneName(zoneNames []string) string {
+	return strings.Join(zoneNames, commaSeparator)
+}
+
+func (c *Cluster) getDataNodeRegionType(dataNodeAddr string) (regionType proto.RegionType, err error) {
+	dataNode, err := c.dataNode(dataNodeAddr)
+	if err != nil {
+		return
+	}
+	region, err := c.getRegionOfZoneName(dataNode.ZoneName)
+	if err != nil {
+		return
+	}
+	regionType = region.RegionType
+	return
+}
+
+func (c *Cluster) getMetaNodeRegionType(metaNodeAddr string) (regionType proto.RegionType, err error) {
+	metaNode, err := c.metaNode(metaNodeAddr)
+	if err != nil {
+		return
+	}
+	region, err := c.getRegionOfZoneName(metaNode.ZoneName)
+	if err != nil {
+		return
+	}
+	regionType = region.RegionType
+	return
+}
+
+// it will not change the order of given addrs
+func (c *Cluster) getMasterAndSlaveRegionAddrsFromDataNodeAddrs(dataNodeAddrs []string) (masterRegionAddrs, slaveRegionAddrs []string, err error) {
+	masterRegionAddrs = make([]string, 0)
+	slaveRegionAddrs = make([]string, 0)
+	for _, dataNodeAddr := range dataNodeAddrs {
+		hostRegionType, err1 := c.getDataNodeRegionType(dataNodeAddr)
+		if err1 != nil {
+			err = fmt.Errorf("action[getMasterAndSlaveRegionAddrsFromDataNodeAddrs] dataNodeAddr:%v err:%v", dataNodeAddr, err1)
+			return
+		}
+		switch hostRegionType {
+		case proto.MasterRegion:
+			masterRegionAddrs = append(masterRegionAddrs, dataNodeAddr)
+		case proto.SlaveRegion:
+			slaveRegionAddrs = append(slaveRegionAddrs, dataNodeAddr)
+		default:
+			err = fmt.Errorf("action[getMasterAndSlaveRegionAddrsFromDataNodeAddrs] dataNodeAddr:%v, region type:%v is wrong", dataNodeAddr, hostRegionType)
+			return
+		}
+	}
+	return
+}
+
+// it will not change the order of given addrs
+func (c *Cluster) getMasterAndSlaveRegionAddrsFromMetaNodeAddrs(metaNodeAddrs []string) (masterRegionAddrs, slaveRegionAddrs []string, err error) {
+	masterRegionAddrs = make([]string, 0)
+	slaveRegionAddrs = make([]string, 0)
+	for _, metaNodeAddr := range metaNodeAddrs {
+		hostRegionType, err1 := c.getMetaNodeRegionType(metaNodeAddr)
+		if err1 != nil {
+			err = fmt.Errorf("action[getMasterAndSlaveRegionAddrsFromMetaNodeAddrs] metaNodeAddr:%v err:%v", metaNodeAddr, err1)
+			return
+		}
+		switch hostRegionType {
+		case proto.MasterRegion:
+			masterRegionAddrs = append(masterRegionAddrs, metaNodeAddr)
+		case proto.SlaveRegion:
+			slaveRegionAddrs = append(slaveRegionAddrs, metaNodeAddr)
+		default:
+			err = fmt.Errorf("action[getMasterAndSlaveRegionAddrsFromMetaNodeAddrs] metaNodeAddr:%v, region type:%v is wrong", metaNodeAddr, hostRegionType)
+			return
+		}
+	}
+	return
+}
+
+func isAutoChooseAddrForQuorumVol(addReplicaType proto.AddReplicaType) bool {
+	return addReplicaType == proto.AutoChooseAddrForQuorumVol
+}
+
+func (c *Cluster) updateVolDataPartitionConvertMode(volName string, convertMode proto.ConvertMode) (err error) {
+	var (
+		vol            *Vol
+		oldConvertMode proto.ConvertMode
+	)
+	if vol, err = c.getVol(volName); err != nil {
+		return
+	}
+	oldConvertMode = vol.DPConvertMode
+
+	vol.DPConvertMode = convertMode
+	if err = c.syncUpdateVol(vol); err != nil {
+		vol.DPConvertMode = oldConvertMode
+		log.LogErrorf("action[updateVolDataPartitionConvertMode] vol[%v] err[%v]", volName, err)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) updateVolMetaPartitionConvertMode(volName string, convertMode proto.ConvertMode) (err error) {
+	var (
+		vol            *Vol
+		oldConvertMode proto.ConvertMode
+	)
+	if vol, err = c.getVol(volName); err != nil {
+		return
+	}
+	oldConvertMode = vol.MPConvertMode
+
+	vol.MPConvertMode = convertMode
+	if err = c.syncUpdateVol(vol); err != nil {
+		vol.MPConvertMode = oldConvertMode
+		log.LogErrorf("action[updateVolMetaPartitionConvertMode] vol[%v] err[%v]", volName, err)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) chooseTargetMetaNodeForCrossRegionQuorumVol(mp *MetaPartition) (addr string, totalReplicaNum int, err error) {
+	hosts := make([]string, 0)
+	var targetZoneNames string
+	vol, err := c.getVol(mp.volName)
+	if err != nil {
+		return
+	}
+	if !IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
+		err = fmt.Errorf("can only auto add replica for quorum vol,vol type:%s", vol.CrossRegionHAType)
+		return
+	}
+	totalReplicaNum = int(vol.mpReplicaNum + vol.mpLearnerNum)
+	if !mp.canAddReplicaForCrossRegionQuorumVol(totalReplicaNum) {
+		err = fmt.Errorf("partition:%v is recovering or replica is full, "+
+			"can not add replica for cross region quorum vol", mp.PartitionID)
+		return
+	}
+
+	volMasterRegionZoneName, _, err := c.getMasterAndSlaveRegionZoneName(vol.zoneName)
+	if err != nil {
+		return
+	}
+	masterRegionHosts, _, err := c.getMasterAndSlaveRegionAddrsFromMetaNodeAddrs(mp.Hosts)
+	if err != nil {
+		return
+	}
+	if len(masterRegionHosts) < int(vol.mpReplicaNum) {
+		targetZoneNames = convertSliceToVolZoneName(volMasterRegionZoneName)
+		if len(volMasterRegionZoneName) > 1 {
+			//if the vol need cross zone, mp master region replica must in different zone, so just choose a new zone
+			curMasterRegionZonesMap := make(map[string]uint8)
+			if curMasterRegionZonesMap, err = mp.getMetaMasterRegionZoneMap(c); err != nil {
+				return
+			}
+
+			newMasterRegionZone := make([]string, 0)
+			for _, masterRegionZone := range volMasterRegionZoneName {
+				if _, ok := curMasterRegionZonesMap[masterRegionZone]; ok {
+					continue
+				}
+				newMasterRegionZone = append(newMasterRegionZone, masterRegionZone)
+			}
+			if len(newMasterRegionZone) > 0 {
+				targetZoneNames = convertSliceToVolZoneName(newMasterRegionZone)
+			}
+		}
+	} else {
+		err = fmt.Errorf("partition[%v] replicaNum[%v] masterRegionHosts:%v do not need add replica",
+			mp.PartitionID, vol.mpReplicaNum, masterRegionHosts)
+		return
+	}
+	if hosts, _, err = c.chooseTargetMetaHosts("", nil, mp.Hosts, 1, targetZoneNames, true); err != nil {
+		return
+	}
+	addr = hosts[0]
+	return
+}
+
+func (c *Cluster) chooseTargetMetaNodeForCrossRegionQuorumVolOfLearnerReplica(mp *MetaPartition) (addr string, totalReplicaNum int, err error) {
+	hosts := make([]string, 0)
+	var targetZoneNames string
+	vol, err := c.getVol(mp.volName)
+	if err != nil {
+		return
+	}
+	if !IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
+		err = fmt.Errorf("can only auto add replica for quorum vol,vol type:%s", vol.CrossRegionHAType)
+		return
+	}
+	totalReplicaNum = int(vol.mpReplicaNum + vol.mpLearnerNum)
+	if !mp.canAddReplicaForCrossRegionQuorumVol(totalReplicaNum) {
+		err = fmt.Errorf("partition:%v is recovering or replica is full, "+
+			"can not add replica for cross region quorum vol", mp.PartitionID)
+		return
+	}
+
+	_, volSlaveRegionZoneName, err := c.getMasterAndSlaveRegionZoneName(vol.zoneName)
+	if err != nil {
+		return
+	}
+	_, slaveRegionHosts, err := c.getMasterAndSlaveRegionAddrsFromMetaNodeAddrs(mp.Hosts)
+	if err != nil {
+		return
+	}
+	learnerReplicaNum := int(vol.mpLearnerNum)
+	if len(slaveRegionHosts) < learnerReplicaNum {
+		targetZoneNames = convertSliceToVolZoneName(volSlaveRegionZoneName)
+	} else {
+		err = fmt.Errorf("partition[%v] learnerReplicaNum[%v] slaveRegionHosts:%v do not need add replica",
+			mp.PartitionID, learnerReplicaNum, slaveRegionHosts)
+		return
+	}
+	if hosts, _, err = c.chooseTargetMetaHosts("", nil, mp.Hosts, 1, targetZoneNames, true); err != nil {
+		return
+	}
+	addr = hosts[0]
+	return
 }

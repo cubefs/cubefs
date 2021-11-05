@@ -48,7 +48,7 @@ const (
 	CliOpClusterTopIP        = "cluster-top-ip"
 	CliOpClusterTopVol       = "cluster-top-vol"
 	CliOpClusterTopPartition = "cluster-top-partition"
-	CliOpClusterTopOp 		 = "cluster-top-op"
+	CliOpClusterTopOp        = "cluster-top-op"
 	CliOpTopIPByOp           = "op-top-ip"
 	CliOpTopVolByOp          = "op-top-vol"
 	CliOpTopPartitionByOp    = "op-top-partition"
@@ -73,8 +73,11 @@ const (
 	CliFlagDataPartitionCount  = "dp-count"
 	CliFlagMetaPartitionCount  = "mp-count"
 	CliFlagReplicas            = "replicas"
+	CliFlagMpReplicas          = "mp-replicas"
 	CliFlagEnable              = "enable"
 	CliFlagEnableFollowerRead  = "follower-read"
+	CliFlagEnableForceROW      = "force-row"
+	CliFlagEnableCrossRegionHA = "cross-region"
 	CliFlagAutoRepair          = "auto-repair"
 	CliFlagOSSBucketPolicy     = "bucket-policy"
 	CliFlagVolWriteMutexEnable = "vol-write-mutex"
@@ -90,6 +93,8 @@ const (
 	CliFlagINodeStartID        = "inode-start"
 	CliFlagId                  = "id"
 	CliFlagZoneName            = "zonename"
+	CliFlagRegionType          = "region-type"
+	CliFlagAddReplicaType      = "add-replica-type"
 
 	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

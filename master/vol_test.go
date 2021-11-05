@@ -2,12 +2,13 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/log"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 func TestAutoCreateDataPartitions(t *testing.T) {
@@ -107,12 +108,6 @@ func TestVolMultiZoneDowngrade(t *testing.T) {
 	updateVol(testMultiZone, zone, 200, t)
 	statVol(testMultiZone, t)
 
-	// add meta node
-	addMetaServer(mms7Addr, testZone3)
-	addMetaServer(mms8Addr, testZone3)
-	// add data node
-	addDataServer(mds7Addr, testZone3)
-	addDataServer(mds8Addr, testZone3)
 	time.Sleep(3 * time.Second)
 	server.cluster.cfg = newClusterConfig()
 
@@ -374,12 +369,13 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 	var createTime = time.Now().Unix()
 	vol := newVol(volID, name, name, "", util.DefaultDataPartitionSize, 100, defaultReplicaNum,
 		defaultReplicaNum, false, false,
-		false, true, false, createTime, "","","")
+		false, true, false, false, createTime, "", "", "", 0,
+		0, 0, 0.0)
 	// unavailable mp
-	mp1 := newMetaPartition(1, 1, defaultMaxMetaPartitionInodeID, 3, name, volID)
+	mp1 := newMetaPartition(1, 1, defaultMaxMetaPartitionInodeID, 3, 0, name, volID)
 	vol.addMetaPartition(mp1)
 	//readonly mp
-	mp2 := newMetaPartition(2, 1, defaultMaxMetaPartitionInodeID, 3, name, volID)
+	mp2 := newMetaPartition(2, 1, defaultMaxMetaPartitionInodeID, 3, 0, name, volID)
 	mp2.Status = proto.ReadOnly
 	vol.addMetaPartition(mp2)
 	vol.updateViewCache(server.cluster)

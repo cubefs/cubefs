@@ -86,6 +86,8 @@ var (
 	ErrVolWriteMutexUnable             = errors.New("vol write mutex is unable")
 	ErrVolWriteMutexOccupied           = errors.New("vol write mutex occupied")
 	ErrHBaseOperation                  = errors.New("hbase operation error")
+
+	ErrOperationDisabled = errors.New("operation have been disabled")
 )
 
 // http response error code and error message definitions

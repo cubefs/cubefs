@@ -28,6 +28,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chubaofs/chubaofs/sdk/master"
+
 	"github.com/chubaofs/chubaofs/master/mocktest"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/config"
@@ -48,6 +50,9 @@ const (
 	mds8Addr          = "127.0.0.1:9108"
 	mds9Addr          = "127.0.0.1:9109"
 	mds10Addr         = "127.0.0.1:9110"
+	mds11Addr         = "127.0.0.1:9111"
+	mds12Addr         = "127.0.0.1:9112"
+	mds13Addr         = "127.0.0.1:9113"
 
 	mms1Addr      = "127.0.0.1:8101"
 	mms2Addr      = "127.0.0.1:8102"
@@ -59,10 +64,21 @@ const (
 	mms8Addr      = "127.0.0.1:8108"
 	mms9Addr      = "127.0.0.1:8109"
 	mms10Addr     = "127.0.0.1:8110"
+	mms11Addr     = "127.0.0.1:8111"
+	mms12Addr     = "127.0.0.1:8112"
+	mms13Addr     = "127.0.0.1:8113"
 	commonVolName = "commonVol"
+	quorumVolName = "quorumVol"
 	testZone1     = "zone1"
 	testZone2     = "zone2"
 	testZone3     = "zone3"
+	testZone4     = "zone4"
+	testZone5     = "zone5"
+	testZone6     = "zone6"
+	testRegion1   = "masterRegion1"
+	testRegion2   = "masterRegion2"
+	testRegion3   = "slaveRegion3"
+	testRegion4   = "slaveRegion4"
 
 	testUserID  = "testUser"
 	ak          = "0123456789123456"
@@ -72,7 +88,9 @@ const (
 
 var server = createDefaultMasterServerForTest()
 var commonVol *Vol
+var quorumVol *Vol
 var cfsUser *proto.UserInfo
+var mc = master.NewMasterClient([]string{"127.0.0.1:8080"}, false)
 
 func createDefaultMasterServerForTest() *Server {
 	cfgJSON := `{
@@ -103,12 +121,22 @@ func createDefaultMasterServerForTest() *Server {
 	addDataServer(mds4Addr, testZone2)
 	addDataServer(mds5Addr, testZone2)
 	addDataServer(mds6Addr, testZone2)
+	addDataServer(mds7Addr, testZone3)
+	addDataServer(mds8Addr, testZone3)
+	addDataServer(mds11Addr, testZone6)
+	addDataServer(mds12Addr, testZone6)
+	addDataServer(mds13Addr, testZone6)
 	// add meta node
 	addMetaServer(mms1Addr, testZone1)
 	addMetaServer(mms2Addr, testZone1)
 	addMetaServer(mms3Addr, testZone2)
 	addMetaServer(mms4Addr, testZone2)
 	addMetaServer(mms5Addr, testZone2)
+	addMetaServer(mms7Addr, testZone3)
+	addMetaServer(mms8Addr, testZone3)
+	addMetaServer(mms11Addr, testZone6)
+	addMetaServer(mms12Addr, testZone6)
+	addMetaServer(mms13Addr, testZone6)
 	time.Sleep(5 * time.Second)
 	testServer.cluster.cfg = newClusterConfig()
 	testServer.cluster.cfg.DataPartitionsRecoverPoolSize = maxDataPartitionsRecoverPoolSize
@@ -118,7 +146,7 @@ func createDefaultMasterServerForTest() *Server {
 	testServer.cluster.cfg.nodeSetCapacity = defaultNodeSetCapacity
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
-	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 100, false, false, false, false, true)
+	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 3, 100, false, false, false, false, true, false, 0, 0)
 	if err != nil {
 		panic(err)
 	}
@@ -311,7 +339,7 @@ func process(reqURL string, t *testing.T) (reply *proto.HTTPReply) {
 		t.Errorf("err is %v", err)
 		return
 	}
-	fmt.Println(string(body))
+	t.Log(string(body))
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status code[%v]", resp.StatusCode)
 		return
@@ -436,6 +464,18 @@ func TestUpdateVol(t *testing.T) {
 		return
 	}
 
+	reqURL = fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v&forceROW=true",
+		hostAddr, proto.AdminUpdateVol, commonVol.Name, capacity, buildAuthKey("cfs"))
+	process(reqURL, t)
+	vol, err = server.cluster.getVol(commonVolName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if vol.ForceROW != true {
+		t.Errorf("expect ForceROW is true, but is %v", vol.ForceROW)
+		return
+	}
 }
 func buildAuthKey(owner string) string {
 	h := md5.New()
@@ -1353,4 +1393,557 @@ func TestSetNodeInfoHandler(t *testing.T) {
 		t.Errorf("deleteRecordLimit expect:%v,real:%v", deleteRecord, limitInfo.DataNodeFixTinyDeleteRecordLimitOnDisk)
 	}
 
+}
+
+func TestSetVolConvertModeOfDPConvertMode(t *testing.T) {
+	volName := commonVolName
+	reqURL := fmt.Sprintf("%v%v?name=%v&partitionType=dataPartition&convertMode=1", hostAddr, proto.AdminSetVolConvertMode, volName)
+	t.Log(reqURL)
+	process(reqURL, t)
+	volumeSimpleInfo, err := mc.AdminAPI().GetVolumeSimpleInfo(volName)
+	if err != nil {
+		t.Errorf("vol:%v GetVolumeSimpleInfo err:%v", volName, err)
+		return
+	}
+	if volumeSimpleInfo.DPConvertMode != proto.IncreaseReplicaNum {
+		t.Errorf("expect volName:%v DPConvertMode is 1, but is %v", volName, volumeSimpleInfo.DPConvertMode)
+	}
+
+	reqURL = fmt.Sprintf("%v%v?name=%v&partitionType=dataPartition&convertMode=0", hostAddr, proto.AdminSetVolConvertMode, volName)
+	t.Log(reqURL)
+	process(reqURL, t)
+	volumeSimpleInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(volName)
+	if err != nil {
+		t.Errorf("vol:%v GetVolumeSimpleInfo err:%v", volName, err)
+		return
+	}
+	if volumeSimpleInfo.DPConvertMode != 0 {
+		t.Errorf("expect volName:%v DPConvertMode is 0, but is %v", volName, volumeSimpleInfo.DPConvertMode)
+	}
+}
+
+func TestSetVolConvertModeOfMPConvertMode(t *testing.T) {
+	volName := commonVolName
+	reqURL := fmt.Sprintf("%v%v?name=%v&partitionType=metaPartition&convertMode=1", hostAddr, proto.AdminSetVolConvertMode, volName)
+	t.Log(reqURL)
+	process(reqURL, t)
+	volumeSimpleInfo, err := mc.AdminAPI().GetVolumeSimpleInfo(volName)
+	if err != nil {
+		t.Errorf("vol:%v GetVolumeSimpleInfo err:%v", volName, err)
+		return
+	}
+	if volumeSimpleInfo.MPConvertMode != proto.IncreaseReplicaNum {
+		t.Errorf("expect volName:%v MPConvertMode is 1, but is %v", volName, volumeSimpleInfo.MPConvertMode)
+	}
+
+	reqURL = fmt.Sprintf("%v%v?name=%v&partitionType=metaPartition&convertMode=0", hostAddr, proto.AdminSetVolConvertMode, volName)
+	t.Log(reqURL)
+	process(reqURL, t)
+	volumeSimpleInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(volName)
+	if err != nil {
+		t.Errorf("vol:%v GetVolumeSimpleInfo err:%v", volName, err)
+		return
+	}
+	if volumeSimpleInfo.MPConvertMode != 0 {
+		t.Errorf("expect volName:%v MPConvertMode is 0, but is %v", volName, volumeSimpleInfo.MPConvertMode)
+	}
+}
+
+func TestCreateRegion(t *testing.T) {
+	regionMap := make(map[string]proto.RegionType)
+	regionMap[testRegion1] = proto.MasterRegion
+	regionMap[testRegion2] = proto.MasterRegion
+	regionMap[testRegion3] = proto.SlaveRegion
+	regionMap[testRegion4] = proto.SlaveRegion
+	for regionName, regionType := range regionMap {
+		reqURL := fmt.Sprintf("%v%v?regionName=%v&regionType=%d", hostAddr, proto.CreateRegion, regionName, regionType)
+		t.Log(reqURL)
+		process(reqURL, t)
+	}
+
+	regionList, err := mc.AdminAPI().RegionList()
+	if err != nil {
+		t.Errorf("getRegionList err:%v", err)
+		return
+	}
+	if len(regionList) != len(regionMap) {
+		t.Errorf("expect regionCount is %v, but is %v", len(regionMap), len(regionList))
+	}
+	for _, regionView := range regionList {
+		t.Log(*regionView)
+		regionType, ok := regionMap[regionView.Name]
+		if !ok {
+			t.Errorf("get unexpect region:%v ", regionView.Name)
+			continue
+		}
+		if regionView.RegionType != regionType {
+			t.Errorf("region:%v expect regionType is %v, but is %v", regionView.Name, regionType, regionView.RegionType)
+		}
+	}
+}
+
+func TestZoneSetRegion(t *testing.T) {
+	zoneRegionMap := make(map[string]string)
+	zoneRegionMap[testZone1] = testRegion1
+	zoneRegionMap[testZone2] = testRegion3
+	for zoneName, regionName := range zoneRegionMap {
+		reqURL := fmt.Sprintf("%v%v?zoneName=%v&regionName=%v", hostAddr, proto.SetZoneRegion, zoneName, regionName)
+		t.Log(reqURL)
+		process(reqURL, t)
+	}
+
+	zoneList, err := mc.AdminAPI().ZoneList()
+	if err != nil {
+		t.Errorf("get ZoneList err:%v", err)
+		return
+	}
+	for zoneName, regionName := range zoneRegionMap {
+		flag := false
+		for _, zoneView := range zoneList {
+			if zoneView.Name == zoneName {
+				flag = true
+				if zoneView.Region != regionName {
+					t.Errorf("zone:%v expect region is %v, but is %v", zoneName, regionName, zoneView.Region)
+				}
+				break
+			}
+		}
+		if !flag {
+			t.Errorf("can not find zoneName:%v from zone list", zoneName)
+		}
+	}
+}
+
+func TestDefaultRegion(t *testing.T) {
+	server.cluster.t.putZoneIfAbsent(newZone(testZone4))
+	server.cluster.t.putZoneIfAbsent(newZone(testZone5))
+	topologyView, err := getTopologyView()
+	if err != nil {
+		t.Errorf("get getTopologyView err:%v", err)
+		return
+	}
+	flag := false
+	for _, regionView := range topologyView.Regions {
+		if regionView.Name == "default" {
+			flag = true
+			if !contains(regionView.Zones, testZone4) {
+				t.Errorf("zone:%v is expected in default region but is not", testZone4)
+			}
+			if !contains(regionView.Zones, testZone5) {
+				t.Errorf("zone:%v is expected in default region but is not", testZone5)
+			}
+			t.Log(*regionView)
+			break
+		}
+	}
+	if !flag {
+		t.Errorf("can not find default region ")
+	}
+}
+
+func TestUpdateRegion(t *testing.T) {
+	regionName := testRegion4
+	// add one zone
+	reqURL := fmt.Sprintf("%v%v?zoneName=%v&regionName=%v", hostAddr, proto.SetZoneRegion, testZone4, regionName)
+	t.Log(reqURL)
+	process(reqURL, t)
+	// update region type
+	reqURL = fmt.Sprintf("%v%v?regionName=%v&regionType=%d", hostAddr, proto.UpdateRegion, regionName, proto.MasterRegion)
+	t.Log(reqURL)
+	process(reqURL, t)
+	// add a new zone
+	reqURL = fmt.Sprintf("%v%v?zoneName=%v&regionName=%v", hostAddr, proto.SetZoneRegion, testZone5, regionName)
+	t.Log(reqURL)
+	process(reqURL, t)
+
+	regionView, err := mc.AdminAPI().GetRegionView(regionName)
+	if err != nil {
+		t.Errorf("region:%v GetRegionView err:%v", regionName, err)
+		return
+	}
+	t.Log(*regionView)
+	if regionView.Name != regionName {
+		t.Errorf("expect regionName is %v, but is %v", regionName, regionView.Name)
+		return
+	}
+	if regionView.RegionType != proto.MasterRegion {
+		t.Errorf("expect RegionType is %v, but is %v", proto.MasterRegion, regionView.RegionType)
+	}
+	if len(regionView.Zones) != 2 {
+		t.Errorf("expect region zones count is 2, but is %v", len(regionView.Zones))
+	}
+	if !contains(regionView.Zones, testZone4) {
+		t.Errorf("zone:%v is expected in region:%v but is not", testZone4, regionName)
+	}
+	if !contains(regionView.Zones, testZone5) {
+		t.Errorf("zone:%v is expected in region:%v but is not", testZone5, regionName)
+	}
+}
+
+func getTopologyView() (topologyView TopologyView, err error) {
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.GetTopologyView)
+	resp, err := http.Get(reqURL)
+	if err != nil {
+		return
+	}
+	fmt.Println(resp.StatusCode)
+	defer resp.Body.Close()
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return
+	}
+	body := &struct {
+		Code int32           `json:"code"`
+		Msg  string          `json:"msg"`
+		Data json.RawMessage `json:"data"`
+	}{}
+	if err = json.Unmarshal(data, body); err != nil {
+		return
+	}
+	if err = json.Unmarshal(body.Data, &topologyView); err != nil {
+		return
+	}
+	return
+}
+
+func TestVolDpWriteableThreshold(t *testing.T) {
+
+	// create vol with dpWriteableThreshold
+	name := "vol_dpWriteable"
+	owner := "cfs"
+	dpWriteableThreshold := 0.6
+	reqURL := fmt.Sprintf("%v%v?name=%v&owner=%v&capacity=100&zoneName=%v&dpWriteableThreshold=%v", hostAddr, proto.AdminCreateVol, name, owner, testZone2, dpWriteableThreshold)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	vol, err := server.cluster.getVol(name)
+	if err != nil {
+		t.Errorf("get vol %v failed,err:%v", name, err)
+	}
+	if vol.dpWriteableThreshold != dpWriteableThreshold {
+		t.Errorf("expect dpWriteableThreshold :%v,real:%v", dpWriteableThreshold, vol.dpWriteableThreshold)
+		return
+	}
+
+	// update vol dpWriteableThreshold
+	dpWriteableThreshold = 0.7
+	reqURL = fmt.Sprintf("%v%v?name=%v&authKey=%v&capacity=100&dpWriteableThreshold=%v", hostAddr, proto.AdminUpdateVol, name, buildAuthKey("cfs"), dpWriteableThreshold)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	vol, err = server.cluster.getVol(name)
+	if err != nil {
+		t.Errorf("get vol %v failed,err:%v", name, err)
+	}
+	if vol.dpWriteableThreshold != dpWriteableThreshold {
+		t.Errorf("expect dpWriteableThreshold :%v,real:%v", dpWriteableThreshold, vol.dpWriteableThreshold)
+		return
+	}
+
+	//check dp status
+	vol.RLock()
+	defer vol.RUnlock()
+	vol.dpWriteableThreshold = 0.9
+	if len(vol.dataPartitions.partitions) == 0 {
+		t.Error("vol has 0 partitions")
+	}
+	partition := vol.dataPartitions.partitions[0]
+	partition.lastStatus = proto.ReadOnly
+	partition.lastModifyStatusTime = 0
+	canReset := partition.canResetStatusToWrite(vol.dpWriteableThreshold)
+	if canReset == false {
+		t.Errorf("expect canReset:%v,real canReset :%v ", true, canReset)
+	}
+
+	partition.lastModifyStatusTime = time.Now().Unix()
+	canReset = partition.canResetStatusToWrite(vol.dpWriteableThreshold)
+	if canReset == true {
+		t.Errorf("expect canReset:%v,real canReset :%v ", false, canReset)
+	}
+
+	vol.dpWriteableThreshold = 0.6
+	partition.lastStatus = proto.ReadOnly
+	canReset = partition.canResetStatusToWrite(vol.dpWriteableThreshold)
+	if canReset == true {
+		t.Errorf("expect canReset:%v,real canReset :%v ", false, canReset)
+	}
+}
+
+func TestCreateVolForUpdateToCrossRegionVol(t *testing.T) {
+	volName := quorumVolName
+	slaveRegion := testRegion3
+	newSlaveRegionZone := testZone6 // mds11Addr mds12Addr mds13Addr, mms11Addr mms12Addr mms13Addr
+	reqURL := fmt.Sprintf("%v%v?zoneName=%v&regionName=%v", hostAddr, proto.SetZoneRegion, newSlaveRegionZone, slaveRegion)
+	process(reqURL, t)
+
+	masterRegion := testRegion1
+	masterRegionZone1 := testZone1 // mds1Addr mds2Addr, mms1Addr mms2Addr
+	masterRegionZone2 := testZone2 // mds3Addr mds4Addr mds5Addr, mms3Addr mms4Addr mms5Addr
+	masterRegionZone3 := testZone3 // mds7Addr mds8Addr, mms7Addr mms8Addr
+	zoneName := fmt.Sprintf("%s,%s,%s", masterRegionZone1, masterRegionZone2, masterRegionZone3)
+	reqURL = fmt.Sprintf("%v%v?zoneName=%v&regionName=%v", hostAddr, proto.SetZoneRegion, masterRegionZone2, masterRegion)
+	process(reqURL, t)
+	reqURL = fmt.Sprintf("%v%v?zoneName=%v&regionName=%v", hostAddr, proto.SetZoneRegion, masterRegionZone3, masterRegion)
+	process(reqURL, t)
+	// create a normal vol
+	err := mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3,
+		false, false, false, true, zoneName, 0)
+	if err != nil {
+		t.Errorf("CreateVolume err:%v", err)
+		return
+	}
+}
+
+func TestUpdateVolToCrossRegionVol(t *testing.T) {
+	volName := quorumVolName
+	newZoneName := fmt.Sprintf("%s,%s,%s,%s", testZone1, testZone2, testZone3, testZone6)
+	// update to cross region vol
+	err := mc.AdminAPI().UpdateVolume(volName, 200, 5, 0, false, false, false, false,
+		true, buildAuthKey("cfs"), newZoneName, 0, 1)
+	if err != nil {
+		t.Errorf("UpdateVolume err:%v", err)
+		return
+	}
+	volumeSimpleInfo, err := mc.AdminAPI().GetVolumeSimpleInfo(volName)
+	if err != nil {
+		t.Errorf("")
+		return
+	}
+	if volumeSimpleInfo.CrossRegionHAType != proto.CrossRegionHATypeQuorum {
+		t.Errorf("vol:%v expect CrossRegionHAType is %v, but is %v", volName, proto.CrossRegionHATypeQuorum, volumeSimpleInfo.CrossRegionHAType)
+	}
+	if volumeSimpleInfo.DpReplicaNum != 5 || volumeSimpleInfo.DpLearnerNum != 0 {
+		t.Errorf("vol:%v expect DpReplicaNum,DpLearnerNum is (5,0), but is (%v,%v)", volName, volumeSimpleInfo.DpReplicaNum, volumeSimpleInfo.DpLearnerNum)
+	}
+	if volumeSimpleInfo.MpReplicaNum != 3 || volumeSimpleInfo.MpLearnerNum != 2 {
+		t.Errorf("vol:%v expect MpReplicaNum,MpLearnerNum is (3,2), but is (%v,%v)", volName, volumeSimpleInfo.MpReplicaNum, volumeSimpleInfo.MpLearnerNum)
+	}
+	if volumeSimpleInfo.DPConvertMode != proto.IncreaseReplicaNum || volumeSimpleInfo.MPConvertMode != proto.DefaultConvertMode {
+		t.Errorf("vol:%v expect DPConvertMode,MPConvertMode is (%v,%v), but is (%v,%v)", volName,
+			proto.IncreaseReplicaNum, proto.DefaultConvertMode, volumeSimpleInfo.DPConvertMode, volumeSimpleInfo.MPConvertMode)
+	}
+	if volumeSimpleInfo.ZoneName != newZoneName {
+		t.Errorf("vol:%v expect ZoneName is %v, but is %v", volName, newZoneName, volumeSimpleInfo.ZoneName)
+	}
+}
+
+func TestAddDataReplicaForCrossRegionVol(t *testing.T) {
+	var (
+		partition *DataPartition
+		dataNode  *DataNode
+		err       error
+	)
+	if quorumVol, err = server.cluster.getVol(quorumVolName); err != nil || quorumVol == nil {
+		t.Fatalf("getVol:%v err:%v", quorumVolName, err)
+		return
+	}
+	if len(quorumVol.dataPartitions.partitions) == 0 {
+		t.Errorf("vol:%v no data partition ", quorumVolName)
+		return
+	}
+	if partition = quorumVol.dataPartitions.partitions[0]; partition == nil {
+		t.Errorf("vol:%v no data partition ", quorumVolName)
+		return
+	}
+	reqURL := fmt.Sprintf("%v%v?id=%v&addReplicaType=%d", hostAddr, proto.AdminAddDataReplica, partition.PartitionID, proto.AutoChooseAddrForQuorumVol)
+	process(reqURL, t)
+
+	partition.RLock()
+	if partition.ReplicaNum != 4 || len(partition.Hosts) != 4 || len(partition.Peers) != 4 {
+		t.Errorf("dp:%v expect ReplicaNum,Hosts len,Peers len is (4,4,4) but is (%v,%v,%v)",
+			partition.PartitionID, partition.ReplicaNum, len(partition.Hosts), len(partition.Peers))
+		partition.RUnlock()
+		return
+	}
+	newAddr := partition.Hosts[3]
+	partition.RUnlock()
+
+	load, ok := server.cluster.t.dataNodes.Load(newAddr)
+	if !ok {
+		t.Errorf("can not get datanode:%v", newAddr)
+		return
+	}
+	if dataNode, ok = load.(*DataNode); !ok {
+		t.Errorf("can not get datanode:%v", newAddr)
+		return
+	}
+	if dataNode.ZoneName != testZone6 {
+		t.Errorf("dp:%v dataNode:%v expect ZoneName is %v but is %v ", partition.PartitionID, dataNode.Addr, testZone6, dataNode.ZoneName)
+		return
+	}
+	if regionType, err := server.cluster.getDataNodeRegionType(newAddr); err != nil || regionType != proto.SlaveRegion {
+		t.Errorf("dp:%v expect regionType is %v but is %v err:%v", partition.PartitionID, proto.SlaveRegion, regionType, err)
+		return
+	}
+	server.cluster.BadDataPartitionIds.Range(func(key, value interface{}) bool {
+		addr, ok := key.(string)
+		if !ok {
+			return true
+		}
+		if strings.HasPrefix(addr, newAddr) {
+			server.cluster.BadDataPartitionIds.Delete(key)
+		}
+		return true
+	})
+}
+
+func TestAddMetaLearnerForCrossRegionVol(t *testing.T) {
+	var (
+		partition *MetaPartition
+		metaNode  *MetaNode
+	)
+	if partition = quorumVol.MetaPartitions[quorumVol.maxPartitionID()]; partition == nil {
+		t.Errorf("vol:%v no meta partition ", quorumVolName)
+		return
+	}
+	reqURL := fmt.Sprintf("%v%v?id=%v&addReplicaType=%d", hostAddr, proto.AdminAddMetaReplicaLearner, partition.PartitionID, proto.AutoChooseAddrForQuorumVol)
+	process(reqURL, t)
+
+	partition.RLock()
+	if len(partition.Hosts) != 4 || len(partition.Peers) != 4 || partition.LearnerNum != 1 || len(partition.Learners) != 1 {
+		t.Errorf("mp:%v expect Hosts len,Peers len,LearnerNum,Learners len is (4,4,1,1) but is (%v,%v,%v,%v)",
+			partition.PartitionID, len(partition.Hosts), len(partition.Peers), partition.LearnerNum, len(partition.Learners))
+		partition.RUnlock()
+		return
+	}
+	newAddr := partition.Hosts[3]
+	if partition.IsRecover != false {
+		t.Errorf("mp:%v expect IsRecover is false but is %v", partition.PartitionID, partition.IsRecover)
+	}
+	partition.RUnlock()
+	load, ok := server.cluster.t.metaNodes.Load(newAddr)
+	if !ok {
+		t.Errorf("can not get metanode:%v", newAddr)
+		return
+	}
+	if metaNode, ok = load.(*MetaNode); !ok {
+		t.Errorf("can not get metanode:%v", newAddr)
+		return
+	}
+	if metaNode.ZoneName != testZone6 {
+		t.Errorf("mp:%v metaNode:%v expect ZoneName is %v but is %v ", partition.PartitionID, metaNode.Addr, testZone6, metaNode.ZoneName)
+		return
+	}
+	if regionType, err := server.cluster.getMetaNodeRegionType(newAddr); err != nil || regionType != proto.SlaveRegion {
+		t.Errorf("mp:%v expect regionType is %v but is %v err:%v", partition.PartitionID, proto.SlaveRegion, regionType, err)
+		return
+	}
+}
+
+func TestAddDataPartitionForCrossRegionVol(t *testing.T) {
+	var dataPartition *DataPartition
+	oldPartitionIDMap := make(map[uint64]bool)
+	for id := range quorumVol.dataPartitions.partitionMap {
+		oldPartitionIDMap[id] = true
+	}
+	// create a new data partition
+	reqURL := fmt.Sprintf("%v%v?count=1&name=%v", hostAddr, proto.AdminCreateDataPartition, quorumVolName)
+	process(reqURL, t)
+	// find the new data partition and check
+	quorumVol.dataPartitions.RLock()
+	for dpID, partition := range quorumVol.dataPartitions.partitionMap {
+		if _, ok := oldPartitionIDMap[dpID]; !ok {
+			dataPartition = partition
+			break
+		}
+	}
+	quorumVol.dataPartitions.RUnlock()
+	if dataPartition == nil {
+		t.Errorf("can not find new dataPartition")
+		return
+	}
+	validateCrossRegionDataPartition(dataPartition, t)
+}
+
+func TestCreateCrossRegionVol(t *testing.T) {
+	var (
+		vol           *Vol
+		dataPartition *DataPartition
+		metaPartition *MetaPartition
+		err           error
+	)
+	volName := "crossRegionVol"
+	zoneName := fmt.Sprintf("%s,%s,%s,%s", testZone1, testZone2, testZone3, testZone6)
+	// create a cross region vol
+	reqURL := fmt.Sprintf("%v%v?name=%v&replicaNum=5&capacity=200&owner=cfs&mpCount=3&zoneName=%v&crossRegion=1",
+		hostAddr, proto.AdminCreateVol, volName, zoneName)
+	t.Log(reqURL)
+	process(reqURL, t)
+	if vol, err = server.cluster.getVol(volName); err != nil || vol == nil {
+		t.Errorf("getVol:%v err:%v", volName, err)
+		return
+	}
+	if len(vol.dataPartitions.partitions) != 0 {
+		dataPartition = vol.dataPartitions.partitions[0]
+	} else {
+		t.Errorf("vol:%v no data partition ", volName)
+	}
+	if dataPartition != nil {
+		validateCrossRegionDataPartition(dataPartition, t)
+	} else {
+		t.Errorf("vol:%v no data partition ", volName)
+	}
+	if metaPartition = vol.MetaPartitions[vol.maxPartitionID()]; metaPartition == nil {
+		t.Errorf("vol:%v no meta partition ", volName)
+		return
+	}
+	validateCrossRegionMetaPartition(metaPartition, t)
+}
+
+func validateCrossRegionDataPartition(dataPartition *DataPartition, t *testing.T) {
+	dataPartition.RLock()
+	dataPartitionHosts := dataPartition.Hosts
+	if dataPartition.ReplicaNum != 5 || len(dataPartitionHosts) != 5 || len(dataPartition.Peers) != 5 {
+		t.Errorf("dp expect ReplicaNum,Hosts len,Peers len,Learners len is (5,5,5) but is (%v,%v,%v) ",
+			dataPartition.ReplicaNum, len(dataPartitionHosts), len(dataPartition.Peers))
+	}
+	dataPartition.RUnlock()
+	masterRegionAddrs, slaveRegionAddrs, err := server.cluster.getMasterAndSlaveRegionAddrsFromDataNodeAddrs(dataPartitionHosts)
+	if err != nil {
+		t.Errorf("getMasterAndSlaveRegionAddrsFromDataNodeAddrs err:%v", err)
+		return
+	}
+	t.Logf("dp Hosts:%v masterRegionAddrs:%v slaveRegionAddrs:%v ", dataPartitionHosts, masterRegionAddrs, slaveRegionAddrs)
+	if len(masterRegionAddrs) != 3 || len(slaveRegionAddrs) != 2 {
+		t.Errorf("expect masterRegionAddrs len,slaveRegionAddrs len is (3,2) but is (%v,%v) ", len(masterRegionAddrs), len(slaveRegionAddrs))
+		return
+	}
+	if masterRegionAddrs[0] != dataPartitionHosts[0] || masterRegionAddrs[1] != dataPartitionHosts[1] || masterRegionAddrs[2] != dataPartitionHosts[2] {
+		t.Errorf("expect masterRegionAddrs(%v) is equal to dataPartitionHosts(%v) but is not", masterRegionAddrs, dataPartitionHosts[:3])
+	}
+	if slaveRegionAddrs[0] != dataPartitionHosts[3] || slaveRegionAddrs[1] != dataPartitionHosts[4] {
+		t.Errorf("expect masterRegionAddrs(%v) is equal to dataPartitionHosts(%v) but is not", masterRegionAddrs, dataPartitionHosts[3:])
+	}
+}
+
+func validateCrossRegionMetaPartition(metaPartition *MetaPartition, t *testing.T) {
+	metaPartition.RLock()
+	metaPartitionHosts := metaPartition.Hosts
+	learnerHosts := metaPartition.getLearnerHosts()
+	if metaPartition.ReplicaNum != 3 || metaPartition.LearnerNum != 2 {
+		t.Errorf("mp expect ReplicaNum,LearnerNum is (3,2) but is (%v,%v) ", metaPartition.ReplicaNum, metaPartition.LearnerNum)
+	}
+	if len(metaPartitionHosts) != 5 || len(metaPartition.Peers) != 5 || len(metaPartition.Learners) != 2 {
+		t.Errorf("mp expect Hosts len,Peers len,Learners len is (5,5,2) but is (%v,%v,%v) ",
+			len(metaPartitionHosts), len(metaPartition.Peers), len(metaPartition.Learners))
+		return
+	}
+	metaPartition.RUnlock()
+	masterRegionAddrs, slaveRegionAddrs, err := server.cluster.getMasterAndSlaveRegionAddrsFromMetaNodeAddrs(metaPartitionHosts)
+	if err != nil {
+		t.Errorf("getMasterAndSlaveRegionAddrsFromMetaNodeAddrs err:%v", err)
+		return
+	}
+	t.Logf("mp Hosts:%v learnerHosts:%v masterRegionAddrs:%v slaveRegionAddrs:%v", metaPartitionHosts, learnerHosts, masterRegionAddrs, slaveRegionAddrs)
+	if len(masterRegionAddrs) != 3 || len(slaveRegionAddrs) != 2 {
+		t.Errorf("expect masterRegionAddrs len,slaveRegionAddrs len is (3,2) but is (%v,%v)", len(masterRegionAddrs), len(slaveRegionAddrs))
+		return
+	}
+	if masterRegionAddrs[0] != metaPartitionHosts[0] || masterRegionAddrs[1] != metaPartitionHosts[1] || masterRegionAddrs[2] != metaPartitionHosts[2] {
+		t.Errorf("expect masterRegionAddrs(%v) is equal to metaPartitionHosts(%v) but is not", masterRegionAddrs, metaPartitionHosts[:3])
+	}
+	if slaveRegionAddrs[0] != metaPartitionHosts[3] || slaveRegionAddrs[1] != metaPartitionHosts[4] {
+		t.Errorf("expect masterRegionAddrs(%v) is equal to metaPartitionHosts(%v) but is not", masterRegionAddrs, metaPartitionHosts[3:])
+	}
+	if slaveRegionAddrs[0] != learnerHosts[0] || slaveRegionAddrs[1] != learnerHosts[1] {
+		t.Errorf("expect masterRegionAddrs(%v) is equal to learnerHosts(%v) but is not", masterRegionAddrs, learnerHosts)
+	}
 }

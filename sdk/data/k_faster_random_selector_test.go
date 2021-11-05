@@ -9,24 +9,24 @@ func TestKFaster(t *testing.T) {
 	//var selectorNil DataPartitionSelector
 	var selector1 DataPartitionSelector
 
-	_, e := newKFasterRandomSelector("")
+	_, e := newKFasterRandomSelector(&DpSelectorParam{kValue: "", quorum: 0})
 	if e == nil {
 		t.Fatalf("expected err, but nil")
 	}
 
-	_, e = newKFasterRandomSelector("0")
+	_, e = newKFasterRandomSelector(&DpSelectorParam{kValue: "0", quorum: 0})
 	if e == nil {
 		t.Fatalf("expected err, but nil")
 	}
 
-	_, e = newKFasterRandomSelector("100")
+	_, e = newKFasterRandomSelector(&DpSelectorParam{kValue: "100", quorum: 0})
 	if e == nil {
 		t.Fatalf("expected err, but nil")
 	}
 
 	selectorParams := []string{"1", "99", "50"}
 	for _, s := range selectorParams {
-		selector, e := newKFasterRandomSelector(s)
+		selector, e := newKFasterRandomSelector(&DpSelectorParam{kValue: s, quorum: 0})
 		if e != nil {
 			t.Fatalf("newKFasterRandomSelector %v", e)
 		}

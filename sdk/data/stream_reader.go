@@ -235,11 +235,11 @@ func getDpAppliedID(ctx context.Context, pid uint64, addr string, orgPacket *Pac
 	}()
 
 	p := NewPacketToGetDpAppliedID(ctx, pid)
-	if err = p.WriteToConn(conn); err != nil {
+	if err = p.WriteToConn(conn, WriteTimeoutData); err != nil {
 		log.LogWarnf("getDpAppliedID: failed to WriteToConn, packet(%v) dpHost(%v) orgPacket(%v) err(%v)", p, addr, orgPacket, err)
 		return
 	}
-	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+	if err = p.ReadFromConn(conn, ReadTimeoutData); err != nil {
 		log.LogWarnf("getDpAppliedID: failed to ReadFromConn, packet(%v) dpHost(%v) orgPacket(%v) err(%v)", p, addr, orgPacket, err)
 		return
 	}

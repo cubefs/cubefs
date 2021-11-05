@@ -58,6 +58,8 @@ func NewRootCmd(client *master.MasterClient, mClient *monitor.MonitorClient) *Ch
 		newParseRaftLogCmd(),
 		newRateLimitCmd(client),
 		newExtentCmd(client),
+		newZoneCmd(client),
+		newRegionCmd(client),
 		newReadWriteCheckTinyFileCmd(),
 	)
 	return cmd

@@ -90,6 +90,7 @@ type metaPartitionValue struct {
 	End           uint64
 	VolID         uint64
 	ReplicaNum    uint8
+	LearnerNum    uint8
 	Status        int8
 	VolName       string
 	Hosts         string
@@ -107,6 +108,7 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 		End:           mp.End,
 		VolID:         mp.volID,
 		ReplicaNum:    mp.ReplicaNum,
+		LearnerNum:    mp.LearnerNum,
 		Status:        mp.Status,
 		VolName:       mp.volName,
 		Hosts:         mp.hostsToString(),
@@ -166,11 +168,16 @@ type volValue struct {
 	Name                string
 	ReplicaNum          uint8
 	DpReplicaNum        uint8
+	MpLearnerNum        uint8
+	DpLearnerNum        uint8
 	Status              uint8
 	DataPartitionSize   uint64
 	Capacity            uint64
+	DpWriteableThreshold float64
 	Owner               string
 	FollowerRead        bool
+	ForceROW            bool
+	CrossRegionHAType   bsProto.CrossRegionHAType
 	Authenticate        bool
 	EnableToken         bool
 	CrossZone           bool
@@ -184,6 +191,8 @@ type volValue struct {
 	DpSelectorName      string
 	DpSelectorParm      string
 	OSSBucketPolicy     bsProto.BucketAccessPolicy
+	DPConvertMode       bsProto.ConvertMode
+	MPConvertMode       bsProto.ConvertMode
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -202,6 +211,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		Capacity:            vol.Capacity,
 		Owner:               vol.Owner,
 		FollowerRead:        vol.FollowerRead,
+		ForceROW:            vol.ForceROW,
+		CrossRegionHAType:   vol.CrossRegionHAType,
 		Authenticate:        vol.authenticate,
 		AutoRepair:          vol.autoRepair,
 		VolWriteMutexEnable: vol.volWriteMutexEnable,
@@ -215,6 +226,11 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		DpSelectorName:      vol.dpSelectorName,
 		DpSelectorParm:      vol.dpSelectorParm,
 		OSSBucketPolicy:     vol.OSSBucketPolicy,
+		DpWriteableThreshold: vol.dpWriteableThreshold,
+		DpLearnerNum:        vol.dpLearnerNum,
+		MpLearnerNum:        vol.mpLearnerNum,
+		DPConvertMode:       vol.DPConvertMode,
+		MPConvertMode:       vol.MPConvertMode,
 	}
 	return
 }
@@ -274,6 +290,21 @@ func newNodeSetValue(nset *nodeSet) (nsv *nodeSetValue) {
 	return
 }
 
+type regionValue struct {
+	Name       string
+	Zones      []string
+	RegionType bsProto.RegionType
+}
+
+func newRegionValue(region *Region) (rv *regionValue) {
+	rv = &regionValue{
+		Name:       region.Name,
+		RegionType: region.RegionType,
+		Zones:      region.getZones(),
+	}
+	return
+}
+
 // RaftCmd defines the Raft commands.
 type RaftCmd struct {
 	Op uint32 `json:"op"`
@@ -326,6 +357,8 @@ func (m *RaftCmd) setOpType() {
 		m.Op = opSyncAddVolUser
 	case tokenAcronym:
 		m.Op = OpSyncAddToken
+	case regionAcronym:
+		m.Op = OpSyncAddRegion
 	default:
 		log.LogWarnf("action[setOpType] unknown opCode[%v]", keyArr[1])
 	}
@@ -586,6 +619,33 @@ func (c *Cluster) updateDataNodeDeleteLimitRate(val uint64) {
 	atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, val)
 }
 
+//key=#region#regionName,value=json.Marshal(rv)
+func (c *Cluster) syncAddRegion(region *Region) (err error) {
+	return c.syncPutRegionInfo(OpSyncAddRegion, region)
+}
+
+func (c *Cluster) syncUpdateRegion(region *Region) (err error) {
+	return c.syncPutRegionInfo(OpSyncUpdateRegion, region)
+}
+
+func (c *Cluster) syncDelRegion(region *Region) (err error) {
+	return c.syncPutRegionInfo(OpSyncDelRegion, region)
+}
+
+func (c *Cluster) syncPutRegionInfo(opType uint32, region *Region) (err error) {
+	if region == nil {
+		return fmt.Errorf("action[syncPutRegionInfo] region is nil")
+	}
+	metadata := new(RaftCmd)
+	metadata.Op = opType
+	metadata.K = regionPrefix + region.Name
+	rv := newRegionValue(region)
+	if metadata.V, err = json.Marshal(rv); err != nil {
+		return errors.New(err.Error())
+	}
+	return c.submit(metadata)
+}
+
 func (c *Cluster) loadClusterValue() (err error) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(clusterPrefix))
 	if err != nil {
@@ -779,7 +839,7 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 			Warn(c.Name, fmt.Sprintf("action[loadMetaPartitions] has duplicate vol[%v],vol.ID[%v],mpv.VolID[%v]", mpv.VolName, vol.ID, mpv.VolID))
 			continue
 		}
-		mp := newMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, vol.mpReplicaNum, vol.Name, mpv.VolID)
+		mp := newMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, vol.mpReplicaNum, mpv.LearnerNum, vol.Name, mpv.VolID)
 		mp.setHosts(strings.Split(mpv.Hosts, underlineSeparator))
 		mp.setPeers(mpv.Peers)
 		mp.setLearners(mpv.Learners)
@@ -878,5 +938,43 @@ func (c *Cluster) loadTokens() (err error) {
 		encodedValue.Free()
 		log.LogInfof("action[loadTokens],vol[%v],token[%v]", vol.Name, token.Value)
 	}
+	return
+}
+
+func (c *Cluster) loadRegions() (err error) {
+	result, err := c.fsm.store.SeekForPrefix([]byte(regionPrefix))
+	if err != nil {
+		return fmt.Errorf("action[loadRegions] err:%v", err.Error())
+	}
+	zoneRegionNameMap := make(map[string]string)
+	for _, value := range result {
+		rv := &regionValue{}
+		if err = json.Unmarshal(value, rv); err != nil {
+			return fmt.Errorf("action[loadRegions] unmarshal err:%v", err.Error())
+		}
+		region := newRegionFromRegionValue(rv)
+		if err1 := c.t.putRegion(region); err1 != nil {
+			log.LogErrorf("action[loadRegions] region[%v] err[%v]", region.Name, err1)
+		}
+		regionZones := region.getZones()
+		for _, zone := range regionZones {
+			zoneRegionNameMap[zone] = region.Name
+		}
+		log.LogInfof("action[loadRegions], region[%v],zones[%v]", region.Name, regionZones)
+	}
+
+	// set region name of zones
+	c.t.zoneMap.Range(func(zoneName, value interface{}) bool {
+		zone, ok := value.(*Zone)
+		if !ok {
+			return true
+		}
+		regionName, ok := zoneRegionNameMap[zone.name]
+		if !ok {
+			return true
+		}
+		zone.regionName = regionName
+		return true
+	})
 	return
 }

@@ -21,6 +21,9 @@ func TestDataPartition(t *testing.T) {
 		return
 	}
 	partition := commonVol.dataPartitions.partitions[0]
+	partition.Lock()
+	partition.isRecover = false
+	partition.Unlock()
 	getDataPartition(partition.PartitionID, t)
 	loadDataPartitionTest(partition, t)
 	decommissionDataPartition(partition, t)
@@ -32,6 +35,9 @@ func TestDataPartition(t *testing.T) {
 		return true
 	})
 	partition2 := commonVol.dataPartitions.partitions[1]
+	partition2.Lock()
+	partition2.isRecover = false
+	partition2.Unlock()
 	decommissionDataPartitionToDestAddr(partition2, allDataNodes, t)
 	delDataReplicaTest(partition2, t)
 }

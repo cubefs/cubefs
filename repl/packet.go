@@ -17,12 +17,13 @@ package repl
 import (
 	"context"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/log"
 	"io"
 	"net"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util/log"
 
 	"github.com/chubaofs/chubaofs/util/tracing"
 
@@ -50,16 +51,19 @@ type Packet struct {
 	OrgBuffer       []byte
 	OrgSize         int32
 	isUseBufferPool int64
+	quorum          int
+
+	errorCh chan error
 }
 
 type FollowerPacket struct {
 	proto.Packet
-	respCh chan error
+	errorCh chan error
 }
 
-func NewFollowerPacket(ctx context.Context) (fp *FollowerPacket) {
+func NewFollowerPacket(ctx context.Context, parent *Packet) (fp *FollowerPacket) {
 	fp = new(FollowerPacket)
-	fp.respCh = make(chan error, 1)
+	fp.errorCh = parent.errorCh
 	fp.StartT = time.Now().UnixNano()
 	fp.SetCtx(ctx)
 	return fp
@@ -171,14 +175,8 @@ func (p *Packet) resolveFollowersAddr(remoteAddr string) (err error) {
 		err = ErrArgLenMismatch
 		return
 	}
-	str := string(p.Arg[:int(p.ArgLen)])
-	followerAddrs := strings.SplitN(str, proto.AddrSplit, -1)
-	followerNum := uint8(len(followerAddrs) - 1)
-	p.followersAddrs = make([]string, followerNum)
-	p.followerPackets = make([]*FollowerPacket, followerNum)
-	if followerNum > 0 {
-		p.followersAddrs = followerAddrs[:int(followerNum)]
-	}
+	p.followersAddrs, p.quorum = DecodeReplPacketArg(p.Arg[:int(p.ArgLen)])
+	p.followerPackets = make([]*FollowerPacket, len(p.followersAddrs))
 	if p.RemainingFollowers < 0 {
 		err = ErrBadNodes
 		return
@@ -342,6 +340,8 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 		p.ResultCode = proto.OpAgain
 	} else if strings.Contains(errMsg, raft.ErrNotLeader.Error()) {
 		p.ResultCode = proto.OpTryOtherAddr
+	} else if strings.Contains(errMsg, proto.ErrOperationDisabled.Error()) {
+		p.ResultCode = proto.OpDisabled
 	} else {
 		p.ResultCode = proto.OpIntraGroupNetErr
 	}

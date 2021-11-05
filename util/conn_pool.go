@@ -30,57 +30,57 @@ type Object struct {
 }
 
 const (
-	ConnectIdleTime       = 30
-	defaultConnectTimeout = 1
+	ConnectIdleTime         = 30
+	defaultConnectTimeoutMs = 1000
 )
 
 type ConnectPool struct {
 	sync.RWMutex
-	pools          map[string]*Pool
-	mincap         int
-	maxcap         int
-	timeout        int64
-	connectTimeout int64
-	closeCh        chan struct{}
-	closeOnce      sync.Once
+	pools            map[string]*Pool
+	mincap           int
+	maxcap           int
+	timeout          int64
+	connectTimeoutMs int64
+	closeCh          chan struct{}
+	closeOnce        sync.Once
 }
 
 func NewConnectPool() (cp *ConnectPool) {
 	cp = &ConnectPool{
-		pools:          make(map[string]*Pool),
-		mincap:         5,
-		maxcap:         80,
-		timeout:        int64(time.Second * ConnectIdleTime),
-		connectTimeout: defaultConnectTimeout,
-		closeCh:        make(chan struct{}),
+		pools:            make(map[string]*Pool),
+		mincap:           5,
+		maxcap:           80,
+		timeout:          int64(time.Second * ConnectIdleTime),
+		connectTimeoutMs: defaultConnectTimeoutMs,
+		closeCh:          make(chan struct{}),
 	}
 	go cp.autoRelease()
 
 	return cp
 }
 
-func NewConnectPoolWithTimeout(idleConnTimeout time.Duration, connectTimeout int64) (cp *ConnectPool) {
+func NewConnectPoolWithTimeout(idleConnTimeout time.Duration, connectTimeoutMs int64) (cp *ConnectPool) {
 	cp = &ConnectPool{
-		pools:          make(map[string]*Pool),
-		mincap:         5,
-		maxcap:         80,
-		timeout:        int64(idleConnTimeout * time.Second),
-		connectTimeout: connectTimeout,
-		closeCh:        make(chan struct{}),
+		pools:            make(map[string]*Pool),
+		mincap:           5,
+		maxcap:           80,
+		timeout:          int64(idleConnTimeout * time.Second),
+		connectTimeoutMs: connectTimeoutMs,
+		closeCh:          make(chan struct{}),
 	}
 	go cp.autoRelease()
 
 	return cp
 }
 
-func NewConnectPoolWithTimeoutAndCap(min, max int, idleConnTimeout, connectTimeout int64) (cp *ConnectPool) {
+func NewConnectPoolWithTimeoutAndCap(min, max int, idleConnTimeout, connectTimeoutMs int64) (cp *ConnectPool) {
 	cp = &ConnectPool{
-		pools:          make(map[string]*Pool),
-		mincap:         min,
-		maxcap:         max,
-		timeout:        idleConnTimeout * int64(time.Second),
-		connectTimeout: connectTimeout,
-		closeCh:        make(chan struct{}),
+		pools:            make(map[string]*Pool),
+		mincap:           min,
+		maxcap:           max,
+		timeout:          idleConnTimeout * int64(time.Second),
+		connectTimeoutMs: connectTimeoutMs,
+		closeCh:          make(chan struct{}),
 	}
 	go cp.autoRelease()
 
@@ -111,7 +111,7 @@ func (cp *ConnectPool) GetConnect(targetAddr string) (c *net.TCPConn, err error)
 		cp.Lock()
 		pool, ok = cp.pools[targetAddr]
 		if !ok {
-			pool = NewPool(ctx, cp.mincap, cp.maxcap, cp.timeout, cp.connectTimeout, targetAddr)
+			pool = NewPool(ctx, cp.mincap, cp.maxcap, cp.timeout, cp.connectTimeoutMs, targetAddr)
 			cp.pools[targetAddr] = pool
 		}
 		cp.Unlock()
@@ -215,22 +215,22 @@ func (cp *ConnectPool) Close() {
 }
 
 type Pool struct {
-	objects        chan *Object
-	mincap         int
-	maxcap         int
-	target         string
-	timeout        int64
-	connectTimeout int64
+	objects          chan *Object
+	mincap           int
+	maxcap           int
+	target           string
+	timeout          int64
+	connectTimeoutMs int64
 }
 
-func NewPool(ctx context.Context, min, max int, timeout, connectTimeout int64, target string) (p *Pool) {
+func NewPool(ctx context.Context, min, max int, timeout, connectTimeoutMs int64, target string) (p *Pool) {
 	p = new(Pool)
 	p.mincap = min
 	p.maxcap = max
 	p.target = target
 	p.objects = make(chan *Object, max)
 	p.timeout = timeout
-	p.connectTimeout = connectTimeout
+	p.connectTimeoutMs = connectTimeoutMs
 	p.initAllConnect(ctx)
 	return p
 }
@@ -296,7 +296,7 @@ func (p *Pool) NewConnect(ctx context.Context, target string) (c *net.TCPConn, e
 	defer tracer.Finish()
 
 	var connect net.Conn
-	connect, err = net.DialTimeout("tcp", p.target, time.Duration(p.connectTimeout)*time.Second)
+	connect, err = net.DialTimeout("tcp", p.target, time.Duration(p.connectTimeoutMs)*time.Millisecond)
 	if err == nil {
 		conn := connect.(*net.TCPConn)
 		conn.SetKeepAlive(true)

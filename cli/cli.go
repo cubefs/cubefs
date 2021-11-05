@@ -47,7 +47,7 @@ func runCLI() (err error) {
 }
 
 func setupCommands(cfg *cmd.Config) *cobra.Command {
-	var mc = master.NewMasterClient(cfg.MasterAddr, false)
+	var mc = master.NewMasterClientWithoutTimeout(cfg.MasterAddr, false)
 	mc.DataNodeProfPort = cfg.DataNodeProfPort
 	mc.MetaNodeProfPort = cfg.MetaNodeProfPort
 	var monitorCli = monitor.NewMonitorClient(cfg.MonitorAddr, false)

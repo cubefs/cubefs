@@ -97,7 +97,7 @@ func TestSingleZone(t *testing.T) {
 	//single zone exclude,if it is a single zone excludeZones don't take effect
 	excludeZones := make([]string, 0)
 	excludeZones = append(excludeZones, zoneName)
-	zones, err := topo.allocZonesForDataNode(zoneName, replicaNum, excludeZones)
+	zones, err := topo.allocZonesForDataNode("", zoneName, replicaNum, excludeZones, false)
 	if err != nil {
 		t.Error(err)
 		return
@@ -108,7 +108,7 @@ func TestSingleZone(t *testing.T) {
 	}
 
 	//single zone normal
-	zones, err = topo.allocZonesForDataNode(zoneName, replicaNum, nil)
+	zones, err = topo.allocZonesForDataNode("", zoneName, replicaNum, nil, false)
 	if err != nil {
 		t.Error(err)
 		return
@@ -163,7 +163,7 @@ func TestAllocZones(t *testing.T) {
 	}
 	//only pass replica num
 	replicaNum := 2
-	zones, err := topo.allocZonesForDataNode(zoneName3, replicaNum, nil)
+	zones, err := topo.allocZonesForDataNode("", zoneName3, replicaNum, nil, false)
 	if err != nil {
 		t.Error(err)
 		return
@@ -179,13 +179,13 @@ func TestAllocZones(t *testing.T) {
 	cluster.cfg.MetaPartitionsRecoverPoolSize = maxMetaPartitionsRecoverPoolSize
 
 	//don't cross zone
-	hosts, _, err := cluster.chooseTargetDataNodes("", nil, nil, replicaNum, "zone1")
+	hosts, _, err := cluster.chooseTargetDataNodes(nil, nil, nil, replicaNum, "zone1", false)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 	//cross zone
-	hosts, _, err = cluster.chooseTargetDataNodes("", nil, nil, replicaNum, "zone1,zone2,zone3")
+	hosts, _, err = cluster.chooseTargetDataNodes(nil, nil, nil, replicaNum, "zone1,zone2,zone3", false)
 	if err != nil {
 		t.Error(err)
 		return
@@ -194,7 +194,7 @@ func TestAllocZones(t *testing.T) {
 	// after excluding zone3, alloc zones will be success
 	excludeZones := make([]string, 0)
 	excludeZones = append(excludeZones, zoneName3)
-	zones, err = topo.allocZonesForDataNode(zoneName3, replicaNum, excludeZones)
+	zones, err = topo.allocZonesForDataNode("", zoneName3, replicaNum, excludeZones, false)
 	if err != nil {
 		t.Logf("allocZonesForDataNode failed,err[%v]", err)
 	}

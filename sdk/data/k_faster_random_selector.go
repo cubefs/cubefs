@@ -32,21 +32,22 @@ func init() {
 	_ = RegisterDataPartitionSelector(KFasterRandomSelectorName, newKFasterRandomSelector)
 }
 
-func newKFasterRandomSelector(selectorParam string) (selector DataPartitionSelector, e error) {
-	param, err := strconv.Atoi(selectorParam)
+func newKFasterRandomSelector(param *DpSelectorParam) (selector DataPartitionSelector, e error) {
+	kValue, err := strconv.Atoi(param.kValue)
 	if err != nil {
-		return nil, fmt.Errorf("KFasterRandomSelector: get param failed[%v]", err)
+		return nil, fmt.Errorf("KFasterRandomSelector: get kValue param failed[%v]", err)
 	}
 
-	if (param <= 0) || (param >= 100) {
-		return nil, fmt.Errorf("KFasterRandomSelector: invalid param[%v]", param)
+	if (kValue <= 0) || (kValue >= 100) {
+		return nil, fmt.Errorf("KFasterRandomSelector: invalid kValue[%v]", kValue)
 	}
 
 	selector = &KFasterRandomSelector{
-		kValueHundred: param,
+		kValueHundred: kValue,
 		partitions:    make([]*DataPartition, 0),
+		param:         param,
 	}
-	log.LogInfof("KFasterRandomSelector: init selector success, kValueHundred is %v", param)
+	log.LogInfof("KFasterRandomSelector: init selector success, kValueHundred is %v", kValue)
 	return
 }
 
@@ -55,6 +56,7 @@ type KFasterRandomSelector struct {
 	kValueHundred int
 	kValue        int
 	partitions    []*DataPartition
+	param         *DpSelectorParam
 }
 
 func (s *KFasterRandomSelector) Name() string {
@@ -93,7 +95,7 @@ func (s *KFasterRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 	rand.Seed(time.Now().UnixNano())
 	index := rand.Intn(kValue)
 	dp = partitions[index]
-	if !isExcluded(dp, exclude) {
+	if !isExcluded(dp, exclude, s.param.quorum) {
 		log.LogDebugf("KFasterRandomSelector: select faster dp[%v], index %v, kValue(%v/%v)",
 			dp, index, kValue, len(partitions))
 		return dp, nil
@@ -104,7 +106,7 @@ func (s *KFasterRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 	// if partitions[index] is excluded, select next in fasterRwPartitions
 	for i := 1; i < kValue; i++ {
 		dp = partitions[(index+i)%kValue]
-		if !isExcluded(dp, exclude) {
+		if !isExcluded(dp, exclude, s.param.quorum) {
 			log.LogDebugf("KFasterRandomSelector: select faster dp[%v], index %v, kValue(%v/%v)",
 				dp, (index+i)%kValue, kValue, len(partitions))
 			return dp, nil
@@ -117,7 +119,7 @@ func (s *KFasterRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 	slowerRwPartitionsNum := len(partitions) - kValue
 	for i := 0; i < slowerRwPartitionsNum; i++ {
 		dp = partitions[(index+i)%slowerRwPartitionsNum+kValue]
-		if !isExcluded(dp, exclude) {
+		if !isExcluded(dp, exclude, s.param.quorum) {
 			log.LogDebugf("KFasterRandomSelector: select slower dp[%v], index %v, kValue(%v/%v)",
 				dp, (index+i)%slowerRwPartitionsNum+kValue, kValue, len(partitions))
 			return dp, nil

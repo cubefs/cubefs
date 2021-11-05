@@ -178,10 +178,10 @@ func (partition *DataPartition) createTaskToResetRaftMembers(newPeers []proto.Pe
 	return
 }
 
-func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64, peers []proto.Peer, hosts []string, learners []proto.Learner, createType int) (task *proto.AdminTask) {
+func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64, peers []proto.Peer, hosts []string, learners []proto.Learner, createType int, volumeHAType proto.CrossRegionHAType) (task *proto.AdminTask) {
 
 	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(
-		partition.VolName, partition.PartitionID, peers, int(dataPartitionSize), hosts, createType, learners))
+		partition.VolName, partition.PartitionID, peers, int(dataPartitionSize), hosts, createType, learners, volumeHAType))
 	partition.resetTaskID(task)
 	return
 }
@@ -457,7 +457,7 @@ func (partition *DataPartition) checkReplicaNumAndSize(c *Cluster, vol *Vol) {
 		Warn(c.Name, msg)
 	}
 
-	if vol.dpReplicaNum != partition.ReplicaNum && !vol.NeedToLowerReplica {
+	if vol.dpReplicaNum < partition.ReplicaNum && !vol.NeedToLowerReplica {
 		vol.NeedToLowerReplica = true
 	}
 
@@ -605,6 +605,7 @@ func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode
 	replica.FileCount = uint32(vr.ExtentCount)
 	replica.setAlive()
 	replica.IsLeader = vr.IsLeader
+	replica.IsLearner = vr.IsLearner
 	replica.NeedsToCompare = vr.NeedCompare
 	if replica.DiskPath != vr.DiskPath && vr.DiskPath != "" {
 		oldDiskPath := replica.DiskPath
@@ -843,13 +844,19 @@ func (partition *DataPartition) isDataCatchUpInStrictMode() (ok bool) {
 }
 
 //check if the data partition needs to rebalance zone
-func (partition *DataPartition) needToRebalanceZone(c *Cluster, zoneList []string) (isNeed bool, err error) {
+func (partition *DataPartition) needToRebalanceZone(c *Cluster, zoneList []string, volCrossRegionHAType proto.CrossRegionHAType) (isNeed bool, err error) {
 	var curZoneMap map[string]uint8
 	var curZoneList []string
 	curZoneList = make([]string, 0)
 	curZoneMap = make(map[string]uint8, 0)
-	if curZoneMap, err = partition.getDataZoneMap(c); err != nil {
-		return
+	if IsCrossRegionHATypeQuorum(volCrossRegionHAType) {
+		if curZoneMap, err = partition.getDataMasterRegionZoneMap(c); err != nil {
+			return
+		}
+	} else {
+		if curZoneMap, err = partition.getDataZoneMap(c); err != nil {
+			return
+		}
 	}
 	for k := range curZoneMap {
 		curZoneList = append(curZoneList, k)
@@ -883,7 +890,7 @@ var getTargetAddressForBalanceDataPartitionZone = func(c *Cluster, offlineAddr s
 	if vol, err = c.getVol(dp.VolName); err != nil {
 		return
 	}
-	if offlineZoneName, targetZoneName, err = dp.getOfflineAndTargetZone(c, vol.zoneName); err != nil {
+	if offlineZoneName, targetZoneName, err = dp.getOfflineAndTargetZone(c, vol.zoneName, IsCrossRegionHATypeQuorum(vol.CrossRegionHAType)); err != nil {
 		return
 	}
 	if offlineZoneName == "" || targetZoneName == "" {
@@ -943,9 +950,13 @@ var getTargetAddressForBalanceDataPartitionZone = func(c *Cluster, offlineAddr s
 	return
 }
 
-//
-func (partition *DataPartition) getOfflineAndTargetZone(c *Cluster, zoneName string) (offlineZone, targetZone string, err error) {
+func (partition *DataPartition) getOfflineAndTargetZone(c *Cluster, zoneName string, isCrossRegionHATypeQuorumVol bool) (offlineZone, targetZone string, err error) {
 	zoneList := strings.Split(zoneName, ",")
+	if isCrossRegionHATypeQuorumVol {
+		if zoneList, _, err = c.getMasterAndSlaveRegionZoneName(zoneName); err != nil {
+			return
+		}
+	}
 	var currentZoneList []string
 	switch len(zoneList) {
 	case 1:
@@ -974,8 +985,14 @@ func (partition *DataPartition) getOfflineAndTargetZone(c *Cluster, zoneName str
 		return
 	}
 
-	if currentZoneList, err = partition.getZoneList(c); err != nil {
-		return
+	if isCrossRegionHATypeQuorumVol {
+		if currentZoneList, err = partition.getMasterRegionZoneList(c); err != nil {
+			return
+		}
+	} else {
+		if currentZoneList, err = partition.getZoneList(c); err != nil {
+			return
+		}
 	}
 	intersect := util.Intersect(zoneList, currentZoneList)
 	projectiveToZoneList := util.Projective(zoneList, intersect)
@@ -1058,4 +1075,138 @@ func (partition *DataPartition) removePromotedDataLearner(vr *proto.PartitionRep
 		}
 	}
 	return newLearners, false
+}
+
+// getNewHostsWithAddedPeer is used in add new replica which is covered with partition Lock, so need not use this lock again
+func (partition *DataPartition) getNewHostsWithAddedPeer(c *Cluster, addPeerAddr string) (newHosts []string, addPeerRegionType proto.RegionType, err error) {
+	newHosts = make([]string, 0, len(partition.Hosts)+1)
+	addPeerRegionType, err = c.getDataNodeRegionType(addPeerAddr)
+	if err != nil {
+		return
+	}
+	masterRegionHosts, slaveRegionHosts, err := c.getMasterAndSlaveRegionAddrsFromDataNodeAddrs(partition.Hosts)
+	if err != nil {
+		return
+	}
+
+	newHosts = append(newHosts, masterRegionHosts...)
+	switch addPeerRegionType {
+	case proto.MasterRegion:
+		newHosts = append(newHosts, addPeerAddr)
+		newHosts = append(newHosts, slaveRegionHosts...)
+	case proto.SlaveRegion:
+		newHosts = append(newHosts, slaveRegionHosts...)
+		newHosts = append(newHosts, addPeerAddr)
+	default:
+		err = fmt.Errorf("action[getNewHostsWithAddedPeer] addr:%v, region type:%v is wrong", addPeerAddr, addPeerRegionType)
+		return
+	}
+	if len(newHosts) != len(partition.Hosts)+1 {
+		err = fmt.Errorf("action[getNewHostsWithAddedPeer] newHosts:%v count is not equal to %d, masterRegionHosts:%v slaveRegionHosts:%v",
+			newHosts, len(partition.Hosts)+1, masterRegionHosts, slaveRegionHosts)
+		return
+	}
+	return
+}
+
+func (partition *DataPartition) getDataMasterRegionZoneMap(c *Cluster) (curMasterRegionZonesMap map[string]uint8, err error) {
+	curMasterRegionZonesMap = make(map[string]uint8, 0)
+	for _, host := range partition.Hosts {
+		var dataNode *DataNode
+		var region *Region
+		if dataNode, err = c.dataNode(host); err != nil {
+			return
+		}
+		if region, err = c.getRegionOfZoneName(dataNode.ZoneName); err != nil {
+			return
+		}
+		if region.isMasterRegion() {
+			curMasterRegionZonesMap[dataNode.ZoneName]++
+		}
+	}
+	return
+}
+
+// get master region zone list of hosts, there may be duplicate zones
+func (partition *DataPartition) getMasterRegionZoneList(c *Cluster) (masterRegionZoneList []string, err error) {
+	masterRegionZoneList = make([]string, 0)
+	for _, host := range partition.Hosts {
+		var dataNode *DataNode
+		var region *Region
+		if dataNode, err = c.dataNode(host); err != nil {
+			return
+		}
+		if region, err = c.getRegionOfZoneName(dataNode.ZoneName); err != nil {
+			return
+		}
+		if region.isMasterRegion() {
+			masterRegionZoneList = append(masterRegionZoneList, dataNode.ZoneName)
+		}
+	}
+	return
+}
+
+func (partition *DataPartition) canAddReplicaForCrossRegionQuorumVol(replicaNum int) bool {
+	if len(partition.Hosts) < replicaNum && partition.isDataCatchUp() {
+		return true
+	}
+	return false
+}
+
+func (partition *DataPartition) chooseTargetDataNodeForCrossRegionQuorumVol(c *Cluster, volZoneName string, replicaNum int) (addr string, err error) {
+	hosts := make([]string, 0)
+	var targetZoneNames string
+	if !partition.canAddReplicaForCrossRegionQuorumVol(replicaNum) {
+		return "", fmt.Errorf("partition:%v is recovering or replica is full, can not add replica for cross region quorum vol", partition.PartitionID)
+	}
+	volMasterRegionZoneName, volSlaveRegionZoneName, err := c.getMasterAndSlaveRegionZoneName(volZoneName)
+	if err != nil {
+		return
+	}
+	masterRegionHosts, slaveRegionHosts, err := c.getMasterAndSlaveRegionAddrsFromDataNodeAddrs(partition.Hosts)
+	if err != nil {
+		return
+	}
+
+	// master region replica must be added in priority
+	if len(masterRegionHosts) < defaultQuorumDataPartitionMasterRegionCount {
+		targetZoneNames = convertSliceToVolZoneName(volMasterRegionZoneName)
+		if len(volMasterRegionZoneName) > 1 {
+			//if the vol need cross zone, but the partition has not cross zone, choose a replica from new zones.
+			curMasterRegionZonesMap := make(map[string]uint8)
+			if curMasterRegionZonesMap, err = partition.getDataMasterRegionZoneMap(c); err != nil {
+				return
+			}
+			if len(curMasterRegionZonesMap) == 1 {
+				//master region replicas are in one zone, choose a new zone for cross zone
+				newMasterRegionZone := make([]string, 0)
+				for _, masterRegionZone := range volMasterRegionZoneName {
+					if _, ok := curMasterRegionZonesMap[masterRegionZone]; ok {
+						continue
+					}
+					newMasterRegionZone = append(newMasterRegionZone, masterRegionZone)
+				}
+				targetZoneNames = convertSliceToVolZoneName(newMasterRegionZone)
+			}
+		}
+	} else if len(slaveRegionHosts) < (replicaNum - defaultQuorumDataPartitionMasterRegionCount) {
+		targetZoneNames = convertSliceToVolZoneName(volSlaveRegionZoneName)
+	} else {
+		err = fmt.Errorf("partition[%v] replicaNum[%v] masterRegionHosts:%v slaveRegionHosts:%v do not need add replica",
+			partition.PartitionID, replicaNum, masterRegionHosts, slaveRegionHosts)
+		return
+	}
+	if hosts, _, err = c.chooseTargetDataNodes(nil, nil, partition.Hosts, 1, targetZoneNames, true); err != nil {
+		return
+	}
+	addr = hosts[0]
+	return
+}
+
+func (partition *DataPartition) getLearnerHosts() (learnerHosts []string) {
+	learnerHosts = make([]string, 0)
+	for _, learner := range partition.Learners {
+		learnerHosts = append(learnerHosts, learner.Addr)
+	}
+	return
 }

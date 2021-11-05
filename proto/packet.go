@@ -175,6 +175,7 @@ const (
 	OpTryOtherAddr     uint8 = 0xFC
 	OpNotPerm          uint8 = 0xFD
 	OpNotEmtpy         uint8 = 0xFE
+	OpDisabled         uint8 = 0xFF
 	OpOk               uint8 = 0xF0
 
 	OpPing uint8 = 0xFF
@@ -507,6 +508,8 @@ func (p *Packet) GetResultMsg() (m string) {
 		m = "NotPerm: " + p.GetRespData()
 	case OpNotEmtpy:
 		m = "DirNotEmpty: " + p.GetRespData()
+	case OpDisabled:
+		m = "Disabled: " + p.GetRespData()
 	default:
 		return fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
 	}
@@ -602,7 +605,7 @@ func (p *Packet) WriteToNoDeadLineConn(c net.Conn) (err error) {
 }
 
 // WriteToConn writes through the given connection.
-func (p *Packet) WriteToConn(c net.Conn) (err error) {
+func (p *Packet) WriteToConn(c net.Conn, timeoutSec int) (err error) {
 
 	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("proto.Packet.WriteToConn").
 		SetTag("remote", c.RemoteAddr().String()).
@@ -616,7 +619,9 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 	}()
 	p.SetCtx(tracer.Context())
 
-	c.SetWriteDeadline(time.Now().Add(WriteDeadlineTime * time.Second))
+	if timeoutSec > 0 {
+		c.SetWriteDeadline(time.Now().Add(time.Second * time.Duration(timeoutSec)))
+	}
 	header, err := Buffers.Get(util.PacketHeaderSize)
 	if err != nil {
 		header = make([]byte, util.PacketHeaderSize)
@@ -776,7 +781,7 @@ func (p *Packet) getPacketCommonLog(remoteAddr string) (m string) {
 			m += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
 		}
 		return
-	} else if p.Opcode == OpGetAllWatermarks || p.Opcode==OpGetAllWatermarksV2 {
+	} else if p.Opcode == OpGetAllWatermarks || p.Opcode == OpGetAllWatermarksV2 {
 		m += fmt.Sprintf("Opcode(%v)_RepairExtentType(%v)_", p.GetOpMsg(), p.ExtentType)
 		return
 	}
@@ -784,7 +789,7 @@ func (p *Packet) getPacketCommonLog(remoteAddr string) (m string) {
 		"Size(%v)_Opcode(%v)_CRC(%v)",
 		p.ReqID, p.PartitionID, p.ExtentID, p.ExtentOffset,
 		p.KernelOffset, p.Size, p.GetOpMsg(), p.CRC)
-	return 
+	return
 }
 
 // IsForwardPkt returns if the packet is the forward packet (a packet that will be forwarded to the followers).

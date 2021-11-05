@@ -32,7 +32,8 @@ func TestUserAPI(t *testing.T) {
 		t.Fatalf("List users failed: err(%v)", err)
 	}
 	// create new vol for transfer、perm
-	err = testMc.AdminAPI().CreateVolume(testTransVol, testOwner, testMpcount, testDpSize, testCapacity, testReplicas, testFollowerRead, testAutoRepair, testVolWriteMutex, testZoneName)
+	err = testMc.AdminAPI().CreateVolume(testTransVol, testOwner, testMpcount, testDpSize, testCapacity, testReplicas, testMpReplicas,
+		testFollowerRead, testAutoRepair, testVolWriteMutex, testForceROW, testZoneName, 0)
 	if err != nil {
 		t.Fatalf("create vol failed: err(%v) vol(%v)", err, testTransVol)
 	}

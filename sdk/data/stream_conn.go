@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"net"
-	"sync/atomic"
+	"sort"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -39,8 +39,12 @@ const (
 	StreamReadConsistenceRetry   = 50
 	StreamReadConsistenceTimeout = 1 * time.Minute
 
-	IdleConnTimeoutData = 30
-	ConnectTimeoutData  = 1
+	IdleConnTimeoutData  = 30
+	ConnectTimeoutDataMs = 500
+	ReadTimeoutData      = 3
+	WriteTimeoutData     = 3
+
+	hostErrAccessTimeout = 300 // second
 )
 
 type GetReplyFunc func(conn *net.TCPConn) (err error, again bool)
@@ -53,7 +57,7 @@ type StreamConn struct {
 
 var (
 	//StreamConnPool = util.NewConnectPool()
-	StreamConnPool = util.NewConnectPoolWithTimeoutAndCap(0, 10, IdleConnTimeoutData, ConnectTimeoutData)
+	StreamConnPool = util.NewConnectPoolWithTimeoutAndCap(0, 10, IdleConnTimeoutData, ConnectTimeoutDataMs)
 )
 
 // NewStreamConn returns a new stream connection.
@@ -65,25 +69,23 @@ func NewStreamConn(dp *DataPartition, follower bool) *StreamConn {
 		}
 	}
 
-	if dp.ClientWrapper.NearRead() {
+	if dp.ClientWrapper.CrossRegionHATypeQuorum() {
 		return &StreamConn{
 			dp:       dp,
-			currAddr: getNearestHost(dp),
+			currAddr: dp.getNearestCrossRegionHost(),
 		}
 	}
 
-	epoch := atomic.AddUint64(&dp.Epoch, 1)
-	hosts := sortByStatus(dp, false)
-	choice := len(hosts)
-	currAddr := dp.LeaderAddr
-	if choice > 0 {
-		index := int(epoch) % choice
-		currAddr = hosts[index]
+	if dp.ClientWrapper.NearRead() {
+		return &StreamConn{
+			dp:       dp,
+			currAddr: dp.getNearestHost(),
+		}
 	}
 
 	return &StreamConn{
 		dp:       dp,
-		currAddr: currAddr,
+		currAddr: dp.getFollowerReadHost(),
 	}
 }
 
@@ -130,7 +132,7 @@ func (sc *StreamConn) sendToDataPartition(req *Packet) (conn *net.TCPConn, err e
 			SetTag("reqID", req.GetReqID()).
 			SetTag("reqOp", req.GetOpMsg())
 		defer tracer.Finish()
-		return req.WriteToConn(conn)
+		return req.WriteToConn(conn, WriteTimeoutData)
 	}(); err != nil {
 		log.LogWarnf("sendToDataPartition: failed to write to addr(%v) err(%v)", sc.currAddr, err)
 		return
@@ -140,40 +142,70 @@ func (sc *StreamConn) sendToDataPartition(req *Packet) (conn *net.TCPConn, err e
 }
 
 // sortByStatus will return hosts list sort by host status for DataPartition.
-// If param selectAll is true, hosts with status(true) is in front and hosts with status(false) is in behind.
-// If param selectAll is false, only return hosts with status(true).
-func sortByStatus(dp *DataPartition, selectAll bool) (hosts []string) {
-	var failedHosts []string
+// The order from front to back is "status(true)/status(false)/failedHost".
+func sortByStatus(dp *DataPartition, failedHost string) (hosts []string) {
+	var inactiveHosts []string
 	hostsStatus := dp.ClientWrapper.HostsStatus
 	var dpHosts []string
-	if dp.ClientWrapper.FollowerRead() && dp.ClientWrapper.NearRead() {
+	if dp.ClientWrapper.CrossRegionHATypeQuorum() {
+		dpHosts = dp.getSortedCrossRegionHosts()
+	} else if dp.ClientWrapper.FollowerRead() && dp.ClientWrapper.NearRead() {
 		dpHosts = dp.NearHosts
 	} else {
 		dpHosts = dp.Hosts
 	}
 
 	for _, addr := range dpHosts {
+		if addr == failedHost {
+			continue
+		}
 		status, ok := hostsStatus[addr]
 		if ok {
 			if status {
 				hosts = append(hosts, addr)
 			} else {
-				failedHosts = append(failedHosts, addr)
+				inactiveHosts = append(inactiveHosts, addr)
 			}
 		} else {
-			failedHosts = append(failedHosts, addr)
+			inactiveHosts = append(inactiveHosts, addr)
 			log.LogWarnf("sortByStatus: can not find host[%v] in HostsStatus, dp[%d]", addr, dp.PartitionID)
 		}
 	}
 
-	if selectAll {
-		hosts = append(hosts, failedHosts...)
-	}
+	sortByAccessErrTs(dp, hosts)
+
+	hosts = append(hosts, inactiveHosts...)
+	hosts = append(hosts, failedHost)
+
+	log.LogDebugf("sortByStatus: dp(%v) sortedHost(%v) failedHost(%v)", dp, hosts, failedHost)
 
 	return
 }
 
-func getNearestHost(dp *DataPartition) string {
+func sortByAccessErrTs(dp *DataPartition, hosts []string) {
+
+	for _, host := range hosts {
+		ts, ok := dp.hostErrMap.Load(host)
+		if ok && time.Now().UnixNano()-ts.(int64) > hostErrAccessTimeout*1e9 {
+			dp.hostErrMap.Delete(host)
+		}
+	}
+
+	sort.Slice(hosts, func(i, j int) bool {
+		var iTime, jTime int64
+		iTs, ok := dp.hostErrMap.Load(hosts[i])
+		if ok {
+			iTime = iTs.(int64)
+		}
+		jTs, ok := dp.hostErrMap.Load(hosts[j])
+		if ok {
+			jTime = jTs.(int64)
+		}
+		return iTime < jTime
+	})
+}
+
+func (dp *DataPartition) getNearestHost() string {
 	hostsStatus := dp.ClientWrapper.HostsStatus
 	for _, addr := range dp.NearHosts {
 		status, ok := hostsStatus[addr]
@@ -183,6 +215,16 @@ func getNearestHost(dp *DataPartition) string {
 			}
 		}
 		return addr
+	}
+	return dp.LeaderAddr
+}
+
+func (dp *DataPartition) getFollowerReadHost() string {
+	if len(dp.Hosts) > 0 {
+		err, host := dp.getEpochReadHost(dp.Hosts)
+		if err == nil {
+			return host
+		}
 	}
 	return dp.LeaderAddr
 }
@@ -197,7 +239,7 @@ func getReadReply(conn *net.TCPConn, reqPacket *Packet, req *ExtentRequest) (rea
 		replyPacket := NewReply(reqPacket.Ctx(), reqPacket.ReqID, reqPacket.PartitionID, reqPacket.ExtentID)
 		bufSize := util.Min(util.ReadBlockSize, int(reqPacket.Size)-readBytes)
 		replyPacket.Data = req.Data[readBytes : readBytes+bufSize]
-		e := replyPacket.readFromConn(conn, proto.ReadDeadlineTime)
+		e := replyPacket.readFromConn(conn, ReadTimeoutData)
 		if e != nil {
 			log.LogWarnf("getReadReply: failed to read from connect, ino(%v) req(%v) readBytes(%v) err(%v)", reqPacket.inode, reqPacket, readBytes, e)
 			// Upon receiving TryOtherAddrError, other hosts will be retried.

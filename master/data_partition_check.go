@@ -16,14 +16,15 @@ package master
 
 import (
 	"fmt"
+	"math"
+	"time"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
-	"math"
-	"time"
 )
 
-func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dpTimeOutSec int64) {
+func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dpTimeOutSec int64, dpWriteableThreshold float64, crossRegionHAType proto.CrossRegionHAType, quorum int) {
 	partition.Lock()
 	defer partition.Unlock()
 	if partition.isRecover {
@@ -38,11 +39,16 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 		Warn(clusterName, msg)
 		return
 	}
+	if IsCrossRegionHATypeQuorum(crossRegionHAType) {
+		partition.checkStatusOfCrossRegionQuorumVol(liveReplicas, quorum, clusterName, needLog, dpWriteableThreshold)
+		return
+	}
 
 	switch len(liveReplicas) {
 	case (int)(partition.ReplicaNum):
 		partition.Status = proto.ReadOnly
-		if partition.checkReplicaStatusOnLiveNode(liveReplicas) == true && partition.canWrite() && partition.canResetStatusToWrite() {
+		if partition.checkReplicaStatusOnLiveNode(liveReplicas) == true &&
+			partition.canWrite() && partition.canResetStatusToWrite(dpWriteableThreshold) {
 			partition.Status = proto.ReadWrite
 		}
 	default:
@@ -63,23 +69,76 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 	}
 }
 
-func (partition *DataPartition) canResetStatusToWrite() bool {
-	hasReplicaDiskUsageReachThreshold := false
-	for _, replica := range partition.Replicas {
-		if replica.dataNode == nil {
-			hasReplicaDiskUsageReachThreshold = true
-			break
-		}
-		if replica.dataNode.UsageRatio > 0.85 {
-			hasReplicaDiskUsageReachThreshold = true
-			break
+func (partition *DataPartition) checkStatusOfCrossRegionQuorumVol(liveReplicas []*DataReplica, quorum int, clusterName string, needLog bool, dpWriteableThreshold float64) {
+	partition.Status = proto.ReadOnly
+	if partition.isPrimaryBackupLeaderWritable(liveReplicas) && partition.getRWReplicaCountOfLiveReplicas(liveReplicas) >= quorum &&
+		partition.canWrite() && partition.canResetStatusToWrite(dpWriteableThreshold) {
+		partition.Status = proto.ReadWrite
+	}
+	if partition.Status != partition.lastStatus {
+		partition.lastModifyStatusTime = time.Now().Unix()
+		partition.lastStatus = partition.Status
+	}
+	if needLog == true && len(liveReplicas) != int(partition.ReplicaNum) {
+		msg := fmt.Sprintf("action[checkStatusOfCrossRegionQuorumVol],partitionID:%v replicaNum:%v liveReplicas:%v Status:%v RocksDBHost:%v ",
+			partition.PartitionID, partition.ReplicaNum, len(liveReplicas), partition.Status, partition.Hosts)
+		log.LogInfo(msg)
+		if time.Now().Unix()-partition.lastWarnTime > intervalToWarnDataPartition {
+			Warn(clusterName, msg)
+			partition.lastWarnTime = time.Now().Unix()
 		}
 	}
-	if partition.lastStatus == proto.ReadOnly && hasReplicaDiskUsageReachThreshold &&
-		time.Now().Unix()-partition.lastModifyStatusTime < 10*60 {
+}
+
+func (partition *DataPartition) isPrimaryBackupLeaderWritable(liveReplicas []*DataReplica) bool {
+	if len(partition.Hosts) == 0 {
+		return false
+	}
+	leaderAddr := partition.Hosts[0]
+	for _, replica := range liveReplicas {
+		if replica.Addr == leaderAddr && replica.Status == proto.ReadWrite {
+			return true
+		}
+	}
+	return false
+}
+
+func (partition *DataPartition) getRWReplicaCountOfLiveReplicas(liveReplicas []*DataReplica) (rwReplicaCount int) {
+	for _, replica := range liveReplicas {
+		if replica.Status == proto.ReadWrite {
+			rwReplicaCount++
+		}
+	}
+	return
+}
+
+func (partition *DataPartition) canResetStatusToWrite(dpWriteableThreshold float64) bool {
+	if dpWriteableThreshold <= defaultMinDpWriteableThreshold {
+		return true
+	}
+	if partition.lastStatus == proto.ReadOnly && partition.hasReplicaReachDiskUsageThreshold(dpWriteableThreshold) {
+		return false
+	}
+
+	if partition.lastStatus == proto.ReadOnly && time.Now().Unix()-partition.lastModifyStatusTime < 10*60 {
 		return false
 	}
 	return true
+}
+
+func (partition *DataPartition) hasReplicaReachDiskUsageThreshold(diskUsageThreshold float64) bool {
+	hasReplicaDiskUsageReachThreshold := false
+	for _, replica := range partition.Replicas {
+		if replica.dataNode == nil || replica.dataNode.DiskInfos == nil {
+			break
+		}
+
+		if replica.dataNode.isReachThresholdByDisk(replica.DiskPath, diskUsageThreshold) {
+			hasReplicaDiskUsageReachThreshold = true
+			break
+		}
+	}
+	return hasReplicaDiskUsageReachThreshold
 }
 
 func (partition *DataPartition) canWrite() bool {

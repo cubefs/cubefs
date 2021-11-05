@@ -77,6 +77,7 @@ type MetaPartitionInfo struct {
 	VolName       string
 	Replicas      []*MetaReplicaInfo
 	ReplicaNum    uint8
+	LearnerNum    uint8
 	Status        int8
 	IsRecover     bool
 	Hosts         []string
@@ -121,6 +122,7 @@ type MetaReplicaInfo struct {
 	IsLeader    bool
 	InodeCount  uint64
 	DentryCount uint64
+	IsLearner   bool
 }
 
 // ClusterView provides the view of a cluster.
@@ -250,6 +252,7 @@ type DataReplica struct {
 	Used            uint64 `json:"UsedSize"`
 	IsLeader        bool
 	NeedsToCompare  bool
+	IsLearner       bool
 	DiskPath        string
 }
 
@@ -339,4 +342,32 @@ type ExtentCrcInfo struct {
 	FileID        uint64
 	ExtentNum     int
 	CrcLocAddrMap map[uint32][]string
+}
+
+type RegionView struct {
+	Name       string
+	RegionType RegionType
+	Zones      []string
+}
+
+func NewRegionView(name string) (regionView *RegionView) {
+	regionView = &RegionView{
+		Name:  name,
+		Zones: make([]string, 0),
+	}
+	return
+}
+
+type ZoneView struct {
+	Name    string
+	Status  string
+	Region  string
+	NodeSet map[uint64]*nodeSetView
+}
+
+type nodeSetView struct {
+	DataNodeLen int
+	MetaNodeLen int
+	MetaNodes   []NodeView
+	DataNodes   []NodeView
 }

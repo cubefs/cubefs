@@ -27,7 +27,8 @@ type MetaPartition struct {
 	Start       uint64
 	End         uint64
 	Members     []string
-	LeaderAddr  string
+	Learners   	[]string
+	LeaderAddr 	string
 	Status      int8
 }
 
@@ -44,7 +45,8 @@ func (mp *MetaPartition) String() string {
 	if mp == nil {
 		return ""
 	}
-	return fmt.Sprintf("PartitionID(%v) Start(%v) End(%v) Members(%v) LeaderAddr(%v) Status(%v)", mp.PartitionID, mp.Start, mp.End, mp.Members, mp.LeaderAddr, mp.Status)
+	return fmt.Sprintf("PartitionID(%v) Start(%v) End(%v) Members(%v) Learners(%v) LeaderAddr(%v) Status(%v)",
+		mp.PartitionID, mp.Start, mp.End, mp.Members, mp.Learners, mp.LeaderAddr, mp.Status)
 }
 
 // Meta partition managements

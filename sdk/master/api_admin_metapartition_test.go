@@ -1,9 +1,10 @@
 package master
 
 import (
-	"github.com/chubaofs/chubaofs/proto"
 	"testing"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 func TestMetaPartitionAPI(t *testing.T) {
@@ -14,7 +15,7 @@ func TestMetaPartitionAPI(t *testing.T) {
 	var testInodeStart uint64 = 1
 	for i := 0; i == 0 || i < count && err != nil; i++ {
 		err = testMc.AdminAPI().CreateMetaPartition(testVolName, testInodeStart)
-		time.Sleep(time.Duration(1)*time.Second)
+		time.Sleep(time.Duration(1) * time.Second)
 	}
 	if err != nil {
 		t.Fatalf("CreateMetaPartition failed, err %v", err)
@@ -57,7 +58,7 @@ func TestMetaPartitionAPI(t *testing.T) {
 	//Decommission Meta Partition
 	for i := 0; i == 0 || i < count && err != nil; i++ {
 		err = testMc.AdminAPI().DecommissionMetaPartition(testMetaPartitionID, nonLeaderAddr, "")
-		time.Sleep(time.Duration(1+i/2)*time.Second)
+		time.Sleep(time.Duration(1+i/2) * time.Second)
 	}
 	if err != nil {
 		t.Fatalf("DecommissionMetaPartition failed, err %v", err)
@@ -91,7 +92,7 @@ func TestMetaPartitionAPI(t *testing.T) {
 	//Delete Meta Replica
 	for i := 0; i == 0 || i < count && err != nil; i++ {
 		err = testMc.AdminAPI().DeleteMetaReplica(testMetaPartitionID, newAddr)
-		time.Sleep(time.Duration(1)*time.Second)
+		time.Sleep(time.Duration(1) * time.Second)
 	}
 	if err != nil {
 		t.Fatalf("DeleteMetaReplica failed, err %v", err)
@@ -99,8 +100,8 @@ func TestMetaPartitionAPI(t *testing.T) {
 
 	//Add Meta Replica
 	for i := 0; i == 0 || i < count && err != nil; i++ {
-		err = testMc.AdminAPI().AddMetaReplica(testMetaPartitionID, nonLeaderAddr)
-		time.Sleep(time.Duration(1)*time.Second)
+		err = testMc.AdminAPI().AddMetaReplica(testMetaPartitionID, nonLeaderAddr, 0)
+		time.Sleep(time.Duration(1) * time.Second)
 	}
 	if err != nil {
 		t.Fatalf("AddMetaReplica failed, %v", err)
@@ -150,7 +151,7 @@ func TestMetaLearner(t *testing.T) {
 	//Add Meta Replica Learner
 	autoPromote := false
 	var threshold uint8 = 10
-	err = testMc.AdminAPI().AddMetaReplicaLearner(testMetaPartitionID, newAddr, autoPromote, threshold)
+	err = testMc.AdminAPI().AddMetaReplicaLearner(testMetaPartitionID, newAddr, autoPromote, threshold, 0)
 	if err != nil {
 		t.Fatalf("AddMetaReplicaLearner failed, err %v", err)
 	}
@@ -165,18 +166,18 @@ func TestMetaLearner(t *testing.T) {
 	var count int = 60
 	for i := 0; i == 0 || i < count && err != nil; i++ {
 		err = testMc.AdminAPI().DeleteMetaReplica(testMetaPartitionID, newAddr)
-		time.Sleep(time.Duration(1)*time.Second)
+		time.Sleep(time.Duration(1) * time.Second)
 	}
 	if err != nil {
 		t.Fatalf("DeleteMetaReplica failed, err %v", err)
 	}
 }
 
-func metaFindNewAddr(replicas []*proto.MetaReplicaInfo, nodes []proto.NodeView) string{
+func metaFindNewAddr(replicas []*proto.MetaReplicaInfo, nodes []proto.NodeView) string {
 	newAddr := ""
 	for _, i := range nodes {
 		flag := false
-		for _, j := range replicas{
+		for _, j := range replicas {
 			if i.Addr == j.Addr {
 				flag = true
 				break

@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unsafe"
 )
 
 var (
@@ -195,6 +196,10 @@ func ByteToString(orig []byte) string {
 		return string(orig)
 	}
 	return string(orig[l:n])
+}
+
+func Int8ToString(orig []int8) string {
+	return ByteToString(*(*[]byte)(unsafe.Pointer(&orig)))
 }
 
 // ReadInts reads contents from single line file and returns them as []int32.

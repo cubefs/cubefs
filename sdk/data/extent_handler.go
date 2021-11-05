@@ -244,8 +244,7 @@ func (eh *ExtentHandler) sender() {
 			packet.ExtentType = uint8(eh.storeMode)
 			packet.ExtentID = uint64(eh.extID)
 			packet.ExtentOffset = int64(extOffset)
-			packet.Arg = ([]byte)(eh.dp.GetAllAddrs())
-			packet.ArgLen = uint32(len(packet.Arg))
+			packet.SetupReplArg(eh.dp.GetAllHosts(), eh.stream.client.dataWrapper.quorum)
 			packet.RemainingFollowers = uint8(len(eh.dp.Hosts) - 1)
 			packet.StartT = time.Now().UnixNano()
 
@@ -329,7 +328,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	packet.WaitT = time.Now().UnixNano()
 
 	reply := NewReply(packet.Ctx(), packet.ReqID, packet.PartitionID, packet.ExtentID)
-	readDeadLineTime := proto.ReadDeadlineTime - int(cost.Seconds())
+	readDeadLineTime := ReadTimeoutData - int(cost.Seconds())
 	if readDeadLineTime < proto.MinReadDeadlineTime {
 		readDeadLineTime = proto.MinReadDeadlineTime
 		log.LogWarnf("processReply: send or wait cost too long, costFromStart(%v), costFromSend(%v), packet(%v)",
@@ -653,13 +652,13 @@ func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
 //}
 
 func (eh *ExtentHandler) ehCreateExtent(ctx context.Context, dp *DataPartition) (extID int, err error) {
-	return CreateExtent(ctx, eh.inode, dp)
+	return CreateExtent(ctx, eh.inode, dp, eh.stream.client.dataWrapper.quorum)
 }
 
-func CreateExtent(ctx context.Context, inode uint64, dp *DataPartition) (extID int, err error) {
+func CreateExtent(ctx context.Context, inode uint64, dp *DataPartition, quorum int) (extID int, err error) {
 	conn, err := StreamConnPool.GetConnect(dp.Hosts[0])
 	if err != nil {
-		errors.Trace(err, "createExtent: failed to create connection, datapartionHosts(%v)", dp.Hosts[0])
+		errors.Trace(err, "createExtent: failed to create connection, dataPartitionHost(%v)", dp.Hosts[0])
 		return
 	}
 
@@ -667,25 +666,26 @@ func CreateExtent(ctx context.Context, inode uint64, dp *DataPartition) (extID i
 		StreamConnPool.PutConnectWithErr(conn, err)
 	}()
 
-	p := NewCreateExtentPacket(ctx, dp, inode)
-	if err = p.WriteToConn(conn); err != nil {
+	p := NewCreateExtentPacket(ctx, dp, quorum, inode)
+	if err = p.WriteToConn(conn, WriteTimeoutData); err != nil {
 		errors.Trace(err, "createExtent: failed to WriteToConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])
 		return
 	}
 
-	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+	if err = p.ReadFromConn(conn, ReadTimeoutData); err != nil {
 		err = errors.Trace(err, "createExtent: failed to ReadFromConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])
 		return
 	}
 
 	if p.ResultCode != proto.OpOk {
-		err = errors.New(fmt.Sprintf("createExtent: ResultCode NOK, packet(%v) datapartionHosts(%v) ResultCode(%v)", p, dp.Hosts[0], p.GetResultMsg()))
+		err = errors.New(fmt.Sprintf("createExtent: ResultCode NOK, packet(%v) quorum(%v) dataPartitionHost(%v) ResultCode(%v)",
+			p, quorum, dp.Hosts[0], p.GetResultMsg()))
 		return
 	}
 
 	extID = int(p.ExtentID)
 	if extID <= 0 {
-		err = errors.New(fmt.Sprintf("createExtent: illegal extID(%v) from (%v)", extID, dp.Hosts[0]))
+		err = errors.New(fmt.Sprintf("createExtent: illegal extID(%v) from (%v), quorum(%v)", extID, dp.Hosts[0], quorum))
 		return
 	}
 

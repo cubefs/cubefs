@@ -52,6 +52,7 @@ const (
 	AdminApplyVolMutex             = "/vol/writeMutex/apply"
 	AdminReleaseVolMutex           = "/vol/writeMutex/release"
 	AdminGetVolMutex               = "/vol/writeMutex/get"
+	AdminSetVolConvertMode         = "/vol/setConvertMode"
 
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
@@ -108,6 +109,11 @@ const (
 	GetTopologyView = "/topo/get"
 	UpdateZone      = "/zone/update"
 	GetAllZones     = "/zone/list"
+	SetZoneRegion   = "/zone/setRegion"
+	UpdateRegion    = "/region/update"
+	GetRegionView   = "/region/get"
+	RegionList      = "/region/list"
+	CreateRegion    = "/region/create"
 
 	//token
 	TokenGetURI    = "/token/get"
@@ -165,6 +171,61 @@ func (p BucketAccessPolicy) String() string {
 const (
 	OSSBucketPolicyPrivate BucketAccessPolicy = iota
 	OSSBucketPolicyPublicRead
+)
+
+type CrossRegionHAType uint8
+
+func (p CrossRegionHAType) String() string {
+	switch p {
+	case DefaultCrossRegionHAType:
+		return "default"
+	case CrossRegionHATypeQuorum:
+		return "quorum"
+	default:
+	}
+	return "unknown"
+}
+
+const (
+	DefaultCrossRegionHAType CrossRegionHAType = iota // 默认类型，表示主被复制中所有复制组成员必须全部成功才可判定为成功
+	CrossRegionHATypeQuorum                           // 表示主备复制中采用Quorum机制，复制组成员成功数量达到Quorum数值要求即可判定为成功
+)
+
+type RegionType uint8
+
+func (r RegionType) String() string {
+	switch r {
+	case MasterRegion:
+		return "master-region"
+	case SlaveRegion:
+		return "slave-region"
+	default:
+	}
+	return "unknown"
+}
+
+const (
+	_ RegionType = iota
+	MasterRegion
+	SlaveRegion
+)
+
+type AddReplicaType uint8
+
+func (a AddReplicaType) String() string {
+	switch a {
+	case DefaultAddReplicaType:
+		return "default"
+	case AutoChooseAddrForQuorumVol:
+		return "auto-choose-addr-for-quorum-vol"
+	default:
+	}
+	return "unknown"
+}
+
+const (
+	DefaultAddReplicaType AddReplicaType = iota
+	AutoChooseAddrForQuorumVol
 )
 
 type Token struct {
@@ -232,6 +293,7 @@ type CreateDataPartitionRequest struct {
 	Learners      []Learner
 	Hosts         []string
 	CreateType    int
+	VolumeHAType  CrossRegionHAType
 }
 
 // CreateDataPartitionResponse defines the response to the request of creating a data partition.
@@ -405,6 +467,16 @@ type DataNodeHeartbeatResponse struct {
 	Status              uint8
 	Result              string
 	BadDisks            []string
+	DiskInfos           map[string]*DiskInfo
+}
+
+type DiskInfo struct {
+	Total         uint64
+	Used          uint64
+	ReservedSpace uint64
+	Status        int
+	Path          string
+	UsageRatio    float64
 }
 
 // MetaPartitionReport defines the meta partition report.
@@ -540,6 +612,7 @@ type MetaPartitionView struct {
 	MaxExistIno uint64
 	IsRecover   bool
 	Members     []string
+	Learners    []string
 	LeaderAddr  string
 	Status      int8
 }
@@ -551,15 +624,17 @@ type OSSSecure struct {
 
 // VolView defines the view of a volume
 type VolView struct {
-	Name            string
-	Owner           string
-	Status          uint8
-	FollowerRead    bool
-	MetaPartitions  []*MetaPartitionView
-	DataPartitions  []*DataPartitionResponse
-	OSSSecure       *OSSSecure
-	OSSBucketPolicy BucketAccessPolicy
-	CreateTime      int64
+	Name              string
+	Owner             string
+	Status            uint8
+	FollowerRead      bool
+	ForceROW          bool
+	CrossRegionHAType CrossRegionHAType
+	MetaPartitions    []*MetaPartitionView
+	DataPartitions    []*DataPartitionResponse
+	OSSSecure         *OSSSecure
+	OSSBucketPolicy   BucketAccessPolicy
+	CreateTime        int64
 }
 
 func (v *VolView) SetOwner(owner string) {
@@ -592,38 +667,49 @@ func NewMetaPartitionView(partitionID, start, end uint64, status int8) (mpView *
 	mpView.End = end
 	mpView.Status = status
 	mpView.Members = make([]string, 0)
+	mpView.Learners = make([]string, 0)
 	return
 }
 
 // SimpleVolView defines the simple view of a volume
 type SimpleVolView struct {
-	ID                  uint64
-	Name                string
-	Owner               string
-	ZoneName            string
-	DpReplicaNum        uint8
-	MpReplicaNum        uint8
-	InodeCount          uint64
-	DentryCount         uint64
-	MaxMetaPartitionID  uint64
-	Status              uint8
-	Capacity            uint64 // GB
-	RwDpCnt             int
-	MpCnt               int
-	DpCnt               int
-	FollowerRead        bool
-	NeedToLowerReplica  bool
-	Authenticate        bool
-	VolWriteMutexEnable bool
-	CrossZone           bool
-	AutoRepair          bool
-	CreateTime          string
-	EnableToken         bool
-	Tokens              map[string]*Token `graphql:"-"`
-	Description         string
-	DpSelectorName      string
-	DpSelectorParm      string
-	OSSBucketPolicy     BucketAccessPolicy
+	ID                   uint64
+	Name                 string
+	Owner                string
+	ZoneName             string
+	DpReplicaNum         uint8
+	MpReplicaNum         uint8
+	DpLearnerNum         uint8
+	MpLearnerNum         uint8
+	InodeCount           uint64
+	DentryCount          uint64
+	MaxMetaPartitionID   uint64
+	Status               uint8
+	Capacity             uint64 // GB
+	DpWriteableThreshold float64
+	RwDpCnt              int
+	MpCnt                int
+	DpCnt                int
+	FollowerRead         bool
+	NeedToLowerReplica   bool
+	Authenticate         bool
+	VolWriteMutexEnable  bool
+	CrossZone            bool
+	AutoRepair           bool
+	CreateTime           string
+	EnableToken          bool
+	ForceROW             bool
+	CrossRegionHAType    CrossRegionHAType
+	Tokens               map[string]*Token `graphql:"-"`
+	Description          string
+	DpSelectorName       string
+	DpSelectorParm       string
+	Quorum               int
+	OSSBucketPolicy      BucketAccessPolicy
+	DPConvertMode        ConvertMode
+	MPConvertMode        ConvertMode
+	MasterRegionZone     string
+	SlaveRegionZone      string
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -674,3 +760,21 @@ type RateLimitInfo struct {
 	ClientVolOpRate            int64
 	DnFixTinyDeleteRecordLimit int64
 }
+
+type ConvertMode uint8
+
+func (c ConvertMode) String() string {
+	switch c {
+	case DefaultConvertMode:
+		return "default"
+	case IncreaseReplicaNum:
+		return "increase_replica_num"
+	default:
+	}
+	return "unknown"
+}
+
+const (
+	DefaultConvertMode ConvertMode = iota
+	IncreaseReplicaNum
+)

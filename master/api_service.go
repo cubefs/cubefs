@@ -45,7 +45,8 @@ type NodeView struct {
 
 // TopologyView provides the view of the topology view of the cluster
 type TopologyView struct {
-	Zones []*ZoneView
+	Zones   []*ZoneView
+	Regions []*proto.RegionView
 }
 
 type nodeSetView struct {
@@ -63,6 +64,7 @@ func newNodeSetView(dataNodeLen, metaNodeLen int) *nodeSetView {
 type ZoneView struct {
 	Name    string
 	Status  string
+	Region  string
 	NodeSet map[uint64]*nodeSetView
 }
 
@@ -117,11 +119,14 @@ func (m *Server) setupAutoAllocation(w http.ResponseWriter, r *http.Request) {
 // View the topology of the cluster.
 func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 	tv := &TopologyView{
-		Zones: make([]*ZoneView, 0),
+		Zones:   make([]*ZoneView, 0),
+		Regions: m.cluster.t.getRegionViews(),
 	}
+	defaultRegionView := proto.NewRegionView("default")
 	zones := m.cluster.t.getAllZones()
 	for _, zone := range zones {
 		cv := newZoneView(zone.name)
+		cv.Region = zone.regionName
 		cv.Status = zone.getStatusToString()
 		tv.Zones = append(tv.Zones, cv)
 		nsc := zone.getAllNodeSet()
@@ -139,6 +144,12 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 				return true
 			})
 		}
+		if zone.regionName == "" {
+			defaultRegionView.Zones = append(defaultRegionView.Zones, zone.name)
+		}
+	}
+	if len(defaultRegionView.Zones) != 0 {
+		tv.Regions = append(tv.Regions, defaultRegionView)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(tv))
 }
@@ -177,6 +188,7 @@ func (m *Server) listZone(w http.ResponseWriter, r *http.Request) {
 	for _, zone := range zones {
 		cv := newZoneView(zone.name)
 		cv.Status = zone.getStatusToString()
+		cv.Region = zone.regionName
 		zoneViews = append(zoneViews, cv)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(zoneViews))
@@ -419,14 +431,18 @@ func (m *Server) loadDataPartition(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 	var (
-		msg         string
-		addr        string
-		dp          *DataPartition
-		partitionID uint64
-		err         error
+		msg                        string
+		addr                       string
+		dp                         *DataPartition
+		partitionID                uint64
+		addReplicaType             proto.AddReplicaType
+		vol                        *Vol
+		totalReplicaNum            int
+		isNeedIncreaseDPReplicaNum bool
+		err                        error
 	)
 
-	if partitionID, addr, err = parseRequestToAddDataReplica(r); err != nil {
+	if partitionID, addr, addReplicaType, err = parseRequestToAddDataReplica(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -435,10 +451,31 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
 		return
 	}
+	if isAutoChooseAddrForQuorumVol(addReplicaType) {
+		if vol, err = m.cluster.getVol(dp.VolName); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+			return
+		}
+		if !IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
+			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("can only auto add replica for quorum vol,vol type:%s", vol.CrossRegionHAType)))
+			return
+		}
+		totalReplicaNum = int(vol.dpReplicaNum)
+		isNeedIncreaseDPReplicaNum = true
+		if addr, err = dp.chooseTargetDataNodeForCrossRegionQuorumVol(m.cluster, vol.zoneName, totalReplicaNum); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
 	dp.offlineMutex.Lock()
 	defer dp.offlineMutex.Unlock()
 
-	if err = m.cluster.addDataReplica(dp, addr); err != nil {
+	if isAutoChooseAddrForQuorumVol(addReplicaType) && len(dp.Hosts) >= totalReplicaNum {
+		err = fmt.Errorf("partition:%v can not add replica for type:%s, replica more than vol replica num", dp.PartitionID, addReplicaType)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if err = m.cluster.addDataReplica(dp, addr, isNeedIncreaseDPReplicaNum); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -529,14 +566,16 @@ func (m *Server) deleteDataReplica(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 	var (
-		msg         string
-		addr        string
-		mp          *MetaPartition
-		partitionID uint64
-		err         error
+		msg             string
+		addr            string
+		mp              *MetaPartition
+		partitionID     uint64
+		addReplicaType  proto.AddReplicaType
+		totalReplicaNum int
+		err             error
 	)
 
-	if partitionID, addr, err = parseRequestToAddMetaReplica(r); err != nil {
+	if partitionID, addr, addReplicaType, err = parseRequestToAddMetaReplica(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -545,16 +584,27 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
+	if isAutoChooseAddrForQuorumVol(addReplicaType) {
+		if addr, totalReplicaNum, err = m.cluster.chooseTargetMetaNodeForCrossRegionQuorumVol(mp); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+
 	mp.offlineMutex.Lock()
 	defer mp.offlineMutex.Unlock()
-
+	if isAutoChooseAddrForQuorumVol(addReplicaType) && len(mp.Hosts) >= totalReplicaNum {
+		err = fmt.Errorf("partition:%v can not add replica for type:%s, replica more than vol replica num", mp.PartitionID, addReplicaType)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
 	if err = m.cluster.addMetaReplica(mp, addr); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+	msg = fmt.Sprintf("meta partitionID[%v]  add replica [%v] successfully", partitionID, addr)
 	mp.IsRecover = true
 	m.cluster.putBadMetaPartitions(addr, mp.PartitionID)
-	msg = fmt.Sprintf("meta partitionID :%v  add replica [%v] successfully", partitionID, addr)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
@@ -589,16 +639,19 @@ func (m *Server) deleteMetaReplica(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) addMetaReplicaLearner(w http.ResponseWriter, r *http.Request) {
 	var (
-		msg         string
-		addr        string
-		mp          *MetaPartition
-		partitionID uint64
-		auto        bool
-		threshold   uint8
-		err         error
+		msg                        string
+		addr                       string
+		mp                         *MetaPartition
+		partitionID                uint64
+		auto                       bool
+		threshold                  uint8
+		addReplicaType             proto.AddReplicaType
+		totalReplicaNum            int
+		isNeedIncreaseMPLearnerNum bool
+		err                        error
 	)
 
-	if partitionID, addr, auto, threshold, err = parseRequestToAddMetaReplicaLearner(r); err != nil {
+	if partitionID, addr, auto, threshold, addReplicaType, err = parseRequestToAddMetaReplicaLearner(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -607,14 +660,29 @@ func (m *Server) addMetaReplicaLearner(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
+	if isAutoChooseAddrForQuorumVol(addReplicaType) {
+		if addr, totalReplicaNum, err = m.cluster.chooseTargetMetaNodeForCrossRegionQuorumVolOfLearnerReplica(mp); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		auto = false
+		threshold = 100
+		isNeedIncreaseMPLearnerNum = true
+	}
+
 	mp.offlineMutex.Lock()
 	defer mp.offlineMutex.Unlock()
-	if err = m.cluster.addMetaReplicaLearner(mp, addr, auto, threshold); err != nil {
+	if isAutoChooseAddrForQuorumVol(addReplicaType) && len(mp.Hosts) >= totalReplicaNum {
+		err = fmt.Errorf("partition:%v can not add replica for type:%s, replica more than vol replica num", mp.PartitionID, addReplicaType)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	mp.IsRecover = true
-	m.cluster.putBadMetaPartitions(addr, mp.PartitionID)
+	if err = m.cluster.addMetaReplicaLearner(mp, addr, auto, threshold, isNeedIncreaseMPLearnerNum); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	//mp.IsRecover = true
+	//m.cluster.putBadMetaPartitions(addr, mp.PartitionID)
 	msg = fmt.Sprintf("meta partitionID[%v] add replica learner[%v] successfully", partitionID, addr)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
@@ -1053,7 +1121,9 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		msg          string
 		capacity     int
 		replicaNum   int
+		mpReplicaNum int
 		followerRead bool
+		forceROW     bool
 		authenticate bool
 		enableToken  bool
 		autoRepair   bool
@@ -1061,16 +1131,23 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		description  string
 		vol          *Vol
 
-		dpSelectorName  string
-		dpSelectorParm  string
-		ossBucketPolicy proto.BucketAccessPolicy
+		dpSelectorName    string
+		dpSelectorParm    string
+		dpWriteableThreshold float64
+		ossBucketPolicy   proto.BucketAccessPolicy
+		crossRegionHAType proto.CrossRegionHAType
 	)
-	if name, authKey, replicaNum, err = parseRequestToUpdateVol(r); err != nil {
+	if name, authKey, replicaNum, mpReplicaNum, err = parseRequestToUpdateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if replicaNum != 0 && !(replicaNum == 2 || replicaNum == 3) {
-		err = fmt.Errorf("replicaNum can only be 2 and 3,received replicaNum is[%v]", replicaNum)
+	if replicaNum != 0 && !(replicaNum == 2 || replicaNum == 3 || replicaNum == 5) {
+		err = fmt.Errorf("replicaNum can only be 2, 3 or 5, received replicaNum is[%v]", replicaNum)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if mpReplicaNum != 0 && !(mpReplicaNum == 2 || mpReplicaNum == 3 || mpReplicaNum == 5) {
+		err = fmt.Errorf("mpReplicaNum can only be 2, 3 or 5, received mpReplicaNum is[%v]", mpReplicaNum)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1085,7 +1162,10 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	if replicaNum == 0 {
 		replicaNum = int(vol.dpReplicaNum)
 	}
-	if followerRead, authenticate, enableToken, autoRepair, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
+	if mpReplicaNum == 0 {
+		mpReplicaNum = int(vol.mpReplicaNum)
+	}
+	if followerRead, authenticate, enableToken, autoRepair, forceROW, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1099,13 +1179,22 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-
-	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum),
-		followerRead, authenticate, enableToken, autoRepair, dpSelectorName, dpSelectorParm, ossBucketPolicy); err != nil {
+	dpWriteableThreshold, err = parseDpWriteableThresholdToUpdateVol(r, vol)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	crossRegionHAType, err = parseCrossRegionHATypeToUpdateVol(r, vol)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), uint8(mpReplicaNum),
+		followerRead, authenticate, enableToken, autoRepair, forceROW, dpSelectorName, dpSelectorParm, ossBucketPolicy, crossRegionHAType, dpWriteableThreshold); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	msg = fmt.Sprintf("update vol[%v] successfully\n", name)
+	msg = fmt.Sprintf("update vol[%v] successfully", name)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
@@ -1118,6 +1207,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		size                int
 		mpCount             int
 		dpReplicaNum        int
+		mpReplicaNum        int
 		capacity            int
 		vol                 *Vol
 		followerRead        bool
@@ -1125,20 +1215,31 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		enableToken         bool
 		autoRepair          bool
 		volWriteMutexEnable bool
+		forceROW            bool
+		crossRegionHAType   proto.CrossRegionHAType
 		zoneName            string
 		description         string
+		dpWriteableThreshold float64
 	)
 
-	if name, owner, zoneName, description, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, err = parseRequestToCreateVol(r); err != nil {
+	if name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, followerRead, authenticate,
+		enableToken, autoRepair, volWriteMutexEnable, forceROW, crossRegionHAType,dpWriteableThreshold, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if !(dpReplicaNum == 2 || dpReplicaNum == 3) {
-		err = fmt.Errorf("replicaNum can only be 2 and 3,received replicaNum is[%v]", dpReplicaNum)
+	if !(dpReplicaNum == 2 || dpReplicaNum == 3 || dpReplicaNum == 5) {
+		err = fmt.Errorf("dp replicaNum can only be 2 or 3 or 5,received replicaNum is[%v]", dpReplicaNum)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, size, capacity, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable); err != nil {
+
+	if !(mpReplicaNum == 3 || mpReplicaNum == 5) {
+		err = fmt.Errorf("mp replicaNum can only be 3 or 5,received mp replicaNum is[%v]", mpReplicaNum)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, crossRegionHAType, dpWriteableThreshold); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1167,6 +1268,12 @@ func (m *Server) getVolSimpleInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	volView = newSimpleView(vol)
+	if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
+		if masterRegionZoneName, slaveRegionZone, err := m.cluster.getMasterAndSlaveRegionZoneName(vol.zoneName); err == nil {
+			volView.MasterRegionZone = convertSliceToVolZoneName(masterRegionZoneName)
+			volView.SlaveRegionZone = convertSliceToVolZoneName(slaveRegionZone)
+		}
+	}
 	sendOkReply(w, r, newSuccessHTTPReply(volView))
 }
 
@@ -1187,12 +1294,16 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		ZoneName:            vol.zoneName,
 		DpReplicaNum:        vol.dpReplicaNum,
 		MpReplicaNum:        vol.mpReplicaNum,
+		DpLearnerNum:        vol.dpLearnerNum,
+		MpLearnerNum:        vol.mpLearnerNum,
 		InodeCount:          volInodeCount,
 		DentryCount:         volDentryCount,
 		MaxMetaPartitionID:  maxPartitionID,
 		Status:              vol.Status,
 		Capacity:            vol.Capacity,
 		FollowerRead:        vol.FollowerRead,
+		ForceROW:            vol.ForceROW,
+		CrossRegionHAType:   vol.CrossRegionHAType,
 		NeedToLowerReplica:  vol.NeedToLowerReplica,
 		Authenticate:        vol.authenticate,
 		EnableToken:         vol.enableToken,
@@ -1208,6 +1319,10 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		DpSelectorName:      vol.dpSelectorName,
 		DpSelectorParm:      vol.dpSelectorParm,
 		OSSBucketPolicy:     vol.OSSBucketPolicy,
+		DPConvertMode:       vol.DPConvertMode,
+		MPConvertMode:       vol.MPConvertMode,
+		Quorum:              vol.getDataPartitionQuorum(),
+		DpWriteableThreshold: vol.dpWriteableThreshold,
 	}
 }
 
@@ -1746,7 +1861,11 @@ func (m *Server) resetMetaPartition(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) getPanicHostsInMetaPartition(mp *MetaPartition) (panicHosts []string, err error) {
+	learnerHosts := mp.getLearnerHosts()
 	for _, host := range mp.Hosts {
+		if contains(learnerHosts, host) {
+			continue
+		}
 		var metaNode *MetaNode
 		if metaNode, err = m.cluster.metaNode(host); err != nil {
 			err = proto.ErrMetaNodeNotExists
@@ -2110,7 +2229,7 @@ func parseRequestToDeleteVol(r *http.Request) (name, authKey string, err error) 
 
 }
 
-func parseRequestToUpdateVol(r *http.Request) (name, authKey string, replicaNum int, err error) {
+func parseRequestToUpdateVol(r *http.Request) (name, authKey string, replicaNum, mpReplicaNum int, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2126,8 +2245,16 @@ func parseRequestToUpdateVol(r *http.Request) (name, authKey string, replicaNum 
 			return
 		}
 	}
+
+	if mpReplicaNumStr := r.FormValue(mpReplicaNumKey); mpReplicaNumStr != "" {
+		if mpReplicaNum, err = strconv.Atoi(mpReplicaNumStr); err != nil {
+			err = unmatchedKey(mpReplicaNumKey)
+			return
+		}
+	}
 	return
 }
+
 func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, capacity int, description string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -2149,7 +2276,7 @@ func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, ca
 	return
 }
 
-func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authenticate, enableToken, autoRepair bool, err error) {
+func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authenticate, enableToken, autoRepair, forceROW bool, err error) {
 	if followerReadStr := r.FormValue(followerReadKey); followerReadStr != "" {
 		if followerRead, err = strconv.ParseBool(followerReadStr); err != nil {
 			err = unmatchedKey(followerReadKey)
@@ -2182,6 +2309,14 @@ func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authent
 	} else {
 		autoRepair = vol.autoRepair
 	}
+	if forceROWStr := r.FormValue(forceROWKey); forceROWStr != "" {
+		if forceROW, err = strconv.ParseBool(forceROWStr); err != nil {
+			err = unmatchedKey(forceROWKey)
+			return
+		}
+	} else {
+		forceROW = vol.ForceROW
+	}
 	return
 }
 
@@ -2201,6 +2336,43 @@ func parseDefaultSelectorToUpdateVol(r *http.Request, vol *Vol) (dpSelectorName,
 		dpSelectorParm = vol.dpSelectorParm
 	}
 
+	return
+}
+
+func parseDpWriteableThresholdToUpdateVol(r *http.Request, vol *Vol) (dpWriteableThreshold float64, err error) {
+	var dpWriteableThresholdStr string
+	if dpWriteableThresholdStr = r.FormValue(dpWritableThresholdKey); dpWriteableThresholdStr == "" {
+		dpWriteableThreshold = vol.dpWriteableThreshold
+	} else if dpWriteableThreshold, err = strconv.ParseFloat(dpWriteableThresholdStr, 64); err != nil {
+		err = unmatchedKey(dpWritableThresholdKey)
+		return
+	}
+	if dpWriteableThreshold > 0 && dpWriteableThreshold < defaultMinDpWriteableThreshold {
+		err = fmt.Errorf("dpWriteableThreshold must be larger than 0.5")
+		return
+	}
+	return
+}
+
+func parseCrossRegionHATypeToUpdateVol(r *http.Request, vol *Vol) (crossRegionHAType proto.CrossRegionHAType, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if crossRegionHAStr := r.FormValue(crossRegionHAKey); crossRegionHAStr != "" {
+		crossRegionHA, err1 := strconv.ParseUint(crossRegionHAStr, 10, 64)
+		if err1 != nil {
+			err = unmatchedKey(crossRegionHAKey)
+			return
+		}
+		crossRegionHAType = proto.CrossRegionHAType(crossRegionHA)
+		if crossRegionHAType != proto.DefaultCrossRegionHAType && crossRegionHAType != proto.CrossRegionHATypeQuorum {
+			err = fmt.Errorf("parameter %s should be %d(%s) or %d(%s)", crossRegionHAKey,
+				proto.DefaultCrossRegionHAType, proto.DefaultCrossRegionHAType, proto.CrossRegionHATypeQuorum, proto.CrossRegionHATypeQuorum)
+			return
+		}
+	} else {
+		crossRegionHAType = vol.CrossRegionHAType
+	}
 	return
 }
 
@@ -2225,7 +2397,8 @@ func parseOSSBucketPolicyToUpdateVol(r *http.Request, vol *Vol) (ossBucketPolicy
 	return
 }
 
-func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string, mpCount, dpReplicaNum, size, capacity int, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable bool, err error) {
+func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string, mpCount, dpReplicaNum, mpReplicaNum, size, capacity int,
+	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW bool, crossRegionHAType proto.CrossRegionHAType, dpWritableThreshold float64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2249,6 +2422,13 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 		return
 	}
 
+	if replicaStr := r.FormValue(mpReplicaNumKey); replicaStr == "" {
+		mpReplicaNum = defaultReplicaNum
+	} else if mpReplicaNum, err = strconv.Atoi(replicaStr); err != nil {
+		err = unmatchedKey(mpReplicaNumKey)
+		return
+	}
+
 	if sizeStr := r.FormValue(dataPartitionSizeKey); sizeStr != "" {
 		if size, err = strconv.Atoi(sizeStr); err != nil {
 			err = unmatchedKey(dataPartitionSizeKey)
@@ -2263,8 +2443,26 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 		err = unmatchedKey(volCapacityKey)
 		return
 	}
+	var dpWriteableThresholdStr string
+	if dpWriteableThresholdStr = r.FormValue(dpWritableThresholdKey); dpWriteableThresholdStr == "" {
+		dpWritableThreshold = 0.0
+	} else if dpWritableThreshold, err = strconv.ParseFloat(dpWriteableThresholdStr, 64); err != nil {
+		err = unmatchedKey(dpWritableThresholdKey)
+		return
+	}
+
+	if dpWritableThreshold > 0 && dpWritableThreshold < defaultMinDpWriteableThreshold {
+		err = fmt.Errorf("dpWritableThreshold must be larger than 0.5")
+		return
+	}
 
 	if followerRead, err = extractFollowerRead(r); err != nil {
+		return
+	}
+	if forceROW, err = extractForceROW(r); err != nil {
+		return
+	}
+	if crossRegionHAType, err = extractCrossRegionHA(r); err != nil {
 		return
 	}
 
@@ -2347,26 +2545,45 @@ func parseRequestToLoadDataPartition(r *http.Request) (ID uint64, err error) {
 	return
 }
 
-func parseRequestToAddMetaReplica(r *http.Request) (ID uint64, addr string, err error) {
-	return extractMetaPartitionIDAndAddr(r)
-}
-
-func parseRequestToRemoveMetaReplica(r *http.Request) (ID uint64, addr string, err error) {
-	return extractMetaPartitionIDAndAddr(r)
-}
-
-func parseRequestToAddMetaReplicaLearner(r *http.Request) (ID uint64, addr string, auto bool, threshold uint8, err error) {
+func parseRequestToAddMetaReplica(r *http.Request) (ID uint64, addr string, addReplicaType proto.AddReplicaType, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
 	if ID, err = extractMetaPartitionID(r); err != nil {
 		return
 	}
-	if addr, err = extractNodeAddr(r); err != nil {
+	addr, _ = extractNodeAddr(r)
+	if addReplicaType, err = extractAddReplicaType(r); err != nil {
 		return
 	}
+	if addReplicaType == proto.DefaultAddReplicaType && addr == "" {
+		err = keyNotFound(addrKey)
+		return
+	}
+	return
+}
+
+func parseRequestToRemoveMetaReplica(r *http.Request) (ID uint64, addr string, err error) {
+	return extractMetaPartitionIDAndAddr(r)
+}
+
+func parseRequestToAddMetaReplicaLearner(r *http.Request) (ID uint64, addr string, auto bool, threshold uint8, addReplicaType proto.AddReplicaType, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if ID, err = extractMetaPartitionID(r); err != nil {
+		return
+	}
+	addr, _ = extractNodeAddr(r)
 	auto = extractAuto(r)
 	threshold = extractLearnerThreshold(r)
+	if addReplicaType, err = extractAddReplicaType(r); err != nil {
+		return
+	}
+	if addReplicaType == proto.DefaultAddReplicaType && addr == "" {
+		err = keyNotFound(addrKey)
+		return
+	}
 	return
 }
 
@@ -2416,8 +2633,22 @@ func extractMetaPartitionIDAddrAndDestAddr(r *http.Request) (ID uint64, addr str
 	return
 }
 
-func parseRequestToAddDataReplica(r *http.Request) (ID uint64, addr string, err error) {
-	return extractDataPartitionIDAndAddr(r)
+func parseRequestToAddDataReplica(r *http.Request) (ID uint64, addr string, addReplicaType proto.AddReplicaType, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if ID, err = extractDataPartitionID(r); err != nil {
+		return
+	}
+	addr, _ = extractNodeAddr(r)
+	if addReplicaType, err = extractAddReplicaType(r); err != nil {
+		return
+	}
+	if addReplicaType == proto.DefaultAddReplicaType && addr == "" {
+		err = keyNotFound(addrKey)
+		return
+	}
+	return
 }
 
 func parseRequestToRemoveDataReplica(r *http.Request) (ID uint64, addr string, err error) {
@@ -2578,6 +2809,18 @@ func extractFollowerRead(r *http.Request) (followerRead bool, err error) {
 	return
 }
 
+func extractForceROW(r *http.Request) (forceROW bool, err error) {
+	var value string
+	if value = r.FormValue(forceROWKey); value == "" {
+		forceROW = false
+		return
+	}
+	if forceROW, err = strconv.ParseBool(value); err != nil {
+		return
+	}
+	return
+}
+
 func extractAuthenticate(r *http.Request) (authenticate bool, err error) {
 	var value string
 	if value = r.FormValue(authenticateKey); value == "" {
@@ -2598,6 +2841,26 @@ func extractAutoRepair(r *http.Request) (autoRepair bool, err error) {
 	}
 	if autoRepair, err = strconv.ParseBool(value); err != nil {
 		return
+	}
+	return
+}
+
+func extractCrossRegionHA(r *http.Request) (crossRegionHAType proto.CrossRegionHAType, err error) {
+	crossRegionHAStr := r.FormValue(crossRegionHAKey)
+	if crossRegionHAStr != "" {
+		crossRegionHA, err1 := strconv.ParseUint(crossRegionHAStr, 10, 64)
+		if err1 != nil {
+			err = unmatchedKey(crossRegionHAKey)
+			return
+		}
+		crossRegionHAType = proto.CrossRegionHAType(crossRegionHA)
+		if crossRegionHAType != proto.DefaultCrossRegionHAType && crossRegionHAType != proto.CrossRegionHATypeQuorum {
+			err = fmt.Errorf("parameter %s should be %d(%s) or %d(%s)", crossRegionHAKey,
+				proto.DefaultCrossRegionHAType, proto.DefaultCrossRegionHAType, proto.CrossRegionHATypeQuorum, proto.CrossRegionHATypeQuorum)
+			return
+		}
+	} else {
+		crossRegionHAType = proto.DefaultCrossRegionHAType
 	}
 	return
 }
@@ -2905,6 +3168,9 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	mpView.DentryCount = mp.DentryCount
 	mpView.IsRecover = mp.IsRecover
 	mpView.MaxExistIno = mp.MaxExistIno
+	for _, learner := range mp.Learners {
+		mpView.Learners = append(mpView.Learners, learner.Addr)
+	}
 	return
 }
 
@@ -2942,6 +3208,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 				IsLeader:    mp.Replicas[i].IsLeader,
 				DentryCount: mp.Replicas[i].DentryCount,
 				InodeCount:  mp.Replicas[i].InodeCount,
+				IsLearner:   mp.Replicas[i].IsLearner,
 			}
 		}
 		var mpInfo = &proto.MetaPartitionInfo{
@@ -2955,6 +3222,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			MaxExistIno:   mp.MaxExistIno,
 			Replicas:      replicas,
 			ReplicaNum:    mp.ReplicaNum,
+			LearnerNum:    mp.LearnerNum,
 			Status:        mp.Status,
 			IsRecover:     mp.IsRecover,
 			Hosts:         mp.Hosts,
@@ -3292,3 +3560,236 @@ func parseRequestToDataNodeValidateCRCReport(r *http.Request) (dpCrcInfo *proto.
 	err = json.Unmarshal(body, dpCrcInfo)
 	return
 }
+
+func (m *Server) setZoneRegion(w http.ResponseWriter, r *http.Request) {
+	var (
+		zoneName   string
+		regionName string
+		err        error
+	)
+	if zoneName, regionName, err = parseRequestToSetZoneRegion(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if strings.TrimSpace(regionName) == "" {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+	}
+	if err = m.cluster.setZoneRegion(zoneName, regionName); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set zone[%v] regionName to [%v] successfully", zoneName, regionName)))
+}
+
+func (m *Server) updateRegion(w http.ResponseWriter, r *http.Request) {
+	var (
+		regionName string
+		regionType proto.RegionType
+		err        error
+	)
+	if regionName, regionType, err = parseRequestToAddRegion(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if err = m.cluster.updateRegion(regionName, regionType); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set region[%v], regionType to [%d(%s)] successfully", regionName, regionType, regionType)))
+}
+
+func (m *Server) getRegion(w http.ResponseWriter, r *http.Request) {
+	var (
+		regionName string
+		err        error
+	)
+	if regionName, err = extractRegionNameKey(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	region, err := m.cluster.t.getRegion(regionName)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	regionView := proto.RegionView{
+		Name:       region.Name,
+		RegionType: region.RegionType,
+		Zones:      region.getZones(),
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(regionView))
+}
+
+func (m *Server) regionList(w http.ResponseWriter, r *http.Request) {
+	regionViews := m.cluster.t.getRegionViews()
+	sendOkReply(w, r, newSuccessHTTPReply(regionViews))
+}
+
+func (m *Server) addRegion(w http.ResponseWriter, r *http.Request) {
+	var (
+		regionName string
+		regionType proto.RegionType
+		err        error
+	)
+	if regionName, regionType, err = parseRequestToAddRegion(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if _, err = m.cluster.t.createRegion(regionName, regionType, m.cluster); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("add region[%v] successfully", regionName)))
+}
+
+func parseRequestToSetZoneRegion(r *http.Request) (zoneName, regionName string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if zoneName, err = extractZoneName(r); err != nil {
+		return
+	}
+	if regionName, err = extractRegionNameKey(r); err != nil {
+		return
+	}
+	return
+}
+
+func extractRegionNameKey(r *http.Request) (regionName string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if regionName = r.FormValue(regionNameKey); regionName == "" {
+		err = keyNotFound(regionNameKey)
+		return
+	}
+	return
+}
+
+func extractRegionType(r *http.Request) (regionType proto.RegionType, err error) {
+	regionTypeStr := r.FormValue(regionTypeKey)
+	if regionTypeStr == "" {
+		err = keyNotFound(regionTypeKey)
+		return
+	}
+	regionTypeUint, err := strconv.ParseUint(regionTypeStr, 10, 64)
+	if err != nil {
+		err = unmatchedKey(regionTypeKey)
+		return
+	}
+	regionType = proto.RegionType(regionTypeUint)
+	if regionType != proto.SlaveRegion && regionType != proto.MasterRegion {
+		err = fmt.Errorf("parameter %s should be %d(%s) or %d(%s)", regionTypeKey,
+			proto.MasterRegion, proto.MasterRegion, proto.SlaveRegion, proto.SlaveRegion)
+		return
+	}
+	return
+}
+
+func parseRequestToAddRegion(r *http.Request) (regionName string, regionType proto.RegionType, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if regionName, err = extractRegionNameKey(r); err != nil {
+		return
+	}
+	if regionType, err = extractRegionType(r); err != nil {
+		return
+	}
+	return
+}
+
+func extractAddReplicaType(r *http.Request) (addReplicaType proto.AddReplicaType, err error) {
+	addReplicaTypeStr := r.FormValue(addReplicaTypeKey)
+	if addReplicaTypeStr == "" {
+		addReplicaType = proto.DefaultAddReplicaType
+		return
+	}
+	addReplicaTypeUint, err := strconv.ParseUint(addReplicaTypeStr, 10, 64)
+	if err != nil {
+		err = unmatchedKey(addReplicaTypeKey)
+		return
+	}
+	addReplicaType = proto.AddReplicaType(addReplicaTypeUint)
+	if addReplicaType != proto.DefaultAddReplicaType && addReplicaType != proto.AutoChooseAddrForQuorumVol {
+		err = fmt.Errorf("parameter %s should be %d(%s) or %d(%s)", addReplicaTypeKey,
+			proto.DefaultAddReplicaType, proto.DefaultAddReplicaType, proto.AutoChooseAddrForQuorumVol, proto.AutoChooseAddrForQuorumVol)
+		return
+	}
+	return
+}
+
+func (m *Server) setVolConvertMode(w http.ResponseWriter, r *http.Request) {
+	var (
+		volName       string
+		partitionType string
+		convertMode   proto.ConvertMode
+		err           error
+	)
+	volName, partitionType, convertMode, err = parseRequestToSetVolConvertMode(r)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if partitionType == partitionTypeDataPartition {
+		err = m.cluster.updateVolDataPartitionConvertMode(volName, convertMode)
+	} else if partitionType == partitionTypeMetaPartition {
+		err = m.cluster.updateVolMetaPartitionConvertMode(volName, convertMode)
+	}
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set vol[%v] %s convert mode to %d(%s) successfully",
+		volName, partitionType, convertMode, convertMode)))
+}
+
+func parseRequestToSetVolConvertMode(r *http.Request) (volName, partitionType string, convertMode proto.ConvertMode, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if volName, err = extractName(r); err != nil {
+		return
+	}
+	if partitionType, err = extractPartitionType(r); err != nil {
+		return
+	}
+	if convertMode, err = extractConvertMode(r); err != nil {
+		return
+	}
+	return
+}
+
+func extractPartitionType(r *http.Request) (partitionType string, err error) {
+	partitionType = r.FormValue(partitionTypeKey)
+	if partitionType == "" {
+		err = keyNotFound(partitionTypeKey)
+		return
+	}
+	if partitionType != partitionTypeDataPartition && partitionType != partitionTypeMetaPartition {
+		err = fmt.Errorf("partitionType must be dataPartition or metaPartition ")
+		return
+	}
+	return
+}
+
+func extractConvertMode(r *http.Request) (convertMode proto.ConvertMode, err error) {
+	convertModeStr := r.FormValue(convertModeKey)
+	if convertModeStr == "" {
+		err = keyNotFound(convertModeKey)
+		return
+	}
+	convertModeUint, err := strconv.ParseUint(convertModeStr, 10, 64)
+	if err != nil {
+		err = unmatchedKey(convertModeKey)
+		return
+	}
+	convertMode = proto.ConvertMode(convertModeUint)
+	if convertMode != proto.DefaultConvertMode && convertMode != proto.IncreaseReplicaNum {
+		err = fmt.Errorf("parameter %s should be %d(%s) or %d(%s)", convertModeKey,
+			proto.DefaultConvertMode, proto.DefaultConvertMode, proto.IncreaseReplicaNum, proto.IncreaseReplicaNum)
+		return
+	}
+	return
+}
+

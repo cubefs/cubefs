@@ -204,7 +204,7 @@ func (dp *DataPartition) getRemoteExtentInfo(ctx context.Context, extentType uin
 		defer func() {
 			gConnPool.PutConnectWithErr(conn, err)
 		}()
-		if err = packet.WriteToConn(conn); err != nil {
+		if err = packet.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
 			err = errors.Trace(err, "write packet to connection failed")
 			return
 		}
@@ -248,7 +248,7 @@ func (dp *DataPartition) getRemoteExtentInfo(ctx context.Context, extentType uin
 		defer func() {
 			gConnPool.PutConnectWithErr(conn, err)
 		}()
-		if err = packet.WriteToConn(conn); err != nil {
+		if err = packet.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
 			err = errors.Trace(err, "write packet to connection failed")
 			return
 		}
@@ -470,7 +470,7 @@ func (dp *DataPartition) notifyFollower(ctx context.Context, wg *sync.WaitGroup,
 		return err
 	}
 	defer gConnPool.PutConnect(conn, true)
-	if err = p.WriteToConn(conn); err != nil {
+	if err = p.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
 		return err
 	}
 	if err = p.ReadFromConn(conn, proto.MaxWaitFollowerRepairTime); err != nil {
@@ -559,7 +559,7 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 	}
 	defer gConnPool.PutConnect(conn, true)
 
-	if err = request.WriteToConn(conn); err != nil {
+	if err = request.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
 		err = errors.Trace(err, "streamRepairExtent send streamRead to host(%v) error", remoteExtentInfo.Source)
 		log.LogWarnf("action[streamRepairExtent] err(%v).", err)
 		return

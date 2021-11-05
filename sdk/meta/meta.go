@@ -36,9 +36,11 @@ import (
 
 const (
 	HostsSeparator                = ","
-	RefreshMetaPartitionsInterval = time.Minute * 5
-	IdleConnTimeoutMeta           = 30 //seconds
-	ConnectTimeoutMeta            = 1  //seconds
+	RefreshMetaPartitionsInterval = time.Minute * 1
+	IdleConnTimeoutMeta           = 30  //seconds
+	ConnectTimeoutMetaMs          = 500 //milliseconds
+	ReadTimeoutMeta               = 3   //seconds
+	WriteTimeoutMeta              = 3   //seconds
 )
 
 const (
@@ -64,7 +66,7 @@ const (
 	 */
 	MinForceUpdateMetaPartitionsInterval = 5
 
-	defaultOpLimitBurst    = 128
+	defaultOpLimitBurst = 128
 )
 
 type AsyncTaskErrorFunc func(err error)
@@ -100,6 +102,8 @@ type MetaWrapper struct {
 	ac              *authSDK.AuthClient
 	conns           *util.ConnectPool
 	volNotExists    bool
+
+	crossRegionHAType proto.CrossRegionHAType
 
 	// Callback handler for handling asynchronous task errors.
 	onAsyncTaskError AsyncTaskErrorFunc
@@ -137,8 +141,8 @@ type MetaWrapper struct {
 	forceUpdate      chan struct{}
 	forceUpdateLimit *rate.Limiter
 	// meta op limit rate
-	opLimiter		map[uint8]*rate.Limiter		// key: op
-	limitMapMutex	sync.RWMutex
+	opLimiter     map[uint8]*rate.Limiter // key: op
+	limitMapMutex sync.RWMutex
 	// infinite retry send to mp
 	InfiniteRetry bool
 }
@@ -176,7 +180,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.ownerValidation = config.ValidateOwner
 	mw.mc = masterSDK.NewMasterClient(config.Masters, false)
 	mw.onAsyncTaskError = config.OnAsyncTaskError
-	mw.conns = util.NewConnectPoolWithTimeoutAndCap(0, 10, IdleConnTimeoutMeta, ConnectTimeoutMeta)
+	mw.conns = util.NewConnectPoolWithTimeoutAndCap(0, 10, IdleConnTimeoutMeta, ConnectTimeoutMetaMs)
 	mw.partitions = make(map[uint64]*MetaPartition)
 	mw.ranges = btree.New(32)
 	mw.rwPartitions = make([]*MetaPartition, 0)
@@ -283,9 +287,9 @@ func (mw *MetaWrapper) startUpdateLimiterConfigWithRecover() (err error) {
 	defer ticker.Stop()
 	for {
 		select {
-		case <- mw.closeCh:
+		case <-mw.closeCh:
 			return
-		case <- ticker.C:
+		case <-ticker.C:
 			mw.updateLimiterConfig()
 		}
 	}
@@ -360,6 +364,10 @@ func (mw *MetaWrapper) GetOpLimitRate() string {
 	}
 	mw.limitMapMutex.RUnlock()
 	return res
+}
+
+func (mw *MetaWrapper) CrossRegionHATypeQuorum() bool {
+	return mw.crossRegionHAType == proto.CrossRegionHATypeQuorum
 }
 
 //func (mw *MetaWrapper) exporterKey(act string) string {

@@ -19,9 +19,10 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/log"
 	"sync/atomic"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util/log"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/statistics"
@@ -55,9 +56,9 @@ func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
 func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 	var (
 		tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.CreateInode")
-		inoID uint64
-		val []byte
-		resp interface{}
+		inoID  uint64
+		val    []byte
+		resp   interface{}
 	)
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
@@ -106,8 +107,8 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 	var (
 		tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.UnlinkInode")
-		r interface{}
-		val []byte
+		r      interface{}
+		val    []byte
 	)
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
@@ -153,9 +154,9 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (err error) {
 	var (
 		tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.UnlinkInodeBatch")
-		r interface{}
-		reply []byte
-		val []byte
+		r      interface{}
+		reply  []byte
+		val    []byte
 	)
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
@@ -216,7 +217,7 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet, version uint8) (e
 
 	mp.monitorData[statistics.ActionMetaInodeGet].UpdateData(0)
 	var (
-		reply  []byte
+		reply []byte
 	)
 
 	ino := NewInode(req.Inode, 0)
@@ -228,7 +229,7 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet, version uint8) (e
 	if retMsg.Status != proto.OpOk {
 		p.PacketErrorWithBody(retMsg.Status, []byte("get inode err"))
 		return fmt.Errorf("errCode:%d, ino:%v, mp has inodes[%v, %v]\n",
-				retMsg.Status, req.Inode, mp.config.Start, mp.config.Cursor)
+			retMsg.Status, req.Inode, mp.config.Start, mp.config.Cursor)
 	}
 
 	status := proto.OpOk
@@ -253,7 +254,7 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet, version uint8) (e
 func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error) {
 	var (
 		tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.InodeGetBatch")
-		data []byte
+		data   []byte
 	)
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
@@ -285,8 +286,8 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err error) {
 	var (
 		tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.CreateInodeLink")
-		resp interface{}
-		val []byte
+		resp   interface{}
+		val    []byte
 	)
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
@@ -336,8 +337,8 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err erro
 func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet) (err error) {
 	var (
 		tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.EvictInode")
-		resp interface{}
-		val []byte
+		resp   interface{}
+		val    []byte
 	)
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
@@ -367,7 +368,7 @@ func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet) (err error) {
 func (mp *metaPartition) EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (err error) {
 	var (
 		tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.EvictInodeBatch")
-		resp interface{}
+		resp   interface{}
 	)
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
@@ -408,7 +409,7 @@ func (mp *metaPartition) EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (er
 func (mp *metaPartition) SetAttr(reqData []byte, p *Packet) (err error) {
 	var (
 		tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.SetAttr")
-		resp interface{}
+		resp   interface{}
 	)
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
@@ -490,7 +491,7 @@ func (mp *metaPartition) CursorReset(ctx context.Context, req *proto.CursorReset
 		log.LogInfof("mp[%v] max inode[%v] is too high, no need reset",
 			mp.config.PartitionId, maxIno)
 		return mp.config.Cursor, fmt.Errorf("mp[%v] max inode[%v] is too high, no need reset",
-									mp.config.PartitionId, maxIno)
+			mp.config.PartitionId, maxIno)
 	}
 
 	data, err := json.Marshal(req)

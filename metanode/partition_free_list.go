@@ -256,7 +256,7 @@ func (mp *metaPartition) syncToRaftFollowersFreeInode(ctx context.Context, hasDe
 }
 
 const (
-	notifyRaftFollowerToFreeInodesTimeOut=60*2
+	notifyRaftFollowerToFreeInodesTimeOut = 60 * 2
 )
 
 func (mp *metaPartition) notifyRaftFollowerToFreeInodes(ctx context.Context, wg *sync.WaitGroup, target string, hasDeleteInodes []byte) (err error) {
@@ -275,7 +275,7 @@ func (mp *metaPartition) notifyRaftFollowerToFreeInodes(ctx context.Context, wg 
 		return
 	}
 	request := NewPacketToFreeInodeOnRaftFollower(ctx, mp.config.PartitionId, hasDeleteInodes)
-	if err = request.WriteToConn(conn); err != nil {
+	if err = request.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
 		return
 	}
 
@@ -316,7 +316,7 @@ func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, ext *proto.Ex
 		return
 	}
 	p := NewPacketToDeleteExtent(ctx, dp, ext)
-	if err = p.WriteToConn(conn); err != nil {
+	if err = p.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
 		err = errors.NewErrorf("write to dataNode %s, %s", p.GetUniqueLogId(),
 			err.Error())
 		return
@@ -366,7 +366,7 @@ func (mp *metaPartition) doBatchDeleteExtentsByPartition(ctx context.Context, pa
 		return
 	}
 	p := NewPacketToBatchDeleteExtent(ctx, dp, exts)
-	if err = p.WriteToConn(conn); err != nil {
+	if err = p.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
 		err = errors.NewErrorf("write to dataNode %s, %s", p.GetUniqueLogId(),
 			err.Error())
 		return
