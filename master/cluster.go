@@ -17,6 +17,7 @@ package master
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -2689,36 +2690,55 @@ func (c *Cluster) setMetaNodeThreshold(threshold float32) (err error) {
 	return
 }
 
-func (c *Cluster) setMetaNodeDeleteBatchCount(val uint64) (err error) {
-	oldVal := atomic.LoadUint64(&c.cfg.MetaNodeDeleteBatchCount)
-	atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, val)
-	if err = c.syncPutCluster(); err != nil {
-		log.LogErrorf("action[setMetaNodeDeleteBatchCount] err[%v]", err)
-		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldVal)
-		err = proto.ErrPersistenceByRaft
-		return
+func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
+	oldDeleteBatchCount := atomic.LoadUint64(&c.cfg.MetaNodeDeleteBatchCount)
+	if val, ok := params[nodeDeleteBatchCountKey]; ok {
+		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, val.(uint64))
 	}
-	return
-}
-
-func (c *Cluster) setDataNodeDeleteLimitRate(val uint64) (err error) {
-	oldVal := atomic.LoadUint64(&c.cfg.DataNodeDeleteLimitRate)
-	atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, val)
-	if err = c.syncPutCluster(); err != nil {
-		log.LogErrorf("action[setDataNodeDeleteLimitRate] err[%v]", err)
-		atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, oldVal)
-		err = proto.ErrPersistenceByRaft
-		return
+	oldDeleteLimitRate := atomic.LoadUint64(&c.cfg.DataNodeDeleteLimitRate)
+	if val, ok := params[nodeMarkDeleteRateKey]; ok {
+		atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, val.(uint64))
 	}
-	return
-}
+	oldRepairTaskCount := atomic.LoadUint64(&c.cfg.DataNodeRepairTaskCount)
+	if val, ok := params[dataNodeRepairTaskCountKey]; ok {
+		atomic.StoreUint64(&c.cfg.DataNodeRepairTaskCount, val.(uint64))
+	}
+	oldMetaNodeReqRateLimit := atomic.LoadUint64(&c.cfg.MetaNodeReqRateLimit)
+	if val, ok := params[metaNodeReqRateKey]; ok {
+		v := val.(uint64)
+		if v > 0 && v < minRateLimit {
+			err = errors.NewErrorf("parameter %s can't be less than %d", metaNodeReqRateKey, minRateLimit)
+			return
+		}
+		atomic.StoreUint64(&c.cfg.MetaNodeReqRateLimit, v)
+	}
+	oldDeleteWorkerSleepMs := atomic.LoadUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs)
+	if val, ok := params[nodeDeleteWorkerSleepMs]; ok {
+		atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, val.(uint64))
+	}
+	oldDpRecoverPoolSize := atomic.LoadInt32(&c.cfg.DataPartitionsRecoverPoolSize)
+	if val, ok := params[dpRecoverPoolSizeKey]; ok {
+		atomic.StoreInt32(&c.cfg.DataPartitionsRecoverPoolSize, int32(val.(int64)))
+	}
+	oldMpRecoverPoolSize := atomic.LoadInt32(&c.cfg.MetaPartitionsRecoverPoolSize)
+	if val, ok := params[mpRecoverPoolSizeKey]; ok {
+		atomic.StoreInt32(&c.cfg.MetaPartitionsRecoverPoolSize, int32(val.(int64)))
+	}
+	oldExtentMergeSleepMs := atomic.LoadUint64(&c.cfg.ExtentMergeSleepMs)
+	if val, ok := params[extentMergeSleepMsKey]; ok {
+		atomic.StoreUint64(&c.cfg.ExtentMergeSleepMs, val.(uint64))
+	}
 
-func (c *Cluster) setDataNodeRepairTaskCount(val uint64) (err error) {
-	oldVal := atomic.LoadUint64(&c.cfg.DataNodeRepairTaskCount)
-	atomic.StoreUint64(&c.cfg.DataNodeRepairTaskCount, val)
 	if err = c.syncPutCluster(); err != nil {
-		log.LogErrorf("action[setDataNodeRepairTaskCount] err[%v]", err)
-		atomic.StoreUint64(&c.cfg.DataNodeRepairTaskCount, oldVal)
+		log.LogErrorf("action[setClusterConfig] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldDeleteBatchCount)
+		atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, oldDeleteLimitRate)
+		atomic.StoreUint64(&c.cfg.DataNodeRepairTaskCount, oldRepairTaskCount)
+		atomic.StoreUint64(&c.cfg.MetaNodeReqRateLimit, oldMetaNodeReqRateLimit)
+		atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, oldDeleteWorkerSleepMs)
+		atomic.StoreInt32(&c.cfg.DataPartitionsRecoverPoolSize, oldDpRecoverPoolSize)
+		atomic.StoreInt32(&c.cfg.MetaPartitionsRecoverPoolSize, oldMpRecoverPoolSize)
+		atomic.StoreUint64(&c.cfg.ExtentMergeSleepMs, oldExtentMergeSleepMs)
 		err = proto.ErrPersistenceByRaft
 		return
 	}
@@ -2839,18 +2859,6 @@ func (c *Cluster) setDataNodeReqVolOpPartRateLimit(val uint64, vol string, op ui
 	return
 }
 
-func (c *Cluster) setMetaNodeReqRateLimit(val uint64) (err error) {
-	oldVal := atomic.LoadUint64(&c.cfg.MetaNodeReqRateLimit)
-	atomic.StoreUint64(&c.cfg.MetaNodeReqRateLimit, val)
-	if err = c.syncPutCluster(); err != nil {
-		log.LogErrorf("action[setMetaNodeReqRateLimit] err[%v]", err)
-		atomic.StoreUint64(&c.cfg.MetaNodeReqRateLimit, oldVal)
-		err = proto.ErrPersistenceByRaft
-		return
-	}
-	return
-}
-
 func (c *Cluster) setMetaNodeReqOpRateLimit(val uint64, op uint8) (err error) {
 	c.cfg.reqRateLimitMapMutex.Lock()
 	defer c.cfg.reqRateLimitMapMutex.Unlock()
@@ -2950,12 +2958,32 @@ func (c *Cluster) setClientVolOpRateLimit(val int64, vol string, op uint8) (err 
 	return
 }
 
-func (c *Cluster) setMetaNodeDeleteWorkerSleepMs(val uint64) (err error) {
-	oldVal := atomic.LoadUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs)
-	atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, val)
+func (c *Cluster) setExtentMergeIno(ino string, vol string) (err error) {
+	c.cfg.reqRateLimitMapMutex.Lock()
+	defer c.cfg.reqRateLimitMapMutex.Unlock()
+	oldVal, ok := c.cfg.ExtentMergeIno[vol]
+	if ino != "-1" {
+		var inodes []uint64
+		inodeSlice := strings.Split(ino, ",")
+		for _, inode := range inodeSlice {
+			ino, errAtoi := strconv.Atoi(inode)
+			if errAtoi != nil {
+				err = fmt.Errorf("invalid inode: %s", inode)
+				return
+			}
+			inodes = append(inodes, uint64(ino))
+		}
+		c.cfg.ExtentMergeIno[vol] = inodes
+	} else {
+		delete(c.cfg.ExtentMergeIno, vol)
+	}
 	if err = c.syncPutCluster(); err != nil {
-		log.LogErrorf("action[setMetaNodeDeleteWorkerSleepMs] err[%v]", err)
-		atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, oldVal)
+		log.LogErrorf("action[setExtentMergeIno] err[%v]", err)
+		if ok {
+			c.cfg.ExtentMergeIno[vol] = oldVal
+		} else {
+			delete(c.cfg.ExtentMergeIno, vol)
+		}
 		err = proto.ErrPersistenceByRaft
 		return
 	}
@@ -3038,33 +3066,6 @@ func (c *Cluster) setMetaNodeToOfflineState(startID, endID uint64, state bool, z
 		node.Unlock()
 		return true
 	})
-}
-func (c *Cluster) setDpRecoverPoolSize(dpRecoverPool int32) (err error) {
-	oldDpPool := atomic.LoadInt32(&c.cfg.DataPartitionsRecoverPoolSize)
-	atomic.StoreInt32(&c.cfg.DataPartitionsRecoverPoolSize, dpRecoverPool)
-
-	if err = c.syncPutCluster(); err != nil {
-		log.LogErrorf("action[setDpRecoverPoolSize] err[%v]", err)
-		atomic.StoreInt32(&c.cfg.DataPartitionsRecoverPoolSize, oldDpPool)
-		err = proto.ErrPersistenceByRaft
-		return
-	}
-	c.initDpRepairChan()
-	return
-}
-
-func (c *Cluster) setMpRecoverPoolSize(mpRecoverPool int32) (err error) {
-	oldMpPool := atomic.LoadInt32(&c.cfg.MetaPartitionsRecoverPoolSize)
-	atomic.StoreInt32(&c.cfg.MetaPartitionsRecoverPoolSize, mpRecoverPool)
-
-	if err = c.syncPutCluster(); err != nil {
-		log.LogErrorf("action[setMpRecoverPoolSize] err[%v]", err)
-		atomic.StoreInt32(&c.cfg.MetaPartitionsRecoverPoolSize, oldMpPool)
-		err = proto.ErrPersistenceByRaft
-		return
-	}
-	c.initMpRepairChan()
-	return
 }
 
 func (c *Cluster) initDpRepairChan() {

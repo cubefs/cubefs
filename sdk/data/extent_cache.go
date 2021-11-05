@@ -300,3 +300,46 @@ func (cache *ExtentCache) PrepareRequests(offset, size int, data []byte) []*Exte
 
 	return requests
 }
+
+func (cache *ExtentCache) prepareMergeRequests() (readRequests []*ExtentRequest, writeRequest *ExtentRequest, err error) {
+	var (
+		mergedToSize = uint32(1024 * 1024)
+		data         = make([]byte, mergedToSize, mergedToSize)
+		ek, preEk    *proto.ExtentKey
+		total        uint32
+		req          *ExtentRequest
+	)
+
+	cache.RLock()
+	defer cache.RUnlock()
+	cache.root.Ascend(func(i btree.Item) bool {
+		ek = i.(*proto.ExtentKey)
+		if total+ek.Size > mergedToSize || (preEk != nil && ek.FileOffset != preEk.FileOffset+uint64(preEk.Size)) {
+			if len(readRequests) > 1 {
+				writeRequest = NewExtentRequest(readRequests[0].FileOffset, int(total), data[:total], nil)
+				return false
+			} else if len(readRequests) == 1 {
+				readRequests = readRequests[:0]
+				total = 0
+			}
+			if ek.Size >= mergedToSize {
+				preEk = ek
+				return true
+			}
+		}
+
+		req = NewExtentRequest(int(ek.FileOffset), int(ek.Size), data[total:total+ek.Size], ek)
+		readRequests = append(readRequests, req)
+		total += ek.Size
+		preEk = ek
+		return true
+	})
+	if writeRequest == nil {
+		if len(readRequests) > 1 {
+			writeRequest = NewExtentRequest(readRequests[0].FileOffset, int(total), data[:total], nil)
+		} else {
+			readRequests = readRequests[:0]
+		}
+	}
+	return
+}

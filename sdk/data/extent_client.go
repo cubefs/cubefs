@@ -22,6 +22,7 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/chubaofs/chubaofs/sdk/meta"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
@@ -99,6 +100,8 @@ type ExtentConfig struct {
 	OnGetExtents             GetExtentsFunc
 	OnTruncate               TruncateFunc
 	OnEvictIcache            EvictIcacheFunc
+	ExtentMerge              bool
+	MetaWrapper              *meta.MetaWrapper
 }
 
 // ExtentClient defines the struct of the extent client.
@@ -114,6 +117,7 @@ type ExtentClient struct {
 	masterClient    *masterSDK.MasterClient
 
 	dataWrapper     *Wrapper
+	metaWrapper     *meta.MetaWrapper
 	insertExtentKey InsertExtentKeyFunc
 	getExtents      GetExtentsFunc
 	truncate        TruncateFunc
@@ -126,8 +130,12 @@ type ExtentClient struct {
 
 	tinySize   int
 	extentSize int
+	autoFlush  bool
 
-	autoFlush bool
+	extentMerge        bool
+	extentMergeIno     []uint64
+	extentMergeChan    chan struct{}
+	ExtentMergeSleepMs uint64
 }
 
 const (
@@ -150,6 +158,7 @@ retry:
 			goto retry
 		}
 	}
+	client.metaWrapper = config.MetaWrapper
 
 	client.streamerConcurrentMap = InitConcurrentStreamerMap()
 	client.insertExtentKey = config.OnInsertExtentKey
@@ -196,6 +205,11 @@ retry:
 	client.maxExtentNumPerAlignArea = config.MaxExtentNumPerAlignArea
 	client.forceAlignMerge = config.ForceAlignMerge
 
+	client.extentMerge = config.ExtentMerge
+	if client.extentMerge {
+		client.extentMergeChan = make(chan struct{})
+		go client.BackgroundExtentMerge()
+	}
 	return
 }
 
@@ -403,6 +417,19 @@ func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte,
 	return
 }
 
+func (client *ExtentClient) ExtentMerge(ctx context.Context, inode uint64) (finish bool, err error) {
+	s := client.GetStreamer(inode)
+	if s == nil {
+		log.LogErrorf("stream is not opened yet: inode(%v)", inode)
+		return true, fmt.Errorf("stream is not opened yet")
+	}
+	s.once.Do(func() {
+		s.GetExtents(ctx)
+	})
+	finish, err = s.IssueExtentMergeRequest(ctx)
+	return
+}
+
 // GetStreamer returns the streamer.
 func (client *ExtentClient) GetStreamer(inode uint64) *Streamer {
 	streamerMapSeg := client.streamerConcurrentMap.GetMapSegment(inode)
@@ -497,6 +524,14 @@ func (client *ExtentClient) updateConfig() {
 		}
 		client.writeLimiter.SetLimit(writeLimit)
 	}
+
+	if client.extentMerge {
+		if len(client.extentMergeIno) == 0 && len(limitInfo.ExtentMergeIno[client.dataWrapper.volName]) > 0 {
+			client.extentMergeChan <- struct{}{}
+		}
+		client.extentMergeIno = limitInfo.ExtentMergeIno[client.dataWrapper.volName]
+		client.ExtentMergeSleepMs = limitInfo.ExtentMergeSleepMs
+	}
 }
 
 func (client *ExtentClient) Close(ctx context.Context) error {
@@ -553,4 +588,44 @@ func (c *ExtentClient) SetExtentSize(size int) {
 		return
 	}
 	c.extentSize = size
+}
+
+func (c *ExtentClient) BackgroundExtentMerge() {
+	ctx := context.Background()
+	for {
+		select {
+		case <-c.extentMergeChan:
+			inodes := c.extentMergeIno
+			if len(inodes) == 1 && inodes[0] == 0 {
+				inodes = c.lookupAllInode(proto.RootIno)
+			}
+			for _, inode := range inodes {
+				var finish bool
+				c.OpenStream(inode)
+				for !finish {
+					finish, _ = c.ExtentMerge(ctx, inode)
+					time.Sleep(time.Duration(c.ExtentMergeSleepMs) * time.Millisecond)
+				}
+				c.CloseStream(ctx, inode)
+				c.EvictStream(ctx, inode)
+			}
+		}
+	}
+}
+
+func (c *ExtentClient) lookupAllInode(parent uint64) (inodes []uint64) {
+	ctx := context.Background()
+	dentries, err := c.metaWrapper.ReadDir_ll(ctx, parent)
+	if err != nil {
+		return
+	}
+	for _, dentry := range dentries {
+		if proto.IsRegular(dentry.Type) {
+			inodes = append(inodes, dentry.Inode)
+		} else if proto.IsDir(dentry.Type) {
+			newInodes := c.lookupAllInode(dentry.Inode)
+			inodes = append(inodes, newInodes...)
+		}
+	}
+	return
 }

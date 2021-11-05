@@ -117,6 +117,12 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.DataNodeReqVolOpPartRate >= 0 {
 				msg += fmt.Sprintf("dataNodeReqVolOpPartRate: %d, volume: %s, opcode: %d, ", info.DataNodeReqVolOpPartRate, info.Volume, info.Opcode)
 			}
+			if info.ExtentMergeIno != "" {
+				msg += fmt.Sprintf("extentMergeIno: %s, volume: %s, ", info.ExtentMergeIno, info.Volume)
+			}
+			if info.ExtentMergeSleepMs >= 0 {
+				msg += fmt.Sprintf("extentMergeSleepMs: %d, ", info.ExtentMergeSleepMs)
+			}
 			if msg == "" {
 				stdout("No valid parameters\n")
 				return
@@ -140,6 +146,8 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&info.ClientReadVolRate, "clientReadVolRate", -1, "client read rate limit for volume")
 	cmd.Flags().Int64Var(&info.ClientWriteVolRate, "clientWriteVolRate", -1, "client write limit rate for volume")
 	cmd.Flags().Int64Var(&info.ClientVolOpRate, "clientVolOpRate", -2, "client meta op limit rate. '-1': unlimit, '0': disable")
+	cmd.Flags().StringVar(&info.ExtentMergeIno, "extentMergeIno", "", "comma separated inodes to be merged. '-1': no inodes, '0': all inodes")
+	cmd.Flags().Int64Var(&info.ExtentMergeSleepMs, "extentMergeSleepMs", -1, "extent merge interval(ms)")
 	return cmd
 }
 
@@ -167,5 +175,9 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  (map[volume]limit of specified volume)\n"))
 	sb.WriteString(fmt.Sprintf("  ClientVolOpRate             : %v\n", info.ClientVolOpRateLimit))
 	sb.WriteString(fmt.Sprintf("  (map[opcode]limit of specified volume)\n"))
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("  ExtentMergeIno              : %v\n", info.ExtentMergeIno))
+	sb.WriteString(fmt.Sprintf("  (map[volume][]inode)\n"))
+	sb.WriteString(fmt.Sprintf("  ExtentMergeSleepMs          : %v\n", info.ExtentMergeSleepMs))
 	return sb.String()
 }

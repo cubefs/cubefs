@@ -300,6 +300,8 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		ClientReadVolRateLimitMap:        m.cluster.cfg.ClientReadVolRateLimitMap,
 		ClientWriteVolRateLimitMap:       m.cluster.cfg.ClientWriteVolRateLimitMap,
 		ClientVolOpRateLimit:             m.cluster.cfg.ClientVolOpRateLimitMap[vol],
+		ExtentMergeIno:                   m.cluster.cfg.ExtentMergeIno,
+		ExtentMergeSleepMs:               m.cluster.cfg.ExtentMergeSleepMs,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -1347,241 +1349,131 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if batchCount, ok := params[nodeDeleteBatchCountKey]; ok {
-		if bc, ok := batchCount.(uint64); ok {
-			if err = m.cluster.setMetaNodeDeleteBatchCount(bc); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
-		}
+	err = m.cluster.setClusterConfig(params)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
-	if val, ok := params[nodeMarkDeleteRateKey]; ok {
-		if v, ok := val.(uint64); ok {
-			if err = m.cluster.setDataNodeDeleteLimitRate(v); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
-		}
+
+	var (
+		zone string
+		vol  string
+		op   uint8
+	)
+	if val, ok := params[zoneNameKey]; ok {
+		zone = val.(string)
 	}
-	if val, ok := params[dataNodeRepairTaskCountKey]; ok {
-		if v, ok := val.(uint64); ok {
-			if err = m.cluster.setDataNodeRepairTaskCount(v); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
-		}
+	if val, ok := params[volumeKey]; ok {
+		vol = val.(string)
 	}
+	if val, ok := params[opcodeKey]; ok {
+		op = uint8(val.(uint64))
+	}
+
 	if val, ok := params[dataNodeReqRateKey]; ok {
-		if v, ok := val.(uint64); ok {
-			if v > 0 && v < minRateLimit {
-				err = errors.NewErrorf("parameter %s can't be less than %d", dataNodeReqRateKey, minRateLimit)
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
-			zone := ""
-			if z, ok := params[zoneNameKey]; ok {
-				if zoneStr, ok := z.(string); ok {
-					zone = zoneStr
-				}
-			}
-			if err = m.cluster.setDataNodeReqRateLimit(v, zone); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
+		v := val.(uint64)
+		if v > 0 && v < minRateLimit {
+			err = errors.NewErrorf("parameter %s can't be less than %d", dataNodeReqRateKey, minRateLimit)
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		if err = m.cluster.setDataNodeReqRateLimit(v, zone); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
 		}
 	}
 	if val, ok := params[dataNodeReqOpRateKey]; ok {
-		if v, ok := val.(uint64); ok {
-			if v > 0 && v < minRateLimit {
-				err = errors.NewErrorf("parameter %s can't be less than %d", dataNodeReqOpRateKey, minRateLimit)
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
-			zone := ""
-			if z, ok := params[zoneNameKey]; ok {
-				if zoneStr, ok := z.(string); ok {
-					zone = zoneStr
-				}
-			}
-			var op uint64
-			if opcode, ok := params[opcodeKey]; ok {
-				if op, ok = opcode.(uint64); !ok {
-					op = 0
-				}
-			}
-			if err = m.cluster.setDataNodeReqOpRateLimit(v, zone, uint8(op)); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
+		v := val.(uint64)
+		if v > 0 && v < minRateLimit {
+			err = errors.NewErrorf("parameter %s can't be less than %d", dataNodeReqOpRateKey, minRateLimit)
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		if err = m.cluster.setDataNodeReqOpRateLimit(v, zone, op); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
 		}
 	}
 	if val, ok := params[dataNodeReqVolPartRateKey]; ok {
-		if v, ok := val.(uint64); ok {
-			if v > 0 && v < minPartRateLimit {
-				err = errors.NewErrorf("parameter %s can't be less than %d", dataNodeReqVolPartRateKey, minPartRateLimit)
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
-			vol := ""
-			if volume, ok := params[volumeKey]; ok {
-				if volume_str, ok := volume.(string); ok {
-					vol = volume_str
-				}
-			}
-			if err = m.cluster.setDataNodeReqVolPartRateLimit(v, vol); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
+		v := val.(uint64)
+		if v > 0 && v < minPartRateLimit {
+			err = errors.NewErrorf("parameter %s can't be less than %d", dataNodeReqVolPartRateKey, minPartRateLimit)
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		if err = m.cluster.setDataNodeReqVolPartRateLimit(v, vol); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
 		}
 	}
 	if val, ok := params[dataNodeReqVolOpPartRateKey]; ok {
-		if v, ok := val.(uint64); ok {
-			if v > 0 && v < minPartRateLimit {
-				err = errors.NewErrorf("parameter %s can't be less than %d", dataNodeReqVolOpPartRateKey, minPartRateLimit)
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
-			vol := ""
-			if volume, ok := params[volumeKey]; ok {
-				if volume_str, ok := volume.(string); ok {
-					vol = volume_str
-				}
-			}
-			var op uint64
-			if opcode, ok := params[opcodeKey]; ok {
-				if op, ok = opcode.(uint64); !ok {
-					op = 0
-				}
-			}
-			if err = m.cluster.setDataNodeReqVolOpPartRateLimit(v, vol, uint8(op)); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
+		v := val.(uint64)
+		if v > 0 && v < minPartRateLimit {
+			err = errors.NewErrorf("parameter %s can't be less than %d", dataNodeReqVolOpPartRateKey, minPartRateLimit)
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
 		}
-	}
-	if val, ok := params[metaNodeReqRateKey]; ok {
-		if v, ok := val.(uint64); ok {
-			if v > 0 && v < minRateLimit {
-				err = errors.NewErrorf("parameter %s can't be less than %d", metaNodeReqRateKey, minRateLimit)
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
-			if err = m.cluster.setMetaNodeReqRateLimit(v); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
+		if err = m.cluster.setDataNodeReqVolOpPartRateLimit(v, vol, op); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
 		}
 	}
 	if val, ok := params[metaNodeReqOpRateKey]; ok {
-		if v, ok := val.(uint64); ok {
-			if v > 0 && v < minRateLimit {
-				err = errors.NewErrorf("parameter %s can't be less than %d", metaNodeReqOpRateKey, minRateLimit)
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
-			var op uint64
-			if opcode, ok := params[opcodeKey]; ok {
-				if op, ok = opcode.(uint64); !ok {
-					op = 0
-				}
-			}
-			if err = m.cluster.setMetaNodeReqOpRateLimit(v, uint8(op)); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
+		v := val.(uint64)
+		if v > 0 && v < minRateLimit {
+			err = errors.NewErrorf("parameter %s can't be less than %d", metaNodeReqOpRateKey, minRateLimit)
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		if err = m.cluster.setMetaNodeReqOpRateLimit(v, op); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
 		}
 	}
 	if val, ok := params[clientReadVolRateKey]; ok {
-		if v, ok := val.(uint64); ok {
-			if v > 0 && v < minRateLimit {
-				err = errors.NewErrorf("parameter %s can't be less than %d", clientReadVolRateKey, minRateLimit)
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
-			vol := ""
-			if volume, ok := params[volumeKey]; ok {
-				if volume_str, ok := volume.(string); ok {
-					vol = volume_str
-				}
-			}
-			if err = m.cluster.setClientReadVolRateLimit(v, vol); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
+		v := val.(uint64)
+		if v > 0 && v < minRateLimit {
+			err = errors.NewErrorf("parameter %s can't be less than %d", clientReadVolRateKey, minRateLimit)
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		if err = m.cluster.setClientReadVolRateLimit(v, vol); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
 		}
 	}
 	if val, ok := params[clientWriteVolRateKey]; ok {
-		if v, ok := val.(uint64); ok {
-			if v > 0 && v < minRateLimit {
-				err = errors.NewErrorf("parameter %s can't be less than %d", clientWriteVolRateKey, minRateLimit)
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
-			vol := ""
-			if volume, ok := params[volumeKey]; ok {
-				if volume_str, ok := volume.(string); ok {
-					vol = volume_str
-				}
-			}
-			if err = m.cluster.setClientWriteVolRateLimit(v, vol); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
+		v := val.(uint64)
+		if v > 0 && v < minRateLimit {
+			err = errors.NewErrorf("parameter %s can't be less than %d", clientWriteVolRateKey, minRateLimit)
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		if err = m.cluster.setClientWriteVolRateLimit(v, vol); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
 		}
 	}
 	if val, ok := params[clientVolOpRateKey]; ok {
-		if v, ok := val.(int64); ok {
-			var (
-				vol string
-				op  uint64
-			)
-			if volume, ok := params[volumeKey]; ok {
-				if volume_str, ok := volume.(string); ok {
-					vol = volume_str
-				}
-			}
-			if opcode, ok := params[opcodeKey]; ok {
-				if op, ok = opcode.(uint64); !ok {
-					op = 0
-				}
-			}
-			if op <= 0 || op > 255 {
-				err = errors.NewErrorf("value range of parameter %v is 0~255", opcodeKey)
-				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-				return
-			}
-			if _, err = m.cluster.getVol(vol); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
-			if err = m.cluster.setClientVolOpRateLimit(v, vol, uint8(op)); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
+		v := val.(int64)
+		if op <= 0 || op > 255 {
+			err = errors.NewErrorf("value range of parameter %v is 0~255", opcodeKey)
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		if _, err = m.cluster.getVol(vol); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		if err = m.cluster.setClientVolOpRateLimit(v, vol, uint8(op)); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
 		}
 	}
-	if val, ok := params[nodeDeleteWorkerSleepMs]; ok {
-		if v, ok := val.(uint64); ok {
-			if err = m.cluster.setMetaNodeDeleteWorkerSleepMs(v); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
-		}
-	}
-	if val, ok := params[dpRecoverPoolSizeKey]; ok {
-		if v, ok := val.(int64); ok {
-			if err = m.cluster.setDpRecoverPoolSize(int32(v)); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
-		}
-	}
-	if val, ok := params[mpRecoverPoolSizeKey]; ok {
-		if v, ok := val.(int64); ok {
-			if err = m.cluster.setMpRecoverPoolSize(int32(v)); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
+	if val, ok := params[extentMergeInoKey]; ok {
+		if err = m.cluster.setExtentMergeIno(val.(string), vol); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
 		}
 	}
 
@@ -2693,81 +2585,38 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	if err = r.ParseForm(); err != nil {
 		return
 	}
-	noParams := true
 	params = make(map[string]interface{})
-	if noParams, err = parseNodeInfoKey(params, nodeDeleteBatchCountKey, noParams, r); err != nil {
-		return
+	if val := r.FormValue(zoneNameKey); val != "" {
+		params[zoneNameKey] = val
+	}
+	if val := r.FormValue(volumeKey); val != "" {
+		params[volumeKey] = val
+	}
+	if val := r.FormValue(extentMergeInoKey); val != "" {
+		params[extentMergeInoKey] = val
 	}
 
-	if noParams, err = parseNodeInfoKey(params, nodeMarkDeleteRateKey, noParams, r); err != nil {
-		return
+	uintKeys := []string{nodeDeleteBatchCountKey, nodeMarkDeleteRateKey, dataNodeRepairTaskCountKey, nodeDeleteWorkerSleepMs, metaNodeReqRateKey, metaNodeReqOpRateKey, dataNodeReqRateKey, dataNodeReqOpRateKey, dataNodeReqVolPartRateKey, dataNodeReqVolOpPartRateKey, opcodeKey, clientReadVolRateKey, clientWriteVolRateKey, extentMergeSleepMsKey}
+	for _, key := range uintKeys {
+		if err = parseUintKey(params, key, r); err != nil {
+			return
+		}
 	}
-	if noParams, err = parseNodeInfoKey(params, dataNodeRepairTaskCountKey, noParams, r); err != nil {
-		return
+	intKeys := []string{dpRecoverPoolSizeKey, mpRecoverPoolSizeKey, clientVolOpRateKey}
+	for _, key := range intKeys {
+		if err = parseIntKey(params, key, r); err != nil {
+			return
+		}
 	}
-	if noParams, err = parseNodeInfoKey(params, nodeDeleteWorkerSleepMs, noParams, r); err != nil {
-		return
-	}
-	if noParams, err = parseNodeInfoIntKey(params, dpRecoverPoolSizeKey, noParams, r); err != nil {
-		return
-	}
-	if noParams, err = parseNodeInfoIntKey(params, mpRecoverPoolSizeKey, noParams, r); err != nil {
-		return
-	}
-	if noParams, err = parseNodeInfoKey(params, metaNodeReqRateKey, noParams, r); err != nil {
-		return
-	}
-	if noParams, err = parseNodeInfoKey(params, metaNodeReqOpRateKey, noParams, r); err != nil {
-		return
-	}
-	if noParams, err = parseNodeInfoKey(params, dataNodeReqRateKey, noParams, r); err != nil {
-		return
-	} else {
-		params[zoneNameKey] = r.FormValue(zoneNameKey)
-	}
-	if noParams, err = parseNodeInfoKey(params, dataNodeReqOpRateKey, noParams, r); err != nil {
-		return
-	} else {
-		params[zoneNameKey] = r.FormValue(zoneNameKey)
-	}
-	if noParams, err = parseNodeInfoKey(params, dataNodeReqVolPartRateKey, noParams, r); err != nil {
-		return
-	} else {
-		params[volumeKey] = r.FormValue(volumeKey)
-	}
-	if noParams, err = parseNodeInfoKey(params, dataNodeReqVolOpPartRateKey, noParams, r); err != nil {
-		return
-	} else {
-		params[volumeKey] = r.FormValue(volumeKey)
-	}
-	if noParams, err = parseNodeInfoKey(params, opcodeKey, noParams, r); err != nil {
-		return
-	}
-	if noParams, err = parseNodeInfoKey(params, clientReadVolRateKey, noParams, r); err != nil {
-		return
-	}
-	if noParams, err = parseNodeInfoKey(params, clientWriteVolRateKey, noParams, r); err != nil {
-		return
-	}
-	if noParams, err = parseNodeInfoIntKey(params, clientVolOpRateKey, noParams, r); err != nil {
-		return
-	} else {
-		params[volumeKey] = r.FormValue(volumeKey)
-	}
-	if noParams {
-		err = keyNotFound(nodeDeleteBatchCountKey)
+	if len(params) == 0 {
+		err = errors.NewErrorf("no valid parameters")
 		return
 	}
 	return
 }
 
-func parseNodeInfoKey(params map[string]interface{}, key string, noParams bool, r *http.Request) (noPara bool, err error) {
-	var value string
-	defer func() {
-		noPara = noParams
-	}()
-	if value = r.FormValue(key); value != "" {
-		noParams = false
+func parseUintKey(params map[string]interface{}, key string, r *http.Request) (err error) {
+	if value := r.FormValue(key); value != "" {
 		var val = uint64(0)
 		val, err = strconv.ParseUint(value, 10, 64)
 		if err != nil {
@@ -2779,13 +2628,8 @@ func parseNodeInfoKey(params map[string]interface{}, key string, noParams bool, 
 	return
 }
 
-func parseNodeInfoIntKey(params map[string]interface{}, key string, noParams bool, r *http.Request) (noPara bool, err error) {
-	var value string
-	defer func() {
-		noPara = noParams
-	}()
-	if value = r.FormValue(key); value != "" {
-		noParams = false
+func parseIntKey(params map[string]interface{}, key string, r *http.Request) (err error) {
+	if value := r.FormValue(key); value != "" {
 		var val = int64(0)
 		val, err = strconv.ParseInt(value, 10, 64)
 		if err != nil {

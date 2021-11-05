@@ -96,6 +96,13 @@ type EvictRequest struct {
 	ctx  context.Context
 }
 
+type ExtentMergeRequest struct {
+	finish bool
+	err    error
+	done   chan struct{}
+	ctx    context.Context
+}
+
 // Open request shall grab the lock until request is sent to the request channel
 func (s *Streamer) IssueOpenRequest() error {
 	request := openRequestPool.Get().(*OpenRequest)
@@ -198,6 +205,17 @@ func (s *Streamer) IssueEvictRequest(ctx context.Context) error {
 	err := request.err
 	evictRequestPool.Put(request)
 	return err
+}
+
+func (s *Streamer) IssueExtentMergeRequest(ctx context.Context) (finish bool, err error) {
+	request := &ExtentMergeRequest{}
+	request.done = make(chan struct{}, 1)
+	request.ctx = ctx
+	s.request <- request
+	<-request.done
+	finish = request.finish
+	err = request.err
+	return
 }
 
 func (s *Streamer) server() {
@@ -310,6 +328,10 @@ func (s *Streamer) handleRequest(ctx context.Context, request interface{}) {
 	case *EvictRequest:
 		tracer.SetTag("evict", true)
 		request.err = s.evict(request.ctx)
+		request.done <- struct{}{}
+	case *ExtentMergeRequest:
+		tracer.SetTag("extentMerge", true)
+		request.finish, request.err = s.extentMerge(request.ctx)
 		request.done <- struct{}{}
 	default:
 	}
@@ -952,6 +974,49 @@ func (s *Streamer) tinySizeLimit() int {
 //
 //	return false
 //}
+
+func (s *Streamer) extentMerge(ctx context.Context) (finish bool, err error) {
+	var (
+		reader       *ExtentReader
+		readBytes    int
+		readRequests []*ExtentRequest
+		writeRequest *ExtentRequest
+	)
+	defer func() {
+		msg := fmt.Sprintf("extentMerge: ino(%v) readRequests(%v) writeRequest(%v) finish(%v) err(%v)", s.inode, readRequests, writeRequest, finish, err)
+		if err != nil {
+			log.LogWarnf(msg)
+		} else {
+			log.LogDebugf(msg)
+		}
+	}()
+
+	if err = s.flush(ctx); err != nil {
+		return
+	}
+
+	readRequests, writeRequest, err = s.extents.prepareMergeRequests()
+	if err != nil {
+		return
+	}
+	if writeRequest == nil {
+		finish = true
+		return
+	}
+
+	for _, req := range readRequests {
+		reader, err = s.GetExtentReader(req.ExtentKey)
+		if err != nil {
+			return
+		}
+		readBytes, err = reader.Read(ctx, req)
+		if err != nil || readBytes < req.Size {
+			return
+		}
+	}
+	_, err = s.doROW(ctx, writeRequest, false)
+	return
+}
 
 func (s *Streamer) usePreExtentHandler(offset, size int) bool {
 	preEk := s.extents.Pre(uint64(offset))

@@ -211,6 +211,9 @@ type LimitInfo struct {
 
 	DataNodeFixTinyDeleteRecordLimitOnDisk uint64
 	DataNodeRepairTaskLimitOnDisk          uint64
+
+	ExtentMergeIno     map[string][]uint64
+	ExtentMergeSleepMs uint64
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -657,4 +660,6 @@ type RateLimitInfo struct {
 	ClientReadVolRate        int64
 	ClientWriteVolRate       int64
 	ClientVolOpRate          int64
+	ExtentMergeIno           string
+	ExtentMergeSleepMs       int64
 }

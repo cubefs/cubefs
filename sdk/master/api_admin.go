@@ -457,6 +457,12 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.DataNodeReqVolOpPartRate >= 0 {
 		request.addParam("dataNodeReqVolOpPartRate", strconv.FormatInt(info.DataNodeReqVolOpPartRate, 10))
 	}
+	if info.ExtentMergeIno != "" {
+		request.addParam("extentMergeIno", info.ExtentMergeIno)
+	}
+	if info.ExtentMergeSleepMs >= 0 {
+		request.addParam("extentMergeSleepMs", strconv.FormatInt(info.ExtentMergeSleepMs, 10))
+	}
 	request.addParam("volume", info.Volume)
 	request.addParam("zoneName", info.ZoneName)
 	if _, err = api.mc.serveRequest(request); err != nil {

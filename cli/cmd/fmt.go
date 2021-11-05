@@ -125,6 +125,7 @@ func formatInodeInfoView(inodeInfo *proto.InodeInfoView) string {
 	sb.WriteString(fmt.Sprintf("  CreateTime                  : %v\n", inodeInfo.Ct))
 	sb.WriteString(fmt.Sprintf("  ModifyTime                  : %v\n", inodeInfo.Mt))
 	sb.WriteString(fmt.Sprintf("  Nlink                       : %v\n", inodeInfo.Nlink))
+	sb.WriteString(fmt.Sprintf("  Size                        : %v\n", formatIntWithThousandComma(int64(inodeInfo.Size))))
 	sb.WriteString(fmt.Sprintf("  Gen                         : %v\n", inodeInfo.Gen))
 	sb.WriteString(fmt.Sprintf("  Gid                         : %v\n", inodeInfo.Gid))
 	sb.WriteString(fmt.Sprintf("  Uid                         : %v\n", inodeInfo.Uid))

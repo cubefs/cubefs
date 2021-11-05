@@ -78,6 +78,8 @@ const (
 	volumeKey                   = "volume"
 	opcodeKey                   = "opcode"
 	volWriteMutexKey            = "volWriteMutex"
+	extentMergeInoKey           = "extentMergeIno"
+	extentMergeSleepMsKey       = "extentMergeSleepMs"
 )
 
 const (

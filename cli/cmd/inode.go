@@ -96,6 +96,7 @@ func newInodeInfoCmd(client *sdk.MasterClient) *cobra.Command {
 					Ct:          dataInfo["ct"].(string),
 					Mt:          dataInfo["mt"].(string),
 					Nlink:       uint64(dataInfo["nlink"].(float64)),
+					Size:        uint64(dataInfo["sz"].(float64)),
 					Gen:         uint64(dataInfo["gen"].(float64)),
 					Gid:         uint64(dataInfo["gid"].(float64)),
 					Uid:         uint64(dataInfo["uid"].(float64)),

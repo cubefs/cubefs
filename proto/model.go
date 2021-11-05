@@ -95,6 +95,7 @@ type InodeInfoView struct {
 	Ct          string
 	Mt          string
 	Nlink       uint64
+	Size        uint64
 	Gen         uint64
 	Gid         uint64
 	Uid         uint64

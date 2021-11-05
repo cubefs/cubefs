@@ -252,15 +252,15 @@ type client struct {
 	logLevel     string
 
 	// profiling config
-	profPort            []uint64		// the first is the port of main mysqld, the others are the ports of read processes
-	listenPort			uint64
-	readProcErrMap 		map[uint64]int	// key: port, value: count of error
-	readProcMapLock		sync.Mutex
+	profPort        []uint64 // the first is the port of main mysqld, the others are the ports of read processes
+	listenPort      uint64
+	readProcErrMap  map[uint64]int // key: port, value: count of error
+	readProcMapLock sync.Mutex
 
-	tracingSamplerType     	string
-	tracingSamplerParam 	float64
-	tracingReportAddr   	string
-	tracingFlag         	bool
+	tracingSamplerType  string
+	tracingSamplerParam float64
+	tracingReportAddr   string
+	tracingFlag         bool
 
 	// runtime context
 	cwd    string // current working directory
@@ -3063,6 +3063,8 @@ func (c *client) start() (err error) {
 		OnGetExtents:      mw.GetExtents,
 		OnTruncate:        mw.Truncate,
 		TinySize:          data.NoUseTinyExtent,
+		MetaWrapper:       mw,
+		ExtentMerge:       isMysql(),
 	}); err != nil {
 		fmt.Println(err)
 		return

@@ -98,6 +98,8 @@ type clusterConfig struct {
 	ClientReadVolRateLimitMap           map[string]uint64
 	ClientWriteVolRateLimitMap          map[string]uint64
 	ClientVolOpRateLimitMap             map[string]map[uint8]int64
+	ExtentMergeIno                      map[string][]uint64
+	ExtentMergeSleepMs                  uint64
 	peers                               []raftstore.PeerAddress
 	peerAddrs                           []string
 	heartbeatPort                       int64
@@ -131,6 +133,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.ClientReadVolRateLimitMap = make(map[string]uint64)
 	cfg.ClientWriteVolRateLimitMap = make(map[string]uint64)
 	cfg.ClientVolOpRateLimitMap = make(map[string]map[uint8]int64)
+	cfg.ExtentMergeIno = make(map[string][]uint64)
 	return
 }
 
