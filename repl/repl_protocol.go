@@ -457,8 +457,8 @@ func (rp *ReplProtocol) checkLocalResultAndReciveAllFollowerResponse() {
 	}
 	for index := 0; index < len(request.followersAddrs); index++ {
 		followerPacket := request.followerPackets[index]
-		followerPacket.Data=nil
 		err := <-followerPacket.respCh
+		followerPacket.Data=nil
 		if err != nil {
 			request.PackErrorBody(ActionReceiveFromFollower, err.Error())
 			return
