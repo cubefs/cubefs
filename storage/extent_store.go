@@ -20,7 +20,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strconv"
 	"sync"
@@ -263,11 +262,14 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 		baseFileID uint64
 	)
 	baseFileID, _ = s.GetPersistenceBaseExtentID()
-	files, err := ioutil.ReadDir(s.dataPath)
-	if err != nil {
-		return err
+	dirFd,err:=os.Open(s.dataPath)
+	if err!=nil {
+		return
 	}
-
+	defer func() {
+		dirFd.Close()
+	}()
+	files, err :=dirFd.Readdir(-1)
 	var (
 		extentID uint64
 		isExtent bool
