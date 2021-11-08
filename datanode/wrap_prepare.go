@@ -24,9 +24,9 @@ import (
 	"github.com/chubaofs/chubaofs/storage"
 )
 
-func (s *DataNode) Prepare(p *repl.Packet) (err error) {
+func (s *DataNode) Prepare(p *repl.Packet, remoteAddr string) (err error) {
 	defer func() {
-		p.SetPacketHasPrepare()
+		p.SetPacketHasPrepare(remoteAddr)
 		if err != nil {
 			p.PackErrorBody(repl.ActionPreparePkt, err.Error())
 		}

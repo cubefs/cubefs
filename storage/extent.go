@@ -69,8 +69,8 @@ type Extent struct {
 	sync.Mutex
 }
 
-// NewExtentInCore create and returns a new extent instance.
-func NewExtentInCore(name string, extentID uint64) *Extent {
+// NewExtent create and returns a new extent instance.
+func NewExtent(name string, extentID uint64) *Extent {
 	e := new(Extent)
 	e.extentID = extentID
 	e.filePath = name
@@ -142,21 +142,6 @@ func (e *Extent) RestoreFromFS() (err error) {
 		err = fmt.Errorf("stat file %v: %v", e.file.Name(), err)
 		return
 	}
-	if IsTinyExtent(e.extentID) {
-		watermark := info.Size()
-		if watermark%PageSize != 0 {
-			watermark = watermark + (PageSize - watermark%PageSize)
-		}
-		e.dataSize = watermark
-		return
-	}
-	e.dataSize = info.Size()
-	atomic.StoreInt64(&e.modifyTime, info.ModTime().Unix())
-	return
-}
-
-// RestoreFromFS restores the entity data and status from the file stored on the filesystem.
-func (e *Extent) getStatFromFS(info os.FileInfo) (err error) {
 	if IsTinyExtent(e.extentID) {
 		watermark := info.Size()
 		if watermark%PageSize != 0 {

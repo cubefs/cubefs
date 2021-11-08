@@ -773,13 +773,16 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 	return
 }
 
-// DoExtentStoreRepair performs the repairs of the extent store.
+// DoExtentStoreRepairOnFollowerDisk performs the repairs of the extent store.
 // 1. when the extent size is smaller than the max size on the record, start to repair the missing part.
 // 2. if the extent does not even exist, create the extent first, and then repair.
-func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask) {
+func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataPartitionRepairTask) {
 	store := dp.extentStore
 	for _, extentInfo := range repairTask.ExtentsToBeCreated {
 		if storage.IsTinyExtent(extentInfo.FileID) {
+			continue
+		}
+		if !storage.IsTinyExtent(extentInfo.FileID) && !dp.ExtentStore().IsFininshLoad() {
 			continue
 		}
 		if store.HasExtent(uint64(extentInfo.FileID)) {
@@ -811,7 +814,7 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 		wg.Add(1)
 
 		// repair the extents
-		go dp.doStreamExtentFixRepair(context.Background(), wg, extentInfo)
+		go dp.doStreamExtentFixRepairOnFollowerDisk(context.Background(), wg, extentInfo)
 		recoverIndex++
 
 		if recoverIndex%NumOfFilesToRecoverInParallel == 0 {

@@ -122,7 +122,7 @@ func (dp *DataPartition) repair(ctx context.Context, extentType uint8) {
 	}
 
 	// ask the leader to do the repair
-	dp.DoRepair(ctx, repairTasks)
+	dp.DoRepairOnLeaderDisk(ctx, repairTasks)
 	end := time.Now().UnixNano()
 
 	// every time we need to figureAnnotatef out which extents need to be repaired and which ones do not.
@@ -168,7 +168,11 @@ func (dp *DataPartition) buildDataPartitionRepairTask(ctx context.Context, repai
 
 func (dp *DataPartition) getLocalExtentInfo(extentType uint8, tinyExtents []uint64) (extents []*storage.ExtentInfo, leaderTinyDeleteRecordFileSize int64, err error) {
 	if extentType == proto.NormalExtentType {
-		extents, leaderTinyDeleteRecordFileSize, err = dp.extentStore.GetAllWatermarks(storage.NormalExtentFilter())
+		if !dp.ExtentStore().IsFininshLoad() {
+			err = storage.PartitionIsLoaddingErr
+		} else {
+			extents, leaderTinyDeleteRecordFileSize, err = dp.extentStore.GetAllWatermarks(storage.NormalExtentFilter())
+		}
 	} else {
 		extents, leaderTinyDeleteRecordFileSize, err = dp.extentStore.GetAllWatermarks(storage.TinyExtentFilter(tinyExtents))
 	}
@@ -285,12 +289,15 @@ func (dp *DataPartition) getRemoteExtentInfo(ctx context.Context, extentType uin
 	return
 }
 
-// DoRepair asks the leader to perform the repair tasks.
-func (dp *DataPartition) DoRepair(ctx context.Context, repairTasks []*DataPartitionRepairTask) {
+// DoRepairOnLeaderDisk asks the leader to perform the repair tasks.
+func (dp *DataPartition) DoRepairOnLeaderDisk(ctx context.Context, repairTasks []*DataPartitionRepairTask) {
 	store := dp.extentStore
 	for _, extentInfo := range repairTasks[0].ExtentsToBeCreated {
 		if !AutoRepairStatus {
 			log.LogWarnf("AutoRepairStatus is False,so cannot Create extent(%v)", extentInfo.String())
+			continue
+		}
+		if !store.IsFininshLoad() {
 			continue
 		}
 		store.Create(extentInfo.FileID, true)
@@ -298,14 +305,14 @@ func (dp *DataPartition) DoRepair(ctx context.Context, repairTasks []*DataPartit
 	for _, extentInfo := range repairTasks[0].ExtentsToBeRepaired {
 		err := dp.streamRepairExtent(ctx, extentInfo)
 		if err != nil {
-			err = errors.Trace(err, "doStreamExtentFixRepair %v", dp.applyRepairKey(int(extentInfo.FileID)))
+			err = errors.Trace(err, "DoRepairOnLeaderDisk %v", dp.applyRepairKey(int(extentInfo.FileID)))
 			localExtentInfo, opErr := dp.ExtentStore().Watermark(uint64(extentInfo.FileID))
 			if opErr != nil {
 				err = errors.Trace(err, opErr.Error())
 			}
 			err = errors.Trace(err, "partition(%v) remote(%v) local(%v)",
 				dp.partitionID, extentInfo, localExtentInfo)
-			log.LogWarnf("action[doStreamExtentFixRepair] err(%v).", err)
+			log.LogWarnf("action[DoRepairOnLeaderDisk] err(%v).", err)
 		}
 	}
 }
@@ -424,8 +431,8 @@ func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepa
 			if extentInfo.Size < maxFileInfo.Size {
 				fixExtent := &storage.ExtentInfo{Source: maxFileInfo.Source, FileID: extentID, Size: maxFileInfo.Size}
 				repairTasks[index].ExtentsToBeRepaired = append(repairTasks[index].ExtentsToBeRepaired, fixExtent)
-				log.LogInfof("action[generatorFixExtentSizeTasks] fixExtent(%v_%v) on Index(%v) on(%v).",
-					dp.partitionID, fixExtent, index, repairTasks[index].addr)
+				log.LogInfof("action[generatorFixExtentSizeTasks] fixExtent(%v_%v) on(%v), maxExtentInfo(%v) readRepairExtentInfo(%v)",
+					dp.partitionID, fixExtent, repairTasks[index].addr, maxFileInfo.String(), extentInfo.String())
 				hasBeenRepaired = false
 			}
 
@@ -487,20 +494,20 @@ func (dp *DataPartition) NotifyExtentRepair(ctx context.Context, members []*Data
 }
 
 // DoStreamExtentFixRepair executes the repair on the followers.
-func (dp *DataPartition) doStreamExtentFixRepair(ctx context.Context, wg *sync.WaitGroup, remoteExtentInfo *storage.ExtentInfo) {
+func (dp *DataPartition) doStreamExtentFixRepairOnFollowerDisk(ctx context.Context, wg *sync.WaitGroup, remoteExtentInfo *storage.ExtentInfo) {
 	defer wg.Done()
 
 	err := dp.streamRepairExtent(ctx, remoteExtentInfo)
 
 	if err != nil {
-		err = errors.Trace(err, "doStreamExtentFixRepair %v", dp.applyRepairKey(int(remoteExtentInfo.FileID)))
+		err = errors.Trace(err, "doStreamExtentFixRepairOnFollowerDisk %v", dp.applyRepairKey(int(remoteExtentInfo.FileID)))
 		localExtentInfo, opErr := dp.ExtentStore().Watermark(uint64(remoteExtentInfo.FileID))
 		if opErr != nil {
 			err = errors.Trace(err, opErr.Error())
 		}
 		err = errors.Trace(err, "partition(%v) remote(%v) local(%v)",
 			dp.partitionID, remoteExtentInfo, localExtentInfo)
-		log.LogWarnf("action[doStreamExtentFixRepair] err(%v).", err)
+		log.LogWarnf("action[doStreamExtentFixRepairOnFollowerDisk] err(%v).", err)
 	}
 }
 
@@ -516,6 +523,10 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 	}
 	if !AutoRepairStatus && !storage.IsTinyExtent(remoteExtentInfo.FileID) {
 		log.LogWarnf("AutoRepairStatus is False,so cannot AutoRepair extent(%v)", remoteExtentInfo.String())
+		return
+	}
+	if !storage.IsTinyExtent(remoteExtentInfo.FileID) && !store.IsFininshLoad() {
+		log.LogWarnf("partition(%v) is loading", dp.partitionID, remoteExtentInfo.String())
 		return
 	}
 	localExtentInfo, err := store.Watermark(remoteExtentInfo.FileID)

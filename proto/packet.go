@@ -694,8 +694,9 @@ func (p *Packet) PacketErrorWithBody(code uint8, reply []byte) {
 	p.ArgLen = 0
 }
 
-func (p *Packet) SetPacketHasPrepare() {
-	p.setPacketPrefix()
+func (p *Packet) SetPacketHasPrepare(remoteAddr string) {
+	m := p.getPacketCommonLog(remoteAddr)
+	p.mesg = m
 	p.HasPrepare = true
 }
 
@@ -716,14 +717,19 @@ func (p *Packet) GetUniqueLogId() (m string) {
 		m = p.mesg
 		return
 	}
-	m = fmt.Sprintf("Req(%v)_Partition(%v)_", p.ReqID, p.PartitionID)
+	m = p.getPacketCommonLog("unknowAddr")
+	return
+}
+
+func (p *Packet) getPacketCommonLog(remoteAddr string) (m string) {
+	m = fmt.Sprintf("RemoteAddr(%v)_Req(%v)_Partition(%v)_", remoteAddr, p.ReqID, p.PartitionID)
 	if p.ExtentType == TinyExtentType && p.Opcode == OpMarkDelete && len(p.Data) > 0 {
 		ext := new(TinyExtentDeleteRecord)
 		err := json.Unmarshal(p.Data, ext)
 		if err == nil {
 			m += fmt.Sprintf("Extent(%v)_ExtentOffset(%v)_Size(%v)_Opcode(%v)",
 				ext.ExtentId, ext.ExtentOffset, ext.Size, p.GetOpMsg())
-			return m
+			return
 		}
 	} else if p.Opcode == OpReadTinyDeleteRecord || p.Opcode == OpNotifyReplicasToRepair || p.Opcode == OpDataNodeHeartbeat ||
 		p.Opcode == OpLoadDataPartition || p.Opcode == OpBatchDeleteExtent {
@@ -736,44 +742,16 @@ func (p *Packet) GetUniqueLogId() (m string) {
 		} else {
 			m += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
 		}
-		return m
+		return
+	} else if p.Opcode == OpGetAllWatermarks || p.Opcode==OpGetAllWatermarksV2 {
+		m += fmt.Sprintf("Opcode(%v)_RepairExtentType(%v)_", p.GetOpMsg(), p.ExtentType)
+		return
 	}
 	m = fmt.Sprintf("Req(%v)_Partition(%v)_Extent(%v)_ExtentOffset(%v)_KernelOffset(%v)_"+
 		"Size(%v)_Opcode(%v)_CRC(%v)",
 		p.ReqID, p.PartitionID, p.ExtentID, p.ExtentOffset,
 		p.KernelOffset, p.Size, p.GetOpMsg(), p.CRC)
-
-	return
-}
-
-func (p *Packet) setPacketPrefix() {
-	p.mesg = fmt.Sprintf("Req(%v)_Partition(%v)_", p.ReqID, p.PartitionID)
-	if p.ExtentType == TinyExtentType && p.Opcode == OpMarkDelete && len(p.Data) > 0 {
-		ext := new(TinyExtentDeleteRecord)
-		err := json.Unmarshal(p.Data, ext)
-		if err == nil {
-			p.mesg += fmt.Sprintf("Extent(%v)_ExtentOffset(%v)_Size(%v)_Opcode(%v)",
-				ext.ExtentId, ext.ExtentOffset, ext.Size, p.GetOpMsg())
-			return
-		}
-	} else if p.Opcode == OpReadTinyDeleteRecord || p.Opcode == OpNotifyReplicasToRepair || p.Opcode == OpDataNodeHeartbeat ||
-		p.Opcode == OpLoadDataPartition || p.Opcode == OpBatchDeleteExtent {
-		p.mesg += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
-		return
-	} else if p.Opcode == OpBroadcastMinAppliedID || p.Opcode == OpGetAppliedId {
-		if p.Size > 0 {
-			applyID := binary.BigEndian.Uint64(p.Data)
-			p.mesg += fmt.Sprintf("Opcode(%v)_AppliedID(%v)", p.GetOpMsg(), applyID)
-		} else {
-			p.mesg += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
-		}
-		return
-	}
-	p.mesg = fmt.Sprintf("Req(%v)_Partition(%v)_Extent(%v)_ExtentOffset(%v)_KernelOffset(%v)_"+
-		"Size(%v)_Opcode(%v)_CRC(%v)",
-		p.ReqID, p.PartitionID, p.ExtentID, p.ExtentOffset,
-		p.KernelOffset, p.Size, p.GetOpMsg(), p.CRC)
-
+	return 
 }
 
 // IsForwardPkt returns if the packet is the forward packet (a packet that will be forwarded to the followers).

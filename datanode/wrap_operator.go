@@ -550,7 +550,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		p.Size = uint32(currReadSize)
 		p.ExtentOffset = offset
 
-		err=func() error {
+		err = func() error {
 			var storeErr error
 			if !isRepairRead {
 				tp := exporter.NewTPCnt("StreamRead_StoreRead")
@@ -574,7 +574,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		reply.Opcode = p.Opcode
 		p.ResultCode = proto.OpOk
 
-		err=func() error {
+		err = func() error {
 			var netErr error
 			if !isRepairRead {
 				tp := exporter.NewTPCnt("StreamRead_WriteToConn")
@@ -582,7 +582,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 					tp.Set(netErr)
 				}()
 			}
-			netErr=reply.WriteToConn(connect)
+			netErr = reply.WriteToConn(connect)
 			return netErr
 		}()
 		if err != nil {
@@ -616,7 +616,16 @@ func (s *DataNode) handlePacketToGetAllWatermarks(p *repl.Packet) {
 	)
 	partition := p.Object.(*DataPartition)
 	store := partition.ExtentStore()
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionGetAllExtentWatermarks, err.Error())
+		}
+	}()
 	if p.ExtentType == proto.NormalExtentType {
+		if !store.IsFininshLoad() {
+			err = storage.PartitionIsLoaddingErr
+			return
+		}
 		fInfoList, _, err = store.GetAllWatermarks(storage.NormalExtentFilter())
 	} else {
 		extents := make([]uint64, 0)
@@ -625,12 +634,11 @@ func (s *DataNode) handlePacketToGetAllWatermarks(p *repl.Packet) {
 			fInfoList, _, err = store.GetAllWatermarks(storage.TinyExtentFilter(extents))
 		}
 	}
+	buf, err = json.Marshal(fInfoList)
 	if err != nil {
-		p.PackErrorBody(ActionGetAllExtentWatermarks, err.Error())
-	} else {
-		buf, err = json.Marshal(fInfoList)
-		p.PacketOkWithBody(buf)
+		return
 	}
+	p.PacketOkWithBody(buf)
 	return
 }
 
@@ -648,6 +656,10 @@ func (s *DataNode) handlePacketToGetAllWatermarksV2(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
 	store := partition.ExtentStore()
 	if p.ExtentType == proto.NormalExtentType {
+		if !store.IsFininshLoad() {
+			err = storage.PartitionIsLoaddingErr
+			return
+		}
 		fInfoList, _, err = store.GetAllWatermarks(storage.NormalExtentFilter())
 	} else {
 		var extentIDs = make([]uint64, 0, len(p.Data)/8)
@@ -858,14 +870,18 @@ func (s *DataNode) handlePacketToNotifyExtentRepair(p *repl.Packet) {
 	var (
 		err error
 	)
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionRepair, err.Error())
+		}
+	}()
 	partition := p.Object.(*DataPartition)
 	mf := new(DataPartitionRepairTask)
 	err = json.Unmarshal(p.Data, mf)
 	if err != nil {
-		p.PackErrorBody(ActionRepair, err.Error())
 		return
 	}
-	partition.DoExtentStoreRepair(mf)
+	partition.DoExtentStoreRepairOnFollowerDisk(mf)
 	p.PacketOkReply()
 	return
 }
@@ -894,7 +910,19 @@ func (s *DataNode) handlePacketToGetAppliedID(p *repl.Packet) {
 }
 
 func (s *DataNode) handlePacketToGetPartitionSize(p *repl.Packet) {
+	var (
+		err error
+	)
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionGetPartitionSize, err.Error())
+		}
+	}()
 	partition := p.Object.(*DataPartition)
+	if !partition.ExtentStore().IsFininshLoad() {
+		err = storage.PartitionIsLoaddingErr
+		return
+	}
 	usedSize := partition.extentStore.StoreSizeExtentID(p.ExtentID)
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, uint64(usedSize))
@@ -905,9 +933,20 @@ func (s *DataNode) handlePacketToGetPartitionSize(p *repl.Packet) {
 }
 
 func (s *DataNode) handlePacketToGetMaxExtentIDAndPartitionSize(p *repl.Packet) {
+	var (
+		err error
+	)
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(GetMaxExtentIDAndPartitionSize, err.Error())
+		}
+	}()
 	partition := p.Object.(*DataPartition)
+	if !partition.ExtentStore().IsFininshLoad() {
+		err = storage.PartitionIsLoaddingErr
+		return
+	}
 	maxExtentID, totalPartitionSize := partition.extentStore.GetMaxExtentIDAndPartitionSize()
-
 	buf := make([]byte, 16)
 	binary.BigEndian.PutUint64(buf[0:8], uint64(maxExtentID))
 	binary.BigEndian.PutUint64(buf[8:16], totalPartitionSize)

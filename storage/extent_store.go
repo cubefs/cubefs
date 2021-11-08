@@ -66,6 +66,10 @@ var (
 	}}
 )
 
+var (
+	PartitionIsLoaddingErr = fmt.Errorf("partition is loadding")
+)
+
 func GetSnapShotFileFromPool() (f *proto.File) {
 	f = SnapShotFilePool.Get().(*proto.File)
 	return
@@ -128,6 +132,7 @@ type ExtentStore struct {
 	partitionID                       uint64
 	verifyExtentFp                    *os.File
 	hasAllocSpaceExtentIDOnVerfiyFile uint64
+	isFininshLoad                     bool
 }
 
 func MkdirAll(name string) (err error) {
@@ -234,7 +239,7 @@ func (s *ExtentStore) Create(extentID uint64, putCache bool) (err error) {
 		err = ExtentExistsError
 		return err
 	}
-	e = NewExtentInCore(name, extentID)
+	e = NewExtent(name, extentID)
 	e.header = make([]byte, util.BlockHeaderSize)
 	err = e.InitToFS()
 	if err != nil {
@@ -262,35 +267,40 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 		baseFileID uint64
 	)
 	baseFileID, _ = s.GetPersistenceBaseExtentID()
-	dirFd,err:=os.Open(s.dataPath)
-	if err!=nil {
+	dirFd, err := os.Open(s.dataPath)
+	if err != nil {
 		return
 	}
 	defer func() {
 		dirFd.Close()
 	}()
-	files, err :=dirFd.Readdir(-1)
+	names, err := dirFd.Readdirnames(-1)
 	var (
 		extentID uint64
 		isExtent bool
-		e        *Extent
-		ei       *ExtentInfo
-		loadErr  error
 	)
-	for _, f := range files {
-		if extentID, isExtent = s.ExtentID(f.Name()); !isExtent {
+	for _, name := range names {
+		if extentID, isExtent = s.ExtentID(name); !isExtent {
 			continue
 		}
-		if e, loadErr = s.initExtentInfo(extentID, f); loadErr != nil {
-			continue
+		ei := &ExtentInfo{FileID: extentID}
+		if IsTinyExtent(extentID) {
+			name := path.Join(s.dataPath, strconv.FormatUint(extentID,10))
+			info, statErr := os.Stat(name)
+			if statErr != nil {
+				statErr = fmt.Errorf("restore from file %v system: %v", name, statErr)
+				log.LogWarnf(statErr.Error())
+				continue
+			}
+			watermark := info.Size()
+			if watermark%PageSize != 0 {
+				watermark = watermark + (PageSize - watermark%PageSize)
+			}
+			ei.Size = uint64(watermark)
 		}
-		ei = &ExtentInfo{FileID: extentID}
-		ei.UpdateExtentInfo(e, 0)
 		s.eiMutex.Lock()
 		s.extentInfoMap[extentID] = ei
 		s.eiMutex.Unlock()
-
-		e.Close()
 		if !IsTinyExtent(extentID) && extentID > baseFileID {
 			baseFileID = extentID
 		}
@@ -301,6 +311,36 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 	atomic.StoreUint64(&s.baseExtentID, baseFileID)
 	log.LogInfof("datadir(%v) maxBaseId(%v)", s.dataPath, baseFileID)
 	return nil
+}
+
+func (s *ExtentStore) AsyncLoadExtentSize() {
+	allExtentInfos := make([]*ExtentInfo, 0)
+	s.eiMutex.RLock()
+	for _, ei := range s.extentInfoMap {
+		allExtentInfos = append(allExtentInfos, ei)
+	}
+	s.eiMutex.RUnlock()
+
+	for _, ei := range allExtentInfos {
+		if IsTinyExtent(ei.FileID) {
+			continue
+		}
+		extentAbsPath := path.Join(s.dataPath, strconv.FormatUint(ei.FileID, 10))
+		info, err := os.Stat(extentAbsPath)
+		if err != nil {
+			log.LogWarnf("asyncLoadExtentSize extentPath(%v) error(%v)", extentAbsPath, err)
+			continue
+		}
+		if ei != nil && ei.Size == 0 {
+			ei.Size = uint64(info.Size())
+			ei.ModifyTime = info.ModTime().Unix()
+		}
+	}
+	s.isFininshLoad = true
+}
+
+func (s *ExtentStore) IsFininshLoad() bool {
+	return s.isFininshLoad
 }
 
 // Write writes the given extent to the disk.
@@ -452,6 +492,10 @@ func (s *ExtentStore) Watermark(extentID uint64) (ei *ExtentInfo, err error) {
 	var (
 		has bool
 	)
+	if !IsTinyExtent(extentID) && !s.IsFininshLoad() {
+		err = PartitionIsLoaddingErr
+		return
+	}
 	s.eiMutex.RLock()
 	ei, has = s.extentInfoMap[extentID]
 	s.eiMutex.RUnlock()
@@ -459,6 +503,7 @@ func (s *ExtentStore) Watermark(extentID uint64) (ei *ExtentInfo, err error) {
 		err = fmt.Errorf("e %v not exist", s.getExtentKey(extentID))
 		return
 	}
+
 	return
 }
 
@@ -798,7 +843,7 @@ func (s *ExtentStore) GetExtentCount() (count int) {
 
 func (s *ExtentStore) loadExtentFromDisk(extentID uint64, putCache bool) (e *Extent, err error) {
 	name := path.Join(s.dataPath, strconv.Itoa(int(extentID)))
-	e = NewExtentInCore(name, extentID)
+	e = NewExtent(name, extentID)
 	if err = e.RestoreFromFS(); err != nil {
 		err = fmt.Errorf("restore from file %v putCache %v system: %v", name, putCache, err)
 		return
@@ -818,16 +863,6 @@ func (s *ExtentStore) loadExtentFromDisk(extentID uint64, putCache bool) (e *Ext
 	return
 }
 
-func (s *ExtentStore) initExtentInfo(extentID uint64, f os.FileInfo) (e *Extent, err error) {
-	name := path.Join(s.dataPath, strconv.Itoa(int(extentID)))
-	e = NewExtentInCore(name, extentID)
-	if err = e.getStatFromFS(f); err != nil {
-		err = fmt.Errorf("restore from file %v system: %v", name, err)
-		return
-	}
-
-	return
-}
 
 func (s *ExtentStore) ScanBlocks(extentID uint64) (bcs []*BlockCrc, err error) {
 	var blockCnt int

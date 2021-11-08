@@ -21,12 +21,12 @@ type QueryHTTPReply struct {
 }
 
 type QueryData struct {
-	Pid		uint64	`json:"PID"`
-	Vol   	string  `json:"VOL"`
-	IP		string	`json:"IP"`
-	Op		string	`json:"OP"`
-	Count	uint64	`json:"TOTAL_COUNT"`
-	Size 	uint64  `json:"TOTAL_SIZE"`
+	Pid   uint64 `json:"PID"`
+	Vol   string `json:"VOL"`
+	IP    string `json:"IP"`
+	Op    string `json:"OP"`
+	Count uint64 `json:"TOTAL_COUNT"`
+	Size  uint64 `json:"TOTAL_SIZE"`
 }
 
 type QueryView struct {

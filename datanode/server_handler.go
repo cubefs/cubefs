@@ -19,8 +19,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/repl"
+	"github.com/chubaofs/chubaofs/util"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -329,6 +329,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		Learners             []proto.Learner       `json:"learners"`
 		TinyDeleteRecordSize int64                 `json:"tinyDeleteRecordSize"`
 		RaftStatus           *raft.Status          `json:"raftStatus"`
+		IsFininshLoading     bool                  `json:"isFininshLoad"`
 	}{
 		VolName:              partition.volumeID,
 		ID:                   partition.partitionID,
@@ -343,6 +344,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		RaftStatus:           raftStatus,
 		Peers:                partition.config.Peers,
 		Learners:             partition.config.Learners,
+		IsFininshLoading:     partition.ExtentStore().IsFininshLoad(),
 	}
 	s.buildSuccessResp(w, result)
 }
@@ -450,7 +452,7 @@ func (s *DataNode) buildJSONResp(w http.ResponseWriter, code int, data interface
 	w.Write(jsonBody)
 }
 
-func (s *DataNode) getStatInfo(w http.ResponseWriter, r *http.Request){
+func (s *DataNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 	//get process stat info
 	cpuUsageList, maxCPUUsage := s.processStatInfo.GetProcessCPUStatInfo()
 	memoryUsedGBList, maxMemoryUsedGB, maxMemoryUsage := s.processStatInfo.GetProcessMemoryStatInfo()
@@ -462,7 +464,7 @@ func (s *DataNode) getStatInfo(w http.ResponseWriter, r *http.Request){
 		if err != nil {
 			diskTotal = disk.Total
 		}
-		diskInfo := &struct{
+		diskInfo := &struct {
 			Path          string  `json:"path"`
 			TotalTB       float64 `json:"totalTB"`
 			UsedGB        float64 `json:"usedGB"`
@@ -470,9 +472,9 @@ func (s *DataNode) getStatInfo(w http.ResponseWriter, r *http.Request){
 			ReservedSpace uint    `json:"reservedSpaceGB"`
 		}{
 			Path:          disk.Path,
-			TotalTB:       util.FixedPoint(float64(diskTotal) / util.TB, 1),
-			UsedGB:        util.FixedPoint(float64(disk.Used) / util.GB, 1),
-			UsedRatio:     util.FixedPoint(float64(disk.Used) / float64(disk.Total), 1),
+			TotalTB:       util.FixedPoint(float64(diskTotal)/util.TB, 1),
+			UsedGB:        util.FixedPoint(float64(disk.Used)/util.GB, 1),
+			UsedRatio:     util.FixedPoint(float64(disk.Used)/float64(disk.Total), 1),
 			ReservedSpace: uint(disk.ReservedSpace / util.GB),
 		}
 		diskList = append(diskList, diskInfo)
@@ -484,7 +486,7 @@ func (s *DataNode) getStatInfo(w http.ResponseWriter, r *http.Request){
 		StartTime      string        `json:"startTime"`
 		CPUUsageList   []float64     `json:"cpuUsageList"`
 		MaxCPUUsage    float64       `json:"maxCPUUsage"`
-		CPUCoreNumber int            `json:"cpuCoreNumber"`
+		CPUCoreNumber  int           `json:"cpuCoreNumber"`
 		MemoryUsedList []float64     `json:"memoryUsedGBList"`
 		MaxMemoryUsed  float64       `json:"maxMemoryUsedGB"`
 		MaxMemoryUsage float64       `json:"maxMemoryUsage"`

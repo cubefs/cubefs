@@ -68,6 +68,41 @@ func NewSpaceManager(dataNode *DataNode) *SpaceManager {
 	return space
 }
 
+func (manager *SpaceManager) AsyncLoadExtent() {
+	log.LogErrorf("start AsyncLoadAllPartitions ")
+	const maxParallelism = 10
+	var parallelism = int(math.Min(float64(maxParallelism), float64(len(manager.partitions))))
+	wg := sync.WaitGroup{}
+	partitionC := make(chan *DataPartition, parallelism)
+	partitions := manager.GetPartitions()
+	wg.Add(1)
+	go func(c chan<- *DataPartition) {
+		defer wg.Done()
+		for _, dp := range partitions {
+			c <- dp
+		}
+		close(c)
+	}(partitionC)
+
+	for i := 0; i < parallelism; i++ {
+		wg.Add(1)
+		go func(c <-chan *DataPartition) {
+			defer wg.Done()
+			var dp *DataPartition
+			for {
+				if dp = <-c; dp == nil {
+					return
+				}
+				dp.ExtentStore().AsyncLoadExtentSize()
+			}
+		}(partitionC)
+	}
+	wg.Wait()
+	gHasLoadDataPartition = true
+	log.LogErrorf("end AsyncLoadAllPartitions ")
+
+}
+
 func (manager *SpaceManager) Stop() {
 	defer func() {
 		recover()
@@ -124,6 +159,16 @@ func (manager *SpaceManager) SetRaftStore(raftStore raftstore.RaftStore) {
 }
 func (manager *SpaceManager) GetRaftStore() (raftStore raftstore.RaftStore) {
 	return manager.raftStore
+}
+
+func (manager *SpaceManager) GetPartitions() (partitions []*DataPartition) {
+	partitions = make([]*DataPartition, 0)
+	manager.partitionMutex.RLock()
+	for _, dp := range manager.partitions {
+		partitions = append(partitions, dp)
+	}
+	manager.partitionMutex.RUnlock()
+	return
 }
 
 func (manager *SpaceManager) RangePartitions(f func(partition *DataPartition) bool) {
@@ -464,12 +509,12 @@ func (manager *SpaceManager) SetDiskFixTinyDeleteRecordLimit(newValue uint64) {
 }
 
 const (
-	MaxDiskRepairTaskLimit=256
+	MaxDiskRepairTaskLimit = 256
 )
 
 func (manager *SpaceManager) SetDiskRepairTaskLimit(newValue uint64) {
-	if newValue==0 {
-		newValue=MaxDiskRepairTaskLimit
+	if newValue == 0 {
+		newValue = MaxDiskRepairTaskLimit
 	}
 	if newValue > 0 && manager.repairTaskLimitOnDisk != newValue {
 		log.LogInfof("action[spaceManager] change DiskRepairTaskLimit from(%v) to(%v)", manager.repairTaskLimitOnDisk, newValue)

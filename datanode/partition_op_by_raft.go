@@ -220,28 +220,28 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 	var tracer = tracing.NewTracer("ApplyRandomWrite")
 	defer tracer.Finish()
 	var ctx = tracer.Context()
-	start:=time.Now().UnixMicro()
+	start := time.Now().UnixMicro()
 	defer func() {
 		if err == nil {
 			resp = proto.OpOk
-			log.LogWritef("[ApplyRandomWrite] " +
-				"ApplyID(%v) Partition(%v)_Extent(%v)_" +
+			log.LogWritef("[ApplyRandomWrite] "+
+				"ApplyID(%v) Partition(%v)_Extent(%v)_"+
 				"ExtentOffset(%v)_Size(%v)_CRC(%v) cost(%v)us",
 				raftApplyID, dp.partitionID, opItem.extentID,
-				opItem.offset, opItem.size, opItem.crc,time.Now().UnixMicro()-start)
+				opItem.offset, opItem.size, opItem.crc, time.Now().UnixMicro()-start)
 		} else {
-			msg:=fmt.Sprintf("[ApplyRandomWrite] " +
-				"ApplyID(%v) Partition(%v)_Extent(%v)_" +
+			msg := fmt.Sprintf("[ApplyRandomWrite] "+
+				"ApplyID(%v) Partition(%v)_Extent(%v)_"+
 				"ExtentOffset(%v)_Size(%v)_CRC(%v)  Failed Result(%v) cost(%v)us",
 				raftApplyID, dp.partitionID, opItem.extentID,
-				opItem.offset, opItem.size, opItem.crc,err.Error(),time.Now().UnixMicro()-start)
+				opItem.offset, opItem.size, opItem.crc, err.Error(), time.Now().UnixMicro()-start)
 			exporter.Warning(msg)
 			resp = proto.OpDiskErr
 			log.LogErrorf(msg)
 		}
 	}()
 	for i := 0; i < 20; i++ {
-		err=func() error {
+		err = func() error {
 			var storeErr error
 			tp := exporter.NewTPCnt("ApplyRandomWrite_StoreWrite")
 			defer func() {

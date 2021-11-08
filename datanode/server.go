@@ -98,7 +98,7 @@ type DataNode struct {
 	stopC                    chan bool
 	fixTinyDeleteRecordLimit uint64
 	control                  common.Control
-	processStatInfo  *statinfo.ProcessStatInfo
+	processStatInfo          *statinfo.ProcessStatInfo
 }
 
 func NewServer() *DataNode {
@@ -170,7 +170,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	// this operation will start raft partitions belong to data partitions.
 	s.space.StartPartitions()
 	log.LogErrorf("doStart start dataPartition raft  fininsh")
-	gHasLoadDataPartition = true
+	go s.space.AsyncLoadExtent()
 
 	go s.registerHandler()
 
@@ -413,7 +413,7 @@ func (s *DataNode) startTCPService() (err error) {
 			conn, err := ln.Accept()
 			if err != nil {
 				log.LogErrorf("action[startTCPService] failed to accept, err:%s", err.Error())
-				time.Sleep(time.Second*5)
+				time.Sleep(time.Second * 5)
 				continue
 			}
 			log.LogDebugf("action[startTCPService] accept connection from %s.", conn.RemoteAddr().String())
@@ -496,7 +496,7 @@ func (s *DataNode) summaryMonitorData(reportTime int64) []*statistics.MonitorDat
 			data := &statistics.MonitorData{
 				VolName:     partition.volumeID,
 				PartitionID: partition.partitionID,
-				DiskPath:	 partition.Disk().Path,
+				DiskPath:    partition.Disk().Path,
 				Action:      i,
 				ActionStr:   statistics.ActionDataMap[i],
 				Size:        atomic.SwapUint64(&partition.monitorData[i].Size, 0),

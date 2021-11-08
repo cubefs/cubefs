@@ -56,18 +56,19 @@ type ReplProtocol struct {
 	followerConnects map[string]*FollowerTransport
 	lock             sync.RWMutex
 
-	prepareFunc  func(p *Packet) error                 // prepare packet
+	prepareFunc  func(p *Packet,remote string) error                 // prepare packet
 	operatorFunc func(p *Packet, c *net.TCPConn) error // operator
 	postFunc     func(p *Packet) error                 // post-processing packet
 
-	isError              int32
 	replId               int64
-	stopError            string
 	startTime            int64
 	allThreadStats       []int
 	allThreadStatsLock   sync.Mutex
 	getNumFromBufferPool int64
 	putNumToBufferPool   int64
+	isError   int32
+	remote    string
+	stopError string
 }
 
 type FollowerTransport struct {
@@ -259,7 +260,7 @@ func (ft *FollowerTransport) Write(p *FollowerPacket) (err error) {
 	return
 }
 
-func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet) error,
+func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet,remote string) error,
 	operatorFunc func(p *Packet, c *net.TCPConn) error, postFunc func(p *Packet) error) *ReplProtocol {
 	rp := new(ReplProtocol)
 	rp.packetList = list.New()
@@ -277,6 +278,7 @@ func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet) error,
 	rp.exited = ReplRuning
 	rp.replId = proto.GenerateRequestID()
 	ReplProtocalMap.Store(rp.replId, rp)
+	rp.remote = rp.sourceConn.RemoteAddr().String()
 	go rp.OperatorAndForwardPktGoRoutine()
 	go rp.writeResponseToClientGoRroutine()
 
@@ -359,16 +361,16 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 		defer tracer.Finish()
 		request.SetCtx(tracer.Context())
 	}
-	remoteAddr := rp.sourceConn.RemoteAddr().String()
 	log.LogDebugf("action[readPkgAndPrepare] packet(%v) from remote(%v) ",
-		request.GetUniqueLogId(), remoteAddr)
-	if err = request.resolveFollowersAddr(remoteAddr); err != nil {
+		request.GetUniqueLogId(), rp.remote)
+	if err = request.resolveFollowersAddr(rp.remote); err != nil {
 		err = rp.putResponse(request)
 		return
 	}
-	if err = rp.prepareFunc(request); err != nil {
-		log.LogErrorf("%v  packet(%v) from remote(%v) error(%v)",
-			ActionPreparePkt, request.GetUniqueLogId(), remoteAddr, err.Error())
+	if err = rp.prepareFunc(request,rp.sourceConn.RemoteAddr().String()); err != nil {
+		err=fmt.Errorf("%v  packet(%v) from remote(%v) error(%v)",
+		ActionPreparePkt, request.GetUniqueLogId(), rp.remote, err.Error())
+		log.LogErrorf(err.Error())
 		err = rp.putResponse(request)
 		return
 	}
@@ -588,7 +590,6 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 	defer func() {
 		rp.cleanPacket(reply)
 	}()
-
 	_ = rp.postFunc(reply)
 	if !reply.NeedReply {
 		return
@@ -602,6 +603,8 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 	if err = reply.WriteToConn(rp.sourceConn); err != nil {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, fmt.Sprintf("local(%v)->remote(%v)", rp.sourceConn.LocalAddr().String(),
 			rp.sourceConn.RemoteAddr().String()), reply.StartT, err))
+		err=fmt.Errorf("ReplProtocol(%v) ReplProtocalID (%v) will exit error(%v)",
+			rp.sourceConn.RemoteAddr(),rp.remote,err)
 		log.LogErrorf(err.Error())
 		rp.Stop(err)
 	}
