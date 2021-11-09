@@ -14,12 +14,22 @@
 
 package metanode
 
+import "github.com/chubaofs/chubaofs/proto"
+
 type ExtendOpResult struct {
 	Status uint8
 	Extend *Extend
 }
 
-func (mp *metaPartition) fsmSetXAttr(extend *Extend) (err error) {
+func (mp *metaPartition) fsmSetXAttr(extend *Extend) (resp *proto.XAttrRaftResponse, err error) {
+	resp = &proto.XAttrRaftResponse{Inode: extend.inode}
+	resp.Status = proto.OpOk
+
+	if tmpErr := mp.isInoOutOfRange(extend.inode); tmpErr != nil {
+		resp.Status = proto.OpInodeOutOfRange
+		return
+	}
+
 	treeItem := mp.extendTree.CopyGet(extend)
 	var e *Extend
 	if treeItem == nil {
@@ -32,7 +42,15 @@ func (mp *metaPartition) fsmSetXAttr(extend *Extend) (err error) {
 	return
 }
 
-func (mp *metaPartition) fsmRemoveXAttr(extend *Extend) (err error) {
+func (mp *metaPartition) fsmRemoveXAttr(extend *Extend) (resp *proto.XAttrRaftResponse, err error) {
+	resp = &proto.XAttrRaftResponse{Inode: extend.inode}
+	resp.Status = proto.OpOk
+
+	if tmpErr := mp.isInoOutOfRange(extend.inode); tmpErr != nil {
+		resp.Status = proto.OpInodeOutOfRange
+		return
+	}
+
 	treeItem := mp.extendTree.CopyGet(extend)
 	if treeItem == nil {
 		return

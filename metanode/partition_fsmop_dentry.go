@@ -50,6 +50,11 @@ func NewDentryResponse() *DentryResponse {
 func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 	forceUpdate bool) (status uint8) {
 	status = proto.OpOk
+
+	if err := mp.isInoOutOfRange(dentry.ParentId); err != nil {
+		return  proto.OpInodeOutOfRange
+	}
+
 	item := mp.inodeTree.CopyGet(NewInode(dentry.ParentId, 0))
 	var parIno *Inode
 	defer func() {
@@ -97,6 +102,11 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 // Query a dentry from the dentry tree with specified dentry info.
 func (mp *metaPartition) getDentry(dentry *Dentry) (*Dentry, uint8) {
 	status := proto.OpOk
+
+	if err := mp.isInoOutOfRange(dentry.ParentId); err != nil {
+		return nil, proto.OpInodeOutOfRange
+	}
+
 	item := mp.dentryTree.Get(dentry)
 	if item == nil {
 		status = proto.OpNotExistErr
@@ -113,9 +123,11 @@ func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (
 	resp.Status = proto.OpOk
 
 	var ino *Inode
-	defer func() {
-		log.LogErrorf("fsmDeleteDentry dentry(%v) inode(%v)", dentry, ino)
-	}()
+	if err := mp.isInoOutOfRange(dentry.ParentId); err != nil {
+		resp.Status = proto.OpInodeOutOfRange
+		return
+	}
+
 	var item interface{}
 	if checkInode {
 		item = mp.dentryTree.Execute(func(tree *btree.BTree) interface{} {
@@ -167,6 +179,12 @@ func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry) (
 	resp *DentryResponse) {
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
+
+	if err := mp.isInoOutOfRange(dentry.ParentId); err != nil {
+		resp.Status = proto.OpInodeOutOfRange
+		return
+	}
+
 	mp.dentryTree.CopyFind(dentry, func(item BtreeItem) {
 		if item == nil {
 			resp.Status = proto.OpNotExistErr

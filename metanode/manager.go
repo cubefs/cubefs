@@ -125,7 +125,9 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 	case proto.OpMetaBatchUnlinkInode:
 		err = m.opMetaBatchUnlinkInode(conn, p, remoteAddr)
 	case proto.OpMetaInodeGet:
-		err = m.opMetaInodeGet(conn, p, remoteAddr)
+		err = m.opMetaInodeGet(conn, p, remoteAddr, proto.OpInodeGetVersion1)
+	case proto.OpMetaInodeGetV2:
+		err = m.opMetaInodeGet(conn, p, remoteAddr, proto.OpInodeGetVersion2)
 	case proto.OpMetaEvictInode:
 		err = m.opMetaEvictInode(conn, p, remoteAddr)
 	case proto.OpMetaBatchEvictInode:

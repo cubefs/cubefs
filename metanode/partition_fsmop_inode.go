@@ -48,6 +48,12 @@ func (mp *metaPartition) fsmCreateInode(ino *Inode) (status uint8) {
 func (mp *metaPartition) fsmCreateLinkInode(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
+
+	if err := mp.isInoOutOfRange(ino.Inode); err != nil {
+		resp.Status = proto.OpInodeOutOfRange
+		return
+	}
+
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
@@ -66,6 +72,12 @@ func (mp *metaPartition) fsmCreateLinkInode(ino *Inode) (resp *InodeResponse) {
 func (mp *metaPartition) getInode(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
+
+	if err := mp.isInoOutOfRange(ino.Inode); err != nil {
+		resp.Status = proto.OpInodeOutOfRange
+		return
+	}
+
 	item := mp.inodeTree.Get(ino)
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
@@ -113,6 +125,12 @@ func (mp *metaPartition) Ascend(f func(i BtreeItem) bool) {
 func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
+
+	if err := mp.isInoOutOfRange(ino.Inode); err != nil {
+		resp.Status = proto.OpInodeOutOfRange
+		return
+	}
+
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
@@ -220,6 +238,12 @@ func (mp *metaPartition) internalDeleteInode(ino *Inode) {
 
 func (mp *metaPartition) fsmAppendExtents(ctx context.Context, ino *Inode) (status uint8) {
 	status = proto.OpOk
+
+	if err := mp.isInoOutOfRange(ino.Inode); err != nil {
+		status = proto.OpInodeOutOfRange
+		return
+	}
+
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
 		status = proto.OpNotExistErr
@@ -239,6 +263,12 @@ func (mp *metaPartition) fsmAppendExtents(ctx context.Context, ino *Inode) (stat
 
 func (mp *metaPartition) fsmInsertExtents(ctx context.Context, ino *Inode) (status uint8) {
 	status = proto.OpOk
+
+	if err := mp.isInoOutOfRange(ino.Inode); err != nil {
+		status = proto.OpInodeOutOfRange
+		return
+	}
+
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
 		status = proto.OpNotExistErr
@@ -263,6 +293,12 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 
 	resp.Status = proto.OpOk
+
+	if err := mp.isInoOutOfRange(ino.Inode); err != nil {
+		resp.Status = proto.OpInodeOutOfRange
+		return
+	}
+
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
@@ -307,6 +343,12 @@ func (mp *metaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 
 	resp.Status = proto.OpOk
+
+	if err := mp.isInoOutOfRange(ino.Inode); err != nil {
+		resp.Status = proto.OpInodeOutOfRange
+		return
+	}
+
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
@@ -346,7 +388,15 @@ func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
 	}
 }
 
-func (mp *metaPartition) fsmSetAttr(req *SetattrRequest) (err error) {
+func (mp *metaPartition) fsmSetAttr(req *SetattrRequest) (resp *InodeResponse, err error) {
+	resp = NewInodeResponse()
+	resp.Status = proto.OpOk
+
+	if interErr := mp.isInoOutOfRange(req.Inode); interErr != nil {
+		resp.Status = proto.OpInodeOutOfRange
+		return
+	}
+
 	ino := NewInode(req.Inode, req.Mode)
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {

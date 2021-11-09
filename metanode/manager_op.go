@@ -393,7 +393,7 @@ func (m *metadataManager) opReadDir(conn net.Conn, p *Packet,
 }
 
 func (m *metadataManager) opMetaInodeGet(conn net.Conn, p *Packet,
-	remoteAddr string) (err error) {
+	remoteAddr string, version uint8) (err error) {
 	req := &InodeGetReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -411,7 +411,7 @@ func (m *metadataManager) opMetaInodeGet(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	if err = mp.InodeGet(req, p); err != nil {
+	if err = mp.InodeGet(req, p, version); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 	}
 	m.respondToClient(conn, p)

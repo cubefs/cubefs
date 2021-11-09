@@ -447,6 +447,13 @@ type BatchGetXAttrResponse struct {
 	XAttrs      []*XAttrInfo
 }
 
+type XAttrRaftResponse struct {
+	VolName     string   `json:"vol"`
+	PartitionId uint64   `json:"pid"`
+	Inode       uint64   `json:"ino"`
+	Status		uint8	 `json:"status"`
+}
+
 type MultipartInfo struct {
 	ID       string               `json:"id"`
 	Path     string               `json:"path"`

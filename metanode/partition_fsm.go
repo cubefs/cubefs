@@ -118,7 +118,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err != nil {
 			return
 		}
-		err = mp.fsmSetAttr(req)
+		resp, err = mp.fsmSetAttr(req)
 	case opFSMCreateDentry:
 		mp.monitorData[statistics.ActionMetaCreateDentry].UpdateData(0)
 
@@ -198,13 +198,13 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if extend, err = NewExtendFromBytes(msg.V); err != nil {
 			return
 		}
-		err = mp.fsmSetXAttr(extend)
+		resp, err = mp.fsmSetXAttr(extend)
 	case opFSMRemoveXAttr:
 		var extend *Extend
 		if extend, err = NewExtendFromBytes(msg.V); err != nil {
 			return
 		}
-		err = mp.fsmRemoveXAttr(extend)
+		resp, err = mp.fsmRemoveXAttr(extend)
 	case opFSMCreateMultipart:
 		var multipart *Multipart
 		multipart = MultipartFromBytes(msg.V)

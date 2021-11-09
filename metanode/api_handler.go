@@ -294,7 +294,7 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 		Inode:       id,
 	}
 	p := NewPacket(r.Context())
-	err = mp.InodeGet(req, p)
+	err = mp.InodeGet(req, p, proto.OpInodeGetCurVersion)
 	if err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()

@@ -32,6 +32,11 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
 
+	if err = mp.isInoOutOfRange(req.Inode); err != nil {
+		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
+		return
+	}
+
 	ino := NewInode(req.Inode, 0)
 	ext := req.Extent
 	ino.Extents.Append(p.Ctx(), ext)
@@ -53,6 +58,11 @@ func (mp *metaPartition) ExtentInsert(req *proto.InsertExtentKeyRequest, p *Pack
 	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.ExtentInsert")
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
+
+	if err = mp.isInoOutOfRange(req.Inode); err != nil {
+		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
+		return
+	}
 
 	ino := NewInode(req.Inode, 0)
 	ext := req.Extent
@@ -76,6 +86,11 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.ExtentsList")
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
+
+	if err = mp.isInoOutOfRange(req.Inode); err != nil {
+		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
+		return
+	}
 
 	mp.monitorData[statistics.ActionMetaExtentsList].UpdateData(0)
 
@@ -116,6 +131,11 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (er
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
 
+	if err = mp.isInoOutOfRange(req.Inode); err != nil {
+		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
+		return
+	}
+
 	log.LogDebugf("partition(%v) extents truncate (reqID: %v, inode: %v, version %v, oldSize %v, size: %v)",
 		mp.config.PartitionId, p.ReqID, req.Inode, req.Version, req.OldSize, req.Size)
 
@@ -144,6 +164,11 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.BatchExtentAppend")
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
+
+	if err = mp.isInoOutOfRange(req.Inode); err != nil {
+		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
+		return
+	}
 
 	ino := NewInode(req.Inode, 0)
 	extents := req.Extents

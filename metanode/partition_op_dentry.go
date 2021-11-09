@@ -29,6 +29,11 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
 
+	if err = mp.isInoOutOfRange(req.ParentID); err != nil {
+		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
+		return
+	}
+
 	if req.ParentID == req.Inode {
 		err = fmt.Errorf("parentId is equal inodeId")
 		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
@@ -59,6 +64,11 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err erro
 	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.DeleteDentry")
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
+
+	if err = mp.isInoOutOfRange(req.ParentID); err != nil {
+		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
+		return
+	}
 
 	dentry := &Dentry{
 		ParentId: req.ParentID,
@@ -161,6 +171,11 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err erro
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
 
+	if err = mp.isInoOutOfRange(req.ParentID); err != nil {
+		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
+		return
+	}
+
 	if req.ParentID == req.Inode {
 		err = fmt.Errorf("parentId is equal inodeId")
 		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
@@ -201,6 +216,11 @@ func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
 
+	if err = mp.isInoOutOfRange(req.ParentID); err != nil {
+		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
+		return
+	}
+
 	mp.monitorData[statistics.ActionMetaReadDir].UpdateData(0)
 
 	resp := mp.readDir(p.Ctx(), req)
@@ -218,6 +238,11 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.Lookup")
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
+
+	if err = mp.isInoOutOfRange(req.ParentID); err != nil {
+		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
+		return
+	}
 
 	mp.monitorData[statistics.ActionMetaLookup].UpdateData(0)
 

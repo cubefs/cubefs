@@ -24,14 +24,29 @@ import (
 )
 
 func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err error) {
-	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.SetXAttr")
+	var (
+		tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.SetXAttr")
+		resp interface{}
+	)
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
 
+	if err = mp.isInoOutOfRange(req.Inode); err != nil {
+		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
+		return
+	}
+
 	var extend = NewExtend(req.Inode)
 	extend.Put([]byte(req.Key), []byte(req.Value))
-	if _, err = mp.putExtend(p.Ctx(), opFSMSetXAttr, p.Remote(), extend); err != nil {
+
+	resp, err = mp.putExtend(p.Ctx(), opFSMSetXAttr, p.Remote(), extend)
+	if  err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+
+	if resp.(*proto.XAttrRaftResponse).Status != proto.OpOk {
+		p.PacketErrorWithBody(resp.(*proto.XAttrRaftResponse).Status, []byte("raft set xAttr failed"))
 		return
 	}
 	p.PacketOkReply()
@@ -42,6 +57,11 @@ func (mp *metaPartition) GetXAttr(req *proto.GetXAttrRequest, p *Packet) (err er
 	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.GetXAttr")
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
+
+	if err = mp.isInoOutOfRange(req.Inode); err != nil {
+		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
+		return
+	}
 
 	var response = &proto.GetXAttrResponse{
 		VolName:     req.VolName,
@@ -102,14 +122,27 @@ func (mp *metaPartition) BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packe
 }
 
 func (mp *metaPartition) RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (err error) {
-	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.RemoveXAttr")
+	var (
+		tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.RemoveXAttr")
+		resp interface{}
+	)
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
 
+	if err = mp.isInoOutOfRange(req.Inode); err != nil {
+		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
+		return
+	}
+
 	var extend = NewExtend(req.Inode)
 	extend.Put([]byte(req.Key), nil)
-	if _, err = mp.putExtend(p.Ctx(), opFSMRemoveXAttr, p.Remote(), extend); err != nil {
+	resp, err = mp.putExtend(p.Ctx(), opFSMRemoveXAttr, p.Remote(), extend)
+	if  err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	if resp.(*proto.XAttrRaftResponse).Status != proto.OpOk {
+		p.PacketErrorWithBody(resp.(*proto.XAttrRaftResponse).Status, nil)
 		return
 	}
 	p.PacketOkReply()
@@ -120,6 +153,11 @@ func (mp *metaPartition) ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err 
 	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.ListXAttr")
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
+
+	if err = mp.isInoOutOfRange(req.Inode); err != nil {
+		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
+		return
+	}
 
 	var response = &proto.ListXAttrResponse{
 		VolName:     req.VolName,

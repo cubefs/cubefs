@@ -46,6 +46,12 @@ const (
 	AddrSplit = "/"
 )
 
+const (
+	OpInodeGetVersion1   uint8 = 1
+	OpInodeGetVersion2   uint8 = 2
+	OpInodeGetCurVersion uint8 = OpInodeGetVersion2
+)
+
 // Operations
 const (
 	ProtoMagic           uint8 = 0xFF
@@ -103,6 +109,7 @@ const (
 	OpMetaBatchGetXAttr   uint8 = 0x39
 	OpMetaGetAppliedID    uint8 = 0x3A
 	OpMetaExtentsInsert   uint8 = 0x3B
+	OpMetaInodeGetV2      uint8 = 0x3C	//new op code, old(get) compatible the old client
 
 	// Operations: Master -> MetaNode
 	OpCreateMetaPartition             uint8 = 0x40
@@ -153,6 +160,7 @@ const (
 	OpMetaCursorReset uint8 = 0x94
 
 	// Commons
+	OpInodeOutOfRange  uint8 = 0xF2
 	OpIntraGroupNetErr uint8 = 0xF3
 	OpArgMismatchErr   uint8 = 0xF4
 	OpNotExistErr      uint8 = 0xF5
@@ -291,6 +299,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpNotifyReplicasToRepair"
 	case OpExtentRepairRead:
 		m = "OpExtentRepairRead"
+	case OpInodeOutOfRange:
+		m = "InodeOutOfRange"
 	case OpIntraGroupNetErr:
 		m = "IntraGroupNetErr"
 	case OpMetaCreateInode:
@@ -448,6 +458,8 @@ func (p *Packet) GetResultMsg() (m string) {
 	}
 
 	switch p.ResultCode {
+	case OpInodeOutOfRange:
+		m = "Inode Out of Range :" + p.GetRespData()
 	case OpIntraGroupNetErr:
 		m = "IntraGroupNetErr: " + p.GetRespData()
 	case OpDiskNoSpaceErr:

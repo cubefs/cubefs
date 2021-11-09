@@ -113,7 +113,7 @@ type OpInode interface {
 	CreateInode(req *CreateInoReq, p *Packet) (err error)
 	UnlinkInode(req *UnlinkInoReq, p *Packet) (err error)
 	UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (err error)
-	InodeGet(req *InodeGetReq, p *Packet) (err error)
+	InodeGet(req *InodeGetReq, p *Packet, version uint8) (err error)
 	InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error)
 	CreateInodeLink(req *LinkInodeReq, p *Packet) (err error)
 	EvictInode(req *EvictInodeReq, p *Packet) (err error)
@@ -602,6 +602,15 @@ func (mp *metaPartition) nextInodeID() (inodeId uint64, err error) {
 			return newId, nil
 		}
 	}
+}
+
+// Return a new inode ID and update the offset.
+func (mp *metaPartition) isInoOutOfRange(inodeId uint64) (err error) {
+	cur := atomic.LoadUint64(&mp.config.Cursor)
+	if inodeId > cur || inodeId < mp.config.Start{
+		err = fmt.Errorf("ino[%d] is out of range[%d, %d]", inodeId, mp.config.Start, cur)
+	}
+	return  err
 }
 
 // ChangeMember changes the raft member with the specified one.

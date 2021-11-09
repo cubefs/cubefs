@@ -248,7 +248,7 @@ func (mp *metaPartition) loadExtend(rootDir string) error {
 		}
 		log.LogDebugf("loadExtend: new extend from bytes: partitionID（%v) volume(%v) inode(%v)",
 			mp.config.PartitionId, mp.config.VolName, extend.inode)
-		_ = mp.fsmSetXAttr(extend)
+		_, _ = mp.fsmSetXAttr(extend)
 		offset += int(numBytes)
 	}
 	log.LogInfof("loadExtend: load complete: partitionID(%v) volume(%v) numExtends(%v) filename(%v)",
