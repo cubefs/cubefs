@@ -16,9 +16,11 @@ package stream
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/sdk/meta"
 	"sync"
+	"syscall"
 	"time"
+
+	"github.com/chubaofs/chubaofs/sdk/meta"
 
 	"golang.org/x/time/rate"
 
@@ -222,7 +224,8 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags i
 
 	s := client.GetStreamer(inode)
 	if s == nil {
-		return 0, fmt.Errorf("Prefix(%v): stream is not opened yet", prefix)
+		log.LogErrorf("Prefix(%v): stream is not opened yet", prefix)
+		return 0, syscall.EBADF
 	}
 
 	s.once.Do(func() {
@@ -243,7 +246,8 @@ func (client *ExtentClient) Truncate(mw *meta.MetaWrapper, parentIno uint64, ino
 	prefix := fmt.Sprintf("Truncate{ino(%v)size(%v)}", inode, size)
 	s := client.GetStreamer(inode)
 	if s == nil {
-		return fmt.Errorf("Prefix(%v): stream is not opened yet", prefix)
+		log.LogErrorf("Prefix(%v): stream is not opened yet", prefix)
+		return syscall.EBADF
 	}
 	var info *proto.InodeInfo
 	var err error
@@ -267,7 +271,8 @@ func (client *ExtentClient) Truncate(mw *meta.MetaWrapper, parentIno uint64, ino
 func (client *ExtentClient) Flush(inode uint64) error {
 	s := client.GetStreamer(inode)
 	if s == nil {
-		return fmt.Errorf("Flush: stream is not opened yet, ino(%v)", inode)
+		log.LogErrorf("Flush: stream is not opened yet, ino(%v)", inode)
+		return syscall.EBADF
 	}
 	return s.IssueFlushRequest()
 }
@@ -279,8 +284,8 @@ func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int
 
 	s := client.GetStreamer(inode)
 	if s == nil {
-		err = fmt.Errorf("Read: stream is not opened yet, ino(%v) offset(%v) size(%v)", inode, offset, size)
-		return
+		log.LogErrorf("Read: stream is not opened yet, ino(%v) offset(%v) size(%v)", inode, offset, size)
+		return 0, syscall.EBADF
 	}
 
 	s.once.Do(func() {
