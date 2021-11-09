@@ -297,9 +297,29 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 	start := time.Now()
 
 	dirCtx := d.dctx.GetCopy(req.Handle)
+	if d.super.noReaddirLimit {
+		if dirCtx.Name != "" {
+			return nil, io.EOF
+		}
+		if subdirs, err := d.ReadDirAll(ctx); err != nil {
+			return nil, err
+		} else {
+			// return EOF to ask fuse stop readdir more
+			dirCtx.Name = subdirs[len(subdirs)-1].Name
+			d.dctx.Put(req.Handle, &dirCtx)
+			return subdirs, io.EOF
+		}
+	}
+
 	children, err := d.super.mw.ReadDirLimit_ll(d.info.Inode, dirCtx.Name, limit)
 	if err != nil {
-		log.LogErrorf("readdirlimit: Readdir: ino(%v) err(%v)", d.info.Inode, err)
+		log.LogErrorf("readdirlimit: Readdir: ino(%v) err(%v) try ReadDirAll", d.info.Inode, err)
+		if err == syscall.ENOSYS || err == syscall.EIO {
+			log.LogInfof("readdirlimit: not implemented set NoReaddirLimit as true")
+			d.super.noReaddirLimit = true
+			// return direct, fuse will regard this as needing readdir more
+			return nil, nil
+		}
 		return make([]fuse.Dirent, 0), ParseError(err)
 	}
 
