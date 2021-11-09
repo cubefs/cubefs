@@ -469,14 +469,11 @@ func (m *Server) deleteMetaReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	validate := true
 	var value string
 	if value = r.FormValue(forceKey); value != "" {
-		if force, err = strconv.ParseBool(value); err==nil && force {
-			validate = false
-		}
+		force, _ = strconv.ParseBool(value)
 	}
-	if err = m.cluster.deleteMetaReplica(mp, addr, validate); err != nil {
+	if err = m.cluster.deleteMetaReplica(mp, addr, true, force); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

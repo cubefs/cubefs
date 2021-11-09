@@ -106,7 +106,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 	oldHosts = mp.Hosts
 	mp.RUnlock()
 
-	if err = c.validateDecommissionMetaPartition(mp, srcAddr); err != nil {
+	if err = c.validateDecommissionMetaPartition(mp, srcAddr, false); err != nil {
 		goto errHandler
 	}
 
@@ -154,7 +154,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		}
 	}
 
-	if err = c.deleteMetaReplica(mp, srcAddr, false); err != nil {
+	if err = c.deleteMetaReplica(mp, srcAddr, false, false); err != nil {
 		goto errHandler
 	}
 
@@ -197,7 +197,7 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) 
 	return c.migrateMetaPartition(nodeAddr, "", mp)
 }
 
-func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr string) (err error) {
+func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr string, forceDel bool) (err error) {
 	mp.RLock()
 	defer mp.RUnlock()
 	var vol *Vol
@@ -205,6 +205,11 @@ func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr 
 		return
 	}
 	if err = mp.canBeOffline(nodeAddr, int(vol.mpReplicaNum)); err != nil {
+		return
+	}
+
+	if forceDel {
+		log.LogWarnf("action[validateDecommissionMetaPartition] mp relica be force delete without check missing and recovery status")
 		return
 	}
 
@@ -301,14 +306,14 @@ func (c *Cluster) checkLackReplicaMetaPartitions() (lackReplicaMetaPartitions []
 	return
 }
 
-func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, validate bool) (err error) {
+func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, validate bool, forceDel bool) (err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[deleteMetaReplica],vol[%v],data partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
 		}
 	}()
 	if validate {
-		if err = c.validateDecommissionMetaPartition(partition, addr); err != nil {
+		if err = c.validateDecommissionMetaPartition(partition, addr, forceDel); err != nil {
 			return
 		}
 	}
