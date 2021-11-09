@@ -200,8 +200,7 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 	case proto.OpGetMultipart:
 		err = m.opGetMultipart(conn, p, remoteAddr)
 	default:
-		err = fmt.Errorf("%s unknown Opcode: %d, reqId: %d", remoteAddr,
-			p.Opcode, p.GetReqID())
+		err = m.opUnknownOpCode(conn, p, remoteAddr)
 	}
 	if err != nil {
 		err = errors.NewErrorf("%s [%s] req: %d - %s", remoteAddr, p.GetOpMsg(),
