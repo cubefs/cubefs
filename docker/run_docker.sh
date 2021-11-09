@@ -23,6 +23,20 @@ EOF
     exit 0
 }
 
+generate_ssh_key() {
+    KeyPath=$DiskPath/ssh-key
+    if [ ! -f $KeyPath/id_rsa ] || [ ! -f $KeyPath/authorized_keys ]; then
+        rm -rf $KeyPath
+        mkdir -p $KeyPath
+        ssh-keygen -t rsa -q -C chubaofs -f $KeyPath/id_rsa -N ''
+        mv $KeyPath/id_rsa.pub $KeyPath/authorized_keys
+        if [ -f $KeyPath/id_rsa ] && [ -f $KeyPath/authorized_keys ]; then
+            echo "Generate ssh key in $KeyPath SUCC"
+        else
+            echo "error: Generate ssh key in $KeyPath failed"
+        fi
+    fi
+}
 
 clean() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml down
@@ -40,6 +54,7 @@ build() {
 
 # start server
 start_servers() {
+    generate_ssh_key
     isDiskAvailable $DiskPath
     mkdir -p ${DiskPath}/disk/{1..4}
     docker-compose -f ${RootPath}/docker/docker-compose.yml up -d servers
@@ -59,6 +74,7 @@ start_ltptest() {
 
 run_ltptest() {
     build
+    generate_ssh_key
     start_servers
     start_ltptest
     clean
@@ -66,6 +82,7 @@ run_ltptest() {
 
 run() {
     build
+    generate_ssh_key
     start_monitor
     start_servers
     start_client

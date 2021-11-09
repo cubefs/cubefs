@@ -25,5 +25,8 @@
     "action:oss:CreateBucket",
     "action:oss:DeleteBucket"
   ],
-  "strict": true
+  "strict": true,
+  "user": "root",
+  "accessKey": "root's access key value",
+  "secretKey": "root's secret key value"
 }

@@ -20,7 +20,11 @@ RUN  mkdir -p /tmp/ltp /opt/ltp && cd /tmp/ltp \
 RUN apt-get install -y sudo python3 python3-pip
 RUN pip3 install boto3 unittest2 requests
 
+# install ssh server for master to allow login
+RUN apt-get install -y openssh-server
+
+# install tools
+RUN apt-get install -y jq fuse
+
 # cleanup environment
-RUN apt-get install -y jq fuse \
-        && rm -rf /var/lib/apt/lists/* \
-        && apt-get clean
+RUN rm -rf /var/lib/apt/lists/* && apt-get clean
