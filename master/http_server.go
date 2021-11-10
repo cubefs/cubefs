@@ -321,6 +321,22 @@ func (m *Server) registerHandler(router *mux.Router, model string, schema *graph
 			return
 		}
 
+		if m.enableSimpleAuth() {
+			sign := request.Header.Get(proto.UserSign)
+			if sign == "" {
+				ErrResponse(writer, fmt.Errorf("not found [%s] in header", proto.UserSign))
+				return
+			}
+
+			signs := make([]*proto.AuthSignature, 0, 1)
+			s := &proto.AuthSignature{UserID: userID, Signature: sign}
+			signs = append(signs, s)
+			if err := m.verifySignatures(signs, model, "", AuthRootPermission); err != nil {
+				ErrResponse(writer, fmt.Errorf("model(%s) user(%s) no permission: %v", model, userID, err))
+				return
+			}
+		}
+
 		if ui, err := m.user.getUserInfo(userID); err != nil {
 			ErrResponse(writer, fmt.Errorf("user:[%s] not found ", userID))
 			return
