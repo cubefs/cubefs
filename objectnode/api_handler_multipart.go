@@ -202,9 +202,7 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.LogErrorf("uploadPartHandler: write part fail: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) remote(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), uploadId, partNumberInt, getRequestIP(r), err)
-		if !r.Close {
-			errorCode = InternalErrorCode(err)
-		}
+		errorCode = InternalErrorCode(err)
 		return
 	}
 	log.LogDebugf("uploadPartHandler: write part success: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) fsFileInfo(%v)",

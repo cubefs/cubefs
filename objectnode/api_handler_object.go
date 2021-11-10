@@ -1192,9 +1192,7 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.LogErrorf("putObjectHandler: put object fail: requestId(%v) volume(%v) path(%v) remote(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), getRequestIP(r), err)
-		if !r.Close {
-			errorCode = InternalErrorCode(err)
-		}
+		errorCode = InternalErrorCode(err)
 		return
 	}
 
