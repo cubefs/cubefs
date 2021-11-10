@@ -474,9 +474,11 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	var lookupMode uint32
 	_, lookupMode, err = v.mw.Lookup_ll(context.Background(), parentId, lastPathItem.Name)
 	if err != nil && err != syscall.ENOENT {
+		log.LogErrorf("PutObject: look up target failed: volume(%v) path(%v)", v.name, path)
 		return
 	}
 	if err == nil && os.FileMode(lookupMode).IsDir() {
+		log.LogWarnf("PutObject: target exist but mode conflict: volume(%v) path(%v)", v.name, path)
 		err = syscall.EINVAL
 		return
 	}
@@ -504,7 +506,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	}
 	defer func() {
 		if closeErr := v.ec.CloseStream(context.Background(), invisibleTempDataInode.Inode); closeErr != nil {
-			log.LogErrorf("WriteObject: close stream fail: volume(%v) inode(%v) err(%v)",
+			log.LogErrorf("PutObject: close stream fail: volume(%v) inode(%v) err(%v)",
 				v.name, invisibleTempDataInode.Inode, closeErr)
 		}
 	}()
@@ -514,6 +516,8 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 		md5Value string
 	)
 	if _, err = v.streamWrite(invisibleTempDataInode.Inode, reader, md5Hash); err != nil {
+		log.LogErrorf("PutObject: stream write failed: volume(%v) path(%v) inode(%v) err(%v)",
+			v.name, path, invisibleTempDataInode.Inode, err)
 		return
 	}
 	// compute file md5
@@ -613,8 +617,8 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	// apply new inode to dentry
 	err = v.applyInodeToDEntry(parentId, lastPathItem.Name, invisibleTempDataInode.Inode)
 	if err != nil {
-		log.LogErrorf("PutObject: apply new inode to dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
-			parentId, lastPathItem.Name, invisibleTempDataInode.Inode, err)
+		log.LogErrorf("PutObject: apply new inode to dentry fail: volume(%v) path(%v) parentID(%v) name(%v) inode(%v) err(%v)",
+			v.name, path, parentId, lastPathItem.Name, invisibleTempDataInode.Inode, err)
 		return
 	}
 	return fsInfo, nil
@@ -626,7 +630,7 @@ func (v *Volume) applyInodeToDEntry(parentId uint64, name string, inode uint64) 
 	for {
 		_, existMode, err = v.mw.Lookup_ll(context.Background(), parentId, name)
 		if err != nil && err != syscall.ENOENT {
-			log.LogErrorf("applyInodeToDEntry: meta lookup fail: parentID(%v) name(%v) err(%v)", parentId, name, err)
+			log.LogErrorf("applyInodeToDEntry: meta lookup fail: volume(%v) parentID(%v) name(%v) err(%v)", v.name, parentId, name, err)
 			return
 		}
 
@@ -637,16 +641,16 @@ func (v *Volume) applyInodeToDEntry(parentId uint64, name string, inode uint64) 
 				continue
 			}
 			if err != nil {
-				log.LogErrorf("applyInodeToDEntry: apply inode to new dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
-					parentId, name, inode, err)
+				log.LogErrorf("applyInodeToDEntry: apply inode to new dentry fail: volume(%v) parentID(%v) name(%v) inode(%v) err(%v)",
+					v.name, parentId, name, inode, err)
 				return
 			}
-			log.LogDebugf("applyInodeToDEntry: apply inode to new dentry: parentID(%v) name(%v) inode(%v)",
-				parentId, name, inode)
+			log.LogDebugf("applyInodeToDEntry: apply inode to new dentry: volume(%v) parentID(%v) name(%v) inode(%v)",
+				v.name, parentId, name, inode)
 		} else {
 			if os.FileMode(existMode).IsDir() {
-				log.LogErrorf("applyInodeToDEntry: target mode conflict: parentID(%v) name(%v) mode(%v)",
-					parentId, name, os.FileMode(existMode).String())
+				log.LogErrorf("applyInodeToDEntry: target mode conflict: volume(%v) parentID(%v) name(%v) mode(%v)",
+					v.name, parentId, name, os.FileMode(existMode).String())
 				err = syscall.EINVAL
 				return
 			}
@@ -656,8 +660,8 @@ func (v *Volume) applyInodeToDEntry(parentId uint64, name string, inode uint64) 
 				continue
 			}
 			if err != nil {
-				log.LogErrorf("applyInodeToDEntry: apply inode to exist dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
-					parentId, name, inode, err)
+				log.LogErrorf("applyInodeToDEntry: apply inode to exist dentry fail: volume(%v) parentID(%v) name(%v) inode(%v) err(%v)",
+					v.name, parentId, name, inode, err)
 				return
 			}
 		}
@@ -1132,8 +1136,8 @@ func (v *Volume) appendInodeHash(h hash.Hash, inode uint64, total uint64, preAll
 func (v *Volume) applyInodeToNewDentry(parentID uint64, name string, inode uint64) (err error) {
 	if err = v.mw.DentryCreate_ll(context.Background(), parentID, name, inode, DefaultFileMode); err != nil {
 		if err != syscall.EEXIST {
-			log.LogErrorf("applyInodeToNewDentry: meta dentry create fail: parentID(%v) name(%v) inode(%v) mode(%v) err(%v)",
-				parentID, name, inode, DefaultFileMode, err)
+			log.LogErrorf("applyInodeToNewDentry: meta dentry create fail: volume(%v) parentID(%v) name(%v) inode(%v) mode(%v) err(%v)",
+				v.name, parentID, name, inode, DefaultFileMode, err)
 		}
 		return err
 	}
@@ -1144,8 +1148,8 @@ func (v *Volume) applyInodeToExistDentry(parentID uint64, name string, inode uin
 	var oldInode uint64
 	oldInode, err = v.mw.DentryUpdate_ll(context.Background(), parentID, name, inode)
 	if err != nil {
-		log.LogErrorf("applyInodeToExistDentry: meta update dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
-			parentID, name, inode, err)
+		log.LogErrorf("applyInodeToExistDentry: meta update dentry fail: volume(%v) parentID(%v) name(%v) inode(%v) err(%v)",
+			v.name, parentID, name, inode, err)
 		return
 	}
 
