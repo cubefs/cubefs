@@ -46,3 +46,7 @@ const (
 
 	FollowerTransportIdleTime = 120
 )
+
+const (
+	ReplProtocalServerTimeOut = 60*5
+)

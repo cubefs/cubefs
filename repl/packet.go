@@ -346,9 +346,9 @@ func (p *Packet) ReadFull(c net.Conn, opcode uint8, readSize int) (err error) {
 	return
 }
 
-func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration) (err error) {
-	if deadlineTime != proto.NoReadDeadlineTime {
-		c.SetReadDeadline(time.Now().Add(deadlineTime * time.Second))
+func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineSonds int64) (err error) {
+	if deadlineSonds != proto.NoReadDeadlineTime {
+		c.SetReadDeadline(time.Now().Add(time.Duration(deadlineSonds) * time.Second))
 	} else {
 		c.SetReadDeadline(time.Time{})
 	}
