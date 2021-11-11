@@ -1250,6 +1250,10 @@ func (s *DataNode) handlePacketToSyncDataPartitionReplicas(p *repl.Packet) {
 
 }
 
+
+const (
+	forwardToRaftLeaderTimeOut = 60*2
+)
 func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet) (ok bool, err error) {
 	var (
 		conn       *net.TCPConn
@@ -1276,7 +1280,7 @@ func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet) (ok bo
 	if err != nil {
 		return
 	}
-	if err = p.ReadFromConn(conn, proto.NoReadDeadlineTime); err != nil {
+	if err = p.ReadFromConn(conn, forwardToRaftLeaderTimeOut); err != nil {
 		return
 	}
 

@@ -19,7 +19,6 @@ import (
 	"io"
 	"net"
 
-	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
@@ -61,6 +60,9 @@ func (m *MetaNode) stopServer() {
 	}
 }
 
+const (
+	MetaNodeServerTimeOut = 60*5
+)
 // Read data from the specified tcp connection until the connection is closed by the remote or the tcp service is down.
 func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
 	defer conn.Close()
@@ -75,7 +77,7 @@ func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
 		default:
 		}
 		p := NewPacket(context.Background())
-		if err := p.ReadFromConn(conn, proto.NoReadDeadlineTime); err != nil {
+		if err := p.ReadFromConn(conn, MetaNodeServerTimeOut); err != nil {
 			if err != io.EOF {
 				log.LogError("serve MetaNode: ", err.Error())
 			}

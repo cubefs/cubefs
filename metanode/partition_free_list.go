@@ -257,6 +257,10 @@ func (mp *metaPartition) syncToRaftFollowersFreeInode(ctx context.Context, hasDe
 	return
 }
 
+const (
+	notifyRaftFollowerToFreeInodesTimeOut=60*2
+)
+
 func (mp *metaPartition) notifyRaftFollowerToFreeInodes(ctx context.Context, wg *sync.WaitGroup, target string, hasDeleteInodes []byte) (err error) {
 	var conn *net.TCPConn
 	conn, err = mp.config.ConnPool.GetConnect(target)
@@ -277,7 +281,7 @@ func (mp *metaPartition) notifyRaftFollowerToFreeInodes(ctx context.Context, wg 
 		return
 	}
 
-	if err = request.ReadFromConn(conn, proto.NoReadDeadlineTime); err != nil {
+	if err = request.ReadFromConn(conn, notifyRaftFollowerToFreeInodesTimeOut); err != nil {
 		return
 	}
 
