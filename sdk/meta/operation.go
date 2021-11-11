@@ -113,6 +113,13 @@ func (mw *MetaWrapper) iunlink(ctx context.Context, mp *MetaPartition, inode uin
 	}
 
 	status = parseStatus(packet.ResultCode)
+	if status == statusOutOfRange {
+		log.LogWarnf("iunlink: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		newMp := mw.getRefreshMp(ctx, inode)
+		if newMp != nil && newMp.PartitionID != mp.PartitionID {
+			return mw.iunlink(ctx, newMp, inode)
+		}
+	}
 	if status != statusOK {
 		log.LogWarnf("iunlink: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
@@ -159,6 +166,13 @@ func (mw *MetaWrapper) ievict(ctx context.Context, mp *MetaPartition, inode uint
 	}
 
 	status = parseStatus(packet.ResultCode)
+	if status == statusOutOfRange {
+		log.LogWarnf("ievict: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		newMp := mw.getRefreshMp(ctx, inode)
+		if newMp != nil && newMp.PartitionID != mp.PartitionID {
+			return mw.ievict(ctx, newMp, inode)
+		}
+	}
 	if status != statusOK {
 		log.LogWarnf("ievict: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
@@ -214,6 +228,13 @@ func (mw *MetaWrapper) dcreate(ctx context.Context, mp *MetaPartition, parentID 
 	}
 
 	status = parseStatus(packet.ResultCode)
+	if status == statusOutOfRange {
+		log.LogWarnf("dcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		newMp := mw.getRefreshMp(ctx, parentID)
+		if newMp != nil && newMp.PartitionID != mp.PartitionID {
+			return mw.dcreate(ctx, newMp, parentID, name, inode, mode)
+		}
+	}
 	if (status != statusOK) && (status != statusExist) {
 		log.LogWarnf("dcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		//} else if status == statusExist {
@@ -259,6 +280,13 @@ func (mw *MetaWrapper) dupdate(ctx context.Context, mp *MetaPartition, parentID 
 	}
 
 	status = parseStatus(packet.ResultCode)
+	if status == statusOutOfRange {
+		log.LogWarnf("dupdate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		newMp := mw.getRefreshMp(ctx, parentID)
+		if newMp != nil && newMp.PartitionID != mp.PartitionID {
+			return mw.dupdate(ctx, newMp, parentID, name, newInode)
+		}
+	}
 	if status != statusOK {
 		log.LogWarnf("dupdate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
@@ -305,6 +333,13 @@ func (mw *MetaWrapper) ddelete(ctx context.Context, mp *MetaPartition, parentID 
 	}
 
 	status = parseStatus(packet.ResultCode)
+	if status == statusOutOfRange {
+		log.LogWarnf("ddelete: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		newMp := mw.getRefreshMp(ctx, parentID)
+		if newMp != nil && newMp.PartitionID != mp.PartitionID {
+			return mw.ddelete(ctx, newMp, parentID, name)
+		}
+	}
 	if status != statusOK {
 		log.LogWarnf("ddelete: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
@@ -352,6 +387,13 @@ func (mw *MetaWrapper) lookup(ctx context.Context, mp *MetaPartition, parentID u
 	}
 
 	status = parseStatus(packet.ResultCode)
+	if status == statusOutOfRange {
+		log.LogWarnf("lookup: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		newMp := mw.getRefreshMp(ctx, parentID)
+		if newMp != nil && newMp.PartitionID != mp.PartitionID {
+			return mw.lookup(ctx, newMp, parentID, name)
+		}
+	}
 	if status != statusOK {
 		if status != statusNoent {
 			log.LogWarnf("lookup: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
@@ -383,7 +425,9 @@ func (mw *MetaWrapper) iget(ctx context.Context, mp *MetaPartition, inode uint64
 	}
 
 	packet := proto.NewPacketReqID(ctx)
-	packet.Opcode = proto.OpMetaInodeGet
+	// add new opcode for 'InodeGet' to be compatible with old clients that can only judge 'statusNoent'
+	//packet.Opcode = proto.OpMetaInodeGet
+	packet.Opcode = proto.OpMetaInodeGetV2
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -401,6 +445,13 @@ func (mw *MetaWrapper) iget(ctx context.Context, mp *MetaPartition, inode uint64
 	}
 
 	status = parseStatus(packet.ResultCode)
+	if status == statusOutOfRange {
+		log.LogWarnf("iget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		newMp := mw.getRefreshMp(ctx, inode)
+		if newMp != nil && newMp.PartitionID != mp.PartitionID {
+			return mw.iget(ctx, newMp, inode)
+		}
+	}
 	if status != statusOK {
 		log.LogWarnf("iget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
@@ -503,6 +554,13 @@ func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID 
 			return
 		}
 		status = parseStatus(packet.ResultCode)
+		if status == statusOutOfRange {
+			log.LogWarnf("readdir: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+			newMp := mw.getRefreshMp(ctx, parentID)
+			if newMp != nil && newMp.PartitionID != mp.PartitionID {
+				return mw.readdir(ctx, newMp, parentID)
+			}
+		}
 		if status != statusOK {
 			log.LogWarnf("readdir: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 			return
@@ -615,6 +673,13 @@ func (mw *MetaWrapper) insertExtentKey(ctx context.Context, mp *MetaPartition, i
 	}
 
 	status = parseStatus(packet.ResultCode)
+	if status == statusOutOfRange {
+		log.LogWarnf("insertExtentKey: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		newMp := mw.getRefreshMp(ctx, inode)
+		if newMp != nil && newMp.PartitionID != mp.PartitionID {
+			return mw.insertExtentKey(ctx, newMp, inode, ek)
+		}
+	}
 	if status != statusOK {
 		log.LogWarnf("insertExtentKey: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	}
@@ -651,6 +716,13 @@ func (mw *MetaWrapper) getExtents(ctx context.Context, mp *MetaPartition, inode 
 	}
 
 	status = parseStatus(packet.ResultCode)
+	if status == statusOutOfRange {
+		log.LogWarnf("getExtents: packet(%v) mp(%v) inode(%v) result(%v)", packet, mp, inode, packet.GetResultMsg())
+		newMp := mw.getRefreshMp(ctx, inode)
+		if newMp != nil && newMp.PartitionID != mp.PartitionID {
+			return mw.getExtents(ctx, newMp, inode)
+		}
+	}
 	if status != statusOK {
 		extents = make([]proto.ExtentKey, 0)
 		log.LogWarnf("getExtents: packet(%v) mp(%v) result(%v)", packet, mp, packet.GetResultMsg())
@@ -701,6 +773,13 @@ func (mw *MetaWrapper) truncate(ctx context.Context, mp *MetaPartition, inode, o
 	}
 
 	status = parseStatus(packet.ResultCode)
+	if status == statusOutOfRange {
+		log.LogWarnf("truncate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		newMp := mw.getRefreshMp(ctx, inode)
+		if newMp != nil && newMp.PartitionID != mp.PartitionID {
+			return mw.truncate(ctx, newMp, inode, oldSize, size)
+		}
+	}
 	// truncate may recieve statusInval caused by repeat execution on metanode
 	if status == statusInval {
 		getStatus, getInfo, getErr := mw.iget(ctx, mp, inode)
@@ -753,6 +832,13 @@ func (mw *MetaWrapper) ilink(ctx context.Context, mp *MetaPartition, inode uint6
 	}
 
 	status = parseStatus(packet.ResultCode)
+	if status == statusOutOfRange {
+		log.LogWarnf("ilink: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		newMp := mw.getRefreshMp(ctx, inode)
+		if newMp != nil && newMp.PartitionID != mp.PartitionID {
+			return mw.ilink(ctx, newMp, inode)
+		}
+	}
 	if status != statusOK {
 		log.LogWarnf("ilink: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
@@ -811,6 +897,13 @@ func (mw *MetaWrapper) setattr(ctx context.Context, mp *MetaPartition, inode uin
 	}
 
 	status = parseStatus(packet.ResultCode)
+	if status == statusOutOfRange {
+		log.LogWarnf("setattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		newMp := mw.getRefreshMp(ctx, inode)
+		if newMp != nil && newMp.PartitionID != mp.PartitionID {
+			return mw.setattr(ctx, newMp, inode, valid, mode, uid, gid, atime, mtime)
+		}
+	}
 	if status != statusOK {
 		log.LogWarnf("setattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
@@ -992,6 +1085,13 @@ func (mw *MetaWrapper) idelete(ctx context.Context, mp *MetaPartition, inode uin
 	}
 
 	status = parseStatus(packet.ResultCode)
+	if status == statusOutOfRange {
+		log.LogWarnf("idelete: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		newMp := mw.getRefreshMp(ctx, inode)
+		if newMp != nil && newMp.PartitionID != mp.PartitionID {
+			return mw.idelete(ctx, newMp, inode)
+		}
+	}
 	if status != statusOK {
 		log.LogWarnf("idelete: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
@@ -1071,6 +1171,13 @@ func (mw *MetaWrapper) appendExtentKeys(ctx context.Context, mp *MetaPartition, 
 	}
 
 	status = parseStatus(packet.ResultCode)
+	if status == statusOutOfRange {
+		log.LogWarnf("batch append extent: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		newMp := mw.getRefreshMp(ctx, inode)
+		if newMp != nil && newMp.PartitionID != mp.PartitionID {
+			return mw.appendExtentKeys(ctx, newMp, inode, extents)
+		}
+	}
 	if status != statusOK {
 		log.LogWarnf("batch append extent: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
@@ -1114,6 +1221,13 @@ func (mw *MetaWrapper) setXAttr(ctx context.Context, mp *MetaPartition, inode ui
 	}
 
 	status = parseStatus(packet.ResultCode)
+	if status == statusOutOfRange {
+		log.LogWarnf("setXAttr: received fail status, packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		newMp := mw.getRefreshMp(ctx, inode)
+		if newMp != nil && newMp.PartitionID != mp.PartitionID {
+			return mw.setXAttr(ctx, newMp, inode, name, value)
+		}
+	}
 	if status != statusOK {
 		log.LogWarnf("setXAttr: received fail status, packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
@@ -1155,6 +1269,13 @@ func (mw *MetaWrapper) getXAttr(ctx context.Context, mp *MetaPartition, inode ui
 	}
 
 	status = parseStatus(packet.ResultCode)
+	if status == statusOutOfRange {
+		log.LogWarnf("get xattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		newMp := mw.getRefreshMp(ctx, inode)
+		if newMp != nil && newMp.PartitionID != mp.PartitionID {
+			return mw.getXAttr(ctx, newMp, inode, name)
+		}
+	}
 	if status != statusOK {
 		log.LogWarnf("get xattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
@@ -1201,6 +1322,13 @@ func (mw *MetaWrapper) removeXAttr(ctx context.Context, mp *MetaPartition, inode
 	}
 
 	status = parseStatus(packet.ResultCode)
+	if status == statusOutOfRange {
+		log.LogWarnf("remove xattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		newMp := mw.getRefreshMp(ctx, inode)
+		if newMp != nil && newMp.PartitionID != mp.PartitionID {
+			return mw.removeXAttr(ctx, newMp, inode, name)
+		}
+	}
 	if status != statusOK {
 		log.LogWarnf("remove xattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
@@ -1239,6 +1367,13 @@ func (mw *MetaWrapper) listXAttr(ctx context.Context, mp *MetaPartition, inode u
 	}
 
 	status = parseStatus(packet.ResultCode)
+	if status == statusOutOfRange {
+		log.LogWarnf("list xattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		newMp := mw.getRefreshMp(ctx, inode)
+		if newMp != nil && newMp.PartitionID != mp.PartitionID {
+			return mw.listXAttr(ctx, newMp, inode)
+		}
+	}
 	if status != statusOK {
 		log.LogWarnf("list xattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return

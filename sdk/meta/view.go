@@ -175,13 +175,46 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 	return nil
 }
 
+func (mw *MetaWrapper) updateMetaPartitionsWithNoCache() error {
+	views, err := mw.mc.ClientAPI().GetMetaPartitions(mw.volname)
+	if err != nil {
+		return err
+	}
+	rwPartitions := make([]*MetaPartition, 0)
+	for _, view := range views {
+		mp := &MetaPartition{
+			PartitionID: view.PartitionID,
+			Start:       view.Start,
+			End:         view.End,
+			Members:     view.Members,
+			LeaderAddr:  view.LeaderAddr,
+			Status:      view.Status,
+		}
+		mw.replaceOrInsertPartition(mp)
+		log.LogInfof("updateMetaPartitionsWithNoCache: mp(%v)", mp)
+		if mp.Status == proto.ReadWrite {
+			rwPartitions = append(rwPartitions, mp)
+		}
+	}
+	if len(rwPartitions) == 0 {
+		log.LogInfof("updateMetaPartitionsWithNoCache: no valid partitions")
+		return nil
+	}
+
+	mw.Lock()
+	mw.rwPartitions = rwPartitions
+	mw.Unlock()
+
+	return nil
+}
+
 func (mw *MetaWrapper) forceUpdateMetaPartitions() error {
 	// Only one forceUpdateMetaPartition is allowed in a specific period of time.
 	if ok := mw.forceUpdateLimit.AllowN(time.Now(), MinForceUpdateMetaPartitionsInterval); !ok {
 		return errors.New("Force update meta partitions throttled!")
 	}
 
-	return mw.updateMetaPartitions()
+	return mw.updateMetaPartitionsWithNoCache()
 }
 
 // Should be protected by partMutex, otherwise the caller might not be signaled.

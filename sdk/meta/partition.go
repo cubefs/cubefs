@@ -131,6 +131,11 @@ func (mw *MetaWrapper) getRWPartitions() []*MetaPartition {
 	return rwPartitions
 }
 
+func (mw *MetaWrapper) getRefreshMp(ctx context.Context, inode uint64) *MetaPartition {
+	mw.triggerAndWaitForceUpdate()
+	return mw.getPartitionByInode(ctx, inode)
+}
+
 // GetConnect the partition whose Start is Larger than ino.
 // Return nil if no successive partition.
 //func (mw *MetaWrapper) getNextPartition(ino uint64) *MetaPartition {

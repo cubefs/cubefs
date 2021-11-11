@@ -48,6 +48,7 @@ var (
 		proto.OpMetaExtentsAdd:      true,
 		proto.OpMetaBatchExtentsAdd: true,
 		proto.OpMetaExtentsList:     true,
+		proto.OpMetaInodeGetV2: 	 true,
 	}
 )
 

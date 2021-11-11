@@ -323,6 +323,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaReadDir"
 	case OpMetaInodeGet:
 		m = "OpMetaInodeGet"
+	case OpMetaInodeGetV2:
+		m = "OpMetaInodeGetV2"
 	case OpMetaBatchInodeGet:
 		m = "OpMetaBatchInodeGet"
 	case OpMetaExtentsAdd:
@@ -459,7 +461,7 @@ func (p *Packet) GetResultMsg() (m string) {
 
 	switch p.ResultCode {
 	case OpInodeOutOfRange:
-		m = "Inode Out of Range :" + p.GetRespData()
+		m = "InodeOutOfRange: " + p.GetRespData()
 	case OpIntraGroupNetErr:
 		m = "IntraGroupNetErr: " + p.GetRespData()
 	case OpDiskNoSpaceErr:
@@ -793,7 +795,7 @@ func (p *Packet) ShouldRetry() bool {
 }
 
 func (p *Packet) IsReadMetaPkt() bool {
-	if p.Opcode == OpMetaLookup || p.Opcode == OpMetaInodeGet || p.Opcode == OpMetaBatchInodeGet ||
+	if p.Opcode == OpMetaLookup || p.Opcode == OpMetaInodeGet || p.Opcode == OpMetaInodeGetV2 || p.Opcode == OpMetaBatchInodeGet ||
 		p.Opcode == OpMetaReadDir || p.Opcode == OpMetaExtentsList || p.Opcode == OpGetMultipart ||
 		p.Opcode == OpMetaGetXAttr || p.Opcode == OpMetaListXAttr || p.Opcode == OpListMultiparts ||
 		p.Opcode == OpMetaBatchGetXAttr {

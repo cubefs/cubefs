@@ -50,6 +50,7 @@ const (
 	statusError
 	statusInval
 	statusNotPerm
+	statusOutOfRange
 )
 
 const (
@@ -364,6 +365,8 @@ func parseStatus(result uint8) (status int) {
 		status = statusInval
 	case proto.OpNotPerm:
 		status = statusNotPerm
+	case proto.OpInodeOutOfRange:
+		status = statusOutOfRange
 	default:
 		status = statusError
 	}
