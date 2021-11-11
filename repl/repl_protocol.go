@@ -298,9 +298,11 @@ func (rp *ReplProtocol) hasError() bool {
 	return atomic.LoadInt32(&rp.isError) == ReplProtocolError
 }
 
+
+
 func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	request := NewPacket(context.Background())
-	if err = request.ReadFromConnFromCli(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
+	if err = request.ReadFromConnFromCli(rp.sourceConn, ReplProtocalServerTimeOut); err != nil {
 		return
 	}
 
