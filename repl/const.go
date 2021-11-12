@@ -25,8 +25,10 @@ const (
 const (
 	ActionSendToFollowers     = "ActionSendToFollowers"
 	ActionReceiveFromFollower = "ActionReceiveFromFollower"
-	ActionWriteToClient       = "ActionWriteToClient"
-	ActionCheckReply          = "ActionCheckReply"
+	ActionreadPkgAndPrepare   = "ActionreadPkgAndPrepare"
+
+	ActionWriteToClient = "ActionWriteToClient"
+	ActionCheckReply    = "ActionCheckReply"
 
 	ActionPreparePkt = "ActionPreparePkt"
 )
@@ -48,5 +50,5 @@ const (
 )
 
 const (
-	ReplProtocalServerTimeOut = 60*5
+	ReplProtocalServerTimeOut = 60 * 5
 )

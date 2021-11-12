@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/repl"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -359,6 +360,12 @@ func (s *DataNode) getExtentAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.buildSuccessResp(w, extentInfo)
+	return
+}
+
+func (s *DataNode) getReplProtocalBufferDetail(w http.ResponseWriter, r *http.Request) {
+	allReplDetail := repl.GetReplProtocolDetail()
+	s.buildSuccessResp(w, allReplDetail)
 	return
 }
 

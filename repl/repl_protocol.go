@@ -30,7 +30,8 @@ import (
 )
 
 var (
-	gConnPool = util.NewConnectPool()
+	gConnPool       = util.NewConnectPool()
+	ReplProtocalMap sync.Map
 )
 
 // ReplProtocol defines the struct of the replication protocol.
@@ -59,9 +60,14 @@ type ReplProtocol struct {
 	operatorFunc func(p *Packet, c *net.TCPConn) error // operator
 	postFunc     func(p *Packet) error                 // post-processing packet
 
-	isError   int32
-	replId    int64
-	stopError string
+	isError              int32
+	replId               int64
+	stopError            string
+	startTime            int64
+	allThreadStats       []int
+	allThreadStatsLock   sync.Mutex
+	getNumFromBufferPool int64
+	putNumToBufferPool   int64
 }
 
 type FollowerTransport struct {
@@ -85,8 +91,8 @@ func NewFollowersTransport(addr string) (ft *FollowerTransport, err error) {
 	ft = new(FollowerTransport)
 	ft.addr = addr
 	ft.conn = conn
-	ft.sendCh = make(chan *FollowerPacket, 200)
-	ft.recvCh = make(chan *FollowerPacket, 200)
+	ft.sendCh = make(chan *FollowerPacket, RequestChanSize)
+	ft.recvCh = make(chan *FollowerPacket, RequestChanSize)
 	ft.exitCh = make(chan struct{})
 	ft.lastActiveTime = time.Now().Unix()
 	go ft.serverWriteToFollower()
@@ -95,19 +101,47 @@ func NewFollowersTransport(addr string) (ft *FollowerTransport, err error) {
 	return
 }
 
+func (ft *FollowerTransport) PutRequestToRecvCh(request *FollowerPacket) (err error) {
+	select {
+	case ft.recvCh <- request:
+		return
+	default:
+		return fmt.Errorf("FollowerTransport(%v) RecvCh has full", ft.addr)
+	}
+}
+
+func (ft *FollowerTransport) PutRequestToSendCh(request *FollowerPacket) (err error) {
+	select {
+	case ft.sendCh <- request:
+		return
+	default:
+		return fmt.Errorf("FollowerTransport(%v) SendCh has full", ft.addr)
+	}
+}
+
 func (ft *FollowerTransport) serverWriteToFollower() {
 	for {
 		select {
 		case p := <-ft.sendCh:
+			if p == nil {
+				return
+			}
 			atomic.StoreInt64(&ft.lastActiveTime, time.Now().Unix())
 			if err := p.WriteToConn(ft.conn); err != nil {
-				p.PackErrorBody(ActionSendToFollowers, err.Error())
-				p.respCh <- fmt.Errorf(string(p.Data[:p.Size]))
+				p.Data = nil
+				p.respCh <- fmt.Errorf(ActionSendToFollowers+" follower(%v) error(%v)", ft.addr, err.Error())
 				_ = ft.conn.Close()
 				log.LogErrorf("request(%v) ActionSendToFollowers(%v) error(%v)", p.GetUniqueLogId(), ft.conn.RemoteAddr().String(), err.Error())
 				continue
 			}
-			ft.recvCh <- p
+			p.Data = nil
+			if err := ft.PutRequestToRecvCh(p); err != nil {
+				p.respCh <- fmt.Errorf(ActionSendToFollowers+" follower(%v) error(%v)", ft.addr, err.Error())
+				_ = ft.conn.Close()
+				log.LogErrorf("request(%v) ActionSendToFollowers(%v) error(%v)", p.GetUniqueLogId(), ft.conn.RemoteAddr().String(), err.Error())
+				continue
+			}
+
 		case <-ft.exitCh:
 			ft.exitedMu.Lock()
 			if atomic.AddInt32(&ft.isclosed, -1) == FollowerTransportExited {
@@ -124,6 +158,9 @@ func (ft *FollowerTransport) serverReadFromFollower(ctx context.Context) {
 	for {
 		select {
 		case p := <-ft.recvCh:
+			if p == nil {
+				return
+			}
 			atomic.StoreInt64(&ft.lastActiveTime, time.Now().Unix())
 			_ = ft.readFollowerResult(ctx, p)
 		case <-ft.exitCh:
@@ -143,15 +180,13 @@ func (ft *FollowerTransport) readFollowerResult(ctx context.Context, request *Fo
 	reply := NewPacket(ctx)
 	defer func() {
 		request.respCh <- err
+		request.Data = nil
 		if err != nil {
 			_ = ft.conn.Close()
 			log.LogErrorf("request(%v) readFollowerResult(%v) error(%v)", request.GetUniqueLogId(), ft.conn.RemoteAddr().String(), err)
 		}
 	}()
-	if request.IsErrPacket() {
-		err = fmt.Errorf(string(request.Data[:request.Size]))
-		return
-	}
+	request.Data = nil
 	if err = reply.ReadFromConn(ft.conn, proto.ReadDeadlineTime); err != nil {
 		return
 	}
@@ -176,6 +211,9 @@ func (ft *FollowerTransport) cleanSendChan() {
 	for {
 		select {
 		case r := <-ft.sendCh:
+			if r == nil {
+				return
+			}
 			r.Data = nil
 		default:
 			return
@@ -187,6 +225,9 @@ func (ft *FollowerTransport) cleanRecvChan() {
 	for {
 		select {
 		case r := <-ft.recvCh:
+			if r == nil {
+				return
+			}
 			r.Data = nil
 		default:
 			return
@@ -219,8 +260,9 @@ func (ft *FollowerTransport) needAutoDestory() (release bool) {
 	return true
 }
 
-func (ft *FollowerTransport) Write(p *FollowerPacket) {
-	ft.sendCh <- p
+func (ft *FollowerTransport) Write(p *FollowerPacket) (err error) {
+	err = ft.PutRequestToSendCh(p)
+	return
 }
 
 func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet) error,
@@ -235,14 +277,22 @@ func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet) error,
 	rp.followerConnects = make(map[string]*FollowerTransport)
 	rp.prepareFunc = prepareFunc
 	rp.operatorFunc = operatorFunc
+	rp.startTime = time.Now().Unix()
 	rp.postFunc = postFunc
+	rp.allThreadStats = make([]int, 3)
 	rp.exited = ReplRuning
 	rp.replId = proto.GenerateRequestID()
+	ReplProtocalMap.Store(rp.replId, rp)
 	go rp.OperatorAndForwardPktGoRoutine()
 	go rp.writeResponseToClientGoRroutine()
 
 	return rp
 }
+
+const (
+	ReplProtocalThreadRuning = 1
+	ReplProtocalThreadExit   = -1
+)
 
 // ServerConn keeps reading data from the socket to analyze the follower address, execute the prepare function,
 // and throw the packets to the to-be-processed channel.
@@ -253,12 +303,19 @@ func (rp *ReplProtocol) ServerConn() {
 	defer func() {
 		rp.Stop(err)
 		rp.exitedMu.Lock()
+		rp.allThreadStatsLock.Lock()
+		rp.allThreadStats[0] = ReplProtocalThreadExit
+		rp.allThreadStatsLock.Unlock()
 		if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
 			_ = rp.sourceConn.Close()
 			rp.cleanResource()
 		}
 		rp.exitedMu.Unlock()
+
 	}()
+	rp.allThreadStatsLock.Lock()
+	rp.allThreadStats[0] = ReplProtocalThreadRuning
+	rp.allThreadStatsLock.Unlock()
 	for {
 		select {
 		case <-rp.exitC:
@@ -290,22 +347,17 @@ func (rp *ReplProtocol) ServerConn() {
 //	}
 //}
 
-func (rp *ReplProtocol) setReplProtocolError(request *Packet, index int) {
-	atomic.StoreInt32(&rp.isError, ReplProtocolError)
-}
-
-func (rp *ReplProtocol) hasError() bool {
-	return atomic.LoadInt32(&rp.isError) == ReplProtocolError
-}
-
-
-
 func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	request := NewPacket(context.Background())
-	if err = request.ReadFromConnFromCli(rp.sourceConn, ReplProtocalServerTimeOut); err != nil {
+	var isUsedBufferPool bool
+	isUsedBufferPool, err = request.ReadFromConnFromCli(rp.sourceConn, ReplProtocalServerTimeOut)
+	if isUsedBufferPool {
+		rp.addGetNumFromBufferPoolCnt()
+	}
+	if err != nil {
 		return
 	}
-
+	request.OrgBuffer = request.Data
 	if tracing.IsEnabled() {
 		tracer := tracing.TracerFromContext(request.Ctx()).ChildTracer("repl.ReplProtocol.readPkgAndPrepare")
 		defer tracer.Finish()
@@ -335,7 +387,6 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, e
 		defer tracer.Finish()
 		request.SetCtx(tracer.Context())
 	}
-
 	for index = 0; index < len(request.followersAddrs); index++ {
 		var transport *FollowerTransport
 		if transport, err = rp.allocateFollowersConns(request, index); err != nil {
@@ -346,7 +397,11 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, e
 		copyPacket(request, followerRequest)
 		followerRequest.RemainingFollowers = 0
 		request.followerPackets[index] = followerRequest
-		transport.Write(followerRequest)
+		err = transport.Write(followerRequest)
+		if err != nil {
+			request.PackErrorBody(ActionSendToFollowers, err.Error())
+			return
+		}
 	}
 
 	return
@@ -363,6 +418,9 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 	defer func() {
 		ticker.Stop()
 	}()
+	rp.allThreadStatsLock.Lock()
+	rp.allThreadStats[1] = ReplProtocalThreadRuning
+	rp.allThreadStatsLock.Unlock()
 	for {
 		select {
 		case request := <-rp.toBeProcessedCh:
@@ -370,9 +428,8 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 				_ = rp.operatorFunc(request, rp.sourceConn)
 				_ = rp.putResponse(request)
 			} else {
-				index, err := rp.sendRequestToAllFollowers(request)
+				_, err := rp.sendRequestToAllFollowers(request)
 				if err != nil {
-					rp.setReplProtocolError(request, index)
 					_ = rp.putResponse(request)
 				} else {
 					rp.pushPacketToList(request)
@@ -384,6 +441,9 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 			rp.autoReleaseFollowerTransport()
 		case <-rp.exitC:
 			rp.exitedMu.Lock()
+			rp.allThreadStatsLock.Lock()
+			rp.allThreadStats[1] = ReplProtocalThreadExit
+			rp.allThreadStatsLock.Unlock()
 			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
 				_ = rp.sourceConn.Close()
 				rp.cleanResource()
@@ -415,6 +475,9 @@ func (rp *ReplProtocol) autoReleaseFollowerTransport() {
 }
 
 func (rp *ReplProtocol) writeResponseToClientGoRroutine() {
+	rp.allThreadStatsLock.Lock()
+	rp.allThreadStats[2] = ReplProtocalThreadRuning
+	rp.allThreadStatsLock.Unlock()
 	for {
 		select {
 		case <-rp.ackCh:
@@ -423,6 +486,9 @@ func (rp *ReplProtocol) writeResponseToClientGoRroutine() {
 			rp.writeResponse(request)
 		case <-rp.exitC:
 			rp.exitedMu.Lock()
+			rp.allThreadStatsLock.Lock()
+			rp.allThreadStats[2] = ReplProtocalThreadExit
+			rp.allThreadStatsLock.Unlock()
 			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
 				_ = rp.sourceConn.Close()
 				rp.cleanResource()
@@ -430,6 +496,54 @@ func (rp *ReplProtocol) writeResponseToClientGoRroutine() {
 			rp.exitedMu.Unlock()
 			return
 		}
+	}
+
+}
+
+type ReplProtocalBufferDetail struct {
+	Addr     string
+	Cnt      int64
+	UseBytes int64
+	ReplID   int64
+}
+
+func GetReplProtocolDetail() (allReplDetail []*ReplProtocalBufferDetail) {
+	allReplDetail = make([]*ReplProtocalBufferDetail, 0)
+	ReplProtocalMap.Range(func(key, value interface{}) bool {
+		rp := value.(*ReplProtocol)
+		if atomic.LoadInt64(&rp.getNumFromBufferPool) <= 0 {
+			return true
+		}
+		rd := new(ReplProtocalBufferDetail)
+		rd.Addr = rp.sourceConn.RemoteAddr().String()
+		rd.Cnt = atomic.LoadInt64(&rp.getNumFromBufferPool) - atomic.LoadInt64(&rp.putNumToBufferPool)
+		rd.ReplID = rp.replId
+		rd.UseBytes = rd.Cnt * util.BlockSize
+		allReplDetail = append(allReplDetail, rd)
+		return true
+	})
+	return
+}
+
+func LoggingAllReplProtocolBufferPoolUse() {
+	for {
+		var (
+			sumBytes int64
+		)
+		ReplProtocalMap.Range(func(key, value interface{}) bool {
+			if value == nil {
+				return true
+			}
+			rp := value.(*ReplProtocol)
+			if atomic.LoadInt64(&rp.getNumFromBufferPool) <= 0 {
+				return true
+			}
+			usedPoolCnt := atomic.LoadInt64(&rp.getNumFromBufferPool) - atomic.LoadInt64(&rp.putNumToBufferPool)
+			sumBytes += (usedPoolCnt) * util.BlockSize
+			return true
+		})
+		log.LogErrorf(fmt.Sprintf("ReplProtocalMap use (%v) from buffer pool", sumBytes))
+		time.Sleep(time.Minute)
 	}
 
 }
@@ -460,7 +574,7 @@ func (rp *ReplProtocol) checkLocalResultAndReciveAllFollowerResponse() {
 	for index := 0; index < len(request.followersAddrs); index++ {
 		followerPacket := request.followerPackets[index]
 		err := <-followerPacket.respCh
-		followerPacket.Data=nil
+		followerPacket.Data = nil
 		if err != nil {
 			request.PackErrorBody(ActionReceiveFromFollower, err.Error())
 			return
@@ -474,19 +588,17 @@ func (rp *ReplProtocol) checkLocalResultAndReciveAllFollowerResponse() {
 func (rp *ReplProtocol) writeResponse(reply *Packet) {
 	var err error
 	defer func() {
-		reply.clean()
+		rp.cleanPacket(reply)
 	}()
+
+	_ = rp.postFunc(reply)
+	if !reply.NeedReply {
+		return
+	}
 	if reply.IsErrPacket() {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
 		log.LogErrorf(err.Error())
-		rp.Stop(err)
-	}
-
-	// execute the post-processing function
-	_ = rp.postFunc(reply)
-	if !reply.NeedReply {
-		return
 	}
 
 	if err = reply.WriteToConn(rp.sourceConn); err != nil {
@@ -552,12 +664,14 @@ func (rp *ReplProtocol) pushPacketToList(e *Packet) {
 }
 
 func (rp *ReplProtocol) cleanToBeProcessCh() {
-	request := len(rp.toBeProcessedCh)
-	for i := 0; i < request; i++ {
+	for {
 		select {
 		case p := <-rp.toBeProcessedCh:
+			if p == nil {
+				return
+			}
 			_ = rp.postFunc(p)
-			p.clean()
+			rp.cleanPacket(p)
 			log.LogErrorf("Action[cleanToBeProcessCh] request(%v) because (%v)", p.GetUniqueLogId(), rp.stopError)
 		default:
 			return
@@ -566,12 +680,14 @@ func (rp *ReplProtocol) cleanToBeProcessCh() {
 }
 
 func (rp *ReplProtocol) cleanResponseCh() {
-	replys := len(rp.responseCh)
-	for i := 0; i < replys; i++ {
+	for {
 		select {
 		case p := <-rp.responseCh:
+			if p == nil {
+				return
+			}
 			_ = rp.postFunc(p)
-			p.clean()
+			rp.cleanPacket(p)
 			log.LogErrorf("Action[cleanResponseCh] request(%v) because (%v)", p.GetUniqueLogId(), rp.stopError)
 		default:
 			return
@@ -579,29 +695,79 @@ func (rp *ReplProtocol) cleanResponseCh() {
 	}
 }
 
+func (rp *ReplProtocol) loggingIsAllThreadsExit() {
+	allExit := true
+	var threadStat [3]int
+	rp.allThreadStatsLock.Lock()
+	for index, stat := range rp.allThreadStats {
+		threadStat[index] = stat
+	}
+	rp.allThreadStatsLock.Unlock()
+
+	for _, stat := range threadStat {
+		if stat != ReplProtocalThreadExit {
+			allExit = false
+			return
+		}
+	}
+
+	if allExit {
+		return
+	}
+	log.LogErrorf("ReplProtocol(%v) not only allThreads  exit threadStats(%v)", rp.sourceConn.RemoteAddr(), threadStat)
+}
+
+func (rp *ReplProtocol) cleanPacket(p *Packet) {
+	var ok bool
+	if ok = p.clean(); ok {
+		rp.addPutNumFromBufferPoolCnt()
+		return
+	}
+	if p.IsWriteOperation() && p.OrgSize == util.BlockSize {
+		log.LogErrorf("request(%v) not return to pool, packet is UseBufferPool(%v)",
+			p.LogMessage("ActionCleanToPacket", rp.sourceConn.RemoteAddr().String(), p.StartT, nil), p.isUseBufferPool)
+	}
+}
+
+func (rp *ReplProtocol) addGetNumFromBufferPoolCnt() {
+	atomic.AddInt64(&rp.getNumFromBufferPool, 1)
+}
+
+func (rp *ReplProtocol) addPutNumFromBufferPoolCnt() {
+	atomic.AddInt64(&rp.putNumToBufferPool, 1)
+}
+
 // If the replication protocol exits, then clear all the packet resources.
 func (rp *ReplProtocol) cleanResource() {
-	rp.packetListLock.Lock()
-	for e := rp.packetList.Front(); e != nil; e = e.Next() {
-		request := e.Value.(*Packet)
-		_ = rp.postFunc(request)
-		log.LogErrorf("Action[cleanResource] request(%v) because (%v)", request.GetUniqueLogId(), rp.stopError)
-		request.clean()
-	}
-	rp.cleanToBeProcessCh()
-	rp.cleanResponseCh()
-	rp.packetList = list.New()
+	rp.loggingIsAllThreadsExit()
 	rp.lock.RLock()
 	for _, transport := range rp.followerConnects {
 		transport.Destory()
 	}
 	rp.lock.RUnlock()
+
+	rp.packetListLock.Lock()
+	for e := rp.packetList.Front(); e != nil; e = e.Next() {
+		request := e.Value.(*Packet)
+		_ = rp.postFunc(request)
+		log.LogErrorf("Action[cleanResource] request(%v) because (%v)", request.GetUniqueLogId(), rp.stopError)
+		rp.cleanPacket(request)
+	}
+	rp.cleanToBeProcessCh()
+	rp.cleanResponseCh()
+	if atomic.LoadInt64(&rp.getNumFromBufferPool) != atomic.LoadInt64(&rp.putNumToBufferPool) {
+		log.LogErrorf("ReplProtocol(%v) use buffer pool error,"+
+			"getNumFromBufferPool(%v) putNumToBufferPool(%v)", rp.sourceConn.RemoteAddr(),
+			atomic.LoadInt64(&rp.getNumFromBufferPool), atomic.LoadInt64(&rp.putNumToBufferPool))
+	}
+	rp.packetList = list.New()
 	close(rp.responseCh)
 	close(rp.toBeProcessedCh)
 	close(rp.ackCh)
 	rp.packetList = nil
 	rp.followerConnects = nil
 	rp.packetListLock.Unlock()
+	ReplProtocalMap.Delete(rp.replId)
 }
 
 func (rp *ReplProtocol) deletePacket(reply *Packet, e *list.Element) (success bool) {

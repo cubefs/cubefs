@@ -514,6 +514,9 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 	)
 	defer func() {
 		if err != nil {
+			logContent := fmt.Sprintf("action[operatePacket] %v.",
+				p.LogMessage(p.GetOpMsg(), connect.RemoteAddr().String(), p.StartT, err))
+			log.LogErrorf(logContent)
 			p.PackErrorBody(ActionStreamRead, err.Error())
 			p.WriteToConn(connect)
 		}
@@ -566,6 +569,9 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 			if currReadSize == util.ReadBlockSize {
 				proto.Buffers.Put(reply.Data)
 			}
+			logContent := fmt.Sprintf("action[operatePacket] %v.",
+				reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
+			log.LogErrorf(logContent)
 			return
 		}
 		needReplySize -= currReadSize
@@ -1305,10 +1311,10 @@ func (s *DataNode) handlePacketToSyncDataPartitionReplicas(p *repl.Packet) {
 
 }
 
-
 const (
-	forwardToRaftLeaderTimeOut = 60*2
+	forwardToRaftLeaderTimeOut = 60 * 2
 )
+
 func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet) (ok bool, err error) {
 	var (
 		conn       *net.TCPConn

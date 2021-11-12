@@ -121,8 +121,8 @@ func (s *DataNode) addExtentInfo(p *repl.Packet) error {
 		}
 		p.Data, _ = json.Marshal(record)
 		p.Size = uint32(len(p.Data))
+		p.OrgBuffer = p.Data
 	}
-	p.OrgBuffer = p.Data
 
 	return nil
 }

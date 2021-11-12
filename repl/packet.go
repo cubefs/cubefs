@@ -48,6 +48,7 @@ type Packet struct {
 	TpObject        *exporter.TimePointCount
 	NeedReply       bool
 	OrgBuffer       []byte
+	OrgSize         int32
 	isUseBufferPool int64
 }
 
@@ -111,9 +112,17 @@ const (
 	PacketNoUseBufferPool = 0
 )
 
-func (p *Packet) clean() {
+func (p *Packet) clean() (isReturnToPool bool) {
 	if atomic.LoadInt64(&p.isUseBufferPool) == PacketUseBufferPool {
+		if len(p.followerPackets) != 0 {
+			for i := 0; i < len(p.followerPackets); i++ {
+				if p.followerPackets[i] != nil {
+					p.followerPackets[i].Data = nil
+				}
+			}
+		}
 		proto.Buffers.Put(p.OrgBuffer)
+		isReturnToPool = true
 		p.Object = nil
 		p.TpObject = nil
 		p.Data = nil
@@ -122,6 +131,7 @@ func (p *Packet) clean() {
 		p.OrgBuffer = nil
 	}
 	atomic.StoreInt64(&p.isUseBufferPool, PacketNoUseBufferPool)
+	return
 }
 
 func copyPacket(src *Packet, dst *FollowerPacket) {
@@ -137,7 +147,6 @@ func copyPacket(src *Packet, dst *FollowerPacket) {
 	dst.ExtentOffset = src.ExtentOffset
 	dst.ReqID = src.ReqID
 	dst.Data = src.OrgBuffer
-
 }
 
 func (p *Packet) BeforeTp(clusterID string) (ok bool) {
@@ -167,7 +176,6 @@ func (p *Packet) resolveFollowersAddr(remoteAddr string) (err error) {
 	followerNum := uint8(len(followerAddrs) - 1)
 	p.followersAddrs = make([]string, followerNum)
 	p.followerPackets = make([]*FollowerPacket, followerNum)
-	p.OrgBuffer = p.Data
 	if followerNum > 0 {
 		p.followersAddrs = followerAddrs[:int(followerNum)]
 	}
@@ -346,18 +354,7 @@ func (p *Packet) PackErrorBody(action, msg string) {
 	copy(p.Data[:int(p.Size)], []byte(action+"_"+msg))
 }
 
-func (p *Packet) ReadFull(c net.Conn, opcode uint8, readSize int) (err error) {
-	if p.IsWriteOperation() && readSize == util.BlockSize {
-		p.Data, _ = proto.Buffers.Get(readSize)
-		atomic.StoreInt64(&p.isUseBufferPool, PacketUseBufferPool)
-	} else {
-		p.Data = make([]byte, readSize)
-	}
-	_, err = io.ReadFull(c, p.Data[:readSize])
-	return
-}
-
-func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineSonds int64) (err error) {
+func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineSonds int64) (isUseBufferPool bool, err error) {
 	if deadlineSonds != proto.NoReadDeadlineTime {
 		c.SetReadDeadline(time.Now().Add(time.Duration(deadlineSonds) * time.Second))
 	} else {
@@ -396,11 +393,28 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineSonds int64) (err error
 	if p.Size < 0 {
 		return
 	}
-	size := p.Size
+	readSize := p.Size
 	if p.IsReadOperation() && p.ResultCode == proto.OpInitResultCode {
-		size = 0
+		readSize = 0
+		return
 	}
-	return p.ReadFull(c, p.Opcode, int(size))
+	p.OrgSize = int32(readSize)
+	if p.IsWriteOperation() && readSize == util.BlockSize {
+		p.Data, _ = proto.Buffers.Get(int(readSize))
+		atomic.StoreInt64(&p.isUseBufferPool, PacketUseBufferPool)
+		_, err = io.ReadFull(c, p.Data[:readSize])
+		if err != nil {
+			proto.Buffers.Put(p.Data)
+			return
+		}
+		isUseBufferPool = true
+	} else {
+		p.Data = make([]byte, readSize)
+		if _, err = io.ReadFull(c, p.Data[:readSize]); err != nil {
+			return isUseBufferPool, err
+		}
+	}
+	return isUseBufferPool, err
 }
 
 func (p *Packet) IsMasterCommand() bool {

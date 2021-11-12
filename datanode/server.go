@@ -176,6 +176,8 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 
 	go s.startUpdateNodeInfo()
 
+	go repl.LoggingAllReplProtocolBufferPoolUse()
+
 	statistics.InitStatistics(cfg, s.clusterID, statistics.ModelDataNode, LocalIP, s.summaryMonitorData)
 
 	go s.startUpdateProcessStatInfo()
@@ -392,6 +394,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/releasePartitions", s.releasePartitions)
 	http.HandleFunc("/computeExtentMd5", s.getExtentMd5Sum)
 	http.HandleFunc("/stat/info", s.getStatInfo)
+	http.HandleFunc("/getReplBufferDetail", s.getReplProtocalBufferDetail)
 }
 
 func (s *DataNode) startTCPService() (err error) {
