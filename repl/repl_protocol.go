@@ -123,9 +123,6 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 	for {
 		select {
 		case p := <-ft.sendCh:
-			if p == nil {
-				return
-			}
 			atomic.StoreInt64(&ft.lastActiveTime, time.Now().Unix())
 			if err := p.WriteToConn(ft.conn); err != nil {
 				p.Data = nil
@@ -158,9 +155,6 @@ func (ft *FollowerTransport) serverReadFromFollower(ctx context.Context) {
 	for {
 		select {
 		case p := <-ft.recvCh:
-			if p == nil {
-				return
-			}
 			atomic.StoreInt64(&ft.lastActiveTime, time.Now().Unix())
 			_ = ft.readFollowerResult(ctx, p)
 		case <-ft.exitCh:
