@@ -48,6 +48,7 @@ const (
 	ActionCreateExtent                    = "ActionCreateExtent:"
 	ActionMarkDelete                      = "ActionMarkDelete:"
 	ActionGetAllExtentWatermarks          = "ActionGetAllExtentWatermarks:"
+	ActionGetAllExtentWatermarksV2        = "ActionGetAllExtentWatermarksV2:"
 	ActionWrite                           = "ActionWrite:"
 	ActionRepair                          = "ActionRepair:"
 	ActionDecommissionPartition           = "ActionDecommissionPartition"
