@@ -350,12 +350,12 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		if err == nil {
 			log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v) from (%v)",
 				p.PartitionID, p.ExtentID, ext.ExtentOffset, ext.Size, remote)
-			err = partition.ExtentStore().MarkDelete(p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size))
+			partition.ExtentStore().MarkDelete(p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size))
 		}
 	} else {
 		log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v) from (%v)",
 			p.PartitionID, p.ExtentID, remote)
-		err = partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0)
+		partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0)
 	}
 	if err != nil {
 		p.PackErrorBody(ActionMarkDelete, err.Error())
