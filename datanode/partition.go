@@ -348,6 +348,24 @@ func (dp *DataPartition) getReplicaLen() int {
 	return len(dp.replicas)
 }
 
+func (dp *DataPartition) needDeleteReplica(addr string) bool {
+	if dp.IsExsitReplica(addr) {
+		return true
+	}
+
+	if dp.config == nil {
+		return false
+	}
+
+	for _, h := range dp.config.Hosts {
+		if addr == h {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (dp *DataPartition) IsExsitReplica(addr string) bool {
 	dp.replicasLock.RLock()
 	defer dp.replicasLock.RUnlock()
@@ -623,7 +641,7 @@ func (dp *DataPartition) updateReplicas(isForce bool) (err error) {
 	dp.isLeader = isLeader
 	dp.replicas = replicas
 	dp.intervalToUpdateReplicas = time.Now().Unix()
-	log.LogInfof(fmt.Sprintf("ActionUpdateReplicationHosts partiton(%v)", dp.partitionID))
+	log.LogInfof(fmt.Sprintf("ActionUpdateReplicationHosts partiton(%v), force(%v)", dp.partitionID, isForce))
 
 	return
 }

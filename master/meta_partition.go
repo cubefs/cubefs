@@ -370,10 +370,18 @@ func (mp *MetaPartition) canBeOffline(nodeAddr string, replicaNum int) (err erro
 	return
 }
 
-// Check if there is a replica missing or not.
-func (mp *MetaPartition) hasMissingOneReplica(replicaNum int) (err error) {
+// Check if there is a replica missing or not, exclude addr
+func (mp *MetaPartition) hasMissingOneReplica(addr string, replicaNum int) (err error) {
+	inReplicas := false
+	for _, rep := range mp.Replicas {
+		if rep.Addr == addr {
+			inReplicas = true
+			break
+		}
+	}
+
 	hostNum := len(mp.Replicas)
-	if hostNum <= replicaNum-1 {
+	if hostNum <= replicaNum-1 && inReplicas {
 		log.LogError(fmt.Sprintf("action[%v],partitionID:%v,err:%v",
 			"hasMissingOneReplica", mp.PartitionID, proto.ErrHasOneMissingReplica))
 		err = proto.ErrHasOneMissingReplica

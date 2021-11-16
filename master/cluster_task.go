@@ -177,7 +177,7 @@ func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr 
 		return
 	}
 
-	if err = mp.hasMissingOneReplica(int(vol.mpReplicaNum)); err != nil {
+	if err = mp.hasMissingOneReplica(nodeAddr, int(vol.mpReplicaNum)); err != nil {
 		return
 	}
 
@@ -300,7 +300,8 @@ func (c *Cluster) deleteMetaPartition(partition *MetaPartition, removeMetaNode *
 	mr, err := partition.getMetaReplica(removeMetaNode.Addr)
 	if err != nil {
 		partition.Unlock()
-		return
+		log.LogErrorf("action[deleteMetaPartition] vol[%v],meta partition[%v], err[%v]", partition.volName, partition.PartitionID, err)
+		return nil
 	}
 	task := mr.createTaskToDeleteReplica(partition.PartitionID)
 	partition.removeReplicaByAddr(removeMetaNode.Addr)

@@ -1132,7 +1132,7 @@ func (c *Cluster) validateDecommissionDataPartition(dp *DataPartition, offlineAd
 		return
 	}
 
-	if err = dp.hasMissingOneReplica(int(vol.dpReplicaNum)); err != nil {
+	if err = dp.hasMissingOneReplica(offlineAddr, int(vol.dpReplicaNum)); err != nil {
 		return
 	}
 
@@ -1264,20 +1264,23 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate boo
 			log.LogErrorf("action[removeDataReplica],vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
 		}
 	}()
-	if validate == true {
+	if validate {
 		if err = c.validateDecommissionDataPartition(dp, addr); err != nil {
 			return
 		}
 	}
+
 	ok := c.isRecovering(dp, addr)
 	if ok {
 		err = fmt.Errorf("vol[%v],data partition[%v] can't decommision until it has recovered", dp.VolName, dp.PartitionID)
 		return
 	}
+
 	dataNode, err := c.dataNode(addr)
 	if err != nil {
 		return
 	}
+
 	removePeer := proto.Peer{ID: dataNode.ID, Addr: addr}
 	if err = c.removeDataPartitionRaftMember(dp, removePeer); err != nil {
 		return
@@ -1308,6 +1311,7 @@ func (c *Cluster) isRecovering(dp *DataPartition, addr string) (isRecover bool) 
 	} else {
 		key = fmt.Sprintf("%s:%s", addr, "")
 	}
+
 	var badPartitionIDs []uint64
 	badPartitions, ok := c.BadDataPartitionIds.Load(key)
 	if ok {

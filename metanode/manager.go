@@ -103,6 +103,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		metric.SetWithLabels(err, labels)
 	}()
 
+	log.LogDebugf("HandleMetadataOperation input info op (%s), remote %s", p.GetOpMsg(), remoteAddr)
+
 	switch p.Opcode {
 	case proto.OpMetaCreateInode:
 		err = m.opCreateInode(conn, p, remoteAddr)
