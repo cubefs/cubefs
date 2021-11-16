@@ -17,7 +17,7 @@ package wal
 import "github.com/tiglabs/raft/util"
 
 const (
-	DefaultFileCacheCapacity = 16
+	DefaultFileCacheCapacity = 4
 	DefaultFileSize          = 32 * util.MB
 	DefaultSync              = false
 	DefaultSyncRotate        = false
