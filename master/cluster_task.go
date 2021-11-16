@@ -101,7 +101,9 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 	mp.RLock()
 	if !contains(mp.Hosts, srcAddr) {
 		mp.RUnlock()
-		return
+		log.LogErrorf("action[migrateMetaPartition],volName[%v], src[%s] not exist, partitionID[%v]",
+			mp.volName, srcAddr, mp.PartitionID)
+		return fmt.Errorf("migrateMetaPartition src [%s] is not exist in mp(%d)", srcAddr, mp.PartitionID)
 	}
 	oldHosts = mp.Hosts
 	mp.RUnlock()
@@ -200,10 +202,12 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) 
 func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr string, forceDel bool) (err error) {
 	mp.RLock()
 	defer mp.RUnlock()
+
 	var vol *Vol
 	if vol, err = c.getVol(mp.volName); err != nil {
 		return
 	}
+
 	if err = mp.canBeOffline(nodeAddr, int(vol.mpReplicaNum)); err != nil {
 		return
 	}
@@ -213,7 +217,7 @@ func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr 
 		return
 	}
 
-	if err = mp.hasMissingOneReplica(int(vol.mpReplicaNum)); err != nil {
+	if err = mp.hasMissingOneReplica(nodeAddr, int(vol.mpReplicaNum)); err != nil {
 		return
 	}
 
@@ -312,19 +316,23 @@ func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, valid
 			log.LogErrorf("action[deleteMetaReplica],vol[%v],data partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
 		}
 	}()
+
 	if validate {
 		if err = c.validateDecommissionMetaPartition(partition, addr, forceDel); err != nil {
 			return
 		}
 	}
+
 	metaNode, err := c.metaNode(addr)
 	if err != nil {
 		return
 	}
+
 	removePeer := proto.Peer{ID: metaNode.ID, Addr: addr}
 	if err = c.removeMetaPartitionRaftMember(partition, removePeer); err != nil {
 		return
 	}
+
 	if err = c.deleteMetaPartition(partition, metaNode); err != nil {
 		return
 	}
@@ -336,7 +344,8 @@ func (c *Cluster) deleteMetaPartition(partition *MetaPartition, removeMetaNode *
 	mr, err := partition.getMetaReplica(removeMetaNode.Addr)
 	if err != nil {
 		partition.Unlock()
-		return
+		log.LogErrorf("action[deleteMetaPartition] vol[%v],meta partition[%v], err[%v]", partition.volName, partition.PartitionID, err)
+		return nil
 	}
 	task := mr.createTaskToDeleteReplica(partition.PartitionID)
 	partition.removeReplicaByAddr(removeMetaNode.Addr)
