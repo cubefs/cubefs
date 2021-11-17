@@ -118,6 +118,10 @@ func (p *partition) Status() (status *PartitionStatus) {
 
 // LeaderTerm returns the current term of leader in the raft group.
 func (p *partition) LeaderTerm() (leaderID, term uint64) {
+	if p.raft == nil {
+		return
+	}
+
 	leaderID, term = p.raft.LeaderTerm(p.id)
 	return
 }
