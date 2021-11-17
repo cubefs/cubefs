@@ -1648,8 +1648,8 @@ func (c *Cluster) updateVol(name, authKey string, newArgs *VolVarargs) (err erro
 		err = proto.ErrVolNotExists
 		goto errHandler
 	}
-	vol.Lock()
-	defer vol.Unlock()
+	vol.volLock.Lock()
+	defer vol.volLock.Unlock()
 	serverAuthKey = vol.Owner
 	if !matchKey(serverAuthKey, authKey) {
 		return proto.ErrVolAuthKeyNotMatch
