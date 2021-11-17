@@ -550,10 +550,18 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		p.Size = uint32(currReadSize)
 		p.ExtentOffset = offset
 
-		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, isRepairRead)
-
+		err=func() error {
+			var storeErr error
+			if !isRepairRead {
+				tp := exporter.NewTPCnt("StreamRead_StoreRead")
+				defer func() {
+					tp.Set(storeErr)
+				}()
+			}
+			reply.CRC, storeErr = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, isRepairRead)
+			return storeErr
+		}()
 		partition.checkIsDiskError(err)
-
 		p.CRC = reply.CRC
 		if err != nil {
 			if currReadSize == util.ReadBlockSize {
@@ -565,7 +573,19 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		reply.ResultCode = proto.OpOk
 		reply.Opcode = p.Opcode
 		p.ResultCode = proto.OpOk
-		if err = reply.WriteToConn(connect); err != nil {
+
+		err=func() error {
+			var netErr error
+			if !isRepairRead {
+				tp := exporter.NewTPCnt("StreamRead_WriteToConn")
+				defer func() {
+					tp.Set(netErr)
+				}()
+			}
+			netErr=reply.WriteToConn(connect)
+			return netErr
+		}()
+		if err != nil {
 			if currReadSize == util.ReadBlockSize {
 				proto.Buffers.Put(reply.Data)
 			}
@@ -630,7 +650,7 @@ func (s *DataNode) handlePacketToGetAllWatermarksV2(p *repl.Packet) {
 	if p.ExtentType == proto.NormalExtentType {
 		fInfoList, _, err = store.GetAllWatermarks(storage.NormalExtentFilter())
 	} else {
-		var extentIDs = make([]uint64, 0, len(p.Data) / 8)
+		var extentIDs = make([]uint64, 0, len(p.Data)/8)
 		var extentID uint64
 		var reader = bytes.NewReader(p.Data)
 		for {
@@ -650,7 +670,7 @@ func (s *DataNode) handlePacketToGetAllWatermarksV2(p *repl.Packet) {
 		return
 	}
 
-	var buf = bytes.NewBuffer(make([]byte, 0, len(fInfoList)* 16))
+	var buf = bytes.NewBuffer(make([]byte, 0, len(fInfoList)*16))
 	for _, info := range fInfoList {
 		if info.IsDeleted {
 			continue
