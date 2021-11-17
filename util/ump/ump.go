@@ -99,9 +99,8 @@ func AfterTP(o *TpObject, err error) {
 		tp.ProcessState = "1"
 	}
 	tp.count = 1
-	internalKey:=tp.elapsedTime/50
-	index:=internalKey%int64(FunctionTPMapCount)
-	mkey := tp.Key + "_" + strconv.FormatInt( internalKey,10)
+	index:=tp.elapsedTime%int64(FunctionTPMapCount)
+	mkey := tp.Key + "_"+strconv.FormatInt(tp.elapsedTime,10)
 	v, ok := FuncationTPMap[index].Load(mkey)
 	if !ok {
 		FuncationTPMap[index].Store(mkey, tp)
@@ -126,16 +125,15 @@ func AfterTPUs(o *TpObject, err error) {
 		return
 	}
 	tp := o.UmpType.(*FunctionTpGroupBy)
-	tp.elapsedTime = (int64)(time.Since(o.StartTime) / 1e3)
+	tp.elapsedTime = (int64)(time.Since(o.StartTime) / 1e6)
 	TpObjectPool.Put(o)
 	tp.ProcessState = "0"
 	if err != nil {
 		tp.ProcessState = "1"
 	}
 	tp.count = 1
-	internalKey:=tp.elapsedTime/50
-	index:=internalKey%int64(FunctionTPMapCount)
-	mkey := tp.Key + "_" + strconv.FormatInt( internalKey,10)
+	index:=tp.elapsedTime%int64(FunctionTPMapCount)
+	mkey := tp.Key + "_"+strconv.FormatInt(tp.elapsedTime,10)
 	v, ok := FuncationTPMap[index].Load(mkey)
 	if !ok {
 		FuncationTPMap[index].Store(mkey, tp)

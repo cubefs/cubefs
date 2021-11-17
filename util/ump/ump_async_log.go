@@ -158,7 +158,6 @@ func (lw *LogWrite) backGroupWriteForGroupByTP() {
 		var (
 			body []byte
 		)
-		time.Sleep(time.Second * 5)
 		for index:=0;index<FunctionTPMapCount;index++{
 			FuncationTPMap[index].Range(func(key, value interface{}) bool {
 				v := value.(*FunctionTpGroupBy)
@@ -174,7 +173,6 @@ func (lw *LogWrite) backGroupWriteForGroupByTP() {
 			})
 			time.Sleep(time.Second)
 		}
-
 		if lw.backGroundCheckFile() != nil {
 			continue
 		}
