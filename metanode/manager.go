@@ -295,6 +295,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 	if err != nil {
 		return
 	}
+	syslog.Println("Start loadPartitions!!!")
 	var wg sync.WaitGroup
 	for _, fileInfo := range fileInfoList {
 		if fileInfo.IsDir() && strings.HasPrefix(fileInfo.Name(), partitionPrefix) {
@@ -371,6 +372,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 		}
 	}
 	wg.Wait()
+	syslog.Println("Finish loadPartitions!!!")
 	return
 }
 
@@ -378,13 +380,17 @@ func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) (e
 	syslog.Println(fmt.Sprintf("start load metaPartition %v", id))
 	partition.ForceSetMetaPartitionToLoadding()
 	if err = partition.Start(); err != nil {
-		log.LogErrorf("load meta partition %v fail: %v", id, err)
+		msg := fmt.Sprintf("load meta partition %v fail: %v", id, err)
+		log.LogError(msg)
+		syslog.Println(msg)
 		return
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.partitions[id] = partition
-	log.LogInfof("load meta partition %v success", id)
+	msg := fmt.Sprintf("load meta partition %v success", id)
+	log.LogInfof(msg)
+	syslog.Println(msg)
 	return
 }
 
