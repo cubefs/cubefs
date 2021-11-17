@@ -68,7 +68,6 @@ func (r *snapshotReader) Next() ([]byte, error) {
 	}
 
 	// read size header
-	r.reader.Reset()
 	var buf []byte
 	if buf, r.err = r.reader.ReadFull(4); r.err != nil {
 		return nil, r.err
@@ -80,7 +79,6 @@ func (r *snapshotReader) Next() ([]byte, error) {
 	}
 
 	// read data
-	r.reader.Reset()
 	if buf, r.err = r.reader.ReadFull(int(size)); r.err != nil {
 		return nil, r.err
 	}
