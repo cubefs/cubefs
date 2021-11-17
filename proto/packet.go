@@ -785,7 +785,7 @@ func (p *Packet) IsForwardPkt() bool {
 func (p *Packet) LogMessage(action, remote string, start int64, err error) (m string) {
 	if err == nil {
 		m = fmt.Sprintf("id[%v] isPrimaryBackReplLeader[%v] remote[%v] "+
-			" cost[%v] ", p.GetUniqueLogId(), p.IsForwardPkt(), remote, (time.Now().UnixNano()-start)/1e6)
+			" cost[%v]ms ", p.GetUniqueLogId(), p.IsForwardPkt(), remote, (time.Now().UnixNano()-start)/1e6)
 
 	} else {
 		m = fmt.Sprintf("id[%v] isPrimaryBackReplLeader[%v] remote[%v]"+
