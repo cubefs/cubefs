@@ -163,7 +163,7 @@ func (lw *LogWrite) backGroupWriteForGroupByTP() {
 				v := value.(*FunctionTpGroupBy)
 				v.Count = strconv.FormatInt(v.count, 10)
 				v.Time = v.currTime.Format(LogTimeForMat)
-				v.ElapsedTime = strconv.FormatInt(v.elapsedTime/v.count, 10)
+				v.ElapsedTime = strconv.FormatInt(v.elapsedTime, 10)
 				lw.jsonEncoder.Encode(v)
 				FunctionTpGroupByPool.Put(v)
 				body = append(body, lw.bf.Bytes()...)

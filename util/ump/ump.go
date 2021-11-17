@@ -93,7 +93,6 @@ func AfterTP(o *TpObject, err error) {
 	}
 	tp := o.UmpType.(*FunctionTpGroupBy)
 	tp.elapsedTime = (int64)(time.Since(o.StartTime) / 1e6)
-	TpObjectPool.Put(o)
 	tp.ProcessState = "0"
 	if err != nil {
 		tp.ProcessState = "1"
@@ -106,7 +105,7 @@ func AfterTP(o *TpObject, err error) {
 		FuncationTPMap[index].Store(mkey, tp)
 	} else {
 		atomic.AddInt64(&v.(*FunctionTpGroupBy).count, 1)
-		atomic.AddInt64(&v.(*FunctionTpGroupBy).elapsedTime, tp.elapsedTime)
+		TpObjectPool.Put(o)
 	}
 }
 
@@ -139,7 +138,7 @@ func AfterTPUs(o *TpObject, err error) {
 		FuncationTPMap[index].Store(mkey, tp)
 	} else {
 		atomic.AddInt64(&v.(*FunctionTpGroupBy).count, 1)
-		atomic.AddInt64(&v.(*FunctionTpGroupBy).elapsedTime, tp.elapsedTime)
+		TpObjectPool.Put(o)
 	}
 	return
 }
