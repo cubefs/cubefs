@@ -349,8 +349,8 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 		rp.addGetNumFromBufferPoolCnt()
 	}
 	if err != nil {
-		err=fmt.Errorf(fmt.Sprintf("%v local(%v)->remote(%v) recive error(%v)",ActionreadPkgAndPrepare, rp.sourceConn.LocalAddr().String(),
-			rp.sourceConn.RemoteAddr().String()) ,rp.sourceConn.RemoteAddr(),err)
+		err=fmt.Errorf("%v local(%v)->remote(%v) recive error(%v)",ActionreadPkgAndPrepare, rp.sourceConn.LocalAddr().String(),
+			rp.sourceConn.RemoteAddr().String() ,err)
 		return
 	}
 	request.OrgBuffer = request.Data
