@@ -463,7 +463,14 @@ func (manager *SpaceManager) SetDiskFixTinyDeleteRecordLimit(newValue uint64) {
 	return
 }
 
+const (
+	MaxDiskRepairTaskLimit=256
+)
+
 func (manager *SpaceManager) SetDiskRepairTaskLimit(newValue uint64) {
+	if newValue==0 {
+		newValue=MaxDiskRepairTaskLimit
+	}
 	if newValue > 0 && manager.repairTaskLimitOnDisk != newValue {
 		log.LogInfof("action[spaceManager] change DiskRepairTaskLimit from (%v) to (%v)", manager.repairTaskLimitOnDisk, newValue)
 		manager.repairTaskLimitOnDisk = newValue
