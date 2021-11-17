@@ -68,7 +68,7 @@ type Vol struct {
 	description        string
 	dpSelectorName     string
 	dpSelectorParm     string
-	sync.RWMutex
+	volLock            sync.RWMutex
 }
 
 func newVol(id uint64, name, owner, zoneName string,
@@ -364,20 +364,20 @@ func (vol *Vol) cloneDataPartitionMap() (dps map[uint64]*DataPartition) {
 }
 
 func (vol *Vol) setStatus(status uint8) {
-	vol.Lock()
-	defer vol.Unlock()
+	vol.volLock.Lock()
+	defer vol.volLock.Unlock()
 	vol.Status = status
 }
 
 func (vol *Vol) status() uint8 {
-	vol.RLock()
-	defer vol.RUnlock()
+	vol.volLock.RLock()
+	defer vol.volLock.RUnlock()
 	return vol.Status
 }
 
 func (vol *Vol) capacity() uint64 {
-	vol.RLock()
-	defer vol.RUnlock()
+	vol.volLock.RLock()
+	defer vol.volLock.RUnlock()
 	return vol.Capacity
 }
 
@@ -499,26 +499,26 @@ func (vol *Vol) getMetaPartitionsView() (mpViews []*proto.MetaPartitionView) {
 }
 
 func (vol *Vol) setMpsCache(body []byte) {
-	vol.Lock()
-	defer vol.Unlock()
+	vol.volLock.Lock()
+	defer vol.volLock.Unlock()
 	vol.mpsCache = body
 }
 
 func (vol *Vol) getMpsCache() []byte {
-	vol.RLock()
-	defer vol.RUnlock()
+	vol.volLock.RLock()
+	defer vol.volLock.RUnlock()
 	return vol.mpsCache
 }
 
 func (vol *Vol) setViewCache(body []byte) {
-	vol.Lock()
-	defer vol.Unlock()
+	vol.volLock.Lock()
+	defer vol.volLock.Unlock()
 	vol.viewCache = body
 }
 
 func (vol *Vol) getViewCache() []byte {
-	vol.RLock()
-	defer vol.RUnlock()
+	vol.volLock.RLock()
+	defer vol.volLock.RUnlock()
 	return vol.viewCache
 }
 
@@ -534,8 +534,8 @@ func (vol *Vol) checkStatus(c *Cluster) {
 		}
 	}()
 	vol.updateViewCache(c)
-	vol.Lock()
-	defer vol.Unlock()
+	vol.volLock.Lock()
+	defer vol.volLock.Unlock()
 	if vol.Status != markDelete {
 		return
 	}
@@ -666,9 +666,9 @@ func (vol *Vol) getTasksToDeleteDataPartitions() (tasks []*proto.AdminTask) {
 }
 
 func (vol *Vol) getDataPartitionsCount() (count int) {
-	vol.RLock()
+	vol.volLock.RLock()
 	count = len(vol.dataPartitions.partitionMap)
-	vol.RUnlock()
+	vol.volLock.RUnlock()
 	return
 }
 
