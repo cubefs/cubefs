@@ -568,6 +568,15 @@ func (vol *Vol) deleteMetaPartitionFromMetaNode(c *Cluster, task *proto.AdminTas
 	if err != nil {
 		return
 	}
+
+	mp.RLock()
+	_, err = mp.getMetaReplica(task.OperatorAddr)
+	mp.RUnlock()
+	if err != nil {
+		log.LogWarnf("deleteMetaPartitionFromMetaNode (%s) maybe alread been deleted", task.ToString())
+		return
+	}
+
 	_, err = metaNode.Sender.syncSendAdminTask(task)
 	if err != nil {
 		log.LogErrorf("action[deleteMetaPartition] vol[%v],meta partition[%v],err[%v]", mp.volName, mp.PartitionID, err)
@@ -589,6 +598,15 @@ func (vol *Vol) deleteDataPartitionFromDataNode(c *Cluster, task *proto.AdminTas
 	if err != nil {
 		return
 	}
+
+	dp.RLock()
+	_, ok := dp.hasReplica(task.OperatorAddr)
+	dp.RUnlock()
+	if !ok {
+		log.LogWarnf("deleteDataPartitionFromDataNode task(%s) maybe already executed", task.ToString())
+		return
+	}
+
 	_, err = dataNode.TaskManager.syncSendAdminTask(task)
 	if err != nil {
 		log.LogErrorf("action[deleteDataReplica] vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
