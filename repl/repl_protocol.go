@@ -522,25 +522,26 @@ func GetReplProtocolDetail() (allReplDetail []*ReplProtocalBufferDetail) {
 }
 
 func LoggingAllReplProtocolBufferPoolUse() {
-	for {
-		var (
-			sumBytes int64
-		)
-		ReplProtocalMap.Range(func(key, value interface{}) bool {
-			if value == nil {
-				return true
-			}
-			rp := value.(*ReplProtocol)
-			if atomic.LoadInt64(&rp.getNumFromBufferPool) <= 0 {
-				return true
-			}
-			usedPoolCnt := atomic.LoadInt64(&rp.getNumFromBufferPool) - atomic.LoadInt64(&rp.putNumToBufferPool)
-			sumBytes += (usedPoolCnt) * util.BlockSize
-			return true
-		})
-		log.LogErrorf(fmt.Sprintf("ReplProtocalMap use (%v) from buffer pool", sumBytes))
-		time.Sleep(time.Minute)
-	}
+	return
+	//for {
+	//	var (
+	//		sumBytes int64
+	//	)
+	//	ReplProtocalMap.Range(func(key, value interface{}) bool {
+	//		if value == nil {
+	//			return true
+	//		}
+	//		rp := value.(*ReplProtocol)
+	//		if atomic.LoadInt64(&rp.getNumFromBufferPool) <= 0 {
+	//			return true
+	//		}
+	//		usedPoolCnt := atomic.LoadInt64(&rp.getNumFromBufferPool) - atomic.LoadInt64(&rp.putNumToBufferPool)
+	//		sumBytes += (usedPoolCnt) * util.BlockSize
+	//		return true
+	//	})
+	//	log.LogErrorf(fmt.Sprintf("ReplProtocalMap use (%v) from buffer pool", sumBytes))
+	//	time.Sleep(time.Minute)
+	//}
 
 }
 
