@@ -180,7 +180,7 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace uint64, maxErrC
 		disk = NewDisk(path, reservedSpace, maxErrCnt, diskFDLimit, manager)
 		startTime := time.Now()
 		disk.RestorePartition(visitor, DiskLoadPartitionParallelism)
-		log.LogInfof("disk [%v] load compete cost [%v]", path, time.Since(startTime))
+		log.LogInfof("disk(%v) load compete cost(%v)", path, time.Since(startTime))
 		manager.putDisk(disk)
 		err = nil
 		go disk.autoComputeExtentCrc()
@@ -457,7 +457,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 
 func (manager *SpaceManager) SetDiskFixTinyDeleteRecordLimit(newValue uint64) {
 	if newValue > 0 && manager.fixTinyDeleteRecordLimitOnDisk != newValue {
-		log.LogInfof("action[spaceManager] change DiskFixTinyDeleteRecordLimit from (%v) to (%v)", manager.repairTaskLimitOnDisk, newValue)
+		log.LogInfof("action[spaceManager] change DiskFixTinyDeleteRecordLimit from(%v) to(%v)", manager.repairTaskLimitOnDisk, newValue)
 		manager.fixTinyDeleteRecordLimitOnDisk = newValue
 	}
 	return
@@ -472,7 +472,7 @@ func (manager *SpaceManager) SetDiskRepairTaskLimit(newValue uint64) {
 		newValue=MaxDiskRepairTaskLimit
 	}
 	if newValue > 0 && manager.repairTaskLimitOnDisk != newValue {
-		log.LogInfof("action[spaceManager] change DiskRepairTaskLimit from (%v) to (%v)", manager.repairTaskLimitOnDisk, newValue)
+		log.LogInfof("action[spaceManager] change DiskRepairTaskLimit from(%v) to(%v)", manager.repairTaskLimitOnDisk, newValue)
 		manager.repairTaskLimitOnDisk = newValue
 	}
 }

@@ -156,7 +156,7 @@ func (dp *DataPartition) buildDataPartitionRepairTask(ctx context.Context, repai
 		followerAddr := replicas[index]
 		extents, err := dp.getRemoteExtentInfo(ctx, extentType, tinyExtents, followerAddr)
 		if err != nil {
-			log.LogErrorf("buildDataPartitionRepairTask PartitionID(%v) on (%v) err(%v)", dp.partitionID, followerAddr, err)
+			log.LogErrorf("buildDataPartitionRepairTask PartitionID(%v) on(%v) err(%v)", dp.partitionID, followerAddr, err)
 			continue
 		}
 		repairTasks[index] = NewDataPartitionRepairTask(extents, leaderTinyDeleteRecordFileSize, followerAddr, leaderAddr)
@@ -275,9 +275,11 @@ func (dp *DataPartition) getRemoteExtentInfo(ctx context.Context, extentType uin
 
 	// 首先尝试使用V2版本获取远端Extent信息, 失败后则尝试使用V1版本获取信息，以保证集群灰度过程中修复功能依然可以兼容。
 	if extentFiles, err = version2Func(); err != nil {
-		log.LogWarnf("partition [%v] get remote [%v] extent info by version 2 method failed and will retry by using version 1 method: %v", err)
+		log.LogWarnf("partition(%v) get remote(%v) extent info by version 2 method failed" +
+			" and will retry by using version 1 method: %v", dp.partitionID,err)
 		if extentFiles, err = version1Func(); err != nil {
-			log.LogErrorf("partition [%v] get remote [%v] extent info failed by both version 1 and version 2 method: %v", err)
+			log.LogErrorf("partition(%v) get remote(%v) extent info failed by both version 1 " +
+				"and version 2 method: %v", dp.partitionID,err)
 		}
 	}
 	return
@@ -455,7 +457,7 @@ func (dp *DataPartition) notifyFollower(ctx context.Context, wg *sync.WaitGroup,
 	p.Size = uint32(len(p.Data))
 	conn, err = gConnPool.GetConnect(target)
 	defer func() {
-		log.LogInfof(fmt.Sprintf(ActionNotifyFollowerToRepair+" to host(%v) Partition(%v) failed (%v)", target, dp.partitionID, err))
+		log.LogInfof(fmt.Sprintf(ActionNotifyFollowerToRepair+" to host(%v) Partition(%v) failed(%v)", target, dp.partitionID, err))
 	}()
 	if err != nil {
 		return err
@@ -584,12 +586,12 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 			return
 		}
 
-		log.LogInfof(fmt.Sprintf("action[streamRepairExtent] fix(%v_%v) start fix from (%v)"+
+		log.LogInfof(fmt.Sprintf("action[streamRepairExtent] fix(%v_%v) start fix from(%v)"+
 			" remoteSize(%v)localSize(%v) reply(%v).", dp.partitionID, localExtentInfo.FileID, remoteExtentInfo.String(),
 			remoteExtentInfo.Size, currFixOffset, reply.GetUniqueLogId()))
 		actualCrc := crc32.ChecksumIEEE(reply.Data[:reply.Size])
 		if reply.CRC != crc32.ChecksumIEEE(reply.Data[:reply.Size]) {
-			err = fmt.Errorf("streamRepairExtent crc mismatch expectCrc(%v) actualCrc(%v) extent(%v_%v) start fix from (%v)"+
+			err = fmt.Errorf("streamRepairExtent crc mismatch expectCrc(%v) actualCrc(%v) extent(%v_%v) start fix from(%v)"+
 				" remoteSize(%v) localSize(%v) request(%v) reply(%v) ", reply.CRC, actualCrc, dp.partitionID, remoteExtentInfo.String(),
 				remoteExtentInfo.Source, remoteExtentInfo.Size, currFixOffset, request.GetUniqueLogId(), reply.GetUniqueLogId())
 			return errors.Trace(err, "streamRepairExtent receive data error")

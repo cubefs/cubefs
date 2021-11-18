@@ -277,7 +277,7 @@ func (dp *DataPartition) Start() (err error) {
 		return
 	}
 	if err = dp.startRaft(); err != nil {
-		log.LogErrorf("partition [%v] start raft failed: %v", dp.partitionID, err)
+		log.LogErrorf("partition(%v) start raft failed: %v", dp.partitionID, err)
 	}
 	return
 }
@@ -562,7 +562,7 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 
 		case <-dp.repairC:
 			repairTimer.Stop()
-			log.LogDebugf("partition [%v] execute manual data repair for all extent", dp.partitionID)
+			log.LogDebugf("partition(%v) execute manual data repair for all extent", dp.partitionID)
 			dp.ExtentStore().MoveAllToBrokenTinyExtentC(storage.TinyExtentCount)
 			dp.runRepair(ctx, proto.TinyExtentType, false)
 			dp.runRepair(ctx, proto.NormalExtentType, false)
@@ -706,7 +706,7 @@ func (dp *DataPartition) updateReplicas(isForce bool) (err error) {
 	dp.replicasLock.Lock()
 	defer dp.replicasLock.Unlock()
 	if !dp.compareReplicas(dp.replicas, replicas) {
-		log.LogInfof("action[updateReplicas] partition(%v) replicas changed from (%v) to (%v).",
+		log.LogInfof("action[updateReplicas] partition(%v) replicas changed from(%v) to(%v).",
 			dp.partitionID, dp.replicas, replicas)
 	}
 	dp.isLeader = isLeader
@@ -959,7 +959,7 @@ func (dp *DataPartition) ChangeRaftMember(changeType raftProto.ConfChangeType, p
 func (dp *DataPartition) canRemoveSelf() (canRemove bool, err error) {
 	var partition *proto.DataPartitionInfo
 	if partition, err = MasterClient.AdminAPI().GetDataPartition(dp.volumeID, dp.partitionID); err != nil {
-		log.LogErrorf("action[canRemoveSelf] err[%v]", err)
+		log.LogErrorf("action[canRemoveSelf] err(%v)", err)
 		return
 	}
 	canRemove = false
@@ -998,7 +998,7 @@ func (dp *DataPartition) SyncReplicaHosts(replicas []string) {
 	dp.replicas = replicas
 	dp.intervalToUpdateReplicas = time.Now().Unix()
 	dp.replicasLock.Unlock()
-	log.LogInfof("partition [%v] synchronized replica hosts from master [replicas: (%v), leader: %v]",
+	log.LogInfof("partition(%v) synchronized replica hosts from master [replicas:(%v), leader: %v]",
 		dp.partitionID, strings.Join(replicas, ","), leader)
 	if leader {
 		dp.Repair()

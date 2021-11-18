@@ -351,12 +351,12 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		ext := new(proto.TinyExtentDeleteRecord)
 		err = json.Unmarshal(p.Data, ext)
 		if err == nil {
-			log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v) from (%v)",
+			log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v) from(%v)",
 				p.PartitionID, p.ExtentID, ext.ExtentOffset, ext.Size, remote)
 			partition.ExtentStore().MarkDelete(p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size))
 		}
 	} else {
-		log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v) from (%v)",
+		log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v) from(%v)",
 			p.PartitionID, p.ExtentID, remote)
 		partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0)
 	}
@@ -382,14 +382,14 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	if err == nil {
 		for _, ext := range exts {
 			DeleteLimiterWait()
-			log.LogInfof("handleBatchMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v) from (%v)",
+			log.LogInfof("handleBatchMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v) from(%v)",
 				p.PartitionID, p.ExtentID, ext.ExtentOffset, ext.Size, remote)
 			store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
 		}
 	}
 
 	if err != nil {
-		log.LogErrorf(fmt.Sprintf("(%v) error(%v) data (%v)", p.GetUniqueLogId(), err, string(p.Data)))
+		log.LogErrorf(fmt.Sprintf("(%v) error(%v) data(%v)", p.GetUniqueLogId(), err, string(p.Data)))
 		p.PackErrorBody(ActionMarkDelete, err.Error())
 	} else {
 		p.PacketOkReply()
@@ -723,7 +723,7 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 		}
 	}()
 	if !storage.IsTinyExtent(request.ExtentID) {
-		err = fmt.Errorf("unavali extentID (%v)", request.ExtentID)
+		err = fmt.Errorf("unavali extentID(%v)", request.ExtentID)
 		return
 	}
 
@@ -1314,7 +1314,7 @@ func (s *DataNode) handlePacketToSyncDataPartitionReplicas(p *repl.Packet) {
 		return
 	}
 	if task.OpCode != proto.OpSyncDataPartitionReplicas {
-		err = fmt.Errorf("from master Task[%v] failed,error unavali opcode(%v)", task.ToString(), task.OpCode)
+		err = fmt.Errorf("from master Task(%v) failed,error unavali opcode(%v)", task.ToString(), task.OpCode)
 		return
 	}
 	request := &proto.SyncDataPartitionReplicasRequest{}

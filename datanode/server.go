@@ -225,7 +225,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 
 	s.tickInterval = int(cfg.GetFloat(cfgTickIntervalMs))
 	if s.tickInterval <= 300 {
-		log.LogWarnf("get config [%s]:[%v] less than 300 so set it to 500 ", cfgTickIntervalMs, cfg.GetString(cfgTickIntervalMs))
+		log.LogWarnf("get config [%s]:(%v) less than 300 so set it to 500 ", cfgTickIntervalMs, cfg.GetString(cfgTickIntervalMs))
 		s.tickInterval = 500
 	}
 
@@ -275,13 +275,13 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 			if err := syscall.Statfs(path, stateFS); err == nil {
 				reserved = uint64(float64(stateFS.Blocks*uint64(stateFS.Bsize)) * DefaultDiskReservedRatio)
 			}
-			log.LogInfof("disk [%v] load with option [ReservedSpace: %v, MaxErrorCount: %v",
+			log.LogInfof("disk(%v) load with option [ReservedSpace: %v, MaxErrorCount: %v",
 				path, reserved, DefaultDiskMaxErr)
 			s.space.LoadDisk(path, reserved, DefaultDiskMaxErr)
 		}(&wg, path)
 	}
 	wg.Wait()
-	log.LogInfof("space manager loaded all disk cost [%v]", time.Since(startTime))
+	log.LogInfof("space manager loaded all disk cost(%v)", time.Since(startTime))
 	return nil
 }
 
@@ -321,7 +321,7 @@ func (s *DataNode) register(cfg *config.Config) {
 			// register this data node on the master
 			var nodeID uint64
 			if nodeID, err = MasterClient.NodeAPI().AddDataNode(fmt.Sprintf("%s:%v", LocalIP, s.port), s.zoneName); err != nil {
-				log.LogErrorf("action[registerToMaster] cannot register this node to master[%v] err(%v).",
+				log.LogErrorf("action[registerToMaster] cannot register this node to master(%v) err(%v).",
 					masterAddr, err)
 				timer.Reset(2 * time.Second)
 				continue

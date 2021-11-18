@@ -248,11 +248,11 @@ func (d *Disk) updateTaskExecutionLimit() {
 	d.limitLock.Lock()
 	defer d.limitLock.Unlock()
 	if d.fixTinyDeleteRecordLimit != d.space.fixTinyDeleteRecordLimitOnDisk {
-		log.LogInfof("action[updateTaskExecutionLimit] disk(%v) change fixTinyDeleteRecordLimit from(%v) to (%v)", d.Path, d.fixTinyDeleteRecordLimit, d.space.fixTinyDeleteRecordLimitOnDisk)
+		log.LogInfof("action[updateTaskExecutionLimit] disk(%v) change fixTinyDeleteRecordLimit from(%v) to(%v)", d.Path, d.fixTinyDeleteRecordLimit, d.space.fixTinyDeleteRecordLimitOnDisk)
 		d.fixTinyDeleteRecordLimit = d.space.fixTinyDeleteRecordLimitOnDisk
 	}
 	if d.repairTaskLimit != d.space.repairTaskLimitOnDisk {
-		log.LogInfof("action[updateTaskExecutionLimit] disk(%v) change repairTaskLimit from(%v) to (%v)", d.Path, d.repairTaskLimit, d.space.repairTaskLimitOnDisk)
+		log.LogInfof("action[updateTaskExecutionLimit] disk(%v) change repairTaskLimit from(%v) to(%v)", d.Path, d.repairTaskLimit, d.space.repairTaskLimitOnDisk)
 		d.repairTaskLimit = d.space.repairTaskLimitOnDisk
 	}
 }
@@ -440,13 +440,13 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor, parallelism int) {
 				partitionFullPath := path.Join(d.Path, filename)
 				startTime := time.Now()
 				if partition, loadErr = LoadDataPartition(partitionFullPath, d); loadErr != nil {
-					msg := fmt.Sprintf("load partition [%v] failed: %v",
+					msg := fmt.Sprintf("load partition(%v) failed: %v",
 						partitionFullPath, loadErr)
 					log.LogError(msg)
 					exporter.Warning(msg)
 					return
 				}
-				log.LogInfof("partition [%v] load complete cost [%v]",
+				log.LogInfof("partition(%v) load complete cost(%v)",
 					partitionFullPath, time.Since(startTime))
 				if visitor != nil {
 					visitor(partition)
@@ -538,7 +538,7 @@ func (d *Disk) evictExpiredFileDescriptor() {
 
 func (d *Disk) forceEvictFileDescriptor() {
 	var count = atomic.LoadInt64(&d.fdCount)
-	log.LogDebugf("action[forceEvictFileDescriptor] disk [%v] current FD count [%v]",
+	log.LogDebugf("action[forceEvictFileDescriptor] disk(%v) current FD count(%v)",
 		d.Path, count)
 	if d.fdLimit.MaxFDLimit == 0 || uint64(count) <= d.fdLimit.MaxFDLimit {
 		return
@@ -554,6 +554,6 @@ func (d *Disk) forceEvictFileDescriptor() {
 	for _, partition := range partitions {
 		partition.ForceEvictFileDescriptor(ratio)
 	}
-	log.LogDebugf("action[forceEvictFileDescriptor] disk [%v] evicted FD count [%v -> %v]",
+	log.LogDebugf("action[forceEvictFileDescriptor] disk(%v) evicted FD count [%v -> %v]",
 		d.Path, count, atomic.LoadInt64(&d.fdCount))
 }

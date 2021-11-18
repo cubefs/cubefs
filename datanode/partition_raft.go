@@ -84,7 +84,7 @@ func (dp *DataPartition) startRaft() (err error) {
 	)
 	defer func() {
 		if r := recover(); r != nil {
-			mesg := fmt.Sprintf("startRaft(%v)  Raft Panic (%v)", dp.partitionID, r)
+			mesg := fmt.Sprintf("startRaft(%v)  Raft Panic(%v)", dp.partitionID, r)
 			panic(mesg)
 		}
 	}()
@@ -172,7 +172,7 @@ func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer) error {
 		}
 	}
 
-	return fmt.Errorf("hasDownReplicasExcludePeer(%v) too much,so donnot offline (%v)", downReplicas, peer)
+	return fmt.Errorf("hasDownReplicasExcludePeer(%v) too much,so donnot offline(%v)", downReplicas, peer)
 }
 
 // StartRaftLoggingSchedule starts the task schedule as follows:
@@ -212,18 +212,18 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 			if dp.minAppliedID > dp.lastTruncateID { // Has changed
 				appliedID := atomic.LoadUint64(&dp.appliedID)
 				if err := dp.storeAppliedID(appliedID); err != nil {
-					log.LogErrorf("partition [%v] scheduled store applied ID [%v] failed: %v", dp.partitionID, appliedID, err)
+					log.LogErrorf("partition(%v) scheduled store applied ID(%v) failed: %v", dp.partitionID, appliedID, err)
 					truncateRaftLogTimer.Reset(time.Minute)
 					continue
 				}
 				dp.raftPartition.Truncate(dp.minAppliedID)
 				dp.lastTruncateID = dp.minAppliedID
 				if err := dp.PersistMetadata(); err != nil {
-					log.LogErrorf("partition [%v] scheduled persist metadata failed: %v", dp.partitionID, err)
+					log.LogErrorf("partition(%v) scheduled persist metadata failed: %v", dp.partitionID, err)
 					truncateRaftLogTimer.Reset(time.Minute)
 					continue
 				}
-				log.LogInfof("partition [%v] scheduled truncate raft log [applied: %v, truncated: %v]", dp.partitionID, appliedID, dp.minAppliedID)
+				log.LogInfof("partition(%v) scheduled truncate raft log [applied: %v, truncated: %v]", dp.partitionID, appliedID, dp.minAppliedID)
 			}
 			truncateRaftLogTimer.Reset(time.Minute)
 
@@ -362,7 +362,7 @@ func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMember
 	peerIndex := -1
 	data, _ := json.Marshal(req)
 	isUpdated = false
-	log.LogInfof("Start RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+	log.LogInfof("Start RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog(%v) ",
 		req.PartitionId, dp.config.NodeID, string(data))
 	for i, peer := range dp.config.Peers {
 		if peer.ID == req.RemovePeer.ID {
@@ -372,7 +372,7 @@ func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMember
 		}
 	}
 	if !isUpdated {
-		log.LogInfof("NoUpdate RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+		log.LogInfof("NoUpdate RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog(%v) ",
 			req.PartitionId, dp.config.NodeID, string(data))
 		return
 	}
@@ -412,7 +412,7 @@ func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMember
 		}
 		isUpdated = false
 	}
-	log.LogInfof("Fininsh RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+	log.LogInfof("Fininsh RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog(%v) ",
 		req.PartitionId, dp.config.NodeID, string(data))
 
 	return
@@ -430,11 +430,11 @@ func (dp *DataPartition) resetRaftNode(req *proto.ResetDataPartitionRaftMemberRe
 	)
 	data, _ := json.Marshal(req)
 	isUpdated = true
-	log.LogInfof("Start ResetRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+	log.LogInfof("Start ResetRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog(%v) ",
 		req.PartitionId, dp.config.NodeID, string(data))
 
 	if len(req.NewPeers) >= len(dp.config.Peers) {
-		log.LogInfof("NoUpdate ResetRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+		log.LogInfof("NoUpdate ResetRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog(%v) ",
 			req.PartitionId, dp.config.NodeID, string(data))
 		return
 	}
@@ -449,7 +449,7 @@ func (dp *DataPartition) resetRaftNode(req *proto.ResetDataPartitionRaftMemberRe
 		}
 		if !flag {
 			isUpdated = false
-			log.LogInfof("ResetRaftNode must be old node, PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+			log.LogInfof("ResetRaftNode must be old node, PartitionID(%v) nodeID(%v)  do RaftLog(%v) ",
 				req.PartitionId, dp.config.NodeID, string(data))
 			return
 		}
@@ -465,7 +465,7 @@ func (dp *DataPartition) resetRaftNode(req *proto.ResetDataPartitionRaftMemberRe
 		}
 		if !flag {
 			isUpdated = false
-			log.LogInfof("ResetRaftNode must be old node, PartitionID(%v) nodeID(%v) OldHosts(%v)  do RaftLog (%v) ",
+			log.LogInfof("ResetRaftNode must be old node, PartitionID(%v) nodeID(%v) OldHosts(%v)  do RaftLog(%v) ",
 				req.PartitionId, dp.config.NodeID, dp.config.Hosts, string(data))
 			return
 		}
@@ -503,7 +503,7 @@ func (dp *DataPartition) resetRaftNode(req *proto.ResetDataPartitionRaftMemberRe
 	dp.replicas = make([]string, len(dp.config.Hosts))
 	copy(dp.replicas, dp.config.Hosts)
 	dp.replicasLock.Unlock()
-	log.LogInfof("Finish ResetRaftNode  PartitionID(%v) nodeID(%v) newHosts(%v)  do RaftLog (%v) ",
+	log.LogInfof("Finish ResetRaftNode  PartitionID(%v) nodeID(%v) newHosts(%v)  do RaftLog(%v) ",
 		req.PartitionId, dp.config.NodeID, newHosts, string(data))
 	return
 }
@@ -802,7 +802,7 @@ func (dp *DataPartition) getLeaderPartitionSize(ctx context.Context, maxExtentID
 	}
 
 	if p.ResultCode != proto.OpOk {
-		err = errors.Trace(err, "partition(%v) result code not ok (%v) from host(%v)", dp.partitionID, p.ResultCode, target)
+		err = errors.Trace(err, "partition(%v) result code not ok(%v) from host(%v)", dp.partitionID, p.ResultCode, target)
 		return
 	}
 	size = binary.BigEndian.Uint64(p.Data)
@@ -842,7 +842,7 @@ func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize(ctx context.Contex
 	}
 
 	if p.ResultCode != proto.OpOk {
-		err = errors.Trace(err, "partition(%v) result code not ok (%v) from host(%v)", dp.partitionID, p.ResultCode, target)
+		err = errors.Trace(err, "partition(%v) result code not ok(%v) from host(%v)", dp.partitionID, p.ResultCode, target)
 		return
 	}
 	maxExtentID = binary.BigEndian.Uint64(p.Data[0:8])
@@ -954,7 +954,7 @@ func (dp *DataPartition) getRemoteAppliedID(target string, p *repl.Packet) (appl
 		return
 	}
 	if p.ResultCode != proto.OpOk {
-		err = errors.NewErrorf("partition(%v) result code not ok (%v) from host(%v)", dp.partitionID, p.ResultCode, target)
+		err = errors.NewErrorf("partition(%v) result code not ok(%v) from host(%v)", dp.partitionID, p.ResultCode, target)
 		return
 	}
 	appliedID = binary.BigEndian.Uint64(p.Data)
