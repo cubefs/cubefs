@@ -384,7 +384,7 @@ func (dp *DataPartition) OverWrite(sc *StreamConn, req *Packet, reply *Packet) (
 			break
 		}
 		log.LogWarnf("OverWrite: errMap(%v), reqPacket(%v), try the next round", errMap, req)
-		time.Sleep(StreamSendSleepInterval)
+		//time.Sleep(StreamSendSleepInterval)
 	}
 
 
