@@ -177,7 +177,7 @@ func newRaft(config *Config, raftConfig *RaftConfig) (*raft, error) {
 
 	util.RunWorker(raft.runApply, raft.handlePanic)
 	util.RunWorker(raft.run, raft.handlePanic)
-	util.RunWorker(raft.monitor, raft.handlePanic)
+	//util.RunWorker(raft.monitor, raft.handlePanic)
 	return raft, nil
 }
 

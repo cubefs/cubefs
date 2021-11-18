@@ -154,7 +154,7 @@ func newRaftFsm(config *Config, raftConfig *RaftConfig) (*raftFsm, error) {
 			r.id, strings.Join(peerStrs, ","), r.term, r.raftLog.committed, r.raftLog.applied, r.raftLog.lastIndex(), r.raftLog.lastTerm())
 	}
 	r.stopCh = make(chan struct{}, 1)
-	go r.doRandomSeed()
+	//go r.doRandomSeed()
 	return r, nil
 }
 

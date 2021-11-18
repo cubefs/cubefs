@@ -46,7 +46,6 @@ func init() {
 }
 
 func GetMessage() *Message {
-	rand.Seed(time.Now().UnixNano())
 	index:=rand.Uint64()%MsgPoolCnt
 	msg := msgPool[index].Get().(*Message)
 	msg.Reject = false

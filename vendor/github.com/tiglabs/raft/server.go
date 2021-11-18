@@ -17,6 +17,7 @@ package raft
 import (
 	"context"
 	"errors"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -66,6 +67,7 @@ func NewRaftServer(config *Config) (*RaftServer, error) {
 
 func (rs *RaftServer) run() {
 	ticks := 0
+	randomSeedTicker:=time.NewTicker(time.Minute)
 	for {
 		select {
 		case <-rs.stopc:
@@ -96,7 +98,8 @@ func (rs *RaftServer) run() {
 				raft.tick()
 			}
 			rs.mu.RUnlock()
-
+		case <-randomSeedTicker.C:
+			rand.Seed(time.Now().UnixNano())
 		case <-rs.pmTicker.C:
 			rs.mu.RLock()
 			for _, raft := range rs.rafts {
