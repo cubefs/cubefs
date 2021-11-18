@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
@@ -219,20 +220,36 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 	var tracer = tracing.NewTracer("ApplyRandomWrite")
 	defer tracer.Finish()
 	var ctx = tracer.Context()
+	start:=time.Now().UnixMicro()
 	defer func() {
 		if err == nil {
 			resp = proto.OpOk
+			log.LogWritef("[ApplyRandomWrite] " +
+				"ApplyID(%v) Partition(%v)_Extent(%v)_" +
+				"ExtentOffset(%v)_Size(%v)_CRC(%v) cost(%v)us",
+				raftApplyID, dp.partitionID, opItem.extentID,
+				opItem.offset, opItem.size, opItem.crc,time.Now().UnixMicro()-start)
 		} else {
-			var msg = fmt.Sprintf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err(%v) retry[20]", raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err)
+			msg:=fmt.Sprintf("[ApplyRandomWrite] " +
+				"ApplyID(%v) Partition(%v)_Extent(%v)_" +
+				"ExtentOffset(%v)_Size(%v)_CRC(%v)  Failed Result(%v) cost(%v)us",
+				raftApplyID, dp.partitionID, opItem.extentID,
+				opItem.offset, opItem.size, opItem.crc,err.Error(),time.Now().UnixMicro()-start)
 			exporter.Warning(msg)
 			resp = proto.OpDiskErr
 			log.LogErrorf(msg)
 		}
 	}()
-	log.LogWritef("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v)_CRC(%v)",
-		raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, opItem.crc)
 	for i := 0; i < 20; i++ {
-		err = dp.ExtentStore().Write(ctx, opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, storage.RandomWriteType, opItem.opcode == proto.OpSyncRandomWrite)
+		err=func() error {
+			var storeErr error
+			tp := exporter.NewTPCnt("ApplyRandomWrite_StoreWrite")
+			defer func() {
+				tp.Set(storeErr)
+			}()
+			storeErr = dp.ExtentStore().Write(ctx, opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, storage.RandomWriteType, opItem.opcode == proto.OpSyncRandomWrite)
+			return storeErr
+		}()
 		if dp.checkIsDiskError(err) {
 			return
 		}
@@ -249,7 +266,6 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 		}
 		log.LogErrorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err(%v) retry(%v)", raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err, i)
 	}
-
 	dp.monitorData[statistics.ActionOverWrite].UpdateData(uint64(opItem.size))
 
 	return
