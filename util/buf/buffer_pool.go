@@ -3,10 +3,8 @@ package buf
 import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/log"
 	"sync"
 	"sync/atomic"
-	"time"
 )
 
 
@@ -38,7 +36,6 @@ func NewBufferPool() (bufferP *BufferPool) {
 			return make([]byte, util.DefaultTinySizeLimit)
 		},
 	}
-	go bufferP.LogToBlockSizeGetOrPutDetail()
 	return bufferP
 }
 
@@ -57,17 +54,6 @@ func (bufferP *BufferPool) Get(size int) (data []byte, err error) {
 	return nil, fmt.Errorf("can only support 45 or 65536 bytes")
 }
 
-func (bufferP *BufferPool)LogToBlockSizeGetOrPutDetail(){
-	for {
-		getNum:=atomic.LoadUint64(&bufferP.blockSizeGetNum)
-		avaliPutNum:=atomic.LoadUint64(&bufferP.avaliBlockSizePutNum)
-		unavaliPutNum:=atomic.LoadUint64(&bufferP.unavaliBlockSizePutNum)
-		log.LogErrorf(fmt.Sprintf("LogToBlockSizeGetOrPutDetail getNum(%v),avaliputNum(%v)" +
-			" unavaliputNum(%v)",getNum,avaliPutNum,unavaliPutNum))
-		time.Sleep(time.Second*60)
-	}
-
-}
 
 // Put puts the given data into the buffer pool.
 func (bufferP *BufferPool) Put(data []byte) {
