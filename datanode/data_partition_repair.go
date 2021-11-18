@@ -275,11 +275,11 @@ func (dp *DataPartition) getRemoteExtentInfo(ctx context.Context, extentType uin
 
 	// 首先尝试使用V2版本获取远端Extent信息, 失败后则尝试使用V1版本获取信息，以保证集群灰度过程中修复功能依然可以兼容。
 	if extentFiles, err = version2Func(); err != nil {
-		log.LogWarnf("partition(%v) get remote(%v) extent info by version 2 method failed" +
-			" and will retry by using version 1 method: %v", dp.partitionID,err)
+		log.LogWarnf("partition(%v) get remote(%v) extent info by version 2 method failed"+
+			" and will retry by using version 1 method: %v", dp.partitionID, target, err)
 		if extentFiles, err = version1Func(); err != nil {
-			log.LogErrorf("partition(%v) get remote(%v) extent info failed by both version 1 " +
-				"and version 2 method: %v", dp.partitionID,err)
+			log.LogErrorf("partition(%v) get remote(%v) extent info failed by both version 1 "+
+				"and version 2 method: %v", dp.partitionID, target, err)
 		}
 	}
 	return
