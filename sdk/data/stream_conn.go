@@ -31,7 +31,7 @@ import (
 const (
 	StreamSendReadMaxRetry      = 3
 	StreamSendOverWriteMaxRetry = 200
-	StreamSendOverWriteTimeout  = 1 * time.Second
+	StreamSendOverWriteTimeout  = 2 * time.Second
 
 	StreamSendSleepInterval     = 100 * time.Millisecond
 	StreamSendTimeout           = 2 * time.Minute
