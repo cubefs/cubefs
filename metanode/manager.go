@@ -135,6 +135,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opReadDir(conn, p, remoteAddr)
 	case proto.OpMetaReadDirOnly:
 		err = m.opReadDirOnly(conn, p, remoteAddr)
+	case proto.OpMetaReadDirLimit:
+		err = m.opReadDirLimit(conn, p, remoteAddr)
 	case proto.OpCreateMetaPartition:
 		err = m.opCreateMetaPartition(conn, p, remoteAddr)
 	case proto.OpMetaNodeHeartbeat:

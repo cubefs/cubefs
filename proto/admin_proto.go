@@ -485,7 +485,6 @@ type SimpleVolView struct {
 	DefaultPriority    bool
 	DomainOn           bool
 	CreateTime         string
-	EnableToken        bool
 	Description        string
 	DpSelectorName     string
 	DpSelectorParm     string
