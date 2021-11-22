@@ -324,6 +324,7 @@ func (mw *MetaWrapper) getOpLimiter(op uint8) (limiter *rate.Limiter) {
 func (mw *MetaWrapper) GetOpLimitRate() string {
 	res := ""
 	p := proto.NewPacket(context.Background())
+	mw.limitMapMutex.RLock()
 	for op, limiter := range mw.opLimiter {
 		var limit string
 		val := limiter.Limit()
@@ -338,6 +339,7 @@ func (mw *MetaWrapper) GetOpLimitRate() string {
 		p.Opcode = op
 		res = fmt.Sprintf("%vop: %v, limit: %v, burst: %v\n", res, p.GetOpMsg(), limit, burst)
 	}
+	mw.limitMapMutex.RUnlock()
 	return res
 }
 
