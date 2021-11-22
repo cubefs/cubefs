@@ -212,7 +212,7 @@ func IpAddressFunc(p *RequestParam, value ConditionValues) bool {
 	if !ok {
 		return false
 	}
-	for ipnet, _ := range sourceIP.values {
+	for ipnet := range sourceIP.values {
 		if ok, _ := isIPNetContainsIP(p.sourceIP, ipnet); ok {
 			return true
 		}
@@ -231,7 +231,7 @@ func StringLikeFunc(reqParam *RequestParam, storeCondVals ConditionValues) bool 
 		canonicalKey := http.CanonicalHeaderKey(key)
 		if reqVals, ok := reqParam.conditionVars[canonicalKey]; ok {
 			for _, rv := range reqVals {
-				for sv, _ := range storeVals.values {
+				for sv := range storeVals.values {
 					if match := patternMatch(rv, sv); match {
 						return true
 					}
@@ -296,7 +296,7 @@ func BoolFunc(p *RequestParam, policyCondtion ConditionValues) bool {
 		return true
 	}
 	for condKey, condVal := range policyCondtion {
-		for vals, _ := range condVal.values {
+		for vals := range condVal.values {
 			val1, _ := strconv.ParseBool(vals)
 			if cond, ok := p.conditionVars[condKey]; ok {
 				for _, c := range cond {
@@ -312,7 +312,7 @@ func BoolFunc(p *RequestParam, policyCondtion ConditionValues) bool {
 
 func DateEqualsFunc(p *RequestParam, policyVals ConditionValues) bool {
 	for k, pVals := range policyVals {
-		for pVal, _ := range pVals.values {
+		for pVal := range pVals.values {
 			pDate, err := time.Parse(AMZTimeFormat, pVal)
 			if err != nil {
 				return false
@@ -338,7 +338,7 @@ func DateNotEqualsFunc(p *RequestParam, value ConditionValues) bool {
 
 func DateLessThanFunc(p *RequestParam, value ConditionValues) bool {
 	for k, pVals := range value {
-		for pVal, _ := range pVals.values {
+		for pVal := range pVals.values {
 			pDate, err := time.Parse(AMZTimeFormat, pVal)
 			if err != nil {
 				return false
@@ -359,7 +359,7 @@ func DateLessThanFunc(p *RequestParam, value ConditionValues) bool {
 
 func DateLessThanEqualsFunc(p *RequestParam, value ConditionValues) bool {
 	for k, pVals := range value {
-		for pVal, _ := range pVals.values {
+		for pVal := range pVals.values {
 			pDate, err := time.Parse(AMZTimeFormat, pVal)
 			if err != nil {
 				return false

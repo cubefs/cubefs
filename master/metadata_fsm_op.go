@@ -668,7 +668,7 @@ func (c *Cluster) loadZoneDomain() (ok bool, err error) {
 		}
 		log.LogInfof("action[loadZoneDomain] get value!exclue map[%v],need domain[%v]", nsv.ExcludeZoneMap, nsv.NeedFaultDomain)
 		c.nodeSetGrpManager.excludeZoneListDomain = nsv.ExcludeZoneMap
-		for zoneName, _ := range nsv.ExcludeZoneMap {
+		for zoneName := range nsv.ExcludeZoneMap {
 			c.t.domainExcludeZones = append(c.t.domainExcludeZones, zoneName)
 		}
 		c.needFaultDomain = nsv.NeedFaultDomain

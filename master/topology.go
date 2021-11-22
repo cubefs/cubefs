@@ -595,7 +595,7 @@ type nsList struct {
 
 func (nsgm *nodeSetGrpManager) buildNodeSetGrpPrepare() (buildIndex int, zoneAvaVec []nsList) {
 	sortedKeys := make([]string, 0)
-	for k, _ := range nsgm.zoneAvailableNodeSet {
+	for k := range nsgm.zoneAvailableNodeSet {
 		sortedKeys = append(sortedKeys, k)
 	}
 	sort.Strings(sortedKeys)
