@@ -522,14 +522,16 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 	if err != nil {
 		return errors.Trace(err, "streamRepairExtent Watermark error")
 	}
+
+	if localExtentInfo.Size >= remoteExtentInfo.Size {
+		return nil
+	}
+
 	if !dp.Disk().canRepairOnDisk() {
 		return errors.Trace(err, "limit on apply disk repair task")
 	}
 	defer dp.Disk().finishRepairTask()
 
-	if localExtentInfo.Size >= remoteExtentInfo.Size {
-		return nil
-	}
 	// size difference between the local extent and the remote extent
 	sizeDiff := remoteExtentInfo.Size - localExtentInfo.Size
 	request := repl.NewExtentRepairReadPacket(ctx, dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
