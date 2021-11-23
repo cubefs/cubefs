@@ -412,7 +412,8 @@ func (s *DataNode) startTCPService() (err error) {
 			conn, err := ln.Accept()
 			if err != nil {
 				log.LogErrorf("action[startTCPService] failed to accept, err:%s", err.Error())
-				break
+				time.Sleep(time.Second*5)
+				continue
 			}
 			log.LogDebugf("action[startTCPService] accept connection from %s.", conn.RemoteAddr().String())
 			go s.serveConn(conn)
