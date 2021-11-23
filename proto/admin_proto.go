@@ -116,6 +116,7 @@ const (
 	ParamAuthorized = "_authorization"
 	UserKey         = "_user_key"
 	UserInfoKey     = "_user_info_key"
+	UserSign        = "_user_sign"
 )
 
 const TimeFormat = "2006-01-02 15:04:05"

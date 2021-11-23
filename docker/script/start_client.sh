@@ -35,6 +35,7 @@ init_cli() {
     echo -n "Installing ChubaoFS cli tool  ... "
     echo -e "\033[32mdone\033[0m"
 }
+
 check_cluster() {
     echo -n "Checking cluster  ... "
     for i in $(seq 1 300) ; do
@@ -48,6 +49,51 @@ check_cluster() {
     done
     echo -e "\033[31mfail\033[0m"
     exit 1
+}
+
+set_root_user() {
+    local masters=("192.168.0.11" "192.168.0.12" "192.168.0.13")
+    local port=17011
+    local found=0
+
+    mkdir -m 700 /root/.ssh
+    cat /root/id_rsa > /root/.ssh/id_rsa
+    chown root:root /root/.ssh/id_rsa
+    chmod 600 /root/.ssh/id_rsa
+
+    for retry in {1..10}; do
+        for addr in ${masters[@]} ; do
+            echo "Access master $addr ... "
+            local values=`ssh -o StrictHostKeyChecking=no root@$addr \
+                "curl -s localhost:$port/admin/getRoot" | \
+                jq -r '.code,.data.access_key,.data.secret_key'`
+            local code=`echo $values | awk '{print $1}'`
+            local ak=`echo $values | awk '{print $2}'`
+            local sk=`echo $values | awk '{print $3}'`
+            if [ $code -ne 0 ] || [ x"$ak" = x"null" ] || [ x"$ak" = x"" ] || \
+               [ x"$sk" = x"null" ] || [ x"$sk" = x"" ]; then
+                continue
+            fi
+            echo "Get AccessKey and SecretKey at $addr"
+            local found=1
+            break
+        done
+        if [ $found -eq 1 ]; then
+            break
+        fi
+        sleep 0.5
+    done
+
+    if [ $found -eq 0 ]; then
+        echo -e "Setting root user ... \033[31mfail\033[0m"
+        exit 1
+    fi
+
+    sed -i "s/user ID/root/" ~/.cfs-cli.json
+    sed -i "s/user's access key value/$ak/" ~/.cfs-cli.json
+    sed -i "s/user's secret key value/$sk/" ~/.cfs-cli.json
+    cp ~/.cfs-cli.json /cfs/log/cfs-cli.json
+    echo -e "client: Setting root user ... \033[32mdone\033[0m"
 }
 
 create_cluster_user() {
@@ -137,6 +183,7 @@ start_client() {
 
 init_cli
 check_cluster
+set_root_user
 create_cluster_user
 ensure_node_writable "metanode"
 ensure_node_writable "datanode"

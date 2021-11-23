@@ -376,6 +376,11 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 func checkPermission(opt *proto.MountOptions) (err error) {
 	var mc = master.NewMasterClientFromString(opt.Master, false)
 
+	user := &proto.AuthUser{opt.Owner, opt.AccessKey, opt.SecretKey}
+	users := make([]*proto.AuthUser, 0)
+	users = append(users, user)
+	mc.SetUsers(users)
+
 	// Check user access policy is enabled
 	if opt.AccessKey != "" {
 		var userInfo *proto.UserInfo

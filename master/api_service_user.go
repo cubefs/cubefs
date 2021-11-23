@@ -14,6 +14,7 @@ import (
 func (m *Server) createUser(w http.ResponseWriter, r *http.Request) {
 	var (
 		userInfo *proto.UserInfo
+		signs    []*proto.AuthSignature
 		err      error
 	)
 	var bytes []byte
@@ -25,6 +26,16 @@ func (m *Server) createUser(w http.ResponseWriter, r *http.Request) {
 	if err = json.Unmarshal(bytes, &param); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
+	}
+	if m.enableSimpleAuth() {
+		if signs, err = m.parseSignatures(r); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		if err = m.verifySignatures(signs, r.URL.EscapedPath(), "", AuthRootPermission); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeNoPermission, Msg: err.Error()})
+			return
+		}
 	}
 	if !ownerRegexp.MatchString(param.ID) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrInvalidUserID))
@@ -44,11 +55,22 @@ func (m *Server) createUser(w http.ResponseWriter, r *http.Request) {
 func (m *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 	var (
 		userID string
+		signs  []*proto.AuthSignature
 		err    error
 	)
 	if userID, err = parseUser(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
+	}
+	if m.enableSimpleAuth() {
+		if signs, err = m.parseSignatures(r); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		if err = m.verifySignatures(signs, r.URL.EscapedPath(), "", AuthRootPermission); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeNoPermission, Msg: err.Error()})
+			return
+		}
 	}
 	if err = m.user.deleteKey(userID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -62,12 +84,23 @@ func (m *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 func (m *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 	var (
 		userInfo *proto.UserInfo
+		signs    []*proto.AuthSignature
 		err      error
 	)
 	var bytes []byte
 	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
+	}
+	if m.enableSimpleAuth() {
+		if signs, err = m.parseSignatures(r); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		if err = m.verifySignatures(signs, r.URL.EscapedPath(), "", AuthRootPermission); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeNoPermission, Msg: err.Error()})
+			return
+		}
 	}
 	var param = proto.UserUpdateParam{}
 	if err = json.Unmarshal(bytes, &param); err != nil {
@@ -89,15 +122,34 @@ func (m *Server) getUserAKInfo(w http.ResponseWriter, r *http.Request) {
 	var (
 		ak       string
 		userInfo *proto.UserInfo
+		signs    []*proto.AuthSignature
 		err      error
 	)
 	if ak, err = parseAccessKey(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	if m.enableSimpleAuth() {
+		if signs, err = m.parseSignatures(r); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		if err = m.verifySignatures(signs, r.URL.EscapedPath(), "", AuthAccessorPermission); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeNoPermission, Msg: err.Error()})
+			return
+		}
+	}
 	if userInfo, err = m.user.getKeyInfo(ak); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
+	}
+	if m.enableSimpleAuth() {
+		var retVal interface{}
+		if retVal, err = m.filterBySignatures(signs, userFilter, userModify, userInfo); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		userInfo = retVal.(*proto.UserInfo)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(userInfo))
 }
@@ -106,15 +158,35 @@ func (m *Server) getUserInfo(w http.ResponseWriter, r *http.Request) {
 	var (
 		userID   string
 		userInfo *proto.UserInfo
+		signs    []*proto.AuthSignature
 		err      error
 	)
 	if userID, err = parseUser(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
+	if m.enableSimpleAuth() {
+		if signs, err = m.parseSignatures(r); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		if err = m.verifySignatures(signs, r.URL.EscapedPath(), "", AuthAccessorPermission); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeNoPermission, Msg: err.Error()})
+			return
+		}
+	}
 	if userInfo, err = m.user.getUserInfo(userID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
+	}
+	if m.enableSimpleAuth() {
+		var retVal interface{}
+		if retVal, err = m.filterBySignatures(signs, userFilter, userModify, userInfo); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		userInfo = retVal.(*proto.UserInfo)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(userInfo))
 }
@@ -122,12 +194,23 @@ func (m *Server) getUserInfo(w http.ResponseWriter, r *http.Request) {
 func (m *Server) updateUserPolicy(w http.ResponseWriter, r *http.Request) {
 	var (
 		userInfo *proto.UserInfo
+		signs    []*proto.AuthSignature
 		bytes    []byte
 		err      error
 	)
 	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
+	}
+	if m.enableSimpleAuth() {
+		if signs, err = m.parseSignatures(r); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		if err = m.verifySignatures(signs, r.URL.EscapedPath(), "", AuthRootPermission); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeNoPermission, Msg: err.Error()})
+			return
+		}
 	}
 	var param = proto.UserPermUpdateParam{}
 	if err = json.Unmarshal(bytes, &param); err != nil {
@@ -148,12 +231,23 @@ func (m *Server) updateUserPolicy(w http.ResponseWriter, r *http.Request) {
 func (m *Server) removeUserPolicy(w http.ResponseWriter, r *http.Request) {
 	var (
 		userInfo *proto.UserInfo
+		signs    []*proto.AuthSignature
 		bytes    []byte
 		err      error
 	)
 	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
+	}
+	if m.enableSimpleAuth() {
+		if signs, err = m.parseSignatures(r); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		if err = m.verifySignatures(signs, r.URL.EscapedPath(), "", AuthRootPermission); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeNoPermission, Msg: err.Error()})
+			return
+		}
 	}
 	var param = proto.UserPermRemoveParam{}
 	if err = json.Unmarshal(bytes, &param); err != nil {
@@ -173,12 +267,23 @@ func (m *Server) removeUserPolicy(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) deleteUserVolPolicy(w http.ResponseWriter, r *http.Request) {
 	var (
-		vol string
-		err error
+		vol   string
+		signs []*proto.AuthSignature
+		err   error
 	)
 	if vol, err = parseVolName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
+	}
+	if m.enableSimpleAuth() {
+		if signs, err = m.parseSignatures(r); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		if err = m.verifySignatures(signs, r.URL.EscapedPath(), "", AuthRootPermission); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeNoPermission, Msg: err.Error()})
+			return
+		}
 	}
 	if err = m.user.deleteVolPolicy(vol); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -194,12 +299,25 @@ func (m *Server) transferUserVol(w http.ResponseWriter, r *http.Request) {
 		bytes    []byte
 		vol      *Vol
 		userInfo *proto.UserInfo
+		signs    []*proto.AuthSignature
 		err      error
 	)
 	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
+	if m.enableSimpleAuth() {
+		if signs, err = m.parseSignatures(r); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		if err = m.verifySignatures(signs, r.URL.EscapedPath(), "", AuthRootPermission); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeNoPermission, Msg: err.Error()})
+			return
+		}
+	}
+
 	var param = proto.UserTransferVolParam{}
 	if err = json.Unmarshal(bytes, &param); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -228,17 +346,64 @@ func (m *Server) transferUserVol(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(userInfo))
 }
 
+func userFilter(signs []*proto.AuthSignature, item interface{}) (how AuthHandle) {
+	userInfo := item.(*proto.UserInfo)
+	for _, sign := range signs {
+		if sign.IsRoot() {
+			return AuthKeepItem
+		}
+	}
+
+	for _, sign := range signs {
+		if sign.UserID == userInfo.UserID {
+			return AuthKeepItem
+		}
+	}
+
+	return AuthModifyItem
+}
+
+func userModify(item interface{}) interface{} {
+	userInfo := item.(*proto.UserInfo)
+	newUserInfo := proto.UserInfo{}
+	// shallow copy is enough
+	newUserInfo = *userInfo
+	newUserInfo.AccessKey = "*"
+	newUserInfo.SecretKey = "*"
+	return &newUserInfo
+}
+
 func (m *Server) getAllUsers(w http.ResponseWriter, r *http.Request) {
 	var (
 		keywords string
 		users    []*proto.UserInfo
+		signs    []*proto.AuthSignature
 		err      error
 	)
 	if keywords, err = parseKeywords(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
+	if m.enableSimpleAuth() {
+		if signs, err = m.parseSignatures(r); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		if err = m.verifySignatures(signs, r.URL.EscapedPath(), "", AuthAccessorPermission); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeNoPermission, Msg: err.Error()})
+			return
+		}
+	}
 	users = m.user.getAllUserInfo(keywords)
+	if m.enableSimpleAuth() {
+		var retVal interface{}
+		if retVal, err = m.filterBySignatures(signs, userFilter, userModify, users); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		users = retVal.([]*proto.UserInfo)
+	}
 	sendOkReply(w, r, newSuccessHTTPReply(users))
 }
 

@@ -1,5 +1,13 @@
 {
   "masterAddr": [
     "master.chubao.io"
+  ],
+  "timeout": 60,
+  "users": [
+    {
+      "userID": "user ID",
+      "accessKey": "user's access key value",
+      "secretKey": "user's secret key value"
+    }
   ]
 }

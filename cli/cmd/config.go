@@ -22,6 +22,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/spf13/cobra"
 )
 
@@ -38,15 +39,23 @@ var (
   "masterAddr": [
     "master.chubao.io"
   ],
-  "timeout": 60
+  "timeout": 60,
+  "users": [
+    {
+      "userID": "user ID",
+      "accessKey": "user's access key value",
+      "secretKey": "user's secret key value"
+    }
+  ]
 }
 `)
 	defaultConfigTimeout uint16 = 60
 )
 
 type Config struct {
-	MasterAddr []string `json:"masterAddr"`
-	Timeout    uint16   `json:"timeout"`
+	MasterAddr []string          `json:"masterAddr"`
+	Timeout    uint16            `json:"timeout"`
+	AuthUsers  []*proto.AuthUser `json:"users"`
 }
 
 func newConfigCmd() *cobra.Command {
@@ -67,6 +76,7 @@ const (
 func newConfigSetCmd() *cobra.Command {
 	var optMasterHosts string
 	var optTimeout uint16
+	var optAuthUsers string
 	var cmd = &cobra.Command{
 		Use:   CliOpSet,
 		Short: cmdConfigSetShort,
@@ -78,11 +88,12 @@ func newConfigSetCmd() *cobra.Command {
 					errout("Error: %v", err)
 				}
 			}()
-			if optMasterHosts == "" && optTimeout == 0 {
+			if optMasterHosts == "" && optTimeout == 0 && optAuthUsers == "" {
 				stdout(fmt.Sprintf("No change. Input 'cfs-cli config set -h' for help.\n"))
 				return
 			}
-			if err = setConfig(optMasterHosts, optTimeout); err != nil {
+
+			if err = setConfig(optMasterHosts, optTimeout, optAuthUsers); err != nil {
 				return
 			}
 			stdout(fmt.Sprintf("Config has been set successfully!\n"))
@@ -91,6 +102,8 @@ func newConfigSetCmd() *cobra.Command {
 	cmd.Flags().StringVar(&optMasterHosts, "addr", "",
 		"Specify master address {HOST}:{PORT}[,{HOST}:{PORT}]")
 	cmd.Flags().Uint16Var(&optTimeout, "timeout", 0, "Specify timeout for requests [Unit: s]")
+	cmd.Flags().StringVar(&optAuthUsers, "user", "",
+		"Specify user info {UserID}:{AccessKey}:{SecretKey}[,{UserID}:{AccessKey}:{SecretKey}]")
 	return cmd
 }
 func newConfigInfoCmd() *cobra.Command {
@@ -114,12 +127,17 @@ func newConfigInfoCmd() *cobra.Command {
 }
 
 func printConfigInfo(config *Config) {
+	var userIDs []string
 	stdout("Config info:\n")
 	stdout("  Master  Address    : %v\n", config.MasterAddr)
 	stdout("  Request Timeout [s]: %v\n", config.Timeout)
+	for _, user := range config.AuthUsers {
+		userIDs = append(userIDs, user.UserID)
+	}
+	stdout("  Users              : %v\n", userIDs)
 }
 
-func setConfig(masterHosts string, timeout uint16) (err error) {
+func setConfig(masterHosts string, timeout uint16, authUsers string) (err error) {
 	var config *Config
 	if config, err = LoadConfig(); err != nil {
 		return
@@ -131,6 +149,20 @@ func setConfig(masterHosts string, timeout uint16) (err error) {
 	if timeout != 0 {
 		config.Timeout = timeout
 	}
+	users := strings.Split(authUsers, ",")
+	if authUsers != "" && len(users) > 0 {
+		config.AuthUsers = make([]*proto.AuthUser, 0)
+		for _, user := range users {
+			values := strings.Split(user, ":")
+			if len(values) != 3 {
+				err = fmt.Errorf("Invalid user parameter: %v", values)
+				return
+			}
+			authUser := &proto.AuthUser{values[0], values[1], values[2]}
+			config.AuthUsers = append(config.AuthUsers, authUser)
+		}
+	}
+
 	var configData []byte
 	if configData, err = json.Marshal(config); err != nil {
 		return

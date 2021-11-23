@@ -444,6 +444,7 @@ func main() {
 	ticketCmd := flag.NewFlagSet("ticket", flag.ExitOnError)
 	apiCmd := flag.NewFlagSet("api", flag.ExitOnError)
 	authkeyCmd := flag.NewFlagSet("authkey", flag.ExitOnError)
+	signCmd := flag.NewFlagSet("sign", flag.ExitOnError)
 
 	switch os.Args[1] {
 	case "ticket":
@@ -515,9 +516,32 @@ func main() {
 			}
 			keyInfo.DumpJSONFile(*output[i])
 		}
+	case "sign":
+		userID := signCmd.String("user", "", "user ID")
+		accessKey := signCmd.String("ak", "", "access key of user")
+		secretKey := signCmd.String("sk", "", "secret key of user")
+		path := signCmd.String("path", "", "API path")
+		signCmd.Parse(os.Args[2:])
+
+		if signCmd.NFlag() != 4 {
+			flag.Usage()
+			signCmd.PrintDefaults()
+			os.Exit(1)
+		}
+
+		user := &proto.AuthUser{*userID, *accessKey, *secretKey}
+		sign, err := user.GenerateSignature(*path)
+		if err != nil {
+			panic(fmt.Errorf("failed to generate signature: %v\n", err))
+		}
+		signature, err := json.Marshal(sign)
+		if err != nil {
+			panic(fmt.Errorf("failed to marshal signature: %v\n", err))
+		}
+		fmt.Println(string(signature))
 
 	default:
-		fmt.Println("expected 'ticket', 'api' or 'authkey'subcommands")
+		fmt.Println("expected 'ticket', 'api', 'authkey' or 'sign' subcommands")
 		os.Exit(1)
 	}
 }

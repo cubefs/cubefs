@@ -82,6 +82,7 @@ var (
 	ErrInvalidSecretKey                = errors.New("invalid secret key")
 	ErrIsOwner                         = errors.New("user owns the volume")
 	ErrZoneNum                         = errors.New("zone num not qualified")
+	ErrInvalidSignature                = errors.New("invalid signature")
 )
 
 // http response error code and error message definitions
