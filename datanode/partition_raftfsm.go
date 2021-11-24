@@ -74,7 +74,7 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 			return
 		}
 		dp.uploadApplyID(index)
-		log.LogWarnf("partition [id: %v, disk: %v] apply member change [index: %v] %v %v", dp.partitionID, dp.Disk(), index, confChange.Type, confChange.Peer)
+		log.LogWarnf("partition [%v] apply member change [index: %v] %v %v", dp.partitionID, index, confChange.Type, confChange.Peer)
 	}(index)
 
 	// Change memory the status
