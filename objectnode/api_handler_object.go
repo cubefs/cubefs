@@ -33,7 +33,7 @@ import (
 )
 
 var (
-	rangeRegexp = regexp.MustCompile("^bytes=(\\d)+-(\\d)*$")
+	rangeRegexp = regexp.MustCompile("^bytes=(\\d)*-(\\d)*$")
 )
 
 // Get object
@@ -73,20 +73,35 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var rangeLower uint64
 	var rangeUpper uint64
 	var isRangeRead bool
+	var isReverseRange bool
 	var partSize uint64
 	var partCount uint64
-	if len(rangeOpt) > 0 && rangeRegexp.MatchString(rangeOpt) {
+	if len(rangeOpt) > 0 && !strings.Contains(rangeOpt, ",") {
+		if !rangeRegexp.MatchString(rangeOpt) {
+			log.LogWarnf("getObjectHandler: getObject fail: requestID(%v) invalid rangeOpt(%v)",
+				GetRequestID(r), rangeOpt)
+			errorCode = InvalidRange
+			return
+		}
 
 		var hyphenIndex = strings.Index(rangeOpt, "-")
 		if hyphenIndex < 0 {
-			errorCode = InvalidArgument
+			errorCode = InvalidRange
 			return
 		}
 
 		var lowerPart = rangeOpt[len("bytes="):hyphenIndex]
 		var upperPart = ""
 		if hyphenIndex+1 < len(rangeOpt) {
+			// bytes=100-199
 			upperPart = rangeOpt[hyphenIndex+1:]
+			// bytes=-100
+			if hyphenIndex == len("bytes=") {
+				isReverseRange = true
+				lowerPart = rangeOpt[hyphenIndex+1:]
+			}
+		} else {
+			rangeUpper = 1<<64 - 1
 		}
 
 		if len(lowerPart) > 0 {
@@ -105,15 +120,28 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if rangeUpper > 0 && rangeUpper < rangeLower {
-			// upper enabled and lower than lower side
-			if err = InvalidArgument.ServeResponse(w, r); err != nil {
-				log.LogErrorf("getObjectHandler: serve response fail: requestID(%v) err(%v)",
-					GetRequestID(r), err)
+
+		// bytes=-0
+		if isReverseRange {
+			if rangeUpper == 0 {
+				log.LogWarnf("getObjectHandler: getObject fail: requestID(%v) invalid rangeOpt(%v)",
+					GetRequestID(r), rangeOpt)
+				errorCode = InvalidRange
 				return
+			} else {
+				rangeUpper = 1<<64 - 1
 			}
 		}
 
+		if rangeUpper < rangeLower {
+			// upper enabled and lower than lower side
+			log.LogWarnf("getObjectHandler: getObject fail: requestID(%v) invalid rangeOpt(%v)",
+				GetRequestID(r), rangeOpt)
+			errorCode = InvalidRange
+			return
+		}
+
+		// bytes=-
 		isRangeRead = true
 		log.LogDebugf("getObjectHandler: parse range option: requestID(%v) rangeOpt(%v) rangeLower(%v) rangeUpper(%v)",
 			GetRequestID(r), rangeOpt, rangeLower, rangeUpper)
@@ -208,6 +236,9 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// validate and fix range
 	if isRangeRead && rangeUpper > uint64(fileInfo.Size)-1 {
 		rangeUpper = uint64(fileInfo.Size) - 1
+		if isReverseRange && rangeLower > 0 {
+			rangeLower = rangeUpper - rangeLower + 1
+		}
 	}
 
 	// compute content length
@@ -299,6 +330,9 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	for name, value := range fileInfo.Metadata {
 		w.Header()[HeaderNameXAmzMetaPrefix+name] = []string{value}
 	}
+	if isRangeRead {
+		w.WriteHeader(http.StatusPartialContent)
+	}
 
 	if fileInfo.Mode.IsDir() {
 		return
@@ -314,7 +348,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 			size = rangeUpper - rangeLower + 1
 		}
 	}
-	err = vol.ReadFile(param.Object(), w, offset, size)
+	err = vol.ReadInode(fileInfo.Inode, w, offset, size)
 	if err == syscall.ENOENT {
 		errorCode = NoSuchKey
 		return
