@@ -51,6 +51,7 @@ import "C"
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	syslog "log"
@@ -79,10 +80,12 @@ import (
 	"github.com/chubaofs/chubaofs/sdk/data"
 	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/sdk/meta"
+	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/tracing"
 	"github.com/chubaofs/chubaofs/util/ump"
+	"github.com/chubaofs/chubaofs/util/version"
 
 	_ "github.com/chubaofs/chubaofs/util/log/http"     // HTTP APIs for logging control
 	_ "github.com/chubaofs/chubaofs/util/tracing/http" // HTTP APIs for tracing
@@ -3016,9 +3019,6 @@ func (c *client) start() (err error) {
 		outputFile.Close()
 	}()
 
-	cmd, _ := os.Executable()
-	syslog.Printf("ChubaoFS Kernel Bypass Client\nCMD: %s\nBranch: %s\nCommit: %s\nDebug: %s\nBuild: %s %s %s %s\n\n", cmd, BranchName, CommitID, Debug, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime)
-
 	if len(c.profPort) < 1 {
 		err = fmt.Errorf("empty prof port")
 		fmt.Println(err)
@@ -3107,6 +3107,16 @@ func (c *client) start() (err error) {
 		return
 	}
 	exporter.InitRole(mw.Cluster(), moduleName)
+
+	// version
+	cmd, _ := os.Executable()
+	versionInfo := fmt.Sprintf("ChubaoFS %s\nBranch: %s\nVersion: %s\nCommit: %s\nBuild: %s %s %s %s\nCMD: %s\n", moduleName, BranchName, proto.BaseVersion, CommitID, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime, cmd)
+	syslog.Printf(versionInfo)
+	cfgStr, _ := json.Marshal(struct {
+		ClusterName string `json:"clusterName"`
+	}{mw.Cluster()})
+	cfg := config.LoadConfigString(string(cfgStr))
+	go version.ReportVersionSchedule(cfg, masters, versionInfo)
 	return
 }
 
