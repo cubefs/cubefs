@@ -259,7 +259,8 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		path := arr[0]
 		fileInfo, err := os.Stat(path)
 		if err != nil {
-			return errors.New(fmt.Sprintf("Stat disk path error: %s", err.Error()))
+			log.LogErrorf("stat disk [%v] failed: %v", path, err)
+			continue
 		}
 		if !fileInfo.IsDir() {
 			return errors.New("Disk path is not dir")
