@@ -1,4 +1,4 @@
-FROM golang:1.15
+FROM golang:1.17
 
 # intall rocksdb
 RUN     apt-get update && \
