@@ -17,12 +17,13 @@ package master
 import (
 	"container/list"
 	"fmt"
+	"sort"
+	"sync"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"sort"
-	"sync"
 )
 
 type topology struct {
@@ -595,7 +596,7 @@ type nsList struct {
 
 func (nsgm *nodeSetGrpManager) buildNodeSetGrpPrepare() (buildIndex int, zoneAvaVec []nsList) {
 	sortedKeys := make([]string, 0)
-	for k, _ := range nsgm.zoneAvailableNodeSet {
+	for k := range nsgm.zoneAvailableNodeSet {
 		sortedKeys = append(sortedKeys, k)
 	}
 	sort.Strings(sortedKeys)

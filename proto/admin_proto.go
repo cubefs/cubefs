@@ -46,6 +46,7 @@ const (
 	AdminUpdateNodeSetId           = "/admin/updateNodeSetId"
 	AdminUpdateDomainDataUseRatio  = "/admin/updateDomainDataRatio"
 	AdminUpdateZoneExcludeRatio    = "/admin/updateZoneExcludeRatio"
+	AdminSetNodeRdOnly             = "/admin/setNodeRdOnly"
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
@@ -73,10 +74,12 @@ const (
 	// Node APIs
 	AddDataNode                    = "/dataNode/add"
 	DecommissionDataNode           = "/dataNode/decommission"
+	MigrateDataNode                = "/dataNode/migrate"
 	DecommissionDisk               = "/disk/decommission"
 	GetDataNode                    = "/dataNode/get"
 	AddMetaNode                    = "/metaNode/add"
 	DecommissionMetaNode           = "/metaNode/decommission"
+	MigrateMetaNode                = "/metaNode/migrate"
 	GetMetaNode                    = "/metaNode/get"
 	AdminUpdateMetaNode            = "/metaNode/update"
 	AdminUpdateDataNode            = "/dataNode/update"

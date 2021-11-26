@@ -192,6 +192,7 @@ type dataNodeValue struct {
 	NodeSetID uint64
 	Addr      string
 	ZoneName  string
+	RdOnly    bool
 }
 
 func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
@@ -200,6 +201,7 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		NodeSetID: dataNode.NodeSetID,
 		Addr:      dataNode.Addr,
 		ZoneName:  dataNode.ZoneName,
+		RdOnly:    dataNode.RdOnly,
 	}
 }
 
@@ -208,6 +210,7 @@ type metaNodeValue struct {
 	NodeSetID uint64
 	Addr      string
 	ZoneName  string
+	RdOnly    bool
 }
 
 func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
@@ -216,6 +219,7 @@ func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
 		NodeSetID: metaNode.NodeSetID,
 		Addr:      metaNode.Addr,
 		ZoneName:  metaNode.ZoneName,
+		RdOnly:    metaNode.RdOnly,
 	}
 }
 
@@ -594,13 +598,19 @@ func (c *Cluster) loadNodeSets() (err error) {
 		if nsv.ZoneName == "" {
 			nsv.ZoneName = DefaultZoneName
 		}
-		ns := newNodeSet(nsv.ID, c.cfg.nodeSetCapacity, nsv.ZoneName)
+		cap := nsv.Capacity
+		if cap < 3 {
+			cap = c.cfg.nodeSetCapacity
+		}
+
+		ns := newNodeSet(nsv.ID, cap, nsv.ZoneName)
 		zone, err := c.t.getZone(nsv.ZoneName)
 		if err != nil {
 			log.LogErrorf("action[loadNodeSets], getZone err:%v", err)
 			zone = newZone(nsv.ZoneName)
 			c.t.putZoneIfAbsent(zone)
 		}
+
 		zone.putNodeSet(ns)
 		log.LogInfof("action[addNodeSetGrp] nodeSet[%v]", ns.ID)
 		if err = c.addNodeSetGrp(ns, true); err != nil {
@@ -668,7 +678,7 @@ func (c *Cluster) loadZoneDomain() (ok bool, err error) {
 		}
 		log.LogInfof("action[loadZoneDomain] get value!exclue map[%v],need domain[%v]", nsv.ExcludeZoneMap, nsv.NeedFaultDomain)
 		c.nodeSetGrpManager.excludeZoneListDomain = nsv.ExcludeZoneMap
-		for zoneName, _ := range nsv.ExcludeZoneMap {
+		for zoneName := range nsv.ExcludeZoneMap {
 			c.t.domainExcludeZones = append(c.t.domainExcludeZones, zoneName)
 		}
 		c.needFaultDomain = nsv.NeedFaultDomain
@@ -696,7 +706,7 @@ func (c *Cluster) loadNodeSetGrps() (err error) {
 	for _, value := range result {
 		nsv := &nodeSetGrpValue{}
 		if err = json.Unmarshal(value, nsv); err != nil {
-			log.LogFatalf("action[loadNodeSets], unmarshal err:%v", err.Error())
+			log.LogFatalf("action[loadNodeSets], unmarshal err:%s", err.Error())
 			return err
 		}
 		log.LogInfof("action[loadNodeSetGrps] get result nsv id[%v],status[%v],ids[%v]", nsv.ID, nsv.Status, nsv.NodeSetsIds)
@@ -734,6 +744,7 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode := newDataNode(dnv.Addr, dnv.ZoneName, c.Name)
 		dataNode.ID = dnv.ID
 		dataNode.NodeSetID = dnv.NodeSetID
+		dataNode.RdOnly = dnv.RdOnly
 		olddn, ok := c.dataNodes.Load(dataNode.Addr)
 		if ok {
 			if olddn.(*DataNode).ID <= dataNode.ID {
@@ -764,6 +775,8 @@ func (c *Cluster) loadMetaNodes() (err error) {
 		metaNode := newMetaNode(mnv.Addr, mnv.ZoneName, c.Name)
 		metaNode.ID = mnv.ID
 		metaNode.NodeSetID = mnv.NodeSetID
+		metaNode.RdOnly = mnv.RdOnly
+
 		oldmn, ok := c.metaNodes.Load(metaNode.Addr)
 		if ok {
 			if oldmn.(*MetaNode).ID <= metaNode.ID {

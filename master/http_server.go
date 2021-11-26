@@ -18,10 +18,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/samsarahq/thunder/graphql"
-	"github.com/samsarahq/thunder/graphql/introspection"
 	"net/http"
 	"net/http/httputil"
+
+	"github.com/samsarahq/thunder/graphql"
+	"github.com/samsarahq/thunder/graphql/introspection"
 
 	"github.com/gorilla/mux"
 
@@ -203,6 +204,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.DecommissionMetaNode).
 		HandlerFunc(m.decommissionMetaNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.MigrateMetaNode).
+		HandlerFunc(m.migrateMetaNodeHandler)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetMetaNode).
 		HandlerFunc(m.getMetaNode)
@@ -232,6 +236,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.DecommissionDataNode).
 		HandlerFunc(m.decommissionDataNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.MigrateDataNode).
+		HandlerFunc(m.migrateDataNodeHandler)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetDataNode).
 		HandlerFunc(m.getDataNode)
@@ -265,6 +272,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminUpdateZoneExcludeRatio).
 		HandlerFunc(m.updateZoneExcludeRatioHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetNodeRdOnly).
+		HandlerFunc(m.setNodeRdOnlyHandler)
 
 	// user management APIs
 	router.NewRoute().Methods(http.MethodPost).

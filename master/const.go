@@ -55,6 +55,9 @@ const (
 	dpSelectorParmKey       = "dpSelectorParm"
 	nodeTypeKey             = "nodeType"
 	ratio                   = "ratio"
+	rdOnlyKey               = "rdOnly"
+	srcAddrKey              = "srcAddr"
+	targetAddrKey           = "targetAddr"
 )
 
 const (
@@ -98,6 +101,8 @@ const (
 	defaultRangeOfCountDifferencesAllowed        = 50
 	defaultMinusOfMaxInodeID                     = 1000
 	defaultNodeSetGrpBatchCnt                    = 3
+	defaultMigrateDpCnt                          = 50
+	defaultMigrateMpCnt                          = 15
 )
 
 const (

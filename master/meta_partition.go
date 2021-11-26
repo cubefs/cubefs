@@ -18,12 +18,13 @@ import (
 	"sync"
 
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
 	"math"
 	"strings"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 // MetaReplica defines the replica of a meta partition
@@ -632,6 +633,10 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 	mr.InodeCount = mgr.InodeCnt
 	mr.DentryCount = mgr.DentryCnt
 	mr.setLastReportTime()
+
+	if mr.metaNode.RdOnly && mr.Status == proto.ReadWrite {
+		mr.Status = proto.ReadOnly
+	}
 }
 
 func (mp *MetaPartition) afterCreation(nodeAddr string, c *Cluster) (err error) {

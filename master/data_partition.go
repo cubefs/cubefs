@@ -421,12 +421,6 @@ func (partition *DataPartition) setToNormal() {
 	partition.isRecover = false
 }
 
-func (partition *DataPartition) setStatus(status int8) {
-	partition.Lock()
-	defer partition.Unlock()
-	partition.Status = status
-}
-
 func (partition *DataPartition) hasHost(addr string) (ok bool) {
 	for _, host := range partition.Hosts {
 		if host == addr {
@@ -558,6 +552,10 @@ func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode
 		}
 	}
 	partition.checkAndRemoveMissReplica(dataNode.Addr)
+
+	if replica.Status == proto.ReadWrite && replica.dataNode.RdOnly {
+		replica.Status = int8(proto.ReadOnly)
+	}
 }
 
 func (partition *DataPartition) setMaxUsed() {

@@ -64,7 +64,7 @@ func TestKmin(t *testing.T) {
 	fmt.Println()
 
 	fmt.Printf("%-20s", "slower partitions:")
-	for _, v := range partitions[kth:len(partitions)] {
+	for _, v := range partitions[kth:] {
 		fmt.Printf("%v ", v.GetAvgWrite())
 		if v.GetAvgWrite() < kmin {
 			fmt.Println()
