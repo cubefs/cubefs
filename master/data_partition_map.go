@@ -17,11 +17,12 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 // DataPartitionMap stores all the data partitionMap
@@ -119,9 +120,8 @@ func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitio
 		dpMap.setDataPartitionResponseCache(body)
 		return
 	}
-	body = make([]byte, len(responseCache))
-	copy(body, responseCache)
 
+	body = responseCache
 	return
 }
 
