@@ -159,6 +159,67 @@ func (s *Storage) LastIndex() (index uint64, err error) {
 	return
 }
 
+func (s *Storage) EntriesForWalreader(lo, hi uint64, maxSize uint64) (entries []*proto.Entry, isCompact bool, err error) {
+	entries, isCompact, err = s.ls.Entries(lo, hi, maxSize)
+	return
+}
+
+func (s *Storage) EntriesOfFile(file string, lo, hi uint64) (entries []*proto.Entry, err error) {
+	var (
+		fileName     logFileName
+		logEntryFile *logEntryFile
+		entry        *proto.Entry
+	)
+	fileName.ParseFrom(file)
+	logEntryFile, err = openLogEntryFile(s.ls.dir, fileName, false)
+	if err != nil {
+		return
+	}
+	i := lo
+	for i < hi {
+		entry, err = logEntryFile.Get(i)
+		if err != nil {
+			return
+		}
+		entries = append(entries, entry)
+		i++
+	}
+	return
+}
+
+func (s *Storage) FirstIndexForWalreader() (index uint64, err error) {
+	index = s.ls.logfiles[0].index
+	return
+}
+
+func (s *Storage) FirstIndexOfFile(file string) (index uint64, err error) {
+	var (
+		fileName     logFileName
+		logEntryFile *logEntryFile
+	)
+	fileName.ParseFrom(file)
+	logEntryFile, err = openLogEntryFile(s.ls.dir, fileName, false)
+	if err != nil {
+		return
+	}
+	index = logEntryFile.FirstIndex()
+	return
+}
+
+func (s *Storage) LastIndexOfFile(file string) (index uint64, err error) {
+	var (
+		fileName     logFileName
+		logEntryFile *logEntryFile
+	)
+	fileName.ParseFrom(file)
+	logEntryFile, err = openLogEntryFile(s.ls.dir, fileName, false)
+	if err != nil {
+		return
+	}
+	index = logEntryFile.LastIndex()
+	return
+}
+
 // StoreEntries store the log entries to the repository.
 // If first index of entries > LastIndex,then append all entries,
 // Else write entries at first index and truncate the redundant log entries.

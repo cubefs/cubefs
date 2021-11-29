@@ -72,9 +72,14 @@ func formatClusterStat(cs *proto.ClusterStatInfo) string {
 }
 
 var nodeViewTableRowPattern = "%-6v    %-18v    %-8v    %-8v"
+var dataNodeDetailViewTableRowPattern = "%-6v    %-18v    %-8v    %-8v    %-8v    %-8v    %-8v"
 
 func formatNodeViewTableHeader() string {
 	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "STATUS")
+}
+
+func formatDataNodeViewTableHeader() string {
+	return fmt.Sprintf(dataNodeDetailViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "STATUS", "USED", "ZONE", "DP COUNT")
 }
 
 func formatNodeView(view *proto.NodeView, tableRow bool) string {

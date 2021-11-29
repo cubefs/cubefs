@@ -231,6 +231,12 @@ func (decoder *MetadataCommandDecoder) DecodeCommand(command []byte) (values com
 		}
 		columnValOp.SetValue("UpdateDentry")
 		columnValAttrs.SetValue(fmt.Sprintf("parent: %v, name: %v, inode: %v, type: %v", den.ParentId, den.Name, den.Inode, den.Type))
+	case metadataOpFSMInternalDelExtentFile:
+		columnValOp.SetValue("DelExtentFile")
+		columnValAttrs.SetValue(fmt.Sprintf("name: %v", string(opKVData.V)))
+	case metadataOpFSMInternalDelExtentCursor:
+		columnValOp.SetValue("DelExtentCursor")
+		columnValAttrs.SetValue(fmt.Sprintf("cursor: %v", string(opKVData.V)))
 	default:
 		columnValOp.SetValue(strconv.Itoa(int(opKVData.Op)))
 		columnValAttrs.SetValue("N/A")

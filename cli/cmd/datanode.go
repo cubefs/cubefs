@@ -54,6 +54,7 @@ const (
 func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 	var optFilterStatus string
 	var optFilterWritable string
+	var optShowDp bool
 	var cmd = &cobra.Command{
 		Use:     CliOpList,
 		Short:   cmdDataNodeListShort,
@@ -72,9 +73,26 @@ func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 			sort.SliceStable(view.DataNodes, func(i, j int) bool {
 				return view.DataNodes[i].ID < view.DataNodes[j].ID
 			})
+			var info *proto.DataNodeInfo
+			var nodeInfoSlice []*proto.DataNodeInfo
+			if optShowDp {
+				nodeInfoSlice = make([]*proto.DataNodeInfo, len(view.DataNodes), len(view.DataNodes))
+				for index, node := range view.DataNodes {
+					if info, err = client.NodeAPI().GetDataNode(node.Addr); err != nil {
+						return
+					}
+					nodeInfoSlice[index] = info
+				}
+			}
 			stdout("[Data nodes]\n")
-			stdout("%v\n", formatNodeViewTableHeader())
-			for _, node := range view.DataNodes {
+			var header, row string
+			if optShowDp {
+				header = formatDataNodeViewTableHeader()
+			} else {
+				header = formatNodeViewTableHeader()
+			}
+			stdout("%v\n", header)
+			for index, node := range view.DataNodes {
 				if optFilterStatus != "" &&
 					!strings.Contains(formatNodeStatus(node.Status), optFilterStatus) {
 					continue
@@ -83,12 +101,20 @@ func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 					!strings.Contains(formatYesNo(node.IsWritable), optFilterWritable) {
 					continue
 				}
-				stdout("%v\n", formatNodeView(&node, true))
+				if optShowDp {
+					info = nodeInfoSlice[index]
+					row = fmt.Sprintf(dataNodeDetailViewTableRowPattern, node.ID, node.Addr,
+						formatYesNo(node.IsWritable), formatNodeStatus(node.Status), formatSize(info.Used), info.ZoneName, info.DataPartitionCount)
+				} else {
+					row = formatNodeView(&node, true)
+				}
+				stdout("%v\n", row)
 			}
 		},
 	}
 	cmd.Flags().StringVar(&optFilterWritable, "filter-writable", "", "Filter node writable status")
-	cmd.Flags().StringVar(&optFilterStatus, "filter-status", "", "Filter node status [Active, Inactive")
+	cmd.Flags().StringVar(&optFilterStatus, "filter-status", "", "Filter node status [Active, Inactive]")
+	cmd.Flags().BoolVarP(&optShowDp, "detail", "d", false, "Show detail information")
 	return cmd
 }
 

@@ -30,6 +30,7 @@ func main() {
 
 	var (
 		walPath     string
+		file        string
 		decoderName string
 		keyword     string
 		start       uint64
@@ -40,6 +41,7 @@ func main() {
 	)
 
 	flag.StringVar(&walPath, "path", "", "path of RAFT WAL")
+	flag.StringVar(&file, "file", "", "file name of RAFT WAL")
 	flag.StringVar(&decoderName, "decoder", "",
 		fmt.Sprintf("decoder name for WAL (%v)", strings.Join(decode.RegisteredDecoders(), ",")))
 	flag.StringVar(&keyword, "keyword", "", "keyword of decoded entry")
@@ -86,6 +88,7 @@ func main() {
 	}
 
 	var opt = sink.Option{
+		File:    file,
 		Start:   start,
 		Count:   count,
 		Filter:  recordFilter,
@@ -93,6 +96,7 @@ func main() {
 	}
 
 	fmt.Printf("WAL path : %v\n", walPath)
+	fmt.Printf("File     : %v\n", file)
 	fmt.Printf("Keyword  : %v\n", keyword)
 	fmt.Printf("Decoder  : %v\n", decoderName)
 	fmt.Printf("Start    : %v\n", start)

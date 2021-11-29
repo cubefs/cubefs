@@ -19,14 +19,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/cli/api"
-	"github.com/chubaofs/chubaofs/metanode"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/chubaofs/chubaofs/cli/api"
+	"github.com/chubaofs/chubaofs/metanode"
 
 	"github.com/chubaofs/chubaofs/util/errors"
 
@@ -83,6 +84,7 @@ func newVolListCmd(client *master.MasterClient) *cobra.Command {
 			if vols, err = client.AdminAPI().ListVols(optKeyword); err != nil {
 				return
 			}
+			sort.Slice(vols, func(i, j int) bool { return vols[i].Name < vols[j].Name })
 			if optDetailMod {
 				stdout("%v\n", volumeDetailInfoTableHeader)
 			} else {

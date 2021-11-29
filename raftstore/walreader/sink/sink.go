@@ -41,6 +41,7 @@ const (
 )
 
 type Option struct {
+	File    string
 	Start   uint64
 	Count   uint64
 	Filter  RecordFilter
@@ -64,13 +65,24 @@ func (s *Sinker) Run() (err error) {
 	defer ws.Close()
 
 	var (
-		fi, li uint64
+		fi, li         uint64
+		readSingleFile = len(s.opt.File) > 0
 	)
-	if fi, err = ws.FirstIndex(); err != nil {
+	if readSingleFile {
+		fi, err = ws.FirstIndexOfFile(s.opt.File)
+	} else {
+		fi, err = ws.FirstIndexForWalreader()
+	}
+	if err != nil {
 		err = fmt.Errorf("read first index failed: %v", err)
 		return
 	}
-	if li, err = ws.LastIndex(); err != nil {
+	if readSingleFile {
+		li, err = ws.LastIndexOfFile(s.opt.File)
+	} else {
+		li, err = ws.LastIndex()
+	}
+	if err != nil {
 		err = fmt.Errorf("read last index failed: %v", err)
 		return
 	}
@@ -97,20 +109,27 @@ func (s *Sinker) Run() (err error) {
 		lo = s.opt.Start
 	}
 
-	var entries []*proto.Entry
-
 	headerRowText := s.buildHeaderRowText()
 	if _, err = s.writer.Write([]byte(headerRowText + "\n")); err != nil {
 		err = fmt.Errorf("output failed: %v", err)
 		return
 	}
 
-	var count uint64
+	var (
+		entries []*proto.Entry
+		count   uint64
+	)
 	for {
 		if lo > li || (s.opt.Count > 0 && count >= s.opt.Count) {
 			break
 		}
-		if entries, _, err = ws.Entries(lo, li, 4*1024*1024); err != nil {
+		// the following ws.Entries functions read [lo,li)
+		if readSingleFile {
+			entries, err = ws.EntriesOfFile(s.opt.File, lo, li+1)
+		} else {
+			entries, _, err = ws.EntriesForWalreader(lo, li+1, 4*1024*1024)
+		}
+		if err != nil {
 			err = fmt.Errorf("read entries [lo %v, hi %v] failed: %v\n", lo, li, err)
 			return
 		}
@@ -124,6 +143,10 @@ func (s *Sinker) Run() (err error) {
 			}
 			var recordRawText string
 			var skip bool
+			if len(entry.Data) == 0 {
+				fmt.Println(entry)
+				continue
+			}
 			if recordRawText, skip, err = s.buildRecordRowText(entry); err != nil {
 				err = fmt.Errorf("output record failed: %v", err)
 				return
