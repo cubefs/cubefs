@@ -126,6 +126,7 @@ type DataPartition struct {
 	loadExtentHeaderStatus        int
 	DataPartitionCreateType       int
 	isLoadingDataPartition        bool
+	persistMetaMutex              sync.RWMutex
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
@@ -447,6 +448,9 @@ func (dp *DataPartition) ForceLoadHeader() {
 
 // PersistMetadata persists the file metadata on the disk.
 func (dp *DataPartition) PersistMetadata() (err error) {
+	dp.persistMetaMutex.Lock()
+	defer dp.persistMetaMutex.Unlock()
+
 	var (
 		metadataFile *os.File
 		metaData     []byte
