@@ -70,7 +70,7 @@ func NewSpaceManager(dataNode *DataNode) *SpaceManager {
 
 func (manager *SpaceManager) AsyncLoadExtent() {
 	log.LogErrorf("start AsyncLoadAllPartitions ")
-	const maxParallelism = 10
+	const maxParallelism = 64
 	var parallelism = int(math.Min(float64(maxParallelism), float64(len(manager.partitions))))
 	wg := sync.WaitGroup{}
 	partitionC := make(chan *DataPartition, parallelism)
