@@ -173,7 +173,15 @@ func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry) (
 			return
 		}
 		d := item.(*Dentry)
-		d.Inode, dentry.Inode = dentry.Inode, d.Inode
+
+		if d.Inode == dentry.Inode {
+			//already update, this apply will do nothing
+			dentry.Inode = 0
+		} else {
+			//first update
+			d.Inode, dentry.Inode = dentry.Inode, d.Inode
+		}
+
 		resp.Msg = dentry
 	})
 	return

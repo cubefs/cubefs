@@ -774,8 +774,10 @@ func (p *Packet) LogMessage(action, remote string, start int64, err error) (m st
 }
 
 // ShallRetry returns if we should retry the packet.
+// As meta can not reentrant the unlink op, so unlink can not retry.
+// Meta can not reentran ops [create dentry\ update dentry\ create indoe\ link inode\ unlink inode\]
 func (p *Packet) ShouldRetry() bool {
-	return p.ResultCode == OpAgain || p.ResultCode == OpErr
+	return p.Opcode != OpMetaUnlinkInode && (p.ResultCode == OpAgain || p.ResultCode == OpErr)
 }
 
 func (p *Packet) IsReadMetaPkt() bool {

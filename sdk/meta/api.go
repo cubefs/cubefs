@@ -551,7 +551,8 @@ func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcNam
 
 	mw.iunlink(ctx, srcMP, inode)
 
-	if oldInode != 0 {
+	// As update dentry may be try, the second op will be the result which old inode be the same inode
+	if oldInode != 0 && oldInode != inode{
 		inodeMP := mw.getPartitionByInode(ctx, oldInode)
 		if inodeMP != nil {
 			mw.iunlink(ctx, inodeMP, oldInode)
@@ -859,7 +860,11 @@ func (mw *MetaWrapper) InodeUnlink_ll(ctx context.Context, inode uint64) (*proto
 	status, info, err := mw.iunlink(ctx, mp, inode)
 	if err != nil || status != statusOK {
 		log.LogErrorf("InodeUnlink_ll: ino(%v) err(%v) status(%v)", inode, err, status)
-		return nil, statusToErrno(status)
+		err = statusToErrno(status)
+		if err == syscall.EAGAIN {
+			err = nil
+		}
+		return nil, err
 	}
 	return info, nil
 }
