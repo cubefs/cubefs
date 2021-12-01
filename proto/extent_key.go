@@ -27,8 +27,9 @@ import (
 )
 
 var (
-	ExtentLength = 40
-	InvalidKey   = errors.New("invalid key error")
+	ExtentLength 	  = 40
+	ExtentDbKeyLength = 24
+	InvalidKey   	  = errors.New("invalid key error")
 )
 
 // ExtentKey defines the extent key struct.
@@ -59,6 +60,64 @@ func (k *ExtentKey) Copy() btree.Item {
 
 func (k *ExtentKey) Marshal() (m string) {
 	return fmt.Sprintf("%v_%v_%v_%v_%v_%v", k.FileOffset, k.PartitionId, k.ExtentId, k.ExtentOffset, k.Size, k.CRC)
+}
+
+// MarshalDbKey marshals the binary format of the extent for db key.
+//pid(8) + extent Id(8) + extent offset(4) + extent size(4)
+func (k *ExtentKey) MarshalDbKey() ([]byte, error) {
+	buf := bytes.NewBuffer(make([]byte, 0, ExtentLength))
+	if err := binary.Write(buf, binary.BigEndian, k.PartitionId); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, k.ExtentId); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, (uint32)(k.ExtentOffset)); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, k.Size); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+//pid(8) + extent Id(8) + extent offset(4) + extent size(4)
+func (k *ExtentKey) UnmarshalDbKey(buffer []byte) (err error) {
+	var ekOffset uint32
+	buf := bytes.NewBuffer(buffer)
+	if err = binary.Read(buf, binary.BigEndian, &k.PartitionId); err != nil {
+		return
+	}
+	if err = binary.Read(buf, binary.BigEndian, &k.ExtentId); err != nil {
+		return
+	}
+	if err = binary.Read(buf, binary.BigEndian, &ekOffset); err != nil {
+		return
+	}
+	k.ExtentOffset = uint64(ekOffset)
+	if err = binary.Read(buf, binary.BigEndian, &k.Size); err != nil {
+		return
+	}
+	return nil
+}
+
+//pid(8) + extent Id(8) + extent offset(4) + extent size(4)
+func (k *ExtentKey) UnmarshalDbKeyByBuffer(buf *bytes.Buffer) (err error) {
+	var ekOffset uint32
+	if err = binary.Read(buf, binary.BigEndian, &k.PartitionId); err != nil {
+		return
+	}
+	if err = binary.Read(buf, binary.BigEndian, &k.ExtentId); err != nil {
+		return
+	}
+	if err = binary.Read(buf, binary.BigEndian, &ekOffset); err != nil {
+		return
+	}
+	k.ExtentOffset = uint64(ekOffset)
+	if err = binary.Read(buf, binary.BigEndian, &k.Size); err != nil {
+		return
+	}
+	return nil
 }
 
 // MarshalBinary marshals the binary format of the extent key.

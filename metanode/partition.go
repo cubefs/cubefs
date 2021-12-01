@@ -80,6 +80,7 @@ type MetaPartitionConfig struct {
 	Cursor             uint64              `json:"-"` // Cursor ID of the inode that have been assigned
 	NodeId             uint64              `json:"-"`
 	RootDir            string              `json:"-"`
+	RocksDBDir         string              `json:"rocksDb_dir"`
 	BeforeStart        func()              `json:"-"`
 	AfterStart         func()              `json:"-"`
 	BeforeStop         func()              `json:"-"`
@@ -265,6 +266,8 @@ type metaPartition struct {
 	dentryDeletedTree           *BTree
 	inodeDeletedTree            *BTree
 	trashExpiresFirstUpdateTime time.Time
+	extDelCursor                chan uint64
+	db                          *RocksDbInfo
 }
 
 // Start starts a meta partition.
@@ -413,40 +416,99 @@ func (mp *metaPartition) getRaftPort() (heartbeat, replica int, err error) {
 	return
 }
 
+func (mp *metaPartition) selectRocksDBDir() (err error) {
+	var (
+		dir string
+		partitionId = strconv.FormatUint(mp.config.PartitionId, 10)
+	)
+
+	//clean
+	for _, dir = range mp.manager.rocksDBDirs {
+		rocksdbDir := path.Join(dir, partitionPrefix + partitionId)
+		if _, err = os.Stat(rocksdbDir); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			} else {
+				return
+			}
+		} else {
+			if err = os.RemoveAll(rocksdbDir); err != nil {
+				return
+			}
+		}
+	}
+
+	dir, err = util.SelectDisk(mp.manager.rocksDBDirs)
+	if err != nil {
+		return
+	}
+	mp.config.RocksDBDir = dir
+	return
+}
+
+func(mp *metaPartition) getRocksDbRootDir()string{
+	partitionId := strconv.FormatUint(mp.config.PartitionId, 10)
+	return path.Join(mp.config.RocksDBDir, partitionPrefix + partitionId, "db")
+}
+
 func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) *metaPartition {
 	mp := &metaPartition{
-		config:        conf,
-		dentryTree:    NewBtree(),
-		inodeTree:     NewBtree(),
-		extendTree:    NewBtree(),
-		multipartTree: NewBtree(),
-		stopC:         make(chan bool),
-		storeChan:     make(chan *storeMsg, 100),
-		freeList:      newFreeList(),
-		extDelCh:      make(chan []proto.ExtentKey, 10000),
-		extReset:      make(chan struct{}),
-		vol:           NewVol(),
-		manager:       manager,
-		monitorData:   statistics.InitMonitorData(statistics.ModelMetaNode),
-		marshalVersion: MetaPartitionMarshVersion2,
+		config:            conf,
+		dentryTree:        NewBtree(),
+		inodeTree:         NewBtree(),
+		extendTree:        NewBtree(),
+		multipartTree:     NewBtree(),
+		stopC:             make(chan bool),
+		storeChan:         make(chan *storeMsg, 100),
+		freeList:          newFreeList(),
+		extDelCh:          make(chan []proto.ExtentKey, 10000),
+		extReset:          make(chan struct{}),
+		vol:               NewVol(),
+		manager:           manager,
+		monitorData:       statistics.InitMonitorData(statistics.ModelMetaNode),
+		marshalVersion:    MetaPartitionMarshVersion2,
 		dentryDeletedTree: NewBtree(),
 		inodeDeletedTree:  NewBtree(),
+		extDelCursor:      make(chan uint64, 1),
+		db:                NewRocksDb(),
 	}
 	return mp
 }
 
 // NewMetaPartition creates a new meta partition with the specified configuration.
-func CreateMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) (MetaPartition, error) {
-	mp := NewMetaPartition(conf, manager)
-	if err := mp.persistMetadata(); err != nil {
+func CreateMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) ( MetaPartition, error) {
+	var (
+		mp *metaPartition
+		err error
+	)
+
+	mp = NewMetaPartition(conf, manager)
+	if err = mp.selectRocksDBDir(); err != nil {
+		return nil, err
+	}
+
+	if err = mp.db.OpenDb(mp.getRocksDbRootDir()); err != nil {
+		return nil, err
+	}
+
+	if err = mp.persistMetadata(); err != nil {
 		return nil, err
 	}
 	return mp, nil
 }
 
 func LoadMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) (MetaPartition, error) {
-	mp := NewMetaPartition(conf, manager)
-	if err := mp.load(context.Background()); err != nil {
+	var (
+		mp *metaPartition
+		err error
+	)
+
+	mp = NewMetaPartition(conf, manager)
+	if mp.config.RocksDBDir == "" {
+		mp.config.RocksDBDir = mp.config.RootDir
+	}
+
+	if err = mp.load(context.Background()); err != nil {
 		return nil, err
 	}
 	return mp, nil
@@ -575,6 +637,11 @@ func (mp *metaPartition) load(ctx context.Context) (err error) {
 	if err = mp.loadMetadata(); err != nil {
 		return
 	}
+
+	if err = mp.db.OpenDb(mp.getRocksDbRootDir()); err != nil{
+		return
+	}
+
 	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
 	if err = mp.loadInode(ctx, snapshotPath); err != nil {
 		return
@@ -952,6 +1019,8 @@ func (mp *metaPartition) Expired() (err error) {
 	mp.inodeDeletedTree.Reset()
 	mp.config.Cursor = 0
 	mp.applyID = 0
+	mp.db.CloseDb()
+	mp.db.ReleaseRocksDb()
 
 	currentPath := path.Clean(mp.config.RootDir)
 
@@ -1026,4 +1095,8 @@ func (mp *metaPartition) SumMonitorData(reportTime int64) []*statistics.MonitorD
 
 func (mp *metaPartition) getTrashStatus() bool {
 	return mp.config.TrashRemainingDays > 0
+}
+
+func (mp *metaPartition) enableRocksDbDelExtent() bool{
+	return mp.manager.metaNode.enableRocksDbDelExtent()
 }

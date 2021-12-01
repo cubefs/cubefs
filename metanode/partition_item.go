@@ -20,6 +20,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/tecbot/gorocksdb"
 	"io"
 	"io/ioutil"
 	"os"
@@ -147,6 +149,21 @@ type fileData struct {
 	data     []byte
 }
 
+type EkData struct {
+	key     []byte
+	data    []byte
+}
+
+func NewEkData(k, v []byte) *EkData {
+	ek := &EkData{}
+	ek.key = make([]byte, 0)
+	ek.data = make([]byte, 0)
+
+	ek.key = append(ek.key, k...)
+	ek.data = append(ek.data, v...)
+	return ek
+}
+
 // MetaItemIterator defines the iterator of the MetaItem.
 type MetaItemIterator struct {
 	fileRootDir       string
@@ -158,6 +175,8 @@ type MetaItemIterator struct {
 	extendTree        *BTree
 	multipartTree     *BTree
 	marshalVersion    uint32 //just test
+	db                *RocksDbInfo
+	snap              *gorocksdb.Snapshot
 
 	filenames []string
 
@@ -183,6 +202,8 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si.errorCh = make(chan error, 1)
 	si.closeCh = make(chan struct{})
 	si.marshalVersion = mp.marshalVersion
+	si.db = mp.db
+	si.snap = mp.db.OpenSnap()
 
 	// collect extend del files
 	var filenames = make([]string, 0)
@@ -277,7 +298,6 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 			return
 		}
 		// process extent del files
-		var err error
 		var raw []byte
 		for _, filename := range iter.filenames {
 			if raw, err = ioutil.ReadFile(path.Join(iter.fileRootDir, filename)); err != nil {
@@ -288,6 +308,28 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 				return
 			}
 		}
+
+		if !mp.enableRocksDbDelExtent() {
+			log.LogInfof("raft snap recover follower, skip rocks db extent")
+			return
+		}
+
+		log.LogInfof("raft snap recover follower, send rocks db extent")
+		stKey   := make([]byte, 1)
+		endKey  := make([]byte, 1)
+
+		stKey[0]  = byte(ExtentDelTable)
+		endKey[0] = byte(ExtentDelTable + 1)
+		_ = mp.db.RangeWithSnap(stKey, endKey, si.snap, func(k, v []byte) (bool, error){
+			if k[0] !=  byte(ExtentDelTable) {
+				return false, nil
+			}
+			ek := NewEkData(k, v)
+			if !produceItem(ek) {
+				return false, fmt.Errorf("gen snap:producet extent item failed")
+			}
+			return true, nil
+		})
 	}(si)
 
 	return
@@ -302,6 +344,7 @@ func (si *MetaItemIterator) ApplyIndex() uint64 {
 func (si *MetaItemIterator) Close() {
 	si.closeOnce.Do(func() {
 		close(si.closeCh)
+		si.db.ReleaseSnap(si.snap)
 	})
 	return
 }
@@ -378,6 +421,8 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 		snap = NewMetaItem(opFSMCreateMultipart, nil, raw)
 	case *fileData:
 		snap = NewMetaItem(opExtentFileSnapshot, []byte(typedItem.filename), typedItem.data)
+	case *EkData:
+		snap = NewMetaItem(opSnapSyncExtent, nil, typedItem.key)
 	default:
 		panic(fmt.Sprintf("unknown item type: %v", reflect.TypeOf(item).Name()))
 	}

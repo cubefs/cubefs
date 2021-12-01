@@ -45,14 +45,16 @@ type MetaNode struct {
 	ToBeMigrated              bool
 	PersistenceMetaPartitions []uint64
 	ProfPort                  string
+	Version 				  uint32
 }
 
-func newMetaNode(addr, zoneName, clusterID string) (node *MetaNode) {
+func newMetaNode(addr, zoneName, clusterID string, version uint32) (node *MetaNode) {
 	return &MetaNode{
 		Addr:     addr,
 		ZoneName: zoneName,
 		Sender:   newAdminTaskManager(addr, clusterID),
 		Carry:    rand.Float64(),
+		Version:  version,
 	}
 }
 

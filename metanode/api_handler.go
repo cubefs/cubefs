@@ -80,6 +80,8 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 
 	http.HandleFunc("/resetPeer", m.resetPeer)
 	http.HandleFunc("/removePeer", m.removePeerInRaftLog)
+	http.HandleFunc("/getAllDeleteExtents", m.getAllDeleteEkHandler)
+
 	return
 }
 
@@ -158,6 +160,92 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 	resp.Msg = http.StatusText(http.StatusOK)
 }
 
+func (m *MetaNode) getAllDeleteEkHandler(w http.ResponseWriter, r *http.Request) {
+	resp := NewAPIResponse(http.StatusSeeOther, "")
+
+	if err := r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	shouldSkip := false
+	defer func() {
+		if !shouldSkip {
+			data, _ := resp.Marshal()
+			if _, err := w.Write(data); err != nil {
+				log.LogErrorf("[getAllDeleteEkHandler] response %s", err)
+			}
+		}
+	}()
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+	buff := bytes.NewBufferString(`{"code": 200, "msg": "OK", "data":[`)
+	if _, err = w.Write(buff.Bytes()); err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+	snap :=	mp.(*metaPartition).db.OpenSnap()
+	defer mp.(*metaPartition).db.ReleaseSnap(snap)
+
+	buff.Reset()
+	var (
+		val       []byte
+		delimiter = []byte{',', '\n'}
+		isFirst   = true
+		stKey	  []byte
+		endKey    []byte
+	)
+
+	stKey = make([]byte, 1)
+	endKey = make([]byte, 1)
+	stKey[0] = byte(ExtentDelTable)
+	endKey[0] = byte(ExtentDelTable + 1)
+	mp.(*metaPartition).db.RangeWithSnap(stKey, endKey, snap, func(k, v []byte)(bool, error) {
+		if !isFirst {
+			if _, err = w.Write(delimiter); err != nil {
+				return false, nil
+			}
+		} else {
+			isFirst = false
+		}
+
+		ek := &proto.ExtentKey{}
+		ek.UnmarshalDbKey(k[8:])
+		val, err = json.Marshal(ek)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return false, nil
+		}
+		if _, err = w.Write(val); err != nil {
+			return false, nil
+		}
+
+		return true, nil
+	})
+
+	shouldSkip = true
+	buff.WriteString(`]}`)
+	if _, err = w.Write(buff.Bytes()); err != nil {
+		log.LogErrorf("[getAllInodesHandler] response %s", err)
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+	}
+	return
+}
+
 func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 	resp := NewAPIResponse(http.StatusSeeOther, "")
 
@@ -190,9 +278,12 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	buff := bytes.NewBufferString(`{"code": 200, "msg": "OK", "data":[`)
-	if _, err := w.Write(buff.Bytes()); err != nil {
+	if _, err = w.Write(buff.Bytes()); err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
 		return
 	}
+
 	buff.Reset()
 	var (
 		val       []byte

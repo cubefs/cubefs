@@ -13,7 +13,7 @@ var (
 
 func TestMetaNodeAPI(t *testing.T) {
 	// add meta node
-	_, err := testMc.NodeAPI().AddMetaNode(testMetaAddr, testZoneName)
+	_, err := testMc.NodeAPI().AddMetaNode(testMetaAddr, testZoneName, 0)
 	if err != nil {
 		t.Fatalf("Add mete node failed: err(%v), addr(%v)", err, testMetaAddr)
 	}

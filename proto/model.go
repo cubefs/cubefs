@@ -42,6 +42,7 @@ type MetaNodeInfo struct {
 	ToBeOffline               bool
 	ToBeMigrated              bool
 	ProfPort                  string
+	Version 				  uint32
 }
 
 // DataNode stores all the information about a data node
@@ -162,6 +163,7 @@ type NodeView struct {
 	Status     bool
 	ID         uint64
 	IsWritable bool
+	Version    uint32
 }
 
 type BadPartitionView struct {

@@ -40,10 +40,11 @@ func (api *NodeAPI) AddDataNode(serverAddr, zoneName string) (id uint64, err err
 	return
 }
 
-func (api *NodeAPI) AddMetaNode(serverAddr, zoneName string) (id uint64, err error) {
+func (api *NodeAPI) AddMetaNode(serverAddr, zoneName string, version uint32) (id uint64, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AddMetaNode)
 	request.addParam("addr", serverAddr)
 	request.addParam("zoneName", zoneName)
+	request.addParam("version", fmt.Sprintf("%d", version))
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return

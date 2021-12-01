@@ -279,6 +279,7 @@ type metaNodeValue struct {
 	NodeSetID uint64
 	Addr      string
 	ZoneName  string
+	Version   uint32
 }
 
 func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
@@ -287,6 +288,7 @@ func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
 		NodeSetID: metaNode.NodeSetID,
 		Addr:      metaNode.Addr,
 		ZoneName:  metaNode.ZoneName,
+		Version:   metaNode.Version,
 	}
 }
 
@@ -800,7 +802,7 @@ func (c *Cluster) loadMetaNodes() (err error) {
 		if mnv.ZoneName == "" {
 			mnv.ZoneName = DefaultZoneName
 		}
-		metaNode := newMetaNode(mnv.Addr, mnv.ZoneName, c.Name)
+		metaNode := newMetaNode(mnv.Addr, mnv.ZoneName, c.Name, mnv.Version)
 		metaNode.ID = mnv.ID
 		metaNode.NodeSetID = mnv.NodeSetID
 		c.metaNodes.Store(metaNode.Addr, metaNode)

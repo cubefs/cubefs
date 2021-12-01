@@ -82,6 +82,11 @@ func (mp *metaPartition) loadMetadata() (err error) {
 	mp.config.Peers = mConf.Peers
 	mp.config.Learners = mConf.Learners
 	mp.config.Cursor = mp.config.Start
+	mp.config.RocksDBDir = mConf.RocksDBDir
+	if mp.config.RocksDBDir == "" {
+		// new version but old config; need select one dir
+		err = mp.selectRocksDBDir()
+	}
 
 	log.LogInfof("loadMetadata: load complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor)

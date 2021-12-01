@@ -102,6 +102,7 @@ const (
 	CliFlagNodesAddrs		   = "nodes"
 	CliFlagMetaLayout		   = "meta-layout"
 	CliFlagStoreMode		   = "store-mode"
+	CliExtentDelByRocksKey     = "extentDelByRocks"
 
 	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

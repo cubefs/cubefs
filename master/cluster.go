@@ -66,6 +66,7 @@ type Cluster struct {
 	dpRepairChan               chan *RepairTask
 	mpRepairChan               chan *RepairTask
 	DataNodeBadDisks           *sync.Map
+	MetaVersionRequirements    uint32
 }
 type (
 	RepairType uint8
@@ -570,7 +571,7 @@ func (c *Cluster) updateMetaNodeBaseInfo(nodeAddr string, id uint64) (err error)
 	return
 }
 
-func (c *Cluster) addMetaNode(nodeAddr, zoneName string) (id uint64, err error) {
+func (c *Cluster) addMetaNode(nodeAddr, zoneName string, version uint32) (id uint64, err error) {
 	c.mnMutex.Lock()
 	defer c.mnMutex.Unlock()
 	var metaNode *MetaNode
@@ -578,7 +579,7 @@ func (c *Cluster) addMetaNode(nodeAddr, zoneName string) (id uint64, err error) 
 		metaNode = value.(*MetaNode)
 		return metaNode.ID, nil
 	}
-	metaNode = newMetaNode(nodeAddr, zoneName, c.Name)
+	metaNode = newMetaNode(nodeAddr, zoneName, c.Name, version)
 	zone, err := c.t.getZone(zoneName)
 	if err != nil {
 		zone = c.t.putZoneIfAbsent(newZone(zoneName))
@@ -602,6 +603,12 @@ func (c *Cluster) addMetaNode(nodeAddr, zoneName string) (id uint64, err error) 
 	}
 	c.t.putMetaNode(metaNode)
 	c.metaNodes.Store(nodeAddr, metaNode)
+
+	if c.needCheckMetaNodeVersion() {
+		if version < atomic.LoadUint32(&c.MetaVersionRequirements) {
+			//todo : need alarm: meta node need upgrade
+		}
+	}
 	log.LogInfof("action[addMetaNode],clusterID[%v] metaNodeAddr:%v,nodeSetId[%v],capacity[%v]",
 		c.Name, nodeAddr, ns.ID, ns.Capacity)
 	return

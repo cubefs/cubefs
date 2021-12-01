@@ -38,15 +38,424 @@ import (
 const (
 	prefixDelExtent     = "EXTENT_DEL"
 	maxDeleteExtentSize = 10 * MB
+	dbExtentKeySize		= 32			// 1 +   5   +   2    +   8  +  8  +   4  +    4
+										//type  time   reversed  pid   exid   offset  size
+										//time:YY YY MM DD HH
+	centuryKeyIndex     = 1
+	yearKeyIndex		= 2
+	monthKeyIndex		= 3
+	dayKeyIndex			= 4
+	hourKeyIndex		= 5
+
+	maxItemsPerBatch	= 100
 )
 
 var extentsFileHeader = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08}
 var writeDeleteExtentsLock = &sync.Mutex{}
 
+var addBatchKey []byte
+var delBatchKey []byte
+
+func (mp *metaPartition) initResouce() {
+	addBatchKey = make([]byte, dbExtentKeySize * maxItemsPerBatch)
+	delBatchKey = make([]byte, dbExtentKeySize * maxItemsPerBatch)
+}
+
 func (mp *metaPartition) startToDeleteExtents() {
-	fileList := synclist.New()
-	go mp.appendDelExtentsToFile(fileList)
-	go mp.deleteExtentsFromList(fileList)
+	addBatchKey = make([]byte, dbExtentKeySize * maxItemsPerBatch)
+	delBatchKey = make([]byte, dbExtentKeySize * maxItemsPerBatch)
+
+	go mp.appendDelExtentsToDb()
+	go mp.deleteExtentsFromDb()
+}
+
+func updateKeyToNow(data []byte) {
+	now := time.Now()
+	now.Add(24 * time.Hour)
+	//YY YY MM DD HH
+	data[0] = byte(ExtentDelTable)
+	data[centuryKeyIndex] 	= (byte)(now.Year() / 100)
+	data[yearKeyIndex] 		= (byte)(now.Year() % 100)
+	data[monthKeyIndex] 	= (byte)(now.Month())
+	data[dayKeyIndex] 		= (byte)(now.Day())
+	data[hourKeyIndex] 		= (byte)(now.Hour())
+	return
+}
+
+func updateKeyToDate(key []byte, date uint64) {
+	key[0] = byte(ExtentDelTable)
+
+	for i := hourKeyIndex; i >= centuryKeyIndex; i-- {
+		key[i] = byte(date % 100)
+		date /= 100
+	}
+	return
+}
+
+func generalDateKey() uint64 {
+	now := time.Now()
+	curDateKey := uint64(now.Year() / 100) * 100000000 + uint64(now.Year() % 100) * 1000000 + uint64(now.Month()) * 10000 + uint64(now.Day()) * 100 + uint64(now.Hour())
+	return curDateKey
+}
+
+func getDateInKey(k []byte) uint64 {
+	dateInfo := uint64(k[centuryKeyIndex]) * 100000000 + uint64(k[yearKeyIndex]) * 1000000 + uint64(k[monthKeyIndex]) * 10000 + uint64(k[dayKeyIndex]) * 100 + uint64(k[hourKeyIndex])
+	return dateInfo
+}
+
+func (mp *metaPartition) addDelExtentToDb(key []byte, eks []proto.ExtentKey) (err error) {
+	log.LogInfof("Mp[%d] add delete extent, date:%d, count:%d, success", mp.config.PartitionId, getDateInKey(key), len(eks))
+	data := make([]byte, 1)
+	var handle interface{}
+	cnt := 0
+
+	defer func() {
+		if err != nil {
+			log.LogWarnf("Mp[%d] add delete extent, date:%d, count:%d, failed:%s", mp.config.PartitionId, getDateInKey(key), len(eks), err.Error())
+			return
+		}
+		log.LogDebugf("Mp[%d] add delete extent, date:%d, count:%d, success", mp.config.PartitionId, getDateInKey(key), len(eks))
+	}()
+
+	if handle, err = mp.db.CreateBatchHandler(); err != nil {
+		return err
+	}
+
+	for _, ek := range eks {
+		var ekInfo []byte
+
+		if ekInfo, err = ek.MarshalDbKey(); err != nil {
+			log.LogWarnf("[addDelExtentToDb] partitionId=%d,"+
+				" extentKey[%v] marshal err: %s", mp.config.PartitionId, ek, err.Error())
+			goto errOut
+		}
+
+		copy(key[8:], ekInfo)
+		log.LogDebugf("add del extent key:%v, len:%v, data:%v, len:%v, cnt:%v\n", key, len(key), data, len(data), cnt)
+
+		if cnt != 0 && cnt % maxItemsPerBatch == 0 {
+			if err = mp.db.CommitBatchAndRelease(handle); err != nil {
+				log.LogWarnf("[addDelExtentToDb] partitionId=%d,"+
+					" extentKey marshal: %s", mp.config.PartitionId, err.Error())
+				goto errOut
+			}
+			if handle, err = mp.db.CreateBatchHandler(); err != nil {
+				goto errOut
+			}
+		}
+		keyOffset := (cnt % maxItemsPerBatch) * dbExtentKeySize
+		copy(addBatchKey[keyOffset : keyOffset + 8], key[0:8])
+		copy(addBatchKey[keyOffset + 8 : keyOffset + dbExtentKeySize], ekInfo)
+		if err = mp.db.AddItemToBatch(handle, addBatchKey[keyOffset : keyOffset + dbExtentKeySize], data); err != nil{
+			goto errOut
+		}
+
+		cnt++
+	}
+
+
+	err = mp.db.CommitBatchAndRelease(handle)
+
+	return
+
+errOut:
+	if  handle != nil {
+		mp.db.ReleaseBatchHandle(handle)
+	}
+	return
+}
+
+func (mp *metaPartition) appendDelExtentsToDb() {
+	commitCheckTimer := time.NewTimer(time.Minute * 5)
+	extDeleteCursor := uint64(0)
+	for ; ; {
+		select {
+		case <-mp.stopC:
+			commitCheckTimer.Stop()
+			return
+		case <-mp.extReset:
+			// nothing to do; already clean
+		case <-commitCheckTimer.C:
+			commitCheckTimer.Reset(time.Minute * 5)
+			if _, ok := mp.IsLeader(); !ok {
+				continue
+			}
+
+			curDate := generalDateKey()
+			if extDeleteCursor == 0 {
+				extDeleteCursor = curDate
+			} else if extDeleteCursor != curDate {
+				log.LogInfof("Mp[%d] hour changed, notify sync to follower, old:%d, new:%d", mp.config.PartitionId, extDeleteCursor, curDate)
+				extDeleteCursor = curDate
+				mp.extDelCursor<- extDeleteCursor
+			}
+		case eks := <-mp.extDelCh:
+			key  := make( []byte, dbExtentKeySize)
+			updateKeyToNow(key)
+			if err := mp.addDelExtentToDb(key, eks); err != nil {
+				mp.extDelCh<-eks
+			}
+		}
+	}
+}
+
+func (mp *metaPartition) fsmSyncDelExtents(data []byte) {
+	eks  := make([]proto.ExtentKey, 0)
+	key  := make([]byte, dbExtentKeySize)
+	extDeleteCursor := binary.BigEndian.Uint64(data)
+	buff := bytes.NewBuffer(data[8:])
+	log.LogInfof("Mp[%d] follower recv sync extent delete info, date:%d, data:%v", mp.config.PartitionId, extDeleteCursor, data)
+	for ; ; {
+		if buff.Len() == 0 {
+			break
+		}
+
+		if buff.Len() < 24 {
+			log.LogWarnf("Mp[%d] follower recv sync extent delete info, date:%d; recv err packet; broken ek record, buff len:%d",
+						mp.config.PartitionId, extDeleteCursor, buff.Len())
+			return
+		}
+
+		ek := proto.ExtentKey{}
+		if err := ek.UnmarshalDbKeyByBuffer(buff); err != nil {
+			log.LogWarnf("Mp[%d] follower recv sync extent delete info, date:%d; recv err packet; unmarshal failed:%v",
+							mp.config.PartitionId, extDeleteCursor, err.Error())
+			return
+		}
+		eks = append(eks, ek)
+	}
+
+	for i:= hourKeyIndex; i >= centuryKeyIndex; i-- {
+
+	}
+	updateKeyToDate(key, extDeleteCursor)
+	//Update the key to next day. ignore day 32 item as it will be deleted by next month
+	key[dayKeyIndex] += 1
+
+	log.LogInfof("Mp[%d] follower recv sync extent delete info, date:%d, retry date:%d", mp.config.PartitionId, extDeleteCursor, getDateInKey(key))
+	if err := mp.addDelExtentToDb(key, eks); err != nil {
+		log.LogWarnf("Mp[%d] follower recv sync extent delete info, date:%d; commit retry eks failed:%s", mp.config.PartitionId, extDeleteCursor, err.Error())
+	}
+
+	if _, ok := mp.IsLeader(); !ok {
+		mp.extDelCursor <- extDeleteCursor
+	}
+	log.LogInfof("Mp[%d] follower recv sync extent delete info, date:%d, err count:%d finished", mp.config.PartitionId, extDeleteCursor, len(eks))
+	return
+}
+
+func (mp *metaPartition) syncDelExtentsToFollowers(extDeletedCursor uint64, retryList *list.List)(err error){
+	log.LogInfof("Mp[%d] leader sync delete extent info to followers, date:%d, err count:%v", mp.config.PartitionId, extDeletedCursor, retryList.Len())
+
+	buf := bytes.NewBuffer(make([]byte, 0, retryList.Len() * proto.ExtentDbKeyLength + 8))
+
+	defer func(){
+		if err != nil {
+			log.LogWarnf("Mp[%d] leader sync delete extent info to followers, date:%d, err count:%v, failed:%s", mp.config.PartitionId, extDeletedCursor, retryList.Len(), err.Error())
+			return
+		}
+		log.LogInfof("Mp[%d] leader sync delete extent info to followers, date:%d, err count:%v, success, data:%v", mp.config.PartitionId, extDeletedCursor, retryList.Len(), buf.Bytes())
+	}()
+
+	if err = binary.Write(buf, binary.BigEndian, extDeletedCursor); err != nil {
+		return err
+	}
+
+	for elem := retryList.Front(); elem != nil; elem = elem.Next() {
+		ek := elem.Value.(*proto.ExtentKey)
+		log.LogInfof("Mp[%d] add del to followers ek:%v\n", mp.config.PartitionId, ek)
+		if err = binary.Write(buf, binary.BigEndian, ek.PartitionId); err != nil {
+			return err
+		}
+		if err = binary.Write(buf, binary.BigEndian, ek.ExtentId); err != nil {
+			return err
+		}
+		if err = binary.Write(buf, binary.BigEndian, (uint32)(ek.ExtentOffset)); err != nil {
+			return err
+		}
+		if err = binary.Write(buf, binary.BigEndian, ek.Size); err != nil {
+			return err
+		}
+	}
+	if _, err = mp.submit(context.Background(), opFSMExtentDelSync, "", buf.Bytes()); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (err error) {
+	stKey   := make([]byte, 1)
+	endKey  := make([]byte, 1)
+	delHandle, _ := mp.db.CreateBatchHandler()
+
+	stKey[0]  = byte(ExtentDelTable)
+	endKey[0] = byte(ExtentDelTable + 1)
+
+	log.LogInfof("Mp[%d] leader run once clean extent, now err extents:%v", mp.config.PartitionId, retryList.Len())
+
+	defer func() {
+		if err != nil {
+			log.LogWarnf("Mp[%d] leader run once clean extent, now err extents:%v, failed:%s", mp.config.PartitionId, retryList.Len(), err.Error())
+			return
+		}
+	}()
+
+	cur := generalDateKey()
+	cnt := 0
+	handleItemFunc := func(k, v []byte) (bool, error) {
+		ek := &proto.ExtentKey{}
+
+		if k[0] != byte(ExtentDelTable) || getDateInKey(k) > cur {
+			return false, nil
+		}
+
+		if err = ek.UnmarshalDbKey(k[8:]); err != nil {
+			return false, err
+		}
+
+		if err = mp.doDeleteMarkedInodes(context.Background(), ek); err != nil {
+			retryList.PushBack(ek)
+			log.LogWarnf("[cleanExpiredExtents] partitionId=%d, %s",
+				mp.config.PartitionId, err.Error())
+		}
+
+		if cnt != 0 && cnt % maxItemsPerBatch == 0 {
+			if err = mp.db.CommitBatchAndRelease(delHandle); err != nil {
+				log.LogWarnf("[cleanExpiredExtents] partitionId=%d,"+
+					" extentKey marshal: %s", mp.config.PartitionId, err.Error())
+				return false, err
+			}
+			if delHandle, err = mp.db.CreateBatchHandler(); err != nil {
+				return false, err
+			}
+
+		}
+
+		keyOffset := (cnt % maxItemsPerBatch) * dbExtentKeySize
+		copy(delBatchKey[keyOffset : keyOffset + dbExtentKeySize], k)
+		if err = mp.db.DelItemToBatch(delHandle, delBatchKey[keyOffset : keyOffset + dbExtentKeySize]); err != nil{
+			return false, err
+		}
+		cnt++
+		return true, nil
+	}
+
+	if err = mp.db.Range(stKey, endKey, handleItemFunc); err != nil {
+		_ = mp.db.ReleaseBatchHandle(delHandle)
+		return err
+	}
+
+	if err = mp.db.CommitBatchAndRelease(delHandle); err != nil {
+		return err
+	}
+	log.LogInfof("Mp[%d] leader clean expired extents[%d], now err extents:%v, success", mp.config.PartitionId, cnt, retryList.Len())
+	return  nil
+}
+
+func (mp *metaPartition)followerCleanDeletedExtents(delCommitDate uint64)  (err error){
+	stKey   := make([]byte, 1)
+	endKey  := make([]byte, 1)
+	delHandle, _ := mp.db.CreateBatchHandler()
+
+	stKey[0]  = byte(ExtentDelTable)
+	endKey[0] = byte(ExtentDelTable + 1)
+
+	log.LogInfof("Mp[%d] follower sync clean extents before:%v", mp.config.PartitionId, delCommitDate)
+	defer func() {
+		if err != nil {
+			log.LogWarnf("Mp[%d] follower sync clean extents before:%v, failed:%s", mp.config.PartitionId, delCommitDate, err.Error())
+			return
+		}
+	}()
+
+	cnt := 0
+	handleItemFunc := func(k, v []byte) (bool, error) {
+		if k[0] != byte(ExtentDelTable) {
+			return false, nil
+		}
+
+		ekDate := getDateInKey(k)
+		if ekDate >= delCommitDate {
+			log.LogInfof("Clean expired extents finished, curKey:%v, curSor:%v", ekDate, delCommitDate)
+			return false, nil
+		}
+
+		if cnt != 0 && cnt % maxItemsPerBatch == 0 {
+			if err = mp.db.CommitBatchAndRelease(delHandle); err != nil {
+				log.LogWarnf("[cleanExpiredExtents] partitionId=%d,"+
+					" extentKey marshal: %s", mp.config.PartitionId, err.Error())
+				return false, err
+			}
+			if delHandle, err = mp.db.CreateBatchHandler(); err != nil {
+				return false, err
+			}
+
+		}
+
+		keyOffset := (cnt % maxItemsPerBatch) * dbExtentKeySize
+		copy(delBatchKey[keyOffset : keyOffset + dbExtentKeySize], k)
+		//log.LogInfof("MP[%v] clean del extent: %v, cnt:%v", mp.config.PartitionId, k, cnt)
+		if err = mp.db.DelItemToBatch(delHandle, delBatchKey[keyOffset : keyOffset + dbExtentKeySize]); err != nil{
+			return false, err
+		}
+
+		cnt++
+		return true, nil
+	}
+
+	if err = mp.db.Range(stKey, endKey, handleItemFunc); err != nil {
+		_ = mp.db.ReleaseBatchHandle(delHandle)
+		return err
+	}
+
+	if err = mp.db.CommitBatchAndRelease(delHandle); err != nil {
+		return err
+	}
+	log.LogInfof("Mp[%d] follower sync clean extents(%d) before:%v, success", mp.config.PartitionId, cnt, delCommitDate)
+	return  nil
+}
+
+func (mp *metaPartition) deleteExtentsFromDb() {
+	retryList := list.New()
+	delTimer := time.NewTimer(time.Minute * 1)
+
+	for ; ; {
+		select {
+		case <-mp.stopC:
+			delTimer.Stop()
+			return
+
+		case extDeletedCursor := <-mp.extDelCursor:
+			if _, ok := mp.IsLeader(); !ok {
+				retryList = list.New()
+				_ = mp.followerCleanDeletedExtents(extDeletedCursor)
+				continue
+			}
+
+			log.LogInfof("Mp[%d] leader clean extents before:%v", mp.config.PartitionId, extDeletedCursor)
+			if err := mp.cleanExpiredExtents(retryList); err != nil {
+				continue
+			}
+
+			if err := mp.syncDelExtentsToFollowers(extDeletedCursor, retryList); err != nil {
+				continue
+			}
+
+			retryList = list.New()
+
+		case <-delTimer.C:
+			if _, ok := mp.IsLeader(); !ok {
+				retryList = list.New()
+				continue
+			}
+
+			if err := mp.cleanExpiredExtents(retryList); err != nil {
+				log.LogWarnf("Mp[%d] del extent failed:%s", mp.config.PartitionId, err.Error())
+			}
+			delTimer.Reset(time.Minute)
+		}
+	}
 }
 
 func (mp *metaPartition) appendDelExtentsToFile(fileList *synclist.SyncList) {

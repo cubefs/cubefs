@@ -315,6 +315,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		ExtentMergeIno:                         m.cluster.cfg.ExtentMergeIno,
 		ExtentMergeSleepMs:                     m.cluster.cfg.ExtentMergeSleepMs,
 		DataNodeFixTinyDeleteRecordLimitOnDisk: m.cluster.dnFixTinyDeleteRecordLimit,
+		MetaVersionRequirements:                m.cluster.MetaVersionRequirements,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -1433,7 +1434,7 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 		id       uint64
 		err      error
 	)
-	if nodeAddr, zoneName, err = parseRequestForAddNode(r); err != nil {
+	if nodeAddr, zoneName, _, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1836,14 +1837,15 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr string
 		zoneName string
+		version	 uint32
 		id       uint64
 		err      error
 	)
-	if nodeAddr, zoneName, err = parseRequestForAddNode(r); err != nil {
+	if nodeAddr, zoneName, version, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if id, err = m.cluster.addMetaNode(nodeAddr, zoneName); err != nil {
+	if id, err = m.cluster.addMetaNode(nodeAddr, zoneName, version); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1903,6 +1905,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		ToBeOffline:               metaNode.ToBeOffline,
 		ToBeMigrated:              metaNode.ToBeMigrated,
 		ProfPort:                  metaNode.ProfPort,
+		Version: 				   metaNode.Version,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(metaNodeInfo))
 }
@@ -2254,7 +2257,7 @@ func parseRequestForUpdateMetaNode(r *http.Request) (nodeAddr string, id uint64,
 	return
 }
 
-func parseRequestForAddNode(r *http.Request) (nodeAddr, zoneName string, err error) {
+func parseRequestForAddNode(r *http.Request) (nodeAddr, zoneName string, version uint32, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2263,6 +2266,17 @@ func parseRequestForAddNode(r *http.Request) (nodeAddr, zoneName string, err err
 	}
 	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
 		zoneName = DefaultZoneName
+	}
+
+	tmpVersion := 0
+	if versionStr := r.FormValue(versionKey); versionStr == "" {
+		version = defaultMetaNodeVersion
+	} else {
+		if tmpVersion, err = strconv.Atoi(versionStr); err != nil {
+			version = defaultMetaNodeVersion
+		} else {
+			version = uint32(tmpVersion)
+		}
 	}
 	return
 }
@@ -4180,3 +4194,12 @@ func extractMinWritableDPNum(r *http.Request, volMinRwDPNum int) (minRwDPNum int
 	return
 }
 
+func (m *Server) enableExtentDelByRocks(w http.ResponseWriter, r *http.Request) {
+	err := m.cluster.setExtentDelByRocksDb()
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply("success"))
+	return
+}

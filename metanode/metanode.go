@@ -34,6 +34,11 @@ import (
 	"github.com/chubaofs/chubaofs/util/statistics"
 )
 
+const (
+	MetaNodeVersion01 uint32 = 1			//support del extent record by rocks db
+	MetaNodeLatestVersion  = MetaNodeVersion01
+)
+
 var (
 	clusterInfo    *proto.ClusterInfo
 	masterClient   *masterSDK.MasterClient
@@ -42,7 +47,6 @@ var (
 )
 
 // The MetaNode manages the dentry and inode information of the meta partitions on a meta node.
-// The data consistency is ensured by Raft.
 type MetaNode struct {
 	nodeId            uint64
 	listen            string
@@ -57,8 +61,11 @@ type MetaNode struct {
 	tickInterval      int
 	zoneName          string
 	httpStopC         chan uint8
-	disks             map[string]*Disk
 	processStatInfo   *statinfo.ProcessStatInfo
+	rocksDirs          []string
+	diskStopCh         chan struct{}
+	disks              map[string]*util.FsCapMon
+	clusterMetaVersion uint32
 
 	control common.Control
 }
@@ -205,6 +212,8 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		updateDeleteBatchCount(uint64(deleteBatchCount))
 	}
 
+	m.rocksDirs = cfg.GetStringSlice(cfgRocksDirs)
+
 	total, _, err := util.GetMemInfo()
 	if err == nil && configTotalMem > total-util.GB {
 		return fmt.Errorf("bad totalMem config,Recommended to be configured as 80 percent of physical machine memory")
@@ -224,6 +233,10 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	if m.raftReplicatePort == "" {
 		return fmt.Errorf("bad cfgRaftReplicaPort config")
+	}
+	if len(m.rocksDirs) == 0 {
+		fmt.Errorf("conf do not have rocks db dir, now use meta data dir")
+		m.rocksDirs = append(m.rocksDirs, m.metadataDir)
 	}
 
 	constCfg := config.ConstConfig{
@@ -317,7 +330,7 @@ func (m *MetaNode) register() (err error) {
 			step++
 		}
 		var nodeID uint64
-		if nodeID, err = masterClient.NodeAPI().AddMetaNode(nodeAddress, m.zoneName); err != nil {
+		if nodeID, err = masterClient.NodeAPI().AddMetaNode(nodeAddress, m.zoneName, MetaNodeLatestVersion); err != nil {
 			log.LogErrorf("register: register to master fail: address(%v) err(%s)", nodeAddress, err)
 			time.Sleep(3 * time.Second)
 			continue

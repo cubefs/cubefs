@@ -65,7 +65,7 @@ func createDataNodeForNodeSet(addr, zoneName, clusterID string, ns *nodeSet) (dn
 }
 
 func createMetaNodeForNodeSet(addr, zoneName, clusterID string, ns *nodeSet) (mn *MetaNode) {
-	mn = newMetaNode(addr, zoneName, clusterID)
+	mn = newMetaNode(addr, zoneName, clusterID, 0)
 	mn.ZoneName = zoneName
 	mn.Total = 1024 * util.GB
 	mn.Used = 10 * util.GB

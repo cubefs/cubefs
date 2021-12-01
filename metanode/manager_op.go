@@ -32,6 +32,7 @@ import (
 
 const (
 	MaxUsedMemFactor = 1.1
+	MAXFsUsedFactor  = 0.8
 )
 
 func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
@@ -90,11 +91,19 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		if resp.Used > uint64(float64(resp.Total)*MaxUsedMemFactor) {
 			mpr.Status = proto.ReadOnly
 		}
+
+		FsCapInfo := m.metaNode.getSingleDiskStat(mConf.RocksDBDir)
+
+		if FsCapInfo.Used > FsCapInfo.Total * MAXFsUsedFactor {
+			mpr.Status = proto.ReadOnly
+		}
 		resp.MetaPartitionReports = append(resp.MetaPartitionReports, mpr)
 		return true
 	})
 	resp.ZoneName = m.zoneName
 	resp.Status = proto.TaskSucceeds
+	resp.FSInfo = m.metaNode.getDiskStat()
+	resp.Version = MetaNodeLatestVersion
 end:
 	adminTask.Request = nil
 	adminTask.Response = resp
@@ -712,6 +721,7 @@ func (m *metadataManager) opExpiredMetaPartition(conn net.Conn,
 		return
 	}
 	// Ack the master request
+	//mp.Stop()
 	mp.ExpiredRaft()
 	m.expiredPartition(mp.GetBaseConfig().PartitionId)
 	p.PacketOkReply()

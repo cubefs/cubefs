@@ -165,6 +165,8 @@ const (
 	opFSMInternalCleanDeletedInode
 	opFSMCleanExpiredDentry
 	opFSMCleanExpiredInode
+	opFSMExtentDelSync
+	opSnapSyncExtent
 )
 
 var (
@@ -197,6 +199,7 @@ const (
 	cfgTotalMem          = "totalMem"
 	cfgZoneName          = "zoneName"
 	cfgTickIntervalMs    = "tickIntervalMs"
+	cfgRocksDirs         = "rocksDirs"
 
 	metaNodeDeleteBatchCountKey = "batchCount"
 	trashEnableKey              = "trashEnable"

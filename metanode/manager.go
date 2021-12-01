@@ -66,6 +66,7 @@ type metadataManager struct {
 	nodeId             uint64
 	zoneName           string
 	rootDir            string
+	rocksDBDirs        []string
 	raftStore          raftstore.RaftStore
 	connPool           *util.ConnectPool
 	state              uint32
@@ -691,6 +692,7 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) (Metadat
 		connPool:    util.NewConnectPool(),
 		stopC:       make(chan bool, 0),
 		volTrashMap: make(map[string]int32),
+		rocksDBDirs: metaNode.rocksDirs,
 	}
 	if err := mm.loadPartitions(); err != nil {
 		return nil, err

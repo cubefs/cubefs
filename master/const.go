@@ -98,6 +98,7 @@ const (
 	volMetaLayoutKey            = "metaLayout"
 	StoreModeKey                = "storeMode"
 	volConvertStKey             = "convertState"
+	versionKey					= "version"
 )
 
 const (
@@ -175,6 +176,7 @@ const (
 	defaultLowCapacityVol                              = 10 * 1024
 	defaultTrashRemainingDays                          = 30
 	maxTrashRemainingDays                              = 30
+	defaultMetaNodeVersion						       = 0
 )
 
 const (

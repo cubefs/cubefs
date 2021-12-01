@@ -16,6 +16,8 @@ package proto
 
 import "fmt"
 
+import "github.com/chubaofs/chubaofs/util"
+
 // api
 const (
 	// All
@@ -59,6 +61,7 @@ const (
 	AdminSetVolMinRWPartition      = "/vol/setMinRWPartition"
 	AdminEnableTrash               = "/admin/trash"
 	AdminStatTrash                 = "/admin/trash/stat"
+	AdminEnableExtDelByRocks       = "/extentDelByRocks/enable"
 
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
@@ -287,8 +290,9 @@ type LimitInfo struct {
 	DataNodeFixTinyDeleteRecordLimitOnDisk uint64
 	DataNodeRepairTaskLimitOnDisk          uint64
 
-	ExtentMergeIno     map[string][]uint64
-	ExtentMergeSleepMs uint64
+	ExtentMergeIno          map[string][]uint64
+	ExtentMergeSleepMs      uint64
+	MetaVersionRequirements uint32
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -516,6 +520,8 @@ type MetaNodeHeartbeatResponse struct {
 	Status               uint8
 	ProfPort             string
 	Result               string
+	FSInfo 				 []*util.FsCapMon
+	Version  			 uint32
 }
 
 // DeleteFileRequest defines the request to delete a file.

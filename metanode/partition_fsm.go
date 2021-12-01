@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
@@ -22,6 +23,8 @@ import (
 	"hash/crc32"
 	"io"
 	"net"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -307,6 +310,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		resp = mp.fsmBatchCleanDeletedDentry(batch)
 	case opFSMInternalCleanDeletedInode:
 		err = mp.internalClean(msg.V)
+	case opFSMExtentDelSync:
+		mp.fsmSyncDelExtents(msg.V)
 	}
 
 	return
@@ -370,6 +375,46 @@ func (mp *metaPartition) Snapshot() (snap raftproto.Snapshot, err error) {
 	return
 }
 
+func (mp *metaPartition) ResetDbByNewDir(newDbDir string) (err error){
+	if err = mp.db.CloseDb(); err != nil {
+		log.LogErrorf("Close old db failed:%v", err.Error())
+		return
+	}
+
+	if err = mp.db.ReleaseRocksDb(); err != nil {
+		log.LogErrorf("release db dir failed:%v", err.Error())
+		return
+	}
+
+	if err = os.Rename(newDbDir, mp.getRocksDbRootDir()); err != nil {
+		log.LogErrorf("rename db dir[%s --> %s] failed:%v", newDbDir, mp.getRocksDbRootDir(), err.Error())
+		return
+	}
+
+	if err = mp.db.ReOpenDb(mp.getRocksDbRootDir()); err != nil {
+		log.LogErrorf("reopen db[%s] failed:%v", mp.getRocksDbRootDir(), err.Error())
+		return
+	}
+
+	partitionId := strconv.FormatUint(mp.config.PartitionId, 10)
+	fileInfoList, err := ioutil.ReadDir(path.Join(mp.config.RocksDBDir, partitionPrefix + partitionId))
+	if err != nil {
+		return nil
+	}
+
+	for _, file := range fileInfoList {
+		if file.IsDir() && strings.HasPrefix(file.Name(), "db") {
+			if file.Name() == "db" {
+				continue
+			}
+			oldName := path.Join(mp.config.RocksDBDir, partitionPrefix + partitionId, file.Name())
+			newName := path.Join(mp.config.RocksDBDir, partitionPrefix + partitionId,("expired_" + file.Name()))
+			os.Rename(oldName, newName)
+		}
+	}
+	return nil
+}
+
 // ApplySnapshot applies the given snapshots.
 func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.SnapIterator) (err error) {
 	var (
@@ -391,12 +436,58 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		snapshotSign           = crc32.NewIEEE()
 		snapshotCrcStoreSuffix = "snapshotCrc"
 		leaderCrc              uint32
+		db                     = NewRocksDb()
 	)
+
+	nowStr := strconv.FormatInt(time.Now().Unix(), 10)
+	newDbDir := mp.getRocksDbRootDir() + "_" + nowStr
+	log.LogInfof("MP[%v] recover from snap, new dir%v", mp.config.PartitionId, newDbDir)
+
+	if _, err = os.Stat(newDbDir); err == nil {
+		os.RemoveAll(newDbDir)
+	}
+
+	os.MkdirAll(newDbDir, 0x755)
+	err = nil
+	if err = db.OpenDb(newDbDir); err != nil {
+		log.LogInfof("open db failed,")
+		return
+	}
+
 	defer func() {
 		if err == ErrSnapShotEOF {
+			crc := snapshotSign.Sum32()
+			leaderCrcStr := strconv.FormatUint(uint64(leaderCrc), 10)
+			crcStoreFile := fmt.Sprintf("%s/%s", mp.config.RootDir, snapshotCrcStoreSuffix)
+			var crcBuff = bytes.NewBuffer(make([]byte, 0, 16))
+			storeStr := fmt.Sprintf("%v, %v, %v", time.Now().Format("2006-01-02 15:04:05"), leaderCrcStr, crc)
+			crcBuff.WriteString(storeStr)
+			if err = ioutil.WriteFile(crcStoreFile, crcBuff.Bytes(), 0775); err != nil {
+				log.LogWarnf("write to file failed, err is :%v", err)
+			}
+
+			if leaderCrc != 0  && leaderCrc != crc {
+				log.LogWarnf("ApplySnapshot partitionID(%v) leader crc[%v] and local[%v] is different, snaps", mp.config.PartitionId, leaderCrc, crc)
+			}
+
+			if newErr := db.CloseDb(); newErr != nil {
+				err = newErr
+				log.LogInfof("MP[%v] recover from snap failed; Close new db failed:%s", mp.config.PartitionId, newErr.Error())
+				return
+			}
+
+
+			if newErr := mp.ResetDbByNewDir(newDbDir); newErr != nil {
+				err = newErr
+				log.LogInfof("MP[%v] recover from snap failed; Reset db failed:%s", mp.config.PartitionId, newErr.Error())
+				return
+			}
+
 			mp.applyID = appIndexID
 			mp.inodeTree = inodeTree
 			mp.dentryTree = dentryTree
+			mp.dentryDeletedTree = dentryDeletedTree
+			mp.inodeDeletedTree = inodeDeletedTree
 			mp.extendTree = extendTree
 			mp.multipartTree = multipartTree
 			if cursor != 0 {
@@ -415,13 +506,15 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				multipartTree:     mp.multipartTree,
 			}
 			mp.extReset <- struct{}{}
-			log.LogDebugf("ApplySnapshot: finish with EOF: partitionID(%v) applyID(%v),cursor(%v)", mp.config.PartitionId, mp.applyID, mp.config.Cursor)
+			log.LogInfof("ApplySnapshot: finish with EOF: partitionID(%v) applyID(%v),cursor(%v)", mp.config.PartitionId, mp.applyID, mp.config.Cursor)
 			return
 		}
+		db.CloseDb()
 		log.LogErrorf("ApplySnapshot: stop with error: partitionID(%v) err(%v)", mp.config.PartitionId, err)
 	}()
 
 	ctx := context.Background()
+	extValue := make([]byte , 1)
 	for {
 		data, err = iter.Next()
 		if err != nil {
@@ -528,6 +621,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			}
 		case opFSMSnapShotCrc:
 			leaderCrc = binary.BigEndian.Uint32(snap.V)
+
 		case opFSMCreateDeletedDentry:
 			ddentry := new(DeletedDentry)
 			err = ddentry.UnmarshalKey(snap.K)
@@ -559,6 +653,12 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				log.LogErrorf("ApplySnapshot: create deleted inode: partitionID(%v) inode(%v).", mp.config.PartitionId, dino)
 			}
 			log.LogDebugf("ApplySnapshot: create deleted inode: partitionID(%v) inode(%v).", mp.config.PartitionId, dino)
+		case opSnapSyncExtent:
+			if err = db.Put(snap.V, extValue); err != nil {
+				log.LogErrorf("Add del extent item to rocks db failed:%s", err.Error())
+			}
+			log.LogDebugf("ApplySnapshot: write snap delete extent: partitonID(%v) extentkey(%v).",
+				mp.config.PartitionId, snap.V)
 		default:
 			err = fmt.Errorf("unknown op=%d", snap.Op)
 			return

@@ -15,53 +15,15 @@
 package metanode
 
 import (
-	"sync"
-	"syscall"
+	"github.com/chubaofs/chubaofs/util"
+	"os"
 	"time"
 
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
 // Disk represents the structure of the disk
-type Disk struct {
-	sync.RWMutex
-	Path      string
-	Total     float64
-	Used      float64
-	Available float64
-
-	stopCh chan struct{}
-}
-
-func NewDisk(path string) (d *Disk) {
-	d = new(Disk)
-	d.Path = path
-	d.stopCh = make(chan struct{}, 1)
-	d.computeUsage()
-	d.startScheduleToUpdateSpaceInfo()
-	return
-}
-
-// Compute the disk usage
-func (d *Disk) computeUsage() (err error) {
-	d.RLock()
-	defer d.RUnlock()
-	fs := syscall.Statfs_t{}
-	err = syscall.Statfs(d.Path, &fs)
-	if err != nil {
-		return
-	}
-
-	d.Total = float64(fs.Blocks) * float64(fs.Bsize)
-	d.Available = float64(fs.Bavail) * float64(fs.Bsize)
-	d.Used = d.Total - d.Available
-
-	log.LogDebugf("action[computeUsage] disk(%v) all(%v) available(%v) used(%v)", d.Path, d.Total, d.Available, d.Used)
-
-	return
-}
-
-func (d *Disk) startScheduleToUpdateSpaceInfo() {
+func (m *MetaNode) startScheduleToUpdateSpaceInfo() {
 	go func() {
 		updateSpaceInfoTicker := time.NewTicker(10 * time.Second)
 		defer func() {
@@ -69,38 +31,73 @@ func (d *Disk) startScheduleToUpdateSpaceInfo() {
 		}()
 		for {
 			select {
-			case <-d.stopCh:
-				log.LogInfof("[MetaNode]stop disk: %v stat  \n", d.Path)
-				break
+			case <-m.diskStopCh:
+				log.LogInfof("[MetaNode]stop disk stat  \n")
+				return
 			case <-updateSpaceInfoTicker.C:
-				d.computeUsage()
+				for _, d := range m.disks {
+					d.ComputeUsage()
+				}
 			}
 		}
 	}()
 }
 
-func (d *Disk) stopScheduleToUpdateSpaceInfo() {
-	d.stopCh <- struct{}{}
+func (m *MetaNode) addDisk(path string) *util.FsCapMon {
+	//add disk when node start, can not add
+	if len(path) == 0{
+		return nil
+	}
+
+	if _, err := os.Stat(path); err != nil {
+		log.LogInfof("add disk failed, no such dir/file:%v", path)
+		//dir may create after add mon, just add to map
+		//return nil
+	}
+
+	disk , ok := m.disks[path]
+	if disk == nil || !ok {
+		disk = util.NewFsMon(path)
+		m.disks[path] = disk
+		log.LogInfof("add disk:%v", disk)
+		return disk
+	}
+
+	log.LogInfof("already add disk:%v ", disk)
+	return disk
 }
 
 func (m *MetaNode) startDiskStat() error {
-	m.disks = make(map[string]*Disk)
-	m.disks[m.metadataDir] = NewDisk(m.metadataDir)
-	m.disks[m.raftDir] = NewDisk(m.raftDir)
+	m.disks = make(map[string]*util.FsCapMon)
+	m.diskStopCh = make(chan struct {})
+	m.addDisk(m.metadataDir)
+	m.addDisk(m.raftDir)
+	for _, rocksDir := range m.rocksDirs {
+		m.addDisk(rocksDir)
+	}
+
+	m.startScheduleToUpdateSpaceInfo()
 	return nil
 }
 
 func (m *MetaNode) stopDiskStat() {
-	for _, d := range m.disks {
-		d.stopScheduleToUpdateSpaceInfo()
-	}
+	close(m.diskStopCh)
 }
 
-func (m *MetaNode) getDiskStat() []*Disk {
-	ds := make([]*Disk, 0)
+func (m *MetaNode) getDiskStat() []*util.FsCapMon {
+	ds := make([]*util.FsCapMon, 0)
 	for _, d := range m.disks {
 		ds = append(ds, d)
 	}
 
 	return ds
+}
+
+func (m *MetaNode) getSingleDiskStat(path string) *util.FsCapMon {
+	disk , ok := m.disks[path]
+	if !ok {
+		return nil
+	}
+
+	return disk
 }

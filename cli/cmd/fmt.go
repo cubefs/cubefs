@@ -71,11 +71,11 @@ func formatClusterStat(cs *proto.ClusterStatInfo) string {
 	return sb.String()
 }
 
-var nodeViewTableRowPattern = "%-6v    %-18v    %-8v    %-8v"
+var nodeViewTableRowPattern = "%-6v    %-18v    %-8v    %-8v    %-8v"
 var dataNodeDetailViewTableRowPattern = "%-6v    %-18v    %-8v    %-8v    %-8v    %-8v    %-8v"
 
 func formatNodeViewTableHeader() string {
-	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "STATUS")
+	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "STATUS", "VERSION")
 }
 
 func formatDataNodeViewTableHeader() string {
@@ -85,7 +85,7 @@ func formatDataNodeViewTableHeader() string {
 func formatNodeView(view *proto.NodeView, tableRow bool) string {
 	if tableRow {
 		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, view.Addr,
-			formatYesNo(view.IsWritable), formatNodeStatus(view.Status))
+			formatYesNo(view.IsWritable), formatNodeStatus(view.Status), view.Version)
 	}
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID      : %v\n", view.ID))
@@ -606,19 +606,20 @@ func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 	return sb.String()
 }
 
-var metaNodeDetailTableRowPattern = "%-6v    %-6v    %-18v    %-6v    %-6v    %-6v    %-10v"
+var metaNodeDetailTableRowPattern = "%-6v    %-6v    %-18v    %-6v    %-6v    %-6v    %-6v    %-10v"
 
 func formatMetaNodeDetailTableHeader() string {
-	return fmt.Sprintf(metaNodeDetailTableRowPattern, "ID", "ZONE", "ADDRESS", "USED", "TOTAL", "STATUS", "REPORT TIME")
+	return fmt.Sprintf(metaNodeDetailTableRowPattern, "ID", "ZONE", "ADDRESS", "VERSION", "USED", "TOTAL", "STATUS", "REPORT TIME")
 }
 
 func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	if rowTable {
-		return fmt.Sprintf(metaNodeDetailTableRowPattern, mn.ID, mn.ZoneName, mn.Addr, mn.Used, mn.Total, mn.IsActive, formatTimeToString(mn.ReportTime))
+		return fmt.Sprintf(metaNodeDetailTableRowPattern, mn.ID, mn.ZoneName, mn.Addr, mn.Version, mn.Used, mn.Total, mn.IsActive, formatTimeToString(mn.ReportTime))
 	}
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID                  : %v\n", mn.ID))
 	sb.WriteString(fmt.Sprintf("  Address             : %v\n", mn.Addr))
+	sb.WriteString(fmt.Sprintf("  Version             : %v\n", mn.Version))
 	sb.WriteString(fmt.Sprintf("  Carry               : %v\n", mn.Carry))
 	sb.WriteString(fmt.Sprintf("  Threshold           : %v\n", mn.Threshold))
 	sb.WriteString(fmt.Sprintf("  MaxMemAvailWeight   : %v\n", formatSize(mn.MaxMemAvailWeight)))
