@@ -139,7 +139,8 @@ func MkdirAll(name string) (err error) {
 	return os.MkdirAll(name, 0755)
 }
 
-func NewExtentStore(dataDir string, partitionID uint64, storeSize int, cacheCapacity int, ln CacheListener) (s *ExtentStore, err error) {
+func NewExtentStore(dataDir string, partitionID uint64, storeSize int,
+	cacheCapacity int, ln CacheListener, isCreatePartition bool) (s *ExtentStore, err error) {
 	s = new(ExtentStore)
 	s.dataPath = dataDir
 	s.partitionID = partitionID
@@ -181,6 +182,9 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int, cacheCapa
 	err = s.initTinyExtent()
 	if err != nil {
 		return
+	}
+	if isCreatePartition{
+		s.isFininshLoad=true
 	}
 	return
 }
