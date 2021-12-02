@@ -603,8 +603,8 @@ func (dp *DataPartition) LoadAppliedID() (err error) {
 	filename := path.Join(dp.Path(), ApplyIndexFile)
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
-		if err == os.ErrNotExist {
-			err = nil
+		if os.IsNotExist(err) {
+			err=nil
 			return
 		}
 		err = errors.NewErrorf("[loadApplyIndex] OpenFile: %s", err.Error())
