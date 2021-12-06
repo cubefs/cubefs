@@ -133,10 +133,19 @@ type ExtentStore struct {
 	verifyExtentFp                    *os.File
 	hasAllocSpaceExtentIDOnVerfiyFile uint64
 	isFininshLoad                     bool
+	normalExtentSize                  int64
 }
 
 func MkdirAll(name string) (err error) {
 	return os.MkdirAll(name, 0755)
+}
+
+func (s *ExtentStore) addNormalExtentSize(size int64) {
+	atomic.AddInt64(&s.normalExtentSize, size)
+}
+
+func (s *ExtentStore) subNormalExtentSize(size int64) {
+	atomic.AddInt64(&s.normalExtentSize, -size)
 }
 
 func NewExtentStore(dataDir string, partitionID uint64, storeSize int,
@@ -183,8 +192,8 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int,
 	if err != nil {
 		return
 	}
-	if isCreatePartition{
-		s.isFininshLoad=true
+	if isCreatePartition {
+		s.isFininshLoad = true
 	}
 	return
 }
@@ -289,7 +298,7 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 		}
 		ei := &ExtentInfo{FileID: extentID}
 		if IsTinyExtent(extentID) {
-			name := path.Join(s.dataPath, strconv.FormatUint(extentID,10))
+			name := path.Join(s.dataPath, strconv.FormatUint(extentID, 10))
 			info, statErr := os.Stat(name)
 			if statErr != nil {
 				statErr = fmt.Errorf("restore from file %v system: %v", name, statErr)
@@ -321,14 +330,14 @@ func (s *ExtentStore) AsyncLoadExtentSize() {
 	allExtentInfos := make([]*ExtentInfo, 0)
 	s.eiMutex.RLock()
 	for _, ei := range s.extentInfoMap {
+		if IsTinyExtent(ei.FileID) {
+			continue
+		}
 		allExtentInfos = append(allExtentInfos, ei)
 	}
 	s.eiMutex.RUnlock()
 
 	for _, ei := range allExtentInfos {
-		if IsTinyExtent(ei.FileID) {
-			continue
-		}
 		extentAbsPath := path.Join(s.dataPath, strconv.FormatUint(ei.FileID, 10))
 		info, err := os.Stat(extentAbsPath)
 		if err != nil {
@@ -338,6 +347,7 @@ func (s *ExtentStore) AsyncLoadExtentSize() {
 		if ei != nil && ei.Size == 0 {
 			ei.Size = uint64(info.Size())
 			ei.ModifyTime = info.ModTime().Unix()
+			s.addNormalExtentSize(int64(ei.Size))
 		}
 	}
 	s.isFininshLoad = true
@@ -370,6 +380,9 @@ func (s *ExtentStore) Write(ctx context.Context, extentID uint64, offset, size i
 	err = e.Write(data, offset, size, crc, writeType, isSync, s.PersistenceBlockCrc, ei)
 	if err != nil {
 		return err
+	}
+	if !IsTinyExtent(extentID) {
+		s.addNormalExtentSize(size)
 	}
 	ei.UpdateExtentInfo(e, 0)
 
@@ -459,6 +472,7 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	if err = os.Remove(extentFilePath); err != nil {
 		return
 	}
+	s.subNormalExtentSize(int64(ei.Size))
 	s.PersistenceHasDeleteExtent(extentID)
 	ei.IsDeleted = true
 	ei.ModifyTime = time.Now().Unix()
@@ -675,17 +689,13 @@ func (s *ExtentStore) GetBrokenTinyExtent() (extentID uint64, err error) {
 
 // StoreSizeExtentID returns the size of the extent store
 func (s *ExtentStore) StoreSizeExtentID(maxExtentID uint64) (totalSize uint64) {
-	extentInfos := make([]*ExtentInfo, 0)
 	s.eiMutex.RLock()
 	for _, extentInfo := range s.extentInfoMap {
 		if extentInfo.FileID <= maxExtentID {
-			extentInfos = append(extentInfos, extentInfo)
+			totalSize += extentInfo.Size
 		}
 	}
 	s.eiMutex.RUnlock()
-	for _, extentInfo := range extentInfos {
-		totalSize += extentInfo.Size
-	}
 
 	return totalSize
 }
@@ -866,7 +876,6 @@ func (s *ExtentStore) loadExtentFromDisk(extentID uint64, putCache bool) (e *Ext
 
 	return
 }
-
 
 func (s *ExtentStore) ScanBlocks(extentID uint64) (bcs []*BlockCrc, err error) {
 	var blockCnt int
@@ -1058,26 +1067,14 @@ const (
 )
 
 func (s *ExtentStore) GetStoreUsedSize() (used int64) {
-	extentInfoSlice := make([]*ExtentInfo, 0, s.GetExtentCount())
-	s.eiMutex.RLock()
-	for _, extentID := range s.extentInfoMap {
-		extentInfoSlice = append(extentInfoSlice, extentID)
-	}
-	s.eiMutex.RUnlock()
-	for _, einfo := range extentInfoSlice {
-		if einfo.IsDeleted {
+	used = atomic.LoadInt64(&s.normalExtentSize)
+	for eid := TinyExtentStartID; eid < TinyExtentStartID+TinyExtentCount; eid++ {
+		stat := new(syscall.Stat_t)
+		err := syscall.Stat(fmt.Sprintf("%v/%v", s.dataPath, eid), stat)
+		if err != nil {
 			continue
 		}
-		if IsTinyExtent(einfo.FileID) {
-			stat := new(syscall.Stat_t)
-			err := syscall.Stat(fmt.Sprintf("%v/%v", s.dataPath, einfo.FileID), stat)
-			if err != nil {
-				continue
-			}
-			used += (stat.Blocks * DiskSectorSize)
-		} else {
-			used += int64(einfo.Size)
-		}
+		used += (stat.Blocks * DiskSectorSize)
 	}
 	return
 }
