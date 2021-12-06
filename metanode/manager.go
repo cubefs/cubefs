@@ -415,6 +415,8 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 
 	partitionId := fmt.Sprintf("%d", request.PartitionID)
 
+	log.LogInfof("start create meta Partition, partition %d", partitionId)
+
 	mpc := &MetaPartitionConfig{
 		PartitionId: request.PartitionID,
 		VolName:     request.VolName,

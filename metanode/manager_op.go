@@ -37,7 +37,9 @@ const (
 func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
 	// For ack to master
+	data := p.Data
 	m.responseAckOKToMaster(conn, p)
+
 	var (
 		req       = &proto.HeartBeatRequest{}
 		resp      = &proto.MetaNodeHeartbeatResponse{}
@@ -45,59 +47,61 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			Request: req,
 		}
 	)
-	start := time.Now()
-	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
-	decode.UseNumber()
-	if err = decode.Decode(adminTask); err != nil {
-		resp.Status = proto.TaskFailed
-		resp.Result = err.Error()
-		goto end
-	}
 
-	// collect memory info
-	resp.Total = configTotalMem
-	resp.Used, err = util.GetProcessMemory(os.Getpid())
-	if err != nil {
-		adminTask.Status = proto.TaskFailed
-		goto end
-	}
-	m.Range(func(id uint64, partition MetaPartition) bool {
-		mConf := partition.GetBaseConfig()
-		mpr := &proto.MetaPartitionReport{
-			PartitionID: mConf.PartitionId,
-			Start:       mConf.Start,
-			End:         mConf.End,
-			Status:      proto.ReadWrite,
-			MaxInodeID:  mConf.Cursor,
-			VolName:     mConf.VolName,
-			InodeCnt:    uint64(partition.GetInodeTree().Len()),
-			DentryCnt:   uint64(partition.GetDentryTree().Len()),
+	go func() {
+		start := time.Now()
+		decode := json.NewDecoder(bytes.NewBuffer(data))
+		decode.UseNumber()
+		if err = decode.Decode(adminTask); err != nil {
+			resp.Status = proto.TaskFailed
+			resp.Result = err.Error()
+			goto end
 		}
-		addr, isLeader := partition.IsLeader()
-		if addr == "" {
-			mpr.Status = proto.Unavailable
-		}
-		mpr.IsLeader = isLeader
-		if mConf.Cursor >= mConf.End {
-			mpr.Status = proto.ReadOnly
-		}
-		if resp.Used > uint64(float64(resp.Total)*MaxUsedMemFactor) {
-			mpr.Status = proto.ReadOnly
-		}
-		resp.MetaPartitionReports = append(resp.MetaPartitionReports, mpr)
-		return true
-	})
-	resp.ZoneName = m.zoneName
-	resp.Status = proto.TaskSucceeds
-end:
-	adminTask.Request = nil
-	adminTask.Response = resp
-	log.LogInfof("%s pkt %s, req:%v; respAdminTask: %v, cost %s", remoteAddr, p.String(), req, adminTask, time.Since(start).String())
 
-	m.respondToMaster(adminTask)
-	data, _ := json.Marshal(resp)
-	log.LogInfof("%s pkt %s, resp success req:%v; respAdminTask: %v, resp: %v, cost %s",
-		remoteAddr, p.String(), req, adminTask, string(data), time.Since(start).String())
+		// collect memory info
+		resp.Total = configTotalMem
+		resp.Used, err = util.GetProcessMemory(os.Getpid())
+		if err != nil {
+			adminTask.Status = proto.TaskFailed
+			goto end
+		}
+		m.Range(func(id uint64, partition MetaPartition) bool {
+			mConf := partition.GetBaseConfig()
+			mpr := &proto.MetaPartitionReport{
+				PartitionID: mConf.PartitionId,
+				Start:       mConf.Start,
+				End:         mConf.End,
+				Status:      proto.ReadWrite,
+				MaxInodeID:  mConf.Cursor,
+				VolName:     mConf.VolName,
+				InodeCnt:    uint64(partition.GetInodeTree().Len()),
+				DentryCnt:   uint64(partition.GetDentryTree().Len()),
+			}
+			addr, isLeader := partition.IsLeader()
+			if addr == "" {
+				mpr.Status = proto.Unavailable
+			}
+			mpr.IsLeader = isLeader
+			if mConf.Cursor >= mConf.End {
+				mpr.Status = proto.ReadOnly
+			}
+			if resp.Used > uint64(float64(resp.Total)*MaxUsedMemFactor) {
+				mpr.Status = proto.ReadOnly
+			}
+			resp.MetaPartitionReports = append(resp.MetaPartitionReports, mpr)
+			return true
+		})
+		resp.ZoneName = m.zoneName
+		resp.Status = proto.TaskSucceeds
+	end:
+		adminTask.Request = nil
+		adminTask.Response = resp
+		m.respondToMaster(adminTask)
+		data, _ := json.Marshal(resp)
+		log.LogInfof("%s pkt %s, resp success req:%v; respAdminTask: %v, resp: %v, cost %s",
+			remoteAddr, p.String(), req, adminTask, string(data), time.Since(start).String())
+	}()
+
 	return
 }
 
@@ -132,7 +136,7 @@ func (m *metadataManager) opCreateMetaPartition(conn net.Conn, p *Packet,
 			err.Error(), adminTask.Request)
 		return
 	}
-	log.LogInfof("%s [%s] req:%v; resp: %v", remoteAddr, p.String(),
+	log.LogInfof("%s [%s] create success req:%v; resp: %v", remoteAddr, p.String(),
 		req, adminTask)
 	return
 }

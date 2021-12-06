@@ -653,12 +653,12 @@ func (c *Cluster) handleMetaNodeTaskResponse(nodeAddr string, task *proto.AdminT
 	if err != nil {
 		log.LogError(fmt.Sprintf("process task[%v] failed", task.ToString()))
 	} else {
-		log.LogInfof("process task:%v status:%v success", task.ID, task.Status)
+		log.LogInfof("process task:%v status:%v success", task.IdString(), task.Status)
 	}
 	return
 errHandler:
 	log.LogError(fmt.Sprintf("action[handleMetaNodeTaskResponse],nodeAddr %v,taskId %v,err %v",
-		nodeAddr, task.ID, err.Error()))
+		nodeAddr, task.IdString(), err.Error()))
 	return
 }
 
