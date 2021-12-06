@@ -202,7 +202,7 @@ func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr 
 		return
 	}
 
-	if mp.IsRecover {
+	if mp.IsRecover && !mp.activeMaxInodeSimilar() {
 		err = fmt.Errorf("vol[%v],meta partition[%v] is recovering,[%v] can't be decommissioned", vol.Name, mp.PartitionID, nodeAddr)
 		return
 	}

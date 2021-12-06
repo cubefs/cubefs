@@ -636,6 +636,22 @@ func (partition *DataPartition) getMinus() (minus float64) {
 	return minus
 }
 
+func (partition *DataPartition) activeUsedSimilar() bool {
+	partition.RLock()
+	defer partition.RUnlock()
+	liveReplicas := partition.liveReplicas(defaultDataPartitionTimeOutSec)
+	used := liveReplicas[0].Used
+	minus := float64(0)
+
+	for _, replica := range liveReplicas {
+		if math.Abs(float64(replica.Used)-float64(used)) > minus {
+			minus = math.Abs(float64(replica.Used) - float64(used))
+		}
+	}
+
+	return minus < util.GB
+}
+
 func (partition *DataPartition) getToBeDecommissionHost(replicaNum int) (host string) {
 	partition.RLock()
 	defer partition.RUnlock()

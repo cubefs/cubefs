@@ -43,24 +43,33 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				"checkDiskRecoveryProgress occurred panic")
 		}
 	}()
-	var diff float64
+
+	c.badPartitionMutex.Lock()
+	defer c.badPartitionMutex.Unlock()
+
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
 		badDataPartitionIds := value.([]uint64)
 		newBadDpIds := make([]uint64, 0)
 		for _, partitionID := range badDataPartitionIds {
 			partition, err := c.getDataPartitionByID(partitionID)
 			if err != nil {
+				Warn(c.Name, fmt.Sprintf("checkDiskRecoveryProgress clusterID[%v],partitionID[%v] is not exist", c.Name, partitionID))
 				continue
 			}
+
 			vol, err := c.getVol(partition.VolName)
 			if err != nil {
+				Warn(c.Name, fmt.Sprintf("checkDiskRecoveryProgress clusterID[%v],partitionID[%v] vol(%s) is not exist",
+					c.Name, partitionID, partition.VolName))
 				continue
 			}
+
 			if len(partition.Replicas) == 0 || len(partition.Replicas) < int(vol.dpReplicaNum) {
+				newBadDpIds = append(newBadDpIds, partitionID)
 				continue
 			}
-			diff = partition.getMinus()
-			if diff < util.GB {
+
+			if partition.getMinus() < util.GB {
 				partition.isRecover = false
 				partition.RLock()
 				c.syncUpdateDataPartition(partition)
@@ -76,6 +85,7 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 			c.BadDataPartitionIds.Delete(key)
 		} else {
 			c.BadDataPartitionIds.Store(key, newBadDpIds)
+			log.LogInfof("BadDataPartitionIds key(%s) still have (%d) dp in recover", key, len(newBadDpIds))
 		}
 
 		return true

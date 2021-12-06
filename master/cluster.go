@@ -1216,7 +1216,7 @@ func (c *Cluster) validateDecommissionDataPartition(dp *DataPartition, offlineAd
 		return
 	}
 
-	if dp.isRecover {
+	if dp.isRecover && !dp.activeUsedSimilar() {
 		err = fmt.Errorf("vol[%v],data partition[%v] is recovering,[%v] can't be decommissioned", vol.Name, dp.PartitionID, offlineAddr)
 		return
 	}
@@ -1346,7 +1346,7 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate boo
 	}
 
 	ok := c.isRecovering(dp, addr)
-	if ok {
+	if ok && !dp.activeUsedSimilar() {
 		err = fmt.Errorf("vol[%v],data partition[%v] can't decommision until it has recovered", dp.VolName, dp.PartitionID)
 		return
 	}

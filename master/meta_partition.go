@@ -691,6 +691,27 @@ func (mp *MetaPartition) getMinusOfMaxInodeID() (minus float64) {
 	return
 }
 
+func (mp *MetaPartition) activeMaxInodeSimilar() bool {
+	mp.RLock()
+	defer mp.RUnlock()
+
+	minus := float64(0)
+	var sentry float64
+	replicas := mp.getLiveReplicas()
+	for index, replica := range replicas {
+		if index == 0 {
+			sentry = float64(replica.MaxInodeID)
+			continue
+		}
+		diff := math.Abs(float64(replica.MaxInodeID) - sentry)
+		if diff > minus {
+			minus = diff
+		}
+	}
+
+	return minus < defaultMinusOfMaxInodeID
+}
+
 func (mp *MetaPartition) setMaxInodeID() {
 	var maxUsed uint64
 	for _, r := range mp.Replicas {
