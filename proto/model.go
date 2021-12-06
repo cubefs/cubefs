@@ -166,6 +166,7 @@ type DataPartitionInfo struct {
 	LastLoadedTime          int64
 	ReplicaNum              uint8
 	Status                  int8
+	Recover                 bool
 	Replicas                []*DataReplica
 	Hosts                   []string // host addresses
 	Peers                   []Peer
