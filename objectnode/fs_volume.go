@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"hash"
 	"io"
 	"os"
@@ -937,11 +938,19 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 				v.name, path, multipartID, part.ID, part.Inode, err)
 			return
 		}
+
 		// recompute offsets of extent keys
+		var eksSize uint64
 		for _, ek := range eks {
+			eksSize += uint64(ek.Size)
 			ek.FileOffset = fileOffset
 			fileOffset += uint64(ek.Size)
 			completeExtentKeys = append(completeExtentKeys, ek)
+		}
+		if part.Size != eksSize {
+			log.LogErrorf("CompleteMultipart: part extents length not match with part size: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) partSize(%v) eksSize(%v) eksLength(%v)",
+				v.name, path, multipartID, part.ID, part.Inode, part.Size, eksSize, len(eks))
+			return nil, errors.New("part extents length not match with part size")
 		}
 		size += part.Size
 	}
