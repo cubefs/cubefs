@@ -112,10 +112,12 @@ func (t *replicateTransport) sendSnapshot(m *proto.Message, rs *snapshotStatus) 
 		} else if logger.IsEnableWarn() {
 			logger.Warn("[Transport] %v send snapshot to %v successful.", m.ID, m.To)
 		}
+
+		logger.Info("[Transport] %v send snapshot to %v succ.", m.ID, m.To)
 	}()
 
 	if atomic.AddInt32(&t.curSnapshot, 1) > int32(t.config.MaxSnapConcurrency) {
-		err = fmt.Errorf("snapshot concurrency exceed the limit %v.", t.config.MaxSnapConcurrency)
+		err = fmt.Errorf("snapshot concurrency exceed the limit %v, now %d", t.config.MaxSnapConcurrency, t.curSnapshot)
 		return
 	}
 	if conn = getConn(m.To, Replicate, t.config.Resolver, 10*time.Minute, 1*time.Minute); conn == nil {
