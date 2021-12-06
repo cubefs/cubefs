@@ -203,13 +203,18 @@ func checkAllMetaPartitions(client *master.MasterClient) (err error) {
 			stdout("Found an invalid vol: %v\n", vol.Name)
 			continue
 		}
-		sort.SliceStable(volView.MetaPartitions, func(i, j int) bool {
-			return volView.MetaPartitions[i].PartitionID < volView.MetaPartitions[j].PartitionID
-		})
+		/*		sort.SliceStable(volView.MetaPartitions, func(i, j int) bool {
+				return volView.MetaPartitions[i].PartitionID < volView.MetaPartitions[j].PartitionID
+			})*/
+		mpCh := make(chan bool, 10)
 		for _, mp := range volView.MetaPartitions {
 			wg.Add(1)
+			mpCh <- true
 			go func(mp *proto.MetaPartitionView) {
-				defer wg.Done()
+				defer func() {
+					wg.Done()
+					<-mpCh
+				}()
 				var outPut string
 				var isHealthy bool
 				outPut, isHealthy, _ = checkMetaPartition(mp.PartitionID, client)

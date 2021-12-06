@@ -87,6 +87,7 @@ func newListCorruptDataPartitionCmd(client *master.MasterClient) *cobra.Command 
 	var optEnableAutoFullfill bool
 	var optCheckAll bool
 	var optDiffSizeThreshold int
+	var optSpecifyDP uint64
 	var cmd = &cobra.Command{
 		Use:   CliOpCheck,
 		Short: cmdCheckCorruptDataPartitionShort,
@@ -102,6 +103,15 @@ The "reset" command will be released in next version`,
 				dataNodes []*proto.DataNodeInfo
 				err       error
 			)
+			if optSpecifyDP > 0 {
+				outPut, isHealthy, _ := checkDataPartition("", optSpecifyDP, client, optDiffSizeThreshold)
+				if !isHealthy {
+					fmt.Printf(outPut)
+				} else {
+					fmt.Printf("partition is healthy")
+				}
+				return
+			}
 			if optCheckAll {
 				err = checkAllDataPartitions(client, optDiffSizeThreshold)
 				if err != nil {
@@ -235,6 +245,7 @@ The "reset" command will be released in next version`,
 			return
 		},
 	}
+	cmd.Flags().Uint64Var(&optSpecifyDP, CliFlagId, 0, "check data partition by partitionID")
 	cmd.Flags().IntVar(&optDiffSizeThreshold, CliFlagThreshold, 20, "if the diff size larger than this, report the volume")
 	cmd.Flags().BoolVar(&optEnableAutoFullfill, CliFlagEnableAutoFill, false, "true - automatically full fill the missing replica")
 	cmd.Flags().BoolVar(&optCheckAll, "all", false, "true - check all partitions; false - only check partitions which lack of replica")
@@ -263,16 +274,21 @@ func checkAllDataPartitions(client *master.MasterClient, optDiffSizeThreshold in
 			stdout("Found an invalid vol: %v\n", vol.Name)
 			continue
 		}
-		sort.SliceStable(volView.DataPartitions, func(i, j int) bool {
-			return volView.DataPartitions[i].PartitionID < volView.DataPartitions[j].PartitionID
-		})
+		/*		sort.SliceStable(volView.DataPartitions, func(i, j int) bool {
+				return volView.DataPartitions[i].PartitionID < volView.DataPartitions[j].PartitionID
+			})*/
+		dpCh := make(chan bool, 20)
 		for _, dp := range volView.DataPartitions {
 			wg.Add(1)
+			dpCh <- true
 			go func(dp *proto.DataPartitionResponse) {
-				defer wg.Done()
+				defer func() {
+					wg.Done()
+					<-dpCh
+				}()
 				var outPut string
 				var isHealthy bool
-				outPut, isHealthy, _ = checkDataPartition(dp.PartitionID, client, optDiffSizeThreshold)
+				outPut, isHealthy, _ = checkDataPartition(vol.Name, dp.PartitionID, client, optDiffSizeThreshold)
 				if !isHealthy {
 					volLock.Lock()
 					if outPut == UsedSizeNotEqualErr {
@@ -298,7 +314,7 @@ func checkAllDataPartitions(client *master.MasterClient, optDiffSizeThreshold in
 	}
 	return
 }
-func checkDataPartition(pid uint64, client *master.MasterClient, optDiffSizeThreshold int) (outPut string, isHealthy bool, err error) {
+func checkDataPartition(volName string, pid uint64, client *master.MasterClient, optDiffSizeThreshold int) (outPut string, isHealthy bool, err error) {
 	var (
 		partition    *proto.DataPartitionInfo
 		errorReports []string
@@ -328,7 +344,7 @@ func checkDataPartition(pid uint64, client *master.MasterClient, optDiffSizeThre
 		}
 		outPut = sb.String()
 	}()
-	if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil || partition == nil {
+	if partition, err = client.AdminAPI().GetDataPartition(volName, pid); err != nil || partition == nil {
 		errorReports = append(errorReports, fmt.Sprintf("get partition error, err:[%v]", err))
 		return
 	}

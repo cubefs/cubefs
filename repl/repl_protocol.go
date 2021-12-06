@@ -349,8 +349,8 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 		rp.addGetNumFromBufferPoolCnt()
 	}
 	if err != nil {
-		err=fmt.Errorf("%v local(%v)->remote(%v) recive error(%v)",ActionreadPkgAndPrepare, rp.sourceConn.LocalAddr().String(),
-			rp.sourceConn.RemoteAddr().String() ,err)
+		err = fmt.Errorf("%v local(%v)->remote(%v) recive error(%v)", ActionreadPkgAndPrepare, rp.sourceConn.LocalAddr().String(),
+			rp.sourceConn.RemoteAddr().String(), err)
 		return
 	}
 	request.OrgBuffer = request.Data
@@ -383,6 +383,7 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, e
 		defer tracer.Finish()
 		request.SetCtx(tracer.Context())
 	}
+
 	for index = 0; index < len(request.followersAddrs); index++ {
 		var transport *FollowerTransport
 		if transport, err = rp.allocateFollowersConns(request, index); err != nil {
