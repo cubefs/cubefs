@@ -115,7 +115,7 @@ type ExtentStore struct {
 	dataPath                          string
 	baseExtentID                      uint64                 // TODO what is baseExtentID
 	extentInfoMap                     sync.Map // map that stores all the extent information
-	extentCnt                         uint64
+	extentCnt                         int64
 	cache                             *ExtentCache           // extent cache
 	mutex                             sync.Mutex
 	storeSize                         int      // size of the extent store
@@ -267,7 +267,7 @@ func (s *ExtentStore) Create(extentID uint64, putCache bool) (err error) {
 	extInfo := &ExtentInfo{FileID: extentID}
 	extInfo.UpdateExtentInfo(e, 0)
 	s.extentInfoMap.Store(extentID,extInfo)
-	atomic.AddUint64(&s.extentCnt,1)
+	atomic.AddInt64(&s.extentCnt,1)
 	s.UpdateBaseExtentID(extentID)
 	return
 }
@@ -309,7 +309,7 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 			ei.Size = uint64(watermark)
 		}
 		s.extentInfoMap.Store(extentID,ei)
-		atomic.AddUint64(&s.extentCnt,1)
+		atomic.AddInt64(&s.extentCnt,1)
 		if !IsTinyExtent(extentID) && extentID > baseFileID {
 			baseFileID = extentID
 		}
@@ -470,7 +470,7 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	ei.ModifyTime = time.Now().Unix()
 	s.DeleteBlockCrc(extentID)
 	s.extentInfoMap.Delete(extentID)
-	atomic.AddUint64(&s.extentCnt,-1)
+	atomic.AddInt64(&s.extentCnt,-1)
 	return
 }
 
@@ -819,7 +819,7 @@ func (s *ExtentStore) HasExtent(extentID uint64) (exist bool) {
 
 // GetExtentCount returns the number of extents in the extentInfoMap
 func (s *ExtentStore) GetExtentCount() (count int) {
-	return int(atomic.LoadUint64(&s.extentCnt))
+	return int(atomic.LoadInt64(&s.extentCnt))
 }
 
 func (s *ExtentStore) loadExtentFromDisk(extentID uint64, putCache bool) (e *Extent, err error) {
@@ -893,7 +893,7 @@ func (s *ExtentStore) AutoComputeExtentCrc() {
 	if len(deleteExtents) > 0 {
 		for _, ei := range deleteExtents {
 			s.extentInfoMap.Delete(ei.FileID)
-			atomic.AddUint64(&s.extentCnt,-1)
+			atomic.AddInt64(&s.extentCnt,-1)
 		}
 	}
 
