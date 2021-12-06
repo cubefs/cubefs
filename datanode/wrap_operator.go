@@ -645,8 +645,8 @@ func (s *DataNode) handlePacketToGetAllWatermarks(p *repl.Packet) {
 // V2使用二进制编解码
 func (s *DataNode) handlePacketToGetAllWatermarksV2(p *repl.Packet) {
 	var (
-		fInfoList []*storage.ExtentInfo
 		err       error
+		data []byte
 	)
 	defer func() {
 		if err != nil {
@@ -660,7 +660,7 @@ func (s *DataNode) handlePacketToGetAllWatermarksV2(p *repl.Packet) {
 			err = storage.PartitionIsLoaddingErr
 			return
 		}
-		fInfoList, _, err = store.GetAllWatermarks(storage.NormalExtentFilter())
+		 _, data,err = store.GetAllWatermarksWithByteArr(storage.NormalExtentFilter())
 	} else {
 		var extentIDs = make([]uint64, 0, len(p.Data)/8)
 		var extentID uint64
@@ -676,25 +676,12 @@ func (s *DataNode) handlePacketToGetAllWatermarksV2(p *repl.Packet) {
 			}
 			extentIDs = append(extentIDs, extentID)
 		}
-		fInfoList, _, err = store.GetAllWatermarks(storage.TinyExtentFilter(extentIDs))
+		_, data,err = store.GetAllWatermarksWithByteArr(storage.TinyExtentFilter(extentIDs))
 	}
 	if err != nil {
 		return
 	}
-
-	var buf = bytes.NewBuffer(make([]byte, 0, len(fInfoList)*16))
-	for _, info := range fInfoList {
-		if info.IsDeleted {
-			continue
-		}
-		if err = binary.Write(buf, binary.BigEndian, info.FileID); err != nil {
-			return
-		}
-		if err = binary.Write(buf, binary.BigEndian, info.Size); err != nil {
-			return
-		}
-	}
-	p.PacketOkWithBody(buf.Bytes())
+	p.PacketOkWithBody(data)
 	return
 }
 

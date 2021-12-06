@@ -542,6 +542,36 @@ func (s *ExtentStore) GetAllWatermarks(filter ExtentFilter) (extents []*ExtentIn
 	return
 }
 
+// GetAllWatermarks returns all the watermarks.
+func (s *ExtentStore) GetAllWatermarksWithByteArr(filter ExtentFilter )(tinyDeleteFileSize int64,data []byte, err error) {
+	needSize:=0
+	extents:=make([]*ExtentInfo,0)
+	s.extentInfoMap.Range(func(key, value interface{}) bool {
+		ei:=value.(*ExtentInfo)
+		if filter != nil && !filter(ei) {
+			return true
+		}
+		if ei.IsDeleted {
+			return true
+		}
+		needSize+=16
+		extents=append(extents,ei)
+		return true
+	})
+	data=make([]byte,needSize)
+	index:=0
+	for _,ei:=range extents{
+		binary.BigEndian.PutUint64(data[index:index+8],ei.FileID)
+		index+=8
+		binary.BigEndian.PutUint64(data[index:index+8],ei.Size)
+		index+=8
+	}
+	tinyDeleteFileSize, err = s.LoadTinyDeleteFileOffset()
+
+	return
+}
+
+
 func (s *ExtentStore) getTinyExtentInfo() (extents []*ExtentInfo) {
 	extents = make([]*ExtentInfo, 0)
 	var extentID uint64
