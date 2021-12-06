@@ -550,14 +550,12 @@ func (dp *DataPartition) Repair() {
 
 func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 	repairTimer := time.NewTimer(time.Minute)
-	snapshotTicker := time.NewTicker(time.Minute * 5)
 	var index int
 	for {
 
 		select {
 		case <-dp.stopC:
 			repairTimer.Stop()
-			snapshotTicker.Stop()
 			return
 
 		case <-dp.repairC:
@@ -579,9 +577,6 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 				dp.runRepair(ctx, proto.NormalExtentType, true)
 			}
 			repairTimer.Reset(time.Minute)
-		case <-snapshotTicker.C:
-			dp.ReloadSnapshot()
-
 		}
 	}
 }
