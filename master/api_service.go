@@ -1849,11 +1849,12 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 		rstMsg                string
 		offLineAddr, diskPath string
 		err                   error
+		limit                 int
 		badPartitionIds       []uint64
 		badPartitions         []*DataPartition
 	)
 
-	if offLineAddr, diskPath, err = parseRequestToDecommissionNode(r); err != nil {
+	if offLineAddr, diskPath, limit, err = parseReqToDecoDisk(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1872,8 +1873,14 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 	for _, bdp := range badPartitions {
 		badPartitionIds = append(badPartitionIds, bdp.PartitionID)
 	}
-	rstMsg = fmt.Sprintf("receive decommissionDisk node[%v] disk[%v], badPartitionIds[%v] has offline successfully",
-		node.Addr, diskPath, badPartitionIds)
+
+	if limit > 0 && limit < len(badPartitionIds) {
+		badPartitionIds = badPartitionIds[:limit]
+		badPartitions = badPartitions[:limit]
+	}
+
+	rstMsg = fmt.Sprintf("receive decommissionDisk node[%v] disk[%v] limit [%d], badPartitionIds[%v] has offline successfully",
+		node.Addr, diskPath, limit, badPartitionIds)
 	if err = m.cluster.decommissionDisk(node, diskPath, badPartitions); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -2093,6 +2100,23 @@ func (m *Server) loadMetaPartition(w http.ResponseWriter, r *http.Request) {
 	m.cluster.loadMetaPartitionAndCheckResponse(mp)
 	msg = fmt.Sprintf(proto.AdminLoadMetaPartition+" partitionID :%v Load successfully", partitionID)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func parseReqToDecoDisk(r *http.Request) (nodeAddr, diskPath string, limit int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	nodeAddr, err = extractNodeAddr(r)
+	if err != nil {
+		return
+	}
+	diskPath, err = extractDiskPath(r)
+	if err != nil {
+		return
+	}
+
+	limit, err = parseUintParam(r, countKey)
+	return
 }
 
 func (m *Server) migrateMetaNodeHandler(w http.ResponseWriter, r *http.Request) {
