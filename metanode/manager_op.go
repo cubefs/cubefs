@@ -21,6 +21,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
@@ -44,6 +45,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			Request: req,
 		}
 	)
+	start := time.Now()
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
@@ -90,10 +92,12 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 end:
 	adminTask.Request = nil
 	adminTask.Response = resp
+	log.LogInfof("%s pkt %s, req:%v; respAdminTask: %v, cost %s", remoteAddr, p.String(), req, adminTask, time.Since(start).String())
+
 	m.respondToMaster(adminTask)
 	data, _ := json.Marshal(resp)
-	log.LogInfof("%s [opMasterHeartbeat] req:%v; respAdminTask: %v, "+
-		"resp: %v", remoteAddr, req, adminTask, string(data))
+	log.LogInfof("%s pkt %s, resp success req:%v; respAdminTask: %v, resp: %v, cost %s",
+		remoteAddr, p.String(), req, adminTask, string(data), time.Since(start).String())
 	return
 }
 
@@ -120,15 +124,15 @@ func (m *metadataManager) opCreateMetaPartition(conn net.Conn, p *Packet,
 			" struct: %s", err.Error())
 		return
 	}
-	log.LogInfof("[opCreateMetaPartition] [remoteAddr=%s]accept a from"+
-		" master message: %v", remoteAddr, adminTask)
+	log.LogInfof("[%s] [remoteAddr=%s]accept a from"+
+		" master message: %v", p.String(), remoteAddr, adminTask)
 	// create a new meta partition.
 	if err = m.createPartition(req); err != nil {
 		err = errors.NewErrorf("[opCreateMetaPartition]->%s; request message: %v",
 			err.Error(), adminTask.Request)
 		return
 	}
-	log.LogInfof("%s [opCreateMetaPartition] req:%v; resp: %v", remoteAddr,
+	log.LogInfof("%s [%s] req:%v; resp: %v", remoteAddr, p.String(),
 		req, adminTask)
 	return
 }
@@ -881,6 +885,16 @@ func (m *metadataManager) opAddMetaPartitionRaftMember(conn net.Conn,
 	adminTask := &proto.AdminTask{
 		Request: req,
 	}
+
+	defer func() {
+		if err != nil {
+			log.LogInfof("pkt %s remote %s reqId add raft member failed, req %v, err %s", p.String(), remoteAddr, adminTask, err.Error())
+			return
+		}
+
+		log.LogInfof("pkt %s, remote %s add raft member success, req %v", p.String(), remoteAddr, adminTask)
+	}()
+
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
@@ -900,6 +914,8 @@ func (m *metadataManager) opAddMetaPartitionRaftMember(conn net.Conn,
 		m.respondToClient(conn, p)
 		return
 	}
+
+	log.LogInfof("[%s], remote %s start add raft member, req %v", p.String(), remoteAddr, adminTask)
 
 	if !m.serveProxy(conn, mp, p) {
 		return nil
@@ -928,7 +944,6 @@ func (m *metadataManager) opAddMetaPartitionRaftMember(conn net.Conn,
 	}
 	p.PacketOkReply()
 	m.respondToClient(conn, p)
-
 	return
 }
 
@@ -939,6 +954,16 @@ func (m *metadataManager) opRemoveMetaPartitionRaftMember(conn net.Conn,
 	adminTask := &proto.AdminTask{
 		Request: req,
 	}
+
+	defer func() {
+		if err != nil {
+			log.LogInfof("[%s], remote %s remove raft member failed, req %v, err %s", p.String(), remoteAddr, adminTask, err.Error())
+			return
+		}
+
+		log.LogInfof("[%s], remote %s remove raft member success, req %v", p.String(), remoteAddr, adminTask)
+	}()
+
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
@@ -946,6 +971,9 @@ func (m *metadataManager) opRemoveMetaPartitionRaftMember(conn net.Conn,
 		m.respondToClient(conn, p)
 		return err
 	}
+
+	log.LogInfof("[%s], remote %s remove raft member success, req %v", p.String(), remoteAddr, adminTask)
+
 	mp, err := m.getPartition(req.PartitionId)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))

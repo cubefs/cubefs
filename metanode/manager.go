@@ -84,7 +84,7 @@ func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) 
 
 	mp, err := m.getPartition(p.PartitionID)
 	if err != nil {
-		log.LogErrorf("[metaManager] getPacketLabels metric packet: %v, err: %v", p, err)
+		log.LogInfof("[metaManager] getPacketLabels metric packet: %v", p)
 		return
 	}
 
@@ -98,6 +98,8 @@ func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) 
 
 // HandleMetadataOperation handles the metadata operations.
 func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	log.LogInfof("HandleMetadataOperation input info op (%s), remote %s", p.String(), remoteAddr)
+
 	metric := exporter.NewTPCnt(p.GetOpMsg())
 	labels := m.getPacketLabels(p)
 	defer func() {
