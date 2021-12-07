@@ -53,6 +53,7 @@ type clusterValue struct {
 	PoolSizeOfMetaPartitionsInRecover int32
 	ExtentMergeIno                    map[string][]uint64
 	ExtentMergeSleepMs                uint64
+	TrashEnable                       bool
 	FixTinyDeleteRecordLimit          uint64
 }
 
@@ -164,38 +165,42 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 }
 
 type volValue struct {
-	ID                  uint64
-	Name                string
-	ReplicaNum          uint8
-	DpReplicaNum        uint8
-	MpLearnerNum        uint8
-	DpLearnerNum        uint8
-	Status              uint8
-	DataPartitionSize   uint64
-	Capacity            uint64
+	ID                   uint64
+	Name                 string
+	ReplicaNum           uint8
+	DpReplicaNum         uint8
+	MpLearnerNum         uint8
+	DpLearnerNum         uint8
+	Status               uint8
+	DataPartitionSize    uint64
+	Capacity             uint64
 	DpWriteableThreshold float64
-	Owner               string
-	FollowerRead        bool
-	ForceROW            bool
-	CrossRegionHAType   bsProto.CrossRegionHAType
-	Authenticate        bool
-	EnableToken         bool
-	CrossZone           bool
-	AutoRepair          bool
-	VolWriteMutexEnable bool
-	ZoneName            string
-	OSSAccessKey        string
-	OSSSecretKey        string
-	CreateTime          int64
-	Description         string
-	DpSelectorName      string
-	DpSelectorParm      string
-	OSSBucketPolicy     bsProto.BucketAccessPolicy
-	DPConvertMode       bsProto.ConvertMode
-	MPConvertMode       bsProto.ConvertMode
-	ExtentCacheExpireSec	int64
-	MinWritableMPNum        int
-	MinWritableDPNum        int
+	Owner                string
+	FollowerRead         bool
+	ForceROW             bool
+	CrossRegionHAType    bsProto.CrossRegionHAType
+	Authenticate         bool
+	EnableToken          bool
+	CrossZone            bool
+	AutoRepair           bool
+	VolWriteMutexEnable  bool
+	ZoneName             string
+	OSSAccessKey         string
+	OSSSecretKey         string
+	CreateTime           int64
+	Description          string
+	DpSelectorName       string
+	DpSelectorParm       string
+	OSSBucketPolicy      bsProto.BucketAccessPolicy
+	DPConvertMode        bsProto.ConvertMode
+	MPConvertMode        bsProto.ConvertMode
+	ExtentCacheExpireSec int64
+	MinWritableMPNum     int
+	MinWritableDPNum     int
+	TrashRemainingDays   uint32
+	DefStoreMode         bsProto.StoreMode
+	ConverState          bsProto.VolConvertState
+	MpLayout             bsProto.MetaPartitionLayout
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -237,6 +242,10 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		ExtentCacheExpireSec: vol.ExtentCacheExpireSec,
 		MinWritableMPNum:     vol.MinWritableMPNum,
 		MinWritableDPNum:     vol.MinWritableDPNum,
+		TrashRemainingDays:  vol.trashRemainingDays,
+		DefStoreMode:        vol.DefaultStoreMode,
+		ConverState:         vol.convertState,
+		MpLayout:            vol.MpLayout,
 	}
 	return
 }
@@ -718,6 +727,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		}
 		atomic.StoreUint64(&c.cfg.ExtentMergeSleepMs, cv.ExtentMergeSleepMs)
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
+		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}
 	return
 }

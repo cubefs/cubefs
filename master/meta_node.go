@@ -44,6 +44,7 @@ type MetaNode struct {
 	ToBeOffline               bool
 	ToBeMigrated              bool
 	PersistenceMetaPartitions []uint64
+	ProfPort                  string
 }
 
 func newMetaNode(addr, zoneName, clusterID string) (node *MetaNode) {
@@ -130,6 +131,7 @@ func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, th
 	metaNode.MaxMemAvailWeight = resp.Total - resp.Used
 	metaNode.ZoneName = resp.ZoneName
 	metaNode.Threshold = threshold
+	metaNode.ProfPort = resp.ProfPort
 }
 
 func (metaNode *MetaNode) reachesThreshold() bool {

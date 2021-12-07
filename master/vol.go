@@ -76,6 +76,10 @@ type Vol struct {
 	writableMpCount    int64
 	MinWritableMPNum   int
 	MinWritableDPNum   int
+	trashRemainingDays  uint32
+	convertState        proto.VolConvertState
+	DefaultStoreMode    proto.StoreMode
+	MpLayout            proto.MetaPartitionLayout
 	sync.RWMutex
 }
 
@@ -86,7 +90,8 @@ type VolWriteMutexClient struct {
 
 func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8,
 	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW bool, createTime int64, description, dpSelectorName,
-	dpSelectorParm string, crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64) (vol *Vol) {
+	dpSelectorParm string, crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64, trashDays uint32,
+	defStoreMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	if dpReplicaNum < defaultReplicaNum {
@@ -112,6 +117,10 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.ExtentCacheExpireSec = defaultExtentCacheExpireSec
 	vol.MinWritableMPNum = defaultVolMinWritableMPNum
 	vol.MinWritableDPNum = defaultVolMinWritableDPNum
+
+	if trashDays > maxTrashRemainingDays {
+		trashDays = maxTrashRemainingDays
+	}
 	vol.dataPartitionSize = dpSize
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
@@ -132,6 +141,13 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.CrossRegionHAType = crossRegionHAType
 	vol.dpLearnerNum = dpLearnerNum
 	vol.mpLearnerNum = mpLearnerNum
+	vol.trashRemainingDays = trashDays
+	vol.convertState = convertSt
+	if defStoreMode == proto.StoreModeDef {
+		defStoreMode = proto.StoreModeMem
+	}
+	vol.DefaultStoreMode = defStoreMode
+	vol.MpLayout = mpLayout
 	return
 }
 
@@ -158,7 +174,11 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.CrossRegionHAType,
 		vv.DpLearnerNum,
 		vv.MpLearnerNum,
-		vv.DpWriteableThreshold)
+		vv.DpWriteableThreshold,
+		vv.TrashRemainingDays,
+		vv.DefStoreMode,
+		vv.ConverState,
+		vv.MpLayout)
 	// overwrite oss secure
 	vol.OSSAccessKey, vol.OSSSecretKey = vv.OSSAccessKey, vv.OSSSecretKey
 	vol.Status = vv.Status
@@ -867,8 +887,10 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 		peers       []proto.Peer
 		learners    []proto.Learner
 		wg          sync.WaitGroup
+		storeMode   proto.StoreMode
 	)
 	learners = make([]proto.Learner, 0)
+	storeMode = vol.DefaultStoreMode
 	errChannel := make(chan error, vol.mpReplicaNum+vol.mpLearnerNum)
 	if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
 		if hosts, peers, learners, err = c.chooseTargetMetaHostsForCreateQuorumMetaPartition(int(vol.mpReplicaNum), int(vol.mpLearnerNum), vol.zoneName); err != nil {
@@ -897,13 +919,13 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 			defer func() {
 				wg.Done()
 			}()
-			if err = c.syncCreateMetaPartitionToMetaNode(host, mp); err != nil {
+			if err = c.syncCreateMetaPartitionToMetaNode(host, mp, storeMode, vol.trashRemainingDays); err != nil {
 				errChannel <- err
 				return
 			}
 			mp.Lock()
 			defer mp.Unlock()
-			if err = mp.afterCreation(host, c); err != nil {
+			if err = mp.afterCreation(host, c, storeMode); err != nil {
 				errChannel <- err
 			}
 		}(host)
@@ -994,4 +1016,63 @@ func (vol *Vol) setWritableMpCount(count int64) {
 
 func (vol *Vol) getWritableMpCount() int64 {
 	return atomic.LoadInt64(&vol.writableMpCount)
+}
+
+func (vol *Vol) backupConfig() *Vol {
+	return &Vol{
+		Capacity:             vol.Capacity,
+		dpReplicaNum:         vol.dpReplicaNum,
+		FollowerRead:         vol.FollowerRead,
+		authenticate:         vol.authenticate,
+		enableToken:          vol.enableToken,
+		autoRepair:           vol.autoRepair,
+		description:          vol.description,
+		dpSelectorName:       vol.dpSelectorName,
+		dpSelectorParm:       vol.dpSelectorParm,
+		DefaultStoreMode:     vol.DefaultStoreMode,
+		convertState:         vol.convertState,
+		MpLayout:             vol.MpLayout,
+		crossZone:            vol.crossZone,
+		zoneName:             vol.zoneName,
+		OSSBucketPolicy:      vol.OSSBucketPolicy,
+		trashRemainingDays:   vol.trashRemainingDays,
+		mpLearnerNum:         vol.mpLearnerNum,
+		CrossRegionHAType:    vol.CrossRegionHAType,
+		DPConvertMode:        vol.DPConvertMode,
+		MPConvertMode:        vol.MPConvertMode,
+		dpWriteableThreshold: vol.dpWriteableThreshold,
+		mpReplicaNum:         vol.mpReplicaNum,
+		ForceROW:             vol.ForceROW,
+		ExtentCacheExpireSec: vol.ExtentCacheExpireSec
+	}
+}
+
+func (vol *Vol) rollbackConfig(backupVol *Vol) {
+	if backupVol == nil {
+		return
+	}
+	vol.Capacity = backupVol.Capacity
+	vol.dpReplicaNum = backupVol.dpReplicaNum
+	vol.FollowerRead = backupVol.FollowerRead
+	vol.authenticate = backupVol.authenticate
+	vol.enableToken = backupVol.enableToken
+	vol.autoRepair = backupVol.autoRepair
+	vol.description = backupVol.description
+	vol.dpSelectorParm = backupVol.dpSelectorParm
+	vol.dpSelectorName = backupVol.dpSelectorName
+	vol.DefaultStoreMode = backupVol.DefaultStoreMode
+	vol.convertState = backupVol.convertState
+	vol.MpLayout = backupVol.MpLayout
+	vol.crossZone = backupVol.crossZone
+	vol.zoneName = backupVol.zoneName
+	vol.trashRemainingDays = backupVol.trashRemainingDays
+	vol.OSSBucketPolicy = backupVol.OSSBucketPolicy
+	vol.mpLearnerNum = backupVol.mpLearnerNum
+	vol.CrossRegionHAType = backupVol.CrossRegionHAType
+	vol.DPConvertMode = backupVol.DPConvertMode
+	vol.MPConvertMode = backupVol.MPConvertMode
+	vol.dpWriteableThreshold = backupVol.dpWriteableThreshold
+	vol.mpReplicaNum = backupVol.mpReplicaNum
+	vol.ForceROW = backupVol.ForceROW
+	vol.ExtentCacheExpireSec = backupVol.ExtentCacheExpireSec
 }

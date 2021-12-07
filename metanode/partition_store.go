@@ -36,17 +36,19 @@ import (
 )
 
 const (
-	snapshotDir     = "snapshot"
-	snapshotDirTmp  = ".snapshot"
-	snapshotBackup  = ".snapshot_backup"
-	inodeFile       = "inode"
-	dentryFile      = "dentry"
-	extendFile      = "extend"
-	multipartFile   = "multipart"
-	applyIDFile     = "apply"
-	SnapshotSign    = ".sign"
-	metadataFile    = "meta"
-	metadataFileTmp = ".meta"
+	snapshotDir       = "snapshot"
+	snapshotDirTmp    = ".snapshot"
+	snapshotBackup    = ".snapshot_backup"
+	inodeFile         = "inode"
+	dentryFile        = "dentry"
+	extendFile        = "extend"
+	multipartFile     = "multipart"
+	applyIDFile       = "apply"
+	SnapshotSign      = ".sign"
+	metadataFile      = "meta"
+	metadataFileTmp   = ".meta"
+	inodeDeletedFile  = "inode_deleted"
+	dentryDeletedFile = "dentry_deleted"
 )
 
 func (mp *metaPartition) loadMetadata() (err error) {
@@ -145,11 +147,137 @@ func (mp *metaPartition) loadInode(ctx context.Context, rootDir string) (err err
 			}
 		}
 		mp.fsmCreateInode(ino)
-		mp.checkAndInsertFreeList(ino)
+
+		//mp.checkAndInsertFreeList(ino)
 		if mp.config.Cursor < ino.Inode {
 			mp.config.Cursor = ino.Inode
 		}
 		numInodes += 1
+	}
+}
+
+func (mp *metaPartition) loadDeletedInode(ctx context.Context, rootDir string) (err error) {
+	var numInodes uint64
+	defer func() {
+		if err == nil {
+			log.LogInfof("loadDeletedInode: load complete: partitonID(%v) volume(%v) numInodes(%v)",
+				mp.config.PartitionId, mp.config.VolName, numInodes)
+		}
+	}()
+	filename := path.Join(rootDir, inodeDeletedFile)
+	if _, err = os.Stat(filename); err != nil {
+		err = nil
+		return
+	}
+	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	if err != nil {
+		err = errors.NewErrorf("[loadInode] OpenFile: %s", err.Error())
+		return
+	}
+	defer fp.Close()
+	reader := bufio.NewReaderSize(fp, 4*1024*1024)
+	inoBuf := make([]byte, 4)
+	for {
+		inoBuf = inoBuf[:4]
+		// first read length
+		_, err = io.ReadFull(reader, inoBuf)
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+				return
+			}
+			err = errors.NewErrorf("[loadDeletedInode] ReadHeader: %s", err.Error())
+			return
+		}
+		length := binary.BigEndian.Uint32(inoBuf)
+
+		// next read body
+		if uint32(cap(inoBuf)) >= length {
+			inoBuf = inoBuf[:length]
+		} else {
+			inoBuf = make([]byte, length)
+		}
+		_, err = io.ReadFull(reader, inoBuf)
+		if err != nil {
+			err = errors.NewErrorf("[loadDeletedInode] ReadBody: %s", err.Error())
+			return
+		}
+		dino := new(DeletedINode)
+		err = dino.Unmarshal(ctx, inoBuf)
+		if err != nil {
+			err = errors.NewErrorf("[loadInode] Unmarshal: %s", err.Error())
+			return
+		}
+		mp.fsmCreateDeletedInode(dino)
+		mp.checkExpiredAndInsertFreeList(dino)
+
+		numInodes += 1
+	}
+}
+
+func (mp *metaPartition) loadDeletedDentry(rootDir string) (err error) {
+	var numDentries uint64
+	defer func() {
+		if err == nil {
+			log.LogInfof("loadDeletedDentry: load complete: partitonID(%v) volume(%v) numDentries(%v)",
+				mp.config.PartitionId, mp.config.VolName, numDentries)
+		}
+	}()
+	filename := path.Join(rootDir, dentryDeletedFile)
+	if _, err = os.Stat(filename); err != nil {
+		err = nil
+		return
+	}
+	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	if err != nil {
+		if err == os.ErrNotExist {
+			err = nil
+			return
+		}
+		err = errors.NewErrorf("[loadDeletedDentry] OpenFile: %s", err.Error())
+		return
+	}
+
+	defer fp.Close()
+	reader := bufio.NewReaderSize(fp, 4*1024*1024)
+	dentryBuf := make([]byte, 4)
+	for {
+		dentryBuf = dentryBuf[:4]
+		// First Read 4byte header length
+		_, err = io.ReadFull(reader, dentryBuf)
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+				return
+			}
+			err = errors.NewErrorf("[loadDeletedDentry] ReadHeader: %s", err.Error())
+			return
+		}
+
+		length := binary.BigEndian.Uint32(dentryBuf)
+
+		// next read body
+		if uint32(cap(dentryBuf)) >= length {
+			dentryBuf = dentryBuf[:length]
+		} else {
+			dentryBuf = make([]byte, length)
+		}
+		_, err = io.ReadFull(reader, dentryBuf)
+		if err != nil {
+			err = errors.NewErrorf("[loadDeletedDentry]: ReadBody: %s", err.Error())
+			return
+		}
+		ddentry := new(DeletedDentry)
+		err = ddentry.Unmarshal(dentryBuf)
+		if err != nil {
+			err = errors.NewErrorf("[loadDeletedDentry] Unmarshal: %s", err.Error())
+			return
+		}
+		if status := mp.fsmCreateDeletedDentry(ddentry, true).Status; status != proto.OpOk {
+			err = errors.NewErrorf("[loadDeletedDentry] fsmCreateDeletedDentry, dentry: %v, resp code: %d", ddentry, status)
+			return
+		}
+		numDentries += 1
 	}
 }
 
@@ -449,6 +577,94 @@ func (mp *metaPartition) storeInode(rootDir string,
 	crc = sign.Sum32()
 	log.LogInfof("storeInode: store complete: partitoinID(%v) volume(%v) numInodes(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.inodeTree.Len(), crc)
+	return
+}
+
+func (mp *metaPartition) storeDeletedInode(rootDir string,
+	sm *storeMsg) (crc uint32, err error) {
+	filename := path.Join(rootDir, inodeDeletedFile)
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
+		O_CREATE, 0755)
+	if err != nil {
+		return
+	}
+	defer func() {
+		err = fp.Sync()
+		fp.Close()
+	}()
+	var data []byte
+	lenBuf := make([]byte, 4)
+	sign := crc32.NewIEEE()
+	sm.inodeDeletedTree.Ascend(func(i BtreeItem) bool {
+		dino := i.(*DeletedINode)
+		if data, err = dino.Marshal(); err != nil {
+			log.LogErrorf("storeDeletedInode: DeletedInode: %v, err: %v", dino, err)
+			return false
+		}
+		// set length
+		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
+		if _, err = fp.Write(lenBuf); err != nil {
+			return false
+		}
+		if _, err = sign.Write(lenBuf); err != nil {
+			return false
+		}
+		// set body
+		if _, err = fp.Write(data); err != nil {
+			return false
+		}
+		if _, err = sign.Write(data); err != nil {
+			return false
+		}
+		return true
+	})
+	crc = sign.Sum32()
+	log.LogInfof("storeDeletedInode: store complete: partitoinID(%v) volume(%v) numInodes(%v) crc(%v)",
+		mp.config.PartitionId, mp.config.VolName, sm.inodeDeletedTree.Len(), crc)
+	return
+}
+
+func (mp *metaPartition) storeDeletedDentry(rootDir string,
+	sm *storeMsg) (crc uint32, err error) {
+	filename := path.Join(rootDir, dentryDeletedFile)
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
+		O_CREATE, 0755)
+	if err != nil {
+		return
+	}
+	defer func() {
+		err = fp.Sync()
+		fp.Close()
+	}()
+	var data []byte
+	lenBuf := make([]byte, 4)
+	sign := crc32.NewIEEE()
+	sm.dentryDeletedTree.Ascend(func(i BtreeItem) bool {
+		ddentry := i.(*DeletedDentry)
+		data, err = ddentry.Marshal()
+		if err != nil {
+			log.LogErrorf("storeDeletedDentry: failed to marshal to json, dentry: %v, err: %v", ddentry, err.Error())
+			return false
+		}
+		// set length
+		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
+		if _, err = fp.Write(lenBuf); err != nil {
+			return false
+		}
+		if _, err = sign.Write(lenBuf); err != nil {
+			return false
+		}
+		if _, err = fp.Write(data); err != nil {
+			return false
+		}
+		if _, err = sign.Write(data); err != nil {
+			return false
+		}
+		return true
+	})
+	crc = sign.Sum32()
+	log.LogInfof("storeDeletedDentry: store complete: partitoinID(%v) volume(%v) numDentries(%v) crc(%v)",
+		mp.config.PartitionId, mp.config.VolName, sm.dentryDeletedTree.Len(), crc)
 	return
 }
 

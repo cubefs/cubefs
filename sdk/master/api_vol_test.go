@@ -14,6 +14,7 @@ var (
 	testDpSize        uint64 = 120
 	testCapacity      uint64 = 1
 	testReplicas             = 3
+	testTrashDays            = 10
 	testMpReplicas           = 3
 	testFollowerRead         = true
 	testForceROW			 = false
@@ -21,11 +22,13 @@ var (
 	testVolWriteMutex        = false
 	testZoneName             = "default"
 	testMc                   = NewMasterClient([]string{"192.168.0.11:17010", "192.168.0.12:17010", "192.168.0.13:17010"}, false)
+	testStoreMode            = 0
+	testMpLyout              = "0,0"
 )
 
 func TestVolCreate(t *testing.T) {
-	err := testMc.AdminAPI().CreateVolume(testVolName, testOwner, testMpcount, testDpSize, testCapacity,
-		testReplicas, testMpReplicas, testFollowerRead, testAutoRepair, testVolWriteMutex, testForceROW, testZoneName, 0)
+	err := testMc.AdminAPI().CreateVolume(testVolName, testOwner, testMpcount, testDpSize, testCapacity, testStoreMode,
+		testReplicas, testMpReplicas, testTrashDays, testFollowerRead, testAutoRepair, testVolWriteMutex, testForceROW, testZoneName, testMpLyout, 0)
 	if err != nil {
 		t.Errorf("create vol failed: err(%v) vol(%v)", err, testVolName)
 	}
@@ -40,18 +43,26 @@ func TestUpdateVol(t *testing.T) {
 	authKey := calcAuthKey(testOwner)
 	extentCap := uint64(2)
 	updateFollowerRead := false
-	err := testMc.AdminAPI().UpdateVolume(testVolName, extentCap, testReplicas, testMpReplicas, updateFollowerRead, false,
-		false, false, false, authKey, testZoneName, 0, 0, 0)
+	trashDays := 15
+	err := testMc.AdminAPI().UpdateVolume(testVolName, extentCap, testReplicas, testTrashDays, testMpReplicas, testStoreMode,
+		updateFollowerRead, false, false, false, false, authKey, testZoneName,
+		testMpLyout, 0, 0, 0)
 	if err != nil {
 		t.Errorf("update vol failed: err(%v) vol(%v)", err, testVolName)
+		t.FailNow()
 	}
 	vol, err := testMc.ClientAPI().GetVolume(testVolName, authKey)
 	if err != nil {
 		t.Errorf("GetVolume failed: err(%v) vol(%v) expectSet(%v) actualSet(%v)", err, testVolName, vol, updateFollowerRead)
+		t.FailNow()
 	}
 	volInfo, err := testMc.AdminAPI().GetVolumeSimpleInfo(testVolName)
 	if err != nil || volInfo.Name != testVolName {
 		t.Errorf("get vol info failed: err(%v) vol(%v)", err, testVolName)
+		t.FailNow()
+	}
+	if volInfo.TrashRemainingDays != uint32(trashDays) {
+		t.Errorf("trashDays(%v) is not expected(%v)", volInfo.TrashRemainingDays, trashDays)
 	}
 	volStat, err := testMc.ClientAPI().GetVolumeStat(testVolName)
 	if err != nil || volStat.TotalSize != extentCap*1024*1024*1024 {

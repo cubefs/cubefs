@@ -212,7 +212,7 @@ func doEvictInode(inode *Inode) error {
 	if inode.NLink != 0 || time.Since(time.Unix(inode.ModifyTime, 0)) < 24*time.Hour || !proto.IsRegular(inode.Type) {
 		return nil
 	}
-	err := gMetaWrapper.Evict(context.Background(), inode.Inode)
+	err := gMetaWrapper.Evict(context.Background(), inode.Inode, true)
 	if err != nil {
 		if err != syscall.ENOENT {
 			return err

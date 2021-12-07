@@ -210,7 +210,7 @@ func (s *VolumeService) volPermission(ctx context.Context, args struct {
 
 func (s *VolumeService) createVolume(ctx context.Context, args struct {
 	Name, Owner, ZoneName, Description                 string
-	Capacity, DataPartitionSize, MpCount, DpReplicaNum uint64
+	Capacity, DataPartitionSize, MpCount, DpReplicaNum, storeMode, mpPercent, repPercent uint64
 	FollowerRead, Authenticate, CrossZone, EnableToken bool
 }) (*Vol, error) {
 	uid, per, err := permissions(ctx, ADMIN|USER)
@@ -222,11 +222,22 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 		return nil, fmt.Errorf("replicaNum can only be 2 and 3,received replicaNum is[%v]", args.DpReplicaNum)
 	}
 
+	if !(args.storeMode == uint64(proto.StoreModeMem) || args.storeMode == uint64(proto.StoreModeRocksDb)) {
+		return nil, fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, args.storeMode)
+	}
+
+	if args.mpPercent > 100 || args.repPercent > 100 {
+		return nil, fmt.Errorf("mpPercent repPercent can only be [0-100],received is[%v - %v]", args.mpPercent, args.repPercent)
+	}
+
 	if per == USER && args.Owner != uid {
 		return nil, fmt.Errorf("[%s] not has permission to create volume for [%s]", uid, args.Owner)
 	}
 
-	vol, err := s.cluster.createVol(args.Name, args.Owner, args.ZoneName, args.Description, int(args.MpCount), int(args.DpReplicaNum), defaultReplicaNum, int(args.DataPartitionSize), int(args.Capacity), args.FollowerRead, args.Authenticate, args.EnableToken, false, false, false, 0, 0)
+	vol, err := s.cluster.createVol(args.Name, args.Owner, args.ZoneName, args.Description, int(args.MpCount),
+		int(args.DpReplicaNum), defaultReplicaNum, int(args.DataPartitionSize), int(args.Capacity), 0,
+		args.FollowerRead, args.Authenticate, args.EnableToken, false, false, false, 0, 0,
+		proto.StoreMode(args.storeMode), proto.MetaPartitionLayout{uint32(args.mpPercent), uint32(args.repPercent)})
 	if err != nil {
 		return nil, err
 	}
@@ -287,11 +298,11 @@ func (s *VolumeService) markDeleteVol(ctx context.Context, args struct {
 }
 
 func (s *VolumeService) updateVolume(ctx context.Context, args struct {
-	Name, AuthKey                          string
-	ZoneName, Description                  *string
-	Capacity, ReplicaNum                   *uint64
-	EnableToken, ForceROW                  *bool
-	FollowerRead, Authenticate, AutoRepair *bool
+	Name, AuthKey                                          string
+	ZoneName, Description                                  *string
+	Capacity, ReplicaNum, storeMode, mpPercent, repPercent *uint64
+	EnableToken, ForceROW                                  *bool
+	FollowerRead, Authenticate, AutoRepair                 *bool
 }) (*Vol, error) {
 	uid, perm, err := permissions(ctx, ADMIN|USER)
 	if err != nil {
@@ -354,9 +365,18 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 		args.Description = &vol.description
 	}
 
+	if !(*args.storeMode == uint64(proto.StoreModeMem) || *args.storeMode == uint64(proto.StoreModeRocksDb)) {
+		return nil, fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, *args.storeMode)
+	}
+
+	if *args.mpPercent > 100 || *args.repPercent > 100 {
+		return nil, fmt.Errorf("mpPercent repPercent can only be [0-100],received is[%v - %v]", *args.mpPercent, *args.repPercent)
+	}
+
 	if err = s.cluster.updateVol(args.Name, args.AuthKey, *args.ZoneName, *args.Description, *args.Capacity,
 		uint8(*args.ReplicaNum), vol.mpReplicaNum, *args.FollowerRead, *args.Authenticate, *args.EnableToken, *args.AutoRepair, *args.ForceROW,
-		vol.dpSelectorName, vol.dpSelectorParm, vol.OSSBucketPolicy, vol.CrossRegionHAType, vol.dpWriteableThreshold, vol.ExtentCacheExpireSec); err != nil {
+		vol.dpSelectorName, vol.dpSelectorParm, vol.OSSBucketPolicy, vol.CrossRegionHAType, vol.dpWriteableThreshold, vol.trashRemainingDays,
+		proto.StoreMode(*args.storeMode), proto.MetaPartitionLayout{uint32(*args.mpPercent), uint32(*args.repPercent)}, vol.ExtentCacheExpireSec); err != nil {
 		return nil, err
 	}
 

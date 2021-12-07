@@ -370,7 +370,7 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 	vol := newVol(volID, name, name, "", util.DefaultDataPartitionSize, 100, defaultReplicaNum,
 		defaultReplicaNum, false, false,
 		false, true, false, false, createTime, "", "", "", 0,
-		0, 0, 0.0)
+		0, 0, 0.0, 30)
 	// unavailable mp
 	mp1 := newMetaPartition(1, 1, defaultMaxMetaPartitionInodeID, 3, 0, name, volID)
 	vol.addMetaPartition(mp1)

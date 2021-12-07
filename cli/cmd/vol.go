@@ -60,6 +60,7 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolSetCmd(client),
 		newVolPartitionCheckCmd(client),
 		newVolSetMinRWPartitionCmd(client),
+		newVolConvertTaskCmd(client),
 	)
 	return cmd
 }
@@ -118,10 +119,13 @@ const (
 	cmdVolDefaultDPSize         = 120
 	cmdVolDefaultCapacity       = 10 // 100GB
 	cmdVolDefaultReplicas       = 3
+	cmdVolDefaultTrashDays      = 0
 	cmdVolDefaultFollowerReader = true
 	cmdVolDefaultForceROW       = false
 	cmdVolDefaultCrossRegionHA  = 0
 	cmdVolDefaultZoneName       = "default"
+	cmdVolDefaultStoreMode      = int(proto.StoreModeMem)
+	cmdVolDefMetaLayout         = "0,0"
 )
 
 func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
@@ -137,6 +141,9 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optVolWriteMutex bool
 	var optYes bool
 	var optZoneName string
+	var optTrashDays int
+	var optStoreMode int
+	var optLayout string
 	var cmd = &cobra.Command{
 		Use:   cmdVolCreateUse,
 		Short: cmdVolCreateShort,
@@ -145,7 +152,22 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			var volumeName = args[0]
 			var userID = args[1]
+			var num1, num2, total int
 
+			total, err = fmt.Sscanf(optLayout, "%d,%d", &num1, &num2)
+			if total != 2 || err != nil || (num1 < 0 || num1 > 100) || (num2 < 0 || num2 > 100) {
+				errout("input layout format err\n")
+			}
+
+			if optStoreMode < int(proto.StoreModeMem) || optStoreMode > int(proto.StoreModeMax-1) {
+				errout("input store mode err, need[%d~%d], but input:%d\n", int(proto.StoreModeMem), int(proto.StoreModeMax-1), optStoreMode)
+			}
+
+			if optTrashDays > 30 {
+				errout("error: the max trash days is 30\n")
+			}
+
+			storeMode := proto.StoreMode(optStoreMode)
 			// ask user for confirm
 			if !optYes {
 				stdout("Create a new volume:\n")
@@ -156,6 +178,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  Capacity            : %v GB\n", optCapacity)
 				stdout("  Replicas            : %v\n", optReplicas)
 				stdout("  MpReplicas          : %v\n", optMpReplicas)
+				stdout("  TrashDays           : %v\n", optTrashDays)
 				stdout("  Allow follower read : %v\n", formatEnabledDisabled(optFollowerRead))
 				stdout("  Force ROW           : %v\n", formatEnabledDisabled(optForceROW))
 				stdout("  Cross Region HA     : %s\n", proto.CrossRegionHAType(optCrossRegionHAType))
@@ -163,6 +186,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  Volume write mutex  : %v\n", formatEnabledDisabled(optVolWriteMutex))
 
 				stdout("  ZoneName            : %v\n", optZoneName)
+				stdout("  Store mode          : %v\n", storeMode.Str())
+				stdout("  Meta layout         : %v - %v\n", num1, num2)
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -172,8 +197,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
-			err = client.AdminAPI().CreateVolume(volumeName, userID, optMPCount, optDPSize, optCapacity,
-				optReplicas, optMpReplicas, optFollowerRead, optAutoRepair, optVolWriteMutex, optForceROW, optZoneName, optCrossRegionHAType)
+			err = client.AdminAPI().CreateVolume(volumeName, userID, optMPCount, optDPSize, optCapacity, optReplicas,
+				optMpReplicas, optTrashDays, optStoreMode, optFollowerRead, optAutoRepair, optVolWriteMutex, optForceROW, optZoneName, optLayout, optCrossRegionHAType)
 			if err != nil {
 				errout("Create volume failed case:\n%v\n", err)
 			}
@@ -186,6 +211,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Uint64Var(&optCapacity, CliFlagCapacity, cmdVolDefaultCapacity, "Specify volume capacity [Unit: GB]")
 	cmd.Flags().IntVar(&optReplicas, CliFlagReplicas, cmdVolDefaultReplicas, "Specify data partition replicas number")
 	cmd.Flags().IntVar(&optMpReplicas, CliFlagMpReplicas, cmdVolDefaultReplicas, "Specify meta partition replicas number")
+	cmd.Flags().IntVar(&optTrashDays, CliFlagTrashDays, cmdVolDefaultTrashDays, "Specify trash remaining days ")
 	cmd.Flags().BoolVar(&optFollowerRead, CliFlagEnableFollowerRead, cmdVolDefaultFollowerReader, "Enable read form replica follower")
 	cmd.Flags().BoolVar(&optForceROW, CliFlagEnableForceROW, cmdVolDefaultForceROW, "Use ROW instead of overwrite")
 	cmd.Flags().Uint8Var(&optCrossRegionHAType, CliFlagEnableCrossRegionHA, cmdVolDefaultCrossRegionHA,
@@ -194,6 +220,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().BoolVar(&optVolWriteMutex, CliFlagVolWriteMutexEnable, false, "Enable only one client have volume exclusive write permission")
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, cmdVolDefaultZoneName, "Specify volume zone name")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+	cmd.Flags().IntVar(&optStoreMode, CliFlagStoreMode, cmdVolDefaultStoreMode, "Specify volume store mode[1:Mem, 2:RocksDb]")
+	cmd.Flags().StringVar(&optLayout, CliFlagMetaLayout, cmdVolDefMetaLayout, "Specify volume mp layout num1,num2 [num1:rocks db mp percent, num2:rocks db replica percent]")
 	return cmd
 }
 
@@ -208,6 +236,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		optCapacity             uint64
 		optReplicas             int
 		optMpReplicas           int
+		optTrashDays            int
+		optStoreMode            int
 		optFollowerRead         string
 		optForceROW             string
 		optAuthenticate         string
@@ -216,6 +246,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		optBucketPolicy         string
 		optCrossRegionHAType    string
 		optZoneName             string
+		optLayout               string
 		optExtentCacheExpireSec int64
 		optYes                  bool
 		confirmString           = strings.Builder{}
@@ -229,6 +260,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			var volumeName = args[0]
 			var isChange = false
+			var num1, num2, total int
+
 			defer func() {
 				if err != nil {
 					errout("Error: %v", err)
@@ -358,6 +391,49 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v\n", vv.ZoneName))
 			}
+
+			if optTrashDays > -1 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  TrashRemainingDays  : %v -> %v\n", vv.TrashRemainingDays, optTrashDays))
+				vv.TrashRemainingDays = uint32(optTrashDays)
+				if optTrashDays > 30 {
+					errout("error: the max trash days is 30\n")
+				}
+			}
+
+			if optStoreMode != 0 {
+				if optStoreMode < int(proto.StoreModeMem) || optStoreMode > int(proto.StoreModeMax-1) {
+					errout("input store mode err\n")
+				}
+
+				storeMode := proto.StoreMode(optStoreMode)
+				if vv.DefaultStoreMode == storeMode {
+					confirmString.WriteString(fmt.Sprintf("  StoreMode           : %v\n", vv.DefaultStoreMode))
+				} else {
+					isChange = true
+					confirmString.WriteString(fmt.Sprintf("  StoreMode           : %v  --> %v\n",
+						vv.DefaultStoreMode.Str(), storeMode.Str()))
+					vv.DefaultStoreMode = storeMode
+				}
+			}
+
+			if optLayout != "" {
+				total, err = fmt.Sscanf(optLayout, "%d,%d", &num1, &num2)
+				if total != 2 || err != nil || (num1 < 0 || num1 > 100) || (num2 < 0 || num2 > 100) {
+					errout("input layout format err\n")
+				}
+
+				if uint32(num1) == vv.MpLayout.PercentOfMP && uint32(num2) == vv.MpLayout.PercentOfReplica {
+					confirmString.WriteString(fmt.Sprintf("  MetaLayout          : %v - %v\n", vv.MpLayout.PercentOfMP, vv.MpLayout.PercentOfReplica))
+				} else {
+					isChange = true
+					confirmString.WriteString(fmt.Sprintf("  MetaLayout          : (%v - %v)--> (%v - %v)\n",
+						vv.MpLayout.PercentOfMP, vv.MpLayout.PercentOfReplica, num1, num2))
+					vv.MpLayout.PercentOfMP = uint32(num1)
+					vv.MpLayout.PercentOfReplica = uint32(num2)
+				}
+			}
+
 			if err != nil {
 				return
 			}
@@ -376,9 +452,9 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
-			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum), int(vv.MpReplicaNum),
-				vv.FollowerRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair, vv.ForceROW, calcAuthKey(vv.Owner), vv.ZoneName,
-				uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec)
+			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum), int(vv.MpReplicaNum), int(vv.TrashRemainingDays),
+				int(vv.DefaultStoreMode), vv.FollowerRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
+				vv.ForceROW, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec)
 			if err != nil {
 				return
 			}
@@ -395,6 +471,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Uint64Var(&optCapacity, CliFlagCapacity, 0, "Specify volume capacity [Unit: GB]")
 	cmd.Flags().IntVar(&optReplicas, CliFlagReplicas, 0, "Specify data partition replicas number")
 	cmd.Flags().IntVar(&optMpReplicas, CliFlagMpReplicas, 0, "Specify meta partition replicas number")
+	cmd.Flags().IntVar(&optTrashDays, CliFlagTrashDays, 0, "Specify trash remaining days")
 	cmd.Flags().StringVar(&optFollowerRead, CliFlagEnableFollowerRead, "", "Enable read form replica follower")
 	cmd.Flags().StringVar(&optForceROW, CliFlagEnableForceROW, "", "Enable only row instead of overwrite")
 	cmd.Flags().StringVar(&optCrossRegionHAType, CliFlagEnableCrossRegionHA, "",
@@ -406,6 +483,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optAutoRepair, CliFlagAutoRepair, "", "Enable auto balance partition distribution according to zoneName")
 	cmd.Flags().StringVar(&optBucketPolicy, CliFlagOSSBucketPolicy, "", "Set bucket access policy for S3(0 for private 1 for public-read)")
 	cmd.Flags().Int64Var(&optExtentCacheExpireSec, CliFlagExtentCacheExpireSec, 0, "Specify the expiration second of the extent cache (-1 means never expires)")
+	cmd.Flags().StringVar(&optLayout, CliFlagMetaLayout, "", "specify volume meta layout num1,num2 [num1:rocks db mp percent, num2:rocks db replicas percent]")
+	cmd.Flags().IntVar(&optStoreMode, CliFlagStoreMode, 0, "specify volume default store mode [1:Mem, 2:Rocks]")
 
 	return cmd
 }
@@ -423,6 +502,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			var volumeName = args[0]
 			var svv *proto.SimpleVolView
+			var memMpCnt, rocksMpCnt, mixMpCnt, beyondConfCnt int
 
 			if svv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
 				errout("Get volume info failed:\n%v\n", err)
@@ -437,6 +517,24 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 					errout("Get volume metadata detail information failed:\n%v\n", err)
 					os.Exit(1)
 				}
+				for _, view := range views {
+					switch view.StoreMode {
+					case proto.StoreModeMem:
+						memMpCnt++
+					case proto.StoreModeRocksDb:
+						rocksMpCnt++
+					default:
+						mixMpCnt++
+					}
+
+					if len(view.Members) > int(svv.MpReplicaNum) {
+						beyondConfCnt++
+					}
+				}
+				stdout("  Mem mp count         : %v\n", memMpCnt)
+				stdout("  Rocks db mp count    : %v\n", rocksMpCnt)
+				stdout("  Mix mp count         : %v\n", mixMpCnt)
+				stdout("  Beyond conf mp count : %v\n", beyondConfCnt)
 				stdout("Meta partitions:\n")
 				stdout("%v\n", metaPartitionTableHeader)
 				sort.SliceStable(views, func(i, j int) bool {
@@ -872,6 +970,67 @@ func newVolSetMinRWPartitionCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optRwMpNum, "minRwMP", 0, "Specify min writable mp num")
 	cmd.Flags().IntVar(&optRwDpNum, "minRwDP", 0, "Specify min writable dp num")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+	return cmd
+}
+
+func newVolConvertTaskCmd(client *master.MasterClient) *cobra.Command {
+	var (
+		vv     *proto.SimpleVolView
+		optYes bool
+	)
+	var cmd = &cobra.Command{
+		Use:   "convertTask [VOLUME NAME]  [start/stop]",
+		Short: "start/stop volume convert task",
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var volumeName = args[0]
+			var action = args[1]
+			var st = proto.VolConvertStStopped
+
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+			if vv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
+				return
+			}
+
+			if action != "start" && action != "stop" {
+				errout("unknown operation [%v]", action)
+			}
+
+			if !optYes {
+				stdout("%s volume[%s] convert task?\n", action, volumeName)
+				stdout("\nConfirm (yes/no)[yes]: ")
+				var userConfirm string
+				_, _ = fmt.Scanln(&userConfirm)
+				if userConfirm != "yes" && len(userConfirm) != 0 {
+					stdout("Abort by user.\n")
+					return
+				}
+			}
+
+			if action == "start" {
+				st = proto.VolConvertStRunning
+			}
+			err = client.AdminAPI().SetVolumeConvertTaskState(volumeName, calcAuthKey(vv.Owner), int(st))
+			if err != nil {
+				errout("%s volume[%s] convert task failed.err[%v].\n", action, volumeName, err.Error())
+			}
+			stdout("%s volume[%s] convert task successfully.\n", action, volumeName)
+			return
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+
 	return cmd
 }
 

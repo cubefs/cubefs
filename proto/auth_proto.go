@@ -225,7 +225,7 @@ var MsgType2ResourceMap = map[MsgType]string{
 }
 
 // AuthGetTicketReq defines the message from client to authnode
-// use Timestamp as verifier for MITM mitigation
+// use timestamp as verifier for MITM mitigation
 // verifier is also used to verify the server identity
 type AuthGetTicketReq struct {
 	Type      MsgType `json:"type"`
@@ -245,7 +245,7 @@ type AuthGetTicketResp struct {
 }
 
 // APIAccessReq defines the request for access restful api
-// use Timestamp as verifier for MITM mitigation
+// use timestamp as verifier for MITM mitigation
 // verifier is also used to verify the server identity
 type APIAccessReq struct {
 	Type      MsgType `json:"type"`
@@ -256,7 +256,7 @@ type APIAccessReq struct {
 }
 
 // APIAccessResp defines the response for access restful api
-// use Timestamp as verifier for MITM mitigation
+// use timestamp as verifier for MITM mitigation
 // verifier is also used to verify the server identity
 type APIAccessResp struct {
 	Type      MsgType `json:"type"`

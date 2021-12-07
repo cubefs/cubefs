@@ -17,7 +17,6 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
-
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/statistics"
 	"github.com/chubaofs/chubaofs/util/tracing"
@@ -79,7 +78,12 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err erro
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	r, err := mp.submit(p.Ctx(), opFSMDeleteDentry, p.Remote(), val)
+	var r interface{}
+	if mp.getTrashStatus() && req.TrashEnable {
+		r, err = mp.submitTrash(p.Ctx(), opFSMDeleteDentry, p.Remote(), val)
+	} else {
+		r, err = mp.submit(p.Ctx(), opFSMDeleteDentry, p.Remote(), val)
+	}
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -120,7 +124,12 @@ func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet)
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	r, err := mp.submit(p.Ctx(), opFSMDeleteDentryBatch, p.Remote(), val)
+	var r interface{}
+	if mp.getTrashStatus() && req.TrashEnable {
+		r, err = mp.submitTrash(p.Ctx(), opFSMDeleteDentryBatch, p.Remote(), val)
+	} else {
+		r, err = mp.submit(p.Ctx(), opFSMDeleteDentryBatch, p.Remote(), val)
+	}
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return err
@@ -192,7 +201,7 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err erro
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(p.Ctx(), opFSMUpdateDentry, p.Remote(), val)
+	resp, err := mp.submit(p.Ctx(), opFSMUpdateDentry, p.remote, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

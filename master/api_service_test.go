@@ -146,7 +146,9 @@ func createDefaultMasterServerForTest() *Server {
 	testServer.cluster.cfg.nodeSetCapacity = defaultNodeSetCapacity
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
-	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 3, 100, false, false, false, false, true, false, 0, 0)
+	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 3, 100, 0,
+		false, false, false, false, true, false, 0, 0,
+		proto.StoreModeMem, proto.MetaPartitionLayout{0, 0})
 	if err != nil {
 		panic(err)
 	}
@@ -1688,8 +1690,8 @@ func TestCreateVolForUpdateToCrossRegionVol(t *testing.T) {
 	reqURL = fmt.Sprintf("%v%v?zoneName=%v&regionName=%v", hostAddr, proto.SetZoneRegion, masterRegionZone3, masterRegion)
 	process(reqURL, t)
 	// create a normal vol
-	err := mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3,
-		false, false, false, true, zoneName, 0)
+	err := mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, 1,
+		false, false, false, true, zoneName, "{0, 0}", 0)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		return
@@ -1700,8 +1702,8 @@ func TestUpdateVolToCrossRegionVol(t *testing.T) {
 	volName := quorumVolName
 	newZoneName := fmt.Sprintf("%s,%s,%s,%s", testZone1, testZone2, testZone3, testZone6)
 	// update to cross region vol
-	err := mc.AdminAPI().UpdateVolume(volName, 200, 5, 0, false, false, false, false,
-		true, buildAuthKey("cfs"), newZoneName, 0, 1, 120)
+	err := mc.AdminAPI().UpdateVolume(volName, 200, 5, 0, 0, 1, false, false, false, false,
+		true, buildAuthKey("cfs"), newZoneName, "{0, 0}", 0, 1, 120)
 	if err != nil {
 		t.Errorf("UpdateVolume err:%v", err)
 		return

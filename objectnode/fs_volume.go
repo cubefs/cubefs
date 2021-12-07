@@ -499,7 +499,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 			_, _ = v.mw.InodeUnlink_ll(context.Background(), invisibleTempDataInode.Inode)
 			log.LogWarnf("PutObject: evict temp inode: volume(%v) path(%v) inode(%v)",
 				v.name, path, invisibleTempDataInode.Inode)
-			_ = v.mw.Evict(context.Background(), invisibleTempDataInode.Inode)
+			_ = v.mw.Evict(context.Background(), invisibleTempDataInode.Inode, false)
 		}
 	}()
 	if err = v.ec.OpenStream(invisibleTempDataInode.Inode); err != nil {
@@ -718,7 +718,7 @@ func (v *Volume) DeletePath(path string) (err error) {
 		log.LogWarnf("DeletePath EvictStream: path(%v) inode(%v)", path, ino)
 	}
 	log.LogWarnf("DeletePath: evict: volume(%v) path(%v) inode(%v)", v.name, path, ino)
-	if err = v.mw.Evict(context.Background(), ino); err != nil {
+	if err = v.mw.Evict(context.Background(), ino, true); err != nil {
 		log.LogWarnf("DeletePath Evict: path(%v) inode(%v)", path, ino)
 	}
 	err = nil
@@ -798,7 +798,7 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 			_, _ = v.mw.InodeUnlink_ll(context.Background(), tempInodeInfo.Inode)
 			log.LogWarnf("WritePart: evict part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
 				v.name, path, multipartId, partId, tempInodeInfo.Inode)
-			_ = v.mw.Evict(context.Background(), tempInodeInfo.Inode)
+			_ = v.mw.Evict(context.Background(), tempInodeInfo.Inode, false)
 		}
 	}()
 
@@ -880,7 +880,7 @@ func (v *Volume) AbortMultipart(path string, multipartID string) (err error) {
 		}
 		log.LogWarnf("AbortMultipart: evict part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
 			v.name, path, multipartID, part.ID, part.Inode)
-		if err = v.mw.Evict(context.Background(), part.Inode); err != nil {
+		if err = v.mw.Evict(context.Background(), part.Inode, false); err != nil {
 			log.LogErrorf("AbortMultipart: meta inode evict fail: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) err(%v)",
 				v.name, path, multipartID, part.ID, part.Inode, err)
 		}
@@ -1170,7 +1170,7 @@ func (v *Volume) applyInodeToExistDentry(parentID uint64, name string, inode uin
 	}
 
 	log.LogWarnf("applyInodeToExistDentry: evict inode: volume(%v) inode(%v)", v.name, oldInode)
-	if err = v.mw.Evict(context.Background(), oldInode); err != nil {
+	if err = v.mw.Evict(context.Background(), oldInode, false); err != nil {
 		log.LogWarnf("applyInodeToExistDentry: evict inode fail: volume(%v) inode(%v) err(%v)",
 			v.name, oldInode, err)
 	}
@@ -2145,7 +2145,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			_, _ = v.mw.InodeUnlink_ll(context.Background(), tInodeInfo.Inode)
 			log.LogWarnf("CopyFile: evict target temp inode: volume(%v) path(%v) inode(%v)",
 				v.name, targetPath, tInodeInfo.Inode)
-			_ = v.mw.Evict(context.Background(), tInodeInfo.Inode)
+			_ = v.mw.Evict(context.Background(), tInodeInfo.Inode, false)
 		}
 	}()
 	if err = v.ec.OpenStream(tInodeInfo.Inode); err != nil {

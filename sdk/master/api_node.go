@@ -17,6 +17,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/log"
 	"net/http"
 	"strconv"
 
@@ -87,6 +88,7 @@ func (api *NodeAPI) ResponseMetaNodeTask(task *proto.AdminTask) (err error) {
 	var request = newAPIRequest(http.MethodPost, proto.GetMetaNodeTaskResponse)
 	request.addBody(encoded)
 	if _, err = api.mc.serveRequest(request); err != nil {
+		log.LogErrorf("serveRequest: %v", err.Error())
 		return
 	}
 	return

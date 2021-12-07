@@ -19,8 +19,10 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -76,13 +78,13 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmUnlinkInode(ino)
+		resp = mp.fsmUnlinkInode(ino, msg.Timestamp, msg.TrashEnable)
 	case opFSMUnlinkInodeBatch:
 		inodes, err := InodeBatchUnmarshal(ctx, msg.V)
 		if err != nil {
 			return nil, err
 		}
-		resp = mp.fsmUnlinkInodeBatch(inodes)
+		resp = mp.fsmUnlinkInodeBatch(inodes, msg.Timestamp, msg.TrashEnable)
 	case opFSMExtentTruncate:
 		mp.monitorData[statistics.ActionMetaTruncate].UpdateData(0)
 
@@ -104,13 +106,13 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmEvictInode(ino)
+		resp = mp.fsmEvictInode(ino, msg.Timestamp, msg.TrashEnable)
 	case opFSMEvictInodeBatch:
 		inodes, err := InodeBatchUnmarshal(ctx, msg.V)
 		if err != nil {
 			return nil, err
 		}
-		resp = mp.fsmBatchEvictInode(inodes)
+		resp = mp.fsmBatchEvictInode(inodes, msg.Timestamp, msg.TrashEnable)
 	case opFSMSetAttr:
 		req := &SetattrRequest{}
 		err = json.Unmarshal(msg.V, req)
@@ -133,19 +135,19 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmDeleteDentry(den, false)
+		resp = mp.fsmDeleteDentry(den, msg.Timestamp, msg.From, false, msg.TrashEnable)
 	case opFSMDeleteDentryBatch:
 		db, err := DentryBatchUnmarshal(msg.V)
 		if err != nil {
 			return nil, err
 		}
-		resp = mp.fsmBatchDeleteDentry(db)
+		resp = mp.fsmBatchDeleteDentry(db, msg.Timestamp, msg.From, msg.TrashEnable)
 	case opFSMUpdateDentry:
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmUpdateDentry(den)
+		resp = mp.fsmUpdateDentry(den, msg.Timestamp, msg.From, msg.TrashEnable)
 	case opFSMUpdatePartition:
 		req := &UpdatePartitionReq{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
@@ -172,14 +174,18 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		inodeTree := mp.getInodeTree()
 		dentryTree := mp.getDentryTree()
 		extendTree := mp.extendTree.GetTree()
+		dentryDeletedTree := mp.dentryDeletedTree.GetTree()
+		inodeDeletedTree := mp.inodeDeletedTree.GetTree()
 		multipartTree := mp.multipartTree.GetTree()
 		msg := &storeMsg{
-			command:       opFSMStoreTick,
-			applyIndex:    index,
-			inodeTree:     inodeTree,
-			dentryTree:    dentryTree,
-			extendTree:    extendTree,
-			multipartTree: multipartTree,
+			command:           opFSMStoreTick,
+			applyIndex:        index,
+			inodeTree:         inodeTree,
+			dentryTree:        dentryTree,
+			extendTree:        extendTree,
+			multipartTree:     multipartTree,
+			dentryDeletedTree: dentryDeletedTree,
+			inodeDeletedTree:  inodeDeletedTree,
 		}
 		mp.storeChan <- msg
 	case opFSMInternalDeleteInode:
@@ -222,6 +228,85 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if cursor > mp.config.Cursor {
 			mp.config.Cursor = cursor
 		}
+
+	case opFSMCleanExpiredDentry:
+		var batch DeletedDentryBatch
+		batch, err = DeletedDentryBatchUnmarshal(msg.V)
+		if err != nil {
+			return
+		}
+		resp = mp.fsmCleanExpiredDentry(batch)
+	case opFSMCleanExpiredInode:
+		var batch FSMDeletedINodeBatch
+		batch, err = FSMDeletedINodeBatchUnmarshal(msg.V)
+		if err != nil {
+			log.LogError(err.Error())
+			return
+		}
+		resp = mp.fsmCleanExpiredInode(batch)
+	case opFSMRecoverDeletedInode:
+		ino := new(FSMDeletedINode)
+		err = ino.Unmarshal(msg.V)
+		if err != nil {
+			log.LogError(err.Error())
+			return
+		}
+		resp = mp.fsmRecoverDeletedInode(ino)
+
+	case opFSMBatchRecoverDeletedInode:
+		var batch FSMDeletedINodeBatch
+		batch, err = FSMDeletedINodeBatchUnmarshal(msg.V)
+		if err != nil {
+			log.LogError(err.Error())
+			return
+		}
+		resp = mp.fsmBatchRecoverDeletedInode(batch)
+	case opFSMBatchRecoverDeletedDentry:
+		var batch DeletedDentryBatch
+		batch, err = DeletedDentryBatchUnmarshal(msg.V)
+		if err != nil {
+			return
+		}
+		resp = mp.fsmBatchRecoverDeletedDentry(batch)
+	case opFSMRecoverDeletedDentry:
+		ddentry := new(DeletedDentry)
+		err = ddentry.Unmarshal(msg.V)
+		if err != nil {
+			return
+		}
+		resp = mp.fsmRecoverDeletedDentry(ddentry)
+	case opFSMCleanDeletedInode:
+		di := NewFSMDeletedINode(0)
+		err = di.Unmarshal(msg.V)
+		if err != nil {
+			log.LogError(err.Error())
+			return
+		}
+		resp = mp.fsmCleanDeletedInode(di)
+	case opFSMBatchCleanDeletedInode:
+		var inos FSMDeletedINodeBatch
+		inos, err = FSMDeletedINodeBatchUnmarshal(msg.V)
+		if err != nil {
+			log.LogError(err.Error())
+			return
+		}
+		resp = mp.fsmBatchCleanDeletedInode(inos)
+	case opFSMCleanDeletedDentry:
+		ddentry := new(DeletedDentry)
+		err = ddentry.Unmarshal(msg.V)
+		if err != nil {
+			return
+		}
+		resp = mp.fsmCleanDeletedDentry(ddentry)
+	case opFSMBatchCleanDeletedDentry:
+		var batch DeletedDentryBatch
+		batch, err = DeletedDentryBatchUnmarshal(msg.V)
+		if err != nil {
+			return
+		}
+		resp = mp.fsmBatchCleanDeletedDentry(batch)
+	case opFSMInternalCleanDeletedInode:
+		err = mp.internalClean(msg.V)
 	}
 
 	return
@@ -288,14 +373,24 @@ func (mp *metaPartition) Snapshot() (snap raftproto.Snapshot, err error) {
 // ApplySnapshot applies the given snapshots.
 func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.SnapIterator) (err error) {
 	var (
-		data          []byte
-		index         int
-		appIndexID    uint64
-		cursor        uint64
-		inodeTree     = NewBtree()
-		dentryTree    = NewBtree()
-		extendTree    = NewBtree()
-		multipartTree = NewBtree()
+		data                   []byte
+		index                  int
+		appIndexID             uint64
+		cursor                 uint64
+		inodeTree              = NewBtree()
+		dentryTree             = NewBtree()
+		extendTree             = NewBtree()
+		multipartTree          = NewBtree()
+		inodeDeletedTree       = NewBtree()
+		dentryDeletedTree      = NewBtree()
+		wg                     sync.WaitGroup
+		inodeBatchCh           = make(chan InodeBatch, 128)
+		dentryBatchCh          = make(chan DentryBatch, 128)
+		multipartBatchCh       = make(chan MultipartBatch, 128)
+		extendBatchCh          = make(chan ExtendBatch, 128)
+		snapshotSign           = crc32.NewIEEE()
+		snapshotCrcStoreSuffix = "snapshotCrc"
+		leaderCrc              uint32
 	)
 	defer func() {
 		if err == ErrSnapShotEOF {
@@ -310,12 +405,14 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			err = nil
 			// store message
 			mp.storeChan <- &storeMsg{
-				command:       opFSMStoreTick,
-				applyIndex:    mp.applyID,
-				inodeTree:     mp.inodeTree,
-				dentryTree:    mp.dentryTree,
-				extendTree:    mp.extendTree,
-				multipartTree: mp.multipartTree,
+				command:           opFSMStoreTick,
+				applyIndex:        mp.applyID,
+				inodeTree:         mp.inodeTree,
+				dentryTree:        mp.dentryTree,
+				extendTree:        mp.extendTree,
+				inodeDeletedTree:  mp.inodeDeletedTree,
+				dentryDeletedTree: mp.dentryDeletedTree,
+				multipartTree:     mp.multipartTree,
 			}
 			mp.extReset <- struct{}{}
 			log.LogDebugf("ApplySnapshot: finish with EOF: partitionID(%v) applyID(%v),cursor(%v)", mp.config.PartitionId, mp.applyID, mp.config.Cursor)
@@ -365,6 +462,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			}
 			inodeTree.ReplaceOrInsert(ino, true)
 			log.LogDebugf("ApplySnapshot: create inode: partitonID(%v) inode(%v).", mp.config.PartitionId, ino)
+
 		case opFSMCreateDentry:
 			dentry := &Dentry{}
 			if mp.marshalVersion == MetaPartitionMarshVersion2 {
@@ -400,8 +498,67 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				log.LogErrorf("ApplySnapshot: write snap extent delete file fail: partitionID(%v) err(%v)",
 					mp.config.PartitionId, err)
 			}
-			log.LogDebugf("ApplySnapshot: write snap extent delete file: partitonID(%v) filename(%v).",
+			log.LogDebugf("ApplySnapshot: write snap extent delete file: partitionID(%v) filename(%v).",
 				mp.config.PartitionId, fileName)
+			lenData := make([]byte, 4)
+			binary.BigEndian.PutUint32(lenData, uint32(len(data)))
+			if _, err = snapshotSign.Write(lenData); err != nil {
+				log.LogWarnf("create CRC for snapshotCheck failed, err is :%v", err)
+			}
+			if _, err = snapshotSign.Write(data); err != nil {
+				log.LogWarnf("create CRC for snapshotCheck failed, err is :%v", err)
+			}
+		case opFSMBatchCreate:
+			var mulItems *MulItems
+			mulItems, err = MulItemsUnmarshal(ctx, snap.V)
+			if err != nil {
+				return
+			}
+			inodeBatchCh <- mulItems.InodeBatches
+			dentryBatchCh <- mulItems.DentryBatches
+			multipartBatchCh <- mulItems.MultipartBatches
+			extendBatchCh <- mulItems.ExtendBatches
+			lenData := make([]byte, 4)
+			binary.BigEndian.PutUint32(lenData, uint32(len(data)))
+			if _, err = snapshotSign.Write(lenData); err != nil {
+				log.LogWarnf("create CRC for snapshotCheck failed, err is :%v", err)
+			}
+			if _, err = snapshotSign.Write(data); err != nil {
+				log.LogWarnf("create CRC for snapshotCheck failed, err is :%v", err)
+			}
+		case opFSMSnapShotCrc:
+			leaderCrc = binary.BigEndian.Uint32(snap.V)
+		case opFSMCreateDeletedDentry:
+			ddentry := new(DeletedDentry)
+			err = ddentry.UnmarshalKey(snap.K)
+			if err != nil {
+				return
+			}
+			err = ddentry.UnmarshalValue(snap.V)
+			if err != nil {
+				return
+			}
+			_, ok := dentryDeletedTree.ReplaceOrInsert(ddentry, true)
+			if !ok {
+				log.LogErrorf("ApplySnapshot: create deleted dentry: partitionID(%v) dentry(%v)", mp.config.PartitionId, ddentry)
+			}
+			log.LogDebugf("ApplySnapshot: create deleted dentry: partitionID(%v) dentry(%v)", mp.config.PartitionId, ddentry)
+
+		case opFSMCreateDeletedInode:
+			dino := new(DeletedINode)
+			err = dino.UnmarshalKey(snap.K)
+			if err != nil {
+				return
+			}
+			err = dino.UnmarshalValue(ctx, snap.V)
+			if err != nil {
+				return
+			}
+			_, ok := inodeDeletedTree.ReplaceOrInsert(dino, true)
+			if !ok {
+				log.LogErrorf("ApplySnapshot: create deleted inode: partitionID(%v) inode(%v).", mp.config.PartitionId, dino)
+			}
+			log.LogDebugf("ApplySnapshot: create deleted inode: partitionID(%v) inode(%v).", mp.config.PartitionId, dino)
 		default:
 			err = fmt.Errorf("unknown op=%d", snap.Op)
 			return
@@ -462,8 +619,35 @@ func (mp *metaPartition) submit(ctx context.Context, op uint32, from string, dat
 		snap.V = data
 	}
 	snap.From = from
-	snap.Timestamp = time.Now().Unix()
+	snap.Timestamp = time.Now().UnixNano() / 1000
+	snap.TrashEnable = false
 
+	cmd, err := snap.MarshalJson()
+	if err != nil {
+		return
+	}
+
+	// submit to the raft store
+	resp, err = mp.raftPartition.SubmitWithCtx(ctx, cmd)
+
+	return
+}
+
+func (mp *metaPartition) submitTrash(ctx context.Context, op uint32, from string, data []byte) (resp interface{}, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("metaPartition.submitTrash").
+		SetTag("op", op).
+		SetTag("size", len(data))
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
+	snap := NewMetaItem(0, nil, nil)
+	snap.Op = op
+	if data != nil {
+		snap.V = data
+	}
+	snap.From = from
+	snap.Timestamp = time.Now().UnixNano() / 1000
+	snap.TrashEnable = true
 	cmd, err := snap.MarshalJson()
 	if err != nil {
 		return

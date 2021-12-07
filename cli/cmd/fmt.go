@@ -119,6 +119,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Quorum               : %v\n", svv.Quorum))
 	sb.WriteString(fmt.Sprintf("  Auto repair          : %v\n", formatEnabledDisabled(svv.AutoRepair)))
 	sb.WriteString(fmt.Sprintf("  Volume write mutex   : %v\n", formatEnabledDisabled(svv.VolWriteMutexEnable)))
+	sb.WriteString(fmt.Sprintf("  Trash remaining days : %v\n", svv.TrashRemainingDays))
 	sb.WriteString(fmt.Sprintf("  Inode count          : %v\n", svv.InodeCount))
 	sb.WriteString(fmt.Sprintf("  Dentry count         : %v\n", svv.DentryCount))
 	sb.WriteString(fmt.Sprintf("  Max metaPartition ID : %v\n", svv.MaxMetaPartitionID))
@@ -135,7 +136,10 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  writable mp count    : %v\n", svv.RwMpCnt))
 	sb.WriteString(fmt.Sprintf("  writable dp count    : %v\n", svv.RwDpCnt))
 	sb.WriteString(fmt.Sprintf("  min writable mp num  : %v\n", svv.MinWritableMPNum))
-	sb.WriteString(fmt.Sprintf("  min writable dp num  : %v", svv.MinWritableDPNum))
+	sb.WriteString(fmt.Sprintf("  min writable dp num  : %v\n", svv.MinWritableDPNum))
+	sb.WriteString(fmt.Sprintf("  Default store mode   : %v\n", svv.DefaultStoreMode.Str()))
+	sb.WriteString(fmt.Sprintf("  Convert state        : %v\n", svv.ConvertState.Str()))
+	sb.WriteString(fmt.Sprintf("  Meta layout          : %3d%% - %3d%%", svv.MpLayout.PercentOfMP, svv.MpLayout.PercentOfReplica))
 	return sb.String()
 }
 
@@ -353,9 +357,9 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 }
 
 var (
-	metaPartitionTablePattern = "%-8v    %-12v    %-12v    %-12v    %-12v    %-12v    %-12v    %-10v    %-20v    %-18v"
+	metaPartitionTablePattern = "%-8v    %-12v    %-12v    %-12v    %-12v    %-12v    %-12v    %-10v    %-10v    %-20v    %-18v"
 	metaPartitionTableHeader  = fmt.Sprintf(metaPartitionTablePattern,
-		"ID", "MAX INODE", "DENTRY COUNT", "INODE COUNT", "START", "END", "MAX EXIST INO", "STATUS", "LEADER", "MEMBERS")
+		"ID", "MAX INODE", "DENTRY COUNT", "INODE COUNT", "START", "END", "MAX EXIST INO", "STATUS", "STOREMODE", "LEADER", "MEMBERS")
 	metaPartitionSnapshotCrcInfoTablePattern      = "%-12v    %-12v    %-18v    %-12v    %-12v\n"
 	metaPartitionSnapshotCrcInfoTableHeader = fmt.Sprintf(metaPartitionSnapshotCrcInfoTablePattern, "LocalAddr", "Role",
 		"SnapshotCreateTime", "  LeaderCrc", "  FollowerCrc")
@@ -371,7 +375,7 @@ func formatMetaPartitionTableRow(view *proto.MetaPartitionView) string {
 	return fmt.Sprintf(metaPartitionTablePattern,
 		view.PartitionID, view.MaxInodeID, view.DentryCount, view.InodeCount, view.Start, rangeToString(view.End),
 		view.MaxExistIno, formatMetaPartitionStatus(view.Status),
-		view.LeaderAddr, strings.Join(view.Members, ","))
+		view.StoreMode.Str(), view.LeaderAddr, strings.Join(view.Members, ","))
 }
 
 var (
@@ -533,22 +537,24 @@ func formatDataReplica(indentation string, replica *proto.DataReplica, rowTable 
 	return sb.String()
 }
 
-var metaReplicaTableRowPattern = "%-20v    %-8v    %-10v    %-20v    %-8v"
+var metaReplicaTableRowPattern = "%-20v    %-8v    %-10v    %-10v    %-20v    %-10v    %-12v"
 
 func formatMetaReplicaTableHeader() string {
-	return fmt.Sprintf(metaReplicaTableRowPattern, "ADDRESS", "ISLEADER", "STATUS", "REPORT TIME", "ISLEARNER")
+	return fmt.Sprintf(metaReplicaTableRowPattern, "ADDRESS", "ISLEADER", "APPLY ID", "STATUS", "STORE MODE", "REPORT TIME", "ISLEARNER")
 }
 
 func formatMetaReplica(indentation string, replica *proto.MetaReplicaInfo, rowTable bool) string {
 	if rowTable {
-		return fmt.Sprintf(metaReplicaTableRowPattern, replica.Addr, replica.IsLeader, formatMetaPartitionStatus(replica.Status),
-			formatTime(replica.ReportTime), replica.IsLearner)
+		return fmt.Sprintf(metaReplicaTableRowPattern, replica.Addr, replica.IsLeader, replica.ApplyId,
+			formatMetaPartitionStatus(replica.Status), replica.StoreMode.Str(), formatTime(replica.ReportTime), replica.IsLearner)
 	}
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("%v- Addr           : %v\n", indentation, replica.Addr))
 	sb.WriteString(fmt.Sprintf("%v  Status         : %v\n", indentation, formatMetaPartitionStatus(replica.Status)))
 	sb.WriteString(fmt.Sprintf("%v  IsLeader       : %v\n", indentation, replica.IsLeader))
 	sb.WriteString(fmt.Sprintf("%v  IsLearner      : %v\n", indentation, replica.IsLearner))
+	sb.WriteString(fmt.Sprintf("%v  Apply Id       : %v\n", indentation, replica.ApplyId))
+	sb.WriteString(fmt.Sprintf("%v  Store Mode     : %v\n", indentation, replica.StoreMode.Str()))
 	sb.WriteString(fmt.Sprintf("%v  ReportTime     : %v\n", indentation, formatTime(replica.ReportTime)))
 	return sb.String()
 }
@@ -667,6 +673,178 @@ var (
 
 func formatMonitorQueryData(data *proto.QueryData) string {
 	return fmt.Sprintf(monitorQueryDataTableRowPattern, data.Pid, data.Vol, data.IP, data.Op, data.Count, data.Size/1024/1024)
+}
+
+func formatConvertProcessorInfo(processors []*proto.ConvertProcessorInfo) string {
+	ProcessorInfoRowPattern  := "    %-10v    %-10v    %-10v\n"
+	ProcessorInfoTableHeader := fmt.Sprintf(ProcessorInfoRowPattern, "ID", "STATE", "COUNT")
+
+	sb := strings.Builder{}
+	sb.WriteString(ProcessorInfoTableHeader)
+	for _, p := range processors {
+		sb.WriteString(fmt.Sprintf(ProcessorInfoRowPattern, p.Id, p.State, p.Count))
+	}
+
+	return sb.String()
+}
+
+func formatConvertClusterInfo(clusters []*proto.ConvertClusterInfo) string {
+	clusterRowPattern  := "    %-10v    %-10v\n"
+	clusterTableHeader := fmt.Sprintf(clusterRowPattern, "NAME", "NODES")
+
+	sb := strings.Builder{}
+	sb.WriteString(clusterTableHeader)
+	for _, c := range clusters {
+		nodes := strings.Builder{}
+		for index, node := range c.Nodes {
+			if index != 0 {
+				nodes.WriteString(",")
+			}
+			nodes.WriteString(node)
+
+		}
+		sb.WriteString(fmt.Sprintf(clusterRowPattern, c.ClusterName, nodes.String()))
+	}
+
+	return sb.String()
+}
+
+func formatConvertTaskTable(tasks []*proto.ConvertTaskInfo) string {
+	taskRowPattern  := "    %-10v    %-10v    %-10v    %-10v    %-10v    %-10v    %-10v\n"
+	taskTableHeader := fmt.Sprintf(taskRowPattern, "CLUSTER", "VOLNAME", "PROCESSORID", "CONMPNUM", "FINMPNUM", "RUNNINGMPID", "LAYOUT")
+
+	sb := strings.Builder{}
+	sb.WriteString(taskTableHeader)
+	for _, task := range tasks {
+		sb.WriteString(fmt.Sprintf(taskRowPattern, task.ClusterName, task.VolName, task.ProcessorID, len(task.SelectedMP),
+			len(task.FinishedMP), task.RunningMP,
+			fmt.Sprintf("%d_%d", task.Layout.PercentOfMP, task.Layout.PercentOfReplica)))
+	}
+
+	return sb.String()
+}
+
+func formatConvertNodesData(data *proto.ConvertNodeViewInfo) string {
+	var sb = strings.Builder{}
+	sb.WriteString(fmt.Sprintf("  Port                : %v\n", data.Port))
+	sb.WriteString(fmt.Sprintf("  Cluster   Num       : %v\n", len(data.Clusters)))
+	sb.WriteString(fmt.Sprintf("  Processor Num       : %v\n", len(data.Processors)))
+	sb.WriteString(fmt.Sprintf("  Task      Num       : %v\n", len(data.Tasks)))
+	sb.WriteString("\n  Clusters   Info     :\n")
+	sb.WriteString(formatConvertClusterInfo(data.Clusters))
+	sb.WriteString("\n  Processors   Info   :\n")
+	sb.WriteString(formatConvertProcessorInfo(data.Processors))
+	sb.WriteString("\n  Tasks   Info        :\n")
+	sb.WriteString(formatConvertTaskTable(data.Tasks))
+	return sb.String()
+
+}
+
+func formatConvertClusterDetailInfo(cluster *proto.ConvertClusterDetailInfo) string {
+	var sb = strings.Builder{}
+
+	sb.WriteString("[Cluster]\n")
+	sb.WriteString(fmt.Sprintf("  Name                : %v\n", cluster.Cluster.ClusterName))
+	for index, node := range cluster.Cluster.Nodes {
+		sb.WriteString(fmt.Sprintf("  Nodes%-02d             : %v\n",  index, node))
+	}
+	sb.WriteString(fmt.Sprintf("  Task Count          : %v\n", len(cluster.Tasks)))
+	sb.WriteString("\n  Tasks   Info        :\n")
+	sb.WriteString(formatConvertTaskTable(cluster.Tasks))
+
+	return sb.String()
+}
+
+func formatConvertProcessorDetailInfo(processor *proto.ConvertProcessorDetailInfo) string {
+	var sb = strings.Builder{}
+
+	sb.WriteString("[Processor]\n")
+	sb.WriteString(fmt.Sprintf("  Id                  : %v\n", processor.Processor.Id))
+	sb.WriteString(fmt.Sprintf("  State               : %s\n", processor.Processor.StateStr()))
+	sb.WriteString(fmt.Sprintf("  Count               : %v\n", processor.Processor.Count))
+
+
+	sb.WriteString("\n  Tasks   Info        :\n")
+	sb.WriteString(formatConvertTaskTable(processor.Tasks))
+
+	return sb.String()
+}
+
+func formatConvertTaskSelMP(task *proto.ConvertTaskInfo) string {
+	var sb = strings.Builder{}
+	for index, mpId := range task.SelectedMP {
+		if index != 0 && index % 5 == 0 {
+			sb.WriteString("\n                        ")
+		}
+		sb.WriteString(fmt.Sprintf("%-5d", mpId))
+	}
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+func formatConvertTaskFinMP(task *proto.ConvertTaskInfo) string {
+	var sb = strings.Builder{}
+	for index, mpId := range task.FinishedMP {
+		if index != 0 && index % 5 == 0 {
+			sb.WriteString("\n                        ")
+		}
+		sb.WriteString(fmt.Sprintf("%-5d", mpId))
+	}
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+func formatConvertTaskIgnMP(task *proto.ConvertTaskInfo) string {
+	var sb = strings.Builder{}
+	for index, mpId := range task.IgnoredMP {
+		if index != 0 && index % 5 == 0 {
+			sb.WriteString("\n                        ")
+		}
+		sb.WriteString(fmt.Sprintf("%-5d", mpId))
+	}
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+func formatConvertTaskDetailInfo(task *proto.ConvertTaskInfo) string {
+	var sb = strings.Builder{}
+
+	sb.WriteString("[ConvertTask]\n")
+	sb.WriteString(fmt.Sprintf("  Cluster Name        : %v\n", task.ClusterName))
+	sb.WriteString(fmt.Sprintf("  Volume  Name        : %v\n", task.VolName))
+	sb.WriteString(fmt.Sprintf("  Processor Id        : %v\n", task.ProcessorID))
+	sb.WriteString(fmt.Sprintf("  State               : %v\n", task.TaskState.Str()))
+	sb.WriteString(fmt.Sprintf("  Layout              : %v\n", fmt.Sprintf("%d_%d", task.Layout.PercentOfMP, task.Layout.PercentOfReplica)))
+	sb.WriteString(fmt.Sprintf("  Running MP Id       : %v\n", task.RunningMP))
+
+	sb.WriteString("  Selected MPs Id     : ")
+	sb.WriteString(formatConvertTaskSelMP(task))
+
+	sb.WriteString("  Finished MPs Id     : ")
+	sb.WriteString(formatConvertTaskFinMP(task))
+
+	sb.WriteString("  Ignored  MPs Id     : ")
+	sb.WriteString(formatConvertTaskIgnMP(task))
+
+	sb.WriteString(fmt.Sprintf("  Error  Msg          : %v\n", task.ErrMsg))
+
+	return sb.String()
+}
+
+func formatConvertDetailInfo(data interface{}, objType string) string{
+	var sb = strings.Builder{}
+	switch objType {
+	case "cluster":
+		sb.WriteString(formatConvertClusterDetailInfo(data.(*proto.ConvertClusterDetailInfo)))
+	case "task":
+		sb.WriteString(formatConvertTaskDetailInfo(data.(*proto.ConvertTaskInfo)))
+	case "processor":
+		sb.WriteString(formatConvertProcessorDetailInfo(data.(*proto.ConvertProcessorDetailInfo)))
+	default:
+		sb.WriteString(fmt.Sprintf("unknown objtype[%s]\n", objType))
+	}
+
+	return sb.String()
 }
 
 func contains(arr []string, element string) (ok bool) {

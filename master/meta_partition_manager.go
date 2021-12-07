@@ -217,6 +217,7 @@ func (c *Cluster) fulfillMetaReplica(partitionID uint64, badAddr string) (isPush
 	var (
 		newPeer   proto.Peer
 		partition *MetaPartition
+		vol 	  *Vol
 		err       error
 	)
 	defer func() {
@@ -241,7 +242,10 @@ func (c *Cluster) fulfillMetaReplica(partitionID uint64, badAddr string) (isPush
 	if newPeer, err = c.chooseTargetMetaPartitionHost(badAddr, partition); err != nil {
 		return
 	}
-	if err = c.addMetaReplica(partition, newPeer.Addr); err != nil {
+	if vol, err = c.getVol(partition.volName); err != nil {
+		return
+	}
+	if err = c.addMetaReplica(partition, newPeer.Addr, vol.DefaultStoreMode); err != nil {
 		return
 	}
 	newPanicHost := make([]string, 0)

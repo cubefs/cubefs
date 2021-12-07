@@ -37,6 +37,7 @@ const (
 	AdminPromoteDataReplicaLearner = "/dataLearner/promote"
 	AdminDeleteVol                 = "/vol/delete"
 	AdminUpdateVol                 = "/vol/update"
+	AdminSetVolConvertSt           = "/vol/setConvertSate"
 	AdminCreateVol                 = "/admin/createVol"
 	AdminGetVol                    = "/admin/getVol"
 	AdminClusterFreeze             = "/cluster/freeze"
@@ -56,6 +57,8 @@ const (
 	AdminGetVolMutex               = "/vol/writeMutex/get"
 	AdminSetVolConvertMode         = "/vol/setConvertMode"
 	AdminSetVolMinRWPartition      = "/vol/setMinRWPartition"
+	AdminEnableTrash               = "/admin/trash"
+	AdminStatTrash                 = "/admin/trash/stat"
 
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
@@ -101,6 +104,7 @@ const (
 	AdminDecommissionMetaPartition = "/metaPartition/decommission"
 	AdminAddMetaReplica            = "/metaReplica/add"
 	AdminDeleteMetaReplica         = "/metaReplica/delete"
+	AdminSelectMetaReplicaNode     = "/metaReplica/selectNode"
 	AdminAddMetaReplicaLearner     = "/metaLearner/add"
 	AdminPromoteMetaReplicaLearner = "/metaLearner/promote"
 
@@ -257,6 +261,7 @@ type ClusterInfo struct {
 	// MUST keep for old version client
 	ClientReadLimitRate  uint64
 	ClientWriteLimitRate uint64
+	//TrashEnable          bool
 }
 
 type LimitInfo struct {
@@ -498,6 +503,8 @@ type MetaPartitionReport struct {
 	DentryCnt       uint64
 	IsLearner       bool
 	ExistMaxInodeID uint64
+	StoreMode       StoreMode
+	ApplyId         uint64
 }
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.
@@ -507,6 +514,7 @@ type MetaNodeHeartbeatResponse struct {
 	Used                 uint64
 	MetaPartitionReports []*MetaPartitionReport
 	Status               uint8
+	ProfPort             string
 	Result               string
 }
 
@@ -621,6 +629,9 @@ type MetaPartitionView struct {
 	Learners    []string
 	LeaderAddr  string
 	Status      int8
+	StoreMode   StoreMode
+	MemCount    uint8
+	RocksCount  uint8
 }
 
 type OSSSecure struct {
@@ -722,6 +733,10 @@ type SimpleVolView struct {
 	RwMpCnt              int
 	MinWritableMPNum     int
 	MinWritableDPNum     int
+	TrashRemainingDays   uint32
+	DefaultStoreMode     StoreMode
+	ConvertState         VolConvertState
+	MpLayout             MetaPartitionLayout
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -731,22 +746,24 @@ type MasterAPIAccessResp struct {
 }
 
 type VolInfo struct {
-	Name       string
-	Owner      string
-	CreateTime int64
-	Status     uint8
-	TotalSize  uint64
-	UsedSize   uint64
+	Name               string
+	Owner              string
+	CreateTime         int64
+	Status             uint8
+	TotalSize          uint64
+	UsedSize           uint64
+	TrashRemainingDays uint32
 }
 
-func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64) *VolInfo {
+func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64, remainingDays uint32) *VolInfo {
 	return &VolInfo{
-		Name:       name,
-		Owner:      owner,
-		CreateTime: createTime,
-		Status:     status,
-		TotalSize:  totalSize,
-		UsedSize:   usedSize,
+		Name:               name,
+		Owner:              owner,
+		CreateTime:         createTime,
+		Status:             status,
+		TotalSize:          totalSize,
+		UsedSize:           usedSize,
+		TrashRemainingDays: remainingDays,
 	}
 }
 
@@ -804,4 +821,8 @@ func (config *ConnConfig) String() string {
 	}
 	return fmt.Sprintf("IdleTimeout(%v)s ConnectTimeout(%v)ns WriteTimeout(%v)ns ReadTimeout(%v)ns",
 		config.IdleTimeoutSec, config.ConnectTimeoutNs, config.WriteTimeoutNs, config.ReadTimeoutNs)
+}
+
+type TrashStatus struct {
+	Enable bool
 }

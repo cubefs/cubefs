@@ -52,6 +52,8 @@ type CreateMetaPartitionRequest struct {
 	PartitionID uint64
 	Members     []Peer
 	Learners    []Learner
+	StoreMode   StoreMode
+	TrashDays   uint32
 }
 
 // CreateMetaPartitionResponse defines the response to the request of creating a meta partition.

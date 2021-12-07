@@ -160,6 +160,7 @@ type UnlinkInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
+	TrashEnable bool   `json:"trash"`
 }
 
 // UnlinkInodeRequest defines the request to unlink an inode.
@@ -167,6 +168,7 @@ type BatchUnlinkInodeRequest struct {
 	VolName     string   `json:"vol"`
 	PartitionID uint64   `json:"pid"`
 	Inodes      []uint64 `json:"inos"`
+	TrashEnable bool     `json:"trash"`
 }
 
 // UnlinkInodeResponse defines the response to the request of unlinking an inode.
@@ -187,6 +189,7 @@ type EvictInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
+	TrashEnable bool   `json:"trash"`
 }
 
 // EvictInodeRequest defines the request to evict some inode.
@@ -194,6 +197,7 @@ type BatchEvictInodeRequest struct {
 	VolName     string   `json:"vol"`
 	PartitionID uint64   `json:"pid"`
 	Inodes      []uint64 `json:"inos"`
+	TrashEnable bool     `json:"trash"`
 }
 
 // CreateDentryRequest defines the request to create a dentry.
@@ -226,12 +230,14 @@ type DeleteDentryRequest struct {
 	PartitionID uint64 `json:"pid"`
 	ParentID    uint64 `json:"pino"`
 	Name        string `json:"name"`
+	TrashEnable bool   `json:"trash"`
 }
 
 type BatchDeleteDentryRequest struct {
 	VolName     string   `json:"vol"`
 	PartitionID uint64   `json:"pid"`
 	ParentID    uint64   `json:"pino"`
+	TrashEnable bool     `json:"trash"`
 	Dens        []Dentry `json:"dens"`
 }
 
@@ -254,6 +260,19 @@ type LookupRequest struct {
 	PartitionID uint64 `json:"pid"`
 	ParentID    uint64 `json:"pino"`
 	Name        string `json:"name"`
+}
+
+type LookupDeletedDentryRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	ParentID    uint64 `json:"pino"`
+	Name        string `json:"name"`
+	StartTime   int64  `json:"start_time"`
+	EndTime     int64  `json:"end_time"`
+}
+
+type LookupDeletedDentryResponse struct {
+	Dentrys []*DeletedDentry `json:"dentrys"`
 }
 
 // LookupResponse defines the response for the loopup request.
@@ -584,4 +603,196 @@ type MetaInode struct {
 
 func (ino MetaInode) String() string {
 	return fmt.Sprintf("Inode{Ino(%d),Type(%v),Size(%v),NLikn(%v)}", ino.Inode, ino.Type, ino.Size, ino.NLink)
+}
+type RecoverDeletedDentryRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	ParentID    uint64 `json:"pino"`
+	Name        string `json:"name"`
+	TimeStamp   int64  `json:"time"`
+	Inode       uint64 `json:"ino"`
+}
+
+type RecoverDeletedDentryResponse struct {
+	Inode uint64 `json:"ino"`
+	Name  string `json:"name"`
+}
+
+type BatchRecoverDeletedDentryRequest struct {
+	VolName     string           `json:"vol"`
+	PartitionID uint64           `json:"pid"`
+	Dens        []*DeletedDentry `json:"dens"`
+}
+
+type BatchRecoverDeletedDentryResponse struct {
+	Items map[uint64]uint8 `json:"items"` // key is inode, value is status
+}
+
+type RecoverDeletedInodeRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+}
+
+type BatchRecoverDeletedInodeRequest struct {
+	VolName     string   `json:"vol"`
+	PartitionID uint64   `json:"pid"`
+	Inodes      []uint64 `json:"inos"`
+}
+
+type BatchRecoverDeletedInodeResponse struct {
+	Res map[uint64]uint8 `json:"res"`
+}
+
+type CleanDeletedDentryRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	ParentID    uint64 `json:"pino"`
+	Name        string `json:"name"`
+	Timestamp   int64  `json:"time"`
+	Inode       uint64 `json:"ino"`
+}
+
+type BatchCleanDeletedDentryRequest struct {
+	VolName     string           `json:"vol"`
+	PartitionID uint64           `json:"pid"`
+	Dens        []*DeletedDentry `json:"dens"`
+}
+
+type CleanDeletedInodeRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+}
+
+type BatchCleanDeletedInodeRequest struct {
+	VolName     string   `json:"vol"`
+	PartitionID uint64   `json:"pid"`
+	Inodes      []uint64 `json:"inos"`
+}
+
+type BatchCleanDeletedInodeResponse struct {
+	Res map[uint64]uint8 `json:"res"`
+}
+
+const (
+	ReadDeletedDirBatchNum = 1000
+)
+
+type ReadDeletedDirRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	ParentID    uint64 `json:"pino"`
+	Name        string `json:"name"`
+	Timestamp   int64  `json:"ts"`
+}
+
+type DeletedDentry struct {
+	ParentID  uint64 `json:"pid"`
+	Name      string `json:"name"`
+	Inode     uint64 `json:"inode"`
+	Type      uint32 `json:"type"`
+	Timestamp int64  `json:"ts"`
+	From      string `json:"from"`
+}
+
+// String returns the string format of the dentry.
+func (d *DeletedDentry) String() string {
+	return fmt.Sprintf("Dentry{PID(%v) Name(%v),Inode(%v),Type(%v), DeleteTime(%v)}",
+		d.ParentID, d.Name, d.Inode, d.Type, d.Timestamp)
+}
+
+func (d *DeletedDentry) AppendTimestampToName() string {
+	timeStr := time.Unix(d.Timestamp/1000000, d.Timestamp%1000000*1000).Format("20060102150405.000000")
+	return fmt.Sprintf("%v_%v", d.Name, timeStr)
+}
+
+type ReadDeletedDirResponse struct {
+	Children []*DeletedDentry `json:"children"`
+}
+
+type CleanExpiredInodeRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	Expires     uint64 `json:"expires"`
+}
+
+type CleanExpiredDentryRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	Expires     uint64 `json:"expires"`
+}
+
+type StatDeletedFileInfoRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+}
+
+type StatDeletedFileInfoResponse struct {
+	StatInfo map[string]*DeletedFileInfo
+}
+
+type DeletedFileInfo struct {
+	InodeSum  uint64 `json:"inosum"`
+	DentrySum uint64 `json:"densum"`
+	Size      uint64 `json:"size"`
+}
+
+type DeletedInodeInfo struct {
+	Inode      uint64    `json:"ino"`
+	Mode       uint32    `json:"mode"`
+	Nlink      uint32    `json:"nlink"`
+	Size       uint64    `json:"sz"`
+	Uid        uint32    `json:"uid"`
+	Gid        uint32    `json:"gid"`
+	Generation uint64    `json:"gen"`
+	ModifyTime time.Time `json:"mt"`
+	CreateTime time.Time `json:"ct"`
+	AccessTime time.Time `json:"at"`
+	Target     []byte    `json:"tgt"`
+	expiration int64
+	DeleteTime int64 `json:"dt"`
+	IsDeleted  bool  `json:"isDel"`
+}
+
+func (info *DeletedInodeInfo) String() string {
+	return fmt.Sprintf("Inode(%v) Mode(%v) OsMode(%v) Nlink(%v) Size(%v) Uid(%v) Gid(%v) Gen(%v), Time(%v), IsDeleted(%v)",
+		info.Inode, info.Mode, OsMode(info.Mode), info.Nlink, info.Size, info.Uid, info.Gid, info.Generation, info.DeleteTime, info.IsDeleted)
+}
+
+type GetDeletedInodeRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+}
+
+type GetDeletedInodeResponse struct {
+	Info *DeletedInodeInfo `json:"info"`
+}
+
+type BatchGetDeletedInodeRequest struct {
+	VolName     string   `json:"vol"`
+	PartitionID uint64   `json:"pid"`
+	Inodes      []uint64 `json:"inos"`
+}
+type BatchGetDeletedInodeResponse struct {
+	Infos []*DeletedInodeInfo `json:"infos"`
+}
+
+type OpDeletedDentryRsp struct {
+	Status uint8          `json:"st"`
+	Den    *DeletedDentry `json:"den"`
+}
+
+type BatchOpDeletedDentryRsp struct {
+	Dens []*OpDeletedDentryRsp
+}
+
+type OpDeletedINodeRsp struct {
+	Status uint8             `json:"st"`
+	Inode  *DeletedInodeInfo `json:"ino"`
+}
+
+type BatchOpDeletedINodeRsp struct {
+	Inos []*OpDeletedINodeRsp `json:"inos"`
 }

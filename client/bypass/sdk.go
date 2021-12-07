@@ -1447,7 +1447,7 @@ func cfs_unlink(id C.int64_t, path *C.char) (re C.int) {
 	}
 
 	if info != nil {
-		c.mw.Evict(ctx, info.Inode)
+		c.mw.Evict(ctx, info.Inode, true)
 	}
 	return 0
 }

@@ -74,6 +74,7 @@ func (mp *metaPartition) getInode(ino *Inode) (resp *InodeResponse) {
 	resp.Status = proto.OpOk
 
 	if err := mp.isInoOutOfRange(ino.Inode); err != nil {
+		log.LogErrorf(err.Error())
 		resp.Status = proto.OpInodeOutOfRange
 		return
 	}
@@ -122,7 +123,7 @@ func (mp *metaPartition) Ascend(f func(i BtreeItem) bool) {
 }
 
 // fsmUnlinkInode delete the specified inode from inode tree.
-func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
+func (mp *metaPartition) fsmUnlinkInode(ino *Inode, timestamp int64, trashEnable bool) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
 
@@ -143,18 +144,22 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 	}
 
 	resp.Msg = inode
-
 	if inode.IsEmptyDir() {
-		mp.inodeTree.Delete(inode)
+		if trashEnable {
+			st := mp.mvToDeletedInodeTree(inode, timestamp)
+			log.LogDebugf("fsmUnlinkInode: inode: %v, status: %v", ino, st)
+		} else {
+			mp.inodeTree.Delete(inode)
+		}
 	}
 	inode.DecNLink()
 	return
 }
 
 // fsmUnlinkInode delete the specified inode from inode tree.
-func (mp *metaPartition) fsmUnlinkInodeBatch(ib InodeBatch) (resp []*InodeResponse) {
+func (mp *metaPartition) fsmUnlinkInodeBatch(ib InodeBatch, timestamp int64, trashEnable bool) (resp []*InodeResponse) {
 	for _, ino := range ib {
-		resp = append(resp, mp.fsmUnlinkInode(ino))
+		resp = append(resp, mp.fsmUnlinkInode(ino, timestamp, trashEnable))
 	}
 	return
 }
@@ -354,7 +359,7 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	return
 }
 
-func (mp *metaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
+func (mp *metaPartition) fsmEvictInode(ino *Inode, timestamp int64, trashEnable bool) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 
 	resp.Status = proto.OpOk
@@ -382,14 +387,19 @@ func (mp *metaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
 
 	if i.IsTempFile() {
 		i.SetDeleteMark()
-		mp.freeList.Push(i.Inode)
+		if trashEnable {
+			st := mp.mvToDeletedInodeTree(i, timestamp)
+			log.LogDebugf("fsmEvictInode: inode: %v, status: %v", ino, st)
+		} else {
+			mp.freeList.Push(i.Inode)
+		}
 	}
 	return
 }
 
-func (mp *metaPartition) fsmBatchEvictInode(ib InodeBatch) (resp []*InodeResponse) {
+func (mp *metaPartition) fsmBatchEvictInode(ib InodeBatch, timestamp int64, trashEnable bool) (resp []*InodeResponse) {
 	for _, ino := range ib {
-		resp = append(resp, mp.fsmEvictInode(ino))
+		resp = append(resp, mp.fsmEvictInode(ino, timestamp, trashEnable))
 	}
 	return
 }

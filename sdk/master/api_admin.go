@@ -185,12 +185,15 @@ func (api *AdminAPI) DecommissionDataPartition(dataPartitionID uint64, nodeAddr,
 	return
 }
 
-func (api *AdminAPI) DecommissionMetaPartition(metaPartitionID uint64, nodeAddr, destAddr string) (err error) {
+func (api *AdminAPI) DecommissionMetaPartition(metaPartitionID uint64, nodeAddr, destAddr string, storeMode int) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminDecommissionMetaPartition)
 	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
 	request.addParam("addr", nodeAddr)
 	if len(strings.TrimSpace(destAddr)) != 0 {
 		request.addParam("destAddr", destAddr)
+	}
+	if storeMode != 0 {
+		request.addParam("storeMode", strconv.Itoa(storeMode))
 	}
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -253,12 +256,16 @@ func (api *AdminAPI) DeleteMetaReplica(metaPartitionID uint64, nodeAddr string) 
 	return
 }
 
-func (api *AdminAPI) AddMetaReplica(metaPartitionID uint64, nodeAddr string, addReplicaType proto.AddReplicaType) (err error) {
+func (api *AdminAPI) AddMetaReplica(metaPartitionID uint64, nodeAddr string, addReplicaType proto.AddReplicaType,
+	storeMode int) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminAddMetaReplica)
 	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
 	request.addParam("addr", nodeAddr)
 	if addReplicaType != 0 {
 		request.addParam("addReplicaType", strconv.Itoa(int(addReplicaType)))
+	}
+	if storeMode != 0 {
+		request.addParam("storeMode", strconv.Itoa(storeMode))
 	}
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -266,7 +273,8 @@ func (api *AdminAPI) AddMetaReplica(metaPartitionID uint64, nodeAddr string, add
 	return
 }
 
-func (api *AdminAPI) AddMetaReplicaLearner(metaPartitionID uint64, nodeAddr string, autoPromote bool, threshold uint8, addReplicaType proto.AddReplicaType) (err error) {
+func (api *AdminAPI) AddMetaReplicaLearner(metaPartitionID uint64, nodeAddr string, autoPromote bool, threshold uint8,
+	addReplicaType proto.AddReplicaType, storeMode int) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminAddMetaReplicaLearner)
 	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
 	request.addParam("addr", nodeAddr)
@@ -275,7 +283,30 @@ func (api *AdminAPI) AddMetaReplicaLearner(metaPartitionID uint64, nodeAddr stri
 	if addReplicaType != 0 {
 		request.addParam("addReplicaType", strconv.Itoa(int(addReplicaType)))
 	}
+	if storeMode != 0 {
+		request.addParam("storeMode", strconv.Itoa(storeMode))
+	}
 	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) SelectMetaReplicaReplaceNodeAddr(metaPartitionID uint64, nodeAddr string, storeMode int) (info *proto.SelectMetaNodeInfo, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminSelectMetaReplicaNode)
+
+	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
+	request.addParam("addr", nodeAddr)
+	if storeMode != 0 {
+		request.addParam("storeMode", strconv.Itoa(storeMode))
+	}
+
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	info = &proto.SelectMetaNodeInfo{}
+	if err = json.Unmarshal(buf, info); err != nil {
 		return
 	}
 	return
@@ -301,9 +332,9 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 	return
 }
 
-func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpReplicas int,
-	followerRead, authenticate, enableToken, autoRepair, forceROW bool, authKey, zoneName string,
-	bucketPolicy, crossRegionHAType uint8, extentCacheExpireSec int64) (err error) {
+func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpReplicas, trashDays, storeMode int,
+	followerRead, authenticate, enableToken, autoRepair, forceROW bool, authKey, zoneName, mpLayout string, bucketPolicy,
+	crossRegionHAType uint8, extentCacheExpireSec int64) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
@@ -319,14 +350,30 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	request.addParam("bucketPolicy", strconv.Itoa(int(bucketPolicy)))
 	request.addParam("crossRegion", strconv.Itoa(int(crossRegionHAType)))
 	request.addParam("ekExpireSec", strconv.FormatInt(extentCacheExpireSec, 10))
+	request.addParam("storeMode", strconv.Itoa(storeMode))
+	request.addParam("metaLayout", mpLayout)
+	if trashDays > -1 {
+		request.addParam("trashRemainingDays", strconv.Itoa(trashDays))
+	}
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
 }
 
-func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int, dpSize, capacity uint64, replicas, mpReplicas int,
-	followerRead, autoRepair, volWriteMutex, forceROW bool, zoneName string, crossRegionHAType uint8) (err error) {
+func (api *AdminAPI) SetVolumeConvertTaskState(volName, authKey string, st int) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminSetVolConvertSt)
+	request.addParam("name", volName)
+	request.addParam("authKey", authKey)
+	request.addParam("state", strconv.Itoa(st))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int, dpSize, capacity uint64, replicas, mpReplicas, trashDays, storeMode int,
+	followerRead, autoRepair, volWriteMutex, forceROW bool, zoneName, mpLayout string, crossRegionHAType uint8) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
@@ -341,6 +388,9 @@ func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int, dpSize, ca
 	request.addParam("mpReplicaNum", strconv.Itoa(mpReplicas))
 	request.addParam("volWriteMutex", strconv.FormatBool(volWriteMutex))
 	request.addParam("zoneName", zoneName)
+	request.addParam("trashRemainingDays", strconv.Itoa(trashDays))
+	request.addParam("storeMode", strconv.Itoa(storeMode))
+	request.addParam("metaLayout", mpLayout)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}

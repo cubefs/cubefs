@@ -70,21 +70,22 @@ func (sp sortedPeers) Swap(i, j int) {
 // MetaPartitionConfig is used to create a meta partition.
 type MetaPartitionConfig struct {
 	// Identity for raftStore group. RaftStore nodes in the same raftStore group must have the same groupID.
-	PartitionId uint64              `json:"partition_id"`
-	VolName     string              `json:"vol_name"`
-	Start       uint64              `json:"start"`    // Minimal Inode ID of this range. (Required during initialization)
-	End         uint64              `json:"end"`      // Maximal Inode ID of this range. (Required during initialization)
-	Peers       []proto.Peer        `json:"peers"`    // Peers information of the raftStore
-	Learners    []proto.Learner     `json:"learners"` // Learners information of the raftStore
-	Cursor      uint64              `json:"-"`        // Cursor ID of the inode that have been assigned
-	NodeId      uint64              `json:"-"`
-	RootDir     string              `json:"-"`
-	BeforeStart func()              `json:"-"`
-	AfterStart  func()              `json:"-"`
-	BeforeStop  func()              `json:"-"`
-	AfterStop   func()              `json:"-"`
-	RaftStore   raftstore.RaftStore `json:"-"`
-	ConnPool    *util.ConnectPool   `json:"-"`
+	PartitionId        uint64              `json:"partition_id"`
+	VolName            string              `json:"vol_name"`
+	Start              uint64              `json:"start"`    // Minimal Inode ID of this range. (Required during initialization)
+	End                uint64              `json:"end"`      // Maximal Inode ID of this range. (Required during initialization)
+	Peers              []proto.Peer        `json:"peers"`    // Peers information of the raftStore
+	Learners           []proto.Learner     `json:"learners"` // Learners information of the raftStore
+	TrashRemainingDays int32               `json:"-"`
+	Cursor             uint64              `json:"-"` // Cursor ID of the inode that have been assigned
+	NodeId             uint64              `json:"-"`
+	RootDir            string              `json:"-"`
+	BeforeStart        func()              `json:"-"`
+	AfterStart         func()              `json:"-"`
+	BeforeStop         func()              `json:"-"`
+	AfterStop          func()              `json:"-"`
+	RaftStore          raftstore.RaftStore `json:"-"`
+	ConnPool           *util.ConnectPool   `json:"-"`
 }
 
 func (c *MetaPartitionConfig) checkMeta() (err error) {
@@ -130,6 +131,17 @@ type OpInode interface {
 	DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet) (err error)
 }
 
+type OpDeletedInode interface {
+	GetDeletedInode(req *GetDeletedInodeReq, p *Packet) (err error)
+	BatchGetDeletedInode(req *BatchGetDeletedInodeReq, p *Packet) (err error)
+	RecoverDeletedInode(req *proto.RecoverDeletedInodeRequest, p *Packet) (err error)
+	BatchRecoverDeletedInode(req *proto.BatchRecoverDeletedInodeRequest, p *Packet) (err error)
+	CleanDeletedInode(req *proto.CleanDeletedInodeRequest, p *Packet) (err error)
+	BatchCleanDeletedInode(req *proto.BatchCleanDeletedInodeRequest, p *Packet) (err error)
+	CleanExpiredDeletedINode() (err error)
+	StatDeletedFileInfo(p *Packet) (err error)
+}
+
 type OpExtend interface {
 	SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err error)
 	GetXAttr(req *proto.GetXAttrRequest, p *Packet) (err error)
@@ -147,6 +159,16 @@ type OpDentry interface {
 	ReadDir(req *ReadDirReq, p *Packet) (err error)
 	Lookup(req *LookupReq, p *Packet) (err error)
 	GetDentryTree() *BTree
+}
+
+type OpDeletedDentry interface {
+	RecoverDeletedDentry(req *RecoverDeletedDentryReq, p *Packet) (err error)
+	BatchRecoverDeletedDentry(req *BatchRecoverDeletedDentryReq, p *Packet) (err error)
+	CleanDeletedDentry(req *CleanDeletedDentryReq, p *Packet) (err error)
+	BatchCleanDeletedDentry(req *BatchCleanDeletedDentryReq, p *Packet) (err error)
+	CleanExpiredDeletedDentry() (err error)
+	LookupDeleted(req *LookupDeletedDentryReq, p *Packet) (err error)
+	ReadDeletedDir(req *ReadDeletedDirReq, p *Packet) (err error)
 }
 
 // OpExtent defines the interface for the extent operations.
@@ -174,6 +196,8 @@ type OpMeta interface {
 	OpPartition
 	OpExtend
 	OpMultipart
+	OpDeletedInode
+	OpDeletedDentry
 }
 
 // OpPartition defines the interface for the partition operations.
@@ -219,25 +243,28 @@ type MetaPartition interface {
 //  | New | → Restore → | Ready |
 //  +-----+             +-------+
 type metaPartition struct {
-	config        *MetaPartitionConfig
-	size          uint64 // For partition all file size
-	applyID       uint64 // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
-	dentryTree    *BTree
-	inodeTree     *BTree // btree for inodes
-	extendTree    *BTree // btree for inode extend (XAttr) management
-	multipartTree *BTree // collection for multipart management
-	raftPartition raftstore.Partition
-	stopC          chan bool
-	storeChan      chan *storeMsg
-	state          uint32
-	delInodeFp     *os.File
-	freeList       *freeList // free inode list
-	extDelCh       chan []proto.ExtentKey
-	extReset       chan struct{}
-	vol            *Vol
-	manager        *metadataManager
-	monitorData    []*statistics.MonitorData
-	marshalVersion uint32
+	config                      *MetaPartitionConfig
+	size                        uint64 // For partition all file size
+	applyID                     uint64 // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
+	dentryTree                  *BTree
+	inodeTree                   *BTree // btree for inodes
+	extendTree                  *BTree // btree for inode extend (XAttr) management
+	multipartTree               *BTree // collection for multipart management
+	raftPartition               raftstore.Partition
+	stopC                       chan bool
+	storeChan                   chan *storeMsg
+	state                       uint32
+	delInodeFp                  *os.File
+	freeList                    *freeList // free inode list
+	extDelCh                    chan []proto.ExtentKey
+	extReset                    chan struct{}
+	vol                         *Vol
+	manager                     *metadataManager
+	monitorData                 []*statistics.MonitorData
+	marshalVersion              uint32
+	dentryDeletedTree           *BTree
+	inodeDeletedTree            *BTree
+	trashExpiresFirstUpdateTime time.Time
 }
 
 // Start starts a meta partition.
@@ -300,7 +327,8 @@ func (mp *metaPartition) onStart() (err error) {
 			mp.config.PartitionId, err.Error())
 		return
 	}
-
+	mp.startCleanTrashScheduler()
+	mp.startUpdateTrashDaysScheduler()
 	return
 }
 
@@ -401,6 +429,8 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) *meta
 		manager:       manager,
 		monitorData:   statistics.InitMonitorData(statistics.ModelMetaNode),
 		marshalVersion: MetaPartitionMarshVersion2,
+		dentryDeletedTree: NewBtree(),
+		inodeDeletedTree:  NewBtree(),
 	}
 	return mp
 }
@@ -441,7 +471,7 @@ func (mp *metaPartition) IsLeader() (leaderAddr string, ok bool) {
 	return
 }
 
-func (mp *metaPartition)calcMPStatus() (int, error) {
+func (mp *metaPartition) calcMPStatus() (int, error) {
 	total := configTotalMem
 	used, err := util.GetProcessMemory(os.Getpid())
 	if err != nil {
@@ -528,6 +558,15 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	if err = mp.loadMultipart(snapshotPath); err != nil {
 		return
 	}
+
+	if err = mp.loadDeletedInode(context.Background(), snapshotPath); err != nil {
+		return
+	}
+
+	if err = mp.loadDeletedDentry(snapshotPath); err != nil {
+		return
+	}
+
 	err = mp.loadApplyID(snapshotPath)
 	return
 }
@@ -549,6 +588,15 @@ func (mp *metaPartition) load(ctx context.Context) (err error) {
 	if err = mp.loadMultipart(snapshotPath); err != nil {
 		return
 	}
+
+	if err = mp.loadDeletedDentry(snapshotPath); err != nil {
+		return
+	}
+
+	if err = mp.loadDeletedInode(ctx, snapshotPath); err != nil {
+		return
+	}
+
 	err = mp.loadApplyID(snapshotPath)
 	return
 }
@@ -576,6 +624,8 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		mp.storeDentry,
 		mp.storeExtend,
 		mp.storeMultipart,
+		mp.storeDeletedDentry,
+		mp.storeDeletedInode,
 	}
 	for _, storeFunc := range storeFuncs {
 		var crc uint32
@@ -655,10 +705,10 @@ func (mp *metaPartition) nextInodeID() (inodeId uint64, err error) {
 // Return a new inode ID and update the offset.
 func (mp *metaPartition) isInoOutOfRange(inodeId uint64) (err error) {
 	cur := atomic.LoadUint64(&mp.config.Cursor)
-	if inodeId > cur || inodeId < mp.config.Start{
+	if inodeId > cur || inodeId < mp.config.Start {
 		err = fmt.Errorf("ino[%d] is out of range[%d, %d]", inodeId, mp.config.Start, cur)
 	}
-	return  err
+	return err
 }
 
 // ChangeMember changes the raft member with the specified one.
@@ -898,6 +948,8 @@ func (mp *metaPartition) Expired() (err error) {
 
 	mp.inodeTree.Reset()
 	mp.dentryTree.Reset()
+	mp.dentryDeletedTree.Reset()
+	mp.inodeDeletedTree.Reset()
 	mp.config.Cursor = 0
 	mp.applyID = 0
 
@@ -970,4 +1022,8 @@ func (mp *metaPartition) SumMonitorData(reportTime int64) []*statistics.MonitorD
 		dataList = append(dataList, totalData)
 	}
 	return dataList
+}
+
+func (mp *metaPartition) getTrashStatus() bool {
+	return mp.config.TrashRemainingDays > 0
 }

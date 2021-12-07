@@ -96,6 +96,12 @@ const (
 	CliFlagZoneName            = "zonename"
 	CliFlagRegionType          = "region-type"
 	CliFlagAddReplicaType      = "add-replica-type"
+	CliFlagTrashDays           = "trash-days"
+	CliFlagCluster			   = "cluster"
+	CliFlagVolName			   = "vol"
+	CliFlagNodesAddrs		   = "nodes"
+	CliFlagMetaLayout		   = "meta-layout"
+	CliFlagStoreMode		   = "store-mode"
 
 	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

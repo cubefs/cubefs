@@ -118,7 +118,7 @@ func (f *File) Forget() {
 		return
 	}
 
-	if err := f.super.mw.Evict(ctx, ino); err != nil {
+	if err := f.super.mw.Evict(ctx, ino, true); err != nil {
 		log.LogWarnf("Forget Evict: ino(%v) err(%v)", ino, err)
 	}
 }

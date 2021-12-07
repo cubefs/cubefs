@@ -92,6 +92,11 @@ func (b *BTree) Delete(key BtreeItem) (item BtreeItem) {
 	return
 }
 
+func (b *BTree) DeleteUnsafe(key BtreeItem) (item BtreeItem) {
+	item = b.tree.Delete(key)
+	return
+}
+
 func (b *BTree) Execute(fn func(tree *btree.BTree) interface{}) interface{} {
 	b.Lock()
 	defer b.Unlock()

@@ -94,6 +94,10 @@ const (
 	partitionTypeKey            = "partitionType"
 	volMinWritableMPNum         = "minWritableMp"
 	volMinWritableDPNum         = "minWritableDp"
+	trashRemainingDaysKey       = "trashRemainingDays"
+	volMetaLayoutKey            = "metaLayout"
+	StoreModeKey                = "storeMode"
+	volConvertStKey             = "convertState"
 )
 
 const (
@@ -169,6 +173,8 @@ const (
 	defaultVolMaxWritableDPNum                         = 6000
 	defaultLowCapacityVolMaxWritableDPNum              = 100
 	defaultLowCapacityVol                              = 10 * 1024
+	defaultTrashRemainingDays                          = 30
+	maxTrashRemainingDays                              = 30
 )
 
 const (

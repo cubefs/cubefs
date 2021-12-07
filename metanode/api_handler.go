@@ -148,6 +148,7 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 	msg["multipart_count"] = mp.(*metaPartition).multipartTree.Len()
 	msg["extend_count"] = mp.(*metaPartition).extendTree.Len()
 	msg["free_list_count"] = mp.(*metaPartition).freeList.Len()
+	msg["trash_days"] = mp.(*metaPartition).config.TrashRemainingDays
 	msg["cursor"] = mp.GetCursor()
 	_, msg["leader"] = mp.IsLeader()
 	msg["apply_id"] = mp.GetAppliedID()
@@ -217,7 +218,7 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 
 	mp.GetInodeTree().Ascend(func(i BtreeItem) bool {
 		inode := i.(*Inode)
-		if inodeType != 0 &&  inode.Type != inodeType {
+		if inodeType != 0 && inode.Type != inodeType {
 			return true
 		}
 
@@ -298,8 +299,8 @@ func (m *MetaNode) cursorReset(w http.ResponseWriter, r *http.Request) {
 
 	req := &proto.CursorResetRequest{
 		PartitionId: pid,
-		Inode: ino,
-		Force: force,
+		Inode:       ino,
+		Force:       force,
 	}
 
 	cursor, err := mp.(*metaPartition).CursorReset(r.Context(), req)
@@ -312,9 +313,9 @@ func (m *MetaNode) cursorReset(w http.ResponseWriter, r *http.Request) {
 
 	respInfo := &proto.CursorResetResponse{
 		PartitionId: mp.GetBaseConfig().PartitionId,
-		Start: mp.GetBaseConfig().Start,
-		End: mp.GetBaseConfig().End,
-		Cursor: cursor,
+		Start:       mp.GetBaseConfig().Start,
+		End:         mp.GetBaseConfig().End,
+		Cursor:      cursor,
 	}
 
 	log.LogInfof("Mp[%d] recv reset cursor success, cursor:%d", pid, cursor)
@@ -567,7 +568,7 @@ func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request){
+func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
 		data, _ := resp.Marshal()
@@ -582,7 +583,7 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request){
 	disks := m.getDiskStat()
 	diskList := make([]interface{}, 0, len(disks))
 	for _, disk := range disks {
-		diskInfo := &struct{
+		diskInfo := &struct {
 			Path          string  `json:"path"`
 			TotalTB       float64 `json:"totalTB"`
 			UsedGB        float64 `json:"usedGB"`
@@ -590,9 +591,9 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request){
 			ReservedSpace uint    `json:"reservedSpaceGB"`
 		}{
 			Path:      disk.Path,
-			TotalTB:   util.FixedPoint(disk.Total / util.TB, 1),
-			UsedGB:    util.FixedPoint(disk.Used / util.GB, 1),
-			UsedRatio: util.FixedPoint(disk.Used / disk.Total, 1),
+			TotalTB:   util.FixedPoint(disk.Total/util.TB, 1),
+			UsedGB:    util.FixedPoint(disk.Used/util.GB, 1),
+			UsedRatio: util.FixedPoint(disk.Used/disk.Total, 1),
 		}
 		diskList = append(diskList, diskInfo)
 	}
@@ -608,7 +609,6 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request){
 		"maxMemoryUsedGB":  maxMemoryUsedGB,
 		"maxMemoryUsage":   maxMemoryUsage,
 		"diskInfo":         diskList,
-
 	}
 	resp.Data = msg
 	resp.Code = http.StatusOK

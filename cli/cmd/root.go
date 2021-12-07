@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"fmt"
+	trash "github.com/chubaofs/chubaofs/cli/cmd/trash"
 	"os"
 	"path"
 	"strings"
@@ -61,6 +62,7 @@ func NewRootCmd(client *master.MasterClient, mClient *monitor.MonitorClient) *Ch
 		newZoneCmd(client),
 		newRegionCmd(client),
 		newReadWriteCheckTinyFileCmd(),
+		trash.NewTrashCmd(client),
 	)
 	return cmd
 }

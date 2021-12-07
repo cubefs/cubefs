@@ -290,6 +290,7 @@ func (m *ClusterService) loadMetaPartition(ctx context.Context, args struct {
 func (m *ClusterService) decommissionMetaPartition(ctx context.Context, args struct {
 	PartitionID uint64
 	NodeAddr    string
+	storeMode   uint8
 }) (*proto.GeneralResp, error) {
 	if _, _, err := permissions(ctx, ADMIN); err != nil {
 		return nil, err
@@ -298,7 +299,12 @@ func (m *ClusterService) decommissionMetaPartition(ctx context.Context, args str
 	if err != nil {
 		return nil, err
 	}
-	if err := m.cluster.decommissionMetaPartition(args.NodeAddr, mp, getTargetAddressForMetaPartitionDecommission, "", false); err != nil {
+
+	if !(args.storeMode == uint8(proto.StoreModeMem) || args.storeMode == uint8(proto.StoreModeRocksDb) || args.storeMode == uint8(proto.StoreModeDef)) {
+		err = fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, args.storeMode)
+		return nil, err
+	}
+	if err := m.cluster.decommissionMetaPartition(args.NodeAddr, mp, getTargetAddressForMetaPartitionDecommission, "", false, proto.StoreMode(args.storeMode)); err != nil {
 		return nil, err
 	}
 	log.LogInfof(proto.AdminDecommissionMetaPartition+" partitionID :%v  decommissionMetaPartition successfully", args.PartitionID)

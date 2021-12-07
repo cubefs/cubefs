@@ -41,6 +41,7 @@ type MetaNodeInfo struct {
 	PersistenceMetaPartitions []uint64
 	ToBeOffline               bool
 	ToBeMigrated              bool
+	ProfPort                  string
 }
 
 // DataNode stores all the information about a data node
@@ -87,6 +88,8 @@ type MetaPartitionInfo struct {
 	OfflinePeerID uint64
 	MissNodes     map[string]int64
 	LoadResponse  []*MetaPartitionLoadResponse
+	MemStoreCnt   uint8
+	RcokStoreCnt  uint8
 }
 
 // InodeInfo define the information of inode
@@ -123,6 +126,8 @@ type MetaReplicaInfo struct {
 	InodeCount  uint64
 	DentryCount uint64
 	IsLearner   bool
+	StoreMode	StoreMode
+	ApplyId		uint64
 }
 
 // ClusterView provides the view of a cluster.

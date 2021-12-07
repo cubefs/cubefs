@@ -31,11 +31,12 @@ import (
 
 // MetaItem defines the structure of the metadata operations.
 type MetaItem struct {
-	Op        uint32 `json:"op"`
-	K         []byte `json:"k"`
-	V         []byte `json:"v"`
-	From      string `json:"frm"` // The address of the client that initiated the operation.
-	Timestamp int64  `json:"ts"`  // Timestamp of operation
+	Op          uint32 `json:"op"`
+	K           []byte `json:"k"`
+	V           []byte `json:"v"`
+	From        string `json:"frm"` // The address of the client that initiated the operation.
+	Timestamp   int64  `json:"ts"`  // DeleteTime of operation
+	TrashEnable bool   `json:"te"`  // enable trash
 }
 
 // MarshalJson
@@ -148,13 +149,15 @@ type fileData struct {
 
 // MetaItemIterator defines the iterator of the MetaItem.
 type MetaItemIterator struct {
-	fileRootDir    string
-	applyID        uint64
-	inodeTree      *BTree
-	dentryTree     *BTree
-	extendTree     *BTree
-	multipartTree  *BTree
-	marshalVersion uint32 //just test
+	fileRootDir       string
+	applyID           uint64
+	inodeTree         *BTree
+	inodeDeletedTree  *BTree
+	dentryTree        *BTree
+	dentryDeletedTree *BTree
+	extendTree        *BTree
+	multipartTree     *BTree
+	marshalVersion    uint32 //just test
 
 	filenames []string
 
@@ -171,7 +174,9 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si.fileRootDir = mp.config.RootDir
 	si.applyID = mp.applyID
 	si.inodeTree = mp.inodeTree.GetTree()
+	si.inodeDeletedTree = mp.inodeDeletedTree.GetTree()
 	si.dentryTree = mp.dentryTree.GetTree()
+	si.dentryDeletedTree = mp.dentryDeletedTree.GetTree()
 	si.extendTree = mp.extendTree.GetTree()
 	si.multipartTree = mp.multipartTree.GetTree()
 	si.dataCh = make(chan interface{})
@@ -231,6 +236,15 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		if checkClose() {
 			return
 		}
+
+		// process deleted inodes
+		iter.inodeDeletedTree.Ascend(func(i BtreeItem) bool {
+			return produceItem(i)
+		})
+		if checkClose() {
+			return
+		}
+
 		// process dentries
 		iter.dentryTree.Ascend(func(i BtreeItem) bool {
 			return produceItem(i)
@@ -238,6 +252,15 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		if checkClose() {
 			return
 		}
+
+		// process deleted dentries
+		iter.dentryDeletedTree.Ascend(func(i BtreeItem) bool {
+			return produceItem(i)
+		})
+		if checkClose() {
+			return
+		}
+
 		// process extends
 		iter.extendTree.Ascend(func(i BtreeItem) bool {
 			return produceItem(i)
@@ -245,6 +268,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		if checkClose() {
 			return
 		}
+
 		// process multiparts
 		iter.multipartTree.Ascend(func(i BtreeItem) bool {
 			return produceItem(i)
@@ -322,6 +346,9 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 			snap = NewMetaItem(opFSMCreateInode, typedItem.MarshalKey(), typedItem.MarshalValue())
 		}
 
+	case *DeletedINode:
+		snap = NewMetaItem(opFSMCreateDeletedInode, typedItem.MarshalKey(), typedItem.MarshalValue())
+
 	case *Dentry:
 		if si.marshalVersion == MetaPartitionMarshVersion2 {
 			dentryBuf, _:= typedItem.MarshalV2()
@@ -330,6 +357,9 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 		} else {
 			snap = NewMetaItem(opFSMCreateDentry, typedItem.MarshalKey(), typedItem.MarshalValue())
 		}
+	case *DeletedDentry:
+		snap = NewMetaItem(opFSMCreateDeletedDentry, typedItem.MarshalKey(), typedItem.MarshalValue())
+
 	case *Extend:
 		var raw []byte
 		if raw, err = typedItem.Bytes(); err != nil {

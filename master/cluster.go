@@ -413,7 +413,7 @@ func (c *Cluster) repairMetaPartition(wg sync.WaitGroup) {
 				}
 				switch task.RType {
 				case BalanceMetaZone:
-					if err = c.decommissionMetaPartition("", mp, getTargetAddressForRepairMetaZone, "", false); err != nil {
+					if err = c.decommissionMetaPartition("", mp, getTargetAddressForRepairMetaZone, "", false, 0); err != nil {
 						return
 					}
 					Warn(c.Name, fmt.Sprintf("action[repairMetaPartition] clusterID[%v] vol[%v] meta partition[%v] "+
@@ -428,6 +428,7 @@ func (c *Cluster) repairMetaPartition(wg sync.WaitGroup) {
 		}
 	}
 }
+
 func (c *Cluster) dataPartitionInRecovering() (num int) {
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
 		badDataPartitionIds := value.([]uint64)
@@ -933,10 +934,10 @@ func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp
 	return string(resp.Data), nil
 }
 
-func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartition) (err error) {
+func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32) (err error) {
 	hosts := make([]string, 0)
 	hosts = append(hosts, host)
-	tasks := mp.buildNewMetaPartitionTasks(hosts, mp.Peers, mp.volName)
+	tasks := mp.buildNewMetaPartitionTasks(hosts, mp.Peers, mp.volName, storeMode, trashDays)
 	metaNode, err := c.metaNode(host)
 	if err != nil {
 		return
@@ -2287,7 +2288,7 @@ func (c *Cluster) decommissionMetaNode(metaNode *MetaNode, strictMode bool) (err
 		wg.Add(1)
 		go func(mp *MetaPartition) {
 			defer wg.Done()
-			if err1 := c.decommissionMetaPartition(metaNode.Addr, mp, getTargetAddressForMetaPartitionDecommission, "", strictMode); err1 != nil {
+			if err1 := c.decommissionMetaPartition(metaNode.Addr, mp, getTargetAddressForMetaPartitionDecommission, "", strictMode, 0); err1 != nil {
 				errChannel <- err1
 			}
 		}(mp)
@@ -2316,47 +2317,103 @@ func (c *Cluster) deleteMetaNodeFromCache(metaNode *MetaNode) {
 	go metaNode.clean()
 }
 
-func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacity uint64, replicaNum, mpReplicaNum uint8,
-	followerRead, authenticate, enableToken, autoRepair, forceROW bool, dpSelectorName, dpSelectorParm string, ossBucketPolicy proto.BucketAccessPolicy,
-	crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64, extentCacheExpireSec int64) (err error) {
-	var (
-		vol             *Vol
-		serverAuthKey   string
-		oldDpReplicaNum uint8
-		oldMpReplicaNum uint8
-		oldCapacity     uint64
-		oldFollowerRead bool
-		oldForceROW     bool
-		oldAuthenticate bool
-		oldEnableToken  bool
-		oldAutoRepair   bool
-		oldZoneName     string
-		oldDescription  string
-		oldCrossZone    bool
-		zoneList        []string
+func (c *Cluster) volStMachineWithOutLock(vol *Vol, oldState, newState proto.VolConvertState) (err error) {
 
-		oldDpSelectorName       string
-		oldDpSelectorParm       string
-		oldDpWriteableThreshold float64
-		oldOSSBucketPolicy      proto.BucketAccessPolicy
-		oldCrossRegionHAType    proto.CrossRegionHAType
-		oldDPConvertMode        proto.ConvertMode
-		oldMPConvertMode        proto.ConvertMode
-		oldMpLearnerNum         uint8
-		oldExtentCacheExpireSec	int64
+	err = fmt.Errorf("convert vol state: %v --> %v failed", oldState.Str(), newState.Str())
+	switch oldState {
+	case proto.VolConvertStInit:
+		if newState == proto.VolConvertStPrePared {
+			err = nil
+		}
+	case proto.VolConvertStPrePared:
+		if newState == proto.VolConvertStRunning || newState == proto.VolConvertStStopped {
+			err = nil
+		}
+	case proto.VolConvertStRunning:
+		if newState == proto.VolConvertStStopped || newState == proto.VolConvertStFinished {
+			err = nil
+		}
+	case proto.VolConvertStStopped:
+		if newState == proto.VolConvertStRunning || newState == proto.VolConvertStPrePared {
+			err = nil
+		}
+	case proto.VolConvertStFinished:
+		if newState == proto.VolConvertStPrePared {
+			err = nil
+		}
+	default:
+	}
+
+	if err == nil {
+		vol.convertState = newState
+	}
+
+	return
+}
+
+func (c *Cluster) setVolConvertTaskState(name, authKey string, newState proto.VolConvertState) (err error) {
+	var (
+		vol           *Vol
+		oldState      proto.VolConvertState
+		serverAuthKey string
+	)
+
+	if vol, err = c.getVol(name); err != nil {
+		log.LogErrorf("action[setVolConvertTaskState] err[%v]", err)
+		err = proto.ErrVolNotExists
+		err = fmt.Errorf("action[setVolConvertTaskState], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
+		goto errHandler
+	}
+
+	vol.Lock()
+	defer vol.Unlock()
+	serverAuthKey = vol.Owner
+	if !matchKey(serverAuthKey, authKey) {
+		return proto.ErrVolAuthKeyNotMatch
+	}
+
+	oldState = vol.convertState
+	if oldState == newState {
+		return nil
+	}
+
+	if err = c.volStMachineWithOutLock(vol, oldState, newState); err != nil {
+		goto errHandler
+	}
+
+	if err = c.syncUpdateVol(vol); err != nil {
+		vol.convertState = oldState
+		log.LogErrorf("action[setVolConvertTaskState] vol[%v] err[%v]", name, err)
+		err = proto.ErrPersistenceByRaft
+		goto errHandler
+	}
+	return
+
+errHandler:
+	err = fmt.Errorf("action[updateVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
+	log.LogError(errors.Stack(err))
+	Warn(c.Name, err.Error())
+	return
+}
+
+func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacity uint64, replicaNum, mpReplicaNum uint8,
+	followerRead, authenticate, enableToken, autoRepair, forceROW bool, dpSelectorName, dpSelectorParm string,
+	ossBucketPolicy proto.BucketAccessPolicy, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
+	remainingDays uint32, storeMode proto.StoreMode, layout proto.MetaPartitionLayout, extentCacheExpireSec int64) (err error) {
+	var (
+		vol           *Vol
+		volBack       *Vol
+		serverAuthKey string
+		zoneList      []string
 	)
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[updateVol] err[%v]", err)
 		err = proto.ErrVolNotExists
 		goto errHandler
 	}
-	if IsCrossRegionHATypeQuorum(crossRegionHAType) {
-		if err = c.validCrossRegionHA(zoneName); err != nil {
-			goto errHandler
-		}
-	}
 	vol.Lock()
 	defer vol.Unlock()
+	volBack = vol.backupConfig()
 	serverAuthKey = vol.Owner
 	if !matchKey(serverAuthKey, authKey) {
 		return proto.ErrVolAuthKeyNotMatch
@@ -2369,7 +2426,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		err = fmt.Errorf("new replicaNum[%v] or replicaNum[%v] can not be 0", replicaNum, mpReplicaNum)
 		goto errHandler
 	}
-	oldMpLearnerNum = vol.mpLearnerNum
+
 	if IsCrossRegionHATypeQuorum(crossRegionHAType) {
 		if replicaNum != maxQuorumVolDataPartitionReplicaNum {
 			err = fmt.Errorf("for cross region quorum vol, dp replicaNum should be 5")
@@ -2394,7 +2451,6 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 			goto errHandler
 		}
 	}
-	oldZoneName = vol.zoneName
 	if zoneName != "" {
 		if err = c.validZone(zoneName, int(replicaNum)); err != nil {
 			goto errHandler
@@ -2404,7 +2460,6 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		}
 		vol.zoneName = zoneName
 	}
-	oldCrossZone = vol.crossZone
 	zoneList = strings.Split(vol.zoneName, ",")
 	if len(zoneList) > 1 {
 		vol.crossZone = true
@@ -2414,24 +2469,15 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	if extentCacheExpireSec == 0 {
 		extentCacheExpireSec = defaultExtentCacheExpireSec
 	}
-	oldCapacity = vol.Capacity
-	oldDpReplicaNum = vol.dpReplicaNum
-	oldMpReplicaNum = vol.mpReplicaNum
-	oldFollowerRead = vol.FollowerRead
-	oldForceROW = vol.ForceROW
-	oldAuthenticate = vol.authenticate
-	oldEnableToken = vol.enableToken
-	oldAutoRepair = vol.autoRepair
-	oldDescription = vol.description
-	oldDpSelectorName = vol.dpSelectorName
-	oldDpSelectorParm = vol.dpSelectorParm
-	oldOSSBucketPolicy = vol.OSSBucketPolicy
-	oldCrossRegionHAType = vol.CrossRegionHAType
-	oldDPConvertMode = vol.DPConvertMode
-	oldMPConvertMode = vol.MPConvertMode
-	oldExtentCacheExpireSec = vol.ExtentCacheExpireSec
 
-	oldDpWriteableThreshold = vol.dpWriteableThreshold
+	if vol.MpLayout != layout {
+		if err = c.volStMachineWithOutLock(vol, vol.convertState, proto.VolConvertStPrePared); err != nil {
+			err = fmt.Errorf("set meta layout must stop convert task, err:%v", err.Error())
+			goto errHandler
+		}
+		vol.MpLayout = layout
+	}
+
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
 	vol.ForceROW = forceROW
@@ -2455,37 +2501,25 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		vol.mpReplicaNum = mpReplicaNum
 		vol.MPConvertMode = proto.IncreaseReplicaNum
 	}
+
+	if remainingDays > maxTrashRemainingDays {
+		remainingDays = maxTrashRemainingDays
+	}
 	vol.dpSelectorName = dpSelectorName
 	vol.dpSelectorParm = dpSelectorParm
 	vol.OSSBucketPolicy = ossBucketPolicy
+	vol.trashRemainingDays = remainingDays
+	vol.DefaultStoreMode = storeMode
 	vol.dpWriteableThreshold = dpWriteableThreshold
+
 	if err = c.syncUpdateVol(vol); err != nil {
-		vol.Capacity = oldCapacity
-		vol.dpReplicaNum = oldDpReplicaNum
-		vol.mpReplicaNum = oldMpReplicaNum
-		vol.FollowerRead = oldFollowerRead
-		vol.ForceROW = oldForceROW
-		vol.ExtentCacheExpireSec = oldExtentCacheExpireSec
-		vol.authenticate = oldAuthenticate
-		vol.enableToken = oldEnableToken
-		vol.zoneName = oldZoneName
-		vol.crossZone = oldCrossZone
-		vol.autoRepair = oldAutoRepair
-		vol.description = oldDescription
-		vol.dpSelectorName = oldDpSelectorName
-		vol.dpSelectorParm = oldDpSelectorParm
-		vol.OSSBucketPolicy = oldOSSBucketPolicy
-		vol.CrossRegionHAType = oldCrossRegionHAType
-		vol.DPConvertMode = oldDPConvertMode
-		vol.MPConvertMode = oldMPConvertMode
-		vol.mpLearnerNum = oldMpLearnerNum
-		vol.dpWriteableThreshold = oldDpWriteableThreshold
 		log.LogErrorf("action[updateVol] vol[%v] err[%v]", name, err)
 		err = proto.ErrPersistenceByRaft
 		goto errHandler
 	}
 	return
 errHandler:
+	vol.rollbackConfig(volBack)
 	err = fmt.Errorf("action[updateVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
 	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
@@ -2494,8 +2528,10 @@ errHandler:
 
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, mpReplicaNum, size, capacity int,
-	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW bool, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64) (vol *Vol, err error) {
+func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, trashDays int,
+	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW bool,
+	crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
+	storeMode proto.StoreMode, mpLayout proto.MetaPartitionLayout) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -2529,8 +2565,12 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	if err = c.validZone(zoneName, mpReplicaNum+int(mpLearnerNum)); err != nil {
 		goto errHandler
 	}
-	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, mpReplicaNum,
-		followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, crossRegionHAType, 0, mpLearnerNum, dpWriteableThreshold); err != nil {
+	if trashDays == 0 {
+		trashDays = defaultTrashRemainingDays
+	}
+	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, mpReplicaNum, trashDays,
+		followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, crossRegionHAType, 0, mpLearnerNum, dpWriteableThreshold,
+		storeMode, proto.VolConvertStInit, mpLayout); err != nil {
 		goto errHandler
 	}
 	if err = vol.initMetaPartitions(c, mpCount); err != nil {
@@ -2558,8 +2598,10 @@ errHandler:
 	return
 }
 
-func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum int,
-	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW bool, crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64) (vol *Vol, err error) {
+func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum, trashDays int,
+	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW bool,
+	crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64,
+	storeMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout) (vol *Vol, err error) {
 	var id uint64
 	c.createVolMutex.Lock()
 	defer c.createVolMutex.Unlock()
@@ -2573,7 +2615,8 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 		goto errHandler
 	}
 	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), uint8(mpReplicaNum), followerRead,
-		authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, createTime, description, "", "", crossRegionHAType, dpLearnerNum, mpLearnerNum, dpWriteableThreshold)
+		authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, createTime, description, "", "",
+		crossRegionHAType, dpLearnerNum, mpLearnerNum, dpWriteableThreshold, uint32(trashDays), storeMode, convertSt, mpLayout)
 
 	// refresh oss secure
 	vol.refreshOSSSecure()

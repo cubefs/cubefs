@@ -204,16 +204,25 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 	deleteExtentsByPartition := make(map[uint64][]*proto.ExtentKey)
 	allInodes := make([]*Inode, 0)
 	for _, ino := range inoSlice {
-		ref := &Inode{Inode: ino}
-		inode, ok := mp.inodeTree.Get(ref).(*Inode)
-		if !ok || inode == nil {
-			continue
+		ref := NewDeletedInodeByID(ino)
+		var inodeVal *Inode
+		dio, ok := mp.inodeDeletedTree.CopyGet(ref).(*DeletedINode)
+		if ok && dio != nil {
+			inodeVal = dio.buildInode()
+		} else {
+			var inoRef Inode
+			inoRef.Inode = ino
+			inodeVal, ok = mp.inodeTree.CopyGet(&inoRef).(*Inode)
+			if !ok || inodeVal == nil {
+				log.LogWarnf("[deleteMarkedInodes], not found the deleted inode: %v", ino)
+				continue
+			}
 		}
-		inode.Extents.Range(func(ek proto.ExtentKey) bool {
+		inodeVal.Extents.Range(func(ek proto.ExtentKey) bool {
 			ext := &ek
 			_, ok := allDeleteExtents[ext.GetExtentKey()]
 			if !ok {
-				allDeleteExtents[ext.GetExtentKey()] = inode.Inode
+				allDeleteExtents[ext.GetExtentKey()] = ino
 			}
 			exts, ok := deleteExtentsByPartition[ext.PartitionId]
 			if !ok {
@@ -223,7 +232,7 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 			deleteExtentsByPartition[ext.PartitionId] = exts
 			return true
 		})
-		allInodes = append(allInodes, inode)
+		allInodes = append(allInodes, inodeVal)
 	}
 	shouldCommit, shouldRePushToFreeList = mp.batchDeleteExtentsByPartition(ctx, deleteExtentsByPartition, allInodes)
 	bufSlice := make([]byte, 0, 8*len(shouldCommit))
@@ -250,7 +259,8 @@ func (mp *metaPartition) syncToRaftFollowersFreeInode(ctx context.Context, hasDe
 	if len(hasDeleteInodes) == 0 {
 		return
 	}
-	_, err = mp.submit(ctx, opFSMInternalDeleteInode, "", hasDeleteInodes)
+	//_, err = mp.submit(opFSMInternalDeleteInode, hasDeleteInodes)
+	_, err = mp.submit(ctx, opFSMInternalCleanDeletedInode, "", hasDeleteInodes)
 
 	return
 }

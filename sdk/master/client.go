@@ -174,7 +174,10 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 				// o represent proto.ErrCodeSuccess
 				if body.Code != 0 {
 					log.LogErrorf("action failed, Code:%v, Msg:%v, Data:%v", body.Code, body.Msg, body.Data)
-					return nil, proto.ParseErrorCode(body.Code)
+					if err = proto.ParseErrorCode(body.Code); err == proto.ErrInternalError {
+						err = fmt.Errorf("errcode:%v, msg:%v\n", err.Error(), body.Msg)
+					}
+					return nil, err
 				}
 			case DATANODE, METANODE:
 				// o represent proto.ErrCodeSuccess

@@ -39,6 +39,7 @@ func (m *metadataManager) respondToMaster(task *proto.AdminTask) (err error) {
 	}()
 	if err = masterClient.NodeAPI().ResponseMetaNodeTask(task); err != nil {
 		err = errors.Trace(err, "try respondToMaster failed")
+		log.LogError(err.Error())
 	}
 	return
 }

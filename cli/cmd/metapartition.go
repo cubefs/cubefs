@@ -298,8 +298,9 @@ func checkMetaPartition(pid uint64, client *master.MasterClient) (outPut string,
 	return
 }
 func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command {
+	var optStoreMode int
 	var cmd = &cobra.Command{
-		Use:   CliOpDecommission + " [ADDRESS] [META PARTITION ID] [DestAddr] ",
+		Use:   CliOpDecommission + " [ADDRESS] [META PARTITION ID] [DestAddr] [DstStoreMode]",
 		Short: cmdMetaPartitionDecommissionShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -309,11 +310,16 @@ func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 			}
 			address := args[0]
 			partitionID, err := strconv.ParseUint(args[1], 10, 64)
+			if optStoreMode != 0 {
+				if optStoreMode < int(proto.StoreModeMem) || optStoreMode > int(proto.StoreModeMax-1) {
+					errout("input store mode err\n")
+				}
+			}
 			if err != nil {
 				stdout("%v\n", err)
 				return
 			}
-			if err = client.AdminAPI().DecommissionMetaPartition(partitionID, address, destAddr); err != nil {
+			if err = client.AdminAPI().DecommissionMetaPartition(partitionID, address, destAddr, optStoreMode); err != nil {
 				stdout("%v\n", err)
 				return
 			}
@@ -325,6 +331,7 @@ func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	cmd.Flags().IntVar(&optStoreMode, CliFlagStoreMode, 0, "specify volume default store mode [1:Mem, 2:Rocks]")
 	return cmd
 }
 
@@ -375,6 +382,7 @@ to fix the problem, however this action may lead to data loss, be careful to do 
 
 func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 	var optAddReplicaType string
+	var optStoreMode int
 	var cmd = &cobra.Command{
 		Use:   CliOpReplicate + " [META PARTITION ID] [ADDRESS]",
 		Short: cmdMetaPartitionReplicateShort,
@@ -409,7 +417,12 @@ func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 				}
 				stdout("partitionID:%v add replica type:%s\n", partitionID, addReplicaType)
 			}
-			if err = client.AdminAPI().AddMetaReplica(partitionID, address, addReplicaType); err != nil {
+			if optStoreMode != 0 {
+				if optStoreMode < int(proto.StoreModeMem) || optStoreMode > int(proto.StoreModeMax-1) {
+					errout("input store mode err\n")
+				}
+			}
+			if err = client.AdminAPI().AddMetaReplica(partitionID, address, addReplicaType, optStoreMode); err != nil {
 				stdout("%v\n", err)
 				return
 			}
@@ -424,6 +437,7 @@ func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 
 	cmd.Flags().StringVar(&optAddReplicaType, CliFlagAddReplicaType, "",
 		fmt.Sprintf("Set add replica type[%d(%s)]", proto.AutoChooseAddrForQuorumVol, proto.AutoChooseAddrForQuorumVol))
+	cmd.Flags().IntVar(&optStoreMode, CliFlagStoreMode, 0, "specify volume default store mode [1:Mem, 2:Rocks]")
 	return cmd
 }
 
@@ -459,6 +473,7 @@ func newMetaPartitionAddLearnerCmd(client *master.MasterClient) *cobra.Command {
 		optAutoPromote    bool
 		optThreshold      uint8
 		optAddReplicaType string
+		optStoreMode      int
 	)
 	const defaultLearnerThreshold uint8 = 90
 	var cmd = &cobra.Command{
@@ -507,7 +522,12 @@ func newMetaPartitionAddLearnerCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				threshold = optThreshold
 			}
-			if err = client.AdminAPI().AddMetaReplicaLearner(partitionID, address, autoPromote, threshold, addReplicaType); err != nil {
+			if optStoreMode != 0 {
+				if optStoreMode < int(proto.StoreModeMem) || optStoreMode > int(proto.StoreModeMax-1) {
+					errout("input store mode err\n")
+				}
+			}
+			if err = client.AdminAPI().AddMetaReplicaLearner(partitionID, address, autoPromote, threshold, addReplicaType, optStoreMode); err != nil {
 				stdout("%v\n", err)
 				return
 			}
@@ -523,6 +543,7 @@ func newMetaPartitionAddLearnerCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().BoolVarP(&optAutoPromote, CliFlagAutoPromote, "a", false, "Auto promote learner to peers")
 	cmd.Flags().StringVar(&optAddReplicaType, CliFlagAddReplicaType, "",
 		fmt.Sprintf("Set add replica type[%d(%s)]", proto.AutoChooseAddrForQuorumVol, proto.AutoChooseAddrForQuorumVol))
+	cmd.Flags().IntVar(&optStoreMode, CliFlagStoreMode, 0, "specify volume default store mode [1:Mem, 2:Rocks]")
 	return cmd
 }
 
@@ -742,5 +763,37 @@ func newMetaPartitionCheckSnapshot(client *master.MasterClient) *cobra.Command {
 			}
 		},
 	}
+	return cmd
+}
+
+
+func newMetaPartitionSelectMetaNodeCmd(client *master.MasterClient) *cobra.Command {
+	var optStoreMode int
+	var info	*proto.SelectMetaNodeInfo
+	var cmd = &cobra.Command{
+		Use:   "chooseReplace [ADDRESS] [META PARTITION ID]",
+		Short: "get the new node addr replace the specify replica",
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			address := args[0]
+			partitionID, err := strconv.ParseUint(args[1], 10, 64)
+			if err != nil {
+				errout("%v\n", err)
+			}
+			if info, err = client.AdminAPI().SelectMetaReplicaReplaceNodeAddr(partitionID, address, optStoreMode); err != nil {
+				errout("%v\n", err)
+			}
+
+			stdout("Choose this node[%s], when replica[%s] deleted\n", info.NewNodeAddr, address)
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+
+	cmd.Flags().IntVar(&optStoreMode, CliFlagStoreMode, 0, "specify volume default store mode [1:Mem, 2:Rocks]")
 	return cmd
 }

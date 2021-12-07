@@ -145,6 +145,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminUpdateVol).
 		HandlerFunc(m.updateVol)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetVolConvertSt).
+		HandlerFunc(m.setVolConvertTaskState)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.ClientVol).
 		HandlerFunc(m.getVol)
 	router.NewRoute().Methods(http.MethodGet).
@@ -190,6 +193,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminDecommissionMetaPartition).
 		HandlerFunc(m.decommissionMetaPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSelectMetaReplicaNode).
+		HandlerFunc(m.selectMetaReplaceNodeAddr)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.ClientMetaPartitions).
 		HandlerFunc(m.getMetaPartitions)

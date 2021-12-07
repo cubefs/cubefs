@@ -113,12 +113,11 @@ func (mp *metaPartition) getDentry(dentry *Dentry) (*Dentry, uint8) {
 }
 
 // Delete dentry from the dentry tree.
-func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (
+func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, timestamp int64, from string, checkInode bool, trashEnable bool) (
 	resp *DentryResponse) {
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
 
-	var ino *Inode
 	if err := mp.isInoOutOfRange(dentry.ParentId); err != nil {
 		resp.Status = proto.OpInodeOutOfRange
 		return
@@ -134,7 +133,7 @@ func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (
 			if d.(*Dentry).Inode != dentry.Inode {
 				return nil
 			}
-			return mp.dentryTree.Delete(dentry)
+			return mp.dentryTree.DeleteUnsafe(dentry)
 		})
 	} else {
 		item = mp.dentryTree.Delete(dentry)
@@ -143,31 +142,34 @@ func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
 		return
-	} else {
-		mp.inodeTree.CopyFind(NewInode(dentry.ParentId, 0),
-			func(item BtreeItem) {
-				if item != nil {
-					ino = item.(*Inode)
-					if !ino.ShouldDelete() {
-						item.(*Inode).DecNLink()
-					}
+	}
+	mp.inodeTree.CopyFind(NewInode(dentry.ParentId, 0),
+		func(item BtreeItem) {
+			if item != nil {
+				ino := item.(*Inode)
+				if !ino.ShouldDelete() {
+					item.(*Inode).DecNLink()
 				}
-			})
+			}
+		})
+
+	if trashEnable {
+		resp.Status = mp.mvToDeletedDentryTree(item.(*Dentry), timestamp, from)
 	}
 	resp.Msg = item.(*Dentry)
 	return
 }
 
 // batch Delete dentry from the dentry tree.
-func (mp *metaPartition) fsmBatchDeleteDentry(db DentryBatch) []*DentryResponse {
+func (mp *metaPartition) fsmBatchDeleteDentry(db DentryBatch, timestamp int64, from string, trashEnable bool) []*DentryResponse {
 	result := make([]*DentryResponse, 0, len(db))
 	for _, dentry := range db {
-		result = append(result, mp.fsmDeleteDentry(dentry, true))
+		result = append(result, mp.fsmDeleteDentry(dentry, timestamp, from, true, trashEnable))
 	}
 	return result
 }
 
-func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry) (
+func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry, timestamp int64, from string, trashEnable bool) (
 	resp *DentryResponse) {
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
@@ -183,7 +185,6 @@ func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry) (
 			return
 		}
 		d := item.(*Dentry)
-
 		if d.Inode == dentry.Inode {
 			//already update, this apply will do nothing
 			dentry.Inode = 0

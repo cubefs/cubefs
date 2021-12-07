@@ -48,10 +48,10 @@ const (
 )
 
 type Dentry struct {
-	ParentId uint64 // FileID value of the parent inode.
-	Name     string // Name of the current dentry.
-	Inode    uint64 // FileID value of the current inode.
-	Type     uint32
+	ParentId uint64 `json:"pid"`  // FileID value of the parent inode.
+	Name     string `json:"name"` // Name of the current dentry.
+	Inode    uint64 `json:"ino"`  // FileID value of the current inode.
+	Type     uint32 `json:"type"`
 }
 
 type DentryBatch []*Dentry
@@ -283,4 +283,8 @@ func (d *Dentry) UnmarshalValue(val []byte) (err error) {
 	}
 	err = binary.Read(buff, binary.BigEndian, &d.Type)
 	return
+}
+
+func (d *Dentry) String() string {
+	return fmt.Sprintf(" ParentID: %v, InodeID: %v, Name: %v", d.ParentId, d.Inode, d.Name)
 }

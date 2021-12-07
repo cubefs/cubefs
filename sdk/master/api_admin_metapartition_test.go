@@ -57,7 +57,7 @@ func TestMetaPartitionAPI(t *testing.T) {
 
 	//Decommission Meta Partition
 	for i := 0; i == 0 || i < count && err != nil; i++ {
-		err = testMc.AdminAPI().DecommissionMetaPartition(testMetaPartitionID, nonLeaderAddr, "")
+		err = testMc.AdminAPI().DecommissionMetaPartition(testMetaPartitionID, nonLeaderAddr, "", 0)
 		time.Sleep(time.Duration(1+i/2) * time.Second)
 	}
 	if err != nil {
@@ -100,7 +100,7 @@ func TestMetaPartitionAPI(t *testing.T) {
 
 	//Add Meta Replica
 	for i := 0; i == 0 || i < count && err != nil; i++ {
-		err = testMc.AdminAPI().AddMetaReplica(testMetaPartitionID, nonLeaderAddr, 0)
+		err = testMc.AdminAPI().AddMetaReplica(testMetaPartitionID, nonLeaderAddr, 0, 0)
 		time.Sleep(time.Duration(1) * time.Second)
 	}
 	if err != nil {
@@ -151,7 +151,7 @@ func TestMetaLearner(t *testing.T) {
 	//Add Meta Replica Learner
 	autoPromote := false
 	var threshold uint8 = 10
-	err = testMc.AdminAPI().AddMetaReplicaLearner(testMetaPartitionID, newAddr, autoPromote, threshold, 0)
+	err = testMc.AdminAPI().AddMetaReplicaLearner(testMetaPartitionID, newAddr, autoPromote, threshold, 0, testStoreMode)
 	if err != nil {
 		t.Fatalf("AddMetaReplicaLearner failed, err %v", err)
 	}

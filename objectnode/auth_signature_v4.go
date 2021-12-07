@@ -262,7 +262,7 @@ func (req *signatureRequestV4) Query() url.Values {
 	return req.r.URL.Query()
 }
 
-// get Timestamp
+// get timestamp
 func (req *signatureRequestV4) GetTimestamp() (time.Time, error) {
 	return time.Parse(DateFormatISO8601, req.Timestamp)
 }

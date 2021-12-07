@@ -17,6 +17,7 @@ package meta
 import (
 	"context"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/errors"
 	syslog "log"
 	"os"
 	"sort"
@@ -207,8 +208,8 @@ create_dentry:
 			if newInode == info.Inode {
 				return info, nil
 			} else {
-				mw.iunlink(ctx, mp, info.Inode)
-				mw.ievict(ctx, mp, info.Inode)
+				mw.iunlink(ctx, mp, info.Inode, false)
+				mw.ievict(ctx, mp, info.Inode, false)
 				log.LogWarnf("Create_ll: dentry has allready been created by other client, newInode(%v), mode(%v)",
 					newInode, mode)
 			}
@@ -467,7 +468,7 @@ func (mw *MetaWrapper) Delete_ll(ctx context.Context, parentID uint64, name stri
 		}
 	}
 
-	status, inode, err = mw.ddelete(ctx, parentMP, parentID, name)
+	status, inode, err = mw.ddelete(ctx, parentMP, parentID, name, true)
 	if err != nil || status != statusOK {
 		if status == statusNoent {
 			return nil, nil
@@ -482,7 +483,7 @@ func (mw *MetaWrapper) Delete_ll(ctx context.Context, parentID uint64, name stri
 		return nil, nil
 	}
 
-	status, info, err = mw.iunlink(ctx, mp, inode)
+	status, info, err = mw.iunlink(ctx, mp, inode, true)
 	if err != nil || status != statusOK {
 		return nil, nil
 	}
@@ -535,12 +536,12 @@ func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcNam
 	}
 
 	if status != statusOK {
-		mw.iunlink(ctx, srcMP, inode)
+		mw.iunlink(ctx, srcMP, inode, false)
 		return statusToErrno(status)
 	}
 
 	// delete dentry from src parent
-	status, _, err = mw.ddelete(ctx, srcParentMP, srcParentID, srcName)
+	status, _, err = mw.ddelete(ctx, srcParentMP, srcParentID, srcName, false)
 	// Unable to determin delete dentry status, rollback may cause unexcepted result.
 	// So we return error, user should check opration result manually or retry.
 	if err != nil || (status != statusOK && status != statusNoent) {
@@ -549,15 +550,15 @@ func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcNam
 		return statusToErrno(status)
 	}
 
-	mw.iunlink(ctx, srcMP, inode)
+	mw.iunlink(ctx, srcMP, inode, false)
 
 	// As update dentry may be try, the second op will be the result which old inode be the same inode
 	if oldInode != 0 && oldInode != inode {
 		inodeMP := mw.getPartitionByInode(ctx, oldInode)
 		if inodeMP != nil {
-			mw.iunlink(ctx, inodeMP, oldInode)
+			mw.iunlink(ctx, inodeMP, oldInode, false)
 			// evict oldInode to avoid oldInode becomes orphan inode
-			mw.ievict(ctx, inodeMP, oldInode)
+			mw.ievict(ctx, inodeMP, oldInode, false)
 		}
 	}
 
@@ -754,14 +755,14 @@ func (mw *MetaWrapper) Link(ctx context.Context, parentID uint64, name string, i
 		return nil, statusToErrno(status)
 	} else if status != statusOK {
 		if status != statusExist {
-			mw.iunlink(ctx, mp, ino)
+			mw.iunlink(ctx, mp, ino, false)
 		}
 		return nil, statusToErrno(status)
 	}
 	return info, nil
 }
 
-func (mw *MetaWrapper) Evict(ctx context.Context, inode uint64) error {
+func (mw *MetaWrapper) Evict(ctx context.Context, inode uint64, trashEnable bool) error {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.Evict")
 	defer tracer.Finish()
 	ctx = tracer.Context()
@@ -772,7 +773,7 @@ func (mw *MetaWrapper) Evict(ctx context.Context, inode uint64) error {
 		return syscall.EINVAL
 	}
 
-	status, err := mw.ievict(ctx, mp, inode)
+	status, err := mw.ievict(ctx, mp, inode, trashEnable)
 	if err != nil || status != statusOK {
 		log.LogWarnf("Evict: ino(%v) err(%v) status(%v)", inode, err, status)
 		return statusToErrno(status)
@@ -857,7 +858,7 @@ func (mw *MetaWrapper) InodeUnlink_ll(ctx context.Context, inode uint64) (*proto
 		log.LogErrorf("InodeUnlink_ll: No such partition, ino(%v)", inode)
 		return nil, syscall.EINVAL
 	}
-	status, info, err := mw.iunlink(ctx, mp, inode)
+	status, info, err := mw.iunlink(ctx, mp, inode, false)
 	if err != nil || status != statusOK {
 		log.LogErrorf("InodeUnlink_ll: ino(%v) err(%v) status(%v)", inode, err, status)
 		err = statusToErrno(status)
@@ -1236,6 +1237,618 @@ func contains(arr []string, element string) (ok bool) {
 		if e == element {
 			ok = true
 			break
+		}
+	}
+	return
+}
+func (mw *MetaWrapper) LookupDeleted_ll(ctx context.Context, parentID uint64, name string, startTime, endTime int64) (
+	dentrys []*proto.DeletedDentry, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.LookupDeleted_ll")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
+	parentMP := mw.getPartitionByInode(ctx, parentID)
+	if parentMP == nil {
+		log.LogErrorf("LookupDeleted_ll: No parent partition, parentID(%v) name(%v)", parentID, name)
+		return nil, syscall.ENOENT
+	}
+
+	var status int
+	status, err, dentrys = mw.lookupDeleted(ctx, parentMP, parentID, name, startTime, endTime)
+	if err != nil || status != statusOK {
+		return nil, statusToErrno(status)
+	}
+	return
+}
+
+func (mw *MetaWrapper) ReadDirDeleted(ctx context.Context, parentID uint64) ([]*proto.DeletedDentry, error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.ReadDirDeleted")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+	parentMP := mw.getPartitionByInode(ctx, parentID)
+	if parentMP == nil {
+		return nil, syscall.ENOENT
+	}
+
+	var (
+		name      string
+		timestamp int64
+	)
+
+	res := make([]*proto.DeletedDentry, 0)
+	for {
+		status, children, err := mw.readDeletedDir(ctx, parentMP, parentID, name, timestamp)
+		if err != nil || status != statusOK {
+			return nil, statusToErrno(status)
+		}
+		for _, child := range children {
+			res = append(res, child)
+		}
+		if len(children) < proto.ReadDeletedDirBatchNum {
+			break
+		}
+		name = children[proto.ReadDeletedDirBatchNum-1].Name
+		timestamp = children[proto.ReadDeletedDirBatchNum-1].Timestamp
+	}
+
+	return res, nil
+}
+
+func (mw *MetaWrapper) RecoverDeletedDentry(ctx context.Context, parentID, inodeID uint64, name string, timestamp int64) error {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.RecoverDeletedDentry")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+	parentMP := mw.getPartitionByInode(ctx, parentID)
+	if parentMP == nil {
+		return syscall.ENOENT
+	}
+
+	status, err := mw.recoverDentry(ctx, parentMP, parentID, inodeID, name, timestamp)
+	if err != nil {
+		return err
+	}
+	if status != statusOK {
+		return statusToErrno(status)
+	}
+	return nil
+}
+
+func (mw *MetaWrapper) BatchRecoverDeletedDentry(ctx context.Context, dens []*proto.DeletedDentry) (
+	res map[uint64]int, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.BatchRecoverDeletedDentry")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+	if dens == nil || len(dens) == 0 {
+		err = errors.New("BatchRecoverDeletedDentry, the dens is 0.")
+		return
+	}
+
+	log.LogDebugf("BatchRecoverDeletedDentry: len(dens): %v", len(dens))
+	for index, den := range dens {
+		log.LogDebugf("index: %v, den: %v", index, den)
+	}
+	var wg sync.WaitGroup
+	batchChan := make(chan *proto.BatchOpDeletedDentryRsp, 1000)
+	res = make(map[uint64]int, 0)
+	candidates := make(map[uint64][]*proto.DeletedDentry)
+
+	// Target partition does not have to be very accurate.
+	for _, den := range dens {
+		mp := mw.getPartitionByInode(ctx, den.ParentID)
+		if mp == nil {
+			continue
+		}
+		if _, ok := candidates[mp.PartitionID]; !ok {
+			candidates[mp.PartitionID] = make([]*proto.DeletedDentry, 0, 256)
+		}
+		candidates[mp.PartitionID] = append(candidates[mp.PartitionID], den)
+	}
+
+	for id, inos := range candidates {
+		mp := mw.getPartitionByID(id)
+		if mp == nil {
+			continue
+		}
+		wg.Add(1)
+		go mw.batchRecoverDeletedDentry(ctx, &wg, mp, inos, batchChan)
+	}
+
+	go func() {
+		wg.Wait()
+		close(batchChan)
+	}()
+
+	for infos := range batchChan {
+		for _, den := range infos.Dens {
+			res[den.Den.Inode] = parseStatus(den.Status)
+		}
+	}
+	return
+
+}
+
+func (mw *MetaWrapper) RecoverDeletedInode(ctx context.Context, inodeID uint64) error {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.RecoverDeletedInode")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+	mp := mw.getPartitionByInode(ctx, inodeID)
+	if mp == nil {
+		log.LogErrorf("RecoverDeleteInode: No such partition, ino(%v)", inodeID)
+		return syscall.ENOENT
+	}
+
+	status, err := mw.recoverDeletedInode(ctx, mp, inodeID)
+	if err != nil {
+		return err
+	}
+	if status != statusOK {
+		return statusToErrno(status)
+	}
+	return nil
+}
+
+func (mw *MetaWrapper) BatchRecoverDeletedInode(ctx context.Context, inodes []uint64) (res map[uint64]int, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.BatchRecoverDeletedInode")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
+	log.LogDebugf("BatchRecoverDeletedInode: len(dens): %v", len(inodes))
+
+	var wg sync.WaitGroup
+	batchChan := make(chan *proto.BatchOpDeletedINodeRsp, 1000)
+	res = make(map[uint64]int, 0)
+	candidates := make(map[uint64][]uint64)
+
+	for _, ino := range inodes {
+		mp := mw.getPartitionByInode(ctx, ino)
+		if mp == nil {
+			continue
+		}
+		if _, ok := candidates[mp.PartitionID]; !ok {
+			candidates[mp.PartitionID] = make([]uint64, 0, 256)
+		}
+		candidates[mp.PartitionID] = append(candidates[mp.PartitionID], ino)
+	}
+
+	for id, inos := range candidates {
+		mp := mw.getPartitionByID(id)
+		if mp == nil {
+			continue
+		}
+		wg.Add(1)
+		go mw.batchRecoverDeletedInode(ctx, &wg, mp, inos, batchChan)
+	}
+
+	go func() {
+		wg.Wait()
+		close(batchChan)
+	}()
+
+	for infos := range batchChan {
+		for _, ino := range infos.Inos {
+			res[ino.Inode.Inode] = parseStatus(ino.Status)
+		}
+	}
+
+	return
+}
+
+func (mw *MetaWrapper) BatchCleanDeletedDentry(ctx context.Context, dens []*proto.DeletedDentry) (res map[uint64]int, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.BatchCleanDeletedDentry")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+	if dens == nil || len(dens) == 0 {
+		err = errors.New("BatchCleanDeletedDentry, the dens is 0.")
+		return
+	}
+
+	log.LogDebugf("BatchCleanDeletedDentry: len(dens): %v", len(dens))
+	var wg sync.WaitGroup
+	batchChan := make(chan *proto.BatchOpDeletedDentryRsp, 1000)
+	res = make(map[uint64]int, 0)
+	candidates := make(map[uint64][]*proto.DeletedDentry)
+
+	for _, den := range dens {
+		mp := mw.getPartitionByInode(ctx, den.ParentID)
+		if mp == nil {
+			continue
+		}
+		if _, ok := candidates[mp.PartitionID]; !ok {
+			candidates[mp.PartitionID] = make([]*proto.DeletedDentry, 0, 256)
+		}
+		candidates[mp.PartitionID] = append(candidates[mp.PartitionID], den)
+	}
+
+	for id, inos := range candidates {
+		mp := mw.getPartitionByID(id)
+		if mp == nil {
+			continue
+		}
+		wg.Add(1)
+		go mw.batchCleanDeletedDentry(ctx, &wg, mp, inos, batchChan)
+	}
+
+	go func() {
+		wg.Wait()
+		close(batchChan)
+	}()
+
+	for infos := range batchChan {
+		for _, d := range infos.Dens {
+			res[d.Den.Inode] = parseStatus(d.Status)
+		}
+	}
+	return
+}
+
+func (mw *MetaWrapper) CleanDeletedDentry(ctx context.Context, parentID, inodeID uint64, name string, timestamp int64) error {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.CleanDeletedDentry")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+	parentMP := mw.getPartitionByInode(ctx, parentID)
+	if parentMP == nil {
+		return syscall.ENOENT
+	}
+
+	status, err := mw.cleanDeletedDentry(ctx, parentMP, parentID, inodeID, name, timestamp)
+	if err != nil {
+		return err
+	}
+	if status != statusOK {
+		return statusToErrno(status)
+	}
+	return nil
+}
+
+func (mw *MetaWrapper) BatchCleanDeletedInode(ctx context.Context, inodes []uint64) (res map[uint64]int, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.BatchCleanDeletedInode")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
+	var wg sync.WaitGroup
+	batchChan := make(chan *proto.BatchOpDeletedINodeRsp, 1000)
+	res = make(map[uint64]int, 0)
+	candidates := make(map[uint64][]uint64)
+
+	for _, ino := range inodes {
+		mp := mw.getPartitionByInode(ctx, ino)
+		if mp == nil {
+			continue
+		}
+		if _, ok := candidates[mp.PartitionID]; !ok {
+			candidates[mp.PartitionID] = make([]uint64, 0, 256)
+		}
+		candidates[mp.PartitionID] = append(candidates[mp.PartitionID], ino)
+	}
+
+	for id, inos := range candidates {
+		mp := mw.getPartitionByID(id)
+		if mp == nil {
+			continue
+		}
+		wg.Add(1)
+		go mw.batchCleanDeletedInode(ctx, &wg, mp, inos, batchChan)
+	}
+
+	go func() {
+		wg.Wait()
+		close(batchChan)
+	}()
+
+	for infos := range batchChan {
+		for _, ino := range infos.Inos {
+			res[ino.Inode.Inode] = parseStatus(ino.Status)
+		}
+	}
+
+	return
+}
+
+func (mw *MetaWrapper) CleanDeletedInode(ctx context.Context, inodeID uint64) error {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.CleanDeletedInode")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+	mp := mw.getPartitionByInode(ctx, inodeID)
+	if mp == nil {
+		log.LogErrorf("RecoverDeleteInode: No such partition, ino(%v)", inodeID)
+		return syscall.ENOENT
+	}
+
+	status, err := mw.cleanDeletedInode(ctx, mp, inodeID)
+	if err != nil {
+		return err
+	}
+	if status != statusOK {
+		return statusToErrno(status)
+	}
+	return nil
+}
+
+func (mw *MetaWrapper) GetDeletedInode(ctx context.Context, inode uint64) (*proto.DeletedInodeInfo, error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.GetDeletedInode")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+	mp := mw.getPartitionByInode(ctx, inode)
+	if mp == nil {
+		log.LogErrorf("GetDeletedInode: No such partition, ino(%v)", inode)
+		return nil, syscall.ENOENT
+	}
+
+	status, info, err := mw.getDeletedInodeInfo(ctx, mp, inode)
+	if err != nil {
+		return nil, err
+	}
+	if status != statusOK {
+		err = statusToErrno(status)
+		return nil, err
+	}
+	log.LogDebugf("GetDeletedInode: info(%v)", info)
+	return info, nil
+}
+
+func (mw *MetaWrapper) BatchGetDeletedInode(ctx context.Context, inodes []uint64) map[uint64]*proto.DeletedInodeInfo {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.BatchGetDeletedInode")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
+	var wg sync.WaitGroup
+	batchInfos := make(map[uint64]*proto.DeletedInodeInfo, 0)
+	resp := make(chan []*proto.DeletedInodeInfo, BatchIgetRespBuf)
+	candidates := make(map[uint64][]uint64)
+
+	// Target partition does not have to be very accurate.
+	for _, ino := range inodes {
+		log.LogDebugf("BatchGetDeletedInode, ino: %v", ino)
+		mp := mw.getPartitionByInode(ctx, ino)
+		if mp == nil {
+			continue
+		}
+		if _, ok := candidates[mp.PartitionID]; !ok {
+			candidates[mp.PartitionID] = make([]uint64, 0, 256)
+		}
+		candidates[mp.PartitionID] = append(candidates[mp.PartitionID], ino)
+	}
+
+	for id, inos := range candidates {
+		mp := mw.getPartitionByID(id)
+		if mp == nil {
+			continue
+		}
+		wg.Add(1)
+		go mw.batchGetDeletedInodeInfo(ctx, &wg, mp, inos, resp)
+	}
+
+	go func() {
+		wg.Wait()
+		close(resp)
+	}()
+
+	for infos := range resp {
+		for _, di := range infos {
+			batchInfos[di.Inode] = di
+		}
+	}
+	return batchInfos
+}
+
+func (mw *MetaWrapper) StatDeletedFileInfo(ctx context.Context, pid uint64) (resp *proto.StatDeletedFileInfoResponse, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.StatDeletedFileInfo")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+	mp := mw.getPartitionByID(pid)
+	if mp == nil {
+		log.LogErrorf("StatDeletedFileInfo: No such partition, pid(%v)", pid)
+		return nil, syscall.ENOENT
+	}
+
+	status := statusOK
+	resp, status, err = mw.statDeletedFileInfo(ctx, mp)
+	if err != nil {
+		return
+	}
+	if status != statusOK {
+		err = statusToErrno(status)
+		return
+	}
+	return
+}
+
+func (mw *MetaWrapper) CleanExpiredDeletedDentry(ctx context.Context, pid uint64, deadline uint64) (err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.CleanExpiredDeletedDentry")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+	mp := mw.getPartitionByID(pid)
+	if mp == nil {
+		log.LogErrorf("CleanExpiredDeletedDentry: No such partition, pid(%v)", pid)
+		return syscall.ENOENT
+	}
+
+	st := statusOK
+	st, err = mw.cleanExpiredDeletedDentry(ctx, mp, deadline)
+	if err != nil {
+		return
+	}
+	if st != statusOK {
+		err = statusToErrno(st)
+		return
+	}
+	return
+}
+
+func (mw *MetaWrapper) CleanExpiredDeletedInode(ctx context.Context, pid uint64, deadline uint64) (err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.CleanExpiredDeletedInode")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+	mp := mw.getPartitionByID(pid)
+	if mp == nil {
+		log.LogErrorf("CleanExpiredDeletedInode: No such partition, pid(%v)", pid)
+		return syscall.ENOENT
+	}
+
+	st := statusOK
+	st, err = mw.cleanExpiredDeletedInode(ctx, mp, deadline)
+	if err != nil {
+		log.LogErrorf("CleanExpiredDeletedInode, err: %v", err.Error())
+		return
+	}
+	if st != statusOK {
+		err = statusToErrno(st)
+		return
+	}
+	return
+}
+
+func (mw *MetaWrapper) BatchUnlinkInodeUntest(ctx context.Context, inodes []uint64, trashEnable bool) (res map[uint64]int, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.BatchUnlinkInodeUntest")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
+	log.LogDebugf("BatchUnlinkInodeUntest: len(dens): %v", len(inodes))
+	for index, ino := range inodes {
+		log.LogDebugf("index: %v, den: %v", index, ino)
+	}
+
+	var wg sync.WaitGroup
+	batchChan := make(chan *proto.BatchUnlinkInodeResponse, 1000)
+	res = make(map[uint64]int, 0)
+	candidates := make(map[uint64][]uint64)
+
+	for _, ino := range inodes {
+		mp := mw.getPartitionByInode(ctx, ino)
+		if mp == nil {
+			continue
+		}
+		if _, ok := candidates[mp.PartitionID]; !ok {
+			candidates[mp.PartitionID] = make([]uint64, 0, 256)
+		}
+		candidates[mp.PartitionID] = append(candidates[mp.PartitionID], ino)
+	}
+
+	for id, inos := range candidates {
+		mp := mw.getPartitionByID(id)
+		if mp == nil {
+			continue
+		}
+		wg.Add(1)
+		go mw.batchUnlinkInodeUntest(ctx, &wg, mp, inos, batchChan, trashEnable)
+	}
+
+	go func() {
+		wg.Wait()
+		close(batchChan)
+	}()
+
+	for infos := range batchChan {
+		for _, it := range infos.Items {
+			res[it.Info.Inode] = parseStatus(it.Status)
+		}
+	}
+
+	for id := range res {
+		val, _ := res[id]
+		log.LogDebugf("==> BatchUnlinkInodeUntest: ino: %v, status: %v", id, val)
+	}
+	return
+}
+
+func (mw *MetaWrapper) BatchEvictInodeUntest(ctx context.Context, inodes []uint64, trashEnable bool) (res map[uint64]int, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.BatchEvictInodeUntest")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
+	log.LogDebugf("BatchEvictInodeUntest: len(dens): %v", len(inodes))
+	for index, ino := range inodes {
+		log.LogDebugf("index: %v, den: %v", index, ino)
+	}
+
+	var wg sync.WaitGroup
+	batchChan := make(chan int, len(inodes))
+	res = make(map[uint64]int, 0)
+	candidates := make(map[uint64][]uint64)
+
+	for _, ino := range inodes {
+		mp := mw.getPartitionByInode(ctx, ino)
+		if mp == nil {
+			continue
+		}
+		if _, ok := candidates[mp.PartitionID]; !ok {
+			candidates[mp.PartitionID] = make([]uint64, 0, 256)
+		}
+		candidates[mp.PartitionID] = append(candidates[mp.PartitionID], ino)
+	}
+
+	for id, inos := range candidates {
+		mp := mw.getPartitionByID(id)
+		if mp == nil {
+			continue
+		}
+		wg.Add(1)
+		go mw.batchEvictInodeUntest(ctx, &wg, mp, inos, batchChan, trashEnable)
+	}
+
+	go func() {
+		wg.Wait()
+		close(batchChan)
+	}()
+
+	for st := range batchChan {
+		if st != statusOK {
+			err = fmt.Errorf(" status: %v", st)
+			break
+		}
+	}
+
+	return
+}
+
+func (mw *MetaWrapper) BatchDeleteDentryUntest(ctx context.Context, pid uint64, dens []proto.Dentry, trashEnable bool) (
+	res map[uint64]int, err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.BatchDeleteDentryUntest")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+	if dens == nil || len(dens) == 0 {
+		err = errors.New("BatchDeleteDentryUntest, the dens is 0.")
+		return
+	}
+
+	log.LogDebugf("BatchDeleteDentryUntest: len(dens): %v", len(dens))
+	for index, den := range dens {
+		log.LogDebugf("index: %v, den: %v", index, den)
+	}
+	var wg sync.WaitGroup
+	batchChan := make(chan *proto.BatchDeleteDentryResponse, 1000)
+	res = make(map[uint64]int, 0)
+	candidates := make(map[uint64][]proto.Dentry)
+
+	// Target partition does not have to be very accurate.
+	for _, den := range dens {
+		mp := mw.getPartitionByInode(ctx, pid)
+		if mp == nil {
+			continue
+		}
+		if _, ok := candidates[mp.PartitionID]; !ok {
+			candidates[mp.PartitionID] = make([]proto.Dentry, 0, 256)
+		}
+		candidates[mp.PartitionID] = append(candidates[mp.PartitionID], den)
+	}
+
+	for id, inos := range candidates {
+		mp := mw.getPartitionByID(id)
+		if mp == nil {
+			continue
+		}
+		wg.Add(1)
+		go mw.batchDeleteDentryUntest(ctx, &wg, mp, pid, inos, batchChan, trashEnable)
+	}
+
+	go func() {
+		wg.Wait()
+		close(batchChan)
+	}()
+
+	for infos := range batchChan {
+		for _, it := range infos.Items {
+			res[it.Inode] = parseStatus(it.Status)
 		}
 	}
 	return

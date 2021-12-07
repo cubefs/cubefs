@@ -26,12 +26,14 @@ import (
 )
 
 type storeMsg struct {
-	command       uint32
-	applyIndex    uint64
-	inodeTree     *BTree
-	dentryTree    *BTree
-	extendTree    *BTree
-	multipartTree *BTree
+	command           uint32
+	applyIndex        uint64
+	inodeTree         *BTree
+	inodeDeletedTree  *BTree
+	dentryTree        *BTree
+	dentryDeletedTree *BTree
+	extendTree        *BTree
+	multipartTree     *BTree
 }
 
 func (mp *metaPartition) startSchedule(curIndex uint64) {
@@ -134,6 +136,72 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 				}
 				timerCursor.Reset(intervalToSyncCursor)
+			}
+		}
+	}(mp.stopC)
+}
+
+func (mp *metaPartition) startCleanTrashScheduler() {
+	cleanTrashTicker := time.NewTicker(1 * time.Hour)
+	go func(stopC chan bool) {
+		for {
+			select {
+			case <-stopC:
+				cleanTrashTicker.Stop()
+				return
+			case <-cleanTrashTicker.C:
+				if _, ok := mp.IsLeader(); !ok {
+					continue
+				}
+
+				if mp.trashExpiresFirstUpdateTime.IsZero() {
+					continue
+				}
+
+				if time.Now().Before(mp.trashExpiresFirstUpdateTime.Add(intervalToUpdateAllVolsTrashDays + intervalToUpdateVolTrashExpires)) {
+					continue
+				}
+				err := mp.CleanExpiredDeletedDentry()
+				if err != nil {
+					log.LogErrorf("[CleanExpiredDeletedDentry], vol: %v, error: %s", mp.config.VolName, err.Error())
+				}
+				err = mp.CleanExpiredDeletedINode()
+				if err != nil {
+					log.LogErrorf("[CleanExpiredDeletedINode], vol: %v, error: %s", mp.config.VolName, err.Error())
+				}
+
+			}
+		}
+	}(mp.stopC)
+}
+
+func (mp *metaPartition) startUpdateTrashDaysScheduler() {
+	for {
+		if mp.config.TrashRemainingDays > -1 {
+			break
+		}
+
+		mp.config.TrashRemainingDays = mp.manager.getTrashDaysByVol(mp.config.VolName)
+		if mp.config.TrashRemainingDays == -1 {
+			log.LogWarnf("[startUpdateTrashDaysScheduler], Vol: %v, PartitionID: %v", mp.config.VolName, mp.config.PartitionId)
+			time.Sleep(time.Second)
+			continue
+		}
+		break
+	}
+	ticker := time.NewTicker(intervalToUpdateVolTrashExpires)
+	go func(stopC chan bool) {
+		for {
+			select {
+			case <-stopC:
+				ticker.Stop()
+				return
+			case <-ticker.C:
+				if mp.trashExpiresFirstUpdateTime.IsZero() {
+					mp.trashExpiresFirstUpdateTime = time.Now()
+				}
+				mp.config.TrashRemainingDays = mp.manager.getTrashDaysByVol(mp.config.VolName)
+				log.LogDebugf("Vol: %v, PartitionID: %v, trash-days: %v", mp.config.VolName, mp.config.PartitionId, mp.config.TrashRemainingDays)
 			}
 		}
 	}(mp.stopC)

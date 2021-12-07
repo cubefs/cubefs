@@ -73,6 +73,9 @@ type metadataManager struct {
 	partitions         map[uint64]MetaPartition // Key: metaRangeId, Val: metaPartition
 	metaNode           *MetaNode
 	flDeleteBatchCount atomic.Value
+	stopC              chan bool
+	volTrashMap        map[string]int32
+	volTrashMapMutex   sync.Mutex
 }
 
 type MetaNodeVersion struct {
@@ -221,6 +224,33 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opGetAppliedID(conn, p, remoteAddr)
 	case proto.OpGetMetaNodeVersionInfo:
 		err = m.opGetMetaNodeVersionInfo(conn, p, remoteAddr)
+
+	case proto.OpMetaReadDeletedDir:
+		err = m.opReadDeletedDir(conn, p, remoteAddr)
+	case proto.OpMetaLookupForDeleted:
+		err = m.opMetaLookupDeleted(conn, p, remoteAddr)
+	case proto.OpMetaGetDeletedInode:
+		err = m.opMetaGetDeletedInode(conn, p, remoteAddr)
+	case proto.OpMetaBatchGetDeletedInode:
+		err = m.opMetaBatchGetDeletedInode(conn, p, remoteAddr)
+	case proto.OpMetaRecoverDeletedDentry:
+		err = m.opRecoverDeletedDentry(conn, p, remoteAddr)
+	case proto.OpMetaBatchRecoverDeletedDentry:
+		err = m.opBatchRecoverDeletedDentry(conn, p, remoteAddr)
+	case proto.OpMetaRecoverDeletedInode:
+		err = m.opRecoverDeletedINode(conn, p, remoteAddr)
+	case proto.OpMetaBatchRecoverDeletedInode:
+		err = m.opBatchRecoverDeletedINode(conn, p, remoteAddr)
+	case proto.OpMetaCleanDeletedDentry:
+		err = m.opCleanDeletedDentry(conn, p, remoteAddr)
+	case proto.OpMetaBatchCleanDeletedDentry:
+		err = m.opBatchCleanDeletedDentry(conn, p, remoteAddr)
+	case proto.OpMetaCleanDeletedInode:
+		err = m.opCleanDeletedINode(conn, p, remoteAddr)
+	case proto.OpMetaBatchCleanDeletedInode:
+		err = m.opBatchCleanDeletedINode(conn, p, remoteAddr)
+	case proto.OpMetaStatDeletedFileInfo:
+		err = m.opStatDeletedFileInfo(conn, p, remoteAddr)
 	default:
 		err = fmt.Errorf("%s unknown Opcode: %d, reqId: %d", remoteAddr,
 			p.Opcode, p.GetReqID())
@@ -259,7 +289,75 @@ func (m *metadataManager) Stop() {
 
 // onStart creates the connection pool and loads the partitions.
 func (m *metadataManager) onStart() (err error) {
+	m.updateVolsTrashDaysScheduler()
 	err = m.startPartitions()
+	if err != nil {
+		log.LogError(err.Error())
+		return
+	}
+	return
+}
+
+func (m *metadataManager) updateVolsTrashDaysScheduler() {
+	for {
+		err := m.updateVolsTrashDays()
+		if err == nil {
+			log.LogWarnf("updateVolsTrashDaysScheduler, vols: %v", len(m.volTrashMap))
+			break
+		}
+		log.LogWarnf("updateVolsTrashDaysScheduler, err: %v", err.Error())
+		time.Sleep(3 * time.Second)
+	}
+	go func() {
+		ticker := time.NewTicker(intervalToUpdateAllVolsTrashDays)
+		for {
+			select {
+			case <-ticker.C:
+				m.updateVolsTrashDays()
+			case <-m.stopC:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
+}
+
+func (m *metadataManager) updateVolsTrashDays() (err error) {
+	var vols []*proto.VolInfo
+	vols, err = masterClient.AdminAPI().ListVols("")
+	if err != nil {
+		log.LogErrorf("updateTrashExpiredTime: err: %v", err.Error())
+		return
+	}
+	if len(vols) == 0 {
+		return
+	}
+	volMap := make(map[string]int32, 0)
+	for _, vol := range vols {
+		volMap[vol.Name] = int32(vol.TrashRemainingDays)
+		log.LogDebugf("updateTrashExpiredTime: vol: %v, remaining days: %v", vol.Name, vol.TrashRemainingDays)
+	}
+
+	m.volTrashMapMutex.Lock()
+	m.volTrashMap = volMap
+	m.volTrashMapMutex.Unlock()
+	return
+}
+
+func (m *metadataManager) getTrashDaysByVol(vol string) (days int32) {
+	ok := false
+	m.volTrashMapMutex.Lock()
+	days, ok = m.volTrashMap[vol]
+	if !ok {
+		days = -1
+	}
+	m.volTrashMapMutex.Unlock()
+	/*
+		if remaining > 0 {
+			remaining = time.Now().AddDate(0, 0, 0-int(remaining)).UnixNano() / 1000
+		}
+
+	*/
 	return
 }
 
@@ -270,6 +368,7 @@ func (m *metadataManager) onStop() {
 			partition.Stop()
 		}
 	}
+	close(m.stopC)
 	return
 }
 
@@ -381,10 +480,11 @@ func (m *metadataManager) loadPartitions() (err error) {
 				}
 
 				partitionConfig := &MetaPartitionConfig{
-					NodeId:    m.nodeId,
-					RaftStore: m.raftStore,
-					RootDir:   path.Join(m.rootDir, fileName),
-					ConnPool:  m.connPool,
+					NodeId:             m.nodeId,
+					RaftStore:          m.raftStore,
+					RootDir:            path.Join(m.rootDir, fileName),
+					ConnPool:           m.connPool,
+					TrashRemainingDays: -1,
 				}
 				partitionConfig.AfterStop = func() {
 					m.detachPartition(id)
@@ -455,17 +555,18 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 	partitionId := fmt.Sprintf("%d", request.PartitionID)
 
 	mpc := &MetaPartitionConfig{
-		PartitionId: request.PartitionID,
-		VolName:     request.VolName,
-		Start:       request.Start,
-		End:         request.End,
-		Cursor:      request.Start,
-		Peers:       request.Members,
-		Learners:    request.Learners,
-		RaftStore:   m.raftStore,
-		NodeId:      m.nodeId,
-		RootDir:     path.Join(m.rootDir, partitionPrefix+partitionId),
-		ConnPool:    m.connPool,
+		PartitionId:        request.PartitionID,
+		VolName:            request.VolName,
+		Start:              request.Start,
+		End:                request.End,
+		Cursor:             request.Start,
+		Peers:              request.Members,
+		Learners:           request.Learners,
+		RaftStore:          m.raftStore,
+		NodeId:             m.nodeId,
+		RootDir:            path.Join(m.rootDir, partitionPrefix+partitionId),
+		ConnPool:           m.connPool,
+		TrashRemainingDays: int32(request.TrashDays),
 	}
 	mpc.AfterStop = func() {
 		m.detachPartition(request.PartitionID)
@@ -581,13 +682,15 @@ func (m *metadataManager) SummaryMonitorData(reportTime int64) []*statistics.Mon
 // NewMetadataManager returns a new metadata manager.
 func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) (MetadataManager, error) {
 	mm := &metadataManager{
-		nodeId:     conf.NodeID,
-		zoneName:   conf.ZoneName,
-		rootDir:    conf.RootDir,
-		raftStore:  conf.RaftStore,
-		partitions: make(map[uint64]MetaPartition),
-		metaNode:   metaNode,
-		connPool:   util.NewConnectPool(),
+		nodeId:      conf.NodeID,
+		zoneName:    conf.ZoneName,
+		rootDir:     conf.RootDir,
+		raftStore:   conf.RaftStore,
+		partitions:  make(map[uint64]MetaPartition),
+		metaNode:    metaNode,
+		connPool:    util.NewConnectPool(),
+		stopC:       make(chan bool, 0),
+		volTrashMap: make(map[string]int32),
 	}
 	if err := mm.loadPartitions(); err != nil {
 		return nil, err

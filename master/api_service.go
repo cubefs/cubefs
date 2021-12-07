@@ -188,7 +188,6 @@ func (m *Server) listZone(w http.ResponseWriter, r *http.Request) {
 	for _, zone := range zones {
 		cv := newZoneView(zone.name)
 		cv.Status = zone.getStatusToString()
-		cv.Region = zone.regionName
 		zoneViews = append(zoneViews, cv)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(zoneViews))
@@ -572,10 +571,11 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 		partitionID     uint64
 		addReplicaType  proto.AddReplicaType
 		totalReplicaNum int
+		storeMode       int
 		err             error
 	)
 
-	if partitionID, addr, addReplicaType, err = parseRequestToAddMetaReplica(r); err != nil {
+	if partitionID, addr, addReplicaType, storeMode, err = parseRequestToAddMetaReplica(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -598,7 +598,22 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if err = m.cluster.addMetaReplica(mp, addr); err != nil {
+
+	if storeMode == 0 {
+		storeMode = int(proto.StoreModeMem)
+		vol, _ := m.cluster.getVol(mp.volName)
+		if vol != nil {
+			storeMode = int(vol.DefaultStoreMode)
+		}
+	}
+
+	if !(storeMode == int(proto.StoreModeMem) || storeMode == int(proto.StoreModeRocksDb)) {
+		err = fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, storeMode)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if err = m.cluster.addMetaReplica(mp, addr, proto.StoreMode(storeMode)); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -618,7 +633,7 @@ func (m *Server) deleteMetaReplica(w http.ResponseWriter, r *http.Request) {
 		err         error
 	)
 
-	if partitionID, addr, err = parseRequestToRemoveMetaReplica(r); err != nil {
+	if partitionID, addr, _, err = parseRequestToRemoveMetaReplica(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -649,9 +664,10 @@ func (m *Server) addMetaReplicaLearner(w http.ResponseWriter, r *http.Request) {
 		totalReplicaNum            int
 		isNeedIncreaseMPLearnerNum bool
 		err                        error
+		storeMode                  int
 	)
 
-	if partitionID, addr, auto, threshold, addReplicaType, err = parseRequestToAddMetaReplicaLearner(r); err != nil {
+	if partitionID, addr, auto, threshold, addReplicaType, storeMode, err = parseRequestToAddMetaReplicaLearner(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -670,6 +686,21 @@ func (m *Server) addMetaReplicaLearner(w http.ResponseWriter, r *http.Request) {
 		isNeedIncreaseMPLearnerNum = true
 	}
 
+	if storeMode == 0 {
+		storeMode = int(proto.StoreModeMem)
+		vol, _ := m.cluster.getVol(mp.volName)
+		if vol != nil {
+			storeMode = int(vol.DefaultStoreMode)
+		}
+	}
+
+	if !(storeMode == int(proto.StoreModeMem) || storeMode == int(proto.StoreModeRocksDb)) {
+		err = fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, storeMode)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+
 	mp.offlineMutex.Lock()
 	defer mp.offlineMutex.Unlock()
 	if isAutoChooseAddrForQuorumVol(addReplicaType) && len(mp.Hosts) >= totalReplicaNum {
@@ -677,7 +708,7 @@ func (m *Server) addMetaReplicaLearner(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if err = m.cluster.addMetaReplicaLearner(mp, addr, auto, threshold, isNeedIncreaseMPLearnerNum); err != nil {
+	if err = m.cluster.addMetaReplicaLearner(mp, addr, auto, threshold, isNeedIncreaseMPLearnerNum, proto.StoreMode(storeMode)); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -696,7 +727,7 @@ func (m *Server) promoteMetaReplicaLearner(w http.ResponseWriter, r *http.Reques
 		err         error
 	)
 
-	if partitionID, addr, err = parseRequestToPromoteMetaReplicaLearner(r); err != nil {
+	if partitionID, addr, _, err = parseRequestToPromoteMetaReplicaLearner(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1133,11 +1164,14 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 
 		vol          *Vol
 
-		dpSelectorName    string
-		dpSelectorParm    string
+		dpSelectorName       string
+		dpSelectorParm       string
 		dpWriteableThreshold float64
-		ossBucketPolicy   proto.BucketAccessPolicy
-		crossRegionHAType proto.CrossRegionHAType
+		ossBucketPolicy      proto.BucketAccessPolicy
+		crossRegionHAType    proto.CrossRegionHAType
+		trashRemainingDays   uint32
+		storeMode            int
+		mpLayout             proto.MetaPartitionLayout
 	)
 	if name, authKey, replicaNum, mpReplicaNum, err = parseRequestToUpdateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1157,7 +1191,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
-	if zoneName, capacity, description, extentCacheExpireSec, err = parseDefaultInfoToUpdateVol(r, vol); err != nil {
+	if zoneName, capacity, storeMode, description, mpLayout, extentCacheExpireSec, err = parseDefaultInfoToUpdateVol(r, vol); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1181,19 +1215,28 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	dpWriteableThreshold, err = parseDpWriteableThresholdToUpdateVol(r, vol)
+
+	trashRemainingDays, err = parseDefaultTrashDaysToUpdateVol(r, vol)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	crossRegionHAType, err = parseCrossRegionHATypeToUpdateVol(r, vol)
-	if err != nil {
+
+	if !(storeMode == int(proto.StoreModeMem) || storeMode == int(proto.StoreModeRocksDb)) {
+		err = fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, storeMode)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
+	if mpLayout.PercentOfMP > 100 || mpLayout.PercentOfReplica > 100 || mpLayout.PercentOfMP < 0 || mpLayout.PercentOfReplica < 0 {
+		err = fmt.Errorf("mpPercent repPercent can only be [0-100],received is[%v - %v]", mpLayout.PercentOfMP, mpLayout.PercentOfReplica)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), uint8(mpReplicaNum),
 		followerRead, authenticate, enableToken, autoRepair, forceROW, dpSelectorName, dpSelectorParm, ossBucketPolicy,
-		crossRegionHAType, dpWriteableThreshold, extentCacheExpireSec); err != nil {
+		crossRegionHAType, dpWriteableThreshold, trashRemainingDays, proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1201,32 +1244,63 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
-func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
+func (m *Server) setVolConvertTaskState(w http.ResponseWriter, r *http.Request) {
 	var (
-		name                string
-		owner               string
-		err                 error
-		msg                 string
-		size                int
-		mpCount             int
-		dpReplicaNum        int
-		mpReplicaNum        int
-		capacity            int
-		vol                 *Vol
-		followerRead        bool
-		authenticate        bool
-		enableToken         bool
-		autoRepair          bool
-		volWriteMutexEnable bool
-		forceROW            bool
-		crossRegionHAType   proto.CrossRegionHAType
-		zoneName            string
-		description         string
-		dpWriteableThreshold float64
+		err      error
+		newState int
+		name     string
+		authKey  string
+		msg      string
 	)
 
-	if name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, followerRead, authenticate,
-		enableToken, autoRepair, volWriteMutexEnable, forceROW, crossRegionHAType,dpWriteableThreshold, err = parseRequestToCreateVol(r); err != nil {
+	if name, authKey, newState, err = parseRequestToSetVolConvertSt(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if newState < int(proto.VolConvertStInit) || newState > int(proto.VolConvertStFinished) {
+		err = fmt.Errorf("unknown state:%d", newState)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	if err = m.cluster.setVolConvertTaskState(name, authKey, proto.VolConvertState(newState)); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	msg = fmt.Sprintf("Vol[%v] convert task state change to be [%v] successfully\n", name, newState)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
+	var (
+		name                 string
+		owner                string
+		err                  error
+		msg                  string
+		size                 int
+		mpCount              int
+		dpReplicaNum         int
+		mpReplicaNum         int
+		capacity             int
+		vol                  *Vol
+		followerRead         bool
+		authenticate         bool
+		enableToken          bool
+		autoRepair           bool
+		volWriteMutexEnable  bool
+		forceROW             bool
+		crossRegionHAType    proto.CrossRegionHAType
+		zoneName             string
+		description          string
+		dpWriteableThreshold float64
+		trashDays            int
+		storeMode            int
+		mpLayout             proto.MetaPartitionLayout
+	)
+
+	if name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays, followerRead, authenticate,
+		enableToken, autoRepair, volWriteMutexEnable, forceROW, crossRegionHAType,dpWriteableThreshold, mpLayout, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1242,7 +1316,21 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, crossRegionHAType, dpWriteableThreshold); err != nil {
+	if !(storeMode == int(proto.StoreModeMem) || storeMode == int(proto.StoreModeRocksDb)) {
+		err = fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, storeMode)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if mpLayout.PercentOfMP > 100 || mpLayout.PercentOfReplica > 100 || mpLayout.PercentOfMP < 0 || mpLayout.PercentOfReplica < 0 {
+		err = fmt.Errorf("mpPercent repPercent can only be [0-100],received is[%v - %v]", mpLayout.PercentOfMP, mpLayout.PercentOfReplica)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size,
+		capacity, trashDays, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW,
+		crossRegionHAType, dpWriteableThreshold, proto.StoreMode(storeMode), mpLayout); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1277,6 +1365,7 @@ func (m *Server) getVolSimpleInfo(w http.ResponseWriter, r *http.Request) {
 			volView.SlaveRegionZone = convertSliceToVolZoneName(slaveRegionZone)
 		}
 	}
+	log.LogInfof("view vol convert state %v, mem vol convert st:%v", volView.ConvertState, vol.convertState)
 	sendOkReply(w, r, newSuccessHTTPReply(volView))
 }
 
@@ -1291,45 +1380,49 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 	}
 	maxPartitionID := vol.maxPartitionID()
 	return &proto.SimpleVolView{
-		ID:                  vol.ID,
-		Name:                vol.Name,
-		Owner:               vol.Owner,
-		ZoneName:            vol.zoneName,
-		DpReplicaNum:        vol.dpReplicaNum,
-		MpReplicaNum:        vol.mpReplicaNum,
-		DpLearnerNum:        vol.dpLearnerNum,
-		MpLearnerNum:        vol.mpLearnerNum,
-		InodeCount:          volInodeCount,
-		DentryCount:         volDentryCount,
-		MaxMetaPartitionID:  maxPartitionID,
-		Status:              vol.Status,
-		Capacity:            vol.Capacity,
-		FollowerRead:        vol.FollowerRead,
-		ForceROW:            vol.ForceROW,
-		CrossRegionHAType:   vol.CrossRegionHAType,
-		NeedToLowerReplica:  vol.NeedToLowerReplica,
-		Authenticate:        vol.authenticate,
-		EnableToken:         vol.enableToken,
-		CrossZone:           vol.crossZone,
-		AutoRepair:          vol.autoRepair,
-		VolWriteMutexEnable: vol.volWriteMutexEnable,
-		Tokens:              vol.tokens,
-		RwDpCnt:             vol.dataPartitions.readableAndWritableCnt,
-		MpCnt:               len(vol.MetaPartitions),
-		DpCnt:               len(vol.dataPartitions.partitionMap),
-		CreateTime:          time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
-		Description:         vol.description,
-		DpSelectorName:      vol.dpSelectorName,
-		DpSelectorParm:      vol.dpSelectorParm,
-		OSSBucketPolicy:     vol.OSSBucketPolicy,
-		DPConvertMode:       vol.DPConvertMode,
-		MPConvertMode:       vol.MPConvertMode,
-		Quorum:              vol.getDataPartitionQuorum(),
+		ID:                   vol.ID,
+		Name:                 vol.Name,
+		Owner:                vol.Owner,
+		ZoneName:             vol.zoneName,
+		DpReplicaNum:         vol.dpReplicaNum,
+		MpReplicaNum:         vol.mpReplicaNum,
+		DpLearnerNum:         vol.dpLearnerNum,
+		MpLearnerNum:         vol.mpLearnerNum,
+		InodeCount:           volInodeCount,
+		DentryCount:          volDentryCount,
+		MaxMetaPartitionID:   maxPartitionID,
+		Status:               vol.Status,
+		Capacity:             vol.Capacity,
+		FollowerRead:         vol.FollowerRead,
+		ForceROW:             vol.ForceROW,
+		CrossRegionHAType:    vol.CrossRegionHAType,
+		NeedToLowerReplica:   vol.NeedToLowerReplica,
+		Authenticate:         vol.authenticate,
+		EnableToken:          vol.enableToken,
+		CrossZone:            vol.crossZone,
+		AutoRepair:           vol.autoRepair,
+		VolWriteMutexEnable:  vol.volWriteMutexEnable,
+		Tokens:               vol.tokens,
+		RwDpCnt:              vol.dataPartitions.readableAndWritableCnt,
+		MpCnt:                len(vol.MetaPartitions),
+		DpCnt:                len(vol.dataPartitions.partitionMap),
+		CreateTime:           time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
+		Description:          vol.description,
+		DpSelectorName:       vol.dpSelectorName,
+		DpSelectorParm:       vol.dpSelectorParm,
+		OSSBucketPolicy:      vol.OSSBucketPolicy,
+		DPConvertMode:        vol.DPConvertMode,
+		MPConvertMode:        vol.MPConvertMode,
+		Quorum:               vol.getDataPartitionQuorum(),
 		DpWriteableThreshold: vol.dpWriteableThreshold,
 		ExtentCacheExpireSec: vol.ExtentCacheExpireSec,
 		RwMpCnt:              int(vol.getWritableMpCount()),
 		MinWritableMPNum:     vol.MinWritableMPNum,
 		MinWritableDPNum:     vol.MinWritableDPNum,
+		TrashRemainingDays:   vol.trashRemainingDays,
+		DefaultStoreMode:     vol.DefaultStoreMode,
+		ConvertState:         vol.convertState,
+		MpLayout:             vol.MpLayout,
 	}
 }
 
@@ -1809,6 +1902,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		PersistenceMetaPartitions: metaNode.PersistenceMetaPartitions,
 		ToBeOffline:               metaNode.ToBeOffline,
 		ToBeMigrated:              metaNode.ToBeMigrated,
+		ProfPort:                  metaNode.ProfPort,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(metaNodeInfo))
 }
@@ -1820,9 +1914,10 @@ func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Reques
 		destAddr    string
 		mp          *MetaPartition
 		msg         string
+		storeMode   int
 		err         error
 	)
-	if partitionID, nodeAddr, destAddr, err = parseRequestToDecommissionMetaPartition(r); err != nil {
+	if partitionID, nodeAddr, destAddr, storeMode, err = parseRequestToDecommissionMetaPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1830,12 +1925,60 @@ func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
-	if err = m.cluster.decommissionMetaPartition(nodeAddr, mp, getTargetAddressForMetaPartitionDecommission, destAddr, false); err != nil {
+
+	if !(storeMode == int(proto.StoreModeMem) || storeMode == int(proto.StoreModeRocksDb) || storeMode == 0) {
+		err = fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, storeMode)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if err = m.cluster.decommissionMetaPartition(nodeAddr, mp, getTargetAddressForMetaPartitionDecommission, destAddr, false, proto.StoreMode(storeMode)); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 	msg = fmt.Sprintf(proto.AdminDecommissionMetaPartition+" partitionID :%v  decommissionMetaPartition successfully", partitionID)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) selectMetaReplaceNodeAddr(w http.ResponseWriter, r *http.Request) {
+	var (
+		partitionID uint64
+		nodeAddr    string
+		destAddr    string
+		mp          *MetaPartition
+		storeMode   int
+		err         error
+	)
+
+	if partitionID, nodeAddr, storeMode, err = parseRequestToSelectMetaReplace(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
+		return
+	}
+
+	if !(storeMode == int(proto.StoreModeMem) || storeMode == int(proto.StoreModeRocksDb) || storeMode == int(proto.StoreModeDef)) {
+		err = fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, storeMode)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if destAddr, err = m.cluster.selectMetaReplaceAddr(nodeAddr, mp, proto.StoreMode(storeMode)); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	rsp := proto.SelectMetaNodeInfo{
+		PartitionID: partitionID,
+		OldNodeAddr: nodeAddr,
+		NewNodeAddr: destAddr,
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(rsp))
+	return
 }
 
 func (m *Server) resetMetaPartition(w http.ResponseWriter, r *http.Request) {
@@ -2262,7 +2405,27 @@ func parseRequestToUpdateVol(r *http.Request) (name, authKey string, replicaNum,
 	return
 }
 
-func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, capacity int, description string, extentCacheExpireSec int64, err error) {
+func parseRequestToSetVolConvertSt(r *http.Request) (name, authKey string, newState int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if name, err = extractName(r); err != nil {
+		return
+	}
+	if authKey, err = extractAuthKey(r); err != nil {
+		return
+	}
+	if stateStr := r.FormValue(stateKey); stateStr != "" {
+		if newState, err = strconv.Atoi(stateStr); err != nil {
+			err = unmatchedKey(stateKey)
+			return
+		}
+	}
+	return
+}
+
+func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, capacity, storeMode int, description string,
+	layout proto.MetaPartitionLayout, extentCacheExpireSec int64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2288,6 +2451,26 @@ func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, ca
 	} else {
 		extentCacheExpireSec = vol.ExtentCacheExpireSec
 	}
+
+	if storeModeStr := r.FormValue(StoreModeKey); storeModeStr != "" {
+		if storeMode, err = strconv.Atoi(storeModeStr); err != nil {
+			err = unmatchedKey(StoreModeKey)
+			return
+		}
+	} else {
+		storeMode = int(vol.DefaultStoreMode)
+	}
+
+	if mpLayoutStr := r.FormValue(volMetaLayoutKey); mpLayoutStr != "" {
+		num, tmpErr := fmt.Sscanf(mpLayoutStr, "%d,%d", &layout.PercentOfMP, &layout.PercentOfReplica)
+		if tmpErr != nil || num != 2 {
+			err = unmatchedKey(volMetaLayoutKey)
+			return
+		}
+	} else {
+		layout = vol.MpLayout
+	}
+
 	return
 }
 
@@ -2412,8 +2595,33 @@ func parseOSSBucketPolicyToUpdateVol(r *http.Request, vol *Vol) (ossBucketPolicy
 	return
 }
 
-func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string, mpCount, dpReplicaNum, mpReplicaNum, size, capacity int,
-	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW bool, crossRegionHAType proto.CrossRegionHAType, dpWritableThreshold float64, err error) {
+func parseDefaultTrashDaysToUpdateVol(r *http.Request, vol *Vol) (remaining uint32, err error) {
+	err = r.ParseForm()
+	if err != nil {
+		return
+	}
+
+	val := r.FormValue(trashRemainingDaysKey)
+	if val == "" {
+		remaining = vol.trashRemainingDays
+		return
+	}
+
+	var valTemp int
+	valTemp, err = strconv.Atoi(val)
+	if err != nil {
+		return
+	}
+
+	remaining = uint32(valTemp)
+	return
+}
+
+func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string,
+	mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays int,
+	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable,forceROW bool,
+	crossRegionHAType proto.CrossRegionHAType, dpWritableThreshold float64,
+	layout proto.MetaPartitionLayout, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2493,6 +2701,31 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	enableToken = extractEnableToken(r)
 	volWriteMutexEnable = extractVolWriteMutex(r)
 	description = r.FormValue(descriptionKey)
+
+	if trashDaysStr := r.FormValue(trashRemainingDaysKey); trashDaysStr == "" {
+		trashDays = 0
+	} else if trashDays, err = strconv.Atoi(trashDaysStr); err != nil {
+		err = unmatchedKey(trashRemainingDaysKey)
+		return
+	}
+
+	storeMode = int(proto.StoreModeMem)
+	if storeModeStr := r.FormValue(StoreModeKey); storeModeStr != "" {
+		if storeMode, err = strconv.Atoi(storeModeStr); err != nil {
+			err = unmatchedKey(StoreModeKey)
+			return
+		}
+	}
+
+	layout.PercentOfReplica = 0
+	layout.PercentOfMP = 0
+	if mpLayoutStr := r.FormValue(volMetaLayoutKey); mpLayoutStr != "" {
+		num, tmpErr := fmt.Sscanf(mpLayoutStr, "%d,%d", &layout.PercentOfMP, &layout.PercentOfReplica)
+		if tmpErr != nil || num != 2 {
+			err = unmatchedKey(StoreModeKey)
+			return
+		}
+	}
 	return
 }
 
@@ -2560,7 +2793,8 @@ func parseRequestToLoadDataPartition(r *http.Request) (ID uint64, err error) {
 	return
 }
 
-func parseRequestToAddMetaReplica(r *http.Request) (ID uint64, addr string, addReplicaType proto.AddReplicaType, err error) {
+func parseRequestToAddMetaReplica(r *http.Request) (ID uint64, addr string, addReplicaType proto.AddReplicaType,
+	storeMode int, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2578,11 +2812,12 @@ func parseRequestToAddMetaReplica(r *http.Request) (ID uint64, addr string, addR
 	return
 }
 
-func parseRequestToRemoveMetaReplica(r *http.Request) (ID uint64, addr string, err error) {
+func parseRequestToRemoveMetaReplica(r *http.Request) (ID uint64, addr string, storeMode int, err error) {
 	return extractMetaPartitionIDAndAddr(r)
 }
 
-func parseRequestToAddMetaReplicaLearner(r *http.Request) (ID uint64, addr string, auto bool, threshold uint8, addReplicaType proto.AddReplicaType, err error) {
+func parseRequestToAddMetaReplicaLearner(r *http.Request) (ID uint64, addr string, auto bool, threshold uint8,
+	addReplicaType proto.AddReplicaType, storeMode int, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2592,6 +2827,7 @@ func parseRequestToAddMetaReplicaLearner(r *http.Request) (ID uint64, addr strin
 	addr, _ = extractNodeAddr(r)
 	auto = extractAuto(r)
 	threshold = extractLearnerThreshold(r)
+	storeMode, err = extractStoreMode(r)
 	if addReplicaType, err = extractAddReplicaType(r); err != nil {
 		return
 	}
@@ -2602,7 +2838,7 @@ func parseRequestToAddMetaReplicaLearner(r *http.Request) (ID uint64, addr strin
 	return
 }
 
-func parseRequestToPromoteMetaReplicaLearner(r *http.Request) (ID uint64, addr string, err error) {
+func parseRequestToPromoteMetaReplicaLearner(r *http.Request) (ID uint64, addr string, storeMode int, err error) {
 	return extractMetaPartitionIDAndAddr(r)
 }
 
@@ -2621,7 +2857,7 @@ func parseRequestToAddDataReplicaLearner(r *http.Request) (ID uint64, addr strin
 	return
 }
 
-func extractMetaPartitionIDAndAddr(r *http.Request) (ID uint64, addr string, err error) {
+func extractMetaPartitionIDAndAddr(r *http.Request) (ID uint64, addr string, storeMode int, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2631,10 +2867,14 @@ func extractMetaPartitionIDAndAddr(r *http.Request) (ID uint64, addr string, err
 	if addr, err = extractNodeAddr(r); err != nil {
 		return
 	}
+
+	if storeMode, err = extractStoreMode(r); err != nil {
+		return
+	}
 	return
 }
 
-func extractMetaPartitionIDAddrAndDestAddr(r *http.Request) (ID uint64, addr string, destAddr string, err error) {
+func extractMetaPartitionIDAddrAndDestAddr(r *http.Request) (ID uint64, addr string, destAddr string, storeMode int, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2645,6 +2885,7 @@ func extractMetaPartitionIDAddrAndDestAddr(r *http.Request) (ID uint64, addr str
 		return
 	}
 	destAddr, _ = extractDestNodeAddr(r)
+	storeMode, err = extractStoreMode(r)
 	return
 }
 
@@ -2730,6 +2971,19 @@ func extractNodeAddr(r *http.Request) (nodeAddr string, err error) {
 	return
 }
 
+func extractStoreMode(r *http.Request) (storeMode int, err error) {
+	storeModeStr := r.FormValue(StoreModeKey)
+	if storeModeStr == "" {
+		return
+	}
+
+	storeMode, err = strconv.Atoi(storeModeStr)
+	if err != nil {
+		err = fmt.Errorf("convert storeMode[%v] to num failed; err:%v", storeModeStr, err.Error())
+	}
+	return
+}
+
 func extractAuto(r *http.Request) (auto bool) {
 	if value := r.FormValue(autoKey); value != "" {
 		auto, _ = strconv.ParseBool(value)
@@ -2776,8 +3030,22 @@ func parseRequestToLoadMetaPartition(r *http.Request) (partitionID uint64, err e
 	return
 }
 
-func parseRequestToDecommissionMetaPartition(r *http.Request) (partitionID uint64, nodeAddr string, destAddr string, err error) {
+func parseRequestToDecommissionMetaPartition(r *http.Request) (partitionID uint64, nodeAddr string, destAddr string, storeMode int, err error) {
 	return extractMetaPartitionIDAddrAndDestAddr(r)
+}
+
+func parseRequestToSelectMetaReplace(r *http.Request) (partitionID uint64, nodeAddr string, storeMode int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if partitionID, err = extractMetaPartitionID(r); err != nil {
+		return
+	}
+	if nodeAddr, err = extractNodeAddr(r); err != nil {
+		return
+	}
+	storeMode, err = extractStoreMode(r)
+	return
 }
 
 func parseRequestToReplicateMetaPartition(r *http.Request) (partitionID uint64, err error) {
@@ -3186,6 +3454,24 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 		return
 	}
 	mpView.LeaderAddr = mr.Addr
+	if len(mp.Replicas) <= 0 {
+		return
+	}
+
+	mpView.StoreMode = mp.Replicas[0].StoreMode
+	for _, replica := range mp.Replicas {
+		if mpView.StoreMode != replica.StoreMode {
+			mpView.StoreMode = proto.StoreModeMem | proto.StoreModeRocksDb
+		}
+		switch replica.StoreMode {
+		case proto.StoreModeMem:
+			mpView.MemCount++
+		case proto.StoreModeRocksDb:
+			mpView.RocksCount++
+		default:
+			mpView.MemCount++
+		}
+	}
 	return
 }
 
@@ -3215,6 +3501,8 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 				zones[idx] = metaNode.ZoneName
 			}
 		}
+		memCnt := uint8(0)
+		rocksCnt := uint8(0)
 		for i := 0; i < len(replicas); i++ {
 			replicas[i] = &proto.MetaReplicaInfo{
 				Addr:        mp.Replicas[i].Addr,
@@ -3224,6 +3512,16 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 				DentryCount: mp.Replicas[i].DentryCount,
 				InodeCount:  mp.Replicas[i].InodeCount,
 				IsLearner:   mp.Replicas[i].IsLearner,
+				StoreMode:   mp.Replicas[i].StoreMode,
+				ApplyId:  	 mp.Replicas[i].ApplyId,
+			}
+
+			if mp.Replicas[i].StoreMode == proto.StoreModeMem {
+				memCnt++
+			}
+
+			if mp.Replicas[i].StoreMode == proto.StoreModeRocksDb {
+				rocksCnt++
 			}
 		}
 		var mpInfo = &proto.MetaPartitionInfo{
@@ -3247,6 +3545,8 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			OfflinePeerID: mp.OfflinePeerID,
 			MissNodes:     mp.MissNodes,
 			LoadResponse:  mp.LoadResponse,
+			MemStoreCnt:   memCnt,
+			RcokStoreCnt:  rocksCnt,
 		}
 		return mpInfo
 	}
@@ -3273,7 +3573,8 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			stat := volStat(vol)
-			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize)
+
+			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize, vol.trashRemainingDays)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}

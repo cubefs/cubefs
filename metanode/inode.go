@@ -683,6 +683,12 @@ func (i *Inode) SetDeleteMark() {
 	i.Unlock()
 }
 
+func (i *Inode) CancelDeleteMark() {
+	i.Lock()
+	i.Flag &= ^DeleteMarkFlag
+	i.Unlock()
+}
+
 // ShouldDelete returns if the inode has been marked as deleted.
 func (i *Inode) ShouldDelete() bool {
 	i.RLock()

@@ -63,6 +63,7 @@ type (
 	ReadDirResp = proto.ReadDirResponse
 	// MetaNode -> Client lookup
 	LookupReq = proto.LookupRequest
+
 	// Client -> MetaNode lookup
 	LookupResp = proto.LookupResponse
 	// Client -> MetaNode
@@ -85,6 +86,29 @@ type (
 	// Client -> MetaNode
 	GetAppliedIDReq = proto.GetAppliedIDRequest
 	GetSnapshotCrcReq = proto.GetSnapshotCrcRequest
+
+	// Client -> MetaNode lookup
+	LookupDeletedDentryReq = proto.LookupDeletedDentryRequest
+	// Client -> MetaNode recover a deleted Dentry request
+	RecoverDeletedDentryReq      = proto.RecoverDeletedDentryRequest
+	BatchRecoverDeletedDentryReq = proto.BatchRecoverDeletedDentryRequest
+	RecoverDeletedInodeReq       = proto.RecoverDeletedInodeRequest
+	BatchRecoverDeletedInodeReq  = proto.BatchRecoverDeletedInodeRequest
+	CleanDeletedDentryReq        = proto.CleanDeletedDentryRequest
+	BatchCleanDeletedDentryReq   = proto.BatchCleanDeletedDentryRequest
+	CleanDeletedInodeReq         = proto.CleanDeletedInodeRequest
+	BatchCleanDeletedInodeReq    = proto.BatchCleanDeletedInodeRequest
+	BatchCleanDeletedInodeResp   = proto.BatchCleanDeletedInodeResponse
+	GetDeletedInodeReq           = proto.GetDeletedInodeRequest
+	GetDeletedInodeResp          = proto.GetDeletedInodeResponse
+	BatchGetDeletedInodeReq      = proto.BatchGetDeletedInodeRequest
+	BatchGetDeletedInodeResp     = proto.BatchGetDeletedInodeResponse
+	ReadDeletedDirReq            = proto.ReadDeletedDirRequest
+	ReadDeletedDirResp           = proto.ReadDeletedDirResponse
+	CleanExpiredInodeReq         = proto.CleanExpiredInodeRequest
+	CleanExpiredDentryReq        = proto.CleanExpiredDentryRequest
+	StatDeletedFileReq           = proto.StatDeletedFileInfoRequest
+	StatDeletedFileResp          = proto.StatDeletedFileInfoResponse
 )
 
 const (
@@ -127,6 +151,20 @@ const (
 	// snapshotBatchCreate
 	opFSMBatchCreate
 	opFSMSnapShotCrc
+
+	opFSMCreateDeletedInode
+	opFSMCreateDeletedDentry
+	opFSMRecoverDeletedDentry
+	opFSMBatchRecoverDeletedDentry
+	opFSMRecoverDeletedInode
+	opFSMBatchRecoverDeletedInode
+	opFSMCleanDeletedDentry
+	opFSMBatchCleanDeletedDentry
+	opFSMCleanDeletedInode
+	opFSMBatchCleanDeletedInode
+	opFSMInternalCleanDeletedInode
+	opFSMCleanExpiredDentry
+	opFSMCleanExpiredInode
 )
 
 var (
@@ -161,12 +199,15 @@ const (
 	cfgTickIntervalMs    = "tickIntervalMs"
 
 	metaNodeDeleteBatchCountKey = "batchCount"
+	trashEnableKey              = "trashEnable"
 )
 
 const (
 	// interval of persisting in-memory data
-	intervalToPersistData = time.Minute * 5
-	intervalToSyncCursor  = time.Minute * 1
+	intervalToPersistData            = time.Minute * 5
+	intervalToSyncCursor             = time.Minute * 1
+	intervalToUpdateAllVolsTrashDays = time.Minute * 5
+	intervalToUpdateVolTrashExpires  = time.Minute * 1
 )
 
 const (
@@ -176,9 +217,9 @@ const (
 	GB
 )
 
-const(
+const (
 	mpResetInoLimited = 1000
-	mpResetInoStep 	  = 1000
+	mpResetInoStep    = 1000
 )
 
 // snapshotBatchSend will be disabled if version of metaNode  lessThan snapshotBatchSendMinimumVersion.

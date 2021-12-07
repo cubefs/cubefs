@@ -103,6 +103,22 @@ const (
 	OpMetaSetattr       uint8 = 0x30
 	OpMetaReleaseOpen   uint8 = 0x31
 
+	OpMetaRecoverDeletedDentry      uint8 = 0x80
+	OpMetaRecoverDeletedInode       uint8 = 0x81
+	OpMetaCleanDeletedDentry        uint8 = 0x82
+	OpMetaCleanDeletedInode         uint8 = 0x83
+	OpMetaCleanExpiredDentry        uint8 = 0x84
+	OpMetaCleanExpiredInode         uint8 = 0x85
+	OpMetaLookupForDeleted          uint8 = 0x86
+	OpMetaGetDeletedInode           uint8 = 0x87
+	OpMetaBatchGetDeletedInode      uint8 = 0x88
+	OpMetaReadDeletedDir            uint8 = 0x89
+	OpMetaStatDeletedFileInfo       uint8 = 0x8A
+	OpMetaBatchRecoverDeletedDentry uint8 = 0x8B
+	OpMetaBatchRecoverDeletedInode  uint8 = 0x8C
+	OpMetaBatchCleanDeletedDentry   uint8 = 0x8D
+	OpMetaBatchCleanDeletedInode    uint8 = 0x8E
+
 	//Operations: MetaNode Leader -> MetaNode Follower
 	OpMetaFreeInodesOnRaftFollower uint8 = 0x32
 
@@ -479,6 +495,32 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpRandomWriteV3"
 	case OpSyncRandomWriteV3:
 		m = "OpSyncRandomWriteV3"
+	case OpMetaRecoverDeletedDentry:
+		m = "OpMetaRecoverDeletedDentry"
+	case OpMetaBatchRecoverDeletedDentry:
+		m = "OpMetaBatchRecoverDeletedDentry"
+	case OpMetaRecoverDeletedInode:
+		m = "OpMetaRecoverDeletedInode"
+	case OpMetaBatchRecoverDeletedInode:
+		m = "OpMetaBatchRecoverDeletedInode"
+	case OpMetaCleanExpiredInode:
+		m = "OpMetaCleanExpiredInode"
+	case OpMetaCleanExpiredDentry:
+		m = "OpMetaCleanExpiredDentry"
+	case OpMetaCleanDeletedInode:
+		m = "OpMetaCleanDeletedInode"
+	case OpMetaCleanDeletedDentry:
+		m = "OpMetaCleanDeletedDentry"
+	case OpMetaGetDeletedInode:
+		m = "OpMetaGetDeletedInode"
+	case OpMetaBatchGetDeletedInode:
+		m = "OpMetaBatchGetDeletedInode"
+	case OpMetaLookupForDeleted:
+		m = "OpMetaLookupForDeleted"
+	case OpMetaReadDeletedDir:
+		m = "OpMetaReadDeletedDir"
+	case OpMetaStatDeletedFileInfo:
+		m = "OpMetaStatDeletedFileInfo"
 	}
 	return
 }
@@ -846,7 +888,8 @@ func (p *Packet) IsReadMetaPkt() bool {
 	if p.Opcode == OpMetaLookup || p.Opcode == OpMetaInodeGet || p.Opcode == OpMetaInodeGetV2 || p.Opcode == OpMetaBatchInodeGet ||
 		p.Opcode == OpMetaReadDir || p.Opcode == OpMetaExtentsList || p.Opcode == OpGetMultipart ||
 		p.Opcode == OpMetaGetXAttr || p.Opcode == OpMetaListXAttr || p.Opcode == OpListMultiparts ||
-		p.Opcode == OpMetaBatchGetXAttr {
+		p.Opcode == OpMetaBatchGetXAttr || p.Opcode == OpMetaLookupForDeleted || p.Opcode == OpMetaGetDeletedInode ||
+		p.Opcode == OpMetaBatchGetDeletedInode || p.Opcode == OpMetaReadDeletedDir {
 		return true
 	}
 	return false

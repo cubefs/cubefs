@@ -58,6 +58,12 @@ const (
 )
 
 const (
+	StatusOK = statusOK
+	StatusExist = statusExist
+	StatusNoent = statusNoent
+)
+
+const (
 	MaxMountRetryLimit = 5
 	MountRetryInterval = time.Second * 5
 
