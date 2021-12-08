@@ -60,6 +60,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getAllDentry", m.getAllDentriesHandler)
 	http.HandleFunc("/getParams", m.getParamsHandler)
 	http.HandleFunc("/getSmuxStat", m.getSmuxStatHandler)
+	http.HandleFunc("/getRaftStatus", m.getRaftStatusHandler)
 	return
 }
 
@@ -225,6 +226,31 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 		resp.Data = json.RawMessage(p.Data)
 	}
 	return
+}
+
+func (m *MetaNode) getRaftStatusHandler(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramRaftID = "id"
+	)
+
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getRaftStatusHandler] response %s", err)
+		}
+	}()
+
+	raftID, err := strconv.ParseUint(r.FormValue(paramRaftID), 10, 64)
+	if err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramRaftID, err)
+		resp.Msg = err.Error()
+		resp.Code = http.StatusBadRequest
+		return
+	}
+
+	raftStatus := m.raftStore.RaftStatus(raftID)
+	resp.Data = raftStatus
 }
 
 func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter,
