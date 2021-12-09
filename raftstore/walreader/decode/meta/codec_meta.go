@@ -206,6 +206,13 @@ func (decoder *MetadataCommandDecoder) DecodeCommand(command []byte) (values com
 		}
 		columnValOp.SetValue("CursorReset")
 		columnValAttrs.SetValue(fmt.Sprintf("volume: %v, partition: %v", req.VolName, req.PartitionId))
+	case metadataOpFSMExtentsAdd:
+		ino := metanode.NewInode(0, 0)
+		if err = ino.Unmarshal(context.Background(), opKVData.V); err != nil {
+			return
+		}
+		columnValOp.SetValue("ExtentsAdd")
+		columnValAttrs.SetValue(fmt.Sprintf("inode: %v, eks: %v", ino.Inode, decoder.formatExtentKeys(ino.Extents)))
 	case metadataOpFSMExtentsInsert:
 		ino := metanode.NewInode(0, 0)
 		if err = ino.Unmarshal(context.Background(), opKVData.V); err != nil {

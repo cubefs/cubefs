@@ -33,8 +33,8 @@ const (
 	StreamSendOverWriteMaxRetry = 1
 	StreamSendOverWriteTimeout  = 2 * time.Second
 
-	StreamSendSleepInterval     = 100 * time.Millisecond
-	StreamSendTimeout           = 2 * time.Minute
+	StreamSendSleepInterval = 100 * time.Millisecond
+	StreamSendTimeout       = 2 * time.Minute
 
 	StreamReadConsistenceRetry   = 50
 	StreamReadConsistenceTimeout = 1 * time.Minute
@@ -84,6 +84,13 @@ func NewStreamConn(dp *DataPartition, follower bool) *StreamConn {
 	return &StreamConn{
 		dp:       dp,
 		currAddr: currAddr,
+	}
+}
+
+func NewStreamConnWithAddr(dp *DataPartition, addr string) *StreamConn {
+	return &StreamConn{
+		dp:       dp,
+		currAddr: addr,
 	}
 }
 

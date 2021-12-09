@@ -308,6 +308,10 @@ func (dp *DataPartition) ReadConsistentFromHosts(sc *StreamConn, reqPacket *Pack
 		sc, reqPacket, isErr, targetHosts, errMap))
 }
 
+func (dp *DataPartition) SendReadCmdToDataPartition(sc *StreamConn, reqPacket *Packet, req *ExtentRequest) (readBytes int, reply *Packet, tryOther bool, err error) {
+	return dp.sendReadCmdToDataPartition(sc, reqPacket, req)
+}
+
 func (dp *DataPartition) sendReadCmdToDataPartition(sc *StreamConn, reqPacket *Packet, req *ExtentRequest) (readBytes int, reply *Packet, tryOther bool, err error) {
 	if sc.currAddr == "" {
 		err = errors.New(fmt.Sprintf("sendReadCmdToDataPartition: failed, current address is null, reqPacket(%v)", reqPacket))
@@ -386,7 +390,6 @@ func (dp *DataPartition) OverWrite(sc *StreamConn, req *Packet, reply *Packet) (
 		//log.LogWarnf("OverWrite: errMap(%v), reqPacket(%v), try the next round", errMap, req)
 		//time.Sleep(StreamSendSleepInterval)
 	}
-
 
 	return errors.New(fmt.Sprintf("OverWrite failed: sc(%v) errMap(%v) reply(%v) reqPacket(%v)", sc, errMap, reply, req))
 }

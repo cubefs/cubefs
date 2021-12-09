@@ -17,6 +17,7 @@ import (
 
 	"github.com/chubaofs/chubaofs/metanode"
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/sdk/data"
 	sdk "github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/sdk/meta"
 	"github.com/chubaofs/chubaofs/storage"
@@ -106,11 +107,13 @@ func newExtentCmd(mc *sdk.MasterClient) *cobra.Command {
 
 func newExtentCheckCmd(checkType int) *cobra.Command {
 	var (
-		use         string
-		short       string
-		concurrency uint64
-		path        string
-		inodeStr    string
+		use               string
+		short             string
+		path              string
+		inodeStr          string
+		tiny              bool
+		inodeConcurrency  uint64
+		extentConcurrency uint64
 	)
 	if checkType == extentReplica {
 		use = cmdCheckReplicaUse
@@ -152,10 +155,10 @@ func newExtentCheckCmd(checkType int) *cobra.Command {
 				}
 				sort.Strings(sortVol)
 				for _, vol := range sortVol {
-					checkVol(vol, path, inodes, names, concurrency, checkType)
+					checkVol(vol, path, inodes, names, tiny, inodeConcurrency, extentConcurrency, checkType)
 				}
 			} else {
-				checkVol(vol, path, inodes, names, concurrency, checkType)
+				checkVol(vol, path, inodes, names, tiny, inodeConcurrency, extentConcurrency, checkType)
 			}
 			return
 		},
@@ -168,7 +171,9 @@ func newExtentCheckCmd(checkType int) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&path, "path", "/", "path")
 	cmd.Flags().StringVar(&inodeStr, "inode", "", "comma separated inodes")
-	cmd.Flags().Uint64Var(&concurrency, "concurrency", 1, "max concurrent checking extents")
+	cmd.Flags().BoolVar(&tiny, "tiny", false, "check tiny extents only")
+	cmd.Flags().Uint64Var(&inodeConcurrency, "inodeConcurrency", 1, "max concurrent checking inodes")
+	cmd.Flags().Uint64Var(&extentConcurrency, "extentConcurrency", 1, "max concurrent checking extents")
 	return cmd
 }
 
@@ -455,7 +460,7 @@ func batchDeleteExtent(partitionId uint64, extents []uint64) (err error) {
 	return
 }
 
-func checkVol(vol string, path string, inodes []uint64, names []string, concurrency uint64, checkType int) {
+func checkVol(vol string, path string, inodes []uint64, names []string, tiny bool, inodeConcurrency uint64, extentConcurrency uint64, checkType int) {
 	defer func() {
 		msg := fmt.Sprintf("checkVol, vol:%s, path%s", vol, path)
 		if r := recover(); r != nil {
@@ -466,14 +471,35 @@ func checkVol(vol string, path string, inodes []uint64, names []string, concurre
 			stdout("%s%s\n", msg, stack)
 		}
 	}()
-	var checkedExtent sync.Map
+	var (
+		checkedExtent sync.Map
+		wg            sync.WaitGroup
+	)
 	stdout("begin check, vol:%s\n", vol)
 	if len(inodes) == 0 {
-		inodes, names, _ = getAllInodesByPath(vol, path)
+		if path == "" {
+			inodes, _ = getAllInodesByVol(vol)
+		} else {
+			inodes, names, _ = getAllInodesByPath(vol, path)
+		}
 	}
-	for idx, inode := range inodes {
-		checkInode(vol, inode, names[idx], checkedExtent, concurrency, checkType)
+	inoCh := make(chan uint64)
+	wg.Add(len(inodes))
+	go func() {
+		for _, ino := range inodes {
+			inoCh <- ino
+		}
+		close(inoCh)
+	}()
+	for i := 0; i < int(inodeConcurrency); i++ {
+		go func() {
+			for ino := range inoCh {
+				checkInode(vol, ino, "", checkedExtent, tiny, extentConcurrency, checkType)
+				wg.Done()
+			}
+		}()
 	}
+	wg.Wait()
 	stdout("finish check, vol:%s\n", vol)
 }
 
@@ -543,7 +569,7 @@ func getAllInodesByVol(vol string) (inodes []uint64, err error) {
 	return
 }
 
-func checkInode(vol string, inode uint64, name string, checkedExtent sync.Map, concurrency uint64, checkType int) {
+func checkInode(vol string, inode uint64, name string, checkedExtent sync.Map, tiny bool, concurrency uint64, checkType int) {
 	var err error
 	var (
 		extentsResp *proto.GetExtentsResponse
@@ -557,10 +583,18 @@ func checkInode(vol string, inode uint64, name string, checkedExtent sync.Map, c
 
 	stdout("begin check, vol:%s, inode: %d, name: %s, extent count: %d\n", vol, inode, name, len(extentsResp.Extents))
 	ekCh := make(chan proto.ExtentKey)
-	wg.Add(len(extentsResp.Extents))
+	var length int
+	for _, ek := range extentsResp.Extents {
+		if !tiny || storage.IsTinyExtent(ek.ExtentId) {
+			length += 1
+		}
+	}
+	wg.Add(length)
 	go func() {
 		for _, ek := range extentsResp.Extents {
-			ekCh <- ek
+			if !tiny || storage.IsTinyExtent(ek.ExtentId) {
+				ekCh <- ek
+			}
 		}
 		close(ekCh)
 	}()
@@ -585,18 +619,19 @@ func checkInode(vol string, inode uint64, name string, checkedExtent sync.Map, c
 	stdout("finish check, vol:%s, inode: %d, name: %s, err count: %d\n", vol, inode, name, errCount)
 }
 
-func checkExtentReplica(ek *proto.ExtentKey, checkedExtent sync.Map) bool {
+func checkExtentReplica(ek *proto.ExtentKey, checkedExtent sync.Map) (same bool, err error) {
 	var (
-		ok    bool
-		ekStr string = fmt.Sprintf("%d-%d", ek.PartitionId, ek.ExtentId)
+		ok        bool
+		ekStr     string = fmt.Sprintf("%d-%d", ek.PartitionId, ek.ExtentId)
+		partition *proto.DataPartitionInfo
 	)
 	if _, ok = checkedExtent.LoadOrStore(ekStr, true); ok {
-		return true
+		return true, nil
 	}
-	partition, err := client.AdminAPI().GetDataPartition("", ek.PartitionId)
+	partition, err = client.AdminAPI().GetDataPartition("", ek.PartitionId)
 	if err != nil {
 		stdout("GetDataPartition PartitionId(%v) err(%v)\n", ek.PartitionId, err)
-		return false
+		return
 	}
 
 	var (
@@ -606,14 +641,15 @@ func checkExtentReplica(ek *proto.ExtentKey, checkedExtent sync.Map) bool {
 			datanode    string
 			md5         string
 		}, len(partition.Replicas))
-		md5Map = make(map[string]int)
+		md5Map    = make(map[string]int)
+		extentMd5 *ExtentMd5
 	)
 	for idx, replica := range partition.Replicas {
 		datanode := fmt.Sprintf("%s:%d", strings.Split(replica.Addr, ":")[0], client.DataNodeProfPort)
-		extentMd5, err := getExtentMd5(datanode, ek.PartitionId, ek.ExtentId)
+		extentMd5, err = getExtentMd5(datanode, ek.PartitionId, ek.ExtentId)
 		if err != nil {
 			stdout("getExtentMd5 datanode(%v) PartitionId(%v) ExtentId(%v) err(%v)\n", datanode, ek.PartitionId, ek.ExtentId, err)
-			return false
+			return
 		}
 		replicas[idx].partitionId = ek.PartitionId
 		replicas[idx].extentId = ek.ExtentId
@@ -626,7 +662,7 @@ func checkExtentReplica(ek *proto.ExtentKey, checkedExtent sync.Map) bool {
 		}
 	}
 	if len(md5Map) == 1 {
-		return true
+		return true, nil
 	}
 	for _, r := range replicas {
 		msg := fmt.Sprintf("dp: %d, extent: %d, datanode: %s, md5: %s\n", r.partitionId, r.extentId, r.datanode, r.md5)
@@ -636,34 +672,36 @@ func checkExtentReplica(ek *proto.ExtentKey, checkedExtent sync.Map) bool {
 			stdout("ERROR %s", msg)
 		}
 	}
-	return false
+	return
 }
 
-func checkExtentLength(ek *proto.ExtentKey, checkedExtent sync.Map) bool {
+func checkExtentLength(ek *proto.ExtentKey, checkedExtent sync.Map) (same bool, err error) {
 	var (
-		ok    bool
-		ekStr string = fmt.Sprintf("%d-%d", ek.PartitionId, ek.ExtentId)
+		ok        bool
+		ekStr     string = fmt.Sprintf("%d-%d", ek.PartitionId, ek.ExtentId)
+		partition *proto.DataPartitionInfo
+		extent    *storage.ExtentInfo
 	)
 	if _, ok = checkedExtent.LoadOrStore(ekStr, true); ok {
-		return true
+		return true, nil
 	}
-	partition, err := client.AdminAPI().GetDataPartition("", ek.PartitionId)
+	partition, err = client.AdminAPI().GetDataPartition("", ek.PartitionId)
 	if err != nil {
 		stdout("GetDataPartition ERROR: %v, PartitionId: %d\n", err, ek.PartitionId)
-		return false
+		return
 	}
 
 	datanode := fmt.Sprintf("%s:%d", strings.Split(partition.Replicas[0].Addr, ":")[0], client.DataNodeProfPort)
-	extent, err := getExtent(ek.PartitionId, ek.ExtentId)
+	extent, err = getExtent(ek.PartitionId, ek.ExtentId)
 	if err != nil {
 		stdout("getExtentFromData ERROR: %v, datanode: %v, PartitionId: %v, ExtentId: %v\n", err, datanode, ek.PartitionId, ek.ExtentId)
-		return false
+		return
 	}
 	if ek.ExtentOffset+uint64(ek.Size) > extent.Size {
 		stdout("ERROR ek:%v, extent:%v\n", ek, extent)
-		return false
+		return false, nil
 	}
-	return true
+	return true, nil
 }
 
 func getInodesByMp(metaPartitionId uint64, leaderAddr string) (Inodes []*Inode, err error) {
@@ -868,6 +906,19 @@ func getExtentMd5(datanode string, dpId uint64, extentId uint64) (re *ExtentMd5,
 		err = fmt.Errorf("Get %s fails, data: %s", url, string(data))
 		return
 	}
+	return
+}
+
+func readExtent(dp *proto.DataPartitionResponse, addr string, extentId uint64, d []byte, offset int, size int) (err error) {
+	ctx := context.Background()
+	ek := &proto.ExtentKey{PartitionId: dp.PartitionID, ExtentId: extentId}
+	dataPartition := &data.DataPartition{
+		DataPartitionResponse: *dp,
+	}
+	sc := data.NewStreamConnWithAddr(dataPartition, addr)
+	reqPacket := data.NewReadPacket(ctx, ek, offset, size, 0, offset, true)
+	req := data.NewExtentRequest(0, 0, d, nil)
+	_, _, _, err = dataPartition.SendReadCmdToDataPartition(sc, reqPacket, req)
 	return
 }
 
