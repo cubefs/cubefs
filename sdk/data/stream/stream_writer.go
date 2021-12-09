@@ -16,15 +16,17 @@ package stream
 
 import (
 	"fmt"
-	"golang.org/x/net/context"
 	"hash/crc32"
 	"net"
 	"sync/atomic"
 	"syscall"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data/wrapper"
+	"github.com/chubaofs/chubaofs/storage"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -398,7 +400,9 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 		storeMode int
 	)
 
-	if offset+size > s.tinySizeLimit() {
+	// Small files are usually written in a single write, so use tiny extent
+	// store only for the first write operation.
+	if offset > 0 {
 		storeMode = proto.NormalExtentType
 	} else {
 		storeMode = proto.TinyExtentType
@@ -406,9 +410,24 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 
 	log.LogDebugf("doWrite enter: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
 
+	if s.handler == nil && storeMode == proto.NormalExtentType {
+		if currentEK := s.extents.GetEnd(uint64(offset)); currentEK != nil && !storage.IsTinyExtent(currentEK.ExtentId) {
+			handler := NewExtentHandler(s, int(currentEK.FileOffset), storeMode, int(currentEK.Size))
+			handler.key = &proto.ExtentKey{
+				FileOffset:   currentEK.FileOffset,
+				PartitionId:  currentEK.PartitionId,
+				ExtentId:     currentEK.ExtentId,
+				ExtentOffset: currentEK.ExtentOffset,
+				Size:         currentEK.Size,
+			}
+			s.handler = handler
+			s.dirty = false
+		}
+	}
+
 	for i := 0; i < MaxNewHandlerRetry; i++ {
 		if s.handler == nil {
-			s.handler = NewExtentHandler(s, offset, storeMode)
+			s.handler = NewExtentHandler(s, offset, storeMode, 0)
 			s.dirty = false
 		}
 
@@ -421,6 +440,7 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 			break
 		}
 
+		log.LogDebugf("doWrite handler write failed so close open handler: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
 		s.closeOpenHandler()
 	}
 
@@ -584,6 +604,7 @@ func (s *Streamer) truncate(size int) error {
 		return nil
 	}
 
+	s.extents.TruncDiscard(uint64(size))
 	return s.GetExtents()
 }
 
