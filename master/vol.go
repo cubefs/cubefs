@@ -447,7 +447,7 @@ func (vol *Vol) totalUsedSpace() uint64 {
 	return vol.dataPartitions.totalUsedSpace()
 }
 
-func (vol *Vol) asyncSendViewCacheToFollower(c *Cluster) {
+func (vol *Vol) sendViewCacheToFollower(c *Cluster) {
 	var err error
 	log.LogInfof("action[asyncSendPartitionsToFollower]")
 
@@ -485,7 +485,6 @@ func (vol *Vol) updateViewCache(c *Cluster) {
 		return
 	}
 	vol.setViewCache(body)
-	go vol.asyncSendViewCacheToFollower(c)
 }
 
 func (vol *Vol) getMetaPartitionsView() (mpViews []*proto.MetaPartitionView) {

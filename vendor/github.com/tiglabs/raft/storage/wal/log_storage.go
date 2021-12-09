@@ -134,12 +134,15 @@ func (ls *logEntryStorage) Entries(lo, hi uint64, maxSize uint64) (entries []*pr
 			if err != nil {
 				return
 			}
-			size += ent.Size()
-			if i >= hi || size > maxSize {
+			if i >= hi  {
 				return
 			}
+			size += ent.Size()
 			entries = append(entries, ent)
 			i++
+			if size > maxSize {
+				return
+			}
 		}
 	}
 
