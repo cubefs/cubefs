@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"os"
 	"runtime/debug"
@@ -33,6 +35,8 @@ const (
 	cmdCheckReplicaShort = "Check replica consistency"
 	cmdCheckLengthUse    = "check-length volumeName"
 	cmdCheckLengthShort  = "Check extent length"
+	cmdCheckExtentCrcUse = "check-crc volumeName"
+	cmdCheckExtentShort  = "Check extent crc"
 	cmdSearchExtentUse   = "search volumeName"
 	cmdSearchExtentShort = "Search extent key"
 	cmdCheckGarbageUse   = "check-garbage volumeName"
@@ -42,6 +46,7 @@ const (
 const (
 	extentReplica = 0
 	extentLength  = 1
+	extentCrc     = 2
 )
 
 var client *sdk.MasterClient
@@ -89,6 +94,19 @@ type Dentry struct {
 	Valid bool
 }
 
+type DataPartitionExtentCrcInfo struct {
+	PartitionID       uint64
+	ExtentCrcInfos    []ExtentCrcInfo
+	LackReplicaExtent map[uint64][]string
+	FailedExtent      map[uint64]error
+}
+
+type ExtentCrcInfo struct {
+	FileID           uint64
+	ExtentNum        int
+	OffsetCrcAddrMap map[uint64]map[uint32][]string // offset:(crc:addrs)
+}
+
 func newExtentCmd(mc *sdk.MasterClient) *cobra.Command {
 	client = mc
 	var cmd = &cobra.Command{
@@ -99,6 +117,7 @@ func newExtentCmd(mc *sdk.MasterClient) *cobra.Command {
 	cmd.AddCommand(
 		newExtentCheckCmd(extentReplica),
 		newExtentCheckCmd(extentLength),
+		newExtentCheckCmd(extentCrc),
 		newExtentSearchCmd(),
 		newExtentGarbageCheckCmd(),
 	)
@@ -121,6 +140,9 @@ func newExtentCheckCmd(checkType int) *cobra.Command {
 	} else if checkType == extentLength {
 		use = cmdCheckLengthUse
 		short = cmdCheckLengthShort
+	} else if checkType == extentCrc {
+		use = cmdCheckExtentCrcUse
+		short = cmdCheckExtentShort
 	}
 	var cmd = &cobra.Command{
 		Use:   use,
@@ -155,10 +177,20 @@ func newExtentCheckCmd(checkType int) *cobra.Command {
 				}
 				sort.Strings(sortVol)
 				for _, vol := range sortVol {
-					checkVol(vol, path, inodes, names, tiny, inodeConcurrency, extentConcurrency, checkType)
+					switch checkType {
+					case extentReplica, extentLength:
+						checkVol(vol, path, inodes, names, tiny, inodeConcurrency, extentConcurrency, checkType)
+					case extentCrc:
+						checkVolExtentCrc(vol, tiny, util.MB*5)
+					}
 				}
 			} else {
-				checkVol(vol, path, inodes, names, tiny, inodeConcurrency, extentConcurrency, checkType)
+				switch checkType {
+				case extentReplica, extentLength:
+					checkVol(vol, path, inodes, names, tiny, inodeConcurrency, extentConcurrency, checkType)
+				case extentCrc:
+					checkVolExtentCrc(vol, tiny, util.MB*5)
+				}
 			}
 			return
 		},
@@ -341,7 +373,7 @@ func garbageCheck(vol string, all bool, active bool, dir string, clean bool, con
 		return
 	}
 	for _, dp := range view.DataPartitions {
-		dpInfo, err = getExtentsByDp(dp.PartitionID)
+		dpInfo, err = getExtentsByDp(dp.PartitionID, "")
 		if err != nil {
 			stdout("get extents error: %v, dp: %d\n", err, dp.PartitionID)
 			return
@@ -704,6 +736,167 @@ func checkExtentLength(ek *proto.ExtentKey, checkedExtent sync.Map) (same bool, 
 	return true, nil
 }
 
+func checkVolExtentCrc(vol string, tiny bool, validateStep uint64) {
+	defer func() {
+		msg := fmt.Sprintf("checkVolExtentCrc, vol:%s ", vol)
+		if r := recover(); r != nil {
+			var stack string
+			if r != nil {
+				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
+			}
+			stdout("%s%s\n", msg, stack)
+		}
+	}()
+	stdout("begin check, vol:%s\n", vol)
+	dataPartitionsView, err := client.ClientAPI().GetDataPartitions(vol)
+	if err != nil {
+		return
+	}
+	stdout("vol:%s dp count:%v\n", vol, len(dataPartitionsView.DataPartitions))
+	wg := new(sync.WaitGroup)
+	for _, dataPartition := range dataPartitionsView.DataPartitions {
+		wg.Add(1)
+		go func(dp *proto.DataPartitionResponse) {
+			defer wg.Done()
+			dpTinyExtentCrcInfo, err1 := validateDataPartitionTinyExtentCrc(dp, validateStep)
+			if err1 != nil {
+				stdoutRed(fmt.Sprintf("dp:%v err:%v \n", dp.PartitionID, err1))
+			}
+			if dpTinyExtentCrcInfo == nil {
+				return
+			}
+			if len(dpTinyExtentCrcInfo.ExtentCrcInfos) != 0 {
+				stdout("dp:%v diff tiny ExtentCrcInfo Count:%v \n", dp.PartitionID, len(dpTinyExtentCrcInfo.ExtentCrcInfos))
+				for _, extentCrcInfo := range dpTinyExtentCrcInfo.ExtentCrcInfos {
+					stdout("dp:%v tinyExtentID:%v detail[%v] \n", dp.PartitionID, extentCrcInfo.FileID, extentCrcInfo)
+				}
+			}
+			if len(dpTinyExtentCrcInfo.LackReplicaExtent) != 0 {
+				stdout("dp:%v LackReplicaExtent:%v \n", dp.PartitionID, dpTinyExtentCrcInfo.LackReplicaExtent)
+			}
+			if len(dpTinyExtentCrcInfo.FailedExtent) != 0 {
+				stdout("dp:%v FailedExtent:%v \n", dp.PartitionID, dpTinyExtentCrcInfo.FailedExtent)
+			}
+		}(dataPartition)
+	}
+	wg.Wait()
+	stdout("finish check, vol:%s\n", vol)
+}
+
+func validateDataPartitionTinyExtentCrc(dataPartition *proto.DataPartitionResponse, validateStep uint64) (dpTinyExtentCrcInfo *DataPartitionExtentCrcInfo, err error) {
+	if dataPartition == nil {
+		return nil, fmt.Errorf("action[validateDataPartitionTinyExtentCrc] dataPartition is nil")
+	}
+	if validateStep < util.MB {
+		validateStep = util.MB
+	}
+	dpReplicaInfos, err := getDataPartitionReplicaInfos(dataPartition)
+	if err != nil {
+		return
+	}
+	// map[uint64]map[string]uint64 --> extentID:(host:extent size)
+	extentReplicaHostSizeMap := make(map[uint64]map[string]uint64, 0)
+	for replicaHost, partition := range dpReplicaInfos {
+		for _, extentInfo := range partition.Files {
+			if extentInfo.IsDeleted {
+				continue
+			}
+			if !storage.IsTinyExtent(extentInfo.FileID) {
+				continue
+			}
+			replicaSizeMap, ok := extentReplicaHostSizeMap[extentInfo.FileID]
+			if !ok {
+				replicaSizeMap = make(map[string]uint64)
+			}
+			replicaSizeMap[replicaHost] = extentInfo.Size
+			extentReplicaHostSizeMap[extentInfo.FileID] = replicaSizeMap
+		}
+	}
+
+	lackReplicaExtent := make(map[uint64][]string)
+	failedExtent := make(map[uint64]error)
+	extentCrcInfos := make([]ExtentCrcInfo, 0)
+	for extentID, replicaSizeMap := range extentReplicaHostSizeMap {
+		// record lack replica extent id
+		if len(replicaSizeMap) != len(dpReplicaInfos) {
+			for replicaHost := range dpReplicaInfos {
+				_, ok := replicaSizeMap[replicaHost]
+				if !ok {
+					lackReplicaExtent[extentID] = append(lackReplicaExtent[extentID], replicaHost)
+				}
+			}
+		}
+
+		extentCrcInfo, err1 := validateTinyExtentCrc(dataPartition, extentID, replicaSizeMap, validateStep)
+		if err1 != nil {
+			failedExtent[extentID] = err1
+			continue
+		}
+		if extentCrcInfo.OffsetCrcAddrMap != nil && len(extentCrcInfo.OffsetCrcAddrMap) != 0 {
+			extentCrcInfos = append(extentCrcInfos, extentCrcInfo)
+		}
+	}
+
+	dpTinyExtentCrcInfo = &DataPartitionExtentCrcInfo{
+		PartitionID:       dataPartition.PartitionID,
+		ExtentCrcInfos:    extentCrcInfos,
+		LackReplicaExtent: lackReplicaExtent,
+		FailedExtent:      failedExtent,
+	}
+	return
+}
+
+// 1.以最小size为基准
+// 2.以1M(可配置，最小1M)步长，读取三个副本前4K的数据
+// 3.分别计算CRC并比较
+func validateTinyExtentCrc(dataPartition *proto.DataPartitionResponse, extentID uint64, replicaSizeMap map[string]uint64,
+	validateStep uint64) (extentCrcInfo ExtentCrcInfo, err error) {
+	if dataPartition == nil {
+		err = fmt.Errorf("action[validateTinyExtentCrc] dataPartition is nil")
+		return
+	}
+	if validateStep < util.MB {
+		validateStep = util.MB
+	}
+	minSize := uint64(math.MaxUint64)
+	for _, size := range replicaSizeMap {
+		if minSize > size {
+			minSize = size
+		}
+	}
+	offsetCrcAddrMap := make(map[uint64]map[uint32][]string) // offset:(crc:addrs)
+	offset := uint64(0)
+	size := uint64(util.KB * 4)
+	for {
+		// minSize 可能因为4K对齐，实际上进行了补齐
+		if offset+size >= minSize {
+			break
+		}
+		// read calculate compare
+		crcLocAddrMapTmp := make(map[uint32][]string)
+		for addr := range replicaSizeMap {
+			crcData := make([]byte, size)
+			err1 := readExtent(dataPartition, addr, extentID, crcData, int(offset), int(size))
+			if err1 != nil {
+				err = fmt.Errorf("addr[%v] extentId[%v] offset[%v] size[%v] err:%v", addr, extentID, int(offset), int(size), err1)
+				return
+			}
+			crc := crc32.ChecksumIEEE(crcData)
+			crcLocAddrMapTmp[crc] = append(crcLocAddrMapTmp[crc], addr)
+		}
+		if len(crcLocAddrMapTmp) >= 2 {
+			offsetCrcAddrMap[offset] = crcLocAddrMapTmp
+		}
+		offset += validateStep
+	}
+	extentCrcInfo = ExtentCrcInfo{
+		FileID:           extentID,
+		ExtentNum:        len(replicaSizeMap),
+		OffsetCrcAddrMap: offsetCrcAddrMap,
+	}
+	return
+}
+
 func getInodesByMp(metaPartitionId uint64, leaderAddr string) (Inodes []*Inode, err error) {
 	resp, err := http.Get(fmt.Sprintf("http://%s:%d/getAllInodes?pid=%d", strings.Split(leaderAddr, ":")[0], client.MetaNodeProfPort, metaPartitionId))
 	if err != nil {
@@ -825,11 +1018,16 @@ func getExtentsByInode(vol string, inode uint64) (re *proto.GetExtentsResponse, 
 	return
 }
 
-func getExtentsByDp(partitionId uint64) (re *DataPartition, err error) {
-	partition, err := client.AdminAPI().GetDataPartition("", partitionId)
-	datanode := partition.Hosts[0]
-	addressInfo := strings.Split(datanode, ":")
-	datanode = fmt.Sprintf("%s:%d", addressInfo[0], client.DataNodeProfPort)
+func getExtentsByDp(partitionId uint64, replicaAddr string) (re *DataPartition, err error) {
+	if replicaAddr == "" {
+		partition, err := client.AdminAPI().GetDataPartition("", partitionId)
+		if err != nil {
+			return nil, err
+		}
+		replicaAddr = partition.Hosts[0]
+	}
+	addressInfo := strings.Split(replicaAddr, ":")
+	datanode := fmt.Sprintf("%s:%d", addressInfo[0], client.DataNodeProfPort)
 	url := fmt.Sprintf("http://%s/partition?id=%d", datanode, partitionId)
 	resp, err := http.Get(url)
 	if err != nil {
@@ -919,6 +1117,22 @@ func readExtent(dp *proto.DataPartitionResponse, addr string, extentId uint64, d
 	reqPacket := data.NewReadPacket(ctx, ek, offset, size, 0, offset, true)
 	req := data.NewExtentRequest(0, 0, d, nil)
 	_, _, _, err = dataPartition.SendReadCmdToDataPartition(sc, reqPacket, req)
+	return
+}
+
+func getDataPartitionReplicaInfos(dataPartition *proto.DataPartitionResponse) (dpReplicaInfos map[string]*DataPartition, err error) {
+	if dataPartition == nil {
+		return nil, fmt.Errorf("action[getDataPartitionReplicaInfos] dataPartition is nil")
+	}
+	dpReplicaInfos = make(map[string]*DataPartition, len(dataPartition.Hosts))
+	for _, replicaHost := range dataPartition.Hosts {
+		extentsFromTargetDatanode, err1 := getExtentsByDp(dataPartition.PartitionID, replicaHost)
+		if err1 != nil {
+			err = fmt.Errorf("action[getExtentsByDpFromTargetDatanode] partitionId:%v replicaHost:%v err:%v", dataPartition.PartitionID, replicaHost, err1)
+			return
+		}
+		dpReplicaInfos[replicaHost] = extentsFromTargetDatanode
+	}
 	return
 }
 
