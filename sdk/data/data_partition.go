@@ -359,7 +359,7 @@ func (dp *DataPartition) OverWrite(sc *StreamConn, req *Packet, reply *Packet) (
 	}
 
 	hosts := sortByStatus(sc.dp, true)
-	startTime := time.Now()
+	//startTime := time.Now()
 	for i := 0; i < StreamSendOverWriteMaxRetry; i++ {
 		for _, addr := range hosts {
 			log.LogWarnf("OverWrite: try addr(%v) reqPacket(%v)", addr, req)
@@ -379,11 +379,11 @@ func (dp *DataPartition) OverWrite(sc *StreamConn, req *Packet, reply *Packet) (
 			errMap[addr] = err
 			log.LogWarnf("OverWrite: try addr(%v) failed! err(%v) reply(%v) reqPacket(%v) ", addr, err, reply, req)
 		}
-		if time.Since(startTime) > StreamSendOverWriteTimeout {
-			log.LogWarnf("OverWrite: retry timeout req(%v) time(%v)", req, time.Since(startTime))
-			break
-		}
-		log.LogWarnf("OverWrite: errMap(%v), reqPacket(%v), try the next round", errMap, req)
+		//if time.Since(startTime) > StreamSendOverWriteTimeout {
+		//	log.LogWarnf("OverWrite: retry timeout req(%v) time(%v)", req, time.Since(startTime))
+		//	break
+		//}
+		//log.LogWarnf("OverWrite: errMap(%v), reqPacket(%v), try the next round", errMap, req)
 		//time.Sleep(StreamSendSleepInterval)
 	}
 
