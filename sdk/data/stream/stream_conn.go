@@ -193,6 +193,9 @@ func sortByStatus(dp *wrapper.DataPartition, selectAll bool) (hosts []string) {
 	var dpHosts []string
 	if dp.ClientWrapper.FollowerRead() && dp.ClientWrapper.NearRead() {
 		dpHosts = dp.NearHosts
+		if len(dpHosts) == 0 {
+			dpHosts = dp.Hosts
+		}
 	} else {
 		dpHosts = dp.Hosts
 	}
