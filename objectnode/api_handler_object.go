@@ -206,7 +206,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// validate and fix range
-	if isRangeRead && rangeUpper > uint64(fileInfo.Size)-1 {
+	if isRangeRead && rangeUpper > uint64(fileInfo.Size)-1 || rangeUpper == 0 {
 		rangeUpper = uint64(fileInfo.Size) - 1
 	}
 
@@ -308,11 +308,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var offset = rangeLower
 	var size = uint64(fileInfo.Size)
 	if isRangeRead || len(partNumber) > 0 {
-		if rangeUpper == 0 {
-			size = uint64(fileInfo.Size) - rangeLower
-		} else {
-			size = rangeUpper - rangeLower + 1
-		}
+		size = rangeUpper - rangeLower + 1
 	}
 	err = vol.ReadFile(param.Object(), w, offset, size)
 	if err == syscall.ENOENT {
