@@ -2670,14 +2670,14 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 	log.LogInfof("action[getDataPartitions] tmp is leader[%v]", m.cluster.partition.IsRaftLeader())
 	if !m.cluster.partition.IsRaftLeader() {
 		var ok bool
-		m.cluster.followerReadManager.rwMutex.Lock()
-		defer m.cluster.followerReadManager.rwMutex.Unlock()
-
+		m.cluster.followerReadManager.rwMutex.RLock()
 		if body, ok = m.cluster.followerReadManager.volDataPartitionsView[name]; !ok {
+			m.cluster.followerReadManager.rwMutex.RUnlock()
 			log.LogErrorf("action[getDataPartitions] volume [%v] not get partitions info", name)
 			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("follower volume info not found")))
 			return
 		}
+		m.cluster.followerReadManager.rwMutex.RUnlock()
 		send(w, r, body)
 		return
 	}
