@@ -129,7 +129,9 @@ func (rs *RaftServer) CreateRaft(raftConfig *RaftConfig) error {
 	defer func() {
 		if err != nil {
 			logger.Error("CreateRaft [%v] failed, error is:\r\n %s", raftConfig.ID, err.Error())
+			return
 		}
+		logger.Info("Create Raft success, id:%d", raftConfig.ID)
 	}()
 
 	if raft, err = newRaft(rs.config, raftConfig); err != nil {

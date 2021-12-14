@@ -106,6 +106,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		metric.SetWithLabels(err, labels)
 	}()
 
+	log.LogDebugf("HandleMetadataOperation input info op (%s), remote %s", p.GetOpMsg(), remoteAddr)
+
 	switch p.Opcode {
 	case proto.OpMetaCreateInode:
 		err = m.opCreateInode(conn, p, remoteAddr)
@@ -412,6 +414,8 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 	defer m.mu.Unlock()
 
 	partitionId := fmt.Sprintf("%d", request.PartitionID)
+
+	log.LogInfof("start create meta Partition, partition %s", partitionId)
 
 	mpc := &MetaPartitionConfig{
 		PartitionId: request.PartitionID,

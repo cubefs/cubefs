@@ -843,9 +843,18 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		mp.OfflinePeerID = mpv.OfflinePeerID
 		mp.IsRecover = mpv.IsRecover
 		vol.addMetaPartition(mp)
+		c.addBadMetaParitionIdMap(mp)
 		log.LogInfof("action[loadMetaPartitions],vol[%v],mp[%v]", vol.Name, mp.PartitionID)
 	}
 	return
+}
+
+func (c *Cluster) addBadMetaParitionIdMap(mp *MetaPartition) {
+	if !mp.IsRecover {
+		return
+	}
+
+	c.putBadMetaPartitions(mp.Hosts[0], mp.PartitionID)
 }
 
 func (c *Cluster) loadDataPartitions() (err error) {
@@ -888,7 +897,17 @@ func (c *Cluster) loadDataPartitions() (err error) {
 			dp.afterCreation(rv.Addr, rv.DiskPath, c)
 		}
 		vol.dataPartitions.put(dp)
+
+		c.addBadDataParitionIdMap(dp)
 		log.LogInfof("action[loadDataPartitions],vol[%v],dp[%v]", vol.Name, dp.PartitionID)
 	}
 	return
+}
+
+func (c *Cluster) addBadDataParitionIdMap(dp *DataPartition) {
+	if !dp.isRecover {
+		return
+	}
+
+	c.putBadDataPartitionIDs(nil, dp.Hosts[0], dp.PartitionID)
 }

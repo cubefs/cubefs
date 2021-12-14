@@ -1475,6 +1475,7 @@ func (m *Server) getNodeSetGrpInfoHandler(w http.ResponseWriter, r *http.Request
 	var err error
 	if err = r.ParseForm(); err != nil {
 		sendOkReply(w, r, newErrHTTPReply(err))
+		return
 	}
 	var value string
 	var id uint64
@@ -1621,7 +1622,7 @@ func (m *Server) handleDataNodeTaskResponse(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", http.StatusOK)))
-	m.cluster.handleDataNodeTaskResponse(tr.OperatorAddr, tr)
+	go m.cluster.handleDataNodeTaskResponse(tr.OperatorAddr, tr)
 }
 
 func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
@@ -1904,8 +1905,9 @@ func (m *Server) handleMetaNodeTaskResponse(w http.ResponseWriter, r *http.Reque
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", http.StatusOK)))
-	m.cluster.handleMetaNodeTaskResponse(tr.OperatorAddr, tr)
+	go m.cluster.handleMetaNodeTaskResponse(tr.OperatorAddr, tr)
 }
 
 // Dynamically add a raft node (replica) for the master.
