@@ -106,7 +106,7 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 		log.LogErrorf("action[fsmApply],unmarshal data:%v, err:%v", command, err.Error())
 		panic(err)
 	}
-	log.LogInfof("action[fsmApply],cmd.op[%v],cmd.K[%v],cmd.V[%v]", cmd.Op, cmd.K, string(cmd.V))
+
 	cmdMap := make(map[string][]byte)
 	if cmd.Op != opSyncBatchPut {
 		cmdMap[cmd.K] = cmd.V
@@ -118,7 +118,6 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 			panic(err)
 		}
 		for cmdK, cmd := range nestedCmdMap {
-			log.LogInfof("action[fsmApply],cmd.op[%v],cmd.K[%v],cmd.V[%v]", cmd.Op, cmd.K, string(cmd.V))
 			cmdMap[cmdK] = cmd.V
 		}
 		cmdMap[applied] = []byte(strconv.FormatUint(uint64(index), 10))
@@ -136,13 +135,12 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 		if err = mf.delKeyAndPutIndex(prefix+cmd.K, cmdMap); err != nil {
 			panic(err)
 		}
-		log.LogInfof("action[fsmApply], opSyncDataPartitionsView cmd.op[%v],cmd.K[%v],cmd.V[%v]", cmd.Op, cmd.K, string(cmd.V))
 	default:
 		if err = mf.store.BatchPut(cmdMap, true); err != nil {
 			panic(err)
 		}
 	}
-	log.LogInfof("action[fsmApply] applied %v be set index [%v]", mf.applied, index)
+
 	mf.applied = index
 
 	if mf.applied > 0 && (mf.applied%mf.retainLogs) == 0 {

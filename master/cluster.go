@@ -85,6 +85,7 @@ func (mgr *followerReadManager) reSet() {
 	mgr.volDataPartitionsView = make(map[string][]byte)
 	mgr.status = make(map[string]bool)
 }
+
 func (mgr *followerReadManager) checkStatus() {
 	mgr.rwMutex.Lock()
 	defer mgr.rwMutex.Unlock()
@@ -102,7 +103,7 @@ func (mgr *followerReadManager) updateVolViewFromLeader(key string, value []byte
 	mgr.rwMutex.Lock()
 	defer mgr.rwMutex.Unlock()
 
-	log.LogInfof("action[updateVolViewFromLeader] volume %v be updated", key)
+	log.LogInfof("action[updateVolViewFromLeader] volume %v be updated, value len %v", key, len(value))
 	mgr.volDataPartitionsView[key] = value
 	mgr.status[key] = true
 	mgr.lastUpdateTick[key] = time.Now()
@@ -239,10 +240,13 @@ func (c *Cluster) scheduleToCheckFollowerReadCache() {
 	go func() {
 		for {
 			if c.partition.IsRaftLeader() {
-				time.Sleep(time.Minute)
-				continue
+				vols := c.allVols()
+				for _, vol := range vols {
+					vol.sendViewCacheToFollower(c)
+				}
+			} else {
+				c.followerReadManager.checkStatus()
 			}
-			c.followerReadManager.checkStatus()
 			time.Sleep(5 * time.Second)
 		}
 	}()
@@ -278,7 +282,6 @@ func (c *Cluster) checkDataPartitions() {
 		vol.dataPartitions.setReadWriteDataPartitions(readWrites, c.Name)
 		vol.dataPartitions.
 			updateResponseCache(true, 0)
-		go vol.asyncSendViewCacheToFollower(c)
 		msg := fmt.Sprintf("action[checkDataPartitions],vol[%v] can readWrite partitions:%v  ", vol.Name, vol.dataPartitions.readableAndWritableCnt)
 		log.LogInfo(msg)
 	}
