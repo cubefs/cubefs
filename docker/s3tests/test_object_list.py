@@ -29,7 +29,7 @@ class ObjectListTest(S3TestCase):
         self.s3 = get_env_s3_client()
 
     def test_list_object_v1_etag(self):
-        file_num = 40
+        file_num = 1000
         files = {}  # key -> etag
         for _ in range(file_num):
             key = KEY_PREFIX + random_string(16)
@@ -74,7 +74,7 @@ class ObjectListTest(S3TestCase):
         )
 
     def test_list_object_v2_etag(self):
-        file_num = 40
+        file_num = 1000
         files = {}  # key -> etag
         for _ in range(file_num):
             key = KEY_PREFIX + random_string(16)
@@ -91,7 +91,7 @@ class ObjectListTest(S3TestCase):
                 Bucket=env.BUCKET,
                 Prefix=KEY_PREFIX,
                 ContinuationToken=continuation_token,
-                MaxKeys=30)
+                MaxKeys=73)
             self.assertEqual(result['ResponseMetadata']['HTTPStatusCode'], 200)
             if 'Contents' in result:
                 result_contents = result['Contents']

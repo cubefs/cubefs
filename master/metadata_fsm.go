@@ -17,13 +17,12 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"strconv"
-
 	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tiglabs/raft"
 	"github.com/tiglabs/raft/proto"
+	"io"
+	"strconv"
 )
 
 const (
@@ -34,7 +33,7 @@ type raftLeaderChangeHandler func(leader uint64)
 
 type raftPeerChangeHandler func(confChange *proto.ConfChange) (err error)
 
-type raftCmdApplyHandler func(cmd *RaftCmd) (err error)
+type raftUserCmdApplyHandler func(opt uint32, key string, cmdMap map[string][]byte) (err error)
 
 type raftApplySnapshotHandler func()
 
@@ -47,6 +46,7 @@ type MetadataFsm struct {
 	leaderChangeHandler raftLeaderChangeHandler
 	peerChangeHandler   raftPeerChangeHandler
 	snapshotHandler     raftApplySnapshotHandler
+	UserAppCmdHandler   raftUserCmdApplyHandler
 }
 
 func newMetadataFsm(store *raftstore.RocksDBStore, retainsLog uint64, rs *raft.RaftServer) (fsm *MetadataFsm) {
@@ -70,6 +70,11 @@ func (mf *MetadataFsm) registerPeerChangeHandler(handler raftPeerChangeHandler) 
 // Corresponding to the ApplySnapshot interface in Raft library.
 func (mf *MetadataFsm) registerApplySnapshotHandler(handler raftApplySnapshotHandler) {
 	mf.snapshotHandler = handler
+}
+
+// Corresponding to the ApplyRaftCmd interface in Raft library.
+func (mf *MetadataFsm) registerRaftUserCmdApplyHandler(handler raftUserCmdApplyHandler) {
+	mf.UserAppCmdHandler = handler
 }
 
 func (mf *MetadataFsm) restore() {
@@ -101,7 +106,7 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 		log.LogErrorf("action[fsmApply],unmarshal data:%v, err:%v", command, err.Error())
 		panic(err)
 	}
-	log.LogInfof("action[fsmApply],cmd.op[%v],cmd.K[%v],cmd.V[%v]", cmd.Op, cmd.K, string(cmd.V))
+
 	cmdMap := make(map[string][]byte)
 	if cmd.Op != opSyncBatchPut {
 		cmdMap[cmd.K] = cmd.V
@@ -113,15 +118,21 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 			panic(err)
 		}
 		for cmdK, cmd := range nestedCmdMap {
-			log.LogInfof("action[fsmApply],cmd.op[%v],cmd.K[%v],cmd.V[%v]", cmd.Op, cmd.K, string(cmd.V))
 			cmdMap[cmdK] = cmd.V
 		}
 		cmdMap[applied] = []byte(strconv.FormatUint(uint64(index), 10))
 	}
+
 	switch cmd.Op {
 	case opSyncDeleteDataNode, opSyncDeleteMetaNode, opSyncDeleteVol, opSyncDeleteDataPartition, opSyncDeleteMetaPartition,
 		opSyncDeleteUserInfo, opSyncDeleteAKUser, opSyncDeleteVolUser:
 		if err = mf.delKeyAndPutIndex(cmd.K, cmdMap); err != nil {
+			panic(err)
+		}
+	case opSyncDataPartitionsView:
+		mf.UserAppCmdHandler(cmd.Op, cmd.K, cmdMap)
+		prefix := volCachePrefix
+		if err = mf.delKeyAndPutIndex(prefix+cmd.K, cmdMap); err != nil {
 			panic(err)
 		}
 	default:
@@ -129,7 +140,9 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 			panic(err)
 		}
 	}
+
 	mf.applied = index
+
 	if mf.applied > 0 && (mf.applied%mf.retainLogs) == 0 {
 		log.LogWarnf("action[Apply],truncate raft log,retainLogs[%v],index[%v]", mf.retainLogs, mf.applied)
 		mf.rs.Truncate(GroupID, mf.applied)

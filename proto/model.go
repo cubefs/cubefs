@@ -40,6 +40,7 @@ type MetaNodeInfo struct {
 	MetaPartitionCount        int
 	NodeSetID                 uint64
 	PersistenceMetaPartitions []uint64
+	RdOnly                    bool
 }
 
 // DataNode stores all the information about a data node
@@ -61,6 +62,7 @@ type DataNodeInfo struct {
 	NodeSetID                 uint64
 	PersistenceDataPartitions []uint64
 	BadDisks                  []string
+	RdOnly                    bool
 }
 
 // MetaPartition defines the structure of a meta partition
@@ -151,12 +153,11 @@ type NodeStatInfo struct {
 }
 
 type VolStatInfo struct {
-	Name        string
-	TotalSize   uint64
-	UsedSize    uint64
-	UsedRatio   string
-	EnableToken bool
-	InodeCount  uint64
+	Name       string
+	TotalSize  uint64
+	UsedSize   uint64
+	UsedRatio  string
+	InodeCount uint64
 }
 
 // DataPartition represents the structure of storing the file contents.
@@ -165,6 +166,7 @@ type DataPartitionInfo struct {
 	LastLoadedTime          int64
 	ReplicaNum              uint8
 	Status                  int8
+	Recover                 bool
 	Replicas                []*DataReplica
 	Hosts                   []string // host addresses
 	Peers                   []Peer
@@ -174,6 +176,7 @@ type DataPartitionInfo struct {
 	VolID                   uint64
 	OfflinePeerID           uint64
 	FileInCoreMap           map[string]*FileInCore
+	IsRecover               bool
 	FilesWithMissingReplica map[string]int64 // key: file name, value: last time when a missing replica is found
 }
 

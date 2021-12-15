@@ -20,6 +20,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -64,36 +65,31 @@ const (
 )
 
 func newConfigSetCmd() *cobra.Command {
-	var optMasterHost string
+	var optMasterHosts string
 	var optTimeout uint16
 	var cmd = &cobra.Command{
 		Use:   CliOpSet,
 		Short: cmdConfigSetShort,
 		Long:  `Set the config file`,
 		Run: func(cmd *cobra.Command, args []string) {
-			var (
-				err         error
-				masterHosts []string
-			)
+			var err error
 			defer func() {
 				if err != nil {
 					errout("Error: %v", err)
 				}
 			}()
-			if optMasterHost == "" && optTimeout == 0 {
+			if optMasterHosts == "" && optTimeout == 0 {
 				stdout(fmt.Sprintf("No change. Input 'cfs-cli config set -h' for help.\n"))
 				return
 			}
-			if len(optMasterHost) != 0 {
-				masterHosts = append(masterHosts, optMasterHost)
-			}
-			if err = setConfig(masterHosts, optTimeout); err != nil {
+			if err = setConfig(optMasterHosts, optTimeout); err != nil {
 				return
 			}
 			stdout(fmt.Sprintf("Config has been set successfully!\n"))
 		},
 	}
-	cmd.Flags().StringVar(&optMasterHost, "addr", "", "Specify master address [{HOST}:{PORT}]")
+	cmd.Flags().StringVar(&optMasterHosts, "addr", "",
+		"Specify master address {HOST}:{PORT}[,{HOST}:{PORT}]")
 	cmd.Flags().Uint16Var(&optTimeout, "timeout", 0, "Specify timeout for requests [Unit: s]")
 	return cmd
 }
@@ -123,13 +119,14 @@ func printConfigInfo(config *Config) {
 	stdout("  Request Timeout [s]: %v\n", config.Timeout)
 }
 
-func setConfig(masterHosts []string, timeout uint16) (err error) {
+func setConfig(masterHosts string, timeout uint16) (err error) {
 	var config *Config
 	if config, err = LoadConfig(); err != nil {
 		return
 	}
-	if len(masterHosts) > 0 {
-		config.MasterAddr = masterHosts
+	hosts := strings.Split(masterHosts, ",")
+	if masterHosts != "" && len(hosts) > 0 {
+		config.MasterAddr = hosts
 	}
 	if timeout != 0 {
 		config.Timeout = timeout

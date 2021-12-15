@@ -456,6 +456,7 @@ func (m *Server) deleteMetaReplica(w http.ResponseWriter, r *http.Request) {
 		mp          *MetaPartition
 		partitionID uint64
 		err         error
+		force       bool
 	)
 
 	if partitionID, addr, err = parseRequestToRemoveMetaReplica(r); err != nil {
@@ -468,7 +469,11 @@ func (m *Server) deleteMetaReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = m.cluster.deleteMetaReplica(mp, addr, true); err != nil {
+	var value string
+	if value = r.FormValue(forceKey); value != "" {
+		force, _ = strconv.ParseBool(value)
+	}
+	if err = m.cluster.deleteMetaReplica(mp, addr, true, force); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -884,6 +889,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		NodeSetID:                 dataNode.NodeSetID,
 		PersistenceDataPartitions: dataNode.PersistenceDataPartitions,
 		BadDisks:                  dataNode.BadDisks,
+		RdOnly:                    dataNode.RdOnly,
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(dataNodeInfo))
@@ -892,26 +898,74 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 // Decommission a data node. This will decommission all the data partition on that node.
 func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		node        *DataNode
 		rstMsg      string
 		offLineAddr string
+		limit       int
 		err         error
 	)
 
-	if offLineAddr, err = parseAndExtractNodeAddr(r); err != nil {
+	if offLineAddr, limit, err = parseDecomNodeReq(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
-	if node, err = m.cluster.dataNode(offLineAddr); err != nil {
+	if _, err = m.cluster.dataNode(offLineAddr); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
 		return
 	}
-	if err = m.cluster.decommissionDataNode(node); err != nil {
+
+	if err = m.cluster.migrateDataNode(offLineAddr, "", limit); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	rstMsg = fmt.Sprintf("decommission data node [%v] successfully", offLineAddr)
+
+	rstMsg = fmt.Sprintf("decommission data node [%v] limit %d successfully", offLineAddr, limit)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) migrateDataNodeHandler(w http.ResponseWriter, r *http.Request) {
+	srcAddr, targetAddr, limit, err := parseMigrateNodeParam(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if limit > defaultMigrateDpCnt {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError,
+			Msg: fmt.Sprintf("limit %d can't be bigger than %d", limit, defaultMigrateDpCnt)})
+		return
+	}
+
+	srcNode, err := m.cluster.dataNode(srcAddr)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeDataNodeNotExists, Msg: err.Error()})
+		return
+	}
+
+	targetNode, err := m.cluster.dataNode(targetAddr)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeDataNodeNotExists, Msg: err.Error()})
+		return
+	}
+
+	if srcNode.NodeSetID != targetNode.NodeSetID {
+		err = fmt.Errorf("src %s and target %s must exist in the same nodeSet when migrate", srcAddr, targetAddr)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if !targetNode.isWriteAble() {
+		err = fmt.Errorf("[%s] is not writable, can't used as target addr for migrate", targetAddr)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if err = m.cluster.migrateDataNode(srcAddr, targetAddr, limit); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	rstMsg := fmt.Sprintf("migrateDataNodeHandler from src [%v] to target[%v] has migrate successfully", srcAddr, targetAddr)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
@@ -1072,28 +1126,70 @@ func (m *Server) updateNodesetId(zoneName string, destNodesetId uint64, nodeType
 	return
 }
 
+func (m *Server) setNodeRdOnly(addr string, nodeType uint32, rdOnly bool) (err error) {
+	if nodeType == TypeDataPartion {
+		value, ok := m.cluster.dataNodes.Load(addr)
+		if !ok {
+			return fmt.Errorf("[setNodeRdOnly] data node %s is not exist", addr)
+		}
+
+		dataNode := value.(*DataNode)
+		oldRdOnly := dataNode.RdOnly
+		dataNode.RdOnly = rdOnly
+
+		if err = m.cluster.syncUpdateDataNode(dataNode); err != nil {
+			dataNode.RdOnly = oldRdOnly
+			return fmt.Errorf("[setNodeRdOnly] syncUpdateDataNode err(%s)", err.Error())
+		}
+
+		return
+	}
+
+	value, ok := m.cluster.metaNodes.Load(addr)
+	if !ok {
+		return fmt.Errorf("[setNodeRdOnly] meta node %s is not exist", addr)
+	}
+
+	metaNode := value.(*MetaNode)
+	oldRdOnly := metaNode.RdOnly
+	metaNode.RdOnly = rdOnly
+
+	if err = m.cluster.syncUpdateMetaNode(metaNode); err != nil {
+		metaNode.RdOnly = oldRdOnly
+		return fmt.Errorf("[setNodeRdOnly] syncUpdateMetaNode err(%s)", err.Error())
+	}
+
+	return
+}
+
 func (m *Server) updateNodesetCapcity(zoneName string, nodesetId uint64, capcity int) (err error) {
 	var ns *nodeSet
 	var ok bool
 	var value interface{}
+
 	if capcity < defaultReplicaNum || capcity > 100 {
 		err = fmt.Errorf("capcity [%v] value out of scope", capcity)
 		return
 	}
+
 	if value, ok = m.cluster.t.zoneMap.Load(zoneName); !ok {
 		err = fmt.Errorf("zonename [%v] not found", zoneName)
 		return
 	}
+
 	zone := value.(*Zone)
 	if ns, ok = zone.nodeSetMap[nodesetId]; !ok {
 		err = fmt.Errorf("nodesetId [%v] not found", nodesetId)
 		return
 	}
+
 	ns.Lock()
 	defer ns.Unlock()
 
 	ns.Capacity = capcity
 	m.cluster.syncUpdateNodeSet(ns)
+
+	log.LogInfof("updateNodesetCapcity update nodeSet[%d] cap(%d) success", nodesetId, capcity)
 	return
 }
 
@@ -1151,6 +1247,7 @@ func (m *Server) buildNodeSetGrpInfo(index int) *proto.SimpleNodeSetGrpInfo {
 				Carry:              node.Carry,
 				DataPartitionCount: node.DataPartitionCount,
 				NodeSetID:          node.NodeSetID,
+				RdOnly:             node.RdOnly,
 			}
 			nsStat.DataNodes = append(nsStat.DataNodes, dataNodeInfo)
 			return true
@@ -1192,19 +1289,92 @@ func (m *Server) buildNodeSetGrpInfo(index int) *proto.SimpleNodeSetGrpInfo {
 	}
 	return nsgStat
 }
-func (m *Server) updateNodeSetCapacityHandler(w http.ResponseWriter, r *http.Request) {
-	var (
-		params map[string]interface{}
-		err    error
-	)
-	if params, err = parseAndExtractSetNodeSetInfoParams(r); err != nil {
+
+func parseSetNodeRdOnlyParam(r *http.Request) (addr string, nodeType int, rdOnly bool, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if addr = r.FormValue(addrKey); addr == "" {
+		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is empty", addrKey)
+		return
+	}
+
+	if nodeType, err = parseNodeType(r); err != nil {
+		return
+	}
+
+	val := r.FormValue(rdOnlyKey)
+	if val == "" {
+		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is empty", rdOnlyKey)
+		return
+	}
+
+	if rdOnly, err = strconv.ParseBool(val); err != nil {
+		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is not bool value %s", rdOnlyKey, val)
+		return
+	}
+
+	return
+}
+
+func parseNodeType(r *http.Request) (nodeType int, err error) {
+	var val string
+	if val = r.FormValue(nodeTypeKey); val == "" {
+		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is empty", nodeTypeKey)
+		return
+	}
+
+	if nodeType, err = strconv.Atoi(val); err != nil {
+		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is not number, err %s", nodeTypeKey, err.Error())
+		return
+	}
+
+	if nodeType != int(TypeDataPartion) && nodeType != int(TypeMetaPartion) {
+		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is not legal, must be %d or %d", nodeTypeKey, TypeDataPartion, TypeMetaPartion)
+		return
+	}
+
+	return
+}
+
+func (m *Server) setNodeRdOnlyHandler(w http.ResponseWriter, r *http.Request) {
+
+	addr, nodeType, rdOnly, err := parseSetNodeRdOnlyParam(r)
+	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err := m.updateNodesetCapcity(params[zoneNameKey].(string), params[idKey].(uint64), params[countKey].(int)); err == nil {
+
+	log.LogInfof("[setNodeRdOnlyHandler] set node %s to rdOnly(%v)", addr, rdOnly)
+
+	err = m.setNodeRdOnly(addr, uint32(nodeType), rdOnly)
+	if err != nil {
+		log.LogErrorf("[setNodeRdOnlyHandler] set node %s to rdOnly %v, err (%s)", addr, rdOnly, err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set nodesetinfo params %v successfully", params)))
+
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("[setNodeRdOnlyHandler] set node %s to rdOnly(%v) success", addr, rdOnly)))
+	return
+}
+
+func (m *Server) updateNodeSetCapacityHandler(w http.ResponseWriter, r *http.Request) {
+	cnt, id, zoneName, err := parseSetNodeSetCapParams(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if err := m.updateNodesetCapcity(zoneName, uint64(id), cnt); err != nil {
+		log.LogErrorf("updateNodeSetCapacityHandler update node set fail, zone(%s) set(%d) cnt(%d), err(%s)",
+			zoneName, id, cnt, err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set nodesetinfo zone(%s) nodeSet(%d) cnt(%d) successfully",
+		zoneName, id, cnt)))
 }
 
 func (m *Server) updateDataUseRatioHandler(w http.ResponseWriter, r *http.Request) {
@@ -1305,6 +1475,7 @@ func (m *Server) getNodeSetGrpInfoHandler(w http.ResponseWriter, r *http.Request
 	var err error
 	if err = r.ParseForm(); err != nil {
 		sendOkReply(w, r, newErrHTTPReply(err))
+		return
 	}
 	var value string
 	var id uint64
@@ -1403,11 +1574,12 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 		rstMsg                string
 		offLineAddr, diskPath string
 		err                   error
+		limit                 int
 		badPartitionIds       []uint64
 		badPartitions         []*DataPartition
 	)
 
-	if offLineAddr, diskPath, err = parseRequestToDecommissionNode(r); err != nil {
+	if offLineAddr, diskPath, limit, err = parseReqToDecoDisk(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1426,8 +1598,14 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 	for _, bdp := range badPartitions {
 		badPartitionIds = append(badPartitionIds, bdp.PartitionID)
 	}
-	rstMsg = fmt.Sprintf("receive decommissionDisk node[%v] disk[%v], badPartitionIds[%v] has offline successfully",
-		node.Addr, diskPath, badPartitionIds)
+
+	if limit > 0 && limit < len(badPartitionIds) {
+		badPartitionIds = badPartitionIds[:limit]
+		badPartitions = badPartitions[:limit]
+	}
+
+	rstMsg = fmt.Sprintf("receive decommissionDisk node[%v] disk[%v] limit [%d], badPartitionIds[%v] has offline successfully",
+		node.Addr, diskPath, limit, badPartitionIds)
 	if err = m.cluster.decommissionDisk(node, diskPath, badPartitions); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -1444,7 +1622,7 @@ func (m *Server) handleDataNodeTaskResponse(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", http.StatusOK)))
-	m.cluster.handleDataNodeTaskResponse(tr.OperatorAddr, tr)
+	go m.cluster.handleDataNodeTaskResponse(tr.OperatorAddr, tr)
 }
 
 func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
@@ -1551,6 +1729,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		MetaPartitionCount:        metaNode.MetaPartitionCount,
 		NodeSetID:                 metaNode.NodeSetID,
 		PersistenceMetaPartitions: metaNode.PersistenceMetaPartitions,
+		RdOnly:                    metaNode.RdOnly,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(metaNodeInfo))
 }
@@ -1602,28 +1781,121 @@ func (m *Server) loadMetaPartition(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
-func (m *Server) decommissionMetaNode(w http.ResponseWriter, r *http.Request) {
-	var (
-		metaNode    *MetaNode
-		rstMsg      string
-		offLineAddr string
-		err         error
-	)
+func parseMigrateNodeParam(r *http.Request) (srcAddr, targetAddr string, limit int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
 
-	if offLineAddr, err = parseAndExtractNodeAddr(r); err != nil {
+	srcAddr = r.FormValue(srcAddrKey)
+	if srcAddr == "" {
+		err = fmt.Errorf("parseMigrateNodeParam %s can't be empty", srcAddrKey)
+		return
+	}
+
+	targetAddr = r.FormValue(targetAddrKey)
+	if targetAddr == "" {
+		err = fmt.Errorf("parseMigrateNodeParam %s can't be empty when migrate", targetAddrKey)
+		return
+	}
+
+	if srcAddr == targetAddr {
+		err = fmt.Errorf("parseMigrateNodeParam srcAddr %s can't be equal to targetAddr %s", srcAddr, targetAddr)
+		return
+	}
+
+	limit, err = parseUintParam(r, countKey)
+	if err != nil {
+		return
+	}
+
+	return
+}
+
+func parseUintParam(r *http.Request, key string) (num int, err error) {
+	val := r.FormValue(key)
+	if val == "" {
+		num = 0
+		return
+	}
+
+	numVal, err := strconv.ParseUint(val, 10, 64)
+	if err != nil {
+		err = fmt.Errorf("parseUintParam %s-%s is not legal, err %s", key, val, err.Error())
+		return
+	}
+
+	num = int(numVal)
+	return
+}
+
+func (m *Server) migrateMetaNodeHandler(w http.ResponseWriter, r *http.Request) {
+	srcAddr, targetAddr, limit, err := parseMigrateNodeParam(r)
+	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
-	if metaNode, err = m.cluster.metaNode(offLineAddr); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaNodeNotExists))
+	if limit > defaultMigrateMpCnt {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError,
+			Msg: fmt.Sprintf("limit %d can't be bigger than %d", limit, defaultMigrateMpCnt)})
 		return
 	}
-	if err = m.cluster.decommissionMetaNode(metaNode); err != nil {
+
+	srcNode, err := m.cluster.metaNode(srcAddr)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeMetaNodeNotExists, Msg: err.Error()})
+		return
+	}
+
+	targetNode, err := m.cluster.metaNode(targetAddr)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeMetaNodeNotExists, Msg: err.Error()})
+		return
+	}
+
+	if srcNode.NodeSetID != targetNode.NodeSetID {
+		err = fmt.Errorf("src %s and target %s must exist in the same nodeSet when migrate", srcAddr, targetAddr)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeMetaNodeNotExists, Msg: err.Error()})
+		return
+	}
+
+	if !targetNode.isWritable() {
+		err = fmt.Errorf("[%s] is not writable, can't used as target addr for migrate", targetAddr)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if err = m.cluster.migrateMetaNode(srcAddr, targetAddr, limit); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	rstMsg = fmt.Sprintf("decommissionMetaNode metaNode [%v] has offline successfully", offLineAddr)
+
+	rstMsg := fmt.Sprintf("migrateMetaNodeHandler from src [%v] to targaet[%s] has migrate successfully", srcAddr, targetAddr)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) decommissionMetaNode(w http.ResponseWriter, r *http.Request) {
+	var (
+		rstMsg      string
+		offLineAddr string
+		limit       int
+		err         error
+	)
+
+	if offLineAddr, limit, err = parseDecomNodeReq(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if _, err = m.cluster.metaNode(offLineAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaNodeNotExists))
+		return
+	}
+	if err = m.cluster.migrateMetaNode(offLineAddr, "", limit); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	rstMsg = fmt.Sprintf("decommissionMetaNode metaNode [%v] limit %d has offline successfully", offLineAddr, limit)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
@@ -1633,8 +1905,9 @@ func (m *Server) handleMetaNodeTaskResponse(w http.ResponseWriter, r *http.Reque
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", http.StatusOK)))
-	m.cluster.handleMetaNodeTaskResponse(tr.OperatorAddr, tr)
+	go m.cluster.handleMetaNodeTaskResponse(tr.OperatorAddr, tr)
 }
 
 // Dynamically add a raft node (replica) for the master.
@@ -1724,6 +1997,20 @@ func parseRequestForAddNode(r *http.Request) (nodeAddr, zoneName string, err err
 	return
 }
 
+func parseDecomNodeReq(r *http.Request) (nodeAddr string, limit int, err error) {
+	nodeAddr, err = parseAndExtractNodeAddr(r)
+	if err != nil {
+		return
+	}
+
+	limit, err = parseUintParam(r, countKey)
+	if err != nil {
+		return
+	}
+
+	return
+}
+
 func parseAndExtractNodeAddr(r *http.Request) (nodeAddr string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -1731,7 +2018,7 @@ func parseAndExtractNodeAddr(r *http.Request) (nodeAddr string, err error) {
 	return extractNodeAddr(r)
 }
 
-func parseRequestToDecommissionNode(r *http.Request) (nodeAddr, diskPath string, err error) {
+func parseReqToDecoDisk(r *http.Request) (nodeAddr, diskPath string, limit int, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1740,6 +2027,11 @@ func parseRequestToDecommissionNode(r *http.Request) (nodeAddr, diskPath string,
 		return
 	}
 	diskPath, err = extractDiskPath(r)
+	if err != nil {
+		return
+	}
+
+	limit, err = parseUintParam(r, countKey)
 	return
 }
 
@@ -2178,34 +2470,25 @@ func parseAndExtractThreshold(r *http.Request) (threshold float64, err error) {
 	}
 	return
 }
-func parseAndExtractSetNodeSetInfoParams(r *http.Request) (params map[string]interface{}, err error) {
+func parseSetNodeSetCapParams(r *http.Request) (count, id int, zoneName string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
-	var value string
-	params = make(map[string]interface{})
-	if value = r.FormValue(countKey); value != "" {
-		var count = uint64(0)
-		count, err = strconv.ParseUint(value, 10, 64)
-		if err != nil {
-			err = unmatchedKey(countKey)
-			return
-		}
-		params[countKey] = count
+
+	count, err = parseUintParam(r, countKey)
+	if err != nil {
+		return
 	}
-	var zoneName string
+
 	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
 		zoneName = DefaultZoneName
 	}
-	if value = r.FormValue(idKey); value != "" {
-		var nodesetId = uint64(0)
-		nodesetId, err = strconv.ParseUint(value, 10, 64)
-		if err != nil {
-			err = unmatchedKey(idKey)
-			return
-		}
-		params[idKey] = nodesetId
+
+	id, err = parseUintParam(r, idKey)
+	if err != nil {
+		return
 	}
+
 	return
 }
 func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interface{}, err error) {
@@ -2382,6 +2665,20 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 	)
 	if name, err = parseAndExtractName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	log.LogInfof("action[getDataPartitions] tmp is leader[%v]", m.cluster.partition.IsRaftLeader())
+	if !m.cluster.partition.IsRaftLeader() {
+		var ok bool
+		m.cluster.followerReadManager.rwMutex.RLock()
+		if body, ok = m.cluster.followerReadManager.volDataPartitionsView[name]; !ok {
+			m.cluster.followerReadManager.rwMutex.RUnlock()
+			log.LogErrorf("action[getDataPartitions] volume [%v] not get partitions info", name)
+			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("follower volume info not found")))
+			return
+		}
+		m.cluster.followerReadManager.rwMutex.RUnlock()
+		send(w, r, body)
 		return
 	}
 	if vol, err = m.cluster.getVol(name); err != nil {

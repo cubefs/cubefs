@@ -138,6 +138,7 @@ type OpDentry interface {
 	DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet) (err error)
 	UpdateDentry(req *UpdateDentryReq, p *Packet) (err error)
 	ReadDir(req *ReadDirReq, p *Packet) (err error)
+	ReadDirLimit(req *ReadDirLimitReq, p *Packet) (err error)
 	ReadDirOnly(req *ReadDirOnlyReq, p *Packet) (err error)
 	Lookup(req *LookupReq, p *Packet) (err error)
 	GetDentryTree() *BTree

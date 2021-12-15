@@ -16,11 +16,12 @@ package master
 
 import (
 	"fmt"
+	"math"
+	"time"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
-	"math"
-	"time"
 )
 
 func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dpTimeOutSec int64) {
@@ -78,6 +79,11 @@ func (partition *DataPartition) checkReplicaStatus(timeOutSec int64) {
 	defer partition.Unlock()
 	for _, replica := range partition.Replicas {
 		if !replica.isLive(timeOutSec) {
+			replica.Status = proto.ReadOnly
+			continue
+		}
+
+		if replica.dataNode.RdOnly && replica.Status == proto.ReadWrite {
 			replica.Status = proto.ReadOnly
 		}
 	}
@@ -200,8 +206,6 @@ func (partition *DataPartition) checkReplicationTask(clusterID string, dataParti
 			" On :%v  Err:%v  Hosts:%v  new task to create DataReplica",
 			addMissingReplicaErr, partition.PartitionID, lackAddr, lackErr.Error(), partition.Hosts)
 		Warn(clusterID, msg)
-	} else {
-		partition.setToNormal()
 	}
 
 	return

@@ -171,7 +171,6 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	var optReplicas int
 	var optFollowerRead string
 	var optAuthenticate string
-	var optEnableToken string
 	var optZoneName string
 	var optYes bool
 	var confirmString = strings.Builder{}
@@ -231,17 +230,6 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  Authenticate        : %v\n", formatEnabledDisabled(vv.Authenticate)))
 			}
-			if optEnableToken != "" {
-				isChange = true
-				var enable bool
-				if enable, err = strconv.ParseBool(optEnableToken); err != nil {
-					return
-				}
-				confirmString.WriteString(fmt.Sprintf("  EnableToken         : %v -> %v\n", formatEnabledDisabled(vv.EnableToken), formatEnabledDisabled(enable)))
-				vv.EnableToken = enable
-			} else {
-				confirmString.WriteString(fmt.Sprintf("  EnableToken         : %v\n", formatEnabledDisabled(vv.EnableToken)))
-			}
 			if vv.CrossZone == false && "" != optZoneName {
 				isChange = true
 				confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v -> %v\n", vv.ZoneName, optZoneName))
@@ -271,7 +259,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum),
-				vv.FollowerRead, vv.Authenticate, vv.EnableToken, calcAuthKey(vv.Owner), vv.ZoneName)
+				vv.FollowerRead, vv.Authenticate, calcAuthKey(vv.Owner), vv.ZoneName)
 			if err != nil {
 				return
 			}

@@ -51,6 +51,10 @@ func (t *AdminTask) ToString() (msg string) {
 	return
 }
 
+func (t *AdminTask) IdString() string {
+	return fmt.Sprintf("id:%s_sendTime_%d_createTime_%d", t.ID, t.SendTime, t.CreateTime)
+}
+
 // CheckTaskNeedSend checks if the task needs to be sent out.
 func (t *AdminTask) CheckTaskNeedSend() (needRetry bool) {
 	if (int)(t.SendCount) < MaxSendCount && time.Now().Unix()-t.SendTime > (int64)(ResponseInterval) {

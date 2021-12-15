@@ -279,6 +279,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 		fuse.AsyncRead(),
 		fuse.AutoInvalData(opt.AutoInvalData),
 		fuse.FSName("chubaofs-" + opt.Volname),
+		fuse.Subtype("chubaofs"),
 		fuse.LocalVolume(),
 		fuse.VolumeName("chubaofs-" + opt.Volname)}
 
@@ -292,6 +293,10 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 
 	if opt.EnablePosixACL {
 		options = append(options, fuse.PosixACL())
+	}
+
+	if opt.EnableUnixPermission {
+		options = append(options, fuse.DefaultPermissions())
 	}
 
 	fsConn, err = fuse.Mount(opt.MountPoint, options...)
@@ -359,6 +364,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.NearRead = GlobalMountOptions[proto.NearRead].GetBool()
 	opt.EnablePosixACL = GlobalMountOptions[proto.EnablePosixACL].GetBool()
 	opt.EnableSummary = GlobalMountOptions[proto.EnableSummary].GetBool()
+	opt.EnableUnixPermission = GlobalMountOptions[proto.EnableUnixPermission].GetBool()
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))

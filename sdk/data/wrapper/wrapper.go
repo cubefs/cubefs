@@ -137,7 +137,7 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 }
 
 func (w *Wrapper) update() {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(time.Minute)
 	for {
 		select {
 		case <-ticker.C:
@@ -176,14 +176,7 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 	return nil
 }
 
-func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
-
-	var dpv *proto.DataPartitionsView
-	if dpv, err = w.mc.ClientAPI().GetDataPartitions(w.volName); err != nil {
-		log.LogErrorf("updateDataPartition: get data partitions fail: volume(%v) err(%v)", w.volName, err)
-		return
-	}
-	log.LogInfof("updateDataPartition: get data partitions: volume(%v) partitions(%v)", w.volName, len(dpv.DataPartitions))
+func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.DataPartitionResponse) (err error) {
 
 	var convert = func(response *proto.DataPartitionResponse) *DataPartition {
 		return &DataPartition{
@@ -193,7 +186,11 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 	}
 
 	rwPartitionGroups := make([]*DataPartition, 0)
-	for _, partition := range dpv.DataPartitions {
+	for index, partition := range DataPartitions {
+		if partition == nil {
+			log.LogErrorf("action[updateDataPartitionByRsp] index [%v] is nil", index)
+			continue
+		}
 		dp := convert(partition)
 		if w.followerRead && w.nearRead {
 			dp.NearHosts = w.sortHostsByDistance(dp.Hosts)
@@ -215,6 +212,49 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 
 	log.LogInfof("updateDataPartition: finish")
 	return err
+}
+
+func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
+
+	var dpv *proto.DataPartitionsView
+	if dpv, err = w.mc.ClientAPI().GetDataPartitions(w.volName); err != nil {
+		log.LogErrorf("updateDataPartition: get data partitions fail: volume(%v) err(%v)", w.volName, err)
+		return
+	}
+	log.LogInfof("updateDataPartition: get data partitions: volume(%v) partitions(%v)", w.volName, len(dpv.DataPartitions))
+	return w.updateDataPartitionByRsp(isInit, dpv.DataPartitions)
+}
+
+// getDataPartition will call master to get data partition info which not include in  cache updated by
+// updateDataPartition which may not take effect if nginx be placed for reduce the pressure of master
+func (w *Wrapper) getDataPartition(isInit bool, dpId uint64) (err error) {
+
+	var dpInfo *proto.DataPartitionInfo
+	if dpInfo, err = w.mc.AdminAPI().GetDataPartition(w.volName, dpId); err != nil {
+		log.LogErrorf("getDataPartition: get data partitions fail: volume(%v) err(%v)", w.volName, err)
+		return
+	}
+
+	log.LogInfof("getDataPartition: get data partitions: volume(%v)", w.volName)
+	var leaderAddr string
+	for _, replica := range dpInfo.Replicas {
+		if replica.IsLeader {
+			leaderAddr = replica.Addr
+		}
+	}
+
+	dpr := new(proto.DataPartitionResponse)
+	dpr.PartitionID = dpId
+	dpr.Status = dpInfo.Status
+	dpr.ReplicaNum = dpInfo.ReplicaNum
+	dpr.Hosts = make([]string, len(dpInfo.Hosts))
+	copy(dpr.Hosts, dpInfo.Hosts)
+	dpr.LeaderAddr = leaderAddr
+	dpr.IsRecover = dpInfo.IsRecover
+
+	DataPartitions := make([]*proto.DataPartitionResponse, 1)
+	DataPartitions = append(DataPartitions, dpr)
+	return w.updateDataPartitionByRsp(isInit, DataPartitions)
 }
 
 func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
@@ -248,6 +288,14 @@ func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 	defer w.RUnlock()
 	dp, ok := w.partitions[partitionID]
 	if !ok {
+		err := w.getDataPartition(false, partitionID)
+		if err == nil {
+			dp, ok = w.partitions[partitionID]
+			if !ok {
+				return nil, fmt.Errorf("partition[%v] not exsit", partitionID)
+			}
+			return dp, nil
+		}
 		return nil, fmt.Errorf("partition[%v] not exsit", partitionID)
 	}
 	return dp, nil

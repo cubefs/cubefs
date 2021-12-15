@@ -84,7 +84,7 @@ func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) 
 
 	mp, err := m.getPartition(p.PartitionID)
 	if err != nil {
-		log.LogInfof("[metaManager] getPacketLabels metric packet: %v, partitions: %v", p, m.partitions)
+		log.LogInfof("[metaManager] getPacketLabels metric packet: %v", p)
 		return
 	}
 
@@ -98,11 +98,15 @@ func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) 
 
 // HandleMetadataOperation handles the metadata operations.
 func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	log.LogInfof("HandleMetadataOperation input info op (%s), remote %s", p.String(), remoteAddr)
+
 	metric := exporter.NewTPCnt(p.GetOpMsg())
 	labels := m.getPacketLabels(p)
 	defer func() {
 		metric.SetWithLabels(err, labels)
 	}()
+
+	log.LogDebugf("HandleMetadataOperation input info op (%s), remote %s", p.GetOpMsg(), remoteAddr)
 
 	switch p.Opcode {
 	case proto.OpMetaCreateInode:
@@ -135,6 +139,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opReadDir(conn, p, remoteAddr)
 	case proto.OpMetaReadDirOnly:
 		err = m.opReadDirOnly(conn, p, remoteAddr)
+	case proto.OpMetaReadDirLimit:
+		err = m.opReadDirLimit(conn, p, remoteAddr)
 	case proto.OpCreateMetaPartition:
 		err = m.opCreateMetaPartition(conn, p, remoteAddr)
 	case proto.OpMetaNodeHeartbeat:
@@ -293,6 +299,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 	if err != nil {
 		return
 	}
+	syslog.Println("Start loadPartitions!!!")
 	var wg sync.WaitGroup
 	for _, fileInfo := range fileInfoList {
 		if fileInfo.IsDir() && strings.HasPrefix(fileInfo.Name(), partitionPrefix) {
@@ -369,6 +376,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 		}
 	}
 	wg.Wait()
+	syslog.Println("Finish loadPartitions!!!")
 	return
 }
 
@@ -376,13 +384,17 @@ func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) (e
 	syslog.Println(fmt.Sprintf("start load metaPartition %v", id))
 	partition.ForceSetMetaPartitionToLoadding()
 	if err = partition.Start(); err != nil {
-		log.LogErrorf("load meta partition %v fail: %v", id, err)
+		msg := fmt.Sprintf("load meta partition %v fail: %v", id, err)
+		log.LogError(msg)
+		syslog.Println(msg)
 		return
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.partitions[id] = partition
-	log.LogInfof("load meta partition %v success", id)
+	msg := fmt.Sprintf("load meta partition %v success", id)
+	log.LogInfof(msg)
+	syslog.Println(msg)
 	return
 }
 
@@ -402,6 +414,8 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 	defer m.mu.Unlock()
 
 	partitionId := fmt.Sprintf("%d", request.PartitionID)
+
+	log.LogInfof("start create meta Partition, partition %s", partitionId)
 
 	mpc := &MetaPartitionConfig{
 		PartitionId: request.PartitionID,
