@@ -73,6 +73,7 @@ type MetaPartitionInfo struct {
 	MaxInodeID    uint64
 	InodeCount    uint64
 	DentryCount   uint64
+	MaxExistIno	  uint64
 	VolName       string
 	Replicas      []*MetaReplicaInfo
 	ReplicaNum    uint8

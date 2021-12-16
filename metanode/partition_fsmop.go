@@ -39,7 +39,7 @@ func (mp *metaPartition) initInode(ino *Inode) {
 			return
 		default:
 			// check first root inode
-			if mp.hasInode(ino) {
+			if ok, _ := mp.hasInode(ino); ok {
 				return
 			}
 			if !mp.raftPartition.IsRaftLeader() {

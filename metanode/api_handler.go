@@ -15,12 +15,11 @@
 package metanode
 
 import (
+	"bytes"
 	"encoding/json"
 	"github.com/chubaofs/chubaofs/util"
 	"net/http"
 	"strconv"
-
-	"bytes"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -69,7 +68,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getDiskStat", m.getDiskStatHandler)
 	http.HandleFunc("/stat/info", m.getStatInfo)
 
-	//http.HandleFunc("/cursorReset", m.cursorReset)
+	http.HandleFunc("/cursorReset", m.cursorReset)
 
 	return
 }
@@ -237,6 +236,19 @@ func (m *MetaNode) cursorReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ino, err := strconv.ParseUint(r.FormValue("ino"), 10, 64)
+	if err != nil {
+		ino = 0
+		err = nil
+	}
+
+	force := false
+	forceStr := r.FormValue("force")
+	if forceStr != "" {
+		force = true
+	}
+	log.LogInfof("Mp[%d] recv reset cursor, vol:%s, ino:%d, force:%v", pid, vol, ino, force)
+
 	mp, err := m.metadataManager.GetPartition(pid)
 	if err != nil {
 		resp.Code = http.StatusNotFound
@@ -246,21 +258,29 @@ func (m *MetaNode) cursorReset(w http.ResponseWriter, r *http.Request) {
 	req := &proto.CursorResetRequest{
 		VolName:     vol,
 		PartitionId: pid,
+		Inode: ino,
+		Force: force,
 	}
+
 	cursor, err := mp.(*metaPartition).CursorReset(r.Context(), req)
 	if err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()
+		log.LogInfof("Mp[%d] recv reset cursor failed, vol:%s, cursor:%d, err:%s", pid, vol, cursor, err.Error())
 		return
 	}
+
+	respInfo := &proto.CursorResetResponse{
+		PartitionId: mp.GetBaseConfig().PartitionId,
+		Start: mp.GetBaseConfig().Start,
+		End: mp.GetBaseConfig().End,
+		Cursor: cursor,
+	}
+
+	log.LogInfof("Mp[%d] recv reset cursor success, vol:%s, cursor:%d", pid, vol, cursor)
 	resp.Code = http.StatusOK
 	resp.Msg = "Ok"
-	resp.Data = map[string]interface{}{
-		"start":      mp.GetBaseConfig().Start,
-		"end":        mp.GetBaseConfig().End,
-		"cursor":     mp.GetBaseConfig().Cursor,
-		"new_cursor": cursor,
-	}
+	resp.Data = respInfo
 	return
 }
 

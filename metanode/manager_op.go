@@ -62,16 +62,22 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 	}
 	m.Range(func(id uint64, partition MetaPartition) bool {
 		mConf := partition.GetBaseConfig()
+		maxInode := partition.GetInodeTree().MaxItem()
+		maxIno := mConf.Start
+		if maxInode != nil {
+			maxIno = maxInode.(*Inode).Inode
+		}
 		mpr := &proto.MetaPartitionReport{
-			PartitionID: mConf.PartitionId,
-			Start:       mConf.Start,
-			End:         mConf.End,
-			Status:      proto.ReadWrite,
-			MaxInodeID:  mConf.Cursor,
-			VolName:     mConf.VolName,
-			InodeCnt:    uint64(partition.GetInodeTree().Len()),
-			DentryCnt:   uint64(partition.GetDentryTree().Len()),
-			IsLearner:   partition.IsLearner(),
+			PartitionID:     mConf.PartitionId,
+			Start:           mConf.Start,
+			End:             mConf.End,
+			Status:          proto.ReadWrite,
+			MaxInodeID:      mConf.Cursor,
+			VolName:         mConf.VolName,
+			InodeCnt:        uint64(partition.GetInodeTree().Len()),
+			DentryCnt:       uint64(partition.GetDentryTree().Len()),
+			IsLearner:       partition.IsLearner(),
+			ExistMaxInodeID: maxIno,
 		}
 		addr, isLeader := partition.IsLeader()
 		if addr == "" {

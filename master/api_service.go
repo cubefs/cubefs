@@ -2866,6 +2866,7 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	mpView.InodeCount = mp.InodeCount
 	mpView.DentryCount = mp.DentryCount
 	mpView.IsRecover = mp.IsRecover
+	mpView.MaxExistIno = mp.MaxExistIno
 	return
 }
 
@@ -2913,6 +2914,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			MaxInodeID:    mp.MaxInodeID,
 			InodeCount:    mp.InodeCount,
 			DentryCount:   mp.DentryCount,
+			MaxExistIno:   mp.MaxExistIno,
 			Replicas:      replicas,
 			ReplicaNum:    mp.ReplicaNum,
 			Status:        mp.Status,

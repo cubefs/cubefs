@@ -94,7 +94,7 @@ func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 		}
 		// o represent proto.ErrCodeSuccess
 		if body.Code != 200 {
-			return nil, proto.ParseErrorCode(body.Code)
+			return nil, fmt.Errorf("%s:%s", proto.ParseErrorCode(body.Code), body.Msg)
 		}
 		return []byte(body.Data), nil
 	default:
@@ -179,7 +179,7 @@ func (mc *MetaHttpClient) GetMetaPartition(pid uint64) (resp *GetMPInfoResp, err
 	return
 }
 
-func (mc *MetaHttpClient) GetAllDentry(pid uint64) (dentryMap map[string]*metanode.Dentry, err error, ) {
+func (mc *MetaHttpClient) GetAllDentry(pid uint64) (dentryMap map[string]*metanode.Dentry, err error ) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[GetAllDentry],pid:%v,err:%v", pid, err)
@@ -230,7 +230,7 @@ func parseToken(dec *json.Decoder, expectToken rune) (err error) {
 	return
 }
 
-func (mc *MetaHttpClient) GetAllInodes(pid uint64) (rstMap map[uint64]*metanode.Inode, err error, ) {
+func (mc *MetaHttpClient) GetAllInodes(pid uint64) (rstMap map[uint64]*metanode.Inode, err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[GetAllInodes],pid:%v,err:%v", pid, err)
@@ -269,4 +269,34 @@ func (mc *MetaHttpClient) GetAllInodes(pid uint64) (rstMap map[uint64]*metanode.
 	}
 
 	return inodeMap, nil
+}
+
+func (mc *MetaHttpClient) ResetCursor(pid uint64, ino uint64, force bool) (resp *proto.CursorResetResponse, err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[GetAllInodes],pid:%v,err:%v", pid, err)
+		}
+		log.LogFlush()
+	}()
+
+	resp = &proto.CursorResetResponse{}
+	req := newAPIRequest(http.MethodGet, "/cursorReset")
+	req.addParam("pid", fmt.Sprintf("%v", pid))
+	req.addParam("ino", fmt.Sprintf("%v", ino))
+	if force {
+		req.addParam("force", "1")
+	}
+
+	respData, err := mc.serveRequest(req)
+	//fmt.Printf("err:%v,respData:%v\n", err, string(respData))
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(respData, resp)
+	if err != nil {
+		return
+	}
+
+	return
 }

@@ -36,6 +36,7 @@ const (
 	CliOpDelReplica        = "del-replica"
 	CliOpAddLearner        = "add-learner"
 	CliOpPromoteLearner    = "promote-learner"
+	CliOpResetCursor       = "reset-cursor"
 	// monitor op
 	CliOpIPTopPartition      = "ip-top-partition"
 	CliOpTopPartitionOp      = "partition-op"

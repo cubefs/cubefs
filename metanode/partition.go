@@ -430,6 +430,27 @@ func (mp *metaPartition) IsLeader() (leaderAddr string, ok bool) {
 	return
 }
 
+func (mp *metaPartition)calcMPStatus() (int, error) {
+	total := configTotalMem
+	used, err := util.GetProcessMemory(os.Getpid())
+	if err != nil {
+		return proto.Unavailable, err
+	}
+
+	addr, _ := mp.IsLeader()
+	if addr == "" {
+		return proto.Unavailable, nil
+	}
+	if mp.config.Cursor >= mp.config.End {
+		return proto.ReadOnly, nil
+	}
+	if used > uint64(float64(total)*MaxUsedMemFactor) {
+		return proto.ReadOnly, nil
+	}
+
+	return proto.ReadWrite, nil
+}
+
 func (mp *metaPartition) IsLearner() bool {
 	for _, learner := range mp.config.Learners {
 		if mp.config.NodeId == learner.ID {

@@ -20,11 +20,10 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io"
-	"sync/atomic"
-
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
+	"io"
+	"sync/atomic"
 )
 
 type InodeResponse struct {
@@ -97,14 +96,14 @@ func (mp *metaPartition) getInode(ino *Inode) (resp *InodeResponse) {
 	return
 }
 
-func (mp *metaPartition) hasInode(ino *Inode) (ok bool) {
+func (mp *metaPartition) hasInode(ino *Inode) (ok bool, inode *Inode) {
 	item := mp.inodeTree.Get(ino)
 	if item == nil {
 		ok = false
 		return
 	}
-	i := item.(*Inode)
-	if i.ShouldDelete() {
+	inode = item.(*Inode)
+	if inode.ShouldDelete() {
 		ok = false
 		return
 	}
@@ -187,24 +186,13 @@ func (mp *metaPartition) internalDelete(val []byte) (err error) {
 func (mp *metaPartition) internalCursorReset(val []byte) (uint64, error) {
 	req := &proto.CursorResetRequest{}
 	if err := json.Unmarshal(val, req); err != nil {
-		return 0, err
-	}
-	if mp.config.VolName != req.VolName {
-		return 0, fmt.Errorf("partition:[%d] reset vol name not equal mp:[%s] req:[%s]", mp.config.PartitionId, mp.config.VolName, req.VolName)
+		log.LogInfof("mp[%v] reset cursor, json unmarshal failed:%s", mp.config.PartitionId, err.Error())
+		return mp.config.Cursor, err
 	}
 
-	if mp.freeList.Len() != 0 {
-		return 0, fmt.Errorf("partition:[%d] freeList len must 0, but got [%d]", mp.config.PartitionId, mp.inodeTree.Len())
-	}
-
-	if mp.inodeTree.Len() != 0 {
-		if mp.inodeTree.Len() == 1 && mp.inodeTree.Has(NewInode(1, 0)) { // if is root inode
-			atomic.StoreUint64(&mp.config.Cursor, mp.config.Start+2)
-		} else {
-			return 0, fmt.Errorf("partition:[%d] reset inode len must 0, but got [%d]", mp.config.PartitionId, mp.inodeTree.Len())
-		}
-	} else {
-		atomic.StoreUint64(&mp.config.Cursor, mp.config.Start+1)
+	if ok := atomic.CompareAndSwapUint64(&mp.config.Cursor, req.Cursor, req.Inode); !ok {
+		log.LogInfof("mp[%v] reset cursor, failed: cursor changed", mp.config.PartitionId)
+		return mp.config.Cursor, fmt.Errorf("mp[%v] reset cursor, failed: cursor changed", mp.config.PartitionId)
 	}
 
 	log.LogInfof("internalCursorReset: partitionID(%v) reset to (%v) ", mp.config.PartitionId, mp.config.Cursor)

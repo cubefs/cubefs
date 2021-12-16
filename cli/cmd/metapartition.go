@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/chubaofs/chubaofs/sdk/meta"
 	"github.com/spf13/cobra"
 	"sort"
 	"strconv"
@@ -45,6 +46,7 @@ func newMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newMetaPartitionDeleteReplicaCmd(client),
 		newMetaPartitionAddLearnerCmd(client),
 		newMetaPartitionPromoteLearnerCmd(client),
+		newMetaPartitionResetCursorCmd(client),
 	)
 	return cmd
 }
@@ -58,6 +60,7 @@ const (
 	cmdMetaPartitionDeleteReplicaShort  = "Delete a replication of the meta partition on a fixed address"
 	cmdMetaPartitionAddLearnerShort     = "Add a learner of the meta partition on a new address"
 	cmdMetaPartitionPromoteLearnerShort = "Promote the learner of the meta partition on a fixed address"
+	cmdMetaPartitionResetCursorShort    = "Reset mp inode cursor"
 )
 
 func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
@@ -485,5 +488,58 @@ func newMetaPartitionPromoteLearnerCmd(client *master.MasterClient) *cobra.Comma
 			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	return cmd
+}
+
+func newMetaPartitionResetCursorCmd(client *master.MasterClient)  *cobra.Command {
+	var optForce bool
+	var cmd = &cobra.Command{
+		Use:   CliOpResetCursor + " [META PARTITION ID] [inode]",
+		Short: cmdMetaPartitionPromoteLearnerShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			inodeId := uint64(0)
+			ip := ""
+			var mp *proto.MetaPartitionInfo
+			partitionID, err := strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				stdout("%v\n", err)
+				return
+			}
+
+			if len(args) >= 2 {
+				inodeId, err = strconv.ParseUint(args[1], 10, 64)
+				if err != nil {
+					inodeId = 0
+				}
+			}
+			if mp, err = client.ClientAPI().GetMetaPartition(partitionID); err != nil {
+				stdout("%v\n", err)
+				return
+			}
+
+			for _, replica := range mp.Replicas {
+				if replica.IsLeader {
+					ip = strings.Split(replica.Addr, ":")[0]
+				}
+			}
+			ip += ":" + strconv.Itoa(int(client.MetaNodeProfPort))
+
+			mtClient := meta.NewMetaHttpClient(ip, false)
+			resp, err := mtClient.ResetCursor(partitionID, inodeId, optForce)
+			if err != nil {
+				errout("get resp err:%s\n", err.Error())
+			}
+
+			stdout("reset success, mp[%v], start: %v, end:%v, cursor:%v\n", partitionID, resp.Start, resp.End, resp.Cursor)
+		},
+			ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().BoolVar(&optForce, "force", false, "force reset cursor through max inode is high")
 	return cmd
 }

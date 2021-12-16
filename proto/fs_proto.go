@@ -374,6 +374,17 @@ type DeleteInodeRequest struct {
 type CursorResetRequest struct {
 	VolName     string `json:"vol"`
 	PartitionId uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+	Cursor      uint64 `json:"ino"`
+	Force	    bool   `json:"force"`
+}
+
+type CursorResetResponse struct {
+	VolName     string `json:"vol"`
+	PartitionId uint64 `json:"pid"`
+	Start       uint64 `json:"start"`
+	End         uint64 `json:"end"`
+	Cursor      uint64 `json:"cursor"`
 }
 
 // DeleteInodeRequest defines the request to delete an inode.

@@ -170,3 +170,8 @@ const (
 	MB
 	GB
 )
+
+const(
+	mpResetInoLimited = 1000
+	mpResetInoStep 	  = 1000
+)

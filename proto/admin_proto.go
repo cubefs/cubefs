@@ -406,16 +406,17 @@ type DataNodeHeartbeatResponse struct {
 
 // MetaPartitionReport defines the meta partition report.
 type MetaPartitionReport struct {
-	PartitionID uint64
-	Start       uint64
-	End         uint64
-	Status      int
-	MaxInodeID  uint64
-	IsLeader    bool
-	VolName     string
-	InodeCnt    uint64
-	DentryCnt   uint64
-	IsLearner   bool
+	PartitionID     uint64
+	Start           uint64
+	End             uint64
+	Status          int
+	MaxInodeID      uint64
+	IsLeader        bool
+	VolName         string
+	InodeCnt        uint64
+	DentryCnt       uint64
+	IsLearner       bool
+	ExistMaxInodeID uint64
 }
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.
@@ -533,6 +534,7 @@ type MetaPartitionView struct {
 	MaxInodeID  uint64
 	InodeCount  uint64
 	DentryCount uint64
+	MaxExistIno	uint64
 	IsRecover   bool
 	Members     []string
 	LeaderAddr  string

@@ -285,6 +285,7 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("MaxInodeID    : %v\n", partition.MaxInodeID))
 	sb.WriteString(fmt.Sprintf("InodeCount    : %v\n", partition.InodeCount))
 	sb.WriteString(fmt.Sprintf("DentryCount   : %v\n", partition.DentryCount))
+	sb.WriteString(fmt.Sprintf("MaxExistIno   : %v\n", partition.MaxExistIno))
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("Replicas : \n"))
 	sb.WriteString(fmt.Sprintf("%v\n", formatMetaReplicaTableHeader()))
@@ -323,9 +324,9 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 }
 
 var (
-	metaPartitionTablePattern = "%-8v    %-12v    %-12v    %-12v    %-12v    %-12v    %-10v    %-20v    %-18v"
+	metaPartitionTablePattern = "%-8v    %-12v    %-12v    %-12v    %-12v    %-12v    %-12v    %-10v    %-20v    %-18v"
 	metaPartitionTableHeader  = fmt.Sprintf(metaPartitionTablePattern,
-		"ID", "MAX INODE", "DENTRY COUNT", "INODE COUNT", "START", "END", "STATUS", "LEADER", "MEMBERS")
+		"ID", "MAX INODE", "DENTRY COUNT", "INODE COUNT", "START", "END", "MAX EXIST INO", "STATUS", "LEADER", "MEMBERS")
 )
 
 func formatMetaPartitionTableRow(view *proto.MetaPartitionView) string {
@@ -336,7 +337,8 @@ func formatMetaPartitionTableRow(view *proto.MetaPartitionView) string {
 		return strconv.FormatUint(num, 10)
 	}
 	return fmt.Sprintf(metaPartitionTablePattern,
-		view.PartitionID, view.MaxInodeID, view.DentryCount, view.InodeCount, view.Start, rangeToString(view.End), formatMetaPartitionStatus(view.Status),
+		view.PartitionID, view.MaxInodeID, view.DentryCount, view.InodeCount, view.Start, rangeToString(view.End),
+		view.MaxExistIno, formatMetaPartitionStatus(view.Status),
 		view.LeaderAddr, strings.Join(view.Members, ","))
 }
 

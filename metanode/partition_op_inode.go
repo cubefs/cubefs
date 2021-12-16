@@ -19,6 +19,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/log"
+	"sync/atomic"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -115,7 +117,11 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 		return
 	}
 
-	ino := NewInode(req.Inode, 0)
+	isExist, ino := mp.hasInode(&Inode{Inode: req.Inode})
+	if !isExist {
+		ino = NewInode(req.Inode, 0)
+	}
+
 	val, err = ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -290,7 +296,11 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err erro
 		return
 	}
 
-	ino := NewInode(req.Inode, 0)
+	isExist, ino := mp.hasInode(&Inode{Inode: req.Inode})
+	if !isExist {
+		ino = NewInode(req.Inode, 0)
+	}
+
 	val, err = ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -448,26 +458,50 @@ func (mp *metaPartition) CursorReset(ctx context.Context, req *proto.CursorReset
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("metaPartition.CursorReset")
 	defer tracer.Finish()
 	ctx = tracer.Context()
+	maxIno := mp.config.Start
+	maxInode := mp.inodeTree.MaxItem()
+	if maxInode != nil {
+		maxIno = maxInode.(*Inode).Inode
+	}
 
-	if mp.config.VolName != req.VolName {
-		return 0, fmt.Errorf("before partition:[%d] reset vol name not equal mp:[%s] req:[%s]", mp.config.PartitionId, mp.config.VolName, req.VolName)
+	req.Cursor = atomic.LoadUint64(&mp.config.Cursor)
+
+	status, _ := mp.calcMPStatus()
+	if status != proto.ReadOnly {
+		log.LogInfof("mp[%v] status[%d] is not readonly, can not reset cursor[%v]",
+			mp.config.PartitionId, status, mp.config.Cursor)
+		return mp.config.Cursor, fmt.Errorf("mp[%v] status[%d] is not readonly, can not reset cursor[%v]",
+			mp.config.PartitionId, status, mp.config.Cursor)
 	}
-	if mp.freeList.Len() != 0 {
-		return 0, fmt.Errorf("before partition:[%d] freeList len must 0, but got [%d]", mp.config.PartitionId, mp.inodeTree.Len())
+
+	if req.Inode == 0 {
+		req.Inode = maxIno + mpResetInoStep
 	}
-	if mp.inodeTree.Len() != 0 {
-		if mp.inodeTree.Len() != 1 || !mp.inodeTree.Has(NewInode(1, 0)) { // if is root inode
-			return 0, fmt.Errorf("before partition:[%d] reset inode len must 0, but got [%d]  hahshs %v  count %v", mp.config.PartitionId, mp.inodeTree.Len(), mp.inodeTree.Has(NewInode(1, 0)), mp.inodeTree.Len())
-		}
+
+	if req.Inode <= maxIno || req.Inode >= mp.config.End {
+		log.LogInfof("mp[%v] req[%d] ino is out of max[%d]~end[%d]",
+			mp.config.PartitionId, req.Inode, maxIno, mp.config.End)
+		return mp.config.Cursor, fmt.Errorf("mp[%v] req[%d] ino is out of max[%d]~end[%d]",
+			mp.config.PartitionId, req.Inode, maxIno, mp.config.End)
+	}
+
+	willFree := mp.config.End - req.Inode
+	if !req.Force && willFree < mpResetInoLimited {
+		log.LogInfof("mp[%v] max inode[%v] is too high, no need reset",
+			mp.config.PartitionId, maxIno)
+		return mp.config.Cursor, fmt.Errorf("mp[%v] max inode[%v] is too high, no need reset",
+									mp.config.PartitionId, maxIno)
 	}
 
 	data, err := json.Marshal(req)
 	if err != nil {
-		return 0, err
+		log.LogInfof("mp[%v] reset cursor failed, json marshal failed:%v",
+			mp.config.PartitionId, err.Error())
+		return mp.config.Cursor, err
 	}
 	cursor, err := mp.submit(ctx, opFSMCursorReset, "", data)
 	if err != nil {
-		return 0, err
+		return mp.config.Cursor, err
 	}
 	return cursor.(uint64), nil
 }

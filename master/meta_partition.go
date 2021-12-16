@@ -36,6 +36,7 @@ type MetaReplica struct {
 	MaxInodeID  uint64
 	InodeCount  uint64
 	DentryCount uint64
+	MaxExistIno uint64
 	ReportTime  int64
 	Status      int8 // unavailable, readOnly, readWrite
 	IsLeader    bool
@@ -50,6 +51,7 @@ type MetaPartition struct {
 	MaxInodeID    uint64
 	InodeCount    uint64
 	DentryCount   uint64
+	MaxExistIno	  uint64
 	Replicas      []*MetaReplica
 	ReplicaNum    uint8
 	Status        int8
@@ -356,6 +358,7 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 	mp.setMaxInodeID()
 	mp.setInodeCount()
 	mp.setDentryCount()
+	mp.setMaxExistIno()
 	mp.removeMissingReplica(metaNode.Addr)
 }
 
@@ -681,6 +684,7 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 	mr.MaxInodeID = mgr.MaxInodeID
 	mr.InodeCount = mgr.InodeCnt
 	mr.DentryCount = mgr.DentryCnt
+	mr.MaxExistIno = mgr.ExistMaxInodeID
 	mr.setLastReportTime()
 }
 
@@ -831,6 +835,16 @@ func (mp *MetaPartition) setDentryCount() {
 		}
 	}
 	mp.DentryCount = dentryCount
+}
+
+func (mp *MetaPartition) setMaxExistIno() {
+	var maxExistIno uint64
+	for _, r := range mp.Replicas {
+		if r.MaxExistIno > maxExistIno {
+			maxExistIno = r.MaxExistIno
+		}
+	}
+	mp.MaxExistIno = maxExistIno
 }
 
 func (mp *MetaPartition) getAllNodeSets() (nodeSets []uint64) {
