@@ -963,6 +963,7 @@ func checkVolExtentCrc(vol string, tiny bool, validateStep uint64) {
 	stdout("begin check, vol:%s\n", vol)
 	dataPartitionsView, err := client.ClientAPI().GetDataPartitions(vol)
 	if err != nil {
+		stdout("not exist, vol:%s\n", vol)
 		return
 	}
 	stdout("vol:%s dp count:%v\n", vol, len(dataPartitionsView.DataPartitions))
