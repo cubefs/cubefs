@@ -46,6 +46,7 @@ const (
 	FSStatResume FSStatType = iota
 	FSStatSuspend
 	FSStatShutdown
+	FSStatRestore
 )
 
 // An FS is the interface required of a file system.
@@ -55,6 +56,7 @@ const (
 type FS interface {
 	// Root is called to obtain the Node for the file system root.
 	Root() (Node, error)
+	Node(ino, pino uint64, mode uint32) (Node, error)
 	State() (FSStatType, string)
 	Notify(stat FSStatType, msg interface{})
 }
@@ -423,6 +425,17 @@ func WriteVersion(file *os.File, version uint32) error {
 	return err
 }
 
+func ReadVersion(file *os.File) (uint32, error) {
+	data := make([]byte, 4)
+	_, err := file.Read(data)
+	if err != nil {
+		return 0, err
+	}
+
+	version := binary.BigEndian.Uint32(data)
+	return version, nil
+}
+
 type ContextNode struct {
 	Inode      uint64
 	ParentIno  uint64
@@ -694,6 +707,186 @@ func (s *Server) SaveFuseDevFd(sockaddr string) (err error) {
 	return nil
 }
 
+func (s *Server) TryRestore(fs FS) error {
+	stat, sockaddr := fs.State()
+
+	if stat != FSStatRestore {
+		return nil
+	}
+
+	err := s.LoadFuseContext(fs, sockaddr)
+	if err != nil {
+		return err
+	}
+	if err = s.LoadFuseDevFd(sockaddr); err != nil {
+		return err
+	}
+
+	fs.Notify(stat, "")
+
+	for {
+		stat, _ = fs.State()
+		if stat == FSStatResume {
+			//s.CleanupFuseContext()
+			return nil
+		} else if stat == FSStatRestore {
+			runtime.Gosched()
+		} else {
+			err = fmt.Errorf("Unknown state changed %v", stat)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *Server) LoadFuseContext(fs FS, sockaddr string) error {
+	nodeListFile, err := os.OpenFile(NodeListFileName, os.O_RDONLY, 0644)
+	if err != nil {
+		err = fmt.Errorf("LoadFuseContext: failed to open nodes list file: %v\n", err)
+		return err
+	}
+	defer nodeListFile.Close()
+	handleListFile, err := os.OpenFile(HandleListFileName, os.O_RDONLY, 0644)
+	if err != nil {
+		err = fmt.Errorf("LoadFuseContext: failed to open handles list file: %v\n", err)
+		return err
+	}
+	defer handleListFile.Close()
+
+	cnVersion, err := ReadVersion(nodeListFile)
+	if err != nil {
+		err = fmt.Errorf("LoadFuseContext: failed to read nodes version: %v\n", err)
+		return err
+	}
+	chVersion, err := ReadVersion(handleListFile)
+	if err != nil {
+		err = fmt.Errorf("LoadFuseContext: failed to read handles version: %v\n", err)
+		return err
+	}
+
+	for {
+		var (
+			data  []byte = make([]byte, unsafe.Sizeof(ContextNode{}))
+			rsize int
+		)
+
+		rsize, err = nodeListFile.Read(data)
+		if rsize == 0 || err == io.EOF {
+			err = nil
+			break
+		}
+
+		if cnVersion == ContextNodeVersionV1 {
+			cn := ContextNodeFromBytes(data)
+			sn := &serveNode{inode: cn.Inode, generation: cn.Generation, refs: cn.Refs}
+			if sn.node, err = fs.Node(cn.Inode, cn.ParentIno, cn.Mode); err != nil {
+				err = fmt.Errorf("LoadFuseContext: failed to get fs.Node of %v: %v\n", sn.inode, err)
+				return err
+			}
+
+			for uint64(len(s.node)) < cn.NodeID {
+				freeNodeID := fuse.NodeID(len(s.node))
+				s.freeNode = append(s.freeNode, freeNodeID)
+				s.node = append(s.node, nil)
+			}
+			s.node = append(s.node, sn)
+			s.nodeRef[sn.node] = fuse.NodeID(cn.NodeID)
+		} else {
+			err = fmt.Errorf("LoadFuseContext: unrecognize nodes file version %v\n", cnVersion)
+			return err
+		}
+	}
+
+	for {
+		var (
+			data  []byte = make([]byte, unsafe.Sizeof(ContextHandle{}))
+			rsize int
+			hdl   Handle
+		)
+		rsize, err = handleListFile.Read(data)
+		if rsize == 0 || err == io.EOF {
+			err = nil
+			break
+		}
+
+		if chVersion == ContextHandleVersionV1 {
+			ch := ContextHandleFromBytes(data)
+			if ch.NodeID > uint64(len(s.node)) {
+				err = fmt.Errorf("LoadFuseContext: invalid handle(%v) len of s.node %v\n",
+					ch, len(s.node))
+				return err
+			}
+
+			sn := s.node[ch.NodeID]
+			if node, ok := sn.node.(NodeOpener); ok {
+				// create streamers for chubaofs
+				if hdl, err = node.Open(nil, nil, nil); err != nil {
+					err = fmt.Errorf("LoadFuseContext: failed to open handle %v: %v\n", sn.inode, err)
+					return err
+				}
+			} else {
+				hdl = sn.node
+			}
+
+			sh := &serveHandle{handle: hdl, nodeID: fuse.NodeID(ch.NodeID)}
+			for uint64(len(s.handle)) < ch.HandleID {
+				freeHandleID := fuse.HandleID(len(s.handle))
+				s.freeHandle = append(s.freeHandle, freeHandleID)
+				s.handle = append(s.handle, nil)
+			}
+			s.handle = append(s.handle, sh)
+		} else {
+			err = fmt.Errorf("LoadFuseContext: unrecognize handles file version %v\n", chVersion)
+			return err
+		}
+	}
+
+	return err
+}
+
+func (s *Server) LoadFuseDevFd(sockaddr string) (err error) {
+	var (
+		addr   *net.UnixAddr
+		conn   *net.UnixConn
+		fud    *os.File
+		socket *os.File
+	)
+
+	defer func() {
+		if socket != nil {
+			socket.Close()
+		}
+		if conn != nil {
+			conn.Close()
+		}
+	}()
+
+	if addr, err = net.ResolveUnixAddr("unix", sockaddr); err != nil {
+		err = fmt.Errorf("LoadFuseDevFd: failed to create unix addr: %v", err)
+		return
+	}
+
+	if conn, err = net.DialUnix("unix", nil, addr); err != nil {
+		err = fmt.Errorf("LoadFuseDevFd: failed to connect unix socket: %v", err)
+		return
+	}
+
+	if socket, err = conn.File(); err != nil {
+		err = fmt.Errorf("LoadFuseDevFd: failed to get socket file: %v", err)
+		return
+	}
+
+	if fud, err = util.RecvFd(socket); err != nil {
+		err = fmt.Errorf("LoadFuseDevFd: failed to receive fuse dev file: %v", err)
+		return
+	}
+
+	s.conn.SetFuseDevFile(fud)
+
+	return
+}
+
 // Serve serves the FUSE connection by making calls to the methods
 // of fs and the Nodes and Handles it makes available.  It returns only
 // when the connection has been closed or an unexpected error occurs.
@@ -719,6 +912,10 @@ func (s *Server) Serve(fs FS) error {
 		refs:       1,
 	})
 	s.handle = append(s.handle, nil)
+
+	if err = s.TryRestore(fs); err != nil {
+		return fmt.Errorf("restore fail: %v", err)
+	}
 
 	for {
 		if s.TrySuspend(fs) {

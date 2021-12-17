@@ -244,4 +244,5 @@ type MountOptions struct {
 	EnablePosixACL       bool
 	EnableSummary        bool
 	EnableUnixPermission bool
+	NeedRestoreFuse      bool
 }

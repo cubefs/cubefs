@@ -136,6 +136,10 @@ func (c *Conn) GetFuseDevFile() *os.File {
 	return c.dev
 }
 
+func (c *Conn) SetFuseDevFile(fud *os.File) {
+	c.dev = fud
+}
+
 // MountpointDoesNotExistError is an error returned when the
 // mountpoint does not exist.
 type MountpointDoesNotExistError struct {
@@ -158,7 +162,7 @@ func (e *MountpointDoesNotExistError) Error() string {
 // visible until after Conn.Ready is closed. See Conn.MountError for
 // possible errors. Incoming requests on Conn must be served to make
 // progress.
-func Mount(dir string, options ...MountOption) (*Conn, error) {
+func Mount(dir string, needRestoreFuse bool, options ...MountOption) (*Conn, error) {
 	conf := mountConfig{
 		options: make(map[string]string),
 	}
@@ -172,22 +176,29 @@ func Mount(dir string, options ...MountOption) (*Conn, error) {
 	c := &Conn{
 		Ready: ready,
 	}
-	f, err := mount(dir, &conf, ready, &c.MountError)
-	if err != nil {
-		return nil, err
-	}
-	c.dev = f
 
-	if err := initMount(c, &conf); err != nil {
-		c.Close()
-		if err == ErrClosedWithoutInit {
-			// see if we can provide a better error
-			<-c.Ready
-			if err := c.MountError; err != nil {
-				return nil, err
-			}
+	if !needRestoreFuse {
+		f, err := mount(dir, &conf, ready, &c.MountError)
+		if err != nil {
+			return nil, err
 		}
-		return nil, err
+		c.dev = f
+
+		if err := initMount(c, &conf); err != nil {
+			c.Close()
+			if err == ErrClosedWithoutInit {
+				// see if we can provide a better error
+				<-c.Ready
+				if err := c.MountError; err != nil {
+					return nil, err
+				}
+			}
+			return nil, err
+		}
+	} else {
+		close(ready)
+		// FIXME: save protocol version when saving context?
+		c.proto = Protocol{protoVersionMaxMajor, protoVersionMaxMinor}
 	}
 
 	InitReadBlockPool()

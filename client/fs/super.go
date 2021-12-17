@@ -136,7 +136,12 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	}
 	s.suspendCh = make(chan interface{})
 
-	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v)", s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration)
+	if opt.NeedRestoreFuse {
+		atomic.StoreUint32((*uint32)(&s.state), uint32(fs.FSStatRestore))
+	}
+
+	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v) state(%v)",
+		s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration, s.state)
 	return s, nil
 }
 
@@ -148,6 +153,29 @@ func (s *Super) Root() (fs.Node, error) {
 	}
 	root := NewDir(s, inode)
 	return root, nil
+}
+
+func (s *Super) Node(ino, pino uint64, mode uint32) (fs.Node, error) {
+	var node fs.Node
+
+	// Create a fake InodeInfo. All File or Dir operations only use
+	// InodeInfo.Inode.
+	fakeInfo := &proto.InodeInfo{Inode: ino, Mode: mode}
+	if proto.OsMode(fakeInfo.Mode).IsDir() {
+		node = NewDir(s, fakeInfo)
+	} else {
+		node = NewFile(s, fakeInfo, pino)
+		// The Node is saved in FuseContextNodes list, that means
+		// the node is not evict. So we create a streamer for it,
+		// and streamer's refcnt is 0.
+		file := node.(*File)
+		file.Open(nil, nil, nil)
+		file.Release(nil, nil)
+	}
+	s.fslock.Lock()
+	s.nodeCache[ino] = node
+	s.fslock.Unlock()
+	return node, nil
 }
 
 // Statfs handles the Statfs request and returns a set of statistics.
@@ -224,6 +252,10 @@ func replySucc(w http.ResponseWriter, r *http.Request, msg string) {
 	w.Write([]byte(msg))
 }
 
+func (s *Super) SetSockAddr(addr string) {
+	s.sockaddr = addr
+}
+
 func (s *Super) SetSuspend(w http.ResponseWriter, r *http.Request) {
 	var (
 		err error
@@ -298,5 +330,10 @@ func (s *Super) State() (state fs.FSStatType, sockaddr string) {
 func (s *Super) Notify(stat fs.FSStatType, msg interface{}) {
 	if stat == fs.FSStatSuspend {
 		s.suspendCh <- msg
+	} else if stat == fs.FSStatRestore {
+		s.fslock.Lock()
+		atomic.StoreUint32((*uint32)(&s.state), uint32(fs.FSStatResume))
+		s.sockaddr = ""
+		s.fslock.Unlock()
 	}
 }
