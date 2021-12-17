@@ -73,12 +73,16 @@ const (
 	ControlCommandSuspend      = "/suspend"
 	ControlCommandResume       = "/resume"
 	Role                       = "Client"
+
+	DefaultFuseUDS = "/tmp/ChubaoFS-fdstore.sock"
 )
 
 var (
-	configFile       = flag.String("c", "", "FUSE client config file")
-	configVersion    = flag.Bool("v", false, "show version")
-	configForeground = flag.Bool("f", false, "run foreground")
+	configFile           = flag.String("c", "", "FUSE client config file")
+	configVersion        = flag.Bool("v", false, "show version")
+	configForeground     = flag.Bool("f", false, "run foreground")
+	configRestoreFuse    = flag.Bool("r", false, "restore FUSE instead of mounting")
+	configRestoreFuseUDS = flag.String("s", "", "restore socket addr")
 )
 
 var GlobalMountOptions []proto.MountOption
@@ -148,6 +152,11 @@ func main() {
 	}()
 	syslog.SetOutput(outputFile)
 
+	if *configRestoreFuse {
+		syslog.Println("Need restore fuse")
+		opt.NeedRestoreFuse = true
+	}
+
 	syslog.Println(proto.DumpVersion(Role))
 	syslog.Println("*** Final Mount Options ***")
 	for _, o := range GlobalMountOptions {
@@ -188,6 +197,14 @@ func main() {
 
 	exporter.Init(ModuleName, cfg)
 	exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
+
+	if opt.NeedRestoreFuse {
+		if *configRestoreFuseUDS == "" {
+			super.SetSockAddr(DefaultFuseUDS)
+		} else {
+			super.SetSockAddr(*configRestoreFuseUDS)
+		}
+	}
 
 	if err = fs.Serve(fsConn, super); err != nil {
 		log.LogFlush()
@@ -353,7 +370,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 		options = append(options, fuse.PosixACL())
 	}
 
-	fsConn, err = fuse.Mount(opt.MountPoint, options...)
+	fsConn, err = fuse.Mount(opt.MountPoint, opt.NeedRestoreFuse, options...)
 	return
 }
 
