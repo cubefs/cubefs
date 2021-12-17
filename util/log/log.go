@@ -307,6 +307,23 @@ func InitLog(dir, module string, level Level, rotate *LogRotate) (*Log, error) {
 	return l, nil
 }
 
+func OutputPid(logDir, role string) error {
+	pidFile := path.Join(logDir, fmt.Sprintf("%s.pid", role))
+	file, err := os.Create(pidFile)
+	if err != nil {
+		return fmt.Errorf("open pid file %s error %s", pidFile, err.Error())
+	}
+
+	pid := os.Getpid()
+	_, err = file.Write([]byte(fmt.Sprintf("%d", pid)))
+	if err != nil {
+		return fmt.Errorf("write pid failed, pid %d, file %s, err %s", pid, pidFile, err.Error())
+	}
+
+	file.Close()
+	return nil
+}
+
 func (l *Log) initLog(logDir, module string, level Level) error {
 	logOpt := log.LstdFlags | log.Lmicroseconds
 

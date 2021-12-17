@@ -17,7 +17,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/errors"
 	syslog "log"
 	"net/http"
 	_ "net/http/pprof"
@@ -28,6 +27,8 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+
+	"github.com/chubaofs/chubaofs/util/errors"
 
 	"github.com/chubaofs/chubaofs/console"
 	"github.com/chubaofs/chubaofs/proto"
@@ -272,6 +273,15 @@ func main() {
 	if err != nil {
 		log.LogFlush()
 		err = errors.NewErrorf("Fatal: failed to start the ChubaoFS %s daemon err %v - ", role, err)
+		syslog.Println(err)
+		daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+
+	err = log.OutputPid(logDir, role)
+	if err != nil {
+		log.LogFlush()
+		err = errors.NewErrorf("Fatal: failed to print pid %s err %v - ", role, err)
 		syslog.Println(err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)

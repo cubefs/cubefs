@@ -186,6 +186,13 @@ func main() {
 	exporter.Init(ModuleName, cfg)
 	exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
 
+	err = log.OutputPid(opt.Logpath, ModuleName)
+	if err != nil {
+		log.LogFlush()
+		syslog.Printf("output pid err(%v)", err)
+		os.Exit(1)
+	}
+
 	if err = fs.Serve(fsConn, super); err != nil {
 		log.LogFlush()
 		syslog.Printf("fs Serve returns err(%v)", err)
