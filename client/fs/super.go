@@ -319,7 +319,10 @@ func (s *Super) SetSuspend(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Super) SetResume(w http.ResponseWriter, r *http.Request) {
+	s.fslock.Lock()
 	atomic.StoreUint32((*uint32)(&s.state), uint32(fs.FSStatResume))
+	s.sockaddr = ""
+	s.fslock.Unlock()
 	replySucc(w, r, "set resume successfully")
 }
 

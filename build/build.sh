@@ -310,6 +310,14 @@ build_libsdk() {
     popd >/dev/null
 }
 
+build_fdstore() {
+    pre_build
+    pushd $SrcPath >/dev/null
+    echo -n "build fdstore "
+    go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/fdstore ${SrcPath}/fdstore/*.go  && echo "success" || echo "failed"
+    popd >/dev/null
+}
+
 clean() {
     $RM -rf ${BuildBinPath}
 }
@@ -352,6 +360,9 @@ case "$cmd" in
         ;;
     "libsdk")
         build_libsdk
+        ;;
+    "fdstore")
+        build_fdstore
         ;;
     "clean")
         clean
