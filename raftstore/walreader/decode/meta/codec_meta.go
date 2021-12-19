@@ -150,6 +150,17 @@ func (decoder *MetadataCommandDecoder) DecodeCommand(command []byte) (values com
 		}
 		columnValOp.SetValue("DeleteDentry")
 		columnValAttrs.SetValue(fmt.Sprintf("parent: %v, name: %v", den.ParentId, den.Name))
+	case metadataOpFSMDeleteDentryBatch:
+		db, err := metanode.DentryBatchUnmarshal(opKVData.V)
+		if err != nil {
+			return nil, err
+		}
+		var str []string
+		for _, den := range db {
+			str = append(str, fmt.Sprintf("parent: %v, name: %v", den.ParentId, den.Name))
+		}
+		columnValOp.SetValue("DeleteDentryBatch")
+		columnValAttrs.SetValue(strings.Join(str, ", "))
 	case metadataOpFSMExtentTruncate:
 		ino := metanode.NewInode(0, 0)
 		if err = ino.Unmarshal(context.Background(), opKVData.V); err != nil {

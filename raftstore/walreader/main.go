@@ -42,7 +42,7 @@ func main() {
 
 	flag.StringVar(&walPath, "path", "", "path of RAFT WAL")
 	flag.StringVar(&file, "file", "", "file name of RAFT WAL")
-	flag.StringVar(&decoderName, "decoder", "",
+	flag.StringVar(&decoderName, "decoder", "meta",
 		fmt.Sprintf("decoder name for WAL (%v)", strings.Join(decode.RegisteredDecoders(), ",")))
 	flag.StringVar(&keyword, "keyword", "", "keyword of decoded entry")
 	flag.Uint64Var(&start, "start", 0, "start index to read")

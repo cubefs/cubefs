@@ -32,6 +32,7 @@ func newInodeCmd(client *sdk.MasterClient) *cobra.Command {
 }
 
 func newInodeInfoCmd(client *sdk.MasterClient) *cobra.Command {
+	var addr string
 	var cmd = &cobra.Command{
 		Use:   cmdInodeInfoUse,
 		Short: cmdInodeShort,
@@ -43,7 +44,7 @@ func newInodeInfoCmd(client *sdk.MasterClient) *cobra.Command {
 				inodeStr   = args[1]
 				inode, _   = strconv.Atoi(inodeStr)
 				ino        = uint64(inode)
-				metanode   string
+				leader     string
 				mpId       uint64
 			)
 			defer func() {
@@ -58,12 +59,14 @@ func newInodeInfoCmd(client *sdk.MasterClient) *cobra.Command {
 			}
 			for _, mp := range mps {
 				if ino >= mp.Start && ino < mp.End {
-					metanode = mp.LeaderAddr
+					leader = mp.LeaderAddr
 					mpId = mp.PartitionID
 					break
 				}
 			}
-			addr := strings.Split(metanode, ":")[0]
+			if addr == "" {
+				addr = strings.Split(leader, ":")[0]
+			}
 			metaNodeProfPort := client.MetaNodeProfPort
 
 			if !proto.IsDbBack {
@@ -181,5 +184,6 @@ func newInodeInfoCmd(client *sdk.MasterClient) *cobra.Command {
 			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	cmd.Flags().StringVar(&addr, "addr", "", "address of metanode")
 	return cmd
 }
