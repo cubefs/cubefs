@@ -953,7 +953,7 @@ func (s *ExtentStore) TinyExtentGetFinfoSize(extentID uint64) (size uint64, err 
 	return
 }
 
-func (s *ExtentStore) ComputeMd5Sum(extentID uint64) (md5Sum string, err error) {
+func (s *ExtentStore) ComputeMd5Sum(extentID,offset,size uint64) (md5Sum string, err error) {
 	extentIDAbsPath := path.Join(s.dataPath, strconv.FormatUint(extentID, 10))
 	fp, err := os.Open(extentIDAbsPath)
 	if err != nil {
@@ -964,7 +964,22 @@ func (s *ExtentStore) ComputeMd5Sum(extentID uint64) (md5Sum string, err error) 
 		fp.Close()
 	}()
 	md5Writer := md5.New()
-	_, err = io.Copy(md5Writer, fp)
+	stat,err:=fp.Stat()
+	if err!=nil {
+		err = fmt.Errorf("stat %v error %v", extentIDAbsPath, err)
+		return
+	}
+	if size==0 {
+		size=uint64(stat.Size())
+	}
+	if offset!=0{
+		_,err=fp.Seek(int64(offset),0)
+		if err!=nil {
+			err = fmt.Errorf("seek %v error %v", extentIDAbsPath, err)
+			return
+		}
+	}
+	_, err = io.CopyN(md5Writer, fp,int64(size))
 	if err != nil {
 		err = fmt.Errorf("ioCopy %v error %v", extentIDAbsPath, err)
 		return

@@ -216,10 +216,13 @@ func (s *DataNode) getExtentMd5Sum(w http.ResponseWriter, r *http.Request) {
 	const (
 		paramPartitionID = "id"
 		paramExtentID    = "extent"
+		paramOffset    = "offset"
+		paramSize    = "size"
+
 	)
 	var (
 		err                   error
-		partitionID, extentID uint64
+		partitionID, extentID,offset,size uint64
 		md5Sum                string
 	)
 	if err = r.ParseForm(); err != nil {
@@ -237,6 +240,20 @@ func (s *DataNode) getExtentMd5Sum(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if r.FormValue(paramOffset)!="" {
+		if offset, err = strconv.ParseUint(r.FormValue(paramOffset), 10, 64); err != nil {
+			err = fmt.Errorf("parse param %v fail: %v", paramOffset, err)
+			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	if r.FormValue(paramSize)!="" {
+		if size, err = strconv.ParseUint(r.FormValue(paramSize), 10, 64); err != nil {
+			err = fmt.Errorf("parse param %v fail: %v", paramSize, err)
+			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 	partition := s.space.Partition(partitionID)
 	if partition == nil {
 		s.buildFailureResp(w, http.StatusNotFound, fmt.Sprintf("partition(%v) not exist", partitionID))
@@ -247,7 +264,7 @@ func (s *DataNode) getExtentMd5Sum(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusNotFound, fmt.Sprintf("partition(%v) extentID(%v) not exist", partitionID, extentID))
 		return
 	}
-	md5Sum, err = partition.ExtentStore().ComputeMd5Sum(extentID)
+	md5Sum, err = partition.ExtentStore().ComputeMd5Sum(extentID,offset,size)
 	if err != nil {
 		s.buildFailureResp(w, http.StatusInternalServerError, fmt.Sprintf("partition(%v) extentID(%v) computeMD5 failed %v", partitionID, extentID, err))
 		return
