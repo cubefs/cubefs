@@ -10,8 +10,6 @@ Hongyan Wang ([@jadewang198510](https://github.com/jadewang198510)) | [741773046
 Tianjiong Zhang ([@tianjiongzhang](https://github.com/tianjiongzhang)) | [236556116@qq.com](mailto:236556116@qq.com) | Client, Community | [OPPO](https://www.oppo.com/en/)
 Chi He([@bboyCH4](https://github.com/bboyCH4)) | [hechi1014@126.com](mailto:hechi1014@126.com) | Client, Community | [OPPO](https://www.oppo.com/en/)
 Xiang Li ([@lixiang](https://github.com/lixiang)) | [960754123@qq.com](mailto:960754123@qq.com) | Client, Community | [OPPO](https://www.oppo.com/en/)
-Hao Chen([@chenhao](https://github.com/chenhao)) | [710152909@qq.com](mailto:710152909@qq.com) | mqproxy,tinker,scheduler,worker | [OPPO](https://www.oppo.com/en/)
-Qing Li([@liqingqiya](https://github.com/liqingqiya)) | [liqing.qiya@gmail.com](mailto:liqing.qiya@gmail.com) | mqproxy,tinker,scheduler,worker | [OPPO](https://www.oppo.com/en/)
 Mofei Zhang ([@mervinkid](https://github.com/mervinkid)) | [mofei2816@gmail.com](mailto:mofei2816@gmail.com) | Metadata, S3, Raft, Community | [JD.com](https://www.jd.com/)
 Hongyin Zhu ([@zhuhyc](https://github.com/zhuhyc)) | [zzhniy.163.niy@163.com](mailto:zzhniy.163.niy@163.com) | Resource Manager | [JD.com](https://www.jd.com/)
 Jianxing Zhao ([@znlstar](https://github.com/znlstar)) | [znlstar@163.com](mailto:znlstar@163.com) | Metadata | [JD.com](https://www.jd.com/)
