@@ -718,8 +718,10 @@ func (s *Server) TryRestore(fs FS) error {
 	if err != nil {
 		return err
 	}
-	if err = s.LoadFuseDevFd(sockaddr); err != nil {
-		return err
+	if s.conn.GetFuseDevFile() == nil {
+		if err = s.LoadFuseDevFd(sockaddr); err != nil {
+			return err
+		}
 	}
 
 	fs.Notify(stat, "")
