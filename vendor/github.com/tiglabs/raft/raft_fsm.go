@@ -399,7 +399,7 @@ func (r *raftFsm) removePeer(peer proto.Peer) {
 	if peer.ID == r.config.NodeID {
 		r.becomeFollower(nil, r.term, NoLeader)
 	} else if r.state == stateLeader && len(r.replicas) > 0 {
-		if r.maybeCommit(nil) {
+		if r.maybeCommitForRemovePeer(nil) {
 			r.bcastAppend(nil)
 		}
 	}

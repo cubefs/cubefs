@@ -386,6 +386,34 @@ func (r *raftFsm) checkLeaderLease(promoteLearnerCheck bool) bool {
 	return act >= r.quorum()
 }
 
+func (r *raftFsm) maybeCommitForRemovePeer(ctx context.Context) bool {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("raftFsm.maybeCommit")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
+	mis := make(util.Uint64Slice, 0, len(r.replicas))
+	for _, rp := range r.replicas {
+		mis = append(mis, rp.match)
+	}
+	sort.Sort(sort.Reverse(mis))
+	mci := mis[r.quorum()-1]
+	minCommitID:=util.Min(r.raftLog.committed,mci)
+	isCommit := r.raftLog.maybeCommit(minCommitID, r.term)
+	if r.state == stateLeader && r.replicas[r.config.NodeID] != nil {
+		r.replicas[r.config.NodeID].committed = r.raftLog.committed
+	}
+
+	if r.state == stateLeader && !r.readOnly.committed && isCommit {
+		if r.raftLog.zeroTermOnErrCompacted(r.raftLog.term(r.raftLog.committed)) == r.term {
+			r.readOnly.commit(r.raftLog.committed)
+		}
+		r.bcastReadOnly(ctx)
+	}
+
+	return isCommit
+}
+
+
 func (r *raftFsm) maybeCommit(ctx context.Context) bool {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("raftFsm.maybeCommit")
 	defer tracer.Finish()
