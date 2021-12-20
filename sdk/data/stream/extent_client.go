@@ -20,8 +20,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/chubaofs/chubaofs/sdk/meta"
-
 	"golang.org/x/time/rate"
 
 	"github.com/chubaofs/chubaofs/proto"
