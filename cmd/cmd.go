@@ -370,9 +370,11 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 	var resp = struct {
 		StartComplete bool
 		StarCost      time.Duration
+		Version       string
 	}{
 		StartComplete: startComplete,
 		StarCost:      startCost,
+		Version:       proto.Version,
 	}
 	if marshaled, err := json.Marshal(&resp); err == nil {
 		_, _ = w.Write(marshaled)
