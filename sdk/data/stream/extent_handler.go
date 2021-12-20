@@ -215,9 +215,15 @@ func (eh *ExtentHandler) sender() {
 				if err = eh.allocateExtent(); err != nil {
 					eh.setClosed()
 					eh.setRecovery()
-					eh.setError()
+					// if dp is not specified and yet we failed, then error out.
+					// otherwise, just try to recover.
+					if eh.key == nil {
+						eh.setError()
+						log.LogErrorf("sender: eh(%v) err(%v)", eh, err)
+					} else {
+						log.LogWarnf("sender: eh(%v) err(%v)", eh, err)
+					}
 					eh.reply <- packet
-					log.LogErrorf("sender: eh(%v) err(%v)", eh, err)
 					continue
 				}
 			}
@@ -528,6 +534,9 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 				eh, err, dp, exclude)
 			// If storeMode is tinyExtentType and can't create connection, we also check host status.
 			dp.CheckAllHostsIsAvail(exclude)
+			if eh.key != nil {
+				break
+			}
 			continue
 		}
 
