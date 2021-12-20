@@ -42,9 +42,11 @@ import (
 func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
 	msg := &MetaItem{}
 	defer func() {
-		if err == nil {
-			mp.uploadApplyID(index)
+		if err != nil {
+			log.LogErrorf("action[Apply] failed,index:%v,raft cmd:%v", index, string(command))
+			return
 		}
+		mp.uploadApplyID(index)
 	}()
 	if err = msg.UnmarshalJson(command); err != nil {
 		return
