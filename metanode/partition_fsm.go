@@ -43,7 +43,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	msg := &MetaItem{}
 	defer func() {
 		if log.IsDebugEnabled() {
-			log.LogDebugf("action[Apply] failed,index:%v,raft cmd:%v", index, string(command))
+			log.LogDebugf("action[Apply] failed,index:%v,raft cmd:%v,resp:%v", index, string(command), resp)
 		}
 		if err != nil {
 			log.LogErrorf("action[Apply] failed,index:%v,raft cmd:%v", index, string(command))
