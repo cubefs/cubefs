@@ -300,3 +300,37 @@ func (mc *MetaHttpClient) ResetCursor(pid uint64, ino uint64, force bool) (resp 
 
 	return
 }
+
+func (mc *MetaHttpClient) ListAllInodesId(pid uint64, mode uint32, stTime, endTime int64) (resp *proto.MpAllInodesId, err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[GetAllInodes],pid:%v,err:%v", pid, err)
+		}
+		log.LogFlush()
+	}()
+
+	resp = &proto.MpAllInodesId{}
+	req := newAPIRequest(http.MethodGet, "/getAllInodeId")
+	req.addParam("pid", fmt.Sprintf("%v", pid))
+	if mode != 0 {
+		req.addParam("mode", fmt.Sprintf("%v", mode))
+	}
+	if stTime != 0 {
+		req.addParam("start", fmt.Sprintf("%v", stTime))
+	}
+	if endTime != 0 {
+		req.addParam("end", fmt.Sprintf("%v", endTime))
+	}
+	respData, err := mc.serveRequest(req)
+	//fmt.Printf("err:%v,respData:%v\n", err, string(respData))
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(respData, resp)
+	if err != nil {
+		return
+	}
+
+	return
+}

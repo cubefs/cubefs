@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"github.com/chubaofs/chubaofs/util"
+	"math"
 	"net/http"
 	"strconv"
 
@@ -69,7 +70,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/stat/info", m.getStatInfo)
 
 	http.HandleFunc("/cursorReset", m.cursorReset)
-
+	http.HandleFunc("/getAllInodeId", m.getAllInodeId)
 	return
 }
 
@@ -189,7 +190,32 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 		isFirst   = true
 	)
 
+	inodeType := uint32(0)
+	mode, err := strconv.ParseUint(r.FormValue("mode"), 10, 64)
+	if err == nil {
+		inodeType = uint32(mode)
+	}
+
+	stTime, err := strconv.ParseInt(r.FormValue("start"), 10, 64)
+	if err != nil {
+		stTime = 0
+	}
+
+	endTime, err := strconv.ParseInt(r.FormValue("end"), 10, 64)
+	if err != nil {
+		endTime = math.MaxInt64
+	}
+
 	mp.GetInodeTree().Ascend(func(i BtreeItem) bool {
+		inode := i.(*Inode)
+		if inodeType != 0 &&  inode.Type != inodeType {
+			return true
+		}
+
+		if inode.ModifyTime < stTime || inode.ModifyTime > endTime {
+			return true
+		}
+
 		if !isFirst {
 			if _, err = w.Write(delimiter); err != nil {
 				return false
@@ -229,7 +255,6 @@ func (m *MetaNode) cursorReset(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	vol := r.FormValue("vol")
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
 	if err != nil {
 		resp.Msg = err.Error()
@@ -247,7 +272,7 @@ func (m *MetaNode) cursorReset(w http.ResponseWriter, r *http.Request) {
 	if forceStr != "" {
 		force = true
 	}
-	log.LogInfof("Mp[%d] recv reset cursor, vol:%s, ino:%d, force:%v", pid, vol, ino, force)
+	log.LogInfof("Mp[%d] recv reset cursor, ino:%d, force:%v", pid, ino, force)
 
 	mp, err := m.metadataManager.GetPartition(pid)
 	if err != nil {
@@ -255,8 +280,14 @@ func (m *MetaNode) cursorReset(w http.ResponseWriter, r *http.Request) {
 		resp.Msg = err.Error()
 		return
 	}
+
+	if _, ok := mp.IsLeader(); !ok {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = "this node is not leader, can not execute this op"
+		return
+	}
+
 	req := &proto.CursorResetRequest{
-		VolName:     vol,
 		PartitionId: pid,
 		Inode: ino,
 		Force: force,
@@ -266,7 +297,7 @@ func (m *MetaNode) cursorReset(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()
-		log.LogInfof("Mp[%d] recv reset cursor failed, vol:%s, cursor:%d, err:%s", pid, vol, cursor, err.Error())
+		log.LogInfof("Mp[%d] recv reset cursor failed, cursor:%d, err:%s", pid, cursor, err.Error())
 		return
 	}
 
@@ -277,7 +308,7 @@ func (m *MetaNode) cursorReset(w http.ResponseWriter, r *http.Request) {
 		Cursor: cursor,
 	}
 
-	log.LogInfof("Mp[%d] recv reset cursor success, vol:%s, cursor:%d", pid, vol, cursor)
+	log.LogInfof("Mp[%d] recv reset cursor success, cursor:%d", pid, cursor)
 	resp.Code = http.StatusOK
 	resp.Msg = "Ok"
 	resp.Data = respInfo
@@ -573,4 +604,73 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request){
 	resp.Data = msg
 	resp.Code = http.StatusOK
 	resp.Msg = http.StatusText(http.StatusOK)
+}
+
+func (m *MetaNode) getAllInodeId(w http.ResponseWriter, r *http.Request){
+	resp := NewAPIResponse(http.StatusSeeOther, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[cursorReset] response %s", err)
+		}
+	}()
+
+	if err := r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	inodeType := uint32(0)
+	mode, err := strconv.ParseUint(r.FormValue("mode"), 10, 64)
+	if err == nil {
+		inodeType = uint32(mode)
+	}
+
+	stTime, err := strconv.ParseInt(r.FormValue("start"), 10, 64)
+	if err != nil {
+		stTime = 0
+	}
+
+	endTime, err := strconv.ParseInt(r.FormValue("end"), 10, 64)
+	if err != nil {
+		endTime = math.MaxInt64
+	}
+
+
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	inosRsp := &proto.MpAllInodesId{Count: 0, Inodes: make([]uint64, 0)}
+	mp.GetInodeTree().Ascend(func(i BtreeItem) bool {
+		inode := i.(*Inode)
+
+		if inodeType != 0 && inode.Type != inodeType {
+			return true
+		}
+
+		if inode.ModifyTime < stTime || inode.ModifyTime > endTime {
+			return true
+		}
+
+		inosRsp.Count++
+		inosRsp.Inodes = append(inosRsp.Inodes, inode.Inode)
+		return true
+	})
+
+	resp.Code = http.StatusOK
+	resp.Msg = "OK"
+	resp.Data = inosRsp
+	return
 }

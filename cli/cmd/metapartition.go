@@ -47,6 +47,7 @@ func newMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newMetaPartitionAddLearnerCmd(client),
 		newMetaPartitionPromoteLearnerCmd(client),
 		newMetaPartitionResetCursorCmd(client),
+		newMetaPartitionListAllInoCmd(client),
 	)
 	return cmd
 }
@@ -61,6 +62,7 @@ const (
 	cmdMetaPartitionAddLearnerShort     = "Add a learner of the meta partition on a new address"
 	cmdMetaPartitionPromoteLearnerShort = "Promote the learner of the meta partition on a fixed address"
 	cmdMetaPartitionResetCursorShort    = "Reset mp inode cursor"
+	cmdMetaPartitionListAllInoShrot     = "list mp all inodes id"
 )
 
 func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
@@ -495,7 +497,7 @@ func newMetaPartitionResetCursorCmd(client *master.MasterClient)  *cobra.Command
 	var optForce bool
 	var cmd = &cobra.Command{
 		Use:   CliOpResetCursor + " [META PARTITION ID] [inode]",
-		Short: cmdMetaPartitionPromoteLearnerShort,
+		Short: cmdMetaPartitionResetCursorShort,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			inodeId := uint64(0)
@@ -541,5 +543,66 @@ func newMetaPartitionResetCursorCmd(client *master.MasterClient)  *cobra.Command
 		},
 	}
 	cmd.Flags().BoolVar(&optForce, "force", false, "force reset cursor through max inode is high")
+	return cmd
+}
+
+func newMetaPartitionListAllInoCmd(client *master.MasterClient)  *cobra.Command {
+	var optDisplay bool
+	var optMode    uint32
+	var optStTime  int64
+	var optEndTime int64
+	var cmd = &cobra.Command{
+		Use:   CliOpListMpAllInos + " [META PARTITION ID]",
+		Short: cmdMetaPartitionListAllInoShrot,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			ip := ""
+			var mp *proto.MetaPartitionInfo
+			partitionID, err := strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				stdout("%v\n", err)
+				return
+			}
+
+			if mp, err = client.ClientAPI().GetMetaPartition(partitionID); err != nil {
+				stdout("%v\n", err)
+				return
+			}
+
+			for _, replica := range mp.Replicas {
+				if replica.IsLeader {
+					ip = strings.Split(replica.Addr, ":")[0]
+				}
+			}
+			ip += ":" + strconv.Itoa(int(client.MetaNodeProfPort))
+
+			mtClient := meta.NewMetaHttpClient(ip, false)
+			resp, err := mtClient.ListAllInodesId(partitionID, optMode, optStTime, optEndTime)
+			if err != nil {
+				errout("get resp err:%s\n", err.Error())
+			}
+
+			stdout("list all inodes success, mp[%v], count:%v\n", partitionID, resp.Count)
+			if optDisplay {
+				for i, ino := range resp.Inodes {
+					if i % 5 == 0{
+						stdout("\n")
+					}
+					stdout("%d\t", ino)
+				}
+				stdout("\n")
+			}
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().BoolVar(&optDisplay, "display", false, "display all inode id")
+	cmd.Flags().Uint32Var(&optMode, "mode", 0, "specify inode mode")
+	cmd.Flags().Int64Var(&optStTime, "start", 0, "specify inode mtime > start")
+	cmd.Flags().Int64Var(&optEndTime, "end", 0, "specify inode mtime < end")
 	return cmd
 }

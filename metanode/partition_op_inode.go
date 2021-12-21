@@ -24,8 +24,8 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/tracing"
 	"github.com/chubaofs/chubaofs/util/statistics"
+	"github.com/chubaofs/chubaofs/util/tracing"
 )
 
 func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
@@ -468,10 +468,10 @@ func (mp *metaPartition) CursorReset(ctx context.Context, req *proto.CursorReset
 
 	status, _ := mp.calcMPStatus()
 	if status != proto.ReadOnly {
-		log.LogInfof("mp[%v] status[%d] is not readonly, can not reset cursor[%v]",
-			mp.config.PartitionId, status, mp.config.Cursor)
-		return mp.config.Cursor, fmt.Errorf("mp[%v] status[%d] is not readonly, can not reset cursor[%v]",
-			mp.config.PartitionId, status, mp.config.Cursor)
+		log.LogInfof("mp[%v] status[%d] is not readonly[%d], can not reset cursor[%v]",
+			mp.config.PartitionId, status, proto.ReadOnly, mp.config.Cursor)
+		return mp.config.Cursor, fmt.Errorf("mp[%v] status[%d] is not readonly[%d], can not reset cursor[%v]",
+			mp.config.PartitionId, status, proto.ReadOnly, mp.config.Cursor)
 	}
 
 	if req.Inode == 0 {
@@ -498,6 +498,10 @@ func (mp *metaPartition) CursorReset(ctx context.Context, req *proto.CursorReset
 		log.LogInfof("mp[%v] reset cursor failed, json marshal failed:%v",
 			mp.config.PartitionId, err.Error())
 		return mp.config.Cursor, err
+	}
+
+	if _, ok := mp.IsLeader(); !ok {
+		return mp.config.Cursor, fmt.Errorf("this node is not leader, can not execute this op")
 	}
 	cursor, err := mp.submit(ctx, opFSMCursorReset, "", data)
 	if err != nil {
