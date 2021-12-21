@@ -48,7 +48,6 @@ func (mc *MetaConn) String() string {
 func (mw *MetaWrapper) getConn(partitionID uint64, addr string) (*MetaConn, error) {
 	conn, err := mw.conns.GetConnect(addr)
 	if err != nil {
-		log.LogWarnf("GetConnect conn: addr(%v) err(%v)", addr, err)
 		return nil, err
 	}
 	mc := &MetaConn{conn: conn, id: partitionID, addr: addr}
@@ -72,11 +71,12 @@ func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet)
 
 	addr = mp.LeaderAddr
 	if addr == "" {
-		err = errors.New(fmt.Sprintf("sendToMetaPartition failed: leader addr empty, req(%v) mp(%v)", req, mp))
+		err = errors.New(fmt.Sprintf("sendToMetaPartition: failed due to empty leader addr and goto retry, req(%v) mp(%v)", req, mp))
 		goto retry
 	}
 	mc, err = mw.getConn(mp.PartitionID, addr)
 	if err != nil {
+		log.LogWarnf("sendToMetaPartition: getConn failed and goto retry, req(%v) mp(%v) addr(%v) err(%v)", req, mp, addr, err)
 		goto retry
 	}
 	resp, err = mc.send(req)
@@ -84,7 +84,7 @@ func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet)
 	if err == nil && !resp.ShouldRetry() {
 		goto out
 	}
-	log.LogWarnf("sendToMetaPartition: leader failed req(%v) mp(%v) mc(%v) err(%v) resp(%v)", req, mp, mc, err, resp)
+	log.LogWarnf("sendToMetaPartition: leader failed and goto retry, req(%v) mp(%v) mc(%v) err(%v) resp(%v)", req, mp, mc, err, resp)
 
 retry:
 	start = time.Now()
@@ -93,6 +93,7 @@ retry:
 			mc, err = mw.getConn(mp.PartitionID, addr)
 			errs[j] = err
 			if err != nil {
+				log.LogWarnf("sendToMetaPartition: getConn failed and continue to retry, req(%v) mp(%v) addr(%v) err(%v)", req, mp, addr, err)
 				continue
 			}
 			resp, err = mc.send(req)
@@ -119,7 +120,7 @@ out:
 	if err != nil || resp == nil {
 		return nil, errors.New(fmt.Sprintf("sendToMetaPartition failed: req(%v) mp(%v) errs(%v) resp(%v)", req, mp, errs, resp))
 	}
-	log.LogDebugf("sendToMetaPartition successful: req(%v) mc(%v) resp(%v)", req, mc, resp)
+	log.LogDebugf("sendToMetaPartition: succeed! req(%v) mc(%v) resp(%v)", req, mc, resp)
 	return resp, nil
 }
 
