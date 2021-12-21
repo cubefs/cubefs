@@ -40,7 +40,7 @@ type DataPartition struct {
 	Status         int8
 	isRecover      bool
 	Replicas       []*DataReplica `graphql:"-"`
-	Hosts          []string // host addresses
+	Hosts          []string       // host addresses
 	Peers          []proto.Peer
 	Learners       []proto.Learner
 	offlineMutex   sync.RWMutex
@@ -53,10 +53,12 @@ type DataPartition struct {
 	modifyTime              int64
 	createTime              int64
 	lastWarnTime            int64
+	lastModifyStatusTime    int64
+	lastStatus              int8
 	OfflinePeerID           uint64
 	PanicHosts              []string
 	FileInCoreMap           map[string]*FileInCore `graphql:"-"`
-	FilesWithMissingReplica map[string]int64 `graphql:"-"`// key: file name, value: last time when a missing replica is found
+	FilesWithMissingReplica map[string]int64       `graphql:"-"` // key: file name, value: last time when a missing replica is found
 }
 
 func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64) (partition *DataPartition) {
