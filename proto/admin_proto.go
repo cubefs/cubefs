@@ -33,18 +33,18 @@ const (
 	AdminGetVol                    = "/admin/getVol"
 	AdminClusterFreeze             = "/cluster/freeze"
 	AdminClusterStat               = "/cluster/stat"
-	AdminGetIP                = "/admin/getIp"
-	AdminCreateMetaPartition  = "/metaPartition/create"
-	AdminSetMetaNodeThreshold = "/threshold/set"
-	AdminListVols             = "/vol/list"
-	AdminSetNodeInfo          = "/admin/setNodeInfo"
-	AdminGetNodeInfo          = "/admin/getNodeInfo"
-	AdminGetAllNodeSetGrpInfo = "/admin/getNodeAllSetGrpInfo"
-	AdminGetNodeSetGrpInfo    = "/admin/getNodeSetGrpInfo"
-	AdminUpdateNodeSetCapcity = "/admin/updateNodeSetCapcity"
-	AdminUpdateNodeSetId      = "/admin/updateNodeSetId"
-	AdminUpdateDataUseRatio   = "/admin/updateDataRatio"
-	AdminUpdateZoneExcludeRatio   = "/admin/updateZoneExcludeRatio"
+	AdminGetIP                     = "/admin/getIp"
+	AdminCreateMetaPartition       = "/metaPartition/create"
+	AdminSetMetaNodeThreshold      = "/threshold/set"
+	AdminListVols                  = "/vol/list"
+	AdminSetNodeInfo               = "/admin/setNodeInfo"
+	AdminGetNodeInfo               = "/admin/getNodeInfo"
+	AdminGetAllNodeSetGrpInfo      = "/admin/getNodeAllSetGrpInfo"
+	AdminGetNodeSetGrpInfo         = "/admin/getNodeSetGrpInfo"
+	AdminUpdateNodeSetCapcity      = "/admin/updateNodeSetCapcity"
+	AdminUpdateNodeSetId           = "/admin/updateNodeSetId"
+	AdminUpdateDataUseRatio        = "/admin/updateDataRatio"
+	AdminUpdateZoneExcludeRatio    = "/admin/updateZoneExcludeRatio"
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
@@ -491,33 +491,34 @@ type SimpleVolView struct {
 	DefaultZonePrior   bool
 }
 type SimpleNodeSet struct {
-	ID        uint64
-	ZoneName  string
-	Capacity  int
+	ID           uint64
+	ZoneName     string
+	Capacity     int
 	DataUseRatio float64
 	MetaUseRatio float64
-	MetaUsed  uint64
-	MetaTotal uint64
-	MetaNodes []NodeView
-	DataUsed  uint64
-	DataTotal uint64
-	DataNodes []NodeView
+	MetaUsed     uint64
+	MetaTotal    uint64
+	MetaNodes    []NodeView
+	DataUsed     uint64
+	DataTotal    uint64
+	DataNodes    []NodeView
 }
 type SimpleNodeSetGrpInfo struct {
-	ID        uint64
-	Status    uint8
+	ID          uint64
+	Status      uint8
 	NodeSetInfo []SimpleNodeSet
 }
 
 type SimpleNodeSetGrpInfoList struct {
-	DomainOn             bool
-	DataRatioLimit       float64
+	DomainOn              bool
+	DataRatioLimit        float64
 	ZoneExcludeRatioLimit float64
-	NeedDomain           bool
-	Status               uint8
-	ExcludeZones         []string
-	SimpleNodeSetGrpInfo []*SimpleNodeSetGrpInfo
+	NeedDomain            bool
+	Status                uint8
+	ExcludeZones          []string
+	SimpleNodeSetGrpInfo  []*SimpleNodeSetGrpInfo
 }
+
 // MasterAPIAccessResp defines the response for getting meta partition
 type MasterAPIAccessResp struct {
 	APIResp APIAccessResp `json:"api_resp"`

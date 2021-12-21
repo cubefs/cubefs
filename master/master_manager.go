@@ -104,7 +104,7 @@ func (m *Server) loadMetadata() {
 	}
 	var loadDomain bool
 	if m.cluster.FaultDomain { // try load exclude
-		if loadDomain,err = m.cluster.loadZoneDomain(); err != nil {
+		if loadDomain, err = m.cluster.loadZoneDomain(); err != nil {
 			log.LogInfof("action[putZoneDomain] err[%v]", err)
 			panic(err)
 		}

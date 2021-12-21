@@ -175,7 +175,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 		}
 	}
-	if m.config.nodeSetCapacity < 3{
+	if m.config.nodeSetCapacity < 3 {
 		m.config.nodeSetCapacity = defaultNodeSetCapacity
 	}
 	m.config.DomainNodeGrpBatchCnt = defaultNodeSetGrpBatchCnt
@@ -185,7 +185,6 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 		}
 	}
-
 
 	metaNodeReservedMemory := cfg.GetString(cfgMetaNodeReservedMem)
 	if metaNodeReservedMemory != "" {
