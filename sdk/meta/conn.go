@@ -83,6 +83,9 @@ func (mw *MetaWrapper) sendWriteToMP(ctx context.Context, mp *MetaPartition, req
 	retryCount := 0
 	for {
 		retryCount++
+		if retryCount > 1 {
+			break
+		}
 		resp, needCheckRead, err = mw.sendToMetaPartition(ctx, mp, req, addr)
 		if err == nil && !resp.ShouldRetry() {
 			return
@@ -96,6 +99,7 @@ func (mw *MetaWrapper) sendWriteToMP(ctx context.Context, mp *MetaPartition, req
 		handleUmpAlarm(mw.cluster, mw.volname, req.GetOpMsg(), umpMsg)
 		time.Sleep(SendRetryInterval)
 	}
+	return
 }
 
 func (mw *MetaWrapper) sendReadToMP(ctx context.Context, mp *MetaPartition, req *proto.Packet) (resp *proto.Packet, err error) {

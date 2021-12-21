@@ -15,8 +15,9 @@
 package metanode
 
 import (
-	"github.com/chubaofs/chubaofs/util/btree"
 	"sync"
+
+	"github.com/chubaofs/chubaofs/util/btree"
 )
 
 const defaultBTreeDegree = 32
@@ -72,6 +73,12 @@ func (b *BTree) CopyFind(key BtreeItem, fn func(i BtreeItem)) {
 	if item == nil {
 		return
 	}
+	fn(item)
+}
+func (b *BTree) CopyFind1(key BtreeItem, fn func(i BtreeItem)) {
+	b.RLock()
+	item := b.tree.CopyGet(key)
+	b.RUnlock()
 	fn(item)
 }
 

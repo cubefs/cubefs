@@ -16,19 +16,28 @@ package metanode
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/chubaofs/chubaofs/util/btree"
+	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/tracing"
 
 	"github.com/chubaofs/chubaofs/proto"
 )
 
-const readDirMax  = 1000	// the maximum number of children that can be returned per operation
+const readDirMax = 1000 // the maximum number of children that can be returned per operation
 
 type DentryResponse struct {
 	Status uint8
 	Msg    *Dentry
+}
+
+func (resp *DentryResponse) String() string {
+	if resp != nil {
+		return fmt.Sprintf("Status(%v) Msg(%v)", resp.Status, resp.Msg)
+	}
+	return ""
 }
 
 func NewDentryResponse() *DentryResponse {
@@ -119,10 +128,15 @@ func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (
 		resp.Status = proto.OpNotExistErr
 		return
 	} else {
-		mp.inodeTree.CopyFind(NewInode(dentry.ParentId, 0),
+		mp.inodeTree.CopyFind1(NewInode(dentry.ParentId, 0),
 			func(item BtreeItem) {
+				var ino *Inode
 				if item != nil {
-					ino := item.(*Inode)
+					ino = item.(*Inode)
+				}
+				log.LogDebugf("fsmDeleteDentry dentry(%v) inode(%v)", dentry, ino)
+				if item != nil {
+					ino = item.(*Inode)
 					if !ino.ShouldDelete() {
 						item.(*Inode).DecNLink()
 					}
@@ -170,7 +184,7 @@ func (mp *metaPartition) readDir(ctx context.Context, req *ReadDirReq) (resp *Re
 	resp = &ReadDirResp{}
 	begDentry := &Dentry{
 		ParentId: req.ParentID,
-		Name:	  req.Marker,
+		Name:     req.Marker,
 	}
 	endDentry := &Dentry{
 		ParentId: req.ParentID + 1,

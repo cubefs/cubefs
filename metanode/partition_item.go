@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -107,6 +108,28 @@ func (s *MetaItem) UnmarshalBinary(raw []byte) (err error) {
 		return
 	}
 	return
+}
+
+func (s *MetaItem) String() string {
+	if s == nil {
+		return ""
+	}
+	var v string
+	switch s.Op {
+	case opFSMCreateDentry, opFSMDeleteDentry:
+		den := &Dentry{}
+		if err := den.Unmarshal(s.V); err != nil {
+			break
+		}
+		v = fmt.Sprintf("parent: %v, name: %v, inode: %v, type: %v", den.ParentId, den.Name, den.Inode, den.Type)
+	case opFSMCreateInode, opFSMUnlinkInode:
+		ino := &Inode{}
+		if err := ino.Unmarshal(context.Background(), s.V); err != nil {
+			break
+		}
+		v = fmt.Sprintf("inode: %v", ino.Inode)
+	}
+	return fmt.Sprintf("Op: %v, K: %v, V: %v, From: %v", s.Op, string(s.K), v, s.From)
 }
 
 // NewMetaItem returns a new MetaItem.
