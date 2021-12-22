@@ -42,9 +42,7 @@ import (
 func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
 	msg := &MetaItem{}
 	defer func() {
-		if log.IsDebugEnabled() {
-			log.LogDebugf("action[Apply] index:%v,msg:%v,resp:%v", index, msg, resp)
-		}
+		log.LogErrorf("action[Apply] index:%v,msg:%v,resp:%v", index, msg, resp)
 		if err != nil {
 			log.LogErrorf("action[Apply] failed,index:%v,msg:%v,resp:%v", index, msg, resp)
 			return

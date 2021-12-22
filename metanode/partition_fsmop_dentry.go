@@ -52,6 +52,9 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 	status = proto.OpOk
 	item := mp.inodeTree.CopyGet(NewInode(dentry.ParentId, 0))
 	var parIno *Inode
+	defer func() {
+		log.LogErrorf("fsmCreateDentry dentry(%v) parIno(%v)", dentry, parIno)
+	}()
 	if !forceUpdate {
 		if item == nil {
 			status = proto.OpNotExistErr
@@ -83,6 +86,7 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 		status = proto.OpExistErr
 	} else {
 		if !forceUpdate {
+			log.LogErrorf("fsmCreateDentry, before IncNLink dentry(%v) parIno(%v)", dentry, parIno)
 			parIno.IncNLink()
 		}
 	}
@@ -108,6 +112,10 @@ func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
 
+	var ino *Inode
+	defer func() {
+		log.LogErrorf("fsmDeleteDentry dentry(%v) inode(%v)", dentry, ino)
+	}()
 	var item interface{}
 	if checkInode {
 		item = mp.dentryTree.Execute(func(tree *btree.BTree) interface{} {
@@ -130,11 +138,10 @@ func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (
 	} else {
 		mp.inodeTree.CopyFind1(NewInode(dentry.ParentId, 0),
 			func(item BtreeItem) {
-				var ino *Inode
 				if item != nil {
 					ino = item.(*Inode)
 				}
-				log.LogDebugf("fsmDeleteDentry dentry(%v) inode(%v)", dentry, ino)
+				log.LogErrorf("fsmDeleteDentry, before DecNLink, dentry(%v) inode(%v)", dentry, ino)
 				if item != nil {
 					ino = item.(*Inode)
 					if !ino.ShouldDelete() {
