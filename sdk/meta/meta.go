@@ -288,7 +288,7 @@ func statusToErrno(status int) error {
 	case statusError:
 		return syscall.EAGAIN
 	case statusConflictExtents:
-		return syscall.EIO
+		return syscall.ENOTSUP
 	default:
 	}
 	return syscall.EIO

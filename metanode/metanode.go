@@ -124,6 +124,15 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.startRaftServer(); err != nil {
 		return
 	}
+	if err = m.newMetaManager(); err != nil {
+		return
+	}
+	if err = m.startServer(); err != nil {
+		return
+	}
+	if err = m.startSmuxServer(); err != nil {
+		return
+	}
 	if err = m.startMetaManager(); err != nil {
 		return
 	}
@@ -140,14 +149,6 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.checkLocalPartitionMatchWithMaster(); err != nil {
 		syslog.Println(err)
 		exporter.Warning(err.Error())
-		return
-	}
-
-	if err = m.startServer(); err != nil {
-		return
-	}
-
-	if err = m.startSmuxServer(); err != nil {
 		return
 	}
 
@@ -312,7 +313,7 @@ func (m *MetaNode) validConfig() (err error) {
 	return
 }
 
-func (m *MetaNode) startMetaManager() (err error) {
+func (m *MetaNode) newMetaManager() (err error) {
 	if _, err = os.Stat(m.metadataDir); err != nil {
 		if err = os.MkdirAll(m.metadataDir, 0755); err != nil {
 			return
@@ -326,6 +327,10 @@ func (m *MetaNode) startMetaManager() (err error) {
 		ZoneName:  m.zoneName,
 	}
 	m.metadataManager = NewMetadataManager(conf, m)
+	return
+}
+
+func (m *MetaNode) startMetaManager() (err error) {
 	if err = m.metadataManager.Start(); err == nil {
 		log.LogInfof("[startMetaManager] manager start finish.")
 	}

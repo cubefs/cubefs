@@ -15,7 +15,9 @@
 package fs
 
 import (
+	"io"
 	"os"
+	"sync"
 	"syscall"
 	"time"
 
@@ -28,11 +30,59 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
+// used to locate the position in parent
+type DirContext struct {
+	Name string
+}
+
+type DirContexts struct {
+	sync.RWMutex
+	dirCtx map[fuse.HandleID]*DirContext
+}
+
+func NewDirContexts() (dctx *DirContexts) {
+	dctx = &DirContexts{}
+	dctx.dirCtx = make(map[fuse.HandleID]*DirContext, 0)
+	return
+}
+
+func (dctx *DirContexts) GetCopy(handle fuse.HandleID) DirContext {
+	dctx.RLock()
+	dirCtx, found := dctx.dirCtx[handle]
+	dctx.RUnlock()
+
+	if found {
+		return DirContext{dirCtx.Name}
+	} else {
+		return DirContext{}
+	}
+}
+
+func (dctx *DirContexts) Put(handle fuse.HandleID, dirCtx *DirContext) {
+	dctx.Lock()
+	defer dctx.Unlock()
+
+	oldCtx, found := dctx.dirCtx[handle]
+	if found {
+		oldCtx.Name = dirCtx.Name
+		return
+	}
+
+	dctx.dirCtx[handle] = dirCtx
+}
+
+func (dctx *DirContexts) Remove(handle fuse.HandleID) {
+	dctx.Lock()
+	delete(dctx.dirCtx, handle)
+	dctx.Unlock()
+}
+
 // Dir defines the structure of a directory
 type Dir struct {
 	super  *Super
 	info   *proto.InodeInfo
 	dcache *DentryCache
+	dctx   *DirContexts
 }
 
 // Functions that Dir needs to implement
@@ -60,6 +110,7 @@ func NewDir(s *Super, i *proto.InodeInfo) fs.Node {
 	return &Dir{
 		super: s,
 		info:  i,
+		dctx:  NewDirContexts(),
 	}
 }
 
@@ -73,6 +124,11 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	}
 	fillAttr(info, a)
 	log.LogDebugf("TRACE Attr: inode(%v)", info)
+	return nil
+}
+
+func (d *Dir) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error) {
+	d.dctx.Remove(req.Handle)
 	return nil
 }
 
@@ -232,6 +288,63 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 
 	resp.EntryValid = LookupValidDuration
 	return child, nil
+}
+
+func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) ([]fuse.Dirent, error) {
+	var err error
+	var limit uint64 = DefaultReaddirLimit
+	start := time.Now()
+
+	dirCtx := d.dctx.GetCopy(req.Handle)
+	children, err := d.super.mw.ReadDirLimit_ll(d.info.Inode, dirCtx.Name, limit)
+	if err != nil {
+		log.LogErrorf("readdirlimit: Readdir: ino(%v) err(%v)", d.info.Inode, err)
+		return make([]fuse.Dirent, 0), ParseError(err)
+	}
+
+	// skip the first one, which is already accessed
+	childrenNr := uint64(len(children))
+	if childrenNr == 0 || (dirCtx.Name != "" && childrenNr == 1) {
+		return make([]fuse.Dirent, 0), io.EOF
+	} else if childrenNr < limit {
+		err = io.EOF
+	}
+	if dirCtx.Name != "" {
+		children = children[1:]
+	}
+
+	/* update dirCtx */
+	dirCtx.Name = children[len(children)-1].Name
+	d.dctx.Put(req.Handle, &dirCtx)
+
+	inodes := make([]uint64, 0, len(children))
+	dirents := make([]fuse.Dirent, 0, len(children))
+
+	dcache := d.dcache
+	if !d.super.disableDcache {
+		dcache = NewDentryCache()
+		d.dcache = dcache
+	}
+
+	for _, child := range children {
+		dentry := fuse.Dirent{
+			Inode: child.Inode,
+			Type:  ParseType(child.Type),
+			Name:  child.Name,
+		}
+		inodes = append(inodes, child.Inode)
+		dirents = append(dirents, dentry)
+		dcache.Put(child.Name, child.Inode)
+	}
+
+	infos := d.super.mw.BatchInodeGet(inodes)
+	for _, info := range infos {
+		d.super.ic.Put(info)
+	}
+
+	elapsed := time.Since(start)
+	log.LogDebugf("TRACE ReadDir: ino(%v) (%v)ns", d.info.Inode, elapsed.Nanoseconds())
+	return dirents, err
 }
 
 // ReadDirAll gets all the dentries in a directory and puts them into the cache.

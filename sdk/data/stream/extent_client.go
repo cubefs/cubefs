@@ -17,6 +17,7 @@ package stream
 import (
 	"fmt"
 	"sync"
+	"syscall"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -221,7 +222,8 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags i
 
 	s := client.GetStreamer(inode)
 	if s == nil {
-		return 0, fmt.Errorf("Prefix(%v): stream is not opened yet", prefix)
+		log.LogErrorf("Prefix(%v): stream is not opened yet", prefix)
+		return 0, syscall.EBADF
 	}
 
 	s.once.Do(func() {
@@ -242,7 +244,8 @@ func (client *ExtentClient) Truncate(inode uint64, size int) error {
 	prefix := fmt.Sprintf("Truncate{ino(%v)size(%v)}", inode, size)
 	s := client.GetStreamer(inode)
 	if s == nil {
-		return fmt.Errorf("Prefix(%v): stream is not opened yet", prefix)
+		log.LogErrorf("Prefix(%v): stream is not opened yet", prefix)
+		return syscall.EBADF
 	}
 
 	err := s.IssueTruncRequest(size)
@@ -256,7 +259,8 @@ func (client *ExtentClient) Truncate(inode uint64, size int) error {
 func (client *ExtentClient) Flush(inode uint64) error {
 	s := client.GetStreamer(inode)
 	if s == nil {
-		return fmt.Errorf("Flush: stream is not opened yet, ino(%v)", inode)
+		log.LogErrorf("Flush: stream is not opened yet, ino(%v)", inode)
+		return syscall.EBADF
 	}
 	return s.IssueFlushRequest()
 }
@@ -268,8 +272,8 @@ func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int
 
 	s := client.GetStreamer(inode)
 	if s == nil {
-		err = fmt.Errorf("Read: stream is not opened yet, ino(%v) offset(%v) size(%v)", inode, offset, size)
-		return
+		log.LogErrorf("Read: stream is not opened yet, ino(%v) offset(%v) size(%v)", inode, offset, size)
+		return 0, syscall.EBADF
 	}
 
 	s.once.Do(func() {

@@ -40,6 +40,7 @@ const (
 const (
 	// the expiration duration of the dentry in the cache (used internally)
 	DentryValidDuration = 5 * time.Second
+	DefaultReaddirLimit = 1024
 )
 
 const (
@@ -62,7 +63,7 @@ func ParseError(err error) fuse.Errno {
 	case fuse.Errno:
 		return v
 	default:
-		return fuse.ENOSYS
+		return fuse.EIO
 	}
 }
 

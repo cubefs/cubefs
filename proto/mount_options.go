@@ -37,7 +37,6 @@ const (
 	TicketHost
 	EnableHTTPS
 	CertFile
-	TokenKey
 	AccessKey
 	SecretKey
 	DisableDcache
@@ -102,7 +101,6 @@ func InitMountOptions(opts []MountOption) {
 	opts[EnableHTTPS] = MountOption{"enableHTTPS", "Enable HTTPS", "", false}
 	opts[CertFile] = MountOption{"certFile", "Cert File", "", ""}
 
-	opts[TokenKey] = MountOption{"token", "Token Key", "", ""}
 	opts[AccessKey] = MountOption{"accessKey", "Access Key", "", ""}
 	opts[SecretKey] = MountOption{"secretKey", "Secret Key", "", ""}
 
@@ -209,36 +207,37 @@ func (opt *MountOption) GetInt64() int64 {
 }
 
 type MountOptions struct {
-	Config         *config.Config
-	MountPoint     string
-	Volname        string
-	Owner          string
-	Master         string
-	Logpath        string
-	Loglvl         string
-	Profport       string
-	IcacheTimeout  int64
-	LookupValid    int64
-	AttrValid      int64
-	ReadRate       int64
-	WriteRate      int64
-	EnSyncWrite    int64
-	AutoInvalData  int64
-	UmpDatadir     string
-	Rdonly         bool
-	WriteCache     bool
-	KeepCache      bool
-	FollowerRead   bool
-	Authenticate   bool
-	TicketMess     auth.TicketMess
-	TokenKey       string
-	AccessKey      string
-	SecretKey      string
-	DisableDcache  bool
-	SubDir         string
-	FsyncOnClose   bool
-	MaxCPUs        int64
-	EnableXattr    bool
-	NearRead       bool
-	EnablePosixACL bool
+	Config               *config.Config
+	MountPoint           string
+	Volname              string
+	Owner                string
+	Master               string
+	Logpath              string
+	Loglvl               string
+	Profport             string
+	IcacheTimeout        int64
+	LookupValid          int64
+	AttrValid            int64
+	ReadRate             int64
+	WriteRate            int64
+	EnSyncWrite          int64
+	AutoInvalData        int64
+	UmpDatadir           string
+	Rdonly               bool
+	WriteCache           bool
+	KeepCache            bool
+	FollowerRead         bool
+	Authenticate         bool
+	TicketMess           auth.TicketMess
+	TokenKey             string
+	AccessKey            string
+	SecretKey            string
+	DisableDcache        bool
+	SubDir               string
+	FsyncOnClose         bool
+	MaxCPUs              int64
+	EnableXattr          bool
+	NearRead             bool
+	EnablePosixACL       bool
+	EnableUnixPermission bool
 }
