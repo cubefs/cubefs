@@ -109,7 +109,7 @@ func (m *Server) loadMetadata() {
 			panic(err)
 		}
 		if loadDomain { // if load success,start grp manager ,load nodeset can trigger build ns grps
-			m.cluster.nodeSetGrpManager.start()
+			m.cluster.domainManager.start()
 		}
 	}
 
@@ -125,7 +125,7 @@ func (m *Server) loadMetadata() {
 				panic(err)
 			}
 		}
-		m.cluster.nodeSetGrpManager.start()
+		m.cluster.domainManager.start()
 	}
 
 	if err = m.cluster.loadDataNodes(); err != nil {

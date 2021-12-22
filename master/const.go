@@ -44,7 +44,7 @@ const (
 	cacheHighWaterKey   = "cacheHighWater"
 	cacheLowWaterKey    = "cacheLowWater"
 	cacheLRUIntervalKey = "cacheLRUInterVal"
-
+	domainIdKey             = "domainId"
 	volOwnerKey             = "owner"
 	volAuthKey              = "authKey"
 	replicaNumKey           = "replicaNum"
@@ -54,7 +54,7 @@ const (
 	keywordsKey             = "keywords"
 	zoneNameKey             = "zoneName"
 	crossZoneKey            = "crossZone"
-	defaultPriority         = "defaultPriority"
+	defaultPriority         = "unDomainZonesFirst"
 	userKey                 = "user"
 	nodeHostsKey            = "hosts"
 	nodeDeleteBatchCountKey = "batchCount"

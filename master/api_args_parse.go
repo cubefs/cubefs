@@ -255,20 +255,21 @@ type coldVolArgs struct {
 }
 
 type createVolReq struct {
-	name            string
-	owner           string
-	size            int
-	mpCount         int
-	dpReplicaNum    int
-	capacity        int
-	vol             *Vol
-	followerRead    bool
-	authenticate    bool
-	crossZone       bool
-	defaultPriority bool
-	zoneName        string
-	description     string
-	volType         int
+	name               string
+	owner              string
+	size               int
+	mpCount            int
+	dpReplicaNum       int
+	capacity           int
+	vol                *Vol
+	followerRead       bool
+	authenticate       bool
+	crossZone          bool
+	unDomainZonesFirst bool
+	domainId           uint64
+	zoneName           string
+	description        string
+	volType            int
 
 	// cold vol args
 	coldArgs coldVolArgs
@@ -362,9 +363,7 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
-	if req.volType, err = extractVolType(r); err != nil {
-		return
-	}
+	req.volType, _ = extractVolType(r)
 
 	if req.followerRead, err = extractFollowerRead(r); err != nil {
 		return
@@ -378,7 +377,10 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
-	if req.defaultPriority, err = extractDefaulPriority(r); err != nil {
+	if req.unDomainZonesFirst, err = extractDefaulPriority(r); err != nil {
+		return
+	}
+	if req.domainId, err = extractDefaultDomainId(r); err != nil {
 		return
 	}
 
@@ -575,6 +577,19 @@ func extractCrossZone(r *http.Request) (crossZone bool, err error) {
 	return
 }
 
+func extractDefaultDomainId(r *http.Request) (domainId uint64, err error) {
+	var value string
+	if value = r.FormValue(domainIdKey); value == "" {
+		domainId = 0
+		return
+	}
+	if domainId, err = strconv.ParseUint(value, 10, 64); err != nil {
+		return
+	}
+	return
+}
+
+
 func extractDefaulPriority(r *http.Request) (defaultPrior bool, err error) {
 	var value string
 	if value = r.FormValue(defaultPriority); value == "" {
@@ -749,12 +764,12 @@ func extractVolType(r *http.Request) (volType int, err error) {
 
 	var capacityStr string
 	if capacityStr = r.FormValue(volTypeKey); capacityStr == "" {
-		err = keyNotFound(volTypeKey)
+		volType = 0
 		return
 	}
 
-	if volType, err = strconv.Atoi(capacityStr); err != nil {
-		err = unmatchedKey(volTypeKey)
+	if volType, err = strconv.Atoi(volTypeKey); err != nil {
+		err = unmatchedKey(volCapacityKey)
 	}
 
 	return

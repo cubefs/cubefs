@@ -248,16 +248,18 @@ type nodeSetValue struct {
 	ZoneName string
 }
 
-type nodeSetGrpValue struct {
-	ID          uint64
+type domainNodeSetGrpValue struct {
+	DomainId    uint64
+	ID	    uint64
 	NodeSetsIds []uint64
 	Status      uint8
 }
 type zoneDomainValue struct {
-	ExcludeZoneMap      map[string]int
-	NeedFaultDomain     bool
-	DataRatio           float64
-	ExcludeZoneUseRatio float64
+	ExcludeZoneMap       map[string]int
+	NeedFaultDomain      bool
+	DataRatio            float64
+	DomainZoneName2IdMap map[string]uint64 // zoneName:domainId
+	ExcludeZoneUseRatio    float64
 }
 
 func newZoneDomainValue() (ev *zoneDomainValue) {
@@ -274,9 +276,9 @@ func newNodeSetValue(nset *nodeSet) (nsv *nodeSetValue) {
 	}
 	return
 }
-func newNodeSetGrpValue(nset *nodeSetGroup) (nsv *nodeSetGrpValue) {
-	nsv = &nodeSetGrpValue{
-		ID:          nset.ID,
+func newNodeSetGrpValue(nset *nodeSetGroup) (nsv *domainNodeSetGrpValue) {
+	nsv = &domainNodeSetGrpValue{
+		ID:       nset.ID,
 		NodeSetsIds: nset.nodeSetsIds,
 		Status:      nset.status,
 	}
@@ -641,9 +643,10 @@ func (c *Cluster) putZoneDomain(init bool) (err error) {
 	metadata := new(RaftCmd)
 	metadata.Op = opSyncExclueDomain
 	metadata.K = DomainPrefix
+
 	if init {
 		for i := 0; i < len(c.t.zones); i++ {
-			c.nodeSetGrpManager.excludeZoneListDomain[c.t.zones[i].name] = 0
+			c.domainManager.excludeZoneListDomain[c.t.zones[i].name] = 0
 			c.t.domainExcludeZones = append(c.t.domainExcludeZones, c.t.zones[i].name)
 		}
 		if len(c.t.zones) == 0 {
@@ -651,15 +654,16 @@ func (c *Cluster) putZoneDomain(init bool) (err error) {
 		}
 	}
 	domainValue := newZoneDomainValue()
-	domainValue.ExcludeZoneMap = c.nodeSetGrpManager.excludeZoneListDomain
+	domainValue.ExcludeZoneMap = c.domainManager.excludeZoneListDomain
 	domainValue.NeedFaultDomain = c.needFaultDomain
-	if c.nodeSetGrpManager.dataRatioLimit > 0 {
-		domainValue.DataRatio = c.nodeSetGrpManager.dataRatioLimit
+	domainValue.DomainZoneName2IdMap = c.domainManager.ZoneName2DomainIdMap
+	if c.domainManager.dataRatioLimit > 0 {
+		domainValue.DataRatio = c.domainManager.dataRatioLimit
 	} else {
 		domainValue.DataRatio = defaultZoneUsageThreshold
 	}
-	if c.nodeSetGrpManager.excludeZoneUseRatio > 0 {
-		domainValue.DataRatio = c.nodeSetGrpManager.excludeZoneUseRatio
+	if c.domainManager.excludeZoneUseRatio > 0 && c.domainManager.excludeZoneUseRatio <= 1{
+		domainValue.DataRatio =  c.domainManager.excludeZoneUseRatio
 	} else {
 		domainValue.DataRatio = defaultZoneUsageThreshold
 	}
@@ -690,13 +694,14 @@ func (c *Cluster) loadZoneDomain() (ok bool, err error) {
 			return true, err
 		}
 		log.LogInfof("action[loadZoneDomain] get value!exclue map[%v],need domain[%v]", nsv.ExcludeZoneMap, nsv.NeedFaultDomain)
-		c.nodeSetGrpManager.excludeZoneListDomain = nsv.ExcludeZoneMap
-		for zoneName := range nsv.ExcludeZoneMap {
+		c.domainManager.excludeZoneListDomain = nsv.ExcludeZoneMap
+		for zoneName, _ := range nsv.ExcludeZoneMap {
 			c.t.domainExcludeZones = append(c.t.domainExcludeZones, zoneName)
 		}
 		c.needFaultDomain = nsv.NeedFaultDomain
-		c.nodeSetGrpManager.dataRatioLimit = nsv.DataRatio
-		c.nodeSetGrpManager.excludeZoneUseRatio = nsv.ExcludeZoneUseRatio
+		c.domainManager.dataRatioLimit = nsv.DataRatio
+		c.domainManager.ZoneName2DomainIdMap = nsv.DomainZoneName2IdMap
+                c.domainManager.excludeZoneUseRatio = nsv.ExcludeZoneUseRatio
 		break
 	}
 	log.LogInfof("action[loadZoneDomain] success!")
@@ -713,25 +718,38 @@ func (c *Cluster) loadNodeSetGrps() (err error) {
 	}
 	if len(result) > 0 {
 		log.LogInfof("action[loadNodeSetGrps] get result len[%v]", len(result))
-		c.nodeSetGrpManager.start()
+		c.domainManager.start()
 	}
 	log.LogInfof("action[loadNodeSetGrps] get result len[%v] before decode", len(result))
 	for _, value := range result {
-		nsv := &nodeSetGrpValue{}
-		if err = json.Unmarshal(value, nsv); err != nil {
-			log.LogFatalf("action[loadNodeSets], unmarshal err:%v", err.Error())
+		domainInfoLoad := &domainNodeSetGrpValue{}
+		if err = json.Unmarshal(value, domainInfoLoad); err != nil {
+			log.LogFatal("action[loadNodeSets], unmarshal err:%v", err.Error())
 			return err
 		}
-		log.LogInfof("action[loadNodeSetGrps] get result nsv id[%v],status[%v],ids[%v]", nsv.ID, nsv.Status, nsv.NodeSetsIds)
+		log.LogInfof("action[loadNodeSetGrps] get result domainInfoLoad id[%v],status[%v],ids[%v]", domainInfoLoad.ID, domainInfoLoad.Status, domainInfoLoad.NodeSetsIds)
 		nsg := newNodeSetGrp(c)
-		nsg.nodeSetsIds = nsv.NodeSetsIds
-		nsg.ID = nsv.ID
-		nsg.status = nsv.Status
-		c.nodeSetGrpManager.nodeSetGrpMap = append(c.nodeSetGrpManager.nodeSetGrpMap, nsg)
+		nsg.nodeSetsIds = domainInfoLoad.NodeSetsIds
+		nsg.ID = domainInfoLoad.ID
+		nsg.status = domainInfoLoad.Status
+		domainId := domainInfoLoad.DomainId
+
+
+		var domainIndex int
+		var ok          bool
+		var domainGrp *DomainNodeSetGrpManager
+		if domainIndex, ok = c.domainManager.domainId2IndexMap[domainId]; !ok {
+			domainGrp = newDomainNodeSetGrpManager()
+			c.domainManager.domainNodeSetGrpVec = append(c.domainManager.domainNodeSetGrpVec, domainGrp)
+			domainIndex = len(c.domainManager.domainNodeSetGrpVec) - 1
+			c.domainManager.domainId2IndexMap[domainId] = domainIndex
+		}
+
+		domainGrp.nodeSetGrpMap = append(domainGrp.nodeSetGrpMap, nsg)
 		var j int
-		for j = 0; j < len(nsv.NodeSetsIds); j++ {
-			c.nodeSetGrpManager.nsId2NsGrpMap[nsv.NodeSetsIds[j]] = len(c.nodeSetGrpManager.nodeSetGrpMap) - 1
-			log.LogInfof("action[loadNodeSetGrps] get result index[%v] nodesetid[%v] nodesetgrp index [%v]", nsv.ID, nsv.NodeSetsIds[j], nsv.Status)
+		for j = 0; j < len(domainInfoLoad.NodeSetsIds); j++ {
+			domainGrp.nsId2NsGrpMap[domainInfoLoad.NodeSetsIds[j]] = len(domainGrp.nodeSetGrpMap) - 1
+			log.LogInfof("action[loadNodeSetGrps] get result index[%v] nodesetid[%v] nodesetgrp index [%v]", domainInfoLoad.ID, domainInfoLoad.NodeSetsIds[j], domainInfoLoad.Status)
 		}
 		log.LogInfof("action[loadNodeSetGrps], nsgId[%v],status[%v]", nsg.ID, nsg.status)
 	}

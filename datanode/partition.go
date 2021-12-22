@@ -17,6 +17,7 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util"
 	"io/ioutil"
 	"math"
 	"os"
@@ -27,7 +28,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util"
 
 	"hash/crc32"
 	"net"
@@ -1049,7 +1049,7 @@ func (dp *DataPartition) startEvict() {
 			}
 
 			// check volume type and dp type.
-			if vv.Type != proto.VolumeTypeCold ||
+			if vv.VolType != proto.VolumeTypeCold ||
 				(dp.partitionType != proto.PartitionTypeCache && dp.partitionType != proto.PartitionTypePreLoad) {
 				log.LogErrorf("action[startEvict] cannot startEvict vol(%v) dp(%v).", vv, dp.partitionID)
 				timer.Stop()

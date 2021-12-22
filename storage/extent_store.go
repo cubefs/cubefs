@@ -22,9 +22,6 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
-
-	"github.com/chubaofs/chubaofs/datanode"
-
 	"path"
 	"regexp"
 	"time"

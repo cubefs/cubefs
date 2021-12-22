@@ -248,6 +248,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminGetIsDomainOn).
 		HandlerFunc(m.getIsDomainOn)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminDomainCreate).
+		HandlerFunc(m.createDomainHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminGetAllNodeSetGrpInfo).
 		HandlerFunc(m.getAllNodeSetGrpInfoHandler)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

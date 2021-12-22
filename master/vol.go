@@ -35,6 +35,8 @@ type VolVarargs struct {
 	authenticate   bool
 	dpSelectorName string
 	dpSelectorParm string
+	coldArgs *coldVolArgs
+	domainId       uint64
 }
 
 // Vol represents a set of meta partitionMap and data partitionMap
@@ -79,6 +81,7 @@ type Vol struct {
 	description        string
 	dpSelectorName     string
 	dpSelectorParm     string
+	domainId           uint64
 	sync.RWMutex
 }
 
@@ -737,14 +740,15 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	)
 	errChannel := make(chan error, vol.mpReplicaNum)
 	if c.isFaultDomain(vol) {
-		if hosts, peers, err = c.getAvaliableHostFromNsGrp(TypeMetaPartion, vol.mpReplicaNum); err != nil {
+		if hosts, peers, err  = c.getAvaliableHostFromNsGrp(vol.domainId, TypeMetaPartion, vol.mpReplicaNum); err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] getAvaliableHostFromNsGrp err[%v]", err)
 			return nil, errors.NewError(err)
 		}
 	} else {
 		var excludeZone []string
-		if hosts, peers, err = c.chooseTargetMetaHosts(excludeZone, nil, nil, int(vol.mpReplicaNum), vol.crossZone, vol.zoneName); err != nil {
-			log.LogErrorf("action[doCreateMetaPartition] chooseTargetMetaHosts err[%v]", err)
+		zoneNum := c.decideZoneNum(vol.crossZone)
+		if hosts, peers, err = c.chooseTargetNodes(TypeMetaPartion, excludeZone, nil, nil, int(vol.mpReplicaNum), zoneNum, vol.zoneName); err != nil {
+			log.LogErrorf("action[doCreateMetaPartition] chooseTargetNodes err[%v]", err)
 			return nil, errors.NewError(err)
 		}
 	}

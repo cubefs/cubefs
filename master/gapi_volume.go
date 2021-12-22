@@ -189,22 +189,20 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 	if per == USER && args.Owner != uid {
 		return nil, fmt.Errorf("[%s] not has permission to create volume for [%s]", uid, args.Owner)
 	}
-
 	req := &createVolReq{
-		name:            args.Name,
-		owner:           args.Owner,
-		zoneName:        args.ZoneName,
-		description:     args.Description,
-		mpCount:         int(args.MpCount),
-		dpReplicaNum:    int(args.DpReplicaNum),
-		size:            int(args.DataPartitionSize),
-		capacity:        int(args.Capacity),
-		followerRead:    args.FollowerRead,
-		authenticate:    args.Authenticate,
-		crossZone:       args.CrossZone,
-		defaultPriority: args.DefaultPriority,
+		name:               args.Name,
+		owner:              args.Owner,
+		size            :   int(args.DataPartitionSize),
+		mpCount         :   int(args.MpCount),
+		dpReplicaNum    :   int(args.DpReplicaNum),
+		capacity        :   int(args.Capacity),
+		followerRead    :   args.FollowerRead,
+		authenticate    :   args.Authenticate,
+		crossZone       :   args.CrossZone,
+		unDomainZonesFirst: args.DefaultPriority,
+		zoneName        :   args.ZoneName,
+		description     :   args.Description,
 	}
-
 	vol, err := s.cluster.createVol(req)
 	if err != nil {
 		return nil, err
