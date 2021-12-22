@@ -697,28 +697,28 @@ func (m *Server) volShrink(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		name         string
-		owner        string
-		err          error
-		msg          string
-		size         int
-		mpCount      int
-		dpReplicaNum int
-		capacity     int
-		vol          *Vol
-		followerRead bool
-		authenticate bool
-		crossZone    bool
+		name            string
+		owner           string
+		err             error
+		msg             string
+		size            int
+		mpCount         int
+		dpReplicaNum    int
+		capacity        int
+		vol             *Vol
+		followerRead    bool
+		authenticate    bool
+		crossZone       bool
 		defaultPriority bool
-		zoneName     string
-		description  string
+		zoneName        string
+		description     string
 	)
 
 	if name, owner, zoneName, description,
-				mpCount, dpReplicaNum, size,
-				capacity, followerRead,
-				authenticate, crossZone, defaultPriority,
-				err = parseRequestToCreateVol(r); err != nil {
+		mpCount, dpReplicaNum, size,
+		capacity, followerRead,
+		authenticate, crossZone, defaultPriority,
+		err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -728,9 +728,9 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if vol, err = m.cluster.createVol(name, owner, zoneName, description,
-					mpCount, dpReplicaNum, size, capacity,
-					followerRead, authenticate, crossZone,
-					defaultPriority); err != nil {
+		mpCount, dpReplicaNum, size, capacity,
+		followerRead, authenticate, crossZone,
+		defaultPriority); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -806,7 +806,7 @@ func checkIp(addr string) bool {
 	if arr = strings.Split(addr, ":"); len(arr) < 2 {
 		return false
 	}
-	if id, err := strconv.ParseUint(arr[1], 10, 64);err != nil || id > 65535 || id < 1024 {
+	if id, err := strconv.ParseUint(arr[1], 10, 64); err != nil || id > 65535 || id < 1024 {
 		return false
 	}
 	ip := strings.Trim(addr, " ")
@@ -992,7 +992,7 @@ func (m *Server) updateNodesetId(zoneName string, destNodesetId uint64, nodeType
 		log.LogInfof("action[updateNodesetId] step out")
 	}()
 	log.LogWarnf("action[updateNodesetId] zonename[%v] destNodesetId[%v] nodeType[%v] addr[%v]",
-			zoneName, destNodesetId, nodeType, addr)
+		zoneName, destNodesetId, nodeType, addr)
 
 	if value, ok = m.cluster.t.zoneMap.Load(zoneName); !ok {
 		return fmt.Errorf("zonename [%v] not found", zoneName)
@@ -1073,7 +1073,7 @@ func (m *Server) updateNodesetId(zoneName string, destNodesetId uint64, nodeType
 }
 
 func (m *Server) updateNodesetCapcity(zoneName string, nodesetId uint64, capcity int) (err error) {
-	var ns  *nodeSet
+	var ns *nodeSet
 	var ok bool
 	var value interface{}
 	if capcity < defaultReplicaNum || capcity > 100 {
@@ -1138,25 +1138,25 @@ func (m *Server) buildNodeSetGrpInfo(index int) *proto.SimpleNodeSetGrpInfo {
 				i, nsStat.ID, node.ZoneName, node.Addr, node.NodeSetID)
 
 			dataNodeInfo := &proto.DataNodeInfo{
-				Total:                     node.Total,
-				Used:                      node.Used,
-				AvailableSpace:            node.AvailableSpace,
-				ID:                        node.ID,
-				ZoneName:                  node.ZoneName,
-				Addr:                      node.Addr,
-				ReportTime:                node.ReportTime,
-				IsActive:                  node.isActive,
-				IsWriteAble:               node.isWriteAble(),
-				UsageRatio:                node.UsageRatio,
-				SelectedTimes:             node.SelectedTimes,
-				Carry:                     node.Carry,
-				DataPartitionCount:        node.DataPartitionCount,
-				NodeSetID:                 node.NodeSetID,
+				Total:              node.Total,
+				Used:               node.Used,
+				AvailableSpace:     node.AvailableSpace,
+				ID:                 node.ID,
+				ZoneName:           node.ZoneName,
+				Addr:               node.Addr,
+				ReportTime:         node.ReportTime,
+				IsActive:           node.isActive,
+				IsWriteAble:        node.isWriteAble(),
+				UsageRatio:         node.UsageRatio,
+				SelectedTimes:      node.SelectedTimes,
+				Carry:              node.Carry,
+				DataPartitionCount: node.DataPartitionCount,
+				NodeSetID:          node.NodeSetID,
 			}
 			nsStat.DataNodes = append(nsStat.DataNodes, dataNodeInfo)
 			return true
 		})
-		nsStat.DataUseRatio , _ = strconv.ParseFloat(fmt.Sprintf("%.2f", float64(nsStat.DataUsed) / float64(nsStat.DataTotal)), 64)
+		nsStat.DataUseRatio, _ = strconv.ParseFloat(fmt.Sprintf("%.2f", float64(nsStat.DataUsed)/float64(nsStat.DataTotal)), 64)
 
 		nsg.nodeSets[i].metaNodes.Range(func(key, value interface{}) bool {
 			node := value.(*MetaNode)
@@ -1166,31 +1166,30 @@ func (m *Server) buildNodeSetGrpInfo(index int) *proto.SimpleNodeSetGrpInfo {
 				i, nsStat.ID, node.ZoneName, node.Addr, node.NodeSetID)
 
 			metaNodeInfo := &proto.MetaNodeInfo{
-				ID:                        node.ID,
-				Addr:                      node.Addr,
-				IsActive:                  node.IsActive,
-				IsWriteAble:               node.isWritable(),
-				ZoneName:                  node.ZoneName,
-				MaxMemAvailWeight:         node.MaxMemAvailWeight,
-				Total:                     node.Total,
-				Used:                      node.Used,
-				Ratio:                     node.Ratio,
-				SelectCount:               node.SelectCount,
-				Carry:                     node.Carry,
-				Threshold:                 node.Threshold,
-				ReportTime:                node.ReportTime,
-				MetaPartitionCount:        node.MetaPartitionCount,
-				NodeSetID:                 node.NodeSetID,
+				ID:                 node.ID,
+				Addr:               node.Addr,
+				IsActive:           node.IsActive,
+				IsWriteAble:        node.isWritable(),
+				ZoneName:           node.ZoneName,
+				MaxMemAvailWeight:  node.MaxMemAvailWeight,
+				Total:              node.Total,
+				Used:               node.Used,
+				Ratio:              node.Ratio,
+				SelectCount:        node.SelectCount,
+				Carry:              node.Carry,
+				Threshold:          node.Threshold,
+				ReportTime:         node.ReportTime,
+				MetaPartitionCount: node.MetaPartitionCount,
+				NodeSetID:          node.NodeSetID,
 			}
-
 
 			nsStat.MetaNodes = append(nsStat.MetaNodes, metaNodeInfo)
 			return true
 		})
-		nsStat.MetaUseRatio, _ = strconv.ParseFloat(fmt.Sprintf("%.2f", float64(nsStat.MetaUsed) / float64(nsStat.MetaTotal)), 64)
+		nsStat.MetaUseRatio, _ = strconv.ParseFloat(fmt.Sprintf("%.2f", float64(nsStat.MetaUsed)/float64(nsStat.MetaTotal)), 64)
 		nsgStat.NodeSetInfo = append(nsgStat.NodeSetInfo, nsStat)
 		log.LogInfof("nodeset index[%v], nodeset id[%v],capacity[%v], datatotal[%v] dataused[%v] metatotal[%v] metaused[%v], metanode[%v], datanodes[%v]",
-				i, nsStat.ID, nsStat.Capacity, nsStat.DataTotal, nsStat.DataUsed, nsStat.MetaTotal, nsStat.MetaUsed, nsStat.MetaNodes, nsStat.DataNodes)
+			i, nsStat.ID, nsStat.Capacity, nsStat.DataTotal, nsStat.DataUsed, nsStat.MetaTotal, nsStat.MetaUsed, nsStat.MetaNodes, nsStat.DataNodes)
 	}
 	return nsgStat
 }
@@ -1203,7 +1202,7 @@ func (m *Server) updateNodeSetCapacityHandler(w http.ResponseWriter, r *http.Req
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if  err:= m.updateNodesetCapcity(params[zoneNameKey].(string), params[idKey].(uint64), params[countKey].(int)); err == nil {
+	if err := m.updateNodesetCapcity(params[zoneNameKey].(string), params[idKey].(uint64), params[countKey].(int)); err == nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set nodesetinfo params %v successfully", params)))
@@ -1224,7 +1223,7 @@ func (m *Server) updateDataUseRatioHandler(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 	}
 
-	if  err = m.updateDataUseRatio(ratioVal); err != nil {
+	if err = m.updateDataUseRatio(ratioVal); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set nodesetinfo params %v successfully", params)))
@@ -1245,7 +1244,7 @@ func (m *Server) updateZoneExcludeRatioHandler(w http.ResponseWriter, r *http.Re
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 	}
 
-	if  err = m.updateExcludeZoneUseRatio(ratioVal); err != nil {
+	if err = m.updateExcludeZoneUseRatio(ratioVal); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set nodesetinfo params %v successfully", params)))
@@ -1253,12 +1252,12 @@ func (m *Server) updateZoneExcludeRatioHandler(w http.ResponseWriter, r *http.Re
 
 func (m *Server) updateNodeSetIdHandler(w http.ResponseWriter, r *http.Request) {
 	var (
-		nodeAddr     string
-		id           uint64
-		zoneName     string
-		err          error
-		nodeType     uint64
-		value        string
+		nodeAddr string
+		id       uint64
+		zoneName string
+		err      error
+		nodeType uint64
+		value    string
 	)
 	defer func() {
 		if err != nil {
@@ -1286,7 +1285,7 @@ func (m *Server) updateNodeSetIdHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if  err = m.updateNodesetId(zoneName, id, nodeType, nodeAddr); err != nil {
+	if err = m.updateNodesetId(zoneName, id, nodeType, nodeAddr); err != nil {
 		return
 	}
 
@@ -1295,7 +1294,7 @@ func (m *Server) updateNodeSetIdHandler(w http.ResponseWriter, r *http.Request) 
 
 // get metanode some interval params
 func (m *Server) getNodeSetGrpInfoHandler(w http.ResponseWriter, r *http.Request) {
-	var err    error
+	var err error
 	if err = r.ParseForm(); err != nil {
 		sendOkReply(w, r, newErrHTTPReply(err))
 	}
@@ -1316,7 +1315,7 @@ func (m *Server) getNodeSetGrpInfoHandler(w http.ResponseWriter, r *http.Request
 }
 func (m *Server) getIsDomainOn(w http.ResponseWriter, r *http.Request) {
 	type SimpleDomainInfo struct {
-		DomainOn       bool
+		DomainOn bool
 	}
 	nsglStat := new(SimpleDomainInfo)
 	nsglStat.DomainOn = m.cluster.FaultDomain
@@ -1334,7 +1333,7 @@ func (m *Server) getAllNodeSetGrpInfoHandler(w http.ResponseWriter, r *http.Requ
 	nsglStat.ZoneExcludeRatioLimit = nsgm.excludeZoneUseRatio
 	nsglStat.Status = nsgm.status
 	nsglStat.ExcludeZones = nsgm.c.t.domainExcludeZones
-	for i = 0; i < len(nsgm.nodeSetGrpMap) ; i++ {
+	for i = 0; i < len(nsgm.nodeSetGrpMap); i++ {
 		log.LogInfof("action[getAllNodeSetGrpInfoHandler] index [%v],id [%v],Print inner nodeset now!", i, nsgm.nodeSetGrpMap[i].ID)
 		nsglStat.SimpleNodeSetGrpInfo = append(nsglStat.SimpleNodeSetGrpInfo, m.buildNodeSetGrpInfo(i))
 	}
@@ -1442,10 +1441,10 @@ func (m *Server) handleDataNodeTaskResponse(w http.ResponseWriter, r *http.Reque
 
 func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		nodeAddr string
-		zoneName string
-		id       uint64
-		err      error
+		nodeAddr  string
+		zoneName  string
+		id        uint64
+		err       error
 		nodesetId uint64
 	)
 	if nodeAddr, zoneName, err = parseRequestForAddNode(r); err != nil {
@@ -1899,10 +1898,10 @@ func parseRequestToSetVolCapacity(r *http.Request) (name, authKey string, capaci
 }
 
 func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string,
-		mpCount, dpReplicaNum, size,
-		capacity int, followerRead,
-		authenticate, crossZone, defaultPriority bool,
-		err error) {
+	mpCount, dpReplicaNum, size,
+	capacity int, followerRead,
+	authenticate, crossZone, defaultPriority bool,
+	err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2156,7 +2155,6 @@ func extractDefaulPriority(r *http.Request) (defaultPrior bool, err error) {
 	}
 	return
 }
-
 
 func parseAndExtractThreshold(r *http.Request) (threshold float64, err error) {
 	if err = r.ParseForm(); err != nil {

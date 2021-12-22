@@ -101,16 +101,14 @@ const (
 )
 
 const (
-	normal          uint8 = 0
-	markDelete      uint8 = 1
-	normalZone            = 0
-	unavailableZone       = 1
-	unavaliable           = 1
-	metaNodesUnavaliable   = 2
-	dataNodesUnavaliable   = 3
+	normal               uint8 = 0
+	markDelete           uint8 = 1
+	normalZone                 = 0
+	unavailableZone            = 1
+	unavaliable                = 1
+	metaNodesUnavaliable       = 2
+	dataNodesUnavaliable       = 3
 )
-
-
 
 const (
 	opSyncAddMetaNode          uint32 = 0x01

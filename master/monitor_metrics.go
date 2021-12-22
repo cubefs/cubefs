@@ -181,7 +181,7 @@ func (mm *monitorMetrics) setVolMetrics() {
 		mm.volMetaCount.SetWithLabelValues(float64(vol.getDataPartitionsCount()), volName, "dp")
 	}
 
-	for volName, _ := range deleteVolNames {
+	for volName := range deleteVolNames {
 		mm.deleteVolMetric(volName)
 	}
 }
