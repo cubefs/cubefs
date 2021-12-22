@@ -17,6 +17,7 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
+	"golang.org/x/time/rate"
 	"io/ioutil"
 	"math"
 	"os"
@@ -44,6 +45,8 @@ import (
 
 const (
 	DataPartitionPrefix           = "datapartition"
+	CachePartitionPrefix          = "cachepartition"
+	PreLoadPartitionPrefix        = "preloadpartition"
 	DataPartitionMetadataFileName = "META"
 	TempMetadataFileName          = ".meta"
 	ApplyIndexFile                = "APPLY"
@@ -60,6 +63,7 @@ type DataPartitionMetadata struct {
 	VolumeID                string
 	PartitionID             uint64
 	PartitionSize           int
+	PartitionType           int
 	CreateTime              string
 	Peers                   []proto.Peer
 	Hosts                   []string
@@ -96,6 +100,7 @@ type DataPartition struct {
 	partitionID     uint64
 	partitionStatus int
 	partitionSize   int
+	partitionType	int
 	replicas        []string // addresses of the replicas
 	replicasLock    sync.RWMutex
 	disk            *Disk
@@ -207,6 +212,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	dpCfg := &dataPartitionCfg{
 		VolName:       meta.VolumeID,
 		PartitionSize: meta.PartitionSize,
+		PartitionType: meta.PartitionType,
 		PartitionID:   meta.PartitionID,
 		Peers:         meta.Peers,
 		Hosts:         meta.Hosts,
@@ -243,7 +249,22 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 
 func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, err error) {
 	partitionID := dpCfg.PartitionID
-	dataPath := path.Join(disk.Path, fmt.Sprintf(DataPartitionPrefix+"_%v_%v", partitionID, dpCfg.PartitionSize))
+
+	var dataPath string
+
+	if dpCfg.PartitionType == proto.PartitionTypeNormal {
+		dataPath = path.Join(disk.Path, fmt.Sprintf(DataPartitionPrefix+"_%v_%v", partitionID, dpCfg.PartitionSize))
+
+	} else if dpCfg.PartitionType == proto.PartitionTypeCache {
+		dataPath = path.Join(disk.Path, fmt.Sprintf(CachePartitionPrefix+"_%v_%v", partitionID, dpCfg.PartitionSize))
+
+	} else if dpCfg.PartitionType == proto.PartitionTypePreLoad {
+		dataPath = path.Join(disk.Path, fmt.Sprintf(PreLoadPartitionPrefix+"_%v_%v", partitionID, dpCfg.PartitionSize))
+
+	} else {
+		return nil, fmt.Errorf("newDataPartition fail, dataPartitionCfg(%v)", dpCfg)
+	}
+
 	partition := &DataPartition{
 		volumeID:        dpCfg.VolName,
 		clusterID:       dpCfg.ClusterID,
@@ -252,6 +273,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		dataNode:        disk.dataNode,
 		path:            dataPath,
 		partitionSize:   dpCfg.PartitionSize,
+		partitionType:   dpCfg.PartitionType,
 		replicas:        make([]string, 0),
 		stopC:           make(chan bool, 0),
 		stopRaftC:       make(chan uint64, 0),
@@ -270,6 +292,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 	disk.AttachDataPartition(partition)
 	dp = partition
 	go partition.statusUpdateScheduler()
+	go partition.doEvict()
 	return
 }
 
@@ -450,6 +473,7 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 		VolumeID:                dp.config.VolName,
 		PartitionID:             dp.config.PartitionID,
 		PartitionSize:           dp.config.PartitionSize,
+		PartitionType:           dp.config.PartitionType,
 		Peers:                   dp.config.Peers,
 		Hosts:                   dp.config.Hosts,
 		DataPartitionCreateType: dp.DataPartitionCreateType,
@@ -500,7 +524,7 @@ func (dp *DataPartition) statusUpdate() {
 	if dp.used >= dp.partitionSize {
 		status = proto.ReadOnly
 	}
-	if dp.extentStore.GetExtentCount() >= storage.MaxExtentCount {
+	if dp.partitionType == proto.PartitionTypeNormal && dp.extentStore.GetExtentCount() >= storage.MaxExtentCount {
 		status = proto.ReadOnly
 	}
 	if dp.Status() == proto.Unavailable {
@@ -869,4 +893,75 @@ func (dp *DataPartition) getRepairConn(target string) (net.Conn, error) {
 func (dp *DataPartition) putRepairConn(conn net.Conn, forceClose bool) {
 	dp.dataNode.putRepairConnFunc(conn, forceClose)
 	return
+}
+
+type SimpleVolView struct {
+	vv *proto.SimpleVolView
+	lastUpdateTime  time.Time
+}
+
+type VolMap struct {
+	sync.Mutex
+	volMap    map[string]*SimpleVolView
+}
+
+var volViews = VolMap{
+	Mutex:  sync.Mutex{},
+	volMap: make(map[string]*SimpleVolView),
+}
+
+func (vo* VolMap) getSimpleVolView(VolumeID string) (vv *proto.SimpleVolView, err error){
+
+	vo.Lock()
+	if volView, ok := vo.volMap[VolumeID]; ok && time.Since(volView.lastUpdateTime) < 5 * time.Minute {
+		vo.Unlock()
+		return volView.vv, nil
+	}
+	vo.Unlock()
+
+	volView := &SimpleVolView{
+		vv:             nil,
+		lastUpdateTime: time.Time{},
+	}
+
+	if vv, err = MasterClient.AdminAPI().GetVolumeSimpleInfo(VolumeID); err != nil {
+		log.LogErrorf("action[GetVolumeSimpleInfo] cannot get vol(%v) from master(%v) err(%v).",
+			VolumeID, MasterClient.Leader(), err)
+		return nil, err
+	}
+
+	volView.vv = vv
+	volView.lastUpdateTime = time.Now()
+
+	vo.Lock()
+	vo.volMap[VolumeID] = volView
+	vo.Unlock()
+
+	return
+}
+
+func (dp *DataPartition) doEvict()  {
+
+	// only cache or preload dp can't do evict.
+	if dp.partitionType != proto.PartitionTypeCache && dp.partitionType != proto.PartitionTypePreLoad {
+		return
+	}
+
+	timer := time.NewTimer(0)
+	for {
+		select {
+		case <-timer.C:
+			vv, err := volViews.getSimpleVolView(dp.volumeID)
+			if err != nil {
+				timer.Reset(5 * time.Second)
+				continue
+			}
+
+			timer.Reset(time.Duration(vv.CacheLruInterval) * time.Second)
+			continue
+		case <-dp.stopC:
+			timer.Stop()
+			return
+		}
+	}
 }

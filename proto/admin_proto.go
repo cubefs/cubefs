@@ -144,7 +144,7 @@ type ClusterInfo struct {
 
 // CreateDataPartitionRequest defines the request to create a data partition.
 type CreateDataPartitionRequest struct {
-	PartitionType string
+	PartitionType int
 	PartitionId   uint64
 	PartitionSize int
 	VolumeId      string
@@ -490,6 +490,15 @@ type SimpleVolView struct {
 	DpSelectorName     string
 	DpSelectorParm     string
 	DefaultZonePrior   bool
+	Type   			   int
+	ObjBlockSize	   int
+	CacheCapacity      int
+	CacheAction        int
+	CacheThreshold     int
+	CacheHighWater     int
+	CacheLowWater      int
+	CacheLruInterval   int
+	CacheTtl           int
 }
 type NodeSetInfo struct {
 	ID           uint64

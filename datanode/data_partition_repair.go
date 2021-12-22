@@ -76,6 +76,12 @@ func NewDataPartitionRepairTask(extentFiles []*storage.ExtentInfo, tinyDeleteRec
 // - periodically check the size of the local extent, and if it is smaller than the largest size,
 //   add it to the tobeRepaired list, and generate the corresponding tasks.
 func (dp *DataPartition) repair(extentType uint8) {
+
+	// cache or preload partition not support raft and repair.
+	if dp.partitionType != proto.PartitionTypeNormal {
+		return
+	}
+
 	start := time.Now().UnixNano()
 	log.LogInfof("action[repair] partition(%v) start.",
 		dp.partitionID)

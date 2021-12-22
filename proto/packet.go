@@ -177,6 +177,17 @@ const (
 	DecommissionedCreateDataPartition = 1
 )
 
+const (
+	VolumeTypeHot			= 0
+	VolumeTypeCold			= 1
+)
+
+const (
+	PartitionTypeNormal			= 0
+	PartitionTypeCache			= 1
+	PartitionTypePreLoad		= 2
+)
+
 // Packet defines the packet structure.
 type Packet struct {
 	Magic              uint8

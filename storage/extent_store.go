@@ -183,18 +183,9 @@ func (ei *ExtentInfo) UpdateExtentInfo(extent *Extent, crc uint32) {
 	extent.Lock()
 	defer extent.Unlock()
 
-	// check if file is modified according to os.ModTime
-	if crc != 0 {
-		stat, err := extent.file.Stat()
-		if err != nil {
-			log.LogErrorf("[UpdateExtentInfo] stat file error, set crc default, %v", err)
-			crc = 0
-		}
-
-		if time.Now().Unix()-stat.ModTime().Unix() <= UpdateCrcInterval {
-			log.LogWarn("[UpdateExtentInfo] file has been modified when update extent compute crc, so set crc default")
-			crc = 0
-		}
+	ei.AccessTime = extent.AccessTime()
+	if time.Now().Unix()-extent.ModifyTime() <= UpdateCrcInterval {
+		crc = 0
 	}
 
 	ei.Size = uint64(extent.dataSize)
@@ -367,6 +358,23 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 	}
 	crc, err = e.Read(nbuf, offset, size, isRepairRead)
 
+	return
+}
+
+func (s *ExtentStore) UpdateAcTime(extentID uint64) (err error) {
+	s.eiMutex.RLock()
+	ei := s.extentInfoMap[extentID]
+	if ei != nil {
+		ei.AccessTime = time.Now().Unix()
+	}
+	s.eiMutex.RUnlock()
+	return
+}
+
+func (s *ExtentStore) DumpExtentInfo() (mp map[uint64]*ExtentInfo) {
+	s.eiMutex.RLock()
+	mp = s.extentInfoMap
+	s.eiMutex.RUnlock()
 	return
 }
 

@@ -47,7 +47,8 @@ type ExtentInfo struct {
 	Size       uint64 `json:"size"`
 	Crc        uint32 `json:"Crc"`
 	IsDeleted  bool   `json:"deleted"`
-	ModifyTime int64  `json:"modTime"` // random write not update modify time
+	ModifyTime int64  `json:"modTime"`
+	AccessTime int64  `json:"accessTime"`
 	Source     string `json:"src"`
 }
 
@@ -67,6 +68,7 @@ type Extent struct {
 	filePath   string
 	extentID   uint64
 	modifyTime int64
+	accessTime int64
 	dataSize   int64
 	hasClose   int32
 	header     []byte
@@ -156,6 +158,9 @@ func (e *Extent) RestoreFromFS() (err error) {
 	}
 	e.dataSize = info.Size()
 	atomic.StoreInt64(&e.modifyTime, info.ModTime().Unix())
+
+	ts := info.Sys().(*syscall.Stat_t)
+	atomic.StoreInt64(&e.accessTime, time.Unix(int64(ts.Atim.Sec), int64(ts.Atim.Nsec)).Unix())
 	return
 }
 
@@ -167,6 +172,10 @@ func (e *Extent) Size() (size int64) {
 // ModifyTime returns the time when this extent was modified recently.
 func (e *Extent) ModifyTime() int64 {
 	return atomic.LoadInt64(&e.modifyTime)
+}
+
+func (e *Extent) AccessTime() int64 {
+	return atomic.LoadInt64(&e.accessTime)
 }
 
 func IsRandomWrite(writeType int) bool {

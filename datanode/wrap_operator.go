@@ -415,6 +415,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		return
 	}
 	store := partition.ExtentStore()
+	store.UpdateAcTime(p.ExtentID)
 	if p.ExtentType == proto.TinyExtentType {
 		partitionIOMetric := exporter.NewTPCnt(MetricPartitionIOName)
 		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
@@ -466,6 +467,13 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		}
 	}()
 	partition := p.Object.(*DataPartition)
+
+	// cache or preload partition not support raft and repair.
+	if partition.partitionType != proto.PartitionTypeNormal {
+		err = raft.ErrStopped
+		return
+	}
+
 	_, isLeader := partition.IsRaftLeader()
 	if !isLeader {
 		err = raft.ErrNotLeader
@@ -499,6 +507,13 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 		}
 	}()
 	partition := p.Object.(*DataPartition)
+
+	// cache or preload partition not support raft and repair.
+	if partition.partitionType != proto.PartitionTypeNormal {
+		err = raft.ErrStopped
+		return
+	}
+
 	if err = partition.CheckLeader(p, connect); err != nil {
 		return
 	}
@@ -546,6 +561,7 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 	needReplySize := p.Size
 	offset := p.ExtentOffset
 	store := partition.ExtentStore()
+	store.UpdateAcTime(p.ExtentID)
 	metricPartitionIOLabels := GetIoMetricLabels(partition, "read")
 	for {
 		if needReplySize <= 0 {
