@@ -27,6 +27,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/chubaofs/chubaofs/util"
+
 	"hash/crc32"
 	"net"
 	"sort"
@@ -291,7 +293,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 	disk.AttachDataPartition(partition)
 	dp = partition
 	go partition.statusUpdateScheduler()
-	go partition.doEvict()
+	go partition.startEvict()
 	return
 }
 
@@ -910,7 +912,6 @@ var volViews = VolMap{
 }
 
 func (vo *VolMap) getSimpleVolView(VolumeID string) (vv *proto.SimpleVolView, err error) {
-
 	vo.Lock()
 	if volView, ok := vo.volMap[VolumeID]; ok && time.Since(volView.lastUpdateTime) < 5*time.Minute {
 		vo.Unlock()
@@ -939,25 +940,122 @@ func (vo *VolMap) getSimpleVolView(VolumeID string) (vv *proto.SimpleVolView, er
 	return
 }
 
-func (dp *DataPartition) doEvict() {
+func (dp *DataPartition) doTtl(vv *proto.SimpleVolView) {
+	mp := dp.extentStore.DumpExtentInfo()
+	for extId, extInfo := range mp {
+		accessTime := time.Unix(extInfo.AccessTime, 0)
 
-	// only cache or preload dp can't do evict.
-	if dp.partitionType != proto.PartitionTypeCache && dp.partitionType != proto.PartitionTypePreLoad {
+		//vv.CacheTtl, unit day.
+		if time.Since(accessTime) > time.Duration(vv.CacheTtl)*time.Hour*24 {
+
+			// delete the total tiny file.
+			if storage.IsTinyExtent(extId) {
+				dp.extentStore.MarkDelete(extId, 0, int64(extInfo.Size))
+
+			} else {
+				dp.extentStore.MarkDelete(extId, 0, 0)
+			}
+
+			log.LogDebugf("action[doTtl] ttl dp(%v) extent(%v).", dp.partitionID, extInfo)
+		}
+	}
+}
+
+func (dp *DataPartition) doEvict(vv *proto.SimpleVolView) {
+	var (
+		dieOut          bool
+		freeSpace       int
+		freeExtentCount int
+	)
+
+	dieOut = false
+	if vv.CacheHighWater < vv.CacheLowWater || vv.CacheLowWater < 0 || vv.CacheHighWater > 100 {
+		log.LogErrorf("action[doEvict] invalid policy dp(%v), CacheHighWater(%v) CacheLowWater(%v).",
+			dp.partitionID, vv.CacheHighWater, vv.CacheLowWater)
 		return
 	}
 
+	// if dp use age larger than the space high water, do die out.
+	freeSpace = 0
+	if dp.Used()*100/dp.Size() > vv.CacheHighWater {
+		dieOut = true
+		freeSpace = (vv.CacheHighWater - vv.CacheLowWater) / 100 * dp.Size()
+	}
+
+	// if dp extent count larger than upper count, do die out.
+	freeExtentCount = 0
+	extInfos := dp.extentStore.DumpExtents()
+	maxExtentCount := dp.Size() / util.DefaultTinySizeLimit
+	if len(extInfos) > maxExtentCount {
+		dieOut = true
+		freeExtentCount = (vv.CacheHighWater - vv.CacheLowWater) / 100 * maxExtentCount
+	}
+
+	if dieOut == false {
+		return
+	}
+
+	sort.Sort(extInfos)
+	for freeSpace > 0 || freeExtentCount > 0 {
+		if len(extInfos) == 0 {
+			break
+		}
+
+		e := extInfos[len(extInfos)-1]
+		extInfos = extInfos[:len(extInfos)-1]
+
+		if storage.IsTinyExtent(e.FileID) {
+			continue
+		}
+
+		freeSpace -= int(e.Size)
+		freeExtentCount--
+		dp.extentStore.MarkDelete(e.FileID, 0, 0)
+		log.LogDebugf("action[doEvict] die out dp(%v), extent(%v).", dp.partitionID, e)
+	}
+}
+
+func (dp *DataPartition) startEvict() {
+	// only cache or preload dp can't do evict.
+	if dp.partitionType != proto.PartitionTypeCache &&
+		dp.partitionType != proto.PartitionTypePreLoad {
+		return
+	}
+
+	lastTtlTime := time.Now()
 	timer := time.NewTimer(0)
 	for {
 		select {
 		case <-timer.C:
 			vv, err := volViews.getSimpleVolView(dp.volumeID)
 			if err != nil {
-				timer.Reset(5 * time.Second)
+				timer.Reset(30 * time.Second)
 				continue
 			}
 
-			timer.Reset(time.Duration(vv.CacheLruInterval) * time.Second)
+			// check volume type and dp type.
+			if vv.Type != proto.VolumeTypeCold ||
+				(dp.partitionType != proto.PartitionTypeCache && dp.partitionType != proto.PartitionTypePreLoad) {
+				log.LogErrorf("action[startEvict] cannot startEvict vol(%v) dp(%v).", vv, dp.partitionID)
+				timer.Stop()
+				return
+			}
+
+			if time.Since(lastTtlTime) > 24*time.Hour {
+				ttlStart := time.Now()
+				dp.doTtl(vv)
+				log.LogInfof("action[doTtl] cost (%v)ms, dp(%v).", time.Since(ttlStart)/1e6, dp.partitionID)
+
+				lastTtlTime = time.Now()
+			}
+
+			evictStart := time.Now()
+			dp.doEvict(vv)
+			log.LogInfof("action[doEvict] cost (%v)ms, dp(%v).", time.Since(evictStart)/1e6, dp.partitionID)
+
+			timer.Reset(time.Duration(vv.CacheLruInterval) * time.Minute)
 			continue
+
 		case <-dp.stopC:
 			timer.Stop()
 			return

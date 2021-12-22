@@ -23,6 +23,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/chubaofs/chubaofs/datanode"
+
 	"path"
 	"regexp"
 	"time"
@@ -374,6 +376,15 @@ func (s *ExtentStore) UpdateAcTime(extentID uint64) (err error) {
 func (s *ExtentStore) DumpExtentInfo() (mp map[uint64]*ExtentInfo) {
 	s.eiMutex.RLock()
 	mp = s.extentInfoMap
+	s.eiMutex.RUnlock()
+	return
+}
+
+func (s *ExtentStore) DumpExtents() (extInfos SortedExtentInfos) {
+	s.eiMutex.RLock()
+	for _, v := range s.extentInfoMap {
+		extInfos = append(extInfos, v)
+	}
 	s.eiMutex.RUnlock()
 	return
 }

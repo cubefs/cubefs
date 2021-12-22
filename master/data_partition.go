@@ -144,10 +144,10 @@ func (partition *DataPartition) createTaskToRemoveRaftMember(removePeer proto.Pe
 	return
 }
 
-func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64, peers []proto.Peer, hosts []string, createType int) (task *proto.AdminTask) {
+func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64, dataPartitionType int, peers []proto.Peer, hosts []string, createType int) (task *proto.AdminTask) {
 
 	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(
-		partition.VolName, partition.PartitionID, peers, int(dataPartitionSize), hosts, createType))
+		partition.VolName, partition.PartitionID, peers, int(dataPartitionSize), dataPartitionType, hosts, createType))
 	partition.resetTaskID(task)
 	return
 }

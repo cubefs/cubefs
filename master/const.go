@@ -136,8 +136,8 @@ const (
 
 	defaultCacheThreshold   = 10 * 1024 * 1024
 	defaultCacheTtl         = 30
-	defaultCacheHighWater   = 0.8
-	defaultCacheLowWater    = 0.6
+	defaultCacheHighWater   = 80
+	defaultCacheLowWater    = 60
 	defaultCacheLruInterval = 5
 )
 

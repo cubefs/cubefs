@@ -768,6 +768,12 @@ func (c *Cluster) createDataPartition(volName string, zoneNum int) (dp *DataPart
 	if vol, err = c.getVol(volName); err != nil {
 		return
 	}
+
+	dataPartitionType := proto.PartitionTypeNormal
+	if vol.VolType == proto.VolumeTypeCold {
+		dataPartitionType = proto.PartitionTypeCache
+	}
+
 	vol.createDpMutex.Lock()
 	defer vol.createDpMutex.Unlock()
 	errChannel := make(chan error, vol.dpReplicaNum)
@@ -794,7 +800,7 @@ func (c *Cluster) createDataPartition(volName string, zoneNum int) (dp *DataPart
 				wg.Done()
 			}()
 			var diskPath string
-			if diskPath, err = c.syncCreateDataPartitionToDataNode(host, vol.dataPartitionSize, dp, dp.Peers, dp.Hosts, proto.NormalCreateDataPartition); err != nil {
+			if diskPath, err = c.syncCreateDataPartitionToDataNode(host, vol.dataPartitionSize, dataPartitionType, dp, dp.Peers, dp.Hosts, proto.NormalCreateDataPartition); err != nil {
 				errChannel <- err
 				return
 			}
@@ -843,8 +849,8 @@ errHandler:
 	return
 }
 
-func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp *DataPartition, peers []proto.Peer, hosts []string, createType int) (diskPath string, err error) {
-	task := dp.createTaskToCreateDataPartition(host, size, peers, hosts, createType)
+func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dataPartitionType int, dp *DataPartition, peers []proto.Peer, hosts []string, createType int) (diskPath string, err error) {
+	task := dp.createTaskToCreateDataPartition(host, size, dataPartitionType, peers, hosts, createType)
 	dataNode, err := c.dataNode(host)
 	if err != nil {
 		return
@@ -1351,13 +1357,19 @@ func (c *Cluster) createDataReplica(dp *DataPartition, addPeer proto.Peer) (err 
 	if err != nil {
 		return
 	}
+
+	if vol.VolType != proto.VolumeTypeHot {
+		err = fmt.Errorf("vol[%v], createDataReplica not support", dp.VolName)
+		return
+	}
+
 	dp.RLock()
 	hosts := make([]string, len(dp.Hosts))
 	copy(hosts, dp.Hosts)
 	peers := make([]proto.Peer, len(dp.Peers))
 	copy(peers, dp.Peers)
 	dp.RUnlock()
-	diskPath, err := c.syncCreateDataPartitionToDataNode(addPeer.Addr, vol.dataPartitionSize, dp, peers, hosts, proto.DecommissionedCreateDataPartition)
+	diskPath, err := c.syncCreateDataPartitionToDataNode(addPeer.Addr, vol.dataPartitionSize, proto.PartitionTypeNormal, dp, peers, hosts, proto.DecommissionedCreateDataPartition)
 	if err != nil {
 		return
 	}

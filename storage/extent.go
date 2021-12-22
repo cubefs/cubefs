@@ -60,6 +60,21 @@ func (ei *ExtentInfo) String() (m string) {
 	return fmt.Sprintf("%v_%v_%v_%v", ei.FileID, ei.Size, ei.IsDeleted, source)
 }
 
+// SortedExtentInfos defines an array sorted by AccessTime
+type SortedExtentInfos []*ExtentInfo
+
+func (extInfos SortedExtentInfos) Len() int {
+	return len(extInfos)
+}
+
+func (extInfos SortedExtentInfos) Less(i, j int) bool {
+	return extInfos[i].AccessTime > extInfos[j].AccessTime
+}
+
+func (extInfos SortedExtentInfos) Swap(i, j int) {
+	extInfos[i], extInfos[j] = extInfos[j], extInfos[i]
+}
+
 // Extent is an implementation of Extent for local regular extent file data management.
 // This extent implementation manages all header info and data body in one single entry file.
 // Header of extent include inode value of this extent block and Crc blocks of data blocks.

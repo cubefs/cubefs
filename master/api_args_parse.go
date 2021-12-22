@@ -753,8 +753,8 @@ func extractVolType(r *http.Request) (volType int, err error) {
 		return
 	}
 
-	if volType, err = strconv.Atoi(volTypeKey); err != nil {
-		err = unmatchedKey(volCapacityKey)
+	if volType, err = strconv.Atoi(capacityStr); err != nil {
+		err = unmatchedKey(volTypeKey)
 	}
 
 	return
