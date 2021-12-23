@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"os"
 	"path"
 	"sort"
@@ -179,6 +180,7 @@ type OpMeta interface {
 type OpPartition interface {
 	IsLeader() (leaderAddr string, isLeader bool)
 	IsLearner() bool
+	HasAlivePeer() (bool, int)
 	GetCursor() uint64
 	GetAppliedID() uint64
 	GetBaseConfig() MetaPartitionConfig
@@ -186,6 +188,8 @@ type OpPartition interface {
 	PersistMetadata() (err error)
 	ChangeMember(changeType raftproto.ConfChangeType, peer raftproto.Peer, context []byte) (resp interface{}, err error)
 	ResetMember(peers []raftproto.Peer, context []byte) (err error)
+	RemoveMemberOnlyRaft(peerID uint64) (err error)
+	ResetMemberInter(peers []uint64) (err error)
 	ApplyResetMember(req *proto.ResetMetaPartitionRaftMemberRequest) (updated bool, err error)
 	Reset() (err error)
 	Expired() error
@@ -478,6 +482,22 @@ func (mp *metaPartition) GetPeers() (peers []string) {
 	return
 }
 
+func (mp *metaPartition) HasAlivePeer() (bool, int) {
+	//todo can not check isolated island
+	aliveNum := 0
+	for _, peer := range mp.config.Peers {
+		if mp.config.NodeId == peer.ID {
+			continue
+		}
+		connect, err := net.DialTimeout("tcp",peer.Addr, time.Duration(1)*time.Second)
+		if err == nil {
+			connect.Close()
+			aliveNum++
+		}
+	}
+	return aliveNum != 0, aliveNum
+}
+
 // GetCursor returns the cursor stored in the config.
 func (mp *metaPartition) GetCursor() uint64 {
 	return atomic.LoadUint64(&mp.config.Cursor)
@@ -650,6 +670,106 @@ func (mp *metaPartition) ChangeMember(changeType raftproto.ConfChangeType, peer 
 // ResetMebmer reset the raft members with new peers, be carefull !
 func (mp *metaPartition) ResetMember(peers []raftproto.Peer, context []byte) (err error) {
 	err = mp.raftPartition.ResetMember(peers, context)
+	return
+}
+
+// RemoveMemberOnlyRaft remove the raft member, be carefull ! only execute after reset to add raft log
+func (mp *metaPartition) RemoveMemberOnlyRaft(peerID uint64) (err error) {
+
+	var reqData []byte
+	req := &proto.RemoveMetaPartitionRaftMemberRequest{}
+	req.PartitionId = mp.config.PartitionId
+	req.RemovePeer.ID = peerID
+	req.RaftOnly = true
+
+	reqData, err = json.Marshal(req)
+	if err != nil {
+		err = errors.NewErrorf("[opRemoveMetaPartitionRaftMember]: partitionID= %d, "+
+			"Marshal %s", req.PartitionId, err)
+		return
+	}
+	if req.RemovePeer.ID == 0 {
+		err = errors.NewErrorf("[opRemoveMetaPartitionRaftMember]: partitionID= %d, "+
+			"Marshal %s", req.PartitionId, fmt.Sprintf("unavali RemovePeerID %v", req.RemovePeer.ID))
+		return
+	}
+	if leaderAddr, ok := mp.IsLeader(); !ok {
+		err = fmt.Errorf("replica is not mp[%d] leader[%s]", mp.config.PartitionId, leaderAddr)
+	}
+	_, err = mp.ChangeMember(raftproto.ConfRemoveNode,
+		raftproto.Peer{ID: req.RemovePeer.ID}, reqData)
+	if err != nil {
+		return err
+	}
+	return
+}
+
+// ResetMebmer reset the raft members with new peers, be carefull ! only execute when no leader, otherwise failed
+func (mp *metaPartition) ResetMemberInter(peerIDs []uint64) (err error) {
+	var (
+		reqData []byte
+		updated bool
+	)
+
+	leaderAddr, _ := mp.IsLeader()
+	if leaderAddr != "" {
+		err = fmt.Errorf("mp[%d] is noraml, leader is %s, can not reset member", mp.config.PartitionId, leaderAddr)
+		return
+	}
+	req := &proto.ResetMetaPartitionRaftMemberRequest{NewPeers: make([]proto.Peer, 0)}
+
+	hasMySelf := false
+	for _, peerId := range peerIDs {
+		if peerId == mp.config.NodeId {
+			hasMySelf = true
+		}
+	}
+
+	if !hasMySelf {
+		err = fmt.Errorf("mp[%d] reset peers[%v] that does not have local node[%d]",
+			mp.config.PartitionId, peerIDs, mp.config.NodeId)
+		return
+	}
+
+	for _, peerID := range peerIDs {
+		findFLag := false
+		for _, peer := range mp.config.Peers {
+			if peer.ID == peerID {
+				findFLag = true
+				req.NewPeers = append(req.NewPeers, peer)
+				break;
+			}
+		}
+		if findFLag == false {
+			//todo need return?
+			err = fmt.Errorf("mp[%d] can not find peer[%d]", mp.config.PartitionId, peerID)
+			return
+		}
+	}
+
+	reqData, err = json.Marshal(req)
+	if err != nil {
+		err = errors.NewErrorf("[opResetMetaPartitionMember]: partitionID= %d, "+
+			"Marshal %s", req.PartitionId, err)
+		return
+	}
+	var peers []raftproto.Peer
+	for _, peer := range peerIDs {
+		peers = append(peers, raftproto.Peer{ID: peer})
+	}
+	err = mp.ResetMember(peers, reqData)
+	if err != nil {
+		return err
+	}
+	updated, err = mp.ApplyResetMember(req)
+	if err != nil {
+		return err
+	}
+	if updated {
+		if err = mp.PersistMetadata(); err != nil {
+			log.LogErrorf("action[opResetMetaPartitionMember] err[%v].", err)
+		}
+	}
 	return
 }
 
