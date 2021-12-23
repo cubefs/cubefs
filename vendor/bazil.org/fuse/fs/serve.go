@@ -1127,7 +1127,7 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 		if err := c.saveLookup(ctx, &s.LookupResponse, snode, r.Name, n2); err != nil {
 			return err
 		}
-		s.Handle = c.saveHandle(h2, r.Hdr().Node)
+		s.Handle = c.saveHandle(h2, s.Node)
 		done(s)
 		r.Respond(s)
 		return nil
