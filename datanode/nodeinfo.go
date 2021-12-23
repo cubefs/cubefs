@@ -43,7 +43,7 @@ func (m *DataNode) updateNodeInfo() {
 	}
 
 	if clusterInfo.LoadFactor > 0 && clusterInfo.LoadFactor != loadFactor {
-		log.LogWarnf("[updateNodeInfo] update load factor from [%d] to [%d]", loadFactor, clusterInfo.LoadFactor)
+		log.LogWarnf("[updateNodeInfo] update load factor from [%v] to [%v]", loadFactor, clusterInfo.LoadFactor)
 		loadFactor = clusterInfo.LoadFactor
 	}
 

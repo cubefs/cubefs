@@ -270,7 +270,7 @@ func (nsgm *DomainManager) createDomain(zoneName string) (err error) {
 	nsgm.domainNodeSetGrpVec = append(nsgm.domainNodeSetGrpVec, grpRegion)
 	for i := 0; i < len(zoneList); i++ {
 		if index, ok := nsgm.ZoneName2DomainIdMap[zoneList[i]]; ok {
-			return fmt.Errorf("zone name [%v] exist in domain [%v]", nsgm.domainNodeSetGrpVec[index].domainId)
+			return fmt.Errorf("zone name [%v] exist in domain [%v]", zoneName, nsgm.domainNodeSetGrpVec[index].domainId)
 		}
 		nsgm.ZoneName2DomainIdMap[zoneList[i]] = grpRegion.domainId
 		nsgm.domainId2IndexMap[grpRegion.domainId] = len(nsgm.domainNodeSetGrpVec) - 1
