@@ -818,7 +818,7 @@ func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreL
 		targetPeers []proto.Peer
 		wg          sync.WaitGroup
 	)
-
+	vol = c.vols[volName]
 	dpReplicaNum := vol.dpReplicaNum
 	zoneName := vol.zoneName
 	if preload != nil {
