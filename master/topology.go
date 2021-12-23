@@ -1086,9 +1086,10 @@ func (t *topology) allocZonesForMetaNode(zoneNum, replicaNum int, excludeZone []
 
 	//if across zone,candidateZones must be larger than or equal with 2,otherwise,must have a candidate zone
 	if (zoneNum >= 2 && len(candidateZones) < 2) || len(candidateZones) < 1 {
-		log.LogError(fmt.Sprintf("action[allocZonesForMetaNode],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],err:%v",
-			zoneNum, len(candidateZones), demandWriteNodes, proto.ErrNoZoneToCreateMetaPartition))
-		return nil, proto.ErrNoZoneToCreateMetaPartition
+		err := fmt.Errorf("action[allocZonesForMetaNode],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],err:%v",
+			zoneNum, len(candidateZones), demandWriteNodes, proto.ErrNoZoneToCreateMetaPartition)
+		log.LogError(err)
+		return nil, err
 	}
 	zones = candidateZones
 	err = nil
