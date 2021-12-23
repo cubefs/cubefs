@@ -31,6 +31,7 @@ type MetaReplica struct {
 	Addr        string
 	start       uint64 // lower bound of the inode id
 	end         uint64 // upper bound of the inode id
+	dataSize    uint64
 	nodeID      uint64
 	MaxInodeID  uint64
 	InodeCount  uint64
@@ -173,6 +174,18 @@ func (mp *MetaPartition) addUpdateMetaReplicaTask(c *Cluster) (err error) {
 	c.addMetaNodeTasks(tasks)
 	log.LogWarnf("action[addUpdateMetaReplicaTask] partitionID[%v] end[%v] success", mp.PartitionID, mp.End)
 	return
+}
+
+func (mp *MetaPartition) dataSize() uint64 {
+
+	maxSize := uint64(0)
+	for _, mr := range mp.Replicas {
+		if maxSize < mr.dataSize {
+			maxSize = mr.dataSize
+		}
+	}
+
+	return maxSize
 }
 
 func (mp *MetaPartition) checkEnd(c *Cluster, maxPartitionID uint64) {
@@ -631,6 +644,7 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 	mr.MaxInodeID = mgr.MaxInodeID
 	mr.InodeCount = mgr.InodeCnt
 	mr.DentryCount = mgr.DentryCnt
+	mr.dataSize = mgr.Size
 	mr.setLastReportTime()
 }
 

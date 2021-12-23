@@ -17,15 +17,14 @@ package metanode
 import (
 	"bytes"
 	"encoding/json"
-	"sort"
-	"strconv"
-	"strings"
-	"sync/atomic"
-
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path"
+	"sort"
+	"strconv"
+	"strings"
+	"sync/atomic"
 
 	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/proto"
@@ -62,20 +61,21 @@ func (sp sortedPeers) Swap(i, j int) {
 // MetaPartitionConfig is used to create a meta partition.
 type MetaPartitionConfig struct {
 	// Identity for raftStore group. RaftStore nodes in the same raftStore group must have the same groupID.
-	PartitionId uint64              `json:"partition_id"`
-	VolName     string              `json:"vol_name"`
-	Start       uint64              `json:"start"` // Minimal Inode ID of this range. (Required during initialization)
-	End         uint64              `json:"end"`   // Maximal Inode ID of this range. (Required during initialization)
-	Peers       []proto.Peer        `json:"peers"` // Peers information of the raftStore
-	Cursor      uint64              `json:"-"`     // Cursor ID of the inode that have been assigned
-	NodeId      uint64              `json:"-"`
-	RootDir     string              `json:"-"`
-	BeforeStart func()              `json:"-"`
-	AfterStart  func()              `json:"-"`
-	BeforeStop  func()              `json:"-"`
-	AfterStop   func()              `json:"-"`
-	RaftStore   raftstore.RaftStore `json:"-"`
-	ConnPool    *util.ConnectPool   `json:"-"`
+	PartitionId   uint64              `json:"partition_id"`
+	VolName       string              `json:"vol_name"`
+	Start         uint64              `json:"start"` // Minimal Inode ID of this range. (Required during initialization)
+	End           uint64              `json:"end"`   // Maximal Inode ID of this range. (Required during initialization)
+	PartitionType int                 `json:"partition_type"`
+	Peers         []proto.Peer        `json:"peers"` // Peers information of the raftStore
+	Cursor        uint64              `json:"-"`     // Cursor ID of the inode that have been assigned
+	NodeId        uint64              `json:"-"`
+	RootDir       string              `json:"-"`
+	BeforeStart   func()              `json:"-"`
+	AfterStart    func()              `json:"-"`
+	BeforeStop    func()              `json:"-"`
+	AfterStop     func()              `json:"-"`
+	RaftStore     raftstore.RaftStore `json:"-"`
+	ConnPool      *util.ConnectPool   `json:"-"`
 }
 
 func (c *MetaPartitionConfig) checkMeta() (err error) {
@@ -191,6 +191,7 @@ type OpPartition interface {
 type MetaPartition interface {
 	Start() error
 	Stop()
+	DataSize() uint64
 	OpMeta
 	LoadSnapshot(path string) error
 	ForceSetMetaPartitionToLoadding()
@@ -230,6 +231,10 @@ func (mp *metaPartition) ForceSetMetaPartitionToLoadding() {
 
 func (mp *metaPartition) ForceSetMetaPartitionToFininshLoad() {
 	mp.isLoadingMetaPartition = false
+}
+
+func (mp *metaPartition) DataSize() uint64 {
+	return mp.size
 }
 
 // Start starts a meta partition.

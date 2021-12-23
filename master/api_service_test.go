@@ -65,6 +65,7 @@ var commonVol *Vol
 var cfsUser *proto.UserInfo
 
 func createDefaultMasterServerForTest() *Server {
+
 	cfgJSON := `{
 		"role": "master",
 		"ip": "127.0.0.1",
@@ -81,6 +82,7 @@ func createDefaultMasterServerForTest() *Server {
 		"storeDir":"/tmp/chubaofs/rocksdbstore",
 		"clusterName":"chubaofs"
 	}`
+
 	testServer, err := createMasterServer(cfgJSON)
 	if err != nil {
 		panic(err)
@@ -105,16 +107,16 @@ func createDefaultMasterServerForTest() *Server {
 	req := &createVolReq{
 		name:               commonVolName,
 		owner:              "cfs",
-		size            :   3,
-		mpCount         :   3,
-		dpReplicaNum    :   3,
-		capacity        :   100,
-		followerRead    :   false,
-		authenticate    :   false,
-		crossZone       :   false,
+		size:               3,
+		mpCount:            3,
+		dpReplicaNum:       3,
+		capacity:           100,
+		followerRead:       false,
+		authenticate:       false,
+		crossZone:          false,
 		unDomainZonesFirst: false,
-		zoneName        :   testZone2,
-		description     :   "",
+		zoneName:           testZone2,
+		description:        "",
 	}
 
 	vol, err := testServer.cluster.createVol(req)

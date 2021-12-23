@@ -805,14 +805,17 @@ func (m *Server) getVolSimpleInfo(w http.ResponseWriter, r *http.Request) {
 		vol     *Vol
 		volView *proto.SimpleVolView
 	)
+
 	if name, err = parseAndExtractName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
 	if vol, err = m.cluster.getVol(name); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
 	}
+
 	volView = newSimpleView(vol)
 	sendOkReply(w, r, newSuccessHTTPReply(volView))
 }
@@ -1915,8 +1918,15 @@ func volStat(vol *Vol) (stat *proto.VolStatInfo) {
 	if stat.UsedSize > stat.TotalSize {
 		stat.UsedSize = stat.TotalSize
 	}
+
 	stat.UsedRatio = strconv.FormatFloat(float64(stat.UsedSize)/float64(stat.TotalSize), 'f', 2, 32)
 	log.LogDebugf("total[%v],usedSize[%v]", stat.TotalSize, stat.UsedSize)
+
+	stat.EbsTotalSize = vol.EbsCapacity * util.GB
+	stat.EbsUsedSize = vol.ebsUsedSpace()
+	stat.EbsUsedRatio = strconv.FormatFloat(float64(stat.EbsUsedSize)/float64(stat.EbsTotalSize), 'f', 2, 32)
+	log.LogDebugf("ebsTotal[%v],ebsUsedSize[%v]", stat.EbsTotalSize, stat.EbsUsedSize)
+
 	return
 }
 

@@ -290,6 +290,7 @@ type MetaPartitionReport struct {
 	Start       uint64
 	End         uint64
 	Status      int
+	Size        uint64
 	MaxInodeID  uint64
 	IsLeader    bool
 	VolName     string
@@ -495,7 +496,7 @@ type SimpleVolView struct {
 	DefaultZonePrior   bool
 	VolType          int
 	ObjBlockSize     int
-	EbsCapacity      int
+	EbsCapacity      uint64
 	CacheAction      int
 	CacheThreshold   int
 	CacheHighWater   int

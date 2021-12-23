@@ -54,7 +54,7 @@ type Vol struct {
 	VolType           int
 
 	EbsBlkSize       int
-	EbsCapacity      int
+	EbsCapacity      uint64
 	CacheAction      int
 	CacheThreshold   int
 	CacheTTL         int
@@ -521,6 +521,16 @@ func (vol *Vol) setAllDataPartitionsToReadOnly() {
 
 func (vol *Vol) totalUsedSpace() uint64 {
 	return vol.dataPartitions.totalUsedSpace()
+}
+
+func (vol *Vol) ebsUsedSpace() uint64 {
+
+	size := uint64(0)
+	for _, pt := range vol.MetaPartitions {
+		size += pt.dataSize()
+	}
+
+	return size
 }
 
 func (vol *Vol) updateViewCache(c *Cluster) {

@@ -151,7 +151,7 @@ type volValue struct {
 	VolType           int
 
 	EbsBlkSize       int
-	EbsCapacity      int
+	EbsCapacity      uint64
 	CacheAction      int
 	CacheThreshold   int
 	CacheTTL         int

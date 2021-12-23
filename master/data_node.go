@@ -108,7 +108,7 @@ func (dataNode *DataNode) isWriteAble() (ok bool) {
 	defer dataNode.RUnlock()
 
 	maxCapacity := dataNode.Total * uint64(clusterLoadFactor*100) / 100
-	if dataNode.isActive == true && dataNode.AvailableSpace > 10*util.GB && maxCapacity < dataNode.TotalPartitionSize {
+	if dataNode.isActive == true && dataNode.AvailableSpace > 10*util.GB && maxCapacity > dataNode.TotalPartitionSize {
 		return true
 	}
 

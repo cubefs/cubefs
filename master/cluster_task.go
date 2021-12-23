@@ -668,6 +668,7 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 		metaNode *MetaNode
 		logMsg   string
 	)
+
 	log.LogInfof("action[dealMetaNodeHeartbeatResp],clusterID[%v] receive nodeAddr[%v] heartbeat", c.Name, nodeAddr)
 	if resp.Status == proto.TaskFailed {
 		msg := fmt.Sprintf("action[dealMetaNodeHeartbeatResp],clusterID[%v] nodeAddr %v heartbeat failed,err %v",
@@ -684,9 +685,11 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 	if metaNode.ToBeOffline {
 		return
 	}
+
 	if resp.ZoneName == "" {
 		resp.ZoneName = DefaultZoneName
 	}
+
 	if metaNode.ZoneName != resp.ZoneName {
 		c.t.deleteMetaNode(metaNode)
 		oldZoneName := metaNode.ZoneName
@@ -694,6 +697,7 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 		c.adjustMetaNode(metaNode)
 		log.LogWarnf("metaNode zone changed from [%v] to [%v]", oldZoneName, resp.ZoneName)
 	}
+
 	metaNode.updateMetric(resp, c.cfg.MetaNodeThreshold)
 	metaNode.setNodeActive()
 
@@ -957,17 +961,21 @@ func (c *Cluster) updateMetaNode(metaNode *MetaNode, metaPartitions []*proto.Met
 		}
 		var mp *MetaPartition
 		if mr.VolName != "" {
+
 			vol, err = c.getVol(mr.VolName)
 			if err != nil {
 				continue
 			}
+
 			if vol.Status == markDelete {
 				continue
 			}
+
 			mp, err = vol.metaPartition(mr.PartitionID)
 			if err != nil {
 				continue
 			}
+
 		} else {
 			mp, err = c.getMetaPartitionByID(mr.PartitionID)
 			if err != nil {
@@ -979,6 +987,7 @@ func (c *Cluster) updateMetaNode(metaNode *MetaNode, metaPartitions []*proto.Met
 		if mr.End != mp.End {
 			mp.addUpdateMetaReplicaTask(c)
 		}
+
 		mp.updateMetaPartition(mr, metaNode)
 		c.updateInodeIDUpperBound(mp, mr, threshold, metaNode)
 	}

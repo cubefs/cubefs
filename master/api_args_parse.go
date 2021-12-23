@@ -247,7 +247,7 @@ func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err e
 		return
 	}
 
-	if args.ebsCapacity, err = extractUintWithDefault(r, ebsCapacityKey, vol.EbsCapacity); err != nil {
+	if args.ebsCapacity, err = extractUint64WithDefault(r, ebsCapacityKey, vol.EbsCapacity); err != nil {
 		return
 	}
 
@@ -331,15 +331,17 @@ func parseRequestToSetVolCapacity(r *http.Request) (name, authKey string, capaci
 	if authKey, err = extractAuthKey(r); err != nil {
 		return
 	}
-	if capacity, err = extractCapacity(r); err != nil {
+
+	if capacity, err = extractUint(r, volCapacityKey); err != nil {
 		return
 	}
+
 	return
 }
 
 type coldVolArgs struct {
 	objBlockSize     int
-	ebsCapacity      int
+	ebsCapacity      uint64
 	cacheAction      int
 	cacheThreshold   int
 	cacheTtl         int
@@ -384,7 +386,7 @@ func parseColdArgs(r *http.Request) (args coldVolArgs, err error) {
 		return
 	}
 
-	if args.ebsCapacity, err = extractUint(r, ebsCapacityKey); err != nil {
+	if args.ebsCapacity, err = extractUint64(r, ebsCapacityKey); err != nil {
 		return
 	}
 
@@ -903,6 +905,19 @@ func extractUint(r *http.Request, key string) (val int, err error) {
 	return val, nil
 }
 
+func extractUint64(r *http.Request, key string) (val uint64, err error) {
+	var str string
+	if str = r.FormValue(key); str == "" {
+		return 0, nil
+	}
+
+	if val, err = strconv.ParseUint(str, 10, 64); err != nil || val < 0 {
+		return 0, fmt.Errorf("args [%s] is not legal, val %s", key, str)
+	}
+
+	return val, nil
+}
+
 func extractStr(r *http.Request, key string) (val string) {
 
 	return r.FormValue(key)
@@ -1019,6 +1034,7 @@ func newErrHTTPReply(err error) *proto.HTTPReply {
 }
 
 func sendOkReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) (err error) {
+
 	switch httpReply.Data.(type) {
 	case *DataPartition:
 		dp := httpReply.Data.(*DataPartition)
@@ -1037,6 +1053,7 @@ func sendOkReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPRe
 		dn.RLock()
 		defer dn.RUnlock()
 	}
+
 	reply, err := json.Marshal(httpReply)
 	if err != nil {
 		log.LogErrorf("fail to marshal http reply[%v]. URL[%v],remoteAddr[%v] err:[%v]", httpReply, r.URL, r.RemoteAddr, err)

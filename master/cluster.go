@@ -1666,12 +1666,19 @@ func (c *Cluster) updateVol(name, authKey string, newArgs *VolVarargs) (err erro
 
 		volUsedSpace = vol.totalUsedSpace()
 		if float64(newArgs.capacity*util.GB) < float64(volUsedSpace)*1.2 {
-
 			err = fmt.Errorf("capacity[%v] has to be 20 percent larger than the used space[%v]", newArgs.capacity,
 				volUsedSpace/util.GB)
 			goto errHandler
 		}
 
+	} else {
+
+		useSpace := vol.ebsUsedSpace()
+		if useSpace < newArgs.coldArgs.ebsCapacity*util.GB {
+			err = fmt.Errorf("capacity[%v] has to be larger than the used space[%v]", newArgs.coldArgs.ebsCapacity,
+				volUsedSpace/util.GB)
+			goto errHandler
+		}
 	}
 
 	if newArgs.zoneName, err = c.checkZoneName(name, vol.crossZone, vol.defaultPriority, newArgs.zoneName); err != nil {
@@ -1807,9 +1814,8 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 			goto errHandler
 		}
 
+		vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
 	}
-
-	vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
 
 	vol.updateViewCache(c)
 	log.LogInfof("action[createVol] vol[%v],readableAndWritableCnt[%v]", req.name, readWriteDataPartitions)
@@ -1880,6 +1886,7 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 	if err = c.syncAddVol(vol); err != nil {
 		goto errHandler
 	}
+
 	c.putVol(vol)
 
 	return
