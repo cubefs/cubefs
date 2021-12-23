@@ -160,6 +160,11 @@ func (se *SortedExtents) AppendWithCheck(ek proto.ExtentKey, discard []proto.Ext
 		break
 	}
 
+	// Makes the request idempotent, just in case client retries.
+	if len(invalidExtents) == 1 && invalidExtents[0] == ek {
+		return
+	}
+
 	// check if ek and key are the same extent file with size extented
 	deleteExtents = make([]proto.ExtentKey, 0, len(invalidExtents))
 	for _, key := range invalidExtents {

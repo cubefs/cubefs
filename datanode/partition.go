@@ -126,6 +126,7 @@ type DataPartition struct {
 	loadExtentHeaderStatus        int
 	DataPartitionCreateType       int
 	isLoadingDataPartition        bool
+	persistMetaMutex              sync.RWMutex
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
@@ -348,6 +349,24 @@ func (dp *DataPartition) getReplicaLen() int {
 	return len(dp.replicas)
 }
 
+func (dp *DataPartition) needDeleteReplica(addr string) bool {
+	if dp.IsExsitReplica(addr) {
+		return true
+	}
+
+	if dp.config == nil {
+		return false
+	}
+
+	for _, h := range dp.config.Hosts {
+		if addr == h {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (dp *DataPartition) IsExsitReplica(addr string) bool {
 	dp.replicasLock.RLock()
 	defer dp.replicasLock.RUnlock()
@@ -429,6 +448,9 @@ func (dp *DataPartition) ForceLoadHeader() {
 
 // PersistMetadata persists the file metadata on the disk.
 func (dp *DataPartition) PersistMetadata() (err error) {
+	dp.persistMetaMutex.Lock()
+	defer dp.persistMetaMutex.Unlock()
+
 	var (
 		metadataFile *os.File
 		metaData     []byte
@@ -623,7 +645,7 @@ func (dp *DataPartition) updateReplicas(isForce bool) (err error) {
 	dp.isLeader = isLeader
 	dp.replicas = replicas
 	dp.intervalToUpdateReplicas = time.Now().Unix()
-	log.LogInfof(fmt.Sprintf("ActionUpdateReplicationHosts partiton(%v)", dp.partitionID))
+	log.LogInfof(fmt.Sprintf("ActionUpdateReplicationHosts partiton(%v), force(%v)", dp.partitionID, isForce))
 
 	return
 }
@@ -735,7 +757,6 @@ func (dp *DataPartition) pushSyncDeleteRecordFromLeaderMesg() bool {
 	case dp.Disk().syncTinyDeleteRecordFromLeaderOnEveryDisk <- true:
 		return true
 	default:
-		return false
 	}
 	return false
 }

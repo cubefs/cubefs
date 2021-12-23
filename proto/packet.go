@@ -99,6 +99,7 @@ const (
 	OpMetaListXAttr          uint8 = 0x38
 	OpMetaBatchGetXAttr      uint8 = 0x39
 	OpMetaExtentAddWithCheck uint8 = 0x3A // Append extent key with discard extents check
+	OpMetaReadDirLimit       uint8 = 0x3D
 
 	// Operations: Master -> MetaNode
 	OpCreateMetaPartition           uint8 = 0x40
@@ -154,7 +155,9 @@ const (
 	OpNotEmtpy           uint8 = 0xFE
 	OpOk                 uint8 = 0xF0
 
-	OpPing uint8 = 0xFF
+	OpPing                  uint8 = 0xFF
+	OpMetaUpdateSummaryInfo uint8 = 0x3B
+	OpMetaReadDirOnly       uint8 = 0x3C
 )
 
 const (
@@ -279,6 +282,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaLookup"
 	case OpMetaReadDir:
 		m = "OpMetaReadDir"
+	case OpMetaReadDirLimit:
+		m = "OpMetaReadDirLimit"
 	case OpMetaInodeGet:
 		m = "OpMetaInodeGet"
 	case OpMetaBatchInodeGet:

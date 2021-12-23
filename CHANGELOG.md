@@ -1,3 +1,68 @@
+## Release v2.4.0 - 2021/05/14
+
+### _**UPGRAGDE NOTICE**_
+
+if your ChuBaoFS version is v2.3.* or before, and need to upgrade to v2.4.* , you must follow these upgrade steps:
+
+1. first of all, firewall open two more port (17710 & 17810) in your machine to support tcp multiplexing；
+
+   ```
+   17710 is calculated by 17210, the port listened by metanode, add 500
+   17810 is calculated by 17310, the port listened by datanode, add 500
+   ```
+
+2. then add item '"enableSmuxConnPool"=false' in your datanode's config file, upgrade all datanodes; detail steps as follow:
+
+   ```
+   a. using new dataNode bin file replace the old version
+   b. add  '"enableSmuxConnPool"=false' in your datanode's config file
+   c. restart datanode process
+   d. update all the datanodes in the custer
+   ```
+
+3. update '"enableSmuxConnPool"=true' in your datanode's config file, restart all datanode again;
+
+   ```
+   notes: before set enableSmuxConnPool as true, you must finsh step 2. 
+   ```
+
+4. upgrade all metanode bin file and restart meta process;
+
+5. upgrade all master  bin file and restart master process;
+
+6. upgrade all client bin file and restart client process; 
+
+The key point of upgrading from previous versions to v2.4.0 is to make sure ALL datanodes are upgraded to the new version with "enableSmuxConnPool" set to "false" before upgrading other components, such as metanode, master and client. Then datanode can be configured to enable smux conn pool, i.e. "enableSmuxConnPool" set to "true".
+
+### Feature
+
+* `dataNode` smux support [#1124](https://github.com/chubaofs/chubaofs/pull/1124)
+* `metaNode` smux support [#1124](https://github.com/chubaofs/chubaofs/pull/1124)
+* `datanode` `metanode` support TickInterval configurable [#1117](https://github.com/chubaofs/chubaofs/pull/1117)
+
+### Refector
+
+* `master` remove token-based volume read-write permission control  [#1119](https://github.com/chubaofs/chubaofs/pull/1119)
+
+### Bugfix
+
+* `datanode` fix build repair task panic [#1124](https://github.com/chubaofs/chubaofs/pull/1124)
+* `metanode` too many open/close stream when delete limit [#1124](https://github.com/chubaofs/chubaofs/pull/1124)
+* `master` do split on metanode partion if inode count larger than maxinodecnt [#1124](https://github.com/chubaofs/chubaofs/pull/1124)
+* `datanode` dp.raftPartition nil pointer [#1124](https://github.com/chubaofs/chubaofs/pull/1124)
+* `datanode` fix datanode repair log print error [#1124](https://github.com/chubaofs/chubaofs/pull/1124)
+* `master` partition be split can be write if not full and less then on step [#1124](https://github.com/chubaofs/chubaofs/pull/1124)
+* `metanode` new a gauge instance every time to avoid a gauge instance modified concurrently [#1124](https://github.com/chubaofs/chubaofs/pull/1124)
+* `master` fix conflict for histogram data when report data concurrently [#1124](https://github.com/chubaofs/chubaofs/pull/1124)
+* `datanode` fix bug when packet opCode=OpExtentRepairRead and network is unstable [#1124](https://github.com/chubaofs/chubaofs/pull/1124)
+
+### Enhance
+
+* `client` export init should be after init log in fuse client [#1124](https://github.com/chubaofs/chubaofs/pull/1124)
+* `util` flush log before os.exit [#1124](https://github.com/chubaofs/chubaofs/pull/1124)
+* `datanode` format datanode log when delete [#1124](https://github.com/chubaofs/chubaofs/pull/1124)
+* `metanode` update log level to info if mp is not exist [#1124](https://github.com/chubaofs/chubaofs/pull/1124)
+
 ## Release v2.3.0 - 2021/02/26
 
 ### _**UPGRAGDE NOTICE**_

@@ -701,7 +701,11 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !userInfo.Policy.IsAuthorized(sourceBucket, "", proto.OSSCopyObjectAction) {
+	subdir := strings.TrimRight(param.Object(), "/")
+	if subdir == "" {
+		subdir = r.URL.Query().Get(ParamPrefix)
+	}
+	if !userInfo.Policy.IsAuthorized(sourceBucket, subdir, proto.OSSCopyObjectAction) {
 		log.LogErrorf("copyObjectHandler: no permission to copy from source bucket, requestID(%v), source bucket(%v), source file(%v), target bucket(%v), target file(%v)",
 			GetRequestID(r), sourceBucket, sourceObject, param.bucket, param.object)
 		errorCode = AccessDenied

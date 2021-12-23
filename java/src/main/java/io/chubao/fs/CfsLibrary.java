@@ -35,6 +35,23 @@ public interface CfsLibrary extends Library {
         }
     }
 
+    class SummaryInfo extends Structure {
+        public long files;
+        public long subdirs;
+        public long fbytes;
+
+        public SummaryInfo() {
+            super();
+        }
+        public static class ByValue extends  SummaryInfo implements Structure.ByValue {}
+        public static class ByReference extends SummaryInfo implements Structure.ByReference {}
+
+        @Override
+        protected List<String> getFieldOrder() {
+            return Arrays.asList(new String[] { "files", "subdirs", "fbytes" });
+        }
+    }
+
     public class Dirent extends Structure {
         // note that the field layout should be aligned with cfs_dirent
         public long ino;
@@ -107,4 +124,7 @@ public interface CfsLibrary extends Library {
     int cfs_rename(long id, String from, String to);
 
     int cfs_fchmod(long id, int fd, int mode);
+
+    int cfs_getsummary(long cid, String path, SummaryInfo.ByReference summaryInfo, String useCache, int goroutineNum);
+    int cfs_refreshsummary(long cid, String path, int goroutineNum);
 }

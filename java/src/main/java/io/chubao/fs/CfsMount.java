@@ -164,4 +164,19 @@ public class CfsMount {
         return libcfs.cfs_fchmod(this.cid, fd, mode);
     }
 
+    public int getsummary(int fd, String path, CfsLibrary.SummaryInfo.ByReference summaryInfo, String useCache, int goroutineNum) throws IOException {
+        int r = libcfs.cfs_getsummary(fd, path, summaryInfo, useCache, goroutineNum);
+        if (r < 0) {
+            throw new IOException("getsummary failed : " + path + " code : " + r);
+        }
+        return r;
+    }
+    public int refreshsummary(int fd, String path, int goroutineNum) throws IOException {
+        int r = libcfs.cfs_refreshsummary(fd, path, goroutineNum);
+        if (r < 0) {
+            throw new IOException("refreshsummary failed : " + path + " code : " + r);
+        }
+        return r;
+    }
+
 }

@@ -251,9 +251,13 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			}
 			var userPolicy = userInfo.Policy
 			isOwner = userPolicy.IsOwn(param.Bucket())
-			if !isOwner && !userPolicy.IsAuthorized(param.Bucket(), "", param.Action()) {
-				log.LogDebugf("policyCheck: user no permission: requestID(%v) userID(%v) accessKey(%v) volume(%v) action(%v)",
-					GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Action())
+			subdir := strings.TrimRight(param.Object(), "/")
+			if subdir == "" {
+				subdir = r.URL.Query().Get(ParamPrefix)
+			}
+			if !isOwner && !userPolicy.IsAuthorized(param.Bucket(), subdir, param.Action()) {
+				log.LogDebugf("policyCheck: user no permission: url(%v) subdir(%v) requestID(%v) userID(%v) accessKey(%v) volume(%v) object(%v) action(%v)",
+					r.URL, subdir, GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Object(), param.Action())
 				allowed = false
 				return
 			}

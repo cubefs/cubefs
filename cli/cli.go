@@ -16,11 +16,12 @@ package main
 
 import (
 	"fmt"
+	"os"
+
 	"github.com/chubaofs/chubaofs/cli/cmd"
 	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/spf13/cobra"
-	"os"
 )
 
 var (
@@ -71,7 +72,10 @@ following command to execute:
 `)
 		},
 	}
+
 	cfsRootCmd.CFSCmd.AddCommand(completionCmd)
+
+	cfsRootCmd.CFSCmd.AddCommand(cmd.GenClusterCfgCmd)
 	return cfsRootCmd.CFSCmd
 }
 

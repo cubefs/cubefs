@@ -1,0 +1,91 @@
+version: 1.0
+
+cluster:
+    name: "chubaofs-test01"
+    version: "2.4.0"
+    config:
+        consulAddr: http://consul.chubaofs.com/register
+        logLevel: "info"
+        logDir: /var/log/cfs
+        warnLogDir: /var/log/cfs-warn
+    master:
+        hosts:
+            - 192.168.0.11
+            - 192.168.0.12
+            - 192.168.0.13
+        config:
+            listen: "17010"
+            prof: "17012"
+            exportPort: "17019"
+            retainLogs: 20000
+            walDir: /export/Logs/cfs/master/wal
+            storeDir: /export/Data/cfs/master/store
+    nodes:
+        - role: metanode
+          config:
+            listen: "17020"
+            prof: "17021"
+            raftHeartbeatPort: "17022"
+            raftReplicaPort: 17023
+            totalMem: 107819316019
+            metadataDir: /data1/cfs/meta/data
+            raftDir: /data1/cfs/meta/raft
+            exporterPort: 17029
+        - role: datanode
+          config:
+            listen: "17030"
+            prof: "17031"
+            rack: "rack-01"
+            raftHeartbetPort: "17032"
+            raftReplicaPort: "17033"
+            logLevel: "debug"
+            disks:
+                - /data3/cfs/data/disk1:10737418240
+                - /data4/cfs/data/disk1:10737418240
+                - /data5/cfs/data/disk1:10737418240
+            metadataDir: /data1/cfs/meta/data
+            raftDir: /data1/cfs/meta/raft
+            exporterPort: 17029
+        - role: objectnode
+          config:
+            listen: "17030"
+            prof: "17031"
+        - role: cli
+          ignoreCommon: true
+          config:
+            timeout: 60
+        - role: objectnode
+          config:
+            listen: "80"
+            exporterPort: 9500
+            enableHTTPS: "false"
+            domains:
+              - "object.chubao.io"
+            signatureIgnoredActions:
+              - "action:oss:GetObjectXAttr"
+              - "action:oss:PutObjectXAttr"
+              - "action:oss:DeleteObjectXAttr"
+              - "action:oss:ListObjectXAttrs"
+              - "action:oss:OptionsObject"
+            disabledActions:
+              - "action:oss:CreateBucket"
+              - "action:oss:DeleteBucket"
+            strict: true
+        - role: console
+          config:
+            listen: "80"
+            objectNodeDomain: "object.chubao.io"
+        - role: client
+          config:
+            mountPoint: /cfs/mnt
+            volName: "ltptest"
+            owner: "ltptest"
+            exporterPort: 9500
+            profPort: "17410"
+            authenticate: false
+            ticketHost: "192.168.0.14:8080,192.168.0.15:8081,192.168.0.16:8082"
+            enableHTTPS: false
+            accessKey: "39bEF4RrAQgMj6RV"
+            secretKey: "TRL6o3JL16YOqvZGIohBDFTHZDEcFsyd"
+
+

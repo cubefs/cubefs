@@ -1,0 +1,36 @@
+# This is a basic workflow to help you get started with Actions
+
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+
+  ci-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v2
+      - name: Check gofmt
+        run: |
+          find . -type f -name "*.go" | grep -v 'vendor' | xargs gofmt -l > gofmt_results.txt
+          cat gofmt_results.txt
+          if [ "$(cat gofmt_results.txt|wc -l)" -gt 0  ]; then exit 1; fi
+      - name: Build and run CI tests
+        run: |
+          docker/run_docker.sh -t
+          docker/run_docker.sh -l
+      - name: Pack docker_data
+        if: ${{ always() }}
+        run: pushd docker && sudo tar --exclude='docker_data/datanode*/disk' --exclude='docker_data/disk' -czvf docker_data.tar.gz docker_data
+      - name: Upload docker_data.tar.gz
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: docker_data
+          path: docker/docker_data.tar.gz
+          retention-days: 7

@@ -19,6 +19,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chubaofs/chubaofs/util/log"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 )
@@ -44,6 +46,8 @@ type DataNode struct {
 	PersistenceDataPartitions []uint64
 	BadDisks                  []string
 	ToBeOffline               bool
+	RdOnly                    bool
+	MigrateLock               sync.RWMutex
 }
 
 func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
@@ -59,6 +63,8 @@ func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
 func (dataNode *DataNode) checkLiveness() {
 	dataNode.Lock()
 	defer dataNode.Unlock()
+	log.LogInfof("action[checkLiveness] datanode[%v] report time[%v],since report time[%v], need gap [%v]",
+		dataNode.Addr, dataNode.ReportTime, time.Since(dataNode.ReportTime), time.Second*time.Duration(defaultNodeTimeOutSec))
 	if time.Since(dataNode.ReportTime) > time.Second*time.Duration(defaultNodeTimeOutSec) {
 		dataNode.isActive = false
 	}
@@ -102,7 +108,18 @@ func (dataNode *DataNode) isWriteAble() (ok bool) {
 	dataNode.RLock()
 	defer dataNode.RUnlock()
 
-	if dataNode.isActive == true && dataNode.AvailableSpace > 10*util.GB {
+	if dataNode.isActive && dataNode.AvailableSpace > 10*util.GB && !dataNode.RdOnly {
+		ok = true
+	}
+
+	return
+}
+
+func (dataNode *DataNode) isWriteAbleWithSize(size uint64) (ok bool) {
+	dataNode.RLock()
+	defer dataNode.RUnlock()
+
+	if dataNode.isActive == true && dataNode.AvailableSpace > size {
 		ok = true
 	}
 

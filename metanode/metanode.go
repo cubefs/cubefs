@@ -64,6 +64,7 @@ type MetaNode struct {
 	smuxStopC         chan uint8
 	metrics           *MetaNodeMetrics
 	tickInterval      int
+	raftRecvBufSize   int
 
 	control common.Control
 }
@@ -124,6 +125,15 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.startRaftServer(); err != nil {
 		return
 	}
+	if err = m.newMetaManager(); err != nil {
+		return
+	}
+	if err = m.startServer(); err != nil {
+		return
+	}
+	if err = m.startSmuxServer(); err != nil {
+		return
+	}
 	if err = m.startMetaManager(); err != nil {
 		return
 	}
@@ -140,14 +150,6 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.checkLocalPartitionMatchWithMaster(); err != nil {
 		syslog.Println(err)
 		exporter.Warning(err.Error())
-		return
-	}
-
-	if err = m.startServer(); err != nil {
-		return
-	}
-
-	if err = m.startSmuxServer(); err != nil {
 		return
 	}
 
@@ -187,6 +189,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.raftHeartbeatPort = cfg.GetString(cfgRaftHeartbeatPort)
 	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
 	m.tickInterval = int(cfg.GetFloat(cfgTickInterval))
+	m.raftRecvBufSize = int(cfg.GetInt(cfgRaftRecvBufSize))
 	m.zoneName = cfg.GetString(cfgZoneName)
 	configTotalMem, _ = strconv.ParseUint(cfg.GetString(cfgTotalMem), 10, 64)
 
@@ -312,7 +315,7 @@ func (m *MetaNode) validConfig() (err error) {
 	return
 }
 
-func (m *MetaNode) startMetaManager() (err error) {
+func (m *MetaNode) newMetaManager() (err error) {
 	if _, err = os.Stat(m.metadataDir); err != nil {
 		if err = os.MkdirAll(m.metadataDir, 0755); err != nil {
 			return
@@ -326,6 +329,10 @@ func (m *MetaNode) startMetaManager() (err error) {
 		ZoneName:  m.zoneName,
 	}
 	m.metadataManager = NewMetadataManager(conf, m)
+	return
+}
+
+func (m *MetaNode) startMetaManager() (err error) {
 	if err = m.metadataManager.Start(); err == nil {
 		log.LogInfof("[startMetaManager] manager start finish.")
 	}

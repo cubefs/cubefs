@@ -9,7 +9,7 @@ ENV LTP_VERSION=20210121
 ENV LTP_SOURCE=https://github.com/linux-test-project/ltp/archive/${LTP_VERSION}.tar.gz
 
 # install requirements for LTP (Linux Test Program) tests
-RUN apt-get install -y xz-utils make gcc flex bison automake autoconf
+RUN apt-get install -y xz-utils make gcc flex bison automake autoconf psmisc
 RUN  mkdir -p /tmp/ltp /opt/ltp && cd /tmp/ltp \
         && wget --no-check-certificate ${LTP_SOURCE} && tar xf ${LTP_VERSION}.tar.gz && cd ltp-${LTP_VERSION} \
         && make autotools && ./configure \

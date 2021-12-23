@@ -16,9 +16,78 @@ package metanode
 
 import (
 	"encoding/json"
+	"strconv"
+	"strings"
 
 	"github.com/chubaofs/chubaofs/proto"
 )
+
+func (mp *metaPartition) UpdateSummaryInfo(req *proto.UpdateSummaryInfoRequest, p *Packet) (err error) {
+	fileInc := req.FileInc
+	dirInc := req.DirInc
+	byteInc := req.ByteInc
+	var builder strings.Builder
+
+	mp.summaryLock.Lock()
+	defer mp.summaryLock.Unlock()
+	treeItem := mp.extendTree.Get(NewExtend(req.Inode))
+	if treeItem != nil {
+		extend := treeItem.(*Extend)
+		if value, exist := extend.Get([]byte(req.Key)); exist {
+			oldValueList := strings.Split(string(value), ",")
+			oldFile, _ := strconv.ParseInt(oldValueList[0], 10, 64)
+			oldDir, _ := strconv.ParseInt(oldValueList[1], 10, 64)
+			oldByte, _ := strconv.ParseInt(oldValueList[2], 10, 64)
+			newFile := oldFile + fileInc
+			newDir := oldDir + dirInc
+			newByte := oldByte + byteInc
+			builder.Reset()
+			builder.WriteString(strconv.FormatInt(newFile, 10))
+			builder.WriteString(",")
+			builder.WriteString(strconv.FormatInt(newDir, 10))
+			builder.WriteString(",")
+			builder.WriteString(strconv.FormatInt(newByte, 10))
+			var extend = NewExtend(req.Inode)
+			extend.Put([]byte(req.Key), []byte(builder.String()))
+			if _, err = mp.putExtend(opFSMUpdateSummaryInfo, extend); err != nil {
+				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+				return
+			}
+			p.PacketOkReply()
+			return
+		} else {
+			builder.Reset()
+			builder.WriteString(strconv.FormatInt(req.FileInc, 10))
+			builder.WriteString(",")
+			builder.WriteString(strconv.FormatInt(req.DirInc, 10))
+			builder.WriteString(",")
+			builder.WriteString(strconv.FormatInt(req.ByteInc, 10))
+			extend.Put([]byte(req.Key), []byte(builder.String()))
+			if _, err = mp.putExtend(opFSMUpdateSummaryInfo, extend); err != nil {
+				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+				return
+			}
+			p.PacketOkReply()
+			return
+		}
+	} else {
+		builder.Reset()
+		builder.WriteString(strconv.FormatInt(req.FileInc, 10))
+		builder.WriteString(",")
+		builder.WriteString(strconv.FormatInt(req.DirInc, 10))
+		builder.WriteString(",")
+		builder.WriteString(strconv.FormatInt(req.ByteInc, 10))
+		var extend = NewExtend(req.Inode)
+		extend.Put([]byte(req.Key), []byte(builder.String()))
+		if _, err = mp.putExtend(opFSMUpdateSummaryInfo, extend); err != nil {
+			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+			return
+		}
+		p.PacketOkReply()
+		return
+	}
+	return
+}
 
 func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err error) {
 	var extend = NewExtend(req.Inode)

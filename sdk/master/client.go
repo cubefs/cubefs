@@ -142,6 +142,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			return
 		case http.StatusOK:
 			if leaderAddr != host {
+				log.LogDebugf("server Request resp new master[%v] old [%v]", host, leaderAddr)
 				c.setLeader(host)
 			}
 			var body = &struct {

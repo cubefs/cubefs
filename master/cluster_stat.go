@@ -30,10 +30,10 @@ type volStatInfo = proto.VolStatInfo
 
 func newVolStatInfo(name string, total, used uint64, ratio string) *volStatInfo {
 	return &volStatInfo{
-		Name:        name,
-		TotalSize:   total,
-		UsedSize:    used,
-		UsedRatio:   ratio,
+		Name:      name,
+		TotalSize: total,
+		UsedSize:  used,
+		UsedRatio: ratio,
 	}
 }
 

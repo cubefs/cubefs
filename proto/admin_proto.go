@@ -39,7 +39,14 @@ const (
 	AdminListVols                  = "/vol/list"
 	AdminSetNodeInfo               = "/admin/setNodeInfo"
 	AdminGetNodeInfo               = "/admin/getNodeInfo"
-
+	AdminGetAllNodeSetGrpInfo      = "/admin/getDomainInfo"
+	AdminGetNodeSetGrpInfo         = "/admin/getDomainNodeSetGrpInfo"
+	AdminGetIsDomainOn             = "/admin/getIsDomainOn"
+	AdminUpdateNodeSetCapcity      = "/admin/updateNodeSetCapcity"
+	AdminUpdateNodeSetId           = "/admin/updateNodeSetId"
+	AdminUpdateDomainDataUseRatio  = "/admin/updateDomainDataRatio"
+	AdminUpdateZoneExcludeRatio    = "/admin/updateZoneExcludeRatio"
+	AdminSetNodeRdOnly             = "/admin/setNodeRdOnly"
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
@@ -67,10 +74,12 @@ const (
 	// Node APIs
 	AddDataNode                    = "/dataNode/add"
 	DecommissionDataNode           = "/dataNode/decommission"
+	MigrateDataNode                = "/dataNode/migrate"
 	DecommissionDisk               = "/disk/decommission"
 	GetDataNode                    = "/dataNode/get"
 	AddMetaNode                    = "/metaNode/add"
 	DecommissionMetaNode           = "/metaNode/decommission"
+	MigrateMetaNode                = "/metaNode/migrate"
 	GetMetaNode                    = "/metaNode/get"
 	AdminUpdateMetaNode            = "/metaNode/update"
 	AdminUpdateDataNode            = "/dataNode/update"
@@ -422,6 +431,7 @@ type VolView struct {
 	FollowerRead   bool
 	MetaPartitions []*MetaPartitionView
 	DataPartitions []*DataPartitionResponse
+	DomainOn       bool
 	OSSSecure      *OSSSecure
 	CreateTime     int64
 }
@@ -475,11 +485,41 @@ type SimpleVolView struct {
 	NeedToLowerReplica bool
 	Authenticate       bool
 	CrossZone          bool
+	DefaultPriority    bool
+	DomainOn           bool
 	CreateTime         string
-	EnableToken        bool
 	Description        string
 	DpSelectorName     string
 	DpSelectorParm     string
+	DefaultZonePrior   bool
+}
+type NodeSetInfo struct {
+	ID           uint64
+	ZoneName     string
+	Capacity     int
+	DataUseRatio float64
+	MetaUseRatio float64
+	MetaUsed     uint64
+	MetaTotal    uint64
+	MetaNodes    []*MetaNodeInfo
+	DataUsed     uint64
+	DataTotal    uint64
+	DataNodes    []*DataNodeInfo
+}
+type SimpleNodeSetGrpInfo struct {
+	ID          uint64
+	Status      uint8
+	NodeSetInfo []NodeSetInfo
+}
+
+type SimpleNodeSetGrpInfoList struct {
+	DomainOn              bool
+	DataRatioLimit        float64
+	ZoneExcludeRatioLimit float64
+	NeedDomain            bool
+	Status                uint8
+	ExcludeZones          []string
+	SimpleNodeSetGrpInfo  []*SimpleNodeSetGrpInfo
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition

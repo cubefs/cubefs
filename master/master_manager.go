@@ -47,6 +47,7 @@ func (m *Server) handleLeaderChange(leader uint64) {
 		}
 		m.cluster.checkDataNodeHeartbeat()
 		m.cluster.checkMetaNodeHeartbeat()
+		m.cluster.followerReadManager.reSet()
 	} else {
 		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr))
@@ -82,6 +83,21 @@ func (m *Server) handleApplySnapshot() {
 	return
 }
 
+func (m *Server) handleRaftUserCmd(opt uint32, key string, cmdMap map[string][]byte) (err error) {
+	log.LogInfof("action[handleRaftUserCmd] opt %v, key %v, map len %v", opt, key, len(cmdMap))
+	switch opt {
+	case opSyncDataPartitionsView:
+		// cluster may not have been init when the raft log recovery,message can be ignored,
+		// Later, we can consider changing their two priorities
+		if m.cluster != nil {
+			m.cluster.followerReadManager.updateVolViewFromLeader(key, cmdMap[key])
+		}
+	default:
+		log.LogErrorf("action[handleRaftUserCmd] opt %v not supported,key %v, map len %v", opt, key, len(cmdMap))
+	}
+	return nil
+}
+
 func (m *Server) restoreIDAlloc() {
 	m.cluster.idAlloc.restore()
 }
@@ -96,8 +112,36 @@ func (m *Server) loadMetadata() {
 	if err = m.cluster.loadClusterValue(); err != nil {
 		panic(err)
 	}
+
+	if m.cluster.FaultDomain {
+		if err = m.cluster.loadNodeSetGrps(); err != nil {
+			panic(err)
+		}
+	}
+	var loadDomain bool
+	if m.cluster.FaultDomain { // try load exclude
+		if loadDomain, err = m.cluster.loadZoneDomain(); err != nil {
+			log.LogInfof("action[putZoneDomain] err[%v]", err)
+			panic(err)
+		}
+		if loadDomain { // if load success,start grp manager ,load nodeset can trigger build ns grps
+			m.cluster.nodeSetGrpManager.start()
+		}
+	}
+
 	if err = m.cluster.loadNodeSets(); err != nil {
 		panic(err)
+	}
+
+	if m.cluster.FaultDomain {
+		log.LogInfof("action[FaultDomain] set")
+		if !loadDomain { //first restart after domain item be added
+			if err = m.cluster.putZoneDomain(true); err != nil {
+				log.LogInfof("action[putZoneDomain] err[%v]", err)
+				panic(err)
+			}
+		}
+		m.cluster.nodeSetGrpManager.start()
 	}
 
 	if err = m.cluster.loadDataNodes(); err != nil {

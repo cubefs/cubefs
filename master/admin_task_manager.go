@@ -20,11 +20,12 @@ import (
 	"time"
 
 	"fmt"
+	"net"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"net"
 )
 
 //const
@@ -43,8 +44,8 @@ type AdminTaskManager struct {
 	targetAddr string
 	TaskMap    map[string]*proto.AdminTask
 	sync.RWMutex
-	exitCh     chan struct{}
-	connPool   *util.ConnectPool
+	exitCh   chan struct{}
+	connPool *util.ConnectPool
 }
 
 func newAdminTaskManager(targetAddr, clusterID string) (sender *AdminTaskManager) {
@@ -195,11 +196,11 @@ func (sender *AdminTaskManager) sendAdminTask(task *proto.AdminTask, conn net.Co
 }
 
 func (sender *AdminTaskManager) syncSendAdminTask(task *proto.AdminTask) (packet *proto.Packet, err error) {
-	log.LogInfof("action[syncSendAdminTask],task[%v]", task)
 	packet, err = sender.buildPacket(task)
 	if err != nil {
 		return nil, errors.Trace(err, "action[syncSendAdminTask build packet failed,task:%v]", task.ID)
 	}
+	log.LogInfof("action[syncSendAdminTask],task[%s], op %s, reqId %d", task.ToString(), packet.GetOpMsg(), packet.GetReqID())
 	conn, err := sender.getConn()
 	if err != nil {
 		return nil, errors.Trace(err, "action[syncSendAdminTask get conn failed,task:%v]", task.ID)

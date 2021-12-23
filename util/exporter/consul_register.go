@@ -178,6 +178,10 @@ func makeRegisterReq(host, addr, app, role, cluster, meta string, port int64) (r
 
 // parse k1=v1;k2=v2 as a map
 func parseMetaStr(meta string) (bool, map[string]string) {
+	if len(meta) == 0 {
+		return false, nil
+	}
+
 	m := map[string]string{}
 
 	kvs := strings.Split(meta, ";")

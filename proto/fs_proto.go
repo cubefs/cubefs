@@ -22,7 +22,8 @@ import (
 )
 
 const (
-	RootIno = uint64(1)
+	RootIno    = uint64(1)
+	SummaryKey = "cbfs.dir.summary"
 )
 
 const (
@@ -75,6 +76,12 @@ type InodeInfo struct {
 	Target     []byte    `json:"tgt"`
 
 	expiration int64
+}
+
+type SummaryInfo struct {
+	Files   int64 `json:"files"`
+	Subdirs int64 `json:"subdirs"`
+	Fbytes  int64 `json:"fbytes"`
 }
 
 func (info *InodeInfo) Expiration() int64 {
@@ -295,8 +302,31 @@ type ReadDirRequest struct {
 	ParentID    uint64 `json:"pino"`
 }
 
+type ReadDirOnlyRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	ParentID    uint64 `json:"pino"`
+}
+
 // ReadDirResponse defines the response to the request of reading dir.
 type ReadDirResponse struct {
+	Children []Dentry `json:"children"`
+}
+
+type ReadDirOnlyResponse struct {
+	Children []Dentry `json:"children"`
+}
+
+// ReadDirLimitRequest defines the request to read dir with limited dentries.
+type ReadDirLimitRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	ParentID    uint64 `json:"pino"`
+	Marker      string `json:"marker"`
+	Limit       uint64 `json:"limit"`
+}
+
+type ReadDirLimitResponse struct {
 	Children []Dentry `json:"children"`
 }
 
@@ -502,4 +532,14 @@ type ListMultipartRequest struct {
 
 type ListMultipartResponse struct {
 	Multiparts []*MultipartInfo `json:"mps"`
+}
+
+type UpdateSummaryInfoRequest struct {
+	VolName     string `json:"vol"`
+	PartitionId uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+	Key         string `json:"key"`
+	FileInc     int64  `json:"fileinc"`
+	DirInc      int64  `json:"dirinc"`
+	ByteInc     int64  `json:"byteinc"`
 }

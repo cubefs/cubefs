@@ -54,6 +54,7 @@ type Super struct {
 	fsyncOnClose  bool
 	enableXattr   bool
 	rootIno       uint64
+	sc            *SummaryCache
 }
 
 // Functions that Super needs to implement
@@ -73,6 +74,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		Authenticate:  opt.Authenticate,
 		TicketMess:    opt.TicketMess,
 		ValidateOwner: opt.Authenticate || opt.AccessKey == "",
+		EnableSummary: opt.EnableSummary && opt.EnableXattr, // enable both summary and xattr
 	}
 	s.mw, err = meta.NewMetaWrapper(metaConfig)
 	if err != nil {
@@ -102,6 +104,10 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.disableDcache = opt.DisableDcache
 	s.fsyncOnClose = opt.FsyncOnClose
 	s.enableXattr = opt.EnableXattr
+
+	if opt.EnableSummary {
+		s.sc = NewSummaryCache(DefaultSummaryExpiration, MaxSummaryCache)
+	}
 
 	var extentConfig = &stream.ExtentConfig{
 		Volume:            opt.Volname,
@@ -140,13 +146,16 @@ func (s *Super) Root() (fs.Node, error) {
 
 // Statfs handles the Statfs request and returns a set of statistics.
 func (s *Super) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fuse.StatfsResponse) error {
-	total, used := s.mw.Statfs()
+	const defaultMaxMetaPartitionInodeID uint64 = 1<<63 - 1
+	total, used, inodeCount := s.mw.Statfs()
 	resp.Blocks = total / uint64(DefaultBlksize)
 	resp.Bfree = (total - used) / uint64(DefaultBlksize)
 	resp.Bavail = resp.Bfree
 	resp.Bsize = DefaultBlksize
 	resp.Namelen = DefaultMaxNameLen
 	resp.Frsize = DefaultBlksize
+	resp.Files = inodeCount
+	resp.Ffree = defaultMaxMetaPartitionInodeID - inodeCount
 	return nil
 }
 

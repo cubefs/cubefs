@@ -16,6 +16,7 @@ package raftstore
 
 import (
 	"fmt"
+
 	"github.com/tiglabs/raft/proto"
 )
 
@@ -40,6 +41,10 @@ type Config struct {
 	// TickInterval is the interval of timer which check heartbeat and election timeout.
 	// The default value is 300,unit is millisecond.
 	TickInterval int
+
+	// RecvBufSize is the size of raft receive buffer channel.
+	// The default value is 2048.
+	RecvBufSize int
 
 	// ElectionTick is the election timeout. If a follower does not receive any message
 	// from the leader of current term during ElectionTick, it will become candidate and start an election.

@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"fmt"
@@ -127,6 +128,7 @@ type OpExtend interface {
 	BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packet) (err error)
 	RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (err error)
 	ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err error)
+	UpdateSummaryInfo(req *proto.UpdateSummaryInfoRequest, p *Packet) (err error)
 }
 
 // OpDentry defines the interface for the dentry operations.
@@ -136,6 +138,8 @@ type OpDentry interface {
 	DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet) (err error)
 	UpdateDentry(req *UpdateDentryReq, p *Packet) (err error)
 	ReadDir(req *ReadDirReq, p *Packet) (err error)
+	ReadDirLimit(req *ReadDirLimitReq, p *Packet) (err error)
+	ReadDirOnly(req *ReadDirOnlyReq, p *Packet) (err error)
 	Lookup(req *LookupReq, p *Packet) (err error)
 	GetDentryTree() *BTree
 }
@@ -219,6 +223,7 @@ type metaPartition struct {
 	vol                    *Vol
 	manager                *metadataManager
 	isLoadingMetaPartition bool
+	summaryLock            sync.Mutex
 }
 
 func (mp *metaPartition) ForceSetMetaPartitionToLoadding() {

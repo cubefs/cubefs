@@ -410,12 +410,18 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 		if eh.dirty {
 			var discard []proto.ExtentKey
 			discard = eh.stream.extents.Append(eh.key, true)
-			err = eh.stream.client.appendExtentKey(eh.inode, *eh.key, discard)
+			err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, *eh.key, discard)
 			if err == nil && len(discard) > 0 {
 				eh.stream.extents.RemoveDiscard(discard)
 			}
 		} else {
-			//_ = eh.stream.extents.Append(eh.key, false)
+			/*
+			 * Update extents cache using the ek stored in the eh. This is
+			 * indispensable because the ek in the extent cache might be
+			 * a temp one with dpid 0, especially when current eh failed and
+			 * create a new eh to do recovery.
+			 */
+			_ = eh.stream.extents.Append(eh.key, false)
 		}
 	}
 	if err == nil {

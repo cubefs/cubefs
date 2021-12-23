@@ -92,7 +92,8 @@ const (
 	cmdVolDefaultCapacity       = 10 // 100GB
 	cmdVolDefaultReplicas       = 3
 	cmdVolDefaultFollowerReader = true
-	cmdVolDefaultZoneName       = "default"
+	cmdVolDefaultZoneName       = ""
+	cmdVolDefaultCrossZone      = false
 )
 
 func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
@@ -102,6 +103,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optReplicas int
 	var optFollowerRead bool
 	var optYes bool
+	var optCrossZone bool
 	var optZoneName string
 	var cmd = &cobra.Command{
 		Use:   cmdVolCreateUse,
@@ -121,12 +123,13 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("Create a new volume:\n")
 				stdout("  Name                : %v\n", volumeName)
 				stdout("  Owner               : %v\n", userID)
-				stdout("  Dara partition size : %v GB\n", optDPSize)
+				stdout("  Data partition size : %v GB\n", optDPSize)
 				stdout("  Meta partition count: %v\n", optMPCount)
 				stdout("  Capacity            : %v GB\n", optCapacity)
 				stdout("  Replicas            : %v\n", optReplicas)
 				stdout("  Allow follower read : %v\n", formatEnabledDisabled(optFollowerRead))
 				stdout("  ZoneName            : %v\n", optZoneName)
+				stdout("  CrossZone            : %v\n", optCrossZone)
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -138,7 +141,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 
 			err = client.AdminAPI().CreateVolume(
 				volumeName, userID, optMPCount, optDPSize,
-				optCapacity, optReplicas, optFollowerRead, optZoneName)
+				optCapacity, optReplicas, optFollowerRead, optZoneName, optCrossZone)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
 				return
@@ -154,6 +157,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().BoolVar(&optFollowerRead, CliFlagEnableFollowerRead, cmdVolDefaultFollowerReader, "Enable read form replica follower")
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, cmdVolDefaultZoneName, "Specify volume zone name")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+	cmd.Flags().BoolVar(&optCrossZone, CliFlagCrossZone, cmdVolDefaultCrossZone, "Disable cross zone")
+
 	return cmd
 }
 
@@ -166,7 +171,6 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	var optReplicas int
 	var optFollowerRead string
 	var optAuthenticate string
-	var optEnableToken string
 	var optZoneName string
 	var optYes bool
 	var confirmString = strings.Builder{}
@@ -226,17 +230,6 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  Authenticate        : %v\n", formatEnabledDisabled(vv.Authenticate)))
 			}
-			if optEnableToken != "" {
-				isChange = true
-				var enable bool
-				if enable, err = strconv.ParseBool(optEnableToken); err != nil {
-					return
-				}
-				confirmString.WriteString(fmt.Sprintf("  EnableToken         : %v -> %v\n", formatEnabledDisabled(vv.EnableToken), formatEnabledDisabled(enable)))
-				vv.EnableToken = enable
-			} else {
-				confirmString.WriteString(fmt.Sprintf("  EnableToken         : %v\n", formatEnabledDisabled(vv.EnableToken)))
-			}
 			if vv.CrossZone == false && "" != optZoneName {
 				isChange = true
 				confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v -> %v\n", vv.ZoneName, optZoneName))
@@ -266,7 +259,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum),
-				vv.FollowerRead, vv.Authenticate, vv.EnableToken, calcAuthKey(vv.Owner), vv.ZoneName)
+				vv.FollowerRead, vv.Authenticate, calcAuthKey(vv.Owner), vv.ZoneName)
 			if err != nil {
 				return
 			}

@@ -67,15 +67,16 @@ const (
 )
 
 const (
-	ConfigKeyLocalIP       = "localIP"       // string
-	ConfigKeyPort          = "port"          // int
-	ConfigKeyMasterAddr    = "masterAddr"    // array
-	ConfigKeyZone          = "zoneName"      // string
-	ConfigKeyDisks         = "disks"         // array
-	ConfigKeyRaftDir       = "raftDir"       // string
-	ConfigKeyRaftHeartbeat = "raftHeartbeat" // string
-	ConfigKeyRaftReplica   = "raftReplica"   // string
-	CfgTickInterval        = "tickInterval"  // int
+	ConfigKeyLocalIP       = "localIP"         // string
+	ConfigKeyPort          = "port"            // int
+	ConfigKeyMasterAddr    = "masterAddr"      // array
+	ConfigKeyZone          = "zoneName"        // string
+	ConfigKeyDisks         = "disks"           // array
+	ConfigKeyRaftDir       = "raftDir"         // string
+	ConfigKeyRaftHeartbeat = "raftHeartbeat"   // string
+	ConfigKeyRaftReplica   = "raftReplica"     // string
+	CfgTickInterval        = "tickInterval"    // int
+	CfgRaftRecvBufSize     = "raftRecvBufSize" // int
 	// smux Config
 	ConfigKeyEnableSmuxClient  = "enableSmuxConnPool" //bool
 	ConfigKeySmuxPortShift     = "smuxPortShift"      //int
@@ -98,6 +99,7 @@ type DataNode struct {
 	raftReplica     string
 	raftStore       raftstore.RaftStore
 	tickInterval    int
+	raftRecvBufSize int
 
 	tcpListener net.Listener
 	stopC       chan bool

@@ -16,10 +16,11 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/log"
 	"math"
 	"strconv"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 func (c *Cluster) scheduleToLoadMetaPartitions() {
@@ -150,39 +151,49 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 		}
 	}()
 
-	var diff float64
+	c.badPartitionMutex.Lock()
+	defer c.badPartitionMutex.Unlock()
+
 	c.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
 		badMetaPartitionIds := value.([]uint64)
 		newBadMpIds := make([]uint64, 0)
 		for _, partitionID := range badMetaPartitionIds {
 			partition, err := c.getMetaPartitionByID(partitionID)
 			if err != nil {
+				Warn(c.Name, fmt.Sprintf("checkMetaPartitionRecoveryProgress clusterID[%v], partitionID[%v] is not exist", c.Name, partitionID))
 				continue
 			}
+
 			vol, err := c.getVol(partition.volName)
 			if err != nil {
+				Warn(c.Name, fmt.Sprintf("checkMetaPartitionRecoveryProgress clusterID[%v],vol[%v] partitionID[%v]is not exist",
+					c.Name, partition.volName, partitionID))
 				continue
 			}
+
 			if len(partition.Replicas) == 0 || len(partition.Replicas) < int(vol.mpReplicaNum) {
+				newBadMpIds = append(newBadMpIds, partitionID)
 				continue
 			}
-			diff = partition.getMinusOfMaxInodeID()
-			if diff < defaultMinusOfMaxInodeID {
+
+			if partition.getMinusOfMaxInodeID() < defaultMinusOfMaxInodeID {
 				partition.IsRecover = false
 				partition.RLock()
 				c.syncUpdateMetaPartition(partition)
 				partition.RUnlock()
-				Warn(c.Name, fmt.Sprintf("clusterID[%v],vol[%v] partitionID[%v] has recovered success", c.Name, partition.volName, partitionID))
+				Warn(c.Name, fmt.Sprintf("checkMetaPartitionRecoveryProgress clusterID[%v],vol[%v] partitionID[%v] has recovered success",
+					c.Name, partition.volName, partitionID))
 			} else {
 				newBadMpIds = append(newBadMpIds, partitionID)
 			}
 		}
 
 		if len(newBadMpIds) == 0 {
-			Warn(c.Name, fmt.Sprintf("clusterID[%v],node[%v] has recovered success", c.Name, key))
+			Warn(c.Name, fmt.Sprintf("checkMetaPartitionRecoveryProgress clusterID[%v],node[%v] has recovered success", c.Name, key))
 			c.BadMetaPartitionIds.Delete(key)
 		} else {
 			c.BadMetaPartitionIds.Store(key, newBadMpIds)
+			log.LogInfof("checkMetaPartitionRecoveryProgress BadMetaPartitionIds there is still (%d) mp in recover, addr (%s)", len(newBadMpIds), key)
 		}
 
 		return true

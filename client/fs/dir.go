@@ -15,7 +15,10 @@
 package fs
 
 import (
+	"io"
 	"os"
+	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -28,11 +31,59 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
+// used to locate the position in parent
+type DirContext struct {
+	Name string
+}
+
+type DirContexts struct {
+	sync.RWMutex
+	dirCtx map[fuse.HandleID]*DirContext
+}
+
+func NewDirContexts() (dctx *DirContexts) {
+	dctx = &DirContexts{}
+	dctx.dirCtx = make(map[fuse.HandleID]*DirContext, 0)
+	return
+}
+
+func (dctx *DirContexts) GetCopy(handle fuse.HandleID) DirContext {
+	dctx.RLock()
+	dirCtx, found := dctx.dirCtx[handle]
+	dctx.RUnlock()
+
+	if found {
+		return DirContext{dirCtx.Name}
+	} else {
+		return DirContext{}
+	}
+}
+
+func (dctx *DirContexts) Put(handle fuse.HandleID, dirCtx *DirContext) {
+	dctx.Lock()
+	defer dctx.Unlock()
+
+	oldCtx, found := dctx.dirCtx[handle]
+	if found {
+		oldCtx.Name = dirCtx.Name
+		return
+	}
+
+	dctx.dirCtx[handle] = dirCtx
+}
+
+func (dctx *DirContexts) Remove(handle fuse.HandleID) {
+	dctx.Lock()
+	delete(dctx.dirCtx, handle)
+	dctx.Unlock()
+}
+
 // Dir defines the structure of a directory
 type Dir struct {
 	super  *Super
 	info   *proto.InodeInfo
 	dcache *DentryCache
+	dctx   *DirContexts
 }
 
 // Functions that Dir needs to implement
@@ -60,6 +111,7 @@ func NewDir(s *Super, i *proto.InodeInfo) fs.Node {
 	return &Dir{
 		super: s,
 		info:  i,
+		dctx:  NewDirContexts(),
 	}
 }
 
@@ -73,6 +125,11 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	}
 	fillAttr(info, a)
 	log.LogDebugf("TRACE Attr: inode(%v)", info)
+	return nil
+}
+
+func (d *Dir) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error) {
+	d.dctx.Remove(req.Handle)
 	return nil
 }
 
@@ -93,7 +150,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	}
 
 	d.super.ic.Put(info)
-	child := NewFile(d.super, info)
+	child := NewFile(d.super, info, d.info.Inode)
 	d.super.ec.OpenStream(info.Inode)
 
 	d.super.fslock.Lock()
@@ -213,7 +270,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	if err != nil {
 		log.LogErrorf("Lookup: parent(%v) name(%v) ino(%v) err(%v)", d.info.Inode, req.Name, ino, err)
 		dummyInodeInfo := &proto.InodeInfo{Inode: ino}
-		dummyChild := NewFile(d.super, dummyInodeInfo)
+		dummyChild := NewFile(d.super, dummyInodeInfo, d.info.Inode)
 		return dummyChild, nil
 	}
 	mode := proto.OsMode(info.Mode)
@@ -224,7 +281,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		if mode.IsDir() {
 			child = NewDir(d.super, info)
 		} else {
-			child = NewFile(d.super, info)
+			child = NewFile(d.super, info, d.info.Inode)
 		}
 		d.super.nodeCache[ino] = child
 	}
@@ -232,6 +289,63 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 
 	resp.EntryValid = LookupValidDuration
 	return child, nil
+}
+
+func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) ([]fuse.Dirent, error) {
+	var err error
+	var limit uint64 = DefaultReaddirLimit
+	start := time.Now()
+
+	dirCtx := d.dctx.GetCopy(req.Handle)
+	children, err := d.super.mw.ReadDirLimit_ll(d.info.Inode, dirCtx.Name, limit)
+	if err != nil {
+		log.LogErrorf("readdirlimit: Readdir: ino(%v) err(%v)", d.info.Inode, err)
+		return make([]fuse.Dirent, 0), ParseError(err)
+	}
+
+	// skip the first one, which is already accessed
+	childrenNr := uint64(len(children))
+	if childrenNr == 0 || (dirCtx.Name != "" && childrenNr == 1) {
+		return make([]fuse.Dirent, 0), io.EOF
+	} else if childrenNr < limit {
+		err = io.EOF
+	}
+	if dirCtx.Name != "" {
+		children = children[1:]
+	}
+
+	/* update dirCtx */
+	dirCtx.Name = children[len(children)-1].Name
+	d.dctx.Put(req.Handle, &dirCtx)
+
+	inodes := make([]uint64, 0, len(children))
+	dirents := make([]fuse.Dirent, 0, len(children))
+
+	dcache := d.dcache
+	if !d.super.disableDcache {
+		dcache = NewDentryCache()
+		d.dcache = dcache
+	}
+
+	for _, child := range children {
+		dentry := fuse.Dirent{
+			Inode: child.Inode,
+			Type:  ParseType(child.Type),
+			Name:  child.Name,
+		}
+		inodes = append(inodes, child.Inode)
+		dirents = append(dirents, dentry)
+		dcache.Put(child.Name, child.Inode)
+	}
+
+	infos := d.super.mw.BatchInodeGet(inodes)
+	for _, info := range infos {
+		d.super.ic.Put(info)
+	}
+
+	elapsed := time.Since(start)
+	log.LogDebugf("TRACE ReadDir: ino(%v) (%v)ns", d.info.Inode, elapsed.Nanoseconds())
+	return dirents, err
 }
 
 // ReadDirAll gets all the dentries in a directory and puts them into the cache.
@@ -356,7 +470,7 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 	}
 
 	d.super.ic.Put(info)
-	child := NewFile(d.super, info)
+	child := NewFile(d.super, info, d.info.Inode)
 
 	d.super.fslock.Lock()
 	d.super.nodeCache[info.Inode] = child
@@ -385,7 +499,7 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 	}
 
 	d.super.ic.Put(info)
-	child := NewFile(d.super, info)
+	child := NewFile(d.super, info, d.info.Inode)
 
 	d.super.fslock.Lock()
 	d.super.nodeCache[info.Inode] = child
@@ -430,7 +544,7 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 	d.super.fslock.Lock()
 	newFile, ok := d.super.nodeCache[info.Inode]
 	if !ok {
-		newFile = NewFile(d.super, info)
+		newFile = NewFile(d.super, info, d.info.Inode)
 		d.super.nodeCache[info.Inode] = newFile
 	}
 	d.super.fslock.Unlock()
@@ -442,7 +556,59 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 
 // Getxattr has not been implemented yet.
 func (d *Dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fuse.GetxattrResponse) error {
-	return fuse.ENOSYS
+	if !d.super.enableXattr {
+		return fuse.ENOSYS
+	}
+	ino := d.info.Inode
+	name := req.Name
+	size := req.Size
+	pos := req.Position
+
+	var value []byte
+	var info *proto.XAttrInfo
+	var err error
+
+	if name == proto.SummaryKey {
+
+		var summaryInfo proto.SummaryInfo
+		cacheSummaryInfo := d.super.sc.Get(ino)
+		if cacheSummaryInfo != nil {
+			summaryInfo = *cacheSummaryInfo
+		} else {
+			summaryInfo, err = d.super.mw.GetSummary_ll(ino, name, 10)
+			if err != nil {
+				log.LogErrorf("GetXattr: ino(%v) name(%v) err(%v)", ino, name, err)
+				return ParseError(err)
+			}
+			d.super.sc.Put(ino, &summaryInfo)
+		}
+
+		files := summaryInfo.Files
+		subdirs := summaryInfo.Subdirs
+		fbytes := summaryInfo.Fbytes
+		summaryStr := "Files:" + strconv.FormatInt(int64(files), 10) + "," +
+			"Dirs:" + strconv.FormatInt(int64(subdirs), 10) + "," +
+			"Bytes:" + strconv.FormatInt(int64(fbytes), 10)
+		value = []byte(summaryStr)
+
+	} else {
+		info, err = d.super.mw.XAttrGet_ll(ino, name)
+		if err != nil {
+			log.LogErrorf("GetXattr: ino(%v) name(%v) err(%v)", ino, name, err)
+			return ParseError(err)
+		}
+		value = info.Get(name)
+	}
+
+	if pos > 0 {
+		value = value[pos:]
+	}
+	if size > 0 && size < uint32(len(value)) {
+		value = value[:size]
+	}
+	resp.Xattr = value
+	log.LogDebugf("TRACE GetXattr: ino(%v) name(%v)", ino, name)
+	return nil
 }
 
 // Listxattr has not been implemented yet.

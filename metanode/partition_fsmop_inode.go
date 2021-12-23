@@ -17,6 +17,7 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"time"
 
@@ -242,10 +243,14 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode) (status uint8) {
 		discardExtentKey = eks[1:]
 	}
 	delExtents, status := ino2.AppendExtentWithCheck(eks[0], ino.ModifyTime, discardExtentKey)
-	if status == proto.OpOk {
+	if status == proto.OpOk && delExtents != nil && len(delExtents) > 0 {
 		mp.extDelCh <- delExtents
 	}
-	log.LogInfof("fsmAppendExtentWithCheck inode(%v) ek(%v) deleteExtents(%v) discardExtents(%v) status(%v)", ino2.Inode, eks[0], delExtents, discardExtentKey, status)
+	msg := fmt.Sprintf("fsmAppendExtentWithCheck inode(%v) ek(%v) server deleteExtents(%v) request discardExtents(%v) status(%v)", ino2.Inode, eks[0], delExtents, discardExtentKey, status)
+	if status != proto.OpOk {
+		log.LogError(msg)
+	}
+	log.LogInfo(msg)
 	return
 }
 

@@ -28,9 +28,9 @@ const (
 
 func newZoneCmd(client *sdk.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:     cmdZoneUse,
-		Short:   cmdZoneShort,
-		Args:    cobra.MinimumNArgs(0),
+		Use:   cmdZoneUse,
+		Short: cmdZoneShort,
+		Args:  cobra.MinimumNArgs(0),
 	}
 	cmd.AddCommand(
 		newZoneListCmd(client),
@@ -71,11 +71,10 @@ func newZoneListCmd(client *sdk.MasterClient) *cobra.Command {
 	return cmd
 }
 
-
 func newZoneInfoCmd(client *sdk.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:     CliOpInfo + " [NAME]",
-		Short:   cmdZoneInfoShort,
+		Use:   CliOpInfo + " [NAME]",
+		Short: cmdZoneInfoShort,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var topo *proto.TopologyView

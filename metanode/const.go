@@ -58,9 +58,13 @@ type (
 	// MetaNode -> Client updateDentry response
 	UpdateDentryResp = proto.UpdateDentryResponse
 	// Client -> MetaNode read dir request
-	ReadDirReq = proto.ReadDirRequest
+	ReadDirReq      = proto.ReadDirRequest
+	ReadDirOnlyReq  = proto.ReadDirOnlyRequest
+	ReadDirLimitReq = proto.ReadDirLimitRequest
 	// MetaNode -> Client read dir response
-	ReadDirResp = proto.ReadDirResponse
+	ReadDirResp      = proto.ReadDirResponse
+	ReadDirOnlyResp  = proto.ReadDirOnlyResponse
+	ReadDirLimitResp = proto.ReadDirLimitResponse
 	// MetaNode -> Client lookup
 	LookupReq = proto.LookupRequest
 	// Client -> MetaNode lookup
@@ -119,6 +123,8 @@ const (
 	opFSMEvictInodeBatch
 
 	opFSMExtentsAddWithCheck
+
+	opFSMUpdateSummaryInfo
 )
 
 var (
@@ -150,6 +156,7 @@ const (
 	cfgTotalMem          = "totalMem"
 	cfgZoneName          = "zoneName"
 	cfgTickInterval      = "tickInterval"
+	cfgRaftRecvBufSize   = "raftRecvBufSize"
 	cfgSmuxPortShift     = "smuxPortShift"     //int
 	cfgSmuxMaxConn       = "smuxMaxConn"       //int
 	cfgSmuxStreamPerConn = "smuxStreamPerConn" //int

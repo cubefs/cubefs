@@ -485,6 +485,53 @@ func (mw *MetaWrapper) readdir(mp *MetaPartition, parentID uint64) (status int, 
 	return statusOK, resp.Children, nil
 }
 
+// read limit dentries start from
+func (mw *MetaWrapper) readdirlimit(mp *MetaPartition, parentID uint64, from string, limit uint64) (status int, children []proto.Dentry, err error) {
+	req := &proto.ReadDirLimitRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		ParentID:    parentID,
+		Marker:      from,
+		Limit:       limit,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaReadDirLimit
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("readdirlimit: req(%v) err(%v)", *req, err)
+		return
+	}
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("readdirlimit: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		children = make([]proto.Dentry, 0)
+		log.LogErrorf("readdirlimit: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	resp := new(proto.ReadDirLimitResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogErrorf("readdirlimit: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
+		return
+	}
+	log.LogDebugf("readdirlimit: packet(%v) mp(%v) req(%v)", packet, mp, *req)
+	return statusOK, resp.Children, nil
+}
+
 func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent proto.ExtentKey, discard []proto.ExtentKey) (status int, err error) {
 	req := &proto.AppendExtentKeyWithCheckRequest{
 		VolName:        mw.volname,
@@ -1206,4 +1253,92 @@ func (mw *MetaWrapper) batchGetXAttr(mp *MetaPartition, inodes []uint64, keys []
 	}
 
 	return resp.XAttrs, nil
+}
+
+func (mw *MetaWrapper) updateSummaryInfo(mp *MetaPartition, inode uint64, filesInc int64, dirsInc int64, bytesInc int64) error {
+	var err error
+	req := &proto.UpdateSummaryInfoRequest{
+		VolName:     mw.volname,
+		PartitionId: mp.PartitionID,
+		Inode:       inode,
+		Key:         proto.SummaryKey,
+		FileInc:     filesInc,
+		DirInc:      dirsInc,
+		ByteInc:     bytesInc,
+	}
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaUpdateSummaryInfo
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("updateSummaryInfo: matshal packet fail, err(%v)", err)
+		return err
+	}
+	log.LogDebugf("updateSummaryInfo: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("updateSummaryInfo: send to partition fail, packet(%v) mp(%v) req(%v) err(%v)",
+			packet, mp, *req, err)
+		return err
+	}
+
+	status := parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogErrorf("updateSummaryInfo: received fail status, packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return err
+	}
+
+	log.LogDebugf("updateSummaryInfo: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+
+	return nil
+}
+
+func (mw *MetaWrapper) readdironly(mp *MetaPartition, parentID uint64) (status int, children []proto.Dentry, err error) {
+	req := &proto.ReadDirOnlyRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		ParentID:    parentID,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaReadDirOnly
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("readdironly: req(%v) err(%v)", *req, err)
+		return
+	}
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("readdironly: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		children = make([]proto.Dentry, 0)
+		log.LogErrorf("readdironly: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	resp := new(proto.ReadDirOnlyResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogErrorf("readdironly: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
+		return
+	}
+	log.LogDebugf("readdironly: packet(%v) mp(%v) req(%v)", packet, mp, *req)
+	return statusOK, resp.Children, nil
 }

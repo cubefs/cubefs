@@ -48,19 +48,36 @@ var (
 )
 
 // NewStreamConn returns a new stream connection.
-func NewStreamConn(dp *wrapper.DataPartition, follower bool) *StreamConn {
+func NewStreamConn(dp *wrapper.DataPartition, follower bool) (sc *StreamConn) {
 	if !follower {
-		return &StreamConn{
+		sc = &StreamConn{
 			dp:       dp,
 			currAddr: dp.LeaderAddr,
 		}
+		return
 	}
 
+	defer func() {
+		if sc.currAddr == "" {
+			/*
+			 * If followerRead is enabled, and there is no preferred choice,
+			 * currAddr can be arbitrarily selected from the hosts.
+			 */
+			for _, h := range dp.Hosts {
+				if h != "" {
+					sc.currAddr = h
+					break
+				}
+			}
+		}
+	}()
+
 	if dp.ClientWrapper.NearRead() {
-		return &StreamConn{
+		sc = &StreamConn{
 			dp:       dp,
 			currAddr: getNearestHost(dp),
 		}
+		return
 	}
 
 	epoch := atomic.AddUint64(&dp.Epoch, 1)
@@ -72,10 +89,11 @@ func NewStreamConn(dp *wrapper.DataPartition, follower bool) *StreamConn {
 		currAddr = hosts[index]
 	}
 
-	return &StreamConn{
+	sc = &StreamConn{
 		dp:       dp,
 		currAddr: currAddr,
 	}
+	return
 }
 
 // String returns the string format of the stream connection.
@@ -175,6 +193,9 @@ func sortByStatus(dp *wrapper.DataPartition, selectAll bool) (hosts []string) {
 	var dpHosts []string
 	if dp.ClientWrapper.FollowerRead() && dp.ClientWrapper.NearRead() {
 		dpHosts = dp.NearHosts
+		if len(dpHosts) == 0 {
+			dpHosts = dp.Hosts
+		}
 	} else {
 		dpHosts = dp.Hosts
 	}

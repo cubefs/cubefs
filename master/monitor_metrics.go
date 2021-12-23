@@ -15,6 +15,7 @@
 package master
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 
@@ -37,6 +38,7 @@ const (
 	MetricVolTotalGB           = "vol_total_GB"
 	MetricVolUsedGB            = "vol_used_GB"
 	MetricVolUsageGB           = "vol_usage_ratio"
+	MetricVolMetaCount         = "vol_meta_count"
 	MetricDiskError            = "disk_error"
 	MetricDataNodesInactive    = "dataNodes_inactive"
 	MetricMetaNodesInactive    = "metaNodes_inactive"
@@ -56,6 +58,7 @@ type monitorMetrics struct {
 	volTotalSpace      *exporter.GaugeVec
 	volUsedSpace       *exporter.GaugeVec
 	volUsage           *exporter.GaugeVec
+	volMetaCount       *exporter.GaugeVec
 	diskError          *exporter.GaugeVec
 	dataNodesInactive  *exporter.Gauge
 	metaNodesInactive  *exporter.Gauge
@@ -85,6 +88,7 @@ func (mm *monitorMetrics) start() {
 	mm.volTotalSpace = exporter.NewGaugeVec(MetricVolTotalGB, "", []string{"volName"})
 	mm.volUsedSpace = exporter.NewGaugeVec(MetricVolUsedGB, "", []string{"volName"})
 	mm.volUsage = exporter.NewGaugeVec(MetricVolUsageGB, "", []string{"volName"})
+	mm.volMetaCount = exporter.NewGaugeVec(MetricVolMetaCount, "", []string{"volName", "type"})
 	mm.diskError = exporter.NewGaugeVec(MetricDiskError, "", []string{"addr", "path"})
 	mm.dataNodesInactive = exporter.NewGauge(MetricDataNodesInactive)
 	mm.metaNodesInactive = exporter.NewGauge(MetricMetaNodesInactive)
@@ -159,11 +163,29 @@ func (mm *monitorMetrics) setVolMetrics() {
 		if e == nil {
 			mm.volUsage.SetWithLabelValues(usedRatio, volName)
 		}
+		if usedRatio > volWarnUsedRatio {
+			WarnBySpecialKey("vol size used too high", fmt.Sprintf("vol: %v(total: %v, used: %v) has used(%v) to be full", volName, volStatInfo.TotalSize, volStatInfo.UsedRatio, volStatInfo.UsedSize))
+		}
 
 		return true
 	})
 
-	for volName, _ := range deleteVolNames {
+	for volName, vol := range mm.cluster.allVols() {
+		inodeCount := uint64(0)
+		dentryCount := uint64(0)
+		mpCount := uint64(0)
+		for _, mpv := range vol.getMetaPartitionsView() {
+			inodeCount += mpv.InodeCount
+			dentryCount += mpv.DentryCount
+			mpCount += 1
+		}
+		mm.volMetaCount.SetWithLabelValues(float64(inodeCount), volName, "inode")
+		mm.volMetaCount.SetWithLabelValues(float64(dentryCount), volName, "dentry")
+		mm.volMetaCount.SetWithLabelValues(float64(mpCount), volName, "mp")
+		mm.volMetaCount.SetWithLabelValues(float64(vol.getDataPartitionsCount()), volName, "dp")
+	}
+
+	for volName := range deleteVolNames {
 		mm.deleteVolMetric(volName)
 	}
 }
@@ -172,6 +194,10 @@ func (mm *monitorMetrics) deleteVolMetric(volName string) {
 	mm.volTotalSpace.DeleteLabelValues(volName)
 	mm.volUsedSpace.DeleteLabelValues(volName)
 	mm.volUsage.DeleteLabelValues(volName)
+	mm.volMetaCount.DeleteLabelValues(volName, "inode")
+	mm.volMetaCount.DeleteLabelValues(volName, "dentry")
+	mm.volMetaCount.DeleteLabelValues(volName, "mp")
+	mm.volMetaCount.DeleteLabelValues(volName, "dp")
 }
 
 func (mm *monitorMetrics) setDiskErrorMetric() {

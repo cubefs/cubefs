@@ -32,8 +32,9 @@ import (
 
 // File defines the structure of a file.
 type File struct {
-	super *Super
-	info  *proto.InodeInfo
+	super     *Super
+	info      *proto.InodeInfo
+	parentIno uint64
 	sync.RWMutex
 }
 
@@ -57,8 +58,8 @@ var (
 )
 
 // NewFile returns a new file.
-func NewFile(s *Super, i *proto.InodeInfo) fs.Node {
-	return &File{super: s, info: i}
+func NewFile(s *Super, i *proto.InodeInfo, parentIno uint64) fs.Node {
+	return &File{super: s, info: i, parentIno: parentIno}
 }
 
 // Attr sets the attributes of a file.
@@ -145,7 +146,7 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 	err = f.super.ec.CloseStream(ino)
 	if err != nil {
 		log.LogErrorf("Release: close writer failed, ino(%v) req(%v) err(%v)", ino, req, err)
-		return fuse.EIO
+		return ParseError(err)
 	}
 
 	f.super.ic.Delete(ino)
@@ -169,7 +170,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	if err != nil && err != io.EOF {
 		msg := fmt.Sprintf("Read: ino(%v) req(%v) err(%v) size(%v)", f.info.Inode, req, err, size)
 		f.super.handleError("Read", msg)
-		return fuse.EIO
+		return ParseError(err)
 	}
 
 	if size > req.Size {
@@ -200,7 +201,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 
 	if req.Offset > int64(filesize) && reqlen == 1 && req.Data[0] == 0 {
 		// workaround: posix_fallocate would write 1 byte if fallocate is not supported.
-		err = f.super.ec.Truncate(ino, int(req.Offset)+reqlen)
+		err = f.super.ec.Truncate(f.super.mw, f.parentIno, ino, int(req.Offset)+reqlen)
 		if err == nil {
 			resp.Size = reqlen
 		}
@@ -234,11 +235,12 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: f.super.volname})
 	}()
 
+	f.super.ec.GetStreamer(ino).SetParentInode(f.parentIno)
 	size, err := f.super.ec.Write(ino, int(req.Offset), req.Data, flags)
 	if err != nil {
 		msg := fmt.Sprintf("Write: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
 		f.super.handleError("Write", msg)
-		return fuse.EIO
+		return ParseError(err)
 	}
 
 	resp.Size = size
@@ -250,7 +252,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		if err = f.super.ec.Flush(ino); err != nil {
 			msg := fmt.Sprintf("Write: failed to wait for flush, ino(%v) offset(%v) len(%v) err(%v) req(%v)", ino, req.Offset, reqlen, err, req)
 			f.super.handleError("Wrtie", msg)
-			return fuse.EIO
+			return ParseError(err)
 		}
 	}
 
@@ -277,7 +279,7 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	if err != nil {
 		msg := fmt.Sprintf("Flush: ino(%v) err(%v)", f.info.Inode, err)
 		f.super.handleError("Flush", msg)
-		return fuse.EIO
+		return ParseError(err)
 	}
 	f.super.ic.Delete(f.info.Inode)
 	elapsed := time.Since(start)
@@ -293,7 +295,7 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 	if err != nil {
 		msg := fmt.Sprintf("Fsync: ino(%v) err(%v)", f.info.Inode, err)
 		f.super.handleError("Fsync", msg)
-		return fuse.EIO
+		return ParseError(err)
 	}
 	f.super.ic.Delete(f.info.Inode)
 	elapsed := time.Since(start)
@@ -310,7 +312,7 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 			log.LogErrorf("Setattr: truncate wait for flush ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
 		}
-		if err := f.super.ec.Truncate(ino, int(req.Size)); err != nil {
+		if err := f.super.ec.Truncate(f.super.mw, f.parentIno, ino, int(req.Size)); err != nil {
 			log.LogErrorf("Setattr: truncate ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
 		}

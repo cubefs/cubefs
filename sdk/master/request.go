@@ -14,6 +14,12 @@
 
 package master
 
+import (
+	"fmt"
+
+	"github.com/chubaofs/chubaofs/proto"
+)
+
 type request struct {
 	method string
 	path   string
@@ -21,6 +27,10 @@ type request struct {
 	header map[string]string
 	body   []byte
 }
+
+var (
+	ReqHeaderUA = fmt.Sprintf("chubaofs-sdk/%v (commit %v)", proto.Version, proto.CommitID)
+)
 
 func (r *request) addParam(key, value string) {
 	r.params[key] = value
@@ -35,10 +45,14 @@ func (r *request) addBody(body []byte) {
 }
 
 func newAPIRequest(method string, path string) *request {
-	return &request{
+	req := &request{
 		method: method,
 		path:   path,
 		params: make(map[string]string),
 		header: make(map[string]string),
 	}
+
+	req.header["User-Agent"] = ReqHeaderUA
+
+	return req
 }

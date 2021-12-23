@@ -44,12 +44,12 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdDataPartitionGetShort              = "Display detail information of a data partition"
-	cmdCheckCorruptDataPartitionShort     = "Check and list unhealthy data partitions"
-	cmdDataPartitionDecommissionShort     = "Decommission a replication of the data partition to a new address"
-	cmdDataPartitionReplicateShort        = "Add a replication of the data partition on a new address"
-	cmdDataPartitionDeleteReplicaShort    = "Delete a replication of the data partition on a fixed address"
-	)
+	cmdDataPartitionGetShort           = "Display detail information of a data partition"
+	cmdCheckCorruptDataPartitionShort  = "Check and list unhealthy data partitions"
+	cmdDataPartitionDecommissionShort  = "Decommission a replication of the data partition to a new address"
+	cmdDataPartitionReplicateShort     = "Add a replication of the data partition on a new address"
+	cmdDataPartitionDeleteReplicaShort = "Delete a replication of the data partition on a fixed address"
+)
 
 func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
@@ -91,9 +91,9 @@ you can use the "reset" command to fix the problem.The "reset" command may lead 
 The "reset" command will be released in next version`,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				diagnosis     *proto.DataPartitionDiagnosis
-				dataNodes     []*proto.DataNodeInfo
-				err           error
+				diagnosis *proto.DataPartitionDiagnosis
+				dataNodes []*proto.DataNodeInfo
+				err       error
 			)
 			defer func() {
 				if err != nil {
@@ -149,7 +149,6 @@ The "reset" command will be released in next version`,
 					stdout("%v\n", formatDataPartitionInfoRow(partition))
 				}
 			}
-
 
 			stdout("\n")
 			stdout("%v\n", "[Bad data partitions(decommission not completed)]:")

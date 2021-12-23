@@ -35,20 +35,21 @@ import (
 
 // configuration keys
 const (
-	ClusterName       = "clusterName"
-	ID                = "id"
-	IP                = "ip"
-	Port              = "port"
-	LogLevel          = "logLevel"
-	WalDir            = "walDir"
-	StoreDir          = "storeDir"
-	GroupID           = 1
-	ModuleName        = "master"
-	CfgRetainLogs     = "retainLogs"
-	DefaultRetainLogs = 20000
-	cfgTickInterval   = "tickInterval"
-	cfgElectionTick   = "electionTick"
-	SecretKey         = "masterServiceKey"
+	ClusterName        = "clusterName"
+	ID                 = "id"
+	IP                 = "ip"
+	Port               = "port"
+	LogLevel           = "logLevel"
+	WalDir             = "walDir"
+	StoreDir           = "storeDir"
+	GroupID            = 1
+	ModuleName         = "master"
+	CfgRetainLogs      = "retainLogs"
+	DefaultRetainLogs  = 20000
+	cfgTickInterval    = "tickInterval"
+	cfgRaftRecvBufSize = "raftRecvBufSize"
+	cfgElectionTick    = "electionTick"
+	SecretKey          = "masterServiceKey"
 )
 
 var (
@@ -62,27 +63,28 @@ var (
 
 // Server represents the server in a cluster
 type Server struct {
-	id           uint64
-	clusterName  string
-	ip           string
-	port         string
-	walDir       string
-	storeDir     string
-	retainLogs   uint64
-	tickInterval int
-	electionTick int
-	leaderInfo   *LeaderInfo
-	config       *clusterConfig
-	cluster      *Cluster
-	user         *User
-	rocksDBStore *raftstore.RocksDBStore
-	raftStore    raftstore.RaftStore
-	fsm          *MetadataFsm
-	partition    raftstore.Partition
-	wg           sync.WaitGroup
-	reverseProxy *httputil.ReverseProxy
-	metaReady    bool
-	apiServer    *http.Server
+	id              uint64
+	clusterName     string
+	ip              string
+	port            string
+	walDir          string
+	storeDir        string
+	retainLogs      uint64
+	tickInterval    int
+	raftRecvBufSize int
+	electionTick    int
+	leaderInfo      *LeaderInfo
+	config          *clusterConfig
+	cluster         *Cluster
+	user            *User
+	rocksDBStore    *raftstore.RocksDBStore
+	raftStore       raftstore.RaftStore
+	fsm             *MetadataFsm
+	partition       raftstore.Partition
+	wg              sync.WaitGroup
+	reverseProxy    *httputil.ReverseProxy
+	metaReady       bool
+	apiServer       *http.Server
 }
 
 // NewServer creates a new server
@@ -156,6 +158,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	if m.id, err = strconv.ParseUint(cfg.GetString(ID), 10, 64); err != nil {
 		return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 	}
+	m.config.faultDomain = cfg.GetBoolWithDefault(faultDomain, false)
 	m.config.heartbeatPort = cfg.GetInt64(heartbeatPortKey)
 	m.config.replicaPort = cfg.GetInt64(replicaPortKey)
 	if m.config.heartbeatPort <= 1024 {
@@ -176,6 +179,15 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	}
 	if m.config.nodeSetCapacity < 3 {
 		m.config.nodeSetCapacity = defaultNodeSetCapacity
+	}
+
+	m.config.DomainBuildAsPossible = cfg.GetBoolWithDefault(cfgDomainBuildAsPossible, false)
+	m.config.DomainNodeGrpBatchCnt = defaultNodeSetGrpBatchCnt
+	domainBatchGrpCnt := cfg.GetString(cfgDomainBatchGrpCnt)
+	if domainBatchGrpCnt != "" {
+		if m.config.DomainNodeGrpBatchCnt, err = strconv.Atoi(domainBatchGrpCnt); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
 	}
 
 	metaNodeReservedMemory := cfg.GetString(cfgMetaNodeReservedMem)
@@ -228,6 +240,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 		}
 	}
 	m.tickInterval = int(cfg.GetFloat(cfgTickInterval))
+	m.raftRecvBufSize = int(cfg.GetInt(cfgRaftRecvBufSize))
 	m.electionTick = int(cfg.GetFloat(cfgElectionTick))
 	if m.tickInterval <= 300 {
 		m.tickInterval = 500
@@ -247,6 +260,7 @@ func (m *Server) createRaftServer() (err error) {
 		ReplicaPort:       int(m.config.replicaPort),
 		TickInterval:      m.tickInterval,
 		ElectionTick:      m.electionTick,
+		RecvBufSize:       m.raftRecvBufSize,
 	}
 	if m.raftStore, err = raftstore.NewRaftStore(raftCfg); err != nil {
 		return errors.Trace(err, "NewRaftStore failed! id[%v] walPath[%v]", m.id, m.walDir)
@@ -271,6 +285,7 @@ func (m *Server) initFsm() {
 
 	// register the handlers for the interfaces defined in the Raft library
 	m.fsm.registerApplySnapshotHandler(m.handleApplySnapshot)
+	m.fsm.registerRaftUserCmdApplyHandler(m.handleRaftUserCmd)
 	m.fsm.restore()
 }
 

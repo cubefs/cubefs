@@ -138,11 +138,6 @@ build_lz4() {
 
 
 build_snappy() {
-    found=$(find ${GCC_LIBRARY_PATH}  -name libsnappy.a -o -name libsnappy.so 2>/dev/null | wc -l)
-    if [ ${found} -gt 0 ] ; then
-        cgo_ldflags="${cgo_ldflags} -lsnappy"
-        return
-    fi
     SnappySrcPath=${VendorPath}/snappy-1.1.7
     SnappyBuildPath=${BuildOutPath}/snappy
     found=$(find ${SnappyBuildPath} -name libsnappy.a 2>/dev/null | wc -l)
@@ -162,11 +157,6 @@ build_snappy() {
 }
 
 build_rocksdb() {
-    found=$(find ${GCC_LIBRARY_PATH} -name librocksdb.a -o -name librocksdb.so 2>/dev/null | wc -l)
-    if [ ${found} -gt 0 ] ; then
-        cgo_ldflags="${cgo_ldflags} -lrocksdb"
-        return
-    fi
     RocksdbSrcPath=${VendorPath}/rocksdb-5.9.2
     RocksdbBuildPath=${BuildOutPath}/rocksdb
     found=$(find ${RocksdbBuildPath} -name librocksdb.a 2>/dev/null | wc -l)
@@ -287,6 +277,14 @@ build_cli() {
     popd >/dev/null
 }
 
+build_fsck() {
+    pre_build
+    pushd $SrcPath >/dev/null
+    echo -n "build cfs-fsck      "
+    go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-fsck ${SrcPath}/fsck/*.go  && echo "success" || echo "failed"
+    popd >/dev/null
+}
+
 build_libsdk() {
     pre_build_server
     case `uname` in
@@ -348,6 +346,9 @@ case "$cmd" in
         ;;
     "cli")
         build_cli
+        ;;
+    "fsck")
+        build_fsck
         ;;
     "libsdk")
         build_libsdk

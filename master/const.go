@@ -43,6 +43,7 @@ const (
 	keywordsKey             = "keywords"
 	zoneNameKey             = "zoneName"
 	crossZoneKey            = "crossZone"
+	defaultPriority         = "defaultPriority"
 	userKey                 = "user"
 	nodeHostsKey            = "hosts"
 	nodeDeleteBatchCountKey = "batchCount"
@@ -52,6 +53,12 @@ const (
 	descriptionKey          = "description"
 	dpSelectorNameKey       = "dpSelectorName"
 	dpSelectorParmKey       = "dpSelectorParm"
+	nodeTypeKey             = "nodeType"
+	ratio                   = "ratio"
+	rdOnlyKey               = "rdOnly"
+	srcAddrKey              = "srcAddr"
+	targetAddrKey           = "targetAddr"
+	forceKey                = "force"
 )
 
 const (
@@ -73,6 +80,7 @@ const (
 )
 
 const (
+	defaultFaultDomainZoneCnt                    = 3
 	defaultInitMetaPartitionCount                = 3
 	defaultMaxInitMetaPartitionCount             = 100
 	defaultMaxMetaPartitionInodeID        uint64 = 1<<63 - 1
@@ -93,13 +101,19 @@ const (
 	retrySendSyncTaskInternal                    = 3 * time.Second
 	defaultRangeOfCountDifferencesAllowed        = 50
 	defaultMinusOfMaxInodeID                     = 1000
+	defaultNodeSetGrpBatchCnt                    = 3
+	defaultMigrateDpCnt                          = 50
+	defaultMigrateMpCnt                          = 15
 )
 
 const (
-	normal          uint8 = 0
-	markDelete      uint8 = 1
-	normalZone            = 0
-	unavailableZone       = 1
+	normal               uint8 = 0
+	markDelete           uint8 = 1
+	normalZone                 = 0
+	unavailableZone            = 1
+	unavaliable                = 1
+	metaNodesUnavaliable       = 2
+	dataNodesUnavaliable       = 3
 )
 
 const (
@@ -133,6 +147,9 @@ const (
 	opSyncAddVolUser           uint32 = 0x1C
 	opSyncDeleteVolUser        uint32 = 0x1D
 	opSyncUpdateVolUser        uint32 = 0x1E
+	opSyncNodeSetGrp           uint32 = 0x1F
+	opSyncDataPartitionsView   uint32 = 0x20
+	opSyncExclueDomain         uint32 = 0x23
 )
 
 const (
@@ -145,6 +162,8 @@ const (
 	volAcronym            = "vol"
 	clusterAcronym        = "c"
 	nodeSetAcronym        = "s"
+	nodeSetGrpAcronym     = "g"
+	domainAcronym         = "zoneDomain"
 	maxDataPartitionIDKey = keySeparator + "max_dp_id"
 	maxMetaPartitionIDKey = keySeparator + "max_mp_id"
 	maxCommonIDKey        = keySeparator + "max_common_id"
@@ -155,11 +174,15 @@ const (
 	metaPartitionPrefix   = keySeparator + metaPartitionAcronym + keySeparator
 	clusterPrefix         = keySeparator + clusterAcronym + keySeparator
 	nodeSetPrefix         = keySeparator + nodeSetAcronym + keySeparator
-
-	akAcronym      = "ak"
-	userAcronym    = "user"
-	volUserAcronym = "voluser"
-	akPrefix       = keySeparator + akAcronym + keySeparator
-	userPrefix     = keySeparator + userAcronym + keySeparator
-	volUserPrefix  = keySeparator + volUserAcronym + keySeparator
+	nodeSetGrpPrefix      = keySeparator + nodeSetGrpAcronym + keySeparator
+	DomainPrefix          = keySeparator + domainAcronym + keySeparator
+	akAcronym             = "ak"
+	userAcronym           = "user"
+	volUserAcronym        = "voluser"
+	volNameAcronym        = "volname"
+	akPrefix              = keySeparator + akAcronym + keySeparator
+	userPrefix            = keySeparator + userAcronym + keySeparator
+	volUserPrefix         = keySeparator + volUserAcronym + keySeparator
+	volWarnUsedRatio      = 0.9
+	volCachePrefix        = keySeparator + volNameAcronym + keySeparator
 )

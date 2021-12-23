@@ -16,10 +16,11 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
 	"sort"
 	"sync"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const (
@@ -117,14 +118,20 @@ type GetCarryNodes func(maxTotal uint64, excludeHosts []string, nodes *sync.Map)
 func getAllCarryMetaNodes(maxTotal uint64, excludeHosts []string, metaNodes *sync.Map) (nodes SortedWeightedNodes, availCount int) {
 	nodes = make(SortedWeightedNodes, 0)
 	metaNodes.Range(func(key, value interface{}) bool {
+		log.LogInfof("[getAllCarryMetaNodes] getAllCarryMetaNodes [%v] ", key)
 		metaNode := value.(*MetaNode)
-		if contains(excludeHosts, metaNode.Addr) == true {
+		if contains(excludeHosts, metaNode.Addr) {
+			log.LogInfof("[getAllCarryMetaNodes] metaNode [%v] is excludeHosts", metaNode.Addr)
 			return true
 		}
-		if metaNode.isWritable() == false {
+
+		if !metaNode.isWritable() {
+			log.LogInfof("[getAllCarryMetaNodes] metaNode [%v] is not writeable", metaNode.Addr)
 			return true
 		}
-		if metaNode.isCarryNode() == true {
+
+		if metaNode.isCarryNode() {
+			log.LogInfof("[getAllCarryMetaNodes] metaNode [%v] is CarryNode", metaNode.Addr)
 			availCount++
 		}
 		nt := new(weightedNode)
@@ -136,7 +143,6 @@ func getAllCarryMetaNodes(maxTotal uint64, excludeHosts []string, metaNodes *syn
 		}
 		nt.Ptr = metaNode
 		nodes = append(nodes, nt)
-
 		return true
 	})
 
@@ -147,15 +153,19 @@ func getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []string, dataNodes 
 	nodeTabs = make(SortedWeightedNodes, 0)
 	dataNodes.Range(func(key, value interface{}) bool {
 		dataNode := value.(*DataNode)
-		if contains(excludeHosts, dataNode.Addr) == true {
+		if contains(excludeHosts, dataNode.Addr) {
+			log.LogInfof("[getAvailCarryDataNodeTab] dataNode [%v] is excludeHosts", dataNode.Addr)
 			log.LogDebugf("contains return")
 			return true
 		}
-		if dataNode.isWriteAble() == false {
+
+		if !dataNode.isWriteAble() {
+			log.LogInfof("[getAvailCarryDataNodeTab] dataNode [%v] is not writeable", dataNode.Addr)
 			log.LogDebugf("isWritable return")
 			return true
 		}
-		if dataNode.isAvailCarryNode() == true {
+
+		if dataNode.isAvailCarryNode() {
 			availCount++
 		}
 		nt := new(weightedNode)
@@ -212,7 +222,7 @@ func getAvailHosts(nodes *sync.Map, excludeHosts []string, replicaNum int, selec
 		peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr()}
 		peers = append(peers, peer)
 	}
-
+	log.LogInfof("action[getAvailHosts] peers[%v]", peers)
 	if newHosts, err = reshuffleHosts(orderHosts); err != nil {
 		err = fmt.Errorf("action[getAvailHosts] err:%v  orderHosts is nil", err.Error())
 		return

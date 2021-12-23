@@ -61,6 +61,7 @@ run_ltptest() {
     build
     start_servers
     start_ltptest
+    clean
 }
 
 run() {

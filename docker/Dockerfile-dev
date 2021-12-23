@@ -1,4 +1,4 @@
-FROM chubaofs/cfs-base:1.0
+FROM ghcr.io/chubaofs/cbfs-base:latest
 
 RUN echo "deb http://deb.debian.org/debian stretch-backports main" >> /etc/apt/sources.list \
         && apt-get update

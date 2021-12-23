@@ -18,10 +18,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/samsarahq/thunder/graphql"
-	"github.com/samsarahq/thunder/graphql/introspection"
 	"net/http"
 	"net/http/httputil"
+
+	"github.com/samsarahq/thunder/graphql"
+	"github.com/samsarahq/thunder/graphql/introspection"
 
 	"github.com/gorilla/mux"
 
@@ -51,6 +52,22 @@ func (m *Server) startHTTPService(modulename string, cfg *config.Config) {
 	return
 }
 
+func (m *Server) isFollowerRead(r *http.Request) (followerRead bool) {
+	followerRead = false
+	if r.URL.Path == proto.ClientDataPartitions && !m.partition.IsRaftLeader() {
+		if volName, err := parseAndExtractName(r); err == nil {
+			log.LogInfof("action[interceptor] followerRead vol[%v]", volName)
+			if m.cluster.followerReadManager.IsVolViewReady(volName) {
+				followerRead = true
+				log.LogInfof("action[interceptor] followerRead [%v], GetName[%v] IsRaftLeader[%v]",
+					followerRead, r.URL.Path, m.partition.IsRaftLeader())
+				return
+			}
+		}
+	}
+	return
+}
+
 func (m *Server) registerAPIMiddleware(route *mux.Router) {
 	var interceptor mux.MiddlewareFunc = func(next http.Handler) http.Handler {
 		return http.HandlerFunc(
@@ -60,8 +77,11 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 					next.ServeHTTP(w, r)
 					return
 				}
-				if m.partition.IsRaftLeader() {
-					if m.metaReady {
+
+				isFollowerRead := m.isFollowerRead(r)
+				if m.partition.IsRaftLeader() || isFollowerRead {
+					if m.metaReady || isFollowerRead {
+						log.LogDebugf("action[interceptor] request, method[%v] path[%v] query[%v]", r.Method, r.URL.Path, r.URL.Query())
 						next.ServeHTTP(w, r)
 						return
 					}
@@ -195,7 +215,6 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.ClientDataPartitions).
 		HandlerFunc(m.getDataPartitions)
-
 	// meta node management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AddMetaNode).
@@ -203,6 +222,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.DecommissionMetaNode).
 		HandlerFunc(m.decommissionMetaNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.MigrateMetaNode).
+		HandlerFunc(m.migrateMetaNodeHandler)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetMetaNode).
 		HandlerFunc(m.getMetaNode)
@@ -232,6 +254,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.DecommissionDataNode).
 		HandlerFunc(m.decommissionDataNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.MigrateDataNode).
+		HandlerFunc(m.migrateDataNodeHandler)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetDataNode).
 		HandlerFunc(m.getDataNode)
@@ -244,6 +269,30 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminGetNodeInfo).
 		HandlerFunc(m.getNodeInfoHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGetIsDomainOn).
+		HandlerFunc(m.getIsDomainOn)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGetAllNodeSetGrpInfo).
+		HandlerFunc(m.getAllNodeSetGrpInfoHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGetNodeSetGrpInfo).
+		HandlerFunc(m.getNodeSetGrpInfoHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminUpdateNodeSetCapcity).
+		HandlerFunc(m.updateNodeSetCapacityHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminUpdateNodeSetId).
+		HandlerFunc(m.updateNodeSetIdHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminUpdateDomainDataUseRatio).
+		HandlerFunc(m.updateDataUseRatioHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminUpdateZoneExcludeRatio).
+		HandlerFunc(m.updateZoneExcludeRatioHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetNodeRdOnly).
+		HandlerFunc(m.setNodeRdOnlyHandler)
 
 	// user management APIs
 	router.NewRoute().Methods(http.MethodPost).

@@ -27,6 +27,7 @@ type MetaNodeInfo struct {
 	ID                        uint64
 	Addr                      string
 	IsActive                  bool
+	IsWriteAble               bool
 	ZoneName                  string `json:"Zone"`
 	MaxMemAvailWeight         uint64 `json:"MaxMemAvailWeight"`
 	Total                     uint64 `json:"TotalWeight"`
@@ -39,6 +40,7 @@ type MetaNodeInfo struct {
 	MetaPartitionCount        int
 	NodeSetID                 uint64
 	PersistenceMetaPartitions []uint64
+	RdOnly                    bool
 }
 
 // DataNode stores all the information about a data node
@@ -51,6 +53,7 @@ type DataNodeInfo struct {
 	Addr                      string
 	ReportTime                time.Time
 	IsActive                  bool
+	IsWriteAble               bool
 	UsageRatio                float64 // used / total space
 	SelectedTimes             uint64  // number times that this datanode has been selected as the location for a data partition.
 	Carry                     float64 // carry is a factor used in cacluate the node's weight
@@ -59,6 +62,7 @@ type DataNodeInfo struct {
 	NodeSetID                 uint64
 	PersistenceDataPartitions []uint64
 	BadDisks                  []string
+	RdOnly                    bool
 }
 
 // MetaPartition defines the structure of a meta partition
@@ -149,11 +153,11 @@ type NodeStatInfo struct {
 }
 
 type VolStatInfo struct {
-	Name        string
-	TotalSize   uint64
-	UsedSize    uint64
-	UsedRatio   string
-	EnableToken bool
+	Name       string
+	TotalSize  uint64
+	UsedSize   uint64
+	UsedRatio  string
+	InodeCount uint64
 }
 
 // DataPartition represents the structure of storing the file contents.
@@ -162,6 +166,7 @@ type DataPartitionInfo struct {
 	LastLoadedTime          int64
 	ReplicaNum              uint8
 	Status                  int8
+	Recover                 bool
 	Replicas                []*DataReplica
 	Hosts                   []string // host addresses
 	Peers                   []Peer
@@ -171,6 +176,7 @@ type DataPartitionInfo struct {
 	VolID                   uint64
 	OfflinePeerID           uint64
 	FileInCoreMap           map[string]*FileInCore
+	IsRecover               bool
 	FilesWithMissingReplica map[string]int64 // key: file name, value: last time when a missing replica is found
 }
 

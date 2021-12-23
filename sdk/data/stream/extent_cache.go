@@ -129,8 +129,10 @@ func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) (discardExtents
 	for _, key := range discard {
 		cache.root.Delete(key)
 		if key.PartitionId != 0 && key.ExtentId != 0 && (key.PartitionId != ek.PartitionId || key.ExtentId != ek.ExtentId || ek.ExtentOffset != key.ExtentOffset) {
-			cache.discard.ReplaceOrInsert(key)
-			//log.LogDebugf("ExtentCache Append add to discard: ino(%v) ek(%v) discard(%v)", cache.inode, ek, key)
+			if sync || (ek.PartitionId == 0 && ek.ExtentId == 0) {
+				cache.discard.ReplaceOrInsert(key)
+				//log.LogDebugf("ExtentCache Append add to discard: ino(%v) ek(%v) discard(%v)", cache.inode, ek, key)
+			}
 		}
 	}
 
@@ -150,7 +152,7 @@ func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) (discardExtents
 		cache.size = ekEnd
 	}
 
-	log.LogDebugf("ExtentCache Append: ino(%v) sync(%v) ek(%v) discard(%v)", cache.inode, sync, ek, discard)
+	log.LogDebugf("ExtentCache Append: ino(%v) sync(%v) ek(%v) local discard(%v) discardExtents(%v)", cache.inode, sync, ek, discard, discardExtents)
 	return
 }
 

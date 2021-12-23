@@ -123,7 +123,7 @@ func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*
 	sort.Sort((fileCrcSorter)(fileCrcArr))
 	maxCountFileCrcIndex := len(fileCrcArr) - 1
 	if fileCrcArr[maxCountFileCrcIndex].count == 1 {
-		msg := fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v  File:%v  ExtentOffset diffrent between all Node  "+
+		msg := fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v  File:%v  ExtentOffset different between all Node  "+
 			" it can not repair it ", clusterID, partition.PartitionID, fc.Name)
 		msg += (fileCrcSorter)(fileCrcArr).log()
 		Warn(clusterID, msg)

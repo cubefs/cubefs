@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/sdk/master"
 )
 
 type clientHandler interface {
@@ -10,15 +10,15 @@ type clientHandler interface {
 }
 
 type volumeClient struct {
-	name string
+	name     string
 	capacity uint64
-	opCode MasterOp
-	client *master.MasterClient
+	opCode   MasterOp
+	client   *master.MasterClient
 }
 
-func NewVolumeClient(opCode MasterOp, client *master.MasterClient) (vol *volumeClient){
+func NewVolumeClient(opCode MasterOp, client *master.MasterClient) (vol *volumeClient) {
 	vol = new(volumeClient)
-    vol.opCode = opCode
+	vol.opCode = opCode
 	vol.client = client
 	return
 }

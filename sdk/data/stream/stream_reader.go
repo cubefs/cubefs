@@ -27,8 +27,9 @@ import (
 // One inode corresponds to one streamer. All the requests to the same inode will be queued.
 // TODO rename streamer here is not a good name as it also handles overwrites, not just stream write.
 type Streamer struct {
-	client *ExtentClient
-	inode  uint64
+	client      *ExtentClient
+	inode       uint64
+	parentInode uint64
 
 	status int32
 
@@ -55,12 +56,17 @@ func NewStreamer(client *ExtentClient, inode uint64) *Streamer {
 	s := new(Streamer)
 	s.client = client
 	s.inode = inode
+	s.parentInode = 0
 	s.extents = NewExtentCache(inode)
 	s.request = make(chan interface{}, 64)
 	s.done = make(chan struct{})
 	s.dirtylist = NewDirtyExtentList()
 	go s.server()
 	return s
+}
+
+func (s *Streamer) SetParentInode(inode uint64) {
+	s.parentInode = inode
 }
 
 // String returns the string format of the streamer.

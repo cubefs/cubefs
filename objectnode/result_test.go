@@ -259,18 +259,17 @@ func TestResult_PutXAttrRequest_Unmarshal(t *testing.T) {
 	}
 }
 
-func TestRequest_CompleteMultipartUploadRequest_Marshall(t *testing.T)  {
+func TestRequest_CompleteMultipartUploadRequest_Marshall(t *testing.T) {
 	part1 := &PartRequest{
-		PartNumber:1,
-		ETag:"atsiagsaivxbiz",
-
+		PartNumber: 1,
+		ETag:       "atsiagsaivxbiz",
 	}
 	part2 := &PartRequest{
-		PartNumber:2,
-		ETag:"sadasdas69asdg",
+		PartNumber: 2,
+		ETag:       "sadasdas69asdg",
 	}
 	parts := []*PartRequest{part1, part2}
-	request := CompleteMultipartUploadRequest{Parts:parts}
+	request := CompleteMultipartUploadRequest{Parts: parts}
 	bytes, err := xml.Marshal(request)
 	if err != nil {
 		t.Fatalf("marshal tagging fail: err(%v)", err)
@@ -278,7 +277,7 @@ func TestRequest_CompleteMultipartUploadRequest_Marshall(t *testing.T)  {
 	fmt.Println(string(bytes))
 }
 
-func TestRequest_CompleteMultipartUploadRequest_Unmarshal(t *testing.T)  {
+func TestRequest_CompleteMultipartUploadRequest_Unmarshal(t *testing.T) {
 	data := []byte(`<CompleteMultipartUpload>
 		<Part>
 		<PartNumber>1</PartNumber>

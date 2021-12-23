@@ -63,10 +63,10 @@ func (api *AdminAPI) ListZones() (zoneViews []*proto.ZoneView, err error) {
 	}
 	return
 }
-func (api *AdminAPI) Topo() (topo *proto.TopologyView, err error ){
+func (api *AdminAPI) Topo() (topo *proto.TopologyView, err error) {
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.GetTopologyView)
-	if buf, err = api.mc.serveRequest(request); err != nil{
+	if buf, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	topo = &proto.TopologyView{}
@@ -207,14 +207,13 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 	return
 }
 
-func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas int, followerRead, authenticate, enableToken bool, authKey, zoneName string) (err error) {
+func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas int, followerRead, authenticate bool, authKey, zoneName string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
 	request.addParam("capacity", strconv.FormatUint(capacity, 10))
 	request.addParam("replicaNum", strconv.Itoa(replicas))
 	request.addParam("followerRead", strconv.FormatBool(followerRead))
-	request.addParam("enableToken", strconv.FormatBool(enableToken))
 	request.addParam("authenticate", strconv.FormatBool(authenticate))
 	request.addParam("zoneName", zoneName)
 	if _, err = api.mc.serveRequest(request); err != nil {
@@ -246,7 +245,7 @@ func (api *AdminAPI) VolExpand(volName string, capacity uint64, authKey string) 
 }
 
 func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int,
-	dpSize uint64, capacity uint64, replicas int, followerRead bool, zoneName string) (err error) {
+	dpSize uint64, capacity uint64, replicas int, followerRead bool, zoneName string, crossZone bool) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
@@ -255,6 +254,7 @@ func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int,
 	request.addParam("capacity", strconv.FormatUint(capacity, 10))
 	request.addParam("followerRead", strconv.FormatBool(followerRead))
 	request.addParam("zoneName", zoneName)
+	request.addParam("crossZone", strconv.FormatBool(crossZone))
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
