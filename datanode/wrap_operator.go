@@ -469,7 +469,7 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
 
 	// cache or preload partition not support raft and repair.
-	if partition.partitionType != proto.PartitionTypeNormal {
+	if !partition.isNormalType() {
 		err = raft.ErrStopped
 		return
 	}
@@ -509,7 +509,7 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 	partition := p.Object.(*DataPartition)
 
 	// cache or preload partition not support raft and repair.
-	if partition.partitionType != proto.PartitionTypeNormal {
+	if !partition.isNormalType() {
 		err = raft.ErrStopped
 		return
 	}

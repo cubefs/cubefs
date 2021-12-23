@@ -525,7 +525,7 @@ func (dp *DataPartition) statusUpdate() {
 	if dp.used >= dp.partitionSize {
 		status = proto.ReadOnly
 	}
-	if dp.partitionType == proto.PartitionTypeNormal && dp.extentStore.GetExtentCount() >= storage.MaxExtentCount {
+	if dp.isNormalType() && dp.extentStore.GetExtentCount() >= storage.MaxExtentCount {
 		status = proto.ReadOnly
 	}
 	if dp.Status() == proto.Unavailable {
@@ -896,6 +896,14 @@ func (dp *DataPartition) putRepairConn(conn net.Conn, forceClose bool) {
 	return
 }
 
+func (dp *DataPartition) isCacheType() bool{
+	return dp.partitionType == proto.PartitionTypeCache || dp.partitionType == proto.PartitionTypePreLoad
+}
+
+func (dp *DataPartition) isNormalType() bool{
+	return dp.partitionType == proto.PartitionTypeNormal
+}
+
 type SimpleVolView struct {
 	vv             *proto.SimpleVolView
 	lastUpdateTime time.Time
@@ -992,7 +1000,7 @@ func (dp *DataPartition) doEvict(vv *proto.SimpleVolView) {
 
 	// if dp use age larger than the space high water, do die out.
 	freeSpace = 0
-	if dp.Used()*100/dp.Size() > vv.CacheHighWater {
+	if dp.Used() * 100 / dp.Size() > vv.CacheHighWater {
 		dieOut = true
 		freeSpace = (vv.CacheHighWater - vv.CacheLowWater) / 100 * dp.Size()
 	}
@@ -1005,6 +1013,9 @@ func (dp *DataPartition) doEvict(vv *proto.SimpleVolView) {
 		dieOut = true
 		freeExtentCount = (vv.CacheHighWater - vv.CacheLowWater) / 100 * maxExtentCount
 	}
+
+	log.LogDebugf("doEvict, vol %v, useAge %v, extents %v, dieOut %v",
+		vv, dp.Used() * 100 / dp.Size(), len(extInfos), dieOut)
 
 	if dieOut == false {
 		return
@@ -1032,8 +1043,7 @@ func (dp *DataPartition) doEvict(vv *proto.SimpleVolView) {
 
 func (dp *DataPartition) startEvict() {
 	// only cache or preload dp can't do evict.
-	if dp.partitionType != proto.PartitionTypeCache &&
-		dp.partitionType != proto.PartitionTypePreLoad {
+	if !dp.isCacheType() {
 		return
 	}
 
@@ -1049,8 +1059,7 @@ func (dp *DataPartition) startEvict() {
 			}
 
 			// check volume type and dp type.
-			if vv.VolType != proto.VolumeTypeCold ||
-				(dp.partitionType != proto.PartitionTypeCache && dp.partitionType != proto.PartitionTypePreLoad) {
+			if vv.VolType != proto.VolumeTypeCold || !dp.isCacheType() {
 				log.LogErrorf("action[startEvict] cannot startEvict vol(%v) dp(%v).", vv, dp.partitionID)
 				timer.Stop()
 				return

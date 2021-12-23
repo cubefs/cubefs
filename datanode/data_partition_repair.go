@@ -78,7 +78,7 @@ func NewDataPartitionRepairTask(extentFiles []*storage.ExtentInfo, tinyDeleteRec
 func (dp *DataPartition) repair(extentType uint8) {
 
 	// cache or preload partition not support raft and repair.
-	if dp.partitionType != proto.PartitionTypeNormal {
+	if !dp.isNormalType() {
 		return
 	}
 

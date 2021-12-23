@@ -75,7 +75,7 @@ func (dp *DataPartition) raftPort() (heartbeat, replica int, err error) {
 func (dp *DataPartition) StartRaft() (err error) {
 
 	// cache or preload partition not support raft and repair.
-	if dp.partitionType != proto.PartitionTypeNormal {
+	if !dp.isNormalType() {
 		return nil
 	}
 
@@ -131,7 +131,7 @@ func (dp *DataPartition) raftStopped() bool {
 func (dp *DataPartition) stopRaft() {
 	if atomic.CompareAndSwapInt32(&dp.raftStatus, RaftStatusRunning, RaftStatusStopped) {
 		// cache or preload partition not support raft and repair.
-		if dp.partitionType != proto.PartitionTypeNormal {
+		if !dp.isNormalType() {
 			return
 		}
 		log.LogErrorf("[FATAL] stop raft partition(%v)", dp.partitionID)
@@ -143,7 +143,7 @@ func (dp *DataPartition) stopRaft() {
 func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer) error {
 
 	// cache or preload partition not support raft and repair.
-	if dp.partitionType != proto.PartitionTypeNormal {
+	if !dp.isNormalType() {
 		return fmt.Errorf("CanRemoveRaftMember (%v) not support", dp)
 	}
 
@@ -188,7 +188,7 @@ func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer) error {
 func (dp *DataPartition) StartRaftLoggingSchedule() {
 
 	// cache or preload partition not support raft and repair.
-	if dp.partitionType != proto.PartitionTypeNormal {
+	if !dp.isNormalType() {
 		return
 	}
 
@@ -247,7 +247,7 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 func (dp *DataPartition) StartRaftAfterRepair() {
 
 	// cache or preload partition not support raft and repair.
-	if dp.partitionType != proto.PartitionTypeNormal {
+	if !dp.isNormalType() {
 		return
 	}
 
@@ -329,7 +329,7 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 func (dp *DataPartition) addRaftNode(req *proto.AddDataPartitionRaftMemberRequest, index uint64) (isUpdated bool, err error) {
 
 	// cache or preload partition not support raft and repair.
-	if dp.partitionType != proto.PartitionTypeNormal {
+	if !dp.isNormalType() {
 		return false, fmt.Errorf("addRaftNode (%v) not support", dp)
 	}
 
@@ -370,7 +370,7 @@ func (dp *DataPartition) addRaftNode(req *proto.AddDataPartitionRaftMemberReques
 func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMemberRequest, index uint64) (isUpdated bool, err error) {
 
 	// cache or preload partition not support raft and repair.
-	if dp.partitionType != proto.PartitionTypeNormal {
+	if !dp.isNormalType() {
 		return false, fmt.Errorf("removeRaftNode (%v) not support", dp)
 	}
 
