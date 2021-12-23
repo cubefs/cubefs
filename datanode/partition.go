@@ -131,7 +131,7 @@ type DataPartition struct {
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
 
-	if dp, err = newDataPartition(dpCfg, disk,true); err != nil {
+	if dp, err = newDataPartition(dpCfg, disk, true); err != nil {
 		return
 	}
 	dp.ForceLoadHeader()
@@ -204,7 +204,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 		ClusterID:     disk.space.GetClusterID(),
 		CreationType:  meta.DataPartitionCreateType,
 	}
-	if dp, err = newDataPartition(dpCfg, disk,false); err != nil {
+	if dp, err = newDataPartition(dpCfg, disk, false); err != nil {
 		return
 	}
 	// dp.PersistMetadata()
@@ -225,7 +225,7 @@ const (
 	DelayFullSyncTinyDeleteTimeRandom = 6 * 60 * 60
 )
 
-func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk,isCreatePartition bool) (dp *DataPartition, err error) {
+func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition bool) (dp *DataPartition, err error) {
 	partitionID := dpCfg.PartitionID
 	dataPath := path.Join(disk.Path, fmt.Sprintf(DataPartitionPrefix+"_%v_%v", partitionID, dpCfg.PartitionSize))
 	partition := &DataPartition{
@@ -257,7 +257,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk,isCreatePartition bool
 		}
 	}
 
-	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize, CacheCapacityPerPartition, cacheListener,isCreatePartition)
+	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize, CacheCapacityPerPartition, cacheListener, isCreatePartition)
 	if err != nil {
 		return
 	}
@@ -267,11 +267,11 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk,isCreatePartition bool
 	// Attach data partition to disk mapping
 	disk.AttachDataPartition(partition)
 	dp = partition
-	go partition.statusUpdateScheduler(context.Background())
 	return
 }
 
 func (dp *DataPartition) Start() (err error) {
+	go dp.statusUpdateScheduler(context.Background())
 	if dp.DataPartitionCreateType != proto.NormalCreateDataPartition {
 		go dp.startRaftAfterRepair()
 		return
