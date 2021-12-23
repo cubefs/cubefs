@@ -75,6 +75,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var isRangeRead bool
 	var partSize uint64
 	var partCount uint64
+	var lowerPart, upperPart string
 	if len(rangeOpt) > 0 && rangeRegexp.MatchString(rangeOpt) {
 
 		var hyphenIndex = strings.Index(rangeOpt, "-")
@@ -83,8 +84,8 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		var lowerPart = rangeOpt[len("bytes="):hyphenIndex]
-		var upperPart = ""
+		lowerPart = rangeOpt[len("bytes="):hyphenIndex]
+		upperPart = ""
 		if hyphenIndex+1 < len(rangeOpt) {
 			upperPart = rangeOpt[hyphenIndex+1:]
 		}
@@ -206,7 +207,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// validate and fix range
-	if isRangeRead && rangeUpper > uint64(fileInfo.Size)-1 || rangeUpper == 0 {
+	if isRangeRead && (rangeUpper > uint64(fileInfo.Size)-1 || upperPart == "") {
 		rangeUpper = uint64(fileInfo.Size) - 1
 	}
 
