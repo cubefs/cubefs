@@ -10,8 +10,8 @@
   "heartPort": "7001",
   "replicaPort": "8001",
   "listen": "9001",
-  "walDir": "/data2/rafttest/",
+  "diskNum": 5,
   "logDir": "/export/Logs/raft",
   "level": "debug",
-  "storeType": 1
+  "storeType": 2
 }

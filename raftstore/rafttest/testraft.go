@@ -3,9 +3,12 @@ package main
 import (
 	"encoding/json"
 	"flag"
-	"io/ioutil"
-
+	"fmt"
 	"github.com/tiglabs/raft/proto"
+	"io/ioutil"
+	"net"
+	"net/http"
+	_ "net/http/pprof"
 )
 
 var confFile = flag.String("conf", "", "config file path")
@@ -19,6 +22,7 @@ type raftServerConfig struct {
 	ReplicaPort string `json:"replicaPort"`
 	Listen      string `json:"listen"`
 	WalDir      string `json:"walDir"`
+	DiskNum		int	   `json:"diskNum"`
 	LogDir      string `json:"logDir"`
 	LogLevel    string `json:"level"`
 	StoreType   int    `json:"storeType"`
@@ -31,12 +35,24 @@ type peer struct {
 
 func main() {
 	flag.Parse()
-
+	var err error
+	profPort := 9999
+	var profNetListener net.Listener = nil
+	if profNetListener, err = net.Listen("tcp", fmt.Sprintf(":%v", profPort)); err != nil {
+		fmt.Println(fmt.Sprintf("Fatal: listen prof port %v failed: %v", profPort, err))
+		return
+	}
+	// 在prof端口监听上启动http API.
+	go func() {
+		_ = http.Serve(profNetListener, http.DefaultServeMux)
+	}()
 	rConf := &raftServerConfig{}
 	rConf.parseConfig(*confFile)
 	logLevel = rConf.LogLevel
 	storageType = rConf.StoreType
 	walDir = rConf.WalDir
+	diskNum = rConf.DiskNum
+	dataType = 1
 	initRaftLog(rConf.LogDir)
 
 	resolver = initNodeManager()
@@ -47,6 +63,7 @@ func main() {
 		resolver.addNodeAddr(p, rConf.ReplicaPort, rConf.HeartPort)
 	}
 
+	fmt.Println(fmt.Sprintf("loglevel[%v], storageType[%v], walDir[%v], diskNum[%v], dataType[%v]", logLevel, storageType, walDir, diskNum, dataType))
 	server := createRaftServer(rConf.ID, 0, 0, peers, true, false, rConf.GroupNum)
 	server.conf = rConf
 	server.startHttpService(rConf.Addr, rConf.Listen)

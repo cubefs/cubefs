@@ -278,6 +278,8 @@ type ExtentInfo struct {
 	Source     string `json:"src"`
 }
 
+type ExtentInfoBlock [4]uint64
+
 // Status raft status
 type Status struct {
 	ID                uint64
@@ -316,7 +318,7 @@ type DNDataPartitionInfo struct {
 	Used                 int           `json:"used"`
 	Status               int           `json:"status"`
 	Path                 string        `json:"path"`
-	Files                []*ExtentInfo `json:"extents"`
+	Files                []ExtentInfoBlock `json:"extents"`
 	FileCount            int           `json:"fileCount"`
 	Replicas             []string      `json:"replicas"`
 	TinyDeleteRecordSize int64         `json:"tinyDeleteRecordSize"`

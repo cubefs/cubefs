@@ -103,6 +103,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handleBatchMarkDeletePacket(p, c)
 	case proto.OpRandomWrite, proto.OpSyncRandomWrite:
 		s.handleRandomWritePacket(p)
+	case proto.OpRandomWriteV3, proto.OpSyncRandomWriteV3:
+		s.handleRandomWritePacketV3(p)
 	case proto.OpNotifyReplicasToRepair:
 		s.handlePacketToNotifyExtentRepair(p)
 	case proto.OpGetAllWatermarks:
@@ -381,7 +383,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	remote := c.RemoteAddr().String()
 	partition := p.Object.(*DataPartition)
 	var exts []*proto.ExtentKey
-	err = json.Unmarshal(p.Data, &exts)
+	err = json.Unmarshal(p.Data[0:p.Size], &exts)
 	store := partition.ExtentStore()
 	if err == nil {
 		for _, ext := range exts {
@@ -404,10 +406,6 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 
 // Handle OpWrite packet.
 func (s *DataNode) handleWritePacket(p *repl.Packet) {
-	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("DataNode handleWritePacket")
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
-
 	var err error
 	partition := p.Object.(*DataPartition)
 	defer func() {
@@ -429,13 +427,13 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 
 	store := partition.ExtentStore()
 	if p.ExtentType == proto.TinyExtentType {
-		err = store.Write(p.Ctx(), p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
+		err = store.Write(p.Ctx(), p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data[0:p.Size], p.CRC, storage.AppendWriteType, p.IsSyncWrite())
 		s.incDiskErrCnt(p.PartitionID, err, WriteFlag)
 		return
 	}
 
 	if p.Size <= util.BlockSize {
-		err = store.Write(p.Ctx(), p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
+		err = store.Write(p.Ctx(), p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data[0:p.Size], p.CRC, storage.AppendWriteType, p.IsSyncWrite())
 		partition.checkIsDiskError(err)
 	} else {
 		size := p.Size
@@ -447,7 +445,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			currSize := util.Min(int(size), util.BlockSize)
 			data := p.Data[offset : offset+currSize]
 			crc := crc32.ChecksumIEEE(data)
-			err = store.Write(p.Ctx(), p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite())
+			err = store.Write(p.Ctx(), p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data[0:currSize], crc, storage.AppendWriteType, p.IsSyncWrite())
 			partition.checkIsDiskError(err)
 			if err != nil {
 				break
@@ -492,6 +490,36 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		return
 	}
 }
+
+
+func (s *DataNode) handleRandomWritePacketV3(p *repl.Packet) {
+	var err error
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionWrite, err.Error())
+		} else {
+			p.PacketOkReply()
+		}
+	}()
+	partition := p.Object.(*DataPartition)
+	_, isLeader := partition.IsRaftLeader()
+	if !isLeader {
+		err = raft.ErrNotLeader
+		return
+	}
+	err = partition.RandomWriteSubmitV3(p)
+	if err != nil && strings.Contains(err.Error(), raft.ErrNotLeader.Error()) {
+		err = raft.ErrNotLeader
+		return
+	}
+
+	if err == nil && p.ResultCode != proto.OpOk {
+		err = storage.TryAgainError
+		return
+	}
+}
+
+
 
 func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
 	var (
@@ -568,7 +596,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 					tp.Set(storeErr)
 				}()
 			}
-			reply.CRC, storeErr = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, isRepairRead)
+			reply.CRC, storeErr = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data[0:currReadSize], isRepairRead)
 			return storeErr
 		}()
 		partition.checkIsDiskError(err)
@@ -621,7 +649,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 func (s *DataNode) handlePacketToGetAllWatermarks(p *repl.Packet) {
 	var (
 		buf       []byte
-		fInfoList []*storage.ExtentInfo
+		fInfoList []storage.ExtentInfoBlock
 		err       error
 	)
 	partition := p.Object.(*DataPartition)
@@ -636,12 +664,12 @@ func (s *DataNode) handlePacketToGetAllWatermarks(p *repl.Packet) {
 			err = storage.PartitionIsLoaddingErr
 			return
 		}
-		fInfoList, _, err = store.GetAllWatermarks(storage.NormalExtentFilter())
+		fInfoList, _, err = store.GetAllWatermarks(p.ExtentType, storage.NormalExtentFilter())
 	} else {
 		extents := make([]uint64, 0)
 		err = json.Unmarshal(p.Data, &extents)
 		if err == nil {
-			fInfoList, _, err = store.GetAllWatermarks(storage.TinyExtentFilter(extents))
+			fInfoList, _, err = store.GetAllWatermarks(p.ExtentType, storage.TinyExtentFilter(extents))
 		}
 	}
 	buf, err = json.Marshal(fInfoList)
@@ -670,7 +698,7 @@ func (s *DataNode) handlePacketToGetAllWatermarksV2(p *repl.Packet) {
 			err = storage.PartitionIsLoaddingErr
 			return
 		}
-		_, data, err = store.GetAllWatermarksWithByteArr(storage.NormalExtentFilter())
+		 _, data,err = store.GetAllWatermarksWithByteArr(p.ExtentType, storage.NormalExtentFilter())
 	} else {
 		var extentIDs = make([]uint64, 0, len(p.Data)/8)
 		var extentID uint64
@@ -686,7 +714,7 @@ func (s *DataNode) handlePacketToGetAllWatermarksV2(p *repl.Packet) {
 			}
 			extentIDs = append(extentIDs, extentID)
 		}
-		_, data, err = store.GetAllWatermarksWithByteArr(storage.TinyExtentFilter(extentIDs))
+		_, data,err = store.GetAllWatermarksWithByteArr(p.ExtentType, storage.TinyExtentFilter(extentIDs))
 	}
 	if err != nil {
 		return
@@ -1001,7 +1029,7 @@ func (s *DataNode) handlePacketToNotifyExtentRepair(p *repl.Packet) {
 // Handle OpBroadcastMinAppliedID
 func (s *DataNode) handleBroadcastMinAppliedID(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
-	minAppliedID := binary.BigEndian.Uint64(p.Data)
+	minAppliedID := binary.BigEndian.Uint64(p.Data[0:8])
 	if minAppliedID > 0 {
 		partition.SetMinAppliedID(minAppliedID)
 	}

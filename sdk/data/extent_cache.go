@@ -246,15 +246,23 @@ func (cache *ExtentCache) Get(offset uint64) (ret *proto.ExtentKey) {
 // PrepareRequests classifies the incoming request.
 func (cache *ExtentCache) PrepareRequests(offset, size int, data []byte) []*ExtentRequest {
 	requests := make([]*ExtentRequest, 0)
-	pivot := &proto.ExtentKey{FileOffset: uint64(offset)}
-	upper := &proto.ExtentKey{FileOffset: uint64(offset + size)}
+	pivot:=proto.GetExtentKeyFromPool()
+	pivot.FileOffset=uint64(offset)
+	upper:=proto.GetExtentKeyFromPool()
+	upper.FileOffset=uint64(offset+size)
+	lower := proto.GetExtentKeyFromPool()
+
+	defer func() {
+		proto.PutExtentKeyToPool(pivot)
+		proto.PutExtentKeyToPool(upper)
+		proto.PutExtentKeyToPool(lower)
+	}()
 	start := offset
 	end := offset + size
 
 	cache.RLock()
 	defer cache.RUnlock()
 
-	lower := &proto.ExtentKey{}
 	cache.root.DescendLessOrEqual(pivot, func(i btree.Item) bool {
 		ek := i.(*proto.ExtentKey)
 		lower.FileOffset = ek.FileOffset
@@ -265,9 +273,9 @@ func (cache *ExtentCache) PrepareRequests(offset, size int, data []byte) []*Exte
 		ek := i.(*proto.ExtentKey)
 		ekStart := int(ek.FileOffset)
 		ekEnd := int(ek.FileOffset) + int(ek.Size)
-
-		log.LogDebugf("PrepareRequests: ino(%v) start(%v) end(%v) ekStart(%v) ekEnd(%v)", cache.inode, start, end, ekStart, ekEnd)
-
+		if log.IsDebugEnabled(){
+			log.LogDebugf("PrepareRequests: ino(%v) start(%v) end(%v) ekStart(%v) ekEnd(%v)", cache.inode, start, end, ekStart, ekEnd)
+		}
 		if start < ekStart {
 			if end <= ekStart {
 				return false
@@ -311,7 +319,9 @@ func (cache *ExtentCache) PrepareRequests(offset, size int, data []byte) []*Exte
 		}
 	})
 
-	log.LogDebugf("PrepareRequests: ino(%v) start(%v) end(%v)", cache.inode, start, end)
+	if log.IsDebugEnabled(){
+		log.LogDebugf("PrepareRequests: ino(%v) start(%v) end(%v)", cache.inode, start, end)
+	}
 	if start < end {
 		// add hole (start, end)
 		req := NewExtentRequest(start, end-start, data[start-offset:end-offset], nil)

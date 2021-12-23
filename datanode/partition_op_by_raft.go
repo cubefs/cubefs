@@ -19,10 +19,11 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net"
 	"strings"
+	"sync"
 	"time"
-
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
 	"github.com/chubaofs/chubaofs/storage"
@@ -46,6 +47,7 @@ type rndWrtOpItem struct {
 	size     int64
 	data     []byte
 	crc      uint32
+	magic    int
 }
 
 // Marshal random write value to binary data.
@@ -58,7 +60,31 @@ type rndWrtOpItem struct {
 
 const (
 	BinaryMarshalMagicVersion = 0xFF
+	RandomWriteRaftLogMagicVersionV3 = 0xF3
+	MaxRandomWriteOpItemPoolSize=32
 )
+
+func MarshalRandWriteRaftLogV3(opcode uint8, extentID uint64, offset, size int64, data []byte, crc uint32) (result []byte, err error) {
+	if len(data)<proto.RandomWriteRaftLogV3HeaderSize{
+		return nil,fmt.Errorf("data too low for MarshalRandWriteRaftLogV3(%v)",len(data))
+	}
+	var index int
+	binary.BigEndian.PutUint32(data[index:index+4],uint32(RandomWriteRaftLogMagicVersionV3))
+	index+=4
+	data[index]=opcode
+	index+=1
+	binary.BigEndian.PutUint64(data[index:index+8],extentID)
+	index+=8
+	binary.BigEndian.PutUint64(data[index:index+8],uint64(offset))
+	index+=8
+	binary.BigEndian.PutUint64(data[index:index+8],uint64(size))
+	index+=8
+	binary.BigEndian.PutUint32(data[index:index+4],uint32(crc))
+	index+=4
+	result=data
+	return
+}
+
 
 func MarshalRandWriteRaftLog(opcode uint8, extentID uint64, offset, size int64, data []byte, crc uint32) (result []byte, err error) {
 	buff := bytes.NewBuffer(make([]byte, 0))
@@ -88,11 +114,58 @@ func MarshalRandWriteRaftLog(opcode uint8, extentID uint64, offset, size int64, 
 	return
 }
 
+var (
+	RandomWriteOpItemPool [MaxRandomWriteOpItemPoolSize]*sync.Pool
+)
+
+func init(){
+	rand.Seed(time.Now().UnixNano())
+	for i:=0;i<MaxRandomWriteOpItemPoolSize;i++{
+		RandomWriteOpItemPool[i]=&sync.Pool{
+			New: func() interface{} {
+				return new(rndWrtOpItem)
+			},
+		}
+	}
+}
+
+func GetRandomWriteOpItem()(item *rndWrtOpItem) {
+	magic:=rand.Intn(MaxRandomWriteOpItemPoolSize)
+	item=RandomWriteOpItemPool[magic].Get().(*rndWrtOpItem)
+	item.magic=magic
+	item.size=0
+	item.crc=0
+	item.offset=0
+	item.extentID=0
+	item.opcode=0
+	item.data=nil
+	return
+}
+
+func PutRandomWriteOpItem(item *rndWrtOpItem){
+	if item==nil || item.magic==0 {
+		return
+	}
+	item.size=0
+	item.crc=0
+	item.offset=0
+	item.extentID=0
+	item.opcode=0
+	item.data=nil
+	RandomWriteOpItemPool[item.magic].Put(item)
+}
+
+
 // RandomWriteSubmit submits the proposal to raft.
 func UnmarshalRandWriteRaftLog(raw []byte) (opItem *rndWrtOpItem, err error) {
-	opItem = new(rndWrtOpItem)
+	opItem = GetRandomWriteOpItem()
+	var index int
+	version:=binary.BigEndian.Uint32(raw[index:index+4])
+	index+=4
+	if version==RandomWriteRaftLogMagicVersionV3{
+		return BinaryUnmarshalRandWriteRaftLogV3(raw)
+	}
 	buff := bytes.NewBuffer(raw)
-	var version uint32
 	if err = binary.Read(buff, binary.BigEndian, &version); err != nil {
 		return
 	}
@@ -123,6 +196,38 @@ func UnmarshalRandWriteRaftLog(raw []byte) (opItem *rndWrtOpItem, err error) {
 
 	return
 }
+
+
+// RandomWriteSubmit submits the proposal to raft.
+func BinaryUnmarshalRandWriteRaftLogV3(raw []byte) (opItem *rndWrtOpItem, err error) {
+	opItem = GetRandomWriteOpItem()
+	var index int
+	if len(raw)<proto.RandomWriteRaftLogV3HeaderSize{
+		err=fmt.Errorf("unavali RandomWriteRaftlog Header, raw len(%v)",len(raw))
+	}
+	version:=binary.BigEndian.Uint32(raw[index:index+4])
+	index+=4
+	if version != RandomWriteRaftLogMagicVersionV3 {
+		return nil,fmt.Errorf("unavali raftLogVersion %v",RandomWriteRaftLogMagicVersionV3)
+	}
+	opItem.opcode=raw[index]
+	index+=1
+	opItem.extentID=binary.BigEndian.Uint64(raw[index:index+8])
+	index+=8
+	opItem.offset=int64(binary.BigEndian.Uint64(raw[index:index+8]))
+	index+=8
+	opItem.size=int64(binary.BigEndian.Uint64(raw[index:index+8]))
+	index+=8
+	opItem.crc=binary.BigEndian.Uint32(raw[index:index+4])
+	index+=4
+	if opItem.size+int64(index)!=int64(len(raw)){
+		err=fmt.Errorf("unavali RandomWriteRaftlog body, raw len(%v), has unmarshal(%v) opItemSize(%v)",len(raw),index,opItem.size )
+	}
+	opItem.data = raw[index:int64(index)+opItem.size]
+
+	return
+}
+
 
 func UnmarshalOldVersionRaftLog(raw []byte) (opItem *rndWrtOpItem, err error) {
 	raftOpItem := new(RaftCmdItem)
@@ -287,7 +392,7 @@ func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 		return err
 	}
 
-	val, err := MarshalRandWriteRaftLog(pkg.Opcode, pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size), pkg.Data, pkg.CRC)
+	val, err := MarshalRandWriteRaftLog(pkg.Opcode, pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size), pkg.Data[:pkg.Size], pkg.CRC)
 	if err != nil {
 		return
 	}
@@ -298,6 +403,44 @@ func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 		return
 	}
 
+	pkg.ResultCode = resp.(uint8)
+
+	log.LogDebugf("[RandomWrite] SubmitRaft: %v", pkg.GetUniqueLogId())
+
+	return
+}
+
+
+// RandomWriteSubmit submits the proposal to raft.
+func (dp *DataPartition) RandomWriteSubmitV3(pkg *repl.Packet) (err error) {
+	var tracer = tracing.TracerFromContext(pkg.Ctx()).ChildTracer("DataPartition RandomWriteSubmit").
+		SetTag("reqID", pkg.ReqID).
+		SetTag("extentID", pkg.ExtentID).
+		SetTag("offset", pkg.ExtentOffset).
+		SetTag("size", pkg.Size).
+		SetTag("crc", pkg.CRC)
+	defer tracer.Finish()
+	pkg.SetCtx(tracer.Context())
+
+	err = dp.ExtentStore().CheckIsAvaliRandomWrite(pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size))
+	if err != nil {
+		return err
+	}
+	//if len(pkg.Data)<int(pkg.Size)+proto.RandomWriteRaftLogV3HeaderSize{
+	//	err=fmt.Errorf("unavali len(pkg.Data)(%v) ,pkg.Size(%v)," +
+	//		"RandomWriteRaftLogV3HeaderSize(%v)",len(pkg.Data),pkg.Size,proto.RandomWriteRaftLogV3HeaderSize)
+	//	return
+	//}
+	val, err := MarshalRandWriteRaftLogV3(pkg.Opcode, pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size), pkg.Data[0:int(pkg.Size)+proto.RandomWriteRaftLogV3HeaderSize], pkg.CRC)
+	if err != nil {
+		return
+	}
+	var (
+		resp interface{}
+	)
+	if resp, err = dp.Put(pkg.Ctx(), nil, val); err != nil {
+		return
+	}
 	pkg.ResultCode = resp.(uint8)
 
 	log.LogDebugf("[RandomWrite] SubmitRaft: %v", pkg.GetUniqueLogId())

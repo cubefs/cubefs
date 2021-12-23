@@ -315,12 +315,11 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset int,
 		return 0, false, proto.ErrVolNotExists
 	}
 
-	prefix := fmt.Sprintf("Write{ino(%v)offset(%v)size(%v)}", inode, offset, len(data))
 	s := client.GetStreamer(inode)
 	if s == nil {
+		prefix := fmt.Sprintf("Write{ino(%v)offset(%v)size(%v)}", inode, offset, len(data))
 		return 0, false, fmt.Errorf("Prefix(%v): stream is not opened yet", prefix)
 	}
-
 	s.once.Do(func() {
 		// TODO unhandled error
 		s.GetExtents(ctx)
@@ -345,6 +344,7 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset int,
 	} else {
 		write, _, err = s.IssueWriteRequest(ctx, offset, data, direct, overWriteBuffer)
 	}
+
 	return
 }
 

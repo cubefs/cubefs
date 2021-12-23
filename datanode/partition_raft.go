@@ -711,7 +711,7 @@ func NewPacketToBroadcastMinAppliedID(ctx context.Context, partitionID uint64, m
 	p.Magic = proto.ProtoMagic
 	p.ReqID = proto.GenerateRequestID()
 	p.Data = make([]byte, 8)
-	binary.BigEndian.PutUint64(p.Data, minAppliedID)
+	binary.BigEndian.PutUint64(p.Data[0:8], minAppliedID)
 	p.Size = uint32(len(p.Data))
 	p.SetCtx(ctx)
 	return
@@ -807,7 +807,7 @@ func (dp *DataPartition) getLeaderPartitionSize(ctx context.Context, maxExtentID
 		err = errors.Trace(err, "partition(%v) result code not ok(%v) from host(%v)", dp.partitionID, p.ResultCode, target)
 		return
 	}
-	size = binary.BigEndian.Uint64(p.Data)
+	size = binary.BigEndian.Uint64(p.Data[0:8])
 	log.LogInfof("partition(%v) MaxExtentID(%v) size(%v)", dp.partitionID, maxExtentID, size)
 
 	return
@@ -959,7 +959,7 @@ func (dp *DataPartition) getRemoteAppliedID(target string, p *repl.Packet) (appl
 		err = errors.NewErrorf("partition(%v) result code not ok(%v) from host(%v)", dp.partitionID, p.ResultCode, target)
 		return
 	}
-	appliedID = binary.BigEndian.Uint64(p.Data)
+	appliedID = binary.BigEndian.Uint64(p.Data[0:8])
 
 	log.LogDebugf("[getRemoteAppliedID] partition(%v) remoteAppliedID(%v)", dp.partitionID, appliedID)
 

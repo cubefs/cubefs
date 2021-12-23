@@ -42,8 +42,6 @@ type subTime struct {
 type checkKV struct {
 	Key, Value       string
 	LastKey, LastVal string
-	BigValue         bool
-	ByteArray        []byte
 }
 
 type memoryStatemachine struct {
@@ -68,11 +66,12 @@ func (ms *memoryStatemachine) Apply(data []byte, index uint64) (interface{}, err
 		ms.Unlock()
 	}()
 
-	var kv = &checkKV{}
-	if err := json.Unmarshal(data, &kv); err != nil {
-		return nil, err
-	}
-	if !kv.BigValue {
+	switch dataType {
+	case 0:
+		var kv = &checkKV{}
+		if err := json.Unmarshal(data, &kv); err != nil {
+			return nil, err
+		}
 		if kv.LastKey != NoCheckLinear && kv.LastVal != NoCheckLinear {
 			if val, exist := ms.data[kv.LastKey]; !exist || val != kv.LastVal {
 				return nil, fmt.Errorf("apply err: Key[%v], val[%v], err[%v]", kv.LastKey, kv.LastVal, errNotExists.Error())
@@ -80,6 +79,7 @@ func (ms *memoryStatemachine) Apply(data []byte, index uint64) (interface{}, err
 		}
 		ms.data[kv.Key] = kv.Value
 	}
+
 	ms.applied = index
 	return nil, nil
 }
@@ -167,20 +167,16 @@ func (ms *memoryStatemachine) Put(key, value, lastKey, lastVal string) error {
 }
 
 func (ms *memoryStatemachine) constructBigData(bitSize int) error {
-	bArray := &checkKV{BigValue: true, ByteArray: make([]byte, bitSize)}
+	bArray := make([]byte, bitSize)
 	for i := 0; i < bitSize; i++ {
-		bArray.ByteArray[i] = 1
+		bArray[i] = 1
 	}
-	if data, err := json.Marshal(bArray); err != nil {
-		return err
-	} else {
-		resp := ms.raft.Submit(nil, ms.id, data)
-		_, err = resp.Response()
-		if err != nil {
-			return errors.New(fmt.Sprintf("Put error[%v].\r\n", err))
-		}
-		return nil
+	resp := ms.raft.Submit(nil, ms.id, bArray)
+	_, err := resp.Response()
+	if err != nil {
+		return errors.New(fmt.Sprintf("Put error[%v].\r\n", err))
 	}
+	return nil
 }
 
 func computeTime(id uint64, startTime int64, endTime int64) {

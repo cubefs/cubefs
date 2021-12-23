@@ -45,8 +45,10 @@ func init() {
 	}
 }
 
+
+
 func GetMessage() *Message {
-	index:=rand.Uint64()%MsgPoolCnt
+	index:=rand.Intn(MsgPoolCnt)
 	msg := msgPool[index].Get().(*Message)
 	msg.Reject = false
 	msg.RejectIndex = 0

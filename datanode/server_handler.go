@@ -287,7 +287,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 	)
 	var (
 		partitionID          uint64
-		files                []*storage.ExtentInfo
+		files                []storage.ExtentInfoBlock
 		err                  error
 		tinyDeleteRecordSize int64
 	)
@@ -306,7 +306,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
 	}
-	if files, tinyDeleteRecordSize, err = partition.ExtentStore().GetAllWatermarks(nil); err != nil {
+	if files, tinyDeleteRecordSize, err = partition.ExtentStore().GetAllWatermarks(proto.AllExtentType, nil); err != nil {
 		err = fmt.Errorf("get watermark fail: %v", err)
 		s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
 		return
@@ -322,7 +322,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		Used                 int                   `json:"used"`
 		Status               int                   `json:"status"`
 		Path                 string                `json:"path"`
-		Files                []*storage.ExtentInfo `json:"extents"`
+		Files                []storage.ExtentInfoBlock `json:"extents"`
 		FileCount            int                   `json:"fileCount"`
 		Replicas             []string              `json:"replicas"`
 		Peers                []proto.Peer          `json:"peers"`
@@ -354,7 +354,7 @@ func (s *DataNode) getExtentAPI(w http.ResponseWriter, r *http.Request) {
 		partitionID uint64
 		extentID    int
 		err         error
-		extentInfo  *storage.ExtentInfo
+		extentInfo  *storage.ExtentInfoBlock
 	)
 	if err = r.ParseForm(); err != nil {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())

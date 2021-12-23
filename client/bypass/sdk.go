@@ -62,7 +62,6 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
-	"path"
 	gopath "path"
 	"path/filepath"
 	"reflect"
@@ -147,7 +146,7 @@ func init() {
 	os.Setenv("GODEBUG", "madvdontneed=1")
 	data.SetNormalExtentSize(normalExtentSize)
 	gClientManager = &clientManager{
-		clients: make(map[int64]*client),
+		clients: make([]*client,2),
 	}
 }
 
@@ -163,8 +162,7 @@ func errorToStatus(err error) C.int {
 
 type clientManager struct {
 	nextClientID int64
-	clients      map[int64]*client
-	mu           sync.RWMutex
+	clients      []*client
 }
 
 func newClient(conf *C.cfs_config_t) *client {
@@ -199,9 +197,10 @@ func newClient(conf *C.cfs_config_t) *client {
 	// Just skip fd 0, 1, 2, to avoid confusion.
 	c.fdset.Set(0).Set(1).Set(2)
 
-	gClientManager.mu.Lock()
+	if len(gClientManager.clients)<=int(id) {
+		gClientManager.clients=make([]*client,id+1)
+	}
 	gClientManager.clients[id] = c
-	gClientManager.mu.Unlock()
 
 	return c
 }
@@ -219,16 +218,18 @@ func parseProfPortArray(portStr string) (portList []uint64) {
 }
 
 func getClient(id int64) (c *client, exist bool) {
-	gClientManager.mu.RLock()
-	defer gClientManager.mu.RUnlock()
-	c, exist = gClientManager.clients[id]
+	//gClientManager.mu.RLock()
+	//defer gClientManager.mu.RUnlock()
+	c=gClientManager.clients[id]
+	if c==nil {
+		exist=false
+	}
+	exist=true
 	return
 }
 
 func removeClient(id int64) {
-	gClientManager.mu.Lock()
-	defer gClientManager.mu.Unlock()
-	delete(gClientManager.clients, id)
+	gClientManager.clients[id]=nil
 }
 
 type file struct {
@@ -246,8 +247,14 @@ type file struct {
 	// dir only
 	dirp *dirStream
 	// for file write lock
-	mu sync.RWMutex
+	mu      sync.RWMutex
+	logType uint8
 }
+
+const (
+	BinLogType  = 1
+	RedoLogType = 2
+)
 
 type dirStream struct {
 	pos     int
@@ -346,7 +353,9 @@ func cfs_close(id C.int64_t, fd C.int) {
 		ino  uint64
 	)
 	defer func() {
-		log.LogDebugf("cfs_close: id(%v) fd(%v) path(%v) ino(%v)", id, fd, path, ino)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("cfs_close: id(%v) fd(%v) path(%v) ino(%v)", id, fd, path, ino)
+		}
 	}()
 	c, exist := getClient(int64(id))
 	if !exist {
@@ -365,7 +374,7 @@ func cfs_close(id C.int64_t, fd C.int) {
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_close"))
+	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_close))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	c.flush(ctx, f.ino)
@@ -384,15 +393,18 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 		err       error
 	)
 	defer func() {
-		msg := fmt.Sprintf("id(%v) path(%v) ino(%v) flags(%v) mode(%v) fd(%v) size(%v) re(%v) err(%v)", id, C.GoString(path), ino, flags, mode, fd, size, re, err)
 		if r := recover(); r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
 			var stack string
 			if r != nil {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
+			msg := fmt.Sprintf("id(%v) path(%v) ino(%v) flags(%v) mode(%v) fd(%v) re(%v) err(%v)", id, C.GoString(path), ino, flags, mode, fd, re, err)
 			handleError(c, "cfs_open", fmt.Sprintf("%s%s", msg, stack))
 		} else {
-			log.LogDebugf("cfs_open: %s", msg)
+			if log.IsDebugEnabled() {
+				msg := fmt.Sprintf("id(%v) path(%v) ino(%v) flags(%v) mode(%v) fd(%v) re(%v) err(%v)", id, C.GoString(path), ino, flags, mode, fd, re, err)
+				log.LogDebugf("cfs_open: %s", msg)
+			}
 		}
 	}()
 
@@ -409,7 +421,7 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_open"))
+	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_open))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	fuseMode := uint32(mode) & uint32(0777)
@@ -485,6 +497,13 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 		}
 		c.ec.RefreshExtentsCache(ctx, f.ino)
 	}
+	f.size = info.Size
+	f.path = absPath
+	if strings.Contains(absPath, "ib_logfile") {
+		f.logType = RedoLogType
+	} else if strings.Contains(absPath, "mysql-bin") {
+		f.logType = BinLogType
+	}
 	return C.int(f.fd)
 }
 
@@ -525,15 +544,18 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) (re C.int) {
 		err error
 	)
 	defer func() {
-		msg := fmt.Sprintf("id(%v) from(%v) to(%v) re(%v) err(%v)", id, C.GoString(from), C.GoString(to), re, err)
 		if r := recover(); r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
 			var stack string
 			if r != nil {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
+			msg := fmt.Sprintf("id(%v) from(%v) to(%v) re(%v) err(%v)", id, C.GoString(from), C.GoString(to), re, err)
 			handleError(c, "cfs_rename", fmt.Sprintf("%s%s", msg, stack))
 		} else {
-			log.LogDebugf("cfs_rename: %s", msg)
+			if log.IsDebugEnabled() {
+				msg := fmt.Sprintf("id(%v) from(%v) to(%v) re(%v) err(%v)", id, C.GoString(from), C.GoString(to), re, err)
+				log.LogDebugf("cfs_rename: %s", msg)
+			}
 		}
 	}()
 
@@ -548,7 +570,7 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) (re C.int) {
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_rename"))
+	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_rename))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	absFrom := c.absPath(C.GoString(from))
@@ -628,15 +650,18 @@ func cfs_truncate(id C.int64_t, path *C.char, len C.off_t) (re C.int) {
 		err   error
 	)
 	defer func() {
-		msg := fmt.Sprintf("id(%v) path(%v) ino(%v) len(%v) re(%v) err(%v)", id, C.GoString(path), inode, len, re, err)
 		if r := recover(); r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
 			var stack string
 			if r != nil {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
+			msg := fmt.Sprintf("id(%v) path(%v) ino(%v) len(%v) re(%v) err(%v)", id, C.GoString(path), inode, len, re, err)
 			handleError(c, "cfs_truncate", fmt.Sprintf("%s%s", msg, stack))
 		} else {
-			log.LogDebugf("cfs_truncate: %s", msg)
+			if log.IsDebugEnabled() {
+				msg := fmt.Sprintf("id(%v) path(%v) ino(%v) len(%v) re(%v) err(%v)", id, C.GoString(path), inode, len, re, err)
+				log.LogDebugf("cfs_truncate: %s", msg)
+			}
 		}
 	}()
 
@@ -652,7 +677,7 @@ func cfs_truncate(id C.int64_t, path *C.char, len C.off_t) (re C.int) {
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_truncate"))
+	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_truncate))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
@@ -677,15 +702,18 @@ func cfs_ftruncate(id C.int64_t, fd C.int, len C.off_t) (re C.int) {
 		err  error
 	)
 	defer func() {
-		msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) len(%v) re(%v) err(%v)", id, fd, path, ino, len, re, err)
 		if r := recover(); r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
 			var stack string
 			if r != nil {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
+			msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) len(%v) re(%v) err(%v)", id, fd, path, ino, len, re, err)
 			handleError(c, "cfs_ftruncate", fmt.Sprintf("%s%s", msg, stack))
 		} else {
-			log.LogDebugf("cfs_ftruncate: %s", msg)
+			if log.IsDebugEnabled() {
+				msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) len(%v) re(%v) err(%v)", id, fd, path, ino, len, re, err)
+				log.LogDebugf("cfs_ftruncate: %s", msg)
+			}
 		}
 	}()
 
@@ -709,7 +737,7 @@ func cfs_ftruncate(id C.int64_t, fd C.int, len C.off_t) (re C.int) {
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_ftruncate"))
+	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_ftruncate))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	err = c.truncate(ctx, f.ino, int(len))
@@ -728,15 +756,18 @@ func cfs_fallocate(id C.int64_t, fd C.int, mode C.int, offset C.off_t, len C.off
 		err       error
 	)
 	defer func() {
-		msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) mode(%v) offset(%v) len(%v) re(%v) err(%v)", id, fd, path, ino, size, mode, offset, len, re, err)
 		if r := recover(); r != nil || re < 0 {
 			var stack string
 			if r != nil {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
+			msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) mode(%v) offset(%v) len(%v) re(%v) err(%v)", id, fd, path, ino, size, mode, offset, len, re, err)
 			handleError(c, "cfs_fallocate", fmt.Sprintf("%s%s", msg, stack))
 		} else {
-			log.LogDebugf("cfs_fallocate: %s", msg)
+			if log.IsDebugEnabled() {
+				msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) mode(%v) offset(%v) len(%v) re(%v) err(%v)", id, fd, path, ino, size, mode, offset, len, re, err)
+				log.LogDebugf("cfs_fallocate: %s", msg)
+			}
 		}
 	}()
 
@@ -762,7 +793,7 @@ func cfs_fallocate(id C.int64_t, fd C.int, mode C.int, offset C.off_t, len C.off
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_fallocate"))
+	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_fallocate))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	info, err := c.getInode(ctx, f.ino)
@@ -800,15 +831,18 @@ func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) (r
 		err       error
 	)
 	defer func() {
-		msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) len(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, len, re, err)
 		if r := recover(); r != nil || re < 0 {
 			var stack string
 			if r != nil {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
+			msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) len(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, len, re, err)
 			handleError(c, "cfs_posix_fallocate", fmt.Sprintf("%s%s", msg, stack))
 		} else {
-			log.LogDebugf("cfs_posix_fallocate: %s", msg)
+			if log.IsDebugEnabled() {
+				msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) len(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, len, re, err)
+				log.LogDebugf("cfs_posix_fallocate: %s", msg)
+			}
 		}
 	}()
 
@@ -833,7 +867,7 @@ func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) (r
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_posix_fallocate"))
+	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_posix_fallocate))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	info, err := c.getInode(ctx, f.ino)
@@ -862,15 +896,18 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 		err  error
 	)
 	defer func() {
-		msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) re(%v) err(%v)", id, fd, path, ino, re, err)
 		if r := recover(); r != nil || re < 0 {
 			var stack string
 			if r != nil {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
+			msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) re(%v) err(%v)", id, fd, path, ino, re, err)
 			handleError(c, "cfs_flush", fmt.Sprintf("%s%s", msg, stack))
 		} else {
-			log.LogDebugf("cfs_flush: %s", msg)
+			if log.IsDebugEnabled() {
+				msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) re(%v) err(%v)", id, fd, path, ino, re, err)
+				log.LogDebugf("cfs_flush: %s", msg)
+			}
 		}
 	}()
 
@@ -897,15 +934,14 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 		SetTag("path", f.path)
 	defer tracer.Finish()
 	var ctx = tracer.Context()
-
-	name := "cfs_flush"
-	if strings.Contains(f.path, redologPrefix) {
-		name = "cfs_flush_redolog"
-	} else if strings.Contains(f.path, binlogPrefix) {
-		name = "cfs_flush_binlog"
+	act := ump_cfs_flush
+	if f.logType == RedoLogType {
+		act = ump_cfs_flush_redolog
+	} else if f.logType == BinLogType {
+		act = ump_cfs_flush_binlog
 	}
-	tpObject1 := ump.BeforeTP(c.umpFunctionKey(name))
-	tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKey(name))
+	tpObject1 := ump.BeforeTP(c.umpFunctionKeyFast(act))
+	tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKeyFast(act))
 	defer func() {
 		ump.AfterTPUs(tpObject1, nil)
 		ump.AfterTPUs(tpObject2, nil)
@@ -955,7 +991,7 @@ func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) (re C.int) {
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_mkdirs"))
+	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_mkdirs))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	pino := proto.RootIno
@@ -1006,15 +1042,18 @@ func cfs_rmdir(id C.int64_t, path *C.char) (re C.int) {
 		err error
 	)
 	defer func() {
-		msg := fmt.Sprintf("id(%v) path(%v) re(%v) err(%v)", id, C.GoString(path), re, err)
 		if r := recover(); r != nil || re < 0 {
 			var stack string
 			if r != nil {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
+			msg := fmt.Sprintf("id(%v) path(%v) re(%v) err(%v)", id, C.GoString(path), re, err)
 			handleError(c, "cfs_rmdir", fmt.Sprintf("%s%s", msg, stack))
 		} else {
-			log.LogDebugf("cfs_rmdir: %s", msg)
+			if log.IsDebugEnabled() {
+				msg := fmt.Sprintf("id(%v) path(%v) re(%v) err(%v)", id, C.GoString(path), re, err)
+				log.LogDebugf("cfs_rmdir: %s", msg)
+			}
 		}
 	}()
 
@@ -1029,7 +1068,7 @@ func cfs_rmdir(id C.int64_t, path *C.char) (re C.int) {
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_rmdir"))
+	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_rmdir))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
@@ -1062,7 +1101,9 @@ func cfs_getcwd(id C.int64_t) *C.char {
 func cfs_chdir(id C.int64_t, path *C.char) (re C.int) {
 	var ino uint64
 	defer func() {
-		log.LogDebugf("cfs_chdir: id(%v) path(%v) ino(%v) re(%v)", id, path, ino, re)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("cfs_chdir: id(%v) path(%v) ino(%v) re(%v)", id, path, ino, re)
+		}
 	}()
 	c, exist := getClient(int64(id))
 	if !exist {
@@ -1095,7 +1136,9 @@ func cfs_fchdir(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.int) (re C.in
 		ino  uint64
 	)
 	defer func() {
-		log.LogDebugf("cfs_fchdir: id(%v) fd(%v) path(%v) ino(%v)", id, path, ino)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("cfs_fchdir: id(%v) fd(%v) path(%v) ino(%v)", id, path, ino)
+		}
 	}()
 	c, exist := getClient(int64(id))
 	if !exist {
@@ -1242,7 +1285,7 @@ func cfs_link(id C.int64_t, oldpath *C.char, newpath *C.char) (re C.int) {
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_link"))
+	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_link))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	inode, err := c.lookupPath(ctx, c.absPath(C.GoString(oldpath)))
@@ -1313,7 +1356,7 @@ func cfs_symlink(id C.int64_t, target *C.char, linkPath *C.char) (re C.int) {
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_symlink"))
+	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_symlink))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(linkPath))
@@ -1359,15 +1402,18 @@ func cfs_unlink(id C.int64_t, path *C.char) (re C.int) {
 		err error
 	)
 	defer func() {
-		msg := fmt.Sprintf("id(%v) path(%v) ino(%v) re(%v) err(%v)", id, C.GoString(path), ino, re, err)
 		if r := recover(); r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
 			var stack string
 			if r != nil {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
+			msg := fmt.Sprintf("id(%v) path(%v) ino(%v) re(%v) err(%v)", id, C.GoString(path), ino, re, err)
 			handleError(c, "cfs_unlink", fmt.Sprintf("%s%s", msg, stack))
 		} else {
-			log.LogDebugf("cfs_unlink: %s", msg)
+			if log.IsDebugEnabled() {
+				msg := fmt.Sprintf("id(%v) path(%v) ino(%v) re(%v) err(%v)", id, C.GoString(path), ino, re, err)
+				log.LogDebugf("cfs_unlink: %s", msg)
+			}
 		}
 	}()
 
@@ -1382,7 +1428,7 @@ func cfs_unlink(id C.int64_t, path *C.char) (re C.int) {
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_unlink"))
+	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_unlink))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
@@ -1465,7 +1511,7 @@ func cfs_readlink(id C.int64_t, path *C.char, buf *C.char, size C.size_t) (re C.
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_readlink"))
+	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_readlink))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	info, err := c.getInodeByPath(ctx, c.absPath(C.GoString(path)))
@@ -1545,7 +1591,7 @@ func _cfs_stat(id C.int64_t, path *C.char, stat *C.struct_stat, flags C.int) (re
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_stat"))
+	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_stat))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
@@ -1639,7 +1685,7 @@ func _cfs_stat64(id C.int64_t, path *C.char, stat *C.struct_stat64, flags C.int)
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_stat64"))
+	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_stat64))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
@@ -1783,7 +1829,7 @@ func _cfs_chmod(id C.int64_t, path *C.char, mode C.mode_t, flags C.int) C.int {
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_chmod"))
+	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_chmod))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
@@ -1825,7 +1871,7 @@ func cfs_fchmod(id C.int64_t, fd C.int, mode C.mode_t) C.int {
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_fchmod"))
+	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_fchmod))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	info, err := c.getInode(ctx, f.ino)
@@ -1879,7 +1925,7 @@ func _cfs_chown(id C.int64_t, path *C.char, uid C.uid_t, gid C.gid_t, flags C.in
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_chown"))
+	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_chown))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
@@ -1922,7 +1968,7 @@ func cfs_fchown(id C.int64_t, fd C.int, uid C.uid_t, gid C.gid_t) C.int {
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_fchown"))
+	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_fchown))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	info, err := c.getInode(ctx, f.ino)
@@ -1965,7 +2011,7 @@ func cfs_utimens(id C.int64_t, path *C.char, times *C.struct_timespec, flags C.i
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_utimens"))
+	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_utimens))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
@@ -2081,7 +2127,7 @@ func cfs_faccessat(id C.int64_t, dirfd C.int, path *C.char, mode C.int, flags C.
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_faccessat"))
+	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_faccessat))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath, err := c.absPathAt(dirfd, path)
@@ -2672,15 +2718,18 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 		offset int
 	)
 	defer func() {
-		msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, re, err)
 		if r := recover(); r != nil || re < 0 {
 			var stack string
 			if r != nil {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
+			msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, re, err)
 			handleError(c, "cfs_read", fmt.Sprintf("%s%s", msg, stack))
 		} else {
-			log.LogDebugf("cfs_read: %s", msg)
+			if log.IsDebugEnabled() {
+				msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, re, err)
+				log.LogDebugf("cfs_read: %s", msg)
+			}
 		}
 	}()
 
@@ -2703,8 +2752,8 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 	defer tracer.Finish()
 	var ctx = tracer.Context()
 
-	tpObject1 := ump.BeforeTP(c.umpFunctionKey("cfs_read"))
-	tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKey("cfs_read"))
+	tpObject1 := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_read))
+	tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKeyFast(ump_cfs_read))
 	defer func() {
 		ump.AfterTPUs(tpObject1, nil)
 		ump.AfterTPUs(tpObject2, nil)
@@ -2810,21 +2859,29 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		flagBuf bytes.Buffer
 	)
 	defer func() {
+<<<<<<< HEAD
 		var fileSize uint64 = 0
 		if f != nil {
 			fileSize = f.size
 		}
 		msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) fileSize(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), fileSize, re, err)
+=======
+>>>>>>> eac83287... optimize: lots of optimize
 		if r := recover(); r != nil || re < 0 {
 			var stack string
 			if r != nil {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
+			msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), re, err)
 			handleError(c, "cfs_write", fmt.Sprintf("%s%s", msg, stack))
 		} else if re < C.ssize_t(size) {
+			msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), re, err)
 			log.LogWarnf("cfs_write: %s", msg)
 		} else {
-			log.LogDebugf("cfs_write: %s", msg)
+			if log.IsDebugEnabled() {
+				msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), re, err)
+				log.LogDebugf("cfs_write: %s", msg)
+			}
 		}
 	}()
 
@@ -2843,34 +2900,33 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	}
 	path = f.path
 	ino = f.ino
-
-	if f.flags&uint32(C.O_DIRECT) != 0 {
-		flagBuf.WriteString("O_DIRECT|")
-	} else if f.flags&uint32(C.O_SYNC) != 0 {
-		flagBuf.WriteString("O_SYNC|")
-	} else if f.flags&uint32(C.O_DSYNC) != 0 {
-		flagBuf.WriteString("O_DSYNC|")
+	if log.IsDebugEnabled() {
+		if f.flags&uint32(C.O_DIRECT) != 0 {
+			flagBuf.WriteString("O_DIRECT|")
+		} else if f.flags&uint32(C.O_SYNC) != 0 {
+			flagBuf.WriteString("O_SYNC|")
+		} else if f.flags&uint32(C.O_DSYNC) != 0 {
+			flagBuf.WriteString("O_DSYNC|")
+		}
 	}
-
-	var tracer = tracing.NewTracer("cfs_write").
-		SetTag("volume", c.volName).
-		SetTag("fd", f.fd).
-		SetTag("path", f.path)
-	defer tracer.Finish()
-	var ctx = tracer.Context()
-
-	name := "cfs_write"
+	//var tracer = tracing.NewTracer("cfs_write").
+	//	SetTag("volume", c.volName).
+	//	SetTag("fd", f.fd).
+	//	SetTag("path", f.path)
+	//defer tracer.Finish()
+	//var ctx = tracer.Context()
 	overWriteBuffer := false
-	if strings.Contains(f.path, redologPrefix) {
-		name = "cfs_write_redolog"
+	act:=ump_cfs_write
+	if f.logType==BinLogType{
+		act=ump_cfs_write_binlog
+	}else if f.logType==RedoLogType {
+		act = ump_cfs_write_redolog
 		if c.app == appMysql8 {
 			overWriteBuffer = true
 		}
-	} else if strings.Contains(f.path, binlogPrefix) {
-		name = "cfs_write_binlog"
 	}
-	tpObject1 := ump.BeforeTP(c.umpFunctionKey(name))
-	tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKey(name))
+	tpObject1 := ump.BeforeTP(c.umpFunctionKeyFast(act))
+	tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKeyFast(act))
 	defer func() {
 		ump.AfterTPUs(tpObject1, nil)
 		ump.AfterTPUs(tpObject2, nil)
@@ -2901,13 +2957,17 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		offset = int(f.pos)
 	}
 
-	n, isROW, err := c.ec.Write(ctx, f.ino, offset, buffer, false, overWriteBuffer)
+	n, isROW, err := c.ec.Write(nil, f.ino, offset, buffer, false, overWriteBuffer)
 	if err != nil {
 		return C.ssize_t(statusEIO)
 	}
 
 	if flush {
+<<<<<<< HEAD
 		if err = c.flush(ctx, f.ino); err != nil {
+=======
+		if err = c.ec.Flush(nil, f.ino); err != nil {
+>>>>>>> eac83287... optimize: lots of optimize
 			return C.ssize_t(statusEIO)
 		}
 	}
@@ -2992,7 +3052,9 @@ func cfs_lseek(id C.int64_t, fd C.int, offset C.off64_t, whence C.int) (re C.off
 		ino  uint64
 	)
 	defer func() {
-		log.LogDebugf("cfs_lseek: id(%v) fd(%v) path(%v) ino(%v) offset(%v) whence(%v) re(%v)", id, fd, path, ino, offset, whence, re)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("cfs_lseek: id(%v) fd(%v) path(%v) ino(%v) offset(%v) whence(%v) re(%v)", id, fd, path, ino, offset, whence, re)
+		}
 	}()
 	c, exist := getClient(int64(id))
 	if !exist {
@@ -3062,7 +3124,7 @@ func (c *client) start() (err error) {
 		return
 	}
 
-	outputFilePath := path.Join(c.logDir, moduleName, "output.log")
+	outputFilePath := gopath.Join(c.logDir, moduleName, "output.log")
 	var outputFile *os.File
 	if outputFile, err = os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666); err != nil {
 		fmt.Println(err)
@@ -3165,6 +3227,7 @@ func (c *client) start() (err error) {
 		fmt.Println(err)
 		return
 	}
+	c.initUmpKeys()
 	exporter.InitRole(mw.Cluster(), moduleName)
 
 	// version
@@ -3389,14 +3452,6 @@ func (c *client) setattr(ctx context.Context, info *proto.InodeInfo, valid uint3
 func (c *client) closeStream(f *file) {
 	_ = c.ec.CloseStream(context.Background(), f.ino)
 	_ = c.ec.EvictStream(context.Background(), f.ino)
-}
-
-func (c *client) umpFunctionKey(act string) string {
-	return fmt.Sprintf("%s_%s_%s", c.mw.Cluster(), c.volName, act)
-}
-
-func (c *client) umpFunctionGeneralKey(act string) string {
-	return fmt.Sprintf("%s_%s_%s", c.mw.Cluster(), moduleName, act)
 }
 
 func (c *client) initReadPortMap() {

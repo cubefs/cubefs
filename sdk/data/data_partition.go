@@ -356,21 +356,6 @@ func (dp *DataPartition) sendReadCmdToDataPartition(sc *StreamConn, reqPacket *P
 // Send send the given packet over the network through the stream connection until success
 // or the maximum number of retries is reached.
 func (dp *DataPartition) OverWrite(sc *StreamConn, req *Packet, reply *Packet) (err error) {
-	var tracer = tracing.TracerFromContext(req.Ctx()).ChildTracer("DataPartition.OverWrite").
-		SetTag("req.ReqID", req.ReqID).
-		SetTag("req.Op", req.GetOpMsg()).
-		SetTag("req.PartitionID", req.PartitionID).
-		SetTag("req.Size", req.Size).
-		SetTag("req.ExtentID", req.ExtentID).
-		SetTag("req.ExtentOffset", req.ExtentOffset)
-	defer func() {
-		tracer.SetTag("ret.err", err)
-		tracer.Finish()
-	}()
-	req.SetCtx(tracer.Context())
-
-	errMap := make(map[string]error)
-
 	err = dp.OverWriteToDataPartitionLeader(sc, req, reply)
 	if err == nil && reply.ResultCode == proto.OpOk {
 		return
@@ -381,10 +366,10 @@ func (dp *DataPartition) OverWrite(sc *StreamConn, req *Packet, reply *Packet) (
 		return
 	}
 
-	hosts := sortByStatus(sc.dp, sc.currAddr)
 	startTime := time.Now()
+	errMap := make(map[string]error)
 	for i := 0; i < StreamSendOverWriteMaxRetry; i++ {
-		for _, addr := range hosts {
+		for _, addr := range dp.Hosts {
 			log.LogWarnf("OverWrite: try addr(%v) reqPacket(%v)", addr, req)
 			sc.currAddr = addr
 			err = dp.OverWriteToDataPartitionLeader(sc, req, reply)
@@ -423,7 +408,6 @@ func (dp *DataPartition) OverWriteToDataPartitionLeader(sc *StreamConn, req *Pac
 		log.LogWarnf("OverWriteToDataPartitionLeader: send to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 		return
 	}
-	reply.SetCtx(req.Ctx())
 	if err = reply.ReadFromConnNs(conn, dp.ClientWrapper.connConfig.ReadTimeoutNs); err != nil {
 		dp.hostErrMap.Store(sc.currAddr, time.Now().UnixNano())
 		log.LogWarnf("OverWriteToDataPartitionLeader: getReply error and RETURN, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)

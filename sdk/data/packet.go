@@ -20,7 +20,9 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"math/rand"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/chubaofs/chubaofs/repl"
@@ -91,9 +93,50 @@ func NewROWPacket(ctx context.Context, dp *DataPartition, quorum int, inode uint
 	return p
 }
 
+const (
+	OverWritePoolCnt =64
+)
+
+var (
+	OverWritePacketPools [OverWritePoolCnt]*sync.Pool
+)
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+	for index:=0;index<OverWritePoolCnt;index++{
+		OverWritePacketPools[index]=&sync.Pool{
+			New: func() interface{} {
+				return new(Packet)
+			},
+		}
+	}
+}
+
+func GetOverWritePacketFromPool()(p *Packet) {
+	index:=rand.Intn(OverWritePoolCnt)
+	p=OverWritePacketPools[index].Get().(*Packet)
+	return p
+}
+
+func PutOverWritePacketToPool(p *Packet) {
+	p.Data=nil
+	p.Size=0
+	p.PartitionID=0
+	p.ExtentID=0
+	p.ExtentOffset=0
+	p.Arg = nil
+	p.ArgLen = 0
+	p.RemainingFollowers = 0
+	p.ReqID=0
+	p.inode=0
+	p.SetCtx(nil)
+	index:=rand.Intn(OverWritePoolCnt)
+	OverWritePacketPools[index].Put(p)
+}
+
 // NewOverwritePacket returns a new overwrite packet.
 func NewOverwritePacket(ctx context.Context, dp *DataPartition, extentID uint64, extentOffset int, inode uint64, fileOffset int) *Packet {
-	p := new(Packet)
+	p := GetOverWritePacketFromPool()
 	p.PartitionID = dp.PartitionID
 	p.Magic = proto.ProtoMagic
 	p.ExtentType = proto.NormalExtentType
@@ -103,7 +146,10 @@ func NewOverwritePacket(ctx context.Context, dp *DataPartition, extentID uint64,
 	p.Arg = nil
 	p.ArgLen = 0
 	p.RemainingFollowers = 0
-	p.Opcode = proto.OpRandomWrite
+	p.Opcode = proto.OpRandomWriteV3
+	p.HasPrepare=false
+	p.StartT,p.RecvT,p.WaitT,p.SendT=time.Now().UnixNano(),time.Now().UnixNano(),time.Now().UnixNano(),time.Now().UnixNano()
+	p.ReqID=proto.GenerateRequestID()
 	p.inode = inode
 	p.KernelOffset = uint64(fileOffset)
 	p.SetCtx(ctx)

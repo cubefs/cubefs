@@ -102,39 +102,21 @@ func (sc *StreamConn) String() string {
 }
 
 func (sc *StreamConn) sendToDataPartition(req *Packet) (conn *net.TCPConn, err error) {
-	var tracer = tracing.TracerFromContext(req.Ctx()).ChildTracer("StreamConn.sendToDataPartition").
-		SetTag("req.ReqID", req.ReqID).
-		SetTag("req.Op", req.GetOpMsg()).
-		SetTag("req.PartitionID", req.PartitionID).
-		SetTag("req.ExtentID", req.ExtentID).
-		SetTag("req.Size", req.Size).
-		SetTag("req.ExtentOffset", req.ExtentOffset)
-	defer func() {
-		if conn != nil {
-			tracer.SetTag("ret.conn.local", conn.LocalAddr().String())
-			tracer.SetTag("ret.conn.remote", conn.RemoteAddr().String())
-		}
-		tracer.SetTag("ret.err", err)
-		tracer.Finish()
-	}()
-	req.SetCtx(tracer.Context())
-
-	log.LogDebugf("sendToDataPartition: send to addr(%v), reqPacket(%v)", sc.currAddr, req)
+	if log.IsDebugEnabled(){
+		log.LogDebugf("sendToDataPartition: send to addr(%v), reqPacket(%v)", sc.currAddr, req)
+	}
 	if conn, err = StreamConnPool.GetConnect(sc.currAddr); err != nil {
 		log.LogWarnf("sendToDataPartition: get connection to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 		return
 	}
-	if err = func() error {
-		var tracer = tracing.TracerFromContext(req.Ctx()).ChildTracer("dataPartition.sendToDataPartition[WriteToConn]").
-			SetTag("reqID", req.GetReqID()).
-			SetTag("reqOp", req.GetOpMsg())
-		defer tracer.Finish()
-		return req.WriteToConnNs(conn, sc.dp.ClientWrapper.connConfig.WriteTimeoutNs)
-	}(); err != nil {
+
+	if err=req.WriteToConnNs(conn, sc.dp.ClientWrapper.connConfig.WriteTimeoutNs);err != nil {
 		log.LogWarnf("sendToDataPartition: failed to write to addr(%v) err(%v)", sc.currAddr, err)
 		return
 	}
-	log.LogDebugf("sendToDataPartition exit: send to addr(%v) reqPacket(%v) successfully", sc.currAddr, req)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("sendToDataPartition exit: send to addr(%v) reqPacket(%v) successfully", sc.currAddr, req)
+	}
 	return
 }
 

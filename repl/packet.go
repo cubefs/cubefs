@@ -18,9 +18,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"strings"
 	"sync/atomic"
+	"sync"
 	"time"
 
 	"github.com/chubaofs/chubaofs/util/log"
@@ -54,6 +56,7 @@ type Packet struct {
 	quorum            int
 	refCnt            int32
 	errorCh           chan error
+	IsFromPool      bool
 }
 
 type FollowerPacket struct {
@@ -228,6 +231,7 @@ func copyReplPacket(src *Packet, dst *Packet) {
 	dst.ReqID = src.ReqID
 }
 
+
 func (p *Packet) BeforeTp(clusterID string) (ok bool) {
 	if p.IsForwardPkt() && !p.IsRandomWrite() {
 		p.TpObject = exporter.NewTPCnt(fmt.Sprintf("PrimaryBackUp_%v", p.GetOpMsg()))
@@ -275,6 +279,60 @@ func (p *Packet) resolveFollowersAddr(remoteAddr string) (err error) {
 	return
 }
 
+const (
+	PacketPoolCnt = 64
+)
+
+var (
+	PacketPool [PacketPoolCnt]*sync.Pool
+)
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+	for i := 0; i < PacketPoolCnt; i++ {
+		PacketPool[i] = &sync.Pool{New: func() interface{} {
+			return new(Packet)
+		}}
+	}
+}
+
+func PutPacketFromPool(p *Packet) {
+	if !p.IsFromPool{
+		return 
+	}
+	p.Size = 0
+	p.Data = nil
+	p.Opcode = 0
+	p.PartitionID = 0
+	p.ExtentID = 0
+	p.ExtentOffset = 0
+	p.Magic = proto.ProtoMagic
+	p.ExtentType = 0
+	p.ResultCode = 0
+	p.RemainingFollowers = 0
+	p.CRC = 0
+	p.ArgLen = 0
+	p.KernelOffset = 0
+	p.SetCtx(nil)
+	p.ReqID = 0
+	p.Arg = nil
+	p.Data = nil
+	p.HasPrepare = false
+	p.StartT = time.Now().UnixNano()
+	p.WaitT = time.Now().UnixNano()
+	p.SendT = time.Now().UnixNano()
+	p.RecvT = time.Now().UnixNano()
+	index := rand.Intn(PacketPoolCnt)
+	PacketPool[index].Put(p)
+}
+
+func GetPacketFromPool() (p *Packet) {
+	index := rand.Intn(PacketPoolCnt)
+	p = PacketPool[index].Get().(*Packet)
+	p.IsFromPool = true
+	return
+}
+
 func NewPacket(ctx context.Context) (p *Packet) {
 	p = new(Packet)
 	p.Magic = proto.ProtoMagic
@@ -283,6 +341,16 @@ func NewPacket(ctx context.Context) (p *Packet) {
 	p.SetCtx(ctx)
 	return
 }
+
+func NewPacketFromPool(ctx context.Context) (p *Packet) {
+	p = GetPacketFromPool()
+	p.Magic = proto.ProtoMagic
+	p.StartT = time.Now().UnixNano()
+	p.NeedReply = true
+	p.SetCtx(ctx)
+	return
+}
+
 
 func NewPacketToGetAllWatermarks(ctx context.Context, partitionID uint64, extentType uint8) (p *Packet) {
 	p = new(Packet)
@@ -483,14 +551,19 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineSonds int64) (isUseBuff
 	if p.Size < 0 {
 		return
 	}
+	return p.allocateBufferFromPoolForReadConnnectBody(c)
+}
+
+
+func (p *Packet)allocateBufferFromPoolForReadConnnectBody(c net.Conn) (isUseBufferPool bool,err error){
 	readSize := p.Size
 	if p.IsReadOperation() && p.ResultCode == proto.OpInitResultCode {
 		readSize = 0
 		return
 	}
 	p.OrgSize = int32(readSize)
-	if p.IsWriteOperation() && readSize == util.BlockSize {
-		p.Data, _ = proto.Buffers.Get(int(readSize))
+	if p.IsWriteOperation() && readSize <= util.BlockSize {
+		p.Data, _ = proto.Buffers.Get(util.BlockSize)
 		atomic.StoreInt64(&p.useBufferPoolFlag, PacketUseBufferPool)
 		_, err = io.ReadFull(c, p.Data[:readSize])
 		if err != nil {
@@ -498,14 +571,24 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineSonds int64) (isUseBuff
 			return
 		}
 		isUseBufferPool = true
-	} else {
-		p.Data = make([]byte, readSize)
-		if _, err = io.ReadFull(c, p.Data[:readSize]); err != nil {
-			return isUseBufferPool, err
+	}else if p.IsRandomWriteV3(){
+		needDataSize:=uint32(readSize)+proto.RandomWriteRaftLogV3HeaderSize
+		if needDataSize<=util.BlockSize{
+			p.Data, _ = proto.Buffers.Get(util.BlockSize)
+			atomic.StoreInt64(&p.useBufferPoolFlag, PacketUseBufferPool)
+			isUseBufferPool = true
+		}else {
+			p.Data = make([]byte, uint32(readSize)+proto.RandomWriteRaftLogV3HeaderSize)
 		}
+		_, err = io.ReadFull(c, p.Data[proto.RandomWriteRaftLogV3HeaderSize:p.Size+proto.RandomWriteRaftLogV3HeaderSize])
+	}else {
+		p.Data=make([]byte,readSize)
+		_, err = io.ReadFull(c, p.Data[:readSize])
 	}
-	return isUseBufferPool, err
+	return
 }
+
+
 
 func (p *Packet) IsMasterCommand() bool {
 	switch p.Opcode {
@@ -568,7 +651,12 @@ func (p *Packet) IsReadOperation() bool {
 }
 
 func (p *Packet) IsRandomWrite() bool {
-	return p.Opcode == proto.OpRandomWrite || p.Opcode == proto.OpSyncRandomWrite
+	return p.Opcode == proto.OpRandomWrite || p.Opcode == proto.OpSyncRandomWrite ||
+		p.Opcode == proto.OpRandomWriteV3 || p.Opcode == proto.OpSyncRandomWriteV3
+}
+
+func (p *Packet) IsRandomWriteV3() bool {
+	return p.Opcode == proto.OpRandomWriteV3 || p.Opcode == proto.OpSyncRandomWriteV3
 }
 
 func (p *Packet) IsSyncWrite() bool {

@@ -15,11 +15,14 @@
 package util
 
 import (
+	"container/list"
 	"context"
+	"math/rand"
 	"net"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/chubaofs/chubaofs/util/tracing"
@@ -31,8 +34,48 @@ type Object struct {
 }
 
 const (
-	ConnectIdleTime         = 30
 	defaultConnectTimeoutMs = 1000
+	ObjectPoolCnt = 64
+)
+
+var (
+	ObjectPool [ObjectPoolCnt]*sync.Pool
+	bytePool   = &sync.Pool{
+		New: func() interface{} {
+			return make([]byte, 128)
+		},
+	}
+)
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+	for index := 0; index < ObjectPoolCnt; index++ {
+		ObjectPool[index] = &sync.Pool{
+			New: func() interface{} {
+				return new(Object)
+			},
+		}
+	}
+}
+
+func GetObjectConnectFromPool() *Object {
+	index := rand.Intn(ObjectPoolCnt)
+	o := ObjectPool[index].Get().(*Object)
+	o.conn = nil
+	o.idle = time.Now().UnixNano()
+	return o
+}
+
+func ReturnObjectConnectToPool(o *Object) {
+	if o != nil {
+		o.conn = nil
+		ObjectPool[rand.Intn(ObjectPoolCnt)].Put(o)
+	}
+}
+
+const (
+	ConnectIdleTime       = 30
+	defaultConnectTimeout = 1
 )
 
 type ConnectPool struct {
@@ -101,10 +144,6 @@ func DailTimeOut(target string, timeout time.Duration) (c *net.TCPConn, err erro
 }
 
 func (cp *ConnectPool) GetConnect(targetAddr string) (c *net.TCPConn, err error) {
-	var tracer = tracing.NewTracer("ConnectPool.GetConnect").SetTag("target", targetAddr)
-	defer tracer.Finish()
-	ctx := tracer.Context()
-
 	cp.RLock()
 	pool, ok := cp.pools[targetAddr]
 	cp.RUnlock()
@@ -112,13 +151,13 @@ func (cp *ConnectPool) GetConnect(targetAddr string) (c *net.TCPConn, err error)
 		cp.Lock()
 		pool, ok = cp.pools[targetAddr]
 		if !ok {
-			pool = NewPool(ctx, cp.mincap, cp.maxcap, cp.timeout, cp.connectTimeoutNs, targetAddr)
+			pool = NewPool(nil, cp.mincap, cp.maxcap, cp.timeout, cp.connectTimeout, targetAddr)
 			cp.pools[targetAddr] = pool
 		}
 		cp.Unlock()
 	}
 
-	return pool.GetConnectFromPool(ctx)
+	return pool.GetConnectFromPool(nil)
 }
 
 func (cp *ConnectPool) PutConnect(c *net.TCPConn, forceClose bool) {
@@ -143,8 +182,9 @@ func (cp *ConnectPool) PutConnect(c *net.TCPConn, forceClose bool) {
 		c.Close()
 		return
 	}
-	object := &Object{conn: c, idle: time.Now().UnixNano()}
-	pool.PutConnectObjectToPool(object)
+	o := GetObjectConnectFromPool()
+	o.conn = c
+	pool.PutConnectToPool(o)
 
 	return
 }
@@ -157,8 +197,8 @@ func (cp *ConnectPool) PutConnectWithErr(c *net.TCPConn, err error) {
 	}
 	// If connect failed because of server restart, release all connection
 	if err != nil {
-		errStr := strings.ToLower(err.Error())
-		if strings.Contains(errStr, "broken pipe") || strings.Contains(errStr, "connection reset by peer") {
+		errStr := err.Error()
+		if strings.Contains(errStr, syscall.ETIMEDOUT.Error()) || strings.Contains(errStr, syscall.ECONNREFUSED.Error()) {
 			cp.ClearConnectPool(remoteAddr)
 		}
 	}
@@ -227,12 +267,14 @@ func (cp *ConnectPool) Close() {
 }
 
 type Pool struct {
-	objects          chan *Object
-	mincap           int
-	maxcap           int
-	target           string
-	timeout          int64
 	connectTimeoutNs int64
+	objects        *list.List
+	lock           sync.RWMutex
+	mincap         int
+	maxcap         int
+	target         string
+	timeout        int64
+	connectTimeout int64
 }
 
 func NewPool(ctx context.Context, min, max int, timeout, connectTimeoutNs int64, target string) (p *Pool) {
@@ -240,7 +282,7 @@ func NewPool(ctx context.Context, min, max int, timeout, connectTimeoutNs int64,
 	p.mincap = min
 	p.maxcap = max
 	p.target = target
-	p.objects = make(chan *Object, max)
+	p.objects = list.New()
 	p.timeout = timeout
 	p.connectTimeoutNs = connectTimeoutNs
 	p.initAllConnect(ctx)
@@ -257,56 +299,64 @@ func (p *Pool) initAllConnect(ctx context.Context) {
 			conn := c.(*net.TCPConn)
 			conn.SetKeepAlive(true)
 			conn.SetNoDelay(true)
-			o := &Object{conn: conn, idle: time.Now().UnixNano()}
-			p.PutConnectObjectToPool(o)
+			o := GetObjectConnectFromPool()
+			o.conn = conn
+			p.PutConnectToPool(o)
 		}
 	}
 }
 
-func (p *Pool) PutConnectObjectToPool(o *Object) {
-	select {
-	case p.objects <- o:
-		return
-	default:
-		if o.conn != nil {
-			o.conn.Close()
-		}
-		return
-	}
+func (p *Pool) PutConnectToPool(o *Object) {
+	p.lock.Lock()
+	p.objects.PushBack(o)
+	p.lock.Unlock()
 }
 
 func (p *Pool) autoRelease() {
-	connectLen := len(p.objects)
-	for i := 0; i < connectLen; i++ {
-		select {
-		case o := <-p.objects:
-			if time.Now().UnixNano()-int64(o.idle) > p.timeout {
-				o.conn.Close()
-			} else {
-				p.PutConnectObjectToPool(o)
-			}
-		default:
-			return
+	needRemove := make([]*list.Element, 0)
+	p.lock.RLock()
+	connectLen := p.objects.Len()
+	needRemoveCnt := connectLen - p.mincap
+	for e := p.objects.Front(); e != nil; e = e.Next() {
+		o := e.Value.(*Object)
+		if time.Now().UnixNano()-int64(o.idle) > p.timeout {
+			needRemove = append(needRemove, e)
+		}
+		if len(needRemove) >= needRemoveCnt {
+			break
 		}
 	}
+	p.lock.RUnlock()
+
+	p.lock.Lock()
+	for _, e := range needRemove {
+		p.objects.Remove(e)
+	}
+	p.lock.Unlock()
+	for _, e := range needRemove {
+		o := e.Value.(*Object)
+		o.conn.Close()
+		ReturnObjectConnectToPool(o)
+	}
+
 }
 
 func (p *Pool) ReleaseAll() {
-	connectLen := len(p.objects)
-	for i := 0; i < connectLen; i++ {
-		select {
-		case o := <-p.objects:
-			o.conn.Close()
-		default:
-			return
-		}
+	allE := make([]*list.Element, 0)
+	p.lock.Lock()
+	for e := p.objects.Front(); e != nil; e = e.Next() {
+		allE = append(allE, e)
+	}
+	p.objects = list.New()
+	p.lock.Unlock()
+	for _, e := range allE {
+		o := e.Value.(*Object)
+		o.conn.Close()
+		ReturnObjectConnectToPool(o)
 	}
 }
 
 func (p *Pool) NewConnect(ctx context.Context, target string) (c *net.TCPConn, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Pool.NewConnect").SetTag("target", target)
-	defer tracer.Finish()
-
 	var connect net.Conn
 	connect, err = net.DialTimeout("tcp", p.target, time.Duration(p.connectTimeoutNs)*time.Nanosecond)
 	if err == nil {
@@ -319,24 +369,23 @@ func (p *Pool) NewConnect(ctx context.Context, target string) (c *net.TCPConn, e
 }
 
 func (p *Pool) GetConnectFromPool(ctx context.Context) (c *net.TCPConn, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Pool.GetConnectFromPool").SetTag("target", p.target)
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var (
 		o *Object
 	)
-	for {
-		select {
-		case o = <-p.objects:
-		default:
-			return p.NewConnect(ctx, p.target)
-		}
-		if time.Now().UnixNano()-int64(o.idle) > p.timeout {
-			_ = o.conn.Close()
-			o = nil
-			continue
-		}
-		return o.conn, nil
+
+	p.lock.Lock()
+	e := p.objects.Back()
+	if e != nil {
+		o = p.objects.Remove(e).(*Object)
 	}
+	p.lock.Unlock()
+	if o != nil && time.Now().UnixNano()-o.idle < p.timeout {
+		c = o.conn
+		ReturnObjectConnectToPool(o)
+		return
+	} else {
+		ReturnObjectConnectToPool(o)
+		c, err = p.NewConnect(ctx, p.target)
+	}
+	return
 }

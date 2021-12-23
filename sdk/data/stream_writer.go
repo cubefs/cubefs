@@ -76,6 +76,14 @@ type FlushOverWriteRequest struct {
 type OverWriteRequest struct {
 	direct bool
 	oriReq *ExtentRequest
+	fileOffset int
+	size       int
+	data       []byte
+	writeBytes int
+	isROW      bool
+	err        error
+	done       chan struct{}
+	ctx        context.Context
 }
 
 // FlushRequest defines a flush request.
@@ -125,6 +133,16 @@ func (s *Streamer) IssueOpenRequest() error {
 	return nil
 }
 
+func GetWriteRequestFromPool() (request *WriteRequest) {
+	request = writeRequestPool.Get().(*WriteRequest)
+	request.data = nil
+	request.size = 0
+	if request.done == nil {
+		request.done = make(chan struct{}, 1)
+	}
+	return
+}
+
 func (s *Streamer) IssueWriteRequest(ctx context.Context, offset int, data []byte, direct bool, overWriteBuffer bool) (write int, isROW bool, err error) {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("StreamWrite.IssueWriteRequest").
 		SetTag("arg.inode", s.inode).
@@ -140,7 +158,7 @@ func (s *Streamer) IssueWriteRequest(ctx context.Context, offset int, data []byt
 
 	s.writeLock.Lock()
 	atomic.AddInt32(&s.writeOp, 1)
-	request := writeRequestPool.Get().(*WriteRequest)
+	request := GetWriteRequestFromPool()
 	request.data = data
 	request.fileOffset = offset
 	request.size = len(data)
@@ -149,11 +167,11 @@ func (s *Streamer) IssueWriteRequest(ctx context.Context, offset int, data []byt
 	request.done = make(chan struct{}, 1)
 	request.isROW = false
 	request.ctx = ctx
-	tracer.SetTag("request.channel.len", len(s.request))
+	//tracer.SetTag("request.channel.len", len(s.request))
 	s.request <- request
 	s.writeLock.Unlock()
 
-	tracer.Finish()
+	//tracer.Finish()
 
 	<-request.done
 	atomic.AddInt32(&s.writeOp, -1)
@@ -373,13 +391,15 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, dir
 		SetTag("direct", direct)
 	defer tracer.Finish()
 	ctx = tracer.Context()
-
-	log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v)", s.inode, offset, size)
-
+	if log.IsDebugEnabled() {
+		log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v)", s.inode, offset, size)
+	}
 	s.client.writeLimiter.Wait(ctx)
 
 	requests := s.extents.PrepareRequests(offset, size, data)
-	log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)
+	}
 
 	needFlush := false
 	for _, req := range requests {
@@ -395,7 +415,9 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, dir
 			return
 		}
 		requests = s.extents.PrepareRequests(offset, size, data)
-		log.LogDebugf("Streamer write: ino(%v) prepared requests after flush(%v)", s.inode, requests)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("Streamer write: ino(%v) prepared requests after flush(%v)", s.inode, requests)
+		}
 	}
 
 	for _, req := range requests {
@@ -423,9 +445,13 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, dir
 	}
 	if filesize, _ := s.extents.Size(); offset+total > filesize {
 		s.extents.SetSize(uint64(offset+total), false)
-		log.LogDebugf("Streamer write: ino(%v) filesize changed to (%v)", s.inode, offset+total)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("Streamer write: ino(%v) filesize changed to (%v)", s.inode, offset+total)
+		}
 	}
-	log.LogDebugf("Streamer write exit: ino(%v) offset(%v) size(%v) done total(%v) isROW(%v) err(%v)", s.inode, offset, size, total, isROW, err)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("Streamer write exit: ino(%v) offset(%v) size(%v) done total(%v) err(%v)", s.inode, offset, size, total, err)
+	}
 	return
 }
 
@@ -498,7 +524,9 @@ func (s *Streamer) writeToNewExtent(ctx context.Context, oriReq *ExtentRequest, 
 			log.LogWarnf("writeToNewExtent: oriReq %v exceed max retry times(%v), err %v",
 				oriReq, MaxSelectDataPartitionForWrite, err)
 		}
-		log.LogDebugf("writeToNewExtent: inode %v, oriReq %v direct %v", s.inode, oriReq, direct)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("writeToNewExtent: inode %v, oriReq %v direct %v", s.inode, oriReq, direct)
+		}
 	}()
 
 	exclude := make(map[string]struct{})
@@ -598,16 +626,7 @@ func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool
 }
 
 func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct bool) (total int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Streamer.doOverwrite").
-		SetTag("direct", direct).
-		SetTag("req.Size", req.Size).
-		SetTag("req.ExtentKey", req.ExtentKey).
-		SetTag("req.FileOffset", req.FileOffset)
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var dp *DataPartition
-
 	err = s.flush(ctx)
 	if err != nil {
 		return
@@ -627,7 +646,6 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 	ekExtOffset := int(req.ExtentKey.ExtentOffset)
 
 	if dp, err = s.client.dataWrapper.GetDataPartition(req.ExtentKey.PartitionId); err != nil {
-		// TODO unhandled error
 		err = errors.Trace(err, "doOverwrite: ino(%v) failed to get datapartition, ek(%v)", s.inode, req.ExtentKey)
 		return
 	}
@@ -637,18 +655,20 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 	for total < size {
 		reqPacket := NewOverwritePacket(ctx, dp, req.ExtentKey.ExtentId, offset-ekFileOffset+total+ekExtOffset, s.inode, offset)
 		if direct {
-			reqPacket.Opcode = proto.OpSyncRandomWrite
+			reqPacket.Opcode = proto.OpSyncRandomWriteV3
 		}
 		packSize := util.Min(size-total, util.OverWritePacketSizeLimit)
 		reqPacket.Data = req.Data[total : total+packSize]
 		reqPacket.Size = uint32(packSize)
 		reqPacket.CRC = crc32.ChecksumIEEE(reqPacket.Data[:packSize])
 
-		replyPacket := new(Packet)
+		replyPacket := GetOverWritePacketFromPool()
 		err = dp.OverWrite(sc, reqPacket, replyPacket)
 
 		reqPacket.Data = nil
-		log.LogDebugf("doOverwrite: ino(%v) req(%v) reqPacket(%v) err(%v) replyPacket(%v)", s.inode, req, reqPacket, err, replyPacket)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("doOverwrite: ino(%v) req(%v) reqPacket(%v) err(%v) replyPacket(%v)", s.inode, req, reqPacket, err, replyPacket)
+		}
 
 		if err != nil || replyPacket.ResultCode != proto.OpOk {
 			err = errors.New(fmt.Sprintf("doOverwrite: failed or reply NOK: err(%v) ino(%v) req(%v) replyPacket(%v)", err, s.inode, req, replyPacket))
@@ -659,6 +679,8 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 			err = errors.New(fmt.Sprintf("doOverwrite: is not the corresponding reply, ino(%v) req(%v) replyPacket(%v)", s.inode, req, replyPacket))
 			break
 		}
+		PutOverWritePacketToPool(reqPacket)
+		PutOverWritePacketToPool(replyPacket)
 
 		total += packSize
 	}
@@ -677,8 +699,9 @@ func (s *Streamer) doWrite(ctx context.Context, data []byte, offset, size int, d
 	var (
 		ek *proto.ExtentKey
 	)
-
-	log.LogDebugf("doWrite enter: ino(%v) offset(%v) size(%v)", s.inode, offset, size)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("doWrite enter: ino(%v) offset(%v) size(%v)", s.inode, offset, size)
+	}
 
 	for i := 0; i < MaxNewHandlerRetry; i++ {
 		if s.handler == nil {
@@ -687,9 +710,10 @@ func (s *Streamer) doWrite(ctx context.Context, data []byte, offset, size int, d
 			if offset != 0 || offset+size > s.tinySizeLimit() {
 				storeMode = proto.NormalExtentType
 			}
-
-			log.LogDebugf("doWrite: NewExtentHandler ino(%v) offset(%v) size(%v) storeMode(%v)",
-				s.inode, offset, size, storeMode)
+			if log.IsDebugEnabled() {
+				log.LogDebugf("doWrite: NewExtentHandler ino(%v) offset(%v) size(%v) storeMode(%v)",
+					s.inode, offset, size, storeMode)
+			}
 
 			// not use preExtent if once failed
 			if i > 0 || !s.usePreExtentHandler(offset, size) {
@@ -717,8 +741,9 @@ func (s *Streamer) doWrite(ctx context.Context, data []byte, offset, size int, d
 
 	s.extents.Append(ek, false)
 	total = size
-
-	log.LogDebugf("doWrite exit: ino(%v) offset(%v) size(%v) ek(%v)", s.inode, offset, size, ek)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("doWrite exit: ino(%v) offset(%v) size(%v) ek(%v)", s.inode, offset, size, ek)
+	}
 	return
 }
 
@@ -769,18 +794,15 @@ append:
 }
 
 func (s *Streamer) flush(ctx context.Context) (err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Streamer.flush")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	for {
 		element := s.dirtylist.Get()
 		if element == nil {
 			break
 		}
 		eh := element.Value.(*ExtentHandler)
-
-		log.LogDebugf("Streamer flush begin: eh(%v)", eh)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("Streamer flush begin: eh(%v)", eh)
+		}
 		err = eh.flush(ctx)
 		if err != nil {
 			log.LogWarnf("Streamer flush failed: eh(%v)", eh)
@@ -789,13 +811,19 @@ func (s *Streamer) flush(ctx context.Context) (err error) {
 		eh.stream.dirtylist.Remove(element)
 		if eh.getStatus() == ExtentStatusOpen {
 			s.dirty = false
-			log.LogDebugf("Streamer flush handler open: eh(%v)", eh)
+			if log.IsDebugEnabled() {
+				log.LogDebugf("Streamer flush handler open: eh(%v)", eh)
+			}
 		} else {
 			// TODO unhandled error
 			eh.cleanup()
-			log.LogDebugf("Streamer flush handler cleaned up: eh(%v)", eh)
+			if log.IsDebugEnabled() {
+				log.LogDebugf("Streamer flush handler cleaned up: eh(%v)", eh)
+			}
 		}
-		log.LogDebugf("Streamer flush end: eh(%v)", eh)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("Streamer flush end: eh(%v)", eh)
+		}
 	}
 	return
 }
@@ -887,7 +915,9 @@ func (s *Streamer) release(ctx context.Context) error {
 	if err != nil {
 		s.abort()
 	}
-	log.LogDebugf("release: streamer(%v) refcnt(%v)", s, s.refcnt)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("release: streamer(%v) refcnt(%v)", s, s.refcnt)
+	}
 	return err
 }
 
@@ -901,7 +931,9 @@ func (s *Streamer) evict(ctx context.Context) error {
 		s.streamerMap.Unlock()
 		return errors.New(fmt.Sprintf("evict: streamer(%v) refcnt(%v)", s, s.refcnt))
 	}
-	log.LogDebugf("evict: inode(%v)", s.inode)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("evict: inode(%v)", s.inode)
+	}
 	delete(s.streamerMap.streamers, s.inode)
 	s.streamerMap.Unlock()
 	return nil
@@ -933,8 +965,9 @@ func (s *Streamer) truncate(ctx context.Context, size int) error {
 	}
 
 	oldSize, _ := s.extents.Size()
-	log.LogDebugf("streamer truncate: inode(%v) oldSize(%v) size(%v)", s.inode, oldSize, size)
-
+	if log.IsDebugEnabled() {
+		log.LogDebugf("streamer truncate: inode(%v) oldSize(%v) size(%v)", s.inode, oldSize, size)
+	}
 	err = s.client.truncate(ctx, s.inode, uint64(oldSize), uint64(size))
 	if err != nil {
 		return err
@@ -1129,10 +1162,10 @@ func (s *Streamer) usePreExtentHandler(offset, size int) bool {
 		int(preEk.Size)+int(preEk.ExtentOffset)+size > s.extentSize {
 		return false
 	}
-
-	log.LogDebugf("usePreExtentHandler: ino(%v) offset(%v) size(%v) preEk(%v)",
-		s.inode, offset, size, preEk)
-
+	if log.IsDebugEnabled() {
+		log.LogDebugf("usePreExtentHandler: ino(%v) offset(%v) size(%v) preEk(%v)",
+			s.inode, offset, size, preEk)
+	}
 	var (
 		dp   *DataPartition
 		conn *net.TCPConn

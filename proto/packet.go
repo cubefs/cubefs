@@ -79,6 +79,10 @@ const (
 	OpGetAllExtentInfo               uint8 = 0x18
 	OpTinyExtentAvaliRead            uint8 = 0x19
 
+	// Operations client-->datanode
+	OpRandomWriteV3     uint8 = 0x50
+	OpSyncRandomWriteV3 uint8 = 0x51
+
 	// Operations: Client -> MetaNode.
 	OpMetaCreateInode   uint8 = 0x20
 	OpMetaUnlinkInode   uint8 = 0x21
@@ -113,6 +117,7 @@ const (
 	OpMetaExtentsInsert      uint8 = 0x3B
 	OpMetaInodeGetV2         uint8 = 0x3C //new op code, old(get) compatible the old client
 	OpGetMetaNodeVersionInfo uint8 = 0x3D
+
 
 	// Operations: Master -> MetaNode
 	OpCreateMetaPartition             uint8 = 0x40
@@ -196,6 +201,7 @@ const (
 const (
 	TinyExtentType   = 0
 	NormalExtentType = 1
+	AllExtentType    = 2
 )
 
 const (
@@ -469,6 +475,10 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpSyncDataPartitionReplicas"
 	case OpMetaGetAppliedID:
 		m = "OpMetaGetAppliedID"
+	case OpRandomWriteV3:
+		m = "OpRandomWriteV3"
+	case OpSyncRandomWriteV3:
+		m = "OpSyncRandomWriteV3"
 	}
 	return
 }
@@ -481,7 +491,7 @@ func (p *Packet) GetResultMsg() (m string) {
 
 	switch p.ResultCode {
 	case OpInodeOutOfRange:
-		m = "InodeOutOfRange: " + p.GetRespData()
+		m = "Inode Out of Range :" + p.GetRespData()
 	case OpIntraGroupNetErr:
 		m = "IntraGroupNetErr: " + p.GetRespData()
 	case OpDiskNoSpaceErr:
@@ -606,19 +616,6 @@ func (p *Packet) WriteToNoDeadLineConn(c net.Conn) (err error) {
 
 // WriteToConn writes through the given connection.
 func (p *Packet) WriteToConn(c net.Conn, timeoutSec int) (err error) {
-
-	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("proto.Packet.WriteToConn").
-		SetTag("remote", c.RemoteAddr().String()).
-		SetTag("local", c.LocalAddr().String()).
-		SetTag("ReqID", p.GetReqID()).
-		SetTag("ReqOp", p.GetOpMsg())
-	defer func() {
-		tracer.SetTag("Arg", string(p.Arg))
-		tracer.SetTag("ArgLen", p.ArgLen)
-		tracer.Finish()
-	}()
-	p.SetCtx(tracer.Context())
-
 	if timeoutSec > 0 {
 		c.SetWriteDeadline(time.Now().Add(time.Second * time.Duration(timeoutSec)))
 	}
@@ -635,13 +632,13 @@ func (p *Packet) WriteToConnNs(c net.Conn, timeoutNs int64) (err error) {
 	return p.writeToConn(c)
 }
 
+
 func (p *Packet) writeToConn(c net.Conn) (err error) {
 	header, err := Buffers.Get(util.PacketHeaderSize)
 	if err != nil {
 		header = make([]byte, util.PacketHeaderSize)
 	}
 	defer Buffers.Put(header)
-
 	p.MarshalHeader(header)
 	if _, err = c.Write(header); err == nil {
 		if _, err = c.Write(p.Arg[:int(p.ArgLen)]); err == nil {
@@ -850,6 +847,13 @@ func (p *Packet) IsReadMetaPkt() bool {
 		p.Opcode == OpMetaReadDir || p.Opcode == OpMetaExtentsList || p.Opcode == OpGetMultipart ||
 		p.Opcode == OpMetaGetXAttr || p.Opcode == OpMetaListXAttr || p.Opcode == OpListMultiparts ||
 		p.Opcode == OpMetaBatchGetXAttr {
+		return true
+	}
+	return false
+}
+
+func (p *Packet) IsRandomWrite() bool {
+	if p.Opcode == OpRandomWriteV3 || p.Opcode == OpSyncRandomWriteV3 || p.Opcode == OpRandomWrite || p.Opcode == OpSyncRandomWrite {
 		return true
 	}
 	return false

@@ -199,7 +199,7 @@ func (ft *FollowerTransport) serverReadFromFollower(ctx context.Context) {
 
 // Read the response from the follower
 func (ft *FollowerTransport) readFollowerResult(ctx context.Context, request *FollowerPacket) (err error) {
-	reply := NewPacket(ctx)
+	reply := NewPacketFromPool(ctx)
 	defer func() {
 		request.Data = nil
 		request.errorCh <- err
@@ -209,6 +209,7 @@ func (ft *FollowerTransport) readFollowerResult(ctx context.Context, request *Fo
 			log.LogErrorf("replID(%v) pkgOrder(%v) firstErrorAndPkgInfo(%v,%v) request(%v) readFollowerResult(%v) error(%v)", ft.replId, ft.pkgOrder, ft.globalErr, ft.firstErrPkg, request.GetUniqueLogId(), ft.conn.RemoteAddr().String(), err)
 			return
 		}
+		PutPacketFromPool(reply)
 	}()
 	request.Data = nil
 	if err = reply.ReadFromConn(ft.conn, proto.ReadDeadlineTime); err != nil {
@@ -383,7 +384,7 @@ func (rp *ReplProtocol) ServerConn() {
 //}
 
 func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
-	request := NewPacket(context.Background())
+	request := NewPacketFromPool(context.Background())
 	var isUsedBufferPool bool
 	isUsedBufferPool, err = request.ReadFromConnFromCli(rp.sourceConn, ReplProtocalServerTimeOut)
 	if isUsedBufferPool {
@@ -787,6 +788,7 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 	var err error
 	defer func() {
 		rp.cleanPacket(reply)
+		PutPacketFromPool(reply)
 	}()
 	_ = rp.postFunc(reply)
 	if !reply.NeedReply {
@@ -918,7 +920,7 @@ func (rp *ReplProtocol) cleanPacket(p *Packet) {
 		rp.addPutNumFromBufferPoolCnt()
 		return
 	}
-	if p.IsWriteOperation() && p.OrgSize == util.BlockSize && p.isUseBufferPool()  {
+	if p.IsWriteOperation() && p.OrgSize <= util.BlockSize && p.isUseBufferPool()  {
 		log.LogErrorf("request(%v) not return to pool, packet is UseBufferPool(%v)",
 			p.LogMessage("ActionCleanToPacket", rp.sourceConn.RemoteAddr().String(), p.StartT, nil), p.isUseBufferPool())
 	}
@@ -930,7 +932,7 @@ func (rp *ReplProtocol) forceCleanPacket(p *Packet) {
 		rp.addPutNumFromBufferPoolCnt()
 		return
 	}
-	if p.IsWriteOperation() && p.OrgSize == util.BlockSize && p.isUseBufferPool() {
+	if p.IsWriteOperation() && p.OrgSize <= util.BlockSize && p.isUseBufferPool() {
 		log.LogErrorf("request(%v) not return to pool, packet is UseBufferPool(%v)",
 			p.LogMessage("ActionCleanToPacket", rp.sourceConn.RemoteAddr().String(), p.StartT, nil), p.isUseBufferPool())
 	}

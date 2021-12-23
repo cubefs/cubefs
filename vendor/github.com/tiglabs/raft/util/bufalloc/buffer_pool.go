@@ -15,6 +15,7 @@
 package bufalloc
 
 import (
+	"math/rand"
 	"sync"
 
 	"github.com/tiglabs/raft/util"
@@ -22,7 +23,7 @@ import (
 
 const (
 	baseSize = 15
-	bigSize  = 64 * util.KB
+	bigSize  = 256 * util.KB
 )
 
 var buffPool *bufferPool
@@ -37,20 +38,42 @@ func init() {
 	buffPool.pool[baseSize] = createPool(0)
 }
 
-func createPool(n int) *sync.Pool {
-	return &sync.Pool{
-		New: func() interface{} {
-			if n == 0 || n > bigSize {
-				return &ibuffer{}
-			}
-			return &ibuffer{buf: makeSlice(n)}
-		},
+func createPool(n int) (opool *optimizePool) {
+	opool=new(optimizePool)
+	for i:=0;i<MaxPoolCnt;i++ {
+		opool.poolArr[i] = &sync.Pool{
+			New: func() interface{} {
+				if n == 0 || n > bigSize {
+					return &ibuffer{}
+				}
+				return &ibuffer{buf: makeSlice(n)}
+			},
+		}
 	}
+	return
+}
+
+const (
+	MaxPoolCnt = 32
+)
+
+type optimizePool struct {
+	poolArr [MaxPoolCnt]*sync.Pool
+}
+
+func (op *optimizePool)Get() interface{}{
+	index:=rand.Int()%MaxPoolCnt
+	return op.poolArr[index].Get()
+}
+
+func (op *optimizePool)Put(x interface{}){
+	index:=rand.Int()%MaxPoolCnt
+	op.poolArr[index].Put(x)
 }
 
 type bufferPool struct {
 	baseline [baseSize]int
-	pool     [baseSize + 1]*sync.Pool
+	pool     [baseSize + 1]*optimizePool
 }
 
 func (p *bufferPool) getPoolNum(n int) int {

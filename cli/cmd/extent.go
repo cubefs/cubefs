@@ -70,7 +70,7 @@ type DataPartition struct {
 	Used                 int                   `json:"used"`
 	Status               int                   `json:"status"`
 	Path                 string                `json:"path"`
-	Files                []*storage.ExtentInfo `json:"extents"`
+	Files                []storage.ExtentInfoBlock `json:"extents"`
 	FileCount            int                   `json:"fileCount"`
 	Replicas             []string              `json:"replicas"`
 	Peers                []proto.Peer          `json:"peers"`
@@ -427,8 +427,8 @@ func garbageCheck(vol string, all bool, active bool, dir string, clean bool, dpC
 					dataExtentMap[dp] = make(map[uint64]uint64)
 				}
 				for _, extent := range dpInfo.Files {
-					if (all || today.Unix()-extent.ModifyTime >= 604800) && extent.FileID > storage.MinExtentID {
-						dataExtentMap[dp][extent.FileID] = extent.Size
+					if (all || today.Unix()-int64(extent[storage.ModifyTime]) >= 604800) && extent[storage.FileID] > storage.MinExtentID {
+						dataExtentMap[dp][extent[storage.FileID]] = extent[storage.Size]
 					}
 				}
 				mu.Unlock()
@@ -925,7 +925,7 @@ func checkExtentLength(ek *proto.ExtentKey, checkedExtent sync.Map) (same bool, 
 		ok        bool
 		ekStr     string = fmt.Sprintf("%d-%d", ek.PartitionId, ek.ExtentId)
 		partition *proto.DataPartitionInfo
-		extent    *storage.ExtentInfo
+		extent    storage.ExtentInfoBlock
 	)
 	if _, ok = checkedExtent.LoadOrStore(ekStr, true); ok {
 		return true, nil
@@ -942,7 +942,7 @@ func checkExtentLength(ek *proto.ExtentKey, checkedExtent sync.Map) (same bool, 
 		stdout("getExtentFromData ERROR: %v, datanode: %v, PartitionId: %v, ExtentId: %v\n", err, datanode, ek.PartitionId, ek.ExtentId)
 		return
 	}
-	if ek.ExtentOffset+uint64(ek.Size) > extent.Size {
+	if ek.ExtentOffset+uint64(ek.Size) > extent[storage.Size] {
 		stdout("ERROR ek:%v, extent:%v\n", ek, extent)
 		return false, nil
 	}
@@ -1013,18 +1013,15 @@ func validateDataPartitionTinyExtentCrc(dataPartition *proto.DataPartitionRespon
 	extentReplicaHostSizeMap := make(map[uint64]map[string]uint64, 0)
 	for replicaHost, partition := range dpReplicaInfos {
 		for _, extentInfo := range partition.Files {
-			if extentInfo.IsDeleted {
+			if !storage.IsTinyExtent(extentInfo[storage.FileID]) {
 				continue
 			}
-			if !storage.IsTinyExtent(extentInfo.FileID) {
-				continue
-			}
-			replicaSizeMap, ok := extentReplicaHostSizeMap[extentInfo.FileID]
+			replicaSizeMap, ok := extentReplicaHostSizeMap[extentInfo[storage.FileID]]
 			if !ok {
 				replicaSizeMap = make(map[string]uint64)
 			}
-			replicaSizeMap[replicaHost] = extentInfo.Size
-			extentReplicaHostSizeMap[extentInfo.FileID] = replicaSizeMap
+			replicaSizeMap[replicaHost] = extentInfo[storage.Size]
+			extentReplicaHostSizeMap[extentInfo[storage.FileID]] = replicaSizeMap
 		}
 	}
 
@@ -1273,7 +1270,7 @@ func getExtentsByDp(partitionId uint64, replicaAddr string) (re *DataPartition, 
 	return
 }
 
-func getExtent(partitionId uint64, extentId uint64) (re *storage.ExtentInfo, err error) {
+func getExtent(partitionId uint64, extentId uint64) (re storage.ExtentInfoBlock, err error) {
 	partition, err := client.AdminAPI().GetDataPartition("", partitionId)
 	datanode := partition.Hosts[0]
 	addressInfo := strings.Split(datanode, ":")
@@ -1291,11 +1288,10 @@ func getExtent(partitionId uint64, extentId uint64) (re *storage.ExtentInfo, err
 	if data, err = parseResp(respData); err != nil {
 		return
 	}
-	re = &storage.ExtentInfo{}
 	if err = json.Unmarshal(data, &re); err != nil {
 		return
 	}
-	if re == nil {
+	if re == storage.EmptyExtentBlock {
 		err = fmt.Errorf("Get %s fails, data: %s", url, string(data))
 		return
 	}

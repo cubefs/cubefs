@@ -430,10 +430,6 @@ func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
 }
 
 func (eh *ExtentHandler) flush(ctx context.Context) (err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("ExtentHandler.flush")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	eh.flushPacket(ctx)
 	eh.waitForFlush(ctx)
 

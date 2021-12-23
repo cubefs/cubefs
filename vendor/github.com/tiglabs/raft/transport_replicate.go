@@ -207,14 +207,14 @@ func (t *replicateTransport) handleConn(conn *util.ConnTimeout) {
 	util.RunWorker(func() {
 		defer conn.Close()
 
-		loopCount := 0
-		bufRd := util.NewBufferReader(conn, 16*KB)
+		//loopCount := 0
+		bufRd := util.NewBufferReader(conn, 64*KB)
 		for {
-			loopCount = loopCount + 1
-			if loopCount > 16 {
-				loopCount = 0
-				runtime.Gosched()
-			}
+			//loopCount = loopCount + 1
+			//if loopCount > 16 {
+			//	loopCount = 0
+			//	//runtime.Gosched()
+			//}
 
 			select {
 			case <-t.stopc:

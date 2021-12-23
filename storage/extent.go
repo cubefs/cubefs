@@ -38,21 +38,19 @@ const (
 	SEEK_HOLE      = 4
 )
 
-type ExtentInfo struct {
-	FileID     uint64 `json:"fileId"`
-	Size       uint64 `json:"size"`
-	Crc        uint32 `json:"Crc"`
-	IsDeleted  bool   `json:"deleted"`
-	ModifyTime int64  `json:"modTime"`
-	Source     string `json:"src"`
-}
+const (
+	FileID = iota
+	Size
+	Crc
+	ModifyTime
+)
 
-func (ei *ExtentInfo) String() (m string) {
-	source := ei.Source
-	if source == "" {
-		source = "none"
-	}
-	return fmt.Sprintf("%v_%v_%v_%v", ei.FileID, ei.Size, ei.IsDeleted, source)
+type ExtentInfoBlock [4]uint64
+
+var EmptyExtentBlock = ExtentInfoBlock{}
+
+func (eiBlock ExtentInfoBlock) String() string {
+	return fmt.Sprintf("%v_%v", eiBlock[FileID], eiBlock[Size])
 }
 
 // Extent is an implementation of Extent for local regular extent file data management.
@@ -204,7 +202,7 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeTyp
 }
 
 // Write writes data to an extent.
-func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType int, isSync bool, crcFunc UpdateCrcFunc, ei *ExtentInfo) (err error) {
+func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType int, isSync bool, crcFunc UpdateCrcFunc, ei *ExtentInfoBlock) (err error) {
 	if IsTinyExtent(e.extentID) {
 		err = e.WriteTiny(data, offset, size, crc, writeType, isSync)
 		return

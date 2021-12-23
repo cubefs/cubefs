@@ -851,14 +851,16 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataPartitionRepairTask) {
 	store := dp.extentStore
 	for _, extentInfo := range repairTask.ExtentsToBeCreated {
-		if storage.IsTinyExtent(extentInfo.FileID) {
+		if storage.IsTinyExtent(extentInfo[storage.FileID]) {
 			continue
 		}
-		if !storage.IsTinyExtent(extentInfo.FileID) && !dp.ExtentStore().IsFinishLoad() {
+
+		if !storage.IsTinyExtent(extentInfo[storage.FileID]) && !dp.ExtentStore().IsFininshLoad() {
 			continue
 		}
-		if store.HasExtent(uint64(extentInfo.FileID)) {
-			info := &storage.ExtentInfo{Source: extentInfo.Source, FileID: extentInfo.FileID, Size: extentInfo.Size}
+		if store.HasExtent(uint64(extentInfo[storage.FileID])) {
+			//info := &storage.ExtentInfo{Source: extentInfo.Source, FileID: extentInfo.FileID, Size: extentInfo.Size} todo
+			info := storage.ExtentInfoBlock{ storage.FileID: extentInfo[storage.FileID], storage.Size: extentInfo[storage.Size]}
 			repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, info)
 			continue
 		}
@@ -866,12 +868,13 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 			log.LogWarnf("AutoRepairStatus is False,so cannot Create extent(%v)", extentInfo.String())
 			continue
 		}
-		err := store.Create(uint64(extentInfo.FileID), true)
+		err := store.Create(uint64(extentInfo[storage.FileID]), true)
 		if err != nil {
 			continue
 		}
 		dp.lastUpdateTime = time.Now().Unix()
-		info := &storage.ExtentInfo{Source: extentInfo.Source, FileID: extentInfo.FileID, Size: extentInfo.Size}
+		//info := &storage.ExtentInfo{Source: extentInfo.Source, FileID: extentInfo.FileID, Size: extentInfo.Size}
+		info := storage.ExtentInfoBlock{storage.FileID: extentInfo[storage.FileID], storage.Size: extentInfo[storage.Size]}
 		repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, info)
 	}
 	var (
@@ -881,13 +884,13 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 	wg = new(sync.WaitGroup)
 	for _, extentInfo := range repairTask.ExtentsToBeRepaired {
 
-		if !store.HasExtent(uint64(extentInfo.FileID)) {
+		if !store.HasExtent(extentInfo[storage.FileID]) {
 			continue
 		}
 		wg.Add(1)
-
+		source := repairTask.ExtentsToBeRepairedSource[extentInfo[storage.FileID]]
 		// repair the extents
-		go dp.doStreamExtentFixRepairOnFollowerDisk(context.Background(), wg, extentInfo)
+		go dp.doStreamExtentFixRepairOnFollowerDisk(context.Background(), wg, extentInfo, source)
 		recoverIndex++
 
 		if recoverIndex%NumOfFilesToRecoverInParallel == 0 {

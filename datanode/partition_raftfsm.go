@@ -57,6 +57,7 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		return
 	}
 	resp, err = dp.ApplyRandomWrite(opItem, index)
+	PutRandomWriteOpItem(opItem)
 	return
 }
 

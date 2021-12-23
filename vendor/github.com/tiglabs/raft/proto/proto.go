@@ -119,6 +119,7 @@ func (e *Entry) Ctx() context.Context {
 }
 
 func (e *Entry) SetTagsToTracer(tracer tracing.Tracer) {
+	return
 	if tracer != nil {
 		tracer.SetTag("index", e.Index).
 			SetTag("term", e.Term).
@@ -162,6 +163,7 @@ func (m *Message) ToString() (mesg string) {
 }
 
 func (m *Message) SetTagsToTracer(tracer tracing.Tracer) {
+	return
 	if tracer != nil {
 		tracer.SetTag("id", m.ID).
 			SetTag("index", m.Index).

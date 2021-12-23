@@ -43,6 +43,8 @@ var (
 	tickInterval = 100 * time.Millisecond
 	logLevel     = "debug"
 	walDir       = ""
+	diskNum		 = 5
+	dataType	 = 0
 	resolver     = newNodeManager()
 
 	temp        = "0123456789abcdefghijklmnopqrstuvwxyz"
@@ -220,12 +222,26 @@ func getMemoryStorage(raft *raft.RaftServer, nodeId, raftId uint64) storage.Stor
 		return storage.NewMemoryStorage(raft, raftId, 200000)
 	case 1:
 		return getStorage(nodeId, raftId)
+	case 2:
+		return getSeparateStorage(nodeId, raftId)
 	}
 	return nil
 }
 
 func getStorage(nodeId, raftId uint64) storage.Storage {
 	walPath := path.Join(getTestPath(), strconv.FormatUint(nodeId, 10), strconv.FormatUint(raftId, 10))
+	wc := &wal.Config{}
+	st, err := wal.NewStorage(walPath, wc)
+	if err != nil {
+		panic(err)
+	}
+	return st
+}
+
+func getSeparateStorage(nodeId, raftId uint64) storage.Storage {
+	diskIndex := strconv.FormatUint(raftId%uint64(diskNum), 10)
+	walPath := path.Join("/data" + diskIndex, "rafttest", strconv.FormatUint(nodeId, 10), strconv.FormatUint(raftId, 10))
+	fmt.Println(fmt.Sprintf("raft: %v, walPath: %v", raftId, walPath))
 	wc := &wal.Config{}
 	st, err := wal.NewStorage(walPath, wc)
 	if err != nil {
