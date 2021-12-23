@@ -150,14 +150,17 @@ func (mp *MetaPartition) canSplit(end uint64) (err error) {
 		err = fmt.Errorf(msg)
 		return
 	}
+
 	if end <= mp.MaxInodeID {
 		err = fmt.Errorf("next meta partition start must be larger than %v", mp.MaxInodeID)
 		return
 	}
+
 	if _, err = mp.getMetaReplicaLeader(); err != nil {
 		log.LogWarnf("action[updateInodeIDRange] vol[%v] id[%v] no leader", mp.volName, mp.PartitionID)
 		return
 	}
+
 	return
 }
 

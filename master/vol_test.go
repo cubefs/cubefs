@@ -15,6 +15,7 @@ func TestAutoCreateDataPartitions(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+
 	commonVol.Capacity = 300 * util.TB
 	dpCount := len(commonVol.dataPartitions.partitions)
 	commonVol.dataPartitions.readableAndWritableCnt = 0
@@ -22,6 +23,7 @@ func TestAutoCreateDataPartitions(t *testing.T) {
 	server.cluster.DisableAutoAllocate = false
 	t.Logf("status[%v],disableAutoAlloc[%v],cap[%v]\n",
 		commonVol.Status, server.cluster.DisableAutoAllocate, commonVol.Capacity)
+
 	commonVol.checkAutoDataPartitionCreation(server.cluster)
 	newDpCount := len(commonVol.dataPartitions.partitions)
 	if dpCount == newDpCount {
@@ -41,7 +43,7 @@ func TestCheckVol(t *testing.T) {
 func TestVol(t *testing.T) {
 	capacity := 300
 	name := "test1"
-	createVol(name, t)
+	createVol(map[string]interface{}{nameKey: name}, t)
 	//report mp/dp info to master
 	server.cluster.checkDataNodeHeartbeat()
 	server.cluster.checkDataNodeHeartbeat()
@@ -56,6 +58,7 @@ func TestVol(t *testing.T) {
 		t.Errorf("err is %v", err)
 		return
 	}
+
 	vol.checkStatus(server.cluster)
 	getVol(name, t)
 	updateVol(name, capacity, t)
@@ -63,26 +66,92 @@ func TestVol(t *testing.T) {
 	markDeleteVol(name, t)
 	getSimpleVol(name, t)
 	vol.checkStatus(server.cluster)
-	vol.deleteVolFromStore(server.cluster)
+	err = vol.deleteVolFromStore(server.cluster)
+	if err != nil {
+		panic(err)
+	}
 }
 
-func createVol(name string, t *testing.T) {
-	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfs&mpCount=2&zoneName=%v", hostAddr, proto.AdminCreateVol, name, testZone2)
-	fmt.Println(reqURL)
-	process(reqURL, t)
-	vol, err := server.cluster.getVol(name)
-	if err != nil {
-		t.Error(err)
+func TestCreateColdVol(t *testing.T) {
+
+	req := map[string]interface{}{}
+
+	req[ebsCapacityKey] = 1024
+	req[volTypeKey] = proto.VolumeTypeCold
+	req[nameKey] = "coldVol"
+
+	createVol(req, t)
+
+}
+
+func buildUrl(host, op string, kv map[string]interface{}) string {
+	url := fmt.Sprintf("%s%s?", host, op)
+	for k, v := range kv {
+		url += fmt.Sprintf("%s=%v&", k, v)
+	}
+
+	fmt.Println(url)
+
+	return url[:len(url)-1]
+}
+
+func checkWithDefault(kv map[string]interface{}, key string, val interface{}) {
+
+	if kv[key] != nil {
 		return
 	}
+
+	kv[key] = val
+}
+
+const defaultOwner = "cfs"
+
+func createVol(kv map[string]interface{}, t *testing.T) {
+
+	checkWithDefault(kv, volTypeKey, proto.VolumeTypeHot)
+	checkWithDefault(kv, volOwnerKey, defaultOwner)
+	checkWithDefault(kv, zoneNameKey, testZone2)
+
+	switch kv[volTypeKey].(int) {
+	case proto.VolumeTypeHot:
+		checkWithDefault(kv, volCapacityKey, 100)
+		checkWithDefault(kv, replicaNumKey, 3)
+		break
+	case proto.VolumeTypeCold:
+		checkWithDefault(kv, ebsCapacityKey, 100)
+		checkWithDefault(kv, replicaNumKey, 1)
+		break
+	}
+
+	reqURL := buildUrl(hostAddr, proto.AdminCreateVol, kv)
+	processWithFatal(reqURL, t)
+
+	vol, err := server.cluster.getVol(kv[nameKey].(string))
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	dpReplicaNum := kv[replicaNumKey].(int)
+	assertTrue(t, dpReplicaNum == int(vol.dpReplicaNum))
+
 	checkDataPartitionsWritableTest(vol, t)
 	checkMetaPartitionsWritableTest(vol, t)
+}
+
+func assertTrue(t *testing.T, con bool) {
+	if con {
+		return
+	}
+
+	t.Fail()
 }
 
 func checkDataPartitionsWritableTest(vol *Vol, t *testing.T) {
 	if len(vol.dataPartitions.partitions) == 0 {
 		return
 	}
+
 	partition := vol.dataPartitions.partitions[0]
 	if partition.Status != proto.ReadWrite {
 		t.Errorf("expect partition status[%v],real status[%v]\n", proto.ReadWrite, partition.Status)
@@ -170,45 +239,6 @@ func markDeleteVol(name string, t *testing.T) {
 		return
 	}
 }
-
-//func TestVolReduceReplicaNum(t *testing.T) {
-//	volName := "reduce-replica-num"
-//	vol, err := server.cluster.createVol(volName, volName, testZone2, 3, 3, util.DefaultDataPartitionSize,
-//		100, false, false, false, false)
-//	if err != nil {
-//		t.Error(err)
-//		return
-//	}
-//	server.cluster.checkDataNodeHeartbeat()
-//	time.Sleep(2 * time.Second)
-//	for _, dp := range vol.dataPartitions.partitionMap {
-//		t.Logf("dp[%v] replicaNum[%v],hostLen[%v]\n", dp.PartitionID, dp.ReplicaNum, len(dp.Hosts))
-//	}
-//	oldReplicaNum := vol.dpReplicaNum
-//	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&replicaNum=%v&authKey=%v",
-//		hostAddr, proto.AdminUpdateVol, volName, 100, 2, buildAuthKey(volName))
-//	fmt.Println(reqURL)
-//	process(reqURL, t)
-//	if vol.dpReplicaNum != 2 {
-//		t.Error("update vol replica Num to [2] failed")
-//		return
-//	}
-//	for i := 0; i < int(oldReplicaNum); i++ {
-//		t.Logf("before check,needToLowerReplica[%v] \n", vol.NeedToLowerReplica)
-//		vol.NeedToLowerReplica = true
-//		t.Logf(" after check,needToLowerReplica[%v]\n", vol.NeedToLowerReplica)
-//		vol.checkReplicaNum(server.cluster)
-//	}
-//	vol.NeedToLowerReplica = true
-//	//check more once,the replica num of data partition must be equal with vol.dpReplicaNun
-//	vol.checkReplicaNum(server.cluster)
-//	for _, dp := range vol.dataPartitions.partitionMap {
-//		if dp.ReplicaNum != vol.dpReplicaNum || len(dp.Hosts) != int(vol.dpReplicaNum) {
-//			t.Errorf("dp.replicaNum[%v],hosts[%v],vol.dpReplicaNum[%v]\n", dp.ReplicaNum, len(dp.Hosts), vol.dpReplicaNum)
-//			return
-//		}
-//	}
-//}
 
 func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 	name := "TestConcurrentReadWriteDataPartitionMap"

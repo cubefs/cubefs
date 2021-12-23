@@ -104,6 +104,12 @@ func createDefaultMasterServerForTest() *Server {
 	testServer.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
+	// set load factor
+	err = testServer.cluster.setClusterLoadFactor(100)
+	if err != nil {
+		panic("set load factor fail" + err.Error())
+	}
+
 	req := &createVolReq{
 		name:             commonVolName,
 		owner:            "cfs",
@@ -121,14 +127,17 @@ func createDefaultMasterServerForTest() *Server {
 
 	vol, err := testServer.cluster.createVol(req)
 	if err != nil {
+		log.LogFlush()
 		panic(err)
 	}
+
 	vol, err = testServer.cluster.getVol(commonVolName)
 	if err != nil {
 		panic(err)
 	}
+
 	commonVol = vol
-	fmt.Printf("vol[%v] has created\n", commonVol.Name)
+	fmt.Printf("vol[%v] has created\n", newSimpleView(commonVol))
 
 	if err = createUserWithPolicy(testServer); err != nil {
 		panic(err)
@@ -219,15 +228,21 @@ func TestSetMetaNodeThreshold(t *testing.T) {
 }
 
 func TestSetDisableAutoAlloc(t *testing.T) {
-	enable := true
-	reqURL := fmt.Sprintf("%v%v?enable=%v", hostAddr, proto.AdminClusterFreeze, enable)
+	reqURL := fmt.Sprintf("%v%v?enable=%v", hostAddr, proto.AdminClusterFreeze, true)
 	fmt.Println(reqURL)
-	process(reqURL, t)
-	if server.cluster.DisableAutoAllocate != enable {
-		t.Errorf("set disableAutoAlloc to %v failed", enable)
+	processWithFatal(reqURL, t)
+	if !server.cluster.DisableAutoAllocate {
+		t.Errorf("set disableAutoAlloc to %v failed", true)
 		return
 	}
-	server.cluster.DisableAutoAllocate = false
+
+	reqURL = fmt.Sprintf("%v%v?enable=%v", hostAddr, proto.AdminClusterFreeze, false)
+	fmt.Println(reqURL)
+	processWithFatal(reqURL, t)
+	if server.cluster.DisableAutoAllocate {
+		t.Errorf("set disableAutoAlloc to %v failed", false)
+		return
+	}
 }
 
 func TestGetCluster(t *testing.T) {
@@ -240,6 +255,49 @@ func TestGetIpAndClusterName(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetIP)
 	fmt.Println(reqURL)
 	process(reqURL, t)
+}
+
+func fatal(t *testing.T, str string) {
+	log.LogFlush()
+	t.Fatal(str)
+}
+
+func processWithFatal(reqURL string, t *testing.T) (reply *proto.HTTPReply) {
+	resp, err := http.Get(reqURL)
+	if err != nil {
+		fatal(t, fmt.Sprintf("err is %v", err))
+		return
+	}
+
+	fmt.Println(resp.StatusCode)
+
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fatal(t, fmt.Sprintf("err is %v", err))
+		return
+	}
+
+	fmt.Println(string(body))
+
+	if resp.StatusCode != http.StatusOK {
+		fatal(t, fmt.Sprintf("status code[%v]", resp.StatusCode))
+		return
+	}
+
+	reply = &proto.HTTPReply{}
+	if err = json.Unmarshal(body, reply); err != nil {
+		fatal(t, err.Error())
+		return
+	}
+
+	if reply.Code != 0 {
+		fatal(t, fmt.Sprintf("failed,msg[%v],data[%v]", reply.Msg, reply.Data))
+		return
+	}
+
+	return
 }
 
 func process(reqURL string, t *testing.T) (reply *proto.HTTPReply) {
@@ -311,14 +369,17 @@ func decommissionDisk(addr, path string, t *testing.T) {
 
 func TestMarkDeleteVol(t *testing.T) {
 	name := "delVol"
-	createVol(name, t)
-	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey("cfs"))
+	createVol(map[string]interface{}{nameKey: name}, t)
+
+	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey(defaultOwner))
 	process(reqURL, t)
+
 	userInfo, err := server.user.getUserInfo("cfs")
 	if err != nil {
 		t.Error(err)
 		return
 	}
+
 	if contains(userInfo.Policy.OwnVols, name) {
 		t.Errorf("expect no vol %v in own vols, but is exist", name)
 		return
@@ -358,16 +419,20 @@ func TestUpdateVol(t *testing.T) {
 func setVolCapacity(capacity uint64, url string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v",
 		hostAddr, url, commonVol.Name, capacity, buildAuthKey("cfs"))
-	process(reqURL, t)
+	processWithFatal(reqURL, t)
+
 	vol, err := server.cluster.getVol(commonVolName)
 	if err != nil {
 		t.Error(err)
 		return
 	}
+
 	if vol.Capacity != capacity {
 		t.Errorf("expect capacity is %v, but is %v", capacity, vol.Capacity)
 		return
 	}
+
+	fmt.Printf("update capacity to %d success\n", capacity)
 }
 
 func buildAuthKey(owner string) string {

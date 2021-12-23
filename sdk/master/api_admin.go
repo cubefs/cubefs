@@ -28,14 +28,17 @@ type AdminAPI struct {
 
 func (api *AdminAPI) GetCluster() (cv *proto.ClusterView, err error) {
 	var buf []byte
+
 	var request = newAPIRequest(http.MethodGet, proto.AdminGetCluster)
 	if buf, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
+
 	cv = &proto.ClusterView{}
 	if err = json.Unmarshal(buf, &cv); err != nil {
 		return
 	}
+
 	return
 }
 func (api *AdminAPI) GetClusterStat() (cs *proto.ClusterStatInfo, err error) {

@@ -16,18 +16,18 @@ package master
 
 import (
 	"fmt"
+	"math"
+	"time"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
-	"math"
-	"time"
 )
 
 func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dpTimeOutSec int64) {
 	partition.Lock()
 	defer partition.Unlock()
 	var liveReplicas []*DataReplica
-
 
 	if partition.PartitionType == proto.PartitionTypeNormal {
 		liveReplicas = partition.getLiveReplicasFromHosts(dpTimeOutSec)
@@ -123,7 +123,7 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 			Warn(clusterID, msg)
 		}
 	}
-	if partition.PartitionType == proto.PartitionTypeNormal {
+	if proto.IsNormalDp(partition.PartitionType) {
 		for _, addr := range partition.Hosts {
 			if partition.hasMissingDataPartition(addr) == true && partition.needToAlarmMissingDataPartition(addr, dataPartitionWarnInterval) {
 				msg := fmt.Sprintf("action[checkMissErr],clusterID[%v] partitionID:%v  on Node:%v  "+
@@ -164,7 +164,8 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) {
 	diskErrorAddrs := make(map[string]string, 0)
 	partition.Lock()
 	defer partition.Unlock()
-	if partition.PartitionType == proto.PartitionTypeNormal {
+
+	if proto.IsNormalDp(partition.PartitionType) {
 		for _, addr := range partition.Hosts {
 			replica, ok := partition.hasReplica(addr)
 			if !ok {

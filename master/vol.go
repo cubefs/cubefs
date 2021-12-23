@@ -68,7 +68,6 @@ type Vol struct {
 	PreloadZoneName      string
 	PreloadReplicaNum    int
 
-
 	NeedToLowerReplica bool
 	FollowerRead       bool
 	authenticate       bool
@@ -228,28 +227,36 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	if vol.getDataPartitionsCount() == 0 && vol.Status != markDelete {
 		c.batchCreateDataPartition(vol, 1)
 	}
+
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
+
 	for _, dp := range vol.dataPartitions.partitionMap {
-		if dp.PartitionType == proto.PartitionTypePreLoad  {
-			if time.Now().Unix() - dp.createTime >dp.PartitionTTL {
+
+		if proto.IsPreLoadDp(dp.PartitionType) {
+			if time.Now().Unix()-dp.createTime > dp.PartitionTTL {
 				vol.deleteDataPartition(c, dp)
 			}
 		}
+
 		dp.checkReplicaStatus(c.cfg.DataPartitionTimeOutSec)
 		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec)
 		dp.checkLeader(c.cfg.DataPartitionTimeOutSec)
 		dp.checkMissingReplicas(c.Name, c.leaderInfo.addr, c.cfg.MissingDataPartitionInterval, c.cfg.IntervalToAlarmMissingDataPartition)
 		dp.checkReplicaNum(c, vol)
+
 		if dp.Status == proto.ReadWrite {
 			cnt++
 		}
+
 		dp.checkDiskError(c.Name, c.leaderInfo.addr)
+
 		tasks := dp.checkReplicationTask(c.Name, vol.dataPartitionSize)
 		if len(tasks) != 0 {
 			c.addDataNodeTasks(tasks)
 		}
 	}
+
 	return
 }
 
@@ -405,13 +412,19 @@ func (vol *Vol) autoDeleteDp(c *Cluster) {
 
 	maxSize := vol.Capacity * util.GB * uint64(clusterLoadFactor*100) / 100
 	maxCnt := maxSize / vol.dataPartitionSize
+
 	if maxSize%vol.dataPartitionSize != 0 {
 		maxCnt++
 	}
 
+	if maxCnt <= defaultInitDataPartitionCnt {
+		log.LogInfof("max cnt [%d] is less than default %d", maxCnt, defaultInitDataPartitionCnt)
+		return
+	}
+
 	for _, dp := range vol.dataPartitions.partitions {
 
-		if dp.PartitionType != proto.PartitionTypeCache {
+		if !proto.IsCacheDp(dp.PartitionType) {
 			continue
 		}
 
@@ -479,15 +492,9 @@ func (vol *Vol) needCreateDataPartition() bool {
 
 func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 
-	if vol.dataPartitions.lastAutoCreateTime.IsZero() ||
-
-		vol.dataPartitions.lastAutoCreateTime.After(time.Now()) {
+	if vol.dataPartitions.lastAutoCreateTime.IsZero() {
 		vol.dataPartitions.lastAutoCreateTime = time.Now()
-		return
-	}
-
-	if time.Since(vol.dataPartitions.lastAutoCreateTime) < time.Minute {
-
+	} else if time.Since(vol.dataPartitions.lastAutoCreateTime) < time.Minute {
 		return
 	}
 
@@ -609,9 +616,12 @@ func (vol *Vol) getViewCache() []byte {
 }
 
 func (vol *Vol) deleteDataPartition(c *Cluster, dp *DataPartition) {
+
 	for _, replica := range dp.Replicas {
+
 		vol.deleteDataPartitionFromDataNode(c, dp.createTaskToDeleteDataPartition(replica.Addr))
 	}
+
 	vol.dataPartitions.del(dp)
 }
 
@@ -773,17 +783,21 @@ func (vol *Vol) String() string {
 func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) (nextMp *MetaPartition, err error) {
 	mp.Lock()
 	defer mp.Unlock()
+
 	if err = mp.canSplit(end); err != nil {
 		return
 	}
+
 	log.LogWarnf("action[splitMetaPartition],partition[%v],start[%v],end[%v],new end[%v]", mp.PartitionID, mp.Start, mp.End, end)
 	cmdMap := make(map[string]*RaftCmd, 0)
 	oldEnd := mp.End
 	mp.End = end
+
 	updateMpRaftCmd, err := c.buildMetaPartitionRaftCmd(opSyncUpdateMetaPartition, mp)
 	if err != nil {
 		return
 	}
+
 	cmdMap[updateMpRaftCmd.K] = updateMpRaftCmd
 	if nextMp, err = vol.doCreateMetaPartition(c, mp.End+1, defaultMaxMetaPartitionInodeID); err != nil {
 		Warn(c.Name, fmt.Sprintf("action[updateEnd] clusterID[%v] partitionID[%v] create meta partition err[%v]",
@@ -791,15 +805,18 @@ func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) 
 		log.LogErrorf("action[updateEnd] partitionID[%v] err[%v]", mp.PartitionID, err)
 		return
 	}
+
 	addMpRaftCmd, err := c.buildMetaPartitionRaftCmd(opSyncAddMetaPartition, nextMp)
 	if err != nil {
 		return
 	}
+
 	cmdMap[addMpRaftCmd.K] = addMpRaftCmd
 	if err = c.syncBatchCommitCmd(cmdMap); err != nil {
 		mp.End = oldEnd
 		return nil, errors.NewError(err)
 	}
+
 	mp.updateInodeIDRangeForAllReplicas()
 	mp.addUpdateMetaReplicaTask(c)
 	return
@@ -809,17 +826,21 @@ func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) (e
 	if c.DisableAutoAllocate {
 		return
 	}
+
 	vol.createMpMutex.Lock()
 	defer vol.createMpMutex.Unlock()
+
 	maxPartitionID := vol.maxPartitionID()
 	if maxPartitionID != mp.PartitionID {
 		err = fmt.Errorf("mp[%v] is not the last meta partition[%v]", mp.PartitionID, maxPartitionID)
 		return
 	}
+
 	nextMp, err := vol.doSplitMetaPartition(c, mp, end)
 	if err != nil {
 		return
 	}
+
 	vol.addMetaPartition(nextMp)
 	log.LogWarnf("action[splitMetaPartition],next partition[%v],start[%v],end[%v]", nextMp.PartitionID, nextMp.Start, nextMp.End)
 	return
@@ -846,19 +867,26 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 		peers       []proto.Peer
 		wg          sync.WaitGroup
 	)
+
 	errChannel := make(chan error, vol.mpReplicaNum)
+
 	if c.isFaultDomain(vol) {
+
 		if hosts, peers, err = c.getHostFromDomainZone(vol.domainId, TypeMetaPartion, vol.mpReplicaNum); err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] getHostFromDomainZone err[%v]", err)
 			return nil, errors.NewError(err)
 		}
+
 	} else {
+
 		var excludeZone []string
 		zoneNum := c.decideZoneNum(vol.crossZone)
+
 		if hosts, peers, err = c.getHostFromNormalZone(TypeMetaPartion, excludeZone, nil, nil, int(vol.mpReplicaNum), zoneNum, vol.zoneName); err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] getHostFromNormalZone err[%v]", err)
 			return nil, errors.NewError(err)
 		}
+
 	}
 	log.LogInfof("target meta hosts:%v,peers:%v", hosts, peers)
 	if partitionID, err = c.idAlloc.allocateMetaPartitionID(); err != nil {

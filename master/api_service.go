@@ -251,6 +251,7 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 		Ip:                          strings.Split(r.RemoteAddr, ":")[0],
 		LoadFactor:                  float64(loadFactor),
 		EbsAddr:                     m.ebsAddr,
+		//ServicePath:
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -445,9 +446,11 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+
 	dp.Status = proto.ReadOnly
 	dp.isRecover = true
 	m.cluster.putBadDataPartitionIDs(nil, addr, dp.PartitionID)
+
 	msg = fmt.Sprintf("data partitionID :%v  add replica [%v] successfully", partitionID, addr)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
@@ -660,6 +663,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.dpSelectorParm = req.dpSelectorParm
 	newArgs.coldArgs = req.coldArgs
 
+	log.LogInfof("[updateVolOut] name [%s], z1 [%s], z2[%s]", req.name, req.zoneName, vol.Name)
 	if err = m.cluster.updateVol(req.name, req.authKey, newArgs); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -677,14 +681,17 @@ func (m *Server) volExpand(w http.ResponseWriter, r *http.Request) {
 		capacity int
 		vol      *Vol
 	)
+
 	if name, authKey, capacity, err = parseRequestToSetVolCapacity(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
 	if vol, err = m.cluster.getVol(name); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
+
 	if uint64(capacity) <= vol.Capacity {
 		err = fmt.Errorf("expand capacity[%v] should be larger than the old capacity[%v]", capacity, vol.Capacity)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -698,6 +705,7 @@ func (m *Server) volExpand(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+
 	msg = fmt.Sprintf("update vol[%v] successfully\n", name)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
@@ -732,6 +740,7 @@ func (m *Server) volShrink(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+
 	msg = fmt.Sprintf("update vol[%v] successfully\n", name)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
@@ -766,10 +775,14 @@ func (c *Cluster) checkZoneArgs(crossZone bool, zoneName string) error {
 }
 
 func (m *Server) checkCreateReq(req *createVolReq) (err error) {
+
 	switch req.volType {
 	case proto.VolumeTypeHot:
 
 		req.dpReplicaNum = defaultReplicaNum
+		if req.capacity == 0 {
+			return fmt.Errorf("hot vol capacity can't be zero, %d", req.capacity)
+		}
 
 		return nil
 
@@ -818,6 +831,7 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 			args.cacheLRUInterval = defaultCacheLruInterval
 		}
 
+		req.coldArgs = args
 		return nil
 
 	default:
@@ -1068,7 +1082,6 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		return
 	}
 
 	if val, ok := params[nodeMarkDeleteRateKey]; ok {
@@ -2119,21 +2132,27 @@ func genRespMessage(data []byte, req *proto.APIAccessReq, ts int64, key []byte) 
 func (m *Server) associateVolWithUser(userID, volName string) error {
 	var err error
 	var userInfo *proto.UserInfo
+
 	if userInfo, err = m.user.getUserInfo(userID); err != nil && err != proto.ErrUserNotExists {
 		return err
 	}
+
 	if err == proto.ErrUserNotExists {
+
 		var param = proto.UserCreateParam{
 			ID:       userID,
 			Password: DefaultUserPassword,
 			Type:     proto.UserTypeNormal,
 		}
+
 		if userInfo, err = m.user.createKey(&param); err != nil {
 			return err
 		}
 	}
+
 	if _, err = m.user.addOwnVol(userInfo.UserID, volName); err != nil {
 		return err
 	}
+
 	return nil
 }

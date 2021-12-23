@@ -32,6 +32,7 @@ func createDataPartition(vol *Vol, count int, t *testing.T) {
 		hostAddr, proto.AdminCreateDataPartition, count, vol.Name)
 	fmt.Println(reqURL)
 	process(reqURL, t)
+
 	newCount := len(vol.dataPartitions.partitions)
 	total := oldCount + count
 	if newCount != total {

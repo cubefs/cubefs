@@ -30,7 +30,7 @@ import (
 // DataPartition represents the structure of storing the file contents.
 type DataPartition struct {
 	PartitionID    uint64
-	PartitionType  int8
+	PartitionType  int
 	PartitionTTL   int64
 	LastLoadedTime int64
 	ReplicaNum     uint8
@@ -147,7 +147,7 @@ func (partition *DataPartition) createTaskToRemoveRaftMember(removePeer proto.Pe
 }
 
 func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64,
-	peers []proto.Peer, hosts []string, createType int, partitionType int8) (task *proto.AdminTask) {
+	peers []proto.Peer, hosts []string, createType int, partitionType int) (task *proto.AdminTask) {
 
 	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(
 		partition.VolName, partition.PartitionID, peers, int(dataPartitionSize), hosts, createType, partitionType))

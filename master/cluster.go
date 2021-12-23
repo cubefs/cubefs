@@ -746,7 +746,7 @@ func (c *Cluster) batchCreatePreLoadDataPartition(vol *Vol) (err error, dps []*D
 	if isHot(vol.VolType) {
 		return fmt.Errorf("vol type is not warm"), nil
 	}
-	reqCreateCount := (vol.PreloadCacheCapacity - 1) / (util.DefaultDataPartitionSize / util.GB) + 1
+	reqCreateCount := (vol.PreloadCacheCapacity-1)/(util.DefaultDataPartitionSize/util.GB) + 1
 
 	for i := 0; i < reqCreateCount; i++ {
 		log.LogErrorf("create preload data partition (%v) total (%v)", i, reqCreateCount)
@@ -763,6 +763,7 @@ func (c *Cluster) batchCreatePreLoadDataPartition(vol *Vol) (err error, dps []*D
 func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int) (err error) {
 	for i := 0; i < reqCount; i++ {
 		if c.DisableAutoAllocate {
+			log.LogWarn("disable auto allocate dataPartition")
 			return
 		}
 
@@ -782,6 +783,7 @@ func (c *Cluster) isFaultDomain(vol *Vol) bool {
 			}
 		}
 	}
+
 	log.LogInfof("action[isFaultDomain] vol [%v] zoname [%v] FaultDomain[%v] need fault domain[%v] vol crosszone[%v] default[%v] specifyZoneNeedDomain[%v] domainOn[%v]",
 		vol.Name, vol.zoneName, c.FaultDomain, c.needFaultDomain, vol.crossZone, vol.defaultPriority, specifyZoneNeedDomain, vol.domainOn)
 	domainOn := c.FaultDomain &&
@@ -789,6 +791,7 @@ func (c *Cluster) isFaultDomain(vol *Vol) bool {
 			(!vol.crossZone && c.needFaultDomain) || specifyZoneNeedDomain ||
 			(vol.crossZone && (!vol.defaultPriority ||
 				(vol.defaultPriority && (c.needFaultDomain || len(c.t.domainExcludeZones) <= 1)))))
+
 	if !vol.domainOn && domainOn {
 		vol.domainOn = domainOn
 		vol.updateViewCache(c)
@@ -827,9 +830,9 @@ func (c *Cluster) createDataPartition(volName string, isPreload bool) (dp *DataP
 		}
 	} else {
 		zoneNum := c.decideZoneNum(vol.crossZone)
-		var zonesExclude  []string
+		var zonesExclude []string
 		if targetHosts, targetPeers, err = c.getHostFromNormalZone(TypeDataPartion, zonesExclude, nil, nil,
-												int(vol.dpReplicaNum), zoneNum, vol.zoneName); err != nil {
+			int(vol.dpReplicaNum), zoneNum, vol.zoneName); err != nil {
 			goto errHandler
 		}
 	}
@@ -845,20 +848,16 @@ func (c *Cluster) createDataPartition(volName string, isPreload bool) (dp *DataP
 			defer func() {
 				wg.Done()
 			}()
+
 			var diskPath string
-			if isHot(vol.VolType) {
-				dp.PartitionType = proto.PartitionTypeNormal
-			} else if isCold(vol.VolType){
-				dp.PartitionType = proto.PartitionTypeCache
-				if isPreload {
-					dp.PartitionType = proto.PartitionTypePreLoad
-				}
-			}
+			dp.PartitionType = proto.GetDpType(vol.VolType, isPreload)
+
 			if diskPath, err = c.syncCreateDataPartitionToDataNode(host, vol.dataPartitionSize,
-					dp, dp.Peers, dp.Hosts, proto.NormalCreateDataPartition, dp.PartitionType); err != nil {
+				dp, dp.Peers, dp.Hosts, proto.NormalCreateDataPartition, dp.PartitionType); err != nil {
 				errChannel <- err
 				return
 			}
+
 			dp.Lock()
 			defer dp.Unlock()
 			if err = dp.afterCreation(host, diskPath, c); err != nil {
@@ -905,7 +904,7 @@ errHandler:
 }
 
 func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp *DataPartition,
-	peers []proto.Peer, hosts []string, createType int, partitionType int8) (diskPath string, err error) {
+	peers []proto.Peer, hosts []string, createType int, partitionType int) (diskPath string, err error) {
 	log.LogInfof("action[syncCreateDataPartitionToDataNode] createtype[%v], partitionType[%v]", createType, partitionType)
 	task := dp.createTaskToCreateDataPartition(host, size, peers, hosts, createType, partitionType)
 	dataNode, err := c.dataNode(host)
@@ -956,9 +955,10 @@ func (c *Cluster) decideZoneNum(crossZone bool) (zoneNum int) {
 }
 
 func (c *Cluster) chooseZone2Plus1(zones []*Zone, excludeNodeSets []uint64, excludeHosts []string,
-				nodeType uint32, replicaNum int, hosts []string, peers []proto.Peer) error{
-	if replicaNum < 2 || replicaNum > 3{
-		return fmt.Errorf("action[chooseZone2Plus1] replicaNum [%v]", replicaNum)
+	nodeType uint32, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
+
+	if replicaNum < 2 || replicaNum > 3 {
+		return nil, nil, fmt.Errorf("action[chooseZone2Plus1] replicaNum [%v]", replicaNum)
 	}
 
 	zoneList := make([]*Zone, 2)
@@ -969,9 +969,10 @@ func (c *Cluster) chooseZone2Plus1(zones []*Zone, excludeNodeSets []uint64, excl
 		zoneList[0] = zones[1]
 		zoneList[1] = zones[0]
 	}
+
 	for i := 2; i < len(zones); i++ {
 		spaceLeft := zones[i].getSpaceLeft(nodeType)
-		if  spaceLeft > zoneList[0].getSpaceLeft(nodeType) {
+		if spaceLeft > zoneList[0].getSpaceLeft(nodeType) {
 			if spaceLeft > zoneList[1].getSpaceLeft(nodeType) {
 				zoneList[1] = zones[i]
 			} else {
@@ -982,14 +983,15 @@ func (c *Cluster) chooseZone2Plus1(zones []*Zone, excludeNodeSets []uint64, excl
 	log.LogInfof("action[chooseZone2Plus1] type [%v] after check,zone0 [%v] left [%v] zone1 [%v] left [%v]",
 		nodeType, zoneList[0].name, zoneList[0].getSpaceLeft(nodeType), zoneList[1].name, zoneList[1].getSpaceLeft(nodeType))
 
-
 	num := 1
 	for _, zone := range zoneList {
 		selectedHosts, selectedPeers, e := zone.getAvailNodeHosts(nodeType, excludeNodeSets, excludeHosts, num)
 		if e != nil {
+
 			log.LogErrorf("action[getHostFromNormalZone] error [%v]", e)
-			return e
+			return nil, nil, e
 		}
+
 		hosts = append(hosts, selectedHosts...)
 		peers = append(peers, selectedPeers...)
 		log.LogInfof("action[chooseZone2Plus1] zone [%v] left [%v] get hosts[%v]",
@@ -997,18 +999,21 @@ func (c *Cluster) chooseZone2Plus1(zones []*Zone, excludeNodeSets []uint64, excl
 
 		num = replicaNum - num
 	}
-	log.LogInfof("action[chooseZone2Plus1] finally get hosts[%v]",hosts)
+	log.LogInfof("action[chooseZone2Plus1] finally get hosts[%v]", hosts)
 
-	return nil
+	return hosts, peers, nil
 }
 
 func (c *Cluster) chooseZoneNormal(zones []*Zone, excludeNodeSets []uint64, excludeHosts []string,
 	nodeType uint32, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
 	log.LogInfof("action[chooseZoneNormal] zones[%v] nodeType[%v] replicaNum[%v]", zones, nodeType, replicaNum)
 	index := (c.lastMasterZoneForDataNode + 1) % len(zones)
+
 	for i := 0; i < replicaNum; i++ {
+
 		var j int
 		for j = 0; j < len(zones); j++ {
+
 			zone := zones[index]
 			if zone.status == unavaliable {
 				continue
@@ -1018,12 +1023,14 @@ func (c *Cluster) chooseZoneNormal(zones []*Zone, excludeNodeSets []uint64, excl
 				log.LogErrorf("action[getHostFromNormalZone] error [%v]", err)
 				continue
 			}
+
 			hosts = append(hosts, selectedHosts...)
 			peers = append(peers, selectedPeers...)
 			c.lastMasterZoneForDataNode = (c.lastMasterZoneForDataNode + 1) % len(zones)
 			index = c.lastMasterZoneForDataNode
 			break
 		}
+
 		if j == len(zones) {
 			return
 		}
@@ -1032,8 +1039,8 @@ func (c *Cluster) chooseZoneNormal(zones []*Zone, excludeNodeSets []uint64, excl
 }
 
 func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, excludeNodeSets []uint64,
-					excludeHosts []string, replicaNum int,
-					zoneNum int, specifiedZone string) (hosts []string, peers []proto.Peer, err error) {
+	excludeHosts []string, replicaNum int,
+	zoneNum int, specifiedZone string) (hosts []string, peers []proto.Peer, err error) {
 
 	var zones []*Zone
 	zones = make([]*Zone, 0)
@@ -1048,7 +1055,7 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 			return
 		}
 		zoneList := strings.Split(specifiedZone, ",")
-		for i:=0 ; i < len(zoneList); i++ {
+		for i := 0; i < len(zoneList); i++ {
 			var zone *Zone
 			if zone, err = c.t.getZone(zoneList[i]); err != nil {
 				Warn(c.Name, fmt.Sprintf("cluster[%v],specified zone[%v]is found", c.Name, specifiedZone))
@@ -1056,7 +1063,7 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 			}
 			zones = append(zones, zone)
 		}
-	} else  {
+	} else {
 		if nodeType == TypeDataPartion {
 			if zones, err = c.t.allocZonesForDataNode(zoneNum, replicaNum, excludeZones); err != nil {
 				return
@@ -1071,11 +1078,13 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 	if len(zones) == 1 {
 		log.LogInfof("action[getHostFromNormalZone] zones [%v]", zones[0].name)
 		if hosts, peers, err = zones[0].getAvailNodeHosts(nodeType, excludeNodeSets, excludeHosts, replicaNum); err != nil {
+
 			log.LogErrorf("action[getHostFromNormalZone],err[%v]", err)
 			return
 		}
 		goto result
 	}
+
 	hosts = make([]string, 0)
 	peers = make([]proto.Peer, 0)
 	if excludeHosts == nil {
@@ -1086,19 +1095,26 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 		if hosts, peers, err = c.chooseZoneNormal(zones, excludeNodeSets, excludeHosts, nodeType, replicaNum); err != nil {
 			return
 		}
+
 	} else {
-		if  err = c.chooseZone2Plus1(zones, excludeNodeSets, excludeHosts, nodeType, replicaNum, hosts, peers); err != nil {
+
+		if hosts, peers, err = c.chooseZone2Plus1(zones, excludeNodeSets, excludeHosts, nodeType, replicaNum); err != nil {
+
 			return
 		}
+
 	}
 
 result:
 	log.LogInfof("action[getHostFromNormalZone] replicaNum[%v],zoneNum[%v],selectedZones[%v],hosts[%v]", replicaNum, zoneNum, len(zones), hosts)
+
 	if len(hosts) != replicaNum {
+
 		log.LogErrorf("action[getHostFromNormalZone] replicaNum[%v],zoneNum[%v],selectedZones[%v],hosts[%v]", replicaNum, zoneNum, len(zones), hosts)
 		return nil, nil, errors.Trace(proto.ErrNoDataNodeToCreateDataPartition, "hosts len[%v],replicaNum[%v],zoneNum[%v],selectedZones[%v]",
 			len(hosts), replicaNum, zoneNum, len(zones))
 	}
+
 	return
 }
 
@@ -1285,10 +1301,11 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		goto errHandler
 	}
 	// delete if not normal data partition
-	if dp.PartitionType != proto.PartitionTypeNormal {
+	if !proto.IsNormalDp(dp.PartitionType) {
 		c.vols[dp.VolName].deleteDataPartition(c, dp)
 		return
 	}
+
 	if dataNode, err = c.dataNode(offlineAddr); err != nil {
 		goto errHandler
 	}
@@ -1381,24 +1398,32 @@ func (c *Cluster) validateDecommissionDataPartition(dp *DataPartition, offlineAd
 }
 
 func (c *Cluster) addDataReplica(dp *DataPartition, addr string) (err error) {
+
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[addDataReplica],vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
 		}
 	}()
+
 	dataNode, err := c.dataNode(addr)
 	if err != nil {
 		return
 	}
+
 	addPeer := proto.Peer{ID: dataNode.ID, Addr: addr}
-	if dp.PartitionType == proto.PartitionTypeNormal {
+
+	if proto.IsNormalDp(dp.PartitionType) {
+
 		if err = c.addDataPartitionRaftMember(dp, addPeer); err != nil {
 			return
 		}
+
+		if err = c.createDataReplica(dp, addPeer); err != nil {
+			return
+		}
+
 	}
-	if err = c.createDataReplica(dp, addPeer); err != nil {
-		return
-	}
+
 	return
 }
 
@@ -1472,28 +1497,31 @@ func (c *Cluster) createDataReplica(dp *DataPartition, addPeer proto.Peer) (err 
 	if err != nil {
 		return
 	}
-	if !isHot(vol.VolType) {
-		return fmt.Errorf("vol [%v] type [%v] cann't create replica", vol.Name, vol.VolType)
-	}
+
 	dp.RLock()
 	hosts := make([]string, len(dp.Hosts))
 	copy(hosts, dp.Hosts)
 	peers := make([]proto.Peer, len(dp.Peers))
 	copy(peers, dp.Peers)
 	dp.RUnlock()
+
 	diskPath, err := c.syncCreateDataPartitionToDataNode(addPeer.Addr, vol.dataPartitionSize,
-							dp, peers, hosts, proto.DecommissionedCreateDataPartition, proto.PartitionTypeNormal)
+		dp, peers, hosts, proto.DecommissionedCreateDataPartition, dp.PartitionType)
 	if err != nil {
 		return
 	}
+
 	dp.Lock()
 	defer dp.Unlock()
+
 	if err = dp.afterCreation(addPeer.Addr, diskPath, c); err != nil {
 		return
 	}
+
 	if err = dp.update("createDataReplica", dp.VolName, dp.Peers, dp.Hosts, c); err != nil {
 		return
 	}
+
 	return
 }
 
@@ -1503,26 +1531,32 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate boo
 			log.LogErrorf("action[removeDataReplica],vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
 		}
 	}()
+
 	if validate == true {
 		if err = c.validateDecommissionDataPartition(dp, addr); err != nil {
 			return
 		}
 	}
-	ok := c.isRecovering(dp, addr)
-	if ok {
+
+	if c.isRecovering(dp, addr) {
 		err = fmt.Errorf("vol[%v],data partition[%v] can't decommision until it has recovered", dp.VolName, dp.PartitionID)
 		return
 	}
+
 	dataNode, err := c.dataNode(addr)
 	if err != nil {
 		return
 	}
-	removePeer := proto.Peer{ID: dataNode.ID, Addr: addr}
-	if dp.PartitionType == proto.PartitionTypeNormal {
-		if err = c.removeDataPartitionRaftMember(dp, removePeer); err != nil {
-			return
-		}
+
+	if !proto.IsNormalDp(dp.PartitionType) {
+		return
 	}
+
+	removePeer := proto.Peer{ID: dataNode.ID, Addr: addr}
+	if err = c.removeDataPartitionRaftMember(dp, removePeer); err != nil {
+		return
+	}
+
 	if err = c.removeHostMember(dp, removePeer); err != nil {
 		return
 	}
@@ -1530,19 +1564,20 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate boo
 	if err = c.deleteDataReplica(dp, dataNode); err != nil {
 		return
 	}
-	if dp.PartitionType != proto.PartitionTypeNormal {
-		return
-	}
+
 	leaderAddr := dp.getLeaderAddrWithLock()
 	if leaderAddr != addr {
 		return
 	}
+
 	if dataNode, err = c.dataNode(dp.Hosts[0]); err != nil {
 		return
 	}
+
 	if err = dp.tryToChangeLeader(c, dataNode); err != nil {
 		return
 	}
+
 	return
 }
 
@@ -1569,7 +1604,7 @@ func (c *Cluster) isRecovering(dp *DataPartition, addr string) (isRecover bool) 
 	return
 }
 
-func (c *Cluster) removeHostMember(dp *DataPartition, removePeer proto.Peer) (err error){
+func (c *Cluster) removeHostMember(dp *DataPartition, removePeer proto.Peer) (err error) {
 	newHosts := make([]string, 0, len(dp.Hosts)-1)
 	for _, host := range dp.Hosts {
 		if host == removePeer.Addr {
@@ -1615,6 +1650,7 @@ func (c *Cluster) removeDataPartitionRaftMember(dp *DataPartition, removePeer pr
 
 	return
 }
+
 // call from remove raft member
 func (c *Cluster) updateDataPartitionOfflinePeerIDWithLock(dp *DataPartition, peerID uint64) (err error) {
 	dp.Lock()
@@ -1626,22 +1662,25 @@ func (c *Cluster) updateDataPartitionOfflinePeerIDWithLock(dp *DataPartition, pe
 	return
 }
 func (c *Cluster) deleteDataReplica(dp *DataPartition, dataNode *DataNode) (err error) {
+
 	dp.Lock()
 	// in case dataNode is unreachable,update meta first.
 	dp.removeReplicaByAddr(dataNode.Addr)
 	dp.checkAndRemoveMissReplica(dataNode.Addr)
-	if dp.PartitionType == proto.PartitionTypeNormal {
-		if err = dp.update("deleteDataReplica", dp.VolName, dp.Peers, dp.Hosts, c); err != nil {
-			dp.Unlock()
-			return
-		}
+
+	if err = dp.update("deleteDataReplica", dp.VolName, dp.Peers, dp.Hosts, c); err != nil {
+		dp.Unlock()
+		return
 	}
+
 	task := dp.createTaskToDeleteDataPartition(dataNode.Addr)
 	dp.Unlock()
+
 	_, err = dataNode.TaskManager.syncSendAdminTask(task)
 	if err != nil {
 		log.LogErrorf("action[deleteDataReplica] vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
 	}
+
 	return nil
 }
 
@@ -1788,6 +1827,8 @@ func (c *Cluster) updateVol(name, authKey string, newArgs *VolVarargs) (err erro
 
 	oldArgs = getVolVarargs(vol)
 
+	setVolFromArgs(newArgs, vol)
+
 	if err = c.syncUpdateVol(vol); err != nil {
 
 		setVolFromArgs(oldArgs, vol)
@@ -1840,9 +1881,9 @@ func (c *Cluster) checkZoneName(name string,
 	newZoneName = zoneName
 
 	if crossZone {
-		if c.FaultDomain{
+		if c.FaultDomain {
 			if newZoneName != "" {
-				if !defaultPriority || domainId > 0{
+				if !defaultPriority || domainId > 0 {
 					return newZoneName, fmt.Errorf("action[checkZoneName] vol specified zoneName but cann't cross zone")
 				}
 				if len(zoneList) == 1 {
@@ -1853,9 +1894,9 @@ func (c *Cluster) checkZoneName(name string,
 					}
 				}
 
-			}else {
+			} else {
 				if domainId > 0 {
-					if _, ok := c.domainManager.domainId2IndexMap[domainId]; !ok{
+					if _, ok := c.domainManager.domainId2IndexMap[domainId]; !ok {
 						return newZoneName, fmt.Errorf("action[checkVolInfo] cluster can't find oomainId [%v]", domainId)
 					}
 				}
@@ -1886,7 +1927,6 @@ func (c *Cluster) checkZoneName(name string,
 	return
 }
 
-
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
 func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
@@ -1902,11 +1942,14 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 	}
 
 	if err = vol.initMetaPartitions(c, req.mpCount); err != nil {
+
 		vol.Status = markDelete
 		if e := vol.deleteVolFromStore(c); e != nil {
 			log.LogErrorf("action[createVol] failed,vol[%v] err[%v]", vol.Name, e)
 		}
+
 		c.deleteVol(req.name)
+
 		err = fmt.Errorf("action[createVol] initMetaPartitions failed,err[%v]", err)
 		goto errHandler
 	}
@@ -1915,12 +1958,16 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 
 		for retryCount := 0; readWriteDataPartitions < defaultInitDataPartitionCnt && retryCount < 3; retryCount++ {
 
-			_ = vol.initDataPartitions(c)
+			err = vol.initDataPartitions(c)
+			if err != nil {
+				log.LogError("init dataPartition error", err.Error(), retryCount, len(vol.dataPartitions.partitionMap))
+			}
+
 			readWriteDataPartitions = len(vol.dataPartitions.partitionMap)
 		}
 
-		if len(vol.dataPartitions.partitionMap) <= defaultReplicaNum {
-			err = fmt.Errorf("action[createVol]  initDataPartitions failed")
+		if len(vol.dataPartitions.partitionMap) < defaultInitDataPartitionCnt {
+			err = fmt.Errorf("action[createVol]  initDataPartitions failed, less than %d", defaultInitDataPartitionCnt)
 			goto errHandler
 		}
 
@@ -1979,6 +2026,8 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		CacheLRUInterval: req.coldArgs.cacheLRUInterval,
 	}
 
+	log.LogInfof("[doCreateVol] dpReplicaNum, %v", vv)
+
 	if _, err = c.getVol(req.name); err == nil {
 		err = proto.ErrDuplicateVol
 		goto errHandler
@@ -2022,18 +2071,22 @@ func (c *Cluster) updateInodeIDRange(volName string, start uint64) (err error) {
 		log.LogErrorf("action[updateInodeIDRange]  vol [%v] not found", volName)
 		return proto.ErrVolNotExists
 	}
+
 	maxPartitionID = vol.maxPartitionID()
 	if partition, err = vol.metaPartition(maxPartitionID); err != nil {
 		log.LogErrorf("action[updateInodeIDRange]  mp[%v] not found", maxPartitionID)
 		return proto.ErrMetaPartitionNotExists
 	}
+
 	adjustStart := start
 	if adjustStart < partition.Start {
 		adjustStart = partition.Start
 	}
+
 	if adjustStart < partition.MaxInodeID {
 		adjustStart = partition.MaxInodeID
 	}
+
 	adjustStart = adjustStart + defaultMetaPartitionInodeIDStep
 	log.LogWarnf("vol[%v],maxMp[%v],start[%v],adjustStart[%v]", volName, maxPartitionID, start, adjustStart)
 	if err = vol.splitMetaPartition(c, partition, adjustStart); err != nil {

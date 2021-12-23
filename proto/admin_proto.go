@@ -17,10 +17,10 @@ package proto
 // api
 const (
 	// Admin APIs
-	AdminGetCluster                = "/admin/getCluster"
-	AdminGetDataPartition          = "/dataPartition/get"
-	AdminLoadDataPartition         = "/dataPartition/load"
-	AdminCreateDataPartition       = "/dataPartition/create"
+	AdminGetCluster                 = "/admin/getCluster"
+	AdminGetDataPartition           = "/dataPartition/get"
+	AdminLoadDataPartition          = "/dataPartition/load"
+	AdminCreateDataPartition        = "/dataPartition/create"
 	AdminCreatePreLoadDataPartition = "/dataPartition/createPreLoad"
 	AdminDecommissionDataPartition  = "/dataPartition/decommission"
 	AdminDiagnoseDataPartition      = "/dataPartition/diagnose"
@@ -145,11 +145,12 @@ type ClusterInfo struct {
 	DataNodeAutoRepairLimitRate uint64
 	LoadFactor                  float64
 	EbsAddr                     string
+	ServicePath                 string
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
 type CreateDataPartitionRequest struct {
-	PartitionType int8
+	PartitionType int
 	PartitionId   uint64
 	PartitionSize int
 	VolumeId      string
@@ -387,15 +388,15 @@ type MetaPartitionLoadResponse struct {
 
 // DataPartitionResponse defines the response from a data node to the master that is related to a data partition.
 type DataPartitionResponse struct {
-	PartitionType int8
-	PartitionID uint64
-	Status      int8
-	ReplicaNum  uint8
-	Hosts       []string
-	LeaderAddr  string
-	Epoch       uint64
-	IsRecover   bool
-	PartitionTTL int64
+	PartitionType int
+	PartitionID   uint64
+	Status        int8
+	ReplicaNum    uint8
+	Hosts         []string
+	LeaderAddr    string
+	Epoch         uint64
+	IsRecover     bool
+	PartitionTTL  int64
 }
 
 // DataPartitionsView defines the view of a data partition
@@ -476,6 +477,7 @@ type SimpleVolView struct {
 	Name               string
 	Owner              string
 	ZoneName           string
+	CachePath          string
 	DpReplicaNum       uint8
 	MpReplicaNum       uint8
 	InodeCount         uint64
@@ -498,34 +500,34 @@ type SimpleVolView struct {
 	DpSelectorName     string
 	DpSelectorParm     string
 	DefaultZonePrior   bool
-	VolType          int
-	ObjBlockSize     int
-	EbsCapacity      uint64
-	CacheAction      int
-	CacheThreshold   int
-	CacheHighWater   int
-	CacheLowWater    int
-	CacheLruInterval int
-	CacheTtl         int
+	VolType            int
+	ObjBlockSize       int
+	EbsCapacity        uint64
+	CacheAction        int
+	CacheThreshold     int
+	CacheHighWater     int
+	CacheLowWater      int
+	CacheLruInterval   int
+	CacheTtl           int
 }
 
 type NodeSetInfo struct {
-	ID        uint64
-	ZoneName  string
-	Capacity  int
+	ID           uint64
+	ZoneName     string
+	Capacity     int
 	DataUseRatio float64
 	MetaUseRatio float64
-	MetaUsed  uint64
-	MetaTotal uint64
-	MetaNodes []*MetaNodeInfo
-	DataUsed  uint64
-	DataTotal uint64
-	DataNodes []*DataNodeInfo
+	MetaUsed     uint64
+	MetaTotal    uint64
+	MetaNodes    []*MetaNodeInfo
+	DataUsed     uint64
+	DataTotal    uint64
+	DataNodes    []*DataNodeInfo
 }
 
 type SimpleNodeSetGrpInfo struct {
-	ID        uint64
-	Status    uint8
+	ID          uint64
+	Status      uint8
 	NodeSetInfo []NodeSetInfo
 }
 
@@ -536,12 +538,12 @@ type SimpleNodeSetGrpInfoList struct {
 }
 
 type DomainNodeSetGrpInfoList struct {
-	DomainOn             bool
-	DataRatioLimit       float64
+	DomainOn              bool
+	DataRatioLimit        float64
 	ZoneExcludeRatioLimit float64
-	NeedDomain           bool
-	ExcludeZones         []string
-	DomainNodeSetGrpInfo []*SimpleNodeSetGrpInfoList
+	NeedDomain            bool
+	ExcludeZones          []string
+	DomainNodeSetGrpInfo  []*SimpleNodeSetGrpInfoList
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -587,4 +589,35 @@ type NodeSetView struct {
 // TopologyView provides the view of the topology view of the cluster
 type TopologyView struct {
 	Zones []*ZoneView
+}
+
+const (
+	partitionTypeNormal  = 0
+	partitionTypeCache   = 1
+	partitionTypePreLoad = 2
+)
+
+func GetDpType(volType int, isPreload bool) int {
+
+	if volType == VolumeTypeHot {
+		return partitionTypeNormal
+	}
+
+	if isPreload {
+		return partitionTypePreLoad
+	}
+
+	return partitionTypeCache
+}
+
+func IsCacheDp(typ int) bool {
+	return typ == partitionTypeCache
+}
+
+func IsNormalDp(typ int) bool {
+	return typ == partitionTypeNormal
+}
+
+func IsPreLoadDp(typ int) bool {
+	return typ == partitionTypePreLoad
 }

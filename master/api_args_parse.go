@@ -146,26 +146,11 @@ func parseVolNameAndAuthKey(r *http.Request) (name, authKey string, err error) {
 		return
 	}
 	return
-
 }
 
 func parseRequestToDeleteVol(r *http.Request) (name, authKey string, err error) {
 	return parseVolNameAndAuthKey(r)
 
-}
-
-func parseRequestToUpdateVol(r *http.Request) (name, authKey, description string, err error) {
-	if err = r.ParseForm(); err != nil {
-		return
-	}
-	if name, err = extractName(r); err != nil {
-		return
-	}
-	if authKey, err = extractAuthKey(r); err != nil {
-		return
-	}
-	description = r.FormValue(descriptionKey)
-	return
 }
 
 func extractUintWithDefault(r *http.Request, key string, def int) (val int, err error) {
@@ -176,7 +161,7 @@ func extractUintWithDefault(r *http.Request, key string, def int) (val int, err 
 	}
 
 	if val, err = strconv.Atoi(str); err != nil || val <= 0 {
-		return 0, fmt.Errorf("parse [%s] is not valid int [%s]", key, val)
+		return 0, fmt.Errorf("parse [%s] is not valid int [%d]", key, val)
 	}
 
 	return val, nil
@@ -190,7 +175,7 @@ func extractUint64WithDefault(r *http.Request, key string, def uint64) (val uint
 	}
 
 	if val, err = strconv.ParseUint(str, 10, 64); err != nil || val < 0 {
-		return 0, fmt.Errorf("parse [%s] is not valid uint [%s]", key, val)
+		return 0, fmt.Errorf("parse [%s] is not valid uint [%d]", key, val)
 	}
 
 	return val, nil
@@ -198,8 +183,7 @@ func extractUint64WithDefault(r *http.Request, key string, def uint64) (val uint
 
 func extractStrWithDefault(r *http.Request, key string, def string) (val string) {
 
-	var str string
-	if str = r.FormValue(key); str == "" {
+	if val = r.FormValue(key); val == "" {
 		return def
 	}
 
@@ -213,7 +197,7 @@ func extractBoolWithDefault(r *http.Request, key string, def bool) (val bool, er
 	}
 
 	if val, err = strconv.ParseBool(str); err != nil {
-		return false, fmt.Errorf("parse [%s] is not a bool val [%s]", key, val)
+		return false, fmt.Errorf("parse [%s] is not a bool val [%t]", key, val)
 	}
 
 	return val, nil
@@ -237,7 +221,7 @@ func isCold(volTyp int) bool {
 }
 
 func isHot(volTyp int) bool {
-	return volTyp == proto.VolumeTypeCold
+	return volTyp == proto.VolumeTypeHot
 }
 
 func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err error) {
@@ -348,6 +332,7 @@ type coldVolArgs struct {
 	cacheHighWater   int
 	cacheLowWater    int
 	cacheLRUInterval int
+	cachePath        string
 }
 
 type createVolReq struct {
@@ -365,7 +350,6 @@ type createVolReq struct {
 	zoneName         string
 	description      string
 	volType          int
-	cachePath        string
 
 	// cold vol args
 	coldArgs coldVolArgs
@@ -413,6 +397,8 @@ func parseColdArgs(r *http.Request) (args coldVolArgs, err error) {
 	if args.cacheTtl, err = extractUint(r, cacheLRUIntervalKey); err != nil {
 		return
 	}
+
+	args.cachePath = extractStr(r, cachePahtKey)
 
 	return
 }
@@ -465,7 +451,6 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
-
 	if req.normalZonesFirst, err = extractBoolWithDefault(r, normalZonesFirstKey, false); err != nil {
 		return
 	}
@@ -473,6 +458,9 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	req.zoneName = extractStr(r, zoneNameKey)
 	req.description = extractStr(r, descriptionKey)
 	req.domainId, err = extractUint64WithDefault(r, domainIdKey, 0)
+
+	req.zoneName = r.FormValue(zoneNameKey)
+	req.description = r.FormValue(descriptionKey)
 
 	return
 }
@@ -793,7 +781,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 			return params, err
 		}
 
-		params[clusterLoadFactorKey] = valF
+		params[clusterLoadFactorKey] = float32(valF)
 	}
 
 	if noParams {
@@ -813,6 +801,7 @@ func validateRequestToCreateMetaPartition(r *http.Request) (volName string, star
 		err = keyNotFound(startKey)
 		return
 	}
+
 	start, err = strconv.ParseUint(value, 10, 64)
 	return
 }

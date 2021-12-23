@@ -19,17 +19,18 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/rand"
+	"strings"
+	"time"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
-	"math/rand"
-	"strings"
-	"time"
 )
 
 func newCreateDataPartitionRequest(volName string, ID uint64, members []proto.Peer,
-			dataPartitionSize int, hosts []string, createType int, partitionType int8) (req *proto.CreateDataPartitionRequest) {
+	dataPartitionSize int, hosts []string, createType int, partitionType int) (req *proto.CreateDataPartitionRequest) {
 	req = &proto.CreateDataPartitionRequest{
 		PartitionType: partitionType,
 		PartitionId:   ID,
@@ -123,18 +124,19 @@ func contains(arr []string, element string) (ok bool) {
 	return
 }
 
-func containsID(arr []uint64, element uint64) (ok bool) {
+func containsID(arr []uint64, element uint64) bool {
+
 	if arr == nil || len(arr) == 0 {
-		return
+		return false
 	}
 
 	for _, e := range arr {
 		if e == element {
-			ok = true
-			break
+			return true
 		}
 	}
-	return
+
+	return false
 }
 
 func reshuffleHosts(oldHosts []string) (newHosts []string, err error) {

@@ -253,16 +253,17 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 
 	var dataPath string
 
-	if dpCfg.PartitionType == proto.PartitionTypeNormal {
+	if proto.IsNormalDp(dpCfg.PartitionType) {
+
 		dataPath = path.Join(disk.Path, fmt.Sprintf(DataPartitionPrefix+"_%v_%v", partitionID, dpCfg.PartitionSize))
+	} else if proto.IsCacheDp(dpCfg.PartitionType) {
 
-	} else if dpCfg.PartitionType == proto.PartitionTypeCache {
 		dataPath = path.Join(disk.Path, fmt.Sprintf(CachePartitionPrefix+"_%v_%v", partitionID, dpCfg.PartitionSize))
+	} else if proto.IsPreLoadDp(dpCfg.PartitionType) {
 
-	} else if dpCfg.PartitionType == proto.PartitionTypePreLoad {
 		dataPath = path.Join(disk.Path, fmt.Sprintf(PreLoadPartitionPrefix+"_%v_%v", partitionID, dpCfg.PartitionSize))
-
 	} else {
+
 		return nil, fmt.Errorf("newDataPartition fail, dataPartitionCfg(%v)", dpCfg)
 	}
 
@@ -896,12 +897,14 @@ func (dp *DataPartition) putRepairConn(conn net.Conn, forceClose bool) {
 	return
 }
 
-func (dp *DataPartition) isCacheType() bool{
-	return dp.partitionType == proto.PartitionTypeCache || dp.partitionType == proto.PartitionTypePreLoad
+func (dp *DataPartition) isCacheType() bool {
+
+	return proto.IsCacheDp(dp.partitionType) || proto.IsPreLoadDp(dp.partitionType)
 }
 
-func (dp *DataPartition) isNormalType() bool{
-	return dp.partitionType == proto.PartitionTypeNormal
+func (dp *DataPartition) isNormalType() bool {
+
+	return proto.IsNormalDp(dp.partitionType)
 }
 
 type SimpleVolView struct {
@@ -1005,7 +1008,7 @@ func (dp *DataPartition) doEvict(vv *proto.SimpleVolView) {
 
 	// if dp use age larger than the space high water, do die out.
 	freeSpace = 0
-	if dp.Used() * 100 / dp.Size() > vv.CacheHighWater {
+	if dp.Used()*100/dp.Size() > vv.CacheHighWater {
 		dieOut = true
 		freeSpace = ((vv.CacheHighWater - vv.CacheLowWater) / 100) * dp.Size()
 	}
@@ -1020,7 +1023,7 @@ func (dp *DataPartition) doEvict(vv *proto.SimpleVolView) {
 	}
 
 	log.LogDebugf("action[doEvict], vol %v, LRU(%v, %v), dp %v, useAge %v, extents %v, freeSpace %v, freeExtentCount %v, dieOut %v",
-		vv.Name, vv.CacheLowWater, vv.CacheHighWater, dp.partitionID, dp.Used() * 100 / dp.Size(), len(extInfos),
+		vv.Name, vv.CacheLowWater, vv.CacheHighWater, dp.partitionID, dp.Used()*100/dp.Size(), len(extInfos),
 		freeSpace, freeExtentCount, dieOut)
 
 	if dieOut == false {

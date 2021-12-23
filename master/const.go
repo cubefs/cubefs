@@ -35,6 +35,7 @@ const (
 	metaPartitionCountKey = "mpCount"
 	volCapacityKey        = "capacity"
 	volTypeKey            = "volType"
+	cachePahtKey          = "cachePathKey"
 
 	ebsBlkSizeKey       = "ebsBlkSize"
 	ebsCapacityKey      = "ebsCapacity"

@@ -42,7 +42,8 @@ const (
 	LogLevel          = "logLevel"
 	WalDir            = "walDir"
 	StoreDir          = "storeDir"
-	EbsAddr           = "ebsAddr"
+	EbsAddrKey        = "ebsAddr"
+	EbsServicePathKey = "ebsServicePath"
 	GroupID           = 1
 	ModuleName        = "master"
 	CfgRetainLogs     = "retainLogs"
@@ -72,6 +73,7 @@ type Server struct {
 	walDir       string
 	storeDir     string
 	ebsAddr      string
+	servicePath  string
 	retainLogs   uint64
 	tickInterval int
 	electionTick int
@@ -153,7 +155,9 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	m.port = cfg.GetString(proto.ListenPort)
 	m.walDir = cfg.GetString(WalDir)
 	m.storeDir = cfg.GetString(StoreDir)
-	m.ebsAddr = cfg.GetString(EbsAddr)
+	m.ebsAddr = cfg.GetString(EbsAddrKey)
+	m.servicePath = cfg.GetString(EbsServicePathKey)
+
 	peerAddrs := cfg.GetString(cfgPeers)
 
 	if m.ip == "" || m.port == "" || m.walDir == "" || m.storeDir == "" || m.clusterName == "" || peerAddrs == "" {
