@@ -273,8 +273,6 @@ func (partition *DataPartition) missingReplicaAddress(dataPartitionSize uint64) 
 }
 
 func (partition *DataPartition) checkReplicaSize(clusterID string, diffSpaceUsage uint64) {
-	partition.RLock()
-	defer partition.RUnlock()
 	if len(partition.Replicas) == 0 {
 		return
 	}

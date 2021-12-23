@@ -107,6 +107,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handlePacketToGetAllWatermarks(p)
 	case proto.OpGetAllWatermarksV2:
 		s.handlePacketToGetAllWatermarksV2(p)
+	case proto.OpGetAllExtentInfo:
+		s.handlePacketToGetAllExtentInfo(p)
 	case proto.OpCreateDataPartition:
 		s.handlePacketToCreateDataPartition(p)
 	case proto.OpLoadDataPartition:
@@ -678,6 +680,30 @@ func (s *DataNode) handlePacketToGetAllWatermarksV2(p *repl.Packet) {
 		}
 		_, data,err = store.GetAllWatermarksWithByteArr(storage.TinyExtentFilter(extentIDs))
 	}
+	if err != nil {
+		return
+	}
+	p.PacketOkWithBody(data)
+	return
+}
+
+func (s *DataNode) handlePacketToGetAllExtentInfo(p *repl.Packet) {
+	var (
+		err  error
+		data []byte
+	)
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionGetAllExtentInfo, err.Error())
+		}
+	}()
+	partition := p.Object.(*DataPartition)
+	store := partition.ExtentStore()
+	if !store.IsFininshLoad() {
+		err = storage.PartitionIsLoaddingErr
+		return
+	}
+	data, err = store.GetAllExtentInfoWithByteArr(storage.ExtentFilterForValidateCRC())
 	if err != nil {
 		return
 	}

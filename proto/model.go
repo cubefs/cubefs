@@ -328,3 +328,14 @@ type MNMetaPartitionInfo struct {
 	NodeId     uint64    `json:"nodeId"`
 	Cursor     uint64    `json:"cursor"`
 }
+
+type DataPartitionExtentCrcInfo struct {
+	PartitionID    uint64
+	ExtentCrcInfos []*ExtentCrcInfo
+}
+
+type ExtentCrcInfo struct {
+	FileID        uint64
+	ExtentNum     int
+	CrcLocAddrMap map[uint32][]string
+}

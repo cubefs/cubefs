@@ -170,3 +170,16 @@ func (api *NodeAPI) MetaNodeGetPartition(addr string, id uint64) (node *proto.MN
 	}
 	return
 }
+
+func (api *NodeAPI) DataNodeValidateCRCReport(dpCrcInfo *proto.DataPartitionExtentCrcInfo) (err error) {
+	var encoded []byte
+	if encoded, err = json.Marshal(dpCrcInfo); err != nil {
+		return
+	}
+	var request = newAPIRequest(http.MethodPost, proto.DataNodeValidateCRCReport)
+	request.addBody(encoded)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}

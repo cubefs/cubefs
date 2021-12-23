@@ -3231,3 +3231,58 @@ func (m *Server) associateVolWithUser(userID, volName string) error {
 	}
 	return nil
 }
+
+func (m *Server) handleDataNodeValidateCRCReport(w http.ResponseWriter, r *http.Request) {
+	dpCrcInfo, err := parseRequestToDataNodeValidateCRCReport(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", http.StatusOK)))
+
+	warnMsg := new(strings.Builder)
+	replicaCrcDetail := new(strings.Builder)
+	for _, extentCrcInfo := range dpCrcInfo.ExtentCrcInfos {
+		warnMsg.Reset()
+		replicaCrcDetail.Reset()
+		for crc, locAddrs := range extentCrcInfo.CrcLocAddrMap {
+			replicaCrcDetail.WriteString(fmt.Sprintf(" crc:%v count:%v addr:%v,", crc, len(locAddrs), locAddrs))
+		}
+		warnMsg.WriteString(fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v File:%v ",
+			m.clusterName, dpCrcInfo.PartitionID, extentCrcInfo.FileID))
+		if extentCrcInfo.ExtentNum == len(extentCrcInfo.CrcLocAddrMap) {
+			warnMsg.WriteString("crc different between all node")
+			warnMsg.WriteString(replicaCrcDetail.String())
+			Warn(m.clusterName, warnMsg.String())
+			continue
+		}
+		var maxNumCrc uint32
+		var maxNum int
+		for crc, extentInfos := range extentCrcInfo.CrcLocAddrMap {
+			if maxNum < len(extentInfos) {
+				maxNum = len(extentInfos)
+				maxNumCrc = crc
+			}
+		}
+		for crc, locAddrs := range extentCrcInfo.CrcLocAddrMap {
+			if crc != maxNumCrc {
+				warnMsg.WriteString(fmt.Sprintf("badCrc On addr:%v detail:", locAddrs))
+				warnMsg.WriteString(replicaCrcDetail.String())
+				Warn(m.clusterName, warnMsg.String())
+			}
+		}
+	}
+}
+
+func parseRequestToDataNodeValidateCRCReport(r *http.Request) (dpCrcInfo *proto.DataPartitionExtentCrcInfo, err error) {
+	var body []byte
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if body, err = ioutil.ReadAll(r.Body); err != nil {
+		return
+	}
+	dpCrcInfo = &proto.DataPartitionExtentCrcInfo{}
+	err = json.Unmarshal(body, dpCrcInfo)
+	return
+}

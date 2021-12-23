@@ -14,6 +14,8 @@
 
 package datanode
 
+import "time"
+
 const (
 	IntervalToUpdateReplica       = 600 // interval to update the replica
 	IntervalToUpdatePartitionSize = 60  // interval to update the partition size
@@ -49,6 +51,7 @@ const (
 	ActionMarkDelete                      = "ActionMarkDelete:"
 	ActionGetAllExtentWatermarks          = "ActionGetAllExtentWatermarks:"
 	ActionGetAllExtentWatermarksV2        = "ActionGetAllExtentWatermarksV2:"
+	ActionGetAllExtentInfo                = "ActionGetAllExtentInfo:"
 	ActionWrite                           = "ActionWrite:"
 	ActionRepair                          = "ActionRepair:"
 	ActionDecommissionPartition           = "ActionDecommissionPartition"
@@ -109,4 +112,11 @@ const (
 	DiskForceEvictFDRatio              = 0.25
 	CacheCapacityPerPartition          = 256
 	DiskLoadPartitionParallelism       = 10
+)
+
+// data partition validate crc
+const (
+	EmptyCrcValue uint32 = 4045511210
+
+	DefaultIntervalDataPartitionValidateCRC = time.Hour * 24
 )

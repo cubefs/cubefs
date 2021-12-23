@@ -1036,10 +1036,6 @@ func (c *Cluster) doLoadDataPartition(dp *DataPartition) {
 		return
 	}
 
-	dp.getFileCount()
-	dp.validateCRC(c.Name)
-	dp.checkReplicaSize(c.Name, c.cfg.diffSpaceUsage)
-	dp.setToNormal()
 }
 
 func (c *Cluster) handleMetaNodeTaskResponse(nodeAddr string, task *proto.AdminTask) (err error) {
