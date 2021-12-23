@@ -62,7 +62,7 @@ type Vol struct {
 	CacheLowWater    int
 	CacheLRUInterval int
 
-	PreloadCacheOn       bool
+	PreloadCacheOn     bool
 	NeedToLowerReplica bool
 	FollowerRead       bool
 	authenticate       bool

@@ -34,7 +34,7 @@ import (
 // Low-level API, i.e. work with inode
 
 const (
-	BatchIgetRespBuf = 1000
+	BatchIgetRespBuf   = 1000
 	UpdateSummaryRetry = 3
 )
 
@@ -575,7 +575,7 @@ func (mw *MetaWrapper) AppendExtentKey(fileSize int, parentInode, inode uint64, 
 
 	if oldInfo != nil {
 		if int64(oldInfo.Size) < int64(fileSize) {
-			go mw.UpdateSummary_ll(parentInode, 0, 0, int64(fileSize) - int64(oldInfo.Size))
+			go mw.UpdateSummary_ll(parentInode, 0, 0, int64(fileSize)-int64(oldInfo.Size))
 		}
 	}
 
@@ -1018,12 +1018,12 @@ func (mw *MetaWrapper) GetSummary_ll(parentIno uint64) (SummaryInfo, error) {
 		subdirs, _ := strconv.ParseInt(summaryList[1], 10, 64)
 		fbytes, _ := strconv.ParseInt(summaryList[2], 10, 64)
 		summaryInfo = SummaryInfo{
-			Files: files,
+			Files:   files,
 			Subdirs: subdirs,
-			Fbytes: fbytes,
+			Fbytes:  fbytes,
 		}
 	} else {
-		summaryInfo = SummaryInfo{0,0,0}
+		summaryInfo = SummaryInfo{0, 0, 0}
 	}
 
 	children, err := mw.ReadDirOnly_ll(parentIno)
@@ -1074,12 +1074,12 @@ func (mw *MetaWrapper) RefreshSummary(parentIno uint64) error {
 		subdirs, _ := strconv.ParseInt(summaryList[1], 10, 64)
 		fbytes, _ := strconv.ParseInt(summaryList[2], 10, 64)
 		oldSummaryInfo = SummaryInfo{
-			Files: files,
+			Files:   files,
 			Subdirs: subdirs,
-			Fbytes: fbytes,
+			Fbytes:  fbytes,
 		}
 	} else {
-		oldSummaryInfo = SummaryInfo{0,0,0}
+		oldSummaryInfo = SummaryInfo{0, 0, 0}
 	}
 
 	newSummaryInfo := SummaryInfo{0, 0, 0}

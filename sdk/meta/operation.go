@@ -1302,13 +1302,13 @@ func (mw *MetaWrapper) readdironly(mp *MetaPartition, parentID uint64) (status i
 func (mw *MetaWrapper) updateXAttrs(mp *MetaPartition, inode uint64, filesInc int64, dirsInc int64, bytesInc int64) error {
 	var err error
 	key := "DirStat"
-	value := strconv.FormatInt(int64(filesInc),10) + "," + strconv.FormatInt(int64(dirsInc),10) + "," + strconv.FormatInt(int64(bytesInc),10)
+	value := strconv.FormatInt(int64(filesInc), 10) + "," + strconv.FormatInt(int64(dirsInc), 10) + "," + strconv.FormatInt(int64(bytesInc), 10)
 	req := &proto.UpdateXAttrRequest{
-		VolName: mw.volname,
+		VolName:     mw.volname,
 		PartitionId: mp.PartitionID,
-		Inode: inode,
-		Key: key,
-		Value: value,
+		Inode:       inode,
+		Key:         key,
+		Value:       value,
 	}
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaUpdateXAttr

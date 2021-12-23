@@ -28,7 +28,6 @@ import (
 	"sync/atomic"
 	"time"
 
-
 	"hash/crc32"
 	"net"
 	"sort"

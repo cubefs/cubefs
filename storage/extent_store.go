@@ -19,11 +19,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
+	"regexp"
 	"strconv"
 	"sync"
 	"sync/atomic"
-	"path"
-	"regexp"
 	"time"
 
 	"hash/crc32"

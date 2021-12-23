@@ -251,7 +251,7 @@ type nodeSetValue struct {
 
 type domainNodeSetGrpValue struct {
 	DomainId    uint64
-	ID	    uint64
+	ID          uint64
 	NodeSetsIds []uint64
 	Status      uint8
 }
@@ -260,7 +260,7 @@ type zoneDomainValue struct {
 	NeedFaultDomain      bool
 	DataRatio            float64
 	DomainZoneName2IdMap map[string]uint64 // zoneName:domainId
-	ExcludeZoneUseRatio    float64
+	ExcludeZoneUseRatio  float64
 }
 
 func newZoneDomainValue() (ev *zoneDomainValue) {
@@ -279,7 +279,7 @@ func newNodeSetValue(nset *nodeSet) (nsv *nodeSetValue) {
 }
 func newNodeSetGrpValue(nset *nodeSetGroup) (nsv *domainNodeSetGrpValue) {
 	nsv = &domainNodeSetGrpValue{
-		ID:       nset.ID,
+		ID:          nset.ID,
 		NodeSetsIds: nset.nodeSetsIds,
 		Status:      nset.status,
 	}
@@ -663,7 +663,7 @@ func (c *Cluster) putZoneDomain(init bool) (err error) {
 	} else {
 		domainValue.DataRatio = defaultZoneUsageThreshold
 	}
-	if c.domainManager.excludeZoneUseRatio > 0 && c.domainManager.excludeZoneUseRatio <= 1{
+	if c.domainManager.excludeZoneUseRatio > 0 && c.domainManager.excludeZoneUseRatio <= 1 {
 		domainValue.DataRatio = c.domainManager.excludeZoneUseRatio
 	} else {
 		domainValue.DataRatio = defaultZoneUsageThreshold
@@ -696,13 +696,13 @@ func (c *Cluster) loadZoneDomain() (ok bool, err error) {
 		}
 		log.LogInfof("action[loadZoneDomain] get value!exclue map[%v],need domain[%v]", nsv.ExcludeZoneMap, nsv.NeedFaultDomain)
 		c.domainManager.excludeZoneListDomain = nsv.ExcludeZoneMap
-		for zoneName, _ := range nsv.ExcludeZoneMap {
+		for zoneName := range nsv.ExcludeZoneMap {
 			c.t.domainExcludeZones = append(c.t.domainExcludeZones, zoneName)
 		}
 		c.needFaultDomain = nsv.NeedFaultDomain
 		c.domainManager.dataRatioLimit = nsv.DataRatio
 		c.domainManager.ZoneName2DomainIdMap = nsv.DomainZoneName2IdMap
-                c.domainManager.excludeZoneUseRatio = nsv.ExcludeZoneUseRatio
+		c.domainManager.excludeZoneUseRatio = nsv.ExcludeZoneUseRatio
 		break
 	}
 	log.LogInfof("action[loadZoneDomain] success!")
@@ -735,9 +735,8 @@ func (c *Cluster) loadNodeSetGrps() (err error) {
 		nsg.status = domainInfoLoad.Status
 		domainId := domainInfoLoad.DomainId
 
-
 		var domainIndex int
-		var ok          bool
+		var ok bool
 		var domainGrp *DomainNodeSetGrpManager
 		if domainIndex, ok = c.domainManager.domainId2IndexMap[domainId]; !ok {
 			domainGrp = newDomainNodeSetGrpManager()

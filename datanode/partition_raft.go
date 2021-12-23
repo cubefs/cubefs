@@ -41,7 +41,7 @@ type dataPartitionCfg struct {
 	ClusterID     string              `json:"cluster_id"`
 	PartitionID   uint64              `json:"partition_id"`
 	PartitionSize int                 `json:"partition_size"`
-	PartitionType int				  `json:"partition_type"`
+	PartitionType int                 `json:"partition_type"`
 	Peers         []proto.Peer        `json:"peers"`
 	Hosts         []string            `json:"hosts"`
 	NodeID        uint64              `json:"-"`

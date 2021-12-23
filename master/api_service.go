@@ -282,7 +282,7 @@ func (m *Server) createPreLoadDataPartition(w http.ResponseWriter, r *http.Reque
 		vol     *Vol
 		err     error
 		dps     []*DataPartition
-		preload  *DataPartitionPreLoad
+		preload *DataPartitionPreLoad
 	)
 	preload = new(DataPartitionPreLoad)
 	if volName = r.FormValue(nameKey); volName == "" {
@@ -347,7 +347,6 @@ func (m *Server) createPreLoadDataPartition(w http.ResponseWriter, r *http.Reque
 		send(w, r, body)
 	}
 }
-
 
 func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	var (
@@ -1303,20 +1302,20 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 				i, nsStat.ID, node.ZoneName, node.Addr, node.NodeSetID)
 
 			dataNodeInfo := &proto.DataNodeInfo{
-				Total:                     node.Total,
-				Used:                      node.Used,
-				AvailableSpace:            node.AvailableSpace,
-				ID:                        node.ID,
-				ZoneName:                  node.ZoneName,
-				Addr:                      node.Addr,
-				ReportTime:                node.ReportTime,
-				IsActive:                  node.isActive,
-				IsWriteAble:               node.isWriteAble(),
-				UsageRatio:                node.UsageRatio,
-				SelectedTimes:             node.SelectedTimes,
-				Carry:                     node.Carry,
-				DataPartitionCount:        node.DataPartitionCount,
-				NodeSetID:                 node.NodeSetID,
+				Total:              node.Total,
+				Used:               node.Used,
+				AvailableSpace:     node.AvailableSpace,
+				ID:                 node.ID,
+				ZoneName:           node.ZoneName,
+				Addr:               node.Addr,
+				ReportTime:         node.ReportTime,
+				IsActive:           node.isActive,
+				IsWriteAble:        node.isWriteAble(),
+				UsageRatio:         node.UsageRatio,
+				SelectedTimes:      node.SelectedTimes,
+				Carry:              node.Carry,
+				DataPartitionCount: node.DataPartitionCount,
+				NodeSetID:          node.NodeSetID,
 			}
 			nsStat.DataNodes = append(nsStat.DataNodes, dataNodeInfo)
 			return true
@@ -1331,22 +1330,22 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 			log.LogInfof("nodeset index[%v], metanode nodeset id[%v],zonename[%v], addr[%v] inner nodesetid[%v]",
 				i, nsStat.ID, node.ZoneName, node.Addr, node.NodeSetID)
 
-			metaNodeInfo :=  &proto.MetaNodeInfo{
-				ID:                        node.ID,
-				Addr:                      node.Addr,
-				IsActive:                  node.IsActive,
-				IsWriteAble:               node.isWritable(),
-				ZoneName:                  node.ZoneName,
-				MaxMemAvailWeight:         node.MaxMemAvailWeight,
-				Total:                     node.Total,
-				Used:                      node.Used,
-				Ratio:                     node.Ratio,
-				SelectCount:               node.SelectCount,
-				Carry:                     node.Carry,
-				Threshold:                 node.Threshold,
-				ReportTime:                node.ReportTime,
-				MetaPartitionCount:        node.MetaPartitionCount,
-				NodeSetID:                 node.NodeSetID,
+			metaNodeInfo := &proto.MetaNodeInfo{
+				ID:                 node.ID,
+				Addr:               node.Addr,
+				IsActive:           node.IsActive,
+				IsWriteAble:        node.isWritable(),
+				ZoneName:           node.ZoneName,
+				MaxMemAvailWeight:  node.MaxMemAvailWeight,
+				Total:              node.Total,
+				Used:               node.Used,
+				Ratio:              node.Ratio,
+				SelectCount:        node.SelectCount,
+				Carry:              node.Carry,
+				Threshold:          node.Threshold,
+				ReportTime:         node.ReportTime,
+				MetaPartitionCount: node.MetaPartitionCount,
+				NodeSetID:          node.NodeSetID,
 			}
 			nsStat.MetaNodes = append(nsStat.MetaNodes, metaNodeInfo)
 			return true
@@ -1389,11 +1388,11 @@ func (m *Server) updateDataUseRatioHandler(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if ratioVal == 0 || ratioVal > 1{
+	if ratioVal == 0 || ratioVal > 1 {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if  err = m.updateDataUseRatio(ratioVal); err != nil {
+	if err = m.updateDataUseRatio(ratioVal); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1497,7 +1496,7 @@ func (m *Server) getNodeSetGrpInfoHandler(w http.ResponseWriter, r *http.Request
 }
 func (m *Server) getIsDomainOn(w http.ResponseWriter, r *http.Request) {
 	type SimpleDomainInfo struct {
-		DomainOn       bool
+		DomainOn bool
 	}
 	nsglStat := new(SimpleDomainInfo)
 	nsglStat.DomainOn = m.cluster.FaultDomain
@@ -1508,15 +1507,14 @@ func (m *Server) createDomainHandler(w http.ResponseWriter, r *http.Request) {
 	nsgm := m.cluster.domainManager
 	var (
 		zoneName string
-		err error
-
+		err      error
 	)
 
 	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("zonename null").Error()})
 		return
 	}
-	if err =  nsgm.createDomain(zoneName); err != nil {
+	if err = nsgm.createDomain(zoneName); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1534,19 +1532,19 @@ func (m *Server) getAllNodeSetGrpInfoHandler(w http.ResponseWriter, r *http.Requ
 	nsglStat.ZoneExcludeRatioLimit = nsgm.excludeZoneUseRatio
 	nsglStat.ExcludeZones = nsgm.c.t.domainExcludeZones
 
-	for i := 0; i < len(nsgm.domainNodeSetGrpVec) ; i++ {
+	for i := 0; i < len(nsgm.domainNodeSetGrpVec); i++ {
 		nodeSetGrpInfoList := &proto.SimpleNodeSetGrpInfoList{}
 		nodeSetGrpInfoList.DomainId = nsgm.domainNodeSetGrpVec[i].domainId
 		nodeSetGrpInfoList.Status = nsgm.domainNodeSetGrpVec[i].status
-		nsglStat.DomainNodeSetGrpInfo  = append(nsglStat.DomainNodeSetGrpInfo, nodeSetGrpInfoList)
+		nsglStat.DomainNodeSetGrpInfo = append(nsglStat.DomainNodeSetGrpInfo, nodeSetGrpInfoList)
 		nodeSetGrpInfoList.Status = nsgm.domainNodeSetGrpVec[i].status
-		log.LogInfof("action[getAllNodeSetGrpInfoHandler] start build domain id [%v]",nsgm.domainNodeSetGrpVec[i].domainId)
-		for j := 0; j < len(nsgm.domainNodeSetGrpVec[i].nodeSetGrpMap) ; j++ {
+		log.LogInfof("action[getAllNodeSetGrpInfoHandler] start build domain id [%v]", nsgm.domainNodeSetGrpVec[i].domainId)
+		for j := 0; j < len(nsgm.domainNodeSetGrpVec[i].nodeSetGrpMap); j++ {
 			log.LogInfof("action[getAllNodeSetGrpInfoHandler] build domain id [%v] nodeset group index [%v] Print inner nodeset now!",
-					nsgm.domainNodeSetGrpVec[i].domainId, j)
+				nsgm.domainNodeSetGrpVec[i].domainId, j)
 
 			nodeSetGrpInfoList.SimpleNodeSetGrpInfo = append(nodeSetGrpInfoList.SimpleNodeSetGrpInfo,
-																m.buildNodeSetGrpInfo(nsgm.domainNodeSetGrpVec[i].nodeSetGrpMap[j]))
+				m.buildNodeSetGrpInfo(nsgm.domainNodeSetGrpVec[i].nodeSetGrpMap[j]))
 		}
 	}
 

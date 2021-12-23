@@ -39,9 +39,9 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 			newFiles := oldFiles + filesInc
 			newDirs := oldDirs + dirsInc
 			newBytes := oldBytes + bytesInc
-			newValue := strconv.FormatInt(int64(newFiles),10) + "," +
-				strconv.FormatInt(int64(newDirs),10) + "," +
-				strconv.FormatInt(int64(newBytes),10)
+			newValue := strconv.FormatInt(int64(newFiles), 10) + "," +
+				strconv.FormatInt(int64(newDirs), 10) + "," +
+				strconv.FormatInt(int64(newBytes), 10)
 			var extend = NewExtend(req.Inode)
 			extend.Put([]byte(req.Key), []byte(newValue))
 			if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
