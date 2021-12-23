@@ -568,61 +568,43 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		name           string
-		authKey        string
-		err            error
-		msg            string
-		capacity       uint64
-		replicaNum     int
-		followerRead   bool
-		authenticate   bool
-		zoneName       string
-		description    string
-		dpSelectorName string
-		dpSelectorParm string
-		vol            *Vol
+		req = &updateVolReq{}
+		vol *Vol
+		err error
 	)
 
-	if name, authKey, description, err = parseRequestToUpdateVol(r); err != nil {
+	if req.name, err = parseVolName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if vol, err = m.cluster.getVol(name); err != nil {
+
+	if vol, err = m.cluster.getVol(req.name); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
-	if zoneName, capacity, replicaNum, dpSelectorName, dpSelectorParm, err =
-		parseDefaultInfoToUpdateVol(r, vol); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-	if replicaNum != 0 && !(replicaNum == 2 || replicaNum == 3) {
-		err = fmt.Errorf("replicaNum can only be 2 and 3,received replicaNum is[%v]", replicaNum)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
 
-	if followerRead, authenticate, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
+	if err = parseVolUpdateReq(r, vol, req); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
 	newArgs := getVolVarargs(vol)
 
-	newArgs.zoneName = zoneName
-	newArgs.description = description
-	newArgs.capacity = capacity
-	newArgs.followerRead = followerRead
-	newArgs.authenticate = authenticate
-	newArgs.dpSelectorName = dpSelectorName
-	newArgs.dpSelectorParm = dpSelectorParm
+	newArgs.zoneName = req.zoneName
+	newArgs.description = req.description
+	newArgs.capacity = req.capacity
+	newArgs.followerRead = req.followRead
+	newArgs.authenticate = req.authenticate
+	newArgs.dpSelectorName = req.dpSelectorName
+	newArgs.dpSelectorParm = req.dpSelectorParm
+	newArgs.coldArgs = req.coldArgs
 
-	if err = m.cluster.updateVol(name, authKey, newArgs); err != nil {
+	if err = m.cluster.updateVol(req.name, req.authKey, newArgs); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	msg = fmt.Sprintf("update vol[%v] successfully\n", name)
-	sendOkReply(w, r, newSuccessHTTPReply(msg))
+
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("update vol[%v] successfully\n", req.name)))
 }
 
 func (m *Server) volExpand(w http.ResponseWriter, r *http.Request) {

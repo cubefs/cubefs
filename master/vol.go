@@ -30,12 +30,11 @@ type VolVarargs struct {
 	zoneName       string
 	description    string
 	capacity       uint64 //GB
-	dpReplicaNum   uint8
 	followerRead   bool
 	authenticate   bool
 	dpSelectorName string
 	dpSelectorParm string
-	coldArgs *coldVolArgs
+	coldArgs       *coldVolArgs
 	domainId       uint64
 }
 
@@ -740,7 +739,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	)
 	errChannel := make(chan error, vol.mpReplicaNum)
 	if c.isFaultDomain(vol) {
-		if hosts, peers, err  = c.getAvaliableHostFromNsGrp(vol.domainId, TypeMetaPartion, vol.mpReplicaNum); err != nil {
+		if hosts, peers, err = c.getAvaliableHostFromNsGrp(vol.domainId, TypeMetaPartion, vol.mpReplicaNum); err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] getAvaliableHostFromNsGrp err[%v]", err)
 			return nil, errors.NewError(err)
 		}
@@ -804,15 +803,50 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	return
 }
 
+func setVolFromArgs(args *VolVarargs, vol *Vol) {
+	vol.zoneName = args.zoneName
+	vol.Capacity = args.capacity
+	vol.FollowerRead = args.followerRead
+	vol.authenticate = args.authenticate
+
+	if isCold(vol.VolType) {
+		coldArgs := args.coldArgs
+		vol.CacheLRUInterval = coldArgs.cacheLRUInterval
+		vol.CacheLowWater = coldArgs.cacheLowWater
+		vol.CacheHighWater = coldArgs.cacheHighWater
+		vol.CacheTTL = coldArgs.cacheTtl
+		vol.CacheThreshold = coldArgs.cacheThreshold
+		vol.CacheAction = coldArgs.cacheAction
+	}
+
+	vol.description = args.description
+
+	vol.dpSelectorName = args.dpSelectorName
+	vol.dpSelectorParm = args.dpSelectorParm
+}
+
 func getVolVarargs(vol *Vol) *VolVarargs {
+
+	args := &coldVolArgs{
+		objBlockSize:     vol.EbsBlkSize,
+		ebsCapacity:      vol.EbsCapacity,
+		cacheAction:      vol.CacheAction,
+		cacheThreshold:   vol.CacheThreshold,
+		cacheTtl:         vol.CacheTTL,
+		cacheHighWater:   vol.CacheHighWater,
+		cacheLowWater:    vol.CacheLowWater,
+		cacheLRUInterval: vol.CacheLRUInterval,
+	}
+
 	return &VolVarargs{
 		zoneName:       vol.zoneName,
 		description:    vol.description,
 		capacity:       vol.Capacity,
-		dpReplicaNum:   vol.dpReplicaNum,
 		followerRead:   vol.FollowerRead,
 		authenticate:   vol.authenticate,
 		dpSelectorName: vol.dpSelectorName,
 		dpSelectorParm: vol.dpSelectorParm,
+
+		coldArgs: args,
 	}
 }

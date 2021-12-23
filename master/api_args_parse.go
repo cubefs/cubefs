@@ -168,62 +168,156 @@ func parseRequestToUpdateVol(r *http.Request) (name, authKey, description string
 	return
 }
 
-func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, capacity uint64, replicaNum int,
-	dpSelectorName string, dpSelectorParm string, err error) {
-	if err = r.ParseForm(); err != nil {
+func extractUintWithDefault(r *http.Request, key string, def int) (val int, err error) {
+
+	var str string
+	if str = r.FormValue(key); str == "" {
+		return def, nil
+	}
+
+	if val, err = strconv.Atoi(str); err != nil || val <= 0 {
+		return 0, fmt.Errorf("parse [%s] is not valid int [%s]", key, val)
+	}
+
+	return val, nil
+}
+
+func extractUint64WithDefault(r *http.Request, key string, def uint64) (val uint64, err error) {
+
+	var str string
+	if str = r.FormValue(key); str == "" {
+		return def, nil
+	}
+
+	if val, err = strconv.ParseUint(str, 10, 64); err != nil || val < 0 {
+		return 0, fmt.Errorf("parse [%s] is not valid uint [%s]", key, val)
+	}
+
+	return val, nil
+}
+
+func extractStrWithDefault(r *http.Request, key string, def string) (val string) {
+
+	var str string
+	if str = r.FormValue(key); str == "" {
+		return def
+	}
+
+	return val
+}
+
+func extractBoolWithDefault(r *http.Request, key string, def bool) (val bool, err error) {
+	var str string
+	if str = r.FormValue(key); str == "" {
+		return def, nil
+	}
+
+	if val, err = strconv.ParseBool(str); err != nil {
+		return false, fmt.Errorf("parse [%s] is not a bool val [%s]", key, val)
+	}
+
+	return val, nil
+}
+
+type updateVolReq struct {
+	name           string
+	authKey        string
+	capacity       uint64
+	followRead     bool
+	authenticate   bool
+	zoneName       string
+	description    string
+	dpSelectorName string
+	dpSelectorParm string
+	coldArgs       *coldVolArgs
+}
+
+func isCold(volTyp int) bool {
+	return volTyp == proto.VolumeTypeCold
+}
+
+func isHot(volTyp int) bool {
+	return volTyp == proto.VolumeTypeCold
+}
+
+func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err error) {
+	args = &coldVolArgs{}
+
+	if args.objBlockSize, err = extractUintWithDefault(r, ebsBlkSizeKey, vol.EbsBlkSize); err != nil {
 		return
 	}
-	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
-		zoneName = vol.zoneName
+
+	if args.ebsCapacity, err = extractUintWithDefault(r, ebsCapacityKey, vol.EbsCapacity); err != nil {
+		return
 	}
-	if capacityStr := r.FormValue(volCapacityKey); capacityStr != "" {
-		var capacityInt int
-		if capacityInt, err = strconv.Atoi(capacityStr); err != nil {
-			err = unmatchedKey(volCapacityKey)
-			return
-		}
-		capacity = uint64(capacityInt)
-	} else {
-		capacity = vol.Capacity
+
+	if args.cacheAction, err = extractUintWithDefault(r, cacheActionKey, vol.CacheAction); err != nil {
+		return
 	}
-	if replicaNumStr := r.FormValue(replicaNumKey); replicaNumStr != "" {
-		if replicaNum, err = strconv.Atoi(replicaNumStr); err != nil {
-			err = unmatchedKey(replicaNumKey)
-			return
-		}
-	} else {
-		replicaNum = int(vol.dpReplicaNum)
+
+	if args.cacheThreshold, err = extractUintWithDefault(r, cacheThresholdKey, vol.CacheThreshold); err != nil {
+		return
 	}
-	dpSelectorName = r.FormValue(dpSelectorNameKey)
-	dpSelectorParm = r.FormValue(dpSelectorParmKey)
-	if (dpSelectorName == "") || (dpSelectorParm == "") {
-		if (dpSelectorName != "") || (dpSelectorParm != "") {
-			err = keyNotFound(dpSelectorNameKey + " or " + dpSelectorParmKey)
-			return
-		}
-		dpSelectorName = vol.dpSelectorName
-		dpSelectorParm = vol.dpSelectorParm
+
+	if args.cacheTtl, err = extractUintWithDefault(r, cacheTTLKey, vol.CacheTTL); err != nil {
+		return
 	}
+
+	if args.cacheHighWater, err = extractUintWithDefault(r, cacheHighWaterKey, vol.CacheHighWater); err != nil {
+		return
+	}
+
+	if args.cacheLowWater, err = extractUintWithDefault(r, cacheLowWaterKey, vol.CacheLowWater); err != nil {
+		return
+	}
+
+	if args.cacheLRUInterval, err = extractUintWithDefault(r, cacheLRUIntervalKey, vol.CacheLRUInterval); err != nil {
+		return
+	}
+
 	return
 }
 
-func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authenticate bool, err error) {
-	if followerReadStr := r.FormValue(followerReadKey); followerReadStr != "" {
-		if followerRead, err = strconv.ParseBool(followerReadStr); err != nil {
-			err = unmatchedKey(followerReadKey)
+func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	req.authKey = extractStr(r, volAuthKey)
+	req.description = extractStrWithDefault(r, descriptionKey, vol.description)
+	req.zoneName = extractStrWithDefault(r, zoneNameKey, vol.zoneName)
+
+	if req.capacity, err = extractUint64WithDefault(r, volCapacityKey, vol.Capacity); err != nil {
+		return
+	}
+
+	if req.authenticate, err = extractBoolWithDefault(r, authenticateKey, vol.authenticate); err != nil {
+		return
+	}
+
+	if req.followRead, err = extractBoolWithDefault(r, followerReadKey, vol.FollowerRead); err != nil {
+		return
+	}
+
+	req.dpSelectorName = r.FormValue(dpSelectorNameKey)
+	req.dpSelectorParm = r.FormValue(dpSelectorParmKey)
+	if (req.dpSelectorName == "" && req.dpSelectorParm != "") || (req.dpSelectorName != "" && req.dpSelectorParm == "") {
+
+		err = keyNotFound(dpSelectorNameKey + " or " + dpSelectorParmKey)
+		return
+	} else if req.dpSelectorParm == "" && req.dpSelectorName == "" {
+
+		req.dpSelectorName = vol.dpSelectorName
+		req.dpSelectorParm = vol.dpSelectorParm
+	}
+
+	if isCold(vol.VolType) {
+		req.coldArgs, err = parseColdVolUpdateArgs(r, vol)
+		if err != nil {
 			return
 		}
-	} else {
-		followerRead = vol.FollowerRead
 	}
-	if authenticateStr := r.FormValue(authenticateKey); authenticateStr != "" {
-		if authenticate, err = strconv.ParseBool(authenticateStr); err != nil {
-			err = unmatchedKey(authenticateKey)
-			return
-		}
-	} else {
-		authenticate = vol.authenticate
-	}
+
 	return
 }
 
@@ -768,8 +862,8 @@ func extractVolType(r *http.Request) (volType int, err error) {
 		return
 	}
 
-	if volType, err = strconv.Atoi(volTypeKey); err != nil {
-		err = unmatchedKey(volCapacityKey)
+	if volType, err = strconv.Atoi(capacityStr); err != nil {
+		err = unmatchedKey(volTypeKey)
 	}
 
 	return

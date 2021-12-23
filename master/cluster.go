@@ -116,7 +116,7 @@ func (c *Cluster) scheduleToUpdateStatInfo() {
 
 func (c *Cluster) addNodeSetGrp(ns *nodeSet, load bool) (err error) {
 	log.LogWarnf("addNodeSetGrp nodeSet id[%v] zonename[%v] load[%v] grpManager init[%v]",
-				ns.ID, ns.zoneName, load, c.domainManager.init)
+		ns.ID, ns.zoneName, load, c.domainManager.init)
 	if c.domainManager.init {
 		err = c.domainManager.putNodeSet(ns, load)
 	}
@@ -128,7 +128,7 @@ const (
 	TypeDataPartion uint32 = 0x02
 )
 
-func (c *Cluster) getAvaliableHostFromNsGrp(domainId uint64, createType uint32, replicaNum uint8) (hosts []string, peers []proto.Peer, err error){
+func (c *Cluster) getAvaliableHostFromNsGrp(domainId uint64, createType uint32, replicaNum uint8) (hosts []string, peers []proto.Peer, err error) {
 	hosts, peers, err = c.domainManager.getHostFromNodeSetGrp(domainId, replicaNum, createType)
 	return
 }
@@ -784,7 +784,7 @@ func (c *Cluster) createDataPartition(volName string, zoneNum int) (dp *DataPart
 		}
 	} else {
 		zoneNum := c.decideZoneNum(vol.crossZone)
-		var zonesExclude  []string
+		var zonesExclude []string
 		if targetHosts, targetPeers, err = c.chooseTargetNodes(TypeDataPartion, zonesExclude, nil, nil, int(vol.dpReplicaNum), zoneNum, vol.zoneName); err != nil {
 			goto errHandler
 		}
@@ -901,12 +901,11 @@ func (c *Cluster) decideZoneNum(crossZone bool) (zoneNum int) {
 }
 
 func (c *Cluster) chooseTargetNodes(nodeType uint32, excludeZones []string, excludeNodeSets []uint64,
-					excludeHosts []string, replicaNum int,
-					zoneNum int, specifiedZone string) (hosts []string, peers []proto.Peer, err error) {
-
+	excludeHosts []string, replicaNum int,
+	zoneNum int, specifiedZone string) (hosts []string, peers []proto.Peer, err error) {
 	var (
-		zones      []*Zone
-		index      int
+		zones []*Zone
+		index int
 	)
 
 	if replicaNum <= zoneNum {
@@ -921,9 +920,9 @@ func (c *Cluster) chooseTargetNodes(nodeType uint32, excludeZones []string, excl
 		}
 		zoneList := strings.Split(specifiedZone, ",")
 		zones = make([]*Zone, 0)
-		for i:=0 ; i < len(zoneList); i++ {
+		for i := 0; i < len(zoneList); i++ {
 			var zone *Zone
-			if zone,err = c.t.getZone(zoneList[i]); err != nil {
+			if zone, err = c.t.getZone(zoneList[i]); err != nil {
 				Warn(c.Name, fmt.Sprintf("cluster[%v],specified zone[%v]is found", c.Name, specifiedZone))
 				return
 			}
@@ -958,7 +957,7 @@ func (c *Cluster) chooseTargetNodes(nodeType uint32, excludeZones []string, excl
 	index = (c.lastMasterZoneForDataNode + 1) % len(zones)
 	for i := 0; i < replicaNum; i++ {
 		var j int
-		for j = 0; j < len(zones); j++{
+		for j = 0; j < len(zones); j++ {
 			zone := zones[index]
 			if zone.status == unavaliable {
 				continue
@@ -1609,54 +1608,49 @@ func (c *Cluster) deleteMetaNodeFromCache(metaNode *MetaNode) {
 
 func (c *Cluster) updateVol(name, authKey string, newArgs *VolVarargs) (err error) {
 	var (
-		vol               *Vol
-		serverAuthKey     string
-		oldDpReplicaNum   uint8
-		oldCapacity       uint64
-		oldFollowerRead   bool
-		oldAuthenticate   bool
-		oldZoneName       string
-		oldDescription    string
-		oldDpSelectorName string
-		oldDpSelectorParm string
-		volUsedSpace      uint64
+		vol           *Vol
+		serverAuthKey string
+		volUsedSpace  uint64
+		oldArgs       *VolVarargs
 	)
+
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[updateVol] err[%v]", err)
 		err = proto.ErrVolNotExists
 		goto errHandler
 	}
+
 	vol.Lock()
 	defer vol.Unlock()
+
 	serverAuthKey = vol.Owner
 	if !matchKey(serverAuthKey, authKey) {
 		return proto.ErrVolAuthKeyNotMatch
 	}
+
 	volUsedSpace = vol.totalUsedSpace()
 	if float64(newArgs.capacity*util.GB) < float64(volUsedSpace)*1.2 {
 		err = fmt.Errorf("capacity[%v] has to be 20 percent larger than the used space[%v]", newArgs.capacity,
 			volUsedSpace/util.GB)
 		goto errHandler
 	}
+
 	if newArgs.zoneName, err = c.checkZoneName(name, vol.crossZone, vol.defaultPriority, newArgs.zoneName); err != nil {
 		goto errHandler
 	}
 
-	if err = c.syncUpdateVol(vol); err != nil {
-		vol.Capacity = oldCapacity
-		vol.dpReplicaNum = oldDpReplicaNum
-		vol.FollowerRead = oldFollowerRead
-		vol.authenticate = oldAuthenticate
-		vol.zoneName = oldZoneName
-		vol.description = oldDescription
-		vol.dpSelectorName = oldDpSelectorName
-		vol.dpSelectorParm = oldDpSelectorParm
+	oldArgs = getVolVarargs(vol)
 
+	if err = c.syncUpdateVol(vol); err != nil {
+
+		setVolFromArgs(oldArgs, vol)
 		log.LogErrorf("action[updateVol] vol[%v] err[%v]", name, err)
 		err = proto.ErrPersistenceByRaft
 		goto errHandler
 	}
+
 	return
+
 errHandler:
 	err = fmt.Errorf("action[updateVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
 	log.LogError(errors.Stack(err))
@@ -1664,9 +1658,9 @@ errHandler:
 	return
 }
 
-func (c *Cluster) checkUnDomainZoneName(zoneName string) (err error){
+func (c *Cluster) checkUnDomainZoneName(zoneName string) (err error) {
 	var zones []string
-	if c.needFaultDomain{
+	if c.needFaultDomain {
 		zones = c.t.domainExcludeZones
 	} else {
 		zones = c.t.getZoneNameList()
@@ -1686,7 +1680,7 @@ func (c *Cluster) checkUnDomainZoneName(zoneName string) (err error){
 	}
 	return
 }
-func (c *Cluster) checkZoneName(name string, crossZone bool, defaultPriority bool, zoneName string) (newZoneName string, err error){
+func (c *Cluster) checkZoneName(name string, crossZone bool, defaultPriority bool, zoneName string) (newZoneName string, err error) {
 	zoneList := strings.Split(zoneName, ",")
 	newZoneName = zoneName
 
@@ -1712,13 +1706,13 @@ func (c *Cluster) checkZoneName(name string, crossZone bool, defaultPriority boo
 				return newZoneName, fmt.Errorf("action[checkZoneName] vol specified zoneName but cann't cross zone")
 			} else {
 				if err = c.checkUnDomainZoneName(newZoneName); err != nil {
-					return newZoneName,err
+					return newZoneName, err
 				}
 			}
 		}
 	} else { // cross zone disable means not use domain at the time vol be created
-		if newZoneName == ""{
-			if  !c.needFaultDomain {
+		if newZoneName == "" {
+			if !c.needFaultDomain {
 				if c.t.getZone(DefaultZoneName); err != nil {
 					return newZoneName, fmt.Errorf("action[checkZoneName] the vol is not cross zone and didn't set zone name,but there's no default zone")
 				}
@@ -1730,7 +1724,7 @@ func (c *Cluster) checkZoneName(name string, crossZone bool, defaultPriority boo
 				return newZoneName, fmt.Errorf("action[checkZoneName] vol specified zoneName need cross zone")
 			}
 			if err = c.checkUnDomainZoneName(newZoneName); err != nil {
-				return newZoneName,err
+				return newZoneName, err
 			}
 		}
 	}

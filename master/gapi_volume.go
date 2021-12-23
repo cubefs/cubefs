@@ -192,16 +192,16 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 	req := &createVolReq{
 		name:               args.Name,
 		owner:              args.Owner,
-		size            :   int(args.DataPartitionSize),
-		mpCount         :   int(args.MpCount),
-		dpReplicaNum    :   int(args.DpReplicaNum),
-		capacity        :   int(args.Capacity),
-		followerRead    :   args.FollowerRead,
-		authenticate    :   args.Authenticate,
-		crossZone       :   args.CrossZone,
+		size:               int(args.DataPartitionSize),
+		mpCount:            int(args.MpCount),
+		dpReplicaNum:       int(args.DpReplicaNum),
+		capacity:           int(args.Capacity),
+		followerRead:       args.FollowerRead,
+		authenticate:       args.Authenticate,
+		crossZone:          args.CrossZone,
 		unDomainZonesFirst: args.DefaultPriority,
-		zoneName        :   args.ZoneName,
-		description     :   args.Description,
+		zoneName:           args.ZoneName,
+		description:        args.Description,
 	}
 	vol, err := s.cluster.createVol(req)
 	if err != nil {
@@ -311,9 +311,9 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 		newArgs.capacity = *args.Capacity
 	}
 
-	if args.ReplicaNum != nil {
-		newArgs.dpReplicaNum = uint8(*args.ReplicaNum)
-	}
+	// if args.ReplicaNum != nil {
+	// 	newArgs. = uint8(*args.ReplicaNum)
+	// }
 
 	if args.Description != nil {
 		newArgs.description = *args.Description
