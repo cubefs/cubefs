@@ -354,17 +354,24 @@ func (e *Extent) DeleteTiny(offset, size int64) (hasDelete bool, err error) {
 		return false, ParameterMismatchError
 	}
 
-	newOffset, err := e.file.Seek(offset, SEEK_DATA)
+	fi, err := e.file.Stat()
 	if err != nil {
-		if strings.Contains(err.Error(), syscall.ENXIO.Error()) {
-			return true, nil
-		}
 		return false, err
-	}
-	if newOffset-offset >= size {
-		hasDelete = true
+	} else if offset >= fi.Size() {
 		return true, nil
 	}
+	// TODO: deprecated
+	//	newOffset, err := e.file.Seek(offset, SEEK_DATA)
+	//	if err != nil {
+	//		if strings.Contains(err.Error(), syscall.ENXIO.Error()) {
+	//			return true, nil
+	//		}
+	//		return false, err
+	//	}
+	//	if newOffset-offset >= size {
+	//		hasDelete = true
+	//		return true, nil
+	//	}
 	err = fallocate(int(e.file.Fd()), FallocFLPunchHole|FallocFLKeepSize, offset, size)
 	return
 }
