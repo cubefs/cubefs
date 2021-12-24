@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/net/context"
@@ -55,6 +56,10 @@ type Super struct {
 	enableXattr   bool
 	rootIno       uint64
 	sc            *SummaryCache
+
+	state     fs.FSStatType
+	sockaddr  string
+	suspendCh chan interface{}
 }
 
 // Functions that Super needs to implement
@@ -129,6 +134,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	if s.rootIno, err = s.mw.GetRootIno(opt.SubDir); err != nil {
 		return nil, err
 	}
+	s.suspendCh = make(chan interface{})
 
 	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v)", s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration)
 	return s, nil
@@ -206,4 +212,91 @@ func (s *Super) umpKey(act string) string {
 func (s *Super) handleError(op, msg string) {
 	log.LogError(msg)
 	ump.Alarm(s.umpKey(op), msg)
+}
+
+func replyFail(w http.ResponseWriter, r *http.Request, msg string) {
+	w.WriteHeader(http.StatusBadRequest)
+	w.Write([]byte(msg))
+}
+
+func replySucc(w http.ResponseWriter, r *http.Request, msg string) {
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(msg))
+}
+
+func (s *Super) SetSuspend(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+		ret string
+	)
+
+	if err = r.ParseForm(); err != nil {
+		replyFail(w, r, err.Error())
+		return
+	}
+
+	sockaddr := r.FormValue("sock")
+	if sockaddr == "" {
+		err = fmt.Errorf("Need parameter 'sock' for IPC")
+		replyFail(w, r, err.Error())
+		return
+	}
+
+	s.fslock.Lock()
+	if s.sockaddr != "" ||
+		!atomic.CompareAndSwapUint32((*uint32)(&s.state), uint32(fs.FSStatResume), uint32(fs.FSStatSuspend)) {
+		s.fslock.Unlock()
+		err = fmt.Errorf("Already in suspend: sock '%s', state %v", s.sockaddr, s.state)
+		replyFail(w, r, err.Error())
+		return
+	}
+	s.sockaddr = sockaddr
+	s.fslock.Unlock()
+
+	// wait
+	msg := <-s.suspendCh
+	switch msg.(type) {
+	case error:
+		err = msg.(error)
+	case string:
+		ret = msg.(string)
+	default:
+		err = fmt.Errorf("Unknown return type: %v", msg)
+	}
+
+	if err != nil {
+		s.fslock.Lock()
+		atomic.StoreUint32((*uint32)(&s.state), uint32(fs.FSStatResume))
+		s.sockaddr = ""
+		s.fslock.Unlock()
+		replyFail(w, r, err.Error())
+		return
+	}
+
+	if !atomic.CompareAndSwapUint32((*uint32)(&s.state), uint32(fs.FSStatSuspend), uint32(fs.FSStatShutdown)) {
+		s.fslock.Lock()
+		atomic.StoreUint32((*uint32)(&s.state), uint32(fs.FSStatResume))
+		s.sockaddr = ""
+		s.fslock.Unlock()
+		err = fmt.Errorf("Invalid old state %v", s.state)
+		replyFail(w, r, err.Error())
+		return
+	}
+
+	replySucc(w, r, fmt.Sprintf("set suspend successfully: %s", ret))
+}
+
+func (s *Super) SetResume(w http.ResponseWriter, r *http.Request) {
+	atomic.StoreUint32((*uint32)(&s.state), uint32(fs.FSStatResume))
+	replySucc(w, r, "set resume successfully")
+}
+
+func (s *Super) State() (state fs.FSStatType, sockaddr string) {
+	return fs.FSStatType(atomic.LoadUint32((*uint32)(&s.state))), s.sockaddr
+}
+
+func (s *Super) Notify(stat fs.FSStatType, msg interface{}) {
+	if stat == fs.FSStatSuspend {
+		s.suspendCh <- msg
+	}
 }

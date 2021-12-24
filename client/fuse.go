@@ -70,6 +70,8 @@ const (
 	ControlCommandSetRate      = "/rate/set"
 	ControlCommandGetRate      = "/rate/get"
 	ControlCommandFreeOSMemory = "/debug/freeosmemory"
+	ControlCommandSuspend      = "/suspend"
+	ControlCommandResume       = "/resume"
 	Role                       = "Client"
 )
 
@@ -323,6 +325,8 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 	http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
 	http.HandleFunc(ControlCommandFreeOSMemory, freeOSMemory)
 	http.HandleFunc(log.GetLogPath, log.GetLog)
+	http.HandleFunc(ControlCommandSuspend, super.SetSuspend)
+	http.HandleFunc(ControlCommandResume, super.SetResume)
 
 	statusCh := make(chan error)
 	go waitListenAndServe(statusCh, ":"+opt.Profport, nil)

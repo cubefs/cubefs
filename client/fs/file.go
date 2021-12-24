@@ -76,6 +76,7 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	}
 
 	fillAttr(info, a)
+	a.ParentIno = f.parentIno
 	fileSize, gen := f.fileSize(ino)
 	log.LogDebugf("Attr: ino(%v) fileSize(%v) gen(%v) inode.gen(%v)", ino, fileSize, gen, info.Generation)
 	if gen >= info.Generation {
