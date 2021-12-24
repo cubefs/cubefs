@@ -35,6 +35,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/chubaofs/chubaofs/sdk/master"
 
@@ -247,6 +248,69 @@ func startDaemon() error {
 	return nil
 }
 
+func waitListenAndServe(statusCh chan error, addr string, handler http.Handler) {
+	var err error
+	var loop int = 0
+	var interval int = (1 << 17) - 1
+	var listener net.Listener
+	var dynamicPort bool
+
+	if addr == ":" {
+		addr = ":0"
+	}
+
+	// FIXME: 1 min timeout?
+	timeout := time.Now().Add(time.Minute)
+	for {
+		if listener, err = net.Listen("tcp", addr); err == nil {
+			break
+		}
+
+		// addr is not released for use
+		if strings.Contains(err.Error(), "bind: address already in use") {
+			if loop&interval == 0 {
+				syslog.Printf("address %v is still in use\n", addr)
+			}
+			runtime.Gosched()
+		} else {
+			break
+		}
+		if time.Now().After(timeout) {
+			msg := fmt.Sprintf("address %v is still in use after "+
+				"timeout, choose port automatically\n", addr)
+			syslog.Print(msg)
+			msg = "Warning: " + msg
+			daemonize.StatusWriter.Write([]byte(msg))
+			dynamicPort = true
+			break
+		}
+		loop++
+	}
+	syslog.Printf("address %v wait loop %v\n", addr, loop)
+
+	if dynamicPort {
+		ipport := strings.Split(addr, ":")
+		addr = ipport[0] + ":0"
+		listener, err = net.Listen("tcp", addr)
+	}
+
+	if err != nil {
+		statusCh <- err
+		return
+	}
+
+	statusCh <- nil
+	msg := fmt.Sprintf("Start pprof with port: %v\n",
+		listener.Addr().(*net.TCPAddr).Port)
+	syslog.Print(msg)
+	if dynamicPort {
+		msg = "Warning: " + msg
+		daemonize.StatusWriter.Write([]byte(msg))
+	}
+	http.Serve(listener, handler)
+	// unreachable
+}
+
 func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err error) {
 	super, err = cfs.NewSuper(opt)
 	if err != nil {
@@ -260,21 +324,12 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 	http.HandleFunc(ControlCommandFreeOSMemory, freeOSMemory)
 	http.HandleFunc(log.GetLogPath, log.GetLog)
 
-	go func() {
-		if opt.Profport != "" {
-			syslog.Println("Start pprof with port:", opt.Profport)
-			http.ListenAndServe(":"+opt.Profport, nil)
-		} else {
-			pprofListener, err := net.Listen("tcp", ":0")
-			if err != nil {
-				daemonize.SignalOutcome(err)
-				os.Exit(1)
-			}
-
-			syslog.Println("Start pprof with port:", pprofListener.Addr().(*net.TCPAddr).Port)
-			http.Serve(pprofListener, nil)
-		}
-	}()
+	statusCh := make(chan error)
+	go waitListenAndServe(statusCh, ":"+opt.Profport, nil)
+	if err = <-statusCh; err != nil {
+		daemonize.SignalOutcome(err)
+		return
+	}
 
 	if err = ump.InitUmp(fmt.Sprintf("%v_%v", super.ClusterName(), ModuleName), opt.UmpDatadir); err != nil {
 		return
