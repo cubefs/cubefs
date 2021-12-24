@@ -201,6 +201,20 @@ class S3TestCase(TestCase):
             body = result['Body'].read()
             self.assertEqual(compute_md5(body), body_md5)
 
+    def assert_get_object_range_result(self, result, status_code=206, content_length=None, content_range=None):
+        self.assertNotEqual(result, None)
+        self.assertEqual(type(result), dict)
+        self.assertTrue('ResponseMetadata' in result)
+        self.assertTrue('HTTPStatusCode' in result['ResponseMetadata'])
+        self.assertEqual(result['ResponseMetadata']['HTTPStatusCode'], status_code)
+        if status_code == 200:
+            self.assertEqual(result['ResponseMetadata']['HTTPHeaders']['accept-ranges'], 'bytes')
+            if content_range is not None:
+                self.assertEqual(result['ResponseMetadata']['HTTPHeaders']['content-range'], content_range)
+            if content_length is not None:
+                self.assertEqual(result['ResponseMetadata']['HTTPHeaders']['content-length'], str(content_length))
+
+
     def assert_put_object_result(self, result, etag=None, content_type=None, content_length=None):
         self.assertNotEqual(result, None)
         self.assertEqual(type(result), dict)
