@@ -165,6 +165,25 @@ func (cache *ExtentCache) RemoveDiscard(discardExtents []proto.ExtentKey) {
 	}
 }
 
+func (cache *ExtentCache) TruncDiscard(size uint64) {
+	cache.Lock()
+	defer cache.Unlock()
+	if size >= cache.size {
+		return
+	}
+	pivot := &proto.ExtentKey{FileOffset: size}
+	discardExtents := make([]proto.ExtentKey, 0, cache.discard.Len())
+	cache.discard.AscendGreaterOrEqual(pivot, func(i btree.Item) bool {
+		found := i.(*proto.ExtentKey)
+		discardExtents = append(discardExtents, *found)
+		return true
+	})
+	for _, key := range discardExtents {
+		cache.discard.Delete(&key)
+	}
+	log.LogDebugf("truncate ExtentCache discard: ino(%v) size(%v) discard(%v)", cache.inode, size, discardExtents)
+}
+
 // Max returns the max extent key in the cache.
 func (cache *ExtentCache) Max() *proto.ExtentKey {
 	cache.RLock()
@@ -215,6 +234,26 @@ func (cache *ExtentCache) Get(offset uint64) (ret *proto.ExtentKey) {
 		ek := i.(*proto.ExtentKey)
 		//log.LogDebugf("ExtentCache GetConnect: ino(%v) ek(%v) offset(%v)", cache.inode, ek, offset)
 		if offset >= ek.FileOffset && offset < ek.FileOffset+uint64(ek.Size) {
+			ret = ek
+		}
+		return false
+	})
+	return ret
+}
+
+// GetEnd returns the extent key whose end offset equals the given offset.
+func (cache *ExtentCache) GetEnd(offset uint64) (ret *proto.ExtentKey) {
+	pivot := &proto.ExtentKey{FileOffset: offset}
+	cache.RLock()
+	defer cache.RUnlock()
+
+	cache.root.DescendLessOrEqual(pivot, func(i btree.Item) bool {
+		ek := i.(*proto.ExtentKey)
+		// skip if the start offset matches with the given offset
+		if offset == ek.FileOffset {
+			return true
+		}
+		if offset == ek.FileOffset+uint64(ek.Size) {
 			ret = ek
 		}
 		return false
