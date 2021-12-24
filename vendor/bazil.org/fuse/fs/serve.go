@@ -8,16 +8,20 @@ import (
 	"hash/fnv"
 	"io"
 	"log"
+	"net"
+	"os"
 	"reflect"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
+	"unsafe"
 
 	"bytes"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fuseutil"
+	"github.com/chubaofs/chubaofs/util"
 	"golang.org/x/net/context"
 	"golang.org/x/time/rate"
 )
@@ -36,6 +40,14 @@ var ForgetServeLimit *rate.Limiter = rate.NewLimiter(defaultForgetServeLimit, de
 
 // TODO: FINISH DOCS
 
+type FSStatType uint32
+
+const (
+	FSStatResume FSStatType = iota
+	FSStatSuspend
+	FSStatShutdown
+)
+
 // An FS is the interface required of a file system.
 //
 // Other FUSE requests can be handled by implementing methods from the
@@ -43,6 +55,8 @@ var ForgetServeLimit *rate.Limiter = rate.NewLimiter(defaultForgetServeLimit, de
 type FS interface {
 	// Root is called to obtain the Node for the file system root.
 	Root() (Node, error)
+	State() (FSStatType, string)
+	Notify(stat FSStatType, msg interface{})
 }
 
 type FSStatfser interface {
@@ -393,6 +407,293 @@ type Server struct {
 	wg sync.WaitGroup
 }
 
+const (
+	ContextNodeVersionV1   uint32 = 1
+	ContextHandleVersionV1 uint32 = 1
+	ContextNodeVersion     uint32 = ContextNodeVersionV1
+	ContextHandleVersion   uint32 = ContextHandleVersionV1
+	NodeListFileName       string = "/tmp/ChubaoFS-fuse-Nodes.list"
+	HandleListFileName     string = "/tmp/ChubaoFS-fuse-Handles.list"
+)
+
+func WriteVersion(file *os.File, version uint32) error {
+	data := make([]byte, 4)
+	binary.BigEndian.PutUint32(data, version)
+	_, err := file.Write(data)
+	return err
+}
+
+type ContextNode struct {
+	Inode      uint64
+	ParentIno  uint64
+	Generation uint64
+	Refs       uint64
+	NodeID     uint64
+	Mode       uint32
+	Rsvd       uint32
+}
+
+func (cn *ContextNode) String() string {
+	return fmt.Sprintf("nodeid:%v inode:%v parent:%v gen:%v refs:%v mode:%o",
+		cn.NodeID, cn.Inode, cn.ParentIno, cn.Generation, cn.Refs, cn.Mode)
+}
+
+func ContextNodeToBytes(cn *ContextNode) []byte {
+	var buf []byte = make([]byte, unsafe.Sizeof(ContextNode{}))
+	binary.BigEndian.PutUint64(buf[0:8], cn.Inode)
+	binary.BigEndian.PutUint64(buf[8:16], cn.ParentIno)
+	binary.BigEndian.PutUint64(buf[16:24], cn.Generation)
+	binary.BigEndian.PutUint64(buf[24:32], cn.Refs)
+	binary.BigEndian.PutUint64(buf[32:40], cn.NodeID)
+	binary.BigEndian.PutUint32(buf[40:44], cn.Mode)
+	return buf
+}
+
+func ContextNodeFromBytes(buf []byte) *ContextNode {
+	cn := &ContextNode{}
+	cn.Inode = binary.BigEndian.Uint64(buf[0:8])
+	cn.ParentIno = binary.BigEndian.Uint64(buf[8:16])
+	cn.Generation = binary.BigEndian.Uint64(buf[16:24])
+	cn.Refs = binary.BigEndian.Uint64(buf[24:32])
+	cn.NodeID = binary.BigEndian.Uint64(buf[32:40])
+	cn.Mode = binary.BigEndian.Uint32(buf[40:44])
+	return cn
+}
+
+type ContextHandle struct {
+	HandleID uint64
+	NodeID   uint64
+}
+
+func (ch *ContextHandle) String() string {
+	return fmt.Sprintf("handleid:%v nodeid:%v", ch.HandleID, ch.NodeID)
+}
+
+func ContextHandleToBytes(ch *ContextHandle) []byte {
+	var buf []byte = make([]byte, unsafe.Sizeof(ContextHandle{}))
+	binary.BigEndian.PutUint64(buf[0:8], ch.HandleID)
+	binary.BigEndian.PutUint64(buf[8:16], ch.NodeID)
+	return buf
+}
+
+func ContextHandleFromBytes(buf []byte) *ContextHandle {
+	ch := &ContextHandle{}
+	ch.HandleID = binary.BigEndian.Uint64(buf[0:8])
+	ch.NodeID = binary.BigEndian.Uint64(buf[8:16])
+	return ch
+}
+
+func (s *Server) TrySuspend(fs FS) bool {
+	var err error
+	var msg string
+	var ret bool
+
+	stat, sockaddr := fs.State()
+	if stat == FSStatSuspend {
+		if msg, err = s.SaveFuseContext(fs); err != nil {
+			s.CleanupFuseContext()
+			fs.Notify(stat, err)
+			goto out
+		}
+		if err = s.SaveFuseDevFd(sockaddr); err != nil {
+			s.CleanupFuseContext()
+			fs.Notify(stat, err)
+			goto out
+		}
+
+		fs.Notify(stat, msg)
+
+	out:
+		for {
+			stat, _ = fs.State()
+			if stat == FSStatShutdown {
+				ret = true
+				break
+			} else if stat == FSStatResume {
+				s.CleanupFuseContext()
+				ret = false
+				break
+			} else {
+				runtime.Gosched()
+			}
+		}
+	}
+
+	return ret
+}
+
+func (s *Server) CleanupFuseContext() {
+	os.Remove(NodeListFileName)
+	os.Remove(HandleListFileName)
+}
+
+func (s *Server) SaveFuseContext(fs FS) (msg string, err error) {
+	var (
+		nodeListFile   *os.File
+		handleListFile *os.File
+		ncount         int
+		hcount         int
+		skip           uint64
+	)
+	// Wait all received requests to finish
+	// FIXME: add a timeout to avoid waiting forever
+	s.wg.Wait()
+
+	if nodeListFile, err = os.OpenFile(NodeListFileName, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644); err != nil {
+		err = fmt.Errorf("SaveFuseContext: failed to create nodes list file: %v", err)
+		return
+	}
+	defer nodeListFile.Close()
+	if handleListFile, err = os.OpenFile(HandleListFileName, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644); err != nil {
+		err = fmt.Errorf("SaveFuseContext: failed to create s list file: %v", err)
+		return
+	}
+	defer handleListFile.Close()
+
+	if err = WriteVersion(nodeListFile, ContextNodeVersion); err != nil {
+		err = fmt.Errorf("SaveFuseContext: failed to write nodes list file: %v", err)
+		return
+	}
+	if err = WriteVersion(handleListFile, ContextHandleVersion); err != nil {
+		err = fmt.Errorf("SaveFuseContext: failed to write handles list file: %v", err)
+		return
+	}
+
+	s.meta.Lock()
+	// s.node[0] is nil and s.node[1] is root.
+	// No need to save root since it is created everytime fuse is mounted.
+	skip = 2
+	for i, sn := range s.node[skip:] {
+		var (
+			attr   fuse.Attr = fuse.Attr{}
+			nodeid uint64    = skip + uint64(i)
+			n      int
+		)
+
+		if sn == nil {
+			continue
+		}
+
+		sn.wg.Wait()
+
+		if err = sn.node.Attr(nil, &attr); err != nil {
+			s.meta.Unlock()
+			err = fmt.Errorf("SaveFuseContext: failed to get mode of node %v: %v", sn.inode, err)
+			return
+		}
+		cn := &ContextNode{sn.inode, attr.ParentIno, sn.generation, sn.refs, nodeid, uint32(attr.Mode), 0}
+		data := ContextNodeToBytes(cn)
+		if n, err = nodeListFile.Write(data); n != len(data) || err != nil {
+			s.meta.Unlock()
+			err = fmt.Errorf("SaveFuseContext: failed to write nodes list file: %v", err)
+			return
+		}
+
+		ncount++
+		// check if need stop
+		if ncount%20 == 0 {
+			stat, _ := fs.State()
+			if stat != FSStatSuspend {
+				s.meta.Unlock()
+				err = fmt.Errorf("SaveFuseContext: detect state changed to %v", stat)
+				return
+			}
+		}
+	}
+
+	skip = 1
+	for i, sh := range s.handle[skip:] {
+		var (
+			handleid uint64 = skip + uint64(i)
+			n        int
+		)
+
+		if sh == nil {
+			continue
+		}
+
+		if hdl, ok := sh.handle.(HandleFlusher); ok {
+			if err = hdl.Flush(nil, nil); err != nil {
+				s.meta.Unlock()
+				err = fmt.Errorf("SaveFuseContext: flush handle %v: %v\n",
+					s.node[sh.nodeID].inode, err)
+				return
+			}
+		}
+		ch := &ContextHandle{handleid, uint64(sh.nodeID)}
+		data := ContextHandleToBytes(ch)
+		if n, err = handleListFile.Write(data); n != len(data) || err != nil {
+			s.meta.Unlock()
+			err = fmt.Errorf("SaveFuseContext: failed to write handles list file: %v", err)
+			return
+		}
+
+		hcount++
+		// check if need stop
+		if hcount%20 == 0 {
+			stat, _ := fs.State()
+			if stat != FSStatSuspend {
+				s.meta.Unlock()
+				err = fmt.Errorf("SaveFuseContext: detect state changed to %v", stat)
+				return
+			}
+		}
+	}
+	s.meta.Unlock()
+
+	if err = nodeListFile.Sync(); err != nil {
+		err = fmt.Errorf("SaveFuseContext: failed to sync nodes list file: %v", err)
+		return
+	}
+
+	if err = handleListFile.Sync(); err != nil {
+		err = fmt.Errorf("SaveFuseContext: failed to sync handles list file: %v", err)
+		return
+	}
+
+	msg = fmt.Sprintf("Node count: %d  Handle count: %d", ncount, hcount)
+	return
+}
+
+func (s *Server) SaveFuseDevFd(sockaddr string) (err error) {
+	var addr *net.UnixAddr
+	var conn *net.UnixConn
+	var fud *os.File
+	var socket *os.File
+
+	defer func() {
+		if socket != nil {
+			socket.Close()
+		}
+		if conn != nil {
+			conn.Close()
+		}
+	}()
+
+	if addr, err = net.ResolveUnixAddr("unix", sockaddr); err != nil {
+		return fmt.Errorf("SaveFuseDevFd: failed to create unix addr: %v", err)
+	}
+
+	if conn, err = net.DialUnix("unix", nil, addr); err != nil {
+		return fmt.Errorf("SaveFuseDevFd: failed to connect unix socket: %v", err)
+	}
+
+	if socket, err = conn.File(); err != nil {
+		return fmt.Errorf("SaveFuseDevFd: failed to get socket file: %v", err)
+	}
+
+	fud = s.conn.GetFuseDevFile()
+	if fud == nil {
+		return fmt.Errorf("SaveFuseDevFd: fuse dev not exist")
+	}
+
+	if err = util.SendFd(socket, fud.Name(), fud.Fd()); err != nil {
+		return fmt.Errorf("SaveFuseDevFd: failed to send fuse dev file: %v", err)
+	}
+
+	return nil
+}
+
 // Serve serves the FUSE connection by making calls to the methods
 // of fs and the Nodes and Handles it makes available.  It returns only
 // when the connection has been closed or an unexpected error occurs.
@@ -420,6 +721,10 @@ func (s *Server) Serve(fs FS) error {
 	s.handle = append(s.handle, nil)
 
 	for {
+		if s.TrySuspend(fs) {
+			break
+		}
+
 		req, err := s.conn.ReadRequest()
 		if err != nil {
 			if err == io.EOF {
