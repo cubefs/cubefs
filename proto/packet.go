@@ -811,3 +811,13 @@ func (p *Packet) IsFollowerReadMetaPkt() bool {
 	}
 	return false
 }
+
+func NewPacketToGetAllExtentInfo(ctx context.Context, partitionID uint64) (p *Packet) {
+	p = new(Packet)
+	p.Opcode = OpGetAllExtentInfo
+	p.PartitionID = partitionID
+	p.Magic = ProtoMagic
+	p.ReqID = GenerateRequestID()
+	p.SetCtx(ctx)
+	return
+}

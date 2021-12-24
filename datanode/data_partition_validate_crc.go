@@ -77,7 +77,7 @@ func (dp *DataPartition) buildDataPartitionValidateCRCTask(ctx context.Context, 
 		var followerExtents []*storage.ExtentInfo
 		followerAddr := replicas[index]
 		if followerExtents, err = dp.getRemoteExtentInfoForValidateCRC(ctx, followerAddr); err != nil {
-			log.LogErrorf("buildDataPartitionRepairTask1 PartitionID(%v) on(%v) err(%v)", dp.partitionID, followerAddr, err)
+			log.LogErrorf("buildDataPartitionValidateCRCTask PartitionID(%v) on(%v) err(%v)", dp.partitionID, followerAddr, err)
 			continue
 		}
 		validateCRCTasks[index] = NewDataPartitionValidateCRCTask(followerExtents, followerAddr, leaderAddr)
@@ -100,47 +100,41 @@ func (dp *DataPartition) getLocalExtentInfoForValidateCRC() (extents []*storage.
 }
 
 func (dp *DataPartition) getRemoteExtentInfoForValidateCRC(ctx context.Context, target string) (extentFiles []*storage.ExtentInfo, err error) {
-	var version1Func = func() (extents []*storage.ExtentInfo, err error) {
-		var packet = repl.NewPacketToGetAllExtentInfo(ctx, dp.partitionID)
-		var conn *net.TCPConn
-		if conn, err = gConnPool.GetConnect(target); err != nil {
-			err = errors.Trace(err, "get connection failed")
-			return
-		}
-		defer func() {
-			gConnPool.PutConnectWithErr(conn, err)
-		}()
-		if err = packet.WriteToConn(conn); err != nil {
-			err = errors.Trace(err, "write packet to connection failed")
-			return
-		}
-		var reply = new(repl.Packet)
-		reply.SetCtx(ctx)
-		if err = reply.ReadFromConn(conn, proto.GetAllWatermarksDeadLineTime); err != nil {
-			err = errors.Trace(err, "read reply from connection failed")
-			return
-		}
-		if reply.ResultCode != proto.OpOk {
-			err = errors.NewErrorf("reply result code: %v", reply.GetOpMsg())
-			return
-		}
-		if reply.Size%20 != 0 {
-			// 合法的data长度与20对齐，每20个字节存储一个Extent信息，[0:8)为FileID，[8:16)为Size，[16:20)为Crc
-			err = errors.NewErrorf("illegal result data length: %v", len(reply.Data))
-			return
-		}
-		extents = make([]*storage.ExtentInfo, 0, len(reply.Data)/20)
-		for index := 0; index < int(reply.Size)/20; index++ {
-			var offset = index * 20
-			var extentID = binary.BigEndian.Uint64(reply.Data[offset:])
-			var size = binary.BigEndian.Uint64(reply.Data[offset+8:])
-			var crc = binary.BigEndian.Uint32(reply.Data[offset+16:])
-			extents = append(extents, &storage.ExtentInfo{FileID: extentID, Size: size, Crc: crc})
-		}
+	var packet = proto.NewPacketToGetAllExtentInfo(ctx, dp.partitionID)
+	var conn *net.TCPConn
+	if conn, err = gConnPool.GetConnect(target); err != nil {
+		err = errors.Trace(err, "get connection failed")
 		return
 	}
-	if extentFiles, err = version1Func(); err != nil {
-		log.LogErrorf("partition(%v) get remote(%v) extent info failed err:%v", dp.partitionID, target, err)
+	defer func() {
+		gConnPool.PutConnectWithErr(conn, err)
+	}()
+	if err = packet.WriteToConn(conn); err != nil {
+		err = errors.Trace(err, "write packet to connection failed")
+		return
+	}
+	var reply = new(repl.Packet)
+	reply.SetCtx(ctx)
+	if err = reply.ReadFromConn(conn, proto.GetAllWatermarksDeadLineTime); err != nil {
+		err = errors.Trace(err, "read reply from connection failed")
+		return
+	}
+	if reply.ResultCode != proto.OpOk {
+		err = errors.NewErrorf("reply result code: %v", reply.GetOpMsg())
+		return
+	}
+	if reply.Size%20 != 0 {
+		// 合法的data长度与20对齐，每20个字节存储一个Extent信息，[0:8)为FileID，[8:16)为Size，[16:20)为Crc
+		err = errors.NewErrorf("illegal result data length: %v", len(reply.Data))
+		return
+	}
+	extentFiles = make([]*storage.ExtentInfo, 0, len(reply.Data)/20)
+	for index := 0; index < int(reply.Size)/20; index++ {
+		var offset = index * 20
+		var extentID = binary.BigEndian.Uint64(reply.Data[offset:])
+		var size = binary.BigEndian.Uint64(reply.Data[offset+8:])
+		var crc = binary.BigEndian.Uint32(reply.Data[offset+16:])
+		extentFiles = append(extentFiles, &storage.ExtentInfo{FileID: extentID, Size: size, Crc: crc})
 	}
 	return
 }
