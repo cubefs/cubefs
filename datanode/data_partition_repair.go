@@ -526,7 +526,7 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 		return
 	}
 	if !storage.IsTinyExtent(remoteExtentInfo.FileID) && !store.IsFininshLoad() {
-		log.LogWarnf("partition(%v) is loading", dp.partitionID, remoteExtentInfo.String())
+		log.LogWarnf("partition(%v) is loading, remoteExtentInfo(%v)", dp.partitionID, remoteExtentInfo.String())
 		return
 	}
 	localExtentInfo, err := store.Watermark(remoteExtentInfo.FileID)

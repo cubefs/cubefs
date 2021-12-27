@@ -34,6 +34,12 @@ func NewDataPartitionValidateCRCTask(extentFiles []*storage.ExtentInfo, source, 
 }
 
 func (dp *DataPartition) runValidateCRC(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			msg := fmt.Sprintf("DataPartition(%v) runValidateCRC panic(%v)", dp.partitionID, r)
+			log.LogWarnf(msg)
+		}
+	}()
 	if dp.partitionStatus == proto.Unavailable {
 		return
 	}
