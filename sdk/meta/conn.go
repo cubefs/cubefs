@@ -27,9 +27,8 @@ import (
 )
 
 const (
-	SendRetryLimit    = 100
 	SendRetryInterval = 100 * time.Millisecond
-	SendTimeLimit     = 20 * time.Second
+	SendTimeLimit     = 60 * time.Second
 )
 
 type MetaConn struct {
@@ -88,7 +87,7 @@ func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet)
 
 retry:
 	start = time.Now()
-	for i := 0; i < SendRetryLimit; i++ {
+	for i := 1; ; i++ {
 		for j, addr = range mp.Members {
 			mc, err = mw.getConn(mp.PartitionID, addr)
 			errs[j] = err
@@ -112,7 +111,7 @@ retry:
 			log.LogWarnf("sendToMetaPartition: retry timeout req(%v) mp(%v) time(%v)", req, mp, time.Since(start))
 			break
 		}
-		log.LogWarnf("sendToMetaPartition: req(%v) mp(%v) retry in (%v)", req, mp, SendRetryInterval)
+		log.LogWarnf("sendToMetaPartition: req(%v) mp(%v) retry in (%v) count(%v)", req, mp, SendRetryInterval, i)
 		time.Sleep(SendRetryInterval)
 	}
 
