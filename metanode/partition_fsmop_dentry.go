@@ -20,7 +20,6 @@ import (
 	"strings"
 
 	"github.com/chubaofs/chubaofs/util/btree"
-	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/tracing"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -57,9 +56,6 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 
 	item := mp.inodeTree.CopyGet(NewInode(dentry.ParentId, 0))
 	var parIno *Inode
-	defer func() {
-		log.LogErrorf("fsmCreateDentry dentry(%v) parIno(%v)", dentry, parIno)
-	}()
 	if !forceUpdate {
 		if item == nil {
 			status = proto.OpNotExistErr
@@ -91,7 +87,6 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 		status = proto.OpExistErr
 	} else {
 		if !forceUpdate {
-			log.LogErrorf("fsmCreateDentry, before IncNLink dentry(%v) parIno(%v)", dentry, parIno)
 			parIno.IncNLink()
 		}
 	}
@@ -148,12 +143,8 @@ func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (
 		resp.Status = proto.OpNotExistErr
 		return
 	} else {
-		mp.inodeTree.CopyFind1(NewInode(dentry.ParentId, 0),
+		mp.inodeTree.CopyFind(NewInode(dentry.ParentId, 0),
 			func(item BtreeItem) {
-				if item != nil {
-					ino = item.(*Inode)
-				}
-				log.LogErrorf("fsmDeleteDentry, before DecNLink, dentry(%v) inode(%v)", dentry, ino)
 				if item != nil {
 					ino = item.(*Inode)
 					if !ino.ShouldDelete() {

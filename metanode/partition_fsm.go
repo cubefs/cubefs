@@ -42,9 +42,8 @@ import (
 func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
 	msg := &MetaItem{}
 	defer func() {
-		log.LogErrorf("action[Apply] index:%v,msg:%v,resp:%v", index, msg, resp)
 		if err != nil {
-			log.LogErrorf("action[Apply] failed,index:%v,msg:%v,resp:%v", index, msg, resp)
+			log.LogErrorf("Mp[%d] action[Apply] failed,index:%v,msg:%v,resp:%v", mp.config.PartitionId, index, msg, resp)
 			return
 		}
 		mp.uploadApplyID(index)

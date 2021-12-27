@@ -75,12 +75,6 @@ func (b *BTree) CopyFind(key BtreeItem, fn func(i BtreeItem)) {
 	}
 	fn(item)
 }
-func (b *BTree) CopyFind1(key BtreeItem, fn func(i BtreeItem)) {
-	b.RLock()
-	item := b.tree.CopyGet(key)
-	b.RUnlock()
-	fn(item)
-}
 
 // Has checks if the key exists in the btree.
 func (b *BTree) Has(key BtreeItem) (ok bool) {
