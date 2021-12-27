@@ -205,8 +205,8 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 	allInodes := make([]*Inode, 0)
 	for _, ino := range inoSlice {
 		ref := &Inode{Inode: ino}
-		inode, ok := mp.inodeTree.CopyGet(ref).(*Inode)
-		if !ok {
+		inode, ok := mp.inodeTree.Get(ref).(*Inode)
+		if !ok || inode == nil {
 			continue
 		}
 		inode.Extents.Range(func(ek proto.ExtentKey) bool {
