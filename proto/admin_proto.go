@@ -203,6 +203,7 @@ type LimitInfo struct {
 	MetaNodeReqOpRateLimitMap        map[uint8]uint64
 	DataNodeReqZoneRateLimitMap      map[string]uint64
 	DataNodeReqZoneOpRateLimitMap    map[string]map[uint8]uint64
+	DataNodeReqZoneVolOpRateLimitMap map[string]map[string]map[uint8]uint64
 	DataNodeReqVolPartRateLimitMap   map[string]uint64
 	DataNodeReqVolOpPartRateLimitMap map[string]map[uint8]uint64
 	DataNodeDeleteLimitRate          uint64
@@ -660,6 +661,7 @@ type RateLimitInfo struct {
 	DataNodeRepairTaskCount    int64
 	DataNodeReqRate            int64
 	DataNodeReqOpRate          int64
+	DataNodeReqVolOpRate       int64
 	DataNodeReqVolPartRate     int64
 	DataNodeReqVolOpPartRate   int64
 	ClientReadVolRate          int64

@@ -35,6 +35,10 @@ var (
 	reqOpRateLimitMap   = make(map[uint8]uint64)
 	reqOpRateLimiterMap = make(map[uint8]*rate.Limiter)
 
+	// map[volume]map[opcode]*rate.Limiter, request rate limiter for volume & opcode
+	reqVolOpRateLimitMap   = make(map[string]map[uint8]uint64)
+	reqVolOpRateLimiterMap = make(map[string]map[uint8]*rate.Limiter)
+
 	// map[volume]map[dp]*rate.Limiter, request rate limiter of each data partition for volume
 	reqVolPartRateLimitMap   = make(map[string]uint64)
 	reqVolPartRateLimiterMap = make(map[string]map[uint64]*rate.Limiter)
@@ -138,10 +142,12 @@ func (m *DataNode) updateRateLimitInfo() {
 		l                        rate.Limit
 		ok                       bool
 		opRateLimitMap           map[uint8]uint64
+		volOpRateLimitMap        map[string]map[uint8]uint64
 		partRateLimiterMap       map[uint64]*rate.Limiter
 		partMap                  map[uint64]bool
 		partitionID              uint64
 		tmpOpRateLimiterMap      map[uint8]*rate.Limiter
+		tmpVolOpRateLimiterMap   map[string]map[uint8]*rate.Limiter
 		tmpVolPartRateLimiterMap map[string]map[uint64]*rate.Limiter
 	)
 
@@ -167,13 +173,14 @@ reqOpRateLimiterLabel:
 	// update request rate limiter for opcode
 	opRateLimitMap, ok = limitInfo.DataNodeReqZoneOpRateLimitMap[m.zoneName]
 	if !ok {
-		opRateLimitMap, ok = limitInfo.DataNodeReqZoneOpRateLimitMap[m.zoneName]
+		opRateLimitMap, ok = limitInfo.DataNodeReqZoneOpRateLimitMap[""]
 	}
 	if !ok {
 		reqOpRateLimitMap = make(map[uint8]uint64)
-		goto reqVolPartRateLimiterLabel
+		reqOpRateLimiterMap = make(map[uint8]*rate.Limiter)
+		goto reqVolOpRateLimiterLabel
 	} else if reflect.DeepEqual(reqOpRateLimitMap, opRateLimitMap) {
-		goto reqVolPartRateLimiterLabel
+		goto reqVolOpRateLimiterLabel
 	}
 	reqOpRateLimitMap = opRateLimitMap
 	tmpOpRateLimiterMap = make(map[uint8]*rate.Limiter)
@@ -188,6 +195,45 @@ reqOpRateLimiterLabel:
 		tmpOpRateLimiterMap[op] = rate.NewLimiter(rate.Limit(r), DefaultReqLimitBurst)
 	}
 	reqOpRateLimiterMap = tmpOpRateLimiterMap
+
+reqVolOpRateLimiterLabel:
+	// update request rate limiter for vol & opcode
+	volOpRateLimitMap, ok = limitInfo.DataNodeReqZoneVolOpRateLimitMap[m.zoneName]
+	if !ok {
+		volOpRateLimitMap, ok = limitInfo.DataNodeReqZoneVolOpRateLimitMap[""]
+	}
+	if !ok {
+		reqVolOpRateLimitMap = make(map[string]map[uint8]uint64)
+		reqVolOpRateLimiterMap = make(map[string]map[uint8]*rate.Limiter)
+		goto reqVolPartRateLimiterLabel
+	} else if reflect.DeepEqual(reqVolOpRateLimitMap, volOpRateLimitMap) {
+		goto reqVolPartRateLimiterLabel
+	}
+	reqVolOpRateLimitMap = volOpRateLimitMap
+	tmpVolOpRateLimiterMap = make(map[string]map[uint8]*rate.Limiter)
+	for vol, _ := range limitVolumeMap {
+		opRateLimitMap, ok := volOpRateLimitMap[vol]
+		if !ok {
+			opRateLimitMap, ok = volOpRateLimitMap[""]
+		}
+		if !ok {
+			continue
+		}
+		opRateLimiterMap := make(map[uint8]*rate.Limiter)
+		tmpVolOpRateLimiterMap[vol] = opRateLimiterMap
+		for op := range limitOpcodeMap {
+			r, ok = opRateLimitMap[op]
+			if !ok {
+				r, ok = opRateLimitMap[0]
+			}
+			if !ok {
+				continue
+			}
+			l = rate.Limit(r)
+			opRateLimiterMap[op] = rate.NewLimiter(l, DefaultReqLimitBurst)
+		}
+	}
+	reqVolOpRateLimiterMap = tmpVolOpRateLimiterMap
 
 reqVolPartRateLimiterLabel:
 	// update request rate limiter of each data partition for volume
@@ -223,6 +269,7 @@ reqVolOpPartRateLimiterLabel:
 	if reflect.DeepEqual(reqVolOpPartRateLimitMap, limitInfo.DataNodeReqVolOpPartRateLimitMap) {
 		isRateLimitOn = (reqRateLimit > 0 ||
 			len(reqOpRateLimitMap) > 0 ||
+			len(reqVolOpRateLimitMap) > 0 ||
 			len(reqVolPartRateLimitMap) > 0 ||
 			len(reqVolOpPartRateLimitMap) > 0)
 		return
@@ -264,6 +311,7 @@ reqVolOpPartRateLimiterLabel:
 
 	isRateLimitOn = (reqRateLimit > 0 ||
 		len(reqOpRateLimitMap) > 0 ||
+		len(reqVolOpRateLimitMap) > 0 ||
 		len(reqVolPartRateLimitMap) > 0 ||
 		len(reqVolOpPartRateLimitMap) > 0)
 }
