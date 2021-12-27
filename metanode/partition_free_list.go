@@ -236,9 +236,7 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 			"response %s", shouldCommit, err.Error())
 	}
 	for _, inode := range shouldCommit {
-		if err == nil {
-			mp.internalDeleteInode(inode)
-		} else {
+		if err != nil {
 			mp.freeList.Push(inode.Inode)
 		}
 	}
