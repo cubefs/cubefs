@@ -42,11 +42,15 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 	switch len(liveReplicas) {
 	case (int)(partition.ReplicaNum):
 		partition.Status = proto.ReadOnly
-		if partition.checkReplicaStatusOnLiveNode(liveReplicas) == true && partition.canWrite() {
+		if partition.checkReplicaStatusOnLiveNode(liveReplicas) == true && partition.canWrite() && partition.canResetStatusToWrite() {
 			partition.Status = proto.ReadWrite
 		}
 	default:
 		partition.Status = proto.ReadOnly
+	}
+	if partition.Status != partition.lastStatus {
+		partition.lastModifyStatusTime = time.Now().Unix()
+		partition.lastStatus = partition.Status
 	}
 	if needLog == true && len(liveReplicas) != int(partition.ReplicaNum) {
 		msg := fmt.Sprintf("action[extractStatus],partitionID:%v  replicaNum:%v  liveReplicas:%v   Status:%v  RocksDBHost:%v ",
@@ -57,6 +61,25 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 			partition.lastWarnTime = time.Now().Unix()
 		}
 	}
+}
+
+func (partition *DataPartition) canResetStatusToWrite() bool {
+	hasReplicaDiskUsageReachThreshold := false
+	for _, replica := range partition.Replicas {
+		if replica.dataNode == nil {
+			hasReplicaDiskUsageReachThreshold = true
+			break
+		}
+		if replica.dataNode.UsageRatio > 0.85 {
+			hasReplicaDiskUsageReachThreshold = true
+			break
+		}
+	}
+	if partition.lastStatus == proto.ReadOnly && hasReplicaDiskUsageReachThreshold &&
+		time.Now().Unix()-partition.lastModifyStatusTime < 10*60 {
+		return false
+	}
+	return true
 }
 
 func (partition *DataPartition) canWrite() bool {

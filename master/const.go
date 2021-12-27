@@ -116,7 +116,7 @@ const (
 	defaultMetaNodeReservedMem             uint64 = 1 << 30
 	runtimeStackBufSize                           = 4096
 	spaceAvailableRate                            = 0.90
-	defaultNodeSetCapacity                        = 128
+	defaultNodeSetCapacity                        = 256
 	minNumOfRWDataPartitions                      = 10
 	intervalToCheckMissingReplica                 = 600
 	intervalToWarnDataPartition                   = 600
