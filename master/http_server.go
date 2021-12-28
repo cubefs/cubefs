@@ -184,6 +184,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminCreateDataPartition).
 		HandlerFunc(m.createDataPartition)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminCreatePreLoadDataPartition).
+		HandlerFunc(m.createPreLoadDataPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminLoadDataPartition).
 		HandlerFunc(m.loadDataPartition)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -244,6 +247,30 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminGetNodeInfo).
 		HandlerFunc(m.getNodeInfoHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminDomainCreate).
+		HandlerFunc(m.createDomainHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGetIsDomainOn).
+		HandlerFunc(m.getIsDomainOn)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGetAllNodeSetGrpInfo).
+		HandlerFunc(m.getAllNodeSetGrpInfoHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGetNodeSetGrpInfo).
+		HandlerFunc(m.getNodeSetGrpInfoHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminUpdateNodeSetCapcity).
+		HandlerFunc(m.updateNodeSetCapacityHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminUpdateNodeSetId).
+		HandlerFunc(m.updateNodeSetIdHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminUpdateDomainDataUseRatio).
+		HandlerFunc(m.updateDataUseRatioHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminUpdateZoneExcludeRatio).
+		HandlerFunc(m.updateZoneExcludeRatioHandler)
 
 	// user management APIs
 	router.NewRoute().Methods(http.MethodPost).

@@ -17,11 +17,12 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 // DataPartitionMap stores all the data partitionMap
@@ -33,6 +34,7 @@ type DataPartitionMap struct {
 	lastReleasedIndex      uint64 // last released partition index
 	partitions             []*DataPartition
 	responseCache          []byte
+	lastAutoCreateTime     time.Time
 	volName                string
 }
 
@@ -42,7 +44,21 @@ func newDataPartitionMap(volName string) (dpMap *DataPartitionMap) {
 	dpMap.partitions = make([]*DataPartition, 0)
 	dpMap.responseCache = make([]byte, 0)
 	dpMap.volName = volName
+	dpMap.lastAutoCreateTime = time.Now()
 	return
+}
+
+// attention: it's not deep clone for element, dataPartition
+func (dpMap *DataPartitionMap) clonePartitions() []*DataPartition {
+	dpMap.RLock()
+	defer dpMap.RUnlock()
+
+	partitions := make([]*DataPartition, 0)
+	for _, dp := range dpMap.partitions {
+		partitions = append(partitions, dp)
+	}
+
+	return partitions
 }
 
 func (dpMap *DataPartitionMap) get(ID uint64) (*DataPartition, error) {
@@ -54,9 +70,31 @@ func (dpMap *DataPartitionMap) get(ID uint64) (*DataPartition, error) {
 	return nil, proto.ErrDataPartitionNotExists
 }
 
+func (dpMap *DataPartitionMap) del(dp *DataPartition) {
+	dpMap.Lock()
+	defer dpMap.Unlock()
+	_, ok := dpMap.partitionMap[dp.PartitionID]
+	if !ok {
+		return
+	}
+
+	dataPartitions := make([]*DataPartition, 0)
+	for index, partition := range dpMap.partitions {
+		if partition.PartitionID == dp.PartitionID {
+			dataPartitions = append(dataPartitions, dpMap.partitions[:index]...)
+			dataPartitions = append(dataPartitions, dpMap.partitions[index+1:]...)
+			dpMap.partitions = dataPartitions
+			break
+		}
+	}
+
+	delete(dpMap.partitionMap, dp.PartitionID)
+}
+
 func (dpMap *DataPartitionMap) put(dp *DataPartition) {
 	dpMap.Lock()
 	defer dpMap.Unlock()
+
 	_, ok := dpMap.partitionMap[dp.PartitionID]
 	if !ok {
 		dpMap.partitions = append(dpMap.partitions, dp)
@@ -98,11 +136,11 @@ func (dpMap *DataPartitionMap) setDataPartitionResponseCache(responseCache []byt
 	}
 }
 
-func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitionID uint64) (body []byte, err error) {
+func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitionID uint64, volType int) (body []byte, err error) {
 	responseCache := dpMap.getDataPartitionResponseCache()
 	if responseCache == nil || needsUpdate || len(responseCache) == 0 {
 		dpResps := dpMap.getDataPartitionsView(minPartitionID)
-		if len(dpResps) == 0 {
+		if len(dpResps) == 0 && proto.IsHot(volType) {
 			log.LogError(fmt.Sprintf("action[updateDpResponseCache],volName[%v] minPartitionID:%v,err:%v",
 				dpMap.volName, minPartitionID, proto.ErrNoAvailDataPartition))
 			return nil, proto.ErrNoAvailDataPartition
@@ -128,6 +166,7 @@ func (dpMap *DataPartitionMap) getDataPartitionsView(minPartitionID uint64) (dpR
 	dpResps = make([]*proto.DataPartitionResponse, 0)
 	log.LogDebugf("volName[%v] DataPartitionMapLen[%v],DataPartitionsLen[%v],minPartitionID[%v]",
 		dpMap.volName, len(dpMap.partitionMap), len(dpMap.partitions), minPartitionID)
+
 	dpMap.RLock()
 	defer dpMap.RUnlock()
 	for _, dp := range dpMap.partitionMap {

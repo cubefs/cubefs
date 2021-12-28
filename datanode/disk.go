@@ -34,7 +34,9 @@ import (
 
 var (
 	// RegexpDataPartitionDir validates the directory name of a data partition.
-	RegexpDataPartitionDir, _ = regexp.Compile("^datapartition_(\\d)+_(\\d)+$")
+	RegexpDataPartitionDir, _    = regexp.Compile("^datapartition_(\\d)+_(\\d)+$")
+	RegexpCachePartitionDir, _   = regexp.Compile("^cachepartition_(\\d)+_(\\d)+$")
+	RegexpPreLoadPartitionDir, _ = regexp.Compile("^preloadpartition_(\\d)+_(\\d)+$")
 )
 
 const ExpiredPartitionPrefix = "expired_"
@@ -118,7 +120,7 @@ func (d *Disk) computeUsage() (err error) {
 
 	//  used := math.Max(0, int64(total - available))
 	free := int64(fs.Bfree*uint64(fs.Bsize) - d.ReservedSpace)
-	used := int64(total - free)
+	used := total - free
 	if used < 0 {
 		used = 0
 	}
@@ -236,19 +238,25 @@ func (d *Disk) updateSpaceInfo() (err error) {
 	if err = syscall.Statfs(d.Path, &statsInfo); err != nil {
 		d.incReadErrCnt()
 	}
+
 	if d.Status == proto.Unavailable {
+
 		mesg := fmt.Sprintf("disk path %v error on %v", d.Path, LocalIP)
 		log.LogErrorf(mesg)
 		exporter.Warning(mesg)
 		d.ForceExitRaftStore()
+
 	} else if d.Available <= 0 {
 		d.Status = proto.ReadOnly
+
 	} else {
 		d.Status = proto.ReadWrite
 	}
+
 	log.LogDebugf("action[updateSpaceInfo] disk(%v) total(%v) available(%v) remain(%v) "+
 		"restSize(%v) maxErrs(%v) readErrs(%v) writeErrs(%v) status(%v)", d.Path,
 		d.Total, d.Available, d.Unallocated, d.ReservedSpace, d.MaxErrCnt, d.ReadErrCnt, d.WriteErrCnt, d.Status)
+
 	return
 }
 
@@ -313,7 +321,9 @@ func unmarshalPartitionName(name string) (partitionID uint64, partitionSize int,
 }
 
 func (d *Disk) isPartitionDir(filename string) (isPartitionDir bool) {
-	isPartitionDir = RegexpDataPartitionDir.MatchString(filename)
+	isPartitionDir = RegexpDataPartitionDir.MatchString(filename) ||
+		RegexpCachePartitionDir.MatchString(filename) ||
+		RegexpPreLoadPartitionDir.MatchString(filename)
 	return
 }
 

@@ -436,7 +436,7 @@ func (m *ClusterService) addMetaNode(ctx context.Context, args struct {
 	NodeAddr string
 	ZoneName string
 }) (uint64, error) {
-	if id, err := m.cluster.addMetaNode(args.NodeAddr, args.ZoneName); err != nil {
+	if id, err := m.cluster.addMetaNode(args.NodeAddr, args.ZoneName, 0); err != nil {
 		return 0, err
 	} else {
 		return id, nil
@@ -630,7 +630,7 @@ func (m *ClusterService) makeClusterView() *proto.ClusterView {
 	for _, name := range vols {
 		stat, ok := m.cluster.volStatInfo.Load(name)
 		if !ok {
-			cv.VolStatInfo = append(cv.VolStatInfo, newVolStatInfo(name, 0, 0, "0.0001"))
+			cv.VolStatInfo = append(cv.VolStatInfo, newVolStatInfo(name, 0, 0, 0, 0))
 			continue
 		}
 		cv.VolStatInfo = append(cv.VolStatInfo, stat.(*volStatInfo))

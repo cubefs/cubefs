@@ -23,17 +23,32 @@ import (
 
 // Keys in the request
 const (
-	addrKey                 = "addr"
-	diskPathKey             = "disk"
-	nameKey                 = "name"
-	idKey                   = "id"
-	countKey                = "count"
-	startKey                = "start"
-	enableKey               = "enable"
-	thresholdKey            = "threshold"
-	dataPartitionSizeKey    = "size"
-	metaPartitionCountKey   = "mpCount"
-	volCapacityKey          = "capacity"
+	addrKey               = "addr"
+	diskPathKey           = "disk"
+	nameKey               = "name"
+	idKey                 = "id"
+	countKey              = "count"
+	startKey              = "start"
+	enableKey             = "enable"
+	thresholdKey          = "threshold"
+	dataPartitionSizeKey  = "size"
+	metaPartitionCountKey = "mpCount"
+	volCapacityKey        = "capacity"
+	volTypeKey            = "volType"
+	cacheRuleKey          = "cacheRuleKey"
+	emptyCacheRuleKey     = "emptyCacheRule"
+
+	forceDelVolKey          = "forceDelVol"
+	ebsBlkSizeKey           = "ebsBlkSize"
+	cacheCapacity           = "cacheCap"
+	cacheActionKey          = "cacheAction"
+	cacheThresholdKey       = "cacheThreshold"
+	cacheTTLKey             = "cacheTTL"
+	cacheHighWaterKey       = "cacheHighWater"
+	cacheLowWaterKey        = "cacheLowWater"
+	cacheLRUIntervalKey     = "cacheLRUInterval"
+	clientVersion           = "version"
+	domainIdKey             = "domainId"
 	volOwnerKey             = "owner"
 	volAuthKey              = "authKey"
 	replicaNumKey           = "replicaNum"
@@ -43,15 +58,19 @@ const (
 	keywordsKey             = "keywords"
 	zoneNameKey             = "zoneName"
 	crossZoneKey            = "crossZone"
+	normalZonesFirstKey     = "normalZonesFirst"
 	userKey                 = "user"
 	nodeHostsKey            = "hosts"
 	nodeDeleteBatchCountKey = "batchCount"
 	nodeMarkDeleteRateKey   = "markDeleteRate"
 	nodeDeleteWorkerSleepMs = "deleteWorkerSleepMs"
 	nodeAutoRepairRateKey   = "autoRepairRate"
+	clusterLoadFactorKey    = "loadFactor"
 	descriptionKey          = "description"
 	dpSelectorNameKey       = "dpSelectorName"
 	dpSelectorParmKey       = "dpSelectorParm"
+	nodeTypeKey             = "nodeType"
+	ratio                   = "ratio"
 )
 
 const (
@@ -73,6 +92,8 @@ const (
 )
 
 const (
+	defaultFaultDomainZoneCnt                    = 3
+	defaultNormalCrossZoneCnt                    = 3
 	defaultInitMetaPartitionCount                = 3
 	defaultMaxInitMetaPartitionCount             = 100
 	defaultMaxMetaPartitionInodeID        uint64 = 1<<63 - 1
@@ -93,13 +114,27 @@ const (
 	retrySendSyncTaskInternal                    = 3 * time.Second
 	defaultRangeOfCountDifferencesAllowed        = 50
 	defaultMinusOfMaxInodeID                     = 1000
+	defaultNodeSetGrpBatchCnt                    = 3
 )
 
 const (
-	normal          uint8 = 0
-	markDelete      uint8 = 1
-	normalZone            = 0
-	unavailableZone       = 1
+	normal               uint8 = 0
+	markDelete           uint8 = 1
+	normalZone                 = 0
+	unavailableZone            = 1
+	unavailable                = 1
+	metaNodesUnAvailable       = 2
+	dataNodesUnAvailable       = 3
+)
+
+const (
+	defaultEbsBlkSize = 8 * 1024 * 1024
+
+	defaultCacheThreshold   = 10 * 1024 * 1024
+	defaultCacheTtl         = 30
+	defaultCacheHighWater   = 80
+	defaultCacheLowWater    = 40
+	defaultCacheLruInterval = 5
 )
 
 const (
@@ -133,6 +168,8 @@ const (
 	opSyncAddVolUser           uint32 = 0x1C
 	opSyncDeleteVolUser        uint32 = 0x1D
 	opSyncUpdateVolUser        uint32 = 0x1E
+	opSyncNodeSetGrp           uint32 = 0x1F
+	opSyncExclueDomain         uint32 = 0x23
 )
 
 const (
@@ -145,6 +182,8 @@ const (
 	volAcronym            = "vol"
 	clusterAcronym        = "c"
 	nodeSetAcronym        = "s"
+	nodeSetGrpAcronym     = "g"
+	domainAcronym         = "zoneDomain"
 	maxDataPartitionIDKey = keySeparator + "max_dp_id"
 	maxMetaPartitionIDKey = keySeparator + "max_mp_id"
 	maxCommonIDKey        = keySeparator + "max_common_id"
@@ -155,11 +194,12 @@ const (
 	metaPartitionPrefix   = keySeparator + metaPartitionAcronym + keySeparator
 	clusterPrefix         = keySeparator + clusterAcronym + keySeparator
 	nodeSetPrefix         = keySeparator + nodeSetAcronym + keySeparator
-
-	akAcronym      = "ak"
-	userAcronym    = "user"
-	volUserAcronym = "voluser"
-	akPrefix       = keySeparator + akAcronym + keySeparator
-	userPrefix     = keySeparator + userAcronym + keySeparator
-	volUserPrefix  = keySeparator + volUserAcronym + keySeparator
+	nodeSetGrpPrefix      = keySeparator + nodeSetGrpAcronym + keySeparator
+	DomainPrefix          = keySeparator + domainAcronym + keySeparator
+	akAcronym             = "ak"
+	userAcronym           = "user"
+	volUserAcronym        = "voluser"
+	akPrefix              = keySeparator + akAcronym + keySeparator
+	userPrefix            = keySeparator + userAcronym + keySeparator
+	volUserPrefix         = keySeparator + volUserAcronym + keySeparator
 )

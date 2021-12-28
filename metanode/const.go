@@ -58,11 +58,14 @@ type (
 	// MetaNode -> Client updateDentry response
 	UpdateDentryResp = proto.UpdateDentryResponse
 	// Client -> MetaNode read dir request
-	ReadDirReq      = proto.ReadDirRequest
 	ReadDirLimitReq = proto.ReadDirLimitRequest
 	// MetaNode -> Client read dir response
-	ReadDirResp      = proto.ReadDirResponse
 	ReadDirLimitResp = proto.ReadDirLimitResponse
+	ReadDirReq       = proto.ReadDirRequest
+	ReadDirOnlyReq   = proto.ReadDirOnlyRequest
+	// MetaNode -> Client read dir response
+	ReadDirResp     = proto.ReadDirResponse
+	ReadDirOnlyResp = proto.ReadDirOnlyResponse
 	// MetaNode -> Client lookup
 	LookupReq = proto.LookupRequest
 	// Client -> MetaNode lookup
@@ -121,6 +124,13 @@ const (
 	opFSMEvictInodeBatch
 
 	opFSMExtentsAddWithCheck
+	opFSMUpdateXAttr
+	opFSMObjExtentsAdd
+	// opFSMExtentsDel
+	opFSMExtentsEmpty
+
+	opFSMClearInodeCache
+	opFSMSentToChan
 )
 
 var (
@@ -164,6 +174,8 @@ const (
 	// interval of persisting in-memory data
 	intervalToPersistData = time.Minute * 5
 	intervalToSyncCursor  = time.Minute * 1
+
+	defaultDelExtentsCnt = 100000
 )
 
 const (

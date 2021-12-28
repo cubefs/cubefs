@@ -16,6 +16,8 @@ package stream
 
 import (
 	"fmt"
+	"github.com/chubaofs/chubaofs/sdk/meta"
+	"github.com/chubaofs/chubaofs/util/stat"
 	"sync"
 	"time"
 
@@ -23,15 +25,19 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data/wrapper"
+	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
-type AppendExtentKeyFunc func(inode uint64, key proto.ExtentKey, discard []proto.ExtentKey) error
+type AppendExtentKeyFunc func(parentInode, inode uint64, key proto.ExtentKey, discard []proto.ExtentKey) error
 type GetExtentsFunc func(inode uint64) (uint64, uint64, []proto.ExtentKey, error)
 type TruncateFunc func(inode, size uint64) error
 type EvictIcacheFunc func(inode uint64)
+type LoadBcacheFunc func(key string, buf []byte, offset uint64, size uint32) (int, error)
+type CacheBcacheFunc func(key string, buf []byte) error
+type EvictBacheFunc func(key string)
 
 const (
 	MaxMountRetryLimit = 5
@@ -78,15 +84,21 @@ func init() {
 
 type ExtentConfig struct {
 	Volume            string
+	VolumeType        int
 	Masters           []string
 	FollowerRead      bool
 	NearRead          bool
+	Preload           bool
 	ReadRate          int64
 	WriteRate         int64
+	BcacheEnable      bool
 	OnAppendExtentKey AppendExtentKeyFunc
 	OnGetExtents      GetExtentsFunc
 	OnTruncate        TruncateFunc
 	OnEvictIcache     EvictIcacheFunc
+	OnLoadBcache      LoadBcacheFunc
+	OnCacheBcache     CacheBcacheFunc
+	OnEvictBcache     EvictBacheFunc
 }
 
 // ExtentClient defines the struct of the extent client.
@@ -97,11 +109,20 @@ type ExtentClient struct {
 	readLimiter  *rate.Limiter
 	writeLimiter *rate.Limiter
 
+	volumeType   int
+	volumeName   string
+	bcacheEnable bool
+	BcacheHealth bool
+
 	dataWrapper     *wrapper.Wrapper
 	appendExtentKey AppendExtentKeyFunc
 	getExtents      GetExtentsFunc
 	truncate        TruncateFunc
 	evictIcache     EvictIcacheFunc //May be null, must check before using
+	loadBcache      LoadBcacheFunc
+	cacheBcache     CacheBcacheFunc
+	evictBcache     EvictBacheFunc
+	inflightL1cache sync.Map
 }
 
 // NewExtentClient returns a new extent client.
@@ -110,7 +131,7 @@ func NewExtentClient(config *ExtentConfig) (client *ExtentClient, err error) {
 
 	limit := MaxMountRetryLimit
 retry:
-	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(config.Volume, config.Masters)
+	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(config.Volume, config.Masters, config.Preload)
 	if err != nil {
 		if limit <= 0 {
 			return nil, errors.Trace(err, "Init data wrapper failed!")
@@ -128,6 +149,13 @@ retry:
 	client.evictIcache = config.OnEvictIcache
 	client.dataWrapper.InitFollowerRead(config.FollowerRead)
 	client.dataWrapper.SetNearRead(config.NearRead)
+	client.loadBcache = config.OnLoadBcache
+	client.cacheBcache = config.OnCacheBcache
+	client.evictBcache = config.OnEvictBcache
+	client.volumeType = config.VolumeType
+	client.volumeName = config.Volume
+	client.bcacheEnable = config.BcacheEnable
+	client.BcacheHealth = true
 
 	var readLimit, writeLimit rate.Limit
 	if config.ReadRate <= 0 {
@@ -218,7 +246,6 @@ func (client *ExtentClient) SetFileSize(inode uint64, size int) {
 // Write writes the data.
 func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags int) (write int, err error) {
 	prefix := fmt.Sprintf("Write{ino(%v)offset(%v)size(%v)}", inode, offset, len(data))
-
 	s := client.GetStreamer(inode)
 	if s == nil {
 		return 0, fmt.Errorf("Prefix(%v): stream is not opened yet", prefix)
@@ -238,18 +265,28 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags i
 	return
 }
 
-func (client *ExtentClient) Truncate(inode uint64, size int) error {
+func (client *ExtentClient) Truncate(mw *meta.MetaWrapper, parentIno uint64, inode uint64, size int) error {
 	prefix := fmt.Sprintf("Truncate{ino(%v)size(%v)}", inode, size)
 	s := client.GetStreamer(inode)
 	if s == nil {
 		return fmt.Errorf("Prefix(%v): stream is not opened yet", prefix)
 	}
-
-	err := s.IssueTruncRequest(size)
+	var info *proto.InodeInfo
+	var err error
+	var oldSize uint64
+	if mw.EnableSummary {
+		info, err = mw.InodeGet_ll(inode)
+		oldSize = info.Size
+	}
+	err = s.IssueTruncRequest(size)
 	if err != nil {
 		err = errors.Trace(err, prefix)
 		log.LogError(errors.Stack(err))
 	}
+	if mw.EnableSummary {
+		go mw.UpdateSummary_ll(parentIno, 0, 0, int64(size)-int64(oldSize))
+	}
+
 	return err
 }
 
@@ -285,6 +322,75 @@ func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int
 	return
 }
 
+func (client *ExtentClient) ReadExtent(inode uint64, ek *proto.ExtentKey, data []byte, offset int, size int) (read int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("read-extent", err, bgTime, 1)
+	}()
+
+	var reader *ExtentReader
+	var req *ExtentRequest
+	if size == 0 {
+		return
+	}
+
+	s := client.GetStreamer(inode)
+	if s == nil {
+		err = fmt.Errorf("Read: stream is not opened yet, ino(%v) ek(%v)", inode, ek)
+		return
+	}
+	err = s.IssueFlushRequest()
+	if err != nil {
+		return
+	}
+	reader, err = s.GetExtentReader(ek)
+	if err != nil {
+		return
+	}
+
+	var needCache = false
+	cacheKey := util.GenerateKey(s.client.volumeName, s.inode, ek.FileOffset)
+	if _, ok := client.inflightL1cache.Load(cacheKey); !ok && client.shouldBcache() {
+		client.inflightL1cache.Store(cacheKey, true)
+		needCache = true
+	}
+	defer client.inflightL1cache.Delete(cacheKey)
+
+	// do cache.
+	if needCache {
+		//read full extent
+		buf := make([]byte, ek.Size)
+		req = NewExtentRequest(int(ek.FileOffset), int(ek.Size), buf, ek)
+		read, err = reader.Read(req)
+		if err != nil {
+			return
+		}
+		read = copy(data, req.Data[offset:offset+size])
+		if client.cacheBcache != nil {
+			buf := make([]byte, len(req.Data))
+			copy(buf, req.Data)
+			go func() {
+				log.LogDebugf("ReadExtent L2->L1 Enter cacheKey(%v),client.shouldBcache(%v),needCache(%v)", cacheKey, client.shouldBcache(), needCache)
+				if err := client.cacheBcache(cacheKey, buf); err != nil {
+					client.BcacheHealth = false
+					log.LogDebugf("ReadExtent L2->L1 failed, err(%v), set BcacheHealth to false.", err)
+				}
+				log.LogDebugf("ReadExtent L2->L1 Exit cacheKey(%v),client.BcacheHealth(%v),needCache(%v)", cacheKey, client.BcacheHealth, needCache)
+			}()
+		}
+		return
+	} else {
+		//read data by offset:size
+		req = NewExtentRequest(int(ek.FileOffset)+offset, size, data, ek)
+		read, err = reader.Read(req)
+		if err != nil {
+			return
+		}
+		read = copy(data, req.Data)
+		return
+	}
+}
+
 // GetStreamer returns the streamer.
 func (client *ExtentClient) GetStreamer(inode uint64) *Streamer {
 	client.streamerLock.Lock()
@@ -298,6 +404,10 @@ func (client *ExtentClient) GetStreamer(inode uint64) *Streamer {
 
 func (client *ExtentClient) GetRate() string {
 	return fmt.Sprintf("read: %v\nwrite: %v\n", getRate(client.readLimiter), getRate(client.writeLimiter))
+}
+
+func (client *ExtentClient) shouldBcache() bool {
+	return client.bcacheEnable && client.BcacheHealth
 }
 
 func getRate(lim *rate.Limiter) string {
@@ -330,7 +440,7 @@ func (client *ExtentClient) Close() error {
 	var inodes []uint64
 	client.streamerLock.Lock()
 	inodes = make([]uint64, 0, len(client.streamers))
-	for inode, _ := range client.streamers {
+	for inode := range client.streamers {
 		inodes = append(inodes, inode)
 	}
 	client.streamerLock.Unlock()
@@ -339,4 +449,19 @@ func (client *ExtentClient) Close() error {
 	}
 	client.dataWrapper.Stop()
 	return nil
+}
+
+func (client *ExtentClient) AllocatePreLoadDataPartition(volName string, count int, capacity, ttl uint64, zones string) (err error) {
+	return client.dataWrapper.AllocatePreLoadDataPartition(volName, count, capacity, ttl, zones)
+}
+
+func (client *ExtentClient) CheckDataPartitionExsit(partitionID uint64) error {
+	_, err := client.dataWrapper.GetDataPartition(partitionID)
+	return err
+}
+
+func (client *ExtentClient) GetDataPartitionForWrite() error {
+	exclude := make(map[string]struct{})
+	_, err := client.dataWrapper.GetDataPartitionForWrite(exclude)
+	return err
 }

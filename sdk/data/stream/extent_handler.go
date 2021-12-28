@@ -16,6 +16,7 @@ package stream
 
 import (
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/stat"
 	"net"
 	"sync/atomic"
 	"time"
@@ -152,11 +153,13 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 	// If this write request is not continuous, and cannot be merged
 	// into the extent handler, just close it and return error.
 	// In this case, the caller should try to create a new extent handler.
-	if eh.fileOffset+eh.size != offset || eh.size+size > util.ExtentSize ||
-		(eh.storeMode == proto.TinyExtentType && eh.size+size > blksize) {
+	if proto.IsHot(eh.stream.client.volumeType) {
+		if eh.fileOffset+eh.size != offset || eh.size+size > util.ExtentSize ||
+			(eh.storeMode == proto.TinyExtentType && eh.size+size > blksize) {
 
-		err = errors.New("ExtentHandler: full or incontinuous")
-		return
+			err = errors.New("ExtentHandler: full or incontinuous")
+			return
+		}
 	}
 
 	for total < size {
@@ -234,6 +237,9 @@ func (eh *ExtentHandler) sender() {
 			packet.Arg = ([]byte)(eh.dp.GetAllAddrs())
 			packet.ArgLen = uint32(len(packet.Arg))
 			packet.RemainingFollowers = uint8(len(eh.dp.Hosts) - 1)
+			if len(eh.dp.Hosts) == 1 {
+				packet.RemainingFollowers = 127
+			}
 			packet.StartT = time.Now().UnixNano()
 
 			//log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
@@ -405,12 +411,14 @@ func (eh *ExtentHandler) cleanup() (err error) {
 
 // can ONLY be called when the handler is not open any more
 func (eh *ExtentHandler) appendExtentKey() (err error) {
-	//log.LogDebugf("appendExtentKey enter: eh(%v)", eh)
 	if eh.key != nil {
 		if eh.dirty {
+			if proto.IsCold(eh.stream.client.volumeType) && eh.status == ExtentStatusError {
+				return
+			}
 			var discard []proto.ExtentKey
 			discard = eh.stream.extents.Append(eh.key, true)
-			err = eh.stream.client.appendExtentKey(eh.inode, *eh.key, discard)
+			err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, *eh.key, discard)
 			if err == nil && len(discard) > 0 {
 				eh.stream.extents.RemoveDiscard(discard)
 			}
@@ -427,7 +435,6 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 	if err == nil {
 		eh.dirty = false
 	}
-	//log.LogDebugf("appendExtentKey exit: eh(%v)", eh)
 	return
 }
 
@@ -457,7 +464,7 @@ func (eh *ExtentHandler) waitForFlush() {
 
 func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 	packet.errCount++
-	if packet.errCount >= MaxPacketErrorCount {
+	if packet.errCount >= MaxPacketErrorCount || proto.IsCold(eh.stream.client.volumeType) {
 		return errors.New(fmt.Sprintf("recoverPacket failed: reach max error limit, eh(%v) packet(%v)", eh, packet))
 	}
 
@@ -506,6 +513,7 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 		if eh.storeMode == proto.NormalExtentType {
 			extID, err = eh.createExtent(dp)
 		}
+
 		if err != nil {
 			log.LogWarnf("allocateExtent: delete dp[%v] caused by create extent failed, eh(%v) err(%v) exclude(%v)",
 				dp, eh, err, exclude)
@@ -553,10 +561,14 @@ func (eh *ExtentHandler) createConnection(dp *wrapper.DataPartition) (*net.TCPCo
 }
 
 func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("createExtent", err, bgTime, 1)
+	}()
+
 	conn, err := StreamConnPool.GetConnect(dp.Hosts[0])
 	if err != nil {
-		errors.Trace(err, "createExtent: failed to create connection, eh(%v) datapartionHosts(%v)", eh, dp.Hosts[0])
-		return
+		return extID, errors.Trace(err, "createExtent: failed to create connection, eh(%v) datapartionHosts(%v)", eh, dp.Hosts[0])
 	}
 
 	defer func() {
@@ -569,24 +581,20 @@ func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err
 
 	p := NewCreateExtentPacket(dp, eh.inode)
 	if err = p.WriteToConn(conn); err != nil {
-		errors.Trace(err, "createExtent: failed to WriteToConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])
-		return
+		return extID, errors.Trace(err, "createExtent: failed to WriteToConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])
 	}
 
 	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime*2); err != nil {
-		err = errors.Trace(err, "createExtent: failed to ReadFromConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])
-		return
+		return extID, errors.Trace(err, "createExtent: failed to ReadFromConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])
 	}
 
 	if p.ResultCode != proto.OpOk {
-		err = errors.New(fmt.Sprintf("createExtent: ResultCode NOK, packet(%v) datapartionHosts(%v) ResultCode(%v)", p, dp.Hosts[0], p.GetResultMsg()))
-		return
+		return extID, errors.New(fmt.Sprintf("createExtent: ResultCode NOK, packet(%v) datapartionHosts(%v) ResultCode(%v)", p, dp.Hosts[0], p.GetResultMsg()))
 	}
 
 	extID = int(p.ExtentID)
 	if extID <= 0 {
-		err = errors.New(fmt.Sprintf("createExtent: illegal extID(%v) from (%v)", extID, dp.Hosts[0]))
-		return
+		return extID, errors.New(fmt.Sprintf("createExtent: illegal extID(%v) from (%v)", extID, dp.Hosts[0]))
 	}
 
 	return extID, nil
@@ -622,6 +630,8 @@ func (eh *ExtentHandler) setRecovery() bool {
 }
 
 func (eh *ExtentHandler) setError() bool {
-	atomic.StoreInt32(&eh.stream.status, StreamerError)
+	if proto.IsHot(eh.stream.client.volumeType) {
+		atomic.StoreInt32(&eh.stream.status, StreamerError)
+	}
 	return atomic.CompareAndSwapInt32(&eh.status, ExtentStatusRecovery, ExtentStatusError)
 }

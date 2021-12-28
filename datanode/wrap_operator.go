@@ -56,6 +56,27 @@ func (s *DataNode) getPacketTpLabels(p *repl.Packet) map[string]string {
 	return labels
 }
 
+func isColdVolExtentDelErr(p *repl.Packet) bool {
+	if p.Object == nil {
+		return false
+	}
+
+	partition, ok := p.Object.(*DataPartition)
+	if !ok {
+		return false
+	}
+
+	if proto.IsNormalDp(partition.partitionType) {
+		return false
+	}
+
+	if p.ResultCode == proto.OpNotExistErr {
+		return true
+	}
+
+	return false
+}
+
 func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 	sz := p.Size
 	tpObject := exporter.NewTPCnt(p.GetOpMsg())
@@ -68,7 +89,11 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 			err = fmt.Errorf("op(%v) error(%v)", p.GetOpMsg(), string(p.Data[:resultSize]))
 			logContent := fmt.Sprintf("action[OperatePacket] %v.",
 				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, err))
-			log.LogErrorf(logContent)
+			if isColdVolExtentDelErr(p) {
+				log.LogInfof(logContent)
+			} else {
+				log.LogErrorf(logContent)
+			}
 		} else {
 			logContent := fmt.Sprintf("action[OperatePacket] %v.",
 				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, nil))
@@ -189,12 +214,12 @@ func (s *DataNode) handlePacketToCreateDataPartition(p *repl.Packet) {
 
 	bytes, err = json.Marshal(task.Request)
 	if err != nil {
-		err = fmt.Errorf("from master Task(%v) cannot unmashal CreateDataPartition", task.ToString())
+		err = fmt.Errorf("from master Task(%v) cannot unmashal CreateDataPartition, err %s", task.ToString(), err.Error())
 		return
 	}
 	p.AddMesgLog(string(bytes))
 	if err = json.Unmarshal(bytes, request); err != nil {
-		err = fmt.Errorf("from master Task(%v) cannot unmash CreateDataPartitionRequest struct", task.ToString())
+		err = fmt.Errorf("from master Task(%v) cannot unmashal CreateDataPartitionRequest struct, err(%s)", task.ToString(), err.Error())
 		return
 	}
 	p.PartitionID = request.PartitionId
@@ -466,6 +491,13 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		}
 	}()
 	partition := p.Object.(*DataPartition)
+
+	// cache or preload partition not support raft and repair.
+	if !partition.isNormalType() {
+		err = raft.ErrStopped
+		return
+	}
+
 	_, isLeader := partition.IsRaftLeader()
 	if !isLeader {
 		err = raft.ErrNotLeader
@@ -499,6 +531,13 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 		}
 	}()
 	partition := p.Object.(*DataPartition)
+
+	// cache or preload partition not support raft and repair.
+	if !partition.isNormalType() {
+		err = raft.ErrStopped
+		return
+	}
+
 	if err = partition.CheckLeader(p, connect); err != nil {
 		return
 	}
@@ -562,7 +601,7 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		}
 		tpObject := exporter.NewTPCnt(fmt.Sprintf("Repair_%s", p.GetOpMsg()))
 		reply.ExtentOffset = offset
-		p.Size = uint32(currReadSize)
+		p.Size = currReadSize
 		p.ExtentOffset = offset
 		partitionIOMetric := exporter.NewTPCnt(MetricPartitionIOName)
 		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, isRepairRead)
@@ -574,7 +613,7 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		if err != nil {
 			return
 		}
-		reply.Size = uint32(currReadSize)
+		reply.Size = currReadSize
 		reply.ResultCode = proto.OpOk
 		reply.Opcode = p.Opcode
 		p.ResultCode = proto.OpOk
@@ -998,7 +1037,7 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 	p.PartitionID = req.PartitionId
 
 	if !dp.IsExsitReplica(req.RemovePeer.Addr) {
-		log.LogInfof("handlePacketToRemoveDataPartitionRaftMember recive MasterCommand: %v "+
+		log.LogInfof("recive MasterCommand: %v "+
 			"RemoveRaftPeer(%v) has not exsit", string(reqData), req.RemovePeer.Addr)
 		return
 	}

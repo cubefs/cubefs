@@ -70,13 +70,20 @@ func (c *Gauge) Metric() prometheus.Gauge {
 		})
 	key := c.Key()
 	actualMetric, load := GaugeGroup.LoadOrStore(key, metric)
-	if !load {
-		err := prometheus.Register(actualMetric.(prometheus.Collector))
-		if err == nil {
-			log.LogInfof("register metric %v", c.Name())
-		} else {
-			log.LogErrorf("register metric %v, %v", c.Name(), err)
-		}
+	if load {
+		return actualMetric.(prometheus.Gauge)
+	}
+
+	if enablePush {
+		registry.MustRegister(actualMetric.(prometheus.Collector))
+		return actualMetric.(prometheus.Gauge)
+	}
+
+	err := prometheus.Register(actualMetric.(prometheus.Collector))
+	if err == nil {
+		log.LogInfof("register metric %v", c.Name())
+	} else {
+		log.LogErrorf("register metric %v, %v", c.Name(), err)
 	}
 
 	return actualMetric.(prometheus.Gauge)

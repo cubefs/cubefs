@@ -84,7 +84,7 @@ func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) 
 
 	mp, err := m.getPartition(p.PartitionID)
 	if err != nil {
-		log.LogInfof("[metaManager] getPacketLabels metric packet: %v, partitions: %v", p, m.partitions)
+		log.LogInfof("[metaManager] getPacketLabels metric packet: %v", p)
 		return
 	}
 
@@ -135,6 +135,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opReadDir(conn, p, remoteAddr)
 	case proto.OpMetaReadDirLimit:
 		err = m.opReadDirLimit(conn, p, remoteAddr)
+	case proto.OpMetaReadDirOnly:
+		err = m.opReadDirOnly(conn, p, remoteAddr)
 	case proto.OpCreateMetaPartition:
 		err = m.opCreateMetaPartition(conn, p, remoteAddr)
 	case proto.OpMetaNodeHeartbeat:
@@ -145,6 +147,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opMetaExtentAddWithCheck(conn, p, remoteAddr)
 	case proto.OpMetaExtentsList:
 		err = m.opMetaExtentsList(conn, p, remoteAddr)
+	case proto.OpMetaObjExtentsList:
+		err = m.opMetaObjExtentsList(conn, p, remoteAddr)
 	case proto.OpMetaExtentsDel:
 		err = m.opMetaExtentsDel(conn, p, remoteAddr)
 	case proto.OpMetaTruncate:
@@ -173,6 +177,10 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opMetaBatchDeleteInode(conn, p, remoteAddr)
 	case proto.OpMetaBatchExtentsAdd:
 		err = m.opMetaBatchExtentsAdd(conn, p, remoteAddr)
+	case proto.OpMetaBatchObjExtentsAdd:
+		err = m.opMetaBatchObjExtentsAdd(conn, p, remoteAddr)
+	case proto.OpMetaClearInodeCache:
+		err = m.opMetaClearInodeCache(conn, p, remoteAddr)
 	// operations for extend attributes
 	case proto.OpMetaSetXAttr:
 		err = m.opMetaSetXAttr(conn, p, remoteAddr)
@@ -184,6 +192,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opMetaRemoveXAttr(conn, p, remoteAddr)
 	case proto.OpMetaListXAttr:
 		err = m.opMetaListXAttr(conn, p, remoteAddr)
+	case proto.OpMetaUpdateXAttr:
+		err = m.opMetaUpdateXAttr(conn, p, remoteAddr)
 	// operations for multipart session
 	case proto.OpCreateMultipart:
 		err = m.opCreateMultipart(conn, p, remoteAddr)
@@ -358,6 +368,10 @@ func (m *metadataManager) loadPartitions() (err error) {
 					errload = nil
 				}
 				partition := NewMetaPartition(partitionConfig, m)
+				if partition == nil {
+					log.LogErrorf("loadPartitions: NewMetaPartition is nil")
+					return
+				}
 				errload = m.attachPartition(id, partition)
 				if errload != nil {
 					log.LogErrorf("load partition id=%d failed: %s.",
@@ -423,6 +437,10 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 	}
 
 	partition := NewMetaPartition(mpc, m)
+	if partition == nil {
+		err = errors.NewErrorf("[createPartition] partition is nil")
+		return
+	}
 	if err = partition.PersistMetadata(); err != nil {
 		err = errors.NewErrorf("[createPartition]->%s", err.Error())
 		return

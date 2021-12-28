@@ -42,6 +42,7 @@ type Wrapper struct {
 	sync.RWMutex
 	clusterName           string
 	volName               string
+	volType               int
 	masters               []string
 	partitions            map[uint64]*DataPartition
 	followerRead          bool
@@ -57,10 +58,11 @@ type Wrapper struct {
 	dpSelector DataPartitionSelector
 
 	HostsStatus map[string]bool
+	preload     bool
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
-func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err error) {
+func NewDataPartitionWrapper(volName string, masters []string, preload bool) (w *Wrapper, err error) {
 	w = new(Wrapper)
 	w.stopC = make(chan struct{})
 	w.masters = masters
@@ -68,6 +70,7 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 	w.volName = volName
 	w.partitions = make(map[uint64]*DataPartition)
 	w.HostsStatus = make(map[string]bool)
+	w.preload = preload
 	if err = w.updateClusterInfo(); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
@@ -127,7 +130,7 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	w.followerRead = view.FollowerRead
 	w.dpSelectorName = view.DpSelectorName
 	w.dpSelectorParm = view.DpSelectorParm
-
+	w.volType = view.VolType
 	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
 		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) createTime(%v) dpSelectorName(%v) "+
 		"dpSelectorParm(%v)",
@@ -137,7 +140,7 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 }
 
 func (w *Wrapper) update() {
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(5 * time.Second)
 	for {
 		select {
 		case <-ticker.C:
@@ -152,7 +155,6 @@ func (w *Wrapper) update() {
 
 func (w *Wrapper) updateSimpleVolView() (err error) {
 	var view *proto.SimpleVolView
-
 	if view, err = w.mc.AdminAPI().GetVolumeSimpleInfo(w.volName); err != nil {
 		log.LogWarnf("updateSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
 		return
@@ -178,13 +180,22 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 }
 
 func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
-
-	var dpv *proto.DataPartitionsView
-	if dpv, err = w.mc.ClientAPI().GetDataPartitions(w.volName); err != nil {
-		log.LogErrorf("updateDataPartition: get data partitions fail: volume(%v) err(%v)", w.volName, err)
-		return
+	if w.preload {
+		return nil
 	}
-	log.LogInfof("updateDataPartition: get data partitions: volume(%v) partitions(%v)", w.volName, len(dpv.DataPartitions))
+	var dpv *proto.DataPartitionsView
+
+	if dpv, err = w.mc.ClientAPI().GetDataPartitions(w.volName); err != nil {
+		if proto.IsCold(w.volType) && err == proto.ErrNoAvailDataPartition {
+			log.LogWarnf("updateDataPartition: get data partitions fail: volume(%v) err(%v),volType is 1,ignore error.", w.volName, err)
+		} else {
+			log.LogErrorf("updateDataPartition: get data partitions fail: volume(%v) err(%v)", w.volName, err)
+			return
+		}
+	}
+	if dpv != nil {
+		log.LogInfof("updateDataPartition: get data partitions: volume(%v) partitions(%v)", w.volName, len(dpv.DataPartitions))
+	}
 
 	var convert = func(response *proto.DataPartitionResponse) *DataPartition {
 		return &DataPartition{
@@ -194,10 +205,69 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 	}
 
 	rwPartitionGroups := make([]*DataPartition, 0)
+	partitionGroups := make(map[uint64]struct{})
 	for _, partition := range dpv.DataPartitions {
 		dp := convert(partition)
 		if w.followerRead && w.nearRead {
 			dp.NearHosts = w.sortHostsByDistance(dp.Hosts)
+		}
+		log.LogInfof("updateDataPartition: dp(%v)", dp)
+		w.replaceOrInsertPartition(dp)
+		partitionGroups[dp.PartitionID] = struct{}{}
+		if proto.IsCold(w.volType) && !proto.IsCacheDp(dp.PartitionType) {
+			continue
+		}
+		if dp.Status == proto.ReadWrite {
+			dp.MetricsRefresh()
+			rwPartitionGroups = append(rwPartitionGroups, dp)
+		}
+	}
+
+	//only work for cold vol, report dp Metrics is barely happen
+	if proto.IsCold(w.volType) {
+		w.clearPartitions(partitionGroups)
+	}
+	log.LogDebugf("updateDataPartition: (%v)", w.partitions)
+	// isInit used to identify whether this call is caused by mount action
+	if isInit || (len(rwPartitionGroups) >= MinWriteAbleDataPartitionCnt) || proto.IsCold(w.volType) {
+		w.refreshDpSelector(rwPartitionGroups)
+	} else {
+		err = errors.New("updateDataPartition: no writable data partition")
+	}
+
+	log.LogInfof("updateDataPartition: finish")
+	return err
+}
+
+func (w *Wrapper) clearPartitions(groups map[uint64]struct{}) {
+	defer w.Unlock()
+	w.Lock()
+	for key := range w.partitions {
+		_, ok := groups[key]
+		if !ok {
+			delete(w.partitions, key)
+		}
+	}
+}
+
+func (w *Wrapper) AllocatePreLoadDataPartition(volName string, count int, capacity, ttl uint64, zones string) (err error) {
+	var dpv *proto.DataPartitionsView
+
+	if dpv, err = w.mc.AdminAPI().CreatePreLoadDataPartition(volName, count, capacity, ttl, zones); err != nil {
+		log.LogWarnf("CreatePreLoadDataPartition fail: err(%v)", err)
+		return
+	}
+	var convert = func(response *proto.DataPartitionResponse) *DataPartition {
+		return &DataPartition{
+			DataPartitionResponse: *response,
+			ClientWrapper:         w,
+		}
+	}
+	rwPartitionGroups := make([]*DataPartition, 0)
+	for _, partition := range dpv.DataPartitions {
+		dp := convert(partition)
+		if proto.IsCold(w.volType) && !proto.IsPreLoadDp(dp.PartitionType) {
+			continue
 		}
 		log.LogInfof("updateDataPartition: dp(%v)", dp)
 		w.replaceOrInsertPartition(dp)
@@ -207,15 +277,8 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 		}
 	}
 
-	// isInit used to identify whether this call is caused by mount action
-	if isInit || (len(rwPartitionGroups) >= MinWriteAbleDataPartitionCnt) {
-		w.refreshDpSelector(rwPartitionGroups)
-	} else {
-		err = errors.New("updateDataPartition: no writable data partition")
-	}
-
-	log.LogInfof("updateDataPartition: finish")
-	return err
+	w.refreshDpSelector(rwPartitionGroups)
+	return nil
 }
 
 func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {

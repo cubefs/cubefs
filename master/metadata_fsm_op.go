@@ -34,22 +34,26 @@ import (
 type clusterValue struct {
 	Name                        string
 	Threshold                   float32
+	LoadFactor                  float32
 	DisableAutoAllocate         bool
 	DataNodeDeleteLimitRate     uint64
 	MetaNodeDeleteBatchCount    uint64
 	MetaNodeDeleteWorkerSleepMs uint64
 	DataNodeAutoRepairLimitRate uint64
+	FaultDomain                 bool
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
 	cv = &clusterValue{
 		Name:                        c.Name,
+		LoadFactor:                  c.cfg.ClusterLoadFactor,
 		Threshold:                   c.cfg.MetaNodeThreshold,
 		DataNodeDeleteLimitRate:     c.cfg.DataNodeDeleteLimitRate,
 		MetaNodeDeleteBatchCount:    c.cfg.MetaNodeDeleteBatchCount,
 		MetaNodeDeleteWorkerSleepMs: c.cfg.MetaNodeDeleteWorkerSleepMs,
 		DataNodeAutoRepairLimitRate: c.cfg.DataNodeAutoRepairLimitRate,
 		DisableAutoAllocate:         c.DisableAutoAllocate,
+		FaultDomain:                 c.FaultDomain,
 	}
 	return cv
 }
@@ -96,6 +100,8 @@ type dataPartitionValue struct {
 	OfflinePeerID uint64
 	Replicas      []*replicaValue
 	IsRecover     bool
+	PartitionType int
+	PartitionTTL  int64
 }
 
 type replicaValue struct {
@@ -115,6 +121,8 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		OfflinePeerID: dp.OfflinePeerID,
 		Replicas:      make([]*replicaValue, 0),
 		IsRecover:     dp.isRecover,
+		PartitionType: dp.PartitionType,
+		PartitionTTL:  dp.PartitionTTL,
 	}
 	for _, replica := range dp.Replicas {
 		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}
@@ -135,6 +143,7 @@ type volValue struct {
 	FollowerRead      bool
 	Authenticate      bool
 	CrossZone         bool
+	DomainOn          bool
 	ZoneName          string
 	OSSAccessKey      string
 	OSSSecretKey      string
@@ -142,6 +151,19 @@ type volValue struct {
 	Description       string
 	DpSelectorName    string
 	DpSelectorParm    string
+	DefaultPriority   bool
+	DomainId          uint64
+	VolType           int
+
+	EbsBlkSize       int
+	CacheCapacity    uint64
+	CacheAction      int
+	CacheThreshold   int
+	CacheTTL         int
+	CacheHighWater   int
+	CacheLowWater    int
+	CacheLRUInterval int
+	CacheRule        string
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -150,6 +172,7 @@ func (v *volValue) Bytes() (raw []byte, err error) {
 }
 
 func newVolValue(vol *Vol) (vv *volValue) {
+
 	vv = &volValue{
 		ID:                vol.ID,
 		Name:              vol.Name,
@@ -162,6 +185,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		FollowerRead:      vol.FollowerRead,
 		Authenticate:      vol.authenticate,
 		CrossZone:         vol.crossZone,
+		DomainOn:          vol.domainOn,
 		ZoneName:          vol.zoneName,
 		OSSAccessKey:      vol.OSSAccessKey,
 		OSSSecretKey:      vol.OSSSecretKey,
@@ -169,7 +193,20 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		Description:       vol.description,
 		DpSelectorName:    vol.dpSelectorName,
 		DpSelectorParm:    vol.dpSelectorParm,
+		DefaultPriority:   vol.defaultPriority,
+
+		VolType:          vol.VolType,
+		EbsBlkSize:       vol.EbsBlkSize,
+		CacheCapacity:    vol.CacheCapacity,
+		CacheAction:      vol.CacheAction,
+		CacheThreshold:   vol.CacheThreshold,
+		CacheTTL:         vol.CacheTTL,
+		CacheHighWater:   vol.CacheHighWater,
+		CacheLowWater:    vol.CacheLowWater,
+		CacheLRUInterval: vol.CacheLRUInterval,
+		CacheRule:        vol.CacheRule,
 	}
+
 	return
 }
 
@@ -219,11 +256,40 @@ type nodeSetValue struct {
 	ZoneName string
 }
 
+type domainNodeSetGrpValue struct {
+	DomainId    uint64
+	ID          uint64
+	NodeSetsIds []uint64
+	Status      uint8
+}
+
+type zoneDomainValue struct {
+	ExcludeZoneMap       map[string]int
+	NeedFaultDomain      bool
+	DataRatio            float64
+	DomainZoneName2IdMap map[string]uint64 // zoneName:domainId
+	ExcludeZoneUseRatio  float64
+}
+
+func newZoneDomainValue() (ev *zoneDomainValue) {
+	ev = &zoneDomainValue{
+		ExcludeZoneMap: make(map[string]int),
+	}
+	return
+}
 func newNodeSetValue(nset *nodeSet) (nsv *nodeSetValue) {
 	nsv = &nodeSetValue{
 		ID:       nset.ID,
 		Capacity: nset.Capacity,
 		ZoneName: nset.zoneName,
+	}
+	return
+}
+func newNodeSetGrpValue(nset *nodeSetGroup) (nsv *domainNodeSetGrpValue) {
+	nsv = &domainNodeSetGrpValue{
+		ID:          nset.ID,
+		NodeSetsIds: nset.nodeSetsIds,
+		Status:      nset.status,
 	}
 	return
 }
@@ -306,10 +372,25 @@ func (c *Cluster) syncUpdateNodeSet(nset *nodeSet) (err error) {
 }
 
 func (c *Cluster) putNodeSetInfo(opType uint32, nset *nodeSet) (err error) {
+	log.LogInfof("action[putNodeSetInfo], type:[%v], ID:[%v], name:[%v]", opType, nset.ID, nset.zoneName)
 	metadata := new(RaftCmd)
 	metadata.Op = opType
 	metadata.K = nodeSetPrefix + strconv.FormatUint(nset.ID, 10)
 	nsv := newNodeSetValue(nset)
+	metadata.V, err = json.Marshal(nsv)
+	if err != nil {
+		return
+	}
+	return c.submit(metadata)
+}
+
+func (c *Cluster) putNodeSetGrpInfo(opType uint32, nsg *nodeSetGroup) (err error) {
+	metadata := new(RaftCmd)
+	metadata.Op = opType
+	metadata.K = nodeSetGrpPrefix + strconv.FormatUint(nsg.ID, 10)
+	log.LogInfof("action[putNodeSetGrpInfo] nsg id[%v] status[%v] ids[%v]", nsg.ID, nsg.status, nsg.nodeSetsIds)
+	nsv := newNodeSetGrpValue(nsg)
+	log.LogInfof("action[putNodeSetGrpInfo] nsv id[%v] status[%v] ids[%v]", nsv.ID, nsv.Status, nsv.NodeSetsIds)
 	metadata.V, err = json.Marshal(nsv)
 	if err != nil {
 		return
@@ -521,6 +602,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 			return err
 		}
 		c.cfg.MetaNodeThreshold = cv.Threshold
+		c.cfg.ClusterLoadFactor = cv.LoadFactor
 		c.DisableAutoAllocate = cv.DisableAutoAllocate
 		c.updateMetaNodeDeleteBatchCount(cv.MetaNodeDeleteBatchCount)
 		c.updateMetaNodeDeleteWorkerSleepMs(cv.MetaNodeDeleteWorkerSleepMs)
@@ -554,7 +636,130 @@ func (c *Cluster) loadNodeSets() (err error) {
 			c.t.putZoneIfAbsent(zone)
 		}
 		zone.putNodeSet(ns)
+		log.LogInfof("action[addNodeSetGrp] nodeSet[%v]", ns.ID)
+		if err = c.addNodeSetGrp(ns, true); err != nil {
+			log.LogErrorf("action[createNodeSet] nodeSet[%v] err[%v]", ns.ID, err)
+			return err
+		}
 		log.LogInfof("action[loadNodeSets], nsId[%v],zone[%v]", ns.ID, zone.name)
+	}
+	return nil
+}
+
+// put exclude zone only be used one time when master update and restart
+func (c *Cluster) putZoneDomain(init bool) (err error) {
+	log.LogInfof("action[putZoneDomain]")
+	metadata := new(RaftCmd)
+	metadata.Op = opSyncExclueDomain
+	metadata.K = DomainPrefix
+
+	if init {
+		for i := 0; i < len(c.t.zones); i++ {
+			c.domainManager.excludeZoneListDomain[c.t.zones[i].name] = 0
+			c.t.domainExcludeZones = append(c.t.domainExcludeZones, c.t.zones[i].name)
+		}
+		if len(c.t.zones) == 0 {
+			c.needFaultDomain = true
+		}
+	}
+	domainValue := newZoneDomainValue()
+	domainValue.ExcludeZoneMap = c.domainManager.excludeZoneListDomain
+	domainValue.NeedFaultDomain = c.needFaultDomain
+	domainValue.DomainZoneName2IdMap = c.domainManager.ZoneName2DomainIdMap
+	if c.domainManager.dataRatioLimit > 0 {
+		domainValue.DataRatio = c.domainManager.dataRatioLimit
+	} else {
+		domainValue.DataRatio = defaultZoneUsageThreshold
+	}
+	if c.domainManager.excludeZoneUseRatio > 0 && c.domainManager.excludeZoneUseRatio <= 1 {
+		domainValue.DataRatio = c.domainManager.excludeZoneUseRatio
+	} else {
+		domainValue.DataRatio = defaultZoneUsageThreshold
+	}
+
+	metadata.V, err = json.Marshal(domainValue)
+	if err != nil {
+		return
+	}
+	return c.submit(metadata)
+}
+func (c *Cluster) loadZoneDomain() (ok bool, err error) {
+	log.LogInfof("action[loadZoneDomain]")
+	result, err := c.fsm.store.SeekForPrefix([]byte(DomainPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadZoneDomain],err:%v", err.Error())
+		log.LogInfof("action[loadZoneDomain] err[%v]", err)
+		return false, err
+	}
+	if len(result) == 0 {
+		err = fmt.Errorf("action[loadZoneDomain],err:not found")
+		log.LogInfof("action[loadZoneDomain] err[%v]", err)
+		return false, nil
+	}
+	for _, value := range result {
+		nsv := &zoneDomainValue{}
+		if err = json.Unmarshal(value, nsv); err != nil {
+			log.LogErrorf("action[loadNodeSets], unmarshal err:%v", err.Error())
+			return true, err
+		}
+		log.LogInfof("action[loadZoneDomain] get value!exclue map[%v],need domain[%v]", nsv.ExcludeZoneMap, nsv.NeedFaultDomain)
+		c.domainManager.excludeZoneListDomain = nsv.ExcludeZoneMap
+		for zoneName := range nsv.ExcludeZoneMap {
+			c.t.domainExcludeZones = append(c.t.domainExcludeZones, zoneName)
+		}
+		c.needFaultDomain = nsv.NeedFaultDomain
+		c.domainManager.dataRatioLimit = nsv.DataRatio
+		c.domainManager.ZoneName2DomainIdMap = nsv.DomainZoneName2IdMap
+		c.domainManager.excludeZoneUseRatio = nsv.ExcludeZoneUseRatio
+		break
+	}
+	log.LogInfof("action[loadZoneDomain] success!")
+	return true, nil
+}
+
+func (c *Cluster) loadNodeSetGrps() (err error) {
+	log.LogInfof("action[loadNodeSetGrps]")
+	result, err := c.fsm.store.SeekForPrefix([]byte(nodeSetGrpPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadNodeSets],err:%v", err.Error())
+		log.LogInfof("action[loadNodeSetGrps] seek failed, nsgId[%v]", err)
+		return err
+	}
+	if len(result) > 0 {
+		log.LogInfof("action[loadNodeSetGrps] get result len[%v]", len(result))
+		c.domainManager.start()
+	}
+	log.LogInfof("action[loadNodeSetGrps] get result len[%v] before decode", len(result))
+	for _, value := range result {
+		domainInfoLoad := &domainNodeSetGrpValue{}
+		if err = json.Unmarshal(value, domainInfoLoad); err != nil {
+			log.LogFatalf("action[loadNodeSets], unmarshal err:%v", err.Error())
+			return err
+		}
+		log.LogInfof("action[loadNodeSetGrps] get result domainInfoLoad id[%v],status[%v],ids[%v]", domainInfoLoad.ID, domainInfoLoad.Status, domainInfoLoad.NodeSetsIds)
+		nsg := newNodeSetGrp(c)
+		nsg.nodeSetsIds = domainInfoLoad.NodeSetsIds
+		nsg.ID = domainInfoLoad.ID
+		nsg.status = domainInfoLoad.Status
+		domainId := domainInfoLoad.DomainId
+
+		var domainIndex int
+		var ok bool
+		var domainGrp *DomainNodeSetGrpManager
+		if domainIndex, ok = c.domainManager.domainId2IndexMap[domainId]; !ok {
+			domainGrp = newDomainNodeSetGrpManager()
+			c.domainManager.domainNodeSetGrpVec = append(c.domainManager.domainNodeSetGrpVec, domainGrp)
+			domainIndex = len(c.domainManager.domainNodeSetGrpVec) - 1
+			c.domainManager.domainId2IndexMap[domainId] = domainIndex
+		}
+
+		domainGrp.nodeSetGrpMap = append(domainGrp.nodeSetGrpMap, nsg)
+		var j int
+		for j = 0; j < len(domainInfoLoad.NodeSetsIds); j++ {
+			domainGrp.nsId2NsGrpMap[domainInfoLoad.NodeSetsIds[j]] = len(domainGrp.nodeSetGrpMap) - 1
+			log.LogInfof("action[loadNodeSetGrps] get result index[%v] nodesetid[%v] nodesetgrp index [%v]", domainInfoLoad.ID, domainInfoLoad.NodeSetsIds[j], domainInfoLoad.Status)
+		}
+		log.LogInfof("action[loadNodeSetGrps], nsgId[%v],status[%v]", nsg.ID, nsg.status)
 	}
 	return
 }
@@ -707,7 +912,7 @@ func (c *Cluster) loadDataPartitions() (err error) {
 				dpv.Peers[i].ID = dn.(*DataNode).ID
 			}
 		}
-		dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.VolName, dpv.VolID)
+		dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.VolName, dpv.VolID, dpv.PartitionType, dpv.PartitionTTL)
 		dp.Hosts = strings.Split(dpv.Hosts, underlineSeparator)
 		dp.Peers = dpv.Peers
 		dp.OfflinePeerID = dpv.OfflinePeerID

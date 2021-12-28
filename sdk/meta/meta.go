@@ -29,6 +29,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/auth"
 	"github.com/chubaofs/chubaofs/util/btree"
 	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const (
@@ -76,6 +77,7 @@ type MetaConfig struct {
 	TicketMess       auth.TicketMess
 	ValidateOwner    bool
 	OnAsyncTaskError AsyncTaskErrorFunc
+	EnableSummary    bool
 }
 
 type MetaWrapper struct {
@@ -127,6 +129,7 @@ type MetaWrapper struct {
 	// Used to trigger and throttle instant partition updates
 	forceUpdate      chan struct{}
 	forceUpdateLimit *rate.Limiter
+	EnableSummary    bool
 }
 
 //the ticket from authnode
@@ -169,6 +172,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.partCond = sync.NewCond(&mw.partMutex)
 	mw.forceUpdate = make(chan struct{}, 1)
 	mw.forceUpdateLimit = rate.NewLimiter(1, MinForceUpdateMetaPartitionsInterval)
+	mw.EnableSummary = config.EnableSummary
 
 	limit := MaxMountRetryLimit
 
@@ -176,6 +180,10 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 		err = mw.initMetaWrapper()
 		// When initializing the volume, if the master explicitly responds that the specified
 		// volume does not exist, it will not retry.
+		if err != nil {
+			log.LogErrorf("initMetaWrapper failed, err %s", err.Error())
+		}
+
 		if err == proto.ErrVolNotExists {
 			return nil, err
 		}

@@ -17,29 +17,37 @@ package proto
 // api
 const (
 	// Admin APIs
-	AdminGetCluster                = "/admin/getCluster"
-	AdminGetDataPartition          = "/dataPartition/get"
-	AdminLoadDataPartition         = "/dataPartition/load"
-	AdminCreateDataPartition       = "/dataPartition/create"
-	AdminDecommissionDataPartition = "/dataPartition/decommission"
-	AdminDiagnoseDataPartition     = "/dataPartition/diagnose"
-	AdminDeleteDataReplica         = "/dataReplica/delete"
-	AdminAddDataReplica            = "/dataReplica/add"
-	AdminDeleteVol                 = "/vol/delete"
-	AdminUpdateVol                 = "/vol/update"
-	AdminVolShrink                 = "/vol/shrink"
-	AdminVolExpand                 = "/vol/expand"
-	AdminCreateVol                 = "/admin/createVol"
-	AdminGetVol                    = "/admin/getVol"
-	AdminClusterFreeze             = "/cluster/freeze"
-	AdminClusterStat               = "/cluster/stat"
-	AdminGetIP                     = "/admin/getIp"
-	AdminCreateMetaPartition       = "/metaPartition/create"
-	AdminSetMetaNodeThreshold      = "/threshold/set"
-	AdminListVols                  = "/vol/list"
-	AdminSetNodeInfo               = "/admin/setNodeInfo"
-	AdminGetNodeInfo               = "/admin/getNodeInfo"
-
+	AdminGetCluster                 = "/admin/getCluster"
+	AdminGetDataPartition           = "/dataPartition/get"
+	AdminLoadDataPartition          = "/dataPartition/load"
+	AdminCreateDataPartition        = "/dataPartition/create"
+	AdminCreatePreLoadDataPartition = "/dataPartition/createPreLoad"
+	AdminDecommissionDataPartition  = "/dataPartition/decommission"
+	AdminDiagnoseDataPartition      = "/dataPartition/diagnose"
+	AdminDeleteDataReplica          = "/dataReplica/delete"
+	AdminAddDataReplica             = "/dataReplica/add"
+	AdminDeleteVol                  = "/vol/delete"
+	AdminUpdateVol                  = "/vol/update"
+	AdminVolShrink                  = "/vol/shrink"
+	AdminVolExpand                  = "/vol/expand"
+	AdminCreateVol                  = "/admin/createVol"
+	AdminGetVol                     = "/admin/getVol"
+	AdminClusterFreeze              = "/cluster/freeze"
+	AdminClusterStat                = "/cluster/stat"
+	AdminGetIP                      = "/admin/getIp"
+	AdminCreateMetaPartition        = "/metaPartition/create"
+	AdminSetMetaNodeThreshold       = "/threshold/set"
+	AdminListVols                   = "/vol/list"
+	AdminSetNodeInfo                = "/admin/setNodeInfo"
+	AdminGetNodeInfo                = "/admin/getNodeInfo"
+	AdminDomainCreate               = "/admin/createDomain"
+	AdminGetAllNodeSetGrpInfo       = "/admin/getDomainInfo"
+	AdminGetNodeSetGrpInfo          = "/admin/getDomainNodeSetGrpInfo"
+	AdminGetIsDomainOn              = "/admin/getIsDomainOn"
+	AdminUpdateNodeSetCapcity       = "/admin/updateNodeSetCapcity"
+	AdminUpdateNodeSetId            = "/admin/updateNodeSetId"
+	AdminUpdateDomainDataUseRatio   = "/admin/updateDomainDataRatio"
+	AdminUpdateZoneExcludeRatio     = "/admin/updateZoneExcludeRatio"
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
@@ -134,11 +142,13 @@ type ClusterInfo struct {
 	MetaNodeDeleteWorkerSleepMs uint64
 	DataNodeDeleteLimitRate     uint64
 	DataNodeAutoRepairLimitRate uint64
+	EbsAddr                     string
+	ServicePath                 string
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
 type CreateDataPartitionRequest struct {
-	PartitionType string
+	PartitionTyp  int
 	PartitionId   uint64
 	PartitionSize int
 	VolumeId      string
@@ -268,6 +278,7 @@ type DataNodeHeartbeatResponse struct {
 	RemainingCapacity   uint64 // remaining capacity to create partition
 	CreatedPartitionCnt uint32
 	MaxCapacity         uint64 // maximum capacity to create partition
+	StartTime           int64
 	ZoneName            string
 	PartitionReports    []*PartitionReport
 	Status              uint8
@@ -281,6 +292,7 @@ type MetaPartitionReport struct {
 	Start       uint64
 	End         uint64
 	Status      int
+	Size        uint64
 	MaxInodeID  uint64
 	IsLeader    bool
 	VolName     string
@@ -375,13 +387,15 @@ type MetaPartitionLoadResponse struct {
 
 // DataPartitionResponse defines the response from a data node to the master that is related to a data partition.
 type DataPartitionResponse struct {
-	PartitionID uint64
-	Status      int8
-	ReplicaNum  uint8
-	Hosts       []string
-	LeaderAddr  string
-	Epoch       uint64
-	IsRecover   bool
+	PartitionType int
+	PartitionID   uint64
+	Status        int8
+	ReplicaNum    uint8
+	Hosts         []string
+	LeaderAddr    string
+	Epoch         uint64
+	IsRecover     bool
+	PartitionTTL  int64
 }
 
 // DataPartitionsView defines the view of a data partition
@@ -422,8 +436,11 @@ type VolView struct {
 	FollowerRead   bool
 	MetaPartitions []*MetaPartitionView
 	DataPartitions []*DataPartitionResponse
+	DomainOn       bool
 	OSSSecure      *OSSSecure
 	CreateTime     int64
+	CacheTTL       int
+	VolType        int
 }
 
 func (v *VolView) SetOwner(owner string) {
@@ -434,7 +451,7 @@ func (v *VolView) SetOSSSecure(accessKey, secretKey string) {
 	v.OSSSecure = &OSSSecure{AccessKey: accessKey, SecretKey: secretKey}
 }
 
-func NewVolView(name string, status uint8, followerRead bool, createTime int64) (view *VolView) {
+func NewVolView(name string, status uint8, followerRead bool, createTime int64, cacheTTL int, volType int) (view *VolView) {
 	view = new(VolView)
 	view.Name = name
 	view.FollowerRead = followerRead
@@ -442,6 +459,8 @@ func NewVolView(name string, status uint8, followerRead bool, createTime int64) 
 	view.Status = status
 	view.MetaPartitions = make([]*MetaPartitionView, 0)
 	view.DataPartitions = make([]*DataPartitionResponse, 0)
+	view.CacheTTL = cacheTTL
+	view.VolType = volType
 	return
 }
 
@@ -475,11 +494,60 @@ type SimpleVolView struct {
 	NeedToLowerReplica bool
 	Authenticate       bool
 	CrossZone          bool
+	DefaultPriority    bool
+	DomainOn           bool
 	CreateTime         string
 	EnableToken        bool
 	Description        string
 	DpSelectorName     string
 	DpSelectorParm     string
+	DefaultZonePrior   bool
+
+	VolType          int
+	ObjBlockSize     int
+	CacheCapacity    uint64
+	CacheAction      int
+	CacheThreshold   int
+	CacheHighWater   int
+	CacheLowWater    int
+	CacheLruInterval int
+	CacheTtl         int
+	CacheRule        string
+	PreloadCapacity  uint64
+}
+
+type NodeSetInfo struct {
+	ID           uint64
+	ZoneName     string
+	Capacity     int
+	DataUseRatio float64
+	MetaUseRatio float64
+	MetaUsed     uint64
+	MetaTotal    uint64
+	MetaNodes    []*MetaNodeInfo
+	DataUsed     uint64
+	DataTotal    uint64
+	DataNodes    []*DataNodeInfo
+}
+type SimpleNodeSetGrpInfo struct {
+	ID          uint64
+	Status      uint8
+	NodeSetInfo []NodeSetInfo
+}
+
+type SimpleNodeSetGrpInfoList struct {
+	DomainId             uint64
+	Status               uint8
+	SimpleNodeSetGrpInfo []*SimpleNodeSetGrpInfo
+}
+
+type DomainNodeSetGrpInfoList struct {
+	DomainOn              bool
+	DataRatioLimit        float64
+	ZoneExcludeRatioLimit float64
+	NeedDomain            bool
+	ExcludeZones          []string
+	DomainNodeSetGrpInfo  []*SimpleNodeSetGrpInfoList
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -526,3 +594,57 @@ type NodeSetView struct {
 type TopologyView struct {
 	Zones []*ZoneView
 }
+
+const (
+	PartitionTypeNormal  = 0
+	PartitionTypeCache   = 1
+	PartitionTypePreLoad = 2
+)
+
+func GetDpType(volType int, isPreload bool) int {
+
+	if volType == VolumeTypeHot {
+		return PartitionTypeNormal
+	}
+
+	if isPreload {
+		return PartitionTypePreLoad
+	}
+
+	return PartitionTypeCache
+}
+
+func IsCacheDp(typ int) bool {
+	return typ == PartitionTypeCache
+}
+
+func IsNormalDp(typ int) bool {
+	return typ == PartitionTypeNormal
+}
+
+func IsPreLoadDp(typ int) bool {
+	return typ == PartitionTypePreLoad
+}
+
+const (
+	VolumeTypeHot  = 0
+	VolumeTypeCold = 1
+)
+
+func IsCold(typ int) bool {
+	return typ == VolumeTypeCold
+}
+
+func IsHot(typ int) bool {
+	return typ == VolumeTypeHot
+}
+
+const (
+	NoCache = 0
+	RCache  = 1
+	RWCache = 2
+)
+
+const (
+	LFClient = 1 // low frequency client
+)

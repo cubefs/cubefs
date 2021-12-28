@@ -237,9 +237,11 @@ pre_build() {
 }
 
 run_test() {
-    pre_build
+#    pre_build
+    pre_build_server
     pushd $SrcPath >/dev/null
-    go test ./...
+    echo -n "${TPATH}"
+    go test $MODFLAGS -ldflags "${LDFlags}" -cover ./master
     ret=$?
     popd >/dev/null
     exit $ret
@@ -312,6 +314,21 @@ build_libsdk() {
     popd >/dev/null
 }
 
+build_preload() {
+    pre_build_server
+    pushd $SrcPath >/dev/null
+    echo -n "build cfs-preload   "
+    go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-preload ${SrcPath}/preload/*.go && echo "success" || echo "failed"
+}
+
+build_bcache(){
+    pre_build
+    pushd $SrcPath >/dev/null
+    echo -n "build cfs-blockcache      "
+    go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-bcache ${SrcPath}/blockcache/*.go  && echo "success" || echo "failed"
+    popd >/dev/null
+}
+
 clean() {
     $RM -rf ${BuildBinPath}
 }
@@ -330,6 +347,7 @@ case "$cmd" in
         build_client
         build_cli
         build_libsdk
+        build_bcache
         ;;
     "test")
         run_test
@@ -351,6 +369,12 @@ case "$cmd" in
         ;;
     "libsdk")
         build_libsdk
+        ;;
+    "preload")
+        build_preload
+        ;;
+    "bcache")
+        build_bcache
         ;;
     "clean")
         clean

@@ -32,6 +32,7 @@ func createDataPartition(vol *Vol, count int, t *testing.T) {
 		hostAddr, proto.AdminCreateDataPartition, count, vol.Name)
 	fmt.Println(reqURL)
 	process(reqURL, t)
+
 	newCount := len(vol.dataPartitions.partitions)
 	total := oldCount + count
 	if newCount != total {
@@ -49,6 +50,7 @@ func getDataPartition(id uint64, t *testing.T) {
 	process(reqURL, t)
 }
 
+// test
 func decommissionDataPartition(dp *DataPartition, t *testing.T) {
 	offlineAddr := dp.Hosts[0]
 	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v",
