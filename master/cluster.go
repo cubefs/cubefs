@@ -1595,7 +1595,8 @@ func (c *Cluster) removeDataPartitionRaftMember(dp *DataPartition, removePeer pr
 	defer dp.offlineMutex.Unlock()
 	defer func() {
 		if err1 := c.updateDataPartitionOfflinePeerIDWithLock(dp, 0); err1 != nil {
-			err = errors.Trace(err, "updateDataPartitionOfflinePeerIDWithLock failed, err[%v]", err1)
+			err = errors.Trace(err, "updateDataPartition OfflinePeerIDWithLock failed, err[%v]", err1)
+			log.LogErrorf("action[removeDataPartitionRaftMember] vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
 		}
 	}()
 	if err = c.updateDataPartitionOfflinePeerIDWithLock(dp, removePeer.ID); err != nil {
