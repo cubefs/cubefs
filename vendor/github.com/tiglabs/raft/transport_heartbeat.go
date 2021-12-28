@@ -15,6 +15,7 @@
 package raft
 
 import (
+	"fmt"
 	"net"
 	"sync"
 
@@ -97,7 +98,7 @@ func (t *heartbeatTransport) handleConn(conn *util.ConnTimeout) {
 				return
 			default:
 				if msg, err := reciveMessage(bufRd); err != nil {
-					logger.Error("[heartbeatTransport] recive message from conn error", err.Error())
+					logger.Error(fmt.Sprintf("[heartbeatTransport] recive message from conn error, %s", err.Error()))
 					return
 				} else {
 					//logger.Debug(fmt.Sprintf("Recive %v from (%v)", msg.ToString(), conn.RemoteAddr()))

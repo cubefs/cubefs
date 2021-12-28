@@ -98,6 +98,7 @@ type DataNode struct {
 	raftReplica     string
 	raftStore       raftstore.RaftStore
 	tickInterval    int
+	startTime       int64
 
 	tcpListener net.Listener
 	stopC       chan bool
@@ -245,6 +246,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 }
 
 func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
+	s.startTime = time.Now().Unix()
 	s.space = NewSpaceManager(s)
 	if len(strings.TrimSpace(s.port)) == 0 {
 		err = ErrNewSpaceManagerFailed

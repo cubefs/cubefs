@@ -16,12 +16,13 @@ package stream
 
 import (
 	"fmt"
-	"golang.org/x/net/context"
 	"hash/crc32"
 	"net"
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"golang.org/x/net/context"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data/wrapper"
@@ -297,6 +298,10 @@ func (s *Streamer) write(data []byte, offset, size, flags int) (total int, err e
 		var writeSize int
 		if req.ExtentKey != nil {
 			writeSize, err = s.doOverwrite(req, direct)
+			if s.client.bcacheEnable {
+				cacheKey := util.GenerateKey(s.client.volumeName, s.inode, uint64(req.FileOffset))
+				go s.client.evictBcache(cacheKey)
+			}
 		} else {
 			writeSize, err = s.doWrite(req.Data, req.FileOffset, req.Size, direct)
 		}
@@ -341,6 +346,11 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 		return
 	}
 
+	retry := true
+	if proto.IsCold(s.client.volumeType) {
+		retry = false
+	}
+
 	sc := NewStreamConn(dp, false)
 
 	for total < size {
@@ -354,7 +364,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 		reqPacket.CRC = crc32.ChecksumIEEE(reqPacket.Data[:packSize])
 
 		replyPacket := new(Packet)
-		err = sc.Send(reqPacket, func(conn *net.TCPConn) (error, bool) {
+		err = sc.Send(retry, reqPacket, func(conn *net.TCPConn) (error, bool) {
 			e := replyPacket.ReadFromConn(conn, proto.ReadDeadlineTime)
 			if e != nil {
 				log.LogWarnf("Stream Writer doOverwrite: ino(%v) failed to read from connect, req(%v) err(%v)", s.inode, reqPacket, e)
@@ -388,7 +398,6 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 
 		total += packSize
 	}
-
 	return
 }
 
@@ -405,23 +414,35 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 	}
 
 	log.LogDebugf("doWrite enter: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
+	if proto.IsHot(s.client.volumeType) {
+		for i := 0; i < MaxNewHandlerRetry; i++ {
+			if s.handler == nil {
+				s.handler = NewExtentHandler(s, offset, storeMode)
+				s.dirty = false
+			}
 
-	for i := 0; i < MaxNewHandlerRetry; i++ {
-		if s.handler == nil {
-			s.handler = NewExtentHandler(s, offset, storeMode)
-			s.dirty = false
+			ek, err = s.handler.write(data, offset, size, direct)
+			if err == nil && ek != nil {
+				if !s.dirty {
+					s.dirtylist.Put(s.handler)
+					s.dirty = true
+				}
+				break
+			}
+
+			s.closeOpenHandler()
 		}
-
+	} else {
+		s.handler = NewExtentHandler(s, offset, storeMode)
+		s.dirty = false
 		ek, err = s.handler.write(data, offset, size, direct)
 		if err == nil && ek != nil {
 			if !s.dirty {
 				s.dirtylist.Put(s.handler)
 				s.dirty = true
 			}
-			break
 		}
-
-		s.closeOpenHandler()
+		err = s.closeOpenHandler()
 	}
 
 	if err != nil || ek == nil {
@@ -507,14 +528,14 @@ func (s *Streamer) traverse() (err error) {
 	return
 }
 
-func (s *Streamer) closeOpenHandler() {
+func (s *Streamer) closeOpenHandler() (err error) {
 	if s.handler != nil {
 		s.handler.setClosed()
 		if s.dirtylist.Len() < MaxDirtyListLen {
 			s.handler.flushPacket()
 		} else {
 			// TODO unhandled error
-			s.handler.flush()
+			err = s.handler.flush()
 		}
 
 		if !s.dirty {
@@ -524,6 +545,7 @@ func (s *Streamer) closeOpenHandler() {
 		}
 		s.handler = nil
 	}
+	return err
 }
 
 func (s *Streamer) open() {

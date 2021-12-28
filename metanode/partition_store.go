@@ -105,6 +105,7 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 	defer fp.Close()
 	reader := bufio.NewReaderSize(fp, 4*1024*1024)
 	inoBuf := make([]byte, 4)
+
 	for {
 		inoBuf = inoBuf[:4]
 		// first read length
@@ -135,6 +136,9 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 			err = errors.NewErrorf("[loadInode] Unmarshal: %s", err.Error())
 			return
 		}
+
+		mp.size += ino.Size
+
 		mp.fsmCreateInode(ino)
 		mp.checkAndInsertFreeList(ino)
 		if mp.config.Cursor < ino.Inode {
@@ -142,6 +146,7 @@ func (mp *metaPartition) loadInode(rootDir string) (err error) {
 		}
 		numInodes += 1
 	}
+
 }
 
 // Load dentry from the dentry snapshot.
@@ -400,14 +405,21 @@ func (mp *metaPartition) storeInode(rootDir string,
 		// TODO Unhandled errors
 		fp.Close()
 	}()
+
+	size := uint64(0)
+
 	var data []byte
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
 	sm.inodeTree.Ascend(func(i BtreeItem) bool {
 		ino := i.(*Inode)
+
 		if data, err = ino.Marshal(); err != nil {
 			return false
 		}
+
+		size += ino.Size
+
 		// set length
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
 		if _, err = fp.Write(lenBuf); err != nil {
@@ -425,9 +437,13 @@ func (mp *metaPartition) storeInode(rootDir string,
 		}
 		return true
 	})
+
 	crc = sign.Sum32()
-	log.LogInfof("storeInode: store complete: partitoinID(%v) volume(%v) numInodes(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.inodeTree.Len(), crc)
+	mp.size = size
+
+	log.LogInfof("storeInode: store complete: partitoinID(%v) volume(%v) numInodes(%v) crc(%v), size (%d)",
+		mp.config.PartitionId, mp.config.VolName, sm.inodeTree.Len(), crc, size)
+
 	return
 }
 

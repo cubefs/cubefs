@@ -1,0 +1,77 @@
+{
+	"comment": "",
+	"ignore": "",
+	"package": [
+		{
+			"checksumSHA1": "DDXHdSUJxCxMc1bTubm1IwelCFM=",
+			"path": "github.com/brahma-adshonor/gohook",
+			"revision": "373fef59cbb3fdd6a628d77fbe3d689fa72a6d5c",
+			"revisionTime": "2021-09-28T03:28:24Z"
+		},
+		{
+			"path": "github.com/gohook",
+			"revision": ""
+		},
+		{
+			"checksumSHA1": "5ONprvAGtKBdlC21Qb9yyeDrTNo=",
+			"path": "github.com/golang/protobuf/internal/testprotos/proto2_proto",
+			"revision": "ae97035608a719c7a1c1c41bed0ae0744bdb0c6f",
+			"revisionTime": "2021-03-29T18:20:59Z"
+		},
+		{
+			"checksumSHA1": "PbNkv6Fgg/3YvkaXCGJBs15KZvU=",
+			"path": "github.com/golang/protobuf/internal/testprotos/proto3_proto",
+			"revision": "ae97035608a719c7a1c1c41bed0ae0744bdb0c6f",
+			"revisionTime": "2021-03-29T18:20:59Z"
+		},
+		{
+			"checksumSHA1": "co7v2yjgYk133C00L/agu2C+LXw=",
+			"path": "github.com/golang/protobuf/protoc-gen-go/descriptor",
+			"revision": "ae97035608a719c7a1c1c41bed0ae0744bdb0c6f",
+			"revisionTime": "2021-03-29T18:20:59Z"
+		},
+		{
+			"checksumSHA1": "ugmrOFixAvUDif8Ju9DKTgRaAxk=",
+			"path": "github.com/golang/protobuf/ptypes",
+			"revision": "ae97035608a719c7a1c1c41bed0ae0744bdb0c6f",
+			"revisionTime": "2021-03-29T18:20:59Z"
+		},
+		{
+			"checksumSHA1": "pl3fYP7BvazPvgmKAb6B3yIN9wY=",
+			"path": "github.com/golang/protobuf/ptypes/any",
+			"revision": "ae97035608a719c7a1c1c41bed0ae0744bdb0c6f",
+			"revisionTime": "2021-03-29T18:20:59Z"
+		},
+		{
+			"checksumSHA1": "+F8DwRBqdOmM+j9yJ3eJZcvbkNA=",
+			"path": "github.com/golang/protobuf/ptypes/duration",
+			"revision": "ae97035608a719c7a1c1c41bed0ae0744bdb0c6f",
+			"revisionTime": "2021-03-29T18:20:59Z"
+		},
+		{
+			"checksumSHA1": "QeyAFc+xTnUYo+BiSaLJbIvFyz0=",
+			"path": "github.com/golang/protobuf/ptypes/timestamp",
+			"revision": "ae97035608a719c7a1c1c41bed0ae0744bdb0c6f",
+			"revisionTime": "2021-03-29T18:20:59Z"
+		},
+		{
+			"checksumSHA1": "fROk3NEFAz88JXptqo4kpwD15Ic=",
+			"path": "github.com/matttproud/golang_protobuf_extensions/testdata",
+			"revision": "c182affec369e30f25d3eb8cd8a478dee585ae7d",
+			"revisionTime": "2018-12-31T17:19:20Z"
+		},
+		{
+			"checksumSHA1": "LVJPhIEhq+BD3UHG3FNTwnPlomA=",
+			"path": "github.com/prometheus/client_golang/prometheus/push",
+			"revision": "196536534fbba6249b94d4ccb2269cf162ceef44",
+			"revisionTime": "2021-06-07T16:56:00Z"
+		},
+		{
+			"checksumSHA1": "T6mJv/27xsMr+H6saFqVl2ieI/k=",
+			"path": "golang.org/x/arch/x86/x86asm",
+			"revision": "b76863e36670e165c85261bc41fabaf345376022",
+			"revisionTime": "2021-09-23T17:44:22Z"
+		}
+	],
+	"rootPath": "github.com/chubaofs/chubaofs"
+}

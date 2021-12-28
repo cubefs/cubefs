@@ -27,6 +27,7 @@ type MetaNodeInfo struct {
 	ID                        uint64
 	Addr                      string
 	IsActive                  bool
+	IsWriteAble               bool
 	ZoneName                  string `json:"Zone"`
 	MaxMemAvailWeight         uint64 `json:"MaxMemAvailWeight"`
 	Total                     uint64 `json:"TotalWeight"`
@@ -51,6 +52,7 @@ type DataNodeInfo struct {
 	Addr                      string
 	ReportTime                time.Time
 	IsActive                  bool
+	IsWriteAble               bool
 	UsageRatio                float64 // used / total space
 	SelectedTimes             uint64  // number times that this datanode has been selected as the location for a data partition.
 	Carry                     float64 // carry is a factor used in cacluate the node's weight
@@ -149,17 +151,22 @@ type NodeStatInfo struct {
 }
 
 type VolStatInfo struct {
-	Name        string
-	TotalSize   uint64
-	UsedSize    uint64
-	UsedRatio   string
-	EnableToken bool
-	InodeCount  uint64
+	Name           string
+	TotalSize      uint64
+	UsedSize       uint64
+	UsedRatio      string
+	CacheTotalSize uint64
+	CacheUsedSize  uint64
+	CacheUsedRatio string
+	EnableToken    bool
+	InodeCount     uint64
 }
 
 // DataPartition represents the structure of storing the file contents.
 type DataPartitionInfo struct {
 	PartitionID             uint64
+	PartitionTTL            int64
+	PartitionType           int
 	LastLoadedTime          int64
 	ReplicaNum              uint8
 	Status                  int8

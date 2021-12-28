@@ -194,8 +194,12 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		FileCount:            len(files),
 		Replicas:             partition.Replicas(),
 		TinyDeleteRecordSize: tinyDeleteRecordSize,
-		RaftStatus:           partition.raftPartition.Status(),
 	}
+
+	if partition.isNormalType() {
+		result.RaftStatus = partition.raftPartition.Status()
+	}
+
 	s.buildSuccessResp(w, result)
 }
 

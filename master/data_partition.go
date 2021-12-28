@@ -30,6 +30,8 @@ import (
 // DataPartition represents the structure of storing the file contents.
 type DataPartition struct {
 	PartitionID    uint64
+	PartitionType  int
+	PartitionTTL   int64
 	LastLoadedTime int64
 	ReplicaNum     uint8
 	Status         int8
@@ -52,7 +54,19 @@ type DataPartition struct {
 	FilesWithMissingReplica map[string]int64 // key: file name, value: last time when a missing replica is found
 }
 
-func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64) (partition *DataPartition) {
+type DataPartitionPreLoad struct {
+	PreloadCacheTTL      uint64
+	preloadCacheCapacity int
+	preloadReplicaNum    int
+	preloadZoneName      string
+}
+
+func (d *DataPartitionPreLoad) toString() string {
+	return fmt.Sprintf("PreloadCacheTTL[%d]_preloadCacheCapacity[%d]_preloadReplicaNum[%d]_preloadZoneName[%s]",
+		d.PreloadCacheTTL, d.preloadCacheCapacity, d.preloadReplicaNum, d.preloadZoneName)
+}
+
+func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64, partitionType int, partitionTTL int64) (partition *DataPartition) {
 	partition = new(DataPartition)
 	partition.ReplicaNum = replicaNum
 	partition.PartitionID = ID
@@ -66,6 +80,9 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64)
 	partition.Status = proto.ReadOnly
 	partition.VolName = volName
 	partition.VolID = volID
+	partition.PartitionType = partitionType
+	partition.PartitionTTL = partitionTTL
+
 	partition.modifyTime = time.Now().Unix()
 	partition.createTime = time.Now().Unix()
 	partition.lastWarnTime = time.Now().Unix()
@@ -76,6 +93,19 @@ func (partition *DataPartition) resetFilesWithMissingReplica() {
 	partition.Lock()
 	defer partition.Unlock()
 	partition.FilesWithMissingReplica = make(map[string]int64)
+}
+
+func (partition *DataPartition) dataNodeStartTime() int64 {
+	partition.Lock()
+	defer partition.Unlock()
+	startTime := int64(0)
+	for _, replica := range partition.Replicas {
+		if startTime < replica.dataNode.StartTime {
+			startTime = replica.dataNode.StartTime
+		}
+	}
+
+	return startTime
 }
 
 func (partition *DataPartition) addReplica(replica *DataReplica) {
@@ -144,10 +174,11 @@ func (partition *DataPartition) createTaskToRemoveRaftMember(removePeer proto.Pe
 	return
 }
 
-func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64, peers []proto.Peer, hosts []string, createType int) (task *proto.AdminTask) {
+func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64,
+	peers []proto.Peer, hosts []string, createType int, partitionType int) (task *proto.AdminTask) {
 
 	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(
-		partition.VolName, partition.PartitionID, peers, int(dataPartitionSize), hosts, createType))
+		partition.VolName, partition.PartitionID, peers, int(dataPartitionSize), hosts, createType, partitionType))
 	partition.resetTaskID(task)
 	return
 }
@@ -285,13 +316,17 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *proto.Dat
 	dpr = new(proto.DataPartitionResponse)
 	partition.Lock()
 	defer partition.Unlock()
+
 	dpr.PartitionID = partition.PartitionID
+	dpr.PartitionType = partition.PartitionType
+	dpr.PartitionTTL = partition.PartitionTTL
 	dpr.Status = partition.Status
 	dpr.ReplicaNum = partition.ReplicaNum
 	dpr.Hosts = make([]string, len(partition.Hosts))
 	copy(dpr.Hosts, partition.Hosts)
 	dpr.LeaderAddr = partition.getLeaderAddr()
 	dpr.IsRecover = partition.isRecover
+
 	return
 }
 
@@ -400,6 +435,7 @@ func (partition *DataPartition) hasReplica(host string) (replica *DataReplica, o
 func (partition *DataPartition) checkReplicaNum(c *Cluster, vol *Vol) {
 	partition.RLock()
 	defer partition.RUnlock()
+
 	if int(partition.ReplicaNum) != len(partition.Hosts) {
 		msg := fmt.Sprintf("FIX DataPartition replicaNum,clusterID[%v] volName[%v] partitionID:%v orgReplicaNum:%v",
 			c.Name, vol.Name, partition.PartitionID, partition.ReplicaNum)
@@ -457,6 +493,18 @@ func (partition *DataPartition) getLiveReplicasFromHosts(timeOutSec int64) (repl
 		if !ok {
 			continue
 		}
+		if replica.isLive(timeOutSec) == true {
+			replicas = append(replicas, replica)
+		}
+	}
+
+	return
+}
+
+// get all the live replicas from the persistent hosts
+func (partition *DataPartition) getLiveReplicas(timeOutSec int64) (replicas []*DataReplica) {
+	replicas = make([]*DataReplica, 0)
+	for _, replica := range partition.Replicas {
 		if replica.isLive(timeOutSec) == true {
 			replicas = append(replicas, replica)
 		}
@@ -645,13 +693,17 @@ func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string) 
 	if err = c.removeDataReplica(partition, host, false); err != nil {
 		return
 	}
+
 	partition.RLock()
 	defer partition.RUnlock()
+
 	oldReplicaNum := partition.ReplicaNum
 	partition.ReplicaNum = partition.ReplicaNum - 1
+
 	if err = c.syncUpdateDataPartition(partition); err != nil {
 		partition.ReplicaNum = oldReplicaNum
 	}
+
 	return
 }
 
@@ -670,18 +722,20 @@ func (partition *DataPartition) getLiveZones(offlineAddr string) (zones []string
 	return
 }
 
-func (partition *DataPartition) ToProto(c *Cluster) *proto.DataPartitionInfo {
+func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo {
 	partition.RLock()
 	defer partition.RUnlock()
+
 	var replicas = make([]*proto.DataReplica, len(partition.Replicas))
 	for i, replica := range partition.Replicas {
 		replicas[i] = &replica.DataReplica
 	}
+
 	var fileInCoreMap = make(map[string]*proto.FileInCore)
 	for k, v := range partition.FileInCoreMap {
-		var fc = v.ToProto()
-		fileInCoreMap[k] = &fc
+		fileInCoreMap[k] = v.clone()
 	}
+
 	zones := make([]string, len(partition.Hosts))
 	for idx, host := range partition.Hosts {
 		dataNode, err := c.dataNode(host)
@@ -689,8 +743,11 @@ func (partition *DataPartition) ToProto(c *Cluster) *proto.DataPartitionInfo {
 			zones[idx] = dataNode.ZoneName
 		}
 	}
+
 	return &proto.DataPartitionInfo{
 		PartitionID:             partition.PartitionID,
+		PartitionTTL:            partition.PartitionTTL,
+		PartitionType:           partition.PartitionType,
 		LastLoadedTime:          partition.LastLoadedTime,
 		ReplicaNum:              partition.ReplicaNum,
 		Status:                  partition.Status,

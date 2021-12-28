@@ -35,19 +35,20 @@ import (
 	"runtime/debug"
 	"strings"
 	"syscall"
+	"time"
 
-	"github.com/chubaofs/chubaofs/sdk/master"
-
+	cfs "github.com/chubaofs/chubaofs/client/fs"
 	sysutil "github.com/chubaofs/chubaofs/util/sys"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-	cfs "github.com/chubaofs/chubaofs/client/fs"
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/stat"
 	"github.com/chubaofs/chubaofs/util/ump"
 	"github.com/jacobsa/daemonize"
 )
@@ -56,6 +57,8 @@ const (
 	MaxReadAhead = 512 * 1024
 
 	defaultRlimit uint64 = 1024000
+
+	UpdateConfInterval = 2 * time.Minute
 )
 
 const (
@@ -108,8 +111,17 @@ func main() {
 
 	cfg, _ := config.LoadConfigFile(*configFile)
 	opt, err := parseMountOption(cfg)
+
 	if err != nil {
 		err = errors.NewErrorf("parse mount opt failed: %v\n", err)
+		fmt.Println(err)
+		daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+	//load  conf from master
+	err = loadConfFromMaster(opt)
+	if err != nil {
+		err = errors.NewErrorf("parse mount opt from master failed: %v\n", err)
 		fmt.Println(err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
@@ -130,6 +142,16 @@ func main() {
 		os.Exit(1)
 	}
 	defer log.LogFlush()
+
+	_, err = stat.NewStatistic(opt.Logpath, LoggerPrefix, int64(stat.DefaultStatLogSize),
+		stat.DefaultTimeOutUs, true)
+	if err != nil {
+		err = errors.NewErrorf("Init stat log fail: %v\n", err)
+		fmt.Println(err)
+		daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+	stat.ClearStat()
 
 	outputFilePath := path.Join(opt.Logpath, LoggerPrefix, LoggerOutput)
 	outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
@@ -269,6 +291,28 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 		}
 	}()
 
+	go func() {
+		t := time.NewTicker(UpdateConfInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				log.LogDebugf("UpdateVolConf: start load conf from master")
+				if proto.IsCold(opt.VolType) {
+					var mc = master.NewMasterClientFromString(opt.Master, false)
+					var volumeInfo *proto.SimpleVolView
+					volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(opt.Volname)
+					if err != nil {
+						return
+					}
+					super.CacheAction = volumeInfo.CacheAction
+					super.CacheThreshold = volumeInfo.CacheThreshold
+					super.EbsBlockSize = volumeInfo.ObjBlockSize
+				}
+			}
+		}
+	}()
+
 	if err = ump.InitUmp(fmt.Sprintf("%v_%v", super.ClusterName(), ModuleName), opt.UmpDatadir); err != nil {
 		return
 	}
@@ -358,6 +402,11 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.EnableXattr = GlobalMountOptions[proto.EnableXattr].GetBool()
 	opt.NearRead = GlobalMountOptions[proto.NearRead].GetBool()
 	opt.EnablePosixACL = GlobalMountOptions[proto.EnablePosixACL].GetBool()
+	opt.EnableSummary = GlobalMountOptions[proto.EnableSummary].GetBool()
+
+	opt.ReadThreads = GlobalMountOptions[proto.ReadThreads].GetInt64()
+	opt.WriteThreads = GlobalMountOptions[proto.WriteThreads].GetInt64()
+	opt.EnableBcache = GlobalMountOptions[proto.EnableBcache].GetBool()
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))
@@ -427,4 +476,32 @@ func changeRlimit(val uint64) {
 
 func freeOSMemory(w http.ResponseWriter, r *http.Request) {
 	debug.FreeOSMemory()
+}
+
+func loadConfFromMaster(opt *proto.MountOptions) (err error) {
+	var mc = master.NewMasterClientFromString(opt.Master, false)
+	var volumeInfo *proto.SimpleVolView
+	volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(opt.Volname)
+	if err != nil {
+		return
+	}
+	opt.VolType = volumeInfo.VolType
+	opt.EbsBlockSize = volumeInfo.ObjBlockSize
+	opt.CacheAction = volumeInfo.CacheAction
+	opt.CacheThreshold = volumeInfo.CacheThreshold
+
+	var clusterInfo *proto.ClusterInfo
+	clusterInfo, err = mc.AdminAPI().GetClusterInfo()
+	if err != nil {
+		return
+	}
+	opt.EbsEndpoint = clusterInfo.EbsAddr
+	opt.EbsServicePath = clusterInfo.ServicePath
+	if proto.IsCold(opt.VolType) {
+		if opt.EbsBlockSize == 0 || opt.EbsEndpoint == "" || opt.EbsServicePath == "" {
+			return errors.New("cold volume ebs config is empty.")
+		}
+		log.LogDebugf("ebs config: EbsEndpoint(%v) EbsServicePath(%v) EbsBlockSize(%v)", opt.EbsEndpoint, opt.EbsServicePath, opt.EbsBlockSize)
+	}
+	return
 }

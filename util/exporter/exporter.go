@@ -17,15 +17,20 @@ package exporter
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
 
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/client_golang/prometheus/push"
 )
 
 const (
@@ -37,6 +42,7 @@ const (
 	ConfigKeyConsulMeta     = "consulMeta"     // consul meta
 	ConfigKeyIpFilter       = "ipFilter"       // add ip filter
 	ConfigKeyEnablePid      = "enablePid"      // enable report partition id
+	ConfigKeyPushAddr       = "pushAddr"       // enable report partition id
 	ChSize                  = 1024 * 10        //collect chan size
 
 	// monitor label name
@@ -45,16 +51,20 @@ const (
 	PartId = "partid"
 	Op     = "op"
 	Type   = "type"
+	Err    = "err"
 )
 
 var (
 	namespace         string
 	clustername       string
 	modulename        string
+	pushAddr          string
 	exporterPort      int64
 	enabledPrometheus = false
+	enablePush        = false
 	EnablePid         = false
 	replacer          = strings.NewReplacer("-", "_", ".", "_", " ", "_", ",", "_", ":", "_")
+	registry          = prometheus.NewRegistry()
 )
 
 func metricsName(name string) string {
@@ -74,11 +84,19 @@ func Init(role string, cfg *config.Config) {
 
 	port := cfg.GetInt64(ConfigKeyExporterPort)
 	if port == 0 {
-		log.LogInfof("%v exporter port not set", port)
-		return
+		log.LogInfof("%v exporter port not set, use default 17510", port)
+		port = 17510
 	}
+
 	exporterPort = port
 	enabledPrometheus = true
+
+	pushAddr = cfg.GetString(ConfigKeyPushAddr)
+	log.LogInfof("pushAddr %v ", pushAddr)
+	if pushAddr != "" {
+		enablePush = true
+	}
+
 	http.Handle(PromHandlerPattern, promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
 		Timeout: 5 * time.Second,
 	}))
@@ -125,10 +143,6 @@ func InitWithRouter(role string, cfg *config.Config, router *mux.Router, exPort 
 }
 
 func RegistConsul(cluster string, role string, cfg *config.Config) {
-	clustername = replacer.Replace(cluster)
-	consulAddr := cfg.GetString(ConfigKeyConsulAddr)
-	consulMeta := cfg.GetString(ConfigKeyConsulMeta)
-
 	ipFilter := cfg.GetString(ConfigKeyIpFilter)
 	host, err := GetLocalIpAddr(ipFilter)
 	if err != nil {
@@ -136,15 +150,87 @@ func RegistConsul(cluster string, role string, cfg *config.Config) {
 		return
 	}
 
+	rawmnt := cfg.GetString("subdir")
+	if rawmnt == "" {
+		rawmnt = "/"
+	}
+	mountPoint, _ := filepath.Abs(rawmnt)
+	log.LogInfof("RegistConsul:%v", enablePush)
+	if enablePush {
+		log.LogWarnf("[RegisterConsul] use auto push data strategy, not register consul")
+		autoPush(pushAddr, role, cluster, host, mountPoint)
+		return
+	}
+
+	clustername = replacer.Replace(cluster)
+	consulAddr := cfg.GetString(ConfigKeyConsulAddr)
+	consulMeta := cfg.GetString(ConfigKeyConsulMeta)
+
 	if exporterPort == int64(0) {
 		exporterPort = cfg.GetInt64(ConfigKeyExporterPort)
 	}
+
+	if exporterPort == 0 {
+		log.LogInfo("config export port is 0, use default 17510")
+		exporterPort = 17510
+	}
+
+	if len(consulAddr) <= 0 {
+		log.LogInfo("consul addr is empty, use default, consul.ums.oppo.local ")
+		consulAddr = "consul.ums.oppo.local"
+	}
+
 	if exporterPort != int64(0) && len(consulAddr) > 0 {
 		if ok := strings.HasPrefix(consulAddr, "http"); !ok {
 			consulAddr = "http://" + consulAddr
 		}
 		go DoConsulRegisterProc(consulAddr, AppName, role, cluster, consulMeta, host, exporterPort)
 	}
+}
+
+func autoPush(pushAddr, role, cluster, ip, mountPoint string) {
+
+	pid := os.Getpid()
+
+	client := &http.Client{
+		Timeout: time.Second * 10,
+	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.LogWarnf("get host name failed %v", err)
+	}
+
+	pusher := push.New(pushAddr, "cbfs").
+		Client(client).
+		Gatherer(registry).
+		Grouping("cip", ip).
+		Grouping("role", role).
+		Grouping("cluster", cluster).
+		Grouping("pid", strconv.Itoa(pid)).
+		Grouping("commit", proto.CommitID).
+		Grouping("dataset", "custom").
+		Grouping("category", "custom").
+		Grouping("app", AppName).
+		Grouping("mountPoint", mountPoint).
+		Grouping("hostName", hostname)
+
+	log.LogInfof("start push data, ip %s, addr %s, role %s, cluster %s, mountPoint %s, hostName %s",
+		ip, pushAddr, role, cluster, mountPoint, hostname)
+
+	ticker := time.NewTicker(time.Second * 15)
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				err := pusher.Push()
+				if err != nil {
+					log.LogWarnf("push monitor data to %s err, %s", pushAddr, err.Error())
+				}
+			}
+		}
+	}()
+
 }
 
 func collect() {

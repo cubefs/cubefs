@@ -32,6 +32,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/stretchr/testify/assert"
 )
 
 const (
@@ -65,6 +66,7 @@ var commonVol *Vol
 var cfsUser *proto.UserInfo
 
 func createDefaultMasterServerForTest() *Server {
+
 	cfgJSON := `{
 		"role": "master",
 		"ip": "127.0.0.1",
@@ -81,6 +83,7 @@ func createDefaultMasterServerForTest() *Server {
 		"storeDir":"/tmp/chubaofs/rocksdbstore",
 		"clusterName":"chubaofs"
 	}`
+
 	testServer, err := createMasterServer(cfgJSON)
 	if err != nil {
 		panic(err)
@@ -102,16 +105,40 @@ func createDefaultMasterServerForTest() *Server {
 	testServer.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
-	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 100, false, false, false)
+	// set load factor
+	err = testServer.cluster.setClusterLoadFactor(100)
 	if err != nil {
+		panic("set load factor fail" + err.Error())
+	}
+
+	req := &createVolReq{
+		name:             commonVolName,
+		owner:            "cfs",
+		size:             3,
+		mpCount:          3,
+		dpReplicaNum:     3,
+		capacity:         100,
+		followerRead:     false,
+		authenticate:     false,
+		crossZone:        false,
+		normalZonesFirst: false,
+		zoneName:         testZone2,
+		description:      "",
+	}
+
+	vol, err := testServer.cluster.createVol(req)
+	if err != nil {
+		log.LogFlush()
 		panic(err)
 	}
+
 	vol, err = testServer.cluster.getVol(commonVolName)
 	if err != nil {
 		panic(err)
 	}
+
 	commonVol = vol
-	fmt.Printf("vol[%v] has created\n", commonVol.Name)
+	fmt.Printf("vol[%v] has created\n", newSimpleView(commonVol))
 
 	if err = createUserWithPolicy(testServer); err != nil {
 		panic(err)
@@ -202,15 +229,20 @@ func TestSetMetaNodeThreshold(t *testing.T) {
 }
 
 func TestSetDisableAutoAlloc(t *testing.T) {
-	enable := true
-	reqURL := fmt.Sprintf("%v%v?enable=%v", hostAddr, proto.AdminClusterFreeze, enable)
-	fmt.Println(reqURL)
-	process(reqURL, t)
-	if server.cluster.DisableAutoAllocate != enable {
-		t.Errorf("set disableAutoAlloc to %v failed", enable)
+	req := map[string]interface{}{"enable": true}
+	processWithFatalV2(proto.AdminClusterFreeze, true, req, t)
+
+	if !server.cluster.DisableAutoAllocate {
+		t.Errorf("set disableAutoAlloc to %v failed", true)
 		return
 	}
-	server.cluster.DisableAutoAllocate = false
+
+	req = map[string]interface{}{"enable": false}
+	processWithFatalV2(proto.AdminClusterFreeze, true, req, t)
+	if server.cluster.DisableAutoAllocate {
+		t.Errorf("set disableAutoAlloc to %v failed", false)
+		return
+	}
 }
 
 func TestGetCluster(t *testing.T) {
@@ -223,6 +255,44 @@ func TestGetIpAndClusterName(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetIP)
 	fmt.Println(reqURL)
 	process(reqURL, t)
+}
+
+func fatal(t *testing.T, str string) {
+	log.LogFlush()
+	t.Fatal(str)
+}
+
+type httpReply struct {
+	Code int32           `json:"code"`
+	Msg  string          `json:"msg"`
+	Data json.RawMessage `json:"data"`
+}
+
+func processWithFatalV2(url string, success bool, req map[string]interface{}, t *testing.T) (reply *httpReply) {
+	reqURL := buildUrl(hostAddr, url, req)
+
+	resp, err := http.Get(reqURL)
+	assert.Nil(t, err)
+	assert.True(t, resp.StatusCode == http.StatusOK)
+
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	assert.Nil(t, err)
+
+	t.Log(string(body), reqURL)
+
+	reply = &httpReply{}
+	err = json.Unmarshal(body, reply)
+	assert.Nil(t, err)
+
+	if success {
+		assert.True(t, reply.Code == proto.ErrCodeSuccess)
+		return reply
+	}
+
+	assert.True(t, reply.Code != proto.ErrCodeSuccess)
+
+	return
 }
 
 func process(reqURL string, t *testing.T) (reply *proto.HTTPReply) {
@@ -294,14 +364,17 @@ func decommissionDisk(addr, path string, t *testing.T) {
 
 func TestMarkDeleteVol(t *testing.T) {
 	name := "delVol"
-	createVol(name, t)
-	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey("cfs"))
+	createVol(map[string]interface{}{nameKey: name}, t)
+
+	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey(testOwner))
 	process(reqURL, t)
+
 	userInfo, err := server.user.getUserInfo("cfs")
 	if err != nil {
 		t.Error(err)
 		return
 	}
+
 	if contains(userInfo.Policy.OwnVols, name) {
 		t.Errorf("expect no vol %v in own vols, but is exist", name)
 		return
@@ -313,44 +386,154 @@ func TestSetVolCapacity(t *testing.T) {
 	setVolCapacity(300, proto.AdminVolShrink, t)
 }
 
+func TestPreloadDp(t *testing.T) {
+	volName := "preloadVol"
+	req := map[string]interface{}{}
+	req[nameKey] = volName
+	req[volTypeKey] = proto.VolumeTypeCold
+	createVol(req, t)
+
+	preCap := 60
+	checkParam(cacheCapacity, proto.AdminCreatePreLoadDataPartition, req, -1, preCap, t)
+	delVol(volName, t)
+}
+
 func TestUpdateVol(t *testing.T) {
-	capacity := 2000
-	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v",
-		hostAddr, proto.AdminUpdateVol, commonVol.Name, capacity, buildAuthKey("cfs"))
-	process(reqURL, t)
-	vol, err := server.cluster.getVol(commonVolName)
-	if err != nil {
-		t.Error(err)
-		return
-	}
-	if vol.FollowerRead != false {
-		t.Errorf("expect FollowerRead is false, but is %v", vol.FollowerRead)
-		return
+	volName := "updateVol"
+	req := map[string]interface{}{}
+	req[nameKey] = volName
+	req[volTypeKey] = proto.VolumeTypeCold
+
+	createVol(req, t)
+
+	view := getSimpleVol(volName, true, t)
+
+	// name can't be empty
+	checkParam(nameKey, proto.AdminUpdateVol, req, "", volName, t)
+	// vol name not exist
+	checkParam(nameKey, proto.AdminUpdateVol, req, "tt", volName, t)
+	// auth key can't be empty
+	checkParam(volAuthKey, proto.AdminUpdateVol, req, "", buildAuthKey(testOwner), t)
+
+	view2 := getSimpleVol(volName, true, t)
+	// if not set use default
+	assert.True(t, view.Capacity == view2.Capacity)
+	assert.True(t, view.Description == view2.Description)
+	assert.True(t, view.ZoneName == view2.ZoneName)
+	assert.True(t, view.Authenticate == view2.Authenticate)
+	assert.True(t, view.FollowerRead == view2.FollowerRead)
+	assert.True(t, view.ObjBlockSize == view2.ObjBlockSize)
+	assert.True(t, view.CacheCapacity == view2.CacheCapacity)
+	assert.True(t, view.CacheAction == view2.CacheAction)
+	assert.True(t, view.CacheThreshold == view2.CacheThreshold)
+	assert.True(t, view.CacheTtl == view2.CacheTtl)
+	assert.True(t, view.CacheHighWater == view2.CacheHighWater)
+	assert.True(t, view.CacheLowWater == view2.CacheLowWater)
+	assert.True(t, view.CacheLruInterval == view2.CacheLruInterval)
+	assert.True(t, view.CacheRule == view2.CacheRule)
+
+	// update
+	cap := 1024
+	desc := "hello_test"
+	blkSize := 6 * 1024
+	cacheCap := 102
+	threshold := 7 * 1024
+	ttl := 7
+	high := 70
+	low := 40
+	lru := 6
+	rule := "test"
+
+	checkParam(volCapacityKey, proto.AdminUpdateVol, req, "tt", cap, t)
+	setParam(descriptionKey, proto.AdminUpdateVol, req, desc, t)
+	checkParam(zoneNameKey, proto.AdminUpdateVol, req, "default", testZone1, t)
+	checkParam(authenticateKey, proto.AdminUpdateVol, req, "tt", true, t)
+	checkParam(followerReadKey, proto.AdminUpdateVol, req, "test", false, t)
+	checkParam(ebsBlkSizeKey, proto.AdminUpdateVol, req, "-1", blkSize, t)
+	checkParam(cacheActionKey, proto.AdminUpdateVol, req, "3", proto.RWCache, t)
+	checkParam(cacheCapacity, proto.AdminUpdateVol, req, "1027", cacheCap, t)
+	checkParam(cacheCapacity, proto.AdminUpdateVol, req, "-1", cacheCap, t)
+	checkParam(volCapacityKey, proto.AdminUpdateVol, req, "101", cap, t)
+	checkParam(cacheThresholdKey, proto.AdminUpdateVol, req, "-1", threshold, t)
+	checkParam(cacheTTLKey, proto.AdminUpdateVol, req, "tt", ttl, t)
+	checkParam(cacheHighWaterKey, proto.AdminUpdateVol, req, "high", high, t)
+	checkParam(cacheHighWaterKey, proto.AdminUpdateVol, req, 91, high, t)
+	checkParam(cacheLowWaterKey, proto.AdminUpdateVol, req, 78, low, t)
+	checkParam(cacheLowWaterKey, proto.AdminUpdateVol, req, 93, low, t)
+	checkParam(cacheLRUIntervalKey, proto.AdminUpdateVol, req, -1, lru, t)
+	setParam(cacheRuleKey, proto.AdminUpdateVol, req, rule, t)
+
+	view = getSimpleVol(volName, true, t)
+	// check update result
+	assert.True(t, int(view.Capacity) == cap)
+	assert.True(t, view.Description == desc)
+	assert.True(t, view.ZoneName == testZone1)
+	assert.True(t, view.Authenticate)
+	// LF vol always be true
+	assert.True(t, view.FollowerRead)
+	assert.True(t, view.ObjBlockSize == blkSize)
+	assert.True(t, view.CacheCapacity == uint64(cacheCap))
+	assert.True(t, view.CacheAction == proto.RWCache)
+	assert.True(t, view.CacheThreshold == threshold)
+	assert.True(t, view.CacheTtl == ttl)
+	assert.True(t, view.CacheHighWater == high)
+	assert.True(t, view.CacheLowWater == low)
+	assert.True(t, view.CacheLruInterval == lru)
+	assert.True(t, view.CacheRule == rule)
+
+	// update cacheRule to empty
+	setUpdateVolParm(emptyCacheRuleKey, req, true, t)
+	view = getSimpleVol(volName, true, t)
+	assert.True(t, view.CacheRule == "")
+
+	delVol(volName, t)
+	// can't update vol after delete
+	checkParam(cacheLRUIntervalKey, proto.AdminUpdateVol, req, lru, lru, t)
+}
+
+func setUpdateVolParm(key string, req map[string]interface{}, val interface{}, t *testing.T) {
+	setParam(key, proto.AdminUpdateVol, req, val, t)
+}
+
+func checkUpdateVolParm(key string, req map[string]interface{}, wrong, correct interface{}, t *testing.T) {
+	checkParam(key, proto.AdminUpdateVol, req, wrong, correct, t)
+}
+
+func delVol(name string, t *testing.T) {
+	req := map[string]interface{}{
+		nameKey:    name,
+		volAuthKey: buildAuthKey(testOwner),
 	}
 
-	reqURL = fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v&followerRead=true&zoneName=%v",
-		hostAddr, proto.AdminUpdateVol, commonVol.Name, capacity, buildAuthKey("cfs"), commonVol.zoneName)
-	process(reqURL, t)
-	if vol.FollowerRead != true {
-		t.Errorf("expect FollowerRead is true, but is %v", vol.FollowerRead)
-		return
-	}
+	processWithFatalV2(proto.AdminDeleteVol, true, req, t)
 
+	vol, err := server.cluster.getVol(name)
+	assert.True(t, err == nil)
+
+	assert.True(t, vol.Status == markDelete)
 }
 
 func setVolCapacity(capacity uint64, url string, t *testing.T) {
-	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v",
-		hostAddr, url, commonVol.Name, capacity, buildAuthKey("cfs"))
-	process(reqURL, t)
+	req := map[string]interface{}{
+		"name":     commonVol.Name,
+		"capacity": capacity,
+		"authKey":  buildAuthKey(testOwner),
+	}
+
+	processWithFatalV2(url, true, req, t)
+
 	vol, err := server.cluster.getVol(commonVolName)
 	if err != nil {
 		t.Error(err)
 		return
 	}
+
 	if vol.Capacity != capacity {
 		t.Errorf("expect capacity is %v, but is %v", capacity, vol.Capacity)
 		return
 	}
+
+	fmt.Printf("update capacity to %d success\n", capacity)
 }
 
 func buildAuthKey(owner string) string {

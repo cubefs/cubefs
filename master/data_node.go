@@ -19,6 +19,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chubaofs/chubaofs/util/log"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 )
@@ -32,6 +34,7 @@ type DataNode struct {
 	ZoneName                  string `json:"Zone"`
 	Addr                      string
 	ReportTime                time.Time
+	StartTime                 int64
 	isActive                  bool
 	sync.RWMutex              `graphql:"-"`
 	UsageRatio                float64           // used / total space
@@ -40,6 +43,7 @@ type DataNode struct {
 	TaskManager               *AdminTaskManager `graphql:"-"`
 	DataPartitionReports      []*proto.PartitionReport
 	DataPartitionCount        uint32
+	TotalPartitionSize        uint64
 	NodeSetID                 uint64
 	PersistenceDataPartitions []uint64
 	BadDisks                  []string
@@ -59,6 +63,8 @@ func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
 func (dataNode *DataNode) checkLiveness() {
 	dataNode.Lock()
 	defer dataNode.Unlock()
+	log.LogInfof("action[checkLiveness] datanode[%v] report time[%v],since report time[%v], need gap [%v]",
+		dataNode.Addr, dataNode.ReportTime, time.Since(dataNode.ReportTime), time.Second*time.Duration(defaultNodeTimeOutSec))
 	if time.Since(dataNode.ReportTime) > time.Second*time.Duration(defaultNodeTimeOutSec) {
 		dataNode.isActive = false
 	}
@@ -88,7 +94,9 @@ func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse
 	dataNode.ZoneName = resp.ZoneName
 	dataNode.DataPartitionCount = resp.CreatedPartitionCnt
 	dataNode.DataPartitionReports = resp.PartitionReports
+	dataNode.TotalPartitionSize = resp.TotalPartitionSize
 	dataNode.BadDisks = resp.BadDisks
+	dataNode.StartTime = resp.StartTime
 	if dataNode.Total == 0 {
 		dataNode.UsageRatio = 0.0
 	} else {
@@ -98,11 +106,38 @@ func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse
 	dataNode.isActive = true
 }
 
+func (dataNode *DataNode) canAlloc() bool {
+	dataNode.RLock()
+	defer dataNode.RUnlock()
+
+	if !overSoldLimit() {
+		return true
+	}
+
+	maxCapacity := overSoldCap(dataNode.Total)
+	if maxCapacity < dataNode.TotalPartitionSize {
+		return false
+	}
+
+	return true
+}
+
 func (dataNode *DataNode) isWriteAble() (ok bool) {
 	dataNode.RLock()
 	defer dataNode.RUnlock()
 
 	if dataNode.isActive == true && dataNode.AvailableSpace > 10*util.GB {
+		return true
+	}
+
+	return false
+}
+
+func (dataNode *DataNode) isWriteAbleWithSize(size uint64) (ok bool) {
+	dataNode.RLock()
+	defer dataNode.RUnlock()
+
+	if dataNode.isActive == true && dataNode.AvailableSpace > size {
 		ok = true
 	}
 

@@ -16,20 +16,22 @@ package datanode
 
 import (
 	"encoding/json"
-	"github.com/chubaofs/chubaofs/util"
 	"math"
 	"net"
 	"sync"
 	"time"
 
+	"github.com/chubaofs/chubaofs/util"
+
 	"encoding/binary"
 	"fmt"
+	"hash/crc32"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
 	"github.com/chubaofs/chubaofs/storage"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"hash/crc32"
 )
 
 // DataPartitionRepairTask defines the reapir task for the data partition.
@@ -77,8 +79,7 @@ func NewDataPartitionRepairTask(extentFiles []*storage.ExtentInfo, tinyDeleteRec
 //   add it to the tobeRepaired list, and generate the corresponding tasks.
 func (dp *DataPartition) repair(extentType uint8) {
 	start := time.Now().UnixNano()
-	log.LogInfof("action[repair] partition(%v) start.",
-		dp.partitionID)
+	log.LogInfof("action[repair] partition(%v) start.", dp.partitionID)
 
 	var tinyExtents []uint64 // unsvailable extents 小文件写
 	if extentType == proto.TinyExtentType {
@@ -314,7 +315,7 @@ func (dp *DataPartition) prepareRepairTasks(repairTasks []*DataPartitionRepairTa
 			}
 		}
 	}
-	for extentID, _ := range deleteExtents {
+	for extentID := range deleteExtents {
 		extentInfo := extentInfoMap[extentID]
 		if extentInfo != nil {
 			extentInfo.IsDeleted = true

@@ -48,6 +48,17 @@ const (
 	NearRead
 	EnablePosixACL
 
+	//adls
+	VolType
+	EbsEndpoint
+	EbsServerPath
+	CacheAction
+	EbsBlockSize
+	EnableBcache
+	ReadThreads
+	WriteThreads
+
+	EnableSummary
 	MaxMountOption
 )
 
@@ -112,6 +123,16 @@ func InitMountOptions(opts []MountOption) {
 	opts[MaxCPUs] = MountOption{"maxcpus", "The maximum number of CPUs that can be executing", "", int64(-1)}
 	opts[EnableXattr] = MountOption{"enableXattr", "Enable xattr support", "", false}
 	opts[EnablePosixACL] = MountOption{"enablePosixACL", "enable posix ACL support", "", false}
+	opts[EnableSummary] = MountOption{"enableSummary", "enable content summary", "", false}
+
+	opts[VolType] = MountOption{"volType", "volume type", "", int64(0)}
+	opts[EbsEndpoint] = MountOption{"ebsEndpoint", "Ebs service address", "", ""}
+	opts[EbsServerPath] = MountOption{"ebsServerPath", "Ebs service path", "", ""}
+	opts[CacheAction] = MountOption{"cacheAction", "Cold cache action", "", int64(0)}
+	opts[EbsBlockSize] = MountOption{"ebsBlockSize", "Ebs object size", "", ""}
+	opts[EnableBcache] = MountOption{"enableBcache", "Enble block cache", "", false}
+	opts[ReadThreads] = MountOption{"readThreads", "Cold volume read threads", "", int64(10)}
+	opts[WriteThreads] = MountOption{"writeThreads", "Cold volume write threads", "", int64(10)}
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -241,4 +262,14 @@ type MountOptions struct {
 	EnableXattr    bool
 	NearRead       bool
 	EnablePosixACL bool
+	VolType        int
+	EbsEndpoint    string
+	EbsServicePath string
+	CacheAction    int
+	CacheThreshold int
+	EbsBlockSize   int
+	EnableBcache   bool
+	ReadThreads    int64
+	WriteThreads   int64
+	EnableSummary  bool
 }

@@ -444,6 +444,7 @@ func LogWarn(v ...interface{}) {
 	s := fmt.Sprintln(v...)
 	s = gLog.SetPrefix(s, levelPrefixes[2])
 	gLog.warnLogger.Output(2, s)
+	gLog.infoLogger.Output(2, s)
 }
 
 // LogWarnf indicates the warnings with specific format.
@@ -457,6 +458,7 @@ func LogWarnf(format string, v ...interface{}) {
 	s := fmt.Sprintf(format, v...)
 	s = gLog.SetPrefix(s, levelPrefixes[2])
 	gLog.warnLogger.Output(2, s)
+	gLog.infoLogger.Output(2, s)
 }
 
 // LogInfo indicates log the information. TODO explain
@@ -495,6 +497,7 @@ func LogError(v ...interface{}) {
 	}
 	s := fmt.Sprintln(v...)
 	s = gLog.SetPrefix(s, levelPrefixes[3])
+	gLog.infoLogger.Output(2, s)
 	gLog.errorLogger.Output(2, s)
 }
 
@@ -509,6 +512,7 @@ func LogErrorf(format string, v ...interface{}) {
 	s := fmt.Sprintf(format, v...)
 	s = gLog.SetPrefix(s, levelPrefixes[3])
 	gLog.errorLogger.Print(s)
+	gLog.infoLogger.Output(2, s)
 }
 
 // LogDebug logs the debug information.
@@ -652,7 +656,7 @@ func (l *Log) checkLogRotation(logDir, module string) {
 		}
 		diskSpaceLeft := int64(fs.Bavail * uint64(fs.Bsize))
 		diskSpaceLeft -= l.rotate.headRoom * 1024 * 1024
-		err := l.removeLogFile(logDir, diskSpaceLeft)
+		err := l.removeLogFile(logDir, diskSpaceLeft, module)
 		if err != nil {
 			time.Sleep(DefaultRollingInterval)
 			continue
@@ -677,14 +681,14 @@ func (l *Log) checkLogRotation(logDir, module string) {
 	}
 }
 
-func DeleteFileFilter(info os.FileInfo, diskSpaceLeft int64) bool {
+func DeleteFileFilter(info os.FileInfo, diskSpaceLeft int64, module string) bool {
 	if diskSpaceLeft <= 0 {
-		return info.Mode().IsRegular() && strings.HasSuffix(info.Name(), RolledExtension)
+		return info.Mode().IsRegular() && strings.HasSuffix(info.Name(), RolledExtension) && strings.HasPrefix(info.Name(), module)
 	}
-	return time.Since(info.ModTime()) > MaxReservedDays && strings.HasSuffix(info.Name(), RolledExtension)
+	return time.Since(info.ModTime()) > MaxReservedDays && strings.HasSuffix(info.Name(), RolledExtension) && strings.HasPrefix(info.Name(), module)
 }
 
-func (l *Log) removeLogFile(logDir string, diskSpaceLeft int64) (err error) {
+func (l *Log) removeLogFile(logDir string, diskSpaceLeft int64, module string) (err error) {
 	// collect free file list
 	fInfos, err := ioutil.ReadDir(logDir)
 	if err != nil {
@@ -693,7 +697,7 @@ func (l *Log) removeLogFile(logDir string, diskSpaceLeft int64) (err error) {
 	}
 	var needDelFiles RolledFile
 	for _, info := range fInfos {
-		if DeleteFileFilter(info, diskSpaceLeft) {
+		if DeleteFileFilter(info, diskSpaceLeft, module) {
 			needDelFiles = append(needDelFiles, info)
 		}
 	}

@@ -46,6 +46,14 @@ const (
 	DeleteExtentsTimeout = 600 * time.Second
 )
 
+const (
+	MaxSizePutOnce = int64(1) << 23
+)
+
+const (
+	DefaultFlag = 0x0f
+)
+
 var (
 	// The following two are used in the FUSE cache
 	// every time the lookup will be performed on the fly, and the result will not be cached

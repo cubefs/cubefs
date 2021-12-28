@@ -16,12 +16,13 @@ package cmd
 
 import (
 	"fmt"
+	"reflect"
+	"strconv"
+
 	"github.com/chubaofs/chubaofs/cli/api"
 	"github.com/chubaofs/chubaofs/metanode"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/spf13/cobra"
-	"reflect"
-	"strconv"
 )
 
 const (
@@ -79,6 +80,9 @@ func newMetaCompatibilityCmd() *cobra.Command {
 				PartitionId: id,
 			}
 			mp := metanode.NewMetaPartition(mpcfg, nil)
+			if mp == nil {
+				return
+			}
 			err = mp.LoadSnapshot(snapshotPath)
 			if err != nil {
 				return
