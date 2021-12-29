@@ -3231,3 +3231,26 @@ func (m *Server) associateVolWithUser(userID, volName string) error {
 	}
 	return nil
 }
+
+func (m *Server) handleDataNodeValidateCRCReport(w http.ResponseWriter, r *http.Request) {
+	dpCrcInfo, err := parseRequestToDataNodeValidateCRCReport(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", http.StatusOK)))
+	m.cluster.handleDataNodeValidateCRCReport(dpCrcInfo)
+}
+
+func parseRequestToDataNodeValidateCRCReport(r *http.Request) (dpCrcInfo *proto.DataPartitionExtentCrcInfo, err error) {
+	var body []byte
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if body, err = ioutil.ReadAll(r.Body); err != nil {
+		return
+	}
+	dpCrcInfo = &proto.DataPartitionExtentCrcInfo{}
+	err = json.Unmarshal(body, dpCrcInfo)
+	return
+}

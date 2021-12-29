@@ -550,12 +550,14 @@ func (dp *DataPartition) Repair() {
 
 func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 	repairTimer := time.NewTimer(time.Minute)
+	validateCRCTimer := time.NewTimer(DefaultIntervalDataPartitionValidateCRC)
 	var index int
 	for {
 
 		select {
 		case <-dp.stopC:
 			repairTimer.Stop()
+			validateCRCTimer.Stop()
 			return
 
 		case <-dp.repairC:
@@ -577,6 +579,9 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 				dp.runRepair(ctx, proto.NormalExtentType, true)
 			}
 			repairTimer.Reset(time.Minute)
+		case <-validateCRCTimer.C:
+			dp.runValidateCRC(ctx)
+			validateCRCTimer.Reset(DefaultIntervalDataPartitionValidateCRC)
 		}
 	}
 }

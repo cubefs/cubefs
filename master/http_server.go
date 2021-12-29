@@ -172,6 +172,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.GetMetaNodeTaskResponse).
 		HandlerFunc(m.handleMetaNodeTaskResponse)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.DataNodeValidateCRCReport).
+		HandlerFunc(m.handleDataNodeValidateCRCReport)
 
 	// meta partition management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

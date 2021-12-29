@@ -299,7 +299,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int, dataNodeBadDisksOfVol 
 		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec)
 		dp.checkLeader(c.cfg.DataPartitionTimeOutSec)
 		dp.checkMissingReplicas(c.Name, c.leaderInfo.addr, c.cfg.MissingDataPartitionInterval, c.cfg.IntervalToAlarmMissingDataPartition)
-		dp.checkReplicaNum(c, vol)
+		dp.checkReplicaNumAndSize(c, vol)
 		if dp.Status == proto.ReadWrite {
 			cnt++
 		}

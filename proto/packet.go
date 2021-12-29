@@ -76,6 +76,7 @@ const (
 	OpTinyExtentRepairRead           uint8 = 0x15
 	OpGetMaxExtentIDAndPartitionSize uint8 = 0x16
 	OpGetAllWatermarksV2             uint8 = 0x17
+	OpGetAllExtentInfo               uint8 = 0x18
 
 	// Operations: Client -> MetaNode.
 	OpMetaCreateInode   uint8 = 0x20
@@ -809,4 +810,14 @@ func (p *Packet) IsFollowerReadMetaPkt() bool {
 		return true
 	}
 	return false
+}
+
+func NewPacketToGetAllExtentInfo(ctx context.Context, partitionID uint64) (p *Packet) {
+	p = new(Packet)
+	p.Opcode = OpGetAllExtentInfo
+	p.PartitionID = partitionID
+	p.Magic = ProtoMagic
+	p.ReqID = GenerateRequestID()
+	p.SetCtx(ctx)
+	return
 }

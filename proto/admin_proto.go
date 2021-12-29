@@ -102,6 +102,7 @@ const (
 	// Operation response
 	GetMetaNodeTaskResponse = "/metaNode/response" // Method: 'POST', ContentType: 'application/json'
 	GetDataNodeTaskResponse = "/dataNode/response" // Method: 'POST', ContentType: 'application/json'
+	DataNodeValidateCRCReport = "/dataNode/validateCRCReport" // Method: 'POST', ContentType: 'application/json'
 
 	GetTopologyView = "/topo/get"
 	UpdateZone      = "/zone/update"

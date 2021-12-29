@@ -55,6 +55,7 @@ const (
 	DeleteTinyRecordSize     = 24
 	UpdateCrcInterval        = 600
 	RepairInterval           = 60
+	ValidateCrcInterval      = 20 * RepairInterval
 	RandomWriteType          = 2
 	AppendWriteType          = 1
 )
@@ -101,6 +102,13 @@ var (
 				}
 			}
 			return false
+		}
+	}
+
+	ExtentFilterForValidateCRC = func() ExtentFilter {
+		now := time.Now()
+		return func(ei *ExtentInfo) bool {
+			return now.Unix()-ei.ModifyTime > ValidateCrcInterval && ei.IsDeleted == false && ei.Size > 0
 		}
 	}
 )
@@ -578,6 +586,39 @@ func (s *ExtentStore) GetAllWatermarksWithByteArr(filter ExtentFilter )(tinyDele
 	return
 }
 
+func (s *ExtentStore) GetAllExtentInfoWithByteArr(filter ExtentFilter) (data []byte, err error) {
+	needSize := 0
+	extents := make([]uint64, 0)
+	s.extentInfoMap.Range(func(key, value interface{}) bool {
+		ei := value.(*ExtentInfo)
+		if filter != nil && !filter(ei) {
+			return true
+		}
+		if ei.IsDeleted {
+			return true
+		}
+		needSize += 20
+		extents = append(extents, ei.FileID)
+		return true
+	})
+	data = make([]byte, needSize)
+	index := 0
+	for _, eid := range extents {
+		eival, ok := s.extentInfoMap.Load(eid)
+		if !ok {
+			continue
+		}
+		ei := eival.(*ExtentInfo)
+		binary.BigEndian.PutUint64(data[index:index+8], ei.FileID)
+		index += 8
+		binary.BigEndian.PutUint64(data[index:index+8], ei.Size)
+		index += 8
+		binary.BigEndian.PutUint32(data[index:index+4], ei.Crc)
+		index += 4
+	}
+	data = data[:index]
+	return
+}
 
 func (s *ExtentStore) getTinyExtentInfo() (extents []*ExtentInfo) {
 	extents = make([]*ExtentInfo, 0)

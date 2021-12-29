@@ -448,7 +448,7 @@ func (partition *DataPartition) hasReplica(host string) (replica *DataReplica, o
 	return
 }
 
-func (partition *DataPartition) checkReplicaNum(c *Cluster, vol *Vol) {
+func (partition *DataPartition) checkReplicaNumAndSize(c *Cluster, vol *Vol) {
 	partition.RLock()
 	defer partition.RUnlock()
 	if int(partition.ReplicaNum) != len(partition.Hosts) {
@@ -460,6 +460,8 @@ func (partition *DataPartition) checkReplicaNum(c *Cluster, vol *Vol) {
 	if vol.dpReplicaNum != partition.ReplicaNum && !vol.NeedToLowerReplica {
 		vol.NeedToLowerReplica = true
 	}
+
+	partition.checkReplicaSize(c.Name, c.cfg.diffSpaceUsage)
 }
 
 func (partition *DataPartition) hostsToString() (hosts string) {

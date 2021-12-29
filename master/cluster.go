@@ -3215,3 +3215,44 @@ func (c *Cluster) getDataNodeBadDisks() (allBadDisks []proto.DataNodeBadDisksVie
 	})
 	return
 }
+
+func (c *Cluster) handleDataNodeValidateCRCReport(dpCrcInfo *proto.DataPartitionExtentCrcInfo) {
+	if dpCrcInfo == nil {
+		return
+	}
+	warnMsg := new(strings.Builder)
+	replicaCrcDetail := new(strings.Builder)
+	for _, extentCrcInfo := range dpCrcInfo.ExtentCrcInfos {
+		warnMsg.Reset()
+		replicaCrcDetail.Reset()
+		for crc, locAddrs := range extentCrcInfo.CrcLocAddrMap {
+			replicaCrcDetail.WriteString(fmt.Sprintf(" crc:%v count:%v addr:%v,", crc, len(locAddrs), locAddrs))
+		}
+		warnMsg.WriteString(fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v File:%v ",
+			c.Name, dpCrcInfo.PartitionID, extentCrcInfo.FileID))
+		// the replicas are different from each other
+		if extentCrcInfo.ExtentNum == len(extentCrcInfo.CrcLocAddrMap) {
+			warnMsg.WriteString("crc different between all node.")
+			warnMsg.WriteString(replicaCrcDetail.String())
+			Warn(c.Name, warnMsg.String())
+			continue
+		}
+
+		// most of the replicas are same
+		var maxNumCrc uint32
+		var maxNum int
+		for crc, extentInfos := range extentCrcInfo.CrcLocAddrMap {
+			if maxNum < len(extentInfos) {
+				maxNum = len(extentInfos)
+				maxNumCrc = crc
+			}
+		}
+		for crc, locAddrs := range extentCrcInfo.CrcLocAddrMap {
+			if crc != maxNumCrc {
+				warnMsg.WriteString(fmt.Sprintf("badCrc On addr:%v detail:", locAddrs))
+				warnMsg.WriteString(replicaCrcDetail.String())
+				Warn(c.Name, warnMsg.String())
+			}
+		}
+	}
+}
