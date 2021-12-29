@@ -16,6 +16,7 @@ package exporter
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -84,35 +85,40 @@ func Init(role string, cfg *config.Config) {
 	}
 
 	port := cfg.GetInt64(ConfigKeyExporterPort)
-	if port == 0 && !enablePush {
-		log.LogInfof("%v exporter port and pushAddr not set", port)
-		return
+	if port < 0 {
+		port = 0
 	}
 
-	exporterPort = port
 	enabledPrometheus = true
 
 	http.Handle(PromHandlerPattern, promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
-		Timeout: 5 * time.Second,
+		Timeout: 60 * time.Second,
 	}))
 
 	namespace = AppName + "_" + role
 	addr := fmt.Sprintf(":%d", port)
-	if port != 0 {
-		go func() {
-			err := http.ListenAndServe(addr, nil)
-			if err != nil {
-				log.LogError("exporter http serve error: ", err)
-			}
-		}()
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.LogError("exporter tcp listen error: ", err)
+		return
 	}
+
+	exporterPort = int64(l.Addr().(*net.TCPAddr).Port)
+
+	go func() {
+		err = http.Serve(l, nil)
+		if err != nil {
+			log.LogError("exporter http serve error: ", err)
+			return
+		}
+	}()
 
 	collect()
 
 	m := NewGauge("start_time")
 	m.Set(float64(time.Now().Unix() * 1000))
 
-	log.LogInfof("exporter Start: %v", addr)
+	log.LogInfof("exporter Start: %v", exporterPort)
 }
 
 // Init initializes the exporter.
