@@ -133,7 +133,7 @@ func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {
 	for i := 0; i < len(dp.Hosts); i++ {
 		host := dp.Hosts[i]
 		if conn, err = util.DailTimeOut(host, proto.ReadDeadlineTime*time.Second); err != nil {
-			log.LogWarnf("Dail to Host (%v) err(%v)", host, err.Error())
+			log.LogWarnf("CheckAllHostsIsAvail: dial host (%v) err(%v)", host, err)
 			if strings.Contains(err.Error(), syscall.ECONNREFUSED.Error()) {
 				exclude[host] = struct{}{}
 			}
