@@ -75,6 +75,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var isRangeRead bool
 	var partSize uint64
 	var partCount uint64
+	var lowerPart, upperPart string
 	if len(rangeOpt) > 0 && rangeRegexp.MatchString(rangeOpt) {
 
 		var hyphenIndex = strings.Index(rangeOpt, "-")
@@ -83,8 +84,8 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		var lowerPart = rangeOpt[len("bytes="):hyphenIndex]
-		var upperPart = ""
+		lowerPart = rangeOpt[len("bytes="):hyphenIndex]
+		upperPart = ""
 		if hyphenIndex+1 < len(rangeOpt) {
 			upperPart = rangeOpt[hyphenIndex+1:]
 		}
@@ -206,7 +207,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// validate and fix range
-	if isRangeRead && rangeUpper > uint64(fileInfo.Size)-1 {
+	if isRangeRead && (rangeUpper > uint64(fileInfo.Size)-1 || upperPart == "") {
 		rangeUpper = uint64(fileInfo.Size) - 1
 	}
 
@@ -308,11 +309,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var offset = rangeLower
 	var size = uint64(fileInfo.Size)
 	if isRangeRead || len(partNumber) > 0 {
-		if rangeUpper == 0 {
-			size = uint64(fileInfo.Size) - rangeLower
-		} else {
-			size = rangeUpper - rangeLower + 1
-		}
+		size = rangeUpper - rangeLower + 1
 	}
 	err = vol.ReadFile(param.Object(), w, offset, size)
 	if err == syscall.ENOENT {
