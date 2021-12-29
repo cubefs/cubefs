@@ -18,18 +18,18 @@ import (
 type DataPartitionValidateCRCTask struct {
 	TaskType   uint8
 	addr       string
-	extents    map[uint64]*storage.ExtentInfo
+	extents    map[uint64]storage.ExtentInfoBlock
 	LeaderAddr string
 }
 
-func NewDataPartitionValidateCRCTask(extentFiles []*storage.ExtentInfo, source, leaderAddr string) (task *DataPartitionValidateCRCTask) {
+func NewDataPartitionValidateCRCTask(extentFiles []storage.ExtentInfoBlock, source, leaderAddr string) (task *DataPartitionValidateCRCTask) {
 	task = &DataPartitionValidateCRCTask{
-		extents:    make(map[uint64]*storage.ExtentInfo, len(extentFiles)),
+		extents:    make(map[uint64]storage.ExtentInfoBlock, len(extentFiles)),
 		LeaderAddr: leaderAddr,
+		addr:       source,
 	}
 	for _, extentFile := range extentFiles {
-		extentFile.Source = source
-		task.extents[extentFile.FileID] = extentFile
+		task.extents[extentFile[storage.FileID]] = extentFile
 	}
 	return
 }
@@ -81,7 +81,7 @@ func (dp *DataPartition) buildDataPartitionValidateCRCTask(ctx context.Context, 
 
 	// new validate crc task for the followers
 	for index := 1; index < len(replicas); index++ {
-		var followerExtents []*storage.ExtentInfo
+		var followerExtents []storage.ExtentInfoBlock
 		followerAddr := replicas[index]
 		if followerExtents, err = dp.getRemoteExtentInfoForValidateCRC(ctx, followerAddr); err != nil {
 			log.LogErrorf("buildDataPartitionValidateCRCTask PartitionID(%v) on(%v) err(%v)", dp.partitionID, followerAddr, err)
@@ -93,20 +93,29 @@ func (dp *DataPartition) buildDataPartitionValidateCRCTask(ctx context.Context, 
 	return
 }
 
-func (dp *DataPartition) getLocalExtentInfoForValidateCRC() (extents []*storage.ExtentInfo, err error) {
-	if !dp.ExtentStore().IsFinishLoad() {
+
+func (dp *DataPartition) getLocalExtentInfoForValidateCRC() (extents []storage.ExtentInfoBlock, err error) {
+	if !dp.ExtentStore().IsFininshLoad() {
 		err = storage.PartitionIsLoaddingErr
 		return
 	}
-	extents, _, err = dp.extentStore.GetAllWatermarks(storage.ExtentFilterForValidateCRC())
+	extents, _, err = dp.extentStore.GetAllWatermarks(proto.NormalExtentType, storage.ExtentFilterForValidateCRC())
 	if err != nil {
 		err = fmt.Errorf("getLocalExtentInfoForValidateCRC DataPartition(%v) err:%v", dp.partitionID, err)
 		return
 	}
+	tinyextents, _, err := dp.extentStore.GetAllWatermarks(proto.TinyExtentType, storage.ExtentFilterForValidateCRC())
+	if err != nil {
+		err = fmt.Errorf("getLocalExtentInfoForValidateCRC DataPartition(%v) err:%v", dp.partitionID, err)
+		return
+	}
+	for _, te := range tinyextents {
+		extents = append(extents, te)
+	}
 	return
 }
 
-func (dp *DataPartition) getRemoteExtentInfoForValidateCRC(ctx context.Context, target string) (extentFiles []*storage.ExtentInfo, err error) {
+func (dp *DataPartition) getRemoteExtentInfoForValidateCRC(ctx context.Context, target string) (extentFiles []storage.ExtentInfoBlock, err error) {
 	var packet = proto.NewPacketToGetAllExtentInfo(ctx, dp.partitionID)
 	var conn *net.TCPConn
 	if conn, err = gConnPool.GetConnect(target); err != nil {
@@ -135,13 +144,14 @@ func (dp *DataPartition) getRemoteExtentInfoForValidateCRC(ctx context.Context, 
 		err = errors.NewErrorf("illegal result data length: %v", len(reply.Data))
 		return
 	}
-	extentFiles = make([]*storage.ExtentInfo, 0, len(reply.Data)/20)
+	extentFiles = make([]storage.ExtentInfoBlock, 0, len(reply.Data)/20)
 	for index := 0; index < int(reply.Size)/20; index++ {
 		var offset = index * 20
-		var extentID = binary.BigEndian.Uint64(reply.Data[offset:])
-		var size = binary.BigEndian.Uint64(reply.Data[offset+8:])
-		var crc = binary.BigEndian.Uint32(reply.Data[offset+16:])
-		extentFiles = append(extentFiles, &storage.ExtentInfo{FileID: extentID, Size: size, Crc: crc})
+		var ei storage.ExtentInfoBlock
+		ei[storage.FileID] = binary.BigEndian.Uint64(reply.Data[offset:])
+		ei[storage.Size] = binary.BigEndian.Uint64(reply.Data[offset+8:])
+		ei[storage.Crc] = uint64(binary.BigEndian.Uint32(reply.Data[offset+16:]))
+		extentFiles = append(extentFiles, ei)
 	}
 	return
 }
@@ -151,33 +161,34 @@ func (dp *DataPartition) validateCRC(validateCRCTasks []*DataPartitionValidateCR
 		return
 	}
 	var (
-		extentInfo         *storage.ExtentInfo
+		extentInfo         storage.ExtentInfoBlock
 		ok                 bool
-		extentReplicaInfos []*storage.ExtentInfo
+		extentReplicaInfos []storage.ExtentInfoBlock
+		replicaAddrs       []string
 		extentCrcInfo      *proto.ExtentCrcInfo
 		crcNotEqual        bool
 		extentCrcResults   []*proto.ExtentCrcInfo
 	)
 	for extentID, localExtentInfo := range validateCRCTasks[0].extents {
-		if localExtentInfo == nil {
+		if localExtentInfo == storage.EmptyExtentBlock {
 			continue
 		}
-		if localExtentInfo.IsDeleted {
-			continue
-		}
-		extentReplicaInfos = make([]*storage.ExtentInfo, 0, 3)
+		extentReplicaInfos = make([]storage.ExtentInfoBlock, 0, len(validateCRCTasks))
+		replicaAddrs = make([]string, 0, len(validateCRCTasks))
 		extentReplicaInfos = append(extentReplicaInfos, localExtentInfo)
+		replicaAddrs = append(replicaAddrs, validateCRCTasks[0].addr)
 		for i := 1; i < len(validateCRCTasks); i++ {
 			extentInfo, ok = validateCRCTasks[i].extents[extentID]
-			if !ok || extentInfo == nil {
+			if !ok || extentInfo == storage.EmptyExtentBlock {
 				continue
 			}
 			extentReplicaInfos = append(extentReplicaInfos, extentInfo)
+			replicaAddrs = append(replicaAddrs, validateCRCTasks[i].addr)
 		}
 		if storage.IsTinyExtent(extentID) {
-			extentCrcInfo, crcNotEqual = dp.checkTinyExtentFile(extentReplicaInfos)
+			extentCrcInfo, crcNotEqual = dp.checkTinyExtentFile(extentReplicaInfos, replicaAddrs)
 		} else {
-			extentCrcInfo, crcNotEqual = dp.checkNormalExtentFile(extentReplicaInfos)
+			extentCrcInfo, crcNotEqual = dp.checkNormalExtentFile(extentReplicaInfos, replicaAddrs)
 		}
 		if crcNotEqual {
 			extentCrcResults = append(extentCrcResults, extentCrcInfo)
@@ -197,7 +208,7 @@ func (dp *DataPartition) validateCRC(validateCRCTasks []*DataPartitionValidateCR
 	return
 }
 
-func (dp *DataPartition) checkTinyExtentFile(extentInfos []*storage.ExtentInfo) (extentCrcInfo *proto.ExtentCrcInfo, crcNotEqual bool) {
+func (dp *DataPartition) checkTinyExtentFile(extentInfos []storage.ExtentInfoBlock, replicaAddrs []string) (extentCrcInfo *proto.ExtentCrcInfo, crcNotEqual bool) {
 	if len(extentInfos) <= 1 {
 		return
 	}
@@ -206,38 +217,38 @@ func (dp *DataPartition) checkTinyExtentFile(extentInfos []*storage.ExtentInfo) 
 	}
 	if !hasSameSize(extentInfos) {
 		sb := new(strings.Builder)
-		sb.WriteString(fmt.Sprintf("checkTinyExtentFileErr size not match, dpID[%v] FileID[%v] ", dp.partitionID, extentInfos[0].FileID))
-		for _, extentInfo := range extentInfos {
-			sb.WriteString(fmt.Sprintf("fm[%v]:size[%v] ", extentInfo.Source, extentInfo.Size))
+		sb.WriteString(fmt.Sprintf("checkTinyExtentFileErr size not match, dpID[%v] FileID[%v] ", dp.partitionID, extentInfos[0][storage.FileID]))
+		for index, einfo := range extentInfos {
+			sb.WriteString(fmt.Sprintf("fm[%v]:size[%v] ", replicaAddrs[index], einfo[storage.Size]))
 		}
 		log.LogWarn(sb.String())
 		return
 	}
-	extentCrcInfo, crcNotEqual = getExtentCrcInfo(extentInfos)
+	extentCrcInfo, crcNotEqual = getExtentCrcInfo(extentInfos, replicaAddrs)
 	return
 }
 
-func (dp *DataPartition) checkNormalExtentFile(extentInfos []*storage.ExtentInfo) (extentCrcInfo *proto.ExtentCrcInfo, crcNotEqual bool) {
+func (dp *DataPartition) checkNormalExtentFile(extentInfos []storage.ExtentInfoBlock, replicaAddrs []string) (extentCrcInfo *proto.ExtentCrcInfo, crcNotEqual bool) {
 	if len(extentInfos) <= 1 {
 		return
 	}
 	if !needCrcRepair(extentInfos) {
 		return
 	}
-	extentCrcInfo, crcNotEqual = getExtentCrcInfo(extentInfos)
+	extentCrcInfo, crcNotEqual = getExtentCrcInfo(extentInfos, replicaAddrs)
 	return
 }
 
-func needCrcRepair(extentInfos []*storage.ExtentInfo) (needCheckCrc bool) {
+func needCrcRepair(extentInfos []storage.ExtentInfoBlock) (needCheckCrc bool) {
 	if len(extentInfos) <= 1 {
 		return
 	}
-	baseCrc := extentInfos[0].Crc
-	for _, extentInfo := range extentInfos {
-		if extentInfo.Crc == 0 || extentInfo.Crc == EmptyCrcValue {
+	baseCrc := extentInfos[0][storage.Crc]
+	for _, einfo := range extentInfos {
+		if einfo[storage.Crc] == 0 || einfo[storage.Crc] == uint64(EmptyCrcValue) {
 			return
 		}
-		if extentInfo.Crc != baseCrc {
+		if einfo[storage.Crc] != baseCrc {
 			needCheckCrc = true
 			return
 		}
@@ -245,14 +256,14 @@ func needCrcRepair(extentInfos []*storage.ExtentInfo) (needCheckCrc bool) {
 	return
 }
 
-func hasSameSize(extentInfos []*storage.ExtentInfo) (same bool) {
+func hasSameSize(extentInfos []storage.ExtentInfoBlock) (same bool) {
 	same = true
 	if len(extentInfos) <= 1 {
 		return
 	}
-	baseSize := extentInfos[0].Size
-	for _, extentInfo := range extentInfos {
-		if extentInfo.Size != baseSize {
+	baseSize := extentInfos[0][storage.Size]
+	for _, einfo := range extentInfos {
+		if einfo[storage.Size] != baseSize {
 			same = false
 			return
 		}
@@ -260,20 +271,20 @@ func hasSameSize(extentInfos []*storage.ExtentInfo) (same bool) {
 	return
 }
 
-func getExtentCrcInfo(extentInfos []*storage.ExtentInfo) (extentCrcInfo *proto.ExtentCrcInfo, crcNotEqual bool) {
+func getExtentCrcInfo(extentInfos []storage.ExtentInfoBlock, replicaAddrs []string) (extentCrcInfo *proto.ExtentCrcInfo, crcNotEqual bool) {
 	if len(extentInfos) <= 1 {
 		return
 	}
 	crcLocAddrMap := make(map[uint32][]string)
-	for _, extentInfo := range extentInfos {
-		crcLocAddrMap[extentInfo.Crc] = append(crcLocAddrMap[extentInfo.Crc], extentInfo.Source)
+	for index, einfo := range extentInfos {
+		crcLocAddrMap[uint32(einfo[storage.Crc])] = append(crcLocAddrMap[uint32(einfo[storage.Crc])], replicaAddrs[index])
 	}
 	if len(crcLocAddrMap) <= 1 {
 		return
 	}
 	crcNotEqual = true
 	extentCrcInfo = &proto.ExtentCrcInfo{
-		FileID:        extentInfos[0].FileID,
+		FileID:        extentInfos[0][storage.FileID],
 		ExtentNum:     len(extentInfos),
 		CrcLocAddrMap: crcLocAddrMap,
 	}
