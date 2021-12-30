@@ -85,6 +85,20 @@ func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err er
 	return
 }
 
+func (mp *metaPartition) BatchSetXAttr(req *proto.BatchSetXAttrRequest, p *Packet) (err error) {
+	var extend = NewExtend(req.Inode)
+	for key, val := range req.Attrs {
+		extend.Put([]byte(key), []byte(val))
+	}
+
+	if _, err = mp.putExtend(opFSMSetXAttr, extend); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	p.PacketOkReply()
+	return
+}
+
 func (mp *metaPartition) GetXAttr(req *proto.GetXAttrRequest, p *Packet) (err error) {
 	var response = &proto.GetXAttrResponse{
 		VolName:     req.VolName,
@@ -97,6 +111,30 @@ func (mp *metaPartition) GetXAttr(req *proto.GetXAttrRequest, p *Packet) (err er
 		extend := treeItem.(*Extend)
 		if value, exist := extend.Get([]byte(req.Key)); exist {
 			response.Value = string(value)
+		}
+	}
+	var encoded []byte
+	encoded, err = json.Marshal(response)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	p.PacketOkWithBody(encoded)
+	return
+}
+
+func (mp *metaPartition) GetAllXAttr(req *proto.GetAllXAttrRequest, p *Packet) (err error) {
+	var response = &proto.GetAllXAttrResponse{
+		VolName:     req.VolName,
+		PartitionId: req.PartitionId,
+		Inode:       req.Inode,
+		Attrs:       make(map[string]string),
+	}
+	treeItem := mp.extendTree.Get(NewExtend(req.Inode))
+	if treeItem != nil {
+		extend := treeItem.(*Extend)
+		for key, val := range extend.dataMap {
+			response.Attrs[key] = string(val)
 		}
 	}
 	var encoded []byte

@@ -472,6 +472,26 @@ type SetXAttrRequest struct {
 	Value       string `json:"val"`
 }
 
+type BatchSetXAttrRequest struct {
+	VolName     string            `json:"vol"`
+	PartitionId uint64            `json:"pid"`
+	Inode       uint64            `json:"ino"`
+	Attrs       map[string]string `json:"attrs"`
+}
+
+type GetAllXAttrRequest struct {
+	VolName     string `json:"vol"`
+	PartitionId uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+}
+
+type GetAllXAttrResponse struct {
+	VolName     string            `json:"vol"`
+	PartitionId uint64            `json:"pid"`
+	Inode       uint64            `json:"ino"`
+	Attrs       map[string]string `json:"attrs"`
+}
+
 type GetXAttrRequest struct {
 	VolName     string `json:"vol"`
 	PartitionId uint64 `json:"pid"`
