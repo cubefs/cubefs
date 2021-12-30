@@ -28,6 +28,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
@@ -45,6 +46,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode *ErrorCode
 	)
 
+	var startGet = time.Now()
 	defer func() {
 		if errorCode != nil {
 			_ = errorCode.ServeResponse(w, r)
@@ -152,7 +154,10 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// get object meta
 	var fileInfo *FSFileInfo
-	fileInfo, err = vol.ObjectMeta(param.Object())
+	var xattr *proto.XAttrInfo
+	var start = time.Now()
+	fileInfo, xattr, err = vol.ObjectMeta(param.Object())
+	log.LogDebugf("ObjectMeta cost: %v", time.Since(start))
 	if err == syscall.ENOENT {
 		errorCode = NoSuchKey
 		return
@@ -239,7 +244,12 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// get object tagging size
-	var xattrInfo *proto.XAttrInfo
+	ossTaggingData := xattr.Get(XAttrKeyOSSTagging)
+	output, _ := ParseTagging(string(ossTaggingData))
+	if output != nil && len(output.TagSet) > 0 {
+		w.Header()[HeaderNameXAmzTaggingCount] = []string{strconv.Itoa(len(output.TagSet))}
+	}
+	/*var xattrInfo *proto.XAttrInfo
 	if xattrInfo, err = vol.GetXAttr(param.object, XAttrKeyOSSTagging); err != nil && err != syscall.ENOENT {
 		log.LogErrorf("getObjectHandler: Volume get XAttr fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		errorCode = InternalErrorCode(err)
@@ -251,7 +261,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		if output != nil && len(output.TagSet) > 0 {
 			w.Header()[HeaderNameXAmzTaggingCount] = []string{strconv.Itoa(len(output.TagSet))}
 		}
-	}
+	}*/
 
 	// set response header for GetObject
 	w.Header()[HeaderNameAcceptRange] = []string{HeaderValueAcceptRange}
@@ -332,7 +342,8 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if isRangeRead || len(partNumber) > 0 {
 		size = rangeUpper - rangeLower + 1
 	}
-	err = vol.ReadFile(param.Object(), w, offset, size)
+	//err = vol.ReadFile(param.Object(), w, offset, size)
+	err = vol.readFile(fileInfo.Inode, uint64(fileInfo.Size), param.Object(), w, offset, size)
 	if err == syscall.ENOENT {
 		errorCode = NoSuchKey
 		return
@@ -344,6 +355,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	log.LogDebugf("getObjectHandler: Volume read file: requestID(%v) Volume(%v) path(%v) offset(%v) size(%v)",
 		GetRequestID(r), param.Bucket(), param.Object(), offset, size)
+	log.LogDebugf("getObjectHandler: cost %v", time.Since(startGet))
 	return
 }
 
@@ -382,7 +394,7 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// get object meta
 	var fileInfo *FSFileInfo
-	fileInfo, err = vol.ObjectMeta(param.Object())
+	fileInfo, _, err = vol.ObjectMeta(param.Object())
 	if err == syscall.ENOENT {
 		errorCode = NoSuchKey
 		return
@@ -737,7 +749,7 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// get object meta
 	var fileInfo *FSFileInfo
-	fileInfo, err = vol.ObjectMeta(sourceObject)
+	fileInfo, _, err = vol.ObjectMeta(sourceObject)
 	if err != nil {
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
@@ -1205,7 +1217,9 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		CacheControl: cacheControl,
 		Expires:      expires,
 	}
+	var startPut = time.Now()
 	fsFileInfo, err = vol.PutObject(param.Object(), r.Body, opt)
+	log.LogDebugf("PutObject, cost: %v", time.Since(startPut))
 	if err == syscall.EINVAL {
 		errorCode = ObjectModeConflict
 		return
@@ -1329,7 +1343,6 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 		errorCode = NoSuchBucket
 		return
 	}
-
 	var xattrInfo *proto.XAttrInfo
 	if xattrInfo, err = vol.GetXAttr(param.object, XAttrKeyOSSTagging); err != nil {
 		if err == syscall.ENOENT {

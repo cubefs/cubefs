@@ -25,5 +25,8 @@
     "action:oss:CreateBucket",
     "action:oss:DeleteBucket"
   ],
-  "strict": true
+  "strict": true,
+  "enableObjMetaCache" : true,
+  "maxDentryCacheNum" : 10000000,
+  "maxInodeAttrCacheNum": 10000000
 }

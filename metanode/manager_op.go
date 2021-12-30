@@ -1269,6 +1269,31 @@ func (m *metadataManager) opMetaSetXAttr(conn net.Conn, p *Packet, remoteAddr st
 	return
 }
 
+func (m *metadataManager) opMetaBatchSetXAttr(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	req := &proto.BatchSetXAttrRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.BatchSetXAttr(req, p)
+	_ = m.respondToClient(conn, p)
+	log.LogDebugf("%s [OpMetaBatchSetXAttr] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
 func (m *metadataManager) opMetaGetXAttr(conn net.Conn, p *Packet, remoteAddr string) (err error) {
 	req := &proto.GetXAttrRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
@@ -1288,6 +1313,31 @@ func (m *metadataManager) opMetaGetXAttr(conn net.Conn, p *Packet, remoteAddr st
 		return
 	}
 	err = mp.GetXAttr(req, p)
+	_ = m.respondToClient(conn, p)
+	log.LogDebugf("%s [opMetaGetXAttr] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
+func (m *metadataManager) opMetaGetAllXAttr(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	req := &proto.GetAllXAttrRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.GetAllXAttr(req, p)
 	_ = m.respondToClient(conn, p)
 	log.LogDebugf("%s [opMetaGetXAttr] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)

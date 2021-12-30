@@ -1301,6 +1301,56 @@ func (mw *MetaWrapper) appendObjExtentKeys(mp *MetaPartition, inode uint64, exte
 	return
 }
 
+func (mw *MetaWrapper) batchSetXAttr(mp *MetaPartition, inode uint64, attrs map[string]string) (status int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("batchSetXAttr", err, bgTime, 1)
+	}()
+
+	req := &proto.BatchSetXAttrRequest{
+		VolName:     mw.volname,
+		PartitionId: mp.PartitionID,
+		Inode:       inode,
+		Attrs:       make(map[string]string),
+	}
+
+	for key, val := range attrs {
+		req.Attrs[key] = val
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaBatchSetXAttr
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("batchSetXAttr: matshal packet fail, err(%v)", err)
+		return
+	}
+	log.LogDebugf("batchSetXAttr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("batchSetXAttr: send to partition fail, packet(%v) mp(%v) req(%v) err(%v)",
+			packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("batchSetXAttr: received fail status, packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	log.LogDebugf("batchSetXAttr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	return
+}
+
 func (mw *MetaWrapper) setXAttr(mp *MetaPartition, inode uint64, name []byte, value []byte) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -1345,6 +1395,57 @@ func (mw *MetaWrapper) setXAttr(mp *MetaPartition, inode uint64, name []byte, va
 	}
 
 	log.LogDebugf("setXAttr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	return
+}
+
+func (mw *MetaWrapper) getAllXAttr(mp *MetaPartition, inode uint64) (attrs map[string]string, status int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("getAllXAttr", err, bgTime, 1)
+	}()
+
+	req := &proto.GetAllXAttrRequest{
+		VolName:     mw.volname,
+		PartitionId: mp.PartitionID,
+		Inode:       inode,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaGetAllXAttr
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("getAllXAttr: req(%v) err(%v)", *req, err)
+		return
+	}
+	log.LogDebugf("getAllXAttr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("getAllXAttr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("getAllXAttr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	resp := new(proto.GetAllXAttrResponse)
+	if err = packet.UnmarshalData(resp); err != nil {
+		log.LogErrorf("get xattr: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
+		return
+	}
+	attrs = resp.Attrs
+
+	log.LogDebugf("getAllXAttr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	return
 }
 
