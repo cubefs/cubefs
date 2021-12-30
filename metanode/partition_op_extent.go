@@ -38,6 +38,10 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 	}
 
 	ino := NewInode(req.Inode, 0)
+	ino.Flag = 0
+	if req.IsPreExtent {
+		ino.Flag = proto.CheckPreExtentExist
+	}
 	ext := req.Extent
 	ino.Extents.Append(p.Ctx(), ext)
 	val, err := ino.Marshal()
@@ -66,6 +70,10 @@ func (mp *metaPartition) ExtentInsert(req *proto.InsertExtentKeyRequest, p *Pack
 
 	ino := NewInode(req.Inode, 0)
 	ext := req.Extent
+	ino.Flag = 0
+	if req.IsPreExtent {
+		ino.Flag = proto.CheckPreExtentExist
+	}
 	ino.Extents.Insert(p.Ctx(), ext)
 	val, err := ino.Marshal()
 	if err != nil {
@@ -171,6 +179,10 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 	}
 
 	ino := NewInode(req.Inode, 0)
+	ino.Flag = 0
+	if req.IsPreExtent {
+		ino.Flag = proto.CheckPreExtentExist
+	}
 	extents := req.Extents
 	for _, extent := range extents {
 		ino.Extents.Append(p.Ctx(), extent)

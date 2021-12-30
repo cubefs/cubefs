@@ -533,6 +533,22 @@ func (se *SortedExtents) doCopyExtents() []proto.ExtentKey {
 	return eks
 }
 
+func (se *SortedExtents) HasExtent(inEk proto.ExtentKey) (ok bool, ekInfo *proto.ExtentKey) {
+	se.RLock()
+	defer se.RUnlock()
+	for _, ek := range se.eks {
+		if ek.PartitionId == inEk.PartitionId && ek.ExtentId == inEk.ExtentId {
+			ekInfo = &ek
+			ok = true
+			return
+			//if ek.FileOffset >= inEk.FileOffset || (ek.FileOffset + uint64(ek.Size)) > inEk.FileOffset {
+			//   check file offset
+			//}
+		}
+	}
+	return false, nil
+}
+
 // This method is based on recursive binary search to find the first overlapping position.
 func findFirstOverlapPosition(eks []proto.ExtentKey, ek *proto.ExtentKey) int {
 	switch {

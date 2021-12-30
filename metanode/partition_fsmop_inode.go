@@ -243,6 +243,19 @@ func (mp *metaPartition) fsmAppendExtents(ctx context.Context, ino *Inode) (stat
 		return
 	}
 	eks := ino.Extents.CopyExtents()
+
+	if ino.Flag == proto.CheckPreExtentExist {
+		// need check ek exist
+		for _, ek := range eks {
+			if ok, _ := ino2.Extents.HasExtent(ek); !ok {
+				status = proto.OpErr
+				log.LogWarnf("fsm(%v) AppendExtents pre check failed, inode(%v) ek(insert: %v)",
+					mp.config.PartitionId, ino2.Inode, ek)
+				return
+			}
+		}
+	}
+
 	delExtents := ino2.AppendExtents(ctx, eks, ino.ModifyTime)
 	log.LogInfof("fsm(%v) AppendExtents inode(%v) exts(%v)", mp.config.PartitionId, ino2.Inode, delExtents)
 	mp.extDelCh <- delExtents
@@ -268,6 +281,19 @@ func (mp *metaPartition) fsmInsertExtents(ctx context.Context, ino *Inode) (stat
 		return
 	}
 	eks := ino.Extents.CopyExtents()
+
+	if ino.Flag == proto.CheckPreExtentExist {
+		// need check ek exist
+		for _, ek := range eks {
+			if ok, _ := existIno.Extents.HasExtent(ek); !ok {
+				status = proto.OpErr
+				log.LogWarnf("fsm(%v) InsertExtents pre check failed, inode(%v) ek(insert: %v)",
+					mp.config.PartitionId, existIno.Inode, ek)
+				return
+			}
+		}
+	}
+
 	oldSize := existIno.Size
 	delExtents := existIno.InsertExtents(ctx, eks, ino.ModifyTime)
 	newSize := existIno.Size

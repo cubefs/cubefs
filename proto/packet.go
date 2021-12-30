@@ -197,6 +197,11 @@ const (
 )
 
 const (
+	CheckPreExtentExist   = 1
+)
+
+
+const (
 	NormalCreateDataPartition         = 0
 	DecommissionedCreateDataPartition = 1
 )

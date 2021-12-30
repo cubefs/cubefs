@@ -307,6 +307,7 @@ type AppendExtentKeyRequest struct {
 	PartitionID uint64    `json:"pid"`
 	Inode       uint64    `json:"ino"`
 	Extent      ExtentKey `json:"ek"`
+	IsPreExtent bool      `json:"pre"`
 }
 
 type InsertExtentKeyRequest struct {
@@ -404,6 +405,7 @@ type AppendExtentKeysRequest struct {
 	PartitionId uint64      `json:"pid"`
 	Inode       uint64      `json:"ino"`
 	Extents     []ExtentKey `json:"eks"`
+	IsPreExtent bool        `json:"pre"`
 }
 
 type SetXAttrRequest struct {
