@@ -88,9 +88,10 @@ type ExtentHandler struct {
 	// Created and updated in *receiver* ONLY.
 	// Not protected by lock, therefore can be used ONLY when there is no
 	// pending and new packets.
-	key   	*proto.ExtentKey
-	dirty 	bool // indicate if open handler is dirty.
-	ekMutex	sync.Mutex
+	key         *proto.ExtentKey
+	dirty       bool // indicate if open handler is dirty.
+	isPreExtent bool // true if the extent of the key has ever been sent to metanode
+	ekMutex     sync.Mutex
 
 	// Created in receiver ONLY in recovery status.
 	// Will not be changed once assigned.
@@ -482,9 +483,12 @@ func (eh *ExtentHandler) appendExtentKey(ctx context.Context) (err error) {
 
 	if dirty {
 		eh.stream.extents.Append(ek, true)
-		err = eh.stream.client.insertExtentKey(ctx, eh.inode, *ek)
+		err = eh.stream.client.insertExtentKey(ctx, eh.inode, *ek, eh.isPreExtent)
 		if err == nil {
 			eh.ekMutex.Lock()
+			// If the extent has ever been sent to metanode, all following insertExtentKey requests of the
+			// extent will be checked by metanode, in case of the extent been removed by other clients.
+			eh.isPreExtent = true
 			if ek.GetExtentKey() == eh.key.GetExtentKey() {
 				eh.dirty = false
 			} else {

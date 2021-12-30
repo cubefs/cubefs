@@ -564,7 +564,7 @@ func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool
 		Size:        uint32(oriReq.Size),
 	}
 
-	err = s.client.insertExtentKey(ctx, s.inode, *newEK)
+	err = s.client.insertExtentKey(ctx, s.inode, *newEK, false)
 	if err != nil {
 		return
 	}
@@ -1143,6 +1143,7 @@ func (s *Streamer) usePreExtentHandler(offset, size int) bool {
 		Size:         preEk.Size,
 		CRC:          preEk.CRC,
 	}
+	s.handler.isPreExtent = true
 	s.handler.size = int(preEk.Size)
 	s.handler.conn = conn
 	s.handler.extentOffset = int(preEk.ExtentOffset)

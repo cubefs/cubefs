@@ -552,7 +552,7 @@ func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcNam
 	mw.iunlink(ctx, srcMP, inode)
 
 	// As update dentry may be try, the second op will be the result which old inode be the same inode
-	if oldInode != 0 && oldInode != inode{
+	if oldInode != 0 && oldInode != inode {
 		inodeMP := mw.getPartitionByInode(ctx, oldInode)
 		if inodeMP != nil {
 			mw.iunlink(ctx, inodeMP, oldInode)
@@ -661,7 +661,7 @@ func (mw *MetaWrapper) AppendExtentKeys(ctx context.Context, inode uint64, eks [
 	return nil
 }
 
-func (mw *MetaWrapper) InsertExtentKey(ctx context.Context, inode uint64, ek proto.ExtentKey) error {
+func (mw *MetaWrapper) InsertExtentKey(ctx context.Context, inode uint64, ek proto.ExtentKey, isPreExtent bool) error {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.InsertExtentKey").
 		SetTag("inode", inode).
 		SetTag("ek.PartitionId", ek.PartitionId).
@@ -677,7 +677,7 @@ func (mw *MetaWrapper) InsertExtentKey(ctx context.Context, inode uint64, ek pro
 		return syscall.ENOENT
 	}
 
-	status, err := mw.insertExtentKey(ctx, mp, inode, ek)
+	status, err := mw.insertExtentKey(ctx, mp, inode, ek, isPreExtent)
 	if err != nil || status != statusOK {
 		log.LogWarnf("InsertExtentKey: inode(%v) ek(%v) err(%v) status(%v)", inode, ek, err, status)
 		return statusToErrno(status)

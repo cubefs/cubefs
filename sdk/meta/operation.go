@@ -534,11 +534,11 @@ func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID 
 
 	for {
 		req := &proto.ReadDirRequest{
-			VolName:     	mw.volname,
-			PartitionID:	mp.PartitionID,
-			ParentID:    	parentID,
-			Marker:		 	marker,
-			IsBatch:		true,
+			VolName:     mw.volname,
+			PartitionID: mp.PartitionID,
+			ParentID:    parentID,
+			Marker:      marker,
+			IsBatch:     true,
 		}
 		packet := proto.NewPacketReqID(ctx)
 		packet.Opcode = proto.OpMetaReadDir
@@ -627,7 +627,7 @@ func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID 
 //	return status, nil
 //}
 
-func (mw *MetaWrapper) insertExtentKey(ctx context.Context, mp *MetaPartition, inode uint64, ek proto.ExtentKey) (status int, err error) {
+func (mw *MetaWrapper) insertExtentKey(ctx context.Context, mp *MetaPartition, inode uint64, ek proto.ExtentKey, isPreExtent bool) (status int, err error) {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.insertExtentKey").
 		SetTag("mpID", mp.PartitionID).
 		SetTag("inode", inode).
@@ -643,6 +643,7 @@ func (mw *MetaWrapper) insertExtentKey(ctx context.Context, mp *MetaPartition, i
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
 		Extent:      ek,
+		IsPreExtent: isPreExtent,
 	}
 
 	packet := proto.NewPacketReqID(ctx)
@@ -677,7 +678,7 @@ func (mw *MetaWrapper) insertExtentKey(ctx context.Context, mp *MetaPartition, i
 		log.LogWarnf("insertExtentKey: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		newMp := mw.getRefreshMp(ctx, inode)
 		if newMp != nil && newMp.PartitionID != mp.PartitionID {
-			return mw.insertExtentKey(ctx, newMp, inode, ek)
+			return mw.insertExtentKey(ctx, newMp, inode, ek, isPreExtent)
 		}
 	}
 	if status != statusOK {

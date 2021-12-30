@@ -314,6 +314,7 @@ type InsertExtentKeyRequest struct {
 	PartitionID uint64    `json:"pid"`
 	Inode       uint64    `json:"ino"`
 	Extent      ExtentKey `json:"ek"`
+	IsPreExtent bool      `json:"pre"`
 }
 
 // GetExtentsRequest defines the reques to get extents.
@@ -375,7 +376,7 @@ type CursorResetRequest struct {
 	PartitionId uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	Cursor      uint64 `json:"cursor"`
-	Force	    bool   `json:"force"`
+	Force       bool   `json:"force"`
 }
 
 type CursorResetResponse struct {
@@ -386,8 +387,8 @@ type CursorResetResponse struct {
 }
 
 type MpAllInodesId struct {
-	Count       uint64	 `json:"count"`
-	Inodes      []uint64 `json:"inodes"`
+	Count  uint64   `json:"count"`
+	Inodes []uint64 `json:"inodes"`
 }
 
 // DeleteInodeRequest defines the request to delete an inode.
@@ -462,10 +463,10 @@ type BatchGetXAttrResponse struct {
 }
 
 type XAttrRaftResponse struct {
-	VolName     string   `json:"vol"`
-	PartitionId uint64   `json:"pid"`
-	Inode       uint64   `json:"ino"`
-	Status		uint8	 `json:"status"`
+	VolName     string `json:"vol"`
+	PartitionId uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+	Status      uint8  `json:"status"`
 }
 
 type MultipartInfo struct {

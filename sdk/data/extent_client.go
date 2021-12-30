@@ -31,7 +31,7 @@ import (
 	"golang.org/x/time/rate"
 )
 
-type InsertExtentKeyFunc func(ctx context.Context, inode uint64, key proto.ExtentKey) error
+type InsertExtentKeyFunc func(ctx context.Context, inode uint64, key proto.ExtentKey, isPreExtent bool) error
 type GetExtentsFunc func(ctx context.Context, inode uint64) (uint64, uint64, []proto.ExtentKey, error)
 type TruncateFunc func(ctx context.Context, inode, oldSize, size uint64) error
 type EvictIcacheFunc func(ctx context.Context, inode uint64)
