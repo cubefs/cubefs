@@ -583,12 +583,11 @@ func (s *ExtentStore) GetAllWatermarksWithByteArr(extentType uint8, filter Exten
 func (s *ExtentStore) GetAllExtentInfoWithByteArr(filter ExtentFilter) (data []byte, err error) {
 	needSize := 0
 	extents := make([]uint64, 0)
-
-	s.extentMapSlice.Range(func(extentID uint64, ei *ExtentInfoBlock) {
+	s.extentMapSlice.RangeDist(proto.AllExtentType, func(extentID uint64, ei *ExtentInfoBlock) {
 		if filter != nil && !filter(ei) {
 			return
 		}
-		needSize += 20
+		needSize += 24
 		extents = append(extents, ei[FileID])
 		return
 	})
@@ -596,7 +595,7 @@ func (s *ExtentStore) GetAllExtentInfoWithByteArr(filter ExtentFilter) (data []b
 	data = make([]byte, needSize)
 	index := 0
 	for _, eid := range extents {
-		ei, ok := s.getExtentInfoByExtentID(eid)
+		ei, ok := s.extentMapSlice.Load(eid)
 		if !ok {
 			continue
 		}
@@ -604,8 +603,8 @@ func (s *ExtentStore) GetAllExtentInfoWithByteArr(filter ExtentFilter) (data []b
 		index += 8
 		binary.BigEndian.PutUint64(data[index:index+8], ei[Size])
 		index += 8
-		binary.BigEndian.PutUint32(data[index:index+4], uint32(ei[Crc]))
-		index += 4
+		binary.BigEndian.PutUint64(data[index:index+8], ei[Crc])
+		index += 8
 	}
 	data = data[:index]
 	return

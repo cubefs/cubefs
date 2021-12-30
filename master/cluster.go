@@ -3484,7 +3484,7 @@ func (c *Cluster) handleDataNodeValidateCRCReport(dpCrcInfo *proto.DataPartition
 		}
 
 		// most of the replicas are same
-		var maxNumCrc uint32
+		var maxNumCrc uint64
 		var maxNum int
 		for crc, extentInfos := range extentCrcInfo.CrcLocAddrMap {
 			if maxNum < len(extentInfos) {

@@ -117,7 +117,7 @@ const (
 
 // data partition validate crc
 const (
-	EmptyCrcValue uint32 = 4045511210
+	EmptyCrcValue uint64 = 4045511210
 
 	DefaultIntervalDataPartitionValidateCRC = time.Hour * 24
 )

@@ -354,7 +354,7 @@ type DataPartitionExtentCrcInfo struct {
 type ExtentCrcInfo struct {
 	FileID        uint64
 	ExtentNum     int
-	CrcLocAddrMap map[uint32][]string
+	CrcLocAddrMap map[uint64][]string
 }
 
 type RegionView struct {
