@@ -1042,6 +1042,45 @@ func (mw *MetaWrapper) XAttrSet_ll(inode uint64, name, value []byte) error {
 	return nil
 }
 
+func (mw *MetaWrapper) BatchSetXAttr_ll(inode uint64, attrs map[string]string) error {
+	var err error
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		log.LogErrorf("XAttrSet_ll: no such partition, inode(%v)", inode)
+		return syscall.ENOENT
+	}
+	var status int
+	status, err = mw.batchSetXAttr(mp, inode, attrs)
+	if err != nil || status != statusOK {
+		return statusToErrno(status)
+	}
+	log.LogDebugf("BatchSetXAttr_ll: set xattr: volume(%v) inode(%v) attrs(%v) status(%v)",
+		mw.volname, inode, attrs, status)
+	return nil
+}
+
+func (mw *MetaWrapper) XAttrGetAll_ll(inode uint64) (*proto.XAttrInfo, error) {
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		log.LogErrorf("XAttrGetAll_ll: no such partition, ino(%v)", inode)
+		return nil, syscall.ENOENT
+	}
+
+	attrs, status, err := mw.getAllXAttr(mp, inode)
+	if err != nil || status != statusOK {
+		return nil, statusToErrno(status)
+	}
+
+	xAttr := &proto.XAttrInfo{
+		Inode:  inode,
+		XAttrs: attrs,
+	}
+
+	log.LogDebugf("XAttrGetAll_ll: volume(%v) inode(%v) attrs(%v)",
+		mw.volname, inode, attrs)
+	return xAttr, nil
+}
+
 func (mw *MetaWrapper) XAttrGet_ll(inode uint64, name string) (*proto.XAttrInfo, error) {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {

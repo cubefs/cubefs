@@ -167,6 +167,8 @@ const (
 	OpMetaExtentsEmpty       uint8 = 0xDF
 	OpMetaBatchObjExtentsAdd uint8 = 0xD0
 	OpMetaClearInodeCache    uint8 = 0xD1
+	OpMetaBatchSetXAttr      uint8 = 0xD2
+	OpMetaGetAllXAttr        uint8 = 0xD3
 )
 
 const (

@@ -78,17 +78,36 @@ const (
 
 	disabledActions               = "disabledActions"
 	configSignatureIgnoredActions = "signatureIgnoredActions"
+
+	//ObjMetaCache takes each path hierarchy of the path-like S3 object key as the cache key,
+	//and map it to the corresponding posix-compatible inode
+	// when enabled, the maxDentryCacheNum must at least be the minimum of defaultMaxDentryCacheNum
+	// Example:
+	//		{
+	//			"enableObjMetaCache": true
+	//		}
+	configObjMetaCache = "enableObjMetaCache"
+	// Example:
+	//		{
+	//			"maxDentryCacheNum": 10000000
+	//			"maxInodeAttrCacheNum": 10000000
+	//		}
+	configMaxDentryCacheNum    = "maxDentryCacheNum"
+	configMaxInodeAttrCacheNum = "maxInodeAttrCacheNum"
 )
 
 // Default of configuration value
 const (
-	defaultListen = "80"
+	defaultListen               = "80"
+	defaultMaxDentryCacheNum    = 10000000
+	defaultMaxInodeAttrCacheNum = 10000000
 )
 
 var (
 	// Regular expression used to verify the configuration of the service listening port.
 	// A valid service listening port configuration is a string containing only numbers.
 	regexpListen = regexp.MustCompile("^(\\d)+$")
+	objMetaCache *ObjMetaCache
 )
 
 type ObjectNode struct {
@@ -178,6 +197,23 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 	o.mc = master.NewMasterClient(masters, false)
 	o.vm = NewVolumeManager(masters, strict)
 	o.userStore = NewUserInfoStore(masters, strict)
+
+	// parse inode cache
+	cacheEnable := cfg.GetBool(configObjMetaCache)
+	if cacheEnable {
+		maxDentryCacheNum := cfg.GetInt64(configMaxDentryCacheNum)
+		if maxDentryCacheNum < defaultMaxDentryCacheNum {
+			maxDentryCacheNum = defaultMaxDentryCacheNum
+		}
+
+		maxInodeAttrCacheNum := cfg.GetInt64(configMaxInodeAttrCacheNum)
+		if maxInodeAttrCacheNum < defaultMaxInodeAttrCacheNum {
+			maxInodeAttrCacheNum = defaultMaxInodeAttrCacheNum
+		}
+		objMetaCache = NewObjMetaCache(maxDentryCacheNum, maxInodeAttrCacheNum)
+		log.LogInfof("loadConfig: enableObjMetaCache: %v, maxDentryCacheNum: %v, maxInodeAttrCacheNum: %v",
+			cacheEnable, maxDentryCacheNum, maxInodeAttrCacheNum)
+	}
 
 	return
 }
