@@ -1,8 +1,31 @@
+## Release v2.4.1 - 2021/12/31
+
+### _**UPGRAGDE NOTICE**_
+
+If your ChubaoFS version is v2.3.x or before, please refer to the UPGRADE NOTICE in v2.4.0 for upgrading steps. And also please make sure that your fuse client or objectnode version is equal to or older than the servers, i.e. master, metanode and datanode. In another word, newer versioned client can not be used in a cluster with older versioned servers.
+
+### Feature
+
+* `meta&object` introduce ReadDirLimit interface to retrieve partial results [#1234](https://github.com/chubaofs/chubaofs/pull/1234)
+* `fuse client` use ReadDirLimit in fuse client [#1244](https://github.com/chubaofs/chubaofs/pull/1244)
+
+### Bugfix
+
+* `sdk` makes AppendExtentKeyWithCheck request idempotent [#1224](https://github.com/chubaofs/chubaofs/pull/1224)
+* `meta` start tcp listen before starting raft [1256](https://github.com/chubaofs/chubaofs/pull/1256)
+* `raft` remove redundant memcopy when reading raft snapshot to avoid snapshot hanging [1264](https://github.com/chubaofs/chubaofs/pull/1264)
+* `object` handling range read request in a behavior compatible with S3 [#1286](https://github.com/chubaofs/chubaofs/pull/1286) [#1298](https://github.com/chubaofs/chubaofs/pull/1298)
+
+### Enhance
+
+* `sdk` add version in the http requests issued to master to collect client info [1262](https://github.com/chubaofs/chubaofs/pull/1262)
+* `sdk` mitigate the pain of extents fragmentation [1282](https://github.com/chubaofs/chubaofs/pull/1282)
+
 ## Release v2.4.0 - 2021/05/14
 
 ### _**UPGRAGDE NOTICE**_
 
-if your ChuBaoFS version is v2.3.* or before, and need to upgrade to v2.4.* , you must follow these upgrade steps:
+If your ChuBaoFS version is v2.3.x or before, and need to upgrade to v2.4.x , please follow the following upgrade steps:
 
 1. first of all, firewall open two more port (17710 & 17810) in your machine to support tcp multiplexing；
 
