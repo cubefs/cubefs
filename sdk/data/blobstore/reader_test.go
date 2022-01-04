@@ -372,10 +372,6 @@ func TestReadSliceRange(t *testing.T) {
 			MockReadExtentTrue, MockEbscReadFalse, syscall.EIO},
 		{true, proto.ExtentKey{}, MockGetFalse, MockCheckDataPartitionExistTrue,
 			MockReadExtentTrue, MockEbscReadTrue, nil},
-		{true, proto.ExtentKey{CRC: 12407}, MockGetFalse, MockCheckDataPartitionExistTrue,
-			MockReadExtentTrue, MockEbscReadTrue, nil},
-		{true, proto.ExtentKey{CRC: 12407}, MockGetFalse, MockCheckDataPartitionExistTrue,
-			MockReadExtentFalse, MockEbscReadTrue, nil},
 	}
 
 	for _, tc := range testCase {
