@@ -90,9 +90,11 @@ func interceptSignal(s common.Server) {
 	signal.Notify(sigC, syscall.SIGINT, syscall.SIGTERM)
 	syslog.Println("action[interceptSignal] register system signal.")
 	go func() {
-		sig := <-sigC
-		syslog.Printf("action[interceptSignal] received signal: %s.", sig.String())
-		s.Shutdown()
+		for {
+			sig := <-sigC
+			syslog.Printf("action[interceptSignal] received signal: %s. pid %d", sig.String(), os.Getpid())
+			s.Shutdown()
+		}
 	}()
 }
 
@@ -277,6 +279,8 @@ func main() {
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
+
+	syslog.Printf("server start success, pid %d, role %s", os.Getpid(), role)
 
 	err = log.OutputPid(logDir, role)
 	if err != nil {
