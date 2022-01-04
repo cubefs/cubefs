@@ -4,31 +4,24 @@ Here we draft the engineering roadmap of ChubaoFS.
 
 ## Interfaces
 
-FUSE-based POSIX inteface (done)
 
-S3-compatible object store (done)
+## Core Feature
 
+* Multi cache layer to support data lake, including Erasure-Code (Publishing in progress)
 
 ## Core Subsystems
 
-Authentication (done)
+* Solve the nonatomic problem of rename (May 2022)
 
-Cross-zone replication (done)
+* Multi version of data storage such as snapshot and history (May 2022)
 
-Reed-Solomon coding (May 2020)
+* Memory chubaofs built on distributed unused memory (May 2022)
 
-Volume/file Lease (May 2020)
-
+* Audit function on Data operation flow (May 2022)
 
 ## Ecosystem
 
 * ChubaoSpark, a ChubaoFS-based shuffle manager for Apache Spark (WIP)
 
 * ChubaoDB, a ChubaoFS-based document store & search (WIP)
-
-
-
-
-
-
 
