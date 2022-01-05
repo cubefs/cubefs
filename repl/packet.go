@@ -100,7 +100,7 @@ func (p *Packet) AfterTp() (ok bool) {
 }
 
 func (p *Packet) clean() {
-	if p.Data == nil {
+	if p.Data == nil && p.OrgBuffer == nil {
 		return
 	}
 	p.Object = nil
