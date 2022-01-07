@@ -1708,9 +1708,11 @@ func (m *Server) createDomainHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err = nsgm.createDomain(zoneName); err != nil {
+		log.LogErrorf("action[createDomainHandler] err [%v]", err)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("successful")))
 }
 

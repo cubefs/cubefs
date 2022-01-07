@@ -112,19 +112,18 @@ func (m *Server) loadMetadata() {
 	if err = m.cluster.loadClusterValue(); err != nil {
 		panic(err)
 	}
-
-	if m.cluster.FaultDomain {
-		if err = m.cluster.loadNodeSetGrps(); err != nil {
-			panic(err)
-		}
-	}
 	var loadDomain bool
 	if m.cluster.FaultDomain { // try load exclude
 		if loadDomain, err = m.cluster.loadZoneDomain(); err != nil {
 			log.LogInfof("action[putZoneDomain] err[%v]", err)
 			panic(err)
 		}
-		if loadDomain { // if load success,start grp manager ,load nodeset can trigger build ns grps
+		if err = m.cluster.loadNodeSetGrps(); err != nil {
+			panic(err)
+		}
+		if loadDomain {
+			// if load success the domain already init before this startup,
+			// start grp manager ,load nodeset can trigger build ns grps
 			m.cluster.domainManager.start()
 		}
 	}
@@ -140,8 +139,8 @@ func (m *Server) loadMetadata() {
 				log.LogInfof("action[putZoneDomain] err[%v]", err)
 				panic(err)
 			}
+			m.cluster.domainManager.start()
 		}
-		m.cluster.domainManager.start()
 	}
 
 	if err = m.cluster.loadDataNodes(); err != nil {

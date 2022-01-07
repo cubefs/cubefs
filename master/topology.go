@@ -190,6 +190,7 @@ func (nsc nodeSetCollection) Swap(i, j int) {
 
 type nodeSetGroup struct {
 	ID            uint64
+	domainId      uint64
 	nsgInnerIndex int //worked if alloc num of replica not equal with stardard set num of nsg
 	nodeSets      []*nodeSet
 	nodeSetsIds   []uint64
@@ -252,7 +253,7 @@ func newDomainManager(cls *Cluster) *DomainManager {
 		ZoneName2DomainIdMap:  make(map[string]uint64),
 		excludeZoneListDomain: make(map[string]int),
 		dataRatioLimit:        defaultDomainUsageThreshold,
-		excludeZoneUseRatio:   defaultZoneUsageThreshold,
+		excludeZoneUseRatio:   defaultDomainUsageThreshold,
 	}
 	return ns
 }
@@ -261,21 +262,32 @@ func (nsgm *DomainManager) start() {
 	log.LogInfof("action[DomainManager:start] start")
 	nsgm.init = true
 }
+
 func (nsgm *DomainManager) createDomain(zoneName string) (err error) {
+	if nsgm.init == false {
+		return fmt.Errorf("createDomain err [%v]", err)
+	}
+	log.LogInfof("zone name [%v] createDomain", zoneName)
 	zoneList := strings.Split(zoneName, ",")
 	grpRegion := newDomainNodeSetGrpManager()
 	if grpRegion.domainId, err = nsgm.c.idAlloc.allocateCommonID(); err != nil {
 		return fmt.Errorf("createDomain err [%v]", err)
 	}
+	nsgm.Lock()
+	for i := 0; i < len(zoneList); i++ {
+		if domainId, ok := nsgm.ZoneName2DomainIdMap[zoneList[i]]; ok {
+			nsgm.Unlock()
+			return fmt.Errorf("zone name [%v] exist in domain [%v]", zoneList[i], domainId)
+		}
+	}
 	nsgm.domainNodeSetGrpVec = append(nsgm.domainNodeSetGrpVec, grpRegion)
 	for i := 0; i < len(zoneList); i++ {
-		if index, ok := nsgm.ZoneName2DomainIdMap[zoneList[i]]; ok {
-			return fmt.Errorf("zone name [%v] exist in domain [%v]", zoneList[i], nsgm.domainNodeSetGrpVec[index].domainId)
-		}
 		nsgm.ZoneName2DomainIdMap[zoneList[i]] = grpRegion.domainId
 		nsgm.domainId2IndexMap[grpRegion.domainId] = len(nsgm.domainNodeSetGrpVec) - 1
 		log.LogInfof("action[createDomain] domainid [%v] zonename [%v] index [%v]", grpRegion.domainId, zoneList[i], len(nsgm.domainNodeSetGrpVec)-1)
 	}
+
+	nsgm.Unlock()
 	if err = nsgm.c.putZoneDomain(false); err != nil {
 		return fmt.Errorf("putZoneDomain err [%v]", err)
 	}
@@ -296,7 +308,7 @@ func (nsgm *DomainManager) checkExcludeZoneState() {
 			log.LogInfof("action[checkExcludeZoneState] zone name[%v],status[%v], index for datanode[%v],index for metanode[%v]",
 				zone.name, zone.status, zone.setIndexForDataNode, zone.setIndexForMetaNode)
 			if nsgm.excludeZoneUseRatio == 0 || nsgm.excludeZoneUseRatio > 1 {
-				nsgm.excludeZoneUseRatio = defaultZoneUsageThreshold
+				nsgm.excludeZoneUseRatio = defaultDomainUsageThreshold
 			}
 			if zone.isUsedRatio(nsgm.excludeZoneUseRatio) {
 				if zone.status == normalZone {
@@ -495,7 +507,8 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 	log.LogErrorf("action[getHostFromNodeSetGrpSpecfic]  replicaNum[%v],type[%v], nsg cnt[%v], nsg status[%v]",
 		replicaNum, createType, len(domainGrpManager.nodeSetGrpMap), domainGrpManager.status)
 	if len(domainGrpManager.nodeSetGrpMap) == 0 {
-		return
+		log.LogErrorf("action[getHostFromNodeSetGrpSpecfic] [%v] nodeSetGrpMap zero", domainGrpManager.domainId)
+		return nil, nil, fmt.Errorf("nodeSetGrpMap zero")
 	}
 
 	nsgm.RLock()
@@ -711,6 +724,7 @@ func (nsgm *DomainManager) buildNodeSetGrpDoWork(zoneName string, nodeList *list
 
 func (nsgm *DomainManager) buildNodeSetGrpCommit(resList []nsList, domainGrpManager *DomainNodeSetGrpManager) {
 	nodeSetGrp := newNodeSetGrp(nsgm.c)
+	nodeSetGrp.domainId = domainGrpManager.domainId
 	for i := 0; i < len(resList); i++ {
 		nst := resList[i].ele.Value.(*nodeSet)
 		nodeSetGrp.nodeSets = append(nodeSetGrp.nodeSets, nst)
@@ -775,12 +789,14 @@ func buildNodeSetGrpOneZone(nsgm *DomainManager, domainGrpManager *DomainNodeSet
 	defer nsgm.Unlock()
 	log.LogInfof("action[buildNodeSetGrpOneZone] step in")
 	if len(domainGrpManager.zoneAvailableNodeSet) != 1 {
+		log.LogErrorf("action[buildNodeSetGrpOneZone] avaliable zone cnt[%v]", len(domainGrpManager.zoneAvailableNodeSet))
 		err = fmt.Errorf("avaliable zone cnt[%v]", len(domainGrpManager.zoneAvailableNodeSet))
 		return
 	}
 	buildIndex, zoneAvaVec := nsgm.buildNodeSetGrpPrepare(domainGrpManager)
 
 	if zoneAvaVec[buildIndex].lst.Len() < defaultReplicaNum {
+		log.LogErrorf("action[buildNodeSetGrpOneZone] not enough nodeset in avaliable list")
 		return fmt.Errorf("not enough nodeset in avaliable list")
 	}
 	var resList []nsList
@@ -856,10 +872,19 @@ func (nsgm *DomainManager) putNodeSet(ns *nodeSet, load bool) (err error) {
 		return
 	}
 
-	domainId = nsgm.ZoneName2DomainIdMap[ns.zoneName]
+	if domainId,ok  = nsgm.ZoneName2DomainIdMap[ns.zoneName]; !ok {
+		domainId = 0 // no domainid be set before;therefore, put it to default domain
+		nsgm.ZoneName2DomainIdMap[ns.zoneName] = 0
+	}
 	if index, ok = nsgm.domainId2IndexMap[domainId]; !ok {
+		if domainId > 0 && load == false { // domainId 0 can be create through nodeset craate,others be create by createDomain
+			err = fmt.Errorf("inconsistent domainid exist in name map but node exist in index map")
+			log.LogErrorf("action[putNodeSet]  %v", err)
+			return
+		}
 		grpRegion := newDomainNodeSetGrpManager()
 		nsgm.domainNodeSetGrpVec = append(nsgm.domainNodeSetGrpVec, grpRegion)
+		nsgm.ZoneName2DomainIdMap[ns.zoneName] = 0 // domainId must be zero here
 		grpRegion.domainId = domainId
 		index = len(nsgm.domainNodeSetGrpVec) - 1
 		nsgm.domainId2IndexMap[domainId] = index
@@ -888,12 +913,13 @@ func (nsgm *DomainManager) putNodeSet(ns *nodeSet, load bool) (err error) {
 		nsGrp.zoneAvailableNodeSet[ns.zoneName] = list.New()
 		log.LogInfof("action[DomainManager::putNodeSet] init list for zone[%v],zonelist size[%v]", ns.zoneName, len(nsGrp.zoneAvailableNodeSet))
 	}
-	log.LogInfof("action[DomainManager::putNodeSet] ns id[%v] be put in zone[%v]", ns.ID, ns.zoneName)
+	log.LogInfof("action[DomainManager::putNodeSet] domainid [%v] ns id[%v] be put in zone[%v]", nsGrp.domainId, ns.ID, ns.zoneName)
 	nsGrp.zoneAvailableNodeSet[ns.zoneName].PushBack(ns)
+
 	return
 }
 
-type nodeSet struct {
+type 	nodeSet struct {
 	ID        uint64
 	Capacity  int
 	zoneName  string
@@ -1233,13 +1259,24 @@ func (zone *Zone) putNodeSet(ns *nodeSet) (err error) {
 func (zone *Zone) createNodeSet(c *Cluster) (ns *nodeSet, err error) {
 	cnt := 1
 	allNodeSet := zone.getAllNodeSet()
+	log.LogInfof("action[createNodeSet] zone[%v] FaultDomain:[%v] init[%v] DefaultNormalZoneCnt[%v] nodeset cnt[%v]",
+		zone.name, c.FaultDomain, c.domainManager.init, c.cfg.DefaultNormalZoneCnt, len(allNodeSet))
+
 	if c.FaultDomain && c.domainManager.init && c.cfg.DefaultNormalZoneCnt < defaultReplicaNum {
 		if _, ok := c.domainManager.excludeZoneListDomain[zone.name]; !ok {
-			if len(allNodeSet) < c.cfg.DefaultNormalZoneCnt {
+			dstNsCnt := 0
+			if c.cfg.DefaultNormalZoneCnt == 1 {  // one zone support domain need 3 nodeset at begin
+				dstNsCnt = 3
+			} else {
+				dstNsCnt = 2 // two zone construct domain need 2 nodeset for each
+			}
+			if len(allNodeSet) < dstNsCnt {
 				log.LogInfof("action[createNodeSet] zone[%v] nodeset len:[%v] less then 3,create to 3 one time",
 					zone.name, len(allNodeSet))
-				cnt = c.cfg.DefaultNormalZoneCnt - len(allNodeSet)
+				cnt = dstNsCnt - len(allNodeSet)
 			}
+		} else {
+			log.LogInfof("action[createNodeSet] zone[%v] get in excludeZoneListDomain", zone.name)
 		}
 	}
 
