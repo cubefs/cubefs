@@ -181,6 +181,7 @@ func (c *Cluster) addNodeSetGrp(ns *nodeSet, load bool) (err error) {
 		ns.ID, ns.zoneName, load, c.domainManager.init)
 	if c.domainManager.init {
 		err = c.domainManager.putNodeSet(ns, load)
+		c.putZoneDomain(false)
 	}
 	return
 }
@@ -949,6 +950,8 @@ func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreL
 	dp = newDataPartition(partitionID, dpReplicaNum, volName, vol.ID, proto.GetDpType(vol.VolType, isPreload), partitionTTL)
 	dp.Hosts = targetHosts
 	dp.Peers = targetPeers
+
+	log.LogInfof("action[createDataPartition] partitionID [%v] get host [%v]", partitionID, targetHosts)
 
 	for _, host := range targetHosts {
 		wg.Add(1)

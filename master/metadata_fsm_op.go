@@ -271,6 +271,7 @@ type zoneDomainValue struct {
 	ExcludeZoneMap       map[string]int
 	NeedFaultDomain      bool
 	DataRatio            float64
+	domainNodeSetGrpVec  []*DomainNodeSetGrpManager
 	DomainZoneName2IdMap map[string]uint64 // zoneName:domainId
 	ExcludeZoneUseRatio  float64
 }
@@ -291,6 +292,7 @@ func newNodeSetValue(nset *nodeSet) (nsv *nodeSetValue) {
 }
 func newNodeSetGrpValue(nset *nodeSetGroup) (nsv *domainNodeSetGrpValue) {
 	nsv = &domainNodeSetGrpValue{
+		DomainId: 	 nset.domainId,
 		ID:          nset.ID,
 		NodeSetsIds: nset.nodeSetsIds,
 		Status:      nset.status,
@@ -663,6 +665,9 @@ func (c *Cluster) putZoneDomain(init bool) (err error) {
 	metadata.Op = opSyncExclueDomain
 	metadata.K = DomainPrefix
 
+	c.domainManager.RLock()
+	defer c.domainManager.RUnlock()
+
 	if init {
 		for i := 0; i < len(c.t.zones); i++ {
 			c.domainManager.excludeZoneListDomain[c.t.zones[i].name] = 0
@@ -675,16 +680,17 @@ func (c *Cluster) putZoneDomain(init bool) (err error) {
 	domainValue := newZoneDomainValue()
 	domainValue.ExcludeZoneMap = c.domainManager.excludeZoneListDomain
 	domainValue.NeedFaultDomain = c.needFaultDomain
+	domainValue.domainNodeSetGrpVec = c.domainManager.domainNodeSetGrpVec
 	domainValue.DomainZoneName2IdMap = c.domainManager.ZoneName2DomainIdMap
 	if c.domainManager.dataRatioLimit > 0 {
 		domainValue.DataRatio = c.domainManager.dataRatioLimit
 	} else {
-		domainValue.DataRatio = defaultZoneUsageThreshold
+		domainValue.DataRatio = defaultDomainUsageThreshold
 	}
 	if c.domainManager.excludeZoneUseRatio > 0 && c.domainManager.excludeZoneUseRatio <= 1 {
 		domainValue.DataRatio = c.domainManager.excludeZoneUseRatio
 	} else {
-		domainValue.DataRatio = defaultZoneUsageThreshold
+		domainValue.DataRatio = defaultDomainUsageThreshold
 	}
 
 	metadata.V, err = json.Marshal(domainValue)
@@ -721,6 +727,19 @@ func (c *Cluster) loadZoneDomain() (ok bool, err error) {
 		c.domainManager.dataRatioLimit = nsv.DataRatio
 		c.domainManager.ZoneName2DomainIdMap = nsv.DomainZoneName2IdMap
 		c.domainManager.excludeZoneUseRatio = nsv.ExcludeZoneUseRatio
+
+		for zoneName, domainId := range c.domainManager.ZoneName2DomainIdMap {
+			log.LogInfof("action[loadZoneDomain] zoneName %v domainid %v", zoneName, domainId)
+			if domainIndex, ok := c.domainManager.domainId2IndexMap[domainId]; !ok {
+				log.LogInfof("action[loadZoneDomain] zoneName %v domainid %v build new domainnodesetgrp manager", zoneName, domainId)
+				domainGrp := newDomainNodeSetGrpManager()
+				domainGrp.domainId = domainId
+				c.domainManager.domainNodeSetGrpVec = append(c.domainManager.domainNodeSetGrpVec, domainGrp)
+				domainIndex = len(c.domainManager.domainNodeSetGrpVec) - 1
+				c.domainManager.domainId2IndexMap[domainId] = domainIndex
+			}
+		}
+
 		break
 	}
 	log.LogInfof("action[loadZoneDomain] success!")
@@ -746,11 +765,13 @@ func (c *Cluster) loadNodeSetGrps() (err error) {
 			log.LogFatalf("action[loadNodeSets], unmarshal err:%v", err.Error())
 			return err
 		}
-		log.LogInfof("action[loadNodeSetGrps] get result domainInfoLoad id[%v],status[%v],ids[%v]", domainInfoLoad.ID, domainInfoLoad.Status, domainInfoLoad.NodeSetsIds)
+		log.LogInfof("action[loadNodeSetGrps] get result domainid [%v] domainInfoLoad id[%v],status[%v],ids[%v]",
+			domainInfoLoad.DomainId, domainInfoLoad.ID, domainInfoLoad.Status, domainInfoLoad.NodeSetsIds)
 		nsg := newNodeSetGrp(c)
 		nsg.nodeSetsIds = domainInfoLoad.NodeSetsIds
 		nsg.ID = domainInfoLoad.ID
 		nsg.status = domainInfoLoad.Status
+		nsg.domainId = domainInfoLoad.DomainId
 		domainId := domainInfoLoad.DomainId
 
 		var domainIndex int
@@ -758,16 +779,18 @@ func (c *Cluster) loadNodeSetGrps() (err error) {
 		var domainGrp *DomainNodeSetGrpManager
 		if domainIndex, ok = c.domainManager.domainId2IndexMap[domainId]; !ok {
 			domainGrp = newDomainNodeSetGrpManager()
+			domainGrp.domainId = domainId
 			c.domainManager.domainNodeSetGrpVec = append(c.domainManager.domainNodeSetGrpVec, domainGrp)
 			domainIndex = len(c.domainManager.domainNodeSetGrpVec) - 1
 			c.domainManager.domainId2IndexMap[domainId] = domainIndex
 		}
-
+		domainGrp = c.domainManager.domainNodeSetGrpVec[domainIndex]
 		domainGrp.nodeSetGrpMap = append(domainGrp.nodeSetGrpMap, nsg)
 		var j int
 		for j = 0; j < len(domainInfoLoad.NodeSetsIds); j++ {
 			domainGrp.nsId2NsGrpMap[domainInfoLoad.NodeSetsIds[j]] = len(domainGrp.nodeSetGrpMap) - 1
-			log.LogInfof("action[loadNodeSetGrps] get result index[%v] nodesetid[%v] nodesetgrp index [%v]", domainInfoLoad.ID, domainInfoLoad.NodeSetsIds[j], domainInfoLoad.Status)
+			log.LogInfof("action[loadNodeSetGrps] get result index[%v] nodesetid[%v] nodesetgrp index [%v]",
+				domainInfoLoad.ID, domainInfoLoad.NodeSetsIds[j], domainInfoLoad.Status)
 		}
 		log.LogInfof("action[loadNodeSetGrps], nsgId[%v],status[%v]", nsg.ID, nsg.status)
 	}
