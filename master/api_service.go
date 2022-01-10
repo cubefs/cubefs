@@ -664,7 +664,7 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = m.cluster.markDeleteVol(name, authKey, force); err != nil {
+	if err = m.cluster.markDeleteVol(name, authKey, false); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
