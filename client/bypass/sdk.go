@@ -41,6 +41,7 @@ typedef struct {
     const char* log_level;
 	const char* app;
     const char* prof_port;
+	const char* auto_flush;
     const char* tracing_sampler_type;
     const char* tracing_sampler_param;
     const char* tracing_report_addr;
@@ -171,14 +172,13 @@ func newClient(conf *C.cfs_config_t) *client {
 	c.masterAddr = C.GoString(conf.master_addr)
 	c.volName = C.GoString(conf.vol_name)
 	c.owner = C.GoString(conf.owner)
-	c.followerRead = false
-	if C.GoString(conf.follower_read) == "true" {
-		c.followerRead = true
-	}
+	c.followerRead, _ = strconv.ParseBool(C.GoString(conf.follower_read))
 	c.logDir = C.GoString(conf.log_dir)
 	c.logLevel = C.GoString(conf.log_level)
 	c.app = C.GoString(conf.app)
 	c.profPort = parseProfPortArray(C.GoString(conf.prof_port))
+	c.autoFlush, _ = strconv.ParseBool(C.GoString(conf.auto_flush))
+
 	c.readProcErrMap = make(map[uint64]int)
 	c.tracingSamplerType = C.GoString(conf.tracing_sampler_type)
 	if val, err := strconv.ParseFloat(C.GoString(conf.tracing_sampler_param), 64); err == nil {
@@ -257,12 +257,14 @@ type client struct {
 	logLevel     string
 	app          string
 
-	// profiling config
 	profPort        []uint64 // the first is the port of main mysqld, the others are the ports of read processes
 	listenPort      uint64
 	readProcErrMap  map[uint64]int // key: port, value: count of error
 	readProcMapLock sync.Mutex
 
+	autoFlush bool
+
+	// profiling config
 	tracingSamplerType  string
 	tracingSamplerParam float64
 	tracingReportAddr   string
@@ -3098,6 +3100,7 @@ func (c *client) start() (err error) {
 		OnGetExtents:      mw.GetExtents,
 		OnTruncate:        mw.Truncate,
 		TinySize:          data.NoUseTinyExtent,
+		AutoFlush:         c.autoFlush,
 		MetaWrapper:       mw,
 		ExtentMerge:       isMysql(),
 	}); err != nil {

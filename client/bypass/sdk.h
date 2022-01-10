@@ -39,8 +39,10 @@ typedef struct {
     const char* log_level;
     const char* app;
 
-    // following are optional parameters for profiling
     const char* prof_port;
+    const char* auto_flush;
+
+    // following are optional parameters for profiling
     const char* tracing_sampler_type;
     const char* tracing_sampler_param;
     const char* tracing_report_addr;
