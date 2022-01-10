@@ -94,6 +94,7 @@ const (
 	cmdVolDefaultFollowerReader = true
 	cmdVolDefaultZoneName       = ""
 	cmdVolDefaultCrossZone      = false
+	cmdVolDefaultType           = 0
 )
 
 func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
@@ -105,6 +106,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optYes bool
 	var optCrossZone bool
 	var optZoneName string
+	var optVolType int
 	var cmd = &cobra.Command{
 		Use:   cmdVolCreateUse,
 		Short: cmdVolCreateShort,
@@ -123,6 +125,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("Create a new volume:\n")
 				stdout("  Name                : %v\n", volumeName)
 				stdout("  Owner               : %v\n", userID)
+				stdout("  Volume Type         : %v\n", optVolType)
 				stdout("  Dara partition size : %v GB\n", optDPSize)
 				stdout("  Meta partition count: %v\n", optMPCount)
 				stdout("  Capacity            : %v GB\n", optCapacity)
@@ -141,7 +144,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 
 			err = client.AdminAPI().CreateVolume(
 				volumeName, userID, optMPCount, optDPSize,
-				optCapacity, optReplicas, optFollowerRead, optZoneName, optCrossZone)
+				optCapacity, optReplicas, optFollowerRead, optZoneName, optCrossZone, optVolType)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
 				return
@@ -158,6 +161,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, cmdVolDefaultZoneName, "Specify volume zone name")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	cmd.Flags().BoolVar(&optCrossZone, CliFlagCrossZone, cmdVolDefaultCrossZone, "Disable cross zone")
+	cmd.Flags().IntVar(&optVolType, CliFlagVolType, cmdVolDefaultType, "Specify volume type")
 
 	return cmd
 }
