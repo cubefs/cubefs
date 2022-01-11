@@ -654,12 +654,12 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 	var (
 		name    string
 		authKey string
-		force   bool
-		err     error
-		msg     string
+		// force   bool
+		err error
+		msg string
 	)
 
-	if name, authKey, force, err = parseRequestToDeleteVol(r); err != nil {
+	if name, authKey, _, err = parseRequestToDeleteVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -672,7 +672,7 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	msg = fmt.Sprintf("delete vol[%v] successfully,from[%v] force (%v)", name, r.RemoteAddr, force)
+	msg = fmt.Sprintf("delete vol[%v] successfully,from[%v]", name, r.RemoteAddr)
 	log.LogWarn(msg)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
