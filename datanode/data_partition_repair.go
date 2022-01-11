@@ -485,11 +485,20 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	if err != nil {
 		return errors.Trace(err, "streamRepairExtent Watermark error")
 	}
+	// Set repairing status to avoid race between new repair notify request
+	// and repairMore. Otherwise, we may repair the same tiny extent file
+	// more than once.
+	if ok := localExtentInfo.SetRepairing(); !ok {
+		log.LogDebugf("streamRepairExtent PartitionID:%v ExtentID:%v is repairing", dp.partitionID, localExtentInfo.FileID)
+		return nil
+	}
+	defer localExtentInfo.ClearRepairing()
 
 	if dp.ExtentStore().IsDeletedNormalExtent(remoteExtentInfo.FileID) {
 		return nil
 	}
 
+repairMore:
 	if localExtentInfo.Size >= remoteExtentInfo.Size {
 		return nil
 	}
@@ -553,9 +562,6 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 			return
 		}
 
-		log.LogInfof(fmt.Sprintf("action[streamRepairExtent] fix(%v_%v) start fix from (%v)"+
-			" remoteSize(%v)localSize(%v) reply(%v).", dp.partitionID, localExtentInfo.FileID, remoteExtentInfo.String(),
-			remoteExtentInfo.Size, currFixOffset, reply.GetUniqueLogId()))
 		actualCrc := crc32.ChecksumIEEE(reply.Data[:reply.Size])
 		if reply.CRC != crc32.ChecksumIEEE(reply.Data[:reply.Size]) {
 			err = fmt.Errorf("streamRepairExtent crc mismatch expectCrc(%v) actualCrc(%v) extent(%v_%v) start fix from (%v)"+
@@ -601,8 +607,22 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 		}
 
 	}
-	return
 
+	log.LogInfof("action[streamRepairExtent] fix(%v_%v) start fix from (%v) remoteSize(%v)localSize(%v)",
+		dp.partitionID, localExtentInfo.FileID, remoteExtentInfo.String(), remoteExtentInfo.Size, currFixOffset)
+
+	if storage.IsTinyExtent(remoteExtentInfo.FileID) {
+		// broken tiny extent cannot be choosed for new write request,
+		// which means there is no race between repair and write, so
+		// it's safe to repair more.
+		// goto repairMore until local size is equal to remote size
+		localExtentInfo, err = store.Watermark(remoteExtentInfo.FileID)
+		if err != nil {
+			return errors.Trace(err, "streamRepairExtent Watermark error")
+		}
+		goto repairMore
+	}
+	return
 }
 
 func intMin(a, b int) int {
