@@ -93,7 +93,7 @@ func newConfigSetCmd() *cobra.Command {
 			stdout(fmt.Sprintf("Config has been set successfully!\n"))
 		},
 	}
-	cmd.Flags().StringVar(&optMasterHost, "addr", "", "Specify master address [{HOST}:{PORT}]")
+	cmd.Flags().StringVar(&optMasterHost, "addr", "", "Specify master address [{HOST}:{PORT}, MASTER DOMAIN]")
 	cmd.Flags().Uint16Var(&optTimeout, "timeout", 0, "Specify timeout for requests [Unit: s]")
 	return cmd
 }
@@ -113,7 +113,7 @@ func newConfigInfoCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&optFilterWritable, "filter-writable", "", "Filter node writable status")
-	cmd.Flags().StringVar(&optFilterStatus, "filter-status", "", "Filter node status [Active, Inactive")
+	cmd.Flags().StringVar(&optFilterStatus, "filter-status", "", "Filter node status [Active, Inactive]")
 	return cmd
 }
 
