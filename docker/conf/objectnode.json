@@ -27,6 +27,7 @@
   ],
   "strict": true,
   "enableObjMetaCache" : true,
+  "cacheRefreshInterval": 600,
   "maxDentryCacheNum" : 10000000,
   "maxInodeAttrCacheNum": 10000000
 }

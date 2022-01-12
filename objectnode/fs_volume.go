@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"github.com/cubefs/cubefs/metanode"
 	"hash"
 	"io"
 	"os"
@@ -309,29 +310,14 @@ func (v *Volume) GetXAttr(path string, key string) (info *proto.XAttrInfo, err e
 
 	if objMetaCache != nil {
 		var retry = 0
-		var useCache = true
 		for {
-			var dentry *DentryItem
-			if objMetaCache != nil && useCache {
-				dentry = objMetaCache.RecursiveLookupTarget(v.name, path)
-				if dentry != nil {
-					inode = dentry.Inode
-				} else {
-					if _, inode, _, _, err = v.recursiveLookupTarget(path); err != nil {
-						return v.getXAttr(path, key)
-					}
-				}
-			} else {
-				if _, inode, _, _, err = v.recursiveLookupTarget(path); err != nil {
-					return v.getXAttr(path, key)
-				}
-
+			if _, inode, _, _, err = v.recursiveLookupTarget(path); err != nil {
+				return v.getXAttr(path, key)
 			}
 
 			_, err = v.mw.InodeGet_ll(inode)
 			if err == syscall.ENOENT && retry < MaxRetry {
 				retry++
-				useCache = false
 				continue
 			}
 			if err != nil {
@@ -345,13 +331,19 @@ func (v *Volume) GetXAttr(path string, key string) (info *proto.XAttrInfo, err e
 			Inode: inode,
 		}
 
-		attr := objMetaCache.GetAttr(v.name, inode)
-		if attr == nil {
+		var attr *proto.XAttrInfo
+		attrItem, needRefresh := objMetaCache.GetAttr(v.name, inode)
+		if attrItem == nil || needRefresh {
+			log.LogDebugf("GetXAttr: get attr in cache failed: volume(%v) inode(%v) attrItem(%v), needRefresh(%v)",
+				v.name, inode, attrItem, needRefresh)
 			if attr, err = v.mw.XAttrGetAll_ll(inode); err != nil {
 				log.LogErrorf("XAttrGetAll_ll: meta get xattr fail: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, inode, err)
 				return v.getXAttr(path, key)
 			} else {
-				objMetaCache.PutAttr(v.name, attr)
+				attrItem = &AttrItem{
+					XAttrInfo: *attr,
+				}
+				objMetaCache.PutAttr(v.name, attrItem)
 				val, ok := attr.XAttrs[key]
 				if !ok {
 					log.LogErrorf("XAttrGetAll_ll: meta get xattr fail: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, inode, err)
@@ -362,7 +354,7 @@ func (v *Volume) GetXAttr(path string, key string) (info *proto.XAttrInfo, err e
 				}
 			}
 		} else {
-			val, ok := attr.XAttrs[key]
+			val, ok := attrItem.XAttrs[key]
 			if !ok {
 				if attr, err = v.mw.XAttrGetAll_ll(inode); err != nil {
 					log.LogErrorf("XAttrGetAll_ll: meta get xattr fail: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, inode, err)
@@ -419,29 +411,15 @@ func (v *Volume) ListXAttrs(path string) (keys []string, err error) {
 
 	if objMetaCache != nil {
 		var retry = 0
-		var useCache = true
 		for {
-			var dentry *DentryItem
-			if objMetaCache != nil && useCache {
-				dentry = objMetaCache.RecursiveLookupTarget(v.name, path)
-				if dentry != nil {
-					inode = dentry.Inode
-				} else {
-					if _, inode, _, _, err = v.recursiveLookupTarget(path); err != nil {
-						return v.listXAttrs(path)
-					}
-				}
-			} else {
-				if _, inode, _, _, err = v.recursiveLookupTarget(path); err != nil {
-					return v.listXAttrs(path)
-				}
 
+			if _, inode, _, _, err = v.recursiveLookupTarget(path); err != nil {
+				return v.listXAttrs(path)
 			}
 
 			_, err = v.mw.InodeGet_ll(inode)
 			if err == syscall.ENOENT && retry < MaxRetry {
 				retry++
-				useCache = false
 				continue
 			}
 			if err != nil {
@@ -451,19 +429,24 @@ func (v *Volume) ListXAttrs(path string) (keys []string, err error) {
 			break
 		}
 
-		attr := objMetaCache.GetAttr(v.name, inode)
-		if attr == nil {
-			if attr, err = v.mw.XAttrGetAll_ll(inode); err != nil {
+		attrItem, needRefresh := objMetaCache.GetAttr(v.name, inode)
+		if attrItem == nil || needRefresh {
+			log.LogDebugf("ListXAttrs: get attr in cache failed: volume(%v) inode(%v) attrItem(%v), needRefresh(%v)",
+				v.name, inode, attrItem, needRefresh)
+			if attr, err := v.mw.XAttrGetAll_ll(inode); err != nil {
 				log.LogErrorf("XAttrGetAll_ll: meta get xattr fail: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, inode, err)
 				return v.listXAttrs(path)
 			} else {
-				objMetaCache.PutAttr(v.name, attr)
+				attrItem = &AttrItem{
+					XAttrInfo: *attr,
+				}
+				objMetaCache.PutAttr(v.name, attrItem)
 				for key, _ := range attr.XAttrs {
 					keys = append(keys, key)
 				}
 			}
 		} else {
-			for key, _ := range attr.XAttrs {
+			for key, _ := range attrItem.XAttrs {
 				keys = append(keys, key)
 			}
 		}
@@ -685,8 +668,10 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	}
 
 	attr := &AttrItem{
-		Inode:  invisibleTempDataInode.Inode,
-		XAttrs: make(map[string]string),
+		XAttrInfo: proto.XAttrInfo{
+			Inode:  invisibleTempDataInode.Inode,
+			XAttrs: make(map[string]string),
+		},
 	}
 
 	attr.XAttrs[XAttrKeyOSSETag] = etagValue.Encode()
@@ -808,10 +793,12 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	//force updating dentry and attrs in cache
 	if objMetaCache != nil {
 		dentry := &DentryItem{
-			ParentId: parentId,
-			Name:     lastPathItem.Name,
-			Inode:    invisibleTempDataInode.Inode,
-			Type:     DefaultFileMode,
+			Dentry: metanode.Dentry{
+				ParentId: parentId,
+				Name:     lastPathItem.Name,
+				Inode:    invisibleTempDataInode.Inode,
+				Type:     DefaultFileMode,
+			},
 		}
 		objMetaCache.PutDentry(v.name, dentry)
 		objMetaCache.PutAttr(v.name, attr)
@@ -901,8 +888,10 @@ func (v *Volume) DeletePath(path string) (err error) {
 	}
 
 	var dentry = &DentryItem{
-		ParentId: parent,
-		Name:     name,
+		Dentry: metanode.Dentry{
+			ParentId: parent,
+			Name:     name,
+		},
 	}
 	if objMetaCache != nil {
 		objMetaCache.DeleteDentry(v.name, dentry.Key())
@@ -1468,30 +1457,15 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, xattr *proto.XAttrIn
 	var inoInfo *proto.InodeInfo
 
 	var retry = 0
-	var useCache = true
 	for {
-		var dentry *DentryItem
-		if objMetaCache != nil && useCache {
-			dentry = objMetaCache.RecursiveLookupTarget(v.name, path)
-			if dentry != nil {
-				inode = dentry.Inode
-				mode = os.FileMode(dentry.Type)
-			} else {
-				if _, inode, _, mode, err = v.recursiveLookupTarget(path); err != nil {
-					return
-				}
-			}
-		} else {
-			if _, inode, _, mode, err = v.recursiveLookupTarget(path); err != nil {
-				return
-			}
 
+		if _, inode, _, mode, err = v.recursiveLookupTarget(path); err != nil {
+			return
 		}
 
 		inoInfo, err = v.mw.InodeGet_ll(inode)
 		if err == syscall.ENOENT && retry < MaxRetry {
 			retry++
-			useCache = false
 			continue
 		}
 		if err != nil {
@@ -1511,15 +1485,25 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, xattr *proto.XAttrIn
 
 	//var xattr *proto.XAttrInfo
 	if objMetaCache != nil {
-		xattr = objMetaCache.GetAttr(v.name, inode)
-		if xattr == nil {
+		attrItem, needRefresh := objMetaCache.GetAttr(v.name, inode)
+		if attrItem == nil || needRefresh {
+			log.LogDebugf("ObjectMeta: get attr in cache failed: volume(%v) inode(%v) attrItem(%v), needRefresh(%v)",
+				v.name, inode, attrItem, needRefresh)
 			xattr, err = v.mw.XAttrGetAll_ll(inode)
 			if err != nil {
 				log.LogErrorf("ObjectMeta:  XAttrGetAll_ll fail, volume(%v) inode(%v) path(%v) err(%v)",
 					v.name, inode, path, err)
 				return
 			} else {
-				objMetaCache.PutAttr(v.name, xattr)
+				attrItem = &AttrItem{
+					XAttrInfo: *xattr,
+				}
+				objMetaCache.PutAttr(v.name, attrItem)
+			}
+		} else {
+			xattr = &proto.XAttrInfo{
+				XAttrs: attrItem.XAttrs,
+				Inode:  attrItem.Inode,
 			}
 		}
 	} else {
@@ -1532,7 +1516,7 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, xattr *proto.XAttrIn
 	}
 
 	/*var xattr *proto.XAttrInfo
-	xattr, err = v.mw.XAttrGetAll_ll(inode)*/
+	  xattr, err = v.mw.XAttrGetAll_ll(inode)*/
 
 	if mode.IsDir() {
 		// Folder has specific ETag and MIME type.
@@ -1647,6 +1631,94 @@ func (v *Volume) recursiveLookupTarget(path string) (parent uint64, ino uint64, 
 		err = syscall.ENOENT
 		return
 	}
+
+	cacheUsed := false
+
+	if objMetaCache != nil {
+		for pathIterator.HasNext() {
+			var pathItem = pathIterator.Next()
+			var curIno uint64
+			var curMode uint32
+
+			dentry := &DentryItem{
+				Dentry: metanode.Dentry{
+					ParentId: parent,
+					Name:     pathItem.Name,
+				},
+			}
+			var needRefresh bool
+			dentry, needRefresh = objMetaCache.GetDentry(v.name, dentry.Key())
+			if dentry == nil || needRefresh || os.FileMode(dentry.Type).IsDir() != pathItem.IsDirectory {
+				log.LogDebugf("recursiveLookupTarget: get dentry in cache failed: volume(%v) dentry(%v) needRefresh(%v)",
+					v.name, dentry, needRefresh)
+				curIno, curMode, err = v.mw.Lookup_ll(parent, pathItem.Name)
+				if err != nil && err != syscall.ENOENT {
+					log.LogErrorf("recursiveLookupPath: lookup fail, parentID(%v) name(%v) fail err(%v)",
+						parent, pathItem.Name, err)
+					if cacheUsed {
+						break
+					} else {
+						return
+					}
+				}
+				if err == syscall.ENOENT {
+					if cacheUsed {
+						break
+					} else {
+						return
+					}
+				}
+
+				//force updating dentry in cache
+				dentryNew := &DentryItem{
+					Dentry: metanode.Dentry{
+						ParentId: parent,
+						Name:     pathItem.Name,
+						Inode:    curIno,
+						Type:     curMode,
+					},
+				}
+				objMetaCache.PutDentry(v.name, dentryNew)
+
+				log.LogDebugf("recursiveLookupPath: lookup item: parentID(%v) inode(%v) name(%v) mode(%v)",
+					parent, curIno, pathItem.Name, os.FileMode(curMode))
+				// Check file mode
+				if os.FileMode(curMode).IsDir() != pathItem.IsDirectory {
+					err = syscall.ENOENT
+					return
+				}
+				if pathIterator.HasNext() {
+					parent = curIno
+					continue
+				}
+				ino = curIno
+				name = pathItem.Name
+				mode = os.FileMode(curMode)
+				break
+
+			} else {
+				cacheUsed = true
+				if pathIterator.HasNext() {
+					parent = dentry.Inode
+					continue
+				}
+				ino = dentry.Inode
+				name = pathItem.Name
+				mode = os.FileMode(dentry.Type)
+				break
+			}
+		}
+		if err == nil {
+			return
+		}
+	}
+
+	parent = rootIno
+	pathIterator = NewPathIterator(path)
+	if !pathIterator.HasNext() {
+		err = syscall.ENOENT
+		return
+	}
 	for pathIterator.HasNext() {
 		var pathItem = pathIterator.Next()
 		var curIno uint64
@@ -1658,16 +1730,27 @@ func (v *Volume) recursiveLookupTarget(path string) (parent uint64, ino uint64, 
 			return
 		}
 		if err == syscall.ENOENT {
+			if objMetaCache != nil {
+				dentry := &DentryItem{
+					Dentry: metanode.Dentry{
+						ParentId: parent,
+						Name:     pathItem.Name,
+					},
+				}
+				objMetaCache.DeleteDentry(v.name, dentry.Key())
+			}
 			return
 		}
 
 		//force updating dentry in cache
 		if objMetaCache != nil {
 			dentry := &DentryItem{
-				ParentId: parent,
-				Name:     pathItem.Name,
-				Inode:    curIno,
-				Type:     curMode,
+				Dentry: metanode.Dentry{
+					ParentId: parent,
+					Name:     pathItem.Name,
+					Inode:    curIno,
+					Type:     curMode,
+				},
 			}
 			objMetaCache.PutDentry(v.name, dentry)
 		}
@@ -1692,6 +1775,8 @@ func (v *Volume) recursiveLookupTarget(path string) (parent uint64, ino uint64, 
 }
 
 func (v *Volume) recursiveMakeDirectory(path string) (ino uint64, err error) {
+	//in case of any mv or rename operation within refresh interval of dentry item in cache,
+	//recursiveMakeDirectory don't look up cache, and will force update dentry item
 	ino = rootIno
 	var pathIterator = NewPathIterator(path)
 	if !pathIterator.HasNext() {
@@ -1733,10 +1818,12 @@ func (v *Volume) recursiveMakeDirectory(path string) (ino uint64, err error) {
 		//force updating dentry in cache
 		if objMetaCache != nil {
 			dentry := &DentryItem{
-				ParentId: ino,
-				Name:     pathItem.Name,
-				Inode:    curIno,
-				Type:     curMode,
+				Dentry: metanode.Dentry{
+					ParentId: ino,
+					Name:     pathItem.Name,
+					Inode:    curIno,
+					Type:     curMode,
+				},
 			}
 			objMetaCache.PutDentry(v.name, dentry)
 		}
@@ -2292,49 +2379,51 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		sInodeInfo *proto.InodeInfo
 	)
 
-	var retry = 0
-	var useCache = true
-	for {
-		var dentry *DentryItem
-		if objMetaCache != nil && useCache {
-			dentry = objMetaCache.RecursiveLookupTarget(sv.name, sourcePath)
-			if dentry != nil {
-				sInode = dentry.Inode
-				sMode = os.FileMode(dentry.Type)
-			} else {
-				if _, sInode, _, sMode, err = sv.recursiveLookupTarget(sourcePath); err != nil {
-					return
-				}
-			}
-		} else {
-			if _, sInode, _, sMode, err = sv.recursiveLookupTarget(sourcePath); err != nil {
-				return
-			}
+	/*var retry = 0
+	  var useCache = true
+	  var UpdateTime = int64(0)
+	  for {
+	  	var dentry *DentryItem
+	  	if objMetaCache != nil && useCache {
+	  		dentry = objMetaCache.RecursiveLookupTarget(sv.name, sourcePath)
+	  		if dentry != nil {
+	  			sInode = dentry.Inode
+	  			sMode = os.FileMode(dentry.Type)
+	  			UpdateTime = dentry.GetUpdateTime()
+	  		} else {
+	  			if _, sInode, _, sMode, err = sv.recursiveLookupTarget(sourcePath); err != nil {
+	  				return
+	  			}
+	  		}
+	  	} else {
+	  		if _, sInode, _, sMode, err = sv.recursiveLookupTarget(sourcePath); err != nil {
+	  			return
+	  		}
 
-		}
+	  	}
 
-		sInodeInfo, err = sv.mw.InodeGet_ll(sInode)
-		if err == syscall.ENOENT && retry < MaxRetry {
-			retry++
-			useCache = false
-			continue
-		}
-		if err != nil {
-			log.LogErrorf("CopyFile: get source path inode info fail: source volume(%v)"+
-				" source path(%v) retry(%v) err(%v)", sv.name, sourcePath, retry, err)
-			return
-		}
-		break
-	}
+	  	sInodeInfo, err = sv.mw.InodeGet_ll(sInode)
+	  	if err == syscall.ENOENT && retry < MaxRetry {
+	  		retry++
+	  		useCache = false
+	  		continue
+	  	}
+	  	if err != nil {
+	  		log.LogErrorf("CopyFile: get source path inode info fail: source volume(%v)"+
+	  			" source path(%v) retry(%v) err(%v)", sv.name, sourcePath, retry, err)
+	  		return
+	  	}
+	  	break
+	  }*/
 
-	/*if _, sInode, _, sMode, err = sv.recursiveLookupTarget(sourcePath); err != nil {
+	if _, sInode, _, sMode, err = sv.recursiveLookupTarget(sourcePath); err != nil {
 		log.LogErrorf("CopyFile: look up source path fail, source path(%v) err(%v)", sourcePath, err)
 		return
 	}
 	if sInodeInfo, err = sv.mw.InodeGet_ll(sInode); err != nil {
 		log.LogErrorf("CopyFile: get source path inode info fail, source path(%v) err(%v)", sourcePath, err)
 		return
-	}*/
+	}
 	if sInodeInfo.Size > MaxCopyObjectSize {
 		log.LogErrorf("CopyFile: copy source path file size greater than 5GB, source path(%v), target path(%v)", sourcePath, targetPath)
 		return nil, syscall.EFBIG
@@ -2364,8 +2453,10 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			// If MIME information is valid, use extended attributes for storage.
 
 			attr := &AttrItem{
-				Inode:  sInode,
-				XAttrs: make(map[string]string),
+				XAttrInfo: proto.XAttrInfo{
+					Inode:  sInode,
+					XAttrs: make(map[string]string),
+				},
 			}
 
 			attr.XAttrs[XAttrKeyOSSMIME] = opt.MIMEType
@@ -2394,44 +2485,44 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			}
 
 			/*if opt != nil && opt.MIMEType != "" {
-				if err = v.mw.XAttrSet_ll(sInode, []byte(XAttrKeyOSSMIME), []byte(opt.MIMEType)); err != nil {
-					log.LogErrorf("CopyFile: store MIME fail: volume(%v) source path(%v) inode(%v) mime(%v) err(%v)",
-						sv.name, sourcePath, sInode, opt.MIMEType, err)
-					return nil, err
-				}
-			}
-			if opt != nil && opt.Disposition != "" {
-				if err = v.mw.XAttrSet_ll(sInode, []byte(XAttrKeyOSSDISPOSITION), []byte(opt.Disposition)); err != nil {
-					log.LogErrorf("CopyFile: store content disposition fail: volume(%v) source path(%v) inode(%v) disposition(%v) err(%v)",
-						sv.name, sourcePath, sInode, opt.Disposition, err)
-					return nil, err
-				}
-			}
-			if opt != nil && opt.CacheControl != "" {
-				if err = v.mw.XAttrSet_ll(sInode, []byte(XAttrKeyOSSCacheControl), []byte(opt.CacheControl)); err != nil {
-					log.LogErrorf("CopyFile: store content cache-control fail: volume(%v) source path(%v) inode(%v) cache-control(%v) err(%v)",
-						sv.name, sourcePath, sInode, opt.CacheControl, err)
-					return nil, err
-				}
-			}
-			if opt != nil && opt.Expires != "" {
-				if err = v.mw.XAttrSet_ll(sInode, []byte(XAttrKeyOSSExpires), []byte(opt.Expires)); err != nil {
-					log.LogErrorf("CopyFile: store content expires fail: volume(%v) source path(%v) inode(%v) expires(%v) err(%v)",
-						sv.name, sourcePath, sInode, opt.Expires, err)
-					return nil, err
-				}
-			}
-			// If user-defined metadata have been specified, use extend attributes for storage.
-			if opt != nil && len(opt.Metadata) > 0 {
-				for name, value := range opt.Metadata {
-					if err = v.mw.XAttrSet_ll(sInode, []byte(name), []byte(value)); err != nil {
-						log.LogErrorf("CopyFile: store user-defined metadata fail: "+
-							"volume(%v) source path(%v) inode(%v) key(%v) value(%v) err(%v)",
-							sv.name, sourcePath, sInode, name, value, err)
-						return nil, err
-					}
-				}
-			}*/
+			  	if err = v.mw.XAttrSet_ll(sInode, []byte(XAttrKeyOSSMIME), []byte(opt.MIMEType)); err != nil {
+			  		log.LogErrorf("CopyFile: store MIME fail: volume(%v) source path(%v) inode(%v) mime(%v) err(%v)",
+			  			sv.name, sourcePath, sInode, opt.MIMEType, err)
+			  		return nil, err
+			  	}
+			  }
+			  if opt != nil && opt.Disposition != "" {
+			  	if err = v.mw.XAttrSet_ll(sInode, []byte(XAttrKeyOSSDISPOSITION), []byte(opt.Disposition)); err != nil {
+			  		log.LogErrorf("CopyFile: store content disposition fail: volume(%v) source path(%v) inode(%v) disposition(%v) err(%v)",
+			  			sv.name, sourcePath, sInode, opt.Disposition, err)
+			  		return nil, err
+			  	}
+			  }
+			  if opt != nil && opt.CacheControl != "" {
+			  	if err = v.mw.XAttrSet_ll(sInode, []byte(XAttrKeyOSSCacheControl), []byte(opt.CacheControl)); err != nil {
+			  		log.LogErrorf("CopyFile: store content cache-control fail: volume(%v) source path(%v) inode(%v) cache-control(%v) err(%v)",
+			  			sv.name, sourcePath, sInode, opt.CacheControl, err)
+			  		return nil, err
+			  	}
+			  }
+			  if opt != nil && opt.Expires != "" {
+			  	if err = v.mw.XAttrSet_ll(sInode, []byte(XAttrKeyOSSExpires), []byte(opt.Expires)); err != nil {
+			  		log.LogErrorf("CopyFile: store content expires fail: volume(%v) source path(%v) inode(%v) expires(%v) err(%v)",
+			  			sv.name, sourcePath, sInode, opt.Expires, err)
+			  		return nil, err
+			  	}
+			  }
+			  // If user-defined metadata have been specified, use extend attributes for storage.
+			  if opt != nil && len(opt.Metadata) > 0 {
+			  	for name, value := range opt.Metadata {
+			  		if err = v.mw.XAttrSet_ll(sInode, []byte(name), []byte(value)); err != nil {
+			  			log.LogErrorf("CopyFile: store user-defined metadata fail: "+
+			  				"volume(%v) source path(%v) inode(%v) key(%v) value(%v) err(%v)",
+			  				sv.name, sourcePath, sInode, name, value, err)
+			  			return nil, err
+			  		}
+			  	}
+			  }*/
 			log.LogInfof("CopyFile: target path is equal with source path, replace metadata, source path(%v) target path(%v) opt(%v)",
 				sourcePath, targetPath, opt)
 		}
@@ -2598,6 +2689,11 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 	// copy source file metadata to write target file metadata
 	if metaDirective != MetadataDirectiveReplace {
 
+		xattr, err = v.mw.XAttrGetAll_ll(sInode)
+		if xattr == nil || err != nil {
+			return
+		}
+
 		if err = v.mw.BatchSetXAttr_ll(tInodeInfo.Inode, xattr.XAttrs); err != nil {
 			log.LogErrorf("CopyFile: set target xattr fail: volume(%v) target path(%v) inode(%v) xattr (%v)err(%v)",
 				v.name, targetPath, tInodeInfo.Inode, xattr, err)
@@ -2605,45 +2701,50 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		}
 		//merge attrs in cache
 		if objMetaCache != nil {
-			objMetaCache.MergeAttr(v.name, xattr)
+			attr := &AttrItem{
+				XAttrInfo: *xattr,
+			}
+			objMetaCache.MergeAttr(v.name, attr)
 		}
 
 		/*// get source file xattr keys
-		var keys []string
-		if keys, err = sv.mw.XAttrsList_ll(sInode); err != nil {
-			if err == syscall.ENOENT {
-				log.LogErrorf("CopyFile: volume list extend attributes fail: volume(%v) source path(%v) err(%v)",
-					sv.name, sourcePath, err)
-				return
-			}
-			log.LogErrorf("CopyFile: volume list extend attributes fail: volume(%v) source path(%v) err(%v)",
-				sv.name, sourcePath, err)
-			return
-		}
-		// batch get source file xattr values
-		var xattrs []*proto.XAttrInfo
-		if xattrs, err = sv.mw.BatchGetXAttr([]uint64{sInode}, keys); err != nil {
-			log.LogErrorf("CopyFile: meta get xattr fail, volume(%v) source path(%v) inode(%v) keys(%v) err(%v)",
-				sv.name, sourcePath, sInode, strings.Join(keys, ","), err)
-			return
-		}
-		// set tar xattr
-		if len(xattrs) > 0 {
-			for xk, xv := range xattrs[0].XAttrs {
-				if xk == XAttrKeyOSSETag {
-					continue
-				}
-				if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(xk), []byte(xv)); err != nil {
-					log.LogErrorf("CopyFile: set target xattr fail: volume(%v) target path(%v) inode(%v) xattr key(%v) xattr value(%v) err(%v)",
-						v.name, targetPath, tInodeInfo.Inode, xk, xv, err)
-					return
-				}
-			}
-		}*/
+		  var keys []string
+		  if keys, err = sv.mw.XAttrsList_ll(sInode); err != nil {
+		  	if err == syscall.ENOENT {
+		  		log.LogErrorf("CopyFile: volume list extend attributes fail: volume(%v) source path(%v) err(%v)",
+		  			sv.name, sourcePath, err)
+		  		return
+		  	}
+		  	log.LogErrorf("CopyFile: volume list extend attributes fail: volume(%v) source path(%v) err(%v)",
+		  		sv.name, sourcePath, err)
+		  	return
+		  }
+		  // batch get source file xattr values
+		  var xattrs []*proto.XAttrInfo
+		  if xattrs, err = sv.mw.BatchGetXAttr([]uint64{sInode}, keys); err != nil {
+		  	log.LogErrorf("CopyFile: meta get xattr fail, volume(%v) source path(%v) inode(%v) keys(%v) err(%v)",
+		  		sv.name, sourcePath, sInode, strings.Join(keys, ","), err)
+		  	return
+		  }
+		  // set tar xattr
+		  if len(xattrs) > 0 {
+		  	for xk, xv := range xattrs[0].XAttrs {
+		  		if xk == XAttrKeyOSSETag {
+		  			continue
+		  		}
+		  		if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(xk), []byte(xv)); err != nil {
+		  			log.LogErrorf("CopyFile: set target xattr fail: volume(%v) target path(%v) inode(%v) xattr key(%v) xattr value(%v) err(%v)",
+		  				v.name, targetPath, tInodeInfo.Inode, xk, xv, err)
+		  			return
+		  		}
+		  	}
+		  }*/
 	} else {
 		attr := &AttrItem{
-			Inode:  sInode,
-			XAttrs: make(map[string]string),
+			XAttrInfo: proto.XAttrInfo{
+				Inode:  sInode,
+				XAttrs: make(map[string]string),
+			},
 		}
 
 		attr.XAttrs[XAttrKeyOSSMIME] = opt.MIMEType
@@ -2672,44 +2773,44 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		}
 
 		/*if opt != nil && opt.MIMEType != "" {
-			if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(XAttrKeyOSSMIME), []byte(opt.MIMEType)); err != nil {
-				log.LogErrorf("CopyFile: store MIME fail: volume(%v) target path(%v) inode(%v) mime(%v) err(%v)",
-					v.name, targetPath, tInodeInfo.Inode, opt.MIMEType, err)
-				return nil, err
-			}
-		}
-		if opt != nil && opt.Disposition != "" {
-			if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(XAttrKeyOSSDISPOSITION), []byte(opt.Disposition)); err != nil {
-				log.LogErrorf("CopyFile: store content disposition fail: volume(%v) target path(%v) inode(%v) mime(%v) err(%v)",
-					v.name, targetPath, tInodeInfo.Inode, opt.Disposition, err)
-				return nil, err
-			}
-		}
-		if opt != nil && opt.CacheControl != "" {
-			if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(XAttrKeyOSSCacheControl), []byte(opt.CacheControl)); err != nil {
-				log.LogErrorf("CopyFile: store content cache-control fail: volume(%v) target path(%v) inode(%v) cache-control(%v) err(%v)",
-					v.name, targetPath, tInodeInfo.Inode, opt.CacheControl, err)
-				return nil, err
-			}
-		}
-		if opt != nil && opt.Expires != "" {
-			if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(XAttrKeyOSSExpires), []byte(opt.Expires)); err != nil {
-				log.LogErrorf("CopyFile: store content expires fail: volume(%v) target path(%v) inode(%v) expires(%v) err(%v)",
-					v.name, targetPath, tInodeInfo.Inode, opt.Expires, err)
-				return nil, err
-			}
-		}
-		// If user-defined metadata have been specified, use extend attributes for storage.
-		if opt != nil && len(opt.Metadata) > 0 {
-			for name, value := range opt.Metadata {
-				if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(name), []byte(value)); err != nil {
-					log.LogErrorf("CopyFile: store user-defined metadata fail: "+
-						"volume(%v) target path(%v) inode(%v) key(%v) value(%v) err(%v)",
-						v.name, targetPath, tInodeInfo.Inode, name, value, err)
-					return nil, err
-				}
-			}
-		}*/
+		  	if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(XAttrKeyOSSMIME), []byte(opt.MIMEType)); err != nil {
+		  		log.LogErrorf("CopyFile: store MIME fail: volume(%v) target path(%v) inode(%v) mime(%v) err(%v)",
+		  			v.name, targetPath, tInodeInfo.Inode, opt.MIMEType, err)
+		  		return nil, err
+		  	}
+		  }
+		  if opt != nil && opt.Disposition != "" {
+		  	if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(XAttrKeyOSSDISPOSITION), []byte(opt.Disposition)); err != nil {
+		  		log.LogErrorf("CopyFile: store content disposition fail: volume(%v) target path(%v) inode(%v) mime(%v) err(%v)",
+		  			v.name, targetPath, tInodeInfo.Inode, opt.Disposition, err)
+		  		return nil, err
+		  	}
+		  }
+		  if opt != nil && opt.CacheControl != "" {
+		  	if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(XAttrKeyOSSCacheControl), []byte(opt.CacheControl)); err != nil {
+		  		log.LogErrorf("CopyFile: store content cache-control fail: volume(%v) target path(%v) inode(%v) cache-control(%v) err(%v)",
+		  			v.name, targetPath, tInodeInfo.Inode, opt.CacheControl, err)
+		  		return nil, err
+		  	}
+		  }
+		  if opt != nil && opt.Expires != "" {
+		  	if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(XAttrKeyOSSExpires), []byte(opt.Expires)); err != nil {
+		  		log.LogErrorf("CopyFile: store content expires fail: volume(%v) target path(%v) inode(%v) expires(%v) err(%v)",
+		  			v.name, targetPath, tInodeInfo.Inode, opt.Expires, err)
+		  		return nil, err
+		  	}
+		  }
+		  // If user-defined metadata have been specified, use extend attributes for storage.
+		  if opt != nil && len(opt.Metadata) > 0 {
+		  	for name, value := range opt.Metadata {
+		  		if err = v.mw.XAttrSet_ll(tInodeInfo.Inode, []byte(name), []byte(value)); err != nil {
+		  			log.LogErrorf("CopyFile: store user-defined metadata fail: "+
+		  				"volume(%v) target path(%v) inode(%v) key(%v) value(%v) err(%v)",
+		  				v.name, targetPath, tInodeInfo.Inode, name, value, err)
+		  			return nil, err
+		  		}
+		  	}
+		  }*/
 	}
 
 	// create file info
@@ -2733,10 +2834,12 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 	//force updating dentry and attrs in cache
 	if objMetaCache != nil {
 		dentry := &DentryItem{
-			ParentId: tParentId,
-			Name:     tLastName,
-			Inode:    tInodeInfo.Inode,
-			Type:     DefaultFileMode,
+			Dentry: metanode.Dentry{
+				ParentId: tParentId,
+				Name:     tLastName,
+				Inode:    tInodeInfo.Inode,
+				Type:     DefaultFileMode,
+			},
 		}
 		objMetaCache.PutDentry(v.name, dentry)
 	}
