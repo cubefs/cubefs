@@ -89,9 +89,11 @@ const (
 	configObjMetaCache = "enableObjMetaCache"
 	// Example:
 	//		{
+	//			"cacheRefreshInterval": 600
 	//			"maxDentryCacheNum": 10000000
 	//			"maxInodeAttrCacheNum": 10000000
 	//		}
+	configCacheRefreshInterval = "cacheRefreshInterval"
 	configMaxDentryCacheNum    = "maxDentryCacheNum"
 	configMaxInodeAttrCacheNum = "maxInodeAttrCacheNum"
 )
@@ -99,6 +101,7 @@ const (
 // Default of configuration value
 const (
 	defaultListen               = "80"
+	defaultCacheRefreshInterval = 10 * 60
 	defaultMaxDentryCacheNum    = 10000000
 	defaultMaxInodeAttrCacheNum = 10000000
 )
@@ -201,6 +204,12 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 	// parse inode cache
 	cacheEnable := cfg.GetBool(configObjMetaCache)
 	if cacheEnable {
+
+		cacheRefreshInterval := uint64(cfg.GetInt64(configCacheRefreshInterval))
+		if cacheRefreshInterval <= 0 {
+			cacheRefreshInterval = defaultCacheRefreshInterval
+		}
+
 		maxDentryCacheNum := cfg.GetInt64(configMaxDentryCacheNum)
 		if maxDentryCacheNum < defaultMaxDentryCacheNum {
 			maxDentryCacheNum = defaultMaxDentryCacheNum
@@ -210,9 +219,9 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 		if maxInodeAttrCacheNum < defaultMaxInodeAttrCacheNum {
 			maxInodeAttrCacheNum = defaultMaxInodeAttrCacheNum
 		}
-		objMetaCache = NewObjMetaCache(maxDentryCacheNum, maxInodeAttrCacheNum)
-		log.LogInfof("loadConfig: enableObjMetaCache: %v, maxDentryCacheNum: %v, maxInodeAttrCacheNum: %v",
-			cacheEnable, maxDentryCacheNum, maxInodeAttrCacheNum)
+		objMetaCache = NewObjMetaCache(maxDentryCacheNum, maxInodeAttrCacheNum, cacheRefreshInterval)
+		log.LogInfof("loadConfig: enableObjMetaCache: %v, maxDentryCacheNum: %v, maxInodeAttrCacheNum: %v"+
+			", cacheRefreshInterval: %v", cacheEnable, maxDentryCacheNum, maxInodeAttrCacheNum, cacheRefreshInterval)
 	}
 
 	return
