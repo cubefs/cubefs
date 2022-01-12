@@ -76,6 +76,8 @@ const (
 	ConfigKeyRaftReplica   = "raftReplica"     // string
 	CfgTickInterval        = "tickInterval"    // int
 	CfgRaftRecvBufSize     = "raftRecvBufSize" // int
+	ConfigExportRatio      = "exportRatio"     // string
+
 	// smux Config
 	ConfigKeyEnableSmuxClient  = "enableSmuxConnPool" //bool
 	ConfigKeySmuxPortShift     = "smuxPortShift"      //int
@@ -113,13 +115,15 @@ type DataNode struct {
 	getRepairConnFunc func(target string) (net.Conn, error)
 	putRepairConnFunc func(conn net.Conn, forceClose bool)
 
-	metrics *DataNodeMetrics
+	metrics           *DataNodeMetrics
+	metricCnt         uint
+	metricSampleRatio float64
 
 	control common.Control
 }
 
 func NewServer() *DataNode {
-	return &DataNode{}
+	return &DataNode{metricSampleRatio: 1}
 }
 
 func (s *DataNode) Start(cfg *config.Config) (err error) {
@@ -220,6 +224,14 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	)
 	LocalIP = cfg.GetString(ConfigKeyLocalIP)
 	port = cfg.GetString(proto.ListenPort)
+
+	if cfg.GetString(ConfigExportRatio) != "" {
+		s.metricSampleRatio, _ = strconv.ParseFloat(cfg.GetString(ConfigExportRatio), 64)
+		if s.metricSampleRatio > 1 {
+			s.metricSampleRatio = 1
+		}
+	}
+
 	serverPort = port
 	if regexpPort, err = regexp.Compile("^(\\d)+$"); err != nil {
 		return fmt.Errorf("Err:no port")

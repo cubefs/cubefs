@@ -28,7 +28,11 @@ func (s *DataNode) Post(p *repl.Packet) error {
 		p.NeedReply = false
 	}
 	s.cleanupPkt(p)
-	s.addMetrics(p)
+
+	// todo:add control from master,percent be set to
+	if s.metricSampleRatio > 0 && s.metricCnt%(100/uint(100*s.metricSampleRatio)) == 0 {
+		s.addMetrics(p)
+	}
 	return nil
 }
 

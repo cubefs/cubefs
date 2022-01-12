@@ -34,7 +34,11 @@ func (s *DataNode) Prepare(p *repl.Packet) (err error) {
 	if p.IsMasterCommand() {
 		return
 	}
-	p.BeforeTp(s.clusterID)
+	s.metricCnt++
+	if s.metricSampleRatio > 0 && s.metricCnt%(100/uint(100*s.metricSampleRatio)) == 0 {
+		p.BeforeTp(s.clusterID)
+	}
+
 	err = s.checkStoreMode(p)
 	if err != nil {
 		return
