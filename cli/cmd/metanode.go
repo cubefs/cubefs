@@ -90,7 +90,7 @@ func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 
 func newMetaNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   CliOpInfo + " [NODE ADDRESS]",
+		Use:   CliOpInfo + " [{HOST}:{PORT}]",
 		Short: cmdMetaNodeInfoShort,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -121,7 +121,7 @@ func newMetaNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 }
 func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   CliOpDecommission + " [NODE ADDRESS]",
+		Use:   CliOpDecommission + " [{HOST}:{PORT}]",
 		Short: cmdMetaNodeDecommissionInfoShort,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {

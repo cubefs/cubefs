@@ -89,7 +89,7 @@ func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 
 func newDataNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   CliOpInfo + " [NODE ADDRESS]",
+		Use:   CliOpInfo + " [{HOST}:{PORT}]",
 		Short: cmdDataNodeInfoShort,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -121,7 +121,7 @@ func newDataNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 
 func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   CliOpDecommission + " [NODE ADDRESS]",
+		Use:   CliOpDecommission + " [{HOST}:{PORT}]",
 		Short: cmdDataNodeDecommissionInfoShort,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
