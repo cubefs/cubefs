@@ -100,8 +100,8 @@ const (
 	AdminPromoteMetaReplicaLearner = "/metaLearner/promote"
 
 	// Operation response
-	GetMetaNodeTaskResponse = "/metaNode/response" // Method: 'POST', ContentType: 'application/json'
-	GetDataNodeTaskResponse = "/dataNode/response" // Method: 'POST', ContentType: 'application/json'
+	GetMetaNodeTaskResponse   = "/metaNode/response"          // Method: 'POST', ContentType: 'application/json'
+	GetDataNodeTaskResponse   = "/dataNode/response"          // Method: 'POST', ContentType: 'application/json'
 	DataNodeValidateCRCReport = "/dataNode/validateCRCReport" // Method: 'POST', ContentType: 'application/json'
 
 	GetTopologyView = "/topo/get"
@@ -535,7 +535,7 @@ type MetaPartitionView struct {
 	MaxInodeID  uint64
 	InodeCount  uint64
 	DentryCount uint64
-	MaxExistIno	uint64
+	MaxExistIno uint64
 	IsRecover   bool
 	Members     []string
 	LeaderAddr  string
@@ -652,21 +652,22 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 
 // RateLimitInfo defines the rate limit infomation
 type RateLimitInfo struct {
-	ZoneName                 string
-	Volume                   string
-	Opcode                   int8
-	MetaNodeReqRate          int64
-	MetaNodeReqOpRate        int64
-	DataNodeRepairTaskCount  int64
-	DataNodeReqRate          int64
-	DataNodeReqOpRate        int64
-	DataNodeReqVolPartRate   int64
-	DataNodeReqVolOpPartRate int64
-	ClientReadVolRate        int64
-	ClientWriteVolRate       int64
-	ExtentMergeIno           string
-	ExtentMergeSleepMs       int64
-	ClientReadRate           int64
-	ClientWriteRate          int64
-	ClientVolOpRate          int64
+	ZoneName                   string
+	Volume                     string
+	Opcode                     int8
+	MetaNodeReqRate            int64
+	MetaNodeReqOpRate          int64
+	DataNodeRepairTaskCount    int64
+	DataNodeReqRate            int64
+	DataNodeReqOpRate          int64
+	DataNodeReqVolPartRate     int64
+	DataNodeReqVolOpPartRate   int64
+	ClientReadVolRate          int64
+	ClientWriteVolRate         int64
+	ExtentMergeIno             string
+	ExtentMergeSleepMs         int64
+	ClientReadRate             int64
+	ClientWriteRate            int64
+	ClientVolOpRate            int64
+	DnFixTinyDeleteRecordLimit int64
 }

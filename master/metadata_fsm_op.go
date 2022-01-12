@@ -52,6 +52,7 @@ type clusterValue struct {
 	PoolSizeOfMetaPartitionsInRecover int32
 	ExtentMergeIno                    map[string][]uint64
 	ExtentMergeSleepMs                uint64
+	FixTinyDeleteRecordLimit          uint64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -76,6 +77,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		PoolSizeOfMetaPartitionsInRecover: c.cfg.MetaPartitionsRecoverPoolSize,
 		ExtentMergeIno:                    c.cfg.ExtentMergeIno,
 		ExtentMergeSleepMs:                c.cfg.ExtentMergeSleepMs,
+		FixTinyDeleteRecordLimit:          c.dnFixTinyDeleteRecordLimit,
 	}
 	return cv
 }
@@ -596,6 +598,10 @@ func (c *Cluster) loadClusterValue() (err error) {
 		}
 		c.cfg.MetaNodeThreshold = cv.Threshold
 		c.DisableAutoAllocate = cv.DisableAutoAllocate
+		if cv.FixTinyDeleteRecordLimit <= 0 {
+			cv.FixTinyDeleteRecordLimit = 1
+		}
+		c.dnFixTinyDeleteRecordLimit = cv.FixTinyDeleteRecordLimit
 		c.updateMetaNodeDeleteBatchCount(cv.MetaNodeDeleteBatchCount)
 		c.updateMetaNodeDeleteWorkerSleepMs(cv.MetaNodeDeleteWorkerSleepMs)
 		atomic.StoreUint64(&c.cfg.MetaNodeReqRateLimit, cv.MetaNodeReqRateLimit)

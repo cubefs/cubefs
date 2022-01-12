@@ -463,6 +463,9 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.ExtentMergeSleepMs >= 0 {
 		request.addParam("extentMergeSleepMs", strconv.FormatInt(info.ExtentMergeSleepMs, 10))
 	}
+	if info.DnFixTinyDeleteRecordLimit >= 0 {
+		request.addParam("fixTinyDeleteRecordKey", strconv.FormatInt(info.DnFixTinyDeleteRecordLimit, 10))
+	}
 	request.addParam("volume", info.Volume)
 	request.addParam("zoneName", info.ZoneName)
 	if _, err = api.mc.serveRequest(request); err != nil {

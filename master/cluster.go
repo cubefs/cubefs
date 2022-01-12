@@ -32,39 +32,40 @@ import (
 
 // Cluster stores all the cluster-level information.
 type Cluster struct {
-	Name                      string
-	vols                      map[string]*Vol
-	dataNodes                 sync.Map
-	metaNodes                 sync.Map
-	dpMutex                   sync.Mutex   // data partition mutex
-	volMutex                  sync.RWMutex // volume mutex
-	createVolMutex            sync.RWMutex // create volume mutex
-	mnMutex                   sync.RWMutex // meta node mutex
-	dnMutex                   sync.RWMutex // data node mutex
-	leaderInfo                *LeaderInfo
-	cfg                       *clusterConfig
-	retainLogs                uint64
-	idAlloc                   *IDAllocator
-	t                         *topology
-	dataNodeStatInfo          *nodeStatInfo
-	metaNodeStatInfo          *nodeStatInfo
-	zoneStatInfos             map[string]*proto.ZoneStat
-	volStatInfo               sync.Map
-	BadDataPartitionIds       *sync.Map
-	BadMetaPartitionIds       *sync.Map
-	MigratedMetaPartitionIds  *sync.Map
-	MigratedDataPartitionIds  *sync.Map
-	DisableAutoAllocate       bool
-	AutoMergeNodeSet          bool
-	fsm                       *MetadataFsm
-	partition                 raftstore.Partition
-	MasterSecretKey           []byte
-	lastMasterZoneForDataNode string
-	lastMasterZoneForMetaNode string
-	lastPermutationsForZone   uint8
-	dpRepairChan              chan *RepairTask
-	mpRepairChan              chan *RepairTask
-	DataNodeBadDisks          *sync.Map
+	Name                       string
+	vols                       map[string]*Vol
+	dataNodes                  sync.Map
+	metaNodes                  sync.Map
+	dpMutex                    sync.Mutex   // data partition mutex
+	volMutex                   sync.RWMutex // volume mutex
+	createVolMutex             sync.RWMutex // create volume mutex
+	mnMutex                    sync.RWMutex // meta node mutex
+	dnMutex                    sync.RWMutex // data node mutex
+	leaderInfo                 *LeaderInfo
+	cfg                        *clusterConfig
+	retainLogs                 uint64
+	dnFixTinyDeleteRecordLimit uint64
+	idAlloc                    *IDAllocator
+	t                          *topology
+	dataNodeStatInfo           *nodeStatInfo
+	metaNodeStatInfo           *nodeStatInfo
+	zoneStatInfos              map[string]*proto.ZoneStat
+	volStatInfo                sync.Map
+	BadDataPartitionIds        *sync.Map
+	BadMetaPartitionIds        *sync.Map
+	MigratedMetaPartitionIds   *sync.Map
+	MigratedDataPartitionIds   *sync.Map
+	DisableAutoAllocate        bool
+	AutoMergeNodeSet           bool
+	fsm                        *MetadataFsm
+	partition                  raftstore.Partition
+	MasterSecretKey            []byte
+	lastMasterZoneForDataNode  string
+	lastMasterZoneForMetaNode  string
+	lastPermutationsForZone    uint8
+	dpRepairChan               chan *RepairTask
+	mpRepairChan               chan *RepairTask
+	DataNodeBadDisks           *sync.Map
 }
 type (
 	RepairType uint8
@@ -2223,8 +2224,8 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		oldCrossZone    bool
 		zoneList        []string
 
-		oldDpSelectorName string
-		oldDpSelectorParm string
+		oldDpSelectorName  string
+		oldDpSelectorParm  string
 		oldOSSBucketPolicy proto.BucketAccessPolicy
 	)
 	if vol, err = c.getVol(name); err != nil {
@@ -2952,6 +2953,18 @@ func (c *Cluster) setClientVolOpRateLimit(val int64, vol string, op uint8) (err 
 		if !volExist || !opExist {
 			delete(c.cfg.ClientVolOpRateLimitMap[vol], op)
 		}
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setFixTinyDeleteRecord(limitRate uint64) (err error) {
+	oldDeleteRecordLimit := c.dnFixTinyDeleteRecordLimit
+	c.dnFixTinyDeleteRecordLimit = limitRate
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setDnFixTinyDeleteRecordLimit] err[%v]", err)
+		c.dnFixTinyDeleteRecordLimit = oldDeleteRecordLimit
 		err = proto.ErrPersistenceByRaft
 		return
 	}

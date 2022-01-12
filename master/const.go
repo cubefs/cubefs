@@ -80,6 +80,7 @@ const (
 	volWriteMutexKey            = "volWriteMutex"
 	extentMergeInoKey           = "extentMergeIno"
 	extentMergeSleepMsKey       = "extentMergeSleepMs"
+	fixTinyDeleteRecordKey      = "fixTinyDeleteRecordKey"
 )
 
 const (

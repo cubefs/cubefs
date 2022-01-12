@@ -286,22 +286,23 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 	m.cluster.cfg.reqRateLimitMapMutex.Lock()
 	defer m.cluster.cfg.reqRateLimitMapMutex.Unlock()
 	cInfo := &proto.LimitInfo{
-		Cluster:                          m.cluster.Name,
-		MetaNodeDeleteBatchCount:         batchCount,
-		MetaNodeDeleteWorkerSleepMs:      deleteSleepMs,
-		MetaNodeReqRateLimit:             metaNodeReqRateLimit,
-		MetaNodeReqOpRateLimitMap:        m.cluster.cfg.MetaNodeReqOpRateLimitMap,
-		DataNodeDeleteLimitRate:          deleteLimitRate,
-		DataNodeRepairTaskLimitOnDisk:    repairTaskCount,
-		DataNodeReqZoneRateLimitMap:      m.cluster.cfg.DataNodeReqZoneRateLimitMap,
-		DataNodeReqZoneOpRateLimitMap:    m.cluster.cfg.DataNodeReqZoneOpRateLimitMap,
-		DataNodeReqVolPartRateLimitMap:   m.cluster.cfg.DataNodeReqVolPartRateLimitMap,
-		DataNodeReqVolOpPartRateLimitMap: m.cluster.cfg.DataNodeReqVolOpPartRateLimitMap,
-		ClientReadVolRateLimitMap:        m.cluster.cfg.ClientReadVolRateLimitMap,
-		ClientWriteVolRateLimitMap:       m.cluster.cfg.ClientWriteVolRateLimitMap,
-		ClientVolOpRateLimit:             m.cluster.cfg.ClientVolOpRateLimitMap[vol],
-		ExtentMergeIno:                   m.cluster.cfg.ExtentMergeIno,
-		ExtentMergeSleepMs:               m.cluster.cfg.ExtentMergeSleepMs,
+		Cluster:                                m.cluster.Name,
+		MetaNodeDeleteBatchCount:               batchCount,
+		MetaNodeDeleteWorkerSleepMs:            deleteSleepMs,
+		MetaNodeReqRateLimit:                   metaNodeReqRateLimit,
+		MetaNodeReqOpRateLimitMap:              m.cluster.cfg.MetaNodeReqOpRateLimitMap,
+		DataNodeDeleteLimitRate:                deleteLimitRate,
+		DataNodeRepairTaskLimitOnDisk:          repairTaskCount,
+		DataNodeReqZoneRateLimitMap:            m.cluster.cfg.DataNodeReqZoneRateLimitMap,
+		DataNodeReqZoneOpRateLimitMap:          m.cluster.cfg.DataNodeReqZoneOpRateLimitMap,
+		DataNodeReqVolPartRateLimitMap:         m.cluster.cfg.DataNodeReqVolPartRateLimitMap,
+		DataNodeReqVolOpPartRateLimitMap:       m.cluster.cfg.DataNodeReqVolOpPartRateLimitMap,
+		ClientReadVolRateLimitMap:              m.cluster.cfg.ClientReadVolRateLimitMap,
+		ClientWriteVolRateLimitMap:             m.cluster.cfg.ClientWriteVolRateLimitMap,
+		ClientVolOpRateLimit:                   m.cluster.cfg.ClientVolOpRateLimitMap[vol],
+		ExtentMergeIno:                         m.cluster.cfg.ExtentMergeIno,
+		ExtentMergeSleepMs:                     m.cluster.cfg.ExtentMergeSleepMs,
+		DataNodeFixTinyDeleteRecordLimitOnDisk: m.cluster.dnFixTinyDeleteRecordLimit,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -1059,8 +1060,8 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		description  string
 		vol          *Vol
 
-		dpSelectorName string
-		dpSelectorParm string
+		dpSelectorName  string
+		dpSelectorParm  string
 		ossBucketPolicy proto.BucketAccessPolicy
 	)
 	if name, authKey, replicaNum, err = parseRequestToUpdateVol(r); err != nil {
@@ -1472,6 +1473,13 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if val, ok := params[extentMergeInoKey]; ok {
 		if err = m.cluster.setExtentMergeIno(val.(string), vol); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+
+	if val, ok := params[fixTinyDeleteRecordKey]; ok {
+		if err = m.cluster.setFixTinyDeleteRecord(val.(uint64)); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
@@ -2596,7 +2604,9 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[extentMergeInoKey] = val
 	}
 
-	uintKeys := []string{nodeDeleteBatchCountKey, nodeMarkDeleteRateKey, dataNodeRepairTaskCountKey, nodeDeleteWorkerSleepMs, metaNodeReqRateKey, metaNodeReqOpRateKey, dataNodeReqRateKey, dataNodeReqOpRateKey, dataNodeReqVolPartRateKey, dataNodeReqVolOpPartRateKey, opcodeKey, clientReadVolRateKey, clientWriteVolRateKey, extentMergeSleepMsKey}
+	uintKeys := []string{nodeDeleteBatchCountKey, nodeMarkDeleteRateKey, dataNodeRepairTaskCountKey, nodeDeleteWorkerSleepMs, metaNodeReqRateKey, metaNodeReqOpRateKey,
+		dataNodeReqRateKey, dataNodeReqOpRateKey, dataNodeReqVolPartRateKey, dataNodeReqVolOpPartRateKey, opcodeKey, clientReadVolRateKey, clientWriteVolRateKey,
+		extentMergeSleepMsKey, fixTinyDeleteRecordKey}
 	for _, key := range uintKeys {
 		if err = parseUintKey(params, key, r); err != nil {
 			return

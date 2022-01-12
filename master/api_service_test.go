@@ -261,6 +261,43 @@ func TestGetLimitInfo(t *testing.T) {
 	process(reqURL, t)
 }
 
+// HTTPReply uniform response structure
+type RawHTTPReply struct {
+	Code int32           `json:"code"`
+	Msg  string          `json:"msg"`
+	Data json.RawMessage `json:"data"`
+}
+
+func processReturnRawReply(reqURL string, t *testing.T) (reply *RawHTTPReply) {
+	resp, err := http.Get(reqURL)
+	if err != nil {
+		t.Errorf("err is %v", err)
+		return
+	}
+	fmt.Println(resp.StatusCode)
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Errorf("err is %v", err)
+		return
+	}
+	fmt.Println(string(body))
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status code[%v]", resp.StatusCode)
+		return
+	}
+	reply = &RawHTTPReply{}
+	if err = json.Unmarshal(body, reply); err != nil {
+		t.Error(err)
+		return
+	}
+	if reply.Code != 0 {
+		t.Errorf("failed,msg[%v],data[%v]", reply.Msg, reply.Data)
+		return
+	}
+	return
+}
+
 func process(reqURL string, t *testing.T) (reply *proto.HTTPReply) {
 	resp, err := http.Get(reqURL)
 	if err != nil {
@@ -1261,4 +1298,28 @@ func TestGetVolWriteMutex(t *testing.T) {
 	if _, ok := reply.Data.(map[string]interface{})["ClientIP"]; !ok {
 		t.Errorf("Get volume write mutest failed, errorInfo: %v", reply.Data)
 	}
+}
+
+func TestSetNodeInfoHandler(t *testing.T) {
+
+	deleteRecord := 10
+	reqURL := fmt.Sprintf("%v%v?fixTinyDeleteRecordKey=%v", hostAddr, proto.AdminSetNodeInfo, deleteRecord)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	if server.cluster.dnFixTinyDeleteRecordLimit != uint64(deleteRecord) {
+		t.Errorf("set fixTinyDeleteRecordKey to %v failed", deleteRecord)
+		return
+	}
+	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
+	fmt.Println(reqURL)
+	reply := processReturnRawReply(reqURL, t)
+	limitInfo := &proto.LimitInfo{}
+
+	if err := json.Unmarshal(reply.Data, limitInfo); err != nil {
+		t.Errorf("unmarshal limitinfo failed,err:%v", err)
+	}
+	if limitInfo.DataNodeFixTinyDeleteRecordLimitOnDisk != uint64(deleteRecord) {
+		t.Errorf("deleteRecordLimit expect:%v,real:%v", deleteRecord, limitInfo.DataNodeFixTinyDeleteRecordLimitOnDisk)
+	}
+
 }

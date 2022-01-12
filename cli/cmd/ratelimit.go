@@ -148,12 +148,14 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&info.ClientVolOpRate, "clientVolOpRate", -2, "client meta op limit rate. '-1': unlimit, '0': disable")
 	cmd.Flags().StringVar(&info.ExtentMergeIno, "extentMergeIno", "", "comma separated inodes to be merged. '-1': no inodes, '0': all inodes")
 	cmd.Flags().Int64Var(&info.ExtentMergeSleepMs, "extentMergeSleepMs", -1, "extent merge interval(ms)")
+	cmd.Flags().Int64Var(&info.DnFixTinyDeleteRecordLimit, "fixTinyDeleteRecordLimit", -1, "data node fix tiny delete record limit")
 	return cmd
 }
 
 func formatRateLimitInfo(info *proto.LimitInfo) string {
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  Cluster name                : %v\n", info.Cluster))
+	sb.WriteString(fmt.Sprintf("  DnFixTinyDeleteRecordLimit  : %v\n", info.DataNodeFixTinyDeleteRecordLimitOnDisk))
 	sb.WriteString(fmt.Sprintf("  MetaNodeReqRate             : %v\n", info.MetaNodeReqRateLimit))
 	sb.WriteString(fmt.Sprintf("  MetaNodeReqOpRateMap        : %v\n", info.MetaNodeReqOpRateLimitMap))
 	sb.WriteString(fmt.Sprintf("  (map[opcode]limit)\n"))
