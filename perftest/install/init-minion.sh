@@ -1,6 +1,6 @@
 #!/bin/bash
 
-host_name=perftest-client.$(hostname -i)
+host_name=perftest-client.$(hostname -I)
 hostname ${host_name}
 
 yum install -y salt-minion

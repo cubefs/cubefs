@@ -21,7 +21,7 @@ fio_size=${FIO_SIZE:-"1G"}
 fio_numjobs=${FIO_NUMJOBS:-20}
 fio_runtime=${FIO_RUNTIME:-60}
 
-op_types="write read randwrite randread randrw"
+op_types="write read randwrite randread"
 bs_sizes="4k 16k 64k 256k 1M 4M"
 mpi_process="1 4 16 64"
 mpi_clients="1 2 4 8"
@@ -104,7 +104,11 @@ mpi_run() {
   process=${1:-"1"}
   client=${2:-"1"}
   op=${3:-"write"}
-  bs=${4:-"16k"}
+  bs="4k"
+
+  if [ $op == "write" ] || [ $op == "read" ]; then
+      bs="128k"
+  fi
 
   np=$(($process * $client))
 
@@ -134,14 +138,12 @@ mpi_batch_run() {
   echo "op_bs_process_client iops bw lat" > $report_file
 
   for rw in $op_types ; do
-    for bs in $bs_sizes ; do
       for process in $mpi_process; do
         for client in $mpi_clients; do
-          mpi_run  $process $client $rw $bs
+          mpi_run  $process $client $rw
           sleep 10
         done
       done
-    done
   done
 }
 
