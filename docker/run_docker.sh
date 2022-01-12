@@ -67,6 +67,10 @@ start_monitor() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml up -d monitor
 }
 
+start_convert() {
+    docker-compose -f ${RootPath}/docker/docker-compose.yml up -d convert
+}
+
 start_ci_test() {
     docker-compose -f ${RootPath}/docker/docker-compose-test.yml run client
 }
@@ -123,6 +127,9 @@ for opt in ${ARGS[*]} ; do
         -m|--monitor)
             cmd=run_monitor
             ;;
+        -convert|--convert)
+            cmd=run_convert
+            ;;
         -clean|--clean)
             cmd=clean
             ;;
@@ -171,6 +178,7 @@ case "-$cmd" in
     -run_servers) start_servers ;;
     -run_client) start_client ;;
     -run_monitor) start_monitor ;;
+    -run_convert) start_convert ;;
     -run_ci_tests) run_ci_tests ;;
     -run_test) run_unit_test ;;
     -clean) clean ;;

@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/chubaofs/chubaofs/convertnode"
 	syslog "log"
 	"net"
 	"net/http"
@@ -67,6 +68,7 @@ const (
 	RoleObject  = "objectnode"
 	RoleConsole = "console"
 	RoleMonitor = "monitor"
+	RoleConvert = "convert"
 )
 
 const (
@@ -76,6 +78,7 @@ const (
 	ModuleObject  = "objectNode"
 	ModuleConsole = "console"
 	ModuleMonitor = "monitor"
+	ModuleConvert = "convert"
 )
 
 const (
@@ -218,6 +221,9 @@ func run() error {
 	case RoleMonitor:
 		server = monitor.NewServer()
 		module = ModuleMonitor
+	case RoleConvert:
+		server = convertnode.NewServer()
+		module = ModuleConvert
 	default:
 		_ = daemonize.SignalOutcome(fmt.Errorf("Fatal: role mismatch: %v", role))
 		return fmt.Errorf("unknown role: %v", role)

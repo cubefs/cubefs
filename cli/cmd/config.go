@@ -17,6 +17,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/convertnode"
 	"io/ioutil"
 	"os"
 	"path"
@@ -39,16 +40,30 @@ var (
   ],
   "monitorAddr": "monitor.chubao.io",
   "dnProf": 17320,
-  "mnProf": 17220
+  "mnProf": 17220,
+  "convertAddr": "",
+  "convertNodeDBConfig": {
+    "path": "gate11.local.jed.jddb.com:3306",
+    "config": "charset=utf8&parseTime=True&loc=Local",
+    "dbName": "cfs_convert_node",
+    "userName": "cfs_convert_node_rw",
+    "password": "7ANiuzwYUuBFedhO",
+    "maxIdleConns": 10,
+    "maxOpenConns": 100,
+    "logMode": false,
+    "logZap": ""
+  }
 }
 `)
 )
 
 type Config struct {
-	MasterAddr       []string `json:"masterAddr"`
-	MonitorAddr      string   `json:"monitorAddr"`
-	DataNodeProfPort uint16   `json:"dnProf"`
-	MetaNodeProfPort uint16   `json:"mnProf"`
+	MasterAddr          []string             `json:"masterAddr"`
+	MonitorAddr         string               `json:"monitorAddr"`
+	DataNodeProfPort    uint16               `json:"dnProf"`
+	MetaNodeProfPort    uint16               `json:"mnProf"`
+	ConvertAddr         string               `json:"convertAddr"`
+	ConvertNodeDBConfig convertnode.DBConfig `json:"convertNodeDBConfig"`
 }
 
 func newConfigCmd() *cobra.Command {
@@ -71,6 +86,10 @@ func newConfigSetCmd() *cobra.Command {
 	var optMonitorHost string
 	var optDNProfPort uint16
 	var optMNProfPort uint16
+	var optConvertHost string
+	var optConvertNodeDBAddr string
+	var optConvertNodeDBUserName string
+	var optConvertNodeDBPassword string
 	var cmd = &cobra.Command{
 		Use:   CliOpSet,
 		Short: cmdConfigSetShort,
@@ -80,7 +99,8 @@ func newConfigSetCmd() *cobra.Command {
 			var monitorHosts string
 			var config *Config
 			var err error
-			if optMasterHost == "" && optMonitorHost == "" && optDNProfPort == 0 && optMNProfPort == 0 {
+			if optMasterHost == "" && optMonitorHost == "" && optDNProfPort == 0 && optMNProfPort == 0  && len(optConvertHost) == 0 &&
+				optConvertNodeDBAddr == "" && optConvertNodeDBUserName == "" && optConvertNodeDBPassword == ""{
 				stdout(fmt.Sprintf("No changes has been set. Input 'cfs-cli config set -h' for help.\n"))
 				return
 			}
@@ -106,6 +126,18 @@ func newConfigSetCmd() *cobra.Command {
 			if optMNProfPort > 0 {
 				config.MetaNodeProfPort = optMNProfPort
 			}
+			if len(optConvertHost) > 0 {
+				config.ConvertAddr = optConvertHost
+			}
+			if optConvertNodeDBAddr != "" {
+				config.ConvertNodeDBConfig.Path = optConvertNodeDBAddr
+			}
+			if optConvertNodeDBUserName != "" {
+				config.ConvertNodeDBConfig.Username = optConvertNodeDBUserName
+			}
+			if optConvertNodeDBPassword != "" {
+				config.ConvertNodeDBConfig.Password = optConvertNodeDBPassword
+			}
 			if _, err := setConfig(config); err != nil {
 				stdout("error: %v\n", err)
 				return
@@ -116,7 +148,11 @@ func newConfigSetCmd() *cobra.Command {
 	cmd.Flags().StringVar(&optMasterHost, "addr", "", "Specify master address [{HOST}:{PORT}]")
 	cmd.Flags().StringVar(&optMonitorHost, "monitorAddr", "", "Specify monitor address [{HOST}:{PORT}]")
 	cmd.Flags().Uint16Var(&optDNProfPort, "dnProf", 0, "Specify prof port for DataNode")
-	cmd.Flags().Uint16Var(&optMNProfPort, "mnProf", 0, "Specify prof port for DataNode")
+	cmd.Flags().Uint16Var(&optMNProfPort, "mnProf", 0, "Specify prof port for MetaNode")
+	cmd.Flags().StringVar(&optConvertHost, "convertAddr", "", "Specify convert address [{HOST}:{PORT}]")
+	cmd.Flags().StringVar(&optConvertNodeDBAddr, "convertNodeDBAddr", "", "Specify convert node database address")
+	cmd.Flags().StringVar(&optConvertNodeDBUserName, "convertNodeDBUserName", "", "Specify convert node database user name")
+	cmd.Flags().StringVar(&optConvertNodeDBPassword, "convertNodeDBPassword", "", "Specify convert node database password")
 	return cmd
 }
 func newConfigInfoCmd() *cobra.Command {
@@ -133,6 +169,8 @@ func newConfigInfoCmd() *cobra.Command {
 			}
 			stdout(fmt.Sprintf("Config info:\n  %v\n", config.MasterAddr))
 			stdout(fmt.Sprintf("Monitor address:\n  %v\n", config.MonitorAddr))
+			stdout(fmt.Sprintf("MySQL Database Addr:\n  %s\n", config.ConvertNodeDBConfig.Path))
+			stdout(fmt.Sprintf("MySQL Database Name:\n  %s\n", config.ConvertNodeDBConfig.Dbname))
 		},
 	}
 	cmd.Flags().StringVar(&optFilterWritable, "filter-writable", "", "Filter node writable status")

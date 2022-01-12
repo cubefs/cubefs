@@ -174,6 +174,18 @@ func (c *Config) GetStringSlice(key string) []string {
 	return result
 }
 
+func (c *Config) GetJsonObjectBytes(key string) []byte {
+	x, present := c.data[key]
+	if !present {
+		return nil
+	}
+	result, err := json.Marshal(x.(map[string]interface{}))
+	if err != nil {
+		return nil
+	}
+	return result
+}
+
 // Check and get a string for the config key.
 func (c *Config) CheckAndGetString(key string) (string, bool) {
 	x, present := c.data[key]

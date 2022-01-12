@@ -1,0 +1,21 @@
+{
+  "role": "convert",
+  "listen": "8002",
+  "prof": "7001",
+  "logDir": "/cfs/log",
+  "logLevel": "debug",
+  "cluster": "chubaofs01",
+  "thriftAddr": "127.0.0.1:9091",
+  "processorNum": 4,
+  "mysqlConfig": {
+    "path": "gate11.local.jed.jddb.com:3306",
+    "config": "charset=utf8&parseTime=True&loc=Local",
+    "dbName": "cfs_convert_node",
+    "userName": "cfs_convert_node_rw",
+    "password": "7ANiuzwYUuBFedhO",
+    "maxIdleConns": 10,
+    "maxOpenConns": 100,
+    "logMode": false,
+    "logZap": ""
+  }
+}

@@ -17,6 +17,7 @@ package cmd
 import (
 	"fmt"
 	trash "github.com/chubaofs/chubaofs/cli/cmd/trash"
+	"github.com/chubaofs/chubaofs/sdk/convert"
 	"os"
 	"path"
 	"strings"
@@ -35,7 +36,7 @@ type ChubaoFSCmd struct {
 	CFSCmd *cobra.Command
 }
 
-func NewRootCmd(client *master.MasterClient, mClient *monitor.MonitorClient) *ChubaoFSCmd {
+func NewRootCmd(client *master.MasterClient, mClient *monitor.MonitorClient, cc *convert.ConvertClient) *ChubaoFSCmd {
 	var cmd = &ChubaoFSCmd{
 		CFSCmd: &cobra.Command{
 			Use:   path.Base(os.Args[0]),
@@ -63,6 +64,7 @@ func NewRootCmd(client *master.MasterClient, mClient *monitor.MonitorClient) *Ch
 		newRegionCmd(client),
 		newReadWriteCheckTinyFileCmd(),
 		trash.NewTrashCmd(client),
+		newConvertNodeCmd(cc),
 	)
 	return cmd
 }

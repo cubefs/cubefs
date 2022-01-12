@@ -16,6 +16,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/chubaofs/chubaofs/sdk/convert"
 	"os"
 
 	"github.com/chubaofs/chubaofs/cli/cmd"
@@ -51,7 +52,8 @@ func setupCommands(cfg *cmd.Config) *cobra.Command {
 	mc.DataNodeProfPort = cfg.DataNodeProfPort
 	mc.MetaNodeProfPort = cfg.MetaNodeProfPort
 	var monitorCli = monitor.NewMonitorClient(cfg.MonitorAddr, false)
-	cfsRootCmd := cmd.NewRootCmd(mc, monitorCli)
+	cc := convert.NewConvertClient(cfg.ConvertAddr, false)
+	cfsRootCmd := cmd.NewRootCmd(mc, monitorCli, cc)
 	var completionCmd = &cobra.Command{
 		Use:   "completion",
 		Short: "Generate completion bash file",

@@ -403,6 +403,23 @@ services:
         networks:
             extnetwork:
 
+    convert:
+        image: chubaofs/cfs-base:1.3
+        ports:
+            - 8002
+            - 7001
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/convert/log:/cfs/log
+            - ./conf/convertnode.json:/cfs/conf/convertnode.json
+            - ./script/start_convertnode.sh:/cfs/script/start.sh
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/convertnode.json
+        restart: on-failure
+        privileged: true
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.60
+
     consul:
         image: consul:1.5
         ports:
