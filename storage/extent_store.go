@@ -17,7 +17,6 @@ package storage
 import (
 	"encoding/binary"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strconv"
 	"sync"
@@ -262,12 +261,12 @@ func (s *ExtentStore) Create(extentID uint64) (err error) {
 	return
 }
 
-func (s *ExtentStore) initBaseFileID() (err error) {
+func (s *ExtentStore) initBaseFileID() error {
 	var (
 		baseFileID uint64
 	)
 	baseFileID, _ = s.GetPersistenceBaseExtentID()
-	files, err := ioutil.ReadDir(s.dataPath)
+	files, err := os.ReadDir(s.dataPath)
 	if err != nil {
 		return err
 	}
