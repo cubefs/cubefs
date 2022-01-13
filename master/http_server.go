@@ -18,10 +18,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/samsarahq/thunder/graphql"
-	"github.com/samsarahq/thunder/graphql/introspection"
 	"net/http"
 	"net/http/httputil"
+
+	"github.com/samsarahq/thunder/graphql"
+	"github.com/samsarahq/thunder/graphql/introspection"
 
 	"github.com/gorilla/mux"
 
@@ -108,6 +109,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.RemoveRaftNode).
 		HandlerFunc(m.removeRaftNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.RaftStatus).
+		HandlerFunc(m.getRaftStatus)
 	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminClusterStat).HandlerFunc(m.clusterStat)
 
 	// volume management APIs
