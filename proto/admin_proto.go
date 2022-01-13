@@ -71,6 +71,7 @@ const (
 	//raft node APIs
 	AddRaftNode    = "/raftNode/add"
 	RemoveRaftNode = "/raftNode/remove"
+	RaftStatus     = "/get/raftStatus"
 
 	// Node APIs
 	AddDataNode                    = "/dataNode/add"
