@@ -55,6 +55,8 @@ type Super struct {
 	enableXattr   bool
 	rootIno       uint64
 	sc            *SummaryCache
+
+	noReaddirLimit bool
 }
 
 // Functions that Super needs to implement

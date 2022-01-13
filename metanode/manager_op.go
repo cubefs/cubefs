@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/repl"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -1415,5 +1416,12 @@ func (m *metadataManager) opListMultipart(conn net.Conn, p *Packet, remote strin
 	}
 	err = mp.ListMultipart(req, p)
 	_ = m.respondToClient(conn, p)
+	return
+}
+
+func (m *metadataManager) opUnknownOpCode(conn net.Conn, p *Packet, remote string) (err error) {
+	err = fmt.Errorf("%s unknown Opcode: %d, reqId: %d", remote, p.Opcode, p.GetReqID())
+	p.PacketErrorWithBody(proto.OpIntraGroupNetErr, ([]byte)(repl.ErrorUnknownOp.Error()))
+	m.respondToClient(conn, p)
 	return
 }
