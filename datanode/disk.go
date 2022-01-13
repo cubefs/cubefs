@@ -16,7 +16,6 @@ package datanode
 
 import (
 	"fmt"
-	"io/ioutil"
 	"path"
 	"regexp"
 	"strconv"
@@ -346,7 +345,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 		partitionSize int
 	)
 
-	fileInfoList, err := ioutil.ReadDir(d.Path)
+	fileInfoList, err := os.ReadDir(d.Path)
 	if err != nil {
 		log.LogErrorf("action[RestorePartition] read dir(%v) err(%v).", d.Path, err)
 		return
