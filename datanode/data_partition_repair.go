@@ -494,13 +494,15 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 		return nil
 	}
 	// size difference between the local extent and the remote extent
+	var request *repl.Packet
 	sizeDiff := remoteExtentInfo.Size - localExtentInfo.Size
-	request := repl.NewExtentRepairReadPacket(dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
 	if storage.IsTinyExtent(remoteExtentInfo.FileID) {
 		if sizeDiff >= math.MaxUint32 {
 			sizeDiff = math.MaxUint32 - util.MB
 		}
 		request = repl.NewTinyExtentRepairReadPacket(dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
+	} else {
+		request = repl.NewExtentRepairReadPacket(dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
 	}
 	var conn net.Conn
 	conn, err = dp.getRepairConn(remoteExtentInfo.Source)
