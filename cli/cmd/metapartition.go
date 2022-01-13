@@ -62,7 +62,7 @@ const (
 	cmdMetaPartitionAddLearnerShort     = "Add a learner of the meta partition on a new address"
 	cmdMetaPartitionPromoteLearnerShort = "Promote the learner of the meta partition on a fixed address"
 	cmdMetaPartitionResetCursorShort    = "Reset mp inode cursor"
-	cmdMetaPartitionListAllInoShrot     = "list mp all inodes id"
+	cmdMetaPartitionListAllInoShort     = "list mp all inodes id"
 )
 
 func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
@@ -553,7 +553,7 @@ func newMetaPartitionListAllInoCmd(client *master.MasterClient)  *cobra.Command 
 	var optEndTime int64
 	var cmd = &cobra.Command{
 		Use:   CliOpListMpAllInos + " [META PARTITION ID]",
-		Short: cmdMetaPartitionListAllInoShrot,
+		Short: cmdMetaPartitionListAllInoShort,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			ip := ""

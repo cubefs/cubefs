@@ -19,7 +19,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-
 	"github.com/chubaofs/chubaofs/util/btree"
 )
 
@@ -82,6 +81,27 @@ func (k *ExtentKey) MarshalBinary() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+func (k *ExtentKey) MarshalBinaryV2() ([]byte, error) {
+	data := make([]byte, 0, ExtentLength)
+	binary.BigEndian.PutUint64(data[0  : 8],  k.FileOffset)
+	binary.BigEndian.PutUint64(data[8  : 16], k.PartitionId)
+	binary.BigEndian.PutUint64(data[16 : 24], k.ExtentId)
+	binary.BigEndian.PutUint64(data[24 : 32], k.ExtentOffset)
+	binary.BigEndian.PutUint32(data[32 : 36], k.Size)
+	binary.BigEndian.PutUint32(data[36 : 40], k.CRC)
+	return data, nil
+}
+
+func (k *ExtentKey) EncodeBinary(data []byte) {
+	binary.BigEndian.PutUint64(data[0  : 8],  k.FileOffset)
+	binary.BigEndian.PutUint64(data[8  : 16], k.PartitionId)
+	binary.BigEndian.PutUint64(data[16 : 24], k.ExtentId)
+	binary.BigEndian.PutUint64(data[24 : 32], k.ExtentOffset)
+	binary.BigEndian.PutUint32(data[32 : 36], k.Size)
+	binary.BigEndian.PutUint32(data[36 : 40], k.CRC)
+	return
+}
+
 // UnmarshalBinary unmarshals the binary format of the extent key.
 func (k *ExtentKey) UnmarshalBinary(buf *bytes.Buffer) (err error) {
 	if err = binary.Read(buf, binary.BigEndian, &k.FileOffset); err != nil {
@@ -103,6 +123,16 @@ func (k *ExtentKey) UnmarshalBinary(buf *bytes.Buffer) (err error) {
 		return
 	}
 	return
+}
+
+func (k *ExtentKey) UnmarshalBinaryV2(data []byte) (err error) {
+	k.FileOffset   = binary.BigEndian.Uint64(data[0  : 8])
+	k.PartitionId  = binary.BigEndian.Uint64(data[8  : 16])
+	k.ExtentId     = binary.BigEndian.Uint64(data[16 : 24])
+	k.ExtentOffset = binary.BigEndian.Uint64(data[24 : 32])
+	k.Size         = binary.BigEndian.Uint32(data[32 : 36])
+	k.CRC          = binary.BigEndian.Uint32(data[36 : 40])
+	return nil
 }
 
 // TODO remove

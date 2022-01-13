@@ -38,6 +38,12 @@ import (
 //  +-------+-----------+--------------+-----------+--------------+
 //  | bytes |     4     |   KeyLength  |     4     |   ValLength  |
 //  +-------+-----------+--------------+-----------+--------------+
+
+const (
+	DentryValueLen  = 12
+	DentryKeyOffset = 4
+)
+
 type Dentry struct {
 	ParentId uint64 // FileID value of the parent inode.
 	Name     string // Name of the current dentry.
@@ -96,6 +102,61 @@ func (d *Dentry) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	err = d.UnmarshalValue(valBytes)
+	return
+}
+
+func (d *Dentry) MarshalV2() (result []byte, err error) {
+	offset := 0
+	nameLen := len(d.Name)
+	result = make([]byte, 28+len(d.Name))
+	binary.BigEndian.PutUint32(result[:4], uint32(8 + nameLen))
+	offset += 4
+	binary.BigEndian.PutUint64(result[offset:offset+8], d.ParentId)
+	offset += 8
+	copy(result[offset:offset+nameLen], []byte(d.Name))
+	offset += nameLen
+	binary.BigEndian.PutUint32(result[offset: offset+4], 12)
+	offset += 4
+	binary.BigEndian.PutUint64(result[offset:offset+8], d.Inode)
+	offset += 8
+	binary.BigEndian.PutUint32(result[offset:offset+4], d.Type)
+	return
+}
+
+func (d *Dentry) UnmarshalV2(raw []byte) (err error) {
+	offset := 0
+	var keyLen = binary.BigEndian.Uint32(raw[:4])
+	offset += 4
+	d.ParentId = binary.BigEndian.Uint64(raw[offset:offset+8])
+	offset += 8
+	d.Name = string(raw[offset:offset+int(keyLen-8)])
+	offset += int(keyLen-8)
+	offset += 4
+	d.Inode = binary.BigEndian.Uint64(raw[offset:offset+8])
+	offset += 8
+	d.Type = binary.BigEndian.Uint32(raw[offset:offset+4])
+	return
+}
+
+func (d *Dentry) DentryKeyLen() int {
+	return len(d.Name) + 8
+}
+
+func (d *Dentry) UnmarshalWithKeyAndValue(key, value []byte){
+	d.UnmarshalKeyV2(key)
+	d.UnmarshalValueV2(value)
+	return
+}
+
+func (d *Dentry) UnmarshalKeyV2(key []byte){
+	d.ParentId = binary.BigEndian.Uint64(key[0:8])
+	d.Name = string(key[8:])
+	return
+}
+
+func (d *Dentry) UnmarshalValueV2(value []byte){
+	d.Inode = binary.BigEndian.Uint64(value[0:8])
+	d.Type = binary.BigEndian.Uint32(value[8:12])
 	return
 }
 

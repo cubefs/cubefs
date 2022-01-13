@@ -43,6 +43,11 @@ var (
 	ErrIllegalReplicateAddress = errors.New("illegal replicate address")
 )
 
+const (
+	MetaPartitionMarshVersion1 = uint32(0)
+	MetaPartitionMarshVersion2 = uint32(1)
+)
+
 // Errors
 var (
 	ErrInodeIDOutOfRange = errors.New("inode ID out of range")
@@ -218,16 +223,17 @@ type metaPartition struct {
 	extendTree    *BTree // btree for inode extend (XAttr) management
 	multipartTree *BTree // collection for multipart management
 	raftPartition raftstore.Partition
-	stopC         chan bool
-	storeChan     chan *storeMsg
-	state         uint32
-	delInodeFp    *os.File
-	freeList      *freeList // free inode list
-	extDelCh      chan []proto.ExtentKey
-	extReset      chan struct{}
-	vol           *Vol
-	manager       *metadataManager
-	monitorData   []*statistics.MonitorData
+	stopC          chan bool
+	storeChan      chan *storeMsg
+	state          uint32
+	delInodeFp     *os.File
+	freeList       *freeList // free inode list
+	extDelCh       chan []proto.ExtentKey
+	extReset       chan struct{}
+	vol            *Vol
+	manager        *metadataManager
+	monitorData    []*statistics.MonitorData
+	marshalVersion uint32
 }
 
 // Start starts a meta partition.
@@ -390,6 +396,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) *meta
 		vol:           NewVol(),
 		manager:       manager,
 		monitorData:   statistics.InitMonitorData(statistics.ModelMetaNode),
+		marshalVersion: MetaPartitionMarshVersion2,
 	}
 	return mp
 }

@@ -216,7 +216,7 @@ func (decoder *MetadataCommandDecoder) DecodeCommand(command []byte) (values com
 			return
 		}
 		columnValOp.SetValue("CursorReset")
-		columnValAttrs.SetValue(fmt.Sprintf("volume: %v, partition: %v", req.VolName, req.PartitionId))
+		columnValAttrs.SetValue(fmt.Sprintf("PartitionId: %v, Inode: %v, Cursor: %v, Force: %v", req.PartitionId, req.Inode, req.Cursor, req.Force))
 	case metadataOpFSMExtentsAdd:
 		ino := metanode.NewInode(0, 0)
 		if err = ino.Unmarshal(context.Background(), opKVData.V); err != nil {

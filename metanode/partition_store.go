@@ -133,9 +133,16 @@ func (mp *metaPartition) loadInode(ctx context.Context, rootDir string) (err err
 			return
 		}
 		ino := NewInode(0, 0)
-		if err = ino.Unmarshal(ctx, inoBuf); err != nil {
-			err = errors.NewErrorf("[loadInode] Unmarshal: %s", err.Error())
-			return
+		if mp.marshalVersion == MetaPartitionMarshVersion2 {
+			if err = ino.UnmarshalV2(ctx, inoBuf); err != nil {
+				err = errors.NewErrorf("[loadInode] Unmarshal: %s", err.Error())
+				return
+			}
+		} else {
+			if err = ino.Unmarshal(ctx, inoBuf); err != nil {
+				err = errors.NewErrorf("[loadInode] Unmarshal: %s", err.Error())
+				return
+			}
 		}
 		mp.fsmCreateInode(ino)
 		mp.checkAndInsertFreeList(ino)
@@ -200,9 +207,16 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 			return
 		}
 		dentry := &Dentry{}
-		if err = dentry.Unmarshal(dentryBuf); err != nil {
-			err = errors.NewErrorf("[loadDentry] Unmarshal: %s", err.Error())
-			return
+		if mp.marshalVersion == MetaPartitionMarshVersion2 {
+			if err = dentry.UnmarshalV2(dentryBuf); err != nil {
+				err = errors.NewErrorf("[loadDentry] Unmarshal: %s", err.Error())
+				return
+			}
+		} else {
+			if err = dentry.Unmarshal(dentryBuf); err != nil {
+				err = errors.NewErrorf("[loadDentry] Unmarshal: %s", err.Error())
+				return
+			}
 		}
 		if status := mp.fsmCreateDentry(dentry, true); status != proto.OpOk {
 			err = errors.NewErrorf("[loadDentry] createDentry dentry: %v, resp code: %d", dentry, status)
@@ -407,7 +421,12 @@ func (mp *metaPartition) storeInode(rootDir string,
 	sign := crc32.NewIEEE()
 	sm.inodeTree.Ascend(func(i BtreeItem) bool {
 		ino := i.(*Inode)
-		if data, err = ino.Marshal(); err != nil {
+		if mp.marshalVersion == MetaPartitionMarshVersion2 {
+			data, err = ino.MarshalV2()
+		} else {
+			data, err = ino.Marshal()
+		}
+		if err != nil {
 			return false
 		}
 		// set length
@@ -451,7 +470,11 @@ func (mp *metaPartition) storeDentry(rootDir string,
 	sign := crc32.NewIEEE()
 	sm.dentryTree.Ascend(func(i BtreeItem) bool {
 		dentry := i.(*Dentry)
-		data, err = dentry.Marshal()
+		if mp.marshalVersion == MetaPartitionMarshVersion2 {
+			data, err = dentry.MarshalV2()
+		} else {
+			data, err = dentry.Marshal()
+		}
 		if err != nil {
 			return false
 		}

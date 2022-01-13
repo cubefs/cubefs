@@ -50,6 +50,23 @@ func (se *SortedExtents) MarshalBinary() ([]byte, error) {
 	return data, nil
 }
 
+func (se *SortedExtents) MarshalBinaryV2() ([]byte, error) {
+	var data []byte
+
+	se.RLock()
+	defer se.RUnlock()
+	data = make([]byte, len(se.eks) * proto.ExtentLength)
+
+	for _, ek := range se.eks {
+		ekdata, err := ek.MarshalBinaryV2()
+		if err != nil {
+			return nil, err
+		}
+		data = append(data, ekdata...)
+	}
+	return data, nil
+}
+
 func (se *SortedExtents) UnmarshalBinary(ctx context.Context, data []byte) error {
 	var ek proto.ExtentKey
 
@@ -62,6 +79,19 @@ func (se *SortedExtents) UnmarshalBinary(ctx context.Context, data []byte) error
 			return err
 		}
 		se.Append(ctx, ek)
+	}
+	return nil
+}
+
+func (se *SortedExtents) UnmarshalBinaryV2(ctx context.Context, data []byte) error {
+	var ek proto.ExtentKey
+
+	for start := 0; start < len(data);{
+		if err := ek.UnmarshalBinaryV2(data[start : start + proto.ExtentLength]); err != nil {
+			return err
+		}
+		se.Append(ctx, ek)
+		start += proto.ExtentLength
 	}
 	return nil
 }

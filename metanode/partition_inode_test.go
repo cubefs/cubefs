@@ -2,48 +2,13 @@ package metanode
 
 import (
 	"context"
-	"fmt"
-	"github.com/chubaofs/chubaofs/metanode/metamock"
 	"github.com/chubaofs/chubaofs/proto"
-	"os"
 	"testing"
 	"time"
 )
 
-
-func ApplyMock(elem interface{},command []byte, index uint64) (resp interface{}, err error) {
-	mp := elem.(*metaPartition)
-	resp, err = mp.Apply(command, index)
-	return
-}
-
-func newTestMetapartition()(*metaPartition, error){
-	node := &MetaNode{nodeId: 1}
-	manager := &metadataManager{nodeId: 1, metaNode: node}
-	conf := &MetaPartitionConfig{ PartitionId: 1,
-		NodeId: 1,
-		Start: 1, End: 10000,
-		Peers: []proto.Peer{proto.Peer{ID: 1, Addr: "127.0.0.1"} },
-		RootDir: "./partition_1"}
-	tmp, err := CreateMetaPartition(conf, manager)
-	if  err != nil {
-		fmt.Printf("create meta partition failed:%s", err.Error())
-		return nil, err
-	}
-	mp := tmp.(*metaPartition)
-	mp.raftPartition = &metamock.MockPartition{Id: 1, Mp: mp, Apply: ApplyMock}
-	mp.vol = NewVol()
-	return mp, nil
-}
-
-func releaseTestMetapartition(mp *metaPartition) {
-	close(mp.stopC)
-	time.Sleep(time.Second)
-	os.RemoveAll(mp.config.RootDir)
-}
-
 func TestResetCursor_WriteStatus(t *testing.T) {
-	mp, _ := newTestMetapartition()
+	mp, _ := newTestMetapartition(1)
 
 	req := &proto.CursorResetRequest{
 		PartitionId: 1,
@@ -66,7 +31,7 @@ func TestResetCursor_WriteStatus(t *testing.T) {
 }
 
 func TestResetCursor_OutOfMaxEnd(t *testing.T) {
-	mp, _ := newTestMetapartition()
+	mp, _ := newTestMetapartition(1)
 
 	req := &proto.CursorResetRequest{
 		PartitionId: 1,
@@ -97,7 +62,7 @@ func TestResetCursor_OutOfMaxEnd(t *testing.T) {
 }
 
 func TestResetCursor_LimitedAndForce(t *testing.T) {
-	mp, _ := newTestMetapartition()
+	mp, _ := newTestMetapartition(1)
 
 	req := &proto.CursorResetRequest{
 		PartitionId: 1,
@@ -130,7 +95,7 @@ func TestResetCursor_LimitedAndForce(t *testing.T) {
 }
 
 func TestResetCursor_CursorChange(t *testing.T) {
-	mp, _ := newTestMetapartition()
+	mp, _ := newTestMetapartition(1)
 
 	req := &proto.CursorResetRequest{
 		PartitionId: 1,
@@ -160,7 +125,7 @@ func TestResetCursor_CursorChange(t *testing.T) {
 }
 
 func TestResetCursor_LeaderChange(t *testing.T) {
-	mp, _ := newTestMetapartition()
+	mp, _ := newTestMetapartition(1)
 
 	req := &proto.CursorResetRequest{
 		PartitionId: 1,
