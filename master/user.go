@@ -63,10 +63,20 @@ func (u *User) createKey(param *proto.UserCreateParam) (userInfo *proto.UserInfo
 	var accessKey = param.AccessKey
 	if accessKey == "" {
 		accessKey = util.RandomString(accessKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
+	} else {
+		if !proto.IsValidAK(accessKey) {
+			err = proto.ErrInvalidAccessKey
+			return
+		}
 	}
 	var secretKey = param.SecretKey
 	if secretKey == "" {
 		secretKey = util.RandomString(secretKeyLength, util.Numeric|util.LowerLetter|util.UpperLetter)
+	} else {
+		if !proto.IsValidSK(secretKey) {
+			err = proto.ErrInvalidSecretKey
+			return
+		}
 	}
 	var userType = param.Type
 	var description = param.Description
