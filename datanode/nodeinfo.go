@@ -18,7 +18,7 @@ const (
 	UpdateDeleteLimitInfoTicket           = 1 * time.Minute
 	UpdateRateLimitInfoTicket             = 5 * time.Minute
 	UpdateClusterViewTicket               = 24 * time.Hour
-	DefaultFixTinyDeleteRecordLimitOnDisk = 50
+	DefaultFixTinyDeleteRecordLimitOnDisk = 1
 	DefaultRepairTaskLimitOnDisk          = 10
 	DefaultReqLimitBurst                  = 512
 )
