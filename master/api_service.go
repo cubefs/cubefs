@@ -2161,6 +2161,13 @@ func (m *Server) removeRaftNode(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
+// get master's raft status
+func (m *Server) getRaftStatus(w http.ResponseWriter, r *http.Request) {
+	data := m.raftStore.RaftStatus(GroupID)
+	log.LogInfof("get raft status, %s", data.String())
+	sendOkReply(w, r, newSuccessHTTPReply(data))
+}
+
 type getVolParameter struct {
 	name                string
 	authKey             string
