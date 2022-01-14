@@ -90,7 +90,6 @@ func (vac *VolumeInodeAttrsCache) Put(attr *AttrItem) {
 func (vac *VolumeInodeAttrsCache) Merge(attr *AttrItem) {
 	vac.RLock()
 	old, ok := vac.cache[attr.Inode]
-	vac.RUnlock()
 	if ok {
 		oldAttrs := old.Value.(*AttrItem)
 		for key, val := range oldAttrs.XAttrs {
@@ -100,6 +99,7 @@ func (vac *VolumeInodeAttrsCache) Merge(attr *AttrItem) {
 			}
 		}
 	}
+	vac.RUnlock()
 
 	vac.Put(attr)
 
@@ -141,11 +141,27 @@ func (vac *VolumeInodeAttrsCache) Delete(inode uint64) {
 	defer vac.Unlock()
 
 	element, ok := vac.cache[inode]
-	attr := element.Value.(*AttrItem)
 	if ok {
+		attr := element.Value.(*AttrItem)
 		log.LogDebugf("delete attr in cache: inode(%v) attr(%v) ", inode, attr)
 		vac.lruList.Remove(element)
 		delete(vac.cache, inode)
+	}
+}
+
+func (vac *VolumeInodeAttrsCache) DeleteWithKey(inode uint64, key string) {
+	vac.Lock()
+
+	var attr *AttrItem
+	element, ok := vac.cache[inode]
+	if ok {
+		attr = element.Value.(*AttrItem)
+		log.LogDebugf("delete key: %v in attr of inode(%v) ", key, inode)
+		delete(attr.XAttrs, key)
+	}
+	vac.Unlock()
+	if attr != nil {
+		vac.Put(attr)
 	}
 }
 
@@ -270,8 +286,8 @@ func (vdc *VolumeDentryCache) Delete(key string) {
 	defer vdc.Unlock()
 
 	element, ok := vdc.cache[key]
-	dentry := element.Value.(*DentryItem)
 	if ok {
+		dentry := element.Value.(*DentryItem)
 		log.LogDebugf("delete dentry in cache: key(%v) dentry(%v) ", key, dentry)
 		vdc.lruList.Remove(element)
 		delete(vdc.cache, key)
@@ -393,6 +409,18 @@ func (omc *ObjMetaCache) DeleteAttr(volume string, inode uint64) {
 
 	log.LogDebugf("ObjMetaCache DeleteAttr: volume(%v), inode(%v)", volume, inode)
 	vac.Delete(inode)
+}
+
+func (omc *ObjMetaCache) DeleteAttrWithKey(volume string, inode uint64, key string) {
+	omc.RLock()
+	vac, exist := omc.vaCache[volume]
+	omc.RUnlock()
+	if !exist {
+		return
+	}
+
+	log.LogDebugf("ObjMetaCache DeleteAttr: volume(%v), inode(%v)", volume, inode)
+	vac.DeleteWithKey(inode, key)
 }
 
 func (omc *ObjMetaCache) TotalAttrNum() int {
