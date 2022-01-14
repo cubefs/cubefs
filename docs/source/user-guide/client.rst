@@ -75,6 +75,15 @@ Unmount
 
 It is recommended to use standard Linux ``umount`` command to terminate the mount.
 
+Live Upgrade
+------------
+
+.. code-block:: bash
+
+   ./cfs-client -c fuse.json -r -p 27510
+
+Before live-upgrading, old cfs-client is running with profPort 27510. ``-p 27510`` tells new cfs-client to communicate with old cfs-client through port 27510.
+
 DataPartitionSelector
 ---------------------
 

@@ -23,6 +23,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	syslog "log"
 	"net"
 	"net/http"
@@ -35,8 +36,10 @@ import (
 	"runtime/debug"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/chubaofs/chubaofs/util"
 
 	sysutil "github.com/chubaofs/chubaofs/util/sys"
 
@@ -69,13 +72,23 @@ const (
 	ControlCommandSetRate      = "/rate/set"
 	ControlCommandGetRate      = "/rate/get"
 	ControlCommandFreeOSMemory = "/debug/freeosmemory"
+	ControlCommandSuspend      = "/suspend"
+	ControlCommandResume       = "/resume"
 	Role                       = "Client"
+
+	DefaultIP            = "127.0.0.1"
+	DynamicUDSNameFormat = "/tmp/ChubaoFS-fdstore-%v.sock"
+	DefaultUDSName       = "/tmp/ChubaoFS-fdstore.sock"
 )
 
 var (
-	configFile       = flag.String("c", "", "FUSE client config file")
-	configVersion    = flag.Bool("v", false, "show version")
-	configForeground = flag.Bool("f", false, "run foreground")
+	configFile           = flag.String("c", "", "FUSE client config file")
+	configVersion        = flag.Bool("v", false, "show version")
+	configForeground     = flag.Bool("f", false, "run foreground")
+	configDynamicUDSName = flag.Bool("n", false, "dynamic unix domain socket filename")
+	configRestoreFuse    = flag.Bool("r", false, "restore FUSE instead of mounting")
+	configRestoreFuseUDS = flag.String("s", "", "restore socket addr")
+	configFuseHttpPort   = flag.String("p", "", "fuse http service port")
 )
 
 var GlobalMountOptions []proto.MountOption
@@ -83,6 +96,155 @@ var GlobalMountOptions []proto.MountOption
 func init() {
 	GlobalMountOptions = proto.NewMountOptions()
 	proto.InitMountOptions(GlobalMountOptions)
+}
+
+func createUDS(sockAddr string) (listener net.Listener, err error) {
+	var addr *net.UnixAddr
+
+	log.LogInfof("sockaddr: %s\n", sockAddr)
+
+	os.Remove(sockAddr)
+	if addr, err = net.ResolveUnixAddr("unix", sockAddr); err != nil {
+		log.LogErrorf("cannot resolve unix addr: %v\n", err)
+		return
+	}
+
+	if listener, err = net.ListenUnix("unix", addr); err != nil {
+		log.LogErrorf("cannot create unix domain: %v\n", err)
+		return
+	}
+
+	if err = os.Chmod(sockAddr, 0666); err != nil {
+		log.LogErrorf("failed to chmod socket file: %v\n", err)
+		listener.Close()
+		return
+	}
+
+	return
+}
+
+func destroyUDS(listener net.Listener) {
+	sockAddr := listener.Addr().String()
+	listener.Close()
+	os.Remove(sockAddr)
+}
+
+func recvFuseFdFromOldClient(udsListener net.Listener) (file *os.File, err error) {
+	var conn net.Conn
+	var socket *os.File
+
+	if conn, err = udsListener.Accept(); err != nil {
+		log.LogErrorf("unix domain accepts fail: %v\n", err)
+		return
+	}
+	defer conn.Close()
+
+	log.LogInfof("a new connection accepted\n")
+	unixconn := conn.(*net.UnixConn)
+	if socket, err = unixconn.File(); err != nil {
+		log.LogErrorf("failed to get socket file: %v\n", err)
+		return
+	}
+	defer socket.Close()
+
+	if file, err = util.RecvFd(socket); err != nil {
+		log.LogErrorf("failed to receive fd: %v\n", err)
+		return
+	}
+
+	log.LogInfof("Received file %s fd %v\n", file.Name(), file.Fd())
+	return
+}
+
+func sendSuspendRequest(port string, udsListener net.Listener) (err error) {
+	var (
+		req  *http.Request
+		resp *http.Response
+		data []byte
+	)
+	udsFilePath := udsListener.Addr().String()
+
+	url := fmt.Sprintf("http://%s:%s/suspend?sock=%s", DefaultIP, port, udsFilePath)
+	if req, err = http.NewRequest("POST", url, nil); err != nil {
+		log.LogErrorf("Failed to get new request: %v\n", err)
+		return err
+	}
+	req.Header.Set("Content-Type", "application/text")
+
+	client := http.DefaultClient
+	client.Timeout = 120 * time.Second
+	if resp, err = client.Do(req); err != nil {
+		log.LogErrorf("Failed to post request: %v\n", err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	if data, err = ioutil.ReadAll(resp.Body); err != nil {
+		log.LogErrorf("Failed to read response: %v\n", err)
+		return err
+	}
+
+	if resp.StatusCode == http.StatusOK {
+		log.LogInfof("\n==> %s\n==> Could restore cfs-client now with -r option.\n\n", string(data))
+	} else {
+		log.LogErrorf("\n==> %s\n==> Status: %s\n\n", string(data), resp.Status)
+		return fmt.Errorf(resp.Status)
+	}
+
+	return nil
+}
+
+func sendResumeRequest(port string) (err error) {
+	var (
+		req  *http.Request
+		resp *http.Response
+		data []byte
+	)
+
+	url := fmt.Sprintf("http://%s:%s/resume", DefaultIP, port)
+	if req, err = http.NewRequest("POST", url, nil); err != nil {
+		log.LogErrorf("Failed to get new request: %v\n", err)
+		return err
+	}
+	req.Header.Set("Content-Type", "application/text")
+
+	client := http.DefaultClient
+	if resp, err = client.Do(req); err != nil {
+		log.LogErrorf("Failed to post request: %v\n", err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	if data, err = ioutil.ReadAll(resp.Body); err != nil {
+		log.LogErrorf("Failed to read response: %v\n", err)
+		return err
+	}
+
+	log.LogInfof("data: %s\n", string(data))
+	return nil
+}
+
+func doSuspend(uds string, port string) (*os.File, error) {
+	var fud *os.File
+
+	udsListener, err := createUDS(uds)
+	if err != nil {
+		log.LogErrorf("doSuspend: failed to create UDS: %v\n", err)
+		return nil, err
+	}
+	defer destroyUDS(udsListener)
+
+	if err = sendSuspendRequest(port, udsListener); err != nil {
+		sendResumeRequest(port)
+		return nil, err
+	}
+
+	if fud, err = recvFuseFdFromOldClient(udsListener); err != nil {
+		sendResumeRequest(port)
+		return nil, err
+	}
+
+	return fud, nil
 }
 
 func main() {
@@ -145,6 +307,11 @@ func main() {
 	}()
 	syslog.SetOutput(outputFile)
 
+	if *configRestoreFuse {
+		syslog.Println("Need restore fuse")
+		opt.NeedRestoreFuse = true
+	}
+
 	syslog.Println(proto.DumpVersion(Role))
 	syslog.Println("*** Final Mount Options ***")
 	for _, o := range GlobalMountOptions {
@@ -171,6 +338,27 @@ func main() {
 		os.Exit(1)
 	}
 
+	var fud *os.File
+	if opt.NeedRestoreFuse && *configFuseHttpPort != "" {
+		log.LogInfof("Suspend/Restore by self\n")
+		var udsName string
+		if *configDynamicUDSName {
+			udsName = fmt.Sprintf(DynamicUDSNameFormat, os.Getpid())
+		} else {
+			udsName = DefaultUDSName
+		}
+
+		// Tell old cfs-client to suspend first. This should be done
+		// before mount() to avoid pprof port conflict between old and
+		// new cfs-clients.
+		if fud, err = doSuspend(udsName, *configFuseHttpPort); err != nil {
+			log.LogErrorf("Failed to tell old cfs-client to suspend: %v\n", err)
+			syslog.Printf("Error: Failed to tell old cfs-client to suspend: %v\n", err)
+			log.LogFlush()
+			os.Exit(1)
+		}
+	}
+
 	fsConn, super, err := mount(opt)
 	if err != nil {
 		err = errors.NewErrorf("mount failed: %v", err)
@@ -185,6 +373,18 @@ func main() {
 
 	exporter.Init(ModuleName, cfg)
 	exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
+
+	if opt.NeedRestoreFuse {
+		if fud == nil {
+			if *configRestoreFuseUDS == "" {
+				super.SetSockAddr(DefaultUDSName)
+			} else {
+				super.SetSockAddr(*configRestoreFuseUDS)
+			}
+		} else {
+			fsConn.SetFuseDevFile(fud)
+		}
+	}
 
 	if err = fs.Serve(fsConn, super); err != nil {
 		log.LogFlush()
@@ -240,6 +440,69 @@ func startDaemon() error {
 	return nil
 }
 
+func waitListenAndServe(statusCh chan error, addr string, handler http.Handler) {
+	var err error
+	var loop int = 0
+	var interval int = (1 << 17) - 1
+	var listener net.Listener
+	var dynamicPort bool
+
+	if addr == ":" {
+		addr = ":0"
+	}
+
+	// FIXME: 1 min timeout?
+	timeout := time.Now().Add(time.Minute)
+	for {
+		if listener, err = net.Listen("tcp", addr); err == nil {
+			break
+		}
+
+		// addr is not released for use
+		if strings.Contains(err.Error(), "bind: address already in use") {
+			if loop&interval == 0 {
+				syslog.Printf("address %v is still in use\n", addr)
+			}
+			runtime.Gosched()
+		} else {
+			break
+		}
+		if time.Now().After(timeout) {
+			msg := fmt.Sprintf("address %v is still in use after "+
+				"timeout, choose port automatically\n", addr)
+			syslog.Print(msg)
+			msg = "Warning: " + msg
+			daemonize.StatusWriter.Write([]byte(msg))
+			dynamicPort = true
+			break
+		}
+		loop++
+	}
+	syslog.Printf("address %v wait loop %v\n", addr, loop)
+
+	if dynamicPort {
+		ipport := strings.Split(addr, ":")
+		addr = ipport[0] + ":0"
+		listener, err = net.Listen("tcp", addr)
+	}
+
+	if err != nil {
+		statusCh <- err
+		return
+	}
+
+	statusCh <- nil
+	msg := fmt.Sprintf("Start pprof with port: %v\n",
+		listener.Addr().(*net.TCPAddr).Port)
+	syslog.Print(msg)
+	if dynamicPort {
+		msg = "Warning: " + msg
+		daemonize.StatusWriter.Write([]byte(msg))
+	}
+	http.Serve(listener, handler)
+	// unreachable
+}
+
 func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err error) {
 	super, err = cfs.NewSuper(opt)
 	if err != nil {
@@ -252,22 +515,15 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 	http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
 	http.HandleFunc(ControlCommandFreeOSMemory, freeOSMemory)
 	http.HandleFunc(log.GetLogPath, log.GetLog)
+	http.HandleFunc(ControlCommandSuspend, super.SetSuspend)
+	http.HandleFunc(ControlCommandResume, super.SetResume)
 
-	go func() {
-		if opt.Profport != "" {
-			syslog.Println("Start pprof with port:", opt.Profport)
-			http.ListenAndServe(":"+opt.Profport, nil)
-		} else {
-			pprofListener, err := net.Listen("tcp", ":0")
-			if err != nil {
-				daemonize.SignalOutcome(err)
-				os.Exit(1)
-			}
-
-			syslog.Println("Start pprof with port:", pprofListener.Addr().(*net.TCPAddr).Port)
-			http.Serve(pprofListener, nil)
-		}
-	}()
+	statusCh := make(chan error)
+	go waitListenAndServe(statusCh, ":"+opt.Profport, nil)
+	if err = <-statusCh; err != nil {
+		daemonize.SignalOutcome(err)
+		return
+	}
 
 	if err = ump.InitUmp(fmt.Sprintf("%v_%v", super.ClusterName(), ModuleName), opt.UmpDatadir); err != nil {
 		return
@@ -294,7 +550,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 		options = append(options, fuse.PosixACL())
 	}
 
-	fsConn, err = fuse.Mount(opt.MountPoint, options...)
+	fsConn, err = fuse.Mount(opt.MountPoint, opt.NeedRestoreFuse, options...)
 	return
 }
 

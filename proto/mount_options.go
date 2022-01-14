@@ -240,4 +240,5 @@ type MountOptions struct {
 	NearRead             bool
 	EnablePosixACL       bool
 	EnableUnixPermission bool
+	NeedRestoreFuse      bool
 }
