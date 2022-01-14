@@ -16,7 +16,6 @@ package datanode
 
 import (
 	"encoding/json"
-	"github.com/chubaofs/chubaofs/util"
 	"math"
 	"net"
 	"sync"
@@ -24,12 +23,14 @@ import (
 
 	"encoding/binary"
 	"fmt"
+	"hash/crc32"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
 	"github.com/chubaofs/chubaofs/storage"
+	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"hash/crc32"
 )
 
 // DataPartitionRepairTask defines the reapir task for the data partition.
@@ -158,7 +159,6 @@ func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartiti
 
 func (dp *DataPartition) getLocalExtentInfo(extentType uint8, tinyExtents []uint64) (extents []*storage.ExtentInfo, leaderTinyDeleteRecordFileSize int64, err error) {
 	localExtents := make([]*storage.ExtentInfo, 0)
-	extents = make([]*storage.ExtentInfo, 0)
 
 	if extentType == proto.NormalExtentType {
 		localExtents, leaderTinyDeleteRecordFileSize, err = dp.extentStore.GetAllWatermarks(storage.NormalExtentFilter())
@@ -169,16 +169,16 @@ func (dp *DataPartition) getLocalExtentInfo(extentType uint8, tinyExtents []uint
 		err = errors.Trace(err, "getLocalExtentInfo extent DataPartition(%v) GetAllWaterMark", dp.partitionID)
 		return
 	}
-	data, err := json.Marshal(localExtents)
-	if err != nil {
-		err = errors.Trace(err, "getLocalExtentInfo extent DataPartition(%v) GetAllWaterMark", dp.partitionID)
+	if len(localExtents) <= 0 {
+		extents = make([]*storage.ExtentInfo, 0)
 		return
 	}
-
-	if err = json.Unmarshal(data, &extents); err != nil {
-		err = errors.Trace(err, "getLocalExtentInfo extent DataPartition(%v) GetAllWaterMark", dp.partitionID)
+	extents = make([]*storage.ExtentInfo, 0, len(localExtents))
+	for _, et := range localExtents {
+		newEt := storage.ExtentInfo{}
+		newEt = *et
+		extents = append(extents, &newEt)
 	}
-
 	return
 }
 
