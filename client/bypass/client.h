@@ -269,7 +269,7 @@ static cfs_config_t g_cfs_config;
 static const char *CFS_CFG_PATH = "cfs_client.ini";
 static const char *CFS_CFG_PATH_JED = "/export/servers/cfs/cfs_client.ini";
 
-#ifdef _CFS_DEBUG
+#if defined(_CFS_DEBUG) || defined(DUP_TO_LOCAL)
 // map for each open fd to its pathname, to print pathname in debug log
 static struct hsearch_data g_fdmap = {0};
 #define FD_MAP_SIZE 100

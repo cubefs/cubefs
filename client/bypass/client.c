@@ -159,10 +159,12 @@ int openat(int dirfd, const char *pathname, int flags, ...) {
 
 log:
     free(path);
-    #ifdef _CFS_DEBUG
+    #if defined(_CFS_DEBUG) || defined(DUP_TO_LOCAL)
     addFdEntry(fd, strdup(pathname));
+    #endif
+    #ifdef _CFS_DEBUG
     log_debug("hook %s, is_cfs:%d, dirfd:%d, pathname:%s, flags:%#x(%s%s%s%s%s%s%s), re:%d\n", 
-    __func__, is_cfs, dirfd, pathname, flags, flags&O_RDONLY?"O_RDONLY|":"", 
+    __func__, is_cfs > 0, dirfd, pathname, flags, flags&O_RDONLY?"O_RDONLY|":"", 
     flags&O_WRONLY?"O_WRONLY|":"", flags&O_RDWR?"O_RDWR|":"", flags&O_CREAT?"O_CREAT|":"", 
     flags&O_DIRECT?"O_DIRECT|":"", flags&O_SYNC?"O_SYNC|":"", flags&O_DSYNC?"O_DSYNC":"", fd);
     #endif
@@ -957,7 +959,7 @@ int unlinkat(int dirfd, const char *pathname, int flags) {
 log:
     free(path);
     #ifdef _CFS_DEBUG
-    log_debug("hook %s, dirfd:%d, pathname:%s, flags:%#x, re:%d\n", __func__, dirfd, pathname, flags, re);
+    log_debug("hook %s, is_cfs:%d, dirfd:%d, pathname:%s, flags:%#x, re:%d\n", __func__, is_cfs > 0, dirfd, pathname, flags, re);
     #endif
     return re;
 }
@@ -1380,15 +1382,22 @@ int faccessat(int dirfd, const char *pathname, int mode, int flags) {
     const char *cfs_path = (path == NULL) ? pathname : path;
     int re;
     if(g_hook && is_cfs) {
+        #ifdef DUP_TO_LOCAL
+        re = real_faccessat(dirfd, pathname, mode, flags);
+        if(re < 0) {
+            goto log;
+        }
+        #endif
         re = cfs_re(cfs_faccessat(g_cfs_client_id, dirfd, cfs_path, mode, flags));
     } else {
         re = real_faccessat(dirfd, pathname, mode, flags);
     }
 
+log:
     free(path);
     #ifdef _CFS_DEBUG
     log_debug("hook %s, is_cfs:%d, dirfd:%d, pathname:%s, mode:%d, flags:%#x, re:%d\n", 
-    __func__, is_cfs, dirfd, pathname, mode, flags, re);
+    __func__, is_cfs > 0, dirfd, pathname, mode, flags, re);
     #endif
     return re;
 }
@@ -1570,29 +1579,33 @@ int fcntl(int fd, int cmd, ...) {
 
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    int re;
+    int re, re_old;
     if(g_hook && is_cfs) {
         #ifdef DUP_TO_LOCAL
         re = real_fcntl(fd, cmd, arg);
         if(re < 0) {
             goto log;
         }
-        #endif
+        if(cmd == F_SETLK || cmd == F_SETLKW) {
+            re = cfs_fcntl_lock(g_cfs_client_id, fd, cmd, (struct flock *)arg);
+        } else {
+            re_old = re;
+            re = cfs_fcntl(g_cfs_client_id, fd, cmd, 
+            (cmd == F_DUPFD || cmd == F_DUPFD_CLOEXEC) ? re : (intptr_t)arg);
+            if(re != re_old) {
+                goto log;
+            }
+        }
+        #else
         if(cmd == F_SETLK || cmd == F_SETLKW) {
             re = cfs_fcntl_lock(g_cfs_client_id, fd, cmd, (struct flock *)arg);
         } else {
             re = cfs_fcntl(g_cfs_client_id, fd, cmd, (intptr_t)arg);
         }
+        #endif
         re = cfs_re(re);
     } else {
         re = real_fcntl(fd, cmd, arg);
-    }
-
-    if(re < 0) {
-        goto log;
-    }
-    if(g_hook && is_cfs && (cmd == F_DUPFD || cmd == F_DUPFD_CLOEXEC)) {
-        re |= CFS_FD_MASK;
     }
 
 log:
@@ -1628,9 +1641,12 @@ log:
         cmdstr = "F_GETLK";
         break;
     }
-    log_debug("hook %s, is_cfs:%d, fd:%d, cmd:%d(%s), arg:%u(%s), re:%d\n", __func__, is_cfs>0, fd, cmd, 
-    cmdstr, (intptr_t)arg, (cmd==F_SETFL&&(intptr_t)arg&O_DIRECT)?"O_DIRECT":"", re);
+    log_debug("hook %s, is_cfs:%d, fd:%d, cmd:%d(%s), arg:%u(%s), re:%d, re_old:%d\n", __func__, is_cfs>0, fd, cmd, 
+    cmdstr, (intptr_t)arg, (cmd==F_SETFL&&(intptr_t)arg&O_DIRECT)?"O_DIRECT":"", re, re_old);
     #endif
+    if(g_hook && is_cfs && (cmd == F_DUPFD || cmd == F_DUPFD_CLOEXEC)) {
+        re |= CFS_FD_MASK;
+    }
     return re;
 }
 weak_alias (fcntl, fcntl64)
@@ -1733,7 +1749,7 @@ ssize_t read(int fd, void *buf, size_t count) {
     #endif
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    ssize_t re;
+    ssize_t re, re_cfs;
 
     if(g_hook && is_cfs) {
         #ifdef DUP_TO_LOCAL
@@ -1746,23 +1762,31 @@ ssize_t read(int fd, void *buf, size_t count) {
             re = -1;
             goto log;
         }
-        re = cfs_sre(cfs_read(g_cfs_client_id, fd, buf_copy, count));
-        if(re <= 0) {
+        // Reading from local and CFS may be concurrent with writing to local and CFS.
+        // There are two conditions in which data read from local and CFS may be different.
+        // 1. read local -> write local -> write CFS -> read CFS
+        // 2. write local -> read local -> read CFS -> write CFS
+        // In contition 2, write CFS may be concurrent with read CFS, resulting in last bytes read being zero.
+        re_cfs = cfs_sre(cfs_read(g_cfs_client_id, fd, buf_copy, re));
+        if(re_cfs <= 0) {
             goto log;
         }
-        if(memcmp(buf, buf_copy, re)) {
-            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, count:%d, offset:%d\n", __func__, is_cfs > 0, fd, count, offset);
+        if(memcmp(buf, buf_copy, re_cfs)) {
+            ENTRY *entry = getFdEntry(fd);
+            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, count:%d, offset:%d\n", __func__, is_cfs > 0, fd, entry && entry->data ? (char *)entry->data : "", count, offset);
             int total = 0;
-            for(int i = 0; i < re; i++) {
-                if(((unsigned char*)buf)[i] != ((unsigned char*)buf_copy)[i]) {
+            for(int i = 0; i < re_cfs; i++) {
+                if(((unsigned char*)buf)[i] != ((unsigned char*)buf_copy)[i] && ((unsigned char*)buf_copy)[i] > 0) {
                     if(++total > 64) {
                         break;
                     }
-                    printf("i: %x, local: %x, CFS: %x, ", i, ((unsigned char*)buf)[i], ((unsigned char*)buf_copy)[i]);
+                    printf("i: %d, local: %x, CFS: %x, ", i, ((unsigned char*)buf)[i], ((unsigned char*)buf_copy)[i]);
                 }
             }
-            printf("\n");
-            re = -1;
+            if(total > 0) {
+                printf("\n");
+                re = -1;
+            }
             cfs_flush_log();
         }
         free(buf_copy);
@@ -1777,7 +1801,7 @@ log:
     #ifdef _CFS_DEBUG
     ; // labels can only be followed by statements
     ENTRY *entry = getFdEntry(fd);
-    log_debug("hook %s, is_cfs:%d, fd:%d, path: %s, count:%d, offset:%d, re:%d\n", __func__, is_cfs > 0, fd, entry && entry->data ? (char *)entry->data : "", count, offset, re);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path: %s, count:%d, offset:%d, re:%d, re_cfs:%d\n", __func__, is_cfs > 0, fd, entry && entry->data ? (char *)entry->data : "", count, offset, re, re_cfs);
     #endif
     return re;
 }
@@ -1816,7 +1840,8 @@ ssize_t readv(int fd, const struct iovec *iov, int iovcnt) {
             if(memcmp(iov[i].iov_base, iov_local[i].iov_base, iov[i].iov_len)) {
                 re = -1;
                 cfs_flush_log();
-                log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, offset:%d, iovcnt:%d, iov_idx:%d, iov_len:%d\n", __func__, is_cfs > 0, fd, offset, iovcnt, i, iov[i].iov_len);
+                ENTRY *entry = getFdEntry(fd);
+                log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, offset:%d, iovcnt:%d, iov_idx:%d, iov_len:%d\n", __func__, is_cfs > 0, fd, entry && entry->data ? (char *)entry->data : "", offset, iovcnt, i, iov[i].iov_len);
             }
             free(iov_local[i].iov_base);
         }
@@ -1864,7 +1889,8 @@ ssize_t pread(int fd, void *buf, size_t count, off_t offset) {
             goto log;
         }
         if(memcmp(buf, buf_copy, re)) {
-            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, count:%d, offset:%d\n", __func__, is_cfs > 0, fd, count, offset);
+            ENTRY *entry = getFdEntry(fd);
+            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, count:%d, offset:%d\n", __func__, is_cfs > 0, fd, entry && entry->data ? (char *)entry->data : "", count, offset);
             int total = 0;
             for(int i = 0; i < re; i++) {
                 if(++total > 64) {
@@ -1929,7 +1955,8 @@ ssize_t preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset) {
             if(memcmp(iov[i].iov_base, iov_local[i].iov_base, iov[i].iov_len)) {
                 re = -1;
                 cfs_flush_log();
-                log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, iovcnt:%d, offset:%d, iov_idx: %d\n", __func__, is_cfs > 0, fd, iovcnt, offset, i);
+                ENTRY *entry = getFdEntry(fd);
+                log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, iovcnt:%d, offset:%d, iov_idx: %d\n", __func__, is_cfs > 0, fd, entry && entry->data ? (char *)entry->data : "", iovcnt, offset, i);
             }
             free(iov_local[i].iov_base);
         }
@@ -2133,7 +2160,8 @@ off_t lseek(int fd, off_t offset, int whence) {
         }
         off_t re_cfs = cfs_lseek(g_cfs_client_id, fd, offset, whence);
         if(re_cfs != re) {
-            log_debug("hook %s, re from CFS and local is not consistent. is_cfs:%d, fd:%d, offset:%d, whence:%d, re:%d, re_cfs:%d\n", __func__, is_cfs > 0, fd, offset, whence, re, re_cfs);
+            ENTRY *entry = getFdEntry(fd);
+            log_debug("hook %s, re from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, offset:%d, whence:%d, re:%d, re_cfs:%d\n", __func__, is_cfs > 0, fd, entry && entry->data ? (char *)entry->data : "", offset, whence, re, re_cfs);
         }
         #else
         re = cfs_lseek(g_cfs_client_id, fd, offset, whence);
@@ -2329,9 +2357,11 @@ __attribute__((constructor)) static void setup(void) {
 }
 
 __attribute__((destructor)) static void destroy(void) {
+    #if defined(_CFS_DEBUG) || defined(DUP_TO_LOCAL)
+    // DONOT call hdestroy_r here, otherwise subsequent getFdEntry will panic after destroy called.
+    //hdestroy_r(&g_fdmap); // the elements are NOT freed here
+    #endif
     #ifdef _CFS_DEBUG
-    // the elements are NOT freed here
-    hdestroy_r(&g_fdmap);
     printf("destructor\n");
     #endif
     cfs_close_client(g_cfs_client_id);
@@ -2342,8 +2372,10 @@ static void cfs_init() {
         return;
     }
 
-    #ifdef _CFS_DEBUG
+    #if defined(_CFS_DEBUG) || defined(DUP_TO_LOCAL)
     hcreate_r(FD_MAP_SIZE, &g_fdmap);
+    #endif
+    #ifdef _CFS_DEBUG
     printf("constructor\n");
     #endif
 

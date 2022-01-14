@@ -163,10 +163,11 @@ type clientManager struct {
 func newClient(conf *C.cfs_config_t) *client {
 	id := atomic.AddInt64(&gClientManager.nextClientID, 1)
 	c := &client{
-		id:    id,
-		fdmap: make(map[uint]*file),
-		fdset: bitset.New(maxFdNum),
-		cwd:   "/",
+		id:     id,
+		fdmap:  make(map[uint]*file),
+		fdset:  bitset.New(maxFdNum),
+		inomap: make(map[uint64]map[uint]bool),
+		cwd:    "/",
 	}
 
 	c.masterAddr = C.GoString(conf.master_addr)
@@ -275,6 +276,7 @@ type client struct {
 	fdmap  map[uint]*file
 	fdset  *bitset.BitSet
 	fdlock sync.RWMutex
+	inomap map[uint64]map[uint]bool // all open fd of given ino
 
 	// server info
 	mc *master.MasterClient
@@ -466,7 +468,7 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 		}
 		c.ec.RefreshExtentsCache(ctx, f.ino)
 	}
-	f.size = info.Size
+	c.updateSizeByIno(f.ino, info.Size)
 	f.path = absPath
 	return C.int(f.fd)
 }
@@ -642,7 +644,7 @@ func cfs_truncate(id C.int64_t, path *C.char, len C.off_t) (re C.int) {
 	if err != nil {
 		return errorToStatus(err)
 	}
-	c.updateSizeByPath(absPath, uint64(len))
+	c.updateSizeByIno(inode, uint64(len))
 	return statusOK
 }
 
@@ -694,7 +696,7 @@ func cfs_ftruncate(id C.int64_t, fd C.int, len C.off_t) (re C.int) {
 	if err != nil {
 		return errorToStatus(err)
 	}
-	f.size = uint64(len)
+	c.updateSizeByIno(f.ino, uint64(len))
 	return statusOK
 }
 
@@ -767,7 +769,7 @@ func cfs_fallocate(id C.int64_t, fd C.int, mode C.int, offset C.off_t, len C.off
 	if err != nil {
 		return errorToStatus(err)
 	}
-	f.size = uint64(offset + len)
+	c.updateSizeByIno(f.ino, uint64(offset+len))
 	return statusOK
 }
 
@@ -830,7 +832,7 @@ func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) (r
 	if err != nil {
 		return errorToStatus(err)
 	}
-	f.size = uint64(offset + len)
+	c.updateSizeByIno(f.ino, uint64(offset+len))
 	return statusOK
 }
 
@@ -2573,16 +2575,10 @@ func cfs_fcntl(id C.int64_t, fd C.int, cmd C.int, arg C.int) C.int {
 	}
 
 	if cmd == C.F_DUPFD || cmd == C.F_DUPFD_CLOEXEC {
-		c.fdlock.Lock()
-		defer c.fdlock.Unlock()
-		newfd, ok := c.fdset.NextClear(uint(arg))
-		if !ok || uint(fd) > maxFdNum {
-			return statusEBADFD
+		newfd := c.copyFile(uint(fd), uint(arg))
+		if newfd == 0 {
+			return statusEINVAL
 		}
-		c.fdset.Set(newfd)
-		newfile := *c.fdmap[uint(fd)]
-		newfile.fd = newfd
-		c.fdmap[newfd] = &newfile
 		return C.int(newfd)
 	} else if cmd == C.F_SETFL {
 		// According to POSIX, F_SETFL will replace the flags with exactly
@@ -2724,10 +2720,6 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 	if err != nil && err != io.EOF {
 		return C.ssize_t(statusEIO)
 	}
-	if n < int(size) {
-		c.ec.RefreshExtentsCache(ctx, f.ino)
-		n, err = c.ec.Read(ctx, f.ino, buffer, offset, len(buffer))
-	}
 	if err != nil && err != io.EOF {
 		return C.ssize_t(statusEIO)
 	}
@@ -2791,6 +2783,7 @@ func cfs_pwrite(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.off_t) (re C.ssize_t) {
 	var (
 		c       *client
+		f       *file
 		path    string
 		ino     uint64
 		err     error
@@ -2798,7 +2791,11 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		flagBuf bytes.Buffer
 	)
 	defer func() {
-		msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), re, err)
+		var fileSize uint64 = 0
+		if f != nil {
+			fileSize = f.size
+		}
+		msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) fileSize(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), fileSize, re, err)
 		if r := recover(); r != nil || re < 0 {
 			var stack string
 			if r != nil {
@@ -2821,7 +2818,7 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		return C.ssize_t(statusEINVAL)
 	}
 
-	f := c.getFile(uint(fd))
+	f = c.getFile(uint(fd))
 	if f == nil {
 		return C.ssize_t(statusEBADFD)
 	}
@@ -2903,11 +2900,11 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	if off < 0 {
 		f.pos += uint64(n)
 		if f.size < f.pos {
-			f.size = f.pos
+			c.updateSizeByIno(f.ino, f.pos)
 		}
 	} else {
 		if f.size < uint64(off)+uint64(n) {
-			f.size = uint64(off) + uint64(n)
+			c.updateSizeByIno(f.ino, uint64(off)+uint64(n))
 		}
 	}
 	return C.ssize_t(n)
@@ -3170,30 +3167,63 @@ func (c *client) allocFD(ino uint64, flags, mode uint32, target []byte, fd int) 
 		if !ok || real_fd > maxFdNum {
 			return nil
 		}
-		c.fdset.Set(real_fd)
 	} else {
 		real_fd = uint(fd)
+		if c.fdset.Test(real_fd) {
+			return nil
+		}
 	}
+	c.fdset.Set(real_fd)
 	f := &file{fd: real_fd, ino: ino, flags: flags, mode: mode, target: target}
 	c.fdmap[real_fd] = f
+	fdmap, ok := c.inomap[ino]
+	if !ok {
+		fdmap = make(map[uint]bool)
+		c.inomap[ino] = fdmap
+	}
+	fdmap[real_fd] = true
 	return f
 }
 
 func (c *client) getFile(fd uint) *file {
-	c.fdlock.Lock()
+	c.fdlock.RLock()
 	f := c.fdmap[fd]
-	c.fdlock.Unlock()
+	c.fdlock.RUnlock()
 	return f
 }
 
-func (c *client) updateSizeByPath(path string, size uint64) {
+func (c *client) copyFile(fd uint, newfd uint) uint {
 	c.fdlock.Lock()
-	for _, file := range c.fdmap {
-		if path == file.path {
-			file.size = size
-		}
+	defer c.fdlock.Unlock()
+	newfd, ok := c.fdset.NextClear(newfd)
+	if !ok || newfd > maxFdNum {
+		return 0
 	}
-	c.fdlock.Unlock()
+	c.fdset.Set(newfd)
+	f := c.fdmap[fd]
+	if f == nil {
+		return 0
+	}
+	newfile := &file{fd: f.fd, ino: f.ino, flags: f.flags, mode: f.mode, size: f.size, pos: f.pos, path: f.path, target: f.target, dirp: f.dirp}
+	newfile.fd = newfd
+	c.fdmap[newfd] = newfile
+	return newfd
+}
+
+func (c *client) updateSizeByIno(ino uint64, size uint64) {
+	c.fdlock.Lock()
+	defer c.fdlock.Unlock()
+	fdmap, ok := c.inomap[ino]
+	if !ok {
+		return
+	}
+	for fd := range fdmap {
+		file, ok := c.fdmap[fd]
+		if !ok {
+			continue
+		}
+		file.size = size
+	}
 }
 
 func (c *client) releaseFD(fd uint) *file {
@@ -3202,6 +3232,13 @@ func (c *client) releaseFD(fd uint) *file {
 	f, ok := c.fdmap[fd]
 	if !ok {
 		return nil
+	}
+	fdmap, ok := c.inomap[f.ino]
+	if ok {
+		delete(fdmap, fd)
+	}
+	if len(fdmap) == 0 {
+		delete(c.inomap, f.ino)
 	}
 	delete(c.fdmap, fd)
 	c.fdset.Clear(fd)
