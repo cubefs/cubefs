@@ -12,6 +12,7 @@ const (
 	ConfigJMQClientID = "jmqClientId"
 	ConfigProducerNum = "producerNum"
 	ConfigExpiredDay  = "tableExpiredDay"
+	ConfigSplitRegion = "splitRegion"
 
 	nodeIPKey    = "ip"
 	moduleKey    = "module"

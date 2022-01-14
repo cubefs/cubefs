@@ -23,16 +23,17 @@ var (
 )
 
 type Monitor struct {
-	port       string
-	thriftAddr string
-	namespace  string
-	queryIP    string
-	clusters   []string
-	apiServer  *http.Server
-	jmqConfig  *JMQConfig
-	mqProducer *MQProducer
-	stopC      chan bool
-	control    common.Control
+	port             string
+	thriftAddr       string
+	namespace        string
+	queryIP          string
+	clusters         []string
+	splitRegionRules map[string]int64 	// clusterName:regionNum
+	apiServer        *http.Server
+	jmqConfig        *JMQConfig
+	mqProducer       *MQProducer
+	stopC            chan bool
+	control          common.Control
 }
 
 func NewServer() *Monitor {
@@ -137,12 +138,15 @@ func (m *Monitor) parseConfig(cfg *config.Config) (err error) {
 		m.jmqConfig.produceNum = defaultProducerNum
 	}
 
+	m.splitRegionRules = getSplitRules(cfg.GetStringSlice(ConfigSplitRegion))
+
 	log.LogInfof("action[parseConfig] load listen port(%v).", m.port)
 	log.LogInfof("action[parseConfig] load cluster name(%v).", m.clusters)
 	log.LogInfof("action[parseConfig] load table expired time(%v).", TableClearTime)
 	log.LogInfof("action[parseConfig] load query ip(%v).", m.queryIP)
 	log.LogInfof("action[parseConfig] load thrift server address(%v).", m.thriftAddr)
 	log.LogInfof("action[parseConfig] load producer num(%v).", m.jmqConfig.produceNum)
+	log.LogInfof("action[parseConfig] load splitRegionRules(%v).", m.splitRegionRules)
 	return
 }
 

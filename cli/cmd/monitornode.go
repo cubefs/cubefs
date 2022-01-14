@@ -111,7 +111,7 @@ func newMonitorClusterTopIPCmd(cluster string, client *monitor.MonitorClient) *c
 	}
 	cmd.Flags().StringVarP(&opStart, "starttime", "s", "", "Specify the start time to query, format[20210902120000]. 'starttime' and 'endtime' need to be specified at the same time. Default [5 minutes ago].")
 	cmd.Flags().StringVarP(&opEnd, "endtime", "e", "", "Specify the end time to query, format[20210902120000]. 'starttime' and 'endtime' need to be specified at the same time. Default [now].")
-	cmd.Flags().StringVarP(&opTable, "table", "t", "", "Specify the table-level of query: day/hour/minute/second. Default [minute].")
+	cmd.Flags().StringVarP(&opTable, "table", "t", "", "Specify the table-level of query: day/hour/minute. Default [minute].")
 	cmd.Flags().IntVarP(&opLimit, "limit", "l", 10, "Limit the number of query data. Default [10].")
 	cmd.Flags().StringVar(&opOrder, "order", "count", "Specify order by 'count' or 'size'(only for 'datanode'). Default by [count].")
 	cmd.Flags().StringVarP(&opVol, "vol", "v", "", "Specify volume name to query.")
@@ -165,7 +165,7 @@ func newMonitorClusterTopVolCmd(cluster string, client *monitor.MonitorClient) *
 	}
 	cmd.Flags().StringVarP(&opStart, "starttime", "s", "", "Specify the start time to query, format[20210902120000]. 'starttime' and 'endtime' need to be specified at the same time. Default [5 minutes ago].")
 	cmd.Flags().StringVarP(&opEnd, "endtime", "e", "", "Specify the end time to query, format[20210902120000]. 'starttime' and 'endtime' need to be specified at the same time. Default [now].")
-	cmd.Flags().StringVarP(&opTable, "table", "t", "", "Specify the table-level of query: day/hour/minute/second. Default [minute].")
+	cmd.Flags().StringVarP(&opTable, "table", "t", "", "Specify the table-level of query: day/hour/minute. Default [minute].")
 	cmd.Flags().IntVarP(&opLimit, "limit", "l", 10, "Limit the number of query data. Default [10].")
 	cmd.Flags().StringVar(&opOrder, "order", "count", "Specify order by 'count' or 'size'(only for 'datanode'). Default by [count].")
 	cmd.Flags().StringVar(&opIP, "ip", "", "Specify ip to query. format[xx.xx.xx.xx].")

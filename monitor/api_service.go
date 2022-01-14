@@ -42,9 +42,6 @@ func (m *Monitor) collect(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// insert HBase
-	m.countData(reportInfo)
-
 	sendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "insert hbase successfully"})
 }
 

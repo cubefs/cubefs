@@ -7,5 +7,9 @@
   "namespace": "test",
   "cluster": "chubaofs01",
   "thriftAddr": "127.0.0.1:9091",
-  "producerNum": "10"
+  "producerNum": "10",
+  "splitRegion": [
+    "mysql:2",
+    "spark:6"
+  ]
 }

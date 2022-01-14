@@ -2,35 +2,44 @@ package monitor
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/chubaofs/chubaofs/util/hbase"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/statistics"
+)
+
+const (
+	CFMonitor = "MONITOR"
 )
 
 var (
 	TablePrefix    = "CFS_MONITOR"
 	TableRotate    = 1 * time.Hour // todo discuss
 	TableClearTime = 7 * 24 * time.Hour
+	OneHourSeconds = int64(60 * 60)
 )
 
 func (m *Monitor) initHBaseTable() (err error) {
 	// 1. Check table on the hour
 	initHourTime := getTimeOnHour(time.Now())
-	curTableName := getTableName(initHourTime)
+	curTableName, splitKeys := m.getCreateTableInfo(initHourTime)
 	var thriftClient *hbase.THBaseServiceClient
 	thriftClient, err = hbase.OpenHBaseClient(m.thriftAddr)
 	if err != nil {
 		log.LogErrorf("initHBaseTable: open thrift client failed (%v)", err)
 		return
 	}
-	if err = thriftClient.CreateHBaseTable(m.namespace, curTableName, []string{CFMonitor}); err != nil {
+	log.LogInfof("initHBaseTable: table(%v) splitKeys(%v)", curTableName, splitKeys)
+	if err = thriftClient.CreateHBaseTable(m.namespace, curTableName, []string{CFMonitor}, splitKeys); err != nil {
 		log.LogErrorf("initHBaseTable failed: create table err[%v] table name[%v]", err, curTableName)
 	}
 	nextTime := time.Unix(initHourTime, 0).Add(TableRotate).Unix()
-	nextTableName := getTableName(nextTime)
-	if err = thriftClient.CreateHBaseTable(m.namespace, nextTableName, []string{CFMonitor}); err != nil {
+	nextTableName, nextSplitKeys := m.getCreateTableInfo(nextTime)
+	log.LogInfof("initHBaseTable: table(%v) splitKeys(%v)", nextTableName, nextSplitKeys)
+	if err = thriftClient.CreateHBaseTable(m.namespace, nextTableName, []string{CFMonitor}, nextSplitKeys); err != nil {
 		log.LogErrorf("initHBaseTable failed: create next table err[%v] table name[%v]", err, nextTableName)
 	}
 	if err = thriftClient.CloseHBaseClient(); err != nil {
@@ -41,6 +50,43 @@ func (m *Monitor) initHBaseTable() (err error) {
 	return nil
 }
 
+func getSplitRules(rules []string) (splitRules map[string]int64) {
+	splitRules = make(map[string]int64)
+	for _, rule := range rules {
+		splits := strings.Split(rule, ":")
+		if len(splits) != 2 {
+			log.LogErrorf("getSplitKeys failed: splits string(%v)", splits)
+			continue
+		}
+		clusterName := splits[0]
+		splitNum, err := strconv.ParseInt(splits[1], 10, 8)
+		if err != nil {
+			log.LogErrorf("getSplitKeys failed: err(%v) parse string(%v)", err, splits[1])
+			continue
+		}
+		if splitNum <= 0 {
+			log.LogWarnf("getSplitRules: split num(%v) need larger than 0", splitNum)
+			continue
+		}
+		splitRules[clusterName] = splitNum
+	}
+	return
+}
+
+func (m *Monitor) getSplitKeys(initTime int64) []string {
+	splitKeys := make([]string, 0)
+	for clusterName, splitNum := range m.splitRegionRules {
+		splitStep := OneHourSeconds / splitNum
+		for i := int64(0); i < splitNum; i++ {
+			splitTime := initTime + i*splitStep
+			timeStr := time.Unix(splitTime, 0).Format(timeLayout)
+			splitKeys = append(splitKeys, clusterName + "," + statistics.ModelDataNode + "," + timeStr)
+		}
+		splitKeys = append(splitKeys, clusterName + "," + statistics.ModelMetaNode)
+	}
+	return splitKeys
+}
+
 func (m *Monitor) scheduleTableTask(lastTime int64) {
 	createTicker := time.NewTicker(TableRotate)
 	defer createTicker.Stop()
@@ -49,13 +95,14 @@ func (m *Monitor) scheduleTableTask(lastTime int64) {
 		select {
 		case <-createTicker.C:
 			createTime := time.Unix(lastTime, 0).Add(TableRotate).Unix()
-			tableName := getTableName(createTime)
+			tableName, splitKeys := m.getCreateTableInfo(createTime)
 			thriftClient, err := hbase.OpenHBaseClient(m.thriftAddr)
 			if err != nil {
 				log.LogErrorf("scheduleTableTask: open thrift client failed (%v)", err)
 				continue
 			}
-			if err = thriftClient.CreateHBaseTable(m.namespace, tableName, []string{CFMonitor}); err != nil {
+			log.LogInfof("initHBaseTable: table(%v) splitKeys(%v)", tableName, splitKeys)
+			if err = thriftClient.CreateHBaseTable(m.namespace, tableName, []string{CFMonitor}, splitKeys); err != nil {
 				// todo 1. check duplicate; 2. retry; 3. alarm if failed
 				log.LogErrorf("scheduleTableTask failed: create next table err(%v) table name(%v)", err, tableName)
 			}
@@ -106,6 +153,12 @@ func (m *Monitor) deleteExpiresTables(thriftClient *hbase.THBaseServiceClient) {
 	log.LogDebugf("deleteExpiresTables exit")
 }
 
+func (m *Monitor) getCreateTableInfo(timestamp int64) (tableName string, splitKeys []string) {
+	tableName = getTableName(timestamp)
+	splitKeys = m.getSplitKeys(timestamp)
+	return
+}
+
 // get table name according to timestamp
 func getTableName(timestamp int64) string {
 	timeStr := time.Unix(timestamp, 0).Format(timeLayout)
@@ -114,13 +167,4 @@ func getTableName(timestamp int64) string {
 
 func getTimeOnHour(now time.Time) int64 {
 	return now.Unix() - int64(now.Second()) - int64(60*now.Minute())
-}
-
-func getTableNameByTimeStr(timeStr string) (tableName string, err error) {
-	var t time.Time
-	if t, err = time.ParseInLocation(timeLayout, timeStr, time.Local); err != nil {
-		return
-	}
-	tableName = getTableName(getTimeOnHour(t))
-	return
 }

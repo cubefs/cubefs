@@ -1,6 +1,8 @@
 package hbase
 
 import (
+	"sort"
+
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"github.com/chubaofs/chubaofs/util/log"
 )
@@ -65,7 +67,7 @@ func (client *THBaseServiceClient) GetData(namespace, table, rowKey string) (r *
 	return client.Get([]byte(tableName), tget)
 }
 
-func (client *THBaseServiceClient) CreateHBaseTable(namespace, tableName string, cFamilies []string) (err error) {
+func (client *THBaseServiceClient) CreateHBaseTable(namespace, tableName string, cFamilies []string, splitRegions []string) (err error) {
 	cFamiliesDesc := make([]*TColumnFamilyDescriptor, 0)
 	for _, cf := range cFamilies {
 		cfDesc := &TColumnFamilyDescriptor{
@@ -80,7 +82,12 @@ func (client *THBaseServiceClient) CreateHBaseTable(namespace, tableName string,
 		},
 		Columns:    cFamiliesDesc,
 	}
-	if err = client.CreateTable(desc, nil); err != nil {
+	splitKeys := make([][]byte, len(splitRegions))
+	sort.Strings(splitRegions)
+	for i, splitRegion := range splitRegions {
+		splitKeys[i] = []byte(splitRegion)
+	}
+	if err = client.CreateTable(desc, splitKeys); err != nil {
 		return err
 	}
 	return
