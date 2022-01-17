@@ -312,21 +312,16 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 		e  *Extent
 		ei *ExtentInfo
 	)
-	s.eiMutex.RLock()
-	ei = s.extentInfoMap[extentID]
-	s.eiMutex.RUnlock()
 
-	if ei == nil {
-		return errors.Trace(ExtentHasBeenDeletedError, "[Read] extent[%d] is already been deleted", extentID)
-	}
-
-	// update access time
-	atomic.StoreInt64(&ei.AccessTime, time.Now().Unix())
-
+	s.eiMutex.Lock()
+	ei, _ = s.extentInfoMap[extentID]
 	e, err = s.extentWithHeader(ei)
+	s.eiMutex.Unlock()
 	if err != nil {
 		return err
 	}
+	// update access time
+	atomic.StoreInt64(&ei.AccessTime, time.Now().Unix())
 
 	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
 		return err
