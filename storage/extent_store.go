@@ -311,10 +311,10 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 		e  *Extent
 		ei *ExtentInfo
 	)
-	s.eiMutex.RLock()
+	s.eiMutex.Lock()
 	ei, _ = s.extentInfoMap[extentID]
-	s.eiMutex.RUnlock()
 	e, err = s.extentWithHeader(ei)
+	s.eiMutex.Unlock()
 	if err != nil {
 		return err
 	}
