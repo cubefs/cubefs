@@ -255,8 +255,9 @@ func (cache *ExtentCache) GetEnd(offset uint64) (ret *proto.ExtentKey) {
 		}
 		if offset == ek.FileOffset+uint64(ek.Size) {
 			ret = ek
+			return false
 		}
-		return false
+		return true
 	})
 	return ret
 }
