@@ -355,6 +355,7 @@ func main() {
 			log.LogErrorf("Failed to tell old cfs-client to suspend: %v\n", err)
 			syslog.Printf("Error: Failed to tell old cfs-client to suspend: %v\n", err)
 			log.LogFlush()
+			_ = daemonize.SignalOutcome(err)
 			os.Exit(1)
 		}
 	}
