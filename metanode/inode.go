@@ -29,7 +29,12 @@ import (
 )
 
 const (
-	DeleteMarkFlag = 1 << 0
+	DeleteMarkFlag       = 1 << 0
+	BaseInodeLen         = 88
+	BaseInodeKeyLen      = 8
+	BaseInodeValueLen    = 72
+	BaseInodeKeyOffset   = 4
+	BaseInodeValueOffset = 16
 )
 
 // Inode wraps necessary properties of `Inode` information in the file system.
@@ -232,6 +237,167 @@ func (i InodeBatch) Marshal(ctx context.Context) ([]byte, error) {
 		}
 	}
 	return buff.Bytes(), nil
+}
+
+
+func (i *Inode) MarshalV2() (result []byte, err error) {
+	i.Lock()
+	defer i.Unlock()
+
+	if i.Extents == nil {
+		i.Extents = NewSortedExtents()
+	}
+	result = make([]byte, BaseInodeLen + len(i.LinkTarget) + i.Extents.Len() * proto.ExtentLength)
+	offset := 0
+	binary.BigEndian.PutUint32(result[0:4], uint32(BaseInodeKeyLen))
+	offset += 4
+	binary.BigEndian.PutUint64(result[offset:offset+8], i.Inode)
+	offset += 8
+	binary.BigEndian.PutUint32(result[offset:offset+4],uint32(i.Extents.Len() * proto.ExtentLength + BaseInodeValueLen + + len(i.LinkTarget)))
+	offset += 4
+	binary.BigEndian.PutUint32(result[offset:offset+4], i.Type)
+	offset += 4
+	binary.BigEndian.PutUint32(result[offset:offset+4], i.Uid)
+	offset += 4
+	binary.BigEndian.PutUint32(result[offset:offset+4], i.Gid)
+	offset += 4
+	binary.BigEndian.PutUint64(result[offset:offset+8], i.Size)
+	offset += 8
+	binary.BigEndian.PutUint64(result[offset:offset+8], i.Generation)
+	offset += 8
+	binary.BigEndian.PutUint64(result[offset:offset+8], uint64(i.CreateTime))
+	offset += 8
+	binary.BigEndian.PutUint64(result[offset:offset+8], uint64(i.AccessTime))
+	offset += 8
+	binary.BigEndian.PutUint64(result[offset:offset+8], uint64(i.ModifyTime))
+	offset += 8
+	binary.BigEndian.PutUint32(result[offset:offset+4], uint32(len(i.LinkTarget)))
+	offset += 4
+	copy(result[offset:offset+len(i.LinkTarget)], i.LinkTarget)
+	offset += len(i.LinkTarget)
+	binary.BigEndian.PutUint32(result[offset:offset+4], i.NLink)
+	offset += 4
+	binary.BigEndian.PutUint32(result[offset:offset+4], uint32(i.Flag))
+	offset += 4
+	binary.BigEndian.PutUint64(result[offset:offset+8], i.Reserved)
+	offset += 8
+	for index := 0; index < i.Extents.Len() && offset < len(result); index++ {
+		i.Extents.eks[index].EncodeBinary(result[offset : offset + proto.ExtentLength])
+		offset += proto.ExtentLength
+	}
+	return result, nil
+}
+
+func (i *Inode) UnmarshalV2(ctx context.Context, raw []byte) (err error) {
+	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Inode.Unmarshal")
+	defer tracer.Finish()
+	ctx = tracer.Context()
+
+	offset := 0
+	//keyLen = binary.BigEndian.Uint32(raw[:4])
+	offset += 4
+	i.Inode = binary.BigEndian.Uint64(raw[offset:offset+8])
+	offset += 8
+	//valLen = binary.BigEndian.Uint32(raw[offset:offset+4])
+	offset += 4
+	i.Type = binary.BigEndian.Uint32(raw[offset:offset+4])
+	offset += 4
+	i.Uid = binary.BigEndian.Uint32(raw[offset:offset+4])
+	offset += 4
+	i.Gid = binary.BigEndian.Uint32(raw[offset:offset+4])
+	offset += 4
+	i.Size = binary.BigEndian.Uint64(raw[offset:offset+8])
+	offset += 8
+	i.Generation = binary.BigEndian.Uint64(raw[offset:offset+8])
+	offset += 8
+	i.CreateTime = int64(binary.BigEndian.Uint64(raw[offset:offset+8]))
+	offset += 8
+	i.AccessTime = int64(binary.BigEndian.Uint64(raw[offset:offset+8]))
+	offset += 8
+	i.ModifyTime = int64(binary.BigEndian.Uint64(raw[offset:offset+8]))
+	offset += 8
+	symSize :=binary.BigEndian.Uint32(raw[offset:offset+4])
+	offset += 4
+	if symSize > 0 {
+		i.LinkTarget = i.LinkTarget[:0]
+		i.LinkTarget = append(i.LinkTarget, raw[offset : offset + int(symSize)]...)
+	}
+	offset += len(i.LinkTarget)
+	i.NLink = binary.BigEndian.Uint32(raw[offset:offset+4])
+	offset += 4
+	i.Flag = int32(binary.BigEndian.Uint32(raw[offset:offset+4]))
+	offset += 4
+	i.Reserved = binary.BigEndian.Uint64(raw[offset:offset+8])
+	offset += 8
+	if len(raw[offset:])==0{
+		return
+	}
+	// unmarshal ExtentsKey
+	if i.Extents == nil {
+		i.Extents = NewSortedExtents()
+	}
+	if err = i.Extents.UnmarshalBinaryV2(ctx, raw[offset:]); err != nil {
+		return
+	}
+	return
+}
+
+func (i *Inode) UnmarshalV2WithKeyAndValue(ctx context.Context, key, value []byte) (err error) {
+	i.UnmarshalKeyV2(key)
+	err = i.UnmarshalValueV2(ctx, value)
+	return
+}
+
+func (i *Inode) UnmarshalKeyV2(key []byte)  {
+	i.Inode = binary.BigEndian.Uint64(key)
+	return
+}
+
+func (i *Inode) UnmarshalValueV2(ctx context.Context, raw []byte) (err error) {
+	if len(raw) < BaseInodeValueLen {
+		return fmt.Errorf("inode buff err, need at least %d, but buff len:%d", BaseInodeValueLen, len(raw))
+	}
+	offset := 0
+	i.Type = binary.BigEndian.Uint32(raw[offset:offset+4])
+	offset += 4
+	i.Uid = binary.BigEndian.Uint32(raw[offset:offset+4])
+	offset += 4
+	i.Gid = binary.BigEndian.Uint32(raw[offset:offset+4])
+	offset += 4
+	i.Size = binary.BigEndian.Uint64(raw[offset:offset+8])
+	offset += 8
+	i.Generation = binary.BigEndian.Uint64(raw[offset:offset+8])
+	offset += 8
+	i.CreateTime = int64(binary.BigEndian.Uint64(raw[offset:offset+8]))
+	offset += 8
+	i.AccessTime = int64(binary.BigEndian.Uint64(raw[offset:offset+8]))
+	offset += 8
+	i.ModifyTime = int64(binary.BigEndian.Uint64(raw[offset:offset+8]))
+	offset += 8
+	symSize :=binary.BigEndian.Uint32(raw[offset:offset+4])
+	offset += 4
+	if symSize > 0 {
+		i.LinkTarget = i.LinkTarget[:0]
+		i.LinkTarget = append(i.LinkTarget, raw[offset : offset + int(symSize)]...)
+	}
+	offset += len(i.LinkTarget)
+	i.NLink = binary.BigEndian.Uint32(raw[offset:offset+4])
+	offset += 4
+	i.Flag = int32(binary.BigEndian.Uint32(raw[offset:offset+4]))
+	offset += 4
+	i.Reserved = binary.BigEndian.Uint64(raw[offset:offset+8])
+	offset += 8
+	if len(raw[offset:])==0{
+		return
+	}
+	// unmarshal ExtentsKey
+	if i.Extents == nil {
+		i.Extents = NewSortedExtents()
+	}
+	if err = i.Extents.UnmarshalBinaryV2(ctx, raw[offset:]); err != nil {
+		return
+	}
+	return nil
 }
 
 // Unmarshal unmarshals the inodeBatch.

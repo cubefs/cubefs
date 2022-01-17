@@ -52,7 +52,7 @@ func (s *MetaItem) MarshalJson() ([]byte, error) {
 //  +------+----+------+------+------+------+
 func (s *MetaItem) MarshalBinary() (result []byte, err error) {
 	buff := bytes.NewBuffer(make([]byte, 0))
-	buff.Grow(4 + len(s.K) + len(s.V))
+	buff.Grow(4 * 3 + len(s.K) + len(s.V))
 	if err = binary.Write(buff, binary.BigEndian, s.Op); err != nil {
 		return
 	}
@@ -148,12 +148,13 @@ type fileData struct {
 
 // MetaItemIterator defines the iterator of the MetaItem.
 type MetaItemIterator struct {
-	fileRootDir   string
-	applyID       uint64
-	inodeTree     *BTree
-	dentryTree    *BTree
-	extendTree    *BTree
-	multipartTree *BTree
+	fileRootDir    string
+	applyID        uint64
+	inodeTree      *BTree
+	dentryTree     *BTree
+	extendTree     *BTree
+	multipartTree  *BTree
+	marshalVersion uint32 //just test
 
 	filenames []string
 
@@ -176,6 +177,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si.dataCh = make(chan interface{})
 	si.errorCh = make(chan error, 1)
 	si.closeCh = make(chan struct{})
+	si.marshalVersion = mp.marshalVersion
 
 	// collect extend del files
 	var filenames = make([]string, 0)
@@ -312,9 +314,22 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 		data = applyIDBuf
 		return
 	case *Inode:
-		snap = NewMetaItem(opFSMCreateInode, typedItem.MarshalKey(), typedItem.MarshalValue())
+		if si.marshalVersion == MetaPartitionMarshVersion2 {
+			inodeBuf, _:= typedItem.MarshalV2()
+			snap = NewMetaItem(opFSMCreateInode, inodeBuf[BaseInodeKeyOffset : BaseInodeKeyOffset + BaseInodeKeyLen],
+												 inodeBuf[BaseInodeValueOffset:])
+		} else {
+			snap = NewMetaItem(opFSMCreateInode, typedItem.MarshalKey(), typedItem.MarshalValue())
+		}
+
 	case *Dentry:
-		snap = NewMetaItem(opFSMCreateDentry, typedItem.MarshalKey(), typedItem.MarshalValue())
+		if si.marshalVersion == MetaPartitionMarshVersion2 {
+			dentryBuf, _:= typedItem.MarshalV2()
+			snap = NewMetaItem(opFSMCreateDentry, dentryBuf[DentryKeyOffset : DentryKeyOffset + typedItem.DentryKeyLen()],
+												  dentryBuf[len(dentryBuf) - DentryValueLen : ])
+		} else {
+			snap = NewMetaItem(opFSMCreateDentry, typedItem.MarshalKey(), typedItem.MarshalValue())
+		}
 	case *Extend:
 		var raw []byte
 		if raw, err = typedItem.Bytes(); err != nil {

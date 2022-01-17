@@ -345,8 +345,18 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			ino := NewInode(0, 0)
 
 			// TODO Unhandled errors
-			ino.UnmarshalKey(snap.K)
-			ino.UnmarshalValue(ctx, snap.V)
+			if mp.marshalVersion == MetaPartitionMarshVersion2 {
+				if err = ino.UnmarshalV2WithKeyAndValue(ctx, snap.K, snap.V); err != nil {
+					return
+				}
+			} else {
+				if err = ino.UnmarshalKey(snap.K); err != nil {
+					return
+				}
+				if err = ino.UnmarshalValue(ctx, snap.V); err != nil {
+					return
+				}
+			}
 			if cursor < ino.Inode {
 				cursor = ino.Inode
 			}
@@ -354,11 +364,15 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			log.LogDebugf("ApplySnapshot: create inode: partitonID(%v) inode(%v).", mp.config.PartitionId, ino)
 		case opFSMCreateDentry:
 			dentry := &Dentry{}
-			if err = dentry.UnmarshalKey(snap.K); err != nil {
-				return
-			}
-			if err = dentry.UnmarshalValue(snap.V); err != nil {
-				return
+			if mp.marshalVersion == MetaPartitionMarshVersion2 {
+				dentry.UnmarshalWithKeyAndValue(snap.K, snap.V)
+			} else {
+				if err = dentry.UnmarshalKey(snap.K); err != nil {
+					return
+				}
+				if err = dentry.UnmarshalValue(snap.V); err != nil {
+					return
+				}
 			}
 			dentryTree.ReplaceOrInsert(dentry, true)
 			log.LogDebugf("ApplySnapshot: create dentry: partitionID(%v) dentry(%v)", mp.config.PartitionId, dentry)
