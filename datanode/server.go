@@ -116,8 +116,8 @@ type DataNode struct {
 	putRepairConnFunc func(conn net.Conn, forceClose bool)
 
 	metrics            *DataNodeMetrics
-	metricCnt          uint
-	metricSampleFactor uint
+	metricCnt          uint32
+	metricSampleFactor uint32
 	metricOn           bool
 
 	control common.Control
@@ -236,7 +236,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 			if ratio > 1 {
 				ratio = 1
 			}
-			s.metricSampleFactor = 100 / uint(100*ratio)
+			s.metricSampleFactor = 100 / uint32(100*ratio)
 		}
 	}
 

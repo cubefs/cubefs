@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
+	"sync/atomic"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
@@ -34,7 +35,7 @@ func (s *DataNode) Prepare(p *repl.Packet) (err error) {
 	if p.IsMasterCommand() {
 		return
 	}
-	s.metricCnt++
+	atomic.AddUint32(&s.metricCnt, 1)
 	if s.metricSampleFactor > 0 && s.metricCnt%s.metricSampleFactor == 0 {
 		s.metricOn = true
 		p.BeforeTp(s.clusterID)
