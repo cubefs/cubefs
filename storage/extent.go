@@ -223,6 +223,8 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 
 	// Check if extent file size matches the write offset just in case
 	// multiple clients are writing concurrently.
+	e.Lock()
+	defer e.Unlock()
 	if IsAppendWrite(writeType) && e.dataSize != offset {
 		err = NewParameterMismatchErr(fmt.Sprintf("extent current size = %v write offset=%v write size=%v", e.dataSize, offset, size))
 		return

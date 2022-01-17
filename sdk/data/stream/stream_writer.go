@@ -410,18 +410,31 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 
 	log.LogDebugf("doWrite enter: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
 
-	if s.handler == nil && storeMode == proto.NormalExtentType {
+	if storeMode == proto.NormalExtentType && (s.handler == nil || s.handler != nil && s.handler.fileOffset+s.handler.size != offset) {
 		if currentEK := s.extents.GetEnd(uint64(offset)); currentEK != nil && !storage.IsTinyExtent(currentEK.ExtentId) {
-			handler := NewExtentHandler(s, int(currentEK.FileOffset), storeMode, int(currentEK.Size))
-			handler.key = &proto.ExtentKey{
-				FileOffset:   currentEK.FileOffset,
-				PartitionId:  currentEK.PartitionId,
-				ExtentId:     currentEK.ExtentId,
-				ExtentOffset: currentEK.ExtentOffset,
-				Size:         currentEK.Size,
+			s.closeOpenHandler()
+
+			log.LogDebugf("doWrite: found ek in ExtentCache, offset(%v) size(%v), ekoffset(%v) eksize(%v)",
+				offset, size, currentEK.FileOffset, currentEK.Size)
+			_, pidErr := s.client.dataWrapper.GetDataPartition(currentEK.PartitionId)
+			if pidErr == nil {
+				handler := NewExtentHandler(s, int(currentEK.FileOffset), storeMode, int(currentEK.Size))
+				handler.key = &proto.ExtentKey{
+					FileOffset:   currentEK.FileOffset,
+					PartitionId:  currentEK.PartitionId,
+					ExtentId:     currentEK.ExtentId,
+					ExtentOffset: currentEK.ExtentOffset,
+					Size:         currentEK.Size,
+				}
+				s.handler = handler
+				s.dirty = false
+				log.LogDebugf("doWrite: currentEK.PartitionId(%v) found", currentEK.PartitionId)
+			} else {
+				log.LogDebugf("doWrite: currentEK.PartitionId(%v) not found", currentEK.PartitionId)
 			}
-			s.handler = handler
-			s.dirty = false
+
+		} else {
+			log.LogDebugf("doWrite: not found ek in ExtentCache, offset(%v) size(%v)", offset, size)
 		}
 	}
 
