@@ -407,7 +407,7 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, dir
 			if overWriteBuffer {
 				writeSize = s.appendOverWriteReq(ctx, req, direct)
 			} else {
-				writeSize, rowFlag = s.doOverWriteOrROW(ctx, req, direct)
+				writeSize, rowFlag, err = s.doOverWriteOrROW(ctx, req, direct)
 			}
 		} else {
 			writeSize, err = s.doWrite(ctx, req.Data, req.FileOffset, req.Size, direct)
@@ -429,11 +429,8 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, dir
 	return
 }
 
-func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, direct bool) (writeSize int, isROW bool) {
-	var (
-		err    error
-		errmsg string
-	)
+func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, direct bool) (writeSize int, isROW bool, err error) {
+	var	errmsg	string
 	tryCount := 0
 	for {
 		tryCount++
@@ -449,11 +446,14 @@ func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, dir
 			break
 		}
 		log.LogWarnf("doOverWriteOrROW failed: ino(%v) err(%v) req(%v)", s.inode, err, req)
+		if err == syscall.ENOENT {
+			break
+		}
 		errmsg = fmt.Sprintf("doOverWrite and doROW err(%v) inode(%v) req(%v) try count(%v)", err, s.inode, req, tryCount)
 		handleUmpAlarm(s.client.dataWrapper.clusterName, s.client.dataWrapper.volName, "doOverWriteOrROW", errmsg)
 		time.Sleep(1 * time.Second)
 	}
-	return writeSize, isROW
+	return writeSize, isROW, err
 }
 
 func (s *Streamer) writeToExtent(ctx context.Context, oriReq *ExtentRequest, dp *DataPartition, extID int,
