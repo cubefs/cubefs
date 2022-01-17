@@ -2,6 +2,8 @@
 mkdir -p /go/src/github.com/cubefs/cubefs/docker/bin;
 failed=0
 
+export GO111MODULE=off
+
 echo -n 'Building ChubaoFS Server ... ';
 cd /go/src/github.com/cubefs/cubefs/cmd;
 bash ./build.sh &>> /tmp/cfs_build_output
