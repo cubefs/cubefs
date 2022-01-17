@@ -703,7 +703,9 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.authenticate = req.authenticate
 	newArgs.dpSelectorName = req.dpSelectorName
 	newArgs.dpSelectorParm = req.dpSelectorParm
-	newArgs.coldArgs = req.coldArgs
+	if req.coldArgs != nil {
+		newArgs.coldArgs = req.coldArgs
+	}
 
 	log.LogInfof("[updateVolOut] name [%s], z1 [%s], z2[%s]", req.name, req.zoneName, vol.Name)
 	if err = m.cluster.updateVol(req.name, req.authKey, newArgs); err != nil {
