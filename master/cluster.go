@@ -732,7 +732,7 @@ func (c *Cluster) markDeleteVol(name, authKey string, force bool) (err error) {
 	}
 
 	if proto.IsCold(vol.VolType) && vol.totalUsedSpace() > 0 && !force {
-		return fmt.Errorf("LF vol can't be deleted if ebs used size not equal 0, now(%d)", vol.totalUsedSpace())
+		return fmt.Errorf("ec-vol can't be deleted if ec used size not equal 0, now(%d)", vol.totalUsedSpace())
 	}
 
 	serverAuthKey = vol.Owner
