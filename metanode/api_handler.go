@@ -15,11 +15,15 @@
 package metanode
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"github.com/chubaofs/chubaofs/util"
+	"io"
 	"math"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -71,6 +75,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 
 	http.HandleFunc("/cursorReset", m.cursorReset)
 	http.HandleFunc("/getAllInodeId", m.getAllInodeId)
+	http.HandleFunc("/getSnapshotCrc", m.getSnapshotCrc)
 	return
 }
 
@@ -672,5 +677,51 @@ func (m *MetaNode) getAllInodeId(w http.ResponseWriter, r *http.Request){
 	resp.Code = http.StatusOK
 	resp.Msg = "OK"
 	resp.Data = inosRsp
+	return
+}
+
+func (m *MetaNode) getSnapshotCrc(w http.ResponseWriter, r *http.Request){
+	r.ParseForm()
+	resp := NewAPIResponse(http.StatusBadRequest, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[snapshotCheckSum] response %s", err)
+		}
+	}()
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	rootDir := fmt.Sprintf("%s/partition_%v",m.metadataDir, pid)
+	crcFilePathSuffix := "snapshotCrc"
+	filepath := fmt.Sprintf("%s/%s", rootDir, crcFilePathSuffix)
+	file, err := os.Open(filepath)
+	if err != nil{
+		log.LogErrorf("open snapshotCrc file failed, err: %v",err)
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+	defer file.Close()
+	reader := bufio.NewReader(file)
+	buf := make([]byte, 128)
+	n, err := reader.Read(buf)
+	if err != nil && err != io.EOF{
+		log.LogErrorf("read snapshotCrc file failed, err: %v",err)
+	}
+	result := &proto.SnapshotCrdResponse{
+		LastSnapshotStr:     string(buf[:n]),
+		LocalAddr: m.localAddr,
+	}
+	resp.Code = http.StatusOK
+	resp.Msg = "OK"
+	resp.Data = result
 	return
 }

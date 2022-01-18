@@ -15,11 +15,15 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/sdk/meta"
+	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/spf13/cobra"
+	"io/ioutil"
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -48,6 +52,7 @@ func newMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newMetaPartitionPromoteLearnerCmd(client),
 		newMetaPartitionResetCursorCmd(client),
 		newMetaPartitionListAllInoCmd(client),
+		newMetaPartitionCheckSnapshot(client),
 	)
 	return cmd
 }
@@ -63,6 +68,7 @@ const (
 	cmdMetaPartitionPromoteLearnerShort = "Promote the learner of the meta partition on a fixed address"
 	cmdMetaPartitionResetCursorShort    = "Reset mp inode cursor"
 	cmdMetaPartitionListAllInoShort     = "list mp all inodes id"
+	cmdMetaPartitionCheckSnapshotShort  = "check snapshot is same by id"
 )
 
 func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
@@ -604,5 +610,83 @@ func newMetaPartitionListAllInoCmd(client *master.MasterClient)  *cobra.Command 
 	cmd.Flags().Uint32Var(&optMode, "mode", 0, "specify inode mode")
 	cmd.Flags().Int64Var(&optStTime, "start", 0, "specify inode mtime > start")
 	cmd.Flags().Int64Var(&optEndTime, "end", 0, "specify inode mtime < end")
+	return cmd
+}
+
+func newMetaPartitionCheckSnapshot(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpCheckSnapshot + " [META PARTITION ID]",
+		Short: cmdMetaPartitionCheckSnapshotShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				partition *proto.MetaPartitionInfo
+				leaderCrc proto.SnapshotCrdResponse
+				peersCrc []proto.SnapshotCrdResponse
+				resp *http.Response
+			)
+			partitionID, err := strconv.ParseUint(args[0], 10, 64)
+			fmt.Printf("partitionID: %v\n", partitionID)
+			if err != nil {
+				stdout("%v\n", err)
+				return
+			}
+			if partition, err = client.ClientAPI().GetMetaPartition(partitionID); err != nil {
+				return
+			}
+			for index, peer := range partition.Peers{
+				addr := strings.Split(peer.Addr, ":")[0]
+				metaNodeProfPort := client.MetaNodeProfPort
+				resp, err = http.Get(fmt.Sprintf("http://%s:%d%s?pid=%v", addr, metaNodeProfPort, proto.ClientMetaPartitionSnapshotCheck, partitionID))
+				if err != nil {
+					errout("get snapshotCheckSum info failed:\n%v\n", err)
+					return
+				}
+				all, err := ioutil.ReadAll(resp.Body)
+				if err != nil {
+					errout("read snapshotCheckSum info  failed:\n%v\n", err)
+					return
+				}
+				value := make(map[string]interface{})
+				err = json.Unmarshal(all, &value)
+				if err != nil {
+					errout("unmarshal snapshotCheckSum info  failed:\n%v\n", err)
+					return
+				}
+				dataRaw, err := json.Marshal(value["data"])
+				if err !=nil{
+					log.LogWarnf("unmarshal failed ,err: %v", err)
+				}
+				data := proto.SnapshotCrdResponse{}
+				err = json.Unmarshal(dataRaw, &data)
+				if err != nil{
+					log.LogWarnf("err: %v", err)
+				}
+				if  (partition.Replicas[index]).IsLeader == true{
+					leaderCrc = data
+				}else {
+					log.LogWarnf("data.LastSnapshotStr: %v", data.LastSnapshotStr)
+					peersCrc = append(peersCrc, data)
+				}
+			}
+			if len(peersCrc) > 0 {
+				stdout("%v", metaPartitionSnapshotCrcInfoTableHeader)
+				if len(leaderCrc.LastSnapshotStr)>0{
+					crcStr := strings.SplitN(leaderCrc.LastSnapshotStr, ",", 3)
+					stdout(fmt.Sprintf(metaPartitionSnapshotCrcInfoTablePattern, leaderCrc.LocalAddr, "leader",
+						crcStr[0], crcStr[1], crcStr[2]))
+				}
+				for _, peerCrc := range peersCrc{
+					if peerCrc.LastSnapshotStr != ""{
+						crcStr := strings.SplitN(peerCrc.LastSnapshotStr, ",", 3)
+						stdout(fmt.Sprintf(metaPartitionSnapshotCrcInfoTablePattern, peerCrc.LocalAddr, "peer ",
+							crcStr[0], crcStr[1], crcStr[2]))
+					}
+				}
+			}else{
+				fmt.Println("peersCrc is not created!")
+			}
+		},
+	}
 	return cmd
 }

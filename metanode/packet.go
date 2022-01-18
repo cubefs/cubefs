@@ -104,3 +104,13 @@ func NewPacketToFreeInodeOnRaftFollower(ctx context.Context, partitionID uint64,
 
 	return p
 }
+
+func NewPacketGetMetaNodeVersionInfo(ctx context.Context) *Packet {
+	p := new(Packet)
+	p.Magic = proto.ProtoMagic
+	p.Opcode = proto.OpGetMetaNodeVersionInfo
+	p.Size = uint32(len(p.Data))
+	p.ReqID = proto.GenerateRequestID()
+	p.SetCtx(ctx)
+	return p
+}

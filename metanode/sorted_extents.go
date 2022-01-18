@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"sync"
 
@@ -85,8 +86,10 @@ func (se *SortedExtents) UnmarshalBinary(ctx context.Context, data []byte) error
 
 func (se *SortedExtents) UnmarshalBinaryV2(ctx context.Context, data []byte) error {
 	var ek proto.ExtentKey
-
 	for start := 0; start < len(data);{
+		if len(data[start:]) < proto.ExtentLength{
+			return fmt.Errorf("extentLength buff err, need at least %d, but buff len:%d", proto.ExtentLength, len(data))
+		}
 		if err := ek.UnmarshalBinaryV2(data[start : start + proto.ExtentLength]); err != nil {
 			return err
 		}

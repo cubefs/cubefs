@@ -72,6 +72,7 @@ const (
 	ClientMetaPartition  = "/metaPartition/get"
 	ClientVolStat        = "/client/volStat"
 	ClientMetaPartitions = "/client/metaPartitions"
+	ClientMetaPartitionSnapshotCheck  = "/getSnapshotCrc"
 
 	ClientDataPartitionsDbBack = "/client/dataPartitions"
 

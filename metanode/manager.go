@@ -75,6 +75,11 @@ type metadataManager struct {
 	flDeleteBatchCount atomic.Value
 }
 
+type MetaNodeVersion struct {
+	Major      int64
+	Minor      int64
+}
+
 func (m *metadataManager) getPacketLabelVals(p *Packet) (labels []string) {
 	labels = make([]string, 3)
 	mp, err := m.getPartition(p.PartitionID)
@@ -214,6 +219,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opGetMultipart(conn, p, remoteAddr)
 	case proto.OpMetaGetAppliedID:
 		err = m.opGetAppliedID(conn, p, remoteAddr)
+	case proto.OpGetMetaNodeVersionInfo:
+		err = m.opGetMetaNodeVersionInfo(conn, p, remoteAddr)
 	default:
 		err = fmt.Errorf("%s unknown Opcode: %d, reqId: %d", remoteAddr,
 			p.Opcode, p.GetReqID())
@@ -608,4 +615,52 @@ func isExpiredPartition(fileName string, partitions []uint64) (expiredPartition 
 		}
 	}
 	return true
+}
+
+func NewMetaNodeVersion(version string) (*MetaNodeVersion, error) {
+	ver := MetaNodeVersion{}
+	dotParts := strings.SplitN(version, ".", 3)
+	if len(dotParts) != 3 {
+		log.LogErrorf("[version: %s]'s length is  not right! ",version)
+	}
+	parsed := make([]int64, 2, 2)
+	if len(dotParts) < 2 {
+		err := fmt.Errorf("get metanode version error, dotparts: %v", dotParts)
+		return &ver, err
+	}
+	for i, v := range dotParts[:2] {
+		val, err := strconv.ParseInt(v, 10, 64)
+		parsed[i] = val
+		if err != nil {
+			return &ver,err
+		}
+	}
+	ver.Major = parsed[0]
+	ver.Minor = parsed[1]
+	return &ver,nil
+}
+
+func (v MetaNodeVersion) Compare(versionB MetaNodeVersion) int {
+	verA := []int64{v.Major, v.Minor}
+	verB := []int64{versionB.Major, versionB.Minor}
+	return recursiveCompare(verA, verB)
+}
+
+func recursiveCompare(versionA []int64, versionB []int64) int {
+	if len(versionA) == 0 {
+		return 0
+	}
+	a := versionA[0]
+	b := versionB[0]
+	if a > b {
+		return 1
+	} else if a < b {
+		return -1
+	}
+	return recursiveCompare(versionA[1:], versionB[1:])
+}
+
+// LessThan: compare metaNodeVersion, return true if A < B.
+func (v MetaNodeVersion) LessThan(versionB MetaNodeVersion) bool {
+	return v.Compare(versionB) < 0
 }

@@ -33,6 +33,8 @@ type Part struct {
 	Inode      uint64
 }
 
+type MultipartBatch []*Multipart
+
 func (m *Part) Equal(o *Part) bool {
 	return m.ID == o.ID &&
 		m.Inode == o.Inode &&

@@ -38,6 +38,8 @@ const (
 	CliOpPromoteLearner    = "promote-learner"
 	CliOpResetCursor       = "reset-cursor"
 	CliOpListMpAllInos     = "list-inos"
+	CliOpCheckSnapshot     = "check-snapshot"
+
 	// monitor op
 	CliOpIPTopPartition      = "ip-top-partition"
 	CliOpTopPartitionOp      = "partition-op"

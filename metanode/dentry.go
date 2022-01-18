@@ -17,6 +17,7 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 )
 
 // Dentry wraps necessary properties of the `dentry` information in file system.
@@ -40,8 +41,10 @@ import (
 //  +-------+-----------+--------------+-----------+--------------+
 
 const (
+	BaseDentryKeyLen = 8
 	DentryValueLen  = 12
 	DentryKeyOffset = 4
+	BaseDentryLen   = 24
 )
 
 type Dentry struct {
@@ -124,6 +127,9 @@ func (d *Dentry) MarshalV2() (result []byte, err error) {
 }
 
 func (d *Dentry) UnmarshalV2(raw []byte) (err error) {
+	if len(raw) < BaseDentryLen {
+		return fmt.Errorf("dentry buff err, need at least %d, but buff len:%d", BaseDentryLen, len(raw))
+	}
 	offset := 0
 	var keyLen = binary.BigEndian.Uint32(raw[:4])
 	offset += 4
@@ -142,22 +148,32 @@ func (d *Dentry) DentryKeyLen() int {
 	return len(d.Name) + 8
 }
 
-func (d *Dentry) UnmarshalWithKeyAndValue(key, value []byte){
-	d.UnmarshalKeyV2(key)
-	d.UnmarshalValueV2(value)
-	return
+func (d *Dentry) UnmarshalV2WithKeyAndValue(key, value []byte) (err error){
+	if err = d.UnmarshalKeyV2(key); err != nil{
+		return
+	}
+	if err = d.UnmarshalValueV2(value); err != nil{
+		return
+	}
+	return nil
 }
 
-func (d *Dentry) UnmarshalKeyV2(key []byte){
+func (d *Dentry) UnmarshalKeyV2(key []byte) error{
+	if len(key) < BaseDentryKeyLen {
+		return fmt.Errorf("dentry key buff err, need at least %d, but buff len:%d", BaseDentryKeyLen, len(key))
+	}
 	d.ParentId = binary.BigEndian.Uint64(key[0:8])
 	d.Name = string(key[8:])
-	return
+	return nil
 }
 
-func (d *Dentry) UnmarshalValueV2(value []byte){
+func (d *Dentry) UnmarshalValueV2(value []byte) error{
+	if len(value) < DentryValueLen {
+		return fmt.Errorf("dentry value buff err, need at least %d, but buff len:%d", BaseDentryKeyLen, len(value))
+	}
 	d.Inode = binary.BigEndian.Uint64(value[0:8])
 	d.Type = binary.BigEndian.Uint32(value[8:12])
-	return
+	return nil
 }
 
 // Marshal marshals the dentryBatch into a byte array.

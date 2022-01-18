@@ -539,3 +539,13 @@ type GetAppliedIDRequest struct {
 	VolName     string `json:"vol"`
 	PartitionId uint64 `json:"pid"`
 }
+
+type GetSnapshotCrcRequest struct {
+	VolName     string `json:"vol"`
+	PartitionId uint64 `json:"pid"`
+}
+
+type SnapshotCrdResponse struct {
+	LastSnapshotStr string `json:"last_snapshot_str"`
+	LocalAddr string `json:"local_addr"`
+}

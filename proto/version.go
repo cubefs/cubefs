@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	BaseVersion = "2.5.2"
+	BaseVersion = "2.6.0"
 )
 
 var (

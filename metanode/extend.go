@@ -17,6 +17,7 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
+	"sort"
 	"sync"
 
 	"github.com/chubaofs/chubaofs/util/btree"
@@ -27,6 +28,7 @@ type Extend struct {
 	dataMap map[string][]byte
 	mu      sync.RWMutex
 }
+type ExtendBatch []*Extend
 
 func NewExtend(inode uint64) *Extend {
 	return &Extend{inode: inode, dataMap: make(map[string][]byte)}
@@ -155,13 +157,18 @@ func (e *Extend) Bytes() ([]byte, error) {
 		}
 		return nil
 	}
-	for k, v := range e.dataMap {
+	sortedKeys := make([]string, 0)
+	for k, _ := range e.dataMap{
+		sortedKeys = append(sortedKeys, k)
+	}
+	sort.Strings(sortedKeys)
+	for _, k := range sortedKeys {
 		// key
 		if err = writeBytes([]byte(k)); err != nil {
 			return nil, err
 		}
 		// value
-		if err = writeBytes(v); err != nil {
+		if err = writeBytes(e.dataMap[k]); err != nil {
 			return nil, err
 		}
 	}

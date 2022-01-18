@@ -327,6 +327,9 @@ var (
 	metaPartitionTablePattern = "%-8v    %-12v    %-12v    %-12v    %-12v    %-12v    %-12v    %-10v    %-20v    %-18v"
 	metaPartitionTableHeader  = fmt.Sprintf(metaPartitionTablePattern,
 		"ID", "MAX INODE", "DENTRY COUNT", "INODE COUNT", "START", "END", "MAX EXIST INO", "STATUS", "LEADER", "MEMBERS")
+	metaPartitionSnapshotCrcInfoTablePattern      = "%-12v    %-12v    %-18v    %-12v    %-12v\n"
+	metaPartitionSnapshotCrcInfoTableHeader = fmt.Sprintf(metaPartitionSnapshotCrcInfoTablePattern, "LocalAddr", "Role",
+		"SnapshotCreateTime", "  LeaderCrc", "  FollowerCrc")
 )
 
 func formatMetaPartitionTableRow(view *proto.MetaPartitionView) string {

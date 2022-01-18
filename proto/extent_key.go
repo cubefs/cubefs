@@ -126,6 +126,9 @@ func (k *ExtentKey) UnmarshalBinary(buf *bytes.Buffer) (err error) {
 }
 
 func (k *ExtentKey) UnmarshalBinaryV2(data []byte) (err error) {
+	if len(data) < ExtentLength {
+		return fmt.Errorf("ekdata buff err, need at least %d, but buff len:%d", ExtentLength, len(data))
+	}
 	k.FileOffset   = binary.BigEndian.Uint64(data[0  : 8])
 	k.PartitionId  = binary.BigEndian.Uint64(data[8  : 16])
 	k.ExtentId     = binary.BigEndian.Uint64(data[16 : 24])

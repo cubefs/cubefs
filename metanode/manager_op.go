@@ -1587,3 +1587,15 @@ func (m *metadataManager) opGetAppliedID(conn net.Conn, p *Packet, remoteAddr st
 		remoteAddr, p.GetReqID(), req, string(p.Arg), p.GetResultMsg(), appliedID)
 	return
 }
+
+func (m *metadataManager) opGetMetaNodeVersionInfo(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	ver, err := NewMetaNodeVersion(proto.BaseVersion)
+	reply, err := json.Marshal(ver)
+	if err != nil{
+		p.PacketErrorWithBody(proto.OpGetMetaNodeVersionInfo, []byte(err.Error()))
+		return err
+	}
+	p.PacketOkWithBody(reply)
+	m.respondToClient(conn, p)
+	return
+}

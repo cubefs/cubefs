@@ -293,6 +293,9 @@ func (i *Inode) UnmarshalV2(ctx context.Context, raw []byte) (err error) {
 	defer tracer.Finish()
 	ctx = tracer.Context()
 
+	if len(raw) < BaseInodeLen {
+		return fmt.Errorf("inode buff err, need at least %d, but buff len:%d", BaseInodeValueLen, len(raw))
+	}
 	offset := 0
 	//keyLen = binary.BigEndian.Uint32(raw[:4])
 	offset += 4
@@ -349,6 +352,9 @@ func (i *Inode) UnmarshalV2WithKeyAndValue(ctx context.Context, key, value []byt
 }
 
 func (i *Inode) UnmarshalKeyV2(key []byte)  {
+	if len(key)<BaseInodeKeyLen {
+		return
+	}
 	i.Inode = binary.BigEndian.Uint64(key)
 	return
 }

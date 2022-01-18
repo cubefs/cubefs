@@ -42,7 +42,7 @@ func TestInode_V1Marshal(t *testing.T){
 		t.Fatalf("UnmarshalV2WithKeyAndValue failed, err: %s", err.Error())
 	}
 	if reflect.DeepEqual(i, inodeRestoreExpect) && reflect.DeepEqual(i, inodeKV){
-		t.Logf("inodeMaral---->inodeUnmarshalV2: success,")
+		t.Logf("inodeMarshal---->inodeUnmarshalV2: success,")
 	}else{
 		t.Errorf("Failed to test, error: len:%d \n src=\n[%v] res=\n[%v] ", len(raw), i, inodeRestoreExpect)
 	}
@@ -88,7 +88,7 @@ func TestInode_V2Marshal(t *testing.T){
 		t.Fatalf("UnmarshalKey failed, err: %v", err)
 	}
 	if reflect.DeepEqual(i, inodeRestore) && reflect.DeepEqual(i, inodeRestoreExpect) && reflect.DeepEqual(i, inodeKV){
-		t.Logf("inodeMaralV2---->inodeUnmarshal: success")
+		t.Logf("inodeMarshalV2---->inodeUnmarshal: success")
 	}else{
 		t.Errorf("Failed to test, error:len:%d \nsrc=[%v] res=\n[%v], expectRes=\n[%v]\n", len(raw), i, inodeRestore,  inodeRestoreExpect)
 	}

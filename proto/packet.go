@@ -111,6 +111,7 @@ const (
 	OpMetaGetAppliedID    uint8 = 0x3A
 	OpMetaExtentsInsert   uint8 = 0x3B
 	OpMetaInodeGetV2      uint8 = 0x3C	//new op code, old(get) compatible the old client
+	OpGetMetaNodeVersionInfo uint8 = 0x3D
 
 	// Operations: Master -> MetaNode
 	OpCreateMetaPartition             uint8 = 0x40

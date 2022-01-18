@@ -84,6 +84,7 @@ type (
 	SetattrRequest = proto.SetAttrRequest
 	// Client -> MetaNode
 	GetAppliedIDReq = proto.GetAppliedIDRequest
+	GetSnapshotCrcReq = proto.GetSnapshotCrcRequest
 )
 
 const (
@@ -123,6 +124,8 @@ const (
 	opFSMCursorReset
 
 	opFSMExtentsInsert
+	// snapshotBatchCreate
+	opFSMBatchCreate
 )
 
 var (
@@ -174,4 +177,9 @@ const (
 const(
 	mpResetInoLimited = 1000
 	mpResetInoStep 	  = 1000
+)
+
+// snapshotBatchSend will be disabled if version of metaNode  lessThan snapshotBatchSendMinimumVersion.
+const(
+	snapshotBatchSendMinimumVersion = "2.6.0"
 )
