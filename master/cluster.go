@@ -776,7 +776,7 @@ func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int) (err error) {
 	for i := 0; i < reqCount; i++ {
 		if c.DisableAutoAllocate {
 			log.LogWarn("disable auto allocate dataPartition")
-			return
+			return fmt.Errorf("cluster is disable auto allocate dataPartition")
 		}
 
 		if _, err = c.createDataPartition(vol.Name, nil); err != nil {

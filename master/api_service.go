@@ -2031,7 +2031,7 @@ func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if proto.IsCold(vol.VolType) && ver != proto.LFClient {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "low frequency vol is supported by LF client only"})
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "ec-vol is supported by LF client only"})
 		return
 	}
 
