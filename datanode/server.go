@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"errors"
@@ -76,6 +77,17 @@ const (
 	ConfigKeyRaftHeartbeat = "raftHeartbeat" // string
 	ConfigKeyRaftReplica   = "raftReplica"   // string
 	CfgTickInterval        = "tickInterval"  // int
+
+	/*
+	 * Metrics Degrade Level
+	 * minus value: turn off metrics collection.
+	 * 0 or 1: full metrics.
+	 * 2: 1/2 of the metrics will be collected.
+	 * 3: 1/3 of the metrics will be collected.
+	 * ...
+	 */
+	CfgMetricsDegrade = "metricsDegrade" // int
+
 	// smux Config
 	ConfigKeyEnableSmuxClient  = "enableSmuxConnPool" //bool
 	ConfigKeySmuxPortShift     = "smuxPortShift"      //int
@@ -112,7 +124,9 @@ type DataNode struct {
 	getRepairConnFunc func(target string) (net.Conn, error)
 	putRepairConnFunc func(conn net.Conn, forceClose bool)
 
-	metrics *DataNodeMetrics
+	metrics        *DataNodeMetrics
+	metricsDegrade int64
+	metricsCnt     uint64
 
 	control common.Control
 }
@@ -237,6 +251,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	if s.zoneName == "" {
 		s.zoneName = DefaultZoneName
 	}
+	s.metricsDegrade = cfg.GetInt(CfgMetricsDegrade)
 
 	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterClient.Nodes())
 	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
@@ -398,6 +413,8 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/getTinyDeleted", s.getTinyDeleted)
 	http.HandleFunc("/getNormalDeleted", s.getNormalDeleted)
 	http.HandleFunc("/getSmuxPoolStat", s.getSmuxPoolStat())
+	http.HandleFunc("/setMetricsDegrade", s.setMetricsDegrade)
+	http.HandleFunc("/getMetricsDegrade", s.getMetricsDegrade)
 }
 
 func (s *DataNode) startTCPService() (err error) {
@@ -618,6 +635,21 @@ func (s *DataNode) closeSmuxConnPool() {
 		log.LogDebugf("action[stopSmuxService] stop smux conn pool")
 	}
 	return
+}
+
+func (s *DataNode) shallDegrade() bool {
+	level := atomic.LoadInt64(&s.metricsDegrade)
+	if level < 0 {
+		return true
+	}
+	if level == 0 {
+		return false
+	}
+	cnt := atomic.LoadUint64(&s.metricsCnt)
+	if cnt%uint64(level) == 0 {
+		return false
+	}
+	return true
 }
 
 func IsDiskErr(errMsg string) bool {
