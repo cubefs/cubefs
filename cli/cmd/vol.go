@@ -91,7 +91,7 @@ const (
 	cmdVolDefaultDPSize         = 120
 	cmdVolDefaultCapacity       = 10 // 100GB
 	cmdVolDefaultReplicas       = 3
-	cmdVolDefaultFollowerReader = true
+	cmdVolDefaultFollowerReader = false
 	cmdVolDefaultZoneName       = ""
 	cmdVolDefaultCrossZone      = false
 	cmdVolDefaultType           = 0
@@ -157,7 +157,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Uint64Var(&optDPSize, CliFlagDataPartitionSize, cmdVolDefaultDPSize, "Specify size of data partition size [Unit: GB]")
 	cmd.Flags().Uint64Var(&optCapacity, CliFlagCapacity, cmdVolDefaultCapacity, "Specify volume capacity [Unit: GB]")
 	cmd.Flags().IntVar(&optReplicas, CliFlagReplicas, cmdVolDefaultReplicas, "Specify data partition replicas number")
-	cmd.Flags().BoolVar(&optFollowerRead, CliFlagEnableFollowerRead, cmdVolDefaultFollowerReader, "Enable read form replica follower (default true)")
+	cmd.Flags().BoolVar(&optFollowerRead, CliFlagEnableFollowerRead, cmdVolDefaultFollowerReader, "Enable read from replica follower")
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, cmdVolDefaultZoneName, "Specify volume zone name")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	cmd.Flags().BoolVar(&optCrossZone, CliFlagCrossZone, cmdVolDefaultCrossZone, "Disable cross zone")
@@ -291,7 +291,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().Uint64Var(&optCapacity, CliFlagCapacity, 0, "Specify volume capacity [Unit: GB]")
 	cmd.Flags().IntVar(&optReplicas, CliFlagReplicas, 0, "Specify data partition replicas number")
-	cmd.Flags().StringVar(&optFollowerRead, CliFlagEnableFollowerRead, "", "Enable read form replica follower")
+	cmd.Flags().StringVar(&optFollowerRead, CliFlagEnableFollowerRead, "", "Enable read from replica follower")
 	cmd.Flags().StringVar(&optAuthenticate, CliFlagAuthenticate, "", "Enable authenticate")
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, "", "Specify volume zone name")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
@@ -418,7 +418,7 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 				err = fmt.Errorf("Delete volume failed:\n%v\n", err)
 				return
 			}
-			stdout("Delete volume success.\n")
+			stdout("Volume has been deleted successfully.\n")
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -488,6 +488,7 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 			if _, err = client.UserAPI().TransferVol(&param); err != nil {
 				return
 			}
+			stdout("Volume has been transferred successfully.\n")
 		},
 	}
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
@@ -525,6 +526,7 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 			if err = client.AdminAPI().CreateDataPartition(volume, int(count)); err != nil {
 				return
 			}
+			stdout("Add dp successfully.\n")
 			return
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -574,6 +576,7 @@ func newVolSetCapacityCmd(use, short string, r clientHandler) *cobra.Command {
 			if err = volume.excuteHttp(); err != nil {
 				return
 			}
+			stdout("Volume capacity has been set successfully.\n")
 			return
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
