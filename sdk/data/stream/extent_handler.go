@@ -131,7 +131,8 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *Ex
 
 // String returns the string format of the extent handler.
 func (eh *ExtentHandler) String() string {
-	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)StoreMode(%v)}", eh.id, eh.inode, eh.fileOffset, eh.storeMode)
+	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)StoreMode(%v)Status(%v)}",
+		eh.id, eh.inode, eh.fileOffset, eh.storeMode, eh.status)
 }
 
 func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
@@ -139,7 +140,7 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 
 	status := eh.getStatus()
 	if status >= ExtentStatusClosed {
-		err = errors.New(fmt.Sprintf("ExtentHandler Write: Full or Recover, status(%v)", status))
+		err = errors.NewErrorf("ExtentHandler Write: Full or Recover eh(%v) key(%v)", eh, eh.key)
 		return
 	}
 
@@ -155,8 +156,7 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 	// In this case, the caller should try to create a new extent handler.
 	if eh.fileOffset+eh.size != offset || eh.size+size > util.ExtentSize ||
 		(eh.storeMode == proto.TinyExtentType && eh.size+size > blksize) {
-
-		err = errors.New("ExtentHandler: full or incontinuous")
+		err = errors.NewErrorf("ExtentHandler Write: full or incontinuous eh(%v) key(%v)", eh, eh.key)
 		return
 	}
 
