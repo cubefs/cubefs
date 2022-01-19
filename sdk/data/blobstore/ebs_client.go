@@ -88,7 +88,7 @@ func (ebs *BlobStoreClient) Read(ctx context.Context, volName string, buf []byte
 	}
 	if err != nil {
 		log.LogErrorf("TRACE Ebs Read,oek(%v), err(%v), requestId(%v)", oek, err, requestId)
-		return 0, nil
+		return 0, err
 	}
 
 	readN, err = io.ReadFull(body, buf)
