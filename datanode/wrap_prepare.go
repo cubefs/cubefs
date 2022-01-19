@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
+	"sync/atomic"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
@@ -34,7 +35,13 @@ func (s *DataNode) Prepare(p *repl.Packet) (err error) {
 	if p.IsMasterCommand() {
 		return
 	}
-	p.BeforeTp(s.clusterID)
+	atomic.AddUint64(&s.metricsCnt, 1)
+	if !s.shallDegrade() {
+		p.BeforeTp(s.clusterID)
+		p.UnsetDegrade()
+	} else {
+		p.SetDegrade()
+	}
 	err = s.checkStoreMode(p)
 	if err != nil {
 		return
