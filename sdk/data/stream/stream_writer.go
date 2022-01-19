@@ -444,7 +444,8 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 			break
 		}
 
-		log.LogDebugf("doWrite handler write failed so close open handler: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
+		log.LogDebugf("doWrite handler write failed so close open handler: ino(%v) offset(%v) size(%v) storeMode(%v) err(%v)",
+			s.inode, offset, size, storeMode, err)
 		s.closeOpenHandler()
 	}
 
@@ -524,7 +525,9 @@ func (s *Streamer) traverse() (err error) {
 				log.LogDebugf("Streamer traverse skipped: traversed(%v) eh(%v)", s.traversed, eh)
 				continue
 			}
-			eh.setClosed()
+			if err = eh.flush(); err != nil {
+				log.LogWarnf("Streamer traverse flush: eh(%v) err(%v)", eh, err)
+			}
 		}
 		log.LogDebugf("Streamer traverse end: eh(%v)", eh)
 	}
