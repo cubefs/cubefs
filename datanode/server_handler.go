@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/storage"
@@ -335,6 +336,27 @@ func (s *DataNode) getSmuxPoolStat() func(http.ResponseWriter, *http.Request) {
 		s.buildSuccessResp(w, stat)
 		return
 	}
+}
+
+func (s *DataNode) setMetricsDegrade(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		w.Write([]byte(err.Error()))
+		return
+	}
+
+	if level := r.FormValue("level"); level != "" {
+		val, err := strconv.Atoi(level)
+		if err != nil {
+			w.Write([]byte("Set metrics degrade level failed\n"))
+		} else {
+			atomic.StoreInt64(&s.metricsDegrade, int64(val))
+			w.Write([]byte(fmt.Sprintf("Set metrics degrade level to %v successfully\n", val)))
+		}
+	}
+}
+
+func (s *DataNode) getMetricsDegrade(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte(fmt.Sprintf("%v\n", atomic.LoadInt64(&s.metricsDegrade))))
 }
 
 func (s *DataNode) buildSuccessResp(w http.ResponseWriter, data interface{}) {
