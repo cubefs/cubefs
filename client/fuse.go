@@ -79,6 +79,8 @@ const (
 	DefaultIP            = "127.0.0.1"
 	DynamicUDSNameFormat = "/tmp/ChubaoFS-fdstore-%v.sock"
 	DefaultUDSName       = "/tmp/ChubaoFS-fdstore.sock"
+
+	DefaultLogPath = "/var/log/cfs-client"
 )
 
 var (
@@ -449,8 +451,8 @@ func startDaemon() error {
 
 func waitListenAndServe(statusCh chan error, addr string, handler http.Handler) {
 	var err error
-	var loop int = 0
-	var interval int = (1 << 17) - 1
+	var loop = 0
+	var interval = (1 << 17) - 1
 	var listener net.Listener
 	var dynamicPort bool
 
@@ -591,7 +593,11 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.Volname = GlobalMountOptions[proto.VolName].GetString()
 	opt.Owner = GlobalMountOptions[proto.Owner].GetString()
 	opt.Master = GlobalMountOptions[proto.Master].GetString()
-	opt.Logpath = GlobalMountOptions[proto.LogDir].GetString()
+	logPath := GlobalMountOptions[proto.LogDir].GetString()
+	if len(logPath) == 0 {
+		logPath = DefaultLogPath
+	}
+	opt.Logpath = path.Join(logPath, opt.Volname)
 	opt.Loglvl = GlobalMountOptions[proto.LogLevel].GetString()
 	opt.Profport = GlobalMountOptions[proto.ProfPort].GetString()
 	opt.IcacheTimeout = GlobalMountOptions[proto.IcacheTimeout].GetInt64()
