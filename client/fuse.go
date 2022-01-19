@@ -79,6 +79,8 @@ const (
 	DefaultIP            = "127.0.0.1"
 	DynamicUDSNameFormat = "/tmp/ChubaoFS-fdstore-%v.sock"
 	DefaultUDSName       = "/tmp/ChubaoFS-fdstore.sock"
+
+	DefaultLogPath = "/var/log/chubaofs"
 )
 
 var (
@@ -284,7 +286,7 @@ func main() {
 	}
 
 	level := parseLogLevel(opt.Loglvl)
-	_, err = log.InitLog(opt.Logpath, LoggerPrefix, level, nil)
+	_, err = log.InitLog(opt.Logpath, opt.Volname, level, nil)
 	if err != nil {
 		err = errors.NewErrorf("Init log dir fail: %v\n", err)
 		fmt.Println(err)
@@ -293,7 +295,7 @@ func main() {
 	}
 	defer log.LogFlush()
 
-	outputFilePath := path.Join(opt.Logpath, LoggerPrefix, LoggerOutput)
+	outputFilePath := path.Join(opt.Logpath, opt.Volname, LoggerOutput)
 	outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
 	if err != nil {
 		err = errors.NewErrorf("Open output file failed: %v\n", err)
@@ -592,7 +594,11 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.Volname = GlobalMountOptions[proto.VolName].GetString()
 	opt.Owner = GlobalMountOptions[proto.Owner].GetString()
 	opt.Master = GlobalMountOptions[proto.Master].GetString()
-	opt.Logpath = GlobalMountOptions[proto.LogDir].GetString()
+	logPath := GlobalMountOptions[proto.LogDir].GetString()
+	if len(logPath) == 0 {
+		logPath = DefaultLogPath
+	}
+	opt.Logpath = path.Join(logPath, LoggerPrefix)
 	opt.Loglvl = GlobalMountOptions[proto.LogLevel].GetString()
 	opt.Profport = GlobalMountOptions[proto.ProfPort].GetString()
 	opt.IcacheTimeout = GlobalMountOptions[proto.IcacheTimeout].GetInt64()
