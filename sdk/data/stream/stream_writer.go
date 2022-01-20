@@ -429,6 +429,10 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 		if s.handler == nil {
 			s.handler = NewExtentHandler(s, offset, storeMode, 0)
 			s.dirty = false
+		} else if s.handler.storeMode != storeMode {
+			// store mode changed, so close open handler and start a new one
+			s.closeOpenHandler()
+			continue
 		}
 
 		ek, err = s.handler.write(data, offset, size, direct)
@@ -440,7 +444,8 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 			break
 		}
 
-		log.LogDebugf("doWrite handler write failed so close open handler: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
+		log.LogDebugf("doWrite handler write failed so close open handler: ino(%v) offset(%v) size(%v) storeMode(%v) err(%v)",
+			s.inode, offset, size, storeMode, err)
 		s.closeOpenHandler()
 	}
 
@@ -520,7 +525,9 @@ func (s *Streamer) traverse() (err error) {
 				log.LogDebugf("Streamer traverse skipped: traversed(%v) eh(%v)", s.traversed, eh)
 				continue
 			}
-			eh.setClosed()
+			if err = eh.flush(); err != nil {
+				log.LogWarnf("Streamer traverse flush: eh(%v) err(%v)", eh, err)
+			}
 		}
 		log.LogDebugf("Streamer traverse end: eh(%v)", eh)
 	}
@@ -528,15 +535,23 @@ func (s *Streamer) traverse() (err error) {
 }
 
 func (s *Streamer) closeOpenHandler() {
-	if s.handler != nil {
-		s.handler.setClosed()
+	// just in case to avoid infinite loop
+	var cnt int = 2 * MaxPacketErrorCount
+
+	handler := s.handler
+	for handler != nil && cnt >= 0 {
+		handler.setClosed()
 		if s.dirtylist.Len() < MaxDirtyListLen {
-			s.handler.flushPacket()
+			handler.flushPacket()
 		} else {
 			// TODO unhandled error
-			s.handler.flush()
+			handler.flush()
 		}
+		handler = handler.recoverHandler
+		cnt--
+	}
 
+	if s.handler != nil {
 		if !s.dirty {
 			// in case the current handler is not on the dirty list and will not get cleaned up
 			// TODO unhandled error
