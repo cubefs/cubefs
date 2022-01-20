@@ -46,6 +46,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			Request: req,
 		}
 	)
+	resp.ProfPort = m.metaNode.profPort
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
@@ -63,10 +64,16 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 	}
 	m.Range(func(id uint64, partition MetaPartition) bool {
 		mConf := partition.GetBaseConfig()
-		maxInode := partition.GetInodeTree().MaxItem()
+		snap := partition.GetSnapShot()
+		if snap == nil {
+			log.LogErrorf("action[opMasterHeartbeat] get meta partition[%d] snapshot is nil", partition.(*metaPartition).config.PartitionId)
+			return true
+		}
+		defer partition.ReleaseSnapShot(snap)
+		maxInode := partition.(*metaPartition).inodeTree.MaxItem()
 		maxIno := mConf.Start
 		if maxInode != nil {
-			maxIno = maxInode.(*Inode).Inode
+			maxIno = maxInode.Inode
 		}
 		mpr := &proto.MetaPartitionReport{
 			PartitionID:     mConf.PartitionId,
@@ -75,10 +82,12 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			Status:          proto.ReadWrite,
 			MaxInodeID:      mConf.Cursor,
 			VolName:         mConf.VolName,
-			InodeCnt:        uint64(partition.GetInodeTree().Len()),
-			DentryCnt:       uint64(partition.GetDentryTree().Len()),
+			InodeCnt:        snap.Count(InodeType),
+			DentryCnt:       snap.Count(DentryType),
 			IsLearner:       partition.IsLearner(),
 			ExistMaxInodeID: maxIno,
+			StoreMode:       mConf.StoreMode,
+			ApplyId:         partition.GetAppliedID(),
 		}
 		addr, isLeader := partition.IsLeader()
 		if addr == "" {

@@ -50,6 +50,7 @@ var (
 type MetaNode struct {
 	nodeId            uint64
 	listen            string
+	profPort          string
 	metadataDir       string // root dir of the metaNode
 	raftDir           string // root dir of the raftStore log
 	metadataManager   MetadataManager
@@ -190,12 +191,14 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.localAddr = cfg.GetString(cfgLocalIP)
 	m.listen = cfg.GetString(proto.ListenPort)
 	serverPort = m.listen
+	m.profPort = cfg.GetString(cfgProfPort)
 	m.metadataDir = cfg.GetString(cfgMetadataDir)
 	m.raftDir = cfg.GetString(cfgRaftDir)
 	m.raftHeartbeatPort = cfg.GetString(cfgRaftHeartbeatPort)
 	m.raftReplicatePort = cfg.GetString(cfgRaftReplicaPort)
 	m.zoneName = cfg.GetString(cfgZoneName)
 	configTotalMem, _ = strconv.ParseUint(cfg.GetString(cfgTotalMem), 10, 64)
+	m.rocksDirs = cfg.GetStringSlice(cfgRocksDirs)
 
 	m.tickInterval = int(cfg.GetFloat(cfgTickIntervalMs))
 	if m.tickInterval <= 300 {

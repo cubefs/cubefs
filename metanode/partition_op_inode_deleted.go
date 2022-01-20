@@ -19,14 +19,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/btree"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 	"math"
 	"time"
 )
 
 func (mp *metaPartition) GetDeletedInode(req *GetDeletedInodeReq, p *Packet) (err error) {
-	srcIno, delIno, status := mp.getDeletedInode(req.Inode)
+	var (
+		srcIno *Inode
+		delIno *DeletedINode
+		status uint8
+	)
+	srcIno, delIno, status, err = mp.getDeletedInode(req.Inode)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
 	var reply []byte
 	if status != proto.OpOk {
 		p.PacketErrorWithBody(status, reply)
@@ -153,31 +163,42 @@ func (mp *metaPartition) CleanDeletedInode(req *proto.CleanDeletedInodeRequest, 
 	return
 }
 
-func (mp *metaPartition) getDeletedInode(ino uint64) (srcIno *Inode, di *DeletedINode, status uint8) {
+func (mp *metaPartition) getDeletedInode(ino uint64) (srcIno *Inode, di *DeletedINode, status uint8, err error) {
+	defer func() {
+		if err == rocksdbError {
+			exporter.WarningRocksdbError(fmt.Sprintf("action[getDeletedInode] clusterID[%s] volumeName[%s] partitionID[%v]" +
+				" get deleted inode failed witch rocksdb error[inode:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
+				mp.config.PartitionId, ino))
+		}
+	}()
 	status = proto.OpOk
-	inode := NewInode(ino, 0)
-	item := mp.inodeTree.Get(inode)
-	if item != nil {
-		srcIno = item.(*Inode)
+	srcIno, err = mp.inodeTree.RefGet(ino)
+	if err != nil {
+		log.LogErrorf("[getDeletedInode], failed to get inode from inode tree, inode:%v, err:%v", ino, err)
+		return
+	}
+	if srcIno != nil {
+		log.LogDebugf("[getDeletedInode], found inode from inode tree, inode%v", ino)
 		/*
-			if srcIno.ShouldDelete() {
-				log.LogErrorf("getDeletedInode, inode: %v should not be deleted.", srcIno)
-				status = proto.OpNotExistErr
-				return
-			}
-
+		if srcIno.ShouldDelete() {
+			log.LogErrorf("getDeletedInode, inode: %v should not be deleted.", srcIno)
+			status = proto.OpNotExistErr
+			return
+		}
 		*/
 		return
 	}
 
-	dino := NewDeletedInodeByID(ino)
-	item = mp.inodeDeletedTree.Get(dino)
-	if item == nil {
+	di, err = mp.inodeDeletedTree.RefGet(ino)
+	if err != nil {
+		log.LogErrorf("[getDeletedInode], failed to get inode from inode tree, inode:%v, err:%v", ino, err)
+		return
+	}
+	if di == nil {
 		log.LogDebugf("[getDeletedInode], not found delete inode: %v", ino)
 		status = proto.OpNotExistErr
 		return
 	}
-	di = item.(*DeletedINode)
 	return
 }
 
@@ -187,7 +208,14 @@ func (mp *metaPartition) StatDeletedFileInfo(p *Packet) (err error) {
 		reply []byte
 	)
 	resp = new(StatDeletedFileResp)
-	resp.StatInfo = mp.statDeletedFileInfo()
+	resp.StatInfo, err = mp.statDeletedFileInfo()
+	if err != nil {
+		status := proto.OpErr
+		reply = []byte(err.Error())
+		p.PacketErrorWithBody(status, reply)
+		return
+	}
+
 	reply, err = json.Marshal(resp)
 	if err != nil {
 		status := proto.OpErr
@@ -200,26 +228,44 @@ func (mp *metaPartition) StatDeletedFileInfo(p *Packet) (err error) {
 	return
 }
 
-func (mp *metaPartition) statDeletedFileInfo() (statInfo map[string]*proto.DeletedFileInfo) {
+func (mp *metaPartition) statDeletedFileInfo() (statInfo map[string]*proto.DeletedFileInfo, err error){
 	statInfo = make(map[string]*proto.DeletedFileInfo, 0)
 	var getDateStr = func(ts int64) string {
 		return time.Unix(ts/1000/1000, 0).Format("2006-01-02")
 	}
-	tempTree := mp.dentryDeletedTree.GetTree()
-	tempTree.Ascend(func(i btree.Item) bool {
-		dateStr := getDateStr(i.(*DeletedDentry).Timestamp)
+	snap := NewSnapshot(mp)
+	if snap == nil {
+		log.LogErrorf("[statDeletedFileInfo] failed to get tree snap, partitionID: %v", mp.config.PartitionId)
+		err = errors.NewErrorf("failed to get mp[%v] tree snap", mp.config.PartitionId)
+		return
+	}
+	defer snap.Close()
+	err = snap.Range(DelDentryType, func(data []byte) (bool, error) {
+		dden := new(DeletedDentry)
+		if err = dden.UnmarshalValue(data); err != nil {
+			return false, err
+		}
+		dateStr := getDateStr(dden.Timestamp)
 		e, ok := statInfo[dateStr]
 		if !ok {
 			e = new(proto.DeletedFileInfo)
 			statInfo[dateStr] = e
 		}
 		e.DentrySum++
-		return true
+		return true, nil
 	})
+	if err != nil {
+		log.LogErrorf("[statDeletedFileInfo] failed to range delDentry tree, partitionID: %v, error: %v",
+			mp.config.PartitionId, err)
+		err = errors.NewErrorf("failed to range delDentry tree:%v", err)
+		return
+	}
 
-	tempTree = mp.inodeDeletedTree.GetTree()
-	tempTree.Ascend(func(i btree.Item) bool {
-		dino := i.(*DeletedINode)
+	err = snap.Range(DelInodeType, func(data []byte) (bool, error) {
+		dino := new(DeletedINode)
+		if err = dino.UnmarshalValue(context.Background(), data); err != nil {
+			return false, err
+		}
 		dateStr := getDateStr(dino.Timestamp)
 		e, ok := statInfo[dateStr]
 		if !ok {
@@ -228,17 +274,31 @@ func (mp *metaPartition) statDeletedFileInfo() (statInfo map[string]*proto.Delet
 		}
 		e.InodeSum++
 		e.Size += dino.Size
-		return true
+		return true, nil
 	})
-
+	if err != nil {
+		log.LogErrorf("[statDeletedFileInfo] failed to range delInode tree, partitionID: %v, error: %v",
+			mp.config.PartitionId, err)
+		err = errors.NewErrorf("failed to range delInode tree:%v", err)
+		return
+	}
 	return
 }
 
 func (mp *metaPartition) BatchGetDeletedInode(req *BatchGetDeletedInodeReq, p *Packet) (err error) {
 	resp := new(BatchGetDeletedInodeResp)
 	resp.Infos = make([]*proto.DeletedInodeInfo, 0)
+	var (
+		srcIno *Inode
+		delIno *DeletedINode
+		status uint8
+	)
 	for _, inoId := range req.Inodes {
-		srcIno, delIno, status := mp.getDeletedInode(inoId)
+		srcIno, delIno, status, err = mp.getDeletedInode(inoId)
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+			return
+		}
 		if status == proto.OpOk {
 			dino := buildProtoDeletedInodeInfo(srcIno, delIno)
 			resp.Infos = append(resp.Infos, dino)
@@ -293,26 +353,32 @@ func (mp *metaPartition) CleanExpiredDeletedINode() (err error) {
 	defer log.LogDebugf("[CleanExpiredDeletedINode], cleaned %v until %v", total, expires)
 	batch := 128
 	inos := make([]uint64, 0, batch)
-	tree := mp.inodeDeletedTree.GetTree()
-	tree.Ascend(func(i BtreeItem) bool {
+	_ = mp.inodeDeletedTree.Range(nil, nil, func(data []byte) (bool, error) {
 		_, ok := mp.IsLeader()
 		if !ok {
-			return false
+			return false, errors.NewErrorf("not leader")
 		}
-		di := i.(*DeletedINode)
+
+		di := new(DeletedINode)
+		if err = di.UnmarshalValue(ctx, data); err != nil {
+			exporter.WarningRocksdbError(fmt.Sprintf("action[CleanExpiredDeletedINode] clusterID[%s] volumeName[%s] partitionID[%v]" +
+				"unmarshal failed:%v", mp.manager.metaNode.clusterId, mp.config.VolName, mp.config.PartitionId, err))
+			log.LogErrorf("[CleanExpiredDeletedINode], failed to unmarshal value, err:%v", err)
+			return true, err
+		}
 		if di.Timestamp >= expires {
-			return true
+			return true, nil
 		}
 
 		inos = append(inos, di.Inode.Inode)
 		if len(inos) < batch {
-			return true
+			return true, nil
 		}
 
 		err = fsmFunc(inos)
 		if err != nil {
 			log.LogErrorf("[CleanExpiredDeletedINode], vol:%v, err: %v", mp.config.VolName, err.Error())
-			return false
+			return false, err
 		}
 		total += batch
 		inos = make([]uint64, 0, batch)
@@ -322,7 +388,7 @@ func (mp *metaPartition) CleanExpiredDeletedINode() (err error) {
 			expires = math.MaxInt64
 		}
 		time.Sleep(1 * time.Second)
-		return true
+		return true, nil
 	})
 
 	_, ok := mp.IsLeader()

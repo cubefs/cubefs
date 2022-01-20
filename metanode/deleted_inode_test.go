@@ -98,43 +98,43 @@ func TestDeletedINode_Less(t *testing.T) {
 	mp.inodeDeletedTree = mockDeletedInodeTree()
 
 	ino := NewInode(9, 0)
-	item := mp.inodeTree.Get(ino)
+	item, _ := mp.inodeTree.Get(ino.Inode)
 	if item != nil {
 		t.Errorf("found inode: %v", ino)
 		t.FailNow()
 	}
 
 	ino = NewInode(10, 0)
-	item = mp.inodeTree.Get(ino)
+	item, _ = mp.inodeTree.Get(ino.Inode)
 	if item == nil {
 		t.Errorf("not found inode: %v", ino)
 		t.FailNow()
 	}
 
 	ino = NewInode(30, 0)
-	item = mp.inodeTree.Get(ino)
+	item, _ = mp.inodeTree.Get(ino.Inode)
 	if item != nil {
 		t.Errorf("found inode: %v", ino)
 		t.FailNow()
 	}
 
 	dino := NewDeletedInodeByID(9)
-	item = mp.inodeDeletedTree.CopyGet(dino)
-	if item != nil {
+	dinoItem, _ := mp.inodeDeletedTree.Get(dino.Inode.Inode)
+	if dinoItem != nil {
 		t.Errorf("found inode: %v", ino)
 		t.FailNow()
 	}
 
 	dino = NewDeletedInodeByID(10)
-	item = mp.inodeDeletedTree.CopyGet(dino)
-	if item == nil {
+	dinoItem, _ = mp.inodeDeletedTree.Get(dino.Inode.Inode)
+	if dinoItem == nil {
 		t.Errorf("not found inode: %v", dino)
 		t.FailNow()
 	}
 
 	dino = NewDeletedInodeByID(30)
-	item = mp.inodeDeletedTree.CopyGet(dino)
-	if item != nil {
+	dinoItem, _ = mp.inodeDeletedTree.Get(dino.Inode.Inode)
+	if dinoItem != nil {
 		t.Errorf("found inode: %v", ino)
 		t.FailNow()
 	}

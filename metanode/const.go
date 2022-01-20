@@ -200,6 +200,7 @@ const (
 	cfgZoneName          = "zoneName"
 	cfgTickIntervalMs    = "tickIntervalMs"
 	cfgRocksDirs         = "rocksDirs"
+	cfgProfPort          = "prof"
 
 	metaNodeDeleteBatchCountKey = "batchCount"
 	trashEnableKey              = "trashEnable"

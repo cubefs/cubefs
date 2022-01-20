@@ -17,10 +17,10 @@ package metanode
 import (
 	"context"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/chubaofs/chubaofs/util/log"
 	"strings"
 
-	"github.com/chubaofs/chubaofs/util/btree"
-	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/tracing"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -47,22 +47,28 @@ func NewDentryResponse() *DentryResponse {
 }
 
 // Insert a dentry into the dentry tree.
-func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
-	forceUpdate bool) (status uint8) {
+func (mp *metaPartition) fsmCreateDentry(dentry *Dentry, forceUpdate bool) (status uint8, err error) {
+	var (
+		parIno *Inode
+		d	  *Dentry
+	)
 	status = proto.OpOk
 
-	if err := mp.isInoOutOfRange(dentry.ParentId); err != nil {
-		return proto.OpInodeOutOfRange
+	if err = mp.isInoOutOfRange(dentry.ParentId); err != nil {
+		status = proto.OpInodeOutOfRange
+		return
 	}
 
-	item := mp.inodeTree.CopyGet(NewInode(dentry.ParentId, 0))
-	var parIno *Inode
+	parIno, err = mp.inodeTree.Get(dentry.ParentId)
+	if err != nil {
+		status = proto.OpErr
+		return
+	}
 	if !forceUpdate {
-		if item == nil {
+		if parIno == nil {
 			status = proto.OpNotExistErr
 			return
 		}
-		parIno = item.(*Inode)
 		if parIno.ShouldDelete() {
 			status = proto.OpNotExistErr
 			return
@@ -72,10 +78,9 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 			return
 		}
 	}
-	if item, ok := mp.dentryTree.ReplaceOrInsert(dentry, false); !ok {
+	if d, err = mp.dentryTree.Get(dentry.ParentId, dentry.Name); err == nil && d != nil {
 		//do not allow directories and files to overwrite each
 		// other when renaming
-		d := item.(*Dentry)
 		if proto.OsModeType(dentry.Type) != proto.OsModeType(d.Type) {
 			status = proto.OpArgMismatchErr
 			return
@@ -86,120 +91,168 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 		}
 
 		status = proto.OpExistErr
-	} else {
-		if !forceUpdate {
-			parIno.IncNLink()
-		}
+		return
 	}
 
+	if err = mp.dentryTree.Create(dentry, false); err != nil {
+		status = proto.OpErr
+		return
+	}
+
+	if !forceUpdate {
+		parIno.IncNLink()
+		if err = mp.inodeTree.Update(parIno); err != nil {
+			log.LogErrorf("action[fsmCreateDentry] update parent inode err:%v", err)
+			status = proto.OpErr
+		}
+	}
 	return
 }
 
 // Query a dentry from the dentry tree with specified dentry info.
-func (mp *metaPartition) getDentry(dentry *Dentry) (*Dentry, uint8) {
+func (mp *metaPartition) getDentry(dentry *Dentry) (*Dentry, uint8, error) {
 	status := proto.OpOk
-
 	if err := mp.isInoOutOfRange(dentry.ParentId); err != nil {
-		return nil, proto.OpInodeOutOfRange
+		status = proto.OpInodeOutOfRange
+		return nil, status, nil
 	}
 
-	item := mp.dentryTree.Get(dentry)
-	if item == nil {
-		status = proto.OpNotExistErr
-		return nil, status
+	d, err := mp.dentryTree.RefGet(dentry.ParentId, dentry.Name)
+	if err != nil {
+		if err == rocksdbError {
+			exporter.WarningRocksdbError(fmt.Sprintf("action[getDentry] clusterID[%s] volumeName[%s] partitionID[%v]" +
+				" get dentry failed witch rocksdb error[dentry:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
+				mp.config.PartitionId, dentry))
+		}
+		status = proto.OpErr
+		return nil, status, err
 	}
-	dentry = item.(*Dentry)
-	return dentry, status
+	if d == nil {
+		status = proto.OpNotExistErr
+		return nil, status, nil
+	}
+	return d, status, nil
 }
 
-// Delete dentry from the dentry tree.
+//todo: lizhenzhen check logical
 func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, timestamp int64, from string, checkInode bool, trashEnable bool) (
-	resp *DentryResponse) {
+	resp *DentryResponse, err error) {
+	var (
+		d   *Dentry
+	)
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
 
-	if err := mp.isInoOutOfRange(dentry.ParentId); err != nil {
+	if err = mp.isInoOutOfRange(dentry.ParentId); err != nil {
 		resp.Status = proto.OpInodeOutOfRange
 		return
 	}
 
-	var item interface{}
-	if checkInode {
-		item = mp.dentryTree.Execute(func(tree *btree.BTree) interface{} {
-			d := tree.CopyGet(dentry)
-			if d == nil {
-				return nil
-			}
-			if d.(*Dentry).Inode != dentry.Inode {
-				return nil
-			}
-			return mp.dentryTree.DeleteUnsafe(dentry)
-		})
-	} else {
-		item = mp.dentryTree.Delete(dentry)
+	d , err = mp.dentryTree.Get(dentry.ParentId, dentry.Name)
+	if err != nil {
+		resp.Status = proto.OpErr
+		return
 	}
-
-	if item == nil {
+	if d == nil {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
-	mp.inodeTree.CopyFind(NewInode(dentry.ParentId, 0),
-		func(item BtreeItem) {
-			if item != nil {
-				ino := item.(*Inode)
-				if !ino.ShouldDelete() {
-					item.(*Inode).DecNLink()
-				}
+
+	if checkInode && d.Inode != dentry.Inode{
+		resp.Status = proto.OpNotExistErr
+		return
+	}
+
+	if _, err = mp.dentryTree.Delete(d.ParentId, d.Name); err != nil {
+		if err == notExistsError{
+			resp.Status = proto.OpNotExistErr
+		} else {
+			resp.Status = proto.OpErr
+		}
+		return
+	}
+
+	var parIno *Inode
+	parIno, err = mp.inodeTree.Get(dentry.ParentId)
+	if err != nil {
+		log.LogErrorf("action[fsmDeleteDentry] get parent inode(%v) failed:%v", dentry.ParentId, err)
+	}
+	if parIno != nil {
+		if !parIno.ShouldDelete() {
+			parIno.DecNLink()
+			if err = mp.inodeTree.Update(parIno); err != nil {
+				log.LogErrorf("action[fsmDeleteDentry] update parent inode(%v) info failed:%v", dentry.ParentId, err)
+				resp.Status = proto.OpErr
+				return
 			}
-		})
+		}
+	}
 
 	if trashEnable {
-		resp.Status = mp.mvToDeletedDentryTree(item.(*Dentry), timestamp, from)
+		resp.Status, err = mp.mvToDeletedDentryTree(d, timestamp, from)
+		if err != nil {
+			log.LogErrorf("action[fsmDeleteDentry] move dentry(%v) to deleted dentry tree failed(%v)", d, err)
+		}
 	}
-	resp.Msg = item.(*Dentry)
+	resp.Msg = d
 	return
 }
 
 // batch Delete dentry from the dentry tree.
-func (mp *metaPartition) fsmBatchDeleteDentry(db DentryBatch, timestamp int64, from string, trashEnable bool) []*DentryResponse {
-	result := make([]*DentryResponse, 0, len(db))
-	for _, dentry := range db {
-		result = append(result, mp.fsmDeleteDentry(dentry, timestamp, from, true, trashEnable))
-	}
-	return result
-}
-
-func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry, timestamp int64, from string, trashEnable bool) (
-	resp *DentryResponse) {
-	resp = NewDentryResponse()
-	resp.Status = proto.OpOk
-
-	if err := mp.isInoOutOfRange(dentry.ParentId); err != nil {
-		resp.Status = proto.OpInodeOutOfRange
-		return
-	}
-
-	mp.dentryTree.CopyFind(dentry, func(item BtreeItem) {
-		if item == nil {
-			resp.Status = proto.OpNotExistErr
-			return
+func (mp *metaPartition) fsmBatchDeleteDentry(db DentryBatch, timestamp int64, from string, trashEnable bool) (
+	result []*DentryResponse, err error) {
+	result = make([]*DentryResponse, 0, len(db))
+	wrongIndex := len(db)
+	defer func() {
+		for index := wrongIndex; index < len(db); index++ {
+			result = append(result, &DentryResponse{Status: proto.OpErr, Msg: db[index]})
 		}
-		d := item.(*Dentry)
-		if d.Inode == dentry.Inode {
-			//already update, this apply will do nothing
-			dentry.Inode = 0
-		} else {
-			//first update
-			d.Inode, dentry.Inode = dentry.Inode, d.Inode
+	}()
+	for index, dentry := range db {
+		var r *DentryResponse
+		r, err = mp.fsmDeleteDentry(dentry, timestamp, from, true, trashEnable)
+		if err == rocksdbError {
+			wrongIndex = index
+			break
 		}
-
-		resp.Msg = dentry
-	})
+		result = append(result, r)
+	}
 	return
 }
 
-func (mp *metaPartition) getDentryTree() *BTree {
-	return mp.dentryTree.GetTree()
+func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry, timestamp int64, from string, trashEnable bool) (
+	resp *DentryResponse, err error) {
+	resp = NewDentryResponse()
+	resp.Status = proto.OpOk
+
+	if err = mp.isInoOutOfRange(dentry.ParentId); err != nil {
+		resp.Status = proto.OpInodeOutOfRange
+		return
+	}
+	var d *Dentry
+	d , err = mp.dentryTree.Get(dentry.ParentId, dentry.Name)
+	if err != nil {
+		resp.Status = proto.OpErr
+		return
+	}
+	if d == nil {
+		resp.Status = proto.OpNotExistErr
+		return
+	}
+
+	if d.Inode == dentry.Inode {
+		//already update, this apply will do nothing
+		dentry.Inode = 0
+	} else {
+		d.Inode, dentry.Inode = dentry.Inode, d.Inode
+	}
+
+	if err = mp.dentryTree.Put(d); err != nil {
+		resp.Status = proto.OpErr
+		return
+	}
+	resp.Msg = dentry
+	return
 }
 
 func (mp *metaPartition) readDir(ctx context.Context, req *ReadDirReq) (resp *ReadDirResp) {
@@ -218,24 +271,29 @@ func (mp *metaPartition) readDir(ctx context.Context, req *ReadDirReq) (resp *Re
 
 	count := uint64(0)
 	readDirLimit := ReadDirLimitNum()
-	mp.dentryTree.AscendRange(begDentry, endDentry, func(i BtreeItem) bool {
+	mp.dentryTree.Range(begDentry, endDentry, func(v []byte) (bool, error) {
+		d := &Dentry{}
+		if err := d.Unmarshal(v); err != nil {
+			log.LogErrorf("dentry unmarshal has err:[%s]", err.Error())
+			//todo:range error?
+			return true, nil
+		}
 		count += 1
-		d := i.(*Dentry)
 		if req.IsBatch && count > readDirMax {
 			resp.NextMarker = d.Name
-			return false
+			return false, nil
 		}
 		if readDirLimit > 0 && count > readDirLimit {
 			log.LogWarnf("readDir: parent(%v) exceeded maximum limit(%v) count(%v)", req.ParentID, readDirLimit, count)
-			return false
+			return false, nil
 		}
 		resp.Children = append(resp.Children, proto.Dentry{
 			Inode: d.Inode,
 			Type:  d.Type,
 			Name:  d.Name,
 		})
-		return true
+		return true, nil
 	})
-	tracer.SetTag("count", count).SetTag("total", mp.dentryTree.Len()).SetTag("parentID", req.PartitionID)
+	tracer.SetTag("count", count).SetTag("total", mp.dentryTree.Count()).SetTag("parentID", req.PartitionID)
 	return
 }

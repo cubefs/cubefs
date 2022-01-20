@@ -19,7 +19,8 @@ func TestOpenDb(t *testing.T) {
 	db := NewRocksDb()
 	os.RemoveAll("./db")
 	if err := db.OpenDb("./db"); err != nil {
-		t.Errorf("open db without exist dir failed")
+		t.Errorf("open db without exist dir failed, err:%v", err)
+		return
 	}
 
 	db.CloseDb()
@@ -50,7 +51,7 @@ func TestReopneDb(t *testing.T) {
 	db := NewRocksDb()
 	os.RemoveAll("./db")
 	if err := db.OpenDb("./db"); err != nil {
-		t.Errorf("open db without exist dir failed")
+		t.Errorf("open db without exist dir failed, err:%v", err)
 	}
 
 	db.CloseDb()

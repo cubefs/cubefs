@@ -17,6 +17,7 @@ package metanode
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/util"
@@ -137,6 +138,13 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 		resp.Msg = err.Error()
 		return
 	}
+	snap := NewSnapshot(mp.(*metaPartition))
+	if snap == nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = fmt.Sprintf("Can not get mp[%d] snap shot", mp.GetBaseConfig().PartitionId)
+		return
+	}
+	defer snap.Close()
 	msg := make(map[string]interface{})
 	leader, _ := mp.IsLeader()
 	msg["leaderAddr"] = leader
@@ -145,10 +153,10 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 	msg["learners"] = conf.Learners
 	msg["nodeId"] = conf.NodeId
 	msg["cursor"] = conf.Cursor
-	msg["inode_count"] = mp.GetInodeTree().Len()
-	msg["dentry_count"] = mp.GetDentryTree().Len()
-	msg["multipart_count"] = mp.(*metaPartition).multipartTree.Len()
-	msg["extend_count"] = mp.(*metaPartition).extendTree.Len()
+	msg["inode_count"] = snap.Count(InodeType)
+	msg["dentry_count"] = snap.Count(DentryType)
+	msg["multipart_count"] = snap.Count(MultipartType)
+	msg["extend_count"] = snap.Count(ExtendType)
 	msg["free_list_count"] = mp.(*metaPartition).freeList.Len()
 	msg["trash_days"] = mp.(*metaPartition).config.TrashRemainingDays
 	msg["cursor"] = mp.GetCursor()
@@ -246,15 +254,9 @@ func (m *MetaNode) getAllDeleteEkHandler(w http.ResponseWriter, r *http.Request)
 	return
 }
 
+//todo:lizhenzhen, add count to response?
 func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 	resp := NewAPIResponse(http.StatusSeeOther, "")
-
-	if err := r.ParseForm(); err != nil {
-		resp.Code = http.StatusBadRequest
-		resp.Msg = err.Error()
-		return
-	}
-
 	shouldSkip := false
 	defer func() {
 		if !shouldSkip {
@@ -264,6 +266,13 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}()
+
+	if err := r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
 	if err != nil {
 		resp.Code = http.StatusBadRequest
@@ -276,6 +285,14 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 		resp.Msg = err.Error()
 		return
 	}
+
+	snap := NewSnapshot(mp.(*metaPartition))
+	if snap == nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = fmt.Sprintf("Can not get mp[%d] snap shot", mp.GetBaseConfig().PartitionId)
+		return
+	}
+	defer snap.Close()
 
 	buff := bytes.NewBufferString(`{"code": 200, "msg": "OK", "data":[`)
 	if _, err = w.Write(buff.Bytes()); err != nil {
@@ -307,35 +324,41 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 		endTime = math.MaxInt64
 	}
 
-	mp.GetInodeTree().Ascend(func(i BtreeItem) bool {
-		inode := i.(*Inode)
-		if inodeType != 0 && inode.Type != inodeType {
-			return true
+	//todo:lizhenzhen if range error, how to do
+	err = snap.Range(InodeType, func(inodeBinary []byte) (bool, error) {
+		inode := NewInode(0, 0)
+		if err = inode.Unmarshal(context.Background() ,inodeBinary); err != nil {
+			log.LogErrorf("unmarshal inode has err:[%s]", err.Error())
+			return false, err
+		}
+		if inodeType != 0 &&  inode.Type != inodeType {
+			return true, nil
 		}
 
 		if inode.ModifyTime < stTime || inode.ModifyTime > endTime {
-			return true
+			return true, nil
 		}
 
 		if !isFirst {
 			if _, err = w.Write(delimiter); err != nil {
-				return false
+				return false, err
 			}
 		} else {
 			isFirst = false
 		}
 
-		val, err = json.Marshal(i)
+		val, err = json.Marshal(inode)
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
-			return false
+			return false, err
 		}
 		if _, err = w.Write(val); err != nil {
-			return false
+			return false, err
 		}
-		return true
+		return true, nil
 	})
+	if err != nil {
+		w.Write([]byte(err.Error()))
+	}
 	shouldSkip = true
 	buff.WriteString(`]}`)
 	if _, err = w.Write(buff.Bytes()); err != nil {
@@ -554,6 +577,7 @@ func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
+//todo:add dentry count to response
 func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusSeeOther, "")
@@ -579,8 +603,16 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	snap := NewSnapshot(mp.(*metaPartition))
+	if snap == nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = fmt.Sprintf("Can not get mp[%d] snap shot", mp.GetBaseConfig().PartitionId)
+		return
+	}
+	defer snap.Close()
+
 	buff := bytes.NewBufferString(`{"code": 200, "msg": "OK", "data":[`)
-	if _, err := w.Write(buff.Bytes()); err != nil {
+	if _, err = w.Write(buff.Bytes()); err != nil {
 		return
 	}
 	buff.Reset()
@@ -589,25 +621,31 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 		delimiter = []byte{',', '\n'}
 		isFirst   = true
 	)
-	mp.GetDentryTree().Ascend(func(i BtreeItem) bool {
+	err = snap.Range(DentryType, func(dentryBinary []byte) (bool, error) {
+		dentry := &Dentry{}
+		if err = dentry.Unmarshal(dentryBinary); err != nil {
+			return false, err
+		}
 		if !isFirst {
 			if _, err = w.Write(delimiter); err != nil {
-				return false
+				return false, err
 			}
 		} else {
 			isFirst = false
 		}
-		val, err = json.Marshal(i)
+		val, err = json.Marshal(dentry)
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
-			return false
+			return false, err
 		}
 		if _, err = w.Write(val); err != nil {
-			return false
+			return false, err
 		}
-		return true
+		return true, nil
 	})
+	if err != nil {
+		w.Write([]byte(err.Error()))
+		return
+	}
 	shouldSkip = true
 	buff.WriteString(`]}`)
 	if _, err = w.Write(buff.Bytes()); err != nil {
@@ -751,22 +789,39 @@ func (m *MetaNode) getAllInodeId(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	inosRsp := &proto.MpAllInodesId{Count: 0, Inodes: make([]uint64, 0)}
-	mp.GetInodeTree().Ascend(func(i BtreeItem) bool {
-		inode := i.(*Inode)
+	snap := NewSnapshot(mp.(*metaPartition))
+	if snap == nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = fmt.Sprintf("Can not get mp[%d] snap shot", mp.GetBaseConfig().PartitionId)
+		return
+	}
+	defer snap.Close()
 
+	inosRsp := &proto.MpAllInodesId{Count: 0, Inodes: make([]uint64, 0)}
+	err = snap.Range(InodeType, func(inodeBinary []byte) (bool, error) {
+		inode := NewInode(0, 0)
+		if err = inode.Unmarshal(context.Background() ,inodeBinary); err != nil {
+			log.LogErrorf("unmarshal inode has err:[%s]", err.Error())
+			return false, err
+		}
 		if inodeType != 0 && inode.Type != inodeType {
-			return true
+			return true, nil
 		}
 
 		if inode.ModifyTime < stTime || inode.ModifyTime > endTime {
-			return true
+			return true, nil
 		}
 
 		inosRsp.Count++
 		inosRsp.Inodes = append(inosRsp.Inodes, inode.Inode)
-		return true
+		return true, nil
 	})
+
+	if err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
 
 	resp.Code = http.StatusOK
 	resp.Msg = "OK"

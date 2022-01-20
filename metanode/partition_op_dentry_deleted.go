@@ -19,6 +19,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 	"math"
 	"time"
@@ -144,8 +146,16 @@ func (mp *metaPartition) CleanDeletedDentry(req *CleanDeletedDentryReq, p *Packe
 func (mp *metaPartition) LookupDeleted(req *LookupDeletedDentryReq, p *Packet) (err error) {
 	start := newPrimaryDeletedDentry(req.ParentID, req.Name, req.StartTime, 0)
 	end := newPrimaryDeletedDentry(req.ParentID, req.Name, req.EndTime, 0)
-	ddentry, status := mp.getDeletedDentry(start, end)
-	var reply []byte
+	var (
+		ddentry []*DeletedDentry
+		status  uint8
+		reply   []byte
+	)
+	ddentry, status, err = mp.getDeletedDentry(start, end)
+	if err != nil {
+		p.PacketErrorWithBody(status, []byte(err.Error()))
+		return
+	}
 	if status != proto.OpOk {
 		p.PacketErrorWithBody(status, reply)
 		return
@@ -173,24 +183,43 @@ func (mp *metaPartition) LookupDeleted(req *LookupDeletedDentryReq, p *Packet) (
 	return
 }
 
-func (mp *metaPartition) getDeletedDentry(start, end *DeletedDentry) (res []*DeletedDentry, status uint8) {
+func (mp *metaPartition) getDeletedDentry(start, end *DeletedDentry) (res []*DeletedDentry, status uint8, err error) {
 	status = proto.OpOk
 	res = make([]*DeletedDentry, 0)
 	defer func() {
 		log.LogDebugf("[getDeletedDentry], start: %v, end: %v, count: %v, status: %v",
 			start, end, len(res), status)
+		if err == rocksdbError {
+			exporter.WarningRocksdbError(fmt.Sprintf("action[getDeletedDentry] clusterID[%s] volumeName[%s] partitionID[%v]" +
+				" get deleted dentry failed witch rocksdb error[deleted dentry start:%v, end:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
+				mp.config.PartitionId, start, end))
+		}
 	}()
 
+	var dd *DeletedDentry
 	if start.Timestamp == end.Timestamp && start.Timestamp > 0 {
-		item := mp.dentryDeletedTree.Get(start)
-		if item != nil {
-			res = append(res, item.(*DeletedDentry))
+		if dd, err = mp.dentryDeletedTree.RefGet(start.ParentId, start.Name, start.Timestamp); err != nil {
+			log.LogErrorf("[getDeletedDentry] failed to get delDentry, delDentry:%v, err:%v", start, err)
+			status = proto.OpErr
+			return
+		}
+		if dd != nil {
+			res = append(res, dd)
 		}
 	} else {
-		mp.dentryDeletedTree.AscendRange(start, end, func(i BtreeItem) bool {
-			res = append(res, i.(*DeletedDentry))
-			return true
+		err = mp.dentryDeletedTree.Range(start, end, func(data []byte) (bool, error) {
+			dd = new(DeletedDentry)
+			if err = dd.UnmarshalValue(data); err != nil {
+				return false, nil
+			}
+			res = append(res, dd)
+			return true, nil
 		})
+		if err != nil {
+			log.LogErrorf("[getDeletedDentry] failed to range delDentry tree, err:%v", err)
+			status = proto.OpErr
+			return
+		}
 	}
 	if len(res) == 0 {
 		status = proto.OpNotExistErr
@@ -199,7 +228,13 @@ func (mp *metaPartition) getDeletedDentry(start, end *DeletedDentry) (res []*Del
 }
 
 func (mp *metaPartition) ReadDeletedDir(req *ReadDeletedDirReq, p *Packet) (err error) {
-	resp := mp.readDeletedDir(req)
+	var resp *ReadDeletedDirResp
+	resp, err = mp.readDeletedDir(req)
+	if err != nil {
+		log.LogErrorf("[ReadDeletedDir], failed to read deleted directory, err:%v", err)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
 	var reply []byte
 	reply, err = json.Marshal(resp)
 	if err != nil {
@@ -210,7 +245,7 @@ func (mp *metaPartition) ReadDeletedDir(req *ReadDeletedDirReq, p *Packet) (err 
 	return
 }
 
-func (mp *metaPartition) readDeletedDir(req *ReadDeletedDirReq) (resp *ReadDeletedDirResp) {
+func (mp *metaPartition) readDeletedDir(req *ReadDeletedDirReq) (resp *ReadDeletedDirResp, err error) {
 	resp = new(ReadDeletedDirResp)
 	startDentry := newPrimaryDeletedDentry(req.ParentID, req.Name, req.Timestamp, 0)
 	endDentry := newPrimaryDeletedDentry(req.ParentID+1, "", 0, 0)
@@ -219,20 +254,28 @@ func (mp *metaPartition) readDeletedDir(req *ReadDeletedDirReq) (resp *ReadDelet
 		batchNum = proto.ReadDeletedDirBatchNum - 1
 	}
 	count := 0
-	mp.dentryDeletedTree.AscendRange(startDentry, endDentry, func(i BtreeItem) bool {
+	err = mp.dentryDeletedTree.Range(startDentry, endDentry, func(data []byte) (bool, error) {
 		count++
 		// discard the first record
 		if req.Timestamp > 0 && count == 1 {
-			return true
+			return true, nil
 		}
-		d := i.(*DeletedDentry)
-		resp.Children = append(resp.Children, buildProtoDeletedDentry(d))
+		dd := new(DeletedDentry)
+		if err = dd.Unmarshal(data); err != nil {
+			return false, err
+		}
+		resp.Children = append(resp.Children, buildProtoDeletedDentry(dd))
 
 		if count > batchNum {
-			return false
+			return false, nil
 		}
-		return true
+		return true, nil
 	})
+	if err != nil {
+		log.LogErrorf("[readDeletedDir], failed to range deletedDentry tree, error:%v", err)
+		err = errors.NewErrorf("failed to range delDentry tree:%v", err)
+		return
+	}
 	return
 }
 
@@ -268,24 +311,31 @@ func (mp *metaPartition) CleanExpiredDeletedDentry() (err error) {
 	defer log.LogInfof("[CleanExpiredDeletedDentry], vol: %v, cleaned %v until %v", mp.config.VolName, total, expires)
 	batch := 128
 	dens := make(DeletedDentryBatch, 0, batch)
-	tree := mp.dentryDeletedTree.GetTree()
-	tree.Ascend(func(i BtreeItem) bool {
+	_ = mp.dentryDeletedTree.Range(nil, nil, func(data []byte) (bool, error) {
 		_, ok := mp.IsLeader()
 		if !ok {
-			return false
+			return false, nil
 		}
-		if i.(*DeletedDentry).Timestamp >= expires {
-			return true
+		dd := new(DeletedDentry)
+		if err = dd.UnmarshalValue(data); err != nil {
+			exporter.WarningRocksdbError(fmt.Sprintf("action[CleanExpiredDeletedDentry] clusterID[%s] volumeName[%s] partitionID[%v]" +
+				"unmarshal failed:%v", mp.manager.metaNode.clusterId, mp.config.VolName,
+				mp.config.PartitionId, err))
+			log.LogErrorf("[CleanExpiredDeletedDentry] failed to unmarshal value, err:%v", err)
+			return true, err
 		}
-		dens = append(dens, i.(*DeletedDentry))
+		if dd.Timestamp >= expires {
+			return true, nil
+		}
+		dens = append(dens, dd)
 		if len(dens) < batch {
-			return true
+			return true, nil
 		}
 
 		err = fsmFunc(dens)
 		if err != nil {
 			log.LogErrorf("[CleanExpiredDeletedDentry], vol: %v, err: %v", mp.config.VolName, err.Error())
-			return false
+			return false, err
 		}
 		total += batch
 		dens = make(DeletedDentryBatch, 0, batch)
@@ -295,7 +345,7 @@ func (mp *metaPartition) CleanExpiredDeletedDentry() (err error) {
 			expires = math.MaxInt64
 		}
 		time.Sleep(1 * time.Second)
-		return true
+		return true, nil
 	})
 
 	_, ok := mp.IsLeader()

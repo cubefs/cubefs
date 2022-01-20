@@ -568,9 +568,14 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		RootDir:            path.Join(m.rootDir, partitionPrefix+partitionId),
 		ConnPool:           m.connPool,
 		TrashRemainingDays: int32(request.TrashDays),
+		StoreMode: 	 request.StoreMode,
 	}
 	mpc.AfterStop = func() {
 		m.detachPartition(request.PartitionID)
+	}
+
+	if mpc.StoreMode < proto.StoreModeMem || mpc.StoreMode > proto.StoreModeRocksDb {
+		mpc.StoreMode = proto.StoreModeMem
 	}
 
 	if oldMp, ok := m.partitions[request.PartitionID]; ok {

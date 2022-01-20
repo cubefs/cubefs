@@ -67,3 +67,16 @@ func (c *Alarm) publish() {
 	default:
 	}
 }
+
+func WarningRocksdbError(detail string) (a *Alarm) {
+	key := fmt.Sprintf("%v_metanode_rocksdb_error_warning", clustername)
+	ump.Alarm(key, detail)
+	log.LogCritical(key, detail)
+	if !enabledPrometheus {
+		return
+	}
+	a = AlarmPool.Get().(*Alarm)
+	a.name = metricsName(key)
+	a.Add(1)
+	return
+}

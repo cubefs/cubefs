@@ -26,14 +26,9 @@ import (
 )
 
 type storeMsg struct {
-	command           uint32
-	applyIndex        uint64
-	inodeTree         *BTree
-	inodeDeletedTree  *BTree
-	dentryTree        *BTree
-	dentryDeletedTree *BTree
-	extendTree        *BTree
-	multipartTree     *BTree
+	command    uint32
+	applyIndex uint64
+	snap       Snapshot
 }
 
 func (mp *metaPartition) startSchedule(curIndex uint64) {
@@ -58,6 +53,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				log.LogWarnf("[startSchedule] raftPartition is nil so skip" +
 					" truncate raft log")
 			}
+			msg.snap.Close()
 
 		} else {
 			// retry again
@@ -94,11 +90,17 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				)
 				for _, msg := range msgs {
 					if curIndex >= msg.applyIndex {
+						msg.snap.Close()
 						continue
 					}
 					if maxIdx < msg.applyIndex {
+						if maxMsg != nil && maxMsg.snap != nil {
+							maxMsg.snap.Close()
+						}
 						maxIdx = msg.applyIndex
 						maxMsg = msg
+					} else {
+						msg.snap.Close()
 					}
 				}
 				if maxMsg != nil {

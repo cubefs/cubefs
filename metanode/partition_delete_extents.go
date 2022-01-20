@@ -53,17 +53,15 @@ const (
 var extentsFileHeader = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08}
 var writeDeleteExtentsLock = &sync.Mutex{}
 
-var addBatchKey []byte
-var delBatchKey []byte
 
 func (mp *metaPartition) initResouce() {
-	addBatchKey = make([]byte, dbExtentKeySize * maxItemsPerBatch)
-	delBatchKey = make([]byte, dbExtentKeySize * maxItemsPerBatch)
+	mp.addBatchKey = make([]byte, dbExtentKeySize * maxItemsPerBatch)
+	mp.delBatchKey = make([]byte, dbExtentKeySize * maxItemsPerBatch)
 }
 
 func (mp *metaPartition) startToDeleteExtents() {
-	addBatchKey = make([]byte, dbExtentKeySize * maxItemsPerBatch)
-	delBatchKey = make([]byte, dbExtentKeySize * maxItemsPerBatch)
+	mp.addBatchKey = make([]byte, dbExtentKeySize * maxItemsPerBatch)
+	mp.delBatchKey = make([]byte, dbExtentKeySize * maxItemsPerBatch)
 
 	go mp.appendDelExtentsToDb()
 	go mp.deleteExtentsFromDb()
@@ -144,9 +142,9 @@ func (mp *metaPartition) addDelExtentToDb(key []byte, eks []proto.ExtentKey) (er
 			}
 		}
 		keyOffset := (cnt % maxItemsPerBatch) * dbExtentKeySize
-		copy(addBatchKey[keyOffset : keyOffset + 8], key[0:8])
-		copy(addBatchKey[keyOffset + 8 : keyOffset + dbExtentKeySize], ekInfo)
-		if err = mp.db.AddItemToBatch(handle, addBatchKey[keyOffset : keyOffset + dbExtentKeySize], data); err != nil{
+		copy(mp.addBatchKey[keyOffset : keyOffset + 8], key[0:8])
+		copy(mp.addBatchKey[keyOffset + 8 : keyOffset + dbExtentKeySize], ekInfo)
+		if err = mp.db.AddItemToBatch(handle, mp.addBatchKey[keyOffset : keyOffset + dbExtentKeySize], data); err != nil{
 			goto errOut
 		}
 
@@ -333,8 +331,8 @@ func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (err error) {
 		}
 
 		keyOffset := (cnt % maxItemsPerBatch) * dbExtentKeySize
-		copy(delBatchKey[keyOffset : keyOffset + dbExtentKeySize], k)
-		if err = mp.db.DelItemToBatch(delHandle, delBatchKey[keyOffset : keyOffset + dbExtentKeySize]); err != nil{
+		copy(mp.delBatchKey[keyOffset : keyOffset + dbExtentKeySize], k)
+		if err = mp.db.DelItemToBatch(delHandle, mp.delBatchKey[keyOffset : keyOffset + dbExtentKeySize]); err != nil{
 			return false, err
 		}
 		cnt++
@@ -394,9 +392,9 @@ func (mp *metaPartition)followerCleanDeletedExtents(delCommitDate uint64)  (err 
 		}
 
 		keyOffset := (cnt % maxItemsPerBatch) * dbExtentKeySize
-		copy(delBatchKey[keyOffset : keyOffset + dbExtentKeySize], k)
+		copy(mp.delBatchKey[keyOffset : keyOffset + dbExtentKeySize], k)
 		//log.LogInfof("MP[%v] clean del extent: %v, cnt:%v", mp.config.PartitionId, k, cnt)
-		if err = mp.db.DelItemToBatch(delHandle, delBatchKey[keyOffset : keyOffset + dbExtentKeySize]); err != nil{
+		if err = mp.db.DelItemToBatch(delHandle, mp.delBatchKey[keyOffset : keyOffset + dbExtentKeySize]); err != nil{
 			return false, err
 		}
 

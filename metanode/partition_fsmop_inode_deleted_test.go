@@ -18,7 +18,7 @@ func init() {
 	}
 }
 
-func mockInodeTree() *BTree {
+func mockInodeTree() InodeTree {
 	tree := NewBtree()
 	var id uint64
 	for id = 10; id < 15; id++ {
@@ -29,10 +29,10 @@ func mockInodeTree() *BTree {
 		ino := NewInode(id, 1)
 		tree.ReplaceOrInsert(ino, false)
 	}
-	return tree
+	return &InodeBTree{tree}
 }
 
-func mockDeletedInodeTree() *BTree {
+func mockDeletedInodeTree() DeletedInodeTree {
 	tree := NewBtree()
 	var id uint64
 	for id = 10; id < 15; id++ {
@@ -45,7 +45,7 @@ func mockDeletedInodeTree() *BTree {
 		dino := NewDeletedInode(ino, ts)
 		tree.ReplaceOrInsert(dino, false)
 	}
-	return tree
+	return &DeletedInodeBTree{tree}
 }
 
 func TestMetaPartition_mvToDeletedInodeTree(t *testing.T) {
@@ -54,26 +54,26 @@ func TestMetaPartition_mvToDeletedInodeTree(t *testing.T) {
 	mp.config.Start = 1
 	mp.config.Cursor = 100000
 	mp.inodeTree = mockInodeTree()
-	mp.inodeDeletedTree = NewBtree()
+	mp.inodeDeletedTree = &DeletedInodeBTree{NewBtree()}
 
 	ino := NewInode(10, proto.Mode(os.ModeDir))
-	status := mp.mvToDeletedInodeTree(ino, ts)
+	status, _ := mp.mvToDeletedInodeTree(ino, ts)
 	if status != proto.OpOk {
 		t.Error(status)
 		t.FailNow()
 	}
-	_, _, status = mp.getDeletedInode(ino.Inode)
+	_, _, status, _ = mp.getDeletedInode(ino.Inode)
 	if status != proto.OpOk {
 		t.Error(status)
 		t.FailNow()
 	}
-	res := mp.getInode(ino)
+	res, _ := mp.getInode(ino)
 	if res.Status != proto.OpNotExistErr {
 		t.Error(status)
 		t.FailNow()
 	}
 
-	status = mp.mvToDeletedInodeTree(ino, ts)
+	status, _ = mp.mvToDeletedInodeTree(ino, ts)
 	if status != proto.OpExistErr {
 		t.Error(status)
 		t.FailNow()
@@ -87,8 +87,8 @@ case2: the original inode is not exist, which is dir
 func TestMetaPartition_fsmRecoverDeletedInode(t *testing.T) {
 	mp := new(metaPartition)
 	mp.inodeTree = mockInodeTree()
-	mp.inodeDeletedTree = NewBtree()
-	mp.dentryDeletedTree = NewBtree()
+	mp.inodeDeletedTree = &DeletedInodeBTree{NewBtree()}
+	mp.dentryDeletedTree = &DeletedDentryBTree{NewBtree()}
 	mp.freeList = newFreeList()
 	mp.config = new(MetaPartitionConfig)
 	mp.config.PartitionId = 1
@@ -98,7 +98,7 @@ func TestMetaPartition_fsmRecoverDeletedInode(t *testing.T) {
 	ino1.SetDeleteMark()
 	ino1.DecNLink()
 	t.Logf("ino1:%v", ino1)
-	status := mp.mvToDeletedInodeTree(ino1, ts)
+	status, _ := mp.mvToDeletedInodeTree(ino1, ts)
 	if status != proto.OpOk {
 		t.Error(status)
 		t.FailNow()
@@ -106,7 +106,7 @@ func TestMetaPartition_fsmRecoverDeletedInode(t *testing.T) {
 	ino2 := NewInode(20, 1)
 	ino2.SetDeleteMark()
 	ino2.DecNLink()
-	status = mp.mvToDeletedInodeTree(ino2, ts)
+	status, _ = mp.mvToDeletedInodeTree(ino2, ts)
 	if status != proto.OpOk {
 		t.Error(status)
 		t.FailNow()
@@ -115,12 +115,12 @@ func TestMetaPartition_fsmRecoverDeletedInode(t *testing.T) {
 	// recover a dir
 	var req FSMDeletedINode
 	req.inode = 10
-	resp := mp.fsmRecoverDeletedInode(&req)
+	resp, _ := mp.fsmRecoverDeletedInode(&req)
 	if resp.Status != proto.OpOk {
 		t.Error(resp.Status)
 		t.FailNow()
 	}
-	res := mp.getInode(ino1)
+	res, _ := mp.getInode(ino1)
 	if res.Status != proto.OpOk {
 		t.Errorf("status: %v", res.Status)
 		t.FailNow()
@@ -134,12 +134,12 @@ func TestMetaPartition_fsmRecoverDeletedInode(t *testing.T) {
 		t.FailNow()
 	}
 	{
-		resp := mp.fsmRecoverDeletedInode(&req)
+		resp, _ = mp.fsmRecoverDeletedInode(&req)
 		if resp.Status != proto.OpOk {
 			t.Error(resp.Status)
 			t.FailNow()
 		}
-		res := mp.getInode(ino1)
+		res, _ = mp.getInode(ino1)
 		if res.Status != proto.OpOk {
 			t.Error(resp.Status)
 			t.FailNow()
@@ -156,12 +156,12 @@ func TestMetaPartition_fsmRecoverDeletedInode(t *testing.T) {
 
 	// recover a regular file
 	req.inode = 20
-	resp = mp.fsmRecoverDeletedInode(&req)
+	resp, _ = mp.fsmRecoverDeletedInode(&req)
 	if resp.Status != proto.OpOk {
 		t.Error(resp.Status)
 		t.FailNow()
 	}
-	res = mp.getInode(ino2)
+	res, _ = mp.getInode(ino2)
 	if res.Status != proto.OpOk {
 		t.Error(resp.Status)
 		t.FailNow()
@@ -175,12 +175,12 @@ func TestMetaPartition_fsmRecoverDeletedInode(t *testing.T) {
 		t.FailNow()
 	}
 	{
-		resp = mp.fsmRecoverDeletedInode(&req)
+		resp, _ = mp.fsmRecoverDeletedInode(&req)
 		if resp.Status != proto.OpOk {
 			t.Error(resp.Status)
 			t.FailNow()
 		}
-		res = mp.getInode(ino2)
+		res, _ = mp.getInode(ino2)
 		if res.Status != proto.OpOk {
 			t.Error(resp.Status)
 			t.FailNow()
@@ -198,20 +198,20 @@ case: the original inode is exist
 func TestMetaPartition_fsmRecoverDeletedInode2(t *testing.T) {
 	mp := new(metaPartition)
 	mp.inodeTree = mockInodeTree()
-	mp.inodeDeletedTree = NewBtree()
-	mp.dentryDeletedTree = NewBtree()
+	mp.inodeDeletedTree = &DeletedInodeBTree{NewBtree()}
+	mp.dentryDeletedTree = &DeletedDentryBTree{NewBtree()}
 	mp.freeList = newFreeList()
 	mp.config = new(MetaPartitionConfig)
 	mp.config.PartitionId = 1
 	ino1 := NewInode(10, proto.Mode(os.ModeDir))
 	ino1.SetDeleteMark()
-	status := mp.mvToDeletedInodeTree(ino1, ts)
+	status, _ := mp.mvToDeletedInodeTree(ino1, ts)
 	if status != proto.OpOk {
 		t.FailNow()
 	}
 	ino2 := NewInode(20, 1)
 	ino2.SetDeleteMark()
-	status = mp.mvToDeletedInodeTree(ino2, ts)
+	status, _ = mp.mvToDeletedInodeTree(ino2, ts)
 	if status != proto.OpOk {
 		t.Error(status)
 		t.FailNow()
@@ -221,7 +221,7 @@ func TestMetaPartition_fsmRecoverDeletedInode2(t *testing.T) {
 	// recover a dir
 	var req FSMDeletedINode
 	req.inode = 10
-	resp := mp.fsmRecoverDeletedInode(&req)
+	resp, _ := mp.fsmRecoverDeletedInode(&req)
 	if resp.Status != proto.OpOk {
 		t.Error(resp.Status)
 		t.FailNow()
@@ -229,7 +229,7 @@ func TestMetaPartition_fsmRecoverDeletedInode2(t *testing.T) {
 
 	// recover a regular file
 	req.inode = 20
-	resp = mp.fsmRecoverDeletedInode(&req)
+	resp, _ = mp.fsmRecoverDeletedInode(&req)
 	if resp.Status != proto.OpOk {
 		t.Error(resp.Status)
 		t.FailNow()
@@ -263,29 +263,29 @@ func mockTestDeletedInodeTree() *BTree {
 func TestMetaPartition_fsmCleanDeletedInode(t *testing.T) {
 	mp := new(metaPartition)
 	mp.inodeTree = mockInodeTree()
-	mp.inodeDeletedTree = NewBtree()
-	mp.dentryDeletedTree = NewBtree()
+	mp.inodeDeletedTree = &DeletedInodeBTree{NewBtree()}
+	mp.dentryDeletedTree = &DeletedDentryBTree{NewBtree()}
 	mp.freeList = newFreeList()
 	ino1 := NewInode(10, proto.Mode(os.ModeDir))
 	ino1.SetDeleteMark()
-	status := mp.mvToDeletedInodeTree(ino1, ts)
+	status, _ := mp.mvToDeletedInodeTree(ino1, ts)
 	if status != proto.OpOk {
 		t.Error(status)
 		t.FailNow()
 	}
-	status = mp.mvToDeletedInodeTree(ino1, ts)
+	status, _ = mp.mvToDeletedInodeTree(ino1, ts)
 	if status != proto.OpExistErr {
 		t.Error(status)
 		t.FailNow()
 	}
 
 	ino2 := NewInode(20, 1)
-	status = mp.mvToDeletedInodeTree(ino2, ts)
+	status, _ = mp.mvToDeletedInodeTree(ino2, ts)
 	if status != proto.OpOk {
 		t.Error(status)
 		t.FailNow()
 	}
-	status = mp.mvToDeletedInodeTree(ino2, ts)
+	status, _ = mp.mvToDeletedInodeTree(ino2, ts)
 	if status != proto.OpExistErr {
 		t.Error(status)
 		t.FailNow()
@@ -294,19 +294,19 @@ func TestMetaPartition_fsmCleanDeletedInode(t *testing.T) {
 	ino3 := NewInode(21, 1)
 	ino3.SetDeleteMark()
 	ino3.DecNLink()
-	status = mp.mvToDeletedInodeTree(ino3, ts)
+	status, _ = mp.mvToDeletedInodeTree(ino3, ts)
 	if status != proto.OpOk {
 		t.Error(status)
 		t.FailNow()
 	}
 
 	di := NewFSMDeletedINode(10)
-	resp := mp.fsmCleanDeletedInode(di)
+	resp, _ := mp.fsmCleanDeletedInode(di)
 	if resp.Status != proto.OpOk {
 		t.Error(resp.Status)
 		t.FailNow()
 	}
-	_, _, status = mp.getDeletedInode(ino1.Inode)
+	_, _, status, _ = mp.getDeletedInode(ino1.Inode)
 	if status != proto.OpNotExistErr {
 		t.Error(status)
 		t.FailNow()
@@ -318,12 +318,12 @@ func TestMetaPartition_fsmCleanDeletedInode(t *testing.T) {
 	}
 
 	di.inode = 20
-	resp = mp.fsmCleanDeletedInode(di)
+	resp, _ = mp.fsmCleanDeletedInode(di)
 	if resp.Status != proto.OpErr {
 		t.Error(resp.Status)
 		t.FailNow()
 	}
-	_, _, status = mp.getDeletedInode(ino2.Inode)
+	_, _, status, _ = mp.getDeletedInode(ino2.Inode)
 	if status != proto.OpOk {
 		t.Error(resp.Status)
 		t.FailNow()
@@ -334,12 +334,12 @@ func TestMetaPartition_fsmCleanDeletedInode(t *testing.T) {
 	}
 
 	di.inode = 21
-	resp = mp.fsmCleanDeletedInode(di)
+	resp, _ = mp.fsmCleanDeletedInode(di)
 	if resp.Status != proto.OpOk {
 		t.Error(resp.Status)
 		t.FailNow()
 	}
-	_, _, status = mp.getDeletedInode(ino3.Inode)
+	_, _, status, _ = mp.getDeletedInode(ino3.Inode)
 	if status != proto.OpOk {
 		t.Error(status)
 		t.FailNow()
@@ -354,31 +354,31 @@ func TestMetaPartition_fsmCleanDeletedInode(t *testing.T) {
 func TestMetaPartition_fsmCleanDeletedInode2(t *testing.T) {
 	mp := new(metaPartition)
 	mp.inodeTree = mockInodeTree()
-	mp.inodeDeletedTree = NewBtree()
-	mp.dentryDeletedTree = NewBtree()
+	mp.inodeDeletedTree = &DeletedInodeBTree{NewBtree()}
+	mp.dentryDeletedTree = &DeletedDentryBTree{NewBtree()}
 	mp.freeList = newFreeList()
 	ino1 := NewInode(10, proto.Mode(os.ModeDir))
 	ino1.SetDeleteMark()
-	status := mp.mvToDeletedInodeTree(ino1, ts)
+	status, _ := mp.mvToDeletedInodeTree(ino1, ts)
 	if status != proto.OpOk {
 		t.Error(status)
 		t.FailNow()
 	}
 
 	den := newPrimaryDeletedDentry(10, "f1", ts, 100)
-	mp.dentryDeletedTree.ReplaceOrInsert(den, false)
+	mp.dentryDeletedTree.Create(den, false)
 
 	di := NewFSMDeletedINode(10)
-	resp := mp.fsmCleanDeletedInode(di)
+	resp, _ := mp.fsmCleanDeletedInode(di)
 	if resp.Status != proto.OpExistErr{
 		t.Error(resp.Status)
 		t.FailNow()
 	}
 
-	mp.dentryDeletedTree.Delete(den)
+	mp.dentryDeletedTree.Delete(den.ParentId, den.Name, den.Timestamp)
 
 	di = NewFSMDeletedINode(10)
-	resp = mp.fsmCleanDeletedInode(di)
+	resp, _ = mp.fsmCleanDeletedInode(di)
 	if resp.Status != proto.OpOk {
 		t.Error(resp.Status)
 		t.FailNow()
@@ -388,12 +388,12 @@ func TestMetaPartition_fsmCleanDeletedInode2(t *testing.T) {
 func TestMetaPartition_fsmBatchCleanDeletedInode(t *testing.T) {
 	mp := new(metaPartition)
 	mp.inodeTree = mockInodeTree()
-	mp.inodeDeletedTree = NewBtree()
-	mp.dentryDeletedTree = NewBtree()
+	mp.inodeDeletedTree = &DeletedInodeBTree{NewBtree()}
+	mp.dentryDeletedTree = &DeletedDentryBTree{NewBtree()}
 	mp.freeList = newFreeList()
 	ino1 := NewInode(10, proto.Mode(os.ModeDir))
 	ino1.SetDeleteMark()
-	status := mp.mvToDeletedInodeTree(ino1, ts)
+	status, _ := mp.mvToDeletedInodeTree(ino1, ts)
 	if status != proto.OpOk {
 		t.Error(status)
 		t.FailNow()
@@ -402,7 +402,7 @@ func TestMetaPartition_fsmBatchCleanDeletedInode(t *testing.T) {
 	ino2 := NewInode(20, 1)
 	ino2.SetDeleteMark()
 	ino2.DecNLink()
-	status = mp.mvToDeletedInodeTree(ino2, ts)
+	status, _ = mp.mvToDeletedInodeTree(ino2, ts)
 	if status != proto.OpOk {
 		t.Error(status)
 		t.FailNow()
@@ -411,7 +411,7 @@ func TestMetaPartition_fsmBatchCleanDeletedInode(t *testing.T) {
 	ino3 := NewInode(21, 1)
 	ino3.SetDeleteMark()
 	ino3.DecNLink()
-	status = mp.mvToDeletedInodeTree(ino3, ts)
+	status, _ = mp.mvToDeletedInodeTree(ino3, ts)
 	if status != proto.OpOk {
 		t.Error(status)
 		t.FailNow()
@@ -442,7 +442,7 @@ func TestMetaPartition_fsmBatchCleanDeletedInode(t *testing.T) {
 		}
 	}
 
-	res := mp.fsmBatchCleanDeletedInode(batch)
+	res, _ := mp.fsmBatchCleanDeletedInode(batch)
 	if len(res) > 0 {
 		t.Errorf("len: %v", len(res))
 		for _, item := range res {
@@ -454,17 +454,17 @@ func TestMetaPartition_fsmBatchCleanDeletedInode(t *testing.T) {
 func TestMetaPartition_fsmCleanExpiredDeletedINode(t *testing.T) {
 	mp := new(metaPartition)
 	mp.inodeTree = mockInodeTree()
-	mp.inodeDeletedTree = NewBtree()
-	mp.dentryDeletedTree = NewBtree()
+	mp.inodeDeletedTree = &DeletedInodeBTree{NewBtree()}
+	mp.dentryDeletedTree = &DeletedDentryBTree{NewBtree()}
 	mp.freeList = newFreeList()
 	ino1 := NewInode(10, proto.Mode(os.ModeDir))
 	ino1.SetDeleteMark()
-	status := mp.mvToDeletedInodeTree(ino1, ts)
+	status, _ := mp.mvToDeletedInodeTree(ino1, ts)
 	if status != proto.OpOk {
 		t.Error(status)
 		t.FailNow()
 	}
-	resp := mp.cleanExpiredInode(ino1.Inode+1)
+	resp, _ := mp.cleanExpiredInode(ino1.Inode+1)
 	if resp == nil {
 		t.FailNow()
 	}
@@ -477,7 +477,7 @@ func TestMetaPartition_fsmCleanExpiredDeletedINode(t *testing.T) {
 		t.FailNow()
 	}
 
-	resp = mp.cleanExpiredInode(ino1.Inode)
+	resp, _ = mp.cleanExpiredInode(ino1.Inode)
 	if resp == nil {
 		t.FailNow()
 	}
@@ -489,7 +489,7 @@ func TestMetaPartition_fsmCleanExpiredDeletedINode(t *testing.T) {
 		t.Logf("len: %v", mp.freeList.Len())
 		t.FailNow()
 	}
-	srcIno, di, st := mp.getDeletedInode(ino1.Inode)
+	srcIno, di, st, _ := mp.getDeletedInode(ino1.Inode)
 	if st != proto.OpNotExistErr{
 		t.Log(st)
 		t.FailNow()
@@ -504,13 +504,13 @@ func TestMetaPartition_fsmCleanExpiredDeletedINode(t *testing.T) {
 	ino2 := NewInode(20, 1)
 	ino2.SetDeleteMark()
 	ino2.DecNLink()
-	status = mp.mvToDeletedInodeTree(ino2, ts)
+	status, _ = mp.mvToDeletedInodeTree(ino2, ts)
 	if status != proto.OpOk {
 		t.Error(status)
 		t.FailNow()
 	}
 
-	resp = mp.cleanExpiredInode(ino2.Inode)
+	resp, _ = mp.cleanExpiredInode(ino2.Inode)
 	if resp == nil {
 		t.FailNow()
 	}
@@ -522,7 +522,7 @@ func TestMetaPartition_fsmCleanExpiredDeletedINode(t *testing.T) {
 		t.Logf("len: %v", mp.freeList.Len())
 		t.FailNow()
 	}
-	srcIno, di, st = mp.getDeletedInode(ino2.Inode)
+	srcIno, di, st, _ = mp.getDeletedInode(ino2.Inode)
 	if st != proto.OpOk {
 		t.Log(st)
 		t.FailNow()
@@ -541,12 +541,12 @@ func TestMetaPartition_fsmCleanExpiredDeletedINode(t *testing.T) {
 func TestMetaPartition_fsmBatchCleanExpiredDeletedInode(t *testing.T) {
 	mp := new(metaPartition)
 	mp.inodeTree = mockInodeTree()
-	mp.inodeDeletedTree = NewBtree()
-	mp.dentryDeletedTree = NewBtree()
+	mp.inodeDeletedTree = &DeletedInodeBTree{NewBtree()}
+	mp.dentryDeletedTree = &DeletedDentryBTree{NewBtree()}
 	mp.freeList = newFreeList()
 	ino1 := NewInode(10, proto.Mode(os.ModeDir))
 	ino1.SetDeleteMark()
-	status := mp.mvToDeletedInodeTree(ino1, ts)
+	status, _ := mp.mvToDeletedInodeTree(ino1, ts)
 	if status != proto.OpOk {
 		t.Error(status)
 		t.FailNow()
@@ -555,7 +555,7 @@ func TestMetaPartition_fsmBatchCleanExpiredDeletedInode(t *testing.T) {
 	ino2 := NewInode(20, 1)
 	ino2.SetDeleteMark()
 	ino2.DecNLink()
-	status = mp.mvToDeletedInodeTree(ino2, ts)
+	status, _ = mp.mvToDeletedInodeTree(ino2, ts)
 	if status != proto.OpOk {
 		t.Error(status)
 		t.FailNow()
@@ -564,7 +564,7 @@ func TestMetaPartition_fsmBatchCleanExpiredDeletedInode(t *testing.T) {
 	ino3 := NewInode(21, 1)
 	ino3.SetDeleteMark()
 	ino3.DecNLink()
-	status = mp.mvToDeletedInodeTree(ino3, ts)
+	status, _ = mp.mvToDeletedInodeTree(ino3, ts)
 	if status != proto.OpOk {
 		t.Error(status)
 		t.FailNow()
@@ -595,7 +595,7 @@ func TestMetaPartition_fsmBatchCleanExpiredDeletedInode(t *testing.T) {
 		}
 	}
 
-	res := mp.fsmCleanExpiredInode(batch)
+	res, _ := mp.fsmCleanExpiredInode(batch)
 	if len(res) != 0 {
 		t.Errorf("len: %v", len(res))
 		for _, item := range res {

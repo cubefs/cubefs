@@ -87,6 +87,7 @@ type MetaPartitionConfig struct {
 	AfterStop          func()              `json:"-"`
 	RaftStore          raftstore.RaftStore `json:"-"`
 	ConnPool           *util.ConnectPool   `json:"-"`
+	StoreMode          proto.StoreMode     `json:"store_mode"`
 }
 
 func (c *MetaPartitionConfig) checkMeta() (err error) {
@@ -127,7 +128,7 @@ type OpInode interface {
 	EvictInode(req *EvictInodeReq, p *Packet) (err error)
 	EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (err error)
 	SetAttr(reqData []byte, p *Packet) (err error)
-	GetInodeTree() *BTree
+	//GetInodeTree() *BTree
 	DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error)
 	DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet) (err error)
 }
@@ -159,7 +160,7 @@ type OpDentry interface {
 	UpdateDentry(req *UpdateDentryReq, p *Packet) (err error)
 	ReadDir(req *ReadDirReq, p *Packet) (err error)
 	Lookup(req *LookupReq, p *Packet) (err error)
-	GetDentryTree() *BTree
+	//GetDentryTree() *BTree
 }
 
 type OpDeletedDentry interface {
@@ -226,6 +227,8 @@ type OpPartition interface {
 	TryToLeader(groupID uint64) error
 	CanRemoveRaftMember(peer proto.Peer) error
 	IsEquareCreateMetaPartitionRequst(request *proto.CreateMetaPartitionRequest) (err error)
+	GetSnapShot() (snap Snapshot)
+	ReleaseSnapShot(snap Snapshot)
 }
 
 // MetaPartition defines the interface for the meta partition operations.
@@ -247,10 +250,10 @@ type metaPartition struct {
 	config                      *MetaPartitionConfig
 	size                        uint64 // For partition all file size
 	applyID                     uint64 // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
-	dentryTree                  *BTree
-	inodeTree                   *BTree // btree for inodes
-	extendTree                  *BTree // btree for inode extend (XAttr) management
-	multipartTree               *BTree // collection for multipart management
+	dentryTree                  DentryTree
+	inodeTree                   InodeTree     // btree for inodes
+	extendTree                  ExtendTree    // btree for inode extend (XAttr) management
+	multipartTree               MultipartTree // collection for multipart management
 	raftPartition               raftstore.Partition
 	stopC                       chan bool
 	storeChan                   chan *storeMsg
@@ -263,11 +266,13 @@ type metaPartition struct {
 	manager                     *metadataManager
 	monitorData                 []*statistics.MonitorData
 	marshalVersion              uint32
-	dentryDeletedTree           *BTree
-	inodeDeletedTree            *BTree
+	dentryDeletedTree           DeletedDentryTree
+	inodeDeletedTree            DeletedInodeTree
 	trashExpiresFirstUpdateTime time.Time
 	extDelCursor                chan uint64
 	db                          *RocksDbInfo
+	addBatchKey                 []byte
+	delBatchKey                 []byte
 }
 
 // Start starts a meta partition.
@@ -432,7 +437,7 @@ func (mp *metaPartition) selectRocksDBDir() (err error) {
 				return
 			}
 		} else {
-			if err = os.RemoveAll(rocksdbDir); err != nil {
+			if err = os.RemoveAll(path.Join(rocksdbDir, "db")); err != nil {
 				return
 			}
 		}
@@ -454,10 +459,6 @@ func(mp *metaPartition) getRocksDbRootDir()string{
 func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) *metaPartition {
 	mp := &metaPartition{
 		config:            conf,
-		dentryTree:        NewBtree(),
-		inodeTree:         NewBtree(),
-		extendTree:        NewBtree(),
-		multipartTree:     NewBtree(),
 		stopC:             make(chan bool),
 		storeChan:         make(chan *storeMsg, 100),
 		freeList:          newFreeList(),
@@ -467,8 +468,6 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) *meta
 		manager:           manager,
 		monitorData:       statistics.InitMonitorData(statistics.ModelMetaNode),
 		marshalVersion:    MetaPartitionMarshVersion2,
-		dentryDeletedTree: NewBtree(),
-		inodeDeletedTree:  NewBtree(),
 		extDelCursor:      make(chan uint64, 1),
 		db:                NewRocksDb(),
 	}
@@ -489,6 +488,19 @@ func CreateMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) ( 
 
 	if err = mp.db.OpenDb(mp.getRocksDbRootDir()); err != nil {
 		return nil, err
+	}
+
+	if mp.HasMemStore() {
+		mp.initMemoryTree()
+		mp.cleanRocksDbTreeResource()
+	}
+
+	if mp.HasRocksDBStore() {
+		if err = mp.initRocksDBTree(); err != nil {
+			err = errors.NewErrorf("[CreateMetaPartition] Init rocksDB tree failed :%v", err.Error())
+			return nil, err
+		}
+		mp.cleanMemoryTreeResource()
 	}
 
 	if err = mp.persistMetadata(); err != nil {
@@ -512,6 +524,60 @@ func LoadMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) (Met
 		return nil, err
 	}
 	return mp, nil
+}
+
+func (mp *metaPartition) cleanMemoryTreeResource() {
+	if mp.HasRocksDBStore() {
+		log.LogWarnf("mp[%v] remove mem dir,but has rocksdb store mode", mp.config.PartitionId)
+	}
+	os.RemoveAll(mp.config.RootDir + snapshotDir)
+	os.RemoveAll(mp.config.RootDir + snapshotDirTmp)
+	os.RemoveAll(mp.config.RootDir + snapshotBackup)
+}
+
+func (mp *metaPartition) initMemoryTree() {
+	mp.dentryTree    = &DentryBTree{NewBtree()}
+	mp.inodeTree     = &InodeBTree{NewBtree()}
+	mp.extendTree    = &ExtendBTree{NewBtree()}
+	mp.multipartTree = &MultipartBTree{NewBtree()}
+	mp.dentryDeletedTree = &DeletedDentryBTree{NewBtree()}
+	mp.inodeDeletedTree = &DeletedInodeBTree{NewBtree()}
+	return
+}
+
+func (mp *metaPartition) cleanRocksDbTreeResource() {
+	if mp.HasMemStore() {
+		log.LogWarnf("mp[%v] remove rocks dir,but has memory store mode", mp.config.PartitionId)
+	}
+	os.RemoveAll(mp.getRocksDbRootDir())
+}
+
+func (mp *metaPartition) initRocksDBTree() (err error) {
+	var tree *RocksTree
+
+	if tree, err = DefaultRocksTree(mp.db); err != nil {
+		log.LogErrorf("[initRocksDBTree] default rocks tree dir: %v, id: %v error %v ",mp.config.RocksDBDir, mp.config.PartitionId, err)
+		return
+	}
+	if mp.inodeTree, err = NewInodeRocks(tree); err != nil {
+		return
+	}
+	if mp.dentryTree, err = NewDentryRocks(tree); err != nil {
+		return
+	}
+	if mp.extendTree, err = NewExtendRocks(tree); err != nil {
+		return
+	}
+	if mp.multipartTree, err = NewMultipartRocks(tree); err != nil {
+		return
+	}
+	if mp.dentryDeletedTree, err = NewDeletedDentryRocks(tree); err != nil {
+		return
+	}
+	if mp.inodeDeletedTree, err = NewDeletedInodeRocks(tree); err != nil {
+		return
+	}
+	return
 }
 
 // IsLeader returns the raft leader address and if the current meta partition is the leader.
@@ -607,6 +673,103 @@ func (mp *metaPartition) PersistMetadata() (err error) {
 	return
 }
 
+func (mp *metaPartition) loadMetaDataToMemory (ctx context.Context) (err error) {
+	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
+	if err = mp.loadInode(ctx, snapshotPath); err != nil {
+		return
+	}
+	if err = mp.loadDentry(snapshotPath); err != nil {
+		return
+	}
+	if err = mp.loadExtend(snapshotPath); err != nil {
+		return
+	}
+	if err = mp.loadMultipart(snapshotPath); err != nil {
+		return
+	}
+	if err = mp.loadDeletedDentry(snapshotPath); err != nil {
+		return
+	}
+	if err = mp.loadDeletedInode(ctx, snapshotPath); err != nil {
+		return
+	}
+	return
+}
+
+func (mp *metaPartition) loadMetaInRocksDB() (err error) {
+	return
+}
+
+func (mp *metaPartition) loadApplyIDAndCursorFromSnapshot() (applyID, cursor uint64, err error) {
+	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
+	filename := path.Join(snapshotPath, applyIDFile)
+	if _, err = os.Stat(filename); err != nil {
+		err = nil
+		return
+	}
+	data, err := ioutil.ReadFile(filename)
+	if err != nil {
+		if err == os.ErrNotExist {
+			err = nil
+			return
+		}
+		err = errors.NewErrorf("[loadApplyIDAndCursorFromSnapshot] OpenFile: %s", err.Error())
+		return
+	}
+	if len(data) == 0 {
+		err = errors.NewErrorf("[loadApplyIDAndCursorFromSnapshot]: ApplyID is empty")
+		return
+	}
+	if strings.Contains(string(data), "|") {
+		_, err = fmt.Sscanf(string(data), "%d|%d", &applyID, &cursor)
+	} else {
+		_, err = fmt.Sscanf(string(data), "%d", &applyID)
+	}
+	if err != nil {
+		err = errors.NewErrorf("[loadApplyIDAndCursorFromSnapshot] ReadApplyID: %s", err.Error())
+		return
+	}
+
+	log.LogInfof("loadApplyIDAndCursorFromSnapshot: load complete: partitionID(%v) volume(%v) applyID(%v) cursor(%v) filename(%v)",
+		mp.config.PartitionId, mp.config.VolName, applyID, cursor, filename)
+	return
+}
+
+func (mp *metaPartition) loadApplyIDAndCursor() (err error) {
+	var (
+		applyIDInSnapshot uint64 = ^uint64(0)
+		applyIDInRocksDB  uint64 = ^uint64(0)
+		cursorInSnapshot  uint64
+		maxInode          uint64
+	)
+	if mp.HasMemStore() {
+		if applyIDInSnapshot, cursorInSnapshot, err = mp.loadApplyIDAndCursorFromSnapshot(); err != nil {
+			return
+		}
+
+		atomic.StoreUint64(&mp.applyID, applyIDInSnapshot)
+
+		if cursorInSnapshot > atomic.LoadUint64(&mp.config.Cursor) {
+			atomic.StoreUint64(&mp.config.Cursor, cursorInSnapshot)
+		}
+	}
+
+	if mp.HasRocksDBStore() {
+		applyIDInRocksDB = mp.inodeTree.GetApplyID()
+		atomic.StoreUint64(&mp.applyID, applyIDInRocksDB)
+
+		if maxInode, err = mp.inodeTree.GetMaxInode(); err != nil {
+			return
+		}
+
+		if maxInode > atomic.LoadUint64(&mp.config.Cursor) {
+			atomic.StoreUint64(&mp.config.Cursor, maxInode)
+		}
+	}
+
+	return
+}
+
 func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	if err = mp.loadInode(context.Background(), snapshotPath); err != nil {
 		return
@@ -638,37 +801,38 @@ func (mp *metaPartition) load(ctx context.Context) (err error) {
 		return
 	}
 
-	if err = mp.db.OpenDb(mp.getRocksDbRootDir()); err != nil{
+	if err = mp.db.OpenDb(mp.getRocksDbRootDir()); err != nil {
 		return
 	}
 
-	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
-	if err = mp.loadInode(ctx, snapshotPath); err != nil {
-		return
-	}
-	if err = mp.loadDentry(snapshotPath); err != nil {
-		return
-	}
-	if err = mp.loadExtend(snapshotPath); err != nil {
-		return
-	}
-	if err = mp.loadMultipart(snapshotPath); err != nil {
-		return
+	if mp.HasMemStore() {
+		mp.initMemoryTree()
+		if err = mp.loadMetaDataToMemory(ctx); err != nil {
+			return
+		}
+		//mp.cleanRocksDbTreeResource()
 	}
 
-	if err = mp.loadDeletedDentry(snapshotPath); err != nil {
-		return
+	if mp.HasRocksDBStore() {
+		if err = mp.initRocksDBTree(); err != nil {
+			return
+		}
+		if err = mp.loadMetaInRocksDB(); err != nil {
+			return
+		}
+		mp.cleanMemoryTreeResource()
 	}
 
-	if err = mp.loadDeletedInode(ctx, snapshotPath); err != nil {
-		return
-	}
-
-	err = mp.loadApplyID(snapshotPath)
+	err = mp.loadApplyIDAndCursor()
+	mp.persistMetadata()
 	return
 }
 
 func (mp *metaPartition) store(sm *storeMsg) (err error) {
+	if mp.HasRocksDBStore() {
+		//after reviewed, there no need to execute flush
+		return nil
+	}
 	tmpDir := path.Join(mp.config.RootDir, snapshotDirTmp)
 	if _, err = os.Stat(tmpDir); err == nil {
 		// TODO Unhandled errors
@@ -962,8 +1126,8 @@ func (mp *metaPartition) ResponseLoadMetaPartition(p *Packet) (err error) {
 		DoCompare:   true,
 	}
 	resp.MaxInode = mp.GetCursor()
-	resp.InodeCount = uint64(mp.getInodeTree().Len())
-	resp.DentryCount = uint64(mp.dentryTree.Len())
+	resp.InodeCount = mp.inodeTree.Count()
+	resp.DentryCount = mp.dentryTree.Count()
 	resp.ApplyID = mp.applyID
 	if err != nil {
 		err = errors.Trace(err,
@@ -988,8 +1152,12 @@ func (mp *metaPartition) MarshalJSON() ([]byte, error) {
 // TODO remove? no usage?
 // Reset resets the meta partition.
 func (mp *metaPartition) Reset() (err error) {
-	mp.inodeTree.Reset()
-	mp.dentryTree.Reset()
+	mp.inodeTree.Release()
+	mp.dentryTree.Release()
+	mp.extendTree.Release()
+	mp.multipartTree.Release()
+	mp.inodeDeletedTree.Release()
+	mp.dentryDeletedTree.Release()
 	mp.config.Cursor = 0
 	mp.applyID = 0
 
@@ -1001,6 +1169,8 @@ func (mp *metaPartition) Reset() (err error) {
 			return
 		}
 	}
+	mp.cleanRocksDbTreeResource()
+	mp.cleanMemoryTreeResource()
 
 	return
 }
@@ -1013,10 +1183,12 @@ func (mp *metaPartition) Expired() (err error) {
 		mp.delInodeFp.Close()
 	}
 
-	mp.inodeTree.Reset()
-	mp.dentryTree.Reset()
-	mp.dentryDeletedTree.Reset()
-	mp.inodeDeletedTree.Reset()
+	mp.inodeTree.Release()
+	mp.dentryTree.Release()
+	mp.extendTree.Release()
+	mp.multipartTree.Release()
+	mp.dentryDeletedTree.Release()
+	mp.inodeDeletedTree.Release()
 	mp.config.Cursor = 0
 	mp.applyID = 0
 	mp.db.CloseDb()
@@ -1099,4 +1271,28 @@ func (mp *metaPartition) getTrashStatus() bool {
 
 func (mp *metaPartition) enableRocksDbDelExtent() bool{
 	return mp.manager.metaNode.enableRocksDbDelExtent()
+}
+
+func (mp *metaPartition) HasMemStore() bool{
+	if (mp.config.StoreMode & proto.StoreModeMem) != 0 {
+		return true
+	}
+
+	return false
+}
+
+func (mp *metaPartition) HasRocksDBStore() bool{
+	if (mp.config.StoreMode & proto.StoreModeRocksDb) != 0 {
+		return true
+	}
+
+	return false
+}
+
+func (mp *metaPartition) GetSnapShot() Snapshot {
+	return NewSnapshot(mp)
+}
+
+func (mp *metaPartition) ReleaseSnapShot(snap Snapshot) {
+	snap.Close()
 }

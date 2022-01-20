@@ -1,150 +1,1402 @@
 package metanode
 
 import (
-	"context"
+	"encoding/json"
+	"fmt"
+	"github.com/chubaofs/chubaofs/metanode/metamock"
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/raftstore"
+	"math"
+	"os"
+	"path"
+	"reflect"
+	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 )
 
-func TestResetCursor_WriteStatus(t *testing.T) {
-	mp, _ := newTestMetapartition(1)
-
-	req := &proto.CursorResetRequest{
-		PartitionId: 1,
-		Inode: 0,
-		Force: true,
+func newMetapartitionForTest(raft raftstore.Partition, config *MetaPartitionConfig, mangaer *metadataManager)(mp *metaPartition, err error) {
+	tmp, err := CreateMetaPartition(config, mangaer)
+	if  err != nil {
+		fmt.Printf("create meta partition failed:%s", err.Error())
+		return nil, err
 	}
-
-	configTotalMem = 100 * GB
-	status, _ := mp.calcMPStatus()
-	cursor, err := mp.CursorReset(context.Background(), req)
-	if cursor != mp.config.Cursor {
-		t.Errorf("reset cursor test failed, err:%s", err.Error())
-		return
-	}
-	configTotalMem = 0
-	t.Logf("reset cursor:%d, status:%d, err:%v", cursor, status, err)
-
-	releaseTestMetapartition(mp)
+	mp = tmp.(*metaPartition)
+	mp.raftPartition = raft
 	return
 }
 
-func TestResetCursor_OutOfMaxEnd(t *testing.T) {
-	mp, _ := newTestMetapartition(1)
-
-	req := &proto.CursorResetRequest{
-		PartitionId: 1,
-		Inode: 10000,
-		Force: true,
+func newDefaultMpConfig(pid, nodeId, start, end uint64, storeMode proto.StoreMode)(conf *MetaPartitionConfig) {
+	conf = &MetaPartitionConfig{ PartitionId: pid,
+		NodeId: nodeId,
+		Start: start,
+		End: math.MaxUint64 - 100,
+		Peers: []proto.Peer{proto.Peer{ID: 1, Addr: "127.0.0.1"}, {ID: 2, Addr: "127.0.0.2"} },
+		RootDir: "./partition_" +strconv.Itoa(int(pid)),
+		StoreMode: storeMode,
+		Cursor: math.MaxUint64 - 100000,
 	}
-
-	status, _ := mp.calcMPStatus()
-	cursor, err := mp.CursorReset(context.Background(), req)
-	if cursor != mp.config.Cursor {
-		t.Errorf("reset cursor test failed, err:%s", err.Error())
-		return
-	}
-	t.Logf("reset cursor:%d, status:%d, err:%v", cursor, status, err)
-
-	for i := 1; i <100; i++ {
-		mp.inodeTree.ReplaceOrInsert(NewInode(uint64(i), 0), false)
-	}
-	req.Inode = 90
-	cursor, err = mp.CursorReset(context.Background(), req)
-	if cursor != mp.config.Cursor {
-		t.Errorf("reset cursor test failed, err:%s", err.Error())
-		return
-	}
-	t.Logf("reset cursor:%d, status:%d, err:%v", cursor, status, err)
-	releaseTestMetapartition(mp)
 	return
 }
 
-func TestResetCursor_LimitedAndForce(t *testing.T) {
-	mp, _ := newTestMetapartition(1)
-
-	req := &proto.CursorResetRequest{
-		PartitionId: 1,
-		Inode: 9900,
-		Force: false,
+func CreateInodeInterTest(t *testing.T, leader, follower *metaPartition, start uint64) {
+	reqCreateInode := &proto.CreateInodeRequest{
+		Gid: 0,
+		Uid: 0,
+		Mode: 470,
 	}
+	resp := &Packet{}
+	var err error
+	cursor := leader.config.Cursor
+	defer func() {
+		leader.config.Cursor = cursor
+		leader.inodeTree.Clear()
+		follower.inodeTree.Clear()
+	}()
+	leader.config.Cursor = start
 
-	for i := 1; i <100; i++ {
-		mp.inodeTree.ReplaceOrInsert(NewInode(uint64(i), 0), false)
+	for i := 0; i < 100; i++ {
+		err = leader.CreateInode(reqCreateInode, resp)
+		if err != nil {
+			t.Errorf("create inode failed:%s", err.Error())
+			return
+		}
 	}
-
-	status, _ := mp.calcMPStatus()
-	cursor, err := mp.CursorReset(context.Background(), req)
-	if cursor != mp.config.Cursor {
-		t.Errorf("reset cursor test failed, err:%s", err.Error())
+	if leader.inodeTree.Count() != follower.inodeTree.Count() {
+		t.Errorf("create inode failed, rocks mem not same, mem:%d, rocks:%d", leader.inodeTree.Count(), follower.inodeTree.Count())
 		return
 	}
-	t.Logf("reset cursor:%d, status:%d, err:%v", cursor, status, err)
+	t.Logf("create 100 inodes success")
 
-	req.Force = true
-	cursor, err = mp.CursorReset(context.Background(), req)
-	if cursor != req.Inode {
-		t.Errorf("reset cursor:%d test failed, err:%v", cursor, err)
+	cursor = leader.config.Cursor
+	leader.config.Cursor = leader.config.End
+	err = leader.CreateInode(reqCreateInode, resp)
+	if err == nil {
+		t.Errorf("cursor reach end failed")
 		return
 	}
-	t.Logf("reset cursor:%d, status:%d, err:%v", cursor, status, err)
+	t.Logf("cursor reach end test  success:%s, result:%d, %s", err.Error(), resp.ResultCode, resp.GetResultMsg())
 
-	releaseTestMetapartition(mp)
+	leader.config.Cursor = 10 + start
+
+	inode, _ := leader.inodeTree.Get(10)
+	if inode == nil {
+		t.Errorf("get inode 10 failed, err:%s", err.Error())
+		return
+	}
+	err = leader.CreateInode(reqCreateInode, resp)
+	if resp.ResultCode ==  proto.OpOk {
+		t.Errorf("same inode create failed")
+		return
+	}
+	t.Logf("same inode create success:%v, resuclt code:%d, %s", err, resp.ResultCode, resp.GetResultMsg())
+}
+
+func TestCreateInode(t *testing.T) {
+	node := &MetaNode{nodeId: 1}
+	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
+	memMpConf := newDefaultMpConfig(1, 1, 1, 1000, proto.StoreModeMem)
+	rockMpConf := newDefaultMpConfig(2, 2, 1, 1000, proto.StoreModeRocksDb)
+	raft := metamock.NewMockPartition(1)
+	memMp, err := newMetapartitionForTest(raft, memMpConf, manager)
+	if err != nil {
+		t.Errorf("create mp failed:%s", err.Error())
+		return
+	}
+
+	rockMp, err := newMetapartitionForTest(raft, rockMpConf, manager)
+	if err != nil {
+		t.Errorf("create mp failed:%s", err.Error())
+		return
+	}
+
+	defer func(){
+		if memMp != nil {
+			releaseTestMetapartition(memMp)
+		}
+
+		if rockMp != nil {
+			releaseTestMetapartition(rockMp)
+		}
+
+	}()
+
+	raft.Apply = ApplyMock
+	t.Logf("leader is mem")
+	raft.Mp = append(raft.Mp, memMp)
+	raft.Mp = append(raft.Mp, rockMp)
+	CreateInodeInterTest(t, memMp, rockMp, 0)
+
+	t.Logf("leader is rocks")
+	raft.Mp = raft.Mp[:0]
+	raft.Mp = append(raft.Mp, rockMp)
+	raft.Mp = append(raft.Mp, memMp)
+	CreateInodeInterTest(t, rockMp, memMp, 0)
+
 	return
 }
 
-func TestResetCursor_CursorChange(t *testing.T) {
-	mp, _ := newTestMetapartition(1)
-
-	req := &proto.CursorResetRequest{
-		PartitionId: 1,
-		Inode: 8000,
-		Force: false,
+func TestMetaPartition_CreateInodeCase01(t *testing.T) {
+	//leader is mem mode
+	rootDir :=  "./leader_create_inode_test_01"
+	os.RemoveAll(rootDir)
+	memModeMp := mockMetaPartition2(1, 1, proto.StoreModeMem, rootDir)
+	if memModeMp == nil {
+		t.Errorf("mock metapartition failed")
+		return
 	}
 
-	for i := 1; i <100; i++ {
-		mp.inodeTree.ReplaceOrInsert(NewInode(uint64(i), 0), false)
+	rootDir = "./follower_create_inode_test_01"
+	os.RemoveAll(rootDir)
+	rocksModeMp := mockMetaPartition2(1, 1, proto.StoreModeRocksDb, rootDir)
+	if rocksModeMp == nil {
+		t.Errorf("mock metapartition failed")
+		return
 	}
 
-	go func() {
-		for i := 0; i < 100; i++{
-			mp.nextInodeID()
+	raftPartition := metamock.NewMockPartition(1)
+	raftPartition.Apply = ApplyMock
+	raftPartition.Mp = append(raftPartition.Mp, memModeMp)
+	raftPartition.Mp = append(raftPartition.Mp, rocksModeMp)
+
+	memModeMp.raftPartition = raftPartition
+	rocksModeMp.raftPartition = raftPartition
+
+	CreateInodeInterTest(t, memModeMp, rocksModeMp, 0)
+}
+
+func mockMetaPartition2(nodeID, partitionID uint64, storeMode proto.StoreMode, rootDir string) *metaPartition {
+	partitionDir := path.Join(rootDir, partitionPrefix + strconv.Itoa(int(partitionID)))
+	os.MkdirAll(partitionDir, 0666)
+	node := &MetaNode{
+		nodeId: nodeID,
+	}
+	manager := &metadataManager{
+		nodeId: 1,
+		metaNode: node,
+		rocksDBDirs: []string{rootDir},
+	}
+
+	config := &MetaPartitionConfig{
+		PartitionId: partitionID,
+		NodeId:      nodeID,
+		Start:       0,
+		End:         math.MaxUint64 - 100,
+		Peers:       []proto.Peer{proto.Peer{ID: 1, Addr: "127.0.0.1"}, {ID: 2, Addr: "127.0.0.2"}},
+		RootDir:     partitionDir,
+		StoreMode:   storeMode,
+		Cursor:      math.MaxUint64 - 100000,
+		RocksDBDir:  partitionDir,
+	}
+
+	mp, err := CreateMetaPartition(config, manager)
+	if  err != nil {
+		fmt.Printf("create meta partition failed:%s", err.Error())
+		return nil
+	}
+	return mp.(*metaPartition)
+}
+
+func UnlinkInodeInterTest(t *testing.T, leader, follower *metaPartition, start uint64) {
+	cursor := atomic.LoadUint64(&leader.config.Cursor)
+	defer func() {
+		leader.inodeTree.Clear()
+		follower.inodeTree.Clear()
+		atomic.StoreUint64(&leader.config.Cursor, cursor)
+	}()
+
+	reqCreateInode := &proto.CreateInodeRequest{
+		Gid: 0,
+		Uid: 0,
+		Mode: 470,
+	}
+
+	reqUnlinkInode := &proto.UnlinkInodeRequest{
+		Inode: 10 + cursor,
+	}
+	resp := &Packet{}
+	var err error
+
+	for i := 0; i < 100; i++ {
+		err = leader.CreateInode(reqCreateInode, resp)
+		if err != nil {
+			t.Errorf("create inode failed:%s", err.Error())
+			return
+		}
+	}
+
+	if leader.inodeTree.Count() != follower.inodeTree.Count() {
+		t.Errorf("create inode failed, rocks mem not same, mem:%d, rocks:%d", leader.inodeTree.Count(), follower.inodeTree.Count())
+		return
+	}
+	t.Logf("create 100 inodes success")
+
+	inode, _ := leader.inodeTree.Get(10 + cursor)
+	if inode == nil {
+		t.Errorf("get inode (%v) failed, inode is null", start + 10 + leader.config.Cursor)
+		return
+	}
+	inode.Type = uint32(os.ModeDir)
+	inode.NLink = 3
+	if os.FileMode(inode.Type).IsDir() {
+		t.Logf("inode is dir")
+	}
+	leader.inodeTree.Put(inode)
+
+	inode, _ = follower.inodeTree.Get(10 + cursor)
+	if inode == nil {
+		t.Errorf("get inode (%v) failed, inode is null", start + 10 + leader.config.Cursor)
+		return
+	}
+	inode.Type = uint32(os.ModeDir)
+	inode.NLink = 3
+	follower.inodeTree.Put(inode)
+
+	err = leader.UnlinkInode(reqUnlinkInode, resp)
+	if resp.ResultCode !=  proto.OpOk {
+		t.Errorf("unlink inode test failed:%v, resuclt code:%d, %s", err, resp.ResultCode, resp.GetResultMsg())
+		return
+	}
+
+	err = leader.UnlinkInode(reqUnlinkInode, resp)
+	if resp.ResultCode !=  proto.OpOk {
+		t.Errorf("unlink inode test failed:%v, resuclt code:%d, %s", err, resp.ResultCode, resp.GetResultMsg())
+		return
+	}
+
+	err = leader.UnlinkInode(reqUnlinkInode, resp)
+	if resp.ResultCode ==  proto.OpOk {
+		t.Errorf("same inode create failed, inode link:%d", inode.NLink)
+		return
+	}
+	t.Logf("unlink inode test success:%v, resuclt code:%d, %s", err, resp.ResultCode, resp.GetResultMsg())
+
+	inode, _ = leader.inodeTree.Get(11 + cursor)
+	if inode == nil {
+		t.Errorf("get inode (%v) failed, inode is null", start + 11 + leader.config.Cursor)
+		return
+	}
+	inode.SetDeleteMark()
+	leader.inodeTree.Put(inode)
+
+	inode, _ = follower.inodeTree.Get(11 + cursor)
+	if inode == nil {
+		t.Errorf("get inode (%v) failed, inode is null", start + 11 + leader.config.Cursor)
+		return
+	}
+	inode.SetDeleteMark()
+	follower.inodeTree.Put(inode)
+
+	reqUnlinkInode.Inode = 11 + cursor
+	err = leader.UnlinkInode(reqUnlinkInode, resp)
+	if resp.ResultCode ==  proto.OpOk {
+		t.Errorf("same inode create failed, inode link:%d", inode.NLink)
+		return
+	}
+	t.Logf("unlink inode test success:%v, resuclt code:%d, %s", err, resp.ResultCode, resp.GetResultMsg())
+}
+
+func TestUnlinkInode(t *testing.T) {
+	node := &MetaNode{nodeId: 1}
+	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
+	memMpConf := newDefaultMpConfig(1, 1, 1, 1000, proto.StoreModeMem)
+	rockMpConf := newDefaultMpConfig(2, 2, 1, 1000, proto.StoreModeRocksDb)
+	raft := metamock.NewMockPartition(1)
+	memMp, err := newMetapartitionForTest(raft, memMpConf, manager)
+	if err != nil {
+		t.Errorf("create mp failed:%s", err.Error())
+		return
+	}
+
+	rockMp, err := newMetapartitionForTest(raft, rockMpConf, manager)
+	if err != nil {
+		t.Errorf("create mp failed:%s", err.Error())
+		return
+	}
+
+	defer func(){
+		if memMp != nil {
+			releaseTestMetapartition(memMp)
+		}
+
+		if rockMp != nil {
+			releaseTestMetapartition(rockMp)
+		}
+
+	}()
+
+	raft.Apply = ApplyMock
+	t.Logf("leader is mem")
+	raft.Mp = append(raft.Mp, memMp)
+	raft.Mp = append(raft.Mp, rockMp)
+	UnlinkInodeInterTest(t, memMp, rockMp, 0)
+
+	t.Logf("leader is rocks")
+	raft.Mp = raft.Mp[:0]
+	raft.Mp = append(raft.Mp, rockMp)
+	raft.Mp = append(raft.Mp, memMp)
+	UnlinkInodeInterTest(t, rockMp, memMp, 100)
+}
+
+func createInodesForTest(leader, follower *metaPartition, inodeCnt int, mode, uid, gid uint32) (inos []uint64, err error) {
+	reqCreateInode := &proto.CreateInodeRequest{
+		Gid: gid,
+		Uid: uid,
+		Mode: mode,
+	}
+
+	inos = make([]uint64, 0, inodeCnt)
+	for index := 0; index < inodeCnt; index++ {
+		packet := &Packet{}
+		err = leader.CreateInode(reqCreateInode, packet)
+		if err != nil {
+			err = fmt.Errorf("create inode failed:%s", err.Error())
+			return
+		}
+		resp := &proto.CreateInodeResponse{}
+		if err = packet.UnmarshalData(resp); err != nil {
+			err = fmt.Errorf("unmarshal create inode response failed:%v", err)
+			return
+		}
+		inos = append(inos, resp.Info.Inode)
+	}
+
+	//validate count and inode info
+	if leader.inodeTree.Count() != follower.inodeTree.Count(){
+		err = fmt.Errorf("create inode failed, leader and follower inode count not same, or mismatch expect," +
+			" mem:%d, rocks:%d, expect:%v", leader.inodeTree.Count(), follower.inodeTree.Count(), inodeCnt)
+		return
+	}
+
+	for _, ino := range inos {
+		inodeFromLeader, _ := leader.inodeTree.Get(ino)
+		inodeFromFollower, _ := follower.inodeTree.Get(ino)
+		if inodeFromLeader == nil || inodeFromFollower == nil {
+			err = fmt.Errorf("get inode result not same, leader:%s, follower:%s", inodeFromLeader.String(), inodeFromFollower.String())
+			return
+		}
+		if !reflect.DeepEqual(inodeFromFollower, inodeFromFollower) {
+			err = fmt.Errorf("inode info in leader is not equal to follower, leader:%s, follower:%s", inodeFromLeader.String(), inodeFromFollower.String())
+			return
+		}
+	}
+	return
+}
+
+func BatchInodeUnlinkInterTest(t *testing.T, leader, follower *metaPartition) {
+	var (
+		inos []uint64
+		err  error
+	)
+	defer func() {
+		for _, ino := range inos {
+			req := &proto.DeleteInodeRequest{
+				Inode: ino,
+			}
+			packet := &Packet{}
+			leader.DeleteInode(req, packet)
+		}
+		if leader.inodeTree.Count() != follower.inodeTree.Count() || leader.inodeTree.Count() != 0 {
+			t.Errorf("inode count must be zero after delete, but result is not expect, count[leader:%v, follower:%v]", leader.inodeTree.Count(), follower.inodeTree.Count())
+			return
 		}
 	}()
-	time.Sleep(time.Microsecond * 10)
-	cursor, err := mp.CursorReset(context.Background(), req)
-	if cursor != mp.config.Cursor {
-		t.Errorf("reset cursor test failed, err:%s", err.Error())
+	if inos, err = createInodesForTest(leader, follower, 100, uint32(os.ModeDir), 0, 0); err != nil || len(inos) != 100 {
+		t.Fatal(err)
 		return
 	}
-	t.Logf("reset cursor:%d, err:%v", cursor,  err)
+	testInos := inos[20:40]
+	for _, ino := range testInos {
+		//create nlink for dir
+		req := &proto.LinkInodeRequest{
+			Inode: ino,
+		}
+		packet := &Packet{}
+		if err = leader.CreateInodeLink(req, packet); err != nil || packet.ResultCode != proto.OpOk {
+			t.Errorf("create inode link failed, err:%v, resultCode:%v", err, packet.ResultCode)
+			return
+		}
+	}
 
-	releaseTestMetapartition(mp)
+	req := &proto.BatchUnlinkInodeRequest{
+		Inodes: testInos,
+	}
+	packet := &Packet{}
+	//unlink to empty dir
+	if err = leader.UnlinkInodeBatch(req, packet); err != nil || packet.ResultCode != proto.OpOk {
+		t.Errorf("batch unlink inode failed, [err:%v, packet result code:%v]", err, packet.ResultCode)
+		return
+	}
+
+	//unlink empty dir, inode will be delete
+	packet = &Packet{}
+	if err = leader.UnlinkInodeBatch(req, packet); err != nil || packet.ResultCode != proto.OpOk {
+		t.Errorf("batch unlink inode failed, [err:%v, packet result code:%v]", err, packet.ResultCode)
+		return
+	}
+
+	for _, ino := range testInos {
+		inodeInMem, _ := leader.inodeTree.Get(ino)
+		if inodeInMem != nil {
+			t.Errorf("test failed, inode get from mem mode mp error, [expect:inode is null, actual:%s]", inodeInMem.String())
+			return
+		}
+
+		inodeInRocks, _ := follower.inodeTree.Get(ino)
+		if inodeInRocks != nil {
+			t.Errorf("test failed, inode get from rocks mode mp error, [expect:inode is null, actual:%s]", inodeInRocks.String())
+			return
+		}
+	}
 	return
 }
 
-func TestResetCursor_LeaderChange(t *testing.T) {
-	mp, _ := newTestMetapartition(1)
-
-	req := &proto.CursorResetRequest{
-		PartitionId: 1,
-		Inode: 8000,
-		Force: false,
-	}
-
-	for i := 1; i <100; i++ {
-		mp.inodeTree.ReplaceOrInsert(NewInode(uint64(i), 0), false)
-	}
-
-	mp.config.NodeId = 2
-	cursor, err := mp.CursorReset(context.Background(), req)
-	if cursor != mp.config.Cursor {
-		t.Errorf("reset cursor test failed, err:%s", err.Error())
+func TestBatchUnlinkInode(t *testing.T) {
+	node := &MetaNode{nodeId: 1}
+	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
+	memMpConf := newDefaultMpConfig(1, 1, 1, 1000, proto.StoreModeMem)
+	rockMpConf := newDefaultMpConfig(2, 2, 1, 1000, proto.StoreModeRocksDb)
+	raft := metamock.NewMockPartition(1)
+	memMp, err := newMetapartitionForTest(raft, memMpConf, manager)
+	if err != nil {
+		t.Errorf("create mp failed:%s", err.Error())
 		return
 	}
-	t.Logf("reset cursor:%d, err:%v", cursor,  err)
 
-	releaseTestMetapartition(mp)
+	rockMp, err := newMetapartitionForTest(raft, rockMpConf, manager)
+	if err != nil {
+		t.Errorf("create mp failed:%s", err.Error())
+		return
+	}
+
+	defer func(){
+		if memMp != nil {
+			releaseTestMetapartition(memMp)
+		}
+
+		if rockMp != nil {
+			releaseTestMetapartition(rockMp)
+		}
+
+	}()
+
+	raft.Apply = ApplyMock
+	raft.Mp = append(raft.Mp, memMp)
+	raft.Mp = append(raft.Mp, rockMp)
+	BatchInodeUnlinkInterTest(t, memMp, rockMp)
+
+	raft.Mp = raft.Mp[:0]
+	raft.Mp = append(raft.Mp, rockMp)
+	raft.Mp = append(raft.Mp, memMp)
+	BatchInodeUnlinkInterTest(t, rockMp, memMp)
+}
+
+func InodeGetInterGet(t *testing.T, leader, follower *metaPartition) {
+	defer func() {
+		leader.inodeTree.Clear()
+		follower.inodeTree.Clear()
+	}()
+	//create inode
+	ino, err := createInode(470, 0, 0, leader)
+	req := &proto.InodeGetRequest{
+		Inode: ino,
+	}
+	packet := &Packet{}
+	if err = leader.InodeGet(req, packet, proto.OpInodeGetVersion1); err != nil || packet.ResultCode != proto.OpOk {
+		t.Errorf("get exist inode from leader failed, [err:%v, resultCode:%v]", err, packet.ResultCode)
+		return
+	}
+
+	packet = &Packet{}
+	if err = follower.InodeGet(req, packet, proto.OpInodeGetVersion1); err != nil || packet.ResultCode != proto.OpOk {
+		t.Errorf("get exist inode from follower failed, [err:%v, resultCode:%v]", err, packet.ResultCode)
+		return
+	}
+
+	//get not exist inode
+	req = &proto.InodeGetRequest{
+		Inode: ino - 1,
+	}
+	packet = &Packet{}
+	if err = leader.InodeGet(req, packet, proto.OpInodeGetVersion1); err == nil || packet.ResultCode != proto.OpNotExistErr {
+		t.Errorf("get not exist inode from leader success, [err:%v, resultCode:%v]", err, packet.ResultCode)
+		return
+	}
+
+	packet = &Packet{}
+	if err = follower.InodeGet(req, packet, proto.OpInodeGetVersion1); err == nil || packet.ResultCode != proto.OpNotExistErr {
+		t.Errorf("get not exist inode from follower success, [err:%v, resultCode:%v]", err, packet.ResultCode)
+		return
+	}
 	return
+}
+
+func TestInodeGet(t *testing.T) {
+	node := &MetaNode{nodeId: 1}
+	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
+	memMpConf := newDefaultMpConfig(1, 1, 1, 1000, proto.StoreModeMem)
+	rockMpConf := newDefaultMpConfig(2, 2, 1, 1000, proto.StoreModeRocksDb)
+	raft := metamock.NewMockPartition(1)
+	memMp, err := newMetapartitionForTest(raft, memMpConf, manager)
+	if err != nil {
+		t.Errorf("create mp failed:%s", err.Error())
+		return
+	}
+
+	rockMp, err := newMetapartitionForTest(raft, rockMpConf, manager)
+	if err != nil {
+		t.Errorf("create mp failed:%s", err.Error())
+		return
+	}
+
+	defer func(){
+		if memMp != nil {
+			releaseTestMetapartition(memMp)
+		}
+
+		if rockMp != nil {
+			releaseTestMetapartition(rockMp)
+		}
+
+	}()
+
+	raft.Apply = ApplyMock
+	t.Logf("leader is mem")
+	raft.Mp = append(raft.Mp, memMp)
+	raft.Mp = append(raft.Mp, rockMp)
+	InodeGetInterGet(t, memMp, rockMp)
+
+	raft.Mp = raft.Mp[:0]
+	t.Logf("leader is rocks")
+	raft.Mp = append(raft.Mp, rockMp)
+	raft.Mp = append(raft.Mp, memMp)
+	InodeGetInterGet(t, rockMp, memMp)
+}
+
+func BatchInodeGetInterTest(t *testing.T, leader, follower *metaPartition) {
+	var (
+		inos []uint64
+		err  error
+	)
+	defer func() {
+		for _, ino := range inos {
+			req := &proto.DeleteInodeRequest{
+				Inode: ino,
+			}
+			packet := &Packet{}
+			leader.DeleteInode(req, packet)
+		}
+		if leader.inodeTree.Count() != follower.inodeTree.Count() || leader.inodeTree.Count() != 0 {
+			t.Errorf("inode count must be zero after delete, but result is not expect, count[leader:%v, follower:%v]", leader.inodeTree.Count(), follower.inodeTree.Count())
+			return
+		}
+	}()
+	if inos, err = createInodesForTest(leader, follower, 100, 470, 0, 0); err != nil || len(inos) != 100{
+		t.Fatal(err)
+		return
+	}
+
+	testIno := inos[20:50]
+
+	req := &proto.BatchInodeGetRequest{
+		Inodes: testIno,
+	}
+	packet := &Packet{}
+	if err = leader.InodeGetBatch(req, packet); err != nil || packet.ResultCode != proto.OpOk {
+		t.Errorf("batch get inode from leader failed, [err:%v, resultCode:%v]", err, packet.ResultCode)
+		return
+	}
+	resp := &proto.BatchInodeGetResponse{}
+	if err = packet.UnmarshalData(resp); err != nil {
+		t.Errorf("unmarshal batch inode get response failed:%v", err)
+		return
+	}
+	if len(resp.Infos) != len(testIno) {
+		t.Fatalf("get inode count not equla to expect, [expect:%v, actual:%v]", len(testIno), len(resp.Infos))
+		return
+	}
+
+	packet = &Packet{}
+	if err = follower.InodeGetBatch(req, packet); err != nil || packet.ResultCode != proto.OpOk {
+		t.Errorf("batch get inode from follower failed, [err:%v, resultCode:%v]", err, packet.ResultCode)
+		return
+	}
+	resp = &proto.BatchInodeGetResponse{}
+	if err = packet.UnmarshalData(resp); err != nil {
+		t.Errorf("unmarshal batch inode get response failed:%v", err)
+		return
+	}
+	if len(resp.Infos) != len(testIno) {
+		t.Errorf("get inode count not equla to expect, [expect:%v, actual:%v]", len(testIno), len(resp.Infos))
+		return
+	}
+	return
+}
+
+func TestBatchInodeGet(t *testing.T) {
+	node := &MetaNode{nodeId: 1}
+	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
+	memMpConf := newDefaultMpConfig(1, 1, 1, 1000, proto.StoreModeMem)
+	rockMpConf := newDefaultMpConfig(2, 2, 1, 1000, proto.StoreModeRocksDb)
+	raft := metamock.NewMockPartition(1)
+	memMp, err := newMetapartitionForTest(raft, memMpConf, manager)
+	if err != nil {
+		t.Errorf("create mp failed:%s", err.Error())
+		return
+	}
+
+	rockMp, err := newMetapartitionForTest(raft, rockMpConf, manager)
+	if err != nil {
+		t.Errorf("create mp failed:%s", err.Error())
+		return
+	}
+
+	defer func(){
+		if memMp != nil {
+			releaseTestMetapartition(memMp)
+		}
+
+		if rockMp != nil {
+			releaseTestMetapartition(rockMp)
+		}
+
+	}()
+
+	raft.Apply = ApplyMock
+	//t.Logf("leader is mem")
+	raft.Mp = append(raft.Mp, memMp)
+	raft.Mp = append(raft.Mp, rockMp)
+	BatchInodeGetInterTest(t, memMp, rockMp)
+
+	raft.Mp = raft.Mp[:0]
+	//t.Logf("leader is rocks")
+	raft.Mp = append(raft.Mp, rockMp)
+	raft.Mp = append(raft.Mp, memMp)
+	BatchInodeGetInterTest(t, rockMp, memMp)
+}
+
+func CreateInodeLinkInterTest(t *testing.T, leader, follower *metaPartition) {
+	ino, err := createInode(470, 0, 0, leader)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	req := &proto.LinkInodeRequest{
+		Inode: ino,
+	}
+	packet := &Packet{}
+	if err = leader.CreateInodeLink(req, packet); err != nil || packet.ResultCode != proto.OpOk {
+		t.Errorf("create inode link failed, err:%v, resultCode:%v", err, packet.ResultCode)
+		return
+	}
+
+	//validate
+	var inode *Inode
+	if inode, _ = leader.inodeTree.Get(ino); inode == nil {
+		t.Errorf("get exist inode failed, inode is nil")
+		return
+	}
+	if inode.NLink != 2 {
+		t.Errorf("inode nlink is error, [expect:2, actual:%v]", inode.NLink)
+		return
+	}
+
+	if inode, _ = follower.inodeTree.Get(ino); inode == nil {
+		t.Errorf("get exist inode failed, inode is nil")
+		return
+	}
+	if inode.NLink != 2 {
+		t.Errorf("inode nlink is error, [expect:2, actual:%v]", inode.NLink)
+		return
+	}
+
+	//create inode link for not exist inode
+	req = &proto.LinkInodeRequest{
+		Inode: ino + 1,
+	}
+	packet = &Packet{}
+	if _ = leader.CreateInodeLink(req, packet); packet.ResultCode != proto.OpInodeOutOfRange {
+		t.Errorf("create inode link for not exist inode failed, expect result code is OpInodeOutOfRange, " +
+			"but actual result is:0x%X", packet.ResultCode)
+		return
+	}
+
+	//create inode link for mark delete inode
+	inode.SetDeleteMark()
+	leader.inodeTree.Put(inode)
+	follower.inodeTree.Put(inode)
+	req = &proto.LinkInodeRequest{
+		Inode: ino,
+	}
+	packet = &Packet{}
+	if _ = leader.CreateInodeLink(req, packet); packet.ResultCode != proto.OpNotExistErr {
+		t.Errorf("create inode link for mark delete inode failed, expect result code is OpNotExistErr, " +
+			"but actual result is:0x%X", packet.ResultCode)
+		return
+	}
+	return
+}
+
+func TestCreateInodeLink(t *testing.T) {
+	node := &MetaNode{nodeId: 1}
+	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
+	memMpConf := newDefaultMpConfig(1, 1, 1, 1000, proto.StoreModeMem)
+	rockMpConf := newDefaultMpConfig(2, 2, 1, 1000, proto.StoreModeRocksDb)
+	raft := metamock.NewMockPartition(1)
+	memMp, err := newMetapartitionForTest(raft, memMpConf, manager)
+	if err != nil {
+		t.Errorf("create mp failed:%s", err.Error())
+		return
+	}
+
+	rockMp, err := newMetapartitionForTest(raft, rockMpConf, manager)
+	if err != nil {
+		t.Errorf("create mp failed:%s", err.Error())
+		return
+	}
+
+	defer func(){
+		if memMp != nil {
+			releaseTestMetapartition(memMp)
+		}
+
+		if rockMp != nil {
+			releaseTestMetapartition(rockMp)
+		}
+
+	}()
+
+	raft.Apply = ApplyMock
+	//t.Logf("leader is mem")
+	raft.Mp = append(raft.Mp, memMp)
+	raft.Mp = append(raft.Mp, rockMp)
+	CreateInodeLinkInterTest(t, memMp, rockMp)
+
+	raft.Mp = raft.Mp[:0]
+	//t.Logf("leader is rocks")
+	raft.Mp = append(raft.Mp, rockMp)
+	raft.Mp = append(raft.Mp, memMp)
+	CreateInodeLinkInterTest(t, rockMp, memMp)
+}
+
+//simulate remove file
+func EvictFileInodeInterTest(t *testing.T, leader, follower *metaPartition) {
+	//create inode
+	ino, err := createInode(470, 0, 0, leader)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	//unlink inode
+	reqUnlinkInode := &proto.UnlinkInodeRequest{
+		Inode: ino,
+	}
+	packet := &Packet{}
+	if err = leader.UnlinkInode(reqUnlinkInode, packet); err != nil || packet.ResultCode != proto.OpOk {
+		t.Errorf("unlink inode failed, [err:%v, resultCode:%v]", err, packet.ResultCode)
+		return
+	}
+	//evict inode
+	reqEvictInode := &proto.EvictInodeRequest{
+		Inode: ino,
+	}
+	packet = &Packet{}
+	if err = leader.EvictInode(reqEvictInode, packet); err != nil || packet.ResultCode != proto.OpOk {
+		t.Errorf("evict inode failed, [err:%v, resultCode:%v]", err, packet.ResultCode)
+		return
+	}
+
+	//validate
+	var inode *Inode
+	inode, _ = leader.inodeTree.Get(ino)
+	if inode == nil {
+		t.Fatalf("get exist inode failed")
+		return
+	}
+	if inode.NLink != 0 {
+		t.Fatalf("inode nlink mismatch, expect:0, actual:%v", inode.NLink)
+		return
+	}
+
+	if !inode.ShouldDelete() {
+		t.Fatalf("delete flag mismatch, inode should be marked delete, but it is not")
+		return
+	}
+
+	inode, _ = follower.inodeTree.Get(ino)
+	if inode == nil {
+		t.Errorf("get exist inode failed")
+		return
+	}
+	if inode.NLink != 0 {
+		t.Errorf("test failed, error nlink, expect:0, actual:%v", inode.NLink)
+		return
+	}
+	if !inode.ShouldDelete() {
+		t.Errorf("test failed, inode should mark delete, but it is not")
+		return
+	}
+
+	//evict mark delete inode, response is ok
+	packet = &Packet{}
+	if err = leader.EvictInode(reqEvictInode, packet); err != nil || packet.ResultCode != proto.OpOk {
+		t.Errorf("evict inode failed, [err:%v, resultCode:%v]", err, packet.ResultCode)
+		return
+	}
+
+	//evict not exist inode, response result code is not exist error
+	reqEvictInode = &proto.EvictInodeRequest{
+		Inode: ino + 1,
+	}
+	packet = &Packet{}
+	if err = leader.EvictInode(reqEvictInode, packet); packet.ResultCode != proto.OpInodeOutOfRange {
+		t.Errorf("test failed, evict not exist inode, [err:%v, resultCode:0x%X]", err, packet.ResultCode)
+		return
+	}
+	return
+}
+
+func EvictDirInodeInterTest(t *testing.T, leader, follower *metaPartition) {
+	//create inode
+	ino, err := createInode(uint32(os.ModeDir), 0, 0, leader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var inodeInLeaderMP, inodeInFollowerMP *Inode
+	inodeInLeaderMP, _ = leader.inodeTree.Get(ino)
+	inodeInFollowerMP, _ = follower.inodeTree.Get(ino)
+	if !reflect.DeepEqual(inodeInLeaderMP, inodeInFollowerMP) {
+		t.Errorf("inode info in mem is not equal to rocks, mem:%s, rocks:%s", inodeInLeaderMP.String(), inodeInFollowerMP.String())
+		return
+	}
+
+	req := &proto.LinkInodeRequest{
+		Inode: ino,
+	}
+	packet := &Packet{}
+	if err = leader.CreateInodeLink(req, packet); err != nil || packet.ResultCode != proto.OpOk {
+		t.Errorf("create inode link failed, err:%v, resultCode:%v", err, packet.ResultCode)
+		return
+	}
+
+	//evict inode
+	reqEvictInode := &proto.EvictInodeRequest{
+		Inode: ino,
+	}
+	packet = &Packet{}
+	if err = leader.EvictInode(reqEvictInode, packet); err != nil || packet.ResultCode != proto.OpOk {
+		t.Errorf("evict inode failed, [err:%v, resultCode:%v]", err, packet.ResultCode)
+		return
+	}
+
+	var inode *Inode
+	inode, _ = leader.inodeTree.Get(ino)
+	if inode == nil {
+		t.Errorf("get exist inode failed")
+		return
+	}
+	if inode.NLink != 3 {
+		t.Errorf("test failed, error nlink, expect:0, actual:%v", inode.NLink)
+		return
+	}
+	if inode.ShouldDelete() {
+		t.Errorf("test failed, inode be set delete mark, error")
+		return
+	}
+
+	inode, _ = follower.inodeTree.Get(ino)
+	if inode == nil {
+		t.Errorf("get exist inode failed")
+		return
+	}
+	if inode.NLink != 3 {
+		t.Errorf("test failed, error nlink, expect:0, actual:%v", inode.NLink)
+		return
+	}
+	if inode.ShouldDelete() {
+		t.Errorf("test failed, inode be set delete mark, error")
+		return
+	}
+
+	//unlink to empty
+	reqUnlinkInode := &proto.UnlinkInodeRequest{
+		Inode: ino,
+	}
+	packet = &Packet{}
+	if err = leader.UnlinkInode(reqUnlinkInode, packet); err != nil || packet.ResultCode != proto.OpOk {
+		t.Errorf("unlink inode failed, [err:%v, resultCode:%v]", err, packet.ResultCode)
+		return
+	}
+
+	packet = &Packet{}
+	if err = leader.EvictInode(reqEvictInode, packet); err != nil || packet.ResultCode != proto.OpOk {
+		t.Errorf("evict inode failed, [err:%v, resultCode:%v]", err, packet.ResultCode)
+		return
+	}
+
+	inode, _ = leader.inodeTree.Get(ino)
+	if inode == nil {
+		t.Errorf("get exist inode failed")
+		return
+	}
+	if inode.NLink != 2 {
+		t.Errorf("test failed, error nlink, expect:0, actual:%v", inode.NLink)
+		return
+	}
+	if !inode.ShouldDelete() {
+		t.Errorf("test failed, inode should mark delete, but it is not")
+		return
+	}
+
+	inode, _ = follower.inodeTree.Get(ino)
+	if inode == nil {
+		t.Errorf("get exist inode failed")
+		return
+	}
+	if inode.NLink != 2 {
+		t.Errorf("test failed, error nlink, expect:0, actual:%v", inode.NLink)
+		return
+	}
+	if !inode.ShouldDelete() {
+		t.Errorf("test failed, inode should mark delete, but it is not")
+		return
+	}
+}
+
+func TestEvictInode(t *testing.T) {
+	node := &MetaNode{nodeId: 1}
+	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
+	memMpConf := newDefaultMpConfig(1, 1, 1, 1000, proto.StoreModeMem)
+	rockMpConf := newDefaultMpConfig(2, 2, 1, 1000, proto.StoreModeRocksDb)
+	raft := metamock.NewMockPartition(1)
+	memMp, err := newMetapartitionForTest(raft, memMpConf, manager)
+	if err != nil {
+		t.Errorf("create mp failed:%s", err.Error())
+		return
+	}
+
+	rockMp, err := newMetapartitionForTest(raft, rockMpConf, manager)
+	if err != nil {
+		t.Errorf("create mp failed:%s", err.Error())
+		return
+	}
+
+	defer func(){
+		if memMp != nil {
+			releaseTestMetapartition(memMp)
+		}
+
+		if rockMp != nil {
+			releaseTestMetapartition(rockMp)
+		}
+
+	}()
+
+	raft.Apply = ApplyMock
+	//t.Logf("leader is mem")
+	raft.Mp = append(raft.Mp, memMp)
+	raft.Mp = append(raft.Mp, rockMp)
+	EvictFileInodeInterTest(t, memMp, rockMp)
+	EvictDirInodeInterTest(t, memMp, rockMp)
+
+	raft.Mp = raft.Mp[:0]
+	//t.Logf("leader is rocks")
+	raft.Mp = append(raft.Mp, rockMp)
+	raft.Mp = append(raft.Mp, memMp)
+	EvictFileInodeInterTest(t, rockMp, memMp)
+	EvictDirInodeInterTest(t, memMp, rockMp)
+}
+
+func EvictBatchInodeInterTest(t *testing.T, leader, follower *metaPartition) {
+	var (
+		inos []uint64
+		err  error
+	)
+	defer func() {
+		for _, ino := range inos {
+			req := &proto.DeleteInodeRequest{
+				Inode: ino,
+			}
+			packet := &Packet{}
+			leader.DeleteInode(req, packet)
+		}
+		if leader.inodeTree.Count() != follower.inodeTree.Count() || leader.inodeTree.Count() != 0 {
+			t.Errorf("inode count must be zero after delete, but result is not expect, count[leader:%v, follower:%v]", leader.inodeTree.Count(), follower.inodeTree.Count())
+			return
+		}
+	}()
+	if inos, err = createInodesForTest(leader, follower, 100, 470, 0, 0); err != nil || len(inos) != 100{
+		t.Fatal(err)
+		return
+	}
+
+	testIno := inos[20:50]
+	//batch unlink
+	reqBatchUnlink := &proto.BatchUnlinkInodeRequest{
+		Inodes: testIno,
+	}
+	packet := &Packet{}
+	if err = leader.UnlinkInodeBatch(reqBatchUnlink, packet); err != nil || packet.ResultCode != proto.OpOk {
+		t.Errorf("batch unlink inode failed, err:%v, resultCode:%v", err, packet.ResultCode)
+		return
+	}
+
+	//batch evict
+	reqBatchEvict := &proto.BatchEvictInodeRequest{
+		Inodes: testIno,
+	}
+	packet = &Packet{}
+	if err = leader.EvictInodeBatch(reqBatchEvict, packet); err != nil || packet.ResultCode != proto.OpOk {
+		t.Errorf("batch evict inode failed, err:%v, resultCode:%v", err, packet.ResultCode)
+		return
+	}
+
+	//validate
+	for _, ino := range testIno {
+		inodeInLeader, _ := leader.inodeTree.Get(ino)
+		if inodeInLeader == nil {
+			t.Errorf("get inode is null")
+			return
+		}
+		if inodeInLeader.NLink != 0 {
+			t.Errorf("error nlink number, expect:0, actual:%v", inodeInLeader.NLink)
+			return
+		}
+		if !inodeInLeader.ShouldDelete() {
+			t.Errorf("inode should mark delete, but it is not")
+			return
+		}
+
+		inodeInFollower, _ := follower.inodeTree.Get(ino)
+		if inodeInFollower == nil {
+			t.Errorf("get inode is null")
+			return
+		}
+		if inodeInFollower.NLink != 0 {
+			t.Errorf("error nlink number, expect:0, actual:%v", inodeInFollower.NLink)
+			return
+		}
+		if !inodeInLeader.ShouldDelete() {
+			t.Errorf("inode should mark delete, but it is not")
+			return
+		}
+	}
+	return
+}
+
+func TestEvictBatchInode(t *testing.T) {
+	node := &MetaNode{nodeId: 1}
+	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
+	memMpConf := newDefaultMpConfig(1, 1, 1, 1000, proto.StoreModeMem)
+	rockMpConf := newDefaultMpConfig(2, 2, 1, 1000, proto.StoreModeRocksDb)
+	raft := metamock.NewMockPartition(1)
+	memMp, err := newMetapartitionForTest(raft, memMpConf, manager)
+	if err != nil {
+		t.Errorf("create mp failed:%s", err.Error())
+		return
+	}
+
+	rockMp, err := newMetapartitionForTest(raft, rockMpConf, manager)
+	if err != nil {
+		t.Errorf("create mp failed:%s", err.Error())
+		return
+	}
+
+	defer func(){
+		if memMp != nil {
+			releaseTestMetapartition(memMp)
+		}
+
+		if rockMp != nil {
+			releaseTestMetapartition(rockMp)
+		}
+
+	}()
+
+	raft.Apply = ApplyMock
+	//t.Logf("leader is mem")
+	raft.Mp = append(raft.Mp, memMp)
+	raft.Mp = append(raft.Mp, rockMp)
+	EvictBatchInodeInterTest(t, memMp, rockMp)
+
+	raft.Mp = raft.Mp[:0]
+	//t.Logf("leader is rocks")
+	raft.Mp = append(raft.Mp, rockMp)
+	raft.Mp = append(raft.Mp, memMp)
+	EvictBatchInodeInterTest(t, rockMp, memMp)
+}
+
+func SetAttrInterTest(t *testing.T, leader, follower *metaPartition) {
+	var (
+		err     error
+		reqData []byte
+	)
+	ino, err := createInode(uint32(os.ModeDir), 0, 0, leader)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	modifyTime := time.Now().Unix()
+	accessTime := time.Now().Unix()
+	req := &proto.SetAttrRequest{
+		Inode: ino,
+		Mode: uint32(os.ModeDir),
+		Uid: 7,
+		Gid: 8,
+		ModifyTime: modifyTime,
+		AccessTime: accessTime,
+		Valid: 31,
+	}
+	reqData, err = json.Marshal(req)
+	if err != nil {
+		t.Errorf("marshal set attr request failed, err:%v", err)
+		return
+	}
+	packet := &Packet{}
+	if err = leader.SetAttr(reqData, packet); err != nil || packet.ResultCode != proto.OpOk {
+		t.Errorf("set attr failed, err:%v, resultCode:%v", err, packet.ResultCode)
+		return
+	}
+
+	var inodeInLeader, inodeInFollower *Inode
+	inodeInLeader, _ = leader.inodeTree.Get(ino)
+	inodeInFollower, _ = follower.inodeTree.Get(ino)
+	if inodeInLeader == nil || inodeInFollower == nil {
+		t.Errorf("get exist inode failed, leader:%v, follower:%v", inodeInLeader, inodeInFollower)
+		return
+	}
+	if !reflect.DeepEqual(inodeInLeader, inodeInFollower) {
+		t.Errorf("inode info in mem is not equal to rocks, mem:%s, rocks:%s", inodeInFollower.String(), inodeInFollower.String())
+		return
+	}
+	if !proto.IsDir(inodeInLeader.Type) {
+		t.Errorf("test failed, expect type is directory, but is %v", inodeInLeader.Type)
+		return
+	}
+	if inodeInLeader.Uid != 7 {
+		t.Errorf("test failed, inode uid expect type is 7, but actual is %v", inodeInLeader.Uid)
+		return
+	}
+	if inodeInLeader.Gid != 8 {
+		t.Errorf("test failed, inode gid expect type is 8, but actual is %v", inodeInLeader.Gid)
+		return
+	}
+	if inodeInLeader.AccessTime != accessTime {
+		t.Errorf("test failed, inode access time expect type is %v, but actual is %v", accessTime, inodeInLeader.AccessTime)
+		return
+	}
+	if inodeInLeader.ModifyTime != modifyTime {
+		t.Errorf("test failed, inode modify time expect type is %v, but actual is %v", modifyTime, inodeInLeader.ModifyTime)
+		return
+	}
+	return
+}
+
+func TestSetAttr(t *testing.T) {
+	node := &MetaNode{nodeId: 1}
+	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
+	memMpConf := newDefaultMpConfig(1, 1, 1, 1000, proto.StoreModeMem)
+	rockMpConf := newDefaultMpConfig(2, 2, 1, 1000, proto.StoreModeRocksDb)
+	raft := metamock.NewMockPartition(1)
+	memMp, err := newMetapartitionForTest(raft, memMpConf, manager)
+	if err != nil {
+		t.Errorf("create mp failed:%s", err.Error())
+		return
+	}
+
+	rockMp, err := newMetapartitionForTest(raft, rockMpConf, manager)
+	if err != nil {
+		t.Errorf("create mp failed:%s", err.Error())
+		return
+	}
+
+	defer func(){
+		if memMp != nil {
+			releaseTestMetapartition(memMp)
+		}
+
+		if rockMp != nil {
+			releaseTestMetapartition(rockMp)
+		}
+
+	}()
+
+	raft.Apply = ApplyMock
+	//t.Logf("leader is mem")
+	raft.Mp = append(raft.Mp, memMp)
+	raft.Mp = append(raft.Mp, rockMp)
+	SetAttrInterTest(t, memMp, rockMp)
+
+	raft.Mp = raft.Mp[:0]
+	//t.Logf("leader is rocks")
+	raft.Mp = append(raft.Mp, rockMp)
+	raft.Mp = append(raft.Mp, memMp)
+	SetAttrInterTest(t, rockMp, memMp)
+}
+
+func DeleteInodeInterTest(t *testing.T, leader, follower *metaPartition) {
+	ino, err := createInode(uint32(os.ModeDir), 0, 0, leader)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	req := &proto.DeleteInodeRequest{
+		Inode: ino,
+	}
+	packet := &Packet{}
+	if err = leader.DeleteInode(req, packet); err != nil || packet.ResultCode != proto.OpOk {
+		t.Errorf("delete inode failed, err:%v, resultCode:%v", err, packet.ResultCode)
+		return
+	}
+
+	inodeInLeader, _ := leader.inodeTree.Get(ino)
+	inodeInFollower, _ := follower.inodeTree.Get(ino)
+	if inodeInLeader != nil || inodeInFollower != nil {
+		t.Errorf("inode get result expcet is nil, but actual is [leader:%v, follower:%v]", inodeInLeader, inodeInFollower)
+		return
+	}
+}
+
+func TestDeleteInode(t *testing.T) {
+	node := &MetaNode{nodeId: 1}
+	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
+	memMpConf := newDefaultMpConfig(1, 1, 1, 1000, proto.StoreModeMem)
+	rockMpConf := newDefaultMpConfig(2, 2, 1, 1000, proto.StoreModeRocksDb)
+	raft := metamock.NewMockPartition(1)
+	memMp, err := newMetapartitionForTest(raft, memMpConf, manager)
+	if err != nil {
+		t.Errorf("create mp failed:%s", err.Error())
+		return
+	}
+
+	rockMp, err := newMetapartitionForTest(raft, rockMpConf, manager)
+	if err != nil {
+		t.Errorf("create mp failed:%s", err.Error())
+		return
+	}
+
+	defer func(){
+		if memMp != nil {
+			releaseTestMetapartition(memMp)
+		}
+
+		if rockMp != nil {
+			releaseTestMetapartition(rockMp)
+		}
+
+	}()
+
+	raft.Apply = ApplyMock
+	//t.Logf("leader is mem")
+	raft.Mp = append(raft.Mp, memMp)
+	raft.Mp = append(raft.Mp, rockMp)
+	DeleteInodeInterTest(t, memMp, rockMp)
+
+	raft.Mp = raft.Mp[:0]
+	//t.Logf("leader is rocks")
+	raft.Mp = append(raft.Mp, rockMp)
+	raft.Mp = append(raft.Mp, memMp)
+	DeleteInodeInterTest(t, rockMp, memMp)
+}
+
+func BatchDeleteInodeInterTest(t *testing.T, leader, follower *metaPartition) {
+	var (
+		inos []uint64
+		err  error
+	)
+	defer func() {
+		for _, ino := range inos {
+			req := &proto.DeleteInodeRequest{
+				Inode: ino,
+			}
+			packet := &Packet{}
+			leader.DeleteInode(req, packet)
+		}
+		if leader.inodeTree.Count() != follower.inodeTree.Count() || leader.inodeTree.Count() != 0 {
+			t.Errorf("inode count must be zero after delete, but result is not expect, count[leader:%v, follower:%v]", leader.inodeTree.Count(), follower.inodeTree.Count())
+			return
+		}
+	}()
+	if inos, err = createInodesForTest(leader, follower, 100, 470, 0, 0); err != nil || len(inos) != 100{
+		t.Fatal(err)
+		return
+	}
+
+	testIno := inos[20:50]
+	reqBatchDeleteInode := &proto.DeleteInodeBatchRequest{
+		Inodes: testIno,
+	}
+	packet := &Packet{}
+	if err = leader.DeleteInodeBatch(reqBatchDeleteInode, packet); err != nil || packet.ResultCode != proto.OpOk {
+		t.Errorf("batch delete inode failed, err:%v, resultCode:%v", err, packet.ResultCode)
+		return
+	}
+	for _, ino := range testIno {
+		inodeInLeader, _ := leader.inodeTree.Get(ino)
+		inodeInFollower, _ := follower.inodeTree.Get(ino)
+		if inodeInLeader != nil || inodeInFollower != nil {
+			t.Errorf("inode get result expcet is nil, but actual is [leader:%v, follower:%v]", inodeInLeader, inodeInFollower)
+			return
+		}
+	}
+}
+
+func TestBatchDeleteInode(t *testing.T) {
+	testFunc := []TestFunc{
+		BatchDeleteInodeInterTest,
+	}
+	doTest(t, testFunc)
+}
+
+type TestFunc func(*testing.T, *metaPartition, *metaPartition)
+
+func doTest(t *testing.T, testFunc []TestFunc) {
+	node := &MetaNode{nodeId: 1}
+	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
+	memMpConf := newDefaultMpConfig(1, 1, 1, 100000, proto.StoreModeMem)
+	rockMpConf := newDefaultMpConfig(2, 2, 1, 100000, proto.StoreModeRocksDb)
+	raft := metamock.NewMockPartition(1)
+	memMp, err := newMetapartitionForTest(raft, memMpConf, manager)
+	if err != nil {
+		t.Errorf("create mp failed:%s", err.Error())
+		return
+	}
+
+	rockMp, err := newMetapartitionForTest(raft, rockMpConf, manager)
+	if err != nil {
+		t.Errorf("create mp failed:%s", err.Error())
+		return
+	}
+
+	defer func(){
+		if memMp != nil {
+			releaseTestMetapartition(memMp)
+		}
+
+		if rockMp != nil {
+			releaseTestMetapartition(rockMp)
+		}
+
+	}()
+
+	raft.Apply = ApplyMock
+	t.Logf("leader is memory mode\n")
+	raft.Mp = append(raft.Mp, memMp)
+	raft.Mp = append(raft.Mp, rockMp)
+	for _, f := range testFunc {
+		f(t, memMp, rockMp)
+	}
+
+	raft.Mp = raft.Mp[:0]
+	t.Logf("leader is rocksdb mode\n")
+	raft.Mp = append(raft.Mp, rockMp)
+	raft.Mp = append(raft.Mp, memMp)
+	for _, f := range testFunc {
+		f(t, rockMp, memMp)
+	}
 }

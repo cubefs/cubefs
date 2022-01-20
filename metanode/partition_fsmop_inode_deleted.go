@@ -104,33 +104,59 @@ type fsmOpDeletedInodeResponse struct {
 	Inode  uint64 `json:"ino"`
 }
 
-func (mp *metaPartition) mvToDeletedInodeTree(inode *Inode, timestamp int64) (status uint8) {
+//todo:lizhenzhen need review
+func (mp *metaPartition) mvToDeletedInodeTree(inode *Inode, timestamp int64) (status uint8, err error) {
+	defer func() {
+		if err == existsError || err == notExistsError {
+			err = nil
+		}
+	}()
 	status = proto.OpOk
 	dino := NewDeletedInode(inode, timestamp)
-	status = mp.fsmCreateDeletedInode(dino).Status
-	if status != proto.OpOk && status != proto.OpNotExistErr {
-		log.LogErrorf("[mvToDeletedInodeTree], inode: %v, status: %v", inode, status)
+
+	var resp *fsmOpDeletedInodeResponse
+	resp, err = mp.fsmCreateDeletedInode(dino)
+	if err == rocksdbError {
+		log.LogErrorf("[mvToDeletedInodeTree], inode: %v, status: %v, err: %v", inode, status, err)
 		return
 	}
-	mp.inodeTree.Delete(inode)
+	status = resp.Status
+
+	if _, err = mp.inodeTree.Delete(inode.Inode); err == rocksdbError {
+		log.LogErrorf("[mvToDeletedInodeTree], inode(%v) deleted failed(%v)", inode, err)
+		return
+	}
 	return
 }
 
-func (mp *metaPartition) fsmCreateDeletedInode(dino *DeletedINode) (rsp *fsmOpDeletedInodeResponse) {
+func (mp *metaPartition) fsmCreateDeletedInode(dino *DeletedINode) (rsp *fsmOpDeletedInodeResponse, err error) {
 	rsp = new(fsmOpDeletedInodeResponse)
 	rsp.Inode = dino.Inode.Inode
 	rsp.Status = proto.OpOk
-	_, ok := mp.inodeDeletedTree.ReplaceOrInsert(dino, false)
-	if !ok {
-		rsp.Status = proto.OpExistErr
+	if err = mp.inodeDeletedTree.Create(dino, false); err != nil {
+		if err == existsError {
+			rsp.Status = proto.OpExistErr
+		} else {
+			rsp.Status = proto.OpErr
+		}
 	}
 	return
 }
 
-func (mp *metaPartition) fsmBatchRecoverDeletedInode(inos FSMDeletedINodeBatch) (rsp []*fsmOpDeletedInodeResponse) {
-	rsp = make([]*fsmOpDeletedInodeResponse, 0)
-	for _, ino := range inos {
-		resp := mp.recoverDeletedInode(ino.inode)
+func (mp *metaPartition) fsmBatchRecoverDeletedInode(inos FSMDeletedINodeBatch) (rsp []*fsmOpDeletedInodeResponse, err error) {
+	var wrongIndex = len(inos)
+	defer func() {
+		for index := wrongIndex; index < len(inos); index++ {
+			rsp = append(rsp, &fsmOpDeletedInodeResponse{Status: proto.OpErr, Inode: inos[index].inode})
+		}
+	}()
+	for index, ino := range inos {
+		var resp *fsmOpDeletedInodeResponse
+		resp, err = mp.recoverDeletedInode(ino.inode)
+		if err == rocksdbError {
+			wrongIndex = index
+			break
+		}
 		if resp.Status != proto.OpOk {
 			rsp = append(rsp, resp)
 		}
@@ -139,19 +165,19 @@ func (mp *metaPartition) fsmBatchRecoverDeletedInode(inos FSMDeletedINodeBatch) 
 }
 
 func (mp *metaPartition) fsmRecoverDeletedInode(ino *FSMDeletedINode) (
-	resp *fsmOpDeletedInodeResponse) {
+	resp *fsmOpDeletedInodeResponse, err error) {
 	return mp.recoverDeletedInode(ino.inode)
 }
 
 func (mp *metaPartition) recoverDeletedInode(inode uint64) (
-	resp *fsmOpDeletedInodeResponse) {
+	resp *fsmOpDeletedInodeResponse, err error) {
 	resp = new(fsmOpDeletedInodeResponse)
 	resp.Inode = inode
 	resp.Status = proto.OpOk
 
 	var (
-		currInode interface{}
-		deletedInode  interface{}
+		currInode    *Inode
+		deletedInode *DeletedINode
 	)
 
 	ino := NewInode(inode, 0)
@@ -163,21 +189,40 @@ func (mp *metaPartition) recoverDeletedInode(inode uint64) (
 	}()
 
 	dino := NewDeletedInodeByID(inode)
-	currInode = mp.inodeTree.CopyGet(ino)
-	deletedInode = mp.inodeDeletedTree.CopyGet(dino)
+	currInode, err = mp.inodeTree.Get(ino.Inode)
+	if err != nil {
+		resp.Status = proto.OpErr
+		return
+	}
+	deletedInode, err = mp.inodeDeletedTree.Get(ino.Inode)
+	if err != nil {
+		resp.Status = proto.OpErr
+		return
+	}
 	if currInode != nil {
-		i := currInode.(*Inode)
 		if deletedInode != nil {
-			_ = mp.inodeDeletedTree.Delete(dino)
+			_, err = mp.inodeDeletedTree.Delete(inode)
+			if err == rocksdbError {
+				resp.Status = proto.OpErr
+				return
+			}
+			err = nil
 			return
 		}
 
-		if i.ShouldDelete() {
+		defer func() {
+			if err = mp.inodeTree.Put(currInode); err != nil {
+				resp.Status = proto.OpErr
+				return
+			}
+		}()
+
+		if currInode.ShouldDelete() {
 			log.LogDebugf("[recoverDeletedInode], the inode[%v] 's deleted flag is invalid", ino)
-			i.CancelDeleteMark()
+			currInode.CancelDeleteMark()
 		}
-		if !proto.IsDir(i.Type)  {
-			i.IncNLink() // TODO: How to handle idempotent?
+		if !proto.IsDir(currInode.Type)  {
+			currInode.IncNLink() // TODO: How to handle idempotent?
 		}
 		log.LogDebugf("[recoverDeletedInode], success to increase the link of inode[%v]", inode)
 		return
@@ -189,33 +234,48 @@ func (mp *metaPartition) recoverDeletedInode(inode uint64) (
 		return
 	}
 
-	if deletedInode.(*DeletedINode).IsExpired {
-		log.LogWarnf("[recoverDeletedInode], inode: [%v] is expired", deletedInode.(*DeletedINode))
+	if deletedInode.IsExpired {
+		log.LogWarnf("[recoverDeletedInode], inode: [%v] is expired", deletedInode)
 		resp.Status = proto.OpNotExistErr
 		return
 	}
 
-	inoPtr := deletedInode.(*DeletedINode).buildInode()
+	inoPtr := deletedInode.buildInode()
 	inoPtr.CancelDeleteMark()
 	if inoPtr.IsEmptyDir() {
 		inoPtr.NLink = 2
 	} else {
 		inoPtr.IncNLink()
 	}
-	_, ok := mp.inodeTree.ReplaceOrInsert(inoPtr, false)
-	if !ok {
-		log.LogErrorf("[[recoverDeletedInode], failed to add inode to inodeTree, inode: [%v]", inoPtr)
+	err = mp.inodeTree.Create(inoPtr, false)
+	if err != nil && err != existsError {
+		log.LogErrorf("[recoverDeletedInode], failed to add inode to inodeTree, inode: (%v), error: (%v)", inoPtr, err)
 		resp.Status = proto.OpErr
 		return
 	}
-	mp.inodeDeletedTree.Delete(dino)
+	if _, err = mp.inodeDeletedTree.Delete(dino.Inode.Inode); err == rocksdbError {
+		log.LogErrorf("[recoverDeletedInode], failed to delete deletedInode, delInode: (%v), error: (%v)", dino, err)
+		resp.Status = proto.OpErr
+	}
 	return
 }
 
-func (mp *metaPartition) fsmBatchCleanDeletedInode(inos FSMDeletedINodeBatch) (rsp []*fsmOpDeletedInodeResponse) {
+func (mp *metaPartition) fsmBatchCleanDeletedInode(inos FSMDeletedINodeBatch) (rsp []*fsmOpDeletedInodeResponse, err error) {
 	rsp = make([]*fsmOpDeletedInodeResponse, 0)
-	for _, ino := range inos {
-		resp := mp.cleanDeletedInode(ino.inode)
+	var wrongIndex = len(inos)
+	defer func() {
+		for index := wrongIndex; index < len(inos); index++ {
+			rsp = append(rsp, &fsmOpDeletedInodeResponse{Status: proto.OpErr, Inode: inos[index].inode})
+		}
+	}()
+
+	for index, ino := range inos {
+		var resp *fsmOpDeletedInodeResponse
+		resp, err = mp.cleanDeletedInode(ino.inode)
+		if err == rocksdbError {
+			wrongIndex = index
+			break
+		}
 		if resp.Status != proto.OpOk {
 			rsp = append(rsp, resp)
 		}
@@ -224,23 +284,27 @@ func (mp *metaPartition) fsmBatchCleanDeletedInode(inos FSMDeletedINodeBatch) (r
 }
 
 func (mp *metaPartition) fsmCleanDeletedInode(ino *FSMDeletedINode) (
-	resp *fsmOpDeletedInodeResponse) {
+	resp *fsmOpDeletedInodeResponse, err error) {
 	return mp.cleanDeletedInode(ino.inode)
 }
 
 func (mp *metaPartition) cleanDeletedInode(inode uint64) (
-	resp *fsmOpDeletedInodeResponse) {
+	resp *fsmOpDeletedInodeResponse, err error) {
 	resp = new(fsmOpDeletedInodeResponse)
 	resp.Inode = inode
 	resp.Status = proto.OpOk
-	ino := NewInode(inode, 0)
 	defer func() {
-		log.LogDebugf("[cleanDeletedInode], inode: (%v), status:[%v]", ino.Inode, resp.Status)
+		log.LogDebugf("[cleanDeletedInode], inode: (%v), status:[%v]", inode, resp.Status)
 	}()
 
-	dino := NewDeletedInodeByID(inode)
-	item := mp.inodeDeletedTree.CopyGet(dino)
-	if item == nil {
+	var dino *DeletedINode
+	dino, err = mp.inodeDeletedTree.Get(inode)
+	if err != nil {
+		resp.Status = proto.OpErr
+		return
+	}
+
+	if dino == nil {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
@@ -248,38 +312,55 @@ func (mp *metaPartition) cleanDeletedInode(inode uint64) (
 	begDen := newPrimaryDeletedDentry(dino.Inode.Inode, "", 0, 0)
 	endDen := newPrimaryDeletedDentry(dino.Inode.Inode+1, "", 0, 0)
 	var children int
-	mp.dentryDeletedTree.AscendRange(begDen, endDen, func(i BtreeItem) bool {
+	err = mp.dentryDeletedTree.Range(begDen, endDen, func(v []byte) (bool, error) {
 		children++
 		if children > 0 {
-			return false
+			return false, nil
 		}
-		return true
+		return true, nil
 	})
+	if err != nil {
+		resp.Status = proto.OpErr
+		return
+	}
 
 	if children > 0 {
 		resp.Status = proto.OpExistErr
 		return
 	}
 
-	i := item.(*DeletedINode)
-	if i.IsEmptyDir() {
-		mp.inodeDeletedTree.Delete(dino)
+
+	if dino.IsEmptyDir() {
+		_, err = mp.inodeDeletedTree.Delete(dino.Inode.Inode)
+		if err == rocksdbError {
+			resp.Status = proto.OpErr
+		}
 		return
 	}
 
-	if i.IsTempFile() {
-		i.setExpired()
-		mp.freeList.Push(i.Inode.Inode)
+	if dino.IsTempFile() {
+		dino.setExpired()
+		mp.freeList.Push(dino.Inode.Inode)
 		return
 	}
 	resp.Status = proto.OpErr
 	return
 }
 
-func (mp *metaPartition) fsmCleanExpiredInode(inos FSMDeletedINodeBatch) (rsp []*fsmOpDeletedInodeResponse) {
-	rsp = make([]*fsmOpDeletedInodeResponse, 0)
-	for _, ino := range inos {
-		resp := mp.cleanExpiredInode(ino.inode)
+func (mp *metaPartition) fsmCleanExpiredInode(inos FSMDeletedINodeBatch) (rsp []*fsmOpDeletedInodeResponse, err error) {
+	var wrongIndex = len(inos)
+	defer func() {
+		for index := wrongIndex; index < len(inos); index++ {
+			rsp = append(rsp, &fsmOpDeletedInodeResponse{Status: proto.OpErr, Inode: inos[index].inode})
+		}
+	}()
+	for index, ino := range inos {
+		var resp *fsmOpDeletedInodeResponse
+		resp, err = mp.cleanExpiredInode(ino.inode)
+		if err == rocksdbError {
+			wrongIndex = index
+			break
+		}
 		if resp.Status != proto.OpOk {
 			rsp = append(rsp, resp)
 		}
@@ -288,7 +369,7 @@ func (mp *metaPartition) fsmCleanExpiredInode(inos FSMDeletedINodeBatch) (rsp []
 }
 
 func (mp *metaPartition) cleanExpiredInode(ino uint64) (
-	resp *fsmOpDeletedInodeResponse) {
+	resp *fsmOpDeletedInodeResponse, err error) {
 	resp = new(fsmOpDeletedInodeResponse)
 	resp.Inode = ino
 	resp.Status = proto.OpOk
@@ -296,20 +377,25 @@ func (mp *metaPartition) cleanExpiredInode(ino uint64) (
 		log.LogDebugf("[cleanExpiredInode], inode: %v, status: %v", ino, resp.Status)
 	}()
 
-	di := NewDeletedInodeByID(ino)
-	item := mp.inodeDeletedTree.CopyGet(di)
-	if item == nil {
+	var di *DeletedINode
+	di, err = mp.inodeDeletedTree.Get(ino)
+	if err != nil {
+		resp.Status = proto.OpErr
+		return
+	}
+	if di == nil {
 		return
 	}
 
-	origin := item.(*DeletedINode)
-	if origin.IsEmptyDir() {
-		mp.inodeDeletedTree.Delete(di)
+	if di.IsEmptyDir() {
+		if _, err = mp.inodeDeletedTree.Delete(di.Inode.Inode); err == rocksdbError {
+			resp.Status = proto.OpErr
+		}
 		return
 	}
 
-	if origin.IsTempFile() {
-		origin.setExpired()
+	if di.IsTempFile() {
+		di.setExpired()
 		mp.freeList.Push(di.Inode.Inode)
 		return
 	}
@@ -335,20 +421,33 @@ func (mp *metaPartition) internalClean(val []byte) (err error) {
 		}
 		log.LogDebugf("internalClean: received internal delete: partitionID(%v) inode(%v)",
 			mp.config.PartitionId, ino.Inode)
-		mp.internalCleanDeletedInode(ino)
+		err = mp.internalCleanDeletedInode(ino)
+		if err != nil {
+			return
+		}
 	}
 }
 
-func (mp *metaPartition) internalCleanDeletedInode(ino *Inode) {
-	dino := NewDeletedInode(ino, 0)
-	if mp.inodeDeletedTree.Delete(dino) == nil {
-		mp.inodeTree.Delete(ino)
+func (mp *metaPartition) internalCleanDeletedInode(ino *Inode) (err error) {
+	_, err = mp.inodeDeletedTree.Delete(ino.Inode)
+	if err != nil {
 		log.LogDebugf("[internalCleanDeletedInode], ino: %v", ino)
+		if err == rocksdbError {
+			log.LogErrorf("[internalCleanDeletedInode] delete error:%v", err)
+			return
+		}
+		if _, err = mp.inodeTree.Delete(ino.Inode); err == rocksdbError {
+			log.LogErrorf("[internalCleanDeletedInode] delete error:%v", err)
+			return
+		}
 	} else {
 		log.LogDebugf("[internalCleanDeletedInode], dino: %v", ino)
 	}
 	mp.freeList.Remove(ino.Inode)
-	mp.extendTree.Delete(&Extend{inode: ino.Inode}) // Also delete extend attribute.
+	if _, err = mp.extendTree.Delete(ino.Inode); err == rocksdbError { // Also delete extend attribute.
+		log.LogErrorf("[internalCleanDeletedInode], deleted extend failed, ino:%v, error:%v", ino.Inode, err)
+		return
+	}
 	return
 }
 

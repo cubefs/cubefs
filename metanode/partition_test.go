@@ -22,19 +22,23 @@ func ApplyMock(elem interface{},command []byte, index uint64) (resp interface{},
 
 func newTestMetapartition(pid uint32)(*metaPartition, error){
 	node := &MetaNode{nodeId: 1}
-	manager := &metadataManager{nodeId: 1, metaNode: node}
-	conf := &MetaPartitionConfig{ PartitionId: 1,
-		NodeId: 1,
-		Start: 1, End: math.MaxUint64 - 100,
-		Peers: []proto.Peer{proto.Peer{ID: 1, Addr: "127.0.0.1"} },
-		RootDir: "./partition_" + strconv.Itoa(int(pid))}
+	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
+	conf := &MetaPartitionConfig{
+		PartitionId: uint64(pid),
+		NodeId:      1,
+		Start:       1,
+		End:         math.MaxUint64 - 100,
+		Peers:       []proto.Peer{proto.Peer{ID: 1, Addr: "127.0.0.1"}},
+		RootDir:     "./partition_" + strconv.Itoa(int(pid)),
+		StoreMode:   proto.StoreModeMem,
+	}
 	tmp, err := CreateMetaPartition(conf, manager)
 	if  err != nil {
-		fmt.Printf("create meta partition failed:%s", err.Error())
+		fmt.Printf("create meta partition failed:%s\n", err.Error())
 		return nil, err
 	}
 	mp := tmp.(*metaPartition)
-	mp.raftPartition = &metamock.MockPartition{Id: 1, Mp: mp, Apply: ApplyMock}
+	mp.raftPartition = &metamock.MockPartition{Id: 1, Mp: []interface{}{mp}, Apply: ApplyMock}
 	mp.vol = NewVol()
 	return mp, nil
 }
@@ -42,6 +46,8 @@ func newTestMetapartition(pid uint32)(*metaPartition, error){
 func releaseTestMetapartition(mp *metaPartition) {
 	close(mp.stopC)
 	time.Sleep(time.Second)
+	mp.db.CloseDb()
+	mp.db.ReleaseRocksDb()
 	os.RemoveAll(mp.config.RootDir)
 }
 
@@ -59,7 +65,7 @@ func genInode(t *testing.T, mp *metaPartition, cnt uint64) {
 					ExtentOffset: rand.Uint64(), Size: rand.Uint32(), CRC:0})
 			}
 		}
-		if _, ok := mp.inodeTree.ReplaceOrInsert(ino, false); !ok {
+		if err := mp.inodeTree.Create(ino, false); err != nil {
 			continue
 		}
 		i++
@@ -82,7 +88,7 @@ func genDentry(t *testing.T, mp *metaPartition, cnt uint64) {
 		dentry.Inode = rand.Uint64()
 		dentry.Type = rand.Uint32()
 		dentry.Name = RandString(rand.Int() % 100 + 10)
-		if _, ok := mp.dentryTree.ReplaceOrInsert(dentry, false); !ok {
+		if err := mp.dentryTree.Create(dentry, false); err != nil {
 			continue
 		}
 		i++
@@ -91,32 +97,32 @@ func genDentry(t *testing.T, mp *metaPartition, cnt uint64) {
 
 func checkMPInodeAndDentry(t *testing.T, mp1, mp2 *metaPartition) {
 
-	if mp1.inodeTree.Len() != mp2.inodeTree.Len() {
+	if mp1.inodeTree.Count() != mp2.inodeTree.Count() {
 		t.Errorf("inode tree len is different [%d], [%d]",
-			mp1.inodeTree.Len(), mp2.inodeTree.Len())
+			mp1.inodeTree.Count(), mp2.inodeTree.Count())
 	}
-	mp1.inodeTree.Ascend(func(item BtreeItem) bool {
-		ino1 := item.(*Inode)
-		item2 := mp2.inodeTree.Get(ino1)
-		ino2 := item2.(*Inode)
+	_ = mp1.inodeTree.Range(nil, nil, func(v []byte) (bool, error) {
+		ino1 := NewInode(0, 0)
+		_ = ino1.Unmarshal(context.Background(), v)
+		ino2, _ := mp2.inodeTree.Get(ino1.Inode)
 		if !reflect.DeepEqual(ino1, ino2) {
 			t.Errorf("Failed to test, error: res=[%v] expectRes=[%v]\n",ino1, ino2)
 		}
-		return true
+		return true, nil
 	})
 
-	if mp1.dentryTree.Len() != mp2.dentryTree.Len() {
+	if mp1.dentryTree.Count() != mp2.dentryTree.Count() {
 		t.Errorf("dentry tree len is different [%d], [%d]",
-			mp1.dentryTree.Len(), mp2.dentryTree.Len())
+			mp1.dentryTree.Count(), mp2.dentryTree.Count())
 	}
-	mp1.dentryTree.Ascend(func(item BtreeItem) bool {
-		dentry1 := item.(*Dentry)
-		item2 := mp2.dentryTree.Get(dentry1)
-		dentry2 := item2.(*Dentry)
+	mp1.dentryTree.Range(nil, nil, func(v []byte) (bool, error) {
+		dentry1 := new(Dentry)
+		_ = dentry1.Unmarshal(v)
+		dentry2, _ := mp2.dentryTree.Get(dentry1.ParentId, dentry1.Name)
 		if !reflect.DeepEqual(dentry1, dentry2) {
 			t.Errorf("Failed to test, error: res=[%v] expectRes=[%v]\n",dentry1, dentry2)
 		}
-		return true
+		return true, nil
 	})
 }
 
@@ -124,6 +130,14 @@ func TestMetaPartition_Store(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
 	mp, _ := newTestMetapartition(1)
 	mp2, _ := newTestMetapartition(2)
+	if mp == nil || mp2 == nil {
+		fmt.Printf("new mock meta partition failed\n")
+		t.FailNow()
+	}
+	defer func() {
+		mp.db.CloseDb()
+		mp2.db.CloseDb()
+	}()
 	mp.marshalVersion = MetaPartitionMarshVersion1
 	mp2.marshalVersion = MetaPartitionMarshVersion2
 
@@ -132,32 +146,34 @@ func TestMetaPartition_Store(t *testing.T) {
 
 	start := time.Now()
 	mp.store(&storeMsg{
-		command:       opFSMStoreTick,
-		applyIndex:    mp.applyID,
-		inodeTree:     mp.inodeTree,
-		dentryTree:    mp.dentryTree,
-		extendTree:    mp.extendTree,
-		multipartTree: mp.multipartTree,
+		command:    opFSMStoreTick,
+		applyIndex: mp.applyID,
+		snap:       NewSnapshot(mp),
 	})
 	storeV1Cost := time.Since(start)
 
 	start = time.Now()
 	mp2.store(&storeMsg{
-		command:       opFSMStoreTick,
-		applyIndex:    mp.applyID,
-		inodeTree:     mp.inodeTree,
-		dentryTree:    mp.dentryTree,
-		extendTree:    mp.extendTree,
-		multipartTree: mp.multipartTree,
+		command:    opFSMStoreTick,
+		applyIndex: mp.applyID,
+		snap:       NewSnapshot(mp),
 	})
 	storeV2Cost := time.Since(start)
 
-	t.Logf("Store %dW inodes and %dW dentry, V1 cost:%v, V2 cost:%v", mp.inodeTree.Len()/10000, mp.dentryTree.Len()/10000, storeV1Cost, storeV2Cost)
+	t.Logf("Store %dW inodes and %dW dentry, V1 cost:%v, V2 cost:%v", mp.inodeTree.Count()/10000, mp.dentryTree.Count()/10000, storeV1Cost, storeV2Cost)
 }
 
 func TestMetaPartition_Load(t *testing.T) {
 	mp, _ := newTestMetapartition(1)
 	mp2, _ := newTestMetapartition(2)
+	if mp == nil || mp2 == nil {
+		fmt.Printf("new mock meta partition failed\n")
+		t.FailNow()
+	}
+	defer func() {
+		mp.db.CloseDb()
+		mp2.db.CloseDb()
+	}()
 	mp.marshalVersion = MetaPartitionMarshVersion2
 	mp2.marshalVersion = MetaPartitionMarshVersion1
 
@@ -170,7 +186,7 @@ func TestMetaPartition_Load(t *testing.T) {
 	loadV1Cost := time.Since(start)
 
 	checkMPInodeAndDentry(t, mp, mp2)
-	t.Logf("Load %dW inodes and %dW dentry, V1 cost:%v, V2 cost:%v", mp.inodeTree.Len()/10000, mp.dentryTree.Len()/10000, loadV1Cost, loadV2Cost)
+	t.Logf("Load %dW inodes and %dW dentry, V1 cost:%v, V2 cost:%v", mp.inodeTree.Count()/10000, mp.dentryTree.Count()/10000, loadV1Cost, loadV2Cost)
 }
 
 func dealChanel(mp *metaPartition) {
@@ -185,6 +201,14 @@ func dealChanel(mp *metaPartition) {
 func TestMetaPartition_GenSnap(t *testing.T) {
 	mp, _ := newTestMetapartition(1)
 	mp2, _ := newTestMetapartition(2)
+	if mp == nil || mp2 == nil {
+		fmt.Printf("new mock meta partition failed\n")
+		t.FailNow()
+	}
+	defer func() {
+		mp.db.CloseDb()
+		mp2.db.CloseDb()
+	}()
 	mp.marshalVersion = MetaPartitionMarshVersion2
 	mp2.marshalVersion = MetaPartitionMarshVersion1
 	mp.load(context.Background())
@@ -196,12 +220,20 @@ func TestMetaPartition_GenSnap(t *testing.T) {
 	cost := time.Since(start)
 
 	checkMPInodeAndDentry(t, mp, mp2)
-	t.Logf("%dW inodes %dW dentry, V2 gen snap, V1 aplly snnap success cost:%v", mp.inodeTree.Len()/10000, mp.dentryTree.Len()/10000, cost)
+	t.Logf("%dW inodes %dW dentry, V2 gen snap, V1 aplly snnap success cost:%v", mp.inodeTree.Count()/10000, mp.dentryTree.Count()/10000, cost)
 }
 
 func TestMetaPartition_ApplySnap(t *testing.T) {
 	mp, _ := newTestMetapartition(1)
 	mp2, _ := newTestMetapartition(2)
+	if mp == nil || mp2 == nil {
+		fmt.Printf("new mock meta partition failed\n")
+		t.FailNow()
+	}
+	defer func() {
+		mp.db.CloseDb()
+		mp2.db.CloseDb()
+	}()
 	mp.marshalVersion = MetaPartitionMarshVersion1
 	mp2.marshalVersion = MetaPartitionMarshVersion2
 
@@ -214,7 +246,7 @@ func TestMetaPartition_ApplySnap(t *testing.T) {
 	cost := time.Since(start)
 
 	checkMPInodeAndDentry(t, mp, mp2)
-	t.Logf("%dW inodes %dW dentry, V1 gen snap, V2 aplly snnap success cost:%v", mp.inodeTree.Len()/10000, mp.dentryTree.Len()/10000, cost)
+	t.Logf("%dW inodes %dW dentry, V1 gen snap, V2 aplly snnap success cost:%v", mp.inodeTree.Count()/10000, mp.dentryTree.Count()/10000, cost)
 }
 
 func TestMetaPartition_Snap(t *testing.T) {
@@ -222,6 +254,10 @@ func TestMetaPartition_Snap(t *testing.T) {
 	mp2, _ := newTestMetapartition(2)
 	mp3, _ := newTestMetapartition(3)
 	mp4, _ := newTestMetapartition(4)
+	if mp == nil || mp2 == nil || mp3 == nil || mp4 == nil {
+		fmt.Printf("new mock meta partition failed\n")
+		t.FailNow()
+	}
 
 	defer func() {
 		releaseTestMetapartition(mp)
@@ -253,4 +289,146 @@ func TestMetaPartition_Snap(t *testing.T) {
 	checkMPInodeAndDentry(t, mp2, mp3)
 	t.Logf("V1 gen snap, V1 aplly snnap success cost:%v", v1Cost)
 	t.Logf("V2 gen snap, V2 aplly snnap success cost:%v", v2Cost)
+}
+
+func TestResetCursor_WriteStatus(t *testing.T) {
+	mp, _ := newTestMetapartition(1)
+
+	req := &proto.CursorResetRequest{
+		PartitionId: 1,
+		Inode: 0,
+		Force: true,
+	}
+
+	configTotalMem = 100 * GB
+	status, _ := mp.calcMPStatus()
+	cursor, err := mp.CursorReset(context.Background(), req)
+	if cursor != mp.config.Cursor {
+		t.Errorf("reset cursor test failed, err:%s", err.Error())
+		return
+	}
+	configTotalMem = 0
+	t.Logf("reset cursor:%d, status:%d, err:%v", cursor, status, err)
+
+	releaseTestMetapartition(mp)
+	return
+}
+
+func TestResetCursor_OutOfMaxEnd(t *testing.T) {
+	mp, _ := newTestMetapartition(1)
+
+	req := &proto.CursorResetRequest{
+		PartitionId: 1,
+		Inode: 10000,
+		Force: true,
+	}
+
+	status, _ := mp.calcMPStatus()
+	cursor, err := mp.CursorReset(context.Background(), req)
+	if cursor != mp.config.Cursor {
+		t.Errorf("reset cursor test failed, err:%s", err.Error())
+		return
+	}
+	t.Logf("reset cursor:%d, status:%d, err:%v", cursor, status, err)
+
+	for i := 1; i <100; i++ {
+		_ = mp.inodeTree.Create(NewInode(uint64(i), 0), false)
+	}
+	req.Inode = 90
+	cursor, err = mp.CursorReset(context.Background(), req)
+	if cursor != mp.config.Cursor {
+		t.Errorf("reset cursor test failed, err:%s", err.Error())
+		return
+	}
+	t.Logf("reset cursor:%d, status:%d, err:%v", cursor, status, err)
+	releaseTestMetapartition(mp)
+	return
+}
+
+func TestResetCursor_LimitedAndForce(t *testing.T) {
+	mp, _ := newTestMetapartition(1)
+
+	req := &proto.CursorResetRequest{
+		PartitionId: 1,
+		Inode: 9900,
+		Force: false,
+	}
+
+	for i := 1; i <100; i++ {
+		_ = mp.inodeTree.Create(NewInode(uint64(i), 0), false)
+	}
+
+	status, _ := mp.calcMPStatus()
+	cursor, err := mp.CursorReset(context.Background(), req)
+	if cursor != mp.config.Cursor {
+		t.Errorf("reset cursor test failed, err:%s", err.Error())
+		return
+	}
+	t.Logf("reset cursor:%d, status:%d, err:%v", cursor, status, err)
+
+	req.Force = true
+	cursor, err = mp.CursorReset(context.Background(), req)
+	if cursor != req.Inode {
+		t.Errorf("reset cursor:%d test failed, err:%v", cursor, err)
+		return
+	}
+	t.Logf("reset cursor:%d, status:%d, err:%v", cursor, status, err)
+
+	releaseTestMetapartition(mp)
+	return
+}
+
+func TestResetCursor_CursorChange(t *testing.T) {
+	mp, _ := newTestMetapartition(1)
+
+	req := &proto.CursorResetRequest{
+		PartitionId: 1,
+		Inode: 8000,
+		Force: false,
+	}
+
+	for i := 1; i <100; i++ {
+		_ = mp.inodeTree.Create(NewInode(uint64(i), 0), false)
+	}
+
+	go func() {
+		for i := 0; i < 100; i++{
+			mp.nextInodeID()
+		}
+	}()
+	time.Sleep(time.Microsecond * 10)
+	cursor, err := mp.CursorReset(context.Background(), req)
+	if cursor != mp.config.Cursor {
+		t.Errorf("reset cursor test failed, err:%s", err.Error())
+		return
+	}
+	t.Logf("reset cursor:%d, err:%v", cursor,  err)
+
+	releaseTestMetapartition(mp)
+	return
+}
+
+func TestResetCursor_LeaderChange(t *testing.T) {
+	mp, _ := newTestMetapartition(1)
+
+	req := &proto.CursorResetRequest{
+		PartitionId: 1,
+		Inode: 8000,
+		Force: false,
+	}
+
+	for i := 1; i <100; i++ {
+		_ = mp.inodeTree.Create(NewInode(uint64(i), 0), false)
+	}
+
+	mp.config.NodeId = 2
+	cursor, err := mp.CursorReset(context.Background(), req)
+	if cursor != mp.config.Cursor {
+		t.Errorf("reset cursor test failed, err:%s", err.Error())
+		return
+	}
+	t.Logf("reset cursor:%d, err:%v", cursor,  err)
+
+	releaseTestMetapartition(mp)
+	return
 }

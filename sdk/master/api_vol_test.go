@@ -22,7 +22,7 @@ var (
 	testVolWriteMutex        = false
 	testZoneName             = "default"
 	testMc                   = NewMasterClient([]string{"192.168.0.11:17010", "192.168.0.12:17010", "192.168.0.13:17010"}, false)
-	testStoreMode            = 0
+	testStoreMode            = 1
 	testMpLyout              = "0,0"
 )
 

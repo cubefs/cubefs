@@ -13,6 +13,10 @@ import (
 	"time"
 )
 
+func ApplyMockWithNull(elem interface{},command []byte, index uint64) (resp interface{}, err error) {
+	return
+}
+
 func generateEk(num int) (eks []proto.ExtentKey){
 	eks = make([]proto.ExtentKey, 0)
 	for i:= 0; i < num; i++ {
@@ -21,26 +25,31 @@ func generateEk(num int) (eks []proto.ExtentKey){
 	return
 }
 
-func newTestMetapartition()(*metaPartition, error){
+func mockMP()(*metaPartition, error){
 	node := &MetaNode{nodeId: 1}
 	manager := &metadataManager{nodeId: 1, rocksDBDirs: []string{"./"}, metaNode: node}
-	conf := &MetaPartitionConfig{RocksDBDir: "./", PartitionId: 1,
-									NodeId: 1,
-									Start: 1, End: 100,
-									Peers: []proto.Peer{proto.Peer{ID: 1, Addr: "127.0.0.1"} },
-									RootDir: "./partition_1"}
+	conf := &MetaPartitionConfig{
+		RocksDBDir:  "./",
+		PartitionId: 1,
+		NodeId:      1,
+		Start:       1,
+		End:         100,
+		Peers:       []proto.Peer{{ID: 1, Addr: "127.0.0.1"}},
+		RootDir:     "./partition_1",
+		StoreMode:   proto.StoreModeMem,
+	}
 	tmp, err := CreateMetaPartition(conf, manager)
 	if  err != nil {
 		fmt.Printf("create meta partition failed:%s", err.Error())
 		return nil, err
 	}
 	mp := tmp.(*metaPartition)
-	mp.raftPartition = &metamock.MockPartition{Id: 1}
+	mp.raftPartition = &metamock.MockPartition{Id: 1, Mp: []interface{}{mp}, Apply: ApplyMockWithNull}
 	mp.vol = NewVol()
 	return mp, nil
 }
 
-func releaseTestMetapartition(mp *metaPartition) {
+func releaseMP(mp *metaPartition) {
 	close(mp.stopC)
 	time.Sleep(time.Second)
 	mp.db.CloseDb()
@@ -98,7 +107,7 @@ func getRocksDbCnt(t *testing.T, mp *metaPartition)(int) {
 }
 
 func AddExtentsToDB(t *testing.T, num int) {
-	mp, err := newTestMetapartition()
+	mp, err := mockMP()
 	if err != nil {
 		t.Fatalf("create mp failed:%s", err.Error())
 	}
@@ -118,7 +127,7 @@ func AddExtentsToDB(t *testing.T, num int) {
 		t.Errorf("check cnt failed, want:%d, now:%d", num, cnt)
 	}
 
-	releaseTestMetapartition(mp)
+	releaseMP(mp)
 }
 
 func TestAddExtentsToDB(t *testing.T) {
@@ -130,7 +139,8 @@ func TestAddExtentsToDB(t *testing.T) {
 }
 
 func LeaderCleanExpiredEk(t *testing.T, num int) {
-	mp, err := newTestMetapartition()
+	fmt.Printf("start clean expired, ek number:%v\n", num)
+	mp, err := mockMP()
 	if err != nil {
 		t.Fatalf("create mp failed:%s", err.Error())
 	}
@@ -161,7 +171,7 @@ func LeaderCleanExpiredEk(t *testing.T, num int) {
 	if cnt != num {
 		t.Errorf("check cnt failed, want:%d, now:%d", num, cnt)
 	}
-	releaseTestMetapartition(mp)
+	releaseMP(mp)
 }
 
 func TestLeaderCleanExpiredEk(t *testing.T) {
@@ -173,7 +183,7 @@ func TestLeaderCleanExpiredEk(t *testing.T) {
 }
 
 func FollowerSyncExpiredEk(t *testing.T, num int) {
-	mp, err := newTestMetapartition()
+	mp, err := mockMP()
 	if err != nil {
 		t.Fatalf("create mp failed:%s", err.Error())
 	}
@@ -226,7 +236,7 @@ func FollowerSyncExpiredEk(t *testing.T, num int) {
 	if cnt != num {
 		t.Errorf("check cnt failed, want:%d, now:%d", num, cnt)
 	}
-	releaseTestMetapartition(mp)
+	releaseMP(mp)
 }
 
 func TestFollowerSyncExpiredEk(t *testing.T) {
@@ -238,7 +248,7 @@ func TestFollowerSyncExpiredEk(t *testing.T) {
 }
 
 func SnapResetDb(t *testing.T, num int) {
-	mp, err := newTestMetapartition()
+	mp, err := mockMP()
 	if err != nil {
 		t.Fatalf("create mp failed:%s", err.Error())
 	}
@@ -282,7 +292,7 @@ func SnapResetDb(t *testing.T, num int) {
 	if cnt != num {
 		t.Errorf("check cnt failed, want:%d, now:%d", num, cnt)
 	}
-	releaseTestMetapartition(mp)
+	releaseMP(mp)
 }
 
 func TestSnapResetDb(t *testing.T) {
@@ -294,10 +304,13 @@ func TestSnapResetDb(t *testing.T) {
 }
 
 func applySnapshot(t *testing.T, num int, rocksEnable bool) {
-	mp, err := newTestMetapartition()
+	mp, err := mockMP()
 	if err != nil {
 		t.Fatalf("create mp failed:%s", err.Error())
 	}
+	defer func() {
+		releaseMP(mp)
+	}()
 	mp.startToDeleteExtents()
 	mockPartition := mp.raftPartition.(*metamock.MockPartition)
 	//gen eks
@@ -315,7 +328,12 @@ func applySnapshot(t *testing.T, num int, rocksEnable bool) {
 		version = 1
 	}
 	atomic.StoreUint32(&mp.manager.metaNode.clusterMetaVersion, version)
-	si, _ := newMetaItemIterator(mp)
+	var si *MetaItemIterator
+	si, err = newMetaItemIterator(mp)
+	if err != nil {
+		t.Errorf("error:%v", err)
+		return
+	}
 	mp.ApplySnapshot(nil, si)
 
 	cnt := getRocksDbCnt(t, mp)
@@ -333,7 +351,6 @@ func applySnapshot(t *testing.T, num int, rocksEnable bool) {
 
 	}
 	time.Sleep(time.Second)
-	releaseTestMetapartition(mp)
 }
 
 func TestApplySnapshot(t *testing.T) {

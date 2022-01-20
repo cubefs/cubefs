@@ -10,26 +10,40 @@ type ApplyFunc func(mp interface{},command []byte, index uint64) (resp interface
 
 type MockPartition struct {
 	Id      uint64
-	walPath string
 	applyId uint64
 	Buff    []byte
-	Mp  	interface{}
+	Mp  	[]interface{}
+	MemMp  	interface{}
+	RocksMp	interface{}
 	Apply   ApplyFunc
+}
+
+func NewMockPartition(id uint64) *MockPartition {
+	mock := &MockPartition{Id: id}
+	mock.Mp = make([]interface{}, 0)
+	return mock
 }
 
 func (m MockPartition) Submit(cmd []byte) (resp interface{}, err error) {
 	m.applyId++
-	m.Buff = make([]byte, len(cmd))
-	copy(m.Buff, cmd)
+	for i := 1; i < len(m.Mp); i++ {
+		m.Apply(m.Mp[i], cmd, m.applyId)
+	}
 
-	return m.Apply(m.Mp, cmd, m.applyId)
+	//fmt.Printf("rocks mp:%v, mem mp:%v cmd:%v, apply id:%v\n", m.RocksMp, m.MemMp, cmd, m.applyId)
+	//m.Apply(m.RocksMp, cmd, m.applyId)
+	return m.Apply(m.Mp[0], cmd, m.applyId)
 }
 
 func (m MockPartition) SubmitWithCtx(ctx context.Context, cmd []byte) (resp interface{}, err error) {
 	m.applyId++
-	m.Buff = make([]byte, len(cmd))
-	copy(m.Buff, cmd)
-	return m.Apply(m.Mp, cmd, m.applyId)
+	for i := 1; i < len(m.Mp); i++ {
+		m.Apply(m.Mp[i], cmd, m.applyId)
+	}
+
+	//fmt.Printf("rocks mp:%v, mem mp:%v cmd:%v, apply id:%v\n", m.RocksMp, m.MemMp, cmd, m.applyId)
+	//m.Apply(m.RocksMp, cmd, m.applyId)
+	return m.Apply(m.Mp[0], cmd, m.applyId)
 }
 
 func (m MockPartition) ChangeMember(changeType proto.ConfChangeType, peer proto.Peer, context []byte) (resp interface{}, err error) {

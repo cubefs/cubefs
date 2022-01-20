@@ -14,7 +14,7 @@ var (
 	from           = "localhost"
 )
 
-func mockDentryTree() *BTree {
+func mockDentryTree() DentryTree {
 	tree := NewBtree()
 
 	d1 := new(Dentry)
@@ -44,10 +44,10 @@ func mockDentryTree() *BTree {
 	f2.Type = 1
 	f2.Name = "f2"
 	tree.ReplaceOrInsert(f2, false)
-	return tree
+	return &DentryBTree{tree}
 }
 
-func mockDeletedDentryTree() *BTree {
+func mockDeletedDentryTree() DeletedDentryTree {
 	tree := NewBtree()
 
 	d1 := new(Dentry)
@@ -93,13 +93,13 @@ func mockDeletedDentryTree() *BTree {
 	dd = new(DeletedDentry)
 	dd = newDeletedDentry(f2, ts+msFactor, from)
 	tree.ReplaceOrInsert(dd, false)
-	return tree
+	return &DeletedDentryBTree{tree}
 }
 
 func TestMetaPartition_mvToDeletedDentryTree(t *testing.T) {
 	mp := new(metaPartition)
 	mp.dentryTree = mockDentryTree()
-	mp.dentryDeletedTree = NewBtree()
+	mp.dentryDeletedTree = &DeletedDentryBTree{NewBtree()}
 
 	var timestamp int64 = time.Now().UnixNano()
 	f1 := new(Dentry)
@@ -110,19 +110,19 @@ func TestMetaPartition_mvToDeletedDentryTree(t *testing.T) {
 	df1 := newDeletedDentry(f1, timestamp, from)
 
 	var  status uint8
-	_, status = mp.getDeletedDentry(df1, df1)
+	_, status, _ = mp.getDeletedDentry(df1, df1)
 	if status != proto.OpNotExistErr {
 		t.Error(status)
 		t.FailNow()
 	}
 
-	status = mp.mvToDeletedDentryTree(f1, timestamp, from)
+	status, _ = mp.mvToDeletedDentryTree(f1, timestamp, from)
 	if status != proto.OpOk {
 		t.Error(status)
 		t.FailNow()
 	}
 
-	ds, status := mp.getDeletedDentry(df1, df1)
+	ds, status, _ := mp.getDeletedDentry(df1, df1)
 	if status != proto.OpOk {
 		t.Error(status)
 		t.FailNow()
@@ -132,7 +132,7 @@ func TestMetaPartition_mvToDeletedDentryTree(t *testing.T) {
 		t.FailNow()
 	}
 
-	status = mp.mvToDeletedDentryTree(f1, timestamp, from)
+	status, _ = mp.mvToDeletedDentryTree(f1, timestamp, from)
 	if status != proto.OpOk {
 		t.Error(status)
 		t.FailNow()
@@ -150,25 +150,25 @@ func TestMetaPartition_fsmCleanDeletedDentry(t *testing.T) {
 	d1.Name = "d1"
 	d1.Timestamp = ts
 	d1.From = from
-	resp := mp.fsmCleanDeletedDentry(d1)
+	resp, _ := mp.fsmCleanDeletedDentry(d1)
 	if resp.Status != proto.OpOk {
 		t.Errorf("DeletedDentry: %v, Status: %v", d1, resp.Status)
 		t.FailNow()
 	}
 
-	_, st := mp.getDeletedDentry(d1, d1)
+	_, st, _ := mp.getDeletedDentry(d1, d1)
 	if st != proto.OpNotExistErr {
 		t.Errorf("den: %v, status: %v", d1, st)
 	}
 
-	resp = mp.fsmCleanDeletedDentry(d1)
+	resp, _ = mp.fsmCleanDeletedDentry(d1)
 	if resp.Status != proto.OpNotExistErr {
 		t.Errorf("DeletedDentry: %v, Status: %v", d1, resp.Status)
 		t.FailNow()
 	}
 
 	d1.Timestamp = ts + msFactor
-	resp = mp.fsmCleanDeletedDentry(d1)
+	resp, _ = mp.fsmCleanDeletedDentry(d1)
 	if resp.Status != proto.OpNotExistErr {
 		t.Errorf("DeletedDentry: %v, Status: %v", d1, resp.Status)
 		t.FailNow()
@@ -181,20 +181,20 @@ func TestMetaPartition_fsmCleanDeletedDentry(t *testing.T) {
 	f1.Name = "f2"
 	dd := newDeletedDentry(f1, ts, from)
 
-	resp = mp.fsmCleanDeletedDentry(dd)
+	resp, _ = mp.fsmCleanDeletedDentry(dd)
 	if resp.Status != proto.OpNotExistErr {
 		t.Errorf("DeletedDentry: %v, Status: %v", dd, resp.Status)
 		t.FailNow()
 	}
 
 	dd.Name = "f1"
-	resp = mp.fsmCleanDeletedDentry(dd)
+	resp, _ = mp.fsmCleanDeletedDentry(dd)
 	if resp.Status != proto.OpOk {
 		t.Errorf("DeletedDentry: %v, Status: %v", dd, resp.Status)
 		t.FailNow()
 	}
 
-	_, status := mp.getDeletedDentry(dd, dd)
+	_, status, _ := mp.getDeletedDentry(dd, dd)
 	if status != proto.OpNotExistErr {
 		t.Error(status)
 		t.FailNow()
@@ -203,29 +203,29 @@ func TestMetaPartition_fsmCleanDeletedDentry(t *testing.T) {
 	dd.Name = "f2"
 	dd.Timestamp = ts + msFactor
 	dd.Inode = 102
-	resp = mp.fsmCleanDeletedDentry(dd)
+	resp, _ = mp.fsmCleanDeletedDentry(dd)
 	if resp.Status != proto.OpOk {
 		t.Errorf("DeletedDentry: %v, Status: %v", dd, resp.Status)
 		t.FailNow()
 	}
-	_, status = mp.getDeletedDentry(dd, dd)
+	_, status, _ = mp.getDeletedDentry(dd, dd)
 	if status != proto.OpNotExistErr {
 		t.Error(status)
 		t.FailNow()
 	}
 
-	_, status = mp.getDeletedDentry(dd, dd)
+	_, status, _ = mp.getDeletedDentry(dd, dd)
 	if status != proto.OpNotExistErr {
 		t.Error(status)
 		t.FailNow()
 	}
 
-	resp = mp.fsmCleanDeletedDentry(d1)
+	resp, _ = mp.fsmCleanDeletedDentry(d1)
 	if resp.Status != proto.OpNotExistErr {
 		t.Errorf("DeletedDentry: %v, Status: %v", d1, resp.Status)
 		t.FailNow()
 	}
-	_, status = mp.getDeletedDentry(d1, d1)
+	_, status, _ = mp.getDeletedDentry(d1, d1)
 	if status != proto.OpNotExistErr {
 		t.Error(status)
 		t.FailNow()
@@ -234,12 +234,12 @@ func TestMetaPartition_fsmCleanDeletedDentry(t *testing.T) {
 	d1.Timestamp = ts
 	d1.Inode = 11
 	d1.Name = "d2"
-	resp = mp.fsmCleanDeletedDentry(d1)
+	resp, _ = mp.fsmCleanDeletedDentry(d1)
 	if resp.Status != proto.OpOk {
 		t.Errorf("DeletedDentry: %v, Status: %v", d1, resp.Status)
 		t.FailNow()
 	}
-	_, status = mp.getDeletedDentry(d1, d1)
+	_, status, _ = mp.getDeletedDentry(d1, d1)
 	if status != proto.OpNotExistErr {
 		t.Error(status)
 		t.FailNow()
@@ -252,15 +252,15 @@ func TestMetaPartition_fsmRecoverDeletedDentry(t *testing.T) {
 	mp.config.Start = 1
 	mp.config.Cursor = 100000
 	mp.dentryTree = mockDentryTree()
-	mp.dentryDeletedTree = NewBtree()
-	mp.inodeTree = NewBtree()
+	mp.inodeTree = &InodeBTree{NewBtree()}
+	mp.dentryDeletedTree = &DeletedDentryBTree{NewBtree()}
 
 	f3 := new(Dentry)
 	f3.ParentId = 10
 	f3.Inode = 103
 	f3.Type = 1
 	f3.Name = "f3"
-	status := mp.mvToDeletedDentryTree(f3, ts, from)
+	status, _ := mp.mvToDeletedDentryTree(f3, ts, from)
 	if status != proto.OpOk {
 		t.Error(status)
 		t.FailNow()
@@ -271,7 +271,7 @@ func TestMetaPartition_fsmRecoverDeletedDentry(t *testing.T) {
 	f1.Inode = 100
 	f1.Type = 1
 	f1.Name = "f1"
-	status = mp.mvToDeletedDentryTree(f1, ts, from)
+	status, _ = mp.mvToDeletedDentryTree(f1, ts, from)
 	if status != proto.OpOk {
 		t.Error(status)
 		t.FailNow()
@@ -279,29 +279,29 @@ func TestMetaPartition_fsmRecoverDeletedDentry(t *testing.T) {
 
 	// case: the target dentry is not exist
 	dd := newPrimaryDeletedDentry(10, "f33", ts, 100)
-	resp := mp.fsmRecoverDeletedDentry(dd)
+	resp, _ := mp.fsmRecoverDeletedDentry(dd)
 	if resp.Status != proto.OpNotExistErr {
 		t.Error(status)
 		t.FailNow()
 	}
-	_, status = mp.getDentry(dd.buildDentry())
+	_, status, _ = mp.getDentry(dd.buildDentry())
 	if status != proto.OpNotExistErr {
 		t.Error(status)
 		t.FailNow()
 	}
 
 	// case: the  the original dentry is exist
-	mp.inodeTree = NewBtree()
+	mp.inodeTree = &InodeBTree{NewBtree()}
 	ino := NewInode(10, proto.Mode(os.ModeDir))
 	mp.fsmCreateInode(ino)
 	dd = newPrimaryDeletedDentry(10, "f1", ts, 100)
 	dd1 := *dd
-	resp = mp.fsmRecoverDeletedDentry(dd)
+	resp, _ = mp.fsmRecoverDeletedDentry(dd)
 	if resp.Status != proto.OpOk {
 		t.Errorf("dd:%v, status: %v", dd, resp.Status)
 		t.FailNow()
 	}
-	_, status = mp.getDeletedDentry(resp.Msg, resp.Msg)
+	_, status, _ = mp.getDeletedDentry(resp.Msg, resp.Msg)
 	if status != proto.OpNotExistErr {
 		t.Error(status)
 		t.FailNow()
@@ -309,7 +309,7 @@ func TestMetaPartition_fsmRecoverDeletedDentry(t *testing.T) {
 
 	dd.appendTimestampToName()
 	var dentry *Dentry
-	dentry, status = mp.getDentry(dd.buildDentry())
+	dentry, status, _ = mp.getDentry(dd.buildDentry())
 	if status != proto.OpOk {
 		t.Error(status)
 		t.FailNow()
@@ -320,17 +320,17 @@ func TestMetaPartition_fsmRecoverDeletedDentry(t *testing.T) {
 	}
 	// re entrant
 	{
-		resp = mp.fsmRecoverDeletedDentry(&dd1)
+		resp, _ = mp.fsmRecoverDeletedDentry(&dd1)
 		if resp.Status != proto.OpOk {
 			t.Errorf("dd:%v, status: %v", dd, resp.Status)
 			t.FailNow()
 		}
-		_, status = mp.getDeletedDentry(resp.Msg, resp.Msg)
+		_, status, _ = mp.getDeletedDentry(resp.Msg, resp.Msg)
 		if status != proto.OpNotExistErr {
 			t.Error(status)
 			t.FailNow()
 		}
-		dentry, status = mp.getDentry(dd1.buildDentry())
+		dentry, status, _ = mp.getDentry(dd1.buildDentry())
 		if status != proto.OpOk {
 			t.Error(status)
 			t.FailNow()
@@ -345,18 +345,18 @@ func TestMetaPartition_fsmRecoverDeletedDentry(t *testing.T) {
 	for i:=0; i<2; i++ {
 		dd = newPrimaryDeletedDentry(10, "f3", ts, 103)
 		dd.Type = 1
-		resp = mp.fsmRecoverDeletedDentry(dd)
+		resp, _ = mp.fsmRecoverDeletedDentry(dd)
 		if resp.Status != proto.OpOk {
 			t.Errorf("dd: [%v], status: [%v]", dd, resp.Status)
 			t.FailNow()
 		}
-		_, status = mp.getDeletedDentry(dd, dd)
+		_, status, _ = mp.getDeletedDentry(dd, dd)
 		if status != proto.OpNotExistErr {
 			t.Error(status)
 			t.FailNow()
 		}
 
-		inoResp := mp.getInode(ino)
+		inoResp, _ := mp.getInode(ino)
 		if inoResp.Status != proto.OpOk {
 			t.Error(inoResp.Status)
 			t.FailNow()
@@ -366,7 +366,7 @@ func TestMetaPartition_fsmRecoverDeletedDentry(t *testing.T) {
 			t.FailNow()
 		}
 
-		dentry, status = mp.getDentry(dd.buildDentry())
+		dentry, status, _ = mp.getDentry(dd.buildDentry())
 		if status != proto.OpOk {
 			t.Error(status)
 			t.FailNow()
@@ -389,8 +389,8 @@ func TestMetaPartition_fsmRecoverDeletedDentry(t *testing.T) {
 func TestMetaPartition_CopyGet(t *testing.T) {
 	mp := new(metaPartition)
 	mp.dentryTree = mockDentryTree()
-	mp.dentryDeletedTree = NewBtree()
-	mp.inodeTree = NewBtree()
+	mp.inodeTree = &InodeBTree{NewBtree()}
+	mp.dentryDeletedTree = &DeletedDentryBTree{NewBtree()}
 	ino := NewInode(10, proto.Mode(os.ModeDir))
 	mp.fsmCreateInode(ino)
 
@@ -400,20 +400,25 @@ func TestMetaPartition_CopyGet(t *testing.T) {
 	f4.Type = 1
 	f4.Name = "f4"
 	mp.mvToDeletedDentryTree(f4, ts, from)
-	mp.dentryDeletedTree.Ascend(func(i BtreeItem) bool {
-		t.Logf("fsmRecoverDeletedDentry: ascend: %v", i.(*DeletedDentry))
-		return true
+	mp.dentryDeletedTree.Range(nil, nil, func(data []byte) (bool, error) {
+		dden := new(DeletedDentry)
+		_ = dden.Unmarshal(data)
+		t.Logf("fsmRecoverDeletedDentry: ascend: %v", dden)
+		return true, nil
 	})
 
 	dd := newPrimaryDeletedDentry(10, "f4", ts, 104)
-	item := mp.dentryDeletedTree.CopyGet(dd)
+	item, _ := mp.dentryDeletedTree.Get(dd.ParentId, dd.Name, dd.Timestamp)
 	if item == nil {
 		t.Errorf("not found dentry: %v", dd)
+		return
 	}
-	item.(*DeletedDentry).Timestamp++
-	mp.dentryDeletedTree.Ascend(func(i BtreeItem) bool {
-		t.Logf("fsmRecoverDeletedDentry: ascend2: %v", i.(*DeletedDentry))
-		return true
+	item.Timestamp++
+	mp.dentryDeletedTree.Range(nil, nil, func(data []byte) (bool, error) {
+		dden := new(DeletedDentry)
+		_ = dden.Unmarshal(data)
+		t.Logf("fsmRecoverDeletedDentry: ascend2: %v", dden)
+		return true, nil
 	})
 
 	var str string
@@ -434,7 +439,7 @@ func TestMetaPartition_CopyGet(t *testing.T) {
 	t.Logf("f1: %v, f2: %v", f1.Name, f2.Name)
 }
 
-func mockDeletedDentryTree2() *BTree {
+func mockDeletedDentryTree2() DeletedDentryTree {
 	tree := NewBtree()
 
 	d1 := new(Dentry)
@@ -498,13 +503,13 @@ func mockDeletedDentryTree2() *BTree {
 	dd = newDeletedDentry(f2, ts, from)
 	dd.Timestamp = ts + 4001
 	tree.ReplaceOrInsert(dd, false)
-	return tree
+	return &DeletedDentryBTree{tree}
 }
 
 func TestMetaPartition_fsmCleanExpiredDentry(t *testing.T) {
 	mp := new(metaPartition)
 	mp.dentryDeletedTree = mockDeletedDentryTree2()
-	originalSize := mp.dentryDeletedTree.Len()
+	originalSize := mp.dentryDeletedTree.Count()
 
 	var batch DeletedDentryBatch
 	d1 := newPrimaryDeletedDentry(10, "f2", ts+3001, 101)
@@ -543,14 +548,14 @@ func TestMetaPartition_fsmCleanExpiredDentry(t *testing.T) {
 		t.FailNow()
 	}
 
-	res := mp.fsmCleanExpiredDentry(dens)
+	res, _ := mp.fsmCleanExpiredDentry(dens)
 	if len(res) > 0 {
 		t.Errorf("len: %v", len(res))
 		t.FailNow()
 	}
 
-	if originalSize - 2 != mp.dentryDeletedTree.Len() {
-		t.Errorf("len: %v", mp.dentryDeletedTree.Len())
+	if originalSize - 2 != mp.dentryDeletedTree.Count() {
+		t.Errorf("len: %v", mp.dentryDeletedTree.Count())
 	}
 
 }

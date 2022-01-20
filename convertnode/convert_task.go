@@ -210,7 +210,7 @@ func (task *ConvertTask) mpAddLearner() (err error) {
 	}
 
 	if err = task.mc.adminAPI().AddMetaReplicaLearner(task.info.RunningMP, task.convertingMP.selectedReplNodeInfo.NewNodeAddr,
-		false, 80, int(task.convertingMP.targetStoreMode)); err != nil {
+		false, 80, proto.DefaultAddReplicaType, int(task.convertingMP.targetStoreMode)); err != nil {
 		log.LogErrorf("action[mpAddLearner] task[%s] MP[%d] AddMetaReplicaLearner failed, err[%v]",
 			task.taskName(), task.info.RunningMP, err)
 		return
@@ -226,7 +226,7 @@ func (task *ConvertTask) mpWaitSync() (err error) {
 	}
 
 	var ok = false
-	if ok, err = task.convertingMPMetaDataReplicasIsConsistent(); !ok || err != nil {
+	if ok, err = task.mpReplicasIsConsistent(); !ok || err != nil {
 		return
 	}
 
@@ -236,7 +236,7 @@ func (task *ConvertTask) mpWaitSync() (err error) {
 	return
 }
 
-func (task *ConvertTask) convertingMPMetaDataReplicasIsConsistent() (ok bool, err error) {
+func (task *ConvertTask) mpReplicasIsConsistent() (ok bool, err error) {
 	var (
 		wg             sync.WaitGroup
 		mpReplicasInfo = make([]*meta.GetMPInfoResp, len(task.mpInfo.Replicas))
@@ -252,7 +252,7 @@ func (task *ConvertTask) convertingMPMetaDataReplicasIsConsistent() (ok bool, er
 				resp         *meta.GetMPInfoResp
 			)
 			if metaNodeInfo, err = task.mc.nodeAPI().GetMetaNode(nodeAddr); err != nil {
-				log.LogErrorf("action[convertingMPMetaDataReplicasIsConsistent] task[%s] get meta node[%s] info failed:%v",
+				log.LogErrorf("action[mpReplicasIsConsistent] task[%s] get meta node[%s] info failed:%v",
 					task.taskName(), nodeAddr, err)
 				errCh <- err
 				return
@@ -260,7 +260,7 @@ func (task *ConvertTask) convertingMPMetaDataReplicasIsConsistent() (ok bool, er
 
 			metaHttpClient := meta.NewMetaHttpClient(fmt.Sprintf("%s:%s",strings.Split(nodeAddr, ":")[0], metaNodeInfo.ProfPort), false)
 			if resp, err = metaHttpClient.GetMetaPartition(task.mpInfo.PartitionID); err != nil {
-				log.LogErrorf("action[convertingMPMetaDataReplicasIsConsistent] task[%s] get MP[%v] info from meta node[%s] info failed:%v",
+				log.LogErrorf("action[mpReplicasIsConsistent] task[%s] get MP[%v] info from meta node[%s] info failed:%v",
 					task.taskName(), task.mpInfo.PartitionID, nodeAddr, err)
 				errCh <- err
 				return
@@ -273,7 +273,7 @@ func (task *ConvertTask) convertingMPMetaDataReplicasIsConsistent() (ok bool, er
 	select {
 	case errInfo := <- errCh:
 		err = errors.NewErrorf("get meta partition info failed")
-		log.LogErrorf("action[convertingMPMetaDataReplicasIsConsistent] task[%s] MP[%v] get meta partition info failed:%v",
+		log.LogErrorf("action[mpReplicasIsConsistent] task[%s] MP[%v] get meta partition info failed:%v",
 			task.taskName(), task.info.RunningMP, errInfo)
 		return
 	default:
@@ -283,7 +283,7 @@ func (task *ConvertTask) convertingMPMetaDataReplicasIsConsistent() (ok bool, er
 	dentryCntMinus := getMinusOfDentryCnt(mpReplicasInfo)
 	applyIDMinus := getMinusOfApplyID(mpReplicasInfo)
 	if uint64(inodeCntMinus) < defaultMinus && dentryCntMinus < defaultMinus && applyIDMinus < defaultMinus {
-		log.LogInfof("action[convertingMPMetaDataReplicasIsConsistent] task[%s] MP[%v] replica meta data is consistent",
+		log.LogInfof("action[mpReplicasIsConsistent] task[%s] MP[%v] replica meta data is consistent",
 			task.taskName(), task.info.RunningMP)
 		ok = true
 	}
@@ -372,7 +372,7 @@ func (task *ConvertTask) mpWaitStable() (err error) {
 	}
 
 	var ok = false
-	if ok, err = task.convertingMPMetaDataReplicasIsConsistent(); !ok || err != nil {
+	if ok, err = task.mpReplicasIsConsistent(); !ok || err != nil {
 		return
 	}
 
@@ -414,7 +414,7 @@ func (task *ConvertTask) mpWaitInterval() (err error) {
 	}
 
 	var ok = false
-	if ok, err = task.convertingMPMetaDataReplicasIsConsistent(); !ok || err != nil {
+	if ok, err = task.mpReplicasIsConsistent(); !ok || err != nil {
 		return
 	}
 

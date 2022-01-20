@@ -82,10 +82,15 @@ func (mp *metaPartition) loadMetadata() (err error) {
 	mp.config.Peers = mConf.Peers
 	mp.config.Learners = mConf.Learners
 	mp.config.Cursor = mp.config.Start
+	mp.config.StoreMode = mConf.StoreMode
 	mp.config.RocksDBDir = mConf.RocksDBDir
 	if mp.config.RocksDBDir == "" {
 		// new version but old config; need select one dir
 		err = mp.selectRocksDBDir()
+	}
+
+	if mp.config.StoreMode < proto.StoreModeMem || mp.config.StoreMode > proto.StoreModeRocksDb {
+		mp.config.StoreMode = proto.StoreModeMem
 	}
 
 	log.LogInfof("loadMetadata: load complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
@@ -278,7 +283,12 @@ func (mp *metaPartition) loadDeletedDentry(rootDir string) (err error) {
 			err = errors.NewErrorf("[loadDeletedDentry] Unmarshal: %s", err.Error())
 			return
 		}
-		if status := mp.fsmCreateDeletedDentry(ddentry, true).Status; status != proto.OpOk {
+		resp, e := mp.fsmCreateDeletedDentry(ddentry, true)
+		if e == rocksdbError {
+			err = errors.NewErrorf("[loadDeletedDentry] fsmCreateDeletedDentry, dentry: %v, err: %v", ddentry, e)
+			return
+		}
+		if status := resp.Status; status != proto.OpOk {
 			err = errors.NewErrorf("[loadDeletedDentry] fsmCreateDeletedDentry, dentry: %v, resp code: %d", ddentry, status)
 			return
 		}
@@ -351,8 +361,13 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 				return
 			}
 		}
-		if status := mp.fsmCreateDentry(dentry, true); status != proto.OpOk {
-			err = errors.NewErrorf("[loadDentry] createDentry dentry: %v, resp code: %d", dentry, status)
+		status, e := mp.fsmCreateDentry(dentry, true)
+		if e == rocksdbError {
+			err = errors.NewErrorf("[loadDentry] createDentry, dentry: %v, err: %v", dentry, e)
+			return
+		}
+		if status != proto.OpOk {
+			err = errors.NewErrorf("[loadDentry] createDentry, dentry: %v, resp code: %d", dentry, status)
 			return
 		}
 		numDentries += 1
@@ -536,8 +551,7 @@ func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) 
 	return
 }
 
-func (mp *metaPartition) storeInode(rootDir string,
-	sm *storeMsg) (crc uint32, err error) {
+func (mp *metaPartition) storeInode(rootDir string, sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, inodeFile)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
 		O_CREATE, 0755)
@@ -549,39 +563,33 @@ func (mp *metaPartition) storeInode(rootDir string,
 		// TODO Unhandled errors
 		fp.Close()
 	}()
-	var data []byte
+
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
-	sm.inodeTree.Ascend(func(i BtreeItem) bool {
-		ino := i.(*Inode)
-		if mp.marshalVersion == MetaPartitionMarshVersion2 {
-			data, err = ino.MarshalV2()
-		} else {
-			data, err = ino.Marshal()
-		}
-		if err != nil {
-			return false
-		}
+	if err = sm.snap.Range(InodeType, func(data []byte) (bool, error) {
 		// set length
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
 		if _, err = fp.Write(lenBuf); err != nil {
-			return false
+			return false, err
 		}
 		if _, err = sign.Write(lenBuf); err != nil {
-			return false
+			return false, err
 		}
 		// set body
 		if _, err = fp.Write(data); err != nil {
-			return false
+			return false, err
 		}
 		if _, err = sign.Write(data); err != nil {
-			return false
+			return false, err
 		}
-		return true
-	})
+		return true, nil
+	}); err != nil {
+		log.LogErrorf("storeInode: store failed:%v", err)
+		return
+	}
 	crc = sign.Sum32()
 	log.LogInfof("storeInode: store complete: partitoinID(%v) volume(%v) numInodes(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.inodeTree.Len(), crc)
+		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(InodeType), crc)
 	return
 }
 
@@ -597,40 +605,35 @@ func (mp *metaPartition) storeDeletedInode(rootDir string,
 		err = fp.Sync()
 		fp.Close()
 	}()
-	var data []byte
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
-	sm.inodeDeletedTree.Ascend(func(i BtreeItem) bool {
-		dino := i.(*DeletedINode)
-		if data, err = dino.Marshal(); err != nil {
-			log.LogErrorf("storeDeletedInode: DeletedInode: %v, err: %v", dino, err)
-			return false
-		}
-		// set length
+	if err = sm.snap.Range(DelInodeType, func(data []byte) (bool, error) {
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
 		if _, err = fp.Write(lenBuf); err != nil {
-			return false
+			return false, err
 		}
 		if _, err = sign.Write(lenBuf); err != nil {
-			return false
+			return false, err
 		}
 		// set body
 		if _, err = fp.Write(data); err != nil {
-			return false
+			return false, err
 		}
 		if _, err = sign.Write(data); err != nil {
-			return false
+			return false, err
 		}
-		return true
-	})
+		return true, nil
+	}); err != nil {
+		log.LogErrorf("storeDeletedInode: store failed:%v", err)
+		return
+	}
 	crc = sign.Sum32()
 	log.LogInfof("storeDeletedInode: store complete: partitoinID(%v) volume(%v) numInodes(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.inodeDeletedTree.Len(), crc)
+		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(DelInodeType), crc)
 	return
 }
 
-func (mp *metaPartition) storeDeletedDentry(rootDir string,
-	sm *storeMsg) (crc uint32, err error) {
+func (mp *metaPartition) storeDeletedDentry(rootDir string, sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, dentryDeletedFile)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
 		O_CREATE, 0755)
@@ -641,35 +644,31 @@ func (mp *metaPartition) storeDeletedDentry(rootDir string,
 		err = fp.Sync()
 		fp.Close()
 	}()
-	var data []byte
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
-	sm.dentryDeletedTree.Ascend(func(i BtreeItem) bool {
-		ddentry := i.(*DeletedDentry)
-		data, err = ddentry.Marshal()
-		if err != nil {
-			log.LogErrorf("storeDeletedDentry: failed to marshal to json, dentry: %v, err: %v", ddentry, err.Error())
-			return false
-		}
+	if err = sm.snap.Range(DelDentryType, func(data []byte) (bool, error) {
 		// set length
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
 		if _, err = fp.Write(lenBuf); err != nil {
-			return false
+			return false, err
 		}
 		if _, err = sign.Write(lenBuf); err != nil {
-			return false
+			return false, err
 		}
 		if _, err = fp.Write(data); err != nil {
-			return false
+			return false, err
 		}
 		if _, err = sign.Write(data); err != nil {
-			return false
+			return false,err
 		}
-		return true
-	})
+		return true, nil
+	}); err != nil {
+		log.LogErrorf("storeDeletedDentry: store failed:%v", err)
+		return
+	}
 	crc = sign.Sum32()
 	log.LogInfof("storeDeletedDentry: store complete: partitoinID(%v) volume(%v) numDentries(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.dentryDeletedTree.Len(), crc)
+		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(DelDentryType), crc)
 	return
 }
 
@@ -686,43 +685,35 @@ func (mp *metaPartition) storeDentry(rootDir string,
 		// TODO Unhandled errors
 		fp.Close()
 	}()
-	var data []byte
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
-	sm.dentryTree.Ascend(func(i BtreeItem) bool {
-		dentry := i.(*Dentry)
-		if mp.marshalVersion == MetaPartitionMarshVersion2 {
-			data, err = dentry.MarshalV2()
-		} else {
-			data, err = dentry.Marshal()
-		}
-		if err != nil {
-			return false
-		}
+	if err = sm.snap.Range(DentryType, func(data []byte) (bool, error) {
 		// set length
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
 		if _, err = fp.Write(lenBuf); err != nil {
-			return false
+			return false, err
 		}
 		if _, err = sign.Write(lenBuf); err != nil {
-			return false
+			return false, err
 		}
 		if _, err = fp.Write(data); err != nil {
-			return false
+			return false, err
 		}
 		if _, err = sign.Write(data); err != nil {
-			return false
+			return false, err
 		}
-		return true
-	})
+		return true, nil
+	}); err != nil {
+		log.LogErrorf("storeDentry: store failed:%v", err)
+		return
+	}
 	crc = sign.Sum32()
 	log.LogInfof("storeDentry: store complete: partitoinID(%v) volume(%v) numDentries(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.dentryTree.Len(), crc)
+		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(DentryType), crc)
 	return
 }
 
 func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, err error) {
-	var extendTree = sm.extendTree
 	var fp = path.Join(rootDir, extendFile)
 	var f *os.File
 	f, err = os.OpenFile(fp, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
@@ -740,37 +731,33 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 	var varintTmp = make([]byte, binary.MaxVarintLen64)
 	var n int
 	// write number of extends
-	n = binary.PutUvarint(varintTmp, uint64(extendTree.Len()))
+	n = binary.PutUvarint(varintTmp, sm.snap.Count(ExtendType))
 	if _, err = writer.Write(varintTmp[:n]); err != nil {
 		return
 	}
 	if _, err = crc32.Write(varintTmp[:n]); err != nil {
 		return
 	}
-	extendTree.Ascend(func(i BtreeItem) bool {
-		e := i.(*Extend)
-		var raw []byte
-		if raw, err = e.Bytes(); err != nil {
-			return false
-		}
+	err = sm.snap.Range(ExtendType, func(raw []byte) (bool, error) {
 		// write length
 		n = binary.PutUvarint(varintTmp, uint64(len(raw)))
 		if _, err = writer.Write(varintTmp[:n]); err != nil {
-			return false
+			return false, err
 		}
 		if _, err = crc32.Write(varintTmp[:n]); err != nil {
-			return false
+			return false, err
 		}
 		// write raw
 		if _, err = writer.Write(raw); err != nil {
-			return false
+			return false, err
 		}
 		if _, err = crc32.Write(raw); err != nil {
-			return false
+			return false, err
 		}
-		return true
+		return true, nil
 	})
 	if err != nil {
+		log.LogErrorf("storeExtend: store failed:%v", err)
 		return
 	}
 
@@ -782,12 +769,11 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 	}
 	crc = crc32.Sum32()
 	log.LogInfof("storeExtend: store complete: partitoinID(%v) volume(%v) numExtends(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, extendTree.Len(), crc)
+		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(ExtendType), crc)
 	return
 }
 
 func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint32, err error) {
-	var multipartTree = sm.multipartTree
 	var fp = path.Join(rootDir, multipartFile)
 	var f *os.File
 	f, err = os.OpenFile(fp, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
@@ -805,37 +791,33 @@ func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint3
 	var varintTmp = make([]byte, binary.MaxVarintLen64)
 	var n int
 	// write number of extends
-	n = binary.PutUvarint(varintTmp, uint64(multipartTree.Len()))
+	n = binary.PutUvarint(varintTmp, sm.snap.Count(MultipartType))
 	if _, err = writer.Write(varintTmp[:n]); err != nil {
 		return
 	}
 	if _, err = crc32.Write(varintTmp[:n]); err != nil {
 		return
 	}
-	multipartTree.Ascend(func(i BtreeItem) bool {
-		m := i.(*Multipart)
-		var raw []byte
-		if raw, err = m.Bytes(); err != nil {
-			return false
-		}
+	err = sm.snap.Range(MultipartType, func(raw []byte) (bool, error) {
 		// write length
 		n = binary.PutUvarint(varintTmp, uint64(len(raw)))
 		if _, err = writer.Write(varintTmp[:n]); err != nil {
-			return false
+			return false, err
 		}
 		if _, err = crc32.Write(varintTmp[:n]); err != nil {
-			return false
+			return false, err
 		}
 		// write raw
 		if _, err = writer.Write(raw); err != nil {
-			return false
+			return false, err
 		}
 		if _, err = crc32.Write(raw); err != nil {
-			return false
+			return false, err
 		}
-		return true
+		return true, nil
 	})
 	if err != nil {
+		log.LogErrorf("storeMultipart: store failed:%v", err)
 		return
 	}
 
@@ -847,6 +829,6 @@ func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint3
 	}
 	crc = crc32.Sum32()
 	log.LogInfof("storeMultipart: store complete: partitoinID(%v) volume(%v) numMultiparts(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, multipartTree.Len(), crc)
+		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(MultipartType), crc)
 	return
 }

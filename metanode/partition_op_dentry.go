@@ -169,6 +169,11 @@ func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet)
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return err
 	}
+
+	if p.ResultCode != proto.OpOk {
+		p.PacketErrorWithBody(p.ResultCode, reply)
+		return
+	}
 	p.PacketOkWithBody(reply)
 
 	return
@@ -255,11 +260,15 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 
 	mp.monitorData[statistics.ActionMetaLookup].UpdateData(0)
 
-	dentry := &Dentry{
-		ParentId: req.ParentID,
-		Name:     req.Name,
+	var (
+		dentry *Dentry
+		status uint8
+	)
+	dentry, status, err = mp.getDentry(&Dentry{ParentId: req.ParentID, Name: req.Name})
+	if err != nil {
+		p.PacketErrorWithBody(status, []byte(err.Error()))
+		return
 	}
-	dentry, status := mp.getDentry(dentry)
 	var reply []byte
 	if status == proto.OpOk {
 		resp := &LookupResp{
@@ -274,9 +283,4 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 	}
 	p.PacketErrorWithBody(status, reply)
 	return
-}
-
-// GetDentryTree returns the dentry tree stored in the meta partition.
-func (mp *metaPartition) GetDentryTree() *BTree {
-	return mp.dentryTree.GetTree()
 }

@@ -102,9 +102,13 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 
 	mp.monitorData[statistics.ActionMetaExtentsList].UpdateData(0)
 
-	ino := NewInode(req.Inode, 0)
-	retMsg := mp.getInode(ino)
-	ino = retMsg.Msg
+	var retMsg *InodeResponse
+	retMsg, err = mp.getInode(NewInode(req.Inode, 0))
+	if err != nil {
+		p.PacketErrorWithBody(retMsg.Status, []byte(err.Error()))
+		return
+	}
+	ino := retMsg.Msg
 	var (
 		reply  []byte
 		status = retMsg.Status

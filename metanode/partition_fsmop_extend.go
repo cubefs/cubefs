@@ -30,15 +30,21 @@ func (mp *metaPartition) fsmSetXAttr(extend *Extend) (resp *proto.XAttrRaftRespo
 		return
 	}
 
-	treeItem := mp.extendTree.CopyGet(extend)
 	var e *Extend
-	if treeItem == nil {
-		e = NewExtend(extend.inode)
-		mp.extendTree.ReplaceOrInsert(e, true)
-	} else {
-		e = treeItem.(*Extend)
+	e, err = mp.extendTree.Get(extend.inode)
+	if err != nil {
+		resp.Status = proto.OpErr
+		return
 	}
+	if e == nil {
+		e = NewExtend(extend.inode)
+	}
+
 	e.Merge(extend, true)
+	if err = mp.extendTree.Put(e); err != nil {
+		resp.Status = proto.OpErr
+		return
+	}
 	return
 }
 
@@ -51,14 +57,22 @@ func (mp *metaPartition) fsmRemoveXAttr(extend *Extend) (resp *proto.XAttrRaftRe
 		return
 	}
 
-	treeItem := mp.extendTree.CopyGet(extend)
-	if treeItem == nil {
+	var e *Extend
+	e, err = mp.extendTree.Get(extend.inode)
+	if err != nil {
+		resp.Status = proto.OpErr
 		return
 	}
-	e := treeItem.(*Extend)
+	if e == nil {
+		return
+	}
 	extend.Range(func(key, value []byte) bool {
 		e.Remove(key)
 		return true
 	})
+	if err = mp.extendTree.Put(e); err != nil {
+		resp.Status = proto.OpErr
+		return
+	}
 	return
 }

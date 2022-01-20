@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tecbot/gorocksdb"
 	"io"
@@ -168,15 +169,10 @@ func NewEkData(k, v []byte) *EkData {
 type MetaItemIterator struct {
 	fileRootDir       string
 	applyID           uint64
-	inodeTree         *BTree
-	inodeDeletedTree  *BTree
-	dentryTree        *BTree
-	dentryDeletedTree *BTree
-	extendTree        *BTree
-	multipartTree     *BTree
 	marshalVersion    uint32 //just test
 	db                *RocksDbInfo
 	snap              *gorocksdb.Snapshot
+	treeSnap          Snapshot
 
 	filenames []string
 
@@ -192,18 +188,16 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si = new(MetaItemIterator)
 	si.fileRootDir = mp.config.RootDir
 	si.applyID = mp.applyID
-	si.inodeTree = mp.inodeTree.GetTree()
-	si.inodeDeletedTree = mp.inodeDeletedTree.GetTree()
-	si.dentryTree = mp.dentryTree.GetTree()
-	si.dentryDeletedTree = mp.dentryDeletedTree.GetTree()
-	si.extendTree = mp.extendTree.GetTree()
-	si.multipartTree = mp.multipartTree.GetTree()
 	si.dataCh = make(chan interface{})
 	si.errorCh = make(chan error, 1)
 	si.closeCh = make(chan struct{})
 	si.marshalVersion = mp.marshalVersion
 	si.db = mp.db
 	si.snap = mp.db.OpenSnap()
+	si.treeSnap = NewSnapshot(mp)
+	if si.treeSnap == nil {
+		return nil, errors.NewErrorf("get mp[%v] tree snap failed", mp.config.PartitionId)
+	}
 
 	// collect extend del files
 	var filenames = make([]string, 0)
@@ -224,7 +218,9 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		defer func() {
 			close(iter.dataCh)
 			close(iter.errorCh)
+			iter.treeSnap.Close()
 		}()
+		var ctx = context.Background()
 		var produceItem = func(item interface{}) (success bool) {
 			select {
 			case iter.dataCh <- item:
@@ -251,49 +247,94 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		produceItem(si.applyID)
 
 		// process inodes
-		iter.inodeTree.Ascend(func(i BtreeItem) bool {
-			return produceItem(i)
-		})
+		if err = iter.treeSnap.Range(InodeType, func(v []byte) (bool, error) {
+			item := NewInode(0, 0)
+			if e := item.Unmarshal(ctx, v); e != nil {
+				return false, e
+			}
+			//todo:check produceItem result
+			produceItem(item)
+			return true, nil
+		}); err != nil {
+			produceError(err)
+			return
+		}
 		if checkClose() {
 			return
 		}
 
 		// process deleted inodes
-		iter.inodeDeletedTree.Ascend(func(i BtreeItem) bool {
-			return produceItem(i)
-		})
+		if err = iter.treeSnap.Range(DelInodeType, func(v []byte) (bool, error) {
+			dino := NewDeletedInodeByID(0)
+			if e := dino.Unmarshal(ctx, v); e != nil {
+				return false, e
+			}
+			produceItem(dino)
+			return true, nil
+		}); err != nil {
+			produceError(err)
+			return
+		}
 		if checkClose() {
 			return
 		}
 
 		// process dentries
-		iter.dentryTree.Ascend(func(i BtreeItem) bool {
-			return produceItem(i)
-		})
+		if err = iter.treeSnap.Range(DentryType, func(v []byte) (bool, error) {
+			item := &Dentry{}
+			if e := item.Unmarshal(v); e != nil {
+				return false, e
+			}
+			produceItem(item)
+			return true, nil
+		}); err != nil {
+			produceError(err)
+			return
+		}
 		if checkClose() {
 			return
 		}
 
 		// process deleted dentries
-		iter.dentryDeletedTree.Ascend(func(i BtreeItem) bool {
-			return produceItem(i)
-		})
+		if err = iter.treeSnap.Range(DelDentryType, func(v []byte) (bool, error) {
+			dd := newPrimaryDeletedDentry(0, "", 0, 0)
+			if e := dd.Unmarshal(v); e != nil {
+				return false, e
+			}
+			produceItem(dd)
+			return true, nil
+		}); err != nil {
+			produceError(err)
+			return
+		}
 		if checkClose() {
 			return
 		}
 
 		// process extends
-		iter.extendTree.Ascend(func(i BtreeItem) bool {
-			return produceItem(i)
-		})
+		if err = iter.treeSnap.Range(ExtendType, func(v []byte) (bool, error) {
+			if item, e := NewExtendFromBytes(v); e != nil {
+				return false, e
+			} else {
+				produceItem(item)
+			}
+			return true, nil
+		}); err != nil {
+			produceError(err)
+			return
+		}
 		if checkClose() {
 			return
 		}
 
 		// process multiparts
-		iter.multipartTree.Ascend(func(i BtreeItem) bool {
-			return produceItem(i)
-		})
+		if err = iter.treeSnap.Range(MultipartType, func(v []byte) (bool, error) {
+			produceItem(MultipartFromBytes(v))
+			return true, nil
+		}); err != nil {
+			produceError(err)
+			return
+		}
 		if checkClose() {
 			return
 		}

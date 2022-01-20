@@ -83,7 +83,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 		return
 	}
 	var (
-		status = proto.OpNotExistErr
+		status = resp.(uint8)
 		reply  []byte
 	)
 	if resp.(uint8) == proto.OpOk {
@@ -230,7 +230,13 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet, version uint8) (e
 	)
 
 	ino := NewInode(req.Inode, 0)
-	retMsg := mp.getInode(ino)
+	var retMsg *InodeResponse
+	retMsg, err = mp.getInode(ino)
+	if err != nil {
+		log.LogErrorf("InodeGet: get inode(Inode:%v) err:%v", req.Inode, err)
+		p.PacketErrorWithBody(retMsg.Status, []byte(err.Error()))
+		return
+	}
 	if version == proto.OpInodeGetVersion1 && retMsg.Status == proto.OpInodeOutOfRange {
 		retMsg.Status = proto.OpNotExistErr
 	}
@@ -262,8 +268,10 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet, version uint8) (e
 // InodeGetBatch executes the inodeBatchGet command from the client.
 func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error) {
 	var (
+		ino    = NewInode(0, 0)
 		tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.InodeGetBatch")
 		data   []byte
+		retMsg *InodeResponse
 	)
 	defer tracer.Finish()
 	p.SetCtx(tracer.Context())
@@ -271,11 +279,10 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 	mp.monitorData[statistics.ActionMetaBatchInodeGet].UpdateData(0)
 
 	resp := &proto.BatchInodeGetResponse{}
-	ino := NewInode(0, 0)
 	for _, inoId := range req.Inodes {
 		ino.Inode = inoId
-		retMsg := mp.getInode(ino)
-		if retMsg.Status == proto.OpOk {
+		retMsg, err = mp.getInode(ino)
+		if err == nil && retMsg.Status == proto.OpOk {
 			inoInfo := &proto.InodeInfo{}
 			if replyInfo(inoInfo, retMsg.Msg) {
 				resp.Infos = append(resp.Infos, inoInfo)
@@ -447,11 +454,6 @@ func (mp *metaPartition) SetAttr(reqData []byte, p *Packet) (err error) {
 	return
 }
 
-// GetInodeTree returns the inode tree.
-func (mp *metaPartition) GetInodeTree() *BTree {
-	return mp.inodeTree.GetTree()
-}
-
 func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error) {
 	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.DeleteInode")
 	defer tracer.Finish()
@@ -480,7 +482,7 @@ func (mp *metaPartition) CursorReset(ctx context.Context, req *proto.CursorReset
 	maxIno := mp.config.Start
 	maxInode := mp.inodeTree.MaxItem()
 	if maxInode != nil {
-		maxIno = maxInode.(*Inode).Inode
+		maxIno = maxInode.Inode
 	}
 
 	req.Cursor = atomic.LoadUint64(&mp.config.Cursor)

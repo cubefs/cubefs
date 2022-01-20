@@ -14,38 +14,74 @@
 
 package metanode
 
-import "github.com/chubaofs/chubaofs/proto"
+import (
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
+)
 
-func (mp *metaPartition) fsmCreateMultipart(multipart *Multipart) (status uint8) {
-	_, ok := mp.multipartTree.ReplaceOrInsert(multipart, false)
-	if !ok {
-		return proto.OpExistErr
+func (mp *metaPartition) fsmCreateMultipart(multipart *Multipart) (status uint8, err error) {
+	status = proto.OpOk
+
+	err = mp.multipartTree.Create(multipart, false)
+	if err != nil {
+		if err == existsError {
+			status = proto.OpExistErr
+		} else {
+			status = proto.OpErr
+		}
 	}
-	return proto.OpOk
+	return
 }
 
-func (mp *metaPartition) fsmRemoveMultipart(multipart *Multipart) (status uint8) {
-	deletedItem := mp.multipartTree.Delete(multipart)
-	if deletedItem == nil {
-		return proto.OpNotExistErr
+func (mp *metaPartition) fsmRemoveMultipart(multipart *Multipart) (status uint8, err error) {
+	var mul *Multipart
+	status = proto.OpOk
+	mul, err = mp.multipartTree.Get(multipart.key, multipart.id)
+	if err != nil {
+		status = proto.OpErr
+		return
 	}
-	return proto.OpOk
+	if mul == nil {
+		status = proto.OpNotExistErr
+		return
+	}
+
+	_, err = mp.multipartTree.Delete(multipart.key, multipart.id)
+	if err != nil {
+		if err == notExistsError {
+			status =  proto.OpNotExistErr
+		} else {
+			status = proto.OpErr
+		}
+	}
+	return
 }
 
-func (mp *metaPartition) fsmAppendMultipart(multipart *Multipart) (status uint8) {
-	storedItem := mp.multipartTree.CopyGet(multipart)
-	if storedItem == nil {
-		return proto.OpNotExistErr
+func (mp *metaPartition) fsmAppendMultipart(multipart *Multipart) (status uint8, err error) {
+	var storedMultipart *Multipart
+	status = proto.OpOk
+	storedMultipart, err = mp.multipartTree.Get(multipart.key, multipart.id)
+	if err != nil {
+		status = proto.OpErr
+		return
 	}
-	storedMultipart, is := storedItem.(*Multipart)
-	if !is {
-		return proto.OpNotExistErr
+	if storedMultipart == nil {
+		status = proto.OpNotExistErr
+		return
 	}
+
 	for _, part := range multipart.Parts() {
 		actual, stored := storedMultipart.LoadOrStorePart(part)
 		if !stored && !actual.Equal(part) {
-			return proto.OpExistErr
+			status = proto.OpExistErr
+			return
 		}
 	}
-	return proto.OpOk
+
+	if err = mp.multipartTree.Put(storedMultipart); err != nil {
+		status = proto.OpErr
+		log.LogErrorf("[fsmAppendMultipart] update multipart info failed, multipart id:%s, multipart key:%s, error:%v",
+			multipart.id, multipart.key, err)
+	}
+	return
 }

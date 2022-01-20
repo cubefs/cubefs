@@ -25,8 +25,28 @@ const (
 	ExtendTable
 	MultipartTable
 	ExtentDelTable
-	InodeDelTable
+	DelDentryTable
+	DelInodeTable
 )
+
+func getTableTypeKey(treeType TreeType) TableType {
+	switch treeType {
+	case InodeType:
+		return InodeTable
+	case DentryType:
+		return DentryTable
+	case MultipartType:
+		return MultipartTable
+	case ExtendType:
+		return ExtendTable
+	case DelDentryType:
+		return DelDentryTable
+	case DelInodeType:
+		return DelInodeTable
+	default:
+	}
+	panic("error tree type")
+}
 
 const (
 	dbInitSt uint32 = iota
@@ -104,16 +124,18 @@ func (dbInfo *RocksDbInfo) interOpenDb(dir string) (err error) {
 
 	stat, err = os.Stat(dir)
 	if err == nil && !stat.IsDir() {
+		log.LogErrorf("interOpenDb path:[%s] is not dir", dir)
 		return fmt.Errorf("path:[%s] is not dir", dir)
 	}
 
 	if err != nil && !os.IsNotExist(err) {
+		log.LogErrorf("interOpenDb stat error: dir: %v, err: %v", dir, err)
 		return err
 	}
 
 	//mkdir all  will return nil when path exist and path is dir
 	if err = os.MkdirAll(dir, os.ModePerm); err != nil {
-		log.LogInfof("NewRocksTree mkidr error: dir: %v, err: %v", dir, err)
+		log.LogErrorf("interOpenDb mkdir error: dir: %v, err: %v", dir, err)
 		return err
 	}
 
@@ -127,9 +149,10 @@ func (dbInfo *RocksDbInfo) interOpenDb(dir string) (err error) {
 	opts.SetWriteBufferSize(DefWriteBuffSize)
 	opts.SetMaxWriteBufferNumber(2)
 	opts.SetCompression(gorocksdb.NoCompression)
+	//opts.SetParanoidChecks(true)
 	dbInfo.db, err = gorocksdb.OpenDb(opts, dir)
 	if err != nil {
-		err = fmt.Errorf("action[openRocksDB],err:%v", err)
+		log.LogErrorf("interOpenDb open db err:%v", err)
 		return err
 	}
 	dbInfo.dir = dir
@@ -155,6 +178,7 @@ func (dbInfo *RocksDbInfo) OpenDb(dir string) (err error){
 		if err == nil {
 			atomic.CompareAndSwapUint32(&dbInfo.state, dbOpenningSt, dbOpenedSt)
 		} else {
+			log.LogErrorf("OpenDb failed, dir:%s error:%v", dir, err)
 			atomic.CompareAndSwapUint32(&dbInfo.state, dbOpenningSt, dbInitSt)
 		}
 		dbInfo.mutex.Unlock()
@@ -252,8 +276,9 @@ func (dbInfo *RocksDbInfo)releaseDb() {
 	return
 }
 
-func (dbInfo *RocksDbInfo)OpenSnap()*gorocksdb.Snapshot {
+func (dbInfo *RocksDbInfo)OpenSnap() *gorocksdb.Snapshot {
 	if err := dbInfo.accessDb(); err != nil {
+		log.LogErrorf("access db failed:%v", err)
 		return nil
 	}
 	defer dbInfo.releaseDb()
@@ -326,22 +351,24 @@ func (dbInfo *RocksDbInfo) DescRange(start, end []byte, cb func(k, v []byte) (bo
 	return dbInfo.descRangeWithIter(it, start, end, cb)
 }
 
-// Has checks if the key exists in the btree.
-func (dbInfo *RocksDbInfo) GetBytes(key []byte) ([]byte, error) {
-	if err := dbInfo.accessDb(); err != nil {
-		return nil, err
+func (dbInfo *RocksDbInfo) GetBytes(key []byte) (bytes []byte, err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("rocksdb GetBytes failed, error:%v", err)
+		}
+	}()
+
+	if err = dbInfo.accessDb(); err != nil {
+		return
 	}
 	defer dbInfo.releaseDb()
-	return dbInfo.db.GetBytes(dbInfo.defReadOption, key)
+	if bytes, err = dbInfo.db.GetBytes(dbInfo.defReadOption, key); err != nil {
+		return
+	}
+	return
 }
 
-// Has checks if the key exists in the btree.
 func (dbInfo *RocksDbInfo) HasKey(key []byte) (bool, error) {
-	if err := dbInfo.accessDb(); err != nil {
-		return false, err
-	}
-	defer dbInfo.releaseDb()
-
 	bs, err := dbInfo.GetBytes(key)
 	if err != nil {
 		return false, err
@@ -349,34 +376,57 @@ func (dbInfo *RocksDbInfo) HasKey(key []byte) (bool, error) {
 	return len(bs) > 0, nil
 }
 
-// Has checks if the key exists in the btree.
-func (dbInfo *RocksDbInfo) Put(key, value []byte) error {
-	if err := dbInfo.accessDb(); err != nil {
+func (dbInfo *RocksDbInfo) Put(key, value []byte) (err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("rocksdb Put failed, error:%v", err)
+		}
+	}()
+
+	if err = dbInfo.accessDb(); err != nil {
 		return err
 	}
 	defer dbInfo.releaseDb()
-	return dbInfo.db.Put(dbInfo.defWriteOption, key, value)
+	if err = dbInfo.db.Put(dbInfo.defWriteOption, key, value); err != nil {
+		return
+	}
+	return
 }
 
-func (dbInfo *RocksDbInfo) Del(key []byte) error {
-	if err := dbInfo.accessDb(); err != nil {
+func (dbInfo *RocksDbInfo) Del(key []byte) (err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("rocksdb Del failed, error:%v", err)
+		}
+	}()
+
+	if err = dbInfo.accessDb(); err != nil {
 		return err
 	}
 	defer dbInfo.releaseDb()
-	return dbInfo.db.Delete(dbInfo.defWriteOption, key)
+	if err = dbInfo.db.Delete(dbInfo.defWriteOption, key); err != nil {
+		return
+	}
+	return
 }
 
-func (dbInfo *RocksDbInfo) CreateBatchHandler() (interface{}, error) {
-	if err := dbInfo.accessDb(); err != nil {
-		return nil, err
+func (dbInfo *RocksDbInfo) CreateBatchHandler() (batch interface{}, err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("rocksdb CreateBatchHandler failed, error:%v", err)
+		}
+	}()
+
+	if err = dbInfo.accessDb(); err != nil {
+		return
 	}
 	defer dbInfo.releaseDb()
 	dbInfo.wait.Add(1)
-	batch := gorocksdb.NewWriteBatch()
+	batch = gorocksdb.NewWriteBatch()
 	return batch, nil
 }
 
-func (dbInfo *RocksDbInfo) AddItemToBatch(handle interface{}, key, value []byte)(err error) {
+func (dbInfo *RocksDbInfo) AddItemToBatch(handle interface{}, key, value []byte) (err error) {
 	batch, ok := handle.(*gorocksdb.WriteBatch)
 	if !ok {
 		return fmt.Errorf("handle is invalid, not write batch")
@@ -385,7 +435,7 @@ func (dbInfo *RocksDbInfo) AddItemToBatch(handle interface{}, key, value []byte)
 	return nil
 }
 
-func (dbInfo *RocksDbInfo) DelItemToBatch(handle interface{}, key []byte)(err error) {
+func (dbInfo *RocksDbInfo) DelItemToBatch(handle interface{}, key []byte) (err error) {
 	batch, ok := handle.(*gorocksdb.WriteBatch)
 	if !ok {
 		return fmt.Errorf("handle is invalid, not write batch")
@@ -394,25 +444,66 @@ func (dbInfo *RocksDbInfo) DelItemToBatch(handle interface{}, key []byte)(err er
 	return nil
 }
 
-func (dbInfo *RocksDbInfo) CommitBatchAndRelease(handle interface{})(err error) {
+func (dbInfo *RocksDbInfo) CommitBatchAndRelease(handle interface{}) (err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("rocksdb CommitBatchAndRelease failed, err:%v", err)
+		}
+	}()
+
 	batch, ok := handle.(*gorocksdb.WriteBatch)
 	if !ok {
-		return fmt.Errorf("handle is invalid, not write batch")
+		err = fmt.Errorf("handle is invalid, not write batch")
+		return
 	}
 
-	err = dbInfo.db.Write(dbInfo.defWriteOption, batch)
+	defer func() {
+		batch.Destroy()
+		dbInfo.wait.Done()
+	}()
+	if err = dbInfo.db.Write(dbInfo.defWriteOption, batch); err != nil {
+		return
+	}
+	return
+}
+
+func (dbInfo *RocksDbInfo) CommitBatch(handle interface{}) (err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("rocksdb CommitBatch failed, err:%v", err)
+		}
+	}()
+
+	batch, ok := handle.(*gorocksdb.WriteBatch)
+	if !ok {
+		err = fmt.Errorf("handle is invalid, not write batch")
+		return
+	}
+
+	if err = dbInfo.db.Write(dbInfo.defWriteOption, batch); err != nil {
+		return
+	}
+	return
+}
+
+func (dbInfo *RocksDbInfo) ReleaseBatchHandle(handle interface{})(err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("rocksdb ReleaseBatchHandle failed, err:%v", err)
+		}
+	}()
+
+	batch, ok := handle.(*gorocksdb.WriteBatch)
+	if !ok {
+		err = fmt.Errorf("handle is invalid, not write batch")
+		return
+	}
+
 	batch.Destroy()
 	dbInfo.wait.Done()
 	return
 }
 
-func (dbInfo *RocksDbInfo) ReleaseBatchHandle(handle interface{})(err error) {
-	batch, ok := handle.(*gorocksdb.WriteBatch)
-	if !ok {
-		return fmt.Errorf("handle is invalid, not write batch")
-	}
-
-	batch.Destroy()
-	dbInfo.wait.Done()
-	return
+func (dbInfo *RocksDbInfo) Flush() error {
+	return dbInfo.db.Flush(dbInfo.defFlushOption)
 }

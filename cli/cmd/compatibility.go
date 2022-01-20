@@ -104,28 +104,32 @@ func verifyDentry(client *api.MetaHttpClient, mp metanode.MetaPartition) (err er
 	if err != nil {
 		return
 	}
-	mp.GetDentryTree().Ascend(func(d metanode.BtreeItem) bool {
-		dentry, ok := d.(*metanode.Dentry)
-		if !ok {
-			stdout("item type is not *metanode.Dentry")
-			err = fmt.Errorf("item type is not *metanode.Dentry")
-			return false
+	snap := mp.GetSnapShot()
+	if snap == nil {
+		return fmt.Errorf("can not get mp[%d] snap shot", mp.GetBaseConfig().PartitionId)
+	}
+	defer mp.ReleaseSnapShot(snap)
+	snap.Range(metanode.DentryType, func(data []byte) (bool, error) {
+		dentry := &metanode.Dentry{}
+		if err = dentry.Unmarshal(data); err != nil {
+			stdout("unmarshal dentry value failed:%v", err)
+			return false, err
 		}
 		key := fmt.Sprintf("%v_%v", dentry.ParentId, dentry.Name)
 		oldDentry, ok := dentryMap[key]
 		if !ok {
 			stdout("dentry %v is not in old version", key)
 			err = fmt.Errorf("dentry %v is not in old version", key)
-			return false
+			return false, err
 		}
 		if !reflect.DeepEqual(dentry, oldDentry) {
 			stdout("dentry %v is not equal with old version", key)
 			err = fmt.Errorf("dentry %v is not equal with old version,dentry[%v],oldDentry[%v]", key, dentry, oldDentry)
-			return false
+			return false, err
 		}
-		return true
+		return true, nil
 	})
-	stdout("The number of dentry is %v, all dentry are consistent \n", mp.GetDentryTree().Len())
+	stdout("The number of dentry is %v, all dentry are consistent \n", snap.Count(metanode.DentryType))
 	return
 }
 
@@ -135,15 +139,20 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 		return
 	}
 	var localInode *metanode.Inode
-	mp.GetInodeTree().Ascend(func(d metanode.BtreeItem) bool {
-		inode, ok := d.(*metanode.Inode)
-		if !ok {
-			return true
+	snap := mp.GetSnapShot()
+	if snap == nil {
+		return fmt.Errorf("can not get mp[%d] snap shot", mp.GetBaseConfig().PartitionId)
+	}
+	defer mp.ReleaseSnapShot(snap)
+	snap.Range(metanode.InodeType, func(data []byte) (bool, error) {
+		inode := metanode.NewInode(0, 0)
+		if err = inode.Unmarshal(context.Background(), data); err != nil {
+			return false, err
 		}
 		oldInode, ok := inodesMap[inode.Inode]
 		if !ok {
 			stdout("inode %v is not in old version \n", inode.Inode)
-			return true
+			return true, nil
 		}
 		localInode = &metanode.Inode{
 			Inode:      inode.Inode,
@@ -168,8 +177,8 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 		if !reflect.DeepEqual(oldInode, localInode) {
 			stdout("inode %v is not equal with old version,inode[%v],oldInode[%v]\n", inode.Inode, inode, oldInode)
 		}
-		return true
+		return true, nil
 	})
-	stdout("The number of inodes is %v, all inodes are consistent \n", mp.GetInodeTree().Len())
+	stdout("The number of inodes is %v, all inodes are consistent \n", snap.Count(metanode.InodeType))
 	return
 }

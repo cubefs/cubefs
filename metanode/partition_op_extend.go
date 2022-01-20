@@ -16,6 +16,8 @@ package metanode
 
 import (
 	"encoding/json"
+	"fmt"
+	"github.com/chubaofs/chubaofs/util/exporter"
 
 	"github.com/chubaofs/chubaofs/util/tracing"
 	"golang.org/x/net/context"
@@ -69,13 +71,23 @@ func (mp *metaPartition) GetXAttr(req *proto.GetXAttrRequest, p *Packet) (err er
 		Inode:       req.Inode,
 		Key:         req.Key,
 	}
-	treeItem := mp.extendTree.Get(NewExtend(req.Inode))
-	if treeItem != nil {
-		extend := treeItem.(*Extend)
+	var extend *Extend
+	extend, err = mp.extendTree.RefGet(req.Inode)
+	if err != nil {
+		if err == rocksdbError {
+			exporter.WarningRocksdbError(fmt.Sprintf("action[GetXAttr] clusterID[%s] volumeName[%s] partitionID[%v]" +
+				" get extend failed witch rocksdb error[Inode:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
+				mp.config.PartitionId, req.Inode))
+		}
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	if extend != nil {
 		if value, exist := extend.Get([]byte(req.Key)); exist {
 			response.Value = string(value)
 		}
 	}
+
 	var encoded []byte
 	encoded, err = json.Marshal(response)
 	if err != nil {
@@ -97,9 +109,18 @@ func (mp *metaPartition) BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packe
 		XAttrs:      make([]*proto.XAttrInfo, 0, len(req.Inodes)),
 	}
 	for _, inode := range req.Inodes {
-		treeItem := mp.extendTree.Get(NewExtend(inode))
-		if treeItem != nil {
-			extend := treeItem.(*Extend)
+		var extend *Extend
+		extend, err = mp.extendTree.RefGet(inode)
+		if err != nil {
+			if err == rocksdbError {
+				exporter.WarningRocksdbError(fmt.Sprintf("action[BatchGetXAttr] clusterID[%s] volumeName[%s] partitionID[%v]" +
+					" get extend failed witch rocksdb error[Inode:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
+					mp.config.PartitionId, inode))
+			}
+			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+			return
+		}
+		if extend != nil {
 			info := &proto.XAttrInfo{
 				Inode:  inode,
 				XAttrs: make(map[string]string),
@@ -165,9 +186,18 @@ func (mp *metaPartition) ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err 
 		Inode:       req.Inode,
 		XAttrs:      make([]string, 0),
 	}
-	treeItem := mp.extendTree.Get(NewExtend(req.Inode))
-	if treeItem != nil {
-		extend := treeItem.(*Extend)
+	var extend *Extend
+	extend, err = mp.extendTree.RefGet(req.Inode)
+	if err != nil {
+		if err == rocksdbError {
+			exporter.WarningRocksdbError(fmt.Sprintf("action[ListXAttr] clusterID[%s] volumeName[%s] partitionID[%v]" +
+				" get extend failed witch rocksdb error[Inode:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
+				mp.config.PartitionId, req.Inode))
+		}
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	if extend != nil {
 		extend.Range(func(key, value []byte) bool {
 			response.XAttrs = append(response.XAttrs, string(key))
 			return true

@@ -138,7 +138,7 @@ func(mode *StoreMode) Str() string {
 		return "Mem"
 	case StoreModeRocksDb:
 		return "Rocks Db"
-	case StoreModeMem & StoreModeRocksDb:
+	case StoreModeMem | StoreModeRocksDb:
 		return "Mem&Rocks"
 	default:
 	}

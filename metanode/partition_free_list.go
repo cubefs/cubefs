@@ -204,16 +204,13 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 	deleteExtentsByPartition := make(map[uint64][]*proto.ExtentKey)
 	allInodes := make([]*Inode, 0)
 	for _, ino := range inoSlice {
-		ref := NewDeletedInodeByID(ino)
 		var inodeVal *Inode
-		dio, ok := mp.inodeDeletedTree.CopyGet(ref).(*DeletedINode)
-		if ok && dio != nil {
+		dio, err := mp.inodeDeletedTree.Get(ino)
+		if err == nil && dio != nil {
 			inodeVal = dio.buildInode()
 		} else {
-			var inoRef Inode
-			inoRef.Inode = ino
-			inodeVal, ok = mp.inodeTree.CopyGet(&inoRef).(*Inode)
-			if !ok || inodeVal == nil {
+			inodeVal, err = mp.inodeTree.Get(ino)
+			if err != nil || inodeVal == nil {
 				log.LogWarnf("[deleteMarkedInodes], not found the deleted inode: %v", ino)
 				continue
 			}
@@ -249,7 +246,7 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 			mp.freeList.Push(inode.Inode)
 		}
 	}
-	log.LogInfof("metaPartition(%v) deleteInodeCnt(%v) inodeCnt(%v)", mp.config.PartitionId, len(shouldCommit), mp.inodeTree.Len())
+	log.LogInfof("metaPartition(%v) deleteInodeCnt(%v) inodeCnt(%v)", mp.config.PartitionId, len(shouldCommit), mp.inodeTree.Count())
 	for _, inode := range shouldRePushToFreeList {
 		mp.freeList.Push(inode.Inode)
 	}
