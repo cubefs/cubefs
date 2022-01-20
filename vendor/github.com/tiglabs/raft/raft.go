@@ -93,6 +93,28 @@ func (s *peerState) replace(peers []proto.Peer) {
 	s.mu.Unlock()
 }
 
+func (s *peerState) reset(peers []proto.Peer) {
+	s.mu.Lock()
+	//get old peer info
+	newPeers := make([]proto.Peer, 0)
+	for _, p := range peers {
+		peer , ok := s.peers[p.ID]
+		if ok {
+			newPeers = append(newPeers, peer)
+		}
+	}
+
+	//clear
+	s.peers = nil
+
+	//store exist old peer info
+	s.peers = make(map[uint64]proto.Peer)
+	for _, p := range newPeers {
+		s.peers[p.ID] = p
+	}
+	s.mu.Unlock()
+}
+
 func (s *peerState) get() (nodes []uint64) {
 	s.mu.RLock()
 	for n := range s.peers {
