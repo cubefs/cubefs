@@ -22,8 +22,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tiglabs/raft/tracing"
-
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
 )
@@ -176,22 +174,6 @@ func (r *raftFsm) StopFsm() {
 
 // raft main method
 func (r *raftFsm) Step(m *proto.Message) {
-
-	// Message tracer
-	var mt = tracing.TracerFromContext(m.Ctx()).ChildTracer("raftFsm.Step[message]]")
-	defer mt.Finish()
-	m.SetTagsToTracer(mt)
-	m.SetCtx(mt.Context())
-
-	// Entry tracers
-	var ets = tracing.NewTracers(len(m.Entries))
-	for _, e := range m.Entries {
-		et := tracing.TracerFromContext(e.Ctx()).ChildTracer("raftFsm.Step[entry]")
-		e.SetTagsToTracer(et)
-		e.SetCtx(et.Context())
-		ets.AddTracer(et)
-	}
-	defer ets.Finish()
 
 	if m.Type == proto.LocalMsgHup {
 		if r.state != stateLeader && r.promotable() {
@@ -399,7 +381,7 @@ func (r *raftFsm) removePeer(peer proto.Peer) {
 	if peer.ID == r.config.NodeID {
 		r.becomeFollower(nil, r.term, NoLeader)
 	} else if r.state == stateLeader && len(r.replicas) > 0 {
-		if r.maybeCommitForRemovePeer(nil) {
+		if r.maybeCommitForRemovePeer() {
 			r.bcastAppend(nil)
 		}
 	}
@@ -526,7 +508,7 @@ func (r *raftFsm) addReadIndex(futures []*Future) {
 		}
 	}
 	r.readOnly.add(r.raftLog.committed, futures)
-	r.bcastReadOnly(nil)
+	r.bcastReadOnly()
 }
 
 func numOfPendingConf(ents []*proto.Entry) int {

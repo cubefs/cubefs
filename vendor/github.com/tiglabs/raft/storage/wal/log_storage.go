@@ -21,8 +21,6 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/tiglabs/raft/tracing"
-
 	"math"
 
 	"github.com/tiglabs/raft/proto"
@@ -164,22 +162,18 @@ func (ls *logEntryStorage) SaveEntries(ents []*proto.Entry) error {
 		return nil
 	}
 
-	var tracer = tracing.NewTracer("logEntryStorage.SaveEntries").SetTag("entriesLen", len(ents))
-	defer tracer.Finish()
-	var ctx = tracer.Context()
-
-	if err := ls.truncateBack(ctx, ents[0].Index); err != nil {
+	if err := ls.truncateBack(ents[0].Index); err != nil {
 		return err
 	}
 
 	for _, ent := range ents {
-		if err := ls.saveEntry(ctx, ent); err != nil {
+		if err := ls.saveEntry(nil, ent); err != nil {
 			return err
 		}
 	}
 
 	// flush应用层内存中的，写入file
-	if err := ls.last.Flush(ctx); err != nil {
+	if err := ls.last.Flush(nil); err != nil {
 		return err
 	}
 
@@ -246,9 +240,7 @@ func (ls *logEntryStorage) TruncateAll() error {
 }
 
 // truncateBack 从后面截断，用于删除冲突日志
-func (ls *logEntryStorage) truncateBack(ctx context.Context, index uint64) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("logEntryStorage.truncateBack").SetTag("index", index)
-	defer tracer.Finish()
+func (ls *logEntryStorage) truncateBack(index uint64) error {
 
 	if ls.LastIndex() < index {
 		return nil
@@ -325,9 +317,6 @@ func (ls *logEntryStorage) remove(name logFileName) error {
 
 // 写满了，新建一个新文件
 func (ls *logEntryStorage) rotate(ctx context.Context) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("logEntryStorage.rotate")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	prevLast := ls.last.LastIndex()
 
@@ -411,10 +400,6 @@ func (ls *logEntryStorage) locateFile(logindex uint64) (*logEntryFile, error) {
 }
 
 func (ls *logEntryStorage) saveEntry(ctx context.Context, ent *proto.Entry) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("logEntryStorage.saveEntry")
-	defer tracer.Finish()
-	ent.SetTagsToTracer(tracer)
-	ctx = tracer.Context()
 
 	ls.maybeUpdateCache()
 

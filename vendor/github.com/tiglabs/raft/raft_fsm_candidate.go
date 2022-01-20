@@ -18,8 +18,6 @@ package raft
 import (
 	"fmt"
 
-	"github.com/tiglabs/raft/tracing"
-
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
 )
@@ -41,10 +39,6 @@ func (r *raftFsm) becomeCandidate() {
 }
 
 func stepCandidate(r *raftFsm, m *proto.Message) {
-	var tracer = tracing.TracerFromContext(m.Ctx()).ChildTracer("raftFsm.stepCandidate")
-	defer tracer.Finish()
-	m.SetTagsToTracer(tracer)
-	m.SetCtx(tracer.Context())
 	switch m.Type {
 	case proto.LocalMsgProp:
 		if logger.IsEnableDebug() {

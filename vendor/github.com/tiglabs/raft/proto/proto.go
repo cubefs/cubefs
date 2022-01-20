@@ -17,8 +17,6 @@ package proto
 import (
 	"context"
 	"fmt"
-
-	"github.com/tiglabs/raft/tracing"
 )
 
 type (
@@ -118,16 +116,6 @@ func (e *Entry) Ctx() context.Context {
 	return e.ctx
 }
 
-func (e *Entry) SetTagsToTracer(tracer tracing.Tracer) {
-	return
-	if tracer != nil {
-		tracer.SetTag("index", e.Index).
-			SetTag("term", e.Term).
-			SetTag("type", e.Type.String()).
-			SetTag("dataLen", len(e.Data))
-	}
-}
-
 // Message is the transport message.
 type Message struct {
 	Type         MsgType
@@ -146,7 +134,7 @@ type Message struct {
 	Context      []byte
 	Snapshot     Snapshot // No need for codec
 	ctx          context.Context
-	magic       uint8
+	magic        uint8
 }
 
 func (m *Message) Ctx() context.Context {
@@ -160,19 +148,6 @@ func (m *Message) ToString() (mesg string) {
 	return fmt.Sprintf("Mesg:[%v] type(%v) ForceVote(%v) Reject(%v) RejectIndex(%v) "+
 		"From(%v) To(%v) Term(%v) LogTrem(%v) Index(%v) Commit(%v)", m.ID, m.Type.String(), m.ForceVote,
 		m.Reject, m.RejectIndex, m.From, m.To, m.Term, m.LogTerm, m.Index, m.Commit)
-}
-
-func (m *Message) SetTagsToTracer(tracer tracing.Tracer) {
-	return
-	if tracer != nil {
-		tracer.SetTag("id", m.ID).
-			SetTag("index", m.Index).
-			SetTag("term", m.Term).
-			SetTag("commit", m.Commit).
-			SetTag("entriesLen", len(m.Entries)).
-			SetTag("type", m.Type.String()).
-			SetTag("to", m.To)
-	}
 }
 
 type ConfChange struct {
@@ -195,10 +170,6 @@ type ResetPeers struct {
 	Context  []byte
 }
 type HeartbeatContext []uint64
-
-type TransportContext struct {
-	Tracer tracing.Tracer // Codec order: 1
-}
 
 func (t MsgType) String() string {
 	switch t {

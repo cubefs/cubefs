@@ -14,13 +14,9 @@
 package proto
 
 import (
-	"bytes"
 	"encoding/binary"
 	"io"
 	"sort"
-
-	"github.com/opentracing/opentracing-go"
-	"github.com/tiglabs/raft/tracing"
 
 	"github.com/tiglabs/raft/util"
 )
@@ -213,13 +209,6 @@ func (m *Message) Size() uint64 {
 }
 
 func (m *Message) Encode(w io.Writer) error {
-	if m.Ctx() != nil {
-		if span := opentracing.SpanFromContext(m.Ctx()); span != nil && span.Tracer() != nil {
-			span = span.Tracer().StartSpan("Message Encode", opentracing.ChildOf(span.Context())).SetTag("len", m.Size())
-			span.Finish()
-			m.SetCtx(opentracing.ContextWithSpan(m.Ctx(), span))
-		}
-	}
 
 	buf := getByteSlice()
 	defer returnByteSlice(buf)
@@ -347,43 +336,6 @@ func DecodeHBContext(buf []byte) (ctx HeartbeatContext) {
 		ctx = append(ctx, id+prev)
 		prev = id + prev
 		buf = buf[n:]
-	}
-	return
-}
-
-func EncodeTransportContext(ctx TransportContext) []byte {
-	contextW := bytes.NewBuffer(nil)
-	varBuf := make([]byte, binary.MaxVarintLen64)
-	if ctx.Tracer != nil {
-		tracerW := bytes.NewBuffer(nil)
-		if err := ctx.Tracer.Inject(tracerW); err == nil {
-			n := binary.PutUvarint(varBuf, uint64(tracerW.Len()))
-			contextW.Write(varBuf[:n])
-			contextW.Write(tracerW.Bytes())
-		}
-	} else {
-		contextW.WriteByte(0)
-	}
-	return contextW.Bytes()
-}
-
-func DecodeTransportContext(buf []byte, tracerName string) (ctx TransportContext) {
-	r := bytes.NewBuffer(buf)
-	if r.Len() == 0 {
-		return
-	}
-	tracerLen, err := binary.ReadUvarint(r)
-	if err != nil {
-		return
-	}
-	if tracerLen > 0 {
-		tracerBuff := make([]byte, tracerLen)
-		if _, err := r.Read(tracerBuff); err != nil {
-			return
-		}
-		ctx.Tracer = tracing.ExtractTracer(bytes.NewBuffer(tracerBuff), tracerName)
-	} else {
-		ctx.Tracer = tracing.DefaultTracer()
 	}
 	return
 }

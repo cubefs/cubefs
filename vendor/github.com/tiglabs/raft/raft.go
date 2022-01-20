@@ -24,8 +24,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/tiglabs/raft/tracing"
-
 	"github.com/chubaofs/chubaofs/util/exporter"
 
 	"github.com/tiglabs/raft/logger"
@@ -254,15 +252,6 @@ func (s *raft) runApply() {
 				continue
 			}
 
-			var tracer = tracing.DefaultTracer()
-			if apply.future != nil {
-				tracer = tracing.TracerFromContext(apply.future.ctx).
-					ChildTracer("raft.runApply[applyc]").
-					SetTag("index", apply.index).
-					SetTag("term", apply.term)
-				apply.future.ctx = tracer.Context()
-			}
-
 			var (
 				err  error
 				resp interface{}
@@ -283,7 +272,6 @@ func (s *raft) runApply() {
 			s.curApplied.Set(apply.index)
 			pool.returnApply(apply)
 
-			tracer.Finish()
 		}
 	}
 }
@@ -304,7 +292,6 @@ func (s *raft) run() {
 	s.maybeChange(true)
 
 	loopCount := 0
-	tracers := tracing.NewTracers(64)
 	var readyc chan struct{}
 	for {
 		if readyc == nil && s.containsUpdate() {
@@ -321,8 +308,6 @@ func (s *raft) run() {
 			s.maybeChange(true)
 
 		case pr := <-s.propc:
-			msgTracer := tracing.NewTracer("raft.run[prop][event]")
-			msgCtx := msgTracer.Context()
 
 			if s.raftFsm.leader != s.config.NodeID {
 				pr.future.respond(nil, ErrNotLeader)
@@ -333,21 +318,15 @@ func (s *raft) run() {
 			msg := proto.GetMessage()
 			msg.Type = proto.LocalMsgProp
 			msg.From = s.config.NodeID
-			msg.SetCtx(msgCtx)
 			starti := s.raftFsm.raftLog.lastIndex() + 1
 			s.pending[starti] = pr.future
 			s.pendingCmd[starti] = pr.cmdType
 
-			var tracer = tracing.TracerFromContext(pr.future.ctx).ChildTracer("raft.run[prop][entry]")
 			var e = &proto.Entry{Term: s.raftFsm.term, Index: starti, Type: pr.cmdType, Data: pr.data}
-			e.SetTagsToTracer(tracer)
-			e.SetCtx(tracer.Context())
-			tracers.AddTracer(tracer)
 
 			msg.Entries = append(msg.Entries, e)
 			pool.returnProposal(pr)
 
-			pr.future.ctx = tracer.Context()
 			msg.SetCtx(pr.future.ctx)
 
 			flag := false
@@ -358,11 +337,7 @@ func (s *raft) run() {
 					s.pending[starti] = pr.future
 					s.pendingCmd[starti] = pr.cmdType
 
-					var tracer = tracing.TracerFromContext(pr.future.ctx).ChildTracer("raft.run[prop][entry]")
 					var e = &proto.Entry{Term: s.raftFsm.term, Index: starti, Type: pr.cmdType, Data: pr.data}
-					e.SetTagsToTracer(tracer)
-					e.SetCtx(tracer.Context())
-					tracers.AddTracer(tracer)
 
 					msg.Entries = append(msg.Entries, e)
 					pool.returnProposal(pr)
@@ -375,9 +350,6 @@ func (s *raft) run() {
 			}
 
 			s.raftFsm.Step(msg)
-			tracers.Finish()
-			tracers.Clean()
-			msgTracer.Finish()
 
 		case m := <-s.recvc:
 			if _, ok := s.raftFsm.replicas[m.From]; ok || (!m.IsResponseMsg() && m.Type != proto.ReqMsgVote) ||
@@ -392,11 +364,7 @@ func (s *raft) run() {
 						s.raftFsm.Step(m)
 					}
 				default:
-					var tracer = tracing.TracerFromContext(m.Ctx()).ChildTracer("raft.run[recv]")
-					m.SetTagsToTracer(tracer)
-					m.SetCtx(tracer.Context())
 					s.raftFsm.Step(m)
-					tracer.Finish()
 				}
 				var respErr = true
 				if m.Type == proto.RespMsgAppend && m.Reject != true {
@@ -411,17 +379,12 @@ func (s *raft) run() {
 			s.handleSnapshot(snapReq)
 
 		case <-readyc:
-			var tracer = tracing.NewTracer("raft.run[ready]")
 
 			func() {
-				var tracer = tracer.ChildTracer("raft.run[ready][persist]")
-				defer tracer.Finish()
 				s.persist()
 			}()
 
 			func() {
-				var tracer = tracer.ChildTracer("raft.run[ready][apply]")
-				defer tracer.Finish()
 				s.apply()
 
 			}()
@@ -444,8 +407,6 @@ func (s *raft) run() {
 				runtime.Gosched()
 			}
 
-			tracer.Finish()
-
 		case <-s.electc:
 			msg := proto.GetMessage()
 			msg.Type = proto.LocalMsgHup
@@ -458,7 +419,6 @@ func (s *raft) run() {
 			c <- s.getStatus()
 
 		case truncIndex := <-s.truncatec:
-			var tracer = tracing.NewTracer("raft.run[trunc]")
 			func() {
 				defer util.HandleCrash()
 
@@ -471,7 +431,6 @@ func (s *raft) run() {
 					}
 				}
 			}()
-			tracer.Finish()
 
 		case <-s.promtec:
 			s.promoteLearner()
@@ -572,10 +531,6 @@ func (s *raft) promote() {
 }
 
 func (s *raft) propose(cmd []byte, future *Future) {
-	var tracer = tracing.TracerFromContext(future.ctx).ChildTracer("raft.propose").
-		SetTag("len", len(cmd))
-	defer tracer.Finish()
-	future.ctx = tracer.Context()
 
 	if !s.isLeader() {
 		future.respond(nil, ErrNotLeader)
@@ -834,16 +789,6 @@ func (s *raft) apply() {
 			delete(s.pendingCmd, entry.Index)
 		}
 
-		var tracer = tracing.DefaultTracer()
-		if apply.future != nil {
-			tracer = tracing.TracerFromContext(apply.future.ctx).ChildTracer("raft.apply").
-				SetTag("index", apply.index).
-				SetTag("term", apply.term).
-				SetTag("type", entry.Type)
-
-			apply.future.ctx = tracer.Context()
-		}
-
 		apply.readIndexes = s.raftFsm.readOnly.getReady(entry.Index)
 
 		switch entry.Type {
@@ -875,7 +820,6 @@ func (s *raft) apply() {
 		case s.applyc <- apply:
 		}
 
-		tracer.Finish()
 	}
 }
 

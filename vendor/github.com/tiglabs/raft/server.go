@@ -21,8 +21,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tiglabs/raft/tracing"
-
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
 	"github.com/tiglabs/raft/util"
@@ -67,7 +65,7 @@ func NewRaftServer(config *Config) (*RaftServer, error) {
 
 func (rs *RaftServer) run() {
 	ticks := 0
-	randomSeedTicker:=time.NewTicker(time.Minute)
+	randomSeedTicker := time.NewTicker(time.Minute)
 	for {
 		select {
 		case <-rs.stopc:
@@ -180,12 +178,6 @@ func (rs *RaftServer) RemoveRaft(id uint64) error {
 }
 
 func (rs *RaftServer) Submit(ctx context.Context, id uint64, cmd []byte) (future *Future) {
-	var tracer = tracing.TracerFromContext(ctx).
-		ChildTracer("RaftServer.Submit").
-		SetTag("id", id).
-		SetTag("cmdLen", len(cmd))
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	rs.mu.RLock()
 	raft, ok := rs.rafts[id]

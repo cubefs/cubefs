@@ -20,8 +20,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tiglabs/raft/tracing"
-
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
 	"github.com/tiglabs/raft/util"
@@ -102,8 +100,6 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 			}
 		}()
 
-		var tracers = tracing.NewTracers(16)
-
 		var flush = func() {
 			// flush write
 			if err == nil {
@@ -114,8 +110,6 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 				_ = conn.Close()
 				conn = nil
 			}
-			tracers.Finish()
-			tracers.Clean()
 		}
 
 		loopCount := 0
@@ -131,15 +125,6 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 				return
 
 			case msg := <-recvc:
-				var tracer = tracing.TracerFromContext(msg.Ctx()).ChildTracer("transportSender.loopSend[message]")
-				msg.SetTagsToTracer(tracer)
-				msg.SetCtx(tracer.Context())
-				tracers.AddTracer(tracer)
-				for _, e := range msg.Entries {
-					et := tracing.TracerFromContext(e.Ctx()).ChildTracer("transportSender.loopSend[entry]")
-					e.SetTagsToTracer(et)
-					tracers.AddTracer(et)
-				}
 
 				if conn == nil {
 					if conn, err = getConn(msg.Ctx(), s.nodeID, s.senderType, s.resolver, 0, 2*time.Second); err != nil {
@@ -167,7 +152,7 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 					continue
 				}
 				// group send message
-				err = s.groupSendMesg(recvc, bufWr, tracers)
+				err = s.groupSendMesg(recvc, bufWr)
 				flush()
 			}
 		}
@@ -175,19 +160,10 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 	util.RunWorkerUtilStop(loopSendFunc, s.stopc)
 }
 
-func (s *transportSender) groupSendMesg(recvc chan *proto.Message, bufWr *util.BufferWriter, tracers tracing.Tracers) (err error) {
+func (s *transportSender) groupSendMesg(recvc chan *proto.Message, bufWr *util.BufferWriter) (err error) {
 	for i := 0; i < 16; i++ {
 		select {
 		case msg := <-recvc:
-			var tracer = tracing.TracerFromContext(msg.Ctx()).ChildTracer("transportSender.loopSend[send]")
-			msg.SetTagsToTracer(tracer)
-			msg.SetCtx(tracer.Context())
-			tracers.AddTracer(tracer)
-			for _, e := range msg.Entries {
-				et := tracing.TracerFromContext(e.Ctx()).ChildTracer("transportSender.loopSend[entry]")
-				e.SetTagsToTracer(et)
-				tracers.AddTracer(et)
-			}
 			err = msg.Encode(bufWr)
 			proto.ReturnMessage(msg)
 			if err != nil {
@@ -201,10 +177,6 @@ func (s *transportSender) groupSendMesg(recvc chan *proto.Message, bufWr *util.B
 }
 
 func getConn(ctx context.Context, nodeID uint64, socketType SocketType, resolver SocketResolver, rdTime, wrTime time.Duration) (conn *util.ConnTimeout, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("getConn").
-		SetTag("nodeID", nodeID).
-		SetTag("socketType", socketType.String())
-	defer tracer.Finish()
 
 	var addr string
 

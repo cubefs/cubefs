@@ -20,8 +20,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/tiglabs/raft/tracing"
-
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
 	"github.com/tiglabs/raft/util"
@@ -121,9 +119,6 @@ func (s *raft) stopSnapping() {
 }
 
 func (s *raft) sendSnapshot(m *proto.Message) {
-	var tracer = tracing.TracerFromContext(m.Ctx()).ChildTracer("raft.sendSnapshot")
-	defer tracer.Finish()
-	m.SetCtx(tracer.Context())
 
 	util.RunWorker(func() {
 		defer func() {

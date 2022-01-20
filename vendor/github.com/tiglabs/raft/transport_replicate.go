@@ -25,8 +25,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/tiglabs/raft/tracing"
-
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
 	"github.com/tiglabs/raft/util"
@@ -230,12 +228,6 @@ func (t *replicateTransport) handleConn(conn *util.ConnTimeout) {
 					}
 				} else {
 					func() {
-						if tracing.IsEnabled() && msg.IsAppendMsg() && len(msg.Context) > 0 {
-							var tracer = proto.DecodeTransportContext(msg.Context, "replicateTransport.handleConn[receiveMessage]").Tracer
-							tracing.FillGCState(tracer)
-							defer tracer.Finish()
-							msg.SetCtx(tracer.Context())
-						}
 						t.raftServer.reciveMessage(msg)
 					}()
 				}

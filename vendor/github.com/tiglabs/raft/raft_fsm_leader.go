@@ -21,8 +21,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/tiglabs/raft/tracing"
-
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
 	"github.com/tiglabs/raft/util"
@@ -62,21 +60,6 @@ func (r *raftFsm) becomeLeader() {
 }
 
 func stepLeader(r *raftFsm, m *proto.Message) {
-	// Message tracers
-	var mt = tracing.TracerFromContext(m.Ctx()).ChildTracer("raftFsm.stepLeader[message]")
-	defer mt.Finish()
-	m.SetTagsToTracer(mt)
-	m.SetCtx(mt.Context())
-
-	// Entry tracers
-	var ets = tracing.NewTracers(len(m.Entries))
-	for _, e := range m.Entries {
-		et := tracing.TracerFromContext(e.Ctx()).ChildTracer("raftFsm.stepLeader[entry]")
-		e.SetTagsToTracer(et)
-		e.SetCtx(et.Context())
-		ets.AddTracer(et)
-	}
-	defer ets.Finish()
 
 	// These message types do not require any progress for m.From.
 	switch m.Type {
@@ -151,7 +134,7 @@ func stepLeader(r *raftFsm, m *proto.Message) {
 					pr.inflight.freeTo(m.Index)
 				}
 
-				if r.maybeCommit(m.Ctx()) {
+				if r.maybeCommit() {
 					r.bcastAppend(m.Ctx())
 				} else if oldPaused {
 					r.sendAppend(m.Ctx(), m.From)
@@ -256,10 +239,6 @@ func (r *raftFsm) becomeElectionAck() {
 }
 
 func stepElectionAck(r *raftFsm, m *proto.Message) {
-	var tracer = tracing.TracerFromContext(m.Ctx()).ChildTracer("raftFsm.stepElectionAck")
-	defer tracer.Finish()
-	m.SetTagsToTracer(tracer)
-	m.SetCtx(tracer.Context())
 
 	switch m.Type {
 	case proto.LocalMsgProp:
@@ -351,7 +330,7 @@ func (r *raftFsm) tickHeartbeat() {
 				r.replicas[id].resume()
 			}
 		}
-		r.bcastReadOnly(nil)
+		r.bcastReadOnly()
 	}
 }
 
@@ -386,10 +365,7 @@ func (r *raftFsm) checkLeaderLease(promoteLearnerCheck bool) bool {
 	return act >= r.quorum()
 }
 
-func (r *raftFsm) maybeCommitForRemovePeer(ctx context.Context) bool {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("raftFsm.maybeCommit")
-	defer tracer.Finish()
-	ctx = tracer.Context()
+func (r *raftFsm) maybeCommitForRemovePeer() bool {
 
 	mis := make(util.Uint64Slice, 0, len(r.replicas))
 	for _, rp := range r.replicas {
@@ -397,7 +373,7 @@ func (r *raftFsm) maybeCommitForRemovePeer(ctx context.Context) bool {
 	}
 	sort.Sort(sort.Reverse(mis))
 	mci := mis[r.quorum()-1]
-	minCommitID:=util.Min(r.raftLog.committed,mci)
+	minCommitID := util.Min(r.raftLog.committed, mci)
 	isCommit := r.raftLog.maybeCommit(minCommitID, r.term)
 	if r.state == stateLeader && r.replicas[r.config.NodeID] != nil {
 		r.replicas[r.config.NodeID].committed = r.raftLog.committed
@@ -407,17 +383,13 @@ func (r *raftFsm) maybeCommitForRemovePeer(ctx context.Context) bool {
 		if r.raftLog.zeroTermOnErrCompacted(r.raftLog.term(r.raftLog.committed)) == r.term {
 			r.readOnly.commit(r.raftLog.committed)
 		}
-		r.bcastReadOnly(ctx)
+		r.bcastReadOnly()
 	}
 
 	return isCommit
 }
 
-
-func (r *raftFsm) maybeCommit(ctx context.Context) bool {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("raftFsm.maybeCommit")
-	defer tracer.Finish()
-	ctx = tracer.Context()
+func (r *raftFsm) maybeCommit() bool {
 
 	mis := make(util.Uint64Slice, 0, len(r.replicas))
 	for _, rp := range r.replicas {
@@ -434,7 +406,7 @@ func (r *raftFsm) maybeCommit(ctx context.Context) bool {
 		if r.raftLog.zeroTermOnErrCompacted(r.raftLog.term(r.raftLog.committed)) == r.term {
 			r.readOnly.commit(r.raftLog.committed)
 		}
-		r.bcastReadOnly(ctx)
+		r.bcastReadOnly()
 	}
 
 	return isCommit
@@ -450,9 +422,6 @@ func (r *raftFsm) bcastAppend(ctx context.Context) {
 }
 
 func (r *raftFsm) sendAppend(ctx context.Context, to uint64) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("raftFsm.sendAppend").SetTag("to", to)
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	pr := r.replicas[to]
 	if pr.isPaused() {
@@ -548,10 +517,10 @@ func (r *raftFsm) sendAppend(ctx context.Context, to uint64) {
 func (r *raftFsm) appendEntry(es ...*proto.Entry) {
 	r.raftLog.append(es...)
 	r.replicas[r.config.NodeID].maybeUpdate(r.raftLog.lastIndex(), r.raftLog.committed)
-	r.maybeCommit(nil)
+	r.maybeCommit()
 }
 
-func (r *raftFsm) bcastReadOnly(ctx context.Context) {
+func (r *raftFsm) bcastReadOnly() {
 	index := r.readOnly.lastPending()
 	if index == 0 {
 		return
@@ -567,7 +536,6 @@ func (r *raftFsm) bcastReadOnly(ctx context.Context) {
 		msg.Type = proto.ReqCheckQuorum
 		msg.To = id
 		msg.Index = index
-		msg.SetCtx(ctx)
 		r.send(msg)
 	}
 }

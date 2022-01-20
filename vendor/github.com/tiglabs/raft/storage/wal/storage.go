@@ -19,8 +19,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tiglabs/raft/tracing"
-
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
 	"github.com/tiglabs/raft/util/log"
@@ -232,11 +230,6 @@ func (s *Storage) StoreEntries(entries []*proto.Entry) error {
 
 // StoreHardState store the raft state to the repository.
 func (s *Storage) StoreHardState(st proto.HardState) error {
-	var tracer = tracing.NewTracer("Storage.StoreHardState").
-		SetTag("term", st.Term).
-		SetTag("commit", st.Commit).
-		SetTag("vote", st.Vote)
-	defer tracer.Finish()
 
 	s.metafile.SaveHardState(st)
 

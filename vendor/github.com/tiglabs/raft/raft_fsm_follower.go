@@ -19,15 +19,11 @@ import (
 	"context"
 	"math"
 
-	"github.com/tiglabs/raft/tracing"
-
 	"github.com/tiglabs/raft/logger"
 	"github.com/tiglabs/raft/proto"
 )
 
 func (r *raftFsm) becomeFollower(ctx context.Context, term, lead uint64) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("raftFsm.becomeFollower")
-	defer tracer.Finish()
 	r.step = stepFollower
 	r.reset(term, 0, false)
 	r.tick = r.tickElection
@@ -39,10 +35,6 @@ func (r *raftFsm) becomeFollower(ctx context.Context, term, lead uint64) {
 }
 
 func stepFollower(r *raftFsm, m *proto.Message) {
-	var tracer = tracing.TracerFromContext(m.Ctx()).ChildTracer("raftFsm.stepFollower")
-	defer tracer.Finish()
-	m.SetTagsToTracer(tracer)
-	m.SetCtx(tracer.Context())
 	switch m.Type {
 	case proto.LocalMsgProp:
 		if r.leader == NoLeader {
@@ -166,10 +158,6 @@ func (r *raftFsm) tickElection() {
 }
 
 func (r *raftFsm) handleAppendEntries(m *proto.Message) {
-	var tracer = tracing.TracerFromContext(m.Ctx()).ChildTracer("raftFsm.handleAppendEntries]")
-	defer tracer.Finish()
-	m.SetTagsToTracer(tracer)
-	m.SetCtx(tracer.Context())
 
 	if m.Index < r.raftLog.committed {
 		nmsg := proto.GetMessage()

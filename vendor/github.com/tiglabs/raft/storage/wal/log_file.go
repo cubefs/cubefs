@@ -21,8 +21,6 @@ import (
 	"os"
 	"path"
 
-	"github.com/tiglabs/raft/tracing"
-
 	"github.com/tiglabs/raft/proto"
 	"github.com/tiglabs/raft/util/log"
 )
@@ -260,8 +258,6 @@ func (lf *logEntryFile) Truncate(index uint64) error {
 }
 
 func (lf *logEntryFile) Save(ctx context.Context, ent *proto.Entry) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("logEntryFile.Save").SetTag("dataLen", len(ent.Data))
-	defer tracer.Finish()
 
 	// 写入文件
 	offset := lf.w.Offset()
@@ -289,8 +285,6 @@ func (lf *logEntryFile) WriteOffset() int64 {
 }
 
 func (lf *logEntryFile) Flush(ctx context.Context) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("logEntryFile.Flush")
-	defer tracer.Finish()
 
 	return lf.w.Flush()
 }
@@ -301,8 +295,6 @@ func (lf *logEntryFile) Sync() error {
 }
 
 func (lf *logEntryFile) FinishWrite(ctx context.Context) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("logEntryFile.FinishWrite")
-	defer tracer.Finish()
 
 	var err error
 
@@ -320,8 +312,6 @@ func (lf *logEntryFile) FinishWrite(ctx context.Context) error {
 		return err
 	}
 
-	var closeTracer = tracer.ChildTracer("logEntryFile.FinishWrite[close writer]")
-	defer closeTracer.Finish()
 	if err := lf.w.Close(); err != nil {
 		return err
 	}
