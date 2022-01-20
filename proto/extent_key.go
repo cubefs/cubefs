@@ -19,6 +19,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math/rand"
+	"sync"
+	"time"
 
 	"github.com/chubaofs/chubaofs/util/btree"
 )
@@ -82,6 +85,27 @@ func (k *ExtentKey) MarshalBinary() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+func (k *ExtentKey) MarshalBinaryV2() ([]byte, error) {
+	data := make([]byte, 0, ExtentLength)
+	binary.BigEndian.PutUint64(data[0:8], k.FileOffset)
+	binary.BigEndian.PutUint64(data[8:16], k.PartitionId)
+	binary.BigEndian.PutUint64(data[16:24], k.ExtentId)
+	binary.BigEndian.PutUint64(data[24:32], k.ExtentOffset)
+	binary.BigEndian.PutUint32(data[32:36], k.Size)
+	binary.BigEndian.PutUint32(data[36:40], k.CRC)
+	return data, nil
+}
+
+func (k *ExtentKey) EncodeBinary(data []byte) {
+	binary.BigEndian.PutUint64(data[0:8], k.FileOffset)
+	binary.BigEndian.PutUint64(data[8:16], k.PartitionId)
+	binary.BigEndian.PutUint64(data[16:24], k.ExtentId)
+	binary.BigEndian.PutUint64(data[24:32], k.ExtentOffset)
+	binary.BigEndian.PutUint32(data[32:36], k.Size)
+	binary.BigEndian.PutUint32(data[36:40], k.CRC)
+	return
+}
+
 // UnmarshalBinary unmarshals the binary format of the extent key.
 func (k *ExtentKey) UnmarshalBinary(buf *bytes.Buffer) (err error) {
 	if err = binary.Read(buf, binary.BigEndian, &k.FileOffset); err != nil {
@@ -115,6 +139,7 @@ func (k *ExtentKey) UnmarshalBinaryV2(data []byte) (err error) {
 	k.ExtentOffset = binary.BigEndian.Uint64(data[24 : 32])
 	k.Size         = binary.BigEndian.Uint32(data[32 : 36])
 	k.CRC          = binary.BigEndian.Uint32(data[36 : 40])
+
 	return nil
 }
 
@@ -143,4 +168,40 @@ type TinyExtentDeleteRecord struct {
 	ExtentOffset uint64
 	Size         uint32
 	CRC          uint32
+}
+
+const (
+	ExtentKeyPoolCnt = 32
+)
+
+var (
+	extentPool [ExtentKeyPoolCnt]*sync.Pool
+)
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+	for index := 0; index < ExtentKeyPoolCnt; index++ {
+		extentPool[index] = &sync.Pool{
+			New: func() interface{} {
+				return new(ExtentKey)
+			},
+		}
+	}
+}
+
+func GetExtentKeyFromPool() *ExtentKey {
+	ek := extentPool[rand.Intn(ExtentKeyPoolCnt)].Get().(*ExtentKey)
+	ek.Size = 0
+	ek.ExtentOffset = 0
+	ek.ExtentId = 0
+	ek.CRC = 0
+	ek.FileOffset = 0
+	ek.PartitionId = 0
+	return ek
+}
+
+func PutExtentKeyToPool(ek *ExtentKey) {
+	if ek != nil {
+		extentPool[rand.Intn(ExtentKeyPoolCnt)].Put(ek)
+	}
 }
