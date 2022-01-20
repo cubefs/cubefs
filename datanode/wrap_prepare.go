@@ -35,14 +35,13 @@ func (s *DataNode) Prepare(p *repl.Packet) (err error) {
 	if p.IsMasterCommand() {
 		return
 	}
-	atomic.AddUint32(&s.metricCnt, 1)
-	if s.metricSampleFactor > 0 && s.metricCnt%s.metricSampleFactor == 0 {
-		s.metricOn = true
+	atomic.AddUint64(&s.metricsCnt, 1)
+	if !s.shallDegrade() {
 		p.BeforeTp(s.clusterID)
+		p.UnsetDegrade()
 	} else {
-		s.metricOn = false
+		p.SetDegrade()
 	}
-
 	err = s.checkStoreMode(p)
 	if err != nil {
 		return
