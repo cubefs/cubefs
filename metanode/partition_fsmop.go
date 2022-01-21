@@ -22,7 +22,6 @@ import (
 
 	"encoding/binary"
 	"fmt"
-	"io/ioutil"
 	"path"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -143,7 +142,7 @@ func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMember
 
 func (mp *metaPartition) delOldExtentFile(buf []byte) (err error) {
 	fileName := string(buf)
-	infos, err := ioutil.ReadDir(mp.config.RootDir)
+	infos, err := os.ReadDir(mp.config.RootDir)
 	if err != nil {
 		return
 	}

@@ -17,7 +17,6 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	syslog "log"
 	"net"
 	_ "net/http/pprof"
@@ -295,7 +294,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 		return
 	}
 	// scan the data directory
-	fileInfoList, err := ioutil.ReadDir(m.rootDir)
+	fileInfoList, err := os.ReadDir(m.rootDir)
 	if err != nil {
 		return
 	}

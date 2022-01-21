@@ -81,6 +81,11 @@ Refer to [chubaofs.readthedocs.io](https://chubaofs.readthedocs.io/en/latest/eva
 
 ## Build ChubaoFS
 
+Prerequisite:
+* Go version `>=1.16`
+* `export GO111MODULE=off`
+
+
 ### Build for x86
 ```
 $ git clone http://github.com/chubaofs/chubaofs.git

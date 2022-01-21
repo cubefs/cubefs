@@ -154,8 +154,8 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 
 	// collect extend del files
 	var filenames = make([]string, 0)
-	var fileInfos []os.FileInfo
-	if fileInfos, err = ioutil.ReadDir(mp.config.RootDir); err != nil {
+	var fileInfos []os.DirEntry
+	if fileInfos, err = os.ReadDir(mp.config.RootDir); err != nil {
 		return
 	}
 
