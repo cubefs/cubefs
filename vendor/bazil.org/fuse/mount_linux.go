@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+
+	"github.com/jacobsa/daemonize"
 )
 
 func handleFusermountStderr(errCh chan<- error) func(line string) (ignore bool) {
@@ -104,7 +106,9 @@ func mount(dir string, conf *mountConfig, ready chan<- struct{}, errp *error) (f
 		case helperErr := <-helperErrCh:
 			// log the Wait error if it's not what we expected
 			if !isBoringFusermountError(err) {
-				log.Printf("mount helper failed: %v", err)
+				msg := fmt.Sprintf("mount helper failed: %v", err)
+				log.Println(msg)
+				daemonize.StatusWriter.Write([]byte(msg + "\n"))
 			}
 			// and now return what we grabbed from stderr as the real
 			// error

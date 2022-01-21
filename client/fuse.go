@@ -20,6 +20,7 @@ package main
 // Default mountpoint is specified in fuse.json, which is "/mnt".
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	syslog "log"
@@ -105,7 +106,7 @@ func main() {
 
 	if !*configForeground {
 		if err := startDaemon(); err != nil {
-			fmt.Printf("Mount failed: %v\n", err)
+			fmt.Printf("Mount failed.\n%s\n", err)
 			os.Exit(1)
 		}
 		os.Exit(0)
@@ -256,9 +257,13 @@ func startDaemon() error {
 	// add GODEBUG=madvdontneed=1 environ, to make sysUnused uses madvise(MADV_DONTNEED) to signal the kernel that a
 	// range of allocated memory contains unneeded data.
 	env = append(env, "GODEBUG=madvdontneed=1")
-	err = daemonize.Run(cmdPath, args, env, os.Stdout)
+	buf := new(bytes.Buffer)
+	err = daemonize.Run(cmdPath, args, env, buf)
 	if err != nil {
-		return fmt.Errorf("startDaemon failed: daemon start failed, cmd(%v) args(%v) env(%v) err(%v)\n", cmdPath, args, env, err)
+		if buf.Len() > 0 {
+			fmt.Println(buf.String())
+		}
+		return fmt.Errorf("startDaemon failed.\ncmd(%v)\nargs(%v)\nerr(%v)\n", cmdPath, args, err)
 	}
 
 	return nil
@@ -345,12 +350,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 
 	proto.ParseMountOptions(GlobalMountOptions, cfg)
 
-	rawmnt := GlobalMountOptions[proto.MountPoint].GetString()
-	opt.MountPoint, err = filepath.Abs(rawmnt)
-	if err != nil {
-		return nil, errors.Trace(err, "invalide mount point (%v) ", rawmnt)
-	}
-
+	opt.MountPoint = GlobalMountOptions[proto.MountPoint].GetString()
 	opt.Volname = GlobalMountOptions[proto.VolName].GetString()
 	opt.Owner = GlobalMountOptions[proto.Owner].GetString()
 	opt.Master = GlobalMountOptions[proto.Master].GetString()
@@ -402,6 +402,11 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))
 	}
 
+	absMnt, err := filepath.Abs(opt.MountPoint)
+	if err != nil {
+		return nil, errors.Trace(err, "invalide mount point (%v) ", opt.MountPoint)
+	}
+	opt.MountPoint = absMnt
 	return opt, nil
 }
 
