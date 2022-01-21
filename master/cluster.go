@@ -2111,7 +2111,7 @@ func (c *Cluster) checkNormalZoneName(zoneName string) (err error) {
 		}
 
 		if !isZone {
-			return fmt.Errorf("action[checkZoneName] the zonename[%s] not execluded domain name.should not be assigned", zoneList[i])
+			return fmt.Errorf("action[checkZoneName] the zonename[%s] not found", zoneList[i])
 		}
 	}
 	return
