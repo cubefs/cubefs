@@ -22,6 +22,7 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
+	"github.com/chubaofs/chubaofs/client/cache"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -35,7 +36,7 @@ import (
 type Dir struct {
 	super  *Super
 	info   *proto.InodeInfo
-	dcache *DentryCache
+	dcache *cache.DentryCache
 }
 
 // Functions that Dir needs to implement
@@ -283,9 +284,9 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	inodes := make([]uint64, 0, len(children))
 	dirents := make([]fuse.Dirent, 0, len(children))
 
-	var dcache *DentryCache
+	var dcache *cache.DentryCache
 	if !d.super.disableDcache {
-		dcache = NewDentryCache()
+		dcache = cache.NewDentryCache(DentryValidDuration)
 	}
 
 	for _, child := range children {

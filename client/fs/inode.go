@@ -16,7 +16,6 @@ package fs
 
 import (
 	"context"
-	"time"
 
 	"github.com/chubaofs/chubaofs/util/tracing"
 
@@ -97,15 +96,4 @@ func fillAttr(info *proto.InodeInfo, attr *fuse.Attr) {
 	attr.BlockSize = DefaultBlksize
 	attr.Uid = info.Uid
 	attr.Gid = info.Gid
-}
-
-func inodeExpired(info *proto.InodeInfo) bool {
-	if time.Now().UnixNano() > info.Expiration() {
-		return true
-	}
-	return false
-}
-
-func inodeSetExpiration(info *proto.InodeInfo, t time.Duration) {
-	info.SetExpiration(time.Now().Add(t).UnixNano())
 }

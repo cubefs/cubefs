@@ -78,6 +78,7 @@ import (
 
 	"github.com/willf/bitset"
 
+	"github.com/chubaofs/chubaofs/client/cache"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data"
 	"github.com/chubaofs/chubaofs/sdk/master"
@@ -110,6 +111,12 @@ const (
 	redologPrefix         = "ib_logfile"
 	binlogPrefix          = "mysql-bin"
 	appMysql8             = "mysql_8"
+
+	// cache
+	maxInodeCache         = 10000
+	inodeExpiration       = time.Hour
+	inodeEvictionInterval = time.Hour
+	dentryValidDuration   = time.Hour
 )
 
 var (
@@ -163,11 +170,13 @@ type clientManager struct {
 func newClient(conf *C.cfs_config_t) *client {
 	id := atomic.AddInt64(&gClientManager.nextClientID, 1)
 	c := &client{
-		id:     id,
-		fdmap:  make(map[uint]*file),
-		fdset:  bitset.New(maxFdNum),
-		inomap: make(map[uint64]map[uint]bool),
-		cwd:    "/",
+		id:               id,
+		fdmap:            make(map[uint]*file),
+		fdset:            bitset.New(maxFdNum),
+		inomap:           make(map[uint64]map[uint]bool),
+		cwd:              "/",
+		inodeCache:       cache.NewInodeCache(inodeExpiration, maxInodeCache, inodeEvictionInterval),
+		inodeDentryCache: make(map[uint64]*cache.DentryCache),
 	}
 
 	c.masterAddr = C.GoString(conf.master_addr)
@@ -282,6 +291,11 @@ type client struct {
 	mc *master.MasterClient
 	mw *meta.MetaWrapper
 	ec *data.ExtentClient
+
+	// cache
+	inodeCache           *cache.InodeCache
+	inodeDentryCache     map[uint64]*cache.DentryCache
+	inodeDentryCacheLock sync.Mutex
 }
 
 /*
@@ -354,7 +368,7 @@ func cfs_close(id C.int64_t, fd C.int) {
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_close"))
 	defer ump.AfterTPUs(tpObject, nil)
 
-	c.ec.Flush(ctx, f.ino)
+	c.flush(ctx, f.ino)
 	c.closeStream(f)
 }
 
@@ -365,12 +379,12 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) (re C.int)
 
 func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int) (re C.int) {
 	var (
-		c   *client
-		ino uint64
-		err error
+		c         *client
+		ino, size uint64
+		err       error
 	)
 	defer func() {
-		msg := fmt.Sprintf("id(%v) path(%v) ino(%v) flags(%v) mode(%v) fd(%v) re(%v) err(%v)", id, C.GoString(path), ino, flags, mode, fd, re, err)
+		msg := fmt.Sprintf("id(%v) path(%v) ino(%v) flags(%v) mode(%v) fd(%v) size(%v) re(%v) err(%v)", id, C.GoString(path), ino, flags, mode, fd, size, re, err)
 		if r := recover(); r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
 			var stack string
 			if r != nil {
@@ -409,23 +423,23 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 	// But when using glibc, O_CREAT can be used independently (e.g. MySQL).
 	if fuseFlags&uint32(C.O_CREAT) != 0 {
 		dirpath, name := gopath.Split(absPath)
-		dirInode, err := c.mw.LookupPath(ctx, dirpath)
+		dirInode, err := c.lookupPath(ctx, dirpath)
 		if err != nil {
 			return errorToStatus(err)
 		}
 		if len(name) == 0 {
 			return statusEINVAL
 		}
-		inode, _, err := c.mw.Lookup_ll(ctx, dirInode, name)
+		inode, err := c.getDentry(ctx, dirInode, name)
 		var newInfo *proto.InodeInfo
 		if err == nil {
 			if fuseFlags&uint32(C.O_EXCL) != 0 {
 				return statusEEXIST
 			} else {
-				newInfo, err = c.mw.InodeGet_ll(ctx, inode)
+				newInfo, err = c.getInode(ctx, inode)
 			}
 		} else if err == syscall.ENOENT {
-			newInfo, err = c.mw.Create_ll(ctx, dirInode, name, fuseMode, uint32(os.Getuid()), uint32(os.Getgid()), nil)
+			newInfo, err = c.create(ctx, dirInode, name, fuseMode, uint32(os.Getuid()), uint32(os.Getgid()), nil)
 			if err != nil {
 				return errorToStatus(err)
 			}
@@ -435,9 +449,9 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 		info = newInfo
 	} else {
 		var newInfo *proto.InodeInfo
-		for newInfo, err = c.lookupPath(ctx, absPath); err == nil && fuseFlags&uint32(C.O_NOFOLLOW) == 0 && proto.IsSymlink(newInfo.Mode); {
+		for newInfo, err = c.getInodeByPath(ctx, absPath); err == nil && fuseFlags&uint32(C.O_NOFOLLOW) == 0 && proto.IsSymlink(newInfo.Mode); {
 			absPath := c.absPath(string(newInfo.Target))
-			newInfo, err = c.lookupPath(ctx, absPath)
+			newInfo, err = c.getInodeByPath(ctx, absPath)
 		}
 		if err != nil {
 			return errorToStatus(err)
@@ -446,10 +460,13 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 	}
 
 	ino = info.Inode
+	size = info.Size
 	f := c.allocFD(info.Inode, fuseFlags, info.Mode, info.Target, int(fd))
 	if f == nil {
 		return statusEMFILE
 	}
+	f.size = info.Size
+	f.path = absPath
 
 	if proto.IsRegular(info.Mode) {
 		c.ec.OpenStream(f.ino)
@@ -459,7 +476,7 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 				c.releaseFD(f.fd)
 				return statusEACCES
 			}
-			if err = c.ec.Truncate(ctx, f.ino, 0); err != nil {
+			if err = c.truncate(ctx, f.ino, 0); err != nil {
 				c.closeStream(f)
 				c.releaseFD(f.fd)
 				return statusEIO
@@ -468,8 +485,6 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 		}
 		c.ec.RefreshExtentsCache(ctx, f.ino)
 	}
-	c.updateSizeByIno(f.ino, info.Size)
-	f.path = absPath
 	return C.int(f.fd)
 }
 
@@ -549,7 +564,7 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) (re C.int) {
 	}
 
 	srcDirPath, srcName := gopath.Split(absFrom)
-	srcDirInode, err := c.mw.LookupPath(ctx, srcDirPath)
+	srcDirInode, err := c.lookupPath(ctx, srcDirPath)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -558,7 +573,9 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) (re C.int) {
 		return statusOK
 	}
 
-	dstInfo, err := c.lookupPath(ctx, absTo)
+	c.invalidateDentry(srcDirInode, srcName)
+	c.inodeCache.Delete(ctx, srcDirInode)
+	dstInfo, err := c.getInodeByPath(ctx, absTo)
 	if err == nil && proto.IsDir(dstInfo.Mode) {
 		err = c.mw.Rename_ll(ctx, srcDirInode, srcName, dstInfo.Inode, srcName)
 		if err != nil {
@@ -568,10 +585,14 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) (re C.int) {
 	}
 
 	dstDirPath, dstName := gopath.Split(absTo)
-	dstDirInode, err := c.mw.LookupPath(ctx, dstDirPath)
+	dstDirInode, err := c.lookupPath(ctx, dstDirPath)
 	if err != nil {
 		return errorToStatus(err)
 	}
+	// If dstName exist when renaming, the inode of the dstName will be updated to the inode of the srcName.
+	// So, the dstName shuold be invalidated, too,
+	c.invalidateDentry(dstDirInode, dstName)
+	c.inodeCache.Delete(ctx, dstDirInode)
 	err = c.mw.Rename_ll(ctx, srcDirInode, srcName, dstDirInode, dstName)
 	if err != nil {
 		return errorToStatus(err)
@@ -635,16 +656,15 @@ func cfs_truncate(id C.int64_t, path *C.char, len C.off_t) (re C.int) {
 	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
-	inode, err = c.mw.LookupPath(ctx, absPath)
+	inode, err = c.lookupPath(ctx, absPath)
 	if err != nil {
 		return errorToStatus(err)
 	}
 
-	err = c.ec.Truncate(ctx, inode, int(len))
+	err = c.truncate(ctx, inode, int(len))
 	if err != nil {
 		return errorToStatus(err)
 	}
-	c.updateSizeByIno(inode, uint64(len))
 	return statusOK
 }
 
@@ -692,11 +712,10 @@ func cfs_ftruncate(id C.int64_t, fd C.int, len C.off_t) (re C.int) {
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_ftruncate"))
 	defer ump.AfterTPUs(tpObject, nil)
 
-	err = c.ec.Truncate(ctx, f.ino, int(len))
+	err = c.truncate(ctx, f.ino, int(len))
 	if err != nil {
 		return errorToStatus(err)
 	}
-	c.updateSizeByIno(f.ino, uint64(len))
 	return statusOK
 }
 
@@ -746,7 +765,7 @@ func cfs_fallocate(id C.int64_t, fd C.int, mode C.int, offset C.off_t, len C.off
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_fallocate"))
 	defer ump.AfterTPUs(tpObject, nil)
 
-	info, err := c.mw.InodeGet_ll(ctx, f.ino)
+	info, err := c.getInode(ctx, f.ino)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -765,11 +784,10 @@ func cfs_fallocate(id C.int64_t, fd C.int, mode C.int, offset C.off_t, len C.off
 		return statusEINVAL
 	}
 
-	err = c.ec.Truncate(ctx, info.Inode, int(offset+len))
+	err = c.truncate(ctx, info.Inode, int(offset+len))
 	if err != nil {
 		return errorToStatus(err)
 	}
-	c.updateSizeByIno(f.ino, uint64(offset+len))
 	return statusOK
 }
 
@@ -818,7 +836,7 @@ func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) (r
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_posix_fallocate"))
 	defer ump.AfterTPUs(tpObject, nil)
 
-	info, err := c.mw.InodeGet_ll(ctx, f.ino)
+	info, err := c.getInode(ctx, f.ino)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -828,11 +846,10 @@ func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) (r
 		return statusOK
 	}
 
-	err = c.ec.Truncate(ctx, info.Inode, int(offset+len))
+	err = c.truncate(ctx, info.Inode, int(offset+len))
 	if err != nil {
 		return errorToStatus(err)
 	}
-	c.updateSizeByIno(f.ino, uint64(offset+len))
 	return statusOK
 }
 
@@ -894,7 +911,7 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 		ump.AfterTPUs(tpObject2, nil)
 	}()
 
-	if err = c.ec.Flush(ctx, f.ino); err != nil {
+	if err = c.flush(ctx, f.ino); err != nil {
 		return statusEIO
 	}
 	return statusOK
@@ -950,10 +967,10 @@ func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) (re C.int) {
 		if dir == "" {
 			continue
 		}
-		child, _, err := c.mw.Lookup_ll(ctx, pino, dir)
+		child, err := c.getDentry(ctx, pino, dir)
 		if err != nil {
 			if err == syscall.ENOENT {
-				info, err := c.mw.Create_ll(ctx, pino, dir, fuseMode, uid, gid, nil)
+				info, err := c.create(ctx, pino, dir, fuseMode, uid, gid, nil)
 				if err != nil {
 					return errorToStatus(err)
 				}
@@ -1020,12 +1037,12 @@ func cfs_rmdir(id C.int64_t, path *C.char) (re C.int) {
 		return statusOK
 	}
 	dirpath, name := gopath.Split(absPath)
-	dirInode, err := c.mw.LookupPath(ctx, dirpath)
+	dirInode, err := c.lookupPath(ctx, dirpath)
 	if err != nil {
 		return errorToStatus(err)
 	}
 
-	_, err = c.mw.Delete_ll(ctx, dirInode, name, true)
+	_, err = c.delete(ctx, dirInode, name, true)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1059,7 +1076,7 @@ func cfs_chdir(id C.int64_t, path *C.char) (re C.int) {
 	var ctx = tracer.Context()
 
 	cwd := c.absPath(C.GoString(path))
-	dirInfo, err := c.lookupPath(ctx, cwd)
+	dirInfo, err := c.getInodeByPath(ctx, cwd)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1228,14 +1245,14 @@ func cfs_link(id C.int64_t, oldpath *C.char, newpath *C.char) (re C.int) {
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_link"))
 	defer ump.AfterTPUs(tpObject, nil)
 
-	inode, err := c.mw.LookupPath(ctx, c.absPath(C.GoString(oldpath)))
+	inode, err := c.lookupPath(ctx, c.absPath(C.GoString(oldpath)))
 	if err != nil {
 		return errorToStatus(err)
 	}
 
 	absPath := c.absPath(C.GoString(newpath))
 	dirPath, name := gopath.Split(absPath)
-	dirInode, err := c.mw.LookupPath(ctx, dirPath)
+	dirInode, err := c.lookupPath(ctx, dirPath)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1301,19 +1318,19 @@ func cfs_symlink(id C.int64_t, target *C.char, linkPath *C.char) (re C.int) {
 
 	absPath := c.absPath(C.GoString(linkPath))
 	dirpath, name := gopath.Split(absPath)
-	dirInode, err := c.mw.LookupPath(ctx, dirpath)
+	dirInode, err := c.lookupPath(ctx, dirpath)
 	if err != nil {
 		return errorToStatus(err)
 	}
 
-	_, _, err = c.mw.Lookup_ll(ctx, dirInode, name)
+	_, err = c.getDentry(ctx, dirInode, name)
 	if err == nil {
 		return statusEEXIST
 	} else if err != syscall.ENOENT {
 		return errorToStatus(err)
 	}
 
-	_, err = c.mw.Create_ll(ctx, dirInode, name, proto.Mode(os.ModeSymlink|os.ModePerm), uint32(os.Getuid()), uint32(os.Getgid()), []byte(c.absPath(C.GoString(target))))
+	_, err = c.create(ctx, dirInode, name, proto.Mode(os.ModeSymlink|os.ModePerm), uint32(os.Getuid()), uint32(os.Getgid()), []byte(c.absPath(C.GoString(target))))
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1369,7 +1386,7 @@ func cfs_unlink(id C.int64_t, path *C.char) (re C.int) {
 	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
-	info, err := c.lookupPath(ctx, absPath)
+	info, err := c.getInodeByPath(ctx, absPath)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1379,11 +1396,11 @@ func cfs_unlink(id C.int64_t, path *C.char) (re C.int) {
 	}
 
 	dirpath, name := gopath.Split(absPath)
-	dirInode, err := c.mw.LookupPath(ctx, dirpath)
+	dirInode, err := c.lookupPath(ctx, dirpath)
 	if err != nil {
 		return errorToStatus(err)
 	}
-	info, err = c.mw.Delete_ll(ctx, dirInode, name, false)
+	info, err = c.delete(ctx, dirInode, name, false)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1451,7 +1468,7 @@ func cfs_readlink(id C.int64_t, path *C.char, buf *C.char, size C.size_t) (re C.
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_readlink"))
 	defer ump.AfterTPUs(tpObject, nil)
 
-	info, err := c.lookupPath(ctx, c.absPath(C.GoString(path)))
+	info, err := c.getInodeByPath(ctx, c.absPath(C.GoString(path)))
 	if err != nil {
 		return C.ssize_t(errorToStatus(err))
 	}
@@ -1500,12 +1517,12 @@ func cfs_stat(id C.int64_t, path *C.char, stat *C.struct_stat) C.int {
 
 func _cfs_stat(id C.int64_t, path *C.char, stat *C.struct_stat, flags C.int) (re C.int) {
 	var (
-		c   *client
-		ino uint64
-		err error
+		c         *client
+		ino, size uint64
+		err       error
 	)
 	defer func() {
-		msg := fmt.Sprintf("id(%v) path(%v) ino(%v) flags(%v) re(%v) err(%v)", id, C.GoString(path), ino, flags, re, err)
+		msg := fmt.Sprintf("id(%v) path(%v) ino(%v) flags(%v) size(%v) re(%v) err(%v)", id, C.GoString(path), ino, flags, size, re, err)
 		if r := recover(); r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
 			var stack string
 			if r != nil {
@@ -1533,14 +1550,15 @@ func _cfs_stat(id C.int64_t, path *C.char, stat *C.struct_stat, flags C.int) (re
 
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
-	for info, err = c.lookupPath(ctx, absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
+	for info, err = c.getInodeByPath(ctx, absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
 		absPath := c.absPath(string(info.Target))
-		info, err = c.lookupPath(ctx, absPath)
+		info, err = c.getInodeByPath(ctx, absPath)
 	}
 	if err != nil {
 		return errorToStatus(err)
 	}
 	ino = info.Inode
+	size = info.Size
 
 	// fill up the stat
 	stat.st_dev = 0
@@ -1593,12 +1611,12 @@ func cfs_stat64(id C.int64_t, path *C.char, stat *C.struct_stat64) C.int {
 
 func _cfs_stat64(id C.int64_t, path *C.char, stat *C.struct_stat64, flags C.int) (re C.int) {
 	var (
-		c   *client
-		ino uint64
-		err error
+		c         *client
+		ino, size uint64
+		err       error
 	)
 	defer func() {
-		msg := fmt.Sprintf("id(%v) path(%v) ino(%v) flags(%v) re(%v) err(%v)", id, C.GoString(path), ino, flags, re, err)
+		msg := fmt.Sprintf("id(%v) path(%v) ino(%v) flags(%v) size(%v) re(%v) err(%v)", id, C.GoString(path), ino, flags, size, re, err)
 		if r := recover(); r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
 			var stack string
 			if r != nil {
@@ -1626,14 +1644,15 @@ func _cfs_stat64(id C.int64_t, path *C.char, stat *C.struct_stat64, flags C.int)
 
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
-	for info, err = c.lookupPath(ctx, absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
+	for info, err = c.getInodeByPath(ctx, absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
 		absPath = c.absPath(string(info.Target))
-		info, err = c.lookupPath(ctx, absPath)
+		info, err = c.getInodeByPath(ctx, absPath)
 	}
 	if err != nil {
 		return errorToStatus(err)
 	}
 	ino = info.Inode
+	size = info.Size
 
 	// fill up the stat
 	stat.st_dev = 0
@@ -1770,9 +1789,9 @@ func _cfs_chmod(id C.int64_t, path *C.char, mode C.mode_t, flags C.int) C.int {
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
 	var err error
-	for info, err = c.lookupPath(ctx, absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
+	for info, err = c.getInodeByPath(ctx, absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
 		absPath := c.absPath(string(info.Target))
-		info, err = c.lookupPath(ctx, absPath)
+		info, err = c.getInodeByPath(ctx, absPath)
 	}
 	if err != nil {
 		return errorToStatus(err)
@@ -1809,7 +1828,7 @@ func cfs_fchmod(id C.int64_t, fd C.int, mode C.mode_t) C.int {
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_fchmod"))
 	defer ump.AfterTPUs(tpObject, nil)
 
-	info, err := c.mw.InodeGet_ll(ctx, f.ino)
+	info, err := c.getInode(ctx, f.ino)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1866,9 +1885,9 @@ func _cfs_chown(id C.int64_t, path *C.char, uid C.uid_t, gid C.gid_t, flags C.in
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
 	var err error
-	for info, err = c.lookupPath(ctx, absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
+	for info, err = c.getInodeByPath(ctx, absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
 		absPath := c.absPath(string(info.Target))
-		info, err = c.lookupPath(ctx, absPath)
+		info, err = c.getInodeByPath(ctx, absPath)
 	}
 	if err != nil {
 		return errorToStatus(err)
@@ -1906,7 +1925,7 @@ func cfs_fchown(id C.int64_t, fd C.int, uid C.uid_t, gid C.gid_t) C.int {
 	tpObject := ump.BeforeTP(c.umpFunctionKey("cfs_fchown"))
 	defer ump.AfterTPUs(tpObject, nil)
 
-	info, err := c.mw.InodeGet_ll(ctx, f.ino)
+	info, err := c.getInode(ctx, f.ino)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1952,9 +1971,9 @@ func cfs_utimens(id C.int64_t, path *C.char, times *C.struct_timespec, flags C.i
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
 	var err error
-	for info, err = c.lookupPath(ctx, absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
+	for info, err = c.getInodeByPath(ctx, absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
 		absPath := c.absPath(string(info.Target))
-		info, err = c.lookupPath(ctx, absPath)
+		info, err = c.getInodeByPath(ctx, absPath)
 	}
 	if err != nil {
 		return errorToStatus(err)
@@ -2069,10 +2088,10 @@ func cfs_faccessat(id C.int64_t, dirfd C.int, path *C.char, mode C.int, flags C.
 	if err != nil {
 		return statusEINVAL
 	}
-	inode, err := c.mw.LookupPath(ctx, absPath)
+	inode, err := c.lookupPath(ctx, absPath)
 	var info *proto.InodeInfo
 	for err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) {
-		info, err = c.mw.InodeGet_ll(ctx, inode)
+		info, err = c.getInode(ctx, inode)
 		if err != nil {
 			return errorToStatus(err)
 		}
@@ -2080,7 +2099,7 @@ func cfs_faccessat(id C.int64_t, dirfd C.int, path *C.char, mode C.int, flags C.
 			break
 		}
 		absPath = c.absPath(string(info.Target))
-		inode, err = c.mw.LookupPath(ctx, absPath)
+		inode, err = c.lookupPath(ctx, absPath)
 	}
 	if err != nil {
 		return errorToStatus(err)
@@ -2108,9 +2127,9 @@ func cfs_setxattr(id C.int64_t, path *C.char, name *C.char, value unsafe.Pointer
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
 	var err error
-	for info, err = c.lookupPath(ctx, absPath); err == nil && proto.IsSymlink(info.Mode); {
+	for info, err = c.getInodeByPath(ctx, absPath); err == nil && proto.IsSymlink(info.Mode); {
 		absPath := c.absPath(string(info.Target))
-		info, err = c.lookupPath(ctx, absPath)
+		info, err = c.getInodeByPath(ctx, absPath)
 	}
 	if err != nil {
 		return errorToStatus(err)
@@ -2144,7 +2163,7 @@ func cfs_lsetxattr(id C.int64_t, path *C.char, name *C.char, value unsafe.Pointe
 	var ctx = tracer.Context()
 
 	absPath := c.absPath(C.GoString(path))
-	inode, err := c.mw.LookupPath(ctx, absPath)
+	inode, err := c.lookupPath(ctx, absPath)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -2211,9 +2230,9 @@ func cfs_getxattr(id C.int64_t, path *C.char, name *C.char, value unsafe.Pointer
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
 	var err error
-	for info, err = c.lookupPath(ctx, absPath); err == nil && proto.IsSymlink(info.Mode); {
+	for info, err = c.getInodeByPath(ctx, absPath); err == nil && proto.IsSymlink(info.Mode); {
 		absPath := c.absPath(string(info.Target))
-		info, err = c.lookupPath(ctx, absPath)
+		info, err = c.getInodeByPath(ctx, absPath)
 	}
 	if err != nil {
 		return C.ssize_t(errorToStatus(err))
@@ -2259,7 +2278,7 @@ func cfs_lgetxattr(id C.int64_t, path *C.char, name *C.char, value unsafe.Pointe
 	var ctx = tracer.Context()
 
 	absPath := c.absPath(C.GoString(path))
-	inode, err := c.mw.LookupPath(ctx, absPath)
+	inode, err := c.lookupPath(ctx, absPath)
 	if err != nil {
 		return C.ssize_t(errorToStatus(err))
 	}
@@ -2349,9 +2368,9 @@ func cfs_listxattr(id C.int64_t, path *C.char, list *C.char, size C.size_t) C.ss
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
 	var err error
-	for info, err = c.lookupPath(ctx, absPath); err == nil && proto.IsSymlink(info.Mode); {
+	for info, err = c.getInodeByPath(ctx, absPath); err == nil && proto.IsSymlink(info.Mode); {
 		absPath := c.absPath(string(info.Target))
-		info, err = c.lookupPath(ctx, absPath)
+		info, err = c.getInodeByPath(ctx, absPath)
 	}
 	if err != nil {
 		return C.ssize_t(errorToStatus(err))
@@ -2402,7 +2421,7 @@ func cfs_llistxattr(id C.int64_t, path *C.char, list *C.char, size C.size_t) C.s
 	var ctx = tracer.Context()
 
 	absPath := c.absPath(C.GoString(path))
-	inode, err := c.mw.LookupPath(ctx, absPath)
+	inode, err := c.lookupPath(ctx, absPath)
 	if err != nil {
 		return C.ssize_t(errorToStatus(err))
 	}
@@ -2449,7 +2468,7 @@ func cfs_flistxattr(id C.int64_t, fd C.int, list *C.char, size C.size_t) C.ssize
 		return C.ssize_t(statusEBADFD)
 	}
 
-	info, err := c.mw.InodeGet_ll(context.Background(), f.ino)
+	info, err := c.getInode(context.Background(), f.ino)
 	if err != nil {
 		return C.ssize_t(errorToStatus(err))
 	}
@@ -2501,9 +2520,9 @@ func cfs_removexattr(id C.int64_t, path *C.char, name *C.char) C.int {
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
 	var err error
-	for info, err = c.lookupPath(ctx, absPath); err == nil && proto.IsSymlink(info.Mode); {
+	for info, err = c.getInodeByPath(ctx, absPath); err == nil && proto.IsSymlink(info.Mode); {
 		absPath := c.absPath(string(info.Target))
-		info, err = c.lookupPath(ctx, absPath)
+		info, err = c.getInodeByPath(ctx, absPath)
 	}
 	if err != nil {
 		return errorToStatus(err)
@@ -2525,7 +2544,7 @@ func cfs_lremovexattr(id C.int64_t, path *C.char, name *C.char) C.int {
 	}
 
 	absPath := c.absPath(C.GoString(path))
-	inode, err := c.mw.LookupPath(context.Background(), absPath)
+	inode, err := c.lookupPath(context.Background(), absPath)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -2888,7 +2907,7 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	}
 
 	if flush {
-		if err = c.ec.Flush(ctx, f.ino); err != nil {
+		if err = c.flush(ctx, f.ino); err != nil {
 			return C.ssize_t(statusEIO)
 		}
 	}
@@ -2906,6 +2925,11 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		if f.size < uint64(off)+uint64(n) {
 			c.updateSizeByIno(f.ino, uint64(off)+uint64(n))
 		}
+	}
+	info := c.inodeCache.Get(ctx, f.ino)
+	if info != nil {
+		info.Size = f.size
+		c.inodeCache.Put(info)
 	}
 	return C.ssize_t(n)
 }
@@ -3210,6 +3234,37 @@ func (c *client) copyFile(fd uint, newfd uint) uint {
 	return newfd
 }
 
+func (c *client) create(ctx context.Context, parentID uint64, name string, mode, uid, gid uint32, target []byte) (info *proto.InodeInfo, err error) {
+	info, err = c.mw.Create_ll(ctx, parentID, name, mode, uid, gid, target)
+	c.inodeCache.Delete(ctx, parentID)
+	c.inodeCache.Put(info)
+	return
+}
+
+func (c *client) delete(ctx context.Context, parentID uint64, name string, isDir bool) (info *proto.InodeInfo, err error) {
+	info, err = c.mw.Delete_ll(ctx, parentID, name, isDir)
+	c.inodeCache.Delete(ctx, parentID)
+	c.invalidateDentry(parentID, name)
+	return
+}
+
+func (c *client) truncate(ctx context.Context, inode uint64, len int) (err error) {
+	err = c.ec.Truncate(ctx, inode, len)
+	info := c.inodeCache.Get(ctx, inode)
+	if info != nil {
+		info.Size = uint64(len)
+		c.inodeCache.Put(info)
+	}
+	c.updateSizeByIno(inode, uint64(len))
+	return
+}
+
+func (c *client) flush(ctx context.Context, inode uint64) (err error) {
+	err = c.ec.Flush(ctx, inode)
+	//c.inodeCache.Delete(ctx, inode)
+	return
+}
+
 func (c *client) updateSizeByIno(ino uint64, size uint64) {
 	c.fdlock.Lock()
 	defer c.fdlock.Unlock()
@@ -3245,22 +3300,80 @@ func (c *client) releaseFD(fd uint) *file {
 	return f
 }
 
-func (c *client) lookupPath(ctx context.Context, path string) (*proto.InodeInfo, error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("client.lookupPath").
-		SetTag("volume", c.volName).
-		SetTag("path", path)
-	defer tracer.Finish()
-	ctx = tracer.Context()
+func (c *client) getInodeByPath(ctx context.Context, path string) (info *proto.InodeInfo, err error) {
+	var ino uint64
+	ino, err = c.lookupPath(ctx, path)
+	if err != nil {
+		return
+	}
+	info, err = c.getInode(ctx, ino)
+	return
+}
 
-	ino, err := c.mw.LookupPath(ctx, gopath.Clean(path))
-	if err != nil {
-		return nil, err
+func (c *client) lookupPath(ctx context.Context, path string) (ino uint64, err error) {
+	ino = proto.RootIno
+	if path != "" && path != "/" {
+		dirs := strings.Split(path, "/")
+		var child uint64
+		for _, dir := range dirs {
+			if dir == "/" || dir == "" {
+				continue
+			}
+			child, err = c.getDentry(ctx, ino, dir)
+			if err != nil {
+				ino = 0
+				return
+			}
+			ino = child
+		}
 	}
-	info, err := c.mw.InodeGet_ll(ctx, ino)
-	if err != nil {
-		return nil, err
+	return
+}
+
+func (c *client) getInode(ctx context.Context, ino uint64) (info *proto.InodeInfo, err error) {
+	info = c.inodeCache.Get(ctx, ino)
+	if info != nil {
+		return
 	}
-	return info, nil
+	info, err = c.mw.InodeGet_ll(ctx, ino)
+	if err != nil {
+		return
+	}
+	c.inodeCache.Put(info)
+	return
+}
+
+func (c *client) getDentry(ctx context.Context, parentID uint64, name string) (ino uint64, err error) {
+	c.inodeDentryCacheLock.Lock()
+	defer c.inodeDentryCacheLock.Unlock()
+	dentryCache, ok := c.inodeDentryCache[parentID]
+	if ok {
+		ino, ok = dentryCache.Get(name)
+		if ok {
+			return
+		}
+	} else {
+		dentryCache = cache.NewDentryCache(dentryValidDuration)
+		c.inodeDentryCache[parentID] = dentryCache
+	}
+	ino, _, err = c.mw.Lookup_ll(ctx, parentID, name)
+	if err != nil {
+		return
+	}
+	dentryCache.Put(name, ino)
+	return
+}
+
+func (c *client) invalidateDentry(parentID uint64, name string) {
+	c.inodeDentryCacheLock.Lock()
+	defer c.inodeDentryCacheLock.Unlock()
+	dentryCache, parentOk := c.inodeDentryCache[parentID]
+	if parentOk {
+		dentryCache.Delete(name)
+		if dentryCache.Count() == 0 {
+			delete(c.inodeDentryCache, parentID)
+		}
+	}
 }
 
 func (c *client) setattr(ctx context.Context, info *proto.InodeInfo, valid uint32, mode, uid, gid uint32, mtime, atime int64) error {

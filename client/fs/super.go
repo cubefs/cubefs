@@ -23,6 +23,7 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
+	"github.com/chubaofs/chubaofs/client/cache"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data"
 	"github.com/chubaofs/chubaofs/sdk/meta"
@@ -37,7 +38,7 @@ type Super struct {
 	cluster     string
 	volname     string
 	owner       string
-	ic          *InodeCache
+	ic          *cache.InodeCache
 	mw          *meta.MetaWrapper
 	ec          *data.ExtentClient
 	orphan      *OrphanInodeList
@@ -83,7 +84,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	if opt.IcacheTimeout >= 0 {
 		inodeExpiration = time.Duration(opt.IcacheTimeout) * time.Second
 	}
-	s.ic = NewInodeCache(inodeExpiration, MaxInodeCache)
+	s.ic = cache.NewInodeCache(inodeExpiration, MaxInodeCache, cache.BgEvictionInterval)
 	var extentConfig = &data.ExtentConfig{
 		Volume:                   opt.Volname,
 		Masters:                  masters,

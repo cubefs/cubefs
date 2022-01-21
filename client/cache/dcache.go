@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package fs
+package cache
 
 import (
 	"sync"
@@ -22,15 +22,17 @@ import (
 // DentryCache defines the dentry cache.
 type DentryCache struct {
 	sync.Mutex
-	cache      map[string]uint64
-	expiration time.Time
+	cache               map[string]uint64
+	expiration          time.Time
+	dentryValidDuration time.Duration
 }
 
 // NewDentryCache returns a new dentry cache.
-func NewDentryCache() *DentryCache {
+func NewDentryCache(dentryValidDuration time.Duration) *DentryCache {
 	return &DentryCache{
-		cache:      make(map[string]uint64),
-		expiration: time.Now().Add(DentryValidDuration),
+		cache:               make(map[string]uint64),
+		expiration:          time.Now().Add(dentryValidDuration),
+		dentryValidDuration: dentryValidDuration,
 	}
 }
 
@@ -42,7 +44,7 @@ func (dc *DentryCache) Put(name string, ino uint64) {
 	dc.Lock()
 	defer dc.Unlock()
 	dc.cache[name] = ino
-	dc.expiration = time.Now().Add(DentryValidDuration)
+	dc.expiration = time.Now().Add(dc.dentryValidDuration)
 }
 
 // Get gets the item from the cache based on the given key.
@@ -69,4 +71,9 @@ func (dc *DentryCache) Delete(name string) {
 	dc.Lock()
 	defer dc.Unlock()
 	delete(dc.cache, name)
+}
+
+// Count gets the count of cache items.
+func (dc *DentryCache) Count() int {
+	return len(dc.cache)
 }

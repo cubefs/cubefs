@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package fs
+package cache
 
 import (
 	"container/list"
@@ -38,19 +38,21 @@ const (
 // InodeCache defines the structure of the inode cache.
 type InodeCache struct {
 	sync.RWMutex
-	cache       map[uint64]*list.Element
-	lruList     *list.List
-	expiration  time.Duration
-	maxElements int
+	cache              map[uint64]*list.Element
+	lruList            *list.List
+	expiration         time.Duration
+	maxElements        int
+	bgEvictionInterval time.Duration
 }
 
 // NewInodeCache returns a new inode cache.
-func NewInodeCache(exp time.Duration, maxElements int) *InodeCache {
+func NewInodeCache(exp time.Duration, maxElements int, bgEvictionInterval time.Duration) *InodeCache {
 	ic := &InodeCache{
-		cache:       make(map[uint64]*list.Element),
-		lruList:     list.New(),
-		expiration:  exp,
-		maxElements: maxElements,
+		cache:              make(map[uint64]*list.Element),
+		lruList:            list.New(),
+		expiration:         exp,
+		maxElements:        maxElements,
+		bgEvictionInterval: bgEvictionInterval,
 	}
 	go ic.backgroundEviction()
 	return ic
@@ -157,7 +159,7 @@ func (ic *InodeCache) evict(foreground bool) {
 }
 
 func (ic *InodeCache) backgroundEviction() {
-	t := time.NewTicker(BgEvictionInterval)
+	t := time.NewTicker(ic.bgEvictionInterval)
 	defer t.Stop()
 	for {
 		select {
@@ -171,4 +173,15 @@ func (ic *InodeCache) backgroundEviction() {
 			//log.LogInfof("InodeCache: done BG evict, cost (%v)ns", elapsed.Nanoseconds())
 		}
 	}
+}
+
+func inodeExpired(info *proto.InodeInfo) bool {
+	if time.Now().UnixNano() > info.Expiration() {
+		return true
+	}
+	return false
+}
+
+func inodeSetExpiration(info *proto.InodeInfo, t time.Duration) {
+	info.SetExpiration(time.Now().Add(t).UnixNano())
 }
