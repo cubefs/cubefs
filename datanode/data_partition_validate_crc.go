@@ -96,7 +96,7 @@ func (dp *DataPartition) buildDataPartitionValidateCRCTask(ctx context.Context, 
 
 
 func (dp *DataPartition) getLocalExtentInfoForValidateCRC() (extents []storage.ExtentInfoBlock, err error) {
-	if !dp.ExtentStore().IsFininshLoad() {
+	if !dp.ExtentStore().IsFinishLoad(){
 		err = storage.PartitionIsLoaddingErr
 		return
 	}
@@ -132,21 +132,21 @@ func (dp *DataPartition) getRemoteExtentInfoForValidateCRC(ctx context.Context, 
 		err = errors.NewErrorf("reply result code: %v", reply.GetOpMsg())
 		return
 	}
-	if reply.Size%24 != 0 {
-		// 合法的data长度与24对齐，每24个字节存储一个Extent信息，[0:8)为FileID，[8:16)为Size，[16:24)为Crc
+	if reply.Size%20 != 0 {
+		// 合法的data长度与20对齐，每20个字节存储一个Extent信息，[0:8)为FileID，[8:16)为Size，[16:20)为Crc
 		err = errors.NewErrorf("illegal result data length: %v", len(reply.Data))
 		return
 	}
-	extentFiles = make([]storage.ExtentInfoBlock, 0, len(reply.Data)/24)
+	extentFiles = make([]storage.ExtentInfoBlock, 0, len(reply.Data)/20)
 	for index := 0; index < int(reply.Size)/24; index++ {
-		var offset = index * 24
+		var offset = index * 20
 		var extentID = binary.BigEndian.Uint64(reply.Data[offset:])
 		var size = binary.BigEndian.Uint64(reply.Data[offset+8:])
-		var crc = binary.BigEndian.Uint64(reply.Data[offset+16:])
+		var crc = binary.BigEndian.Uint32(reply.Data[offset+16:])
 		eiBlock := storage.ExtentInfoBlock{
 			storage.FileID: extentID,
 			storage.Size:   size,
-			storage.Crc:    crc,
+			storage.Crc:    uint64(crc),
 		}
 		extentFiles = append(extentFiles, eiBlock)
 	}

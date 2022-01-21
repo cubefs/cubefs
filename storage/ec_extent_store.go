@@ -16,13 +16,9 @@ func (s *ExtentStore)TinyExtentHolesAndAvaliSize(extentID uint64, offset int64) 
 	if !IsTinyExtent(extentID) {
 		return nil, 0, fmt.Errorf("unavali extent(%v)", extentID)
 	}
-	value, exist := s.extentInfoMap.Load(extentID)
+	ei, exist := s.extentMapSlice.Load(extentID)
 	if !exist {
 		return nil, 0, ExtentNotFoundError
-	}
-	ei, ok := value.(*ExtentInfo)
-	if !ok {
-		return nil, 0, ParameterMismatchError
 	}
 	if e, err = s.extentWithHeader(ei); err != nil {
 		return

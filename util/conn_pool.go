@@ -16,6 +16,7 @@ package util
 
 import (
 	"context"
+	"math/rand"
 	"net"
 	"strings"
 	"sync"
@@ -152,7 +153,7 @@ func (cp *ConnectPool) GetConnect(targetAddr string) (c *net.TCPConn, err error)
 		cp.Lock()
 		pool, ok = cp.pools[targetAddr]
 		if !ok {
-			pool = NewPool(ctx, cp.mincap, cp.maxcap, cp.timeout, cp.connectTimeout, targetAddr)
+			pool = NewPool(ctx, cp.mincap, cp.maxcap, cp.timeout, cp.connectTimeoutNs, targetAddr)
 			cp.pools[targetAddr] = pool
 		}
 		cp.Unlock()

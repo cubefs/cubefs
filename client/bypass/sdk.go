@@ -389,7 +389,7 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) (re C.int)
 func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int) (re C.int) {
 	var (
 		c         *client
-		ino, size uint64
+		ino uint64
 		err       error
 	)
 	defer func() {
@@ -472,7 +472,6 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 	}
 
 	ino = info.Inode
-	size = info.Size
 	f := c.allocFD(info.Inode, fuseFlags, info.Mode, info.Target, int(fd))
 	if f == nil {
 		return statusEMFILE
@@ -2859,27 +2858,23 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		flagBuf bytes.Buffer
 	)
 	defer func() {
-<<<<<<< HEAD
 		var fileSize uint64 = 0
 		if f != nil {
 			fileSize = f.size
 		}
-		msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) fileSize(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), fileSize, re, err)
-=======
->>>>>>> eac83287... optimize: lots of optimize
 		if r := recover(); r != nil || re < 0 {
 			var stack string
 			if r != nil {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
-			msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), re, err)
+			msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) fileSize(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"),fileSize, re, err)
 			handleError(c, "cfs_write", fmt.Sprintf("%s%s", msg, stack))
 		} else if re < C.ssize_t(size) {
-			msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), re, err)
+			msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) fileSize(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"),fileSize,  re, err)
 			log.LogWarnf("cfs_write: %s", msg)
 		} else {
 			if log.IsDebugEnabled() {
-				msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), re, err)
+				msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) fileSize(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), fileSize, re, err)
 				log.LogDebugf("cfs_write: %s", msg)
 			}
 		}
@@ -2963,11 +2958,7 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	}
 
 	if flush {
-<<<<<<< HEAD
-		if err = c.flush(ctx, f.ino); err != nil {
-=======
-		if err = c.ec.Flush(nil, f.ino); err != nil {
->>>>>>> eac83287... optimize: lots of optimize
+		if err = c.flush(nil, f.ino); err != nil {
 			return C.ssize_t(statusEIO)
 		}
 	}
@@ -2986,7 +2977,7 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 			c.updateSizeByIno(f.ino, uint64(off)+uint64(n))
 		}
 	}
-	info := c.inodeCache.Get(ctx, f.ino)
+	info := c.inodeCache.Get(nil, f.ino)
 	if info != nil {
 		info.Size = f.size
 		c.inodeCache.Put(info)

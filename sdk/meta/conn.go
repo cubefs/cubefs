@@ -83,7 +83,7 @@ func (mw *MetaWrapper) sendWriteToMP(ctx context.Context, mp *MetaPartition, req
 	retryCount := 0
 	for {
 		retryCount++
-		resp, needCheckRead, err = mw.sendToMetaPartition(ctx, mp, req, addr)
+		resp, needCheckRead, err,_ = mw.sendToMetaPartition(ctx, mp, req, addr)
 		if err == nil && !resp.ShouldRetry() {
 			return
 		}
@@ -96,6 +96,7 @@ func (mw *MetaWrapper) sendWriteToMP(ctx context.Context, mp *MetaPartition, req
 		handleUmpAlarm(mw.cluster, mw.volname, req.GetOpMsg(), umpMsg)
 		time.Sleep(SendRetryInterval)
 	}
+	return
 }
 
 func (mw *MetaWrapper) sendReadToMP(ctx context.Context, mp *MetaPartition, req *proto.Packet) (resp *proto.Packet, err error) {
@@ -106,10 +107,14 @@ func (mw *MetaWrapper) sendReadToMP(ctx context.Context, mp *MetaPartition, req 
 
 	addr := mp.LeaderAddr
 	retryCount := 0
+	var successAddr string
 	for {
 		retryCount++
-		resp, _, err = mw.sendToMetaPartition(ctx, mp, req, addr)
+		resp, _, err, successAddr = mw.sendToMetaPartition(ctx, mp, req, addr)
 		if err == nil && !resp.ShouldRetry() {
+			if successAddr != "" && successAddr != mp.LeaderAddr {
+				mp.LeaderAddr = successAddr
+			}
 			return
 		}
 		log.LogWarnf("sendReadToMP: send to leader failed and try to read consistent, req(%v) mp(%v) err(%v) resp(%v)", req, mp, err, resp)
@@ -172,7 +177,7 @@ func (mw *MetaWrapper) readConsistentFromHosts(ctx context.Context, mp *MetaPart
 	return nil, errors.New(fmt.Sprintf("readConsistentFromHosts: failed, req(%v) mp(%v) isErr(%v) targetHosts(%v) errMap(%v)", req, mp, isErr, targetHosts, errMap))
 }
 
-func (mw *MetaWrapper) sendToMetaPartition(ctx context.Context, mp *MetaPartition, req *proto.Packet, addr string) (resp *proto.Packet, needCheckRead bool, err error) {
+func (mw *MetaWrapper) sendToMetaPartition(ctx context.Context, mp *MetaPartition, req *proto.Packet, addr string) (resp *proto.Packet, needCheckRead bool, err error, successAddr string) {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.sendToMetaPartition").
 		SetTag("mpID", mp.PartitionID).
 		SetTag("reqID", req.ReqID).
@@ -190,6 +195,7 @@ func (mw *MetaWrapper) sendToMetaPartition(ctx context.Context, mp *MetaPartitio
 	)
 	resp, _, err = mw.sendToHost(ctx, mp, req, addr)
 	if err == nil && !resp.ShouldRetry() {
+		successAddr = addr
 		goto out
 	}
 	log.LogWarnf("sendToMetaPartition: leader failed req(%v) mp(%v) addr(%v) err(%v) resp(%v)", req, mp, addr, err, resp)
@@ -202,6 +208,7 @@ func (mw *MetaWrapper) sendToMetaPartition(ctx context.Context, mp *MetaPartitio
 		for j, addr = range mp.Members {
 			resp, needCheck, err = mw.sendToHost(ctx, mp, req, addr)
 			if err == nil && !resp.ShouldRetry() {
+				successAddr = addr
 				goto out
 			}
 			if err == nil {
@@ -224,10 +231,10 @@ func (mw *MetaWrapper) sendToMetaPartition(ctx context.Context, mp *MetaPartitio
 
 out:
 	if err != nil || resp == nil {
-		return nil, needCheckRead, errors.New(fmt.Sprintf("sendToMetaPartition failed: req(%v) mp(%v) errs(%v) resp(%v)", req, mp, errMap, resp))
+		return nil, needCheckRead, errors.New(fmt.Sprintf("sendToMetaPartition failed: req(%v) mp(%v) errs(%v) resp(%v)", req, mp, errMap, resp)), successAddr
 	}
 	log.LogDebugf("sendToMetaPartition successful: req(%v) mp(%v) addr(%v) resp(%v)", req, mp, addr, resp)
-	return resp, needCheckRead, nil
+	return resp, needCheckRead, nil, successAddr
 }
 
 func (mw *MetaWrapper) sendToHost(ctx context.Context, mp *MetaPartition, req *proto.Packet, addr string) (resp *proto.Packet, needCheckRead bool, err error) {

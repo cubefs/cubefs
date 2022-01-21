@@ -855,7 +855,7 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 			continue
 		}
 
-		if !storage.IsTinyExtent(extentInfo[storage.FileID]) && !dp.ExtentStore().IsFininshLoad() {
+		if !storage.IsTinyExtent(extentInfo[storage.FileID]) && !dp.ExtentStore().IsFinishLoad() {
 			continue
 		}
 		if store.HasExtent(uint64(extentInfo[storage.FileID])) {

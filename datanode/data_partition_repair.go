@@ -547,7 +547,7 @@ func (dp *DataPartition) tryLockExtentRepair(extentID uint64) (release func(), s
 // The actual repair of an extent happens here.
 
 func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInfo storage.ExtentInfoBlock, source string) (err error) {
-	release, success := dp.tryLockExtentRepair(remoteExtentInfo.FileID)
+	release, success := dp.tryLockExtentRepair(remoteExtentInfo[storage.FileID])
 		if !success {
 			return
 		}
@@ -560,7 +560,7 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 		log.LogWarnf("AutoRepairStatus is False,so cannot AutoRepair extent(%v)", remoteExtentInfo.String())
 		return
 	}
-	if !storage.IsTinyExtent(remoteExtentInfo[storage.FileID]) && !store.IsFininshLoad() {
+	if !storage.IsTinyExtent(remoteExtentInfo[storage.FileID]) && !store.IsFinishLoad() {
 		log.LogWarnf("partition(%v) is loading", dp.partitionID)
 		return
 	}
@@ -635,7 +635,7 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 		}
 		if storage.IsTinyExtent(reply.ExtentID) && reply.ExtentOffset != int64(currFixOffset) {
 			err = errors.Trace(fmt.Errorf("unavali reply"), "streamRepairExtent receive unavalid "+
-				"request(%v) reply(%v) localExtentSize(%v) remoteExtentSize(%v)", request.GetUniqueLogId(), reply.GetUniqueLogId(), currFixOffset, remoteExtentInfo.Size)
+				"request(%v) reply(%v) localExtentSize(%v) remoteExtentSize(%v)", request.GetUniqueLogId(), reply.GetUniqueLogId(), currFixOffset, remoteExtentInfo[storage.Size])
 			return
 		}
 

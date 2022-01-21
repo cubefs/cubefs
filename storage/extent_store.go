@@ -508,7 +508,7 @@ func (s *ExtentStore) Close() {
 
 // Watermark returns the extent info of the given extent on the record.
 func (s *ExtentStore) Watermark(extentID uint64) (ei *ExtentInfoBlock, err error) {
-	if !IsTinyExtent(extentID) && !s.IsFinishLoad() {
+	if !IsTinyExtent(extentID) && !s.IsFinishLoad(){
 		err = PartitionIsLoaddingErr
 		return
 	}
@@ -587,7 +587,7 @@ func (s *ExtentStore) GetAllExtentInfoWithByteArr(filter ExtentFilter) (data []b
 		if filter != nil && !filter(ei) {
 			return
 		}
-		needSize += 24
+		needSize += 20
 		extents = append(extents, ei[FileID])
 		return
 	})
@@ -603,8 +603,8 @@ func (s *ExtentStore) GetAllExtentInfoWithByteArr(filter ExtentFilter) (data []b
 		index += 8
 		binary.BigEndian.PutUint64(data[index:index+8], ei[Size])
 		index += 8
-		binary.BigEndian.PutUint64(data[index:index+8], ei[Crc])
-		index += 8
+		binary.BigEndian.PutUint32(data[index:index+4], uint32(ei[Crc]))
+		index += 4
 	}
 	data = data[:index]
 	return
