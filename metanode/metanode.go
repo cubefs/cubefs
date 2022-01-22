@@ -86,7 +86,7 @@ func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
 		break
 	}
 
-	if len(metaNodeInfo.PersistenceMetaPartitions) == 0 {
+	if metaNodeInfo == nil || len(metaNodeInfo.PersistenceMetaPartitions) == 0 {
 		return
 	}
 	lackPartitions := make([]uint64, 0)
