@@ -76,6 +76,93 @@ func TestAppend04(t *testing.T) {
 	t.Logf("%v\n", se.Size())
 }
 
+func appendCalStartAndInvalid(se *SortedExtents, ek proto.ExtentKey)(startIndex int, invalidExtents []proto.ExtentKey) {
+	startIndex = 0
+	invalidExtents = make([]proto.ExtentKey, 0)
+	endOffset := ek.FileOffset + uint64(ek.Size)
+
+	for idx, key := range se.eks {
+		if ek.FileOffset > key.FileOffset {
+			startIndex = idx + 1
+			continue
+		}
+		if endOffset >= key.FileOffset+uint64(key.Size) {
+			invalidExtents = append(invalidExtents, key)
+			continue
+		}
+		break
+	}
+
+	return
+}
+
+// This is the case that cause meta node panic  0108.
+// Init the eks with product env. As multiple clients op, the eks are in wrong order.
+// Append new ek
+func TestAppend05(t *testing.T) {
+	ctx := context.Background()
+	se := NewSortedExtents()
+
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset:0,      PartitionId:213872, ExtentId:8,     ExtentOffset:42012672,  Size:131072})
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset:131072, PartitionId:189047, ExtentId:24,    ExtentOffset:1477259264,Size:65536})
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset:196608, PartitionId:213867, ExtentId:17572, ExtentOffset:0,         Size:393216})
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset:589824, PartitionId:189051, ExtentId:135461,ExtentOffset:0,         Size:65536})
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset:655360, PartitionId:189046, ExtentId:137124,ExtentOffset:0,         Size:65536})
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset:720896, PartitionId:213867, ExtentId:17572, ExtentOffset:524288,    Size:655360})
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset:1048576,PartitionId:201001, ExtentId:39065, ExtentOffset:0,         Size:11010048})
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset:5505024,PartitionId:213867, ExtentId:17572, ExtentOffset:5308416,   Size:6584931})
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset:524288, PartitionId:213873, ExtentId:37,    ExtentOffset:42237952,  Size:65536})
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset:655360, PartitionId:200995, ExtentId:57,    ExtentOffset:437841920, Size:131072})
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset:786432, PartitionId:189045, ExtentId:64,    ExtentOffset:1472925696,Size:131072})
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset:917504, PartitionId:189051, ExtentId:25,    ExtentOffset:1501118464,Size:131072})
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset:1048576,PartitionId:201001, ExtentId:39065, ExtentOffset:0,         Size:393216})
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset:1441792,PartitionId:213868, ExtentId:17688, ExtentOffset:0,         Size:65536})
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset:1507328,PartitionId:201001, ExtentId:39065, ExtentOffset:458752,    Size:4915200})
+
+	ek := proto.ExtentKey{FileOffset: 1048576, PartitionId: 201001, ExtentId: 39065 , ExtentOffset: 0        , Size: 11041379  }
+
+	start, invalid := appendCalStartAndInvalid(se, ek)
+	if start + len(invalid) > len(se.eks) {
+		t.Logf("\n*******This ek will panic: cal end:%d, eks len:%d********\n\n", start + len(invalid), len(se.eks))
+	}
+
+	se.Append(ctx, ek)
+	t.Logf("\neks: %v",  se.eks)
+
+	t.Logf("%v\n", se.Size())
+}
+
+// This is the case that cause meta node panic  0121.
+// Init the eks with product env. As multiple clients op, the eks are in wrong order.
+// Append new ek
+func TestAppend06(t *testing.T) {
+	ctx := context.Background()
+	se := NewSortedExtents()
+
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset: 524288  , PartitionId: 228513, ExtentId: 37   , ExtentOffset: 247836672, Size: 65536   })
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset: 589824  , PartitionId: 231153, ExtentId: 27   , ExtentOffset: 31907840 , Size: 65536   })
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset: 1769472 , PartitionId: 228514, ExtentId: 33083, ExtentOffset: 0        , Size: 65536   })
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset: 2097152 , PartitionId: 231158, ExtentId: 2494 , ExtentOffset: 0        , Size: 65536   })
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset: 2162688 , PartitionId: 231154, ExtentId: 2441 , ExtentOffset: 0        , Size: 65536   })
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset: 2621440 , PartitionId: 228513, ExtentId: 33320, ExtentOffset: 0        , Size: 655360  })
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset: 6160384 , PartitionId: 228508, ExtentId: 33851, ExtentOffset: 0        , Size: 2097152 })
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset: 8257536 , PartitionId: 231152, ExtentId: 2470 , ExtentOffset: 1835008  , Size: 3342336 })
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset: 8519680 , PartitionId: 228510, ExtentId: 33453, ExtentOffset: 0        , Size: 65536   })
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset: 12320768, PartitionId: 231156, ExtentId: 2473 , ExtentOffset: 131072   , Size: 7274496 })
+	se.eks = append(se.eks, proto.ExtentKey{FileOffset: 11599872, PartitionId: 231151, ExtentId: 2432 , ExtentOffset: 0        , Size: 720896  })
+
+	ek := proto.ExtentKey{FileOffset: 12189696, PartitionId: 231156, ExtentId: 2473 , ExtentOffset: 0        , Size: 7471104  }
+
+	start, invalid := appendCalStartAndInvalid(se, ek)
+	if start + len(invalid) > len(se.eks) {
+		t.Logf("\n*******This ek will panic: cal end:%d, eks len:%d********\n\n", start + len(invalid), len(se.eks))
+	}
+	se.Append(ctx, ek)
+	t.Logf("\neks: %v",  se.eks)
+
+	t.Logf("%v\n", se.Size())
+}
+
 func TestTruncate01(t *testing.T) {
 	ctx := context.Background()
 	se := NewSortedExtents()

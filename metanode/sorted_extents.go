@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/log"
 	"sort"
 	"sync"
 
@@ -400,6 +401,18 @@ func (se *SortedExtents) Append(ctx context.Context, ek proto.ExtentKey) (delete
 
 	se.Lock()
 	defer se.Unlock()
+
+	defer func() {
+		if r := recover(); r != nil {
+			msg := fmt.Sprintf("panic occurred when append extent key!\n"+
+				"Partition: %v\n"+
+				"Exists extent keys: %v\n"+
+				"Append extent key: %v\n"+
+				"Panic message: %v\n",
+				ek.PartitionId, se.eks, ek, r)
+			log.LogErrorf(msg)
+		}
+	}()
 
 	if len(se.eks) <= 0 {
 		se.eks = append(se.eks, ek)
