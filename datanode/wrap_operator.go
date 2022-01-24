@@ -647,7 +647,7 @@ func (s *DataNode) handlePacketToGetAllWatermarks(p *repl.Packet) {
 // V2使用二进制编解码
 func (s *DataNode) handlePacketToGetAllWatermarksV2(p *repl.Packet) {
 	var (
-		err       error
+		err  error
 		data []byte
 	)
 	defer func() {
@@ -662,7 +662,7 @@ func (s *DataNode) handlePacketToGetAllWatermarksV2(p *repl.Packet) {
 			err = storage.PartitionIsLoaddingErr
 			return
 		}
-		 _, data,err = store.GetAllWatermarksWithByteArr(storage.NormalExtentFilter())
+		_, data, err = store.GetAllWatermarksWithByteArr(storage.NormalExtentFilter())
 	} else {
 		var extentIDs = make([]uint64, 0, len(p.Data)/8)
 		var extentID uint64
@@ -678,7 +678,7 @@ func (s *DataNode) handlePacketToGetAllWatermarksV2(p *repl.Packet) {
 			}
 			extentIDs = append(extentIDs, extentID)
 		}
-		_, data,err = store.GetAllWatermarksWithByteArr(storage.TinyExtentFilter(extentIDs))
+		_, data, err = store.GetAllWatermarksWithByteArr(storage.TinyExtentFilter(extentIDs))
 	}
 	if err != nil {
 		return
@@ -1481,6 +1481,16 @@ func (s *DataNode) rateLimit(p *repl.Packet, c *net.TCPConn) {
 	if !ok {
 		return
 	}
+
+	// request rate limit for volume & opcode
+	opRatelimiterMap, ok := reqVolOpRateLimiterMap[partition.volumeID]
+	if ok {
+		limiter, ok = opRatelimiterMap[p.Opcode]
+		if ok {
+			limiter.Wait(ctx)
+		}
+	}
+
 	// request rate limit of each data partition for volume
 	partRateLimiterMap, ok := reqVolPartRateLimiterMap[partition.volumeID]
 	if ok {

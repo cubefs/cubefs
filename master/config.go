@@ -89,6 +89,7 @@ type clusterConfig struct {
 	MetaNodeReqOpRateLimitMap           map[uint8]uint64
 	DataNodeReqZoneRateLimitMap         map[string]uint64
 	DataNodeReqZoneOpRateLimitMap       map[string]map[uint8]uint64
+	DataNodeReqZoneVolOpRateLimitMap    map[string]map[string]map[uint8]uint64
 	DataNodeReqVolPartRateLimitMap      map[string]uint64
 	DataNodeReqVolOpPartRateLimitMap    map[string]map[uint8]uint64
 	reqRateLimitMapMutex                sync.Mutex
@@ -128,6 +129,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.MetaNodeReqOpRateLimitMap = make(map[uint8]uint64)
 	cfg.DataNodeReqZoneRateLimitMap = make(map[string]uint64)
 	cfg.DataNodeReqZoneOpRateLimitMap = make(map[string]map[uint8]uint64)
+	cfg.DataNodeReqZoneVolOpRateLimitMap = make(map[string]map[string]map[uint8]uint64)
 	cfg.DataNodeReqVolPartRateLimitMap = make(map[string]uint64)
 	cfg.DataNodeReqVolOpPartRateLimitMap = make(map[string]map[uint8]uint64)
 	cfg.ClientReadVolRateLimitMap = make(map[string]uint64)

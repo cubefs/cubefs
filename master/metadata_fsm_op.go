@@ -39,6 +39,7 @@ type clusterValue struct {
 	DataNodeRepairTaskCount           uint64
 	DataNodeReqZoneRateLimitMap       map[string]uint64
 	DataNodeReqZoneOpRateLimitMap     map[string]map[uint8]uint64
+	DataNodeReqZoneVolOpRateLimitMap  map[string]map[string]map[uint8]uint64
 	DataNodeReqVolPartRateLimitMap    map[string]uint64
 	DataNodeReqVolOpPartRateLimitMap  map[string]map[uint8]uint64
 	MetaNodeReqRateLimit              uint64
@@ -63,6 +64,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DataNodeRepairTaskCount:           c.cfg.DataNodeRepairTaskCount,
 		DataNodeReqZoneRateLimitMap:       c.cfg.DataNodeReqZoneRateLimitMap,
 		DataNodeReqZoneOpRateLimitMap:     c.cfg.DataNodeReqZoneOpRateLimitMap,
+		DataNodeReqZoneVolOpRateLimitMap:  c.cfg.DataNodeReqZoneVolOpRateLimitMap,
 		DataNodeReqVolPartRateLimitMap:    c.cfg.DataNodeReqVolPartRateLimitMap,
 		DataNodeReqVolOpPartRateLimitMap:  c.cfg.DataNodeReqVolOpPartRateLimitMap,
 		MetaNodeReqRateLimit:              c.cfg.MetaNodeReqRateLimit,
@@ -618,6 +620,10 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.cfg.DataNodeReqZoneOpRateLimitMap = cv.DataNodeReqZoneOpRateLimitMap
 		if c.cfg.DataNodeReqZoneOpRateLimitMap == nil {
 			c.cfg.DataNodeReqZoneOpRateLimitMap = make(map[string]map[uint8]uint64)
+		}
+		c.cfg.DataNodeReqZoneVolOpRateLimitMap = cv.DataNodeReqZoneVolOpRateLimitMap
+		if c.cfg.DataNodeReqZoneVolOpRateLimitMap == nil {
+			c.cfg.DataNodeReqZoneVolOpRateLimitMap = make(map[string]map[string]map[uint8]uint64)
 		}
 		c.cfg.DataNodeReqVolPartRateLimitMap = cv.DataNodeReqVolPartRateLimitMap
 		if c.cfg.DataNodeReqVolPartRateLimitMap == nil {

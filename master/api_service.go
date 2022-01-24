@@ -295,6 +295,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		DataNodeRepairTaskLimitOnDisk:          repairTaskCount,
 		DataNodeReqZoneRateLimitMap:            m.cluster.cfg.DataNodeReqZoneRateLimitMap,
 		DataNodeReqZoneOpRateLimitMap:          m.cluster.cfg.DataNodeReqZoneOpRateLimitMap,
+		DataNodeReqZoneVolOpRateLimitMap:       m.cluster.cfg.DataNodeReqZoneVolOpRateLimitMap,
 		DataNodeReqVolPartRateLimitMap:         m.cluster.cfg.DataNodeReqVolPartRateLimitMap,
 		DataNodeReqVolOpPartRateLimitMap:       m.cluster.cfg.DataNodeReqVolOpPartRateLimitMap,
 		ClientReadVolRateLimitMap:              m.cluster.cfg.ClientReadVolRateLimitMap,
@@ -1363,9 +1364,28 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	)
 	if val, ok := params[zoneNameKey]; ok {
 		zone = val.(string)
+		if zone != "" {
+			err = proto.ErrZoneNotExists
+			for _, z := range m.cluster.t.getAllZones() {
+				if zone == z.name {
+					err = nil
+					break
+				}
+			}
+			if err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
 	}
 	if val, ok := params[volumeKey]; ok {
 		vol = val.(string)
+		if vol != "" {
+			if _, err = m.cluster.getVol(vol); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
 	}
 	if val, ok := params[opcodeKey]; ok {
 		op = uint8(val.(uint64))
@@ -1379,6 +1399,18 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err = m.cluster.setDataNodeReqRateLimit(v, zone); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+	if val, ok := params[dataNodeReqVolOpRateKey]; ok {
+		v := val.(uint64)
+		if v > 0 && v < minRateLimit {
+			err = errors.NewErrorf("parameter %s can't be less than %d", dataNodeReqRateKey, minRateLimit)
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		if err = m.cluster.setDataNodeReqVolOpRateLimit(v, zone, vol, op); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
@@ -1460,10 +1492,6 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		if op <= 0 || op > 255 {
 			err = errors.NewErrorf("value range of parameter %v is 0~255", opcodeKey)
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-			return
-		}
-		if _, err = m.cluster.getVol(vol); err != nil {
-			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
 		if err = m.cluster.setClientVolOpRateLimit(v, vol, uint8(op)); err != nil {
@@ -2605,7 +2633,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	}
 
 	uintKeys := []string{nodeDeleteBatchCountKey, nodeMarkDeleteRateKey, dataNodeRepairTaskCountKey, nodeDeleteWorkerSleepMs, metaNodeReqRateKey, metaNodeReqOpRateKey,
-		dataNodeReqRateKey, dataNodeReqOpRateKey, dataNodeReqVolPartRateKey, dataNodeReqVolOpPartRateKey, opcodeKey, clientReadVolRateKey, clientWriteVolRateKey,
+		dataNodeReqRateKey, dataNodeReqVolOpRateKey, dataNodeReqOpRateKey, dataNodeReqVolPartRateKey, dataNodeReqVolOpPartRateKey, opcodeKey, clientReadVolRateKey, clientWriteVolRateKey,
 		extentMergeSleepMsKey, fixTinyDeleteRecordKey}
 	for _, key := range uintKeys {
 		if err = parseUintKey(params, key, r); err != nil {

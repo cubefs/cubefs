@@ -2803,6 +2803,52 @@ func (c *Cluster) setDataNodeReqOpRateLimit(val uint64, zone string, op uint8) (
 	return
 }
 
+func (c *Cluster) setDataNodeReqVolOpRateLimit(val uint64, zone string, vol string, op uint8) (err error) {
+	c.cfg.reqRateLimitMapMutex.Lock()
+	defer c.cfg.reqRateLimitMapMutex.Unlock()
+	volOpMap, ok := c.cfg.DataNodeReqZoneVolOpRateLimitMap[zone]
+	if !ok {
+		volOpMap = make(map[string]map[uint8]uint64)
+		c.cfg.DataNodeReqZoneVolOpRateLimitMap[zone] = volOpMap
+	}
+	opMap, ok := volOpMap[vol]
+	var oldVal uint64
+	if ok {
+		oldVal, ok = opMap[op]
+	} else {
+		opMap = make(map[uint8]uint64)
+		volOpMap[vol] = opMap
+	}
+	if val > 0 {
+		opMap[op] = val
+	} else {
+		delete(opMap, op)
+		if len(opMap) == 0 {
+			delete(volOpMap, vol)
+			if len(volOpMap) == 0 {
+				delete(c.cfg.DataNodeReqZoneVolOpRateLimitMap, zone)
+			}
+		}
+	}
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setDataNodeReqVolOpRateLimit] err[%v]", err)
+		if ok {
+			c.cfg.DataNodeReqZoneVolOpRateLimitMap[zone][vol][op] = oldVal
+		} else {
+			delete(opMap, op)
+			if len(opMap) == 0 {
+				delete(volOpMap, vol)
+				if len(volOpMap) == 0 {
+					delete(c.cfg.DataNodeReqZoneVolOpRateLimitMap, zone)
+				}
+			}
+		}
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
 func (c *Cluster) setDataNodeReqVolPartRateLimit(val uint64, vol string) (err error) {
 	c.cfg.reqRateLimitMapMutex.Lock()
 	defer c.cfg.reqRateLimitMapMutex.Unlock()

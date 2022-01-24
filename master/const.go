@@ -58,6 +58,7 @@ const (
 	dataNodeRepairTaskCountKey  = "dataNodeRepairTaskCount"
 	dataNodeReqRateKey          = "dataNodeReqRate"
 	dataNodeReqOpRateKey        = "dataNodeReqOpRate"
+	dataNodeReqVolOpRateKey     = "dataNodeReqVolOpRate"
 	dataNodeReqVolPartRateKey   = "dataNodeReqVolPartRate"
 	dataNodeReqVolOpPartRateKey = "dataNodeReqVolOpPartRate"
 	metaNodeReqRateKey          = "metaNodeReqRate"
