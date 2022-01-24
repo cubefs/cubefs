@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/metanode"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 	"io/ioutil"
@@ -179,14 +178,14 @@ func (mc *MetaHttpClient) GetMetaPartition(pid uint64) (resp *GetMPInfoResp, err
 	return
 }
 
-func (mc *MetaHttpClient) GetAllDentry(pid uint64) (dentryMap map[string]*metanode.Dentry, err error ) {
+func (mc *MetaHttpClient) GetAllDentry(pid uint64) (dentryMap map[string]*proto.MetaDentry, err error ) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[GetAllDentry],pid:%v,err:%v", pid, err)
 		}
 		log.LogFlush()
 	}()
-	dentryMap = make(map[string]*metanode.Dentry, 0)
+	dentryMap = make(map[string]*proto.MetaDentry, 0)
 	req := newAPIRequest(http.MethodGet, "/getAllDentry")
 	req.addParam("pid", fmt.Sprintf("%v", pid))
 	respData, err := mc.serveRequest(req)
@@ -205,7 +204,7 @@ func (mc *MetaHttpClient) GetAllDentry(pid uint64) (dentryMap map[string]*metano
 	// Read items (large objects)
 	for dec.More() {
 		// Read next item (large object)
-		lo := &metanode.Dentry{}
+		lo := &proto.MetaDentry{}
 		if err = dec.Decode(lo); err != nil {
 			return
 		}
@@ -230,7 +229,7 @@ func parseToken(dec *json.Decoder, expectToken rune) (err error) {
 	return
 }
 
-func (mc *MetaHttpClient) GetAllInodes(pid uint64) (rstMap map[uint64]*metanode.Inode, err error) {
+func (mc *MetaHttpClient) GetAllInodes(pid uint64) (rstMap map[uint64]*proto.MetaInode, err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[GetAllInodes],pid:%v,err:%v", pid, err)
@@ -238,7 +237,7 @@ func (mc *MetaHttpClient) GetAllInodes(pid uint64) (rstMap map[uint64]*metanode.
 		log.LogFlush()
 	}()
 
-	inodeMap := make(map[uint64]*metanode.Inode, 0)
+	inodeMap := make(map[uint64]*proto.MetaInode, 0)
 	req := newAPIRequest(http.MethodGet, "/getAllInodes")
 	req.addParam("pid", fmt.Sprintf("%v", pid))
 	respData, err := mc.serveRequest(req)
@@ -257,7 +256,7 @@ func (mc *MetaHttpClient) GetAllInodes(pid uint64) (rstMap map[uint64]*metanode.
 	// Read items (large objects)
 	for dec.More() {
 		// Read next item (large object)
-		in := &metanode.Inode{}
+		in := &proto.MetaInode{}
 		if err = dec.Decode(in); err != nil {
 			return
 		}

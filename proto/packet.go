@@ -203,6 +203,9 @@ const (
 
 const FollowerReadFlag = 'F'
 
+var GReadOps = []uint8{OpMetaLookup, OpMetaReadDir, OpMetaInodeGet, OpMetaBatchInodeGet, OpMetaExtentsList, OpMetaGetXAttr,
+	OpMetaListXAttr, OpMetaBatchGetXAttr, OpMetaGetAppliedID, OpGetMultipart, OpListMultiparts}
+
 // Packet defines the packet structure.
 type Packet struct {
 	Magic              uint8
@@ -259,6 +262,15 @@ func (p *Packet) String() string {
 		return ""
 	}
 	return fmt.Sprintf("ReqID(%v)Op(%v)PartitionID(%v)ResultCode(%v)", p.ReqID, p.GetOpMsg(), p.PartitionID, p.GetResultMsg())
+}
+
+func (p *Packet) IsReadOp() bool {
+	for _, opCode := range GReadOps {
+		if p.Opcode == opCode {
+			return true
+		}
+	}
+	return false
 }
 
 // GetStoreType returns the store type.

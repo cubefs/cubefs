@@ -549,3 +549,36 @@ type SnapshotCrdResponse struct {
 	LastSnapshotStr string `json:"last_snapshot_str"`
 	LocalAddr string `json:"local_addr"`
 }
+
+// Dentry defines the dentry struct.
+type MetaDentry struct {
+	ParentId uint64 // FileID value of the parent inode.
+	Name     string // Name of the current dentry.
+	Inode    uint64 // FileID value of the current inode.
+	Type     uint32
+}
+
+// String returns the string format of the dentry.
+func (d MetaDentry) String() string {
+	return fmt.Sprintf("Dentry{Pid(%d),Name(%v),Inode(%v),Type(%v)}", d.ParentId, d.Name, d.Inode, d.Type)
+}
+
+type MetaInode struct {
+	Inode      uint64 // Inode ID
+	Type       uint32
+	Uid        uint32
+	Gid        uint32
+	Size       uint64
+	Generation uint64
+	CreateTime int64
+	AccessTime int64
+	ModifyTime int64
+	LinkTarget []byte // SymLink target name
+	NLink      uint32 // NodeLink counts
+	Flag       int32
+	Reserved   uint64 // reserved space
+}
+
+func (ino MetaInode) String() string {
+	return fmt.Sprintf("Inode{Ino(%d),Type(%v),Size(%v),NLikn(%v)}", ino.Inode, ino.Type, ino.Size, ino.NLink)
+}

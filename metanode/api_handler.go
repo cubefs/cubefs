@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -76,6 +77,9 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/cursorReset", m.cursorReset)
 	http.HandleFunc("/getAllInodeId", m.getAllInodeId)
 	http.HandleFunc("/getSnapshotCrc", m.getSnapshotCrc)
+
+	http.HandleFunc("/resetPeer", m.resetPeer)
+	http.HandleFunc("/removePeer", m.removePeerInRaftLog)
 	return
 }
 
@@ -611,7 +615,7 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request){
 	resp.Msg = http.StatusText(http.StatusOK)
 }
 
-func (m *MetaNode) getAllInodeId(w http.ResponseWriter, r *http.Request){
+func (m *MetaNode) getAllInodeId(w http.ResponseWriter, r *http.Request) {
 	resp := NewAPIResponse(http.StatusSeeOther, "")
 	defer func() {
 		data, _ := resp.Marshal()
@@ -648,7 +652,6 @@ func (m *MetaNode) getAllInodeId(w http.ResponseWriter, r *http.Request){
 	if err != nil {
 		endTime = math.MaxInt64
 	}
-
 
 	mp, err := m.metadataManager.GetPartition(pid)
 	if err != nil {
@@ -709,6 +712,7 @@ func (m *MetaNode) getSnapshotCrc(w http.ResponseWriter, r *http.Request){
 		resp.Msg = err.Error()
 		return
 	}
+
 	defer file.Close()
 	reader := bufio.NewReader(file)
 	buf := make([]byte, 128)
@@ -723,5 +727,102 @@ func (m *MetaNode) getSnapshotCrc(w http.ResponseWriter, r *http.Request){
 	resp.Code = http.StatusOK
 	resp.Msg = "OK"
 	resp.Data = result
+	return
+}
+
+func (m *MetaNode) resetPeer(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	resp := NewAPIResponse(http.StatusBadRequest, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[resetPeer] response %s", err)
+		}
+	}()
+
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	idsStr := strings.Split(r.FormValue("PeerId"), ",")
+	ids := make([]uint64, 0)
+	for _, idStr := range idsStr {
+		peerID, err := strconv.ParseUint(idStr, 10, 64)
+		ids = append(ids, peerID)
+		if err != nil {
+			resp.Msg = err.Error()
+			return
+		}
+	}
+
+	if len(ids) == 0 {
+		resp.Msg = "No reset peer id"
+		return
+	}
+
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	log.LogWarnf("Mp[%d] recv reset peer[%v] cmd", mp.GetBaseConfig().PartitionId, ids)
+	if err = mp.ResetMemberInter(ids); err != nil {
+		log.LogWarnf("Mp[%d] recv reset peer[%v] cmd failed:%s", mp.GetBaseConfig().PartitionId, ids, err.Error())
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+
+	log.LogWarnf("Mp[%d] recv reset peer[%v] cmd success", mp.GetBaseConfig().PartitionId, ids)
+	resp.Code = http.StatusOK
+	resp.Msg = "OK"
+	return
+}
+
+func (m *MetaNode) removePeerInRaftLog(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	resp := NewAPIResponse(http.StatusBadRequest, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getInodeHandler] response %s", err)
+		}
+	}()
+
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+
+	peerID, err := strconv.ParseUint(r.FormValue("PeerId"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	log.LogWarnf("Mp[%d] recv remove peer[%v] cmd", mp.GetBaseConfig().PartitionId, peerID)
+	if err = mp.RemoveMemberOnlyRaft(peerID); err != nil {
+		log.LogWarnf("Mp[%d] recv remove peer[%v] cmd failed:%s", mp.GetBaseConfig().PartitionId, peerID, err.Error())
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+	log.LogWarnf("Mp[%d] recv remove peer[%v] cmd success", mp.GetBaseConfig().PartitionId, peerID)
+
+	resp.Code = http.StatusOK
+	resp.Msg = "OK"
 	return
 }
