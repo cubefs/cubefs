@@ -19,7 +19,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 func (mp *metaPartition) UpdateSummaryInfo(req *proto.UpdateSummaryInfoRequest, p *Packet) (err error) {

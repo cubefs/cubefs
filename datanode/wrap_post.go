@@ -17,8 +17,8 @@ package datanode
 import (
 	"sync/atomic"
 
-	"github.com/chubaofs/chubaofs/repl"
-	"github.com/chubaofs/chubaofs/storage"
+	"github.com/cubefs/cubefs/repl"
+	"github.com/cubefs/cubefs/storage"
 )
 
 func (s *DataNode) Post(p *repl.Packet) error {

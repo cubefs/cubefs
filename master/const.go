@@ -17,8 +17,8 @@ package master
 import (
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 )
 
 // Keys in the request

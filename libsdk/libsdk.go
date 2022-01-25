@@ -57,7 +57,7 @@ struct cfs_summary_info {
 import "C"
 
 import (
-	"github.com/chubaofs/chubaofs/client/fs"
+	"github.com/cubefs/cubefs/client/fs"
 	"io"
 	"os"
 	gopath "path"
@@ -70,10 +70,10 @@ import (
 
 	"github.com/willf/bitset"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/data/stream"
-	"github.com/chubaofs/chubaofs/sdk/meta"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/stream"
+	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (

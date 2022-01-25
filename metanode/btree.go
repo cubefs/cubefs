@@ -15,7 +15,7 @@
 package metanode
 
 import (
-	"github.com/chubaofs/chubaofs/util/btree"
+	"github.com/cubefs/cubefs/util/btree"
 	"sync"
 )
 

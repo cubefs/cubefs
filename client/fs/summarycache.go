@@ -2,7 +2,7 @@ package fs
 
 import (
 	"container/list"
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 	"sync"
 	"time"
 )

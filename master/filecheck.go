@@ -16,8 +16,8 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/storage"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util/log"
 	"sort"
 	"strconv"
 	"time"

@@ -3,7 +3,7 @@ package metanode
 import (
 	"testing"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 func TestAppend01(t *testing.T) {

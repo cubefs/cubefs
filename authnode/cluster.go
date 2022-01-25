@@ -17,16 +17,16 @@ package authnode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/cubefs/cubefs/util"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/raftstore"
-	"github.com/chubaofs/chubaofs/util/caps"
-	"github.com/chubaofs/chubaofs/util/cryptoutil"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/keystore"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/raftstore"
+	"github.com/cubefs/cubefs/util/caps"
+	"github.com/cubefs/cubefs/util/cryptoutil"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/keystore"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // PKIKey defines the pki keys

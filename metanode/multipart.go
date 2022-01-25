@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/btree"
+	"github.com/cubefs/cubefs/util/btree"
 )
 
 // Part defined necessary fields for multipart part management.
