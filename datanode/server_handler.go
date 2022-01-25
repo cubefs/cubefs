@@ -21,8 +21,8 @@ import (
 	"strconv"
 	"sync/atomic"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/storage"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/storage"
 	"github.com/tiglabs/raft"
 )
 

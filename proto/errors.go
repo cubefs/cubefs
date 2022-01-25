@@ -14,7 +14,7 @@
 
 package proto
 
-import "github.com/chubaofs/chubaofs/util/errors"
+import "github.com/cubefs/cubefs/util/errors"
 
 //err
 var (

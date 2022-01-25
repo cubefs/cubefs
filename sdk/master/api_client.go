@@ -19,7 +19,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 type Decoder func([]byte) ([]byte, error)

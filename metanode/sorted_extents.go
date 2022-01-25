@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"sync"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 type SortedExtents struct {

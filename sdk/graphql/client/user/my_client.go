@@ -1,7 +1,7 @@
 package user
 
 import "context"
-import "github.com/chubaofs/chubaofs/sdk/graphql/client"
+import "github.com/cubefs/cubefs/sdk/graphql/client"
 
 func (c *UserClient) GetUserInfoForLogin(ctx context.Context, userID string) (*UserInfo, error) {
 

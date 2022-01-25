@@ -1,8 +1,8 @@
 package authnode
 
 import (
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/keystore"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/keystore"
 )
 
 // PutKey change keyInfo in keystore cache

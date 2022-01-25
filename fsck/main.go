@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/chubaofs/chubaofs/fsck/cmd"
+	"github.com/cubefs/cubefs/fsck/cmd"
 )
 
 func main() {

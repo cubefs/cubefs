@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/chubaofs/chubaofs/util/auth"
-	"github.com/chubaofs/chubaofs/util/config"
+	"github.com/cubefs/cubefs/util/auth"
+	"github.com/cubefs/cubefs/util/config"
 )
 
 // For client

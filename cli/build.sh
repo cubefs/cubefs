@@ -11,11 +11,12 @@ TargetFile=${1:-$RootPath/cli/cfs-cli}
 
 [[ "-$GOPATH" == "-" ]] && { echo "GOPATH not set"; exit 1; }
 
-LDFlags="-X github.com/chubaofs/chubaofs/proto.Version=${Version} \
-    -X github.com/chubaofs/chubaofs/proto.CommitID=${CommitID} \
-    -X github.com/chubaofs/chubaofs/proto.BranchName=${BranchName} \
-    -X 'github.com/chubaofs/chubaofs/proto.BuildTime=${BuildTime}' "
+LDFlags="-X github.com/cubefs/cubefs/proto.Version=${Version} \
+    -X github.com/cubefs/cubefs/proto.CommitID=${CommitID} \
+    -X github.com/cubefs/cubefs/proto.BranchName=${BranchName} \
+    -X 'github.com/cubefs/cubefs/proto.BuildTime=${BuildTime}' "
 
+GO111MODULE=off \
 go build \
     -ldflags "${LDFlags}" \
     -o $TargetFile \

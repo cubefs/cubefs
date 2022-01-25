@@ -3,9 +3,9 @@ package auth
 import (
 	"encoding/json"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/auth"
-	"github.com/chubaofs/chubaofs/util/cryptoutil"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/auth"
+	"github.com/cubefs/cubefs/util/cryptoutil"
 )
 
 func (api *API) GetTicket(clientId string, clientKey string, serviceID string) (ticket *auth.Ticket, err error) {

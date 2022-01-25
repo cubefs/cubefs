@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/tiglabs/raft/proto"
 )
 

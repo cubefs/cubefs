@@ -3,7 +3,7 @@ package user
 //auto generral by sdk/graphql general.go
 
 import "context"
-import "github.com/chubaofs/chubaofs/sdk/graphql/client"
+import "github.com/cubefs/cubefs/sdk/graphql/client"
 
 type UserClient struct {
 	*client.MasterGClient

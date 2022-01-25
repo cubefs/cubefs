@@ -6,7 +6,7 @@ Join the [chubaofs-users@groups.io](mailto:chubaofs-users@groups.io) group for e
 
 We’re extremely grateful for security researchers and users that report vulnerabilities to the ChubaoFS Open Source Community. All reports are thoroughly investigated by a dedicated committee of community volunteers called [Product Security Committee](security-release-process.md#product-security-committee).
 
-To make a report, please email the private [chubaofs-users@groups.io](mailto:chubaofs-users@groups.io) list with the security details and the details expected for [all ChubaoFS bug reports](https://github.com/chubaofs/chubaofs/blob/master/CONTRIBUTING.md#bug-reports).
+To make a report, please email the private [chubaofs-users@groups.io](mailto:chubaofs-users@groups.io) list with the security details and the details expected for [all ChubaoFS bug reports](https://github.com/cubefs/cubefs/blob/master/CONTRIBUTING.md#bug-reports).
 
 ### When Should I Report a Vulnerability?
 

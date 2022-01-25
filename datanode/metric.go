@@ -17,7 +17,7 @@ package datanode
 import (
 	"fmt"
 
-	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/cubefs/cubefs/util/exporter"
 )
 
 const (

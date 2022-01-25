@@ -12,7 +12,7 @@
  * --- a/metanode/partition_op_extent.go
  * +++ b/metanode/partition_op_extent.go
  * @@@ -21,6 -21,6 +21,8 @@@ import
- *         "github.com/chubaofs/chubaofs/proto"
+ *         "github.com/cubefs/cubefs/proto"
  *   )
  *
  * ++var faultInjection int32

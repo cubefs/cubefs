@@ -15,7 +15,7 @@
 package objectnode
 
 import (
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (

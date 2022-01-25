@@ -16,15 +16,15 @@ package master
 
 import (
 	"encoding/json"
+	"fmt"
+	"net"
 	"sync"
 	"time"
 
-	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
-	"net"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 //const

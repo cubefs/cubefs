@@ -307,7 +307,7 @@ Upgrade
 
 1.	Steps
 
-    a. Download and unzip the latest binary file compression package from ChubaoFS official website https://github.com/chubaofs/chubaofs/releases
+    a. Download and unzip the latest binary file compression package from ChubaoFS official website https://github.com/cubefs/cubefs/releases
     b. Freeze the cluster
 
     .. code-block:: bash

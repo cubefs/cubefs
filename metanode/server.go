@@ -15,13 +15,13 @@
 package metanode
 
 import (
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/cubefs/cubefs/util"
 	"io"
 	"net"
 	"smux"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // StartTcpService binds and listens to the specified port.

@@ -26,10 +26,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/meta"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/ump"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/ump"
 )
 
 var gMetaWrapper *meta.MetaWrapper
