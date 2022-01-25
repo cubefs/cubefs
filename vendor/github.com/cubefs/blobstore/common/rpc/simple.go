@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chubaofs/blobstore/common/crc32block"
-	"github.com/chubaofs/blobstore/common/trace"
-	"github.com/chubaofs/blobstore/util/errors"
+	"github.com/cubefs/blobstore/common/crc32block"
+	"github.com/cubefs/blobstore/common/trace"
+	"github.com/cubefs/blobstore/util/errors"
 )
 
 // Config simple client config

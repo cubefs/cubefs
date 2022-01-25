@@ -3,7 +3,7 @@ package access
 import (
 	"context"
 
-	"github.com/chubaofs/blobstore/common/trace"
+	"github.com/cubefs/blobstore/common/trace"
 )
 
 type ctxKey uint8

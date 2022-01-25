@@ -1,8 +1,8 @@
 package proto
 
 import (
-	"github.com/chubaofs/blobstore/common/codemode"
-	"github.com/chubaofs/blobstore/util/errors"
+	"github.com/cubefs/blobstore/common/codemode"
+	"github.com/cubefs/blobstore/util/errors"
 )
 
 var (

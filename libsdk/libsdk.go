@@ -74,10 +74,10 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/chubaofs/blobstore/api/access"
-	"github.com/chubaofs/blobstore/common/trace"
+	"github.com/cubefs/blobstore/api/access"
+	"github.com/cubefs/blobstore/common/trace"
 
-	// "github.com/chubaofs/blobstore/util/log"
+	// "github.com/cubefs/blobstore/util/log"
 	"github.com/chubaofs/chubaofs/blockcache/bcache"
 	"github.com/chubaofs/chubaofs/client/fs"
 	"github.com/chubaofs/chubaofs/proto"

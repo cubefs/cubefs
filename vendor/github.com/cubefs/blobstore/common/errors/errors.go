@@ -3,7 +3,7 @@ package errors
 import (
 	"net/http"
 
-	"github.com/chubaofs/blobstore/common/rpc"
+	"github.com/cubefs/blobstore/common/rpc"
 )
 
 //access             550-599

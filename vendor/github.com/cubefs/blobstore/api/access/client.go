@@ -10,14 +10,14 @@ import (
 	"github.com/hashicorp/consul/api"
 	"gopkg.in/natefinch/lumberjack.v2"
 
-	errcode "github.com/chubaofs/blobstore/common/errors"
-	"github.com/chubaofs/blobstore/common/proto"
-	"github.com/chubaofs/blobstore/common/resourcepool"
-	"github.com/chubaofs/blobstore/common/rpc"
-	"github.com/chubaofs/blobstore/common/trace"
-	"github.com/chubaofs/blobstore/util/log"
-	"github.com/chubaofs/blobstore/util/selector"
-	"github.com/chubaofs/blobstore/util/task"
+	errcode "github.com/cubefs/blobstore/common/errors"
+	"github.com/cubefs/blobstore/common/proto"
+	"github.com/cubefs/blobstore/common/resourcepool"
+	"github.com/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/blobstore/common/trace"
+	"github.com/cubefs/blobstore/util/log"
+	"github.com/cubefs/blobstore/util/selector"
+	"github.com/cubefs/blobstore/util/task"
 )
 
 const (

@@ -1,21 +1,21 @@
 # github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da
 github.com/armon/go-metrics
-# github.com/chubaofs/blobstore v0.0.0-00010101000000-000000000000 => gitlab.oppoer.me/oppo_cloud_storage/ebs v0.0.0-20211230031555-3aad1cd9359f
+# github.com/cubefs/blobstore v0.0.0-00010101000000-000000000000 => gitlab.oppoer.me/oppo_cloud_storage/ebs v0.0.0-20211230031555-3aad1cd9359f
 ## explicit
-github.com/chubaofs/blobstore/common/codemode
-github.com/chubaofs/blobstore/common/crc32block
-github.com/chubaofs/blobstore/common/errors
-github.com/chubaofs/blobstore/common/proto
-github.com/chubaofs/blobstore/common/resourcepool
-github.com/chubaofs/blobstore/common/rpc
-github.com/chubaofs/blobstore/common/rpc/auth
-github.com/chubaofs/blobstore/common/trace
-github.com/chubaofs/blobstore/util/bytespool
-github.com/chubaofs/blobstore/util/errors
-github.com/chubaofs/blobstore/util/log
-github.com/chubaofs/blobstore/util/selector
-github.com/chubaofs/blobstore/util/task
-github.com/chubaofs/blobstore/util/version
+github.com/cubefs/blobstore/common/codemode
+github.com/cubefs/blobstore/common/crc32block
+github.com/cubefs/blobstore/common/errors
+github.com/cubefs/blobstore/common/proto
+github.com/cubefs/blobstore/common/resourcepool
+github.com/cubefs/blobstore/common/rpc
+github.com/cubefs/blobstore/common/rpc/auth
+github.com/cubefs/blobstore/common/trace
+github.com/cubefs/blobstore/util/bytespool
+github.com/cubefs/blobstore/util/errors
+github.com/cubefs/blobstore/util/log
+github.com/cubefs/blobstore/util/selector
+github.com/cubefs/blobstore/util/task
+github.com/cubefs/blobstore/util/version
 # github.com/fatih/color v1.13.0
 github.com/fatih/color
 # github.com/hashicorp/consul/api v1.11.0
@@ -53,4 +53,4 @@ golang.org/x/sys/unix
 # gopkg.in/natefinch/lumberjack.v2 v2.0.0
 ## explicit
 gopkg.in/natefinch/lumberjack.v2
-# github.com/chubaofs/blobstore => gitlab.oppoer.me/oppo_cloud_storage/ebs v0.0.0-20211230031555-3aad1cd9359f
+# github.com/cubefs/blobstore => gitlab.oppoer.me/oppo_cloud_storage/ebs v0.0.0-20211230031555-3aad1cd9359f

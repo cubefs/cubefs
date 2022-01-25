@@ -1,7 +1,7 @@
 package proto
 
 import (
-	"github.com/chubaofs/blobstore/util/errors"
+	"github.com/cubefs/blobstore/util/errors"
 )
 
 const MqProxySvrName = "MQPROXY"

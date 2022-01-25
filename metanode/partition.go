@@ -29,8 +29,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	// bs "github.com/chubaofs/blobstore"
-	"github.com/chubaofs/blobstore/api/access"
+	// bs "github.com/cubefs/blobstore"
+	"github.com/cubefs/blobstore/api/access"
 	"github.com/chubaofs/chubaofs/cmd/common"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"

@@ -7,7 +7,7 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 
-	"github.com/chubaofs/blobstore/util/log"
+	"github.com/cubefs/blobstore/util/log"
 )
 
 type (

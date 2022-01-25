@@ -10,9 +10,9 @@ import (
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/stat"
 
-	"github.com/chubaofs/blobstore/api/access"
-	"github.com/chubaofs/blobstore/common/codemode"
-	ebsproto "github.com/chubaofs/blobstore/common/proto"
+	"github.com/cubefs/blobstore/api/access"
+	"github.com/cubefs/blobstore/common/codemode"
+	ebsproto "github.com/cubefs/blobstore/common/proto"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/google/uuid"

@@ -24,7 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/chubaofs/blobstore/api/access"
+	"github.com/cubefs/blobstore/api/access"
 	"github.com/hashicorp/consul/api"
 
 	"golang.org/x/net/context"

@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/chubaofs/blobstore/common/rpc/auth"
+	"github.com/cubefs/blobstore/common/rpc/auth"
 )
 
 // TransportConfig http transport config

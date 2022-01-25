@@ -12,8 +12,8 @@ import (
 	"hash/crc32"
 	"io"
 
-	"github.com/chubaofs/blobstore/common/codemode"
-	"github.com/chubaofs/blobstore/common/proto"
+	"github.com/cubefs/blobstore/common/codemode"
+	"github.com/cubefs/blobstore/common/proto"
 )
 
 // HashAlgorithm hash.Hash algorithm when uploading data
