@@ -3,7 +3,7 @@ package rpc
 import (
 	"net/http"
 
-	"github.com/chubaofs/blobstore/common/crc32block"
+	"github.com/cubefs/blobstore/common/crc32block"
 )
 
 type crcDecoder struct{}

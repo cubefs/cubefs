@@ -11,7 +11,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/chubaofs/blobstore/util/version"
+	"github.com/cubefs/blobstore/util/version"
 )
 
 // headers

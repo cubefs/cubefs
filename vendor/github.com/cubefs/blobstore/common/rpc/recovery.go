@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/chubaofs/blobstore/util/log"
+	"github.com/cubefs/blobstore/util/log"
 )
 
 // defaultRecovery logging panic info, then panic to next handler

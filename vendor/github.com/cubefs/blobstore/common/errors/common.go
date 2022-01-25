@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/chubaofs/blobstore/common/rpc"
+	"github.com/cubefs/blobstore/common/rpc"
 )
 
 var (

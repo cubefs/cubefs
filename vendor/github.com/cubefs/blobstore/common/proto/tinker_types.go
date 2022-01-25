@@ -1,7 +1,7 @@
 package proto
 
 import (
-	"github.com/chubaofs/blobstore/common/codemode"
+	"github.com/cubefs/blobstore/common/codemode"
 )
 
 const (

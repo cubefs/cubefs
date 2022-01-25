@@ -8,7 +8,7 @@ import (
 	urllib "net/url"
 	"strings"
 
-	"github.com/chubaofs/blobstore/common/trace"
+	"github.com/cubefs/blobstore/common/trace"
 )
 
 var (

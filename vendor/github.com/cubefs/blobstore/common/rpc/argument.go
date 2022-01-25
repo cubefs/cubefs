@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chubaofs/blobstore/util/bytespool"
-	"github.com/chubaofs/blobstore/util/log"
+	"github.com/cubefs/blobstore/util/bytespool"
+	"github.com/cubefs/blobstore/util/log"
 )
 
 type (

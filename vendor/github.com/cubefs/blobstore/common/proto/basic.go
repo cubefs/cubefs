@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chubaofs/blobstore/util/errors"
+	"github.com/cubefs/blobstore/util/errors"
 )
 
 // basic type for all module

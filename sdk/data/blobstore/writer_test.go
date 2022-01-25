@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/brahma-adshonor/gohook"
-	"github.com/chubaofs/blobstore/api/access"
+	"github.com/cubefs/blobstore/api/access"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data/stream"
 	"github.com/chubaofs/chubaofs/sdk/meta"

@@ -11,7 +11,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	ptlog "github.com/opentracing/opentracing-go/log"
 
-	"github.com/chubaofs/blobstore/util/log"
+	"github.com/cubefs/blobstore/util/log"
 )
 
 const (
