@@ -17,7 +17,7 @@ package master
 import (
 	"fmt"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 // FileMetadata defines the file metadata on a dataNode

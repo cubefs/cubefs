@@ -22,8 +22,8 @@ import (
 
 	"bytes"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // APIResponse defines the structure of the response to an HTTP request

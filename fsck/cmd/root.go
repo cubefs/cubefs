@@ -19,7 +19,7 @@ import (
 	"os"
 	"path"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 	"github.com/spf13/cobra"
 )
 

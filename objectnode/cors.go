@@ -5,7 +5,7 @@ package objectnode
 import (
 	"encoding/xml"
 
-	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/cubefs/cubefs/util/errors"
 )
 
 var methodsRequest = []string{"GET", "PUT", "HEAD", "POST", "DELETE", "*"}

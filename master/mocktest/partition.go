@@ -1,6 +1,6 @@
 package mocktest
 
-import "github.com/chubaofs/chubaofs/proto"
+import "github.com/cubefs/cubefs/proto"
 
 type MockDataPartition struct {
 	PartitionID      uint64

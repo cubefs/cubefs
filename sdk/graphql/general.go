@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/master"
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/master"
+	"github.com/cubefs/cubefs/proto"
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/graphql/introspection"
 	"io/ioutil"
@@ -406,7 +406,7 @@ func makeSource(name string) {
 	head := `//auto generral by sdk/graphql general.go
 
 import "context"
-import "github.com/chubaofs/chubaofs/sdk/graphql/client"
+import "github.com/cubefs/cubefs/sdk/graphql/client"
 `
 
 	if hasTime {

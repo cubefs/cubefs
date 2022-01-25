@@ -20,12 +20,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/cubefs/cubefs/util/exporter"
 
-	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/cubefs/cubefs/sdk/master"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (

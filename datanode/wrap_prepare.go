@@ -20,9 +20,9 @@ import (
 	"hash/crc32"
 	"sync/atomic"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/repl"
-	"github.com/chubaofs/chubaofs/storage"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/repl"
+	"github.com/cubefs/cubefs/storage"
 )
 
 func (s *DataNode) Prepare(p *repl.Packet) (err error) {

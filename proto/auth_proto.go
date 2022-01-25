@@ -25,9 +25,9 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/caps"
-	"github.com/chubaofs/chubaofs/util/cryptoutil"
-	"github.com/chubaofs/chubaofs/util/keystore"
+	"github.com/cubefs/cubefs/util/caps"
+	"github.com/cubefs/cubefs/util/cryptoutil"
+	"github.com/cubefs/cubefs/util/keystore"
 )
 
 // ServiceID defines the type of tickets
