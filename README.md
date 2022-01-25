@@ -1,32 +1,32 @@
-# ChubaoFS
+# CubeFS
 
 [![CNCF Status](https://img.shields.io/badge/cncf%20status-sandbox-blue.svg)](https://www.cncf.io/sandbox-projects)
-[![Build Status](https://github.com/chubaofs/chubaofs/actions/workflows/ci.yml/badge.svg)](https://github.com/chubaofs/chubaofs/actions/workflows/ci.yml)
-[![LICENSE](https://img.shields.io/github/license/chubaofs/chubaofs.svg)](https://github.com/chubaofs/chubaofs/blob/master/LICENSE)
+[![Build Status](https://github.com/cubefs/cubefs/actions/workflows/ci.yml/badge.svg)](https://github.com/cubefs/cubefs/actions/workflows/ci.yml)
+[![LICENSE](https://img.shields.io/github/license/cubefs/cubefs.svg)](https://github.com/cubefs/cubefs/blob/master/LICENSE)
 [![Language](https://img.shields.io/badge/Language-Go-blue.svg)](https://golang.org/)
-[![Go Report Card](https://goreportcard.com/badge/github.com/chubaofs/chubaofs)](https://goreportcard.com/report/github.com/chubaofs/chubaofs)
-[![Docs](https://readthedocs.org/projects/chubaofs/badge/?version=latest)](https://chubaofs.readthedocs.io/en/latest/?badge=latest)
+[![Go Report Card](https://goreportcard.com/badge/github.com/cubefs/cubefs)](https://goreportcard.com/report/github.com/cubefs/cubefs)
+[![Docs](https://readthedocs.org/projects/cubefs/badge/?version=latest)](https://cubefs.readthedocs.io/en/latest/?badge=latest)
 [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs?ref=badge_shield)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/2761/badge)](https://bestpractices.coreinfrastructure.org/projects/2761)
 
 |<img src="https://user-images.githubusercontent.com/5708406/91202310-31eaab80-e734-11ea-84fc-c1b1882ae71c.png" height="24"/>&nbsp;Community Meeting|
 |------------------|
-| The ChubaoFS Project holds bi-weekly community online meeting. To join or watch previous meeting notes and recordings, please see [meeting schedule](https://github.com/chubaofs/community/wiki/Meeting-Schedule) and [meeting minutes](https://github.com/chubaofs/community/wiki/Meeting-Agenda-and-Notes). |
+| The CubeFS Project holds bi-weekly community online meeting. To join or watch previous meeting notes and recordings, please see [meeting schedule](https://github.com/cubefs/community/wiki/Meeting-Schedule) and [meeting minutes](https://github.com/cubefs/community/wiki/Meeting-Agenda-and-Notes). |
 
 **Note**: The `master` branch may be in an *unstable or even broken state* during development.
-Please use [releases](https://github.com/chubaofs/chubaofs/releases) instead of the `master` branch in order to get a stable set of binaries.
+Please use [releases](https://github.com/cubefs/cubefs/releases) instead of the `master` branch in order to get a stable set of binaries.
 
-<div width="100%" style="text-align:center;"><img alt="ChubaoFS" src="https://user-images.githubusercontent.com/5708406/83598049-556de200-a59b-11ea-9a31-6daa1439f81a.png" height="200"/></div>
+<div width="100%" style="text-align:center;"><img alt="CubeFS" src="https://user-images.githubusercontent.com/5708406/83598049-556de200-a59b-11ea-9a31-6daa1439f81a.png" height="200"/></div>
 
 ## Contents
 
 - [Overview](#overview)
 - [Documents](#documents)
 - [Benchmark](#benchmark)
-- [Build ChubaoFS](#build-chubaofs)
-- [Yum Tools to Run a ChubaoFS Cluster for CentOS 7+](#yum-tools-to-run-a-chubaofs-cluster-for-centos-7)
-- [Run a ChubaoFS Cluster within Docker](#run-a-chubaofs-cluster-within-docker)
-- [Helm chart to Run a ChubaoFS Cluster in Kubernetes](#helm-chart-to-run-a-chubaofs-cluster-in-kubernetes)
+- [Build CubeFS](#build-cubefs)
+- [Yum Tools to Run a CubeFS Cluster for CentOS 7+](#yum-tools-to-run-a-cubefs-cluster-for-centos-7)
+- [Run a CubeFS Cluster within Docker](#run-a-cubefs-cluster-within-docker)
+- [Helm chart to Run a CubeFS Cluster in Kubernetes](#helm-chart-to-run-a-cubefs-cluster-in-kubernetes)
 - [Reference](#reference)
 - [Contributing](#contributing)
 - [Reporting a security vulnerability](#reporting-a-security-vulnerability)
@@ -36,12 +36,12 @@ Please use [releases](https://github.com/chubaofs/chubaofs/releases) instead of 
 
 ## Overview
 
-ChubaoFS (储宝文件系统 in Chinese) is a cloud-native storage platform that provides both POSIX-compliant and S3-compatible interfaces. It is hosted by the [Cloud Native Computing Foundation](https://cncf.io) (CNCF) as a [sandbox](https://www.cncf.io/sandbox-projects/) project.
+CubeFS (储宝文件系统 in Chinese) is a cloud-native storage platform that provides both POSIX-compliant and S3-compatible interfaces. It is hosted by the [Cloud Native Computing Foundation](https://cncf.io) (CNCF) as a [sandbox](https://www.cncf.io/sandbox-projects/) project.
 
-ChubaoFS has been commonly used as the underlying storage infrastructure for online applications, database or data processing services and machine learning jobs orchestrated by Kubernetes. 
+CubeFS has been commonly used as the underlying storage infrastructure for online applications, database or data processing services and machine learning jobs orchestrated by Kubernetes. 
 An advantage of doing so is to separate storage from compute - one can scale up or down based on the workload and independent of the other, providing total flexibility in matching resources to the actual storage and compute capacity required at any given time.
 
-Some key features of ChubaoFS include:
+Some key features of CubeFS include:
 
 - Scale-out metadata management
 
@@ -56,19 +56,19 @@ Some key features of ChubaoFS include:
 - S3-compatible object storage interface
 
 
-We are committed to making ChubaoFS better and more mature. Please stay tuned. 
+We are committed to making CubeFS better and more mature. Please stay tuned. 
 
 ## Documents
 
-English version: https://chubaofs.readthedocs.io/en/latest/
+English version: https://cubefs.readthedocs.io/en/latest/
 
-Chinese version: https://chubaofs.readthedocs.io/zh_CN/latest/
+Chinese version: https://cubefs.readthedocs.io/zh_CN/latest/
 
 ## Benchmark
 
 Small file operation performance and scalability benchmark test by [mdtest](https://github.com/LLNL/mdtest).
 
-<img src="https://raw.githubusercontent.com/chubaofs/chubaofs/master/docs/source/pic/cfs-small-file-benchmark.png" width="600" align=center/>
+<img src="https://raw.githubusercontent.com/cubefs/cubefs/master/docs/source/pic/cfs-small-file-benchmark.png" width="600" align=center/>
 
 |File Size (KB)	|  1	|  2	|  4	|  8	|   16  |   32  |   64  |  128 |
 |:-|:-|:-|:-|:-|:-|:-|:-|:-|
@@ -77,23 +77,23 @@ Small file operation performance and scalability benchmark test by [mdtest](http
 |Removal (TPS)	|87648	|84651	|83532	|79279	|85498	|86523	|80946	|84441 |
 |Stat (TPS)	    |231961	|263270	|264207	|252309	|240244	|244906	|273576	|242930|
 
-Refer to [chubaofs.readthedocs.io](https://chubaofs.readthedocs.io/en/latest/evaluation.html) for performance and scalability of `IO` and `Metadata`.
+Refer to [cubefs.readthedocs.io](https://cubefs.readthedocs.io/en/latest/evaluation.html) for performance and scalability of `IO` and `Metadata`.
 
-## Build ChubaoFS
+## Build CubeFS
 
 ### Build for x86
 ```
-$ git clone http://github.com/chubaofs/chubaofs.git
-$ cd chubaofs
+$ git clone http://github.com/cubefs/cubefs.git
+$ cd cubefs
 $ make
 ```
 ### Build for arm64 
 
-For example,the current chubaofs directory is /root/arm64/chubaofs,build.sh will auto download  follow source codes to vendor/dep directory :
+For example,the current cubefs directory is /root/arm64/cubefs,build.sh will auto download  follow source codes to vendor/dep directory :
 bzip2-1.0.6  lz4-1.9.2  zlib-1.2.11  zstd-1.4.5
   gcc version as  v4 or v5:
     ```
-    cd /root/arm64/chubaofs
+    cd /root/arm64/cubefs
     export CPUTYPE=arm64_gcc4 && bash ./build.sh
     ```
 
@@ -106,26 +106,26 @@ bzip2-1.0.6  lz4-1.9.2  zlib-1.2.11  zstd-1.4.5
 gcc version as  v4, support Ububtu 14.04 and up version,CentOS7.6 and up version. Check libstdc++.so.6 version must more than `GLIBCXX_3.4.19',if fail please update libstdc++. 
 
 ```
-cd /root/arm64/chubaofs
-docker build --rm --tag arm64_gcc4_golang1_13_ubuntu_14_04_chubaofs ./build/compile/arm64/gcc4
+cd /root/arm64/cubefs
+docker build --rm --tag arm64_gcc4_golang1_13_ubuntu_14_04_cubefs ./build/compile/arm64/gcc4
 
 make dist-clean
-docker run  -v /root/arm64/chubaofs:/root/chubaofs arm64_gcc4_golang1_13_ubuntu_14_04_chubaofs /root/buildcfs.sh
+docker run  -v /root/arm64/cubefs:/root/cubefs arm64_gcc4_golang1_13_ubuntu_14_04_cubefs /root/buildcfs.sh
 
 ```
  
 Remove image:
 ```
-docker image remove -f  arm64_gcc4_golang1_13_ubuntu_14_04_chubaofs
+docker image remove -f  arm64_gcc4_golang1_13_ubuntu_14_04_cubefs
 ```
 
 
-## Yum Tools to Run a ChubaoFS Cluster for CentOS 7+
+## Yum Tools to Run a CubeFS Cluster for CentOS 7+
 
 The list of RPM packages dependencies can be installed with:
 
 ```
-$ yum install http://storage.jd.com/chubaofsrpm/latest/cfs-install-latest-el7.x86_64.rpm
+$ yum install http://storage.jd.com/cubefsrpm/latest/cfs-install-latest-el7.x86_64.rpm
 $ cd /cfs/install
 $ tree -L 2
 .
@@ -142,7 +142,7 @@ $ tree -L 2
     └── metanode.json.j2
 ```
 
-Set parameters of the ChubaoFS cluster in `iplist`. 
+Set parameters of the CubeFS cluster in `iplist`. 
 
 1. `[master]`, `[datanode]`, `[metanode]`, `[monitor]`, `[client]` modules define IP addresses of each role. 
 
@@ -174,9 +174,9 @@ metanode_totalMem = "28589934592"
 ...
 ```
 
-For more configurations please refer to [documentation](https://chubaofs.readthedocs.io/en/latest/user-guide/master.html).
+For more configurations please refer to [documentation](https://cubefs.readthedocs.io/en/latest/user-guide/master.html).
 
-Start the resources of ChubaoFS cluster with script `install.sh`. (make sure the Master is started first)
+Start the resources of CubeFS cluster with script `install.sh`. (make sure the Master is started first)
 
 ```
 $ bash install.sh -h
@@ -191,11 +191,11 @@ $ bash install.sh -r console
 
 Check mount point at `/cfs/mountpoint` on `client` node defined in `iplist`. 
 
-Open [http://[the IP of console system]](https:/github.com/chubaofs/chubaofs) through a browser for web console system(the IP of console system is defined in `iplist`).  In console default user is `root`, password is `ChubaoFSRoot`. In  monitor default user is `admin`,password is `123456`.
+Open [http://[the IP of console system]](https:/github.com/cubefs/cubefs) through a browser for web console system(the IP of console system is defined in `iplist`).  In console default user is `root`, password is `CubeFSRoot`. In  monitor default user is `admin`,password is `123456`.
 
-## Run a ChubaoFS Cluster within Docker
+## Run a CubeFS Cluster within Docker
 
-A helper tool called `run_docker.sh` (under the `docker` directory) has been provided to run ChubaoFS with [docker-compose](https://docs.docker.com/compose/).
+A helper tool called `run_docker.sh` (under the `docker` directory) has been provided to run CubeFS with [docker-compose](https://docs.docker.com/compose/).
 
 ```
 $ docker/run_docker.sh -r -d /data/disk
@@ -206,7 +206,7 @@ Note that **/data/disk** can be any directory but please make sure it has at lea
 To check the mount status, use the `mount` command in the client docker shell:
 
 ```
-$ mount | grep chubaofs
+$ mount | grep cubefs
 ```
 
 To view grafana monitor metrics, open http://127.0.0.1:3000 in browser and login with `admin/123456`.
@@ -226,37 +226,37 @@ For more usage:
 $ docker/run_docker.sh -h
 ```
 
-## Helm chart to Run a ChubaoFS Cluster in Kubernetes 
+## Helm chart to Run a CubeFS Cluster in Kubernetes 
 
-The [chubaofs-helm](https://github.com/chubaofs/chubaofs-helm) repository can help you deploy ChubaoFS cluster quickly in containers orchestrated by kubernetes.
-Kubernetes 1.12+ and Helm 3 are required. chubaofs-helm has already integrated ChubaoFS CSI plugin
+The [cubefs-helm](https://github.com/cubefs/cubefs-helm) repository can help you deploy CubeFS cluster quickly in containers orchestrated by kubernetes.
+Kubernetes 1.12+ and Helm 3 are required. cubefs-helm has already integrated CubeFS CSI plugin
 
-### Download chubaofs-helm
+### Download cubefs-helm
 
 ```
-$ git clone https://github.com/chubaofs/chubaofs-helm
-$ cd chubaofs-helm
+$ git clone https://github.com/cubefs/cubefs-helm
+$ cd cubefs-helm
 ```
 
 ### Copy kubeconfig file
-ChubaoFS CSI driver will use client-go to connect the Kubernetes API Server. First you need to copy the kubeconfig file to `chubaofs-helm/chubaofs/config/` directory, and rename to kubeconfig
+CubeFS CSI driver will use client-go to connect the Kubernetes API Server. First you need to copy the kubeconfig file to `cubefs-helm/cubefs/config/` directory, and rename to kubeconfig
 
 ```
-$ cp ~/.kube/config chubaofs/config/kubeconfig
+$ cp ~/.kube/config cubefs/config/kubeconfig
 ```
 
 ### Create configuration yaml file
 
-Create a `chubaofs.yaml` file, and put it in a user-defined path. Suppose this is where we put it.
+Create a `cubefs.yaml` file, and put it in a user-defined path. Suppose this is where we put it.
 
 ```
-$ cat ~/chubaofs.yaml 
+$ cat ~/cubefs.yaml 
 ```
 
 ``` yaml
 path:
-  data: /chubaofs/data
-  log: /chubaofs/log
+  data: /cubefs/data
+  log: /cubefs/log
 
 datanode:
   disks:
@@ -270,23 +270,23 @@ provisioner:
   kubelet_path: /var/lib/kubelet
 ```
 
-> Note that `chubaofs-helm/chubaofs/values.yaml` shows all the config parameters of ChubaoFS.
+> Note that `cubefs-helm/cubefs/values.yaml` shows all the config parameters of CubeFS.
 > The parameters `path.data` and `path.log` are used to store server data and logs, respectively.
 
 ### Add labels to Kubernetes node
 
-You should tag each Kubernetes node with the appropriate labels accorindly for server node and CSI node of ChubaoFS.
+You should tag each Kubernetes node with the appropriate labels accorindly for server node and CSI node of CubeFS.
 
 ```
-kubectl label node <nodename> chuabaofs-master=enabled
-kubectl label node <nodename> chuabaofs-metanode=enabled
-kubectl label node <nodename> chuabaofs-datanode=enabled
-kubectl label node <nodename> chubaofs-csi-node=enabled
+kubectl label node <nodename> cubefs-master=enabled
+kubectl label node <nodename> cubefs-metanode=enabled
+kubectl label node <nodename> cubefs-datanode=enabled
+kubectl label node <nodename> cubefs-csi-node=enabled
 ```
 
-### Deploy ChubaoFS cluster
+### Deploy CubeFS cluster
 ```
-$ helm install chubaofs ./chubaofs -f ~/chubaofs.yaml
+$ helm install cubefs ./cubefs -f ~/cubefs.yaml
 ```
 
 ## Reference
@@ -309,7 +309,7 @@ See [security disclosure process](security/README.md) for detail.
 - Twitter: [@ChubaoFS](https://twitter.com/ChubaoFS)
 - Mailing list: chubaofs-users@groups.io
 - Slack: [chubaofs.slack.com](https://chubaofs.slack.com/)
-- WeChat: detail see [here](https://github.com/chubaofs/chubaofs/issues/604).
+- WeChat: detail see [here](https://github.com/cubefs/cubefs/issues/604).
 
 ## Partners and Users
 
@@ -317,7 +317,7 @@ For a list of users and success stories see [ADOPTERS.md](ADOPTERS.md).
 
 ## License
 
-ChubaoFS is licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).
+CubeFS is licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).
 For detail see [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs?ref=badge_large)
