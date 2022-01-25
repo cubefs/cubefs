@@ -16,7 +16,6 @@ package metanode
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util"
 	"net"
 	"os"
 	"path"
@@ -24,6 +23,7 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 )
@@ -228,7 +228,6 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 
 	shouldCommit := make([]*Inode, 0, DeleteBatchCount())
 	shouldRePushToFreeList := make([]*Inode, 0)
-	allDeleteExtents := make(map[string]uint64)
 	deleteExtentsByPartition := make(map[uint64][]*proto.ExtentKey)
 	allInodes := make([]*Inode, 0)
 	for _, ino := range inoSlice {
@@ -239,10 +238,6 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		}
 		inode.Extents.Range(func(ek proto.ExtentKey) bool {
 			ext := &ek
-			_, ok := allDeleteExtents[ext.GetExtentKey()]
-			if !ok {
-				allDeleteExtents[ext.GetExtentKey()] = inode.Inode
-			}
 			exts, ok := deleteExtentsByPartition[ext.PartitionId]
 			if !ok {
 				exts = make([]*proto.ExtentKey, 0)

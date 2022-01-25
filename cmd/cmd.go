@@ -17,7 +17,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/errors"
 	syslog "log"
 	"net/http"
 	_ "net/http/pprof"
@@ -28,6 +27,8 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+
+	"github.com/chubaofs/chubaofs/util/errors"
 
 	"github.com/chubaofs/chubaofs/console"
 	"github.com/chubaofs/chubaofs/proto"
@@ -89,9 +90,11 @@ func interceptSignal(s common.Server) {
 	signal.Notify(sigC, syscall.SIGINT, syscall.SIGTERM)
 	syslog.Println("action[interceptSignal] register system signal.")
 	go func() {
-		sig := <-sigC
-		syslog.Printf("action[interceptSignal] received signal: %s.", sig.String())
-		s.Shutdown()
+		for {
+			sig := <-sigC
+			syslog.Printf("action[interceptSignal] received signal: %s. pid %d", sig.String(), os.Getpid())
+			s.Shutdown()
+		}
 	}()
 }
 
@@ -272,6 +275,17 @@ func main() {
 	if err != nil {
 		log.LogFlush()
 		err = errors.NewErrorf("Fatal: failed to start the ChubaoFS %s daemon err %v - ", role, err)
+		syslog.Println(err)
+		daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+
+	syslog.Printf("server start success, pid %d, role %s", os.Getpid(), role)
+
+	err = log.OutputPid(logDir, role)
+	if err != nil {
+		log.LogFlush()
+		err = errors.NewErrorf("Fatal: failed to print pid %s err %v - ", role, err)
 		syslog.Println(err)
 		daemonize.SignalOutcome(err)
 		os.Exit(1)

@@ -16,15 +16,17 @@ package stream
 
 import (
 	"fmt"
-	"golang.org/x/net/context"
 	"hash/crc32"
 	"net"
 	"sync/atomic"
 	"syscall"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data/wrapper"
+	"github.com/chubaofs/chubaofs/storage"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -33,7 +35,7 @@ import (
 const (
 	MaxSelectDataPartitionForWrite = 32
 	MaxNewHandlerRetry             = 3
-	MaxPacketErrorCount            = 32
+	MaxPacketErrorCount            = 128
 	MaxDirtyListLen                = 0
 )
 
@@ -398,7 +400,9 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 		storeMode int
 	)
 
-	if offset+size > s.tinySizeLimit() {
+	// Small files are usually written in a single write, so use tiny extent
+	// store only for the first write operation.
+	if offset > 0 {
 		storeMode = proto.NormalExtentType
 	} else {
 		storeMode = proto.TinyExtentType
@@ -406,10 +410,29 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 
 	log.LogDebugf("doWrite enter: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
 
+	if s.handler == nil && storeMode == proto.NormalExtentType {
+		if currentEK := s.extents.GetEnd(uint64(offset)); currentEK != nil && !storage.IsTinyExtent(currentEK.ExtentId) {
+			handler := NewExtentHandler(s, int(currentEK.FileOffset), storeMode, int(currentEK.Size))
+			handler.key = &proto.ExtentKey{
+				FileOffset:   currentEK.FileOffset,
+				PartitionId:  currentEK.PartitionId,
+				ExtentId:     currentEK.ExtentId,
+				ExtentOffset: currentEK.ExtentOffset,
+				Size:         currentEK.Size,
+			}
+			s.handler = handler
+			s.dirty = false
+		}
+	}
+
 	for i := 0; i < MaxNewHandlerRetry; i++ {
 		if s.handler == nil {
-			s.handler = NewExtentHandler(s, offset, storeMode)
+			s.handler = NewExtentHandler(s, offset, storeMode, 0)
 			s.dirty = false
+		} else if s.handler.storeMode != storeMode {
+			// store mode changed, so close open handler and start a new one
+			s.closeOpenHandler()
+			continue
 		}
 
 		ek, err = s.handler.write(data, offset, size, direct)
@@ -421,6 +444,8 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 			break
 		}
 
+		log.LogDebugf("doWrite handler write failed so close open handler: ino(%v) offset(%v) size(%v) storeMode(%v) err(%v)",
+			s.inode, offset, size, storeMode, err)
 		s.closeOpenHandler()
 	}
 
@@ -500,7 +525,9 @@ func (s *Streamer) traverse() (err error) {
 				log.LogDebugf("Streamer traverse skipped: traversed(%v) eh(%v)", s.traversed, eh)
 				continue
 			}
-			eh.setClosed()
+			if err = eh.flush(); err != nil {
+				log.LogWarnf("Streamer traverse flush: eh(%v) err(%v)", eh, err)
+			}
 		}
 		log.LogDebugf("Streamer traverse end: eh(%v)", eh)
 	}
@@ -508,15 +535,23 @@ func (s *Streamer) traverse() (err error) {
 }
 
 func (s *Streamer) closeOpenHandler() {
-	if s.handler != nil {
-		s.handler.setClosed()
+	// just in case to avoid infinite loop
+	var cnt int = 2 * MaxPacketErrorCount
+
+	handler := s.handler
+	for handler != nil && cnt >= 0 {
+		handler.setClosed()
 		if s.dirtylist.Len() < MaxDirtyListLen {
-			s.handler.flushPacket()
+			handler.flushPacket()
 		} else {
 			// TODO unhandled error
-			s.handler.flush()
+			handler.flush()
 		}
+		handler = handler.recoverHandler
+		cnt--
+	}
 
+	if s.handler != nil {
 		if !s.dirty {
 			// in case the current handler is not on the dirty list and will not get cleaned up
 			// TODO unhandled error
@@ -584,6 +619,7 @@ func (s *Streamer) truncate(size int) error {
 		return nil
 	}
 
+	s.extents.TruncDiscard(uint64(size))
 	return s.GetExtents()
 }
 

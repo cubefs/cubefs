@@ -108,12 +108,13 @@ type ExtentHandler struct {
 }
 
 // NewExtentHandler returns a new extent handler.
-func NewExtentHandler(stream *Streamer, offset int, storeMode int) *ExtentHandler {
+func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *ExtentHandler {
 	eh := &ExtentHandler{
 		stream:       stream,
 		id:           GetExtentHandlerID(),
 		inode:        stream.inode,
 		fileOffset:   offset,
+		size:         size,
 		storeMode:    storeMode,
 		empty:        make(chan struct{}, 1024),
 		request:      make(chan *Packet, 1024),
@@ -130,7 +131,8 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int) *ExtentHandle
 
 // String returns the string format of the extent handler.
 func (eh *ExtentHandler) String() string {
-	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)StoreMode(%v)}", eh.id, eh.inode, eh.fileOffset, eh.storeMode)
+	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)StoreMode(%v)Status(%v)}",
+		eh.id, eh.inode, eh.fileOffset, eh.storeMode, eh.status)
 }
 
 func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
@@ -138,7 +140,7 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 
 	status := eh.getStatus()
 	if status >= ExtentStatusClosed {
-		err = errors.New(fmt.Sprintf("ExtentHandler Write: Full or Recover, status(%v)", status))
+		err = errors.NewErrorf("ExtentHandler Write: Full or Recover eh(%v) key(%v)", eh, eh.key)
 		return
 	}
 
@@ -154,8 +156,7 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 	// In this case, the caller should try to create a new extent handler.
 	if eh.fileOffset+eh.size != offset || eh.size+size > util.ExtentSize ||
 		(eh.storeMode == proto.TinyExtentType && eh.size+size > blksize) {
-
-		err = errors.New("ExtentHandler: full or incontinuous")
+		err = errors.NewErrorf("ExtentHandler Write: full or incontinuous eh(%v) key(%v)", eh, eh.key)
 		return
 	}
 
@@ -214,9 +215,15 @@ func (eh *ExtentHandler) sender() {
 				if err = eh.allocateExtent(); err != nil {
 					eh.setClosed()
 					eh.setRecovery()
-					eh.setError()
+					// if dp is not specified and yet we failed, then error out.
+					// otherwise, just try to recover.
+					if eh.key == nil {
+						eh.setError()
+						log.LogErrorf("sender: eh(%v) err(%v)", eh, err)
+					} else {
+						log.LogWarnf("sender: eh(%v) err(%v)", eh, err)
+					}
 					eh.reply <- packet
-					log.LogErrorf("sender: eh(%v) err(%v)", eh, err)
 					continue
 				}
 			}
@@ -466,7 +473,7 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 		// Always use normal extent store mode for recovery.
 		// Because tiny extent files are limited, tiny store
 		// failures might due to lack of tiny extent file.
-		handler = NewExtentHandler(eh.stream, int(packet.KernelOffset), proto.NormalExtentType)
+		handler = NewExtentHandler(eh.stream, int(packet.KernelOffset), proto.NormalExtentType, 0)
 		handler.setClosed()
 	}
 	handler.pushToRequest(packet)
@@ -497,21 +504,30 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 	exclude := make(map[string]struct{})
 
 	for i := 0; i < MaxSelectDataPartitionForWrite; i++ {
-		if dp, err = eh.stream.client.dataWrapper.GetDataPartitionForWrite(exclude); err != nil {
-			log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v) exclude(%v)", eh, exclude)
-			continue
-		}
+		if eh.key == nil {
+			if dp, err = eh.stream.client.dataWrapper.GetDataPartitionForWrite(exclude); err != nil {
+				log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v) exclude(%v), clear exclude and try again!", eh, exclude)
+				exclude = make(map[string]struct{})
+				continue
+			}
 
-		extID = 0
-		if eh.storeMode == proto.NormalExtentType {
-			extID, err = eh.createExtent(dp)
-		}
-		if err != nil {
-			log.LogWarnf("allocateExtent: delete dp[%v] caused by create extent failed, eh(%v) err(%v) exclude(%v)",
-				dp, eh, err, exclude)
-			eh.stream.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
-			dp.CheckAllHostsIsAvail(exclude)
-			continue
+			extID = 0
+			if eh.storeMode == proto.NormalExtentType {
+				extID, err = eh.createExtent(dp)
+			}
+			if err != nil {
+				log.LogWarnf("allocateExtent: exclude dp[%v] for write caused by create extent failed, eh(%v) err(%v) exclude(%v)",
+					dp, eh, err, exclude)
+				eh.stream.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
+				dp.CheckAllHostsIsAvail(exclude)
+				continue
+			}
+		} else {
+			if dp, err = eh.stream.client.dataWrapper.GetDataPartition(eh.key.PartitionId); err != nil {
+				log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v)", eh)
+				break
+			}
+			extID = int(eh.key.ExtentId)
 		}
 
 		if conn, err = StreamConnPool.GetConnect(dp.Hosts[0]); err != nil {
@@ -519,6 +535,9 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 				eh, err, dp, exclude)
 			// If storeMode is tinyExtentType and can't create connection, we also check host status.
 			dp.CheckAllHostsIsAvail(exclude)
+			if eh.key != nil {
+				break
+			}
 			continue
 		}
 

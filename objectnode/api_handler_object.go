@@ -33,7 +33,7 @@ import (
 )
 
 var (
-	rangeRegexp = regexp.MustCompile("^bytes=(\\d)+-(\\d)*$")
+	rangeRegexp = regexp.MustCompile("^bytes=(\\d)*-(\\d)*$")
 )
 
 // Get object
@@ -75,48 +75,65 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var isRangeRead bool
 	var partSize uint64
 	var partCount uint64
-	if len(rangeOpt) > 0 && rangeRegexp.MatchString(rangeOpt) {
-
-		var hyphenIndex = strings.Index(rangeOpt, "-")
-		if hyphenIndex < 0 {
-			errorCode = InvalidArgument
+	revRange := false
+	if len(rangeOpt) > 0 {
+		if !rangeRegexp.MatchString(rangeOpt) {
+			log.LogWarnf("getObjectHandler: getObject fail: requestID(%v) invalid rangeOpt(%v)",
+				GetRequestID(r), rangeOpt)
+			errorCode = InvalidRange
 			return
-		}
-
-		var lowerPart = rangeOpt[len("bytes="):hyphenIndex]
-		var upperPart = ""
-		if hyphenIndex+1 < len(rangeOpt) {
-			upperPart = rangeOpt[hyphenIndex+1:]
-		}
-
-		if len(lowerPart) > 0 {
-			if rangeLower, err = strconv.ParseUint(lowerPart, 10, 64); err != nil {
-				log.LogErrorf("getObjectHandler: parse range lower fail: requestID(%v) rangeOpt(%v) err(%v)",
-					GetRequestID(r), rangeOpt, err)
-				ServeInternalStaticErrorResponse(w, r)
+		} else {
+			var hyphenIndex = strings.Index(rangeOpt, "-")
+			if hyphenIndex < 0 {
+				log.LogWarnf("getObjectHandler: getObject fail: requestID(%v) invalid rangeOpt(%v)",
+					GetRequestID(r), rangeOpt)
+				errorCode = InvalidRange
 				return
 			}
-		}
-		if len(upperPart) > 0 {
-			if rangeUpper, err = strconv.ParseUint(upperPart, 10, 64); err != nil {
-				log.LogErrorf("getObjectHandler: parse range upper fail: requestID(%v) rangeOpt(%v) err(%v)",
-					GetRequestID(r), rangeOpt, err)
-				ServeInternalStaticErrorResponse(w, r)
-				return
-			}
-		}
-		if rangeUpper > 0 && rangeUpper < rangeLower {
-			// upper enabled and lower than lower side
-			if err = InvalidArgument.ServeResponse(w, r); err != nil {
-				log.LogErrorf("getObjectHandler: serve response fail: requestID(%v) err(%v)",
-					GetRequestID(r), err)
-				return
-			}
-		}
 
-		isRangeRead = true
-		log.LogDebugf("getObjectHandler: parse range option: requestID(%v) rangeOpt(%v) rangeLower(%v) rangeUpper(%v)",
-			GetRequestID(r), rangeOpt, rangeLower, rangeUpper)
+			var lowerPart = rangeOpt[len("bytes="):hyphenIndex]
+			var upperPart = ""
+			if hyphenIndex+1 < len(rangeOpt) {
+				// bytes=-5
+				if hyphenIndex == len("bytes=") { //suffix range opt
+					revRange = true
+					rangeUpper = 1<<64 - 1
+					lowerPart = rangeOpt[hyphenIndex+1:]
+				} else { // bytes=1-10
+					upperPart = rangeOpt[hyphenIndex+1:]
+				}
+			} else if hyphenIndex+1 == len(rangeOpt) { // bytes=1-
+				rangeUpper = 1<<64 - 1
+			}
+
+			if len(lowerPart) > 0 {
+				if rangeLower, err = strconv.ParseUint(lowerPart, 10, 64); err != nil {
+					log.LogErrorf("getObjectHandler: parse range lower fail: requestID(%v) rangeOpt(%v) err(%v)",
+						GetRequestID(r), rangeOpt, err)
+					ServeInternalStaticErrorResponse(w, r)
+					return
+				}
+			}
+			if len(upperPart) > 0 {
+				if rangeUpper, err = strconv.ParseUint(upperPart, 10, 64); err != nil {
+					log.LogErrorf("getObjectHandler: parse range upper fail: requestID(%v) rangeOpt(%v) err(%v)",
+						GetRequestID(r), rangeOpt, err)
+					ServeInternalStaticErrorResponse(w, r)
+					return
+				}
+			}
+			if rangeUpper < rangeLower {
+				// upper enabled and lower than lower side
+				log.LogWarnf("getObjectHandler: getObject fail: requestID(%v) invalid rangeOpt(%v)",
+					GetRequestID(r), rangeOpt)
+				errorCode = InvalidRange
+				return
+			}
+
+			isRangeRead = true
+			log.LogDebugf("getObjectHandler: parse range option: requestID(%v) rangeOpt(%v) rangeLower(%v) rangeUpper(%v)",
+				GetRequestID(r), rangeOpt, rangeLower, rangeUpper)
+		}
 	}
 
 	responseCacheControl := r.URL.Query().Get(ParamResponseCacheControl)
@@ -208,12 +225,16 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// validate and fix range
 	if isRangeRead && rangeUpper > uint64(fileInfo.Size)-1 {
 		rangeUpper = uint64(fileInfo.Size) - 1
+		if revRange && rangeLower > 0 {
+			rangeLower = rangeUpper + 1 - rangeLower
+		}
 	}
 
 	// compute content length
 	var contentLength = uint64(fileInfo.Size)
 	if isRangeRead {
 		contentLength = rangeUpper - rangeLower + 1
+		w.WriteHeader(http.StatusPartialContent)
 	}
 
 	// get object tagging size
@@ -308,11 +329,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var offset = rangeLower
 	var size = uint64(fileInfo.Size)
 	if isRangeRead || len(partNumber) > 0 {
-		if rangeUpper == 0 {
-			size = uint64(fileInfo.Size) - rangeLower
-		} else {
-			size = rangeUpper - rangeLower + 1
-		}
+		size = rangeUpper - rangeLower + 1
 	}
 	err = vol.ReadFile(param.Object(), w, offset, size)
 	if err == syscall.ENOENT {

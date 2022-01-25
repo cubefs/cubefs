@@ -1,8 +1,188 @@
+## Release v2.5.0 - 2022/01/06
+
+### **UPGRAGDE NOTICE**
+If your ChubaoFS version is v2.3.x or before, please refer to the UPGRADE NOTICE in v2.4.0 for upgrading steps. And also please make sure that your fuse client or objectnode version is equal to or older than the servers, i.e. master, metanode and datanode. In another word, newer versioned client can not be used in a cluster with older versioned servers.
+
+### **Main Feature**
+* `fuse client`:support auto push data to push gateway
+* `master`:reduce flow from interface of "client/partiton" that follower support it and will not redirect to leader
+* `raft`:the receive buffer channel size of raft support to be configurable
+* `metanode`:implement the content summary
+* `master`:domain for cross zone
+
+### **Bugfix**
+* `fuse client`:fix: currAddr of stream conn is empty
+* `fuse client`:fix: update extent cache no matter whether eh is dirty or not
+* `metanode`:when kill metanode(mean while mp stoped firstly) and if apply snapshot happen at the same time, snapshot will be block, causeing metanode can't be killed
+* `metanode`:meta node migration be recorded in badmetapartitions concurrently without lock which lead to mp id miss
+* `metanode`:return file nodes for statfs
+* `metanode`:meta not use warn when consulMeta not set
+* `metanode`:makes AppendExtentKeyWithCheck request idempotent
+* `fuse client`:push addr shadowed if export port is not set
+* `objectnode`:readdir gets insufficient dentries if prefix larger than marker
+* `raft`:remove redundant memcopy when reading raft snapshot
+* `raft`start tcp listen before starting raft
+* ` ltp test`:broken test case ftest01，update and unlock ltp test cases
+* ` ltp test`:fix ltptest ci bug
+* `docker`:finstall killall command in the docker image
+* `cli`:fix cli tool typo
+
+### **Enhance**
+* `master`: support disk, datanode, metanode decommission and assign target node
+* `master`:return response cache directly, not copy again
+* `master`:add vol usedRatio warn log when usage > 90%
+* `master`:add master metrics vol_meta_count to export vol dp/mp/inode/dentry
+* `master`:del replica with force if decommission hang
+* `metanode`:add log for loading meta partitions
+* `fuse client`:increase client retry times to avoid mp raft election timeout.
+* `grafna`: change grafana volume used size rate from rate to deriv
+* `grafna`:support push monitor data to gateway
+* `objectnode`: add subdir authorized check for objectnode
+* `objectnode`: tracking objectnode modification for cfs-server
+* `raft`:check nil when get leader term info
+* `raft`: check size when read data from heartbeat port
+* `raft`: add getRaftStatus for metanode
+* `cli`:update gitlab-ci
+* `cli`:Enhancement: add ci check for ltptest result
+* `cli`:enhance: upload docker_data when ci tests finish
+* `cli`:Create and Update ci.yml
+* `style`:rename cfs to cbfs & optimize the libsdk module
+* `docker`:change: use ghcr instead of dockerhub
+* `build`: add version information and rules for building fsck
+* `build`:change: update build status badge
+
+### **New feature brief introduction**
+
+### **Fault domain(Failure domain)**
+
+**1. Purpose**
+  In the cross zone scenario, the reliability need to be improved. Compared with the 2.5 version before, the number of copysets in probability can be reduced. The key point is to use fault domains to group nodesets between multiple zones.
+
+* Reliable papers
+https://www.usenix.org/conference/atc13/technical-sessions/presentation/cidon
+
+* Chinese can refer to
+https://zhuanlan.zhihu.com/p/28417779
+
+**2. configuration** 
+
+**1) Master**
+
+* Config file：master.json
+   Enable faultDomain set item "faultDomain": true
+* Zone count to build domain
+  faultDomainGrpBatchCnt，default count:3，can also set 2 or 1
+    
+  If zone is unavaliable caused by network partition interruption，create nodeset group according to usable zone
+Set “faultDomainBuildAsPossible”  true, default is false
+
+  The distribution of nodesets under the number of different faultDomainGrpBatchCnt
+  3 zone（1 nodeset per zone）
+  2 zone（2 nodesets zone，1 nodeset zone，Take the size of the space as the weight, and build 2 nodeset with the larger space remaining）
+  1 zone（3 nodeset in 1 zone）
+
+* Ratio
+  **1) The use space threshold of the non-fault domain（origin zone）**
+  After the upgrade, the zone used by the previous volume can be expanded, or operated and maintained in the previous way, or the space of 
+  the fault domain can be used, but the original space usage ratio needs to reach a threshold, that is, the current configuration item
+  The proportion of the overall space used by meta or data
+  Default：0.90
+  UpdateInterface：
+      AdminUpdateZoneExcludeRatio   = "/admin/updateZoneExcludeRatio"
+ 
+  **2) the use space threshold of the nodeset group in the domain**
+  Nodeset group will not be used in dp or mp allocation
+  default：0.75
+  Update interface：
+  AdminUpdateDataUseRatio   = "/admin/updateDomainDataRatio"
+
+**2) Datanode && metanode**
+
+  After the fault domain is enabled, a minimum configuration of the fault domain is constructed under the default configuration:
+  Each zone contains 1 datanode and 1 metanode, and the zone name needs to be specified in the configuration file
+  There are 3 datanodes and 3 metanodes in 3 zones
+
+  For example, three datanodes (metanode) are configured separately:
+  "zoneName": "z1",
+  "zoneName": "z2",
+  "zoneName": "z3",
+  Start after configuration, the master will build a nodeset for z1, z2, and z3, and component a nodesetgrp
+
+**3.  Note**
+**1) After the fault domain is enabled, all devices in the new zone will join the fault domain**
+**2) The created volume will preferentially select the resources of the original zone**
+**3) Need add configuration items to use domain resources when creating a new volume according to the table below. By default, the original  zone resources are used first if it’s avaliable**
+
+| Cluster:faultDomain | Vol:crossZone | Vol:defaultPriority | Rules for volume to use domain |
+| ------ | ------ | ------ |------ |
+| N | N/A | N/A | Do not support domain |
+| Y | N | N/A | Write origin resources first before fault domain until origin reach threshold |
+| Y | Y |  N | Write fault domain only |
+| Y | Y |  Y | Write origin resources first before fault domain until origin reach threshold |
+
+Note: the fault domain is designed for cross zone by default. The fault domain of a single zone is considered as a special case of cross zone, and the options are consistent
+
+example :` curl "http://10.177.200.119:17010/admin/createVol?name=vol_cross5&capacity=1000&owner=cfs&crossZone=true&defaultPriority=true"|jq .`
+
+### **Content Summary**
+
+**1. Purpose**
+In order to query the content summary information of a directory efficiently, e.g. total file size, total files and total directories, v2.5 stores such information as the parent directory’s xattr. 
+
+The parent directory stores the files, directories and total file size of the current directory. Then only need to make recursive of the sub directories, and accumulate the information stored by the directories to query the content summary information of a directory.
+
+**2. Configuration**
+  Client config file: fuse.json
+  **1) Enable XAttr**
+    ”enableXattr”:”true”
+  **2) Enable Summary**
+    ”enableSummary”:”true”
+  Both of xattr and summay have to be set if you want to mount a volume to the local disk. 
+  Set summary is enough if you want to access the volume via libsdk.so.
+
+**3. How to use**
+  There are two different ways to get the content summary of a directory.
+  **1) Fuse mount**
+    getfattr -n DirStat yourDirPath
+   getfattr can be installed by: yum install attr or apt install attr
+  **2) libsdk.so**
+    cfs_getsummary (libsdk/libsdk.go)
+
+  **4. Note**
+  1)The incremental files’ summary information will be held by their parent directories. But the old files will not. Use cfs_refreshsummary 
+    (libsdk/libsdk.go) interface to rebuild the content summary information.
+  2)The files, directories and total file size are updated asynchronously in the background. Users are not aware of these operations, but it does 
+    increase the requests to meta servers (usually doubled). You are recommended to evaluate the impact to your cluster before using this 
+    feature.
+
+## Release v2.4.1 - 2021/12/31
+
+### _**UPGRAGDE NOTICE**_
+
+If your ChubaoFS version is v2.3.x or before, please refer to the UPGRADE NOTICE in v2.4.0 for upgrading steps. And also please make sure that your fuse client or objectnode version is equal to or older than the servers, i.e. master, metanode and datanode. In another word, newer versioned client can not be used in a cluster with older versioned servers.
+
+### Feature
+
+* `meta&object` introduce ReadDirLimit interface to retrieve partial results [#1234](https://github.com/chubaofs/chubaofs/pull/1234)
+* `fuse client` use ReadDirLimit in fuse client [#1244](https://github.com/chubaofs/chubaofs/pull/1244)
+
+### Bugfix
+
+* `sdk` makes AppendExtentKeyWithCheck request idempotent [#1224](https://github.com/chubaofs/chubaofs/pull/1224)
+* `meta` start tcp listen before starting raft [1256](https://github.com/chubaofs/chubaofs/pull/1256)
+* `raft` remove redundant memcopy when reading raft snapshot to avoid snapshot hanging [1264](https://github.com/chubaofs/chubaofs/pull/1264)
+* `object` handling range read request in a behavior compatible with S3 [#1286](https://github.com/chubaofs/chubaofs/pull/1286) [#1298](https://github.com/chubaofs/chubaofs/pull/1298)
+
+### Enhance
+
+* `sdk` add version in the http requests issued to master to collect client info [1262](https://github.com/chubaofs/chubaofs/pull/1262)
+* `sdk` mitigate the pain of extents fragmentation [1282](https://github.com/chubaofs/chubaofs/pull/1282)
+
 ## Release v2.4.0 - 2021/05/14
 
 ### _**UPGRAGDE NOTICE**_
 
-if your ChuBaoFS version is v2.3.* or before, and need to upgrade to v2.4.* , you must follow these upgrade steps:
+If your ChuBaoFS version is v2.3.x or before, and need to upgrade to v2.4.x , please follow the following upgrade steps:
 
 1. first of all, firewall open two more port (17710 & 17810) in your machine to support tcp multiplexing；
 

@@ -43,6 +43,9 @@ type Packet struct {
 	TpObject        *exporter.TimePointCount
 	NeedReply       bool
 	OrgBuffer       []byte
+
+	// used locally
+	shallDegrade bool
 }
 
 type FollowerPacket struct {
@@ -100,7 +103,7 @@ func (p *Packet) AfterTp() (ok bool) {
 }
 
 func (p *Packet) clean() {
-	if p.Data == nil {
+	if p.Data == nil && p.OrgBuffer == nil {
 		return
 	}
 	p.Object = nil
@@ -423,4 +426,16 @@ func (p *Packet) IsRandomWrite() bool {
 
 func (p *Packet) IsSyncWrite() bool {
 	return p.Opcode == proto.OpSyncWrite || p.Opcode == proto.OpSyncRandomWrite
+}
+
+func (p *Packet) SetDegrade() {
+	p.shallDegrade = true
+}
+
+func (p *Packet) UnsetDegrade() {
+	p.shallDegrade = false
+}
+
+func (p *Packet) ShallDegrade() bool {
+	return p.shallDegrade
 }
