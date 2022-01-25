@@ -16,7 +16,7 @@
 **Note**: The `master` branch may be in an *unstable or even broken state* during development.
 Please use [releases](https://github.com/cubefs/cubefs/releases) instead of the `master` branch in order to get a stable set of binaries.
 
-<div width="100%" style="text-align:center;"><img alt="CubeFS" src="https://user-images.githubusercontent.com/5708406/83598049-556de200-a59b-11ea-9a31-6daa1439f81a.png" height="200"/></div>
+<div width="100%" style="text-align:center;"><img alt="CubeFS" src="https://user-images.githubusercontent.com/12113219/150923746-d09409fc-78ca-42cb-a467-b356c3ef9f61.png" height="200"/></div>
 
 ## Contents
 
@@ -78,6 +78,12 @@ Small file operation performance and scalability benchmark test by [mdtest](http
 |Stat (TPS)	    |231961	|263270	|264207	|252309	|240244	|244906	|273576	|242930|
 
 Refer to [cubefs.readthedocs.io](https://cubefs.readthedocs.io/en/latest/evaluation.html) for performance and scalability of `IO` and `Metadata`.
+
+## Build CubeFS
+
+Prerequisite(except version 3.0-beta):
+* Go version `>=1.16`
+* `export GO111MODULE=off`
 
 ## Build CubeFS
 
