@@ -9,7 +9,7 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketCors.html

@@ -28,12 +28,12 @@ import (
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/data/stream"
-	"github.com/chubaofs/chubaofs/sdk/meta"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/ump"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/stream"
+	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/ump"
 )
 
 // Super defines the struct of a super block.

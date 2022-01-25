@@ -17,7 +17,7 @@ package exporter
 import (
 	"sync"
 
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 )
 

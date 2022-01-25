@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/exporter"
+	"github.com/cubefs/cubefs/util/exporter"
 )
 
 //metrics

@@ -25,7 +25,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 const (

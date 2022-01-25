@@ -17,8 +17,8 @@ package metanode
 import (
 	"strings"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/btree"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/btree"
 )
 
 type DentryResponse struct {

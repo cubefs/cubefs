@@ -19,7 +19,7 @@ import (
 	"encoding/binary"
 	"sync"
 
-	"github.com/chubaofs/chubaofs/util/btree"
+	"github.com/cubefs/cubefs/util/btree"
 )
 
 type Extend struct {

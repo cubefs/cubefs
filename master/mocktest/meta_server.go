@@ -23,9 +23,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util"
 )
 
 type MockMetaServer struct {

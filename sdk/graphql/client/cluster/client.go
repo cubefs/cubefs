@@ -3,7 +3,7 @@ package cluster
 //auto generral by sdk/graphql general.go
 
 import "context"
-import "github.com/chubaofs/chubaofs/sdk/graphql/client"
+import "github.com/cubefs/cubefs/sdk/graphql/client"
 import "time"
 
 type ClusterClient struct {

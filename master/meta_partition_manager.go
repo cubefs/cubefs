@@ -20,7 +20,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 func (c *Cluster) scheduleToLoadMetaPartitions() {
