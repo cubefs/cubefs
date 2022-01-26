@@ -461,3 +461,57 @@ func TestWrite_DataConsistency(t *testing.T) {
 		t.Errorf("close ExtentClient failed: err(%v), vol(%v)", err, ltptestVolume)
 	}
 }
+
+// One client insert ek1 at some position, another client insert ek2 at the same position with ROW.
+// Then ek1 will be replaced by ek2, all following ek insertion of extent1 because of usePreExtentHandler should be rejected.
+func TestStreamer_usePreExtentHandler1(t *testing.T) {
+	testFile := "/cfs/mnt/usePreExtentHandler1"
+	file, err := os.Create(testFile)
+	if err != nil {
+		t.Fatalf("create testFile failed: err(%v), file(%v)", err, testFile)
+	}
+	defer func() {
+		file.Close()
+		os.Remove(testFile)
+	}()
+	_, ec, err := creatHelper(t)
+	fInfo, err := os.Stat(testFile)
+	if err != nil {
+		t.Fatalf("stat file: err(%v) file(%v)", err, testFile)
+	}
+	sysStat := fInfo.Sys().(*syscall.Stat_t)
+
+	streamMap := ec.streamerConcurrentMap.GetMapSegment(sysStat.Ino)
+	streamer := NewStreamer(ec, sysStat.Ino, streamMap)
+	ctx := context.Background()
+	length := 1024
+	data := make([]byte, length)
+	_, _, err = streamer.write(ctx, data, 0, length/2, false, false)
+	if err != nil {
+		t.Fatalf("write failed: err(%v)", err)
+	}
+	streamer.closeOpenHandler(ctx)
+	_, _, err = streamer.write(ctx, data, length/2, length/2, false, false)
+	if err != nil {
+		t.Fatalf("write failed: err(%v)", err)
+	}
+	streamer.closeOpenHandler(ctx)
+
+	_, ec1, err := creatHelper(t)
+	streamMap1 := ec.streamerConcurrentMap.GetMapSegment(sysStat.Ino)
+	streamer1 := NewStreamer(ec1, sysStat.Ino, streamMap1)
+	requests := streamer1.extents.PrepareRequests(0, length, data)
+	_, err = streamer1.doROW(ctx, requests[0], false)
+	if err != nil {
+		t.Fatalf("doROW failed: err(%v)", err)
+	}
+
+	_, _, err = streamer.write(ctx, data, length, length, false, false)
+	if err != nil {
+		t.Fatalf("write failed: err(%v)", err)
+	}
+	err = streamer.flush(ctx)
+	if err == nil {
+		t.Fatalf("usePreExtentHandler should fail when the extent has removed by other clients")
+	}
+}

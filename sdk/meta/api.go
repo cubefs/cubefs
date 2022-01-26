@@ -679,10 +679,10 @@ func (mw *MetaWrapper) InsertExtentKey(ctx context.Context, inode uint64, ek pro
 
 	status, err := mw.insertExtentKey(ctx, mp, inode, ek, isPreExtent)
 	if err != nil || status != statusOK {
-		log.LogWarnf("InsertExtentKey: inode(%v) ek(%v) err(%v) status(%v)", inode, ek, err, status)
+		log.LogWarnf("InsertExtentKey: inode(%v) ek(%v) isPreExtent(%v) err(%v) status(%v)", inode, ek, isPreExtent, err, status)
 		return statusToErrno(status)
 	}
-	log.LogDebugf("InsertExtentKey: ino(%v) ek(%v)", inode, ek)
+	log.LogDebugf("InsertExtentKey: ino(%v) ek(%v) isPreExtent(%v)", inode, ek, isPreExtent)
 	return nil
 
 }

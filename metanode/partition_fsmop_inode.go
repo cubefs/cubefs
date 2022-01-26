@@ -20,10 +20,11 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/log"
 	"io"
 	"sync/atomic"
+
+	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 )
 
 type InodeResponse struct {
@@ -248,7 +249,7 @@ func (mp *metaPartition) fsmAppendExtents(ctx context.Context, ino *Inode) (stat
 		// need check ek exist
 		for _, ek := range eks {
 			if ok, _ := ino2.Extents.HasExtent(ek); !ok {
-				status = proto.OpErr
+				status = proto.OpNotExistErr
 				log.LogWarnf("fsm(%v) AppendExtents pre check failed, inode(%v) ek(insert: %v)",
 					mp.config.PartitionId, ino2.Inode, ek)
 				return
@@ -286,7 +287,7 @@ func (mp *metaPartition) fsmInsertExtents(ctx context.Context, ino *Inode) (stat
 		// need check ek exist
 		for _, ek := range eks {
 			if ok, _ := existIno.Extents.HasExtent(ek); !ok {
-				status = proto.OpErr
+				status = proto.OpNotExistErr
 				log.LogWarnf("fsm(%v) InsertExtents pre check failed, inode(%v) ek(insert: %v)",
 					mp.config.PartitionId, existIno.Inode, ek)
 				return
