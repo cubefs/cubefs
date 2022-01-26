@@ -23,8 +23,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (

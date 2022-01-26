@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/chubaofs/chubaofs/util/btree"
+	"github.com/cubefs/cubefs/util/btree"
 )
 
 type Blob struct {

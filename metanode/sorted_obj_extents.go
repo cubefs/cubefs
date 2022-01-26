@@ -7,7 +7,7 @@ import (
 	"math"
 	"sync"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 type SortedObjExtents struct {

@@ -6,15 +6,15 @@ import (
 	"io"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/stat"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/stat"
 
 	"github.com/cubefs/blobstore/api/access"
 	"github.com/cubefs/blobstore/common/codemode"
 	ebsproto "github.com/cubefs/blobstore/common/proto"
-	"github.com/chubaofs/chubaofs/util/exporter"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/google/uuid"
 )
 

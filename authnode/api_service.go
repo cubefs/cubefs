@@ -20,12 +20,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/cryptoutil"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/iputil"
-	"github.com/chubaofs/chubaofs/util/keystore"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/cryptoutil"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/iputil"
+	"github.com/cubefs/cubefs/util/keystore"
+	"github.com/cubefs/cubefs/util/log"
 
 	"fmt"
 )

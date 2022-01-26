@@ -21,8 +21,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chubaofs/chubaofs/util/keystore"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/keystore"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/tiglabs/raft/proto"
 )
 

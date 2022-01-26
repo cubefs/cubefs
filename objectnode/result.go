@@ -16,7 +16,7 @@ package objectnode
 
 import (
 	"encoding/xml"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 	"net/url"
 )
 

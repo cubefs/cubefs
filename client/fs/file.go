@@ -21,7 +21,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/stat"
+	"github.com/cubefs/cubefs/util/stat"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
@@ -29,11 +29,11 @@ import (
 
 	"sync"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/exporter"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/log"
 
-	"github.com/chubaofs/chubaofs/sdk/data/blobstore"
+	"github.com/cubefs/cubefs/sdk/data/blobstore"
 )
 
 // File defines the structure of a file.

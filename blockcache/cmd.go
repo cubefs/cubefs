@@ -31,14 +31,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/chubaofs/chubaofs/blockcache/bcache"
-	"github.com/chubaofs/chubaofs/cmd/common"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/config"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
-	sysutil "github.com/chubaofs/chubaofs/util/sys"
-	"github.com/chubaofs/chubaofs/util/ump"
+	"github.com/cubefs/cubefs/blockcache/bcache"
+	"github.com/cubefs/cubefs/cmd/common"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
+	sysutil "github.com/cubefs/cubefs/util/sys"
+	"github.com/cubefs/cubefs/util/ump"
 	"github.com/jacobsa/daemonize"
 )
 

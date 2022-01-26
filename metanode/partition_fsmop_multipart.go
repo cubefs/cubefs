@@ -14,7 +14,7 @@
 
 package metanode
 
-import "github.com/chubaofs/chubaofs/proto"
+import "github.com/cubefs/cubefs/proto"
 
 func (mp *metaPartition) fsmCreateMultipart(multipart *Multipart) (status uint8) {
 	_, ok := mp.multipartTree.ReplaceOrInsert(multipart, false)

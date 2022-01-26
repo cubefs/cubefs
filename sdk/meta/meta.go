@@ -22,14 +22,14 @@ import (
 
 	"golang.org/x/time/rate"
 
-	"github.com/chubaofs/chubaofs/proto"
-	authSDK "github.com/chubaofs/chubaofs/sdk/auth"
-	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/auth"
-	"github.com/chubaofs/chubaofs/util/btree"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	authSDK "github.com/cubefs/cubefs/sdk/auth"
+	masterSDK "github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/auth"
+	"github.com/cubefs/cubefs/util/btree"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (

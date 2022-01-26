@@ -16,13 +16,13 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 	"os"
 	"path"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 
-	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/spf13/cobra"
 )
 

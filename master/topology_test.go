@@ -2,7 +2,7 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/cubefs/cubefs/util"
 	"testing"
 	"time"
 )

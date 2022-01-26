@@ -20,9 +20,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/storage"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // Recover a file if it has bad CRC or it has been timed out before.

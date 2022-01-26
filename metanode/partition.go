@@ -31,14 +31,14 @@ import (
 
 	// bs "github.com/cubefs/blobstore"
 	"github.com/cubefs/blobstore/api/access"
-	"github.com/chubaofs/chubaofs/cmd/common"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/raftstore"
+	"github.com/cubefs/cubefs/cmd/common"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/raftstore"
 
-	"github.com/chubaofs/chubaofs/sdk/data/blobstore"
-	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/sdk/data/blobstore"
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/hashicorp/consul/api"
 	raftproto "github.com/tiglabs/raft/proto"
 )

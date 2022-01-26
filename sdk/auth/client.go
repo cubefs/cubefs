@@ -17,16 +17,16 @@ package auth
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/auth"
-	"github.com/chubaofs/chubaofs/util/cryptoutil"
-	"github.com/chubaofs/chubaofs/util/keystore"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/auth"
+	"github.com/cubefs/cubefs/util/cryptoutil"
+	"github.com/cubefs/cubefs/util/keystore"
 	"io/ioutil"
 	"net/http"
 	"sync"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (

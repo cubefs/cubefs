@@ -26,8 +26,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/buf"
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/buf"
 )
 
 var (

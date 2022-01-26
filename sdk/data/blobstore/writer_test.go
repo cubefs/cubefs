@@ -11,9 +11,9 @@ import (
 
 	"github.com/brahma-adshonor/gohook"
 	"github.com/cubefs/blobstore/api/access"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/data/stream"
-	"github.com/chubaofs/chubaofs/sdk/meta"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/stream"
+	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/hashicorp/consul/api"
 )
 
