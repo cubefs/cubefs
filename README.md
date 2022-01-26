@@ -108,7 +108,7 @@ bzip2-1.0.6  lz4-1.9.2  zlib-1.2.11  zstd-1.4.5
       ```
 #### Also support cross compiler with docker:
 
-gcc version as  v4, support Ububtu 14.04 and up version,CentOS7.6 and up version. Check libstdc++.so.6 version must more than `GLIBCXX_3.4.19',if fail please update libstdc++. 
+gcc version as  v4, support Ubuntu 14.04 and up version,CentOS7.6 and up version. Check libstdc++.so.6 version must more than `GLIBCXX_3.4.19',if fail please update libstdc++. 
 
 ```
 cd /root/arm64/cubefs
@@ -280,7 +280,7 @@ provisioner:
 
 ### Add labels to Kubernetes node
 
-You should tag each Kubernetes node with the appropriate labels accorindly for server node and CSI node of CubeFS.
+You should tag each Kubernetes node with the appropriate labels accordingly for server node and CSI node of CubeFS.
 
 ```
 kubectl label node <nodename> cubefs-master=enabled
