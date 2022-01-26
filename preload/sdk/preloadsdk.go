@@ -14,13 +14,13 @@ import (
 
 	"github.com/cubefs/blobstore/api/access"
 	"github.com/cubefs/blobstore/common/trace"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/data/blobstore"
-	"github.com/chubaofs/chubaofs/sdk/data/stream"
-	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/sdk/meta"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/stat"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/blobstore"
+	"github.com/cubefs/cubefs/sdk/data/stream"
+	masterSDK "github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 	"github.com/hashicorp/consul/api"
 )
 

@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"sync"
 
-	"github.com/chubaofs/chubaofs/storage"
+	"github.com/cubefs/cubefs/storage"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 type SortedExtents struct {

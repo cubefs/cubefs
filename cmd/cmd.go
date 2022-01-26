@@ -17,7 +17,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/cubefs/cubefs/util/errors"
 	syslog "log"
 	"net/http"
 	_ "net/http/pprof"
@@ -29,23 +29,23 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/chubaofs/chubaofs/console"
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/console"
+	"github.com/cubefs/cubefs/proto"
 
-	sysutil "github.com/chubaofs/chubaofs/util/sys"
+	sysutil "github.com/cubefs/cubefs/util/sys"
 
-	"github.com/chubaofs/chubaofs/objectnode"
+	"github.com/cubefs/cubefs/objectnode"
 
 	"github.com/jacobsa/daemonize"
 
-	"github.com/chubaofs/chubaofs/authnode"
-	"github.com/chubaofs/chubaofs/cmd/common"
-	"github.com/chubaofs/chubaofs/datanode"
-	"github.com/chubaofs/chubaofs/master"
-	"github.com/chubaofs/chubaofs/metanode"
-	"github.com/chubaofs/chubaofs/util/config"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/ump"
+	"github.com/cubefs/cubefs/authnode"
+	"github.com/cubefs/cubefs/cmd/common"
+	"github.com/cubefs/cubefs/datanode"
+	"github.com/cubefs/cubefs/master"
+	"github.com/cubefs/cubefs/metanode"
+	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/ump"
 )
 
 const (

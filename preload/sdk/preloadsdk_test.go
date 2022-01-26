@@ -1,7 +1,7 @@
 package sdk
 
 import (
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 	"testing"
 )
 

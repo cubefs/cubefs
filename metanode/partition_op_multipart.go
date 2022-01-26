@@ -19,9 +19,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/cubefs/cubefs/util"
 
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 )
 
 func (mp *metaPartition) GetMultipart(req *proto.GetMultipartRequest, p *Packet) (err error) {

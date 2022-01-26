@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/cryptoutil"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/cryptoutil"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // Parse the request that adds/deletes a raft node.

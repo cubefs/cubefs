@@ -16,16 +16,16 @@ package stream
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/stat"
+	"github.com/cubefs/cubefs/util/stat"
 	"net"
 	"sync/atomic"
 	"time"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/data/wrapper"
-	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/wrapper"
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // State machines

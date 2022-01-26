@@ -1,4 +1,4 @@
-# ChubaoFS Makefile
+# Cubefs Makefile
 #
 
 BIN_PATH := build/bin

@@ -21,9 +21,9 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/chubaofs/chubaofs/proto"
-	client2 "github.com/chubaofs/chubaofs/sdk/graphql/client"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	client2 "github.com/cubefs/cubefs/sdk/graphql/client"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/samsarahq/thunder/batch"
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/reactive"

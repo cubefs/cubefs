@@ -15,7 +15,7 @@
 package metanode
 
 import (
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 	"strings"
 	"sync"
 )

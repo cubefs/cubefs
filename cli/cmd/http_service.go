@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
 )
 
 type clientHandler interface {

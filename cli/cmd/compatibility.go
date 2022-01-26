@@ -19,9 +19,9 @@ import (
 	"reflect"
 	"strconv"
 
-	"github.com/chubaofs/chubaofs/cli/api"
-	"github.com/chubaofs/chubaofs/metanode"
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/cli/api"
+	"github.com/cubefs/cubefs/metanode"
+	"github.com/cubefs/cubefs/proto"
 	"github.com/spf13/cobra"
 )
 

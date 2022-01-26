@@ -73,7 +73,7 @@ const (
 	CliFlagDelWorkerSleepMs   = "delete-worker-sleep-ms"
 	CliFlagMarkDelRate        = "mark-delete-rate"
 	CliFlagCrossZone          = "crossZone"
-	CliFlagVolType			  = "vol-type"
+	CliFlagVolType            = "vol-type"
 
 	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

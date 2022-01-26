@@ -3,7 +3,7 @@ package datanode
 import (
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/util/log"
 	"golang.org/x/time/rate"
 )
 

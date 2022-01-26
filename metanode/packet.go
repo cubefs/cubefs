@@ -16,8 +16,8 @@ package metanode
 
 import (
 	"encoding/json"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/storage"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/storage"
 )
 
 type Packet struct {

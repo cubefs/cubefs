@@ -15,8 +15,8 @@
 package cmd
 
 import (
-	"github.com/chubaofs/chubaofs/proto"
-	sdk "github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/cubefs/cubefs/proto"
+	sdk "github.com/cubefs/cubefs/sdk/master"
 )
 
 func validVols(client, complete interface{}) []string {

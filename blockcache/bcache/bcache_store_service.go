@@ -16,10 +16,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chubaofs/chubaofs/cmd/common"
-	"github.com/chubaofs/chubaofs/util/config"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/cmd/common"
+	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/gorilla/mux"
 
 	_ "net/http/pprof"

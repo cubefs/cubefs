@@ -7,14 +7,14 @@ import (
 	"sync/atomic"
 	"syscall"
 
-	"github.com/chubaofs/chubaofs/util/stat"
+	"github.com/cubefs/cubefs/util/stat"
 
-	"github.com/chubaofs/chubaofs/blockcache/bcache"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/data/stream"
-	"github.com/chubaofs/chubaofs/sdk/meta"
-	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/blockcache/bcache"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/stream"
+	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (

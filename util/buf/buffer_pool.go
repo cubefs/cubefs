@@ -7,7 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/cubefs/cubefs/util"
 )
 
 const (

@@ -1,7 +1,7 @@
 package blobstore
 
 import (
-	"github.com/chubaofs/chubaofs/proto"
+	"github.com/cubefs/cubefs/proto"
 	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"sync"

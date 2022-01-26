@@ -17,7 +17,7 @@ import (
 	"github.com/cubefs/blobstore/common/crc32block"
 	"github.com/cubefs/blobstore/common/proto"
 	"github.com/cubefs/blobstore/util/bytespool"
-	cproto "github.com/chubaofs/chubaofs/proto"
+	cproto "github.com/cubefs/cubefs/proto"
 	"github.com/hashicorp/consul/api"
 	"github.com/stretchr/testify/require"
 )

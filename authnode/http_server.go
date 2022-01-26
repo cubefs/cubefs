@@ -19,9 +19,9 @@ import (
 	"net/http"
 	"net/http/httputil"
 
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/cryptoutil"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/cryptoutil"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 func (m *Server) startHTTPService() {

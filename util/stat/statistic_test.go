@@ -1,7 +1,7 @@
 package stat
 
 import (
-	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/cubefs/cubefs/util/errors"
 	"testing"
 	"time"
 )

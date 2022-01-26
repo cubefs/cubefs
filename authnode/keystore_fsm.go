@@ -22,9 +22,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/chubaofs/chubaofs/raftstore"
-	"github.com/chubaofs/chubaofs/util/keystore"
-	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/cubefs/cubefs/raftstore"
+	"github.com/cubefs/cubefs/util/keystore"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/tiglabs/raft"
 	"github.com/tiglabs/raft/proto"
 )
