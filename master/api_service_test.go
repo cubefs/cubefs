@@ -522,6 +522,37 @@ func TestDataPartitionDecommission(t *testing.T) {
 	partition.isRecover = false
 }
 
+func TestDataPartitionDecommissionWithoutReplica(t *testing.T) {
+	if len(commonVol.dataPartitions.partitions) == 0 {
+		t.Errorf("no data partitions")
+		return
+	}
+	server.cluster.checkDataNodeHeartbeat()
+	time.Sleep(5 * time.Second)
+	partition := commonVol.dataPartitions.partitions[0]
+	partition.RLock()
+	partition.isRecover = false
+	offlineAddr := partition.Hosts[0]
+	for _, replica := range partition.Replicas {
+		if replica.DataReplica.Addr == offlineAddr {
+			partition.removeReplicaByAddr(offlineAddr)
+		}
+	}
+	partition.RUnlock()
+	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v",
+		hostAddr, proto.AdminDecommissionDataPartition, commonVol.Name, partition.PartitionID, offlineAddr)
+	process(reqURL, t)
+	if contains(partition.Hosts, offlineAddr) {
+		t.Errorf("offlineAddr[%v],hosts[%v]", offlineAddr, partition.Hosts)
+		return
+	}
+	if len(partition.Hosts) == 2 || len(partition.Replicas) == 2 {
+		t.Errorf("dp decommissionWithoutReplica failed,hosts[%v],replicas[%v]", len(partition.Hosts), len(partition.Replicas))
+		return
+	}
+	partition.isRecover = false
+}
+
 //func TestGetAllVols(t *testing.T) {
 //	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.GetALLVols)
 //	process(reqURL, t)
