@@ -2,18 +2,19 @@ package metanode
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
 	"os"
 	"reflect"
 	"sort"
 	"testing"
+
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 func createInode(t, uid, gid uint32, mp *metaPartition) (ino uint64, err error) {
 	reqCreateInode := &proto.CreateInodeRequest{
 		Mode: t,
-		Uid: uid,
-		Gid: gid,
+		Uid:  uid,
+		Gid:  gid,
 	}
 	packet := &Packet{}
 	if err = mp.CreateInode(reqCreateInode, packet); err != nil || packet.ResultCode != proto.OpOk {
@@ -49,14 +50,15 @@ func extentResultVerify(t *testing.T, leader, follower *metaPartition, ino uint6
 		t.Errorf("inode info in mem is not equal to rocks, mem:%s, rocks:%s", inodeInMem.String(), inodeInRocks.String())
 		return
 	}
-	if len(inodeInMem.Extents.eks) != len(expectExtents) {
-		t.Fatalf("extent count mismatch, expect:%v, actual:%v", len(expectExtents), len(inodeInMem.Extents.eks))
+	if inodeInMem.Extents.Len() != len(expectExtents) {
+		t.Fatalf("extent count mismatch, expect:%v, actual:%v", len(expectExtents), inodeInMem.Extents.Len())
 	}
-	for index, ext := range inodeInMem.Extents.eks {
+	inodeInMem.Extents.Range2(func(index int, ext proto.ExtentKey) bool {
 		if !reflect.DeepEqual(ext, expectExtents[index]) {
 			t.Fatalf("extent mismatch, expect:%v, actual:%v", expectExtents[index], ext)
 		}
-	}
+		return true
+	})
 }
 
 func ExtentAppendInterTest(t *testing.T, leader, follower *metaPartition) {
@@ -173,7 +175,7 @@ func TestMetaPartition_ExtentAppendCase01(t *testing.T) {
 
 func batchExtentAppend(ino uint64, eks []proto.ExtentKey, leader *metaPartition) (err error) {
 	reqBatchExtentAppend := &proto.AppendExtentKeysRequest{
-		Inode: ino,
+		Inode:   ino,
 		Extents: eks,
 	}
 	packet := &Packet{}
@@ -291,7 +293,7 @@ func TestMetaPartition_ListExtentCase01(t *testing.T) {
 
 func extentInsert(ino uint64, extent proto.ExtentKey, mp *metaPartition) (err error) {
 	req := &proto.InsertExtentKeyRequest{
-		Inode: ino,
+		Inode:  ino,
 		Extent: extent,
 	}
 	packet := &Packet{}
@@ -364,8 +366,8 @@ func ExtentsTruncateInterTest01(t *testing.T, leader, follower *metaPartition) {
 	}
 
 	req := &proto.TruncateRequest{
-		Inode: ino,
-		Size: 1550,
+		Inode:   ino,
+		Size:    1550,
 		OldSize: 2700,
 		Version: 1,
 	}
@@ -398,7 +400,7 @@ func ExtentsTruncateInterTest02(t *testing.T, leader, follower *metaPartition) {
 	}
 	packet := &Packet{}
 	if err = leader.ExtentsTruncate(req, packet); err != nil || packet.ResultCode != proto.OpArgMismatchErr {
-		t.Fatalf("truncate extent mismatch, expect resultCode is OpArgMismatchErr, but actual is" +
+		t.Fatalf("truncate extent mismatch, expect resultCode is OpArgMismatchErr, but actual is"+
 			" [err:%v, resultCode:%v]", err, packet.ResultCode)
 		return
 	}
@@ -425,7 +427,7 @@ func ExtentsTruncateInterTest03(t *testing.T, leader, follower *metaPartition) {
 	}
 	packet := &Packet{}
 	if err = leader.ExtentsTruncate(req, packet); err != nil || packet.ResultCode != proto.OpNotExistErr {
-		t.Fatalf("truncate extent error[%v] or resultCode mismatch, expect resultCode is OpNotExistErr(0xF5), but actual is" +
+		t.Fatalf("truncate extent error[%v] or resultCode mismatch, expect resultCode is OpNotExistErr(0xF5), but actual is"+
 			" [resultCode:Ox%X]", err, packet.ResultCode)
 		return
 	}
@@ -434,14 +436,14 @@ func ExtentsTruncateInterTest03(t *testing.T, leader, follower *metaPartition) {
 func ExtentsTruncateInterTest04(t *testing.T, leader, follower *metaPartition) {
 	var err error
 	req := &proto.TruncateRequest{
-		Inode: 1000,
-		Size: 1550,
+		Inode:   1000,
+		Size:    1550,
 		OldSize: 2700,
 		Version: 1,
 	}
 	packet := &Packet{}
 	if err = leader.ExtentsTruncate(req, packet); err != nil || packet.ResultCode != proto.OpNotExistErr {
-		t.Fatalf("truncate extent error or resultCode mismatch, expect resultCode is OpNotExistErr(0xF5), but actual is" +
+		t.Fatalf("truncate extent error or resultCode mismatch, expect resultCode is OpNotExistErr(0xF5), but actual is"+
 			" [err:%v, resultCode:%v]", err, packet.ResultCode)
 		return
 	}
@@ -465,8 +467,8 @@ func ExtentsTruncateInterTest05(t *testing.T, leader, follower *metaPartition) {
 	}
 
 	req := &proto.TruncateRequest{
-		Inode: ino,
-		Size: 1550,
+		Inode:   ino,
+		Size:    1550,
 		OldSize: 2600,
 		Version: 1,
 	}

@@ -352,7 +352,7 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, dir
 	if log.IsDebugEnabled() {
 		log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v)", s.inode, offset, size)
 	}
-	ctx=context.Background()
+	ctx = context.Background()
 	s.client.writeLimiter.Wait(ctx)
 
 	requests, _ := s.extents.PrepareRequests(offset, size, data)
@@ -379,35 +379,42 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, dir
 		}
 	}
 
-	for _, req := range requests {
-		var (
-			writeSize int
-			rowFlag   bool
-		)
-		if req.ExtentKey != nil {
-			// clear read ahead cache
-			if s.readAhead && s.extentReader != nil && s.extentReader.key.PartitionId == req.ExtentKey.PartitionId && s.extentReader.key.ExtentId == req.ExtentKey.ExtentId && s.extentReader.req != nil {
-				s.extentReader.reqMutex.Lock()
-				s.extentReader.req = nil
-				s.extentReader.reqMutex.Unlock()
-			}
-			if overWriteBuffer {
-				writeSize = s.appendOverWriteReq(ctx, req, direct)
-			} else {
-				writeSize, rowFlag, err = s.doOverWriteOrROW(ctx, req, direct)
-			}
-		} else {
-			writeSize, err = s.doWrite(ctx, req.Data, req.FileOffset, req.Size, direct)
-		}
-		if err != nil {
-			log.LogWarnf("Streamer write: ino(%v) err(%v)", s.inode, err)
-			break
-		}
-		if rowFlag {
-			isROW = rowFlag
-		}
+	var (
+		writeSize int
+		rowFlag   bool
+	)
+	if !s.enableOverwrite() && len(requests) > 1 {
+		req := NewExtentRequest(offset, size, data, nil)
+		writeSize, rowFlag, err = s.doOverWriteOrROW(ctx, req, direct)
 		total += writeSize
+	} else {
+		for _, req := range requests {
+			if req.ExtentKey != nil {
+				// clear read ahead cache
+				if s.readAhead && s.extentReader != nil && s.extentReader.key.PartitionId == req.ExtentKey.PartitionId && s.extentReader.key.ExtentId == req.ExtentKey.ExtentId && s.extentReader.req != nil {
+					s.extentReader.reqMutex.Lock()
+					s.extentReader.req = nil
+					s.extentReader.reqMutex.Unlock()
+				}
+				if overWriteBuffer {
+					writeSize = s.appendOverWriteReq(ctx, req, direct)
+				} else {
+					writeSize, rowFlag, err = s.doOverWriteOrROW(ctx, req, direct)
+				}
+			} else {
+				writeSize, err = s.doWrite(ctx, req.Data, req.FileOffset, req.Size, direct)
+			}
+			if err != nil {
+				log.LogWarnf("Streamer write: ino(%v) err(%v)", s.inode, err)
+				break
+			}
+			if rowFlag {
+				isROW = rowFlag
+			}
+			total += writeSize
+		}
 	}
+
 	if filesize, _ := s.extents.Size(); offset+total > filesize {
 		s.extents.SetSize(uint64(offset+total), false)
 		if log.IsDebugEnabled() {
@@ -574,7 +581,7 @@ func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool
 		return
 	}
 
-	log.LogDebugf("doROW: inode %v, total %v, oriReq %v, getExtentsErr %v, newEK %v", s.inode, total, oriReq, getExtentsErr, newEK)
+	log.LogDebugf("doROW: inode %v, total %v, oriReq %v, newEK %v", s.inode, total, oriReq, newEK)
 
 	return
 }

@@ -2,10 +2,12 @@ package metanode
 
 import (
 	"context"
-	"github.com/chubaofs/chubaofs/proto"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
+	se "github.com/chubaofs/chubaofs/util/sortedextent"
 )
 
 func TestDeletedINode_Copy(t *testing.T) {
@@ -26,7 +28,7 @@ func mockINode(id uint64) *Inode {
 	ino.NLink = 2
 	ino.Flag = 1
 	ino.Reserved = 1024 * 1024
-	ino.Extents = NewSortedExtents()
+	ino.Extents = se.NewSortedExtents()
 	var i uint64
 	for i = 1; i < 5; i++ {
 		var ek proto.ExtentKey
@@ -36,7 +38,7 @@ func mockINode(id uint64) *Inode {
 		ek.ExtentId = i
 		ek.CRC = uint32(10 * i)
 		ek.PartitionId = i
-		ino.Extents.eks = append(ino.Extents.eks, ek)
+		ino.Extents.Insert(nil, ek)
 	}
 	return ino
 }
@@ -227,37 +229,14 @@ func compareTestInode(ino1 *DeletedINode, ino2 *DeletedINode, t *testing.T) {
 		t.FailNow()
 	}
 
-	for index, ek1 := range ino1.Extents.eks {
-		ek2 := ino2.Extents.eks[index]
-		if ek1.Size != ek2.Size {
+	ino1.Extents.Range2(func(index int, ek1 proto.ExtentKey) bool {
+		ek2 := ino2.Extents.GetByIndex(index)
+		if !ek1.Equal(ek2) {
 			t.Errorf("ino1: %v, ek1: %v, ino2: %v, ek2: %v", ino1, ek1, ino2, ek2)
 			t.FailNow()
 		}
-		if ek1.CRC != ek2.CRC {
-			t.Errorf("ino1: %v, ek1: %v, ino2: %v, ek2: %v", ino1, ek1, ino2, ek2)
-			t.FailNow()
-		}
-		if ek1.CRC != ek2.CRC {
-			t.Errorf("ino1: %v, ek1: %v, ino2: %v, ek2: %v", ino1, ek1, ino2, ek2)
-			t.FailNow()
-		}
-		if ek1.PartitionId != ek2.PartitionId {
-			t.Errorf("ino1: %v, ek1: %v, ino2: %v, ek2: %v", ino1, ek1, ino2, ek2)
-			t.FailNow()
-		}
-		if ek1.ExtentOffset != ek2.ExtentOffset {
-			t.Errorf("ino1: %v, ek1: %v, ino2: %v, ek2: %v", ino1, ek1, ino2, ek2)
-			t.FailNow()
-		}
-		if ek1.ExtentId != ek2.ExtentId {
-			t.Errorf("ino1: %v, ek1: %v, ino2: %v, ek2: %v", ino1, ek1, ino2, ek2)
-			t.FailNow()
-		}
-		if ek1.FileOffset != ek2.FileOffset {
-			t.Errorf("ino1: %v, ek1: %v, ino2: %v, ek2: %v", ino1, ek1, ino2, ek2)
-			t.FailNow()
-		}
-	}
+		return true
+	})
 }
 
 func compareTestInode2(ino1 *Inode, ino2 *Inode, t *testing.T) {
@@ -326,35 +305,12 @@ func compareTestInode2(ino1 *Inode, ino2 *Inode, t *testing.T) {
 		t.FailNow()
 	}
 
-	for index, ek1 := range ino1.Extents.eks {
-		ek2 := ino2.Extents.eks[index]
-		if ek1.Size != ek2.Size {
+	ino1.Extents.Range2(func(index int, ek1 proto.ExtentKey) bool {
+		ek2 := ino2.Extents.GetByIndex(index)
+		if !ek1.Equal(ek2) {
 			t.Errorf("ino1: %v, ek1: %v, ino2: %v, ek2: %v", ino1, ek1, ino2, ek2)
 			t.FailNow()
 		}
-		if ek1.CRC != ek2.CRC {
-			t.Errorf("ino1: %v, ek1: %v, ino2: %v, ek2: %v", ino1, ek1, ino2, ek2)
-			t.FailNow()
-		}
-		if ek1.CRC != ek2.CRC {
-			t.Errorf("ino1: %v, ek1: %v, ino2: %v, ek2: %v", ino1, ek1, ino2, ek2)
-			t.FailNow()
-		}
-		if ek1.PartitionId != ek2.PartitionId {
-			t.Errorf("ino1: %v, ek1: %v, ino2: %v, ek2: %v", ino1, ek1, ino2, ek2)
-			t.FailNow()
-		}
-		if ek1.ExtentOffset != ek2.ExtentOffset {
-			t.Errorf("ino1: %v, ek1: %v, ino2: %v, ek2: %v", ino1, ek1, ino2, ek2)
-			t.FailNow()
-		}
-		if ek1.ExtentId != ek2.ExtentId {
-			t.Errorf("ino1: %v, ek1: %v, ino2: %v, ek2: %v", ino1, ek1, ino2, ek2)
-			t.FailNow()
-		}
-		if ek1.FileOffset != ek2.FileOffset {
-			t.Errorf("ino1: %v, ek1: %v, ino2: %v, ek2: %v", ino1, ek1, ino2, ek2)
-			t.FailNow()
-		}
-	}
+		return true
+	})
 }

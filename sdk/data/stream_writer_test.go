@@ -168,18 +168,18 @@ func TestStreamer_UsePreExtentHandler(t *testing.T) {
 		t.FailNow()
 	}
 
-	ek1 := &proto.ExtentKey{FileOffset: 0, PartitionId: 1, ExtentId: 1, ExtentOffset: 0, Size: 1024}
-	ek2 := &proto.ExtentKey{FileOffset: 2048, PartitionId: 2, ExtentId: 1002, ExtentOffset: 0, Size: 1024}
-	ek3 := &proto.ExtentKey{FileOffset: 5120, PartitionId: 3, ExtentId: 1003, ExtentOffset: 0, Size: 1024}
-	ek4 := &proto.ExtentKey{FileOffset: 7168, PartitionId: 4, ExtentId: 1004, ExtentOffset: 0, Size: 1024}
-	ek5 := &proto.ExtentKey{FileOffset: 10240, PartitionId: 5, ExtentId: 1005, ExtentOffset: 0, Size: 1024 * 1024 * 128}
+	ek1 := proto.ExtentKey{FileOffset: 0, PartitionId: 1, ExtentId: 1, ExtentOffset: 0, Size: 1024}
+	ek2 := proto.ExtentKey{FileOffset: 2048, PartitionId: 2, ExtentId: 1002, ExtentOffset: 0, Size: 1024}
+	ek3 := proto.ExtentKey{FileOffset: 5120, PartitionId: 3, ExtentId: 1003, ExtentOffset: 0, Size: 1024}
+	ek4 := proto.ExtentKey{FileOffset: 7168, PartitionId: 4, ExtentId: 1004, ExtentOffset: 0, Size: 1024}
+	ek5 := proto.ExtentKey{FileOffset: 10240, PartitionId: 5, ExtentId: 1005, ExtentOffset: 0, Size: 1024 * 1024 * 128}
 
 	testExtentCache := NewExtentCache(1)
-	testExtentCache.root.ReplaceOrInsert(ek1)
-	testExtentCache.root.ReplaceOrInsert(ek2)
-	testExtentCache.root.ReplaceOrInsert(ek3)
-	testExtentCache.root.ReplaceOrInsert(ek4)
-	testExtentCache.root.ReplaceOrInsert(ek5)
+	testExtentCache.root.Insert(nil, ek1)
+	testExtentCache.root.Insert(nil, ek2)
+	testExtentCache.root.Insert(nil, ek3)
+	testExtentCache.root.Insert(nil, ek4)
+	testExtentCache.root.Insert(nil, ek5)
 
 	testFields := fields{
 		client:     testClient,

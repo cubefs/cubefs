@@ -5,10 +5,11 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/log"
-
 	"io"
 	"reflect"
+
+	"github.com/chubaofs/chubaofs/util/log"
+	se "github.com/chubaofs/chubaofs/util/sortedextent"
 )
 
 type DeletedINodeBatch []*DeletedINode
@@ -349,7 +350,7 @@ func (di *DeletedINode) UnmarshalValue(ctx context.Context, val []byte) (err err
 	if err = binary.Read(buff, binary.BigEndian, &extentBytesLen); err != nil {
 		return
 	}
-	di.Extents = NewSortedExtents()
+	di.Extents = se.NewSortedExtents()
 	if extentBytesLen > 0 {
 		extentBytes := make([]byte, extentBytesLen)
 		_, err = buff.Read(extentBytes)

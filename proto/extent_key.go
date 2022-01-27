@@ -225,7 +225,8 @@ func (k *ExtentKey) Equal(k1 *ExtentKey) bool {
 		k.PartitionId == k1.PartitionId &&
 		k.ExtentId == k1.ExtentId &&
 		k.ExtentOffset == k1.ExtentOffset &&
-		k.Size == k1.Size
+		k.Size == k1.Size &&
+		k.CRC == k1.CRC
 }
 
 type TinyExtentDeleteRecord struct {

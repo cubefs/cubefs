@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/btree"
 	"github.com/chubaofs/chubaofs/util/log"
 	se "github.com/chubaofs/chubaofs/util/sortedextent"
 )
@@ -111,7 +110,7 @@ func (cache *ExtentCache) update(gen, size uint64, eks []proto.ExtentKey) {
 	cache.root.Update(eks)
 	// append local temporary ek to prevent read unconsistency
 	if cache.ek != nil {
-		cache.append(cache.ek, false)
+		cache.insert(cache.ek, false)
 	}
 }
 
@@ -130,36 +129,14 @@ func (cache *ExtentCache) IsExpired(expireSecond int64) bool {
 	return time.Since(cache.refreshTime) > time.Duration(expireSecond)*time.Second
 }
 
-// Append appends an extent key.
-func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) {
-	cache.Lock()
-	defer cache.Unlock()
-	cache.append(ek, sync)
-}
-
-func (cache *ExtentCache) append(ek *proto.ExtentKey, sync bool) {
-	ekEnd := ek.FileOffset + uint64(ek.Size)
-
-	cache.Lock()
-	defer cache.Unlock()
-
-	deleteExtents := cache.root.Append(nil, *ek)
-	if sync {
-		cache.gen++
-	}
-	if ekEnd > cache.size {
-		cache.size = ekEnd
-	}
-
-	log.LogDebugf("ExtentCache Append: ino(%v) ek(%v) deleteEks(%v)", cache.inode, ek, deleteExtents)
-}
-
 func (cache *ExtentCache) Insert(ek *proto.ExtentKey, sync bool) {
-	ekEnd := ek.FileOffset + uint64(ek.Size)
-
 	cache.Lock()
 	defer cache.Unlock()
+	cache.insert(ek, sync)
+}
 
+func (cache *ExtentCache) insert(ek *proto.ExtentKey, sync bool) {
+	ekEnd := ek.FileOffset + uint64(ek.Size)
 	deleteExtents := cache.root.Insert(nil, *ek)
 
 	// todo gen
@@ -176,22 +153,17 @@ func (cache *ExtentCache) Insert(ek *proto.ExtentKey, sync bool) {
 	log.LogDebugf("ExtentCache Insert: ino(%v) ek(%v) deleteEks(%v)", cache.inode, ek, deleteExtents)
 }
 
-func (cache *ExtentCache) Pre(offset uint64) (ek *proto.ExtentKey) {
-	var preEk proto.ExtentKey
+func (cache *ExtentCache) Pre(offset uint64) (pre *proto.ExtentKey) {
 	cache.RLock()
 	defer cache.RUnlock()
 
-	cache.root.Range(func(pre proto.ExtentKey) bool {
-		if pre.FileOffset >= offset {
-
+	cache.root.Range(func(ek proto.ExtentKey) bool {
+		if ek.FileOffset >= offset {
 			return false
 		}
-		preEk = pre
+		pre = &ek
 		return true
 	})
-
-	ek = &preEk
-
 	return
 }
 
@@ -330,15 +302,14 @@ func (cache *ExtentCache) prepareMergeRequests() (readRequests []*ExtentRequest,
 	var (
 		mergedToSize = uint32(1024 * 1024)
 		data         = make([]byte, mergedToSize, mergedToSize)
-		ek, preEk    *proto.ExtentKey
+		preEk        *proto.ExtentKey
 		total        uint32
 		req          *ExtentRequest
 	)
 
 	cache.RLock()
 	defer cache.RUnlock()
-	cache.root.Ascend(func(i btree.Item) bool {
-		ek = i.(*proto.ExtentKey)
+	cache.root.Range(func(ek proto.ExtentKey) bool {
 		if total+ek.Size > mergedToSize || (preEk != nil && ek.FileOffset != preEk.FileOffset+uint64(preEk.Size)) {
 			if len(readRequests) > 1 {
 				writeRequest = NewExtentRequest(readRequests[0].FileOffset, int(total), data[:total], nil)
@@ -348,15 +319,15 @@ func (cache *ExtentCache) prepareMergeRequests() (readRequests []*ExtentRequest,
 				total = 0
 			}
 			if ek.Size >= mergedToSize {
-				preEk = ek
+				preEk = &ek
 				return true
 			}
 		}
 
-		req = NewExtentRequest(int(ek.FileOffset), int(ek.Size), data[total:total+ek.Size], ek)
+		req = NewExtentRequest(int(ek.FileOffset), int(ek.Size), data[total:total+ek.Size], &ek)
 		readRequests = append(readRequests, req)
 		total += ek.Size
-		preEk = ek
+		preEk = &ek
 		return true
 	})
 	if writeRequest == nil {

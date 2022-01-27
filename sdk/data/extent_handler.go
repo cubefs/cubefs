@@ -525,7 +525,7 @@ func (eh *ExtentHandler) appendExtentKey(ctx context.Context) (err error) {
 	} else if eh.getStatus() == ExtentStatusRecovery {
 		// If the handler is in recovery state, replace the formerly inserted temporary ek.
 		// Otherwise, don't call Append, because that will result appendding ek wrongly in the following extent cache update, i.e. in truncate request.
-		eh.stream.extents.Append(ek, false)
+		eh.stream.extents.Insert(ek, false)
 	}
 	if log.IsDebugEnabled(){
 		log.LogDebugf("appendExtentKey exit: eh(%v) key(%v) dirty(%v) err(%v)", eh, eh.key, eh.dirty, err)

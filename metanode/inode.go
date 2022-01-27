@@ -238,7 +238,7 @@ func (i *Inode) MarshalV2() (result []byte, err error) {
 	defer i.Unlock()
 
 	if i.Extents == nil {
-		i.Extents = NewSortedExtents()
+		i.Extents = se.NewSortedExtents()
 	}
 	result = make([]byte, BaseInodeLen+len(i.LinkTarget)+i.Extents.Len()*proto.ExtentLength)
 	offset := 0
@@ -274,10 +274,11 @@ func (i *Inode) MarshalV2() (result []byte, err error) {
 	offset += 4
 	binary.BigEndian.PutUint64(result[offset:offset+8], i.Reserved)
 	offset += 8
-	for index := 0; index < i.Extents.Len() && offset < len(result); index++ {
-		i.Extents.eks[index].EncodeBinary(result[offset : offset+proto.ExtentLength])
+	i.Extents.Range(func(ek proto.ExtentKey) bool {
+		ek.EncodeBinary(result[offset : offset+proto.ExtentLength])
 		offset += proto.ExtentLength
-	}
+		return offset < len(result)
+	})
 	return result, nil
 }
 
@@ -327,7 +328,7 @@ func (i *Inode) UnmarshalV2(ctx context.Context, raw []byte) (err error) {
 	}
 	// unmarshal ExtentsKey
 	if i.Extents == nil {
-		i.Extents = NewSortedExtents()
+		i.Extents = se.NewSortedExtents()
 	}
 	if err = i.Extents.UnmarshalBinaryV2(ctx, raw[offset:]); err != nil {
 		return
@@ -388,7 +389,7 @@ func (i *Inode) UnmarshalValueV2(ctx context.Context, raw []byte) (err error) {
 	}
 	// unmarshal ExtentsKey
 	if i.Extents == nil {
-		i.Extents = NewSortedExtents()
+		i.Extents = se.NewSortedExtents()
 	}
 	if err = i.Extents.UnmarshalBinaryV2(ctx, raw[offset:]); err != nil {
 		return

@@ -520,6 +520,17 @@ func (se *SortedExtents) Range(f func(ek proto.ExtentKey) bool) {
 	}
 }
 
+func (se *SortedExtents) Range2(f func(index int, ek proto.ExtentKey) bool) {
+	se.RLock()
+	defer se.RUnlock()
+
+	for i, ek := range se.eks {
+		if !f(i, ek) {
+			break
+		}
+	}
+}
+
 func (se *SortedExtents) Clone() *SortedExtents {
 	newSe := NewSortedExtents()
 
@@ -556,6 +567,15 @@ func (se *SortedExtents) HasExtent(inEk proto.ExtentKey) (ok bool, ekInfo *proto
 		}
 	}
 	return false, nil
+}
+
+func (se *SortedExtents) GetByIndex(index int) *proto.ExtentKey {
+	se.RLock()
+	defer se.RUnlock()
+	if index < 0 || index > len(se.eks) {
+		return nil
+	}
+	return &se.eks[index]
 }
 
 // This method is based on recursive binary search to find the first overlapping position.
