@@ -17,6 +17,7 @@ package data
 import (
 	"fmt"
 	"net"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -139,6 +140,24 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 }
 
 func (w *Wrapper) update() {
+	for {
+		err := w.updateWithRecover()
+		if err == nil {
+			break
+		}
+		log.LogErrorf("updateDataInfo: err(%v) try next update", err)
+	}
+}
+
+func (w *Wrapper) updateWithRecover() (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogErrorf("updateWithRecover panic: err(%v) stack(%v)", r, string(debug.Stack()))
+			msg := fmt.Sprintf("updateDataInfo panic: err(%v)", r)
+			handleUmpAlarm(w.clusterName, w.volName, "updateDataInfo", msg)
+			err = errors.New(msg)
+		}
+	}()
 	ticker := time.NewTicker(time.Minute)
 	for {
 		select {
@@ -203,6 +222,10 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 	rwPartitionGroups := make([]*DataPartition, 0)
 	for _, partition := range dpv.DataPartitions {
 		dp := convert(partition)
+		if len(dp.Hosts) == 0 {
+			log.LogWarnf("updateDataPartition: no host in dp(%v)", dp)
+			continue
+		}
 		if w.followerRead && w.nearRead {
 			dp.NearHosts = w.sortHostsByDistance(dp.Hosts)
 		}

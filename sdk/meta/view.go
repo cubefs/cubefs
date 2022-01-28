@@ -20,6 +20,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"runtime/debug"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -229,6 +230,25 @@ func (mw *MetaWrapper) triggerAndWaitForceUpdate() {
 }
 
 func (mw *MetaWrapper) refresh() {
+	for {
+		err := mw.refreshWithRecover()
+		if err == nil {
+			break
+		}
+		log.LogErrorf("refreshMetaInfo: err(%v) try next update", err)
+	}
+}
+
+func (mw *MetaWrapper) refreshWithRecover() (panicErr error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogErrorf("refreshMetaInfo panic: err(%v) stack(%v)", r, string(debug.Stack()))
+			msg := fmt.Sprintf("refreshMetaInfo panic: err(%v)", r)
+			handleUmpAlarm(mw.cluster, mw.volname, "refreshMetaInfo", msg)
+			panicErr = errors.New(msg)
+		}
+	}()
+
 	var err error
 
 	t := time.NewTimer(RefreshMetaPartitionsInterval)

@@ -17,6 +17,7 @@ package meta
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"sync"
 	"syscall"
 	"time"
@@ -258,7 +259,24 @@ func (mw *MetaWrapper) Cluster() string {
 //}
 
 func (mw *MetaWrapper) startUpdateLimiterConfig() {
-	mw.updateLimiterConfig()
+	for {
+		err := mw.startUpdateLimiterConfigWithRecover()
+		if err == nil {
+			break
+		}
+		log.LogErrorf("refreshMetaLimitInfo: err(%v) try next update", err)
+	}
+}
+
+func (mw *MetaWrapper) startUpdateLimiterConfigWithRecover() (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogErrorf("refreshMetaLimitInfo panic: err(%v) stack(%v)", r, string(debug.Stack()))
+			msg := fmt.Sprintf("refreshMetaLimitInfo panic: err(%v)", r)
+			handleUmpAlarm(mw.cluster, mw.volname, "refreshMetaLimitInfo", msg)
+			err = errors.New(msg)
+		}
+	}()
 
 	updateConfigTicket := time.Second * 120
 	ticker := time.NewTicker(updateConfigTicket)
@@ -280,6 +298,7 @@ func (mw *MetaWrapper) updateLimiterConfig() {
 		return
 	}
 	mw.limitMapMutex.Lock()
+	defer mw.limitMapMutex.Unlock()
 	// delete op which not stored on master
 	for op, _ := range mw.opLimiter {
 		if _, exist := limitInfo.ClientVolOpRateLimit[op]; !exist {
@@ -299,7 +318,6 @@ func (mw *MetaWrapper) updateLimiterConfig() {
 		}
 	}
 	log.LogInfof("updateLimiterConfig: vol(%v) opLimiter(%v)", mw.volname, mw.opLimiter)
-	mw.limitMapMutex.Unlock()
 }
 
 func (mw *MetaWrapper) checkLimiter(ctx context.Context, opCode uint8) error {

@@ -17,6 +17,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -490,6 +491,24 @@ func setRate(lim *rate.Limiter, val int) string {
 }
 
 func (client *ExtentClient) startUpdateConfig() {
+	for {
+		err := client.startUpdateConfigWithRecover()
+		if err == nil {
+			break
+		}
+		log.LogErrorf("updateDataLimitConfig: err(%v) try next update", err)
+	}
+}
+
+func (client *ExtentClient) startUpdateConfigWithRecover() (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogErrorf("updateDataLimitConfig panic: err(%v) stack(%v)", r, string(debug.Stack()))
+			msg := fmt.Sprintf("updateDataLimitConfig panic: err(%v)", r)
+			handleUmpAlarm(client.dataWrapper.clusterName, client.dataWrapper.volName, "updateDataLimitConfig", msg)
+			err = errors.New(msg)
+		}
+	}()
 	ticker := time.NewTicker(updateConfigTicket)
 	defer ticker.Stop()
 	for {
