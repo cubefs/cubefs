@@ -73,7 +73,7 @@ type MetaPartitionInfo struct {
 	MaxInodeID    uint64
 	InodeCount    uint64
 	DentryCount   uint64
-	MaxExistIno	  uint64
+	MaxExistIno   uint64
 	VolName       string
 	Replicas      []*MetaReplicaInfo
 	ReplicaNum    uint8
@@ -211,6 +211,7 @@ type DataPartitionInfo struct {
 	LastLoadedTime          int64
 	ReplicaNum              uint8
 	Status                  int8
+	IsRecover               bool
 	Replicas                []*DataReplica
 	Hosts                   []string // host addresses
 	Peers                   []Peer

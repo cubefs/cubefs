@@ -781,6 +781,7 @@ func (partition *DataPartition) ToProto(c *Cluster) *proto.DataPartitionInfo {
 		LastLoadedTime:          partition.LastLoadedTime,
 		ReplicaNum:              partition.ReplicaNum,
 		Status:                  partition.Status,
+		IsRecover:               partition.isRecover,
 		Replicas:                replicas,
 		Hosts:                   partition.Hosts,
 		Peers:                   partition.Peers,
