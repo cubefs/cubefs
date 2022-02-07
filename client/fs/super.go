@@ -100,7 +100,8 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		Authenticate:  opt.Authenticate,
 		TicketMess:    opt.TicketMess,
 		ValidateOwner: opt.Authenticate || opt.AccessKey == "",
-		EnableSummary: opt.EnableSummary && opt.EnableXattr, // enable both summary and xattr
+		EnableSummary: opt.EnableSummary && opt.EnableXattr,
+		MetaSendTimeout: opt.MetaSendTimeout,
 	}
 	s.mw, err = meta.NewMetaWrapper(metaConfig)
 	if err != nil {
@@ -131,7 +132,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.fsyncOnClose = opt.FsyncOnClose
 	s.enableXattr = opt.EnableXattr
 
-	if opt.EnableSummary {
+	if s.mw.EnableSummary {
 		s.sc = NewSummaryCache(DefaultSummaryExpiration, MaxSummaryCache)
 	}
 
@@ -196,6 +197,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		go s.scheduleFlush()
 	}
 	if s.mw.EnableSummary {
+
 		s.sc = NewSummaryCache(DefaultSummaryExpiration, MaxSummaryCache)
 	}
 

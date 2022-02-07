@@ -697,8 +697,8 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	if _, err := os.Stat(bcache.UnixSocketPath); err == nil {
 		opt.EnableBcache = true
 	}
-	opt.MetaSendTimeout = GlobalMountOptions[proto.MetaSendTimeout].GetInt64()
 	opt.BuffersTotalLimit = GlobalMountOptions[proto.BuffersTotalLimit].GetInt64()
+	opt.MetaSendTimeout = GlobalMountOptions[proto.MetaSendTimeout].GetInt64()
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))

@@ -60,7 +60,6 @@ const (
 	WriteThreads
 	MetaSendTimeout
 	BuffersTotalLimit
-
 	MaxMountOption
 )
 
