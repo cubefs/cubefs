@@ -88,6 +88,7 @@ const (
 	 */
 	CfgMetricsDegrade = "metricsDegrade" // int
 
+	CfgDiskRdonlySpace = "diskRdonlySpace" // int
 	// smux Config
 	ConfigKeyEnableSmuxClient  = "enableSmuxConnPool" //bool
 	ConfigKeySmuxPortShift     = "smuxPortShift"      //int
@@ -271,6 +272,13 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	s.space.SetNodeID(s.nodeID)
 	s.space.SetClusterID(s.clusterID)
 
+	diskRdonlySpace := uint64(cfg.GetInt64(CfgDiskRdonlySpace))
+	if diskRdonlySpace < DefaultDiskRetainMin {
+		diskRdonlySpace = DefaultDiskRetainMin
+	}
+
+	log.LogInfof("startSpaceManager preReserveSpace %d", diskRdonlySpace)
+
 	var wg sync.WaitGroup
 	for _, d := range cfg.GetSlice(ConfigKeyDisks) {
 		log.LogDebugf("action[startSpaceManager] load disk raw config(%v).", d)
@@ -300,7 +308,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		wg.Add(1)
 		go func(wg *sync.WaitGroup, path string, reservedSpace uint64) {
 			defer wg.Done()
-			s.space.LoadDisk(path, reservedSpace, DefaultDiskMaxErr)
+			s.space.LoadDisk(path, reservedSpace, diskRdonlySpace, DefaultDiskMaxErr)
 		}(&wg, path, reservedSpace)
 	}
 	wg.Wait()
