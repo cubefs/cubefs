@@ -418,9 +418,9 @@ func (dp *DataPartition) Disk() *Disk {
 	return dp.disk
 }
 
-func (dp *DataPartition) IsRejectWrite() bool {
-	return dp.Disk().RejectWrite
-}
+// func (dp *DataPartition) IsRejectWrite() bool {
+// 	return dp.Disk().RejectWrite
+// }
 
 // Status returns the partition status.
 func (dp *DataPartition) Status() int {

@@ -25,10 +25,11 @@ import (
 	"syscall"
 	"time"
 
+	"os"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"os"
 )
 
 var (
@@ -51,9 +52,10 @@ type Disk struct {
 	Unallocated uint64
 	Allocated   uint64
 
-	MaxErrCnt     int // maximum number of errors
-	Status        int // disk status such as READONLY
-	ReservedSpace uint64
+	MaxErrCnt       int // maximum number of errors
+	Status          int // disk status such as READONLY
+	ReservedSpace   uint64
+	DiskRdonlySpace uint64
 
 	RejectWrite                               bool
 	partitionMap                              map[uint64]*DataPartition
@@ -68,10 +70,11 @@ const (
 
 type PartitionVisitor func(dp *DataPartition)
 
-func NewDisk(path string, reservedSpace uint64, maxErrCnt int, space *SpaceManager) (d *Disk) {
+func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, space *SpaceManager) (d *Disk) {
 	d = new(Disk)
 	d.Path = path
 	d.ReservedSpace = reservedSpace
+	d.DiskRdonlySpace = diskRdonlySpace
 	d.MaxErrCnt = maxErrCnt
 	d.RejectWrite = false
 	d.space = space
@@ -91,6 +94,21 @@ func (d *Disk) PartitionCount() int {
 	return len(d.partitionMap)
 }
 
+func (d *Disk) CanWrite() bool {
+
+	if d.Status == proto.ReadWrite || !d.RejectWrite {
+		return true
+	}
+
+	// if ReservedSpace < diskFreeSpace < DiskRdonlySpace, writeOp is ok, disk & dp is rdonly, can't create dp again
+	// if ReservedSpace > diskFreeSpace, writeOp is also not allowed.
+	if d.Total+d.DiskRdonlySpace > d.Used+d.ReservedSpace {
+		return true
+	}
+
+	return false
+}
+
 // Compute the disk usage
 func (d *Disk) computeUsage() (err error) {
 	d.RLock()
@@ -101,22 +119,22 @@ func (d *Disk) computeUsage() (err error) {
 		return
 	}
 
-	//  total := math.Max(0, int64(fs.Blocks*uint64(fs.Bsize) - d.ReservedSpace))
-	total := int64(fs.Blocks*uint64(fs.Bsize) - d.ReservedSpace)
+	//  total := math.Max(0, int64(fs.Blocks*uint64(fs.Bsize) - d.PreReserveSpace))
+	total := int64(fs.Blocks*uint64(fs.Bsize) - d.DiskRdonlySpace)
 	if total < 0 {
 		total = 0
 	}
 	d.Total = uint64(total)
 
-	//  available := math.Max(0, int64(fs.Bavail*uint64(fs.Bsize) - d.ReservedSpace))
-	available := int64(fs.Bavail*uint64(fs.Bsize) - d.ReservedSpace)
+	//  available := math.Max(0, int64(fs.Bavail*uint64(fs.Bsize) - d.PreReserveSpace))
+	available := int64(fs.Bavail*uint64(fs.Bsize) - d.DiskRdonlySpace)
 	if available < 0 {
 		available = 0
 	}
 	d.Available = uint64(available)
 
 	//  used := math.Max(0, int64(total - available))
-	free := int64(fs.Bfree*uint64(fs.Bsize) - d.ReservedSpace)
+	free := int64(fs.Bfree*uint64(fs.Bsize) - d.DiskRdonlySpace)
 	used := int64(total - free)
 	if used < 0 {
 		used = 0
@@ -246,8 +264,8 @@ func (d *Disk) updateSpaceInfo() (err error) {
 		d.Status = proto.ReadWrite
 	}
 	log.LogDebugf("action[updateSpaceInfo] disk(%v) total(%v) available(%v) remain(%v) "+
-		"restSize(%v) maxErrs(%v) readErrs(%v) writeErrs(%v) status(%v)", d.Path,
-		d.Total, d.Available, d.Unallocated, d.ReservedSpace, d.MaxErrCnt, d.ReadErrCnt, d.WriteErrCnt, d.Status)
+		"restSize(%v) preRestSize (%v) maxErrs(%v) readErrs(%v) writeErrs(%v) status(%v)", d.Path,
+		d.Total, d.Available, d.Unallocated, d.ReservedSpace, d.DiskRdonlySpace, d.MaxErrCnt, d.ReadErrCnt, d.WriteErrCnt, d.Status)
 	return
 }
 

@@ -42,6 +42,7 @@ func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {
 			Allocated   uint64 `json:"allocated"`
 			Status      int    `json:"status"`
 			RestSize    uint64 `json:"restSize"`
+			DiskRdoSize uint64 `json:"diskRdoSize"`
 			Partitions  int    `json:"partitions"`
 		}{
 			Path:        diskItem.Path,
@@ -52,6 +53,7 @@ func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {
 			Allocated:   diskItem.Allocated,
 			Status:      diskItem.Status,
 			RestSize:    diskItem.ReservedSpace,
+			DiskRdoSize: diskItem.DiskRdonlySpace,
 			Partitions:  diskItem.PartitionCount(),
 		}
 		disks = append(disks, disk)
