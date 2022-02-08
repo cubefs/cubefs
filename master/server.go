@@ -56,8 +56,7 @@ var (
 	volNameRegexp = regexp.MustCompile("^[a-zA-Z0-9][a-zA-Z0-9_.-]{1,61}[a-zA-Z0-9]$")
 	ownerRegexp   = regexp.MustCompile("^[A-Za-z][A-Za-z0-9_]{0,20}$")
 
-	useConnPool = true //for test
-	gConfig     *clusterConfig
+	gConfig *clusterConfig
 )
 
 // Server represents the server in a cluster
