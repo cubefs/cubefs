@@ -1169,6 +1169,8 @@ func (c *Cluster) getAllMetaPartitionsByMetaNode(addr string) (partitions []*Met
 }
 
 func (c *Cluster) migrateDataNode(srcAddr, targetAddr string, limit int) (err error) {
+	var toBeOffLinePartitions []*DataPartition
+
 	msg := fmt.Sprintf("action[migrateDataNode], src(%s) migrate to target(%s) cnt(%d)", srcAddr, targetAddr, limit)
 	log.LogWarn(msg)
 
@@ -1181,14 +1183,18 @@ func (c *Cluster) migrateDataNode(srcAddr, targetAddr string, limit int) (err er
 	defer src.MigrateLock.Unlock()
 
 	partitions := c.getAllDataPartitionByDataNode(src.Addr)
-	toBeOffLinePartitions := make([]*DataPartition, 0)
-	for _, dp := range partitions {
-		// two replica can't exist on same node
-		if targetAddr != "" && dp.hasHost(targetAddr) {
-			continue
-		}
+	if targetAddr != "" {
+		toBeOffLinePartitions = make([]*DataPartition, 0)
+		for _, dp := range partitions {
+			// two replica can't exist on same node
+			if dp.hasHost(targetAddr) {
+				continue
+			}
 
-		toBeOffLinePartitions = append(toBeOffLinePartitions, dp)
+			toBeOffLinePartitions = append(toBeOffLinePartitions, dp)
+		}
+	} else {
+		toBeOffLinePartitions = partitions
 	}
 
 	if len(toBeOffLinePartitions) <= 0 && len(partitions) != 0 {
@@ -1722,6 +1728,8 @@ func (c *Cluster) getBadDataPartitionsView() (bpvs []badPartitionView) {
 }
 
 func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err error) {
+	var toBeOfflineMps []*MetaPartition
+
 	msg := fmt.Sprintf("action[migrateMetaNode],clusterID[%v] migrate from Node[%v] to [%s] begin", c.Name, srcAddr, targetAddr)
 	log.LogWarn(msg)
 
@@ -1734,13 +1742,17 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 	defer metaNode.MigrateLock.Unlock()
 
 	partitions := c.getAllMetaPartitionByMetaNode(srcAddr)
-	toBeOfflineMps := make([]*MetaPartition, 0)
-	for _, mp := range partitions {
-		if targetAddr != "" && contains(mp.Hosts, targetAddr) {
-			continue
-		}
+	if targetAddr != "" {
+		toBeOfflineMps := make([]*MetaPartition, 0)
+		for _, mp := range partitions {
+			if contains(mp.Hosts, targetAddr) {
+				continue
+			}
 
-		toBeOfflineMps = append(toBeOfflineMps, mp)
+			toBeOfflineMps = append(toBeOfflineMps, mp)
+		}
+	} else {
+		toBeOfflineMps = partitions
 	}
 
 	if len(toBeOfflineMps) <= 0 && len(partitions) != 0 {
