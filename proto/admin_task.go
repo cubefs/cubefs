@@ -115,11 +115,12 @@ func (t *AdminTask) IsHeartbeatTask() bool {
 
 // NewAdminTask returns a new adminTask.
 func NewAdminTask(opCode uint8, opAddr string, request interface{}) (t *AdminTask) {
+	packet := Packet{Opcode: opCode}
 	t = new(AdminTask)
 	t.OpCode = opCode
 	t.Request = request
 	t.OperatorAddr = opAddr
-	t.ID = fmt.Sprintf("addr[%v]_op[%v]", t.OperatorAddr, t.OpCode)
+	t.ID = fmt.Sprintf("addr[%v]_op[%v:%s]", t.OperatorAddr, t.OpCode, packet.GetOpMsg())
 	t.CreateTime = time.Now().Unix()
 	return
 }

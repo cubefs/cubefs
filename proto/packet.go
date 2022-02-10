@@ -214,6 +214,11 @@ func NewPacketReqID() *Packet {
 	return p
 }
 
+func (p *Packet) Dump() string {
+	return fmt.Sprintf("\nReqID(%v)\nMagic(%x)\nExtentType(%v)\nOp(%v)\nPartitionID(%v)\nResultCode(%v)\nSize(%v)\nArgLen(%v)\nDataLen(%v)\n",
+		p.ReqID, p.Magic, p.ExtentType, p.GetOpMsg(), p.PartitionID, p.GetResultMsg(), p.Size, p.ArgLen, len(p.Data))
+}
+
 func (p *Packet) String() string {
 	return fmt.Sprintf("ReqID(%v)Op(%v)PartitionID(%v)ResultCode(%v)", p.ReqID, p.GetOpMsg(), p.PartitionID, p.GetResultMsg())
 }

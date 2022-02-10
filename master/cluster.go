@@ -1053,14 +1053,15 @@ func (c *Cluster) migrateDataNode(srcAddr, targetAddr string, limit int) (err er
 
 	select {
 	case err = <-errChannel:
-		log.LogErrorf("action[migrateDataNode] clusterID[%v] migrate Node[%s] to [%s] faild, err(%s)",
-			c.Name, src.Addr, targetAddr, err.Error())
+		log.LogErrorf("action[migrateDataNode] clusterID[%v] migrate Node[%s] to [%s] cnt[%d] faild[%d], err(%s)...",
+			c.Name, src.Addr, targetAddr, limit, len(errChannel)+1, err.Error())
 		return
 	default:
 	}
 
 	if limit < len(partitions) {
-		log.LogWarnf("action[migrateDataNode] clusterID[%v] migrate from [%s] to [%s] cnt[%d] success", c.Name, srcAddr, targetAddr, limit)
+		log.LogWarnf("action[migrateDataNode] clusterID[%v] migrate from [%s] to [%s] cnt[%d] success",
+			c.Name, srcAddr, targetAddr, limit)
 		return
 	}
 
