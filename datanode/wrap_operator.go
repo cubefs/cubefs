@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net"
 	"strconv"
 	"time"
@@ -744,6 +745,9 @@ func (s *DataNode) tinyExtentRepairRead(request *repl.Packet, connect net.Conn) 
 			var (
 				replySize int64
 			)
+			if newOffset-offset > math.MaxUint32 {
+				newOffset = offset + int64(math.MaxUint32)
+			}
 			if replySize, err = s.writeEmptyPacketOnTinyExtentRepairRead(reply, newOffset, offset, connect); err != nil {
 				return
 			}
