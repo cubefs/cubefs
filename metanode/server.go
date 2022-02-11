@@ -16,9 +16,9 @@ package metanode
 
 import (
 	"github.com/cubefs/cubefs/util"
+	"github.com/xtaci/smux"
 	"io"
 	"net"
-	"smux"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"

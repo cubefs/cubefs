@@ -35,7 +35,7 @@ func (c *COWList) Append(i interface{}) int {
 	return newLen - 1
 }
 
-// GetConnect gets the item at index.
+// Get gets the item at index.
 func (c *COWList) Get(index int) interface{} {
 	list := c.v.Load().([]interface{})
 	return list[index]

@@ -21,9 +21,9 @@ import (
 	"strconv"
 	"sync/atomic"
 
+	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
-	"github.com/tiglabs/raft"
 )
 
 var (

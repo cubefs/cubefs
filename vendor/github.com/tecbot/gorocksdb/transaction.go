@@ -46,7 +46,7 @@ func (transaction *Transaction) Rollback() error {
 	return nil
 }
 
-// GetConnect returns the data associated with the key from the database given this transaction.
+// Get returns the data associated with the key from the database given this transaction.
 func (transaction *Transaction) Get(opts *ReadOptions, key []byte) (*Slice, error) {
 	var (
 		cErr    *C.char
@@ -63,7 +63,7 @@ func (transaction *Transaction) Get(opts *ReadOptions, key []byte) (*Slice, erro
 	return NewSlice(cValue, cValLen), nil
 }
 
-// PutConnect writes data associated with a key to the transaction.
+// Put writes data associated with a key to the transaction.
 func (transaction *Transaction) Put(key, value []byte) error {
 	var (
 		cErr   *C.char

@@ -29,12 +29,12 @@ import (
 	"path"
 
 	"github.com/cubefs/cubefs/cmd/common"
+	raftproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
-	raftproto "github.com/tiglabs/raft/proto"
 )
 
 var (

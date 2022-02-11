@@ -40,7 +40,7 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 
-	"smux"
+	"github.com/xtaci/smux"
 )
 
 var (

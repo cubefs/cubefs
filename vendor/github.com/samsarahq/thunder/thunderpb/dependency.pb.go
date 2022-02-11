@@ -6,11 +6,21 @@
 
 	It is generated from these files:
 		dependency.proto
+		federation.proto
+		testcustomexecutor.proto
 
 	It has these top-level messages:
 		Field
 		SQLFilter
 		ExpirationTime
+		Selection
+		Fragment
+		SelectionSet
+		Query
+		ExecuteRequest
+		ExecuteResponse
+		CustomExecutorRequest
+		CustomExecutorResponse
 */
 package thunderpb
 

@@ -1,0 +1,23 @@
+
+syntax = "proto3";
+
+package thunderpb;
+option go_package = "github.com/samsarahq/thunder/thunderpb";
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "federation.proto";
+
+message CustomExecutorRequest { 
+  thunderpb.ExecuteRequest request = 1; 
+  string token = 2;
+}
+
+message CustomExecutorResponse { 
+  thunderpb.ExecuteResponse response = 1; 
+  string token = 2;
+}
+
+service CustomExecutor {
+  rpc Execute(CustomExecutorRequest) returns (CustomExecutorResponse) {}
+}
+

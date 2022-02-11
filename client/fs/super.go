@@ -25,8 +25,8 @@ import (
 
 	"golang.org/x/net/context"
 
-	"bazil.org/fuse"
-	"bazil.org/fuse/fs"
+	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
+	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/stream"

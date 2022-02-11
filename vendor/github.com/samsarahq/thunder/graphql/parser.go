@@ -496,7 +496,7 @@ func Flatten(selectionSet *SelectionSet) ([]*Selection, error) {
 		}
 
 		for _, fragment := range selectionSet.Fragments {
-			ok, err := shouldIncludeNode(fragment.Directives)
+			ok, err := ShouldIncludeNode(fragment.Directives)
 			if err != nil {
 				return err
 			}

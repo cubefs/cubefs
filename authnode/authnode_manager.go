@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/tiglabs/raft/proto"
 )
 
 // LeaderInfo represents the leader's information

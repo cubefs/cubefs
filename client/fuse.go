@@ -43,9 +43,9 @@ import (
 
 	sysutil "github.com/cubefs/cubefs/util/sys"
 
-	"bazil.org/fuse"
-	"bazil.org/fuse/fs"
 	cfs "github.com/cubefs/cubefs/client/fs"
+	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
+	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"

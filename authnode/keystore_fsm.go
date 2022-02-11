@@ -22,11 +22,11 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/cubefs/cubefs/depends/tiglabs/raft"
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util/keystore"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/tiglabs/raft"
-	"github.com/tiglabs/raft/proto"
 )
 
 const (

@@ -26,6 +26,8 @@ import (
 	"hash/crc32"
 	"strings"
 
+	"github.com/cubefs/cubefs/depends/tiglabs/raft"
+	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/storage"
@@ -33,8 +35,6 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/tiglabs/raft"
-	raftProto "github.com/tiglabs/raft/proto"
 )
 
 func (s *DataNode) getPacketTpLabels(p *repl.Packet) map[string]string {

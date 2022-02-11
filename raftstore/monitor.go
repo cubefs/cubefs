@@ -2,9 +2,9 @@ package raftstore
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/tiglabs/raft/proto"
 	"time"
 )
 

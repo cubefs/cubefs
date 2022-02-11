@@ -25,7 +25,7 @@ import (
 	"strings"
 	"unsafe"
 
-	"bazil.org/fuse/fs"
+	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 )

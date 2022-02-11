@@ -20,8 +20,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/raftstore"
-	"github.com/tiglabs/raft/proto"
 )
 
 //config key
