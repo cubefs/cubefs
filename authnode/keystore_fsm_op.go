@@ -21,9 +21,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/util/keystore"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/tiglabs/raft/proto"
 )
 
 // RaftCmd defines the Raft commands.

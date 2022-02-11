@@ -50,11 +50,11 @@ func (sb *schemaBuilder) buildBatchFunctionWithFallback(typ reflect.Type, m *met
 		}
 	}
 
-	if m.BatchArgs.ShouldUseFallbackFunc == nil {
+	if m.BatchArgs.ShouldUseBatchFunc == nil {
 		return nil, fmt.Errorf("batch function requires fallback check function (got nil)")
 	}
 
-	batchField.UseBatchFunc = m.BatchArgs.ShouldUseFallbackFunc
+	batchField.UseBatchFunc = m.BatchArgs.ShouldUseBatchFunc
 	batchField.Resolve = fallbackField.Resolve
 	return batchField, nil
 }

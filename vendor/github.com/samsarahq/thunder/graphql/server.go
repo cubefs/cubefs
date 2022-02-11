@@ -283,7 +283,7 @@ func (c *conn) handleMutate(in *inEnvelope) error {
 	}
 
 	initial := true
-	e := NewExecutor(NewImmediateGoroutineScheduler())
+	e := c.executor
 	c.subscriptions[id] = reactive.NewRerunner(c.ctx, func(ctx context.Context) (interface{}, error) {
 		// Serialize all mutates for a given connection.
 		c.mutateMu.Lock()

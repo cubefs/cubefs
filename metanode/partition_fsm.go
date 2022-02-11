@@ -27,11 +27,11 @@ import (
 	"os"
 	"path"
 
+	"github.com/cubefs/cubefs/depends/tiglabs/raft"
+	raftproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/tiglabs/raft"
-	raftproto "github.com/tiglabs/raft/proto"
 )
 
 // Apply applies the given operational commands.

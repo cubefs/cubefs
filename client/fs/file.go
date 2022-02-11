@@ -19,8 +19,8 @@ import (
 	"io"
 	"time"
 
-	"bazil.org/fuse"
-	"bazil.org/fuse/fs"
+	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
+	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
 	"golang.org/x/net/context"
 
 	"sync"

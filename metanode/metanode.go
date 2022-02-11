@@ -15,9 +15,9 @@
 package metanode
 
 import (
+	"github.com/xtaci/smux"
 	syslog "log"
 	"os"
-	"smux"
 	"strings"
 	"time"
 

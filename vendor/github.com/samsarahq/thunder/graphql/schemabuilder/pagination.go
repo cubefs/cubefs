@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/samsarahq/thunder/batch"
@@ -112,6 +113,9 @@ type ConnectionArgs struct {
 	SortBy *string
 	// sortOrder: "asc" | "desc"
 	SortOrder *SortOrder
+	// filterType: "customFilterType"
+	// Note: FilterType is not part of the Relay Spec for Connection types
+	FilterType *string
 }
 
 // PaginationArgs are used in externally set connections by embedding them in an args struct. They
@@ -126,6 +130,7 @@ type PaginationArgs struct {
 	FilterTextFields *[]string
 	SortBy           *string
 	SortOrder        *SortOrder
+	FilterType       *string
 }
 
 func (p PaginationArgs) limit() int {
@@ -193,6 +198,10 @@ type connectionContext struct {
 	SortFields map[string]*graphql.Field
 	// The slice sorting function for each GraphQL field.
 	SortFunctions map[string]func([]sortReference, SortOrder)
+	// The custom filter functions available.
+	FilterFunctions map[string]func(string, []string) bool
+	// The custom search tokenization functions available.
+	TokenizeSearchFunctions map[string]func(string) []string
 }
 
 // embedsPaginationArgs returns true if PaginationArgs were embedded.
@@ -414,7 +423,7 @@ type SafeBatchNodesToKeep struct {
 	mux         sync.Mutex
 }
 
-func (c *connectionContext) applyBatchTextFilter(ctx context.Context, nodes []interface{}, matchStrings []string, batchedFields map[string]*graphql.Field, nodesToKeep []bool) error {
+func (c *connectionContext) applyBatchTextFilter(ctx context.Context, nodes []interface{}, searchTokens []string, filterType *string, batchedFields map[string]*graphql.Field, nodesToKeep []bool) error {
 	g, ctx := errgroup.WithContext(ctx)
 	m := &sync.Mutex{}
 	for unscopeName, unscopedFilterField := range batchedFields {
@@ -429,7 +438,15 @@ func (c *connectionContext) applyBatchTextFilter(ctx context.Context, nodes []in
 				if !ok {
 					return fmt.Errorf("filter %s returned %T, must be a string", name, text)
 				}
-				if filter.MatchText(textString, matchStrings) {
+
+				shouldKeep := false
+				if filterType == nil {
+					shouldKeep = filter.DefaultFilterFunc(textString, searchTokens)
+				} else if filterFunc, ok := c.FilterFunctions[*filterType]; ok {
+					shouldKeep = filterFunc(textString, searchTokens)
+				}
+
+				if shouldKeep {
 					m.Lock()
 					nodesToKeep[i] = true
 					m.Unlock()
@@ -445,7 +462,7 @@ func (c *connectionContext) applyBatchTextFilter(ctx context.Context, nodes []in
 	return nil
 }
 
-func (c *connectionContext) checkFilters(ctx context.Context, node interface{}, matchStrings []string, filterFields map[string]*graphql.Field) (bool, error) {
+func (c *connectionContext) checkFilters(ctx context.Context, node interface{}, searchTokens []string, filterFields map[string]*graphql.Field, filterType *string) (bool, error) {
 	keep := false
 	for name, filterField := range filterFields {
 		// Resolve the graphql.Field made for sorting.
@@ -458,9 +475,17 @@ func (c *connectionContext) checkFilters(ctx context.Context, node interface{}, 
 		if !ok {
 			return keep, fmt.Errorf("filter %s returned %T, must be a string", name, text)
 		}
-		if filter.MatchText(textString, matchStrings) {
-			keep = true
-			break
+
+		if filterType == nil {
+			if filter.DefaultFilterFunc(textString, searchTokens) {
+				keep = true
+				break
+			}
+		} else if filterFunc, ok := c.FilterFunctions[*filterType]; ok {
+			if filterFunc(textString, searchTokens) {
+				keep = true
+				break
+			}
 		}
 	}
 	return keep, nil
@@ -469,12 +494,12 @@ func (c *connectionContext) checkFilters(ctx context.Context, node interface{}, 
 // We found that parallelizing non-expensive fields was slower due to the overhead of
 // spawning goroutines, so we execute non-expensive fields serially. We're also concerned
 // about the memory overhead of spawning many goroutines
-func (c *connectionContext) applyTextFilterNotBatchedExpensive(ctx context.Context, nodes []interface{}, matchStrings []string, filterFields map[string]*graphql.Field, nodesToKeep []bool) error {
+func (c *connectionContext) applyTextFilterNotBatchedExpensive(ctx context.Context, nodes []interface{}, searchTokens []string, filterType *string, filterFields map[string]*graphql.Field, nodesToKeep []bool) error {
 	g, ctx := errgroup.WithContext(ctx)
 	for unscopedI, unscopedNode := range nodes {
 		i, node := unscopedI, unscopedNode
 		g.Go(func() error {
-			keep, err := c.checkFilters(ctx, node, matchStrings, filterFields)
+			keep, err := c.checkFilters(ctx, node, searchTokens, filterFields, filterType)
 			nodesToKeep[i] = keep
 			return err
 		})
@@ -485,10 +510,10 @@ func (c *connectionContext) applyTextFilterNotBatchedExpensive(ctx context.Conte
 	return nil
 }
 
-func (c *connectionContext) applyTextFilterNotBatched(ctx context.Context, nodes []interface{}, matchStrings []string, filterFields map[string]*graphql.Field, nodesToKeep []bool) error {
+func (c *connectionContext) applyTextFilterNotBatched(ctx context.Context, nodes []interface{}, searchTokens []string, filterType *string, filterFields map[string]*graphql.Field, nodesToKeep []bool) error {
 	for unscopedI, unscopedNode := range nodes {
 		i, node := unscopedI, unscopedNode
-		keep, err := c.checkFilters(ctx, node, matchStrings, filterFields)
+		keep, err := c.checkFilters(ctx, node, searchTokens, filterFields, filterType)
 		if err != nil {
 			return err
 		}
@@ -532,24 +557,32 @@ func (c *connectionContext) applyTextFilter(ctx context.Context, nodes []interfa
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
-	matchStrings := filter.GetMatchStrings(*args.FilterText)
+
+	// Get search tokens from search query
+	var searchTokens []string
+	if args.FilterType == nil {
+		searchTokens = filter.GetDefaultSearchTokens(*args.FilterText)
+	} else if tokenizeSearchFunc, ok := c.TokenizeSearchFunctions[*args.FilterType]; ok {
+		searchTokens = tokenizeSearchFunc(*args.FilterText)
+	}
+
 	nodesToKeep := make([]bool, len(nodes))
 	expensiveNodesToKeep := make([]bool, len(nodes))
 	batchedNodesToKeep := make([]bool, len(nodes))
 
 	if len(filterTextFieldsNotBatched) > 0 {
 		g.Go(func() error {
-			return c.applyTextFilterNotBatched(ctx, nodes, matchStrings, filterTextFieldsNotBatched, nodesToKeep)
+			return c.applyTextFilterNotBatched(ctx, nodes, searchTokens, args.FilterType, filterTextFieldsNotBatched, nodesToKeep)
 		})
 	}
 	if len(filterTextFieldsNotBatchedExpensive) > 0 {
 		g.Go(func() error {
-			return c.applyTextFilterNotBatchedExpensive(ctx, nodes, matchStrings, filterTextFieldsNotBatchedExpensive, expensiveNodesToKeep)
+			return c.applyTextFilterNotBatchedExpensive(ctx, nodes, searchTokens, args.FilterType, filterTextFieldsNotBatchedExpensive, expensiveNodesToKeep)
 		})
 	}
 	if len(filterTextFieldsBatched) > 0 {
 		g.Go(func() error {
-			return c.applyBatchTextFilter(ctx, nodes, matchStrings, filterTextFieldsBatched, batchedNodesToKeep)
+			return c.applyBatchTextFilter(ctx, nodes, searchTokens, args.FilterType, filterTextFieldsBatched, batchedNodesToKeep)
 		})
 	}
 	if err := g.Wait(); err != nil {
@@ -812,9 +845,9 @@ var sorts = map[reflect.Kind]func([]sortReference, SortOrder){
 			a := slice[i].value
 			b := slice[j].value
 			if order == SortOrder_Ascending {
-				return a.String() < b.String()
+				return strings.ToLower(a.String()) < strings.ToLower(b.String())
 			} else {
-				return a.String() > b.String()
+				return strings.ToLower(a.String()) > strings.ToLower(b.String())
 			}
 		})
 	},
@@ -872,7 +905,7 @@ func (c *connectionContext) consumeSorts(sb *schemaBuilder, m *method, typ refle
 
 		// Build a GraphQL field for the function.
 		var field *graphql.Field
-		if sortMethod.Batch && sortMethod.BatchArgs.FallbackFunc != nil && sortMethod.BatchArgs.ShouldUseFallbackFunc != nil {
+		if sortMethod.Batch && sortMethod.BatchArgs.FallbackFunc != nil && sortMethod.BatchArgs.ShouldUseBatchFunc != nil {
 			field, err = sb.buildBatchFunctionWithFallback(typ, sortMethod)
 		} else if sortMethod.Batch {
 			field, err = sb.buildBatchFunction(typ, sortMethod)
@@ -915,6 +948,18 @@ func (c *connectionContext) checkFilterTextFunctionTypes(name string, filterMeth
 }
 
 func (c *connectionContext) consumeTextFilters(sb *schemaBuilder, m *method, typ reflect.Type) error {
+	// Store custom filter functions
+	c.FilterFunctions = make(map[string]func(string, []string) bool)
+	for name, filterMethod := range m.FilterMethods {
+		c.FilterFunctions[name] = filterMethod
+	}
+
+	// Store custom tokenize search functions
+	c.TokenizeSearchFunctions = make(map[string]func(string) []string)
+	for name, tokenizeSearchMethod := range m.TokenizeFilterTextMethods {
+		c.TokenizeSearchFunctions[name] = tokenizeSearchMethod
+	}
+
 	c.FilterTextFields = make(map[string]*graphql.Field)
 
 	for name, filterMethod := range m.TextFilterMethods {
@@ -925,7 +970,7 @@ func (c *connectionContext) consumeTextFilters(sb *schemaBuilder, m *method, typ
 		}
 
 		var field *graphql.Field
-		if filterMethod.Batch && filterMethod.BatchArgs.FallbackFunc != nil && filterMethod.BatchArgs.ShouldUseFallbackFunc != nil {
+		if filterMethod.Batch && filterMethod.BatchArgs.FallbackFunc != nil && filterMethod.BatchArgs.ShouldUseBatchFunc != nil {
 			field, err = sb.buildBatchFunctionWithFallback(typ, filterMethod)
 		} else if filterMethod.Batch {
 			field, err = sb.buildBatchFunction(typ, filterMethod)
@@ -1087,7 +1132,7 @@ func (sb *schemaBuilder) buildPaginatedFieldWithFallback(typ reflect.Type, m *me
 	field := &graphql.Field{
 		Resolve: func(ctx context.Context, source, args interface{}, selectionSet *graphql.SelectionSet) (i interface{}, e error) {
 			dualArgs := args.(dualArgResponses)
-			if m.ManualPaginationArgs.ShouldUseFallbackFunc(ctx) {
+			if m.ManualPaginationArgs.ShouldUseBatchFunc(ctx) {
 				return fallbackField.Resolve(ctx, source, dualArgs.fallbackArgValue, selectionSet)
 			}
 			return manualPaginationField.Resolve(ctx, source, dualArgs.argValue, selectionSet)
@@ -1226,6 +1271,7 @@ func (c *connectionContext) extractReturnAndErr(ctx context.Context, out []refle
 			FilterTextFields: connectionArgs.FilterTextFields,
 			SortBy:           connectionArgs.SortBy,
 			SortOrder:        connectionArgs.SortOrder,
+			FilterType:       connectionArgs.FilterType,
 		}
 	} else {
 		paginationArgs = reflect.ValueOf(args).Field(c.PaginationArgsIndex).Interface().(PaginationArgs)

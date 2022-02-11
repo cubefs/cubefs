@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/samsarahq/go/oops"
 	"github.com/samsarahq/thunder/graphql"
 )
 
@@ -12,6 +13,23 @@ import (
 // that object to build a GraphQL Field that can be resolved in the GraphQL
 // graph.
 func (sb *schemaBuilder) buildFunction(typ reflect.Type, m *method) (*graphql.Field, error) {
+
+	// If the method is federated, we want to built a graphql field that returns all
+	// fields on that object. This allows them to be sent as federated keys to other servers.
+	if m.RootObjectType != nil {
+		return sb.buildFederatedFunction(typ, m)
+	}
+
+	// If the method is a shadow object, we want to built a graphql field that parses the federation
+	// keys and reconstructs the object to run a subquery on a federated servers
+	if m.ShadowObjectType != nil {
+		if typ.Name() == "federation" {
+			return sb.buildShadowObjectFederationFunction(typ, m)
+		} else {
+			return nil, oops.Errorf("ShadowType %s is on %s insetad of the federation object type", m.ShadowObjectType.Name(), typ.Name())
+		}
+	}
+
 	field, _, err := sb.buildFunctionAndFuncCtx(typ, m)
 	return field, err
 }
@@ -79,6 +97,92 @@ func (sb *schemaBuilder) buildFunctionAndFuncCtx(typ reflect.Type, m *method) (*
 		External:                   true,
 		NumParallelInvocationsFunc: m.ConcurrencyArgs.numParallelInvocationsFunc,
 	}, funcCtx, nil
+}
+
+// buildFederatedFunction creates a graphql field that exposes all the fields on the object struct.
+// This allows them to be sent to any other server as federated keys.
+//
+// It generates a field func on the federated object that looks like the example below
+// rootObjectType.fieldfunc("_federation", func(root *rootObjectType) (*rootObjectType) { return root })
+// This function allows us to fetch all the fields on the root object that can be sent to another server
+// as args to a shadow field func.
+func (sb *schemaBuilder) buildFederatedFunction(typ reflect.Type, m *method) (*graphql.Field, error) {
+	var argParser *argParser
+	returnType, err := sb.getType(m.RootObjectType)
+	if err != nil {
+		return nil, oops.Wrapf(err, "Invalid return type")
+	}
+	field := &graphql.Field{
+		Resolve: func(ctx context.Context, source, funcRawArgs interface{}, selectionSet *graphql.SelectionSet) (interface{}, error) {
+			return source, nil
+
+		},
+		Args:                       make(map[string]graphql.Type),
+		Type:                       returnType,
+		ParseArguments:             argParser.Parse,
+		Expensive:                  m.Expensive,
+		External:                   true,
+		NumParallelInvocationsFunc: m.ConcurrencyArgs.numParallelInvocationsFunc,
+	}
+	return field, nil
+}
+
+// buildShadowObjectFederationFunction builds a federation object and a field func that takes the
+// federation keys as args and constructs the shadow object. This is used for federated subqueries.
+// {
+//   _federation {
+//     [ObjectName]-[Service] (keys: Keys) {
+//       subQuery
+//     }
+//   }
+// }
+// This generates a field func on the federated object that looks like the example below
+// federation.fieldfunc("[ObjectName]-[Service]", func(args *ShadowObject) (*ShadowObject) { return args})
+// This function allows us to reconstruct the object that the subQuery is nested on
+func (sb *schemaBuilder) buildShadowObjectFederationFunction(typ reflect.Type, m *method) (*graphql.Field, error) {
+	funcCtx := &funcContext{typ: typ}
+
+	// Input type in the format of struct{keys: *ShadowObjectType}
+	// which are the federated keys pass into the field
+	input := reflect.StructOf([]reflect.StructField{
+		{
+			Name: "Keys",
+			Type: reflect.SliceOf(m.ShadowObjectType),
+		},
+	})
+	in := make([]reflect.Type, 1)
+	in[0] = input
+
+	argParser, argType, _, err := funcCtx.getArgParserAndTyp(sb, in)
+	if err != nil {
+		return nil, oops.Wrapf(err, "Error parsing args for shadow object field")
+	}
+	funcCtx.hasArgs = argParser != nil
+	args, err := funcCtx.argsTypeMap(argType)
+	if err != nil {
+		return nil, oops.Wrapf(err, "Error parsing args map for shadow object field")
+	}
+
+	// Return type is a nonnullable list of the shadow object type
+	returnType, err := sb.getType(m.ShadowObjectType)
+	if err != nil {
+		return nil, oops.Wrapf(err, "Invalid return type")
+	}
+	rType := &graphql.NonNull{Type: &graphql.List{Type: returnType}}
+	field := &graphql.Field{
+		Resolve: func(ctx context.Context, source, funcRawArgs interface{}, selectionSet *graphql.SelectionSet) (interface{}, error) {
+			args := reflect.ValueOf(funcRawArgs)
+			keys := reflect.Indirect(args).FieldByName("Keys")
+			return keys.Interface(), nil
+		},
+		Args:                       args,
+		Type:                       rType,
+		ParseArguments:             argParser.Parse,
+		Expensive:                  m.Expensive,
+		External:                   true,
+		NumParallelInvocationsFunc: m.ConcurrencyArgs.numParallelInvocationsFunc,
+	}
+	return field, nil
 }
 
 // funcContext is used to parse the function signature in buildFunction.

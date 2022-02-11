@@ -5,10 +5,10 @@ import "C"
 import "unsafe"
 
 // ReadTier controls fetching of data during a read request.
-// An application can issue a read request (via GetConnect/Iterators) and specify
+// An application can issue a read request (via Get/Iterators) and specify
 // if that read should process data that ALREADY resides on a specified cache
 // level. For example, if an application specifies BlockCacheTier then the
-// GetConnect call will process data that is already processed in the memtable or
+// Get call will process data that is already processed in the memtable or
 // the block cache. It will not page in data from the OS cache or data that
 // resides in storage.
 type ReadTier uint

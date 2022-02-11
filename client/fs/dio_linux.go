@@ -17,7 +17,7 @@ package fs
 import (
 	"syscall"
 
-	"bazil.org/fuse"
+	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 )
 
 func isDirectIOEnabled(flags fuse.OpenFlags) bool {

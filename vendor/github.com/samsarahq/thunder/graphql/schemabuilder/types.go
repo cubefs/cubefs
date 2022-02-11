@@ -12,8 +12,8 @@ type Object struct {
 	Description string
 	Type        interface{}
 	Methods     Methods // Deprecated, use FieldFunc instead.
-
-	key string
+	key         string
+	ServiceName string
 }
 
 type paginationObject struct {
@@ -48,6 +48,52 @@ var Paginated fieldFuncOptionFunc = func(m *method) {
 // the function is expensive to execute, so it should be parallelized.
 var Expensive fieldFuncOptionFunc = func(m *method) {
 	m.Expensive = true
+}
+
+// FilterFunc is an option that can be passed to a FieldFunc to specify
+// custom string matching algorithms for filtering FieldFunc results.
+//
+// It accepts 3 parameters:
+// 1. name
+// This should describe the filter behaviour (e.g. "fuzzySearch").
+// This parameter corresponds with the PaginationArg prop FilterType.
+// Specifying filterType on a GraphQL query will indicate which tokenization
+// and matching algorithms (see below) are used to filter results.
+//
+// 2. tokenizeFilterText
+// This argument should be an algorithm that determines how the search query string
+// is broken up into search tokens. It expects to receive a search string and return
+// a list of search token strings which will be used to compare against
+// the field string for a match in 'filterFunc' (see below).
+//
+// 3. filterFunc
+// This argument should be an algorithm that determines whether there is a match
+// between the field string and the search tokens. It expects to receive the field string
+// and the list of search tokens (generated from 'tokenizeFilterText') and return a boolean
+// which signals whether there is a match that should be included in the returned results.
+func FilterFunc(name string, tokenizeFilterText func(string) []string, filterFunc func(string, []string) bool) FieldFuncOption {
+	var fieldFuncFilterMethods fieldFuncOptionFunc = func(m *method) {
+		// Store custom filter functions
+		if m.FilterMethods == nil {
+			m.FilterMethods = map[string]func(string, []string) bool{}
+		}
+
+		if _, ok := m.FilterMethods[name]; ok {
+			panic("Field Filter Functions have the same name: " + name)
+		}
+		m.FilterMethods[name] = filterFunc
+
+		// Store custom filer text tokenization functions
+		if m.TokenizeFilterTextMethods == nil {
+			m.TokenizeFilterTextMethods = map[string]func(string) []string{}
+		}
+
+		if _, ok := m.TokenizeFilterTextMethods[name]; ok {
+			panic("Tokenize Filter Text Functions have the same name: " + name)
+		}
+		m.TokenizeFilterTextMethods[name] = tokenizeFilterText
+	}
+	return fieldFuncFilterMethods
 }
 
 func FilterField(name string, filter interface{}, options ...FieldFuncOption) FieldFuncOption {
@@ -88,8 +134,8 @@ func BatchFilterFieldWithFallback(name string, batchFilter interface{}, filter i
 	textFilterMethod := &method{
 		Fn: batchFilter,
 		BatchArgs: batchArgs{
-			FallbackFunc:          filter,
-			ShouldUseFallbackFunc: flag,
+			FallbackFunc:       filter,
+			ShouldUseBatchFunc: flag,
 		}, Batch: true,
 		MarkedNonNullable: true}
 	for _, opt := range options {
@@ -145,8 +191,8 @@ func BatchSortFieldWithFallback(name string, batchSort interface{}, sort interfa
 	sortMethod := &method{
 		Fn: batchSort,
 		BatchArgs: batchArgs{
-			FallbackFunc:          sort,
-			ShouldUseFallbackFunc: flag,
+			FallbackFunc:       sort,
+			ShouldUseBatchFunc: flag,
 		}, Batch: true,
 		MarkedNonNullable: true}
 	for _, opt := range options {
@@ -225,8 +271,8 @@ func (s *Object) BatchFieldFuncWithFallback(name string, batchFunc interface{}, 
 	m := &method{
 		Fn: batchFunc,
 		BatchArgs: batchArgs{
-			FallbackFunc:          fallbackFunc,
-			ShouldUseFallbackFunc: flag,
+			FallbackFunc:       fallbackFunc,
+			ShouldUseBatchFunc: flag,
 		},
 		Batch: true,
 	}
@@ -248,8 +294,8 @@ func (s *Object) ManualPaginationWithFallback(name string, manualPaginatedFunc i
 	m := &method{
 		Fn: manualPaginatedFunc,
 		ManualPaginationArgs: manualPaginationArgs{
-			FallbackFunc:          fallbackFunc,
-			ShouldUseFallbackFunc: flag,
+			FallbackFunc:       fallbackFunc,
+			ShouldUseBatchFunc: flag,
 		},
 		Paginated: true,
 	}
@@ -285,6 +331,12 @@ type method struct {
 	// Whether or not the FieldFunc has been marked as expensive.
 	Expensive bool
 
+	// Custom filter methods for determining whether a field matches a search query.
+	FilterMethods map[string]func(string, []string) bool
+
+	// Custom methods for generating search tokens from a search query.
+	TokenizeFilterTextMethods map[string]func(string) []string
+
 	// Text filter methods
 	TextFilterMethods map[string]*method
 
@@ -299,6 +351,15 @@ type method struct {
 	BatchArgs batchArgs
 
 	ManualPaginationArgs manualPaginationArgs
+
+	// RootObjectType is an object where all the fields are keys
+	// that can be exposed over federation
+	RootObjectType reflect.Type
+
+	// ShadowObjectType is the reflect type of parent object if it
+	// is a shadow object. A shadow object's fields are each of the
+	// field that are sent as args to a federated sunquery.
+	ShadowObjectType reflect.Type
 }
 
 type concurrencyArgs struct {
@@ -311,18 +372,20 @@ type concurrencyArgs struct {
 // the different goroutines.
 type NumParallelInvocationsFunc func(ctx context.Context, numNodes int) int
 
-func (f NumParallelInvocationsFunc) apply(m *method) { m.ConcurrencyArgs.numParallelInvocationsFunc = f }
+func (f NumParallelInvocationsFunc) apply(m *method) {
+	m.ConcurrencyArgs.numParallelInvocationsFunc = f
+}
 
 type UseFallbackFlag func(context.Context) bool
 
 type batchArgs struct {
-	FallbackFunc          interface{}
-	ShouldUseFallbackFunc UseFallbackFlag
+	FallbackFunc       interface{}
+	ShouldUseBatchFunc UseFallbackFlag
 }
 
 type manualPaginationArgs struct {
-	FallbackFunc          interface{}
-	ShouldUseFallbackFunc UseFallbackFlag
+	FallbackFunc       interface{}
+	ShouldUseBatchFunc UseFallbackFlag
 }
 
 // A Methods map represents the set of methods exposed on a Object.
@@ -344,7 +407,3 @@ type Methods map[string]*method
 type Union struct{}
 
 var unionType = reflect.TypeOf(Union{})
-
-func (s *Object) Federation(f interface{}) {
-	s.FieldFunc("__federation", f)
-}

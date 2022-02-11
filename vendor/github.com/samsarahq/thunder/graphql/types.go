@@ -139,6 +139,9 @@ type Field struct {
 	// field execution (batch or non-expensive).  We pass in the number of srcs
 	// we're executing with so implementers can write custom logic.
 	NumParallelInvocationsFunc func(ctx context.Context, numNodes int) int
+
+	// FederatedKey tells us which services need this field as federated key.
+	FederatedKey map[string]bool
 }
 
 type Schema struct {
@@ -168,6 +171,20 @@ type Schema struct {
 type SelectionSet struct {
 	Selections []*Selection
 	Fragments  []*Fragment
+}
+
+// ShallowCopy returns a shallow copy of SelectionSet.
+func (s *SelectionSet) ShallowCopy() *SelectionSet {
+	cp := &SelectionSet{}
+	if s.Selections != nil {
+		cp.Selections = make([]*Selection, len(s.Selections))
+		copy(cp.Selections, s.Selections)
+	}
+	if s.Fragments != nil {
+		cp.Fragments = make([]*Fragment, len(s.Fragments))
+		copy(cp.Fragments, s.Fragments)
+	}
+	return cp
 }
 
 // A selection represents a part of a GraphQL query

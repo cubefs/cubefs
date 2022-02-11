@@ -17,10 +17,10 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/depends/tiglabs/raft"
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/tiglabs/raft"
-	"github.com/tiglabs/raft/proto"
 	"io"
 	"strconv"
 )

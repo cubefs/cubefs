@@ -5,6 +5,8 @@ BuildPath=${RootPath}/build
 BuildOutPath=${BuildPath}/out
 BuildBinPath=${BuildPath}/bin
 VendorPath=${RootPath}/vendor
+DependsPath=${RootPath}/depends
+
 
 RM=$(find /bin /sbin /usr/bin /usr/local -name "rm" | head -1)
 if [[ "-x$RM" == "-x" ]] ; then
@@ -138,7 +140,7 @@ build_lz4() {
 
 
 build_snappy() {
-    SnappySrcPath=${VendorPath}/snappy-1.1.7
+    SnappySrcPath=${DependsPath}/snappy-1.1.7
     SnappyBuildPath=${BuildOutPath}/snappy
     found=$(find ${SnappyBuildPath} -name libsnappy.a 2>/dev/null | wc -l)
     if [ ${found} -eq 0 ] ; then
@@ -157,7 +159,7 @@ build_snappy() {
 }
 
 build_rocksdb() {
-    RocksdbSrcPath=${VendorPath}/rocksdb-5.9.2
+    RocksdbSrcPath=${DependsPath}/rocksdb-5.9.2
     RocksdbBuildPath=${BuildOutPath}/rocksdb
     found=$(find ${RocksdbBuildPath} -name librocksdb.a 2>/dev/null | wc -l)
     if [ ${found} -eq 0 ] ; then
@@ -165,11 +167,17 @@ build_rocksdb() {
             mkdir -p ${RocksdbBuildPath}
             cp -rf ${RocksdbSrcPath}/* ${RocksdbBuildPath}
         fi
-        echo "build rocksdb..."
+
         pushd ${RocksdbBuildPath} >/dev/null
+
         [ "-$LUA_PATH" != "-" ]  && unset LUA_PATH
-        CXXFLAGS='-Wno-error=deprecated-copy -Wno-error=class-memaccess -Wno-error=pessimizing-move' \
+        MAJOR=$(echo __GNUC__ | $(which gcc) -E -xc - | tail -n 1)
+        if [ ${MAJOR} -ge 10 ] ; then
+          CXXFLAGS='-Wno-error=deprecated-copy -Wno-error=class-memaccess -Wno-error=pessimizing-move' \
 		make -j ${NPROC} static_lib  && echo "build rocksdb success" || {  echo "build rocksdb failed" ; exit 1; }
+        else
+		      make -j ${NPROC} static_lib  && echo "build rocksdb success" || {  echo "build rocksdb failed" ; exit 1; }
+		    fi
         popd >/dev/null
     fi
     cgo_cflags="${cgo_cflags} -I${RocksdbSrcPath}/include"
@@ -181,7 +189,7 @@ build_rocksdb() {
 }
 
 init_gopath() {
-    export GO111MODULE=off
+    export GO111MODULE=on
     export GOPATH=$HOME/tmp/cfs/go
 
     mkdir -p $GOPATH/src/github.com/cubefs
