@@ -27,6 +27,8 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -270,7 +272,13 @@ func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc u
 		return
 	}
 
-	if !isRepairRead {
+	if isRepairRead {
+		if size == util.RepairReadBlockSize {
+			// readahead more data to be repaired
+			unix.Fadvise(int(e.file.Fd()), offset+size,
+				util.RepairReadBlockSize, unix.FADV_WILLNEED)
+		}
+	} else {
 		crc = crc32.ChecksumIEEE(data)
 	}
 	return
