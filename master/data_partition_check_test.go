@@ -19,9 +19,9 @@ func TestCheckStatusOfCrossRegionQuorumVol(t *testing.T) {
 	rwDataReplica3 := &DataReplica{DataReplica: proto.DataReplica{Addr: "192.168.0.3", Status: ReadWrite}}
 	roDataReplica := &DataReplica{DataReplica: proto.DataReplica{Addr: "192.168.0.4", Status: ReadOnly}}
 	unavailableDataReplica := &DataReplica{DataReplica: proto.DataReplica{Status: Unavailable}}
-	availDP := &DataPartition{Hosts: []string{"192.168.0.1", "192.168.0.2", "192.168.0.3", "192.168.0.4"}, PartitionID: 1, ReplicaNum: 5, total: 120 * util.GB}
-	notAvailDP := &DataPartition{Hosts: []string{"192.168.0.1", "192.168.0.2", "192.168.0.3", "192.168.0.4"}, PartitionID: 1, ReplicaNum: 5, total: 120 * util.GB, used: 115 * util.GB}
-	primaryReadOnlyDP := &DataPartition{Hosts: []string{"192.168.0.4", "192.168.0.1", "192.168.0.2", "192.168.0.3"}, PartitionID: 1, ReplicaNum: 5, total: 120 * util.GB, used: 115 * util.GB}
+	availDP := &DataPartition{Hosts: []string{"192.168.0.1", "192.168.0.2", "192.168.0.3", "192.168.0.4", "192.168.0.5"}, PartitionID: 1, ReplicaNum: 5, total: 120 * util.GB}
+	notAvailDP := &DataPartition{Hosts: []string{"192.168.0.1", "192.168.0.2", "192.168.0.3", "192.168.0.4", "192.168.0.5"}, PartitionID: 1, ReplicaNum: 5, total: 120 * util.GB, used: 115 * util.GB}
+	primaryReadOnlyDP := &DataPartition{Hosts: []string{"192.168.0.4", "192.168.0.1", "192.168.0.2", "192.168.0.3", "192.168.0.5"}, PartitionID: 1, ReplicaNum: 5, total: 120 * util.GB, used: 115 * util.GB}
 	caseList := []struct {
 		dp                   *DataPartition
 		liveReplicas         []*DataReplica
@@ -44,7 +44,7 @@ func TestCheckStatusOfCrossRegionQuorumVol(t *testing.T) {
 	}
 
 	for no, case_ := range caseList {
-		case_.dp.checkStatusOfCrossRegionQuorumVol(case_.liveReplicas, 3, "", true, case_.dpWriteableThreshold)
+		case_.dp.checkStatusOfCrossRegionQuorumVol(case_.liveReplicas, case_.dpWriteableThreshold, nil, 3)
 		res := case_.dp.Status
 		if res != case_.res {
 			t.Errorf("checkStatusOfCrossRegionQuorumVol failed, no=[%d] res=[%v] expectRes=[%v]", no, res, case_.res)

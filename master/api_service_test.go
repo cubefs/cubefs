@@ -1743,6 +1743,7 @@ func TestAddDataReplicaForCrossRegionVol(t *testing.T) {
 		t.Errorf("vol:%v no data partition ", quorumVolName)
 		return
 	}
+	partition.isRecover = false
 	reqURL := fmt.Sprintf("%v%v?id=%v&addReplicaType=%d", hostAddr, proto.AdminAddDataReplica, partition.PartitionID, proto.AutoChooseAddrForQuorumVol)
 	process(reqURL, t)
 

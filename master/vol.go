@@ -315,7 +315,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int, dataNodeBadDisksOfVol 
 	defer vol.dataPartitions.RUnlock()
 	for _, dp := range vol.dataPartitions.partitionMap {
 		dp.checkReplicaStatus(c.cfg.DataPartitionTimeOutSec)
-		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec, vol.dpWriteableThreshold, vol.CrossRegionHAType, vol.getDataPartitionQuorum())
+		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec, vol.dpWriteableThreshold, vol.CrossRegionHAType, c, vol.getDataPartitionQuorum())
 		dp.checkLeader(c.cfg.DataPartitionTimeOutSec)
 		dp.checkMissingReplicas(c.Name, c.leaderInfo.addr, c.cfg.MissingDataPartitionInterval, c.cfg.IntervalToAlarmMissingDataPartition)
 		dp.checkReplicaNumAndSize(c, vol)

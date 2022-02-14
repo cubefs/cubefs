@@ -24,7 +24,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
-func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dpTimeOutSec int64, dpWriteableThreshold float64, crossRegionHAType proto.CrossRegionHAType, quorum int) {
+func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dpTimeOutSec int64, dpWriteableThreshold float64, crossRegionHAType proto.CrossRegionHAType, c *Cluster, quorum int) {
 	partition.Lock()
 	defer partition.Unlock()
 	if partition.isRecover {
@@ -40,19 +40,18 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 		return
 	}
 	if IsCrossRegionHATypeQuorum(crossRegionHAType) {
-		partition.checkStatusOfCrossRegionQuorumVol(liveReplicas, quorum, clusterName, needLog, dpWriteableThreshold)
-		return
-	}
-
-	switch len(liveReplicas) {
-	case (int)(partition.ReplicaNum):
-		partition.Status = proto.ReadOnly
-		if partition.checkReplicaStatusOnLiveNode(liveReplicas) == true &&
-			partition.canWrite() && partition.canResetStatusToWrite(dpWriteableThreshold) {
-			partition.Status = proto.ReadWrite
+		partition.checkStatusOfCrossRegionQuorumVol(liveReplicas, dpWriteableThreshold, c, quorum)
+	} else {
+		switch len(liveReplicas) {
+		case (int)(partition.ReplicaNum):
+			partition.Status = proto.ReadOnly
+			if partition.checkReplicaStatusOnLiveNode(liveReplicas) == true &&
+				partition.canWrite() && partition.canResetStatusToWrite(dpWriteableThreshold) {
+				partition.Status = proto.ReadWrite
+			}
+		default:
+			partition.Status = proto.ReadOnly
 		}
-	default:
-		partition.Status = proto.ReadOnly
 	}
 	if partition.Status != partition.lastStatus {
 		partition.lastModifyStatusTime = time.Now().Unix()
@@ -69,47 +68,45 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 	}
 }
 
-func (partition *DataPartition) checkStatusOfCrossRegionQuorumVol(liveReplicas []*DataReplica, quorum int, clusterName string, needLog bool, dpWriteableThreshold float64) {
+func (partition *DataPartition) checkStatusOfCrossRegionQuorumVol(liveReplicas []*DataReplica, dpWriteableThreshold float64, c *Cluster, quorum int) {
+	var (
+		masterRegionHosts []string
+		err               error
+	)
 	partition.Status = proto.ReadOnly
-	if partition.isPrimaryBackupLeaderWritable(liveReplicas) && partition.getRWReplicaCountOfLiveReplicas(liveReplicas) >= quorum &&
+	if quorum > maxQuorumVolDataPartitionReplicaNum || quorum < defaultQuorumDataPartitionMasterRegionCount {
+		quorum = defaultQuorumDataPartitionMasterRegionCount
+	}
+	if len(partition.Hosts) >= maxQuorumVolDataPartitionReplicaNum {
+		masterRegionHosts = partition.Hosts[:quorum]
+	} else {
+		if masterRegionHosts, _, err = c.getMasterAndSlaveRegionAddrsFromDataNodeAddrs(partition.Hosts); err != nil {
+			msg := fmt.Sprintf("action[checkStatusOfCrossRegionQuorumVol] partitionID[%v] hosts[%v],err[%v]",
+				partition.PartitionID, partition.Hosts, err)
+			Warn(c.Name, msg)
+			return
+		}
+	}
+	if partition.isAllMasterRegionReplicasWritable(liveReplicas, masterRegionHosts, quorum) &&
 		partition.canWrite() && partition.canResetStatusToWrite(dpWriteableThreshold) {
 		partition.Status = proto.ReadWrite
 	}
-	if partition.Status != partition.lastStatus {
-		partition.lastModifyStatusTime = time.Now().Unix()
-		partition.lastStatus = partition.Status
-	}
-	if needLog == true && len(liveReplicas) != int(partition.ReplicaNum) {
-		msg := fmt.Sprintf("action[checkStatusOfCrossRegionQuorumVol],partitionID:%v replicaNum:%v liveReplicas:%v Status:%v RocksDBHost:%v ",
-			partition.PartitionID, partition.ReplicaNum, len(liveReplicas), partition.Status, partition.Hosts)
-		log.LogInfo(msg)
-		if time.Now().Unix()-partition.lastWarnTime > intervalToWarnDataPartition {
-			Warn(clusterName, msg)
-			partition.lastWarnTime = time.Now().Unix()
-		}
-	}
 }
 
-func (partition *DataPartition) isPrimaryBackupLeaderWritable(liveReplicas []*DataReplica) bool {
-	if len(partition.Hosts) == 0 {
+func (partition *DataPartition) isAllMasterRegionReplicasWritable(liveReplicas []*DataReplica, masterRegionHosts []string, quorum int) bool {
+	if len(masterRegionHosts) < quorum {
 		return false
 	}
-	leaderAddr := partition.Hosts[0]
-	for _, replica := range liveReplicas {
-		if replica.Addr == leaderAddr && replica.Status == proto.ReadWrite {
-			return true
+	rwReplicaCount := 0
+	for _, masterRegionHost := range masterRegionHosts {
+		for _, replica := range liveReplicas {
+			if replica.Addr == masterRegionHost && replica.Status == proto.ReadWrite {
+				rwReplicaCount++
+				break
+			}
 		}
 	}
-	return false
-}
-
-func (partition *DataPartition) getRWReplicaCountOfLiveReplicas(liveReplicas []*DataReplica) (rwReplicaCount int) {
-	for _, replica := range liveReplicas {
-		if replica.Status == proto.ReadWrite {
-			rwReplicaCount++
-		}
-	}
-	return
+	return rwReplicaCount >= quorum
 }
 
 func (partition *DataPartition) canResetStatusToWrite(dpWriteableThreshold float64) bool {
