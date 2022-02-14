@@ -596,6 +596,8 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 				break
 			}
 		} else {
+			// FIXME: write every 128K or put data to a buffer
+			// first and then issue a larger IO?
 			currRecoverySize = uint64(reply.Size)
 			err = store.Write(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(currRecoverySize), reply.Data, reply.CRC, storage.AppendWriteType, BufferWrite)
 		}

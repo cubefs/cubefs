@@ -306,32 +306,12 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	if err != nil {
 		return err
 	}
-	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
-		return err
-	}
 	err = e.Write(data, offset, size, crc, writeType, isSync, s.PersistenceBlockCrc, ei)
 	if err != nil {
 		return err
 	}
 	ei.UpdateExtentInfo(e, 0)
 
-	return nil
-}
-
-func (s *ExtentStore) checkOffsetAndSize(extentID uint64, offset, size int64) error {
-	if IsTinyExtent(extentID) {
-		return nil
-	}
-	if offset+size > util.BlockSize*util.BlockCount {
-		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
-	}
-	if offset >= util.BlockCount*util.BlockSize || size == 0 {
-		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
-	}
-
-	if size > util.BlockSize {
-		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
-	}
 	return nil
 }
 
@@ -347,9 +327,6 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 	ei := s.extentInfoMap[extentID]
 	s.eiMutex.RUnlock()
 	if e, err = s.extentWithHeader(ei); err != nil {
-		return
-	}
-	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
 		return
 	}
 	crc, err = e.Read(nbuf, offset, size, isRepairRead)

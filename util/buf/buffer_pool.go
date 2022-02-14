@@ -2,16 +2,18 @@ package buf
 
 import (
 	"fmt"
-	"golang.org/x/net/context"
-	"golang.org/x/time/rate"
 	"sync"
 	"sync/atomic"
+
+	"golang.org/x/net/context"
+	"golang.org/x/time/rate"
 
 	"github.com/cubefs/cubefs/util"
 )
 
 const (
 	HeaderBufferPoolSize = 8192
+	RepairBufferPollSize = 256
 )
 
 var tinyBuffersTotalLimit int64 = 4096
@@ -32,7 +34,7 @@ func NewTinyBufferPool() *sync.Pool {
 
 // BufferPool defines the struct of a buffered pool with 4 objects.
 type BufferPool struct {
-	pools    [2]chan []byte
+	pools    [3]chan []byte
 	tinyPool *sync.Pool
 }
 
@@ -41,6 +43,7 @@ func NewBufferPool() (bufferP *BufferPool) {
 	bufferP = &BufferPool{}
 	bufferP.pools[0] = make(chan []byte, HeaderBufferPoolSize)
 	bufferP.pools[1] = make(chan []byte, HeaderBufferPoolSize)
+	bufferP.pools[2] = make(chan []byte, RepairBufferPollSize)
 	bufferP.tinyPool = NewTinyBufferPool()
 	return bufferP
 }
@@ -58,13 +61,16 @@ func (bufferP *BufferPool) get(index int, size int) (data []byte) {
 func (bufferP *BufferPool) Get(size int) (data []byte, err error) {
 	if size == util.PacketHeaderSize {
 		return bufferP.get(0, size), nil
-	} else if size == util.BlockSize {
+	} else if size == util.ReadBlockSize {
 		return bufferP.get(1, size), nil
+	} else if size == util.RepairReadBlockSize {
+		return bufferP.get(2, size), nil
 	} else if size == util.DefaultTinySizeLimit {
 		atomic.AddInt64(&tinyBuffersCount, 1)
 		return bufferP.tinyPool.Get().([]byte), nil
 	}
-	return nil, fmt.Errorf("can only support 45 or 65536 bytes")
+	return nil, fmt.Errorf("can only support %v, %v, %v or %v bytes",
+		util.PacketHeaderSize, util.ReadBlockSize, util.RepairReadBlockSize, util.DefaultTinySizeLimit)
 }
 
 func (bufferP *BufferPool) put(index int, data []byte) {
