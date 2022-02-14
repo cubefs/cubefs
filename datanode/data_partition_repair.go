@@ -497,6 +497,8 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	var request *repl.Packet
 	sizeDiff := remoteExtentInfo.Size - localExtentInfo.Size
 	if storage.IsTinyExtent(remoteExtentInfo.FileID) {
+		// if the area of [offs, offs + sizeDiff] locates in a hole,
+		// the real repair size could be larger than sizeDiff
 		if sizeDiff >= math.MaxUint32 {
 			sizeDiff = math.MaxUint32 - util.MB
 		}
@@ -563,10 +565,11 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 				remoteExtentInfo.Source, remoteExtentInfo.Size, currFixOffset, request.GetUniqueLogId(), reply.GetUniqueLogId())
 			return errors.Trace(err, "streamRepairExtent receive data error")
 		}
+		var currRecoverySize uint64
 		isEmptyResponse := false
 		// Write it to local extent file
 		if storage.IsTinyExtent(uint64(localExtentInfo.FileID)) {
-			currRecoverySize := uint64(reply.Size)
+			currRecoverySize = uint64(reply.Size)
 			var remoteAvaliSize uint64
 			if reply.ArgLen == TinyExtentRepairReadResponseArgLen {
 				remoteAvaliSize = binary.BigEndian.Uint64(reply.Arg[9:TinyExtentRepairReadResponseArgLen])
@@ -576,7 +579,14 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 			}
 			if isEmptyResponse {
 				currRecoverySize = binary.BigEndian.Uint64(reply.Arg[1:9])
-				reply.Size = uint32(currRecoverySize)
+			}
+			if currRecoverySize > uint64(math.MaxInt64) {
+				err = errors.NewErrorf("streamRepairTinyExtent(%v) remoteAvaliSize(%v) "+
+					"hasRecoverySize(%v) invalid currRecoverySize(%v)",
+					dp.applyRepairKey(int(localExtentInfo.FileID)),
+					remoteAvaliSize, hasRecoverySize, currRecoverySize)
+				log.LogErrorf("%v", err)
+				break
 			}
 			err = store.TinyExtentRecover(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(currRecoverySize), reply.Data, reply.CRC, isEmptyResponse)
 			if hasRecoverySize+currRecoverySize >= remoteAvaliSize {
@@ -586,7 +596,8 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 				break
 			}
 		} else {
-			err = store.Write(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.Size), reply.Data, reply.CRC, storage.AppendWriteType, BufferWrite)
+			currRecoverySize = uint64(reply.Size)
+			err = store.Write(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(currRecoverySize), reply.Data, reply.CRC, storage.AppendWriteType, BufferWrite)
 		}
 
 		// write to the local extent file
@@ -594,8 +605,8 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 			err = errors.Trace(err, "streamRepairExtent repair data error ")
 			return
 		}
-		hasRecoverySize += uint64(reply.Size)
-		currFixOffset += uint64(reply.Size)
+		hasRecoverySize += currRecoverySize
+		currFixOffset += currRecoverySize
 		if currFixOffset >= remoteExtentInfo.Size {
 			break
 		}

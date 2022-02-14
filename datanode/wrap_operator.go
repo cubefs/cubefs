@@ -632,7 +632,11 @@ func (s *DataNode) writeEmptyPacketOnTinyExtentRepairRead(reply *repl.Packet, ne
 	reply.Arg[0] = EmptyResponse
 	binary.BigEndian.PutUint64(reply.Arg[1:9], uint64(replySize))
 	err = reply.WriteToConn(connect)
-	reply.Size = uint32(replySize)
+	if replySize < int64(math.MaxUint32) {
+		reply.Size = uint32(replySize)
+	} else {
+		reply.Size = math.MaxUint32
+	}
 	logContent := fmt.Sprintf("action[operatePacket] %v.",
 		reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
 	log.LogReadf(logContent)
@@ -692,12 +696,7 @@ func (s *DataNode) tinyExtentRepairRead(request *repl.Packet, connect net.Conn) 
 			return
 		}
 		if newOffset > offset {
-			var (
-				replySize int64
-			)
-			if newOffset-offset > math.MaxUint32 {
-				newOffset = offset + int64(math.MaxUint32)
-			}
+			var replySize int64
 			if replySize, err = s.writeEmptyPacketOnTinyExtentRepairRead(reply, newOffset, offset, connect); err != nil {
 				return
 			}
