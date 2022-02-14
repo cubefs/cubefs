@@ -162,7 +162,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	s.initConnPool()
 
 	// init limit
-	initRepairLimit()
+	initRepairLimit(s, cfg)
 
 	// start the raft server
 	if err = s.startRaftServer(cfg); err != nil {

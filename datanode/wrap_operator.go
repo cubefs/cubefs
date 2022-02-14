@@ -514,16 +514,18 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		err error
 	)
 
+	partition := p.Object.(*DataPartition)
+
 	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionStreamRead, err.Error())
 			p.WriteToConn(connect)
 		} else {
-			finishDoExtentRepair()
+			finishDoExtentRepair(partition)
 		}
 	}()
 
-	err = requestDoExtentRepair()
+	err = requestDoExtentRepair(partition)
 	if err != nil {
 		return
 	}
@@ -532,6 +534,26 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 }
 
 func (s *DataNode) handleTinyExtentRepairReadPacket(p *repl.Packet, connect net.Conn) {
+	var (
+		err error
+	)
+
+	partition := p.Object.(*DataPartition)
+
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionTinyStreamRead, err.Error())
+			p.WriteToConn(connect)
+		} else {
+			finishDoExtentRepair(partition)
+		}
+	}()
+
+	err = requestDoExtentRepair(partition)
+	if err != nil {
+		return
+	}
+
 	s.tinyExtentRepairRead(p, connect)
 }
 

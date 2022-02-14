@@ -45,6 +45,7 @@ const (
 const (
 	ActionNotifyFollowerToRepair        = "ActionNotifyFollowerRepair"
 	ActionStreamRead                    = "ActionStreamRead"
+	ActionTinyStreamRead                = "ActionTinyStreamRead"
 	ActionCreateExtent                  = "ActionCreateExtent:"
 	ActionMarkDelete                    = "ActionMarkDelete:"
 	ActionGetAllExtentWatermarks        = "ActionGetAllExtentWatermarks:"
