@@ -17,11 +17,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/sdk/meta"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/spf13/cobra"
 	"io/ioutil"
 	"net/http"
 	"sort"
@@ -33,6 +28,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/sdk/meta"
+	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/spf13/cobra"
 )
 
@@ -680,8 +676,8 @@ func newMetaPartitionCheckSnapshot(client *master.MasterClient) *cobra.Command {
 			var (
 				partition *proto.MetaPartitionInfo
 				leaderCrc proto.SnapshotCrdResponse
-				peersCrc []proto.SnapshotCrdResponse
-				resp *http.Response
+				peersCrc  []proto.SnapshotCrdResponse
+				resp      *http.Response
 			)
 			partitionID, err := strconv.ParseUint(args[0], 10, 64)
 			fmt.Printf("partitionID: %v\n", partitionID)
@@ -692,7 +688,7 @@ func newMetaPartitionCheckSnapshot(client *master.MasterClient) *cobra.Command {
 			if partition, err = client.ClientAPI().GetMetaPartition(partitionID); err != nil {
 				return
 			}
-			for index, peer := range partition.Peers{
+			for index, peer := range partition.Peers {
 				addr := strings.Split(peer.Addr, ":")[0]
 				metaNodeProfPort := client.MetaNodeProfPort
 				resp, err = http.Get(fmt.Sprintf("http://%s:%d%s?pid=%v", addr, metaNodeProfPort, proto.ClientMetaPartitionSnapshotCheck, partitionID))
@@ -712,36 +708,36 @@ func newMetaPartitionCheckSnapshot(client *master.MasterClient) *cobra.Command {
 					return
 				}
 				dataRaw, err := json.Marshal(value["data"])
-				if err !=nil{
+				if err != nil {
 					log.LogWarnf("unmarshal failed ,err: %v", err)
 				}
 				data := proto.SnapshotCrdResponse{}
 				err = json.Unmarshal(dataRaw, &data)
-				if err != nil{
+				if err != nil {
 					log.LogWarnf("err: %v", err)
 				}
-				if  (partition.Replicas[index]).IsLeader == true{
+				if (partition.Replicas[index]).IsLeader == true {
 					leaderCrc = data
-				}else {
+				} else {
 					log.LogWarnf("data.LastSnapshotStr: %v", data.LastSnapshotStr)
 					peersCrc = append(peersCrc, data)
 				}
 			}
 			if len(peersCrc) > 0 {
 				stdout("%v", metaPartitionSnapshotCrcInfoTableHeader)
-				if len(leaderCrc.LastSnapshotStr)>0{
+				if len(leaderCrc.LastSnapshotStr) > 0 {
 					crcStr := strings.SplitN(leaderCrc.LastSnapshotStr, ",", 3)
 					stdout(fmt.Sprintf(metaPartitionSnapshotCrcInfoTablePattern, leaderCrc.LocalAddr, "leader",
 						crcStr[0], crcStr[1], crcStr[2]))
 				}
-				for _, peerCrc := range peersCrc{
-					if peerCrc.LastSnapshotStr != ""{
+				for _, peerCrc := range peersCrc {
+					if peerCrc.LastSnapshotStr != "" {
 						crcStr := strings.SplitN(peerCrc.LastSnapshotStr, ",", 3)
 						stdout(fmt.Sprintf(metaPartitionSnapshotCrcInfoTablePattern, peerCrc.LocalAddr, "peer ",
 							crcStr[0], crcStr[1], crcStr[2]))
 					}
 				}
-			}else{
+			} else {
 				fmt.Println("peersCrc is not created!")
 			}
 		},
