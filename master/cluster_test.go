@@ -2,9 +2,10 @@ package master
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/proto"
 	"testing"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
 )
 
 func buildPanicCluster() *Cluster {

@@ -15,10 +15,10 @@ Version=$(git describe --abbrev=0 --tags 2>/dev/null)
 BranchName=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 CommitID=$(git rev-parse HEAD 2>/dev/null)
 BuildTime=$(date +%Y-%m-%d\ %H:%M)
-LDFlags="-X github.com/chubaofs/chubaofs/proto.Version=${Version} \
-    -X github.com/chubaofs/chubaofs/proto.CommitID=${CommitID} \
-    -X github.com/chubaofs/chubaofs/proto.BranchName=${BranchName} \
-    -X 'github.com/chubaofs/chubaofs/proto.BuildTime=${BuildTime}'"
+LDFlags="-X github.com/cubefs/cubefs/proto.Version=${Version} \
+    -X github.com/cubefs/cubefs/proto.CommitID=${CommitID} \
+    -X github.com/cubefs/cubefs/proto.BranchName=${BranchName} \
+    -X 'github.com/cubefs/cubefs/proto.BuildTime=${BuildTime}'"
 MODFLAGS=""
 
 NPROC=$(nproc 2>/dev/null)
@@ -193,8 +193,8 @@ init_gopath() {
     export GO111MODULE=off
     export GOPATH=$HOME/tmp/cfs/go
 
-    mkdir -p $GOPATH/src/github.com/chubaofs
-    SrcPath=$GOPATH/src/github.com/chubaofs/chubaofs
+    mkdir -p $GOPATH/src/github.com/cubefs
+    SrcPath=$GOPATH/src/github.com/cubefs/cubefs
     if [ -L "$SrcPath" ]; then
         $RM -f $SrcPath
     fi
@@ -304,11 +304,11 @@ build_libsdk() {
     popd >/dev/null
 
     pushd $SrcPath/java >/dev/null
-    echo -n "build java libchubaofs        "
+    echo -n "build java libcubefs        "
     mkdir -p $SrcPath/java/src/main/resources/
     \cp  -rf ${TargetFile}  $SrcPath/java/src/main/resources/
     mvn clean package
-    \cp -rf $SrcPath/java/target/*.jar ${BuildBinPath}  && echo "build java libchubaofs         success" || echo "build java libchubaofs         failed"
+    \cp -rf $SrcPath/java/target/*.jar ${BuildBinPath}  && echo "build java libcubefs success" || echo "build java libcubefs failed"
     popd >/dev/null
 }
 

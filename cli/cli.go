@@ -16,11 +16,12 @@ package main
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/cli/cmd"
-	"github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/spf13/cobra"
 	"os"
+
+	"github.com/cubefs/cubefs/cli/cmd"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/spf13/cobra"
 )
 
 var (

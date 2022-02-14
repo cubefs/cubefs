@@ -16,7 +16,7 @@ package util
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/errors"
+	"github.com/cubefs/cubefs/util/errors"
 	"io"
 	"net"
 	"smux"

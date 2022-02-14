@@ -38,20 +38,20 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/chubaofs/chubaofs/sdk/master"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util"
 
-	sysutil "github.com/chubaofs/chubaofs/util/sys"
+	sysutil "github.com/cubefs/cubefs/util/sys"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-	cfs "github.com/chubaofs/chubaofs/client/fs"
-	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/config"
-	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/exporter"
-	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/ump"
+	cfs "github.com/cubefs/cubefs/client/fs"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/ump"
 	"github.com/jacobsa/daemonize"
 )
 

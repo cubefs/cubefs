@@ -21,7 +21,7 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fuseutil"
-	"github.com/chubaofs/chubaofs/util"
+	"github.com/cubefs/cubefs/util"
 	"golang.org/x/net/context"
 	"golang.org/x/time/rate"
 )

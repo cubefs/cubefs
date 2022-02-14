@@ -7,7 +7,7 @@ import (
 	"os"
 	"regexp"
 
-	"github.com/chubaofs/chubaofs/util/caps"
+	"github.com/cubefs/cubefs/util/caps"
 )
 
 var roleSet = map[string]bool{
