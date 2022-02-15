@@ -51,6 +51,7 @@ type ExtentInfo struct {
 	IsDeleted  bool   `json:"deleted"`
 	ModifyTime int64  `json:"modTime"`
 	Source     string `json:"src"`
+	Repairing  int32  `json:"repairing"`
 }
 
 func (ei *ExtentInfo) String() (m string) {
@@ -59,6 +60,14 @@ func (ei *ExtentInfo) String() (m string) {
 		source = "none"
 	}
 	return fmt.Sprintf("%v_%v_%v_%v", ei.FileID, ei.Size, ei.IsDeleted, source)
+}
+
+func (ei *ExtentInfo) SetRepairing() bool {
+	return atomic.CompareAndSwapInt32(&ei.Repairing, 0, 1)
+}
+
+func (ei *ExtentInfo) ClearRepairing() {
+	atomic.StoreInt32(&ei.Repairing, 0)
 }
 
 // Extent is an implementation of Extent for local regular extent file data management.
