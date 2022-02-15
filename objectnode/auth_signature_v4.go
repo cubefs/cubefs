@@ -575,7 +575,7 @@ func (req *signatureRequestV4) createCanonicalHeaderV4() (canonicalHeader http.H
 		case "transfer-encoding":
 			canonicalHeader.Set(header, req.r.Host)
 		default:
-			return nil, nil
+			continue
 		}
 	}
 

@@ -45,12 +45,20 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 		_ = InvalidBucketName.ServeResponse(w, r)
 		return
 	}
-	if vol, _ := o.getVol(bucket); vol != nil {
-		log.LogInfof("create bucket failed: duplicated bucket name[%v]", bucket)
-		_ = DuplicatedBucket.ServeResponse(w, r)
-		return
-	}
+
+	// if bucket has exist, check bucket owner is whether current user, if true return success, otherwise return error
 	auth := parseRequestAuthInfo(r)
+	if vol, _ := o.getVol(bucket); vol != nil {
+		if vol.mw.Owner() == auth.accessKey {
+			log.LogInfof("create has exist, bucket name[%v]", bucket)
+			return
+		} else {
+			log.LogInfof("create bucket failed: duplicated bucket name[%v]", bucket)
+			_ = DuplicatedBucket.ServeResponse(w, r)
+			return
+		}
+	}
+
 	var userInfo *proto.UserInfo
 	if userInfo, err = o.getUserInfoByAccessKey(auth.accessKey); err != nil {
 		log.LogErrorf("get user info from master error: accessKey(%v), err(%v)", auth.accessKey, err)
