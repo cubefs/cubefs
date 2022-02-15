@@ -1207,24 +1207,14 @@ func (v *Volume) loadUserDefinedMetadata(inode uint64) (metadata map[string]stri
 	return
 }
 
-func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) error {
+func (v *Volume) ReadInode(ino uint64, writer io.Writer, offset, size uint64) error {
 	var err error
-
-	var ino uint64
-	var mode os.FileMode
-	if _, ino, _, mode, err = v.recursiveLookupTarget(path); err != nil {
-		return err
-	}
-	if mode.IsDir() {
-		return nil
-	}
 
 	// read file data
 	var inoInfo *proto.InodeInfo
 	if inoInfo, err = v.mw.InodeGet_ll(context.Background(), ino); err != nil {
 		return err
 	}
-
 	if offset >= inoInfo.Size {
 		return nil
 	}
@@ -1258,10 +1248,10 @@ func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) er
 		}
 		n, err = v.ec.Read(context.Background(), ino, tmp, int(offset), readSize)
 		if err != nil && err != io.EOF {
-			log.LogErrorf("ReadFile: data read fail: volume(%v) path(%v) inode(%v) offset(%v) size(%v) err(%v)",
-				v.name, path, ino, offset, size, err)
-			exporter.Warning(fmt.Sprintf("read data fail: volume(%v) path(%v) inode(%v) offset(%v) size(%v) err(%v)",
-				v.name, path, ino, offset, readSize, err))
+			log.LogErrorf("ReadInode: data read fail: volume(%v) inode(%v) offset(%v) size(%v) err(%v)",
+				v.name, ino, offset, size, err)
+			exporter.Warning(fmt.Sprintf("read data fail: volume(%v) inode(%v) offset(%v) size(%v) err(%v)",
+				v.name, ino, offset, readSize, err))
 			return err
 		}
 		if n > 0 {
@@ -1275,6 +1265,20 @@ func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) er
 		}
 	}
 	return nil
+}
+
+func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) error {
+	var err error
+
+	var ino uint64
+	var mode os.FileMode
+	if _, ino, _, mode, err = v.recursiveLookupTarget(path); err != nil {
+		return err
+	}
+	if mode.IsDir() {
+		return nil
+	}
+	return v.ReadInode(ino, writer, offset, size)
 }
 
 func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, err error) {

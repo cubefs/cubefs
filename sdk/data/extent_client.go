@@ -232,8 +232,7 @@ func (client *ExtentClient) OpenStreamWithSize(inode uint64, size int) (err erro
 	if !ok {
 		s = NewStreamer(client, inode, streamerMapSeg)
 		streamerMapSeg.streamers[inode] = s
-	}
-	if curSize, _ := s.extents.Size(); curSize < size {
+	} else if curSize, _ := s.extents.Size(); curSize < size {
 		_ = s.GetExtents(context.Background())
 	}
 	return s.IssueOpenRequest()
