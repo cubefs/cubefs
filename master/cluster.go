@@ -802,6 +802,7 @@ func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int) (err error) {
 	}
 	return
 }
+
 func (c *Cluster) isFaultDomain(vol *Vol) bool {
 	var specifyZoneNeedDomain bool
 	if c.FaultDomain && !vol.crossZone && !c.needFaultDomain {
@@ -826,6 +827,7 @@ func (c *Cluster) isFaultDomain(vol *Vol) bool {
 	}
 	return vol.domainOn
 }
+
 
 // Synchronously create a data partition.
 // 1. Choose one of the available data nodes.
@@ -1913,6 +1915,88 @@ errHandler:
 	Warn(c.Name, err.Error())
 	return
 }
+
+func (c *Cluster) checkNormalZoneName(zoneName string) (err error) {
+	var zones []string
+	if c.needFaultDomain {
+		zones = c.t.domainExcludeZones
+	} else {
+		zones = c.t.getZoneNameList()
+	}
+
+	zoneList := strings.Split(zoneName, ",")
+	for i := 0; i < len(zoneList); i++ {
+		var isZone bool
+		for j := 0; j < len(zones); j++ {
+			if zoneList[i] == zones[j] {
+				isZone = true
+				break
+			}
+		}
+
+		if !isZone {
+			return fmt.Errorf("action[checkZoneName] the zonename[%s] not execluded domain name.should not be assigned", zoneList[i])
+		}
+	}
+	return
+}
+
+func (c *Cluster) checkZoneName(name string,
+	crossZone bool,
+	defaultPriority bool,
+	zoneName string,
+	domainId uint64) (newZoneName string, err error) {
+
+	zoneList := strings.Split(zoneName, ",")
+	newZoneName = zoneName
+
+	if crossZone {
+		if c.FaultDomain {
+			if newZoneName != "" {
+				if !defaultPriority || domainId > 0 {
+					return newZoneName, fmt.Errorf("action[checkZoneName] vol specified zoneName but cann't cross zone")
+				}
+				if len(zoneList) == 1 {
+					return newZoneName, fmt.Errorf("action[checkZoneName] vol specified zoneName but cann't cross zone")
+				} else {
+					if err = c.checkNormalZoneName(newZoneName); err != nil {
+						return newZoneName, err
+					}
+				}
+			} else {
+				if domainId > 0 {
+					if _, ok := c.domainManager.domainId2IndexMap[domainId]; !ok {
+						return newZoneName, fmt.Errorf("action[checkVolInfo] cluster can't find oomainId [%v]", domainId)
+					}
+				}
+			}
+		} else {
+			if c.t.zoneLen() <= 1 {
+				return newZoneName, fmt.Errorf("action[checkVolInfo] cluster has one zone,can't cross zone")
+			}
+		}
+	} else { // cross zone disable means not use domain at the time vol be created
+		if newZoneName == "" {
+			if !c.needFaultDomain {
+				if _, err = c.t.getZone(DefaultZoneName); err != nil {
+					return newZoneName, fmt.Errorf("action[checkZoneName] the vol is not cross zone and didn't set zone name,but there's no default zone")
+				}
+				log.LogInfof("action[checkZoneName] vol [%v] use default zone", name)
+				newZoneName = DefaultZoneName
+			}
+		} else {
+			if len(zoneList) > 1 {
+				return newZoneName, fmt.Errorf("action[checkZoneName] vol specified zoneName need cross zone")
+			}
+
+			if err = c.checkNormalZoneName(newZoneName); err != nil {
+				return newZoneName, err
+			}
+		}
+	}
+	return
+}
+
 
 func (c *Cluster) checkVolInfo(name string, crossZone bool, zoneName string) (newZoneName string, err error) {
 	newZoneName = zoneName
