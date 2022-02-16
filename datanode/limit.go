@@ -35,7 +35,7 @@ func requestDoExtentRepair() (err error) {
 	return
 }
 
-func fininshDoExtentRepair() {
+func finishDoExtentRepair() {
 	select {
 	case extentRepairLimitRater <- struct{}{}:
 		return
