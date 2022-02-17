@@ -16,9 +16,11 @@ package meta
 
 import (
 	"fmt"
+	"strconv"
 	"sync"
 
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/stat"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"
@@ -29,6 +31,11 @@ import (
 //
 
 func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target []byte) (status int, info *proto.InodeInfo, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("icreate", err, bgTime, 1)
+	}()
+
 	req := &proto.CreateInodeRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -60,6 +67,7 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target 
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("icreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -80,6 +88,11 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target 
 }
 
 func (mw *MetaWrapper) iunlink(mp *MetaPartition, inode uint64) (status int, info *proto.InodeInfo, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("iunlink", err, bgTime, 1)
+	}()
+
 	req := &proto.UnlinkInodeRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -108,6 +121,7 @@ func (mw *MetaWrapper) iunlink(mp *MetaPartition, inode uint64) (status int, inf
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("iunlink: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -123,7 +137,55 @@ func (mw *MetaWrapper) iunlink(mp *MetaPartition, inode uint64) (status int, inf
 	return statusOK, resp.Info, nil
 }
 
+func (mw *MetaWrapper) iclearCache(mp *MetaPartition, inode uint64) (status int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("iclearCache", err, bgTime, 1)
+	}()
+
+	req := &proto.ClearInodeCacheRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		Inode:       inode,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaClearInodeCache
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("iclearCache: ino(%v) err(%v)", inode, err)
+		return
+	}
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("iclearCache: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("iclearCache: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	log.LogDebugf("iclearCache: packet(%v) mp(%v) req(%v)", packet, mp, *req)
+	return status, nil
+}
+
 func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64) (status int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("ievict", err, bgTime, 1)
+	}()
+
 	req := &proto.EvictInodeRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -152,6 +214,7 @@ func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64) (status int, err 
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		log.LogWarnf("ievict: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -161,6 +224,11 @@ func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64) (status int, err 
 }
 
 func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32) (status int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("dcreate", err, bgTime, 1)
+	}()
+
 	if parentID == inode {
 		return statusExist, nil
 	}
@@ -196,6 +264,7 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 
 	status = parseStatus(packet.ResultCode)
 	if (status != statusOK) && (status != statusExist) {
+		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("dcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	} else if status == statusExist {
 		log.LogWarnf("dcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
@@ -205,6 +274,11 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 }
 
 func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, newInode uint64) (status int, oldInode uint64, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("dupdate", err, bgTime, 1)
+	}()
+
 	if parentID == newInode {
 		return statusExist, 0, nil
 	}
@@ -239,6 +313,7 @@ func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, 
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("dupdate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -254,6 +329,11 @@ func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, 
 }
 
 func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string) (status int, inode uint64, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("ddelete", err, bgTime, 1)
+	}()
+
 	req := &proto.DeleteDentryRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -283,6 +363,7 @@ func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string) 
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("ddelete: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -298,6 +379,11 @@ func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string) 
 }
 
 func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string) (status int, inode uint64, mode uint32, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("lookup", err, bgTime, 1)
+	}()
+
 	req := &proto.LookupRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -323,13 +409,18 @@ func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string) (
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
 		log.LogErrorf("lookup: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		errMetric := exporter.NewCounter("fileOpenFailed")
+		errMetric.AddWithLabels(1, map[string]string{exporter.Vol: mw.volname, exporter.Err: "EIO"})
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
 		if status != statusNoent {
+			err = errors.New(packet.GetResultMsg())
 			log.LogErrorf("lookup: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+			errMetric := exporter.NewCounter("fileOpenFailed")
+			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: mw.volname, exporter.Err: "EIO"})
 		} else {
 			log.LogDebugf("lookup exit: packet(%v) mp(%v) req(%v) NoEntry", packet, mp, *req)
 		}
@@ -340,6 +431,8 @@ func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string) (
 	err = packet.UnmarshalData(resp)
 	if err != nil {
 		log.LogErrorf("lookup: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
+		errMetric := exporter.NewCounter("fileOpenFailed")
+		errMetric.AddWithLabels(1, map[string]string{exporter.Vol: mw.volname, exporter.Err: "EIO"})
 		return
 	}
 	log.LogDebugf("lookup exit: packet(%v) mp(%v) req(%v) ino(%v) mode(%v)", packet, mp, *req, resp.Inode, resp.Mode)
@@ -347,6 +440,11 @@ func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string) (
 }
 
 func (mw *MetaWrapper) iget(mp *MetaPartition, inode uint64) (status int, info *proto.InodeInfo, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("iget", err, bgTime, 1)
+	}()
+
 	req := &proto.InodeGetRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -375,6 +473,7 @@ func (mw *MetaWrapper) iget(mp *MetaPartition, inode uint64) (status int, info *
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("iget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -393,6 +492,12 @@ func (mw *MetaWrapper) batchIget(wg *sync.WaitGroup, mp *MetaPartition, inodes [
 	var (
 		err error
 	)
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("batchIget", err, bgTime, 1)
+	}()
+
 	req := &proto.BatchInodeGetRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -420,6 +525,7 @@ func (mw *MetaWrapper) batchIget(wg *sync.WaitGroup, mp *MetaPartition, inodes [
 
 	status := parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("batchIget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -442,6 +548,11 @@ func (mw *MetaWrapper) batchIget(wg *sync.WaitGroup, mp *MetaPartition, inodes [
 }
 
 func (mw *MetaWrapper) readdir(mp *MetaPartition, parentID uint64) (status int, children []proto.Dentry, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("readdir", err, bgTime, 1)
+	}()
+
 	req := &proto.ReadDirRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -470,6 +581,7 @@ func (mw *MetaWrapper) readdir(mp *MetaPartition, parentID uint64) (status int, 
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		children = make([]proto.Dentry, 0)
 		log.LogErrorf("readdir: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
@@ -533,6 +645,11 @@ func (mw *MetaWrapper) readdirlimit(mp *MetaPartition, parentID uint64, from str
 }
 
 func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent proto.ExtentKey, discard []proto.ExtentKey) (status int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("appendExtentKey", err, bgTime, 1)
+	}()
+
 	req := &proto.AppendExtentKeyWithCheckRequest{
 		VolName:        mw.volname,
 		PartitionID:    mp.PartitionID,
@@ -563,12 +680,18 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("appendExtentKey: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	}
-	return status, nil
+	return status, err
 }
 
 func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64) (status int, gen, size uint64, extents []proto.ExtentKey, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("getExtents", err, bgTime, 1)
+	}()
+
 	req := &proto.GetExtentsRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -597,6 +720,7 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64) (status int, 
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		extents = make([]proto.ExtentKey, 0)
 		log.LogErrorf("getExtents: packet(%v) mp(%v) result(%v)", packet, mp, packet.GetResultMsg())
 		return
@@ -611,7 +735,96 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64) (status int, 
 	return statusOK, resp.Generation, resp.Size, resp.Extents, nil
 }
 
+func (mw *MetaWrapper) getObjExtents(mp *MetaPartition, inode uint64) (status int, gen, size uint64, extents []proto.ExtentKey, objExtents []proto.ObjExtentKey, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("getObjExtents", err, bgTime, 1)
+	}()
+
+	req := &proto.GetExtentsRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		Inode:       inode,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaObjExtentsList
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("getObjExtents: req(%v) err(%v)", *req, err)
+		return
+	}
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("getObjExtents: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		extents = make([]proto.ExtentKey, 0)
+		log.LogErrorf("getObjExtents: packet(%v) mp(%v) result(%v)", packet, mp, packet.GetResultMsg())
+		return
+	}
+
+	resp := new(proto.GetObjExtentsResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogErrorf("getObjExtents: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
+		return
+	}
+	return statusOK, resp.Generation, resp.Size, resp.Extents, resp.ObjExtents, nil
+}
+
+// func (mw *MetaWrapper) delExtentKey(mp *MetaPartition, inode uint64, extents []proto.ExtentKey) (status int, err error) {
+// 	req := &proto.DelExtentKeyRequest{
+// 		VolName:     mw.volname,
+// 		PartitionID: mp.PartitionID,
+// 		Inode:       inode,
+// 		Extents:     extents,
+// 	}
+
+// 	packet := proto.NewPacketReqID()
+// 	packet.Opcode = proto.OpMetaExtentsDel
+// 	packet.PartitionID = mp.PartitionID
+// 	err = packet.MarshalData(req)
+// 	if err != nil {
+// 		log.LogErrorf("delExtentKey: req(%v) err(%v)", *req, err)
+// 		return
+// 	}
+
+// 	metric := exporter.NewTPCnt(packet.GetOpMsg())
+// 	defer func() {
+// 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+// 	}()
+
+// 	packet, err = mw.sendToMetaPartition(mp, packet)
+// 	if err != nil {
+// 		log.LogErrorf("delExtentKey: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+// 		return
+// 	}
+
+// 	status = parseStatus(packet.ResultCode)
+// 	if status != statusOK {
+// 		log.LogErrorf("delExtentKey: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+// 	}
+// 	return status, nil
+// }
+
 func (mw *MetaWrapper) truncate(mp *MetaPartition, inode, size uint64) (status int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("truncate", err, bgTime, 1)
+	}()
+
 	req := &proto.TruncateRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -643,6 +856,7 @@ func (mw *MetaWrapper) truncate(mp *MetaPartition, inode, size uint64) (status i
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("truncate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -652,6 +866,11 @@ func (mw *MetaWrapper) truncate(mp *MetaPartition, inode, size uint64) (status i
 }
 
 func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64) (status int, info *proto.InodeInfo, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("ilink", err, bgTime, 1)
+	}()
+
 	req := &proto.LinkInodeRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -682,6 +901,7 @@ func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64) (status int, info 
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("ilink: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -702,6 +922,11 @@ func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64) (status int, info 
 }
 
 func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid, gid uint32, atime, mtime int64) (status int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("setattr", err, bgTime, 1)
+	}()
+
 	req := &proto.SetAttrRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -738,6 +963,7 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("setattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -747,6 +973,11 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 }
 
 func (mw *MetaWrapper) createMultipart(mp *MetaPartition, path string, extend map[string]string) (status int, multipartId string, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("createMultipart", err, bgTime, 1)
+	}()
+
 	req := &proto.CreateMultipartRequest{
 		PartitionId: mp.PartitionID,
 		VolName:     mw.volname,
@@ -778,6 +1009,7 @@ func (mw *MetaWrapper) createMultipart(mp *MetaPartition, path string, extend ma
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("createMultipart: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -792,6 +1024,11 @@ func (mw *MetaWrapper) createMultipart(mp *MetaPartition, path string, extend ma
 }
 
 func (mw *MetaWrapper) getMultipart(mp *MetaPartition, path, multipartId string) (status int, info *proto.MultipartInfo, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("getMultipart", err, bgTime, 1)
+	}()
+
 	req := &proto.GetMultipartRequest{
 		PartitionId: mp.PartitionID,
 		VolName:     mw.volname,
@@ -823,6 +1060,7 @@ func (mw *MetaWrapper) getMultipart(mp *MetaPartition, path, multipartId string)
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("getMultipart: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -838,6 +1076,11 @@ func (mw *MetaWrapper) getMultipart(mp *MetaPartition, path, multipartId string)
 }
 
 func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, path, multipartId string, partId uint16, size uint64, md5 string, indoe uint64) (status int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("addMultipartPart", err, bgTime, 1)
+	}()
+
 	part := &proto.MultipartPartInfo{
 		ID:    partId,
 		Inode: indoe,
@@ -876,6 +1119,7 @@ func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, path, multipartId str
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("addMultipartPart: packet(%v) mp(%v) req(%v) part(%v) result(%v)", packet, mp, *req, part, packet.GetResultMsg())
 		return
 	}
@@ -884,6 +1128,11 @@ func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, path, multipartId str
 }
 
 func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("idelete", err, bgTime, 1)
+	}()
+
 	req := &proto.DeleteInodeRequest{
 		VolName:     mw.volname,
 		PartitionId: mp.PartitionID,
@@ -911,6 +1160,7 @@ func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, err
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("idelete: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -919,6 +1169,11 @@ func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, err
 }
 
 func (mw *MetaWrapper) removeMultipart(mp *MetaPartition, path, multipartId string) (status int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("removeMultipart", err, bgTime, 1)
+	}()
+
 	req := &proto.RemoveMultipartRequest{
 		PartitionId: mp.PartitionID,
 		VolName:     mw.volname,
@@ -948,6 +1203,7 @@ func (mw *MetaWrapper) removeMultipart(mp *MetaPartition, path, multipartId stri
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("delete session: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -956,6 +1212,11 @@ func (mw *MetaWrapper) removeMultipart(mp *MetaPartition, path, multipartId stri
 }
 
 func (mw *MetaWrapper) appendExtentKeys(mp *MetaPartition, inode uint64, extents []proto.ExtentKey) (status int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("appendExtentKeys", err, bgTime, 1)
+	}()
+
 	req := &proto.AppendExtentKeysRequest{
 		VolName:     mw.volname,
 		PartitionId: mp.PartitionID,
@@ -986,6 +1247,7 @@ func (mw *MetaWrapper) appendExtentKeys(mp *MetaPartition, inode uint64, extents
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("batch append extent: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -994,7 +1256,57 @@ func (mw *MetaWrapper) appendExtentKeys(mp *MetaPartition, inode uint64, extents
 	return
 }
 
+func (mw *MetaWrapper) appendObjExtentKeys(mp *MetaPartition, inode uint64, extents []proto.ObjExtentKey) (status int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("appendObjExtentKeys", err, bgTime, 1)
+	}()
+
+	req := &proto.AppendObjExtentKeysRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		Inode:       inode,
+		Extents:     extents,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaBatchObjExtentsAdd
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("batch append obj extents: req(%v) err(%v)", *req, err)
+		return
+	}
+	log.LogDebugf("appendObjExtentKeys: batch append obj extents: packet(%v) mp(%v) req(%v)", packet, mp, *req)
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("batch append obj extents: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("batch append obj extents: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	log.LogDebugf("batch append obj extents: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	return
+}
+
 func (mw *MetaWrapper) setXAttr(mp *MetaPartition, inode uint64, name []byte, value []byte) (status int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("setXAttr", err, bgTime, 1)
+	}()
+
 	req := &proto.SetXAttrRequest{
 		VolName:     mw.volname,
 		PartitionId: mp.PartitionID,
@@ -1027,6 +1339,7 @@ func (mw *MetaWrapper) setXAttr(mp *MetaPartition, inode uint64, name []byte, va
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("setXAttr: received fail status, packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -1036,6 +1349,11 @@ func (mw *MetaWrapper) setXAttr(mp *MetaPartition, inode uint64, name []byte, va
 }
 
 func (mw *MetaWrapper) getXAttr(mp *MetaPartition, inode uint64, name string) (value string, status int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("getXAttr", err, bgTime, 1)
+	}()
+
 	req := &proto.GetXAttrRequest{
 		VolName:     mw.volname,
 		PartitionId: mp.PartitionID,
@@ -1066,6 +1384,7 @@ func (mw *MetaWrapper) getXAttr(mp *MetaPartition, inode uint64, name string) (v
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("get xattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -1082,6 +1401,11 @@ func (mw *MetaWrapper) getXAttr(mp *MetaPartition, inode uint64, name string) (v
 }
 
 func (mw *MetaWrapper) removeXAttr(mp *MetaPartition, inode uint64, name string) (status int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("removeXAttr", err, bgTime, 1)
+	}()
+
 	req := &proto.RemoveXAttrRequest{
 		VolName:     mw.volname,
 		PartitionId: mp.PartitionID,
@@ -1110,6 +1434,7 @@ func (mw *MetaWrapper) removeXAttr(mp *MetaPartition, inode uint64, name string)
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("remove xattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -1119,6 +1444,11 @@ func (mw *MetaWrapper) removeXAttr(mp *MetaPartition, inode uint64, name string)
 }
 
 func (mw *MetaWrapper) listXAttr(mp *MetaPartition, inode uint64) (keys []string, status int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("listXAttr", err, bgTime, 1)
+	}()
+
 	req := &proto.ListXAttrRequest{
 		VolName:     mw.volname,
 		PartitionId: mp.PartitionID,
@@ -1146,6 +1476,7 @@ func (mw *MetaWrapper) listXAttr(mp *MetaPartition, inode uint64) (keys []string
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("list xattr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -1163,6 +1494,11 @@ func (mw *MetaWrapper) listXAttr(mp *MetaPartition, inode uint64) (keys []string
 }
 
 func (mw *MetaWrapper) listMultiparts(mp *MetaPartition, prefix, delimiter, keyMarker string, multipartIdMarker string, maxUploads uint64) (status int, sessions *proto.ListMultipartResponse, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("listMultiparts", err, bgTime, 1)
+	}()
+
 	req := &proto.ListMultipartRequest{
 		VolName:           mw.volname,
 		PartitionId:       mp.PartitionID,
@@ -1196,6 +1532,7 @@ func (mw *MetaWrapper) listMultiparts(mp *MetaPartition, prefix, delimiter, keyM
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("listMultiparts: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -1214,6 +1551,12 @@ func (mw *MetaWrapper) batchGetXAttr(mp *MetaPartition, inodes []uint64, keys []
 	var (
 		err error
 	)
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("batchGetXAttr", err, bgTime, 1)
+	}()
+
 	req := &proto.BatchGetXAttrRequest{
 		VolName:     mw.volname,
 		PartitionId: mp.PartitionID,
@@ -1241,6 +1584,7 @@ func (mw *MetaWrapper) batchGetXAttr(mp *MetaPartition, inodes []uint64, keys []
 
 	status := parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("batchIget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return nil, err
 	}
@@ -1255,51 +1599,12 @@ func (mw *MetaWrapper) batchGetXAttr(mp *MetaPartition, inodes []uint64, keys []
 	return resp.XAttrs, nil
 }
 
-func (mw *MetaWrapper) updateSummaryInfo(mp *MetaPartition, inode uint64, filesInc int64, dirsInc int64, bytesInc int64) error {
-	var err error
-	req := &proto.UpdateSummaryInfoRequest{
-		VolName:     mw.volname,
-		PartitionId: mp.PartitionID,
-		Inode:       inode,
-		Key:         proto.SummaryKey,
-		FileInc:     filesInc,
-		DirInc:      dirsInc,
-		ByteInc:     bytesInc,
-	}
-	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaUpdateSummaryInfo
-	packet.PartitionID = mp.PartitionID
-	err = packet.MarshalData(req)
-	if err != nil {
-		log.LogErrorf("updateSummaryInfo: matshal packet fail, err(%v)", err)
-		return err
-	}
-	log.LogDebugf("updateSummaryInfo: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
-
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
+func (mw *MetaWrapper) readdironly(mp *MetaPartition, parentID uint64) (status int, children []proto.Dentry, err error) {
+	bgTime := stat.BeginStat()
 	defer func() {
-		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+		stat.EndStat("readdironly", err, bgTime, 1)
 	}()
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
-	if err != nil {
-		log.LogErrorf("updateSummaryInfo: send to partition fail, packet(%v) mp(%v) req(%v) err(%v)",
-			packet, mp, *req, err)
-		return err
-	}
-
-	status := parseStatus(packet.ResultCode)
-	if status != statusOK {
-		log.LogErrorf("updateSummaryInfo: received fail status, packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
-		return err
-	}
-
-	log.LogDebugf("updateSummaryInfo: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
-
-	return nil
-}
-
-func (mw *MetaWrapper) readdironly(mp *MetaPartition, parentID uint64) (status int, children []proto.Dentry, err error) {
 	req := &proto.ReadDirOnlyRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -1311,7 +1616,7 @@ func (mw *MetaWrapper) readdironly(mp *MetaPartition, parentID uint64) (status i
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.LogErrorf("readdironly: req(%v) err(%v)", *req, err)
+		log.LogErrorf("readdir: req(%v) err(%v)", *req, err)
 		return
 	}
 
@@ -1322,23 +1627,72 @@ func (mw *MetaWrapper) readdironly(mp *MetaPartition, parentID uint64) (status i
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("readdironly: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		log.LogErrorf("readdir: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
 		children = make([]proto.Dentry, 0)
-		log.LogErrorf("readdironly: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		log.LogErrorf("readdir: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
 
 	resp := new(proto.ReadDirOnlyResponse)
 	err = packet.UnmarshalData(resp)
 	if err != nil {
-		log.LogErrorf("readdironly: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
+		log.LogErrorf("readdir: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
 		return
 	}
-	log.LogDebugf("readdironly: packet(%v) mp(%v) req(%v)", packet, mp, *req)
+	log.LogDebugf("readdir: packet(%v) mp(%v) req(%v)", packet, mp, *req)
 	return statusOK, resp.Children, nil
+}
+
+func (mw *MetaWrapper) updateXAttrs(mp *MetaPartition, inode uint64, filesInc int64, dirsInc int64, bytesInc int64) error {
+	var err error
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("updateXAttrs", err, bgTime, 1)
+	}()
+
+	value := strconv.FormatInt(int64(filesInc), 10) + "," + strconv.FormatInt(int64(dirsInc), 10) + "," + strconv.FormatInt(int64(bytesInc), 10)
+	req := &proto.UpdateXAttrRequest{
+		VolName:     mw.volname,
+		PartitionId: mp.PartitionID,
+		Inode:       inode,
+		Key:         SummaryKey,
+		Value:       value,
+	}
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaUpdateXAttr
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("updateXAttr: matshal packet fail, err(%v)", err)
+		return err
+	}
+	log.LogDebugf("updateXAttr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("readdironly: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return err
+	}
+
+	status := parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("readdironly: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return err
+	}
+
+	log.LogDebugf("updateXAttrs: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	return nil
 }

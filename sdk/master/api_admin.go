@@ -28,14 +28,17 @@ type AdminAPI struct {
 
 func (api *AdminAPI) GetCluster() (cv *proto.ClusterView, err error) {
 	var buf []byte
+
 	var request = newAPIRequest(http.MethodGet, proto.AdminGetCluster)
 	if buf, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
+
 	cv = &proto.ClusterView{}
 	if err = json.Unmarshal(buf, &cv); err != nil {
 		return
 	}
+
 	return
 }
 func (api *AdminAPI) GetClusterStat() (cs *proto.ClusterStatInfo, err error) {
@@ -365,6 +368,24 @@ func (api *AdminAPI) GetDeleteParas() (delParas map[string]string, err error) {
 	}
 	delParas = make(map[string]string)
 	if err = json.Unmarshal(buf, &delParas); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) CreatePreLoadDataPartition(volName string, count int, capacity, ttl uint64, zongs string) (view *proto.DataPartitionsView, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminCreatePreLoadDataPartition)
+	request.addParam("name", volName)
+	request.addParam("replicaNum", strconv.Itoa(count))
+	request.addParam("capacity", strconv.FormatUint(capacity, 10))
+	request.addParam("cacheTTL", strconv.FormatUint(ttl, 10))
+	request.addParam("zoneName", zongs)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	view = &proto.DataPartitionsView{}
+	if err = json.Unmarshal(data, view); err != nil {
 		return
 	}
 	return

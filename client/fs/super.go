@@ -17,11 +17,15 @@ package fs
 import (
 	"fmt"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/blobstore/api/access"
+	"github.com/hashicorp/consul/api"
 
 	"golang.org/x/net/context"
 
@@ -34,6 +38,9 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/ump"
+
+	"github.com/cubefs/cubefs/blockcache/bcache"
+	"github.com/cubefs/cubefs/sdk/data/blobstore"
 )
 
 // Super defines the struct of a super block.
@@ -55,11 +62,23 @@ type Super struct {
 	fsyncOnClose  bool
 	enableXattr   bool
 	rootIno       uint64
-	sc            *SummaryCache
 
 	state     fs.FSStatType
 	sockaddr  string
 	suspendCh chan interface{}
+
+	//data lake
+	volType        int
+	ebsEndpoint    string
+	CacheAction    int
+	CacheThreshold int
+	EbsBlockSize   int
+	enableBcache   bool
+	readThreads    int
+	writeThreads   int
+	bc             *bcache.BcacheClient
+	ebsc           *blobstore.BlobStoreClient
+	sc             *SummaryCache
 }
 
 // Functions that Super needs to implement
@@ -67,6 +86,8 @@ var (
 	_ fs.FS         = (*Super)(nil)
 	_ fs.FSStatfser = (*Super)(nil)
 )
+
+const BlobWriterIdleTimeoutPeriod = 10
 
 // NewSuper returns a new Super.
 func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
@@ -83,7 +104,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	}
 	s.mw, err = meta.NewMetaWrapper(metaConfig)
 	if err != nil {
-		return nil, errors.Trace(err, "NewMetaWrapper failed!")
+		return nil, errors.Trace(err, "NewMetaWrapper failed!"+err.Error())
 	}
 
 	s.volname = opt.Volname
@@ -114,6 +135,18 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		s.sc = NewSummaryCache(DefaultSummaryExpiration, MaxSummaryCache)
 	}
 
+	s.volType = opt.VolType
+	s.ebsEndpoint = opt.EbsEndpoint
+	s.CacheAction = opt.CacheAction
+	s.CacheThreshold = opt.CacheThreshold
+	s.EbsBlockSize = opt.EbsBlockSize
+	s.enableBcache = opt.EnableBcache
+	s.readThreads = int(opt.ReadThreads)
+	s.writeThreads = int(opt.WriteThreads)
+	if s.enableBcache {
+		s.bc = bcache.NewBcacheClient()
+	}
+
 	var extentConfig = &stream.ExtentConfig{
 		Volume:            opt.Volname,
 		Masters:           masters,
@@ -121,20 +154,46 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		NearRead:          opt.NearRead,
 		ReadRate:          opt.ReadRate,
 		WriteRate:         opt.WriteRate,
+		VolumeType:        opt.VolType,
+		BcacheEnable:      opt.EnableBcache,
 		OnAppendExtentKey: s.mw.AppendExtentKey,
 		OnGetExtents:      s.mw.GetExtents,
 		OnTruncate:        s.mw.Truncate,
 		OnEvictIcache:     s.ic.Delete,
+		OnLoadBcache:      s.bc.Get,
+		OnCacheBcache:     s.bc.Put,
+		OnEvictBcache:     s.bc.Evict,
 	}
 	s.ec, err = stream.NewExtentClient(extentConfig)
 	if err != nil {
 		return nil, errors.Trace(err, "NewExtentClient failed!")
+	}
+	if proto.IsCold(opt.VolType) {
+		s.ebsc, err = blobstore.NewEbsClient(access.Config{
+			ConnMode: access.NoLimitConnMode,
+			Consul: api.Config{
+				Address: opt.EbsEndpoint,
+			},
+			MaxSizePutOnce: MaxSizePutOnce,
+			Logger: &access.Logger{
+				Filename: path.Join(opt.Logpath, "client/ebs.log"),
+			},
+		})
+		if err != nil {
+			return nil, errors.Trace(err, "NewEbsClient failed!")
+		}
 	}
 
 	if s.rootIno, err = s.mw.GetRootIno(opt.SubDir); err != nil {
 		return nil, err
 	}
 	s.suspendCh = make(chan interface{})
+	if proto.IsCold(opt.VolType) {
+		go s.scheduleFlush()
+	}
+	if s.mw.EnableSummary {
+		s.sc = NewSummaryCache(DefaultSummaryExpiration, MaxSummaryCache)
+	}
 
 	if opt.NeedRestoreFuse {
 		atomic.StoreUint32((*uint32)(&s.state), uint32(fs.FSStatRestore))
@@ -143,6 +202,33 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v) state(%v)",
 		s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration, s.state)
 	return s, nil
+}
+
+func (s *Super) scheduleFlush() {
+	t := time.NewTicker(2 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-t.C:
+			ctx := context.Background()
+			s.fslock.Lock()
+			for ino, node := range s.nodeCache {
+				if _, ok := node.(*File); !ok {
+					continue
+				}
+				file := node.(*File)
+				if atomic.LoadInt32(&file.idle) >= BlobWriterIdleTimeoutPeriod {
+					if file.fWriter != nil {
+						atomic.StoreInt32(&file.idle, 0)
+						go file.fWriter.Flush(ino, ctx)
+					}
+				} else {
+					atomic.AddInt32(&file.idle, 1)
+				}
+			}
+			s.fslock.Unlock()
+		}
+	}
 }
 
 // Root returns the root directory where it resides.
@@ -164,7 +250,7 @@ func (s *Super) Node(ino, pino uint64, mode uint32) (fs.Node, error) {
 	if proto.OsMode(fakeInfo.Mode).IsDir() {
 		node = NewDir(s, fakeInfo)
 	} else {
-		node = NewFile(s, fakeInfo, pino)
+		node = NewFile(s, fakeInfo, DefaultFlag, pino)
 		// The Node is saved in FuseContextNodes list, that means
 		// the node is not evict. So we create a streamer for it,
 		// and streamer's refcnt is 0.

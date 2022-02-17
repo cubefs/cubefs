@@ -14,7 +14,10 @@
 
 package util
 
-import "regexp"
+import (
+	"fmt"
+	"regexp"
+)
 
 const (
 	_  = iota
@@ -77,4 +80,12 @@ func isMatch(exp *regexp.Regexp, val interface{}) bool {
 	default:
 		return false
 	}
+}
+
+func GenerateKey(volName string, ino uint64, offset uint64) string {
+	return fmt.Sprintf("%v_%v_%016x", volName, ino, offset)
+}
+
+func OneDaySec() int64 {
+	return 60 * 60 * 24
 }

@@ -164,6 +164,16 @@ type LinkInodeResponse struct {
 	Info *InodeInfo `json:"info"`
 }
 
+type ClearInodeCacheRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+}
+
+type ClearInodeCacheResponse struct {
+	Info *InodeInfo `json:"info"`
+}
+
 // UnlinkInodeRequest defines the request to unlink an inode.
 type UnlinkInodeRequest struct {
 	VolName     string `json:"vol"`
@@ -312,7 +322,6 @@ type ReadDirOnlyRequest struct {
 type ReadDirResponse struct {
 	Children []Dentry `json:"children"`
 }
-
 type ReadDirOnlyResponse struct {
 	Children []Dentry `json:"children"`
 }
@@ -346,11 +355,27 @@ type AppendExtentKeyWithCheckRequest struct {
 	DiscardExtents []ExtentKey `json:"dek"`
 }
 
+// AppendObjExtentKeyRequest defines the request to append an obj extent key.
+type AppendObjExtentKeysRequest struct {
+	VolName     string         `json:"vol"`
+	PartitionID uint64         `json:"pid"`
+	Inode       uint64         `json:"ino"`
+	Extents     []ObjExtentKey `json:"ek"`
+}
+
 // GetExtentsRequest defines the reques to get extents.
 type GetExtentsRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
+}
+
+// GetObjExtentsResponse defines the response to the request of getting obj extents.
+type GetObjExtentsResponse struct {
+	Generation uint64         `json:"gen"`
+	Size       uint64         `json:"sz"`
+	Extents    []ExtentKey    `json:"eks"`
+	ObjExtents []ObjExtentKey `json:"objeks"`
 }
 
 // GetExtentsResponse defines the response to the request of getting extents.
@@ -366,6 +391,19 @@ type TruncateRequest struct {
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	Size        uint64 `json:"sz"`
+}
+
+type EmptyExtentKeyRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+}
+
+type DelExtentKeyRequest struct {
+	VolName     string      `json:"vol"`
+	PartitionID uint64      `json:"pid"`
+	Inode       uint64      `json:"ino"`
+	Extents     []ExtentKey `json:"ek"`
 }
 
 // SetAttrRequest defines the request to set attribute.
@@ -465,6 +503,14 @@ type BatchGetXAttrResponse struct {
 	VolName     string `json:"vol"`
 	PartitionId uint64 `json:"pid"`
 	XAttrs      []*XAttrInfo
+}
+
+type UpdateXAttrRequest struct {
+	VolName     string `json:"vol"`
+	PartitionId uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+	Key         string `json:"key"`
+	Value       string `json:"val"`
 }
 
 type MultipartInfo struct {

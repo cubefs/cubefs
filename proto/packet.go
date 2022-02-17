@@ -155,18 +155,26 @@ const (
 	OpNotEmtpy           uint8 = 0xFE
 	OpOk                 uint8 = 0xF0
 
-	OpPing                  uint8 = 0xFF
-	OpMetaUpdateSummaryInfo uint8 = 0x3B
-	OpMetaReadDirOnly       uint8 = 0x3C
+	OpPing            uint8 = 0xFF
+	OpMetaUpdateXAttr uint8 = 0x3B
+	OpMetaReadDirOnly uint8 = 0x3C
+
+	// ebs obj meta
+	OpMetaObjExtentAdd       uint8 = 0xDD
+	OpMetaObjExtentsList     uint8 = 0xDE
+	OpMetaExtentsEmpty       uint8 = 0xDF
+	OpMetaBatchObjExtentsAdd uint8 = 0xD0
+	OpMetaClearInodeCache    uint8 = 0xD1
 )
 
 const (
-	WriteDeadlineTime                 = 5
-	ReadDeadlineTime                  = 5
-	SyncSendTaskDeadlineTime          = 20
-	NoReadDeadlineTime                = -1
-	BatchDeleteExtentReadDeadLineTime = 120
-	GetAllWatermarksDeadLineTime      = 60
+	WriteDeadlineTime                         = 5
+	ReadDeadlineTime                          = 5
+	SyncSendTaskDeadlineTime                  = 20
+	NoReadDeadlineTime                        = -1
+	BatchDeleteExtentReadDeadLineTime         = 120
+	GetAllWatermarksDeadLineTime              = 60
+	DefaultClusterLoadFactor          float64 = 10
 )
 
 const (
@@ -292,10 +300,14 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaExtentsAdd"
 	case OpMetaExtentAddWithCheck:
 		m = "OpMetaExtentAddWithCheck"
+	case OpMetaObjExtentAdd:
+		m = "OpMetaObjExtentAdd"
 	case OpMetaExtentsDel:
 		m = "OpMetaExtentsDel"
 	case OpMetaExtentsList:
 		m = "OpMetaExtentsList"
+	case OpMetaObjExtentsList:
+		m = "OpMetaObjExtentsList"
 	case OpMetaUpdateDentry:
 		m = "OpMetaUpdateDentry"
 	case OpMetaTruncate:
@@ -370,6 +382,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaBatchDeleteInode"
 	case OpMetaBatchExtentsAdd:
 		m = "OpMetaBatchExtentsAdd"
+	case OpMetaBatchObjExtentsAdd:
+		m = "OpMetaBatchObjExtentsAdd"
 	case OpMetaSetXAttr:
 		m = "OpMetaSetXAttr"
 	case OpMetaGetXAttr:
@@ -380,6 +394,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaListXAttr"
 	case OpMetaBatchGetXAttr:
 		m = "OpMetaBatchGetXAttr"
+	case OpMetaUpdateXAttr:
+		m = "OpMetaUpdateXAttr"
 	case OpCreateMultipart:
 		m = "OpCreateMultipart"
 	case OpGetMultipart:
@@ -392,6 +408,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpListMultiparts"
 	case OpBatchDeleteExtent:
 		m = "OpBatchDeleteExtent"
+	case OpMetaClearInodeCache:
+		m = "OpMetaClearInodeCache"
 	}
 	return
 }

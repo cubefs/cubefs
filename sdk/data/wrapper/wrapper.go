@@ -42,6 +42,7 @@ type Wrapper struct {
 	sync.RWMutex
 	clusterName           string
 	volName               string
+	volType               int
 	masters               []string
 	partitions            map[uint64]*DataPartition
 	followerRead          bool
@@ -57,10 +58,11 @@ type Wrapper struct {
 	dpSelector DataPartitionSelector
 
 	HostsStatus map[string]bool
+	preload     bool
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
-func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err error) {
+func NewDataPartitionWrapper(volName string, masters []string, preload bool) (w *Wrapper, err error) {
 	w = new(Wrapper)
 	w.stopC = make(chan struct{})
 	w.masters = masters
@@ -68,6 +70,7 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 	w.volName = volName
 	w.partitions = make(map[uint64]*DataPartition)
 	w.HostsStatus = make(map[string]bool)
+	w.preload = preload
 	if err = w.updateClusterInfo(); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
@@ -127,7 +130,7 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	w.followerRead = view.FollowerRead
 	w.dpSelectorName = view.DpSelectorName
 	w.dpSelectorParm = view.DpSelectorParm
-
+	w.volType = view.VolType
 	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
 		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) createTime(%v) dpSelectorName(%v) "+
 		"dpSelectorParm(%v)",
@@ -137,7 +140,7 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 }
 
 func (w *Wrapper) update() {
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(5 * time.Second)
 	for {
 		select {
 		case <-ticker.C:
@@ -175,7 +178,6 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 
 	return nil
 }
-
 func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.DataPartitionResponse) (err error) {
 
 	var convert = func(response *proto.DataPartitionResponse) *DataPartition {
@@ -255,6 +257,48 @@ func (w *Wrapper) getDataPartition(isInit bool, dpId uint64) (err error) {
 	DataPartitions := make([]*proto.DataPartitionResponse, 1)
 	DataPartitions = append(DataPartitions, dpr)
 	return w.updateDataPartitionByRsp(isInit, DataPartitions)
+}
+
+func (w *Wrapper) clearPartitions(groups map[uint64]struct{}) {
+	defer w.Unlock()
+	w.Lock()
+	for key := range w.partitions {
+		_, ok := groups[key]
+		if !ok {
+			delete(w.partitions, key)
+		}
+	}
+}
+
+func (w *Wrapper) AllocatePreLoadDataPartition(volName string, count int, capacity, ttl uint64, zones string) (err error) {
+	var dpv *proto.DataPartitionsView
+
+	if dpv, err = w.mc.AdminAPI().CreatePreLoadDataPartition(volName, count, capacity, ttl, zones); err != nil {
+		log.LogWarnf("CreatePreLoadDataPartition fail: err(%v)", err)
+		return
+	}
+	var convert = func(response *proto.DataPartitionResponse) *DataPartition {
+		return &DataPartition{
+			DataPartitionResponse: *response,
+			ClientWrapper:         w,
+		}
+	}
+	rwPartitionGroups := make([]*DataPartition, 0)
+	for _, partition := range dpv.DataPartitions {
+		dp := convert(partition)
+		if proto.IsCold(w.volType) && !proto.IsPreLoadDp(dp.PartitionType) {
+			continue
+		}
+		log.LogInfof("updateDataPartition: dp(%v)", dp)
+		w.replaceOrInsertPartition(dp)
+		if dp.Status == proto.ReadWrite {
+			dp.MetricsRefresh()
+			rwPartitionGroups = append(rwPartitionGroups, dp)
+		}
+	}
+
+	w.refreshDpSelector(rwPartitionGroups)
+	return nil
 }
 
 func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
