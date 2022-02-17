@@ -168,7 +168,7 @@ func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {
 	log.LogDebugf("CheckAllHostsIsAvail: dp(%v) exclude(%v)", dp.PartitionID, exclude)
 }
 
-// GetAllAddrs returns the addresses of all the replicas of the data partition.
+// GetAllHosts returns the addresses of all the replicas of the data partition.
 func (dp *DataPartition) GetAllHosts() []string {
 	return dp.Hosts
 }

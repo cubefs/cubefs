@@ -359,6 +359,7 @@ func (api *AdminAPI) CreateDefaultVolume(volName, owner string) (err error) {
 func (api *AdminAPI) GetVolumeSimpleInfo(volName string) (vv *proto.SimpleVolView, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminGetVol)
 	request.addParam("name", volName)
+	request.addParam("baseVersion", proto.BaseVersion)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
