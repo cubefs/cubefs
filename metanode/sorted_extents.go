@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"sync"
 
+	"github.com/cubefs/cubefs/storage"
+
 	"github.com/cubefs/cubefs/proto"
 )
 
@@ -16,6 +18,13 @@ type SortedExtents struct {
 func NewSortedExtents() *SortedExtents {
 	return &SortedExtents{
 		eks: make([]proto.ExtentKey, 0),
+	}
+}
+
+// attention: only used for deleted eks
+func NewSortedExtentsFromEks(eks []proto.ExtentKey) *SortedExtents {
+	return &SortedExtents{
+		eks: eks,
 	}
 }
 
@@ -274,8 +283,48 @@ func (se *SortedExtents) CopyExtents() []proto.ExtentKey {
 	return se.doCopyExtents()
 }
 
+func (se *SortedExtents) CopyTinyExtents() []proto.ExtentKey {
+	se.RLock()
+	defer se.RUnlock()
+	return se.doCopyTinyExtents()
+}
+
 func (se *SortedExtents) doCopyExtents() []proto.ExtentKey {
 	eks := make([]proto.ExtentKey, len(se.eks))
 	copy(eks, se.eks)
 	return eks
+}
+
+func (se *SortedExtents) doCopyTinyExtents() []proto.ExtentKey {
+	eks := make([]proto.ExtentKey, 0)
+	for _, ek := range se.eks {
+		if storage.IsTinyExtent(ek.ExtentId) {
+			eks = append(eks, ek)
+		}
+	}
+	return eks
+}
+
+// discard code
+func (se *SortedExtents) Delete(delEks []proto.ExtentKey) (curEks []proto.ExtentKey) {
+	se.RLock()
+	defer se.RUnlock()
+
+	curEks = make([]proto.ExtentKey, len(se.eks)-len(delEks))
+	for _, key := range se.eks {
+		delFlag := false
+		for _, delKey := range delEks {
+			if key.FileOffset == delKey.ExtentOffset && key.ExtentId == delKey.ExtentId &&
+				key.ExtentOffset == delKey.ExtentOffset && key.PartitionId == delKey.PartitionId &&
+				key.Size == delKey.Size {
+				delFlag = true
+				break
+			}
+		}
+		if !delFlag {
+			curEks = append(curEks, key)
+		}
+	}
+	se.eks = curEks
+	return
 }
