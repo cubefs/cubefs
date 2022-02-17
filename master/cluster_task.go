@@ -141,7 +141,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		}
 		// choose a meta node in other node set in the same zone
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
-		if _, newPeers, err = zone.getAvailMetaNodeHosts(excludeNodeSets, oldHosts, 1); err != nil {
+		if _, newPeers, err = zone.getAvailNodeHosts(TypeMetaPartition, excludeNodeSets, oldHosts, 1); err != nil {
 			zones = mp.getLiveZones(srcAddr)
 			var excludeZone []string
 			if len(zones) == 0 {
@@ -150,7 +150,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 				excludeZone = append(excludeZone, zones[0])
 			}
 			// choose a meta node in other zone
-			if _, newPeers, err = c.chooseTargetMetaHosts(excludeZone, excludeNodeSets, oldHosts, 1, false, ""); err != nil {
+			if _, newPeers, err = c.getHostFromNormalZone(TypeMetaPartition, excludeZone, excludeNodeSets, oldHosts, 1, 1, ""); err != nil {
 				goto errHandler
 			}
 		}
@@ -613,8 +613,11 @@ func (c *Cluster) doLoadDataPartition(dp *DataPartition) {
 	}
 
 	dp.getFileCount()
-	dp.validateCRC(c.Name)
-	dp.checkReplicaSize(c.Name, c.cfg.diffSpaceUsage)
+	if proto.IsNormalDp(dp.PartitionType) {
+		dp.validateCRC(c.Name)
+		dp.checkReplicaSize(c.Name, c.cfg.diffSpaceUsage)
+	}
+
 	dp.setToNormal()
 }
 
@@ -703,6 +706,7 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 		metaNode *MetaNode
 		logMsg   string
 	)
+
 	log.LogInfof("action[dealMetaNodeHeartbeatResp],clusterID[%v] receive nodeAddr[%v] heartbeat", c.Name, nodeAddr)
 	if resp.Status == proto.TaskFailed {
 		msg := fmt.Sprintf("action[dealMetaNodeHeartbeatResp],clusterID[%v] nodeAddr %v heartbeat failed,err %v",
@@ -720,9 +724,11 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 		log.LogInfof("action[dealMetaNodeHeartbeatResp] dataNode is toBeOffline, addr[%s]", nodeAddr)
 		return
 	}
+
 	if resp.ZoneName == "" {
 		resp.ZoneName = DefaultZoneName
 	}
+
 	if metaNode.ZoneName != resp.ZoneName {
 		c.t.deleteMetaNode(metaNode)
 		oldZoneName := metaNode.ZoneName
@@ -730,6 +736,7 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 		c.adjustMetaNode(metaNode)
 		log.LogWarnf("metaNode zone changed from [%v] to [%v]", oldZoneName, resp.ZoneName)
 	}
+
 	metaNode.updateMetric(resp, c.cfg.MetaNodeThreshold)
 	metaNode.setNodeActive()
 
@@ -994,17 +1001,21 @@ func (c *Cluster) updateMetaNode(metaNode *MetaNode, metaPartitions []*proto.Met
 		}
 		var mp *MetaPartition
 		if mr.VolName != "" {
+
 			vol, err = c.getVol(mr.VolName)
 			if err != nil {
 				continue
 			}
+
 			if vol.Status == markDelete {
 				continue
 			}
+
 			mp, err = vol.metaPartition(mr.PartitionID)
 			if err != nil {
 				continue
 			}
+
 		} else {
 			mp, err = c.getMetaPartitionByID(mr.PartitionID)
 			if err != nil {
@@ -1016,6 +1027,7 @@ func (c *Cluster) updateMetaNode(metaNode *MetaNode, metaPartitions []*proto.Met
 		if mr.End != mp.End {
 			mp.addUpdateMetaReplicaTask(c)
 		}
+
 		mp.updateMetaPartition(mr, metaNode)
 		c.updateInodeIDUpperBound(mp, mr, threshold, metaNode)
 	}

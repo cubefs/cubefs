@@ -63,7 +63,7 @@ func newFileInCore(name string) (fc *FileInCore) {
 	return
 }
 
-func (fc FileInCore) ToProto() proto.FileInCore {
+func (fc FileInCore) clone() *proto.FileInCore {
 	var metadataArray = make([]*proto.FileMetadata, len(fc.MetadataArray))
 	for i, metadata := range fc.MetadataArray {
 		metadataArray[i] = &proto.FileMetadata{
@@ -72,7 +72,8 @@ func (fc FileInCore) ToProto() proto.FileInCore {
 			Size:    metadata.Size,
 		}
 	}
-	return proto.FileInCore{
+
+	return &proto.FileInCore{
 		Name:          fc.Name,
 		LastModify:    fc.LastModify,
 		MetadataArray: metadataArray,

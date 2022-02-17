@@ -68,6 +68,7 @@ const (
 	defaultMetaPartitionMemUsageThreshold      float32 = 0.75    // memory usage threshold on a meta partition
 	defaultZoneUsageThreshold                  float64 = 0.90    // storage usage threshold on a data partition
 	defaultDomainUsageThreshold                float64 = 0.75    // storage usage threshold on a data partition
+	defaultOverSoldFactor                      float32 = 0       // 0 means no oversold limit
 	defaultMaxMetaPartitionCountOnEachNode             = 10000
 	defaultReplicaNum                                  = 3
 	defaultDiffSpaceUsage                              = 1024 * 1024 * 1024
@@ -90,6 +91,7 @@ type clusterConfig struct {
 	numberOfDataPartitionsToLoad        int
 	nodeSetCapacity                     int
 	MetaNodeThreshold                   float32
+	ClusterLoadFactor                   float32
 	MetaNodeDeleteBatchCount            uint64 //metanode delete batch count
 	DataNodeDeleteLimitRate             uint64 //datanode delete limit rate
 	MetaNodeDeleteWorkerSleepMs         uint64 //datanode delete limit rate
@@ -100,7 +102,7 @@ type clusterConfig struct {
 	replicaPort                         int64
 	diffSpaceUsage                      uint64
 	faultDomain                         bool
-	DomainNodeGrpBatchCnt               int
+	DefaultNormalZoneCnt                int
 	DomainBuildAsPossible               bool
 	DataPartitionUsageThreshold         float64
 }
@@ -117,6 +119,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.numberOfDataPartitionsToLoad = defaultNumberOfDataPartitionsToLoad
 	cfg.PeriodToLoadALLDataPartitions = defaultPeriodToLoadAllDataPartitions
 	cfg.MetaNodeThreshold = defaultMetaPartitionMemUsageThreshold
+	cfg.ClusterLoadFactor = defaultOverSoldFactor
 	cfg.metaNodeReservedMem = defaultMetaNodeReservedMem
 	cfg.diffSpaceUsage = defaultDiffSpaceUsage
 	return

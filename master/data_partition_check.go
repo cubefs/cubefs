@@ -27,13 +27,19 @@ import (
 func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dpTimeOutSec int64) {
 	partition.Lock()
 	defer partition.Unlock()
-	liveReplicas := partition.getLiveReplicasFromHosts(dpTimeOutSec)
-	if len(partition.Replicas) > len(partition.Hosts) {
-		partition.Status = proto.ReadOnly
-		msg := fmt.Sprintf("action[extractStatus],partitionID:%v has exceed repica, replicaNum:%v  liveReplicas:%v   Status:%v  RocksDBHost:%v ",
-			partition.PartitionID, partition.ReplicaNum, len(liveReplicas), partition.Status, partition.Hosts)
-		Warn(clusterName, msg)
-		return
+	var liveReplicas []*DataReplica
+
+	if proto.IsNormalDp(partition.PartitionType) {
+		liveReplicas = partition.getLiveReplicasFromHosts(dpTimeOutSec)
+		if len(partition.Replicas) > len(partition.Hosts) {
+			partition.Status = proto.ReadOnly
+			msg := fmt.Sprintf("action[extractStatus],partitionID:%v has exceed repica, replicaNum:%v  liveReplicas:%v   Status:%v  RocksDBHost:%v ",
+				partition.PartitionID, partition.ReplicaNum, len(liveReplicas), partition.Status, partition.Hosts)
+			Warn(clusterName, msg)
+			return
+		}
+	} else {
+		liveReplicas = partition.getLiveReplicas(dpTimeOutSec)
 	}
 
 	switch len(liveReplicas) {
@@ -104,8 +110,9 @@ func (partition *DataPartition) checkLeader(timeOut int64) {
 func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr string, dataPartitionMissSec, dataPartitionWarnInterval int64) {
 	partition.Lock()
 	defer partition.Unlock()
+
 	for _, replica := range partition.Replicas {
-		if partition.hasHost(replica.Addr) && replica.isMissing(dataPartitionMissSec) == true && partition.needToAlarmMissingDataPartition(replica.Addr, dataPartitionWarnInterval) {
+		if partition.hasHost(replica.Addr) && replica.isMissing(dataPartitionMissSec) && partition.needToAlarmMissingDataPartition(replica.Addr, dataPartitionWarnInterval) {
 			dataNode := replica.getReplicaNode()
 			var (
 				lastReportTime time.Time
@@ -123,8 +130,12 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 		}
 	}
 
+	if !proto.IsNormalDp(partition.PartitionType) {
+		return
+	}
+
 	for _, addr := range partition.Hosts {
-		if partition.hasMissingDataPartition(addr) == true && partition.needToAlarmMissingDataPartition(addr, dataPartitionWarnInterval) {
+		if partition.hasMissingDataPartition(addr) && partition.needToAlarmMissingDataPartition(addr, dataPartitionWarnInterval) {
 			msg := fmt.Sprintf("action[checkMissErr],clusterID[%v] partitionID:%v  on Node:%v  "+
 				"miss time  > :%v  but server not exsit So Migrate", clusterID, partition.PartitionID, addr, dataPartitionMissSec)
 			msg = msg + fmt.Sprintf(" decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, addr)
@@ -151,7 +162,7 @@ func (partition *DataPartition) needToAlarmMissingDataPartition(addr string, int
 func (partition *DataPartition) hasMissingDataPartition(addr string) (isMissing bool) {
 	_, ok := partition.hasReplica(addr)
 
-	if ok == false {
+	if !ok {
 		isMissing = true
 	}
 
@@ -160,13 +171,16 @@ func (partition *DataPartition) hasMissingDataPartition(addr string) (isMissing 
 
 func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) {
 	diskErrorAddrs := make(map[string]string, 0)
+
 	partition.Lock()
 	defer partition.Unlock()
+
 	for _, addr := range partition.Hosts {
 		replica, ok := partition.hasReplica(addr)
 		if !ok {
 			continue
 		}
+
 		if replica.Status == proto.Unavailable {
 			diskErrorAddrs[replica.Addr] = replica.DiskPath
 		}
@@ -177,9 +191,8 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) {
 	}
 
 	for addr, diskPath := range diskErrorAddrs {
-		msg := fmt.Sprintf("action[%v],clusterID[%v],partitionID:%v  On :%v  Disk Error,So Remove it From RocksDBHost",
-			checkDataPartitionDiskErr, clusterID, partition.PartitionID, addr)
-		msg = msg + fmt.Sprintf(" decommissionDiskURL is http://%v/disk/decommission?addr=%v&disk=%v", leaderAddr, addr, diskPath)
+		msg := fmt.Sprintf("action[%v],clusterID[%v],partitionID:%v  On :%v  Disk Error,So Remove it From RocksDBHost, decommissionDiskURL is http://%v/disk/decommission?addr=%v&disk=%v",
+			checkDataPartitionDiskErr, clusterID, partition.PartitionID, addr, leaderAddr, addr, diskPath)
 		Warn(clusterID, msg)
 	}
 
@@ -190,20 +203,20 @@ func (partition *DataPartition) checkReplicationTask(clusterID string, dataParti
 	var msg string
 	tasks = make([]*proto.AdminTask, 0)
 	if excessAddr, excessErr := partition.deleteIllegalReplica(); excessErr != nil {
-		msg = fmt.Sprintf("action[%v], partitionID:%v  Excess Replication"+
-			" On :%v  Err:%v  rocksDBRecords:%v",
+		msg = fmt.Sprintf("action[%v], partitionID:%v  Excess Replication On :%v  Err:%v  rocksDBRecords:%v",
 			deleteIllegalReplicaErr, partition.PartitionID, excessAddr, excessErr.Error(), partition.Hosts)
 		Warn(clusterID, msg)
 		partition.Lock()
 		partition.removeReplicaByAddr(excessAddr)
 		partition.Unlock()
 	}
+
 	if partition.Status == proto.ReadWrite {
 		return
 	}
+
 	if lackAddr, lackErr := partition.missingReplicaAddress(dataPartitionSize); lackErr != nil {
-		msg = fmt.Sprintf("action[%v], partitionID:%v  Lack Replication"+
-			" On :%v  Err:%v  Hosts:%v  new task to create DataReplica",
+		msg = fmt.Sprintf("action[%v], partitionID:%v  Lack Replication On :%v  Err:%v  Hosts:%v  new task to create DataReplica",
 			addMissingReplicaErr, partition.PartitionID, lackAddr, lackErr.Error(), partition.Hosts)
 		Warn(clusterID, msg)
 	}
@@ -214,6 +227,7 @@ func (partition *DataPartition) checkReplicationTask(clusterID string, dataParti
 func (partition *DataPartition) deleteIllegalReplica() (excessAddr string, err error) {
 	partition.Lock()
 	defer partition.Unlock()
+
 	for i := 0; i < len(partition.Replicas); i++ {
 		replica := partition.Replicas[i]
 		if ok := partition.hasHost(replica.Addr); !ok {
@@ -222,6 +236,7 @@ func (partition *DataPartition) deleteIllegalReplica() (excessAddr string, err e
 			break
 		}
 	}
+
 	return
 }
 

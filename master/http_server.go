@@ -204,6 +204,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminCreateDataPartition).
 		HandlerFunc(m.createDataPartition)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminCreatePreLoadDataPartition).
+		HandlerFunc(m.createPreLoadDataPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminLoadDataPartition).
 		HandlerFunc(m.loadDataPartition)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -269,6 +272,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminGetNodeInfo).
 		HandlerFunc(m.getNodeInfoHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminDomainCreate).
+		HandlerFunc(m.createDomainHandler)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminGetIsDomainOn).
 		HandlerFunc(m.getIsDomainOn)

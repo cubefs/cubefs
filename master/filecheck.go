@@ -16,11 +16,13 @@ package master
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/storage"
-	"github.com/cubefs/cubefs/util/log"
 	"sort"
 	"strconv"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // Recover a file if it has bad CRC or it has been timed out before.
@@ -50,6 +52,10 @@ func (partition *DataPartition) validateCRC(clusterID string) {
 }
 
 func (partition *DataPartition) doValidateCRC(liveReplicas []*DataReplica, clusterID string) {
+	if !proto.IsNormalDp(partition.PartitionType) {
+		return
+	}
+
 	for _, fc := range partition.FileInCoreMap {
 		extentID, err := strconv.ParseUint(fc.Name, 10, 64)
 		if err != nil {
