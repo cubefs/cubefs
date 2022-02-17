@@ -95,7 +95,7 @@ func (s *VolumeService) registerMutation(schema *schemabuilder.Schema) {
 	mutation := schema.Mutation()
 
 	mutation.FieldFunc("createVolume", s.createVolume)
-	mutation.FieldFunc("deleteVolume", s.markDeleteVol)
+	// mutation.FieldFunc("deleteVolume", s.markDeleteVol)
 	mutation.FieldFunc("updateVolume", s.updateVolume)
 
 }
@@ -189,10 +189,21 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 	if per == USER && args.Owner != uid {
 		return nil, fmt.Errorf("[%s] not has permission to create volume for [%s]", uid, args.Owner)
 	}
-
-	vol, err := s.cluster.createVol(args.Name, args.Owner, args.ZoneName, args.Description, int(args.MpCount),
-		int(args.DpReplicaNum), int(args.DataPartitionSize), int(args.Capacity),
-		args.FollowerRead, args.Authenticate, args.CrossZone, args.DefaultPriority)
+	req := &createVolReq{
+		name:             args.Name,
+		owner:            args.Owner,
+		size:             int(args.DataPartitionSize),
+		mpCount:          int(args.MpCount),
+		dpReplicaNum:     int(args.DpReplicaNum),
+		capacity:         int(args.Capacity),
+		followerRead:     args.FollowerRead,
+		authenticate:     args.Authenticate,
+		crossZone:        args.CrossZone,
+		normalZonesFirst: args.DefaultPriority,
+		zoneName:         args.ZoneName,
+		description:      args.Description,
+	}
+	vol, err := s.cluster.createVol(req)
 	if err != nil {
 		return nil, err
 	}
@@ -243,7 +254,7 @@ func (s *VolumeService) markDeleteVol(ctx context.Context, args struct {
 		return nil, err
 	}
 
-	if err = s.cluster.markDeleteVol(args.Name, args.AuthKey); err != nil {
+	if err = s.cluster.markDeleteVol(args.Name, args.AuthKey, false); err != nil {
 		return nil, err
 	}
 
@@ -298,10 +309,6 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 
 	if args.Capacity != nil {
 		newArgs.capacity = *args.Capacity
-	}
-
-	if args.ReplicaNum != nil {
-		newArgs.dpReplicaNum = uint8(*args.ReplicaNum)
 	}
 
 	if args.Description != nil {
