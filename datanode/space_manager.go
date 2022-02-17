@@ -300,6 +300,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		NodeID:        manager.nodeID,
 		ClusterID:     manager.clusterID,
 		PartitionSize: request.PartitionSize,
+		PartitionType: int(request.PartitionTyp),
 	}
 	dp = manager.partitions[dpCfg.PartitionID]
 	if dp != nil {
@@ -351,6 +352,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	response.MaxCapacity = stat.MaxCapacityToCreatePartition
 	response.RemainingCapacity = stat.RemainingCapacityToCreatePartition
 	response.BadDisks = make([]string, 0)
+	response.StartTime = s.startTime
 	stat.Unlock()
 
 	response.ZoneName = s.zoneName
