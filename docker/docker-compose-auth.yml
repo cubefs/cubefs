@@ -318,7 +318,7 @@ services:
   build:
     image: chubaofs/cfs-base:1.0
     volumes:
-      - ../:/go/src/github.com/chubaofs/chubaofs
+      - ../:/go/src/github.com/cubefs/cubefs
     command:
       - bash
       - "-c"
@@ -335,13 +335,13 @@ services:
   test:
     image: chubaofs/cfs-base:1.0
     volumes:
-      - ../:/go/src/github.com/chubaofs/chubaofs
+      - ../:/go/src/github.com/cubefs/cubefs
     command:
       - bash
       - "-c"
       - >-
         set -e;
         mkdir -p /go/src/github.com/cubefs/cubefs/docker/bin &&
-        cd /go/src/github.com/chubaofs/chubaofs && make test
+        cd /go/src/github.com/cubefs/cubefs && make test
     networks:
       authnode_extnetwork:

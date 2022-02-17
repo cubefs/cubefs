@@ -29,6 +29,7 @@ import (
 	"github.com/cubefs/cubefs/util/auth"
 	"github.com/cubefs/cubefs/util/btree"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -179,6 +180,10 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 		err = mw.initMetaWrapper()
 		// When initializing the volume, if the master explicitly responds that the specified
 		// volume does not exist, it will not retry.
+		if err != nil {
+			log.LogErrorf("initMetaWrapper failed, err %s", err.Error())
+		}
+
 		if err == proto.ErrVolNotExists {
 			return nil, err
 		}

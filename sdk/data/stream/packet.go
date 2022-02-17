@@ -104,6 +104,9 @@ func NewCreateExtentPacket(dp *wrapper.DataPartition, inode uint64) *Packet {
 	p.Arg = ([]byte)(dp.GetAllAddrs())
 	p.ArgLen = uint32(len(p.Arg))
 	p.RemainingFollowers = uint8(len(dp.Hosts) - 1)
+	if len(dp.Hosts) == 1 {
+		p.RemainingFollowers = 127
+	}
 	p.ReqID = proto.GenerateRequestID()
 	p.Opcode = proto.OpCreateExtent
 	p.Data = make([]byte, 8)

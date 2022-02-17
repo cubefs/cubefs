@@ -2,7 +2,7 @@
 
 ## Bug Reports
 
-Please make sure the bug is not already reported by [searching the repository](https://github.com/chubaofs/chubaofs/search?q=&type=Issues&utf8=%E2%9C%93) with reasonable keywords. Then, [open an issue](https://github.com/chubaofs/chubaofs/issues) with steps to reproduce.
+Please make sure the bug is not already reported by [searching the repository](https://github.com/cubefs/cubefs/search?q=&type=Issues&utf8=%E2%9C%93) with reasonable keywords. Then, [open an issue](https://github.com/cubefs/cubefs/issues) with steps to reproduce.
 
 ## Workflow
 
@@ -17,7 +17,7 @@ The following diagram and practice steps show the basic process of contributing 
 3. Make sure your local master branch synchronized with the master branch of main repository. <br>(Example: `$ git checkout master && git pull`)
 4. Create local new branch from your up-to-dated local master branch, then checkout to it and leaves your changes. <br>(Example: `$ git branch your-branch && git checkout your-branch`)
 5. Commit and push to your forked remote repository.<br>(Example: `$ git commit -s && git push me`)
-6. Make a pull request that request merging your own branch on your forked repository into the master branch of the main repository.<br>(Example: merge `your/chubaofs:your-branch` into `chubaofs/chubaofs:master`)
+6. Make a pull request that request merging your own branch on your forked repository into the master branch of the main repository.<br>(Example: merge `your/chubaofs:your-branch` into `cubefs/cubefs:master`)
 
 **Note 1:**<br>
 The [DOC Check](https://github.com/apps/dco) is enabled and required. Please make sign your commit by using `-s` argument to add a valid `Signed-off-by` line at bottom of your commit message.<br>

@@ -19,6 +19,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -51,12 +52,14 @@ const (
 	PartId = "partid"
 	Op     = "op"
 	Type   = "type"
+	Err    = "err"
 )
 
 var (
 	namespace         string
 	clustername       string
 	modulename        string
+	pushAddr          string
 	exporterPort      int64
 	enabledPrometheus = false
 	enablePush        = false
@@ -85,11 +88,20 @@ func Init(role string, cfg *config.Config) {
 	}
 
 	port := cfg.GetInt64(ConfigKeyExporterPort)
-	if port < 0 {
-		port = 0
+
+	if port == 0 {
+		log.LogInfof("%v exporter port not set, use default 17510", port)
+		port = 17510
 	}
 
+	exporterPort = port
 	enabledPrometheus = true
+
+	pushAddr = cfg.GetString(ConfigKeyPushAddr)
+	log.LogInfof("pushAddr %v ", pushAddr)
+	if pushAddr != "" {
+		enablePush = true
+	}
 
 	http.Handle(PromHandlerPattern, promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
 		Timeout: 60 * time.Second,
@@ -154,9 +166,15 @@ func RegistConsul(cluster string, role string, cfg *config.Config) {
 		return
 	}
 
+	rawmnt := cfg.GetString("subdir")
+	if rawmnt == "" {
+		rawmnt = "/"
+	}
+	mountPoint, _ := filepath.Abs(rawmnt)
+	log.LogInfof("RegistConsul:%v", enablePush)
 	if enablePush {
 		log.LogWarnf("[RegisterConsul] use auto push data strategy, not register consul")
-		autoPush(cfg.GetString(ConfigKeyPushAddr), role, cluster, host)
+		autoPush(pushAddr, role, cluster, host, mountPoint)
 		return
 	}
 
@@ -167,6 +185,17 @@ func RegistConsul(cluster string, role string, cfg *config.Config) {
 	if exporterPort == int64(0) {
 		exporterPort = cfg.GetInt64(ConfigKeyExporterPort)
 	}
+
+	if exporterPort == 0 {
+		log.LogInfo("config export port is 0, use default 17510")
+		exporterPort = 17510
+	}
+
+	if len(consulAddr) <= 0 {
+		log.LogInfo("consul addr is empty, use default, consul.ums.oppo.local ")
+		consulAddr = "consul.ums.oppo.local"
+	}
+
 	if exporterPort != int64(0) && len(consulAddr) > 0 {
 		if ok := strings.HasPrefix(consulAddr, "http"); !ok {
 			consulAddr = "http://" + consulAddr
@@ -175,12 +204,17 @@ func RegistConsul(cluster string, role string, cfg *config.Config) {
 	}
 }
 
-func autoPush(pushAddr, role, cluster, ip string) {
+func autoPush(pushAddr, role, cluster, ip, mountPoint string) {
 
 	pid := os.Getpid()
 
 	client := &http.Client{
 		Timeout: time.Second * 10,
+	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.LogWarnf("get host name failed %v", err)
 	}
 
 	pusher := push.New(pushAddr, "cbfs").
@@ -191,9 +225,14 @@ func autoPush(pushAddr, role, cluster, ip string) {
 		Grouping("cluster", cluster).
 		Grouping("pid", strconv.Itoa(pid)).
 		Grouping("commit", proto.CommitID).
-		Grouping("app", AppName)
+		Grouping("dataset", "custom").
+		Grouping("category", "custom").
+		Grouping("app", AppName).
+		Grouping("mountPoint", mountPoint).
+		Grouping("hostName", hostname)
 
-	log.LogInfof("start push data, ip %s, addr %s, role %s, cluster %s", ip, pushAddr, role, cluster)
+	log.LogInfof("start push data, ip %s, addr %s, role %s, cluster %s, mountPoint %s, hostName %s",
+		ip, pushAddr, role, cluster, mountPoint, hostname)
 
 	ticker := time.NewTicker(time.Second * 15)
 	go func() {
