@@ -15,15 +15,14 @@
 package datanode
 
 import (
+	"encoding/binary"
 	"encoding/json"
+	"fmt"
+	"hash/crc32"
 	"math"
 	"net"
 	"sync"
 	"time"
-
-	"encoding/binary"
-	"fmt"
-	"hash/crc32"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
@@ -78,8 +77,7 @@ func NewDataPartitionRepairTask(extentFiles []*storage.ExtentInfo, tinyDeleteRec
 //   add it to the tobeRepaired list, and generate the corresponding tasks.
 func (dp *DataPartition) repair(extentType uint8) {
 	start := time.Now().UnixNano()
-	log.LogInfof("action[repair] partition(%v) start.",
-		dp.partitionID)
+	log.LogInfof("action[repair] partition(%v) start.", dp.partitionID)
 
 	var tinyExtents []uint64 // unsvailable extents 小文件写
 	if extentType == proto.TinyExtentType {

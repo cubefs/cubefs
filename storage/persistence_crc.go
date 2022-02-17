@@ -19,6 +19,7 @@ import (
 	"io"
 	"sync/atomic"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -41,6 +42,10 @@ type UpdateCrcFunc func(e *Extent, blockNo int, crc uint32) (err error)
 type GetExtentCrcFunc func(extentID uint64) (crc uint32, err error)
 
 func (s *ExtentStore) PersistenceBlockCrc(e *Extent, blockNo int, blockCrc uint32) (err error) {
+	if !proto.IsNormalDp(s.partitionType) {
+		return
+	}
+
 	startIdx := blockNo * util.PerBlockCrcSize
 	endIdx := startIdx + util.PerBlockCrcSize
 	binary.BigEndian.PutUint32(e.header[startIdx:endIdx], blockCrc)
@@ -53,6 +58,10 @@ func (s *ExtentStore) PersistenceBlockCrc(e *Extent, blockNo int, blockCrc uint3
 }
 
 func (s *ExtentStore) DeleteBlockCrc(extentID uint64) (err error) {
+	if !proto.IsNormalDp(s.partitionType) {
+		return
+	}
+
 	err = fallocate(int(s.verifyExtentFp.Fd()), FallocFLPunchHole|FallocFLKeepSize,
 		int64(util.BlockHeaderSize*extentID), util.BlockHeaderSize)
 
@@ -77,6 +86,10 @@ func (s *ExtentStore) GetPreAllocSpaceExtentIDOnVerfiyFile() (extentID uint64) {
 }
 
 func (s *ExtentStore) PreAllocSpaceOnVerfiyFile(currExtentID uint64) {
+	if !proto.IsNormalDp(s.partitionType) {
+		return
+	}
+
 	if currExtentID > atomic.LoadUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile) {
 		prevAllocSpaceExtentID := int64(atomic.LoadUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile))
 		endAllocSpaceExtentID := int64(prevAllocSpaceExtentID + 1000)
