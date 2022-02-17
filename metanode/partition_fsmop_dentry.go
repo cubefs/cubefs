@@ -159,6 +159,28 @@ func (mp *metaPartition) getDentryTree() *BTree {
 	return mp.dentryTree.GetTree()
 }
 
+func (mp *metaPartition) readDirOnly(req *ReadDirOnlyReq) (resp *ReadDirOnlyResp) {
+	resp = &ReadDirOnlyResp{}
+	begDentry := &Dentry{
+		ParentId: req.ParentID,
+	}
+	endDentry := &Dentry{
+		ParentId: req.ParentID + 1,
+	}
+	mp.dentryTree.AscendRange(begDentry, endDentry, func(i BtreeItem) bool {
+		d := i.(*Dentry)
+		if proto.IsDir(d.Type) {
+			resp.Children = append(resp.Children, proto.Dentry{
+				Inode: d.Inode,
+				Type:  d.Type,
+				Name:  d.Name,
+			})
+		}
+		return true
+	})
+	return
+}
+
 func (mp *metaPartition) readDir(req *ReadDirReq) (resp *ReadDirResp) {
 	resp = &ReadDirResp{}
 	begDentry := &Dentry{
@@ -206,28 +228,6 @@ func (mp *metaPartition) readDirLimit(req *ReadDirLimitReq) (resp *ReadDirLimitR
 		// Limit == 0 means no limit.
 		if req.Limit > 0 && uint64(len(resp.Children)) >= req.Limit {
 			return false
-		}
-		return true
-	})
-	return
-}
-
-func (mp *metaPartition) readDirOnly(req *ReadDirOnlyReq) (resp *ReadDirOnlyResp) {
-	resp = &ReadDirOnlyResp{}
-	begDentry := &Dentry{
-		ParentId: req.ParentID,
-	}
-	endDentry := &Dentry{
-		ParentId: req.ParentID + 1,
-	}
-	mp.dentryTree.AscendRange(begDentry, endDentry, func(i BtreeItem) bool {
-		d := i.(*Dentry)
-		if proto.IsDir(d.Type) {
-			resp.Children = append(resp.Children, proto.Dentry{
-				Inode: d.Inode,
-				Type:  d.Type,
-				Name:  d.Name,
-			})
 		}
 		return true
 	})
