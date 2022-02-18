@@ -92,7 +92,7 @@ type ClientConfig struct {
 	Bc              *bcache.BcacheClient
 	Mw              *meta.MetaWrapper
 	Ec              *stream.ExtentClient
-	Bsc             *BlobStoreClient
+	Ebsc            *BlobStoreClient
 	EnableBcache    bool
 	WConcurrency    int
 	ReadConcurrency int
@@ -109,7 +109,7 @@ func NewReader(config ClientConfig) (reader *Reader) {
 	reader.volType = config.VolType
 	reader.ino = config.Ino
 	reader.bc = config.Bc
-	reader.ebs = config.Bsc
+	reader.ebs = config.Ebsc
 	reader.mw = config.Mw
 	reader.ec = config.Ec
 	reader.enableBcache = config.EnableBcache

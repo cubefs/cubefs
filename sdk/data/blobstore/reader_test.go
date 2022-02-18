@@ -42,7 +42,7 @@ func TestNewReader(t *testing.T) {
 		Bc:              nil,
 		Mw:              nil,
 		Ec:              nil,
-		Bsc:             nil,
+		Ebsc:            nil,
 		EnableBcache:    false,
 		WConcurrency:    0,
 		ReadConcurrency: 0,

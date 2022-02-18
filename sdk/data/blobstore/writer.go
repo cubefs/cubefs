@@ -70,7 +70,7 @@ func NewWriter(config ClientConfig) (writer *Writer) {
 	writer.bc = config.Bc
 	writer.mw = config.Mw
 	writer.ec = config.Ec
-	writer.ebsc = config.Bsc
+	writer.ebsc = config.Ebsc
 	writer.wConcurrency = config.WConcurrency
 	writer.wg = sync.WaitGroup{}
 	writer.once = sync.Once{}
