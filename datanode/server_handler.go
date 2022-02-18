@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
@@ -366,4 +367,53 @@ func (s *DataNode) buildJSONResp(w http.ResponseWriter, code int, data interface
 		return
 	}
 	w.Write(jsonBody)
+}
+
+func (s *DataNode) deletePartition(w http.ResponseWriter, r *http.Request) {
+	var (
+		partitionID uint64
+		volName     string
+		err         error
+	)
+	if err = r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if partitionID, err = strconv.ParseUint(r.FormValue("id"), 10, 64); err != nil {
+		err = fmt.Errorf("parse partitionID fail: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if volName = r.FormValue("vol"); err != nil || volName == "" {
+		err = fmt.Errorf("parse vol[%s] fail: %v or must not be null", volName, err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	dp := s.space.Partition(partitionID)
+	if dp == nil {
+		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
+		return
+	}
+	if dp.volumeID != volName {
+		s.buildFailureResp(w, http.StatusNotFound, "vol miss match")
+		return
+	}
+
+	// check if partition exists in master
+	_, err = MasterClient.AdminAPI().GetDataPartition(dp.volumeID, dp.partitionID)
+	if err == nil || !strings.Contains(err.Error(), "data partition not exists") {
+		if err == nil {
+			err = fmt.Errorf("partition is still valid")
+		}
+		msg := fmt.Sprintf("check partition in master: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, msg)
+		return
+	}
+
+	// delete partition directly: stop raft server and then delete
+	s.space.DeletePartition(partitionID)
+
+	msg := fmt.Sprintf("Delete dp %v successfully", partitionID)
+	s.buildSuccessResp(w, msg)
 }

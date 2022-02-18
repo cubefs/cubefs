@@ -321,7 +321,7 @@ func (m *Server) getDataPartition(w http.ResponseWriter, r *http.Request) {
 
 	if volName != "" {
 		if vol, err = m.cluster.getVol(volName); err != nil {
-			sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
+			sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 			return
 		}
 		if dp, err = vol.getDataPartitionByID(partitionID); err != nil {
