@@ -97,7 +97,7 @@ func (t *heartbeatTransport) handleConn(conn *util.ConnTimeout) {
 				return
 			default:
 				if msg, err := reciveMessage(bufRd); err != nil {
-					logger.Error("[heartbeatTransport] recive message from conn error", err.Error())
+					logger.Error("[heartbeatTransport] recive message from conn error: %v", err)
 					return
 				} else {
 					//logger.Debug(fmt.Sprintf("Recive %v from (%v)", msg.ToString(), conn.RemoteAddr()))
