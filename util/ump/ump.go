@@ -125,7 +125,6 @@ func AfterTPUs(o *TpObject, err error) {
 	}
 	tp := o.UmpType.(*FunctionTpGroupBy)
 	tp.elapsedTime = (int64)(time.Since(o.StartTime) / 1e3)
-	TpObjectPool.Put(o)
 	tp.ProcessState = "0"
 	if err != nil {
 		tp.ProcessState = "1"
