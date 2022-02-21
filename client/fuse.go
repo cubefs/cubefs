@@ -317,6 +317,8 @@ func main() {
 	}
 	stat.ClearStat()
 
+	proto.InitBufferPool(opt.BuffersTotalLimit)
+
 	outputFilePath := path.Join(opt.Logpath, LoggerPrefix, LoggerOutput)
 	outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
 	if err != nil {
@@ -680,15 +682,19 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.EnablePosixACL = GlobalMountOptions[proto.EnablePosixACL].GetBool()
 	opt.EnableSummary = GlobalMountOptions[proto.EnableSummary].GetBool()
 	opt.EnableUnixPermission = GlobalMountOptions[proto.EnableUnixPermission].GetBool()
-
 	opt.ReadThreads = GlobalMountOptions[proto.ReadThreads].GetInt64()
 	opt.WriteThreads = GlobalMountOptions[proto.WriteThreads].GetInt64()
 	opt.EnableBcache = GlobalMountOptions[proto.EnableBcache].GetBool()
+	opt.MetaSendTimeout = GlobalMountOptions[proto.MetaSendTimeout].GetInt64()
+	opt.BuffersTotalLimit = GlobalMountOptions[proto.BuffersTotalLimit].GetInt64()
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))
 	}
 
+	if  opt.BuffersTotalLimit < 0 {
+		return nil, errors.New(fmt.Sprintf("invalid fields, BuffersTotalLimit(%v) must larger or equal than 0", opt.BuffersTotalLimit))
+	}
 	return opt, nil
 }
 

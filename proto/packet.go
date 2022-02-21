@@ -32,7 +32,7 @@ import (
 
 var (
 	GRequestID = int64(1)
-	Buffers    = buf.NewBufferPool()
+	Buffers  *buf.BufferPool
 )
 
 // GenerateRequestID generates the request ID.
@@ -537,13 +537,12 @@ func (p *Packet) WriteToNoDeadLineConn(c net.Conn) (err error) {
 
 // WriteToConn writes through the given connection.
 func (p *Packet) WriteToConn(c net.Conn) (err error) {
-	c.SetWriteDeadline(time.Now().Add(WriteDeadlineTime * time.Second))
 	header, err := Buffers.Get(util.PacketHeaderSize)
 	if err != nil {
 		header = make([]byte, util.PacketHeaderSize)
 	}
 	defer Buffers.Put(header)
-
+	c.SetWriteDeadline(time.Now().Add(WriteDeadlineTime * time.Second))
 	p.MarshalHeader(header)
 	if _, err = c.Write(header); err == nil {
 		if _, err = c.Write(p.Arg[:int(p.ArgLen)]); err == nil {
@@ -744,4 +743,10 @@ func (p *Packet) ShouldRetry() bool {
 
 func (p *Packet) IsBatchDeleteExtents() bool {
 	return p.Opcode == OpBatchDeleteExtent
+}
+
+func InitBufferPool(bufLimit int64){
+	buf.NormalBuffersTotalLimit = bufLimit
+	buf.HeadBuffersTotalLimit = bufLimit
+	Buffers = buf.NewBufferPool()
 }
