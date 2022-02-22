@@ -689,7 +689,7 @@ func (s *DataNode) writeEmptyPacketOnTinyExtentRepairRead(reply *repl.Packet, ne
 }
 
 func (s *DataNode) attachAvaliSizeOnTinyExtentRepairRead(reply *repl.Packet, avaliSize uint64) {
-	binary.BigEndian.PutUint64(reply.Arg[9:17], avaliSize)
+	binary.BigEndian.PutUint64(reply.Arg[9:TinyExtentRepairReadResponseArgLen], avaliSize)
 }
 
 // Handle tinyExtentRepairRead packet.
