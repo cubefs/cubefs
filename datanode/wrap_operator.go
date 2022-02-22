@@ -674,14 +674,13 @@ func (s *DataNode) handlePacketToGetAllWatermarks(p *repl.Packet) {
 func (s *DataNode) writeEmptyPacketOnTinyExtentRepairRead(reply *repl.Packet, newOffset, currentOffset int64, connect net.Conn) (replySize int64, err error) {
 	replySize = newOffset - currentOffset
 	reply.Data = make([]byte, 0)
-	reply.Size = 0
+	reply.Size = 0 // for empty packet, size is saved in Arg area
 	reply.CRC = crc32.ChecksumIEEE(reply.Data)
 	reply.ResultCode = proto.OpOk
 	reply.ExtentOffset = currentOffset
 	reply.Arg[0] = EmptyResponse
 	binary.BigEndian.PutUint64(reply.Arg[1:9], uint64(replySize))
 	err = reply.WriteToConn(connect)
-	reply.Size = uint32(replySize)
 	logContent := fmt.Sprintf("action[operatePacket] %v.",
 		reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
 	log.LogReadf(logContent)
