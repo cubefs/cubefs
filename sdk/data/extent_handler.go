@@ -262,7 +262,7 @@ func (eh *ExtentHandler) sender() {
 				continue
 			}
 			
-			if err = packet.writeToConn(eh.conn); err != nil {
+			if err = packet.writeToConn(eh.conn, eh.stream.client.dataWrapper.connConfig.WriteTimeoutNs); err != nil {
 				log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
 				eh.setClosed()
 				eh.setRecovery()
@@ -346,7 +346,8 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		log.LogWarnf("processReply: send or wait cost too long, costFromStart(%v), costFromSend(%v), packet(%v)",
 			cost, time.Since(time.Unix(0, packet.SendT)), packet)
 	}
-	err := reply.ReadFromConn(eh.conn, readDeadLineTime)
+	// todo
+	err := reply.ReadFromConnNs(eh.conn, eh.stream.client.dataWrapper.connConfig.ReadTimeoutNs)
 	if err != nil {
 		errmsg := fmt.Sprintf("ReadFromConn timeout(%vs) err(%v) costBeforeRecv(%v) costFromStart(%v) costFromSend(%v)",
 			readDeadLineTime, err.Error(), cost, time.Since(time.Unix(0, packet.StartT)),
@@ -682,12 +683,12 @@ func CreateExtent(ctx context.Context, inode uint64, dp *DataPartition, quorum i
 	}()
 
 	p := NewCreateExtentPacket(ctx, dp, quorum, inode)
-	if err = p.WriteToConn(conn, WriteTimeoutData); err != nil {
+	if err = p.WriteToConnNs(conn, dp.ClientWrapper.connConfig.WriteTimeoutNs); err != nil {
 		errors.Trace(err, "createExtent: failed to WriteToConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])
 		return
 	}
 
-	if err = p.ReadFromConn(conn, ReadTimeoutData); err != nil {
+	if err = p.ReadFromConnNs(conn, dp.ClientWrapper.connConfig.ReadTimeoutNs); err != nil {
 		err = errors.Trace(err, "createExtent: failed to ReadFromConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])
 		return
 	}

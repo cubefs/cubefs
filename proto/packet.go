@@ -622,6 +622,20 @@ func (p *Packet) WriteToConn(c net.Conn, timeoutSec int) (err error) {
 	if timeoutSec > 0 {
 		c.SetWriteDeadline(time.Now().Add(time.Second * time.Duration(timeoutSec)))
 	}
+
+	return p.writeToConn(c)
+}
+
+// WriteToConn writes through the given connection.
+func (p *Packet) WriteToConnNs(c net.Conn, timeoutNs int64) (err error) {
+	if timeoutNs > 0 {
+		c.SetWriteDeadline(time.Now().Add(time.Nanosecond * time.Duration(timeoutNs)))
+	}
+
+	return p.writeToConn(c)
+}
+
+func (p *Packet) writeToConn(c net.Conn) (err error) {
 	header, err := Buffers.Get(util.PacketHeaderSize)
 	if err != nil {
 		header = make([]byte, util.PacketHeaderSize)
@@ -666,6 +680,19 @@ func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 	} else {
 		c.SetReadDeadline(time.Time{})
 	}
+	return p.readFromConn(c)
+}
+
+func (p *Packet) ReadFromConnNs(c net.Conn, timeoutNs int64) (err error) {
+	if timeoutNs != NoReadDeadlineTime {
+		c.SetReadDeadline(time.Now().Add(time.Nanosecond * time.Duration(timeoutNs)))
+	} else {
+		c.SetReadDeadline(time.Time{})
+	}
+	return p.readFromConn(c)
+}
+
+func (p *Packet) readFromConn(c net.Conn) (err error) {
 	header, err := Buffers.Get(util.PacketHeaderSize)
 	if err != nil {
 		header = make([]byte, util.PacketHeaderSize)

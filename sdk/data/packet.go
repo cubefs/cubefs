@@ -189,14 +189,14 @@ func (p *Packet) isValidReadReply(q *Packet) bool {
 	return false
 }
 
-func (p *Packet) writeToConn(conn net.Conn) error {
+func (p *Packet) writeToConn(conn net.Conn, timeoutNs int64) error {
 	p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
-	return p.WriteToConn(conn, WriteTimeoutData)
+	return p.WriteToConnNs(conn, timeoutNs)
 }
 
-func (p *Packet) readFromConn(c net.Conn, deadlineTime time.Duration) (err error) {
-	if deadlineTime != proto.NoReadDeadlineTime {
-		c.SetReadDeadline(time.Now().Add(deadlineTime * time.Second))
+func (p *Packet) readFromConn(c net.Conn, deadlineTimeNs int64) (err error) {
+	if deadlineTimeNs != proto.NoReadDeadlineTime {
+		c.SetReadDeadline(time.Now().Add(time.Duration(deadlineTimeNs) * time.Nanosecond))
 	}
 	header, _ := proto.Buffers.Get(util.PacketHeaderSize)
 	defer proto.Buffers.Put(header)

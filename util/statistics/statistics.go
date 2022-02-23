@@ -129,6 +129,7 @@ func (m *Statistics) summaryJob(summaryFunc func(reportTime int64) []*MonitorDat
 		}
 	}()
 	sumTicker := time.NewTicker(defaultSummaryTime)
+	defer sumTicker.Stop()
 	log.LogInfof("Monitor: start summary job, ticker(%v)", defaultSummaryTime)
 	for {
 		select {
@@ -152,6 +153,7 @@ func (m *Statistics) reportJob() {
 		}
 	}()
 	ticker := time.NewTicker(m.reportTimer)
+	defer ticker.Stop()
 	log.LogInfof("Monitor: start report job, ticker(%v)", m.reportTimer)
 	for {
 		select {

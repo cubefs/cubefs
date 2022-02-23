@@ -182,7 +182,7 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 	return
 }
 
-func chooseMaxAppliedDp(ctx context.Context, pid uint64, hosts []string, reqPacket *Packet) (targetHosts []string, isErr bool) {
+func (dp *DataPartition) chooseMaxAppliedDp(ctx context.Context, pid uint64, hosts []string, reqPacket *Packet) (targetHosts []string, isErr bool) {
 	isErr = false
 	appliedIDslice := make(map[string]uint64, len(hosts))
 	errSlice := make(map[string]error)
@@ -194,7 +194,7 @@ func chooseMaxAppliedDp(ctx context.Context, pid uint64, hosts []string, reqPack
 	for _, host := range hosts {
 		wg.Add(1)
 		go func(curAddr string) {
-			appliedID, err := getDpAppliedID(ctx, pid, curAddr, reqPacket)
+			appliedID, err := dp.getDpAppliedID(ctx, pid, curAddr, reqPacket)
 			ok := false
 			lock.Lock()
 			if err != nil {
@@ -219,7 +219,7 @@ func chooseMaxAppliedDp(ctx context.Context, pid uint64, hosts []string, reqPack
 	return
 }
 
-func getDpAppliedID(ctx context.Context, pid uint64, addr string, orgPacket *Packet) (appliedID uint64, err error) {
+func (dp *DataPartition) getDpAppliedID(ctx context.Context, pid uint64, addr string, orgPacket *Packet) (appliedID uint64, err error) {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Streamer.getDpAppliedID")
 	defer tracer.Finish()
 	ctx = tracer.Context()
@@ -235,11 +235,11 @@ func getDpAppliedID(ctx context.Context, pid uint64, addr string, orgPacket *Pac
 	}()
 
 	p := NewPacketToGetDpAppliedID(ctx, pid)
-	if err = p.WriteToConn(conn, WriteTimeoutData); err != nil {
+	if err = p.WriteToConnNs(conn, dp.ClientWrapper.connConfig.WriteTimeoutNs); err != nil {
 		log.LogWarnf("getDpAppliedID: failed to WriteToConn, packet(%v) dpHost(%v) orgPacket(%v) err(%v)", p, addr, orgPacket, err)
 		return
 	}
-	if err = p.ReadFromConn(conn, ReadTimeoutData); err != nil {
+	if err = p.ReadFromConnNs(conn, dp.ClientWrapper.connConfig.ReadTimeoutNs); err != nil {
 		log.LogWarnf("getDpAppliedID: failed to ReadFromConn, packet(%v) dpHost(%v) orgPacket(%v) err(%v)", p, addr, orgPacket, err)
 		return
 	}

@@ -152,7 +152,7 @@ func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {
 				err  error
 			)
 			defer wg.Done()
-			if conn, err = util.DailTimeOut(addr, time.Duration(ConnectTimeoutDataMs)*time.Millisecond); err != nil {
+			if conn, err = util.DailTimeOut(addr, time.Duration(dp.ClientWrapper.connConfig.ConnectTimeoutNs) * time.Nanosecond); err != nil {
 				log.LogWarnf("Dail to Host (%v) err(%v)", addr, err.Error())
 				if strings.Contains(err.Error(), syscall.ECONNREFUSED.Error()) {
 					lock.Lock()
@@ -296,7 +296,7 @@ func (dp *DataPartition) ReadConsistentFromHosts(sc *StreamConn, reqPacket *Pack
 
 	for i := 0; i < StreamReadConsistenceRetry; i++ {
 		errMap = make(map[string]error)
-		targetHosts, isErr = chooseMaxAppliedDp(reqPacket.Ctx(), sc.dp.PartitionID, sc.dp.Hosts, reqPacket)
+		targetHosts, isErr = dp.chooseMaxAppliedDp(reqPacket.Ctx(), sc.dp.PartitionID, sc.dp.Hosts, reqPacket)
 		// try all hosts with same applied ID
 		if !isErr && len(targetHosts) > 0 {
 			// need to read data with no leader
@@ -345,7 +345,7 @@ func (dp *DataPartition) sendReadCmdToDataPartition(sc *StreamConn, reqPacket *P
 		tryOther = true
 		return
 	}
-	if readBytes, reply, tryOther, err = getReadReply(conn, reqPacket, req); err != nil {
+	if readBytes, reply, tryOther, err = sc.getReadReply(conn, reqPacket, req); err != nil {
 		dp.hostErrMap.Store(sc.currAddr, time.Now().UnixNano())
 		log.LogWarnf("sendReadCmdToDataPartition: getReply error and RETURN, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, reqPacket, err)
 		return
@@ -424,7 +424,7 @@ func (dp *DataPartition) OverWriteToDataPartitionLeader(sc *StreamConn, req *Pac
 		return
 	}
 	reply.SetCtx(req.Ctx())
-	if err = reply.ReadFromConn(conn, ReadTimeoutData); err != nil {
+	if err = reply.ReadFromConnNs(conn, dp.ClientWrapper.connConfig.ReadTimeoutNs); err != nil {
 		dp.hostErrMap.Store(sc.currAddr, time.Now().UnixNano())
 		log.LogWarnf("OverWriteToDataPartitionLeader: getReply error and RETURN, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 		return

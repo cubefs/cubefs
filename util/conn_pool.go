@@ -19,6 +19,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/chubaofs/chubaofs/util/tracing"
@@ -40,7 +41,7 @@ type ConnectPool struct {
 	mincap           int
 	maxcap           int
 	timeout          int64
-	connectTimeoutMs int64
+	connectTimeoutNs int64
 	closeCh          chan struct{}
 	closeOnce        sync.Once
 }
@@ -51,7 +52,7 @@ func NewConnectPool() (cp *ConnectPool) {
 		mincap:           5,
 		maxcap:           80,
 		timeout:          int64(time.Second * ConnectIdleTime),
-		connectTimeoutMs: defaultConnectTimeoutMs,
+		connectTimeoutNs: int64(defaultConnectTimeoutMs*time.Millisecond),
 		closeCh:          make(chan struct{}),
 	}
 	go cp.autoRelease()
@@ -65,7 +66,7 @@ func NewConnectPoolWithTimeout(idleConnTimeout time.Duration, connectTimeoutMs i
 		mincap:           5,
 		maxcap:           80,
 		timeout:          int64(idleConnTimeout * time.Second),
-		connectTimeoutMs: connectTimeoutMs,
+		connectTimeoutNs: connectTimeoutMs * int64(time.Millisecond),
 		closeCh:          make(chan struct{}),
 	}
 	go cp.autoRelease()
@@ -73,13 +74,13 @@ func NewConnectPoolWithTimeout(idleConnTimeout time.Duration, connectTimeoutMs i
 	return cp
 }
 
-func NewConnectPoolWithTimeoutAndCap(min, max int, idleConnTimeout, connectTimeoutMs int64) (cp *ConnectPool) {
+func NewConnectPoolWithTimeoutAndCap(min, max int, idleConnTimeout, connectTimeoutNs int64) (cp *ConnectPool) {
 	cp = &ConnectPool{
 		pools:            make(map[string]*Pool),
 		mincap:           min,
 		maxcap:           max,
 		timeout:          idleConnTimeout * int64(time.Second),
-		connectTimeoutMs: connectTimeoutMs,
+		connectTimeoutNs: connectTimeoutNs,
 		closeCh:          make(chan struct{}),
 	}
 	go cp.autoRelease()
@@ -111,7 +112,7 @@ func (cp *ConnectPool) GetConnect(targetAddr string) (c *net.TCPConn, err error)
 		cp.Lock()
 		pool, ok = cp.pools[targetAddr]
 		if !ok {
-			pool = NewPool(ctx, cp.mincap, cp.maxcap, cp.timeout, cp.connectTimeoutMs, targetAddr)
+			pool = NewPool(ctx, cp.mincap, cp.maxcap, cp.timeout, cp.connectTimeoutNs, targetAddr)
 			cp.pools[targetAddr] = pool
 		}
 		cp.Unlock()
@@ -161,6 +162,17 @@ func (cp *ConnectPool) PutConnectWithErr(c *net.TCPConn, err error) {
 			cp.ClearConnectPool(remoteAddr)
 		}
 	}
+}
+
+func (cp *ConnectPool) UpdateTimeout(idleConnTimeout, connectTimeoutNs int64) {
+	cp.Lock()
+	cp.timeout = idleConnTimeout * int64(time.Second)
+	cp.connectTimeoutNs = connectTimeoutNs
+	for _, pool := range cp.pools {
+		atomic.StoreInt64(&pool.timeout, idleConnTimeout * int64(time.Second))
+		atomic.StoreInt64(&pool.connectTimeoutNs, connectTimeoutNs)
+	}
+	cp.Unlock()
 }
 
 func (cp *ConnectPool) ClearConnectPool(addr string) {
@@ -220,17 +232,17 @@ type Pool struct {
 	maxcap           int
 	target           string
 	timeout          int64
-	connectTimeoutMs int64
+	connectTimeoutNs int64
 }
 
-func NewPool(ctx context.Context, min, max int, timeout, connectTimeoutMs int64, target string) (p *Pool) {
+func NewPool(ctx context.Context, min, max int, timeout, connectTimeoutNs int64, target string) (p *Pool) {
 	p = new(Pool)
 	p.mincap = min
 	p.maxcap = max
 	p.target = target
 	p.objects = make(chan *Object, max)
 	p.timeout = timeout
-	p.connectTimeoutMs = connectTimeoutMs
+	p.connectTimeoutNs = connectTimeoutNs
 	p.initAllConnect(ctx)
 	return p
 }
@@ -296,7 +308,7 @@ func (p *Pool) NewConnect(ctx context.Context, target string) (c *net.TCPConn, e
 	defer tracer.Finish()
 
 	var connect net.Conn
-	connect, err = net.DialTimeout("tcp", p.target, time.Duration(p.connectTimeoutMs)*time.Millisecond)
+	connect, err = net.DialTimeout("tcp", p.target, time.Duration(p.connectTimeoutNs)*time.Nanosecond)
 	if err == nil {
 		conn := connect.(*net.TCPConn)
 		conn.SetKeepAlive(true)

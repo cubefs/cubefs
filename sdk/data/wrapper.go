@@ -16,10 +16,12 @@ package data
 
 import (
 	"fmt"
+	"github.com/chubaofs/chubaofs/util"
 	"net"
 	"runtime/debug"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -62,9 +64,11 @@ type Wrapper struct {
 
 	HostsStatus map[string]bool
 
-	crossRegionHAType      proto.CrossRegionHAType
-	crossRegionHostLatency sync.Map // key: host, value: ping time
-	quorum                 int
+	crossRegionHAType      	proto.CrossRegionHAType
+	crossRegionHostLatency 	sync.Map // key: host, value: ping time
+	quorum                 	int
+
+	connConfig				*proto.ConnConfig
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
@@ -76,6 +80,12 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 	w.volName = volName
 	w.partitions = make(map[uint64]*DataPartition)
 	w.HostsStatus = make(map[string]bool)
+	w.connConfig = &proto.ConnConfig{
+		IdleTimeoutSec:   IdleConnTimeoutData,
+		ConnectTimeoutNs: ConnectTimeoutDataMs * int64(time.Millisecond),
+		WriteTimeoutNs:   WriteTimeoutData * int64(time.Second),
+		ReadTimeoutNs:    ReadTimeoutData * int64(time.Second),
+	}
 	if err = w.updateClusterInfo(); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
@@ -94,6 +104,7 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 	if err = w.updateDataNodeStatus(); err != nil {
 		log.LogErrorf("NewDataPartitionWrapper: init DataNodeStatus failed, [%v]", err)
 	}
+	StreamConnPool = util.NewConnectPoolWithTimeoutAndCap(0, 10, w.connConfig.IdleTimeoutSec, w.connConfig.ConnectTimeoutNs)
 
 	go w.update()
 	go w.updateCrossRegionHostStatus()
@@ -141,6 +152,7 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	w.dpSelectorParm = view.DpSelectorParm
 	w.crossRegionHAType = view.CrossRegionHAType
 	w.quorum = view.Quorum
+	w.updateConnConfig(view.ConnConfig)
 
 	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
 		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) forceROW(%v) createTime(%v) dpSelectorName(%v) "+
@@ -216,6 +228,8 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 		log.LogInfof("updateSimpleVolView: update crossRegionHAType from old(%v) to new(%v)", w.crossRegionHAType, view.CrossRegionHAType)
 		w.crossRegionHAType = view.CrossRegionHAType
 	}
+
+	w.updateConnConfig(view.ConnConfig)
 
 	return nil
 }
@@ -397,6 +411,30 @@ func (w *Wrapper) sortHostsByDistance(hosts []string) []string {
 		}
 	}
 	return hosts
+}
+
+func (w *Wrapper) updateConnConfig(config *proto.ConnConfig) {
+	if config == nil {
+		return
+	}
+	updateConnPool := false
+	if config.IdleTimeoutSec > 0 && config.IdleTimeoutSec != w.connConfig.IdleTimeoutSec {
+		w.connConfig.IdleTimeoutSec = config.IdleTimeoutSec
+		updateConnPool = true
+	}
+	if config.ConnectTimeoutNs > 0 && config.ConnectTimeoutNs != w.connConfig.ConnectTimeoutNs {
+		w.connConfig.ConnectTimeoutNs = config.ConnectTimeoutNs
+		updateConnPool = true
+	}
+	if config.WriteTimeoutNs > 0 && config.WriteTimeoutNs != w.connConfig.WriteTimeoutNs {
+		atomic.StoreInt64(&w.connConfig.WriteTimeoutNs, config.WriteTimeoutNs)
+	}
+	if config.ReadTimeoutNs > 0 && config.ReadTimeoutNs != w.connConfig.ReadTimeoutNs {
+		atomic.StoreInt64(&w.connConfig.ReadTimeoutNs, config.ReadTimeoutNs)
+	}
+	if updateConnPool {
+		StreamConnPool.UpdateTimeout(w.connConfig.IdleTimeoutSec, w.connConfig.ConnectTimeoutNs)
+	}
 }
 
 func distanceFromLocal(b string) int {

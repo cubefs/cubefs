@@ -44,6 +44,7 @@ type VolumeView struct {
 	OSSBucketPolicy 	proto.BucketAccessPolicy
 	CreateTime      	int64
 	CrossRegionHAType	proto.CrossRegionHAType
+	ConnConfig			*proto.ConnConfig
 }
 
 type OSSSecure struct {
@@ -88,13 +89,14 @@ func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 	}
 	var convert = func(volView *proto.VolView) *VolumeView {
 		result := &VolumeView{
-			Name:            volView.Name,
-			Owner:           volView.Owner,
-			MetaPartitions:  make([]*MetaPartition, len(volView.MetaPartitions)),
-			OSSSecure:       &OSSSecure{},
-			OSSBucketPolicy: volView.OSSBucketPolicy,
-			CreateTime:      volView.CreateTime,
-			CrossRegionHAType: volView.CrossRegionHAType,
+			Name:            	volView.Name,
+			Owner:           	volView.Owner,
+			MetaPartitions:  	make([]*MetaPartition, len(volView.MetaPartitions)),
+			OSSSecure:       	&OSSSecure{},
+			OSSBucketPolicy: 	volView.OSSBucketPolicy,
+			CreateTime:      	volView.CreateTime,
+			CrossRegionHAType: 	volView.CrossRegionHAType,
+			ConnConfig: 		volView.ConnConfig,
 		}
 		if volView.OSSSecure != nil {
 			result.OSSSecure.AccessKey = volView.OSSSecure.AccessKey
@@ -168,6 +170,7 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 	mw.ossBucketPolicy = view.OSSBucketPolicy
 	mw.volCreateTime = view.CreateTime
 	mw.crossRegionHAType = view.CrossRegionHAType
+	mw.updateConnConfig(view.ConnConfig)
 
 	if len(rwPartitions) == 0 {
 		log.LogInfof("updateMetaPartition: no valid partitions")

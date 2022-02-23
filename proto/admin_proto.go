@@ -635,6 +635,7 @@ type VolView struct {
 	OSSSecure         *OSSSecure
 	OSSBucketPolicy   BucketAccessPolicy
 	CreateTime        int64
+	ConnConfig		  *ConnConfig	// todo
 }
 
 func (v *VolView) SetOwner(owner string) {
@@ -710,6 +711,7 @@ type SimpleVolView struct {
 	MPConvertMode        ConvertMode
 	MasterRegionZone     string
 	SlaveRegionZone      string
+	ConnConfig			 *ConnConfig	// todo
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -778,3 +780,10 @@ const (
 	DefaultConvertMode ConvertMode = iota
 	IncreaseReplicaNum
 )
+
+type ConnConfig struct {
+	IdleTimeoutSec		int64
+	ConnectTimeoutNs	int64
+	WriteTimeoutNs		int64
+	ReadTimeoutNs		int64
+}

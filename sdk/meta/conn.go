@@ -257,7 +257,7 @@ func (mw *MetaWrapper) sendToHost(ctx context.Context, mp *MetaPartition, req *p
 		var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaConn.send[WriteToConn]").
 			SetTag("remote", mc.conn.RemoteAddr().String())
 		defer tracer.Finish()
-		err = req.WriteToConn(mc.conn, WriteTimeoutMeta)
+		err = req.WriteToConnNs(mc.conn, mw.connConfig.WriteTimeoutNs)
 		tracer.SetTag("error", err)
 		return
 	}(); err != nil {
@@ -271,7 +271,7 @@ func (mw *MetaWrapper) sendToHost(ctx context.Context, mp *MetaPartition, req *p
 		var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.send[ReadFromConn]").
 			SetTag("remote", mc.conn.RemoteAddr())
 		defer tracer.Finish()
-		err = resp.ReadFromConn(mc.conn, ReadTimeoutMeta)
+		err = resp.ReadFromConnNs(mc.conn, mw.connConfig.ReadTimeoutNs)
 		tracer.SetTag("error", err)
 		return
 	}(); err != nil {

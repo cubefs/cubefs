@@ -55,10 +55,7 @@ type StreamConn struct {
 	currAddr string
 }
 
-var (
-	//StreamConnPool = util.NewConnectPool()
-	StreamConnPool = util.NewConnectPoolWithTimeoutAndCap(0, 10, IdleConnTimeoutData, ConnectTimeoutDataMs)
-)
+var StreamConnPool *util.ConnectPool
 
 // NewStreamConn returns a new stream connection.
 func NewStreamConn(dp *DataPartition, follower bool) *StreamConn {
@@ -132,7 +129,7 @@ func (sc *StreamConn) sendToDataPartition(req *Packet) (conn *net.TCPConn, err e
 			SetTag("reqID", req.GetReqID()).
 			SetTag("reqOp", req.GetOpMsg())
 		defer tracer.Finish()
-		return req.WriteToConn(conn, WriteTimeoutData)
+		return req.WriteToConnNs(conn, sc.dp.ClientWrapper.connConfig.WriteTimeoutNs)
 	}(); err != nil {
 		log.LogWarnf("sendToDataPartition: failed to write to addr(%v) err(%v)", sc.currAddr, err)
 		return
@@ -229,7 +226,7 @@ func (dp *DataPartition) getFollowerReadHost() string {
 	return dp.LeaderAddr
 }
 
-func getReadReply(conn *net.TCPConn, reqPacket *Packet, req *ExtentRequest) (readBytes int, reply *Packet, tryOther bool, err error) {
+func (sc *StreamConn) getReadReply(conn *net.TCPConn, reqPacket *Packet, req *ExtentRequest) (readBytes int, reply *Packet, tryOther bool, err error) {
 	var tracer = tracing.TracerFromContext(reqPacket.Ctx()).ChildTracer("StreamConn.getReadReply").
 		SetTag("remote", conn.RemoteAddr().String())
 	defer tracer.Finish()
@@ -239,7 +236,7 @@ func getReadReply(conn *net.TCPConn, reqPacket *Packet, req *ExtentRequest) (rea
 		replyPacket := NewReply(reqPacket.Ctx(), reqPacket.ReqID, reqPacket.PartitionID, reqPacket.ExtentID)
 		bufSize := util.Min(util.ReadBlockSize, int(reqPacket.Size)-readBytes)
 		replyPacket.Data = req.Data[readBytes : readBytes+bufSize]
-		e := replyPacket.readFromConn(conn, ReadTimeoutData)
+		e := replyPacket.readFromConn(conn, sc.dp.ClientWrapper.connConfig.ReadTimeoutNs)
 		if e != nil {
 			log.LogWarnf("getReadReply: failed to read from connect, ino(%v) req(%v) readBytes(%v) err(%v)", reqPacket.inode, reqPacket, readBytes, e)
 			// Upon receiving TryOtherAddrError, other hosts will be retried.

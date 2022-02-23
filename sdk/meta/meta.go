@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"runtime/debug"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -101,6 +102,7 @@ type MetaWrapper struct {
 	mc              *masterSDK.MasterClient
 	ac              *authSDK.AuthClient
 	conns           *util.ConnectPool
+	connConfig		*proto.ConnConfig
 	volNotExists    bool
 
 	crossRegionHAType proto.CrossRegionHAType
@@ -180,7 +182,6 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.ownerValidation = config.ValidateOwner
 	mw.mc = masterSDK.NewMasterClient(config.Masters, false)
 	mw.onAsyncTaskError = config.OnAsyncTaskError
-	mw.conns = util.NewConnectPoolWithTimeoutAndCap(0, 10, IdleConnTimeoutMeta, ConnectTimeoutMetaMs)
 	mw.partitions = make(map[uint64]*MetaPartition)
 	mw.ranges = btree.New(32)
 	mw.rwPartitions = make([]*MetaPartition, 0)
@@ -189,6 +190,12 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.forceUpdateLimit = rate.NewLimiter(1, MinForceUpdateMetaPartitionsInterval)
 	mw.InfiniteRetry = config.InfiniteRetry
 	mw.opLimiter = make(map[uint8]*rate.Limiter)
+	mw.connConfig = &proto.ConnConfig{
+		IdleTimeoutSec:   IdleConnTimeoutMeta,
+		ConnectTimeoutNs: ConnectTimeoutMetaMs * int64(time.Millisecond),
+		WriteTimeoutNs:   WriteTimeoutMeta * int64(time.Second),
+		ReadTimeoutNs:    ReadTimeoutMeta * int64(time.Second),
+	}
 
 	limit := MaxMountRetryLimit
 
@@ -206,6 +213,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 		}
 		break
 	}
+	mw.conns = util.NewConnectPoolWithTimeoutAndCap(0, 10, mw.connConfig.IdleTimeoutSec, mw.connConfig.ConnectTimeoutNs)
 
 	go mw.refresh()
 
@@ -368,6 +376,30 @@ func (mw *MetaWrapper) GetOpLimitRate() string {
 
 func (mw *MetaWrapper) CrossRegionHATypeQuorum() bool {
 	return mw.crossRegionHAType == proto.CrossRegionHATypeQuorum
+}
+
+func (mw *MetaWrapper) updateConnConfig(config *proto.ConnConfig) {
+	if config == nil {
+		return
+	}
+	updateConnPool := false
+	if config.IdleTimeoutSec > 0 && config.IdleTimeoutSec != mw.connConfig.IdleTimeoutSec {
+		mw.connConfig.IdleTimeoutSec = config.IdleTimeoutSec
+		updateConnPool = true
+	}
+	if config.ConnectTimeoutNs > 0 && config.ConnectTimeoutNs != mw.connConfig.ConnectTimeoutNs {
+		mw.connConfig.ConnectTimeoutNs = config.ConnectTimeoutNs
+		updateConnPool = true
+	}
+	if config.WriteTimeoutNs > 0 && config.WriteTimeoutNs != mw.connConfig.WriteTimeoutNs {
+		atomic.StoreInt64(&mw.connConfig.WriteTimeoutNs, config.WriteTimeoutNs)
+	}
+	if config.ReadTimeoutNs > 0 && config.ReadTimeoutNs != mw.connConfig.ReadTimeoutNs {
+		atomic.StoreInt64(&mw.connConfig.ReadTimeoutNs, config.ReadTimeoutNs)
+	}
+	if updateConnPool {
+		mw.conns.UpdateTimeout(mw.connConfig.IdleTimeoutSec, mw.connConfig.ConnectTimeoutNs)
+	}
 }
 
 //func (mw *MetaWrapper) exporterKey(act string) string {

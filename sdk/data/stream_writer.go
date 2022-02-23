@@ -482,12 +482,12 @@ func (s *Streamer) writeToExtent(ctx context.Context, oriReq *ExtentRequest, dp 
 		}
 		packet.Data = oriReq.Data[total : total+currSize]
 		packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
-		err = packet.WriteToConn(conn, WriteTimeoutData)
+		err = packet.WriteToConnNs(conn, s.client.dataWrapper.connConfig.WriteTimeoutNs)
 		if err != nil {
 			break
 		}
 		reply := NewReply(packet.Ctx(), packet.ReqID, packet.PartitionID, packet.ExtentID)
-		err = reply.ReadFromConn(conn, ReadTimeoutData)
+		err = reply.ReadFromConnNs(conn, s.client.dataWrapper.connConfig.ReadTimeoutNs)
 		if err != nil || reply.ResultCode != proto.OpOk || !packet.isValidWriteReply(reply) || reply.CRC != packet.CRC {
 			err = fmt.Errorf("err[%v]-packet[%v]-reply[%v]", err, packet, reply)
 			break
