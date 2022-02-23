@@ -19,14 +19,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/repl"
-	"github.com/chubaofs/chubaofs/util"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/chubaofs/chubaofs/repl"
+	"github.com/chubaofs/chubaofs/util"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/storage"
@@ -216,14 +217,13 @@ func (s *DataNode) getExtentMd5Sum(w http.ResponseWriter, r *http.Request) {
 	const (
 		paramPartitionID = "id"
 		paramExtentID    = "extent"
-		paramOffset    = "offset"
-		paramSize    = "size"
-
+		paramOffset      = "offset"
+		paramSize        = "size"
 	)
 	var (
-		err                   error
-		partitionID, extentID,offset,size uint64
-		md5Sum                string
+		err                                 error
+		partitionID, extentID, offset, size uint64
+		md5Sum                              string
 	)
 	if err = r.ParseForm(); err != nil {
 		err = fmt.Errorf("parse form fail: %v", err)
@@ -240,14 +240,14 @@ func (s *DataNode) getExtentMd5Sum(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if r.FormValue(paramOffset)!="" {
+	if r.FormValue(paramOffset) != "" {
 		if offset, err = strconv.ParseUint(r.FormValue(paramOffset), 10, 64); err != nil {
 			err = fmt.Errorf("parse param %v fail: %v", paramOffset, err)
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	}
-	if r.FormValue(paramSize)!="" {
+	if r.FormValue(paramSize) != "" {
 		if size, err = strconv.ParseUint(r.FormValue(paramSize), 10, 64); err != nil {
 			err = fmt.Errorf("parse param %v fail: %v", paramSize, err)
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
@@ -264,7 +264,7 @@ func (s *DataNode) getExtentMd5Sum(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusNotFound, fmt.Sprintf("partition(%v) extentID(%v) not exist", partitionID, extentID))
 		return
 	}
-	md5Sum, err = partition.ExtentStore().ComputeMd5Sum(extentID,offset,size)
+	md5Sum, err = partition.ExtentStore().ComputeMd5Sum(extentID, offset, size)
 	if err != nil {
 		s.buildFailureResp(w, http.StatusInternalServerError, fmt.Sprintf("partition(%v) extentID(%v) computeMD5 failed %v", partitionID, extentID, err))
 		return
@@ -344,7 +344,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		RaftStatus:           raftStatus,
 		Peers:                partition.config.Peers,
 		Learners:             partition.config.Learners,
-		IsFininshLoading:     partition.ExtentStore().IsFininshLoad(),
+		IsFininshLoading:     partition.ExtentStore().IsFinishLoad(),
 	}
 	s.buildSuccessResp(w, result)
 }

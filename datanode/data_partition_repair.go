@@ -168,7 +168,7 @@ func (dp *DataPartition) buildDataPartitionRepairTask(ctx context.Context, repai
 
 func (dp *DataPartition) getLocalExtentInfo(extentType uint8, tinyExtents []uint64) (extents []*storage.ExtentInfo, leaderTinyDeleteRecordFileSize int64, err error) {
 	if extentType == proto.NormalExtentType {
-		if !dp.ExtentStore().IsFininshLoad() {
+		if !dp.ExtentStore().IsFinishLoad() {
 			err = storage.PartitionIsLoaddingErr
 		} else {
 			extents, leaderTinyDeleteRecordFileSize, err = dp.extentStore.GetAllWatermarks(storage.NormalExtentFilter())
@@ -297,7 +297,7 @@ func (dp *DataPartition) DoRepairOnLeaderDisk(ctx context.Context, repairTasks [
 			log.LogWarnf("AutoRepairStatus is False,so cannot Create extent(%v)", extentInfo.String())
 			continue
 		}
-		if !store.IsFininshLoad() {
+		if !store.IsFinishLoad() {
 			continue
 		}
 		store.Create(extentInfo.FileID, true)
@@ -525,7 +525,7 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 		log.LogWarnf("AutoRepairStatus is False,so cannot AutoRepair extent(%v)", remoteExtentInfo.String())
 		return
 	}
-	if !storage.IsTinyExtent(remoteExtentInfo.FileID) && !store.IsFininshLoad() {
+	if !storage.IsTinyExtent(remoteExtentInfo.FileID) && !store.IsFinishLoad() {
 		log.LogWarnf("partition(%v) is loading, remoteExtentInfo(%v)", dp.partitionID, remoteExtentInfo.String())
 		return
 	}

@@ -628,7 +628,7 @@ func (s *DataNode) handlePacketToGetAllWatermarks(p *repl.Packet) {
 		}
 	}()
 	if p.ExtentType == proto.NormalExtentType {
-		if !store.IsFininshLoad() {
+		if !store.IsFinishLoad() {
 			err = storage.PartitionIsLoaddingErr
 			return
 		}
@@ -662,7 +662,7 @@ func (s *DataNode) handlePacketToGetAllWatermarksV2(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
 	store := partition.ExtentStore()
 	if p.ExtentType == proto.NormalExtentType {
-		if !store.IsFininshLoad() {
+		if !store.IsFinishLoad() {
 			err = storage.PartitionIsLoaddingErr
 			return
 		}
@@ -703,7 +703,7 @@ func (s *DataNode) handlePacketToGetAllExtentInfo(p *repl.Packet) {
 	}()
 	partition := p.Object.(*DataPartition)
 	store := partition.ExtentStore()
-	if !store.IsFininshLoad() {
+	if !store.IsFinishLoad() {
 		err = storage.PartitionIsLoaddingErr
 		return
 	}
@@ -936,7 +936,7 @@ func (s *DataNode) handlePacketToGetPartitionSize(p *repl.Packet) {
 		}
 	}()
 	partition := p.Object.(*DataPartition)
-	if !partition.ExtentStore().IsFininshLoad() {
+	if !partition.ExtentStore().IsFinishLoad() {
 		err = storage.PartitionIsLoaddingErr
 		return
 	}
@@ -959,7 +959,7 @@ func (s *DataNode) handlePacketToGetMaxExtentIDAndPartitionSize(p *repl.Packet) 
 		}
 	}()
 	partition := p.Object.(*DataPartition)
-	if !partition.ExtentStore().IsFininshLoad() {
+	if !partition.ExtentStore().IsFinishLoad() {
 		err = storage.PartitionIsLoaddingErr
 		return
 	}

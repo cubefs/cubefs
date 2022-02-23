@@ -4,14 +4,15 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"net"
+	"strings"
+	"time"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
 	"github.com/chubaofs/chubaofs/storage"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"net"
-	"strings"
-	"time"
 )
 
 type DataPartitionValidateCRCTask struct {
@@ -93,7 +94,7 @@ func (dp *DataPartition) buildDataPartitionValidateCRCTask(ctx context.Context, 
 }
 
 func (dp *DataPartition) getLocalExtentInfoForValidateCRC() (extents []*storage.ExtentInfo, err error) {
-	if !dp.ExtentStore().IsFininshLoad() {
+	if !dp.ExtentStore().IsFinishLoad() {
 		err = storage.PartitionIsLoaddingErr
 		return
 	}
