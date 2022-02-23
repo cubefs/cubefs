@@ -461,6 +461,10 @@ func (eh *ExtentHandler) cleanup() (err error) {
 	if eh.conn != nil {
 		conn := eh.conn
 		eh.conn = nil
+		if eh.lastAccessTime > 0 && (time.Now().Unix() - eh.lastAccessTime) > ConnectUpdateSecond {
+			conn.Close()
+			return
+		}
 		// TODO unhandled error
 		if status := eh.getStatus(); status >= ExtentStatusRecovery {
 			StreamConnPool.PutConnect(conn, true)
