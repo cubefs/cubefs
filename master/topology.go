@@ -335,6 +335,57 @@ func (t *topology) getAllZones() (zones []*Zone) {
 	return
 }
 
+func (t *topology) getCandidateZonesFromTargetRegionForDataNode(excludeZone []string, targetRegionName string, demandWriteNodes, candidateZoneCount int) (candidateZones []*Zone) {
+	candidateZones = make([]*Zone, 0)
+	initCandidateZones := t.getZonesOfTargetRegion(targetRegionName)
+	for _, zone := range initCandidateZones {
+		if zone.status == unavailableZone {
+			continue
+		}
+		if contains(excludeZone, zone.name) {
+			continue
+		}
+		if zone.canWriteForDataNode(uint8(demandWriteNodes)) {
+			candidateZones = append(candidateZones, zone)
+		}
+		if len(candidateZones) >= candidateZoneCount {
+			break
+		}
+	}
+	return
+}
+
+func (t *topology) getCandidateZonesFromTargetRegionForMetaNode(excludeZone []string, targetRegionName string, demandWriteNodes, candidateZoneCount int) (candidateZones []*Zone) {
+	candidateZones = make([]*Zone, 0)
+	initCandidateZones := t.getZonesOfTargetRegion(targetRegionName)
+	for _, zone := range initCandidateZones {
+		if zone.status == unavailableZone {
+			continue
+		}
+		if contains(excludeZone, zone.name) {
+			continue
+		}
+		if zone.canWriteForMetaNode(uint8(demandWriteNodes)) {
+			candidateZones = append(candidateZones, zone)
+		}
+		if len(candidateZones) >= candidateZoneCount {
+			break
+		}
+	}
+	return
+}
+
+func (t *topology) getZonesOfTargetRegion(targetRegionName string) (zones []*Zone) {
+	zones = make([]*Zone, 0)
+	allZones := t.getAllZones()
+	for _, zone := range allZones {
+		if zone.regionName == targetRegionName {
+			zones = append(zones, zone)
+		}
+	}
+	return
+}
+
 func (t *topology) getZoneByIndex(index int) (zone *Zone) {
 	t.zoneLock.RLock()
 	defer t.zoneLock.RUnlock()
@@ -377,12 +428,21 @@ func (t *topology) allocZonesForMetaNode(clusterID, zoneName string, replicaNum 
 		if zone.status == unavailableZone {
 			continue
 		}
+		if contains(excludeZone, zone.name) {
+			continue
+		}
 		if zone.canWriteForMetaNode(uint8(demandWriteNodes)) {
 			candidateZones = append(candidateZones, zone)
 		}
 		if len(candidateZones) >= len(zoneList) {
 			break
 		}
+	}
+	//if there is no space in the zone for single zone partition, randomly choose a zone from same region zones
+	if len(candidateZones) < 1 && len(zoneList) == 1 && len(initCandidateZones) == 1 {
+		candidateZones = t.getCandidateZonesFromTargetRegionForMetaNode(excludeZone, initCandidateZones[0].regionName, demandWriteNodes, 1)
+		log.LogInfof(fmt.Sprintf("action[allocZonesForMetaNode],zoneName[%v],excludeZone[%v],candidateZones[%v],demandWriteNodes[%v]",
+			zoneName, excludeZone, len(candidateZones), demandWriteNodes))
 	}
 	//if there is no space in the zone for single zone partition, randomly choose another zone
 	if !isStrict && len(candidateZones) < 1 && len(zoneList) == 1 {
@@ -442,6 +502,12 @@ func (t *topology) allocZonesForDataNode(clusterID, zoneName string, replicaNum 
 		if len(candidateZones) >= len(zoneList) {
 			break
 		}
+	}
+	//if there is no space in the zone for single zone partition, randomly choose a zone from same region zones
+	if len(candidateZones) < 1 && len(zoneList) == 1 && len(initCandidateZones) == 1 {
+		candidateZones = t.getCandidateZonesFromTargetRegionForDataNode(excludeZone, initCandidateZones[0].regionName, demandWriteNodes, 1)
+		log.LogInfof(fmt.Sprintf("action[allocZonesForDataNode],zoneName[%v],excludeZone[%v],candidateZones[%v],demandWriteNodes[%v]",
+			zoneName, excludeZone, len(candidateZones), demandWriteNodes))
 	}
 	//if there is no space in the zone for single zone partition, randomly choose a zone from all zones
 	if !isStrict && len(candidateZones) < 1 && len(zoneList) == 1 {
