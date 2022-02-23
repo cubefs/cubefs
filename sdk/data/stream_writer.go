@@ -513,8 +513,10 @@ func (s *Streamer) writeToNewExtent(ctx context.Context, oriReq *ExtentRequest, 
 	for i := 0; i < MaxSelectDataPartitionForWrite; i++ {
 		if err != nil {
 			if dp != nil {
-				s.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
 				dp.CheckAllHostsIsAvail(exclude)
+				if isExcluded(dp, exclude, dp.ClientWrapper.quorum) {
+					s.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
+				}
 			}
 			log.LogWarnf("writeToNewExtent: stream %v, oriReq %v, dp %v, extID %v, total %v, err %v, retry(%v/%v) exclude(%v)",
 				s, oriReq, dp, extID, total, err, i, MaxSelectDataPartitionForWrite, exclude)

@@ -37,6 +37,8 @@ const (
 	ExtentStatusError
 )
 
+const ConnectUpdateSecond = 30
+
 var (
 	gExtentHandlerID = uint64(0)
 	gMaxExtentSize   = util.ExtentSize
@@ -111,6 +113,9 @@ type ExtentHandler struct {
 
 	// Signaled in receiver ONLY to exit *sender*.
 	doneSender chan struct{}
+
+	// the last time eh was used
+	lastAccessTime int64
 }
 
 // NewExtentHandler returns a new extent handler.
@@ -249,7 +254,14 @@ func (eh *ExtentHandler) sender() {
 			packet.StartT = time.Now().UnixNano()
 
 			//log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
-
+			if err = eh.updateConn(); err != nil {
+				log.LogWarnf("ExtentHandler updateConn err: (%v), eh(%v)", err, eh)
+				eh.setClosed()
+				eh.setRecovery()
+				eh.reply <- packet
+				continue
+			}
+			
 			if err = packet.writeToConn(eh.conn); err != nil {
 				log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
 				eh.setClosed()
@@ -343,6 +355,8 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		eh.dp.RecordWrite(packet.StartT, true)
 		return
 	}
+
+	eh.lastAccessTime = time.Now().Unix()
 
 	log.LogDebugf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet, reply)
 
@@ -614,10 +628,11 @@ func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
 			extID, err = eh.ehCreateExtent(ctx, dp)
 		}
 		if err != nil {
-			log.LogWarnf("allocateExtent: delete dp[%v] caused by create extent failed, eh(%v) err(%v) exclude(%v)",
-				dp, eh, err, exclude)
-			eh.stream.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
+			log.LogWarnf("allocateExtent: create extent failed, dp(%v) eh(%v) err(%v) exclude(%v)", dp, eh, err, exclude)
 			dp.CheckAllHostsIsAvail(exclude)
+			if isExcluded(dp, exclude, dp.ClientWrapper.quorum) {
+				eh.stream.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
+			}
 			continue
 		}
 
@@ -724,6 +739,20 @@ func (eh *ExtentHandler) setRecovery() bool {
 func (eh *ExtentHandler) setError() bool {
 	atomic.StoreInt32(&eh.stream.status, StreamerError)
 	return atomic.CompareAndSwapInt32(&eh.status, ExtentStatusRecovery, ExtentStatusError)
+}
+
+func (eh *ExtentHandler) updateConn() error {
+	if eh.conn == nil || eh.lastAccessTime == 0 || (time.Now().Unix() - eh.lastAccessTime) < ConnectUpdateSecond {
+		return nil
+	}
+	log.LogInfof("updateConn: close conn(%v), eh(%v)", eh.conn.LocalAddr(), eh)
+	eh.conn.Close()
+	conn, err := StreamConnPool.GetConnect(eh.dp.Hosts[0])
+	if err != nil {
+		return err
+	}
+	eh.conn = conn
+	return nil
 }
 
 func SetNormalExtentSize(maxSize int) {
