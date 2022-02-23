@@ -70,7 +70,7 @@ const (
 
 	ControlCommandSetRate      = "/rate/set"
 	ControlCommandGetRate      = "/rate/get"
-	ControlCommandGetOpRate	   = "/opRate/get"
+	ControlCommandGetOpRate    = "/opRate/get"
 	ControlCommandFreeOSMemory = "/debug/freeosmemory"
 	ControlCommandTracing      = "/tracing"
 	Role                       = "Client"
@@ -298,7 +298,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 		}
 	}()
 
-	if err = ump.InitUmp(fmt.Sprintf("%v_%v_%v", super.ClusterName(), super.VolName(), ModuleName)); err != nil {
+	if err = ump.InitUmp(fmt.Sprintf("%v_%v_%v", super.ClusterName(), super.VolName(), ModuleName), "jdos_chubaofs_node"); err != nil {
 		return
 	}
 

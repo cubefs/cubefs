@@ -15,7 +15,6 @@
 package ump
 
 import (
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -41,6 +40,7 @@ const (
 
 var (
 	HostName      string
+	AppName       string
 	LogTimeForMat = "20060102150405000"
 	AlarmPool     = &sync.Pool{New: func() interface{} {
 		return new(BusinessAlarm)
@@ -57,14 +57,22 @@ var (
 	FunctionTpGroupByPool = &sync.Pool{New: func() interface{} {
 		return new(FunctionTpGroupBy)
 	}}
-	enableUmp = true
+	enableUmp          = true
+	FunctionTPMapCount = 16
+	FuncationTPMap     []sync.Map
+	FunctionTPKeyMap   *sync.Map
 )
 
-func InitUmp(module string) (err error) {
+func init() {
+	FuncationTPMap = make([]sync.Map, FunctionTPMapCount)
+	FunctionTPKeyMap = new(sync.Map)
+}
+
+func InitUmp(module, appName string) (err error) {
 	if err = initLogName(module); err != nil {
 		return
 	}
-
+	AppName = appName
 	backGroudWrite()
 	return nil
 }
@@ -77,8 +85,8 @@ func BeforeTP(key string) (o *TpObject) {
 	o = TpObjectPool.Get().(*TpObject)
 	o.StartTime = time.Now()
 	tp := FunctionTpGroupByPool.Get().(*FunctionTpGroupBy)
-	tp.HostName = HostName
-	tp.currTime = o.StartTime
+	//tp.HostName = HostName
+	//tp.currTime = o.StartTime
 	tp.Key = key
 	tp.ProcessState = "0"
 	o.UmpType = tp
@@ -86,6 +94,50 @@ func BeforeTP(key string) (o *TpObject) {
 	return
 }
 
+//func AfterTPOld(o *TpObject, err error) {
+//	if !enableUmp {
+//		return
+//	}
+//	tp := o.UmpType.(*FunctionTpGroupBy)
+//	tp.elapsedTime = (int64)(time.Since(o.StartTime) / 1e6)
+//	tp.ProcessState = "0"
+//	if err != nil {
+//		tp.ProcessState = "1"
+//	}
+//	tp.count = 1
+//	index := tp.elapsedTime % int64(FunctionTPMapCount)
+//	mkey := tp.Key + "_" + strconv.FormatInt(tp.elapsedTime, 10)
+//	v, ok := FuncationTPMap[index].Load(mkey)
+//	if !ok {
+//		FuncationTPMap[index].Store(mkey, tp)
+//	} else {
+//		atomic.AddInt64(&v.(*FunctionTpGroupBy).count, 1)
+//		TpObjectPool.Put(o)
+//	}
+//}
+//
+//func AfterTPUsOld(o *TpObject, err error) {
+//	if !enableUmp {
+//		return
+//	}
+//	tp := o.UmpType.(*FunctionTpGroupBy)
+//	tp.elapsedTime = (int64)(time.Since(o.StartTime) / 1e3)
+//	tp.ProcessState = "0"
+//	if err != nil {
+//		tp.ProcessState = "1"
+//	}
+//	tp.count = 1
+//	index := tp.elapsedTime % int64(FunctionTPMapCount)
+//	mkey := tp.Key + "_" + strconv.FormatInt(tp.elapsedTime, 10)
+//	v, ok := FuncationTPMap[index].Load(mkey)
+//	if !ok {
+//		FuncationTPMap[index].Store(mkey, tp)
+//	} else {
+//		atomic.AddInt64(&v.(*FunctionTpGroupBy).count, 1)
+//		TpObjectPool.Put(o)
+//	}
+//	return
+//}
 
 func AfterTP(o *TpObject, err error) {
 	if !enableUmp {
@@ -98,25 +150,8 @@ func AfterTP(o *TpObject, err error) {
 		tp.ProcessState = "1"
 	}
 	tp.count = 1
-	index:=tp.elapsedTime%int64(FunctionTPMapCount)
-	mkey := tp.Key + "_"+strconv.FormatInt(tp.elapsedTime,10)
-	v, ok := FuncationTPMap[index].Load(mkey)
-	if !ok {
-		FuncationTPMap[index].Store(mkey, tp)
-	} else {
-		atomic.AddInt64(&v.(*FunctionTpGroupBy).count, 1)
-		TpObjectPool.Put(o)
-	}
-}
-
-
-var (
-	FunctionTPMapCount=16
-	FuncationTPMap []sync.Map
-)
-
-func init() {
-	FuncationTPMap=make([]sync.Map,FunctionTPMapCount)
+	mergeLogByUMPKey(tp)
+	TpObjectPool.Put(o)
 }
 
 func AfterTPUs(o *TpObject, err error) {
@@ -130,18 +165,33 @@ func AfterTPUs(o *TpObject, err error) {
 		tp.ProcessState = "1"
 	}
 	tp.count = 1
-	index:=tp.elapsedTime%int64(FunctionTPMapCount)
-	mkey := tp.Key + "_"+strconv.FormatInt(tp.elapsedTime,10)
-	v, ok := FuncationTPMap[index].Load(mkey)
-	if !ok {
-		FuncationTPMap[index].Store(mkey, tp)
-	} else {
-		atomic.AddInt64(&v.(*FunctionTpGroupBy).count, 1)
+	if isNewElapsedTime := mergeLogByUMPKey(tp); !isNewElapsedTime {
 		TpObjectPool.Put(o)
 	}
 	return
 }
 
+func mergeLogByUMPKey(tp *FunctionTpGroupBy) (isNewElapsedTime bool) {
+	var elapsedTimeCounter *sync.Map
+	value, ok := FunctionTPKeyMap.Load(tp.Key)
+	if !ok {
+		elapsedTimeCounter = &sync.Map{}
+		elapsedTimeCounter.Store(tp.elapsedTime, tp)
+		FunctionTPKeyMap.Store(tp.Key, elapsedTimeCounter)
+		isNewElapsedTime = true
+		return
+	}
+	elapsedTimeCounter = value.(*sync.Map)
+	tpObj, ok := elapsedTimeCounter.Load(tp.elapsedTime)
+	if !ok {
+		elapsedTimeCounter.Store(tp.elapsedTime, tp)
+		isNewElapsedTime = true
+		return
+	}
+	c := tpObj.(*FunctionTpGroupBy)
+	atomic.AddInt64(&c.count, 1)
+	return
+}
 
 func Alive(key string) {
 	if !enableUmp {

@@ -100,7 +100,7 @@ func Clean(opt string) error {
 		return fmt.Errorf("Lack of parameters: master(%v) vol(%v)", MasterAddr, VolName)
 	}
 
-	ump.InitUmp("fsck")
+	ump.InitUmp("fsck", "jdos_chubaofs-node")
 
 	_, err := log.InitLog("fscklog", "fsck", log.InfoLevel, nil)
 	if err != nil {
