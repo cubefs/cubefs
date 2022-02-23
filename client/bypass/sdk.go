@@ -3161,7 +3161,7 @@ func (c *client) start() (err error) {
 	http.HandleFunc(ControlBroadcastRefreshExtents, c.broadcastRefreshExtentsHandleFunc)
 
 	// metric
-	if err = ump.InitUmp(moduleName); err != nil {
+	if err = ump.InitUmp(moduleName, "jdos_chubaofs-node"); err != nil {
 		fmt.Println(err)
 		return
 	}

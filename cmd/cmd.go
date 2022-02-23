@@ -283,7 +283,7 @@ func run() error {
 
 	//for multi-cpu scheduling
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	if err = ump.InitUmp(role); err != nil {
+	if err = ump.InitUmp(role, "jdos_chubaofs-node"); err != nil {
 		log.LogErrorf("init ump failed: %v", err)
 		log.LogFlush()
 		syslog.Printf("Fatal: init ump failed: %v ", err)

@@ -20,9 +20,7 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"strconv"
 	"sync/atomic"
-	"time"
 )
 
 type FunctionTp struct {
@@ -34,13 +32,13 @@ type FunctionTp struct {
 }
 
 type FunctionTpGroupBy struct {
-	currTime     time.Time
-	Time         string
-	Key          string
-	HostName     string
+	//currTime     time.Time
+	//Time         string
+	Key string
+	//HostName     string
 	ProcessState string
-	ElapsedTime  string
-	Count        string
+	//ElapsedTime  string
+	//Count        string
 
 	elapsedTime int64
 	count       int64
@@ -152,36 +150,36 @@ func (lw *LogWrite) backGroundCheckFile() (err error) {
 	return
 }
 
-func (lw *LogWrite) backGroupWriteForGroupByTP() {
-
-	for {
-		var (
-			body []byte
-		)
-		for index:=0;index<FunctionTPMapCount;index++{
-			FuncationTPMap[index].Range(func(key, value interface{}) bool {
-				v := value.(*FunctionTpGroupBy)
-				v.Count = strconv.FormatInt(v.count, 10)
-				v.Time = v.currTime.Format(LogTimeForMat)
-				v.ElapsedTime = strconv.FormatInt(v.elapsedTime, 10)
-				lw.jsonEncoder.Encode(v)
-				FunctionTpGroupByPool.Put(v)
-				body = append(body, lw.bf.Bytes()...)
-				lw.bf.Reset()
-				FuncationTPMap[index].Delete(key.(string))
-				return true
-			})
-			time.Sleep(time.Second)
-		}
-		if lw.backGroundCheckFile() != nil {
-			continue
-		}
-		lw.logFp.Write(body)
-		lw.logSize += (int64)(len(body))
-		body = make([]byte, 0)
-	}
-	return
-}
+//func (lw *LogWrite) backGroupWriteForGroupByTP() {
+//
+//	for {
+//		var (
+//			body []byte
+//		)
+//		for index := 0; index < FunctionTPMapCount; index++ {
+//			FuncationTPMap[index].Range(func(key, value interface{}) bool {
+//				v := value.(*FunctionTpGroupBy)
+//				v.Count = strconv.FormatInt(v.count, 10)
+//				v.Time = v.currTime.Format(LogTimeForMat)
+//				v.ElapsedTime = strconv.FormatInt(v.elapsedTime, 10)
+//				lw.jsonEncoder.Encode(v)
+//				FunctionTpGroupByPool.Put(v)
+//				body = append(body, lw.bf.Bytes()...)
+//				lw.bf.Reset()
+//				FuncationTPMap[index].Delete(key.(string))
+//				return true
+//			})
+//			time.Sleep(time.Second)
+//		}
+//		if lw.backGroundCheckFile() != nil {
+//			continue
+//		}
+//		lw.logFp.Write(body)
+//		lw.logSize += (int64)(len(body))
+//		body = make([]byte, 0)
+//	}
+//	return
+//}
 
 func (lw *LogWrite) backGroundWrite(umpType string) {
 
@@ -271,8 +269,11 @@ func GetLocalIpAddr() (localAddr string, err error) {
 }
 
 func backGroudWrite() {
-	go FunctionTpLogWrite.backGroundWrite(FunctionTpType)
-	go SystemAliveLogWrite.backGroundWrite(SystemAliveType)
-	go BusinessAlarmLogWrite.backGroundWrite(BusinessAlarmType)
-	go FunctionTpGroupByLogWrite.backGroupWriteForGroupByTP()
+	//go FunctionTpLogWrite.backGroundWrite(FunctionTpType)
+	//go SystemAliveLogWrite.backGroundWrite(SystemAliveType)
+	//go BusinessAlarmLogWrite.backGroundWrite(BusinessAlarmType)
+	//go FunctionTpGroupByLogWrite.backGroupWriteForGroupByTP()
+	go FunctionTpLogWrite.backGroupWriteForGroupByTPV629()
+	go SystemAliveLogWrite.backGroupAliveWriteV629()
+	go BusinessAlarmLogWrite.backGroupBusinessWriteV629()
 }
