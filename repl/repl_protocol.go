@@ -19,9 +19,12 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util/exporter"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
@@ -281,7 +284,7 @@ func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet, remote str
 	ReplProtocalMap.Store(rp.replId, rp)
 	rp.remote = rp.sourceConn.RemoteAddr().String()
 	go rp.OperatorAndForwardPktGoRoutine()
-	go rp.writeResponseToClientGoRroutine()
+	go rp.writeResponseToClientGoroutine()
 
 	return rp
 }
@@ -297,6 +300,16 @@ func (rp *ReplProtocol) ServerConn() {
 	var (
 		err error
 	)
+	defer func() {
+		if r := recover(); r != nil {
+			msg := fmt.Sprintf("ReplProtocol: ServerConn: occurred panic. \n"+
+				"message: %v\n"+
+				"stack:\n%v",
+				r, string(debug.Stack()))
+			log.LogCritical(msg)
+			exporter.WarningPanic(msg)
+		}
+	}()
 	defer func() {
 		rp.Stop(err)
 		rp.exitedMu.Lock()
@@ -446,6 +459,16 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (err error) {
 //    Then notify receiveResponse to read the followers' responses.
 // 3. Read a reply from responseCh, and write to the client.
 func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
+	defer func() {
+		if r := recover(); r != nil {
+			msg := fmt.Sprintf("ReplProtocol: OperatorAndForwardPktGoRoutine: occurred panic. \n"+
+				"message: %v\n"+
+				"stack:\n%v",
+				r, string(debug.Stack()))
+			log.LogCritical(msg)
+			exporter.WarningPanic(msg)
+		}
+	}()
 	ticker := time.NewTicker(time.Minute)
 	defer func() {
 		ticker.Stop()
@@ -510,7 +533,17 @@ func (rp *ReplProtocol) autoReleaseFollowerTransport() {
 	rp.lock.Unlock()
 }
 
-func (rp *ReplProtocol) writeResponseToClientGoRroutine() {
+func (rp *ReplProtocol) writeResponseToClientGoroutine() {
+	defer func() {
+		if r := recover(); r != nil {
+			msg := fmt.Sprintf("ReplProtocol: writeResponseToClientGoroutine: occurred panic. \n"+
+				"message: %v\n"+
+				"stack:\n%v",
+				r, string(debug.Stack()))
+			log.LogCritical(msg)
+			exporter.WarningPanic(msg)
+		}
+	}()
 	rp.allThreadStatsLock.Lock()
 	rp.allThreadStats[2] = ReplProtocalThreadRuning
 	rp.allThreadStatsLock.Unlock()
@@ -533,7 +566,6 @@ func (rp *ReplProtocol) writeResponseToClientGoRroutine() {
 			return
 		}
 	}
-
 }
 
 type ReplProtocalBufferDetail struct {

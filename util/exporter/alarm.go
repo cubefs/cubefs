@@ -44,17 +44,20 @@ type Alarm struct {
 }
 
 func Warning(detail string) (a *Alarm) {
-	if warningKey =="" {
-		warningKey =fmt.Sprintf("%v_%v_warning", clustername, modulename)
+	if warningKey == "" {
+		warningKey = fmt.Sprintf("%v_%v_warning", clustername, modulename)
 	}
 	ump.Alarm(warningKey, detail)
 	log.LogCritical(warningKey, detail)
-	if !enabledPrometheus {
-		return
+	return
+}
+
+func WarningPanic(detail string) (a *Alarm) {
+	if warningKey == "" {
+		warningKey = fmt.Sprintf("%v_%v_panic", clustername, modulename)
 	}
-	a = AlarmPool.Get().(*Alarm)
-	a.name = metricsName(warningKey)
-	a.Add(1)
+	ump.Alarm(warningKey, detail)
+	log.LogCritical(warningKey, detail)
 	return
 }
 
