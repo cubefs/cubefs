@@ -471,6 +471,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	response.DiskInfos = make(map[string]*proto.DiskInfo, 0)
 	stat.Unlock()
 
+	response.HttpPort = s.httpPort
 	response.ZoneName = s.zoneName
 	response.PartitionReports = make([]*proto.PartitionReport, 0)
 	space := s.space
@@ -487,6 +488,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			ExtentCount:     partition.GetExtentCount(),
 			NeedCompare:     true,
 			IsLearner:       partition.IsRaftLearner(),
+			LastUpdateTime:  partition.lastUpdateTime,
 		}
 		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v) isLearner(%v).",
 			vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader, vr.IsLearner)

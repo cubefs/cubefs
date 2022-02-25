@@ -68,6 +68,7 @@ const (
 	ActionStreamReadTinyDeleteRecord = "ActionStreamReadTinyDeleteRecord"
 	ActionSyncTinyDeleteRecord       = "ActionSyncTinyDeleteRecord"
 	ActionStreamReadTinyExtentRepair = "ActionStreamReadTinyExtentRepair"
+	ActionStreamReadTinyExtentAvali  = "ActionStreamReadTinyExtentAvali"
 	ActionSyncDataPartitionReplicas  = "ActionSyncDataPartitionReplicas"
 	ActionGetPartitionSize           = "ActionGetPartitionSize"
 	GetMaxExtentIDAndPartitionSize   = "GetMaxExtentIDAndPartitionSize"

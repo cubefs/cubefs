@@ -84,6 +84,7 @@ const (
 type DataNode struct {
 	space                    *SpaceManager
 	port                     string
+	httpPort                 string
 	zoneName                 string
 	clusterID                string
 	localIP                  string
@@ -212,6 +213,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 		return fmt.Errorf("Err:port must string")
 	}
 	s.port = port
+	s.httpPort = cfg.GetString(proto.HttpPort)
 	if len(cfg.GetSlice(proto.MasterAddr)) == 0 {
 		return fmt.Errorf("Err:masterAddr unavalid")
 	}
@@ -396,6 +398,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/computeExtentMd5", s.getExtentMd5Sum)
 	http.HandleFunc("/stat/info", s.getStatInfo)
 	http.HandleFunc("/getReplBufferDetail", s.getReplProtocalBufferDetail)
+	http.HandleFunc("/tinyExtentHoleInfo", s.getTinyExtentHoleInfo)
 }
 
 func (s *DataNode) startTCPService() (err error) {

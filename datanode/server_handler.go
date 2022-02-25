@@ -518,3 +518,44 @@ func generateAuthKey() string {
 	cipherStr := h.Sum(nil)
 	return hex.EncodeToString(cipherStr)
 }
+
+func (s *DataNode) getTinyExtentHoleInfo(w http.ResponseWriter, r *http.Request) {
+	var (
+		partitionID uint64
+		extentID    int
+		err         error
+	)
+	if err = r.ParseForm(); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if partitionID, err = strconv.ParseUint(r.FormValue("partitionID"), 10, 64); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if extentID, err = strconv.Atoi(r.FormValue("extentID")); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	partition := s.space.Partition(partitionID)
+	if partition == nil {
+		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
+		return
+	}
+	store := partition.ExtentStore()
+	holes, extentAvaliSize, err := store.TinyExtentHolesAndAvaliSize(uint64(extentID), 0)
+	if err != nil {
+		s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	result := &struct {
+		Holes     []*proto.TinyExtentHole      `json:"holes"`
+		ExtentAvaliSize uint64                   `json:"extentAvaliSize"`
+	} {
+		Holes: holes,
+		ExtentAvaliSize: extentAvaliSize,
+	}
+
+	s.buildSuccessResp(w, result)
+}

@@ -64,6 +64,7 @@ type DataPartitionMetadata struct {
 	Learners                []proto.Learner
 	DataPartitionCreateType int
 	LastTruncateID          uint64
+	LastUpdateTime          int64
 	VolumeHAType            proto.CrossRegionHAType
 }
 
@@ -126,6 +127,7 @@ type DataPartition struct {
 	loadExtentHeaderStatus        int
 	FullSyncTinyDeleteTime        int64
 	lastSyncTinyDeleteTime        int64
+	lastUpdateTime                int64
 	DataPartitionCreateType       int
 
 	monitorData []*statistics.MonitorData
@@ -145,6 +147,7 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 
 	// persist file metadata
 	dp.DataPartitionCreateType = request.CreateType
+	dp.lastUpdateTime = time.Now().Unix()
 	err = dp.PersistMetadata()
 	disk.AddSize(uint64(dp.Size()))
 	return
@@ -213,6 +216,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	if dp, err = newDataPartition(dpCfg, disk, false); err != nil {
 		return
 	}
+	dp.lastUpdateTime = meta.LastUpdateTime
 	// dp.PersistMetadata()
 	disk.space.AttachPartition(dp)
 	if err = dp.LoadAppliedID(); err != nil {
@@ -540,6 +544,7 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 	metadata.Learners = dp.config.Learners
 	metadata.DataPartitionCreateType = dp.DataPartitionCreateType
 	metadata.VolumeHAType = dp.config.VolHAType
+	metadata.LastUpdateTime = dp.lastUpdateTime
 	if metadata.CreateTime == "" {
 		metadata.CreateTime = time.Now().Format(TimeLayout)
 	}
@@ -861,6 +866,7 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 		if err != nil {
 			continue
 		}
+		dp.lastUpdateTime = time.Now().Unix()
 		info := &storage.ExtentInfo{Source: extentInfo.Source, FileID: extentInfo.FileID, Size: extentInfo.Size}
 		repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, info)
 	}

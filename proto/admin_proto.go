@@ -451,6 +451,7 @@ type PartitionReport struct {
 	ExtentCount     int
 	NeedCompare     bool
 	IsLearner       bool
+	LastUpdateTime  int64
 }
 
 // DataNodeHeartbeatResponse defines the response to the data node heartbeat.
@@ -462,6 +463,7 @@ type DataNodeHeartbeatResponse struct {
 	RemainingCapacity   uint64 // remaining capacity to create partition
 	CreatedPartitionCnt uint32
 	MaxCapacity         uint64 // maximum capacity to create partition
+	HttpPort            string
 	ZoneName            string
 	PartitionReports    []*PartitionReport
 	Status              uint8
