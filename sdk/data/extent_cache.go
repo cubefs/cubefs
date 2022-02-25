@@ -27,7 +27,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
-
 // ExtentRequest defines the struct for the request of read or write an extent.
 type ExtentRequest struct {
 	FileOffset int
@@ -57,11 +56,12 @@ func NewExtentRequest(offset, size int, data []byte, ek *proto.ExtentKey) *Exten
 // ExtentCache defines the struct of the extent cache.
 type ExtentCache struct {
 	sync.RWMutex
-	inode 		uint64
-	gen   		uint64 		// generation number
-	size  		uint64 		// size of the cache
-	root  		*btree.BTree
-	refreshTime	time.Time	// the last time to update extent cache
+	inode       uint64
+	gen         uint64 // generation number
+	size        uint64 // size of the cache
+	root        *btree.BTree
+	refreshTime time.Time        // the last time to update extent cache
+	ek          *proto.ExtentKey // temporary ek
 }
 
 // NewExtentCache returns a new extent cache.
@@ -118,6 +118,10 @@ func (cache *ExtentCache) update(gen, size uint64, eks []proto.ExtentKey) {
 		extent := ek
 		cache.root.ReplaceOrInsert(&extent)
 	}
+	// append local temporary ek to prevent read unconsistency
+	if cache.ek != nil {
+		cache.Append(cache.ek, false)
+	}
 }
 
 func (cache *ExtentCache) UpdateRefreshTime() {
@@ -132,7 +136,7 @@ func (cache *ExtentCache) IsExpired(expireSecond int64) bool {
 	cache.RLock()
 	defer cache.RUnlock()
 
-	return time.Since(cache.refreshTime) > time.Duration(expireSecond) * time.Second
+	return time.Since(cache.refreshTime) > time.Duration(expireSecond)*time.Second
 }
 
 // Append appends an extent key.
@@ -161,6 +165,9 @@ func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) {
 	cache.root.ReplaceOrInsert(ek)
 	if sync {
 		cache.gen++
+		cache.ek = nil
+	} else {
+		cache.ek = ek
 	}
 	if ekEnd > cache.size {
 		cache.size = ekEnd

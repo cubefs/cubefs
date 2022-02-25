@@ -775,7 +775,8 @@ func getFileInodesByMp(mps []*proto.MetaPartitionView, metaPartitionId uint64, c
 			for mp := range ch {
 				inos, err = getInodesByMp(mp.PartitionID, mp.LeaderAddr)
 				if err != nil {
-					return
+					stdout("get inodes error: %v, mp: %d\n", err, mp.PartitionID)
+					os.Exit(0)
 				}
 				mu.Lock()
 				for _, ino := range inos {
@@ -1351,7 +1352,7 @@ func readExtent(dp *proto.DataPartitionResponse, addr string, extentId uint64, d
 	ctx := context.Background()
 	ek := &proto.ExtentKey{PartitionId: dp.PartitionID, ExtentId: extentId}
 	dataPartition := &data.DataPartition{
-		ClientWrapper: &data.Wrapper{},
+		ClientWrapper:         &data.Wrapper{},
 		DataPartitionResponse: *dp,
 	}
 	dataPartition.ClientWrapper.SetConnConfig()

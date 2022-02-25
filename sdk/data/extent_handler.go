@@ -63,7 +63,8 @@ type ExtentHandler struct {
 	status int32
 
 	// Created, filled and sent in Write.
-	packet *Packet
+	packet      *Packet
+	packetMutex sync.Mutex
 
 	// Updated in *write* method ONLY.
 	size         int
@@ -261,7 +262,7 @@ func (eh *ExtentHandler) sender() {
 				eh.reply <- packet
 				continue
 			}
-			
+
 			if err = packet.writeToConn(eh.conn, eh.stream.client.dataWrapper.connConfig.WriteTimeoutNs); err != nil {
 				log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
 				eh.setClosed()
@@ -456,7 +457,7 @@ func (eh *ExtentHandler) cleanup() (err error) {
 	if eh.conn != nil {
 		conn := eh.conn
 		eh.conn = nil
-		if eh.lastAccessTime > 0 && (time.Now().Unix() - eh.lastAccessTime) > ConnectUpdateSecond {
+		if eh.lastAccessTime > 0 && (time.Now().Unix()-eh.lastAccessTime) > ConnectUpdateSecond {
 			log.LogInfof("cleanup: close conn(%v), eh(%v)", conn.LocalAddr(), eh)
 			conn.Close()
 			return
@@ -707,7 +708,9 @@ func (eh *ExtentHandler) flushPacket(ctx context.Context) {
 		return
 	}
 	eh.pushToRequest(ctx, eh.packet)
+	eh.packetMutex.Lock()
 	eh.packet = nil
+	eh.packetMutex.Unlock()
 }
 
 func (eh *ExtentHandler) pushToRequest(ctx context.Context, packet *Packet) {
@@ -736,7 +739,7 @@ func (eh *ExtentHandler) setError() bool {
 }
 
 func (eh *ExtentHandler) updateConn() error {
-	if eh.conn == nil || eh.lastAccessTime == 0 || (time.Now().Unix() - eh.lastAccessTime) < ConnectUpdateSecond {
+	if eh.conn == nil || eh.lastAccessTime == 0 || (time.Now().Unix()-eh.lastAccessTime) < ConnectUpdateSecond {
 		return nil
 	}
 	log.LogInfof("updateConn: close conn(%v), eh(%v)", eh.conn.LocalAddr(), eh)

@@ -882,6 +882,8 @@ func (s *Streamer) traverse() (err error) {
 
 func (s *Streamer) closeOpenHandler(ctx context.Context) {
 	if s.handler != nil {
+		s.handlerMutex.Lock()
+		defer s.handlerMutex.Unlock()
 		s.handler.setClosed()
 		if s.dirtylist.Len() < MaxDirtyListLen {
 			s.handler.flushPacket(ctx)

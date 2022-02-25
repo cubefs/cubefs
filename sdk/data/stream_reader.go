@@ -43,14 +43,15 @@ type Streamer struct {
 	idle      int // how long there is no new request
 	traversed int // how many times the streamer is traversed
 
-	extents 	*ExtentCache
-	refreshLock	sync.Mutex
-	once    	sync.Once
+	extents     *ExtentCache
+	refreshLock sync.Mutex
+	once        sync.Once
 
-	handler   *ExtentHandler   // current open handler
-	dirtylist *DirtyExtentList // dirty handlers
-	dirty     bool             // whether current open handler is in the dirty list
-	writeOp   int32
+	handler      *ExtentHandler // current open handler
+	handlerMutex sync.Mutex
+	dirtylist    *DirtyExtentList // dirty handlers
+	dirty        bool             // whether current open handler is in the dirty list
+	writeOp      int32
 
 	request chan interface{} // request channel, write/flush/close
 	done    chan struct{}    // stream writer is being closed
@@ -121,19 +122,43 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 
 	requests = s.extents.PrepareRequests(offset, size, data)
 	for _, req := range requests {
-		if req.ExtentKey == nil {
+		if req.ExtentKey == nil || req.ExtentKey.PartitionId > 0 {
 			continue
 		}
-		if req.ExtentKey.PartitionId == 0 || req.ExtentKey.ExtentId == 0 {
-			s.writeLock.Lock()
-			if err = s.IssueFlushRequest(ctx); err != nil {
-				s.writeLock.Unlock()
-				return 0, err
+		// concurrent read/write optimization
+		// 1.if data is in handler unflushed packet, read from the packet
+		// 2.if data has been written to data node, read from datanode without flushing
+		s.handlerMutex.Lock()
+		if s.handler != nil {
+			s.handler.packetMutex.Lock()
+			if s.handler.packet != nil && req.FileOffset >= int(s.handler.packet.KernelOffset) &&
+				req.FileOffset+req.Size <= int(s.handler.packet.KernelOffset)+int(s.handler.packet.Size) {
+				off := req.FileOffset - int(s.handler.packet.KernelOffset)
+				copy(req.Data, s.handler.packet.Data[off:off+req.Size])
+				total += req.Size
+				s.handler.packetMutex.Unlock()
+				s.handlerMutex.Unlock()
+				break
 			}
-			revisedRequests = s.extents.PrepareRequests(offset, size, data)
-			s.writeLock.Unlock()
-			break
+			s.handler.packetMutex.Unlock()
+
+			if s.handler.key != nil && uint64(req.FileOffset) >= s.handler.key.FileOffset &&
+				uint64(req.FileOffset+req.Size) <= s.handler.key.FileOffset+uint64(s.handler.key.Size) {
+				req.ExtentKey = s.handler.key
+				s.handlerMutex.Unlock()
+				break
+			}
 		}
+		s.handlerMutex.Unlock()
+
+		s.writeLock.Lock()
+		if err = s.IssueFlushRequest(ctx); err != nil {
+			s.writeLock.Unlock()
+			return 0, err
+		}
+		revisedRequests = s.extents.PrepareRequests(offset, size, data)
+		s.writeLock.Unlock()
+		break
 	}
 
 	if revisedRequests != nil {
@@ -168,7 +193,7 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 			if log.IsDebugEnabled() {
 				log.LogDebugf("Stream read hole: ino(%v) userExpectOffset(%v) userExpectSize(%v) req(%v) total(%v)", s.inode, offset, size, req, total)
 			}
-		} else {
+		} else if req.ExtentKey.PartitionId > 0 {
 			reader, err = s.GetExtentReader(req.ExtentKey)
 			if err != nil {
 				break

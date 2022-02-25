@@ -420,10 +420,10 @@ func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte,
 		s.GetExtents(ctx)
 	})
 
-	err = s.IssueFlushRequest(ctx)
-	if err != nil {
-		return
-	}
+	//err = s.IssueFlushRequest(ctx)
+	//if err != nil {
+	//	return
+	//}
 
 	// ROW in cross-region mode maybe insert a new ek
 	s.UpdateExpiredExtentCache(ctx)
