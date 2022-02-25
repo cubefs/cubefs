@@ -14,6 +14,8 @@
 
 package proto
 
+import "fmt"
+
 // api
 const (
 	// All
@@ -260,6 +262,7 @@ type LimitInfo struct {
 	Cluster                     string
 	MetaNodeDeleteBatchCount    uint64
 	MetaNodeDeleteWorkerSleepMs uint64
+	MetaNodeReadDirLimitNum		uint64	// todo
 
 	MetaNodeReqRateLimit             uint64
 	MetaNodeReqOpRateLimitMap        map[uint8]uint64
@@ -786,4 +789,12 @@ type ConnConfig struct {
 	ConnectTimeoutNs	int64
 	WriteTimeoutNs		int64
 	ReadTimeoutNs		int64
+}
+
+func (config *ConnConfig) String() string {
+	if config == nil {
+		return ""
+	}
+	return fmt.Sprintf("IdleTimeout(%v)s ConnectTimeout(%v)ns WriteTimeout(%v)ns ReadTimeout(%v)ns",
+		config.IdleTimeoutSec, config.ConnectTimeoutNs, config.WriteTimeoutNs, config.ReadTimeoutNs)
 }

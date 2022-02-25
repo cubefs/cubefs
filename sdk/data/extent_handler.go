@@ -255,7 +255,7 @@ func (eh *ExtentHandler) sender() {
 
 			//log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
 			if err = eh.updateConn(); err != nil {
-				log.LogWarnf("ExtentHandler updateConn err: (%v), eh(%v)", err, eh)
+				log.LogWarnf("ExtentHandler updateConn err: (%v), eh(%v) packet(%v)", err, eh, packet)
 				eh.setClosed()
 				eh.setRecovery()
 				eh.reply <- packet
@@ -346,11 +346,10 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		log.LogWarnf("processReply: send or wait cost too long, costFromStart(%v), costFromSend(%v), packet(%v)",
 			cost, time.Since(time.Unix(0, packet.SendT)), packet)
 	}
-	// todo
 	err := reply.ReadFromConnNs(eh.conn, eh.stream.client.dataWrapper.connConfig.ReadTimeoutNs)
 	if err != nil {
-		errmsg := fmt.Sprintf("ReadFromConn timeout(%vs) err(%v) costBeforeRecv(%v) costFromStart(%v) costFromSend(%v)",
-			readDeadLineTime, err.Error(), cost, time.Since(time.Unix(0, packet.StartT)),
+		errmsg := fmt.Sprintf("ReadFromConn timeout(%vns) err(%v) costBeforeRecv(%v) costFromStart(%v) costFromSend(%v)",
+			eh.stream.client.dataWrapper.connConfig.ReadTimeoutNs, err.Error(), cost, time.Since(time.Unix(0, packet.StartT)),
 			time.Since(time.Unix(0, packet.SendT)))
 		eh.processReplyError(packet, errmsg)
 		eh.dp.RecordWrite(packet.StartT, true)
@@ -462,6 +461,7 @@ func (eh *ExtentHandler) cleanup() (err error) {
 		conn := eh.conn
 		eh.conn = nil
 		if eh.lastAccessTime > 0 && (time.Now().Unix() - eh.lastAccessTime) > ConnectUpdateSecond {
+			log.LogInfof("cleanup: close conn(%v), eh(%v)", conn.LocalAddr(), eh)
 			conn.Close()
 			return
 		}
@@ -633,8 +633,8 @@ func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
 			extID, err = eh.ehCreateExtent(ctx, dp)
 		}
 		if err != nil {
-			log.LogWarnf("allocateExtent: create extent failed, dp(%v) eh(%v) err(%v) exclude(%v)", dp, eh, err, exclude)
 			dp.CheckAllHostsIsAvail(exclude)
+			log.LogWarnf("allocateExtent: create extent failed, dp(%v) eh(%v) err(%v) exclude(%v)", dp, eh, err, exclude)
 			if isExcluded(dp, exclude, dp.ClientWrapper.quorum) {
 				eh.stream.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
 			}
