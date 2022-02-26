@@ -170,7 +170,7 @@ func (si *MetaItemIteratorV2) Close() {
 
 func (si *MetaItemIteratorV2) Next() (data []byte, err error) {
 	if si.err != nil {
-		if !si.snapshotCrcFlag {
+		if !si.snapshotCrcFlag && si.err == io.EOF {
 			si.snapshotCrcFlag = true
 			crcBuff := make([]byte, 4)
 			binary.BigEndian.PutUint32(crcBuff, si.snapshotSign.Sum32())
