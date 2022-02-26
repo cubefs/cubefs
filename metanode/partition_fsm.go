@@ -361,7 +361,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		extendBatchCh          = make(chan ExtendBatch, 128)
 		snapshotSign           = crc32.NewIEEE()
 		snapshotCrcStoreSuffix = "snapshotCrc"
-		leaderCrc              string
+		leaderCrc              uint32
 	)
 	defer func() {
 		close(inodeBatchCh)
@@ -369,19 +369,19 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		close(multipartBatchCh)
 		close(extendBatchCh)
 		wg.Wait()
-		if err == io.EOF {
+		if err == ErrSnapShotEOF {
 			crc := snapshotSign.Sum32()
-			if len(data) > 3 {
-				leaderCrc = strconv.FormatUint(uint64(binary.BigEndian.Uint32(data[0:4])), 10)
-			} else {
-				leaderCrc = " "
-			}
+			leaderCrcStr := strconv.FormatUint(uint64(leaderCrc), 10)
 			crcStoreFile := fmt.Sprintf("%s/%s", mp.config.RootDir, snapshotCrcStoreSuffix)
 			var crcBuff = bytes.NewBuffer(make([]byte, 0, 16))
-			storeStr := fmt.Sprintf("%v, %v, %v", time.Now().Format("2006-01-02 15:04:05"), leaderCrc, crc)
+			storeStr := fmt.Sprintf("%v, %v, %v", time.Now().Format("2006-01-02 15:04:05"), leaderCrcStr, crc)
 			crcBuff.WriteString(storeStr)
 			if err = ioutil.WriteFile(crcStoreFile, crcBuff.Bytes(), 0775); err != nil {
 				log.LogWarnf("write to file failed, err is :%v", err)
+			}
+
+			if leaderCrc != 0  && leaderCrc != crc {
+				log.LogWarnf("ApplySnapshot partitionID(%v) leader crc[%v] and local[%v] is different, snaps", mp.config.PartitionId, leaderCrc, crc)
 			}
 
 			mp.applyID = appIndexID
@@ -455,6 +455,9 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 	for {
 		data, err = iter.Next()
 		if err != nil {
+			if err == io.EOF{
+				err = ErrSnapShotEOF
+			}
 			return
 		}
 		if index == 0 {
@@ -560,6 +563,8 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			if _, err = snapshotSign.Write(data); err != nil {
 				log.LogWarnf("create CRC for snapshotCheck failed, err is :%v", err)
 			}
+		case opFSMSnapShotCrc:
+			leaderCrc = binary.BigEndian.Uint32(snap.V)
 		default:
 			err = fmt.Errorf("unknown op=%d", snap.Op)
 			return

@@ -126,6 +126,7 @@ const (
 	opFSMExtentsInsert
 	// snapshotBatchCreate
 	opFSMBatchCreate
+	opFSMSnapShotCrc
 )
 
 var (
@@ -133,8 +134,9 @@ var (
 )
 
 var (
-	ErrNoLeader   = errors.New("no leader")
-	ErrNotALeader = errors.New("not a leader")
+	ErrNoLeader    = errors.New("no leader")
+	ErrNotALeader  = errors.New("not a leader")
+	ErrSnapShotEOF = errors.New("snapshot eof")
 )
 
 // Default configuration

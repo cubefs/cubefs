@@ -171,10 +171,14 @@ func (si *MetaItemIteratorV2) Close() {
 func (si *MetaItemIteratorV2) Next() (data []byte, err error) {
 	if si.err != nil {
 		if !si.snapshotCrcFlag {
+			si.snapshotCrcFlag = true
 			crcBuff := make([]byte, 4)
 			binary.BigEndian.PutUint32(crcBuff, si.snapshotSign.Sum32())
-			data = crcBuff
-			si.snapshotCrcFlag = true
+			snap := NewMetaItem(opFSMSnapShotCrc, nil, crcBuff)
+			if data, err = snap.MarshalBinary(); err != nil{
+				si.err = err
+				si.Close()
+			}
 			return
 		}
 		err = si.err
