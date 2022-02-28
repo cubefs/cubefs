@@ -3158,11 +3158,6 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	for _, host := range mp.Hosts {
 		mpView.Members = append(mpView.Members, host)
 	}
-	mr, err := mp.getMetaReplicaLeader()
-	if err != nil {
-		return
-	}
-	mpView.LeaderAddr = mr.Addr
 	mpView.MaxInodeID = mp.MaxInodeID
 	mpView.InodeCount = mp.InodeCount
 	mpView.DentryCount = mp.DentryCount
@@ -3171,6 +3166,11 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	for _, learner := range mp.Learners {
 		mpView.Learners = append(mpView.Learners, learner.Addr)
 	}
+	mr, err := mp.getMetaReplicaLeader()
+	if err != nil {
+		return
+	}
+	mpView.LeaderAddr = mr.Addr
 	return
 }
 
