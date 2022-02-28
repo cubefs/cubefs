@@ -417,6 +417,7 @@ func (w *Wrapper) updateConnConfig(config *proto.ConnConfig) {
 	if config == nil {
 		return
 	}
+	log.LogInfof("updateConnConfig: (%v)", config)
 	updateConnPool := false
 	if config.IdleTimeoutSec > 0 && config.IdleTimeoutSec != w.connConfig.IdleTimeoutSec {
 		w.connConfig.IdleTimeoutSec = config.IdleTimeoutSec
@@ -432,7 +433,7 @@ func (w *Wrapper) updateConnConfig(config *proto.ConnConfig) {
 	if config.ReadTimeoutNs > 0 && config.ReadTimeoutNs != w.connConfig.ReadTimeoutNs {
 		atomic.StoreInt64(&w.connConfig.ReadTimeoutNs, config.ReadTimeoutNs)
 	}
-	if updateConnPool {
+	if updateConnPool && StreamConnPool != nil {
 		StreamConnPool.UpdateTimeout(w.connConfig.IdleTimeoutSec, w.connConfig.ConnectTimeoutNs)
 	}
 }

@@ -20,7 +20,8 @@ const (
 )
 
 type NodeInfo struct {
-	deleteBatchCount uint64
+	deleteBatchCount 	uint64
+	readDirLimitNum		uint64
 }
 
 var (
@@ -62,6 +63,17 @@ func DeleteBatchCount() uint64 {
 
 func updateDeleteBatchCount(val uint64) {
 	atomic.StoreUint64(&nodeInfo.deleteBatchCount, val)
+}
+
+func ReadDirLimitNum() uint64 {
+	val := atomic.LoadUint64(&nodeInfo.readDirLimitNum)
+	return val
+}
+
+func updateReadDirLimitNum(val uint64)  {
+	if val > 0 {
+		atomic.StoreUint64(&nodeInfo.readDirLimitNum, val)
+	}
 }
 
 func updateDeleteWorkerSleepMs(val uint64) {
@@ -118,6 +130,7 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 	limitInfo = info
 	updateDeleteBatchCount(limitInfo.MetaNodeDeleteBatchCount)
 	updateDeleteWorkerSleepMs(limitInfo.MetaNodeDeleteWorkerSleepMs)
+	updateReadDirLimitNum(limitInfo.MetaNodeReadDirLimitNum)
 }
 
 func (m *MetaNode) updateRateLimitInfo() {

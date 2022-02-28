@@ -382,6 +382,7 @@ func (mw *MetaWrapper) updateConnConfig(config *proto.ConnConfig) {
 	if config == nil {
 		return
 	}
+	log.LogInfof("updateConnConfig: (%v)", config)
 	updateConnPool := false
 	if config.IdleTimeoutSec > 0 && config.IdleTimeoutSec != mw.connConfig.IdleTimeoutSec {
 		mw.connConfig.IdleTimeoutSec = config.IdleTimeoutSec
@@ -397,7 +398,7 @@ func (mw *MetaWrapper) updateConnConfig(config *proto.ConnConfig) {
 	if config.ReadTimeoutNs > 0 && config.ReadTimeoutNs != mw.connConfig.ReadTimeoutNs {
 		atomic.StoreInt64(&mw.connConfig.ReadTimeoutNs, config.ReadTimeoutNs)
 	}
-	if updateConnPool {
+	if updateConnPool && mw.conns != nil {
 		mw.conns.UpdateTimeout(mw.connConfig.IdleTimeoutSec, mw.connConfig.ConnectTimeoutNs)
 	}
 }

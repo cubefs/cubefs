@@ -57,7 +57,7 @@ func (mp *metaPartition) updateVolView(convert func(view *proto.DataPartitionsVi
 	volName := mp.config.VolName
 	dataView, err := masterClient.ClientAPI().GetDataPartitions(volName)
 	if err != nil {
-		err = fmt.Errorf("updateVolWorker: get data partitions view fail: volume(%v) err(%v)",
+		err = fmt.Errorf("updateVolWorker: get meta partitions view fail: volume(%v) err(%v)",
 			volName, err)
 		log.LogErrorf(err.Error())
 		return

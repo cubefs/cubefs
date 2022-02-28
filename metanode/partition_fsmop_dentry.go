@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/chubaofs/chubaofs/util/btree"
+	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/tracing"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -215,11 +216,16 @@ func (mp *metaPartition) readDir(ctx context.Context, req *ReadDirReq) (resp *Re
 	}
 
 	count := uint64(0)
+	readDirLimit := ReadDirLimitNum()
 	mp.dentryTree.AscendRange(begDentry, endDentry, func(i BtreeItem) bool {
 		count += 1
 		d := i.(*Dentry)
 		if req.IsBatch && count > readDirMax {
 			resp.NextMarker = d.Name
+			return false
+		}
+		if readDirLimit > 0 && count > readDirLimit {
+			log.LogWarnf("readDir: parent(%v) exceeded maximum limit(%v) count(%v)", req.ParentID, readDirLimit, count)
 			return false
 		}
 		resp.Children = append(resp.Children, proto.Dentry{
