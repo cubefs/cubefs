@@ -77,6 +77,7 @@ const (
 	OpGetMaxExtentIDAndPartitionSize uint8 = 0x16
 	OpGetAllWatermarksV2             uint8 = 0x17
 	OpGetAllExtentInfo               uint8 = 0x18
+	OpTinyExtentAvaliRead            uint8 = 0x19
 
 	// Operations: Client -> MetaNode.
 	OpMetaCreateInode   uint8 = 0x20

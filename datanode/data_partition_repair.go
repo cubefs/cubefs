@@ -301,6 +301,7 @@ func (dp *DataPartition) DoRepairOnLeaderDisk(ctx context.Context, repairTasks [
 			continue
 		}
 		store.Create(extentInfo.FileID, true)
+		dp.lastUpdateTime = time.Now().Unix()
 	}
 	for _, extentInfo := range repairTasks[0].ExtentsToBeRepaired {
 		err := dp.streamRepairExtent(ctx, extentInfo)

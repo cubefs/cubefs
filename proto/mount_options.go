@@ -63,6 +63,7 @@ const (
 const (
 	MasterAddr       = "masterAddr"
 	ListenPort       = "listen"
+	HttpPort         = "prof"
 	ObjectNodeDomain = "objectNodeDomain"
 )
 

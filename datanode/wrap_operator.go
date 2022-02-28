@@ -95,6 +95,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handleExtentRepairReadPacket(p, c, RepairRead)
 	case proto.OpTinyExtentRepairRead:
 		s.handleTinyExtentRepairRead(p, c)
+	case proto.OpTinyExtentAvaliRead:
+		s.handleTinyExtentAvaliRead(p, c)
 	case proto.OpMarkDelete:
 		s.handleMarkDeletePacket(p, c)
 	case proto.OpBatchDeleteExtent:
@@ -169,7 +171,7 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 		return
 	}
 	err = partition.ExtentStore().Create(p.ExtentID, true)
-
+	partition.lastUpdateTime = time.Now().Unix()
 	return
 }
 
@@ -454,6 +456,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			offset += currSize
 		}
 	}
+	partition.lastUpdateTime = time.Now().Unix()
 	s.incDiskErrCnt(p.PartitionID, err, WriteFlag)
 	return
 }
@@ -483,6 +486,7 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		return
 	}
 
+	partition.lastUpdateTime = time.Now().Unix()
 	if err == nil && p.ResultCode != proto.OpOk {
 		err = storage.TryAgainError
 		return
@@ -813,6 +817,97 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 			return
 		}
 		reply.Size = uint32(currReadSize)
+		reply.ResultCode = proto.OpOk
+		if err = reply.WriteToConn(connect, proto.WriteDeadlineTime); err != nil {
+			connect.Close()
+			if currReadSize == util.ReadBlockSize {
+				proto.Buffers.Put(reply.Data)
+			}
+			return
+		}
+		needReplySize -= int64(currReadSize)
+		offset += int64(currReadSize)
+		if currReadSize == util.ReadBlockSize {
+			proto.Buffers.Put(reply.Data)
+		}
+		logContent := fmt.Sprintf("action[operatePacket] %v.",
+			reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
+		log.LogReadf(logContent)
+	}
+
+	request.PacketOkReply()
+	return
+}
+
+
+func (s *DataNode) handleTinyExtentAvaliRead(request *repl.Packet, connect net.Conn) {
+	var (
+		err                 error
+		needReplySize       int64
+		tinyExtentFinfoSize uint64
+	)
+
+	defer func() {
+		if err != nil {
+			request.PackErrorBody(ActionStreamReadTinyExtentAvali, err.Error())
+			request.WriteToConn(connect, proto.WriteDeadlineTime)
+		}
+	}()
+	if !storage.IsTinyExtent(request.ExtentID) {
+		err = fmt.Errorf("unavali extentID (%v)", request.ExtentID)
+		return
+	}
+
+	partition := request.Object.(*DataPartition)
+	store := partition.ExtentStore()
+	tinyExtentFinfoSize, err = store.TinyExtentGetFinfoSize(request.ExtentID)
+	if err != nil {
+		return
+	}
+	needReplySize = int64(request.Size)
+	offset := request.ExtentOffset
+	if uint64(request.ExtentOffset)+uint64(request.Size) > tinyExtentFinfoSize {
+		needReplySize = int64(tinyExtentFinfoSize - uint64(request.ExtentOffset))
+	}
+	avaliReplySize := uint64(needReplySize)
+
+	var (
+		newOffset, newEnd int64
+	)
+	for {
+		if needReplySize <= 0 {
+			break
+		}
+		reply := repl.NewTinyExtentStreamReadResponsePacket(request.Ctx(), request.ReqID, request.PartitionID, request.ExtentID)
+		reply.Opcode = proto.OpTinyExtentAvaliRead
+		reply.ArgLen = TinyExtentRepairReadResponseArgLen
+		reply.Arg = make([]byte, TinyExtentRepairReadResponseArgLen)
+		s.attachAvaliSizeOnTinyExtentRepairRead(reply, avaliReplySize)
+		newOffset, newEnd, err = store.TinyExtentAvaliOffset(request.ExtentID, offset)
+		if err != nil {
+			return
+		}
+		if newOffset > offset {
+			replySize := newOffset - offset
+			offset += replySize
+			continue
+		}
+		currNeedReplySize := newEnd - newOffset
+		currReadSize := uint32(util.Min(int(currNeedReplySize), util.ReadBlockSize))
+		if currReadSize == util.ReadBlockSize {
+			reply.Data, _ = proto.Buffers.Get(util.ReadBlockSize)
+		} else {
+			reply.Data = make([]byte, currReadSize)
+		}
+		reply.ExtentOffset = offset
+		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, false)
+		if err != nil {
+			if currReadSize == util.ReadBlockSize {
+				proto.Buffers.Put(reply.Data)
+			}
+			return
+		}
+		reply.Size = currReadSize
 		reply.ResultCode = proto.OpOk
 		if err = reply.WriteToConn(connect, proto.WriteDeadlineTime); err != nil {
 			connect.Close()

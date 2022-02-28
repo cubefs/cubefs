@@ -325,6 +325,17 @@ type DNDataPartitionInfo struct {
 	Learners             []Learner     `json:"learners"`
 }
 
+type TinyExtentHole struct {
+	Offset 		uint64
+	Size		uint64
+	PreAllSize 	uint64
+}
+
+type DNTinyExtentInfo struct {
+	Holes     []*TinyExtentHole      `json:"holes"`
+	ExtentAvaliSize uint64                   `json:"extentAvaliSize"`
+}
+
 type MNMetaPartitionInfo struct {
 	LeaderAddr string    `json:"leaderAddr"`
 	Peers      []Peer    `json:"peers"`
