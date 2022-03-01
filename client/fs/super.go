@@ -85,7 +85,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	if opt.IcacheTimeout >= 0 {
 		inodeExpiration = time.Duration(opt.IcacheTimeout) * time.Second
 	}
-	s.ic = cache.NewInodeCache(inodeExpiration, MaxInodeCache, cache.BgEvictionInterval)
+	s.ic = cache.NewInodeCache(inodeExpiration, MaxInodeCache, cache.BgEvictionInterval, true)
 	var extentConfig = &data.ExtentConfig{
 		Volume:                   opt.Volname,
 		Masters:                  masters,

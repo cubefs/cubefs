@@ -173,7 +173,6 @@ func newClient(conf *C.cfs_config_t) *client {
 		fdset:            bitset.New(maxFdNum),
 		inomap:           make(map[uint64]map[uint]bool),
 		cwd:              "/",
-		inodeCache:       cache.NewInodeCache(inodeExpiration, maxInodeCache, inodeEvictionInterval),
 		inodeDentryCache: make(map[uint64]*cache.DentryCache),
 	}
 
@@ -184,8 +183,10 @@ func newClient(conf *C.cfs_config_t) *client {
 	c.logDir = C.GoString(conf.log_dir)
 	c.logLevel = C.GoString(conf.log_level)
 	c.app = C.GoString(conf.app)
+	c.useMetaCache = (c.app != appMysql8)
 	c.profPort = parseProfPortArray(C.GoString(conf.prof_port))
 	c.autoFlush, _ = strconv.ParseBool(C.GoString(conf.auto_flush))
+	c.inodeCache = cache.NewInodeCache(inodeExpiration, maxInodeCache, inodeEvictionInterval, c.useMetaCache)
 
 	c.readProcErrMap = make(map[uint64]int)
 	c.tracingSamplerType = C.GoString(conf.tracing_sampler_type)
@@ -299,7 +300,8 @@ type client struct {
 	mw *meta.MetaWrapper
 	ec *data.ExtentClient
 
-	// cache
+	// meta cache
+	useMetaCache         bool
 	inodeCache           *cache.InodeCache
 	inodeDentryCache     map[uint64]*cache.DentryCache
 	inodeDentryCacheLock sync.Mutex
@@ -3407,7 +3409,7 @@ func (c *client) getDentry(ctx context.Context, parentID uint64, name string) (i
 			return
 		}
 	} else {
-		dentryCache = cache.NewDentryCache(dentryValidDuration)
+		dentryCache = cache.NewDentryCache(dentryValidDuration, c.useMetaCache)
 		c.inodeDentryCache[parentID] = dentryCache
 	}
 	ino, _, err = c.mw.Lookup_ll(ctx, parentID, name)

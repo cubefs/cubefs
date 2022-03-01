@@ -286,7 +286,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 
 	var dcache *cache.DentryCache
 	if !d.super.disableDcache {
-		dcache = cache.NewDentryCache(DentryValidDuration)
+		dcache = cache.NewDentryCache(DentryValidDuration, true)
 	}
 
 	for _, child := range children {

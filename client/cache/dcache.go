@@ -25,20 +25,22 @@ type DentryCache struct {
 	cache               map[string]uint64
 	expiration          time.Time
 	dentryValidDuration time.Duration
+	useCache            bool
 }
 
 // NewDentryCache returns a new dentry cache.
-func NewDentryCache(dentryValidDuration time.Duration) *DentryCache {
+func NewDentryCache(dentryValidDuration time.Duration, useCache bool) *DentryCache {
 	return &DentryCache{
 		cache:               make(map[string]uint64),
 		expiration:          time.Now().Add(dentryValidDuration),
 		dentryValidDuration: dentryValidDuration,
+		useCache:            useCache,
 	}
 }
 
 // Put puts an item into the cache.
 func (dc *DentryCache) Put(name string, ino uint64) {
-	if dc == nil {
+	if dc == nil || !dc.useCache {
 		return
 	}
 	dc.Lock()
@@ -49,7 +51,7 @@ func (dc *DentryCache) Put(name string, ino uint64) {
 
 // Get gets the item from the cache based on the given key.
 func (dc *DentryCache) Get(name string) (uint64, bool) {
-	if dc == nil {
+	if dc == nil || !dc.useCache {
 		return 0, false
 	}
 
@@ -65,7 +67,7 @@ func (dc *DentryCache) Get(name string) (uint64, bool) {
 
 // Delete deletes the item based on the given key.
 func (dc *DentryCache) Delete(name string) {
-	if dc == nil {
+	if dc == nil || !dc.useCache {
 		return
 	}
 	dc.Lock()

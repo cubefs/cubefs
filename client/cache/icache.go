@@ -43,23 +43,31 @@ type InodeCache struct {
 	expiration         time.Duration
 	maxElements        int
 	bgEvictionInterval time.Duration
+	useCache           bool
 }
 
 // NewInodeCache returns a new inode cache.
-func NewInodeCache(exp time.Duration, maxElements int, bgEvictionInterval time.Duration) *InodeCache {
+func NewInodeCache(exp time.Duration, maxElements int, bgEvictionInterval time.Duration, useCache bool) *InodeCache {
 	ic := &InodeCache{
 		cache:              make(map[uint64]*list.Element),
 		lruList:            list.New(),
 		expiration:         exp,
 		maxElements:        maxElements,
 		bgEvictionInterval: bgEvictionInterval,
+		useCache:           useCache,
 	}
-	go ic.backgroundEviction()
+	if useCache {
+		go ic.backgroundEviction()
+	}
 	return ic
 }
 
 // Put puts the given inode info into the inode cache.
 func (ic *InodeCache) Put(info *proto.InodeInfo) {
+	if !ic.useCache {
+		return
+	}
+
 	ic.Lock()
 	old, ok := ic.cache[info.Inode]
 	if ok {
@@ -84,6 +92,10 @@ func (ic *InodeCache) Get(ctx context.Context, ino uint64) *proto.InodeInfo {
 	defer tracer.Finish()
 	ctx = tracer.Context()
 
+	if !ic.useCache {
+		return nil
+	}
+
 	ic.RLock()
 	element, ok := ic.cache[ino]
 	if !ok {
@@ -104,6 +116,10 @@ func (ic *InodeCache) Get(ctx context.Context, ino uint64) *proto.InodeInfo {
 // Delete deletes the inode info based on the given inode number.
 func (ic *InodeCache) Delete(ctx context.Context, ino uint64) {
 	//log.LogDebugf("InodeCache Delete: ino(%v)", ino)
+	if !ic.useCache {
+		return
+	}
+
 	ic.Lock()
 	element, ok := ic.cache[ino]
 	if ok {
