@@ -73,7 +73,8 @@ func (crossRegionMetrics *CrossRegionMetrics) String() string {
 
 func NewCrossRegionMetrics() *CrossRegionMetrics {
 	return &CrossRegionMetrics{
-		HostErrCounter: make(map[string]int, 0),
+		CrossRegionHosts:	make(map[RegionRankType][]string, 0),
+		HostErrCounter: 	make(map[string]int, 0),
 	}
 }
 

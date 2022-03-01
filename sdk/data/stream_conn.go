@@ -148,7 +148,8 @@ func sortByStatus(dp *DataPartition, failedHost string) (hosts []string) {
 		dpHosts = dp.getSortedCrossRegionHosts()
 	} else if dp.ClientWrapper.FollowerRead() && dp.ClientWrapper.NearRead() {
 		dpHosts = dp.NearHosts
-	} else {
+	}
+	if len(dpHosts) == 0 {
 		dpHosts = dp.Hosts
 	}
 
