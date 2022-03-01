@@ -1534,7 +1534,7 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 
 	partitions := c.getAllMetaPartitionByMetaNode(srcAddr)
 	if targetAddr != "" {
-		toBeOfflineMps := make([]*MetaPartition, 0)
+		toBeOfflineMps = make([]*MetaPartition, 0)
 		for _, mp := range partitions {
 			if contains(mp.Hosts, targetAddr) {
 				continue
