@@ -967,6 +967,7 @@ func checkVolExtentCrc(vol string, tiny bool, validateStep uint64) {
 		return
 	}
 	stdout("vol:%s dp count:%v\n", vol, len(dataPartitionsView.DataPartitions))
+	data.StreamConnPool = util.NewConnectPoolWithTimeoutAndCap(0, 10, 30, int64(1*time.Second))
 	wg := new(sync.WaitGroup)
 	for _, dataPartition := range dataPartitionsView.DataPartitions {
 		wg.Add(1)
@@ -1331,8 +1332,10 @@ func readExtent(dp *proto.DataPartitionResponse, addr string, extentId uint64, d
 	ctx := context.Background()
 	ek := &proto.ExtentKey{PartitionId: dp.PartitionID, ExtentId: extentId}
 	dataPartition := &data.DataPartition{
+		ClientWrapper: &data.Wrapper{},
 		DataPartitionResponse: *dp,
 	}
+	dataPartition.ClientWrapper.SetConnConfig()
 	sc := data.NewStreamConnWithAddr(dataPartition, addr)
 	reqPacket := data.NewReadPacket(ctx, ek, offset, size, 0, offset, true)
 	req := data.NewExtentRequest(0, 0, d, nil)

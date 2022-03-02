@@ -397,6 +397,15 @@ func (w *Wrapper) NearRead() bool {
 	return w.nearRead
 }
 
+func (w *Wrapper) SetConnConfig() {
+	w.connConfig = &proto.ConnConfig{
+		IdleTimeoutSec:   IdleConnTimeoutData,
+		ConnectTimeoutNs: ConnectTimeoutDataMs * int64(time.Millisecond),
+		WriteTimeoutNs:   WriteTimeoutData * int64(time.Second),
+		ReadTimeoutNs:    ReadTimeoutData * int64(time.Second),
+	}
+}
+
 func (w *Wrapper) CrossRegionHATypeQuorum() bool {
 	return w.crossRegionHAType == proto.CrossRegionHATypeQuorum
 }
