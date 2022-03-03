@@ -14,10 +14,12 @@
 
 # -*- coding: utf-8 -*-
 
+import os
+
 MASTER = 'http://master.chubao.io'
 ENDPOINT = 'http://object.chubao.io'
 ACCESS_KEY = '39bEF4RrAQgMj6RV'
 SECRET_KEY = 'TRL6o3JL16YOqvZGIohBDFTHZDEcFsyd'
-BUCKET = 'ltptest'
+BUCKET = os.environ.get('BUCKET')
 USE_SSL = False
 REGION = 'chubaofs01'

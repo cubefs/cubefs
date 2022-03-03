@@ -22,7 +22,7 @@ conf_path=/cfs/conf
 
 Master1Addr="192.168.0.11:17010"
 LeaderAddr=""
-VolName=ltptest
+VolNameList=(ltptest s3test)
 Owner=ltptest
 AccessKey=39bEF4RrAQgMj6RV
 SecretKey=TRL6o3JL16YOqvZGIohBDFTHZDEcFsyd
@@ -87,20 +87,22 @@ create_cluster_user() {
     exit 1
 }
 
-create_volume() {
-    echo -n "Creating volume   ... "
-    # check volume exist
-    ${cli} volume info ${VolName} &> /dev/null
-    if [[ $? -eq 0 ]]; then
+create_volumes() {
+    for VolName in ${VolNameList[*]}; do
+        echo -n "Creating volume ${VolName} ..."
+        # check volume exists
+        ${cli} volume info ${VolName} &>/dev/null
+        if [[ $? -eq 0 ]]; then
+            echo -e "\033[32mdone\033[0m"
+            continue
+        fi
+        ${cli} volume create ${VolName} ${Owner} --capacity=15 -y >/dev/null
+        if [[ $? -ne 0 ]]; then
+            echo -e "\033[31mfail\033[0m"
+            exit 1
+        fi
         echo -e "\033[32mdone\033[0m"
-        return
-    fi
-    ${cli} volume create ${VolName} ${Owner} --capacity=30 -y > /dev/null
-    if [[ $? -ne 0 ]]; then
-        echo -e "\033[31mfail\033[0m"
-        exit 1
-    fi
-    echo -e "\033[32mdone\033[0m"
+    done
 }
 
 show_cluster_info() {
@@ -113,14 +115,18 @@ show_cluster_info() {
     echo &>> ${tmp_file}
     ${cli} user info ${Owner} &>> ${tmp_file}
     echo &>> ${tmp_file}
-    ${cli} volume info ${VolName} &>> ${tmp_file}
-    echo &>> ${tmp_file}
+    for VolName in ${VolNameList[*]}; do
+        ${cli} volume info ${VolName} &>> ${tmp_file}
+        echo &>> ${tmp_file}
+    done
     cat /tmp/collect_cluster_info | grep -v "Master address"
 }
 
 add_data_partitions() {
     echo -n "Increasing DPs    ... "
-    ${cli} vol add-dp ${VolName} 20 &> /dev/null
+    for VolName in ${VolNameList[*]}; do
+        ${cli} vol add-dp ${VolName} 20 &> /dev/null
+    done
     if [[ $? -eq 0 ]] ; then
         echo -e "\033[32mdone\033[0m"
         return
@@ -221,15 +227,25 @@ stop_client() {
     umount ${MntPoint} && echo -e "\033[32mdone\033[0m" || { echo -e "\033[31mfail\033[0m"; exit 1; }
 }
 
-delete_volume() {
-    echo -n "Deleting volume   ... "
-    ${cli} volume delete ${VolName} -y &> /dev/null
-    if [[ $? -eq 0 ]]; then
-        echo -e "\033[32mdone\033[0m"
-        return
+delete_volumes() {
+    for VolName in ${VolNameList[*]}; do
+        echo -n "Deleting volume ${VolName}  ... "
+        ${cli} volume delete ${VolName} -y &> /dev/null
+        if [[ $? -eq 0 ]]; then
+            echo -e "\033[32mdone\033[0m"
+            return
+        fi
+        echo -e "\033[31mfail\033[0m"
+        exit 1
+    done
+}
+
+test_bucket() {
+    BUCKET=${bucket} python3 -m unittest2 discover ${work_path} "*.py" -v
+    if [[ $? -ne 0 ]]; then
+        exit 1
     fi
-    echo -e "\033[31mfail\033[0m"
-    exit 1
+    echo "Test bucket ${bucket} succeeded!"
 }
 
 run_s3_test() {
@@ -260,10 +276,11 @@ run_s3_test() {
     fi
     echo -e "\033[32mdone\033[0m"
 
-    python3 -m unittest2 discover ${work_path} "*.py" -v
-    if [[ $? -ne 0 ]]; then
-        exit 1
-    fi
+    bucket='ltptest'
+    test_bucket
+
+    bucket='s3test'
+    test_bucket
 }
 
 init_cli
@@ -271,11 +288,11 @@ check_cluster
 create_cluster_user
 ensure_node_writable "metanode"
 ensure_node_writable "datanode"
-create_volume ; sleep 2
+create_volumes ; sleep 2
 add_data_partitions ; sleep 3
 show_cluster_info
 start_client ; sleep 2
 run_ltptest
 run_s3_test
 stop_client
-delete_volume
+delete_volumes
