@@ -139,7 +139,8 @@ func newExtentCheckCmd(checkType int) *cobra.Command {
 		path               string
 		inodeStr           string
 		metaPartitionId    uint64
-		tiny               bool
+		tinyOnly           bool
+		tinyInUse          bool
 		mpConcurrency      uint64
 		inodeConcurrency   uint64
 		extentConcurrency  uint64
@@ -203,9 +204,9 @@ func newExtentCheckCmd(checkType int) *cobra.Command {
 
 			switch checkType {
 			case checkTypeExtentReplica, checkTypeExtentLength, checkTypeInodeEk, checkTypeInodeNlink:
-				checkVol(vol, path, inodes, metaPartitionId, tiny, mpConcurrency, inodeConcurrency, extentConcurrency, checkType, modifyTimestampMin, modifyTimestampMax)
+				checkVol(vol, path, inodes, metaPartitionId, tinyOnly, tinyInUse, mpConcurrency, inodeConcurrency, extentConcurrency, checkType, modifyTimestampMin, modifyTimestampMax)
 			case checkTypeExtentCrc:
-				checkVolExtentCrc(vol, tiny, util.MB*5)
+				checkVolExtentCrc(vol, tinyOnly, util.MB*5)
 			}
 			return
 		},
@@ -220,7 +221,8 @@ func newExtentCheckCmd(checkType int) *cobra.Command {
 	cmd.Flags().StringVar(&path, "path", "", "path")
 	cmd.Flags().StringVar(&inodeStr, "inode", "", "comma separated inodes")
 	cmd.Flags().Uint64Var(&metaPartitionId, "mp", 0, "meta partition id")
-	cmd.Flags().BoolVar(&tiny, "tiny", false, "check tiny extents only")
+	cmd.Flags().BoolVar(&tinyOnly, "tinyOnly", false, "check tiny extents only")
+	cmd.Flags().BoolVar(&tinyInUse, "tinyInUse", false, "check tiny extents in use")
 	cmd.Flags().Uint64Var(&mpConcurrency, "mpConcurrency", 1, "max concurrent checking meta partitions")
 	cmd.Flags().Uint64Var(&inodeConcurrency, "inodeConcurrency", 1, "max concurrent checking inodes")
 	cmd.Flags().Uint64Var(&extentConcurrency, "extentConcurrency", 1, "max concurrent checking extents")
@@ -231,11 +233,13 @@ func newExtentCheckCmd(checkType int) *cobra.Command {
 
 func newExtentSearchCmd() *cobra.Command {
 	var (
-		use         = cmdSearchExtentUse
-		short       = cmdSearchExtentShort
-		concurrency uint64
-		dpStr       string
-		extentStr   string
+		use          = cmdSearchExtentUse
+		short        = cmdSearchExtentShort
+		concurrency  uint64
+		dpStr        string
+		extentStr    string
+		extentOffset uint
+		size         uint
 	)
 	var cmd = &cobra.Command{
 		Use:   use,
@@ -284,7 +288,7 @@ func newExtentSearchCmd() *cobra.Command {
 				stdout("invalid parameters.\n")
 				return
 			}
-			searchExtent(vol, dps, extents, concurrency)
+			searchExtent(vol, dps, extents, extentOffset, size, concurrency)
 			return
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -296,11 +300,13 @@ func newExtentSearchCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&dpStr, "dps", "", "comma separated data partitions")
 	cmd.Flags().StringVar(&extentStr, "extents", "", "comma separated extents")
+	cmd.Flags().UintVar(&extentOffset, "extentOffset", 0, "")
+	cmd.Flags().UintVar(&size, "size", 0, "")
 	cmd.Flags().Uint64Var(&concurrency, "concurrency", 1, "max concurrent searching inodes")
 	return cmd
 }
 
-func searchExtent(vol string, dps []uint64, extents []uint64, concurrency uint64) {
+func searchExtent(vol string, dps []uint64, extents []uint64, extentOffset uint, size uint, concurrency uint64) {
 	mps, err := client.ClientAPI().GetMetaPartitions(vol)
 	if err != nil {
 		return
@@ -336,7 +342,11 @@ func searchExtent(vol string, dps []uint64, extents []uint64, concurrency uint64
 				for _, ek := range extentsResp.Extents {
 					_, ok := extentMap[fmt.Sprintf("%d-%d", ek.PartitionId, ek.ExtentId)]
 					if ok {
-						stdout("inode: %d, dp: %d, extent: %d\n", inode, ek.PartitionId, ek.ExtentId)
+						if size == 0 ||
+							(ek.ExtentOffset >= uint64(extentOffset) && ek.ExtentOffset < uint64(extentOffset+size)) ||
+							(ek.ExtentOffset+uint64(ek.Size) >= uint64(extentOffset) && ek.ExtentOffset+uint64(ek.Size) < uint64(extentOffset+size)) {
+							stdout("inode: %d, ek: %s\n", inode, ek)
+						}
 					}
 				}
 				wg.Done()
@@ -553,7 +563,7 @@ func batchDeleteExtent(partitionId uint64, extents []uint64) (err error) {
 	return
 }
 
-func checkVol(vol string, path string, inodes []uint64, metaPartitionId uint64, tiny bool, mpConcurrency uint64, inodeConcurrency uint64, extentConcurrency uint64, checkType int, modifyTimeMin int64, modifyTimeMax int64) {
+func checkVol(vol string, path string, inodes []uint64, metaPartitionId uint64, tinyInUse bool, tinyOnly bool, mpConcurrency uint64, inodeConcurrency uint64, extentConcurrency uint64, checkType int, modifyTimeMin int64, modifyTimeMax int64) {
 	defer func() {
 		msg := fmt.Sprintf("checkVol, vol:%s, path%s", vol, path)
 		if r := recover(); r != nil {
@@ -573,7 +583,7 @@ func checkVol(vol string, path string, inodes []uint64, metaPartitionId uint64, 
 		inodes, _ = getAllInodesByPath(vol, path)
 	}
 	if len(inodes) > 0 {
-		checkInodes(vol, mps, inodes, tiny, inodeConcurrency, extentConcurrency, checkType)
+		checkInodes(vol, mps, inodes, tinyOnly, tinyInUse, inodeConcurrency, extentConcurrency, checkType)
 		stdout("finish check, vol:%s\n", vol)
 		return
 	}
@@ -600,7 +610,7 @@ func checkVol(vol string, path string, inodes []uint64, metaPartitionId uint64, 
 					checkVolNlink(mps, mp, modifyTimeMin, modifyTimeMax)
 				} else {
 					inodes, _ = getFileInodesByMp(mps, mp, 1, modifyTimeMin, modifyTimeMax)
-					checkInodes(vol, mps, inodes, tiny, inodeConcurrency, extentConcurrency, checkType)
+					checkInodes(vol, mps, inodes, tinyOnly, tinyInUse, inodeConcurrency, extentConcurrency, checkType)
 				}
 				stdout("finish check, vol:%s, mpId: %d\n", vol, mp)
 				wg.Done()
@@ -657,7 +667,7 @@ func checkVolNlink(mps []*proto.MetaPartitionView, metaPartitionId uint64, modif
 	}
 }
 
-func checkInodes(vol string, mps []*proto.MetaPartitionView, inodes []uint64, tiny bool, inodeConcurrency uint64, extentConcurrency uint64, checkType int) {
+func checkInodes(vol string, mps []*proto.MetaPartitionView, inodes []uint64, tinyOnly bool, tinyInUse bool, inodeConcurrency uint64, extentConcurrency uint64, checkType int) {
 	var (
 		checkedExtent sync.Map
 		wg            sync.WaitGroup
@@ -677,7 +687,7 @@ func checkInodes(vol string, mps []*proto.MetaPartitionView, inodes []uint64, ti
 				if checkType == checkTypeInodeEk {
 					checkInodeEk(vol, ino, mps)
 				} else {
-					checkInode(vol, ino, checkedExtent, tiny, extentConcurrency, checkType, mps)
+					checkInode(vol, ino, checkedExtent, tinyOnly, tinyInUse, extentConcurrency, checkType, mps)
 				}
 				wg.Done()
 			}
@@ -789,7 +799,7 @@ func getFileInodesByMp(mps []*proto.MetaPartitionView, metaPartitionId uint64, c
 	return
 }
 
-func checkInode(vol string, inode uint64, checkedExtent sync.Map, tiny bool, concurrency uint64, checkType int, mps []*proto.MetaPartitionView) {
+func checkInode(vol string, inode uint64, checkedExtent sync.Map, tinyOnly bool, tinyInUse bool, concurrency uint64, checkType int, mps []*proto.MetaPartitionView) {
 	var err error
 	var (
 		extentsResp *proto.GetExtentsResponse
@@ -805,14 +815,14 @@ func checkInode(vol string, inode uint64, checkedExtent sync.Map, tiny bool, con
 	ekCh := make(chan proto.ExtentKey)
 	var length int
 	for _, ek := range extentsResp.Extents {
-		if !tiny || storage.IsTinyExtent(ek.ExtentId) {
+		if !tinyOnly || storage.IsTinyExtent(ek.ExtentId) {
 			length += 1
 		}
 	}
 	wg.Add(length)
 	go func() {
 		for _, ek := range extentsResp.Extents {
-			if !tiny || storage.IsTinyExtent(ek.ExtentId) {
+			if !tinyOnly || storage.IsTinyExtent(ek.ExtentId) {
 				ekCh <- ek
 			}
 		}
@@ -823,7 +833,7 @@ func checkInode(vol string, inode uint64, checkedExtent sync.Map, tiny bool, con
 		go func(client *sdk.MasterClient, checkedExtent sync.Map) {
 			for ek := range ekCh {
 				if checkType == checkTypeExtentReplica {
-					checkExtentReplica(&ek, checkedExtent)
+					checkExtentReplica(&ek, tinyInUse, checkedExtent)
 				} else if checkType == checkTypeExtentLength {
 					checkExtentLength(&ek, checkedExtent)
 				}
@@ -864,12 +874,15 @@ func checkInodeEk(vol string, inode uint64, mps []*proto.MetaPartitionView) {
 	}
 }
 
-func checkExtentReplica(ek *proto.ExtentKey, checkedExtent sync.Map) (same bool, err error) {
+func checkExtentReplica(ek *proto.ExtentKey, tinyInUse bool, checkedExtent sync.Map) (same bool, err error) {
 	var (
 		ok        bool
 		ekStr     string = fmt.Sprintf("%d-%d", ek.PartitionId, ek.ExtentId)
 		partition *proto.DataPartitionInfo
 	)
+	if tinyInUse {
+		ekStr = fmt.Sprintf("%s-%d-%d", ekStr, ek.ExtentOffset, ek.Size)
+	}
 	if _, ok = checkedExtent.LoadOrStore(ekStr, true); ok {
 		return true, nil
 	}
@@ -881,23 +894,33 @@ func checkExtentReplica(ek *proto.ExtentKey, checkedExtent sync.Map) (same bool,
 
 	var (
 		replicas = make([]struct {
-			partitionId uint64
-			extentId    uint64
-			datanode    string
-			md5         string
+			partitionId  uint64
+			extentId     uint64
+			extentOffset uint64
+			size         uint32
+			datanode     string
+			md5          string
 		}, len(partition.Replicas))
-		md5Map    = make(map[string]int)
-		extentMd5 *ExtentMd5
+		md5Map       = make(map[string]int)
+		extentMd5    *ExtentMd5
+		extentOffset uint64
+		size         uint32
 	)
 	for idx, replica := range partition.Replicas {
 		datanode := fmt.Sprintf("%s:%d", strings.Split(replica.Addr, ":")[0], client.DataNodeProfPort)
-		extentMd5, err = getExtentMd5(datanode, ek.PartitionId, ek.ExtentId)
+		if tinyInUse {
+			extentOffset = ek.ExtentOffset
+			size = ek.Size
+		}
+		extentMd5, err = getExtentMd5(datanode, ek.PartitionId, ek.ExtentId, extentOffset, size)
 		if err != nil {
 			stdout("getExtentMd5 datanode(%v) PartitionId(%v) ExtentId(%v) err(%v)\n", datanode, ek.PartitionId, ek.ExtentId, err)
 			return
 		}
 		replicas[idx].partitionId = ek.PartitionId
 		replicas[idx].extentId = ek.ExtentId
+		replicas[idx].extentOffset = ek.ExtentOffset
+		replicas[idx].size = ek.Size
 		replicas[idx].datanode = datanode
 		replicas[idx].md5 = extentMd5.Md5
 		if _, ok = md5Map[replicas[idx].md5]; ok {
@@ -910,7 +933,7 @@ func checkExtentReplica(ek *proto.ExtentKey, checkedExtent sync.Map) (same bool,
 		return true, nil
 	}
 	for _, r := range replicas {
-		msg := fmt.Sprintf("dp: %d, extent: %d, datanode: %s, md5: %s\n", r.partitionId, r.extentId, r.datanode, r.md5)
+		msg := fmt.Sprintf("dp: %d, extent: %d, extentOffset:%d, size:%d, datanode: %s, md5: %s\n", r.partitionId, r.extentId, r.extentOffset, r.size, r.datanode, r.md5)
 		if _, ok = md5Map[r.md5]; ok && md5Map[r.md5] > len(partition.Replicas)/2 {
 			stdout(msg)
 		} else {
@@ -1298,11 +1321,11 @@ func getExtent(partitionId uint64, extentId uint64) (re storage.ExtentInfoBlock,
 	return
 }
 
-func getExtentMd5(datanode string, dpId uint64, extentId uint64) (re *ExtentMd5, err error) {
+func getExtentMd5(datanode string, dpId uint64, extentId uint64, extentOffset uint64, size uint32) (re *ExtentMd5, err error) {
 	var (
 		resp *http.Response
 		data []byte
-		url  string = fmt.Sprintf("http://%s/computeExtentMd5?id=%d&extent=%d", datanode, dpId, extentId)
+		url  string = fmt.Sprintf("http://%s/computeExtentMd5?id=%d&extent=%d&offset=%d&size=%d", datanode, dpId, extentId, extentOffset, size)
 	)
 	if resp, err = http.Get(url); err != nil {
 		return
