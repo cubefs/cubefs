@@ -516,8 +516,32 @@ func (dp *DataPartition) applyRepairKey(extentID int) (m string) {
 	return fmt.Sprintf("ApplyRepairKey(%v_%v)", dp.partitionID, extentID)
 }
 
+func (dp *DataPartition) tryLockExtentRepair(extentID uint64) (release func(), success bool) {
+	dp.inRepairExtentMu.Lock()
+	defer dp.inRepairExtentMu.Unlock()
+	if _, has := dp.inRepairExtents[extentID]; has {
+		success = false
+		release = nil
+		return
+	}
+	dp.inRepairExtents[extentID] = struct{}{}
+	success = true
+	release = func() {
+		dp.inRepairExtentMu.Lock()
+		defer dp.inRepairExtentMu.Unlock()
+		delete(dp.inRepairExtents, extentID)
+	}
+	return
+}
+
 // The actual repair of an extent happens here.
 func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInfo *storage.ExtentInfo) (err error) {
+	release, success := dp.tryLockExtentRepair(remoteExtentInfo.FileID)
+	if !success {
+		return
+	}
+	defer release()
+
 	store := dp.ExtentStore()
 	if !store.HasExtent(remoteExtentInfo.FileID) {
 		return
@@ -595,6 +619,11 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 		}
 
 		if !storage.IsTinyExtent(reply.ExtentID) && (reply.Size == 0 || reply.ExtentOffset != int64(currFixOffset)) {
+			err = errors.Trace(fmt.Errorf("unavali reply"), "streamRepairExtent receive unavalid "+
+				"request(%v) reply(%v) localExtentSize(%v) remoteExtentSize(%v)", request.GetUniqueLogId(), reply.GetUniqueLogId(), currFixOffset, remoteExtentInfo.Size)
+			return
+		}
+		if storage.IsTinyExtent(reply.ExtentID) && reply.ExtentOffset != int64(currFixOffset) {
 			err = errors.Trace(fmt.Errorf("unavali reply"), "streamRepairExtent receive unavalid "+
 				"request(%v) reply(%v) localExtentSize(%v) remoteExtentSize(%v)", request.GetUniqueLogId(), reply.GetUniqueLogId(), currFixOffset, remoteExtentInfo.Size)
 			return
