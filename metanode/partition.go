@@ -128,7 +128,7 @@ type OpInode interface {
 	EvictInode(req *EvictInodeReq, p *Packet) (err error)
 	EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (err error)
 	SetAttr(reqData []byte, p *Packet) (err error)
-	//GetInodeTree() *BTree
+	GetInodeTree() InodeTree
 	DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error)
 	DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet) (err error)
 }
@@ -160,7 +160,7 @@ type OpDentry interface {
 	UpdateDentry(req *UpdateDentryReq, p *Packet) (err error)
 	ReadDir(req *ReadDirReq, p *Packet) (err error)
 	Lookup(req *LookupReq, p *Packet) (err error)
-	//GetDentryTree() *BTree
+	GetDentryTree() DentryTree
 }
 
 type OpDeletedDentry interface {
@@ -1269,9 +1269,6 @@ func (mp *metaPartition) getTrashStatus() bool {
 	return mp.config.TrashRemainingDays > 0
 }
 
-func (mp *metaPartition) enableRocksDbDelExtent() bool{
-	return mp.manager.metaNode.enableRocksDbDelExtent()
-}
 
 func (mp *metaPartition) HasMemStore() bool{
 	if (mp.config.StoreMode & proto.StoreModeMem) != 0 {

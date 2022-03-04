@@ -96,12 +96,48 @@ create_volume() {
         echo -e "\033[32mdone\033[0m"
         return
     fi
-    ${cli} volume create ${VolName} ${Owner} --capacity=30 -y > /dev/null
+    ${cli} volume create ${VolName} ${Owner} --capacity=30 --store-mode=1 -y > /dev/null
     if [[ $? -ne 0 ]]; then
         echo -e "\033[31mfail\033[0m"
         exit 1
     fi
     echo -e "\033[32mdone\033[0m"
+}
+
+change_store_mode_to_rocksdb() {
+   echo -n "change default store mode to rockdb   ... "
+   ${cli} volume set ${VolName} --store-mode=2 -y > /dev/null
+   if [[ $? -ne 0 ]]; then
+        echo -e "\033[31mfail\033[0m"
+        exit 1
+   fi
+   echo -e "\033[32mdone\033[0m"
+}
+
+get_max_meta_partition_id_and_check_leader() {
+  max_mpid=`${cli} volume info ${VolName} -m |grep unlimited | awk -F " " '{print $1}'`
+  for i in $(seq 1 300) ; do
+        ${cli} metapartition info ${max_mpid} &> /tmp/cli_max_mp_info
+        while read line;
+        do
+          result=`echo $line | awk -F " " '{print $2}'`
+          if [ "$result" = "true" ]; then
+            return
+          fi
+        done < /tmp/cli_max_mp_info
+        sleep 1
+   done
+   exit 1
+}
+
+add_rocksdb_mode_meta_partitions() {
+   echo -n "add rockdb store mode meta partitions for volume   ... "
+   for i in $(seq 1 5); do
+     get_max_meta_partition_id_and_check_leader
+     ${cli} volume add-mp ${VolName} > /dev/null
+     sleep 60
+   done
+   echo -e "\033[32mdone\033[0m"
 }
 
 show_cluster_info() {
@@ -256,6 +292,8 @@ ensure_node_writable "metanode"
 ensure_node_writable "datanode"
 create_volume ; sleep 2
 add_data_partitions ; sleep 3
+change_store_mode_to_rocksdb ; sleep 2
+add_rocksdb_mode_meta_partitions ; sleep 2
 show_cluster_info
 start_client ; sleep 2
 run_ltptest

@@ -51,11 +51,15 @@ func releaseTestMetapartition(mp *metaPartition) {
 	os.RemoveAll(mp.config.RootDir)
 }
 
+const (
+	count = 10000
+)
+
 func genInode(t *testing.T, mp *metaPartition, cnt uint64) {
 
 	testTarget := []byte{'1', '2', '3', '4', '1', '2', '3', '4'}
 	for i := uint64(0); i < cnt;  {
-		ino := NewInode(rand.Uint64(), 0)
+		ino := NewInode(rand.Uint64() % uint64(1000000000) + 1, 0)
 		if ino.Inode % 997 == 0 {
 			ino.LinkTarget = append(ino.LinkTarget, testTarget...)
 			ino.Type = rand.Uint32()
@@ -84,8 +88,8 @@ func RandString(len int) string {
 func genDentry(t *testing.T, mp *metaPartition, cnt uint64) {
 	for i := uint64(0); i < cnt;  {
 		dentry := &Dentry{}
-		dentry.ParentId = rand.Uint64()
-		dentry.Inode = rand.Uint64()
+		dentry.ParentId = rand.Uint64() % uint64(1000000000) + 1
+		dentry.Inode = rand.Uint64() % uint64(1000000000) + 1
 		dentry.Type = rand.Uint32()
 		dentry.Name = RandString(rand.Int() % 100 + 10)
 		if err := mp.dentryTree.Create(dentry, false); err != nil {
@@ -97,9 +101,9 @@ func genDentry(t *testing.T, mp *metaPartition, cnt uint64) {
 
 func checkMPInodeAndDentry(t *testing.T, mp1, mp2 *metaPartition) {
 
-	if mp1.inodeTree.Count() != mp2.inodeTree.Count() {
-		t.Errorf("inode tree len is different [%d], [%d]",
-			mp1.inodeTree.Count(), mp2.inodeTree.Count())
+	if mp1.inodeTree.Count() != mp2.inodeTree.Count() || mp1.inodeTree.Count() != count {
+		t.Errorf("inode tree len expect [%d] actual [mp1:%d], [mp2:%d]",
+			count, mp1.inodeTree.Count(), mp2.inodeTree.Count())
 	}
 	_ = mp1.inodeTree.Range(nil, nil, func(v []byte) (bool, error) {
 		ino1 := NewInode(0, 0)
@@ -111,9 +115,9 @@ func checkMPInodeAndDentry(t *testing.T, mp1, mp2 *metaPartition) {
 		return true, nil
 	})
 
-	if mp1.dentryTree.Count() != mp2.dentryTree.Count() {
-		t.Errorf("dentry tree len is different [%d], [%d]",
-			mp1.dentryTree.Count(), mp2.dentryTree.Count())
+	if mp1.dentryTree.Count() != mp2.dentryTree.Count() || mp2.dentryTree.Count() != count {
+		t.Errorf("dentry tree len expect[%d] actual [mp1:%d], [mp2:%d]",
+			count, mp1.dentryTree.Count(), mp2.dentryTree.Count())
 	}
 	mp1.dentryTree.Range(nil, nil, func(v []byte) (bool, error) {
 		dentry1 := new(Dentry)
@@ -128,6 +132,8 @@ func checkMPInodeAndDentry(t *testing.T, mp1, mp2 *metaPartition) {
 
 func TestMetaPartition_Store(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
+	os.RemoveAll("./partition_1")
+	os.RemoveAll("./partition_2")
 	mp, _ := newTestMetapartition(1)
 	mp2, _ := newTestMetapartition(2)
 	if mp == nil || mp2 == nil {
@@ -141,8 +147,8 @@ func TestMetaPartition_Store(t *testing.T) {
 	mp.marshalVersion = MetaPartitionMarshVersion1
 	mp2.marshalVersion = MetaPartitionMarshVersion2
 
-	genInode(t, mp, 1000000)
-	genDentry(t, mp, 1000000)
+	genInode(t, mp, count)
+	genDentry(t, mp, count)
 
 	start := time.Now()
 	mp.store(&storeMsg{
@@ -159,7 +165,6 @@ func TestMetaPartition_Store(t *testing.T) {
 		snap:       NewSnapshot(mp),
 	})
 	storeV2Cost := time.Since(start)
-
 	t.Logf("Store %dW inodes and %dW dentry, V1 cost:%v, V2 cost:%v", mp.inodeTree.Count()/10000, mp.dentryTree.Count()/10000, storeV1Cost, storeV2Cost)
 }
 
@@ -174,15 +179,24 @@ func TestMetaPartition_Load(t *testing.T) {
 		mp.db.CloseDb()
 		mp2.db.CloseDb()
 	}()
+
 	mp.marshalVersion = MetaPartitionMarshVersion2
 	mp2.marshalVersion = MetaPartitionMarshVersion1
 
 	start := time.Now()
-	mp.load(context.Background())
+	err := mp.load(context.Background())
+	if err != nil {
+		t.Errorf("load failed:%v\n", err)
+		return
+	}
 	loadV2Cost := time.Since(start)
 
 	start = time.Now()
-	mp2.load(context.Background())
+	err = mp2.load(context.Background())
+	if err != nil {
+		t.Errorf("load failed:%v\n", err)
+		return
+	}
 	loadV1Cost := time.Since(start)
 
 	checkMPInodeAndDentry(t, mp, mp2)
@@ -247,6 +261,26 @@ func TestMetaPartition_ApplySnap(t *testing.T) {
 
 	checkMPInodeAndDentry(t, mp, mp2)
 	t.Logf("%dW inodes %dW dentry, V1 gen snap, V2 aplly snnap success cost:%v", mp.inodeTree.Count()/10000, mp.dentryTree.Count()/10000, cost)
+}
+
+func TestMetaPartition_ApplySnapV2(t *testing.T) {
+	mp, _ := newTestMetapartition(1)
+	mp2, _ := newTestMetapartition(2)
+	mp.marshalVersion = MetaPartitionMarshVersion1
+	mp2.marshalVersion = MetaPartitionMarshVersion2
+
+	mp.load(context.Background())
+
+	start := time.Now()
+	snap, _ := newMetaItemIterator(mp)
+	go dealChanel(mp2)
+	mp2.ApplySnapshot(nil, snap)
+	cost := time.Since(start)
+
+	checkMPInodeAndDentry(t, mp, mp2)
+	t.Logf("%dW inodes %dW dentry, V1 gen snap, V2 aplly snnap success cost:%v", mp.inodeTree.Count()/10000, mp.dentryTree.Count()/10000, cost)
+	mp.db.CloseDb()
+	mp2.db.CloseDb()
 }
 
 func TestMetaPartition_Snap(t *testing.T) {
@@ -431,4 +465,9 @@ func TestResetCursor_LeaderChange(t *testing.T) {
 
 	releaseTestMetapartition(mp)
 	return
+}
+
+func TestMetaPartition_CleanDir(t *testing.T) {
+	os.RemoveAll("./partition_1")
+	os.RemoveAll("./partition_2")
 }

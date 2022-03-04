@@ -116,14 +116,6 @@ func (m *MetaNode) startUpdateNodeInfo() {
 	}
 }
 
-func (m *MetaNode) enableRocksDbDelExtent() bool{
-	if atomic.LoadUint32(&m.clusterMetaVersion) >= MetaNodeVersion01 {
-		return true
-	}
-
-	return false
-}
-
 func (m *MetaNode) stopUpdateNodeInfo() {
 	nodeInfoStopC <- struct{}{}
 }
@@ -139,7 +131,6 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 	updateDeleteBatchCount(limitInfo.MetaNodeDeleteBatchCount)
 	updateDeleteWorkerSleepMs(limitInfo.MetaNodeDeleteWorkerSleepMs)
 	updateReadDirLimitNum(limitInfo.MetaNodeReadDirLimitNum)
-	atomic.StoreUint32(&m.clusterMetaVersion, info.MetaVersionRequirements)
 }
 
 func (m *MetaNode) updateRateLimitInfo() {

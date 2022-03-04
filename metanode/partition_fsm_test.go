@@ -8,9 +8,7 @@ import (
 	raftproto "github.com/tiglabs/raft/proto"
 	"io/ioutil"
 	"os"
-	"path"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -222,17 +220,17 @@ func mockForSnapshot(t *testing.T, mp *metaPartition) (err error) {
 	}
 
 	//create extent del file
-	for index := 0; index < 5; index++ {
-		fileName := path.Join(mp.config.RootDir, prefixDelExtent + "_" + strconv.Itoa(index))
-		if _, err = os.Create(fileName); err != nil {
-			t.Errorf("create file[%s] failed:%v", fileName, err)
-			return
-		}
-		if err = os.WriteFile(fileName, []byte("test_apply_snapshot"), 0666); err != nil {
-			t.Errorf("write data to file[%s] failed:%v", fileName, err)
-			return
-		}
-	}
+	//for index := 0; index < 5; index++ {
+	//	fileName := path.Join(mp.config.RootDir, prefixDelExtent + "_" + strconv.Itoa(index))
+	//	if _, err = os.Create(fileName); err != nil {
+	//		t.Errorf("create file[%s] failed:%v", fileName, err)
+	//		return
+	//	}
+	//	if err = os.WriteFile(fileName, []byte("test_apply_snapshot"), 0666); err != nil {
+	//		t.Errorf("write data to file[%s] failed:%v", fileName, err)
+	//		return
+	//	}
+	//}
 	mp.applyID = 1000
 	return
 }
@@ -370,17 +368,15 @@ func interTest(t *testing.T, leaderMp, followerMp *metaPartition) {
 
 	//new item iterator by leader mp
 	var snap raftproto.Snapshot
-	if snap, err = leaderMp.Snapshot(); err != nil {
-		t.Errorf("leader mp generate snapshot failed:%v", err)
-		return
-	}
-
+	snap, err = newMetaItemIteratorV2(leaderMp, NewMetaNodeVersion("2.7.0"))
+	t.Logf("leader create snap success")
 	//apply snapshot to follower mp
 	if err = followerMp.ApplySnapshot(nil, snap); err != nil {
 		t.Errorf("follower mp apply snapshot failed:%v", err)
 		return
 	}
-
+	snap.Close()
+	t.Logf("follower apply snap success")
 	//validate (compare leader with follower)
 	if !validateApplySnapshotResult(t, leaderMp, followerMp) {
 		t.Errorf("validate failed")
@@ -494,12 +490,15 @@ func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartiti
 		t.Errorf("validate failed:%v", err)
 		return false
 	}
+	return true
+}
 
+func compareExtentDeleteFile(leaderMp, followerMp *metaPartition) (bool, error){
 	var fileNamesInLeader, fileNamesInFollower []string
 	//leader
 	fileInfos, err := ioutil.ReadDir(leaderMp.config.RootDir)
 	if err != nil {
-		return false
+		return false, err
 	}
 
 	for _, fileInfo := range fileInfos {
@@ -511,7 +510,7 @@ func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartiti
 	//follower
 	fileInfos, err = ioutil.ReadDir(followerMp.config.RootDir)
 	if err != nil {
-		return false
+		return false, err
 	}
 
 	for _, fileInfo := range fileInfos {
@@ -521,8 +520,7 @@ func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartiti
 	}
 
 	if len(fileNamesInLeader) != len(fileNamesInFollower) {
-		t.Errorf("extend del file count mismatch, leader:%v, follower:%v", len(fileNamesInLeader), len(fileNamesInFollower))
-		return false
+		return false, fmt.Errorf("extend del file count mismatch, leader:%v, follower:%v", len(fileNamesInLeader), len(fileNamesInFollower))
 	}
 
 	sort.Slice(fileNamesInLeader, func(i, j int) bool {
@@ -534,10 +532,9 @@ func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartiti
 
 	for index, fileName := range fileNamesInLeader {
 		if strings.Compare(fileName, fileNamesInFollower[index]) != 0 {
-			t.Errorf("extend del file name mismatch, leader:%s, follower:%v", fileName, fileNamesInFollower[index])
-			return false
+			return false, fmt.Errorf("extend del file name mismatch, leader:%s, follower:%v", fileName, fileNamesInFollower[index])
 		}
 		//todo: compare file content
 	}
-	return true
+	return true, nil
 }

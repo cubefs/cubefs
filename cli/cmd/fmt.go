@@ -72,24 +72,25 @@ func formatClusterStat(cs *proto.ClusterStatInfo) string {
 }
 
 var nodeViewTableRowPattern = "%-6v    %-18v    %-8v    %-8v    %-8v"
-var dataNodeDetailViewTableRowPattern = "%-6v    %-18v    %-8v    %-8v    %-8v    %-8v    %-8v"
+var dataNodeDetailViewTableRowPattern = "%-6v    %-18v    %-8v    %-8v    %-8v    %-8v    %-8v    %-8v"
 
 func formatNodeViewTableHeader() string {
-	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "STATUS", "VERSION")
+	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "VERSION", "WRITABLE", "STATUS")
 }
 
 func formatDataNodeViewTableHeader() string {
-	return fmt.Sprintf(dataNodeDetailViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "STATUS", "USED", "ZONE", "DP COUNT")
+	return fmt.Sprintf(dataNodeDetailViewTableRowPattern, "ID", "ADDRESS", "VERSION", "WRITABLE", "STATUS", "USED", "ZONE", "DP COUNT")
 }
 
 func formatNodeView(view *proto.NodeView, tableRow bool) string {
 	if tableRow {
-		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, view.Addr,
-			formatYesNo(view.IsWritable), formatNodeStatus(view.Status), view.Version)
+		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, view.Addr, view.Version,
+			formatYesNo(view.IsWritable), formatNodeStatus(view.Status))
 	}
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID      : %v\n", view.ID))
 	sb.WriteString(fmt.Sprintf("  Address : %v\n", view.Addr))
+	sb.WriteString(fmt.Sprintf("  Version : %v\n", view.Version))
 	sb.WriteString(fmt.Sprintf("  Writable: %v\n", formatYesNo(view.IsWritable)))
 	sb.WriteString(fmt.Sprintf("  Status  : %v", formatNodeStatus(view.Status)))
 	return sb.String()
@@ -537,7 +538,7 @@ func formatDataReplica(indentation string, replica *proto.DataReplica, rowTable 
 	return sb.String()
 }
 
-var metaReplicaTableRowPattern = "%-20v    %-8v    %-10v    %-10v    %-20v    %-10v    %-12v"
+var metaReplicaTableRowPattern = "%-20v    %-8v    %-10v    %-10v    %-16v    %-20v    %-12v"
 
 func formatMetaReplicaTableHeader() string {
 	return fmt.Sprintf(metaReplicaTableRowPattern, "ADDRESS", "ISLEADER", "APPLY ID", "STATUS", "STORE MODE", "REPORT TIME", "ISLEARNER")
@@ -592,6 +593,7 @@ func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID                  : %v\n", dn.ID))
 	sb.WriteString(fmt.Sprintf("  Address             : %v\n", dn.Addr))
+	sb.WriteString(fmt.Sprintf("  Version             : %v\n", dn.Version))
 	sb.WriteString(fmt.Sprintf("  Carry               : %v\n", dn.Carry))
 	sb.WriteString(fmt.Sprintf("  Used ratio          : %v\n", dn.UsageRatio))
 	sb.WriteString(fmt.Sprintf("  Used                : %v\n", formatSize(dn.Used)))

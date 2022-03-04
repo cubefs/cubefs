@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -117,6 +116,12 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, 
 
 	if dstStoreMode == proto.StoreModeDef {
 		dstStoreMode = vol.DefaultStoreMode
+		for _, replica := range mp.Replicas {
+			if replica.Addr == nodeAddr {
+				dstStoreMode = replica.StoreMode
+				break
+			}
+		}
 	}
 	if destAddr != "" {
 		if err = c.validateDecommissionMetaPartition(mp, nodeAddr); err != nil {
@@ -1277,11 +1282,6 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 	}
 
 	metaNode.Version = resp.Version
-	if c.needCheckMetaNodeVersion() {
-		if metaNode.Version < atomic.LoadUint32(&c.MetaVersionRequirements) {
-			//todo: need alram: this meta node need upgrade
-		}
-	}
 
 	if metaNode.ZoneName != resp.ZoneName {
 		c.t.deleteMetaNode(metaNode)
@@ -1452,6 +1452,7 @@ func (c *Cluster) handleDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataN
 	if dataNode, err = c.dataNode(nodeAddr); err != nil {
 		goto errHandler
 	}
+	dataNode.Version = resp.Version
 	if dataNode.ToBeOffline {
 		return
 	}
@@ -1750,26 +1751,3 @@ func (c *Cluster) removePromotedLearners(mp *MetaPartition, isLearner bool, node
 	}
 }
 
-func (c *Cluster) needCheckMetaNodeVersion() bool {
-	if atomic.LoadUint32(&c.MetaVersionRequirements) > defaultMetaNodeVersion {
-		return true
-	}
-
-	return false
-}
-
-func (c *Cluster) setExtentDelByRocksDb() (err error){
-	old := atomic.LoadUint32(&c.MetaVersionRequirements)
-	if ok := atomic.CompareAndSwapUint32(&c.MetaVersionRequirements, defaultMetaNodeVersion, 1); !ok{
-		if old == defaultMetaNodeVersion {
-			return fmt.Errorf("inter err:change meta version failed")
-		}
-	}
-	if err = c.syncPutCluster(); err != nil {
-		log.LogErrorf("action[setExtentDelByRocksDb] err[%v]", err)
-		c.MetaVersionRequirements = old
-		err = proto.ErrPersistenceByRaft
-		return
-	}
-	return nil
-}

@@ -492,15 +492,6 @@ func (api *AdminAPI) SetMetaNodeThreshold(threshold float64) (err error) {
 	return
 }
 
-func (api *AdminAPI) SetMetaNodeExtenDelByRocks() (err error) {
-	var request = newAPIRequest(http.MethodGet, proto.AdminEnableExtDelByRocks)
-	request.addParam("enable", "enable")
-	if _, err = api.mc.serveRequest(request); err != nil {
-		return
-	}
-	return
-}
-
 func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminSetNodeInfo)
 	if info.Opcode >= 0 {

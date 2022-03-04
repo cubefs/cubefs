@@ -135,6 +135,7 @@ type DeletedDentryTree interface {
 	Tree
 	RefGet(pino uint64, name string, timeStamp int64) (*DeletedDentry, error)
 	Get(pino uint64, name string, timeStamp int64) (*DeletedDentry, error)
+	//todo:lizhenzhen add item info to response
 	Create(delDentry *DeletedDentry, replace bool) error
 	Delete(pino uint64, name string, timeStamp int64) (bool, error)
 	Range(start, end *DeletedDentry, cb func(v []byte) (bool, error)) error

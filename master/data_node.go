@@ -29,6 +29,7 @@ type DataNode struct {
 	Used                      uint64 `json:"UsedWeight"`
 	AvailableSpace            uint64
 	ID                        uint64
+	Version                   string
 	ZoneName                  string `json:"Zone"`
 	Addr                      string
 	ReportTime                time.Time
@@ -48,7 +49,7 @@ type DataNode struct {
 	ToBeMigrated              bool
 }
 
-func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
+func newDataNode(addr, zoneName, clusterID, version string) (dataNode *DataNode) {
 	dataNode = new(DataNode)
 	dataNode.Carry = rand.Float64()
 	dataNode.Total = 1
@@ -56,6 +57,7 @@ func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
 	dataNode.ZoneName = zoneName
 	dataNode.TaskManager = newAdminTaskManager(dataNode.Addr, clusterID)
 	dataNode.DiskInfos = make(map[string]*proto.DiskInfo, 0)
+	dataNode.Version  = version
 	return
 }
 

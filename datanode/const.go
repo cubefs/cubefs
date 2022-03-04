@@ -14,7 +14,15 @@
 
 package datanode
 
-import "time"
+import (
+	"github.com/chubaofs/chubaofs/proto"
+	"time"
+)
+
+// Network protocol
+const (
+	DataNodeLatestVersion = proto.BaseVersion
+)
 
 const (
 	IntervalToUpdateReplica       = 600 // interval to update the replica

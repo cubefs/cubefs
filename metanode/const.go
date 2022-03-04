@@ -226,7 +226,11 @@ const (
 	mpResetInoStep    = 1000
 )
 
-// snapshotBatchSend will be disabled if version of metaNode  lessThan snapshotBatchSendMinimumVersion.
-const(
-	snapshotBatchSendMinimumVersion = "2.6.0"
+const (
+	RocksDBVersion       = "3.1.0"
+	MetaNodeLatestVersion          = RocksDBVersion
+)
+
+const (
+	maximumApplyIdDifference = 1000
 )

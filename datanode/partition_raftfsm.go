@@ -130,7 +130,7 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 // Snapshot persists the in-memory data (as a snapshot) to the disk.
 // Note that the data in each data partition has already been saved on the disk. Therefore there is no need to take the
 // snapshot in this case.
-func (dp *DataPartition) Snapshot() (raftproto.Snapshot, error) {
+func (dp *DataPartition) Snapshot(recoverNode uint64) (raftproto.Snapshot, error) {
 	snapIterator := NewItemIterator(dp.lastTruncateID)
 	log.LogInfof("SendSnapShot PartitionID(%v) Snapshot lastTruncateID(%v) currentApplyID(%v) firstCommitID(%v)",
 		dp.partitionID, dp.lastTruncateID, dp.appliedID, dp.lastTruncateID)

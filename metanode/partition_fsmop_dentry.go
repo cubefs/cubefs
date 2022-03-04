@@ -134,7 +134,6 @@ func (mp *metaPartition) getDentry(dentry *Dentry) (*Dentry, uint8, error) {
 	return d, status, nil
 }
 
-//todo: lizhenzhen check logical
 func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, timestamp int64, from string, checkInode bool, trashEnable bool) (
 	resp *DentryResponse, err error) {
 	var (
@@ -210,6 +209,7 @@ func (mp *metaPartition) fsmBatchDeleteDentry(db DentryBatch, timestamp int64, f
 	}()
 	for index, dentry := range db {
 		var r *DentryResponse
+		//todo:need test
 		r, err = mp.fsmDeleteDentry(dentry, timestamp, from, true, trashEnable)
 		if err == rocksdbError {
 			wrongIndex = index
@@ -255,7 +255,7 @@ func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry, timestamp int64, from s
 	return
 }
 
-func (mp *metaPartition) readDir(ctx context.Context, req *ReadDirReq) (resp *ReadDirResp) {
+func (mp *metaPartition) readDir(ctx context.Context, req *ReadDirReq) (resp *ReadDirResp, err error) {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("metaPartition.readDir")
 	defer tracer.Finish()
 	ctx = tracer.Context()
@@ -271,12 +271,10 @@ func (mp *metaPartition) readDir(ctx context.Context, req *ReadDirReq) (resp *Re
 
 	count := uint64(0)
 	readDirLimit := ReadDirLimitNum()
-	mp.dentryTree.Range(begDentry, endDentry, func(v []byte) (bool, error) {
+	err = mp.dentryTree.Range(begDentry, endDentry, func(v []byte) (bool, error) {
 		d := &Dentry{}
-		if err := d.Unmarshal(v); err != nil {
-			log.LogErrorf("dentry unmarshal has err:[%s]", err.Error())
-			//todo:range error?
-			return true, nil
+		if e := d.Unmarshal(v); e != nil {
+			return false, fmt.Errorf("unmarshal dentry failed:%v", err)
 		}
 		count += 1
 		if req.IsBatch && count > readDirMax {
@@ -294,6 +292,10 @@ func (mp *metaPartition) readDir(ctx context.Context, req *ReadDirReq) (resp *Re
 		})
 		return true, nil
 	})
+	if err != nil {
+		log.LogErrorf("readDir failed:[%s]", err.Error())
+		return
+	}
 	tracer.SetTag("count", count).SetTag("total", mp.dentryTree.Count()).SetTag("parentID", req.PartitionID)
 	return
 }

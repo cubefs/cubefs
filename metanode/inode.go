@@ -253,7 +253,7 @@ func (i *Inode) MarshalV2() (result []byte, err error) {
 	offset += 4
 	binary.BigEndian.PutUint64(result[offset:offset+8], i.Inode)
 	offset += 8
-	binary.BigEndian.PutUint32(result[offset:offset+4],uint32(i.Extents.Len() * proto.ExtentLength + BaseInodeValueLen + + len(i.LinkTarget)))
+	binary.BigEndian.PutUint32(result[offset:offset+4],uint32(i.Extents.Len() * proto.ExtentLength + BaseInodeValueLen + len(i.LinkTarget)))
 	offset += 4
 	binary.BigEndian.PutUint32(result[offset:offset+4], i.Type)
 	offset += 4

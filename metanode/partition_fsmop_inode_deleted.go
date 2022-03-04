@@ -104,7 +104,6 @@ type fsmOpDeletedInodeResponse struct {
 	Inode  uint64 `json:"ino"`
 }
 
-//todo:lizhenzhen need review
 func (mp *metaPartition) mvToDeletedInodeTree(inode *Inode, timestamp int64) (status uint8, err error) {
 	defer func() {
 		if err == existsError || err == notExistsError {

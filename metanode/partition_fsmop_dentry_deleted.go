@@ -46,7 +46,6 @@ func (mp *metaPartition) fsmCreateDeletedDentry(ddentry *DeletedDentry, force bo
 		return
 	}
 	//get and validate
-	//todo:add check logical
 	var dden *DeletedDentry
 	if dden, err = mp.dentryDeletedTree.Get(ddentry.ParentId, ddentry.Name, ddentry.Timestamp); err != nil {
 		rsp.Status = proto.OpErr

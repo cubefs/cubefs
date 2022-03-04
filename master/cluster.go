@@ -66,7 +66,6 @@ type Cluster struct {
 	dpRepairChan               chan *RepairTask
 	mpRepairChan               chan *RepairTask
 	DataNodeBadDisks           *sync.Map
-	MetaVersionRequirements    uint32
 }
 type (
 	RepairType uint8
@@ -571,7 +570,7 @@ func (c *Cluster) updateMetaNodeBaseInfo(nodeAddr string, id uint64) (err error)
 	return
 }
 
-func (c *Cluster) addMetaNode(nodeAddr, zoneName string, version uint32) (id uint64, err error) {
+func (c *Cluster) addMetaNode(nodeAddr, zoneName, version string) (id uint64, err error) {
 	c.mnMutex.Lock()
 	defer c.mnMutex.Unlock()
 	var metaNode *MetaNode
@@ -603,12 +602,6 @@ func (c *Cluster) addMetaNode(nodeAddr, zoneName string, version uint32) (id uin
 	}
 	c.t.putMetaNode(metaNode)
 	c.metaNodes.Store(nodeAddr, metaNode)
-
-	if c.needCheckMetaNodeVersion() {
-		if version < atomic.LoadUint32(&c.MetaVersionRequirements) {
-			//todo : need alarm: meta node need upgrade
-		}
-	}
 	log.LogInfof("action[addMetaNode],clusterID[%v] metaNodeAddr:%v,nodeSetId[%v],capacity[%v]",
 		c.Name, nodeAddr, ns.ID, ns.Capacity)
 	return
@@ -620,7 +613,7 @@ errHandler:
 	return
 }
 
-func (c *Cluster) addDataNode(nodeAddr, zoneName string) (id uint64, err error) {
+func (c *Cluster) addDataNode(nodeAddr, zoneName, version string) (id uint64, err error) {
 	c.dnMutex.Lock()
 	defer c.dnMutex.Unlock()
 	var dataNode *DataNode
@@ -629,7 +622,7 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string) (id uint64, err error) 
 		return dataNode.ID, nil
 	}
 
-	dataNode = newDataNode(nodeAddr, zoneName, c.Name)
+	dataNode = newDataNode(nodeAddr, zoneName, c.Name, version)
 	zone, err := c.t.getZone(zoneName)
 	if err != nil {
 		zone = c.t.putZoneIfAbsent(newZone(zoneName))
@@ -2295,7 +2288,7 @@ func (c *Cluster) decommissionMetaNode(metaNode *MetaNode, strictMode bool) (err
 		wg.Add(1)
 		go func(mp *MetaPartition) {
 			defer wg.Done()
-			if err1 := c.decommissionMetaPartition(metaNode.Addr, mp, getTargetAddressForMetaPartitionDecommission, "", strictMode, 0); err1 != nil {
+			if err1 := c.decommissionMetaPartition(metaNode.Addr, mp, getTargetAddressForMetaPartitionDecommission, "", strictMode, proto.StoreModeDef); err1 != nil {
 				errChannel <- err1
 			}
 		}(mp)
@@ -2409,7 +2402,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	remainingDays uint32, storeMode proto.StoreMode, layout proto.MetaPartitionLayout, extentCacheExpireSec int64) (err error) {
 	var (
 		vol           *Vol
-		volBack       *Vol
+		volBak        *Vol
 		serverAuthKey string
 		zoneList      []string
 	)
@@ -2418,9 +2411,14 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		err = proto.ErrVolNotExists
 		goto errHandler
 	}
+	if IsCrossRegionHATypeQuorum(crossRegionHAType) {
+		if err = c.validCrossRegionHA(zoneName); err != nil {
+			goto errHandler
+		}
+	}
 	vol.Lock()
 	defer vol.Unlock()
-	volBack = vol.backupConfig()
+	volBak = vol.backupConfig()
 	serverAuthKey = vol.Owner
 	if !matchKey(serverAuthKey, authKey) {
 		return proto.ErrVolAuthKeyNotMatch
@@ -2526,7 +2524,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	}
 	return
 errHandler:
-	vol.rollbackConfig(volBack)
+	vol.rollbackConfig(volBak)
 	err = fmt.Errorf("action[updateVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
 	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
@@ -2571,9 +2569,6 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	}
 	if err = c.validZone(zoneName, mpReplicaNum+int(mpLearnerNum)); err != nil {
 		goto errHandler
-	}
-	if trashDays == 0 {
-		trashDays = defaultTrashRemainingDays
 	}
 	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, mpReplicaNum, trashDays,
 		followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, crossRegionHAType, 0, mpLearnerNum, dpWriteableThreshold,
@@ -2851,7 +2846,7 @@ func (c *Cluster) allDataNodes() (dataNodes []proto.NodeView) {
 	dataNodes = make([]proto.NodeView, 0)
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
-		dataNodes = append(dataNodes, proto.NodeView{Addr: dataNode.Addr, Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.isWriteAble()})
+		dataNodes = append(dataNodes, proto.NodeView{Addr: dataNode.Addr, Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.isWriteAble(), Version: dataNode.Version})
 		return true
 	})
 	return
@@ -2861,7 +2856,7 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 	metaNodes = make([]proto.NodeView, 0)
 	c.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode := node.(*MetaNode)
-		metaNodes = append(metaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
+		metaNodes = append(metaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, Version: metaNode.Version, IsWritable: metaNode.isWritable()})
 		return true
 	})
 	return

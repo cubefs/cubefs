@@ -20,51 +20,107 @@ import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/tecbot/gorocksdb"
 	"hash"
 	"hash/crc32"
 	"io"
 	"io/ioutil"
 	"os"
-	"path"
-	"reflect"
 	"strings"
 	"sync"
 )
+
+type EkData struct {
+	key     []byte
+	data    []byte
+}
+func NewEkData(k, v []byte) *EkData {
+	ek := &EkData{}
+	ek.key = make([]byte, 0)
+	ek.data = make([]byte, 0)
+
+	ek.key = append(ek.key, k...)
+	ek.data = append(ek.data, v...)
+	return ek
+}
+
+func (ekInfo *EkData) Marshal() []byte {
+	buff := make([]byte, 8 + len(ekInfo.key) + len(ekInfo.data))
+	off := 0
+	binary.BigEndian.PutUint32(buff[off : off + 4], uint32(len(ekInfo.key)))
+	off += 4
+	copy(buff[off: off + len(ekInfo.key)], ekInfo.key)
+	off += len(ekInfo.key)
+	binary.BigEndian.PutUint32(buff[off : off + 4], uint32(len(ekInfo.data)))
+	off += 4
+	copy(buff[off: off + len(ekInfo.data)], ekInfo.data)
+	return buff
+}
+
+func (ekInfo *EkData) UnMarshal(raw []byte) (err error){
+	if len(raw) < 8 {
+		err = fmt.Errorf("ek raw data failed, len(%d) is below 8", len(raw))
+		return
+	}
+	ekInfo.key  = make([]byte, 0)
+	ekInfo.data = make([]byte, 0)
+
+	off := 0
+	keyLen := int(binary.BigEndian.Uint32(raw[off : off + 4]))
+	off += 4
+	if off + keyLen > len(raw) {
+		err = fmt.Errorf("ek raw data failed, offset(%d) key len(%d) is beyond raw len(%d)", off, keyLen, len(raw))
+		return
+	}
+	ekInfo.key = append(ekInfo.key, raw[off : off + keyLen]...)
+
+	off += keyLen
+	dataLen := int(binary.BigEndian.Uint32(raw[off : off + 4]))
+	off += 4
+	if off + dataLen > len(raw) {
+		err = fmt.Errorf("ek raw data failed, offset(%d) data len(%d) is beyond raw len(%d)", off, dataLen, len(raw))
+		return
+	}
+	ekInfo.data = append(ekInfo.data, raw[off : off + dataLen]...)
+	return nil
+}
+type DelExtentBatch []*EkData
 
 // MetaItemIteratorV2 defines the iterator of the MetaItem.
 type MetaItemIteratorV2 struct {
 	fileRootDir   string
 	applyID       uint64
-
-	filenames []string
+	db            *RocksDbInfo
+	snap          *gorocksdb.Snapshot
 
 	dataCh    chan interface{}
 	errorCh   chan error
 	err       error
 	closeCh   chan struct{}
 	closeOnce sync.Once
-
-	dataTmpCh chan interface{}
 	snapshotSign hash.Hash32
 	snapshotCrcFlag bool
 	treeSnap Snapshot
+	recoverNodeVersion *MetaNodeVersion
 }
 
 // newMetaItemIteratorV2 returns a new MetaItemIterator.
-func newMetaItemIteratorV2(mp *metaPartition ) (si *MetaItemIteratorV2, err error) {
+func newMetaItemIteratorV2(mp *metaPartition, version *MetaNodeVersion ) (si *MetaItemIteratorV2, err error) {
 	si = new(MetaItemIteratorV2)
 	si.fileRootDir = mp.config.RootDir
 	si.applyID = mp.applyID
 	si.dataCh = make(chan interface{})
 	si.errorCh = make(chan error, 1)
 	si.closeCh = make(chan struct{})
-	si.dataTmpCh = make(chan interface{}, 1)
+	//si.dataTmpCh = make(chan interface{}, 1)
 	si.snapshotSign = crc32.NewIEEE()
 	si.treeSnap = NewSnapshot(mp)
 	if si.treeSnap == nil {
 		err = errors.NewErrorf("get mp[%v] tree snap failed", mp.config.PartitionId)
 		return
 	}
+	si.db = mp.db
+	si.snap = mp.db.OpenSnap()
 	// collect extend del files
 	var filenames = make([]string, 0)
 	var fileInfos []os.FileInfo
@@ -77,7 +133,7 @@ func newMetaItemIteratorV2(mp *metaPartition ) (si *MetaItemIteratorV2, err erro
 			filenames = append(filenames, fileInfo.Name())
 		}
 	}
-	si.filenames = filenames
+	si.recoverNodeVersion = version
 
 	// start data producer
 	go func(iter *MetaItemIteratorV2) {
@@ -128,21 +184,6 @@ func newMetaItemIteratorV2(mp *metaPartition ) (si *MetaItemIteratorV2, err erro
 		if checkClose() {
 			return
 		}
-		//process deleted inode
-		if err = iter.treeSnap.Range(DelInodeType, func(v []byte) (bool, error) {
-			dino := NewDeletedInodeByID(0)
-			if e := dino.Unmarshal(ctx, v); e != nil {
-				return false, e
-			}
-			produceItem(dino)
-			return true, nil
-		}); err != nil {
-			produceError(err)
-			return
-		}
-		if checkClose() {
-			return
-		}
 		// process dentries
 		if err = iter.treeSnap.Range(DentryType, func(v []byte) (bool, error) {
 			dentry := new(Dentry)
@@ -150,23 +191,6 @@ func newMetaItemIteratorV2(mp *metaPartition ) (si *MetaItemIteratorV2, err erro
 				return false, e
 			}
 			if ok := produceItem(dentry); !ok {
-				return false, nil
-			}
-			return true, nil
-		}); err != nil {
-			produceError(err)
-			return
-		}
-		if checkClose() {
-			return
-		}
-		// process deleted dentries
-		if err = iter.treeSnap.Range(DelDentryType, func(v []byte) (bool, error) {
-			dd := newPrimaryDeletedDentry(0, "", 0, 0)
-			if e := dd.Unmarshal(v); e != nil {
-				return false, e
-			}
-			if ok := produceItem(dd); !ok {
 				return false, nil
 			}
 			return true, nil
@@ -196,7 +220,7 @@ func newMetaItemIteratorV2(mp *metaPartition ) (si *MetaItemIteratorV2, err erro
 		}
 		// process multiparts
 		if err = iter.treeSnap.Range(MultipartType, func(v []byte) (bool, error) {
-			multipart := MultipartFromBytes
+			multipart := MultipartFromBytes(v)
 			if ok := produceItem(multipart); !ok {
 				return false, nil
 			}
@@ -208,17 +232,59 @@ func newMetaItemIteratorV2(mp *metaPartition ) (si *MetaItemIteratorV2, err erro
 		if checkClose() {
 			return
 		}
-		// process extent del files
-		var err error
-		var raw []byte
-		for _, filename := range iter.filenames {
-			if raw, err = ioutil.ReadFile(path.Join(iter.fileRootDir, filename)); err != nil {
-				produceError(err)
-				return
+
+		//process deleted inode
+		if err = iter.treeSnap.Range(DelInodeType, func(v []byte) (bool, error) {
+			dino := NewDeletedInodeByID(0)
+			if e := dino.Unmarshal(ctx, v); e != nil {
+				return false, e
 			}
-			if !produceItem(&fileData{filename: filename, data: raw}) {
-				return
+			produceItem(dino)
+			return true, nil
+		}); err != nil {
+			produceError(err)
+			return
+		}
+		if checkClose() {
+			return
+		}
+
+		// process deleted dentries
+		if err = iter.treeSnap.Range(DelDentryType, func(v []byte) (bool, error) {
+			dd := newPrimaryDeletedDentry(0, "", 0, 0)
+			if e := dd.Unmarshal(v); e != nil {
+				return false, e
 			}
+			if ok := produceItem(dd); !ok {
+				return false, nil
+			}
+			return true, nil
+		}); err != nil {
+			produceError(err)
+			return
+		}
+		if checkClose() {
+			return
+		}
+
+		log.LogInfof("raft snap recover follower, send rocks db extent")
+		stKey   := make([]byte, 1)
+		endKey  := make([]byte, 1)
+
+		stKey[0]  = byte(ExtentDelTable)
+		endKey[0] = byte(ExtentDelTable + 1)
+		_ = mp.db.RangeWithSnap(stKey, endKey, si.snap, func(k, v []byte) (bool, error){
+			if k[0] !=  byte(ExtentDelTable) {
+				return false, nil
+			}
+			ek := NewEkData(k, v)
+			if !produceItem(ek) {
+				return false, fmt.Errorf("gen snap:producet extent item failed")
+			}
+			return true, nil
+		})
+		if checkClose() {
+			return
 		}
 	}(si)
 
@@ -234,6 +300,8 @@ func (si *MetaItemIteratorV2) ApplyIndex() uint64 {
 func (si *MetaItemIteratorV2) Close() {
 	si.closeOnce.Do(func() {
 		close(si.closeCh)
+		si.db.ReleaseSnap(si.snap)
+		si.treeSnap.Close()
 	})
 	return
 }
@@ -254,9 +322,7 @@ func (si *MetaItemIteratorV2) Next() (data []byte, err error) {
 		err = si.err
 		return
 	}
-	if len(si.dataTmpCh) != 0 {
-		return si.tmpChDataMarshal()
-	}
+
 	var item interface{}
 	var open bool
 	var snap *MetaItem
@@ -308,8 +374,16 @@ func (si *MetaItemIteratorV2) Next() (data []byte, err error) {
 		case *Multipart:
 			mulItems.MultipartBatches = append(mulItems.MultipartBatches, item.(*Multipart))
 			continue
+		case *DeletedINode:
+			mulItems.DeletedInodeBatches = append(mulItems.DeletedInodeBatches, item.(*DeletedINode))
+			continue
+		case *DeletedDentry:
+			mulItems.DeletedDentryBatches = append(mulItems.DeletedDentryBatches, item.(*DeletedDentry))
+			continue
+		case *EkData:
+			mulItems.DelExtents = append(mulItems.DelExtents, item.(*EkData))
+			continue
 		default:
-			si.dataTmpCh <- item
 			break
 		}
 	}
@@ -321,31 +395,6 @@ func (si *MetaItemIteratorV2) Next() (data []byte, err error) {
 		return
 	}
 	snap = NewMetaItem(opFSMBatchCreate, nil, val)
-	if data, err = snap.MarshalBinary(); err != nil {
-		si.err = err
-		si.Close()
-		return
-	}
-	lenData := make([]byte,4)
-	binary.BigEndian.PutUint32(lenData, uint32(len(data)))
-	if _, err = si.snapshotSign.Write(lenData); err != nil {
-		log.LogWarnf("create CRC for snapshotCheck failed, err is :%v", err)
-	}
-	if _, err = si.snapshotSign.Write(data); err != nil{
-		log.LogWarnf("create CRC for snapshotCheck failed, err is :%v", err)
-	}
-	return
-}
-
-func (si *MetaItemIteratorV2)tmpChDataMarshal() (data []byte, err error) {
-	item := <- si.dataTmpCh
-	var snap *MetaItem
-	switch typedItem := item.(type) {
-	case *fileData:
-		snap = NewMetaItem(opExtentFileSnapshot, []byte(typedItem.filename), typedItem.data)
-	default:
-		panic(fmt.Sprintf("unknown item type: %v", reflect.TypeOf(item).Name()))
-	}
 	if data, err = snap.MarshalBinary(); err != nil {
 		si.err = err
 		si.Close()

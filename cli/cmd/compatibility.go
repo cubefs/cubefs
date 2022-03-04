@@ -109,7 +109,7 @@ func verifyDentry(client *api.MetaHttpClient, mp metanode.MetaPartition) (err er
 		return fmt.Errorf("can not get mp[%d] snap shot", mp.GetBaseConfig().PartitionId)
 	}
 	defer mp.ReleaseSnapShot(snap)
-	snap.Range(metanode.DentryType, func(data []byte) (bool, error) {
+	if err = snap.Range(metanode.DentryType, func(data []byte) (bool, error) {
 		dentry := &metanode.Dentry{}
 		if err = dentry.Unmarshal(data); err != nil {
 			stdout("unmarshal dentry value failed:%v", err)
@@ -128,7 +128,9 @@ func verifyDentry(client *api.MetaHttpClient, mp metanode.MetaPartition) (err er
 			return false, err
 		}
 		return true, nil
-	})
+	}); err != nil {
+		return err
+	}
 	stdout("The number of dentry is %v, all dentry are consistent \n", snap.Count(metanode.DentryType))
 	return
 }
@@ -144,7 +146,7 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 		return fmt.Errorf("can not get mp[%d] snap shot", mp.GetBaseConfig().PartitionId)
 	}
 	defer mp.ReleaseSnapShot(snap)
-	snap.Range(metanode.InodeType, func(data []byte) (bool, error) {
+	if err = snap.Range(metanode.InodeType, func(data []byte) (bool, error) {
 		inode := metanode.NewInode(0, 0)
 		if err = inode.Unmarshal(context.Background(), data); err != nil {
 			return false, err
@@ -178,7 +180,9 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 			stdout("inode %v is not equal with old version,inode[%v],oldInode[%v]\n", inode.Inode, inode, oldInode)
 		}
 		return true, nil
-	})
+	}); err != nil {
+		return err
+	}
 	stdout("The number of inodes is %v, all inodes are consistent \n", snap.Count(metanode.InodeType))
 	return
 }

@@ -156,7 +156,15 @@ func (mp *metaPartition) loadInode(ctx context.Context, rootDir string) (err err
 				return
 			}
 		}
-		mp.fsmCreateInode(ino)
+		status, e := mp.fsmCreateInode(ino)
+		if e == rocksdbError {
+			err = errors.NewErrorf("[loadInode] fsmCreateInode, inode: %v, err: %v", ino, e)
+			return
+		}
+		if status != proto.OpOk {
+			err = errors.NewErrorf("[loadInode] fsmCreateInode, inode: %v, resp code: %d", ino, status)
+			return
+		}
 
 		//mp.checkAndInsertFreeList(ino)
 		if mp.config.Cursor < ino.Inode {
@@ -215,10 +223,18 @@ func (mp *metaPartition) loadDeletedInode(ctx context.Context, rootDir string) (
 		dino := new(DeletedINode)
 		err = dino.Unmarshal(ctx, inoBuf)
 		if err != nil {
-			err = errors.NewErrorf("[loadInode] Unmarshal: %s", err.Error())
+			err = errors.NewErrorf("[loadDeletedInode] Unmarshal: %s", err.Error())
 			return
 		}
-		mp.fsmCreateDeletedInode(dino)
+		resp, e := mp.fsmCreateDeletedInode(dino)
+		if e == rocksdbError {
+			err = errors.NewErrorf("[loadDeletedInode] fsmCreateDeletedInode, dinode: %v, err: %v", dino, e)
+			return
+		}
+		if status := resp.Status; status != proto.OpOk {
+			err = errors.NewErrorf("[loadDeletedInode] fsmCreateDeletedInode, dinode: %v, resp code: %d", dino, status)
+			return
+		}
 		mp.checkExpiredAndInsertFreeList(dino)
 
 		numInodes += 1
@@ -451,7 +467,15 @@ func (mp *metaPartition) loadMultipart(rootDir string) error {
 		var multipart *Multipart
 		multipart = MultipartFromBytes(mem[offset : offset+int(numBytes)])
 		log.LogDebugf("loadMultipart: create multipart from bytes: partitionID（%v) multipartID(%v)", mp.config.PartitionId, multipart.id)
-		mp.fsmCreateMultipart(multipart)
+		status, e := mp.fsmCreateMultipart(multipart)
+		if e == rocksdbError {
+			err = errors.NewErrorf("[loadMultipart] fsmCreateMultipart, multipart: %v, err: %v", multipart, e)
+			return err
+		}
+		if status != proto.OpOk {
+			err = errors.NewErrorf("[loadMultipart] fsmCreateMultipart, multipart: %v, resp code: %d", multipart, status)
+			return err
+		}
 		offset += int(numBytes)
 	}
 	log.LogInfof("loadMultipart: load complete: partitionID(%v) numMultiparts(%v) filename(%v)",

@@ -237,8 +237,16 @@ func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 
 	mp.monitorData[statistics.ActionMetaReadDir].UpdateData(0)
 
-	resp := mp.readDir(p.Ctx(), req)
-	reply, err := json.Marshal(resp)
+	var (
+		resp  *ReadDirResp
+		reply []byte
+	)
+	resp, err = mp.readDir(p.Ctx(), req)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	reply, err = json.Marshal(resp)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
@@ -283,4 +291,8 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 	}
 	p.PacketErrorWithBody(status, reply)
 	return
+}
+
+func (mp *metaPartition) GetDentryTree() DentryTree {
+	return mp.dentryTree
 }

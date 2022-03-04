@@ -149,7 +149,7 @@ func (mf *MetadataFsm) ApplyMemberChange(confChange *proto.ConfChange, index uin
 }
 
 // Snapshot implements the interface of raft.StateMachine
-func (mf *MetadataFsm) Snapshot() (proto.Snapshot, error) {
+func (mf *MetadataFsm) Snapshot(recoverNode uint64) (proto.Snapshot, error) {
 	snapshot := mf.store.RocksDBSnapshot()
 	iterator := mf.store.Iterator(snapshot)
 	iterator.SeekToFirst()

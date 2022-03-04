@@ -9,7 +9,7 @@ import (
 )
 
 func createDataNodeForTopo(addr, zoneName string, ns *nodeSet) (dn *DataNode) {
-	dn = newDataNode(addr, zoneName, "test")
+	dn = newDataNode(addr, zoneName, "test", "1.0.0")
 	dn.ZoneName = zoneName
 	dn.Total = 1024 * util.GB
 	dn.Used = 10 * util.GB
@@ -52,7 +52,7 @@ func batchCreateMetaNodeForNodeSet(topo *topology, ns *nodeSet, zoneName, cluste
 	}
 }
 func createDataNodeForNodeSet(addr, zoneName, clusterID string, ns *nodeSet) (dn *DataNode) {
-	dn = newDataNode(addr, zoneName, clusterID)
+	dn = newDataNode(addr, zoneName, clusterID, "1.0.0")
 	dn.ZoneName = zoneName
 	dn.Total = 1024 * util.GB
 	dn.Used = 10 * util.GB
@@ -65,7 +65,7 @@ func createDataNodeForNodeSet(addr, zoneName, clusterID string, ns *nodeSet) (dn
 }
 
 func createMetaNodeForNodeSet(addr, zoneName, clusterID string, ns *nodeSet) (mn *MetaNode) {
-	mn = newMetaNode(addr, zoneName, clusterID, 0)
+	mn = newMetaNode(addr, zoneName, clusterID, "1.0.0")
 	mn.ZoneName = zoneName
 	mn.Total = 1024 * util.GB
 	mn.Used = 10 * util.GB

@@ -45,10 +45,10 @@ type MetaNode struct {
 	ToBeMigrated              bool
 	PersistenceMetaPartitions []uint64
 	ProfPort                  string
-	Version                   uint32
+	Version                   string
 }
 
-func newMetaNode(addr, zoneName, clusterID string, version uint32) (node *MetaNode) {
+func newMetaNode(addr, zoneName, clusterID string, version string) (node *MetaNode) {
 	return &MetaNode{
 		Addr:     addr,
 		ZoneName: zoneName,

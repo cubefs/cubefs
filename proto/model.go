@@ -42,7 +42,7 @@ type MetaNodeInfo struct {
 	ToBeOffline               bool
 	ToBeMigrated              bool
 	ProfPort                  string
-	Version 				  uint32
+	Version                   string
 }
 
 // DataNode stores all the information about a data node
@@ -51,6 +51,7 @@ type DataNodeInfo struct {
 	Used                      uint64 `json:"UsedWeight"`
 	AvailableSpace            uint64
 	ID                        uint64
+	Version                   string
 	ZoneName                  string `json:"Zone"`
 	Addr                      string
 	ReportTime                time.Time
@@ -163,7 +164,7 @@ type NodeView struct {
 	Status     bool
 	ID         uint64
 	IsWritable bool
-	Version    uint32
+	Version    string
 }
 
 type BadPartitionView struct {

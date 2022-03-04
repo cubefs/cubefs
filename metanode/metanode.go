@@ -34,11 +34,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/statistics"
 )
 
-const (
-	MetaNodeVersion01 uint32 = 1			//support del extent record by rocks db
-	MetaNodeLatestVersion  = MetaNodeVersion01
-)
-
 var (
 	clusterInfo    *proto.ClusterInfo
 	masterClient   *masterSDK.MasterClient
@@ -66,8 +61,6 @@ type MetaNode struct {
 	rocksDirs          []string
 	diskStopCh         chan struct{}
 	disks              map[string]*util.FsCapMon
-	clusterMetaVersion uint32
-
 	control common.Control
 }
 

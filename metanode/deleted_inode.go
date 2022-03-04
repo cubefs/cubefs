@@ -11,6 +11,8 @@ import (
 	"reflect"
 )
 
+type DeletedINodeBatch []*DeletedINode
+
 type DeletedINode struct {
 	Inode
 	Timestamp int64

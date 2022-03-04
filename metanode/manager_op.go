@@ -64,13 +64,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 	}
 	m.Range(func(id uint64, partition MetaPartition) bool {
 		mConf := partition.GetBaseConfig()
-		snap := partition.GetSnapShot()
-		if snap == nil {
-			log.LogErrorf("action[opMasterHeartbeat] get meta partition[%d] snapshot is nil", partition.(*metaPartition).config.PartitionId)
-			return true
-		}
-		defer partition.ReleaseSnapShot(snap)
-		maxInode := partition.(*metaPartition).inodeTree.MaxItem()
+		maxInode := partition.GetInodeTree().MaxItem()
 		maxIno := mConf.Start
 		if maxInode != nil {
 			maxIno = maxInode.Inode
@@ -82,8 +76,8 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			Status:          proto.ReadWrite,
 			MaxInodeID:      mConf.Cursor,
 			VolName:         mConf.VolName,
-			InodeCnt:        snap.Count(InodeType),
-			DentryCnt:       snap.Count(DentryType),
+			InodeCnt:        partition.GetInodeTree().Count(),
+			DentryCnt:       partition.GetDentryTree().Count(),
 			IsLearner:       partition.IsLearner(),
 			ExistMaxInodeID: maxIno,
 			StoreMode:       mConf.StoreMode,
@@ -1606,7 +1600,7 @@ func (m *metadataManager) opGetAppliedID(conn net.Conn, p *Packet, remoteAddr st
 }
 
 func (m *metadataManager) opGetMetaNodeVersionInfo(conn net.Conn, p *Packet, remoteAddr string) (err error) {
-	ver, err := NewMetaNodeVersion(proto.BaseVersion)
+	ver := NewMetaNodeVersion(MetaNodeLatestVersion)
 	reply, err := json.Marshal(ver)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpGetMetaNodeVersionInfo, []byte(err.Error()))

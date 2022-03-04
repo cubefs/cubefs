@@ -458,6 +458,7 @@ func (manager *SpaceManager) DeletePartitionFromCache(dpID uint64) {
 
 func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatResponse) {
 	response.Status = proto.TaskSucceeds
+	response.Version = DataNodeLatestVersion
 	stat := s.space.Stats()
 	stat.Lock()
 	response.Used = stat.Used

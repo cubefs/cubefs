@@ -82,6 +82,7 @@ type metadataManager struct {
 type MetaNodeVersion struct {
 	Major      int64
 	Minor      int64
+	Patch      int64
 }
 
 func (m *metadataManager) getPacketLabelVals(p *Packet) (labels []string) {
@@ -568,7 +569,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		RootDir:            path.Join(m.rootDir, partitionPrefix+partitionId),
 		ConnPool:           m.connPool,
 		TrashRemainingDays: int32(request.TrashDays),
-		StoreMode: 	 request.StoreMode,
+		StoreMode: 	        request.StoreMode,
 	}
 	mpc.AfterStop = func() {
 		m.detachPartition(request.PartitionID)
@@ -727,32 +728,32 @@ func isExpiredPartition(fileName string, partitions []uint64) (expiredPartition 
 	return true
 }
 
-func NewMetaNodeVersion(version string) (*MetaNodeVersion, error) {
-	ver := MetaNodeVersion{}
+func NewMetaNodeVersion(version string) (*MetaNodeVersion) {
+	ver := &MetaNodeVersion{2,5, 0}
 	dotParts := strings.SplitN(version, ".", 3)
 	if len(dotParts) != 3 {
 		log.LogErrorf("[version: %s]'s length is  not right! ",version)
 	}
-	parsed := make([]int64, 2, 2)
-	if len(dotParts) < 2 {
-		err := fmt.Errorf("get metanode version error, dotparts: %v", dotParts)
-		return &ver, err
+	parsed := make([]int64, 3, 3)
+	if len(dotParts) < 3 {
+		return ver
 	}
-	for i, v := range dotParts[:2] {
+	for i, v := range dotParts[:3] {
 		val, err := strconv.ParseInt(v, 10, 64)
 		parsed[i] = val
 		if err != nil {
-			return &ver,err
+			return ver
 		}
 	}
 	ver.Major = parsed[0]
 	ver.Minor = parsed[1]
-	return &ver,nil
+	ver.Patch = parsed[2]
+	return ver
 }
 
-func (v MetaNodeVersion) Compare(versionB MetaNodeVersion) int {
-	verA := []int64{v.Major, v.Minor}
-	verB := []int64{versionB.Major, versionB.Minor}
+func (v MetaNodeVersion) Compare(versionB *MetaNodeVersion) int {
+	verA := []int64{v.Major, v.Minor, v.Patch}
+	verB := []int64{versionB.Major, versionB.Minor, v.Patch}
 	return recursiveCompare(verA, verB)
 }
 
@@ -771,6 +772,6 @@ func recursiveCompare(versionA []int64, versionB []int64) int {
 }
 
 // LessThan: compare metaNodeVersion, return true if A < B.
-func (v MetaNodeVersion) LessThan(versionB MetaNodeVersion) bool {
+func (v MetaNodeVersion) LessThan(versionB *MetaNodeVersion) bool {
 	return v.Compare(versionB) < 0
 }

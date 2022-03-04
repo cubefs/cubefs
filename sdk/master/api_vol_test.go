@@ -27,8 +27,8 @@ var (
 )
 
 func TestVolCreate(t *testing.T) {
-	err := testMc.AdminAPI().CreateVolume(testVolName, testOwner, testMpcount, testDpSize, testCapacity, testStoreMode,
-		testReplicas, testMpReplicas, testTrashDays, testFollowerRead, testAutoRepair, testVolWriteMutex, testForceROW, testZoneName, testMpLyout, 0)
+	err := testMc.AdminAPI().CreateVolume(testVolName, testOwner, testMpcount, testDpSize, testCapacity,
+		testReplicas, testMpReplicas, testTrashDays, testStoreMode, testFollowerRead, testAutoRepair, testVolWriteMutex, testForceROW, testZoneName, testMpLyout, 0)
 	if err != nil {
 		t.Errorf("create vol failed: err(%v) vol(%v)", err, testVolName)
 	}

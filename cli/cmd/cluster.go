@@ -37,7 +37,6 @@ func (cmd *ChubaoFSCmd) newClusterCmd(client *master.MasterClient) *cobra.Comman
 		newClusterStatCmd(client),
 		newClusterFreezeCmd(client),
 		newClusterSetThresholdCmd(client),
-		newClusterSetEnableMetaRocksDbCmd(client),
 	)
 	return clusterCmd
 }
@@ -137,27 +136,6 @@ If the memory usage reaches this threshold, all the mata partition will be readO
 				errout("Failed: %v\n", err)
 			}
 			stdout("MetaNode threshold is set to %v!\n", threshold)
-		},
-	}
-	return cmd
-}
-
-func newClusterSetEnableMetaRocksDbCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
-		Use:   CliExtentDelByRocksKey + "enable",
-		Short: cmdClusterExtentDelRocksDbShort,
-		Args:  cobra.MinimumNArgs(1),
-		Long: `Set extent del in rocksdb enable`,
-		Run: func(cmd *cobra.Command, args []string) {
-			var err error
-			if args[0] != "enable" {
-				errout("Input invalid: %v\n", err)
-			}
-
-			if err = client.AdminAPI().SetMetaNodeExtenDelByRocks(); err != nil {
-				errout("Failed: %v\n", err)
-			}
-			stdout("MetaNode delete extent by rocks db success\n")
 		},
 	}
 	return cmd

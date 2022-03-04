@@ -61,7 +61,6 @@ const (
 	AdminSetVolMinRWPartition      = "/vol/setMinRWPartition"
 	AdminEnableTrash               = "/admin/trash"
 	AdminStatTrash                 = "/admin/trash/stat"
-	AdminEnableExtDelByRocks       = "/extentDelByRocks/enable"
 
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
@@ -292,7 +291,6 @@ type LimitInfo struct {
 
 	ExtentMergeIno          map[string][]uint64
 	ExtentMergeSleepMs      uint64
-	MetaVersionRequirements uint32
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -483,6 +481,7 @@ type DataNodeHeartbeatResponse struct {
 	Result              string
 	BadDisks            []string
 	DiskInfos           map[string]*DiskInfo
+	Version             string
 }
 
 type DiskInfo struct {
@@ -520,8 +519,8 @@ type MetaNodeHeartbeatResponse struct {
 	Status               uint8
 	ProfPort             string
 	Result               string
-	FSInfo 				 []*util.FsCapMon
-	Version  			 uint32
+	FSInfo               []*util.FsCapMon
+	Version              string
 }
 
 // DeleteFileRequest defines the request to delete a file.

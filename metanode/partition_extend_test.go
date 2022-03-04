@@ -80,11 +80,18 @@ func SetXAttrInterTest(t *testing.T, leader, follower *metaPartition) {
 	return
 }
 
-func TestMetaPartition_SetXAttr(t *testing.T) {
-	testFunc := []TestFunc{
-		SetXAttrInterTest,
-	}
-	doTest(t, testFunc)
+func TestMetaPartition_SetXAttrCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "set_xattr_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	SetXAttrInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	SetXAttrInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }
 
 func BatchGetXAttrInterTest(t *testing.T, leader, follower *metaPartition) {
@@ -158,11 +165,18 @@ func BatchGetXAttrInterTest(t *testing.T, leader, follower *metaPartition) {
 	return
 }
 
-func TestMetaPartition_BatchGetXAttr(t *testing.T) {
-	testFunc := []TestFunc{
-		BatchGetXAttrInterTest,
-	}
-	doTest(t, testFunc)
+func TestMetaPartition_BatchGetXAttrCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "batch_get_xattr_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	BatchGetXAttrInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	BatchGetXAttrInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }
 
 func RemoveXAttrInterTest(t *testing.T, leader, follower *metaPartition) {
@@ -244,11 +258,18 @@ func RemoveXAttrInterTest(t *testing.T, leader, follower *metaPartition) {
 	}
 }
 
-func TestMetaPartition_RemoveXAttr(t *testing.T) {
-	testFunc := []TestFunc{
-		RemoveXAttrInterTest,
-	}
-	doTest(t, testFunc)
+func TestMetaPartition_RemoveXAttrCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "remove_xattr_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	RemoveXAttrInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	RemoveXAttrInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }
 
 func ListXAttrInterTest(t *testing.T, leader, follower *metaPartition) {
@@ -320,9 +341,16 @@ func ListXAttrInterTest(t *testing.T, leader, follower *metaPartition) {
 	return
 }
 
-func TestMetaPartition_ListXAttr(t *testing.T) {
-	testFunc := []TestFunc{
-		ListXAttrInterTest,
-	}
-	doTest(t, testFunc)
+func TestMetaPartition_ListXAttrCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "list_xattr_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	ListXAttrInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	ListXAttrInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }

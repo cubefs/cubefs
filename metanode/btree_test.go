@@ -223,10 +223,8 @@ func TestInodeTreeGetMaxInode(t *testing.T) {
 		_ = rocksInodeTree.Create(inode, true)
 	}
 	defer func() {
-		for index := 1; index <= inodeCount; index++ {
-			_, _ = memInodeTree.Delete(uint64(index))
-			_, _ = rocksInodeTree.Delete(uint64(index))
-		}
+		_ = memInodeTree.Clear()
+		_ = rocksInodeTree.Clear()
 	}()
 
 	maxIno, _ := memInodeTree.GetMaxInode()

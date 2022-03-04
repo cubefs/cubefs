@@ -23,7 +23,7 @@ import (
 type StateMachine interface {
 	Apply(command []byte, index uint64) (interface{}, error)
 	ApplyMemberChange(confChange *proto.ConfChange, index uint64) (interface{}, error)
-	Snapshot() (proto.Snapshot, error)
+	Snapshot(recoverNode uint64) (proto.Snapshot, error)
 	ApplySnapshot(peers []proto.Peer, iter proto.SnapIterator) error
 	HandleFatalEvent(err *FatalError)
 	HandleLeaderChange(leader uint64)

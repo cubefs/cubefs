@@ -198,7 +198,7 @@ func (m *MetaNode) getAllDeleteEkHandler(w http.ResponseWriter, r *http.Request)
 		resp.Msg = err.Error()
 		return
 	}
-	buff := bytes.NewBufferString(`{"code": 200, "msg": "OK", "data":[`)
+	buff := bytes.NewBufferString(`{"code": 200, "msg": "OK", "data":{ "deleteEks": [`)
 	if _, err = w.Write(buff.Bytes()); err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()
@@ -220,41 +220,47 @@ func (m *MetaNode) getAllDeleteEkHandler(w http.ResponseWriter, r *http.Request)
 	endKey = make([]byte, 1)
 	stKey[0] = byte(ExtentDelTable)
 	endKey[0] = byte(ExtentDelTable + 1)
-	mp.(*metaPartition).db.RangeWithSnap(stKey, endKey, snap, func(k, v []byte)(bool, error) {
+	err = mp.(*metaPartition).db.RangeWithSnap(stKey, endKey, snap, func(k, v []byte)(bool, error) {
+		ek := &proto.ExtentKey{}
+		err = ek.UnmarshalDbKey(k[8:])
+		if err != nil {
+			return false, err
+		}
+		val, err = json.Marshal(ek)
+		if err != nil {
+			return false, err
+		}
+
 		if !isFirst {
 			if _, err = w.Write(delimiter); err != nil {
-				return false, nil
+				return false, err
 			}
 		} else {
 			isFirst = false
 		}
 
-		ek := &proto.ExtentKey{}
-		ek.UnmarshalDbKey(k[8:])
-		val, err = json.Marshal(ek)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
-			return false, nil
-		}
 		if _, err = w.Write(val); err != nil {
-			return false, nil
+			return false, err
 		}
 
 		return true, nil
 	})
-
 	shouldSkip = true
-	buff.WriteString(`]}`)
+	buff.WriteString(`], `)
+	buff.WriteString("\n")
+	if err != nil {
+		buff.WriteString(fmt.Sprintf(`"errorMsg": "%s"}}`, err.Error()))
+	} else {
+		buff.WriteString(`"errorMsg": ""}}`)
+	}
 	if _, err = w.Write(buff.Bytes()); err != nil {
-		log.LogErrorf("[getAllInodesHandler] response %s", err)
+		log.LogErrorf("[getAllDeleteEkHandler] response %s", err)
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()
 	}
 	return
 }
 
-//todo:lizhenzhen, add count to response?
 func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 	resp := NewAPIResponse(http.StatusSeeOther, "")
 	shouldSkip := false
@@ -294,7 +300,7 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer snap.Close()
 
-	buff := bytes.NewBufferString(`{"code": 200, "msg": "OK", "data":[`)
+	buff := bytes.NewBufferString(`{"code": 200, "msg": "OK", "data":{ "inodes": [`)
 	if _, err = w.Write(buff.Bytes()); err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()
@@ -324,7 +330,6 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 		endTime = math.MaxInt64
 	}
 
-	//todo:lizhenzhen if range error, how to do
 	err = snap.Range(InodeType, func(inodeBinary []byte) (bool, error) {
 		inode := NewInode(0, 0)
 		if err = inode.Unmarshal(context.Background() ,inodeBinary); err != nil {
@@ -339,6 +344,11 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 			return true, nil
 		}
 
+		val, err = json.Marshal(inode)
+		if err != nil {
+			return false, err
+		}
+
 		if !isFirst {
 			if _, err = w.Write(delimiter); err != nil {
 				return false, err
@@ -347,25 +357,23 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 			isFirst = false
 		}
 
-		val, err = json.Marshal(inode)
-		if err != nil {
-			return false, err
-		}
 		if _, err = w.Write(val); err != nil {
 			return false, err
 		}
 		return true, nil
 	})
-	if err != nil {
-		w.Write([]byte(err.Error()))
-	}
 	shouldSkip = true
-	buff.WriteString(`]}`)
+	buff.WriteString(`], `)
+	buff.WriteString("\n")
+	if err != nil {
+		buff.WriteString(fmt.Sprintf(`"errorMsg": "%s"}}`, err.Error()))
+	} else {
+		buff.WriteString(`"errorMsg": ""}}`)
+	}
 	if _, err = w.Write(buff.Bytes()); err != nil {
 		log.LogErrorf("[getAllInodesHandler] response %s", err)
 	}
 	return
-
 }
 
 // param need pid:partition id and vol:volume name
@@ -577,7 +585,6 @@ func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
-//todo:add dentry count to response
 func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusSeeOther, "")
@@ -611,8 +618,10 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 	}
 	defer snap.Close()
 
-	buff := bytes.NewBufferString(`{"code": 200, "msg": "OK", "data":[`)
+	buff := bytes.NewBufferString(`{"code": 200, "msg": "OK", "data": {"dentries": [`)
 	if _, err = w.Write(buff.Bytes()); err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
 		return
 	}
 	buff.Reset()
@@ -626,6 +635,12 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 		if err = dentry.Unmarshal(dentryBinary); err != nil {
 			return false, err
 		}
+
+		val, err = json.Marshal(dentry)
+		if err != nil {
+			return false, err
+		}
+
 		if !isFirst {
 			if _, err = w.Write(delimiter); err != nil {
 				return false, err
@@ -633,21 +648,19 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 		} else {
 			isFirst = false
 		}
-		val, err = json.Marshal(dentry)
-		if err != nil {
-			return false, err
-		}
 		if _, err = w.Write(val); err != nil {
 			return false, err
 		}
 		return true, nil
 	})
-	if err != nil {
-		w.Write([]byte(err.Error()))
-		return
-	}
 	shouldSkip = true
-	buff.WriteString(`]}`)
+	buff.WriteString(`], `)
+	buff.WriteString("\n")
+	if err != nil {
+		buff.WriteString(fmt.Sprintf(`"errorMsg": "%s"}}`, err.Error()))
+	} else {
+		buff.WriteString(`"errorMsg": ""}}`)
+	}
 	if _, err = w.Write(buff.Bytes()); err != nil {
 		log.LogErrorf("[getAllDentriesHandler] response %s", err)
 	}

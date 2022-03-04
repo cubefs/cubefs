@@ -1230,6 +1230,7 @@ func (b *DentryRocks) Range(start, end *Dentry, cb func(v []byte) (bool, error))
 	var (
 		startByte []byte
 		endByte   []byte
+		cbFunc    func(v []byte) (bool, error)
 	)
 	startByte, endByte = []byte{byte(DentryTable)}, []byte{byte(DentryTable) + 1}
 	if end != nil {
@@ -1237,9 +1238,22 @@ func (b *DentryRocks) Range(start, end *Dentry, cb func(v []byte) (bool, error))
 	}
 
 	if start != nil && start.ParentId != 0 {
-		startByte = dentryEncodingKey(start.ParentId, start.Name)
+		startByte = dentryEncodingKey(start.ParentId, "")
+		cbFunc = func(data []byte) (bool, error) {
+			dentry := new(Dentry)
+			if err := dentry.Unmarshal(data); err != nil {
+				return false, err
+			}
+			if dentry.Less(start) {
+				return true, nil
+			}
+			return cb(data)
+
+		}
+	} else {
+		cbFunc = cb
 	}
-	return b.RocksTree.Range(startByte, endByte, cb)
+	return b.RocksTree.Range(startByte, endByte, cbFunc)
 }
 
 //Range , if end is nil , it will range all of this type , it range not include end

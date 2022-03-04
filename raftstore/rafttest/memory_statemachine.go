@@ -93,7 +93,7 @@ func (ms *memoryStatemachine) ApplyMemberChange(confChange *proto.ConfChange, in
 	return nil, nil
 }
 
-func (ms *memoryStatemachine) Snapshot() (proto.Snapshot, error) {
+func (ms *memoryStatemachine) Snapshot(recoverNode uint64) (proto.Snapshot, error) {
 	ms.RLock()
 	defer ms.RUnlock()
 

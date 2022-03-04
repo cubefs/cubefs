@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/metanode/metamock"
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/raftstore"
 	"math"
 	"os"
 	"path"
@@ -16,28 +15,71 @@ import (
 	"time"
 )
 
-func newMetapartitionForTest(raft raftstore.Partition, config *MetaPartitionConfig, mangaer *metadataManager)(mp *metaPartition, err error) {
-	tmp, err := CreateMetaPartition(config, mangaer)
+func mockMetaPartitionReplica(nodeID, partitionID uint64, storeMode proto.StoreMode, rootDir string) *metaPartition {
+	partitionDir := path.Join(rootDir, partitionPrefix + strconv.Itoa(int(partitionID)))
+	os.MkdirAll(partitionDir, 0666)
+	node := &MetaNode{
+		nodeId: nodeID,
+	}
+	manager := &metadataManager{
+		nodeId: 1,
+		metaNode: node,
+		rocksDBDirs: []string{rootDir},
+	}
+
+	config := &MetaPartitionConfig{
+		PartitionId: partitionID,
+		NodeId:      nodeID,
+		Start:       0,
+		End:         math.MaxUint64 - 100,
+		Peers:       []proto.Peer{proto.Peer{ID: 1, Addr: "127.0.0.1"}, {ID: 2, Addr: "127.0.0.2"}},
+		RootDir:     partitionDir,
+		StoreMode:   storeMode,
+		Cursor:      math.MaxUint64 - 100000,
+		RocksDBDir:  partitionDir,
+	}
+
+	mp, err := CreateMetaPartition(config, manager)
 	if  err != nil {
 		fmt.Printf("create meta partition failed:%s", err.Error())
-		return nil, err
+		return nil
 	}
-	mp = tmp.(*metaPartition)
-	mp.raftPartition = raft
+	return mp.(*metaPartition)
+}
+
+func mockMp(t *testing.T, dir string, leaderStoreMode proto.StoreMode) (leader, follower *metaPartition){
+	leaderRootDir := path.Join("./leader", dir)
+	os.RemoveAll(leaderRootDir)
+	if leader = mockMetaPartitionReplica(1, 1,  leaderStoreMode, leaderRootDir); leader == nil {
+		t.Errorf("mock metapartition failed")
+		return
+	}
+
+	followerRootDir := path.Join("./follower", dir)
+	os.RemoveAll(followerRootDir)
+	if follower = mockMetaPartitionReplica(1, 1,
+		(proto.StoreModeMem | proto.StoreModeRocksDb) - leaderStoreMode, followerRootDir); follower == nil {
+		t.Errorf("mock metapartition failed")
+		return
+	}
+
+	raftPartition := metamock.NewMockPartition(1)
+	raftPartition.Apply = ApplyMock
+	raftPartition.Mp = append(raftPartition.Mp, leader)
+	raftPartition.Mp = append(raftPartition.Mp, follower)
+
+	leader.raftPartition = raftPartition
+	follower.raftPartition = raftPartition
 	return
 }
 
-func newDefaultMpConfig(pid, nodeId, start, end uint64, storeMode proto.StoreMode)(conf *MetaPartitionConfig) {
-	conf = &MetaPartitionConfig{ PartitionId: pid,
-		NodeId: nodeId,
-		Start: start,
-		End: math.MaxUint64 - 100,
-		Peers: []proto.Peer{proto.Peer{ID: 1, Addr: "127.0.0.1"}, {ID: 2, Addr: "127.0.0.2"} },
-		RootDir: "./partition_" +strconv.Itoa(int(pid)),
-		StoreMode: storeMode,
-		Cursor: math.MaxUint64 - 100000,
-	}
-	return
+func releaseMp(leader, follower *metaPartition, dir string) {
+	leader.db.CloseDb()
+	follower.db.CloseDb()
+	leader.db.ReleaseRocksDb()
+	follower.db.ReleaseRocksDb()
+	os.RemoveAll("./leader")
+	os.RemoveAll("./follower")
 }
 
 func CreateInodeInterTest(t *testing.T, leader, follower *metaPartition, start uint64) {
@@ -93,109 +135,18 @@ func CreateInodeInterTest(t *testing.T, leader, follower *metaPartition, start u
 	t.Logf("same inode create success:%v, resuclt code:%d, %s", err, resp.ResultCode, resp.GetResultMsg())
 }
 
-func TestCreateInode(t *testing.T) {
-	node := &MetaNode{nodeId: 1}
-	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
-	memMpConf := newDefaultMpConfig(1, 1, 1, 1000, proto.StoreModeMem)
-	rockMpConf := newDefaultMpConfig(2, 2, 1, 1000, proto.StoreModeRocksDb)
-	raft := metamock.NewMockPartition(1)
-	memMp, err := newMetapartitionForTest(raft, memMpConf, manager)
-	if err != nil {
-		t.Errorf("create mp failed:%s", err.Error())
-		return
-	}
-
-	rockMp, err := newMetapartitionForTest(raft, rockMpConf, manager)
-	if err != nil {
-		t.Errorf("create mp failed:%s", err.Error())
-		return
-	}
-
-	defer func(){
-		if memMp != nil {
-			releaseTestMetapartition(memMp)
-		}
-
-		if rockMp != nil {
-			releaseTestMetapartition(rockMp)
-		}
-
-	}()
-
-	raft.Apply = ApplyMock
-	t.Logf("leader is mem")
-	raft.Mp = append(raft.Mp, memMp)
-	raft.Mp = append(raft.Mp, rockMp)
-	CreateInodeInterTest(t, memMp, rockMp, 0)
-
-	t.Logf("leader is rocks")
-	raft.Mp = raft.Mp[:0]
-	raft.Mp = append(raft.Mp, rockMp)
-	raft.Mp = append(raft.Mp, memMp)
-	CreateInodeInterTest(t, rockMp, memMp, 0)
-
-	return
-}
-
 func TestMetaPartition_CreateInodeCase01(t *testing.T) {
 	//leader is mem mode
-	rootDir :=  "./leader_create_inode_test_01"
-	os.RemoveAll(rootDir)
-	memModeMp := mockMetaPartition2(1, 1, proto.StoreModeMem, rootDir)
-	if memModeMp == nil {
-		t.Errorf("mock metapartition failed")
-		return
-	}
+	dir := "create_inode_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	CreateInodeInterTest(t, leader, follower, 0)
+	releaseMp(leader, follower, dir)
 
-	rootDir = "./follower_create_inode_test_01"
-	os.RemoveAll(rootDir)
-	rocksModeMp := mockMetaPartition2(1, 1, proto.StoreModeRocksDb, rootDir)
-	if rocksModeMp == nil {
-		t.Errorf("mock metapartition failed")
-		return
-	}
 
-	raftPartition := metamock.NewMockPartition(1)
-	raftPartition.Apply = ApplyMock
-	raftPartition.Mp = append(raftPartition.Mp, memModeMp)
-	raftPartition.Mp = append(raftPartition.Mp, rocksModeMp)
-
-	memModeMp.raftPartition = raftPartition
-	rocksModeMp.raftPartition = raftPartition
-
-	CreateInodeInterTest(t, memModeMp, rocksModeMp, 0)
-}
-
-func mockMetaPartition2(nodeID, partitionID uint64, storeMode proto.StoreMode, rootDir string) *metaPartition {
-	partitionDir := path.Join(rootDir, partitionPrefix + strconv.Itoa(int(partitionID)))
-	os.MkdirAll(partitionDir, 0666)
-	node := &MetaNode{
-		nodeId: nodeID,
-	}
-	manager := &metadataManager{
-		nodeId: 1,
-		metaNode: node,
-		rocksDBDirs: []string{rootDir},
-	}
-
-	config := &MetaPartitionConfig{
-		PartitionId: partitionID,
-		NodeId:      nodeID,
-		Start:       0,
-		End:         math.MaxUint64 - 100,
-		Peers:       []proto.Peer{proto.Peer{ID: 1, Addr: "127.0.0.1"}, {ID: 2, Addr: "127.0.0.2"}},
-		RootDir:     partitionDir,
-		StoreMode:   storeMode,
-		Cursor:      math.MaxUint64 - 100000,
-		RocksDBDir:  partitionDir,
-	}
-
-	mp, err := CreateMetaPartition(config, manager)
-	if  err != nil {
-		fmt.Printf("create meta partition failed:%s", err.Error())
-		return nil
-	}
-	return mp.(*metaPartition)
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	CreateInodeInterTest(t, leader, follower, 0)
+	releaseMp(leader, follower, dir)
 }
 
 func UnlinkInodeInterTest(t *testing.T, leader, follower *metaPartition, start uint64) {
@@ -297,46 +248,18 @@ func UnlinkInodeInterTest(t *testing.T, leader, follower *metaPartition, start u
 	t.Logf("unlink inode test success:%v, resuclt code:%d, %s", err, resp.ResultCode, resp.GetResultMsg())
 }
 
-func TestUnlinkInode(t *testing.T) {
-	node := &MetaNode{nodeId: 1}
-	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
-	memMpConf := newDefaultMpConfig(1, 1, 1, 1000, proto.StoreModeMem)
-	rockMpConf := newDefaultMpConfig(2, 2, 1, 1000, proto.StoreModeRocksDb)
-	raft := metamock.NewMockPartition(1)
-	memMp, err := newMetapartitionForTest(raft, memMpConf, manager)
-	if err != nil {
-		t.Errorf("create mp failed:%s", err.Error())
-		return
-	}
+func TestMetaPartition_UnlinkInodeCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "unlink_inode_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	UnlinkInodeInterTest(t, leader, follower, 0)
+	releaseMp(leader, follower, dir)
 
-	rockMp, err := newMetapartitionForTest(raft, rockMpConf, manager)
-	if err != nil {
-		t.Errorf("create mp failed:%s", err.Error())
-		return
-	}
 
-	defer func(){
-		if memMp != nil {
-			releaseTestMetapartition(memMp)
-		}
-
-		if rockMp != nil {
-			releaseTestMetapartition(rockMp)
-		}
-
-	}()
-
-	raft.Apply = ApplyMock
-	t.Logf("leader is mem")
-	raft.Mp = append(raft.Mp, memMp)
-	raft.Mp = append(raft.Mp, rockMp)
-	UnlinkInodeInterTest(t, memMp, rockMp, 0)
-
-	t.Logf("leader is rocks")
-	raft.Mp = raft.Mp[:0]
-	raft.Mp = append(raft.Mp, rockMp)
-	raft.Mp = append(raft.Mp, memMp)
-	UnlinkInodeInterTest(t, rockMp, memMp, 100)
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	UnlinkInodeInterTest(t, leader, follower, 0)
+	releaseMp(leader, follower, dir)
 }
 
 func createInodesForTest(leader, follower *metaPartition, inodeCnt int, mode, uid, gid uint32) (inos []uint64, err error) {
@@ -452,44 +375,17 @@ func BatchInodeUnlinkInterTest(t *testing.T, leader, follower *metaPartition) {
 	return
 }
 
-func TestBatchUnlinkInode(t *testing.T) {
-	node := &MetaNode{nodeId: 1}
-	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
-	memMpConf := newDefaultMpConfig(1, 1, 1, 1000, proto.StoreModeMem)
-	rockMpConf := newDefaultMpConfig(2, 2, 1, 1000, proto.StoreModeRocksDb)
-	raft := metamock.NewMockPartition(1)
-	memMp, err := newMetapartitionForTest(raft, memMpConf, manager)
-	if err != nil {
-		t.Errorf("create mp failed:%s", err.Error())
-		return
-	}
+func TestMetaPartition_UnlinkInodeBatch01(t *testing.T) {
+	//leader is mem mode
+	dir := "unlink_inode_batch_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	BatchInodeUnlinkInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 
-	rockMp, err := newMetapartitionForTest(raft, rockMpConf, manager)
-	if err != nil {
-		t.Errorf("create mp failed:%s", err.Error())
-		return
-	}
-
-	defer func(){
-		if memMp != nil {
-			releaseTestMetapartition(memMp)
-		}
-
-		if rockMp != nil {
-			releaseTestMetapartition(rockMp)
-		}
-
-	}()
-
-	raft.Apply = ApplyMock
-	raft.Mp = append(raft.Mp, memMp)
-	raft.Mp = append(raft.Mp, rockMp)
-	BatchInodeUnlinkInterTest(t, memMp, rockMp)
-
-	raft.Mp = raft.Mp[:0]
-	raft.Mp = append(raft.Mp, rockMp)
-	raft.Mp = append(raft.Mp, memMp)
-	BatchInodeUnlinkInterTest(t, rockMp, memMp)
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	BatchInodeUnlinkInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }
 
 func InodeGetInterGet(t *testing.T, leader, follower *metaPartition) {
@@ -532,46 +428,18 @@ func InodeGetInterGet(t *testing.T, leader, follower *metaPartition) {
 	return
 }
 
-func TestInodeGet(t *testing.T) {
-	node := &MetaNode{nodeId: 1}
-	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
-	memMpConf := newDefaultMpConfig(1, 1, 1, 1000, proto.StoreModeMem)
-	rockMpConf := newDefaultMpConfig(2, 2, 1, 1000, proto.StoreModeRocksDb)
-	raft := metamock.NewMockPartition(1)
-	memMp, err := newMetapartitionForTest(raft, memMpConf, manager)
-	if err != nil {
-		t.Errorf("create mp failed:%s", err.Error())
-		return
-	}
+func TestMetaPartition_InodeGetCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "inode_get_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	InodeGetInterGet(t, leader, follower)
+	releaseMp(leader, follower, dir)
 
-	rockMp, err := newMetapartitionForTest(raft, rockMpConf, manager)
-	if err != nil {
-		t.Errorf("create mp failed:%s", err.Error())
-		return
-	}
 
-	defer func(){
-		if memMp != nil {
-			releaseTestMetapartition(memMp)
-		}
-
-		if rockMp != nil {
-			releaseTestMetapartition(rockMp)
-		}
-
-	}()
-
-	raft.Apply = ApplyMock
-	t.Logf("leader is mem")
-	raft.Mp = append(raft.Mp, memMp)
-	raft.Mp = append(raft.Mp, rockMp)
-	InodeGetInterGet(t, memMp, rockMp)
-
-	raft.Mp = raft.Mp[:0]
-	t.Logf("leader is rocks")
-	raft.Mp = append(raft.Mp, rockMp)
-	raft.Mp = append(raft.Mp, memMp)
-	InodeGetInterGet(t, rockMp, memMp)
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	InodeGetInterGet(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }
 
 func BatchInodeGetInterTest(t *testing.T, leader, follower *metaPartition) {
@@ -634,46 +502,18 @@ func BatchInodeGetInterTest(t *testing.T, leader, follower *metaPartition) {
 	return
 }
 
-func TestBatchInodeGet(t *testing.T) {
-	node := &MetaNode{nodeId: 1}
-	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
-	memMpConf := newDefaultMpConfig(1, 1, 1, 1000, proto.StoreModeMem)
-	rockMpConf := newDefaultMpConfig(2, 2, 1, 1000, proto.StoreModeRocksDb)
-	raft := metamock.NewMockPartition(1)
-	memMp, err := newMetapartitionForTest(raft, memMpConf, manager)
-	if err != nil {
-		t.Errorf("create mp failed:%s", err.Error())
-		return
-	}
+func TestMetaPartition_BatchInodeGetCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "batch_inode_get_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	BatchInodeGetInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 
-	rockMp, err := newMetapartitionForTest(raft, rockMpConf, manager)
-	if err != nil {
-		t.Errorf("create mp failed:%s", err.Error())
-		return
-	}
 
-	defer func(){
-		if memMp != nil {
-			releaseTestMetapartition(memMp)
-		}
-
-		if rockMp != nil {
-			releaseTestMetapartition(rockMp)
-		}
-
-	}()
-
-	raft.Apply = ApplyMock
-	//t.Logf("leader is mem")
-	raft.Mp = append(raft.Mp, memMp)
-	raft.Mp = append(raft.Mp, rockMp)
-	BatchInodeGetInterTest(t, memMp, rockMp)
-
-	raft.Mp = raft.Mp[:0]
-	//t.Logf("leader is rocks")
-	raft.Mp = append(raft.Mp, rockMp)
-	raft.Mp = append(raft.Mp, memMp)
-	BatchInodeGetInterTest(t, rockMp, memMp)
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	BatchInodeGetInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }
 
 func CreateInodeLinkInterTest(t *testing.T, leader, follower *metaPartition) {
@@ -738,46 +578,18 @@ func CreateInodeLinkInterTest(t *testing.T, leader, follower *metaPartition) {
 	return
 }
 
-func TestCreateInodeLink(t *testing.T) {
-	node := &MetaNode{nodeId: 1}
-	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
-	memMpConf := newDefaultMpConfig(1, 1, 1, 1000, proto.StoreModeMem)
-	rockMpConf := newDefaultMpConfig(2, 2, 1, 1000, proto.StoreModeRocksDb)
-	raft := metamock.NewMockPartition(1)
-	memMp, err := newMetapartitionForTest(raft, memMpConf, manager)
-	if err != nil {
-		t.Errorf("create mp failed:%s", err.Error())
-		return
-	}
+func TestMetaPartition_CreateInodeLinkCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "create_inode_link_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	CreateInodeLinkInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 
-	rockMp, err := newMetapartitionForTest(raft, rockMpConf, manager)
-	if err != nil {
-		t.Errorf("create mp failed:%s", err.Error())
-		return
-	}
 
-	defer func(){
-		if memMp != nil {
-			releaseTestMetapartition(memMp)
-		}
-
-		if rockMp != nil {
-			releaseTestMetapartition(rockMp)
-		}
-
-	}()
-
-	raft.Apply = ApplyMock
-	//t.Logf("leader is mem")
-	raft.Mp = append(raft.Mp, memMp)
-	raft.Mp = append(raft.Mp, rockMp)
-	CreateInodeLinkInterTest(t, memMp, rockMp)
-
-	raft.Mp = raft.Mp[:0]
-	//t.Logf("leader is rocks")
-	raft.Mp = append(raft.Mp, rockMp)
-	raft.Mp = append(raft.Mp, memMp)
-	CreateInodeLinkInterTest(t, rockMp, memMp)
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	CreateInodeLinkInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }
 
 //simulate remove file
@@ -966,48 +778,20 @@ func EvictDirInodeInterTest(t *testing.T, leader, follower *metaPartition) {
 	}
 }
 
-func TestEvictInode(t *testing.T) {
-	node := &MetaNode{nodeId: 1}
-	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
-	memMpConf := newDefaultMpConfig(1, 1, 1, 1000, proto.StoreModeMem)
-	rockMpConf := newDefaultMpConfig(2, 2, 1, 1000, proto.StoreModeRocksDb)
-	raft := metamock.NewMockPartition(1)
-	memMp, err := newMetapartitionForTest(raft, memMpConf, manager)
-	if err != nil {
-		t.Errorf("create mp failed:%s", err.Error())
-		return
-	}
+func TestMetaPartition_EvictInodeCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "evict_inode_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	EvictFileInodeInterTest(t, leader, follower)
+	EvictDirInodeInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 
-	rockMp, err := newMetapartitionForTest(raft, rockMpConf, manager)
-	if err != nil {
-		t.Errorf("create mp failed:%s", err.Error())
-		return
-	}
 
-	defer func(){
-		if memMp != nil {
-			releaseTestMetapartition(memMp)
-		}
-
-		if rockMp != nil {
-			releaseTestMetapartition(rockMp)
-		}
-
-	}()
-
-	raft.Apply = ApplyMock
-	//t.Logf("leader is mem")
-	raft.Mp = append(raft.Mp, memMp)
-	raft.Mp = append(raft.Mp, rockMp)
-	EvictFileInodeInterTest(t, memMp, rockMp)
-	EvictDirInodeInterTest(t, memMp, rockMp)
-
-	raft.Mp = raft.Mp[:0]
-	//t.Logf("leader is rocks")
-	raft.Mp = append(raft.Mp, rockMp)
-	raft.Mp = append(raft.Mp, memMp)
-	EvictFileInodeInterTest(t, rockMp, memMp)
-	EvictDirInodeInterTest(t, memMp, rockMp)
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	EvictFileInodeInterTest(t, leader, follower)
+	EvictDirInodeInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }
 
 func EvictBatchInodeInterTest(t *testing.T, leader, follower *metaPartition) {
@@ -1087,46 +871,19 @@ func EvictBatchInodeInterTest(t *testing.T, leader, follower *metaPartition) {
 	return
 }
 
-func TestEvictBatchInode(t *testing.T) {
-	node := &MetaNode{nodeId: 1}
-	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
-	memMpConf := newDefaultMpConfig(1, 1, 1, 1000, proto.StoreModeMem)
-	rockMpConf := newDefaultMpConfig(2, 2, 1, 1000, proto.StoreModeRocksDb)
-	raft := metamock.NewMockPartition(1)
-	memMp, err := newMetapartitionForTest(raft, memMpConf, manager)
-	if err != nil {
-		t.Errorf("create mp failed:%s", err.Error())
-		return
-	}
+//todo:test
+func TestMetaPartition_BatchEvictInodeCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "batch_evict_inode_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	EvictBatchInodeInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 
-	rockMp, err := newMetapartitionForTest(raft, rockMpConf, manager)
-	if err != nil {
-		t.Errorf("create mp failed:%s", err.Error())
-		return
-	}
 
-	defer func(){
-		if memMp != nil {
-			releaseTestMetapartition(memMp)
-		}
-
-		if rockMp != nil {
-			releaseTestMetapartition(rockMp)
-		}
-
-	}()
-
-	raft.Apply = ApplyMock
-	//t.Logf("leader is mem")
-	raft.Mp = append(raft.Mp, memMp)
-	raft.Mp = append(raft.Mp, rockMp)
-	EvictBatchInodeInterTest(t, memMp, rockMp)
-
-	raft.Mp = raft.Mp[:0]
-	//t.Logf("leader is rocks")
-	raft.Mp = append(raft.Mp, rockMp)
-	raft.Mp = append(raft.Mp, memMp)
-	EvictBatchInodeInterTest(t, rockMp, memMp)
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	EvictBatchInodeInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }
 
 func SetAttrInterTest(t *testing.T, leader, follower *metaPartition) {
@@ -1196,46 +953,17 @@ func SetAttrInterTest(t *testing.T, leader, follower *metaPartition) {
 	return
 }
 
-func TestSetAttr(t *testing.T) {
-	node := &MetaNode{nodeId: 1}
-	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
-	memMpConf := newDefaultMpConfig(1, 1, 1, 1000, proto.StoreModeMem)
-	rockMpConf := newDefaultMpConfig(2, 2, 1, 1000, proto.StoreModeRocksDb)
-	raft := metamock.NewMockPartition(1)
-	memMp, err := newMetapartitionForTest(raft, memMpConf, manager)
-	if err != nil {
-		t.Errorf("create mp failed:%s", err.Error())
-		return
-	}
+func TestMetaPartition_SetAttrCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "set_attr_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	SetAttrInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 
-	rockMp, err := newMetapartitionForTest(raft, rockMpConf, manager)
-	if err != nil {
-		t.Errorf("create mp failed:%s", err.Error())
-		return
-	}
-
-	defer func(){
-		if memMp != nil {
-			releaseTestMetapartition(memMp)
-		}
-
-		if rockMp != nil {
-			releaseTestMetapartition(rockMp)
-		}
-
-	}()
-
-	raft.Apply = ApplyMock
-	//t.Logf("leader is mem")
-	raft.Mp = append(raft.Mp, memMp)
-	raft.Mp = append(raft.Mp, rockMp)
-	SetAttrInterTest(t, memMp, rockMp)
-
-	raft.Mp = raft.Mp[:0]
-	//t.Logf("leader is rocks")
-	raft.Mp = append(raft.Mp, rockMp)
-	raft.Mp = append(raft.Mp, memMp)
-	SetAttrInterTest(t, rockMp, memMp)
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	SetAttrInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }
 
 func DeleteInodeInterTest(t *testing.T, leader, follower *metaPartition) {
@@ -1262,46 +990,17 @@ func DeleteInodeInterTest(t *testing.T, leader, follower *metaPartition) {
 	}
 }
 
-func TestDeleteInode(t *testing.T) {
-	node := &MetaNode{nodeId: 1}
-	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
-	memMpConf := newDefaultMpConfig(1, 1, 1, 1000, proto.StoreModeMem)
-	rockMpConf := newDefaultMpConfig(2, 2, 1, 1000, proto.StoreModeRocksDb)
-	raft := metamock.NewMockPartition(1)
-	memMp, err := newMetapartitionForTest(raft, memMpConf, manager)
-	if err != nil {
-		t.Errorf("create mp failed:%s", err.Error())
-		return
-	}
+func TestMetaPartition_DeleteInodeCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "delete_inode_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	DeleteInodeInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 
-	rockMp, err := newMetapartitionForTest(raft, rockMpConf, manager)
-	if err != nil {
-		t.Errorf("create mp failed:%s", err.Error())
-		return
-	}
-
-	defer func(){
-		if memMp != nil {
-			releaseTestMetapartition(memMp)
-		}
-
-		if rockMp != nil {
-			releaseTestMetapartition(rockMp)
-		}
-
-	}()
-
-	raft.Apply = ApplyMock
-	//t.Logf("leader is mem")
-	raft.Mp = append(raft.Mp, memMp)
-	raft.Mp = append(raft.Mp, rockMp)
-	DeleteInodeInterTest(t, memMp, rockMp)
-
-	raft.Mp = raft.Mp[:0]
-	//t.Logf("leader is rocks")
-	raft.Mp = append(raft.Mp, rockMp)
-	raft.Mp = append(raft.Mp, memMp)
-	DeleteInodeInterTest(t, rockMp, memMp)
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	DeleteInodeInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }
 
 func BatchDeleteInodeInterTest(t *testing.T, leader, follower *metaPartition) {
@@ -1346,57 +1045,15 @@ func BatchDeleteInodeInterTest(t *testing.T, leader, follower *metaPartition) {
 	}
 }
 
-func TestBatchDeleteInode(t *testing.T) {
-	testFunc := []TestFunc{
-		BatchDeleteInodeInterTest,
-	}
-	doTest(t, testFunc)
-}
+func TestMetaPartition_BatchDeleteInodeCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "batch_delete_inode_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	BatchDeleteInodeInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 
-type TestFunc func(*testing.T, *metaPartition, *metaPartition)
-
-func doTest(t *testing.T, testFunc []TestFunc) {
-	node := &MetaNode{nodeId: 1}
-	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
-	memMpConf := newDefaultMpConfig(1, 1, 1, 100000, proto.StoreModeMem)
-	rockMpConf := newDefaultMpConfig(2, 2, 1, 100000, proto.StoreModeRocksDb)
-	raft := metamock.NewMockPartition(1)
-	memMp, err := newMetapartitionForTest(raft, memMpConf, manager)
-	if err != nil {
-		t.Errorf("create mp failed:%s", err.Error())
-		return
-	}
-
-	rockMp, err := newMetapartitionForTest(raft, rockMpConf, manager)
-	if err != nil {
-		t.Errorf("create mp failed:%s", err.Error())
-		return
-	}
-
-	defer func(){
-		if memMp != nil {
-			releaseTestMetapartition(memMp)
-		}
-
-		if rockMp != nil {
-			releaseTestMetapartition(rockMp)
-		}
-
-	}()
-
-	raft.Apply = ApplyMock
-	t.Logf("leader is memory mode\n")
-	raft.Mp = append(raft.Mp, memMp)
-	raft.Mp = append(raft.Mp, rockMp)
-	for _, f := range testFunc {
-		f(t, memMp, rockMp)
-	}
-
-	raft.Mp = raft.Mp[:0]
-	t.Logf("leader is rocksdb mode\n")
-	raft.Mp = append(raft.Mp, rockMp)
-	raft.Mp = append(raft.Mp, memMp)
-	for _, f := range testFunc {
-		f(t, rockMp, memMp)
-	}
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	BatchDeleteInodeInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }

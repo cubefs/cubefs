@@ -196,11 +196,17 @@ func CreateMultipartInterTest01(t *testing.T, leader, follower *metaPartition) {
 	}
 }
 
-func TestMetaPartition_CreateAndGetMultipart(t *testing.T) {
-	testFunc := []TestFunc{
-		CreateMultipartInterTest01,
-	}
-	doTest(t, testFunc)
+func TestMetaPartition_CreateAndGetMultipartCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "create_and_get_multipart_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	CreateMultipartInterTest01(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	CreateMultipartInterTest01(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }
 
 func AppendMultipartInterTest01(t *testing.T, leader, follower *metaPartition) {
@@ -211,13 +217,6 @@ func AppendMultipartInterTest01(t *testing.T, leader, follower *metaPartition) {
 	}
 
 	defer func() {
-		//remove all multipart
-		//reqRemove := &proto.RemoveMultipartRequest{
-		//	Path: multipart.Path,
-		//	MultipartId: multipart.ID,
-		//}
-		//packet := &Packet{}
-		//_ = leader.RemoveMultipart(reqRemove, packet)
 		_ = leader.multipartTree.Clear()
 		_ = follower.multipartTree.Clear()
 	}()
@@ -284,12 +283,6 @@ func AppendMultipartInterTest02(t *testing.T, leader, follower *metaPartition) {
 		t.Fatal(err)
 	}
 	defer func() {
-		//reqRemove := &proto.RemoveMultipartRequest{
-		//	Path: multipart.Path,
-		//	MultipartId: multipart.ID,
-		//}
-		//packet := &Packet{}
-		//_ = leader.RemoveMultipart(reqRemove, packet)
 		_ = leader.multipartTree.Clear()
 		_ = follower.multipartTree.Clear()
 	}()
@@ -352,13 +345,43 @@ func AppendMultipartInterTest03(t *testing.T, leader, follower *metaPartition) {
 	return
 }
 
-func TestMetaPartition_AppendMultipart(t *testing.T) {
-	testFunc := []TestFunc {
-		AppendMultipartInterTest01,
-		AppendMultipartInterTest02,
-		AppendMultipartInterTest03,
-	}
-	doTest(t, testFunc)
+func TestMetaPartition_AppendMultipartCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "append_multipart_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	AppendMultipartInterTest01(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	AppendMultipartInterTest01(t, leader, follower)
+	releaseMp(leader, follower, dir)
+}
+
+func TestMetaPartition_AppendMultipartCase02(t *testing.T) {
+	//leader is mem mode
+	dir := "append_multipart_test_02"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	AppendMultipartInterTest02(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	AppendMultipartInterTest02(t, leader, follower)
+	releaseMp(leader, follower, dir)
+}
+
+func TestMetaPartition_AppendMultipartCase03(t *testing.T) {
+	//leader is mem mode
+	dir := "append_multipart_test_03"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	AppendMultipartInterTest03(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	AppendMultipartInterTest03(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }
 
 //list multipart with prefix
@@ -370,15 +393,6 @@ func ListMultipartInterTest01(t *testing.T, leader, follower *metaPartition) {
 	}
 
 	defer func() {
-		//remove all multipart
-		//for _, multipart := range multiparts {
-		//	reqRemove := &proto.RemoveMultipartRequest{
-		//		Path: multipart.Path,
-		//		MultipartId: multipart.ID,
-		//	}
-		//	packet := &Packet{}
-		//	_ = leader.RemoveMultipart(reqRemove, packet)
-		//}
 		_ = leader.multipartTree.Clear()
 		_ = follower.multipartTree.Clear()
 	}()
@@ -463,15 +477,6 @@ func ListMultipartInterTest02(t *testing.T, leader, follower *metaPartition) {
 		return
 	}
 	defer func() {
-		//remove all multipart
-		//for _, multipart := range multiparts {
-		//	reqRemove := &proto.RemoveMultipartRequest{
-		//		Path: multipart.Path,
-		//		MultipartId: multipart.ID,
-		//	}
-		//	packet := &Packet{}
-		//	_ = leader.RemoveMultipart(reqRemove, packet)
-		//}
 		_ = leader.multipartTree.Clear()
 		_ = follower.multipartTree.Clear()
 	}()
@@ -582,12 +587,30 @@ func listMultipart(leader, follower *metaPartition, req *proto.ListMultipartRequ
 	return
 }
 
-func TestMetaPartition_ListMultipart(t *testing.T) {
-	testFunc := []TestFunc{
-		ListMultipartInterTest01,
-		ListMultipartInterTest02,
-	}
-	doTest(t, testFunc)
+func TestMetaPartition_ListMultipartCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "list_multipart_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	ListMultipartInterTest01(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	ListMultipartInterTest01(t, leader, follower)
+	releaseMp(leader, follower, dir)
+}
+
+func TestMetaPartition_ListMultipartCase02(t *testing.T) {
+	//leader is mem mode
+	dir := "list_multipart_test_02"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	ListMultipartInterTest02(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	ListMultipartInterTest02(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }
 
 func RemoverMultipartInterTest(t *testing.T, leader, follower *metaPartition) {
@@ -596,13 +619,6 @@ func RemoverMultipartInterTest(t *testing.T, leader, follower *metaPartition) {
 		t.Fatal(err)
 	}
 	defer func() {
-		//remove all multipart
-		//reqRemove := &proto.RemoveMultipartRequest{
-		//	Path: multipart.Path,
-		//	MultipartId: multipart.ID,
-		//}
-		//packet := &Packet{}
-		//_ = leader.RemoveMultipart(reqRemove, packet)
 		_ = leader.multipartTree.Clear()
 		_ = follower.multipartTree.Clear()
 	}()
@@ -631,9 +647,15 @@ func RemoverMultipartInterTest(t *testing.T, leader, follower *metaPartition) {
 	return
 }
 
-func TestMetaPartition_RemoveMultipart(t *testing.T) {
-	testFunc := []TestFunc{
-		RemoverMultipartInterTest,
-	}
-	doTest(t, testFunc)
+func TestMetaPartition_RemoveMultipartCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "remove_multipart_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	RemoverMultipartInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	RemoverMultipartInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }

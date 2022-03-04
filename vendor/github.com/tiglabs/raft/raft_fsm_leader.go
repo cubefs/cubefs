@@ -447,7 +447,7 @@ func (r *raftFsm) sendAppend(ctx context.Context, to uint64) {
 			return
 		}
 
-		snapshot, err := r.sm.Snapshot()
+		snapshot, err := r.sm.Snapshot(pr.peer.ID)
 		if err != nil {
 			panic(AppPanicError(fmt.Sprintf("[raft->sendAppend][%v]failed to send snapshot to %v because snapshot is unavailable, error is: %v",
 				r.id, to, err)))

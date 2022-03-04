@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/metanode/metamock"
 	"github.com/chubaofs/chubaofs/proto"
+	raftproto "github.com/tiglabs/raft/proto"
 	"os"
 	"strconv"
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -304,14 +304,17 @@ func TestSnapResetDb(t *testing.T) {
 }
 
 func applySnapshot(t *testing.T, num int, rocksEnable bool) {
-	mp, err := mockMP()
+	mp, err := newTestMetapartition(1)
+	mp2, err := newTestMetapartition(2)
 	if err != nil {
 		t.Fatalf("create mp failed:%s", err.Error())
 	}
 	defer func() {
 		releaseMP(mp)
+		releaseMP(mp2)
 	}()
 	mp.startToDeleteExtents()
+	mp2.startToDeleteExtents()
 	mockPartition := mp.raftPartition.(*metamock.MockPartition)
 	//gen eks
 	key := make([]byte, dbExtentKeySize)
@@ -323,32 +326,30 @@ func applySnapshot(t *testing.T, num int, rocksEnable bool) {
 	time.Sleep(time.Second)
 	checkRocksDBEks(t, mp, eks, key)
 	mockPartition.Id = 2
-	version := uint32(0)
+	var si raftproto.SnapIterator
 	if rocksEnable {
-		version = 1
+		si, _ = newMetaItemIteratorV2(mp, NewMetaNodeVersion("2.7.0"))
+	} else {
+		si, _ = newMetaItemIterator(mp)
 	}
-	atomic.StoreUint32(&mp.manager.metaNode.clusterMetaVersion, version)
-	var si *MetaItemIterator
-	si, err = newMetaItemIterator(mp)
-	if err != nil {
-		t.Errorf("error:%v", err)
-		return
-	}
-	mp.ApplySnapshot(nil, si)
 
-	cnt := getRocksDbCnt(t, mp)
+	mp2.ApplySnapshot(nil, si)
+	cnt := getRocksDbCnt(t, mp2)
 
 	if rocksEnable {
 		if cnt != num {
 			t.Logf("apply snap test case[%v] enablerocks :%v, failed, want:%d, now:%d", num, rocksEnable, num, cnt)
 		} else {
-			checkRocksDBEks(t, mp, eks, key)
+			checkRocksDBEks(t, mp2, eks, key)
 		}
+		metaItem := si.(*MetaItemIteratorV2)
+		metaItem.Close()
 	} else {
 		if cnt != 0 {
 			t.Logf("apply snap test case[%v] enablerocks :%v, failed, want:%d, now:%d", num, rocksEnable, 0, cnt)
 		}
-
+		metaItem := si.(*MetaItemIterator)
+		metaItem.Close()
 	}
 	time.Sleep(time.Second)
 }

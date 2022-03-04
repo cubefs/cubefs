@@ -16,16 +16,19 @@ package metanode
 
 import (
 	"bytes"
-	"encoding/binary"
 	"context"
+	"encoding/binary"
 	"github.com/chubaofs/chubaofs/util/tracing"
 )
 
 type MulItems struct {
-	InodeBatches InodeBatch
-	DentryBatches DentryBatch
-	ExtendBatches ExtendBatch
-	MultipartBatches MultipartBatch
+	InodeBatches         InodeBatch
+	DentryBatches        DentryBatch
+	ExtendBatches        ExtendBatch
+	MultipartBatches     MultipartBatch
+	DeletedInodeBatches  DeletedINodeBatch
+	DeletedDentryBatches DeletedDentryBatch
+	DelExtents           DelExtentBatch
 }
 
 // MarshalKey marshals the exporterKey to bytes.
@@ -96,6 +99,52 @@ func (i *MulItems) Marshal() (k []byte, err error) {
 			return
 		}
 	}
+	// deleted inode:len+data
+	if err = binary.Write(buff, binary.BigEndian, uint32(len(i.DeletedInodeBatches))); err != nil {
+		return
+	}
+	for _, delInode := range i.DeletedInodeBatches {
+		bs, err = delInode.Marshal()
+		if err != nil {
+			return
+		}
+		if err = binary.Write(buff, binary.BigEndian, uint32(len(bs))); err != nil {
+			return
+		}
+		if _, err = buff.Write(bs); err != nil {
+			return
+		}
+	}
+	//deleted dentry:len + data
+	if err = binary.Write(buff, binary.BigEndian, uint32(len(i.DeletedDentryBatches))); err != nil {
+		return
+	}
+	for _, delDentry := range i.DeletedDentryBatches {
+		bs, err = delDentry.Marshal()
+		if err != nil {
+			return
+		}
+		if err = binary.Write(buff, binary.BigEndian, uint32(len(bs))); err != nil {
+			return
+		}
+		if _, err = buff.Write(bs); err != nil {
+			return
+		}
+	}
+
+	// del extents: len+data
+	if err = binary.Write(buff, binary.BigEndian, uint32(len(i.DelExtents))); err != nil {
+		return
+	}
+	for _, ekInfo := range i.DelExtents {
+		bs = ekInfo.Marshal()
+		if err = binary.Write(buff, binary.BigEndian, uint32(len(bs))); err != nil {
+			return
+		}
+		if _, err = buff.Write(bs); err != nil {
+			return
+		}
+	}
 	return buff.Bytes(), nil
 }
 
@@ -106,12 +155,15 @@ func MulItemsUnmarshal(ctx context.Context, raw []byte) (result *MulItems, err e
 	ctx = tracer.Context()
 	buff := bytes.NewBuffer(raw)
 	var (
-		inodeBatchesLen     uint32
-		dentryBatchLen      uint32
-		extendBatchLen      uint32
-		multipartBatchesLen uint32
-		dataLen             uint32
-		extend              *Extend
+		inodeBatchesLen       uint32
+		dentryBatchLen        uint32
+		extendBatchLen        uint32
+		multipartBatchesLen   uint32
+		deletedInodeBatchLen  uint32
+		deletedDentryBatchLen uint32
+		delExtentLen          uint32
+		dataLen               uint32
+		extend                *Extend
 	)
 	//  unmarshal the MulItems.InodeBatches
 	if err = binary.Read(buff, binary.BigEndian, &inodeBatchesLen); err != nil {
@@ -187,11 +239,74 @@ func MulItemsUnmarshal(ctx context.Context, raw []byte) (result *MulItems, err e
 		multipartBatchesResult = append(multipartBatchesResult, multipart)
 	}
 
+	//unmarshal the deletedInode.Batches
+	if err = binary.Read(buff, binary.BigEndian, &deletedInodeBatchLen); err != nil {
+		return
+	}
+	deletedInodeBatchesResult := make(DeletedINodeBatch, 0, int(deletedInodeBatchLen))
+	for j := 0; j < int(deletedInodeBatchLen); j++ {
+		if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
+			return
+		}
+		data := make([]byte, int(dataLen))
+		if _, err = buff.Read(data); err != nil {
+			return
+		}
+		delInode := new(DeletedINode)
+		if err = delInode.Unmarshal(context.Background(), data); err != nil {
+			return
+		}
+		deletedInodeBatchesResult = append(deletedInodeBatchesResult, delInode)
+	}
+
+	//unmarshal the deletedDentry.Batches
+	if err = binary.Read(buff, binary.BigEndian, &deletedDentryBatchLen); err != nil {
+		return
+	}
+	deletedDentryBatchesResult := make(DeletedDentryBatch, 0, int(deletedDentryBatchLen))
+	for j := 0; j < int(deletedDentryBatchLen); j++ {
+		if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
+			return
+		}
+		data := make([]byte, int(dataLen))
+		if _, err = buff.Read(data); err != nil {
+			return
+		}
+		delDentry := new(DeletedDentry)
+		if err = delDentry.Unmarshal(data); err != nil {
+			return
+		}
+		deletedDentryBatchesResult = append(deletedDentryBatchesResult, delDentry)
+	}
+
+	// unmarshal the Del extents.Batches
+	if err = binary.Read(buff, binary.BigEndian, &delExtentLen); err != nil {
+		return
+	}
+	delExtentBatch := make(DelExtentBatch, 0, int(delExtentLen))
+	for j := 0; j < int(delExtentLen); j++ {
+		if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
+			return
+		}
+		data := make([]byte, int(dataLen))
+		if _, err = buff.Read(data); err != nil {
+			return
+		}
+		ekInfo := &EkData{}
+		if err = ekInfo.UnMarshal(data); err != nil {
+			return
+		}
+		delExtentBatch = append(delExtentBatch, ekInfo)
+	}
+
 	result = &MulItems{
-		InodeBatches:     inodeBatchesLenResult,
-		DentryBatches:    dentryBatchResult,
-		ExtendBatches:    extendBatchResult,
-		MultipartBatches: multipartBatchesResult,
+		InodeBatches:         inodeBatchesLenResult,
+		DentryBatches:        dentryBatchResult,
+		ExtendBatches:        extendBatchResult,
+		MultipartBatches:     multipartBatchesResult,
+		DeletedInodeBatches:  deletedInodeBatchesResult,
+		DeletedDentryBatches: deletedDentryBatchesResult,
+		DelExtents:           delExtentBatch,
 	}
 	return
 }

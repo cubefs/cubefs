@@ -53,7 +53,6 @@ type clusterValue struct {
 	PoolSizeOfMetaPartitionsInRecover int32
 	ExtentMergeIno                    map[string][]uint64
 	ExtentMergeSleepMs                uint64
-	TrashEnable                       bool
 	FixTinyDeleteRecordLimit          uint64
 }
 
@@ -210,42 +209,42 @@ func (v *volValue) Bytes() (raw []byte, err error) {
 
 func newVolValue(vol *Vol) (vv *volValue) {
 	vv = &volValue{
-		ID:                  vol.ID,
-		Name:                vol.Name,
-		ReplicaNum:          vol.mpReplicaNum,
-		DpReplicaNum:        vol.dpReplicaNum,
-		Status:              vol.Status,
-		DataPartitionSize:   vol.dataPartitionSize,
-		Capacity:            vol.Capacity,
-		Owner:               vol.Owner,
-		FollowerRead:        vol.FollowerRead,
-		ForceROW:            vol.ForceROW,
-		CrossRegionHAType:   vol.CrossRegionHAType,
-		Authenticate:        vol.authenticate,
-		AutoRepair:          vol.autoRepair,
-		VolWriteMutexEnable: vol.volWriteMutexEnable,
-		ZoneName:            vol.zoneName,
-		CrossZone:           vol.crossZone,
-		EnableToken:         vol.enableToken,
-		OSSAccessKey:        vol.OSSAccessKey,
-		OSSSecretKey:        vol.OSSSecretKey,
-		CreateTime:          vol.createTime,
-		Description:         vol.description,
-		DpSelectorName:      vol.dpSelectorName,
-		DpSelectorParm:      vol.dpSelectorParm,
-		OSSBucketPolicy:     vol.OSSBucketPolicy,
+		ID:                   vol.ID,
+		Name:                 vol.Name,
+		ReplicaNum:           vol.mpReplicaNum,
+		DpReplicaNum:         vol.dpReplicaNum,
+		Status:               vol.Status,
+		DataPartitionSize:    vol.dataPartitionSize,
+		Capacity:             vol.Capacity,
+		Owner:                vol.Owner,
+		FollowerRead:         vol.FollowerRead,
+		ForceROW:             vol.ForceROW,
+		CrossRegionHAType:    vol.CrossRegionHAType,
+		Authenticate:         vol.authenticate,
+		AutoRepair:           vol.autoRepair,
+		VolWriteMutexEnable:  vol.volWriteMutexEnable,
+		ZoneName:             vol.zoneName,
+		CrossZone:            vol.crossZone,
+		EnableToken:          vol.enableToken,
+		OSSAccessKey:         vol.OSSAccessKey,
+		OSSSecretKey:         vol.OSSSecretKey,
+		CreateTime:           vol.createTime,
+		Description:          vol.description,
+		DpSelectorName:       vol.dpSelectorName,
+		DpSelectorParm:       vol.dpSelectorParm,
+		OSSBucketPolicy:      vol.OSSBucketPolicy,
 		DpWriteableThreshold: vol.dpWriteableThreshold,
-		DpLearnerNum:        vol.dpLearnerNum,
-		MpLearnerNum:        vol.mpLearnerNum,
-		DPConvertMode:       vol.DPConvertMode,
-		MPConvertMode:       vol.MPConvertMode,
 		ExtentCacheExpireSec: vol.ExtentCacheExpireSec,
 		MinWritableMPNum:     vol.MinWritableMPNum,
 		MinWritableDPNum:     vol.MinWritableDPNum,
-		TrashRemainingDays:  vol.trashRemainingDays,
-		DefStoreMode:        vol.DefaultStoreMode,
-		ConverState:         vol.convertState,
-		MpLayout:            vol.MpLayout,
+		DpLearnerNum:         vol.dpLearnerNum,
+		MpLearnerNum:         vol.mpLearnerNum,
+		DPConvertMode:        vol.DPConvertMode,
+		MPConvertMode:        vol.MPConvertMode,
+		TrashRemainingDays:   vol.trashRemainingDays,
+		DefStoreMode:         vol.DefaultStoreMode,
+		ConverState:          vol.convertState,
+		MpLayout:             vol.MpLayout,
 	}
 	return
 }
@@ -263,6 +262,7 @@ type dataNodeValue struct {
 	NodeSetID uint64
 	Addr      string
 	ZoneName  string
+	Version   string
 }
 
 func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
@@ -271,6 +271,7 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		NodeSetID: dataNode.NodeSetID,
 		Addr:      dataNode.Addr,
 		ZoneName:  dataNode.ZoneName,
+		Version:   dataNode.Version,
 	}
 }
 
@@ -279,7 +280,7 @@ type metaNodeValue struct {
 	NodeSetID uint64
 	Addr      string
 	ZoneName  string
-	Version   uint32
+	Version   string
 }
 
 func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
@@ -778,7 +779,7 @@ func (c *Cluster) loadDataNodes() (err error) {
 		if dnv.ZoneName == "" {
 			dnv.ZoneName = DefaultZoneName
 		}
-		dataNode := newDataNode(dnv.Addr, dnv.ZoneName, c.Name)
+		dataNode := newDataNode(dnv.Addr, dnv.ZoneName, c.Name, dnv.Version)
 		dataNode.ID = dnv.ID
 		dataNode.NodeSetID = dnv.NodeSetID
 		c.dataNodes.Store(dataNode.Addr, dataNode)
@@ -828,6 +829,9 @@ func (c *Cluster) loadVols() (err error) {
 		}
 		if vv.ExtentCacheExpireSec == 0 {
 			vv.ExtentCacheExpireSec = defaultExtentCacheExpireSec
+		}
+		if vv.DefStoreMode == 0 {
+			vv.DefStoreMode = bsProto.StoreModeMem
 		}
 		// TODO volume mutex
 		vol := newVolFromVolValue(vv)

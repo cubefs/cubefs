@@ -323,7 +323,7 @@ func (s *DataNode) register(cfg *config.Config) {
 
 			// register this data node on the master
 			var nodeID uint64
-			if nodeID, err = MasterClient.NodeAPI().AddDataNode(fmt.Sprintf("%s:%v", LocalIP, s.port), s.zoneName); err != nil {
+			if nodeID, err = MasterClient.NodeAPI().AddDataNode(fmt.Sprintf("%s:%v", LocalIP, s.port), s.zoneName, DataNodeLatestVersion); err != nil {
 				log.LogErrorf("action[registerToMaster] cannot register this node to master(%v) err(%v).",
 					masterAddr, err)
 				timer.Reset(2 * time.Second)

@@ -494,7 +494,7 @@ func (s *ClusterService) dataPartitionList(ctx context.Context, args struct{}) (
 func (m *ClusterService) addMetaNode(ctx context.Context, args struct {
 	NodeAddr string
 	ZoneName string
-	Version  uint32
+	Version  string
 }) (uint64, error) {
 	if id, err := m.cluster.addMetaNode(args.NodeAddr, args.ZoneName, args.Version); err != nil {
 		return 0, err

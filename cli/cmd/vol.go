@@ -61,6 +61,7 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolPartitionCheckCmd(client),
 		newVolSetMinRWPartitionCmd(client),
 		newVolConvertTaskCmd(client),
+		newVolAddMPCmd(client),
 	)
 	return cmd
 }
@@ -1031,6 +1032,39 @@ func newVolConvertTaskCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 
+	return cmd
+}
+
+const (
+	cmdVolAddMPCmdUse   = "add-mp [VOLUME]"
+	cmdVolAddMPCmdShort = "Create and add more meta partition to a volume"
+)
+
+func newVolAddMPCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   cmdVolAddMPCmdUse,
+		Short: cmdVolAddMPCmdShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var volume = args[0]
+			var err error
+			defer func() {
+				if err != nil {
+					errout("Create meta partition failed: %v\n", err)
+				}
+			}()
+			if err = client.AdminAPI().CreateMetaPartition(volume, 0); err != nil {
+				return
+			}
+			return
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
 	return cmd
 }
 

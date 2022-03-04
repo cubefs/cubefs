@@ -13,7 +13,7 @@ var (
 
 func TestDataNodeAPI(t *testing.T) {
 	// add datanode
-	_, err := testMc.NodeAPI().AddDataNode(testNodeAddr, testZoneName)
+	_, err := testMc.NodeAPI().AddDataNode(testNodeAddr, testZoneName, "1.0.0")
 	if err != nil {
 		t.Fatalf("Add data node failed: err(%v), addr(%v)", err, testNodeAddr)
 	}

@@ -158,11 +158,17 @@ func ExtentAppendInterTest(t *testing.T, leader, follower *metaPartition) {
 	extentResultVerify(t, leader, follower, ino, expectExtents)
 }
 
-func TestExtentAppend(t *testing.T) {
-	testFunc := []TestFunc{
-		ExtentAppendInterTest,
-	}
-	doTest(t, testFunc)
+func TestMetaPartition_ExtentAppendCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "extent_append_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	ExtentAppendInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	ExtentAppendInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }
 
 func batchExtentAppend(ino uint64, eks []proto.ExtentKey, leader *metaPartition) (err error) {
@@ -209,11 +215,17 @@ func BatchExtentAppendInterTest(t *testing.T, leader, follower *metaPartition) {
 	return
 }
 
-func TestBatchExtentAppend(t *testing.T) {
-	testFunc := []TestFunc{
-		BatchExtentAppendInterTest,
-	}
-	doTest(t, testFunc)
+func TestMetaPartition_BatchExtentAppendCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "batch_extent_append_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	BatchExtentAppendInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	BatchExtentAppendInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }
 
 func ListExtentInterTest(t *testing.T, leader, follower *metaPartition) {
@@ -264,11 +276,17 @@ func ListExtentInterTest(t *testing.T, leader, follower *metaPartition) {
 	return
 }
 
-func TestListExtent(t *testing.T) {
-	testFunc := []TestFunc{
-		ListExtentInterTest,
-	}
-	doTest(t, testFunc)
+func TestMetaPartition_ListExtentCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "list_extent_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	ListExtentInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	ListExtentInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }
 
 func extentInsert(ino uint64, extent proto.ExtentKey, mp *metaPartition) (err error) {
@@ -315,11 +333,17 @@ func ExtentInsertInterTest(t *testing.T, leader, follower *metaPartition) {
 	extentResultVerify(t, leader, follower, ino, expectedEks)
 }
 
-func TestInsertAppend(t *testing.T) {
-	testFunc := []TestFunc{
-		ExtentInsertInterTest,
-	}
-	doTest(t, testFunc)
+func TestMetaPartition_InsertExtentCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "insert_extent_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	ExtentInsertInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	ExtentInsertInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }
 
 func ExtentsTruncateInterTest01(t *testing.T, leader, follower *metaPartition) {
@@ -453,18 +477,67 @@ func ExtentsTruncateInterTest05(t *testing.T, leader, follower *metaPartition) {
 	}
 }
 
-func TestExtentsTruncate(t *testing.T) {
-	testFunc := []TestFunc{
-		//test extent truncate
-		ExtentsTruncateInterTest01,
-		//test dir mode type inode
-		ExtentsTruncateInterTest02,
-		//test set delete mark inode
-		ExtentsTruncateInterTest03,
-		//test not exist inode
-		ExtentsTruncateInterTest04,
-		//test error file size
-		ExtentsTruncateInterTest05,
-	}
-	doTest(t, testFunc)
+func TestMetaPartition_ExtentsTruncateCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "extents_truncate_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	ExtentsTruncateInterTest01(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	ExtentsTruncateInterTest01(t, leader, follower)
+	releaseMp(leader, follower, dir)
+}
+
+func TestMetaPartition_ExtentsTruncateCase02(t *testing.T) {
+	//leader is mem mode
+	dir := "extents_truncate_test_02"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	ExtentsTruncateInterTest02(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	ExtentsTruncateInterTest02(t, leader, follower)
+	releaseMp(leader, follower, dir)
+}
+
+func TestMetaPartition_ExtentsTruncateCase03(t *testing.T) {
+	//leader is mem mode
+	dir := "extents_truncate_test_03"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	ExtentsTruncateInterTest03(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	ExtentsTruncateInterTest03(t, leader, follower)
+	releaseMp(leader, follower, dir)
+}
+
+func TestMetaPartition_ExtentsTruncateCase04(t *testing.T) {
+	//leader is mem mode
+	dir := "extents_truncate_test_04"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	ExtentsTruncateInterTest04(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	ExtentsTruncateInterTest04(t, leader, follower)
+	releaseMp(leader, follower, dir)
+}
+
+func TestMetaPartition_ExtentsTruncateCase05(t *testing.T) {
+	//leader is mem mode
+	dir := "extents_truncate_test_05"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	ExtentsTruncateInterTest05(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	ExtentsTruncateInterTest05(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }

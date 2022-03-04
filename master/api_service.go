@@ -188,6 +188,7 @@ func (m *Server) listZone(w http.ResponseWriter, r *http.Request) {
 	for _, zone := range zones {
 		cv := newZoneView(zone.name)
 		cv.Status = zone.getStatusToString()
+		cv.Region = zone.regionName
 		zoneViews = append(zoneViews, cv)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(zoneViews))
@@ -315,7 +316,6 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		ExtentMergeIno:                         m.cluster.cfg.ExtentMergeIno,
 		ExtentMergeSleepMs:                     m.cluster.cfg.ExtentMergeSleepMs,
 		DataNodeFixTinyDeleteRecordLimitOnDisk: m.cluster.dnFixTinyDeleteRecordLimit,
-		MetaVersionRequirements:                m.cluster.MetaVersionRequirements,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -1216,6 +1216,16 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	dpWriteableThreshold, err = parseDpWriteableThresholdToUpdateVol(r, vol)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	crossRegionHAType, err = parseCrossRegionHATypeToUpdateVol(r, vol)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
 
 	trashRemainingDays, err = parseDefaultTrashDaysToUpdateVol(r, vol)
 	if err != nil {
@@ -1432,13 +1442,14 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 		nodeAddr string
 		zoneName string
 		id       uint64
+		version  string
 		err      error
 	)
-	if nodeAddr, zoneName, _, err = parseRequestForAddNode(r); err != nil {
+	if nodeAddr, zoneName, version, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if id, err = m.cluster.addDataNode(nodeAddr, zoneName); err != nil {
+	if id, err = m.cluster.addDataNode(nodeAddr, zoneName, version); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1482,6 +1493,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		BadDisks:                  dataNode.BadDisks,
 		ToBeOffline:               dataNode.ToBeOffline,
 		ToBeMigrated:              dataNode.ToBeMigrated,
+		Version:                   dataNode.Version,
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(dataNodeInfo))
@@ -1837,7 +1849,7 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr string
 		zoneName string
-		version	 uint32
+		version	 string
 		id       uint64
 		err      error
 	)
@@ -1905,7 +1917,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		ToBeOffline:               metaNode.ToBeOffline,
 		ToBeMigrated:              metaNode.ToBeMigrated,
 		ProfPort:                  metaNode.ProfPort,
-		Version: 				   metaNode.Version,
+		Version:                   metaNode.Version,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(metaNodeInfo))
 }
@@ -1929,7 +1941,7 @@ func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if !(storeMode == int(proto.StoreModeMem) || storeMode == int(proto.StoreModeRocksDb) || storeMode == 0) {
+	if !(storeMode == int(proto.StoreModeMem) || storeMode == int(proto.StoreModeRocksDb) || storeMode == int(proto.StoreModeDef)) {
 		err = fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, storeMode)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -2257,7 +2269,7 @@ func parseRequestForUpdateMetaNode(r *http.Request) (nodeAddr string, id uint64,
 	return
 }
 
-func parseRequestForAddNode(r *http.Request) (nodeAddr, zoneName string, version uint32, err error) {
+func parseRequestForAddNode(r *http.Request) (nodeAddr, zoneName, version string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2268,15 +2280,8 @@ func parseRequestForAddNode(r *http.Request) (nodeAddr, zoneName string, version
 		zoneName = DefaultZoneName
 	}
 
-	tmpVersion := 0
 	if versionStr := r.FormValue(versionKey); versionStr == "" {
 		version = defaultMetaNodeVersion
-	} else {
-		if tmpVersion, err = strconv.Atoi(versionStr); err != nil {
-			version = defaultMetaNodeVersion
-		} else {
-			version = uint32(tmpVersion)
-		}
 	}
 	return
 }
@@ -4194,12 +4199,3 @@ func extractMinWritableDPNum(r *http.Request, volMinRwDPNum int) (minRwDPNum int
 	return
 }
 
-func (m *Server) enableExtentDelByRocks(w http.ResponseWriter, r *http.Request) {
-	err := m.cluster.setExtentDelByRocksDb()
-	if err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-	sendOkReply(w, r, newSuccessHTTPReply("success"))
-	return
-}

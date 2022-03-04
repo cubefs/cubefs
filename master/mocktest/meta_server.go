@@ -63,7 +63,7 @@ func (mms *MockMetaServer) register() {
 	var nodeID uint64
 	var retry int
 	for retry < 3 {
-		nodeID, err = mms.mc.NodeAPI().AddMetaNode(mms.TcpAddr, mms.ZoneName, 0)
+		nodeID, err = mms.mc.NodeAPI().AddMetaNode(mms.TcpAddr, mms.ZoneName, "1.0.0")
 		if err == nil {
 			break
 		}

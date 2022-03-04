@@ -559,3 +559,7 @@ func (mp *metaPartition) DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p 
 	p.PacketOkReply()
 	return
 }
+
+func (mp *metaPartition) GetInodeTree() InodeTree {
+	return mp.inodeTree
+}

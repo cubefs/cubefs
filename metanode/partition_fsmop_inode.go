@@ -23,6 +23,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"io"
 	"sync/atomic"
+	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -229,7 +230,6 @@ func (mp *metaPartition) internalDelete(val []byte) error {
 			return err
 		}
 	}
-	return nil
 }
 
 func (mp *metaPartition) internalCursorReset(val []byte) (uint64, error) {
@@ -425,7 +425,6 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse, er
 
 func (mp *metaPartition) fsmEvictInode(ino *Inode, timestamp int64, trashEnable bool) (resp *InodeResponse, err error) {
 	resp = NewInodeResponse()
-
 	resp.Status = proto.OpOk
 
 	if err = mp.isInoOutOfRange(ino.Inode); err != nil {
@@ -470,6 +469,7 @@ func (mp *metaPartition) fsmEvictInode(ino *Inode, timestamp int64, trashEnable 
 			if err != nil {
 				log.LogErrorf("fsmEvictInode: failed to move inode to deletedInode tree, inode:%v, status:%v",
 					ino, st)
+				resp.Status = proto.OpErr
 			}
 			log.LogDebugf("fsmEvictInode: inode: %v, status: %v", ino, st)
 		} else {
@@ -499,11 +499,20 @@ func (mp *metaPartition) fsmBatchEvictInode(ib InodeBatch, timestamp int64, tras
 }
 
 func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
-	if proto.IsDir(ino.Type) {
-		return
-	}
+	//if proto.IsDir(ino.Type) {
+	//	return
+	//}
+	//if ino.ShouldDelete() {
+	//	mp.freeList.Push(ino.Inode)
+	//}
 	if ino.ShouldDelete() {
-		mp.freeList.Push(ino.Inode)
+		st, err := mp.mvToDeletedInodeTree(ino, time.Now().UnixNano() / 1000)
+		if err == rocksdbError {
+			exporter.WarningRocksdbError(fmt.Sprintf("action[checkAndInsertFreeList] clusterID[%s] volumeName[%s] partitionID[%v]" +
+				" move to deleted inode tree failed[ino:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
+				mp.config.PartitionId, ino))
+		}
+		log.LogDebugf("checkAndInsertFreeList moToDeletedInodeTree: inode: %v, status: %v", ino, st)
 	}
 }
 

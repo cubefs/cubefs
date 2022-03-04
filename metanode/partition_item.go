@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tecbot/gorocksdb"
 	"io"
 	"io/ioutil"
@@ -150,21 +149,6 @@ type fileData struct {
 	data     []byte
 }
 
-type EkData struct {
-	key     []byte
-	data    []byte
-}
-
-func NewEkData(k, v []byte) *EkData {
-	ek := &EkData{}
-	ek.key = make([]byte, 0)
-	ek.data = make([]byte, 0)
-
-	ek.key = append(ek.key, k...)
-	ek.data = append(ek.data, v...)
-	return ek
-}
-
 // MetaItemIterator defines the iterator of the MetaItem.
 type MetaItemIterator struct {
 	fileRootDir       string
@@ -173,9 +157,7 @@ type MetaItemIterator struct {
 	db                *RocksDbInfo
 	snap              *gorocksdb.Snapshot
 	treeSnap          Snapshot
-
 	filenames []string
-
 	dataCh    chan interface{}
 	errorCh   chan error
 	err       error
@@ -218,7 +200,6 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		defer func() {
 			close(iter.dataCh)
 			close(iter.errorCh)
-			iter.treeSnap.Close()
 		}()
 		var ctx = context.Background()
 		var produceItem = func(item interface{}) (success bool) {
@@ -252,7 +233,9 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 			if e := item.Unmarshal(ctx, v); e != nil {
 				return false, e
 			}
-			//todo:check produceItem result
+			if ok := produceItem(item); !ok {
+				return false, nil
+			}
 			produceItem(item)
 			return true, nil
 		}); err != nil {
@@ -263,21 +246,6 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 			return
 		}
 
-		// process deleted inodes
-		if err = iter.treeSnap.Range(DelInodeType, func(v []byte) (bool, error) {
-			dino := NewDeletedInodeByID(0)
-			if e := dino.Unmarshal(ctx, v); e != nil {
-				return false, e
-			}
-			produceItem(dino)
-			return true, nil
-		}); err != nil {
-			produceError(err)
-			return
-		}
-		if checkClose() {
-			return
-		}
 
 		// process dentries
 		if err = iter.treeSnap.Range(DentryType, func(v []byte) (bool, error) {
@@ -285,23 +253,9 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 			if e := item.Unmarshal(v); e != nil {
 				return false, e
 			}
-			produceItem(item)
-			return true, nil
-		}); err != nil {
-			produceError(err)
-			return
-		}
-		if checkClose() {
-			return
-		}
-
-		// process deleted dentries
-		if err = iter.treeSnap.Range(DelDentryType, func(v []byte) (bool, error) {
-			dd := newPrimaryDeletedDentry(0, "", 0, 0)
-			if e := dd.Unmarshal(v); e != nil {
-				return false, e
+			if ok := produceItem(item); !ok {
+				return false, nil
 			}
-			produceItem(dd)
 			return true, nil
 		}); err != nil {
 			produceError(err)
@@ -310,13 +264,14 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		if checkClose() {
 			return
 		}
-
 		// process extends
 		if err = iter.treeSnap.Range(ExtendType, func(v []byte) (bool, error) {
-			if item, e := NewExtendFromBytes(v); e != nil {
+			item, e := NewExtendFromBytes(v)
+			if e != nil {
 				return false, e
-			} else {
-				produceItem(item)
+			}
+			if ok := produceItem(item); !ok {
+				return false, nil
 			}
 			return true, nil
 		}); err != nil {
@@ -329,7 +284,9 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 
 		// process multiparts
 		if err = iter.treeSnap.Range(MultipartType, func(v []byte) (bool, error) {
-			produceItem(MultipartFromBytes(v))
+			if ok := produceItem(MultipartFromBytes(v)); !ok {
+				return false, nil
+			}
 			return true, nil
 		}); err != nil {
 			produceError(err)
@@ -349,28 +306,6 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 				return
 			}
 		}
-
-		if !mp.enableRocksDbDelExtent() {
-			log.LogInfof("raft snap recover follower, skip rocks db extent")
-			return
-		}
-
-		log.LogInfof("raft snap recover follower, send rocks db extent")
-		stKey   := make([]byte, 1)
-		endKey  := make([]byte, 1)
-
-		stKey[0]  = byte(ExtentDelTable)
-		endKey[0] = byte(ExtentDelTable + 1)
-		_ = mp.db.RangeWithSnap(stKey, endKey, si.snap, func(k, v []byte) (bool, error){
-			if k[0] !=  byte(ExtentDelTable) {
-				return false, nil
-			}
-			ek := NewEkData(k, v)
-			if !produceItem(ek) {
-				return false, fmt.Errorf("gen snap:producet extent item failed")
-			}
-			return true, nil
-		})
 	}(si)
 
 	return
@@ -386,6 +321,7 @@ func (si *MetaItemIterator) Close() {
 	si.closeOnce.Do(func() {
 		close(si.closeCh)
 		si.db.ReleaseSnap(si.snap)
+		si.treeSnap.Close()
 	})
 	return
 }
@@ -430,9 +366,6 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 			snap = NewMetaItem(opFSMCreateInode, typedItem.MarshalKey(), typedItem.MarshalValue())
 		}
 
-	case *DeletedINode:
-		snap = NewMetaItem(opFSMCreateDeletedInode, typedItem.MarshalKey(), typedItem.MarshalValue())
-
 	case *Dentry:
 		if si.marshalVersion == MetaPartitionMarshVersion2 {
 			dentryBuf, _:= typedItem.MarshalV2()
@@ -441,8 +374,6 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 		} else {
 			snap = NewMetaItem(opFSMCreateDentry, typedItem.MarshalKey(), typedItem.MarshalValue())
 		}
-	case *DeletedDentry:
-		snap = NewMetaItem(opFSMCreateDeletedDentry, typedItem.MarshalKey(), typedItem.MarshalValue())
 
 	case *Extend:
 		var raw []byte
@@ -462,8 +393,6 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 		snap = NewMetaItem(opFSMCreateMultipart, nil, raw)
 	case *fileData:
 		snap = NewMetaItem(opExtentFileSnapshot, []byte(typedItem.filename), typedItem.data)
-	case *EkData:
-		snap = NewMetaItem(opSnapSyncExtent, nil, typedItem.key)
 	default:
 		panic(fmt.Sprintf("unknown item type: %v", reflect.TypeOf(item).Name()))
 	}

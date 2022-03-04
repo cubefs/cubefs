@@ -5,40 +5,14 @@ import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/metanode/metamock"
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/raftstore"
 	"github.com/chubaofs/chubaofs/util/log"
+	"math"
 	"os"
 	"reflect"
+	"strconv"
 	"testing"
 )
-
-func createTestMetaPartitionWithApplyError() (*metaPartition, *metaPartition, error) {
-	node := &MetaNode{nodeId: 1}
-	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
-	memMpConf := newDefaultMpConfig(1, 1, 1, 1000, proto.StoreModeMem)
-	rockMpConf := newDefaultMpConfig(2, 2, 1, 1000, proto.StoreModeRocksDb)
-	raft := metamock.NewMockPartition(1)
-	memMp, err := newMetapartitionForTest(raft, memMpConf, manager)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	rockMp, err := newMetapartitionForTest(raft, rockMpConf, manager)
-
-	raft.Mp = append(raft.Mp, memMp)
-	raft.Mp = append(raft.Mp, rockMp)
-	raft.Apply = ApplyMockError
-	return memMp, rockMp, nil
-}
-
-func ApplyMockError(elem interface{},command []byte, index uint64) (resp interface{}, err error) {
-	err = fmt.Errorf("apply mock error")
-	return
-}
-
-func ApplyMockNotOk(elem interface{},command []byte, index uint64) (resp interface{}, err error) {
-	resp = proto.OpErr
-	return
-}
 
 type FileNameGenFunc func(int) string
 
@@ -325,16 +299,92 @@ func CreateDentryInterTest06(t *testing.T, leader, follower *metaPartition) {
 	return
 }
 
-func TestMetaPartition_CreateDentry(t *testing.T) {
-	testFunc := []TestFunc{
-		CreateDentryInterTest01,
-		CreateDentryInterTest02,
-		CreateDentryInterTest03,
-		CreateDentryInterTest04,
-		CreateDentryInterTest05,
-		CreateDentryInterTest06,
-	}
-	doTest(t, testFunc)
+func TestMetaPartition_CreateDentryCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "create_dentry_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	CreateDentryInterTest01(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	CreateDentryInterTest01(t, leader, follower)
+	releaseMp(leader, follower, dir)
+}
+
+
+func TestMetaPartition_CreateDentryCase02(t *testing.T) {
+	//leader is mem mode
+	dir := "create_dentry_test_02"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	CreateDentryInterTest02(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	CreateDentryInterTest02(t, leader, follower)
+	releaseMp(leader, follower, dir)
+}
+
+
+func TestMetaPartition_CreateDentryCase03(t *testing.T) {
+	//leader is mem mode
+	dir := "create_dentry_test_03"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	CreateDentryInterTest03(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	CreateDentryInterTest03(t, leader, follower)
+	releaseMp(leader, follower, dir)
+}
+
+
+func TestMetaPartition_CreateDentryCase04(t *testing.T) {
+	//leader is mem mode
+	dir := "create_dentry_test_04"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	CreateDentryInterTest04(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	CreateDentryInterTest04(t, leader, follower)
+	releaseMp(leader, follower, dir)
+}
+
+
+func TestMetaPartition_CreateDentryCase05(t *testing.T) {
+	//leader is mem mode
+	dir := "create_dentry_test_05"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	CreateDentryInterTest05(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	CreateDentryInterTest05(t, leader, follower)
+	releaseMp(leader, follower, dir)
+}
+
+func TestMetaPartition_CreateDentryCase06(t *testing.T) {
+	//leader is mem mode
+	dir := "create_dentry_test_06"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	CreateDentryInterTest06(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	CreateDentryInterTest06(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }
 
 func DeleteDentryInterTest01(t *testing.T, leader, follower *metaPartition) {
@@ -461,13 +511,46 @@ func DeleteDentryInterTest03(t *testing.T, leader, follower *metaPartition) {
 	}
 }
 
-func TestMetaPartition_DeleteDentry(t *testing.T) {
-	testFunc := []TestFunc{
-		DeleteDentryInterTest01,
-		DeleteDentryInterTest02,
-		DeleteDentryInterTest03,
-	}
-	doTest(t, testFunc)
+func TestMetaPartition_DeleteDentryCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "delete_dentry_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	DeleteDentryInterTest01(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	DeleteDentryInterTest01(t, leader, follower)
+	releaseMp(leader, follower, dir)
+}
+
+func TestMetaPartition_DeleteDentryCase02(t *testing.T) {
+	//leader is mem mode
+	dir := "delete_dentry_test_02"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	DeleteDentryInterTest02(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	DeleteDentryInterTest02(t, leader, follower)
+	releaseMp(leader, follower, dir)
+}
+
+func TestMetaPartition_DeleteDentryCase03(t *testing.T) {
+	//leader is mem mode
+	dir := "delete_dentry_test_03"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	DeleteDentryInterTest03(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	DeleteDentryInterTest03(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }
 
 func BatchDeleteDentryInterTest01(t *testing.T, leader, follower *metaPartition) {
@@ -622,13 +705,46 @@ func BatchDeleteDentryInterTest03(t *testing.T, leader, follower *metaPartition)
 	}
 }
 
-func TestMetaPartition_DeleteDentryBatch(t *testing.T) {
-	testFunc := []TestFunc{
-		BatchDeleteDentryInterTest01,
-		BatchDeleteDentryInterTest02,
-		BatchDeleteDentryInterTest03,
-	}
-	doTest(t, testFunc)
+func TestMetaPartition_BatchDeleteDentryCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "batch_delete_dentry_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	BatchDeleteDentryInterTest01(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	BatchDeleteDentryInterTest01(t, leader, follower)
+	releaseMp(leader, follower, dir)
+}
+
+func TestMetaPartition_BatchDeleteDentryCase02(t *testing.T) {
+	//leader is mem mode
+	dir := "batch_delete_dentry_test_02"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	BatchDeleteDentryInterTest02(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	BatchDeleteDentryInterTest02(t, leader, follower)
+	releaseMp(leader, follower, dir)
+}
+
+func TestMetaPartition_BatchDeleteDentryCase03(t *testing.T) {
+	//leader is mem mode
+	dir := "batch_delete_dentry_test_03"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	BatchDeleteDentryInterTest03(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	BatchDeleteDentryInterTest03(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }
 
 func UpdateDentryInterTest01(t *testing.T, leader, follower *metaPartition) {
@@ -743,13 +859,46 @@ func UpdateDentryInterTest03(t *testing.T, leader, follower *metaPartition) {
 	}
 }
 
-func TestMetaPartition_UpdateDentry(t *testing.T) {
-	testFunc := []TestFunc{
-		UpdateDentryInterTest01,
-		UpdateDentryInterTest02,
-		UpdateDentryInterTest03,
-	}
-	doTest(t, testFunc)
+func TestMetaPartition_UpdateDentryCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "update_dentry_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	UpdateDentryInterTest01(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	UpdateDentryInterTest01(t, leader, follower)
+	releaseMp(leader, follower, dir)
+}
+
+func TestMetaPartition_UpdateDentryCase02(t *testing.T) {
+	//leader is mem mode
+	dir := "update_dentry_test_02"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	UpdateDentryInterTest02(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	UpdateDentryInterTest02(t, leader, follower)
+	releaseMp(leader, follower, dir)
+}
+
+func TestMetaPartition_UpdateDentryCase03(t *testing.T) {
+	//leader is mem mode
+	dir := "update_dentry_test_03"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	UpdateDentryInterTest03(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	UpdateDentryInterTest03(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }
 
 func ReadDirInterTest(t *testing.T, leader, follower *metaPartition) {
@@ -763,7 +912,7 @@ func ReadDirInterTest(t *testing.T, leader, follower *metaPartition) {
 	fileNameGen := func(i int) string{
 		return fmt.Sprintf("test_0%v", i)
 	}
-	if err = createDentries(leader, parentID, 100, 470, 1000, fileNameGen); err != nil {
+	if err = createDentries(leader, parentID, 2000, 470, 1000, fileNameGen); err != nil {
 		t.Error(err)
 		return
 	}
@@ -771,31 +920,43 @@ func ReadDirInterTest(t *testing.T, leader, follower *metaPartition) {
 	dirNameGen := func(i int) string{
 		return fmt.Sprintf("test_dir_0%v", i)
 	}
-	if err = createDentries(leader, parentID, 100, uint32(os.ModeDir), 2000, dirNameGen); err != nil {
+	if err = createDentries(leader, parentID, 2000, uint32(os.ModeDir), 2000, dirNameGen); err != nil {
 		t.Error(err)
 		return
 	}
 
 	//read dir
-	req := &ReadDirReq{
-		ParentID: parentID,
-	}
-	packet := &Packet{}
-	if err = leader.ReadDir(req, packet); err != nil || packet.ResultCode != proto.OpOk {
-		t.Fatalf("err[%v] or resultCode mismatch, resultCode expect:OpOk(0xF0), actual:0x%X", err, packet.ResultCode)
-	}
-	resp := &ReadDirResp{}
-	if err = packet.UnmarshalData(resp); err != nil {
-		t.Errorf("unmarshal read dir resp failed:%v", err)
-		return
+	marker := ""
+	children := make([]proto.Dentry, 0)
+	for {
+		req := &proto.ReadDirRequest{
+			ParentID:    parentID,
+			Marker:      marker,
+			IsBatch:     true,
+		}
+		packet := &Packet{}
+		if err = leader.ReadDir(req, packet); err != nil || packet.ResultCode != proto.OpOk {
+			t.Fatalf("err[%v] or resultCode mismatch, resultCode expect:OpOk(0xF0), actual:0x%X", err, packet.ResultCode)
+		}
+		resp := &ReadDirResp{}
+		if err = packet.UnmarshalData(resp); err != nil {
+			t.Errorf("unmarshal read dir resp failed:%v", err)
+			return
+		}
+
+		children = append(children, resp.Children...)
+		if resp.NextMarker == "" {
+			break
+		}
+		marker = resp.NextMarker
 	}
 
 	//validate
-	if len(resp.Children) != 200 {
-		t.Errorf("read dir children number not equal, expect[200] actual[%v]", len(resp.Children))
+	if len(children) != 4000 {
+		t.Errorf("read dir children number not equal, expect[4000] actual[%v]", len(children))
 		return
 	}
-	for _, dentry := range resp.Children {
+	for _, dentry := range children {
 		if proto.IsDir(dentry.Type) {
 			if dentry.Name != dirNameGen(int(dentry.Inode - 2000)) {
 				t.Fatalf("read dir error, dentry info not equal, except[inode:%v, name:%s, type:%v], "+
@@ -812,12 +973,17 @@ func ReadDirInterTest(t *testing.T, leader, follower *metaPartition) {
 
 }
 
-func TestMetaPartition_ReadDir(t *testing.T) {
-	testFunc := []TestFunc{
-		ReadDirInterTest,
-	}
-	doTest(t, testFunc)
-	return
+func TestMetaPartition_ReadDirCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "read_dir_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	ReadDirInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	ReadDirInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
 }
 
 func LookupInterTest(t *testing.T, leader, follower *metaPartition) {
@@ -895,11 +1061,65 @@ func LookupInterTest(t *testing.T, leader, follower *metaPartition) {
 	}
 }
 
-func TestMetaPartition_Lookup(t *testing.T) {
-	testFunc := []TestFunc{
-		LookupInterTest,
+func TestMetaPartition_LookupCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "look_up_test_01"
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	LookupInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	LookupInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
+}
+
+func newMetapartitionForTest(raft raftstore.Partition, config *MetaPartitionConfig, mangaer *metadataManager)(mp *metaPartition, err error) {
+	tmp, err := CreateMetaPartition(config, mangaer)
+	if  err != nil {
+		fmt.Printf("create meta partition failed:%s", err.Error())
+		return nil, err
 	}
-	doTest(t, testFunc)
+	mp = tmp.(*metaPartition)
+	mp.raftPartition = raft
+	return
+}
+
+func newDefaultMpConfig(pid, nodeId, start, end uint64, storeMode proto.StoreMode)(conf *MetaPartitionConfig) {
+	conf = &MetaPartitionConfig{ PartitionId: pid,
+		NodeId: nodeId,
+		Start: start,
+		End: math.MaxUint64 - 100,
+		Peers: []proto.Peer{proto.Peer{ID: 1, Addr: "127.0.0.1"}, {ID: 2, Addr: "127.0.0.2"} },
+		RootDir: "./partition_" +strconv.Itoa(int(pid)),
+		StoreMode: storeMode,
+		Cursor: math.MaxUint64 - 100000,
+	}
+	return
+}
+
+func createTestMetaPartitionWithApplyError() (*metaPartition, *metaPartition, error) {
+	node := &MetaNode{nodeId: 1}
+	manager := &metadataManager{nodeId: 1, metaNode: node, rocksDBDirs: []string{"./"}}
+	memMpConf := newDefaultMpConfig(1, 1, 1, 1000, proto.StoreModeMem)
+	rockMpConf := newDefaultMpConfig(2, 2, 1, 1000, proto.StoreModeRocksDb)
+	raft := metamock.NewMockPartition(1)
+	memMp, err := newMetapartitionForTest(raft, memMpConf, manager)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	rockMp, err := newMetapartitionForTest(raft, rockMpConf, manager)
+
+	raft.Mp = append(raft.Mp, memMp)
+	raft.Mp = append(raft.Mp, rockMp)
+	raft.Apply = ApplyMockError
+	return memMp, rockMp, nil
+}
+
+func ApplyMockError(elem interface{},command []byte, index uint64) (resp interface{}, err error) {
+	err = fmt.Errorf("apply mock error")
+	return
 }
 
 func TestMetaPartition_CreateDentryWithSubmitErrorTest(t *testing.T) {
