@@ -150,11 +150,16 @@ func (manager *SpaceManager) Stats() *Stats {
 	return manager.stats
 }
 
-func (manager *SpaceManager) LoadDisk(path string, reservedSpace uint64, maxErrCnt int) (err error) {
+func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int) (err error) {
 	var (
 		disk    *Disk
 		visitor PartitionVisitor
 	)
+
+	if diskRdonlySpace < reservedSpace {
+		diskRdonlySpace = reservedSpace
+	}
+
 	log.LogDebugf("action[LoadDisk] load disk from path(%v).", path)
 	visitor = func(dp *DataPartition) {
 		manager.partitionMutex.Lock()
@@ -164,8 +169,9 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace uint64, maxErrC
 			log.LogDebugf("action[LoadDisk] put partition(%v) to manager manager.", dp.partitionID)
 		}
 	}
+
 	if _, err = manager.GetDisk(path); err != nil {
-		disk = NewDisk(path, reservedSpace, maxErrCnt, manager)
+		disk = NewDisk(path, reservedSpace, diskRdonlySpace, maxErrCnt, manager)
 		disk.RestorePartition(visitor)
 		manager.putDisk(disk)
 		err = nil
