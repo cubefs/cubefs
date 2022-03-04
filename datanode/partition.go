@@ -133,6 +133,9 @@ type DataPartition struct {
 	monitorData []*statistics.MonitorData
 
 	persistMetadataSync chan struct{}
+
+	inRepairExtents map[uint64]struct{}
+	inRepairExtentMu sync.Mutex
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
@@ -261,6 +264,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 		DataPartitionCreateType: dpCfg.CreationType,
 		monitorData:             statistics.InitMonitorData(statistics.ModelDataNode),
 		persistMetadataSync:     make(chan struct{}, 1),
+		inRepairExtents:		 make(map[uint64]struct{}),
 	}
 	partition.replicasInit()
 
