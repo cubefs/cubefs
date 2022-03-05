@@ -66,6 +66,7 @@ const (
 	defaultReplicaNum                                  = 3
 	defaultDiffSpaceUsage                              = 10 * 1024 * 1024 * 1024
 	defaultCrossZoneNum                                = 3
+	defaultExtentCacheExpireSec 					   = 60
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)

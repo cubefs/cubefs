@@ -2315,7 +2315,8 @@ func (c *Cluster) deleteMetaNodeFromCache(metaNode *MetaNode) {
 }
 
 func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacity uint64, replicaNum, mpReplicaNum uint8,
-	followerRead, authenticate, enableToken, autoRepair, forceROW bool, dpSelectorName, dpSelectorParm string, ossBucketPolicy proto.BucketAccessPolicy, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64) (err error) {
+	followerRead, authenticate, enableToken, autoRepair, forceROW bool, dpSelectorName, dpSelectorParm string, ossBucketPolicy proto.BucketAccessPolicy,
+	crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64, extentCacheExpireSec int64) (err error) {
 	var (
 		vol             *Vol
 		serverAuthKey   string
@@ -2340,6 +2341,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		oldDPConvertMode        proto.ConvertMode
 		oldMPConvertMode        proto.ConvertMode
 		oldMpLearnerNum         uint8
+		oldExtentCacheExpireSec	int64
 	)
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[updateVol] err[%v]", err)
@@ -2407,6 +2409,9 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	} else {
 		vol.crossZone = false
 	}
+	if extentCacheExpireSec == 0 {
+		extentCacheExpireSec = defaultExtentCacheExpireSec
+	}
 	oldCapacity = vol.Capacity
 	oldDpReplicaNum = vol.dpReplicaNum
 	oldMpReplicaNum = vol.mpReplicaNum
@@ -2422,11 +2427,13 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	oldCrossRegionHAType = vol.CrossRegionHAType
 	oldDPConvertMode = vol.DPConvertMode
 	oldMPConvertMode = vol.MPConvertMode
+	oldExtentCacheExpireSec = vol.ExtentCacheExpireSec
 
 	oldDpWriteableThreshold = vol.dpWriteableThreshold
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
 	vol.ForceROW = forceROW
+	vol.ExtentCacheExpireSec = extentCacheExpireSec
 	vol.authenticate = authenticate
 	vol.enableToken = enableToken
 	vol.autoRepair = autoRepair
@@ -2456,6 +2463,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		vol.mpReplicaNum = oldMpReplicaNum
 		vol.FollowerRead = oldFollowerRead
 		vol.ForceROW = oldForceROW
+		vol.ExtentCacheExpireSec = oldExtentCacheExpireSec
 		vol.authenticate = oldAuthenticate
 		vol.enableToken = oldEnableToken
 		vol.zoneName = oldZoneName

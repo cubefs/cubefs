@@ -53,6 +53,7 @@ type Wrapper struct {
 	followerReadClientCfg bool
 	nearRead              bool
 	forceROW              bool
+	extentCacheExpireSec  int64
 	dpSelectorChanged     bool
 	dpSelectorName        string
 	dpSelectorParm        string
@@ -152,13 +153,14 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	w.dpSelectorParm = view.DpSelectorParm
 	w.crossRegionHAType = view.CrossRegionHAType
 	w.quorum = view.Quorum
+	w.extentCacheExpireSec = view.ExtentCacheExpireSec
 	w.updateConnConfig(view.ConnConfig)
 
 	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
 		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) forceROW(%v) createTime(%v) dpSelectorName(%v) "+
-		"dpSelectorParm(%v) quorum(%v)",
+		"dpSelectorParm(%v) quorum(%v) extentCacheExpireSecond(%v)",
 		view.ID, view.Name, view.Owner, view.Status, view.Capacity, view.MpReplicaNum, view.DpReplicaNum, view.MpCnt,
-		view.DpCnt, view.FollowerRead, view.ForceROW, view.CreateTime, view.DpSelectorName, view.DpSelectorParm, view.Quorum)
+		view.DpCnt, view.FollowerRead, view.ForceROW, view.CreateTime, view.DpSelectorName, view.DpSelectorParm, view.Quorum, view.ExtentCacheExpireSec)
 	return nil
 }
 
@@ -227,6 +229,11 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 	if w.crossRegionHAType != view.CrossRegionHAType {
 		log.LogInfof("updateSimpleVolView: update crossRegionHAType from old(%v) to new(%v)", w.crossRegionHAType, view.CrossRegionHAType)
 		w.crossRegionHAType = view.CrossRegionHAType
+	}
+
+	if w.extentCacheExpireSec != view.ExtentCacheExpireSec {
+		log.LogInfof("updateSimpleVolView: update ExtentCacheExpireSec from old(%v) to new(%v)", w.extentCacheExpireSec, view.ExtentCacheExpireSec)
+		w.extentCacheExpireSec = view.ExtentCacheExpireSec
 	}
 
 	w.updateConnConfig(view.ConnConfig)

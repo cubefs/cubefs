@@ -1129,6 +1129,8 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		autoRepair   bool
 		zoneName     string
 		description  string
+		extentCacheExpireSec	int64
+
 		vol          *Vol
 
 		dpSelectorName    string
@@ -1155,7 +1157,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
-	if zoneName, capacity, description, err = parseDefaultInfoToUpdateVol(r, vol); err != nil {
+	if zoneName, capacity, description, extentCacheExpireSec, err = parseDefaultInfoToUpdateVol(r, vol); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1190,7 +1192,8 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), uint8(mpReplicaNum),
-		followerRead, authenticate, enableToken, autoRepair, forceROW, dpSelectorName, dpSelectorParm, ossBucketPolicy, crossRegionHAType, dpWriteableThreshold); err != nil {
+		followerRead, authenticate, enableToken, autoRepair, forceROW, dpSelectorName, dpSelectorParm, ossBucketPolicy,
+		crossRegionHAType, dpWriteableThreshold, extentCacheExpireSec); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1323,6 +1326,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		MPConvertMode:       vol.MPConvertMode,
 		Quorum:              vol.getDataPartitionQuorum(),
 		DpWriteableThreshold: vol.dpWriteableThreshold,
+		ExtentCacheExpireSec: vol.ExtentCacheExpireSec,
 	}
 }
 
@@ -2255,7 +2259,7 @@ func parseRequestToUpdateVol(r *http.Request) (name, authKey string, replicaNum,
 	return
 }
 
-func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, capacity int, description string, err error) {
+func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, capacity int, description string, extentCacheExpireSec int64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2272,6 +2276,14 @@ func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, ca
 	}
 	if description = r.FormValue(descriptionKey); description == "" {
 		description = vol.description
+	}
+	if ekExpireSecStr := r.FormValue(extentExpirationKey); ekExpireSecStr != "" {
+		if extentCacheExpireSec, err = strconv.ParseInt(ekExpireSecStr, 10, 64); err != nil {
+			err = unmatchedKey(extentExpirationKey)
+			return
+		}
+	} else {
+		extentCacheExpireSec = vol.ExtentCacheExpireSec
 	}
 	return
 }

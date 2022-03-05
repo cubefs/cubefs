@@ -77,6 +77,7 @@ const (
 	CliFlagEnable              = "enable"
 	CliFlagEnableFollowerRead  = "follower-read"
 	CliFlagEnableForceROW      = "force-row"
+	CliFlagExtentCacheExpireSec	= "ek-expire-second"
 	CliFlagEnableCrossRegionHA = "cross-region"
 	CliFlagAutoRepair          = "auto-repair"
 	CliFlagOSSBucketPolicy     = "bucket-policy"

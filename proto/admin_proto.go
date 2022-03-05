@@ -717,6 +717,7 @@ type SimpleVolView struct {
 	MasterRegionZone     string
 	SlaveRegionZone      string
 	ConnConfig			 *ConnConfig	// todo
+	ExtentCacheExpireSec int64
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition

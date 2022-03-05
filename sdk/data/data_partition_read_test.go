@@ -26,7 +26,8 @@ func TestLeaderRead(t *testing.T) {
 	}
 	defer readFile.Close()
 	testMc := master.NewMasterClient([]string{"192.168.0.11:17010", "192.168.0.12:17010", "192.168.0.13:17010"}, false)
-	if err = testMc.AdminAPI().UpdateVolume("ltptest", 30, 3, 3, false, false, false, false, false, calcAuthKey("ltptest"), "default", 0, 0); err != nil {
+	if err = testMc.AdminAPI().UpdateVolume("ltptest", 30, 3, 3, false, false,
+		false, false, false, calcAuthKey("ltptest"), "default", 0, 0, 60); err != nil {
 		t.Fatalf("update followerRead to 'false' failed: err(%v) vol(ltptest)", err)
 	}
 	time.Sleep(70 * time.Second)
@@ -55,7 +56,8 @@ func TestLeaderRead(t *testing.T) {
 		}
 		readOffset += int64(readLen)
 	}
-	if err = testMc.AdminAPI().UpdateVolume("ltptest", 30, 3, 3, true, false, false, false, false, calcAuthKey("ltptest"), "default", 0, 0); err != nil {
+	if err = testMc.AdminAPI().UpdateVolume("ltptest", 30, 3, 3, true, false,
+		false, false, false, calcAuthKey("ltptest"), "default", 0, 0, 60); err != nil {
 		t.Errorf("update followerRead to 'true' failed: err(%v) vol(ltptest)", err)
 	}
 }

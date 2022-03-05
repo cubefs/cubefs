@@ -464,7 +464,7 @@ func TestUpdateVol(t *testing.T) {
 		return
 	}
 
-	reqURL = fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v&forceROW=true",
+	reqURL = fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v&forceROW=true&ekExpireSec=60",
 		hostAddr, proto.AdminUpdateVol, commonVol.Name, capacity, buildAuthKey("cfs"))
 	process(reqURL, t)
 	vol, err = server.cluster.getVol(commonVolName)
@@ -474,6 +474,10 @@ func TestUpdateVol(t *testing.T) {
 	}
 	if vol.ForceROW != true {
 		t.Errorf("expect ForceROW is true, but is %v", vol.ForceROW)
+		return
+	}
+	if vol.ExtentCacheExpireSec != 60 {
+		t.Errorf("expect ExtentCacheExpireSec is 60, but is %v", vol.ExtentCacheExpireSec)
 		return
 	}
 }
@@ -1697,7 +1701,7 @@ func TestUpdateVolToCrossRegionVol(t *testing.T) {
 	newZoneName := fmt.Sprintf("%s,%s,%s,%s", testZone1, testZone2, testZone3, testZone6)
 	// update to cross region vol
 	err := mc.AdminAPI().UpdateVolume(volName, 200, 5, 0, false, false, false, false,
-		true, buildAuthKey("cfs"), newZoneName, 0, 1)
+		true, buildAuthKey("cfs"), newZoneName, 0, 1, 120)
 	if err != nil {
 		t.Errorf("UpdateVolume err:%v", err)
 		return
@@ -1722,6 +1726,9 @@ func TestUpdateVolToCrossRegionVol(t *testing.T) {
 	}
 	if volumeSimpleInfo.ZoneName != newZoneName {
 		t.Errorf("vol:%v expect ZoneName is %v, but is %v", volName, newZoneName, volumeSimpleInfo.ZoneName)
+	}
+	if volumeSimpleInfo.ExtentCacheExpireSec != 120 {
+		t.Errorf("vol:%v expect ExtentCacheExpireSec is 120, but is %v", volName, volumeSimpleInfo.ExtentCacheExpireSec)
 	}
 }
 

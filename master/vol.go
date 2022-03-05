@@ -71,6 +71,7 @@ type Vol struct {
 	volWriteMutexEnable bool
 	volWriteMutex       sync.Mutex
 	volWriteMutexClient *VolWriteMutexClient
+	ExtentCacheExpireSec	int64
 	sync.RWMutex
 }
 
@@ -104,6 +105,7 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	if len(zoneList) > 1 {
 		vol.crossZone = true
 	}
+	vol.ExtentCacheExpireSec = defaultExtentCacheExpireSec
 	vol.dataPartitionSize = dpSize
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
@@ -158,6 +160,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.OSSBucketPolicy = vv.OSSBucketPolicy
 	vol.DPConvertMode = vv.DPConvertMode
 	vol.MPConvertMode = vv.MPConvertMode
+	vol.ExtentCacheExpireSec = vv.ExtentCacheExpireSec
 
 	return vol
 }

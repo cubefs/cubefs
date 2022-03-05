@@ -425,6 +425,9 @@ func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte,
 		return
 	}
 
+	// ROW in cross-region mode maybe insert a new ek
+	s.UpdateExpiredExtentCache(ctx)
+
 	read, err = s.read(ctx, data, offset, size)
 	return
 }

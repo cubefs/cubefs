@@ -302,7 +302,8 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 }
 
 func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpReplicas int,
-	followerRead, authenticate, enableToken, autoRepair, forceROW bool, authKey, zoneName string, bucketPolicy, crossRegionHAType uint8) (err error) {
+	followerRead, authenticate, enableToken, autoRepair, forceROW bool, authKey, zoneName string,
+	bucketPolicy, crossRegionHAType uint8, extentCacheExpireSec int64) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
@@ -317,6 +318,7 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	request.addParam("zoneName", zoneName)
 	request.addParam("bucketPolicy", strconv.Itoa(int(bucketPolicy)))
 	request.addParam("crossRegion", strconv.Itoa(int(crossRegionHAType)))
+	request.addParam("ekExpireSec", strconv.FormatInt(extentCacheExpireSec, 10))
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}

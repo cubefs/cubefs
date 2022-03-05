@@ -25,6 +25,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/chubaofs/chubaofs/cli/api"
 	"github.com/chubaofs/chubaofs/metanode"
@@ -203,18 +204,19 @@ const (
 
 func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	var (
-		optCapacity          uint64
-		optReplicas          int
-		optMpReplicas        int
-		optFollowerRead      string
-		optForceROW          string
-		optAuthenticate      string
-		optEnableToken       string
-		optAutoRepair        string
-		optBucketPolicy      string
-		optCrossRegionHAType string
-		optZoneName          string
-		optYes               bool
+		optCapacity         	uint64
+		optReplicas          	int
+		optMpReplicas        	int
+		optFollowerRead      	string
+		optForceROW          	string
+		optAuthenticate      	string
+		optEnableToken       	string
+		optAutoRepair        	string
+		optBucketPolicy      	string
+		optCrossRegionHAType 	string
+		optZoneName          	string
+		optExtentCacheExpireSec	int64
+		optYes               	bool
 		confirmString        = strings.Builder{}
 		vv                   *proto.SimpleVolView
 	)
@@ -256,6 +258,14 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				vv.MpReplicaNum = uint8(optMpReplicas)
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  Mp Replicas         : %v\n", vv.MpReplicaNum))
+			}
+			if optExtentCacheExpireSec != 0 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  ExtentCache Expire  : %v -> %v\n",
+					time.Duration(vv.ExtentCacheExpireSec)*time.Second, time.Duration(optExtentCacheExpireSec)*time.Second))
+				vv.ExtentCacheExpireSec = optExtentCacheExpireSec
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  ExtentCache Expire  : %v\n", time.Duration(vv.ExtentCacheExpireSec)*time.Second))
 			}
 
 			if optFollowerRead != "" {
@@ -366,7 +376,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum), int(vv.MpReplicaNum),
-				vv.FollowerRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair, vv.ForceROW, calcAuthKey(vv.Owner), vv.ZoneName, uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType))
+				vv.FollowerRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair, vv.ForceROW, calcAuthKey(vv.Owner), vv.ZoneName,
+				uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec)
 			if err != nil {
 				return
 			}
@@ -393,6 +404,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	cmd.Flags().StringVar(&optAutoRepair, CliFlagAutoRepair, "", "Enable auto balance partition distribution according to zoneName")
 	cmd.Flags().StringVar(&optBucketPolicy, CliFlagOSSBucketPolicy, "", "Set bucket access policy for S3(0 for private 1 for public-read)")
+	cmd.Flags().Int64Var(&optExtentCacheExpireSec, CliFlagExtentCacheExpireSec, 0, "Specify the expiration second of the extent cache (-1 means never expires)")
 
 	return cmd
 }

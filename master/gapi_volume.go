@@ -77,6 +77,7 @@ func (s *VolumeService) registerObject(schema *schemabuilder.Schema) {
 			CreateTime:         time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
 			Description:        vol.description,
 			Quorum:             vol.getDataPartitionQuorum(),
+			ExtentCacheExpireSec: vol.ExtentCacheExpireSec,
 		}, nil
 	})
 
@@ -352,7 +353,7 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 
 	if err = s.cluster.updateVol(args.Name, args.AuthKey, *args.ZoneName, *args.Description, *args.Capacity,
 		uint8(*args.ReplicaNum), vol.mpReplicaNum, *args.FollowerRead, *args.Authenticate, *args.EnableToken, *args.AutoRepair, *args.ForceROW,
-		vol.dpSelectorName, vol.dpSelectorParm, vol.OSSBucketPolicy, vol.CrossRegionHAType, vol.dpWriteableThreshold); err != nil {
+		vol.dpSelectorName, vol.dpSelectorParm, vol.OSSBucketPolicy, vol.CrossRegionHAType, vol.dpWriteableThreshold, vol.ExtentCacheExpireSec); err != nil {
 		return nil, err
 	}
 

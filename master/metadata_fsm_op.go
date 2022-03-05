@@ -193,6 +193,7 @@ type volValue struct {
 	OSSBucketPolicy     bsProto.BucketAccessPolicy
 	DPConvertMode       bsProto.ConvertMode
 	MPConvertMode       bsProto.ConvertMode
+	ExtentCacheExpireSec	int64
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -231,6 +232,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		MpLearnerNum:        vol.mpLearnerNum,
 		DPConvertMode:       vol.DPConvertMode,
 		MPConvertMode:       vol.MPConvertMode,
+		ExtentCacheExpireSec: vol.ExtentCacheExpireSec,
 	}
 	return
 }
@@ -807,6 +809,9 @@ func (c *Cluster) loadVols() (err error) {
 		}
 		if !vv.CrossZone && vv.ZoneName == "" {
 			vv.ZoneName = DefaultZoneName
+		}
+		if vv.ExtentCacheExpireSec == 0 {
+			vv.ExtentCacheExpireSec = defaultExtentCacheExpireSec
 		}
 		// TODO volume mutex
 		vol := newVolFromVolValue(vv)

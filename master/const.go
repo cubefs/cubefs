@@ -46,6 +46,7 @@ const (
 	mpReplicaNumKey             = "mpReplicaNum"
 	followerReadKey             = "followerRead"
 	forceROWKey                 = "forceROW"
+	extentExpirationKey			= "ekExpireSec"
 	authenticateKey             = "authenticate"
 	akKey                       = "ak"
 	keywordsKey                 = "keywords"

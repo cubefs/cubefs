@@ -43,8 +43,9 @@ type Streamer struct {
 	idle      int // how long there is no new request
 	traversed int // how many times the streamer is traversed
 
-	extents *ExtentCache
-	once    sync.Once
+	extents 	*ExtentCache
+	refreshLock	sync.Mutex
+	once    	sync.Once
 
 	handler   *ExtentHandler   // current open handler
 	dirtylist *DirtyExtentList // dirty handlers
@@ -180,6 +181,21 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 		}
 	}
 	return
+}
+
+func (s *Streamer) UpdateExpiredExtentCache(ctx context.Context) {
+	if !s.client.dataWrapper.CrossRegionHATypeQuorum() {
+		return
+	}
+	expireSecond := s.client.dataWrapper.extentCacheExpireSec
+	if expireSecond <= 0 {
+		return
+	}
+	s.refreshLock.Lock()
+	if s.extents.IsExpired(expireSecond) {
+		s.GetExtents(ctx)
+	}
+	s.refreshLock.Unlock()
 }
 
 func (dp *DataPartition) chooseMaxAppliedDp(ctx context.Context, pid uint64, hosts []string, reqPacket *Packet) (targetHosts []string, isErr bool) {

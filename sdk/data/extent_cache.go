@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/chubaofs/chubaofs/util/tracing"
 
@@ -25,6 +26,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/btree"
 	"github.com/chubaofs/chubaofs/util/log"
 )
+
 
 // ExtentRequest defines the struct for the request of read or write an extent.
 type ExtentRequest struct {
@@ -55,10 +57,11 @@ func NewExtentRequest(offset, size int, data []byte, ek *proto.ExtentKey) *Exten
 // ExtentCache defines the struct of the extent cache.
 type ExtentCache struct {
 	sync.RWMutex
-	inode uint64
-	gen   uint64 // generation number
-	size  uint64 // size of the cache
-	root  *btree.BTree
+	inode 		uint64
+	gen   		uint64 		// generation number
+	size  		uint64 		// size of the cache
+	root  		*btree.BTree
+	refreshTime	time.Time	// the last time to update extent cache
 }
 
 // NewExtentCache returns a new extent cache.
@@ -74,6 +77,8 @@ func (cache *ExtentCache) Refresh(ctx context.Context, inode uint64, getExtents 
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("ExtentCache.Refresh")
 	defer tracer.Finish()
 	ctx = tracer.Context()
+
+	cache.UpdateRefreshTime()
 
 	gen, size, extents, err := getExtents(ctx, inode)
 	if err != nil {
@@ -113,6 +118,21 @@ func (cache *ExtentCache) update(gen, size uint64, eks []proto.ExtentKey) {
 		extent := ek
 		cache.root.ReplaceOrInsert(&extent)
 	}
+}
+
+func (cache *ExtentCache) UpdateRefreshTime() {
+	cache.Lock()
+	defer cache.Unlock()
+
+	cache.refreshTime = time.Now()
+	return
+}
+
+func (cache *ExtentCache) IsExpired(expireSecond int64) bool {
+	cache.RLock()
+	defer cache.RUnlock()
+
+	return time.Since(cache.refreshTime) > time.Duration(expireSecond) * time.Second
 }
 
 // Append appends an extent key.
