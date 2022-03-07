@@ -15,6 +15,7 @@
 package master
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -140,6 +141,73 @@ const (
 	opSyncDeleteVolUser        uint32 = 0x1D
 	opSyncUpdateVolUser        uint32 = 0x1E
 )
+
+func getOpName(op uint32) string {
+	switch op {
+	case opSyncAddMetaNode:
+		return "opSyncAddMetaNode"
+	case opSyncAddDataNode:
+		return "opSyncAddDataNode"
+	case opSyncAddDataPartition:
+		return "opSyncAddDataPartition"
+	case opSyncAddVol:
+		return "opSyncAddVol"
+	case opSyncAddMetaPartition:
+		return "opSyncAddMetaPartition"
+	case opSyncUpdateDataPartition:
+		return "opSyncUpdateDataPartition"
+	case opSyncUpdateMetaPartition:
+		return "opSyncUpdateMetaPartition"
+	case opSyncDeleteDataNode:
+		return "opSyncDeleteDataNode"
+	case opSyncDeleteMetaNode:
+		return "opSyncDeleteMetaNode"
+	case opSyncAllocDataPartitionID:
+		return "opSyncAllocDataPartitionID"
+	case opSyncAllocMetaPartitionID:
+		return "opSyncAllocMetaPartitionID"
+	case opSyncAllocCommonID:
+		return "opSyncAllocCommonID"
+	case opSyncPutCluster:
+		return "opSyncPutCluster"
+	case opSyncUpdateVol:
+		return "opSyncUpdateVol"
+	case opSyncDeleteVol:
+		return "opSyncDeleteVol"
+	case opSyncDeleteDataPartition:
+		return "opSyncDeleteDataPartition"
+	case opSyncDeleteMetaPartition:
+		return "opSyncDeleteMetaPartition"
+	case opSyncAddNodeSet:
+		return "opSyncAddNodeSet"
+	case opSyncUpdateNodeSet:
+		return "opSyncUpdateNodeSet"
+	case opSyncBatchPut:
+		return "opSyncBatchPut"
+	case opSyncUpdateDataNode:
+		return "opSyncUpdateDataNode"
+	case opSyncUpdateMetaNode:
+		return "opSyncUpdateMetaNode"
+	case opSyncAddUserInfo:
+		return "opSyncAddUserInfo"
+	case opSyncDeleteUserInfo:
+		return "opSyncDeleteUserInfo"
+	case opSyncUpdateUserInfo:
+		return "opSyncUpdateUserInfo"
+	case opSyncAddAKUser:
+		return "opSyncAddAKUser"
+	case opSyncDeleteAKUser:
+		return "opSyncDeleteAKUser"
+	case opSyncAddVolUser:
+		return "opSyncAddVolUser"
+	case opSyncDeleteVolUser:
+		return "opSyncDeleteVolUser"
+	case opSyncUpdateVolUser:
+		return "opSyncUpdateVolUser"
+	default:
+		return fmt.Sprintf("Unknown operation %v", op)
+	}
+}
 
 const (
 	keySeparator          = "#"

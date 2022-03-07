@@ -463,8 +463,8 @@ func (c *Cluster) addMetaNode(nodeAddr, zoneName string) (id uint64, err error) 
 	}
 	c.t.putMetaNode(metaNode)
 	c.metaNodes.Store(nodeAddr, metaNode)
-	log.LogInfof("action[addMetaNode],clusterID[%v] metaNodeAddr:%v,nodeSetId[%v],capacity[%v]",
-		c.Name, nodeAddr, ns.ID, ns.Capacity)
+	log.LogInfof("action[addMetaNode],clusterID[%v] metaNodeAddr:%v,nodeId[%v],nodeSetId[%v],capacity[%v]",
+		c.Name, nodeAddr, id, ns.ID, ns.Capacity)
 	return
 errHandler:
 	err = fmt.Errorf("action[addMetaNode],clusterID[%v] metaNodeAddr:%v err:%v ",
@@ -508,8 +508,8 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string) (id uint64, err error) 
 	}
 	c.t.putDataNode(dataNode)
 	c.dataNodes.Store(nodeAddr, dataNode)
-	log.LogInfof("action[addDataNode],clusterID[%v] dataNodeAddr:%v,nodeSetId[%v],capacity[%v]",
-		c.Name, nodeAddr, ns.ID, ns.Capacity)
+	log.LogInfof("action[addDataNode],clusterID[%v] dataNodeAddr:%v,nodeId[%v],nodeSetId[%v],capacity[%v]",
+		c.Name, nodeAddr, id, ns.ID, ns.Capacity)
 	return
 errHandler:
 	err = fmt.Errorf("action[addDataNode],clusterID[%v] dataNodeAddr:%v err:%v ", c.Name, nodeAddr, err.Error())
