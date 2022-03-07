@@ -416,10 +416,11 @@ func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepa
 	availableTinyExtents = make([]uint64, 0)
 	brokenTinyExtents = make([]uint64, 0)
 	for extentID, maxFileInfo := range maxSizeExtentMap {
-
+		certain := true // 状态明确
 		hasBeenRepaired := true
 		for index := 0; index < len(repairTasks); index++ {
 			if repairTasks[index] == nil {
+				certain = false // 状态设置为不明确
 				continue
 			}
 			extentInfo, ok := repairTasks[index].extents[extentID]
@@ -439,7 +440,8 @@ func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepa
 
 		}
 		if storage.IsTinyExtent(extentID) {
-			if hasBeenRepaired {
+			if certain && hasBeenRepaired {
+				// 仅状态明确且被修复完成的tiny extent可以设为available
 				availableTinyExtents = append(availableTinyExtents, extentID)
 			} else {
 				brokenTinyExtents = append(brokenTinyExtents, extentID)
