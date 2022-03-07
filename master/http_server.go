@@ -225,6 +225,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminUpdateDataNode).
 		HandlerFunc(m.updateDataNode)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminDeleteMetaNode).
+		HandlerFunc(m.deleteMetaNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminDeleteDataNode).
+		HandlerFunc(m.deleteDataNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminGetInvalidNodes).
 		HandlerFunc(m.checkInvalidIDNodes)
 

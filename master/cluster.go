@@ -15,6 +15,7 @@
 package master
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -429,6 +430,93 @@ func (c *Cluster) updateMetaNodeBaseInfo(nodeAddr string, id uint64) (err error)
 	}
 	//partitions := c.getAllMetaPartitionsByMetaNode(nodeAddr)
 	return
+}
+
+func (c *Cluster) deleteDataNodeOldInfo(nodeAddr string, id uint64) error {
+	c.dnMutex.Lock()
+	defer c.dnMutex.Unlock()
+
+	value, ok := c.dataNodes.Load(nodeAddr)
+	if !ok {
+		return fmt.Errorf("node %v is not exist", nodeAddr)
+	}
+	dataNode := value.(*DataNode)
+	if dataNode.ID == id {
+		return fmt.Errorf("cannot delete current node addr[%v] ID[%v]", nodeAddr, id)
+	}
+
+	// FIXME: protected by c.dnMutex?
+	result, err := c.fsm.store.SeekForPrefix([]byte(dataNodePrefix))
+	if err != nil {
+		return fmt.Errorf("action[deleteDataNodeOldInfo] err:%v", err)
+	}
+	for _, v := range result {
+		dnv := &dataNodeValue{}
+		if err = json.Unmarshal(v, dnv); err != nil {
+			return fmt.Errorf("action[deleteDataNodeOldInfo] unmarshal err:%v", err)
+		}
+
+		if dnv.ID == id {
+			dataNode = newDataNode(dnv.Addr, dnv.ZoneName, c.Name)
+			dataNode.ID = dnv.ID
+			dataNode.NodeSetID = dnv.NodeSetID
+			if err = c.syncDeleteDataNode(dataNode); err != nil {
+				log.LogErrorf("action[deleteDataNodeOldInfo] syncDeleteDataNode err:%v", err)
+				return err
+			}
+			log.LogInfof("action[deleteDataNodeOldInfo] remove Addr[%v] ID[%v] successfully",
+				dataNode.ID, dataNode.Addr)
+			return nil
+		}
+	}
+
+	err = fmt.Errorf("action[deleteDataNodeOldInfo] Addr[%v] ID[%v] not found", nodeAddr, id)
+	log.LogInfo(err)
+	return err
+}
+
+func (c *Cluster) deleteMetaNodeOldInfo(nodeAddr string, id uint64) error {
+	c.mnMutex.Lock()
+	defer c.mnMutex.Unlock()
+
+	value, ok := c.metaNodes.Load(nodeAddr)
+	if !ok {
+		return fmt.Errorf("node %v is not exist", nodeAddr)
+	}
+	metaNode := value.(*MetaNode)
+	if metaNode.ID == id {
+		return fmt.Errorf("cannot delete current node addr[%v] ID[%v]", nodeAddr, id)
+	}
+
+	// FIXME: protected by c.mnMutex?
+	result, err := c.fsm.store.SeekForPrefix([]byte(metaNodePrefix))
+	if err != nil {
+		return fmt.Errorf("action[deleteMetaNodeOldInfo] err:%v", err)
+	}
+
+	for _, v := range result {
+		mnv := &metaNodeValue{}
+		if err = json.Unmarshal(v, mnv); err != nil {
+			return fmt.Errorf("action[deleteMetaNodeOldInfo] unmarshal err:%v", err)
+		}
+
+		if mnv.ID == id {
+			metaNode = newMetaNode(mnv.Addr, mnv.ZoneName, c.Name)
+			metaNode.ID = mnv.ID
+			metaNode.NodeSetID = mnv.NodeSetID
+			if err = c.syncDeleteMetaNode(metaNode); err != nil {
+				log.LogErrorf("action[deleteMetaNodeOldInfo] syncDeleteMetaNode err:%v", err)
+				return err
+			}
+			log.LogInfof("action[deleteMetaNodeOldInfo] remove Addr[%v] ID[%v] successfully",
+				mnv.Addr, mnv.ID)
+			return nil
+		}
+	}
+
+	err = fmt.Errorf("action[deleteMetaNodeOldInfo] Addr[%v] ID[%v] not found", nodeAddr, id)
+	log.LogInfo(err)
+	return err
 }
 
 func (c *Cluster) addMetaNode(nodeAddr, zoneName string) (id uint64, err error) {
