@@ -591,7 +591,9 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode.RdOnly = dnv.RdOnly
 		olddn, ok := c.dataNodes.Load(dataNode.Addr)
 		if ok {
-			if olddn.(*DataNode).ID <= dataNode.ID {
+			log.LogInfof("action[loadDataNodes] get history #dn#%v#%v, current #dn#%v#%v",
+				dnv.ID, dnv.Addr, olddn.(*DataNode).ID, olddn.(*DataNode).Addr)
+			if olddn.(*DataNode).ID > dataNode.ID {
 				continue
 			}
 		}
@@ -623,7 +625,9 @@ func (c *Cluster) loadMetaNodes() (err error) {
 
 		oldmn, ok := c.metaNodes.Load(metaNode.Addr)
 		if ok {
-			if oldmn.(*MetaNode).ID <= metaNode.ID {
+			log.LogInfof("action[loadMetaNodes] get history #mn#%v#%v, current #mn#%v#%v",
+				mnv.ID, mnv.Addr, oldmn.(*MetaNode).ID, oldmn.(*MetaNode).Addr)
+			if oldmn.(*MetaNode).ID > metaNode.ID {
 				continue
 			}
 		}
