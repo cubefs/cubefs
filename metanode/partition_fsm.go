@@ -15,20 +15,14 @@
 package metanode
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"hash/crc32"
 	"io"
 	"net"
-	"strconv"
-	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/chubaofs/chubaofs/util/errors"
 
 	"github.com/chubaofs/chubaofs/util/tracing"
 
@@ -287,58 +281,6 @@ func (mp *metaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 
 // Snapshot returns the snapshot of the current meta partition.
 func (mp *metaPartition) Snapshot() (snap raftproto.Snapshot, err error) {
-	var isSnapshotBatchSend = false
-	for _, peer := range mp.config.Peers {
-		addr := peer.Addr
-		ctx := context.Background()
-		var (
-			err  error
-			conn *net.TCPConn
-		)
-		if conn, err = mp.config.ConnPool.GetConnect(addr); err != nil {
-			err = errors.Trace(err, "get connection failed")
-			log.LogErrorf("get connection from %v failed", addr)
-			goto end
-		}
-		p := NewPacketGetMetaNodeVersionInfo(ctx)
-		if err = p.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
-			mp.config.ConnPool.PutConnect(conn, ForceClosedConnect)
-			err = errors.Trace(err, "write packet to connection failed")
-			log.LogErrorf("write packet to connection failed, peer addr: %v", addr)
-			goto end
-		}
-		if err = p.ReadFromConn(conn, proto.ReadDeadlineTime*10); err != nil {
-			mp.config.ConnPool.PutConnect(conn, ForceClosedConnect)
-			log.LogErrorf("readFromConn err: %v", err)
-			goto end
-		}
-		mp.config.ConnPool.PutConnect(conn, NoClosedConnect)
-		if p.ResultCode != proto.OpOk {
-			log.LogErrorf("resultCode=[%v] expectRes=[%v]", p.ResultCode, proto.OpOk)
-			goto end
-		}
-		var metaNodeVersion MetaNodeVersion
-		if err := json.Unmarshal(p.Data, &metaNodeVersion); err != nil {
-			log.LogErrorf("json.Unmarshal err: %v", err)
-			goto end
-		}
-		snapshotBatchSendSupport, err := NewMetaNodeVersion(snapshotBatchSendMinimumVersion)
-		if err != nil {
-			log.LogErrorf("get snapshotBatchSendSupport failed, err: %v", err)
-			goto end
-		}
-		if metaNodeVersion.LessThan(*snapshotBatchSendSupport) {
-			goto end
-		}
-		isSnapshotBatchSend = true
-	}
-	if isSnapshotBatchSend {
-		log.LogInfof("snapshot: use newMetaItemIteratorV2 to batch send items.")
-		snap, err = newMetaItemIteratorV2(mp)
-		return
-	}
-end:
-	log.LogInfof("snapshot: use MetaItemIterator to send an item")
 	snap, err = newMetaItemIterator(mp)
 	return
 }
@@ -346,44 +288,17 @@ end:
 // ApplySnapshot applies the given snapshots.
 func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.SnapIterator) (err error) {
 	var (
-		data                   []byte
-		index                  int
-		appIndexID             uint64
-		cursor                 uint64
-		inodeTree              = NewBtree()
-		dentryTree             = NewBtree()
-		extendTree             = NewBtree()
-		multipartTree          = NewBtree()
-		wg                     sync.WaitGroup
-		inodeBatchCh           = make(chan InodeBatch, 128)
-		dentryBatchCh          = make(chan DentryBatch, 128)
-		multipartBatchCh       = make(chan MultipartBatch, 128)
-		extendBatchCh          = make(chan ExtendBatch, 128)
-		snapshotSign           = crc32.NewIEEE()
-		snapshotCrcStoreSuffix = "snapshotCrc"
-		leaderCrc              uint32
+		data          []byte
+		index         int
+		appIndexID    uint64
+		cursor        uint64
+		inodeTree     = NewBtree()
+		dentryTree    = NewBtree()
+		extendTree    = NewBtree()
+		multipartTree = NewBtree()
 	)
 	defer func() {
-		close(inodeBatchCh)
-		close(dentryBatchCh)
-		close(multipartBatchCh)
-		close(extendBatchCh)
-		wg.Wait()
 		if err == ErrSnapShotEOF {
-			crc := snapshotSign.Sum32()
-			leaderCrcStr := strconv.FormatUint(uint64(leaderCrc), 10)
-			crcStoreFile := fmt.Sprintf("%s/%s", mp.config.RootDir, snapshotCrcStoreSuffix)
-			var crcBuff = bytes.NewBuffer(make([]byte, 0, 16))
-			storeStr := fmt.Sprintf("%v, %v, %v", time.Now().Format("2006-01-02 15:04:05"), leaderCrcStr, crc)
-			crcBuff.WriteString(storeStr)
-			if err = ioutil.WriteFile(crcStoreFile, crcBuff.Bytes(), 0775); err != nil {
-				log.LogWarnf("write to file failed, err is :%v", err)
-			}
-
-			if leaderCrc != 0  && leaderCrc != crc {
-				log.LogWarnf("ApplySnapshot partitionID(%v) leader crc[%v] and local[%v] is different, snaps", mp.config.PartitionId, leaderCrc, crc)
-			}
-
 			mp.applyID = appIndexID
 			mp.inodeTree = inodeTree
 			mp.dentryTree = dentryTree
@@ -409,48 +324,6 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		log.LogErrorf("ApplySnapshot: stop with error: partitionID(%v) err(%v)", mp.config.PartitionId, err)
 	}()
 
-	wg.Add(4)
-	go func() {
-		defer wg.Done()
-		for inodes := range inodeBatchCh {
-			for _, ino := range inodes {
-				if cursor < ino.Inode {
-					cursor = ino.Inode
-				}
-				inodeTree.ReplaceOrInsert(ino, true)
-				log.LogDebugf("ApplySnapshot: create inode: partitonID(%v) inode(%v).", mp.config.PartitionId, ino)
-			}
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		for dentries := range dentryBatchCh {
-			for _, dentry := range dentries {
-				dentryTree.ReplaceOrInsert(dentry, true)
-				log.LogDebugf("ApplySnapshot: create dentry: partitionID(%v) dentry(%v)", mp.config.PartitionId, dentry)
-			}
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		for multiparts := range multipartBatchCh {
-			for _, multipart := range multiparts {
-				multipartTree.ReplaceOrInsert(multipart, true)
-				log.LogDebugf("ApplySnapshot: create multipart: partitionID(%v) multipart(%v)", mp.config.PartitionId, multipart)
-			}
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		for extends := range extendBatchCh {
-			for _, extend := range extends {
-				extendTree.ReplaceOrInsert(extend, true)
-				log.LogDebugf("ApplySnapshot: set extend attributes: partitionID(%v) extend(%v)",
-					mp.config.PartitionId, extend)
-			}
-		}
-	}()
-
 	ctx := context.Background()
 	for {
 		data, err = iter.Next()
@@ -462,14 +335,6 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		}
 		if index == 0 {
 			appIndexID = binary.BigEndian.Uint64(data)
-			lenData := make([]byte, 4)
-			binary.BigEndian.PutUint32(lenData, uint32(len(data)))
-			if _, err = snapshotSign.Write(lenData); err != nil {
-				log.LogWarnf("create CRC for snapshotCheck failed, err is :%v", err)
-			}
-			if _, err = snapshotSign.Write(data); err != nil {
-				log.LogWarnf("create CRC for snapshotCheck failed, err is :%v", err)
-			}
 			index++
 			continue
 		}
@@ -537,34 +402,6 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			}
 			log.LogDebugf("ApplySnapshot: write snap extent delete file: partitonID(%v) filename(%v).",
 				mp.config.PartitionId, fileName)
-			lenData := make([]byte, 4)
-			binary.BigEndian.PutUint32(lenData, uint32(len(data)))
-			if _, err = snapshotSign.Write(lenData); err != nil {
-				log.LogWarnf("create CRC for snapshotCheck failed, err is :%v", err)
-			}
-			if _, err = snapshotSign.Write(data); err != nil {
-				log.LogWarnf("create CRC for snapshotCheck failed, err is :%v", err)
-			}
-		case opFSMBatchCreate:
-			var mulItems *MulItems
-			mulItems, err = MulItemsUnmarshal(ctx, snap.V)
-			if err != nil {
-				return
-			}
-			inodeBatchCh <- mulItems.InodeBatches
-			dentryBatchCh <- mulItems.DentryBatches
-			multipartBatchCh <- mulItems.MultipartBatches
-			extendBatchCh <- mulItems.ExtendBatches
-			lenData := make([]byte, 4)
-			binary.BigEndian.PutUint32(lenData, uint32(len(data)))
-			if _, err = snapshotSign.Write(lenData); err != nil {
-				log.LogWarnf("create CRC for snapshotCheck failed, err is :%v", err)
-			}
-			if _, err = snapshotSign.Write(data); err != nil {
-				log.LogWarnf("create CRC for snapshotCheck failed, err is :%v", err)
-			}
-		case opFSMSnapShotCrc:
-			leaderCrc = binary.BigEndian.Uint32(snap.V)
 		default:
 			err = fmt.Errorf("unknown op=%d", snap.Op)
 			return
