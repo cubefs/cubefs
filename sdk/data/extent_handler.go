@@ -500,8 +500,10 @@ func (eh *ExtentHandler) appendExtentKey(ctx context.Context) (err error) {
 	log.LogDebugf("appendExtentKey enter: eh(%v) key(%v) dirty(%v)", eh, ek, dirty)
 
 	if dirty {
-		eh.stream.extents.Append(ek, true)
+		// Order: First 'insertExtentKey'，and then 'Append' local extent cache
+		// Otherwise, if 'Append' first and the 'GetExtents' operation occurs before 'insertExtentKey', the newly appended ek will be overwritten.
 		err = eh.stream.client.insertExtentKey(ctx, eh.inode, *ek, eh.isPreExtent)
+		eh.stream.extents.Append(ek, true)
 		if err == nil {
 			eh.ekMutex.Lock()
 			// If the extent has ever been sent to metanode, all following insertExtentKey requests of the
