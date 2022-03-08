@@ -51,10 +51,11 @@ type Super struct {
 	nodeCache map[uint64]fs.Node
 	fslock    sync.Mutex
 
-	disableDcache bool
-	fsyncOnClose  bool
-	enableXattr   bool
-	rootIno       uint64
+	disableDcache     bool
+	fsyncOnClose      bool
+	enableXattr       bool
+	strictConsistence bool
+	rootIno           uint64
 
 	state     fs.FSStatType
 	sockaddr  string
@@ -107,6 +108,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.disableDcache = opt.DisableDcache
 	s.fsyncOnClose = opt.FsyncOnClose
 	s.enableXattr = opt.EnableXattr
+	s.strictConsistence = opt.StrictConsistence
 
 	var extentConfig = &stream.ExtentConfig{
 		Volume:            opt.Volname,

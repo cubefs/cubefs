@@ -46,6 +46,7 @@ const (
 	EnableXattr
 	NearRead
 	EnablePosixACL
+	StrictConsistence
 
 	MaxMountOption
 )
@@ -110,6 +111,8 @@ func InitMountOptions(opts []MountOption) {
 	opts[MaxCPUs] = MountOption{"maxcpus", "The maximum number of CPUs that can be executing", "", int64(-1)}
 	opts[EnableXattr] = MountOption{"enableXattr", "Enable xattr support", "", false}
 	opts[EnablePosixACL] = MountOption{"enablePosixACL", "enable posix ACL support", "", false}
+
+	opts[StrictConsistence] = MountOption{"strictConsistence", "enable strict consistence", "", true}
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -241,4 +244,5 @@ type MountOptions struct {
 	EnablePosixACL       bool
 	EnableUnixPermission bool
 	NeedRestoreFuse      bool
+	StrictConsistence    bool
 }

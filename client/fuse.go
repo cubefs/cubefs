@@ -286,7 +286,7 @@ func main() {
 	}
 
 	level := parseLogLevel(opt.Loglvl)
-	_, err = log.InitLog(opt.Logpath, opt.Volname, level, nil)
+	_, err = log.InitLog(opt.Logpath, LoggerPrefix, level, nil)
 	if err != nil {
 		err = errors.NewErrorf("Init log dir fail: %v\n", err)
 		fmt.Println(err)
@@ -295,7 +295,7 @@ func main() {
 	}
 	defer log.LogFlush()
 
-	outputFilePath := path.Join(opt.Logpath, opt.Volname, LoggerOutput)
+	outputFilePath := path.Join(opt.Logpath, LoggerPrefix, LoggerOutput)
 	outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
 	if err != nil {
 		err = errors.NewErrorf("Open output file failed: %v\n", err)
@@ -586,7 +586,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	if len(logPath) == 0 {
 		logPath = DefaultLogPath
 	}
-	opt.Logpath = path.Join(logPath, LoggerPrefix)
+	opt.Logpath = path.Join(logPath, opt.Volname)
 	opt.Loglvl = GlobalMountOptions[proto.LogLevel].GetString()
 	opt.Profport = GlobalMountOptions[proto.ProfPort].GetString()
 	opt.IcacheTimeout = GlobalMountOptions[proto.IcacheTimeout].GetInt64()
@@ -621,6 +621,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.EnableXattr = GlobalMountOptions[proto.EnableXattr].GetBool()
 	opt.NearRead = GlobalMountOptions[proto.NearRead].GetBool()
 	opt.EnablePosixACL = GlobalMountOptions[proto.EnablePosixACL].GetBool()
+	opt.StrictConsistence = GlobalMountOptions[proto.StrictConsistence].GetBool()
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))

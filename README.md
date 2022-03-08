@@ -81,6 +81,11 @@ Refer to [cubefs.readthedocs.io](https://cubefs.readthedocs.io/en/latest/evaluat
 
 ## Build CubeFS
 
+Prerequisite:
+* Go version `>=1.16`
+* `export GO111MODULE=off`
+
+
 ### Build for x86
 ```
 $ git clone http://github.com/cubefs/cubefs.git
