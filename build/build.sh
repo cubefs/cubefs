@@ -189,7 +189,7 @@ build_rocksdb() {
 }
 
 init_gopath() {
-    export GO111MODULE=on
+    export GO111MODULE=off
     export GOPATH=$HOME/tmp/cfs/go
 
     mkdir -p $GOPATH/src/github.com/cubefs
