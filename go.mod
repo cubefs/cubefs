@@ -1,6 +1,6 @@
 module github.com/cubefs/cubefs
 
-go 1.14
+go 1.16
 
 replace (
 	github.com/cubefs/blobstore => github.com/cubefs/cubefs-blobstore v0.0.0-20220126103542-48f2f9535cc8
