@@ -42,7 +42,7 @@ func NewRocksDBStore(dir string, lruCacheSize, writeBufferSize int) (store *Rock
 // Open opens the RocksDB instance.
 func (rs *RocksDBStore) Open(lruCacheSize, writeBufferSize int) error {
 	basedTableOptions := gorocksdb.NewDefaultBlockBasedTableOptions()
-	basedTableOptions.SetBlockCache(gorocksdb.NewLRUCache(uint64(lruCacheSize)))
+	basedTableOptions.SetBlockCache(gorocksdb.NewLRUCache(lruCacheSize))
 	opts := gorocksdb.NewDefaultOptions()
 	opts.SetBlockBasedTableFactory(basedTableOptions)
 	opts.SetCreateIfMissing(true)
