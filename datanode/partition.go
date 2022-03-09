@@ -406,8 +406,8 @@ func (dp *DataPartition) Stop() {
 			close(dp.stopC)
 		}
 		// Close the store and raftstore.
-		dp.extentStore.Close()
 		dp.stopRaft()
+		dp.extentStore.Close()
 		_ = dp.storeAppliedID(atomic.LoadUint64(&dp.appliedID))
 	})
 	return
