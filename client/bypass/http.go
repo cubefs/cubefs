@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -17,11 +18,13 @@ import (
 const (
 	ControlBroadcastRefreshExtents = "/broadcast/refreshExtents"
 	ControlReadProcessRegister     = "/readProcess/register"
+	ControlGetReadProcs            = "/get/readProcs"
 
-	portKey		=	"port"
-	aliveKey 	= 	"alive"
-	volKey		=	"vol"
-	inoKey		=	"ino"
+	aliveKey  = "alive"
+	volKey    = "vol"
+	inoKey    = "ino"
+	clientKey = "client" // ip:port
+	MaxRetry  = 5
 )
 
 func GetVersionHandleFunc(w http.ResponseWriter, r *http.Request) {
@@ -67,10 +70,18 @@ func (c *client) registerReadProcStatusHandleFunc(w http.ResponseWriter, r *http
 		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("parse parameter error: %v", err))
 		return
 	}
-	portStr := r.FormValue(portKey)
-	port, err := strconv.ParseUint(portStr, 10, 64)
+	readClient := r.FormValue(clientKey)
+	addr := strings.Split(readClient, ":")
+	if len(addr) != 2 {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("invalid parameter %s", clientKey))
+		return
+	}
+	if addr[0] == "" {
+		readClient = strings.Split(r.RemoteAddr, ":")[0] + readClient
+	}
+	_, err := strconv.ParseUint(addr[1], 10, 64)
 	if err != nil {
-		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("parse parameter error: %v", err))
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("parse port error: %v", err))
 		return
 	}
 	alive, err := strconv.ParseBool(r.FormValue(aliveKey))
@@ -78,33 +89,57 @@ func (c *client) registerReadProcStatusHandleFunc(w http.ResponseWriter, r *http
 		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("parse parameter [%v] error: %v", aliveKey, err))
 		return
 	}
-	if port != c.listenPort {
-		c.readProcMapLock.Lock()
-		if alive {
-			c.readProcErrMap[port] = 0
-		} else {
-			delete(c.readProcErrMap, port)
-		}
-		log.LogInfof("registerReadProcStatusHandleFunc: set read port(%v), alive(%v), readProcessMap(%v)", port, alive, c.readProcErrMap)
-		c.readProcMapLock.Unlock()
+
+	c.readProcMapLock.Lock()
+	if alive {
+		c.readProcErrMap[readClient] = 0
+		log.LogInfof("registerReadClient: %s", readClient)
+	} else {
+		delete(c.readProcErrMap, readClient)
+		log.LogInfof("unregisterReadClient: %s", readClient)
 	}
+	c.readProcMapLock.Unlock()
 	buildSuccessResp(w, "success")
 }
 
-func (c *client) broadcastRefreshExtents(port uint64, vol string, inode uint64)  {
-	url := fmt.Sprintf("http://127.0.0.1:%v%v?%v=%v&%v=%v", port, ControlBroadcastRefreshExtents, volKey, vol, inoKey, inode)
-	if reply, err := sendURL(url); err != nil {
-		c.readProcErrMap[port]++
+func (c *client) broadcastRefreshExtents(readClient string, inode uint64) {
+	url := fmt.Sprintf("http://%s%s?%s=%s&%s=%d", readClient, ControlBroadcastRefreshExtents, volKey, c.volName, inoKey, inode)
+	reply, err := sendURL(url)
+	if err != nil {
+		c.readProcErrMap[readClient]++
 		log.LogWarnf("broadcastRefreshExtents: failed, send url(%v) err(%v) reply(%v)", url, err, reply)
+	} else {
+		c.readProcErrMap[readClient] = 0
 	}
 }
 
-func (c *client) registerReadProcStatus(readPort uint64, alive bool) {
-	// For read process, 'c.profPort[0]' is port of write process
-	url := fmt.Sprintf("http://127.0.0.1:%v%v?%v=%v&%v=%v", c.profPort[0], ControlReadProcessRegister, portKey, readPort, aliveKey, alive)
-	if reply, err := sendURL(url); err != nil {
-		log.LogWarnf("registerReadProcStatus: failed, send url(%v) err(%v) reply(%v)", url, err, reply)
+func (c *client) registerReadProcStatus(alive bool) {
+	var masterAddr string
+	if c.masterClient != "" {
+		masterAddr = c.masterClient
+	} else if c.listenPort != c.profPort[0] {
+		masterAddr = fmt.Sprintf("127.0.0.1:%d", c.profPort[0])
+	} else {
+		return
 	}
+	url := fmt.Sprintf("http://%s%s?%s=:%d&%s=%t", masterAddr, ControlReadProcessRegister, clientKey, c.listenPort, aliveKey, alive)
+	for i := 0; i < MaxRetry; i++ {
+		if reply, err := sendURL(url); err != nil {
+			log.LogWarnf("registerReadProcStatus: failed, send url(%v) err(%v) reply(%v), retry......", url, err, reply)
+			continue
+		}
+		return
+	}
+	log.LogErrorf("registerReadProcStatus to %s failed.", masterAddr)
+}
+
+func (c *client) getReadProcs(w http.ResponseWriter, r *http.Request) {
+	var encoded []byte
+	c.readProcMapLock.Lock()
+	encoded, _ = json.Marshal(&c.readProcErrMap)
+	c.readProcMapLock.Unlock()
+	w.Write(encoded)
+	return
 }
 
 func sendURL(reqURL string) (reply *proto.HTTPReply, err error) {

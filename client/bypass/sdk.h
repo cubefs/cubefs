@@ -41,6 +41,7 @@ typedef struct {
 
     const char* prof_port;
     const char* auto_flush;
+    const char* master_client;
 
     // following are optional parameters for profiling
     const char* tracing_sampler_type;

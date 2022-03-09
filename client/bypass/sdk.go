@@ -42,6 +42,7 @@ typedef struct {
 	const char* app;
     const char* prof_port;
 	const char* auto_flush;
+    const char* master_client;
     const char* tracing_sampler_type;
     const char* tracing_sampler_param;
     const char* tracing_report_addr;
@@ -187,8 +188,9 @@ func newClient(conf *C.cfs_config_t) *client {
 	c.profPort = parseProfPortArray(C.GoString(conf.prof_port))
 	c.autoFlush, _ = strconv.ParseBool(C.GoString(conf.auto_flush))
 	c.inodeCache = cache.NewInodeCache(inodeExpiration, maxInodeCache, inodeEvictionInterval, c.useMetaCache)
+	c.masterClient = C.GoString(conf.master_client)
 
-	c.readProcErrMap = make(map[uint64]int)
+	c.readProcErrMap = make(map[string]int)
 	c.tracingSamplerType = C.GoString(conf.tracing_sampler_type)
 	if val, err := strconv.ParseFloat(C.GoString(conf.tracing_sampler_param), 64); err == nil {
 		c.tracingSamplerParam = val
@@ -277,8 +279,10 @@ type client struct {
 
 	profPort        []uint64 // the first is the port of main mysqld, the others are the ports of read processes
 	listenPort      uint64
-	readProcErrMap  map[uint64]int // key: port, value: count of error
+	readProcErrMap  map[string]int // key: ip:port, value: count of error
 	readProcMapLock sync.Mutex
+
+	masterClient string
 
 	autoFlush bool
 
@@ -3143,9 +3147,6 @@ func (c *client) start() (err error) {
 	if len(c.profPort) == 1 || isMysql() {
 		c.listenPort = c.profPort[0]
 	}
-	if isMysql() {
-		c.initReadPortMap()
-	}
 
 	masters := strings.Split(c.masterAddr, ",")
 	mc := master.NewMasterClient(masters, false)
@@ -3201,7 +3202,6 @@ func (c *client) start() (err error) {
 		} else {
 			for i := 1; i < len(c.profPort); i++ {
 				c.listenPort = c.profPort[i]
-				c.registerReadProcStatus(c.listenPort, true)
 				if listenErr = http.ListenAndServe(fmt.Sprintf(":%v", c.listenPort), nil); listenErr != nil {
 					continue
 				}
@@ -3217,6 +3217,7 @@ func (c *client) start() (err error) {
 	http.HandleFunc("/version", GetVersionHandleFunc)
 	http.HandleFunc(ControlReadProcessRegister, c.registerReadProcStatusHandleFunc)
 	http.HandleFunc(ControlBroadcastRefreshExtents, c.broadcastRefreshExtentsHandleFunc)
+	http.HandleFunc(ControlGetReadProcs, c.getReadProcs)
 
 	// metric
 	if err = ump.InitUmp(moduleName, "jdos_chubaofs-node"); err != nil {
@@ -3225,6 +3226,8 @@ func (c *client) start() (err error) {
 	}
 	c.initUmpKeys()
 	exporter.InitRole(mw.Cluster(), moduleName)
+
+	c.registerReadProcStatus(true)
 
 	// version
 	cmd, _ := os.Executable()
@@ -3450,25 +3453,15 @@ func (c *client) closeStream(f *file) {
 	_ = c.ec.EvictStream(context.Background(), f.ino)
 }
 
-func (c *client) initReadPortMap() {
-	for i := 1; i < len(c.profPort); i++ {
-		port := c.profPort[i]
-		if port != c.listenPort && port != 0 {
-			c.readProcErrMap[port] = 0
-		}
-	}
-	log.LogInfof("initReadPortMap: readProcessMap(%v)", c.readProcErrMap)
-}
-
 func (c *client) broadcastAllReadProcess(ino uint64) {
 	c.readProcMapLock.Lock()
 	log.LogInfof("broadcastAllReadProcess: readProcessMap(%v)", c.readProcErrMap)
-	for readPort, errCount := range c.readProcErrMap {
+	for readClient, errCount := range c.readProcErrMap {
 		if errCount > 10 {
-			delete(c.readProcErrMap, readPort)
+			delete(c.readProcErrMap, readClient)
 			continue
 		}
-		c.broadcastRefreshExtents(readPort, c.volName, ino)
+		c.broadcastRefreshExtents(readClient, ino)
 	}
 	c.readProcMapLock.Unlock()
 }

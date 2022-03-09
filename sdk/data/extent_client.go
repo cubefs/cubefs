@@ -335,14 +335,14 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset int,
 			}
 		}
 		if hasAppendWrite {
-			write, _, err = s.IssueWriteRequest(ctx, offset, data, direct, overWriteBuffer)
+			write, isROW, err = s.IssueWriteRequest(ctx, offset, data, direct, overWriteBuffer)
 		} else {
 			for _, req := range requests {
 				write += s.appendOverWriteReq(ctx, req, direct)
 			}
 		}
 	} else {
-		write, _, err = s.IssueWriteRequest(ctx, offset, data, direct, overWriteBuffer)
+		write, isROW, err = s.IssueWriteRequest(ctx, offset, data, direct, overWriteBuffer)
 	}
 
 	return

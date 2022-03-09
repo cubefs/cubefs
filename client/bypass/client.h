@@ -360,6 +360,8 @@ static int config_handler(void* user, const char* section,
         pconfig->prof_port = strdup(value);
     } else if (MATCH("", "autoFlush")) {
         pconfig->auto_flush = strdup(value);
+    } else if (MATCH("", "masterClient")) {
+        pconfig->master_client = strdup(value);
     } else if (MATCH("", "tracingSamplerType")) {
         pconfig->tracing_sampler_type = strdup(value);
     } else if (MATCH("", "tracingSamplerParam")) {
