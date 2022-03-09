@@ -375,7 +375,7 @@ func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMember
 		dp.config.Hosts = append(dp.config.Hosts[:hostIndex], dp.config.Hosts[hostIndex+1:]...)
 	}
 	dp.config.Peers = append(dp.config.Peers[:peerIndex], dp.config.Peers[peerIndex+1:]...)
-	if dp.config.NodeID == req.RemovePeer.ID && !dp.isLoadingDataPartition && canRemoveSelf {
+	if dp.config.NodeID == req.RemovePeer.ID && !dp.IsDataPartitionLoading() && canRemoveSelf {
 		dp.raftPartition.Delete()
 		dp.Disk().space.DeletePartition(dp.partitionID)
 		isUpdated = false

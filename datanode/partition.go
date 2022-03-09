@@ -125,7 +125,7 @@ type DataPartition struct {
 	intervalToUpdatePartitionSize int64
 	loadExtentHeaderStatus        int
 	DataPartitionCreateType       int
-	isLoadingDataPartition        bool
+	isLoadingDataPartition        int32
 	persistMetaMutex              sync.RWMutex
 }
 
@@ -176,11 +176,15 @@ func (dp *DataPartition) IsEquareCreateDataPartitionRequst(request *proto.Create
 }
 
 func (dp *DataPartition) ForceSetDataPartitionToLoadding() {
-	dp.isLoadingDataPartition = true
+	atomic.StoreInt32(&dp.isLoadingDataPartition, 1)
 }
 
 func (dp *DataPartition) ForceSetDataPartitionToFininshLoad() {
-	dp.isLoadingDataPartition = false
+	atomic.StoreInt32(&dp.isLoadingDataPartition, 0)
+}
+
+func (dp *DataPartition) IsDataPartitionLoading() bool {
+	return atomic.LoadInt32(&dp.isLoadingDataPartition) == 1
 }
 
 func (dp *DataPartition) ForceSetRaftRunning() {
