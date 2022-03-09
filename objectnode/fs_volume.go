@@ -1648,6 +1648,54 @@ func (v *Volume) findParentId(prefix string) (inode uint64, prefixDirs []string,
 	return
 }
 
+// path1 > path2, return 1
+// path1 == path2, return 0
+// path1 < path2, return -1
+func compareFilePath(path1, path2 string) int {
+	if path1 == path2 {
+		return 0
+	}
+	path1 = strings.TrimPrefix(strings.TrimSuffix(path1, pathSep), pathSep)
+	path2 = strings.TrimPrefix(strings.TrimSuffix(path2, pathSep), pathSep)
+
+	commLength := len(path1)
+	if len(path2) < commLength {
+		commLength = len(path2)
+	}
+	for i := 0; i < commLength; i++ {
+		if path1[i] == path2[i] {
+			continue
+		} else if path1[i:i+1] == pathSep || (path2[i:i+1] != pathSep && path1[i] < path2[i]) {
+			return -1
+		} else if path2[i:i+1] == pathSep || (path1[i:i+1] != pathSep && path1[i] > path2[i]) {
+			return 1
+		}
+	}
+	if len(path1) > len(path2) {
+		return 1
+	} else if len(path1) < len(path2) {
+		return -1
+	}
+
+	return 0
+}
+
+// dir1/dir1-1/dir1-1-1/f1 -> dir1/dir1-1/dir1-1-1/ f1
+func getMarkerPathName(marker string) (path, name string) {
+	if len(marker) == 0 {
+		return "/", ""
+	}
+	if strings.HasSuffix(marker, pathSep) {
+		return marker, ""
+	}
+	names := strings.Split(marker, pathSep)
+	if len(names) == 1 {
+		return "/", marker
+	}
+
+	return strings.Join(names[:len(names)-1], pathSep) + pathSep, names[len(names)-1]
+}
+
 // Recursive scan of the directory starting from the given parentID. Match files and directories
 // that match the prefix and delimiter criteria. Stop when the number of matches reaches a threshold
 // or all files and directories are scanned.
@@ -1704,9 +1752,9 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 	// determine which one should be used as the search start point.
 	currentMarker := ""
 	if marker != "" {
-		markerNames := strings.Split(marker, pathSep)
-		if len(markerNames) > len(dirs) {
-			currentMarker = markerNames[len(dirs)]
+		markerPath, markerName := getMarkerPathName(marker)
+		if markerPath == currentPath {
+			currentMarker = markerName
 		}
 		if prefixMarker > currentMarker {
 			fromName = prefixMarker
@@ -1723,7 +1771,7 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 	// At this time, stops process and returns success.
 	var children []proto.Dentry
 
-	children, err = v.mw.ReadDirLimit_ll(parentId, fromName, maxKeys+1) // one more for nextMarker
+	children, err = v.mw.ReadDirLimit_ll(parentId, fromName, maxKeys-rc+1) // one more for nextMarker
 	if err != nil && err != syscall.ENOENT {
 		return fileInfos, prefixMap, "", 0, err
 	}
@@ -1734,32 +1782,39 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 	log.LogDebugf("recursiveScan: ReadDirLimit_ll, parentId(%v) fromName(%v), maxKey(%v) children(%v)", parentId, fromName, maxKeys, children)
 
 	for _, child := range children {
-		var path = strings.Join(append(dirs, child.Name), pathSep)
+		var childPath = strings.Join(append(dirs, child.Name), pathSep)
 		if os.FileMode(child.Type).IsDir() {
-			path += pathSep
+			childPath += pathSep
 		}
-		if prefix != "" && !strings.HasPrefix(path, prefix) {
+		if prefix != "" && !strings.HasPrefix(childPath, prefix) {
 			continue
 		}
 
 		if marker != "" {
-			if !os.FileMode(child.Type).IsDir() && path < marker {
+			markerPath, _ := getMarkerPathName(marker)
+			if !os.FileMode(child.Type).IsDir() && compareFilePath(childPath, marker) < 0 {
 				continue
 			}
-			if os.FileMode(child.Type).IsDir() && path < marker {
-				fileInfos, prefixMap, nextMarker, rc, err = v.recursiveScan(fileInfos, prefixMap, child.Inode, maxKeys, rc, append(dirs, child.Name), prefix, marker, delimiter)
-				if err != nil {
-					return fileInfos, prefixMap, nextMarker, rc, err
+			// scan subdir which marker name in childPath
+			if os.FileMode(child.Type).IsDir() {
+				// when markerPath in current path, scan from markerName in subdir
+				if strings.HasPrefix(markerPath, childPath) {
+					fileInfos, prefixMap, nextMarker, rc, err = v.recursiveScan(fileInfos, prefixMap, child.Inode, maxKeys, rc, append(dirs, child.Name), prefix, marker, delimiter)
+					if err != nil {
+						return fileInfos, prefixMap, nextMarker, rc, err
+					}
+					if rc >= maxKeys && nextMarker != "" {
+						return fileInfos, prefixMap, nextMarker, rc, err
+					}
+					continue
+				} else if compareFilePath(childPath, markerPath) < 0 { //skip subdir which before makrerPath
+					continue
 				}
-				if rc >= maxKeys && nextMarker != "" {
-					return fileInfos, prefixMap, nextMarker, rc, err
-				}
-				continue
 			}
 		}
 
 		if delimiter != "" {
-			var nonPrefixPart = strings.Replace(path, prefix, "", 1)
+			var nonPrefixPart = strings.Replace(childPath, prefix, "", 1)
 			if idx := strings.Index(nonPrefixPart, delimiter); idx >= 0 {
 				var commonPrefix = prefix + util.SubString(nonPrefixPart, 0, idx) + delimiter
 				if prefixMap.contain(commonPrefix) {
@@ -1775,12 +1830,12 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 		}
 
 		if rc >= maxKeys {
-			nextMarker = path
+			nextMarker = childPath
 			return fileInfos, prefixMap, nextMarker, rc, nil
 		}
 		fileInfo := &FSFileInfo{
 			Inode: child.Inode,
-			Path:  path,
+			Path:  childPath,
 		}
 		fileInfos = append(fileInfos, fileInfo)
 		rc++
