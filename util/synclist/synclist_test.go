@@ -25,8 +25,8 @@ func TestListPushBach(t *testing.T) {
 
 	wg := sync.WaitGroup{}
 	for j := 0; j < 50; j += 1 {
+		wg.Add(1)
 		go func() {
-			wg.Add(1)
 			for i := 0; i < 1000; i += 1 {
 				println("pushback: ", i)
 				l.PushBack(i)
@@ -35,8 +35,8 @@ func TestListPushBach(t *testing.T) {
 		}()
 	}
 	for j := 0; j < 60; j += 1 {
+		wg.Add(1)
 		go func() {
-			wg.Add(1)
 			for i := 0; i < 1000; i += 1 {
 				if f := l.Front(); f != nil {
 					println("remove: ", f.Value)
@@ -55,8 +55,8 @@ func TestSyncPushBach(t *testing.T) {
 
 	wg := sync.WaitGroup{}
 	for j := 0; j < 50; j += 1 {
+		wg.Add(1)
 		go func() {
-			wg.Add(1)
 			for i := 0; i < 1000; i += 1 {
 				println("pushback: ", i)
 				l.PushBack(i)
@@ -65,8 +65,8 @@ func TestSyncPushBach(t *testing.T) {
 		}()
 	}
 	for j := 0; j < 60; j += 1 {
+		wg.Add(1)
 		go func() {
-			wg.Add(1)
 			for i := 0; i < 1000; i += 1 {
 				if f := l.Front(); f != nil {
 					println("remove: ", f.Value)
