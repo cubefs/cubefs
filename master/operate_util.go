@@ -19,13 +19,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/rand"
+	"strings"
+	"time"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"math/rand"
-	"strings"
-	"time"
 )
 
 func newCreateDataPartitionRequest(volName string, ID uint64, members []proto.Peer, dataPartitionSize int, hosts []string, createType int) (req *proto.CreateDataPartitionRequest) {
@@ -94,7 +95,7 @@ func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
 	case proto.OpDecommissionMetaPartition:
 		response = &proto.MetaPartitionDecommissionResponse{}
 	default:
-		log.LogError(fmt.Sprintf("unknown operate code(%v)", task.OpCode))
+		log.LogError(fmt.Sprintf("unknown operate code(%v)", proto.OpNameOf(task.OpCode)))
 	}
 
 	if response == nil {
