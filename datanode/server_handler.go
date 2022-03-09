@@ -151,6 +151,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		files                []*storage.ExtentInfo
 		err                  error
 		tinyDeleteRecordSize int64
+		raftSt               *raft.Status
 	)
 	if err = r.ParseForm(); err != nil {
 		err = fmt.Errorf("parse form fail: %v", err)
@@ -172,6 +173,13 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	if partition.IsDataPartitionLoading() {
+		raftSt = &raft.Status{Stopped: true}
+	} else {
+		raftSt = partition.raftPartition.Status()
+	}
+
 	result := &struct {
 		VolName              string                `json:"volName"`
 		ID                   uint64                `json:"id"`
@@ -195,7 +203,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		FileCount:            len(files),
 		Replicas:             partition.Replicas(),
 		TinyDeleteRecordSize: tinyDeleteRecordSize,
-		RaftStatus:           partition.raftPartition.Status(),
+		RaftStatus:           raftSt,
 	}
 	s.buildSuccessResp(w, result)
 }
