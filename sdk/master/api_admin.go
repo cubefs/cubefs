@@ -566,3 +566,14 @@ func (api *AdminAPI) SetZoneRegion(zoneName, regionName string) (err error) {
 	}
 	return
 }
+
+func (api *AdminAPI) SetVolMinRWPartition(volName string, minRwMPNum, minRwDPNum int) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminSetVolMinRWPartition)
+	request.addParam("name", volName)
+	request.addParam("minWritableMp", strconv.Itoa(minRwMPNum))
+	request.addParam("minWritableDp", strconv.Itoa(minRwDPNum))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}

@@ -55,6 +55,7 @@ const (
 	AdminReleaseVolMutex           = "/vol/writeMutex/release"
 	AdminGetVolMutex               = "/vol/writeMutex/get"
 	AdminSetVolConvertMode         = "/vol/setConvertMode"
+	AdminSetVolMinRWPartition      = "/vol/setMinRWPartition"
 
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
@@ -718,6 +719,9 @@ type SimpleVolView struct {
 	SlaveRegionZone      string
 	ConnConfig			 *ConnConfig	// todo
 	ExtentCacheExpireSec int64
+	RwMpCnt              int
+	MinWritableMPNum     int
+	MinWritableDPNum     int
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition

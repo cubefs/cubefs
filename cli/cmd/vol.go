@@ -59,6 +59,7 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolAddDPCmd(client),
 		newVolSetCmd(client),
 		newVolPartitionCheckCmd(client),
+		newVolSetMinRWPartitionCmd(client),
 	)
 	return cmd
 }
@@ -118,7 +119,7 @@ const (
 	cmdVolDefaultCapacity       = 10 // 100GB
 	cmdVolDefaultReplicas       = 3
 	cmdVolDefaultFollowerReader = true
-	cmdVolDefaultForceROW		= false
+	cmdVolDefaultForceROW       = false
 	cmdVolDefaultCrossRegionHA  = 0
 	cmdVolDefaultZoneName       = "default"
 )
@@ -130,7 +131,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optReplicas int
 	var optMpReplicas int
 	var optFollowerRead bool
-	var optForceROW	bool
+	var optForceROW bool
 	var optCrossRegionHAType uint8
 	var optAutoRepair bool
 	var optVolWriteMutex bool
@@ -204,21 +205,21 @@ const (
 
 func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	var (
-		optCapacity         	uint64
-		optReplicas          	int
-		optMpReplicas        	int
-		optFollowerRead      	string
-		optForceROW          	string
-		optAuthenticate      	string
-		optEnableToken       	string
-		optAutoRepair        	string
-		optBucketPolicy      	string
-		optCrossRegionHAType 	string
-		optZoneName          	string
-		optExtentCacheExpireSec	int64
-		optYes               	bool
-		confirmString        = strings.Builder{}
-		vv                   *proto.SimpleVolView
+		optCapacity             uint64
+		optReplicas             int
+		optMpReplicas           int
+		optFollowerRead         string
+		optForceROW             string
+		optAuthenticate         string
+		optEnableToken          string
+		optAutoRepair           string
+		optBucketPolicy         string
+		optCrossRegionHAType    string
+		optZoneName             string
+		optExtentCacheExpireSec int64
+		optYes                  bool
+		confirmString           = strings.Builder{}
+		vv                      *proto.SimpleVolView
 	)
 	var cmd = &cobra.Command{
 		Use:   CliOpSet + " [VOLUME NAME]",
@@ -790,6 +791,87 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	return cmd
+}
+
+const (
+	cmdVolSetMinRWPartitionCmdUse   = "set-min-rw-partition [VOLUME]"
+	cmdVolSetMinRWPartitionCmdShort = "Set min writable dp/mp num of the volume"
+)
+
+func newVolSetMinRWPartitionCmd(client *master.MasterClient) *cobra.Command {
+	var (
+		optRwMpNum    int
+		optRwDpNum    int
+		optYes        bool
+		confirmString = strings.Builder{}
+		vv            *proto.SimpleVolView
+	)
+	var cmd = &cobra.Command{
+		Use:   cmdVolSetMinRWPartitionCmdUse,
+		Short: cmdVolSetMinRWPartitionCmdShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var volumeName = args[0]
+			var isChange = false
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+			if vv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
+				return
+			}
+			confirmString.WriteString("Volume configuration changes:\n")
+			confirmString.WriteString(fmt.Sprintf("  Name                : %v\n", vv.Name))
+
+			if optRwMpNum > 0 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  min writable mp num : %v -> %v\n", vv.MinWritableMPNum, optRwMpNum))
+				vv.MinWritableMPNum = optRwMpNum
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  min writable mp num : %v\n", vv.MinWritableMPNum))
+			}
+			if optRwDpNum > 0 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  min writable dp num : %v -> %v\n", vv.MinWritableDPNum, optRwDpNum))
+				vv.MinWritableDPNum = optRwDpNum
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  min writable dp num : %v\n", vv.MinWritableDPNum))
+			}
+			if !isChange {
+				stdout("No changes has been set.\n")
+				return
+			}
+			// ask user for confirm
+			if !optYes {
+				stdout(confirmString.String())
+				stdout("\nConfirm (yes/no)[yes]: ")
+				var userConfirm string
+				_, _ = fmt.Scanln(&userConfirm)
+				if userConfirm != "yes" && len(userConfirm) != 0 {
+					err = fmt.Errorf("Abort by user.\n")
+					return
+				}
+			}
+			err = client.AdminAPI().SetVolMinRWPartition(vv.Name, vv.MinWritableMPNum, vv.MinWritableDPNum)
+			if err != nil {
+				return
+			}
+			stdout("Volume configuration has been set successfully.\n")
+			return
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().IntVar(&optRwMpNum, "minRwMP", 0, "Specify min writable mp num")
+	cmd.Flags().IntVar(&optRwDpNum, "minRwDP", 0, "Specify min writable dp num")
+	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	return cmd
 }
 

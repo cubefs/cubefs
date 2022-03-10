@@ -78,6 +78,9 @@ func (s *VolumeService) registerObject(schema *schemabuilder.Schema) {
 			Description:        vol.description,
 			Quorum:             vol.getDataPartitionQuorum(),
 			ExtentCacheExpireSec: vol.ExtentCacheExpireSec,
+			RwMpCnt:              int(vol.getWritableMpCount()),
+			MinWritableMPNum:     vol.MinWritableMPNum,
+			MinWritableDPNum:     vol.MinWritableDPNum,
 		}, nil
 	})
 

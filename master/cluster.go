@@ -122,6 +122,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToRepairMultiZoneMetaPartitions()
 	c.scheduleToRepairMultiZoneDataPartitions()
 	c.scheduleToMergeZoneNodeset()
+	c.scheduleToCheckAutoMetaPartitionCreation()
 
 }
 
@@ -329,7 +330,8 @@ func (c *Cluster) checkMetaPartitions() {
 	}()
 	vols := c.allVols()
 	for _, vol := range vols {
-		vol.checkMetaPartitions(c)
+		writableMpCount := vol.checkMetaPartitions(c)
+		vol.setWritableMpCount(int64(writableMpCount))
 	}
 }
 
@@ -3932,5 +3934,39 @@ func (c *Cluster) chooseTargetMetaNodeForCrossRegionQuorumVolOfLearnerReplica(mp
 		return
 	}
 	addr = hosts[0]
+	return
+}
+
+func (c *Cluster) updateVolMinWritableMPAndDPNum(volName string, minRwMPNum, minRwDPNum int) (err error) {
+	var (
+		vol                 *Vol
+		oldMinWritableMPNum int
+		oldMinWritableDPNum int
+		maxWritableDPNum    int
+	)
+	if vol, err = c.getVol(volName); err != nil {
+		return
+	}
+	if vol.Capacity < defaultLowCapacityVol {
+		maxWritableDPNum = defaultLowCapacityVolMaxWritableDPNum
+	} else {
+		maxWritableDPNum = defaultVolMaxWritableDPNum
+	}
+	if minRwMPNum > defaultVolMaxWritableMPNum || minRwDPNum > maxWritableDPNum {
+		return fmt.Errorf("vol minRwMPNum(%v) or minRwDPNum(%v) big than maxWritableMPNum(%v) or maxWritableDPNum(%v)",
+			minRwMPNum, minRwDPNum, defaultVolMaxWritableMPNum, maxWritableDPNum)
+	}
+	oldMinWritableMPNum = vol.MinWritableMPNum
+	oldMinWritableDPNum = vol.MinWritableDPNum
+
+	vol.MinWritableMPNum = minRwMPNum
+	vol.MinWritableDPNum = minRwDPNum
+	if err = c.syncUpdateVol(vol); err != nil {
+		vol.MinWritableMPNum = oldMinWritableMPNum
+		vol.MinWritableDPNum = oldMinWritableDPNum
+		log.LogErrorf("action[updateVolMinWritableMPAndDPNum] vol[%v] err[%v]", volName, err)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
 	return
 }

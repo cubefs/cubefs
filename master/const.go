@@ -92,6 +92,8 @@ const (
 	addReplicaTypeKey           = "addReplicaType"
 	convertModeKey              = "convertMode"
 	partitionTypeKey            = "partitionType"
+	volMinWritableMPNum         = "minWritableMp"
+	volMinWritableDPNum         = "minWritableDp"
 )
 
 const (
@@ -162,7 +164,11 @@ const (
 	defaultQuorumMetaPartitionMasterRegionCount        = 3
 	defaultQuorumMetaPartitionLearnerReplicaNum        = 2
 	maxQuorumVolDataPartitionReplicaNum                = 5
-	defaultMinDpWriteableThreshold                = 0.5
+	defaultMinDpWriteableThreshold                     = 0.5
+	defaultVolMaxWritableMPNum                         = 100
+	defaultVolMaxWritableDPNum                         = 6000
+	defaultLowCapacityVolMaxWritableDPNum              = 100
+	defaultLowCapacityVol                              = 10 * 1024
 )
 
 const (

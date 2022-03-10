@@ -168,6 +168,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetVolConvertMode).
 		HandlerFunc(m.setVolConvertMode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetVolMinRWPartition).
+		HandlerFunc(m.setVolMinRWPartition)
 
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

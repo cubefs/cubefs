@@ -131,7 +131,11 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  OSS bucket policy    : %s\n", svv.OSSBucketPolicy))
 	sb.WriteString(fmt.Sprintf("  DP convert mode      : %s\n", svv.DPConvertMode))
 	sb.WriteString(fmt.Sprintf("  MP convert mode      : %s\n", svv.MPConvertMode))
-	sb.WriteString(fmt.Sprintf("  ExtentCache Expire   : %v", time.Duration(svv.ExtentCacheExpireSec) * time.Second))
+	sb.WriteString(fmt.Sprintf("  ExtentCache Expire   : %v\n", time.Duration(svv.ExtentCacheExpireSec) * time.Second))
+	sb.WriteString(fmt.Sprintf("  writable mp count    : %v\n", svv.RwMpCnt))
+	sb.WriteString(fmt.Sprintf("  writable dp count    : %v\n", svv.RwDpCnt))
+	sb.WriteString(fmt.Sprintf("  min writable mp num  : %v\n", svv.MinWritableMPNum))
+	sb.WriteString(fmt.Sprintf("  min writable dp num  : %v", svv.MinWritableDPNum))
 	return sb.String()
 }
 

@@ -67,6 +67,9 @@ const (
 	defaultDiffSpaceUsage                              = 10 * 1024 * 1024 * 1024
 	defaultCrossZoneNum                                = 3
 	defaultExtentCacheExpireSec 					   = 60
+	defaultIntervalToWaitMetaPartitionElectionLeader   = 2 * 60
+	defaultVolMinWritableMPNum                         = 1
+	defaultVolMinWritableDPNum                         = 5
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)

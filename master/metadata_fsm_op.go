@@ -194,6 +194,8 @@ type volValue struct {
 	DPConvertMode       bsProto.ConvertMode
 	MPConvertMode       bsProto.ConvertMode
 	ExtentCacheExpireSec	int64
+	MinWritableMPNum        int
+	MinWritableDPNum        int
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -233,6 +235,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		DPConvertMode:       vol.DPConvertMode,
 		MPConvertMode:       vol.MPConvertMode,
 		ExtentCacheExpireSec: vol.ExtentCacheExpireSec,
+		MinWritableMPNum:     vol.MinWritableMPNum,
+		MinWritableDPNum:     vol.MinWritableDPNum,
 	}
 	return
 }

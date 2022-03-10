@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -72,6 +73,9 @@ type Vol struct {
 	volWriteMutex       sync.Mutex
 	volWriteMutexClient *VolWriteMutexClient
 	ExtentCacheExpireSec	int64
+	writableMpCount    int64
+	MinWritableMPNum   int
+	MinWritableDPNum   int
 	sync.RWMutex
 }
 
@@ -106,6 +110,8 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 		vol.crossZone = true
 	}
 	vol.ExtentCacheExpireSec = defaultExtentCacheExpireSec
+	vol.MinWritableMPNum = defaultVolMinWritableMPNum
+	vol.MinWritableDPNum = defaultVolMinWritableDPNum
 	vol.dataPartitionSize = dpSize
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
@@ -161,6 +167,8 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.DPConvertMode = vv.DPConvertMode
 	vol.MPConvertMode = vv.MPConvertMode
 	vol.ExtentCacheExpireSec = vv.ExtentCacheExpireSec
+	vol.MinWritableMPNum = vv.MinWritableMPNum
+	vol.MinWritableDPNum = vv.MinWritableDPNum
 
 	return vol
 }
@@ -276,6 +284,7 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 			break
 		}
 	}
+	vol.setWritableMpCount(int64(count))
 	if len(vol.MetaPartitions) != count {
 		err = fmt.Errorf("action[initMetaPartitions] vol[%v] init meta partition failed,mpCount[%v],expectCount[%v],err[%v]",
 			vol.Name, len(vol.MetaPartitions), count, err)
@@ -396,7 +405,7 @@ func (vol *Vol) checkRepairDataPartitions(c *Cluster) {
 	}
 }
 
-func (vol *Vol) checkMetaPartitions(c *Cluster) {
+func (vol *Vol) checkMetaPartitions(c *Cluster) (writableMpCount int) {
 	vol.checkSplitMetaPartition(c)
 	maxPartitionID := vol.maxPartitionID()
 	mps := vol.cloneMetaPartitionMap()
@@ -418,7 +427,11 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 		mp.checkEnd(c, maxPartitionID)
 		mp.reportMissingReplicas(c.Name, c.leaderInfo.addr, defaultMetaPartitionTimeOutSec, defaultIntervalToAlarmMissingMetaPartition)
 		mp.replicaCreationTasks(c, vol.Name)
+		if mp.Status == proto.ReadWrite {
+			writableMpCount++
+		}
 	}
+	return
 }
 
 func (vol *Vol) checkSplitMetaPartition(c *Cluster) {
@@ -519,7 +532,8 @@ func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 }
 
 func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
-	if (vol.Capacity > 200000 && vol.dataPartitions.readableAndWritableCnt < 200) || vol.dataPartitions.readableAndWritableCnt < minNumOfRWDataPartitions {
+	if (vol.Capacity > 200000 && vol.dataPartitions.readableAndWritableCnt < 200) || vol.dataPartitions.readableAndWritableCnt < minNumOfRWDataPartitions ||
+		vol.dataPartitions.readableAndWritableCnt < vol.MinWritableDPNum {
 		count := vol.calculateExpansionNum()
 		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v]", vol.Name, count)
 		c.batchCreateDataPartition(vol, count)
@@ -528,7 +542,11 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 
 // Calculate the expansion number (the number of data partitions to be allocated to the given volume)
 func (vol *Vol) calculateExpansionNum() (count int) {
+	lackCount := float64(vol.MinWritableDPNum - vol.dataPartitions.readableAndWritableCnt)
 	c := float64(vol.Capacity) * float64(volExpansionRatio) * float64(util.GB) / float64(util.DefaultDataPartitionSize)
+	if lackCount > c {
+		c = lackCount
+	}
 	switch {
 	case c < minNumOfRWDataPartitions:
 		count = minNumOfRWDataPartitions
@@ -824,7 +842,7 @@ func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) (e
 		return
 	}
 	vol.addMetaPartition(nextMp)
-	log.LogWarnf("action[splitMetaPartition],next partition[%v],start[%v],end[%v]", nextMp.PartitionID, nextMp.Start, nextMp.End)
+	log.LogWarnf("action[splitMetaPartition],vol[%v] next partition[%v],start[%v],end[%v]", vol.Name, nextMp.PartitionID, nextMp.Start, nextMp.End)
 	return
 }
 
@@ -968,4 +986,12 @@ func (vol *Vol) getDataPartitionQuorum() (quorum int) {
 		quorum = int(vol.dpReplicaNum)
 	}
 	return
+}
+
+func (vol *Vol) setWritableMpCount(count int64) {
+	atomic.StoreInt64(&vol.writableMpCount, count)
+}
+
+func (vol *Vol) getWritableMpCount() int64 {
+	return atomic.LoadInt64(&vol.writableMpCount)
 }

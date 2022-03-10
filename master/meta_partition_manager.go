@@ -260,3 +260,64 @@ func (c *Cluster) fulfillMetaReplica(partitionID uint64, badAddr string) (isPush
 	isPushBackToBadIDs = len(partition.Replicas) >= int(partition.ReplicaNum)
 	return
 }
+
+func (c *Cluster) scheduleToCheckAutoMetaPartitionCreation() {
+	go func() {
+		// check volumes after switching leader two minutes
+		time.Sleep(time.Second * defaultIntervalToWaitMetaPartitionElectionLeader)
+		for {
+			if c.partition != nil && c.partition.IsRaftLeader() {
+				vols := c.copyVols()
+				for _, vol := range vols {
+					vol.checkAutoMetaPartitionCreation(c)
+				}
+			}
+			time.Sleep(time.Second * defaultIntervalToWaitMetaPartitionElectionLeader)
+		}
+	}()
+}
+
+func (vol *Vol) checkAutoMetaPartitionCreation(c *Cluster) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("checkAutoMetaPartitionCreation occurred panic,err[%v]", r)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+				"checkAutoMetaPartitionCreation occurred panic")
+		}
+	}()
+	if vol.status() == markDelete {
+		return
+	}
+	if vol.status() == normal && !c.DisableAutoAllocate {
+		vol.autoCreateMetaPartitions(c)
+	}
+}
+
+func (vol *Vol) autoCreateMetaPartitions(c *Cluster) {
+	writableMpCount := int(vol.getWritableMpCount())
+	if writableMpCount < vol.MinWritableMPNum {
+		maxPartitionID := vol.maxPartitionID()
+		mp, err := vol.metaPartition(maxPartitionID)
+		if err != nil {
+			log.LogErrorf("action[autoCreateMetaPartitions],cluster[%v],vol[%v],err[%v]", c.Name, vol.Name, err)
+			return
+		}
+		// wait for leader ready
+		_, err = mp.getMetaReplicaLeader()
+		if err != nil {
+			log.LogWarnf("action[autoCreateMetaPartitions],cluster[%v],vol[%v],err[%v],create it later", c.Name, vol.Name, err)
+			return
+		}
+		var nextStart uint64
+		if mp.MaxInodeID <= 0 {
+			nextStart = mp.Start + defaultMetaPartitionInodeIDStep
+		} else {
+			nextStart = mp.MaxInodeID + defaultMetaPartitionInodeIDStep
+		}
+		if err = vol.splitMetaPartition(c, mp, nextStart); err != nil {
+			msg := fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits failed,err[%v]",
+				c.Name, vol.Name, mp.PartitionID, err)
+			Warn(c.Name, msg)
+		}
+	}
+}

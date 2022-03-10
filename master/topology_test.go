@@ -161,9 +161,8 @@ func TestAllocZones(t *testing.T) {
 		t.Errorf("expect zones num[%v],len(zones) is %v", zoneCount, len(zones))
 		return
 	}
-	//only pass replica num
 	replicaNum := 2
-	zones, err := topo.allocZonesForDataNode("", zoneName3, replicaNum, nil, false)
+	zones, err := topo.allocZonesForDataNode("", "zone1,zone2", replicaNum, nil, false)
 	if err != nil {
 		t.Error(err)
 		return

@@ -1742,6 +1742,8 @@ func TestAddDataReplicaForCrossRegionVol(t *testing.T) {
 		t.Fatalf("getVol:%v err:%v", quorumVolName, err)
 		return
 	}
+	t.Logf("quorumVol:%v zoneName:%v dpReplicaNum:%v CrossRegionHAType:%v",
+		quorumVol.Name, quorumVol.zoneName, quorumVol.dpReplicaNum, quorumVol.CrossRegionHAType)
 	if len(quorumVol.dataPartitions.partitions) == 0 {
 		t.Errorf("vol:%v no data partition ", quorumVolName)
 		return
@@ -1953,5 +1955,28 @@ func validateCrossRegionMetaPartition(metaPartition *MetaPartition, t *testing.T
 	}
 	if slaveRegionAddrs[0] != learnerHosts[0] || slaveRegionAddrs[1] != learnerHosts[1] {
 		t.Errorf("expect masterRegionAddrs(%v) is equal to learnerHosts(%v) but is not", masterRegionAddrs, learnerHosts)
+	}
+}
+
+func TestSetVolMinRWPartition(t *testing.T) {
+	volName := commonVolName
+	minRwMPNum := 10
+	minRwDPNum := 4
+	err := mc.AdminAPI().SetVolMinRWPartition(volName, minRwMPNum, minRwDPNum)
+	if err != nil {
+		t.Errorf("vol:%v SetVolMinRWPartition err:%v", volName, err)
+		return
+	}
+	volumeSimpleInfo, err := mc.AdminAPI().GetVolumeSimpleInfo(volName)
+	if err != nil {
+		t.Errorf("vol:%v GetVolumeSimpleInfo err:%v", volName, err)
+		return
+	}
+	if volumeSimpleInfo.MinWritableMPNum != minRwMPNum || volumeSimpleInfo.MinWritableDPNum != minRwDPNum {
+		t.Errorf("expect volName:%v MinWritableMPNum,MinWritableDPNum is (%v,%v), but is (%v,%v)",
+			volName, minRwMPNum, minRwDPNum, volumeSimpleInfo.MinWritableMPNum, volumeSimpleInfo.MinWritableDPNum)
+	} else {
+		t.Logf("volName:%v MinWritableMPNum,MinWritableDPNum is (%v,%v), equal to expect value: (%v,%v)",
+			volName, minRwMPNum, minRwDPNum, volumeSimpleInfo.MinWritableMPNum, volumeSimpleInfo.MinWritableDPNum)
 	}
 }

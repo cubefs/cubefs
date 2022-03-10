@@ -1327,6 +1327,9 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		Quorum:              vol.getDataPartitionQuorum(),
 		DpWriteableThreshold: vol.dpWriteableThreshold,
 		ExtentCacheExpireSec: vol.ExtentCacheExpireSec,
+		RwMpCnt:              int(vol.getWritableMpCount()),
+		MinWritableMPNum:     vol.MinWritableMPNum,
+		MinWritableDPNum:     vol.MinWritableDPNum,
 	}
 }
 
@@ -3801,6 +3804,77 @@ func extractConvertMode(r *http.Request) (convertMode proto.ConvertMode, err err
 		err = fmt.Errorf("parameter %s should be %d(%s) or %d(%s)", convertModeKey,
 			proto.DefaultConvertMode, proto.DefaultConvertMode, proto.IncreaseReplicaNum, proto.IncreaseReplicaNum)
 		return
+	}
+	return
+}
+
+func (m *Server) setVolMinRWPartition(w http.ResponseWriter, r *http.Request) {
+	var (
+		volName    string
+		minRwMPNum int
+		minRwDPNum int
+		vol        *Vol
+		err        error
+	)
+	if volName, err = parseVolName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if vol, err = m.cluster.getVol(volName); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+	minRwMPNum, minRwDPNum, err = parseMinRwMPAndDPNumToSetVolMinRWPartition(r, vol.MinWritableMPNum, vol.MinWritableDPNum)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	err = m.cluster.updateVolMinWritableMPAndDPNum(volName, minRwMPNum, minRwDPNum)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set vol[%v] minRwMPNum, minRwDPNum to %v,%v  successfully",
+		volName, minRwMPNum, minRwDPNum)))
+}
+
+func parseMinRwMPAndDPNumToSetVolMinRWPartition(r *http.Request, volMinRwMPNum, volMinRwDPNum int) (minRwMPNum, minRwDPNum int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if minRwMPNum, err = extractMinWritableMPNum(r, volMinRwMPNum); err != nil {
+		return
+	}
+	if minRwDPNum, err = extractMinWritableDPNum(r, volMinRwDPNum); err != nil {
+		return
+	}
+	return
+}
+
+func extractMinWritableMPNum(r *http.Request, volMinRwMPNum int) (minRwMPNum int, err error) {
+	if minWritableMPNumStr := r.FormValue(volMinWritableMPNum); minWritableMPNumStr != "" {
+		minWritableMPNum, err1 := strconv.Atoi(minWritableMPNumStr)
+		if err1 != nil || minWritableMPNum < 0 {
+			err = unmatchedKey(volMinWritableMPNum)
+			return
+		}
+		minRwMPNum = minWritableMPNum
+	} else {
+		minRwMPNum = volMinRwMPNum
+	}
+	return
+}
+
+func extractMinWritableDPNum(r *http.Request, volMinRwDPNum int) (minRwDPNum int, err error) {
+	if minWritableDPNumStr := r.FormValue(volMinWritableDPNum); minWritableDPNumStr != "" {
+		minWritableDPNum, err1 := strconv.Atoi(minWritableDPNumStr)
+		if err1 != nil || minWritableDPNum < 0 {
+			err = unmatchedKey(volMinWritableDPNum)
+			return
+		}
+		minRwDPNum = minWritableDPNum
+	} else {
+		minRwDPNum = volMinRwDPNum
 	}
 	return
 }
