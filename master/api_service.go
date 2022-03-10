@@ -849,6 +849,10 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 		return nil
 	}
 
+	if req.dpReplicaNum == 0 {
+		req.dpReplicaNum = 1
+	}
+
 	req.followerRead = true
 	args := req.coldArgs
 
