@@ -36,6 +36,8 @@ type VolVarargs struct {
 	dpSelectorParm string
 	coldArgs       *coldVolArgs
 	domainId       uint64
+	dpReplicaNum   uint8
+	enablePosixAcl bool
 }
 
 // Vol represents a set of meta partitionMap and data partitionMap
@@ -315,12 +317,12 @@ func (vol *Vol) checkReplicaNum(c *Cluster) {
 
 	dps := vol.cloneDataPartitionMap()
 	for _, dp := range dps {
-		host := dp.getToBeDecommissionHost(int(vol.dpReplicaNum))
+		host := dp.getToBeDecommissionHost(int(dp.ReplicaNum))
 		if host == "" {
 			continue
 		}
 		if err = dp.removeOneReplicaByHost(c, host); err != nil {
-			if dp.isSingleReplica() && len(dp.Hosts) > 1 {
+			if dp.isSpecialReplicaCnt() && len(dp.Hosts) > 1 {
 				log.LogWarnf("action[checkReplicaNum] removeOneReplicaByHost host [%v],vol[%v],err[%v]", host, vol.Name, err)
 				continue
 			}

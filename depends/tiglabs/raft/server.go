@@ -37,6 +37,31 @@ type RaftServer struct {
 	rafts  map[uint64]*raft
 }
 
+func (rs *RaftServer) RemoveRaftForce(raftId uint64, cc *proto.ConfChange) {
+	var s *raft
+	var ok bool
+	if s, ok = rs.rafts[raftId]; !ok {
+		return
+	}
+	// repl apply
+	peerChange := cc.Peer
+	for _, replica := range s.raftFsm.replicas {
+		logger.Info("raft[%v] replias [%v]", s.raftFsm.id, replica.peer.String())
+	}
+	s.raftFsm.removePeer(cc.Peer)
+
+	if _, ok := s.raftFsm.replicas[peerChange.PeerID]; !ok {
+		if logger.IsEnableWarn() {
+			logger.Warn("raft[%v] applying configuration peer [%v] be removed and stop snapshot", s.raftFsm.id, peerChange)
+		}
+		s.removeSnapping(peerChange.PeerID)
+		s.peerState.change(cc)
+		if logger.IsEnableWarn() {
+			logger.Warn("raft[%v] applying configuration change %v.", s.raftFsm.id, cc)
+		}
+	}
+}
+
 func NewRaftServer(config *Config) (*RaftServer, error) {
 	if err := config.validate(); err != nil {
 		return nil, err

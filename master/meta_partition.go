@@ -258,6 +258,7 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 	mp.Lock()
 	defer mp.Unlock()
 
+	mp.checkReplicas()
 	liveReplicas := mp.getLiveReplicas()
 
 	if len(liveReplicas) <= replicaNum/2 {
@@ -417,11 +418,21 @@ func (mp *MetaPartition) getLiveReplicasAddr(liveReplicas []*MetaReplica) (addrs
 	}
 	return
 }
+
 func (mp *MetaPartition) getLiveReplicas() (liveReplicas []*MetaReplica) {
 	liveReplicas = make([]*MetaReplica, 0)
 	for _, mr := range mp.Replicas {
 		if mr.isActive() {
 			liveReplicas = append(liveReplicas, mr)
+		}
+	}
+	return
+}
+
+func (mp *MetaPartition) checkReplicas() {
+	for _, mr := range mp.Replicas {
+		if !mr.isActive() {
+			mr.Status = proto.Unavailable
 		}
 	}
 	return
