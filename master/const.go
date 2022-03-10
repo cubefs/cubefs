@@ -75,6 +75,8 @@ const (
 	srcAddrKey              = "srcAddr"
 	targetAddrKey           = "targetAddr"
 	forceKey                = "force"
+	raftForceDelKey         = "raftForceDel"
+	enablePosixAclKey       = "enablePosixAcl"
 )
 
 const (

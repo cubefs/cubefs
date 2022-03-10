@@ -726,6 +726,10 @@ func (c *Cluster) checkCorruptDataPartitions() (inactiveDataNodes []string, corr
 		if partition, err = c.getDataPartitionByID(partitionID); err != nil {
 			return
 		}
+		if partition.isSpecialReplicaCnt() && badNum > 0 {
+			corruptPartitions = append(corruptPartitions, partition)
+			continue
+		}
 		if badNum > partition.ReplicaNum/2 {
 			corruptPartitions = append(corruptPartitions, partition)
 		}
@@ -1330,7 +1334,7 @@ func (c *Cluster) decommissionCancel(dataNode *DataNode) (err error) {
 	}
 	partitions := c.getAllDataPartitionByDataNode(dataNode.Addr)
 	for _, dp := range partitions {
-		if dp.isSingleReplica() && dp.SingleDecommissionStatus > 0 {
+		if dp.isSpecialReplicaCnt() && dp.SingleDecommissionStatus > 0 {
 			log.LogWarnf("action[decommissionCancel] cancel decommission subroutine partition %v and status %v",
 				dp.PartitionID, dp.SingleDecommissionStatus)
 			dp.singleDecommissionChan <- false
@@ -1539,7 +1543,7 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 	dp.SingleDecommissionStatus = datanode.DecommsionRemoveOld
 	dp.SingleDecommissionAddr = offlineAddr
 
-	if err = c.removeDataReplica(dp, offlineAddr, false); err != nil {
+	if err = c.removeDataReplica(dp, offlineAddr, false, false); err != nil {
 		err = fmt.Errorf("action[decommissionSingleDp] dp %v err %v", dp.PartitionID, err)
 		goto ERR
 	}
@@ -1580,7 +1584,7 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 		dp.RUnlock()
 		return
 	}
-	if dp.isSingleReplica() {
+	if dp.isSpecialReplicaCnt() {
 		if dp.SingleDecommissionStatus >= datanode.DecommsionEnter {
 			err = fmt.Errorf("volume [%v] dp [%v] is on decommission", dp.VolName, dp.PartitionID)
 			log.LogErrorf("action[decommissionDataPartition][%v] ", err)
@@ -1599,7 +1603,7 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 		return
 	}
 
-	if err = c.validateDecommissionDataPartition(dp, srcAddr); err != nil {
+	if err = c.validateDecommissionDataPartition(dp, srcAddr, false); err != nil {
 		goto errHandler
 	}
 
@@ -1650,24 +1654,28 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 		}
 	}
 
-	dp.Status = proto.ReadOnly
-	dp.isRecover = true
-	c.putBadDataPartitionIDs(replica, srcAddr, dp.PartitionID)
-
 	// if single replica wait for
-	if dp.isSingleReplica() {
+	if dp.isSpecialReplicaCnt() {
+		dp.Status = proto.ReadOnly
+		dp.isRecover = true
+		c.putBadDataPartitionIDs(replica, srcAddr, dp.PartitionID)
+
 		newAddr = targetHosts[0]
 		if err = c.decommissionSingleDp(dp, newAddr, srcAddr); err != nil {
 			goto errHandler
 		}
 	} else {
-		if err = c.removeDataReplica(dp, srcAddr, false); err != nil {
+		if err = c.removeDataReplica(dp, srcAddr, false, false); err != nil {
 			goto errHandler
 		}
 		newAddr = targetHosts[0]
 		if err = c.addDataReplica(dp, newAddr); err != nil {
 			goto errHandler
 		}
+
+		dp.Status = proto.ReadOnly
+		dp.isRecover = true
+		c.putBadDataPartitionIDs(replica, srcAddr, dp.PartitionID)
 	}
 
 	dp.RLock()
@@ -1680,7 +1688,7 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 	return
 
 errHandler:
-	if dp.isSingleReplica() {
+	if dp.isSpecialReplicaCnt() {
 		if dp.SingleDecommissionStatus == datanode.DecommsionEnter {
 			dp.SingleDecommissionStatus = 0
 		}
@@ -1713,27 +1721,32 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	return c.migrateDataPartition(offlineAddr, "", dp, errMsg)
 }
 
-func (c *Cluster) validateDecommissionDataPartition(dp *DataPartition, offlineAddr string) (err error) {
+func (c *Cluster) validateDecommissionDataPartition(dp *DataPartition, offlineAddr string, raftForceDel bool) (err error) {
 	dp.RLock()
 	defer dp.RUnlock()
 	var vol *Vol
 	if vol, err = c.getVol(dp.VolName); err != nil {
+		log.LogInfof("action[validateDecommissionDataPartition] dp vol %v dp %v err %v", dp.VolName, dp.PartitionID, err)
 		return
 	}
 
 	if err = dp.hasMissingOneReplica(offlineAddr, int(vol.dpReplicaNum)); err != nil {
+		log.LogInfof("action[validateDecommissionDataPartition] dp vol %v dp %v err %v", dp.VolName, dp.PartitionID, err)
 		return
 	}
 
 	// if the partition can be offline or not
-	if err = dp.canBeOffLine(offlineAddr); err != nil {
+	if err = dp.canBeOffLine(offlineAddr, raftForceDel); err != nil {
+		log.LogInfof("action[validateDecommissionDataPartition] dp vol %v dp %v err %v", dp.VolName, dp.PartitionID, err)
 		return
 	}
 
 	if dp.isRecover && !dp.activeUsedSimilar() {
 		err = fmt.Errorf("vol[%v],data partition[%v] is recovering,[%v] can't be decommissioned", vol.Name, dp.PartitionID, offlineAddr)
+		log.LogInfof("action[validateDecommissionDataPartition] dp vol %v dp %v err %v", dp.VolName, dp.PartitionID, err)
 		return
 	}
+	log.LogInfof("action[validateDecommissionDataPartition] dp vol %v dp %v looks fine!", dp.VolName, dp.PartitionID)
 	return
 }
 
@@ -1743,7 +1756,13 @@ func (c *Cluster) addDataReplica(dp *DataPartition, addr string) (err error) {
 		if err != nil {
 			log.LogErrorf("action[addDataReplica],vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
 		}
+		log.LogInfof("action[addDataReplica]  dp %v add replica dst addr %v success!", dp.PartitionID, addr)
 	}()
+
+	log.LogInfof("action[addDataReplica]  dp %v try add replica dst addr %v try add raft member", dp.PartitionID, addr)
+
+	dp.addReplicaMutex.Lock()
+	defer dp.addReplicaMutex.Unlock()
 
 	dataNode, err := c.dataNode(addr)
 	if err != nil {
@@ -1756,13 +1775,14 @@ func (c *Cluster) addDataReplica(dp *DataPartition, addr string) (err error) {
 		return fmt.Errorf("[%d] is not normal dp, not support add or delete replica", dp.PartitionID)
 	}
 
-	log.LogInfof("action[addDataReplica] addr %v try add raft member", addr)
+	log.LogInfof("action[addDataReplica] dp %v dst addr %v try add raft member, node id %v", dp.PartitionID, addr, dataNode.ID)
 	if err = c.addDataPartitionRaftMember(dp, addPeer); err != nil {
-		log.LogInfof("action[addDataReplica] addr %v try add raft member err [%v]", addr, err)
+		log.LogInfof("action[addDataReplica] dp %v addr %v try add raft member err [%v]", dp.PartitionID, addr, err)
 		return
 	}
-	log.LogInfof("action[addDataReplica] addr %v try create data replica", addr)
+	log.LogInfof("action[addDataReplica] dp %v daddr %v try create data replica", dp.PartitionID, addr)
 	if err = c.createDataReplica(dp, addPeer); err != nil {
+		log.LogInfof("action[addDataReplica] dp %v addr %v createDataReplica err [%v]", dp.PartitionID, addr, err)
 		return
 	}
 
@@ -1872,23 +1892,18 @@ func (c *Cluster) createDataReplica(dp *DataPartition, addPeer proto.Peer) (err 
 	return
 }
 
-func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate bool) (err error) {
+func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate bool, raftForceDel bool) (err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[removeDataReplica],vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
 		}
 	}()
 
+	// validate be set true only in api call
 	if validate {
-		if err = c.validateDecommissionDataPartition(dp, addr); err != nil {
+		if err = c.validateDecommissionDataPartition(dp, addr, raftForceDel); err != nil {
 			return
 		}
-	}
-
-	ok := c.isRecovering(dp, addr)
-	if ok && !dp.activeUsedSimilar() {
-		err = fmt.Errorf("vol[%v],data partition[%v] can't decommision until it has recovered", dp.VolName, dp.PartitionID)
-		return
 	}
 
 	dataNode, err := c.dataNode(addr)
@@ -1901,7 +1916,7 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate boo
 	}
 
 	removePeer := proto.Peer{ID: dataNode.ID, Addr: addr}
-	if err = c.removeDataPartitionRaftMember(dp, removePeer); err != nil {
+	if err = c.removeDataPartitionRaftMember(dp, removePeer, raftForceDel); err != nil {
 		return
 	}
 
@@ -1977,7 +1992,7 @@ func (c *Cluster) removeHostMember(dp *DataPartition, removePeer proto.Peer) (er
 	return
 }
 
-func (c *Cluster) removeDataPartitionRaftMember(dp *DataPartition, removePeer proto.Peer) (err error) {
+func (c *Cluster) removeDataPartitionRaftMember(dp *DataPartition, removePeer proto.Peer, force bool) (err error) {
 	dp.offlineMutex.Lock()
 	defer dp.offlineMutex.Unlock()
 	defer func() {
@@ -1989,11 +2004,11 @@ func (c *Cluster) removeDataPartitionRaftMember(dp *DataPartition, removePeer pr
 		log.LogErrorf("action[removeDataPartitionRaftMember] vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
 		return
 	}
-	task, err := dp.createTaskToRemoveRaftMember(removePeer)
+	task, leaderAddr, err := dp.createTaskToRemoveRaftMember(removePeer, force)
 	if err != nil {
 		return
 	}
-	leaderAddr := dp.getLeaderAddr()
+
 	leaderDataNode, err := c.dataNode(leaderAddr)
 	if _, err = leaderDataNode.TaskManager.syncSendAdminTask(task); err != nil {
 		log.LogErrorf("action[removeDataPartitionRaftMember] vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)

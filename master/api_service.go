@@ -501,6 +501,8 @@ func (m *Server) deleteDataReplica(w http.ResponseWriter, r *http.Request) {
 		dp          *DataPartition
 		partitionID uint64
 		err         error
+		force       bool // now only used in two replicas in the scenario of no leader
+		raftForce   bool
 	)
 
 	if partitionID, addr, err = parseRequestToRemoveDataReplica(r); err != nil {
@@ -513,7 +515,22 @@ func (m *Server) deleteDataReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = m.cluster.removeDataReplica(dp, addr, true); err != nil {
+	// force only be used in scenario that dp of two replicas volume no leader caused by one replica crash
+	var value string
+	if value = r.FormValue(raftForceDelKey); value != "" {
+		raftForce, _ = strconv.ParseBool(value)
+		if raftForce && dp.ReplicaNum != 2 {
+			msg = fmt.Sprintf("failed! replicaNum [%v] and force should be used in two replcias datapartition", dp.ReplicaNum)
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
+			return
+		}
+	}
+
+	if value = r.FormValue(forceKey); value != "" {
+		force, _ = strconv.ParseBool(value)
+	}
+
+	if err = m.cluster.removeDataReplica(dp, addr, !force, raftForce); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -602,9 +619,9 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
 		return
 	}
-	if dp.isSingleReplica() {
-		rstMsg = fmt.Sprintf(proto.AdminDecommissionDataPartition+" dataPartitionID :%v  is single replica on node:%v async running,need check later",
-			partitionID, addr)
+	if dp.isSpecialReplicaCnt() {
+		rstMsg = fmt.Sprintf(proto.AdminDecommissionDataPartition+" dataPartitionID :%v  is special replica cnt %v on node:%v async running,need check later",
+			partitionID, dp.ReplicaNum, addr)
 		go m.cluster.decommissionDataPartition(addr, dp, handleDataPartitionOfflineErr)
 		sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 		return
@@ -613,7 +630,7 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if !dp.isSingleReplica() {
+	if !dp.isSpecialReplicaCnt() {
 		rstMsg = fmt.Sprintf(proto.AdminDecommissionDataPartition+" dataPartitionID :%v  on node:%v successfully", partitionID, addr)
 		sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 	}
@@ -688,9 +705,11 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		req = &updateVolReq{}
-		vol *Vol
-		err error
+		req          = &updateVolReq{}
+		vol          *Vol
+		err          error
+		replicaNum   int
+		followerRead bool
 	)
 
 	if req.name, err = parseVolName(r); err != nil {
@@ -709,6 +728,13 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	}
 	if vol.dpReplicaNum == 1 && !req.followRead {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "single replica must enable follower read"})
+	}
+	if followerRead, req.authenticate, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if (replicaNum == 1 || replicaNum == 2) && !followerRead {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "single or two replica must enable follower read"})
 		return
 	}
 
@@ -724,6 +750,8 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	if req.coldArgs != nil {
 		newArgs.coldArgs = req.coldArgs
 	}
+
+	newArgs.dpReplicaNum = uint8(replicaNum)
 
 	log.LogInfof("[updateVolOut] name [%s], z1 [%s], z2[%s]", req.name, req.zoneName, vol.Name)
 	if err = m.cluster.updateVol(req.name, req.authKey, newArgs); err != nil {
@@ -926,6 +954,11 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if (req.dpReplicaNum == 1 || req.dpReplicaNum == 2) && !req.followerRead {
+		err = fmt.Errorf("replicaNum be 2 and 3,followerRead must set true")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
 	if vol, err = m.cluster.createVol(req); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -1363,6 +1396,20 @@ func (m *Server) updateNodesetId(zoneName string, destNodesetId uint64, nodeType
 	return
 }
 
+func (m *Server) setDpRdOnly(partitionID uint64, rdOnly bool) (err error) {
+
+	var dp *DataPartition
+	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
+		return fmt.Errorf("[setPartitionRdOnly] getDataPartitionByID err(%s)", err.Error())
+	}
+	dp.RLock()
+	dp.RdOnly = rdOnly
+	m.cluster.syncUpdateDataPartition(dp)
+	dp.RUnlock()
+
+	return
+}
+
 func (m *Server) setNodeRdOnly(addr string, nodeType uint32, rdOnly bool) (err error) {
 	if nodeType == TypeDataPartition {
 		m.cluster.dnMutex.Lock()
@@ -1556,6 +1603,30 @@ func parseSetNodeRdOnlyParam(r *http.Request) (addr string, nodeType int, rdOnly
 	return
 }
 
+func parseSetDpRdOnlyParam(r *http.Request) (dpId uint64, rdOnly bool, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if dpId, err = extractDataPartitionID(r); err != nil {
+		err = fmt.Errorf("parseSetDpRdOnlyParam get dpid error %v", err)
+		return
+	}
+
+	val := r.FormValue(rdOnlyKey)
+	if val == "" {
+		err = fmt.Errorf("parseSetDpRdOnlyParam %s is empty", rdOnlyKey)
+		return
+	}
+
+	if rdOnly, err = strconv.ParseBool(val); err != nil {
+		err = fmt.Errorf("parseSetDpRdOnlyParam %s is not bool value %s", rdOnlyKey, val)
+		return
+	}
+
+	return
+}
+
 func parseNodeType(r *http.Request) (nodeType int, err error) {
 	var val string
 	if val = r.FormValue(nodeTypeKey); val == "" {
@@ -1594,6 +1665,27 @@ func (m *Server) setNodeRdOnlyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("[setNodeRdOnlyHandler] set node %s to rdOnly(%v) success", addr, rdOnly)))
+	return
+}
+
+func (m *Server) setDpRdOnlyHandler(w http.ResponseWriter, r *http.Request) {
+
+	dpId, rdOnly, err := parseSetDpRdOnlyParam(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	log.LogInfof("[setNodeRdOnlyHandler] set dp %v to rdOnly(%v)", dpId, rdOnly)
+
+	err = m.setDpRdOnly(dpId, rdOnly)
+	if err != nil {
+		log.LogErrorf("[setNodeRdOnlyHandler] set dp %v to rdOnly %v, err (%s)", dpId, rdOnly, err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("[setNodeRdOnlyHandler] set dpid %v to rdOnly(%v) success", dpId, rdOnly)))
 	return
 }
 

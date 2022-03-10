@@ -46,6 +46,7 @@ type dataPartitionCfg struct {
 	Hosts         []string            `json:"hosts"`
 	NodeID        uint64              `json:"-"`
 	RaftStore     raftstore.RaftStore `json:"-"`
+	ReplicaNum    int
 }
 
 func (dp *DataPartition) raftPort() (heartbeat, replica int, err error) {
@@ -140,9 +141,7 @@ func (dp *DataPartition) stopRaft() {
 	return
 }
 
-func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer) error {
-
-	// cache or preload partition not support raft and repair.
+func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer, force bool) error {
 	if !dp.isNormalType() {
 		return fmt.Errorf("CanRemoveRaftMember (%v) not support", dp)
 	}
@@ -165,6 +164,10 @@ func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer) error {
 			continue
 		}
 		hasDownReplicasExcludePeer = append(hasDownReplicasExcludePeer, nodeID.NodeID)
+	}
+	log.LogInfof("action[CanRemoveRaftMember] replicaNum %v peers %v", dp.replicaNum, len(dp.config.Peers))
+	if dp.replicaNum == 2 && len(dp.config.Peers) == 2 && force {
+		return nil
 	}
 
 	sumReplicas := len(dp.config.Peers)

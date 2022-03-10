@@ -282,9 +282,6 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminGetNodeInfo).
 		HandlerFunc(m.getNodeInfoHandler)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminDomainCreate).
-		HandlerFunc(m.createDomainHandler)
-	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminGetIsDomainOn).
 		HandlerFunc(m.getIsDomainOn)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -308,6 +305,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetNodeRdOnly).
 		HandlerFunc(m.setNodeRdOnlyHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetDpRdOnly).
+		HandlerFunc(m.setDpRdOnlyHandler)
 
 	// user management APIs
 	router.NewRoute().Methods(http.MethodPost).
