@@ -99,6 +99,8 @@ const (
 	StoreModeKey                = "storeMode"
 	volConvertStKey             = "convertState"
 	versionKey                  = "version"
+	volMinWritableMPNum         = "minWritableMp"
+	volMinWritableDPNum         = "minWritableDp"
 )
 
 const (
@@ -177,6 +179,10 @@ const (
 	defaultTrashRemainingDays                          = 30
 	maxTrashRemainingDays                              = 30
 	defaultMetaNodeVersion                             = "1.0.0"
+	defaultVolMaxWritableMPNum                         = 100
+	defaultVolMaxWritableDPNum                         = 6000
+	defaultLowCapacityVolMaxWritableDPNum              = 100
+	defaultLowCapacityVol                              = 10 * 1024
 )
 
 const (

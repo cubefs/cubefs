@@ -80,6 +80,9 @@ type Vol struct {
 	convertState        proto.VolConvertState
 	DefaultStoreMode    proto.StoreMode
 	MpLayout            proto.MetaPartitionLayout
+	writableMpCount    int64
+	MinWritableMPNum   int
+	MinWritableDPNum   int
 	sync.RWMutex
 }
 
@@ -121,6 +124,8 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	if trashDays > maxTrashRemainingDays {
 		trashDays = maxTrashRemainingDays
 	}
+	vol.MinWritableMPNum = defaultVolMinWritableMPNum
+	vol.MinWritableDPNum = defaultVolMinWritableDPNum
 	vol.dataPartitionSize = dpSize
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
@@ -1075,4 +1080,12 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.mpReplicaNum = backupVol.mpReplicaNum
 	vol.ForceROW = backupVol.ForceROW
 	vol.ExtentCacheExpireSec = backupVol.ExtentCacheExpireSec
+}
+
+func (vol *Vol) setWritableMpCount(count int64) {
+	atomic.StoreInt64(&vol.writableMpCount, count)
+}
+
+func (vol *Vol) getWritableMpCount() int64 {
+	return atomic.LoadInt64(&vol.writableMpCount)
 }

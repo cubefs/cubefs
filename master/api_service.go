@@ -1434,6 +1434,9 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		DefaultStoreMode:     vol.DefaultStoreMode,
 		ConvertState:         vol.convertState,
 		MpLayout:             vol.MpLayout,
+		RwMpCnt:              int(vol.getWritableMpCount()),
+		MinWritableMPNum:     vol.MinWritableMPNum,
+		MinWritableDPNum:     vol.MinWritableDPNum,
 	}
 }
 

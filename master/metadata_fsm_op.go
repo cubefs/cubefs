@@ -200,6 +200,8 @@ type volValue struct {
 	DefStoreMode         bsProto.StoreMode
 	ConverState          bsProto.VolConvertState
 	MpLayout             bsProto.MetaPartitionLayout
+	MinWritableMPNum     int
+	MinWritableDPNum     int
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -245,6 +247,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		DefStoreMode:         vol.DefaultStoreMode,
 		ConverState:          vol.convertState,
 		MpLayout:             vol.MpLayout,
+		MinWritableMPNum:     vol.MinWritableMPNum,
+		MinWritableDPNum:     vol.MinWritableDPNum,
 	}
 	return
 }
