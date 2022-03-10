@@ -341,7 +341,8 @@ func (reader *Reader) readSliceRange(ctx context.Context, rs *rwSlice) (err erro
 		return nil
 	}
 
-	go reader.asyncCache(ctx, cacheKey, rs.objExtentKey)
+	asyncCtx := context.Background()
+	go reader.asyncCache(asyncCtx, cacheKey, rs.objExtentKey)
 
 	log.LogDebugf("TRACE blobStore readSliceRange exit with cache. read counter=%v", read)
 	return nil
@@ -374,6 +375,7 @@ func (reader *Reader) asyncCache(ctx context.Context, cacheKey string, objExtent
 
 	if reader.needCacheL2() {
 		reader.ec.Write(reader.ino, int(objExtentKey.FileOffset), buf, 0)
+		log.LogDebugf("TRACE blobStore asyncCache(L2) Exit. cacheKey=%v", cacheKey)
 		return
 	}
 
