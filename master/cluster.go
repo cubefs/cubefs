@@ -1387,11 +1387,6 @@ func (c *Cluster) migrateDataNode(srcAddr, targetAddr string, limit int) (err er
 	srcNode.ToBeOffline = true
 	srcNode.AvailableSpace = 1
 
-	defer func() {
-		srcNode.ToBeOffline = false
-		close(errChannel)
-	}()
-
 	for i := 0; i < limit; i++ {
 		wg.Add(1)
 		go func(dp *DataPartition) {
@@ -1438,6 +1433,8 @@ func (c *Cluster) migrateDataNode(srcAddr, targetAddr string, limit int) (err er
 			c.Name, dataNode.Addr)
 		Warn(c.Name, msg)
 		log.LogInfof("action[decommissionDataNode] del node %v", dataNode.Addr)
+		dataNode.ToBeOffline = false
+		close(errChannel)
 	}(srcNode)
 
 	log.LogInfof("action[decommissionDataNode] return now")
