@@ -42,23 +42,25 @@ var (
 
 type Packet struct {
 	proto.Packet
-	followersAddrs  []string
-	followerPackets []*FollowerPacket
-	IsReleased      int32 // TODO what is released?
-	Object          interface{}
-	TpObject        *exporter.TimePointCount
-	NeedReply       bool
-	OrgBuffer       []byte
-	OrgSize         int32
-	isUseBufferPool int64
-	quorum          int
-
-	errorCh chan error
+	followersAddrs    []string
+	followerPackets   []*FollowerPacket
+	IsReleased        int32 // TODO what is released?
+	Object            interface{}
+	TpObject          *exporter.TimePointCount
+	NeedReply         bool
+	OrgBuffer         []byte
+	OrgSize           int32
+	useBufferPoolFlag int64
+	quorum            int
+	refCnt            int32
+	errorCh           chan error
 }
 
 type FollowerPacket struct {
 	proto.Packet
 	errorCh chan error
+	refCnt  *int32
+	isUseBufferFromPool bool
 }
 
 func NewFollowerPacket(ctx context.Context, parent *Packet) (fp *FollowerPacket) {
@@ -74,6 +76,12 @@ func (p *FollowerPacket) PackErrorBody(action, msg string) {
 	p.Size = uint32(len([]byte(action + "_" + msg)))
 	p.Data = make([]byte, p.Size)
 	copy(p.Data[:int(p.Size)], []byte(action+"_"+msg))
+}
+
+func (p *FollowerPacket)DecRefCnt() {
+	if p.isUseBufferFromPool && atomic.LoadInt32(p.refCnt)>0 {
+		atomic.AddInt32(p.refCnt,-1)
+	}
 }
 
 func (p *FollowerPacket) IsErrPacket() bool {
@@ -116,8 +124,15 @@ const (
 	PacketNoUseBufferPool = 0
 )
 
+func (p *Packet)canPutToBufferPool() (can bool) {
+	if p.isUseBufferPool() && atomic.LoadInt32(&p.refCnt)==0{
+		return true
+	}
+	return
+}
+
 func (p *Packet) clean() (isReturnToPool bool) {
-	if atomic.LoadInt64(&p.isUseBufferPool) == PacketUseBufferPool {
+	if p.isUseBufferPool() && p.canPutToBufferPool(){
 		if len(p.followerPackets) != 0 {
 			for i := 0; i < len(p.followerPackets); i++ {
 				if p.followerPackets[i] != nil {
@@ -134,8 +149,37 @@ func (p *Packet) clean() (isReturnToPool bool) {
 		p.followerPackets = nil
 		p.OrgBuffer = nil
 	}
-	atomic.StoreInt64(&p.isUseBufferPool, PacketNoUseBufferPool)
+	atomic.StoreInt64(&p.useBufferPoolFlag, PacketNoUseBufferPool)
 	return
+}
+
+func (p *Packet) forceClean() (isReturnToPool bool) {
+	if p.isUseBufferPool() {
+		if len(p.followerPackets) != 0 {
+			for i := 0; i < len(p.followerPackets); i++ {
+				if p.followerPackets[i] != nil {
+					p.followerPackets[i].Data = nil
+				}
+			}
+		}
+		proto.Buffers.Put(p.OrgBuffer)
+		isReturnToPool = true
+		p.Object = nil
+		p.TpObject = nil
+		p.Data = nil
+		p.Arg = nil
+		p.followerPackets = nil
+		p.OrgBuffer = nil
+	}
+	atomic.StoreInt64(&p.useBufferPoolFlag, PacketNoUseBufferPool)
+	return
+}
+
+
+func (p *Packet) addRefCnt() {
+	if p.isUseBufferPool() {
+		atomic.AddInt32(&p.refCnt,1)
+	}
 }
 
 func copyPacket(src *Packet, dst *FollowerPacket) {
@@ -151,6 +195,10 @@ func copyPacket(src *Packet, dst *FollowerPacket) {
 	dst.ExtentOffset = src.ExtentOffset
 	dst.ReqID = src.ReqID
 	dst.Data = src.OrgBuffer
+	dst.refCnt=&src.refCnt
+	if src.isUseBufferPool(){
+		dst.isUseBufferFromPool=true
+	}
 }
 
 func (p *Packet) BeforeTp(clusterID string) (ok bool) {
@@ -161,6 +209,18 @@ func (p *Packet) BeforeTp(clusterID string) (ok bool) {
 	}
 
 	return
+}
+
+func (p *Packet)DecRefCnt() {
+	if atomic.LoadInt64(&p.useBufferPoolFlag)==PacketUseBufferPool {
+		if atomic.LoadInt32(&p.refCnt)>0 {
+			atomic.AddInt32(&p.refCnt,-1)
+		}
+	}
+}
+
+func (p *Packet)isUseBufferPool() bool {
+	return atomic.LoadInt64(&p.useBufferPoolFlag)==PacketUseBufferPool
 }
 
 func (p *Packet) resolveFollowersAddr(remoteAddr string) (err error) {
@@ -180,6 +240,9 @@ func (p *Packet) resolveFollowersAddr(remoteAddr string) (err error) {
 	if p.RemainingFollowers < 0 {
 		err = ErrBadNodes
 		return
+	}
+	if p.isUseBufferPool(){
+		p.addRefCnt()
 	}
 
 	return
@@ -401,7 +464,7 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineSonds int64) (isUseBuff
 	p.OrgSize = int32(readSize)
 	if p.IsWriteOperation() && readSize == util.BlockSize {
 		p.Data, _ = proto.Buffers.Get(int(readSize))
-		atomic.StoreInt64(&p.isUseBufferPool, PacketUseBufferPool)
+		atomic.StoreInt64(&p.useBufferPoolFlag, PacketUseBufferPool)
 		_, err = io.ReadFull(c, p.Data[:readSize])
 		if err != nil {
 			proto.Buffers.Put(p.Data)
