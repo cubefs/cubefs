@@ -56,6 +56,8 @@ type DataPartition struct {
 	SingleDecommissionStatus uint8
 	singleDecommissionChan   chan bool
 	SingleDecommissionAddr   string
+	RdOnly                   bool
+	addReplicaMutex          sync.RWMutex
 }
 
 type DataPartitionPreLoad struct {
@@ -94,9 +96,8 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
 	return
 }
 
-func (partition *DataPartition) isSingleReplica() bool {
-	log.LogInfof("action[isSingleReplica] id %v replica num %v", partition.PartitionID, partition.ReplicaNum)
-	return partition.ReplicaNum == 1
+func (partition *DataPartition) isSpecialReplicaCnt() bool {
+	return partition.ReplicaNum == 1 || partition.ReplicaNum == 2
 }
 
 func (partition *DataPartition) resetFilesWithMissingReplica() {
@@ -173,13 +174,26 @@ func (partition *DataPartition) createTaskToAddRaftMember(addPeer proto.Peer, le
 	return
 }
 
-func (partition *DataPartition) createTaskToRemoveRaftMember(removePeer proto.Peer) (task *proto.AdminTask, err error) {
-	leaderAddr := partition.getLeaderAddr()
+func (partition *DataPartition) createTaskToRemoveRaftMember(removePeer proto.Peer, force bool) (task *proto.AdminTask, leaderAddr string, err error) {
+	leaderAddr = partition.getLeaderAddr()
 	if leaderAddr == "" {
-		err = proto.ErrNoLeader
-		return
+		if partition.ReplicaNum == 2 && force {
+			for _, replica := range partition.Replicas {
+				if replica.Addr != removePeer.Addr {
+					leaderAddr = replica.Addr
+				}
+			}
+		} else {
+			err = proto.ErrNoLeader
+			return
+		}
 	}
-	task = proto.NewAdminTask(proto.OpRemoveDataPartitionRaftMember, leaderAddr, newRemoveDataPartitionRaftMemberRequest(partition.PartitionID, removePeer))
+
+	req := newRemoveDataPartitionRaftMemberRequest(partition.PartitionID, removePeer)
+	if partition.ReplicaNum == 2 && force {
+		req.Force = true
+	}
+	task = proto.NewAdminTask(proto.OpRemoveDataPartitionRaftMember, leaderAddr, req)
 	partition.resetTaskID(task)
 	return
 }
@@ -188,7 +202,9 @@ func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dat
 	peers []proto.Peer, hosts []string, createType int, partitionType int) (task *proto.AdminTask) {
 
 	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(
-		partition.VolName, partition.PartitionID, peers, int(dataPartitionSize), hosts, createType, partitionType))
+		partition.VolName, partition.PartitionID, int(partition.ReplicaNum),
+		peers, int(dataPartitionSize), hosts, createType, partitionType))
+
 	partition.resetTaskID(task)
 	return
 }
@@ -223,11 +239,11 @@ func (partition *DataPartition) hasMissingOneReplica(addr string, replicaNum int
 	return
 }
 
-func (partition *DataPartition) canBeOffLine(offlineAddr string) (err error) {
+func (partition *DataPartition) canBeOffLine(offlineAddr string, raftForceDel bool) (err error) {
 	msg := fmt.Sprintf("action[canOffLine],partitionID:%v  RocksDBHost:%v  offLine:%v ",
 		partition.PartitionID, partition.Hosts, offlineAddr)
 	liveReplicas := partition.liveReplicas(defaultDataPartitionTimeOutSec)
-	if partition.isSingleReplica() {
+	if partition.isSpecialReplicaCnt() {
 		if len(liveReplicas) != 1 {
 			msg = fmt.Sprintf(msg+" err:%v  liveReplicas:%v ", proto.ErrCannotBeOffLine, len(liveReplicas))
 			log.LogError(msg)
@@ -244,12 +260,30 @@ func (partition *DataPartition) canBeOffLine(offlineAddr string) (err error) {
 		}
 	}
 
-	if len(otherLiveReplicas) < int(partition.ReplicaNum/2+1) {
+	if partition.ReplicaNum >= 3 && len(otherLiveReplicas) < int(partition.ReplicaNum/2+1) {
 		msg = fmt.Sprintf(msg+" err:%v  liveReplicas:%v ", proto.ErrCannotBeOffLine, len(liveReplicas))
 		log.LogError(msg)
 		err = fmt.Errorf(msg)
 	}
 
+	if partition.ReplicaNum == 1 && len(liveReplicas) == 0 {
+		msg = fmt.Sprintf(msg+" err:%v  replicaNum:%v liveReplicas:%v ", proto.ErrCannotBeOffLine, partition.ReplicaNum, len(liveReplicas))
+		log.LogError(msg)
+		err = fmt.Errorf(msg)
+	}
+
+	if partition.ReplicaNum == 2 {
+		// raft quorum not take effect then do raftForceDel delete replica
+		if raftForceDel {
+			log.LogWarnf("action[canBeOffLine] raftForceDel delete addr %v, liveReplicas:%v ", offlineAddr, len(liveReplicas))
+			return
+		}
+		if len(otherLiveReplicas) == 0 {
+			msg = fmt.Sprintf(msg+" err:%v  replicaNum:%v liveReplicas:%v ", proto.ErrCannotBeOffLine, partition.ReplicaNum, len(liveReplicas))
+			log.LogError(msg)
+			err = fmt.Errorf(msg)
+		}
+	}
 	return
 }
 
@@ -466,7 +500,7 @@ func (partition *DataPartition) checkReplicaNum(c *Cluster, vol *Vol) {
 		msg := fmt.Sprintf("FIX DataPartition replicaNum,clusterID[%v] volName[%v] partitionID:%v orgReplicaNum:%v",
 			c.Name, vol.Name, partition.PartitionID, partition.ReplicaNum)
 		Warn(c.Name, msg)
-		if partition.isSingleReplica() && (partition.SingleDecommissionStatus == datanode.DecommsionErr || // case decommission error
+		if partition.isSpecialReplicaCnt() && (partition.SingleDecommissionStatus == datanode.DecommsionErr || // case decommission error
 			partition.SingleDecommissionStatus == 0) { // case restart and no message left,delete the lasted replica be added
 			log.LogInfof("action[checkReplicaNum] volume %v partiton %v need decommssion", partition.VolName, partition.PartitionID)
 			vol.NeedToLowerReplica = true
@@ -633,7 +667,7 @@ func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode
 	}
 	partition.checkAndRemoveMissReplica(dataNode.Addr)
 
-	if replica.Status == proto.ReadWrite && replica.dataNode.RdOnly {
+	if replica.Status == proto.ReadWrite && (partition.RdOnly || replica.dataNode.RdOnly) {
 		replica.Status = int8(proto.ReadOnly)
 	}
 }
@@ -730,7 +764,7 @@ func (partition *DataPartition) getToBeDecommissionHost(replicaNum int) (host st
 	defer partition.RUnlock()
 
 	// single decommission info not store to meta, once restart just delete new added host
-	if partition.isSingleReplica() && partition.SingleDecommissionStatus > 0 {
+	if partition.isSpecialReplicaCnt() && partition.SingleDecommissionStatus > 0 {
 		if partition.SingleDecommissionStatus == datanode.DecommsionErr {
 			log.LogInfof("action[getToBeDecommissionHost] get single replica partition %v need to decommission %v",
 				partition.PartitionID, partition.SingleDecommissionAddr)
@@ -747,14 +781,13 @@ func (partition *DataPartition) getToBeDecommissionHost(replicaNum int) (host st
 }
 
 func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string) (err error) {
-	if err = c.removeDataReplica(partition, host, false); err != nil {
+	if err = c.removeDataReplica(partition, host, false, false); err != nil {
 		return
 	}
 
 	partition.RLock()
 	defer partition.RUnlock()
-	if partition.isSingleReplica() {
-		partition.ReplicaNum = 1
+	if partition.isSpecialReplicaCnt() {
 		partition.SingleDecommissionStatus = 0
 		partition.SingleDecommissionAddr = ""
 		return

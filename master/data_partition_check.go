@@ -53,12 +53,12 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 		partition.Status = proto.ReadOnly
 	}
 
-	if partition.isSingleReplica() && partition.SingleDecommissionStatus > 0 {
-		log.LogInfof("action[checkStatus] partition %v with single replica on decommison status %v",
-			partition.PartitionID, partition.Status)
+	if partition.isSpecialReplicaCnt() && partition.SingleDecommissionStatus > 0 {
+		log.LogInfof("action[checkStatus] partition %v with Special replica cnt %v on decommison status %v, live replicacnt %v",
+			partition.PartitionID, partition.ReplicaNum, partition.Status, len(liveReplicas))
 		partition.Status = proto.ReadOnly
 		if partition.SingleDecommissionStatus == datanode.DecommsionWaitAddRes {
-			if len(liveReplicas) == 2 && partition.checkReplicaNotHaveStatus(liveReplicas, proto.Unavailable) == true {
+			if len(liveReplicas) == int(partition.ReplicaNum+1) && partition.checkReplicaNotHaveStatus(liveReplicas, proto.Unavailable) == true {
 				partition.SingleDecommissionStatus = datanode.DecommsionWaitAddResFin
 				log.LogInfof("action[checkStatus] partition %v with single replica on decommison and continue to remove old replica",
 					partition.PartitionID)
@@ -124,10 +124,13 @@ func (partition *DataPartition) checkReplicaStatus(timeOutSec int64) {
 			if replica.Status == proto.ReadWrite {
 				replica.Status = proto.ReadOnly
 			}
+			if partition.isSpecialReplicaCnt() {
+				return
+			}
 			continue
 		}
 
-		if replica.dataNode.RdOnly && replica.Status == proto.ReadWrite {
+		if (replica.dataNode.RdOnly || partition.RdOnly) && replica.Status == proto.ReadWrite {
 			replica.Status = proto.ReadOnly
 		}
 	}
@@ -220,7 +223,7 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) {
 		}
 
 		if replica.Status == proto.Unavailable {
-			if partition.isSingleReplica() && len(partition.Hosts) > 1 {
+			if partition.isSpecialReplicaCnt() && len(partition.Hosts) > 1 {
 				log.LogWarnf("action[%v],clusterID[%v],partitionID:%v  On :%v status Unavailable",
 					checkDataPartitionDiskErr, clusterID, partition.PartitionID, addr)
 				continue

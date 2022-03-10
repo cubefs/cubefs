@@ -40,7 +40,6 @@ const (
 	AdminListVols                   = "/vol/list"
 	AdminSetNodeInfo                = "/admin/setNodeInfo"
 	AdminGetNodeInfo                = "/admin/getNodeInfo"
-	AdminDomainCreate               = "/admin/createDomain"
 	AdminGetAllNodeSetGrpInfo       = "/admin/getDomainInfo"
 	AdminGetNodeSetGrpInfo          = "/admin/getDomainNodeSetGrpInfo"
 	AdminGetIsDomainOn              = "/admin/getIsDomainOn"
@@ -49,6 +48,7 @@ const (
 	AdminUpdateDomainDataUseRatio   = "/admin/updateDomainDataRatio"
 	AdminUpdateZoneExcludeRatio     = "/admin/updateZoneExcludeRatio"
 	AdminSetNodeRdOnly              = "/admin/setNodeRdOnly"
+	AdminSetDpRdOnly                = "/admin/setDpRdOnly"
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
@@ -156,6 +156,7 @@ type CreateDataPartitionRequest struct {
 	PartitionTyp  int
 	PartitionId   uint64
 	PartitionSize int
+	ReplicaNum    int
 	VolumeId      string
 	IsRandomWrite bool
 	Members       []Peer
@@ -201,6 +202,7 @@ type AddDataPartitionRaftMemberRequest struct {
 type RemoveDataPartitionRaftMemberRequest struct {
 	PartitionId uint64
 	RemovePeer  Peer
+	Force       bool
 }
 
 // AddMetaPartitionRaftMemberRequest defines the request of add raftMember a meta partition.
