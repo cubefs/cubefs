@@ -623,8 +623,6 @@ func (m *metadataManager) opMetaExtentsList(conn net.Conn, p *Packet,
 
 	err = mp.ExtentsList(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("%s [opMetaExtentsList] req: %d - %v; resp: %v, body: %s",
-		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
 
@@ -1591,7 +1589,7 @@ func (m *metadataManager) opGetAppliedID(conn net.Conn, p *Packet, remoteAddr st
 func (m *metadataManager) opGetMetaNodeVersionInfo(conn net.Conn, p *Packet, remoteAddr string) (err error) {
 	ver, err := NewMetaNodeVersion(proto.BaseVersion)
 	reply, err := json.Marshal(ver)
-	if err != nil{
+	if err != nil {
 		p.PacketErrorWithBody(proto.OpGetMetaNodeVersionInfo, []byte(err.Error()))
 		return err
 	}

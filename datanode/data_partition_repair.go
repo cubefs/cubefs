@@ -198,24 +198,24 @@ func (dp *DataPartition) getRemoteExtentInfo(ctx context.Context, extentType uin
 		}
 		var conn *net.TCPConn
 		if conn, err = gConnPool.GetConnect(target); err != nil {
-			err = errors.Trace(err, "get connection failed")
+			err = errors.Trace(err, fmt.Sprintf("get connection failed: %v",err))
 			return
 		}
 		defer func() {
 			gConnPool.PutConnectWithErr(conn, err)
 		}()
 		if err = packet.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
-			err = errors.Trace(err, "write packet to connection failed")
+			err = errors.Trace(err, fmt.Sprintf("write packet to connection failed %v",err))
 			return
 		}
 		var reply = new(repl.Packet)
 		reply.SetCtx(ctx)
 		if err = reply.ReadFromConn(conn, proto.GetAllWatermarksDeadLineTime); err != nil {
-			err = errors.Trace(err, "read reply from connection failed")
+			err = errors.Trace(err, fmt.Sprintf("read reply from connection failed %v",err))
 			return
 		}
 		if reply.ResultCode != proto.OpOk {
-			err = errors.NewErrorf("reply result code: %v", reply.GetOpMsg())
+			err = errors.Trace(err, fmt.Sprintf("reply result mesg: %v",reply.GetOpMsgWithReqAndResult()))
 			return
 		}
 		extents = make([]*storage.ExtentInfo, 0)
@@ -249,22 +249,22 @@ func (dp *DataPartition) getRemoteExtentInfo(ctx context.Context, extentType uin
 			gConnPool.PutConnectWithErr(conn, err)
 		}()
 		if err = packet.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
-			err = errors.Trace(err, "write packet to connection failed")
+			err = errors.Trace(err, fmt.Sprintf("write packet to connection failed %v",err))
 			return
 		}
 		var reply = new(repl.Packet)
 		reply.SetCtx(ctx)
 		if err = reply.ReadFromConn(conn, proto.GetAllWatermarksDeadLineTime); err != nil {
-			err = errors.Trace(err, "read reply from connection failed")
+			err = errors.Trace(err, fmt.Sprintf("read reply from connection failed %v",err))
 			return
 		}
 		if reply.ResultCode != proto.OpOk {
-			err = errors.NewErrorf("reply result code: %v", reply.GetOpMsg())
+			err = errors.Trace(err, fmt.Sprintf("reply result mesg: %v",reply.GetOpMsgWithReqAndResult()))
 			return
 		}
 		if reply.Size%16 != 0 {
 			// 合法的data长度与16对其，每16个字节存储一个Extent信息，[0:8)为FileID，[8:16)为Size。
-			err = errors.NewErrorf("illegal result data length: %v", len(reply.Data))
+			err = errors.NewErrorf("illegal result data length: %v", reply.Size)
 			return
 		}
 		extents = make([]*storage.ExtentInfo, 0, len(reply.Data)/16)

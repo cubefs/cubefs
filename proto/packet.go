@@ -102,16 +102,16 @@ const (
 	//Operations: MetaNode Leader -> MetaNode Follower
 	OpMetaFreeInodesOnRaftFollower uint8 = 0x32
 
-	OpMetaDeleteInode     uint8 = 0x33 // delete specified inode immediately and do not remove data.
-	OpMetaBatchExtentsAdd uint8 = 0x34 // for extents batch attachment
-	OpMetaSetXAttr        uint8 = 0x35
-	OpMetaGetXAttr        uint8 = 0x36
-	OpMetaRemoveXAttr     uint8 = 0x37
-	OpMetaListXAttr       uint8 = 0x38
-	OpMetaBatchGetXAttr   uint8 = 0x39
-	OpMetaGetAppliedID    uint8 = 0x3A
-	OpMetaExtentsInsert   uint8 = 0x3B
-	OpMetaInodeGetV2      uint8 = 0x3C	//new op code, old(get) compatible the old client
+	OpMetaDeleteInode        uint8 = 0x33 // delete specified inode immediately and do not remove data.
+	OpMetaBatchExtentsAdd    uint8 = 0x34 // for extents batch attachment
+	OpMetaSetXAttr           uint8 = 0x35
+	OpMetaGetXAttr           uint8 = 0x36
+	OpMetaRemoveXAttr        uint8 = 0x37
+	OpMetaListXAttr          uint8 = 0x38
+	OpMetaBatchGetXAttr      uint8 = 0x39
+	OpMetaGetAppliedID       uint8 = 0x3A
+	OpMetaExtentsInsert      uint8 = 0x3B
+	OpMetaInodeGetV2         uint8 = 0x3C //new op code, old(get) compatible the old client
 	OpGetMetaNodeVersionInfo uint8 = 0x3D
 
 	// Operations: Master -> MetaNode
@@ -199,9 +199,8 @@ const (
 )
 
 const (
-	CheckPreExtentExist   = 1
+	CheckPreExtentExist = 1
 )
-
 
 const (
 	NormalCreateDataPartition         = 0
@@ -268,7 +267,7 @@ func (p *Packet) String() string {
 	if p == nil {
 		return ""
 	}
-	return fmt.Sprintf("ReqID(%v)Op(%v)PartitionID(%v)ResultCode(%v)", p.ReqID, p.GetOpMsg(), p.PartitionID, p.GetResultMsg())
+	return fmt.Sprintf("Req(%v)Op(%v)PartitionID(%v)ResultCode(%v)", p.ReqID, p.GetOpMsg(), p.PartitionID, p.GetResultMsg())
 }
 
 func (p *Packet) IsReadOp() bool {
@@ -294,7 +293,7 @@ func (p *Packet) GetStoreType() (m string) {
 }
 
 func (p *Packet) GetOpMsgWithReqAndResult() (m string) {
-	return fmt.Sprintf("Req(%v)_(%v)_Result(%v)", p.ReqID, p.GetOpMsg(), p.GetResultMsg())
+	return fmt.Sprintf("Req(%v)_(%v)_Result(%v)_Body(%v)", p.ReqID, p.GetOpMsg(), p.GetResultMsg(),string(p.Data[0:p.Size]))
 }
 
 // GetOpMsg returns the operation type.
@@ -829,11 +828,11 @@ func (p *Packet) IsForwardPkt() bool {
 func (p *Packet) LogMessage(action, remote string, start int64, err error) (m string) {
 	if err == nil {
 		m = fmt.Sprintf("action[%v] id[%v] isPrimaryBackReplLeader[%v] remote[%v] "+
-			" cost[%v]ms ", action,p.GetUniqueLogId(), p.IsForwardPkt(), remote, (time.Now().UnixNano()-start)/1e6)
+			" cost[%v]ms ", action, p.GetUniqueLogId(), p.IsForwardPkt(), remote, (time.Now().UnixNano()-start)/1e6)
 
 	} else {
 		m = fmt.Sprintf("action[%v] id[%v] isPrimaryBackReplLeader[%v] remote[%v]"+
-			", err[%v]", action,p.GetUniqueLogId(), p.IsForwardPkt(), remote, err.Error())
+			", err[%v]", action, p.GetUniqueLogId(), p.IsForwardPkt(), remote, err.Error())
 	}
 
 	return

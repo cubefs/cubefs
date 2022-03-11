@@ -214,6 +214,20 @@ func copyFollowerPacket(src *FollowerPacket, dst *FollowerPacket) {
 	dst.ReqID = src.ReqID
 }
 
+func copyReplPacket(src *Packet, dst *Packet) {
+	dst.Magic = src.Magic
+	dst.ExtentType = src.ExtentType
+	dst.Opcode = src.Opcode
+	dst.ResultCode = src.ResultCode
+	dst.CRC = src.CRC
+	dst.Size = src.Size
+	dst.KernelOffset = src.KernelOffset
+	dst.PartitionID = src.PartitionID
+	dst.ExtentID = src.ExtentID
+	dst.ExtentOffset = src.ExtentOffset
+	dst.ReqID = src.ReqID
+}
+
 func (p *Packet) BeforeTp(clusterID string) (ok bool) {
 	if p.IsForwardPkt() && !p.IsRandomWrite() {
 		p.TpObject = exporter.NewTPCnt(fmt.Sprintf("PrimaryBackUp_%v", p.GetOpMsg()))
