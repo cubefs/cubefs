@@ -197,8 +197,8 @@ func (dp *DataPartition) getNearestCrossRegionHost() string {
 		if len(dp.CrossRegionMetrics.CrossRegionHosts[i]) > 0 {
 			err, host := dp.getEpochReadHost(dp.CrossRegionMetrics.CrossRegionHosts[i])
 			if err == nil {
-				log.LogDebugf("getNearestCrossRegionHost: dp[%v] get nearest host[%v] from rank[%v:%v]",
-					dp, host, i, dp.CrossRegionMetrics.CrossRegionHosts[i])
+				log.LogDebugf("getNearestCrossRegionHost: dp[%v] crossRegionMetrics[%v] get nearest host[%v] from rank[%v:%v]",
+					dp, dp.CrossRegionMetrics, host, i, dp.CrossRegionMetrics.CrossRegionHosts[i])
 				return host
 			}
 		}
@@ -223,10 +223,11 @@ func (dp *DataPartition) updateCrossRegionMetrics(addr string, netFail bool) {
 		if counter+1 >= errCounterThreshold {
 			dp.ClientWrapper.crossRegionHostLatency.Store(addr, time.Duration(0))
 			dp.CrossRegionMetrics.adjustHostToUnknownRank(addr)
-			log.LogWarnf("updateCrossRegionMetrics: degrade host(%v) errCounter(%v) dp(%v)", addr, counter, dp)
+			log.LogWarnf("updateCrossRegionMetrics: degrade host(%v) errCounter(%v) dp(%v) crossRegionMetrics(%v)",
+				addr, counter, dp, dp.CrossRegionMetrics)
 		}
 		dp.CrossRegionMetrics.HostErrCounter[addr]++
-		log.LogDebugf("updateCrossRegionMetrics: host(%v) errCounterMap(%v) dp(%v)", addr, dp.CrossRegionMetrics.HostErrCounter, dp)
+		log.LogDebugf("updateCrossRegionMetrics: host(%v) crossRegionMetrics(%v) dp(%v)", addr, dp.CrossRegionMetrics, dp)
 	} else {
 		delete(dp.CrossRegionMetrics.HostErrCounter, addr)
 	}

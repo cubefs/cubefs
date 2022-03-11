@@ -292,8 +292,10 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 	if w.CrossRegionHATypeQuorum() {
 		w.initCrossRegionHostStatus(dp)
+		dp.CrossRegionMetrics.Lock()
 		dp.CrossRegionMetrics.CrossRegionHosts = w.classifyCrossRegionHosts(dp.Hosts)
 		log.LogDebugf("classifyCrossRegionHosts: dp(%v) hosts(%v) crossRegionMetrics(%v)", dp.PartitionID, dp.Hosts, dp.CrossRegionMetrics)
+		dp.CrossRegionMetrics.Unlock()
 	} else if w.followerRead && w.nearRead {
 		dp.NearHosts = w.sortHostsByDistance(dp.Hosts)
 	}
@@ -309,7 +311,9 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 		old.ReplicaNum = dp.ReplicaNum
 		old.Hosts = dp.Hosts
 		old.NearHosts = dp.NearHosts
+		old.CrossRegionMetrics.Lock()
 		old.CrossRegionMetrics.CrossRegionHosts = dp.CrossRegionMetrics.CrossRegionHosts
+		old.CrossRegionMetrics.Unlock()
 		dp.Metrics = old.Metrics
 	} else {
 		dp.Metrics = NewDataPartitionMetrics()
