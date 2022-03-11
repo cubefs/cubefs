@@ -377,13 +377,6 @@ func (s *ExtentStore) Write(ctx context.Context, extentID uint64, offset, size i
 		e *Extent
 	)
 	ei := s.getExtentInfoByExtentID(extentID)
-	if ei==nil && offset==0{
-		err=s.Create(extentID,true)
-		if err!=nil {
-			return
-		}
-		ei=s.getExtentInfoByExtentID(extentID)
-	}
 	e, err = s.extentWithHeader(ei)
 	if err != nil {
 		return err
