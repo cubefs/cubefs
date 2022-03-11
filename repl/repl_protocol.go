@@ -89,6 +89,8 @@ type FollowerTransport struct {
 	lastActiveTime int64
 	replId         int64
 	pkgCnt         int64
+	globalErr      error
+	firstErrPkg    *FollowerPacket
 }
 
 func NewFollowersTransport(addr string, replId int64) (ft *FollowerTransport, err error) {
@@ -141,7 +143,12 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 				p.Data = nil
 				p.errorCh <- fmt.Errorf(ActionSendToFollowers+" follower(%v) error(%v)", ft.addr, err.Error())
 				_ = ft.conn.Close()
-				log.LogErrorf("replID(%v) pkgOrder(%v) request(%v) ActionSendToFollowers(%v) error(%v)", ft.replId, ft.pkgCnt, p.GetUniqueLogId(), ft.conn.RemoteAddr().String(), err.Error())
+				if ft.globalErr == nil {
+					ft.globalErr = err
+					ft.firstErrPkg = new(FollowerPacket)
+					copyFollowerPacket(p, ft.firstErrPkg)
+				}
+				log.LogErrorf("replID(%v) pkgOrder(%v) firstErrorAndPkgInfo(%v,%v) request(%v) ActionSendToFollowers(%v) error(%v)", ft.replId, ft.pkgCnt, ft.globalErr, ft.firstErrPkg, p.GetUniqueLogId(), ft.conn.RemoteAddr().String(), err.Error())
 				continue
 			}
 			p.Data = nil
@@ -149,7 +156,12 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 			if err := ft.PutRequestToRecvCh(p); err != nil {
 				p.errorCh <- fmt.Errorf(ActionSendToFollowers+" follower(%v) error(%v)", ft.addr, err.Error())
 				_ = ft.conn.Close()
-				log.LogErrorf("replID(%v) pkgOrder(%v) request(%v) ActionSendToFollowers(%v) error(%v)", ft.replId, ft.pkgCnt, p.GetUniqueLogId(), ft.conn.RemoteAddr().String(), err.Error())
+				if ft.globalErr == nil {
+					ft.globalErr = err
+					ft.firstErrPkg = new(FollowerPacket)
+					copyFollowerPacket(p, ft.firstErrPkg)
+				}
+				log.LogErrorf("replID(%v) pkgOrder(%v) firstErrorAndPkgInfo(%v,%v) request(%v) ActionSendToFollowers(%v) error(%v)", ft.replId, ft.pkgCnt, ft.globalErr, ft.firstErrPkg, p.GetUniqueLogId(), ft.conn.RemoteAddr().String(), err.Error())
 				continue
 			}
 
@@ -191,7 +203,12 @@ func (ft *FollowerTransport) readFollowerResult(ctx context.Context, request *Fo
 		request.errorCh <- err
 		if err != nil {
 			_ = ft.conn.Close()
-			log.LogErrorf("replID(%v) pkgOrder(%v) request(%v) readFollowerResult(%v) error(%v)", ft.replId, ft.pkgCnt, request.GetUniqueLogId(), ft.conn.RemoteAddr().String(), err)
+			if ft.globalErr == nil {
+				ft.globalErr = err
+				ft.firstErrPkg = new(FollowerPacket)
+				copyFollowerPacket(request, ft.firstErrPkg)
+			}
+			log.LogErrorf("replID(%v) pkgOrder(%v) firstErrorAndPkgInfo(%v,%v) request(%v) readFollowerResult(%v) error(%v)", ft.replId, ft.pkgCnt, ft.globalErr, ft.firstErrPkg, request.GetUniqueLogId(), ft.conn.RemoteAddr().String(), err)
 			return
 		}
 	}()

@@ -58,8 +58,8 @@ type Packet struct {
 
 type FollowerPacket struct {
 	proto.Packet
-	errorCh chan error
-	refCnt  *int32
+	errorCh             chan error
+	refCnt              *int32
 	isUseBufferFromPool bool
 }
 
@@ -78,9 +78,9 @@ func (p *FollowerPacket) PackErrorBody(action, msg string) {
 	copy(p.Data[:int(p.Size)], []byte(action+"_"+msg))
 }
 
-func (p *FollowerPacket)DecRefCnt() {
-	if p.isUseBufferFromPool && atomic.LoadInt32(p.refCnt)>0 {
-		atomic.AddInt32(p.refCnt,-1)
+func (p *FollowerPacket) DecRefCnt() {
+	if p.isUseBufferFromPool && atomic.LoadInt32(p.refCnt) > 0 {
+		atomic.AddInt32(p.refCnt, -1)
 	}
 }
 
@@ -124,15 +124,15 @@ const (
 	PacketNoUseBufferPool = 0
 )
 
-func (p *Packet)canPutToBufferPool() (can bool) {
-	if p.isUseBufferPool() && atomic.LoadInt32(&p.refCnt)==0{
+func (p *Packet) canPutToBufferPool() (can bool) {
+	if p.isUseBufferPool() && atomic.LoadInt32(&p.refCnt) == 0 {
 		return true
 	}
 	return
 }
 
 func (p *Packet) clean() (isReturnToPool bool) {
-	if p.isUseBufferPool() && p.canPutToBufferPool(){
+	if p.isUseBufferPool() && p.canPutToBufferPool() {
 		if len(p.followerPackets) != 0 {
 			for i := 0; i < len(p.followerPackets); i++ {
 				if p.followerPackets[i] != nil {
@@ -175,10 +175,9 @@ func (p *Packet) forceClean() (isReturnToPool bool) {
 	return
 }
 
-
 func (p *Packet) addRefCnt() {
 	if p.isUseBufferPool() {
-		atomic.AddInt32(&p.refCnt,1)
+		atomic.AddInt32(&p.refCnt, 1)
 	}
 }
 
@@ -195,10 +194,24 @@ func copyPacket(src *Packet, dst *FollowerPacket) {
 	dst.ExtentOffset = src.ExtentOffset
 	dst.ReqID = src.ReqID
 	dst.Data = src.OrgBuffer
-	dst.refCnt=&src.refCnt
-	if src.isUseBufferPool(){
-		dst.isUseBufferFromPool=true
+	dst.refCnt = &src.refCnt
+	if src.isUseBufferPool() {
+		dst.isUseBufferFromPool = true
 	}
+}
+
+func copyFollowerPacket(src *FollowerPacket, dst *FollowerPacket) {
+	dst.Magic = src.Magic
+	dst.ExtentType = src.ExtentType
+	dst.Opcode = src.Opcode
+	dst.ResultCode = src.ResultCode
+	dst.CRC = src.CRC
+	dst.Size = src.Size
+	dst.KernelOffset = src.KernelOffset
+	dst.PartitionID = src.PartitionID
+	dst.ExtentID = src.ExtentID
+	dst.ExtentOffset = src.ExtentOffset
+	dst.ReqID = src.ReqID
 }
 
 func (p *Packet) BeforeTp(clusterID string) (ok bool) {
@@ -211,16 +224,16 @@ func (p *Packet) BeforeTp(clusterID string) (ok bool) {
 	return
 }
 
-func (p *Packet)DecRefCnt() {
-	if atomic.LoadInt64(&p.useBufferPoolFlag)==PacketUseBufferPool {
-		if atomic.LoadInt32(&p.refCnt)>0 {
-			atomic.AddInt32(&p.refCnt,-1)
+func (p *Packet) DecRefCnt() {
+	if atomic.LoadInt64(&p.useBufferPoolFlag) == PacketUseBufferPool {
+		if atomic.LoadInt32(&p.refCnt) > 0 {
+			atomic.AddInt32(&p.refCnt, -1)
 		}
 	}
 }
 
-func (p *Packet)isUseBufferPool() bool {
-	return atomic.LoadInt64(&p.useBufferPoolFlag)==PacketUseBufferPool
+func (p *Packet) isUseBufferPool() bool {
+	return atomic.LoadInt64(&p.useBufferPoolFlag) == PacketUseBufferPool
 }
 
 func (p *Packet) resolveFollowersAddr(remoteAddr string) (err error) {
@@ -241,7 +254,7 @@ func (p *Packet) resolveFollowersAddr(remoteAddr string) (err error) {
 		err = ErrBadNodes
 		return
 	}
-	if p.isUseBufferPool(){
+	if p.isUseBufferPool() {
 		p.addRefCnt()
 	}
 
