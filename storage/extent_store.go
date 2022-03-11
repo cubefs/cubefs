@@ -25,8 +25,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/chubaofs/chubaofs/util/tracing"
-
 	"path"
 	"regexp"
 	"time"
@@ -375,14 +373,17 @@ func (s *ExtentStore) getExtentInfoByExtentID(eid uint64) (ei *ExtentInfo) {
 
 // Write writes the given extent to the disk.
 func (s *ExtentStore) Write(ctx context.Context, extentID uint64, offset, size int64, data []byte, crc uint32, writeType int, isSync bool) (err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("ExtentStore.Write")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var (
 		e *Extent
 	)
 	ei := s.getExtentInfoByExtentID(extentID)
+	if ei==nil && offset==0{
+		err=s.Create(extentID,true)
+		if err!=nil {
+			return
+		}
+		ei=s.getExtentInfoByExtentID(extentID)
+	}
 	e, err = s.extentWithHeader(ei)
 	if err != nil {
 		return err
