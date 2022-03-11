@@ -82,6 +82,7 @@ type ExtentConfig struct {
 	Masters           []string
 	FollowerRead      bool
 	NearRead          bool
+	NoFlushOnClose    bool
 	ReadRate          int64
 	WriteRate         int64
 	OnAppendExtentKey AppendExtentKeyFunc
@@ -92,6 +93,8 @@ type ExtentConfig struct {
 
 // ExtentClient defines the struct of the extent client.
 type ExtentClient struct {
+	noFlushOnClose bool
+
 	streamers    map[uint64]*Streamer
 	streamerLock sync.Mutex
 
@@ -122,6 +125,7 @@ retry:
 		}
 	}
 
+	client.noFlushOnClose = config.NoFlushOnClose
 	client.streamers = make(map[uint64]*Streamer)
 	client.appendExtentKey = config.OnAppendExtentKey
 	client.getExtents = config.OnGetExtents

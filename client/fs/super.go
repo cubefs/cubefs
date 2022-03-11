@@ -115,6 +115,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		Masters:           masters,
 		FollowerRead:      opt.FollowerRead,
 		NearRead:          opt.NearRead,
+		NoFlushOnClose:    !opt.FsyncOnClose,
 		ReadRate:          opt.ReadRate,
 		WriteRate:         opt.WriteRate,
 		OnAppendExtentKey: s.mw.AppendExtentKey,
