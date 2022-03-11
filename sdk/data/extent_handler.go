@@ -630,24 +630,25 @@ func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
 			continue
 		}
 
-		extID = 0
-		if eh.storeMode == proto.NormalExtentType {
-			extID, err = eh.ehCreateExtent(ctx, dp)
-		}
-		if err != nil {
-			dp.CheckAllHostsIsAvail(exclude)
-			log.LogWarnf("allocateExtent: create extent failed, dp(%v) eh(%v) err(%v) exclude(%v)", dp, eh, err, exclude)
-			if isExcluded(dp, exclude, dp.ClientWrapper.quorum) {
-				eh.stream.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
-			}
-			continue
-		}
-
 		if conn, err = StreamConnPool.GetConnect(dp.Hosts[0]); err != nil {
 			log.LogWarnf("allocateExtent: failed to create connection, eh(%v) err(%v) dp(%v) exclude(%v)",
 				eh, err, dp, exclude)
 			// If storeMode is tinyExtentType and can't create connection, we also check host status.
 			dp.CheckAllHostsIsAvail(exclude)
+			continue
+		}
+
+		extID = 0
+		if eh.storeMode == proto.NormalExtentType {
+			extID, err = eh.ehCreateExtent(ctx, conn, dp)
+		}
+		if err != nil {
+			StreamConnPool.PutConnectWithErr(conn, err)
+			dp.CheckAllHostsIsAvail(exclude)
+			log.LogWarnf("allocateExtent: create extent failed, dp(%v) eh(%v) err(%v) exclude(%v)", dp, eh, err, exclude)
+			if isExcluded(dp, exclude, dp.ClientWrapper.quorum) {
+				eh.stream.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
+			}
 			continue
 		}
 
@@ -673,21 +674,11 @@ func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
 //	return connect, nil
 //}
 
-func (eh *ExtentHandler) ehCreateExtent(ctx context.Context, dp *DataPartition) (extID int, err error) {
-	return CreateExtent(ctx, eh.inode, dp, eh.stream.client.dataWrapper.quorum)
+func (eh *ExtentHandler) ehCreateExtent(ctx context.Context, conn *net.TCPConn, dp *DataPartition) (extID int, err error) {
+	return CreateExtent(ctx, conn, eh.inode, dp, eh.stream.client.dataWrapper.quorum)
 }
 
-func CreateExtent(ctx context.Context, inode uint64, dp *DataPartition, quorum int) (extID int, err error) {
-	conn, err := StreamConnPool.GetConnect(dp.Hosts[0])
-	if err != nil {
-		errors.Trace(err, "createExtent: failed to create connection, dataPartitionHost(%v)", dp.Hosts[0])
-		return
-	}
-
-	defer func() {
-		StreamConnPool.PutConnectWithErr(conn, err)
-	}()
-
+func CreateExtent(ctx context.Context, conn *net.TCPConn, inode uint64, dp *DataPartition, quorum int) (extID int, err error) {
 	p := NewCreateExtentPacket(ctx, dp, quorum, inode)
 	if err = p.WriteToConnNs(conn, dp.ClientWrapper.connConfig.WriteTimeoutNs); err != nil {
 		errors.Trace(err, "createExtent: failed to WriteToConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])

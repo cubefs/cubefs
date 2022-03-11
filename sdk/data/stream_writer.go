@@ -463,16 +463,8 @@ func (s *Streamer) enableOverwrite() bool {
 }
 
 func (s *Streamer) writeToExtent(ctx context.Context, oriReq *ExtentRequest, dp *DataPartition, extID int,
-	direct bool) (total int, err error) {
+	direct bool, conn *net.TCPConn) (total int, err error) {
 	size := oriReq.Size
-	var conn *net.TCPConn
-	conn, err = StreamConnPool.GetConnect(dp.Hosts[0])
-	if err != nil {
-		return
-	}
-	defer func() {
-		StreamConnPool.PutConnectWithErr(conn, err)
-	}()
 
 	for total < size {
 		currSize := util.Min(size-total, util.OverWritePacketSizeLimit)
@@ -510,6 +502,7 @@ func (s *Streamer) writeToNewExtent(ctx context.Context, oriReq *ExtentRequest, 
 	}()
 
 	exclude := make(map[string]struct{})
+	var conn *net.TCPConn
 	for i := 0; i < MaxSelectDataPartitionForWrite; i++ {
 		if err != nil {
 			if dp != nil {
@@ -534,11 +527,18 @@ func (s *Streamer) writeToNewExtent(ctx context.Context, oriReq *ExtentRequest, 
 			time.Sleep(5 * time.Second)
 			continue
 		}
-		extID, err = CreateExtent(ctx, s.inode, dp, s.client.dataWrapper.quorum)
+		conn, err = StreamConnPool.GetConnect(dp.Hosts[0])
 		if err != nil {
+			log.LogWarnf("writeToNewExtent: failed to create connection, err(%v) dp(%v) exclude(%v)", err, dp, exclude)
 			continue
 		}
-		total, err = s.writeToExtent(ctx, oriReq, dp, extID, direct)
+		extID, err = CreateExtent(ctx, conn, s.inode, dp, s.client.dataWrapper.quorum)
+		if err != nil {
+			StreamConnPool.PutConnectWithErr(conn, err)
+			continue
+		}
+		total, err = s.writeToExtent(ctx, oriReq, dp, extID, direct, conn)
+		StreamConnPool.PutConnectWithErr(conn, err)
 		if err == nil {
 			break
 		}
