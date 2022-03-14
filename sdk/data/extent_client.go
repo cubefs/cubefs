@@ -390,7 +390,7 @@ func (client *ExtentClient) Flush(ctx context.Context, inode uint64) error {
 	return s.IssueFlushRequest(ctx)
 }
 
-func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte, offset int, size int) (read int, err error) {
+func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte, offset int, size int) (read int, hasHole bool, err error) {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("ExtentClient.Read").
 		SetTag("arg.inode", inode).
 		SetTag("arg.offset", offset).
@@ -407,7 +407,8 @@ func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte,
 	}
 
 	if client.dataWrapper.volNotExists {
-		return 0, proto.ErrVolNotExists
+		err = proto.ErrVolNotExists
+		return
 	}
 
 	s := client.GetStreamer(inode)
@@ -428,7 +429,7 @@ func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte,
 	// ROW in cross-region mode maybe insert a new ek
 	s.UpdateExpiredExtentCache(ctx)
 
-	read, err = s.read(ctx, data, offset, size)
+	read, hasHole, err = s.read(ctx, data, offset, size)
 	return
 }
 

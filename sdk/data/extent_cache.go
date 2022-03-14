@@ -120,7 +120,7 @@ func (cache *ExtentCache) update(gen, size uint64, eks []proto.ExtentKey) {
 	}
 	// append local temporary ek to prevent read unconsistency
 	if cache.ek != nil {
-		cache.Append(cache.ek, false)
+		cache.append(cache.ek, false)
 	}
 }
 
@@ -141,13 +141,16 @@ func (cache *ExtentCache) IsExpired(expireSecond int64) bool {
 
 // Append appends an extent key.
 func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) {
+	cache.Lock()
+	defer cache.Unlock()
+	cache.append(ek, sync)
+}
+
+func (cache *ExtentCache) append(ek *proto.ExtentKey, sync bool) {
 	ekEnd := ek.FileOffset + uint64(ek.Size)
 	lower := &proto.ExtentKey{FileOffset: ek.FileOffset}
 	upper := &proto.ExtentKey{FileOffset: ekEnd}
 	discard := make([]*proto.ExtentKey, 0)
-
-	cache.Lock()
-	defer cache.Unlock()
 
 	// When doing the append, we do not care about the data after the file offset.
 	// Those data will be overwritten by the current extent anyway.

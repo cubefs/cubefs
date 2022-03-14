@@ -105,7 +105,7 @@ func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
 	return reader, nil
 }
 
-func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) (total int, err error) {
+func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) (total int, hasHole bool, err error) {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Streamer.read").
 		SetTag("size", size)
 	defer tracer.Finish()
@@ -125,36 +125,17 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 		if req.ExtentKey == nil || req.ExtentKey.PartitionId > 0 {
 			continue
 		}
-		// concurrent read/write optimization
-		// 1.if data is in handler unflushed packet, read from the packet
-		// 2.if data has been written to data node, read from datanode without flushing
-		s.handlerMutex.Lock()
-		if s.handler != nil {
-			s.handler.packetMutex.Lock()
-			if s.handler.packet != nil && req.FileOffset >= int(s.handler.packet.KernelOffset) &&
-				req.FileOffset+req.Size <= int(s.handler.packet.KernelOffset)+int(s.handler.packet.Size) {
-				off := req.FileOffset - int(s.handler.packet.KernelOffset)
-				copy(req.Data, s.handler.packet.Data[off:off+req.Size])
-				total += req.Size
-				s.handler.packetMutex.Unlock()
-				s.handlerMutex.Unlock()
-				break
-			}
-			s.handler.packetMutex.Unlock()
 
-			if s.handler.key != nil && uint64(req.FileOffset) >= s.handler.key.FileOffset &&
-				uint64(req.FileOffset+req.Size) <= s.handler.key.FileOffset+uint64(s.handler.key.Size) {
-				req.ExtentKey = s.handler.key
-				s.handlerMutex.Unlock()
-				break
-			}
+		read, skipFlush := s.readFromCache(req)
+		total += read
+		if skipFlush {
+			break
 		}
-		s.handlerMutex.Unlock()
 
 		s.writeLock.Lock()
 		if err = s.IssueFlushRequest(ctx); err != nil {
 			s.writeLock.Unlock()
-			return 0, err
+			return
 		}
 		revisedRequests = s.extents.PrepareRequests(offset, size, data)
 		s.writeLock.Unlock()
@@ -171,6 +152,7 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 	}
 	for _, req := range requests {
 		if req.ExtentKey == nil {
+			hasHole = true
 			for i := range req.Data {
 				req.Data[i] = 0
 			}
@@ -210,6 +192,37 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 				break
 			}
 		}
+	}
+	return
+}
+
+// concurrent read/write optimization
+// 1.if data is in handler unflushed packet, read from the packet
+// 2.if data has been written to data node, read from datanode without flushing
+func (s *Streamer) readFromCache(req *ExtentRequest) (read int, skipFlush bool) {
+	s.handlerMutex.Lock()
+	defer s.handlerMutex.Unlock()
+	if s.handler == nil {
+		return
+	}
+
+	s.handler.packetMutex.Lock()
+	defer s.handler.packetMutex.Unlock()
+
+	if s.handler.packet != nil && req.FileOffset >= int(s.handler.packet.KernelOffset) &&
+		req.FileOffset+req.Size <= int(s.handler.packet.KernelOffset)+int(s.handler.packet.Size) {
+		off := req.FileOffset - int(s.handler.packet.KernelOffset)
+		copy(req.Data, s.handler.packet.Data[off:off+req.Size])
+		read += req.Size
+		skipFlush = true
+		return
+	}
+
+	if s.handler.key != nil && uint64(req.FileOffset) >= s.handler.key.FileOffset &&
+		uint64(req.FileOffset+req.Size) <= s.handler.key.FileOffset+uint64(s.handler.key.Size) {
+		req.ExtentKey = s.handler.key
+		skipFlush = true
+		return
 	}
 	return
 }

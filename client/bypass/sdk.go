@@ -146,7 +146,7 @@ func init() {
 	os.Setenv("GODEBUG", "madvdontneed=1")
 	data.SetNormalExtentSize(normalExtentSize)
 	gClientManager = &clientManager{
-		clients: make([]*client,2),
+		clients: make([]*client, 2),
 	}
 }
 
@@ -198,8 +198,8 @@ func newClient(conf *C.cfs_config_t) *client {
 	// Just skip fd 0, 1, 2, to avoid confusion.
 	c.fdset.Set(0).Set(1).Set(2)
 
-	if len(gClientManager.clients)<=int(id) {
-		gClientManager.clients=make([]*client,id+1)
+	if len(gClientManager.clients) <= int(id) {
+		gClientManager.clients = make([]*client, id+1)
 	}
 	gClientManager.clients[id] = c
 
@@ -221,16 +221,16 @@ func parseProfPortArray(portStr string) (portList []uint64) {
 func getClient(id int64) (c *client, exist bool) {
 	//gClientManager.mu.RLock()
 	//defer gClientManager.mu.RUnlock()
-	c=gClientManager.clients[id]
-	if c==nil {
-		exist=false
+	c = gClientManager.clients[id]
+	if c == nil {
+		exist = false
 	}
-	exist=true
+	exist = true
 	return
 }
 
 func removeClient(id int64) {
-	gClientManager.clients[id]=nil
+	gClientManager.clients[id] = nil
 }
 
 type file struct {
@@ -390,11 +390,14 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) (re C.int)
 
 func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int) (re C.int) {
 	var (
-		c         *client
+		c   *client
 		ino uint64
-		err       error
+		err error
 	)
 	defer func() {
+		if re < 0 && err == nil {
+			err = syscall.Errno(-re)
+		}
 		if r := recover(); r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
 			var stack string
 			if r != nil {
@@ -2777,14 +2780,14 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 	if off < 0 {
 		offset = int(f.pos)
 	}
-	n, err := c.ec.Read(ctx, f.ino, buffer, offset, len(buffer))
+	n, hasHole, err := c.ec.Read(ctx, f.ino, buffer, offset, len(buffer))
 	extentNotExist := err != nil && strings.Contains(err.Error(), "extent does not exist")
 	if err != nil && err != io.EOF && !extentNotExist {
 		return C.ssize_t(statusEIO)
 	}
-	if extentNotExist || n < int(size) {
+	if extentNotExist || n < int(size) || hasHole {
 		c.ec.RefreshExtentsCache(ctx, f.ino)
-		n, err = c.ec.Read(ctx, f.ino, buffer, offset, len(buffer))
+		n, _, err = c.ec.Read(ctx, f.ino, buffer, offset, len(buffer))
 	}
 	if err != nil && err != io.EOF {
 		return C.ssize_t(statusEIO)
@@ -2869,10 +2872,10 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 			if r != nil {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
-			msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) fileSize(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"),fileSize, re, err)
+			msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) fileSize(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), fileSize, re, err)
 			handleError(c, "cfs_write", fmt.Sprintf("%s%s", msg, stack))
 		} else if re < C.ssize_t(size) {
-			msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) fileSize(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"),fileSize,  re, err)
+			msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) fileSize(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), fileSize, re, err)
 			log.LogWarnf("cfs_write: %s", msg)
 		} else {
 			if log.IsDebugEnabled() {
@@ -2913,10 +2916,10 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	//defer tracer.Finish()
 	//var ctx = tracer.Context()
 	overWriteBuffer := false
-	act:=ump_cfs_write
-	if f.logType==BinLogType{
-		act=ump_cfs_write_binlog
-	}else if f.logType==RedoLogType {
+	act := ump_cfs_write
+	if f.logType == BinLogType {
+		act = ump_cfs_write_binlog
+	} else if f.logType == RedoLogType {
 		act = ump_cfs_write_redolog
 		if c.app == appMysql8 {
 			overWriteBuffer = true

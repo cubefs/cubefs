@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/errors"
 	"hash"
 	"io"
 	"os"
@@ -35,6 +34,7 @@ import (
 	"github.com/chubaofs/chubaofs/sdk/data"
 	"github.com/chubaofs/chubaofs/sdk/meta"
 	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 )
@@ -1122,7 +1122,7 @@ func (v *Volume) appendInodeHash(h hash.Hash, inode uint64, total uint64, preAll
 		if uint64(size) > rest {
 			size = int(rest)
 		}
-		n, err = v.ec.Read(context.Background(), inode, buf, offset, size)
+		n, _, err = v.ec.Read(context.Background(), inode, buf, offset, size)
 		if err != nil && err != io.EOF {
 			log.LogErrorf("appendInodeHash: data read fail, inode(%v) offset(%v) size(%v) err(%v)", inode, offset, size, err)
 			return
@@ -1246,7 +1246,7 @@ func (v *Volume) ReadInode(ino uint64, writer io.Writer, offset, size uint64) er
 		if uint64(readSize) > rest {
 			readSize = int(rest)
 		}
-		n, err = v.ec.Read(context.Background(), ino, tmp, int(offset), readSize)
+		n, _, err = v.ec.Read(context.Background(), ino, tmp, int(offset), readSize)
 		if err != nil && err != io.EOF {
 			log.LogErrorf("ReadInode: data read fail: volume(%v) inode(%v) offset(%v) size(%v) err(%v)",
 				v.name, ino, offset, size, err)
@@ -2179,7 +2179,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		if (int(fileSize) - readOffset) < len(buf) {
 			readSize = int(fileSize) - readOffset
 		}
-		readN, err = sv.ec.Read(context.Background(), sInode, buf, readOffset, readSize)
+		readN, _, err = sv.ec.Read(context.Background(), sInode, buf, readOffset, readSize)
 		if err != nil && err != io.EOF {
 			return
 		}
