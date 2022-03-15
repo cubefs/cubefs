@@ -115,16 +115,15 @@ func (ebs *BlobStoreClient) Read(ctx context.Context, volName string, buf []byte
 	return readN, nil
 }
 
-func (ebs *BlobStoreClient) Write(ctx context.Context, volName string, data []byte) (location access.Location, err error) {
+func (ebs *BlobStoreClient) Write(ctx context.Context, volName string, data []byte, size uint32) (location access.Location, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("ebs-write", err, bgTime, 1)
 	}()
 
 	requestId := uuid.New().String()
-	log.LogDebugf("TRACE Ebs Write Enter,requestId(%v)  len(%v)", requestId, len(data))
+	log.LogDebugf("TRACE Ebs Write Enter,requestId(%v)  len(%v)", requestId, size)
 	start := time.Now()
-	size := int64(len(data))
 	hashAlg := access.HashAlgMD5
 	ctx = access.WithRequestID(ctx, requestId)
 	metric := exporter.NewTPCnt(createOPMetric(data, "ebswrite"))
@@ -134,7 +133,7 @@ func (ebs *BlobStoreClient) Write(ctx context.Context, volName string, data []by
 
 	for i := 0; i < MaxRetryTimes; i++ {
 		location, _, err = ebs.client.Put(ctx, &access.PutArgs{
-			Size:   size,
+			Size:   int64(size),
 			Hashes: hashAlg,
 			Body:   bytes.NewReader(data),
 		})

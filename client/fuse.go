@@ -590,10 +590,10 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 		fuse.MaxReadahead(MaxReadAhead),
 		fuse.AsyncRead(),
 		fuse.AutoInvalData(opt.AutoInvalData),
-		fuse.FSName("chubaofs-" + opt.Volname),
-		fuse.Subtype("chubaofs"),
+		fuse.FSName("cubefs-" + opt.Volname),
+		fuse.Subtype("cubes"),
 		fuse.LocalVolume(),
-		fuse.VolumeName("chubaofs-" + opt.Volname)}
+		fuse.VolumeName("cubefs-" + opt.Volname)}
 
 	if opt.Rdonly {
 		options = append(options, fuse.ReadOnly())
