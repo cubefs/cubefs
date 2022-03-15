@@ -16,6 +16,7 @@ package raftstore
 
 import (
 	"fmt"
+
 	"github.com/tiglabs/raft/proto"
 )
 
@@ -47,6 +48,8 @@ type Config struct {
 	// We suggest to use ElectionTick = 10 * HeartbeatTick to avoid unnecessary leader switching.
 	// The default value is 1s.
 	ElectionTick int
+
+	MaxSnapConcurrency int
 }
 
 // PeerAddress defines the set of addresses that will be used by the peers.

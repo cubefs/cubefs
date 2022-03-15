@@ -479,13 +479,14 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 	}
 
 	raftConf := &raftstore.Config{
-		NodeID:            s.nodeID,
-		RaftPath:          s.raftDir,
-		IPAddr:            LocalIP,
-		HeartbeatPort:     heartbeatPort,
-		ReplicaPort:       replicatePort,
-		NumOfLogsToRetain: DefaultRaftLogsToRetain,
-		TickInterval:      s.tickInterval,
+		NodeID:             s.nodeID,
+		RaftPath:           s.raftDir,
+		IPAddr:             LocalIP,
+		HeartbeatPort:      heartbeatPort,
+		ReplicaPort:        replicatePort,
+		NumOfLogsToRetain:  DefaultRaftLogsToRetain,
+		TickInterval:       s.tickInterval,
+		MaxSnapConcurrency: DefaultSnapConcurrency,
 	}
 	s.raftStore, err = raftstore.NewRaftStore(raftConf)
 	if err != nil {

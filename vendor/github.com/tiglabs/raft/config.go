@@ -172,7 +172,7 @@ func (c *Config) validate() error {
 	if c.MaxInflightMsgs > 1024 {
 		return errors.New("MaxInflightMsgs is too high")
 	}
-	if c.MaxSnapConcurrency > 256 {
+	if c.MaxSnapConcurrency > 1024 {
 		return errors.New("MaxSnapConcurrency is too high")
 	}
 	if c.MaxReplConcurrency > 256 {

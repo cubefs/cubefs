@@ -60,6 +60,7 @@ const (
 	DefaultDiskMaxErr       = 1
 	DefaultDiskRetainMin    = 5 * util.GB  // GB
 	DefaultDiskRetainMax    = 30 * util.GB // GB
+	DefaultSnapConcurrency  = 1000         // Snapshot send concurrency limit
 )
 
 const (

@@ -16,16 +16,17 @@ package raftstore
 
 import (
 	"fmt"
-	"github.com/tiglabs/raft"
-	"github.com/tiglabs/raft/logger"
-	"github.com/tiglabs/raft/proto"
-	"github.com/tiglabs/raft/storage/wal"
-	raftlog "github.com/tiglabs/raft/util/log"
 	syslog "log"
 	"os"
 	"path"
 	"strconv"
 	"time"
+
+	"github.com/tiglabs/raft"
+	"github.com/tiglabs/raft/logger"
+	"github.com/tiglabs/raft/proto"
+	"github.com/tiglabs/raft/storage/wal"
+	raftlog "github.com/tiglabs/raft/util/log"
 )
 
 // RaftStore defines the interface for the raft store.
@@ -123,6 +124,7 @@ func NewRaftStore(cfg *Config) (mr RaftStore, err error) {
 	rc.RetainLogs = cfg.NumOfLogsToRetain
 	rc.TickInterval = time.Duration(cfg.TickInterval) * time.Millisecond
 	rc.ElectionTick = cfg.ElectionTick
+	rc.MaxSnapConcurrency = cfg.MaxSnapConcurrency
 	rs, err := raft.NewRaftServer(rc)
 	if err != nil {
 		return
