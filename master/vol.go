@@ -1043,7 +1043,7 @@ func (vol *Vol) backupConfig() *Vol {
 		dpWriteableThreshold: vol.dpWriteableThreshold,
 		mpReplicaNum:         vol.mpReplicaNum,
 		ForceROW:             vol.ForceROW,
-		ExtentCacheExpireSec: vol.ExtentCacheExpireSec
+		ExtentCacheExpireSec: vol.ExtentCacheExpireSec,
 	}
 }
 
