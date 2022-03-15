@@ -57,6 +57,7 @@ type Writer struct {
 	fileSize       uint64
 	cacheThreshold int
 	dirty          bool
+	blockPosition	int
 }
 
 func NewWriter(config ClientConfig) (writer *Writer) {
@@ -81,7 +82,8 @@ func NewWriter(config ClientConfig) (writer *Writer) {
 	writer.fileSize = config.FileSize
 	writer.cacheThreshold = config.CacheThreshold
 	writer.dirty = false
-
+	writer.buf = make([]byte, writer.blockSize)
+	writer.blockPosition = 0
 	return
 }
 
@@ -177,29 +179,30 @@ func (writer *Writer) doBufferWrite(ctx context.Context, data []byte, offset int
 	writer.Lock()
 	defer writer.Unlock()
 	for dataSize > 0 {
-		freeSize := writer.blockSize - len(writer.buf)
+		freeSize := writer.blockSize - writer.blockPosition
 		if dataSize < freeSize {
 			freeSize = dataSize
 		}
-		log.LogDebugf("TRACE blobStore doBufferWrite: ino(%v) writer.fileSize(%v) writer.fileOffset(%v) position(%v) freeSize(%v)", writer.ino, writer.fileSize, writer.fileOffset, position, freeSize)
-		writer.buf = append(writer.buf, data[position:position+freeSize]...)
+		log.LogDebugf("TRACE blobStore doBufferWrite: ino(%v) writer.fileSize(%v) writer.fileOffset(%v) writer.blockPosition(%v) position(%v) freeSize(%v)", writer.ino, writer.fileSize, writer.fileOffset, writer.blockPosition, position, freeSize)
+		copy(writer.buf[writer.blockPosition:], data[position:position + freeSize])
 		log.LogDebugf("TRACE blobStore doBufferWrite:ino(%v) writer.buf.len(%v)", writer.ino, len(writer.buf))
 		position += freeSize
+		writer.blockPosition += freeSize
 		dataSize -= freeSize
 		writer.fileOffset += freeSize
 		writer.dirty = true
 
-		if len(writer.buf) == writer.blockSize {
+		if writer.blockPosition == writer.blockSize {
 			log.LogDebugf("TRACE blobStore doBufferWrite: ino(%v) writer.buf.len(%v) writer.blocksize(%v)", writer.ino, len(writer.buf), writer.blockSize)
 			writer.Unlock()
 			err = writer.flush(writer.ino, ctx, false)
 			writer.Lock()
 			if err != nil {
-				writer.buf = writer.buf[:len(writer.buf)-len(data)]
-				writer.fileOffset -= len(data)
+				writer.buf = writer.buf[:writer.blockPosition - freeSize]
+				writer.fileOffset -= freeSize
+				writer.blockPosition -= freeSize
 				return
 			}
-
 		}
 	}
 
@@ -258,7 +261,7 @@ func (writer *Writer) writeSlice(ctx context.Context, wSlice *rwSlice, wg bool) 
 		defer writer.wg.Done()
 	}
 	log.LogDebugf("TRACE blobStore,writeSlice to ebs. ino(%v) fileOffset(%v) len(%v)", writer.ino, wSlice.fileOffset, wSlice.size)
-	location, err := writer.ebsc.Write(ctx, writer.volName, wSlice.Data)
+	location, err := writer.ebsc.Write(ctx, writer.volName, wSlice.Data, wSlice.size)
 	if err != nil {
 		if wg {
 			writer.err <- err
@@ -307,7 +310,8 @@ func (writer *Writer) asyncCache(ino uint64, offset int, data []byte) {
 }
 
 func (writer *Writer) resetBuffer() {
-	writer.buf = writer.buf[:0]
+	//writer.buf = writer.buf[:0]
+	writer.blockPosition = 0
 }
 
 func (writer *Writer) flush(inode uint64, ctx context.Context, flushFlag bool) (err error) {
@@ -326,7 +330,7 @@ func (writer *Writer) flush(inode uint64, ctx context.Context, flushFlag bool) (
 	if len(writer.buf) == 0 || !writer.dirty {
 		return
 	}
-	bufferSize := len(writer.buf)
+	bufferSize := writer.blockPosition
 	wSlice := &rwSlice{
 		fileOffset: uint64(writer.fileOffset - bufferSize),
 		size:       uint32(bufferSize),
