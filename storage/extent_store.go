@@ -254,7 +254,13 @@ func (s *ExtentStore) initBaseFileID() error {
 		baseFileID uint64
 	)
 	baseFileID, _ = s.GetPersistenceBaseExtentID()
-	files, err := os.ReadDir(s.dataPath)
+	fh, err := os.Open(s.dataPath)
+	if err != nil {
+		return err
+	}
+	defer fh.Close()
+
+	files, err := fh.Readdirnames(0)
 	if err != nil {
 		return err
 	}
@@ -267,7 +273,7 @@ func (s *ExtentStore) initBaseFileID() error {
 		loadErr  error
 	)
 	for _, f := range files {
-		if extentID, isExtent = s.ExtentID(f.Name()); !isExtent {
+		if extentID, isExtent = s.ExtentID(f); !isExtent {
 			continue
 		}
 		if e, loadErr = s.extent(extentID); loadErr != nil {
