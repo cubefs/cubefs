@@ -437,9 +437,11 @@ func (s *DataNode) parseRaftConfig(cfg *config.Config) (err error) {
 	s.tickInterval = int(cfg.GetFloat(CfgTickInterval))
 	s.raftHeartbeat = cfg.GetString(ConfigKeyRaftHeartbeat)
 	s.raftReplica = cfg.GetString(ConfigKeyRaftReplica)
+	s.raftMaxSnap = int(cfg.GetFloat(ConfigKeyRaftMaxSnap))
 	log.LogDebugf("[parseRaftConfig] load raftDir(%v).", s.raftDir)
 	log.LogDebugf("[parseRaftConfig] load raftHearbeat(%v).", s.raftHeartbeat)
 	log.LogDebugf("[parseRaftConfig] load raftReplica(%v).", s.raftReplica)
+	log.LogDebugf("[parseRaftConfig] load raftMaxSnap(%v).", s.raftMaxSnap)
 	return
 }
 
@@ -478,6 +480,10 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 		return
 	}
 
+	if s.raftMaxSnap <= 0 {
+		s.raftMaxSnap = DefaultSnapConcurrency
+	}
+
 	raftConf := &raftstore.Config{
 		NodeID:             s.nodeID,
 		RaftPath:           s.raftDir,
@@ -486,7 +492,7 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 		ReplicaPort:        replicatePort,
 		NumOfLogsToRetain:  DefaultRaftLogsToRetain,
 		TickInterval:       s.tickInterval,
-		MaxSnapConcurrency: DefaultSnapConcurrency,
+		MaxSnapConcurrency: s.raftMaxSnap,
 	}
 	s.raftStore, err = raftstore.NewRaftStore(raftConf)
 	if err != nil {
