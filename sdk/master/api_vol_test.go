@@ -44,7 +44,7 @@ func TestUpdateVol(t *testing.T) {
 	extentCap := uint64(2)
 	updateFollowerRead := false
 	trashDays := 15
-	err := testMc.AdminAPI().UpdateVolume(testVolName, extentCap, testReplicas, testMpReplicas, testTrashDays, testStoreMode,
+	err := testMc.AdminAPI().UpdateVolume(testVolName, extentCap, testReplicas, testMpReplicas, trashDays, testStoreMode,
 		updateFollowerRead, false, false, false, false, authKey, testZoneName,
 		testMpLyout, 0, 0, 0)
 	if err != nil {
