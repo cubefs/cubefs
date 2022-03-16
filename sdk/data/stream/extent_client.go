@@ -468,3 +468,7 @@ func (client *ExtentClient) GetDataPartitionForWrite() error {
 	_, err := client.dataWrapper.GetDataPartitionForWrite(exclude)
 	return err
 }
+
+func (client *ExtentClient) UpdateDataPartitionForColdVolume() error {
+	return client.dataWrapper.UpdateDataPartition()
+}

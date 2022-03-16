@@ -227,6 +227,10 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 	return w.updateDataPartitionByRsp(isInit, dpv.DataPartitions)
 }
 
+func (w *Wrapper) UpdateDataPartition() (err error) {
+	return w.updateDataPartition(false)
+}
+
 // getDataPartition will call master to get data partition info which not include in  cache updated by
 // updateDataPartition which may not take effect if nginx be placed for reduce the pressure of master
 func (w *Wrapper) getDataPartition(isInit bool, dpId uint64) (err error) {
