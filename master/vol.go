@@ -122,6 +122,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.CacheHighWater = vv.CacheHighWater
 	vol.CacheLowWater = vv.CacheLowWater
 	vol.CacheLRUInterval = vv.CacheLRUInterval
+	vol.CacheRule = vv.CacheRule
 
 	return
 }

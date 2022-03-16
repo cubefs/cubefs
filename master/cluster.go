@@ -2431,7 +2431,7 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		CacheRule:        req.coldArgs.cacheRule,
 	}
 
-	log.LogInfof("[doCreateVol] dpReplicaNum, %v", vv)
+	log.LogInfof("[doCreateVol] volView, %v", vv)
 
 	if _, err = c.getVol(req.name); err == nil {
 		err = proto.ErrDuplicateVol
@@ -2444,6 +2444,7 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 	}
 
 	vol = newVol(vv)
+	log.LogInfof("[doCreateVol] vol, %v", vol)
 
 	// refresh oss secure
 	vol.refreshOSSSecure()
