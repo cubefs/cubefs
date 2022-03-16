@@ -74,6 +74,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 				Status:      proto.ReadWrite,
 				MaxInodeID:  mConf.Cursor,
 				VolName:     mConf.VolName,
+				Size:        partition.DataSize(),
 				InodeCnt:    uint64(partition.GetInodeTree().Len()),
 				DentryCnt:   uint64(partition.GetDentryTree().Len()),
 			}
