@@ -526,6 +526,9 @@ func LogErrorf(format string, v ...interface{}) {
 }
 
 func IsDebugEnabled() bool {
+	if gLog == nil {
+		return false
+	}
 	return DebugLevel&gLog.level == gLog.level
 }
 
