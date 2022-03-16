@@ -118,6 +118,10 @@ func NewReader(config ClientConfig) (reader *Reader) {
 	reader.fileCache = config.FileCache
 	reader.cacheThreshold = config.CacheThreshold
 
+	if proto.IsCold(reader.volType) {
+		reader.ec.UpdateDataPartitionForColdVolume()
+	}
+
 	return
 }
 

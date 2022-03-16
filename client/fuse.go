@@ -780,11 +780,5 @@ func loadConfFromMaster(opt *proto.MountOptions) (err error) {
 	}
 	opt.EbsEndpoint = clusterInfo.EbsAddr
 	opt.EbsServicePath = clusterInfo.ServicePath
-	if proto.IsCold(opt.VolType) {
-		if opt.EbsBlockSize == 0 || opt.EbsEndpoint == "" || opt.EbsServicePath == "" {
-			return errors.New("cold volume ebs config is empty.")
-		}
-		log.LogDebugf("ebs config: EbsEndpoint(%v) EbsServicePath(%v) EbsBlockSize(%v)", opt.EbsEndpoint, opt.EbsServicePath, opt.EbsBlockSize)
-	}
 	return
 }

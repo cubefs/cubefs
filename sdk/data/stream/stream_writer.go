@@ -408,12 +408,20 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 		storeMode int
 	)
 
-	// Small files are usually written in a single write, so use tiny extent
-	// store only for the first write operation.
-	if offset > 0 {
-		storeMode = proto.NormalExtentType
+	if proto.IsCold(s.client.volumeType) {
+		if offset + size > s.tinySizeLimit() {
+			storeMode = proto.NormalExtentType
+		} else {
+			storeMode = proto.TinyExtentType
+		}
 	} else {
-		storeMode = proto.TinyExtentType
+		// Small files are usually written in a single write, so use tiny extent
+		// store only for the first write operation.
+		if offset > 0 {
+			storeMode = proto.NormalExtentType
+		} else {
+			storeMode = proto.TinyExtentType
+		}
 	}
 
 	log.LogDebugf("doWrite enter: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
