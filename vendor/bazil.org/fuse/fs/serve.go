@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unsafe"
 
@@ -590,9 +591,18 @@ func (s *Server) SaveFuseContext(fs FS) (msg string, err error) {
 		sn.wg.Wait()
 
 		if err = sn.node.Attr(nil, &attr); err != nil {
-			s.meta.Unlock()
-			err = fmt.Errorf("SaveFuseContext: failed to get mode of node %v: %v", sn.inode, err)
-			return
+			if err == syscall.ENOENT {
+				// node is a directory and has a high probability
+				// that it is an orphan inode, so save a dummy
+				// ContextNode for it. The node will be evicted
+				// latter.
+				/*attr.ParentIno = 0*/
+				attr.Mode = os.ModeDir
+			} else {
+				s.meta.Unlock()
+				err = fmt.Errorf("SaveFuseContext: failed to get mode of node %v: %v", sn.inode, err)
+				return
+			}
 		}
 		cn := &ContextNode{sn.inode, attr.ParentIno, sn.generation, sn.refs, nodeid, uint32(attr.Mode), 0}
 		data := ContextNodeToBytes(cn)
