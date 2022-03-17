@@ -365,6 +365,11 @@ func (client *ExtentClient) Truncate(ctx context.Context, inode uint64, size int
 		return fmt.Errorf("Prefix(%v): stream is not opened yet", prefix)
 	}
 
+	// GetExtents if has not been called, to prevent file old size check failure.
+	s.once.Do(func() {
+		s.GetExtents(ctx)
+	})
+
 	err := s.IssueTruncRequest(ctx, size)
 	if err != nil {
 		err = errors.Trace(err, prefix)

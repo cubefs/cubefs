@@ -148,6 +148,7 @@ func AfterTP(o *TpObject, err error) {
 	tp.ProcessState = "0"
 	if err != nil {
 		tp.ProcessState = "1"
+		tp.elapsedTime = -1
 	}
 	tp.count = 1
 	mergeLogByUMPKey(tp)
@@ -163,6 +164,7 @@ func AfterTPUs(o *TpObject, err error) {
 	tp.ProcessState = "0"
 	if err != nil {
 		tp.ProcessState = "1"
+		tp.elapsedTime = -1
 	}
 	tp.count = 1
 	if isNewElapsedTime := mergeLogByUMPKey(tp); !isNewElapsedTime {
