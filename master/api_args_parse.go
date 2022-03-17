@@ -268,6 +268,10 @@ func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err e
 		return
 	}
 
+	if args.cacheLRUInterval < 2 {
+		return nil, fmt.Errorf("cacheLruInterval(%d) muster be bigger than 2 minute", args.cacheLRUInterval)
+	}
+
 	args.cacheRule = extractStrWithDefault(r, cacheRuleKey, vol.CacheRule)
 	emptyCacheRule, err := extractBoolWithDefault(r, emptyCacheRuleKey, false)
 	if err != nil {

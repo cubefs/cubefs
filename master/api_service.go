@@ -880,6 +880,10 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 		args.cacheLowWater = defaultCacheLowWater
 	}
 
+	if args.cacheLRUInterval != 0 && args.cacheLRUInterval < 2 {
+		return fmt.Errorf("cache lruInterval(%d) must bigger than 2 minutes", args.cacheLRUInterval)
+	}
+
 	if args.cacheLRUInterval == 0 {
 		args.cacheLRUInterval = defaultCacheLruInterval
 	}
@@ -2368,6 +2372,9 @@ func volStat(vol *Vol) (stat *proto.VolStatInfo) {
 		stat.InodeCount += mp.InodeCount
 	}
 	log.LogDebugf("total[%v],usedSize[%v]", stat.TotalSize, stat.UsedSize)
+	if proto.IsHot(vol.VolType) {
+		return
+	}
 
 	stat.CacheTotalSize = vol.CacheCapacity * util.GB
 	stat.CacheUsedSize = vol.cfsUsedSpace()
