@@ -3457,7 +3457,8 @@ func (c *client) broadcastAllReadProcess(ino uint64) {
 	c.readProcMapLock.Lock()
 	log.LogInfof("broadcastAllReadProcess: readProcessMap(%v)", c.readProcErrMap)
 	for readClient, errCount := range c.readProcErrMap {
-		if errCount > 10 {
+		if errCount > 3 {
+			log.LogInfof("broadcastAllReadProcess: unregister readClient: %s", readClient)
 			delete(c.readProcErrMap, readClient)
 			continue
 		}

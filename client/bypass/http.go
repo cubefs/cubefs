@@ -104,10 +104,10 @@ func (c *client) registerReadProcStatusHandleFunc(w http.ResponseWriter, r *http
 
 func (c *client) broadcastRefreshExtents(readClient string, inode uint64) {
 	url := fmt.Sprintf("http://%s%s?%s=%s&%s=%d", readClient, ControlBroadcastRefreshExtents, volKey, c.volName, inoKey, inode)
-	reply, err := sendURL(url)
+	reply, err := sendWithRetry(url, MaxRetry)
 	if err != nil {
 		c.readProcErrMap[readClient]++
-		log.LogWarnf("broadcastRefreshExtents: failed, send url(%v) err(%v) reply(%v)", url, err, reply)
+		log.LogErrorf("broadcastRefreshExtents: failed, send url(%v) err(%v) reply(%v)", url, err, reply)
 	} else {
 		c.readProcErrMap[readClient] = 0
 	}
@@ -123,14 +123,10 @@ func (c *client) registerReadProcStatus(alive bool) {
 		return
 	}
 	url := fmt.Sprintf("http://%s%s?%s=:%d&%s=%t", masterAddr, ControlReadProcessRegister, clientKey, c.listenPort, aliveKey, alive)
-	for i := 0; i < MaxRetry; i++ {
-		if reply, err := sendURL(url); err != nil {
-			log.LogWarnf("registerReadProcStatus: failed, send url(%v) err(%v) reply(%v), retry......", url, err, reply)
-			continue
-		}
-		return
+	if reply, err := sendWithRetry(url, MaxRetry); err != nil {
+		msg := fmt.Sprintf("send url(%v) err(%v) reply(%v)", url, err, reply)
+		handleError(c, "registerReadProcStatus", msg)
 	}
-	log.LogErrorf("registerReadProcStatus to %s failed.", masterAddr)
 }
 
 func (c *client) getReadProcs(w http.ResponseWriter, r *http.Request) {
@@ -139,6 +135,17 @@ func (c *client) getReadProcs(w http.ResponseWriter, r *http.Request) {
 	encoded, _ = json.Marshal(&c.readProcErrMap)
 	c.readProcMapLock.Unlock()
 	w.Write(encoded)
+	return
+}
+
+func sendWithRetry(url string, maxRetry int) (reply *proto.HTTPReply, err error) {
+	for i := 0; i < maxRetry; i++ {
+		if reply, err = sendURL(url); err != nil {
+			log.LogWarnf("sendURL failed, url(%v) err(%v) reply(%v). Retry......", url, err, reply)
+			continue
+		}
+		break
+	}
 	return
 }
 
