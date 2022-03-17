@@ -97,11 +97,13 @@ func (t *heartbeatTransport) handleConn(conn *util.ConnTimeout) {
 				return
 			default:
 				if msg, err := reciveMessage(bufRd); err != nil {
-					logger.Error("[heartbeatTransport] recive message from conn error", err.Error())
+					logger.Error("[handleConn] heartbeat recive message from conn error:%v", err.Error())
 					return
 				} else {
 					//logger.Debug(fmt.Sprintf("Recive %v from (%v)", msg.ToString(), conn.RemoteAddr()))
-					t.raftServer.reciveMessage(msg)
+					if dbgmsg := t.raftServer.reciveMessage(msg); dbgmsg != "" {
+						logger.Error("[handleConn] heartbeat receive remote %v: %s", conn.RemoteAddr(), dbgmsg)
+					}
 				}
 			}
 		}

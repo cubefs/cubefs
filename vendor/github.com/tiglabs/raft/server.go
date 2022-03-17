@@ -16,6 +16,7 @@ package raft
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -406,6 +407,10 @@ func (rs *RaftServer) sendHeartbeat() {
 		msg.From = rs.config.NodeID
 		msg.To = to
 		msg.Context = proto.EncodeHBConext(ctx)
+		if msg.To == 0 || msg.From == 0 {
+			logger.Error("[sendHeartbeat] to[%v] from[%v] nodes[%v] config[%v]",
+				msg.To, msg.From, nodes, rs.config.NodeID)
+		}
 		rs.config.transport.Send(msg)
 	}
 }
@@ -443,8 +448,11 @@ func (rs *RaftServer) handleHeartbeatResp(m *proto.Message) {
 	}
 }
 
-func (rs *RaftServer) reciveMessage(m *proto.Message) {
+func (rs *RaftServer) reciveMessage(m *proto.Message) (dbgmsg string) {
 	if m.Type == proto.ReqMsgHeartBeat || m.Type == proto.RespMsgHeartBeat {
+		if m.To == 0 || m.From == 0 {
+			dbgmsg = fmt.Sprintf("[receiveMessage] %v\n", m.ToString())
+		}
 		rs.heartc <- m
 		return
 	}
@@ -455,6 +463,7 @@ func (rs *RaftServer) reciveMessage(m *proto.Message) {
 	if ok {
 		raft.reciveMessage(m)
 	}
+	return
 }
 
 func (rs *RaftServer) reciveSnapshot(req *snapshotRequest) {

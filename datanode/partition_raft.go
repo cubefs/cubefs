@@ -365,7 +365,7 @@ func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMember
 		dp.config.Hosts = append(dp.config.Hosts[:hostIndex], dp.config.Hosts[hostIndex+1:]...)
 	}
 	dp.config.Peers = append(dp.config.Peers[:peerIndex], dp.config.Peers[peerIndex+1:]...)
-	if dp.config.NodeID == req.RemovePeer.ID && !dp.isLoadingDataPartition && canRemoveSelf {
+	if dp.config.NodeID == req.RemovePeer.ID && !dp.IsDataPartitionLoading() && canRemoveSelf {
 		dp.raftPartition.Delete()
 		dp.Disk().space.DeletePartition(dp.partitionID)
 		isUpdated = false
@@ -606,6 +606,20 @@ func (dp *DataPartition) getLeaderPartitionSize(maxExtentID uint64) (size uint64
 		err = errors.Trace(err, "partition(%v) result code not ok (%v) from host(%v)", dp.partitionID, p.ResultCode, target)
 		return
 	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			msg := fmt.Sprintf("[getLeaderPartitionSize] packet[%v] target[%v:%v] local[%v]\nr[%v]\n",
+				p.Dump(), target, conn.RemoteAddr(), conn.LocalAddr(), r)
+			panic(msg)
+		}
+		if p.Opcode != proto.OpGetPartitionSize {
+			msg := fmt.Sprintf("[getLeaderPartitionSize] packet[%v] target[%v:%v] local[%v]\n",
+				p.Dump(), target, conn.RemoteAddr(), conn.LocalAddr())
+			panic(msg)
+		}
+	}()
+
 	size = binary.BigEndian.Uint64(p.Data)
 	log.LogInfof("partition(%v) MaxExtentID(%v) size(%v)", dp.partitionID, maxExtentID, size)
 
@@ -644,6 +658,20 @@ func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize() (maxExtentID, Pa
 		err = errors.Trace(err, "partition(%v) result code not ok (%v) from host(%v)", dp.partitionID, p.ResultCode, target)
 		return
 	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			msg := fmt.Sprintf("[getLeaderMaxExtentIDAndPartitionSize] packet[%v] target[%v:%v] local[%v]\nr[%v]\n",
+				p.Dump(), target, conn.RemoteAddr(), conn.LocalAddr(), r)
+			panic(msg)
+		}
+		if p.Opcode != proto.OpGetMaxExtentIDAndPartitionSize {
+			msg := fmt.Sprintf("[getLeaderMaxExtentIDAndPartitionSize] packet[%v] target[%v:%v] local[%v]\n",
+				p.Dump(), target, conn.RemoteAddr(), conn.LocalAddr())
+			panic(msg)
+		}
+	}()
+
 	maxExtentID = binary.BigEndian.Uint64(p.Data[0:8])
 	PartitionSize = binary.BigEndian.Uint64(p.Data[8:16])
 
@@ -747,6 +775,20 @@ func (dp *DataPartition) getRemoteAppliedID(target string, p *repl.Packet) (appl
 		err = errors.NewErrorf("partition(%v) result code not ok (%v) from host(%v)", dp.partitionID, p.ResultCode, target)
 		return
 	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			msg := fmt.Sprintf("[getRemoteAppliedID] packet[%v] target[%v:%v] local[%v]\nr[%v]\n",
+				p.Dump(), target, conn.RemoteAddr(), conn.LocalAddr(), r)
+			panic(msg)
+		}
+		if p.Opcode != proto.OpGetAppliedId {
+			msg := fmt.Sprintf("[getRemoteAppliedID] packet[%v] target[%v:%v] local[%v]\n",
+				p.Dump(), target, conn.RemoteAddr(), conn.LocalAddr())
+			panic(msg)
+		}
+	}()
+
 	appliedID = binary.BigEndian.Uint64(p.Data)
 
 	log.LogDebugf("[getRemoteAppliedID] partition(%v) remoteAppliedID(%v)", dp.partitionID, appliedID)

@@ -15,6 +15,7 @@
 package master
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -431,6 +432,93 @@ func (c *Cluster) updateMetaNodeBaseInfo(nodeAddr string, id uint64) (err error)
 	return
 }
 
+func (c *Cluster) deleteDataNodeOldInfo(nodeAddr string, id uint64) error {
+	c.dnMutex.Lock()
+	defer c.dnMutex.Unlock()
+
+	value, ok := c.dataNodes.Load(nodeAddr)
+	if !ok {
+		return fmt.Errorf("node %v is not exist", nodeAddr)
+	}
+	dataNode := value.(*DataNode)
+	if dataNode.ID == id {
+		return fmt.Errorf("cannot delete current node addr[%v] ID[%v]", nodeAddr, id)
+	}
+
+	// FIXME: protected by c.dnMutex?
+	result, err := c.fsm.store.SeekForPrefix([]byte(dataNodePrefix))
+	if err != nil {
+		return fmt.Errorf("action[deleteDataNodeOldInfo] err:%v", err)
+	}
+	for _, v := range result {
+		dnv := &dataNodeValue{}
+		if err = json.Unmarshal(v, dnv); err != nil {
+			return fmt.Errorf("action[deleteDataNodeOldInfo] unmarshal err:%v", err)
+		}
+
+		if dnv.ID == id {
+			dataNode = newDataNode(dnv.Addr, dnv.ZoneName, c.Name)
+			dataNode.ID = dnv.ID
+			dataNode.NodeSetID = dnv.NodeSetID
+			if err = c.syncDeleteDataNode(dataNode); err != nil {
+				log.LogErrorf("action[deleteDataNodeOldInfo] syncDeleteDataNode err:%v", err)
+				return err
+			}
+			log.LogInfof("action[deleteDataNodeOldInfo] remove Addr[%v] ID[%v] successfully",
+				dataNode.ID, dataNode.Addr)
+			return nil
+		}
+	}
+
+	err = fmt.Errorf("action[deleteDataNodeOldInfo] Addr[%v] ID[%v] not found", nodeAddr, id)
+	log.LogInfo(err)
+	return err
+}
+
+func (c *Cluster) deleteMetaNodeOldInfo(nodeAddr string, id uint64) error {
+	c.mnMutex.Lock()
+	defer c.mnMutex.Unlock()
+
+	value, ok := c.metaNodes.Load(nodeAddr)
+	if !ok {
+		return fmt.Errorf("node %v is not exist", nodeAddr)
+	}
+	metaNode := value.(*MetaNode)
+	if metaNode.ID == id {
+		return fmt.Errorf("cannot delete current node addr[%v] ID[%v]", nodeAddr, id)
+	}
+
+	// FIXME: protected by c.mnMutex?
+	result, err := c.fsm.store.SeekForPrefix([]byte(metaNodePrefix))
+	if err != nil {
+		return fmt.Errorf("action[deleteMetaNodeOldInfo] err:%v", err)
+	}
+
+	for _, v := range result {
+		mnv := &metaNodeValue{}
+		if err = json.Unmarshal(v, mnv); err != nil {
+			return fmt.Errorf("action[deleteMetaNodeOldInfo] unmarshal err:%v", err)
+		}
+
+		if mnv.ID == id {
+			metaNode = newMetaNode(mnv.Addr, mnv.ZoneName, c.Name)
+			metaNode.ID = mnv.ID
+			metaNode.NodeSetID = mnv.NodeSetID
+			if err = c.syncDeleteMetaNode(metaNode); err != nil {
+				log.LogErrorf("action[deleteMetaNodeOldInfo] syncDeleteMetaNode err:%v", err)
+				return err
+			}
+			log.LogInfof("action[deleteMetaNodeOldInfo] remove Addr[%v] ID[%v] successfully",
+				mnv.Addr, mnv.ID)
+			return nil
+		}
+	}
+
+	err = fmt.Errorf("action[deleteMetaNodeOldInfo] Addr[%v] ID[%v] not found", nodeAddr, id)
+	log.LogInfo(err)
+	return err
+}
+
 func (c *Cluster) addMetaNode(nodeAddr, zoneName string) (id uint64, err error) {
 	c.mnMutex.Lock()
 	defer c.mnMutex.Unlock()
@@ -463,8 +551,8 @@ func (c *Cluster) addMetaNode(nodeAddr, zoneName string) (id uint64, err error) 
 	}
 	c.t.putMetaNode(metaNode)
 	c.metaNodes.Store(nodeAddr, metaNode)
-	log.LogInfof("action[addMetaNode],clusterID[%v] metaNodeAddr:%v,nodeSetId[%v],capacity[%v]",
-		c.Name, nodeAddr, ns.ID, ns.Capacity)
+	log.LogInfof("action[addMetaNode],clusterID[%v] metaNodeAddr:%v,nodeId[%v],nodeSetId[%v],capacity[%v]",
+		c.Name, nodeAddr, id, ns.ID, ns.Capacity)
 	return
 errHandler:
 	err = fmt.Errorf("action[addMetaNode],clusterID[%v] metaNodeAddr:%v err:%v ",
@@ -508,8 +596,8 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string) (id uint64, err error) 
 	}
 	c.t.putDataNode(dataNode)
 	c.dataNodes.Store(nodeAddr, dataNode)
-	log.LogInfof("action[addDataNode],clusterID[%v] dataNodeAddr:%v,nodeSetId[%v],capacity[%v]",
-		c.Name, nodeAddr, ns.ID, ns.Capacity)
+	log.LogInfof("action[addDataNode],clusterID[%v] dataNodeAddr:%v,nodeId[%v],nodeSetId[%v],capacity[%v]",
+		c.Name, nodeAddr, id, ns.ID, ns.Capacity)
 	return
 errHandler:
 	err = fmt.Errorf("action[addDataNode],clusterID[%v] dataNodeAddr:%v err:%v ", c.Name, nodeAddr, err.Error())
@@ -1053,14 +1141,15 @@ func (c *Cluster) migrateDataNode(srcAddr, targetAddr string, limit int) (err er
 
 	select {
 	case err = <-errChannel:
-		log.LogErrorf("action[migrateDataNode] clusterID[%v] migrate Node[%s] to [%s] faild, err(%s)",
-			c.Name, src.Addr, targetAddr, err.Error())
+		log.LogErrorf("action[migrateDataNode] clusterID[%v] migrate Node[%s] to [%s] cnt[%d] faild[%d], err(%s)...",
+			c.Name, src.Addr, targetAddr, limit, len(errChannel)+1, err.Error())
 		return
 	default:
 	}
 
 	if limit < len(partitions) {
-		log.LogWarnf("action[migrateDataNode] clusterID[%v] migrate from [%s] to [%s] cnt[%d] success", c.Name, srcAddr, targetAddr, limit)
+		log.LogWarnf("action[migrateDataNode] clusterID[%v] migrate from [%s] to [%s] cnt[%d] success",
+			c.Name, srcAddr, targetAddr, limit)
 		return
 	}
 

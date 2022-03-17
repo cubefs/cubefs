@@ -385,10 +385,10 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	if err == nil {
 		for _, ext := range exts {
 			if deleteLimiteRater.Allow() {
-				log.LogInfof(fmt.Sprintf("recive DeleteExtent (%v) from (%v)", ext, c.RemoteAddr().String()))
+				log.LogInfof(fmt.Sprintf("recive DeleteExtent dp(%v) ext(%v) from (%v)", partition.partitionID, ext, c.RemoteAddr().String()))
 				store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
 			} else {
-				log.LogInfof("delete limiter reach(%v), remote (%v) try again.", deleteLimiteRater.Limit(), c.RemoteAddr().String())
+				//log.LogInfof("delete limiter reach(%v), remote (%v) try again.", deleteLimiteRater.Limit(), c.RemoteAddr().String())
 				err = storage.TryAgainError
 			}
 		}

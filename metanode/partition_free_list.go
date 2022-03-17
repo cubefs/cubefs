@@ -382,7 +382,7 @@ func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, ext
 	// delete the data node
 	addr := util.ShiftAddrPort(dp.Hosts[0], smuxPortShift)
 	conn, err := smuxPool.GetConnect(addr)
-	log.LogInfof("doBatchDeleteExtentsByPartition mp (%v) GetConnect (%v)", mp.config.PartitionId, addr)
+	//log.LogInfof("doBatchDeleteExtentsByPartition mp (%v) GetConnect (%v)", mp.config.PartitionId, addr)
 
 	ResultCode := proto.OpOk
 
@@ -392,7 +392,7 @@ func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, ext
 		} else {
 			smuxPool.PutConnect(conn, NoClosedConnect)
 		}
-		log.LogInfof("doBatchDeleteExtentsByPartition mp (%v) PutConnect (%v)", mp.config.PartitionId, addr)
+		//log.LogInfof("doBatchDeleteExtentsByPartition mp (%v) PutConnect (%v)", mp.config.PartitionId, addr)
 	}()
 
 	if err != nil {

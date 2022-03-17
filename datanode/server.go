@@ -393,6 +393,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/disks", s.getDiskAPI)
 	http.HandleFunc("/partitions", s.getPartitionsAPI)
 	http.HandleFunc("/partition", s.getPartitionAPI)
+	http.HandleFunc("/deletePartition", s.deletePartition)
 	http.HandleFunc("/extent", s.getExtentAPI)
 	http.HandleFunc("/block", s.getBlockCrcAPI)
 	http.HandleFunc("/stats", s.getStatAPI)

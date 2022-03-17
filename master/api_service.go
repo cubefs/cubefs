@@ -321,7 +321,7 @@ func (m *Server) getDataPartition(w http.ResponseWriter, r *http.Request) {
 
 	if volName != "" {
 		if vol, err = m.cluster.getVol(volName); err != nil {
-			sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
+			sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 			return
 		}
 		if dp, err = vol.getDataPartitionByID(partitionID); err != nil {
@@ -1234,6 +1234,40 @@ func (m *Server) updateMetaNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err = m.cluster.updateMetaNodeBaseInfo(nodeAddr, id); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(id))
+}
+
+func (m *Server) deleteDataNode(w http.ResponseWriter, r *http.Request) {
+	var (
+		nodeAddr string
+		id       uint64
+		err      error
+	)
+	if nodeAddr, id, err = parseRequestForUpdateMetaNode(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if err = m.cluster.deleteDataNodeOldInfo(nodeAddr, id); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(id))
+}
+
+func (m *Server) deleteMetaNode(w http.ResponseWriter, r *http.Request) {
+	var (
+		nodeAddr string
+		id       uint64
+		err      error
+	)
+	if nodeAddr, id, err = parseRequestForUpdateMetaNode(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if err = m.cluster.deleteMetaNodeOldInfo(nodeAddr, id); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

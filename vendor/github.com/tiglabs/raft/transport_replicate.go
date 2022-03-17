@@ -135,13 +135,12 @@ func (t *replicateTransport) sendSnapshot(m *proto.Message, rs *snapshotStatus) 
 	// send snapshot data
 	var (
 		data      []byte
-		loopCount = 0
+		loopCount uint64 = 0
 		sizeBuf   = make([]byte, 4)
 	)
 	for err == nil {
 		loopCount = loopCount + 1
-		if loopCount > 16 {
-			loopCount = 0
+		if loopCount % 16 == 0 {
 			runtime.Gosched()
 		}
 
@@ -150,7 +149,10 @@ func (t *replicateTransport) sendSnapshot(m *proto.Message, rs *snapshotStatus) 
 			err = fmt.Errorf("raft has shutdown.")
 
 		default:
-			data, err = m.Snapshot.Next()
+			if data, err = m.Snapshot.Next(); err != nil {
+				logger.Error("[sendSnapshot] Next() Done loop[%v] Mesg[%v] datasize[%v] bufsize[%v] err[%v]",
+					loopCount, m.ID, len(data), bufWr.Size(), err)
+			}
 			if len(data) > 0 {
 				// write block size
 				binary.BigEndian.PutUint32(sizeBuf, uint32(len(data)))
@@ -225,7 +227,9 @@ func (t *replicateTransport) handleConn(conn *util.ConnTimeout) {
 							return
 						}
 					} else {
-						t.raftServer.reciveMessage(msg)
+						if dbgmsg := t.raftServer.reciveMessage(msg); dbgmsg != "" {
+							logger.Error("[handleConn] replicate receive remote %v: %s", conn.RemoteAddr(), dbgmsg)
+						}
 					}
 				}
 			}
@@ -244,7 +248,7 @@ func (t *replicateTransport) handleSnapshot(m *proto.Message, conn *util.ConnTim
 
 	// wait snapshot result
 	if err := req.response(); err != nil {
-		logger.Error("[Transport] handle snapshot request from %v error: %v.", m.From, err)
+		logger.Error("[Transport] handle snapshot request remote %v from %v error: %v.", conn.RemoteAddr(), m.From, err)
 		return err
 	}
 
