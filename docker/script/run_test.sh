@@ -285,6 +285,28 @@ run_s3_test() {
     fi
 }
 
+set_trash_days() {
+   echo -n "set trash days... "
+   ${cli} volume set ${VolName} --trash-days=2 -y > /dev/null
+   if [[ $? -ne 0 ]]; then
+        echo -e "\033[31mfail\033[0m"
+        exit 1
+   fi
+   echo -e "\033[32mdone\033[0m"
+}
+
+run_trash_test() {
+   echo -n "run trash test... "
+   ${cli} trash test --vol ${VolName} > /dev/null
+   if [[ $? -ne 0 ]]; then
+        echo -e "\033[31mfail\033[0m"
+	cp -r /tmp/cfs/cli /cfs/log/
+        exit 1
+   fi
+   cp -r /tmp/cfs/cli /cfs/log/
+   echo -e "\033[32mdone\033[0m"
+}
+
 init_cli
 check_cluster
 create_cluster_user
@@ -298,5 +320,7 @@ show_cluster_info
 start_client ; sleep 2
 run_ltptest
 run_s3_test
+set_trash_days; sleep 310
+run_trash_test; sleep 2
 stop_client ; sleep 20
 delete_volume

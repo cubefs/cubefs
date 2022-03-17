@@ -220,7 +220,7 @@ func (mp *metaPartition) recoverDeletedInode(inode uint64) (
 			log.LogDebugf("[recoverDeletedInode], the inode[%v] 's deleted flag is invalid", ino)
 			currInode.CancelDeleteMark()
 		}
-		if !proto.IsDir(currInode.Type)  {
+		if !proto.IsDir(currInode.Type) {
 			currInode.IncNLink() // TODO: How to handle idempotent?
 		}
 		log.LogDebugf("[recoverDeletedInode], success to increase the link of inode[%v]", inode)
@@ -327,7 +327,6 @@ func (mp *metaPartition) cleanDeletedInode(inode uint64) (
 		resp.Status = proto.OpExistErr
 		return
 	}
-
 
 	if dino.IsEmptyDir() {
 		_, err = mp.inodeDeletedTree.Delete(dino.Inode.Inode)

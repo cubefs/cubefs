@@ -2102,6 +2102,7 @@ func checkLinks(path string, expect int) (err error) {
 	var link int
 	link, err = getLinks(path)
 	if err != nil {
+		log.LogErrorf("checkLinks,  path: %v", path)
 		return
 	}
 
@@ -2124,6 +2125,7 @@ func getLinks(path string) (link int, err error) {
 	out = out[0 : len(out)-1]
 	link, err = strconv.Atoi(string(out))
 	if err != nil {
+		log.LogErrorf("getLinks, path: %v, out: %v, err: %v", cmd.String(), string(out), err.Error())
 		return
 	}
 

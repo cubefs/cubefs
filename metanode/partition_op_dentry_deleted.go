@@ -190,7 +190,7 @@ func (mp *metaPartition) getDeletedDentry(start, end *DeletedDentry) (res []*Del
 		log.LogDebugf("[getDeletedDentry], start: %v, end: %v, count: %v, status: %v",
 			start, end, len(res), status)
 		if err == rocksdbError {
-			exporter.WarningRocksdbError(fmt.Sprintf("action[getDeletedDentry] clusterID[%s] volumeName[%s] partitionID[%v]" +
+			exporter.WarningRocksdbError(fmt.Sprintf("action[getDeletedDentry] clusterID[%s] volumeName[%s] partitionID[%v]"+
 				" get deleted dentry failed witch rocksdb error[deleted dentry start:%v, end:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
 				mp.config.PartitionId, start, end))
 		}
@@ -209,7 +209,7 @@ func (mp *metaPartition) getDeletedDentry(start, end *DeletedDentry) (res []*Del
 	} else {
 		err = mp.dentryDeletedTree.Range(start, end, func(data []byte) (bool, error) {
 			dd = new(DeletedDentry)
-			if err = dd.UnmarshalValue(data); err != nil {
+			if err = dd.Unmarshal(data); err != nil {
 				return false, nil
 			}
 			res = append(res, dd)
@@ -305,7 +305,6 @@ func (mp *metaPartition) CleanExpiredDeletedDentry() (err error) {
 	if mp.config.TrashRemainingDays > 0 {
 		expires = time.Now().AddDate(0, 0, 0-int(mp.config.TrashRemainingDays)).UnixNano() / 1000
 	}
-	log.LogDebugf("[opFSMCleanExpiredDentry], vol: %v, expires: %v", mp.config.VolName, expires)
 
 	total := 0
 	defer log.LogInfof("[CleanExpiredDeletedDentry], vol: %v, cleaned %v until %v", mp.config.VolName, total, expires)
@@ -317,8 +316,8 @@ func (mp *metaPartition) CleanExpiredDeletedDentry() (err error) {
 			return false, nil
 		}
 		dd := new(DeletedDentry)
-		if err = dd.UnmarshalValue(data); err != nil {
-			exporter.WarningRocksdbError(fmt.Sprintf("action[CleanExpiredDeletedDentry] clusterID[%s] volumeName[%s] partitionID[%v]" +
+		if err = dd.Unmarshal(data); err != nil {
+			exporter.WarningRocksdbError(fmt.Sprintf("action[CleanExpiredDeletedDentry] clusterID[%s] volumeName[%s] partitionID[%v]"+
 				"unmarshal failed:%v", mp.manager.metaNode.clusterId, mp.config.VolName,
 				mp.config.PartitionId, err))
 			log.LogErrorf("[CleanExpiredDeletedDentry] failed to unmarshal value, err:%v", err)

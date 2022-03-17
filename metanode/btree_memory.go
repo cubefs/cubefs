@@ -59,7 +59,7 @@ func (b *BTreeSnapShot) Range(tp TreeType, cb func(v []byte) (bool, error)) erro
 
 func (b *BTreeSnapShot) Close() {}
 
-func (b *BTreeSnapShot) Count(tp TreeType) (uint64) {
+func (b *BTreeSnapShot) Count(tp TreeType) uint64 {
 	switch tp {
 	case InodeType:
 		return uint64(b.inode.Len())

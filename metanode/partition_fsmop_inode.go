@@ -450,8 +450,11 @@ func (mp *metaPartition) fsmEvictInode(ino *Inode, timestamp int64, trashEnable 
 	}
 	defer func() {
 		//inode info maybe change
-		if err = mp.inodeTree.Put(i); err != nil {
-			resp.Status = proto.OpErr
+		if !trashEnable {
+			//if trash enable, inode should be deleted from inode tree
+			if err = mp.inodeTree.Put(i); err != nil {
+				resp.Status = proto.OpErr
+			}
 		}
 	}()
 

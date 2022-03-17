@@ -38,7 +38,7 @@ func newFSListCmd(client *master.MasterClient) *cobra.Command {
 	var c = &cobra.Command{
 		Use:   "ls [path]",
 		Short: "list a directory or file",
-		Args: cobra.ExactArgs(1),
+		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			err := newTrashEnv(client, vol)
 			if err != nil {
@@ -114,7 +114,6 @@ func ListNormalPath(parentID uint64, name string, isTest bool) (
 			rows = make([]*listRow, 0)
 			delRows = make([]*listRow, 0)
 		}
-
 		if proto.IsDir(mode) == false {
 			var inode *proto.InodeInfo
 			inode, err = gTrashEnv.metaWrapper.InodeGet_ll(ctx, ino)

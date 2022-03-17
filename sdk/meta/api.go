@@ -1598,7 +1598,6 @@ func (mw *MetaWrapper) BatchGetDeletedInode(ctx context.Context, inodes []uint64
 
 	// Target partition does not have to be very accurate.
 	for _, ino := range inodes {
-		log.LogDebugf("BatchGetDeletedInode, ino: %v", ino)
 		mp := mw.getPartitionByInode(ctx, ino)
 		if mp == nil {
 			continue
