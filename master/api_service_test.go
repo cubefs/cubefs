@@ -136,7 +136,6 @@ func createUserWithPolicy(testServer *Server) (err error) {
 func createMasterServer(cfgJSON string) (server *Server, err error) {
 	cfg := config.LoadConfigString(cfgJSON)
 	server = NewServer()
-	useConnPool = false
 	logDir := cfg.GetString(ConfigKeyLogDir)
 	walDir := cfg.GetString(WalDir)
 	storeDir := cfg.GetString(StoreDir)
