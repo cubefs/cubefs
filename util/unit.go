@@ -35,6 +35,8 @@ const (
 	ExtentSize       = BlockCount * BlockSize
 	PacketHeaderSize = 57
 	BlockHeaderSize  = 4096
+
+	RepairReadBlockSize = 4 * MB
 )
 
 const (

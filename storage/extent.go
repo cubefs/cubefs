@@ -27,6 +27,8 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -49,6 +51,7 @@ type ExtentInfo struct {
 	IsDeleted  bool   `json:"deleted"`
 	ModifyTime int64  `json:"modTime"`
 	Source     string `json:"src"`
+	Repairing  int32  `json:"repairing"`
 }
 
 func (ei *ExtentInfo) String() (m string) {
@@ -57,6 +60,14 @@ func (ei *ExtentInfo) String() (m string) {
 		source = "none"
 	}
 	return fmt.Sprintf("%v_%v_%v_%v", ei.FileID, ei.Size, ei.IsDeleted, source)
+}
+
+func (ei *ExtentInfo) SetRepairing() bool {
+	return atomic.CompareAndSwapInt32(&ei.Repairing, 0, 1)
+}
+
+func (ei *ExtentInfo) ClearRepairing() {
+	atomic.StoreInt32(&ei.Repairing, 0)
 }
 
 // Extent is an implementation of Extent for local regular extent file data management.
@@ -269,7 +280,16 @@ func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc u
 	if _, err = e.file.ReadAt(data[:size], offset); err != nil {
 		return
 	}
-	crc = crc32.ChecksumIEEE(data)
+
+	if isRepairRead {
+		if size == util.RepairReadBlockSize {
+			// readahead more data to be repaired
+			unix.Fadvise(int(e.file.Fd()), offset+size,
+				util.RepairReadBlockSize, unix.FADV_WILLNEED)
+		}
+	} else {
+		crc = crc32.ChecksumIEEE(data)
+	}
 	return
 }
 
@@ -279,7 +299,10 @@ func (e *Extent) ReadTiny(data []byte, offset, size int64, isRepairRead bool) (c
 	if isRepairRead && err == io.EOF {
 		err = nil
 	}
-	crc = crc32.ChecksumIEEE(data[:size])
+
+	if !isRepairRead {
+		crc = crc32.ChecksumIEEE(data[:size])
+	}
 
 	return
 }
@@ -292,7 +315,7 @@ func (e *Extent) checkOffsetAndSize(offset, size int64) error {
 		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
 	}
 
-	if size > util.BlockSize {
+	if size > util.RepairReadBlockSize {
 		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
 	}
 	return nil

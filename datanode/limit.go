@@ -3,48 +3,91 @@ package datanode
 import (
 	"context"
 	"fmt"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
+	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/log"
 	"golang.org/x/time/rate"
 )
 
 var (
-	deleteLimiteRater      = rate.NewLimiter(rate.Inf, defaultMarkDeleteLimitBurst)
-	MaxExtentRepairLimit   = 20000
-	MinExtentRepairLimit   = 5
-	CurExtentRepairLimit   = MaxExtentRepairLimit
-	extentRepairLimitRater chan struct{}
+	deleteLimiteRater            = rate.NewLimiter(rate.Inf, defaultMarkDeleteLimitBurst)
+	MaxExtentRepairLimit   int32 = 100
+	MinExtentRepairLimit   int32 = 5
+	CurExtentRepairLimit   int32 = MaxExtentRepairLimit
+	RaterReporterInterval        = 10 * time.Second
+	extentRepairLimitRater sync.Map
 )
 
-func initRepairLimit() {
-	extentRepairLimitRater = make(chan struct{}, MaxExtentRepairLimit)
-	for i := 0; i < MaxExtentRepairLimit; i++ {
-		extentRepairLimitRater <- struct{}{}
+func initRepairLimit(s *DataNode, cfg *config.Config) {
+	for _, d := range cfg.GetSlice(ConfigKeyDisks) {
+		var val int32
+		// format "PATH:RESET_SIZE"
+		disk := strings.Split(d.(string), ":")[0]
+		extentRepairLimitRater.Store(disk, &val)
+	}
+
+	go func() {
+		tick := time.NewTicker(RaterReporterInterval)
+		for {
+			select {
+			case <-tick.C:
+				extentRepairLimitRater.Range(func(key, value interface{}) bool {
+					disk := key.(string)
+					rater := value.(*int32)
+					used := float64(atomic.LoadInt32(rater))
+					s.metrics.Routines.SetWithLabelValues(used, disk)
+					return true
+				})
+			}
+
+		}
+	}()
+}
+
+func requestDoExtentRepair(p *DataPartition) error {
+	var rater *int32
+
+	disk := p.disk.Path
+	data, found := extentRepairLimitRater.Load(disk)
+	if !found {
+		var val int32
+		log.LogErrorf("New disk[%v] on partition[%v]", disk, p.partitionID)
+		extentRepairLimitRater.Store(disk, &val)
+		rater = &val
+	}
+	rater = data.(*int32)
+
+	if atomic.AddInt32(rater, 1) > atomic.LoadInt32(&CurExtentRepairLimit) {
+		atomic.AddInt32(rater, -1)
+		return fmt.Errorf("repair limit, cannot do extentRepair")
+	}
+
+	return nil
+}
+
+func finishDoExtentRepair(p *DataPartition) {
+	var rater *int32
+
+	disk := p.disk.Path
+	data, found := extentRepairLimitRater.Load(disk)
+	if !found {
+		var val int32
+		log.LogErrorf("New disk[%v] on partition[%v]", disk, p.partitionID)
+		extentRepairLimitRater.Store(disk, &val)
+		rater = &val
+	}
+	rater = data.(*int32)
+
+	if atomic.AddInt32(rater, -1) < 0 {
+		atomic.AddInt32(rater, 1)
 	}
 }
 
-func requestDoExtentRepair() (err error) {
-	err = fmt.Errorf("repair limit, cannot do extentRepair")
-
-	select {
-	case <-extentRepairLimitRater:
-		return nil
-	default:
-		return
-	}
-
-	return
-}
-
-func fininshDoExtentRepair() {
-	select {
-	case extentRepairLimitRater <- struct{}{}:
-		return
-	default:
-		return
-	}
-}
-
-func setDoExtentRepair(value int) {
+func setDoExtentRepair(s *DataNode, value int32) {
 	if value <= 0 {
 		value = MaxExtentRepairLimit
 	}
@@ -57,14 +100,7 @@ func setDoExtentRepair(value int) {
 		value = MinExtentRepairLimit
 	}
 
-	if CurExtentRepairLimit != value {
-		CurExtentRepairLimit = value
-		close(extentRepairLimitRater)
-		extentRepairLimitRater = make(chan struct{}, CurExtentRepairLimit)
-		for i := 0; i < CurExtentRepairLimit; i++ {
-			extentRepairLimitRater <- struct{}{}
-		}
-	}
+	atomic.StoreInt32(&CurExtentRepairLimit, value)
 }
 
 func DeleteLimiterWait() {

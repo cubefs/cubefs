@@ -23,15 +23,18 @@ import (
 const (
 	MetricPartitionIOName      = "dataPartitionIO"
 	MetricPartitionIOBytesName = "dataPartitionIOBytes"
+	RoutinesName               = "routines"
 )
 
 type DataNodeMetrics struct {
 	MetricIOBytes *exporter.Counter
+	Routines      *exporter.GaugeVec
 }
 
 func (d *DataNode) registerMetrics() {
 	d.metrics = &DataNodeMetrics{}
 	d.metrics.MetricIOBytes = exporter.NewCounter(MetricPartitionIOBytesName)
+	d.metrics.Routines = exporter.NewGaugeVec(RoutinesName, "", []string{"disk"})
 }
 
 func GetIoMetricLabels(partition *DataPartition, tp string) map[string]string {
