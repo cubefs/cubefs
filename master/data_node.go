@@ -44,6 +44,8 @@ type DataNode struct {
 	PersistenceDataPartitions []uint64
 	BadDisks                  []string
 	ToBeOffline               bool
+	RdOnly                    bool
+	MigrateLock               sync.RWMutex
 }
 
 func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
@@ -102,7 +104,7 @@ func (dataNode *DataNode) isWriteAble() (ok bool) {
 	dataNode.RLock()
 	defer dataNode.RUnlock()
 
-	if dataNode.isActive == true && dataNode.AvailableSpace > 10*util.GB {
+	if dataNode.isActive && dataNode.AvailableSpace > 10*util.GB && !dataNode.RdOnly {
 		ok = true
 	}
 

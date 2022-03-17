@@ -186,6 +186,7 @@ type dataNodeValue struct {
 	NodeSetID uint64
 	Addr      string
 	ZoneName  string
+	RdOnly    bool
 }
 
 func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
@@ -194,6 +195,7 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		NodeSetID: dataNode.NodeSetID,
 		Addr:      dataNode.Addr,
 		ZoneName:  dataNode.ZoneName,
+		RdOnly:    dataNode.RdOnly,
 	}
 }
 
@@ -202,6 +204,7 @@ type metaNodeValue struct {
 	NodeSetID uint64
 	Addr      string
 	ZoneName  string
+	RdOnly    bool
 }
 
 func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
@@ -210,6 +213,7 @@ func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
 		NodeSetID: metaNode.NodeSetID,
 		Addr:      metaNode.Addr,
 		ZoneName:  metaNode.ZoneName,
+		RdOnly:    metaNode.RdOnly,
 	}
 }
 
@@ -546,13 +550,19 @@ func (c *Cluster) loadNodeSets() (err error) {
 		if nsv.ZoneName == "" {
 			nsv.ZoneName = DefaultZoneName
 		}
-		ns := newNodeSet(nsv.ID, c.cfg.nodeSetCapacity, nsv.ZoneName)
+		cap := nsv.Capacity
+		if cap < 3 {
+			cap = c.cfg.nodeSetCapacity
+		}
+
+		ns := newNodeSet(nsv.ID, cap, nsv.ZoneName)
 		zone, err := c.t.getZone(nsv.ZoneName)
 		if err != nil {
 			log.LogErrorf("action[loadNodeSets], getZone err:%v", err)
 			zone = newZone(nsv.ZoneName)
 			c.t.putZoneIfAbsent(zone)
 		}
+
 		zone.putNodeSet(ns)
 		log.LogInfof("action[loadNodeSets], nsId[%v],zone[%v]", ns.ID, zone.name)
 	}
@@ -578,6 +588,7 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode := newDataNode(dnv.Addr, dnv.ZoneName, c.Name)
 		dataNode.ID = dnv.ID
 		dataNode.NodeSetID = dnv.NodeSetID
+		dataNode.RdOnly = dnv.RdOnly
 		olddn, ok := c.dataNodes.Load(dataNode.Addr)
 		if ok {
 			if olddn.(*DataNode).ID <= dataNode.ID {
@@ -608,6 +619,8 @@ func (c *Cluster) loadMetaNodes() (err error) {
 		metaNode := newMetaNode(mnv.Addr, mnv.ZoneName, c.Name)
 		metaNode.ID = mnv.ID
 		metaNode.NodeSetID = mnv.NodeSetID
+		metaNode.RdOnly = mnv.RdOnly
+
 		oldmn, ok := c.metaNodes.Load(metaNode.Addr)
 		if ok {
 			if oldmn.(*MetaNode).ID <= metaNode.ID {
@@ -674,9 +687,18 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		mp.OfflinePeerID = mpv.OfflinePeerID
 		mp.IsRecover = mpv.IsRecover
 		vol.addMetaPartition(mp)
+		c.addBadMetaParitionIdMap(mp)
 		log.LogInfof("action[loadMetaPartitions],vol[%v],mp[%v]", vol.Name, mp.PartitionID)
 	}
 	return
+}
+
+func (c *Cluster) addBadMetaParitionIdMap(mp *MetaPartition) {
+	if !mp.IsRecover {
+		return
+	}
+
+	c.putBadMetaPartitions(mp.Hosts[0], mp.PartitionID)
 }
 
 func (c *Cluster) loadDataPartitions() (err error) {
@@ -719,7 +741,17 @@ func (c *Cluster) loadDataPartitions() (err error) {
 			dp.afterCreation(rv.Addr, rv.DiskPath, c)
 		}
 		vol.dataPartitions.put(dp)
+
+		c.addBadDataParitionIdMap(dp)
 		log.LogInfof("action[loadDataPartitions],vol[%v],dp[%v]", vol.Name, dp.PartitionID)
 	}
 	return
+}
+
+func (c *Cluster) addBadDataParitionIdMap(dp *DataPartition) {
+	if !dp.isRecover {
+		return
+	}
+
+	c.putBadDataPartitionIDs(nil, dp.Hosts[0], dp.PartitionID)
 }

@@ -334,7 +334,7 @@ func (client *ExtentClient) Close() error {
 	var inodes []uint64
 	client.streamerLock.Lock()
 	inodes = make([]uint64, 0, len(client.streamers))
-	for inode, _ := range client.streamers {
+	for inode := range client.streamers {
 		inodes = append(inodes, inode)
 	}
 	client.streamerLock.Unlock()

@@ -842,6 +842,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		NodeSetID:                 dataNode.NodeSetID,
 		PersistenceDataPartitions: dataNode.PersistenceDataPartitions,
 		BadDisks:                  dataNode.BadDisks,
+		RdOnly:                    dataNode.RdOnly,
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(dataNodeInfo))
@@ -870,6 +871,52 @@ func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rstMsg = fmt.Sprintf("decommission data node [%v] successfully", offLineAddr)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) migrateDataNodeHandler(w http.ResponseWriter, r *http.Request) {
+	srcAddr, targetAddr, limit, err := parseMigrateNodeParam(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if limit > defaultMigrateDpCnt {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError,
+			Msg: fmt.Sprintf("limit %d can't be bigger than %d", limit, defaultMigrateDpCnt)})
+		return
+	}
+
+	srcNode, err := m.cluster.dataNode(srcAddr)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeDataNodeNotExists, Msg: err.Error()})
+		return
+	}
+
+	targetNode, err := m.cluster.dataNode(targetAddr)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeDataNodeNotExists, Msg: err.Error()})
+		return
+	}
+
+	if srcNode.NodeSetID != targetNode.NodeSetID {
+		err = fmt.Errorf("src %s and target %s must exist in the same nodeSet when migrate", srcAddr, targetAddr)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if !targetNode.isWriteAble() {
+		err = fmt.Errorf("[%s] is not writable, can't used as target addr for migrate", targetAddr)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if err = m.cluster.migrateDataNode(srcAddr, targetAddr, limit); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	rstMsg := fmt.Sprintf("migrateDataNodeHandler from src [%v] to target[%v] has migrate successfully", srcAddr, targetAddr)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
@@ -919,6 +966,122 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set nodeinfo params %v successfully", params)))
 
+}
+
+const (
+	TypeMetaPartion uint32 = 0x01
+	TypeDataPartion uint32 = 0x02
+)
+
+func (m *Server) setNodeRdOnly(addr string, nodeType uint32, rdOnly bool) (err error) {
+	if nodeType == TypeDataPartion {
+		m.cluster.dnMutex.Lock()
+		defer m.cluster.dnMutex.Unlock()
+
+		value, ok := m.cluster.dataNodes.Load(addr)
+		if !ok {
+			return fmt.Errorf("[setNodeRdOnly] data node %s is not exist", addr)
+		}
+
+		dataNode := value.(*DataNode)
+		oldRdOnly := dataNode.RdOnly
+		dataNode.RdOnly = rdOnly
+
+		if err = m.cluster.syncUpdateDataNode(dataNode); err != nil {
+			dataNode.RdOnly = oldRdOnly
+			return fmt.Errorf("[setNodeRdOnly] syncUpdateDataNode err(%s)", err.Error())
+		}
+
+		return
+	}
+
+	m.cluster.mnMutex.Lock()
+	defer m.cluster.mnMutex.Unlock()
+
+	value, ok := m.cluster.metaNodes.Load(addr)
+	if !ok {
+		return fmt.Errorf("[setNodeRdOnly] meta node %s is not exist", addr)
+	}
+
+	metaNode := value.(*MetaNode)
+	oldRdOnly := metaNode.RdOnly
+	metaNode.RdOnly = rdOnly
+
+	if err = m.cluster.syncUpdateMetaNode(metaNode); err != nil {
+		metaNode.RdOnly = oldRdOnly
+		return fmt.Errorf("[setNodeRdOnly] syncUpdateMetaNode err(%s)", err.Error())
+	}
+
+	return
+}
+
+func parseSetNodeRdOnlyParam(r *http.Request) (addr string, nodeType int, rdOnly bool, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if addr = r.FormValue(addrKey); addr == "" {
+		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is empty", addrKey)
+		return
+	}
+
+	if nodeType, err = parseNodeType(r); err != nil {
+		return
+	}
+
+	val := r.FormValue(rdOnlyKey)
+	if val == "" {
+		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is empty", rdOnlyKey)
+		return
+	}
+
+	if rdOnly, err = strconv.ParseBool(val); err != nil {
+		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is not bool value %s", rdOnlyKey, val)
+		return
+	}
+
+	return
+}
+
+func parseNodeType(r *http.Request) (nodeType int, err error) {
+	var val string
+	if val = r.FormValue(nodeTypeKey); val == "" {
+		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is empty", nodeTypeKey)
+		return
+	}
+
+	if nodeType, err = strconv.Atoi(val); err != nil {
+		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is not number, err %s", nodeTypeKey, err.Error())
+		return
+	}
+
+	if nodeType != int(TypeDataPartion) && nodeType != int(TypeMetaPartion) {
+		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is not legal, must be %d or %d", nodeTypeKey, TypeDataPartion, TypeMetaPartion)
+		return
+	}
+
+	return
+}
+
+func (m *Server) setNodeRdOnlyHandler(w http.ResponseWriter, r *http.Request) {
+
+	addr, nodeType, rdOnly, err := parseSetNodeRdOnlyParam(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	log.LogInfof("[setNodeRdOnlyHandler] set node %s to rdOnly(%v)", addr, rdOnly)
+
+	err = m.setNodeRdOnly(addr, uint32(nodeType), rdOnly)
+	if err != nil {
+		log.LogErrorf("[setNodeRdOnlyHandler] set node %s to rdOnly %v, err (%s)", addr, rdOnly, err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("[setNodeRdOnlyHandler] set node %s to rdOnly(%v) success", addr, rdOnly)))
+	return
 }
 
 // get metanode some interval params
@@ -1110,6 +1273,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		MetaPartitionCount:        metaNode.MetaPartitionCount,
 		NodeSetID:                 metaNode.NodeSetID,
 		PersistenceMetaPartitions: metaNode.PersistenceMetaPartitions,
+		RdOnly:                    metaNode.RdOnly,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(metaNodeInfo))
 }
@@ -1159,6 +1323,99 @@ func (m *Server) loadMetaPartition(w http.ResponseWriter, r *http.Request) {
 	m.cluster.loadMetaPartitionAndCheckResponse(mp)
 	msg = fmt.Sprintf(proto.AdminLoadMetaPartition+" partitionID :%v Load successfully", partitionID)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func parseMigrateNodeParam(r *http.Request) (srcAddr, targetAddr string, limit int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	srcAddr = r.FormValue(srcAddrKey)
+	if srcAddr == "" {
+		err = fmt.Errorf("parseMigrateNodeParam %s can't be empty", srcAddrKey)
+		return
+	}
+
+	targetAddr = r.FormValue(targetAddrKey)
+	if targetAddr == "" {
+		err = fmt.Errorf("parseMigrateNodeParam %s can't be empty when migrate", targetAddrKey)
+		return
+	}
+
+	if srcAddr == targetAddr {
+		err = fmt.Errorf("parseMigrateNodeParam srcAddr %s can't be equal to targetAddr %s", srcAddr, targetAddr)
+		return
+	}
+
+	limit, err = parseUintParam(r, countKey)
+	if err != nil {
+		return
+	}
+
+	return
+}
+
+func parseUintParam(r *http.Request, key string) (num int, err error) {
+	val := r.FormValue(key)
+	if val == "" {
+		num = 0
+		return
+	}
+
+	numVal, err := strconv.ParseUint(val, 10, 64)
+	if err != nil {
+		err = fmt.Errorf("parseUintParam %s-%s is not legal, err %s", key, val, err.Error())
+		return
+	}
+
+	num = int(numVal)
+	return
+}
+
+func (m *Server) migrateMetaNodeHandler(w http.ResponseWriter, r *http.Request) {
+	srcAddr, targetAddr, limit, err := parseMigrateNodeParam(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if limit > defaultMigrateMpCnt {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError,
+			Msg: fmt.Sprintf("limit %d can't be bigger than %d", limit, defaultMigrateMpCnt)})
+		return
+	}
+
+	srcNode, err := m.cluster.metaNode(srcAddr)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeMetaNodeNotExists, Msg: err.Error()})
+		return
+	}
+
+	targetNode, err := m.cluster.metaNode(targetAddr)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeMetaNodeNotExists, Msg: err.Error()})
+		return
+	}
+
+	if srcNode.NodeSetID != targetNode.NodeSetID {
+		err = fmt.Errorf("src %s and target %s must exist in the same nodeSet when migrate", srcAddr, targetAddr)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeMetaNodeNotExists, Msg: err.Error()})
+		return
+	}
+
+	if !targetNode.isWritable() {
+		err = fmt.Errorf("[%s] is not writable, can't used as target addr for migrate", targetAddr)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if err = m.cluster.migrateMetaNode(srcAddr, targetAddr, limit); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	rstMsg := fmt.Sprintf("migrateMetaNodeHandler from src [%v] to targaet[%s] has migrate successfully", srcAddr, targetAddr)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
 func (m *Server) decommissionMetaNode(w http.ResponseWriter, r *http.Request) {

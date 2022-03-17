@@ -52,6 +52,10 @@ const (
 	descriptionKey          = "description"
 	dpSelectorNameKey       = "dpSelectorName"
 	dpSelectorParmKey       = "dpSelectorParm"
+	nodeTypeKey             = "nodeType"
+	rdOnlyKey               = "rdOnly"
+	srcAddrKey              = "srcAddr"
+	targetAddrKey           = "targetAddr"
 )
 
 const (
@@ -93,6 +97,8 @@ const (
 	retrySendSyncTaskInternal                    = 3 * time.Second
 	defaultRangeOfCountDifferencesAllowed        = 50
 	defaultMinusOfMaxInodeID                     = 1000
+	defaultMigrateDpCnt                          = 50
+	defaultMigrateMpCnt                          = 15
 )
 
 const (

@@ -80,6 +80,11 @@ func (partition *DataPartition) checkReplicaStatus(timeOutSec int64) {
 	for _, replica := range partition.Replicas {
 		if !replica.isLive(timeOutSec) {
 			replica.Status = proto.ReadOnly
+			continue
+		}
+
+		if replica.dataNode.RdOnly && replica.Status == proto.ReadWrite {
+			replica.Status = proto.ReadOnly
 		}
 	}
 }
@@ -201,8 +206,6 @@ func (partition *DataPartition) checkReplicationTask(clusterID string, dataParti
 			" On :%v  Err:%v  Hosts:%v  new task to create DataReplica",
 			addMissingReplicaErr, partition.PartitionID, lackAddr, lackErr.Error(), partition.Hosts)
 		Warn(clusterID, msg)
-	} else {
-		partition.setToNormal()
 	}
 
 	return

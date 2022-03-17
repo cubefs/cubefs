@@ -164,9 +164,17 @@ func (partition *DataPartition) resetTaskID(t *proto.AdminTask) {
 }
 
 // Check if there is a replica missing or not.
-func (partition *DataPartition) hasMissingOneReplica(replicaNum int) (err error) {
+func (partition *DataPartition) hasMissingOneReplica(addr string, replicaNum int) (err error) {
 	hostNum := len(partition.Replicas)
-	if hostNum <= replicaNum-1 {
+
+	inReplicas := false
+	for _, rep := range partition.Replicas {
+		if addr == rep.Addr {
+			inReplicas = true
+		}
+	}
+
+	if hostNum <= replicaNum-1 && inReplicas {
 		log.LogError(fmt.Sprintf("action[%v],partitionID:%v,err:%v",
 			"hasMissingOneReplica", partition.PartitionID, proto.ErrHasOneMissingReplica))
 		err = proto.ErrHasOneMissingReplica
@@ -187,7 +195,7 @@ func (partition *DataPartition) canBeOffLine(offlineAddr string) (err error) {
 		}
 	}
 
-	if len(otherLiveReplicas) < int(partition.ReplicaNum/2) {
+	if len(otherLiveReplicas) < int(partition.ReplicaNum/2+1) {
 		msg = fmt.Sprintf(msg+" err:%v  liveReplicas:%v ", proto.ErrCannotBeOffLine, len(liveReplicas))
 		log.LogError(msg)
 		err = fmt.Errorf(msg)
@@ -421,12 +429,6 @@ func (partition *DataPartition) setToNormal() {
 	partition.isRecover = false
 }
 
-func (partition *DataPartition) setStatus(status int8) {
-	partition.Lock()
-	defer partition.Unlock()
-	partition.Status = status
-}
-
 func (partition *DataPartition) hasHost(addr string) (ok bool) {
 	for _, host := range partition.Hosts {
 		if host == addr {
@@ -441,7 +443,7 @@ func (partition *DataPartition) liveReplicas(timeOutSec int64) (replicas []*Data
 	replicas = make([]*DataReplica, 0)
 	for i := 0; i < len(partition.Replicas); i++ {
 		replica := partition.Replicas[i]
-		if replica.isLive(timeOutSec) == true && partition.hasHost(replica.Addr) == true {
+		if replica.isLive(timeOutSec) && partition.hasHost(replica.Addr) {
 			replicas = append(replicas, replica)
 		}
 	}
@@ -558,6 +560,10 @@ func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode
 		}
 	}
 	partition.checkAndRemoveMissReplica(dataNode.Addr)
+
+	if replica.Status == proto.ReadWrite && replica.dataNode.RdOnly {
+		replica.Status = int8(proto.ReadOnly)
+	}
 }
 
 func (partition *DataPartition) setMaxUsed() {
@@ -628,6 +634,22 @@ func (partition *DataPartition) getMinus() (minus float64) {
 		}
 	}
 	return minus
+}
+
+func (partition *DataPartition) activeUsedSimilar() bool {
+	partition.RLock()
+	defer partition.RUnlock()
+	liveReplicas := partition.liveReplicas(defaultDataPartitionTimeOutSec)
+	used := liveReplicas[0].Used
+	minus := float64(0)
+
+	for _, replica := range liveReplicas {
+		if math.Abs(float64(replica.Used)-float64(used)) > minus {
+			minus = math.Abs(float64(replica.Used) - float64(used))
+		}
+	}
+
+	return minus < util.GB
 }
 
 func (partition *DataPartition) getToBeDecommissionHost(replicaNum int) (host string) {

@@ -39,6 +39,7 @@ type MetaNodeInfo struct {
 	MetaPartitionCount        int
 	NodeSetID                 uint64
 	PersistenceMetaPartitions []uint64
+	RdOnly                    bool
 }
 
 // DataNode stores all the information about a data node
@@ -59,6 +60,7 @@ type DataNodeInfo struct {
 	NodeSetID                 uint64
 	PersistenceDataPartitions []uint64
 	BadDisks                  []string
+	RdOnly                    bool
 }
 
 // MetaPartition defines the structure of a meta partition
@@ -162,6 +164,7 @@ type DataPartitionInfo struct {
 	LastLoadedTime          int64
 	ReplicaNum              uint8
 	Status                  int8
+	Recover                 bool
 	Replicas                []*DataReplica
 	Hosts                   []string // host addresses
 	Peers                   []Peer

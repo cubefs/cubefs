@@ -130,13 +130,13 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	vol.RLock()
+	vol.volLock.RLock()
 	dps := make([]*DataPartition, 0)
 	for _, dp := range vol.dataPartitions.partitions {
 		dps = append(dps, dp)
 	}
 	dpsMapLen := len(vol.dataPartitions.partitionMap)
-	vol.RUnlock()
+	vol.volLock.RUnlock()
 	dpsLen := len(dps)
 	if dpsLen != dpsMapLen {
 		t.Errorf("dpsLen[%v],dpsMapLen[%v]", dpsLen, dpsMapLen)
@@ -206,13 +206,13 @@ func TestCheckBadMetaPartitionRecovery(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	vol.RLock()
+	vol.volLock.RLock()
 	mps := make([]*MetaPartition, 0)
 	for _, mp := range vol.MetaPartitions {
 		mps = append(mps, mp)
 	}
 	mpsMapLen := len(vol.MetaPartitions)
-	vol.RUnlock()
+	vol.volLock.RUnlock()
 	mpsLen := len(mps)
 	if mpsLen != mpsMapLen {
 		t.Errorf("mpsLen[%v],mpsMapLen[%v]", mpsLen, mpsMapLen)
@@ -261,10 +261,10 @@ func TestUpdateInodeIDUpperBound(t *testing.T) {
 		return
 	}
 	maxPartitionID := vol.maxPartitionID()
-	vol.RLock()
+	vol.volLock.RLock()
 	mp := vol.MetaPartitions[maxPartitionID]
 	mpLen := len(vol.MetaPartitions)
-	vol.RUnlock()
+	vol.volLock.RUnlock()
 	mr := &proto.MetaPartitionReport{
 		PartitionID: mp.PartitionID,
 		Start:       mp.Start,
