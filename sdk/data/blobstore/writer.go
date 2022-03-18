@@ -219,9 +219,6 @@ func (writer *Writer) Flush(ino uint64, ctx context.Context) (err error) {
 	if writer == nil {
 		return
 	}
-	if writer.shouldCacheCfs() {
-		writer.ec.Flush(ino)
-	}
 	return writer.flush(ino, ctx, true)
 }
 

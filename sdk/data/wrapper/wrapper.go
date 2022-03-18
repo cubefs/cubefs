@@ -187,6 +187,9 @@ func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.
 		}
 	}
 
+	if proto.IsCold(w.volType) {
+		w.clearPartitions()
+	}
 	rwPartitionGroups := make([]*DataPartition, 0)
 	for index, partition := range DataPartitions {
 		if partition == nil {
@@ -263,15 +266,10 @@ func (w *Wrapper) getDataPartition(isInit bool, dpId uint64) (err error) {
 	return w.updateDataPartitionByRsp(isInit, DataPartitions)
 }
 
-func (w *Wrapper) clearPartitions(groups map[uint64]struct{}) {
-	defer w.Unlock()
+func (w *Wrapper) clearPartitions() {
 	w.Lock()
-	for key := range w.partitions {
-		_, ok := groups[key]
-		if !ok {
-			delete(w.partitions, key)
-		}
-	}
+	defer w.Unlock()
+	w.partitions = make(map[uint64]*DataPartition)
 }
 
 func (w *Wrapper) AllocatePreLoadDataPartition(volName string, count int, capacity, ttl uint64, zones string) (err error) {
@@ -335,7 +333,7 @@ func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 	w.RLock()
 	defer w.RUnlock()
 	dp, ok := w.partitions[partitionID]
-	if !ok {
+	if !ok && !proto.IsCold(w.volType) { // cache miss && hot volume
 		err := w.getDataPartition(false, partitionID)
 		if err == nil {
 			dp, ok = w.partitions[partitionID]
@@ -344,6 +342,9 @@ func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 			}
 			return dp, nil
 		}
+		return nil, fmt.Errorf("partition[%v] not exsit", partitionID)
+	}
+	if !ok {
 		return nil, fmt.Errorf("partition[%v] not exsit", partitionID)
 	}
 	return dp, nil
