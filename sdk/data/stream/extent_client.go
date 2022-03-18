@@ -160,6 +160,10 @@ func (client *ExtentClient) OpenStream(inode uint64) error {
 		s = NewStreamer(client, inode)
 		client.streamers[inode] = s
 	}
+	if client.noFlushOnClose {
+		s.IssueOpenRequest()
+		return nil
+	}
 	return s.IssueOpenRequest()
 }
 
@@ -185,6 +189,10 @@ func (client *ExtentClient) CloseStream(inode uint64) error {
 	s, ok := client.streamers[inode]
 	if !ok {
 		client.streamerLock.Unlock()
+		return nil
+	}
+	if client.noFlushOnClose {
+		s.IssueReleaseRequest()
 		return nil
 	}
 	return s.IssueReleaseRequest()
