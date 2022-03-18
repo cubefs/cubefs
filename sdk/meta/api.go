@@ -207,6 +207,15 @@ create_dentry:
 		if newErr == nil && newStatus == statusOK {
 			if newInode == info.Inode {
 				return info, nil
+			}
+			if mw.InodeNotExist(ctx, newInode) {
+				updateStatus, _, updateErr := mw.dupdate(ctx, parentMP, parentID, name, info.Inode)
+				if updateErr == nil && updateStatus == statusOK {
+					log.LogWarnf("Create_ll: inode(%v) is not exist, update dentry to new inode(%v) parentID(%v) name(%v)",
+						newInode, info.Inode, parentID, name)
+					return info, nil
+				}
+				log.LogWarnf("Create_ll: update_dentry failed, status(%v), err(%v)", updateStatus, updateErr)
 			} else {
 				mw.iunlink(ctx, mp, info.Inode, false)
 				mw.ievict(ctx, mp, info.Inode, false)
@@ -223,6 +232,18 @@ create_dentry:
 	log.LogErrorf("Create_ll: create_dentry failed, err(%v), status(%v), parentMP(%v), parentID(%v), name(%v), "+
 		"info.Inode(%v), mode(%v)", err, status, parentMP, parentID, name, info.Inode, mode)
 	return nil, statusToErrno(status)
+}
+
+func (mw *MetaWrapper) InodeNotExist(ctx context.Context, inode uint64) bool {
+	mp := mw.getPartitionByInode(ctx, inode)
+	if mp == nil {
+		return false
+	}
+	status, _, err := mw.iget(ctx, mp, inode)
+	if err == nil && status == statusNoent {
+		return true
+	}
+	return false
 }
 
 func (mw *MetaWrapper) Lookup_ll(ctx context.Context, parentID uint64, name string) (inode uint64, mode uint32, err error) {

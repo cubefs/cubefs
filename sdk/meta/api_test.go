@@ -100,3 +100,55 @@ func TestMetaWrapper_Link(t *testing.T) {
 		t.Fatalf("link error")
 	}
 }
+
+func TestCreateFileAfterInodeLost(t *testing.T)  {
+	ctx := context.Background()
+	cfg := &MetaConfig{
+		Volume:        "ltptest",
+		Masters:       []string{"192.168.0.11:17010", "192.168.0.12:17010", "192.168.0.13:17010"},
+		ValidateOwner: true,
+		Owner:         "ltptest",
+	}
+	mw, err := NewMetaWrapper(cfg)
+	if err != nil {
+		t.Fatalf("creat meta wrapper failed!")
+	}
+	tests := []struct {
+		name string
+		mode uint32
+	} {
+		{
+			name: "test_file",
+			mode: 0644,
+		},
+		{
+			name: "test_dir",
+			mode: uint32(os.ModeDir),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info, err := mw.Create_ll(ctx, 1, tt.name, tt.mode, 0, 0, nil)
+			if err != nil {
+				t.Errorf("TestCreateFileAfterInodeLost: create err(%v) name(%v)", err, tt.name)
+				return
+			}
+			if tt.mode != uint32(os.ModeDir) {
+				if unlinkInfo, err := mw.InodeUnlink_ll(ctx, info.Inode); err != nil || unlinkInfo.Inode != info.Inode {
+					t.Errorf("TestCreateFileAfterInodeLost: unlink err(%v) name(%v) unlinkInfo(%v) oldInfo(%v)",
+						err, tt.name, unlinkInfo, info)
+					return
+				}
+			}
+			if err = mw.Evict(ctx, info.Inode); err != nil {
+				t.Errorf("TestCreateFileAfterInodeLost: evict err(%v) name(%v)", err, tt.name)
+				return
+			}
+			newInfo, newErr := mw.Create_ll(ctx, 1, tt.name, tt.mode, 0, 0, nil)
+			if newErr != nil || newInfo.Inode == info.Inode {
+				t.Errorf("TestCreateFileAfterInodeLost: create again err(%v) name(%v) newInode(%v) oldInode(%v)",
+					newErr, tt.name, newInfo, info)
+			}
+		})
+	}
+}
