@@ -2828,6 +2828,9 @@ func parseRequestToAddMetaReplica(r *http.Request) (ID uint64, addr string, addR
 		err = keyNotFound(addrKey)
 		return
 	}
+	if storeMode, err = extractStoreMode(r); err != nil {
+		return
+	}
 	return
 }
 

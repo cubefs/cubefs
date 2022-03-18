@@ -1160,6 +1160,8 @@ func (mp *metaPartition) Reset() (err error) {
 	mp.dentryDeletedTree.Release()
 	mp.config.Cursor = 0
 	mp.applyID = 0
+	mp.db.CloseDb()
+	mp.db.ReleaseRocksDb()
 
 	// remove files
 	filenames := []string{applyIDFile, dentryFile, inodeFile, extendFile, multipartFile}

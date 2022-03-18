@@ -426,10 +426,7 @@ func (r *RocksTree) Delete(count *uint64, key []byte) (ok bool, err error) {
 
 // drop the current btree.
 func (r *RocksTree) Release() {
-	if err := r.db.CloseDb(); err != nil {
-		log.LogErrorf("close db failed:%v", err)
-	}
-	r.db = nil
+	//do nothing, db will be closed in the outside
 }
 
 // todo:execute unuse, so remove?
