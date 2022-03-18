@@ -568,6 +568,10 @@ func (s *Streamer) open() {
 
 func (s *Streamer) release() error {
 	s.refcnt--
+	if s.client.noFlushOnClose {
+		log.LogDebugf("release without flush: streamer(%v) refcnt(%v)", s, s.refcnt)
+		return nil
+	}
 	s.closeOpenHandler()
 	err := s.flush()
 	if err != nil {
@@ -585,6 +589,15 @@ func (s *Streamer) evict() error {
 	}
 	delete(s.client.streamers, s.inode)
 	s.client.streamerLock.Unlock()
+
+	if s.client.noFlushOnClose {
+		s.closeOpenHandler()
+		err := s.flush()
+		if err != nil {
+			s.abort()
+			return errors.New(fmt.Sprintf("evict: streamer(%v) flush error(%v)", s, err))
+		}
+	}
 	return nil
 }
 

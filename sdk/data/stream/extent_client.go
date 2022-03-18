@@ -82,6 +82,7 @@ type ExtentConfig struct {
 	Masters           []string
 	FollowerRead      bool
 	NearRead          bool
+	NoFlushOnClose    bool
 	ReadRate          int64
 	WriteRate         int64
 	OnAppendExtentKey AppendExtentKeyFunc
@@ -92,6 +93,8 @@ type ExtentConfig struct {
 
 // ExtentClient defines the struct of the extent client.
 type ExtentClient struct {
+	noFlushOnClose bool
+
 	streamers    map[uint64]*Streamer
 	streamerLock sync.Mutex
 
@@ -122,6 +125,7 @@ retry:
 		}
 	}
 
+	client.noFlushOnClose = config.NoFlushOnClose
 	client.streamers = make(map[uint64]*Streamer)
 	client.appendExtentKey = config.OnAppendExtentKey
 	client.getExtents = config.OnGetExtents
@@ -157,6 +161,22 @@ func (client *ExtentClient) OpenStream(inode uint64) error {
 		client.streamers[inode] = s
 	}
 	return s.IssueOpenRequest()
+}
+
+func (client *ExtentClient) openGetStream(inode uint64) (s *Streamer, needClose bool) {
+	var ok bool
+
+	client.streamerLock.Lock()
+	s, ok = client.streamers[inode]
+	if !ok {
+		s = NewStreamer(client, inode)
+		client.streamers[inode] = s
+		_ = s.IssueOpenRequest() //lock is released
+		needClose = true
+		return s, needClose
+	}
+	client.streamerLock.Unlock()
+	return s, needClose
 }
 
 // Release request shall grab the lock until request is sent to the request channel
@@ -207,15 +227,6 @@ func (client *ExtentClient) FileSize(inode uint64) (size int, gen uint64, valid 
 	return
 }
 
-// SetFileSize set the file size.
-func (client *ExtentClient) SetFileSize(inode uint64, size int) {
-	s := client.GetStreamer(inode)
-	if s != nil {
-		log.LogDebugf("SetFileSize: ino(%v) size(%v)", inode, size)
-		s.extents.SetSize(uint64(size), true)
-	}
-}
-
 // Write writes the data.
 func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags int) (write int, err error) {
 	prefix := fmt.Sprintf("Write{ino(%v)offset(%v)size(%v)}", inode, offset, len(data))
@@ -242,27 +253,28 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags i
 
 func (client *ExtentClient) Truncate(inode uint64, size int) error {
 	prefix := fmt.Sprintf("Truncate{ino(%v)size(%v)}", inode, size)
-	s := client.GetStreamer(inode)
-	if s == nil {
-		log.LogErrorf("Prefix(%v): stream is not opened yet", prefix)
-		return syscall.EBADF
-	}
+	s, needClose := client.openGetStream(inode)
 
 	err := s.IssueTruncRequest(size)
 	if err != nil {
 		err = errors.Trace(err, prefix)
 		log.LogError(errors.Stack(err))
 	}
+
+	if needClose {
+		_ = client.CloseStream(inode)
+	}
 	return err
 }
 
 func (client *ExtentClient) Flush(inode uint64) error {
-	s := client.GetStreamer(inode)
-	if s == nil {
-		log.LogErrorf("Flush: stream is not opened yet, ino(%v)", inode)
-		return syscall.EBADF
+	var needClose bool
+	s, needClose := client.openGetStream(inode)
+	err := s.IssueFlushRequest()
+	if needClose {
+		_ = client.CloseStream(inode)
 	}
-	return s.IssueFlushRequest()
+	return err
 }
 
 func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int) (read int, err error) {
