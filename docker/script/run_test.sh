@@ -166,10 +166,8 @@ wait_proc_done() {
     proc_name=$1
     pid=$( ps -ef | grep "$proc_name" | grep -v "grep" | awk '{print $2}' )
     logfile=$2
-    logfile_tmp=${logfile}-tmp
     maxtime=${3:-3000}
     checktime=${4:-60}
-    retfile=${5:-"/tmp/ltpret"}
     timeout=1
     pout=0
     lastlog=""
@@ -181,16 +179,13 @@ wait_proc_done() {
         fi
         sleep 1
         ((pout+=1))
-        if [ $(cat $logfile | wc -l) -gt 0  ] ; then
-            pout=0
-            cat $logfile > $logfile_tmp && > $logfile
-            cat $logfile_tmp
-            if grep -q "TFAIL " $logfile_tmp ; then
-                exit 1
-            fi
-            if grep -q "INFO: ltp-pan reported all tests PASS" $logfile_tmp; then
-                return 0
-            fi
+        if grep -q "FAIL" $logfile ; then
+            kill $pid
+            timeout=0
+            break
+        fi
+        if grep -q "INFO: ltp-pan reported all tests PASS" $logfile; then
+            return 0
         fi
         if [[ $pout -ge $checktime ]] ; then
             echo -n "."
@@ -202,12 +197,13 @@ wait_proc_done() {
         print_error_info
         exit 1
     fi
-    ret=$(cat /tmp/ltpret)
-    if [[ "-$ret" != "-0" ]] ; then
-        exit $ret
+    totalfail=`grep "Total Failures" $logfile | awk '{print $3}'`
+    if [ x"$totalfail" != x"0" ]; then
+        echo "Not all tests passed"
+        exit 1
     fi
-    echo "Not all tests passed"
-    exit 1
+    cat $logfile
+    echo "All tests passed"
 }
 
 run_ltptest() {
@@ -218,7 +214,8 @@ run_ltptest() {
     LTPTestDir=$MntPoint/ltptest
     LtpLog=/tmp/ltp.log
     mkdir -p $LTPTestDir
-    nohup /bin/sh -c " /opt/ltp/runltp  -f fs -d $LTPTestDir > $LtpLog 2>&1; echo $? > /tmp/ltpret " &
+    echo -ne "" > $LtpLog
+    /bin/sh -c "/opt/ltp/runltp -f fs -d $LTPTestDir -l $LtpLog -p" &
     wait_proc_done "runltp" $LtpLog
 }
 
