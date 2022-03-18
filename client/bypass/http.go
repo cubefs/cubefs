@@ -114,15 +114,10 @@ func (c *client) broadcastRefreshExtents(readClient string, inode uint64) {
 }
 
 func (c *client) registerReadProcStatus(alive bool) {
-	var masterAddr string
-	if c.masterClient != "" {
-		masterAddr = c.masterClient
-	} else if c.listenPort != c.profPort[0] {
-		masterAddr = fmt.Sprintf("127.0.0.1:%d", c.profPort[0])
-	} else {
+	if len(c.masterClient) == 0 {
 		return
 	}
-	url := fmt.Sprintf("http://%s%s?%s=:%d&%s=%t", masterAddr, ControlReadProcessRegister, clientKey, c.listenPort, aliveKey, alive)
+	url := fmt.Sprintf("http://%s%s?%s=:%d&%s=%t", c.masterClient, ControlReadProcessRegister, clientKey, c.profPort, aliveKey, alive)
 	if reply, err := sendWithRetry(url, MaxRetry); err != nil {
 		msg := fmt.Sprintf("send url(%v) err(%v) reply(%v)", url, err, reply)
 		handleError(c, "registerReadProcStatus", msg)

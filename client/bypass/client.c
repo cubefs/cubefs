@@ -2501,6 +2501,16 @@ static void cfs_init() {
         free((char *)g_cfs_config.vol_name);
         g_cfs_config.vol_name = vol_name;
     }
+    char *prof_port = getenv("CFS_PROF_PORT");
+    if(prof_port != NULL) {
+        free((char *)g_cfs_config.prof_port);
+        g_cfs_config.prof_port = prof_port;
+    }
+    char *master_client = getenv("CFS_MASTER_CLIENT");
+    if(master_client != NULL) {
+        free((char *)g_cfs_config.master_client);
+        g_cfs_config.master_client = master_client;
+    }
 
     if(g_mount_point == NULL || g_mount_point[0] != '/') {
         char *msg = "Mount point is null or not an absolute path.\n";

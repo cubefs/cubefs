@@ -32,7 +32,7 @@ parser.add_argument('--followerRead', default='false', help='enable to read from
 parser.add_argument('--logDir', default='/export/data/mysql/log', help='log dir (default: /export/data/mysql/log)')
 parser.add_argument('--logLevel', default='warn', help='log level, debug|info|warn|error (default: warn)')
 parser.add_argument('--app', default='', help='mysql | coraldb | mysql_8, overwrite buffer is on for coraldb and mysql_8 , file metadata cache is off for coraldb')
-parser.add_argument('--profPort', default='10094,10095', help='port for profiling (the second port is for xtrabackup on the same host of mysqld, default: 10094,10095)')
+parser.add_argument('--profPort', default='10094', help='port for profiling, default: 10094')
 parser.add_argument('--masterClient', default='', help='ip:port, master of app in master/slave architecture, used for file metadata synchronization')
 parser.add_argument('--tracingSamplerType', default='const', help='(const | probabilistic, default: const)')
 parser.add_argument('--tracingSamplerParam', default='1', help='(default: 1)')

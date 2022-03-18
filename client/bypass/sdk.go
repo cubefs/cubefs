@@ -185,7 +185,7 @@ func newClient(conf *C.cfs_config_t) *client {
 	c.logLevel = C.GoString(conf.log_level)
 	c.app = C.GoString(conf.app)
 	c.useMetaCache = (c.app != appMysql8)
-	c.profPort = parseProfPortArray(C.GoString(conf.prof_port))
+	c.profPort, _ = strconv.ParseUint(strings.Split(C.GoString(conf.prof_port), ",")[0], 10, 64)
 	c.autoFlush, _ = strconv.ParseBool(C.GoString(conf.auto_flush))
 	c.inodeCache = cache.NewInodeCache(inodeExpiration, maxInodeCache, inodeEvictionInterval, c.useMetaCache)
 	c.masterClient = C.GoString(conf.master_client)
@@ -206,18 +206,6 @@ func newClient(conf *C.cfs_config_t) *client {
 	gClientManager.clients[id] = c
 
 	return c
-}
-
-func parseProfPortArray(portStr string) (portList []uint64) {
-	portList = make([]uint64, 0)
-	portArray := strings.Split(portStr, ",")
-	for _, portStr := range portArray {
-		port, err := strconv.ParseUint(portStr, 10, 64)
-		if err == nil && port > 0 {
-			portList = append(portList, port)
-		}
-	}
-	return portList
 }
 
 func getClient(id int64) (c *client, exist bool) {
@@ -277,8 +265,7 @@ type client struct {
 	logLevel     string
 	app          string
 
-	profPort        []uint64 // the first is the port of main mysqld, the others are the ports of read processes
-	listenPort      uint64
+	profPort        uint64
 	readProcErrMap  map[string]int // key: ip:port, value: count of error
 	readProcMapLock sync.Mutex
 
@@ -3139,13 +3126,10 @@ func (c *client) start() (err error) {
 		outputFile.Close()
 	}()
 
-	if len(c.profPort) < 1 {
-		err = fmt.Errorf("empty prof port")
+	if c.profPort == 0 {
+		err = fmt.Errorf("invalid prof port")
 		fmt.Println(err)
 		return
-	}
-	if len(c.profPort) == 1 || isMysql() {
-		c.listenPort = c.profPort[0]
 	}
 
 	masters := strings.Split(c.masterAddr, ",")
@@ -3196,18 +3180,7 @@ func (c *client) start() (err error) {
 	tracing.TraceInit(moduleName, c.tracingSamplerType, c.tracingSamplerParam, c.tracingReportAddr)
 
 	go func() {
-		var listenErr error
-		if c.listenPort != 0 {
-			listenErr = http.ListenAndServe(fmt.Sprintf(":%v", c.listenPort), nil)
-		} else {
-			for i := 1; i < len(c.profPort); i++ {
-				c.listenPort = c.profPort[i]
-				if listenErr = http.ListenAndServe(fmt.Sprintf(":%v", c.listenPort), nil); listenErr != nil {
-					continue
-				}
-			}
-			c.listenPort = 0
-		}
+		listenErr := http.ListenAndServe(fmt.Sprintf(":%v", c.profPort), nil)
 		if listenErr != nil && isMysql() {
 			fmt.Println(listenErr)
 			os.Exit(1)
