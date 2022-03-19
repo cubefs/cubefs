@@ -29,7 +29,7 @@ const (
 	CliOpMetaCompatibility = "meta"
 	CliOpFreeze            = "freeze"
 	CliOpSetThreshold      = "threshold"
-	CliOpSetDelRate        = "delelerate"
+	CliOpSetDelRate        = "deleterate"
 	CliOpCheck             = "check"
 	CliOpReset             = "reset"
 	CliOpReplicate         = "add-replica"
