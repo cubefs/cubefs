@@ -16,9 +16,11 @@ package stream
 
 import (
 	"fmt"
-	"golang.org/x/net/context"
 	"io"
 	"sync"
+
+	"github.com/gammazero/workerpool"
+	"golang.org/x/net/context"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
@@ -47,8 +49,53 @@ type Streamer struct {
 	request chan interface{} // request channel, write/flush/close
 	done    chan struct{}    // stream writer is being closed
 
+	owRequest    chan *ExtentRequest
+	owStatus     int32
+	owInflight   int32
+	owEmpty      chan struct{}
+	doneOwServer chan struct{}
+	owDpStatus   map[string]*owDpExtStatus // no need to be protected by lock.
+
 	writeLock sync.Mutex
 }
+
+type owDpExtStatus struct {
+	sync.Mutex
+	inflight int32
+	eks      map[int]int
+	empty    chan struct{}
+}
+
+func (dps *owDpExtStatus) intersect(offset, size int) bool {
+	var maxLeft, minRight int
+
+	if s, ok := dps.eks[offset]; ok {
+		if s != 0 {
+			return true
+		} else {
+			return false
+		}
+	}
+
+	for o, s := range dps.eks {
+		if o < offset {
+			maxLeft = offset
+		} else {
+			maxLeft = o
+		}
+		if o+s < offset+size {
+			minRight = o + s
+		} else {
+			minRight = offset + size
+		}
+		if maxLeft < minRight {
+			return true
+		}
+	}
+	return false
+}
+
+var owWorkerPool = workerpool.New(256)
 
 // NewStreamer returns a new streamer.
 func NewStreamer(client *ExtentClient, inode uint64) *Streamer {
@@ -59,6 +106,11 @@ func NewStreamer(client *ExtentClient, inode uint64) *Streamer {
 	s.request = make(chan interface{}, 64)
 	s.done = make(chan struct{})
 	s.dirtylist = NewDirtyExtentList()
+	s.owRequest = make(chan *ExtentRequest, 128)
+	s.owEmpty = make(chan struct{}, 8)
+	s.doneOwServer = make(chan struct{})
+	s.owDpStatus = make(map[string]*owDpExtStatus)
+	go s.owServer()
 	go s.server()
 	return s
 }

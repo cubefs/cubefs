@@ -51,6 +51,10 @@ func (k ExtentKey) String() string {
 	return fmt.Sprintf("ExtentKey{FileOffset(%v),Partition(%v),ExtentID(%v),ExtentOffset(%v),Size(%v),CRC(%v)}", k.FileOffset, k.PartitionId, k.ExtentId, k.ExtentOffset, k.Size, k.CRC)
 }
 
+func (k ExtentKey) Key() string {
+	return fmt.Sprintf("%v_%v", k.PartitionId, k.ExtentId)
+}
+
 // Less defines the less comparator.
 func (k *ExtentKey) Less(than btree.Item) bool {
 	that := than.(*ExtentKey)
