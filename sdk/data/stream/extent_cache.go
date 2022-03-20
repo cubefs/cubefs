@@ -29,6 +29,7 @@ type ExtentRequest struct {
 	Size       int
 	Data       []byte
 	ExtentKey  *proto.ExtentKey
+	direct     bool
 }
 
 // String returns the string format of the extent request.
