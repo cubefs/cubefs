@@ -86,6 +86,7 @@ type ExtentHandler struct {
 	// pending and new packets.
 	key   *proto.ExtentKey
 	dirty bool // indicate if open handler is dirty.
+	skip  bool // closed handler has updated the meta, so need to skip traverse.
 
 	// Created in receiver ONLY in recovery status.
 	// Will not be changed once assigned.

@@ -509,15 +509,19 @@ func (s *Streamer) traverse() (err error) {
 				log.LogDebugf("Streamer traverse skipped: non-zero inflight, eh(%v)", eh)
 				continue
 			}
-			err = eh.appendExtentKey()
-			if err != nil {
-				log.LogWarnf("Streamer traverse abort: appendExtentKey failed, eh(%v) err(%v)", eh, err)
-				// set the streamer to error status to avoid further writes
-				if err == syscall.EIO {
-					atomic.StoreInt32(&eh.stream.status, StreamerError)
+
+			if !eh.skip {
+				err = eh.appendExtentKey()
+				if err != nil {
+					log.LogWarnf("Streamer traverse abort: appendExtentKey failed, eh(%v) err(%v)", eh, err)
+					// set the streamer to error status to avoid further writes
+					if err == syscall.EIO {
+						atomic.StoreInt32(&eh.stream.status, StreamerError)
+					}
+					return
 				}
-				return
 			}
+
 			s.dirtylist.Remove(element)
 			eh.cleanup()
 		} else {
@@ -546,6 +550,7 @@ func (s *Streamer) closeOpenHandler() {
 		} else {
 			// TODO unhandled error
 			handler.flush()
+			handler.skip = true
 		}
 		handler = handler.recoverHandler
 		cnt--
