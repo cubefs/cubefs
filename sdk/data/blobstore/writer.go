@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/sdk/data/manager"
 	"github.com/cubefs/cubefs/util/buf"
+	"hash"
+	"io"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -37,12 +39,18 @@ const (
 	MaxBufferSize = 512 * util.MB
 )
 
+type wSliceErr struct {
+	err        error
+	fileOffset uint64
+	size       uint32
+}
+
 type Writer struct {
 	volType      int
 	volName      string
 	blockSize    int
 	ino          uint64
-	err          chan error
+	err          chan *wSliceErr
 	bc           *bcache.BcacheClient
 	mw           *meta.MetaWrapper
 	ec           *stream.ExtentClient
@@ -50,7 +58,7 @@ type Writer struct {
 	wConcurrency int
 	wg           sync.WaitGroup
 	once         sync.Once
-	sync.Mutex
+	sync.RWMutex
 	enableBcache   bool
 	cacheAction    int
 	buf            []byte
@@ -78,7 +86,7 @@ func NewWriter(config ClientConfig) (writer *Writer) {
 	writer.wConcurrency = config.WConcurrency
 	writer.wg = sync.WaitGroup{}
 	writer.once = sync.Once{}
-	writer.Mutex = sync.Mutex{}
+	writer.RWMutex = sync.RWMutex{}
 	writer.enableBcache = config.EnableBcache
 	writer.cacheAction = config.CacheAction
 	writer.fileCache = config.FileCache
@@ -128,7 +136,7 @@ func (writer *Writer) doParallelWrite(ctx context.Context, data []byte, offset i
 	sliceSize := len(wSlices)
 
 	writer.wg.Add(sliceSize)
-	writer.err = make(chan error, sliceSize)
+	writer.err = make(chan *wSliceErr, sliceSize)
 	pool := New(writer.wConcurrency, sliceSize)
 	defer pool.Close()
 	for _, wSlice := range wSlices {
@@ -138,9 +146,9 @@ func (writer *Writer) doParallelWrite(ctx context.Context, data []byte, offset i
 	}
 	writer.wg.Wait()
 	for i := 0; i < sliceSize; i++ {
-		if err, ok := <-writer.err; !ok || err != nil {
-			log.LogErrorf("slice write error,ino(%v) fileoffset(%v) sliceOffset(%v) sliceSize(%v) err(%v)", writer.ino, wSlices[i].fileOffset, wSlices[i].rOffset, wSlices[i].rSize, err)
-			return 0, err
+		if wErr, ok := <-writer.err; !ok || err != nil {
+			log.LogErrorf("slice write error,ino(%v) fileoffset(%v) sliceSize(%v) err(%v)", writer.ino, wErr.fileOffset, wErr.size, err)
+			return 0, wErr.err
 		}
 	}
 	close(writer.err)
@@ -171,6 +179,129 @@ func (writer *Writer) cacheLevel2(wSlice *rwSlice) {
 		copy(buf, wSlice.Data)
 		go writer.asyncCache(writer.ino, offSet, buf)
 	}
+}
+
+func (writer *Writer) WriteFromReader(ctx context.Context, reader io.Reader, h hash.Hash) (size uint64, err error) {
+	var (
+		buf         = make([]byte, 2*writer.blockSize)
+		exec        = NewExecutor(writer.wConcurrency)
+		leftToWrite int
+	)
+
+	writer.fileOffset = 0
+	writer.err = make(chan *wSliceErr)
+
+	writeBuff := func() {
+		bufSize := len(writer.buf)
+		log.LogDebugf("writeBuff: bufSize(%v), leftToWrite(%v), err(%v)", bufSize, leftToWrite, err)
+		if bufSize == writer.blockSize || (leftToWrite == 0 && err == io.EOF) {
+			wSlice := &rwSlice{
+				fileOffset: uint64(writer.fileOffset - bufSize),
+				size:       uint32(bufSize),
+			}
+			wSlice.Data = make([]byte, bufSize)
+			copy(wSlice.Data, writer.buf)
+			writer.resetBuffer()
+			if (err == nil || err == io.EOF) && h != nil {
+				h.Write(wSlice.Data)
+				log.LogDebugf("writeBuff: bufSize(%v), md5", bufSize)
+			}
+			writer.wg.Add(1)
+
+			write := func() {
+				defer writer.wg.Done()
+				err := writer.writeSlice(ctx, wSlice, false)
+				if err != nil {
+					writer.Lock()
+					if len(writer.err) > 0 {
+						writer.Unlock()
+						return
+					}
+					wErr := &wSliceErr{
+						err:        err,
+						fileOffset: wSlice.fileOffset,
+						size:       wSlice.size,
+					}
+					writer.err <- wErr
+					writer.Unlock()
+					return
+				}
+				oeks := make([]proto.ObjExtentKey, 0)
+				//update meta
+				oeks = append(oeks, wSlice.objExtentKey)
+				if err = writer.mw.AppendObjExtentKeys(writer.ino, oeks); err != nil {
+					log.LogErrorf("slice write error,meta append ebsc extent keys fail,ino(%v) fileOffset(%v) len(%v) err(%v)", writer.ino, wSlice.fileOffset, wSlice.size, err)
+					writer.Lock()
+					if len(writer.err) > 0 {
+						writer.Unlock()
+						return
+					}
+					wErr := &wSliceErr{
+						err:        err,
+						fileOffset: wSlice.fileOffset,
+						size:       wSlice.size,
+					}
+					writer.err <- wErr
+					writer.Unlock()
+					return
+				}
+
+				writer.cacheLevel2(wSlice)
+			}
+			exec.Run(write)
+		}
+	}
+
+LOOP:
+	for {
+		position := 0
+		leftToWrite, err = reader.Read(buf)
+		if err != nil && err != io.EOF {
+			return
+		}
+
+		for leftToWrite > 0 {
+			log.LogDebugf("WriteFromReader: leftToWrite(%v), err(%v)", leftToWrite, err)
+			writer.RLock()
+			errNum := len(writer.err)
+			writer.RUnlock()
+			if errNum > 0 {
+				break LOOP
+			}
+
+			freeSize := writer.blockSize - len(writer.buf)
+			writeSize := util.Min(leftToWrite, freeSize)
+			writer.buf = append(writer.buf, buf[position:position+writeSize]...)
+			position += writeSize
+			leftToWrite -= writeSize
+			writer.fileOffset += writeSize
+			writer.dirty = true
+
+			writeBuff()
+
+		}
+		if err == io.EOF {
+			log.LogDebugf("WriteFromReader: EOF")
+			err = nil
+			if len(writer.buf) > 0 {
+				writeBuff()
+			}
+			writer.wg.Wait()
+			var wErr *wSliceErr
+			select {
+			case wErr := <-writer.err:
+				err = wErr.err
+			default:
+			}
+			if err != nil {
+				log.LogErrorf("slice write error,ino(%v) fileoffset(%v)  sliceSize(%v) err(%v)", writer.ino, wErr.fileOffset, wErr.size, err)
+			}
+			break
+		}
+	}
+	size = uint64(writer.fileOffset)
+	atomic.AddUint64(&writer.fileSize, size)
+	return
 }
 
 func (writer *Writer) doBufferWrite(ctx context.Context, data []byte, offset int) (size int, err error) {
@@ -266,7 +397,7 @@ func (writer *Writer) writeSlice(ctx context.Context, wSlice *rwSlice, wg bool) 
 	location, err := writer.ebsc.Write(ctx, writer.volName, wSlice.Data, wSlice.size)
 	if err != nil {
 		if wg {
-			writer.err <- err
+			writer.err <- &wSliceErr{err: err, fileOffset: wSlice.fileOffset, size: wSlice.size}
 		}
 		return err
 	}

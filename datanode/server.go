@@ -273,7 +273,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	if s.zoneName == "" {
 		s.zoneName = DefaultZoneName
 	}
-	s.metricsDegrade = cfg.GetInt(CfgMetricsDegrade)
+	s.metricsDegrade = cfg.GetInt64(CfgMetricsDegrade)
 
 	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterClient.Nodes())
 	log.LogDebugf("action[parseConfig] load port(%v).", s.port)

@@ -49,3 +49,25 @@ func (r Instance) Execute(op *rwSlice, fn func(op *rwSlice)) {
 func (r Instance) Close() {
 	close(r.mq)
 }
+
+type Executor struct {
+	tokens chan int
+}
+
+func NewExecutor(maxConcurrency int) *Executor {
+	exec := &Executor{
+		tokens: make(chan int, maxConcurrency),
+	}
+	for i := 0; i < maxConcurrency; i++ {
+		exec.tokens <- i
+	}
+	return exec
+}
+
+func (exec *Executor) Run(fn func()) {
+	i := <-exec.tokens
+	go func() {
+		fn()
+		exec.tokens <- i
+	}()
+}

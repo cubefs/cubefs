@@ -104,6 +104,19 @@ create_volume() {
     echo -e "\033[32mdone\033[0m"
 }
 
+create_cold_volume() {
+    echo -n "Creating cold volume   ... "
+    # check volume exist
+    ${cli} volume info ${VolName} &> /dev/null
+    if [[ $? -eq 0 ]]; then
+        echo -e "\033[32mdone\033[0m"
+        return
+    fi
+    md5=`echo -n ${Owner} | md5sum | cut -d ' ' -f1`
+    curl -v "http://192.168.0.11:17010/admin/createVol?name=${VolName}&volType=1&cacheCap=8&cacheAction=2&capacity=10&owner=${Owner}&mpCount=3"
+    curl -v "http://192.168.0.11:17010/client/vol?name=${VolName}&authKey=${md5}" | python -m json.tool
+}
+
 show_cluster_info() {
     tmp_file=/tmp/collect_cluster_info
     ${cli} cluster info &>> ${tmp_file}
@@ -141,6 +154,7 @@ create_cluster_user
 ensure_node_writable "metanode"
 ensure_node_writable "datanode"
 create_volume
+#create_cold_volume
 show_cluster_info
 start_client
 

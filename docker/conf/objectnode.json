@@ -29,5 +29,9 @@
   "enableObjMetaCache" : true,
   "cacheRefreshInterval": 600,
   "maxDentryCacheNum" : 10000000,
-  "maxInodeAttrCacheNum": 10000000
+  "maxInodeAttrCacheNum": 10000000,
+  "enableBcache": "false",
+  "ebsWriteThreads": 4,
+  "ebsReadThreads": 4
+
 }
