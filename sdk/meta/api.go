@@ -203,24 +203,24 @@ create_dentry:
 	}
 
 	if err == nil && status == statusExist {
-		newStatus, newInode, mode, newErr := mw.lookup(ctx, parentMP, parentID, name)
+		newStatus, oldInode, mode, newErr := mw.lookup(ctx, parentMP, parentID, name)
 		if newErr == nil && newStatus == statusOK {
-			if newInode == info.Inode {
+			if oldInode == info.Inode {
 				return info, nil
 			}
-			if mw.InodeNotExist(ctx, newInode) {
+			if mw.InodeNotExist(ctx, oldInode) {
 				updateStatus, _, updateErr := mw.dupdate(ctx, parentMP, parentID, name, info.Inode)
 				if updateErr == nil && updateStatus == statusOK {
 					log.LogWarnf("Create_ll: inode(%v) is not exist, update dentry to new inode(%v) parentID(%v) name(%v)",
-						newInode, info.Inode, parentID, name)
+						oldInode, info.Inode, parentID, name)
 					return info, nil
 				}
 				log.LogWarnf("Create_ll: update_dentry failed, status(%v), err(%v)", updateStatus, updateErr)
 			} else {
 				mw.iunlink(ctx, mp, info.Inode, false)
 				mw.ievict(ctx, mp, info.Inode, false)
-				log.LogWarnf("Create_ll: dentry has allready been created by other client, newInode(%v), mode(%v)",
-					newInode, mode)
+				log.LogWarnf("Create_ll: dentry has allready been created by other client, curInode(%v), mode(%v)",
+					oldInode, mode)
 			}
 		} else {
 			log.LogWarnf("Create_ll: check create_dentry failed, status(%v), err(%v)", newStatus, newErr)
