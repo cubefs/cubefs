@@ -17,6 +17,7 @@ package blobstore
 import (
 	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/util/buf"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -60,6 +61,8 @@ type Writer struct {
 	blockPosition	int
 }
 
+
+
 func NewWriter(config ClientConfig) (writer *Writer) {
 	writer = new(Writer)
 
@@ -82,8 +85,7 @@ func NewWriter(config ClientConfig) (writer *Writer) {
 	writer.fileSize = config.FileSize
 	writer.cacheThreshold = config.CacheThreshold
 	writer.dirty = false
-	writer.buf = make([]byte, writer.blockSize)
-	writer.blockPosition = 0
+	writer.AllocateCache()
 	return
 }
 
@@ -360,3 +362,12 @@ func (writer *Writer) flush(inode uint64, ctx context.Context, flushFlag bool) (
 func (writer *Writer) CacheFileSize() int {
 	return int(atomic.LoadUint64(&writer.fileSize))
 }
+
+func (writer *Writer) FreeCache() {
+	buf.CachePool.Put(writer.buf)
+}
+
+func (writer *Writer) AllocateCache() {
+	writer.buf = buf.CachePool.Get()
+}
+
