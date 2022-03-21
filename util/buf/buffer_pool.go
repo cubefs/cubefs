@@ -18,12 +18,15 @@ const (
 var tinyBuffersTotalLimit int64 = 4096
 var NormalBuffersTotalLimit int64
 var HeadBuffersTotalLimit int64
+
 var tinyBuffersCount int64
 var normalBuffersCount int64
 var headBuffersCount int64
+
 var buffersRateLimit = rate.NewLimiter(rate.Limit(16), 16)
 var normalBuffersRateLimit = rate.NewLimiter(rate.Limit(16), 16)
 var headBuffersRateLimit = rate.NewLimiter(rate.Limit(16), 16)
+
 
 func NewTinyBufferPool() *sync.Pool {
 	return &sync.Pool{
@@ -60,6 +63,8 @@ func NewNormalBufferPool() *sync.Pool {
 		},
 	}
 }
+
+
 
 // BufferPool defines the struct of a buffered pool with 4 objects.
 type BufferPool struct {

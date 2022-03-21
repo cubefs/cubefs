@@ -99,6 +99,7 @@ func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64) fs.Node {
 			fReader = blobstore.NewReader(clientConf)
 		case syscall.O_WRONLY:
 			fWriter = blobstore.NewWriter(clientConf)
+
 		case syscall.O_RDWR:
 			fReader = blobstore.NewReader(clientConf)
 			fWriter = blobstore.NewWriter(clientConf)
@@ -153,11 +154,11 @@ func (f *File) Forget() {
 		log.LogDebugf("TRACE Forget: ino(%v)", ino)
 	}()
 	f.super.ic.Delete(ino)
+	//TODO:why cannot close fwriter
 	//log.LogErrorf("TRACE Forget: ino(%v)", ino)
 	//if f.fWriter != nil {
 	//	f.fWriter.Close()
 	//}
-
 	f.super.fslock.Lock()
 	delete(f.super.nodeCache, ino)
 	f.super.fslock.Unlock()
@@ -237,6 +238,7 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("Release", err, bgTime, 1)
+		f.fWriter.FreeCache()
 	}()
 
 	ino := f.info.Inode
