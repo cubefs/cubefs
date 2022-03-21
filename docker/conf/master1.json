@@ -14,6 +14,6 @@
   "walDir": "/cfs/data/wal",
   "storeDir": "/cfs/data/store",
   "metaNodeReservedMem": "67108864",
-  "fake_ebsAddr":"192.168.0.233:8500",
-  "fake_ebsServicePath":"access"
+  "ebsAddr": "10.177.40.215:8500",
+  "ebsServicePath": "access"
 }

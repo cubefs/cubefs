@@ -125,12 +125,12 @@ func (c *Config) GetBool(key string) bool {
 }
 
 // GetBool returns a int value for the config key.
-func (c *Config) GetInt(key string) int64 {
+func (c *Config) GetInt(key string) int {
 	x, present := c.data[key]
 	if !present {
 		return 0
 	}
-	if result, isInt := x.(int64); isInt {
+	if result, isInt := x.(int); isInt {
 		return result
 	}
 	return 0

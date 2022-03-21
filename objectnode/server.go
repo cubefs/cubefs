@@ -20,7 +20,12 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/blobstore/api/access"
+	"github.com/cubefs/cubefs/blockcache/bcache"
+	"github.com/cubefs/cubefs/sdk/data/blobstore"
+	"github.com/hashicorp/consul/api"
 	"net/http"
+	"path"
 	"regexp"
 	"strings"
 	"sync"
@@ -96,6 +101,12 @@ const (
 	configCacheRefreshInterval = "cacheRefreshInterval"
 	configMaxDentryCacheNum    = "maxDentryCacheNum"
 	configMaxInodeAttrCacheNum = "maxInodeAttrCacheNum"
+
+	//enable block cache when reading data in cold volume
+	enableBcache = "enableBcache"
+	//define thread numbers for writing and reading ebs
+	ebsWriteThreads = "ebsWriteThreads"
+	ebsReadThreads  = "ebsReadThreads"
 )
 
 // Default of configuration value
@@ -104,13 +115,20 @@ const (
 	defaultCacheRefreshInterval = 10 * 60
 	defaultMaxDentryCacheNum    = 10000000
 	defaultMaxInodeAttrCacheNum = 10000000
+	//ebs
+	MaxSizePutOnce = int64(1) << 23
 )
 
 var (
 	// Regular expression used to verify the configuration of the service listening port.
 	// A valid service listening port configuration is a string containing only numbers.
-	regexpListen = regexp.MustCompile("^(\\d)+$")
-	objMetaCache *ObjMetaCache
+	regexpListen     = regexp.MustCompile("^(\\d)+$")
+	objMetaCache     *ObjMetaCache
+	blockCache       *bcache.BcacheClient
+	ebsClient        *blobstore.BlobStoreClient
+	writeThreads     int = 4
+	readThreads      int = 4
+	enableBlockcache bool
 )
 
 type ObjectNode struct {
@@ -224,6 +242,11 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 			", cacheRefreshInterval: %v", cacheEnable, maxDentryCacheNum, maxInodeAttrCacheNum, cacheRefreshInterval)
 	}
 
+	enableBlockcache = cfg.GetBool(enableBcache)
+	if enableBlockcache {
+		blockCache = bcache.NewBcacheClient()
+	}
+
 	return
 }
 
@@ -242,7 +265,6 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 	if err = o.loadConfig(cfg); err != nil {
 		return
 	}
-
 	// Get cluster info from master
 
 	var ci *proto.ClusterInfo
@@ -251,6 +273,28 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 	}
 	o.updateRegion(ci.Cluster)
 	log.LogInfof("handleStart: get cluster information: region(%v)", o.region)
+	ebsClient, err = blobstore.NewEbsClient(access.Config{
+		ConnMode: access.NoLimitConnMode,
+		Consul: api.Config{
+			Address: ci.EbsAddr,
+		},
+		//ServicePath:    ci.ServicePath,
+		MaxSizePutOnce: MaxSizePutOnce,
+		Logger: &access.Logger{
+			Filename: path.Join(cfg.GetString("logDir"), "ebs.log"),
+		},
+	})
+
+	if err != nil {
+		wt := cfg.GetInt(ebsWriteThreads)
+		if wt != 0 {
+			writeThreads = wt
+		}
+		rt := cfg.GetInt(ebsReadThreads)
+		if rt != 0 {
+			readThreads = rt
+		}
+	}
 
 	// start rest api
 	if err = o.startMuxRestAPI(); err != nil {
