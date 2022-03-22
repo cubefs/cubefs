@@ -331,6 +331,8 @@ func GetPacketFromPool() (p *Packet) {
 	index := rand.Intn(PacketPoolCnt)
 	p = PacketPool[index].Get().(*Packet)
 	p.IsFromPool = true
+	p.StartT = time.Now().UnixNano()
+	p.NeedReply = true
 	return
 }
 

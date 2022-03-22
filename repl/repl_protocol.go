@@ -413,7 +413,7 @@ func (rp *ReplProtocol) ServerConn() {
 //}
 
 func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
-	request := NewPacketFromPool(context.Background())
+	request := rp.GetPacketFromPool()
 	var isUsedBufferPool bool
 	isUsedBufferPool, err = request.ReadFromConnFromCli(rp.sourceConn, ReplProtocalServerTimeOut)
 	if isUsedBufferPool {
@@ -745,9 +745,10 @@ func LoggingAllReplProtocolBufferPoolUse() {
 			}
 			usedPoolCnt := atomic.LoadInt64(&rp.getNumFromBufferPool) - atomic.LoadInt64(&rp.putNumToBufferPool)
 			sumBytes += (usedPoolCnt) * util.BlockSize
-			log.LogWarnf(fmt.Sprintf("repl(%v) ReplProtocol(%v) getNumFromBufferPool(%v) putNumToBufferPool(%v)  GetPacketFromPoolCnt(%v) PutPacketToPoolCnt(%v)",
+			log.LogWarnf(fmt.Sprintf("repl(%v) ReplProtocol(%v) getNumFromBufferPool(%v)" +
+				" putNumToBufferPool(%v)  GetPacketFromPoolCnt(%v) PutPacketToPoolCnt(%v)",
 				rp.replId, rp.sourceConn.RemoteAddr().String(), atomic.LoadInt64(&rp.getNumFromBufferPool),
-				atomic.LoadInt64(&rp.putNumToBufferPool)),atomic.LoadInt64(&rp.getPacketFromPoolCnt),atomic.LoadInt64(&rp.putPacketToPoolCnt))
+				atomic.LoadInt64(&rp.putNumToBufferPool),atomic.LoadInt64(&rp.getPacketFromPoolCnt),atomic.LoadInt64(&rp.putPacketToPoolCnt)))
 			return true
 		})
 		time.Sleep(time.Minute)
@@ -1019,11 +1020,6 @@ func (rp *ReplProtocol) cleanResource() {
 	}
 	rp.cleanToBeProcessCh()
 	rp.cleanResponseCh()
-	if atomic.LoadInt64(&rp.getNumFromBufferPool) != atomic.LoadInt64(&rp.putNumToBufferPool) {
-		log.LogErrorf("repl(%v) ReplProtocol(%v) use buffer pool error,"+
-			"getNumFromBufferPool(%v) putNumToBufferPool(%v)", rp.replId, rp.sourceConn.RemoteAddr(),
-			atomic.LoadInt64(&rp.getNumFromBufferPool), atomic.LoadInt64(&rp.putNumToBufferPool))
-	}
 	rp.packetList = list.New()
 	rp.forwardPacketCheckList = list.New()
 	close(rp.responseCh)
@@ -1032,8 +1028,10 @@ func (rp *ReplProtocol) cleanResource() {
 	rp.packetList = nil
 	rp.followerConnects = nil
 	rp.packetListLock.Unlock()
-	log.LogWarnf(fmt.Sprintf("repl(%v) ReplProtocol(%v) getNumFromBufferPool(%v) putNumToBufferPool(%v)",
-		rp.replId, rp.sourceConn.RemoteAddr(), atomic.LoadInt64(&rp.getNumFromBufferPool), atomic.LoadInt64(&rp.putNumToBufferPool)))
+	log.LogWarnf(fmt.Sprintf("repl(%v) ReplProtocol(%v) getNumFromBufferPool(%v) putNumToBufferPool(%v)  " +
+		"GetPacketFromPoolCnt(%v) PutPacketToPoolCnt(%v)",
+		rp.replId, rp.sourceConn.RemoteAddr().String(), atomic.LoadInt64(&rp.getNumFromBufferPool),
+		atomic.LoadInt64(&rp.putNumToBufferPool),atomic.LoadInt64(&rp.getPacketFromPoolCnt),atomic.LoadInt64(&rp.putPacketToPoolCnt)))
 	ReplProtocalMap.Delete(rp.replId)
 
 }
