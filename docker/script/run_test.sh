@@ -239,7 +239,13 @@ run_ltptest() {
     go test /go/src/github.com/chubaofs/chubaofs/sdk/... -covermode=atomic -coverprofile=${cover_path}/sdkunittestcover.cov
     ret=$?
     if [[ $ret -ne 0 ]]; then
-        echo -e "Unit test: \033[32mFAIL\033[0m"
+        echo -e "SDK Unit test: \033[32mFAIL\033[0m"
+        exit $ret
+    fi
+    go test /go/src/github.com/chubaofs/chubaofs/metanode/... -covermode=atomic -coverprofile=${cover_path}/metanodeunittestcover.cov
+    ret=$?
+    if [[ $ret -ne 0 ]]; then
+        echo -e "Meta Node Unit test: \033[32mFAIL\033[0m"
         exit $ret
     fi
     echo -e "Unit test: \033[32mPASS\033[0m"

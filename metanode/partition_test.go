@@ -55,11 +55,15 @@ const (
 	count = 10000
 )
 
-func genInode(t *testing.T, mp *metaPartition, cnt uint64) {
+func genInode(t *testing.T, mp *metaPartition, cnt uint64) uint64 {
 
+	maxInode := uint64(0)
 	testTarget := []byte{'1', '2', '3', '4', '1', '2', '3', '4'}
 	for i := uint64(0); i < cnt;  {
 		ino := NewInode(rand.Uint64() % uint64(1000000000) + 1, 0)
+		if ino.Inode > maxInode {
+			maxInode = ino.Inode
+		}
 		if ino.Inode % 997 == 0 {
 			ino.LinkTarget = append(ino.LinkTarget, testTarget...)
 			ino.Type = rand.Uint32()
@@ -74,6 +78,7 @@ func genInode(t *testing.T, mp *metaPartition, cnt uint64) {
 		}
 		i++
 	}
+	return maxInode
 }
 
 func RandString(len int) string {
@@ -85,11 +90,14 @@ func RandString(len int) string {
 	return string(bytes)
 }
 
-func genDentry(t *testing.T, mp *metaPartition, cnt uint64) {
+func genDentry(t *testing.T, mp *metaPartition, cnt, maxInode uint64) {
 	for i := uint64(0); i < cnt;  {
 		dentry := &Dentry{}
 		dentry.ParentId = rand.Uint64() % uint64(1000000000) + 1
 		dentry.Inode = rand.Uint64() % uint64(1000000000) + 1
+		if dentry.ParentId > maxInode {
+			continue
+		}
 		dentry.Type = rand.Uint32()
 		dentry.Name = RandString(rand.Int() % 100 + 10)
 		if err := mp.dentryTree.Create(dentry, false); err != nil {
@@ -147,8 +155,12 @@ func TestMetaPartition_Store(t *testing.T) {
 	mp.marshalVersion = MetaPartitionMarshVersion1
 	mp2.marshalVersion = MetaPartitionMarshVersion2
 
-	genInode(t, mp, count)
-	genDentry(t, mp, count)
+	maxInode := genInode(t, mp, count)
+	if maxInode <= 0 {
+		fmt.Printf("error max inode id:%v\n", maxInode)
+		t.FailNow()
+	}
+	genDentry(t, mp, count, maxInode)
 
 	start := time.Now()
 	mp.store(&storeMsg{
