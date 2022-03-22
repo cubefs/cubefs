@@ -220,7 +220,9 @@ func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.
 }
 
 func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
-
+	if w.preload {
+		return
+	}
 	var dpv *proto.DataPartitionsView
 	if dpv, err = w.mc.ClientAPI().GetDataPartitions(w.volName); err != nil {
 		log.LogErrorf("updateDataPartition: get data partitions fail: volume(%v) err(%v)", w.volName, err)
@@ -293,10 +295,8 @@ func (w *Wrapper) AllocatePreLoadDataPartition(volName string, count int, capaci
 		}
 		log.LogInfof("updateDataPartition: dp(%v)", dp)
 		w.replaceOrInsertPartition(dp)
-		if dp.Status == proto.ReadWrite {
-			dp.MetricsRefresh()
-			rwPartitionGroups = append(rwPartitionGroups, dp)
-		}
+		dp.MetricsRefresh()
+		rwPartitionGroups = append(rwPartitionGroups, dp)
 	}
 
 	w.refreshDpSelector(rwPartitionGroups)

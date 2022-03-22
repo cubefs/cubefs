@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/cubefs/cubefs/util/buf"
 	"net/http"
 	_ "net/http/pprof"
 	"path"
@@ -155,7 +156,6 @@ func NewClient(config PreloadConfig) *PreLoadClient {
 	if c.limitParam.ClearFileConcurrency == 0 {
 		c.limitParam.ClearFileConcurrency = 4
 	}
-
 	log.LogDebugf("Client is created:(%v)", c)
 	return c
 }
@@ -217,6 +217,7 @@ func (c *PreLoadClient) newEBSClient(masters []string, logDir string) (err error
 		return
 	}
 	c.ebsc = ebsc
+	buf.InitCachePool(c.ebsBlockSize)
 	return
 }
 
