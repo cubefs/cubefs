@@ -296,7 +296,7 @@ func init() {
 	}
 }
 
-func PutPacketFromPool(p *Packet) {
+func PutPacketToPool(p *Packet) {
 	if !p.IsFromPool{
 		return 
 	}
@@ -309,6 +309,7 @@ func PutPacketFromPool(p *Packet) {
 	p.Magic = proto.ProtoMagic
 	p.ExtentType = 0
 	p.ResultCode = 0
+	p.refCnt=0
 	p.RemainingFollowers = 0
 	p.CRC = 0
 	p.ArgLen = 0
@@ -609,14 +610,11 @@ func (p *Packet) IsMasterCommand() bool {
 	return false
 }
 
-func (p *Packet) IsForwardPacket() bool {
-	r := p.RemainingFollowers > 0
-	return r
-}
+
 
 // A leader packet is the packet send to the leader and does not require packet forwarding.
 func (p *Packet) IsLeaderPacket() (ok bool) {
-	if p.IsForwardPkt() && (p.IsWriteOperation() || p.IsCreateExtentOperation() || p.IsMarkDeleteExtentOperation()) {
+	if p.RemainingFollowers > 0 && (p.IsWriteOperation() || p.IsCreateExtentOperation() || p.IsMarkDeleteExtentOperation()) {
 		ok = true
 	}
 

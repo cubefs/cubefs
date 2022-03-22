@@ -33,7 +33,7 @@ import (
 )
 
 var (
-	gConnPool       = util.NewConnectPool()
+	gConnPool       *util.ConnectPool
 	ReplProtocalMap sync.Map
 )
 
@@ -134,6 +134,10 @@ func (ft *FollowerTransport) PutRequestToSendCh(request *FollowerPacket) (err er
 	}
 }
 
+func SetConnectPool(cp *util.ConnectPool) {
+	gConnPool=cp
+}
+
 func (ft *FollowerTransport) serverWriteToFollower() {
 	for {
 		select {
@@ -209,7 +213,7 @@ func (ft *FollowerTransport) readFollowerResult(ctx context.Context, request *Fo
 			log.LogErrorf("replID(%v) pkgOrder(%v) firstErrorAndPkgInfo(%v,%v) request(%v) readFollowerResult(%v) error(%v)", ft.replId, ft.pkgOrder, ft.globalErr, ft.firstErrPkg, request.GetUniqueLogId(), ft.conn.RemoteAddr().String(), err)
 			return
 		}
-		PutPacketFromPool(reply)
+		PutPacketToPool(reply)
 	}()
 	request.Data = nil
 	if err = reply.ReadFromConn(ft.conn, proto.ReadDeadlineTime); err != nil {
@@ -540,7 +544,7 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 }
 
 func (rp *ReplProtocol) processRequest(request *Packet) {
-	if !request.IsForwardPacket() {
+	if !request.IsLeaderPacket() {
 		_ = rp.operatorFunc(request, rp.sourceConn)
 		request.DecRefCnt()
 		_ = rp.putResponse(request)
@@ -577,7 +581,7 @@ func (rp *ReplProtocol) autoReleaseFollowerTransport() {
 	rp.lock.Unlock()
 }
 
-func (rp *ReplProtocol) putForwardPacketToCheckList(request *Packet) {
+func (rp *ReplProtocol) putLeaderPacketToCheckList(request *Packet) {
 	if request.isUseBufferPool() {
 		atomic.AddUint64(&rp.forwardPacketCheckCnt, 1)
 		rp.forwardPacketCheckList.PushBack(request)
@@ -588,7 +592,7 @@ const (
 	MaxForwardPacketCheckCnt = 1000
 )
 
-func (rp *ReplProtocol) checkForwardPacketPost() {
+func (rp *ReplProtocol) checkLeaderPacketPost() {
 	if atomic.LoadUint64(&rp.forwardPacketCheckCnt)%MaxForwardPacketCheckCnt == 0 {
 		return
 	}
@@ -601,11 +605,13 @@ func (rp *ReplProtocol) checkForwardPacketPost() {
 		p := e.Value.(*Packet)
 		if !p.isUseBufferPool() {
 			rp.forwardPacketCheckList.Remove(e)
+			PutPacketToPool(p)
 			continue
 		}
 		if p.canPutToBufferPool() {
 			p.clean()
 			rp.forwardPacketCheckList.Remove(e)
+			PutPacketToPool(p)
 			freeCnt++
 			continue
 		}
@@ -647,10 +653,14 @@ func (rp *ReplProtocol) writeResponseToClientGoroutine() {
 			request := e.Value.(*Packet)
 			rp.checkLocalResultAndReceiveAllFollowerResponse(request)
 			rp.deletePacket(request, e)
-			rp.putForwardPacketToCheckList(request)
+			if request.IsLeaderPacket(){
+				rp.putLeaderPacketToCheckList(request)
+			}
 		case request := <-rp.responseCh:
 			rp.writeResponse(request)
-			rp.checkForwardPacketPost()
+			if request.IsLeaderPacket(){
+				rp.checkLeaderPacketPost()
+			}
 		case <-rp.exitC:
 			rp.exitedMu.Lock()
 			rp.allThreadStatsLock.Lock()
@@ -788,7 +798,9 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 	var err error
 	defer func() {
 		rp.cleanPacket(reply)
-		PutPacketFromPool(reply)
+		if !reply.IsLeaderPacket() {
+			PutPacketToPool(reply)
+		}
 	}()
 	_ = rp.postFunc(reply)
 	if !reply.NeedReply {
@@ -869,6 +881,7 @@ func (rp *ReplProtocol) cleanToBeProcessCh() {
 			}
 			_ = rp.postFunc(p)
 			rp.forceCleanPacket(p)
+			PutPacketToPool(p)
 			log.LogErrorf("Action[cleanToBeProcessCh] request(%v) because (%v)", p.GetUniqueLogId(), rp.stopError)
 		default:
 			return
@@ -885,6 +898,7 @@ func (rp *ReplProtocol) cleanResponseCh() {
 			}
 			_ = rp.postFunc(p)
 			rp.forceCleanPacket(p)
+			PutPacketToPool(p)
 			log.LogErrorf("Action[cleanResponseCh] request(%v) because (%v)", p.GetUniqueLogId(), rp.stopError)
 		default:
 			return
@@ -961,12 +975,14 @@ func (rp *ReplProtocol) cleanResource() {
 		_ = rp.postFunc(request)
 		log.LogErrorf("Action[cleanResource] request(%v) because (%v)", request.GetUniqueLogId(), rp.stopError)
 		rp.forceCleanPacket(request)
+		PutPacketToPool(request)
 	}
 
 	for e := rp.forwardPacketCheckList.Front(); e != nil; e = e.Next() {
 		request := e.Value.(*Packet)
 		log.LogErrorf("Action[cleanResource] request(%v) because (%v)", request.GetUniqueLogId(), rp.stopError)
 		rp.forceCleanPacket(request)
+		PutPacketToPool(request)
 	}
 	rp.cleanToBeProcessCh()
 	rp.cleanResponseCh()

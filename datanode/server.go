@@ -127,7 +127,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	if !ok {
 		return errors.New("Invalid Node Type!")
 	}
-
+	repl.SetConnectPool(gConnPool)
 	s.stopC = make(chan bool, 0)
 
 	// parse the config file
