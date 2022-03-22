@@ -45,8 +45,17 @@ func main() {
 	preloadFileSizeLimit, _ := strconv.ParseInt(cfg.GetString("preloadFileSizeLimit"), 10, 64)
 	readBlockConcurrency, _ := strconv.ParseInt(cfg.GetString("readBlockConcurrency"), 10, 64)
 	clearFileConcurrency, _ := strconv.ParseInt(cfg.GetString("clearFileConcurrency"), 10, 64)
+	buffersTotalLimit, _ := strconv.ParseInt(cfg.GetString("buffersTotalLimit"), 10, 64)
 	replicaNum, _ := strconv.ParseInt(cfg.GetString("replicaNum"), 10, 64)
 	ttl, _ := strconv.ParseInt(cfg.GetString("ttl"), 10, 64)
+
+	if buffersTotalLimit < 0 {
+		fmt.Println("buffersTotalLimit cannot less than 0")
+		os.Exit(1)
+	} else if buffersTotalLimit == 0{
+		buffersTotalLimit = int64(32768)
+	}
+	proto.InitBufferPool(buffersTotalLimit)
 	config := sdk.PreloadConfig{
 		Volume:   cfg.GetString("volumeName"),
 		Masters:  masters,
