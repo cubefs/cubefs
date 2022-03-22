@@ -61,7 +61,6 @@ const (
 	AdminSetVolMinRWPartition      = "/vol/setMinRWPartition"
 	AdminEnableTrash               = "/admin/trash"
 	AdminStatTrash                 = "/admin/trash/stat"
-	AdminSetVolMinRWPartition      = "/vol/setMinRWPartition"
 
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
