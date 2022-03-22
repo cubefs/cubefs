@@ -37,6 +37,9 @@ type GetExtentsFunc func(ctx context.Context, inode uint64) (uint64, uint64, []p
 type TruncateFunc func(ctx context.Context, inode, oldSize, size uint64) error
 type EvictIcacheFunc func(ctx context.Context, inode uint64)
 type InodeMergeExtentsFunc func(ctx context.Context, inode uint64, oldEks []proto.ExtentKey, newEk []proto.ExtentKey) error
+type InsertInnerDataFunc func(ctx context.Context, inode uint64, fileOffset uint64, size uint32, data []byte) error
+type GetInnerDataFunc func(ctx context.Context, inode, fileOffset uint64, size uint32) (readSize int, data []byte, err error)
+type IsRocksDBMpFunc func(ctx context.Context, inode uint64) bool
 
 const (
 	MaxMountRetryLimit = 5
@@ -101,6 +104,9 @@ type ExtentConfig struct {
 	OnTruncate               TruncateFunc
 	OnEvictIcache            EvictIcacheFunc
 	OnInodeMergeExtents      InodeMergeExtentsFunc
+	OnInsertInnerData		 InsertInnerDataFunc
+	OnGetInnerData			 GetInnerDataFunc
+	OnIsRocksDBMp			 IsRocksDBMpFunc
 	ExtentMerge              bool
 	MetaWrapper              *meta.MetaWrapper
 }
@@ -125,6 +131,9 @@ type ExtentClient struct {
 	getExtents      GetExtentsFunc
 	truncate        TruncateFunc
 	evictIcache     EvictIcacheFunc //May be null, must check before using
+	insertInnerData InsertInnerDataFunc
+	getInnerData    GetInnerDataFunc
+	isRocksDBMp	    IsRocksDBMpFunc
 
 	followerRead             bool
 	alignSize                int64
@@ -171,6 +180,9 @@ retry:
 	client.getExtents = config.OnGetExtents
 	client.truncate = config.OnTruncate
 	client.evictIcache = config.OnEvictIcache
+	client.insertInnerData = config.OnInsertInnerData
+	client.getInnerData = config.OnGetInnerData
+	client.isRocksDBMp = config.OnIsRocksDBMp
 	client.dataWrapper.InitFollowerRead(config.FollowerRead)
 	client.dataWrapper.SetNearRead(config.NearRead)
 	client.tinySize = config.TinySize

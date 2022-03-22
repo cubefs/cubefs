@@ -1327,3 +1327,19 @@ func (mp *MetaPartition) getLearnerHosts() (learnerHosts []string) {
 	}
 	return
 }
+
+func (mp *MetaPartition) storeMode() (storeMode proto.StoreMode) {
+	mp.RLock()
+	defer mp.RUnlock()
+	if len(mp.Replicas) == 0 {
+		return proto.StoreModeDef
+	}
+
+	storeMode = mp.Replicas[0].StoreMode
+	for _, replica := range mp.Replicas {
+		if storeMode != replica.StoreMode {
+			storeMode = proto.StoreModeMem | proto.StoreModeRocksDb
+		}
+	}
+	return
+}

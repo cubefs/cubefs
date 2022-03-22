@@ -111,6 +111,7 @@ func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 				Learners:    mp.Learners,
 				LeaderAddr:  mp.LeaderAddr,
 				Status:      mp.Status,
+				StoreMode:   mp.StoreMode,
 			}
 		}
 		return result
@@ -198,6 +199,7 @@ func (mw *MetaWrapper) updateMetaPartitionsWithNoCache() error {
 			Learners:    view.Learners,
 			LeaderAddr:  view.LeaderAddr,
 			Status:      view.Status,
+			StoreMode: 	 view.StoreMode,
 		}
 		mw.replaceOrInsertPartition(mp)
 		log.LogInfof("updateMetaPartitionsWithNoCache: mp(%v)", mp)

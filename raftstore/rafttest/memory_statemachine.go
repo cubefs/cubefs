@@ -110,7 +110,7 @@ func (ms *memoryStatemachine) Snapshot(recoveryID uint64) (proto.Snapshot, error
 	}
 }
 
-func (ms *memoryStatemachine) ApplySnapshot(peers []proto.Peer, iter proto.SnapIterator) error {
+func (ms *memoryStatemachine) ApplySnapshot(peers []proto.Peer, iter proto.SnapIterator, snapV uint32) error {
 	ms.Lock()
 	defer ms.Unlock()
 
@@ -277,4 +277,8 @@ func (s *memorySnapshot) ApplyIndex() uint64 {
 
 func (s *memorySnapshot) Close() {
 	return
+}
+
+func (s *memorySnapshot) Version() uint32 {
+	return 0
 }

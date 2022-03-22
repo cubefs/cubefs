@@ -1,6 +1,7 @@
 package data
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -87,7 +88,7 @@ func TestPingCrossRegionHosts(t *testing.T) {
 		t.Fatalf("TestPingCrossRegionHosts: NewDataPartitionWrapper failed, err %v", err)
 	}
 	dataWrapper.crossRegionHAType = proto.CrossRegionHATypeQuorum
-	err = dataWrapper.updateDataPartition(false)
+	err = dataWrapper.updateDataPartition(true)
 	if err != nil {
 		t.Fatalf("TestPingCrossRegionHosts: updateDataPartition failed, err %v", err)
 	}
@@ -126,17 +127,13 @@ func TestMiddleStatCrossRegionHosts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("TestCrossRegionHosts: NewDataPartitionWrapper failed, err %v", err)
 	}
-	dataWrapper.crossRegionHostLatency.Store(ip1, 1*time.Millisecond)	// same-region
-	dataWrapper.crossRegionHostLatency.Store(ip2, 400*time.Microsecond) // same-zone
-	dataWrapper.crossRegionHostLatency.Store(ip3, 10*time.Microsecond)  // same-zone
-	dataWrapper.crossRegionHostLatency.Store(ip4, time.Duration(0))		// unknown
-	dataWrapper.crossRegionHostLatency.Store(ip5, 20*time.Millisecond)	// cross-region
 	// check before classify
 	dp := &DataPartition{
 		DataPartitionResponse: proto.DataPartitionResponse{Hosts: []string{ip1, ip2, ip3, ip4, ip5}, LeaderAddr: ip3},
 		CrossRegionMetrics:    NewCrossRegionMetrics(),
 		ClientWrapper:         dataWrapper,
 	}
+	fmt.Println("dp: ", dp.CrossRegionMetrics)
 	// check get
 	targetHost := dp.getNearestCrossRegionHost()
 	if targetHost != dp.LeaderAddr {
@@ -153,13 +150,31 @@ func TestMiddleStatCrossRegionHosts(t *testing.T) {
 		t.Fatalf("TestCrossRegionHosts failed: expect sorted cross region hosts(%v) but(%v)", expectedSortedHosts, sortedByStatusHosts)
 	}
 	// check occur error
-	for i := 0; i < 10; i++ {
+	expectErrCount := 10
+	for i := 0; i < expectErrCount; i++ {
 		dp.updateCrossRegionMetrics(ip2, true)
 	}
 	if len(dp.CrossRegionMetrics.CrossRegionHosts[SameZoneRank]) != 0 || len(dp.CrossRegionMetrics.CrossRegionHosts[UnknownRegionRank]) != 0 {
 		t.Fatalf("TestCrossRegionHosts failed: expect nil CrossRegionHosts but(%v)", dp.CrossRegionMetrics)
 	}
-
+	fmt.Printf("dp: %v, crossRegionMetrics(%v)\n", dp, dp.CrossRegionMetrics)
+	if count, ok := dp.CrossRegionMetrics.HostErrCounter[ip2]; !ok || count != expectErrCount {
+		t.Fatalf("TestMiddleStatCrossRegionHosts: failed count of error expect(%v) but(%v)", expectErrCount, count)
+	}
+	dataWrapper.initCrossRegionHostStatus(dp)
+	dp.CrossRegionMetrics.CrossRegionHosts = dataWrapper.classifyCrossRegionHosts(dp.Hosts)
+	for i, hosts := range dp.CrossRegionMetrics.CrossRegionHosts {
+		fmt.Printf("TestMiddleStatCrossRegionHosts: rank(%v) hosts(%v)\n", i, hosts)
+		if i == UnknownRegionRank {
+			if len(hosts) != 5 {
+				t.Errorf("TestMiddleStatCrossRegionHosts: expect hosts count(5) but (%v)", len(hosts))
+			}
+			continue
+		}
+		if len(hosts) != 0 {
+			t.Errorf("TestMiddleStatCrossRegionHosts: expect hosts count(0) but (%v)", len(hosts))
+		}
+	}
 }
 
 func contains(arr []string, element string) (ok bool) {

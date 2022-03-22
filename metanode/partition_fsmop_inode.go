@@ -26,6 +26,7 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/statistics"
 )
 
 type InodeResponse struct {
@@ -382,6 +383,8 @@ func (mp *metaPartition) fsmInsertExtents(ctx context.Context, dbHandle interfac
 	oldSize := existIno.Size
 	delExtents := existIno.InsertExtents(ctx, eks, ino.ModifyTime)
 	newSize := existIno.Size
+	existIno.InnerDataSet.ReshuffleInnerDataSet(existIno.Extents)
+	_ = existIno.InnerDataSet.GenCrc()
 	if err = mp.inodeTree.Put(dbHandle, existIno); err != nil {
 		status = proto.OpErr
 		log.LogErrorf("fsm(%v) action(InsertExtents) inode(%v) eks(insert: %v, deleted: %v) size(old: %v, new: %v) Put error:%v",
@@ -397,6 +400,54 @@ func (mp *metaPartition) fsmInsertExtents(ctx context.Context, dbHandle interfac
 	_ = mp.inodeTree.ClearBatchWriteHandle(dbHandle)
 	log.LogInfof("fsm(%v) InsertExtents inode(%v) eks(insert: %v, deleted: %v) size(old: %v, new: %v) extDelChLen(%v)",
 		mp.config.PartitionId, existIno.Inode, eks, delExtents, oldSize, newSize, len(mp.extDelCh))
+	mp.extDelCh <- delExtents
+	return
+}
+
+func (mp *metaPartition) fsmInsertInnerData(ctx context.Context, dbHandle interface{}, ino *Inode) (status uint8, err error) {
+	status = proto.OpOk
+
+	if isOutOfRange, _ := mp.isInoOutOfRange(ino.Inode); isOutOfRange {
+		status = proto.OpInodeOutOfRange
+		return
+	}
+
+	var existIno *Inode
+	existIno, err = mp.inodeTree.Get(ino.Inode)
+	if err != nil {
+		status = proto.OpErr
+		return
+	}
+	if existIno == nil || existIno.ShouldDelete(){
+		status = proto.OpNotExistErr
+		return
+	}
+	innerDataEKs := ino.InnerDataSet.ConvertInnerDataArrToExtentKeys()
+	oldSize := existIno.Size
+	delExtents := existIno.InsertExtents(ctx, innerDataEKs, ino.ModifyTime)
+	newSize := existIno.Size
+
+	ino.InnerDataSet.Range(func(innData *proto.InnerDataSt) bool {
+		existIno.InnerDataSet.Insert(innData)
+		return true
+	})
+	existIno.InnerDataSet.Merge()
+	_ = existIno.InnerDataSet.GenCrc()
+	if err = mp.inodeTree.Put(dbHandle, existIno); err != nil {
+		status = proto.OpErr
+		log.LogErrorf("fsm(%v) action(InsertInnerData) inode(%v) insert inner data eks(insert: %v, deleted: %v) size(old: %v, new: %v) Put error:%v",
+			mp.config.PartitionId, existIno.Inode, innerDataEKs, delExtents, oldSize, newSize, err)
+		return
+	}
+	if err = mp.inodeTree.CommitBatchWrite(dbHandle, true); err != nil {
+		log.LogErrorf("fsm(%v) action(InsertInnerData) inode(%v) insert inner data eks(insert: %v, deleted: %v) size(old: %v, new: %v) Commit error:%v",
+			mp.config.PartitionId, existIno.Inode, innerDataEKs, delExtents, oldSize, newSize, err)
+		status = proto.OpErr
+		return
+	}
+	_ = mp.inodeTree.ClearBatchWriteHandle(dbHandle)
+	log.LogInfof("fsm(%v) InsertInnerData inode(%v) insert inner data eks(insert: %v, deleted: %v) size(old: %v, new: %v)",
+		mp.config.PartitionId, existIno.Inode, innerDataEKs, delExtents, oldSize, newSize)
 	mp.extDelCh <- delExtents
 	return
 }
@@ -443,7 +494,8 @@ func (mp *metaPartition) fsmExtentsTruncate(dbHandle interface{}, ino *Inode) (r
 	}
 	delExtents := i.ExtentsTruncate(ino.Size, ino.ModifyTime)
 	newSize := i.Size
-
+	i.InnerDataSet.ReshuffleInnerDataSet(i.Extents)
+	_ = i.InnerDataSet.GenCrc()
 	if err = mp.inodeTree.Put(dbHandle, i); err != nil {
 		resp.Status = proto.OpErr
 		return
@@ -487,6 +539,7 @@ func (mp *metaPartition) fsmEvictInode(dbHandle interface{}, ino *Inode, timesta
 	if i.ShouldDelete() {
 		return
 	}
+	defer mp.monitorData[statistics.ActionMetaEvictInode].UpdateData(i.Size)
 
 	if proto.IsDir(i.Type) {
 		if i.IsEmptyDir() {
@@ -625,6 +678,8 @@ func (mp *metaPartition) fsmExtentsMerge(dbHandle interface{}, im *InodeMerge) (
 		delExtents = newExtents
 		return
 	}
+	ino.InnerDataSet.ReshuffleInnerDataSet(ino.Extents)
+	_ = ino.InnerDataSet.GenCrc()
 	if err = mp.inodeTree.Put(dbHandle, ino); err != nil {
 		status = proto.OpErr
 		delExtents = newExtents

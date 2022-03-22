@@ -79,6 +79,7 @@ type Wrapper struct {
 	dpMetricsReportConfig  *proto.DpMetricsReportConfig
 	dpMetricsRefreshCount  uint
 	dpMetricsFetchErrCount uint
+	innerSize			   uint64
 	ecEnable               bool
 }
 
@@ -179,13 +180,14 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	w.extentCacheExpireSec = view.ExtentCacheExpireSec
 	w.updateConnConfig(view.ConnConfig)
 	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
+	w.innerSize = view.InnerSize
 
 	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
 		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) forceROW(%v) enableWriteCache(%v) createTime(%v) dpSelectorName(%v) "+
-		"dpSelectorParm(%v) quorum(%v) extentCacheExpireSecond(%v)",
+		"dpSelectorParm(%v) quorum(%v) extentCacheExpireSecond(%v) innerSize(%v)",
 		view.ID, view.Name, view.Owner, view.Status, view.Capacity, view.MpReplicaNum, view.DpReplicaNum, view.MpCnt,
 		view.DpCnt, view.FollowerRead, view.ForceROW, view.EnableWriteCache, view.CreateTime, view.DpSelectorName, view.DpSelectorParm,
-		view.Quorum, view.ExtentCacheExpireSec)
+		view.Quorum, view.ExtentCacheExpireSec, view.InnerSize)
 	return nil
 }
 
@@ -261,6 +263,11 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 	if w.extentCacheExpireSec != view.ExtentCacheExpireSec {
 		log.LogInfof("updateSimpleVolView: update ExtentCacheExpireSec from old(%v) to new(%v)", w.extentCacheExpireSec, view.ExtentCacheExpireSec)
 		w.extentCacheExpireSec = view.ExtentCacheExpireSec
+	}
+
+	if w.innerSize != view.InnerSize {
+		log.LogInfof("updateSimpleVolView: update InnerSize from old(%v) to new(%v)", w.innerSize, view.InnerSize)
+		w.innerSize = view.InnerSize
 	}
 
 	if w.ecEnable != view.EcEnable {

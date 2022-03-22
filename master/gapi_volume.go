@@ -211,8 +211,8 @@ func (s *VolumeService) volPermission(ctx context.Context, args struct {
 
 func (s *VolumeService) createVolume(ctx context.Context, args struct {
 	Name, Owner, ZoneName, Description                                                   string
-	Capacity, DataPartitionSize, MpCount, DpReplicaNum, storeMode, mpPercent, repPercent uint64
-	FollowerRead, Authenticate, CrossZone, EnableToken                                   bool
+	Capacity, InnerSize, DataPartitionSize, MpCount, DpReplicaNum, storeMode, mpPercent, repPercent uint64
+	FollowerRead, Authenticate, CrossZone, EnableToken, EnableInnerData                  bool
 }) (*Vol, error) {
 	uid, per, err := permissions(ctx, ADMIN|USER)
 	if err != nil {
@@ -235,9 +235,13 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 		return nil, fmt.Errorf("[%s] not has permission to create volume for [%s]", uid, args.Owner)
 	}
 
+	if args.InnerSize > defaultVolMaxInnerSize {
+		return nil, fmt.Errorf("inner size must be %vKB ,received is[%v]", defaultVolMaxInnerSize / 1024 , args.InnerSize)
+	}
+
 	vol, err := s.cluster.createVol(args.Name, args.Owner, args.ZoneName, args.Description, int(args.MpCount),
-		int(args.DpReplicaNum), defaultReplicaNum, int(args.DataPartitionSize), int(args.Capacity), 0, defaultEcDataNum, defaultEcParityNum, defaultEcEnable,
-		args.FollowerRead, args.Authenticate, args.EnableToken, false, false, false, false, false, 0, 0,
+		int(args.DpReplicaNum), defaultReplicaNum, int(args.DataPartitionSize), int(args.Capacity), int(args.InnerSize), 0, defaultEcDataNum, defaultEcParityNum, defaultEcEnable,
+		args.FollowerRead, args.Authenticate, args.EnableToken, false, false, false, false, false, args.EnableInnerData, 0, 0,
 		proto.StoreMode(args.storeMode), proto.MetaPartitionLayout{uint32(args.mpPercent), uint32(args.repPercent)}, nil, proto.CompactDefault)
 	if err != nil {
 		return nil, err
@@ -301,8 +305,8 @@ func (s *VolumeService) markDeleteVol(ctx context.Context, args struct {
 func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 	Name, AuthKey                                          string
 	ZoneName, Description                                  *string
-	Capacity, ReplicaNum, storeMode, mpPercent, repPercent *uint64
-	EnableToken, ForceROW, EnableWriteCache                *bool
+	Capacity, InnerSize, ReplicaNum, storeMode, mpPercent, repPercent *uint64
+	EnableToken, ForceROW, EnableWriteCache, EnableInnerData                 *bool
 	FollowerRead, Authenticate, AutoRepair                 *bool
 }) (*Vol, error) {
 	uid, perm, err := permissions(ctx, ADMIN|USER)
@@ -370,6 +374,14 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 		args.Description = &vol.description
 	}
 
+	if args.EnableInnerData == nil {
+		args.EnableInnerData = &vol.EnableInnerData
+	}
+
+	if args.InnerSize == nil {
+		args.InnerSize = &vol.InnerSize
+	}
+
 	if !(*args.storeMode == uint64(proto.StoreModeMem) || *args.storeMode == uint64(proto.StoreModeRocksDb)) {
 		return nil, fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, *args.storeMode)
 	}
@@ -378,10 +390,22 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 		return nil, fmt.Errorf("mpPercent repPercent can only be [0-100],received is[%v - %v]", *args.mpPercent, *args.repPercent)
 	}
 
-	if err = s.cluster.updateVol(args.Name, args.AuthKey, *args.ZoneName, *args.Description, *args.Capacity,
-		uint8(*args.ReplicaNum), vol.mpReplicaNum, *args.FollowerRead, vol.NearRead, *args.Authenticate, *args.EnableToken, *args.AutoRepair, *args.ForceROW, false,
-		*args.EnableWriteCache, vol.dpSelectorName, vol.dpSelectorParm, vol.OSSBucketPolicy, vol.CrossRegionHAType, vol.dpWriteableThreshold, vol.trashRemainingDays,
-		proto.StoreMode(*args.storeMode), proto.MetaPartitionLayout{uint32(*args.mpPercent), uint32(*args.repPercent)},
+	if *args.storeMode == uint64(proto.StoreModeMem) && *args.EnableInnerData {
+		return nil, fmt.Errorf("inner data only can be enabled in rocksdb store mode")
+	}
+
+	if *args.InnerSize > defaultVolMaxInnerSize {
+		return nil, fmt.Errorf("inner size out of bound, min:0, max:%v", defaultVolMaxInnerSize)
+	}
+
+	if !*args.EnableInnerData && *args.InnerSize > 0 {
+		return nil, fmt.Errorf("inner size can be set when inner data has been enabled")
+	}
+
+	if err = s.cluster.updateVol(args.Name, args.AuthKey, *args.ZoneName, *args.Description, *args.Capacity, *args.InnerSize,
+		uint8(*args.ReplicaNum), vol.mpReplicaNum, *args.FollowerRead, vol.NearRead, *args.Authenticate, *args.EnableToken, *args.AutoRepair, *args.ForceROW, false, *args.EnableWriteCache, *args.EnableInnerData,
+		vol.dpSelectorName, vol.dpSelectorParm, vol.OSSBucketPolicy, vol.CrossRegionHAType, vol.dpWriteableThreshold, vol.trashRemainingDays,
+		proto.StoreMode(*args.storeMode), proto.MetaPartitionLayout{PercentOfMP: uint32(*args.mpPercent), PercentOfReplica: uint32(*args.repPercent)},
 		vol.ExtentCacheExpireSec, vol.smartRules, vol.compactTag); err != nil {
 		return nil, err
 	}

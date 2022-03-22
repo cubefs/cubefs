@@ -31,6 +31,8 @@ const (
 
 	learner_size     uint64 = 10
 	learner_len_size uint64 = 4
+	
+	snap_version_length uint64 = 4
 )
 
 // Peer codec
@@ -101,7 +103,7 @@ func (c *ConfChange) Decode(datas []byte) {
 
 // SnapshotMeta codec
 func (m *SnapshotMeta) Size() uint64 {
-	return snapmeta_header + peer_size*uint64(len(m.Peers)) + learner_len_size + learner_size*uint64(len(m.Learners))
+	return snapmeta_header + peer_size*uint64(len(m.Peers)) + learner_len_size + learner_size*uint64(len(m.Learners)) + snap_version_length
 }
 
 func (m *SnapshotMeta) Encode(w io.Writer) error {
@@ -132,6 +134,10 @@ func (m *SnapshotMeta) Encode(w io.Writer) error {
 			return err
 		}
 	}
+	binary.BigEndian.PutUint32(buf[0:], m.SnapV)
+	if _, err := w.Write(buf[0:snap_version_length]); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -155,6 +161,11 @@ func (m *SnapshotMeta) Decode(datas []byte) {
 			m.Learners[i].Decode(datas[start:])
 			start = start + learner_size
 		}
+	}
+
+	m.SnapV = 0
+	if uint64(len(datas)) > start {
+		m.SnapV = binary.BigEndian.Uint32(datas[start:])
 	}
 }
 

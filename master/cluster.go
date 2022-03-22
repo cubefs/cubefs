@@ -2797,6 +2797,11 @@ func (c *Cluster) setVolConvertTaskState(name, authKey string, newState proto.Vo
 		goto errHandler
 	}
 
+	if newState == (proto.VolConvertStRunning) && vol.EnableInnerData {
+		err = fmt.Errorf("inner data has been enabled, not support convert")
+		goto errHandler
+	}
+
 	vol.Lock()
 	defer vol.Unlock()
 	serverAuthKey = vol.Owner
@@ -2822,14 +2827,14 @@ func (c *Cluster) setVolConvertTaskState(name, authKey string, newState proto.Vo
 	return
 
 errHandler:
-	err = fmt.Errorf("action[updateVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
+	err = fmt.Errorf("action[setVolConvertTaskState], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
 	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
 	return
 }
 
-func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacity uint64, replicaNum, mpReplicaNum uint8,
-	followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart, enableWriteCache bool, dpSelectorName, dpSelectorParm string,
+func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacity, innerSize uint64, replicaNum, mpReplicaNum uint8,
+	followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart, enableWriteCache, enableInnerData bool, dpSelectorName, dpSelectorParm string,
 	ossBucketPolicy proto.BucketAccessPolicy, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
 	remainingDays uint32, storeMode proto.StoreMode, layout proto.MetaPartitionLayout, extentCacheExpireSec int64,
 	smartRules []string, compactTag proto.CompactTag) (err error) {
@@ -2840,6 +2845,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		masterRegionZoneList []string
 		forceRowChange       bool
 		compactChange        bool
+		isRocksDBVol         bool
 	)
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[updateVol] err[%v]", err)
@@ -2855,6 +2861,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 			goto errHandler
 		}
 	}
+	isRocksDBVol = vol.allMetaPartitionIsRocksDBStoreMode()
 	vol.Lock()
 	defer vol.Unlock()
 	volBak = vol.backupConfig()
@@ -2907,6 +2914,14 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		}
 		vol.zoneName = zoneName
 	}
+	if !isRocksDBVol && enableInnerData {
+		err = fmt.Errorf("memory mode mp already exist, inner data can not be enabled")
+		goto errHandler
+	}
+	if vol.EnableInnerData && !enableInnerData {
+		err = fmt.Errorf("inner data has been enabled, it is not allowed to disable")
+		goto errHandler
+	}
 	if len(masterRegionZoneList) > 1 {
 		vol.crossZone = true
 	} else {
@@ -2924,6 +2939,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		vol.MpLayout = layout
 	}
 	vol.Capacity = capacity
+	vol.InnerSize = innerSize
 	vol.FollowerRead = followerRead
 	vol.NearRead = nearRead
 	if vol.ForceROW != forceROW {
@@ -2937,6 +2953,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	vol.enableToken = enableToken
 	vol.autoRepair = autoRepair
 	vol.CrossRegionHAType = crossRegionHAType
+	vol.EnableInnerData = enableInnerData
 	if description != "" {
 		vol.description = description
 	}
@@ -3002,8 +3019,8 @@ errHandler:
 
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, trashDays int, ecDataNum, ecParityNum uint8,
-	ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
+func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, innerSize, trashDays int, ecDataNum, ecParityNum uint8,
+	ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, enableInnerData bool,
 	crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
 	storeMode proto.StoreMode, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag) (vol *Vol, err error) {
 	var (
@@ -3047,8 +3064,11 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	if err = c.validZone(zoneName, mpReplicaNum+int(mpLearnerNum), isSmart); err != nil {
 		goto errHandler
 	}
-	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, mpReplicaNum, trashDays, ecDataNum, ecParityNum,
-		ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, 0, mpLearnerNum, dpWriteableThreshold,
+	if err = validInnerDataParameter(storeMode, innerSize, enableInnerData); err != nil {
+		goto errHandler
+	}
+	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), uint64(innerSize), dpReplicaNum, mpReplicaNum, trashDays, ecDataNum, ecParityNum,
+		ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, enableInnerData, crossRegionHAType, 0, mpLearnerNum, dpWriteableThreshold,
 		storeMode, proto.VolConvertStInit, mpLayout, smartRules, compactTag); err != nil {
 		goto errHandler
 	}
@@ -3078,8 +3098,21 @@ errHandler:
 	return
 }
 
-func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum, trashDays int, dataNum, parityNum uint8,
-	enableEc, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
+func validInnerDataParameter(storeMode proto.StoreMode, innerSize int, enableInnerData bool) (err error) {
+	if storeMode == proto.StoreModeMem && enableInnerData {
+		err = fmt.Errorf("inner data can be enabled when volume store mode is rocksdb")
+		return
+	}
+
+	if !enableInnerData && innerSize > 0 {
+		err = fmt.Errorf("inner size can be set when inner data is enabled")
+		return
+	}
+	return
+}
+
+func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity, innerSize uint64, dpReplicaNum, mpReplicaNum, trashDays int, dataNum, parityNum uint8,
+	enableEc, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, enableInnerData bool,
 	crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64,
 	storeMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag) (vol *Vol, err error) {
 	var (
@@ -3110,8 +3143,8 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	if isSmart {
 		smartEnableTime = createTime
 	}
-	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), uint8(mpReplicaNum), followerRead,
-		authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, createTime, smartEnableTime, description, "", "",
+	vol = newVol(id, name, owner, zoneName, dpSize, capacity, innerSize, uint8(dpReplicaNum), uint8(mpReplicaNum), followerRead,
+		authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, enableInnerData, createTime, smartEnableTime, description, "", "",
 		crossRegionHAType, dpLearnerNum, mpLearnerNum, dpWriteableThreshold, uint32(trashDays), storeMode, convertSt, mpLayout, smartRules, compactTag)
 	vol.EcDataNum = dataNum
 	vol.EcParityNum = parityNum

@@ -17,7 +17,7 @@ package meta
 import (
 	"context"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/errors"
+	"hash/crc32"
 	syslog "log"
 	"os"
 	"sort"
@@ -29,6 +29,7 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 
 	"github.com/chubaofs/chubaofs/util/ump"
@@ -1733,6 +1734,61 @@ func (mw *MetaWrapper) BatchDeleteDentryUntest(ctx context.Context, pid uint64, 
 		for _, it := range infos.Items {
 			res[it.Inode] = parseStatus(it.Status)
 		}
+	}
+	return
+}
+
+func (mw *MetaWrapper) IsRocksDBMp(ctx context.Context, inode uint64) bool {
+	mp := mw.getPartitionByInode(ctx, inode)
+	if mp == nil {
+		log.LogWarnf("IsRocksDBMp: No inode partition, ino(%v)", inode)
+		return false
+	}
+
+	return mp.IsRocksDBType()
+}
+
+func (mw *MetaWrapper) InsertInnerData(ctx context.Context, inode uint64, fileOffset uint64, size uint32, data []byte) error {
+	mp := mw.getPartitionByInode(ctx, inode)
+	if mp == nil {
+		log.LogWarnf("InsertInnerData: No inode partition, ino(%v)", inode)
+		return syscall.ENOENT
+	}
+
+	if !mp.IsRocksDBType() {
+		return errors.NewErrorf("InsertInnerData: unsupported RocksDB type mp(%v) inode(%v) offset(%v) size(%v)", mp, inode, fileOffset, size)
+	}
+
+	innerData := &proto.InnerDataSt {
+		FileOffset: fileOffset,
+		Size:       size,
+		CRC: 		crc32.ChecksumIEEE(data[:size]),
+		Data:       data[:size],
+	}
+	status, err := mw.insertInnerData(ctx, mp, inode, innerData)
+	if err != nil || status != statusOK {
+		return statusToErrno(status)
+	}
+	if log.IsDebugEnabled() {
+		log.LogDebugf("InsertInnerData: ino(%v) innerData(%v)", inode, innerData)
+	}
+	return nil
+}
+
+func (mw *MetaWrapper) GetInnerData(ctx context.Context, inode, fileOffset uint64, size uint32) (readSize int, data []byte, err error) {
+	mp := mw.getPartitionByInode(ctx, inode)
+	if mp == nil {
+		return 0, nil, syscall.ENOENT
+	}
+
+	var status int
+	status, readSize, data, err = mw.getInnerData(ctx, mp, inode, fileOffset, size)
+	if err != nil || status != statusOK {
+		log.LogWarnf("GetInnerData: ino(%v) fileOffset(%v) size(%v) err(%v) status(%v)", inode, fileOffset, size, err, status)
+		return 0, nil, statusToErrno(status)
+	}
+	if log.IsDebugEnabled() {
+		log.LogDebugf("GetInnerData: ino(%v) fileOffset(%v) size(%v) readSize(%v)", inode, fileOffset, size, readSize)
 	}
 	return
 }

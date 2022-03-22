@@ -17,6 +17,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"math"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -160,31 +161,39 @@ func (eh *ExtentHandler) write(ctx context.Context, data []byte, offset uint64, 
 	var total, write int
 	status := eh.getStatus()
 	if !eh.debug && status >= ExtentStatusClosed {
-		err = errors.New(fmt.Sprintf("ExtentHandler Write: Full or Recover, status(%v)", status))
+		err = errors.New(fmt.Sprintf("ExtentHandler Write: Close or Recover, eh(%v) status(%v)", eh, status))
 		return
 	}
 
 	var blksize int
-	if eh.storeMode == proto.TinyExtentType {
-		blksize = eh.stream.tinySizeLimit()
-	} else {
+	if eh.storeMode == proto.NormalExtentType {
 		blksize = util.BlockSize
+	} else {
+		blksize = util.Max(util.BlockSize, util.Max(eh.stream.tinySizeLimit(), int(eh.stream.innerSize)))
 	}
 
 	// If this write request is not continuous, and cannot be merged
 	// into the extent handler, just close it and return error.
 	// In this case, the caller should try to create a new extent handler.
 	if (!eh.stream.client.EnableWriteCache() && eh.fileOffset+uint64(eh.size) != offset) ||
-		eh.extentOffset+eh.size+size > eh.stream.extentSize || (eh.storeMode == proto.TinyExtentType && eh.size+size > blksize) {
+		eh.extentOffset+eh.size+size > eh.stream.extentSize {
 
 		err = errors.NewErrorf("ExtentHandler: full or discontinuous: writeCache(%v) extentSize(%v) offset(%v) size(%v) eh(%v)",
 			eh.stream.client.EnableWriteCache(), eh.stream.extentSize, offset, size, eh)
 		return
 	}
-	if eh.stream.client.EnableWriteCache() &&
-		( (offset + uint64(size) > uint64(eh.stream.extentSize) + eh.fileOffset) || (eh.storeMode == proto.TinyExtentType && offset + uint64(size) > uint64(blksize)) ) {
+	if eh.stream.client.EnableWriteCache() && offset + uint64(size) > uint64(eh.stream.extentSize) + eh.fileOffset {
 		err = errors.NewErrorf("ExtentHandler is full: offset(%v) size(%v) eh(%v)", offset, size, eh)
 		return
+	}
+
+	if eh.storeMode == proto.InnerDataType && offset + uint64(size) > eh.stream.innerSize {
+		eh.storeMode = proto.TinyExtentType
+	}
+
+	if eh.storeMode == proto.TinyExtentType && offset + uint64(size) > uint64(eh.stream.tinySizeLimit()) {
+		eh.storeMode = proto.NormalExtentType
+		blksize = util.BlockSize
 	}
 
 	if eh.fileOffset + uint64(eh.size) != offset {
@@ -209,7 +218,7 @@ func (eh *ExtentHandler) write(ctx context.Context, data []byte, offset uint64, 
 		if log.IsDebugEnabled() {
 			log.LogDebugf("ExtentHandler write: eh(%v) packet(%v)", eh, eh.packet)
 		}
-		if int(eh.packet.Size) >= blksize {
+		if eh.storeMode == proto.NormalExtentType && int(eh.packet.Size) >= blksize {
 			eh.flushPacket(ctx)
 		}
 	}
@@ -226,6 +235,12 @@ func (eh *ExtentHandler) write(ctx context.Context, data []byte, offset uint64, 
 		FileOffset: eh.fileOffset,
 		Size:       uint32(eh.size),
 	}
+	if eh.storeMode == proto.InnerDataType {
+		ek.StoreType = proto.InnerData
+	} else {
+		ek.StoreType = proto.NormalData
+	}
+
 	return ek, nil
 }
 
@@ -451,7 +466,11 @@ func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
 }
 
 func (eh *ExtentHandler) flush(ctx context.Context) (err error) {
-	eh.flushPacket(ctx)
+	if err = eh.flushPacket(ctx); err != nil {
+		log.LogWarnf("flush failed: retry from InnerDataType to eh(%v)", eh)
+		eh.flushPacket(ctx)
+	}
+
 	eh.waitForFlush(ctx)
 
 	if eh.cachePacket {
@@ -467,13 +486,13 @@ func (eh *ExtentHandler) flush(ctx context.Context) (err error) {
 		}
 	}
 
+	if eh.storeMode != proto.NormalExtentType && eh.getStatus() == ExtentStatusOpen {
+		eh.setClosed()
+	}
+
 	err = eh.appendExtentKey(ctx)
 	if err != nil {
 		return
-	}
-
-	if eh.storeMode == proto.TinyExtentType {
-		eh.setClosed()
 	}
 
 	status := eh.getStatus()
@@ -520,6 +539,7 @@ func (eh *ExtentHandler) appendExtentKey(ctx context.Context) (err error) {
 		ExtentOffset: eh.key.ExtentOffset,
 		Size:         eh.key.Size,
 		CRC:          eh.key.CRC,
+		StoreType: 	  eh.key.StoreType,
 	}
 	dirty := eh.dirty
 	eh.ekMutex.Unlock()
@@ -528,15 +548,19 @@ func (eh *ExtentHandler) appendExtentKey(ctx context.Context) (err error) {
 	}
 
 	if dirty {
-		// Order: First 'insertExtentKey'，and then 'Append' local extent cache
-		// Otherwise, if 'Append' first and the 'GetExtents' operation occurs before 'insertExtentKey', the newly appended ek will be overwritten.
-		err = eh.stream.client.insertExtentKey(ctx, eh.inode, *ek, eh.isPreExtent)
-		eh.stream.extents.Insert(ek, true)
+		if eh.storeMode != proto.InnerDataType {
+			// Order: First 'insertExtentKey'，and then 'Append' local extent cache
+			// Otherwise, if 'Append' first and the 'GetExtents' operation occurs before 'insertExtentKey', the newly appended ek will be overwritten.
+			err = eh.stream.client.insertExtentKey(ctx, eh.inode, *ek, eh.isPreExtent)
+			if err == nil {
+				eh.isPreExtent = true
+			}
+		}
+		eh.stream.extents.insert(ek, true)
 		if err == nil {
 			eh.ekMutex.Lock()
 			// If the extent has ever been sent to metanode, all following insertExtentKey requests of the
 			// extent will be checked by metanode, in case of the extent been removed by other clients.
-			eh.isPreExtent = true
 			if ek.GetExtentKey() == eh.key.GetExtentKey() {
 				eh.dirty = false
 			} else {
@@ -726,22 +750,62 @@ func CreateExtent(ctx context.Context, conn *net.TCPConn, inode uint64, dp *Data
 }
 
 // Handler lock is held by the caller.
-func (eh *ExtentHandler) flushPacket(ctx context.Context) {
+func (eh *ExtentHandler) flushPacket(ctx context.Context) (err error) {
 	if eh.packet == nil {
 		return
 	}
 	if log.IsDebugEnabled() {
 		log.LogDebugf("flushPacket: eh(%v) packet(%v)", eh, eh.packet)
 	}
-	eh.overwriteLocalPacketMutex.Lock()
-	eh.pushToRequest(ctx, eh.packet)
+	switch eh.storeMode {
+	case proto.InnerDataType:
+		if err = eh.insertInnerData(ctx); err != nil {
+			eh.storeMode = proto.TinyExtentType
+			log.LogWarnf("flushPacket: insertInnerData err(%v) eh(%v)", err, eh)
+			return
+		}
+	default:
+		eh.overwriteLocalPacketMutex.Lock()
+		defer eh.overwriteLocalPacketMutex.Unlock()
+		eh.pushToRequest(ctx, eh.packet)
+	}
 	eh.packetMutex.Lock()
 	if eh.cachePacket {
 		eh.packetList = append(eh.packetList, eh.packet)
 	}
 	eh.packet = nil
 	eh.packetMutex.Unlock()
-	eh.overwriteLocalPacketMutex.Unlock()
+	return
+}
+
+func (eh *ExtentHandler) insertInnerData(ctx context.Context) (err error) {
+	fileOffset := eh.packet.KernelOffset
+	size := eh.packet.Size
+	if log.IsDebugEnabled() {
+		log.LogDebugf("insertInnerData enter: eh(%v) fileOffset(%v) size(%v)", eh, fileOffset, size)
+	}
+	if err = eh.stream.client.insertInnerData(ctx, eh.inode, fileOffset, size, eh.packet.Data[:size]); err != nil {
+		return err
+	}
+	if !eh.cachePacket {
+		proto.Buffers.Put(eh.packet.Data)
+		eh.packet.Data = nil
+	}
+	eh.ekMutex.Lock()
+	eh.key = &proto.ExtentKey{
+		FileOffset:   fileOffset,
+		PartitionId:  math.MaxUint64,
+		ExtentId:     math.MaxUint64,
+		ExtentOffset: fileOffset,
+		Size:         size,
+		StoreType:    proto.InnerData,
+	}
+	eh.dirty = true
+	eh.ekMutex.Unlock()
+	if log.IsDebugEnabled() {
+		log.LogDebugf("insertInnerData exit: ek(%v) eh(%v)", eh.key, eh)
+	}
+	return nil
 }
 
 func (eh *ExtentHandler) pushToRequest(ctx context.Context, packet *Packet) {
