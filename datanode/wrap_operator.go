@@ -35,7 +35,6 @@ import (
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/statistics"
-	"github.com/chubaofs/chubaofs/util/tracing"
 	"github.com/tiglabs/raft"
 	raftProto "github.com/tiglabs/raft/proto"
 )
@@ -72,15 +71,6 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		p.Size = resultSize
 		tpObject.Set(err)
 	}()
-
-	if tracing.Tracing {
-		var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("DataNode.OperatePacket").
-			SetTag("op", p.GetOpMsg()).
-			SetTag("pid", p.PartitionID).
-			SetTag("reqID", p.ReqID)
-		defer tracer.Finish()
-		p.SetCtx(tracer.Context())
-	}
 
 	switch p.Opcode {
 	case proto.OpCreateExtent:
