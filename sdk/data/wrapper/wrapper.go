@@ -197,6 +197,10 @@ func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.
 			continue
 		}
 		dp := convert(partition)
+		//do not insert preload dp in cold vol
+		if proto.IsCold(w.volType) && proto.IsPreLoadDp(dp.PartitionType) {
+			continue
+		}
 		if w.followerRead && w.nearRead {
 			dp.NearHosts = w.sortHostsByDistance(dp.Hosts)
 		}

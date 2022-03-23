@@ -340,7 +340,7 @@ func (reader *Reader) readSliceRange(ctx context.Context, rs *rwSlice) (err erro
 	reader.err <- nil
 
 	//cache full block
-	if !reader.needCacheL1() && !reader.needCacheL2() {
+	if !reader.needCacheL1() && !reader.needCacheL2() || reader.ec.IsPreloadMode() {
 		log.LogDebugf("TRACE blobStore readSliceRange exit without cache. read counter=%v", read)
 		return nil
 	}
