@@ -420,16 +420,12 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 		rp.addGetNumFromBufferPoolCnt()
 	}
 	if err != nil {
+		rp.PutPacketToPool(request)
 		err = fmt.Errorf("%v local(%v)->remote(%v) recive error(%v)", ActionreadPkgAndPrepare, rp.sourceConn.LocalAddr().String(),
 			rp.sourceConn.RemoteAddr().String(), err)
 		return
 	}
 	request.OrgBuffer = request.Data
-	if tracing.IsEnabled() {
-		tracer := tracing.TracerFromContext(request.Ctx()).ChildTracer("repl.ReplProtocol.readPkgAndPrepare")
-		defer tracer.Finish()
-		request.SetCtx(tracer.Context())
-	}
 	if log.IsDebugEnabled(){
 		log.LogDebugf("action[readPkgAndPrepare] packet(%v) from remote(%v) ",
 			request.GetUniqueLogId(), rp.remote)
@@ -633,7 +629,7 @@ func (rp *ReplProtocol) checkLeaderPacketPost() {
 		p := e.Value.(*Packet)
 		if !p.isUseBufferPool() {
 			rp.forwardPacketCheckList.Remove(e)
-			PutPacketToPool(p)
+			rp.PutPacketToPool(p)
 			continue
 		}
 		if p.canPutToBufferPool() {
