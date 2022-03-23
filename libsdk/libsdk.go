@@ -251,6 +251,7 @@ func cfs_set_client(id C.int64_t, key, val *C.char) C.int {
 	}
 	k := C.GoString(key)
 	v := C.GoString(val)
+
 	switch k {
 	case "volName":
 		c.volName = v
@@ -981,7 +982,7 @@ func (c *client) start() (err error) {
 		log.InitLog(c.logDir, "libcfs", level, nil)
 		stat.NewStatistic(c.logDir, "libcfs", int64(stat.DefaultStatLogSize), stat.DefaultTimeOutUs, true)
 	}
-
+	proto.InitBufferPool(int64(32768))
 	if c.readBlockThread == 0 {
 		c.readBlockThread = 10
 	}
