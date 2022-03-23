@@ -16,8 +16,13 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/meta"
 	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/log"
 	"golang.org/x/net/context"
 )
+
+func init() {
+	log.InitLog(".", "test", log.DebugLevel, nil)
+}
 
 type HTTPReply struct {
 	Code int32           `json:"code"`
@@ -112,7 +117,7 @@ func handleAdminGetCluster(w http.ResponseWriter, r *http.Request) {
 	w.Write(httpReply)
 }
 
-func TestStreamer_usePreExtentHandler(t *testing.T) {
+func TestStreamer_UsePreExtentHandler(t *testing.T) {
 	type fields struct {
 		client     *ExtentClient
 		inode      uint64
@@ -294,10 +299,21 @@ func creatHelper(t *testing.T) (mw *meta.MetaWrapper, ec *ExtentClient, err erro
 		OnInsertExtentKey: mw.InsertExtentKey,
 		OnGetExtents:      mw.GetExtents,
 		OnTruncate:        mw.Truncate,
+		TinySize:          NoUseTinyExtent,
 	}); err != nil {
 		t.Fatalf("NewExtentClient failed: err(%v), vol(%v)", err, ltptestVolume)
 	}
 	return mw, ec, nil
+}
+
+func getStreamer(t *testing.T, file string, ec *ExtentClient) *Streamer {
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatalf("Stat failed: err(%v) file(%v)", err, file)
+	}
+	sysStat := info.Sys().(*syscall.Stat_t)
+	streamMap := ec.streamerConcurrentMap.GetMapSegment(sysStat.Ino)
+	return NewStreamer(ec, sysStat.Ino, streamMap)
 }
 
 func TestROW(t *testing.T) {
@@ -467,42 +483,31 @@ func TestWrite_DataConsistency(t *testing.T) {
 
 // One client insert ek1 at some position, another client insert ek2 at the same position with ROW.
 // Then ek1 will be replaced by ek2, all following ek insertion of extent1 because of usePreExtentHandler should be rejected.
-func TestStreamer_usePreExtentHandler1(t *testing.T) {
-	testFile := "/cfs/mnt/usePreExtentHandler1"
-	file, err := os.Create(testFile)
-	if err != nil {
-		t.Fatalf("create testFile failed: err(%v), file(%v)", err, testFile)
-	}
+func TestStreamer_UsePreExtentHandler_ROWByOtherClient(t *testing.T) {
+	testFile := "/cfs/mnt/TestStreamer_UsePreExtentHandler_ROWByOtherClient"
+	file, _ := os.Create(testFile)
 	defer func() {
 		file.Close()
 		os.Remove(testFile)
+		log.LogFlush()
 	}()
-	_, ec, err := creatHelper(t)
-	fInfo, err := os.Stat(testFile)
-	if err != nil {
-		t.Fatalf("stat file: err(%v) file(%v)", err, testFile)
-	}
-	sysStat := fInfo.Sys().(*syscall.Stat_t)
 
-	streamMap := ec.streamerConcurrentMap.GetMapSegment(sysStat.Ino)
-	streamer := NewStreamer(ec, sysStat.Ino, streamMap)
+	_, ec, err := creatHelper(t)
+	streamer := getStreamer(t, testFile, ec)
 	ctx := context.Background()
 	length := 1024
 	data := make([]byte, length)
-	_, _, err = streamer.write(ctx, data, 0, length/2, false, false)
+	_, _, err = streamer.write(ctx, data, 0, length, false, false)
 	if err != nil {
 		t.Fatalf("write failed: err(%v)", err)
 	}
-	streamer.closeOpenHandler(ctx)
-	_, _, err = streamer.write(ctx, data, length/2, length/2, false, false)
+	err = streamer.flush(ctx)
 	if err != nil {
-		t.Fatalf("write failed: err(%v)", err)
+		t.Fatalf("flush failed: err(%v)", err)
 	}
-	streamer.closeOpenHandler(ctx)
 
 	_, ec1, err := creatHelper(t)
-	streamMap1 := ec.streamerConcurrentMap.GetMapSegment(sysStat.Ino)
-	streamer1 := NewStreamer(ec1, sysStat.Ino, streamMap1)
+	streamer1 := getStreamer(t, testFile, ec1)
 	requests := streamer1.extents.PrepareRequests(0, length, data)
 	_, err = streamer1.doROW(ctx, requests[0], false)
 	if err != nil {
@@ -516,5 +521,121 @@ func TestStreamer_usePreExtentHandler1(t *testing.T) {
 	err = streamer.flush(ctx)
 	if err == nil {
 		t.Fatalf("usePreExtentHandler should fail when the extent has removed by other clients")
+	}
+}
+
+func TestHandler_Recover(t *testing.T) {
+	testFile := "/cfs/mnt/TestHandler_Recover"
+	file, _ := os.Create(testFile)
+	defer func() {
+		file.Close()
+		os.Remove(testFile)
+		log.LogFlush()
+	}()
+
+	var err error
+	_, ec, _ := creatHelper(t)
+	streamer := getStreamer(t, testFile, ec)
+	ctx := context.Background()
+	length := 1024
+	data := make([]byte, length*2)
+	_, _, err = streamer.write(ctx, data, 0, length, false, false)
+	if err != nil {
+		t.Fatalf("write failed: err(%v)", err)
+	}
+	err = streamer.flush(ctx)
+	if err != nil {
+		t.Fatalf("flush failed: err(%v)", err)
+	}
+	suc := streamer.handler.setClosed()
+	if !suc {
+		t.Fatalf("setClosed failed")
+	}
+	suc = streamer.handler.setRecovery()
+	if !suc {
+		t.Fatalf("setRecovery failed")
+	}
+	streamer.handler.setDebug(true)
+
+	_, _, err = streamer.write(ctx, data, length, length, false, false)
+	if err != nil {
+		t.Fatalf("write failed: err(%v)", err)
+	}
+	err = streamer.GetExtents(ctx)
+	if err != nil {
+		t.Fatalf("GetExtents failed: err(%v)", err)
+	}
+	read, _, err := streamer.read(ctx, data, 0, length*2)
+	if err != nil || read != length*2 {
+		t.Fatalf("read failed: expect(%v) read(%v) err(%v)", length*2, read, err)
+	}
+}
+
+// Handler should be closed in truncate operation, otherwise dirty ek which has been formerly truncated, will be inserted again.
+func TestStreamer_Truncate_CloseHandler(t *testing.T) {
+	testFile := "/cfs/mnt/TestStreamer_Truncate_CloseHandler"
+	file, _ := os.Create(testFile)
+	defer func() {
+		file.Close()
+		os.Remove(testFile)
+		log.LogFlush()
+	}()
+
+	var err error
+	_, ec, _ := creatHelper(t)
+	streamer := getStreamer(t, testFile, ec)
+	ctx := context.Background()
+	length := 1024
+	data := make([]byte, length*2)
+	_, _, err = streamer.write(ctx, data, 0, length*2, false, false)
+	if err != nil {
+		t.Fatalf("write failed: err(%v)", err)
+	}
+	err = streamer.truncate(ctx, length)
+	if err != nil {
+		t.Fatalf("truncate failed: err(%v)", err)
+	}
+	_, _, err = streamer.write(ctx, data, length*2, length, false, false)
+	if err != nil {
+		t.Fatalf("write failed: err(%v)", err)
+	}
+	requests := streamer.extents.PrepareRequests(length, length, data)
+	if requests[0].ExtentKey != nil {
+		t.Fatalf("dirty ek after truncate")
+	}
+}
+
+// Handler should be closed in ROW operation, otherwise dirty ek which has been formerly removed, will be inserted again.
+func TestStreamer_ROW_CloseHandler(t *testing.T) {
+	testFile := "/cfs/mnt/TestStreamer_ROW_CloseHandler"
+	file, _ := os.Create(testFile)
+	defer func() {
+		file.Close()
+		os.Remove(testFile)
+		log.LogFlush()
+	}()
+
+	var err error
+	_, ec, _ := creatHelper(t)
+	streamer := getStreamer(t, testFile, ec)
+	ctx := context.Background()
+	length := 1024
+	data := make([]byte, length*2)
+	_, _, err = streamer.write(ctx, data, 0, length*2, false, false)
+	if err != nil {
+		t.Fatalf("write failed: err(%v)", err)
+	}
+	requests := streamer.extents.PrepareRequests(length, length*2, data)
+	_, err = streamer.doROW(ctx, requests[0], false)
+	if err != nil {
+		t.Fatalf("doROW failed: err(%v)", err)
+	}
+	_, _, err = streamer.write(ctx, data, length*2, length, false, false)
+	if err != nil {
+		t.Fatalf("write failed: err(%v)", err)
+	}
+	requests = streamer.extents.PrepareRequests(0, length*2, data)
+	if len(requests) != 2 || (requests[0].ExtentKey.PartitionId == requests[1].ExtentKey.PartitionId && requests[0].ExtentKey.ExtentId == requests[1].ExtentKey.ExtentId) {
+		t.Fatalf("dirty ek after ROW")
 	}
 }

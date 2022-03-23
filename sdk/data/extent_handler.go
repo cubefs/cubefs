@@ -117,6 +117,9 @@ type ExtentHandler struct {
 
 	// the last time eh was used
 	lastAccessTime int64
+
+	// in debug mode, not check status in write
+	debug bool
 }
 
 // NewExtentHandler returns a new extent handler.
@@ -156,7 +159,7 @@ func (eh *ExtentHandler) write(ctx context.Context, data []byte, offset, size in
 	var total, write int
 
 	status := eh.getStatus()
-	if status >= ExtentStatusClosed {
+	if !eh.debug && status >= ExtentStatusClosed {
 		err = errors.New(fmt.Sprintf("ExtentHandler Write: Full or Recover, status(%v)", status))
 		return
 	}
@@ -513,15 +516,10 @@ func (eh *ExtentHandler) appendExtentKey(ctx context.Context) (err error) {
 			}
 			eh.ekMutex.Unlock()
 		}
-	} else {
-		eh.stream.extents.Lock()
-		eh.stream.extents.gen = 0
-		eh.stream.extents.Unlock()
-
-		getExtentsErr := eh.stream.GetExtents(ctx)
-		if getExtentsErr != nil {
-			log.LogWarnf("appendExtentKey getExtents failed: err(%v) eh(%v) eh.key(%v)", getExtentsErr, eh, ek)
-		}
+	} else if eh.getStatus() == ExtentStatusRecovery {
+		// If the handler is in recovery state, replace the formerly inserted temporary ek.
+		// Otherwise, don't call Append, because that will result appendding ek wrongly in the following extent cache update, i.e. in truncate request.
+		eh.stream.extents.Append(ek, false)
 	}
 
 	log.LogDebugf("appendExtentKey exit: eh(%v) key(%v) dirty(%v) err(%v)", eh, eh.key, eh.dirty, err)
@@ -750,6 +748,10 @@ func (eh *ExtentHandler) updateConn() error {
 	}
 	eh.conn = conn
 	return nil
+}
+
+func (eh *ExtentHandler) setDebug(debug bool) {
+	eh.debug = debug
 }
 
 func SetNormalExtentSize(maxSize int) {

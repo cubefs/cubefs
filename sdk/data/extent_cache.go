@@ -94,7 +94,7 @@ func (cache *ExtentCache) update(gen, size uint64, eks []proto.ExtentKey) {
 	cache.Lock()
 	defer cache.Unlock()
 
-	log.LogDebugf("ExtentCache update: ino(%v) cache.gen(%v) cache.size(%v) gen(%v) size(%v)", cache.inode, cache.gen, cache.size, gen, size)
+	log.LogDebugf("ExtentCache update: ino(%v) cache.gen(%v) cache.size(%v) cache.ek(%v) gen(%v) size(%v)", cache.inode, cache.gen, cache.size, cache.ek, gen, size)
 
 	//	cache.root.Ascend(func(bi btree.Item) bool {
 	//		ek := bi.(*proto.ExtentKey)
@@ -176,7 +176,7 @@ func (cache *ExtentCache) append(ek *proto.ExtentKey, sync bool) {
 		cache.size = ekEnd
 	}
 
-	//log.LogDebugf("ExtentCache Append: ino(%v) ek(%v) discard(%v)", cache.inode, ek, discard)
+	log.LogDebugf("ExtentCache append: ino(%v) ek(%v) sync(%v) discard(%v)", cache.inode, ek, sync, discard)
 }
 
 // Max returns the max extent key in the cache.
@@ -256,10 +256,10 @@ func (cache *ExtentCache) Get(offset uint64) (ret *proto.ExtentKey) {
 // PrepareRequests classifies the incoming request.
 func (cache *ExtentCache) PrepareRequests(offset, size int, data []byte) []*ExtentRequest {
 	requests := make([]*ExtentRequest, 0)
-	pivot:=proto.GetExtentKeyFromPool()
-	pivot.FileOffset=uint64(offset)
-	upper:=proto.GetExtentKeyFromPool()
-	upper.FileOffset=uint64(offset+size)
+	pivot := proto.GetExtentKeyFromPool()
+	pivot.FileOffset = uint64(offset)
+	upper := proto.GetExtentKeyFromPool()
+	upper.FileOffset = uint64(offset + size)
 	lower := proto.GetExtentKeyFromPool()
 
 	defer func() {
@@ -283,7 +283,7 @@ func (cache *ExtentCache) PrepareRequests(offset, size int, data []byte) []*Exte
 		ek := i.(*proto.ExtentKey)
 		ekStart := int(ek.FileOffset)
 		ekEnd := int(ek.FileOffset) + int(ek.Size)
-		if log.IsDebugEnabled(){
+		if log.IsDebugEnabled() {
 			log.LogDebugf("PrepareRequests: ino(%v) start(%v) end(%v) ekStart(%v) ekEnd(%v)", cache.inode, start, end, ekStart, ekEnd)
 		}
 		if start < ekStart {
@@ -329,7 +329,7 @@ func (cache *ExtentCache) PrepareRequests(offset, size int, data []byte) []*Exte
 		}
 	})
 
-	if log.IsDebugEnabled(){
+	if log.IsDebugEnabled() {
 		log.LogDebugf("PrepareRequests: ino(%v) start(%v) end(%v)", cache.inode, start, end)
 	}
 	if start < end {

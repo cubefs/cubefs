@@ -545,16 +545,6 @@ func LogDebug(v ...interface{}) {
 	gLog.debugLogger.Print(s)
 }
 
-func IsDebugLog() bool {
-	if gLog == nil {
-		return false
-	}
-	if DebugLevel&gLog.level != gLog.level {
-		return false
-	}
-	return true
-}
-
 // LogDebugf logs the debug information with specified format.
 func LogDebugf(format string, v ...interface{}) {
 	if gLog == nil {
