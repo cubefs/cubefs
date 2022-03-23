@@ -120,8 +120,8 @@ func NewDataPartitionMetrics() *DataPartitionMetrics {
 
 // String returns the string format of the data partition.
 func (dp *DataPartition) String() string {
-	return fmt.Sprintf("PartitionID(%v) Status(%v) ReplicaNum(%v) Hosts(%v) NearHosts(%v)",
-		dp.PartitionID, dp.Status, dp.ReplicaNum, dp.Hosts, dp.NearHosts)
+	return fmt.Sprintf("PartitionID(%v) Type(%v), Status(%v) ReplicaNum(%v) Hosts(%v) NearHosts(%v)",
+		dp.PartitionID, dp.PartitionType, dp.Status, dp.ReplicaNum, dp.Hosts, dp.NearHosts)
 }
 
 func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {
