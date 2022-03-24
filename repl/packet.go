@@ -21,8 +21,8 @@ import (
 	"math/rand"
 	"net"
 	"strings"
-	"sync/atomic"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/chubaofs/chubaofs/util/log"
@@ -56,7 +56,7 @@ type Packet struct {
 	quorum            int
 	refCnt            int32
 	errorCh           chan error
-	IsFromPool      bool
+	IsFromPool        bool
 }
 
 type FollowerPacket struct {
@@ -231,7 +231,6 @@ func copyReplPacket(src *Packet, dst *Packet) {
 	dst.ReqID = src.ReqID
 }
 
-
 func (p *Packet) BeforeTp(clusterID string) (ok bool) {
 	if p.IsForwardPkt() && !p.IsRandomWrite() {
 		p.TpObject = exporter.NewTPCnt(fmt.Sprintf("PrimaryBackUp_%v", p.GetOpMsg()))
@@ -297,8 +296,8 @@ func init() {
 }
 
 func PutPacketToPool(p *Packet) {
-	if !p.IsFromPool{
-		return 
+	if !p.IsFromPool {
+		return
 	}
 	p.Size = 0
 	p.Data = nil
@@ -309,7 +308,7 @@ func PutPacketToPool(p *Packet) {
 	p.Magic = proto.ProtoMagic
 	p.ExtentType = 0
 	p.ResultCode = 0
-	p.refCnt=0
+	p.refCnt = 0
 	p.RemainingFollowers = 0
 	p.CRC = 0
 	p.ArgLen = 0
@@ -353,7 +352,6 @@ func NewPacketFromPool(ctx context.Context) (p *Packet) {
 	p.SetCtx(ctx)
 	return
 }
-
 
 func NewPacketToGetAllWatermarks(ctx context.Context, partitionID uint64, extentType uint8) (p *Packet) {
 	p = new(Packet)
@@ -557,8 +555,7 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineSonds int64) (isUseBuff
 	return p.allocateBufferFromPoolForReadConnnectBody(c)
 }
 
-
-func (p *Packet)allocateBufferFromPoolForReadConnnectBody(c net.Conn) (isUseBufferPool bool,err error){
+func (p *Packet) allocateBufferFromPoolForReadConnnectBody(c net.Conn) (isUseBufferPool bool, err error) {
 	readSize := p.Size
 	if p.IsReadOperation() && p.ResultCode == proto.OpInitResultCode {
 		readSize = 0
@@ -574,24 +571,22 @@ func (p *Packet)allocateBufferFromPoolForReadConnnectBody(c net.Conn) (isUseBuff
 			return
 		}
 		isUseBufferPool = true
-	}else if p.IsRandomWriteV3(){
-		needDataSize:=uint32(readSize)+proto.RandomWriteRaftLogV3HeaderSize
-		if needDataSize<=util.BlockSize{
+	} else if p.IsRandomWriteV3() {
+		needDataSize := uint32(readSize) + proto.RandomWriteRaftLogV3HeaderSize
+		if needDataSize <= util.BlockSize {
 			p.Data, _ = proto.Buffers.Get(util.BlockSize)
 			atomic.StoreInt64(&p.useBufferPoolFlag, PacketUseBufferPool)
 			isUseBufferPool = true
-		}else {
+		} else {
 			p.Data = make([]byte, uint32(readSize)+proto.RandomWriteRaftLogV3HeaderSize)
 		}
 		_, err = io.ReadFull(c, p.Data[proto.RandomWriteRaftLogV3HeaderSize:p.Size+proto.RandomWriteRaftLogV3HeaderSize])
-	}else {
-		p.Data=make([]byte,readSize)
+	} else {
+		p.Data = make([]byte, readSize)
 		_, err = io.ReadFull(c, p.Data[:readSize])
 	}
 	return
 }
-
-
 
 func (p *Packet) IsMasterCommand() bool {
 	switch p.Opcode {
@@ -611,8 +606,6 @@ func (p *Packet) IsMasterCommand() bool {
 	}
 	return false
 }
-
-
 
 // A leader packet is the packet send to the leader and does not require packet forwarding.
 func (p *Packet) IsLeaderPacket() (ok bool) {
