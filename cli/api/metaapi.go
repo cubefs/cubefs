@@ -25,10 +25,11 @@ import (
 	"time"
 
 	"bufio"
+	"io"
+
 	"github.com/cubefs/cubefs/metanode"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
-	"io"
 )
 
 const (
@@ -49,8 +50,8 @@ type Inode struct {
 	LinkTarget []byte // SymLink target name
 	NLink      uint32 // NodeLink counts
 	Flag       int32
-	Reserved   uint64 // reserved space
-	Extents    []proto.ExtentKey
+	Reserved   uint64            // reserved space
+	Extents    []proto.ExtentKey `json:"-"`
 }
 
 // String returns the string format of the inode.

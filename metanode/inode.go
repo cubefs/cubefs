@@ -65,7 +65,7 @@ type Inode struct {
 	Flag       int32
 	Reserved   uint64 // reserved space
 	//Extents    *ExtentsTree
-	Extents *SortedExtents
+	Extents *SortedExtents `json:"-"`
 }
 
 type InodeBatch []*Inode
