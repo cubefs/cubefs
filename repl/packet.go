@@ -18,10 +18,8 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math/rand"
 	"net"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -56,7 +54,6 @@ type Packet struct {
 	quorum            int
 	refCnt            int32
 	errorCh           chan error
-	IsFromPool        bool
 }
 
 type FollowerPacket struct {
@@ -278,74 +275,8 @@ func (p *Packet) resolveFollowersAddr(remoteAddr string) (err error) {
 	return
 }
 
-const (
-	PacketPoolCnt = 64
-)
-
-var (
-	PacketPool [PacketPoolCnt]*sync.Pool
-)
-
-func init() {
-	rand.Seed(time.Now().UnixNano())
-	for i := 0; i < PacketPoolCnt; i++ {
-		PacketPool[i] = &sync.Pool{New: func() interface{} {
-			return new(Packet)
-		}}
-	}
-}
-
-func PutPacketToPool(p *Packet) {
-	if !p.IsFromPool {
-		return
-	}
-	p.Size = 0
-	p.Data = nil
-	p.Opcode = 0
-	p.PartitionID = 0
-	p.ExtentID = 0
-	p.ExtentOffset = 0
-	p.Magic = proto.ProtoMagic
-	p.ExtentType = 0
-	p.ResultCode = 0
-	p.refCnt = 0
-	p.RemainingFollowers = 0
-	p.CRC = 0
-	p.ArgLen = 0
-	p.KernelOffset = 0
-	p.SetCtx(nil)
-	p.ReqID = 0
-	p.Arg = nil
-	p.Data = nil
-	p.HasPrepare = false
-	p.StartT = time.Now().UnixNano()
-	p.WaitT = time.Now().UnixNano()
-	p.SendT = time.Now().UnixNano()
-	p.RecvT = time.Now().UnixNano()
-	index := rand.Intn(PacketPoolCnt)
-	PacketPool[index].Put(p)
-}
-
-func GetPacketFromPool() (p *Packet) {
-	index := rand.Intn(PacketPoolCnt)
-	p = PacketPool[index].Get().(*Packet)
-	p.IsFromPool = true
-	p.StartT = time.Now().UnixNano()
-	p.NeedReply = true
-	return
-}
-
 func NewPacket(ctx context.Context) (p *Packet) {
 	p = new(Packet)
-	p.Magic = proto.ProtoMagic
-	p.StartT = time.Now().UnixNano()
-	p.NeedReply = true
-	p.SetCtx(ctx)
-	return
-}
-
-func NewPacketFromPool(ctx context.Context) (p *Packet) {
-	p = GetPacketFromPool()
 	p.Magic = proto.ProtoMagic
 	p.StartT = time.Now().UnixNano()
 	p.NeedReply = true
@@ -607,9 +538,14 @@ func (p *Packet) IsMasterCommand() bool {
 	return false
 }
 
+func (p *Packet) IsForwardPacket() bool {
+	r := p.RemainingFollowers > 0
+	return r
+}
+
 // A leader packet is the packet send to the leader and does not require packet forwarding.
 func (p *Packet) IsLeaderPacket() (ok bool) {
-	if p.RemainingFollowers > 0 && (p.IsWriteOperation() || p.IsCreateExtentOperation() || p.IsMarkDeleteExtentOperation()) {
+	if p.IsForwardPkt() && (p.IsWriteOperation() || p.IsCreateExtentOperation() || p.IsMarkDeleteExtentOperation()) {
 		ok = true
 	}
 
