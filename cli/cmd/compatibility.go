@@ -16,12 +16,13 @@ package cmd
 
 import (
 	"fmt"
+	"reflect"
+	"strconv"
+
 	"github.com/cubefs/cubefs/cli/api"
 	"github.com/cubefs/cubefs/metanode"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/spf13/cobra"
-	"reflect"
-	"strconv"
 )
 
 const (
@@ -101,7 +102,7 @@ func verifyDentry(client *api.MetaHttpClient, mp metanode.MetaPartition) (err er
 	if err != nil {
 		return
 	}
-	mp.GetDentryTree().Ascend(func(d metanode.BtreeItem) bool {
+	mp.CloneDentryTree().Ascend(func(d metanode.BtreeItem) bool {
 		dentry, ok := d.(*metanode.Dentry)
 		if !ok {
 			stdout("item type is not *metanode.Dentry \n")
@@ -123,7 +124,7 @@ func verifyDentry(client *api.MetaHttpClient, mp metanode.MetaPartition) (err er
 		return true
 	})
 	if err == nil {
-		stdout("The number of dentry is %v, all dentry are consistent \n", mp.GetDentryTree().Len())
+		stdout("The number of dentry is %v, all dentry are consistent \n", mp.CloneDentryTree().Len())
 	}
 	return
 }
@@ -134,7 +135,7 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 		return
 	}
 	var localInode *api.Inode
-	mp.GetInodeTree().Ascend(func(d metanode.BtreeItem) bool {
+	mp.CloneInodeTree().Ascend(func(d metanode.BtreeItem) bool {
 		inode, ok := d.(*metanode.Inode)
 		if !ok {
 			stdout("item type is not *metanode.Inode \n")
@@ -175,7 +176,7 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 		return true
 	})
 	if err == nil {
-		stdout("The number of inodes is %v, all inodes are consistent \n", mp.GetInodeTree().Len())
+		stdout("The number of inodes is %v, all inodes are consistent \n", mp.CloneInodeTree().Len())
 	}
 	return
 }

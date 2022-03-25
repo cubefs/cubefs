@@ -155,8 +155,8 @@ func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry) (
 	return
 }
 
-func (mp *metaPartition) getDentryTree() *BTree {
-	return mp.dentryTree.GetTree()
+func (mp *metaPartition) cloneDentryTree() *BTree {
+	return mp.dentryTree.CloneTree()
 }
 
 func (mp *metaPartition) readDir(req *ReadDirReq) (resp *ReadDirResp) {

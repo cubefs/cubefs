@@ -15,8 +15,9 @@
 package metanode
 
 import (
-	"github.com/cubefs/cubefs/util/btree"
 	"sync"
+
+	"github.com/cubefs/cubefs/util/btree"
 )
 
 const defaultBTreeDegree = 32
@@ -118,7 +119,7 @@ func (b *BTree) ReplaceOrInsert(key BtreeItem, replace bool) (item BtreeItem, ok
 
 // Ascend is the wrapper of the google's btree Ascend.
 // This function scans the entire btree. When the data is huge, it is not recommended to use this function online.
-// Instead, it is recommended to call GetTree to obtain the snapshot of the current btree, and then do the scan on the snapshot.
+// Instead, it is recommended to call CloneTree to obtain the snapshot of the current btree, and then do the scan on the snapshot.
 func (b *BTree) Ascend(fn func(i BtreeItem) bool) {
 	b.RLock()
 	b.tree.Ascend(fn)
@@ -140,7 +141,7 @@ func (b *BTree) AscendGreaterOrEqual(pivot BtreeItem, iterator func(i BtreeItem)
 }
 
 // GetTree returns the snapshot of a btree.
-func (b *BTree) GetTree() *BTree {
+func (b *BTree) CloneTree() *BTree {
 	b.Lock()
 	t := b.tree.Clone()
 	b.Unlock()

@@ -315,9 +315,9 @@ func (mp *metaPartition) SetAttr(reqData []byte, p *Packet) (err error) {
 	return
 }
 
-// GetInodeTree returns the inode tree.
-func (mp *metaPartition) GetInodeTree() *BTree {
-	return mp.inodeTree.GetTree()
+// CloneInodeTree returns the inode tree.
+func (mp *metaPartition) CloneInodeTree() *BTree {
+	return mp.inodeTree.CloneTree()
 }
 
 func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error) {

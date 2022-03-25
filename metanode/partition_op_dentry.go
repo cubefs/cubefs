@@ -235,7 +235,7 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 	return
 }
 
-// GetDentryTree returns the dentry tree stored in the meta partition.
-func (mp *metaPartition) GetDentryTree() *BTree {
-	return mp.dentryTree.GetTree()
+// CloneDentryTree returns the dentry tree stored in the meta partition.
+func (mp *metaPartition) CloneDentryTree() *BTree {
+	return mp.dentryTree.CloneTree()
 }
