@@ -60,6 +60,7 @@ import "C"
 import (
 	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/util/buf"
 	"io"
 	syslog "log"
 	"os"
@@ -973,7 +974,6 @@ func (c *client) absPath(path string) string {
 
 func (c *client) start() (err error) {
 	var masters = strings.Split(c.masterAddr, ",")
-
 	if c.logDir != "" {
 		if c.logLevel == "" {
 			c.logLevel = "WARN"
@@ -992,7 +992,6 @@ func (c *client) start() (err error) {
 	if err = c.loadConfFromMaster(masters); err != nil {
 		return
 	}
-
 	if err = c.checkPermission(); err != nil {
 		err = errors.NewErrorf("check permission failed: %v", err)
 		syslog.Println(err)
@@ -1005,7 +1004,6 @@ func (c *client) start() (err error) {
 	if c.enableBcache {
 		c.bc = bcache.NewBcacheClient()
 	}
-
 	var ebsc *blobstore.BlobStoreClient
 	if ebsc, err = blobstore.NewEbsClient(access.Config{
 		ConnMode: access.NoLimitConnMode,
@@ -1019,7 +1017,6 @@ func (c *client) start() (err error) {
 	}); err != nil {
 		return
 	}
-
 	var mw *meta.MetaWrapper
 	if mw, err = meta.NewMetaWrapper(&meta.MetaConfig{
 		Volume:        c.volName,
@@ -1030,7 +1027,6 @@ func (c *client) start() (err error) {
 		log.LogErrorf("newClient NewMetaWrapper failed(%v)", err)
 		return err
 	}
-
 	var ec *stream.ExtentClient
 	if ec, err = stream.NewExtentClient(&stream.ExtentConfig{
 		Volume:            c.volName,
@@ -1293,6 +1289,7 @@ func (c *client) loadConfFromMaster(masters []string) (err error) {
 	c.ebsEndpoint = clusterInfo.EbsAddr
 	c.servicePath = clusterInfo.ServicePath
 	c.cluster = clusterInfo.Cluster
+	buf.InitCachePool(c.ebsBlockSize)
 	return
 }
 

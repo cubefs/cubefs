@@ -515,11 +515,11 @@ func (c *PreLoadClient) preloadFile() error {
 	}
 	close(jobs)
 	wg.Wait()
-	log.LogInfof("preloadFile end:total %v, succeed %v", c.preloadFileNumSucceed, c.preloadFileNumTotal)
+	log.LogInfof("preloadFile end:total %v, succeed %v", c.preloadFileNumTotal, c.preloadFileNumSucceed)
 	if c.preloadFileNumTotal == c.preloadFileNumSucceed {
 		return nil
 	} else if c.preloadFileNumSucceed < c.preloadFileNumTotal {
-		return errors.New("Preload partitionly succeed")
+		return errors.New("Preload partially succeed")
 	} else {
 		return errors.New("Preload failed")
 	}
@@ -563,5 +563,8 @@ func (c *PreLoadClient) PreloadDir(target string, count int, ttl uint64, zones s
 	log.LogDebugf("Sleep end")
 	//Step3.2  preload the file
 	return c.preloadFile()
+}
 
+func (c *PreLoadClient) GetPreloadResult()(int64 , int64){
+	return c.preloadFileNumTotal, c.preloadFileNumSucceed
 }

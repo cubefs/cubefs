@@ -31,6 +31,9 @@ type FileCachePool struct {
 
 
 func InitCachePool(blockSize int) {
+	if blockSize == 0 {
+		return
+	}
 	CachePool = &FileCachePool{}
 	cacheTotalLimit = int64((4 * util.GB) / blockSize)
 	CachePool.pool = newWriterCachePool(blockSize)
