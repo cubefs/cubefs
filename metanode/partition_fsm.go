@@ -142,8 +142,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp = mp.fsmAppendExtentsWithCheck(ino)
 	case opFSMStoreTick:
-		inodeTree := mp.cloneInodeTree()
-		dentryTree := mp.cloneDentryTree()
+		inodeTree := mp.inodeTree.CloneTree()
+		dentryTree := mp.dentryTree.CloneTree()
 		extendTree := mp.extendTree.CloneTree()
 		multipartTree := mp.multipartTree.CloneTree()
 		msg := &storeMsg{

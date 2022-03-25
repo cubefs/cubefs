@@ -235,7 +235,7 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 	return
 }
 
-// CloneDentryTree returns the dentry tree stored in the meta partition.
-func (mp *metaPartition) CloneDentryTree() *BTree {
-	return mp.dentryTree.CloneTree()
+// handler should not modify items
+func (mp *metaPartition) WalkDentryTree(handler func(item BtreeItem) bool) {
+	mp.dentryTree.Ascend(handler)
 }

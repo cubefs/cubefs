@@ -98,10 +98,6 @@ func (mp *metaPartition) hasInode(ino *Inode) (ok bool) {
 	return
 }
 
-func (mp *metaPartition) cloneInodeTree() *BTree {
-	return mp.inodeTree.CloneTree()
-}
-
 // Ascend is the wrapper of inodeTree.Ascend
 func (mp *metaPartition) Ascend(f func(i BtreeItem) bool) {
 	mp.inodeTree.Ascend(f)

@@ -181,7 +181,7 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 		return true
 	}
 
-	mp.CloneInodeTree().Ascend(f)
+	mp.(*metaPartition).inodeTree.CloneTree().Ascend(f)
 }
 
 func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
@@ -381,7 +381,7 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 		delimiter = []byte{',', '\n'}
 		isFirst   = true
 	)
-	mp.CloneDentryTree().Ascend(func(i BtreeItem) bool {
+	mp.(*metaPartition).dentryTree.CloneTree().Ascend(func(i BtreeItem) bool {
 		if !isFirst {
 			if _, err = w.Write(delimiter); err != nil {
 				return false

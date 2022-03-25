@@ -117,7 +117,7 @@ type OpInode interface {
 	EvictInode(req *EvictInodeReq, p *Packet) (err error)
 	EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (err error)
 	SetAttr(reqData []byte, p *Packet) (err error)
-	CloneInodeTree() *BTree
+	WalkInodeTree(handler func(item BtreeItem) bool)
 	DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error)
 	DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet) (err error)
 }
@@ -141,7 +141,7 @@ type OpDentry interface {
 	ReadDirLimit(req *ReadDirLimitReq, p *Packet) (err error)
 	ReadDirOnly(req *ReadDirOnlyReq, p *Packet) (err error)
 	Lookup(req *LookupReq, p *Packet) (err error)
-	CloneDentryTree() *BTree
+	WalkDentryTree(handler func(item BtreeItem) bool)
 }
 
 // OpExtent defines the interface for the extent operations.
@@ -632,8 +632,8 @@ func (mp *metaPartition) ResponseLoadMetaPartition(p *Packet) (err error) {
 		DoCompare:   true,
 	}
 	resp.MaxInode = mp.GetCursor()
-	resp.InodeCount = uint64(mp.cloneInodeTree().Len())
-	resp.DentryCount = uint64(mp.cloneDentryTree().Len())
+	resp.InodeCount = uint64(mp.inodeTree.Len())
+	resp.DentryCount = uint64(mp.dentryTree.Len())
 	resp.ApplyID = mp.applyID
 	if err != nil {
 		err = errors.Trace(err,
