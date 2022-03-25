@@ -968,7 +968,7 @@ func (rp *ReplProtocol) cleanResource() {
 
 	for e := rp.forwardPacketCheckList.Front(); e != nil; e = e.Next() {
 		request := e.Value.(*Packet)
-		log.LogErrorf("Action[cleanResource] request(%v) because (%v)", request.GetUniqueLogId(), rp.stopError)
+		//log.LogErrorf("Action[cleanResource] request(%v) because (%v)", request.GetUniqueLogId(), rp.stopError)
 		rp.forceCleanPacket(request)
 	}
 	rp.cleanToBeProcessCh()
