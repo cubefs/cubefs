@@ -84,7 +84,9 @@ func main() {
 	action := cfg.GetString("action")
 	if action == "preload" {
 		if err := cli.PreloadDir(cfg.GetString("target"), int(replicaNum), uint64(ttl), cfg.GetString("zones")); err != nil {
-			fmt.Println(err)
+			total, succeed := cli.GetPreloadResult()
+			fmt.Printf("Preload failed:%v\n",err)
+			fmt.Printf("Result: total[%v], succeed[%v]\n", total, succeed)
 		} else {
 			fmt.Println("Preload succeed")
 		}
