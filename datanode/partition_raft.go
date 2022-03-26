@@ -124,7 +124,9 @@ func (dp *DataPartition) startRaft() (err error) {
 		WalPath:  dp.path,
 	}
 
-	dp.raftPartition, err = dp.config.RaftStore.CreatePartition(pc)
+	if dp.raftPartition, err = dp.config.RaftStore.CreatePartition(pc); err != nil {
+		return
+	}
 	go dp.StartRaftLoggingSchedule()
 	return
 }
@@ -218,13 +220,13 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 					truncateRaftLogTimer.Reset(time.Minute)
 					continue
 				}
-				dp.raftPartition.Truncate(dp.minAppliedID)
 				dp.lastTruncateID = dp.minAppliedID
 				if err := dp.PersistMetadata(); err != nil {
 					log.LogErrorf("partition(%v) scheduled persist metadata failed: %v", dp.partitionID, err)
 					truncateRaftLogTimer.Reset(time.Minute)
 					continue
 				}
+				dp.raftPartition.Truncate(dp.minAppliedID)
 				log.LogInfof("partition(%v) scheduled truncate raft log [applied: %v, truncated: %v]", dp.partitionID, appliedID, dp.minAppliedID)
 			}
 			truncateRaftLogTimer.Reset(time.Minute)
