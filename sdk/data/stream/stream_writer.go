@@ -205,6 +205,9 @@ func (s *Streamer) server() {
 				}
 				s.client.streamerLock.Unlock()
 				s.idle++
+				log.LogDebugf("Stream server: ino(%v) refcnt(%v) idle(%v)", s.inode, s.refcnt, s.idle)
+			} else {
+				log.LogDebugf("Stream server: ino(%v) refcnt(%v) idle(%v)", s.inode, s.refcnt, s.idle)
 			}
 		}
 	}
@@ -472,6 +475,7 @@ func (s *Streamer) traverse() (err error) {
 				}
 			}
 
+			log.LogDebugf("Streamer traverse: remove from dirty list and clean up ino(%v) eh(%v)", s.inode, eh)
 			s.dirtylist.Remove(element)
 			eh.cleanup()
 		} else {
