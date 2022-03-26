@@ -527,7 +527,7 @@ func (s *Streamer) open() {
 
 func (s *Streamer) release() error {
 	s.refcnt--
-	if s.client.noFlushOnClose {
+	if s.refcnt > 0 || s.client.noFlushOnClose {
 		log.LogDebugf("release without flush: streamer(%v) refcnt(%v)", s, s.refcnt)
 		return nil
 	}
