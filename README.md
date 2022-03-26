@@ -311,7 +311,6 @@ See [security disclosure process](security/README.md) for detail.
 
 ## Community
 
-- Twitter: [@ChubaoFS](https://twitter.com/ChubaoFS)
 - Mailing list: cubefs-users@groups.io
 - Slack: [cubefs.slack.com](https://cubefs.slack.com/)
 - WeChat: detail see [here](https://github.com/cubefs/cubefs/issues/604).
