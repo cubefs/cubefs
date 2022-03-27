@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"regexp"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -155,6 +156,8 @@ func (s *DataNode) Sync() {
 
 // Workflow of starting up a data node.
 func doStart(server common.Server, cfg *config.Config) (err error) {
+	debug.SetMaxThreads(20000)
+
 	s, ok := server.(*DataNode)
 	if !ok {
 		return errors.New("Invalid Node Type!")
