@@ -383,16 +383,10 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	if err = os.Remove(extentFilePath); err != nil {
 		return
 	}
-	s.PersistenceHasDeleteExtent(extentID)
 	ei.IsDeleted = true
 	ei.ModifyTime = time.Now().Unix()
 	s.cache.Del(extentID)
-	s.DeleteBlockCrc(extentID)
 	s.PutNormalExtentToDeleteCache(extentID)
-
-	s.eiMutex.Lock()
-	delete(s.extentInfoMap, extentID)
-	s.eiMutex.Unlock()
 
 	return
 }
@@ -434,7 +428,7 @@ func (s *ExtentStore) Watermark(extentID uint64) (ei *ExtentInfo, err error) {
 	s.eiMutex.RLock()
 	ei, has = s.extentInfoMap[extentID]
 	s.eiMutex.RUnlock()
-	if !has {
+	if !has || ei.IsDeleted {
 		err = fmt.Errorf("e %v not exist", s.getExtentKey(extentID))
 		return
 	}
@@ -638,6 +632,9 @@ func (s *ExtentStore) StoreSizeExtentID(maxExtentID uint64) (totalSize uint64) {
 	extentInfos := make([]*ExtentInfo, 0)
 	s.eiMutex.RLock()
 	for _, extentInfo := range s.extentInfoMap {
+		if extentInfo.IsDeleted {
+			continue
+		}
 		if extentInfo.FileID <= maxExtentID {
 			extentInfos = append(extentInfos, extentInfo)
 		}
@@ -655,6 +652,9 @@ func (s *ExtentStore) GetMaxExtentIDAndPartitionSize() (maxExtentID, totalSize u
 	extentInfos := make([]*ExtentInfo, 0)
 	s.eiMutex.RLock()
 	for _, extentInfo := range s.extentInfoMap {
+		if extentInfo.IsDeleted {
+			continue
+		}
 		extentInfos = append(extentInfos, extentInfo)
 	}
 	s.eiMutex.RUnlock()
@@ -809,11 +809,17 @@ func (s *ExtentStore) extentWithHeaderByExtentID(extentID uint64) (e *Extent, er
 }
 
 // HasExtent tells if the extent store has the extent with the given ID
-func (s *ExtentStore) HasExtent(extentID uint64) (exist bool) {
+func (s *ExtentStore) HasExtent(extentID uint64) bool {
 	s.eiMutex.RLock()
 	defer s.eiMutex.RUnlock()
-	_, exist = s.extentInfoMap[extentID]
-	return
+	ei, exist := s.extentInfoMap[extentID]
+	if !exist {
+		return false
+	}
+	if ei.IsDeleted {
+		return false
+	}
+	return true
 }
 
 // GetExtentCount returns the number of extents in the extentInfoMap
@@ -912,6 +918,11 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 			delete(s.extentInfoMap, ei.FileID)
 		}
 		s.eiMutex.Unlock()
+
+		for _, ei := range deleteExtents {
+			_ = s.PersistenceHasDeleteExtent(ei.FileID)
+			_ = s.DeleteBlockCrc(ei.FileID)
+		}
 	}
 
 	sort.Sort(ExtentInfoArr(extentInfos))
