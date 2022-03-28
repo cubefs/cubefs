@@ -665,6 +665,15 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 				currRecoverySize = binary.BigEndian.Uint64(reply.Arg[1:9])
 				reply.Size = uint32(currRecoverySize)
 			}
+			defer func() {
+				if r:=recover();r!=nil {
+					recoverMesg:=fmt.Sprintf("repairKey(%v) reply(%v) isEmptyResponse(%v) " +
+						"currRecoverySize(%v) remoteAvaliSize(%v) currFixOffset(%v)",dp.applyRepairKey(int(reply.ExtentID)),
+						reply,isEmptyResponse,currRecoverySize,remoteAvaliSize,currFixOffset)
+					log.LogErrorf(recoverMesg)
+					panic(recoverMesg)
+				}
+			}()
 			err = store.TinyExtentRecover(uint64(localExtentInfo[storage.FileID]), int64(currFixOffset), int64(currRecoverySize), reply.Data[0:currRecoverySize], reply.CRC, isEmptyResponse)
 			if hasRecoverySize+currRecoverySize >= remoteAvaliSize {
 				log.LogInfof("streamRepairTinyExtent(%v) recover fininsh,remoteAvaliSize(%v) "+
