@@ -294,7 +294,7 @@ func parsePreloadDpReq(r *http.Request, preload *DataPartitionPreLoad) (err erro
 		return
 	}
 
-	if preload.preloadReplicaNum < 1 || preload.preloadReplicaNum > 15 {
+	if preload.preloadReplicaNum < 1 || preload.preloadReplicaNum > 16 {
 		return fmt.Errorf("preload replicaNum must be between [%d] to [%d], now[%d]", 1, 16, preload.preloadReplicaNum)
 	}
 
