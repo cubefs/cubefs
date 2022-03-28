@@ -57,7 +57,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 					mp.config.PartitionId, msg))
 				mp.TryToLeader(mp.config.PartitionId)
 			}
-			log.LogErrorf("Mp[%d] action[Apply] failed,index:%v,msg:%v,resp:%v", mp.config.PartitionId, index, msg, resp)
+			log.LogErrorf("Mp[%d] action[Apply] failed,index:%v,msg:%v,resp:%v,err:%v", mp.config.PartitionId, index, msg, resp, err)
 			return
 		}
 		if fsmError == rocksdbError {
@@ -65,6 +65,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 				" apply failed witch rocksdb error[msg:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
 				mp.config.PartitionId, msg))
 			mp.TryToLeader(mp.config.PartitionId)
+			err = fsmError
+			return
 		}
 		mp.uploadApplyID(index)
 	}()
@@ -172,7 +174,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
-		resp, err = mp.fsmUpdatePartition(req.End)
+		resp, fsmError = mp.fsmUpdatePartition(req.End)
 	case opFSMExtentsAdd:
 		mp.monitorData[statistics.ActionMetaExtentsAdd].UpdateData(0)
 
@@ -197,11 +199,25 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		mp.storeChan <- msg
 	case opFSMInternalDeleteInode:
-		err = mp.internalDelete(msg.V)
+		fsmError = mp.internalDelete(msg.V)
 	case opFSMCursorReset:
-		resp, err = mp.internalCursorReset(msg.V)
+		req := &proto.CursorResetRequest{}
+		if err = json.Unmarshal(msg.V, req); err != nil {
+			log.LogInfof("mp[%v] reset cursor, json unmarshal failed:%s", mp.config.PartitionId, err.Error())
+			return mp.config.Cursor, err
+		}
+		resp, fsmError = mp.internalCursorReset(req)
 	case opFSMInternalDeleteInodeBatch:
-		err = mp.internalDeleteBatch(ctx, msg.V)
+		if len(msg.V) == 0 {
+			return
+		}
+		var inodes InodeBatch
+		inodes, err = InodeBatchUnmarshal(ctx, msg.V)
+		if err != nil {
+			log.LogErrorf("mp[%v] inode batch unmarshal failed:%s", mp.config.PartitionId, err.Error())
+			return
+		}
+		fsmError = mp.internalDeleteBatch(inodes)
 	case opFSMInternalDelExtentFile:
 		err = mp.delOldExtentFile(msg.V)
 	case opFSMInternalDelExtentCursor:
@@ -211,13 +227,13 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if extend, err = NewExtendFromBytes(msg.V); err != nil {
 			return
 		}
-		resp, err = mp.fsmSetXAttr(extend)
+		resp, fsmError = mp.fsmSetXAttr(extend)
 	case opFSMRemoveXAttr:
 		var extend *Extend
 		if extend, err = NewExtendFromBytes(msg.V); err != nil {
 			return
 		}
-		resp, err = mp.fsmRemoveXAttr(extend)
+		resp, fsmError = mp.fsmRemoveXAttr(extend)
 	case opFSMCreateMultipart:
 		var multipart *Multipart
 		multipart = MultipartFromBytes(msg.V)
@@ -314,8 +330,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp, fsmError = mp.fsmBatchCleanDeletedDentry(batch)
 	case opFSMInternalCleanDeletedInode:
-		//todo:fsmError
-		err = mp.internalClean(msg.V)
+		fsmError = mp.internalClean(msg.V)
 	case opFSMExtentDelSync:
 		mp.fsmSyncDelExtents(msg.V)
 	}

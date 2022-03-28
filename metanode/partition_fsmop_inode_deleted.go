@@ -419,8 +419,7 @@ func (mp *metaPartition) internalClean(val []byte) (err error) {
 		}
 		log.LogDebugf("internalClean: received internal delete: partitionID(%v) inode(%v)",
 			mp.config.PartitionId, ino.Inode)
-		err = mp.internalCleanDeletedInode(ino)
-		if err != nil {
+		if err = mp.internalCleanDeletedInode(ino); err == rocksdbError {
 			return
 		}
 	}
@@ -438,6 +437,7 @@ func (mp *metaPartition) internalCleanDeletedInode(ino *Inode) (err error) {
 			log.LogErrorf("[internalCleanDeletedInode] delete error:%v", err)
 			return
 		}
+		log.LogDebugf("[internalCleanDeletedInode], delete inode:%v result:%v", ino, err)
 	} else {
 		log.LogDebugf("[internalCleanDeletedInode], dino: %v", ino)
 	}
@@ -446,6 +446,7 @@ func (mp *metaPartition) internalCleanDeletedInode(ino *Inode) (err error) {
 		log.LogErrorf("[internalCleanDeletedInode], deleted extend failed, ino:%v, error:%v", ino.Inode, err)
 		return
 	}
+	log.LogDebugf("[internalCleanDeletedInode], delete extend:%v result:%v", ino, err)
 	return
 }
 
