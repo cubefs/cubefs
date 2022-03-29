@@ -16,6 +16,7 @@ package storage
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 	"sync/atomic"
 
@@ -37,18 +38,25 @@ func (arr BlockCrcArr) Len() int           { return len(arr) }
 func (arr BlockCrcArr) Less(i, j int) bool { return arr[i].BlockNo < arr[j].BlockNo }
 func (arr BlockCrcArr) Swap(i, j int)      { arr[i], arr[j] = arr[j], arr[i] }
 
-type UpdateCrcFunc func(e *Extent, blockNo int, crc uint32) (err error)
+type UpdateCrcFunc func(e *Extent, blockNo int, crc uint32, data []byte) (err error)
 type GetExtentCrcFunc func(extentID uint64) (crc uint32, err error)
 
-func (s *ExtentStore) PersistenceBlockCrc(e *Extent, blockNo int, blockCrc uint32) (err error) {
+// If data is not nil, write the whole extent header to file.
+// Otherwise, just update the extent header in memory.
+func (s *ExtentStore) PersistenceBlockCrc(e *Extent, blockNo int, blockCrc uint32, data []byte) (err error) {
+	if data != nil {
+		if len(data) > util.BlockHeaderSize {
+			return fmt.Errorf("PersistenceBlockCrc: error! data length(%v) which islarger than (%v)", len(data), util.BlockHeaderSize)
+		}
+		verifyStart := int(util.BlockHeaderSize * e.extentID)
+		if _, err = s.verifyExtentFp.WriteAt(data, int64(verifyStart)); err != nil {
+			return
+		}
+	}
+
 	startIdx := blockNo * util.PerBlockCrcSize
 	endIdx := startIdx + util.PerBlockCrcSize
 	binary.BigEndian.PutUint32(e.header[startIdx:endIdx], blockCrc)
-	verifyStart := startIdx + int(util.BlockHeaderSize*e.extentID)
-	if _, err = s.verifyExtentFp.WriteAt(e.header[startIdx:endIdx], int64(verifyStart)); err != nil {
-		return
-	}
-
 	return
 }
 

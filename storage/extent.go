@@ -255,15 +255,15 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 		}
 	}
 	if offsetInBlock == 0 && size == util.BlockSize {
-		err = crcFunc(e, int(blockNo), crc)
+		err = crcFunc(e, int(blockNo), crc, nil)
 		return
 	}
 	if offsetInBlock+size <= util.BlockSize {
-		err = crcFunc(e, int(blockNo), 0)
+		err = crcFunc(e, int(blockNo), 0, nil)
 		return
 	}
-	if err = crcFunc(e, int(blockNo), 0); err == nil {
-		err = crcFunc(e, int(blockNo+1), 0)
+	if err = crcFunc(e, int(blockNo), 0, nil); err == nil {
+		err = crcFunc(e, int(blockNo+1), 0, nil)
 	}
 
 	return
@@ -347,14 +347,12 @@ func (e *Extent) autoComputeExtentCrc(crcFunc UpdateCrcFunc) (crc uint32, err er
 			break
 		}
 		blockCrc = crc32.ChecksumIEEE(bdata[:readN])
-		err = crcFunc(e, blockNo, blockCrc)
-		if err != nil {
-			return 0, nil
-		}
+		_ = crcFunc(e, blockNo, blockCrc, nil)
 		binary.BigEndian.PutUint32(crcData[blockNo*util.PerBlockCrcSize:(blockNo+1)*util.PerBlockCrcSize], blockCrc)
 	}
-	crc = crc32.ChecksumIEEE(crcData)
 
+	crcFunc(e, -1, 0, crcData) // just use a invalid block number.
+	crc = crc32.ChecksumIEEE(crcData)
 	return crc, err
 }
 
