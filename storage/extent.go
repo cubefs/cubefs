@@ -53,6 +53,12 @@ func (eiBlock ExtentInfoBlock) String() string {
 	return fmt.Sprintf("%v_%v", eiBlock[FileID], eiBlock[Size])
 }
 
+func (ei *ExtentInfoBlock) Loaded() bool {
+	return ei[ModifyTime] > 0
+}
+
+
+
 // Extent is an implementation of Extent for local regular extent file data management.
 // This extent implementation manages all header info and data body in one single entry file.
 // Header of extent include inode value of this extent block and Crc blocks of data blocks.
@@ -115,7 +121,6 @@ func (e *Extent) InitToFS() (err error) {
 			os.Remove(e.filePath)
 		}
 	}()
-
 	if IsTinyExtent(e.extentID) {
 		e.dataSize = 0
 		return
@@ -316,20 +321,21 @@ func (e *Extent) autoComputeExtentCrc(crcFunc UpdateCrcFunc) (crc uint32, err er
 		}
 		bdata := make([]byte, util.BlockSize)
 		offset := int64(blockNo * util.BlockSize)
-		readN, err := e.file.ReadAt(bdata[:util.BlockSize], offset)
+		var readN int
+		readN, err = e.file.ReadAt(bdata[:util.BlockSize], offset)
 		if readN == 0 && err != nil {
 			break
 		}
 		blockCrc = crc32.ChecksumIEEE(bdata[:readN])
 		err = crcFunc(e, blockNo, blockCrc)
 		if err != nil {
-			return 0, nil
+			return
 		}
 		binary.BigEndian.PutUint32(crcData[blockNo*util.PerBlockCrcSize:(blockNo+1)*util.PerBlockCrcSize], blockCrc)
 	}
 	crc = crc32.ChecksumIEEE(crcData)
 
-	return crc, err
+	return
 }
 
 const (

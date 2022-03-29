@@ -209,7 +209,16 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int,
 	return
 }
 
+
+func (ei *ExtentInfoBlock) Init(size uint64, modTime time.Time) {
+	ei[Size] = size
+	ei[ModifyTime] = uint64(modTime.Unix())
+}
+
 func (ei *ExtentInfoBlock) UpdateExtentInfo(extent *Extent, crc uint32) {
+	if ei[ModifyTime] == 0 {
+		return
+	}
 	extent.Lock()
 	defer extent.Unlock()
 	if time.Now().Unix()-extent.ModifyTime() <= UpdateCrcInterval {
@@ -277,8 +286,7 @@ func (s *ExtentStore) Create(extentID uint64, putCache bool) (err error) {
 		}()
 	}
 	extInfo := ExtentInfoBlock{FileID: extentID}
-	extInfo.UpdateExtentInfo(e, 0)
-
+	extInfo.Init(0, time.Now())
 	s.extentMapSlice.Store(extentID, extInfo)
 	atomic.AddInt64(&s.extentCnt, 1)
 	s.UpdateBaseExtentID(extentID)
@@ -319,7 +327,7 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 			if watermark%PageSize != 0 {
 				watermark = watermark + (PageSize - watermark%PageSize)
 			}
-			ei[Size] = uint64(watermark)
+			ei.Init(uint64(watermark), info.ModTime())
 		}
 
 		s.extentMapSlice.Store(extentID, ei)
@@ -348,9 +356,8 @@ func (s *ExtentStore) AsyncLoadExtentSize() {
 			log.LogWarnf("asyncLoadExtentSize extentPath(%v) error(%v)", extentAbsPath, err)
 			return
 		}
-		if ei[Size] == 0 {
-			ei[Size] = uint64(info.Size())
-			ei[ModifyTime] = uint64(info.ModTime().Unix())
+		if !ei.Loaded() {
+			ei.Init(uint64(info.Size()), info.ModTime())
 			s.addNormalExtentSize(int64(ei[Size]))
 		}
 	})
@@ -391,7 +398,9 @@ func (s *ExtentStore) Write(ctx context.Context, extentID uint64, offset, size i
 	if err != nil {
 		return err
 	}
-	if !IsTinyExtent(extentID) && IsAppendWrite(writeType) && s.IsFinishLoad(){
+	// 若当前Extent是Normal，是追加写，并且该ExtentInfo已经被AsyncLoadExtentSize初始化完成。
+	// 说明Extent在前一个时刻的size已经被累加到了total used size中。则将增量size累加如total used size中。
+	if !IsTinyExtent(extentID) && IsAppendWrite(writeType) && ei.Loaded() {
 		s.addNormalExtentSize(size)
 	}
 	ei.UpdateExtentInfo(e, 0)
@@ -474,7 +483,9 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	if err = os.Remove(extentFilePath); err != nil {
 		return
 	}
-	if s.IsFinishLoad() {
+	// 若当前Extent是Normal，是追加写，并且该ExtentInfo已经被AsyncLoadExtentSize初始化完成。
+	// 说明Extent在前一个时刻的size已经被累加到了total used size中。则将文件size从total used size中进行扣减。
+	if ei.Loaded() {
 		s.subNormalExtentSize(int64(ei[Size]))
 	}
 	s.PersistenceHasDeleteExtent(extentID)
@@ -955,7 +966,7 @@ func (s *ExtentStore) AutoComputeExtentCrc() {
 	sort.Sort(ExtentInfoArr(needUpdateCrcExtents))
 	for _, ei := range needUpdateCrcExtents {
 		e, err := s.extentWithHeader(ei)
-		if err != nil {
+		if err != nil || !ei.Loaded() {
 			continue
 		}
 		extentCrc, err := e.autoComputeExtentCrc(s.PersistenceBlockCrc)
@@ -965,7 +976,6 @@ func (s *ExtentStore) AutoComputeExtentCrc() {
 		ei.UpdateExtentInfo(e, extentCrc)
 		time.Sleep(time.Millisecond * 100)
 	}
-
 }
 
 func (s *ExtentStore) TinyExtentRecover(extentID uint64, offset, size int64, data []byte, crc uint32, isEmptyPacket bool) (err error) {
@@ -1117,8 +1127,8 @@ func (s *ExtentStore) PlaybackTinyDelete() (err error) {
 			return
 		}
 		extentID, offset, size := UnMarshalTinyExtent(recordData[:readN])
-		ei := s.getExtentInfoByExtentID(extentID)
-		if ei == nil || ei.IsDeleted {
+		ei,ok := s.getExtentInfoByExtentID(extentID)
+		if !ok {
 			continue
 		}
 		var e *Extent

@@ -329,7 +329,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		Learners             []proto.Learner       `json:"learners"`
 		TinyDeleteRecordSize int64                 `json:"tinyDeleteRecordSize"`
 		RaftStatus           *raft.Status          `json:"raftStatus"`
-		IsFininshLoading     bool                  `json:"isFinishLoad"`
+		IsFinishLoad         bool                  `json:"isFinishLoad"`
 	}{
 		VolName:              partition.volumeID,
 		ID:                   partition.partitionID,
@@ -344,7 +344,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		RaftStatus:           raftStatus,
 		Peers:                partition.config.Peers,
 		Learners:             partition.config.Learners,
-		IsFininshLoading:     partition.ExtentStore().IsFinishLoad(),
+		IsFinishLoad:         partition.ExtentStore().IsFinishLoad(),
 	}
 	s.buildSuccessResp(w, result)
 }

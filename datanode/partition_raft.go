@@ -213,20 +213,23 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 			if dp.raftPartition == nil {
 				break
 			}
-			if dp.minAppliedID > dp.lastTruncateID { // Has changed
-				appliedID := atomic.LoadUint64(&dp.appliedID)
+			var (
+				minAppliedID, lastTruncateID, appliedID =
+					dp.minAppliedID, dp.lastTruncateID, atomic.LoadUint64(&dp.appliedID)
+			)
+			if appliedID >= minAppliedID && minAppliedID > lastTruncateID { // Has changed
 				if err := dp.storeAppliedID(appliedID); err != nil {
 					log.LogErrorf("partition(%v) scheduled store applied ID(%v) failed: %v", dp.partitionID, appliedID, err)
 					truncateRaftLogTimer.Reset(time.Minute)
 					continue
 				}
-				dp.lastTruncateID = dp.minAppliedID
+				dp.lastTruncateID = minAppliedID
 				if err := dp.PersistMetadata(); err != nil {
 					log.LogErrorf("partition(%v) scheduled persist metadata failed: %v", dp.partitionID, err)
 					truncateRaftLogTimer.Reset(time.Minute)
 					continue
 				}
-				dp.raftPartition.Truncate(dp.minAppliedID)
+				dp.raftPartition.Truncate(minAppliedID)
 				log.LogInfof("partition(%v) scheduled truncate raft log [applied: %v, truncated: %v]", dp.partitionID, appliedID, dp.minAppliedID)
 			}
 			truncateRaftLogTimer.Reset(time.Minute)
