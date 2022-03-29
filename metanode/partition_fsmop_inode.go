@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"io"
@@ -232,13 +231,7 @@ func (mp *metaPartition) internalDelete(val []byte) error {
 	}
 }
 
-func (mp *metaPartition) internalCursorReset(val []byte) (uint64, error) {
-	req := &proto.CursorResetRequest{}
-	if err := json.Unmarshal(val, req); err != nil {
-		log.LogInfof("mp[%v] reset cursor, json unmarshal failed:%s", mp.config.PartitionId, err.Error())
-		return mp.config.Cursor, err
-	}
-
+func (mp *metaPartition) internalCursorReset(req *proto.CursorResetRequest) (uint64, error) {
 	if ok := atomic.CompareAndSwapUint64(&mp.config.Cursor, req.Cursor, req.Inode); !ok {
 		log.LogInfof("mp[%v] reset cursor, failed: cursor changed", mp.config.PartitionId)
 		return mp.config.Cursor, fmt.Errorf("mp[%v] reset cursor, failed: cursor changed", mp.config.PartitionId)
@@ -248,19 +241,11 @@ func (mp *metaPartition) internalCursorReset(val []byte) (uint64, error) {
 	return mp.config.Cursor, nil
 }
 
-func (mp *metaPartition) internalDeleteBatch(ctx context.Context, val []byte) error {
-	if len(val) == 0 {
-		return nil
-	}
-	inodes, err := InodeBatchUnmarshal(ctx, val)
-	if err != nil {
-		return nil
-	}
-
+func (mp *metaPartition) internalDeleteBatch(inodes InodeBatch) error {
 	for _, ino := range inodes {
 		log.LogDebugf("internalDelete: received internal delete: partitionID(%v) inode(%v)",
 			mp.config.PartitionId, ino.Inode)
-		if err = mp.internalDeleteInode(ino); err == rocksdbError {
+		if err := mp.internalDeleteInode(ino); err == rocksdbError {
 			return err
 		}
 	}

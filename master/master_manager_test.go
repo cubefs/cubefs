@@ -63,7 +63,7 @@ func TestRaft(t *testing.T) {
 
 func snapshotTest(t *testing.T) {
 	var err error
-	mdSnapshot, err := server.cluster.fsm.Snapshot()
+	mdSnapshot, err := server.cluster.fsm.Snapshot(0)
 	if err != nil {
 		t.Error(err)
 		return

@@ -74,7 +74,7 @@ def DealDataFile():
 
     os.chdir('/cfs/coverage')
     os.system(
-        ' grep -h -Ev "^mode:|chubaofs/console|chubaofs/sdk/graphql|chubaofs/vendor" /cfs/coverage/*.cov | sort > merge_cover_tmp ')
+        ' grep -h -Ev "^mode:|chubaofs/convertnode|chubaofs/console|chubaofs/sdk/graphql|chubaofs/vendor" /cfs/coverage/*.cov | sort > merge_cover_tmp ')
 
     SpiltFile()
     UploadToOss()
