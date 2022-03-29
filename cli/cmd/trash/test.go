@@ -22,13 +22,13 @@ var (
 )
 
 type listRow struct {
-	seq   int
-	name  string
-	inode uint64
-	dtype string
-	size  uint64
-	isDel string
-	ts    string
+	Seq      int
+	Name     string
+	INode    uint64
+	FileType string
+	Size     uint64
+	IsDel    string
+	TS       string
 }
 
 func newTestCmd(client *master.MasterClient) *cobra.Command {
@@ -49,7 +49,7 @@ func newTestCmd(client *master.MasterClient) *cobra.Command {
 			fmt.Println("Test is done")
 		},
 	}
-	c.Flags().StringVarP(&vol, "vol", "v", "", "volume name")
+	c.Flags().StringVarP(&vol, "vol", "v", "", "volume Name")
 	c.MarkFlagRequired("vol")
 	return c
 }
@@ -680,9 +680,9 @@ func sameNameTest() (err error) {
 		return
 	}
 	for _, row := range rows {
-		fmt.Println(row.name)
-		if strings.HasPrefix(row.name, "d2") {
-			d := path.Join(testRootDir, row.name)
+		fmt.Println(row.Name)
+		if strings.HasPrefix(row.Name, "d2") {
+			d := path.Join(testRootDir, row.Name)
 			err = os.Remove(d)
 			if err != nil {
 				log.LogError(err)
@@ -703,14 +703,14 @@ func sameNameTest() (err error) {
 
 	isRecursive = true
 	for _, row := range delRows {
-		if strings.HasPrefix(row.name, "d2") {
-			d := path.Join(cfsDir, row.name)
+		if strings.HasPrefix(row.Name, "d2") {
+			d := path.Join(cfsDir, row.Name)
 			err = recoverPath(d)
 			if err != nil {
 				log.LogError(err)
 				return
 			}
-			d2 := path.Join(cfsDir, row.name[0:len(row.name)-22])
+			d2 := path.Join(cfsDir, row.Name[0:len(row.Name)-22])
 			err, res, delRes := ListPath(d2, true)
 			if err != nil {
 				log.LogError(err)
@@ -1635,12 +1635,12 @@ func RenameToNotExistFileTest() (err error) {
 			log.LogError(err.Error())
 			return
 		}
-		if rows[0].name != "f2_0" {
-			err = fmt.Errorf("name: %v", rows[0].name)
+		if rows[0].Name != "f2_0" {
+			err = fmt.Errorf("Name: %v", rows[0].Name)
 			log.LogError(err.Error())
 			return
 		}
-		f := path.Join(d1, rows[0].name)
+		f := path.Join(d1, rows[0].Name)
 		var data []byte
 		data, err = ioutil.ReadFile(f)
 		if err != nil {
@@ -1684,12 +1684,12 @@ func RenameToNotExistFileTest() (err error) {
 			log.LogError(err.Error())
 			return
 		}
-		if rows[0].name != "f2_0" {
-			err = fmt.Errorf("name: %v", rows[0].name)
+		if rows[0].Name != "f2_0" {
+			err = fmt.Errorf("Name: %v", rows[0].Name)
 			log.LogError(err.Error())
 			return
 		}
-		f = path.Join(d1, rows[0].name)
+		f = path.Join(d1, rows[0].Name)
 		data, err = ioutil.ReadFile(f)
 		if err != nil {
 			log.LogError(err.Error())
@@ -1796,8 +1796,8 @@ func RenameToExistFileTest() (err error) {
 			return
 		}
 		for _, row := range rows {
-			if strings.HasPrefix(row.name, "f1_0") {
-				f := path.Join(d1, row.name)
+			if strings.HasPrefix(row.Name, "f1_0") {
+				f := path.Join(d1, row.Name)
 				var data []byte
 				data, err = ioutil.ReadFile(f)
 				if err != nil {
@@ -1844,8 +1844,8 @@ func RenameToExistFileTest() (err error) {
 			return
 		}
 		for _, row := range rows {
-			if strings.HasPrefix(row.name, "f1_0") {
-				f := path.Join(d1, row.name)
+			if strings.HasPrefix(row.Name, "f1_0") {
+				f := path.Join(d1, row.Name)
 				var data []byte
 				data, err = ioutil.ReadFile(f)
 				if err != nil {
@@ -1924,8 +1924,8 @@ func RenameDirTest() (err error) {
 		err = fmt.Errorf("len(rows): %v", len(rows))
 		return
 	}
-	if rows[0].name != "d2" {
-		err = fmt.Errorf("name: %v", rows[0].name)
+	if rows[0].Name != "d2" {
+		err = fmt.Errorf("Name: %v", rows[0].Name)
 		return
 	}
 	if len(delRows) != 0 {
@@ -1952,8 +1952,8 @@ func RenameDirTest() (err error) {
 		err = fmt.Errorf("len(del rows): %v", len(delRows))
 		return
 	}
-	if strings.HasPrefix(delRows[0].name, "d2") == false {
-		err = fmt.Errorf("nam: %v", delRows[0].name)
+	if strings.HasPrefix(delRows[0].Name, "d2") == false {
+		err = fmt.Errorf("nam: %v", delRows[0].Name)
 		log.LogError(err.Error())
 		return
 	}
@@ -1973,8 +1973,8 @@ func RenameDirTest() (err error) {
 		err = fmt.Errorf("len(rows): %v", len(rows))
 		return
 	}
-	if rows[0].name != "d2" {
-		err = fmt.Errorf("name: %v", rows[0].name)
+	if rows[0].Name != "d2" {
+		err = fmt.Errorf("Name: %v", rows[0].Name)
 		return
 	}
 	if len(delRows) != 0 {
@@ -2008,8 +2008,8 @@ func RenameDirTest() (err error) {
 		log.LogError(err.Error())
 		return
 	}
-	if rows[0].name != "d3" {
-		err = fmt.Errorf("name: %v", delRows[0].name)
+	if rows[0].Name != "d3" {
+		err = fmt.Errorf("Name: %v", delRows[0].Name)
 		log.LogError(err.Error())
 		return
 	}

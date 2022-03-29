@@ -33,6 +33,13 @@ const (
 	listDataFormat = "%06d %-60s %10d %-4s %10d %-9s %-15s %-22s\n"
 )
 
+type ListResp struct {
+	Code uint32
+	Msg string
+	Rows  []*listRow
+	DelRows  []*listRow
+}
+
 func newFSListCmd(client *master.MasterClient) *cobra.Command {
 	var vol string
 	var c = &cobra.Command{
@@ -40,17 +47,48 @@ func newFSListCmd(client *master.MasterClient) *cobra.Command {
 		Short: "list a directory or file",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			err := newTrashEnv(client, vol)
+			var (
+				err error
+				rows []*listRow
+				delRows []*listRow
+			)
+			defer func() {
+				if !isFormatAsJSON {
+					return
+				}
+				var rsp ListResp
+				if err != nil {
+					rsp.Code = 1
+					rsp.Msg = err.Error()
+				} else {
+					rsp.Code = 0
+				}
+				rsp.Rows = rows
+				rsp.DelRows = delRows
+				printAsJson(&rsp)
+			}()
+			err = newTrashEnv(client, vol)
 			if err != nil {
 				return
 			}
-			if err, _, _ := ListPath(args[0], false); err != nil {
-				fmt.Println(err)
+			if isFormatAsJSON {
+				err, rows, delRows = ListPath(args[0], true)
+				if err != nil {
+					return
+				}
+				return
+			}
+			err, _, _ = ListPath(args[0], false)
+			if err != nil {
+				if !isFormatAsJSON {
+					fmt.Println(err)
+				}
 			}
 		},
 	}
-	c.Flags().StringVarP(&vol, "vol", "v", "", "volume name")
+	c.Flags().StringVarP(&vol, "vol", "v", "", "volume Name")
 	c.MarkFlagRequired("vol")
+	c.Flags().BoolVarP(&isFormatAsJSON, "json", "j", false, "output as json ")
 	return c
 }
 
@@ -67,7 +105,9 @@ func ListPath(pathStr string, isTest bool) (err error, rows, delRows []*listRow)
 
 	if strings.HasPrefix(absPath, "/") == false {
 		err = fmt.Errorf("the path[%v] is invalid", pathStr)
-		fmt.Println(err.Error())
+		if !isFormatAsJSON {
+			fmt.Println(err.Error())
+		}
 		return
 	}
 
@@ -97,15 +137,15 @@ func ListNormalPath(parentID uint64, name string, isTest bool) (
 	)
 	defer func() {
 		if err != nil {
-			log.LogDebugf("ListNormalPath, pid: %v, name: %v, err: %v", parentID, name, err.Error())
+			log.LogDebugf("ListNormalPath, pid: %v, Name: %v, err: %v", parentID, name, err.Error())
 		} else {
-			log.LogDebugf("ListNormalPath, pid: %v, name: %v", parentID, name)
+			log.LogDebugf("ListNormalPath, pid: %v, Name: %v", parentID, name)
 		}
 	}()
 	if len(name) > 0 {
 		ino, mode, err = gTrashEnv.metaWrapper.Lookup_ll(ctx, parentID, name)
 		if err != nil && err != syscall.ENOENT {
-			log.LogErrorf("failed to get inode by pathStr: %v, err: %v\n", name, err.Error())
+			log.LogErrorf("failed to get INode by pathStr: %v, err: %v\n", name, err.Error())
 			return
 		} else if err == syscall.ENOENT {
 			return ListDeletedPath(parentID, name, isTest)
@@ -118,21 +158,23 @@ func ListNormalPath(parentID uint64, name string, isTest bool) (
 			var inode *proto.InodeInfo
 			inode, err = gTrashEnv.metaWrapper.InodeGet_ll(ctx, ino)
 			if err != nil {
-				log.LogErrorf("ListNormalPath, not found the inode of  %v, name: %v, err: %v\n", ino, name, err.Error())
+				log.LogErrorf("ListNormalPath, not found the INode of  %v, Name: %v, err: %v\n", ino, name, err.Error())
 				return
 			}
 			if isTest {
 				row := new(listRow)
-				row.seq = 1
-				row.name = name
-				row.inode = inode.Inode
-				row.dtype = "-"
-				row.size = inode.Size
-				row.isDel = "-"
-				row.ts = "-"
+				row.Seq = 1
+				row.Name = name
+				row.INode = inode.Inode
+				row.FileType = "-"
+				row.Size = inode.Size
+				row.IsDel = "-"
+				row.TS = "-"
 				rows = append(rows, row)
 			}
-			fmt.Printf(listDataFormat, 1, name, inode.Inode, "-", inode.Size, "-", "-", "-")
+			if !isFormatAsJSON {
+				fmt.Printf(listDataFormat, 1, name, inode.Inode, "-", inode.Size, "-", "-", "-")
+			}
 			return
 		}
 	}
@@ -154,7 +196,7 @@ func ListNormalPath(parentID uint64, name string, isTest bool) (
 	}
 	inodes := gTrashEnv.metaWrapper.BatchInodeGet(ctx, inos)
 	if inodes == nil {
-		err = fmt.Errorf("failed to batch get inode from %v", ino)
+		err = fmt.Errorf("failed to batch get INode from %v", ino)
 		return
 	}
 
@@ -172,16 +214,18 @@ func ListNormalPath(parentID uint64, name string, isTest bool) (
 		seq++
 		if isTest {
 			row := new(listRow)
-			row.seq = seq
-			row.name = dentry.Name
-			row.inode = ino.Inode
-			row.dtype = getPathType(dentry.Type)
-			row.size = ino.Size
-			row.isDel = "-"
-			row.ts = "-"
+			row.Seq = seq
+			row.Name = dentry.Name
+			row.INode = ino.Inode
+			row.FileType = getPathType(dentry.Type)
+			row.Size = ino.Size
+			row.IsDel = "-"
+			row.TS = "-"
 			rows = append(rows, row)
 		}
-		fmt.Printf(listDataFormat, seq, dentry.Name, dentry.Inode, getPathType(dentry.Type), ino.Size, "-", "-", "-")
+		if !isFormatAsJSON {
+			fmt.Printf(listDataFormat, seq, dentry.Name, dentry.Inode, getPathType(dentry.Type), ino.Size, "-", "-", "-")
+		}
 	}
 
 	var ddentrys []*proto.DeletedDentry
@@ -199,7 +243,7 @@ func ListNormalPath(parentID uint64, name string, isTest bool) (
 	for _, dentry := range ddentrys {
 		ino, ok := delInfos[dentry.Inode]
 		if !ok {
-			msg := fmt.Sprintf("miss inode for dentry: %v", dentry)
+			msg := fmt.Sprintf("miss INode for dentry: %v", dentry)
 			log.LogWarnf(msg)
 			continue
 		}
@@ -207,18 +251,21 @@ func ListNormalPath(parentID uint64, name string, isTest bool) (
 		seq++
 		if isTest {
 			row := new(listRow)
-			row.seq = seq
-			row.name = dentry.AppendTimestampToName()
-			row.inode = ino.Inode
-			row.dtype = getPathType(dentry.Type)
-			row.size = ino.Size
-			row.isDel = "true"
-			row.ts = getTimeStr(dentry.Timestamp)
+			row.Seq = seq
+			row.Name = dentry.AppendTimestampToName()
+			row.INode = ino.Inode
+			row.FileType = getPathType(dentry.Type)
+			row.Size = ino.Size
+			row.IsDel = "true"
+			row.TS = getTimeStr(dentry.Timestamp)
 			delRows = append(delRows, row)
 		}
 		log.LogDebugf("%v, %v", dentry, ino)
-		fmt.Printf(listDataFormat, seq, dentry.AppendTimestampToName(), ino.Inode,
-			getPathType(dentry.Type), ino.Size, "true", dentry.From, getTimeStr(dentry.Timestamp))
+		if !isFormatAsJSON {
+			fmt.Printf(listDataFormat, seq, dentry.AppendTimestampToName(), ino.Inode,
+				getPathType(dentry.Type), ino.Size, "true", dentry.From, getTimeStr(dentry.Timestamp))
+		}
+
 	}
 	return
 }
@@ -254,7 +301,9 @@ func ListDeletedPath(parentID uint64, name string, isTest bool) (
 
 	if len(dentrys) > 1 {
 		msg := fmt.Sprintf("This directory[%v] has multiple deleted records with time stamps", name)
-		fmt.Println(msg)
+		if !isFormatAsJSON {
+			fmt.Println(msg)
+		}
 		log.LogError(msg)
 		err = errors.New(msg)
 		return
@@ -264,23 +313,25 @@ func ListDeletedPath(parentID uint64, name string, isTest bool) (
 		var ino *proto.DeletedInodeInfo
 		ino, err = gTrashEnv.metaWrapper.GetDeletedInode(ctx, dentrys[0].Inode)
 		if err != nil {
-			log.LogErrorf("failed to get inode by pathStr: %v, err: %v\n", name, err.Error())
+			log.LogErrorf("failed to get INode by pathStr: %v, err: %v\n", name, err.Error())
 			return
 		}
 		if isTest {
 			row := new(listRow)
-			row.seq = 1
-			row.name = dentrys[0].AppendTimestampToName()
-			row.inode = ino.Inode
-			row.dtype = getPathType(dentrys[0].Type)
-			row.size = ino.Size
-			row.isDel = "true"
-			row.ts = getTimeStr(dentrys[0].Timestamp)
+			row.Seq = 1
+			row.Name = dentrys[0].AppendTimestampToName()
+			row.INode = ino.Inode
+			row.FileType = getPathType(dentrys[0].Type)
+			row.Size = ino.Size
+			row.IsDel = "true"
+			row.TS = getTimeStr(dentrys[0].Timestamp)
 			delRows = append(delRows, row)
 		}
 		log.LogDebugf("%v, %v", dentrys[0], ino)
-		fmt.Printf(listDataFormat, 1, dentrys[0].AppendTimestampToName(),
-			dentrys[0].Inode, "-", ino.Size, "true", dentrys[0].From, getTimeStr(dentrys[0].Timestamp))
+		if !isFormatAsJSON {
+			fmt.Printf(listDataFormat, 1, dentrys[0].AppendTimestampToName(),
+				dentrys[0].Inode, "-", ino.Size, "true", dentrys[0].From, getTimeStr(dentrys[0].Timestamp))
+		}
 		return
 	}
 
@@ -304,25 +355,27 @@ func ListDeletedPath(parentID uint64, name string, isTest bool) (
 	for _, dentry := range ddentrys {
 		ino, ok := delInfos[dentry.Inode]
 		if !ok {
-			err = fmt.Errorf("miss inode for dentry: %v", dentry)
+			err = fmt.Errorf("miss INode for dentry: %v", dentry)
 			return
 		}
 
 		seq++
 		if isTest {
 			row := new(listRow)
-			row.seq = seq
-			row.name = dentry.AppendTimestampToName()
-			row.inode = ino.Inode
-			row.dtype = getPathType(dentry.Type)
-			row.size = ino.Size
-			row.isDel = "true"
-			row.ts = getTimeStr(dentry.Timestamp)
+			row.Seq = seq
+			row.Name = dentry.AppendTimestampToName()
+			row.INode = ino.Inode
+			row.FileType = getPathType(dentry.Type)
+			row.Size = ino.Size
+			row.IsDel = "true"
+			row.TS = getTimeStr(dentry.Timestamp)
 			delRows = append(delRows, row)
 		}
 		log.LogDebugf("%v, %v", dentrys[0], ino)
-		fmt.Printf(listDataFormat, seq, dentry.AppendTimestampToName(), ino.Inode,
-			getPathType(dentry.Type), ino.Size, "true", dentry.From, getTimeStr(dentry.Timestamp))
+		if !isFormatAsJSON {
+			fmt.Printf(listDataFormat, seq, dentry.AppendTimestampToName(), ino.Inode,
+				getPathType(dentry.Type), ino.Size, "true", dentry.From, getTimeStr(dentry.Timestamp))
+		}
 	}
 	return
 }
@@ -358,7 +411,9 @@ func lookupPath(p string) (ino uint64, isDeleted bool, timestamp int64, err erro
 			}
 			if len(dentrys) > 1 {
 				msg := fmt.Sprintf("This directory[%v] has multiple deleted records with time stamps", dir)
-				fmt.Println(msg)
+				if !isFormatAsJSON {
+					fmt.Println(msg)
+				}
 				log.LogErrorf(msg)
 				return
 			}
@@ -381,12 +436,14 @@ func lookupPath(p string) (ino uint64, isDeleted bool, timestamp int64, err erro
 				}
 				dentrys, err = gTrashEnv.metaWrapper.LookupDeleted_ll(ctx, ino, dir, startTime, endTime)
 				if err != nil {
-					log.LogErrorf("ino: %v, dir: %v, ts: %v, err: %v", ino, dir, math.MaxInt64, err.Error())
+					log.LogErrorf("ino: %v, dir: %v, TS: %v, err: %v", ino, dir, math.MaxInt64, err.Error())
 					return
 				}
 				if len(dentrys) > 1 {
 					msg := fmt.Sprintf("This directory[%v] has multiple deleted records with time stamps", dir)
-					fmt.Println(msg)
+					if !isFormatAsJSON {
+						fmt.Println(msg)
+					}
 					log.LogErrorf(msg)
 					err = errors.New(msg)
 					return
@@ -436,7 +493,7 @@ func batchGetDeletedInode(dentrys []*proto.DeletedDentry) (
 		log.LogDebugf("batchGetDeletedInode, ino:%v", dentry.Inode)
 	}
 	delInfos = gTrashEnv.metaWrapper.BatchGetDeletedInode(ctx, inos)
-	// the hard link, has two dentrys and one inode
+	// the hard link, has two dentrys and one INode
 	/*
 		if len(delInfos) != len(dentrys) {
 			err = fmt.Errorf("miss some inodes from BatchGetDeletedInode, expect: [%v], real: %v",
@@ -448,11 +505,17 @@ func batchGetDeletedInode(dentrys []*proto.DeletedDentry) (
 }
 
 func printHead() {
+	if isFormatAsJSON {
+		return
+	}
 	fmt.Printf(listHeadFormat, "Seq", "Name", "Inode", "Type", "Size", "IsDeleted", "From", "DeleteTime")
 	printLine()
 }
 
 func printLine() {
+	if isFormatAsJSON {
+		return
+	}
 	fmt.Println("------------------------------------------------" +
 		"-------------------------------------------------------" +
 		"----------------------------------------------")

@@ -34,7 +34,7 @@ func newTest2Cmd(client *master.MasterClient) *cobra.Command {
 			}
 		},
 	}
-	c.Flags().StringVarP(&vol, "vol", "v", "", "volume name")
+	c.Flags().StringVarP(&vol, "vol", "v", "", "volume Name")
 	c.MarkFlagRequired("vol")
 
 	return c

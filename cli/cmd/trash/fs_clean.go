@@ -33,6 +33,12 @@ var (
 	cleanCount uint32
 )
 
+type CleanResp struct {
+	Code uint32
+	Msg string
+	Num uint32
+}
+
 func newFSCleanCmd(client *master.MasterClient) *cobra.Command {
 	var vol string
 	var c = &cobra.Command{
@@ -40,18 +46,39 @@ func newFSCleanCmd(client *master.MasterClient) *cobra.Command {
 		Short: "clean the deleted directory or file",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			err := newTrashEnv(client, vol)
+			var (
+				rsp CleanResp
+				err error
+			)
+			defer func() {
+				if !isFormatAsJSON {
+					return
+				}
+				if err != nil {
+					rsp.Code = 1
+					rsp.Msg = err.Error()
+				} else {
+					rsp.Code = 0
+					rsp.Num = cleanCount
+				}
+				printAsJson(&rsp)
+			}()
+
+			err = newTrashEnv(client, vol)
 			if err != nil {
 				return
 			}
-			if err := cleanPath(args[0]); err != nil {
-				fmt.Println(err)
+			if err = cleanPath(args[0]); err != nil {
+				if !isFormatAsJSON {
+					fmt.Println(err)
+				}
 			}
 		},
 	}
-	c.Flags().StringVarP(&vol, "vol", "v", "", "volume name")
+	c.Flags().StringVarP(&vol, "vol", "v", "", "volume Name")
 	c.Flags().BoolVarP(&forceFlag, "force", "f", false,
-		"Force to clean a directory or file, which has more deleted records, that have name name, just different timestamps")
+		"Force to clean a directory or file, which has more deleted records, that have Name Name, just different timestamps")
+	c.Flags().BoolVarP(&isFormatAsJSON, "json", "j", false, "output as json ")
 	c.MarkFlagRequired("vol")
 	return c
 }
@@ -60,11 +87,15 @@ func cleanPath(pathStr string) (err error) {
 	defer func() {
 		if err != nil {
 			msg := fmt.Sprintf("Failed to  clean trash by path: %v, clean children: %v, err: %v", pathStr, cleanCount, err.Error())
-			fmt.Println(msg)
+			if !isFormatAsJSON {
+				fmt.Println(msg)
+			}
 			log.LogError(msg)
 		} else {
 			msg := fmt.Sprintf("Succ to  clean trash by path: %v, clean children: %v", pathStr, cleanCount)
-			fmt.Println(msg)
+			if !isFormatAsJSON {
+				fmt.Println(msg)
+			}
 			log.LogDebug(msg)
 		}
 	}()
@@ -121,10 +152,10 @@ func doCleanPath(parentID uint64, name string, ts int64) (err error) {
 
 	defer func() {
 		if err != nil {
-			log.LogDebugf("doClean, pid: %v, name: %v, ts: %v, start: %v, end: %v, err: %v",
+			log.LogDebugf("doClean, pid: %v, Name: %v, TS: %v, start: %v, end: %v, err: %v",
 				parentID, name, ts, startTime, endTime, err.Error())
 		} else {
-			log.LogDebugf("doClean, pid: %v, name: %v, ts: %v, start: %v, end: %v",
+			log.LogDebugf("doClean, pid: %v, Name: %v, TS: %v, start: %v, end: %v",
 				parentID, name, ts, startTime, endTime)
 		}
 	}()
@@ -152,7 +183,9 @@ func doCleanPath(parentID uint64, name string, ts int64) (err error) {
 
 	if len(dentrys) > 1 && !forceFlag {
 		msg := fmt.Sprintf("[%v] has multiple deleted records with different timestamps", name)
-		fmt.Println(msg)
+		if !isFormatAsJSON {
+			fmt.Println(msg)
+		}
 		log.LogError(msg)
 		err = errors.New(msg)
 		return
@@ -247,12 +280,16 @@ func clean(d *proto.DeletedDentry) (err error) {
 
 	err = gTrashEnv.metaWrapper.CleanDeletedInode(ctx, d.Inode)
 	if err != nil && err != syscall.ENOENT {
-		fmt.Println(err.Error())
+		if !isFormatAsJSON {
+			fmt.Println(err.Error())
+		}
 		return
 	}
 	err = gTrashEnv.metaWrapper.CleanDeletedDentry(ctx, pid, d.Inode, d.Name, d.Timestamp)
 	if err != nil && err != syscall.ENOENT {
-		fmt.Println(err.Error())
+		if !isFormatAsJSON {
+			fmt.Println(err.Error())
+		}
 		return
 	}
 	err = nil
