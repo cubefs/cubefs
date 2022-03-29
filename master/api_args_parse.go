@@ -493,8 +493,15 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
-	if req.followerRead, err = extractBoolWithDefault(r, followerReadKey, false); err != nil {
+	followerRead, followerExist, err := extractFollowerRead(r)
+	if err != nil {
 		return
+	}
+	if followerExist && followerRead == false && proto.IsHot(req.volType) && req.dpReplicaNum == 1 {
+		return fmt.Errorf("vol with one replia should enable followerRead")
+	}
+	if proto.IsHot(req.volType) && req.dpReplicaNum == 1 {
+		req.followerRead = true
 	}
 
 	if req.authenticate, err = extractBoolWithDefault(r, authenticateKey, false); err != nil {
@@ -668,12 +675,13 @@ func extractStatus(r *http.Request) (status bool, err error) {
 	return
 }
 
-func extractFollowerRead(r *http.Request) (followerRead bool, err error) {
+func extractFollowerRead(r *http.Request) (followerRead bool, exist bool, err error) {
 	var value string
 	if value = r.FormValue(followerReadKey); value == "" {
 		followerRead = false
 		return
 	}
+	exist = true
 	if followerRead, err = strconv.ParseBool(value); err != nil {
 		return
 	}

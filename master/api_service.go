@@ -843,9 +843,6 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 		if req.dpReplicaNum != 1 && req.dpReplicaNum != 3 {
 			return fmt.Errorf("hot vol's replicaNum can only be 1 or 3, received replicaNum is[%v]", req.dpReplicaNum)
 		}
-		if req.dpReplicaNum == 1 && !req.followerRead {
-			return fmt.Errorf("hot vol's replicaNum be 1, followerRead should be true")
-		}
 		return nil
 	}
 
