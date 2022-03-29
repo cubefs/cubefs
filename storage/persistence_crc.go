@@ -60,11 +60,9 @@ func (s *ExtentStore) PersistenceBlockCrc(e *Extent, blockNo int, blockCrc uint3
 	return
 }
 
-func (s *ExtentStore) DeleteBlockCrc(extentID uint64) (err error) {
-	err = fallocate(int(s.verifyExtentFp.Fd()), FallocFLPunchHole|FallocFLKeepSize,
-		int64(util.BlockHeaderSize*extentID), util.BlockHeaderSize)
-
-	return
+func (s *ExtentStore) PunchBlockCRC(from, count int) error {
+	return fallocate(int(s.verifyExtentFp.Fd()), FallocFLPunchHole|FallocFLKeepSize,
+		int64(util.BlockHeaderSize*from), int64(count*util.BlockHeaderSize))
 }
 
 func (s *ExtentStore) PersistenceBaseExtentID(extentID uint64) (err error) {
@@ -115,15 +113,6 @@ func (s *ExtentStore) GetPersistenceBaseExtentID() (extentID uint64, err error) 
 		return
 	}
 	extentID = binary.BigEndian.Uint64(data)
-	return
-}
-
-func (s *ExtentStore) PersistenceHasDeleteExtent(extentID uint64) (err error) {
-	data := make([]byte, 8)
-	binary.BigEndian.PutUint64(data, extentID)
-	if _, err = s.normalExtentDeleteFp.Write(data); err != nil {
-		return
-	}
 	return
 }
 

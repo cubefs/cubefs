@@ -879,7 +879,7 @@ func (arr ExtentInfoArr) Less(i, j int) bool { return arr[i].FileID < arr[j].Fil
 func (arr ExtentInfoArr) Swap(i, j int)      { arr[i], arr[j] = arr[j], arr[i] }
 
 func (s *ExtentStore) BackendTask() {
-	s.autoComputeExtentCrc()
+	s.autoComputeExtentCRC()
 	s.cleanExpiredNormalExtentDeleteCache()
 }
 
@@ -894,7 +894,7 @@ func (s *ExtentStore) cleanExpiredNormalExtentDeleteCache() {
 	})
 }
 
-func (s *ExtentStore) autoComputeExtentCrc() {
+func (s *ExtentStore) autoComputeExtentCRC() {
 	defer func() {
 		if r := recover(); r != nil {
 			return
@@ -902,31 +902,53 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 	}()
 
 	extentInfos := make([]*ExtentInfo, 0)
-	deleteExtents := make([]*ExtentInfo, 0)
+	deleteExtents := make([]int, 0)
+
 	s.eiMutex.RLock()
 	for _, ei := range s.extentInfoMap {
-		extentInfos = append(extentInfos, ei)
 		if ei.IsDeleted && time.Now().Unix()-ei.ModifyTime > UpdateCrcInterval {
-			deleteExtents = append(deleteExtents, ei)
+			deleteExtents = append(deleteExtents, int(ei.FileID))
+		} else {
+			extentInfos = append(extentInfos, ei)
 		}
 	}
 	s.eiMutex.RUnlock()
 
 	if len(deleteExtents) > 0 {
+		sort.Ints(deleteExtents)
+		deleteExtentIDs := make([]byte, 8*len(deleteExtents))
 		s.eiMutex.Lock()
-		for _, ei := range deleteExtents {
-			delete(s.extentInfoMap, ei.FileID)
+		for i, eid := range deleteExtents {
+			delete(s.extentInfoMap, uint64(eid))
+			binary.BigEndian.PutUint64(deleteExtentIDs[i*8:(i+1)*8], uint64(eid))
 		}
 		s.eiMutex.Unlock()
 
-		for _, ei := range deleteExtents {
-			_ = s.PersistenceHasDeleteExtent(ei.FileID)
-			_ = s.DeleteBlockCrc(ei.FileID)
+		// Record in a file
+		if _, err := s.normalExtentDeleteFp.Write(deleteExtentIDs); err != nil {
+			log.LogErrorf("autoComputeExtentCRC: record deleted extent id failed, err(%v)", err)
+		}
+
+		var err error
+		start := deleteExtents[0]
+		count := 0
+		for _, eid := range deleteExtents {
+			if eid != start+count {
+				// punch hole
+				if err = s.PunchBlockCRC(start, count); err != nil {
+					log.LogErrorf("autoComputeExtentCRC: punch block crc failed, from(%v) count(%v) err(%v)", start, count, err)
+				}
+				start = eid
+				count = 0
+			}
+			count++
+		}
+		if err = s.PunchBlockCRC(start, count); err != nil {
+			log.LogErrorf("autoComputeExtentCRC: punch block crc failed, from(%v) count(%v) err(%v)", start, count, err)
 		}
 	}
 
 	sort.Sort(ExtentInfoArr(extentInfos))
-
 	for _, ei := range extentInfos {
 		if ei == nil {
 			continue
@@ -943,9 +965,7 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 			}
 			ei.UpdateExtentInfo(e, extentCrc)
 		}
-		time.Sleep(time.Millisecond * 100)
 	}
-
 }
 
 func (s *ExtentStore) TinyExtentRecover(extentID uint64, offset, size int64, data []byte, crc uint32, isEmptyPacket bool) (err error) {
