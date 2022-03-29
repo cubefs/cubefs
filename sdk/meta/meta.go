@@ -108,7 +108,7 @@ type MetaWrapper struct {
 	mc              *masterSDK.MasterClient
 	ac              *authSDK.AuthClient
 	conns           *util.ConnectPool
-	connConfig		*proto.ConnConfig
+	connConfig      *proto.ConnConfig
 	volNotExists    bool
 
 	crossRegionHAType proto.CrossRegionHAType
@@ -214,6 +214,9 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 		}
 		if err != nil {
 			limit--
+			if limit == 0 {
+				return nil, err
+			}
 			time.Sleep(MountRetryInterval)
 			continue
 		}
