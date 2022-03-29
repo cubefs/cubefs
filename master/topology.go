@@ -592,13 +592,12 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 		domainId, index, replicaNum, createType, len(domainGrpManager.nodeSetGrpMap), domainGrpManager.status)
 
 	// this scenario is abnormal  may be caused by zone unavailable in high probability
-
 	if domainGrpManager.status != normal {
 		return nsgm.getHostFromNodeSetGrpSpecific(domainGrpManager, replicaNum, createType)
 	}
+
 	// grp map be build with three zone on standard,no grp if zone less than three,here will build
 	// nodesetGrp with zones less than three,because offer service is much more important than high available
-
 	if len(domainGrpManager.zoneAvailableNodeSet) != 0 {
 		if nsgm.buildNodeSetGrp(domainGrpManager); len(domainGrpManager.nodeSetGrpMap) == 0 {
 			err = fmt.Errorf("no usable group")
@@ -640,13 +639,13 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 				ns.ID, ns.zoneName, ns.dataNodeLen(), ns.metaNodeLen(), ns.Capacity)
 			nsg.nsgInnerIndex = (nsg.nsgInnerIndex + 1) % defaultFaultDomainZoneCnt
 			if createType == TypeDataPartition {
-				if host, peer, err = ns.getAvailDataNodeHosts(nil, 1); err != nil {
+				if host, peer, err = ns.getAvailDataNodeHosts(hosts, 1); err != nil {
 					log.LogErrorf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
 					//nsg.status = dataNodesUnAvailable
 					break
 				}
 			} else {
-				if host, peer, err = ns.getAvailMetaNodeHosts(nil, 1); err != nil {
+				if host, peer, err = ns.getAvailMetaNodeHosts(hosts, 1); err != nil {
 					log.LogErrorf("action[getHostFromNodeSetGrp]  ns[%v] zone[%v] TypeMetaPartition err[%v]", ns.ID, ns.zoneName, err)
 					//nsg.status = metaNodesUnAvailable
 					break
