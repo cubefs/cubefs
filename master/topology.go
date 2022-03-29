@@ -582,6 +582,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 	err error) {
 	var ok bool
 	var index int
+
 	if index, ok = nsgm.domainId2IndexMap[domainId]; !ok {
 		err = fmt.Errorf("action[getHostFromNodeSetGrp] not found domainid[%v]", domainId)
 		return
@@ -619,8 +620,9 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 
 	for {
 		if cnt >= len(domainGrpManager.nodeSetGrpMap) {
-			log.LogInfof("action[getHostFromNodeSetGrp] failed all unavailable,cnt[%v]", cnt)
-			err = fmt.Errorf("action[getHostFromNodeSetGrp],err:no grp status normal,cnt[%v]", cnt)
+			err = fmt.Errorf("action[getHostFromNodeSetGrp] need replica cnt [%v] but get host cnt [%v] from nodesetgrps count[%v]",
+				replicaNum, len(hosts), cnt)
+			log.LogInfo(err.Error())
 			//nsgm.status = unavailable
 			return
 		}
@@ -654,10 +656,12 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 			hosts = append(hosts, host[0])
 			peers = append(peers, peer[0])
 			log.LogInfof("action[getHostFromNodeSetGrp]  get host[%v] peer[%v], nsg id[%v] nsgInnerIndex[%v]", host[0], peer[0], nsg.ID, nsg.nsgInnerIndex)
+
+			if len(hosts) == int(replicaNum) {
+				return hosts, peers, nil
+			}
 		}
-		if i == replicaNum {
-			return hosts, peers, nil
-		}
+
 	}
 }
 
