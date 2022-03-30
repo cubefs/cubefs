@@ -1398,28 +1398,30 @@ func (m *Server) setNodeRdOnly(addr string, nodeType uint32, rdOnly bool) (err e
 	return
 }
 
-func (m *Server) updateNodesetCapcity(zoneName string, nodesetId uint64, capcity int) (err error) {
+func (m *Server) updateNodesetCapcity(zoneName string, nodesetId uint64, capcity uint64) (err error) {
 	var ns *nodeSet
 	var ok bool
 	var value interface{}
+
 	if capcity < defaultReplicaNum || capcity > 100 {
 		err = fmt.Errorf("capcity [%v] value out of scope", capcity)
 		return
 	}
+
 	if value, ok = m.cluster.t.zoneMap.Load(zoneName); !ok {
 		err = fmt.Errorf("zonename [%v] not found", zoneName)
 		return
 	}
+
 	zone := value.(*Zone)
 	if ns, ok = zone.nodeSetMap[nodesetId]; !ok {
 		err = fmt.Errorf("nodesetId [%v] not found", nodesetId)
 		return
 	}
-	ns.Lock()
-	defer ns.Unlock()
 
-	ns.Capacity = capcity
+	ns.Capacity = int(capcity)
 	m.cluster.syncUpdateNodeSet(ns)
+	log.LogInfof("action[updateNodesetCapcity] zonename %v nodeset %v capcity %v", zoneName, nodesetId, capcity)
 	return
 }
 
@@ -1598,7 +1600,7 @@ func (m *Server) updateNodeSetCapacityHandler(w http.ResponseWriter, r *http.Req
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err := m.updateNodesetCapcity(params[zoneNameKey].(string), params[idKey].(uint64), params[countKey].(int)); err == nil {
+	if err := m.updateNodesetCapcity(params[zoneNameKey].(string), params[idKey].(uint64), params[countKey].(uint64)); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set nodesetinfo params %v successfully", params)))
