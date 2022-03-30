@@ -304,6 +304,7 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+	log.LogInfo(rstMsg)
 }
 
 func (m *Server) getDataPartition(w http.ResponseWriter, r *http.Request) {
@@ -386,6 +387,7 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dp.Status = proto.ReadOnly
+	dp.statusReason = DpStIsRecovering
 	dp.isRecover = true
 	m.cluster.putBadDataPartitionIDs(nil, addr, dp.PartitionID)
 	msg = fmt.Sprintf("data partitionID :%v  add replica [%v] successfully", partitionID, addr)
