@@ -399,6 +399,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/stat/info", s.getStatInfo)
 	http.HandleFunc("/getReplBufferDetail", s.getReplProtocalBufferDetail)
 	http.HandleFunc("/tinyExtentHoleInfo", s.getTinyExtentHoleInfo)
+	http.HandleFunc("/playbackTinyExtentMarkDelete", s.playbackPartitionTinyDelete)
 }
 
 func (s *DataNode) startTCPService() (err error) {

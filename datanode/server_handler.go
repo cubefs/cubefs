@@ -329,7 +329,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		Learners             []proto.Learner       `json:"learners"`
 		TinyDeleteRecordSize int64                 `json:"tinyDeleteRecordSize"`
 		RaftStatus           *raft.Status          `json:"raftStatus"`
-		IsFininshLoading     bool                  `json:"isFininshLoad"`
+		IsFininshLoading     bool                  `json:"isFinishLoad"`
 	}{
 		VolName:              partition.volumeID,
 		ID:                   partition.partitionID,
@@ -558,4 +558,31 @@ func (s *DataNode) getTinyExtentHoleInfo(w http.ResponseWriter, r *http.Request)
 	}
 
 	s.buildSuccessResp(w, result)
+}
+
+// 这个API用于回放指定Partition的TINYEXTENT_DELETE记录，为该Partition下的所有TINY EXTENT重新打洞
+func (s *DataNode) playbackPartitionTinyDelete(w http.ResponseWriter, r *http.Request) {
+	var (
+		partitionID uint64
+		err         error
+	)
+	if err = r.ParseForm(); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if partitionID, err = strconv.ParseUint(r.FormValue("partitionID"), 10, 64); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	partition := s.space.Partition(partitionID)
+	if partition == nil {
+		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
+		return
+	}
+	store := partition.ExtentStore()
+	if err = store.PlaybackTinyDelete(); err != nil {
+		s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.buildSuccessResp(w, nil)
 }

@@ -1094,3 +1094,40 @@ func (s *ExtentStore) EvictExpiredCache() {
 func (s *ExtentStore) ForceEvictCache(ratio Ratio) {
 	s.cache.ForceEvict(ratio)
 }
+
+func (s *ExtentStore) PlaybackTinyDelete() (err error) {
+	var (
+		recordFileInfo os.FileInfo
+		recordData     = make([]byte, DeleteTinyRecordSize)
+		readOff        int64 = 0
+		readN                = 0
+	)
+	if recordFileInfo, err = s.tinyExtentDeleteFp.Stat(); err != nil {
+		return
+	}
+	for readOff = 0; readOff < recordFileInfo.Size(); readOff += DeleteTinyRecordSize {
+		readN, err = s.tinyExtentDeleteFp.ReadAt(recordData, readOff)
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+			}
+			return
+		}
+		if readN != DeleteTinyRecordSize {
+			return
+		}
+		extentID, offset, size := UnMarshalTinyExtent(recordData[:readN])
+		ei := s.getExtentInfoByExtentID(extentID)
+		if ei == nil || ei.IsDeleted {
+			continue
+		}
+		var e *Extent
+		if e, err = s.extentWithHeader(ei); err != nil {
+			return
+		}
+		if _, err = e.DeleteTiny(int64(offset), int64(size)); err != nil {
+			return
+		}
+	}
+	return
+}
