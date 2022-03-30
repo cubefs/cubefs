@@ -50,11 +50,11 @@ import (
 )
 
 const (
-	ConfigKeyRole       = "role"
-	ConfigKeyLogDir     = "logDir"
-	ConfigKeyLogLevel   = "logLevel"
-	ConfigKeyProfPort   = "prof"
-	ConfigKeyWarnLogDir = "warnLogDir"
+	ConfigKeyRole              = "role"
+	ConfigKeyLogDir            = "logDir"
+	ConfigKeyLogLevel          = "logLevel"
+	ConfigKeyProfPort          = "prof"
+	ConfigKeyWarnLogDir        = "warnLogDir"
 	ConfigKeyBuffersTotalLimit = "buffersTotalLimit"
 )
 
@@ -231,7 +231,7 @@ func main() {
 	}()
 	syslog.SetOutput(outputFile)
 
-	if  buffersTotalLimit < 0 {
+	if buffersTotalLimit < 0 {
 		syslog.Printf("invalid fields, BuffersTotalLimit(%v) must larger or equal than 0\n", buffersTotalLimit)
 		return
 	}
