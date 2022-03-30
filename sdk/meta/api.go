@@ -328,6 +328,181 @@ func (mw *MetaWrapper) BatchGetXAttr(inodes []uint64, keys []string) ([]*proto.X
 	return xattrs, nil
 }
 
+func (mw *MetaWrapper) RecursiveRemoveDir(parentID uint64) error {
+	stack := make([]uint64, 0)
+	dirCache := make(map[uint64]*[]proto.Dentry)
+	visit := make(map[uint64]bool)
+
+	stack = append(stack, parentID) //push
+
+	for len(stack) > 0 {
+		top := stack[len(stack)-1] //get pop
+
+		children, err := mw.getSubDentrys(&dirCache, top)
+		if err != nil {
+			return err
+		}
+
+		//pick any non empty dir not visited
+		var dentryInode uint64 = 0
+		for _, child := range *children {
+			visited, exist := visit[child.Inode]
+			if proto.IsDir(child.Type) && !mw.isDirEmpty(child.Inode) && (!exist || !visited) {
+				dentryInode = child.Inode
+				break
+			}
+		}
+
+		if dentryInode != 0 {
+			stack = append(stack, dentryInode) //push
+		} else {
+			top := stack[len(stack)-1]   //get pop
+			stack = stack[:len(stack)-1] //pop
+
+			log.LogInfof("visit:%v", top)
+			mw.BatchDeleteAndEvict_ll(top, dirCache[top])
+			visit[top] = true
+		}
+		log.LogInfof("stack: %v", stack)
+	}
+	return nil
+}
+
+func (mw *MetaWrapper) getSubDentrys(dirChildren *map[uint64]*[]proto.Dentry, top uint64) (*[]proto.Dentry, error) {
+	_, exist := (*dirChildren)[top]
+	if !exist {
+		log.LogInfof("RecursiveCleanDir: readdir (%v)", top)
+		dentrys, err := mw.ReadDir_ll(top)
+		if err != nil {
+			log.LogErrorf("RecursiveCleanDir: readdir (%v) failed, msg:%v", top, err)
+			return nil, err
+		}
+
+		log.LogInfof("ls:%v", dentrys)
+		//record dirChildren in dir
+		(*dirChildren)[top] = &dentrys
+	}
+
+	children, _ := (*dirChildren)[top] //must exist
+	return children, nil
+}
+
+func (mw *MetaWrapper) BatchDeleteAndEvict_ll(parentID uint64, dentrys *[]proto.Dentry) error {
+	if len(*dentrys) == 0 {
+		return nil
+	}
+
+	parentMP := mw.getPartitionByInode(parentID)
+	if parentMP == nil {
+		log.LogErrorf("BatchDelete_ll: No parent partition, parentID(%v)", parentID)
+		return syscall.ENOENT
+	}
+
+	//filter dentrys which could not be deleted, may be dentry(dir) not empty or not exist
+	deleteDentrys := mw.getValidDentrys(dentrys)
+	if len(deleteDentrys) == 0 {
+		return fmt.Errorf("not found dentrys which could be deleted")
+	}
+
+	status, inodes, err := mw.batchDdelete(parentMP, parentID, &deleteDentrys)
+	if err != nil || status != statusOK {
+		return fmt.Errorf("BatchDdelete: %v", err)
+	}
+
+	inodes_in_partition := mw.getPartition2InodesMap(inodes)
+
+	for mp, inodes := range inodes_in_partition {
+		mw.unlinkAndEvict(mp, inodes)
+	}
+
+	return nil
+}
+
+func (mw *MetaWrapper) unlinkAndEvict(mp *MetaPartition, inodes []uint64) {
+	var infos []*proto.InodeInfoStatus
+	status, infos, err := mw.batchIunlink(mp, &inodes)
+	if err != nil || status != statusOK {
+		log.LogWarnf("BatchIunlink error(%v)", err) //keep running even error occurs
+	}
+
+	deleteInodes := make([]uint64, 0)
+	for _, info := range infos {
+		log.LogDebugf("batchIunlink resp:%v", info.Info)
+		//unlink ok or not exist
+		if info.Status == proto.OpOk || info.Status == proto.OpNotExistErr {
+			if info != nil && !proto.IsDir(info.Info.Mode) && info.Info.Nlink == 0 {
+				log.LogInfof("evict Inode:%v", info)
+				deleteInodes = append(deleteInodes, info.Info.Inode)
+			}
+		}
+	}
+
+	if len(deleteInodes) > 0 {
+		status, err := mw.batchIevict(mp, &deleteInodes)
+		if err != nil || status != statusOK {
+			log.LogWarnf("BatchEvict: err(%v) status(%v)", err, status)
+		}
+	}
+}
+
+func (mw *MetaWrapper) getPartition2InodesMap(inodes []*proto.InodeStatus) map[*MetaPartition][]uint64 {
+	inodes_in_partition := make(map[*MetaPartition][]uint64, 0)
+
+	for _, is := range inodes {
+		//delete dentry success or no dentry
+		if is.Status == proto.OpOk || is.Status == proto.OpNotExistErr {
+			mp := mw.getPartitionByInode(is.Inode)
+			if mp == nil {
+				log.LogErrorf("BatchDelete_ll: No inode partition, ino(%v)", is.Inode)
+				continue
+			}
+
+			v, ok := inodes_in_partition[mp]
+			if ok {
+				inodes_in_partition[mp] = append(v, is.Inode)
+			} else {
+				inodes := make([]uint64, 0)
+				inodes = append(inodes, is.Inode)
+				inodes_in_partition[mp] = inodes
+			}
+
+			log.LogInfof("unlink inode(%v)", is)
+		}
+	}
+	return inodes_in_partition
+}
+
+func (mw *MetaWrapper) isDirEmpty(inode uint64) bool {
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		log.LogErrorf("BatchDelete_ll: No inode partition, inode(%v)", inode)
+		return false
+	}
+	status, info, err := mw.iget(mp, inode)
+	if err != nil || status != status {
+		log.LogWarnf("BatchDelete_ll: %v", statusToErrno(status).Error())
+		return false
+	}
+	if info == nil || info.Nlink > 2 {
+		return false
+	}
+	return true
+}
+
+func (mw *MetaWrapper) getValidDentrys(dentrys *[]proto.Dentry) []proto.Dentry {
+	deleteDentrys := make([]proto.Dentry, 0)
+
+	for _, dentry := range *dentrys {
+		if proto.IsDir(dentry.Type) && !mw.isDirEmpty(dentry.Inode) {
+			continue
+		}
+
+		log.LogInfof("delete dentry:(%v)", dentry.String())
+		deleteDentrys = append(deleteDentrys, dentry)
+	}
+	return deleteDentrys
+}
+
 /*
  * Note that the return value of InodeInfo might be nil without error,
  * and the caller should make sure InodeInfo is valid before using it.

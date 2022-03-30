@@ -79,6 +79,48 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target 
 	return statusOK, resp.Info, nil
 }
 
+func (mw *MetaWrapper) batchIunlink(mp *MetaPartition, inodes *[]uint64) (status int, info []*proto.InodeInfoStatus, err error) {
+	req := &proto.BatchUnlinkInodeRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		Inodes:      *inodes,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaBatchUnlinkInode
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("batchIunlink: inos(%v) err(%v)", inodes, err)
+		return
+	}
+
+	log.LogDebugf("batchIunlink enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("batchIunlink: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogErrorf("batchIunlink: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	resp := new(proto.BatchUnlinkInodeResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogErrorf("batchIunlink: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
+		return
+	}
+
+	log.LogDebugf("batchIunlink exit: packet(%v) mp(%v) req(%v) resp(%v)", packet, mp, *req, *resp)
+	return statusOK, resp.Items, nil
+}
+
 func (mw *MetaWrapper) iunlink(mp *MetaPartition, inode uint64) (status int, info *proto.InodeInfo, err error) {
 	req := &proto.UnlinkInodeRequest{
 		VolName:     mw.volname,
@@ -121,6 +163,41 @@ func (mw *MetaWrapper) iunlink(mp *MetaPartition, inode uint64) (status int, inf
 
 	log.LogDebugf("iunlink: packet(%v) mp(%v) req(%v)", packet, mp, *req)
 	return statusOK, resp.Info, nil
+}
+
+func (mw *MetaWrapper) batchIevict(mp *MetaPartition, inodes *[]uint64) (status int, err error) {
+	req := &proto.BatchEvictInodeRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		Inodes:      *inodes,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaBatchEvictInode
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogWarnf("batchIevict: ino(%v) err(%v)", inodes, err)
+		return
+	}
+
+	log.LogDebugf("batchIevict enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogWarnf("batchIevict: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogWarnf("batchIevict: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	log.LogDebugf("batchIevict exit: packet(%v) mp(%v) req(%v)", packet, mp, *req)
+	return statusOK, nil
 }
 
 func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64) (status int, err error) {
@@ -251,6 +328,48 @@ func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, 
 	}
 	log.LogDebugf("dupdate: packet(%v) mp(%v) req(%v) oldIno(%v)", packet, mp, *req, resp.Inode)
 	return statusOK, resp.Inode, nil
+}
+
+func (mw *MetaWrapper) batchDdelete(mp *MetaPartition, parentID uint64, dens *[]proto.Dentry) (status int, inodestatus []*proto.InodeStatus, err error) {
+	req := &proto.BatchDeleteDentryRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		ParentID:    parentID,
+		Dens:        *dens,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaBatchDeleteDentry
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("batchDdelete: req(%v) err(%v)", *req, err)
+		return
+	}
+
+	log.LogDebugf("batchDdelete enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer metric.Set(err)
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("batchDdelete: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogErrorf("batchDdelete: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return status, nil, fmt.Errorf(packet.GetResultMsg())
+	}
+
+	resp := new(proto.BatchDeleteDentryResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogErrorf("batchDdelete: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
+		return
+	}
+	log.LogDebugf("batchDdelete exit: packet(%v) mp(%v) req(%v) resp(%v)", packet, mp, *req, *resp)
+	return status, resp.Items, nil
 }
 
 func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string) (status int, inode uint64, err error) {

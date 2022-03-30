@@ -46,7 +46,7 @@ func runCLI() (err error) {
 func setupCommands(cfg *cmd.Config) *cobra.Command {
 	var mc = master.NewMasterClient(cfg.MasterAddr, false)
 	mc.SetTimeout(cfg.Timeout)
-	cfsRootCmd := cmd.NewRootCmd(mc)
+	cfsRootCmd := cmd.NewRootCmd(mc, cfg.MasterAddr)
 	var completionCmd = &cobra.Command{
 		Use:   "completion",
 		Short: "Generate completion bash file",
