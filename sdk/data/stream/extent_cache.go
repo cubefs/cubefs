@@ -367,7 +367,7 @@ func (cache *ExtentCache) PrepareWriteRequests(offset, size int, data []byte) []
 		if start <= ekStart {
 			if end <= ekStart {
 				return false
-			} else if end < ekEnd {
+			} else if end <= ekEnd {
 				var req *ExtentRequest
 				if start < ekStart {
 					// add hole (start, ekStart)
@@ -380,6 +380,15 @@ func (cache *ExtentCache) PrepareWriteRequests(offset, size int, data []byte) []
 				start = end
 				return false
 			} else {
+				var req *ExtentRequest
+				if start < ekStart {
+					req = NewExtentRequest(start, ekStart-start, data[start-offset:ekStart-offset], nil)
+					requests = append(requests, req)
+				}
+
+				req = NewExtentRequest(ekStart, end-ekStart, data[ekStart-offset:end-offset], ek)
+				requests = append(requests, req)
+				start = end
 				return true
 			}
 		} else if start < ekEnd {
