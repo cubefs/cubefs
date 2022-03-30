@@ -32,6 +32,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	blog "github.com/cubefs/blobstore/util/log"
 )
 
 type Level uint8
@@ -80,6 +82,24 @@ func (f RolledFile) Len() int {
 
 func (f RolledFile) Swap(i, j int) {
 	f[i], f[j] = f[j], f[i]
+}
+
+func setBlobLogLevel(loglevel Level) {
+	blevel := blog.Lwarn
+	switch loglevel {
+	case DebugLevel:
+		blevel = blog.Ldebug
+	case InfoLevel:
+		blevel = blog.Linfo
+	case WarnLevel:
+		blevel = blog.Lwarn
+	case ErrorLevel:
+		blevel = blog.Lerror
+	default:
+		blevel = blog.Lwarn
+	}
+
+	blog.SetOutputLevel(blevel)
 }
 
 type asyncWriter struct {
@@ -304,6 +324,7 @@ func InitLog(dir, module string, level Level, rotate *LogRotate) (*Log, error) {
 	go l.checkLogRotation(dir, module)
 
 	gLog = l
+	setBlobLogLevel(level)
 	return l, nil
 }
 
@@ -416,6 +437,7 @@ func SetLogLevel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	gLog.level = Level(level)
+	setBlobLogLevel(level)
 	buildSuccessResp(w, "set log level success")
 }
 

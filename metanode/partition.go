@@ -29,7 +29,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	// bs "github.com/cubefs/blobstore"
 	"github.com/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
@@ -358,7 +357,7 @@ func (mp *metaPartition) onStart() (err error) {
 	}
 	mp.volType = volumeInfo.VolType
 	var ebsClient *blobstore.BlobStoreClient
-	if clusterInfo.EbsAddr != "" && clusterInfo.ServicePath != "" {
+	if clusterInfo.EbsAddr != "" {
 		ebsClient, err = blobstore.NewEbsClient(
 			access.Config{
 				ConnMode: access.NoLimitConnMode,
@@ -366,8 +365,10 @@ func (mp *metaPartition) onStart() (err error) {
 					Address: clusterInfo.EbsAddr,
 				},
 				MaxSizePutOnce: int64(volumeInfo.ObjBlockSize),
+				Logger:         &access.Logger{Filename: path.Join(log.LogDir, "ebs.log")},
 			},
 		)
+
 		if err != nil {
 			log.LogErrorf("action[onStart] err[%v]", err)
 			return
