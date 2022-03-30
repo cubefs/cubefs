@@ -740,11 +740,15 @@ func parseAndExtractSetNodeSetInfoParams(r *http.Request) (params map[string]int
 			return
 		}
 		params[countKey] = count
+	} else {
+		return nil, fmt.Errorf("not found %v", countKey)
 	}
 	var zoneName string
 	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
 		zoneName = DefaultZoneName
 	}
+	params[zoneNameKey] = zoneName
+
 	if value = r.FormValue(idKey); value != "" {
 		var nodesetId = uint64(0)
 		nodesetId, err = strconv.ParseUint(value, 10, 64)
@@ -753,7 +757,12 @@ func parseAndExtractSetNodeSetInfoParams(r *http.Request) (params map[string]int
 			return
 		}
 		params[idKey] = nodesetId
+	}else {
+		return nil, fmt.Errorf("not found %v", idKey)
 	}
+
+	log.LogInfof("action[parseAndExtractSetNodeSetInfoParams]%v,%v,%v",params[zoneNameKey], params[idKey], params[countKey])
+
 	return
 }
 func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interface{}, err error) {
