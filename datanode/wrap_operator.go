@@ -193,7 +193,7 @@ func (s *DataNode) handlePacketToCreateDataPartition(p *repl.Packet) {
 	}
 	request := &proto.CreateDataPartitionRequest{}
 	if task.OpCode != proto.OpCreateDataPartition {
-		err = fmt.Errorf("from master Task(%v) failed,error unavali opcode(%v)", task.ToString(), task.OpCode)
+		err = fmt.Errorf("from master Task(%v) failed,error unavali opcode(%v)", task.ToString(), proto.OpNameOf(task.OpCode))
 		return
 	}
 

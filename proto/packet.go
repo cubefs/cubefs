@@ -392,6 +392,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpListMultiparts"
 	case OpBatchDeleteExtent:
 		m = "OpBatchDeleteExtent"
+	default:
+		m = fmt.Sprintf("%v", p.Opcode)
 	}
 	return
 }
@@ -726,4 +728,9 @@ func (p *Packet) ShouldRetry() bool {
 
 func (p *Packet) IsBatchDeleteExtents() bool {
 	return p.Opcode == OpBatchDeleteExtent
+}
+
+func OpNameOf(opcode uint8) string {
+	packet := Packet{Opcode: opcode}
+	return packet.GetOpMsg()
 }

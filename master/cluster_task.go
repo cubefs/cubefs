@@ -646,7 +646,7 @@ func (c *Cluster) handleMetaNodeTaskResponse(nodeAddr string, task *proto.AdminT
 		response := task.Response.(*proto.UpdateMetaPartitionResponse)
 		err = c.dealUpdateMetaPartitionResp(task.OperatorAddr, response)
 	default:
-		err := fmt.Errorf("unknown operate code %v", task.OpCode)
+		err := fmt.Errorf("unknown operate code %v", proto.OpNameOf(task.OpCode))
 		log.LogError(err)
 	}
 
@@ -814,7 +814,7 @@ func (c *Cluster) handleDataNodeTaskResponse(nodeAddr string, task *proto.AdminT
 		response := task.Response.(*proto.DataNodeHeartbeatResponse)
 		err = c.handleDataNodeHeartbeatResp(task.OperatorAddr, response)
 	default:
-		err = fmt.Errorf(fmt.Sprintf("unknown operate code %v", task.OpCode))
+		err = fmt.Errorf(fmt.Sprintf("unknown operate code %v", proto.OpNameOf(task.OpCode)))
 		goto errHandler
 	}
 

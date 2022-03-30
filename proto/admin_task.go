@@ -123,7 +123,7 @@ func NewAdminTask(opCode uint8, opAddr string, request interface{}) (t *AdminTas
 	t.OpCode = opCode
 	t.Request = request
 	t.OperatorAddr = opAddr
-	t.ID = fmt.Sprintf("addr[%v]_op[%v]", t.OperatorAddr, t.OpCode)
+	t.ID = fmt.Sprintf("addr[%v]_op[%v]", t.OperatorAddr, OpNameOf(t.OpCode))
 	t.CreateTime = time.Now().Unix()
 	return
 }
