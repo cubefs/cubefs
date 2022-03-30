@@ -1252,16 +1252,12 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 func (m *Server) updateDataUseRatio(ratio float64) (err error) {
-	m.cluster.domainManager.Lock()
-	defer m.cluster.domainManager.Unlock()
 
 	m.cluster.domainManager.dataRatioLimit = ratio
 	err = m.cluster.putZoneDomain(false)
 	return
 }
 func (m *Server) updateExcludeZoneUseRatio(ratio float64) (err error) {
-	m.cluster.domainManager.Lock()
-	defer m.cluster.domainManager.Unlock()
 
 	m.cluster.domainManager.excludeZoneUseRatio = ratio
 	err = m.cluster.putZoneDomain(false)
