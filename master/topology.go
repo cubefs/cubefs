@@ -622,9 +622,8 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 		if cnt >= len(domainGrpManager.nodeSetGrpMap) {
 			err = fmt.Errorf("action[getHostFromNodeSetGrp] need replica cnt [%v] but get host cnt [%v] from nodesetgrps count[%v]",
 				replicaNum, len(hosts), cnt)
-			log.LogInfo(err.Error())
-			//nsgm.status = unavailable
-			return
+			log.LogErrorf(err.Error())
+			return nil, nil, err
 		}
 		cnt++
 		nsgIndex = (nsgIndex + 1) % len(domainGrpManager.nodeSetGrpMap)
@@ -634,23 +633,29 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 			host []string
 			peer []proto.Peer
 		)
-		var i uint8
-		for i = 0; i < replicaNum; i++ {
+
+		// it's better to get enough replicas from one nsg(copy set) and will get complement from
+		// other nsg if not
+		loopCnt := int(replicaNum)
+		if loopCnt < len(nsg.nodeSets) {
+			loopCnt = len(nsg.nodeSets)
+		}
+		for i:= 0; i < loopCnt; i++ {
 			ns := nsg.nodeSets[nsg.nsgInnerIndex]
 			log.LogInfof("action[getHostFromNodeSetGrp]  nodesetid[%v],zonename[%v], datanode len[%v],metanode len[%v],capcity[%v]",
 				ns.ID, ns.zoneName, ns.dataNodeLen(), ns.metaNodeLen(), ns.Capacity)
 			nsg.nsgInnerIndex = (nsg.nsgInnerIndex + 1) % defaultFaultDomainZoneCnt
 			if createType == TypeDataPartition {
 				if host, peer, err = ns.getAvailDataNodeHosts(hosts, 1); err != nil {
-					log.LogErrorf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
+					log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
 					//nsg.status = dataNodesUnAvailable
-					break
+					continue
 				}
 			} else {
 				if host, peer, err = ns.getAvailMetaNodeHosts(hosts, 1); err != nil {
-					log.LogErrorf("action[getHostFromNodeSetGrp]  ns[%v] zone[%v] TypeMetaPartition err[%v]", ns.ID, ns.zoneName, err)
+					log.LogWarnf("action[getHostFromNodeSetGrp]  ns[%v] zone[%v] TypeMetaPartition err[%v]", ns.ID, ns.zoneName, err)
 					//nsg.status = metaNodesUnAvailable
-					break
+					continue
 				}
 			}
 			hosts = append(hosts, host[0])
@@ -661,7 +666,6 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 				return hosts, peers, nil
 			}
 		}
-
 	}
 }
 
