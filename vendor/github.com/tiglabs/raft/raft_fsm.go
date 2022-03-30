@@ -176,6 +176,9 @@ func (r *raftFsm) StopFsm() {
 
 // raft main method
 func (r *raftFsm) Step(m *proto.Message) {
+	if m.Type == proto.RespMsgVote {
+		goto stepHandler
+	}
 	if m.Type == proto.LocalMsgHup {
 		if r.state != stateLeader && r.promotable() {
 			ents, err := r.raftLog.slice(r.raftLog.applied+1, r.raftLog.committed+1, noLimit)
@@ -225,7 +228,10 @@ func (r *raftFsm) Step(m *proto.Message) {
 				return
 			}
 		}
-		r.becomeFollower(m.Term, lead)
+
+		if m.LogTerm > r.raftLog.lastTerm() || (m.LogTerm == r.raftLog.lastTerm() && m.Index >= r.raftLog.lastIndex()) {
+			r.becomeFollower(m.Term, lead)
+		}
 
 	case m.Term < r.term:
 		if logger.IsEnableDebug() {
@@ -233,6 +239,7 @@ func (r *raftFsm) Step(m *proto.Message) {
 		}
 		return
 	}
+stepHandler:
 	r.step(r, m)
 }
 
@@ -344,7 +351,9 @@ func (r *raftFsm) quorum() int {
 func (r *raftFsm) send(m *proto.Message) {
 	m.ID = r.id
 	m.From = r.config.NodeID
-	if m.Type != proto.LocalMsgProp {
+	if m.Type == proto.ReqMsgVote {
+		m.Term = r.term + 1
+	} else if m.Type != proto.LocalMsgProp {
 		m.Term = r.term
 	}
 	r.msgs = append(r.msgs, m)
@@ -353,7 +362,6 @@ func (r *raftFsm) send(m *proto.Message) {
 func (r *raftFsm) reset(term, lasti uint64, isLeader bool) {
 	if r.term != term {
 		r.term = term
-		r.vote = NoLeader
 	}
 	r.leader = NoLeader
 	r.electionElapsed = 0

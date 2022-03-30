@@ -29,7 +29,7 @@ func (r *raftFsm) becomeCandidate() {
 
 	r.monitorElection()
 	r.step = stepCandidate
-	r.reset(r.term+1, 0, false)
+	r.reset(r.term, 0, false)
 	r.tick = r.tickElection
 	r.vote = r.config.NodeID
 	r.state = stateCandidate
