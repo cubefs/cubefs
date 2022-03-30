@@ -645,13 +645,25 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 			log.LogInfof("action[getHostFromNodeSetGrp]  nodesetid[%v],zonename[%v], datanode len[%v],metanode len[%v],capcity[%v]",
 				ns.ID, ns.zoneName, ns.dataNodeLen(), ns.metaNodeLen(), ns.Capacity)
 			nsg.nsgInnerIndex = (nsg.nsgInnerIndex + 1) % defaultFaultDomainZoneCnt
+			if nsg.status == unavailableZone {
+				log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] unavailableZone", ns.ID, ns.zoneName)
+				continue
+			}
 			if createType == TypeDataPartition {
+				if nsg.status == dataNodesUnAvailable {
+					log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] dataNodesUnAvailable", ns.ID, ns.zoneName)
+					continue
+				}
 				if host, peer, err = ns.getAvailDataNodeHosts(hosts, 1); err != nil {
 					log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
 					//nsg.status = dataNodesUnAvailable
 					continue
 				}
 			} else {
+				if nsg.status == metaNodesUnAvailable {
+					log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] metaNodesUnAvailable", ns.ID, ns.zoneName)
+					continue
+				}
 				if host, peer, err = ns.getAvailMetaNodeHosts(hosts, 1); err != nil {
 					log.LogWarnf("action[getHostFromNodeSetGrp]  ns[%v] zone[%v] TypeMetaPartition err[%v]", ns.ID, ns.zoneName, err)
 					//nsg.status = metaNodesUnAvailable
