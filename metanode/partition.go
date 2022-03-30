@@ -208,10 +208,10 @@ type metaPartition struct {
 	config                 *MetaPartitionConfig
 	size                   uint64 // For partition all file size
 	applyID                uint64 // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
-	dentryTree             *BTree
-	inodeTree              *BTree // btree for inodes
-	extendTree             *BTree // btree for inode extend (XAttr) management
-	multipartTree          *BTree // collection for multipart management
+	dentryTree             *Btree
+	inodeTree              *Btree // btree for inodes
+	extendTree             *Btree // btree for inode extend (XAttr) management
+	multipartTree          *Btree // collection for multipart management
 	raftPartition          raftstore.Partition
 	stopC                  chan bool
 	storeChan              chan *storeMsg

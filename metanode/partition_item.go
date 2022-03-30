@@ -125,10 +125,10 @@ type fileData struct {
 type MetaItemIterator struct {
 	fileRootDir   string
 	applyID       uint64
-	inodeTree     *BTree
-	dentryTree    *BTree
-	extendTree    *BTree
-	multipartTree *BTree
+	inodeTree     *Btree
+	dentryTree    *Btree
+	extendTree    *Btree
+	multipartTree *Btree
 
 	filenames []string
 
