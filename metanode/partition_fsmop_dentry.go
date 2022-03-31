@@ -36,7 +36,7 @@ func NewDentryResponse() *DentryResponse {
 func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 	forceUpdate bool) (status uint8) {
 	status = proto.OpOk
-	item := mp.inodeTree.CopyGet(NewInode(dentry.ParentId, 0))
+	item := mp.inodeTree.GetForWrite(NewInode(dentry.ParentId, 0))
 	var parIno *Inode
 	if !forceUpdate {
 		if item == nil {
@@ -80,7 +80,7 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 // Query a dentry from the dentry tree with specified dentry info.
 func (mp *metaPartition) getDentry(dentry *Dentry) (*Dentry, uint8) {
 	status := proto.OpOk
-	item := mp.dentryTree.Get(dentry)
+	item := mp.dentryTree.GetForRead(dentry)
 	if item == nil {
 		status = proto.OpNotExistErr
 		return nil, status
@@ -98,7 +98,7 @@ func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (
 	var item interface{}
 	if checkInode {
 		item = mp.dentryTree.Execute(func(tree *btree.BTree) btree.Item {
-			d := tree.CopyGet(dentry)
+			d := tree.Get(dentry)
 			if d == nil {
 				return nil
 			}

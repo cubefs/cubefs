@@ -25,6 +25,7 @@ const defaultBTreeDegree = 32
 type BtreeItem interface {
 	btree.Item
 	// ver is protected by Btree lock
+	Copy() btree.Item
 	GetVersion() uint64
 	SetVersion(ver uint64)
 }
@@ -48,14 +49,7 @@ func NewBtree() *Btree {
 	}
 }
 
-// Get returns the object of the given key in the btree.
-func (b *Btree) Get(key btree.Item) (item btree.Item) {
-	b.RLock()
-	item = b.tree.Get(key)
-	b.RUnlock()
-	return
-}
-
+// GetForRead returns the a readonly object of the given key in the btree.
 func (b *Btree) GetForRead(key btree.Item) (item btree.Item) {
 	b.RLock()
 	item = b.tree.Get(key)
@@ -63,8 +57,9 @@ func (b *Btree) GetForRead(key btree.Item) (item btree.Item) {
 	return
 }
 
+// GetForRead returns the a writable object of the given key in the btree.
 func (b *Btree) GetForWrite(key btree.Item) (item btree.Item) {
-	b.RLock()
+	b.Lock()
 	item = b.tree.Get(key)
 	if item != nil {
 		if item.(BtreeItem).GetVersion() != b.ver {
@@ -72,37 +67,27 @@ func (b *Btree) GetForWrite(key btree.Item) (item btree.Item) {
 			// COW for this item, and return the newItem to
 			// ensure old item is untouched. The old item could
 			// be accessed from the cloned old tree.
-			newItem := item.Copy()
+			newItem := item.(BtreeItem).Copy()
 			newItem.(BtreeItem).SetVersion(b.ver)
 			b.tree.ReplaceOrInsert(newItem)
 			item = newItem
 		}
 	}
-	b.RUnlock()
-	return
-}
-
-func (b *Btree) CopyGet(key btree.Item) (item btree.Item) {
-	b.Lock()
-	item = b.tree.CopyGet(key)
 	b.Unlock()
 	return
 }
 
-// Find searches for the given key in the btree.
-func (b *Btree) Find(key btree.Item, fn func(i btree.Item)) {
-	b.RLock()
-	item := b.tree.Get(key)
-	b.RUnlock()
-	if item == nil {
-		return
-	}
-	fn(item)
-}
-
 func (b *Btree) CopyFind(key btree.Item, fn func(i btree.Item)) {
 	b.Lock()
-	item := b.tree.CopyGet(key)
+	item := b.tree.Get(key)
+	if item != nil {
+		if item.(BtreeItem).GetVersion() != b.ver {
+			newItem := item.(BtreeItem).Copy()
+			newItem.(BtreeItem).SetVersion(b.ver)
+			b.tree.ReplaceOrInsert(newItem)
+			item = newItem
+		}
+	}
 	fn(item)
 	b.Unlock()
 }

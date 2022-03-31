@@ -26,7 +26,7 @@ import (
 )
 
 func (mp *metaPartition) GetMultipart(req *proto.GetMultipartRequest, p *Packet) (err error) {
-	item := mp.multipartTree.Get(&Multipart{key: req.Path, id: req.MultipartId})
+	item := mp.multipartTree.GetForRead(&Multipart{key: req.Path, id: req.MultipartId})
 	if item == nil {
 		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		return
@@ -64,7 +64,7 @@ func (mp *metaPartition) AppendMultipart(req *proto.AddMultipartPartRequest, p *
 		p.PacketOkReply()
 		return
 	}
-	item := mp.multipartTree.Get(&Multipart{key: req.Path, id: req.MultipartId})
+	item := mp.multipartTree.GetForRead(&Multipart{key: req.Path, id: req.MultipartId})
 	if item == nil {
 		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		return
@@ -121,7 +121,7 @@ func (mp *metaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *P
 	)
 	for {
 		multipartId = util.CreateMultipartID(mp.config.PartitionId).String()
-		storedItem := mp.multipartTree.Get(&Multipart{key: req.Path, id: multipartId})
+		storedItem := mp.multipartTree.GetForRead(&Multipart{key: req.Path, id: multipartId})
 		if storedItem == nil {
 			break
 		}

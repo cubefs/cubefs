@@ -33,7 +33,7 @@ func (mp *metaPartition) fsmRemoveMultipart(multipart *Multipart) (status uint8)
 }
 
 func (mp *metaPartition) fsmAppendMultipart(multipart *Multipart) (status uint8) {
-	storedItem := mp.multipartTree.CopyGet(multipart)
+	storedItem := mp.multipartTree.GetForWrite(multipart)
 	if storedItem == nil {
 		return proto.OpNotExistErr
 	}
