@@ -416,6 +416,7 @@ func checkPermission(opt *proto.MountOptions) (err error) {
 	// Check token permission
 	var info *proto.VolStatInfo
 	if info, err = mc.ClientAPI().GetVolumeStat(opt.Volname); err != nil {
+		err = errors.Trace(err, "Get volume stat failed, check your masterAddr!")
 		return
 	}
 	if info.EnableToken {
