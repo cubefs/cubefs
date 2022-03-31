@@ -1603,7 +1603,7 @@ func (m *Server) updateNodeSetCapacityHandler(w http.ResponseWriter, r *http.Req
 	if err := m.updateNodesetCapcity(params[zoneNameKey].(string), params[idKey].(uint64), params[countKey].(uint64)); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set nodesetinfo params %v successfully", params)))
+	sendOkReply(w, r, newSuccessHTTPReply("set nodesetinfo successfully"))
 }
 
 func (m *Server) updateDataUseRatioHandler(w http.ResponseWriter, r *http.Request) {
