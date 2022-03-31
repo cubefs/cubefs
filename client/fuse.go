@@ -23,7 +23,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/cubefs/cubefs/util/buf"
 	"io/ioutil"
 	syslog "log"
 	"net"
@@ -38,6 +37,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/cubefs/cubefs/util/buf"
 
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util"
