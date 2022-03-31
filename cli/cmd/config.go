@@ -82,6 +82,11 @@ func newConfigSetCmd() *cobra.Command {
 				stdout(fmt.Sprintf("No change. Input 'cfs-cli config set -h' for help.\n"))
 				return
 			}
+
+			if optMasterHosts != "" && optTimeout == 0 {
+				stdout(fmt.Sprintf("timeOut %v is invalid.\n", optTimeout))
+			}
+
 			if err = setConfig(optMasterHosts, optTimeout); err != nil {
 				return
 			}

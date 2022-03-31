@@ -100,7 +100,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Create time          : %v\n", svv.CreateTime))
 	sb.WriteString(fmt.Sprintf("  Cross zone           : %v\n", formatEnabledDisabled(svv.CrossZone)))
 	sb.WriteString(fmt.Sprintf("  Dentry count         : %v\n", svv.DentryCount))
-	sb.WriteString(fmt.Sprintf("  Description          : %v\n", svv.Description))
+	sb.WriteString(fmt.Sprintf("  Description          : %v\n", string([]rune(svv.Description)[:])))
 	sb.WriteString(fmt.Sprintf("  DpCnt                : %v\n", svv.DpCnt))
 	sb.WriteString(fmt.Sprintf("  DpReplicaNum         : %v\n", svv.DpReplicaNum))
 	sb.WriteString(fmt.Sprintf("  Follower read        : %v\n", formatEnabledDisabled(svv.FollowerRead)))
@@ -114,16 +114,17 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Status               : %v\n", formatVolumeStatus(svv.Status)))
 	sb.WriteString(fmt.Sprintf("  ZoneName             : %v\n", svv.ZoneName))
 	sb.WriteString(fmt.Sprintf("  VolType              : %v\n", svv.VolType))
-	sb.WriteString(fmt.Sprintf("  ObjBlockSize         : %v byte\n", svv.ObjBlockSize))
-	sb.WriteString(fmt.Sprintf("  CacheCapacity        : %v G\n", svv.CacheCapacity))
-	sb.WriteString(fmt.Sprintf("  CacheAction          : %v\n", svv.CacheAction))
-	sb.WriteString(fmt.Sprintf("  CacheThreshold       : %v byte\n", svv.CacheThreshold))
-	sb.WriteString(fmt.Sprintf("  CacheLruInterval     : %v min\n", svv.CacheLruInterval))
-	sb.WriteString(fmt.Sprintf("  CacheTtl             : %v day\n", svv.CacheTtl))
-	sb.WriteString(fmt.Sprintf("  CacheLowWater        : %v\n", svv.CacheLowWater))
-	sb.WriteString(fmt.Sprintf("  CacheHighWater       : %v\n", svv.CacheHighWater))
-	sb.WriteString(fmt.Sprintf("  CacheRule            : %v\n", svv.CacheRule))
-
+	if svv.VolType == 1{
+		sb.WriteString(fmt.Sprintf("  ObjBlockSize         : %v byte\n", svv.ObjBlockSize))
+		sb.WriteString(fmt.Sprintf("  CacheCapacity        : %v G\n", svv.CacheCapacity))
+		sb.WriteString(fmt.Sprintf("  CacheAction          : %v\n", svv.CacheAction))
+		sb.WriteString(fmt.Sprintf("  CacheThreshold       : %v byte\n", svv.CacheThreshold))
+		sb.WriteString(fmt.Sprintf("  CacheLruInterval     : %v min\n", svv.CacheLruInterval))
+		sb.WriteString(fmt.Sprintf("  CacheTtl             : %v day\n", svv.CacheTtl))
+		sb.WriteString(fmt.Sprintf("  CacheLowWater        : %v\n", svv.CacheLowWater))
+		sb.WriteString(fmt.Sprintf("  CacheHighWater       : %v\n", svv.CacheHighWater))
+		sb.WriteString(fmt.Sprintf("  CacheRule            : %v\n", svv.CacheRule))
+	}
 	return sb.String()
 }
 
@@ -370,9 +371,9 @@ func formatNodeStatus(status bool) string {
 }
 
 var units = []string{"B", "KB", "MB", "GB", "TB", "PB"}
-var step uint64 = 1024
+var step float64 = 1024
 
-func fixUnit(curSize uint64, curUnitIndex int) (newSize uint64, newUnitIndex int) {
+func fixUnit(curSize float64, curUnitIndex int) (newSize float64, newUnitIndex int) {
 	if curSize >= step && curUnitIndex < len(units)-1 {
 		return fixUnit(curSize/step, curUnitIndex+1)
 	}
@@ -380,8 +381,8 @@ func fixUnit(curSize uint64, curUnitIndex int) (newSize uint64, newUnitIndex int
 }
 
 func formatSize(size uint64) string {
-	fixedSize, fixedUnitIndex := fixUnit(size, 0)
-	return fmt.Sprintf("%v %v", fixedSize, units[fixedUnitIndex])
+	fixedSize, fixedUnitIndex := fixUnit(float64(size), 0)
+	return fmt.Sprintf("%.2f %v", fixedSize, units[fixedUnitIndex])
 }
 
 func formatTime(timeUnix int64) string {
