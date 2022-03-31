@@ -184,7 +184,7 @@ func (d *Disk) doBackendTask() {
 		for _, dp := range partitions {
 			dp.extentStore.BackendTask()
 		}
-		time.Sleep(time.Minute)
+		time.Sleep(5 * time.Minute)
 	}
 }
 
