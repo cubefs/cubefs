@@ -429,10 +429,6 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 		if s.handler == nil {
 			s.handler = NewExtentHandler(s, offset, storeMode, 0)
 			s.dirty = false
-		} else if s.handler.storeMode != storeMode {
-			// store mode changed, so close open handler and start a new one
-			s.closeOpenHandler()
-			continue
 		}
 
 		ek, err = s.handler.write(data, offset, size, direct)
