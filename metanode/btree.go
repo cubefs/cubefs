@@ -24,18 +24,27 @@ const defaultBTreeDegree = 32
 
 type BtreeItem interface {
 	btree.Item
+	// ver is protected by Btree lock
+	GetVersion() uint64
+	SetVersion(ver uint64)
 }
 
 // Btree is the wrapper of Google's btree.
 type Btree struct {
 	sync.RWMutex
 	tree *btree.BTree
+
+	// ver is monotonic and used for clone. Each clone will increase ver.
+	// The implementation of BtreeItem also has a ver, if it is different
+	// from Btree.ver, modify the implementation should be COWed.
+	ver uint64
 }
 
 // NewBtree creates a new btree.
 func NewBtree() *Btree {
 	return &Btree{
 		tree: btree.New(defaultBTreeDegree),
+		ver:  1,
 	}
 }
 
@@ -43,6 +52,32 @@ func NewBtree() *Btree {
 func (b *Btree) Get(key btree.Item) (item btree.Item) {
 	b.RLock()
 	item = b.tree.Get(key)
+	b.RUnlock()
+	return
+}
+
+func (b *Btree) GetForRead(key btree.Item) (item btree.Item) {
+	b.RLock()
+	item = b.tree.Get(key)
+	b.RUnlock()
+	return
+}
+
+func (b *Btree) GetForWrite(key btree.Item) (item btree.Item) {
+	b.RLock()
+	item = b.tree.Get(key)
+	if item != nil {
+		if item.(BtreeItem).GetVersion() != b.ver {
+			// the item will be modified later, we should do a
+			// COW for this item, and return the newItem to
+			// ensure old item is untouched. The old item could
+			// be accessed from the cloned old tree.
+			newItem := item.Copy()
+			newItem.(BtreeItem).SetVersion(b.ver)
+			b.tree.ReplaceOrInsert(newItem)
+			item = newItem
+		}
+	}
 	b.RUnlock()
 	return
 }
@@ -98,6 +133,7 @@ func (b *Btree) Execute(fn func(tree *btree.BTree) btree.Item) btree.Item {
 func (b *Btree) ReplaceOrInsert(key btree.Item, replace bool) (item btree.Item, ok bool) {
 	b.Lock()
 	if replace {
+		key.(BtreeItem).SetVersion(b.ver)
 		item = b.tree.ReplaceOrInsert(key)
 		b.Unlock()
 		ok = true
@@ -106,6 +142,7 @@ func (b *Btree) ReplaceOrInsert(key btree.Item, replace bool) (item btree.Item, 
 
 	item = b.tree.Get(key)
 	if item == nil {
+		key.(BtreeItem).SetVersion(b.ver)
 		item = b.tree.ReplaceOrInsert(key)
 		b.Unlock()
 		ok = true
@@ -142,11 +179,14 @@ func (b *Btree) AscendGreaterOrEqual(pivot btree.Item, iterator func(i btree.Ite
 // GetTree returns the snapshot of a btree.
 func (b *Btree) CloneTree() *Btree {
 	b.Lock()
-	t := b.tree.Clone()
+	old := b.tree.Clone()
+	oldVer := b.ver
+	b.ver++
 	b.Unlock()
-	nb := NewBtree()
-	nb.tree = t
-	return nb
+	oldBtree := NewBtree()
+	oldBtree.ver = oldVer
+	oldBtree.tree = old
+	return oldBtree
 }
 
 // Reset resets the current btree.

@@ -67,6 +67,8 @@ type Inode struct {
 	Reserved   uint64 // reserved space
 	//Extents    *ExtentsTree
 	Extents *SortedExtents
+
+	ver uint64 // used only for Btree
 }
 
 type InodeBatch []*Inode
@@ -144,6 +146,15 @@ func (i *Inode) Copy() btree.Item {
 	newIno.Extents = i.Extents.Clone()
 	i.RUnlock()
 	return newIno
+}
+
+func (i *Inode) GetVersion() uint64 {
+	ver := i.ver
+	return ver
+}
+
+func (i *Inode) SetVersion(ver uint64) {
+	i.ver = ver
 }
 
 // MarshalToJSON is the wrapper of json.Marshal.
