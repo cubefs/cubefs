@@ -22,10 +22,9 @@ import (
 
 const defaultBTreeDegree = 32
 
-type (
-	// BtreeItem type alias google btree Item
-	BtreeItem = btree.Item
-)
+type BtreeItem interface {
+	btree.Item
+}
 
 // Btree is the wrapper of Google's btree.
 type Btree struct {
@@ -41,14 +40,14 @@ func NewBtree() *Btree {
 }
 
 // Get returns the object of the given key in the btree.
-func (b *Btree) Get(key BtreeItem) (item BtreeItem) {
+func (b *Btree) Get(key btree.Item) (item btree.Item) {
 	b.RLock()
 	item = b.tree.Get(key)
 	b.RUnlock()
 	return
 }
 
-func (b *Btree) CopyGet(key BtreeItem) (item BtreeItem) {
+func (b *Btree) CopyGet(key btree.Item) (item btree.Item) {
 	b.Lock()
 	item = b.tree.CopyGet(key)
 	b.Unlock()
@@ -56,7 +55,7 @@ func (b *Btree) CopyGet(key BtreeItem) (item BtreeItem) {
 }
 
 // Find searches for the given key in the btree.
-func (b *Btree) Find(key BtreeItem, fn func(i BtreeItem)) {
+func (b *Btree) Find(key btree.Item, fn func(i btree.Item)) {
 	b.RLock()
 	item := b.tree.Get(key)
 	b.RUnlock()
@@ -66,7 +65,7 @@ func (b *Btree) Find(key BtreeItem, fn func(i BtreeItem)) {
 	fn(item)
 }
 
-func (b *Btree) CopyFind(key BtreeItem, fn func(i BtreeItem)) {
+func (b *Btree) CopyFind(key btree.Item, fn func(i btree.Item)) {
 	b.Lock()
 	item := b.tree.CopyGet(key)
 	fn(item)
@@ -74,7 +73,7 @@ func (b *Btree) CopyFind(key BtreeItem, fn func(i BtreeItem)) {
 }
 
 // Has checks if the key exists in the btree.
-func (b *Btree) Has(key BtreeItem) (ok bool) {
+func (b *Btree) Has(key btree.Item) (ok bool) {
 	b.RLock()
 	ok = b.tree.Has(key)
 	b.RUnlock()
@@ -82,21 +81,21 @@ func (b *Btree) Has(key BtreeItem) (ok bool) {
 }
 
 // Delete deletes the object by the given key.
-func (b *Btree) Delete(key BtreeItem) (item BtreeItem) {
+func (b *Btree) Delete(key btree.Item) (item btree.Item) {
 	b.Lock()
 	item = b.tree.Delete(key)
 	b.Unlock()
 	return
 }
 
-func (b *Btree) Execute(fn func(tree *btree.BTree) interface{}) interface{} {
+func (b *Btree) Execute(fn func(tree *btree.BTree) btree.Item) btree.Item {
 	b.Lock()
 	defer b.Unlock()
 	return fn(b.tree)
 }
 
 // ReplaceOrInsert is the wrapper of google's btree ReplaceOrInsert.
-func (b *Btree) ReplaceOrInsert(key BtreeItem, replace bool) (item BtreeItem, ok bool) {
+func (b *Btree) ReplaceOrInsert(key btree.Item, replace bool) (item btree.Item, ok bool) {
 	b.Lock()
 	if replace {
 		item = b.tree.ReplaceOrInsert(key)
@@ -120,21 +119,21 @@ func (b *Btree) ReplaceOrInsert(key BtreeItem, replace bool) (item BtreeItem, ok
 // Ascend is the wrapper of the google's btree Ascend.
 // This function scans the entire btree. When the data is huge, it is not recommended to use this function online.
 // Instead, it is recommended to call CloneTree to obtain the snapshot of the current btree, and then do the scan on the snapshot.
-func (b *Btree) Ascend(fn func(i BtreeItem) bool) {
+func (b *Btree) Ascend(fn func(i btree.Item) bool) {
 	b.RLock()
 	b.tree.Ascend(fn)
 	b.RUnlock()
 }
 
 // AscendRange is the wrapper of the google's btree AscendRange.
-func (b *Btree) AscendRange(greaterOrEqual, lessThan BtreeItem, iterator func(i BtreeItem) bool) {
+func (b *Btree) AscendRange(greaterOrEqual, lessThan btree.Item, iterator func(i btree.Item) bool) {
 	b.RLock()
 	b.tree.AscendRange(greaterOrEqual, lessThan, iterator)
 	b.RUnlock()
 }
 
 // AscendGreaterOrEqual is the wrapper of the google's btree AscendGreaterOrEqual
-func (b *Btree) AscendGreaterOrEqual(pivot BtreeItem, iterator func(i BtreeItem) bool) {
+func (b *Btree) AscendGreaterOrEqual(pivot btree.Item, iterator func(i btree.Item) bool) {
 	b.RLock()
 	b.tree.AscendGreaterOrEqual(pivot, iterator)
 	b.RUnlock()
@@ -166,9 +165,9 @@ func (b *Btree) Len() (size int) {
 }
 
 // MaxItem returns the largest item in the btree.
-func (b *Btree) MaxItem() BtreeItem {
+func (b *Btree) MaxItem() (item btree.Item) {
 	b.RLock()
-	item := b.tree.Max()
+	item = b.tree.Max()
 	b.RUnlock()
-	return item
+	return
 }

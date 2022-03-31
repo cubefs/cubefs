@@ -26,6 +26,8 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+
+	"github.com/cubefs/cubefs/util/btree"
 )
 
 // MetaItem defines the structure of the metadata operations.
@@ -201,28 +203,28 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		produceItem(si.applyID)
 
 		// process inodes
-		iter.inodeTree.Ascend(func(i BtreeItem) bool {
+		iter.inodeTree.Ascend(func(i btree.Item) bool {
 			return produceItem(i)
 		})
 		if checkClose() {
 			return
 		}
 		// process dentries
-		iter.dentryTree.Ascend(func(i BtreeItem) bool {
+		iter.dentryTree.Ascend(func(i btree.Item) bool {
 			return produceItem(i)
 		})
 		if checkClose() {
 			return
 		}
 		// process extends
-		iter.extendTree.Ascend(func(i BtreeItem) bool {
+		iter.extendTree.Ascend(func(i btree.Item) bool {
 			return produceItem(i)
 		})
 		if checkClose() {
 			return
 		}
 		// process multiparts
-		iter.multipartTree.Ascend(func(i BtreeItem) bool {
+		iter.multipartTree.Ascend(func(i btree.Item) bool {
 			return produceItem(i)
 		})
 		if checkClose() {

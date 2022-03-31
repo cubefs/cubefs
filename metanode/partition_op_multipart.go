@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/btree"
 
 	"github.com/cubefs/cubefs/proto"
 )
@@ -159,7 +160,7 @@ func (mp *metaPartition) ListMultipart(req *proto.ListMultipartRequest, p *Packe
 	multipartIdMarker := req.MultipartIdMarker
 	prefix := req.Prefix
 	var matches = make([]*Multipart, 0, max)
-	var walkTreeFunc = func(i BtreeItem) bool {
+	var walkTreeFunc = func(i btree.Item) bool {
 		multipart := i.(*Multipart)
 		// prefix is enabled
 		if len(prefix) > 0 && !strings.HasPrefix(multipart.key, prefix) {

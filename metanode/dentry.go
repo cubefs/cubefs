@@ -17,6 +17,8 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
+
+	"github.com/cubefs/cubefs/util/btree"
 )
 
 // Dentry wraps necessary properties of the `dentry` information in file system.
@@ -151,13 +153,13 @@ func DentryBatchUnmarshal(raw []byte) (DentryBatch, error) {
 
 // Less tests whether the current dentry is less than the given one.
 // This method is necessary fot B-Tree item implementation.
-func (d *Dentry) Less(than BtreeItem) (less bool) {
+func (d *Dentry) Less(than btree.Item) (less bool) {
 	dentry, ok := than.(*Dentry)
 	less = ok && ((d.ParentId < dentry.ParentId) || ((d.ParentId == dentry.ParentId) && (d.Name < dentry.Name)))
 	return
 }
 
-func (d *Dentry) Copy() BtreeItem {
+func (d *Dentry) Copy() btree.Item {
 	newDentry := *d
 	return &newDentry
 }

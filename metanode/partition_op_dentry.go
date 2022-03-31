@@ -19,6 +19,7 @@ import (
 	"fmt"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/btree"
 )
 
 // CreateDentry returns a new dentry.
@@ -236,6 +237,6 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 }
 
 // handler should not modify items
-func (mp *metaPartition) WalkDentryTree(handler func(item BtreeItem) bool) {
+func (mp *metaPartition) WalkDentryTree(handler func(item btree.Item) bool) {
 	mp.dentryTree.Ascend(handler)
 }

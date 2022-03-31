@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/btree"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -99,7 +100,7 @@ func (mp *metaPartition) hasInode(ino *Inode) (ok bool) {
 }
 
 // Ascend is the wrapper of inodeTree.Ascend
-func (mp *metaPartition) Ascend(f func(i BtreeItem) bool) {
+func (mp *metaPartition) Ascend(f func(i btree.Item) bool) {
 	mp.inodeTree.Ascend(f)
 }
 

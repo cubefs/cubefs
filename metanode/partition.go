@@ -32,6 +32,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/btree"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	raftproto "github.com/tiglabs/raft/proto"
@@ -117,7 +118,7 @@ type OpInode interface {
 	EvictInode(req *EvictInodeReq, p *Packet) (err error)
 	EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (err error)
 	SetAttr(reqData []byte, p *Packet) (err error)
-	WalkInodeTree(handler func(item BtreeItem) bool)
+	WalkInodeTree(handler func(item btree.Item) bool)
 	DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error)
 	DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet) (err error)
 }
@@ -141,7 +142,7 @@ type OpDentry interface {
 	ReadDirLimit(req *ReadDirLimitReq, p *Packet) (err error)
 	ReadDirOnly(req *ReadDirOnlyReq, p *Packet) (err error)
 	Lookup(req *LookupReq, p *Packet) (err error)
-	WalkDentryTree(handler func(item BtreeItem) bool)
+	WalkDentryTree(handler func(item btree.Item) bool)
 }
 
 // OpExtent defines the interface for the extent operations.

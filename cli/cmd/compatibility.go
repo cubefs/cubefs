@@ -22,6 +22,7 @@ import (
 	"github.com/cubefs/cubefs/cli/api"
 	"github.com/cubefs/cubefs/metanode"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/btree"
 	"github.com/spf13/cobra"
 )
 
@@ -104,7 +105,7 @@ func verifyDentry(client *api.MetaHttpClient, mp metanode.MetaPartition) (err er
 	}
 
 	cnt := 0
-	handler := func(d metanode.BtreeItem) bool {
+	handler := func(d btree.Item) bool {
 		dentry, ok := d.(*metanode.Dentry)
 		if !ok {
 			stdout("item type is not *metanode.Dentry \n")
@@ -141,7 +142,7 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 	}
 
 	cnt := 0
-	handler := func(i metanode.BtreeItem) bool {
+	handler := func(i btree.Item) bool {
 		inode, ok := i.(*metanode.Inode)
 		if !ok {
 			stdout("item type is not *metanode.Inode \n")

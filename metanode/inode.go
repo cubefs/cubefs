@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/btree"
 )
 
 const (
@@ -117,13 +118,13 @@ func NewInode(ino uint64, t uint32) *Inode {
 
 // Less tests whether the current Inode item is less than the given one.
 // This method is necessary fot B-Tree item implementation.
-func (i *Inode) Less(than BtreeItem) bool {
+func (i *Inode) Less(than btree.Item) bool {
 	ino, ok := than.(*Inode)
 	return ok && i.Inode < ino.Inode
 }
 
 // Copy returns a copy of the inode.
-func (i *Inode) Copy() BtreeItem {
+func (i *Inode) Copy() btree.Item {
 	newIno := NewInode(i.Inode, i.Type)
 	i.RLock()
 	newIno.Uid = i.Uid

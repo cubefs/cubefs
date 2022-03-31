@@ -27,6 +27,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/cubefs/cubefs/util/btree"
 	"github.com/cubefs/cubefs/util/log"
 
 	"github.com/cubefs/cubefs/proto"
@@ -403,7 +404,7 @@ func (mp *metaPartition) storeInode(rootDir string,
 	var data []byte
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
-	sm.inodeTree.Ascend(func(i BtreeItem) bool {
+	sm.inodeTree.Ascend(func(i btree.Item) bool {
 		ino := i.(*Inode)
 		if data, err = ino.Marshal(); err != nil {
 			return false
@@ -447,7 +448,7 @@ func (mp *metaPartition) storeDentry(rootDir string,
 	var data []byte
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
-	sm.dentryTree.Ascend(func(i BtreeItem) bool {
+	sm.dentryTree.Ascend(func(i btree.Item) bool {
 		dentry := i.(*Dentry)
 		data, err = dentry.Marshal()
 		if err != nil {
@@ -501,7 +502,7 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 	if _, err = crc32.Write(varintTmp[:n]); err != nil {
 		return
 	}
-	extendTree.Ascend(func(i BtreeItem) bool {
+	extendTree.Ascend(func(i btree.Item) bool {
 		e := i.(*Extend)
 		var raw []byte
 		if raw, err = e.Bytes(); err != nil {
@@ -566,7 +567,7 @@ func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint3
 	if _, err = crc32.Write(varintTmp[:n]); err != nil {
 		return
 	}
-	multipartTree.Ascend(func(i BtreeItem) bool {
+	multipartTree.Ascend(func(i btree.Item) bool {
 		m := i.(*Multipart)
 		var raw []byte
 		if raw, err = m.Bytes(); err != nil {

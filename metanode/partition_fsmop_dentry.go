@@ -97,7 +97,7 @@ func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (
 
 	var item interface{}
 	if checkInode {
-		item = mp.dentryTree.Execute(func(tree *btree.BTree) interface{} {
+		item = mp.dentryTree.Execute(func(tree *btree.BTree) btree.Item {
 			d := tree.CopyGet(dentry)
 			if d == nil {
 				return nil
@@ -116,12 +116,12 @@ func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (
 		return
 	} else {
 		mp.inodeTree.CopyFind(NewInode(dentry.ParentId, 0),
-			func(item BtreeItem) {
+			func(item btree.Item) {
 				if item != nil {
 					ino := item.(*Inode)
 					if !ino.ShouldDelete() {
-						item.(*Inode).DecNLink()
-						item.(*Inode).SetMtime()
+						ino.DecNLink()
+						ino.SetMtime()
 					}
 				}
 			})
@@ -143,7 +143,7 @@ func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry) (
 	resp *DentryResponse) {
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
-	mp.dentryTree.CopyFind(dentry, func(item BtreeItem) {
+	mp.dentryTree.CopyFind(dentry, func(item btree.Item) {
 		if item == nil {
 			resp.Status = proto.OpNotExistErr
 			return
@@ -163,7 +163,7 @@ func (mp *metaPartition) readDir(req *ReadDirReq) (resp *ReadDirResp) {
 	endDentry := &Dentry{
 		ParentId: req.ParentID + 1,
 	}
-	mp.dentryTree.AscendRange(begDentry, endDentry, func(i BtreeItem) bool {
+	mp.dentryTree.AscendRange(begDentry, endDentry, func(i btree.Item) bool {
 		d := i.(*Dentry)
 		resp.Children = append(resp.Children, proto.Dentry{
 			Inode: d.Inode,
@@ -192,7 +192,7 @@ func (mp *metaPartition) readDirLimit(req *ReadDirLimitReq) (resp *ReadDirLimitR
 	endDentry := &Dentry{
 		ParentId: req.ParentID + 1,
 	}
-	mp.dentryTree.AscendRange(startDentry, endDentry, func(i BtreeItem) bool {
+	mp.dentryTree.AscendRange(startDentry, endDentry, func(i btree.Item) bool {
 		d := i.(*Dentry)
 		resp.Children = append(resp.Children, proto.Dentry{
 			Inode: d.Inode,
@@ -216,7 +216,7 @@ func (mp *metaPartition) readDirOnly(req *ReadDirOnlyReq) (resp *ReadDirOnlyResp
 	endDentry := &Dentry{
 		ParentId: req.ParentID + 1,
 	}
-	mp.dentryTree.AscendRange(begDentry, endDentry, func(i BtreeItem) bool {
+	mp.dentryTree.AscendRange(begDentry, endDentry, func(i btree.Item) bool {
 		d := i.(*Dentry)
 		if proto.IsDir(d.Type) {
 			resp.Children = append(resp.Children, proto.Dentry{
