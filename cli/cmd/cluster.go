@@ -38,7 +38,7 @@ func (cmd *ChubaoFSCmd) newClusterCmd(client *master.MasterClient) *cobra.Comman
 		newClusterStatCmd(client),
 		newClusterFreezeCmd(client),
 		newClusterSetThresholdCmd(client),
-		newClusterDeleteParasCmd(client),
+		newClusterSetParasCmd(client),
 	)
 	return clusterCmd
 }
@@ -48,7 +48,7 @@ const (
 	cmdClusterStatShort      = "Show cluster status information"
 	cmdClusterFreezeShort    = "Freeze cluster"
 	cmdClusterThresholdShort = "Set memory threshold of metanodes"
-	cmdClusterDelParaShort   = "Set delete parameters"
+	cmdClusterSetClusterInfoShort  = "Set cluster parameters"
 	nodeDeleteBatchCountKey  = "batchCount"
 	nodeMarkDeleteRateKey    = "markDeleteRate"
 	nodeDeleteWorkerSleepMs  = "deleteWorkerSleepMs"
@@ -189,11 +189,11 @@ If the memory usage reaches this threshold, all the mata partition will be readO
 	return cmd
 }
 
-func newClusterDeleteParasCmd(client *master.MasterClient) *cobra.Command {
-	var optAutoRepairRate, optMarkDeleteRate, optDelBatchCount, optDelWorkerSleepMs string
+func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
+	var optAutoRepairRate, optMarkDeleteRate, optDelBatchCount, optDelWorkerSleepMs, optLoadFactor string
 	var cmd = &cobra.Command{
-		Use:   CliOpSetDelRate,
-		Short: cmdClusterDelParaShort,
+		Use:   CliOpSetCluster,
+		Short: cmdClusterSetClusterInfoShort,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
 				err error
@@ -204,16 +204,17 @@ func newClusterDeleteParasCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}()
 
-			if err = client.AdminAPI().SetDeleteParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs, optAutoRepairRate); err != nil {
+			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs, optAutoRepairRate, optLoadFactor) ; err != nil {
 				return
 			}
-			stdout("Delete parameters has been set successfully. \n")
+			stdout("Cluster parameters has been set successfully. \n")
 		},
 	}
-	cmd.Flags().StringVar(&optAutoRepairRate, CliFlagAutoRepairRate, "", "DataNode auto repair rate")
 	cmd.Flags().StringVar(&optDelBatchCount, CliFlagDelBatchCount, "", "MetaNode delete batch count")
-	cmd.Flags().StringVar(&optDelWorkerSleepMs, CliFlagDelWorkerSleepMs, "", "MetaNode delete worker sleep time with millisecond. if 0 for no sleep")
+	cmd.Flags().StringVar(&optLoadFactor, CliFlagLoadFactor, "", "Load Factor")
 	cmd.Flags().StringVar(&optMarkDeleteRate, CliFlagMarkDelRate, "", "DataNode batch mark delete limit rate. if 0 for no infinity limit")
+	cmd.Flags().StringVar(&optAutoRepairRate, CliFlagAutoRepairRate, "", "DataNode auto repair rate")
+	cmd.Flags().StringVar(&optDelWorkerSleepMs, CliFlagDelWorkerSleepMs, "", "MetaNode delete worker sleep time with millisecond. if 0 for no sleep")
 
 	return cmd
 }

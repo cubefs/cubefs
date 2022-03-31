@@ -258,7 +258,7 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 }
 
 func (api *AdminAPI) UpdateVolume(volName, description, auth, zoneName string, capacity uint64, followerRead bool,
-	ebsBlkSize int, CacheCap uint64, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater, cacheLRUInterval int) (err error) {
+	ebsBlkSize int, CacheCap uint64, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater, cacheLRUInterval int, cacheRule string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
 	request.addParam("description", description)
@@ -274,6 +274,7 @@ func (api *AdminAPI) UpdateVolume(volName, description, auth, zoneName string, c
 	request.addParam("cacheHighWater", strconv.Itoa(cacheHighWater))
 	request.addParam("cacheLowWater", strconv.Itoa(cacheLowWater))
 	request.addParam("cacheLRUInterval", strconv.Itoa(cacheLRUInterval))
+	request.addParam("cacheRuleKey", cacheRule)
 
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -413,12 +414,13 @@ func (api *AdminAPI) SetMetaNodeThreshold(threshold float64) (err error) {
 	return
 }
 
-func (api *AdminAPI) SetDeleteParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate string) (err error) {
+func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate, loadFactor string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminSetNodeInfo)
 	request.addParam("batchCount", batchCount)
 	request.addParam("markDeleteRate", markDeleteRate)
 	request.addParam("deleteWorkerSleepMs", deleteWorkerSleepMs)
 	request.addParam("autoRepairRate", autoRepairRate)
+	request.addParam("loadFactor", loadFactor)
 
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return

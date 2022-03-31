@@ -120,6 +120,7 @@ func newMetaNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
+	var optCount string
 	var cmd = &cobra.Command{
 		Use:   CliOpDecommission + " [{HOST}:{PORT}]",
 		Short: cmdMetaNodeDecommissionInfoShort,
@@ -133,7 +134,7 @@ func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}()
 			nodeAddr = args[0]
-			if err = client.NodeAPI().MetaNodeDecommission(nodeAddr); err != nil {
+			if err = client.NodeAPI().MetaNodeDecommission(nodeAddr, optCount); err != nil {
 				return
 			}
 			stdout("Decommission meta node successfully\n")
@@ -146,5 +147,6 @@ func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	cmd.Flags().StringVar(&optCount, CliFlagCount, "", "MetaNode delete mp count")
 	return cmd
 }

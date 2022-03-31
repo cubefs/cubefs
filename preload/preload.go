@@ -49,6 +49,10 @@ func main() {
 	replicaNum, _ := strconv.ParseInt(cfg.GetString("replicaNum"), 10, 64)
 	ttl, _ := strconv.ParseInt(cfg.GetString("ttl"), 10, 64)
 
+	if replicaNum > 16 || replicaNum < 1 {
+		fmt.Println("replicaNum must between [1,16]")
+		os.Exit(1)
+	}
 	if buffersTotalLimit < 0 {
 		fmt.Println("buffersTotalLimit cannot less than 0")
 		os.Exit(1)
