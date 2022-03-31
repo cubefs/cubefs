@@ -683,14 +683,15 @@ func (c *Cluster) putZoneDomain(init bool) (err error) {
 	domainValue.domainNodeSetGrpVec = c.domainManager.domainNodeSetGrpVec
 	domainValue.DomainZoneName2IdMap = c.domainManager.ZoneName2DomainIdMap
 	if c.domainManager.dataRatioLimit > 0 {
+		log.LogInfof("action[putZoneDomain] ratio %v", c.domainManager.dataRatioLimit)
 		domainValue.DataRatio = c.domainManager.dataRatioLimit
 	} else {
 		domainValue.DataRatio = defaultDomainUsageThreshold
 	}
 	if c.domainManager.excludeZoneUseRatio > 0 && c.domainManager.excludeZoneUseRatio <= 1 {
-		domainValue.DataRatio = c.domainManager.excludeZoneUseRatio
+		domainValue.ExcludeZoneUseRatio = c.domainManager.excludeZoneUseRatio
 	} else {
-		domainValue.DataRatio = defaultDomainUsageThreshold
+		domainValue.ExcludeZoneUseRatio = defaultDomainUsageThreshold
 	}
 
 	metadata.V, err = json.Marshal(domainValue)
@@ -718,11 +719,12 @@ func (c *Cluster) loadZoneDomain() (ok bool, err error) {
 			log.LogErrorf("action[loadNodeSets], unmarshal err:%v", err.Error())
 			return true, err
 		}
-		log.LogInfof("action[loadZoneDomain] get value!exclue map[%v],need domain[%v]", nsv.ExcludeZoneMap, nsv.NeedFaultDomain)
+		log.LogInfof("action[loadZoneDomain] get value!exclue map[%v],need domain[%v] ratio [%v]", nsv.ExcludeZoneMap, nsv.NeedFaultDomain, nsv.DataRatio)
 		c.domainManager.excludeZoneListDomain = nsv.ExcludeZoneMap
 		for zoneName := range nsv.ExcludeZoneMap {
 			c.t.domainExcludeZones = append(c.t.domainExcludeZones, zoneName)
 		}
+
 		c.needFaultDomain = nsv.NeedFaultDomain
 		c.domainManager.dataRatioLimit = nsv.DataRatio
 		c.domainManager.ZoneName2DomainIdMap = nsv.DomainZoneName2IdMap
