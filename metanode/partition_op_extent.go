@@ -20,8 +20,6 @@ import (
 
 	"github.com/chubaofs/chubaofs/util/log"
 
-
-
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/statistics"
 )
@@ -179,6 +177,36 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 		return
 	}
 	resp, err := mp.submit(p.Ctx(), opFSMExtentsAdd, p.Remote(), val)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	p.PacketErrorWithBody(resp.(uint8), nil)
+	return
+}
+
+func (mp *metaPartition) MergeExtents(req *proto.InodeMergeExtentsRequest, p *Packet) (err error) {
+	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
+		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
+		return
+	}
+	if len(req.OldExtents) <= 1 {
+		p.PacketErrorWithBody(proto.OpErr, []byte("OldExtents should not be less than 1."))
+		return
+	}
+
+	im := &InodeMerge{
+		Inode: req.Inode,
+		NewExtents: req.NewExtents,
+		OldExtents: req.OldExtents,
+	}
+
+	val, err := im.Marshal()
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	resp, err := mp.submit(p.Ctx(), opFSMExtentMerge, p.Remote(), val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

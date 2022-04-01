@@ -218,6 +218,10 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opGetAppliedID(conn, p, remoteAddr)
 	case proto.OpGetMetaNodeVersionInfo:
 		err = m.opGetMetaNodeVersionInfo(conn, p, remoteAddr)
+	case proto.OpMetaGetCmpInode:
+		err = m.opGetCompactInodesInfo(conn, p, remoteAddr)
+	case proto.OpMetaInodeMergeEks:
+		err = m.opInodeMergeExtents(conn, p, remoteAddr)
 
 	case proto.OpMetaReadDeletedDir:
 		err = m.opReadDeletedDir(conn, p, remoteAddr)

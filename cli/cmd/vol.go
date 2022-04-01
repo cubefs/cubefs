@@ -131,6 +131,7 @@ const (
 	cmdVolDefaultZoneName       = "default"
 	cmdVolDefaultStoreMode      = int(proto.StoreModeMem)
 	cmdVolDefMetaLayout         = "0,0"
+	cmdVolDefaultCompact        = false
 )
 
 func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
@@ -151,6 +152,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optLayout string
 	var optIsSmart bool
 	var smartRules []string
+	var optCompactTag bool
 	var cmd = &cobra.Command{
 		Use:   cmdVolCreateUse,
 		Short: cmdVolCreateShort,
@@ -175,6 +177,10 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			}
 
 			storeMode := proto.StoreMode(optStoreMode)
+
+			if !optForceROW && optCompactTag {
+				errout("error: compact cannot be opened when force row is closed. Please open force row first\n")
+			}
 			// ask user for confirm
 			if !optYes {
 				stdout("Create a new volume:\n")
@@ -197,6 +203,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  Meta layout         : %v - %v\n", num1, num2)
 				stdout("  Smart Enable       : %s\n", formatEnabledDisabled(optIsSmart))
 				stdout("  Smart Rules         : %v\n", strings.Join(smartRules, ","))
+				stdout("  Compact             : %v\n", formatEnabledDisabled(optCompactTag))
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -208,7 +215,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 
 			err = client.AdminAPI().CreateVolume(volumeName, userID, optMPCount, optDPSize, optCapacity, optReplicas,
 				optMpReplicas, optTrashDays, optStoreMode, optFollowerRead, optAutoRepair, optVolWriteMutex, optForceROW, optIsSmart,
-				optZoneName, optLayout, strings.Join(smartRules, ","), optCrossRegionHAType)
+				optZoneName, optLayout, strings.Join(smartRules, ","), optCrossRegionHAType, formatEnabledDisabled(optCompactTag))
 			if err != nil {
 				errout("Create volume failed case:\n%v\n", err)
 			}
@@ -234,6 +241,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optLayout, CliFlagMetaLayout, cmdVolDefMetaLayout, "Specify volume mp layout num1,num2 [num1:rocks db mp percent, num2:rocks db replica percent]")
 	cmd.Flags().BoolVar(&optIsSmart, CliFlagIsSmart, cmdVolDefaultIsSmart, "Enable the smart vol or not")
 	cmd.Flags().StringSliceVar(&smartRules, CliSmartRulesMode, []string{}, "Specify volume smart rules")
+	cmd.Flags().BoolVar(&optCompactTag, CliFlagCompactTag, cmdVolDefaultCompact, "Specify volume compact")
 	return cmd
 }
 
@@ -266,6 +274,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		vv                      *proto.SimpleVolView
 		optIsSmart              string
 		smartRules              []string
+		optCompactTag           string
 	)
 	var cmd = &cobra.Command{
 		Use:   CliOpSet + " [VOLUME NAME]",
@@ -277,6 +286,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			var isChange = false
 			var num1, num2, total int
 
+			var forceRowChange = false
+			var compactTagChange = false
 			defer func() {
 				if err != nil {
 					errout("Error: %v", err)
@@ -348,6 +359,9 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 				confirmString.WriteString(fmt.Sprintf("  Force ROW           : %v -> %v\n", formatEnabledDisabled(vv.ForceROW), formatEnabledDisabled(enable)))
+				if vv.ForceROW != enable {
+					forceRowChange = true
+				}
 				vv.ForceROW = enable
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  Force ROW           : %v\n", formatEnabledDisabled(vv.ForceROW)))
@@ -480,6 +494,27 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  SmartRules          :  %s\n", strings.Join(vv.SmartRules, ",")))
 			}
+
+			if optCompactTag != "" {
+				isChange = true
+				var enable bool
+				if enable, err = strconv.ParseBool(optCompactTag); err != nil {
+					return
+				}
+				if enable {
+					optCompactTag = proto.CompactOpenName
+				} else {
+					optCompactTag = proto.CompactCloseName
+				}
+				confirmString.WriteString(fmt.Sprintf("  compact             :  %v -> %v\n", vv.CompactTag, optCompactTag))
+				if vv.CompactTag != optCompactTag {
+					compactTagChange = true
+				}
+				vv.CompactTag = optCompactTag
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  compact             :  %v\n", vv.CompactTag))
+			}
+
 			if err != nil {
 				return
 			}
@@ -487,6 +522,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				stdout("No changes has been set.\n")
 				return
 			}
+			checkForceRowAndCompact(vv, forceRowChange, compactTagChange)
 			// ask user for confirm
 			if !optYes {
 				stdout(confirmString.String())
@@ -500,7 +536,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			}
 			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum), int(vv.MpReplicaNum), int(vv.TrashRemainingDays),
 				int(vv.DefaultStoreMode), vv.FollowerRead, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
-				vv.ForceROW, vv.IsSmart, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, strings.Join(smartRules, ","), uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec)
+				vv.ForceROW, vv.IsSmart, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, strings.Join(smartRules, ","), uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag)
 			if err != nil {
 				return
 			}
@@ -534,6 +570,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optStoreMode, CliFlagStoreMode, 0, "specify volume default store mode [1:Mem, 2:Rocks]")
 	cmd.Flags().StringVar(&optIsSmart, CliFlagIsSmart, "", "Enable the smart vol or not")
 	cmd.Flags().StringSliceVar(&smartRules, CliSmartRulesMode, []string{}, "Specify volume smart rules")
+	cmd.Flags().StringVar(&optCompactTag, CliFlagCompactTag, "", "Specify volume compact")
 	return cmd
 }
 func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
@@ -876,7 +913,7 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 			if volSimpleView, err = client.AdminAPI().GetVolumeSimpleInfo(volume); err != nil {
 				return
 			}
-			if volSimpleView.Status != 0 {
+			if volSimpleView.Status != proto.VolStNormal {
 				err = fmt.Errorf("volume status abnormal")
 				return
 			}
@@ -1120,4 +1157,34 @@ func calcAuthKey(key string) (authKey string) {
 	_, _ = h.Write([]byte(key))
 	cipherStr := h.Sum(nil)
 	return strings.ToLower(hex.EncodeToString(cipherStr))
+}
+
+func checkForceRowAndCompact(vv *proto.SimpleVolView, forceRowChange, compactTagChange bool) {
+	if forceRowChange && !compactTagChange {
+		if !vv.ForceROW && vv.CompactTag == proto.CompactOpenName {
+			errout("error: force row cannot be closed when compact is opened, Please close compact first\n")
+		}
+		curTime := time.Now().Unix()
+		if !vv.ForceROW &&
+			(vv.CompactTag == proto.CompactCloseName || vv.CompactTag == proto.CompactDefaultName) &&
+			(curTime - vv.CompactTagModifyTime) < proto.CompatTagClosedTimeDuration {
+			errout("error: force row cannot be closed when compact is closed for less than %v minutes, now diff time %v minutes\n", proto.CompatTagClosedTimeDuration / 60, (curTime - vv.CompactTagModifyTime) / 60)
+		}
+	}
+
+	if !forceRowChange && compactTagChange {
+		if !vv.ForceROW && vv.CompactTag == proto.CompactOpenName {
+			errout("error: compact cannot be opened when force row is closed, Please open force row first\n")
+		}
+	}
+
+	if forceRowChange && compactTagChange {
+		if !vv.ForceROW && vv.CompactTag == proto.CompactOpenName {
+			errout("error: compact cannot be opened when force row is closed, Please open force row first\n")
+		}
+		if !vv.ForceROW &&
+			(vv.CompactTag == proto.CompactCloseName || vv.CompactTag == proto.CompactDefaultName) {
+			errout("error: force row cannot be closed when compact is closed for less than %v minutes, Please close compact first\n", proto.CompatTagClosedTimeDuration / 60)
+		}
+	}
 }

@@ -47,6 +47,7 @@ type Vol struct {
 	FollowerRead         bool
 	NearRead             bool
 	ForceROW             bool
+	forceRowModifyTime   int64
 	authenticate         bool
 	autoRepair           bool
 	zoneName             string
@@ -84,6 +85,8 @@ type Vol struct {
 	smartEnableTime      int64
 	smartRules           []string
 	CreateStatus         proto.VolCreateStatus
+	compactTag			 proto.CompactTag
+	compactTagModifyTime int64
 	sync.RWMutex
 }
 
@@ -95,7 +98,8 @@ type VolWriteMutexClient struct {
 func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8,
 	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart bool, createTime, smartEnableTime int64, description, dpSelectorName,
 	dpSelectorParm string, crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64, trashDays uint32,
-	defStoreMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string) (vol *Vol) {
+	defStoreMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag,
+	compactTagModifyTime int64, forceRowModifyTime int64) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	if dpReplicaNum < defaultReplicaNum {
@@ -125,6 +129,7 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
 	vol.ForceROW = forceROW
+	vol.forceRowModifyTime = forceRowModifyTime
 	vol.authenticate = authenticate
 	vol.zoneName = zoneName
 	vol.viewCache = make([]byte, 0)
@@ -153,6 +158,8 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	if smartRules != nil {
 		vol.smartRules = smartRules
 	}
+	vol.compactTag = compactTag
+	vol.compactTagModifyTime = compactTagModifyTime
 	return
 }
 
@@ -186,7 +193,10 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.DefStoreMode,
 		vv.ConverState,
 		vv.MpLayout,
-		vv.SmartRules)
+		vv.SmartRules,
+		vv.CompactTag,
+		vv.CompactTagModifyTime,
+		vv.ForceRowModifyTime)
 	// overwrite oss secure
 	vol.OSSAccessKey, vol.OSSSecretKey = vv.OSSAccessKey, vv.OSSSecretKey
 	vol.Status = vv.Status
@@ -349,7 +359,7 @@ func (vol *Vol) initDataPartitions(c *Cluster) (err error) {
 
 func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int, dataNodeBadDisksOfVol map[string][]string) {
 	dataNodeBadDisksOfVol = make(map[string][]string, 0)
-	if vol.getDataPartitionsCount() == 0 && vol.Status != markDelete {
+	if vol.getDataPartitionsCount() == 0 && vol.Status != proto.VolStMarkDelete {
 		c.batchCreateDataPartition(vol, 1, "")
 	}
 	vol.dataPartitions.RLock()
@@ -534,6 +544,12 @@ func (vol *Vol) capacity() uint64 {
 	return vol.Capacity
 }
 
+func (vol *Vol) compact() uint8 {
+	vol.RLock()
+	defer vol.RUnlock()
+	return uint8(vol.compactTag)
+}
+
 func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -542,7 +558,7 @@ func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 				"checkAutoDataPartitionCreation occurred panic")
 		}
 	}()
-	if vol.status() == markDelete {
+	if vol.status() == proto.VolStMarkDelete {
 		return
 	}
 	if vol.capacity() == 0 {
@@ -553,9 +569,9 @@ func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 		vol.setAllDataPartitionsToReadOnly()
 		return
 	}
-	vol.setStatus(normal)
+	vol.setStatus(proto.VolStNormal)
 
-	if vol.status() == normal && !c.DisableAutoAllocate {
+	if vol.status() == proto.VolStNormal && !c.DisableAutoAllocate {
 		vol.autoCreateDataPartitions(c)
 	}
 }
@@ -672,7 +688,7 @@ func (vol *Vol) checkStatus(c *Cluster) {
 	vol.updateViewCache(c)
 	vol.Lock()
 	defer vol.Unlock()
-	if vol.Status != markDelete {
+	if vol.Status != proto.VolStMarkDelete {
 		return
 	}
 	log.LogInfof("action[volCheckStatus] vol[%v],status[%v]", vol.Name, vol.Status)
@@ -1065,6 +1081,8 @@ func (vol *Vol) backupConfig() *Vol {
 		ExtentCacheExpireSec: vol.ExtentCacheExpireSec,
 		isSmart:              vol.isSmart,
 		smartRules:           vol.smartRules,
+		compactTag:           vol.compactTag,
+		compactTagModifyTime: vol.compactTagModifyTime,
 	}
 }
 
@@ -1099,4 +1117,6 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.ExtentCacheExpireSec = backupVol.ExtentCacheExpireSec
 	vol.isSmart = backupVol.isSmart
 	vol.smartRules = backupVol.smartRules
+	vol.compactTag = backupVol.compactTag
+	vol.compactTagModifyTime = backupVol.compactTagModifyTime
 }

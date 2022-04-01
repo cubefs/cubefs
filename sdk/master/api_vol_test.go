@@ -3,6 +3,7 @@ package master
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"github.com/chubaofs/chubaofs/proto"
 	"strings"
 	"testing"
 )
@@ -29,7 +30,7 @@ var (
 
 func TestVolCreate(t *testing.T) {
 	err := testMc.AdminAPI().CreateVolume(testVolName, testOwner, testMpcount, testDpSize, testCapacity,
-		testReplicas, testMpReplicas, testTrashDays, testStoreMode, testFollowerRead, testAutoRepair, testVolWriteMutex, testForceROW, testIsSmart, testZoneName, testMpLyout, "",0)
+		testReplicas, testMpReplicas, testTrashDays, testStoreMode, testFollowerRead, testAutoRepair, testVolWriteMutex, testForceROW, testIsSmart, testZoneName, testMpLyout, "",0, proto.CompactDefaultName)
 	if err != nil {
 		t.Errorf("create vol failed: err(%v) vol(%v)", err, testVolName)
 	}
@@ -47,7 +48,7 @@ func TestUpdateVol(t *testing.T) {
 	trashDays := 15
 	err := testMc.AdminAPI().UpdateVolume(testVolName, extentCap, testReplicas, testMpReplicas, trashDays, testStoreMode,
 		updateFollowerRead, false, false, false, false, false, false, authKey, testZoneName,
-		testMpLyout, "", 0, 0, 0)
+		testMpLyout, "", 0, 0, 0, "default")
 	if err != nil {
 		t.Errorf("update vol failed: err(%v) vol(%v)", err, testVolName)
 		t.FailNow()

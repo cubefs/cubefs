@@ -537,3 +537,71 @@ func (mp *metaPartition) fsmSetAttr(dbHandle interface{}, req *SetattrRequest) (
 	}
 	return
 }
+
+func (mp *metaPartition) fsmExtentsMerge(dbHandle interface{}, im *InodeMerge) (status uint8, err error) {
+	status = proto.OpOk
+	var ino *Inode
+	inodeId := im.Inode
+	newExtents := im.NewExtents
+	oldExtents := im.OldExtents
+	if len(newExtents) == 0 || len(oldExtents) == 0 {
+		status = proto.OpArgMismatchErr
+		err = fmt.Errorf("fsmExtentsMerge inode(%v) newExtents or oldExtents NotExistErr, newExtents length(%v) oldExtents length(%v)", inodeId, len(newExtents), len(oldExtents))
+		return
+	}
+	defer func() {
+		if err != nil {
+			// del newEk
+			if ino == nil {
+				return
+			}
+			delNewEk := ino.DelNewExtents(newExtents)
+			log.LogDebugf("fsmExtentsMerge inode(%v) del newEk(%v)", inodeId, delNewEk)
+			mp.extDelCh <- delNewEk
+		}
+	}()
+	if len(oldExtents) <= 1 {
+		status = proto.OpArgMismatchErr
+		err = fmt.Errorf("fsmExtentsMerge inode(%v) oldEks length should be greater than 2", inodeId)
+		return
+	}
+	var outOfRange bool
+	if outOfRange, _ = mp.isInoOutOfRange(inodeId); outOfRange {
+		status = proto.OpInodeOutOfRange
+		return
+	}
+	ino, err = mp.inodeTree.Get(im.Inode)
+	if err != nil {
+		status = proto.OpErr
+		return
+	}
+	if ino == nil {
+		status = proto.OpNotExistErr
+		return
+	}
+	if ino.ShouldDelete() {
+		status = proto.OpNotExistErr
+		return
+	}
+	delExtents, err := ino.MergeExtents(newExtents, oldExtents)
+	if err != nil {
+		log.LogWarnf("fsm(%v) MergeExtents inode(%v) oldEks(%v) newEks(%v) del eks(%v) failed:%v",
+			mp.config.PartitionId, ino.Inode, oldExtents, newExtents, delExtents, err.Error())
+		status = proto.OpArgMismatchErr
+		return
+	}
+	if err = mp.inodeTree.Put(dbHandle, ino); err != nil {
+		status = proto.OpErr
+		return
+	}
+	if err = mp.inodeTree.CommitBatchWrite(dbHandle, true); err != nil {
+		log.LogErrorf("fsm(%v) action(MergeExtents) inode(%v) oldEks(%v) newEks(%v) Commit error:%v",
+			mp.config.PartitionId, ino.Inode, oldExtents, newExtents, err)
+		status = proto.OpErr
+		return
+	}
+	_ = mp.db.ClearBatchWriteHandle(dbHandle)
+	log.LogDebugf("Merge delete after inodeId(%v) delExtents(%v)", ino.Inode, delExtents)
+	mp.extDelCh <- delExtents
+	return
+}

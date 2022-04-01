@@ -563,6 +563,52 @@ func (s *Streamer) writeToNewExtent(ctx context.Context, oriReq *ExtentRequest, 
 	return
 }
 
+func (s *Streamer) writeToSpecificExtent(ctx context.Context, oriReq *ExtentRequest, extID, extentOffset int, dp *DataPartition, direct bool) (total int, err error) {
+	defer func() {
+		if err != nil {
+			log.LogWarnf("writeToSpecificExtent: oriReq %v extID %v exceed max retry times(%v), err %v",
+				oriReq, extID, MaxSelectDataPartitionForWrite, err)
+		}
+		if log.IsDebugEnabled() {
+			log.LogDebugf("writeToSpecificExtent: inode %v, oriReq %v, extId %v, direct %v", s.inode, oriReq, extID, direct)
+		}
+	}()
+
+	var conn *net.TCPConn
+	conn, err = StreamConnPool.GetConnect(dp.Hosts[0])
+	if err != nil {
+		log.LogWarnf("writeToSpecificExtent: failed to create connection, err(%v) dp(%v)", err, dp)
+		return 0, err
+	}
+	total, err = s.writeToExtentSpecificOffset(ctx, oriReq, dp, extID, extentOffset, direct, conn)
+	StreamConnPool.PutConnectWithErr(conn, err)
+	return
+}
+
+func (s *Streamer) writeToExtentSpecificOffset(ctx context.Context, oriReq *ExtentRequest, dp *DataPartition, extID, extentOffset int,
+	direct bool, conn *net.TCPConn) (total int, err error) {
+
+	packet := NewROWPacket(ctx, dp, s.client.dataWrapper.quorum, s.inode, extID, oriReq.FileOffset, extentOffset, oriReq.Size)
+	if direct {
+		packet.Opcode = proto.OpSyncWrite
+	}
+	packet.Data = oriReq.Data
+	packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
+	err = packet.WriteToConnNs(conn, s.client.dataWrapper.connConfig.WriteTimeoutNs)
+	if err != nil {
+		return
+	}
+	reply := NewReply(packet.Ctx(), packet.ReqID, packet.PartitionID, packet.ExtentID)
+	err = reply.ReadFromConnNs(conn, s.client.dataWrapper.connConfig.ReadTimeoutNs)
+	if err != nil || reply.ResultCode != proto.OpOk || !packet.isValidWriteReply(reply) || reply.CRC != packet.CRC {
+		err = fmt.Errorf("err[%v]-packet[%v]-reply[%v]", err, packet, reply)
+		return
+	}
+	total = oriReq.Size
+	log.LogDebugf("writeToExtentOffset: inode %v oriReq %v dp %v extID %v total %v direct %v", s.inode, oriReq, dp, extID, total, direct)
+	return
+}
+
 func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool) (total int, err error) {
 	defer func() {
 		if err != nil {

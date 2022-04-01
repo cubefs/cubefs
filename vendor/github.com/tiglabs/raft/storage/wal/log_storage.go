@@ -204,10 +204,25 @@ func (ls *logEntryStorage) TruncateFront(index uint64) error {
 
 	var remove = func(names []logFileName) {
 		go func(names []logFileName) {
+			var (
+				lfn = ls.last.name
+				lfi = ls.last.FirstIndex()
+				lli = ls.last.LastIndex()
+			)
 			for _, name := range names {
 				if err := ls.remove(name); err != nil {
 					log.Warn("remove log file [%v] fail: %v", name.String(), err)
 				}
+				var (
+					cfi uint64
+					cli uint64
+				)
+				if clf, err := ls.get(name); err == nil {
+					cfi = clf.FirstIndex()
+					cli = clf.LastIndex()
+				}
+				log.Debug("storage [%v] truncate front to [%v] remove log file [seq %v, index %v, fi %v, li %v], last log file [seq %v, index %v, fi %v, li %v]",
+					ls.dir, index, name.seq, name.index, cfi, cli, lfn.seq, lfn.index, lfi, lli)
 			}
 		}(names)
 	}

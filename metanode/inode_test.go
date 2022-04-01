@@ -95,3 +95,43 @@ func TestInode_V2Marshal(t *testing.T) {
 		t.Errorf("Failed to test, error:len:%d \nsrc=[%v] res=\n[%v], expectRes=\n[%v]\n", len(raw), i, inodeRestore, inodeRestoreExpect)
 	}
 }
+
+func TestInodeMergeMarshal(t *testing.T) {
+	newExtents := make([]proto.ExtentKey, 0)
+	oldExtents := make([]proto.ExtentKey, 0)
+	for i := 0; i < 2; i++ {
+		ek := proto.ExtentKey{
+			FileOffset:   uint64(i),
+			PartitionId:  uint64(i),
+			ExtentId:     uint64(i),
+			ExtentOffset: uint64(i),
+			Size:         uint32(i),
+		}
+		newExtents = append(newExtents, ek)
+	}
+	for i := 0; i < 100; i++ {
+		ek := proto.ExtentKey{
+			FileOffset:   uint64(i),
+			PartitionId:  uint64(i),
+			ExtentId:     uint64(i),
+			ExtentOffset: uint64(i),
+			Size:         uint32(i),
+		}
+		oldExtents = append(oldExtents, ek)
+	}
+	im := &InodeMerge{
+		Inode:       1,
+		NewExtents:  newExtents,
+		OldExtents:  oldExtents,
+	}
+	raw, err := im.Marshal()
+	if err != nil {
+		t.Fatalf("InodeMerge Marshal failed, err: %v", err)
+	}
+	inodeMerge, err := InodeMergeUnmarshal(raw)
+	if reflect.DeepEqual(im, inodeMerge) {
+		t.Logf("TestInodeMerge---->InodeMerge.Marshal: success")
+	} else {
+		t.Errorf("Failed to test, error:len:%d \nsrc=[%v] res=\n[%v]\n", len(raw), im, inodeMerge)
+	}
+}

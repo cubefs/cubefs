@@ -301,6 +301,7 @@ func (b *BaseWorker) loadWorkerTasks(wt proto.WorkerType) {
 			timer.Reset(time.Second * DefaultLoadTaskPeriod)
 		case <-b.StopC:
 			timer.Stop()
+			return
 		}
 	}
 }
@@ -349,6 +350,26 @@ func (b *BaseWorker) ContainDPTask(task *proto.Task, runningTasks []*proto.Task)
 	return mysql.CheckDPTaskExist(task.Cluster, task.VolName, int(task.TaskType), task.DpId)
 }
 
+func (b *BaseWorker) ContainMPTask(task *proto.Task, runningTasks []*proto.Task) (exist bool, tf *proto.Task, err error) {
+	for _, t := range runningTasks {
+		if t.Cluster == task.Cluster && t.VolName == task.VolName && t.MpId == task.MpId {
+			return true, t, nil
+		}
+	}
+	return mysql.CheckMPTaskExist(task.Cluster, task.VolName, int(task.TaskType), task.MpId)
+}
+
+func (b *BaseWorker) ContainMPTaskByWorkerNodes(task *proto.Task, wn []*proto.WorkerNode) (exist bool, tf *proto.Task, err error) {
+	for _, workerNode := range wn {
+		if exist, tf = workerNode.ContainTaskByMetaPartition(task); exist {
+			log.LogDebugf("[CompactWorker CreateTask] meta partition task is running, cluster(%v), volume(%v), dpId(%v), mpId(%v)",
+				task.Cluster, task.VolName, task.DpId, task.MpId)
+			return
+		}
+	}
+	return mysql.CheckMPTaskExist(task.Cluster, task.VolName, int(task.TaskType), task.MpId)
+}
+
 func (b *BaseWorker) consumeTaskBase(consumeFunc func(task *proto.Task) (bool, error)) {
 	for {
 		log.LogDebugf("[consumeTaskBase] task consumer is running, workerAddr(%v), workerType(%v)",
@@ -374,7 +395,7 @@ func (b *BaseWorker) consumeTaskBase(consumeFunc func(task *proto.Task) (bool, e
 					if err != nil {
 						log.LogErrorf("[ConsumeTask] update task status to be failed has exception, cluster(%v), volName(%v), dpId(%v), err(%v)", task.Cluster, task.VolName, task.DpId, err)
 					}
-					if err != nil || restore {
+					if restore {
 						b.RestoreTask(task)
 					}
 					return

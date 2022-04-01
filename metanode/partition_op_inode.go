@@ -528,3 +528,50 @@ func (mp *metaPartition) DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p 
 func (mp *metaPartition) GetInodeTree() InodeTree {
 	return mp.inodeTree
 }
+
+func (mp *metaPartition) InodesMergeCheck(inos []uint64, limitCnt uint32, minEkLen int, minInodeSize uint64, maxEkAvgSize uint64) (resp *proto.GetCmpInodesResponse) {
+	resp = &proto.GetCmpInodesResponse{}
+	cnt := uint32(0)
+	for i := 0; i < len(inos) && cnt < limitCnt; i++ {
+		ino := inos[i]
+		ok, inode := mp.hasInode(&Inode{Inode: ino})
+		if !ok {
+			continue
+		}
+
+		if !proto.IsRegular(inode.Type) || !inode.IsNeedCompact(minEkLen, minInodeSize, maxEkAvgSize) {
+			continue
+		}
+
+		cInode := &proto.InodeInfo{}
+		if !replyInfo(cInode, inode) {
+			continue
+		}
+		resp.Inodes = append(resp.Inodes, &proto.CmpInodeInfo{Inode: cInode, Extents: inode.Extents.CopyExtents()})
+		cnt++
+	}
+	return
+}
+
+func (mp *metaPartition) GetCompactInodeInfo(req *proto.GetCmpInodesRequest, p *Packet) (err error) {
+	var data []byte
+
+	defer func() {
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
+		}
+	}()
+
+	if len(req.Inodes) == 0 {
+		err = fmt.Errorf("inodes not exist")
+		return
+	}
+
+	resp := mp.InodesMergeCheck(req.Inodes, req.ParallelCnt, req.MinEkLen, req.MinInodeSize, req.MaxEkAvgSize)
+
+	if data, err = json.Marshal(resp); err != nil {
+		return
+	}
+	p.PacketErrorWithBody(proto.OpOk, data)
+	return
+}

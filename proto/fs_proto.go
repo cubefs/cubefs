@@ -569,7 +569,34 @@ type GetSnapshotCrcRequest struct {
 
 type SnapshotCrdResponse struct {
 	LastSnapshotStr string `json:"last_snapshot_str"`
-	LocalAddr string `json:"local_addr"`
+	LocalAddr       string `json:"local_addr"`
+}
+
+type GetCmpInodesRequest struct {
+	VolName      string   `json:"vol"`
+	PartitionId  uint64   `json:"pid"`
+	ParallelCnt  uint32   `json:"parallel_cnt"`
+	Inodes       []uint64 `json:"inodes"`
+	MinEkLen     int      `json:"min_ek_len"`
+	MinInodeSize uint64   `json:"min_inode_size"`
+	MaxEkAvgSize uint64   `json:"max_ek_avg_size"`
+}
+
+type CmpInodeInfo struct {
+	Inode   *InodeInfo
+	Extents []ExtentKey
+}
+
+type GetCmpInodesResponse struct {
+	Inodes []*CmpInodeInfo
+}
+
+type InodeMergeExtentsRequest struct {
+	VolName     string      `json:"vol"`
+	PartitionId uint64      `json:"pid"`
+	Inode       uint64      `json:"inode_id"`
+	OldExtents  []ExtentKey `json:"old_extents"`
+	NewExtents  []ExtentKey   `json:"new_extents"`
 }
 
 // Dentry defines the dentry struct.
@@ -604,6 +631,7 @@ type MetaInode struct {
 func (ino MetaInode) String() string {
 	return fmt.Sprintf("Inode{Ino(%d),Type(%v),Size(%v),NLikn(%v)}", ino.Inode, ino.Type, ino.Size, ino.NLink)
 }
+
 type RecoverDeletedDentryRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`

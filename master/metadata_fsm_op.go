@@ -190,6 +190,7 @@ type volValue struct {
 	FollowerRead         bool
 	NearRead             bool
 	ForceROW             bool
+	ForceRowModifyTime   int64
 	CrossRegionHAType    bsProto.CrossRegionHAType
 	Authenticate         bool
 	EnableToken          bool
@@ -216,6 +217,8 @@ type volValue struct {
 	IsSmart              bool
 	SmartEnableTime int64
 	SmartRules           []string
+	CompactTag           bsProto.CompactTag
+	CompactTagModifyTime int64
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -265,6 +268,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		IsSmart:              vol.isSmart,
 		SmartEnableTime: vol.smartEnableTime,
 		SmartRules:           vol.smartRules,
+		CompactTag:           vol.compactTag,
+		CompactTagModifyTime: vol.compactTagModifyTime,
 	}
 	return
 }

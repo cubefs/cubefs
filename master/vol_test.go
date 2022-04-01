@@ -319,8 +319,8 @@ func markDeleteVol(name string, t *testing.T) {
 		t.Error(err)
 		return
 	}
-	if vol.Status != markDelete {
-		t.Errorf("markDeleteVol failed,expect[%v],real[%v]", markDelete, vol.Status)
+	if vol.Status != proto.VolStMarkDelete {
+		t.Errorf("markDeleteVol failed,expect[%v],real[%v]", proto.VolStMarkDelete, vol.Status)
 		return
 	}
 }
@@ -371,7 +371,8 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 	vol := newVol(volID, name, name, "", util.DefaultDataPartitionSize, 100, defaultReplicaNum,
 		defaultReplicaNum, false, false,
 		false, true, false, false, false, createTime, createTime, "", "", "", 0,
-		0, 0, 0.0, 30, proto.StoreModeMem, proto.VolConvertStInit, proto.MetaPartitionLayout{0, 0}, strings.Split(testSmartRules, ","))
+		0, 0, 0.0, 30, proto.StoreModeMem, proto.VolConvertStInit, proto.MetaPartitionLayout{0, 0},
+		strings.Split(testSmartRules, ","), proto.CompactDefault, createTime, createTime)
 	// unavailable mp
 	mp1 := newMetaPartition(1, 1, defaultMaxMetaPartitionInodeID, 3, 0, name, volID)
 	vol.addMetaPartition(mp1)

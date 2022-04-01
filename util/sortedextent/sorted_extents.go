@@ -669,3 +669,76 @@ func (s *ExtentKeySet) GetDelExtentKeys(eks []proto.ExtentKey) []proto.ExtentKey
 func NewExtentKeySet() ExtentKeySet {
 	return ExtentKeySet(make([]proto.ExtentKey, 0))
 }
+
+func (se *SortedExtents) findEkIndex(ek *proto.ExtentKey) (int, bool) {
+	l := 0
+	r := len(se.eks) - 1
+	for l <= r {
+		middleIndex := l + (r-l)/2
+		if se.eks[middleIndex].FileOffset == ek.FileOffset {
+			return middleIndex, true
+		} else if se.eks[middleIndex].FileOffset > ek.FileOffset {
+			r = middleIndex - 1
+		} else {
+			l = middleIndex + 1
+		}
+	}
+	return -1, false
+}
+
+func (se *SortedExtents) Merge(newEks []proto.ExtentKey, oldEks []proto.ExtentKey) (deleteExtents []proto.ExtentKey, err error) {
+	se.RWMutex.Lock()
+	defer se.RWMutex.Unlock()
+	set := NewExtentKeySet()
+	// get the old start index
+	index, ok := se.findEkIndex(&oldEks[0])
+	if !ok {
+		err = fmt.Errorf("findEkIndex oldEks[0](%v) not found(%v)", oldEks[0], ok)
+		log.LogInfof(err.Error())
+		return
+	}
+	start := index
+	// check index out of range
+	if index + len(oldEks) > len(se.eks)-1 {
+		err = fmt.Errorf("merge extent failed, index out of range [%v] with length %v", index + len(oldEks), len(se.eks))
+		return
+	}
+	// check old ek exist
+	for _, ek := range oldEks {
+		if !se.eks[index].Equal(&ek) {
+			err = fmt.Errorf("merge extent failed, can not find pre ek:%v", ek.String())
+			return
+		}
+		index++
+	}
+	// check last ek is con
+	lastEk := se.eks[index - 1]
+	nextEk := se.eks[index]
+	if lastEk.FileOffset + uint64(lastEk.Size)  != nextEk.FileOffset {
+		err = fmt.Errorf("merge extent failed, ek changed, lastek can not merged, last:%v, next:%v", lastEk.String(), nextEk)
+		return
+	}
+	// merge
+	var upper []proto.ExtentKey
+	upper = append(upper, se.eks[index:]...)
+	se.eks = se.eks[0:start]
+	se.eks = append(se.eks, newEks...)
+	se.eks = append(se.eks, upper...)
+	// Filter the EK that should be deleted
+	for _, ek := range oldEks {
+		set.Put(&ek)
+	}
+	deleteExtents = set.GetDelExtentKeys(se.eks)
+	return
+}
+
+func (se *SortedExtents) DelNewExtent(newEks []proto.ExtentKey) (deleteExtents []proto.ExtentKey) {
+	se.RWMutex.Lock()
+	defer se.RWMutex.Unlock()
+	set := NewExtentKeySet()
+	for _, ek := range newEks {
+		set.Put(&ek)
+	}
+	return set.GetDelExtentKeys(se.eks)
+}
+

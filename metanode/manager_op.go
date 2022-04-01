@@ -1990,3 +1990,50 @@ func (m *metadataManager) opStatDeletedFileInfo(conn net.Conn, p *Packet,
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
+
+func (m *metadataManager) opGetCompactInodesInfo(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	req := &proto.GetCmpInodesRequest{}
+
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.GetCompactInodeInfo(req, p)
+	_ = m.respondToClient(conn, p)
+	return
+}
+
+func (m *metadataManager) opInodeMergeExtents(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	req := &proto.InodeMergeExtentsRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.MergeExtents(req, p)
+	_ = m.respondToClient(conn, p)
+	return
+}

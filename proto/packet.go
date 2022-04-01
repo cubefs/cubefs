@@ -133,7 +133,6 @@ const (
 	OpMetaInodeGetV2         uint8 = 0x3C //new op code, old(get) compatible the old client
 	OpGetMetaNodeVersionInfo uint8 = 0x3D
 
-
 	// Operations: Master -> MetaNode
 	OpCreateMetaPartition             uint8 = 0x40
 	OpMetaNodeHeartbeat               uint8 = 0x41
@@ -180,7 +179,9 @@ const (
 	OpMetaBatchEvictInode   uint8 = 0x93
 
 	//inode reset
-	OpMetaCursorReset uint8 = 0x94
+	OpMetaCursorReset   uint8 = 0x94
+	OpMetaGetCmpInode   uint8 = 0x95
+	OpMetaInodeMergeEks uint8 = 0x96
 
 	// Commons
 	OpInodeOutOfRange  uint8 = 0xF2
@@ -315,7 +316,7 @@ func (p *Packet) GetStoreType() (m string) {
 }
 
 func (p *Packet) GetOpMsgWithReqAndResult() (m string) {
-	return fmt.Sprintf("Req(%v)_(%v)_Result(%v)_Body(%v)", p.ReqID, p.GetOpMsg(), p.GetResultMsg(),string(p.Data[0:p.Size]))
+	return fmt.Sprintf("Req(%v)_(%v)_Result(%v)_Body(%v)", p.ReqID, p.GetOpMsg(), p.GetResultMsg(), string(p.Data[0:p.Size]))
 }
 
 // GetOpMsg returns the operation type.
@@ -521,6 +522,10 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaReadDeletedDir"
 	case OpMetaStatDeletedFileInfo:
 		m = "OpMetaStatDeletedFileInfo"
+	case OpMetaGetCmpInode:
+		m = "OpMetaGetCmpInode"
+	case OpMetaInodeMergeEks:
+		m = "OpMetaInodeMergeEks"
 	}
 	return
 }
@@ -673,7 +678,6 @@ func (p *Packet) WriteToConnNs(c net.Conn, timeoutNs int64) (err error) {
 
 	return p.writeToConn(c)
 }
-
 
 func (p *Packet) writeToConn(c net.Conn) (err error) {
 	header, err := Buffers.Get(util.PacketHeaderSize)

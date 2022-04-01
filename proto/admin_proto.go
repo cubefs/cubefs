@@ -73,6 +73,9 @@ const (
 
 	AdminSmartVolList = "/admin/smartVol/list"
 
+	AdminCompactVolList = "/admin/compactVol/list"
+	AdminCompactVolSet  = "/admin/compactVol/set"
+
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
@@ -277,6 +280,49 @@ func (m MediumType) String() string {
 
 func (m MediumType) Check() bool {
 	return m == MediumSSD || m == MediumHDD || m == MediumEC
+}
+
+type CompactTag uint8
+
+const (
+	CompactDefault     CompactTag = 0
+	CompactOpen        CompactTag = 1
+	CompactClose       CompactTag = 3
+	CompactDefaultName            = "default"
+	CompactOpenName               = "Enabled"
+	CompactCloseName              = "Disabled"
+)
+
+const (
+	CompatTagClosedTimeDuration = 10 * 60
+	ForceRowClosedTimeDuration  = 5 * 60
+)
+
+func StrToCompactTag(str string) (cTag CompactTag, err error) {
+	switch str {
+	case CompactDefaultName:
+		cTag = CompactDefault
+	case CompactOpenName:
+		cTag = CompactOpen
+	case CompactCloseName:
+		cTag = CompactClose
+	default:
+		err = fmt.Errorf("invalid compact tag: %v", str)
+	}
+	return
+}
+
+func (ct CompactTag) String() string {
+	switch ct {
+	case CompactDefault:
+		return CompactDefaultName
+	case CompactOpen:
+		return CompactOpenName
+	case CompactClose:
+		return CompactCloseName
+	default:
+		return "unknown"
+	}
 }
 
 type AddReplicaType uint8
@@ -830,6 +876,8 @@ type SimpleVolView struct {
 	IsSmart               bool
 	SmartEnableTime string
 	SmartRules            []string
+	CompactTag            string
+	CompactTagModifyTime  int64
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -848,9 +896,11 @@ type VolInfo struct {
 	TrashRemainingDays uint32
 	IsSmart            bool
 	SmartRules         []string
+	ForceROW           bool
+	CompactTag         uint8
 }
 
-func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64, remainingDays uint32, isSmart bool, rules []string) *VolInfo {
+func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64, remainingDays uint32, isSmart bool, rules []string, forceRow bool, compactTag uint8) *VolInfo {
 	return &VolInfo{
 		Name:               name,
 		Owner:              owner,
@@ -861,6 +911,8 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 		TrashRemainingDays: remainingDays,
 		IsSmart:            isSmart,
 		SmartRules:         rules,
+		ForceROW:           forceRow,
+		CompactTag:         compactTag,
 	}
 }
 

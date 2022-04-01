@@ -78,6 +78,12 @@ type Inode struct {
 
 type InodeBatch []*Inode
 
+type InodeMerge struct {
+	Inode      uint64 // Inode ID
+	NewExtents  []proto.ExtentKey
+	OldExtents  []proto.ExtentKey
+}
+
 // String returns the string format of the inode.
 func (i *Inode) String() string {
 	i.RLock()
@@ -232,6 +238,76 @@ func (i InodeBatch) Marshal(ctx context.Context) ([]byte, error) {
 		}
 	}
 	return buff.Bytes(), nil
+}
+
+// inodeid len(NewExtents) len(OldExtents) []byte(NewExtents) []byte(OldExtents)
+func (im *InodeMerge) Marshal() ([]byte, error) {
+	buff := bytes.NewBuffer(make([]byte, 0))
+	if err := binary.Write(buff, binary.BigEndian, im.Inode); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buff, binary.BigEndian, uint32(len(im.NewExtents))); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buff, binary.BigEndian, uint32(len(im.OldExtents))); err != nil {
+		return nil, err
+	}
+	for _, extent := range im.NewExtents {
+		ex, err := extent.MarshalBinary()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := buff.Write(ex); err != nil {
+			return nil, err
+		}
+	}
+	for _, extent := range im.OldExtents {
+		ex, err := extent.MarshalBinary()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := buff.Write(ex); err != nil {
+			return nil, err
+		}
+	}
+	return buff.Bytes(), nil
+}
+
+func InodeMergeUnmarshal(raw []byte) (*InodeMerge, error) {
+	buff := bytes.NewBuffer(raw)
+	var inodeId uint64
+	if err := binary.Read(buff, binary.BigEndian, &inodeId); err != nil {
+		return nil, err
+	}
+	var newEksSize uint32
+	if err := binary.Read(buff, binary.BigEndian, &newEksSize); err != nil {
+		return nil, err
+	}
+	var oldEksSize uint32
+	if err := binary.Read(buff, binary.BigEndian, &oldEksSize); err != nil {
+		return nil, err
+	}
+
+	im := &InodeMerge{
+		Inode: inodeId,
+		NewExtents: make([]proto.ExtentKey, newEksSize),
+		OldExtents: make([]proto.ExtentKey, oldEksSize),
+	}
+	for i := 0; i < int(newEksSize); i++ {
+		ek := proto.ExtentKey{}
+		if err := ek.UnmarshalBinary(buff); err != nil {
+			return nil, err
+		}
+		im.NewExtents[i] = ek
+	}
+	for i := 0; i < int(oldEksSize); i++ {
+		ek := proto.ExtentKey{}
+		if err := ek.UnmarshalBinary(buff); err != nil {
+			return nil, err
+		}
+		im.OldExtents[i] = ek
+	}
+	return im, nil
 }
 
 func (i *Inode) MarshalV2() (result []byte, err error) {
@@ -614,6 +690,27 @@ func (i *Inode) ExtentsTruncate(length uint64, ct int64) (delExtents []proto.Ext
 	return
 }
 
+func (i *Inode) MergeExtents(newEks []proto.ExtentKey,  oldEks []proto.ExtentKey) (delExtents []proto.ExtentKey, err error) {
+	if len(oldEks) == 0 {
+		err = fmt.Errorf("MergeExtents inode(%v) oldEks Should not be equal to 0", i.Inode)
+		return
+	}
+
+	i.Lock()
+	defer i.Unlock()
+	if delExtents, err = i.Extents.Merge(newEks, oldEks); err == nil {
+		i.Generation++
+	}
+	return
+}
+
+func (i *Inode) DelNewExtents(newEks []proto.ExtentKey) (delExtents []proto.ExtentKey) {
+	i.Lock()
+	defer i.Unlock()
+	delExtents = i.Extents.DelNewExtent(newEks)
+	return
+}
+
 // IncNLink increases the nLink value by one.
 func (i *Inode) IncNLink() {
 	i.Lock()
@@ -663,6 +760,26 @@ func (i *Inode) IsEmptyDir() bool {
 	ok := (proto.IsDir(i.Type) && i.NLink <= 2)
 	i.RUnlock()
 	return ok
+}
+
+func (i *Inode) IsNeedCompact(minEkLen int, minInodeSize uint64, maxEkAvgSize uint64) bool {
+	i.RLock()
+	defer i.RUnlock()
+	if minEkLen < 2 {
+		minEkLen = 2
+	}
+	if minInodeSize < 1*1024*1024 {
+		minInodeSize = 1*1024*1024
+	}
+	if i.Extents.Len() <= minEkLen || i.Size <= minInodeSize {
+		return false
+	}
+	ekAvgSize := i.Size / uint64(i.Extents.Len())
+	if ekAvgSize < maxEkAvgSize { // 32*1024*1024
+		return true
+	}
+
+	return false
 }
 
 // SetDeleteMark set the deleteMark flag. TODO markDelete or deleteMark? markDelete has been used in datanode.

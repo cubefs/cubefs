@@ -468,7 +468,6 @@ func (mp *metaPartition) deleteExtentsFromDb() {
 	}()
 	retryList := list.New()
 	delTimer := time.NewTimer(time.Minute * 1)
-
 	for ; ; {
 		select {
 		case <-mp.stopC:
@@ -486,7 +485,6 @@ func (mp *metaPartition) deleteExtentsFromDb() {
 			if err := mp.cleanExpiredExtents(retryList); err != nil {
 				continue
 			}
-
 			if err := mp.syncDelExtentsToFollowers(extDeletedCursor, retryList); err != nil {
 				continue
 			}

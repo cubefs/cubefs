@@ -51,6 +51,7 @@ const (
 	MonitorMysqlDeleteTasks                    = "DeleteTasks"
 	MonitorMysqlDeleteTaskByVolumeAndId        = "DeleteTaskByVolumeAndId"
 	MonitorMysqlCheckDPTaskExist               = "CheckDPTaskExist"
+	MonitorMysqlCheckMPTaskExist               = "CheckMPTaskExist"
 	MonitorMysqlSelectExceptionWorkerNodeTasks = "SelectExceptionWorkerNodeTasks"
 	MonitorMysqlAddWorker                      = "AddWorker"
 	MonitorMysqlUpdateWorkerHeartbeat          = "UpdateWorkerHeartbeat"
@@ -82,4 +83,8 @@ const (
 	MonitorSmartLoadSmartVolume = "loadSmartVolume"
 	MonitorSmartCreateTask      = "smartVolumeCreateTask"
 	MonitorSmartConsumeTask     = "smartVolumeConsumeTask"
+
+	MonitorCompactLoadCompactVolume = "loadCompactVolume"
+	MonitorCompactCreateTask        = "compactCreateTask"
+	MonitorCompactConsumeTask       = "compactConsumeTask"
 )

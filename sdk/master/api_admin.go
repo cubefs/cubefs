@@ -356,7 +356,7 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 
 func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpReplicas, trashDays, storeMode int,
 	followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart bool, authKey, zoneName, mpLayout, smartRules string, bucketPolicy,
-	crossRegionHAType uint8, extentCacheExpireSec int64) (err error) {
+	crossRegionHAType uint8, extentCacheExpireSec int64, compactTag string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
@@ -377,6 +377,7 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	request.addParam("metaLayout", mpLayout)
 	request.addParam("smart", strconv.FormatBool(isSmart))
 	request.addParam("smartRules", smartRules)
+	request.addParam("compactTag", compactTag)
 	if trashDays > -1 {
 		request.addParam("trashRemainingDays", strconv.Itoa(trashDays))
 	}
@@ -398,7 +399,7 @@ func (api *AdminAPI) SetVolumeConvertTaskState(volName, authKey string, st int) 
 }
 
 func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int, dpSize, capacity uint64, replicas, mpReplicas, trashDays, storeMode int,
-	followerRead, autoRepair, volWriteMutex, forceROW, isSmart bool, zoneName, mpLayout, smartRules string, crossRegionHAType uint8) (err error) {
+	followerRead, autoRepair, volWriteMutex, forceROW, isSmart bool, zoneName, mpLayout, smartRules string, crossRegionHAType uint8, compactTag string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
@@ -418,6 +419,7 @@ func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int, dpSize, ca
 	request.addParam("metaLayout", mpLayout)
 	request.addParam("smart", strconv.FormatBool(isSmart))
 	request.addParam("smartRules", smartRules)
+	request.addParam("compactTag", compactTag)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -794,4 +796,30 @@ func (api *AdminAPI) TransferSmartVolDataPartition(dpId uint64, addr string) (er
 		return
 	}
 	return
+}
+
+func (api *AdminAPI) ListCompactVolumes() (volumes []*proto.CompactVolume, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminCompactVolList)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+
+	volumes = make([]*proto.CompactVolume, 0)
+	if err = json.Unmarshal(buf, &volumes); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) SetCompact(volName, compactTag, authKey string) (result string, err error) {
+	var data []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminCompactVolSet)
+	request.addParam("name", volName)
+	request.addParam("compactTag", compactTag)
+	request.addParam("authKey", authKey)
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return string(data), nil
 }

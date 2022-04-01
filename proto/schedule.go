@@ -123,12 +123,13 @@ type Task struct {
 	UpdateTime    time.Time
 }
 
-func NewDataTask(wt WorkerType, cluster, volName string, dpId uint64, taskInfo string) *Task {
+func NewDataTask(wt WorkerType, cluster, volName string, dpId uint64, mpId uint64, taskInfo string) *Task {
 	return &Task{
 		TaskType: wt,
 		Cluster:  cluster,
 		VolName:  volName,
 		DpId:     dpId,
+		MpId:     mpId,
 		TaskInfo: taskInfo,
 	}
 }
@@ -210,6 +211,17 @@ func (wn *WorkerNode) ContainTaskByDataPartition(task *Task) (bool, *Task) {
 	defer wn.TaskLock.RUnlock()
 	for _, t := range wn.Tasks {
 		if t.Cluster == task.Cluster && t.VolName == task.VolName && t.DpId == task.DpId {
+			return true, t
+		}
+	}
+	return false, nil
+}
+
+func (wn *WorkerNode) ContainTaskByMetaPartition(task *Task) (bool, *Task) {
+	wn.TaskLock.RLock()
+	defer wn.TaskLock.RUnlock()
+	for _, t := range wn.Tasks {
+		if t.Cluster == task.Cluster && t.VolName == task.VolName && t.MpId == task.MpId {
 			return true, t
 		}
 	}

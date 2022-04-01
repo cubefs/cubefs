@@ -289,10 +289,10 @@ func (vol *Vol) checkAutoMetaPartitionCreation(c *Cluster) {
 				"checkAutoMetaPartitionCreation occurred panic")
 		}
 	}()
-	if vol.status() == markDelete {
+	if vol.status() == proto.VolStMarkDelete {
 		return
 	}
-	if vol.status() == normal && !c.DisableAutoAllocate {
+	if vol.status() == proto.VolStNormal && !c.DisableAutoAllocate {
 		vol.autoCreateMetaPartitions(c)
 	}
 }

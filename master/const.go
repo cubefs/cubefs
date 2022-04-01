@@ -109,6 +109,7 @@ const (
 	isManualKey                 = "isManual"
 	mediumKey                   = "medium"
 	forceKey                    = "force"
+	compactTagKey				= "compactTag"
 )
 
 const (
@@ -195,6 +196,7 @@ const (
 	defaultMetaNodeVersion                             = "3.0.0"
 	minCrossRegionVolMasterRegionZonesCount            = 1
 	defaultClientPkgAddr                               = "http://storage.jd.local/dpgimage/cfs_spark/"
+	defaultCompactTag                                  = "default"
 )
 
 const (

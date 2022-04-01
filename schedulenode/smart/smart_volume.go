@@ -336,7 +336,7 @@ func (sv *SmartVolumeWorker) parseLayerPolicy(volume *proto.SmartVolume) {
 	}
 }
 
-func (sv *SmartVolumeWorker) CreateTask(clusterId string, taskNum int64, runningTasks []*proto.Task) (newTasks []*proto.Task, err error) {
+func (sv *SmartVolumeWorker) CreateTask(clusterId string, taskNum int64, runningTasks []*proto.Task, wns []*proto.WorkerNode) (newTasks []*proto.Task, err error) {
 	metric := exporter.NewTPCnt(proto.MonitorSmartCreateTask)
 	defer metric.Set(err)
 
@@ -431,7 +431,7 @@ func (sv *SmartVolumeWorker) CreateTask(clusterId string, taskNum int64, running
 				continue
 			}
 			// check data partition task is whether running
-			dataTask := proto.NewDataTask(proto.WorkerTypeSmartVolume, clusterId, volume.Name, dp.PartitionID, "")
+			dataTask := proto.NewDataTask(proto.WorkerTypeSmartVolume, clusterId, volume.Name, dp.PartitionID, 0, "")
 			if running, _, err = sv.ContainDPTask(dataTask, runningTasks); err != nil {
 				log.LogErrorf("[SmartVolumeWorker CreateTask] check task is whether running has exception, cluster(%v), volume(%v), dp(%v)，err(%v)",
 					clusterId, volume.Name, dp.PartitionID, err)
@@ -526,7 +526,7 @@ func (sv *SmartVolumeWorker) CreateTask(clusterId string, taskNum int64, running
 				continue
 			}
 			var taskId uint64
-			task := proto.NewDataTask(proto.WorkerTypeSmartVolume, clusterId, volume.Name, dp.PartitionID, smartTaskInfo)
+			task := proto.NewDataTask(proto.WorkerTypeSmartVolume, clusterId, volume.Name, dp.PartitionID, 0, smartTaskInfo)
 			if taskId, err = sv.AddTask(task); err != nil {
 				log.LogErrorf("[SmartVolumeWorker CreateTask] add task to database failed, cluster(%v), volume(%v), dp(%v), taskInfo(%v), err(%v)",
 					clusterId, volume.Name, dp.PartitionID, smartTaskInfo, err)

@@ -69,6 +69,7 @@ const (
 	metadataOpFSMCleanExpiredInode
 	metadataOpFSMExtentDelSync
 	metadataOpSnapSyncExtent
+	metadataOpFSMExtentMerge
 )
 
 const (
@@ -294,6 +295,14 @@ func (decoder *MetadataCommandDecoder) DecodeCommand(command []byte) (values com
 			inodes = append(inodes, inodeID)
 		}
 		columnValAttrs.SetValue(fmt.Sprintf("inodes:%v", inodes))
+	case metadataOpFSMExtentMerge:
+		var inodeMerge *metanode.InodeMerge
+		inodeMerge, err = metanode.InodeMergeUnmarshal(opKVData.V)
+		if err != nil {
+			return
+		}
+		columnValOp.SetValue("ExtentMerge")
+		columnValAttrs.SetValue(fmt.Sprintf("inode: %v, eks:%v", inodeMerge.Inode, decoder.formatEks(inodeMerge.NewOldExtents)))
 	default:
 		columnValOp.SetValue(strconv.Itoa(int(opKVData.Op)))
 		columnValAttrs.SetValue("N/A")
@@ -312,5 +321,16 @@ func (decoder *MetadataCommandDecoder) formatExtentKeys(extents *se.SortedExtent
 		sb.WriteString(fmt.Sprintf("%v_%v_%v_%v_%v", ek.FileOffset, ek.PartitionId, ek.ExtentId, ek.ExtentOffset, ek.Size))
 		return true
 	})
+	return sb.String()
+}
+
+func (decoder *MetadataCommandDecoder) formatEks(eks []proto.ExtentKey) string {
+	sb := strings.Builder{}
+	for _, ek := range eks {
+		if sb.Len() > 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(fmt.Sprintf("%v_%v_%v_%v_%v", ek.FileOffset, ek.PartitionId, ek.ExtentId, ek.ExtentOffset, ek.Size))
+	}
 	return sb.String()
 }

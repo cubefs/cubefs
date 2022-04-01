@@ -378,7 +378,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		for _, ext := range exts {
 			DeleteLimiterWait()
 			log.LogInfof("handleBatchMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v) from(%v)",
-				p.PartitionID, p.ExtentID, ext.ExtentOffset, ext.Size, remote)
+				p.PartitionID, ext.ExtentId, ext.ExtentOffset, ext.Size, remote)
 			store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
 		}
 	}

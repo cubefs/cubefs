@@ -152,6 +152,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  smart           : %s\n", formatEnabledDisabled(svv.IsSmart)))
 	sb.WriteString(fmt.Sprintf("  smart enable time: %v\n", svv.SmartEnableTime))
 	sb.WriteString(fmt.Sprintf("  smart rules           : %v\n", strings.Join(svv.SmartRules, ",")))
+	sb.WriteString(fmt.Sprintf("  Compact              : %v\n", svv.CompactTag))
 	return sb.String()
 }
 
@@ -184,9 +185,9 @@ func formatInodeExtentInfoTableRow(ie *proto.InodeExtentInfoView) string {
 
 func formatVolumeStatus(status uint8) string {
 	switch status {
-	case 0:
+	case proto.VolStNormal:
 		return "Normal"
-	case 1:
+	case proto.VolStMarkDelete:
 		return "Marked delete"
 	default:
 		return "Unknown"

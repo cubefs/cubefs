@@ -176,9 +176,9 @@ func (m *Server) updateZone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if status {
-		zone.setStatus(normalZone)
+		zone.setStatus(proto.ZoneStNormal)
 	} else {
-		zone.setStatus(unavailableZone)
+		zone.setStatus(proto.ZoneStUnavailable)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("update zone status to [%v] successfully", status)))
 }
@@ -1364,6 +1364,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		mpLayout             proto.MetaPartitionLayout
 		isSmart              bool
 		smartRules           []string
+		compactTag           proto.CompactTag
 	)
 	if name, authKey, replicaNum, mpReplicaNum, err = parseRequestToUpdateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1441,10 +1442,15 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-
+	// parseCompactTagToUpdateVol
+	compactTag, err = parseCompactTagToUpdateVol(r, vol)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
 	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), uint8(mpReplicaNum),
 		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart, dpSelectorName, dpSelectorParm, ossBucketPolicy,
-		crossRegionHAType, dpWriteableThreshold, trashRemainingDays, proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules); err != nil {
+		crossRegionHAType, dpWriteableThreshold, trashRemainingDays, proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1507,10 +1513,11 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		mpLayout             proto.MetaPartitionLayout
 		isSmart              bool
 		smartRules           []string
+		compactTag           string
 	)
 
 	if name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays, followerRead, authenticate,
-		enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, crossRegionHAType, dpWriteableThreshold, mpLayout, smartRules, err = parseRequestToCreateVol(r); err != nil {
+		enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, crossRegionHAType, dpWriteableThreshold, mpLayout, smartRules, compactTag, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1538,9 +1545,22 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !forceROW && compactTag == proto.CompactOpenName {
+		err = fmt.Errorf("compact cannot be opened when force row is closed. Please open force row first,compact tag is[%v]", compactTag)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	var cmpTag proto.CompactTag
+	if cmpTag, err = proto.StrToCompactTag(compactTag); err != nil {
+		err = fmt.Errorf("compactTag can only be open or close,received is[%v]", compactTag)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size,
 		capacity, trashDays, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart,
-		crossRegionHAType, dpWriteableThreshold, proto.StoreMode(storeMode), mpLayout, smartRules); err != nil {
+		crossRegionHAType, dpWriteableThreshold, proto.StoreMode(storeMode), mpLayout, smartRules, cmpTag); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1651,6 +1671,8 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		UsedRatio:            usedRatio,
 		FileAvgSize:          fileAvgSize,
 		CreateStatus:         vol.CreateStatus,
+		CompactTag:           vol.compactTag.String(),
+		CompactTagModifyTime: vol.compactTagModifyTime,
 	}
 }
 
@@ -2870,6 +2892,22 @@ func parseSmartToUpdateVol(r *http.Request, vol *Vol) (isSmart bool, smartRules 
 	return
 }
 
+func parseCompactTagToUpdateVol(r *http.Request, vol *Vol) (cTag proto.CompactTag, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	compactTagStr := r.FormValue(compactTagKey)
+	if compactTagStr == "" {
+		cTag = vol.compactTag
+	} else {
+		cTag, err = proto.StrToCompactTag(compactTagStr)
+		if err != nil {
+			return
+		}
+	}
+	return
+}
+
 func parseOSSBucketPolicyToUpdateVol(r *http.Request, vol *Vol) (ossBucketPolicy proto.BucketAccessPolicy, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -2917,7 +2955,7 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays int,
 	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart bool,
 	crossRegionHAType proto.CrossRegionHAType, dpWritableThreshold float64,
-	layout proto.MetaPartitionLayout, smartRules []string, err error) {
+	layout proto.MetaPartitionLayout, smartRules []string, compactTag string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -3036,6 +3074,10 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	rules := r.FormValue(smartRulesKey)
 	if rules != "" {
 		smartRules = strings.Split(rules, ",")
+	}
+
+	if compactTag = r.FormValue(compactTagKey); compactTag == "" {
+		compactTag = defaultCompactTag
 	}
 	return
 }
@@ -4004,7 +4046,7 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 			}
 			stat := volStat(vol)
 
-			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize, vol.trashRemainingDays, vol.isSmart, vol.smartRules)
+			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize, vol.trashRemainingDays, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact())
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
@@ -4033,11 +4075,55 @@ func (m *Server) listSmartVols(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			stat := volStat(vol)
-			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize, vol.trashRemainingDays, vol.isSmart, vol.smartRules)
+			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize, vol.trashRemainingDays, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact())
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))
+}
+
+func (m *Server) listCompactVols(w http.ResponseWriter, r *http.Request) {
+	var (
+		err      error
+		vol      *Vol
+		volsInfo []*proto.VolInfo
+	)
+	volsInfo = make([]*proto.VolInfo, 0)
+	for _, name := range m.cluster.allVolNames() {
+		if vol, err = m.cluster.getVol(name); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+			return
+		}
+		if vol.compactTag == proto.CompactDefault {
+			continue
+		}
+		stat := volStat(vol)
+		volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize, vol.trashRemainingDays, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact())
+		volsInfo = append(volsInfo, volInfo)
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))
+}
+
+func (m *Server) setCompactVol(w http.ResponseWriter, r *http.Request) {
+	var (
+		err        error
+		name       string
+		compactTag string
+		authKey    string
+		msg        string
+	)
+
+	if name, compactTag, authKey, err = parseRequestToSetCompactVol(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if err = m.cluster.setVolCompactTag(name, compactTag, authKey); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	msg = fmt.Sprintf("set compact tag vol[%v] successfully, compactTag[%v]", name, compactTag)
+	log.LogWarn(msg)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
 func (m *Server) applyVolWriteMutex(w http.ResponseWriter, r *http.Request) {
@@ -4847,4 +4933,19 @@ func (m *Server) setClientPkgAddr(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) getClientPkgAddr(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(m.cluster.cfg.ClientPkgAddr))
+}
+
+func parseRequestToSetCompactVol(r *http.Request) (name, compactTag, authKey string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if name, err = extractName(r); err != nil {
+		return
+	}
+	if authKey, err = extractAuthKey(r); err != nil {
+		return
+	}
+	compactTag = r.FormValue(compactTagKey)
+
+	return
 }

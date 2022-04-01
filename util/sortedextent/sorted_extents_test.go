@@ -2,6 +2,7 @@ package sortedextent
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -779,4 +780,235 @@ func BenchmarkSortedExtents_Append(b *testing.B) {
 		})
 	}
 	b.ReportAllocs()
+}
+
+func TestSortedExtents_findEkIndex(t *testing.T) {
+	ctx := context.Background()
+	se := NewSortedExtents()
+	length := 100
+	for i := 0; i < length; i++ {
+		se.Append(ctx, proto.ExtentKey{
+			FileOffset:   uint64(i),
+		})
+	}
+	for i := 0; i < length; i++ {
+		ek := &proto.ExtentKey{FileOffset: uint64(i)}
+		actualIndex, ok := se.findEkIndex(ek)
+		if !ok {
+			t.Fatalf("ek[%v] should exist", ek)
+		}
+		if i != actualIndex {
+			t.Fatalf("ek[%v] index expect:%v, actual:%v", ek, i, actualIndex)
+		}
+	}
+}
+
+func TestSortedExtents_Merge1(t *testing.T) {
+	ctx := context.Background()
+	se := NewSortedExtents()
+	srcEks := []proto.ExtentKey{
+		{FileOffset: 0, Size: 1, PartitionId: 2, ExtentId: 2},
+		{FileOffset: 1, Size: 2, PartitionId: 3, ExtentId: 3},
+		{FileOffset: 3, Size: 3, PartitionId: 4, ExtentId: 4},
+		{FileOffset: 6, Size: 4, PartitionId: 5, ExtentId: 5},
+		{FileOffset: 10, Size: 5, PartitionId: 6, ExtentId: 6},
+		{FileOffset: 15, Size: 6, PartitionId: 7, ExtentId: 7},
+		{FileOffset: 21, Size: 7, PartitionId: 8, ExtentId: 8},
+		{FileOffset: 28, Size: 1, PartitionId: 9, ExtentId: 9},
+		{FileOffset: 29, Size: 2, PartitionId: 10, ExtentId: 10},
+		{FileOffset: 31, Size: 2, PartitionId: 11, ExtentId: 11},
+		{FileOffset: 33, Size: 3, PartitionId: 12, ExtentId: 12},
+	}
+	for _, ek := range srcEks {
+		se.Append(ctx, ek)
+	}
+	newEk := proto.ExtentKey{FileOffset: 0, Size: 11, PartitionId: 100, ExtentId: 1}
+	oldEks := []proto.ExtentKey{
+		{FileOffset: 0, Size: 1, PartitionId: 2, ExtentId: 2},
+		{FileOffset: 1, Size: 2, PartitionId: 3, ExtentId: 3},
+		{FileOffset: 3, Size: 3, PartitionId: 4, ExtentId: 4},
+		{FileOffset: 6, Size: 4, PartitionId: 5, ExtentId: 5},
+	}
+	deleteExtents, err := se.Merge([]proto.ExtentKey{newEk}, oldEks)
+	if err != nil {
+		t.Fatalf("There should be no error, current error:%v", err)
+	}
+	if len(deleteExtents) != len(oldEks) {
+		t.Fatalf("deleteExtents length expect:%v ,actual:%v", len(oldEks), len(deleteExtents))
+	}
+	newEk = proto.ExtentKey{FileOffset: 0, Size: 11, PartitionId: 100, ExtentId: 1}
+	oldEks = []proto.ExtentKey{
+		{FileOffset: 10, Size: 5, PartitionId: 6, ExtentId: 6},
+		{FileOffset: 15, Size: 6, PartitionId: 7, ExtentId: 7},
+	}
+	deleteExtents, err = se.Merge([]proto.ExtentKey{newEk}, oldEks)
+	if err != nil {
+		t.Fatalf("There should be no error, current error:%v", err)
+	}
+	if len(deleteExtents) != len(oldEks) {
+		t.Fatalf("deleteExtents length expect:%v ,actual:%v", len(oldEks), len(deleteExtents))
+	}
+}
+
+func TestSortedExtents_Merge2(t *testing.T) {
+	ctx := context.Background()
+	se := NewSortedExtents()
+	srcEks := []proto.ExtentKey{
+		{FileOffset: 0, Size: 1, PartitionId: 2, ExtentId: 2},
+		{FileOffset: 1, Size: 2, PartitionId: 3, ExtentId: 3},
+		{FileOffset: 3, Size: 3, PartitionId: 4, ExtentId: 4},
+		{FileOffset: 6, Size: 4, PartitionId: 12, ExtentId: 12},
+		{FileOffset: 10, Size: 5, PartitionId: 6, ExtentId: 6},
+		{FileOffset: 15, Size: 6, PartitionId: 7, ExtentId: 7},
+		{FileOffset: 21, Size: 7, PartitionId: 8, ExtentId: 8},
+		{FileOffset: 28, Size: 1, PartitionId: 9, ExtentId: 9},
+		{FileOffset: 29, Size: 2, PartitionId: 10, ExtentId: 10},
+		{FileOffset: 31, Size: 2, PartitionId: 11, ExtentId: 11},
+		{FileOffset: 33, Size: 3, PartitionId: 12, ExtentId: 12},
+	}
+	for _, ek := range srcEks {
+		se.Append(ctx, ek)
+	}
+	newEk := proto.ExtentKey{FileOffset: 0, Size: 11, PartitionId: 100, ExtentId: 1}
+	shouldNotContainEk := proto.ExtentKey{FileOffset: 6, Size: 4, PartitionId: 12, ExtentId: 12}
+	oldEks := []proto.ExtentKey{
+		{FileOffset: 0, Size: 1, PartitionId: 2, ExtentId: 2},
+		{FileOffset: 1, Size: 2, PartitionId: 3, ExtentId: 3},
+		{FileOffset: 3, Size: 3, PartitionId: 4, ExtentId: 4},
+		shouldNotContainEk,
+	}
+	deleteExtents, err := se.Merge([]proto.ExtentKey{newEk}, oldEks)
+	if err != nil {
+		t.Fatalf("There should be no error, current error:%v", err)
+	}
+	if len(deleteExtents) != len(oldEks)-1 {
+		t.Fatalf("deleteExtents length expect:%v ,actual:%v", len(oldEks)-1, len(deleteExtents))
+	}
+	for _, extent := range deleteExtents {
+		if extent.PartitionId == shouldNotContainEk.PartitionId && extent.ExtentId == shouldNotContainEk.ExtentId {
+			t.Fatalf("deleteExtents should not contain extentKey:%v", shouldNotContainEk)
+		}
+	}
+}
+
+func TestSortedExtents_Merge3(t *testing.T) {
+	ctx := context.Background()
+	se := NewSortedExtents()
+	srcEks := []proto.ExtentKey{
+		{FileOffset: 0, Size: 1, PartitionId: 2, ExtentId: 2},
+		{FileOffset: 1, Size: 2, PartitionId: 3, ExtentId: 3},
+		{FileOffset: 3, Size: 3, PartitionId: 11, ExtentId: 11},
+		{FileOffset: 6, Size: 4, PartitionId: 12, ExtentId: 12},
+		{FileOffset: 10, Size: 5, PartitionId: 6, ExtentId: 6},
+		{FileOffset: 15, Size: 6, PartitionId: 7, ExtentId: 7},
+		{FileOffset: 21, Size: 7, PartitionId: 8, ExtentId: 8},
+		{FileOffset: 28, Size: 1, PartitionId: 9, ExtentId: 9},
+		{FileOffset: 29, Size: 2, PartitionId: 10, ExtentId: 10},
+		{FileOffset: 31, Size: 2, PartitionId: 11, ExtentId: 11},
+		{FileOffset: 33, Size: 3, PartitionId: 12, ExtentId: 12},
+	}
+	for _, ek := range srcEks {
+		se.Append(ctx, ek)
+	}
+	newEk := proto.ExtentKey{FileOffset: 0, Size: 11, PartitionId: 100, ExtentId: 1}
+	shouldNotContainEk1 := proto.ExtentKey{FileOffset: 3, Size: 3, PartitionId: 11, ExtentId: 11}
+	shouldNotContainEk2 := proto.ExtentKey{FileOffset: 6, Size: 4, PartitionId: 12, ExtentId: 12}
+	oldEks := []proto.ExtentKey{
+		{FileOffset: 0, Size: 1, PartitionId: 2, ExtentId: 2},
+		{FileOffset: 1, Size: 2, PartitionId: 3, ExtentId: 3},
+		shouldNotContainEk1,
+		shouldNotContainEk2,
+	}
+	deleteExtents, err := se.Merge([]proto.ExtentKey{newEk}, oldEks)
+	if err != nil {
+		t.Fatalf("Merge should have no error, current error:%v", err)
+	}
+	if len(deleteExtents) != len(oldEks)-2 {
+		t.Fatalf("deleteExtents length expect:%v ,actual:%v", len(oldEks)-2, len(deleteExtents))
+	}
+	for _, extent := range deleteExtents {
+		if extent.PartitionId == shouldNotContainEk1.PartitionId && extent.ExtentId == shouldNotContainEk1.ExtentId {
+			t.Fatalf("deleteExtents should not contain extentKey:%v", shouldNotContainEk1)
+		}
+		if extent.PartitionId == shouldNotContainEk2.PartitionId && extent.ExtentId == shouldNotContainEk2.ExtentId {
+			t.Fatalf("deleteExtents should not contain extentKey:%v", shouldNotContainEk2)
+		}
+	}
+}
+
+func TestSortedExtents_Merge4(t *testing.T) {
+	ctx := context.Background()
+	se := NewSortedExtents()
+	srcEks := []proto.ExtentKey{
+		{FileOffset: 0, Size: 1, PartitionId: 2, ExtentId: 2},
+		{FileOffset: 1, Size: 2, PartitionId: 3, ExtentId: 3},
+		{FileOffset: 3, Size: 3, PartitionId: 11, ExtentId: 11},
+		{FileOffset: 6, Size: 4, PartitionId: 12, ExtentId: 12},
+		{FileOffset: 10, Size: 5, PartitionId: 6, ExtentId: 6},
+		{FileOffset: 15, Size: 6, PartitionId: 7, ExtentId: 7},
+		{FileOffset: 21, Size: 7, PartitionId: 8, ExtentId: 8},
+		{FileOffset: 28, Size: 1, PartitionId: 9, ExtentId: 9},
+		{FileOffset: 29, Size: 2, PartitionId: 10, ExtentId: 10},
+		{FileOffset: 31, Size: 2, PartitionId: 11, ExtentId: 11},
+		{FileOffset: 33, Size: 3, PartitionId: 12, ExtentId: 12},
+	}
+	for _, ek := range srcEks {
+		se.Append(ctx, ek)
+	}
+	newEk := proto.ExtentKey{FileOffset: 0, Size: 18, PartitionId: 100, ExtentId: 1}
+	oldEks := []proto.ExtentKey{
+		{FileOffset: 4, Size: 3, PartitionId: 11, ExtentId: 11},
+		{FileOffset: 6, Size: 4, PartitionId: 12, ExtentId: 12},
+		{FileOffset: 10, Size: 5, PartitionId: 6, ExtentId: 6},
+		{FileOffset: 15, Size: 6, PartitionId: 7, ExtentId: 7},
+	}
+	_, err := se.Merge([]proto.ExtentKey{newEk}, oldEks)
+	fmt.Println(err)
+	if err == nil {
+		t.Fatalf("Merge should hava error")
+	}
+	oldEks = []proto.ExtentKey{
+		{FileOffset: 3, Size: 3, PartitionId: 11, ExtentId: 11},
+		{FileOffset: 9, Size: 4, PartitionId: 12, ExtentId: 12},
+		{FileOffset: 10, Size: 5, PartitionId: 6, ExtentId: 6},
+		{FileOffset: 15, Size: 6, PartitionId: 7, ExtentId: 7},
+	}
+	_, err = se.Merge([]proto.ExtentKey{newEk}, oldEks)
+	fmt.Println(err)
+	if err == nil {
+		t.Fatalf("Merge should hava error")
+	}
+}
+
+func TestSortedExtents_Merge5(t *testing.T) {
+	ctx := context.Background()
+	se := NewSortedExtents()
+	srcEks := []proto.ExtentKey{
+		{FileOffset: 0, Size: 1, PartitionId: 2, ExtentId: 2},
+		{FileOffset: 1, Size: 2, PartitionId: 3, ExtentId: 3},
+		{FileOffset: 3, Size: 3, PartitionId: 11, ExtentId: 11},
+		{FileOffset: 6, Size: 4, PartitionId: 12, ExtentId: 12},
+		{FileOffset: 10, Size: 5, PartitionId: 6, ExtentId: 6},
+		{FileOffset: 15, Size: 6, PartitionId: 7, ExtentId: 7},
+		{FileOffset: 22, Size: 7, PartitionId: 8, ExtentId: 8},
+		{FileOffset: 28, Size: 1, PartitionId: 9, ExtentId: 9},
+		{FileOffset: 29, Size: 2, PartitionId: 10, ExtentId: 10},
+		{FileOffset: 31, Size: 2, PartitionId: 11, ExtentId: 11},
+		{FileOffset: 33, Size: 3, PartitionId: 12, ExtentId: 12},
+	}
+	for _, ek := range srcEks {
+		se.Append(ctx, ek)
+	}
+	newEk := proto.ExtentKey{FileOffset: 4, Size: 18, PartitionId: 100, ExtentId: 1}
+	oldEks := []proto.ExtentKey{
+		{FileOffset: 3, Size: 3, PartitionId: 11, ExtentId: 11},
+		{FileOffset: 6, Size: 4, PartitionId: 12, ExtentId: 12},
+		{FileOffset: 10, Size: 5, PartitionId: 6, ExtentId: 6},
+		{FileOffset: 15, Size: 6, PartitionId: 7, ExtentId: 7},
+	}
+	_, err := se.Merge([]proto.ExtentKey{newEk}, oldEks)
+	fmt.Println(err)
+	if err == nil {
+		t.Fatalf("Merge should hava error")
+	}
 }

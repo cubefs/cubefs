@@ -167,6 +167,7 @@ const (
 	opFSMCleanExpiredInode
 	opFSMExtentDelSync
 	opSnapSyncExtent
+	opFSMExtentMerge
 )
 
 var (

@@ -283,8 +283,13 @@ func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 		log.LogErrorf("[registerWorker] create smart volume worker failed, err(%v)", err)
 		return
 	}
+	var compactWorker *compact.CompactWorker
+	if compactWorker, err = compact.NewCompactWorkerForScheduler(cfg); err != nil {
+		log.LogErrorf("[registerWorker] create compact worker failed, err(%v)", err)
+		return
+	}
 	s.workers.Store(proto.WorkerTypeSmartVolume, smartVolumeWorker)
-	s.workers.Store(proto.WorkerTypeCompact, compact.NewCompactWorker())
+	s.workers.Store(proto.WorkerTypeCompact, compactWorker)
 	return
 }
 
@@ -574,7 +579,7 @@ func (s *ScheduleNode) startTaskCreator() {
 }
 
 // flow control when task creating.
-func (s *ScheduleNode) taskCreator(wt proto.WorkerType, duration int, createTask func(cluster string, taskNum int64, rt []*proto.Task) (nt []*proto.Task, err error)) {
+func (s *ScheduleNode) taskCreator(wt proto.WorkerType, duration int, createTask func(cluster string, taskNum int64, rt []*proto.Task, wn []*proto.WorkerNode) (nt []*proto.Task, err error)) {
 	log.LogInfof("[taskCreator] start task creator, workerType(%v), duration(%v)", proto.WorkerTypeToName(wt), duration)
 	timer := time.NewTimer(0)
 	for {
@@ -612,7 +617,12 @@ func (s *ScheduleNode) taskCreator(wt proto.WorkerType, duration int, createTask
 						proto.WorkerTypeToName(wt), cluster, len(runningTasks), taskNum)
 					continue
 				}
-				if newTasks, err = createTask(cluster, taskNum, runningTasks); err != nil {
+				var workerNodes []*proto.WorkerNode
+				v, ok := s.workerNodes.Load(wt)
+				if ok {
+					workerNodes = v.([]*proto.WorkerNode)
+				}
+				if newTasks, err = createTask(cluster, taskNum, runningTasks, workerNodes); err != nil {
 					log.LogErrorf("[taskCreator] execute task creator failed, workerType(%v), cluster(%v), taskNum(%v), err(%v)",
 						proto.WorkerTypeToName(wt), cluster, taskNum, err)
 				}
@@ -842,6 +852,7 @@ func (s *ScheduleNode) dispatchTaskToWorker(wt proto.WorkerType, tasks []*proto.
 		// dispatch tasks to selected lowest load worker
 		log.LogDebugf("[dispatchTaskToWorker] dispatch task to worker, taskId(%v), cluster(%v), volName(%v), dpId(%v), workerAddr(%v)",
 			task.TaskId, task.Cluster, task.VolName, task.DpId, worker.WorkerAddr)
+		task.WorkerAddr = worker.WorkerAddr
 		worker.AddTask(task)
 	}
 }

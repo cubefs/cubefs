@@ -685,6 +685,43 @@ func CheckDPTaskExist(cluster, volumeName string, taskType int, dpId uint64) (re
 	return
 }
 
+func CheckMPTaskExist(cluster, volumeName string, taskType int, mpId uint64) (res bool, task *proto.Task, err error) {
+	metrics := exporter.NewTPCnt(proto.MonitorMysqlCheckMPTaskExist)
+	defer metrics.Set(err)
+
+	var rows *sql.Rows
+	sqlCmd := fmt.Sprintf("select %s from tasks where cluster_name = ? and vol_name = ? and task_type = ? and mp_id = ?", taskColumns())
+	rows, err = db.Query(sqlCmd, cluster, volumeName, taskType, mpId)
+	if rows == nil {
+		return
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+
+	for rows.Next() {
+		task = &proto.Task{}
+		var ct string
+		var ut string
+		var createTime time.Time
+		var updateTime time.Time
+		err = rows.Scan(&task.TaskId, &task.TaskType, &task.Cluster, &task.VolName, &task.DpId, &task.MpId, &task.TaskInfo, &task.WorkerAddr, &task.Status, &task.ExceptionInfo, &ct, &ut)
+		if err != nil {
+			return
+		}
+		if createTime, err = FormatTime(ct); err != nil {
+			return
+		}
+		if updateTime, err = FormatTime(ut); err != nil {
+			return
+		}
+		task.CreateTime = createTime
+		task.UpdateTime = updateTime
+		return true, task, nil
+	}
+	return
+}
+
 func SelectTasks(cluster, volume string, dpId, mpId uint64, taskType, limit, offset int) (tasks []*proto.Task, err error) {
 	sqlCmd := fmt.Sprintf("select %s from tasks", taskColumns())
 	conditions := make([]string, 0)

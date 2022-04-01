@@ -97,10 +97,10 @@ func TestGetLowestPayloadWorker(t *testing.T) {
 
 func TestTasks(t *testing.T) {
 	// store single task
-	task1 := proto.NewDataTask(proto.WorkerTypeSmartVolume, "spark", "smartVolume", 101, "test")
-	task2 := proto.NewDataTask(proto.WorkerTypeSmartVolume, "spark", "smartVolume", 102, "test")
-	task3 := proto.NewDataTask(proto.WorkerTypeSmartVolume, "spark", "smartVolume", 103, "test")
-	task4 := proto.NewDataTask(proto.WorkerTypeSmartVolume, "spark", "smartVolume", 104, "test")
+	task1 := proto.NewDataTask(proto.WorkerTypeSmartVolume, "spark", "smartVolume", 101, 0, "test")
+	task2 := proto.NewDataTask(proto.WorkerTypeSmartVolume, "spark", "smartVolume", 102, 0, "test")
+	task3 := proto.NewDataTask(proto.WorkerTypeSmartVolume, "spark", "smartVolume", 103, 0, "test")
+	task4 := proto.NewDataTask(proto.WorkerTypeSmartVolume, "spark", "smartVolume", 104, 0, "test")
 	task1.TaskId = 101
 	task2.TaskId = 102
 	task3.TaskId = 103

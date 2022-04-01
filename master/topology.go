@@ -346,7 +346,7 @@ func (t *topology) getCandidateZonesFromTargetRegionForDataNode(excludeZone []st
 	candidateZones = make([]*Zone, 0)
 	initCandidateZones := t.getZonesOfTargetRegion(targetRegionName)
 	for _, zone := range initCandidateZones {
-		if zone.status == unavailableZone {
+		if zone.status == proto.ZoneStUnavailable {
 			continue
 		}
 		if contains(excludeZone, zone.name) {
@@ -366,7 +366,7 @@ func (t *topology) getCandidateZonesFromTargetRegionForMetaNode(excludeZone []st
 	candidateZones = make([]*Zone, 0)
 	initCandidateZones := t.getZonesOfTargetRegion(targetRegionName)
 	for _, zone := range initCandidateZones {
-		if zone.status == unavailableZone {
+		if zone.status == proto.ZoneStUnavailable {
 			continue
 		}
 		if contains(excludeZone, zone.name) {
@@ -432,7 +432,7 @@ func (t *topology) allocZonesForMetaNode(clusterID, zoneName string, replicaNum 
 	demandWriteNodes := calculateDemandWriteNodes(len(zoneList), replicaNum)
 	candidateZones = make([]*Zone, 0)
 	for _, zone := range initCandidateZones {
-		if zone.status == unavailableZone {
+		if zone.status == proto.ZoneStUnavailable {
 			continue
 		}
 		if contains(excludeZone, zone.name) {
@@ -455,7 +455,7 @@ func (t *topology) allocZonesForMetaNode(clusterID, zoneName string, replicaNum 
 	if !isStrict && len(candidateZones) < 1 && len(zoneList) == 1 {
 		initCandidateZones = t.getAllZones()
 		for _, zone := range initCandidateZones {
-			if zone.status == unavailableZone {
+			if zone.status == proto.ZoneStUnavailable {
 				continue
 			}
 			if zone.canWriteForMetaNode(uint8(demandWriteNodes)) {
@@ -497,7 +497,7 @@ func (t *topology) allocZonesForDataNode(clusterID, zoneName string, replicaNum 
 	demandWriteNodes := calculateDemandWriteNodes(len(zoneList), replicaNum)
 	candidateZones = make([]*Zone, 0)
 	for _, zone := range initCandidateZones {
-		if zone.status == unavailableZone {
+		if zone.status == proto.ZoneStUnavailable {
 			continue
 		}
 		if contains(excludeZone, zone.name) {
@@ -520,7 +520,7 @@ func (t *topology) allocZonesForDataNode(clusterID, zoneName string, replicaNum 
 	if !isStrict && len(candidateZones) < 1 && len(zoneList) == 1 {
 		initCandidateZones = t.getAllZones()
 		for _, zone := range initCandidateZones {
-			if zone.status == unavailableZone {
+			if zone.status == proto.ZoneStUnavailable {
 				continue
 			}
 			if contains(excludeZone, zone.name) {
@@ -586,7 +586,7 @@ type Zone struct {
 
 func newZone(name string) (zone *Zone) {
 	zone = &Zone{name: name}
-	zone.status = normalZone
+	zone.status = proto.ZoneStNormal
 	zone.dataNodes = new(sync.Map)
 	zone.metaNodes = new(sync.Map)
 	zone.nodeSetMap = make(map[uint64]*nodeSet)
@@ -616,7 +616,7 @@ func (zone *Zone) getStatus() int {
 }
 
 func (zone *Zone) getStatusToString() string {
-	if zone.status == normalZone {
+	if zone.status == proto.ZoneStNormal {
 		return "available"
 	} else {
 		return "unavailable"

@@ -1437,6 +1437,87 @@ func (mw *MetaWrapper) getAppliedID(ctx context.Context, mp *MetaPartition, addr
 	return
 }
 
+func (mw *MetaWrapper) getCmpInodes(ctx context.Context, mp *MetaPartition, ino []uint64, cnt int, minEkLen int, minInodeSize uint64, maxEkAvgSize uint64) ([]*proto.CmpInodeInfo, error) {
+	var err error
+
+	req := &proto.GetCmpInodesRequest{
+		PartitionId:  mp.PartitionID,
+		ParallelCnt: uint32(cnt),
+		Inodes:       ino,
+		MinEkLen:     minEkLen,
+		MinInodeSize: minInodeSize,
+		MaxEkAvgSize: maxEkAvgSize,
+	}
+	packet := proto.NewPacketReqID(context.Background())
+	packet.Opcode = proto.OpMetaGetCmpInode
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogWarnf("getCmpInodes err: (%v), req(%v)", err, *req)
+		return nil, err
+	}
+
+	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
+	defer ump.AfterTP(tpObject, err)
+
+	packet, err = mw.sendReadToMP(ctx, mp, packet)
+	if err != nil || packet == nil {
+		log.LogWarnf("getCmpInodes: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		err = errors.New("getCmpInodes error")
+		return nil, err
+	}
+	status := parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogWarnf("getCmpInodes: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		err = errors.New("getCmpInodes error")
+		return nil, err
+	}
+
+	resp := new(proto.GetCmpInodesResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogWarnf("getCmpInodes: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
+		return nil, err
+	}
+
+	return resp.Inodes, nil
+}
+
+func (mw *MetaWrapper) mergeInodeExtents(ctx context.Context, mp *MetaPartition, ino uint64, oldEks []proto.ExtentKey, newEks []proto.ExtentKey) error {
+	var err error
+
+	req := &proto.InodeMergeExtentsRequest{
+		PartitionId: mp.PartitionID,
+		Inode:       ino,
+		OldExtents:  oldEks,
+		NewExtents:  newEks,
+	}
+	packet := proto.NewPacketReqID(context.Background())
+	packet.Opcode = proto.OpMetaInodeMergeEks
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogWarnf("mergeInodeExtents err: (%v), req(%v)", err, *req)
+		return err
+	}
+
+	tpObject := ump.BeforeTP(fmt.Sprintf("%v_%v_%v", mw.cluster, mw.modulename, packet.GetOpMsg()))
+	defer ump.AfterTP(tpObject, err)
+
+	packet, err = mw.sendReadToMP(ctx, mp, packet)
+	if err != nil || packet == nil {
+		log.LogWarnf("mergeInodeExtents: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		err = errors.New("mergeInodeExtents error")
+		return err
+	}
+	status := parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogWarnf("mergeInodeExtents: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		err = errors.New("mergeInodeExtents error")
+		return err
+	}
+
+	return nil
+}
+
 func containsExtent(extentKeys []proto.ExtentKey, ek proto.ExtentKey) bool {
 	for _, curExtentKey := range extentKeys {
 		if ek.FileOffset >= curExtentKey.FileOffset &&

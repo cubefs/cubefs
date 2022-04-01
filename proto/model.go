@@ -22,6 +22,13 @@ const (
 	DefaultZoneName = "default"
 )
 
+const (
+	VolStNormal       uint8 = 0
+	VolStMarkDelete   uint8 = 1
+	ZoneStNormal            = 0
+	ZoneStUnavailable       = 1
+)
+
 // MetaNode defines the structure of a meta node
 type MetaNodeInfo struct {
 	ID                        uint64

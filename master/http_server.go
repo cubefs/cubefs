@@ -184,6 +184,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminSmartVolList).
 		HandlerFunc(m.listSmartVols)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminCompactVolList).
+		HandlerFunc(m.listCompactVols)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminCompactVolSet).
+		HandlerFunc(m.setCompactVol)
 
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

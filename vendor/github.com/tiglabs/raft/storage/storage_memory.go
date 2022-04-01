@@ -231,6 +231,10 @@ func (ms *MemoryStorage) Close() {
 
 }
 
+func (ms *MemoryStorage) SyncLastLogFile() error {
+	return nil
+}
+
 func (ms *MemoryStorage) truncateTo(index uint64) {
 	ms.truncTerm = ms.ents[ms.locatePosition(index)].Term
 	ms.start = ms.locatePosition(index + 1)

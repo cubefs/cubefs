@@ -18,8 +18,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/exporter"
-
-
 	"golang.org/x/net/context"
 
 	"github.com/chubaofs/chubaofs/proto"

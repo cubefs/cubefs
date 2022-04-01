@@ -36,6 +36,7 @@ type InsertExtentKeyFunc func(ctx context.Context, inode uint64, key proto.Exten
 type GetExtentsFunc func(ctx context.Context, inode uint64) (uint64, uint64, []proto.ExtentKey, error)
 type TruncateFunc func(ctx context.Context, inode, oldSize, size uint64) error
 type EvictIcacheFunc func(ctx context.Context, inode uint64)
+type InodeMergeExtentsFunc func(ctx context.Context, inode uint64, oldEks []proto.ExtentKey, newEk []proto.ExtentKey) error
 
 const (
 	MaxMountRetryLimit = 5
@@ -99,6 +100,7 @@ type ExtentConfig struct {
 	OnGetExtents             GetExtentsFunc
 	OnTruncate               TruncateFunc
 	OnEvictIcache            EvictIcacheFunc
+	OnInodeMergeExtents      InodeMergeExtentsFunc
 	ExtentMerge              bool
 	MetaWrapper              *meta.MetaWrapper
 }
@@ -352,6 +354,52 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset uint
 		write, isROW, err = s.IssueWriteRequest(ctx, offset, data, direct, overWriteBuffer)
 	}
 
+	return
+}
+
+func (client *ExtentClient) SyncWrite(ctx context.Context, inode uint64, offset uint64, data []byte) (dp *DataPartition, write int, newEk *proto.ExtentKey, err error) {
+	if client.dataWrapper.volNotExists {
+		return nil, 0, nil, proto.ErrVolNotExists
+	}
+
+	prefix := fmt.Sprintf("SyncWrite{ino(%v)offset(%v)size(%v)}", inode, offset, len(data))
+	s := client.GetStreamer(inode)
+	if s == nil {
+		return nil, 0, nil, fmt.Errorf("Prefix(%v): stream is not opened yet", prefix)
+	}
+
+	oriReq := &ExtentRequest{FileOffset: offset, Size: len(data), Data: data}
+	var exID int
+	dp, exID, write, err = s.writeToNewExtent(ctx, oriReq, true)
+	if err != nil {
+		return
+	}
+	newEk = &proto.ExtentKey{
+		PartitionId:  dp.PartitionID,
+		ExtentId:     uint64(exID),
+		ExtentOffset: 0,
+		FileOffset:   uint64(offset),
+		Size:         uint32(len(data)),
+	}
+	return
+}
+
+func (client *ExtentClient) SyncWriteToSpecificExtent(ctx context.Context, dp *DataPartition, inode uint64, fileOffset uint64, extentOffset int, data []byte, extID int) (total int, err error) {
+	if client.dataWrapper.volNotExists {
+		return 0, proto.ErrVolNotExists
+	}
+
+	prefix := fmt.Sprintf("SyncWriteToExtent{ino(%v)fileOffset(%v)extentOffset(%v)size(%v)}", inode, fileOffset, extentOffset, len(data))
+	s := client.GetStreamer(inode)
+	if s == nil {
+		return 0, fmt.Errorf("prefix(%v): stream is not opened yet", prefix)
+	}
+
+	oriReq := &ExtentRequest{FileOffset: fileOffset, Size: len(data), Data: data}
+	total, err = s.writeToSpecificExtent(ctx, oriReq, extID, extentOffset, dp, true)
+	if err != nil {
+		return
+	}
 	return
 }
 
