@@ -18,6 +18,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
@@ -38,6 +39,12 @@ type DataPartitionSelector interface {
 
 	// RemoveDP removes specified data partition.
 	RemoveDP(partitionID uint64)
+
+	// SummaryMetrics summaries the metrics of dp write operate
+	SummaryMetrics() []*proto.DataPartitionMetrics
+
+	// RefreshMetrics refreshes the metrics of dp write operate
+	RefreshMetrics(enableRemote bool, dpMetrics map[uint64]*proto.DataPartitionMetrics) error
 }
 
 type DpSelectorParam struct {
@@ -142,4 +149,20 @@ func (w *Wrapper) RemoveDataPartitionForWrite(partitionID uint64) {
 	w.RUnlock()
 
 	dpSelector.RemoveDP(partitionID)
+}
+
+func (w *Wrapper) RefreshDataPartitionMetrics(enableRemote bool, dpMetricsMap map[uint64]*proto.DataPartitionMetrics) error {
+	w.RLock()
+	dpSelector := w.dpSelector
+	w.RUnlock()
+
+	return dpSelector.RefreshMetrics(enableRemote, dpMetricsMap)
+}
+
+func (w *Wrapper) SummaryDataPartitionMetrics() []*proto.DataPartitionMetrics {
+	w.RLock()
+	dpSelector := w.dpSelector
+	w.RUnlock()
+
+	return dpSelector.SummaryMetrics()
 }

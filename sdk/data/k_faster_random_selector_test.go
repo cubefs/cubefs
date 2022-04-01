@@ -1,8 +1,9 @@
 package data
 
 import (
-	"github.com/chubaofs/chubaofs/proto"
 	"testing"
+
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 func TestKFaster(t *testing.T) {
@@ -38,19 +39,19 @@ func TestKFaster(t *testing.T) {
 	}
 
 	dpr1 := proto.DataPartitionResponse{PartitionID: uint64(1), Hosts: []string{"1"}}
-	metrics1 := DataPartitionMetrics{AvgWriteLatencyNano: int64(50)}
+	metrics1 := proto.DataPartitionMetrics{AvgWriteLatencyNano: int64(50)}
 	dp1 := DataPartition{DataPartitionResponse: dpr1, Metrics: &metrics1}
 	dpr2 := proto.DataPartitionResponse{PartitionID: uint64(2), Hosts: []string{"2"}}
-	metrics2 := DataPartitionMetrics{AvgWriteLatencyNano: int64(70)}
+	metrics2 := proto.DataPartitionMetrics{AvgWriteLatencyNano: int64(70)}
 	dp2 := DataPartition{DataPartitionResponse: dpr2, Metrics: &metrics2}
 	dpr3 := proto.DataPartitionResponse{PartitionID: uint64(3), Hosts: []string{"3"}}
-	metrics3 := DataPartitionMetrics{AvgWriteLatencyNano: int64(9)}
+	metrics3 := proto.DataPartitionMetrics{AvgWriteLatencyNano: int64(9)}
 	dp3 := DataPartition{DataPartitionResponse: dpr3, Metrics: &metrics3}
 	dpr4 := proto.DataPartitionResponse{PartitionID: uint64(4), Hosts: []string{"4"}}
-	metrics4 := DataPartitionMetrics{AvgWriteLatencyNano: int64(100)}
+	metrics4 := proto.DataPartitionMetrics{AvgWriteLatencyNano: int64(100)}
 	dp4 := DataPartition{DataPartitionResponse: dpr4, Metrics: &metrics4}
 	dpr5 := proto.DataPartitionResponse{PartitionID: uint64(5), Hosts: []string{"5"}}
-	metrics5 := DataPartitionMetrics{AvgWriteLatencyNano: int64(20)}
+	metrics5 := proto.DataPartitionMetrics{AvgWriteLatencyNano: int64(20)}
 	dp5 := DataPartition{DataPartitionResponse: dpr5, Metrics: &metrics5}
 
 	multiPartitions := [][]*DataPartition{}

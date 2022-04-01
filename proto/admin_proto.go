@@ -14,9 +14,11 @@
 
 package proto
 
-import "fmt"
+import (
+	"fmt"
 
-import "github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util"
+)
 
 // api
 const (
@@ -735,6 +737,7 @@ type SimpleVolView struct {
 	SlaveRegionZone      string
 	ConnConfig			 *ConnConfig	// todo
 	ExtentCacheExpireSec int64
+	DpMetricsReportConfig	*DpMetricsReportConfig	// todo
 	RwMpCnt              int
 	MinWritableMPNum     int
 	MinWritableDPNum     int
@@ -830,4 +833,19 @@ func (config *ConnConfig) String() string {
 
 type TrashStatus struct {
 	Enable bool
+}
+
+
+type DpMetricsReportConfig struct {
+	EnableReport      bool
+	ReportIntervalSec int64
+	FetchIntervalSec  int64
+}
+
+func (config *DpMetricsReportConfig) String() string {
+	if config == nil {
+		return ""
+	}
+	return fmt.Sprintf("EnableReport(%v) ReportIntervalSec(%v) FetchIntervalSec(%v)",
+		config.EnableReport, config.ReportIntervalSec, config.FetchIntervalSec)
 }

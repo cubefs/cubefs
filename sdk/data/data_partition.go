@@ -19,6 +19,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -38,19 +39,8 @@ type DataPartition struct {
 	NearHosts          []string
 	CrossRegionMetrics *CrossRegionMetrics
 	ClientWrapper      *Wrapper
-	Metrics            *DataPartitionMetrics
+	Metrics            *proto.DataPartitionMetrics
 	hostErrMap         sync.Map //key: host; value: last error access time
-}
-
-// DataPartitionMetrics defines the wrapper of the metrics related to the data partition.
-type DataPartitionMetrics struct {
-	sync.RWMutex
-	AvgReadLatencyNano  int64
-	AvgWriteLatencyNano int64
-	SumReadLatencyNano  int64
-	SumWriteLatencyNano int64
-	ReadOpNum           int64
-	WriteOpNum          int64
 }
 
 // If the connection fails, take punitive measures. Punish time is 5s.
@@ -63,7 +53,7 @@ func (dp *DataPartition) RecordWrite(startT int64, punish bool) {
 	cost := time.Now().UnixNano() - startT
 	if punish {
 		cost += 5 * 1e9
-		log.LogWarnf("RecordWrite: dp[%v] punish write time[5s] because of error, avg[%v]ns", dp.PartitionID, dp.GetAvgWrite())
+		log.LogWarnf("RecordWrite: dp[%v] punish write time[5s] because of error, cost[%v]ns", dp.PartitionID, cost)
 	}
 
 	dp.Metrics.Lock()
@@ -75,7 +65,11 @@ func (dp *DataPartition) RecordWrite(startT int64, punish bool) {
 	return
 }
 
-func (dp *DataPartition) MetricsRefresh() {
+func (dp *DataPartition) LocalMetricsRefresh() {
+	if dp.Metrics == nil {
+		return
+	}
+
 	dp.Metrics.Lock()
 	defer dp.Metrics.Unlock()
 
@@ -86,15 +80,65 @@ func (dp *DataPartition) MetricsRefresh() {
 	}
 
 	if dp.Metrics.WriteOpNum != 0 {
-		dp.Metrics.AvgWriteLatencyNano = (9*dp.Metrics.AvgWriteLatencyNano + dp.Metrics.SumWriteLatencyNano/dp.Metrics.WriteOpNum) / 10
+		atomic.StoreInt64(&dp.Metrics.AvgWriteLatencyNano, (9*dp.GetAvgWrite() + dp.Metrics.SumWriteLatencyNano/dp.Metrics.WriteOpNum) / 10)
 	} else {
-		dp.Metrics.AvgWriteLatencyNano = (9 * dp.Metrics.AvgWriteLatencyNano) / 10
+		atomic.StoreInt64(&dp.Metrics.AvgWriteLatencyNano, (9*dp.GetAvgWrite()) / 10)
 	}
 
 	dp.Metrics.SumReadLatencyNano = 0
 	dp.Metrics.SumWriteLatencyNano = 0
 	dp.Metrics.ReadOpNum = 0
 	dp.Metrics.WriteOpNum = 0
+}
+
+func (dp *DataPartition) LocalMetricsClear() {
+	if dp.Metrics == nil {
+		return
+	}
+
+	dp.Metrics.Lock()
+	defer dp.Metrics.Unlock()
+
+	dp.Metrics.SumReadLatencyNano = 0
+	dp.Metrics.SumWriteLatencyNano = 0
+	dp.Metrics.ReadOpNum = 0
+	dp.Metrics.WriteOpNum = 0
+}
+
+func (dp *DataPartition) RemoteMetricsRefresh(newMetrics *proto.DataPartitionMetrics) {
+	if dp.Metrics == nil {
+		return
+	}
+
+	dp.Metrics.Lock()
+	defer dp.Metrics.Unlock()
+
+	if newMetrics != nil && newMetrics.WriteOpNum != 0 {
+		atomic.StoreInt64(&dp.Metrics.AvgWriteLatencyNano, (9*dp.GetAvgWrite() + newMetrics.SumWriteLatencyNano/newMetrics.WriteOpNum) / 10)
+	} else {
+		atomic.StoreInt64(&dp.Metrics.AvgWriteLatencyNano, (9*dp.GetAvgWrite()) / 10)
+	}
+}
+
+func (dp *DataPartition) RemoteMetricsSummary() *proto.DataPartitionMetrics {
+	if dp.Metrics == nil {
+		return nil
+	}
+
+	dp.Metrics.Lock()
+	defer dp.Metrics.Unlock()
+
+	if dp.Metrics.WriteOpNum == 0 {
+		return nil
+	}
+
+	summaryMetrics := &proto.DataPartitionMetrics{PartitionId: dp.PartitionID}
+	summaryMetrics.SumWriteLatencyNano = dp.Metrics.SumWriteLatencyNano
+	summaryMetrics.WriteOpNum = dp.Metrics.WriteOpNum
+	dp.Metrics.SumWriteLatencyNano = 0
+	dp.Metrics.WriteOpNum = 0
+
+	return summaryMetrics
 }
 
 //func (dp *DataPartition) GetAvgRead() int64 {
@@ -105,10 +149,7 @@ func (dp *DataPartition) MetricsRefresh() {
 //}
 
 func (dp *DataPartition) GetAvgWrite() int64 {
-	dp.Metrics.RLock()
-	defer dp.Metrics.RUnlock()
-
-	return dp.Metrics.AvgWriteLatencyNano
+	return atomic.LoadInt64(&dp.Metrics.AvgWriteLatencyNano)
 }
 
 type DataPartitionSorter []*DataPartition
@@ -122,12 +163,6 @@ type DataPartitionSorter []*DataPartition
 //func (ds DataPartitionSorter) Less(i, j int) bool {
 //	return ds[i].Metrics.AvgWriteLatencyNano < ds[j].Metrics.AvgWriteLatencyNano
 //}
-
-// NewDataPartitionMetrics returns a new DataPartitionMetrics instance.
-func NewDataPartitionMetrics() *DataPartitionMetrics {
-	metrics := new(DataPartitionMetrics)
-	return metrics
-}
 
 // String returns the string format of the data partition.
 func (dp *DataPartition) String() string {

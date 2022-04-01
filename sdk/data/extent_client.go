@@ -476,10 +476,12 @@ func getRate(lim *rate.Limiter) string {
 }
 
 func (client *ExtentClient) SetReadRate(val int) string {
+	client.originReadRate = int64(val)
 	return setRate(client.readLimiter, val)
 }
 
 func (client *ExtentClient) SetWriteRate(val int) string {
+	client.originWriteRate = int64(val)
 	return setRate(client.writeLimiter, val)
 }
 

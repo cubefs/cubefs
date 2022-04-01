@@ -19,6 +19,8 @@ import (
 	"math/rand"
 	"testing"
 	"time"
+
+	"github.com/chubaofs/chubaofs/proto"
 )
 
 func TestKmin(t *testing.T) {
@@ -32,7 +34,7 @@ func TestKmin(t *testing.T) {
 		i := rand.Int63n(100)
 
 		dp := new(DataPartition)
-		dp.Metrics = new(DataPartitionMetrics)
+		dp.Metrics = new(proto.DataPartitionMetrics)
 		dp.Metrics.AvgWriteLatencyNano = i
 		partitions = append(partitions, dp)
 	}

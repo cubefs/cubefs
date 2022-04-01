@@ -16,7 +16,6 @@ package data
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util"
 	"net"
 	"runtime/debug"
 	"strings"
@@ -26,6 +25,8 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	masterSDK "github.com/chubaofs/chubaofs/sdk/master"
+	"github.com/chubaofs/chubaofs/sdk/scheduler"
+	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/iputil"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -65,11 +66,17 @@ type Wrapper struct {
 
 	HostsStatus map[string]bool
 
-	crossRegionHAType      	proto.CrossRegionHAType
-	crossRegionHostLatency 	sync.Map // key: host, value: ping time
-	quorum                 	int
+	crossRegionHAType      proto.CrossRegionHAType
+	crossRegionHostLatency sync.Map // key: host, value: ping time
+	quorum                 int
 
-	connConfig				*proto.ConnConfig
+	connConfig *proto.ConnConfig
+
+	schedulerClient        *scheduler.SchedulerClient
+	dpMetricsReportDomain  string
+	dpMetricsReportConfig  *proto.DpMetricsReportConfig
+	dpMetricsRefreshCount  uint
+	dpMetricsFetchErrCount uint
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
@@ -78,6 +85,7 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 	w.stopC = make(chan struct{})
 	w.masters = masters
 	w.mc = masterSDK.NewMasterClient(masters, false)
+	w.schedulerClient = scheduler.NewSchedulerClient(w.dpMetricsReportDomain, false)
 	w.volName = volName
 	w.partitions = make(map[uint64]*DataPartition)
 	w.HostsStatus = make(map[string]bool)
@@ -86,6 +94,11 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 		ConnectTimeoutNs: ConnectTimeoutDataMs * int64(time.Millisecond),
 		WriteTimeoutNs:   WriteTimeoutData * int64(time.Second),
 		ReadTimeoutNs:    ReadTimeoutData * int64(time.Second),
+	}
+	w.dpMetricsReportConfig = &proto.DpMetricsReportConfig{
+		EnableReport:      false,
+		ReportIntervalSec: defaultMetricReportSec,
+		FetchIntervalSec:  defaultMetricFetchSec,
 	}
 	if err = w.updateClusterInfo(); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
@@ -109,6 +122,7 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 
 	go w.update()
 	go w.updateCrossRegionHostStatus()
+	go w.ScheduleDataPartitionMetricsReport()
 
 	return
 }
@@ -155,6 +169,7 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	w.quorum = view.Quorum
 	w.extentCacheExpireSec = view.ExtentCacheExpireSec
 	w.updateConnConfig(view.ConnConfig)
+	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
 
 	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
 		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) forceROW(%v) createTime(%v) dpSelectorName(%v) "+
@@ -237,6 +252,7 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 	}
 
 	w.updateConnConfig(view.ConnConfig)
+	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
 
 	return nil
 }
@@ -257,9 +273,9 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 
 	var convert = func(response *proto.DataPartitionResponse) *DataPartition {
 		return &DataPartition{
-			DataPartitionResponse:	*response,
-			ClientWrapper:         	w,
-			CrossRegionMetrics: 	NewCrossRegionMetrics(),
+			DataPartitionResponse: *response,
+			ClientWrapper:         w,
+			CrossRegionMetrics:    NewCrossRegionMetrics(),
 		}
 	}
 
@@ -273,7 +289,6 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 		//log.LogInfof("updateDataPartition: dp(%v)", dp)
 		w.replaceOrInsertPartition(dp)
 		if dp.Status == proto.ReadWrite {
-			dp.MetricsRefresh()
 			rwPartitionGroups = append(rwPartitionGroups, dp)
 		}
 	}
@@ -316,7 +331,7 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 		old.CrossRegionMetrics.Unlock()
 		dp.Metrics = old.Metrics
 	} else {
-		dp.Metrics = NewDataPartitionMetrics()
+		dp.Metrics = proto.NewDataPartitionMetrics()
 		w.partitions[dp.PartitionID] = dp
 		log.LogInfof("updateDataPartition: new dp (%v)", dp)
 	}
@@ -396,6 +411,12 @@ func (w *Wrapper) updateDataNodeStatus() (err error) {
 
 	w.HostsStatus = newHostsStatus
 
+	if w.dpMetricsReportDomain != cv.SchedulerDomain {
+		log.LogInfof("updateDataNodeStatus: update scheduler domain from old(%v) to new(%v)", w.dpMetricsReportDomain, cv.SchedulerDomain)
+		w.dpMetricsReportDomain = cv.SchedulerDomain
+		w.schedulerClient.UpdateSchedulerDomain(w.dpMetricsReportDomain)
+	}
+
 	return
 }
 
@@ -455,6 +476,22 @@ func (w *Wrapper) updateConnConfig(config *proto.ConnConfig) {
 	}
 	if updateConnPool && StreamConnPool != nil {
 		StreamConnPool.UpdateTimeout(w.connConfig.IdleTimeoutSec, w.connConfig.ConnectTimeoutNs)
+	}
+}
+
+func (w *Wrapper) updateDpMetricsReportConfig(config *proto.DpMetricsReportConfig) {
+	if config == nil {
+		return
+	}
+	log.LogInfof("updateDpMetricsReportConfig: (%v)", config)
+	if w.dpMetricsReportConfig.EnableReport != config.EnableReport {
+		w.dpMetricsReportConfig.EnableReport = config.EnableReport
+	}
+	if config.ReportIntervalSec > 0 && w.dpMetricsReportConfig.ReportIntervalSec != config.ReportIntervalSec {
+		atomic.StoreInt64(&w.dpMetricsReportConfig.ReportIntervalSec, config.ReportIntervalSec)
+	}
+	if config.FetchIntervalSec > 0 && w.dpMetricsReportConfig.FetchIntervalSec != config.FetchIntervalSec {
+		atomic.StoreInt64(&w.dpMetricsReportConfig.FetchIntervalSec, config.FetchIntervalSec)
 	}
 }
 

@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
@@ -153,6 +154,41 @@ func (s *KFasterRandomSelector) RemoveDP(partitionID uint64) {
 	s.partitions = newRwPartition
 	log.LogWarnf("RemoveDP: dp(%v), count(%v)", partitionID, len(s.partitions))
 
+	return
+}
+
+func (s *KFasterRandomSelector) SummaryMetrics() []*proto.DataPartitionMetrics {
+	s.RLock()
+	partitions := s.partitions
+	s.RUnlock()
+
+	summaryMetricsArray := make([]*proto.DataPartitionMetrics, 0)
+	for _, dp := range partitions {
+		metrics := dp.RemoteMetricsSummary()
+		if metrics != nil {
+			summaryMetricsArray = append(summaryMetricsArray, metrics)
+		}
+	}
+
+	return summaryMetricsArray
+}
+
+func (s *KFasterRandomSelector) RefreshMetrics(enableRemote bool, dpMetricsMap map[uint64]*proto.DataPartitionMetrics) (err error) {
+	s.RLock()
+	partitions := s.partitions
+	s.RUnlock()
+
+	if len(partitions) == 0 {
+		return fmt.Errorf("no writable data partition")
+	}
+	for _, dp := range partitions {
+		if enableRemote {
+			newMetrics, _ := dpMetricsMap[dp.PartitionID]
+			dp.RemoteMetricsRefresh(newMetrics)
+		} else {
+			dp.LocalMetricsRefresh()
+		}
+	}
 	return
 }
 

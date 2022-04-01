@@ -156,6 +156,7 @@ type ClusterView struct {
 	MetaNodes              []NodeView
 	DataNodes              []NodeView
 	DataNodeBadDisks       []DataNodeBadDisksView
+	SchedulerDomain		   string	// todo
 }
 
 // NodeView provides the view of the data or meta node.

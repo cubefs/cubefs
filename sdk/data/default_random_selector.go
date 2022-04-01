@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
@@ -122,6 +123,24 @@ func (s *DefaultRandomSelector) RemoveDP(partitionID uint64) {
 	s.localLeaderPartitions = newLocalLeaderPartitions
 
 	return
+}
+
+func (s *DefaultRandomSelector) SummaryMetrics() []*proto.DataPartitionMetrics {
+	return nil
+}
+
+func (s *DefaultRandomSelector) RefreshMetrics(enableRemote bool, dpMetrics map[uint64]*proto.DataPartitionMetrics) error {
+	s.RLock()
+	partitions := s.partitions
+	s.RUnlock()
+
+	if len(partitions) == 0 {
+		return fmt.Errorf("no writable data partition")
+	}
+	for _, dp := range partitions {
+		dp.LocalMetricsClear()
+	}
+	return nil
 }
 
 //func (s *DefaultRandomSelector) getLocalLeaderDataPartition(exclude map[string]struct{}) *DataPartition {
