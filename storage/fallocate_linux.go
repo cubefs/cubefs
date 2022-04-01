@@ -14,8 +14,23 @@
 
 package storage
 
-import "syscall"
+import (
+	"syscall"
+
+	"github.com/cubefs/cubefs/util"
+)
 
 func fallocate(fd int, mode uint32, off int64, len int64) (err error) {
-	return syscall.Fallocate(fd, mode, off, len)
+	var tryCnt int
+	for {
+		err = syscall.Fallocate(fd, mode, off, len)
+		if err == syscall.EINTR {
+			tryCnt++
+			if tryCnt >= util.SyscallTryMaxTimes {
+				return
+			}
+			continue
+		}
+		return
+	}
 }
