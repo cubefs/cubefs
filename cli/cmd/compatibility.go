@@ -16,12 +16,13 @@ package cmd
 
 import (
 	"fmt"
+	"reflect"
+	"strconv"
+
 	"github.com/cubefs/cubefs/cli/api"
 	"github.com/cubefs/cubefs/metanode"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/spf13/cobra"
-	"reflect"
-	"strconv"
 )
 
 const (
@@ -101,7 +102,9 @@ func verifyDentry(client *api.MetaHttpClient, mp metanode.MetaPartition) (err er
 	if err != nil {
 		return
 	}
-	mp.GetDentryTree().Ascend(func(d metanode.BtreeItem) bool {
+
+	cnt := 0
+	handler := func(d metanode.BtreeItem) bool {
 		dentry, ok := d.(*metanode.Dentry)
 		if !ok {
 			stdout("item type is not *metanode.Dentry \n")
@@ -120,10 +123,13 @@ func verifyDentry(client *api.MetaHttpClient, mp metanode.MetaPartition) (err er
 			err = fmt.Errorf("dentry %v is not equal with old version,dentry[%v],oldDentry[%v]", key, dentry, oldDentry)
 			return false
 		}
+		cnt++
 		return true
-	})
+	}
+	mp.WalkDentryTree(handler)
+
 	if err == nil {
-		stdout("The number of dentry is %v, all dentry are consistent \n", mp.GetDentryTree().Len())
+		stdout("The number of dentry is %v, all dentry are consistent\n", cnt)
 	}
 	return
 }
@@ -133,9 +139,10 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 	if err != nil {
 		return
 	}
-	var localInode *api.Inode
-	mp.GetInodeTree().Ascend(func(d metanode.BtreeItem) bool {
-		inode, ok := d.(*metanode.Inode)
+
+	cnt := 0
+	handler := func(i metanode.BtreeItem) bool {
+		inode, ok := i.(*metanode.Inode)
 		if !ok {
 			stdout("item type is not *metanode.Inode \n")
 			err = fmt.Errorf("item type is not *metanode.Inode")
@@ -147,7 +154,7 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 			err = fmt.Errorf("inode %v is not in old version", inode.Inode)
 			return false
 		}
-		localInode = &api.Inode{
+		localInode := &api.Inode{
 			Inode:      inode.Inode,
 			Type:       inode.Type,
 			Uid:        inode.Uid,
@@ -172,10 +179,13 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 			err = fmt.Errorf("inode %v is not equal with old version,inode[%v],oldInode[%v]\n", inode.Inode, inode, oldInode)
 			return false
 		}
+		cnt++
 		return true
-	})
+	}
+	mp.WalkInodeTree(handler)
+
 	if err == nil {
-		stdout("The number of inodes is %v, all inodes are consistent \n", mp.GetInodeTree().Len())
+		stdout("The number of inodes is %v, all inodes are consistent\n", cnt)
 	}
 	return
 }

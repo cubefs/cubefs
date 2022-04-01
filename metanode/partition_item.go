@@ -144,10 +144,10 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si = new(MetaItemIterator)
 	si.fileRootDir = mp.config.RootDir
 	si.applyID = mp.applyID
-	si.inodeTree = mp.inodeTree.GetTree()
-	si.dentryTree = mp.dentryTree.GetTree()
-	si.extendTree = mp.extendTree.GetTree()
-	si.multipartTree = mp.multipartTree.GetTree()
+	si.inodeTree = mp.inodeTree.CloneTree()
+	si.dentryTree = mp.dentryTree.CloneTree()
+	si.extendTree = mp.extendTree.CloneTree()
+	si.multipartTree = mp.multipartTree.CloneTree()
 	si.dataCh = make(chan interface{})
 	si.errorCh = make(chan error, 1)
 	si.closeCh = make(chan struct{})
