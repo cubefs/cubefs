@@ -38,7 +38,8 @@ type Btree struct {
 	// ver is monotonic and used for clone. Each clone will increase ver.
 	// The implementation of BtreeItem also has a ver, if it is different
 	// from Btree.ver, modify the implementation should be COWed.
-	ver uint64
+	ver    uint64
+	rdonly bool
 }
 
 // NewBtree creates a new btree.
@@ -60,6 +61,9 @@ func (b *Btree) GetForRead(key btree.Item) (item btree.Item) {
 // GetForRead returns the a writable object of the given key in the btree.
 func (b *Btree) GetForWrite(key btree.Item) (item btree.Item) {
 	b.Lock()
+	if b.rdonly {
+		panic("Write a read only tree")
+	}
 	item = b.tree.Get(key)
 	if item != nil {
 		if item.(BtreeItem).GetVersion() != b.ver {
@@ -81,6 +85,9 @@ func (b *Btree) CopyFind(key btree.Item, fn func(i btree.Item)) {
 	b.Lock()
 	item := b.tree.Get(key)
 	if item != nil {
+		if b.rdonly {
+			panic("Write a read only tree")
+		}
 		if item.(BtreeItem).GetVersion() != b.ver {
 			newItem := item.(BtreeItem).Copy()
 			newItem.(BtreeItem).SetVersion(b.ver)
@@ -103,6 +110,9 @@ func (b *Btree) Has(key btree.Item) (ok bool) {
 // Delete deletes the object by the given key.
 func (b *Btree) Delete(key btree.Item) (item btree.Item) {
 	b.Lock()
+	if b.rdonly {
+		panic("Write a read only tree")
+	}
 	item = b.tree.Delete(key)
 	b.Unlock()
 	return
@@ -111,12 +121,19 @@ func (b *Btree) Delete(key btree.Item) (item btree.Item) {
 func (b *Btree) Execute(fn func(tree *btree.BTree) btree.Item) btree.Item {
 	b.Lock()
 	defer b.Unlock()
+	if b.rdonly {
+		panic("Write a read only tree")
+	}
 	return fn(b.tree)
 }
 
 // ReplaceOrInsert is the wrapper of google's btree ReplaceOrInsert.
 func (b *Btree) ReplaceOrInsert(key btree.Item, replace bool) (item btree.Item, ok bool) {
 	b.Lock()
+	if b.rdonly {
+		panic("Write a read only tree")
+	}
+
 	if replace {
 		key.(BtreeItem).SetVersion(b.ver)
 		item = b.tree.ReplaceOrInsert(key)
@@ -171,6 +188,7 @@ func (b *Btree) CloneTree() *Btree {
 	oldBtree := NewBtree()
 	oldBtree.ver = oldVer
 	oldBtree.tree = old
+	oldBtree.rdonly = true
 	return oldBtree
 }
 
