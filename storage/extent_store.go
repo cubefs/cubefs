@@ -297,6 +297,7 @@ func (s *ExtentStore) initBaseFileID() error {
 		}
 
 		if e, loadErr = s.extent(extentID); loadErr != nil {
+			log.LogError("[initBaseFileID] load extent error", loadErr)
 			continue
 		}
 
