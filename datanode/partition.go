@@ -267,7 +267,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		raftStatus:      RaftStatusStopped,
 	}
 	partition.replicasInit()
-	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize)
+	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize, disk.workers)
 	if err != nil {
 		return
 	}

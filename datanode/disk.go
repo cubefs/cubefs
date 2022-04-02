@@ -29,6 +29,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/gammazero/workerpool"
 )
 
 var (
@@ -60,10 +61,15 @@ type Disk struct {
 	syncTinyDeleteRecordFromLeaderOnEveryDisk chan bool
 	space                                     *SpaceManager
 	dataNode                                  *DataNode
+
+	// Used to limit io go routines per disk.
+	workers *workerpool.WorkerPool
 }
 
 const (
 	SyncTinyDeleteRecordFromLeaderOnEveryDisk = 5
+
+	DefaultDiskIOLimit = 100
 )
 
 type PartitionVisitor func(dp *DataPartition)
@@ -81,6 +87,7 @@ func NewDisk(path string, reservedSpace uint64, maxErrCnt int, space *SpaceManag
 	d.computeUsage()
 	d.updateSpaceInfo()
 	d.startScheduleToUpdateSpaceInfo()
+	d.workers = workerpool.New(space.diskIOLimit)
 	return
 }
 

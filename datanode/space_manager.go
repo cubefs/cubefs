@@ -30,6 +30,7 @@ import (
 // SpaceManager manages the disk space.
 type SpaceManager struct {
 	clusterID            string
+	diskIOLimit          int
 	disks                map[string]*Disk
 	partitions           map[uint64]*DataPartition
 	raftStore            raftstore.RaftStore

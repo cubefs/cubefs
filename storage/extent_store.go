@@ -36,6 +36,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/gammazero/workerpool"
 )
 
 const (
@@ -126,13 +127,16 @@ type ExtentStore struct {
 	verifyExtentFp                    *os.File
 	hasAllocSpaceExtentIDOnVerfiyFile uint64
 	hasDeleteNormalExtentsCache       sync.Map
+
+	// Used to limit the io related go routines.
+	workers *workerpool.WorkerPool
 }
 
 func MkdirAll(name string) (err error) {
 	return os.MkdirAll(name, 0755)
 }
 
-func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *ExtentStore, err error) {
+func NewExtentStore(dataDir string, partitionID uint64, storeSize int, wp *workerpool.WorkerPool) (s *ExtentStore, err error) {
 	s = new(ExtentStore)
 	s.dataPath = dataDir
 	s.partitionID = partitionID
@@ -175,6 +179,7 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int) (s *Exten
 	if err != nil {
 		return
 	}
+	s.workers = wp
 	return
 }
 
@@ -379,15 +384,19 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	if ei == nil || ei.IsDeleted {
 		return
 	}
+
 	extentFilePath := path.Join(s.dataPath, strconv.FormatUint(extentID, 10))
-	if err = os.Remove(extentFilePath); err != nil {
+	s.workers.SubmitWait(func() {
+		err = os.Remove(extentFilePath)
+	})
+	if err != nil {
 		return
 	}
+
 	ei.IsDeleted = true
 	ei.ModifyTime = time.Now().Unix()
 	s.cache.Del(extentID)
 	s.PutNormalExtentToDeleteCache(extentID)
-
 	return
 }
 
