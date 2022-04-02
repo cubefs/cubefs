@@ -347,10 +347,11 @@ func (m *metadataManager) loadPartitions() (err error) {
 				}
 
 				partitionConfig := &MetaPartitionConfig{
-					NodeId:    m.nodeId,
-					RaftStore: m.raftStore,
-					RootDir:   path.Join(m.rootDir, fileName),
-					ConnPool:  m.connPool,
+					PartitionId: id,
+					NodeId:      m.nodeId,
+					RaftStore:   m.raftStore,
+					RootDir:     path.Join(m.rootDir, fileName),
+					ConnPool:    m.connPool,
 				}
 				partitionConfig.AfterStop = func() {
 					m.detachPartition(id)
