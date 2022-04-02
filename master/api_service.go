@@ -844,6 +844,10 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 			return fmt.Errorf("hot vol's replicaNum can only be 1 or 3, received replicaNum is[%v]", req.dpReplicaNum)
 		}
 		return nil
+	} else if proto.IsCold(req.volType) {
+		if req.dpReplicaNum > 16 {
+			return fmt.Errorf("cold vol's replicaNum should less then 17, received replicaNum is[%v]", req.dpReplicaNum)
+		}
 	}
 
 	if req.dpReplicaNum == 0 {
