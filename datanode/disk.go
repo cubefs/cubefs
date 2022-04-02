@@ -389,7 +389,6 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 		}
 
 		wg.Add(1)
-
 		go func(partitionID uint64, filename string) {
 			var (
 				dp  *DataPartition
@@ -397,16 +396,14 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 			)
 			defer wg.Done()
 			if dp, err = LoadDataPartition(path.Join(d.Path, filename), d); err != nil {
-				mesg := fmt.Sprintf("action[RestorePartition] new partition(%v) err(%v) ",
-					partitionID, err.Error())
-				log.LogError(mesg)
-				exporter.Warning(mesg)
+				msg := fmt.Sprintf("action[RestorePartition] new partition(%v) err(%v) ", partitionID, err)
+				log.LogError(msg)
+				exporter.Warning(msg)
 				return
 			}
 			if visitor != nil {
 				visitor(dp)
 			}
-
 		}(partitionID, filename)
 	}
 	wg.Wait()

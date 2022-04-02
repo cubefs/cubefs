@@ -28,7 +28,6 @@ import (
 
 	"hash/crc32"
 	"io"
-	"runtime"
 	"sort"
 	"strings"
 	"syscall"
@@ -41,7 +40,6 @@ import (
 
 const (
 	ExtCrcHeaderFileName         = "EXTENT_CRC"
-	ExtBaseExtentIDFileName      = "EXTENT_META"
 	TinyDeleteFileOpt            = os.O_CREATE | os.O_RDWR | os.O_APPEND
 	TinyExtDeletedFileName       = "TINYEXTENT_DELETE"
 	NormalExtDeletedFileName     = "NORMALEXTENT_DELETE"
@@ -106,27 +104,25 @@ var (
 // Multiple small files can be appended to the same tinyExtent.
 // In addition, the deletion of small files is implemented by the punch hole from the underlying file system.
 type ExtentStore struct {
-	dataPath                          string
-	baseExtentID                      uint64                 // TODO what is baseExtentID
-	extentInfoMap                     map[uint64]*ExtentInfo // map that stores all the extent information
-	eiMutex                           sync.RWMutex           // mutex for extent info
-	cache                             *ExtentCache           // extent cache
-	mutex                             sync.Mutex
-	storeSize                         int      // size of the extent store
-	metadataFp                        *os.File // metadata file pointer?
-	tinyExtentDeleteFp                *os.File
-	normalExtentDeleteFp              *os.File
-	closeC                            chan bool
-	closed                            bool
-	availableTinyExtentC              chan uint64 // available tinyExtent channel
-	availableTinyExtentMap            sync.Map
-	brokenTinyExtentC                 chan uint64 // broken tinyExtent channel
-	brokenTinyExtentMap               sync.Map
-	blockSize                         int
-	partitionID                       uint64
-	verifyExtentFp                    *os.File
-	hasAllocSpaceExtentIDOnVerfiyFile uint64
-	hasDeleteNormalExtentsCache       sync.Map
+	dataPath                    string
+	baseExtentID                uint64                 // TODO what is baseExtentID
+	extentInfoMap               map[uint64]*ExtentInfo // map that stores all the extent information
+	eiMutex                     sync.RWMutex           // mutex for extent info
+	cache                       *ExtentCache           // extent cache
+	mutex                       sync.Mutex
+	storeSize                   int // size of the extent store
+	tinyExtentDeleteFp          *os.File
+	normalExtentDeleteFp        *os.File
+	closeC                      chan bool
+	closed                      bool
+	availableTinyExtentC        chan uint64 // available tinyExtent channel
+	availableTinyExtentMap      sync.Map
+	brokenTinyExtentC           chan uint64 // broken tinyExtent channel
+	brokenTinyExtentMap         sync.Map
+	blockSize                   int
+	partitionID                 uint64
+	verifyExtentFp              *os.File
+	hasDeleteNormalExtentsCache sync.Map
 
 	// Used to limit the io related go routines.
 	workers *workerpool.WorkerPool
@@ -158,9 +154,6 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int, wp *worke
 	if s.verifyExtentFp, err = os.OpenFile(path.Join(s.dataPath, ExtCrcHeaderFileName), os.O_CREATE|os.O_RDWR, 0666); err != nil {
 		return
 	}
-	if s.metadataFp, err = os.OpenFile(path.Join(s.dataPath, ExtBaseExtentIDFileName), os.O_CREATE|os.O_RDWR, 0666); err != nil {
-		return
-	}
 	if s.normalExtentDeleteFp, err = os.OpenFile(path.Join(s.dataPath, NormalExtDeletedFileName), os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666); err != nil {
 		return
 	}
@@ -171,7 +164,6 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int, wp *worke
 		err = fmt.Errorf("init base field ID: %v", err)
 		return
 	}
-	s.hasAllocSpaceExtentIDOnVerfiyFile = s.GetPreAllocSpaceExtentIDOnVerfiyFile()
 	s.storeSize = storeSize
 	s.closeC = make(chan bool, 1)
 	s.closed = false
@@ -257,50 +249,54 @@ func (s *ExtentStore) Create(extentID uint64) (err error) {
 func (s *ExtentStore) initBaseFileID() error {
 	var (
 		baseFileID uint64
+		files      []os.FileInfo
 	)
-	baseFileID, _ = s.GetPersistenceBaseExtentID()
 	fh, err := os.Open(s.dataPath)
 	if err != nil {
 		return err
 	}
 	defer fh.Close()
 
-	files, err := fh.Readdirnames(0)
-	if err != nil {
-		return err
+	for {
+		files, err = fh.Readdir(1000)
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return err
+		}
+
+		for _, f := range files {
+			extentID, isExtent := s.ExtentID(f.Name())
+			if !isExtent {
+				continue
+			}
+			ei := &ExtentInfo{FileID: extentID}
+			if !IsTinyExtent(extentID) {
+				ei.ModifyTime = f.ModTime().Unix()
+				if extentID > baseFileID {
+					baseFileID = extentID
+				}
+				ei.Size = uint64(f.Size())
+			} else {
+				// extent info size must be 4K aligned
+				watermark := f.Size()
+				if watermark%PageSize != 0 {
+					watermark = watermark + (PageSize - watermark%PageSize)
+
+				}
+				ei.Size = uint64(watermark)
+			}
+			s.eiMutex.Lock()
+			s.extentInfoMap[extentID] = ei
+			s.eiMutex.Unlock()
+		}
 	}
 
-	var (
-		extentID uint64
-		isExtent bool
-		e        *Extent
-		ei       *ExtentInfo
-		loadErr  error
-	)
-	for _, f := range files {
-		if extentID, isExtent = s.ExtentID(f); !isExtent {
-			continue
-		}
-		if e, loadErr = s.extent(extentID); loadErr != nil {
-			continue
-		}
-		ei = &ExtentInfo{FileID: extentID}
-		ei.UpdateExtentInfo(e, 0)
-		s.eiMutex.Lock()
-		s.extentInfoMap[extentID] = ei
-		s.eiMutex.Unlock()
-
-		e.Close()
-		if !IsTinyExtent(extentID) && extentID > baseFileID {
-			baseFileID = extentID
-		}
-	}
 	if baseFileID < MinExtentID {
 		baseFileID = MinExtentID
 	}
 	atomic.StoreUint64(&s.baseExtentID, baseFileID)
 	log.LogInfof("datadir(%v) maxBaseId(%v)", s.dataPath, baseFileID)
-	runtime.GC()
 	return nil
 }
 
@@ -753,7 +749,6 @@ func (s *ExtentStore) GetHasDeleteTinyRecords() (extentDes []ExtentDeleted, err 
 // This function can only be called by the leader.
 func (s *ExtentStore) NextExtentID() (extentID uint64, err error) {
 	extentID = atomic.AddUint64(&s.baseExtentID, 1)
-	err = s.PersistenceBaseExtentID(extentID)
 	return
 }
 
@@ -774,19 +769,9 @@ func (s *ExtentStore) UpdateBaseExtentID(id uint64) (err error) {
 	if IsTinyExtent(id) {
 		return
 	}
-	if id > atomic.LoadUint64(&s.baseExtentID) {
-		atomic.StoreUint64(&s.baseExtentID, id)
-		err = s.PersistenceBaseExtentID(atomic.LoadUint64(&s.baseExtentID))
-	}
-	s.PreAllocSpaceOnVerfiyFile(atomic.LoadUint64(&s.baseExtentID))
-
-	return
-}
-
-func (s *ExtentStore) extent(extentID uint64) (e *Extent, err error) {
-	if e, err = s.loadExtentFromDisk(extentID, false); err != nil {
-		err = fmt.Errorf("load extent from disk: %v", err)
-		return nil, err
+	baseID := atomic.LoadUint64(&s.baseExtentID)
+	if id > baseID {
+		atomic.CompareAndSwapUint64(&s.baseExtentID, baseID, id)
 	}
 	return
 }
@@ -798,7 +783,7 @@ func (s *ExtentStore) extentWithHeader(ei *ExtentInfo) (e *Extent, err error) {
 		return
 	}
 	if e, ok = s.cache.Get(ei.FileID); !ok {
-		if e, err = s.loadExtentFromDisk(ei.FileID, true); err != nil {
+		if e, err = s.loadExtentFromDisk(ei.FileID); err != nil {
 			err = fmt.Errorf("load  %v from disk: %v", s.getExtentKey(ei.FileID), err)
 			return nil, err
 		}
@@ -809,7 +794,7 @@ func (s *ExtentStore) extentWithHeader(ei *ExtentInfo) (e *Extent, err error) {
 func (s *ExtentStore) extentWithHeaderByExtentID(extentID uint64) (e *Extent, err error) {
 	var ok bool
 	if e, ok = s.cache.Get(extentID); !ok {
-		if e, err = s.loadExtentFromDisk(extentID, true); err != nil {
+		if e, err = s.loadExtentFromDisk(extentID); err != nil {
 			err = fmt.Errorf("load  %v from disk: %v", s.getExtentKey(extentID), err)
 			return nil, err
 		}
@@ -838,14 +823,11 @@ func (s *ExtentStore) GetExtentCount() (count int) {
 	return len(s.extentInfoMap)
 }
 
-func (s *ExtentStore) loadExtentFromDisk(extentID uint64, putCache bool) (e *Extent, err error) {
+func (s *ExtentStore) loadExtentFromDisk(extentID uint64) (e *Extent, err error) {
 	name := path.Join(s.dataPath, strconv.Itoa(int(extentID)))
 	e = NewExtentInCore(name, extentID)
 	if err = e.RestoreFromFS(); err != nil {
-		err = fmt.Errorf("restore from file %v putCache %v system: %v", name, putCache, err)
-		return
-	}
-	if !putCache {
+		err = fmt.Errorf("restore from file %v system: %v", name, err)
 		return
 	}
 	if !IsTinyExtent(extentID) {

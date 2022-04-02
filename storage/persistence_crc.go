@@ -18,10 +18,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"sync/atomic"
 
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 type BlockCrc struct {
@@ -63,57 +61,6 @@ func (s *ExtentStore) PersistenceBlockCrc(e *Extent, blockNo int, blockCrc uint3
 func (s *ExtentStore) PunchBlockCRC(from, count int) error {
 	return fallocate(int(s.verifyExtentFp.Fd()), FallocFLPunchHole|FallocFLKeepSize,
 		int64(util.BlockHeaderSize*from), int64(count*util.BlockHeaderSize))
-}
-
-func (s *ExtentStore) PersistenceBaseExtentID(extentID uint64) (err error) {
-	value := make([]byte, 8)
-	binary.BigEndian.PutUint64(value, extentID)
-	_, err = s.metadataFp.WriteAt(value, BaseExtentIDOffset)
-	return
-}
-
-func (s *ExtentStore) GetPreAllocSpaceExtentIDOnVerfiyFile() (extentID uint64) {
-	value := make([]byte, 8)
-	_, err := s.metadataFp.ReadAt(value, 8)
-	if err != nil {
-		return
-	}
-	extentID = binary.BigEndian.Uint64(value)
-	return
-}
-
-func (s *ExtentStore) PreAllocSpaceOnVerfiyFile(currExtentID uint64) {
-	if currExtentID > atomic.LoadUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile) {
-		prevAllocSpaceExtentID := int64(atomic.LoadUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile))
-		endAllocSpaceExtentID := int64(prevAllocSpaceExtentID + 1000)
-		size := int64(1000 * util.BlockHeaderSize)
-		err := fallocate(int(s.verifyExtentFp.Fd()), 1, prevAllocSpaceExtentID*util.BlockHeaderSize, size)
-		if err != nil {
-			return
-		}
-		data := make([]byte, 8)
-		binary.BigEndian.PutUint64(data, uint64(endAllocSpaceExtentID))
-		if _, err = s.metadataFp.WriteAt(data, 8); err != nil {
-			return
-		}
-		atomic.StoreUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile, uint64(endAllocSpaceExtentID))
-		log.LogInfof("Action(PreAllocSpaceOnVerfiyFile) PartitionID(%v) currentExtent(%v)"+
-			"PrevAllocSpaceExtentIDOnVerifyFile(%v) EndAllocSpaceExtentIDOnVerifyFile(%v)"+
-			" has allocSpaceOnVerifyFile to (%v)", s.partitionID, currExtentID, prevAllocSpaceExtentID, endAllocSpaceExtentID,
-			prevAllocSpaceExtentID*util.BlockHeaderSize+size)
-	}
-
-	return
-}
-
-func (s *ExtentStore) GetPersistenceBaseExtentID() (extentID uint64, err error) {
-	data := make([]byte, 8)
-	_, err = s.metadataFp.ReadAt(data, 0)
-	if err != nil {
-		return
-	}
-	extentID = binary.BigEndian.Uint64(data)
-	return
 }
 
 func (s *ExtentStore) GetHasDeleteExtent() (extentDes []ExtentDeleted, err error) {
