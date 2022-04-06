@@ -23,6 +23,7 @@ import (
 	"bytes"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/btree"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -154,7 +155,7 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 
 	var inode *Inode
 
-	f := func(i BtreeItem) bool {
+	f := func(i btree.Item) bool {
 		var (
 			data []byte
 			e    error
@@ -181,7 +182,7 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 		return true
 	}
 
-	mp.GetInodeTree().Ascend(f)
+	mp.(*metaPartition).inodeTree.CloneTree().Ascend(f)
 }
 
 func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
@@ -381,7 +382,7 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 		delimiter = []byte{',', '\n'}
 		isFirst   = true
 	)
-	mp.GetDentryTree().Ascend(func(i BtreeItem) bool {
+	mp.(*metaPartition).dentryTree.CloneTree().Ascend(func(i btree.Item) bool {
 		if !isFirst {
 			if _, err = w.Write(delimiter); err != nil {
 				return false

@@ -17,6 +17,8 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
+
+	"github.com/cubefs/cubefs/util/btree"
 )
 
 // Dentry wraps necessary properties of the `dentry` information in file system.
@@ -43,6 +45,8 @@ type Dentry struct {
 	Name     string // Name of the current dentry.
 	Inode    uint64 // FileID value of the current inode.
 	Type     uint32
+
+	ver uint64 // used only for Btree
 }
 
 type DentryBatch []*Dentry
@@ -151,15 +155,23 @@ func DentryBatchUnmarshal(raw []byte) (DentryBatch, error) {
 
 // Less tests whether the current dentry is less than the given one.
 // This method is necessary fot B-Tree item implementation.
-func (d *Dentry) Less(than BtreeItem) (less bool) {
+func (d *Dentry) Less(than btree.Item) (less bool) {
 	dentry, ok := than.(*Dentry)
 	less = ok && ((d.ParentId < dentry.ParentId) || ((d.ParentId == dentry.ParentId) && (d.Name < dentry.Name)))
 	return
 }
 
-func (d *Dentry) Copy() BtreeItem {
+func (d *Dentry) Copy() btree.Item {
 	newDentry := *d
 	return &newDentry
+}
+
+func (d *Dentry) GetVersion() uint64 {
+	return d.ver
+}
+
+func (d *Dentry) SetVersion(ver uint64) {
+	d.ver = ver
 }
 
 // MarshalKey is the bytes version of the MarshalKey method which returns the byte slice result.

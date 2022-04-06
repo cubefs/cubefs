@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/btree"
 )
 
 const (
@@ -66,6 +67,8 @@ type Inode struct {
 	Reserved   uint64 // reserved space
 	//Extents    *ExtentsTree
 	Extents *SortedExtents
+
+	ver uint64 // used only for Btree
 }
 
 type InodeBatch []*Inode
@@ -117,13 +120,13 @@ func NewInode(ino uint64, t uint32) *Inode {
 
 // Less tests whether the current Inode item is less than the given one.
 // This method is necessary fot B-Tree item implementation.
-func (i *Inode) Less(than BtreeItem) bool {
+func (i *Inode) Less(than btree.Item) bool {
 	ino, ok := than.(*Inode)
 	return ok && i.Inode < ino.Inode
 }
 
 // Copy returns a copy of the inode.
-func (i *Inode) Copy() BtreeItem {
+func (i *Inode) Copy() btree.Item {
 	newIno := NewInode(i.Inode, i.Type)
 	i.RLock()
 	newIno.Uid = i.Uid
@@ -143,6 +146,15 @@ func (i *Inode) Copy() BtreeItem {
 	newIno.Extents = i.Extents.Clone()
 	i.RUnlock()
 	return newIno
+}
+
+func (i *Inode) GetVersion() uint64 {
+	ver := i.ver
+	return ver
+}
+
+func (i *Inode) SetVersion(ver uint64) {
+	i.ver = ver
 }
 
 // MarshalToJSON is the wrapper of json.Marshal.

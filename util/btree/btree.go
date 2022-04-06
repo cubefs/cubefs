@@ -63,7 +63,6 @@ type Item interface {
 	// If !a.Less(b) && !b.Less(a), we treat this to mean a == b (i.e. we can only
 	// hold one of either a or b in the tree).
 	Less(than Item) bool
-	Copy() Item
 }
 
 const (
@@ -172,15 +171,6 @@ func (s *items) pop() (out Item) {
 	return
 }
 
-// copy copy and return new items
-func (s *items) copy() items {
-	nItems := make(items, 0, len(*s))
-	for _, v := range *s {
-		nItems = append(nItems, v.Copy())
-	}
-	return nItems
-}
-
 // truncate truncates this instance at index so that it contains only the
 // first index items. index must be less than or equal to length.
 func (s *items) truncate(index int) {
@@ -267,7 +257,7 @@ func (n *node) mutableFor(cow *copyOnWriteContext) *node {
 	} else {
 		out.items = make(items, len(n.items), cap(n.items))
 	}
-	copy(out.items, n.items.copy())
+	copy(out.items, n.items)
 	// Copy children
 	if cap(out.children) >= len(n.children) {
 		out.children = out.children[:len(n.children)]
@@ -353,19 +343,11 @@ func (n *node) get(key Item) Item {
 	return nil
 }
 
-func (n *node) copyGet(key Item, cow *copyOnWriteContext) Item {
-	i, found := n.items.find(key)
-	if found {
-		return n.items[i]
-	} else if len(n.children) > 0 {
-		child := n.mutableChild(i)
-		return child.copyGet(key, cow)
-	}
-	return nil
-}
-
 // min returns the first item in the subtree.
 func min(n *node) Item {
+	if n == nil {
+		return nil
+	}
 	for len(n.children) > 0 {
 		n = n.children[0]
 	}
@@ -377,6 +359,9 @@ func min(n *node) Item {
 
 // max returns the last item in the subtree.
 func max(n *node) Item {
+	if n == nil {
+		return nil
+	}
 	for len(n.children) > 0 {
 		n = n.children[len(n.children)-1]
 	}
@@ -811,7 +796,7 @@ func (t *BTree) DescendLessOrEqual(pivot Item, iterator ItemIterator) {
 }
 
 // DescendGreaterThan calls the iterator for every value in the tree within
-// the range (pivot, last], until iterator returns false.
+// the range [last, pivot), until iterator returns false.
 func (t *BTree) DescendGreaterThan(pivot Item, iterator ItemIterator) {
 	if t.root == nil {
 		return
@@ -837,28 +822,13 @@ func (t *BTree) Get(key Item) Item {
 	return t.root.get(key)
 }
 
-func (t *BTree) CopyGet(key Item) Item {
-	if t.root == nil {
-		return nil
-	}
-	t.root = t.root.mutableFor(t.cow)
-	item := t.root.copyGet(key, t.cow)
-	return item
-}
-
 // Min returns the smallest item in the tree, or nil if the tree is empty.
 func (t *BTree) Min() Item {
-	if t.root == nil {
-		return nil
-	}
 	return min(t.root)
 }
 
 // Max returns the largest item in the tree, or nil if the tree is empty.
 func (t *BTree) Max() Item {
-	if t.root == nil {
-		return nil
-	}
 	return max(t.root)
 }
 
@@ -913,10 +883,6 @@ func (n *node) reset(c *copyOnWriteContext) bool {
 
 // Int implements the Item interface for integers.
 type Int int
-
-func (a Int) Copy() Item {
-	return a
-}
 
 // Less returns true if int(a) < int(b).
 func (a Int) Less(b Item) bool {

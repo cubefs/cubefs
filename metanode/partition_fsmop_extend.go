@@ -20,7 +20,7 @@ type ExtendOpResult struct {
 }
 
 func (mp *metaPartition) fsmSetXAttr(extend *Extend) (err error) {
-	treeItem := mp.extendTree.CopyGet(extend)
+	treeItem := mp.extendTree.GetForWrite(extend)
 	var e *Extend
 	if treeItem == nil {
 		e = NewExtend(extend.inode)
@@ -33,7 +33,7 @@ func (mp *metaPartition) fsmSetXAttr(extend *Extend) (err error) {
 }
 
 func (mp *metaPartition) fsmRemoveXAttr(extend *Extend) (err error) {
-	treeItem := mp.extendTree.CopyGet(extend)
+	treeItem := mp.extendTree.GetForWrite(extend)
 	if treeItem == nil {
 		return
 	}

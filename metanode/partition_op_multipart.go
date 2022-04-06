@@ -20,12 +20,13 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/btree"
 
 	"github.com/cubefs/cubefs/proto"
 )
 
 func (mp *metaPartition) GetMultipart(req *proto.GetMultipartRequest, p *Packet) (err error) {
-	item := mp.multipartTree.Get(&Multipart{key: req.Path, id: req.MultipartId})
+	item := mp.multipartTree.GetForRead(&Multipart{key: req.Path, id: req.MultipartId})
 	if item == nil {
 		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		return
@@ -63,7 +64,7 @@ func (mp *metaPartition) AppendMultipart(req *proto.AddMultipartPartRequest, p *
 		p.PacketOkReply()
 		return
 	}
-	item := mp.multipartTree.Get(&Multipart{key: req.Path, id: req.MultipartId})
+	item := mp.multipartTree.GetForRead(&Multipart{key: req.Path, id: req.MultipartId})
 	if item == nil {
 		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		return
@@ -120,7 +121,7 @@ func (mp *metaPartition) CreateMultipart(req *proto.CreateMultipartRequest, p *P
 	)
 	for {
 		multipartId = util.CreateMultipartID(mp.config.PartitionId).String()
-		storedItem := mp.multipartTree.Get(&Multipart{key: req.Path, id: multipartId})
+		storedItem := mp.multipartTree.GetForRead(&Multipart{key: req.Path, id: multipartId})
 		if storedItem == nil {
 			break
 		}
@@ -159,7 +160,7 @@ func (mp *metaPartition) ListMultipart(req *proto.ListMultipartRequest, p *Packe
 	multipartIdMarker := req.MultipartIdMarker
 	prefix := req.Prefix
 	var matches = make([]*Multipart, 0, max)
-	var walkTreeFunc = func(i BtreeItem) bool {
+	var walkTreeFunc = func(i btree.Item) bool {
 		multipart := i.(*Multipart)
 		// prefix is enabled
 		if len(prefix) > 0 && !strings.HasPrefix(multipart.key, prefix) {

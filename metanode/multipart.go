@@ -303,6 +303,8 @@ type Multipart struct {
 	extend   MultipartExtend
 
 	mu sync.RWMutex
+
+	ver uint64 // used only for Btree
 }
 
 func (m *Multipart) Less(than btree.Item) bool {
@@ -318,6 +320,14 @@ func (m *Multipart) Copy() btree.Item {
 		parts:    append(Parts{}, m.parts...),
 		extend:   m.extend,
 	}
+}
+
+func (m *Multipart) GetVersion() uint64 {
+	return m.ver
+}
+
+func (m *Multipart) SetVersion(ver uint64) {
+	m.ver = ver
 }
 
 func (m *Multipart) ID() string {

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/btree"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -46,7 +47,7 @@ func (mp *metaPartition) fsmCreateInode(ino *Inode) (status uint8) {
 func (mp *metaPartition) fsmCreateLinkInode(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
-	item := mp.inodeTree.CopyGet(ino)
+	item := mp.inodeTree.GetForWrite(ino)
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
 		return
@@ -64,7 +65,7 @@ func (mp *metaPartition) fsmCreateLinkInode(ino *Inode) (resp *InodeResponse) {
 func (mp *metaPartition) getInode(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
-	item := mp.inodeTree.Get(ino)
+	item := mp.inodeTree.GetForRead(ino)
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
 		return
@@ -84,7 +85,7 @@ func (mp *metaPartition) getInode(ino *Inode) (resp *InodeResponse) {
 }
 
 func (mp *metaPartition) hasInode(ino *Inode) (ok bool) {
-	item := mp.inodeTree.Get(ino)
+	item := mp.inodeTree.GetForRead(ino)
 	if item == nil {
 		ok = false
 		return
@@ -98,12 +99,8 @@ func (mp *metaPartition) hasInode(ino *Inode) (ok bool) {
 	return
 }
 
-func (mp *metaPartition) getInodeTree() *BTree {
-	return mp.inodeTree.GetTree()
-}
-
 // Ascend is the wrapper of inodeTree.Ascend
-func (mp *metaPartition) Ascend(f func(i BtreeItem) bool) {
+func (mp *metaPartition) Ascend(f func(i btree.Item) bool) {
 	mp.inodeTree.Ascend(f)
 }
 
@@ -111,7 +108,7 @@ func (mp *metaPartition) Ascend(f func(i BtreeItem) bool) {
 func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
-	item := mp.inodeTree.CopyGet(ino)
+	item := mp.inodeTree.GetForWrite(ino)
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
 		return
@@ -203,7 +200,7 @@ func (mp *metaPartition) internalDeleteInode(ino *Inode) {
 
 func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 	status = proto.OpOk
-	item := mp.inodeTree.CopyGet(ino)
+	item := mp.inodeTree.GetForWrite(ino)
 	if item == nil {
 		status = proto.OpNotExistErr
 		return
@@ -222,7 +219,7 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 
 func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode) (status uint8) {
 	status = proto.OpOk
-	item := mp.inodeTree.CopyGet(ino)
+	item := mp.inodeTree.GetForWrite(ino)
 	if item == nil {
 		status = proto.OpNotExistErr
 		return
@@ -258,7 +255,7 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 
 	resp.Status = proto.OpOk
-	item := mp.inodeTree.CopyGet(ino)
+	item := mp.inodeTree.GetForWrite(ino)
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
 		return
@@ -285,7 +282,7 @@ func (mp *metaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 
 	resp.Status = proto.OpOk
-	item := mp.inodeTree.CopyGet(ino)
+	item := mp.inodeTree.GetForWrite(ino)
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
 		return
@@ -329,7 +326,7 @@ func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
 
 func (mp *metaPartition) fsmSetAttr(req *SetattrRequest) (err error) {
 	ino := NewInode(req.Inode, req.Mode)
-	item := mp.inodeTree.CopyGet(ino)
+	item := mp.inodeTree.GetForWrite(ino)
 	if item == nil {
 		return
 	}

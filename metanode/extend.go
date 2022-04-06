@@ -26,6 +26,8 @@ type Extend struct {
 	inode   uint64
 	dataMap map[string][]byte
 	mu      sync.RWMutex
+
+	ver uint64 // used only for Btree
 }
 
 func NewExtend(inode uint64) *Extend {
@@ -125,6 +127,14 @@ func (e *Extend) Copy() btree.Item {
 		newExt.dataMap[k] = v
 	}
 	return newExt
+}
+
+func (e *Extend) GetVersion() uint64 {
+	return e.ver
+}
+
+func (e *Extend) SetVersion(ver uint64) {
+	e.ver = ver
 }
 
 func (e *Extend) Bytes() ([]byte, error) {

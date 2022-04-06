@@ -27,10 +27,10 @@ import (
 type storeMsg struct {
 	command       uint32
 	applyIndex    uint64
-	inodeTree     *BTree
-	dentryTree    *BTree
-	extendTree    *BTree
-	multipartTree *BTree
+	inodeTree     *Btree
+	dentryTree    *Btree
+	extendTree    *Btree
+	multipartTree *Btree
 }
 
 func (mp *metaPartition) startSchedule(curIndex uint64) {

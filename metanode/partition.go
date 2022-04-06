@@ -32,6 +32,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/btree"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	raftproto "github.com/tiglabs/raft/proto"
@@ -117,7 +118,7 @@ type OpInode interface {
 	EvictInode(req *EvictInodeReq, p *Packet) (err error)
 	EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (err error)
 	SetAttr(reqData []byte, p *Packet) (err error)
-	GetInodeTree() *BTree
+	WalkInodeTree(handler func(item btree.Item) bool)
 	DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error)
 	DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet) (err error)
 }
@@ -141,7 +142,7 @@ type OpDentry interface {
 	ReadDirLimit(req *ReadDirLimitReq, p *Packet) (err error)
 	ReadDirOnly(req *ReadDirOnlyReq, p *Packet) (err error)
 	Lookup(req *LookupReq, p *Packet) (err error)
-	GetDentryTree() *BTree
+	WalkDentryTree(handler func(item btree.Item) bool)
 }
 
 // OpExtent defines the interface for the extent operations.
@@ -208,10 +209,10 @@ type metaPartition struct {
 	config                 *MetaPartitionConfig
 	size                   uint64 // For partition all file size
 	applyID                uint64 // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
-	dentryTree             *BTree
-	inodeTree              *BTree // btree for inodes
-	extendTree             *BTree // btree for inode extend (XAttr) management
-	multipartTree          *BTree // collection for multipart management
+	dentryTree             *Btree
+	inodeTree              *Btree // btree for inodes
+	extendTree             *Btree // btree for inode extend (XAttr) management
+	multipartTree          *Btree // collection for multipart management
 	raftPartition          raftstore.Partition
 	stopC                  chan bool
 	storeChan              chan *storeMsg
@@ -632,8 +633,8 @@ func (mp *metaPartition) ResponseLoadMetaPartition(p *Packet) (err error) {
 		DoCompare:   true,
 	}
 	resp.MaxInode = mp.GetCursor()
-	resp.InodeCount = uint64(mp.getInodeTree().Len())
-	resp.DentryCount = uint64(mp.getDentryTree().Len())
+	resp.InodeCount = uint64(mp.inodeTree.Len())
+	resp.DentryCount = uint64(mp.dentryTree.Len())
 	resp.ApplyID = mp.applyID
 	if err != nil {
 		err = errors.Trace(err,

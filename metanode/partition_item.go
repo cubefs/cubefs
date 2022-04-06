@@ -26,6 +26,8 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+
+	"github.com/cubefs/cubefs/util/btree"
 )
 
 // MetaItem defines the structure of the metadata operations.
@@ -125,10 +127,10 @@ type fileData struct {
 type MetaItemIterator struct {
 	fileRootDir   string
 	applyID       uint64
-	inodeTree     *BTree
-	dentryTree    *BTree
-	extendTree    *BTree
-	multipartTree *BTree
+	inodeTree     *Btree
+	dentryTree    *Btree
+	extendTree    *Btree
+	multipartTree *Btree
 
 	filenames []string
 
@@ -144,10 +146,10 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si = new(MetaItemIterator)
 	si.fileRootDir = mp.config.RootDir
 	si.applyID = mp.applyID
-	si.inodeTree = mp.inodeTree.GetTree()
-	si.dentryTree = mp.dentryTree.GetTree()
-	si.extendTree = mp.extendTree.GetTree()
-	si.multipartTree = mp.multipartTree.GetTree()
+	si.inodeTree = mp.inodeTree.CloneTree()
+	si.dentryTree = mp.dentryTree.CloneTree()
+	si.extendTree = mp.extendTree.CloneTree()
+	si.multipartTree = mp.multipartTree.CloneTree()
 	si.dataCh = make(chan interface{})
 	si.errorCh = make(chan error, 1)
 	si.closeCh = make(chan struct{})
@@ -201,28 +203,28 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		produceItem(si.applyID)
 
 		// process inodes
-		iter.inodeTree.Ascend(func(i BtreeItem) bool {
+		iter.inodeTree.Ascend(func(i btree.Item) bool {
 			return produceItem(i)
 		})
 		if checkClose() {
 			return
 		}
 		// process dentries
-		iter.dentryTree.Ascend(func(i BtreeItem) bool {
+		iter.dentryTree.Ascend(func(i btree.Item) bool {
 			return produceItem(i)
 		})
 		if checkClose() {
 			return
 		}
 		// process extends
-		iter.extendTree.Ascend(func(i BtreeItem) bool {
+		iter.extendTree.Ascend(func(i btree.Item) bool {
 			return produceItem(i)
 		})
 		if checkClose() {
 			return
 		}
 		// process multiparts
-		iter.multipartTree.Ascend(func(i BtreeItem) bool {
+		iter.multipartTree.Ascend(func(i btree.Item) bool {
 			return produceItem(i)
 		})
 		if checkClose() {
