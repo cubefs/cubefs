@@ -152,7 +152,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  Owner               : %v\n", userID)
 				stdout("  capacity            : %v G\n", optCapacity)
 				stdout("  crossZone           : %v\n", crossZone)
-				stdout("  business            : %v\n", optBusiness)
+				stdout("  description         : %v\n", optBusiness)
 				stdout("  mpCount             : %v\n", optMPCount)
 				stdout("  replicaNum          : %v\n", optReplicaNum)
 				stdout("  size                : %v G\n", optSize)
@@ -332,7 +332,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  CacheRule         : %v  -> %v \n", vv.CacheRule, optCacheRule))
+				confirmString.WriteString(fmt.Sprintf("  CacheRule         : %v -> %v \n", vv.CacheRule, optCacheRule))
 				vv.CacheRule = optCacheRule
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  CacheRule        : %v \n", vv.CacheAction))
