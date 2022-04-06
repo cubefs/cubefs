@@ -18,10 +18,11 @@ import (
 	"fmt"
 	"strconv"
 
+	"math"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
-	"math"
 )
 
 type nodeStatInfo = proto.NodeStatInfo
@@ -172,6 +173,10 @@ func (c *Cluster) updateVolStatInfo() {
 		}
 
 		cacheUsed, cacheTotal := vol.cfsUsedSpace(), vol.CacheCapacity*util.GB
+		if proto.IsHot(vol.VolType) {
+			cacheUsed, cacheTotal = 0, 0
+		}
+
 		c.volStatInfo.Store(vol.Name, newVolStatInfo(vol.Name, total, used, cacheTotal, cacheUsed))
 	}
 }
