@@ -219,26 +219,17 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 }
 
 func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
-	var (
-		oldstatus int8
-	)
 	w.Lock()
 	old, ok := w.partitions[dp.PartitionID]
 	if ok {
-		oldstatus = old.Status
-		old.Status = dp.Status
-		old.ReplicaNum = dp.ReplicaNum
-		old.Hosts = dp.Hosts
-		old.NearHosts = dp.Hosts
 		dp.Metrics = old.Metrics
 	} else {
 		dp.Metrics = NewDataPartitionMetrics()
-		w.partitions[dp.PartitionID] = dp
 	}
-
+	w.partitions[dp.PartitionID] = dp
 	w.Unlock()
 
-	if ok && oldstatus != dp.Status {
+	if ok && old.Status != dp.Status {
 		log.LogInfof("partition: status change (%v) -> (%v)", old, dp)
 	}
 }
