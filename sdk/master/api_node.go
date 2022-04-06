@@ -105,9 +105,10 @@ func (api *NodeAPI) ResponseDataNodeTask(task *proto.AdminTask) (err error) {
 	return
 }
 
-func (api *NodeAPI) DataNodeDecommission(nodeAddr string) (err error) {
+func (api *NodeAPI) DataNodeDecommission(nodeAddr, count string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.DecommissionDataNode)
 	request.addParam("addr", nodeAddr)
+	request.addParam("count", count)
 	request.addHeader("isTimeOut", "false")
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return

@@ -120,6 +120,7 @@ func newDataNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
+	var optCount string
 	var cmd = &cobra.Command{
 		Use:   CliOpDecommission + " [{HOST}:{PORT}]",
 		Short: cmdDataNodeDecommissionInfoShort,
@@ -133,7 +134,7 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}()
 			nodeAddr = args[0]
-			if err = client.NodeAPI().DataNodeDecommission(nodeAddr); err != nil {
+			if err = client.NodeAPI().DataNodeDecommission(nodeAddr, optCount); err != nil {
 				return
 			}
 			stdout("Decommission data node successfully\n")
@@ -146,5 +147,6 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	cmd.Flags().StringVar(&optCount, CliFlagCount, "", "DataNode delete mp count")
 	return cmd
 }
