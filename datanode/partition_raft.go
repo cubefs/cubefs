@@ -33,6 +33,7 @@ import (
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/tiglabs/raft"
 	raftproto "github.com/tiglabs/raft/proto"
 )
 
@@ -76,6 +77,7 @@ func (dp *DataPartition) StartRaft() (err error) {
 		heartbeatPort int
 		replicaPort   int
 		peers         []raftstore.PeerAddress
+		rc            *raft.RaftConfig
 	)
 	defer func() {
 		if r := recover(); r != nil {
@@ -109,7 +111,11 @@ func (dp *DataPartition) StartRaft() (err error) {
 		WalPath: dp.path,
 	}
 
-	dp.raftPartition, err = dp.config.RaftStore.CreatePartition(pc)
+	dp.raftPartition, rc, err = dp.config.RaftStore.CreatePartition(pc)
+	if err != nil {
+		return
+	}
+	err = dp.config.RaftStore.RaftServer().CreateRaft(rc)
 	if err == nil {
 		dp.ForceSetRaftRunning()
 		dp.ForceSetDataPartitionToFininshLoad()

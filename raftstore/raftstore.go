@@ -31,7 +31,7 @@ import (
 
 // RaftStore defines the interface for the raft store.
 type RaftStore interface {
-	CreatePartition(cfg *PartitionConfig) (Partition, error)
+	CreatePartition(cfg *PartitionConfig) (Partition, *raft.RaftConfig, error)
 	Stop()
 	RaftConfig() *raft.Config
 	RaftStatus(raftID uint64) (raftStatus *raft.Status)
@@ -144,7 +144,7 @@ func (s *raftStore) RaftServer() *raft.RaftServer {
 }
 
 // CreatePartition creates a new partition in the raft store.
-func (s *raftStore) CreatePartition(cfg *PartitionConfig) (p Partition, err error) {
+func (s *raftStore) CreatePartition(cfg *PartitionConfig) (p Partition, rc *raft.RaftConfig, err error) {
 	// Init WaL Storage for this partition.
 	// Variables:
 	// wc: WaL Configuration.
@@ -172,7 +172,7 @@ func (s *raftStore) CreatePartition(cfg *PartitionConfig) (p Partition, err erro
 			peerAddress.ReplicaPort,
 		)
 	}
-	rc := &raft.RaftConfig{
+	rc = &raft.RaftConfig{
 		ID:           cfg.ID,
 		Peers:        peers,
 		Leader:       cfg.Leader,
@@ -181,9 +181,6 @@ func (s *raftStore) CreatePartition(cfg *PartitionConfig) (p Partition, err erro
 		StateMachine: cfg.SM,
 		Applied:      cfg.Applied,
 		Monitor:      newMonitor(),
-	}
-	if err = s.raftServer.CreateRaft(rc); err != nil {
-		return
 	}
 	p = newPartition(cfg, s.raftServer, walPath)
 	return

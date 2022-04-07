@@ -33,6 +33,7 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/tiglabs/raft"
 	raftproto "github.com/tiglabs/raft/proto"
 )
 
@@ -336,7 +337,13 @@ func (mp *metaPartition) startRaft() (err error) {
 		Peers:   peers,
 		SM:      mp,
 	}
-	mp.raftPartition, err = mp.config.RaftStore.CreatePartition(pc)
+
+	var rc *raft.RaftConfig
+	mp.raftPartition, rc, err = mp.config.RaftStore.CreatePartition(pc)
+	if err == nil {
+		mp.ForceSetMetaPartitionToFininshLoad()
+	}
+	err = mp.config.RaftStore.RaftServer().CreateRaft(rc)
 	if err == nil {
 		mp.ForceSetMetaPartitionToFininshLoad()
 	}
