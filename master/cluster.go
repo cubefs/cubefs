@@ -2119,7 +2119,7 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 	}
 
 	if len(toBeOfflineMps) <= 0 && len(partitions) != 0 {
-		return fmt.Errorf("migrateMataNode no partition can migrate from [%s] to [%s]", srcAddr, targetAddr)
+		return fmt.Errorf("migrateMataNode no partition can migrate from [%s] to [%s] limit [%v]", srcAddr, targetAddr, limit)
 	}
 
 	if limit <= 0 && targetAddr == "" { // default all mps
