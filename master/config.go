@@ -94,6 +94,7 @@ type clusterConfig struct {
 	MetaNodeDeleteBatchCount            uint64 //metanode delete batch count
 	DataNodeDeleteLimitRate             uint64 //datanode delete limit rate
 	MetaNodeDeleteWorkerSleepMs         uint64 //datanode delete limit rate
+	MaxDpCntLimit                       uint64
 	DataNodeAutoRepairLimitRate         uint64 //datanode autorepair limit rate
 	peers                               []raftstore.PeerAddress
 	peerAddrs                           []string
