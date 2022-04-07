@@ -31,6 +31,7 @@ func TestPutBigValue(t *testing.T) {
 	for i := 1; i <= groupNum; i++ {
 		leaderMap[uint64(i)] = waitElect(servers, uint64(i), w)
 	}
+	dataType = 1
 
 	// 50 partitions: put big data
 	var wg sync.WaitGroup

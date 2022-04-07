@@ -139,8 +139,6 @@ type Entry struct {
 	Index uint64
 	Data  []byte
 	ctx   context.Context // Tracer context
-	hasEncode int32
-	EncodeData []byte
 	RefCnt    int32
 	OrgRefCnt uint8
 }
@@ -153,13 +151,6 @@ func (e *Entry)IsLeaderLogEntry() bool {
 	return e.OrgRefCnt==LeaderLogEntryRefCnt
 }
 
-//func (e *Entry)GetEncodeData() (data []byte){
-//	if atomic.LoadInt32(&e.hasEncode)==0 {
-//		e.Encode()
-//	}
-//	data=e.EncodeData
-//	return
-//}
 
 func (e *Entry)IsFollowerLogEntry() bool {
 	return e.OrgRefCnt==FollowerLogEntryRefCnt

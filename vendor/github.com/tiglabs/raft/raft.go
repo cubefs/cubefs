@@ -286,12 +286,10 @@ func (s *raft) run() {
 		s.raftConfig.Storage.Close()
 		close(s.done)
 	}()
-
 	s.prevHardSt.Term = s.raftFsm.term
 	s.prevHardSt.Vote = s.raftFsm.vote
 	s.prevHardSt.Commit = s.raftFsm.raftLog.committed
 	s.maybeChange(true)
-	//printTicker:=time.NewTicker(time.Second)
 	loopCount := 0
 	var readyc chan struct{}
 	for {

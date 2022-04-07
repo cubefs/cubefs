@@ -35,6 +35,15 @@ import (
 	"github.com/tiglabs/raft/util/log"
 )
 
+type storeType uint8
+
+const (
+	memoryStore 	storeType = iota
+	singleStore
+	separateStore
+	specifyStore
+)
+
 var (
 	testSnap     = true
 	storageType  = 1
@@ -224,8 +233,23 @@ func getMemoryStorage(raft *raft.RaftServer, nodeId, raftId uint64) storage.Stor
 		return getStorage(nodeId, raftId)
 	case 2:
 		return getSeparateStorage(nodeId, raftId)
+	case 3:
+		return getSpecifyStorage(nodeId, raftId)
 	}
 	return nil
+}
+
+func getSpecifyStorage(nodeId uint64, raftId uint64) storage.Storage {
+	walPath := path.Join("/data" + strconv.FormatUint(nodeId, 10), "rafttest", strconv.FormatUint(nodeId, 10), strconv.FormatUint(raftId, 10))
+	os.RemoveAll(walPath)
+	os.MkdirAll(walPath,0777)
+	fmt.Println(fmt.Sprintf("raft: %v, walPath: %v", raftId, walPath))
+	wc := &wal.Config{}
+	st, err := wal.NewStorage(walPath, wc)
+	if err != nil {
+		panic(err)
+	}
+	return st
 }
 
 func getStorage(nodeId, raftId uint64) storage.Storage {

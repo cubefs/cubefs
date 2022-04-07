@@ -92,6 +92,48 @@ func (leadServer *testServer) putOneBigData(raftId uint64, bitSize int) error {
 	return nil
 }
 
+type resultTest struct {
+	sucOp      int64
+	failOp     int64
+	totalCount int64
+	err        error
+}
+
+func (leadServer *testServer) localPutBigData(raftId uint64, bitSize int, exeMin int, goroutingNumber int) (error, string) {
+	var rst string
+	//var err error
+	var totalCount, totalSucOp, totalFailOp int64
+	results := make([]resultTest, goroutingNumber)
+	var wg sync.WaitGroup
+	sec := exeMin * 60
+	start := time.Now()
+	for i := 0; i < goroutingNumber; i++ {
+		wg.Add(1)
+		go func(rest *resultTest) {
+			leadServer.sm[raftId].localConstructBigData(bitSize, exeMin, rest)
+			wg.Done()
+		}(&results[i])
+	}
+	wg.Wait()
+	end := time.Now()
+	for i := 0; i < goroutingNumber; i++ {
+		/*
+			err = resuts[i].err
+			if err != nil {
+				return fmt.Errorf("put data err: %v", err), nil
+
+			}
+		*/
+		totalCount += results[i].totalCount
+		totalSucOp += results[i].sucOp
+		totalFailOp += results[i].failOp
+	}
+	rst = fmt.Sprintf("local put bigsubmit: start-%v, end-%v; size-%d, executeTime-%dmin, success-%d, fail-%d, tps-%d",
+		start.Format("2006-01-02 15:04:05"), end.Format("2006-01-02 15:04:05"), bitSize, exeMin, totalSucOp, totalFailOp, totalSucOp/int64(sec))
+
+	return nil, rst
+}
+
 func putDataWithRetry(servers []*testServer, startIndex int, keysize int, w *bufio.Writer, t *testing.T) {
 	w.WriteString(fmt.Sprintf("Starting put data with retry at(%v).\r\n", time.Now().Format(format_time)))
 	lastKey, lastVal := NoCheckLinear, NoCheckLinear

@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 
 	"github.com/tiglabs/raft"
 )
@@ -19,6 +20,7 @@ type HTTPReply struct {
 func (s *testServer) startHttpService(host string, listen string) {
 	http.HandleFunc("/data/submit", s.batchPutData)
 	http.HandleFunc("/data/bigSubmit", s.putBigData)
+	http.HandleFunc("/data/localbigSubmit", s.localBigData)
 	http.HandleFunc("/data/get", s.getData)
 	http.HandleFunc("/raft/addMember", s.addRaftMember)
 	http.HandleFunc("/raft/delMember", s.delRaftMember)
@@ -76,6 +78,79 @@ func (s *testServer) batchPutData(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sendReply(w, r, &HTTPReply{Code: 0, Msg: fmt.Sprintf("raft[%v] put data success", raftId)})
+	return
+}
+
+var begin int32
+
+func (s *testServer) localBigData(w http.ResponseWriter, r *http.Request) {
+	var (
+		size            int
+		raftId          int
+		exeMin          int
+		err             error
+		rst             string
+		goroutingNumber int
+	)
+
+	if !atomic.CompareAndSwapInt32(&begin, 0, 1) {
+		sendReply(w, r, &HTTPReply{Code: 1, Msg: fmt.Sprintf("last local big data test is running.")})
+		return
+	}
+	defer func() {
+		atomic.CompareAndSwapInt32(&begin, 1, 0)
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		sendReply(w, r, &HTTPReply{Code: 1, Msg: fmt.Sprintf("parse form err: %v", err)})
+		return
+	}
+	if sizeKey := r.FormValue("size"); sizeKey != "" {
+		size, err = strconv.Atoi(sizeKey)
+	}
+	if size <= 0 || err != nil {
+		sendReply(w, r, &HTTPReply{Code: 1, Msg: fmt.Sprintf("parse size[%v] err: %v", size, err)})
+		return
+	}
+	if id := r.FormValue("id"); id != "" {
+		raftId, err = strconv.Atoi(id)
+	}
+	if raftId <= 0 || err != nil {
+		sendReply(w, r, &HTTPReply{Code: 1, Msg: fmt.Sprintf("parse raft id[%v] err: %v", raftId, err)})
+		return
+	}
+
+	if !s.raft.IsLeader(uint64(raftId)) {
+		sendReply(w, r, &HTTPReply{Code: 1, Msg: fmt.Sprintf("the node is not raft id[%v] leader err: %v", raftId, err)})
+		return
+	}
+
+	if min := r.FormValue("min"); min != "" {
+		exeMin, err = strconv.Atoi(min)
+	}
+	if exeMin <= 0 || err != nil {
+		sendReply(w, r, &HTTPReply{Code: 1, Msg: fmt.Sprintf("parse min[%v] err: %v", exeMin, err)})
+		return
+	}
+
+	if goroutingNum := r.FormValue("goroutings"); goroutingNum != "" {
+		goroutingNumber, err = strconv.Atoi(goroutingNum)
+	}
+	if goroutingNumber <= 0 || err != nil {
+		sendReply(w, r, &HTTPReply{Code: 1, Msg: fmt.Sprintf("parse goroutings[%v] err: %v", goroutingNumber, err)})
+		return
+	}
+
+	fmt.Printf("local bigdata submit: raftid-%d, datasize-%d, execute min-%d", raftId, size, exeMin)
+
+	if err, rst = s.localPutBigData(uint64(raftId), size, exeMin, goroutingNumber); err != nil {
+		sendReply(w, r, &HTTPReply{Code: 1, Msg: fmt.Sprintf("raft[%v] put data err: %v", raftId, err),
+			Data: s.raft.Status(uint64(raftId)).Leader})
+		return
+	}
+
+	sendReply(w, r, &HTTPReply{Code: 0, Msg: fmt.Sprintf("raft[%v] put data success:%s", raftId, rst)})
+
 	return
 }
 
