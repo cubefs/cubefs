@@ -17,7 +17,6 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -110,10 +109,6 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	}
 	if dpSize < util.GB {
 		dpSize = util.DefaultDataPartitionSize
-	}
-	zoneList := strings.Split(zoneName, ",")
-	if len(zoneList) > 1 {
-		vol.crossZone = true
 	}
 	vol.ExtentCacheExpireSec = defaultExtentCacheExpireSec
 	vol.MinWritableMPNum = defaultVolMinWritableMPNum

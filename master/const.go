@@ -185,6 +185,7 @@ const (
 	defaultLowCapacityVol                              = 10 * 1024
 	maxTrashRemainingDays                              = 30
 	defaultMetaNodeVersion                             = "3.0.0"
+	minCrossRegionVolMasterRegionZonesCount            = 1
 )
 
 const (

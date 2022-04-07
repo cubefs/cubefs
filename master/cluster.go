@@ -1023,8 +1023,8 @@ func (c *Cluster) validCrossRegionHA(volZoneName string) (err error) {
 	if err != nil {
 		return
 	}
-	if len(masterRegionZoneName) < 2 || len(slaveRegionZone) == 0 {
-		return fmt.Errorf("there must be at least two master and one slave region zone for cross region vol")
+	if len(masterRegionZoneName) < minCrossRegionVolMasterRegionZonesCount || len(slaveRegionZone) == 0 {
+		return fmt.Errorf("there must be at least %v master and 1 slave region zone for cross region vol", minCrossRegionVolMasterRegionZonesCount)
 	}
 	return
 }
@@ -2408,15 +2408,19 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		vol           *Vol
 		volBak        *Vol
 		serverAuthKey string
-		zoneList      []string
+		masterRegionZoneList    []string
 	)
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[updateVol] err[%v]", err)
 		err = proto.ErrVolNotExists
 		goto errHandler
 	}
+	masterRegionZoneList = strings.Split(vol.zoneName, ",")
 	if IsCrossRegionHATypeQuorum(crossRegionHAType) {
 		if err = c.validCrossRegionHA(zoneName); err != nil {
+			goto errHandler
+		}
+		if masterRegionZoneList, _, err = c.getMasterAndSlaveRegionZoneName(zoneName); err != nil {
 			goto errHandler
 		}
 	}
@@ -2472,8 +2476,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		}
 		vol.zoneName = zoneName
 	}
-	zoneList = strings.Split(vol.zoneName, ",")
-	if len(zoneList) > 1 {
+	if len(masterRegionZoneList) > 1 {
 		vol.crossZone = true
 	} else {
 		vol.crossZone = false
@@ -2612,9 +2615,15 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64,
 	storeMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout) (vol *Vol, err error) {
 	var id uint64
+	var createTime = time.Now().Unix() // record unix seconds of volume create time
+	masterRegionZoneList := strings.Split(zoneName, ",")
+	if IsCrossRegionHATypeQuorum(crossRegionHAType) {
+		if masterRegionZoneList, _, err = c.getMasterAndSlaveRegionZoneName(zoneName); err != nil {
+			goto errHandler
+		}
+	}
 	c.createVolMutex.Lock()
 	defer c.createVolMutex.Unlock()
-	var createTime = time.Now().Unix() // record unix seconds of volume create time
 	if _, err = c.getVol(name); err == nil {
 		err = proto.ErrDuplicateVol
 		goto errHandler
@@ -2627,6 +2636,9 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 		authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, createTime, description, "", "",
 		crossRegionHAType, dpLearnerNum, mpLearnerNum, dpWriteableThreshold, uint32(trashDays), storeMode, convertSt, mpLayout)
 
+	if len(masterRegionZoneList) > 1 {
+		vol.crossZone = true
+	}
 	// refresh oss secure
 	vol.refreshOSSSecure()
 	if err = c.syncAddVol(vol); err != nil {
