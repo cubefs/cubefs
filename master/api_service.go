@@ -2166,26 +2166,26 @@ func (m *Server) migrateMetaNodeHandler(w http.ResponseWriter, r *http.Request) 
 
 func (m *Server) decommissionMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		metaNode    *MetaNode
 		rstMsg      string
 		offLineAddr string
+		limit       int
 		err         error
 	)
 
-	if offLineAddr, err = parseAndExtractNodeAddr(r); err != nil {
+	if offLineAddr, limit, err = parseDecomNodeReq(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
-	if metaNode, err = m.cluster.metaNode(offLineAddr); err != nil {
+	if _, err = m.cluster.metaNode(offLineAddr); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaNodeNotExists))
 		return
 	}
-	if err = m.cluster.decommissionMetaNode(metaNode); err != nil {
+	if err = m.cluster.migrateMetaNode(offLineAddr, "", limit); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	rstMsg = fmt.Sprintf("decommissionMetaNode metaNode [%v] has offline successfully", offLineAddr)
+	rstMsg = fmt.Sprintf("decommissionMetaNode metaNode [%v] limit %d has offline successfully", offLineAddr, limit)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
