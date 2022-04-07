@@ -901,6 +901,10 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 		return fmt.Errorf("low(%d) or high water(%d) can't be large than 90, low than 0", args.cacheLowWater, args.cacheHighWater)
 	}
 
+	if req.dpReplicaNum > m.cluster.dataNodeCount() {
+		return fmt.Errorf("dp replicaNum %d can't be large than dataNodeCnt %d", req.dpReplicaNum, m.cluster.dataNodeCount())
+	}
+
 	req.coldArgs = args
 	return nil
 
