@@ -25,6 +25,7 @@ import (
 
 const (
 	cmdDataNodeShort = "Manage data nodes"
+	cmdDataNodeMigrateInfoShort = "Migrate partitions from a data node to the other node"
 )
 
 func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
@@ -36,6 +37,7 @@ func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
 		newDataNodeListCmd(client),
 		newDataNodeInfoCmd(client),
 		newDataNodeDecommissionCmd(client),
+		newDataNodeMigrateCmd(client),
 	)
 	return cmd
 }
@@ -148,5 +150,38 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&optCount, CliFlagCount, "", "DataNode delete mp count")
+	return cmd
+}
+
+func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
+	var optCount string
+	var cmd = &cobra.Command{
+		Use:   CliOpMigrate + " src[{HOST}:{PORT}] dst[{HOST}:{PORT}]",
+		Short: cmdDataNodeMigrateInfoShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var src, dst string
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+			src = args[0]
+			dst = args[1]
+			if err = client.NodeAPI().DataNodeMigrate(src, dst, optCount); err != nil {
+				return
+			}
+			stdout("Migrate data node successfully\n")
+
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().StringVar(&optCount, CliFlagCount, "", "Migrate dp count")
 	return cmd
 }
