@@ -2965,6 +2965,15 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		}
 		atomic.StoreUint64(&c.cfg.MetaNodeReqRateLimit, v)
 	}
+	oldMetaNodeReadDirLimit := atomic.LoadUint64(&c.cfg.MetaNodeReadDirLimitNum)
+	if val, ok := params[metaNodeReadDirLimitKey]; ok {
+		v := val.(uint64)
+		if v > 0 && v < minReadDirLimitNum {
+			err = errors.NewErrorf("parameter %s can't be less than %d", metaNodeReadDirLimitKey, minReadDirLimitNum)
+			return
+		}
+		atomic.StoreUint64(&c.cfg.MetaNodeReadDirLimitNum, v)
+	}
 	oldDeleteWorkerSleepMs := atomic.LoadUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs)
 	if val, ok := params[nodeDeleteWorkerSleepMs]; ok {
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, val.(uint64))
@@ -2988,6 +2997,7 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, oldDeleteLimitRate)
 		atomic.StoreUint64(&c.cfg.DataNodeRepairTaskCount, oldRepairTaskCount)
 		atomic.StoreUint64(&c.cfg.MetaNodeReqRateLimit, oldMetaNodeReqRateLimit)
+		atomic.StoreUint64(&c.cfg.MetaNodeReadDirLimitNum, oldMetaNodeReadDirLimit)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, oldDeleteWorkerSleepMs)
 		atomic.StoreInt32(&c.cfg.DataPartitionsRecoverPoolSize, oldDpRecoverPoolSize)
 		atomic.StoreInt32(&c.cfg.MetaPartitionsRecoverPoolSize, oldMpRecoverPoolSize)

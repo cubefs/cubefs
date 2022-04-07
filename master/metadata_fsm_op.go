@@ -43,6 +43,7 @@ type clusterValue struct {
 	DataNodeReqVolPartRateLimitMap    map[string]uint64
 	DataNodeReqVolOpPartRateLimitMap  map[string]map[uint8]uint64
 	MetaNodeReqRateLimit              uint64
+	MetaNodeReadDirLimitNum			  uint64
 	MetaNodeReqOpRateLimitMap         map[uint8]uint64
 	MetaNodeDeleteBatchCount          uint64
 	MetaNodeDeleteWorkerSleepMs       uint64
@@ -71,6 +72,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MetaNodeReqOpRateLimitMap:         c.cfg.MetaNodeReqOpRateLimitMap,
 		MetaNodeDeleteBatchCount:          c.cfg.MetaNodeDeleteBatchCount,
 		MetaNodeDeleteWorkerSleepMs:       c.cfg.MetaNodeDeleteWorkerSleepMs,
+		MetaNodeReadDirLimitNum: 		   c.cfg.MetaNodeReadDirLimitNum,
 		ClientReadVolRateLimitMap:         c.cfg.ClientReadVolRateLimitMap,
 		ClientWriteVolRateLimitMap:        c.cfg.ClientWriteVolRateLimitMap,
 		ClientVolOpRateLimitMap:           c.cfg.ClientVolOpRateLimitMap,
@@ -689,6 +691,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateMetaNodeDeleteBatchCount(cv.MetaNodeDeleteBatchCount)
 		c.updateMetaNodeDeleteWorkerSleepMs(cv.MetaNodeDeleteWorkerSleepMs)
 		atomic.StoreUint64(&c.cfg.MetaNodeReqRateLimit, cv.MetaNodeReqRateLimit)
+		atomic.StoreUint64(&c.cfg.MetaNodeReadDirLimitNum, cv.MetaNodeReadDirLimitNum)
 		c.cfg.MetaNodeReqOpRateLimitMap = cv.MetaNodeReqOpRateLimitMap
 		if c.cfg.MetaNodeReqOpRateLimitMap == nil {
 			c.cfg.MetaNodeReqOpRateLimitMap = make(map[uint8]uint64)

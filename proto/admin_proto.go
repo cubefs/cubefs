@@ -274,7 +274,7 @@ type LimitInfo struct {
 	Cluster                     string
 	MetaNodeDeleteBatchCount    uint64
 	MetaNodeDeleteWorkerSleepMs uint64
-	MetaNodeReadDirLimitNum		uint64	// todo
+	MetaNodeReadDirLimitNum		uint64
 
 	MetaNodeReqRateLimit             uint64
 	MetaNodeReqOpRateLimitMap        map[uint8]uint64

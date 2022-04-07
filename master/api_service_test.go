@@ -2075,3 +2075,26 @@ func validateCreateDataPartition(volName, designatedZoneName string, createCount
 	}
 	return
 }
+
+func TestSetReadDirLimitNum(t *testing.T) {
+	readDirLimitNum := 500000
+	reqURL := fmt.Sprintf("%v%v?metaNodeReadDirLimit=%v", hostAddr, proto.AdminSetNodeInfo, readDirLimitNum)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	if server.cluster.cfg.MetaNodeReadDirLimitNum != uint64(readDirLimitNum) {
+		t.Errorf("set readDirLimitNum to %v failed", readDirLimitNum)
+		return
+	}
+	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
+	fmt.Println(reqURL)
+	reply := processReturnRawReply(reqURL, t)
+	limitInfo := &proto.LimitInfo{}
+
+	if err := json.Unmarshal(reply.Data, limitInfo); err != nil {
+		t.Errorf("unmarshal limitinfo failed,err:%v", err)
+	}
+	if limitInfo.MetaNodeReadDirLimitNum != uint64(readDirLimitNum) {
+		t.Errorf("readDirLimitNum expect:%v, real:%v", readDirLimitNum, limitInfo.MetaNodeReadDirLimitNum)
+	}
+
+}

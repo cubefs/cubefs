@@ -90,6 +90,7 @@ type clusterConfig struct {
 	MetaNodeThreshold                   float32
 	MetaNodeDeleteBatchCount            uint64 //metanode delete batch count
 	MetaNodeReqRateLimit                uint64
+	MetaNodeReadDirLimitNum				uint64
 	MetaNodeReqOpRateLimitMap           map[uint8]uint64
 	DataNodeReqZoneRateLimitMap         map[string]uint64
 	DataNodeReqZoneOpRateLimitMap       map[string]map[uint8]uint64

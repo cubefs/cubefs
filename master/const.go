@@ -68,6 +68,7 @@ const (
 	dataNodeReqVolOpPartRateKey = "dataNodeReqVolOpPartRate"
 	metaNodeReqRateKey          = "metaNodeReqRate"
 	metaNodeReqOpRateKey        = "metaNodeReqOpRate"
+	metaNodeReadDirLimitKey		= "metaNodeReadDirLimit"
 	clientReadVolRateKey        = "clientReadVolRate"
 	clientWriteVolRateKey       = "clientWriteVolRate"
 	clientVolOpRateKey          = "clientVolOpRate"
@@ -171,6 +172,7 @@ const (
 	defaultLearnerPromThreshold                        = 90
 	minRateLimit                                       = 100
 	minPartRateLimit                                   = 1
+	minReadDirLimitNum								   = 500000
 	diskErrDataPartitionOfflineBatchCount              = 200
 	defaultHighUsedRatioDataNodesThreshold             = 0.85
 	defaultHighUsedRatioMetaNodesThreshold             = 0.85

@@ -71,9 +71,7 @@ func ReadDirLimitNum() uint64 {
 }
 
 func updateReadDirLimitNum(val uint64)  {
-	if val > 0 {
-		atomic.StoreUint64(&nodeInfo.readDirLimitNum, val)
-	}
+	atomic.StoreUint64(&nodeInfo.readDirLimitNum, val)
 }
 
 func updateDeleteWorkerSleepMs(val uint64) {
