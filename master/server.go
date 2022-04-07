@@ -61,6 +61,8 @@ var (
 
 	useConnPool = true //for test
 	gConfig     *clusterConfig
+
+	maxDpCntOneNode = uint32(3000)
 )
 
 var overSoldFactor = defaultOverSoldFactor
@@ -85,6 +87,13 @@ func setOverSoldFactor(factor float32) {
 	if factor != overSoldFactor {
 		overSoldFactor = factor
 	}
+}
+func dpCntOneNodeLimit() uint32 {
+	if maxDpCntOneNode <= 0 {
+		return 3000
+	}
+
+	return maxDpCntOneNode
 }
 
 // Server represents the server in a cluster

@@ -40,6 +40,7 @@ type clusterValue struct {
 	MetaNodeDeleteBatchCount    uint64
 	MetaNodeDeleteWorkerSleepMs uint64
 	DataNodeAutoRepairLimitRate uint64
+	MaxDpCntLimit               uint64
 	FaultDomain                 bool
 }
 
@@ -53,6 +54,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MetaNodeDeleteWorkerSleepMs: c.cfg.MetaNodeDeleteWorkerSleepMs,
 		DataNodeAutoRepairLimitRate: c.cfg.DataNodeAutoRepairLimitRate,
 		DisableAutoAllocate:         c.DisableAutoAllocate,
+		MaxDpCntLimit:               c.cfg.MaxDpCntLimit,
 		FaultDomain:                 c.FaultDomain,
 	}
 	return cv
@@ -597,6 +599,11 @@ func (c *Cluster) updateDataNodeDeleteLimitRate(val uint64) {
 	atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, val)
 }
 
+func (c *Cluster) updateMaxDpCntLimit(val uint64) {
+	atomic.StoreUint64(&c.cfg.MaxDpCntLimit, val)
+	maxDpCntOneNode = uint32(val)
+}
+
 func (c *Cluster) loadClusterValue() (err error) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(clusterPrefix))
 	if err != nil {
@@ -616,6 +623,8 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateMetaNodeDeleteWorkerSleepMs(cv.MetaNodeDeleteWorkerSleepMs)
 		c.updateDataNodeDeleteLimitRate(cv.DataNodeDeleteLimitRate)
 		c.updateDataNodeAutoRepairLimit(cv.DataNodeAutoRepairLimitRate)
+		c.updateMaxDpCntLimit(cv.MaxDpCntLimit)
+
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}
 	return
