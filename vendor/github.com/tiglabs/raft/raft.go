@@ -96,7 +96,7 @@ func (s *peerState) reset(peers []proto.Peer) {
 	//get old peer info
 	newPeers := make([]proto.Peer, 0)
 	for _, p := range peers {
-		peer , ok := s.peers[p.ID]
+		peer, ok := s.peers[p.ID]
 		if ok {
 			newPeers = append(newPeers, peer)
 		}
@@ -239,7 +239,6 @@ func (s *raft) runApply() {
 			loopCount = 0
 			runtime.Gosched()
 		}
-
 		select {
 		case <-s.stopc:
 			return
@@ -276,6 +275,8 @@ func (s *raft) runApply() {
 	}
 }
 
+
+
 func (s *raft) run() {
 	defer func() {
 		s.doStop()
@@ -290,7 +291,7 @@ func (s *raft) run() {
 	s.prevHardSt.Vote = s.raftFsm.vote
 	s.prevHardSt.Commit = s.raftFsm.raftLog.committed
 	s.maybeChange(true)
-
+	//printTicker:=time.NewTicker(time.Second)
 	loopCount := 0
 	var readyc chan struct{}
 	for {
@@ -306,7 +307,18 @@ func (s *raft) run() {
 		case <-s.tickc:
 			s.raftFsm.tick()
 			s.maybeChange(true)
-
+		//case <-printTicker.C:
+		//	var (
+		//		getCnt,putCnt uint64
+		//	)
+		//	if s.isLeader(){
+		//		getCnt=proto.LoadLeaderGetEntryCnt()
+		//		putCnt=proto.LoadLeaderPutEntryCnt()
+		//	}else {
+		//		getCnt=proto.LoadFollowerGetEntryCnt()
+		//		putCnt=proto.LoadFollowerPutEntryCnt()
+		//	}
+		//	fmt.Println(fmt.Sprintf("isLeaderRole(%v) getEntryCntFromPool(%v) putEntryCntFromPool(%v) ",s.isLeader(),getCnt,putCnt))
 		case pr := <-s.propc:
 
 			if s.raftFsm.leader != s.config.NodeID {
@@ -322,7 +334,8 @@ func (s *raft) run() {
 			s.pending[starti] = pr.future
 			s.pendingCmd[starti] = pr.cmdType
 
-			var e = &proto.Entry{Term: s.raftFsm.term, Index: starti, Type: pr.cmdType, Data: pr.data}
+			e:=proto.GetEntryFromPoolWithArgWithLeader(pr.cmdType,s.raftFsm.term,starti,pr.data )
+			//var e = &proto.Entry{Term: s.raftFsm.term, Index: starti, Type: pr.cmdType, Data: pr.data}
 
 			msg.Entries = append(msg.Entries, e)
 			pool.returnProposal(pr)
@@ -336,8 +349,8 @@ func (s *raft) run() {
 				case pr := <-s.propc:
 					s.pending[starti] = pr.future
 					s.pendingCmd[starti] = pr.cmdType
-
-					var e = &proto.Entry{Term: s.raftFsm.term, Index: starti, Type: pr.cmdType, Data: pr.data}
+					e:=proto.GetEntryFromPoolWithArgWithLeader(pr.cmdType,s.raftFsm.term,starti,pr.data )
+					//var e = &proto.Entry{Term: s.raftFsm.term, Index: starti, Type: pr.cmdType, Data: pr.data}
 
 					msg.Entries = append(msg.Entries, e)
 					pool.returnProposal(pr)

@@ -15,10 +15,9 @@ package proto
 
 import (
 	"encoding/binary"
+	"github.com/tiglabs/raft/util"
 	"io"
 	"sort"
-
-	"github.com/tiglabs/raft/util"
 )
 
 const (
@@ -164,7 +163,9 @@ func (e *Entry) Size() uint64 {
 
 func (e *Entry) Encode(w io.Writer) error {
 	buf := getByteSlice()
-	defer returnByteSlice(buf)
+	defer func() {
+		returnByteSlice(buf)
+	}()
 
 	buf[0] = byte(e.Type)
 	binary.BigEndian.PutUint64(buf[1:], e.Term)
@@ -211,7 +212,9 @@ func (m *Message) Size() uint64 {
 func (m *Message) Encode(w io.Writer) error {
 
 	buf := getByteSlice()
-	defer returnByteSlice(buf)
+	defer func() {
+		returnByteSlice(buf)
+	}()
 
 	binary.BigEndian.PutUint32(buf, uint32(m.Size()))
 	buf[4] = version1
@@ -255,6 +258,7 @@ func (m *Message) Encode(w io.Writer) error {
 			if err := e.Encode(w); err != nil {
 				return err
 			}
+			PutEntryToPool(e)
 		}
 	}
 	if len(m.Context) > 0 {
@@ -264,6 +268,7 @@ func (m *Message) Encode(w io.Writer) error {
 	}
 	return nil
 }
+
 
 func (m *Message) Decode(r *util.BufferReader) error {
 	var (
@@ -300,7 +305,8 @@ func (m *Message) Decode(r *util.BufferReader) error {
 					esize := binary.BigEndian.Uint32(datas[start:])
 					start = start + 4
 					end := start + uint64(esize)
-					entry := new(Entry)
+					//entry:=new(Entry)
+					entry:=GetEntryFromPoolWithFollower()
 					entry.Decode(datas[start:end])
 					m.Entries = append(m.Entries, entry)
 					start = end

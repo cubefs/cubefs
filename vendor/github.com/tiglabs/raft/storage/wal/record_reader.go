@@ -29,7 +29,7 @@ type recordReadAt interface {
 	ReadAt(offset int64) (rec record, err error)
 }
 
-const defaultReadBufferedSize = 4 * 1024
+const defaultReadBufferedSize = 128 * 1024
 
 type bufferedReader struct {
 	r *bufio.Reader

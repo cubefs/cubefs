@@ -24,7 +24,7 @@ import (
 )
 
 const initialBufferSize = 1024 * 32
-const flushTriggerSize = 1024 * 1024
+const flushTriggerSize = 128 * 1024
 
 type recordWriter struct {
 	f      *os.File
@@ -107,8 +107,8 @@ func (w *recordWriter) Sync() error {
 	if err := w.Flush(); err != nil {
 		return err
 	}
-
-	return w.f.Sync()
+	return nil
+	//return w.f.Sync()
 }
 
 // 关闭写

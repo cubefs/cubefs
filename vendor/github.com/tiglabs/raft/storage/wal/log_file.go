@@ -220,7 +220,7 @@ func (lf *logEntryFile) Get(i uint64) (*proto.Entry, error) {
 		return nil, err
 	}
 
-	ent := &proto.Entry{}
+	ent := proto.GetEntryFromPool()
 	ent.Decode(rec.data)
 
 	return ent, nil

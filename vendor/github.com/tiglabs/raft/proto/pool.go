@@ -16,6 +16,7 @@ package proto
 import (
 	"math/rand"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -25,11 +26,8 @@ const (
 
 var (
 	msgPool [MsgPoolCnt]*sync.Pool
-	bytePool = &sync.Pool{
-		New: func() interface{} {
-			return make([]byte, 128)
-		},
-	}
+	bytePool [MsgPoolCnt]*sync.Pool
+	entryPool [MsgPoolCnt]*sync.Pool
 )
 
 func init() {
@@ -42,10 +40,71 @@ func init() {
 				}
 			},
 		}
+		entryPool[index]=&sync.Pool{
+			New: func() interface{}{
+				return &Entry{
+
+				}
+			},
+		}
+		bytePool[index]= &sync.Pool{
+			New: func() interface{} {
+				return make([]byte, 128)
+			},
+		}
 	}
 }
 
 
+func GetEntryFromPool() (e *Entry) {
+	index:=rand.Intn(MsgPoolCnt)
+	e = entryPool[index].Get().(*Entry)
+	return e
+}
+
+func GetEntryFromPoolWithFollower() (e *Entry) {
+	e=GetEntryFromPool()
+	e.OrgRefCnt=FollowerLogEntryRefCnt
+	atomic.StoreInt32(&e.RefCnt,FollowerLogEntryRefCnt)
+	atomic.AddUint64(&FollowerGetEntryCnt,1)
+	return e
+}
+
+func GetEntryFromPoolWithArgWithLeader(t EntryType,term,index uint64,data []byte) (e *Entry) {
+	e=GetEntryFromPool()
+	e.Type=t
+	e.Data=data
+	e.Term=term
+	e.Index=index
+	e.ctx=nil
+	e.OrgRefCnt=LeaderLogEntryRefCnt
+	atomic.StoreInt32(&e.RefCnt,LeaderLogEntryRefCnt)
+	atomic.AddUint64(&LeaderGetEntryCnt,1)
+
+	return
+}
+
+func PutEntryToPool(e *Entry) {
+	if e.IsLeaderLogEntry() || e.IsFollowerLogEntry() {
+		e.DecRefCnt()
+		if atomic.LoadInt32(&e.RefCnt) == 0 {
+			rindex := rand.Intn(MsgPoolCnt)
+			e.Data = nil
+			e.Type = 0
+			e.Term = 0
+			if e.IsLeaderLogEntry(){
+				atomic.AddUint64(&LeaderPutEntryCnt, 1)
+			}else {
+				atomic.AddUint64(&FollowerPutEntryCnt, 1)
+			}
+			e.Index = 0
+			e.OrgRefCnt = 0
+			e.RefCnt = 0
+			entryPool[rindex].Put(e)
+		}
+	}
+
+}
 
 func GetMessage() *Message {
 	index:=rand.Intn(MsgPoolCnt)
@@ -78,9 +137,9 @@ func ReturnMessage(msg *Message) {
 }
 
 func getByteSlice() []byte {
-	return bytePool.Get().([]byte)
+	return bytePool[rand.Intn(MsgPoolCnt)].Get().([]byte)
 }
 
 func returnByteSlice(b []byte) {
-	bytePool.Put(b)
+	bytePool[rand.Intn(MsgPoolCnt)].Put(b)
 }

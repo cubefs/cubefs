@@ -174,7 +174,7 @@ func (l *raftLog) append(ents ...*proto.Entry) uint64 {
 		logger.Error(errMsg)
 		panic(AppPanicError(errMsg))
 	}
-	l.unstable.truncateAndAppend(ents)
+	l.unstable.truncateAndAppend(ents,false)
 	return l.lastIndex()
 }
 
@@ -190,8 +190,12 @@ func (l *raftLog) persist() (err error) {
 		if err = l.storage.StoreEntries(entries); err != nil {
 			return
 		}
-		l.cache.truncateAndAppend(entries)
+		for _,e:=range entries{
+			proto.PutEntryToPool(e)
+		}
+		l.cache.truncateAndAppend(entries, true)
 		l.stableTo(entries[len(entries)-1].Index, entries[len(entries)-1].Term)
+
 	}
 	return
 }
@@ -249,11 +253,11 @@ func (l *raftLog) appliedTo(i uint64) {
 	l.applied = i
 
 	if term, err := l.term(i); err == nil {
-		l.cache.stableTo(i, term)
+		l.cache.stableTo(i, term,true)
 	}
 }
 
-func (l *raftLog) stableTo(i, t uint64) { l.unstable.stableTo(i, t) }
+func (l *raftLog) stableTo(i, t uint64) { l.unstable.stableTo(i, t,false) }
 
 func (l *raftLog) isUpToDate(lasti, term uint64, fpri, lpri uint16) bool {
 	li, lt := l.lastIndexAndTerm()
