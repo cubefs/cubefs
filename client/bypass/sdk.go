@@ -103,13 +103,17 @@ const (
 )
 
 const (
-	normalExtentSize      = 32 * 1024 * 1024
-	defaultBlkSize        = uint32(1) << 12
-	maxFdNum         uint = 1024000
-	moduleName            = "kbpclient"
-	redologPrefix         = "ib_logfile"
-	binlogPrefix          = "mysql-bin"
-	appMysql8             = "mysql_8"
+	normalExtentSize       = 32 * 1024 * 1024
+	defaultBlkSize         = uint32(1) << 12
+	maxFdNum          uint = 1024000
+	moduleName             = "kbpclient"
+	redologPrefix          = "ib_logfile"
+	binlogPrefix           = "mysql-bin"
+	relayBinlogPrefix      = "relay-bin"
+	masterInfo             = "master.info"
+	relayLogInfo           = "relay-log.info"
+	appMysql8              = "mysql_8"
+	appCoralDB             = "coraldb"
 
 	// cache
 	maxInodeCache         = 10000
@@ -461,7 +465,8 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 	f.path = absPath
 
 	if proto.IsRegular(info.Mode) {
-		c.ec.OpenStream(f.ino)
+		appendWriteBuffer := strings.Contains(f.path, relayBinlogPrefix)
+		c.ec.OpenStream(f.ino, appendWriteBuffer)
 		if fuseFlags&uint32(C.O_TRUNC) != 0 {
 			if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
 				c.closeStream(f)
@@ -834,10 +839,11 @@ func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) (r
 //export cfs_flush
 func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 	var (
-		c    *client
-		path string
-		ino  uint64
-		err  error
+		c     *client
+		path  string
+		ino   uint64
+		err   error
+		start time.Time
 	)
 	defer func() {
 		if r := recover(); r != nil || re < 0 {
@@ -850,11 +856,12 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 		} else {
 			if log.IsDebugEnabled() {
 				msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) re(%v) err(%v)", id, fd, path, ino, re, err)
-				log.LogDebugf("cfs_flush: %s", msg)
+				log.LogDebugf("cfs_flush: %s time(%v)", msg, time.Since(start).Microseconds())
 			}
 		}
 	}()
 
+	start = time.Now()
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -2504,6 +2511,7 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 		ino    uint64
 		err    error
 		offset int
+		start  time.Time
 	)
 	defer func() {
 		if r := recover(); r != nil || re < 0 {
@@ -2516,11 +2524,12 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 		} else {
 			if log.IsDebugEnabled() {
 				msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, re, err)
-				log.LogDebugf("cfs_read: %s", msg)
+				log.LogDebugf("cfs_read: %s time(%v)", msg, time.Since(start).Microseconds())
 			}
 		}
 	}()
 
+	start = time.Now()
 	c, exist := getClient(int64(id))
 	if !exist {
 		return C.ssize_t(statusEINVAL)
@@ -2639,6 +2648,7 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		err     error
 		offset  int
 		flagBuf bytes.Buffer
+		start   time.Time
 	)
 	defer func() {
 		var fileSize uint64 = 0
@@ -2658,16 +2668,14 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		} else {
 			if log.IsDebugEnabled() {
 				msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) fileSize(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), fileSize, re, err)
-				log.LogDebugf("cfs_write: %s", msg)
+				log.LogDebugf("cfs_write: %s time(%v)", msg, time.Since(start).Microseconds())
 			}
 		}
-	}()
 
 	once.Do(func() {
 		signal.Ignore(syscall.SIGHUP, syscall.SIGTERM)
 	})
-
-	c, exist := getClient(int64(id))
+	start = time.Now()
 	if !exist {
 		return C.ssize_t(statusEINVAL)
 	}
@@ -2702,6 +2710,10 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		if c.app == appMysql8 {
 			overWriteBuffer = true
 		}
+	} else if strings.Contains(f.path, binlogPrefix) {
+		name = "cfs_write_binlog"
+	} else if strings.Contains(f.path, masterInfo) || strings.Contains(f.path, relayLogInfo) {
+		overWriteBuffer = true
 	}
 	tpObject1 := ump.BeforeTP(c.umpFunctionKeyFast(act))
 	tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKeyFast(act))

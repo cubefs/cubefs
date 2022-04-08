@@ -669,7 +669,7 @@ func (s *Streamer) doWrite(ctx context.Context, data []byte, offset, size int, d
 
 			// not use preExtent if once failed
 			if i > 0 || !s.usePreExtentHandler(offset, size) {
-				s.handler = NewExtentHandler(s, offset, storeMode)
+				s.handler = NewExtentHandler(s, offset, storeMode, s.appendWriteBuffer)
 			}
 			s.dirty = false
 		}
@@ -1113,7 +1113,7 @@ func (s *Streamer) usePreExtentHandler(offset, size int) bool {
 		return false
 	}
 
-	s.handler = NewExtentHandler(s, int(preEk.FileOffset), proto.NormalExtentType)
+	s.handler = NewExtentHandler(s, int(preEk.FileOffset), proto.NormalExtentType, false)
 
 	s.handler.dp = dp
 	s.handler.extID = int(preEk.ExtentId)

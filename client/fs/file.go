@@ -126,7 +126,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	ino := f.info.Inode
 	start := time.Now()
 
-	f.super.ec.OpenStream(ino)
+	f.super.ec.OpenStream(ino, false)
 
 	f.super.ec.RefreshExtentsCache(ctx, ino)
 

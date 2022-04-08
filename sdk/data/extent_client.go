@@ -213,12 +213,12 @@ retry:
 }
 
 // Open request shall grab the lock until request is sent to the request channel
-func (client *ExtentClient) OpenStream(inode uint64) error {
+func (client *ExtentClient) OpenStream(inode uint64, appendWriteBuffer bool) error {
 	streamerMapSeg := client.streamerConcurrentMap.GetMapSegment(inode)
 	streamerMapSeg.Lock()
 	s, ok := streamerMapSeg.streamers[inode]
 	if !ok {
-		s = NewStreamer(client, inode, streamerMapSeg)
+		s = NewStreamer(client, inode, streamerMapSeg, appendWriteBuffer)
 		streamerMapSeg.streamers[inode] = s
 	}
 	return s.IssueOpenRequest()
@@ -229,7 +229,7 @@ func (client *ExtentClient) OpenStreamWithSize(inode uint64, size int) (err erro
 	streamerMapSeg.Lock()
 	s, ok := streamerMapSeg.streamers[inode]
 	if !ok {
-		s = NewStreamer(client, inode, streamerMapSeg)
+		s = NewStreamer(client, inode, streamerMapSeg, false)
 		streamerMapSeg.streamers[inode] = s
 	} else if curSize, _ := s.extents.Size(); curSize < size {
 		_ = s.GetExtents(context.Background())
@@ -603,7 +603,7 @@ func (c *ExtentClient) BackgroundExtentMerge() {
 			}
 			for _, inode := range inodes {
 				var finish bool
-				c.OpenStream(inode)
+				c.OpenStream(inode, false)
 				for !finish {
 					finish, _ = c.ExtentMerge(ctx, inode)
 					time.Sleep(time.Duration(c.ExtentMergeSleepMs) * time.Millisecond)
