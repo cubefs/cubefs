@@ -113,6 +113,7 @@ const (
 func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optCapacity uint64
 	var optCrossZone string
+	var optNormalZonesFirst string
 	var optBusiness string
 	var optMPCount int
 	var optReplicaNum int
@@ -145,6 +146,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			}()
 			crossZone, _ :=strconv.ParseBool(optCrossZone)
 			followerRead, _ :=strconv.ParseBool(optFollowerRead)
+			normalZonesFirst, _ :=strconv.ParseBool(optNormalZonesFirst)
 			// ask user for confirm
 			if !optYes {
 				stdout("Create a new volume:\n")
@@ -152,6 +154,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  Owner               : %v\n", userID)
 				stdout("  capacity            : %v G\n", optCapacity)
 				stdout("  crossZone           : %v\n", crossZone)
+				stdout("  normalZonesFirst    : %v\n", normalZonesFirst)
 				stdout("  description         : %v\n", optBusiness)
 				stdout("  mpCount             : %v\n", optMPCount)
 				stdout("  replicaNum          : %v\n", optReplicaNum)
@@ -178,7 +181,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			}
 
 			err = client.AdminAPI().CreateVolName(
-				volumeName, userID, optCapacity, crossZone, optBusiness,
+				volumeName, userID, optCapacity, crossZone, normalZonesFirst, optBusiness,
 				optMPCount, optReplicaNum, optSize, optVolType, followerRead,
 				optZoneName, optCacheRuleKey, optEbsBlkSize, optCacheCap,
 				optCacheAction, optCacheThreshold, optCacheTTL, optCacheHighWater,
@@ -192,13 +195,14 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().Uint64Var(&optCapacity, CliFlagCapacity, cmdVolDefaultCapacity, "Specify volume capacity")
-	cmd.Flags().StringVar(&optCrossZone, CliFlagCrossZone, cmdVolDefaultCrossZone, "Disable cross zone (default false)")
-	cmd.Flags().StringVar(&optBusiness, CliFlagBusiness, cmdVolDefaultBusiness, "Business")
+	cmd.Flags().StringVar(&optCrossZone, CliFlagCrossZone, cmdVolDefaultCrossZone, "Disable cross zone")
+	cmd.Flags().StringVar(&optNormalZonesFirst, CliNormalZonesFirst, cmdVolDefaultCrossZone, "Write to normal zone first")
+	cmd.Flags().StringVar(&optBusiness, CliFlagBusiness, cmdVolDefaultBusiness, "Description")
 	cmd.Flags().IntVar(&optMPCount, CliFlagMPCount, cmdVolDefaultMPCount, "Specify init meta partition count")
 	cmd.Flags().IntVar(&optReplicaNum, CliFlagReplicaNum, cmdVolDefaultReplicaNum, "Specify data partition replicas number")
 	cmd.Flags().IntVar(&optSize, CliFlagSize, cmdVolDefaultSize, "Specify data partition size[Unit: GB]")
 	cmd.Flags().IntVar(&optVolType, CliFlagVolType, cmdVolDefaultVolType, "Type of volume (default 0)")
-	cmd.Flags().StringVar(&optFollowerRead, CliFlagFollowerRead, cmdVolDefaultFollowerRead, "Enable read form replica follower(default true)")
+	cmd.Flags().StringVar(&optFollowerRead, CliFlagFollowerRead, cmdVolDefaultFollowerRead, "Enable read form replica follower")
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, cmdVolDefaultZoneName, "Specify volume zone name")
 	cmd.Flags().StringVar(&optCacheRuleKey, CliFlagCacheRuleKey, cmdVolDefaultCacheRuleKey, "Anything that match this field will be written to the cache")
 	cmd.Flags().IntVar(&optEbsBlkSize, CliFlagEbsBlkSize, cmdVolDefaultEbsBlkSize, "Specify ebsBlk Size[Unit: byte]")

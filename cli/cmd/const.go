@@ -63,7 +63,7 @@ const (
 	CliFlagEnableFollowerRead = "follower-read"
 	CliFlagAuthenticate       = "authenticate"
 	CliFlagCapacity           = "capacity"
-	CliFlagBusiness           = "business"
+	CliFlagBusiness           = "description"
 	CliFlagMPCount            = "mp-count"
 	CliFlagReplicaNum         = "replica-num"
 	CliFlagSize               = "size"
@@ -93,6 +93,7 @@ const (
 	CliFlagLoadFactor      	  = "loadFactor"
 	CliFlagMarkDelRate        = "markDeleteRate"
 	CliFlagCrossZone          = "crossZone"
+	CliNormalZonesFirst         = "normalZonesFirst"
 	CliFlagCount          		= "count"
 
 	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
