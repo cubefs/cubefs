@@ -28,6 +28,7 @@ import (
 
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/buf"
+	"github.com/cubefs/cubefs/util/exporter"
 )
 
 var (
@@ -567,10 +568,17 @@ func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 	if n != util.PacketHeaderSize {
 		return syscall.EBADMSG
 	}
+	opcode := p.Opcode
+	reqid := p.ReqID
 	if err = p.UnmarshalHeader(header); err != nil {
 		return
 	}
-
+	if opcode != 0 && reqid != 0 && (opcode != p.Opcode || reqid != p.ReqID) {
+		msg := fmt.Sprintf("[ReadFromConn] illegal response packet, request [op: %v, reqid: %v], response [%v]", opcode, reqid, p)
+		err = errors.New(msg)
+		exporter.Warning(msg)
+		return err
+	}
 	if p.ArgLen > 0 {
 		p.Arg = make([]byte, int(p.ArgLen))
 		if _, err = io.ReadFull(c, p.Arg[:int(p.ArgLen)]); err != nil {

@@ -209,6 +209,8 @@ func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uin
 		return
 	}
 	reply := new(repl.Packet)
+	reply.Opcode = p.Opcode
+	reply.ReqID = p.ReqID
 	err = reply.ReadFromConn(conn, proto.GetAllWatermarksDeadLineTime) // read the response
 	if err != nil {
 		err = errors.Trace(err, "getRemoteExtentInfo DataPartition(%v) read from host(%v)", dp.partitionID, target)
@@ -539,6 +541,8 @@ repairMore:
 			break
 		}
 		reply := repl.NewPacket()
+		reply.Opcode = request.Opcode
+		reply.ReqID = request.ReqID
 
 		// read 64k streaming repair packet
 		if err = reply.ReadFromConn(conn, 60); err != nil {
