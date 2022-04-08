@@ -26,6 +26,7 @@ import (
 const (
 	cmdDataNodeShort = "Manage data nodes"
 	cmdDataNodeMigrateInfoShort = "Migrate partitions from a data node to the other node"
+	dpMigrateMax = 50
 )
 
 func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
@@ -122,7 +123,7 @@ func newDataNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
-	var optCount string
+	var optCount int
 	var cmd = &cobra.Command{
 		Use:   CliOpDecommission + " [{HOST}:{PORT}]",
 		Short: cmdDataNodeDecommissionInfoShort,
@@ -136,6 +137,10 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}()
 			nodeAddr = args[0]
+			if optCount < 0 {
+				stdout("Migrate dp count should >= 0\n")
+				return
+			}
 			if err = client.NodeAPI().DataNodeDecommission(nodeAddr, optCount); err != nil {
 				return
 			}
@@ -149,12 +154,12 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
-	cmd.Flags().StringVar(&optCount, CliFlagCount, "", "DataNode delete mp count")
+	cmd.Flags().IntVar(&optCount, CliFlagCount, 0, "DataNode delete mp count")
 	return cmd
 }
 
 func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
-	var optCount string
+	var optCount int
 	var cmd = &cobra.Command{
 		Use:   CliOpMigrate + " src[{HOST}:{PORT}] dst[{HOST}:{PORT}]",
 		Short: cmdDataNodeMigrateInfoShort,
@@ -169,6 +174,11 @@ func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 			}()
 			src = args[0]
 			dst = args[1]
+			if optCount > dpMigrateMax || optCount <= 0{
+				stdout("Migrate dp count should between [1-50]\n")
+				return
+			}
+
 			if err = client.NodeAPI().DataNodeMigrate(src, dst, optCount); err != nil {
 				return
 			}
@@ -182,6 +192,6 @@ func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
-	cmd.Flags().StringVar(&optCount, CliFlagCount, "", "Migrate dp count")
+	cmd.Flags().IntVar(&optCount, CliFlagCount, dpMigrateMax, "Migrate dp count,default 15")
 	return cmd
 }

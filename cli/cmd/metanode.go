@@ -26,6 +26,7 @@ import (
 const (
 	cmdMetaNodeUse   = "metanode [COMMAND]"
 	cmdMetaNodeShort = "Manage meta nodes"
+	mpMigrateMax = 15
 )
 
 func newMetaNodeCmd(client *master.MasterClient) *cobra.Command {
@@ -122,7 +123,7 @@ func newMetaNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
-	var optCount string
+	var optCount int
 	var cmd = &cobra.Command{
 		Use:   CliOpDecommission + " [{HOST}:{PORT}]",
 		Short: cmdMetaNodeDecommissionInfoShort,
@@ -136,6 +137,10 @@ func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}()
 			nodeAddr = args[0]
+			if optCount < 0 {
+				stdout("Migrate mp count should >= 0\n")
+				return
+			}
 			if err = client.NodeAPI().MetaNodeDecommission(nodeAddr, optCount); err != nil {
 				return
 			}
@@ -149,11 +154,11 @@ func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
-	cmd.Flags().StringVar(&optCount, CliFlagCount, "", "MetaNode delete mp count")
+	cmd.Flags().IntVar(&optCount, CliFlagCount, 0, "MetaNode delete mp count")
 	return cmd
 }
 func newMetaNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
-	var optCount string
+	var optCount int
 	var cmd = &cobra.Command{
 		Use:   CliOpMigrate + " src[{HOST}:{PORT}] dst[{HOST}:{PORT}]",
 		Short: cmdMetaNodeMigrateInfoShort,
@@ -168,6 +173,10 @@ func newMetaNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 			}()
 			src = args[0]
 			dst = args[1]
+			if optCount > mpMigrateMax || optCount <= 0{
+				stdout("Migrate mp count should between [1-15]\n")
+				return
+			}
 			if err = client.NodeAPI().MetaNodeMigrate(src, dst, optCount); err != nil {
 				return
 			}
@@ -181,6 +190,6 @@ func newMetaNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
-	cmd.Flags().StringVar(&optCount, CliFlagCount, "", "Migrate mp count")
+	cmd.Flags().IntVar(&optCount, CliFlagCount, mpMigrateMax, "Migrate mp count")
 	return cmd
 }
