@@ -1131,13 +1131,12 @@ func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 func (m *Server) migrateDataNodeHandler(w http.ResponseWriter, r *http.Request) {
 	srcAddr, targetAddr, limit, err := parseMigrateNodeParam(r)
 	if err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
 	if limit > defaultMigrateDpCnt {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError,
-			Msg: fmt.Sprintf("limit %d can't be bigger than %d", limit, defaultMigrateDpCnt)})
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("limit %d can't be bigger than %d", limit, defaultMigrateDpCnt)))
 		return
 	}
 
@@ -1155,13 +1154,13 @@ func (m *Server) migrateDataNodeHandler(w http.ResponseWriter, r *http.Request) 
 
 	if srcNode.NodeSetID != targetNode.NodeSetID {
 		err = fmt.Errorf("src %s and target %s must exist in the same nodeSet when migrate", srcAddr, targetAddr)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
 	if !targetNode.isWriteAble() {
 		err = fmt.Errorf("[%s] is not writable, can't used as target addr for migrate", targetAddr)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
@@ -2124,13 +2123,13 @@ func parseReqToDecoDisk(r *http.Request) (nodeAddr, diskPath string, limit int, 
 func (m *Server) migrateMetaNodeHandler(w http.ResponseWriter, r *http.Request) {
 	srcAddr, targetAddr, limit, err := parseMigrateNodeParam(r)
 	if err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
 	if limit > defaultMigrateMpCnt {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError,
-			Msg: fmt.Sprintf("limit %d can't be bigger than %d", limit, defaultMigrateMpCnt)})
+		err = fmt.Errorf("limit %d can't be bigger than %d", limit, defaultMigrateMpCnt)
+		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
@@ -2148,13 +2147,13 @@ func (m *Server) migrateMetaNodeHandler(w http.ResponseWriter, r *http.Request) 
 
 	if srcNode.NodeSetID != targetNode.NodeSetID {
 		err = fmt.Errorf("src %s and target %s must exist in the same nodeSet when migrate", srcAddr, targetAddr)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeMetaNodeNotExists, Msg: err.Error()})
+		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
 	if !targetNode.isWritable() {
 		err = fmt.Errorf("[%s] is not writable, can't used as target addr for migrate", targetAddr)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
