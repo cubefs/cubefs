@@ -5,6 +5,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/repl"
 	"net"
+	"sync"
 )
 
 type MockHost struct {
@@ -13,6 +14,9 @@ type MockHost struct {
 	ln      net.Listener
 	listen  int
 	stopCh  chan struct{}
+
+	protocols   map[int64]*repl.ReplProtocol
+	protocolsMu sync.Mutex
 }
 
 func (m *MockHost) ID() int {
@@ -39,13 +43,22 @@ func (m *MockHost) serveAccept() {
 }
 
 func (m *MockHost) serveConn(conn net.Conn) {
-	var err error
+
+	var protocol *repl.ReplProtocol = nil
+	protocol = repl.NewReplProtocol(conn.(*net.TCPConn), m.prepare, m.operator, m.post)
+	select {
+	case <- m.stopCh:
+		return
+	default:
+	}
+	m.protocolsMu.Lock()
+	m.protocols[protocol.GetID()] = protocol
+	m.protocolsMu.Unlock()
 	defer func() {
-		if err != nil {
-			_ = conn.Close()
-		}
+		m.protocolsMu.Lock()
+		delete(m.protocols, protocol.GetID())
+		m.protocolsMu.Unlock()
 	}()
-	var protocol = repl.NewReplProtocol(conn.(*net.TCPConn), m.prepare, m.operator, m.post)
 	protocol.ServerConn()
 }
 
@@ -82,6 +95,11 @@ func (m *MockHost) Stop() {
 	if m.ln != nil {
 		_ = m.ln.Close()
 	}
+	m.protocolsMu.Lock()
+	for _, protocol := range m.protocols {
+		protocol.Stop(nil)
+	}
+	m.protocolsMu.Unlock()
 }
 
 func NewMockHost(id, listen int, records MockHostRecords) *MockHost {
@@ -90,5 +108,7 @@ func NewMockHost(id, listen int, records MockHostRecords) *MockHost {
 		listen:  listen,
 		records: records,
 		stopCh:  make(chan struct{}),
+
+		protocols: make(map[int64]*repl.ReplProtocol),
 	}
 }

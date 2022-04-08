@@ -17,8 +17,6 @@ package log
 // These tests are too simple.
 
 import (
-	"net/http"
-	_ "net/http/pprof"
 	"os"
 	"path"
 	"testing"
@@ -26,9 +24,6 @@ import (
 )
 
 func TestLog(t *testing.T) {
-	go func() {
-		http.ListenAndServe(":10000", nil)
-	}()
 
 	dir := path.Join("/tmp/cfs", "cfs")
 	_, err := os.Stat(dir)

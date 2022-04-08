@@ -323,6 +323,10 @@ const (
 	ReplProtocalThreadExit   = -1
 )
 
+func (rp *ReplProtocol) GetID() int64 {
+	return rp.replId
+}
+
 // ServerConn keeps reading data from the socket to analyze the follower address, execute the prepare function,
 // and throw the packets to the to-be-processed channel.
 func (rp *ReplProtocol) ServerConn() {
