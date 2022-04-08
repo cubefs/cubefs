@@ -47,12 +47,21 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		}
 	)
 	resp.ProfPort = m.metaNode.profPort
+	disks := m.metaNode.getDiskStat()
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
 		resp.Status = proto.TaskFailed
 		resp.Result = err.Error()
 		goto end
+	}
+
+	for _, disk := range disks {
+		if disk.GetStatus() != util.ReadWrite {
+			resp.Status = proto.TaskFailed
+			resp.Result = fmt.Sprintf("disk :%s status is not read write", disk.Path)
+			goto end
+		}
 	}
 
 	// collect memory info
@@ -84,22 +93,24 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			ApplyId:         partition.GetAppliedID(),
 		}
 		addr, isLeader := partition.IsLeader()
-		if addr == "" {
+		if addr == "" || partition.IsRaftHang(){
 			mpr.Status = proto.Unavailable
-		}
-		mpr.IsLeader = isLeader
-		if mConf.Cursor >= mConf.End {
-			mpr.Status = proto.ReadOnly
-		}
-		if resp.Used > uint64(float64(resp.Total)*MaxUsedMemFactor) {
-			mpr.Status = proto.ReadOnly
+		} else {
+			mpr.IsLeader = isLeader
+			if mConf.Cursor >= mConf.End {
+				mpr.Status = proto.ReadOnly
+			}
+			if resp.Used > uint64(float64(resp.Total)*MaxUsedMemFactor) {
+				mpr.Status = proto.ReadOnly
+			}
+
+			FsCapInfo := m.metaNode.getSingleDiskStat(mConf.RocksDBDir)
+
+			if FsCapInfo.Used > FsCapInfo.Total * MAXFsUsedFactor {
+				mpr.Status = proto.ReadOnly
+			}
 		}
 
-		FsCapInfo := m.metaNode.getSingleDiskStat(mConf.RocksDBDir)
-
-		if FsCapInfo.Used > FsCapInfo.Total * MAXFsUsedFactor {
-			mpr.Status = proto.ReadOnly
-		}
 		resp.MetaPartitionReports = append(resp.MetaPartitionReports, mpr)
 		return true
 	})

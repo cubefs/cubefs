@@ -82,7 +82,6 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/resetPeer", m.resetPeer)
 	http.HandleFunc("/removePeer", m.removePeerInRaftLog)
 	http.HandleFunc("/getAllDeleteExtents", m.getAllDeleteEkHandler)
-
 	return
 }
 
@@ -731,11 +730,13 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 			UsedGB        float64 `json:"usedGB"`
 			UsedRatio     float64 `json:"usedRatio"`
 			ReservedSpace uint    `json:"reservedSpaceGB"`
+			Status        int8    `json:"status"`
 		}{
 			Path:      disk.Path,
-			TotalTB:   util.FixedPoint(disk.Total/util.TB, 1),
-			UsedGB:    util.FixedPoint(disk.Used/util.GB, 1),
-			UsedRatio: util.FixedPoint(disk.Used/disk.Total, 1),
+			TotalTB:   util.FixedPoint(disk.Total / util.TB, 1),
+			UsedGB:    util.FixedPoint(disk.Used / util.GB, 1),
+			UsedRatio: util.FixedPoint(disk.Used / disk.Total, 1),
+			Status:    disk.GetStatus(),
 		}
 		diskList = append(diskList, diskInfo)
 	}

@@ -894,6 +894,8 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 		conn.(*net.TCPConn).SetLinger(0)
 		conn.Close()
 	}
+	//reset last submit
+	atomic.StoreInt64(&mp.lastSubmit, 0)
 	if mp.config.NodeId != leader {
 		mp.storeChan <- &storeMsg{
 			command: stopStoreTick,
@@ -929,14 +931,19 @@ func (mp *metaPartition) submit(ctx context.Context, op uint32, from string, dat
 	snap.Timestamp = time.Now().UnixNano() / 1000
 	snap.TrashEnable = false
 
+	// only record the first time
+	atomic.CompareAndSwapInt64(&mp.lastSubmit, 0, time.Now().Unix())
+
 	cmd, err := snap.MarshalJson()
 	if err != nil {
+		atomic.StoreInt64(&mp.lastSubmit, 0)
 		return
 	}
 
 	// submit to the raft store
 	resp, err = mp.raftPartition.SubmitWithCtx(ctx, cmd)
 
+	atomic.StoreInt64(&mp.lastSubmit, 0)
 	return
 }
 

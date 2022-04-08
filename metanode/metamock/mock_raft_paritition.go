@@ -97,4 +97,3 @@ func (m MockPartition) TryToLeader(nodeID uint64) error {
 func (m MockPartition) IsOfflinePeer() bool {
 	panic("implement me")
 }
-

@@ -234,3 +234,9 @@ const (
 const (
 	maximumApplyIdDifference = 1000
 )
+
+const (
+	RaftHangTimeOut       = 60
+	ProxyTryToLeaderRetryCnt = 3
+)
+

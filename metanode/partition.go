@@ -229,6 +229,7 @@ type OpPartition interface {
 	IsEquareCreateMetaPartitionRequst(request *proto.CreateMetaPartitionRequest) (err error)
 	GetSnapShot() (snap Snapshot)
 	ReleaseSnapShot(snap Snapshot)
+	IsRaftHang() bool
 }
 
 // MetaPartition defines the interface for the meta partition operations.
@@ -273,6 +274,7 @@ type metaPartition struct {
 	db                          *RocksDbInfo
 	addBatchKey                 []byte
 	delBatchKey                 []byte
+	lastSubmit     int64
 }
 
 // Start starts a meta partition.
@@ -1294,4 +1296,12 @@ func (mp *metaPartition) GetSnapShot() Snapshot {
 
 func (mp *metaPartition) ReleaseSnapShot(snap Snapshot) {
 	snap.Close()
+}
+
+func (mp *metaPartition) IsRaftHang() bool {
+	last := atomic.LoadInt64(&mp.lastSubmit)
+	if last == 0 || time.Now().Unix() - last < RaftHangTimeOut{
+		return false
+	}
+	return true
 }

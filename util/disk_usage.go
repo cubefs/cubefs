@@ -6,8 +6,19 @@ import (
 	"github.com/shirou/gopsutil/disk"
 	"io/ioutil"
 	"math"
-	"syscall"
+	"os"
+	"path"
+	"strings"
+	"sync"
 	_ "sync"
+	"syscall"
+	"time"
+)
+
+const (
+	ReadOnly    = 1
+	ReadWrite   = 2
+	Unavailable = -1
 )
 
 type diskScore struct {
@@ -17,11 +28,19 @@ type diskScore struct {
 	score        float64
 }
 
+const (
+	DiskStatusFile = ".diskStatus"
+	DiskHangCnt    = 2
+)
+
 type FsCapMon struct {
-	Path      string
-	Total     float64
-	Used      float64
-	Available float64
+	sync.RWMutex
+	Path       string
+	Total      float64
+	Used       float64
+	Available  float64
+	Status     int8
+	lastUpdate time.Time
 }
 
 func GetDiskTotal(path string) (total uint64, err error) {
@@ -41,7 +60,15 @@ func NewFsMon(path string) (d *FsCapMon) {
 	d = new(FsCapMon)
 	d.Path = path
 	d.ComputeUsage()
+	d.Status = ReadWrite
+	d.lastUpdate = time.Now()
 	return
+}
+
+func (d *FsCapMon) GetStatus() int8 {
+	d.RLock()
+	defer d.RUnlock()
+	return d.Status
 }
 
 // Compute the disk usage
@@ -58,6 +85,79 @@ func (d *FsCapMon) ComputeUsage() (err error) {
 	log.LogDebugf("action[computeUsage] disk(%v) all(%v) available(%v) used(%v)", d.Path, d.Total, d.Available, d.Used)
 
 	return
+}
+
+func (d *FsCapMon) isDiskErr(errMsg string) bool {
+	if strings.Contains(errMsg, syscall.EIO.Error()) || strings.Contains(errMsg, syscall.EROFS.Error()) || strings.Contains(errMsg, "write disk hang") {
+		return true
+	}
+
+	return false
+}
+
+func (d *FsCapMon) TriggerDiskError(err error) {
+	if err == nil {
+		return
+	}
+	if d.isDiskErr(err.Error()) {
+		d.Status = Unavailable
+	}
+
+	return
+}
+
+func (d *FsCapMon) cleanDiskError() {
+	log.LogWarnf("clean disk(%s) status:%d--->%d", d.Path, d.Status, ReadWrite)
+	d.Status = ReadWrite
+}
+
+func (d *FsCapMon) updateCheckTick() {
+	d.RLock()
+	defer d.RUnlock()
+
+	if d.Status == ReadWrite {
+		d.lastUpdate = time.Now()
+	}
+}
+
+func (d *FsCapMon) UpdateDiskTick() {
+	var err error
+	var fp *os.File
+	defer func() {
+		if err != nil {
+			d.TriggerDiskError(err)
+		}
+	}()
+
+	path := path.Join(d.Path, DiskStatusFile)
+	fp, err = os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0755)
+	if err != nil {
+		return
+	}
+	defer fp.Close()
+	data := []byte(DiskStatusFile)
+	_, err = fp.WriteAt(data, 0)
+	if err != nil {
+		return
+	}
+	if err = fp.Sync(); err != nil {
+		return
+	}
+	if _, err = fp.ReadAt(data, 0); err != nil {
+		return
+	}
+	d.updateCheckTick()
+	return
+}
+
+func (d *FsCapMon) CheckDiskStatus(interval time.Duration) {
+	d.RLock()
+	defer d.RUnlock()
+	timeOutCnt := time.Since(d.lastUpdate) / interval
+	// twice not update, will set unavailable, and alarm
+	if timeOutCnt > DiskHangCnt {
+		d.TriggerDiskError(fmt.Errorf("write disk hang, last update:%v, now:%v, cnt:%d", d.lastUpdate, time.Now(), timeOutCnt))
+	}
 }
 
 

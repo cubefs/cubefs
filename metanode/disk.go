@@ -18,16 +18,30 @@ import (
 	"github.com/chubaofs/chubaofs/util"
 	"os"
 	"time"
-
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
-// Disk represents the structure of the disk
+const (
+	UpdateDiskSpaceInterval = 10 * time.Second
+	CheckDiskStatusInterval = 1 * time.Minute
+
+)
+
+// Compute the disk usage
+
+//
+//msg := fmt.Sprintf("disk path %v error(%s) on %v", d.Path, err.Error(), d.nodeInfo.localAddr)
+//exporter.Warning(msg)
+//log.LogErrorf(msg)
+
+
 func (m *MetaNode) startScheduleToUpdateSpaceInfo() {
 	go func() {
-		updateSpaceInfoTicker := time.NewTicker(10 * time.Second)
+		updateSpaceInfoTicker := time.NewTicker(UpdateDiskSpaceInterval)
+		checkStatusTicker     := time.NewTicker(CheckDiskStatusInterval)
 		defer func() {
 			updateSpaceInfoTicker.Stop()
+			checkStatusTicker.Stop()
 		}()
 		for {
 			select {
@@ -35,13 +49,43 @@ func (m *MetaNode) startScheduleToUpdateSpaceInfo() {
 				log.LogInfof("[MetaNode]stop disk stat  \n")
 				return
 			case <-updateSpaceInfoTicker.C:
+
 				for _, d := range m.disks {
 					d.ComputeUsage()
 				}
+
+				break
+			case <-checkStatusTicker.C:
+				for _, d := range m.disks {
+					d.UpdateDiskTick()
+				}
+				break
 			}
 		}
 	}()
 }
+
+func (m *MetaNode) startScheduleToCheckDiskStatus() {
+	go func() {
+		checkStatusTicker     := time.NewTicker(CheckDiskStatusInterval)
+		defer func() {
+			checkStatusTicker.Stop()
+		}()
+		for {
+			select {
+			case <-m.diskStopCh:
+				log.LogInfof("[MetaNode]stop disk stat  \n")
+				return
+			case <-checkStatusTicker.C:
+				for _, d := range m.disks {
+					d.CheckDiskStatus(CheckDiskStatusInterval)
+				}
+				break
+			}
+		}
+	}()
+}
+
 
 func (m *MetaNode) addDisk(path string) *util.FsCapMon {
 	//add disk when node start, can not add
@@ -67,18 +111,20 @@ func (m *MetaNode) addDisk(path string) *util.FsCapMon {
 	return disk
 }
 
-func (m *MetaNode) startDiskStat() error {
+func (m *MetaNode) startDiskStat() error{
 	m.disks = make(map[string]*util.FsCapMon)
-	m.diskStopCh = make(chan struct {})
+	m.diskStopCh = make(chan struct{})
 	m.addDisk(m.metadataDir)
 	m.addDisk(m.raftDir)
-	for _, rocksDir := range m.rocksDirs {
+	for _, rocksDir := range m.rocksDirs{
 		m.addDisk(rocksDir)
 	}
 
 	m.startScheduleToUpdateSpaceInfo()
+	m.startScheduleToCheckDiskStatus()
 	return nil
 }
+
 
 func (m *MetaNode) stopDiskStat() {
 	close(m.diskStopCh)
@@ -89,7 +135,6 @@ func (m *MetaNode) getDiskStat() []*util.FsCapMon {
 	for _, d := range m.disks {
 		ds = append(ds, d)
 	}
-
 	return ds
 }
 
