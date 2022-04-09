@@ -62,11 +62,14 @@ type Streamer struct {
 	tinySize   int
 	extentSize int
 
+	readAhead    bool
+	extentReader *ExtentReader
+
 	writeLock sync.Mutex
 }
 
 // NewStreamer returns a new streamer.
-func NewStreamer(client *ExtentClient, inode uint64, streamMap *ConcurrentStreamerMapSegment, appendWriteBuffer bool) *Streamer {
+func NewStreamer(client *ExtentClient, inode uint64, streamMap *ConcurrentStreamerMapSegment, appendWriteBuffer bool, readAhead bool) *Streamer {
 	s := new(Streamer)
 	s.client = client
 	s.inode = inode
@@ -78,6 +81,7 @@ func NewStreamer(client *ExtentClient, inode uint64, streamMap *ConcurrentStream
 	s.extentSize = client.extentSize
 	s.streamerMap = streamMap
 	s.appendWriteBuffer = appendWriteBuffer
+	s.readAhead = readAhead
 	go s.server()
 	return s
 }
@@ -98,11 +102,18 @@ func (s *Streamer) GetExtents(ctx context.Context) error {
 // GetExtentReader returns the extent reader.
 // TODO: use memory pool
 func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
+	if s.readAhead && s.extentReader != nil && s.extentReader.key.Equal(ek) {
+		return s.extentReader, nil
+	}
+
 	partition, err := s.client.dataWrapper.GetDataPartition(ek.PartitionId)
 	if err != nil {
 		return nil, err
 	}
-	reader := NewExtentReader(s.inode, ek, partition, s.client.dataWrapper.FollowerRead())
+	reader := NewExtentReader(s.inode, ek, partition, s.client.dataWrapper.FollowerRead(), s.readAhead)
+	if s.readAhead {
+		s.extentReader = reader
+	}
 	return reader, nil
 }
 

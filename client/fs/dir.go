@@ -101,7 +101,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 
 	d.super.ic.Put(info)
 	child := NewFile(d.super, info)
-	d.super.ec.OpenStream(info.Inode, false)
+	d.super.ec.OpenStream(info.Inode, false, false)
 
 	if d.super.keepCache {
 		resp.Flags |= fuse.OpenKeepCache
