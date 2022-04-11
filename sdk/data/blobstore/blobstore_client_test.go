@@ -277,7 +277,7 @@ func TestEbsClient_Write_Read(t *testing.T) {
 	for _, tc := range testCases {
 		data := make([]byte, tc.size)
 		ctx := context.Background()
-		location, err := blobStoreClient.Write(ctx, "testVol", data)
+		location, err := blobStoreClient.Write(ctx, "testVol", data, uint32(tc.size))
 		require.Exactly(t, nil, err)
 
 		//read prepare

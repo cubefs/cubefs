@@ -29,6 +29,7 @@ import (
 	"github.com/cubefs/cubefs/sdk/data/stream"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/hashicorp/consul/api"
+	"github.com/cubefs/cubefs/util/buf"
 )
 
 var (
@@ -67,6 +68,7 @@ func init() {
 		FileSize:        0,
 		CacheThreshold:  0,
 	}
+	buf.InitCachePool(8388608)
 	writer = NewWriter(config)
 }
 
@@ -337,6 +339,8 @@ func TestBufferWrite(t *testing.T) {
 		panic(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))
 	}
 	writer.mw = mw
+	writer.blockSize = 8388608
+	writer.buf = buf.CachePool.Get()
 
 	writer.doBufferWrite(ctx, data, offset)
 }
@@ -344,7 +348,7 @@ func TestBufferWrite(t *testing.T) {
 func TestWriteSlice(t *testing.T) {
 	testCase := []struct {
 		wg           bool
-		ebsWriteFunc func(*BlobStoreClient, context.Context, string, []byte) (access.Location, error)
+		ebsWriteFunc func(*BlobStoreClient, context.Context, string, []byte, uint32) (access.Location, error)
 		expectError  error
 	}{
 		{false, MockEbscWriteTrue, nil},
@@ -385,7 +389,7 @@ func TestWriteSlice(t *testing.T) {
 	}
 }
 
-func MockEbscWriteTrue(ebs *BlobStoreClient, ctx context.Context, volName string, data []byte) (location access.Location, err error) {
+func MockEbscWriteTrue(ebs *BlobStoreClient, ctx context.Context, volName string, data []byte, l uint32) (location access.Location, err error) {
 	loc := access.Location{
 		ClusterID: 1,
 		CodeMode:  0,
@@ -403,7 +407,7 @@ func MockEbscWriteTrue(ebs *BlobStoreClient, ctx context.Context, volName string
 	return loc, nil
 }
 
-func MockEbscWriteFalse(ebs *BlobStoreClient, ctx context.Context, volName string, data []byte) (location access.Location, err error) {
+func MockEbscWriteFalse(ebs *BlobStoreClient, ctx context.Context, volName string, data []byte, l uint32) (location access.Location, err error) {
 	return access.Location{}, syscall.EIO
 }
 
