@@ -280,7 +280,7 @@ func (partition *DataPartition) removeReplicaByAddr(addr string) {
 		}
 	}
 
-	msg := fmt.Sprintf("action[removeReplicaByAddr],data partition:%v  on Node:%v  OffLine,the node is in replicas:%v", partition.PartitionID, addr, replica != nil)
+	msg := fmt.Sprintf("action[removeReplicaByAddr],data partition:%v  on node:%v  OffLine,the node is in replicas:%v", partition.PartitionID, addr, replica != nil)
 	log.LogDebug(msg)
 	if delIndex == -1 {
 		return
@@ -386,7 +386,7 @@ func (partition *DataPartition) checkLoadResponse(timeOutSec int64) (isResponse 
 		}
 		timePassed := time.Now().Unix() - partition.LastLoadedTime
 		if replica.HasLoadResponse == false && timePassed > timeToWaitForResponse {
-			msg := fmt.Sprintf("action[checkLoadResponse], partitionID:%v on Node:%v no response, spent time %v s",
+			msg := fmt.Sprintf("action[checkLoadResponse], partitionID:%v on node:%v no response, spent time %v s",
 				partition.PartitionID, addr, timePassed)
 			log.LogWarn(msg)
 			return
@@ -551,7 +551,7 @@ func (partition *DataPartition) loadFile(dataNode *DataNode, resp *proto.LoadDat
 
 	index, err := partition.getReplicaIndex(dataNode.Addr)
 	if err != nil {
-		msg := fmt.Sprintf("loadFile partitionID:%v  on Node:%v  don't report :%v ", partition.PartitionID, dataNode.Addr, err)
+		msg := fmt.Sprintf("loadFile partitionID:%v  on node:%v  don't report :%v ", partition.PartitionID, dataNode.Addr, err)
 		log.LogWarn(msg)
 		return
 	}

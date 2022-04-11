@@ -189,7 +189,7 @@ build_rocksdb() {
 }
 
 init_gopath() {
-    export GO111MODULE=off
+    export GO111MODULE=on
     export GOPATH=$HOME/tmp/cfs/go
 
     mkdir -p $GOPATH/src/github.com/cubefs
@@ -236,11 +236,13 @@ pre_build() {
 }
 
 run_test() {
-#    pre_build
-    pre_build_server
+    pre_build
+#    pre_build_server
     pushd $SrcPath >/dev/null
     echo -n "${TPATH}"
-    go test $MODFLAGS -ldflags "${LDFlags}" -cover ./master
+#    go test $MODFLAGS -ldflags "${LDFlags}" -cover ./master
+
+    go test  $(go list ./... | grep -v depends)
     ret=$?
     popd >/dev/null
     exit $ret

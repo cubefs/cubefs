@@ -116,7 +116,7 @@ func (s *bcacheStore) Sync() {
 func doStart(server common.Server, cfg *config.Config) (err error) {
 	s, ok := server.(*bcacheStore)
 	if !ok {
-		return errors.New("Invalid Node Type!")
+		return errors.New("Invalid node Type!")
 	}
 	// parse the config file
 	var bconf *bcacheConfig

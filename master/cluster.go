@@ -1325,7 +1325,7 @@ func (c *Cluster) getAllMetaPartitionsByMetaNode(addr string) (partitions []*Met
 
 func (c *Cluster) decommissionCancel(dataNode *DataNode) (err error) {
 	if dataNode.ToBeOffline == false {
-		log.LogInfof("action[decommissionCancel] dataNode is not on offline", dataNode.Addr)
+		log.LogInfof("action[decommissionCancel] dataNode is not on offline %v", dataNode.Addr)
 		return
 	}
 	partitions := c.getAllDataPartitionByDataNode(dataNode.Addr)
@@ -1401,7 +1401,7 @@ func (c *Cluster) migrateDataNode(srcAddr, targetAddr string, limit int) (err er
 
 	select {
 	case err = <-errChannel:
-		log.LogErrorf("action[migrateDataNode] clusterID[%v] migrate Node[%s] to [%s] faild, err(%s)",
+		log.LogErrorf("action[migrateDataNode] clusterID[%v] migrate node[%s] to [%s] faild, err(%s)",
 			c.Name, srcNode.Addr, targetAddr, err.Error())
 		return
 	default:
@@ -1423,13 +1423,13 @@ func (c *Cluster) migrateDataNode(srcAddr, targetAddr string, limit int) (err er
 		default:
 		}
 		if err = c.syncDeleteDataNode(dataNode); err != nil {
-			msg = fmt.Sprintf("action[decommissionDataNode],clusterID[%v] Node[%v] OffLine failed,err[%v]",
+			msg = fmt.Sprintf("action[decommissionDataNode],clusterID[%v] node[%v] OffLine failed,err[%v]",
 				c.Name, dataNode.Addr, err)
 			Warn(c.Name, msg)
 			return
 		}
 		c.delDataNodeFromCache(dataNode)
-		msg = fmt.Sprintf("action[decommissionDataNode],clusterID[%v] Node[%v] OffLine success",
+		msg = fmt.Sprintf("action[decommissionDataNode],clusterID[%v] node[%v] OffLine success",
 			c.Name, dataNode.Addr)
 		Warn(c.Name, msg)
 		log.LogInfof("action[decommissionDataNode] del node %v", dataNode.Addr)
@@ -1466,7 +1466,7 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 	dp.SingleDecommissionStatus = datanode.DecommsionWaitAddRes
 	dp.SingleDecommissionAddr = newAddr
 	if err = c.addDataReplica(dp, newAddr); err != nil {
-		err = fmt.Errorf("action[decommissionSingleDp] dp %v addDataReplica fail err %v", err)
+		err = fmt.Errorf("action[decommissionSingleDp] dp %v addDataReplica fail err %v", dp.PartitionID, err)
 		goto ERR
 	}
 
@@ -1622,12 +1622,12 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 		targetHosts = []string{targetAddr}
 	} else if targetHosts, _, err = ns.getAvailDataNodeHosts(dp.Hosts, 1); err != nil {
 		if _, ok := c.vols[dp.VolName]; !ok {
-			log.LogWarnf("clusterID[%v] partitionID:%v  on Node:%v offline failed,PersistenceHosts:[%v]",
+			log.LogWarnf("clusterID[%v] partitionID:%v  on node:%v offline failed,PersistenceHosts:[%v]",
 				c.Name, dp.PartitionID, srcAddr, dp.Hosts)
 			return
 		}
 		if c.isFaultDomain(c.vols[dp.VolName]) {
-			log.LogErrorf("clusterID[%v] partitionID:%v  on Node:%v is banlance zone,PersistenceHosts:[%v]",
+			log.LogErrorf("clusterID[%v] partitionID:%v  on node:%v is banlance zone,PersistenceHosts:[%v]",
 				c.Name, dp.PartitionID, srcAddr, dp.Hosts)
 			return
 		}
@@ -1671,13 +1671,13 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 	c.syncUpdateDataPartition(dp)
 	dp.RUnlock()
 
-	log.LogWarnf("clusterID[%v] partitionID:%v  on Node:%v offline success,newHost[%v],PersistenceHosts:[%v]",
+	log.LogWarnf("clusterID[%v] partitionID:%v  on node:%v offline success,newHost[%v],PersistenceHosts:[%v]",
 		c.Name, dp.PartitionID, srcAddr, newAddr, dp.Hosts)
 	dp.SingleDecommissionStatus = 0
 	return
 
 errHandler:
-	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on Node:%v  "+
+	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on node:%v  "+
 		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
 		c.Name, dp.PartitionID, srcAddr, newAddr, err, dp.Hosts)
 
@@ -2093,7 +2093,7 @@ func (c *Cluster) getBadDataPartitionsView() (bpvs []badPartitionView) {
 func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err error) {
 	var toBeOfflineMps []*MetaPartition
 
-	msg := fmt.Sprintf("action[migrateMetaNode],clusterID[%v] migrate from Node[%v] to [%s] begin", c.Name, srcAddr, targetAddr)
+	msg := fmt.Sprintf("action[migrateMetaNode],clusterID[%v] migrate from node[%v] to [%s] begin", c.Name, srcAddr, targetAddr)
 	log.LogWarn(msg)
 
 	metaNode, err := c.metaNode(srcAddr)
@@ -2155,7 +2155,7 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 	wg.Wait()
 	select {
 	case err = <-errChannel:
-		log.LogErrorf("action[migrateMetaNode] clusterID[%v] migrate Node[%s] to [%s] faild, err(%s)",
+		log.LogErrorf("action[migrateMetaNode] clusterID[%v] migrate node[%s] to [%s] faild, err(%s)",
 			c.Name, srcAddr, targetAddr, err.Error())
 		return
 	default:
@@ -2168,14 +2168,14 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 	}
 
 	if err = c.syncDeleteMetaNode(metaNode); err != nil {
-		msg = fmt.Sprintf("action[migrateMetaNode], clusterID[%v] Node[%v] synDelMetaNode failed,err[%s]",
+		msg = fmt.Sprintf("action[migrateMetaNode], clusterID[%v] node[%v] synDelMetaNode failed,err[%s]",
 			c.Name, srcAddr, err.Error())
 		Warn(c.Name, msg)
 		return
 	}
 
 	c.deleteMetaNodeFromCache(metaNode)
-	msg = fmt.Sprintf("action[migrateMetaNode],clusterID[%v] migrate from Node[%v] to Node(%s) success", c.Name, srcAddr, targetAddr)
+	msg = fmt.Sprintf("action[migrateMetaNode],clusterID[%v] migrate from node[%v] to node(%s) success", c.Name, srcAddr, targetAddr)
 	Warn(c.Name, msg)
 	return
 }

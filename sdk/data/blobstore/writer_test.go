@@ -17,6 +17,7 @@ package blobstore
 import (
 	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/util/buf"
 	"reflect"
 	"syscall"
 	"testing"
@@ -29,7 +30,6 @@ import (
 	"github.com/cubefs/cubefs/sdk/data/stream"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/hashicorp/consul/api"
-	"github.com/cubefs/cubefs/util/buf"
 )
 
 var (

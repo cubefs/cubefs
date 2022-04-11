@@ -103,6 +103,9 @@ func (mds *MockDataServer) serveConn(rc net.Conn) {
 	}
 	conn.SetKeepAlive(true)
 	conn.SetNoDelay(true)
+
+	proto.InitBufferPool(int64(32768))
+
 	req := proto.NewPacket()
 	err := req.ReadFromConn(conn, proto.NoReadDeadlineTime)
 	if err != nil {

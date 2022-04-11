@@ -251,7 +251,7 @@ func (s *Super) Node(ino, pino uint64, mode uint32) (fs.Node, error) {
 		node = NewDir(s, fakeInfo)
 	} else {
 		node = NewFile(s, fakeInfo, DefaultFlag, pino)
-		// The Node is saved in FuseContextNodes list, that means
+		// The node is saved in FuseContextNodes list, that means
 		// the node is not evict. So we create a streamer for it,
 		// and streamer's refcnt is 0.
 		file := node.(*File)

@@ -74,7 +74,7 @@ const (
 	RemoveRaftNode = "/raftNode/remove"
 	RaftStatus     = "/get/raftStatus"
 
-	// Node APIs
+	// node APIs
 	AddDataNode                    = "/dataNode/add"
 	DecommissionDataNode           = "/dataNode/decommission"
 	MigrateDataNode                = "/dataNode/migrate"

@@ -487,7 +487,7 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 				lastReportTime = metaNode.ReportTime
 				isActive = metaNode.IsActive
 			}
-			msg := fmt.Sprintf("action[reportMissingReplicas], clusterID[%v] volName[%v] partition:%v  on Node:%v  "+
+			msg := fmt.Sprintf("action[reportMissingReplicas], clusterID[%v] volName[%v] partition:%v  on node:%v  "+
 				"miss time > :%v  vlocLastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v",
 				clusterID, mp.volName, mp.PartitionID, replica.Addr, seconds, replica.ReportTime, lastReportTime, isActive)
 			Warn(clusterID, msg)
@@ -498,7 +498,7 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 
 	for _, addr := range mp.Hosts {
 		if mp.isMissingReplica(addr) && mp.shouldReportMissingReplica(addr, interval) {
-			msg := fmt.Sprintf("action[reportMissingReplicas],clusterID[%v] volName[%v] partition:%v  on Node:%v  "+
+			msg := fmt.Sprintf("action[reportMissingReplicas],clusterID[%v] volName[%v] partition:%v  on node:%v  "+
 				"miss time  > %v ",
 				clusterID, mp.volName, mp.PartitionID, addr, defaultMetaPartitionTimeOutSec)
 			Warn(clusterID, msg)

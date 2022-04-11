@@ -50,6 +50,8 @@ type AdminTaskManager struct {
 
 func newAdminTaskManager(targetAddr, clusterID string) (sender *AdminTaskManager) {
 
+	proto.InitBufferPool(int64(32768))
+
 	sender = &AdminTaskManager{
 		targetAddr: targetAddr,
 		clusterID:  clusterID,
