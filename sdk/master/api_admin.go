@@ -313,7 +313,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, cross
 	request.addParam("capacity", strconv.FormatUint(capacity, 10))
 	request.addParam("crossZone", strconv.FormatBool(crossZone))
 	request.addParam("normalZonesFirst", strconv.FormatBool(normalZonesFirst))
-	request.addParam("business", business)
+	request.addParam("description", business)
 	request.addParam("mpCount", strconv.Itoa(mpCount))
 	request.addParam("replicaNum", strconv.Itoa(replicaNum))
 	request.addParam("size", strconv.Itoa(size))
