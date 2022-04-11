@@ -113,7 +113,7 @@ func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
 func doStart(s common.Server, cfg *config.Config) (err error) {
 	m, ok := s.(*MetaNode)
 	if !ok {
-		return errors.New("Invalid Node Type!")
+		return errors.New("Invalid node Type!")
 	}
 	if err = m.parseConfig(cfg); err != nil {
 		return

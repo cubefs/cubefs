@@ -9,13 +9,21 @@ import (
 
 func TestDataNode(t *testing.T) {
 	// /dataNode/add and /dataNode/response processed by mock data server
+	var err error
 	addr := "127.0.0.1:9096"
 	addDataServer(addr, DefaultZoneName)
 	server.cluster.checkDataNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	getDataNodeInfo(addr, t)
 	decommissionDataNode(addr, t)
-	_, err := server.cluster.dataNode(addr)
+	for i:=0; i < 10; i++  { // decommission is async process
+		_, err = server.cluster.dataNode(addr)
+		if err == nil {
+			time.Sleep(time.Second)
+			continue
+		}
+		break
+ 	}
 	if err == nil {
 		t.Errorf("decommission datanode [%v] failed", addr)
 	}

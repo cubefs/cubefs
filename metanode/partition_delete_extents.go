@@ -303,7 +303,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 				time.Sleep(100 * time.Millisecond)
 				err = mp.sendExtentsToChan(errExts)
 				if err != nil {
-					log.LogErrorf("deleteExtentsFromList sendExtentsToChan by raft error, mp(%d), err(%s), ek(%s)", mp.config.PartitionId, err.Error(), len(errExts))
+					log.LogErrorf("deleteExtentsFromList sendExtentsToChan by raft error, mp(%d), err(%v), ek(%v)", mp.config.PartitionId, err.Error(), len(errExts))
 				}
 
 				errExts = make([]proto.ExtentKey, 0)
@@ -335,7 +335,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 
 		err = mp.sendExtentsToChan(errExts)
 		if err != nil {
-			log.LogErrorf("deleteExtentsFromList sendExtentsToChan by raft error, mp(%d), err(%s), ek(%s)", mp.config.PartitionId, err.Error(), len(errExts))
+			log.LogErrorf("deleteExtentsFromList sendExtentsToChan by raft error, mp(%d), err(%v), ek(%v)", mp.config.PartitionId, err.Error(), len(errExts))
 		}
 
 		buff.Reset()

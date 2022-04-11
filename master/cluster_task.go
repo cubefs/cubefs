@@ -130,12 +130,12 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		}}
 	} else if _, newPeers, err = ns.getAvailMetaNodeHosts(oldHosts, 1); err != nil {
 		if _, ok := c.vols[mp.volName]; !ok {
-			log.LogWarnf("[migrateMetaPartition] clusterID[%v] partitionID:%v  on Node:[%v]",
+			log.LogWarnf("[migrateMetaPartition] clusterID[%v] partitionID:%v  on node:[%v]",
 				c.Name, mp.PartitionID, mp.Hosts)
 			return
 		}
 		if c.isFaultDomain(c.vols[mp.volName]) {
-			log.LogWarnf("[migrateMetaPartition] clusterID[%v] partitionID:%v  on Node:[%v]",
+			log.LogWarnf("[migrateMetaPartition] clusterID[%v] partitionID:%v  on node:[%v]",
 				c.Name, mp.PartitionID, mp.Hosts)
 			return
 		}

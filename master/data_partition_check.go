@@ -161,7 +161,7 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 				lastReportTime = dataNode.ReportTime
 				isActive = dataNode.isActive
 			}
-			msg := fmt.Sprintf("action[checkMissErr],clusterID[%v] paritionID:%v  on Node:%v  "+
+			msg := fmt.Sprintf("action[checkMissErr],clusterID[%v] paritionID:%v  on node:%v  "+
 				"miss time > %v  lastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v So Migrate by manual",
 				clusterID, partition.PartitionID, replica.Addr, dataPartitionMissSec, replica.ReportTime, lastReportTime, isActive)
 			msg = msg + fmt.Sprintf(" decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, replica.Addr)
@@ -175,7 +175,7 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 
 	for _, addr := range partition.Hosts {
 		if partition.hasMissingDataPartition(addr) && partition.needToAlarmMissingDataPartition(addr, dataPartitionWarnInterval) {
-			msg := fmt.Sprintf("action[checkMissErr],clusterID[%v] partitionID:%v  on Node:%v  "+
+			msg := fmt.Sprintf("action[checkMissErr],clusterID[%v] partitionID:%v  on node:%v  "+
 				"miss time  > :%v  but server not exsit So Migrate", clusterID, partition.PartitionID, addr, dataPartitionMissSec)
 			msg = msg + fmt.Sprintf(" decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, addr)
 			Warn(clusterID, msg)
