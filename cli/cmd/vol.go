@@ -154,7 +154,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  Owner               : %v\n", userID)
 				stdout("  capacity            : %v G\n", optCapacity)
 				stdout("  crossZone           : %v\n", crossZone)
-				stdout("  normalZonesFirst    : %v\n", normalZonesFirst)
+				stdout("  DefaultPriority     : %v\n", normalZonesFirst)
 				stdout("  description         : %v\n", optBusiness)
 				stdout("  mpCount             : %v\n", optMPCount)
 				stdout("  replicaNum          : %v\n", optReplicaNum)
