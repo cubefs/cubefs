@@ -220,7 +220,7 @@ func (sender *AdminTaskManager) syncSendAdminTask(task *proto.AdminTask) (packet
 		return nil, errors.Trace(err, "action[syncSendAdminTask],ReadFromConn failed task:%v,reqID[%v]", task.ID, packet.ReqID)
 	}
 	if packet.ResultCode != proto.OpOk {
-		err = fmt.Errorf("result code[%v],msg[%v]", packet.ResultCode, string(packet.Data))
+		err = fmt.Errorf("remoteAddr[%v] result code[%v],msg[%v]", sender.targetAddr, packet.ResultCode, string(packet.Data))
 		log.LogErrorf("action[syncSendAdminTask],task:%v,reqID[%v],err[%v],", task.ID, packet.ReqID, err)
 		return
 	}
