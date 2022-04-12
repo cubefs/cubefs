@@ -213,7 +213,7 @@ func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.
 	}
 
 	// isInit used to identify whether this call is caused by mount action
-	if isInit || (len(rwPartitionGroups) >= MinWriteAbleDataPartitionCnt || (proto.IsCold(w.volType) && (len(rwPartitionGroups) >= 1))){
+	if isInit || (len(rwPartitionGroups) >= MinWriteAbleDataPartitionCnt || (proto.IsCold(w.volType) && (len(rwPartitionGroups) >= 1))) {
 		w.refreshDpSelector(rwPartitionGroups)
 	} else {
 		err = errors.New("updateDataPartition: no writable data partition")

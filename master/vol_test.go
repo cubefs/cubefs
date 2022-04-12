@@ -246,7 +246,7 @@ func checkDataPartitionsWritableTest(vol *Vol, t *testing.T) {
 	if len(vol.dataPartitions.partitions) == 0 {
 		return
 	}
-	time.Sleep(time.Second*20)
+	time.Sleep(time.Second * 20)
 	partition := vol.dataPartitions.partitions[0]
 	if partition.Status != proto.ReadWrite {
 		t.Errorf("expect partition status[%v],real status[%v]\n", proto.ReadWrite, partition.Status)

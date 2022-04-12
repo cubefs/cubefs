@@ -144,9 +144,9 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 					errout("Error: %v", err)
 				}
 			}()
-			crossZone, _ :=strconv.ParseBool(optCrossZone)
-			followerRead, _ :=strconv.ParseBool(optFollowerRead)
-			normalZonesFirst, _ :=strconv.ParseBool(optNormalZonesFirst)
+			crossZone, _ := strconv.ParseBool(optCrossZone)
+			followerRead, _ := strconv.ParseBool(optFollowerRead)
+			normalZonesFirst, _ := strconv.ParseBool(optNormalZonesFirst)
 			// ask user for confirm
 			if !optYes {
 				stdout("Create a new volume:\n")
@@ -330,7 +330,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  CacheAction         : %v \n", vv.CacheAction))
 			}
-			if optCacheRule != ""{
+			if optCacheRule != "" {
 				if vv.VolType == 0 {
 					err = fmt.Errorf("cache-rule not support in hot vol\n")
 					return

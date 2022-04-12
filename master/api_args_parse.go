@@ -757,11 +757,11 @@ func parseAndExtractSetNodeSetInfoParams(r *http.Request) (params map[string]int
 			return
 		}
 		params[idKey] = nodesetId
-	}else {
+	} else {
 		return nil, fmt.Errorf("not found %v", idKey)
 	}
 
-	log.LogInfof("action[parseAndExtractSetNodeSetInfoParams]%v,%v,%v",params[zoneNameKey], params[idKey], params[countKey])
+	log.LogInfof("action[parseAndExtractSetNodeSetInfoParams]%v,%v,%v", params[zoneNameKey], params[idKey], params[countKey])
 
 	return
 }

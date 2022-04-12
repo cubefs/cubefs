@@ -143,11 +143,10 @@ func (api *NodeAPI) DataNodeMigrate(srcAddr, targetAddr string, count int) (err 
 	var request = newAPIRequest(http.MethodGet, proto.MigrateDataNode)
 	request.addParam("srcAddr", srcAddr)
 	request.addParam("targetAddr", targetAddr)
-	request.addParam("count",  strconv.Itoa(count))
+	request.addParam("count", strconv.Itoa(count))
 	request.addHeader("isTimeOut", "false")
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
 }
-

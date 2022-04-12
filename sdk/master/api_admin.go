@@ -304,7 +304,7 @@ func (api *AdminAPI) VolExpand(volName string, capacity uint64, authKey string) 
 	return
 }
 
-func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, crossZone , normalZonesFirst bool, business string,
+func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, crossZone, normalZonesFirst bool, business string,
 	mpCount, replicaNum, size, volType int, followerRead bool, zoneName, cacheRuleKey string, ebsBlkSize,
 	cacheCapacity, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater, cacheLRUInterval int) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)

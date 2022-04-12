@@ -16,14 +16,14 @@ func TestDataNode(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	getDataNodeInfo(addr, t)
 	decommissionDataNode(addr, t)
-	for i:=0; i < 10; i++  { // decommission is async process
+	for i := 0; i < 10; i++ { // decommission is async process
 		_, err = server.cluster.dataNode(addr)
 		if err == nil {
 			time.Sleep(time.Second)
 			continue
 		}
 		break
- 	}
+	}
 	if err == nil {
 		t.Errorf("decommission datanode [%v] failed", addr)
 	}

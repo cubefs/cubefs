@@ -695,7 +695,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))
 	}
 
-	if  opt.BuffersTotalLimit < 0 {
+	if opt.BuffersTotalLimit < 0 {
 		return nil, errors.New(fmt.Sprintf("invalid fields, BuffersTotalLimit(%v) must larger or equal than 0", opt.BuffersTotalLimit))
 	}
 	return opt, nil

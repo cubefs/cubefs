@@ -1,11 +1,11 @@
 package buf
 
 import (
-	"golang.org/x/time/rate"
+	"github.com/cubefs/cubefs/util"
 	"golang.org/x/net/context"
+	"golang.org/x/time/rate"
 	"sync"
 	"sync/atomic"
-	"github.com/cubefs/cubefs/util"
 )
 
 var cacheTotalLimit int64
@@ -29,7 +29,6 @@ type FileCachePool struct {
 	pool *sync.Pool
 }
 
-
 func InitCachePool(blockSize int) {
 	if blockSize == 0 {
 		return
@@ -39,7 +38,7 @@ func InitCachePool(blockSize int) {
 	CachePool.pool = newWriterCachePool(blockSize)
 }
 
-func (fileCachePool *FileCachePool) Get() []byte{
+func (fileCachePool *FileCachePool) Get() []byte {
 	atomic.AddInt64(&cacheCount, 1)
 	return fileCachePool.pool.Get().([]byte)
 }

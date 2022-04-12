@@ -409,7 +409,7 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 	)
 
 	if proto.IsCold(s.client.volumeType) {
-		if offset + size > s.tinySizeLimit() {
+		if offset+size > s.tinySizeLimit() {
 			storeMode = proto.NormalExtentType
 		} else {
 			storeMode = proto.TinyExtentType
@@ -431,7 +431,7 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 				s.closeOpenHandler()
 
 				log.LogDebugf("doWrite: found ek in ExtentCache, offset(%v) size(%v), ekoffset(%v) eksize(%v)",
-				offset, size, currentEK.FileOffset, currentEK.Size)
+					offset, size, currentEK.FileOffset, currentEK.Size)
 				_, pidErr := s.client.dataWrapper.GetDataPartition(currentEK.PartitionId)
 				if pidErr == nil {
 					handler := NewExtentHandler(s, int(currentEK.FileOffset), storeMode, int(currentEK.Size))
@@ -472,7 +472,7 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 			}
 
 			log.LogDebugf("doWrite handler write failed so close open handler: ino(%v) offset(%v) size(%v) storeMode(%v) err(%v)",
-			s.inode, offset, size, storeMode, err)
+				s.inode, offset, size, storeMode, err)
 
 			s.closeOpenHandler()
 		}
@@ -488,7 +488,7 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 		}
 
 		log.LogDebugf("doWrite handler write failed so close open handler: ino(%v) offset(%v) size(%v) storeMode(%v) err(%v)",
-		s.inode, offset, size, storeMode, err)
+			s.inode, offset, size, storeMode, err)
 		err = s.closeOpenHandler()
 	}
 

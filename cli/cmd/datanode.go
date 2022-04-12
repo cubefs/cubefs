@@ -24,9 +24,9 @@ import (
 )
 
 const (
-	cmdDataNodeShort = "Manage data nodes"
+	cmdDataNodeShort            = "Manage data nodes"
 	cmdDataNodeMigrateInfoShort = "Migrate partitions from a data node to the other node"
-	dpMigrateMax = 50
+	dpMigrateMax                = 50
 )
 
 func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
@@ -174,7 +174,7 @@ func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 			}()
 			src = args[0]
 			dst = args[1]
-			if optCount > dpMigrateMax || optCount <= 0{
+			if optCount > dpMigrateMax || optCount <= 0 {
 				stdout("Migrate dp count should between [1-50]\n")
 				return
 			}

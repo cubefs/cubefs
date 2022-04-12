@@ -56,7 +56,7 @@ func main() {
 	if buffersTotalLimit < 0 {
 		fmt.Println("buffersTotalLimit cannot less than 0")
 		os.Exit(1)
-	} else if buffersTotalLimit == 0{
+	} else if buffersTotalLimit == 0 {
 		buffersTotalLimit = int64(32768)
 	}
 	proto.InitBufferPool(buffersTotalLimit)
@@ -89,7 +89,7 @@ func main() {
 	if action == "preload" {
 		if err := cli.PreloadDir(cfg.GetString("target"), int(replicaNum), uint64(ttl), cfg.GetString("zones")); err != nil {
 			total, succeed := cli.GetPreloadResult()
-			fmt.Printf("Preload failed:%v\n",err)
+			fmt.Printf("Preload failed:%v\n", err)
 			fmt.Printf("Result: total[%v], succeed[%v]\n", total, succeed)
 		} else {
 			fmt.Println("Preload succeed")
