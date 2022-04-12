@@ -88,13 +88,13 @@ const (
 	CliFlagZoneName           = "zone-name"
 	CliFlagDescription        = "description"
 	CliFlagAutoRepairRate     = "autoRepairRate"
-	CliFlagDelBatchCount         = "batchCount"
-	CliFlagDelWorkerSleepMs      = "deleteWorkerSleepMs"
-	CliFlagLoadFactor      	  = "loadFactor"
+	CliFlagDelBatchCount      = "batchCount"
+	CliFlagDelWorkerSleepMs   = "deleteWorkerSleepMs"
+	CliFlagLoadFactor         = "loadFactor"
 	CliFlagMarkDelRate        = "markDeleteRate"
 	CliFlagCrossZone          = "crossZone"
-	CliNormalZonesFirst         = "normalZonesFirst"
-	CliFlagCount          		= "count"
+	CliNormalZonesFirst       = "normalZonesFirst"
+	CliFlagCount              = "count"
 
 	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

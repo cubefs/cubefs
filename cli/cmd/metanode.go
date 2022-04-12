@@ -26,7 +26,7 @@ import (
 const (
 	cmdMetaNodeUse   = "metanode [COMMAND]"
 	cmdMetaNodeShort = "Manage meta nodes"
-	mpMigrateMax = 15
+	mpMigrateMax     = 15
 )
 
 func newMetaNodeCmd(client *master.MasterClient) *cobra.Command {
@@ -173,7 +173,7 @@ func newMetaNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 			}()
 			src = args[0]
 			dst = args[1]
-			if optCount > mpMigrateMax || optCount <= 0{
+			if optCount > mpMigrateMax || optCount <= 0 {
 				stdout("Migrate mp count should between [1-15]\n")
 				return
 			}

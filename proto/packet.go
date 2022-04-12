@@ -32,7 +32,7 @@ import (
 
 var (
 	GRequestID = int64(1)
-	Buffers  *buf.BufferPool
+	Buffers    *buf.BufferPool
 )
 
 // GenerateRequestID generates the request ID.
@@ -745,7 +745,7 @@ func (p *Packet) IsBatchDeleteExtents() bool {
 	return p.Opcode == OpBatchDeleteExtent
 }
 
-func InitBufferPool(bufLimit int64){
+func InitBufferPool(bufLimit int64) {
 	buf.NormalBuffersTotalLimit = bufLimit
 	buf.HeadBuffersTotalLimit = bufLimit
 	Buffers = buf.NewBufferPool()

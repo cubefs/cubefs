@@ -44,15 +44,15 @@ func (cmd *ChubaoFSCmd) newClusterCmd(client *master.MasterClient) *cobra.Comman
 }
 
 const (
-	cmdClusterInfoShort      = "Show cluster summary information"
-	cmdClusterStatShort      = "Show cluster status information"
-	cmdClusterFreezeShort    = "Freeze cluster"
-	cmdClusterThresholdShort = "Set memory threshold of metanodes"
-	cmdClusterSetClusterInfoShort  = "Set cluster parameters"
-	nodeDeleteBatchCountKey  = "batchCount"
-	nodeMarkDeleteRateKey    = "markDeleteRate"
-	nodeDeleteWorkerSleepMs  = "deleteWorkerSleepMs"
-	nodeAutoRepairRateKey    = "autoRepairRate"
+	cmdClusterInfoShort           = "Show cluster summary information"
+	cmdClusterStatShort           = "Show cluster status information"
+	cmdClusterFreezeShort         = "Freeze cluster"
+	cmdClusterThresholdShort      = "Set memory threshold of metanodes"
+	cmdClusterSetClusterInfoShort = "Set cluster parameters"
+	nodeDeleteBatchCountKey       = "batchCount"
+	nodeMarkDeleteRateKey         = "markDeleteRate"
+	nodeDeleteWorkerSleepMs       = "deleteWorkerSleepMs"
+	nodeAutoRepairRateKey         = "autoRepairRate"
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
@@ -204,7 +204,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}()
 
-			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs, optAutoRepairRate, optLoadFactor) ; err != nil {
+			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs, optAutoRepairRate, optLoadFactor); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")

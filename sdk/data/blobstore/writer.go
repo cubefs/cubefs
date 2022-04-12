@@ -58,10 +58,8 @@ type Writer struct {
 	fileSize       uint64
 	cacheThreshold int
 	dirty          bool
-	blockPosition	int
+	blockPosition  int
 }
-
-
 
 func NewWriter(config ClientConfig) (writer *Writer) {
 	writer = new(Writer)
@@ -186,7 +184,7 @@ func (writer *Writer) doBufferWrite(ctx context.Context, data []byte, offset int
 			freeSize = dataSize
 		}
 		log.LogDebugf("TRACE blobStore doBufferWrite: ino(%v) writer.fileSize(%v) writer.fileOffset(%v) writer.blockPosition(%v) position(%v) freeSize(%v)", writer.ino, writer.fileSize, writer.fileOffset, writer.blockPosition, position, freeSize)
-		copy(writer.buf[writer.blockPosition:], data[position:position + freeSize])
+		copy(writer.buf[writer.blockPosition:], data[position:position+freeSize])
 		log.LogDebugf("TRACE blobStore doBufferWrite:ino(%v) writer.buf.len(%v)", writer.ino, len(writer.buf))
 		position += freeSize
 		writer.blockPosition += freeSize
@@ -200,7 +198,7 @@ func (writer *Writer) doBufferWrite(ctx context.Context, data []byte, offset int
 			err = writer.flush(writer.ino, ctx, false)
 			writer.Lock()
 			if err != nil {
-				writer.buf = writer.buf[:writer.blockPosition - freeSize]
+				writer.buf = writer.buf[:writer.blockPosition-freeSize]
 				writer.fileOffset -= freeSize
 				writer.blockPosition -= freeSize
 				return
@@ -367,4 +365,3 @@ func (writer *Writer) FreeCache() {
 func (writer *Writer) AllocateCache() {
 	writer.buf = buf.CachePool.Get()
 }
-

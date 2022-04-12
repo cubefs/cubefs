@@ -565,6 +565,6 @@ func (c *PreLoadClient) PreloadDir(target string, count int, ttl uint64, zones s
 	return c.preloadFile()
 }
 
-func (c *PreLoadClient) GetPreloadResult()(int64 , int64){
+func (c *PreLoadClient) GetPreloadResult() (int64, int64) {
 	return c.preloadFileNumTotal, c.preloadFileNumSucceed
 }

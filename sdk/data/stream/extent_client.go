@@ -109,11 +109,11 @@ type ExtentClient struct {
 	readLimiter  *rate.Limiter
 	writeLimiter *rate.Limiter
 
-	volumeType   int
-	volumeName   string
-	bcacheEnable bool
-	BcacheHealth bool
-	preload 	  bool
+	volumeType      int
+	volumeName      string
+	bcacheEnable    bool
+	BcacheHealth    bool
+	preload         bool
 	dataWrapper     *wrapper.Wrapper
 	appendExtentKey AppendExtentKeyFunc
 	getExtents      GetExtentsFunc
@@ -157,7 +157,7 @@ retry:
 	client.bcacheEnable = config.BcacheEnable
 	client.BcacheHealth = true
 	client.preload = config.Preload
-	
+
 	var readLimit, writeLimit rate.Limit
 	if config.ReadRate <= 0 {
 		readLimit = defaultReadLimitRate
@@ -474,6 +474,6 @@ func (client *ExtentClient) UpdateDataPartitionForColdVolume() error {
 	return client.dataWrapper.UpdateDataPartition()
 }
 
-func(client *ExtentClient) IsPreloadMode() bool {
+func (client *ExtentClient) IsPreloadMode() bool {
 	return client.preload
 }
