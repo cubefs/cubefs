@@ -390,15 +390,11 @@ func (s *raft) run() {
 			s.handleSnapshot(snapReq)
 
 		case <-readyc:
+                        /*
+			s.persist()
 
-			func() {
-				s.persist()
-			}()
+			s.apply()
 
-			func() {
-				s.apply()
-
-			}()
 
 			s.advance()
 
@@ -410,6 +406,34 @@ func (s *raft) run() {
 				}
 				s.sendMessage(msg)
 			}
+			*/
+			if s.isLeader() {
+				s.apply()
+				for _, msg := range s.raftFsm.msgs {
+                                    if msg.Type == proto.ReqMsgSnapShot {
+                                        s.sendSnapshot(msg)
+                                        continue
+                                    }
+                                    s.sendMessage(msg)
+                                }
+				s.persist()
+				if len(s.raftFsm.replicas) == 1 {
+					s.raftFsm.maybeCommit()
+				}
+			} else {
+			        s.persist()
+				for _, msg := range s.raftFsm.msgs {
+                                    if msg.Type == proto.ReqMsgSnapShot {
+                                        s.sendSnapshot(msg)
+                                        continue
+                                    }
+                                    s.sendMessage(msg)
+                                }
+				s.apply()
+			
+			}
+                        s.advance() 
+
 			s.raftFsm.msgs = nil
 			readyc = nil
 			loopCount = loopCount + 1

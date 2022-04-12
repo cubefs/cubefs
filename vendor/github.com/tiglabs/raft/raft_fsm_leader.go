@@ -515,9 +515,8 @@ func (r *raftFsm) sendAppend(ctx context.Context, to uint64) {
 }
 
 func (r *raftFsm) appendEntry(es ...*proto.Entry) {
-	r.raftLog.append(es...)
-	r.replicas[r.config.NodeID].maybeUpdate(r.raftLog.lastIndex(), r.raftLog.committed)
-	r.maybeCommit()
+	lastIndex := r.raftLog.append(es...)
+	r.replicas[r.config.NodeID].maybeUpdate(lastIndex, r.raftLog.committed)
 }
 
 func (r *raftFsm) bcastReadOnly() {
