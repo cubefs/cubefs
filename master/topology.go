@@ -636,11 +636,8 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 
 		// it's better to get enough replicas from one nsg(copy set) and will get complement from
 		// other nsg if not
-		loopCnt := int(replicaNum)
-		if loopCnt < len(nsg.nodeSets) {
-			loopCnt = len(nsg.nodeSets)
-		}
-		for i := 0; i < loopCnt; i++ {
+
+		for i := 0; i < defaultMaxReplicaCnt*len(nsg.nodeSets); i++ {
 			ns := nsg.nodeSets[nsg.nsgInnerIndex]
 			log.LogInfof("action[getHostFromNodeSetGrp]  nodesetid[%v],zonename[%v], datanode len[%v],metanode len[%v],capcity[%v]",
 				ns.ID, ns.zoneName, ns.dataNodeLen(), ns.metaNodeLen(), ns.Capacity)
