@@ -1653,10 +1653,16 @@ func (v *Volume) findParentId(prefix string) (inode uint64, prefixDirs []string,
 // or all files and directories are scanned.
 func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, parentId, maxKeys, rc uint64,
 	dirs []string, prefix, marker, delimiter string) ([]*FSFileInfo, PrefixMap, string, uint64, error) {
-	var err error
-	var nextMarker string
+	var (
+		err         error
+		nextMarker  string
+		currentPath string
+	)
 
-	var currentPath = strings.Join(dirs, pathSep) + pathSep
+	if len(dirs) > 0 {
+		currentPath = strings.Join(dirs, pathSep) + pathSep
+	}
+
 	log.LogDebugf("recursiveScan enter: fileInfos(%v) parentId(%v) prefix(%v) marker(%v) delimiter(%v) currentPath(%v)", fileInfos, parentId, prefix, marker, delimiter, currentPath)
 
 	if len(dirs) > 0 && prefix != "" && strings.HasSuffix(currentPath, prefix) {
