@@ -121,6 +121,7 @@ const (
 	defaultNodeSetGrpBatchCnt                    = 3
 	defaultMigrateDpCnt                          = 50
 	defaultMigrateMpCnt                          = 15
+	defaultMaxReplicaCnt                         = 16
 )
 
 const (
