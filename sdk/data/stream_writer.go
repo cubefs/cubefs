@@ -74,8 +74,8 @@ type FlushOverWriteRequest struct {
 }
 
 type OverWriteRequest struct {
-	direct bool
-	oriReq *ExtentRequest
+	direct     bool
+	oriReq     *ExtentRequest
 	fileOffset int
 	size       int
 	data       []byte
@@ -362,7 +362,7 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, dir
 	ctx=context.Background()
 	s.client.writeLimiter.Wait(ctx)
 
-	requests := s.extents.PrepareRequests(offset, size, data)
+	requests, _ := s.extents.PrepareRequests(offset, size, data)
 	if log.IsDebugEnabled() {
 		log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)
 	}
@@ -380,7 +380,7 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, dir
 		if err != nil {
 			return
 		}
-		requests = s.extents.PrepareRequests(offset, size, data)
+		requests, _ = s.extents.PrepareRequests(offset, size, data)
 		if log.IsDebugEnabled() {
 			log.LogDebugf("Streamer write: ino(%v) prepared requests after flush(%v)", s.inode, requests)
 		}

@@ -508,7 +508,7 @@ func TestStreamer_UsePreExtentHandler_ROWByOtherClient(t *testing.T) {
 
 	_, ec1, err := creatHelper(t)
 	streamer1 := getStreamer(t, testFile, ec1)
-	requests := streamer1.extents.PrepareRequests(0, length, data)
+	requests, _ := streamer1.extents.PrepareRequests(0, length, data)
 	_, err = streamer1.doROW(ctx, requests[0], false)
 	if err != nil {
 		t.Fatalf("doROW failed: err(%v)", err)

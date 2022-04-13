@@ -313,7 +313,7 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset int,
 	})
 
 	if overWriteBuffer {
-		requests := s.extents.PrepareRequests(offset, len(data), data)
+		requests, _ := s.extents.PrepareRequests(offset, len(data), data)
 		hasAppendWrite := false
 		for _, req := range requests {
 			if req.ExtentKey == nil {

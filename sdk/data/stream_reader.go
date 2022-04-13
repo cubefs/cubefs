@@ -110,11 +110,12 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 		reader          *ExtentReader
 		requests        []*ExtentRequest
 		revisedRequests []*ExtentRequest
+		fileSize        int
 	)
 	ctx=context.Background()
 	s.client.readLimiter.Wait(ctx)
 
-	requests = s.extents.PrepareRequests(offset, size, data)
+	requests, fileSize = s.extents.PrepareRequests(offset, size, data)
 	for _, req := range requests {
 		if req.ExtentKey == nil || req.ExtentKey.PartitionId > 0 {
 			continue
@@ -131,7 +132,7 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 			s.writeLock.Unlock()
 			return
 		}
-		revisedRequests = s.extents.PrepareRequests(offset, size, data)
+		revisedRequests, fileSize = s.extents.PrepareRequests(offset, size, data)
 		s.writeLock.Unlock()
 		break
 	}
@@ -140,9 +141,8 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 		requests = revisedRequests
 	}
 
-	filesize, _ := s.extents.Size()
 	if log.IsDebugEnabled() {
-		log.LogDebugf("Stream read: ino(%v) userExpectOffset(%v) userExpectSize(%v) requests(%v) filesize(%v)", s.inode, offset, size, requests, filesize)
+		log.LogDebugf("Stream read: ino(%v) userExpectOffset(%v) userExpectSize(%v) requests(%v) filesize(%v)", s.inode, offset, size, requests, fileSize)
 	}
 	for _, req := range requests {
 		if req.ExtentKey == nil {
@@ -151,15 +151,15 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 				req.Data[i] = 0
 			}
 
-			if req.FileOffset+req.Size > filesize {
-				if req.FileOffset >= filesize {
+			if req.FileOffset+req.Size > fileSize {
+				if req.FileOffset >= fileSize {
 					return
 				}
-				req.Size = filesize - req.FileOffset
+				req.Size = fileSize - req.FileOffset
 				total += req.Size
 				err = io.EOF
 				if total == 0 {
-					log.LogWarnf("Stream read: ino(%v) userExpectOffset(%v) userExpectSize(%v) req(%v) filesize(%v)", s.inode, offset, size, req, filesize)
+					log.LogWarnf("Stream read: ino(%v) userExpectOffset(%v) userExpectSize(%v) req(%v) filesize(%v)", s.inode, offset, size, req, fileSize)
 				}
 				return
 			}
