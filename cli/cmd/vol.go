@@ -231,7 +231,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optFollowerRead string
 	var optEbsBlkSize int
 	var optCacheCap string
-	var optCacheAction string
+	var optCacheAction int
 	var optCacheThreshold int
 	var optCacheTTL int
 	var optCacheHighWater int
@@ -263,14 +263,14 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  Description         : %v -> %v \n", vv.Description, optDescription))
 				vv.Description = optDescription
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  Description         : %v \n", vv.Description))
+				//confirmString.WriteString(fmt.Sprintf("  Description         : %v \n", vv.Description))
 			}
 			if vv.CrossZone == false && "" != optZoneName {
 				isChange = true
 				confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v -> %v\n", vv.ZoneName, optZoneName))
 				vv.ZoneName = optZoneName
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v\n", vv.ZoneName))
+				//confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v\n", vv.ZoneName))
 			}
 			if vv.CrossZone == true && "" != optZoneName {
 				err = fmt.Errorf("Can not set zone name of the volume that cross zone\n")
@@ -280,7 +280,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  Capacity            : %v GB -> %v GB\n", vv.Capacity, optCapacity))
 				vv.Capacity = optCapacity
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  Capacity            : %v GB\n", vv.Capacity))
+				//confirmString.WriteString(fmt.Sprintf("  Capacity            : %v GB\n", vv.Capacity))
 			}
 			if optFollowerRead != "" {
 				isChange = true
@@ -291,7 +291,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  Allow follower read : %v -> %v\n", formatEnabledDisabled(vv.FollowerRead), formatEnabledDisabled(enable)))
 				vv.FollowerRead = enable
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  Allow follower read : %v\n", formatEnabledDisabled(vv.FollowerRead)))
+				//confirmString.WriteString(fmt.Sprintf("  Allow follower read : %v\n", formatEnabledDisabled(vv.FollowerRead)))
 			}
 			if optEbsBlkSize > 0 {
 				if vv.VolType == 0 {
@@ -302,7 +302,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  EbsBlkSize          : %v byte -> %v byte\n", vv.ObjBlockSize, optEbsBlkSize))
 				vv.ObjBlockSize = optEbsBlkSize
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  EbsBlkSize          : %v byte\n", vv.ObjBlockSize))
+				//confirmString.WriteString(fmt.Sprintf("  EbsBlkSize          : %v byte\n", vv.ObjBlockSize))
 			}
 			if optCacheCap != "" {
 				if vv.VolType == 0 {
@@ -314,21 +314,21 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				intNum, _ := strconv.Atoi(optCacheCap)
 				vv.CacheCapacity = uint64(intNum)
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  CacheCap            : %v GB\n", vv.CacheCapacity))
+				//confirmString.WriteString(fmt.Sprintf("  CacheCap            : %v GB\n", vv.CacheCapacity))
 			}
-			if optCacheAction != "" {
+			if optCacheAction != -1 {
 				if vv.VolType == 0 {
 					err = fmt.Errorf("cache-action not support in hot vol\n")
 					return
 				}
 				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  CacheAction         : %v  -> %v \n", vv.CacheAction, optCacheAction))
-				vv.CacheAction, err = strconv.Atoi(optCacheAction)
+				confirmString.WriteString(fmt.Sprintf("  CacheAction           : %v  -> %v \n", vv.CacheAction, optCacheAction))
+				vv.CacheAction = optCacheAction
 				if err != nil {
 					return
 				}
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  CacheAction         : %v \n", vv.CacheAction))
+				//confirmString.WriteString(fmt.Sprintf("  CacheAction           : %v \n", vv.CacheAction))
 			}
 			if optCacheRule != "" {
 				if vv.VolType == 0 {
@@ -336,10 +336,10 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  CacheRule         : %v -> %v \n", vv.CacheRule, optCacheRule))
+				confirmString.WriteString(fmt.Sprintf("  CacheRule           : %v -> %v \n", vv.CacheRule, optCacheRule))
 				vv.CacheRule = optCacheRule
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  CacheRule        : %v \n", vv.CacheAction))
+				//confirmString.WriteString(fmt.Sprintf("  CacheRule        : %v \n", vv.CacheAction))
 			}
 			if optCacheThreshold > 0 {
 				if vv.VolType == 0 {
@@ -350,7 +350,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  CacheThreshold      : %v byte -> %v byte \n", vv.CacheThreshold, optCacheThreshold))
 				vv.CacheThreshold = optCacheThreshold
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  CacheThreshold      : %v byte\n", vv.CacheThreshold))
+				//confirmString.WriteString(fmt.Sprintf("  CacheThreshold      : %v byte\n", vv.CacheThreshold))
 			}
 			if optCacheTTL > 0 {
 				if vv.VolType == 0 {
@@ -361,7 +361,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  CacheTTL            : %v day -> %v day \n", vv.CacheTtl, optCacheTTL))
 				vv.CacheTtl = optCacheTTL
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  CacheTTL            : %v day\n", vv.CacheTtl))
+				//confirmString.WriteString(fmt.Sprintf("  CacheTTL            : %v day\n", vv.CacheTtl))
 			}
 			if optCacheHighWater > 0 {
 				if vv.VolType == 0 {
@@ -372,7 +372,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  CacheHighWater      : %v  -> %v  \n", vv.CacheHighWater, optCacheHighWater))
 				vv.CacheHighWater = optCacheHighWater
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  CacheHighWater      : %v \n", vv.CacheHighWater))
+				//confirmString.WriteString(fmt.Sprintf("  CacheHighWater      : %v \n", vv.CacheHighWater))
 			}
 			if optCacheLowWater > 0 {
 				if vv.VolType == 0 {
@@ -383,7 +383,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  CacheLowWater       : %v  -> %v  \n", vv.CacheLowWater, optCacheLowWater))
 				vv.CacheLowWater = optCacheLowWater
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  CacheLowWater       : %v \n", vv.CacheLowWater))
+				//confirmString.WriteString(fmt.Sprintf("  CacheLowWater       : %v \n", vv.CacheLowWater))
 			}
 			if optCacheLRUInterval > 0 {
 				if vv.VolType == 0 {
@@ -394,7 +394,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  CacheLRUInterval    : %v min -> %v min \n", vv.CacheLruInterval, optCacheLRUInterval))
 				vv.CacheLruInterval = optCacheLRUInterval
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  CacheLRUInterval    : %v min\n", vv.CacheLruInterval))
+				//confirmString.WriteString(fmt.Sprintf("  CacheLRUInterval    : %v min\n", vv.CacheLruInterval))
 			}
 
 			if err != nil {
@@ -438,7 +438,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optFollowerRead, CliFlagEnableFollowerRead, "", "Enable read form replica follower (default false)")
 	cmd.Flags().IntVar(&optEbsBlkSize, CliFlagEbsBlkSize, 0, "Specify ebsBlk Size[Unit: byte]")
 	cmd.Flags().StringVar(&optCacheCap, CliFlagCacheCapacity, "", "Specify low volume capacity[Unit: GB]")
-	cmd.Flags().StringVar(&optCacheAction, CliFlagCacheAction, "", "Specify low volume cacheAction (default 0)")
+	cmd.Flags().IntVar(&optCacheAction, CliFlagCacheAction, -1, "Specify low volume cacheAction (default 0)")
 	cmd.Flags().IntVar(&optCacheThreshold, CliFlagCacheThreshold, 0, "Specify cache threshold[Unit: byte] (default 10M)")
 	cmd.Flags().IntVar(&optCacheTTL, CliFlagCacheTTL, 0, "Specify cache expiration time[Unit: day] (default 30)")
 	cmd.Flags().IntVar(&optCacheHighWater, CliFlagCacheHighWater, 0, " (default 80)")
