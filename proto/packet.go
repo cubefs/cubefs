@@ -257,6 +257,7 @@ type Packet struct {
 	RecvT              int64
 	mesg               string
 	HasPrepare         bool
+	PoolFlag           int64
 	ctx                context.Context
 }
 
@@ -815,7 +816,11 @@ func (p *Packet) AddMesgLog(m string) {
 // GetUniqueLogId returns the unique log ID.
 func (p *Packet) GetUniqueLogId() (m string) {
 	defer func() {
-		m = m + fmt.Sprintf("_ResultMesg(%v)", p.GetResultMsg())
+		if p.PoolFlag==0 {
+			m = m + fmt.Sprintf("_ResultMesg(%v)", p.GetResultMsg())
+		}else {
+			m = m + fmt.Sprintf("_ResultMesg(%v)_PoolFLag(%v)", p.GetResultMsg(),p.PoolFlag)
+		}
 	}()
 	if p.HasPrepare {
 		m = p.mesg

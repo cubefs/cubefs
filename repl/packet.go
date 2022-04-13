@@ -18,14 +18,14 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/chubaofs/chubaofs/util/log"
-
-	"github.com/chubaofs/chubaofs/util/tracing"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/storage"
@@ -50,17 +50,21 @@ type Packet struct {
 	NeedReply         bool
 	OrgBuffer         []byte
 	OrgSize           int32
-	useBufferPoolFlag int64
+	useDataPoolFlag   int64
+	usePacketPoolFlag int64
 	quorum            int
-	refCnt            int32
+	dataPoolRefCnt    int32
+	packetPoolRefCnt  int32
 	errorCh           chan error
+	mesg              string
+	replSource        string
 }
 
 type FollowerPacket struct {
 	proto.Packet
-	errorCh             chan error
-	refCnt              *int32
-	isUseBufferFromPool bool
+	errorCh          chan error
+	dataPoolRefCnt   *int32
+	isUseDataPool    bool
 }
 
 func NewFollowerPacket(ctx context.Context, parent *Packet) (fp *FollowerPacket) {
@@ -78,11 +82,13 @@ func (p *FollowerPacket) PackErrorBody(action, msg string) {
 	copy(p.Data[:int(p.Size)], []byte(action+"_"+msg))
 }
 
-func (p *FollowerPacket) DecRefCnt() {
-	if p.isUseBufferFromPool && atomic.LoadInt32(p.refCnt) > 0 {
-		atomic.AddInt32(p.refCnt, -1)
+func (p *FollowerPacket) DecDataPoolRefCnt() {
+	if p.isUseDataPool && atomic.LoadInt32(p.dataPoolRefCnt) > 0 {
+		atomic.AddInt32(p.dataPoolRefCnt, -1)
 	}
 }
+
+
 
 func (p *FollowerPacket) IsErrPacket() bool {
 	return p.ResultCode != proto.OpOk && p.ResultCode != proto.OpInitResultCode
@@ -120,19 +126,29 @@ func (p *Packet) AfterTp() (ok bool) {
 }
 
 const (
-	PacketUseBufferPool   = 1
-	PacketNoUseBufferPool = 0
+	PacketUseDataPool     = 1
+	PacketNoUseDataPool   = 0
+	PacketUsePacketPool   = 2
+	PacketNoUsePacketPool = 0
 )
 
-func (p *Packet) canPutToBufferPool() (can bool) {
-	if p.isUseBufferPool() && atomic.LoadInt32(&p.refCnt) == 0 {
+func (p *Packet) canPutToDataPool() (can bool) {
+	if p.isUseDataPool() && atomic.LoadInt32(&p.dataPoolRefCnt) == 0 {
 		return true
 	}
 	return
 }
 
-func (p *Packet) clean() (isReturnToPool bool) {
-	if p.isUseBufferPool() && p.canPutToBufferPool() {
+func (p *Packet) canPutToPacketPool() (can bool) {
+	if p.isUsePacketPool() && atomic.LoadInt32(&p.packetPoolRefCnt) == 0 {
+		return true
+	}
+	return
+}
+
+func (p *Packet) cleanDataPoolFlag(srcFun string) (isReturnToPool bool) {
+	if p.isUseDataPool() && p.canPutToDataPool() {
+		atomic.StoreInt64(&p.useDataPoolFlag, PacketNoUseDataPool)
 		if len(p.followerPackets) != 0 {
 			for i := 0; i < len(p.followerPackets); i++ {
 				if p.followerPackets[i] != nil {
@@ -144,17 +160,17 @@ func (p *Packet) clean() (isReturnToPool bool) {
 		isReturnToPool = true
 		p.Object = nil
 		p.TpObject = nil
-		p.Data = nil
+		p.dataPoolRefCnt=0
 		p.Arg = nil
 		p.followerPackets = nil
 		p.OrgBuffer = nil
 	}
-	atomic.StoreInt64(&p.useBufferPoolFlag, PacketNoUseBufferPool)
 	return
 }
 
-func (p *Packet) forceClean() (isReturnToPool bool) {
-	if p.isUseBufferPool() {
+func (p *Packet) forceCleanDataPoolFlag(srcFun string) (isReturnToPool bool) {
+	if p.isUseDataPool() {
+		atomic.StoreInt64(&p.useDataPoolFlag, PacketNoUseDataPool)
 		if len(p.followerPackets) != 0 {
 			for i := 0; i < len(p.followerPackets); i++ {
 				if p.followerPackets[i] != nil {
@@ -166,18 +182,39 @@ func (p *Packet) forceClean() (isReturnToPool bool) {
 		isReturnToPool = true
 		p.Object = nil
 		p.TpObject = nil
-		p.Data = nil
+		p.dataPoolRefCnt=0
 		p.Arg = nil
 		p.followerPackets = nil
 		p.OrgBuffer = nil
 	}
-	atomic.StoreInt64(&p.useBufferPoolFlag, PacketNoUseBufferPool)
 	return
 }
 
-func (p *Packet) addRefCnt() {
-	if p.isUseBufferPool() {
-		atomic.AddInt32(&p.refCnt, 1)
+func (p *Packet) cleanPacketPoolFlag(srcFun string) (isReturnToPool bool) {
+	if p.isUsePacketPool() && p.canPutToPacketPool()  {
+		PutPacketToPool(p)
+		isReturnToPool=true
+	}
+	return
+}
+
+func (p *Packet) forceCleanPacketPoolFlag(srcFun string) (isReturnToPool bool) {
+	if p.isUsePacketPool() {
+		PutPacketToPool(p)
+		isReturnToPool=true
+	}
+	return
+}
+
+func (p *Packet) addDataPoolRefCnt() {
+	if p.isUseDataPool() {
+		atomic.AddInt32(&p.dataPoolRefCnt, 1)
+	}
+}
+
+func (p *Packet) addPacketPoolRefCnt() {
+	if p.isUsePacketPool() {
+		atomic.AddInt32(&p.packetPoolRefCnt, 1)
 	}
 }
 
@@ -194,9 +231,9 @@ func copyPacket(src *Packet, dst *FollowerPacket) {
 	dst.ExtentOffset = src.ExtentOffset
 	dst.ReqID = src.ReqID
 	dst.Data = src.OrgBuffer
-	dst.refCnt = &src.refCnt
-	if src.isUseBufferPool() {
-		dst.isUseBufferFromPool = true
+	dst.dataPoolRefCnt = &src.dataPoolRefCnt
+	if src.isUseDataPool() {
+		dst.isUseDataPool = true
 	}
 }
 
@@ -238,16 +275,29 @@ func (p *Packet) BeforeTp(clusterID string) (ok bool) {
 	return
 }
 
-func (p *Packet) DecRefCnt() {
-	if atomic.LoadInt64(&p.useBufferPoolFlag) == PacketUseBufferPool {
-		if atomic.LoadInt32(&p.refCnt) > 0 {
-			atomic.AddInt32(&p.refCnt, -1)
+func (p *Packet) DecDataPoolRefCnt() {
+	if p.isUseDataPool() {
+		if atomic.LoadInt32(&p.dataPoolRefCnt) > 0 {
+			atomic.AddInt32(&p.dataPoolRefCnt, -1)
 		}
 	}
 }
 
-func (p *Packet) isUseBufferPool() bool {
-	return atomic.LoadInt64(&p.useBufferPoolFlag) == PacketUseBufferPool
+func (p *Packet) DecPacketPoolRefCnt() {
+	if p.isUsePacketPool(){
+		if atomic.LoadInt32(&p.packetPoolRefCnt) > 0 {
+			atomic.AddInt32(&p.packetPoolRefCnt, -1)
+		}
+	}
+}
+
+func (p *Packet) isUseDataPool() bool {
+	return atomic.LoadInt64(&p.useDataPoolFlag) == PacketUseDataPool
+}
+
+
+func (p *Packet) isUsePacketPool() bool {
+	return atomic.LoadInt64(&p.usePacketPoolFlag) == PacketUsePacketPool
 }
 
 func (p *Packet) resolveFollowersAddr(remoteAddr string) (err error) {
@@ -268,10 +318,83 @@ func (p *Packet) resolveFollowersAddr(remoteAddr string) (err error) {
 		err = ErrBadNodes
 		return
 	}
-	if p.isUseBufferPool() {
-		p.addRefCnt()
-	}
 
+	return
+}
+
+const (
+	PacketPoolCnt = 64
+)
+
+var (
+	PacketPool [PacketPoolCnt]*sync.Pool
+)
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+	for i := 0; i < PacketPoolCnt; i++ {
+		PacketPool[i] = &sync.Pool{New: func() interface{} {
+			return new(Packet)
+		}}
+	}
+}
+
+func PutPacketToPool(p *Packet) {
+	atomic.StoreInt64(&p.usePacketPoolFlag, PacketNoUsePacketPool)
+	if len(p.followerPackets) != 0 {
+		for i := 0; i < len(p.followerPackets); i++ {
+			if p.followerPackets[i] != nil {
+				p.followerPackets[i].Data = nil
+			}
+		}
+	}
+	p.HasPrepare=false
+	p.Size = 0
+	p.Data = nil
+	p.Opcode = 0
+	p.PartitionID = 0
+	p.ExtentID = 0
+	p.ExtentOffset = 0
+	p.Magic = proto.ProtoMagic
+	p.ExtentType = 0
+	p.ResultCode = 0
+	p.dataPoolRefCnt = 0
+	p.packetPoolRefCnt = 0
+	p.RemainingFollowers = 0
+	p.CRC = 0
+	p.ArgLen = 0
+	p.OrgBuffer=nil
+	p.KernelOffset = 0
+	p.SetCtx(nil)
+	p.Arg = nil
+	p.OrgSize=0
+	p.followersAddrs=nil
+	p.IsReleased=0
+	p.mesg=""
+	p.Object=nil
+	p.NeedReply=true
+	p.OrgSize=0
+	p.quorum=0
+	p.TpObject=nil
+	p.errorCh=nil
+	p.Data = nil
+	p.StartT = time.Now().UnixNano()
+	p.WaitT = time.Now().UnixNano()
+	p.SendT = time.Now().UnixNano()
+	p.RecvT = time.Now().UnixNano()
+	index := rand.Intn(PacketPoolCnt)
+	PacketPool[index].Put(p)
+}
+
+func GetPacketFromPool() (p *Packet) {
+	index := rand.Intn(PacketPoolCnt)
+	p = PacketPool[index].Get().(*Packet)
+	p.StartT = time.Now().UnixNano()
+	p.usePacketPoolFlag = PacketUsePacketPool
+	if p.PoolFlag==0 {
+		p.PoolFlag=proto.GenerateRequestID()
+	}
+	p.NeedReply = true
 	return
 }
 
@@ -283,6 +406,8 @@ func NewPacket(ctx context.Context) (p *Packet) {
 	p.SetCtx(ctx)
 	return
 }
+
+
 
 func NewPacketToGetAllWatermarks(ctx context.Context, partitionID uint64, extentType uint8) (p *Packet) {
 	p = new(Packet)
@@ -442,6 +567,7 @@ func (p *Packet) PackErrorBody(action, msg string) {
 	p.Size = uint32(len([]byte(action + "_" + msg)))
 	p.Data = make([]byte, p.Size)
 	copy(p.Data[:int(p.Size)], []byte(action+"_"+msg))
+	p.ArgLen=0
 }
 
 func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineSonds int64) (isUseBufferPool bool, err error) {
@@ -461,18 +587,6 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineSonds int64) (isUseBuff
 	if err = p.UnmarshalHeader(header); err != nil {
 		return
 	}
-
-	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("repl.Packet.ReadFromConn[Decode Packet]")
-	defer func() {
-		tracer.SetTag("conn.remote", c.RemoteAddr().String())
-		tracer.SetTag("conn.local", c.LocalAddr().String())
-		tracer.SetTag("ReqID", p.GetReqID())
-		tracer.SetTag("ReqOp", p.GetOpMsg())
-		tracer.SetTag("Arg", string(p.Arg))
-		tracer.SetTag("ret.err", err)
-		tracer.Finish()
-	}()
-	p.SetCtx(tracer.Context())
 
 	if p.ArgLen > 0 {
 		if err = proto.ReadFull(c, &p.Arg, int(p.ArgLen)); err != nil {
@@ -495,18 +609,14 @@ func (p *Packet) allocateBufferFromPoolForReadConnnectBody(c net.Conn) (isUseBuf
 	p.OrgSize = int32(readSize)
 	if p.IsWriteOperation() && readSize <= util.BlockSize {
 		p.Data, _ = proto.Buffers.Get(util.BlockSize)
-		atomic.StoreInt64(&p.useBufferPoolFlag, PacketUseBufferPool)
 		_, err = io.ReadFull(c, p.Data[:readSize])
-		if err != nil {
-			proto.Buffers.Put(p.Data)
-			return
-		}
+		atomic.StoreInt64(&p.useDataPoolFlag, PacketUseDataPool)
 		isUseBufferPool = true
 	} else if p.IsRandomWriteV3() {
 		needDataSize := uint32(readSize) + proto.RandomWriteRaftLogV3HeaderSize
 		if needDataSize <= util.BlockSize {
 			p.Data, _ = proto.Buffers.Get(util.BlockSize)
-			atomic.StoreInt64(&p.useBufferPoolFlag, PacketUseBufferPool)
+			atomic.StoreInt64(&p.useDataPoolFlag, PacketUseDataPool)
 			isUseBufferPool = true
 		} else {
 			p.Data = make([]byte, uint32(readSize)+proto.RandomWriteRaftLogV3HeaderSize)
@@ -545,11 +655,7 @@ func (p *Packet) IsForwardPacket() bool {
 
 // A leader packet is the packet send to the leader and does not require packet forwarding.
 func (p *Packet) IsLeaderPacket() (ok bool) {
-	if p.IsForwardPkt() && (p.IsWriteOperation() || p.IsCreateExtentOperation() || p.IsMarkDeleteExtentOperation()) {
-		ok = true
-	}
-
-	return
+	return p.RemainingFollowers > 0
 }
 
 func (p *Packet) IsTinyExtentType() bool {

@@ -17,6 +17,7 @@ package proto
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 )
 
 type (
@@ -80,6 +81,8 @@ type SnapshotMeta struct {
 	Learners []Learner
 }
 
+
+
 type Peer struct {
 	Type     PeerType
 	Priority uint16
@@ -99,6 +102,36 @@ type HardState struct {
 	Vote   uint64
 }
 
+var (
+	LeaderGetEntryCnt uint64
+	LeaderPutEntryCnt uint64
+	FollowerGetEntryCnt uint64
+	FollowerPutEntryCnt uint64
+)
+
+
+
+func LoadLeaderGetEntryCnt() uint64 {
+	return atomic.LoadUint64(&LeaderGetEntryCnt)
+}
+
+func LoadLeaderPutEntryCnt() uint64 {
+	return atomic.LoadUint64(&LeaderPutEntryCnt)
+}
+
+func LoadFollowerGetEntryCnt() uint64 {
+	return atomic.LoadUint64(&FollowerGetEntryCnt)
+}
+
+func LoadFollowerPutEntryCnt() uint64 {
+	return atomic.LoadUint64(&FollowerPutEntryCnt)
+}
+
+const (
+	LeaderLogEntryRefCnt=4
+	FollowerLogEntryRefCnt=2
+)
+
 // Entry is the repl log entry.
 type Entry struct {
 	Type  EntryType
@@ -106,10 +139,27 @@ type Entry struct {
 	Index uint64
 	Data  []byte
 	ctx   context.Context // Tracer context
+	RefCnt    int32
+	OrgRefCnt uint8
 }
 
 func (e *Entry) SetCtx(ctx context.Context) {
 	e.ctx = ctx
+}
+
+func (e *Entry)IsLeaderLogEntry() bool {
+	return e.OrgRefCnt==LeaderLogEntryRefCnt
+}
+
+
+func (e *Entry)IsFollowerLogEntry() bool {
+	return e.OrgRefCnt==FollowerLogEntryRefCnt
+}
+
+func (e *Entry)DecRefCnt() {
+	if e.IsLeaderLogEntry() || e.IsFollowerLogEntry() {
+		atomic.AddInt32(&e.RefCnt, -1)
+	}
 }
 
 func (e *Entry) Ctx() context.Context {

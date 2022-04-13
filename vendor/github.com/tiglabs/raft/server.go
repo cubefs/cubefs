@@ -65,6 +65,7 @@ func NewRaftServer(config *Config) (*RaftServer, error) {
 
 func (rs *RaftServer) run() {
 	ticks := 0
+	//entriesTicks:=time.NewTicker(time.Second)
 	randomSeedTicker := time.NewTicker(time.Minute)
 	for {
 		select {
@@ -75,6 +76,8 @@ func (rs *RaftServer) run() {
 			rs.mu.Lock()
 			delete(rs.rafts, id)
 			rs.mu.Unlock()
+		//case <-entriesTicks.C	:
+		//	fmt.Println(fmt.Sprintf("GetEntriesCnt(%v),PutEntriesCnt(%v)",proto.LoadGetEntryCnt(),proto.LoadPutEntryCnt()))
 
 		case m := <-rs.heartc:
 			switch m.Type {

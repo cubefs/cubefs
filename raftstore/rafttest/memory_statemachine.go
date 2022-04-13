@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/tiglabs/raft"
 	"github.com/tiglabs/raft/proto"
@@ -93,7 +94,7 @@ func (ms *memoryStatemachine) ApplyMemberChange(confChange *proto.ConfChange, in
 	return nil, nil
 }
 
-func (ms *memoryStatemachine) Snapshot(recoverNode uint64) (proto.Snapshot, error) {
+func (ms *memoryStatemachine) Snapshot(recoveryID uint64) (proto.Snapshot, error) {
 	ms.RLock()
 	defer ms.RUnlock()
 
@@ -177,6 +178,45 @@ func (ms *memoryStatemachine) constructBigData(bitSize int) error {
 		return errors.New(fmt.Sprintf("Put error[%v].\r\n", err))
 	}
 	return nil
+}
+
+func (ms *memoryStatemachine) localConstructBigData(bitSize int, exeMin int, res *resultTest) {
+	var sucOp, failOp int64
+	bArray := make([]byte, bitSize)
+	for i := 0; i < bitSize; i++ {
+		bArray[i] = 1
+	}
+	delay := time.Duration(exeMin) * time.Minute
+	//sec := exeMin * 60
+	timer := time.NewTimer(delay)
+	//start = time.Now()
+	defer func() {
+		timer.Stop()
+		//result = fmt.Sprintf("local put bigsubmit: start-%v, end-%v; size-%d, executeTime-%dmin, success-%d, fail-%d, tps-%d",
+		//	start.Format("2006-01-02 15:04:05"), end.Format("2006-01-02 15:04:05"), bitSize, exeMin, sucOp, failOp, sucOp/sec)
+		res.totalCount = sucOp + failOp
+		res.sucOp = sucOp
+		res.failOp = failOp
+		//res.err = err
+	}()
+	for {
+		select {
+		case <-timer.C:
+			//end = time.Now()
+			return
+		default:
+		}
+
+		resp := ms.raft.Submit(nil, ms.id, bArray)
+		_, err := resp.Response()
+		if err != nil {
+			//return errors.New(fmt.Sprintf("Put error[%v].\r\n", err))
+			failOp++
+		} else {
+			sucOp++
+		}
+	}
+
 }
 
 func computeTime(id uint64, startTime int64, endTime int64) {

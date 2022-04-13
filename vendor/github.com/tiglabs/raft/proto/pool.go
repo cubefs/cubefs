@@ -16,6 +16,7 @@ package proto
 import (
 	"math/rand"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -24,32 +25,89 @@ const (
 )
 
 var (
-	msgPool [MsgPoolCnt]*sync.Pool
-	bytePool = &sync.Pool{
-		New: func() interface{} {
-			return make([]byte, 128)
-		},
-	}
+	msgPool [MsgPoolCnt]*MessagePoolCap
+	bytePool [MsgPoolCnt]*sync.Pool
+	entryPool [MsgPoolCnt]*sync.Pool
 )
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
 	for index:=0;index<MsgPoolCnt;index++{
-		msgPool[index]=&sync.Pool{
-			New: func() interface{} {
-				return &Message{
-					Entries: make([]*Entry, 0, 128),
+		entryPool[index]=&sync.Pool{
+			New: func() interface{}{
+				return &Entry{
+
 				}
 			},
 		}
+		bytePool[index]= &sync.Pool{
+			New: func() interface{} {
+				return make([]byte, 128)
+			},
+		}
+
+		msgPool[index]=&MessagePoolCap{
+		        c:    make(chan *Message, 512),
+		        ecap: 128,
+	        }
 	}
 }
 
 
+func GetEntryFromPool() (e *Entry) {
+	index:=rand.Intn(MsgPoolCnt)
+	e = entryPool[index].Get().(*Entry)
+	return e
+}
+
+func GetEntryFromPoolWithFollower() (e *Entry) {
+	e=GetEntryFromPool()
+	e.OrgRefCnt=FollowerLogEntryRefCnt
+	atomic.StoreInt32(&e.RefCnt,FollowerLogEntryRefCnt)
+	atomic.AddUint64(&FollowerGetEntryCnt,1)
+	return e
+}
+
+func GetEntryFromPoolWithArgWithLeader(t EntryType,term,index uint64,data []byte) (e *Entry) {
+	e=GetEntryFromPool()
+	e.Type=t
+	e.Data=data
+	e.Term=term
+	e.Index=index
+	e.ctx=nil
+	e.OrgRefCnt=LeaderLogEntryRefCnt
+	atomic.StoreInt32(&e.RefCnt,LeaderLogEntryRefCnt)
+	atomic.AddUint64(&LeaderGetEntryCnt,1)
+
+	return
+}
+
+func PutEntryToPool(e *Entry) {
+	if e.IsLeaderLogEntry() || e.IsFollowerLogEntry() {
+		e.DecRefCnt()
+		if atomic.LoadInt32(&e.RefCnt) == 0 {
+			rindex := rand.Intn(MsgPoolCnt)
+			e.Data = nil
+			e.Type = 0
+			e.Term = 0
+			if e.IsLeaderLogEntry(){
+				atomic.AddUint64(&LeaderPutEntryCnt, 1)
+			}else {
+				atomic.AddUint64(&FollowerPutEntryCnt, 1)
+			}
+			e.Index = 0
+			e.OrgRefCnt = 0
+			e.RefCnt = 0
+			entryPool[rindex].Put(e)
+		}
+	}
+
+}
 
 func GetMessage() *Message {
 	index:=rand.Intn(MsgPoolCnt)
-	msg := msgPool[index].Get().(*Message)
+	//msg := msgPool[index].Get().(*Message)
+	msg := msgPool[index].Get()
 	msg.Reject = false
 	msg.RejectIndex = 0
 	msg.ID = 0
@@ -78,9 +136,75 @@ func ReturnMessage(msg *Message) {
 }
 
 func getByteSlice() []byte {
-	return bytePool.Get().([]byte)
+	return bytePool[rand.Intn(MsgPoolCnt)].Get().([]byte)
 }
 
 func returnByteSlice(b []byte) {
-	bytePool.Put(b)
+	bytePool[rand.Intn(MsgPoolCnt)].Put(b)
 }
+
+
+type BytePool struct {
+	c    chan []byte
+	buffersize    int
+}
+
+func NewBytePool(maxSize int, buffersize int) (bp *BytePool) {
+	return &BytePool{
+		c:    make(chan []byte, maxSize),
+		buffersize: buffersize,
+	}
+}
+
+func (bp *BytePool) Get() (b []byte) {
+	select {
+	case b = <-bp.c:
+	default:
+	     b = make([]byte, bp.buffersize)
+	}
+	return
+}
+
+func (bp *BytePool) Put(b []byte) {
+	select {
+	case bp.c <- b:
+	default:
+	}
+}
+
+
+
+type MessagePoolCap struct {
+	c    chan *Message
+	ecap int
+}
+
+func NewMessagePoolCap(maxSize int, entryCap int) (msgpool *MessagePoolCap) {
+	return &MessagePoolCap{
+		c:    make(chan *Message, maxSize),
+		ecap: entryCap,
+	}
+}
+
+func (msgpool *MessagePoolCap) Get() (msg *Message) {
+	select {
+	case msg = <-msgpool.c:
+	default:
+		//msg = &Message{Entries: make([]*Entry, 0, msgpool.ecap)}
+		msg = new(Message)
+		msg.Entries = make([]*Entry, 0, msgpool.ecap)
+	}
+	return
+}
+
+func (msgpool *MessagePoolCap) Put(msg *Message) {
+	select {
+	case msgpool.c <- msg:
+
+	default:
+
+	}
+}
+
+
+

@@ -86,13 +86,12 @@ func (s *transportSender) stop() {
 
 func (s *transportSender) loopSend(recvc chan *proto.Message) {
 	var loopSendFunc = func() {
-
 		var conn *util.ConnTimeout
 		var err error
 		if conn, err = getConn(context.Background(), s.nodeID, s.senderType, s.resolver, 0, 2*time.Second); err != nil {
 			logger.Error("[Transport] get connection [%v] to [%v] failed: %v", s.senderType, s.nodeID, err)
 		}
-		bufWr := util.NewBufferWriter(conn, 16*KB)
+		bufWr := util.NewBufferWriter(conn, 128*KB)
 
 		defer func() {
 			if conn != nil {

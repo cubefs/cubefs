@@ -53,7 +53,7 @@ func (u *unstable) maybeTerm(i uint64) (uint64, bool) {
 	return u.entries[i-u.offset].Term, true
 }
 
-func (u *unstable) stableTo(i, t uint64) {
+func (u *unstable) stableTo(i, t uint64,iscache bool) {
 	gt, ok := u.maybeTerm(i)
 	if !ok {
 		return
@@ -62,9 +62,18 @@ func (u *unstable) stableTo(i, t uint64) {
 		l := uint64(len(u.entries))
 		diff := l - (i + 1 - u.offset)
 		if diff > 0 {
+			temp1:=u.entries[0:i+1-u.offset]
+			for t1:=0;t1<len(temp1);t1++{
+				if iscache && temp1[t1].Index<=i && temp1[t1].Term<=t{
+					proto.PutEntryToPool(temp1[t1])
+				}
+			}
 			copy(u.entries, u.entries[i+1-u.offset:l])
 		}
 		for k := diff; k < l; k++ {
+			if iscache && u.entries[k].Index<=i && u.entries[k].Term<=t{
+				proto.PutEntryToPool(u.entries[k])
+			}
 			u.entries[k] = nil
 		}
 		u.entries = u.entries[0:diff]
@@ -80,7 +89,7 @@ func (u *unstable) restore(index uint64) {
 	u.offset = index + 1
 }
 
-func (u *unstable) truncateAndAppend(ents []*proto.Entry) {
+func (u *unstable) truncateAndAppend(ents []*proto.Entry,recycle bool) {
 	after := ents[0].Index
 	switch {
 	case after == u.offset+uint64(len(u.entries)):
