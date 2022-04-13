@@ -343,13 +343,18 @@ func (mw *MetaWrapper) BatchInodeGet(ctx context.Context, inodes []uint64) []*pr
 		candidates[mp.PartitionID] = append(candidates[mp.PartitionID], ino)
 	}
 
+	var needForceUpdate = false
 	for id, inos := range candidates {
 		mp := mw.getPartitionByID(id)
 		if mp == nil {
+			needForceUpdate = true
 			continue
 		}
 		wg.Add(1)
 		go mw.batchIget(ctx, &wg, mp, inos, resp)
+	}
+	if needForceUpdate {
+		mw.triggerForceUpdate()
 	}
 
 	go func() {
@@ -944,7 +949,11 @@ func (mw *MetaWrapper) GetMultipart_ll(ctx context.Context, path, multipartId st
 		info, _, err = mw.broadcastGetMultipart(ctx, path, multipartId)
 		return
 	}
-	var mp = mw.getPartitionByID(mpId)
+	var mp = mw.getPartitionByIDWithAutoRefresh(mpId)
+	if mp == nil {
+		err = syscall.ENOENT
+		return
+	}
 	status, multipartInfo, err := mw.getMultipart(ctx, mp, path, multipartId)
 	if err != nil || status != statusOK {
 		log.LogErrorf("GetMultipartRequest: err(%v) status(%v)", err, status)
@@ -970,7 +979,11 @@ func (mw *MetaWrapper) AddMultipartPart_ll(ctx context.Context, path, multipartI
 			return
 		}
 	}
-	var mp = mw.getPartitionByID(mpId)
+	var mp = mw.getPartitionByIDWithAutoRefresh(mpId)
+	if mp == nil {
+		err = syscall.ENOENT
+		return
+	}
 	status, err := mw.addMultipartPart(ctx, mp, path, multipartId, partId, size, md5, inode)
 	if err != nil || status != statusOK {
 		log.LogErrorf("AddMultipartPart_ll: err(%v) status(%v)", err, status)
@@ -996,7 +1009,11 @@ func (mw *MetaWrapper) RemoveMultipart_ll(ctx context.Context, path, multipartID
 			return
 		}
 	}
-	var mp = mw.getPartitionByID(mpId)
+	var mp = mw.getPartitionByIDWithAutoRefresh(mpId)
+	if mp == nil {
+		err = syscall.ENOENT
+		return
+	}
 	status, err := mw.removeMultipart(ctx, mp, path, multipartID)
 	if err != nil || status != statusOK {
 		log.LogErrorf(" RemoveMultipart_ll: partition remove multipart fail: "+

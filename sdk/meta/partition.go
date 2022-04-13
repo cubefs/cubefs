@@ -85,6 +85,15 @@ func (mw *MetaWrapper) getPartitionByID(id uint64) *MetaPartition {
 	return mp
 }
 
+func (mw *MetaWrapper) getPartitionByIDWithAutoRefresh(id uint64) *MetaPartition {
+	var mp = mw.getPartitionByID(id)
+	if mp == nil {
+		mw.triggerAndWaitForceUpdate()
+		mp = mw.getPartitionByID(id)
+	}
+	return mp
+}
+
 func (mw *MetaWrapper) getPartitionByInode(ctx context.Context, ino uint64) *MetaPartition {
 	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.getPartitionByInode").
 		SetTag("ino", ino)

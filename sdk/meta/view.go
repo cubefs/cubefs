@@ -229,12 +229,16 @@ func (mw *MetaWrapper) forceUpdateMetaPartitions() error {
 // Should be protected by partMutex, otherwise the caller might not be signaled.
 func (mw *MetaWrapper) triggerAndWaitForceUpdate() {
 	mw.partMutex.Lock()
+	mw.triggerForceUpdate()
+	mw.partCond.Wait()
+	mw.partMutex.Unlock()
+}
+
+func (mw *MetaWrapper) triggerForceUpdate() {
 	select {
 	case mw.forceUpdate <- struct{}{}:
 	default:
 	}
-	mw.partCond.Wait()
-	mw.partMutex.Unlock()
 }
 
 func (mw *MetaWrapper) refresh() {
