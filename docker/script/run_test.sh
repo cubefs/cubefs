@@ -182,7 +182,7 @@ print_error_info() {
 
 start_client() {
     echo -n "Starting client   ... "
-    nohup /cfs/bin/cfs-client -test.coverprofile=ltptest.cov -test.outputdir=${cover_path} -c /cfs/conf/client.json >/cfs/log/cfs.out 2>&1 &
+    nohup /cfs/bin/cfs-client -test.coverprofile=client.cov -test.outputdir=${cover_path} -c /cfs/conf/client.json >/cfs/log/cfs.out 2>&1 &
     sleep 10
     res=$( mount | grep -q "$VolName on $MntPoint" ; echo $? )
     if [[ $res -ne 0 ]] ; then
@@ -234,10 +234,41 @@ wait_proc_done() {
     fi
 }
 
-run_ltptest() {
+run_unit_test() {
+    echo "Running unit test"
+    echo "************************";
+    echo "       unit test       ";
+    echo "************************";
     export GO111MODULE="off"
-    go test /go/src/github.com/chubaofs/chubaofs/sdk/... -covermode=atomic -coverprofile=${cover_path}/sdkunittestcover.cov
+    pushd /go/src/github.com/chubaofs/chubaofs > /dev/null
+    packages=`GO111MODULE="off" go list \
+            ./master/... \
+            ./datanode/... \
+            ./metanode/... \
+            ./objectnode/... \
+            ./storage/... \
+            ./sdk/data/... \
+            ./sdk/meta/... \
+            ./sdk/master/... \
+            ./repl/... \
+            ./raftstore/rafttest/... \
+            ./util/... \
+            ./vendor/github.com/tiglabs/raft/...`
+    echo "Following packages will be tested and record code coverage:"
+    for package in `echo ${packages}`; do
+        echo "  * "${package};
+    done
+
+    test_output_file=${cover_path}/unittest.out
+    echo "Running unit tests ..."
+    go test -v -covermode=atomic -coverprofile=${cover_path}/unittest.cov ${packages} > ${test_output_file}
     ret=$?
+    popd > /dev/null
+    pass_num=`grep "PASS:" ${test_output_file} | wc -l`
+    fail_num=`grep "FAIL:" ${test_output_file} | wc -l`
+    total_num=`expr ${pass_num} + ${fail_num}`
+    echo "Unit test complete: ${pass_num}/${total_num} passed."
+    egrep "FAIL:|PASS:" ${test_output_file}
     if [[ $ret -ne 0 ]]; then
         echo -e "SDK Unit test: \033[32mFAIL\033[0m"
         exit $ret
@@ -249,7 +280,9 @@ run_ltptest() {
         exit $ret
     fi
     echo -e "Unit test: \033[32mPASS\033[0m"
+}
 
+run_ltptest() {
     echo "Running LTP test"
     echo "************************";
     echo "        LTP test        ";
@@ -324,6 +357,7 @@ change_store_mode_to_rocksdb ; sleep 2
 add_rocksdb_mode_meta_partitions ; sleep 2
 show_cluster_info
 start_client ; sleep 2
+run_unit_test
 run_ltptest
 run_s3_test
 set_trash_days; sleep 310

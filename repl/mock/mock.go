@@ -2,9 +2,11 @@ package mock
 
 import (
 	"fmt"
+	"github.com/chubaofs/chubaofs/util"
 	"hash/crc32"
 	"io"
 	"net"
+	"sort"
 	"testing"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -87,9 +89,18 @@ func RunMockTest(config *MockTestConfig, t *testing.T) {
 		return
 	}
 
+	var hostIds = make([]int, 0)
+	for hostID := range config.Hosts {
+		hostIds = append(hostIds, hostID)
+	}
+	sort.SliceStable(hostIds, func(i, j int) bool {
+		return hostIds[i] < hostIds[j]
+	})
+
 	var mockHosts = make([]*MockHost, 0)
 	var hostAddrs = make([]string, 0)
-	for hostID, hostListen := range config.Hosts {
+	for _, hostID := range hostIds {
+		hostListen := config.Hosts[hostID]
 		hostAddress := fmt.Sprintf("127.0.0.1:%v", hostListen)
 		hostRecords := NewMockHostRecords()
 		for _, message := range config.Messages {
@@ -106,6 +117,8 @@ func RunMockTest(config *MockTestConfig, t *testing.T) {
 		mockHosts = append(mockHosts, host)
 		hostAddrs = append(hostAddrs, hostAddress)
 	}
+
+	repl.SetConnectPool(util.NewConnectPool())
 
 	// Start all mockHosts
 	for _, host := range mockHosts {
@@ -126,6 +139,10 @@ func RunMockTest(config *MockTestConfig, t *testing.T) {
 	if conn, err = net.Dial("tcp", hostAddrs[0]); err != nil {
 		t.Fatalf("connect to leader host [%v] failed: %v", hostAddrs[0], err)
 	}
+
+	defer func() {
+		_ = conn.Close()
+	}()
 
 	// Send messages to host
 	sendMockMessage(conn, hostAddrs[1:], config.Quorum, config.Messages, t)
