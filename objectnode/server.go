@@ -192,7 +192,7 @@ func (o *ObjectNode) updateRegion(region string) {
 func handleStart(s common.Server, cfg *config.Config) (err error) {
 	o, ok := s.(*ObjectNode)
 	if !ok {
-		return errors.New("Invalid Node Type!")
+		return errors.New("Invalid node Type!")
 	}
 	// parse config
 	if err = o.loadConfig(cfg); err != nil {

@@ -22,12 +22,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/depends/tiglabs/raft"
+	raftproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/tiglabs/raft"
-	raftproto "github.com/tiglabs/raft/proto"
 )
 
 /* The functions below implement the interfaces defined in the raft library. */
@@ -61,6 +61,7 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		if err = json.Unmarshal(confChange.Context, req); err != nil {
 			return
 		}
+		log.LogInfof("action[ApplyMemberChange] ConfAddNode [%v], partitionId [%v]", req.AddPeer, req.PartitionId)
 		isUpdated, err = dp.addRaftNode(req, index)
 		if isUpdated && err == nil {
 			// Perform the update replicas operation asynchronously after the execution of the member change applying
@@ -84,6 +85,7 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		if err = json.Unmarshal(confChange.Context, req); err != nil {
 			return
 		}
+		log.LogInfof("action[ApplyMemberChange] ConfRemoveNode [%v], partitionId [%v]", req.RemovePeer, req.PartitionId)
 		isUpdated, err = dp.removeRaftNode(req, index)
 	case raftproto.ConfUpdateNode:
 		log.LogDebugf("[updateRaftNode]: not support.")

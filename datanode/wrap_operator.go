@@ -26,6 +26,8 @@ import (
 	"hash/crc32"
 	"strings"
 
+	"github.com/cubefs/cubefs/depends/tiglabs/raft"
+	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/storage"
@@ -33,8 +35,6 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/tiglabs/raft"
-	raftProto "github.com/tiglabs/raft/proto"
 )
 
 func (s *DataNode) getPacketTpLabels(p *repl.Packet) map[string]string {
@@ -54,6 +54,27 @@ func (s *DataNode) getPacketTpLabels(p *repl.Packet) map[string]string {
 	}
 
 	return labels
+}
+
+func isColdVolExtentDelErr(p *repl.Packet) bool {
+	if p.Object == nil {
+		return false
+	}
+
+	partition, ok := p.Object.(*DataPartition)
+	if !ok {
+		return false
+	}
+
+	if proto.IsNormalDp(partition.partitionType) {
+		return false
+	}
+
+	if p.ResultCode == proto.OpNotExistErr {
+		return true
+	}
+
+	return false
 }
 
 func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
@@ -76,7 +97,11 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 			err = fmt.Errorf("op(%v) error(%v)", p.GetOpMsg(), string(p.Data[:resultSize]))
 			logContent := fmt.Sprintf("action[OperatePacket] %v.",
 				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, err))
-			log.LogErrorf(logContent)
+			if isColdVolExtentDelErr(p) {
+				log.LogInfof(logContent)
+			} else {
+				log.LogErrorf(logContent)
+			}
 		} else {
 			logContent := fmt.Sprintf("action[OperatePacket] %v.",
 				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, nil))
@@ -199,12 +224,12 @@ func (s *DataNode) handlePacketToCreateDataPartition(p *repl.Packet) {
 
 	bytes, err = json.Marshal(task.Request)
 	if err != nil {
-		err = fmt.Errorf("from master Task(%v) cannot unmashal CreateDataPartition", task.ToString())
+		err = fmt.Errorf("from master Task(%v) cannot unmashal CreateDataPartition, err %s", task.ToString(), err.Error())
 		return
 	}
 	p.AddMesgLog(string(bytes))
 	if err = json.Unmarshal(bytes, request); err != nil {
-		err = fmt.Errorf("from master Task(%v) cannot unmash CreateDataPartitionRequest struct", task.ToString())
+		err = fmt.Errorf("from master Task(%v) cannot unmashal CreateDataPartitionRequest struct, err(%s)", task.ToString(), err.Error())
 		return
 	}
 	p.PartitionID = request.PartitionId
@@ -501,6 +526,13 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		}
 	}()
 	partition := p.Object.(*DataPartition)
+
+	// cache or preload partition not support raft and repair.
+	if !partition.isNormalType() {
+		err = raft.ErrStopped
+		return
+	}
+
 	_, isLeader := partition.IsRaftLeader()
 	if !isLeader {
 		err = raft.ErrNotLeader
@@ -539,6 +571,13 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 		}
 	}()
 	partition := p.Object.(*DataPartition)
+
+	// cache or preload partition not support raft and repair.
+	if !partition.isNormalType() {
+		err = raft.ErrStopped
+		return
+	}
+
 	if err = partition.CheckLeader(p, connect); err != nil {
 		return
 	}
@@ -611,7 +650,7 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 			tpObject = exporter.NewTPCnt(fmt.Sprintf("Repair_%s", p.GetOpMsg()))
 		}
 		reply.ExtentOffset = offset
-		p.Size = uint32(currReadSize)
+		p.Size = currReadSize
 		p.ExtentOffset = offset
 		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, isRepairRead)
 		if !shallDegrade {
@@ -624,7 +663,7 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		if err != nil {
 			return
 		}
-		reply.Size = uint32(currReadSize)
+		reply.Size = currReadSize
 		reply.ResultCode = proto.OpOk
 		reply.Opcode = p.Opcode
 		p.ResultCode = proto.OpOk
@@ -983,6 +1022,9 @@ func (s *DataNode) handlePacketToAddDataPartitionRaftMember(p *repl.Packet) {
 	if err = json.Unmarshal(reqData, req); err != nil {
 		return
 	}
+
+	log.LogInfof("action[handlePacketToAddDataPartitionRaftMember] %v, partition id %v", req.AddPeer, req.PartitionId)
+
 	p.AddMesgLog(string(reqData))
 	dp := s.space.Partition(req.PartitionId)
 	if dp == nil {
@@ -999,6 +1041,7 @@ func (s *DataNode) handlePacketToAddDataPartitionRaftMember(p *repl.Packet) {
 	if !isRaftLeader {
 		return
 	}
+	log.LogInfof("action[handlePacketToAddDataPartitionRaftMember] before ChangeRaftMember %v which is sync. partition id %v", req.AddPeer, req.PartitionId)
 
 	if req.AddPeer.ID != 0 {
 		_, err = dp.ChangeRaftMember(raftProto.ConfAddNode, raftProto.Peer{ID: req.AddPeer.ID}, reqData)
@@ -1006,6 +1049,8 @@ func (s *DataNode) handlePacketToAddDataPartitionRaftMember(p *repl.Packet) {
 			return
 		}
 	}
+	log.LogInfof("action[handlePacketToAddDataPartitionRaftMember] after ChangeRaftMember %v, partition id %v", req.AddPeer, &req.PartitionId)
+
 	return
 }
 
@@ -1047,8 +1092,9 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 	}
 	p.PartitionID = req.PartitionId
 
-	if !dp.needDeleteReplica(req.RemovePeer.Addr) {
-		log.LogWarnf("handlePacketToRemoveDataPartitionRaftMember, req(%s) RemoveRaftPeer(%s) is not exist", string(reqData), req.RemovePeer.Addr)
+	if !dp.IsExsitReplica(req.RemovePeer.Addr) {
+		log.LogInfof("recive MasterCommand: %v "+
+			"RemoveRaftPeer(%v) has not exsit", string(reqData), req.RemovePeer.Addr)
 		return
 	}
 
@@ -1084,6 +1130,11 @@ func (s *DataNode) handlePacketToDataPartitionTryToLeaderrr(p *repl.Packet) {
 	dp := s.space.Partition(p.PartitionID)
 	if dp == nil {
 		err = fmt.Errorf("partition %v not exsit", p.PartitionID)
+		return
+	}
+
+	if dp.raftStatus != RaftStatusRunning {
+		err = fmt.Errorf("partition %v raft not running", p.PartitionID)
 		return
 	}
 

@@ -20,11 +20,12 @@ import (
 	"net"
 	"sync"
 
+	"sync/atomic"
+	"time"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
-	"sync/atomic"
-	"time"
 )
 
 var (
@@ -389,7 +390,6 @@ func (rp *ReplProtocol) checkLocalResultAndReciveAllFollowerResponse() {
 		}
 
 	}
-	return
 }
 
 // Write a reply to the client.
@@ -401,7 +401,11 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 	if reply.IsErrPacket() {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
-		log.LogErrorf(err.Error())
+		if reply.ResultCode == proto.OpNotExistErr {
+			log.LogInfof(err.Error())
+		} else {
+			log.LogErrorf(err.Error())
+		}
 		rp.Stop()
 	}
 

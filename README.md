@@ -132,7 +132,7 @@ docker image remove -f  arm64_gcc4_golang1_13_ubuntu_14_04_cubefs
 The list of RPM packages dependencies can be installed with:
 
 ```
-$ yum install http://storage.jd.com/chubaofsrpm/latest/cfs-install-latest-el7.x86_64.rpm
+$ yum install https://ocs-cn-north1.heytapcs.com/cubefs/cfs-install-latest-el7.x86_64.rpm
 $ cd /cfs/install
 $ tree -L 2
 .
@@ -315,9 +315,8 @@ See [security disclosure process](security/README.md) for detail.
 
 ## Community
 
-- Twitter: [@ChubaoFS](https://twitter.com/ChubaoFS)
-- Mailing list: chubaofs-users@groups.io
-- Slack: [chubaofs.slack.com](https://chubaofs.slack.com/)
+- Mailing list: cubefs-users@groups.io
+- Slack: [cubefs.slack.com](https://cubefs.slack.com/)
 - WeChat: detail see [here](https://github.com/cubefs/cubefs/issues/604).
 
 ## Partners and Users

@@ -27,11 +27,11 @@ import (
 	"os"
 	"path"
 
+	"github.com/cubefs/cubefs/depends/tiglabs/raft"
+	raftproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/tiglabs/raft"
-	raftproto "github.com/tiglabs/raft/proto"
 )
 
 // Apply applies the given operational commands.
@@ -141,6 +141,34 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		resp = mp.fsmAppendExtentsWithCheck(ino)
+	case opFSMObjExtentsAdd:
+		ino := NewInode(0, 0)
+		if err = ino.Unmarshal(msg.V); err != nil {
+			return
+		}
+		resp = mp.fsmAppendObjExtents(ino)
+	case opFSMExtentsEmpty:
+		ino := NewInode(0, 0)
+		if err = ino.Unmarshal(msg.V); err != nil {
+			return
+		}
+		resp = mp.fsmExtentsEmpty(ino)
+	// case opFSMExtentsDel:
+	// 	ino := NewInode(0, 0)
+	// 	if err = ino.Unmarshal(msg.V); err != nil {
+	// 		return
+	// 	}
+	// 	resp = mp.fsmDelExtents(ino)
+	case opFSMClearInodeCache:
+		ino := NewInode(0, 0)
+		if err = ino.Unmarshal(msg.V); err != nil {
+			return
+		}
+		resp = mp.fsmClearInodeCache(ino)
+	case opFSMSentToChan:
+
+		resp = mp.fsmSendToChan(msg.V)
+
 	case opFSMStoreTick:
 		inodeTree := mp.getInodeTree()
 		dentryTree := mp.getDentryTree()
@@ -175,7 +203,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		err = mp.fsmRemoveXAttr(extend)
-	case opFSMUpdateSummaryInfo:
+	case opFSMUpdateXAttr:
 		var extend *Extend
 		if extend, err = NewExtendFromBytes(msg.V); err != nil {
 			return

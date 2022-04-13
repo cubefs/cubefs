@@ -16,8 +16,8 @@ package raftstore
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/tiglabs/raft"
 	"strings"
 	"sync"
 )

@@ -52,6 +52,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getPartitionById", m.getPartitionByIDHandler)
 	http.HandleFunc("/getInode", m.getInodeHandler)
 	http.HandleFunc("/getExtentsByInode", m.getExtentsByInodeHandler)
+	http.HandleFunc("/getEbsExtentsByInode", m.getEbsExtentsByInodeHandler)
 	// get all inodes of the partitionID
 	http.HandleFunc("/getAllInodes", m.getAllInodesHandler)
 	// get dentry information
@@ -251,6 +252,50 @@ func (m *MetaNode) getRaftStatusHandler(w http.ResponseWriter, r *http.Request) 
 
 	raftStatus := m.raftStore.RaftStatus(raftID)
 	resp.Data = raftStatus
+}
+
+func (m *MetaNode) getEbsExtentsByInodeHandler(w http.ResponseWriter,
+	r *http.Request) {
+	r.ParseForm()
+	resp := NewAPIResponse(http.StatusBadRequest, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getEbsExtentsByInodeHandler] response %s", err)
+		}
+	}()
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+	id, err := strconv.ParseUint(r.FormValue("ino"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+	req := &proto.GetExtentsRequest{
+		PartitionID: pid,
+		Inode:       id,
+	}
+	p := &Packet{}
+	if err = mp.ObjExtentsList(req, p); err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+	resp.Code = http.StatusSeeOther
+	resp.Msg = p.GetResultMsg()
+	if len(p.Data) > 0 {
+		resp.Data = json.RawMessage(p.Data)
+	}
+	return
 }
 
 func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter,

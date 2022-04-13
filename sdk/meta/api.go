@@ -34,19 +34,18 @@ import (
 // Low-level API, i.e. work with inode
 
 const (
-	BatchIgetRespBuf = 1000
-)
-
-const (
 	OpenRetryInterval = 5 * time.Millisecond
 	OpenRetryLimit    = 1000
 )
 
 const (
+	BatchIgetRespBuf       = 1000
 	MaxSummaryGoroutineNum = 120
 	BatchGetBufLen         = 500
-	BatchSize              = 200
 	UpdateSummaryRetry     = 3
+	SummaryKey             = "DirStat"
+	ChannelLen             = 100
+	BatchSize              = 200
 )
 
 func (mw *MetaWrapper) GetRootIno(subdir string) (uint64, error) {
@@ -389,6 +388,7 @@ func (mw *MetaWrapper) Delete_ll(parentID uint64, name string, isDir bool) (*pro
 	if err != nil || status != statusOK {
 		return nil, nil
 	}
+
 	if mw.EnableSummary {
 		go func() {
 			if proto.IsDir(mode) {
@@ -398,10 +398,11 @@ func (mw *MetaWrapper) Delete_ll(parentID uint64, name string, isDir bool) (*pro
 			}
 		}()
 	}
+
 	return info, nil
 }
 
-func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID uint64, dstName string) (err error) {
+func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID uint64, dstName string, overwritten bool) (err error) {
 	var oldInode uint64
 
 	srcParentMP := mw.getPartitionByInode(srcParentID)
@@ -442,6 +443,10 @@ func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID
 
 	// Note that only regular files are allowed to be overwritten.
 	if status == statusExist && proto.IsRegular(mode) {
+		if !overwritten {
+			return syscall.EEXIST
+		}
+
 		status, oldInode, err = mw.dupdate(dstParentMP, dstParentID, dstName, inode)
 		if err != nil {
 			return syscall.EAGAIN
@@ -459,6 +464,7 @@ func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID
 	// delete dentry from src parent
 	status, _, err = mw.ddelete(srcParentMP, srcParentID, srcName)
 	if err != nil {
+		log.LogErrorf("mw.ddelete(srcParentMP, srcParentID, %s) failed.", srcName)
 		return statusToErrno(status)
 	} else if status != statusOK {
 		var (
@@ -511,7 +517,6 @@ func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID
 			}
 		}
 	}
-
 	return nil
 }
 
@@ -582,12 +587,17 @@ func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.Exten
 		oldInfo, _ = mw.InodeGet_ll(inode)
 	}
 
+	if mw.EnableSummary {
+		oldInfo, _ = mw.InodeGet_ll(inode)
+	}
+
 	status, err := mw.appendExtentKey(mp, inode, ek, discard)
 	if err != nil || status != statusOK {
 		log.LogErrorf("AppendExtentKey: inode(%v) ek(%v) local discard(%v) err(%v) status(%v)", inode, ek, discard, err, status)
 		return statusToErrno(status)
 	}
 	log.LogDebugf("AppendExtentKey: ino(%v) ek(%v) discard(%v)", inode, ek, discard)
+
 	if mw.EnableSummary {
 		go func() {
 			newInfo, _ := mw.InodeGet_ll(inode)
@@ -598,6 +608,7 @@ func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.Exten
 			}
 		}()
 	}
+
 	return nil
 }
 
@@ -617,6 +628,22 @@ func (mw *MetaWrapper) AppendExtentKeys(inode uint64, eks []proto.ExtentKey) err
 	return nil
 }
 
+// AppendObjExtentKeys append multiple obj extent key into specified inode with single request.
+func (mw *MetaWrapper) AppendObjExtentKeys(inode uint64, eks []proto.ObjExtentKey) error {
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		return syscall.ENOENT
+	}
+
+	status, err := mw.appendObjExtentKeys(mp, inode, eks)
+	if err != nil || status != statusOK {
+		log.LogErrorf("AppendObjExtentKeys: inode(%v) objextentKeys(%v) err(%v) status(%v)", inode, eks, err, status)
+		return statusToErrno(status)
+	}
+	log.LogDebugf("AppendObjExtentKeys: ino(%v) objextentKeys(%v)", inode, eks)
+	return nil
+}
+
 func (mw *MetaWrapper) GetExtents(inode uint64) (gen uint64, size uint64, extents []proto.ExtentKey, err error) {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
@@ -631,6 +658,36 @@ func (mw *MetaWrapper) GetExtents(inode uint64) (gen uint64, size uint64, extent
 	log.LogDebugf("GetExtents: ino(%v) gen(%v) size(%v) extents(%v)", inode, gen, size, extents)
 	return gen, size, extents, nil
 }
+
+func (mw *MetaWrapper) GetObjExtents(inode uint64) (gen uint64, size uint64, extents []proto.ExtentKey, objExtents []proto.ObjExtentKey, err error) {
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		return 0, 0, nil, nil, syscall.ENOENT
+	}
+
+	status, gen, size, extents, objExtents, err := mw.getObjExtents(mp, inode)
+	if err != nil || status != statusOK {
+		log.LogErrorf("GetObjExtents: ino(%v) err(%v) status(%v)", inode, err, status)
+		return 0, 0, nil, nil, statusToErrno(status)
+	}
+	log.LogDebugf("GetObjExtents: ino(%v) gen(%v) size(%v) extents(%v) objextents(%v)", inode, gen, size, extents, objExtents)
+	return gen, size, extents, objExtents, nil
+}
+
+// func (mw *MetaWrapper) DelExtentKeys(inode uint64, eks []proto.ExtentKey) error {
+// 	mp := mw.getPartitionByInode(inode)
+// 	if mp == nil {
+// 		return syscall.ENOENT
+// 	}
+
+// 	status, err := mw.delExtentKey(mp, inode, eks)
+// 	if err != nil || status != statusOK {
+// 		log.LogErrorf("DelExtentKeys: inode(%v) eks(%v)err(%v) status(%v)", inode, eks, err, status)
+// 		return statusToErrno(status)
+// 	}
+// 	log.LogDebugf("DelExtentKeys: ino(%v) eks(%v)", inode, eks)
+// 	return nil
+// }
 
 func (mw *MetaWrapper) Truncate(inode, size uint64) error {
 	mp := mw.getPartitionByInode(inode)
@@ -761,6 +818,20 @@ func (mw *MetaWrapper) InodeUnlink_ll(inode uint64) (*proto.InodeInfo, error) {
 		return nil, statusToErrno(status)
 	}
 	return info, nil
+}
+
+func (mw *MetaWrapper) InodeClearPreloadCache_ll(inode uint64) error {
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		log.LogErrorf("InodeClearPreloadCache_ll: No such partition, ino(%v)", inode)
+		return syscall.EINVAL
+	}
+	status, err := mw.iclearCache(mp, inode)
+	if err != nil || status != statusOK {
+		log.LogErrorf("InodeClearPreloadCache_ll: ino(%v) err(%v) status(%v)", inode, err, status)
+		return statusToErrno(status)
+	}
+	return nil
 }
 
 func (mw *MetaWrapper) InitMultipart_ll(path string, extend map[string]string) (multipartId string, err error) {
@@ -1016,7 +1087,7 @@ func (mw *MetaWrapper) UpdateSummary_ll(parentIno uint64, filesInc int64, dirsIn
 		return
 	}
 	for cnt := 0; cnt < UpdateSummaryRetry; cnt++ {
-		err := mw.updateSummaryInfo(mp, parentIno, filesInc, dirsInc, bytesInc)
+		err := mw.updateXAttrs(mp, parentIno, filesInc, dirsInc, bytesInc)
 		if err == nil {
 			return
 		}
@@ -1037,90 +1108,106 @@ func (mw *MetaWrapper) ReadDirOnly_ll(parentID uint64) ([]proto.Dentry, error) {
 	return children, nil
 }
 
-func (mw *MetaWrapper) GetSummary_ll(parentIno uint64, path string, goroutineNum int32) (proto.SummaryInfo, error) {
+type SummaryInfo struct {
+	Files   int64
+	Subdirs int64
+	Fbytes  int64
+}
+
+func (mw *MetaWrapper) GetSummary_ll(parentIno uint64, goroutineNum int32) (SummaryInfo, error) {
 	if goroutineNum > MaxSummaryGoroutineNum {
 		goroutineNum = MaxSummaryGoroutineNum
 	}
 	if goroutineNum <= 0 {
 		goroutineNum = 1
 	}
-	var summaryInfo proto.SummaryInfo
+	var summaryInfo SummaryInfo
+	errCh := make(chan error)
 	var wg sync.WaitGroup
 	var currentGoroutineNum int32 = 0
 	if mw.EnableSummary {
-		inodeCh := make(chan uint64, BatchGetBufLen)
+		inodeCh := make(chan uint64, ChannelLen)
 		wg.Add(1)
 		atomic.AddInt32(&currentGoroutineNum, 1)
 		inodeCh <- parentIno
-		go mw.getDirInfo(parentIno, path, inodeCh, &wg, &currentGoroutineNum, true, goroutineNum)
+		go mw.getDentry(parentIno, inodeCh, errCh, &wg, &currentGoroutineNum, true, goroutineNum)
 		go func() {
 			wg.Wait()
 			close(inodeCh)
 		}()
-		mw.getBatchSummaryInfo(&summaryInfo, inodeCh)
+
+		go mw.getDirSummary(&summaryInfo, inodeCh, errCh)
+		for err := range errCh {
+			return SummaryInfo{0, 0, 0}, err
+		}
 		return summaryInfo, nil
 	} else {
-		summaryCh := make(chan proto.SummaryInfo, BatchGetBufLen)
+		summaryCh := make(chan SummaryInfo, ChannelLen)
 		wg.Add(1)
 		atomic.AddInt32(&currentGoroutineNum, 1)
-		go mw.getSummaryInfo(parentIno, path, summaryCh, &wg, &currentGoroutineNum, true, goroutineNum)
+		go mw.getSummaryOrigin(parentIno, summaryCh, errCh, &wg, &currentGoroutineNum, true, goroutineNum)
 		go func() {
 			wg.Wait()
 			close(summaryCh)
 		}()
-		for summary := range summaryCh {
-			summaryInfo.Files = summaryInfo.Files + summary.Files
-			summaryInfo.Subdirs = summaryInfo.Subdirs + summary.Subdirs
-			summaryInfo.Fbytes = summaryInfo.Fbytes + summary.Fbytes
+		go func(summaryInfo *SummaryInfo) {
+			for summary := range summaryCh {
+				summaryInfo.Files = summaryInfo.Files + summary.Files
+				summaryInfo.Subdirs = summaryInfo.Subdirs + summary.Subdirs
+				summaryInfo.Fbytes = summaryInfo.Fbytes + summary.Fbytes
+			}
+			close(errCh)
+		}(&summaryInfo)
+		for err := range errCh {
+			return SummaryInfo{0, 0, 0}, err
 		}
 		return summaryInfo, nil
 	}
 }
 
-func (mw *MetaWrapper) getDirInfo(parentIno uint64, path string, inodeCh chan<- uint64, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool, goroutineNum int32) {
-	log.LogDebugf("The dir to summary : [ %v ]", path)
+func (mw *MetaWrapper) getDentry(parentIno uint64, inodeCh chan<- uint64, errCh chan<- error, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool, goroutineNum int32) {
 	defer func() {
 		if newGoroutine {
 			atomic.AddInt32(currentGoroutineNum, -1)
 			wg.Done()
 		}
 	}()
-	dentries, err := mw.ReadDirOnly_ll(parentIno)
+	entries, err := mw.ReadDirOnly_ll(parentIno)
 	if err != nil {
-		log.LogErrorf("GetSummary_ll (enableSummary = true): readdironly failed, inode(%v) dirpath(%v) err(%v)", parentIno, path, err)
+		errCh <- err
 		return
 	}
-	for _, dentry := range dentries {
-		inodeCh <- dentry.Inode
+	for _, entry := range entries {
+		inodeCh <- entry.Inode
 		if atomic.LoadInt32(currentGoroutineNum) < goroutineNum {
 			wg.Add(1)
 			atomic.AddInt32(currentGoroutineNum, 1)
-			go mw.getDirInfo(dentry.Inode, path+"/"+dentry.Name, inodeCh, wg, currentGoroutineNum, true, goroutineNum)
+			go mw.getDentry(entry.Inode, inodeCh, errCh, wg, currentGoroutineNum, true, goroutineNum)
 		} else {
-			mw.getDirInfo(dentry.Inode, path+"/"+dentry.Name, inodeCh, wg, currentGoroutineNum, false, goroutineNum)
+			mw.getDentry(entry.Inode, inodeCh, errCh, wg, currentGoroutineNum, false, goroutineNum)
 		}
 	}
 }
 
-func (mw *MetaWrapper) getBatchSummaryInfo(summaryInfo *proto.SummaryInfo, inodeCh <-chan uint64) {
+func (mw *MetaWrapper) getDirSummary(summaryInfo *SummaryInfo, inodeCh <-chan uint64, errch chan<- error) {
 	var inodes []uint64
 	var keys []string
 	for inode := range inodeCh {
 		inodes = append(inodes, inode)
-		keys = append(keys, proto.SummaryKey)
+		keys = append(keys, SummaryKey)
 		if len(inodes) < BatchSize {
 			continue
 		}
 		xattrInfos, err := mw.BatchGetXAttr(inodes, keys)
 		if err != nil {
-			log.LogErrorf("GetSummary_ll (enableSummary = true): batchgetxattr err(%v)", err)
+			errch <- err
 			return
 		}
 		inodes = inodes[0:0]
 		keys = keys[0:0]
 		for _, xattrInfo := range xattrInfos {
-			if xattrInfo.XAttrs[proto.SummaryKey] != "" {
-				summaryList := strings.Split(xattrInfo.XAttrs[proto.SummaryKey], ",")
+			if xattrInfo.XAttrs[SummaryKey] != "" {
+				summaryList := strings.Split(xattrInfo.XAttrs[SummaryKey], ",")
 				files, _ := strconv.ParseInt(summaryList[0], 10, 64)
 				subdirs, _ := strconv.ParseInt(summaryList[1], 10, 64)
 				fbytes, _ := strconv.ParseInt(summaryList[2], 10, 64)
@@ -1132,12 +1219,12 @@ func (mw *MetaWrapper) getBatchSummaryInfo(summaryInfo *proto.SummaryInfo, inode
 	}
 	xattrInfos, err := mw.BatchGetXAttr(inodes, keys)
 	if err != nil {
-		log.LogErrorf("GetSummary_ll (enableSummary = true): batchgetxattr err(%v)", err)
+		errch <- err
 		return
 	}
 	for _, xattrInfo := range xattrInfos {
-		if xattrInfo.XAttrs[proto.SummaryKey] != "" {
-			summaryList := strings.Split(xattrInfo.XAttrs[proto.SummaryKey], ",")
+		if xattrInfo.XAttrs[SummaryKey] != "" {
+			summaryList := strings.Split(xattrInfo.XAttrs[SummaryKey], ",")
 			files, _ := strconv.ParseInt(summaryList[0], 10, 64)
 			subdirs, _ := strconv.ParseInt(summaryList[1], 10, 64)
 			fbytes, _ := strconv.ParseInt(summaryList[2], 10, 64)
@@ -1146,63 +1233,55 @@ func (mw *MetaWrapper) getBatchSummaryInfo(summaryInfo *proto.SummaryInfo, inode
 			summaryInfo.Fbytes += fbytes
 		}
 	}
+	close(errch)
 	return
 }
 
-func (mw *MetaWrapper) getSummaryInfo(parentIno uint64, path string, summaryCh chan<- proto.SummaryInfo, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool, goroutineNum int32) {
-	log.LogDebugf("The dir to summary : [ %v ]", path)
+func (mw *MetaWrapper) getSummaryOrigin(parentIno uint64, summaryCh chan<- SummaryInfo, errCh chan<- error, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool, goroutineNum int32) {
 	defer func() {
 		if newGoroutine {
 			atomic.AddInt32(currentGoroutineNum, -1)
 			wg.Done()
 		}
 	}()
-
-	retSummaryInfo := proto.SummaryInfo{0, 0, 0}
-	var dentryList []proto.Dentry
-	var filesList []uint64
+	var subdirsList []uint64
+	retSummaryInfo := SummaryInfo{
+		Files:   0,
+		Subdirs: 0,
+		Fbytes:  0,
+	}
 	children, err := mw.ReadDir_ll(parentIno)
 	if err != nil {
-		log.LogErrorf("GetSummary_ll (enableSummary = false): readdir failed, inode(%v) dirpath(%v) err(%v)", parentIno, path, err)
+		errCh <- err
 		return
 	}
 	for _, dentry := range children {
 		if proto.IsDir(dentry.Type) {
 			retSummaryInfo.Subdirs += 1
-			dentryList = append(dentryList, dentry)
+			subdirsList = append(subdirsList, dentry.Inode)
 		} else {
+			fileInfo, err := mw.InodeGet_ll(dentry.Inode)
+			if err != nil {
+				errCh <- err
+				return
+			}
 			retSummaryInfo.Files += 1
-			filesList = append(filesList, dentry.Inode)
-			if len(filesList) < BatchSize {
-				continue
-			}
-			fileInfos := mw.BatchInodeGet(filesList)
-			for _, info := range fileInfos {
-				retSummaryInfo.Fbytes += int64(info.Size)
-			}
-			filesList = filesList[0:0]
+			retSummaryInfo.Fbytes += int64(fileInfo.Size)
 		}
 	}
-	fileInfos := mw.BatchInodeGet(filesList)
-	for _, info := range fileInfos {
-		retSummaryInfo.Fbytes += int64(info.Size)
-	}
-	filesList = filesList[0:0]
-
 	summaryCh <- retSummaryInfo
-
-	for _, dentry := range dentryList {
+	for _, subdirIno := range subdirsList {
 		if atomic.LoadInt32(currentGoroutineNum) < goroutineNum {
 			wg.Add(1)
 			atomic.AddInt32(currentGoroutineNum, 1)
-			go mw.getSummaryInfo(dentry.Inode, path+"/"+dentry.Name, summaryCh, wg, currentGoroutineNum, true, goroutineNum)
+			go mw.getSummaryOrigin(subdirIno, summaryCh, errCh, wg, currentGoroutineNum, true, goroutineNum)
 		} else {
-			mw.getSummaryInfo(dentry.Inode, path+"/"+dentry.Name, summaryCh, wg, currentGoroutineNum, false, goroutineNum)
+			mw.getSummaryOrigin(subdirIno, summaryCh, errCh, wg, currentGoroutineNum, false, goroutineNum)
 		}
 	}
 }
 
-func (mw *MetaWrapper) RefreshSummary_ll(parentIno uint64, path string, goroutineNum int32) error {
+func (mw *MetaWrapper) RefreshSummary_ll(parentIno uint64, goroutineNum int32) error {
 	if goroutineNum > MaxSummaryGoroutineNum {
 		goroutineNum = MaxSummaryGoroutineNum
 	}
@@ -1211,84 +1290,83 @@ func (mw *MetaWrapper) RefreshSummary_ll(parentIno uint64, path string, goroutin
 	}
 	var wg sync.WaitGroup
 	var currentGoroutineNum int32 = 0
+	errch := make(chan error)
 	wg.Add(1)
 	atomic.AddInt32(&currentGoroutineNum, 1)
-	go mw.refreshSummary(parentIno, path, &wg, &currentGoroutineNum, true, goroutineNum)
-	wg.Wait()
+	go mw.refreshSummary(parentIno, errch, &wg, &currentGoroutineNum, true, goroutineNum)
+	go func() {
+		wg.Wait()
+		close(errch)
+	}()
+	for err := range errch {
+		return err
+	}
 	return nil
 }
 
-func (mw *MetaWrapper) refreshSummary(parentIno uint64, path string, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool, goroutineNum int32) {
-	log.LogDebugf("The dir to refresh : [ %v ]", path)
+func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool, goroutineNum int32) {
 	defer func() {
 		if newGoroutine {
 			atomic.AddInt32(currentGoroutineNum, -1)
 			wg.Done()
 		}
 	}()
-	summaryXAttrInfo, err := mw.XAttrGet_ll(parentIno, proto.SummaryKey)
+	summaryXAttrInfo, err := mw.XAttrGet_ll(parentIno, SummaryKey)
 	if err != nil {
-		log.LogErrorf("RefreshSummary_ll: xattr get failed, pino(%v) key(%v) err(%v)", parentIno, proto.SummaryKey, err)
+		errCh <- err
 		return
 	}
-	oldSummaryInfo := proto.SummaryInfo{0, 0, 0}
-	if summaryXAttrInfo.XAttrs[proto.SummaryKey] != "" {
-		summaryList := strings.Split(summaryXAttrInfo.XAttrs[proto.SummaryKey], ",")
+	oldSummaryInfo := SummaryInfo{0, 0, 0}
+	if summaryXAttrInfo.XAttrs[SummaryKey] != "" {
+		summaryList := strings.Split(summaryXAttrInfo.XAttrs[SummaryKey], ",")
 		files, _ := strconv.ParseInt(summaryList[0], 10, 64)
 		subdirs, _ := strconv.ParseInt(summaryList[1], 10, 64)
 		fbytes, _ := strconv.ParseInt(summaryList[2], 10, 64)
-		oldSummaryInfo = proto.SummaryInfo{
+		oldSummaryInfo = SummaryInfo{
 			Files:   files,
 			Subdirs: subdirs,
 			Fbytes:  fbytes,
 		}
 	} else {
-		oldSummaryInfo = proto.SummaryInfo{0, 0, 0}
+		oldSummaryInfo = SummaryInfo{0, 0, 0}
 	}
 
-	newSummaryInfo := proto.SummaryInfo{0, 0, 0}
-	var dentryList []proto.Dentry
-	var filesList []uint64
+	newSummaryInfo := SummaryInfo{0, 0, 0}
+
+	var subdirsList []uint64
 	children, err := mw.ReadDir_ll(parentIno)
 	if err != nil {
-		log.LogErrorf("RefreshSummary_ll: readdir failed, inode(%v) dirpath(%v) err(%v)", parentIno, path, err)
+		errCh <- err
 		return
 	}
 	for _, dentry := range children {
 		if proto.IsDir(dentry.Type) {
 			newSummaryInfo.Subdirs += 1
-			dentryList = append(dentryList, dentry)
+			subdirsList = append(subdirsList, dentry.Inode)
 		} else {
+			fileInfo, err := mw.InodeGet_ll(dentry.Inode)
+			if err != nil {
+				errCh <- err
+				return
+			}
 			newSummaryInfo.Files += 1
-			filesList = append(filesList, dentry.Inode)
-			if len(filesList) < BatchSize {
-				continue
-			}
-			fileInfos := mw.BatchInodeGet(filesList)
-			for _, info := range fileInfos {
-				newSummaryInfo.Fbytes += int64(info.Size)
-			}
-			filesList = filesList[0:0]
+			newSummaryInfo.Fbytes += int64(fileInfo.Size)
 		}
 	}
-	fileInfos := mw.BatchInodeGet(filesList)
-	for _, info := range fileInfos {
-		newSummaryInfo.Fbytes += int64(info.Size)
-	}
-	filesList = filesList[0:0]
 	go mw.UpdateSummary_ll(
 		parentIno,
 		newSummaryInfo.Files-oldSummaryInfo.Files,
 		newSummaryInfo.Subdirs-oldSummaryInfo.Subdirs,
 		newSummaryInfo.Fbytes-oldSummaryInfo.Fbytes,
 	)
-	for _, dentry := range dentryList {
+
+	for _, subdirIno := range subdirsList {
 		if atomic.LoadInt32(currentGoroutineNum) < goroutineNum {
 			wg.Add(1)
 			atomic.AddInt32(currentGoroutineNum, 1)
-			go mw.refreshSummary(dentry.Inode, path+"/"+dentry.Name, wg, currentGoroutineNum, true, goroutineNum)
+			go mw.refreshSummary(subdirIno, errCh, wg, currentGoroutineNum, true, goroutineNum)
 		} else {
-			mw.refreshSummary(dentry.Inode, path+"/"+dentry.Name, wg, currentGoroutineNum, false, goroutineNum)
+			mw.refreshSummary(subdirIno, errCh, wg, currentGoroutineNum, false, goroutineNum)
 		}
 	}
 }

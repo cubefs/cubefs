@@ -42,6 +42,8 @@ const (
 	LogLevel           = "logLevel"
 	WalDir             = "walDir"
 	StoreDir           = "storeDir"
+	EbsAddrKey         = "ebsAddr"
+	EbsServicePathKey  = "ebsServicePath"
 	GroupID            = 1
 	ModuleName         = "master"
 	CfgRetainLogs      = "retainLogs"
@@ -61,6 +63,30 @@ var (
 	gConfig     *clusterConfig
 )
 
+var overSoldFactor = defaultOverSoldFactor
+
+func overSoldLimit() bool {
+	if overSoldFactor <= 0 {
+		return false
+	}
+
+	return true
+}
+
+func overSoldCap(cap uint64) uint64 {
+	if overSoldFactor <= 0 {
+		return cap
+	}
+
+	return uint64(float32(cap) * overSoldFactor)
+}
+
+func setOverSoldFactor(factor float32) {
+	if factor != overSoldFactor {
+		overSoldFactor = factor
+	}
+}
+
 // Server represents the server in a cluster
 type Server struct {
 	id              uint64
@@ -69,6 +95,8 @@ type Server struct {
 	port            string
 	walDir          string
 	storeDir        string
+	ebsAddr         string
+	servicePath     string
 	retainLogs      uint64
 	tickInterval    int
 	raftRecvBufSize int
@@ -145,19 +173,26 @@ func (m *Server) Sync() {
 }
 
 func (m *Server) checkConfig(cfg *config.Config) (err error) {
+
 	m.clusterName = cfg.GetString(ClusterName)
 	m.ip = cfg.GetString(IP)
 	m.port = cfg.GetString(proto.ListenPort)
 	m.walDir = cfg.GetString(WalDir)
 	m.storeDir = cfg.GetString(StoreDir)
+	m.ebsAddr = cfg.GetString(EbsAddrKey)
+	m.servicePath = cfg.GetString(EbsServicePathKey)
+
 	peerAddrs := cfg.GetString(cfgPeers)
+
 	if m.ip == "" || m.port == "" || m.walDir == "" || m.storeDir == "" || m.clusterName == "" || peerAddrs == "" {
 		return fmt.Errorf("%v,err:%v,%v,%v,%v,%v,%v,%v", proto.ErrInvalidCfg, "one of (ip,listen,walDir,storeDir,clusterName) is null",
 			m.ip, m.port, m.walDir, m.storeDir, m.clusterName, peerAddrs)
 	}
+
 	if m.id, err = strconv.ParseUint(cfg.GetString(ID), 10, 64); err != nil {
 		return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 	}
+
 	m.config.faultDomain = cfg.GetBoolWithDefault(faultDomain, false)
 	m.config.heartbeatPort = cfg.GetInt64(heartbeatPortKey)
 	m.config.replicaPort = cfg.GetInt64(replicaPortKey)
@@ -181,11 +216,11 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 		m.config.nodeSetCapacity = defaultNodeSetCapacity
 	}
 
+	m.config.DefaultNormalZoneCnt = defaultNodeSetGrpBatchCnt
 	m.config.DomainBuildAsPossible = cfg.GetBoolWithDefault(cfgDomainBuildAsPossible, false)
-	m.config.DomainNodeGrpBatchCnt = defaultNodeSetGrpBatchCnt
 	domainBatchGrpCnt := cfg.GetString(cfgDomainBatchGrpCnt)
 	if domainBatchGrpCnt != "" {
-		if m.config.DomainNodeGrpBatchCnt, err = strconv.Atoi(domainBatchGrpCnt); err != nil {
+		if m.config.DefaultNormalZoneCnt, err = strconv.Atoi(domainBatchGrpCnt); err != nil {
 			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 		}
 	}

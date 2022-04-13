@@ -10,6 +10,8 @@ BIN_CLI := $(BIN_PATH)/cfs-cli
 BIN_FSCK := $(BIN_PATH)/cfs-fsck
 BIN_LIBSDK := $(BIN_PATH)/libsdk
 BIN_FDSTORE := $(BIN_PATH)/fdstore
+BIN_PRELOAD := $(BIN_PATH)/cfs-preload
+BIN_BCACHE:= $(BIN_PATH)/cfs-bcache
 
 COMMON_SRC := build/build.sh Makefile
 COMMON_SRC += $(wildcard storage/*.go util/*/*.go util/*.go repl/*.go raftstore/*.go proto/*.go)
@@ -21,6 +23,8 @@ CLI_SRC := $(wildcard cli/*.go)
 FSCK_SRC := $(wildcard fsck/*.go fsck/cmd/*.go)
 LIBSDK_SRC := $(wildcard libsdk/*.go)
 FDSTORE_SRC := $(wildcard fdstore/*.go)
+PRELOAD_SRC := $(wildcard preload/*.go)
+BCACHE_SRC := $(wildcard blockcache/*.go)
 
 RM := $(shell [ -x /bin/rm ] && echo "/bin/rm" || echo "/usr/bin/rm" )
 
@@ -29,8 +33,8 @@ default: all
 phony := all
 all: build
 
-phony += build server authtool client client2 cli fsck fdstore
-build: server authtool client cli libsdk fsck fdstore
+phony += build server authtool client client2 cli fsck preload bcache
+build: server authtool client cli libsdk fsck preload bcache
 
 server: $(BIN_SERVER)
 
@@ -47,6 +51,10 @@ fsck: $(BIN_FSCK)
 libsdk: $(BIN_LIBSDK)
 
 fdstore: $(BIN_FDSTORE)
+
+preload: $(BIN_PRELOAD)
+
+bcache: $(BIN_BCACHE)
 
 $(BIN_SERVER): $(COMMON_SRC) $(SERVER_SRC)
 	@build/build.sh server
@@ -71,6 +79,12 @@ $(BIN_LIBSDK): $(COMMON_SRC) $(LIBSDK_SRC)
 
 $(BIN_FDSTORE): $(FDSTORE_SRC)
 	@build/build.sh fdstore
+
+$(BIN_PRELOAD): $(COMMON_SRC) $(PRELOAD_SRC)
+	@build/build.sh preload
+
+$(BIN_BCACHE): $(COMMON_SRC) $(BCACHE_SRC)
+	@build/build.sh bcache
 
 phony += clean
 clean:

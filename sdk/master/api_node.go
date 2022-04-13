@@ -105,9 +105,10 @@ func (api *NodeAPI) ResponseDataNodeTask(task *proto.AdminTask) (err error) {
 	return
 }
 
-func (api *NodeAPI) DataNodeDecommission(nodeAddr string) (err error) {
+func (api *NodeAPI) DataNodeDecommission(nodeAddr string, count int) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.DecommissionDataNode)
 	request.addParam("addr", nodeAddr)
+	request.addParam("count", strconv.Itoa(count))
 	request.addHeader("isTimeOut", "false")
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -115,9 +116,34 @@ func (api *NodeAPI) DataNodeDecommission(nodeAddr string) (err error) {
 	return
 }
 
-func (api *NodeAPI) MetaNodeDecommission(nodeAddr string) (err error) {
+func (api *NodeAPI) MetaNodeDecommission(nodeAddr string, count int) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.DecommissionMetaNode)
 	request.addParam("addr", nodeAddr)
+	request.addParam("count", strconv.Itoa(count))
+	request.addHeader("isTimeOut", "false")
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *NodeAPI) MetaNodeMigrate(srcAddr, targetAddr string, count int) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.MigrateMetaNode)
+	request.addParam("srcAddr", srcAddr)
+	request.addParam("targetAddr", targetAddr)
+	request.addParam("count", strconv.Itoa(count))
+	request.addHeader("isTimeOut", "false")
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *NodeAPI) DataNodeMigrate(srcAddr, targetAddr string, count int) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.MigrateDataNode)
+	request.addParam("srcAddr", srcAddr)
+	request.addParam("targetAddr", targetAddr)
+	request.addParam("count", strconv.Itoa(count))
 	request.addHeader("isTimeOut", "false")
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return

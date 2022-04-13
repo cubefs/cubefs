@@ -1,7 +1,7 @@
 package introspection
 
 // Copied from https://github.com/graphql/graphiql/blob/master/src/utility/introspectionQueries.js
-const introspectionQuery = `
+const IntrospectionQuery = `
 query IntrospectionQuery {
 	__schema {
 		queryType { name }

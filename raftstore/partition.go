@@ -17,8 +17,8 @@ package raftstore
 import (
 	"os"
 
-	"github.com/tiglabs/raft"
-	"github.com/tiglabs/raft/proto"
+	"github.com/cubefs/cubefs/depends/tiglabs/raft"
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 )
 
 // PartitionStatus is a type alias of raft.Status

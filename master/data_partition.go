@@ -16,6 +16,7 @@ package master
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/datanode"
 	"math"
 	"strings"
 	"sync"
@@ -30,6 +31,8 @@ import (
 // DataPartition represents the structure of storing the file contents.
 type DataPartition struct {
 	PartitionID    uint64
+	PartitionType  int
+	PartitionTTL   int64
 	LastLoadedTime int64
 	ReplicaNum     uint8
 	Status         int8
@@ -39,20 +42,35 @@ type DataPartition struct {
 	Peers          []proto.Peer
 	offlineMutex   sync.RWMutex
 	sync.RWMutex
-	total                   uint64
-	used                    uint64
-	MissingNodes            map[string]int64 // key: address of the missing node, value: when the node is missing
-	VolName                 string
-	VolID                   uint64
-	modifyTime              int64
-	createTime              int64
-	lastWarnTime            int64
-	OfflinePeerID           uint64
-	FileInCoreMap           map[string]*FileInCore
-	FilesWithMissingReplica map[string]int64 // key: file name, value: last time when a missing replica is found
+	total                    uint64
+	used                     uint64
+	MissingNodes             map[string]int64 // key: address of the missing node, value: when the node is missing
+	VolName                  string
+	VolID                    uint64
+	modifyTime               int64
+	createTime               int64
+	lastWarnTime             int64
+	OfflinePeerID            uint64
+	FileInCoreMap            map[string]*FileInCore
+	FilesWithMissingReplica  map[string]int64 // key: file name, value: last time when a missing replica is found
+	SingleDecommissionStatus uint8
+	singleDecommissionChan   chan bool
+	SingleDecommissionAddr   string
 }
 
-func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64) (partition *DataPartition) {
+type DataPartitionPreLoad struct {
+	PreloadCacheTTL      uint64
+	preloadCacheCapacity int
+	preloadReplicaNum    int
+	preloadZoneName      string
+}
+
+func (d *DataPartitionPreLoad) toString() string {
+	return fmt.Sprintf("PreloadCacheTTL[%d]_preloadCacheCapacity[%d]_preloadReplicaNum[%d]_preloadZoneName[%s]",
+		d.PreloadCacheTTL, d.preloadCacheCapacity, d.preloadReplicaNum, d.preloadZoneName)
+}
+
+func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64, partitionType int, partitionTTL int64) (partition *DataPartition) {
 	partition = new(DataPartition)
 	partition.ReplicaNum = replicaNum
 	partition.PartitionID = ID
@@ -66,16 +84,38 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64)
 	partition.Status = proto.ReadOnly
 	partition.VolName = volName
 	partition.VolID = volID
+	partition.PartitionType = partitionType
+	partition.PartitionTTL = partitionTTL
+
 	partition.modifyTime = time.Now().Unix()
 	partition.createTime = time.Now().Unix()
 	partition.lastWarnTime = time.Now().Unix()
+	partition.singleDecommissionChan = make(chan bool, 1024)
 	return
+}
+
+func (partition *DataPartition) isSingleReplica() bool {
+	log.LogInfof("action[isSingleReplica] id %v replica num %v", partition.PartitionID, partition.ReplicaNum)
+	return partition.ReplicaNum == 1
 }
 
 func (partition *DataPartition) resetFilesWithMissingReplica() {
 	partition.Lock()
 	defer partition.Unlock()
 	partition.FilesWithMissingReplica = make(map[string]int64)
+}
+
+func (partition *DataPartition) dataNodeStartTime() int64 {
+	partition.Lock()
+	defer partition.Unlock()
+	startTime := int64(0)
+	for _, replica := range partition.Replicas {
+		if startTime < replica.dataNode.StartTime {
+			startTime = replica.dataNode.StartTime
+		}
+	}
+
+	return startTime
 }
 
 func (partition *DataPartition) addReplica(replica *DataReplica) {
@@ -144,10 +184,11 @@ func (partition *DataPartition) createTaskToRemoveRaftMember(removePeer proto.Pe
 	return
 }
 
-func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64, peers []proto.Peer, hosts []string, createType int) (task *proto.AdminTask) {
+func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64,
+	peers []proto.Peer, hosts []string, createType int, partitionType int) (task *proto.AdminTask) {
 
 	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(
-		partition.VolName, partition.PartitionID, peers, int(dataPartitionSize), hosts, createType))
+		partition.VolName, partition.PartitionID, peers, int(dataPartitionSize), hosts, createType, partitionType))
 	partition.resetTaskID(task)
 	return
 }
@@ -186,7 +227,15 @@ func (partition *DataPartition) canBeOffLine(offlineAddr string) (err error) {
 	msg := fmt.Sprintf("action[canOffLine],partitionID:%v  RocksDBHost:%v  offLine:%v ",
 		partition.PartitionID, partition.Hosts, offlineAddr)
 	liveReplicas := partition.liveReplicas(defaultDataPartitionTimeOutSec)
-
+	if partition.isSingleReplica() {
+		if len(liveReplicas) != 1 {
+			msg = fmt.Sprintf(msg+" err:%v  liveReplicas:%v ", proto.ErrCannotBeOffLine, len(liveReplicas))
+			log.LogError(msg)
+			err = fmt.Errorf(msg)
+			return
+		}
+		return
+	}
 	otherLiveReplicas := make([]*DataReplica, 0)
 	for i := 0; i < len(liveReplicas); i++ {
 		replica := liveReplicas[i]
@@ -231,7 +280,7 @@ func (partition *DataPartition) removeReplicaByAddr(addr string) {
 		}
 	}
 
-	msg := fmt.Sprintf("action[removeReplicaByAddr],data partition:%v  on Node:%v  OffLine,the node is in replicas:%v", partition.PartitionID, addr, replica != nil)
+	msg := fmt.Sprintf("action[removeReplicaByAddr],data partition:%v  on node:%v  OffLine,the node is in replicas:%v", partition.PartitionID, addr, replica != nil)
 	log.LogDebug(msg)
 	if delIndex == -1 {
 		return
@@ -293,13 +342,17 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *proto.Dat
 	dpr = new(proto.DataPartitionResponse)
 	partition.Lock()
 	defer partition.Unlock()
+
 	dpr.PartitionID = partition.PartitionID
+	dpr.PartitionType = partition.PartitionType
+	dpr.PartitionTTL = partition.PartitionTTL
 	dpr.Status = partition.Status
 	dpr.ReplicaNum = partition.ReplicaNum
 	dpr.Hosts = make([]string, len(partition.Hosts))
 	copy(dpr.Hosts, partition.Hosts)
 	dpr.LeaderAddr = partition.getLeaderAddr()
 	dpr.IsRecover = partition.isRecover
+
 	return
 }
 
@@ -333,7 +386,7 @@ func (partition *DataPartition) checkLoadResponse(timeOutSec int64) (isResponse 
 		}
 		timePassed := time.Now().Unix() - partition.LastLoadedTime
 		if replica.HasLoadResponse == false && timePassed > timeToWaitForResponse {
-			msg := fmt.Sprintf("action[checkLoadResponse], partitionID:%v on Node:%v no response, spent time %v s",
+			msg := fmt.Sprintf("action[checkLoadResponse], partitionID:%v on node:%v no response, spent time %v s",
 				partition.PartitionID, addr, timePassed)
 			log.LogWarn(msg)
 			return
@@ -408,10 +461,17 @@ func (partition *DataPartition) hasReplica(host string) (replica *DataReplica, o
 func (partition *DataPartition) checkReplicaNum(c *Cluster, vol *Vol) {
 	partition.RLock()
 	defer partition.RUnlock()
+
 	if int(partition.ReplicaNum) != len(partition.Hosts) {
 		msg := fmt.Sprintf("FIX DataPartition replicaNum,clusterID[%v] volName[%v] partitionID:%v orgReplicaNum:%v",
 			c.Name, vol.Name, partition.PartitionID, partition.ReplicaNum)
 		Warn(c.Name, msg)
+		if partition.isSingleReplica() && (partition.SingleDecommissionStatus == datanode.DecommsionErr || // case decommission error
+			partition.SingleDecommissionStatus == 0) { // case restart and no message left,delete the lasted replica be added
+			log.LogInfof("action[checkReplicaNum] volume %v partiton %v need decommssion", partition.VolName, partition.PartitionID)
+			vol.NeedToLowerReplica = true
+			return
+		}
 	}
 
 	if vol.dpReplicaNum != partition.ReplicaNum && !vol.NeedToLowerReplica {
@@ -467,6 +527,18 @@ func (partition *DataPartition) getLiveReplicasFromHosts(timeOutSec int64) (repl
 	return
 }
 
+// get all the live replicas from the persistent hosts
+func (partition *DataPartition) getLiveReplicas(timeOutSec int64) (replicas []*DataReplica) {
+	replicas = make([]*DataReplica, 0)
+	for _, replica := range partition.Replicas {
+		if replica.isLive(timeOutSec) == true {
+			replicas = append(replicas, replica)
+		}
+	}
+
+	return
+}
+
 func (partition *DataPartition) checkAndRemoveMissReplica(addr string) {
 	if _, ok := partition.MissingNodes[addr]; ok {
 		delete(partition.MissingNodes, addr)
@@ -479,7 +551,7 @@ func (partition *DataPartition) loadFile(dataNode *DataNode, resp *proto.LoadDat
 
 	index, err := partition.getReplicaIndex(dataNode.Addr)
 	if err != nil {
-		msg := fmt.Sprintf("loadFile partitionID:%v  on Node:%v  don't report :%v ", partition.PartitionID, dataNode.Addr, err)
+		msg := fmt.Sprintf("loadFile partitionID:%v  on node:%v  don't report :%v ", partition.PartitionID, dataNode.Addr, err)
 		log.LogWarn(msg)
 		return
 	}
@@ -581,12 +653,13 @@ func (partition *DataPartition) getMaxUsedSpace() uint64 {
 }
 
 func (partition *DataPartition) afterCreation(nodeAddr, diskPath string, c *Cluster) (err error) {
+	log.LogInfof("action[afterCreation] dp %v nodeaddr %v replica be set Unavailable", partition.PartitionID, nodeAddr)
 	dataNode, err := c.dataNode(nodeAddr)
 	if err != nil {
 		return err
 	}
 	replica := newDataReplica(dataNode)
-	replica.Status = proto.ReadWrite
+	replica.Status = proto.Unavailable
 	replica.DiskPath = diskPath
 	replica.ReportTime = time.Now().Unix()
 	replica.Total = util.DefaultDataPartitionSize
@@ -655,6 +728,16 @@ func (partition *DataPartition) activeUsedSimilar() bool {
 func (partition *DataPartition) getToBeDecommissionHost(replicaNum int) (host string) {
 	partition.RLock()
 	defer partition.RUnlock()
+
+	// single decommission info not store to meta, once restart just delete new added host
+	if partition.isSingleReplica() && partition.SingleDecommissionStatus > 0 {
+		if partition.SingleDecommissionStatus == datanode.DecommsionErr {
+			log.LogInfof("action[getToBeDecommissionHost] get single replica partition %v need to decommission %v",
+				partition.PartitionID, partition.SingleDecommissionAddr)
+			host = partition.SingleDecommissionAddr
+		}
+		return
+	}
 	hostLen := len(partition.Hosts)
 	if hostLen <= 1 || hostLen <= replicaNum {
 		return
@@ -667,13 +750,22 @@ func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string) 
 	if err = c.removeDataReplica(partition, host, false); err != nil {
 		return
 	}
+
 	partition.RLock()
 	defer partition.RUnlock()
+	if partition.isSingleReplica() {
+		partition.ReplicaNum = 1
+		partition.SingleDecommissionStatus = 0
+		partition.SingleDecommissionAddr = ""
+		return
+	}
 	oldReplicaNum := partition.ReplicaNum
 	partition.ReplicaNum = partition.ReplicaNum - 1
+
 	if err = c.syncUpdateDataPartition(partition); err != nil {
 		partition.ReplicaNum = oldReplicaNum
 	}
+
 	return
 }
 
@@ -692,18 +784,20 @@ func (partition *DataPartition) getLiveZones(offlineAddr string) (zones []string
 	return
 }
 
-func (partition *DataPartition) ToProto(c *Cluster) *proto.DataPartitionInfo {
+func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo {
 	partition.RLock()
 	defer partition.RUnlock()
+
 	var replicas = make([]*proto.DataReplica, len(partition.Replicas))
 	for i, replica := range partition.Replicas {
 		replicas[i] = &replica.DataReplica
 	}
+
 	var fileInCoreMap = make(map[string]*proto.FileInCore)
 	for k, v := range partition.FileInCoreMap {
-		var fc = v.ToProto()
-		fileInCoreMap[k] = &fc
+		fileInCoreMap[k] = v.clone()
 	}
+
 	zones := make([]string, len(partition.Hosts))
 	for idx, host := range partition.Hosts {
 		dataNode, err := c.dataNode(host)
@@ -711,21 +805,26 @@ func (partition *DataPartition) ToProto(c *Cluster) *proto.DataPartitionInfo {
 			zones[idx] = dataNode.ZoneName
 		}
 	}
+
 	return &proto.DataPartitionInfo{
-		PartitionID:             partition.PartitionID,
-		LastLoadedTime:          partition.LastLoadedTime,
-		ReplicaNum:              partition.ReplicaNum,
-		Status:                  partition.Status,
-		Replicas:                replicas,
-		Hosts:                   partition.Hosts,
-		Peers:                   partition.Peers,
-		Zones:                   zones,
-		MissingNodes:            partition.MissingNodes,
-		VolName:                 partition.VolName,
-		VolID:                   partition.VolID,
-		FileInCoreMap:           fileInCoreMap,
-		OfflinePeerID:           partition.OfflinePeerID,
-		IsRecover:               partition.isRecover,
-		FilesWithMissingReplica: partition.FilesWithMissingReplica,
+		PartitionID:              partition.PartitionID,
+		PartitionTTL:             partition.PartitionTTL,
+		PartitionType:            partition.PartitionType,
+		LastLoadedTime:           partition.LastLoadedTime,
+		ReplicaNum:               partition.ReplicaNum,
+		Status:                   partition.Status,
+		Replicas:                 replicas,
+		Hosts:                    partition.Hosts,
+		Peers:                    partition.Peers,
+		Zones:                    zones,
+		MissingNodes:             partition.MissingNodes,
+		VolName:                  partition.VolName,
+		VolID:                    partition.VolID,
+		FileInCoreMap:            fileInCoreMap,
+		OfflinePeerID:            partition.OfflinePeerID,
+		IsRecover:                partition.isRecover,
+		FilesWithMissingReplica:  partition.FilesWithMissingReplica,
+		SingleDecommissionStatus: partition.SingleDecommissionStatus,
+		SingleDecommissionAddr:   partition.SingleDecommissionAddr,
 	}
 }

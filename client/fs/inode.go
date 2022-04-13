@@ -17,7 +17,7 @@ package fs
 import (
 	"time"
 
-	"bazil.org/fuse"
+	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"

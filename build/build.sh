@@ -5,6 +5,8 @@ BuildPath=${RootPath}/build
 BuildOutPath=${BuildPath}/out
 BuildBinPath=${BuildPath}/bin
 VendorPath=${RootPath}/vendor
+DependsPath=${RootPath}/depends
+
 
 RM=$(find /bin /sbin /usr/bin /usr/local -name "rm" | head -1)
 if [[ "-x$RM" == "-x" ]] ; then
@@ -138,7 +140,7 @@ build_lz4() {
 
 
 build_snappy() {
-    SnappySrcPath=${VendorPath}/snappy-1.1.7
+    SnappySrcPath=${DependsPath}/snappy-1.1.7
     SnappyBuildPath=${BuildOutPath}/snappy
     found=$(find ${SnappyBuildPath} -name libsnappy.a 2>/dev/null | wc -l)
     if [ ${found} -eq 0 ] ; then
@@ -157,7 +159,7 @@ build_snappy() {
 }
 
 build_rocksdb() {
-    RocksdbSrcPath=${VendorPath}/rocksdb-5.9.2
+    RocksdbSrcPath=${DependsPath}/rocksdb-5.9.2
     RocksdbBuildPath=${BuildOutPath}/rocksdb
     found=$(find ${RocksdbBuildPath} -name librocksdb.a 2>/dev/null | wc -l)
     if [ ${found} -eq 0 ] ; then
@@ -165,11 +167,17 @@ build_rocksdb() {
             mkdir -p ${RocksdbBuildPath}
             cp -rf ${RocksdbSrcPath}/* ${RocksdbBuildPath}
         fi
-        echo "build rocksdb..."
+
         pushd ${RocksdbBuildPath} >/dev/null
+
         [ "-$LUA_PATH" != "-" ]  && unset LUA_PATH
-        CXXFLAGS='-Wno-error=deprecated-copy -Wno-error=class-memaccess -Wno-error=pessimizing-move' \
+        MAJOR=$(echo __GNUC__ | $(which gcc) -E -xc - | tail -n 1)
+        if [ ${MAJOR} -ge 10 ] ; then
+          CXXFLAGS='-Wno-error=deprecated-copy -Wno-error=class-memaccess -Wno-error=pessimizing-move' \
 		make -j ${NPROC} static_lib  && echo "build rocksdb success" || {  echo "build rocksdb failed" ; exit 1; }
+        else
+		      make -j ${NPROC} static_lib  && echo "build rocksdb success" || {  echo "build rocksdb failed" ; exit 1; }
+		    fi
         popd >/dev/null
     fi
     cgo_cflags="${cgo_cflags} -I${RocksdbSrcPath}/include"
@@ -181,7 +189,7 @@ build_rocksdb() {
 }
 
 init_gopath() {
-    export GO111MODULE=off
+    export GO111MODULE=on
     export GOPATH=$HOME/tmp/cfs/go
 
     mkdir -p $GOPATH/src/github.com/cubefs
@@ -229,8 +237,12 @@ pre_build() {
 
 run_test() {
     pre_build
+#    pre_build_server
     pushd $SrcPath >/dev/null
-    go test ./...
+    echo -n "${TPATH}"
+#    go test $MODFLAGS -ldflags "${LDFlags}" -cover ./master
+
+    go test  $(go list ./... | grep -v depends)
     ret=$?
     popd >/dev/null
     exit $ret
@@ -319,6 +331,21 @@ build_fdstore() {
     popd >/dev/null
 }
 
+build_preload() {
+    pre_build_server
+    pushd $SrcPath >/dev/null
+    echo -n "build cfs-preload   "
+    go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-preload ${SrcPath}/preload/*.go && echo "success" || echo "failed"
+}
+
+build_bcache(){
+    pre_build
+    pushd $SrcPath >/dev/null
+    echo -n "build cfs-blockcache      "
+    go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-bcache ${SrcPath}/blockcache/*.go  && echo "success" || echo "failed"
+    popd >/dev/null
+}
+
 clean() {
     $RM -rf ${BuildBinPath}
 }
@@ -337,6 +364,7 @@ case "$cmd" in
         build_client
         build_cli
         build_libsdk
+        build_bcache
         ;;
     "test")
         run_test
@@ -364,6 +392,12 @@ case "$cmd" in
         ;;
     "fdstore")
         build_fdstore
+	;;
+    "preload")
+        build_preload
+        ;;
+    "bcache")
+        build_bcache
         ;;
     "clean")
         clean

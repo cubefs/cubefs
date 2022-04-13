@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v2
       - name: Check gofmt
         run: |
-          find . -type f -name "*.go" | grep -v 'vendor' | xargs gofmt -l > gofmt_results.txt
+          find . -type f -name "*.go" | grep -v 'vendor' |grep -v 'depends'| xargs gofmt -l > gofmt_results.txt
           cat gofmt_results.txt
           if [ "$(cat gofmt_results.txt|wc -l)" -gt 0  ]; then exit 1; fi
       - name: Build and run CI tests

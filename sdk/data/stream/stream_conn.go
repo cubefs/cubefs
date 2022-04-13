@@ -103,10 +103,10 @@ func (sc *StreamConn) String() string {
 
 // Send send the given packet over the network through the stream connection until success
 // or the maximum number of retries is reached.
-func (sc *StreamConn) Send(req *Packet, getReply GetReplyFunc) (err error) {
+func (sc *StreamConn) Send(retry bool, req *Packet, getReply GetReplyFunc) (err error) {
 	for i := 0; i < StreamSendMaxRetry; i++ {
-		err = sc.sendToPartition(req, getReply)
-		if err == nil {
+		err = sc.sendToPartition(req, retry, getReply)
+		if err == nil || !retry {
 			return
 		}
 		log.LogWarnf("StreamConn Send: err(%v)", err)
@@ -115,7 +115,7 @@ func (sc *StreamConn) Send(req *Packet, getReply GetReplyFunc) (err error) {
 	return errors.New(fmt.Sprintf("StreamConn Send: retried %v times and still failed, sc(%v) reqPacket(%v)", StreamSendMaxRetry, sc, req))
 }
 
-func (sc *StreamConn) sendToPartition(req *Packet, getReply GetReplyFunc) (err error) {
+func (sc *StreamConn) sendToPartition(req *Packet, retry bool, getReply GetReplyFunc) (err error) {
 	conn, err := StreamConnPool.GetConnect(sc.currAddr)
 	if err == nil {
 		err = sc.sendToConn(conn, req, getReply)
@@ -125,7 +125,7 @@ func (sc *StreamConn) sendToPartition(req *Packet, getReply GetReplyFunc) (err e
 		}
 		log.LogWarnf("sendToPartition: send to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 		StreamConnPool.PutConnect(conn, true)
-		if err != TryOtherAddrError {
+		if err != TryOtherAddrError || !retry {
 			return
 		}
 	} else {
@@ -233,4 +233,10 @@ func getNearestHost(dp *wrapper.DataPartition) string {
 		return addr
 	}
 	return dp.LeaderAddr
+}
+
+func NewStreamConnByHost(host string) *StreamConn {
+	return &StreamConn{
+		currAddr: host,
+	}
 }

@@ -9,7 +9,7 @@
   "exporterPort": 9500,
   "cell": "cell-01",
   "logDir": "/cfs/log",
-  "logLevel": "info",
+  "logLevel": "debug",
   "disks": [
     "/cfs/disk:10737418240"
   ],
@@ -17,5 +17,6 @@
     "192.168.0.11:17010",
     "192.168.0.12:17010",
     "192.168.0.13:17010"
-  ]
+  ],
+  "enableSmuxConnPool": true
 }

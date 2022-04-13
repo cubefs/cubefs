@@ -18,7 +18,7 @@ import (
 	"syscall"
 	"time"
 
-	"bazil.org/fuse"
+	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 
 	"github.com/cubefs/cubefs/proto"
 )
@@ -45,6 +45,14 @@ const (
 
 const (
 	DeleteExtentsTimeout = 600 * time.Second
+)
+
+const (
+	MaxSizePutOnce = int64(1) << 23
+)
+
+const (
+	DefaultFlag = 0x0f
 )
 
 var (

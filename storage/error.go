@@ -33,6 +33,7 @@ var (
 	ExtentIsFullError         = errors.New("extent is full")
 	BrokenExtentError         = errors.New("extent has been broken")
 	BrokenDiskError           = errors.New("disk has broken")
+	ForbidWriteError          = errors.New("single replica decommission forbid write")
 )
 
 func NewParameterMismatchErr(msg string) (err error) {

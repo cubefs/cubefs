@@ -50,11 +50,12 @@ import (
 )
 
 const (
-	ConfigKeyRole       = "role"
-	ConfigKeyLogDir     = "logDir"
-	ConfigKeyLogLevel   = "logLevel"
-	ConfigKeyProfPort   = "prof"
-	ConfigKeyWarnLogDir = "warnLogDir"
+	ConfigKeyRole              = "role"
+	ConfigKeyLogDir            = "logDir"
+	ConfigKeyLogLevel          = "logLevel"
+	ConfigKeyProfPort          = "prof"
+	ConfigKeyWarnLogDir        = "warnLogDir"
+	ConfigKeyBuffersTotalLimit = "buffersTotalLimit"
 )
 
 const (
@@ -156,6 +157,7 @@ func main() {
 	logLevel := cfg.GetString(ConfigKeyLogLevel)
 	profPort := cfg.GetString(ConfigKeyProfPort)
 	umpDatadir := cfg.GetString(ConfigKeyWarnLogDir)
+	buffersTotalLimit := cfg.GetInt64(ConfigKeyBuffersTotalLimit)
 
 	// Init server instance with specified role configuration.
 	var (
@@ -228,6 +230,13 @@ func main() {
 		outputFile.Close()
 	}()
 	syslog.SetOutput(outputFile)
+
+	if buffersTotalLimit < 0 {
+		syslog.Printf("invalid fields, BuffersTotalLimit(%v) must larger or equal than 0\n", buffersTotalLimit)
+		return
+	}
+
+	proto.InitBufferPool(buffersTotalLimit)
 
 	if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
 		err = errors.NewErrorf("Fatal: failed to redirect fd - %v", err)

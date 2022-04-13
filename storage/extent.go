@@ -48,6 +48,7 @@ type ExtentInfo struct {
 	Crc        uint32 `json:"Crc"`
 	IsDeleted  bool   `json:"deleted"`
 	ModifyTime int64  `json:"modTime"` // random write not update modify time
+	AccessTime int64  `json:"accessTime"`
 	Source     string `json:"src"`
 }
 
@@ -56,7 +57,22 @@ func (ei *ExtentInfo) String() (m string) {
 	if source == "" {
 		source = "none"
 	}
-	return fmt.Sprintf("%v_%v_%v_%v", ei.FileID, ei.Size, ei.IsDeleted, source)
+	return fmt.Sprintf("%v_%v_%v_%v_%d_%d_%d", ei.FileID, ei.Size, ei.IsDeleted, source, ei.ModifyTime, ei.AccessTime, ei.Crc)
+}
+
+// SortedExtentInfos defines an array sorted by AccessTime
+type SortedExtentInfos []*ExtentInfo
+
+func (extInfos SortedExtentInfos) Len() int {
+	return len(extInfos)
+}
+
+func (extInfos SortedExtentInfos) Less(i, j int) bool {
+	return extInfos[i].AccessTime < extInfos[j].AccessTime
+}
+
+func (extInfos SortedExtentInfos) Swap(i, j int) {
+	extInfos[i], extInfos[j] = extInfos[j], extInfos[i]
 }
 
 // Extent is an implementation of Extent for local regular extent file data management.
@@ -67,6 +83,7 @@ type Extent struct {
 	filePath   string
 	extentID   uint64
 	modifyTime int64
+	accessTime int64
 	dataSize   int64
 	hasClose   int32
 	header     []byte
@@ -127,6 +144,7 @@ func (e *Extent) InitToFS() (err error) {
 		return
 	}
 	atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
+	atomic.StoreInt64(&e.accessTime, time.Now().Unix())
 	e.dataSize = 0
 	return
 }
@@ -156,6 +174,9 @@ func (e *Extent) RestoreFromFS() (err error) {
 	}
 	e.dataSize = info.Size()
 	atomic.StoreInt64(&e.modifyTime, info.ModTime().Unix())
+
+	ts := info.Sys().(*syscall.Stat_t)
+	atomic.StoreInt64(&e.accessTime, time.Unix(int64(ts.Atim.Sec), int64(ts.Atim.Nsec)).Unix())
 	return
 }
 
@@ -223,6 +244,8 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 
 	// Check if extent file size matches the write offset just in case
 	// multiple clients are writing concurrently.
+	e.Lock()
+	defer e.Unlock()
 	if IsAppendWrite(writeType) && e.dataSize != offset {
 		err = NewParameterMismatchErr(fmt.Sprintf("extent current size = %v write offset=%v write size=%v", e.dataSize, offset, size))
 		return

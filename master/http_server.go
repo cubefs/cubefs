@@ -128,6 +128,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.RemoveRaftNode).
 		HandlerFunc(m.removeRaftNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.RaftStatus).
+		HandlerFunc(m.getRaftStatus)
 	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminClusterStat).HandlerFunc(m.clusterStat)
 
 	// volume management APIs
@@ -204,6 +207,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminCreateDataPartition).
 		HandlerFunc(m.createDataPartition)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminCreatePreLoadDataPartition).
+		HandlerFunc(m.createPreLoadDataPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminLoadDataPartition).
 		HandlerFunc(m.loadDataPartition)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -251,12 +257,18 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AddDataNode).
 		HandlerFunc(m.addDataNode)
+
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.DecommissionDataNode).
 		HandlerFunc(m.decommissionDataNode)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.MigrateDataNode).
 		HandlerFunc(m.migrateDataNodeHandler)
+
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.CancelDecommissionDataNode).
+		HandlerFunc(m.cancelDecommissionDataNode)
+
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetDataNode).
 		HandlerFunc(m.getDataNode)
@@ -269,6 +281,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminGetNodeInfo).
 		HandlerFunc(m.getNodeInfoHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminDomainCreate).
+		HandlerFunc(m.createDomainHandler)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminGetIsDomainOn).
 		HandlerFunc(m.getIsDomainOn)

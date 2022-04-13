@@ -22,8 +22,12 @@ import (
 	"syscall"
 	"time"
 
-	"bazil.org/fuse"
-	"bazil.org/fuse/fs"
+	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
+	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
+
+	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util/stat"
+
 	"golang.org/x/net/context"
 
 	"github.com/cubefs/cubefs/proto"
@@ -117,6 +121,12 @@ func NewDir(s *Super, i *proto.InodeInfo) fs.Node {
 
 // Attr set the attributes of a directory.
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
+	var err error
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("Attr", err, bgTime, 1)
+	}()
+
 	ino := d.info.Inode
 	info, err := d.super.InodeGet(ino)
 	if err != nil {
@@ -137,9 +147,11 @@ func (d *Dir) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error)
 func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
 	start := time.Now()
 
+	bgTime := stat.BeginStat()
 	var err error
 	metric := exporter.NewTPCnt("filecreate")
 	defer func() {
+		stat.EndStat("Create", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
 
@@ -150,9 +162,8 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	}
 
 	d.super.ic.Put(info)
-	child := NewFile(d.super, info, d.info.Inode)
+	child := NewFile(d.super, info, uint32(req.Flags&DefaultFlag), d.info.Inode)
 	d.super.ec.OpenStream(info.Inode)
-
 	d.super.fslock.Lock()
 	d.super.nodeCache[info.Inode] = child
 	d.super.fslock.Unlock()
@@ -171,8 +182,10 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 
 // Forget is called when the evict is invoked from the kernel.
 func (d *Dir) Forget() {
+	bgTime := stat.BeginStat()
 	ino := d.info.Inode
 	defer func() {
+		stat.EndStat("Forget", nil, bgTime, 1)
 		log.LogDebugf("TRACE Forget: ino(%v)", ino)
 	}()
 
@@ -187,9 +200,11 @@ func (d *Dir) Forget() {
 func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
 	start := time.Now()
 
+	bgTime := stat.BeginStat()
 	var err error
 	metric := exporter.NewTPCnt("mkdir")
 	defer func() {
+		stat.EndStat("Mkdir", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
 
@@ -218,9 +233,11 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	start := time.Now()
 	d.dcache.Delete(req.Name)
 
+	bgTime := stat.BeginStat()
 	var err error
 	metric := exporter.NewTPCnt("remove")
 	defer func() {
+		stat.EndStat("Remove", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
 
@@ -253,6 +270,11 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		err error
 	)
 
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("Lookup", err, bgTime, 1)
+	}()
+
 	log.LogDebugf("TRACE Lookup: parent(%v) req(%v)", d.info.Inode, req)
 
 	ino, ok := d.dcache.Get(req.Name)
@@ -270,18 +292,17 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	if err != nil {
 		log.LogErrorf("Lookup: parent(%v) name(%v) ino(%v) err(%v)", d.info.Inode, req.Name, ino, err)
 		dummyInodeInfo := &proto.InodeInfo{Inode: ino}
-		dummyChild := NewFile(d.super, dummyInodeInfo, d.info.Inode)
+		dummyChild := NewFile(d.super, dummyInodeInfo, DefaultFlag, d.info.Inode)
 		return dummyChild, nil
 	}
 	mode := proto.OsMode(info.Mode)
-
 	d.super.fslock.Lock()
 	child, ok := d.super.nodeCache[ino]
 	if !ok {
 		if mode.IsDir() {
 			child = NewDir(d.super, info)
 		} else {
-			child = NewFile(d.super, info, d.info.Inode)
+			child = NewFile(d.super, info, DefaultFlag, d.info.Inode)
 		}
 		d.super.nodeCache[ino] = child
 	}
@@ -352,9 +373,11 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	start := time.Now()
 
+	bgTime := stat.BeginStat()
 	var err error
 	metric := exporter.NewTPCnt("readdir")
 	defer func() {
+		stat.EndStat("ReadDirAll", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
 
@@ -404,13 +427,15 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 	start := time.Now()
 	d.dcache.Delete(req.OldName)
 
+	bgTime := stat.BeginStat()
 	var err error
 	metric := exporter.NewTPCnt("rename")
 	defer func() {
+		stat.EndStat("Rename", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
 
-	err = d.super.mw.Rename_ll(d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName)
+	err = d.super.mw.Rename_ll(d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName, true)
 	if err != nil {
 		log.LogErrorf("Rename: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return ParseError(err)
@@ -426,6 +451,12 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 
 // Setattr handles the setattr request.
 func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
+	var err error
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("Setattr", err, bgTime, 1)
+	}()
+
 	ino := d.info.Inode
 	start := time.Now()
 	info, err := d.super.InodeGet(ino)
@@ -457,9 +488,11 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 
 	start := time.Now()
 
+	bgTime := stat.BeginStat()
 	var err error
 	metric := exporter.NewTPCnt("mknod")
 	defer func() {
+		stat.EndStat("Mknod", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
 
@@ -470,7 +503,7 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 	}
 
 	d.super.ic.Put(info)
-	child := NewFile(d.super, info, d.info.Inode)
+	child := NewFile(d.super, info, DefaultFlag, d.info.Inode)
 
 	d.super.fslock.Lock()
 	d.super.nodeCache[info.Inode] = child
@@ -486,9 +519,11 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 	parentIno := d.info.Inode
 	start := time.Now()
 
+	bgTime := stat.BeginStat()
 	var err error
 	metric := exporter.NewTPCnt("symlink")
 	defer func() {
+		stat.EndStat("Symlink", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
 
@@ -499,7 +534,7 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 	}
 
 	d.super.ic.Put(info)
-	child := NewFile(d.super, info, d.info.Inode)
+	child := NewFile(d.super, info, DefaultFlag, d.info.Inode)
 
 	d.super.fslock.Lock()
 	d.super.nodeCache[info.Inode] = child
@@ -527,9 +562,11 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 
 	start := time.Now()
 
+	bgTime := stat.BeginStat()
 	var err error
 	metric := exporter.NewTPCnt("link")
 	defer func() {
+		stat.EndStat("Link", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
 
@@ -544,7 +581,7 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 	d.super.fslock.Lock()
 	newFile, ok := d.super.nodeCache[info.Inode]
 	if !ok {
-		newFile = NewFile(d.super, info, d.info.Inode)
+		newFile = NewFile(d.super, info, DefaultFlag, d.info.Inode)
 		d.super.nodeCache[info.Inode] = newFile
 	}
 	d.super.fslock.Unlock()
@@ -568,14 +605,21 @@ func (d *Dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fus
 	var info *proto.XAttrInfo
 	var err error
 
-	if name == proto.SummaryKey {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("Getxattr", err, bgTime, 1)
+	}()
 
-		var summaryInfo proto.SummaryInfo
+	if name == meta.SummaryKey {
+		if !d.super.mw.EnableSummary {
+			return fuse.ENOSYS
+		}
+		var summaryInfo meta.SummaryInfo
 		cacheSummaryInfo := d.super.sc.Get(ino)
 		if cacheSummaryInfo != nil {
 			summaryInfo = *cacheSummaryInfo
 		} else {
-			summaryInfo, err = d.super.mw.GetSummary_ll(ino, name, 10)
+			summaryInfo, err = d.super.mw.GetSummary_ll(ino, 20)
 			if err != nil {
 				log.LogErrorf("GetXattr: ino(%v) name(%v) err(%v)", ino, name, err)
 				return ParseError(err)
@@ -613,15 +657,82 @@ func (d *Dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fus
 
 // Listxattr has not been implemented yet.
 func (d *Dir) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *fuse.ListxattrResponse) error {
-	return fuse.ENOSYS
+	if !d.super.enableXattr {
+		return fuse.ENOSYS
+	}
+
+	var err error
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("Getxattr", err, bgTime, 1)
+	}()
+
+	ino := d.info.Inode
+	_ = req.Size     // ignore currently
+	_ = req.Position // ignore currently
+
+	keys, err := d.super.mw.XAttrsList_ll(ino)
+	if err != nil {
+		log.LogErrorf("ListXattr: ino(%v) err(%v)", ino, err)
+		return ParseError(err)
+	}
+	for _, key := range keys {
+		resp.Append(key)
+	}
+	log.LogDebugf("TRACE Listxattr: ino(%v)", ino)
+	return nil
 }
 
 // Setxattr has not been implemented yet.
 func (d *Dir) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
-	return fuse.ENOSYS
+	if !d.super.enableXattr {
+		return fuse.ENOSYS
+	}
+
+	var err error
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("Setxattr", err, bgTime, 1)
+	}()
+
+	ino := d.info.Inode
+	name := req.Name
+	value := req.Xattr
+	if name == meta.SummaryKey {
+		log.LogErrorf("Set 'DirStat' is not supported.")
+		return fuse.ENOSYS
+	}
+	// TODO： implement flag to improve compatible (Mofei Zhang)
+	if err = d.super.mw.XAttrSet_ll(ino, []byte(name), []byte(value)); err != nil {
+		log.LogErrorf("Setxattr: ino(%v) name(%v) err(%v)", ino, name, err)
+		return ParseError(err)
+	}
+	log.LogDebugf("TRACE Setxattr: ino(%v) name(%v)", ino, name)
+	return nil
 }
 
 // Removexattr has not been implemented yet.
 func (d *Dir) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) error {
-	return fuse.ENOSYS
+	if !d.super.enableXattr {
+		return fuse.ENOSYS
+	}
+
+	var err error
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("Removexattr", err, bgTime, 1)
+	}()
+
+	ino := d.info.Inode
+	name := req.Name
+	if name == meta.SummaryKey {
+		log.LogErrorf("Remove 'DirStat' is not supported.")
+		return fuse.ENOSYS
+	}
+	if err = d.super.mw.XAttrDel_ll(ino, name); err != nil {
+		log.LogErrorf("Removexattr: ino(%v) name(%v) err(%v)", ino, name, err)
+		return ParseError(err)
+	}
+	log.LogDebugf("TRACE RemoveXattr: ino(%v) name(%v)", ino, name)
+	return nil
 }

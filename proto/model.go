@@ -113,6 +113,26 @@ type ClusterView struct {
 	DataNodes           []NodeView
 }
 
+// ClusterNode defines the structure of a cluster node
+type ClusterNodeInfo struct {
+	//BatchCount          int
+	LoadFactor string
+	//MarkDeleteRate      int
+	//AutoRepairRate      int
+	//DeleteWorkerSleepMs int
+}
+
+type ClusterIP struct {
+	Cluster string
+	//MetaNodeDeleteBatchCount 	int
+	//MetaNodeDeleteWorkerSleepMs int
+	//DataNodeDeleteLimitRate     int
+	//DataNodeAutoRepairLimitRate int
+	//Ip 							string
+	EbsAddr string
+	//ServicePath 				string
+}
+
 // NodeView provides the view of the data or meta node.
 type NodeView struct {
 	Addr       string
@@ -153,31 +173,39 @@ type NodeStatInfo struct {
 }
 
 type VolStatInfo struct {
-	Name       string
-	TotalSize  uint64
-	UsedSize   uint64
-	UsedRatio  string
-	InodeCount uint64
+	Name           string
+	TotalSize      uint64
+	UsedSize       uint64
+	UsedRatio      string
+	CacheTotalSize uint64
+	CacheUsedSize  uint64
+	CacheUsedRatio string
+	EnableToken    bool
+	InodeCount     uint64
 }
 
 // DataPartition represents the structure of storing the file contents.
 type DataPartitionInfo struct {
-	PartitionID             uint64
-	LastLoadedTime          int64
-	ReplicaNum              uint8
-	Status                  int8
-	Recover                 bool
-	Replicas                []*DataReplica
-	Hosts                   []string // host addresses
-	Peers                   []Peer
-	Zones                   []string
-	MissingNodes            map[string]int64 // key: address of the missing node, value: when the node is missing
-	VolName                 string
-	VolID                   uint64
-	OfflinePeerID           uint64
-	FileInCoreMap           map[string]*FileInCore
-	IsRecover               bool
-	FilesWithMissingReplica map[string]int64 // key: file name, value: last time when a missing replica is found
+	PartitionID              uint64
+	PartitionTTL             int64
+	PartitionType            int
+	LastLoadedTime           int64
+	ReplicaNum               uint8
+	Status                   int8
+	Recover                  bool
+	Replicas                 []*DataReplica
+	Hosts                    []string // host addresses
+	Peers                    []Peer
+	Zones                    []string
+	MissingNodes             map[string]int64 // key: address of the missing node, value: when the node is missing
+	VolName                  string
+	VolID                    uint64
+	OfflinePeerID            uint64
+	FileInCoreMap            map[string]*FileInCore
+	IsRecover                bool
+	FilesWithMissingReplica  map[string]int64 // key: file name, value: last time when a missing replica is found
+	SingleDecommissionStatus uint8
+	SingleDecommissionAddr   string
 }
 
 //FileInCore define file in data partition

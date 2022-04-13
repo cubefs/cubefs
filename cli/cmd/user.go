@@ -86,8 +86,10 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 				}
 				var displayAccessKey = "[auto generate]"
 				var displaySecretKey = "[auto generate]"
-				if optAccessKey != "" && optSecretKey != "" {
+				if optAccessKey != "" {
 					displayAccessKey = optAccessKey
+				}
+				if optSecretKey != "" {
 					displaySecretKey = optSecretKey
 				}
 				var displayUserType = userType.String()
@@ -126,8 +128,8 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&optPassword, "password", "", "Specify user password")
-	cmd.Flags().StringVar(&optAccessKey, "access-key", "", "Specify user access key for object storage interface authentication")
-	cmd.Flags().StringVar(&optSecretKey, "secret-key", "", "Specify user secret key for object storage interface authentication")
+	cmd.Flags().StringVar(&optAccessKey, "access-key", "", "Specify user access key for object storage interface authentication [16 digits & letters]")
+	cmd.Flags().StringVar(&optSecretKey, "secret-key", "", "Specify user secret key for object storage interface authentication [32 digits & letters]")
 	cmd.Flags().StringVar(&optUserType, "user-type", "normal", "Specify user type [normal | admin]")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	return cmd

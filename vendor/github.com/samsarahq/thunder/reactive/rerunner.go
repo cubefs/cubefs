@@ -176,6 +176,21 @@ func (ds *dependencySet) get() []Dependency {
 	return ds.dependencies
 }
 
+type dependencySetForSelectionKey struct{}
+
+func WithDependencySetForSelection(ctx context.Context) context.Context {
+	return context.WithValue(ctx, dependencySetForSelectionKey{}, &dependencySet{})
+}
+
+func DependenciesForSelection(ctx context.Context) []Dependency {
+	depSet := ctx.Value(dependencySetForSelectionKey{}).(*dependencySet)
+	if depSet == nil {
+		return nil
+	}
+
+	return depSet.get()
+}
+
 type Dependency interface{}
 
 type DependencyCallbackFunc func(context.Context, Dependency)
@@ -195,6 +210,10 @@ func AddDependency(ctx context.Context, r *Resource, dep Dependency) {
 		depSet, ok := ctx.Value(dependencySetKey{}).(*dependencySet)
 		if ok && depSet != nil {
 			depSet.add(dep)
+		}
+		depSetForSelection, ok := ctx.Value(dependencySetForSelectionKey{}).(*dependencySet)
+		if ok && depSetForSelection != nil {
+			depSetForSelection.add(dep)
 		}
 		if callback, ok := ctx.Value(dependencyCallbackKey{}).(DependencyCallbackFunc); ok && callback != nil {
 			callback(ctx, dep)

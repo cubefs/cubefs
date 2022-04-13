@@ -17,9 +17,9 @@ package util
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/xtaci/smux"
 	"io"
 	"net"
-	"smux"
 	"strconv"
 	"strings"
 	"sync"

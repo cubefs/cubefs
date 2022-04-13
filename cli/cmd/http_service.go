@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"errors"
+	"fmt"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 )
@@ -30,6 +32,9 @@ func (vol *volumeClient) excuteHttp() (err error) {
 		if vv, err = vol.client.AdminAPI().GetVolumeSimpleInfo(vol.name); err != nil {
 			return
 		}
+		if vol.capacity <= vv.Capacity {
+			return errors.New(fmt.Sprintf("Expand capacity must larger than %v!\n", vv.Capacity))
+		}
 		if err = vol.client.AdminAPI().VolExpand(vol.name, vol.capacity, calcAuthKey(vv.Owner)); err != nil {
 			return
 		}
@@ -37,6 +42,9 @@ func (vol *volumeClient) excuteHttp() (err error) {
 		var vv *proto.SimpleVolView
 		if vv, err = vol.client.AdminAPI().GetVolumeSimpleInfo(vol.name); err != nil {
 			return
+		}
+		if vol.capacity >= vv.Capacity {
+			return errors.New(fmt.Sprintf("Expand capacity must less than %v!\n", vv.Capacity))
 		}
 		if err = vol.client.AdminAPI().VolShrink(vol.name, vol.capacity, calcAuthKey(vv.Owner)); err != nil {
 			return

@@ -87,6 +87,7 @@ func (api *ClientAPI) GetVolumeWithAuthnode(volName string, authKey string, toke
 func (api *ClientAPI) GetVolumeStat(volName string) (info *proto.VolStatInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.ClientVolStat)
 	request.addParam("name", volName)
+	request.addParam("version", strconv.FormatInt(proto.LFClient, 10))
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -134,6 +135,20 @@ func (api *ClientAPI) GetDataPartitions(volName string) (view *proto.DataPartiti
 	randIndex := rand.Intn(len(api.mc.masters))
 
 	api.mc.setLeader(api.mc.masters[randIndex])
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	view = &proto.DataPartitionsView{}
+	if err = json.Unmarshal(data, view); err != nil {
+		return
+	}
+	return
+}
+
+func (api *ClientAPI) GetPreLoadDataPartitions(volName string) (view *proto.DataPartitionsView, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.ClientDataPartitions)
+	request.addParam("name", volName)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return

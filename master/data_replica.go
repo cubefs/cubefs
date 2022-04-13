@@ -15,6 +15,7 @@
 package master
 
 import (
+	"github.com/cubefs/cubefs/util/log"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -47,6 +48,8 @@ func (replica *DataReplica) isMissing(interval int64) (isMissing bool) {
 }
 
 func (replica *DataReplica) isLive(timeOutSec int64) (isAvailable bool) {
+	log.LogDebugf("action[isLive] replica addr %v, datanode active %v replica status %v and is actvie %v",
+		replica.Addr, replica.dataNode.isActive, replica.Status, replica.isActive(timeOutSec))
 	if replica.dataNode.isActive && replica.Status != proto.Unavailable &&
 		replica.isActive(timeOutSec) {
 		isAvailable = true

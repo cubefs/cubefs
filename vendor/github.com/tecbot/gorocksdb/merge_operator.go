@@ -40,7 +40,7 @@ type MergeOperator interface {
 	//
 	// If it is impossible or infeasible to combine the two operations, return false.
 	// The library will internally keep track of the operations, and apply them in the
-	// correct order once a base-value (a PutConnect/Delete/End-of-Database) is seen.
+	// correct order once a base-value (a Put/Delete/End-of-Database) is seen.
 	PartialMerge(key, leftOperand, rightOperand []byte) ([]byte, bool)
 
 	// The name of the MergeOperator.

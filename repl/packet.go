@@ -16,17 +16,18 @@ package repl
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/log"
 	"io"
 	"net"
 	"strings"
 	"time"
 
+	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/tiglabs/raft"
 )
 
 var (
@@ -160,6 +161,7 @@ func (p *Packet) resolveFollowersAddr() (err error) {
 	p.OrgBuffer = p.Data
 	if followerNum > 0 {
 		p.followersAddrs = followerAddrs[:int(followerNum)]
+		log.LogInfof("action[resolveFollowersAddr] %v", p.followersAddrs)
 	}
 	if p.RemainingFollowers < 0 {
 		err = ErrBadNodes
@@ -377,13 +379,19 @@ func (p *Packet) IsMasterCommand() bool {
 }
 
 func (p *Packet) IsForwardPacket() bool {
-	r := p.RemainingFollowers > 0
+	r := p.RemainingFollowers > 0 && !p.IsSingleReplicatePacket()
+	return r
+}
+
+func (p *Packet) IsSingleReplicatePacket() bool {
+	r := p.RemainingFollowers == 127
 	return r
 }
 
 // A leader packet is the packet send to the leader and does not require packet forwarding.
 func (p *Packet) IsLeaderPacket() (ok bool) {
-	if p.IsForwardPkt() && (p.IsWriteOperation() || p.IsCreateExtentOperation() || p.IsMarkDeleteExtentOperation()) {
+	if (p.IsForwardPkt() || p.IsSingleReplicatePacket()) &&
+		(p.IsWriteOperation() || p.IsCreateExtentOperation() || p.IsMarkDeleteExtentOperation()) {
 		ok = true
 	}
 

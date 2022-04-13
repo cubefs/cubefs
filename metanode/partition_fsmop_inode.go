@@ -74,11 +74,15 @@ func (mp *metaPartition) getInode(ino *Inode) (resp *InodeResponse) {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
+	ctime := Now.GetCurrentTime().Unix()
 	/*
 	 * FIXME: not protected by lock yet, since nothing is depending on atime.
 	 * Shall add inode lock in the future.
 	 */
-	i.AccessTime = Now.GetCurrentTime().Unix()
+	if ctime > i.AccessTime {
+		i.AccessTime = ctime
+	}
+
 	resp.Msg = i
 	return
 }
@@ -214,7 +218,7 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 		return
 	}
 	eks := ino.Extents.CopyExtents()
-	delExtents := ino2.AppendExtents(eks, ino.ModifyTime)
+	delExtents := ino2.AppendExtents(eks, ino.ModifyTime, mp.volType)
 	log.LogInfof("fsmAppendExtents inode(%v) deleteExtents(%v)", ino2.Inode, delExtents)
 	mp.extDelCh <- delExtents
 	return
@@ -242,17 +246,65 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode) (status uint8) {
 	if len(eks) > 1 {
 		discardExtentKey = eks[1:]
 	}
-	delExtents, status := ino2.AppendExtentWithCheck(eks[0], ino.ModifyTime, discardExtentKey)
-	if status == proto.OpOk && delExtents != nil && len(delExtents) > 0 {
+	delExtents, status := ino2.AppendExtentWithCheck(eks[0], ino.ModifyTime, discardExtentKey, mp.volType)
+	if status == proto.OpOk {
 		mp.extDelCh <- delExtents
 	}
-	msg := fmt.Sprintf("fsmAppendExtentWithCheck inode(%v) ek(%v) server deleteExtents(%v) request discardExtents(%v) status(%v)", ino2.Inode, eks[0], delExtents, discardExtentKey, status)
-	if status != proto.OpOk {
-		log.LogError(msg)
+
+	// confict need delete eks[0], to clear garbage data
+	if status == proto.OpConflictExtentsErr {
+		mp.extDelCh <- eks[:1]
 	}
-	log.LogInfo(msg)
+
+	log.LogInfof("fsmAppendExtentWithCheck inode(%v) ek(%v) deleteExtents(%v) discardExtents(%v) status(%v)", ino2.Inode, eks[0], delExtents, discardExtentKey, status)
 	return
 }
+
+func (mp *metaPartition) fsmAppendObjExtents(ino *Inode) (status uint8) {
+	status = proto.OpOk
+	item := mp.inodeTree.CopyGet(ino)
+	if item == nil {
+		status = proto.OpNotExistErr
+		return
+	}
+
+	inode := item.(*Inode)
+	if inode.ShouldDelete() {
+		status = proto.OpNotExistErr
+		return
+	}
+
+	eks := ino.ObjExtents.CopyExtents()
+	err := inode.AppendObjExtents(eks, ino.ModifyTime)
+
+	// if err is not nil, means obj eks exist overlap.
+	if err != nil {
+		log.LogErrorf("fsmAppendExtents inode(%v) err(%v)", inode.Inode, err)
+		status = proto.OpConflictExtentsErr
+	}
+	return
+}
+
+// ino is not point to the member of inodeTree
+// it's inode is same with inodeTree,not the extent
+// func (mp *metaPartition) fsmDelExtents(ino *Inode) (status uint8) {
+// 	status = proto.OpOk
+// 	item := mp.inodeTree.CopyGet(ino)
+// 	if item == nil {
+// 		status = proto.OpNotExistErr
+// 		return
+// 	}
+// 	ino2 := item.(*Inode)
+// 	if ino2.ShouldDelete() {
+// 		status = proto.OpNotExistErr
+// 		return
+// 	}
+// 	eks := ino.Extents.CopyExtents()
+// 	delExtents := ino2.ReplaceExtents(eks, ino.ModifyTime)
+// 	log.LogInfof("fsmDelExtents inode(%v) curExtent(%v) delExtents(%v)", ino2.Inode, eks, delExtents)
+// 	mp.extDelCh <- delExtents
+// 	return
+// }
 
 func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
@@ -338,5 +390,69 @@ func (mp *metaPartition) fsmSetAttr(req *SetattrRequest) (err error) {
 		return
 	}
 	ino.SetAttr(req)
+	return
+}
+
+// fsmExtentsEmpty only use in datalake situation
+func (mp *metaPartition) fsmExtentsEmpty(ino *Inode) (status uint8) {
+	status = proto.OpOk
+	item := mp.inodeTree.CopyGet(ino)
+	if item == nil {
+		status = proto.OpNotExistErr
+		return
+	}
+	i := item.(*Inode)
+	if i.ShouldDelete() {
+		status = proto.OpNotExistErr
+		return
+	}
+	if proto.IsDir(i.Type) {
+		status = proto.OpArgMismatchErr
+		return
+	}
+	log.LogDebugf("action[fsmExtentsEmpty] mp(%d) ino [%v],eks len [%v]", mp.config.PartitionId, ino.Inode, len(i.Extents.eks))
+	tinyEks := i.CopyTinyExtents()
+	log.LogDebugf("action[fsmExtentsEmpty] mp(%d) ino [%v],eks tiny len [%v]", mp.config.PartitionId, ino.Inode, len(tinyEks))
+
+	if len(tinyEks) > 0 {
+		mp.extDelCh <- tinyEks
+		log.LogDebugf("fsmExtentsEmpty mp(%d) inode(%d) tinyEks(%v)", mp.config.PartitionId, ino.Inode, tinyEks)
+	}
+
+	i.EmptyExtents(ino.ModifyTime)
+
+	return
+}
+
+func (mp *metaPartition) fsmClearInodeCache(ino *Inode) (status uint8) {
+	status = proto.OpOk
+	item := mp.inodeTree.Get(ino)
+	if item == nil {
+		status = proto.OpNotExistErr
+		return
+	}
+	ino2 := item.(*Inode)
+	if ino2.ShouldDelete() {
+		status = proto.OpNotExistErr
+		return
+	}
+	delExtents := ino2.EmptyExtents(ino.ModifyTime)
+	log.LogInfof("fsmClearInodeCache inode(%v) delExtents(%v)", ino2.Inode, delExtents)
+	if len(delExtents) > 0 {
+		mp.extDelCh <- delExtents
+	}
+	return
+}
+
+// attion: unmarshal error will disard extent
+func (mp *metaPartition) fsmSendToChan(val []byte) (status uint8) {
+	sortExtents := NewSortedExtents()
+	err := sortExtents.UnmarshalBinary(val)
+	if err != nil {
+		panic(fmt.Errorf("[fsmDelExtents] unmarshal sortExtents error, mp(%d), err(%s)", mp.config.PartitionId, err.Error()))
+	}
+
+	log.LogInfof("fsmDelExtents mp(%d) delExtents(%v)", mp.config.PartitionId, len(sortExtents.eks))
+	mp.extDelCh <- sortExtents.eks
 	return
 }

@@ -190,6 +190,7 @@ func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 			if err = client.AdminAPI().DecommissionMetaPartition(partitionID, address); err != nil {
 				return
 			}
+			stdout("Decommission meta partition successfully\n")
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -221,6 +222,7 @@ func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 			if err = client.AdminAPI().AddMetaReplica(partitionID, address); err != nil {
 				return
 			}
+			stdout("Add replication successfully\n")
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -255,6 +257,7 @@ func newMetaPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 			if err = client.AdminAPI().DeleteMetaReplica(partitionID, address); err != nil {
 				return
 			}
+			stdout("Delete replication successfully\n")
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {

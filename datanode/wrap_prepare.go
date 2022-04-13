@@ -52,7 +52,6 @@ func (s *DataNode) Prepare(p *repl.Packet) (err error) {
 	if err = s.checkPartition(p); err != nil {
 		return
 	}
-
 	// For certain packet, we meed to add some additional extent information.
 	if err = s.addExtentInfo(p); err != nil {
 		return
@@ -114,7 +113,7 @@ func (s *DataNode) addExtentInfo(p *repl.Packet) error {
 			return fmt.Errorf("addExtentInfo partition %v  %v GetTinyExtentOffset error %v", p.PartitionID, extentID, err.Error())
 		}
 	} else if p.IsLeaderPacket() && p.IsCreateExtentOperation() {
-		if partition.GetExtentCount() >= storage.MaxExtentCount*3 {
+		if partition.isNormalType() && partition.GetExtentCount() >= storage.MaxExtentCount*3 {
 			return fmt.Errorf("addExtentInfo partition %v has reached maxExtentId", p.PartitionID)
 		}
 		p.ExtentID, err = store.NextExtentID()
@@ -129,6 +128,11 @@ func (s *DataNode) addExtentInfo(p *repl.Packet) error {
 		p.Data, _ = json.Marshal(record)
 		p.Size = uint32(len(p.Data))
 	}
+
+	if (p.IsCreateExtentOperation() || p.IsWriteOperation()) && p.ExtentID == 0 {
+		return fmt.Errorf("addExtentInfo partition %v invalid extent id. ", p.PartitionID)
+	}
+
 	p.OrgBuffer = p.Data
 
 	return nil

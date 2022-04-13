@@ -22,48 +22,39 @@ import (
 	"github.com/cubefs/cubefs/proto"
 )
 
-func (mp *metaPartition) UpdateSummaryInfo(req *proto.UpdateSummaryInfoRequest, p *Packet) (err error) {
-	fileInc := req.FileInc
-	dirInc := req.DirInc
-	byteInc := req.ByteInc
-	var builder strings.Builder
+func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (err error) {
+	newValueList := strings.Split(req.Value, ",")
+	filesInc, _ := strconv.ParseInt(newValueList[0], 10, 64)
+	dirsInc, _ := strconv.ParseInt(newValueList[1], 10, 64)
+	bytesInc, _ := strconv.ParseInt(newValueList[2], 10, 64)
 
-	mp.summaryLock.Lock()
-	defer mp.summaryLock.Unlock()
+	mp.xattrLock.Lock()
+	defer mp.xattrLock.Unlock()
 	treeItem := mp.extendTree.Get(NewExtend(req.Inode))
 	if treeItem != nil {
 		extend := treeItem.(*Extend)
 		if value, exist := extend.Get([]byte(req.Key)); exist {
 			oldValueList := strings.Split(string(value), ",")
-			oldFile, _ := strconv.ParseInt(oldValueList[0], 10, 64)
-			oldDir, _ := strconv.ParseInt(oldValueList[1], 10, 64)
-			oldByte, _ := strconv.ParseInt(oldValueList[2], 10, 64)
-			newFile := oldFile + fileInc
-			newDir := oldDir + dirInc
-			newByte := oldByte + byteInc
-			builder.Reset()
-			builder.WriteString(strconv.FormatInt(newFile, 10))
-			builder.WriteString(",")
-			builder.WriteString(strconv.FormatInt(newDir, 10))
-			builder.WriteString(",")
-			builder.WriteString(strconv.FormatInt(newByte, 10))
+			oldFiles, _ := strconv.ParseInt(oldValueList[0], 10, 64)
+			oldDirs, _ := strconv.ParseInt(oldValueList[1], 10, 64)
+			oldBytes, _ := strconv.ParseInt(oldValueList[2], 10, 64)
+			newFiles := oldFiles + filesInc
+			newDirs := oldDirs + dirsInc
+			newBytes := oldBytes + bytesInc
+			newValue := strconv.FormatInt(int64(newFiles), 10) + "," +
+				strconv.FormatInt(int64(newDirs), 10) + "," +
+				strconv.FormatInt(int64(newBytes), 10)
 			var extend = NewExtend(req.Inode)
-			extend.Put([]byte(req.Key), []byte(builder.String()))
-			if _, err = mp.putExtend(opFSMUpdateSummaryInfo, extend); err != nil {
+			extend.Put([]byte(req.Key), []byte(newValue))
+			if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
 				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 				return
 			}
 			p.PacketOkReply()
 			return
 		} else {
-			builder.Reset()
-			builder.WriteString(strconv.FormatInt(req.FileInc, 10))
-			builder.WriteString(",")
-			builder.WriteString(strconv.FormatInt(req.DirInc, 10))
-			builder.WriteString(",")
-			builder.WriteString(strconv.FormatInt(req.ByteInc, 10))
-			extend.Put([]byte(req.Key), []byte(builder.String()))
-			if _, err = mp.putExtend(opFSMUpdateSummaryInfo, extend); err != nil {
+			extend.Put([]byte(req.Key), []byte(req.Value))
+			if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
 				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 				return
 			}
@@ -71,15 +62,9 @@ func (mp *metaPartition) UpdateSummaryInfo(req *proto.UpdateSummaryInfoRequest, 
 			return
 		}
 	} else {
-		builder.Reset()
-		builder.WriteString(strconv.FormatInt(req.FileInc, 10))
-		builder.WriteString(",")
-		builder.WriteString(strconv.FormatInt(req.DirInc, 10))
-		builder.WriteString(",")
-		builder.WriteString(strconv.FormatInt(req.ByteInc, 10))
 		var extend = NewExtend(req.Inode)
-		extend.Put([]byte(req.Key), []byte(builder.String()))
-		if _, err = mp.putExtend(opFSMUpdateSummaryInfo, extend); err != nil {
+		extend.Put([]byte(req.Key), []byte(req.Value))
+		if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 			return
 		}

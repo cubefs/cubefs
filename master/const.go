@@ -23,17 +23,32 @@ import (
 
 // Keys in the request
 const (
-	addrKey                 = "addr"
-	diskPathKey             = "disk"
-	nameKey                 = "name"
-	idKey                   = "id"
-	countKey                = "count"
-	startKey                = "start"
-	enableKey               = "enable"
-	thresholdKey            = "threshold"
-	dataPartitionSizeKey    = "size"
-	metaPartitionCountKey   = "mpCount"
-	volCapacityKey          = "capacity"
+	addrKey               = "addr"
+	diskPathKey           = "disk"
+	nameKey               = "name"
+	idKey                 = "id"
+	countKey              = "count"
+	startKey              = "start"
+	enableKey             = "enable"
+	thresholdKey          = "threshold"
+	dataPartitionSizeKey  = "size"
+	metaPartitionCountKey = "mpCount"
+	volCapacityKey        = "capacity"
+	volTypeKey            = "volType"
+	cacheRuleKey          = "cacheRuleKey"
+	emptyCacheRuleKey     = "emptyCacheRule"
+
+	forceDelVolKey          = "forceDelVol"
+	ebsBlkSizeKey           = "ebsBlkSize"
+	cacheCapacity           = "cacheCap"
+	cacheActionKey          = "cacheAction"
+	cacheThresholdKey       = "cacheThreshold"
+	cacheTTLKey             = "cacheTTL"
+	cacheHighWaterKey       = "cacheHighWater"
+	cacheLowWaterKey        = "cacheLowWater"
+	cacheLRUIntervalKey     = "cacheLRUInterval"
+	clientVersion           = "version"
+	domainIdKey             = "domainId"
 	volOwnerKey             = "owner"
 	volAuthKey              = "authKey"
 	replicaNumKey           = "replicaNum"
@@ -43,13 +58,14 @@ const (
 	keywordsKey             = "keywords"
 	zoneNameKey             = "zoneName"
 	crossZoneKey            = "crossZone"
-	defaultPriority         = "defaultPriority"
+	normalZonesFirstKey     = "normalZonesFirst"
 	userKey                 = "user"
 	nodeHostsKey            = "hosts"
 	nodeDeleteBatchCountKey = "batchCount"
 	nodeMarkDeleteRateKey   = "markDeleteRate"
 	nodeDeleteWorkerSleepMs = "deleteWorkerSleepMs"
 	nodeAutoRepairRateKey   = "autoRepairRate"
+	clusterLoadFactorKey    = "loadFactor"
 	descriptionKey          = "description"
 	dpSelectorNameKey       = "dpSelectorName"
 	dpSelectorParmKey       = "dpSelectorParm"
@@ -81,6 +97,7 @@ const (
 
 const (
 	defaultFaultDomainZoneCnt                    = 3
+	defaultNormalCrossZoneCnt                    = 3
 	defaultInitMetaPartitionCount                = 3
 	defaultMaxInitMetaPartitionCount             = 100
 	defaultMaxMetaPartitionInodeID        uint64 = 1<<63 - 1
@@ -104,6 +121,7 @@ const (
 	defaultNodeSetGrpBatchCnt                    = 3
 	defaultMigrateDpCnt                          = 50
 	defaultMigrateMpCnt                          = 15
+	defaultMaxReplicaCnt                         = 16
 )
 
 const (
@@ -111,9 +129,18 @@ const (
 	markDelete           uint8 = 1
 	normalZone                 = 0
 	unavailableZone            = 1
-	unavaliable                = 1
-	metaNodesUnavaliable       = 2
-	dataNodesUnavaliable       = 3
+	metaNodesUnAvailable       = 2
+	dataNodesUnAvailable       = 3
+)
+
+const (
+	defaultEbsBlkSize = 8 * 1024 * 1024
+
+	defaultCacheThreshold   = 10 * 1024 * 1024
+	defaultCacheTtl         = 30
+	defaultCacheHighWater   = 80
+	defaultCacheLowWater    = 40
+	defaultCacheLruInterval = 5
 )
 
 const (

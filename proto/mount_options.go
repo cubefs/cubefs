@@ -49,6 +49,18 @@ const (
 	EnableSummary
 	EnableUnixPermission
 
+	//adls
+	VolType
+	EbsEndpoint
+	EbsServerPath
+	CacheAction
+	EbsBlockSize
+	EnableBcache
+	ReadThreads
+	WriteThreads
+	MetaSendTimeout
+	BuffersTotalLimit
+
 	MaxMountOption
 )
 
@@ -114,6 +126,19 @@ func InitMountOptions(opts []MountOption) {
 	opts[EnablePosixACL] = MountOption{"enablePosixACL", "Enable posix ACL support", "", false}
 	opts[EnableSummary] = MountOption{"enableSummary", "Enable content summary", "", false}
 	opts[EnableUnixPermission] = MountOption{"enableUnixPermission", "Enable unix permission check(e.g: 777/755)", "", false}
+
+	opts[VolType] = MountOption{"volType", "volume type", "", int64(0)}
+	opts[EbsEndpoint] = MountOption{"ebsEndpoint", "Ebs service address", "", ""}
+	opts[EbsServerPath] = MountOption{"ebsServerPath", "Ebs service path", "", ""}
+	opts[CacheAction] = MountOption{"cacheAction", "Cold cache action", "", int64(0)}
+	opts[EbsBlockSize] = MountOption{"ebsBlockSize", "Ebs object size", "", ""}
+	opts[EnableBcache] = MountOption{"enableBcache", "Enble block cache", "", false}
+	opts[ReadThreads] = MountOption{"readThreads", "Cold volume read threads", "", int64(10)}
+	opts[WriteThreads] = MountOption{"writeThreads", "Cold volume write threads", "", int64(10)}
+	opts[EnablePosixACL] = MountOption{"enablePosixACL", "enable posix ACL support", "", false}
+	opts[EnableSummary] = MountOption{"enableSummary", "enable content summary", "", false}
+	opts[MetaSendTimeout] = MountOption{"metaSendTimeout", "Meta send timeout", "", int64(600)}
+	opts[BuffersTotalLimit] = MountOption{"buffersTotalLimit", "Send/Receive packets memory limit", "", int64(32768)} //default 4G
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -233,6 +258,7 @@ type MountOptions struct {
 	FollowerRead         bool
 	Authenticate         bool
 	TicketMess           auth.TicketMess
+	TokenKey             string
 	AccessKey            string
 	SecretKey            string
 	DisableDcache        bool
@@ -242,7 +268,18 @@ type MountOptions struct {
 	EnableXattr          bool
 	NearRead             bool
 	EnablePosixACL       bool
+	VolType              int
+	EbsEndpoint          string
+	EbsServicePath       string
+	CacheAction          int
+	CacheThreshold       int
+	EbsBlockSize         int
+	EnableBcache         bool
+	ReadThreads          int64
+	WriteThreads         int64
 	EnableSummary        bool
 	EnableUnixPermission bool
 	NeedRestoreFuse      bool
+	MetaSendTimeout      int64
+	BuffersTotalLimit    int64
 }

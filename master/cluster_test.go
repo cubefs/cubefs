@@ -21,8 +21,25 @@ func buildPanicVol() *Vol {
 		return nil
 	}
 	var createTime = time.Now().Unix() // record create time of this volume
-	vol := newVol(id, commonVol.Name, commonVol.Owner, "", commonVol.dataPartitionSize, commonVol.Capacity,
-		defaultReplicaNum, defaultReplicaNum, false, false, false, false, createTime, "")
+
+	vv := volValue{
+		ID:                id,
+		Name:              commonVol.Name,
+		Owner:             commonVol.Owner,
+		ZoneName:          "",
+		DataPartitionSize: commonVol.dataPartitionSize,
+		Capacity:          commonVol.Capacity,
+		DpReplicaNum:      defaultReplicaNum,
+		ReplicaNum:        defaultReplicaNum,
+		FollowerRead:      false,
+		Authenticate:      false,
+		CrossZone:         false,
+		DefaultPriority:   false,
+		CreateTime:        createTime,
+		Description:       "",
+	}
+
+	vol := newVol(vv)
 	vol.dataPartitions = nil
 	return vol
 }
@@ -93,13 +110,13 @@ func TestPanicCheckAvailSpace(t *testing.T) {
 }
 
 func TestCheckCreateDataPartitions(t *testing.T) {
-	server.cluster.scheduleToCheckAutoDataPartitionCreation()
+	server.cluster.scheduleToManageDp()
 	//time.Sleep(150 * time.Second)
 }
 
 func TestPanicCheckCreateDataPartitions(t *testing.T) {
 	c := buildPanicCluster()
-	c.scheduleToCheckAutoDataPartitionCreation()
+	c.scheduleToManageDp()
 }
 
 func TestPanicCheckBadDiskRecovery(t *testing.T) {
@@ -112,7 +129,7 @@ func TestPanicCheckBadDiskRecovery(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	dp := newDataPartition(partitionID, vol.dpReplicaNum, vol.Name, vol.ID)
+	dp := newDataPartition(partitionID, vol.dpReplicaNum, vol.Name, vol.ID, proto.PartitionTypeNormal, 0)
 	c.BadDataPartitionIds.Store(fmt.Sprintf("%v", dp.PartitionID), dp)
 	c.scheduleToCheckDiskRecoveryProgress()
 }

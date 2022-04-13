@@ -21,9 +21,9 @@ import (
 	"strconv"
 	"sync/atomic"
 
+	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
-	"github.com/tiglabs/raft"
 )
 
 var (
@@ -197,8 +197,12 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		FileCount:            len(files),
 		Replicas:             partition.Replicas(),
 		TinyDeleteRecordSize: tinyDeleteRecordSize,
-		RaftStatus:           partition.raftPartition.Status(),
 	}
+
+	if partition.isNormalType() {
+		result.RaftStatus = partition.raftPartition.Status()
+	}
+
 	s.buildSuccessResp(w, result)
 }
 
