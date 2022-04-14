@@ -634,6 +634,7 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 			break
 		}
 		reply := repl.NewStreamReadResponsePacket(p.ReqID, p.PartitionID, p.ExtentID)
+		reply.Opcode = p.Opcode
 		reply.StartT = p.StartT
 		currReadSize := uint32(util.Min(int(needReplySize), int(rblksize)))
 		err = syscall.EAGAIN
@@ -859,13 +860,14 @@ func (s *DataNode) handlePacketToReadTinyDeleteRecordFile(p *repl.Packet, connec
 	}
 	needReplySize := localTinyDeleteFileSize - p.ExtentOffset
 	offset := p.ExtentOffset
-	reply := repl.NewReadTinyDeleteRecordResponsePacket(p.ReqID, p.PartitionID)
-	reply.StartT = time.Now().UnixNano()
 	for {
 		if needReplySize <= 0 {
 			break
 		}
 		err = nil
+
+		reply := repl.NewReadTinyDeleteRecordResponsePacket(p.ReqID, p.PartitionID)
+		reply.StartT = time.Now().UnixNano()
 		currReadSize := uint32(util.Min(int(needReplySize), MaxSyncTinyDeleteBufferSize))
 		reply.Data = make([]byte, currReadSize)
 		reply.ExtentOffset = offset
