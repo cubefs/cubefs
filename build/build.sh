@@ -175,9 +175,12 @@ build_rocksdb() {
         if [ ${MAJOR} -ge 10 ] ; then
           CXXFLAGS='-Wno-error=deprecated-copy -Wno-error=class-memaccess -Wno-error=pessimizing-move' \
 		make -j ${NPROC} static_lib  && echo "build rocksdb success" || {  echo "build rocksdb failed" ; exit 1; }
-        else
+        elif [ ${MAJOR} -ge 8 ] ; then
+	  CXXFLAGS='-Wno-error=class-memaccess' \
 		      make -j ${NPROC} static_lib  && echo "build rocksdb success" || {  echo "build rocksdb failed" ; exit 1; }
-		    fi
+	else
+		      make -j ${NPROC} static_lib  && echo "build rocksdb success" || {  echo "build rocksdb failed" ; exit 1; }
+	fi
         popd >/dev/null
     fi
     cgo_cflags="${cgo_cflags} -I${RocksdbSrcPath}/include"
