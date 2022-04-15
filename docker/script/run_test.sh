@@ -267,16 +267,10 @@ run_unit_test() {
     pass_num=`grep "PASS:" ${test_output_file} | wc -l`
     fail_num=`grep "FAIL:" ${test_output_file} | wc -l`
     total_num=`expr ${pass_num} + ${fail_num}`
-    echo "Unit test complete: ${pass_num}/${total_num} passed."
+    echo "Unit test complete returns ${ret}: ${pass_num}/${total_num} passed."
     egrep "FAIL:|PASS:" ${test_output_file}
     if [[ $ret -ne 0 ]]; then
-        echo -e "SDK Unit test: \033[32mFAIL\033[0m"
-        exit $ret
-    fi
-    go test /go/src/github.com/chubaofs/chubaofs/metanode/... -covermode=atomic -coverprofile=${cover_path}/metanodeunittestcover.cov
-    ret=$?
-    if [[ $ret -ne 0 ]]; then
-        echo -e "Meta Node Unit test: \033[32mFAIL\033[0m"
+        echo -e "Unit test: \033[32mFAIL\033[0m"
         exit $ret
     fi
     echo -e "Unit test: \033[32mPASS\033[0m"
