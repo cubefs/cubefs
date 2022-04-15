@@ -116,7 +116,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optNormalZonesFirst string
 	var optBusiness string
 	var optMPCount int
-	var optReplicaNum int
+	var optReplicaNum string
 	var optSize int
 	var optVolType int
 	var optFollowerRead string
@@ -147,6 +147,10 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			crossZone, _ := strconv.ParseBool(optCrossZone)
 			followerRead, _ := strconv.ParseBool(optFollowerRead)
 			normalZonesFirst, _ := strconv.ParseBool(optNormalZonesFirst)
+			replicaNum := 3
+			if optReplicaNum == "" && optVolType == 1{
+				replicaNum = 1
+			}
 			// ask user for confirm
 			if !optYes {
 				stdout("Create a new volume:\n")
@@ -157,7 +161,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  DefaultPriority     : %v\n", normalZonesFirst)
 				stdout("  description         : %v\n", optBusiness)
 				stdout("  mpCount             : %v\n", optMPCount)
-				stdout("  replicaNum          : %v\n", optReplicaNum)
+				stdout("  replicaNum          : %v\n", replicaNum)
 				stdout("  size                : %v G\n", optSize)
 				stdout("  volType             : %v\n", optVolType)
 				stdout("  followerRead        : %v\n", followerRead)
@@ -182,7 +186,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 
 			err = client.AdminAPI().CreateVolName(
 				volumeName, userID, optCapacity, crossZone, normalZonesFirst, optBusiness,
-				optMPCount, optReplicaNum, optSize, optVolType, followerRead,
+				optMPCount, replicaNum, optSize, optVolType, followerRead,
 				optZoneName, optCacheRuleKey, optEbsBlkSize, optCacheCap,
 				optCacheAction, optCacheThreshold, optCacheTTL, optCacheHighWater,
 				optCacheLowWater, optCacheLRUInterval)
@@ -199,7 +203,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optNormalZonesFirst, CliNormalZonesFirst, cmdVolDefaultCrossZone, "Write to normal zone first")
 	cmd.Flags().StringVar(&optBusiness, CliFlagBusiness, cmdVolDefaultBusiness, "Description")
 	cmd.Flags().IntVar(&optMPCount, CliFlagMPCount, cmdVolDefaultMPCount, "Specify init meta partition count")
-	cmd.Flags().IntVar(&optReplicaNum, CliFlagReplicaNum, cmdVolDefaultReplicaNum, "Specify data partition replicas number")
+	cmd.Flags().StringVar(&optReplicaNum, CliFlagReplicaNum, "", "Specify data partition replicas number(default 3 for normal volume,1 for low volume)")
 	cmd.Flags().IntVar(&optSize, CliFlagSize, cmdVolDefaultSize, "Specify data partition size[Unit: GB]")
 	cmd.Flags().IntVar(&optVolType, CliFlagVolType, cmdVolDefaultVolType, "Type of volume (default 0)")
 	cmd.Flags().StringVar(&optFollowerRead, CliFlagFollowerRead, cmdVolDefaultFollowerRead, "Enable read form replica follower")
