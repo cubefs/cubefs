@@ -152,12 +152,7 @@ func (eh *ExtentHandler) String() string {
 }
 
 func (eh *ExtentHandler) write(ctx context.Context, data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("ExtentHandler.write")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var total, write int
-
 	status := eh.getStatus()
 	if !eh.debug && status >= ExtentStatusClosed {
 		err = errors.New(fmt.Sprintf("ExtentHandler Write: Full or Recover, status(%v)", status))
@@ -273,12 +268,15 @@ func (eh *ExtentHandler) sender() {
 			}
 			packet.SendT = time.Now().UnixNano()
 			eh.reply <- packet
-
-			log.LogDebugf("ExtentHandler sender: sent to the reply channel, eh(%v) packet(%v)", eh, packet)
+			if log.IsDebugEnabled() {
+				log.LogDebugf("ExtentHandler sender: sent to the reply channel, eh(%v) packet(%v)", eh, packet)
+			}
 
 		case <-eh.doneSender:
 			eh.setClosed()
-			log.LogDebugf("sender: done, eh(%v) size(%v) ek(%v)", eh, eh.size, eh.key)
+			if log.IsDebugEnabled(){
+				log.LogDebugf("sender: done, eh(%v) size(%v) ek(%v)", eh, eh.size, eh.key)
+			}
 			return
 		}
 	}
@@ -304,13 +302,6 @@ func (eh *ExtentHandler) receiver() {
 }
 
 func (eh *ExtentHandler) processReply(packet *Packet) {
-	var tracer = tracing.TracerFromContext(packet.Ctx()).ChildTracer("ExtentHandler.processReply").
-		SetTag("reqID", packet.GetReqID()).
-		SetTag("reqOp", packet.GetOpMsg()).
-		SetTag("partitionID", packet.PartitionID)
-	defer tracer.Finish()
-	packet.SetCtx(tracer.Context())
-
 	defer func() {
 		if atomic.AddInt32(&eh.inflight, -1) <= 0 {
 			eh.empty <- struct{}{}
@@ -361,8 +352,9 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	}
 
 	eh.lastAccessTime = time.Now().Unix()
-
-	log.LogDebugf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet, reply)
+	if log.IsDebugEnabled(){
+		log.LogDebugf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet, reply)
+	}
 
 	if reply.ResultCode != proto.OpOk {
 		errmsg := fmt.Sprintf("reply NOK: reply(%v)", reply)
@@ -477,10 +469,6 @@ func (eh *ExtentHandler) cleanup() (err error) {
 
 // can ONLY be called when the handler is not open any more
 func (eh *ExtentHandler) appendExtentKey(ctx context.Context) (err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("ExtentHandler.insertExtentKey")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	eh.ekMutex.Lock()
 	if eh.key == nil {
 		eh.ekMutex.Unlock()
@@ -496,8 +484,9 @@ func (eh *ExtentHandler) appendExtentKey(ctx context.Context) (err error) {
 	}
 	dirty := eh.dirty
 	eh.ekMutex.Unlock()
-
-	log.LogDebugf("appendExtentKey enter: eh(%v) key(%v) dirty(%v)", eh, ek, dirty)
+	if log.IsDebugEnabled(){
+		log.LogDebugf("appendExtentKey enter: eh(%v) key(%v) dirty(%v)", eh, ek, dirty)
+	}
 
 	if dirty {
 		// Order: First 'insertExtentKey'，and then 'Append' local extent cache
@@ -521,8 +510,9 @@ func (eh *ExtentHandler) appendExtentKey(ctx context.Context) (err error) {
 		// Otherwise, don't call Append, because that will result appendding ek wrongly in the following extent cache update, i.e. in truncate request.
 		eh.stream.extents.Append(ek, false)
 	}
-
-	log.LogDebugf("appendExtentKey exit: eh(%v) key(%v) dirty(%v) err(%v)", eh, eh.key, eh.dirty, err)
+	if log.IsDebugEnabled(){
+		log.LogDebugf("appendExtentKey exit: eh(%v) key(%v) dirty(%v) err(%v)", eh, eh.key, eh.dirty, err)
+	}
 
 	return
 }
@@ -589,11 +579,6 @@ func (eh *ExtentHandler) discardPacket(packet *Packet) {
 }
 
 func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
-
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("ExtentHandler.allocateExtent")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var (
 		dp    *DataPartition
 		conn  *net.TCPConn

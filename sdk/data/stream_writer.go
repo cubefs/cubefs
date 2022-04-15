@@ -689,13 +689,6 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 }
 
 func (s *Streamer) doWrite(ctx context.Context, data []byte, offset, size int, direct bool) (total int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Streamer.doWrite").
-		SetTag("size", size).
-		SetTag("direct", direct).
-		SetTag("offset", offset)
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var (
 		ek *proto.ExtentKey
 	)
@@ -748,9 +741,6 @@ func (s *Streamer) doWrite(ctx context.Context, data []byte, offset, size int, d
 }
 
 func (s *Streamer) appendOverWriteReq(ctx context.Context, oriReq *ExtentRequest, direct bool) (writeSize int) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Streamer.appendOverWriteReq")
-	defer tracer.Finish()
-
 	var (
 		req     *OverWriteRequest = &OverWriteRequest{oriReq: oriReq, direct: direct}
 		lastReq *OverWriteRequest
@@ -829,13 +819,6 @@ func (s *Streamer) flush(ctx context.Context) (err error) {
 }
 
 func (s *Streamer) traverse() (err error) {
-	ctx := context.Background()
-	if tracing.IsEnabled() {
-		var tracer = tracing.NewTracer("Streamer.traverse")
-		defer tracer.Finish()
-		ctx = tracer.Context()
-	}
-
 	s.traversed++
 	length := s.dirtylist.Len()
 	for i := 0; i < length; i++ {
@@ -907,10 +890,6 @@ func (s *Streamer) open() {
 }
 
 func (s *Streamer) release(ctx context.Context) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Streamer.release")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	s.refcnt--
 	s.closeOpenHandler(ctx)
 	err := s.flush(ctx)
@@ -924,10 +903,6 @@ func (s *Streamer) release(ctx context.Context) error {
 }
 
 func (s *Streamer) evict(ctx context.Context) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Streamer.evict")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	s.streamerMap.Lock()
 	if s.refcnt > 0 || len(s.request) != 0 {
 		s.streamerMap.Unlock()
@@ -955,11 +930,6 @@ func (s *Streamer) abort() {
 }
 
 func (s *Streamer) truncate(ctx context.Context, size int) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Streamer.truncate").
-		SetTag("size", size)
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	s.closeOpenHandler(ctx)
 	err := s.flush(ctx)
 	if err != nil {
