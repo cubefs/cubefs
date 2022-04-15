@@ -832,12 +832,12 @@ func (s *Streamer) traverse() (err error) {
 		if eh.getStatus() >= ExtentStatusClosed {
 			// handler can be in different status such as close, recovery, and error,
 			// and therefore there can be packet that has not been flushed yet.
-			eh.flushPacket(ctx)
+			eh.flushPacket(nil)
 			if atomic.LoadInt32(&eh.inflight) > 0 {
 				log.LogDebugf("Streamer traverse skipped: non-zero inflight, eh(%v)", eh)
 				continue
 			}
-			err = eh.appendExtentKey(ctx)
+			err = eh.appendExtentKey(nil)
 			if err != nil {
 				log.LogWarnf("Streamer traverse abort: insertExtentKey failed, eh(%v) err(%v)", eh, err)
 				return
