@@ -24,7 +24,6 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/tracing"
 	"golang.org/x/net/context"
 )
 
@@ -106,18 +105,13 @@ func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
 }
 
 func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) (total int, hasHole bool, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Streamer.read").
-		SetTag("size", size)
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var (
 		readBytes       int
 		reader          *ExtentReader
 		requests        []*ExtentRequest
 		revisedRequests []*ExtentRequest
 	)
-
+	ctx=context.Background()
 	s.client.readLimiter.Wait(ctx)
 
 	requests = s.extents.PrepareRequests(offset, size, data)
@@ -280,10 +274,6 @@ func (dp *DataPartition) chooseMaxAppliedDp(ctx context.Context, pid uint64, hos
 }
 
 func (dp *DataPartition) getDpAppliedID(ctx context.Context, pid uint64, addr string, orgPacket *Packet) (appliedID uint64, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Streamer.getDpAppliedID")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var conn *net.TCPConn
 	if conn, err = StreamConnPool.GetConnect(addr); err != nil {
 		log.LogWarnf("getDpAppliedID: failed to create connection, orgPacket(%v) pid(%v) dpHost(%v) err(%v)", orgPacket, pid, addr, err)

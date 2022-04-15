@@ -21,8 +21,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/tracing"
-
 	"github.com/chubaofs/chubaofs/util/log"
 
 	"github.com/tiglabs/raft"
@@ -213,11 +211,6 @@ func (p *partition) Submit(cmd []byte) (resp interface{}, err error) {
 }
 
 func (p *partition) SubmitWithCtx(ctx context.Context, cmd []byte) (resp interface{}, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("partition.SubmitWithCtx").
-		SetTag("len", len(cmd))
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	if !p.IsRaftLeader() {
 		err = raft.ErrNotLeader
 		return

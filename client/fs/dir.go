@@ -26,9 +26,8 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/tracing"
+
 	"github.com/chubaofs/chubaofs/util/ump"
-	"github.com/opentracing/opentracing-go"
 	"golang.org/x/net/context"
 )
 
@@ -69,9 +68,6 @@ func NewDir(s *Super, i *proto.InodeInfo) fs.Node {
 
 // Attr set the attributes of a directory.
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Dir.Attr")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	ino := d.info.Inode
 	info, err := d.super.InodeGet(ctx, ino)
@@ -90,9 +86,6 @@ func (d *Dir) NodeID() uint64 {
 
 // Create handles the create request.
 func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Dir.Create")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	start := time.Now()
 
@@ -123,27 +116,17 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 
 // Forget is called when the evict is invoked from the kernel.
 func (d *Dir) Forget() {
-	var tracer = tracing.NewTracer("Dir.Forget")
-	defer tracer.Finish()
-	var ctx = tracer.Context()
 
 	ino := d.info.Inode
 	defer func() {
 		log.LogDebugf("TRACE Forget: ino(%v)", ino)
 	}()
 
-	d.super.ic.Delete(ctx, ino)
+	d.super.ic.Delete(nil, ino)
 }
 
 // Mkdir handles the mkdir request.
 func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
-
-	if tracing.Tracing {
-		span := opentracing.StartSpan("Dir Mkdir")
-		defer span.Finish()
-		ctx = opentracing.ContextWithSpan(ctx, span)
-	}
-
 	start := time.Now()
 
 	var err error
@@ -167,12 +150,6 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 
 // Remove handles the remove request.
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) (err error) {
-	if tracing.Tracing {
-		span := opentracing.StartSpan("Dir Remove")
-		defer span.Finish()
-		ctx = opentracing.ContextWithSpan(ctx, span)
-	}
-
 	tpObject := ump.BeforeTP(d.super.umpFunctionKey("Remove"))
 	defer ump.AfterTP(tpObject, err)
 
@@ -219,12 +196,6 @@ func (d *Dir) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
 
 // Lookup handles the lookup request.
 func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (fs.Node, error) {
-	if tracing.Tracing {
-		span := opentracing.StartSpan("Dir Lookup")
-		defer span.Finish()
-		ctx = opentracing.ContextWithSpan(ctx, span)
-	}
-
 	var (
 		ino uint64
 		err error
@@ -263,12 +234,6 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 
 // ReadDirAll gets all the dentries in a directory and puts them into the cache.
 func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
-	if tracing.Tracing {
-		span := opentracing.StartSpan("Dir ReadDirAll")
-		defer span.Finish()
-		ctx = opentracing.ContextWithSpan(ctx, span)
-	}
-
 	start := time.Now()
 
 	var err error
@@ -317,11 +282,6 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 
 // Rename handles the rename request.
 func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Node) error {
-	if tracing.Tracing {
-		span := opentracing.StartSpan("Dir Rename")
-		defer span.Finish()
-		ctx = opentracing.ContextWithSpan(ctx, span)
-	}
 	dstDir, ok := newDir.(*Dir)
 	if !ok {
 		log.LogErrorf("Rename: NOT DIR, parent(%v) req(%v)", d.info.Inode, req)
@@ -349,12 +309,6 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 
 // Setattr handles the setattr request.
 func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
-	if tracing.Tracing {
-		span := opentracing.StartSpan("Dir Setattr")
-		defer span.Finish()
-		ctx = opentracing.ContextWithSpan(ctx, span)
-	}
-
 	ino := d.info.Inode
 	start := time.Now()
 	info, err := d.super.InodeGet(ctx, ino)
@@ -379,11 +333,6 @@ func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.
 }
 
 func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error) {
-	if tracing.Tracing {
-		span := opentracing.StartSpan("Dir Mknod")
-		defer span.Finish()
-		ctx = opentracing.ContextWithSpan(ctx, span)
-	}
 
 	if (req.Mode&os.ModeNamedPipe == 0 && req.Mode&os.ModeSocket == 0) || req.Rdev != 0 {
 		return nil, fuse.ENOSYS
@@ -410,11 +359,7 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 
 // Symlink handles the symlink request.
 func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, error) {
-	if tracing.Tracing {
-		span := opentracing.StartSpan("Dir Symlink")
-		defer span.Finish()
-		ctx = opentracing.ContextWithSpan(ctx, span)
-	}
+
 
 	parentIno := d.info.Inode
 	start := time.Now()
@@ -438,11 +383,7 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 
 // Link handles the link request.
 func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.Node, error) {
-	if tracing.Tracing {
-		span := opentracing.StartSpan("Dir Link")
-		defer span.Finish()
-		ctx = opentracing.ContextWithSpan(ctx, span)
-	}
+
 
 	var oldInode *proto.InodeInfo
 	switch old := old.(type) {

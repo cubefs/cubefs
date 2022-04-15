@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/exporter"
 
-	"github.com/chubaofs/chubaofs/util/tracing"
+
 	"golang.org/x/net/context"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -27,11 +27,8 @@ import (
 
 func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err error) {
 	var (
-		tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.SetXAttr")
 		resp interface{}
 	)
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	if err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
@@ -56,9 +53,6 @@ func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err er
 }
 
 func (mp *metaPartition) GetXAttr(req *proto.GetXAttrRequest, p *Packet) (err error) {
-	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.GetXAttr")
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	if err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
@@ -99,9 +93,6 @@ func (mp *metaPartition) GetXAttr(req *proto.GetXAttrRequest, p *Packet) (err er
 }
 
 func (mp *metaPartition) BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packet) (err error) {
-	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.BatchGetXAttr")
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	var response = &proto.BatchGetXAttrResponse{
 		VolName:     req.VolName,
@@ -144,11 +135,8 @@ func (mp *metaPartition) BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packe
 
 func (mp *metaPartition) RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (err error) {
 	var (
-		tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.RemoveXAttr")
 		resp interface{}
 	)
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	if err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
@@ -171,9 +159,6 @@ func (mp *metaPartition) RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (
 }
 
 func (mp *metaPartition) ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err error) {
-	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.ListXAttr")
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	if err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))

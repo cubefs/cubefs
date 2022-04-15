@@ -24,7 +24,6 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/tracing"
 )
 
 const (
@@ -53,13 +52,6 @@ func (mc *MetaConn) String() string {
 }
 
 func (mw *MetaWrapper) getConn(ctx context.Context, partitionID uint64, addr string) (*MetaConn, error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.getConn").
-		SetTag("volume", mw.volname).
-		SetTag("partitionID", partitionID).
-		SetTag("address", addr)
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	conn, err := mw.conns.GetConnect(addr)
 	if err != nil {
 		log.LogWarnf("GetConnect conn: addr(%v) err(%v)", addr, err)
@@ -178,14 +170,6 @@ func (mw *MetaWrapper) readConsistentFromHosts(ctx context.Context, mp *MetaPart
 }
 
 func (mw *MetaWrapper) sendToMetaPartition(ctx context.Context, mp *MetaPartition, req *proto.Packet, addr string) (resp *proto.Packet, needCheckRead bool, err error, successAddr string) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.sendToMetaPartition").
-		SetTag("mpID", mp.PartitionID).
-		SetTag("reqID", req.ReqID).
-		SetTag("reqSize", req.Size).
-		SetTag("reqOp", req.GetOpMsg())
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var (
 		errMap        map[int]error
 		start         time.Time
@@ -238,15 +222,6 @@ out:
 }
 
 func (mw *MetaWrapper) sendToHost(ctx context.Context, mp *MetaPartition, req *proto.Packet, addr string) (resp *proto.Packet, needCheckRead bool, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.sendToHost").
-		SetTag("mpID", mp.PartitionID).
-		SetTag("reqID", req.ReqID).
-		SetTag("reqSize", req.Size).
-		SetTag("reqOp", req.GetOpMsg()).
-		SetTag("address", addr)
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var mc *MetaConn
 	if addr == "" {
 		return nil, false, errors.New(fmt.Sprintf("sendToHost failed: leader addr empty, req(%v) mp(%v)", req, mp))
@@ -261,11 +236,7 @@ func (mw *MetaWrapper) sendToHost(ctx context.Context, mp *MetaPartition, req *p
 
 	// Write to connection with tracing.
 	if err = func() (err error) {
-		var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaConn.send[WriteToConn]").
-			SetTag("remote", mc.conn.RemoteAddr().String())
-		defer tracer.Finish()
 		err = req.WriteToConnNs(mc.conn, mw.connConfig.WriteTimeoutNs)
-		tracer.SetTag("error", err)
 		return
 	}(); err != nil {
 		return nil, false, errors.Trace(err, "Failed to write to conn, req(%v)", req)
@@ -275,14 +246,9 @@ func (mw *MetaWrapper) sendToHost(ctx context.Context, mp *MetaPartition, req *p
 
 	// Read from connection with tracing.
 	if err = func() (err error) {
-		var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.send[ReadFromConn]").
-			SetTag("remote", mc.conn.RemoteAddr())
-		defer tracer.Finish()
 		err = resp.ReadFromConnNs(mc.conn, mw.connConfig.ReadTimeoutNs)
-		tracer.SetTag("error", err)
 		return
 	}(); err != nil {
-		tracer.SetTag("error", err)
 		return nil, true, errors.Trace(err, "Failed to read from conn, req(%v)", req)
 	}
 	// Check if the ID and OpCode of the response are consistent with the request.

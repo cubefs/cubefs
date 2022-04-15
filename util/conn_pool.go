@@ -23,7 +23,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/tracing"
+
 )
 
 type Object struct {
@@ -142,10 +142,6 @@ func DailTimeOut(target string, timeout time.Duration) (c *net.TCPConn, err erro
 }
 
 func (cp *ConnectPool) GetConnect(targetAddr string) (c *net.TCPConn, err error) {
-	var tracer = tracing.NewTracer("ConnectPool.GetConnect").SetTag("target", targetAddr)
-	defer tracer.Finish()
-	ctx := tracer.Context()
-
 	cp.RLock()
 	pool, ok := cp.pools[targetAddr]
 	cp.RUnlock()
@@ -153,13 +149,13 @@ func (cp *ConnectPool) GetConnect(targetAddr string) (c *net.TCPConn, err error)
 		cp.Lock()
 		pool, ok = cp.pools[targetAddr]
 		if !ok {
-			pool = NewPool(ctx, cp.mincap, cp.maxcap, cp.timeout, cp.connectTimeoutNs, targetAddr)
+			pool = NewPool(nil, cp.mincap, cp.maxcap, cp.timeout, cp.connectTimeoutNs, targetAddr)
 			cp.pools[targetAddr] = pool
 		}
 		cp.Unlock()
 	}
 
-	return pool.GetConnectFromPool(ctx)
+	return pool.GetConnectFromPool(nil)
 }
 
 func (cp *ConnectPool) PutConnect(c *net.TCPConn, forceClose bool) {
@@ -345,9 +341,6 @@ func (p *Pool) ReleaseAll() {
 }
 
 func (p *Pool) NewConnect(ctx context.Context, target string) (c *net.TCPConn, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Pool.NewConnect").SetTag("target", target)
-	defer tracer.Finish()
-
 	var connect net.Conn
 	connect, err = net.DialTimeout("tcp", p.target, time.Duration(p.connectTimeoutNs)*time.Nanosecond)
 	if err == nil {
@@ -360,10 +353,6 @@ func (p *Pool) NewConnect(ctx context.Context, target string) (c *net.TCPConn, e
 }
 
 func (p *Pool) GetConnectFromPool(ctx context.Context) (c *net.TCPConn, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Pool.GetConnectFromPool").SetTag("target", p.target)
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var (
 		o *Object
 	)

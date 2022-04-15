@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+
 	syslog "log"
 	"net/http"
 	_ "net/http/pprof"
@@ -48,8 +49,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 	_ "github.com/chubaofs/chubaofs/util/log/http" // HTTP APIs for logging control
 	sysutil "github.com/chubaofs/chubaofs/util/sys"
-	"github.com/chubaofs/chubaofs/util/tracing"
-	_ "github.com/chubaofs/chubaofs/util/tracing/http" // HTTP APIs for tracing
+
 	"github.com/chubaofs/chubaofs/util/ump"
 	"github.com/chubaofs/chubaofs/util/version"
 	"github.com/jacobsa/daemonize"
@@ -131,10 +131,6 @@ func main() {
 	}
 
 	//Init tracing
-	closer := tracing.TraceInit(ModuleName, cfg.GetString(config.CfgTracingsamplerType), cfg.GetFloat(config.CfgTracingsamplerParam), cfg.GetString(config.CfgTracingReportAddr))
-	defer func() {
-		_ = closer.Close()
-	}()
 
 	level := parseLogLevel(opt.Loglvl)
 	_, err = log.InitLog(opt.Logpath, opt.Volname, level, log.NewClientLogRotate())

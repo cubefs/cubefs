@@ -27,7 +27,7 @@ import (
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/tracing"
+
 	"golang.org/x/net/context"
 )
 
@@ -144,15 +144,7 @@ func GetWriteRequestFromPool() (request *WriteRequest) {
 }
 
 func (s *Streamer) IssueWriteRequest(ctx context.Context, offset int, data []byte, direct bool, overWriteBuffer bool) (write int, isROW bool, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("StreamWrite.IssueWriteRequest").
-		SetTag("arg.inode", s.inode).
-		SetTag("arg.offset", offset).
-		SetTag("arg.dataLen", len(data)).
-		SetTag("arg.direct", direct)
-
 	if atomic.LoadInt32(&s.status) >= StreamerError {
-		tracer.SetTag("ret.err", "StreamerError")
-		tracer.Finish()
 		return 0, false, errors.New(fmt.Sprintf("IssueWriteRequest: stream writer in error status, ino(%v)", s.inode))
 	}
 
@@ -183,10 +175,6 @@ func (s *Streamer) IssueWriteRequest(ctx context.Context, offset int, data []byt
 }
 
 func (s *Streamer) IssueFlushRequest(ctx context.Context) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Streamer.IssueFlushRequest")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	if atomic.LoadInt32(&s.writeOp) <= 0 && s.dirtylist.Len() <= 0 && len(s.overWriteReq) == 0 {
 		return nil
 	}
@@ -257,13 +245,9 @@ func (s *Streamer) server() {
 	for {
 		select {
 		case request := <-s.request:
-			var tracer = tracing.NewTracer("Streamer.serverRequest")
-			ctx = tracer.Context()
-
 			s.handleRequest(ctx, request)
 			s.idle = 0
 			s.traversed = 0
-			tracer.Finish()
 		case <-s.done:
 			s.abort()
 			log.LogDebugf("done server: evict, ino(%v)", s.inode)
@@ -329,30 +313,20 @@ func (s *Streamer) abortRequest(request interface{}) {
 }
 
 func (s *Streamer) handleRequest(ctx context.Context, request interface{}) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Streamer.handleRequest")
-	tracer.SetTag("inode", s.inode)
-	defer tracer.Finish()
-
 	switch request := request.(type) {
 	case *OpenRequest:
-		tracer.SetTag("type", "open")
 		s.open()
 		request.done <- struct{}{}
 		break
 	case *WriteRequest:
-		tracer.SetTag("type", "write")
-		tracer.SetTag("offset", request.fileOffset)
-		tracer.SetTag("size", request.size)
 		request.writeBytes, request.isROW, request.err = s.write(request.ctx, request.data, request.fileOffset, request.size, request.direct, request.overWriteBuffer)
 		request.done <- struct{}{}
 		break
 	case *TruncRequest:
-		tracer.SetTag("type", "trunc")
 		request.err = s.truncate(request.ctx, request.size)
 		request.done <- struct{}{}
 		break
 	case *FlushRequest:
-		tracer.SetTag("type", "flush")
 		request.err = s.flush(request.ctx)
 		if len(s.overWriteReq) > 0 {
 			s.overWriteReqMutex.Lock()
@@ -366,17 +340,14 @@ func (s *Streamer) handleRequest(ctx context.Context, request interface{}) {
 		request.done <- struct{}{}
 		break
 	case *ReleaseRequest:
-		tracer.SetTag("type", "release")
 		request.err = s.release(request.ctx)
 		request.done <- struct{}{}
 		break
 	case *EvictRequest:
-		tracer.SetTag("type", "evict")
 		request.err = s.evict(request.ctx)
 		request.done <- struct{}{}
 		break
 	case *ExtentMergeRequest:
-		tracer.SetTag("extentMerge", true)
 		request.finish, request.err = s.extentMerge(request.ctx)
 		request.done <- struct{}{}
 		break
@@ -385,15 +356,10 @@ func (s *Streamer) handleRequest(ctx context.Context, request interface{}) {
 }
 
 func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, direct bool, overWriteBuffer bool) (total int, isROW bool, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Streamer.write").
-		SetTag("offset", offset).
-		SetTag("size", size).
-		SetTag("direct", direct)
-	defer tracer.Finish()
-	ctx = tracer.Context()
 	if log.IsDebugEnabled() {
 		log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v)", s.inode, offset, size)
 	}
+	ctx=context.Background()
 	s.client.writeLimiter.Wait(ctx)
 
 	requests := s.extents.PrepareRequests(offset, size, data)
@@ -575,18 +541,11 @@ func (s *Streamer) writeToNewExtent(ctx context.Context, oriReq *ExtentRequest, 
 }
 
 func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool) (total int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Streamer.doROW").
-		SetTag("direct", direct).
-		SetTag("req.Size", oriReq.Size).
-		SetTag("req.ExtentKey", oriReq.ExtentKey).
-		SetTag("req.FileOffset", oriReq.FileOffset)
 	defer func() {
-		tracer.Finish()
 		if err != nil {
 			log.LogWarnf("doROW: total %v, oriReq %v, err %v", total, oriReq, err)
 		}
 	}()
-	ctx = tracer.Context()
 
 	err = s.flush(ctx)
 	if err != nil {

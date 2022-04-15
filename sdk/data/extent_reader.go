@@ -21,7 +21,6 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/tracing"
 )
 
 // ExtentReader defines the struct of the extent reader.
@@ -53,10 +52,6 @@ func (er *ExtentReader) String() (m string) {
 
 // Read reads the extent request.
 func (er *ExtentReader) Read(ctx context.Context, req *ExtentRequest) (readBytes int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("ExtentReader.Read")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	offset := req.FileOffset - int(er.key.FileOffset) + int(er.key.ExtentOffset)
 	size := req.Size
 

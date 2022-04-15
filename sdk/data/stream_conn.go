@@ -25,7 +25,6 @@ import (
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/tracing"
 )
 
 const (
@@ -210,10 +209,6 @@ func (dp *DataPartition) getFollowerReadHost() string {
 }
 
 func (sc *StreamConn) getReadReply(conn *net.TCPConn, reqPacket *Packet, req *ExtentRequest) (readBytes int, reply *Packet, tryOther bool, err error) {
-	var tracer = tracing.TracerFromContext(reqPacket.Ctx()).ChildTracer("StreamConn.getReadReply").
-		SetTag("remote", conn.RemoteAddr().String())
-	defer tracer.Finish()
-
 	readBytes = 0
 	for readBytes < int(reqPacket.Size) {
 		replyPacket := NewReply(reqPacket.Ctx(), reqPacket.ReqID, reqPacket.PartitionID, reqPacket.ExtentID)

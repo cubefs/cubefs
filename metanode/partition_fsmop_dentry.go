@@ -21,7 +21,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 	"strings"
 
-	"github.com/chubaofs/chubaofs/util/tracing"
+
 
 	"github.com/chubaofs/chubaofs/proto"
 )
@@ -256,9 +256,6 @@ func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry, timestamp int64, from s
 }
 
 func (mp *metaPartition) readDir(ctx context.Context, req *ReadDirReq) (resp *ReadDirResp, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("metaPartition.readDir")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	resp = &ReadDirResp{}
 	begDentry := &Dentry{
@@ -296,6 +293,5 @@ func (mp *metaPartition) readDir(ctx context.Context, req *ReadDirReq) (resp *Re
 		log.LogErrorf("readDir failed:[%s]", err.Error())
 		return
 	}
-	tracer.SetTag("count", count).SetTag("total", mp.dentryTree.Count()).SetTag("parentID", req.PartitionID)
 	return
 }

@@ -38,7 +38,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/statistics"
-	"github.com/chubaofs/chubaofs/util/tracing"
+
 )
 
 const partitionPrefix = "partition_"
@@ -107,14 +107,6 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 	metric := exporter.NewTPCnt(p.GetOpMsg())
 	defer metric.Set(err)
 
-	const tracerName = "metadataManager.HandleMetadataOperation"
-	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer(tracerName).
-		SetTag("remote", conn.RemoteAddr().String()).
-		SetTag("reqID", p.GetReqID()).
-		SetTag("reqOp", p.GetOpMsg()).
-		SetTag("partitionID", p.PartitionID)
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	//now := time.Now()
 	//defer func() {

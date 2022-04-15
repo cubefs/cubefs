@@ -20,8 +20,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/tracing"
-
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/btree"
 	"github.com/chubaofs/chubaofs/util/log"
@@ -74,10 +72,6 @@ func NewExtentCache(inode uint64) *ExtentCache {
 
 // Refresh refreshes the extent cache.
 func (cache *ExtentCache) Refresh(ctx context.Context, inode uint64, getExtents GetExtentsFunc) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("ExtentCache.Refresh")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	cache.UpdateRefreshTime()
 
 	gen, size, extents, err := getExtents(ctx, inode)

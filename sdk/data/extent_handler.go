@@ -26,7 +26,6 @@ import (
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/tracing"
 )
 
 // State machines
@@ -520,10 +519,6 @@ func (eh *ExtentHandler) appendExtentKey(ctx context.Context) (err error) {
 // This function is meaningful to be called from stream writer flush method,
 // because there is no new write request.
 func (eh *ExtentHandler) waitForFlush(ctx context.Context) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("ExtentHandler.waitForFlush")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	if atomic.LoadInt32(&eh.inflight) <= 0 {
 		return
 	}

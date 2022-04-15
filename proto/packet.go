@@ -29,7 +29,6 @@ import (
 
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/buf"
-	"github.com/chubaofs/chubaofs/util/tracing"
 )
 
 var (
@@ -703,18 +702,6 @@ func ReadFull(c net.Conn, buf *[]byte, readSize int) (err error) {
 
 // ReadFromConn reads the data from the given connection.
 func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
-	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("proto.Packet.ReadFromConn")
-	defer func() {
-		tracer.SetTag("conn.remote", c.RemoteAddr().String())
-		tracer.SetTag("conn.local", c.LocalAddr().String())
-		tracer.SetTag("ReqID", p.GetReqID())
-		tracer.SetTag("ReqOp", p.GetOpMsg())
-		tracer.SetTag("Arg", string(p.Arg))
-		tracer.SetTag("ret.err", err)
-		tracer.Finish()
-	}()
-	p.SetCtx(tracer.Context())
-
 	if timeoutSec != NoReadDeadlineTime {
 		c.SetReadDeadline(time.Now().Add(time.Second * time.Duration(timeoutSec)))
 	} else {

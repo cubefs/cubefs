@@ -19,14 +19,11 @@ import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/statistics"
-	"github.com/chubaofs/chubaofs/util/tracing"
+
 )
 
 // CreateDentry returns a new dentry.
 func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err error) {
-	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.CreateDentry")
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	if err = mp.isInoOutOfRange(req.ParentID); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
@@ -60,9 +57,6 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 
 // DeleteDentry deletes a dentry.
 func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err error) {
-	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.DeleteDentry")
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	if err = mp.isInoOutOfRange(req.ParentID); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
@@ -104,9 +98,6 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err erro
 
 // DeleteDentry deletes a dentry.
 func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet) (err error) {
-	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.DeleteDentryBatch")
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	db := make(DentryBatch, 0, len(req.Dens))
 
@@ -181,9 +172,6 @@ func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet)
 
 // UpdateDentry updates a dentry.
 func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err error) {
-	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.UpdateDentry")
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	if err = mp.isInoOutOfRange(req.ParentID); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
@@ -226,9 +214,6 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err erro
 
 // ReadDir reads the directory based on the given request.
 func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
-	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.ReadDir")
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	if err = mp.isInoOutOfRange(req.ParentID); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
@@ -257,9 +242,6 @@ func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 
 // Lookup looks up the given dentry from the request.
 func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
-	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.Lookup")
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	if err = mp.isInoOutOfRange(req.ParentID); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))

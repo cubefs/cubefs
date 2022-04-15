@@ -27,7 +27,6 @@ import (
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/tracing"
 )
 
 // DataPartition defines the wrapper of the data partition.
@@ -229,13 +228,6 @@ func isExcluded(dp *DataPartition, exclude map[string]struct{}, quorum int) bool
 }
 
 func (dp *DataPartition) LeaderRead(reqPacket *Packet, req *ExtentRequest) (sc *StreamConn, readBytes int, err error) {
-	var tracer = tracing.TracerFromContext(reqPacket.Ctx()).ChildTracer("DataPartition.LeaderRead").
-		SetTag("reqID", reqPacket.ReqID).
-		SetTag("op", reqPacket.GetOpMsg()).
-		SetTag("pid", reqPacket.PartitionID)
-	defer tracer.Finish()
-	reqPacket.SetCtx(tracer.Context())
-
 	sc = NewStreamConn(dp, false)
 	errMap := make(map[string]error)
 	tryOther := false
@@ -273,13 +265,6 @@ func (dp *DataPartition) LeaderRead(reqPacket *Packet, req *ExtentRequest) (sc *
 }
 
 func (dp *DataPartition) FollowerRead(reqPacket *Packet, req *ExtentRequest) (sc *StreamConn, readBytes int, err error) {
-	var tracer = tracing.TracerFromContext(reqPacket.Ctx()).ChildTracer("DataPartition.FollowerRead").
-		SetTag("reqID", reqPacket.ReqID).
-		SetTag("op", reqPacket.GetOpMsg()).
-		SetTag("pid", reqPacket.PartitionID)
-	defer tracer.Finish()
-	reqPacket.SetCtx(tracer.Context())
-
 	sc = NewStreamConn(dp, true)
 	errMap := make(map[string]error)
 
@@ -315,13 +300,6 @@ func (dp *DataPartition) FollowerRead(reqPacket *Packet, req *ExtentRequest) (sc
 }
 
 func (dp *DataPartition) ReadConsistentFromHosts(sc *StreamConn, reqPacket *Packet, req *ExtentRequest) (readBytes int, err error) {
-	var tracer = tracing.TracerFromContext(reqPacket.Ctx()).ChildTracer("DataPartition.ReadConsistentFromHosts").
-		SetTag("reqID", reqPacket.ReqID).
-		SetTag("op", reqPacket.GetOpMsg()).
-		SetTag("pid", reqPacket.PartitionID)
-	defer tracer.Finish()
-	reqPacket.SetCtx(tracer.Context())
-
 	var (
 		targetHosts []string
 		errMap      map[string]error

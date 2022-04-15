@@ -26,7 +26,7 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/statistics"
-	"github.com/chubaofs/chubaofs/util/tracing"
+
 )
 
 func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
@@ -55,13 +55,10 @@ func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
 // CreateInode returns a new inode.
 func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 	var (
-		tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.CreateInode")
 		inoID  uint64
 		val    []byte
 		resp   interface{}
 	)
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	inoID, err = mp.nextInodeID()
 	if err != nil {
@@ -106,12 +103,9 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 // DeleteInode deletes an inode.
 func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 	var (
-		tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.UnlinkInode")
 		r      interface{}
 		val    []byte
 	)
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	if err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
@@ -157,13 +151,10 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 // DeleteInode deletes an inode.
 func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (err error) {
 	var (
-		tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.UnlinkInodeBatch")
 		r      interface{}
 		reply  []byte
 		val    []byte
 	)
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	if len(req.Inodes) == 0 {
 		return nil
@@ -220,9 +211,6 @@ func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (er
 
 // InodeGet executes the inodeGet command from the client.
 func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet, version uint8) (err error) {
-	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.InodeGet")
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	mp.monitorData[statistics.ActionMetaInodeGet].UpdateData(0)
 	var (
@@ -269,12 +257,9 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet, version uint8) (e
 func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error) {
 	var (
 		ino    = NewInode(0, 0)
-		tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.InodeGetBatch")
 		data   []byte
 		retMsg *InodeResponse
 	)
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	mp.monitorData[statistics.ActionMetaBatchInodeGet].UpdateData(0)
 
@@ -301,12 +286,9 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 // CreateInodeLink creates an inode link (e.g., soft link).
 func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err error) {
 	var (
-		tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.CreateInodeLink")
 		resp   interface{}
 		val    []byte
 	)
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	if err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
@@ -352,12 +334,9 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err erro
 // EvictInode evicts an inode.
 func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet) (err error) {
 	var (
-		tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.EvictInode")
 		resp   interface{}
 		val    []byte
 	)
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	if err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
@@ -388,11 +367,8 @@ func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet) (err error) {
 // EvictInode evicts an inode.
 func (mp *metaPartition) EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (err error) {
 	var (
-		tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.EvictInodeBatch")
 		resp   interface{}
 	)
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	if len(req.Inodes) == 0 {
 		return nil
@@ -433,11 +409,8 @@ func (mp *metaPartition) EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (er
 // SetAttr set the inode attributes.
 func (mp *metaPartition) SetAttr(reqData []byte, p *Packet) (err error) {
 	var (
-		tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.SetAttr")
 		resp   interface{}
 	)
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	resp, err = mp.submit(p.Ctx(), opFSMSetAttr, p.Remote(), reqData)
 	if err != nil {
@@ -455,9 +428,6 @@ func (mp *metaPartition) SetAttr(reqData []byte, p *Packet) (err error) {
 }
 
 func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error) {
-	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.DeleteInode")
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	if err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
@@ -476,9 +446,6 @@ func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (
 }
 
 func (mp *metaPartition) CursorReset(ctx context.Context, req *proto.CursorResetRequest) (uint64, error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("metaPartition.CursorReset")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 	maxIno := mp.config.Start
 	maxInode := mp.inodeTree.MaxItem()
 	if maxInode != nil {
@@ -532,9 +499,6 @@ func (mp *metaPartition) CursorReset(ctx context.Context, req *proto.CursorReset
 }
 
 func (mp *metaPartition) DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet) (err error) {
-	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.DeleteInodeBatch")
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	if len(req.Inodes) == 0 {
 		return nil

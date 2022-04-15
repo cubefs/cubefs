@@ -24,16 +24,13 @@ import (
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/tracing"
+
 )
 
 // API implementations
 //
 
 func (mw *MetaWrapper) icreate(ctx context.Context, mp *MetaPartition, mode, uid, gid uint32, target []byte) (status int, info *proto.InodeInfo, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.icreate")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req := &proto.CreateInodeRequest{
 		VolName:     mw.volname,
@@ -85,9 +82,6 @@ func (mw *MetaWrapper) icreate(ctx context.Context, mp *MetaPartition, mode, uid
 
 func (mw *MetaWrapper) iunlink(ctx context.Context, mp *MetaPartition, inode uint64,
 	trashEnable bool) (status int, info *proto.InodeInfo, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.iunlink")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req := &proto.UnlinkInodeRequest{
 		VolName:     mw.volname,
@@ -139,9 +133,6 @@ func (mw *MetaWrapper) iunlink(ctx context.Context, mp *MetaPartition, inode uin
 }
 
 func (mw *MetaWrapper) ievict(ctx context.Context, mp *MetaPartition, inode uint64, trashEnable bool) (status int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.ievict")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req := &proto.EvictInodeRequest{
 		VolName:     mw.volname,
@@ -186,9 +177,6 @@ func (mw *MetaWrapper) ievict(ctx context.Context, mp *MetaPartition, inode uint
 }
 
 func (mw *MetaWrapper) dcreate(ctx context.Context, mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32) (status int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.dcreate")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	if parentID == inode {
 		return statusExist, nil
@@ -248,9 +236,6 @@ func (mw *MetaWrapper) dcreate(ctx context.Context, mp *MetaPartition, parentID 
 }
 
 func (mw *MetaWrapper) dupdate(ctx context.Context, mp *MetaPartition, parentID uint64, name string, newInode uint64) (status int, oldInode uint64, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.dupdate")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	if parentID == newInode {
 		return statusExist, 0, nil
@@ -307,9 +292,6 @@ func (mw *MetaWrapper) dupdate(ctx context.Context, mp *MetaPartition, parentID 
 
 func (mw *MetaWrapper) ddelete(ctx context.Context, mp *MetaPartition, parentID uint64, name string,
 	trashEnable bool) (status int, inode uint64, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.ddelete")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req := &proto.DeleteDentryRequest{
 		VolName:     mw.volname,
@@ -361,9 +343,6 @@ func (mw *MetaWrapper) ddelete(ctx context.Context, mp *MetaPartition, parentID 
 }
 
 func (mw *MetaWrapper) lookup(ctx context.Context, mp *MetaPartition, parentID uint64, name string) (status int, inode uint64, mode uint32, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.lookup")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req := &proto.LookupRequest{
 		VolName:     mw.volname,
@@ -419,9 +398,6 @@ func (mw *MetaWrapper) lookup(ctx context.Context, mp *MetaPartition, parentID u
 }
 
 func (mw *MetaWrapper) iget(ctx context.Context, mp *MetaPartition, inode uint64) (status int, info *proto.InodeInfo, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.iget")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req := &proto.InodeGetRequest{
 		VolName:     mw.volname,
@@ -472,9 +448,6 @@ func (mw *MetaWrapper) iget(ctx context.Context, mp *MetaPartition, inode uint64
 }
 
 func (mw *MetaWrapper) batchIget(ctx context.Context, wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64, respCh chan []*proto.InodeInfo) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.batchIget")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	defer wg.Done()
 	var (
@@ -527,9 +500,6 @@ func (mw *MetaWrapper) batchIget(ctx context.Context, wg *sync.WaitGroup, mp *Me
 }
 
 func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID uint64) (status int, children []proto.Dentry, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.readdir")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	marker := ""
 	children = make([]proto.Dentry, 0)
@@ -633,15 +603,6 @@ func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID 
 //}
 
 func (mw *MetaWrapper) insertExtentKey(ctx context.Context, mp *MetaPartition, inode uint64, ek proto.ExtentKey, isPreExtent bool) (status int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.insertExtentKey").
-		SetTag("mpID", mp.PartitionID).
-		SetTag("inode", inode).
-		SetTag("ek.FileOffset", ek.FileOffset).
-		SetTag("ek.PartitionId", ek.PartitionId).
-		SetTag("ek.ExtentId", ek.ExtentId).
-		SetTag("ek.ExtentOffset", ek.ExtentOffset).
-		SetTag("ek.Size", ek.Size)
-	defer tracer.Finish()
 
 	req := &proto.InsertExtentKeyRequest{
 		VolName:     mw.volname,
@@ -693,9 +654,6 @@ func (mw *MetaWrapper) insertExtentKey(ctx context.Context, mp *MetaPartition, i
 }
 
 func (mw *MetaWrapper) getExtents(ctx context.Context, mp *MetaPartition, inode uint64) (status int, gen, size uint64, extents []proto.ExtentKey, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.getExtents")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req := &proto.GetExtentsRequest{
 		VolName:     mw.volname,
@@ -745,9 +703,6 @@ func (mw *MetaWrapper) getExtents(ctx context.Context, mp *MetaPartition, inode 
 }
 
 func (mw *MetaWrapper) truncate(ctx context.Context, mp *MetaPartition, inode, oldSize, size uint64) (status int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.truncate")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req := &proto.TruncateRequest{
 		VolName:     mw.volname,
@@ -807,9 +762,6 @@ func (mw *MetaWrapper) truncate(ctx context.Context, mp *MetaPartition, inode, o
 }
 
 func (mw *MetaWrapper) ilink(ctx context.Context, mp *MetaPartition, inode uint64) (status int, info *proto.InodeInfo, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.ilink")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req := &proto.LinkInodeRequest{
 		VolName:     mw.volname,
@@ -866,9 +818,6 @@ func (mw *MetaWrapper) ilink(ctx context.Context, mp *MetaPartition, inode uint6
 }
 
 func (mw *MetaWrapper) setattr(ctx context.Context, mp *MetaPartition, inode uint64, valid, mode, uid, gid uint32, atime, mtime int64) (status int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.setattr")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req := &proto.SetAttrRequest{
 		VolName:     mw.volname,
@@ -920,9 +869,6 @@ func (mw *MetaWrapper) setattr(ctx context.Context, mp *MetaPartition, inode uin
 }
 
 func (mw *MetaWrapper) createMultipart(ctx context.Context, mp *MetaPartition, path string, extend map[string]string) (status int, multipartId string, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.createMultipart")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req := &proto.CreateMultipartRequest{
 		PartitionId: mp.PartitionID,
@@ -967,9 +913,6 @@ func (mw *MetaWrapper) createMultipart(ctx context.Context, mp *MetaPartition, p
 }
 
 func (mw *MetaWrapper) getMultipart(ctx context.Context, mp *MetaPartition, path, multipartId string) (status int, info *proto.MultipartInfo, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.getMultipart")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req := &proto.GetMultipartRequest{
 		PartitionId: mp.PartitionID,
@@ -1015,10 +958,6 @@ func (mw *MetaWrapper) getMultipart(ctx context.Context, mp *MetaPartition, path
 }
 
 func (mw *MetaWrapper) addMultipartPart(ctx context.Context, mp *MetaPartition, path, multipartId string, partId uint16, size uint64, md5 string, inode uint64) (status int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.addMultipartPart")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	part := &proto.MultipartPartInfo{
 		ID:    partId,
 		Inode: inode,
@@ -1064,9 +1003,6 @@ func (mw *MetaWrapper) addMultipartPart(ctx context.Context, mp *MetaPartition, 
 }
 
 func (mw *MetaWrapper) idelete(ctx context.Context, mp *MetaPartition, inode uint64) (status int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.idelete")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 	req := &proto.DeleteInodeRequest{
 		VolName:     mw.volname,
 		PartitionId: mp.PartitionID,
@@ -1107,9 +1043,6 @@ func (mw *MetaWrapper) idelete(ctx context.Context, mp *MetaPartition, inode uin
 }
 
 func (mw *MetaWrapper) removeMultipart(ctx context.Context, mp *MetaPartition, path, multipartId string) (status int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.removeMultipart")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req := &proto.RemoveMultipartRequest{
 		PartitionId: mp.PartitionID,
@@ -1146,10 +1079,6 @@ func (mw *MetaWrapper) removeMultipart(ctx context.Context, mp *MetaPartition, p
 }
 
 func (mw *MetaWrapper) appendExtentKeys(ctx context.Context, mp *MetaPartition, inode uint64, extents []proto.ExtentKey) (status int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.appendExtentKeys")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	req := &proto.AppendExtentKeysRequest{
 		VolName:     mw.volname,
 		PartitionId: mp.PartitionID,
@@ -1194,9 +1123,6 @@ func (mw *MetaWrapper) appendExtentKeys(ctx context.Context, mp *MetaPartition, 
 }
 
 func (mw *MetaWrapper) setXAttr(ctx context.Context, mp *MetaPartition, inode uint64, name []byte, value []byte) (status int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.setXAttr")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req := &proto.SetXAttrRequest{
 		VolName:     mw.volname,
@@ -1244,9 +1170,6 @@ func (mw *MetaWrapper) setXAttr(ctx context.Context, mp *MetaPartition, inode ui
 }
 
 func (mw *MetaWrapper) getXAttr(ctx context.Context, mp *MetaPartition, inode uint64, name string) (value string, status int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.getXAttr")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req := &proto.GetXAttrRequest{
 		VolName:     mw.volname,
@@ -1299,9 +1222,6 @@ func (mw *MetaWrapper) getXAttr(ctx context.Context, mp *MetaPartition, inode ui
 }
 
 func (mw *MetaWrapper) removeXAttr(ctx context.Context, mp *MetaPartition, inode uint64, name string) (status int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.removeXAttr")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req := &proto.RemoveXAttrRequest{
 		VolName:     mw.volname,
@@ -1345,9 +1265,6 @@ func (mw *MetaWrapper) removeXAttr(ctx context.Context, mp *MetaPartition, inode
 }
 
 func (mw *MetaWrapper) listXAttr(ctx context.Context, mp *MetaPartition, inode uint64) (keys []string, status int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.listXAttr")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req := &proto.ListXAttrRequest{
 		VolName:     mw.volname,
@@ -1398,9 +1315,6 @@ func (mw *MetaWrapper) listXAttr(ctx context.Context, mp *MetaPartition, inode u
 }
 
 func (mw *MetaWrapper) listMultiparts(ctx context.Context, mp *MetaPartition, prefix, delimiter, keyMarker string, multipartIdMarker string, maxUploads uint64) (status int, sessions *proto.ListMultipartResponse, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.listMultiparts")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req := &proto.ListMultipartRequest{
 		VolName:           mw.volname,
@@ -1449,9 +1363,6 @@ func (mw *MetaWrapper) listMultiparts(ctx context.Context, mp *MetaPartition, pr
 }
 
 func (mw *MetaWrapper) batchGetXAttr(ctx context.Context, mp *MetaPartition, inodes []uint64, keys []string) ([]*proto.XAttrInfo, error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.batchGetXAttr")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	var (
 		err error
@@ -1496,9 +1407,6 @@ func (mw *MetaWrapper) batchGetXAttr(ctx context.Context, mp *MetaPartition, ino
 }
 
 func (mw *MetaWrapper) getAppliedID(ctx context.Context, mp *MetaPartition, addr string) (appliedID uint64, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.getAppliedID")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req := &proto.GetAppliedIDRequest{
 		PartitionId: mp.PartitionID,
@@ -1544,9 +1452,6 @@ func containsExtent(extentKeys []proto.ExtentKey, ek proto.ExtentKey) bool {
 
 func (mw *MetaWrapper) lookupDeleted(ctx context.Context, mp *MetaPartition, parentID uint64, name string, startTime, endTime int64) (
 	status int, err error, dentrys []*proto.DeletedDentry) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.lookupDeleted")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req := &proto.LookupDeletedDentryRequest{
 		VolName:     mw.volname,
@@ -1598,9 +1503,6 @@ func (mw *MetaWrapper) lookupDeleted(ctx context.Context, mp *MetaPartition, par
 
 func (mw *MetaWrapper) readDeletedDir(ctx context.Context, mp *MetaPartition, parentID uint64, name string, timestamp int64) (
 	status int, children []*proto.DeletedDentry, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.readDeletedDir")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req := &proto.ReadDeletedDirRequest{
 		VolName:     mw.volname,
@@ -1645,9 +1547,6 @@ func (mw *MetaWrapper) readDeletedDir(ctx context.Context, mp *MetaPartition, pa
 
 func (mw *MetaWrapper) recoverDentry(ctx context.Context, mp *MetaPartition,
 	parentID, inode uint64, name string, timestamp int64) (status int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.recoverDentry")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	/*
 		if parentID == inode {
@@ -1688,9 +1587,6 @@ func (mw *MetaWrapper) recoverDentry(ctx context.Context, mp *MetaPartition,
 }
 
 func (mw *MetaWrapper) recoverDeletedInode(ctx context.Context, mp *MetaPartition, inode uint64) (status int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.recoverDeletedInode")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req := new(proto.RecoverDeletedInodeRequest)
 	req.VolName = mw.volname
@@ -1725,10 +1621,6 @@ func (mw *MetaWrapper) recoverDeletedInode(ctx context.Context, mp *MetaPartitio
 
 func (mw *MetaWrapper) batchRecoverDeletedInode(ctx context.Context, wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64,
 	respChan chan *proto.BatchOpDeletedINodeRsp) (status int, err error) {
-
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.batchRecoverDeletedInode")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	res := new(proto.BatchOpDeletedINodeRsp)
 	res.Inos = make([]*proto.OpDeletedINodeRsp, 0)
@@ -1790,9 +1682,6 @@ func (mw *MetaWrapper) batchRecoverDeletedInode(ctx context.Context, wg *sync.Wa
 
 func (mw *MetaWrapper) batchRecoverDeletedDentry(ctx context.Context, wg *sync.WaitGroup, mp *MetaPartition, dens []*proto.DeletedDentry,
 	respChan chan *proto.BatchOpDeletedDentryRsp) (status int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.batchRecoverDeletedDentry")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	log.LogDebugf("batchRecoverDeletedDentry, mp: %v, len(dens): %v", mp.PartitionID, len(dens))
 	res := new(proto.BatchOpDeletedDentryRsp)
@@ -1852,10 +1741,6 @@ func (mw *MetaWrapper) batchRecoverDeletedDentry(ctx context.Context, wg *sync.W
 }
 
 func (mw *MetaWrapper) cleanDeletedDentry(ctx context.Context, mp *MetaPartition, parentID, inode uint64, name string, timestamp int64) (status int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.cleanDeletedDentry")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	if parentID == inode {
 		return statusExist, nil
 	}
@@ -1894,10 +1779,6 @@ func (mw *MetaWrapper) cleanDeletedDentry(ctx context.Context, mp *MetaPartition
 
 func (mw *MetaWrapper) batchCleanDeletedDentry(ctx context.Context, wg *sync.WaitGroup, mp *MetaPartition, dens []*proto.DeletedDentry,
 	respChan chan *proto.BatchOpDeletedDentryRsp) (status int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.batchCleanDeletedDentry")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	log.LogDebugf("batchRecoverDeletedDentry, mp: %v, len(dens): %v", mp.PartitionID, len(dens))
 	res := new(proto.BatchOpDeletedDentryRsp)
 	res.Dens = make([]*proto.OpDeletedDentryRsp, 0)
@@ -1957,9 +1838,6 @@ func (mw *MetaWrapper) batchCleanDeletedDentry(ctx context.Context, wg *sync.Wai
 
 func (mw *MetaWrapper) cleanDeletedInode(ctx context.Context, mp *MetaPartition, inode uint64) (status int, err error) {
 	req := new(proto.CleanDeletedInodeRequest)
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.cleanDeletedInode")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req.VolName = mw.volname
 	req.PartitionID = mp.PartitionID
@@ -1992,10 +1870,6 @@ func (mw *MetaWrapper) cleanDeletedInode(ctx context.Context, mp *MetaPartition,
 
 func (mw *MetaWrapper) batchCleanDeletedInode(ctx context.Context, wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64,
 	respChan chan *proto.BatchOpDeletedINodeRsp) (status int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.batchCleanDeletedInode")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	res := new(proto.BatchOpDeletedINodeRsp)
 	res.Inos = make([]*proto.OpDeletedINodeRsp, 0)
 	defer func() {
@@ -2056,9 +1930,6 @@ func (mw *MetaWrapper) batchCleanDeletedInode(ctx context.Context, wg *sync.Wait
 
 func (mw *MetaWrapper) statDeletedFileInfo(ctx context.Context, mp *MetaPartition) (resp *proto.StatDeletedFileInfoResponse, status int, err error) {
 	req := new(proto.StatDeletedFileInfoRequest)
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.statDeletedFileInfo")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req.VolName = mw.volname
 	req.PartitionID = mp.PartitionID
@@ -2097,9 +1968,6 @@ func (mw *MetaWrapper) statDeletedFileInfo(ctx context.Context, mp *MetaPartitio
 
 func (mw *MetaWrapper) cleanExpiredDeletedInode(ctx context.Context, mp *MetaPartition, deadline uint64) (status int, err error) {
 	req := new(proto.CleanExpiredInodeRequest)
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.cleanExpiredDeletedInode")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req.VolName = mw.volname
 	req.PartitionID = mp.PartitionID
@@ -2133,9 +2001,6 @@ func (mw *MetaWrapper) cleanExpiredDeletedInode(ctx context.Context, mp *MetaPar
 
 func (mw *MetaWrapper) cleanExpiredDeletedDentry(ctx context.Context, mp *MetaPartition, deadline uint64) (status int, err error) {
 	req := new(proto.CleanExpiredDentryRequest)
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.cleanExpiredDeletedDentry")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req.VolName = mw.volname
 	req.PartitionID = mp.PartitionID
@@ -2169,9 +2034,6 @@ func (mw *MetaWrapper) cleanExpiredDeletedDentry(ctx context.Context, mp *MetaPa
 
 func (mw *MetaWrapper) getDeletedInodeInfo(ctx context.Context, mp *MetaPartition, inode uint64) (
 	status int, info *proto.DeletedInodeInfo, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.getDeletedInodeInfo")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	req := &proto.InodeGetRequest{
 		VolName:     mw.volname,
@@ -2213,9 +2075,6 @@ func (mw *MetaWrapper) getDeletedInodeInfo(ctx context.Context, mp *MetaPartitio
 
 func (mw *MetaWrapper) batchGetDeletedInodeInfo(ctx context.Context, wg *sync.WaitGroup,
 	mp *MetaPartition, inodes []uint64, respCh chan []*proto.DeletedInodeInfo) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.batchGetDeletedInodeInfo")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 	defer wg.Done()
 	var (
 		err error
@@ -2267,10 +2126,6 @@ func (mw *MetaWrapper) batchGetDeletedInodeInfo(ctx context.Context, wg *sync.Wa
 
 func (mw *MetaWrapper) batchUnlinkInodeUntest(ctx context.Context, wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64,
 	respChan chan *proto.BatchUnlinkInodeResponse, trashEnable bool) (status int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.batchDeleteInodeUntest")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	defer wg.Done()
 	req := new(proto.BatchUnlinkInodeRequest)
 	req.VolName = mw.volname
@@ -2320,9 +2175,6 @@ func (mw *MetaWrapper) batchUnlinkInodeUntest(ctx context.Context, wg *sync.Wait
 
 func (mw *MetaWrapper) batchEvictInodeUntest(ctx context.Context, wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64,
 	respChan chan int, trashEnable bool) (status int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.batchEvictInodeUntest")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 	defer wg.Done()
 
 	status = statusError
@@ -2370,11 +2222,7 @@ func (mw *MetaWrapper) batchEvictInodeUntest(ctx context.Context, wg *sync.WaitG
 
 func (mw *MetaWrapper) batchDeleteDentryUntest(ctx context.Context, wg *sync.WaitGroup, mp *MetaPartition, pid uint64, dens []proto.Dentry,
 	respChan chan *proto.BatchDeleteDentryResponse, trashEnable bool) (status int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.batchDeleteDentryUntest")
-	defer tracer.Finish()
 	defer wg.Done()
-	ctx = tracer.Context()
-
 	log.LogDebugf("batchDeleteDentryUntest, mp: %v, len(dens): %v", mp.PartitionID, len(dens))
 	req := new(proto.BatchDeleteDentryRequest)
 	req.VolName = mw.volname

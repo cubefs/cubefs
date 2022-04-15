@@ -30,7 +30,7 @@ import (
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/tracing"
+
 	"github.com/chubaofs/chubaofs/util/ump"
 )
 
@@ -79,12 +79,6 @@ func (mw *MetaWrapper) GetRootIno(subdir string, autoMakeDir bool) (uint64, erro
 
 // Looks up absolute path and returns the ino
 func (mw *MetaWrapper) LookupPath(ctx context.Context, subdir string) (uint64, error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.LookupPath").
-		SetTag("volume", mw.volname).
-		SetTag("subdir", subdir)
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	ino := proto.RootIno
 	if subdir == "" || subdir == "/" {
 		return ino, nil
@@ -129,10 +123,6 @@ func (mw *MetaWrapper) Statfs() (total, used uint64) {
 }
 
 func (mw *MetaWrapper) Create_ll(ctx context.Context, parentID uint64, name string, mode, uid, gid uint32, target []byte) (*proto.InodeInfo, error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.Create_ll")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var (
 		status       int
 		err          error
@@ -247,10 +237,6 @@ func (mw *MetaWrapper) InodeNotExist(ctx context.Context, inode uint64) bool {
 }
 
 func (mw *MetaWrapper) Lookup_ll(ctx context.Context, parentID uint64, name string) (inode uint64, mode uint32, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.Lookup_ll")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	if mw.volNotExists {
 		return 0, 0, proto.ErrVolNotExists
 	}
@@ -269,10 +255,6 @@ func (mw *MetaWrapper) Lookup_ll(ctx context.Context, parentID uint64, name stri
 }
 
 func (mw *MetaWrapper) InodeGet_ll(ctx context.Context, inode uint64) (*proto.InodeInfo, error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.InodeGet_ll")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	if mw.volNotExists {
 		return nil, proto.ErrVolNotExists
 	}
@@ -302,10 +284,6 @@ func (mw *MetaWrapper) InodeGet_ll(ctx context.Context, inode uint64) (*proto.In
 
 // Just like InodeGet but without retry
 func (mw *MetaWrapper) doInodeGet(ctx context.Context, inode uint64) (*proto.InodeInfo, error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.doInodeGet")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
 		log.LogErrorf("InodeGet_ll: No such partition, ino(%v)", inode)
@@ -321,10 +299,6 @@ func (mw *MetaWrapper) doInodeGet(ctx context.Context, inode uint64) (*proto.Ino
 }
 
 func (mw *MetaWrapper) BatchInodeGet(ctx context.Context, inodes []uint64) []*proto.InodeInfo {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.BatchInodeGet")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var wg sync.WaitGroup
 
 	batchInfos := make([]*proto.InodeInfo, 0)
@@ -371,10 +345,6 @@ func (mw *MetaWrapper) BatchInodeGet(ctx context.Context, inodes []uint64) []*pr
 // InodeDelete_ll is a low-level api that removes specified inode immediately
 // and do not effect extent data managed by this inode.
 func (mw *MetaWrapper) InodeDelete_ll(ctx context.Context, inode uint64) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.InodeDelete_ll")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
 		log.LogErrorf("InodeDelete: No such partition, ino(%v)", inode)
@@ -389,10 +359,6 @@ func (mw *MetaWrapper) InodeDelete_ll(ctx context.Context, inode uint64) error {
 }
 
 func (mw *MetaWrapper) BatchGetXAttr(ctx context.Context, inodes []uint64, keys []string) ([]*proto.XAttrInfo, error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.BatchGetXAttr")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	// Collect meta partitions
 	var (
 		mps      = make(map[uint64]*MetaPartition) // Mapping: partition ID -> partition
@@ -453,10 +419,6 @@ func (mw *MetaWrapper) BatchGetXAttr(ctx context.Context, inodes []uint64, keys 
  * and the caller should make sure InodeInfo is valid before using it.
  */
 func (mw *MetaWrapper) Delete_ll(ctx context.Context, parentID uint64, name string, isDir bool) (*proto.InodeInfo, error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.Delete_ll")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var (
 		status int
 		inode  uint64
@@ -517,10 +479,6 @@ func (mw *MetaWrapper) Delete_ll(ctx context.Context, parentID uint64, name stri
 }
 
 func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcName string, dstParentID uint64, dstName string) (err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.Rename_ll")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var oldInode uint64
 
 	srcParentMP := mw.getPartitionByInode(ctx, srcParentID)
@@ -592,10 +550,6 @@ func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcNam
 }
 
 func (mw *MetaWrapper) ReadDir_ll(ctx context.Context, parentID uint64) ([]proto.Dentry, error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.ReadDir_ll")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	if mw.volNotExists {
 		return nil, proto.ErrVolNotExists
 	}
@@ -613,10 +567,6 @@ func (mw *MetaWrapper) ReadDir_ll(ctx context.Context, parentID uint64) ([]proto
 }
 
 func (mw *MetaWrapper) DentryCreate_ll(ctx context.Context, parentID uint64, name string, inode uint64, mode uint32) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.DentryCreate_ll")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	parentMP := mw.getPartitionByInode(ctx, parentID)
 	if parentMP == nil {
 		return syscall.ENOENT
@@ -630,10 +580,6 @@ func (mw *MetaWrapper) DentryCreate_ll(ctx context.Context, parentID uint64, nam
 }
 
 func (mw *MetaWrapper) DentryUpdate_ll(ctx context.Context, parentID uint64, name string, inode uint64) (oldInode uint64, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.DentryUpdate_ll")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	parentMP := mw.getPartitionByInode(ctx, parentID)
 	if parentMP == nil {
 		err = syscall.ENOENT
@@ -670,10 +616,6 @@ func (mw *MetaWrapper) DentryUpdate_ll(ctx context.Context, parentID uint64, nam
 
 // AppendExtentKeys append multiple extent key into specified inode with single request.
 func (mw *MetaWrapper) AppendExtentKeys(ctx context.Context, inode uint64, eks []proto.ExtentKey) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.AppendExtentKeys")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
 		return syscall.ENOENT
@@ -689,16 +631,6 @@ func (mw *MetaWrapper) AppendExtentKeys(ctx context.Context, inode uint64, eks [
 }
 
 func (mw *MetaWrapper) InsertExtentKey(ctx context.Context, inode uint64, ek proto.ExtentKey, isPreExtent bool) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.InsertExtentKey").
-		SetTag("inode", inode).
-		SetTag("ek.PartitionId", ek.PartitionId).
-		SetTag("ek.FileOffset", ek.FileOffset).
-		SetTag("ek.ExtentId", ek.ExtentId).
-		SetTag("ek.ExtentOffset", ek.ExtentOffset).
-		SetTag("ek.Size", ek.Size)
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
 		return syscall.ENOENT
@@ -715,10 +647,6 @@ func (mw *MetaWrapper) InsertExtentKey(ctx context.Context, inode uint64, ek pro
 }
 
 func (mw *MetaWrapper) GetExtents(ctx context.Context, inode uint64) (gen uint64, size uint64, extents []proto.ExtentKey, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.GetExtents")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
 		return 0, 0, nil, syscall.ENOENT
@@ -734,10 +662,6 @@ func (mw *MetaWrapper) GetExtents(ctx context.Context, inode uint64) (gen uint64
 }
 
 func (mw *MetaWrapper) Truncate(ctx context.Context, inode, oldSize, size uint64) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.Truncate")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
 		log.LogErrorf("Truncate: No inode partition, ino(%v)", inode)
@@ -753,10 +677,6 @@ func (mw *MetaWrapper) Truncate(ctx context.Context, inode, oldSize, size uint64
 }
 
 func (mw *MetaWrapper) Link(ctx context.Context, parentID uint64, name string, ino uint64) (*proto.InodeInfo, error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.Link")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	parentMP := mw.getPartitionByInode(ctx, parentID)
 	if parentMP == nil {
 		log.LogErrorf("Link: No parent partition, parentID(%v)", parentID)
@@ -789,10 +709,6 @@ func (mw *MetaWrapper) Link(ctx context.Context, parentID uint64, name string, i
 }
 
 func (mw *MetaWrapper) Evict(ctx context.Context, inode uint64, trashEnable bool) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.Evict")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
 		log.LogWarnf("Evict: No such partition, ino(%v)", inode)
@@ -808,10 +724,6 @@ func (mw *MetaWrapper) Evict(ctx context.Context, inode uint64, trashEnable bool
 }
 
 func (mw *MetaWrapper) Setattr(ctx context.Context, inode uint64, valid, mode, uid, gid uint32, atime, mtime int64) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.Setattr")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
 		log.LogErrorf("Setattr: No such partition, ino(%v)", inode)
@@ -828,10 +740,6 @@ func (mw *MetaWrapper) Setattr(ctx context.Context, inode uint64, valid, mode, u
 }
 
 func (mw *MetaWrapper) InodeCreate_ll(ctx context.Context, mode, uid, gid uint32, target []byte) (*proto.InodeInfo, error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.InodeCreate_ll")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var (
 		status       int
 		err          error
@@ -856,10 +764,6 @@ func (mw *MetaWrapper) InodeCreate_ll(ctx context.Context, mode, uid, gid uint32
 
 // InodeUnlink_ll is a low-level api that makes specified inode link value +1.
 func (mw *MetaWrapper) InodeLink_ll(ctx context.Context, inode uint64) (*proto.InodeInfo, error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.InodeLink_ll")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
 		log.LogErrorf("InodeLink_ll: No such partition, ino(%v)", inode)
@@ -875,10 +779,6 @@ func (mw *MetaWrapper) InodeLink_ll(ctx context.Context, inode uint64) (*proto.I
 
 // InodeUnlink_ll is a low-level api that makes specified inode link value -1.
 func (mw *MetaWrapper) InodeUnlink_ll(ctx context.Context, inode uint64) (*proto.InodeInfo, error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.InodeUnlink_ll")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
 		log.LogErrorf("InodeUnlink_ll: No such partition, ino(%v)", inode)
@@ -897,10 +797,6 @@ func (mw *MetaWrapper) InodeUnlink_ll(ctx context.Context, inode uint64) (*proto
 }
 
 func (mw *MetaWrapper) InitMultipart_ll(ctx context.Context, path string, extend map[string]string) (multipartId string, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.InitMultipart_ll")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var (
 		status       int
 		mp           *MetaPartition
@@ -934,10 +830,6 @@ func (mw *MetaWrapper) InitMultipart_ll(ctx context.Context, path string, extend
 }
 
 func (mw *MetaWrapper) GetMultipart_ll(ctx context.Context, path, multipartId string) (info *proto.MultipartInfo, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.GetMultipart_ll")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var (
 		mpId  uint64
 		found bool
@@ -963,9 +855,6 @@ func (mw *MetaWrapper) GetMultipart_ll(ctx context.Context, path, multipartId st
 }
 
 func (mw *MetaWrapper) AddMultipartPart_ll(ctx context.Context, path, multipartId string, partId uint16, size uint64, md5 string, inode uint64) (err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.AddMultipartPart_ll")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	var (
 		mpId  uint64
@@ -993,10 +882,6 @@ func (mw *MetaWrapper) AddMultipartPart_ll(ctx context.Context, path, multipartI
 }
 
 func (mw *MetaWrapper) RemoveMultipart_ll(ctx context.Context, path, multipartID string) (err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.RemoveMultipart_ll")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var (
 		mpId  uint64
 		found bool
@@ -1025,10 +910,6 @@ func (mw *MetaWrapper) RemoveMultipart_ll(ctx context.Context, path, multipartID
 }
 
 func (mw *MetaWrapper) broadcastGetMultipart(ctx context.Context, path, multipartId string) (info *proto.MultipartInfo, mpID uint64, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.broadcastGetMultipart")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	log.LogInfof("broadcastGetMultipart: find meta partition broadcast multipartId(%v)", multipartId)
 	partitions := mw.partitions
 	var (
@@ -1065,10 +946,6 @@ func (mw *MetaWrapper) broadcastGetMultipart(ctx context.Context, path, multipar
 }
 
 func (mw *MetaWrapper) ListMultipart_ll(ctx context.Context, prefix, delimiter, keyMarker string, multipartIdMarker string, maxUploads uint64) (sessionResponse []*proto.MultipartInfo, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.ListMultipart_ll")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	partitions := mw.partitions
 	var wg = sync.WaitGroup{}
 	var wl = sync.Mutex{}
@@ -1102,10 +979,6 @@ func (mw *MetaWrapper) ListMultipart_ll(ctx context.Context, prefix, delimiter, 
 }
 
 func (mw *MetaWrapper) XAttrSet_ll(ctx context.Context, inode uint64, name, value []byte) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.XAttrSet_ll")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var err error
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
@@ -1123,10 +996,6 @@ func (mw *MetaWrapper) XAttrSet_ll(ctx context.Context, inode uint64, name, valu
 }
 
 func (mw *MetaWrapper) XAttrGet_ll(ctx context.Context, inode uint64, name string) (*proto.XAttrInfo, error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.XAttrGet_ll")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
 		log.LogErrorf("InodeGet_ll: no such partition, ino(%v)", inode)
@@ -1153,10 +1022,6 @@ func (mw *MetaWrapper) XAttrGet_ll(ctx context.Context, inode uint64, name strin
 
 // XAttrDel_ll is a low-level meta api that deletes specified xattr.
 func (mw *MetaWrapper) XAttrDel_ll(ctx context.Context, inode uint64, name string) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.XAttrDel_ll")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var err error
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
@@ -1173,10 +1038,6 @@ func (mw *MetaWrapper) XAttrDel_ll(ctx context.Context, inode uint64, name strin
 }
 
 func (mw *MetaWrapper) XAttrsList_ll(ctx context.Context, inode uint64) ([]string, error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.XAttrsList_ll")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var err error
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
@@ -1281,10 +1142,6 @@ func contains(arr []string, element string) (ok bool) {
 }
 func (mw *MetaWrapper) LookupDeleted_ll(ctx context.Context, parentID uint64, name string, startTime, endTime int64) (
 	dentrys []*proto.DeletedDentry, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.LookupDeleted_ll")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	parentMP := mw.getPartitionByInode(ctx, parentID)
 	if parentMP == nil {
 		log.LogErrorf("LookupDeleted_ll: No parent partition, parentID(%v) name(%v)", parentID, name)
@@ -1300,9 +1157,6 @@ func (mw *MetaWrapper) LookupDeleted_ll(ctx context.Context, parentID uint64, na
 }
 
 func (mw *MetaWrapper) ReadDirDeleted(ctx context.Context, parentID uint64) ([]*proto.DeletedDentry, error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.ReadDirDeleted")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 	parentMP := mw.getPartitionByInode(ctx, parentID)
 	if parentMP == nil {
 		return nil, syscall.ENOENT
@@ -1333,9 +1187,6 @@ func (mw *MetaWrapper) ReadDirDeleted(ctx context.Context, parentID uint64) ([]*
 }
 
 func (mw *MetaWrapper) RecoverDeletedDentry(ctx context.Context, parentID, inodeID uint64, name string, timestamp int64) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.RecoverDeletedDentry")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 	parentMP := mw.getPartitionByInode(ctx, parentID)
 	if parentMP == nil {
 		return syscall.ENOENT
@@ -1353,9 +1204,6 @@ func (mw *MetaWrapper) RecoverDeletedDentry(ctx context.Context, parentID, inode
 
 func (mw *MetaWrapper) BatchRecoverDeletedDentry(ctx context.Context, dens []*proto.DeletedDentry) (
 	res map[uint64]int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.BatchRecoverDeletedDentry")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 	if dens == nil || len(dens) == 0 {
 		err = errors.New("BatchRecoverDeletedDentry, the dens is 0.")
 		return
@@ -1406,9 +1254,6 @@ func (mw *MetaWrapper) BatchRecoverDeletedDentry(ctx context.Context, dens []*pr
 }
 
 func (mw *MetaWrapper) RecoverDeletedInode(ctx context.Context, inodeID uint64) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.RecoverDeletedInode")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 	mp := mw.getPartitionByInode(ctx, inodeID)
 	if mp == nil {
 		log.LogErrorf("RecoverDeleteInode: No such partition, ino(%v)", inodeID)
@@ -1426,10 +1271,6 @@ func (mw *MetaWrapper) RecoverDeletedInode(ctx context.Context, inodeID uint64) 
 }
 
 func (mw *MetaWrapper) BatchRecoverDeletedInode(ctx context.Context, inodes []uint64) (res map[uint64]int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.BatchRecoverDeletedInode")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	log.LogDebugf("BatchRecoverDeletedInode: len(dens): %v", len(inodes))
 
 	var wg sync.WaitGroup
@@ -1472,9 +1313,6 @@ func (mw *MetaWrapper) BatchRecoverDeletedInode(ctx context.Context, inodes []ui
 }
 
 func (mw *MetaWrapper) BatchCleanDeletedDentry(ctx context.Context, dens []*proto.DeletedDentry) (res map[uint64]int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.BatchCleanDeletedDentry")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 	if dens == nil || len(dens) == 0 {
 		err = errors.New("BatchCleanDeletedDentry, the dens is 0.")
 		return
@@ -1520,9 +1358,6 @@ func (mw *MetaWrapper) BatchCleanDeletedDentry(ctx context.Context, dens []*prot
 }
 
 func (mw *MetaWrapper) CleanDeletedDentry(ctx context.Context, parentID, inodeID uint64, name string, timestamp int64) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.CleanDeletedDentry")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 	parentMP := mw.getPartitionByInode(ctx, parentID)
 	if parentMP == nil {
 		return syscall.ENOENT
@@ -1539,10 +1374,6 @@ func (mw *MetaWrapper) CleanDeletedDentry(ctx context.Context, parentID, inodeID
 }
 
 func (mw *MetaWrapper) BatchCleanDeletedInode(ctx context.Context, inodes []uint64) (res map[uint64]int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.BatchCleanDeletedInode")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var wg sync.WaitGroup
 	batchChan := make(chan *proto.BatchOpDeletedINodeRsp, 1000)
 	res = make(map[uint64]int, 0)
@@ -1583,9 +1414,6 @@ func (mw *MetaWrapper) BatchCleanDeletedInode(ctx context.Context, inodes []uint
 }
 
 func (mw *MetaWrapper) CleanDeletedInode(ctx context.Context, inodeID uint64) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.CleanDeletedInode")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 	mp := mw.getPartitionByInode(ctx, inodeID)
 	if mp == nil {
 		log.LogErrorf("RecoverDeleteInode: No such partition, ino(%v)", inodeID)
@@ -1603,9 +1431,6 @@ func (mw *MetaWrapper) CleanDeletedInode(ctx context.Context, inodeID uint64) er
 }
 
 func (mw *MetaWrapper) GetDeletedInode(ctx context.Context, inode uint64) (*proto.DeletedInodeInfo, error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.GetDeletedInode")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
 		log.LogErrorf("GetDeletedInode: No such partition, ino(%v)", inode)
@@ -1625,10 +1450,6 @@ func (mw *MetaWrapper) GetDeletedInode(ctx context.Context, inode uint64) (*prot
 }
 
 func (mw *MetaWrapper) BatchGetDeletedInode(ctx context.Context, inodes []uint64) map[uint64]*proto.DeletedInodeInfo {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.BatchGetDeletedInode")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var wg sync.WaitGroup
 	batchInfos := make(map[uint64]*proto.DeletedInodeInfo, 0)
 	resp := make(chan []*proto.DeletedInodeInfo, BatchIgetRespBuf)
@@ -1669,9 +1490,6 @@ func (mw *MetaWrapper) BatchGetDeletedInode(ctx context.Context, inodes []uint64
 }
 
 func (mw *MetaWrapper) StatDeletedFileInfo(ctx context.Context, pid uint64) (resp *proto.StatDeletedFileInfoResponse, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.StatDeletedFileInfo")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 	mp := mw.getPartitionByID(pid)
 	if mp == nil {
 		log.LogErrorf("StatDeletedFileInfo: No such partition, pid(%v)", pid)
@@ -1691,9 +1509,6 @@ func (mw *MetaWrapper) StatDeletedFileInfo(ctx context.Context, pid uint64) (res
 }
 
 func (mw *MetaWrapper) CleanExpiredDeletedDentry(ctx context.Context, pid uint64, deadline uint64) (err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.CleanExpiredDeletedDentry")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 	mp := mw.getPartitionByID(pid)
 	if mp == nil {
 		log.LogErrorf("CleanExpiredDeletedDentry: No such partition, pid(%v)", pid)
@@ -1713,9 +1528,6 @@ func (mw *MetaWrapper) CleanExpiredDeletedDentry(ctx context.Context, pid uint64
 }
 
 func (mw *MetaWrapper) CleanExpiredDeletedInode(ctx context.Context, pid uint64, deadline uint64) (err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.CleanExpiredDeletedInode")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 	mp := mw.getPartitionByID(pid)
 	if mp == nil {
 		log.LogErrorf("CleanExpiredDeletedInode: No such partition, pid(%v)", pid)
@@ -1736,10 +1548,6 @@ func (mw *MetaWrapper) CleanExpiredDeletedInode(ctx context.Context, pid uint64,
 }
 
 func (mw *MetaWrapper) BatchUnlinkInodeUntest(ctx context.Context, inodes []uint64, trashEnable bool) (res map[uint64]int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.BatchUnlinkInodeUntest")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	log.LogDebugf("BatchUnlinkInodeUntest: len(dens): %v", len(inodes))
 	for index, ino := range inodes {
 		log.LogDebugf("index: %v, den: %v", index, ino)
@@ -1789,10 +1597,6 @@ func (mw *MetaWrapper) BatchUnlinkInodeUntest(ctx context.Context, inodes []uint
 }
 
 func (mw *MetaWrapper) BatchEvictInodeUntest(ctx context.Context, inodes []uint64, trashEnable bool) (res map[uint64]int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.BatchEvictInodeUntest")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	log.LogDebugf("BatchEvictInodeUntest: len(dens): %v", len(inodes))
 	for index, ino := range inodes {
 		log.LogDebugf("index: %v, den: %v", index, ino)
@@ -1840,9 +1644,6 @@ func (mw *MetaWrapper) BatchEvictInodeUntest(ctx context.Context, inodes []uint6
 
 func (mw *MetaWrapper) BatchDeleteDentryUntest(ctx context.Context, pid uint64, dens []proto.Dentry, trashEnable bool) (
 	res map[uint64]int, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.BatchDeleteDentryUntest")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 	if dens == nil || len(dens) == 0 {
 		err = errors.New("BatchDeleteDentryUntest, the dens is 0.")
 		return

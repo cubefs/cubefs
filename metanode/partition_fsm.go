@@ -31,7 +31,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/tracing"
+
 
 	"io/ioutil"
 	"os"
@@ -75,11 +75,6 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	}
 
 	var ctx = context.Background()
-	if tracing.IsEnabled() {
-		var tracer = tracing.NewTracer("metaPartition.Apply").SetTag("op", msg.Op)
-		defer tracer.Finish()
-		ctx = tracer.Context()
-	}
 	mp.inodeTree.SetApplyID(index)
 
 	switch msg.Op {
@@ -916,11 +911,6 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 }
 
 func (mp *metaPartition) submit(ctx context.Context, op uint32, from string, data []byte) (resp interface{}, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("metaPartition.submit").
-		SetTag("op", op).
-		SetTag("size", len(data))
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	snap := NewMetaItem(0, nil, nil)
 	snap.Op = op
@@ -948,11 +938,6 @@ func (mp *metaPartition) submit(ctx context.Context, op uint32, from string, dat
 }
 
 func (mp *metaPartition) submitTrash(ctx context.Context, op uint32, from string, data []byte) (resp interface{}, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("metaPartition.submitTrash").
-		SetTag("op", op).
-		SetTag("size", len(data))
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	snap := NewMetaItem(0, nil, nil)
 	snap.Op = op

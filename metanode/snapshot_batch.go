@@ -18,7 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"github.com/chubaofs/chubaofs/util/tracing"
+
 )
 
 type MulItems struct {
@@ -150,9 +150,6 @@ func (i *MulItems) Marshal() (k []byte, err error) {
 
 // Unmarshal unmarshal the MulItems.
 func MulItemsUnmarshal(ctx context.Context, raw []byte) (result *MulItems, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MulItemsUnmarshal")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 	buff := bytes.NewBuffer(raw)
 	var (
 		inodeBatchesLen       uint32

@@ -46,8 +46,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 	_ "github.com/chubaofs/chubaofs/util/log/http" // HTTP API for logging control
 	sysutil "github.com/chubaofs/chubaofs/util/sys"
-	"github.com/chubaofs/chubaofs/util/tracing"
-	_ "github.com/chubaofs/chubaofs/util/tracing/http" // HTTP API for tracing
+
 	"github.com/chubaofs/chubaofs/util/ump"
 	"github.com/chubaofs/chubaofs/util/version"
 	"github.com/jacobsa/daemonize"
@@ -192,10 +191,6 @@ func run() error {
 	profPort := cfg.GetString(ConfigKeyProfPort)
 
 	//Init tracing
-	closer := tracing.TraceInit(role, cfg.GetString(config.CfgTracingsamplerType), cfg.GetFloat(config.CfgTracingsamplerParam), cfg.GetString(config.CfgTracingReportAddr))
-	defer func() {
-		_ = closer.Close()
-	}()
 
 	// Init server instance with specified role configuration.
 	var (

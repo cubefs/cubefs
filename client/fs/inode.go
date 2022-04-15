@@ -17,7 +17,7 @@ package fs
 import (
 	"context"
 
-	"github.com/chubaofs/chubaofs/util/tracing"
+
 
 	"bazil.org/fuse"
 
@@ -30,10 +30,6 @@ const (
 )
 
 func (s *Super) InodeGet(ctx context.Context, ino uint64) (*proto.InodeInfo, error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Super.InodeGet").
-		SetTag("ino", ino)
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	info := s.ic.Get(ctx, ino)
 	if info != nil {

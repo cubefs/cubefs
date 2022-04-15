@@ -6,7 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/tracing"
+
 	"io"
 	"reflect"
 )
@@ -265,10 +265,6 @@ func (di *DeletedINode) MarshalValue() (val []byte) {
 }
 
 func (di *DeletedINode) Unmarshal(ctx context.Context, raw []byte) (err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("DeletedInode.Unmarshal")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	var (
 		keyLen uint32
 		valLen uint32
@@ -302,9 +298,6 @@ func (di *DeletedINode) UnmarshalKey(k []byte) (err error) {
 }
 
 func (di *DeletedINode) UnmarshalValue(ctx context.Context, val []byte) (err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("DeletedInode.UnmarshalValue")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 	buff := bytes.NewBuffer(val)
 	if err = binary.Read(buff, binary.BigEndian, &di.Type); err != nil {
 		return

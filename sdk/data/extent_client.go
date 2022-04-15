@@ -27,7 +27,6 @@ import (
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
-	"github.com/chubaofs/chubaofs/util/tracing"
 	"golang.org/x/time/rate"
 )
 
@@ -299,18 +298,6 @@ func (client *ExtentClient) FileSize(inode uint64) (size int, gen uint64, valid 
 
 // Write writes the data.
 func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset int, data []byte, direct bool, overWriteBuffer bool) (write int, isROW bool, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("ExtentClient.Write").
-		SetTag("arg.inode", inode).
-		SetTag("arg.offset", offset).
-		SetTag("arg.dataLen", len(data)).
-		SetTag("arg.direct", direct)
-	defer func() {
-		tracer.SetTag("ret.write", write)
-		tracer.SetTag("ret.err", err)
-		tracer.Finish()
-	}()
-	ctx = tracer.Context()
-
 	if client.dataWrapper.volNotExists {
 		return 0, false, proto.ErrVolNotExists
 	}
@@ -349,12 +336,6 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset int,
 }
 
 func (client *ExtentClient) Truncate(ctx context.Context, inode uint64, size int) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("ExtentClient.Truncate").
-		SetTag("inode", inode).
-		SetTag("size", size)
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	if client.dataWrapper.volNotExists {
 		return proto.ErrVolNotExists
 	}
@@ -379,11 +360,6 @@ func (client *ExtentClient) Truncate(ctx context.Context, inode uint64, size int
 }
 
 func (client *ExtentClient) Flush(ctx context.Context, inode uint64) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("ExtentClient.Flush").
-		SetTag("ino", inode)
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	if client.dataWrapper.volNotExists {
 		return proto.ErrVolNotExists
 	}
@@ -396,17 +372,6 @@ func (client *ExtentClient) Flush(ctx context.Context, inode uint64) error {
 }
 
 func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte, offset int, size int) (read int, hasHole bool, err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("ExtentClient.Read").
-		SetTag("arg.inode", inode).
-		SetTag("arg.offset", offset).
-		SetTag("arg.size", size)
-	defer func() {
-		tracer.SetTag("ret.read", read)
-		tracer.SetTag("ret.err", err)
-		tracer.Finish()
-	}()
-	ctx = tracer.Context()
-
 	if size == 0 {
 		return
 	}
@@ -576,10 +541,6 @@ func (client *ExtentClient) updateConfig() {
 }
 
 func (client *ExtentClient) Close(ctx context.Context) error {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("ExtentClient.Close")
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	// release streamers
 	inodes := client.streamerConcurrentMap.Keys()
 	for _, inode := range inodes {

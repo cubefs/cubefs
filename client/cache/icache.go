@@ -20,8 +20,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/tracing"
-
 	"github.com/chubaofs/chubaofs/proto"
 )
 
@@ -87,11 +85,6 @@ func (ic *InodeCache) Put(info *proto.InodeInfo) {
 
 // Get returns the inode info based on the given inode number.
 func (ic *InodeCache) Get(ctx context.Context, ino uint64) *proto.InodeInfo {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("InodeCache.Get").
-		SetTag("ino", ino)
-	defer tracer.Finish()
-	ctx = tracer.Context()
-
 	if !ic.useCache {
 		return nil
 	}

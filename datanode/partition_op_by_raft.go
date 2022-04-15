@@ -30,7 +30,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/chubaofs/chubaofs/util/statistics"
-	"github.com/chubaofs/chubaofs/util/tracing"
+
 	"github.com/tiglabs/raft"
 )
 
@@ -322,18 +322,17 @@ func (si *ItemIterator) Next() (data []byte, err error) {
 
 // ApplyRandomWrite random write apply
 func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint64) (resp interface{}, err error) {
-	var tracer = tracing.NewTracer("ApplyRandomWrite")
-	defer tracer.Finish()
-	var ctx = tracer.Context()
 	start := time.Now().UnixMicro()
 	defer func() {
 		if err == nil {
 			resp = proto.OpOk
-			log.LogWritef("[ApplyRandomWrite] "+
-				"ApplyID(%v) Partition(%v)_Extent(%v)_"+
-				"ExtentOffset(%v)_Size(%v)_CRC(%v) cost(%v)us",
-				raftApplyID, dp.partitionID, opItem.extentID,
-				opItem.offset, opItem.size, opItem.crc, time.Now().UnixMicro()-start)
+			if log.IsDebugEnabled() {
+				log.LogWritef("[ApplyRandomWrite] "+
+					"ApplyID(%v) Partition(%v)_Extent(%v)_"+
+					"ExtentOffset(%v)_Size(%v)_CRC(%v) cost(%v)us",
+					raftApplyID, dp.partitionID, opItem.extentID,
+					opItem.offset, opItem.size, opItem.crc, time.Now().UnixMicro()-start)
+			}
 		} else {
 			msg := fmt.Sprintf("[ApplyRandomWrite] "+
 				"ApplyID(%v) Partition(%v)_Extent(%v)_"+
@@ -352,7 +351,7 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 			defer func() {
 				tp.Set(storeErr)
 			}()
-			storeErr = dp.ExtentStore().Write(ctx, opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, storage.RandomWriteType, opItem.opcode == proto.OpSyncRandomWrite)
+			storeErr = dp.ExtentStore().Write(nil, opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, storage.RandomWriteType, opItem.opcode == proto.OpSyncRandomWrite)
 			return storeErr
 		}()
 		if dp.checkIsDiskError(err) {
@@ -378,15 +377,6 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 
 // RandomWriteSubmit submits the proposal to raft.
 func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
-	var tracer = tracing.TracerFromContext(pkg.Ctx()).ChildTracer("DataPartition RandomWriteSubmit").
-		SetTag("reqID", pkg.ReqID).
-		SetTag("extentID", pkg.ExtentID).
-		SetTag("offset", pkg.ExtentOffset).
-		SetTag("size", pkg.Size).
-		SetTag("crc", pkg.CRC)
-	defer tracer.Finish()
-	pkg.SetCtx(tracer.Context())
-
 	err = dp.ExtentStore().CheckIsAvaliRandomWrite(pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size))
 	if err != nil {
 		return err
@@ -413,15 +403,6 @@ func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 
 // RandomWriteSubmit submits the proposal to raft.
 func (dp *DataPartition) RandomWriteSubmitV3(pkg *repl.Packet) (err error) {
-	var tracer = tracing.TracerFromContext(pkg.Ctx()).ChildTracer("DataPartition RandomWriteSubmit").
-		SetTag("reqID", pkg.ReqID).
-		SetTag("extentID", pkg.ExtentID).
-		SetTag("offset", pkg.ExtentOffset).
-		SetTag("size", pkg.Size).
-		SetTag("crc", pkg.CRC)
-	defer tracer.Finish()
-	pkg.SetCtx(tracer.Context())
-
 	err = dp.ExtentStore().CheckIsAvaliRandomWrite(pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size))
 	if err != nil {
 		return err
@@ -442,8 +423,9 @@ func (dp *DataPartition) RandomWriteSubmitV3(pkg *repl.Packet) (err error) {
 		return
 	}
 	pkg.ResultCode = resp.(uint8)
-
-	log.LogDebugf("[RandomWrite] SubmitRaft: %v", pkg.GetUniqueLogId())
+	if log.IsDebugEnabled() {
+		log.LogDebugf("[RandomWrite] SubmitRaft: %v", pkg.GetUniqueLogId())
+	}
 
 	return
 }

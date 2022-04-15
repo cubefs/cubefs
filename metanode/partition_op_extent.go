@@ -20,7 +20,7 @@ import (
 
 	"github.com/chubaofs/chubaofs/util/log"
 
-	"github.com/chubaofs/chubaofs/util/tracing"
+
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/statistics"
@@ -28,9 +28,6 @@ import (
 
 // ExtentAppend appends an extent.
 func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Packet) (err error) {
-	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.ExtentAppend")
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	if err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
@@ -59,9 +56,6 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 }
 
 func (mp *metaPartition) ExtentInsert(req *proto.InsertExtentKeyRequest, p *Packet) (err error) {
-	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.ExtentInsert")
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	if err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
@@ -91,9 +85,6 @@ func (mp *metaPartition) ExtentInsert(req *proto.InsertExtentKeyRequest, p *Pack
 
 // ExtentsList returns the list of extents.
 func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error) {
-	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.ExtentsList")
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	if err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
@@ -116,9 +107,6 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 	if status == proto.OpOk {
 		resp := &proto.GetExtentsResponse{}
 		ino.DoReadFunc(func() {
-			var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.ExtentsList")
-			defer tracer.Finish()
-			p.SetCtx(tracer.Context())
 
 			resp.Generation = ino.Generation
 			resp.Size = ino.Size
@@ -139,9 +127,6 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 
 // ExtentsTruncate truncates an extent.
 func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (err error) {
-	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.ExtentsTruncate")
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	if err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
@@ -173,9 +158,6 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (er
 }
 
 func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p *Packet) (err error) {
-	var tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metaPartition.BatchExtentAppend")
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	if err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))

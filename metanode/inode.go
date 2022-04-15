@@ -25,7 +25,7 @@ import (
 	"sync"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/tracing"
+
 )
 
 const (
@@ -184,9 +184,6 @@ func (i *Inode) Marshal() (result []byte, err error) {
 
 // Unmarshal unmarshals the inode.
 func (i *Inode) Unmarshal(ctx context.Context, raw []byte) (err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Inode.Unmarshal")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	var (
 		keyLen uint32
@@ -216,9 +213,6 @@ func (i *Inode) Unmarshal(ctx context.Context, raw []byte) (err error) {
 
 // Marshal marshals the inodeBatch into a byte array.
 func (i InodeBatch) Marshal(ctx context.Context) ([]byte, error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("InodeBatch.Marshal").SetTag("len", len(i))
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	buff := bytes.NewBuffer(make([]byte, 0))
 	if err := binary.Write(buff, binary.BigEndian, uint32(len(i))); err != nil {
@@ -289,9 +283,6 @@ func (i *Inode) MarshalV2() (result []byte, err error) {
 }
 
 func (i *Inode) UnmarshalV2(ctx context.Context, raw []byte) (err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Inode.Unmarshal")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	if len(raw) < BaseInodeLen {
 		return fmt.Errorf("inode buff err, need at least %d, but buff len:%d", BaseInodeValueLen, len(raw))
@@ -408,9 +399,6 @@ func (i *Inode) UnmarshalValueV2(ctx context.Context, raw []byte) (err error) {
 
 // Unmarshal unmarshals the inodeBatch.
 func InodeBatchUnmarshal(ctx context.Context, raw []byte) (InodeBatch, error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("InodeBatchUnmarshal")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	buff := bytes.NewBuffer(raw)
 	var batchLen uint32
@@ -516,9 +504,6 @@ func (i *Inode) MarshalValue() (val []byte) {
 
 // UnmarshalValue unmarshals the value from bytes.
 func (i *Inode) UnmarshalValue(ctx context.Context, val []byte) (err error) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Inode.UnmarshalValue")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 	buff := bytes.NewBuffer(val)
 	if err = binary.Read(buff, binary.BigEndian, &i.Type); err != nil {
 		return
@@ -580,9 +565,6 @@ func (i *Inode) UnmarshalValue(ctx context.Context, val []byte) (err error) {
 
 // AppendExtents append the extent to the btree.
 func (i *Inode) AppendExtents(ctx context.Context, eks []proto.ExtentKey, ct int64) (delExtents []proto.ExtentKey) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Inode.AppendExtents")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	i.Lock()
 	oldFileSize := i.Extents.Size()
@@ -608,10 +590,6 @@ func (i *Inode) InsertExtents(ctx context.Context, eks []proto.ExtentKey, ct int
 		return
 	}
 
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("Inode.InsertExtents").
-		SetTag("inode", i.Inode)
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	i.Lock()
 	defer i.Unlock()

@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/tracing"
+
 )
 
 type SortedExtents struct {
@@ -114,15 +114,6 @@ func (se *SortedExtents) UnmarshalBinaryV2(ctx context.Context, data []byte) err
 //   4.TestSortedExtents_Insert04
 // These test cases cover 100% of the this method.
 func (se *SortedExtents) Insert(ctx context.Context, ek proto.ExtentKey) (deleteExtents []proto.ExtentKey) {
-	if tracing.IsEnabled() {
-		var tracer = tracing.TracerFromContext(ctx).ChildTracer("SortedExtent.Update").
-			SetTag("ek.FileOffset", ek.FileOffset).
-			SetTag("ek.Size", ek.Size).
-			SetTag("ek.PartitionId", ek.PartitionId).
-			SetTag("ek.ExtentId", ek.ExtentId).
-			SetTag("ek.ExtentOffset", ek.ExtentOffset)
-		defer tracer.Finish()
-	}
 	se.RWMutex.Lock()
 	defer se.RWMutex.Unlock()
 
@@ -393,9 +384,6 @@ func (se *SortedExtents) maybeMergeWithPrev(index int) (merged bool) {
 }
 
 func (se *SortedExtents) Append(ctx context.Context, ek proto.ExtentKey) (deleteExtents []proto.ExtentKey) {
-	var tracer = tracing.TracerFromContext(ctx).ChildTracer("SortedExtents Append")
-	defer tracer.Finish()
-	ctx = tracer.Context()
 
 	endOffset := ek.FileOffset + uint64(ek.Size)
 

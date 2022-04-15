@@ -16,7 +16,7 @@ package metanode
 
 import (
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/tracing"
+
 	"net"
 	"strings"
 	"time"
@@ -41,7 +41,6 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 		leaderAddr      string
 		oldLeaderAddr   string
 		err             error
-		tracer          tracing.Tracer
 		reqID           = p.ReqID
 		reqOp           = p.Opcode
 		needTryToLeader = false
@@ -62,9 +61,6 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 		return
 	}
 
-	tracer = tracing.TracerFromContext(p.Ctx()).ChildTracer("metadataManager serveProxy")
-	defer tracer.Finish()
-	p.SetCtx(tracer.Context())
 
 	for retryCnt := 0; retryCnt < ProxyTryToLeaderRetryCnt; {
 		needTryToLeader = false
