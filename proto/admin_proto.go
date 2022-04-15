@@ -753,6 +753,7 @@ type SimpleVolView struct {
 	UsedSize             uint64
 	UsedRatio            float64
 	FileAvgSize          float64
+	CreateStatus         VolCreateStatus
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -823,6 +824,14 @@ const (
 	DefaultConvertMode ConvertMode = iota
 	IncreaseReplicaNum
 )
+
+type VolCreateStatus uint8
+
+const (
+	DefaultVolCreateStatus VolCreateStatus = iota
+	VolInCreation
+)
+
 
 type ConnConfig struct {
 	IdleTimeoutSec		int64

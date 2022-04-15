@@ -80,6 +80,7 @@ type Vol struct {
 	convertState         proto.VolConvertState
 	DefaultStoreMode     proto.StoreMode
 	MpLayout             proto.MetaPartitionLayout
+	CreateStatus         proto.VolCreateStatus
 	sync.RWMutex
 }
 

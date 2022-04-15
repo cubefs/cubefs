@@ -2598,6 +2598,7 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 		_ = vol.initDataPartitions(c)
 		readWriteDataPartitions = len(vol.dataPartitions.partitionMap)
 	}
+	vol.CreateStatus = proto.DefaultVolCreateStatus
 	vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
 	vol.updateViewCache(c)
 	log.LogInfof("action[createVol] vol[%v],readableAndWritableCnt[%v]", name, readWriteDataPartitions)
@@ -2624,8 +2625,12 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	}
 	c.createVolMutex.Lock()
 	defer c.createVolMutex.Unlock()
-	if _, err = c.getVol(name); err == nil {
-		err = proto.ErrDuplicateVol
+	if vol, err = c.getVol(name); err == nil {
+		if vol.CreateStatus == proto.VolInCreation {
+			err = proto.ErrVolInCreation
+		} else {
+			err = proto.ErrDuplicateVol
+		}
 		goto errHandler
 	}
 	id, err = c.idAlloc.allocateCommonID()
@@ -2639,6 +2644,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	if len(masterRegionZoneList) > 1 {
 		vol.crossZone = true
 	}
+	vol.CreateStatus = proto.VolInCreation
 	// refresh oss secure
 	vol.refreshOSSSecure()
 	if err = c.syncAddVol(vol); err != nil {

@@ -1551,6 +1551,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		UsedSize:             stat.UsedSize,
 		UsedRatio:            usedRatio,
 		FileAvgSize:          fileAvgSize,
+		CreateStatus:         vol.CreateStatus,
 	}
 }
 
