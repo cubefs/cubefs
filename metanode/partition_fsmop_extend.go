@@ -14,6 +14,8 @@
 
 package metanode
 
+import "fmt"
+
 type ExtendOpResult struct {
 	Status uint8
 	Extend *Extend
@@ -25,19 +27,43 @@ func (mp *metaPartition) fsmSetXAttr(extend *Extend) (err error) {
 	if treeItem == nil {
 		mp.extendTree.ReplaceOrInsert(extend, true)
 	} else {
+		// attr multi-ver copy all attr for simplify management
 		e = treeItem.(*Extend)
+		if e.verSeq != extend.verSeq {
+			if extend.verSeq < e.verSeq {
+				return fmt.Errorf("seq error assign %v but less than %v", extend.verSeq, e.verSeq)
+			}
+			e.multiVers = append(e.multiVers, &ExtentVal{
+				verSeq:  e.verSeq,
+				dataMap: e.dataMap,
+			})
+			e.verSeq = extend.verSeq
+		}
 		e.Merge(extend, true)
 	}
 
 	return
 }
 
+// todo(leon chang):check snapshot delete relation with attr
 func (mp *metaPartition) fsmRemoveXAttr(extend *Extend) (err error) {
 	treeItem := mp.extendTree.CopyGet(extend)
 	if treeItem == nil {
 		return
 	}
 	e := treeItem.(*Extend)
+	if extend.verSeq < e.verSeq {
+		return fmt.Errorf("seq error assign %v but less than %v", extend.verSeq, e.verSeq)
+	}
+	// attr multi-ver copy all attr for simplify management
+	if e.verSeq > extend.verSeq {
+		e.multiVers = append(e.multiVers, &ExtentVal{
+			verSeq:  e.verSeq,
+			dataMap: e.dataMap,
+		})
+		e.verSeq = extend.verSeq
+	}
+
 	extend.Range(func(key, value []byte) bool {
 		e.Remove(key)
 		return true

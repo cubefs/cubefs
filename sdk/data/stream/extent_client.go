@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -36,6 +37,7 @@ import (
 	"golang.org/x/time/rate"
 )
 
+type SplitExtentKeyFunc func(parentInode, inode uint64, key proto.ExtentKey) error
 type AppendExtentKeyFunc func(parentInode, inode uint64, key proto.ExtentKey, discard []proto.ExtentKey) error
 type GetExtentsFunc func(inode uint64) (uint64, uint64, []proto.ExtentKey, error)
 type TruncateFunc func(inode, size uint64) error
@@ -105,7 +107,9 @@ type ExtentConfig struct {
 	BcacheEnable      bool
 	BcacheDir         string
 	MaxStreamerLimit  int64
+	VerReadSeq        uint64
 	OnAppendExtentKey AppendExtentKeyFunc
+	OnSplitExtentKey  SplitExtentKeyFunc
 	OnGetExtents      GetExtentsFunc
 	OnTruncate        TruncateFunc
 	OnEvictIcache     EvictIcacheFunc
@@ -117,18 +121,20 @@ type ExtentConfig struct {
 	MinWriteAbleDataPartitionCnt int
 }
 
+type MultiVerMgr struct {
+	verReadSeq   uint64 // verSeq in config used as snapshot read
+	latestVerSeq uint64 // newest verSeq from master for datanode write to check
+}
+
 // ExtentClient defines the struct of the extent client.
 type ExtentClient struct {
-	streamers        map[uint64]*Streamer
-	streamerList     *list.List
-	streamerLock     sync.Mutex
-	maxStreamerLimit int
-
-	readLimiter  *rate.Limiter
-	writeLimiter *rate.Limiter
-
-	disableMetaCache bool
-
+	streamers          map[uint64]*Streamer
+	streamerList       *list.List
+	streamerLock       sync.Mutex
+	maxStreamerLimit   int
+	readLimiter        *rate.Limiter
+	writeLimiter       *rate.Limiter
+	disableMetaCache   bool
 	volumeType         int
 	volumeName         string
 	bcacheEnable       bool
@@ -138,6 +144,7 @@ type ExtentClient struct {
 	LimitManager       *manager.LimitManager
 	dataWrapper        *wrapper.Wrapper
 	appendExtentKey    AppendExtentKeyFunc
+	splitExtentKey     SplitExtentKeyFunc
 	getExtents         GetExtentsFunc
 	truncate           TruncateFunc
 	evictIcache        EvictIcacheFunc //May be null, must check before using
@@ -146,6 +153,7 @@ type ExtentClient struct {
 	evictBcache        EvictBacheFunc
 	inflightL1cache    sync.Map
 	inflightL1BigBlock int32
+	multiVerMgr        *MultiVerMgr
 }
 
 func (client *ExtentClient) UidIsLimited(uid uint32) bool {
@@ -226,8 +234,7 @@ func NewExtentClient(config *ExtentConfig) (client *ExtentClient, err error) {
 	limit := 0
 retry:
 
-	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(client, config.Volume, config.Masters, config.Preload,
-		config.MinWriteAbleDataPartitionCnt)
+	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(client, config.Volume, config.Masters, config.Preload, config.MinWriteAbleDataPartitionCnt, config.VerReadSeq)
 	if err != nil {
 		log.LogErrorf("NewExtentClient: new data partition wrapper failed: volume(%v) mayRetry(%v) err(%v)",
 			config.Volume, limit, err)
@@ -244,7 +251,10 @@ retry:
 	}
 
 	client.streamers = make(map[uint64]*Streamer)
+	client.multiVerMgr = &MultiVerMgr{}
+
 	client.appendExtentKey = config.OnAppendExtentKey
+	client.splitExtentKey = config.OnSplitExtentKey
 	client.getExtents = config.OnGetExtents
 	client.truncate = config.OnTruncate
 	client.evictIcache = config.OnEvictIcache
@@ -257,6 +267,7 @@ retry:
 	client.volumeName = config.Volume
 	client.bcacheEnable = config.BcacheEnable
 	client.bcacheDir = config.BcacheDir
+	client.multiVerMgr.verReadSeq = config.VerReadSeq
 	client.BcacheHealth = true
 	client.preload = config.Preload
 	client.disableMetaCache = config.DisableMetaCache
@@ -315,6 +326,37 @@ func (client *ExtentClient) UpdateFlowInfo(limit *proto.LimitRsp2Client) {
 func (client *ExtentClient) SetClientID(id uint64) (err error) {
 	client.LimitManager.ID = id
 	return
+}
+
+func (client *ExtentClient) GetVolumeName() string {
+	return client.volumeName
+}
+
+func (client *ExtentClient) UpdateLatestVer(verSeq uint64) (err error) {
+	if verSeq == 0 || verSeq == client.multiVerMgr.latestVerSeq {
+		return
+	}
+	log.LogDebugf("action[UpdateLatestVer] try update verseq [%v]", verSeq)
+	if verSeq != client.multiVerMgr.latestVerSeq {
+		if verSeq < client.multiVerMgr.latestVerSeq {
+			err = fmt.Errorf("%v less than client seq %v", verSeq, client.multiVerMgr.latestVerSeq)
+			log.LogErrorf("action[UpdateLatestVer] %v", err.Error())
+			return
+		}
+		log.LogInfof("action[UpdateLatestVer] update verseq [%v] to [%v]", client.multiVerMgr.latestVerSeq, verSeq)
+		client.multiVerMgr.latestVerSeq = verSeq
+	}
+	for _, streamer := range client.streamers {
+		if streamer.verSeq != verSeq {
+			log.LogDebugf("action[ExtentClient.UpdateLatestVer] stream inode %v ver %v try update to %v", streamer.inode, streamer.verSeq, verSeq)
+
+			streamer.verSeq = verSeq
+			streamer.extents.verSeq = verSeq
+			atomic.StoreInt32(&streamer.needUpdateVer, 1)
+			log.LogDebugf("action[ExtentClient.UpdateLatestVer] finhsed stream inode %v ver update to %v", streamer.inode, verSeq)
+		}
+	}
+	return nil
 }
 
 // Open request shall grab the lock until request is sent to the request channel

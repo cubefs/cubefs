@@ -66,10 +66,14 @@ const (
 	MetaSendTimeout
 	BuffersTotalLimit
 	MaxStreamerLimit
-
 	EnableAudit
+
 	LocallyProf
 	MinWriteAbleDataPartitionCnt
+
+	//snapshot
+	SnapshotReadVerSeq
+
 	MaxMountOption
 )
 
@@ -158,7 +162,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[MinWriteAbleDataPartitionCnt] = MountOption{"minWriteAbleDataPartitionCnt",
 		"Min writeable data partition count retained int dpSelector when update DataPartitionsView from master",
 		"", int64(10)}
-
+	opts[SnapshotReadVerSeq] = MountOption{"snapshotReadSeq", "Snapshot read seq", "", int64(0)} //default false
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
 	}
@@ -315,4 +319,5 @@ type MountOptions struct {
 	EnableAudit                  bool
 	RequestTimeout               int64
 	MinWriteAbleDataPartitionCnt int
+	VerReadSeq                   uint64
 }

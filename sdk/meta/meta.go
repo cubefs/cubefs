@@ -16,6 +16,7 @@ package meta
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/sdk/data/wrapper"
 	"strings"
 	"sync"
 	"syscall"
@@ -86,8 +87,10 @@ type MetaConfig struct {
 	OnAsyncTaskError AsyncTaskErrorFunc
 	EnableSummary    bool
 	MetaSendTimeout  int64
+
 	//EnableTransaction uint8
 	//EnableTransaction bool
+	VerReadSeq uint64
 }
 
 type MetaWrapper struct {
@@ -153,6 +156,9 @@ type MetaWrapper struct {
 	// uniqidRange for request dedup
 	uniqidRangeMap   map[uint64]*uniqidRange
 	uniqidRangeMutex sync.Mutex
+	VerReadSeq       uint64
+	LastVerSeq       uint64
+	Client           wrapper.SimpleClientInfo
 }
 
 type uniqidRange struct {
@@ -205,6 +211,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.DirChildrenNumLimit = proto.DefaultDirChildrenNumLimit
 	//mw.EnableTransaction = config.EnableTransaction
 	mw.uniqidRangeMap = make(map[uint64]*uniqidRange, 0)
+	mw.VerReadSeq = config.VerReadSeq
 
 	limit := 0
 

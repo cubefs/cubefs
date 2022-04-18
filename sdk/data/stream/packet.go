@@ -35,8 +35,8 @@ type Packet struct {
 
 // String returns the string format of the packet.
 func (p *Packet) String() string {
-	return fmt.Sprintf("ReqID(%v)Op(%v)Inode(%v)FileOffset(%v)Size(%v)PartitionID(%v)ExtentID(%v)ExtentOffset(%v)CRC(%v)ResultCode(%v)",
-		p.ReqID, p.GetOpMsg(), p.inode, p.KernelOffset, p.Size, p.PartitionID, p.ExtentID, p.ExtentOffset, p.CRC, p.GetResultMsg())
+	return fmt.Sprintf("ReqID(%v)Op(%v)Inode(%v)FileOffset(%v)Size(%v)PartitionID(%v)ExtentID(%v)ExtentOffset(%v)CRC(%v)ResultCode(%v)Seq(%v)",
+		p.ReqID, p.GetOpMsg(), p.inode, p.KernelOffset, p.Size, p.PartitionID, p.ExtentID, p.ExtentOffset, p.CRC, p.GetResultMsg(), p.VerSeq)
 }
 
 // NewWritePacket returns a new write packet.
@@ -56,6 +56,25 @@ func NewWritePacket(inode uint64, fileOffset, storeMode int) *Packet {
 }
 
 // NewOverwritePacket returns a new overwrite packet.
+func NewOverwriteByAppendPacket(dp *wrapper.DataPartition, extentID uint64, extentOffset int, inode uint64, fileOffset int) *Packet {
+	p := new(Packet)
+	p.PartitionID = dp.PartitionID
+	p.Magic = proto.ProtoMagic
+	p.ExtentType = proto.NormalExtentType
+	p.ExtentID = extentID
+	p.ExtentOffset = int64(extentOffset)
+	p.ReqID = proto.GenerateRequestID()
+	p.Arg = nil
+	p.ArgLen = 0
+	p.RemainingFollowers = 0
+	p.Opcode = proto.OpRandomWriteAppend
+	p.inode = inode
+	p.KernelOffset = uint64(fileOffset)
+	p.Data, _ = proto.Buffers.Get(util.BlockSize)
+	return p
+}
+
+// NewOverwritePacket returns a new overwrite packet.
 func NewOverwritePacket(dp *wrapper.DataPartition, extentID uint64, extentOffset int, inode uint64, fileOffset int) *Packet {
 	p := new(Packet)
 	p.PartitionID = dp.PartitionID
@@ -67,7 +86,7 @@ func NewOverwritePacket(dp *wrapper.DataPartition, extentID uint64, extentOffset
 	p.Arg = nil
 	p.ArgLen = 0
 	p.RemainingFollowers = 0
-	p.Opcode = proto.OpRandomWrite
+	p.Opcode = proto.OpRandomWriteVer // proto.OpRandomWrite
 	p.inode = inode
 	p.KernelOffset = uint64(fileOffset)
 	p.Data, _ = proto.Buffers.Get(util.BlockSize)

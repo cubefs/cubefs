@@ -130,6 +130,8 @@ out:
 		return nil, errors.New(fmt.Sprintf("sendToMetaPartition failed: req(%v) mp(%v) errs(%v) resp(%v)", req, mp, errs, resp))
 	}
 	log.LogDebugf("sendToMetaPartition: succeed! req(%v) mc(%v) resp(%v)", req, mc, resp)
+
+	mw.checkVerFromMeta(resp)
 	return resp, nil
 }
 
@@ -139,7 +141,7 @@ func (mc *MetaConn) send(req *proto.Packet) (resp *proto.Packet, err error) {
 		return nil, errors.Trace(err, "Failed to write to conn, req(%v)", req)
 	}
 	resp = proto.NewPacket()
-	err = resp.ReadFromConn(mc.conn, proto.ReadDeadlineTime)
+	err = resp.ReadFromConnWithVer(mc.conn, proto.ReadDeadlineTime)
 	if err != nil {
 		return nil, errors.Trace(err, "Failed to read from conn, req(%v)", req)
 	}

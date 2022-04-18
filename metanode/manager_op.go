@@ -21,6 +21,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"sync/atomic"
 	"time"
 
 	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
@@ -180,9 +181,15 @@ func (m *metadataManager) opCreateInode(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
+
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
+
+	if err = m.checkMultiVersionStatus(mp.GetVolName()); err != nil {
+		return
+	}
+
 	err = mp.CreateInode(req, p)
 	// reply the operation result to the client through TCP
 	m.respondToClient(conn, p)
@@ -614,7 +621,12 @@ func (m *metadataManager) opBatchDeleteDentry(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
+	if err = m.checkMultiVersionStatus(mp.GetVolName()); err != nil {
+		return
+	}
+
 	err = mp.DeleteDentryBatch(req, p)
+
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opDeleteDentry] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -639,7 +651,9 @@ func (m *metadataManager) opTxUpdateDentry(conn net.Conn, p *Packet, remoteAddr 
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
+
 	err = mp.TxUpdateDentry(req, p)
+
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opTxUpdateDentry] req: %d - %v; resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -665,8 +679,12 @@ func (m *metadataManager) opUpdateDentry(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	err = mp.UpdateDentry(req, p)
+
+	if err = m.checkMultiVersionStatus(mp.GetVolName()); err != nil {
+		return
+	}
 	m.respondToClient(conn, p)
+
 	log.LogDebugf("%s [opUpdateDentry] req: %d - %v; resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
@@ -691,7 +709,9 @@ func (m *metadataManager) opTxMetaUnlinkInode(conn net.Conn, p *Packet, remoteAd
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
+
 	err = mp.TxUnlinkInode(req, p)
+
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opDeleteInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -832,29 +852,46 @@ func (m *metadataManager) opReadDirLimit(conn net.Conn, p *Packet,
 
 func (m *metadataManager) opMetaInodeGet(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
+
 	req := &InodeGetReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClient(conn, p)
-		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		err = errors.NewErrorf("Unmarshal [%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
+	log.LogDebugf("action[opMetaInodeGet] request %v", req)
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClient(conn, p)
-		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		err = errors.NewErrorf("getPartition [%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
 	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
 		return
 	}
 	if err = mp.InodeGet(req, p); err != nil {
-		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		err = errors.NewErrorf("InodeGet [%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 	}
-	m.respondToClient(conn, p)
+
+	if err = m.respondToClient(conn, p); err != nil {
+		log.LogDebugf("%s [opMetaInodeGet] err [%v] req: %d - %v; resp: %v, body: %s",
+			remoteAddr, err, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	}
 	log.LogDebugf("%s [opMetaInodeGet] req: %d - %v; resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+
+	if value, ok := m.volUpdating.Load(req.VolName); ok {
+		ver2Phase := value.(*verOp2Phase)
+		if ver2Phase.verSeq > req.VerSeq {
+			//reuse ExtentType to identify flag of version inconsistent between metanode and client
+			//will resp to client and make client update all streamer's extent and it's verSeq
+			p.ExtentType |= proto.MultiVersionFlag
+			p.VerSeq = ver2Phase.verSeq
+		}
+	}
+
 	return
 }
 
@@ -937,7 +974,10 @@ func (m *metadataManager) opSetAttr(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	if err = mp.SetAttr(p.Data, p); err != nil {
+	if err = m.checkMultiVersionStatus(mp.GetVolName()); err != nil {
+		return
+	}
+	if err = mp.SetAttr(req, p.Data, p); err != nil {
 		err = errors.NewErrorf("[opSetAttr] req: %v, error: %s", req, err.Error())
 	}
 	m.respondToClient(conn, p)
@@ -992,6 +1032,9 @@ func (m *metadataManager) opMetaExtentsAdd(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
+	if err = m.checkMultiVersionStatus(mp.GetVolName()); err != nil {
+		return
+	}
 	err = mp.ExtentAppend(req, p)
 	m.respondToClient(conn, p)
 	if err != nil {
@@ -1023,9 +1066,14 @@ func (m *metadataManager) opMetaExtentAddWithCheck(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	err = mp.ExtentAppendWithCheck(req, p)
-	m.respondToClient(conn, p)
-	if err != nil {
+	if err = m.checkMultiVersionStatus(mp.GetVolName()); err != nil {
+		return
+	}
+
+	if err = mp.ExtentAppendWithCheck(req, p); err != nil {
+		log.LogErrorf("%s [opMetaExtentAddWithCheck] ExtentAppendWithCheck: %s", remoteAddr, err.Error())
+	}
+	if err = m.respondToClient(conn, p); err != nil {
 		log.LogErrorf("%s [opMetaExtentAddWithCheck] ExtentAppendWithCheck: %s, "+
 			"response to client: %s", remoteAddr, err.Error(), p.GetResultMsg())
 	}
@@ -1132,6 +1180,9 @@ func (m *metadataManager) opMetaExtentsTruncate(conn net.Conn, p *Packet,
 		return
 	}
 	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	if err = m.checkMultiVersionStatus(mp.GetVolName()); err != nil {
 		return
 	}
 	mp.ExtentsTruncate(req, p)
@@ -1492,6 +1543,7 @@ func (m *metadataManager) opMetaBatchInodeGet(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
+	log.LogDebugf("action[opMetaBatchInodeGet] req %v", req)
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -1923,7 +1975,7 @@ func (m *metadataManager) opAppendMultipart(conn net.Conn, p *Packet, remote str
 	return
 }
 
-func (m *metadataManager) opListMultipart(conn net.Conn, p *Packet, remote string) (err error) {
+func (m *metadataManager) opListMultipart(conn net.Conn, p *Packet, remoteAddr string) (err error) {
 	req := &proto.ListMultipartRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -2108,5 +2160,189 @@ func (m *metadataManager) opMetaGetUniqID(conn net.Conn, p *Packet,
 	log.LogDebugf("%s [opMetaGetUniqID] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
+}
 
+func (m *metadataManager) prepareCreateVersion(req *proto.MultiVersionOpRequest) (err error, opAagin bool) {
+	var (
+		ver2Phase *verOp2Phase
+	)
+	if value, ok := m.volUpdating.Load(req.VolumeID); ok {
+		ver2Phase = value.(*verOp2Phase)
+		if req.VerSeq < ver2Phase.verSeq {
+			err = fmt.Errorf("seq %v create less than loal %v", req.VerSeq, ver2Phase.verSeq)
+			return
+		} else if req.VerSeq == ver2Phase.verPrepare {
+			if ver2Phase.status == proto.VersionWorking {
+				opAagin = true
+				return
+			}
+		}
+	}
+	ver2Phase = &verOp2Phase{}
+	ver2Phase.step = uint32(req.Op)
+	ver2Phase.status = proto.VersionWorking
+	ver2Phase.verPrepare = req.VerSeq
+
+	m.volUpdating.Store(req.VolumeID, ver2Phase)
+
+	log.LogWarnf("action[prepareCreateVersion] volume %v update to ver %v step %v",
+		req.VolumeID, req.VerSeq, ver2Phase.step)
+	return
+}
+
+func (m *metadataManager) commitCreateVersion(VolumeID string, VerSeq uint64, Op uint8) (err error) {
+
+	log.LogWarnf("action[commitCreateVersion] volume %v seq %v", VolumeID, VerSeq)
+	m.Range(func(id uint64, partition MetaPartition) bool {
+		if partition.GetVolName() == VolumeID {
+			if _, ok := partition.IsLeader(); !ok {
+				return true
+			}
+			log.LogInfof("action[commitCreateVersion] volume %v mp  %v do MultiVersionOp verseq %v", VolumeID, id, VerSeq)
+			if err = partition.MultiVersionOp(Op, VerSeq); err != nil {
+				return false
+			}
+			return true
+		}
+		return true
+	})
+	if err != nil {
+		log.LogErrorf("action[commitCreateVersion] %v mp  err %v do Decoder", VolumeID, err.Error())
+		return err
+	}
+
+	if Op == proto.DeleteVersion {
+		return
+	}
+
+	if value, ok := m.volUpdating.Load(VolumeID); ok {
+		ver2Phase := value.(*verOp2Phase)
+		log.LogWarnf("action[commitCreateVersion] try commit volume %v prepare seq %v with commit seq %v",
+			VolumeID, ver2Phase.verPrepare, VerSeq)
+		if VerSeq < ver2Phase.verSeq {
+			err = fmt.Errorf("vol %v seq %v create less than loal %v", VolumeID, VerSeq, ver2Phase.verSeq)
+			log.LogErrorf("action[commitCreateVersion] err %v", err)
+			return
+		}
+		if ver2Phase.step != proto.CreateVersionPrepare {
+			err = fmt.Errorf("vol %v step not prepare", VolumeID)
+			log.LogErrorf("action[commitCreateVersion] err %v", err)
+			return
+		}
+		ver2Phase.verSeq = VerSeq
+		ver2Phase.step = proto.CreateVersionCommit
+		ver2Phase.status = proto.VersionWorkingFinished
+		log.LogWarnf("action[commitCreateVersion] commit volume %v prepare seq %v with commit seq %v",
+			VolumeID, ver2Phase.verPrepare, VerSeq)
+		return
+	}
+
+	err = fmt.Errorf("vol %v not found", VolumeID)
+	log.LogErrorf("action[commitCreateVersion] err %v", err)
+
+	return
+}
+
+func (m *metadataManager) checkMultiVersionStatus(volName string) (err error) {
+	log.LogInfof("action[checkMultiVersionStatus] volumeName %v", volName)
+	var info *proto.VolumeVerInfo
+	if value, ok := m.volUpdating.Load(volName); ok {
+		ver2Phase := value.(*verOp2Phase)
+
+		if atomic.LoadUint32(&ver2Phase.status) != proto.VersionWorkingAbnormal &&
+			atomic.LoadUint32(&ver2Phase.step) == proto.CreateVersionPrepare {
+
+			ver2Phase.Lock() // here trylock may be better after go1.18 adapted to compile
+			defer ver2Phase.Unlock()
+
+			// check again in case of sth already happened by other goroutine during be blocked by lock
+			if atomic.LoadUint32(&ver2Phase.status) == proto.VersionWorkingAbnormal ||
+				atomic.LoadUint32(&ver2Phase.step) != proto.CreateVersionPrepare {
+				err = fmt.Errorf("volumeName %v status %v step %v",
+					volName, atomic.LoadUint32(&ver2Phase.status), atomic.LoadUint32(&ver2Phase.step))
+				log.LogErrorf("action[checkMultiVersionStatus] err %v", err)
+				return
+			}
+
+			if info, err = masterClient.AdminAPI().GetVerInfo(volName); err != nil {
+				log.LogErrorf("action[checkMultiVersionStatus] volumeName %v status %v step %v err %v",
+					volName, atomic.LoadUint32(&ver2Phase.status), atomic.LoadUint32(&ver2Phase.step), err)
+				return
+			}
+			if info.VerSeqPrepare != ver2Phase.verPrepare {
+				atomic.StoreUint32(&ver2Phase.status, proto.VersionWorkingAbnormal)
+				err = fmt.Errorf("volumeName %v status %v step %v",
+					volName, atomic.LoadUint32(&ver2Phase.status), atomic.LoadUint32(&ver2Phase.step))
+				log.LogErrorf("action[checkMultiVersionStatus] err %v", err)
+				return
+			}
+			if info.VerPrepareStatus == proto.CreateVersionCommit {
+				if err = m.commitCreateVersion(volName, info.VerSeqPrepare, proto.CreateVersionCommit); err != nil {
+					log.LogErrorf("action[checkMultiVersionStatus] err %v", err)
+					return
+				}
+			}
+		}
+	} else {
+		log.LogErrorf("action[checkMultiVersionStatus] volumeName %v not found", volName)
+	}
+	return
+}
+
+func (m *metadataManager) opMultiVersionOp(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
+	// For ack to master
+	data := p.Data
+	m.responseAckOKToMaster(conn, p)
+
+	var (
+		req       = &proto.MultiVersionOpRequest{}
+		resp      = &proto.MultiVersionOpResponse{}
+		adminTask = &proto.AdminTask{
+			Request: req,
+		}
+		opAgain bool
+	)
+
+	go func() {
+		start := time.Now()
+		decode := json.NewDecoder(bytes.NewBuffer(data))
+		decode.UseNumber()
+		if err = decode.Decode(adminTask); err != nil {
+			resp.Status = proto.TaskFailed
+			resp.Result = err.Error()
+			log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do Decoder", req.VolumeID, err.Error())
+			goto end
+		}
+
+		resp.Status = proto.TaskSucceeds
+		resp.VolumeID = req.VolumeID
+		resp.Addr = req.Addr
+		resp.VerSeq = req.VerSeq
+		resp.Op = req.Op
+
+		if req.Op == proto.CreateVersionPrepare {
+			if err, opAgain = m.prepareCreateVersion(req); err != nil || opAgain {
+				log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do Decoder", req.VolumeID, err.Error())
+				goto end
+			}
+		} else if req.Op == proto.CreateVersionCommit || req.Op == proto.DeleteVersion {
+			if err = m.commitCreateVersion(req.VolumeID, req.VerSeq, req.Op); err != nil {
+				log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do commitCreateVersion", req.VolumeID, err.Error())
+				goto end
+			}
+		}
+	end:
+		if err != nil {
+			resp.Result = err.Error()
+		}
+		adminTask.Request = nil
+		adminTask.Response = resp
+		m.respondToMaster(adminTask)
+		data, _ := json.Marshal(resp)
+		log.LogInfof("action[opMultiVersionOp] %s pkt %s, resp success req:%v; respAdminTask: %v, resp: %v, cost %s",
+			remoteAddr, p.String(), req, adminTask, string(data), time.Since(start).String())
+	}()
+
+	return
 }

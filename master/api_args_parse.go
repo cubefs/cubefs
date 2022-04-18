@@ -1053,6 +1053,7 @@ func parseAndExtractSetNodeSetInfoParams(r *http.Request) (params map[string]int
 		nodesetId, err = strconv.ParseUint(value, 10, 64)
 		if err != nil {
 			err = unmatchedKey(idKey)
+			err = unmatchedKey(idKey)
 			return
 		}
 		params[idKey] = nodesetId

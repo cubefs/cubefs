@@ -178,6 +178,10 @@ const (
 	opFSMUniqCheckerEvict    = 65
 	opFSMUnlinkInodeOnce     = 66
 	opFSMCreateLinkInodeOnce = 67
+
+	opFSMVersionOp   = 68
+	opFSMExtentSplit = 69
+	opFSMDelVer      = 70
 )
 
 var (

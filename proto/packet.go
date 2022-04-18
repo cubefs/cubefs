@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cubefs/cubefs/util/log"
 	"io"
 	"net"
 	"strconv"
@@ -164,6 +165,13 @@ const (
 	//Operations: Client -> MetaNode.
 	OpMetaGetUniqID uint8 = 0xAC
 
+	//Multi version snapshot
+	OpRandomWriteAppend     uint8 = 0xB1
+	OpSyncRandomWriteAppend uint8 = 0xB2
+	OpRandomWriteVer        uint8 = 0xB3
+	OpSyncRandomWriteVer    uint8 = 0xB4
+	OpSyncRandomWriteVerRsp uint8 = 0xB5
+
 	// Commons
 	OpNoSpaceErr         uint8 = 0xEE
 	OpDirQuota           uint8 = 0xF1
@@ -193,10 +201,12 @@ const (
 	OpMetaExtentsEmpty       uint8 = 0xDF
 	OpMetaBatchObjExtentsAdd uint8 = 0xD0
 	OpMetaClearInodeCache    uint8 = 0xD1
-	OpMetaBatchSetXAttr      uint8 = 0xD2
-	OpMetaGetAllXAttr        uint8 = 0xD3
+
+	OpMetaBatchSetXAttr uint8 = 0xD2
+	OpMetaGetAllXAttr   uint8 = 0xD3
 
 	//transaction error
+
 	OpTxInodeInfoNotExistErr  uint8 = 0xE0
 	OpTxConflictErr           uint8 = 0xE1
 	OpTxDentryInfoNotExistErr uint8 = 0xE2
@@ -211,6 +221,10 @@ const (
 	OpTxSetStateErr           uint8 = 0xEB
 	OpTxCommitErr             uint8 = 0xEC
 	OpTxRollbackErr           uint8 = 0xED
+
+	// multiVersion to dp/mp
+	OpVersionOperation uint8 = 0xD5
+	OpSplitMarkDelete  uint8 = 0xD6
 )
 
 const (
@@ -221,6 +235,31 @@ const (
 	BatchDeleteExtentReadDeadLineTime         = 120
 	GetAllWatermarksDeadLineTime              = 60
 	DefaultClusterLoadFactor          float64 = 10
+	MultiVersionFlag                          = 0x80
+)
+
+// multi version operation
+const (
+	CreateVersion        = 1
+	DeleteVersion        = 2
+	CreateVersionPrepare = 3
+	CreateVersionCommit  = 4
+)
+
+// stage of version building
+const (
+	VersionInit            = 0
+	VersionWorking         = 1
+	VersionWorkingTimeOut  = 2
+	VersionWorkingAbnormal = 3
+	VersionWorkingFinished = 4
+)
+
+// status of version
+const (
+	VersionNormal   = 1
+	VersionDeleted  = 2
+	VersionDeleting = 3
 )
 
 const (
@@ -236,7 +275,7 @@ const (
 // Packet defines the packet structure.
 type Packet struct {
 	Magic              uint8
-	ExtentType         uint8
+	ExtentType         uint8 // the highest bit be set while rsp to client if version not consistent then Verseq be valid
 	Opcode             uint8
 	ResultCode         uint8
 	RemainingFollowers uint8
@@ -253,6 +292,7 @@ type Packet struct {
 	StartT             int64
 	mesg               string
 	HasPrepare         bool
+	VerSeq             uint64 // only used in mod request to datanode
 }
 
 // NewPacket returns a new packet.
@@ -284,7 +324,8 @@ func (p *Packet) GetCopy() *Packet {
 }
 
 func (p *Packet) String() string {
-	return fmt.Sprintf("ReqID(%v)Op(%v)PartitionID(%v)ResultCode(%v)", p.ReqID, p.GetOpMsg(), p.PartitionID, p.GetResultMsg())
+	return fmt.Sprintf("ReqID(%v)Op(%v)PartitionID(%v)ResultCode(%v)ExID(%v)ExtOffset(%v)KernelOff(%v)Type(%v)Seq(%v)",
+		p.ReqID, p.GetOpMsg(), p.PartitionID, p.GetResultMsg(), p.ExtentID, p.ExtentOffset, p.KernelOffset, p.ExtentType, p.VerSeq)
 }
 
 // GetStoreType returns the store type.
@@ -311,10 +352,16 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpCreateExtent"
 	case OpMarkDelete:
 		m = "OpMarkDelete"
+	case OpSplitMarkDelete:
+		m = "OpMarkDelete"
 	case OpWrite:
 		m = "OpWrite"
 	case OpRandomWrite:
 		m = "OpRandomWrite"
+	case OpRandomWriteAppend:
+		m = "OpRandomWriteAppend"
+	case OpRandomWriteVer:
+		m = "OpRandomWriteVer"
 	case OpRead:
 		m = "Read"
 	case OpStreamRead:
@@ -413,6 +460,10 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpSyncWrite"
 	case OpSyncRandomWrite:
 		m = "OpSyncRandomWrite"
+	case OpSyncRandomWriteVer:
+		m = "OpSyncRandomWriteVer"
+	case OpSyncRandomWriteAppend:
+		m = "OpSyncRandomWriteAppend"
 	case OpReadTinyDeleteRecord:
 		m = "OpReadTinyDeleteRecord"
 	case OpPing:
@@ -597,6 +648,9 @@ func (p *Packet) MarshalHeader(out []byte) {
 	binary.BigEndian.PutUint64(out[33:41], uint64(p.ExtentOffset))
 	binary.BigEndian.PutUint64(out[41:49], uint64(p.ReqID))
 	binary.BigEndian.PutUint64(out[49:util.PacketHeaderSize], p.KernelOffset)
+	if p.Opcode == OpRandomWriteVer || p.ExtentType&MultiVersionFlag > 0 {
+		binary.BigEndian.PutUint64(out[util.PacketHeaderSize:util.PacketHeaderSize+8], p.VerSeq)
+	}
 	return
 }
 
@@ -619,6 +673,10 @@ func (p *Packet) UnmarshalHeader(in []byte) error {
 	p.ExtentOffset = int64(binary.BigEndian.Uint64(in[33:41]))
 	p.ReqID = int64(binary.BigEndian.Uint64(in[41:49]))
 	p.KernelOffset = binary.BigEndian.Uint64(in[49:util.PacketHeaderSize])
+
+	// header opcode OpRandomWriteVer should not unmarshal here due to header size is const
+	// the ver param should read at the higher level directly
+	//if p.Opcode ==OpRandomWriteVer {
 
 	return nil
 }
@@ -660,10 +718,15 @@ func (p *Packet) WriteToNoDeadLineConn(c net.Conn) (err error) {
 
 // WriteToConn writes through the given connection.
 func (p *Packet) WriteToConn(c net.Conn) (err error) {
-	header, err := Buffers.Get(util.PacketHeaderSize)
-	if err != nil {
-		header = make([]byte, util.PacketHeaderSize)
+	headSize := util.PacketHeaderSize
+	if p.Opcode == OpRandomWriteVer || p.ExtentType&MultiVersionFlag > 0 {
+		headSize = util.PacketHeaderVerSize
 	}
+	header, err := Buffers.Get(headSize)
+	if err != nil {
+		header = make([]byte, headSize)
+	}
+	// log.LogErrorf("action[WriteToConn] buffer get nil,opcode %v head len [%v]", p.Opcode, len(header))
 	defer Buffers.Put(header)
 	c.SetWriteDeadline(time.Now().Add(WriteDeadlineTime * time.Second))
 	p.MarshalHeader(header)
@@ -683,6 +746,68 @@ func ReadFull(c net.Conn, buf *[]byte, readSize int) (err error) {
 	*buf = make([]byte, readSize)
 	_, err = io.ReadFull(c, (*buf)[:readSize])
 	return
+}
+
+// ReadFromConn reads the data from the given connection.
+// Recognize the version bit and parse out version,
+// to avoid version field rsp back , the rsp of random write from datanode with replace OpRandomWriteVer to OpRandomWriteVerRsp
+func (p *Packet) ReadFromConnWithVer(c net.Conn, timeoutSec int) (err error) {
+	if timeoutSec != NoReadDeadlineTime {
+		c.SetReadDeadline(time.Now().Add(time.Second * time.Duration(timeoutSec)))
+	} else {
+		c.SetReadDeadline(time.Time{})
+	}
+
+	header, err := Buffers.Get(util.PacketHeaderSize)
+	if err != nil {
+		header = make([]byte, util.PacketHeaderSize)
+	}
+	defer Buffers.Put(header)
+	var n int
+	if n, err = io.ReadFull(c, header); err != nil {
+		return
+	}
+	if n != util.PacketHeaderSize {
+		return syscall.EBADMSG
+	}
+	if err = p.UnmarshalHeader(header); err != nil {
+		return
+	}
+
+	log.LogDebugf("action[ReadFromConnWithVer] verseq %v", p.VerSeq)
+
+	if p.ExtentType&MultiVersionFlag > 0 {
+		log.LogDebug("action[ReadFromConnWithVer] verseq %v", p.VerSeq)
+		ver := make([]byte, 8)
+		if _, err = io.ReadFull(c, ver); err != nil {
+			return
+		}
+		p.VerSeq = binary.BigEndian.Uint64(ver)
+		log.LogDebug("action[ReadFromConnWithVer] verseq %v", p.VerSeq)
+	}
+
+	if p.ArgLen > 0 {
+		p.Arg = make([]byte, int(p.ArgLen))
+		if _, err = io.ReadFull(c, p.Arg[:int(p.ArgLen)]); err != nil {
+			return err
+		}
+	}
+
+	if p.Size < 0 {
+		return syscall.EBADMSG
+	}
+	size := p.Size
+	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead) && p.ResultCode == OpInitResultCode {
+		size = 0
+	}
+	p.Data = make([]byte, size)
+	if n, err = io.ReadFull(c, p.Data[:size]); err != nil {
+		return err
+	}
+	if n != int(size) {
+		return syscall.EBADMSG
+	}
+	return nil
 }
 
 // ReadFromConn reads the data from the given connection.
@@ -789,7 +914,7 @@ func (p *Packet) GetUniqueLogId() (m string) {
 		return
 	}
 	m = fmt.Sprintf("Req(%v)_Partition(%v)_", p.ReqID, p.PartitionID)
-	if p.ExtentType == TinyExtentType && p.Opcode == OpMarkDelete && len(p.Data) > 0 {
+	if (p.Opcode == OpSplitMarkDelete || (p.ExtentType == TinyExtentType && p.Opcode == OpMarkDelete)) && len(p.Data) > 0 {
 		ext := new(TinyExtentDeleteRecord)
 		err := json.Unmarshal(p.Data, ext)
 		if err == nil {
@@ -820,7 +945,7 @@ func (p *Packet) GetUniqueLogId() (m string) {
 
 func (p *Packet) setPacketPrefix() {
 	p.mesg = fmt.Sprintf("Req(%v)_Partition(%v)_", p.ReqID, p.PartitionID)
-	if p.ExtentType == TinyExtentType && p.Opcode == OpMarkDelete && len(p.Data) > 0 {
+	if (p.Opcode == OpSplitMarkDelete || (p.ExtentType == TinyExtentType && p.Opcode == OpMarkDelete)) && len(p.Data) > 0 {
 		ext := new(TinyExtentDeleteRecord)
 		err := json.Unmarshal(p.Data, ext)
 		if err == nil {
@@ -879,5 +1004,7 @@ func (p *Packet) IsBatchDeleteExtents() bool {
 func InitBufferPool(bufLimit int64) {
 	buf.NormalBuffersTotalLimit = bufLimit
 	buf.HeadBuffersTotalLimit = bufLimit
+	buf.HeadVerBuffersTotalLimit = bufLimit
+
 	Buffers = buf.NewBufferPool()
 }
