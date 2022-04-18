@@ -153,6 +153,13 @@ const (
 	AdminDeleteMetaReplica             = "/metaReplica/delete"
 	AdminPutDataPartitions             = "/dataPartitions/set"
 
+	//admin multi version snapshot
+	AdminCreateVersion     = "/multiVer/create"
+	AdminDelVersion        = "/multiVer/del"
+	AdminGetVersionInfo    = "/multiVer/get"
+	AdminGetAllVersionInfo = "/multiVer/getAll"
+	AdminGetVolVer         = "/vol/getVer"
+
 	// Operation response
 	GetMetaNodeTaskResponse = "/metaNode/response" // Method: 'POST', ContentType: 'application/json'
 	GetDataNodeTaskResponse = "/dataNode/response" // Method: 'POST', ContentType: 'application/json'
@@ -336,6 +343,14 @@ type UidSpaceRsp struct {
 	Reserve     string
 }
 
+type VolumeVerInfo struct {
+	Name             string
+	VerSeq           uint64
+	VerSeqPrepare    uint64
+	VerPrepareStatus uint8
+	Enabled          bool
+}
+
 // ClusterInfo defines the cluster infomation.
 type ClusterInfo struct {
 	Cluster                     string
@@ -364,6 +379,8 @@ type CreateDataPartitionRequest struct {
 	CreateType          int
 	LeaderSize          int
 	DecommissionedDisks []string
+	IsMultiVer          bool
+	VerSeq              uint64
 }
 
 // CreateDataPartitionResponse defines the response to the request of creating a data partition.
@@ -469,6 +486,24 @@ type QosToDataNode struct {
 	QosIopsWriteLimit uint64
 	QosFlowReadLimit  uint64
 	QosFlowWriteLimit uint64
+}
+
+// MultiVersionOpRequest defines the request of
+type MultiVersionOpRequest struct {
+	VolumeID string
+	VerSeq   uint64
+	Op       uint8
+	Addr     string
+}
+
+// MultiVersionOpResponse defines the response to the request of l.
+type MultiVersionOpResponse struct {
+	VolumeID string
+	Addr     string
+	Op       uint8
+	VerSeq   uint64
+	Status   uint8
+	Result   string
 }
 
 type QuotaHeartBeatInfos struct {
@@ -870,6 +905,8 @@ type SimpleVolView struct {
 	CacheRule        string
 	PreloadCapacity  uint64
 	Uids             []UidSimpleInfo
+	// multi version snapsho t
+	LatestVer uint64
 }
 
 type NodeSetInfo struct {

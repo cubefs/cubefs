@@ -1141,6 +1141,34 @@ func (c *Cluster) putVol(vol *Vol) {
 	}
 }
 
+func (c *Cluster) getVolVer(volName string) (info *proto.VolumeVerInfo, err error) {
+	c.volMutex.RLock()
+	defer c.volMutex.RUnlock()
+
+	var verSeqPrepare uint64
+
+	vol, ok := c.vols[volName]
+	if !ok {
+		err = proto.ErrVolNotExists
+		return
+	}
+	if vol.VersionMgr.enabled {
+		verSeqPrepare = vol.VersionMgr.prepareCommit.prepareInfo.Ver
+	}
+	var pStatus uint8
+	if vol.VersionMgr.prepareCommit.prepareInfo != nil {
+		pStatus = vol.VersionMgr.prepareCommit.prepareInfo.Status
+	}
+	info = &proto.VolumeVerInfo{
+		Name:             volName,
+		VerSeq:           vol.VersionMgr.verSeq,
+		VerSeqPrepare:    verSeqPrepare,
+		VerPrepareStatus: pStatus,
+		Enabled:          vol.VersionMgr.enabled,
+	}
+	return
+}
+
 func (c *Cluster) getVol(volName string) (vol *Vol, err error) {
 	c.volMutex.RLock()
 	defer c.volMutex.RUnlock()
@@ -2929,6 +2957,10 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 
 	vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
 	vol.updateViewCache(c)
+	if err = vol.VersionMgr.init(c); err != nil {
+		log.LogError("init dataPartition error in verMgr init", err.Error())
+	}
+
 	log.LogInfof("action[createVol] vol[%v],readableAndWritableCnt[%v]", req.name, readWriteDataPartitions)
 	return
 

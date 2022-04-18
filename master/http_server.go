@@ -348,6 +348,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminDeleteVol).
 		HandlerFunc(m.markDeleteVol)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGetVolVer).
+		HandlerFunc(m.getVolVer)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminUpdateVol).
 		HandlerFunc(m.updateVol)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -374,6 +377,21 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminOpFollowerPartitionsRead).
 		HandlerFunc(m.OpFollowerPartitionsRead)
+
+	// multi version snapshot APIs
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminCreateVersion).
+		HandlerFunc(m.CreateVersion)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminDelVersion).
+		HandlerFunc(m.DelVersion)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminGetVersionInfo).
+		HandlerFunc(m.GetVersionInfo)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminGetAllVersionInfo).
+		HandlerFunc(m.GetAllVersionInfo)
+
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.GetDataNodeTaskResponse).

@@ -27,10 +27,13 @@ import (
 
 var (
 	ExtentKeyHeader       = []byte("EKV2")
+	ExtentKeyHeaderV3     = []byte("EKV3")
 	ExtentKeyHeaderSize   = len(ExtentKeyHeader)
 	ExtentLength          = 40
 	ExtentKeyChecksumSize = 4
+	ExtentVerFieldSize    = 9 // ver(8) and isSplit(1)
 	ExtentV2Length        = ExtentKeyHeaderSize + ExtentLength + ExtentKeyChecksumSize
+	ExtentV3Length        = ExtentKeyHeaderSize + ExtentLength + ExtentKeyChecksumSize + ExtentVerFieldSize
 	InvalidKey            = errors.New("invalid key error")
 	InvalidKeyHeader      = errors.New("invalid extent v2 key header error")
 	InvalidKeyCheckSum    = errors.New("invalid extent v2 key checksum error")
@@ -38,17 +41,23 @@ var (
 
 // ExtentKey defines the extent key struct.
 type ExtentKey struct {
-	FileOffset   uint64
+	FileOffset   uint64 // offset in file
 	PartitionId  uint64
 	ExtentId     uint64
-	ExtentOffset uint64
-	Size         uint32
+	ExtentOffset uint64 // offset in extent like tiny extent offset large than 0,normal is 0
+	Size         uint32 // extent real size?
 	CRC          uint32
+
+	//snapshot
+	VerSeq  uint64
+	ModGen  uint64
+	IsSplit bool
 }
 
 // String returns the string format of the extentKey.
 func (k ExtentKey) String() string {
-	return fmt.Sprintf("ExtentKey{FileOffset(%v),Partition(%v),ExtentID(%v),ExtentOffset(%v),Size(%v),CRC(%v)}", k.FileOffset, k.PartitionId, k.ExtentId, k.ExtentOffset, k.Size, k.CRC)
+	return fmt.Sprintf("ExtentKey{FileOffset(%v),VerSeq(%v) Partition(%v),ExtentID(%v),ExtentOffset(%v),Size(%v),CRC(%v)}",
+		k.FileOffset, k.VerSeq, k.PartitionId, k.ExtentId, k.ExtentOffset, k.Size, k.CRC)
 }
 
 // Less defines the less comparator.
@@ -76,7 +85,11 @@ func (k *ExtentKey) MarshalBinaryExt(data []byte) {
 }
 
 // MarshalBinary marshals the binary format of the extent key.
-func (k *ExtentKey) MarshalBinary() ([]byte, error) {
+func (k *ExtentKey) MarshalBinary(v3 bool) ([]byte, error) {
+	extLen := ExtentLength
+	if v3 {
+		extLen += ExtentVerFieldSize
+	}
 
 	buf := bytes.NewBuffer(make([]byte, 0, ExtentLength))
 	if err := binary.Write(buf, binary.BigEndian, k.FileOffset); err != nil {
@@ -97,11 +110,19 @@ func (k *ExtentKey) MarshalBinary() ([]byte, error) {
 	if err := binary.Write(buf, binary.BigEndian, k.CRC); err != nil {
 		return nil, err
 	}
+	if v3 {
+		if err := binary.Write(buf, binary.BigEndian, k.VerSeq); err != nil {
+			return nil, err
+		}
+		if err := binary.Write(buf, binary.BigEndian, k.IsSplit); err != nil {
+			return nil, err
+		}
+	}
 	return buf.Bytes(), nil
 }
 
 // UnmarshalBinary unmarshals the binary format of the extent key.
-func (k *ExtentKey) UnmarshalBinary(buf *bytes.Buffer) (err error) {
+func (k *ExtentKey) UnmarshalBinary(buf *bytes.Buffer, v3 bool) (err error) {
 	if err = binary.Read(buf, binary.BigEndian, &k.FileOffset); err != nil {
 		return
 	}
@@ -117,15 +138,25 @@ func (k *ExtentKey) UnmarshalBinary(buf *bytes.Buffer) (err error) {
 	if err = binary.Read(buf, binary.BigEndian, &k.Size); err != nil {
 		return
 	}
+
+	if v3 {
+		if err = binary.Read(buf, binary.BigEndian, &k.VerSeq); err != nil {
+			return
+		}
+		if err = binary.Read(buf, binary.BigEndian, &k.IsSplit); err != nil {
+			return
+		}
+	}
+
 	if err = binary.Read(buf, binary.BigEndian, &k.CRC); err != nil {
 		return
 	}
 	return
 }
 
-func (k *ExtentKey) CheckSum() uint32 {
+func (k *ExtentKey) CheckSum(v3 bool) uint32 {
 	sign := crc32.NewIEEE()
-	buf, err := k.MarshalBinary()
+	buf, err := k.MarshalBinary(v3)
 	if err != nil {
 		log.LogErrorf("[ExtentKey] extentKey %v CRC32 error: %v", k, err)
 		return 0
@@ -136,9 +167,15 @@ func (k *ExtentKey) CheckSum() uint32 {
 }
 
 // marshal extentkey to []bytes with v2 of magic head
-func (k *ExtentKey) MarshalBinaryWithCheckSum() ([]byte, error) {
-	buf := bytes.NewBuffer(make([]byte, 0, ExtentV2Length))
-	if err := binary.Write(buf, binary.BigEndian, ExtentKeyHeader); err != nil {
+func (k *ExtentKey) MarshalBinaryWithCheckSum(v3 bool) ([]byte, error) {
+	extLen := ExtentV2Length
+	flag := ExtentKeyHeader
+	if v3 {
+		extLen = ExtentV3Length
+		flag = ExtentKeyHeaderV3
+	}
+	buf := bytes.NewBuffer(make([]byte, 0, extLen))
+	if err := binary.Write(buf, binary.BigEndian, flag); err != nil {
 		return nil, err
 	}
 	if err := binary.Write(buf, binary.BigEndian, k.FileOffset); err != nil {
@@ -159,22 +196,40 @@ func (k *ExtentKey) MarshalBinaryWithCheckSum() ([]byte, error) {
 	if err := binary.Write(buf, binary.BigEndian, k.CRC); err != nil {
 		return nil, err
 	}
-	if err := binary.Write(buf, binary.BigEndian, k.CheckSum()); err != nil {
+	if v3 {
+		if err := binary.Write(buf, binary.BigEndian, k.VerSeq); err != nil {
+			return nil, err
+		}
+		if err := binary.Write(buf, binary.BigEndian, k.IsSplit); err != nil {
+			return nil, err
+		}
+	}
+	if err := binary.Write(buf, binary.BigEndian, k.CheckSum(v3)); err != nil {
 		return nil, err
 	}
+
 	return buf.Bytes(), nil
 }
 
 // unmarshal extentkey from bytes.Buffer with checksum
 func (k *ExtentKey) UnmarshalBinaryWithCheckSum(buf *bytes.Buffer) (err error) {
-	var checksum uint32
+	var (
+		checksum uint32
+		v3       bool
+	)
 	magic := make([]byte, ExtentKeyHeaderSize)
+
 	if err = binary.Read(buf, binary.BigEndian, magic); err != nil {
 		return
 	}
+	log.LogDebugf("action[UnmarshalBinaryWithCheckSum] err header magic %v", string(magic))
 	if r := bytes.Compare(magic, ExtentKeyHeader); r != 0 {
-		err = InvalidKeyHeader
-		return
+		if r = bytes.Compare(magic, ExtentKeyHeaderV3); r != 0 {
+			log.LogErrorf("action[UnmarshalBinaryWithCheckSum] err header magic %v", string(magic))
+			err = InvalidKeyHeader
+			return
+		}
+		v3 = true
 	}
 	if err = binary.Read(buf, binary.BigEndian, &k.FileOffset); err != nil {
 		return
@@ -194,10 +249,21 @@ func (k *ExtentKey) UnmarshalBinaryWithCheckSum(buf *bytes.Buffer) (err error) {
 	if err = binary.Read(buf, binary.BigEndian, &k.CRC); err != nil {
 		return
 	}
+
+	if v3 {
+		if err = binary.Read(buf, binary.BigEndian, &k.VerSeq); err != nil {
+			return
+		}
+		if err = binary.Read(buf, binary.BigEndian, &k.IsSplit); err != nil {
+			return
+		}
+	}
+
 	if err = binary.Read(buf, binary.BigEndian, &checksum); err != nil {
 		return
 	}
-	if k.CheckSum() != checksum {
+
+	if k.CheckSum(v3) != checksum {
 		err = InvalidKeyCheckSum
 		return
 	}

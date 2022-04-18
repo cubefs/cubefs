@@ -46,11 +46,8 @@ const (
 	cfgDomainBuildAsPossible            = "faultDomainBuildAsPossible"
 	cfgmetaPartitionInodeIdStep         = "metaPartitionInodeIdStep"
 	cfgMaxQuotaNumPerVol                = "maxQuotaNumPerVol"
-<<<<<<< HEAD
 	disableAutoCreate                   = "disableAutoCreate"
-=======
 	cfgMonitorPushAddr                  = "monitorPushAddr"
->>>>>>> 833664d8a... feat: support the master to uniformly configure the push gateway address of the data reported by the client
 )
 
 // default value

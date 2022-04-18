@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"net"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -47,6 +48,13 @@ const (
 	streamWriterFlushPeriod       = 3
 	streamWriterIdleTimeoutPeriod = 10
 )
+
+// VerUpdateRequest defines an verseq update request.
+type VerUpdateRequest struct {
+	err    error
+	verSeq uint64
+	done   chan struct{}
+}
 
 // OpenRequest defines an open request.
 type OpenRequest struct {
@@ -122,6 +130,7 @@ func (s *Streamer) IssueWriteRequest(offset int, data []byte, flags int, checkFu
 	err = request.err
 	write = request.writeBytes
 	writeRequestPool.Put(request)
+	log.LogDebugf("action[IssueWriteRequest] requst done!")
 	return
 }
 
@@ -129,7 +138,9 @@ func (s *Streamer) IssueFlushRequest() error {
 	request := flushRequestPool.Get().(*FlushRequest)
 	request.done = make(chan struct{}, 1)
 	s.request <- request
+	log.LogDebugf("action[IssueFlushRequest] wait")
 	<-request.done
+	log.LogDebugf("action[IssueFlushRequest] done")
 	err := request.err
 	flushRequestPool.Put(request)
 	return err
@@ -166,6 +177,17 @@ func (s *Streamer) IssueEvictRequest() error {
 	err := request.err
 	evictRequestPool.Put(request)
 	return err
+}
+
+func (s *Streamer) GetStoreMod(offset int, size int) (storeMode int) {
+	// Small files are usually written in a single write, so use tiny extent
+	// store only for the first write operation.
+	if offset > 0 || offset+size > s.tinySizeLimit() {
+		storeMode = proto.NormalExtentType
+	} else {
+		storeMode = proto.TinyExtentType
+	}
+	return
 }
 
 func (s *Streamer) server() {
@@ -252,6 +274,11 @@ func (s *Streamer) abortRequest(request interface{}) {
 }
 
 func (s *Streamer) handleRequest(request interface{}) {
+	if atomic.LoadInt32(&s.needUpdateVer) == 1 {
+		s.closeOpenHandler()
+		atomic.StoreInt32(&s.needUpdateVer, 0)
+	}
+
 	switch request := request.(type) {
 	case *OpenRequest:
 		s.open()
@@ -271,17 +298,25 @@ func (s *Streamer) handleRequest(request interface{}) {
 	case *EvictRequest:
 		request.err = s.evict()
 		request.done <- struct{}{}
+	case *VerUpdateRequest:
+		request.err = s.updateVer(request.verSeq)
+		request.done <- struct{}{}
 	default:
 	}
+
 }
 
 func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() error) (total int, err error) {
-	var direct bool
+	var (
+		direct     bool
+		retryTimes int8
+	)
 
 	if flags&proto.FlagsSyncWrite != 0 {
 		direct = true
 	}
-
+	log.LogDebugf("action[steamer.write] inode %v offset %v size %v", s.inode, offset, size)
+begin:
 	if flags&proto.FlagsAppend != 0 {
 		filesize, _ := s.extents.Size()
 		offset = filesize
@@ -305,6 +340,8 @@ func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() 
 		if err != nil {
 			return
 		}
+		// some extent key in requests with partition id 0 means it's append operation and on flight.
+		// need to flush and get the right key then used to make modification
 		requests = s.extents.PrepareWriteRequests(offset, size, data)
 		log.LogDebugf("Streamer write: ino(%v) prepared requests after flush(%v)", s.inode, requests)
 		break
@@ -325,6 +362,37 @@ func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() 
 				}
 			}
 
+			log.LogDebugf("action[streamer.write] inode [%v] latest seq [%v] extentkey seq [%v]  info [%v]",
+				s.inode, s.verSeq, req.ExtentKey.VerSeq, req.ExtentKey)
+
+			if req.ExtentKey.VerSeq == s.verSeq {
+				log.LogDebugf("action[streamer.write] over write extent key (%v)", req.ExtentKey)
+				writeSize, err = s.doOverwrite(req, direct)
+				if err == proto.ErrCodeVersionOp {
+					log.LogDebugf("action[streamer.write] write need version update")
+					if err = s.GetExtents(); err != nil {
+						log.LogErrorf("action[streamer.write] err %v", err)
+						return
+					}
+					if retryTimes > 3 {
+						err = proto.ErrCodeVersionOp
+						log.LogWarnf("action[streamer.write] err %v", err)
+						return
+					}
+					time.Sleep(time.Millisecond * 100)
+					retryTimes++
+					log.LogDebugf("action[streamer.write] err %v retryTimes %v", err, retryTimes)
+					goto begin
+				}
+				log.LogDebugf("action[streamer.write] err %v retryTimes %v", err, retryTimes)
+			} else {
+				log.LogDebugf("action[streamer.write] doOverwriteByAppend extent key (%v)", req.ExtentKey)
+				writeSize, err = s.doOverwriteByAppend(req, direct)
+			}
+			if s.client.bcacheEnable {
+				cacheKey := util.GenerateKey(s.client.volumeName, s.inode, uint64(req.FileOffset))
+				go s.client.evictBcache(cacheKey)
+			}
 		} else {
 			if !isChecked && checkFunc != nil {
 				isChecked = true
@@ -332,6 +400,7 @@ func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() 
 					return
 				}
 			}
+			log.LogDebugf("action[streamer.write] doWrite req %v FileOffset %v size %v", req.ExtentKey, req.FileOffset, req.Size)
 			writeSize, err = s.doWrite(req.Data, req.FileOffset, req.Size, direct)
 		}
 		if err != nil {
@@ -345,6 +414,130 @@ func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() 
 		log.LogDebugf("Streamer write: ino(%v) filesize changed to (%v)", s.inode, offset+total)
 	}
 	log.LogDebugf("Streamer write exit: ino(%v) offset(%v) size(%v) done total(%v) err(%v)", s.inode, offset, size, total, err)
+	return
+}
+
+func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool) (total int, err error) {
+	var (
+		once   sync.Once
+		verOff int64
+		dp     *wrapper.DataPartition
+	)
+
+	log.LogDebugf("action[doOverwriteByAppend] enter in req %v", req)
+
+	err = s.flush()
+	if err != nil {
+		return
+	}
+
+	offset := req.FileOffset
+	size := req.Size
+
+	// the extent key needs to be updated because when preparing the requests,
+	// the obtained extent key could be a local key which can be inconsistent with the remote key.
+	req.ExtentKey = s.extents.Get(uint64(offset))
+	ekFileOffset := int(req.ExtentKey.FileOffset)
+	if req.ExtentKey == nil {
+		err = errors.New(fmt.Sprintf("doOverwrite: extent key not exist, ino(%v) ekFileOffset(%v) ek(%v)", s.inode, ekFileOffset, req.ExtentKey))
+		return
+	}
+
+	if dp, err = s.client.dataWrapper.GetDataPartition(req.ExtentKey.PartitionId); err != nil {
+		// TODO unhandled error
+		errors.Trace(err, "doOverwrite: ino(%v) failed to get datapartition, ek(%v)", s.inode, req.ExtentKey)
+		return
+	}
+
+	retry := true
+	if proto.IsCold(s.client.volumeType) {
+		retry = false
+	}
+	log.LogDebugf("action[doOverwriteByAppend] data process")
+	sc := NewStreamConn(dp, false)
+	for total < size { // normally should only run once due to key exist in the system must be less than BlockSize
+		// right position in extent:offset-ekFileOffset+total+ekExtOffset .
+		// ekExtOffset will be set by replay packet at addExtentInfo(datanode)
+		reqPacket := NewOverwriteByAppendPacket(dp, req.ExtentKey.ExtentId, 0, s.inode, offset)
+		if direct {
+			reqPacket.Opcode = proto.OpSyncRandomWriteAppend
+		}
+		if req.ExtentKey.ExtentId <= storage.TinyExtentCount {
+			reqPacket.ExtentType = proto.TinyExtentType
+		}
+
+		packSize := util.Min(size-total, util.BlockSize)
+		copy(reqPacket.Data[:packSize], req.Data[total:total+packSize])
+		reqPacket.Size = uint32(packSize)
+		reqPacket.CRC = crc32.ChecksumIEEE(reqPacket.Data[:packSize])
+
+		replyPacket := new(Packet)
+		err = sc.Send(&retry, reqPacket, func(conn *net.TCPConn) (error, bool) {
+			e := replyPacket.ReadFromConn(conn, proto.ReadDeadlineTime)
+			if e != nil {
+				log.LogWarnf("Stream Writer doOverwrite: ino(%v) failed to read from connect, req(%v) err(%v)", s.inode, reqPacket, e)
+				// Upon receiving TryOtherAddrError, other hosts will be retried.
+				return TryOtherAddrError, false
+			}
+
+			if replyPacket.ResultCode == proto.OpAgain {
+				return nil, true
+			}
+
+			if replyPacket.ResultCode == proto.OpTryOtherAddr {
+				e = TryOtherAddrError
+				log.LogDebugf("action[doOverwriteByAppend] data process err %v", e)
+			}
+			return e, false
+		})
+
+		proto.Buffers.Put(reqPacket.Data)
+		reqPacket.Data = nil
+		log.LogDebugf("doOverwrite: ino(%v) req(%v) reqPacket(%v) err(%v) replyPacket(%v)", s.inode, req, reqPacket, err, replyPacket)
+
+		if err != nil || replyPacket.ResultCode != proto.OpOk {
+			err = errors.New(fmt.Sprintf("doOverwrite: failed or reply NOK: err(%v) ino(%v) req(%v) replyPacket(%v)", err, s.inode, req, replyPacket))
+			log.LogErrorf("action[doOverwriteByAppend] data process err %v", err)
+			break
+		}
+
+		if !reqPacket.isValidWriteReply(replyPacket) || reqPacket.CRC != replyPacket.CRC {
+			err = errors.New(fmt.Sprintf("doOverwrite: is not the corresponding reply, ino(%v) req(%v) replyPacket(%v)", s.inode, req, replyPacket))
+			log.LogErrorf("action[doOverwriteByAppend] data process err %v", err)
+			break
+		}
+
+		once.Do(func() {
+			verOff = replyPacket.ExtentOffset
+			log.LogWarnf("action[doOverwriteByAppend] data process verOff be set %v", verOff)
+		})
+
+		total += packSize
+	}
+	if err != nil {
+		log.LogErrorf("action[doOverwriteByAppend] data process err %v", err)
+		return
+	}
+	extKey := &proto.ExtentKey{
+		FileOffset:   uint64(req.FileOffset),
+		PartitionId:  req.ExtentKey.PartitionId,
+		ExtentId:     req.ExtentKey.ExtentId,
+		ExtentOffset: uint64(verOff),
+		Size:         uint32(total),
+		VerSeq:       s.verSeq,
+		ModGen:       req.ExtentKey.ModGen,
+	}
+	log.LogDebugf("action[doOverwriteByAppend] local cache process start extKey %v", extKey)
+	if err = s.extents.SplitExtentKey(extKey); err != nil {
+		log.LogErrorf("action[doOverwriteByAppend] local cache process err %v", err)
+		return
+	}
+	log.LogDebugf("action[doOverwriteByAppend] meta extent split with ek (%v)", extKey)
+	if err = s.client.splitExtentKey(s.parentInode, s.inode, *extKey); err != nil {
+		log.LogErrorf("action[doOverwriteByAppend] lmeta extent split process err %v", err)
+		return
+	}
+	log.LogDebugf("action[doOverwriteByAppend] process over!")
 	return
 }
 
@@ -384,6 +577,8 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 
 	for total < size {
 		reqPacket := NewOverwritePacket(dp, req.ExtentKey.ExtentId, offset-ekFileOffset+total+ekExtOffset, s.inode, offset)
+		log.LogDebugf("action[doOverwrite] inode %v extentid %v,extentOffset %v(%v,%v,%v,%v) offset %v, streamer seq %v", s.inode, req.ExtentKey.ExtentId, reqPacket.ExtentOffset,
+			offset, ekFileOffset, total, ekExtOffset, offset, s.verSeq)
 		if direct {
 			reqPacket.Opcode = proto.OpSyncRandomWrite
 		}
@@ -391,16 +586,17 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 		copy(reqPacket.Data[:packSize], req.Data[total:total+packSize])
 		reqPacket.Size = uint32(packSize)
 		reqPacket.CRC = crc32.ChecksumIEEE(reqPacket.Data[:packSize])
+		reqPacket.VerSeq = s.verSeq
 
 		replyPacket := new(Packet)
-		err = sc.Send(retry, reqPacket, func(conn *net.TCPConn) (error, bool) {
-			e := replyPacket.ReadFromConn(conn, proto.ReadDeadlineTime)
+		err = sc.Send(&retry, reqPacket, func(conn *net.TCPConn) (error, bool) {
+			e := replyPacket.ReadFromConnWithVer(conn, proto.ReadDeadlineTime)
 			if e != nil {
 				log.LogWarnf("Stream Writer doOverwrite: ino(%v) failed to read from connect, req(%v) err(%v)", s.inode, reqPacket, e)
 				// Upon receiving TryOtherAddrError, other hosts will be retried.
 				return TryOtherAddrError, false
 			}
-
+			log.LogDebugf("action[doOverwrite] streamer verseq (%v) datanode rsp seq (%v) code(%v)", s.verSeq, replyPacket.VerSeq, replyPacket.ResultCode)
 			if replyPacket.ResultCode == proto.OpAgain {
 				return nil, true
 			}
@@ -408,6 +604,15 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 			if replyPacket.ResultCode == proto.OpTryOtherAddr {
 				e = TryOtherAddrError
 			}
+
+			if replyPacket.ResultCode == proto.ErrCodeVersionOpError {
+				e = proto.ErrCodeVersionOp
+				log.LogWarnf("action[doOverwrite] verseq (%v) be updated to (%v) by datanode rsp", s.verSeq, replyPacket.VerSeq)
+				s.verSeq = replyPacket.VerSeq
+				s.extents.verSeq = s.verSeq
+				return e, false
+			}
+
 			return e, false
 		})
 
@@ -416,6 +621,11 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 		log.LogDebugf("doOverwrite: ino(%v) req(%v) reqPacket(%v) err(%v) replyPacket(%v)", s.inode, req, reqPacket, err, replyPacket)
 
 		if err != nil || replyPacket.ResultCode != proto.OpOk {
+			if replyPacket.ResultCode == proto.ErrCodeVersionOpError {
+				err = proto.ErrCodeVersionOp
+				log.LogWarnf("doOverwrite: need retry.ino(%v) req(%v) reqPacket(%v) err(%v) replyPacket(%v)", s.inode, req, reqPacket, err, replyPacket)
+				return
+			}
 			err = errors.New(fmt.Sprintf("doOverwrite: failed or reply NOK: err(%v) ino(%v) req(%v) replyPacket(%v)", err, s.inode, req, replyPacket))
 			break
 		}
@@ -438,20 +648,17 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 
 	// Small files are usually written in a single write, so use tiny extent
 	// store only for the first write operation.
-	if offset > 0 || offset+size > s.tinySizeLimit() {
-		storeMode = proto.NormalExtentType
-	} else {
-		storeMode = proto.TinyExtentType
-	}
+	storeMode = s.GetStoreMod(offset, size)
 
 	log.LogDebugf("doWrite enter: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
 	if proto.IsHot(s.client.volumeType) {
+		// && (s.handler == nil || s.handler != nil && s.handler.fileOffset+s.handler.size != offset)  delete ??
 		if storeMode == proto.NormalExtentType && (s.handler == nil || s.handler != nil && s.handler.fileOffset+s.handler.size != offset) {
-			if currentEK := s.extents.GetEnd(uint64(offset)); currentEK != nil && !storage.IsTinyExtent(currentEK.ExtentId) {
+			if currentEK := s.extents.GetEnd(uint64(offset), s.verSeq); currentEK != nil && !storage.IsTinyExtent(currentEK.ExtentId) {
 				s.closeOpenHandler()
 
-				log.LogDebugf("doWrite: found ek in ExtentCache, offset(%v) size(%v), ekoffset(%v) eksize(%v)",
-					offset, size, currentEK.FileOffset, currentEK.Size)
+				log.LogDebugf("doWrite: found ek in ExtentCache, extent_id(%v) offset(%v) size(%v), ekoffset(%v) eksize(%v)",
+					currentEK.ExtentId, offset, size, currentEK.FileOffset, currentEK.Size)
 				_, pidErr := s.client.dataWrapper.GetDataPartition(currentEK.PartitionId)
 				if pidErr == nil {
 					handler := NewExtentHandler(s, int(currentEK.FileOffset), storeMode, int(currentEK.Size))
@@ -461,6 +668,7 @@ func (s *Streamer) doWrite(data []byte, offset, size int, direct bool) (total in
 						ExtentId:     currentEK.ExtentId,
 						ExtentOffset: currentEK.ExtentOffset,
 						Size:         currentEK.Size,
+						VerSeq:       currentEK.VerSeq,
 					}
 					s.handler = handler
 					s.dirty = false
@@ -618,6 +826,7 @@ func (s *Streamer) closeOpenHandler() (err error) {
 		if !s.dirty {
 			// in case the current handler is not on the dirty list and will not get cleaned up
 			// TODO unhandled error
+			log.LogDebugf("action[Streamer.closeOpenHandler]")
 			s.handler.cleanup()
 		}
 		s.handler = nil
@@ -687,6 +896,22 @@ func (s *Streamer) truncate(size int) error {
 
 	s.extents.TruncDiscard(uint64(size))
 	return s.GetExtentsForce()
+}
+
+func (s *Streamer) updateVer(verSeq uint64) (err error) {
+	log.LogInfof("action[stream.updateVer] ver %v update to %v", s.verSeq, verSeq)
+	if s.verSeq != verSeq {
+		//log.LogInfof("action[stream.updateVer] ver %v update to %v", s.verSeq, verSeq)
+		//if s.handler != nil {
+		//	s.handler.verUpdate<-verSeq
+		//} else {
+		//	log.LogInfof("action[stream.updateVer] ver %v update to %v", s.verSeq, verSeq)
+		//}
+		log.LogInfof("action[stream.updateVer] ver %v update to %v", s.verSeq, verSeq)
+		s.verSeq = verSeq
+		s.extents.verSeq = verSeq
+	}
+	return
 }
 
 func (s *Streamer) tinySizeLimit() int {

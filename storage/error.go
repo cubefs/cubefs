@@ -34,6 +34,7 @@ var (
 	BrokenExtentError         = errors.New("extent has been broken")
 	BrokenDiskError           = errors.New("disk has broken")
 	ForbidWriteError          = errors.New("single replica decommission forbid write")
+	VerNotConsistentError     = errors.New("ver not consistent")
 )
 
 func NewParameterMismatchErr(msg string) (err error) {
