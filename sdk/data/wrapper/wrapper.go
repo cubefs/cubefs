@@ -43,6 +43,7 @@ type Wrapper struct {
 	clusterName           string
 	volName               string
 	volType               int
+	EnablePosixAcl        bool
 	masters               []string
 	partitions            map[uint64]*DataPartition
 	followerRead          bool
@@ -131,6 +132,8 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	w.dpSelectorName = view.DpSelectorName
 	w.dpSelectorParm = view.DpSelectorParm
 	w.volType = view.VolType
+	w.EnablePosixAcl = view.EnablePosixAcl
+
 	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
 		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) createTime(%v) dpSelectorName(%v) "+
 		"dpSelectorParm(%v)",

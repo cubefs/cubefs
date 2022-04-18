@@ -184,6 +184,10 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		}
 	}
 
+	if !opt.EnablePosixACL {
+		opt.EnablePosixACL = s.ec.GetEnablePosixAcl()
+	}
+
 	if s.rootIno, err = s.mw.GetRootIno(opt.SubDir); err != nil {
 		return nil, err
 	}
