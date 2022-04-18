@@ -96,6 +96,13 @@ func (md *DataPartitionMetadata) Validate() (err error) {
 	return
 }
 
+// MetaMultiSnapshotInfo
+type MetaMultiSnapshotInfo struct {
+	VerSeq uint64
+	Status int8
+	Ctime  time.Time
+}
+
 type DataPartition struct {
 	clusterID       string
 	volumeID        string
@@ -136,6 +143,12 @@ type DataPartition struct {
 	DataPartitionCreateType       int
 	isLoadingDataPartition        bool
 	persistMetaMutex              sync.RWMutex
+
+	// snapshot
+	verSeq             uint64
+	verSeqPrepare      uint64
+	verSeqCommitStatus int8
+	multiVersionList   []*MetaMultiSnapshotInfo
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
@@ -293,6 +306,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *D
 		partitionStatus: proto.ReadWrite,
 		config:          dpCfg,
 		raftStatus:      RaftStatusStopped,
+		verSeq:          dpCfg.VerSeq,
 	}
 	log.LogInfof("action[newDataPartition] dp %v replica num %v isCreate %v", partitionID, dpCfg.ReplicaNum, isCreate)
 	partition.replicasInit()
@@ -327,6 +341,17 @@ func (dp *DataPartition) replicasInit() {
 			dp.isLeader = true
 		}
 	}
+}
+
+func (dp *DataPartition) UpdateVersion(verSeq uint64) (err error) {
+	log.LogInfof("action[UpdateVersion] dp [%v] update seq from [%v] to [%v]", dp.partitionID, dp.verSeq, verSeq)
+	if verSeq < dp.verSeq {
+		err = fmt.Errorf("error.seq [%v] less than exist [%v]", verSeq, dp.verSeq)
+		log.LogErrorf("action[UpdateVersion] %v", err)
+		return
+	}
+	dp.verSeq = verSeq
+	return
 }
 
 func (dp *DataPartition) GetExtentCount() int {

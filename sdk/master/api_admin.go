@@ -534,7 +534,22 @@ func (api *AdminAPI) GetClusterInfo() (ci *proto.ClusterInfo, err error) {
 	return
 }
 
+func (api *AdminAPI) GetVerInfo(volName string) (ci *proto.VolumeVerInfo, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminGetVolVer)
+	request.addParam("name", volName)
+	var buf []byte
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	ci = &proto.VolumeVerInfo{}
+	if err = json.Unmarshal(buf, &ci); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) CreateMetaPartition(volName string, inodeStart uint64, clientIDKey string) (err error) {
+
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateMetaPartition)
 	request.addParam("name", volName)
 	request.addParam("start", strconv.FormatUint(inodeStart, 10))
@@ -763,6 +778,57 @@ func (api *AdminAPI) GetDiscardDataPartition() (DiscardDpInfos *proto.DiscardDat
 	}
 	DiscardDpInfos = &proto.DiscardDataPartitionInfos{}
 	if err = json.Unmarshal(buf, &DiscardDpInfos); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) DeleteVersion(volName string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminDelVersion)
+	request.addParam("name", volName)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) CreateVersion(volName string) (ver *proto.VolVersionInfo, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVersion)
+	request.addParam("name", volName)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	ver = &proto.VolVersionInfo{}
+	if err = json.Unmarshal(buf, ver); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) GetLatestVer(volName string) (ver *proto.VolVersionInfo, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminGetVersionInfo)
+	request.addParam("name", volName)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	ver = &proto.VolVersionInfo{}
+	if err = json.Unmarshal(buf, ver); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) GetVerList(volName string) (verList *proto.VolVersionInfoList, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminGetAllVersionInfo)
+	request.addParam("name", volName)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	verList = &proto.VolVersionInfoList{}
+	if err = json.Unmarshal(buf, verList); err != nil {
 		return
 	}
 	return

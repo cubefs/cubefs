@@ -41,6 +41,7 @@ type CreateMetaPartitionRequest struct {
 	End         uint64
 	PartitionID uint64
 	Members     []Peer
+	VerSeq      uint64
 }
 
 // CreateMetaPartitionResponse defines the response to the request of creating a meta partition.

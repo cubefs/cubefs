@@ -65,6 +65,13 @@ func (sp sortedPeers) Swap(i, j int) {
 	sp[i], sp[j] = sp[j], sp[i]
 }
 
+// MetaMultiSnapshotInfo
+type MetaMultiSnapshotInfo struct {
+	VerSeq uint64
+	Status int8
+	Ctime  time.Time
+}
+
 // MetaPartitionConfig is used to create a meta partition.
 type MetaPartitionConfig struct {
 	// Identity for raftStore group. RaftStore nodes in the same raftStore group must have the same groupID.
@@ -78,6 +85,7 @@ type MetaPartitionConfig struct {
 	UniqId        uint64              `json:"-"`
 	NodeId        uint64              `json:"-"`
 	RootDir       string              `json:"-"`
+	VerSeq        uint64              `json:"ver_seq"`
 	BeforeStart   func()              `json:"-"`
 	AfterStart    func()              `json:"-"`
 	BeforeStop    func()              `json:"-"`
@@ -123,7 +131,7 @@ type OpInode interface {
 	CreateInodeLink(req *LinkInodeReq, p *Packet) (err error)
 	EvictInode(req *EvictInodeReq, p *Packet) (err error)
 	EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (err error)
-	SetAttr(reqData []byte, p *Packet) (err error)
+	SetAttr(req *SetattrRequest, reqData []byte, p *Packet) (err error)
 	GetInodeTree() *BTree
 	GetInodeTreeLen() int
 	DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error)
@@ -198,6 +206,15 @@ type OpMultipart interface {
 	SetTxInfo(info []*proto.TxInfo)
 }
 
+// MultiVersion operation from master or client
+type OpMultiVersion interface {
+	MultiVersionOp(op uint8, verSeq uint64) (err error)
+	fsmVersionOp(reqData []byte) (err error)
+	GetAllVersionInfo(req *proto.MultiVersionOpRequest, p *Packet) (err error)
+	GetSpecVersionInfo(req *proto.MultiVersionOpRequest, p *Packet) (err error)
+	GetExtentByVer(ino *Inode, req *proto.GetExtentsRequest, rsp *proto.GetExtentsResponse)
+}
+
 // OpMeta defines the interface for the metadata operations.
 type OpMeta interface {
 	OpInode
@@ -208,10 +225,12 @@ type OpMeta interface {
 	OpMultipart
 	OpTransaction
 	OpQuota
+	OpMultiVersion
 }
 
 // OpPartition defines the interface for the partition operations.
 type OpPartition interface {
+	GetVolName() (volName string)
 	IsLeader() (leaderAddr string, isLeader bool)
 	IsFollowerRead() bool
 	SetFollowerRead(bool)
@@ -474,6 +493,9 @@ type metaPartition struct {
 	mqMgr                  *MetaQuotaManager
 	nonIdempotent          sync.Mutex
 	uniqChecker            *uniqChecker
+	verSeq                 uint64
+	multiVersionList       *proto.VolVersionInfoList
+	versionLock            sync.Mutex
 }
 
 func (mp *metaPartition) acucumRebuildStart() bool {
@@ -580,6 +602,12 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 	}
 
 	mp.vol.volDeleteLockTime = volumeInfo.DeleteLockTime
+	verList, err := masterClient.AdminAPI().GetVerList(mp.config.VolName)
+	if err != nil {
+		log.LogErrorf("action[onStart] GetVerList err[%v]", err)
+		return
+	}
+	mp.multiVersionList = verList
 
 	mp.volType = volumeInfo.VolType
 	var ebsClient *blobstore.BlobStoreClient
@@ -626,6 +654,13 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 			mp.config.PartitionId, err.Error())
 		return
 	}
+
+	//// do cache TTL die out process
+	//if err = mp.multiVersionTTLWork(); err != nil {
+	//	err = errors.NewErrorf("[onStart] start CacheTTLWork id=%d: %s",
+	//		mp.config.PartitionId, err.Error())
+	//	return
+	//}
 	return
 }
 
@@ -726,9 +761,14 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 		vol:           NewVol(),
 		manager:       manager,
 		uniqChecker:   newUniqChecker(),
+		verSeq:        conf.VerSeq,
 	}
 	mp.txProcessor = NewTransactionProcessor(mp)
 	return mp
+}
+
+func (mp *metaPartition) GetVolName() (volName string) {
+	return mp.config.VolName
 }
 
 // IsLeader returns the raft leader address and if the current meta partition is the leader.
@@ -1187,6 +1227,92 @@ func (mp *metaPartition) canRemoveSelf() (canRemove bool, err error) {
 }
 
 // cacheTTLWork only happen in datalake situation
+func (mp *metaPartition) multiVersionTTLWork() (err error) {
+	// check volume type, only Cold volume will do the cache ttl.
+	if mp.verSeq == 0 {
+		return
+	}
+	// do cache ttl work
+	go func() {
+		// first sleep a rand time, range [0, 1200s(20m)],
+		// make sure all mps is not doing scan work at the same time.
+		rand.Seed(time.Now().Unix())
+		time.Sleep(time.Duration(rand.Intn(1200)))
+
+		ttl := time.NewTicker(time.Duration(util.OneDaySec()) * time.Second)
+
+		for {
+			select {
+			case <-ttl.C:
+				log.LogDebugf("[multiVersionTTLWork] begin cache ttl, mp[%v]", mp.config.PartitionId)
+				// only leader can do TTL work
+				if _, ok := mp.IsLeader(); !ok {
+					log.LogDebugf("[multiVersionTTLWork] partitionId=%d is not leader, skip", mp.config.PartitionId)
+				}
+
+				for _, version := range mp.multiVersionList.VerList {
+					if version.Status == proto.VersionNormal {
+						continue
+					}
+					go mp.delVersion(version.Ver)
+				}
+
+			case <-mp.stopC:
+				log.LogWarnf("[multiVersionTTLWork] stoped, mp(%d)", mp.config.PartitionId)
+				return
+			}
+		}
+
+	}()
+	return
+}
+
+func (mp *metaPartition) delVersion(verSeq uint64) (err error) {
+	// begin
+	count := 0
+	needSleep := false
+
+	mp.inodeTree.GetTree().Ascend(func(i BtreeItem) bool {
+		inode := i.(*Inode)
+		// dir type just skip
+		if proto.IsDir(inode.Type) {
+			return true
+		}
+
+		inode.RLock()
+		// eks is empty just skip
+		if ok, _ := inode.ShouldDelVer(verSeq, mp.verSeq); !ok {
+			inode.RUnlock()
+			return true
+		}
+
+		p := &Packet{}
+		req := &proto.UnlinkInodeRequest{
+			Inode:  inode.Inode,
+			VerSeq: verSeq,
+		}
+		mp.UnlinkInode(req, p)
+		// check empty result.
+		// if result is OpAgain, means the extDelCh maybe full,
+		// so let it sleep 1s.
+		if p.ResultCode == proto.OpAgain {
+			needSleep = true
+		}
+
+		inode.RUnlock()
+		// every 1000 inode sleep 1s
+		if count > 1000 || needSleep {
+			count %= 1000
+			needSleep = false
+			time.Sleep(time.Second)
+		}
+		return true
+	})
+
+	return
+}
+
+// cacheTTLWork only happen in datalake situation
 func (mp *metaPartition) cacheTTLWork() (err error) {
 	// check volume type, only Cold volume will do the cache ttl.
 	volView, mcErr := masterClient.ClientAPI().GetVolumeWithoutAuthKey(mp.config.VolName)
@@ -1198,6 +1324,12 @@ func (mp *metaPartition) cacheTTLWork() (err error) {
 	if volView.VolType != proto.VolumeTypeCold {
 		return
 	}
+
+	if mp.verSeq > 0 {
+		log.LogWarnf("[doCacheTTL] volume [%v] enable snapshot.exit cache ttl, mp[%v]", mp.GetVolName(), mp.config.PartitionId)
+		return
+	}
+
 	// do cache ttl work
 	go mp.doCacheTTL(volView.CacheTTL)
 	return
@@ -1213,6 +1345,11 @@ func (mp *metaPartition) doCacheTTL(cacheTTL int) (err error) {
 	for {
 		select {
 		case <-ttl.C:
+			if mp.verSeq > 0 {
+				log.LogWarnf("[doCacheTTL] volume [%v] enable snapshot.exit cache ttl, mp[%v] cacheTTL[%v]",
+					mp.GetVolName(), mp.config.PartitionId, cacheTTL)
+				return
+			}
 			log.LogDebugf("[doCacheTTL] begin cache ttl, mp[%v] cacheTTL[%v]", mp.config.PartitionId, cacheTTL)
 			// only leader can do TTL work
 			if _, ok := mp.IsLeader(); !ok {
@@ -1270,7 +1407,7 @@ func (mp *metaPartition) InodeTTLScan(cacheTTL int) {
 				ino.ModifyTime = curTime
 			}
 
-			mp.ExtentsEmpty(req, p, ino)
+			mp.ExtentsOp(p, ino, opFSMExtentsEmpty)
 			// check empty result.
 			// if result is OpAgain, means the extDelCh maybe full,
 			// so let it sleep 1s.

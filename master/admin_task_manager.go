@@ -140,6 +140,9 @@ func (sender *AdminTaskManager) putConn(conn *net.TCPConn, forceClose bool) {
 
 func (sender *AdminTaskManager) sendTasks(tasks []*proto.AdminTask) {
 	for _, task := range tasks {
+		if task.OpCode == proto.OpVersionOperation {
+			log.LogInfof("action[sendTasks] get task to addr [%v]", task.OperatorAddr)
+		}
 		conn, err := sender.getConn()
 		if err != nil {
 			msg := fmt.Sprintf("clusterID[%v] get connection to %v,err,%v", sender.clusterID, sender.targetAddr, errors.Stack(err))
@@ -275,7 +278,11 @@ func (sender *AdminTaskManager) getToDoTasks() (tasks []*proto.AdminTask) {
 		if !task.IsHeartbeatTask() && !task.IsUrgentTask() && task.CheckTaskNeedSend() {
 			tasks = append(tasks, task)
 			task.SendTime = time.Now().Unix()
+			if task.OpCode == proto.OpVersionOperation {
+				log.LogInfof("action[getToDoTasks] get task to addr [%v]", task.OperatorAddr)
+			}
 		}
+
 		if len(tasks) > MaxTaskNum {
 			break
 		}

@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	syslog "log"
+	"math"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
@@ -755,6 +756,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.EnableUnixPermission = GlobalMountOptions[proto.EnableUnixPermission].GetBool()
 	opt.ReadThreads = GlobalMountOptions[proto.ReadThreads].GetInt64()
 	opt.WriteThreads = GlobalMountOptions[proto.WriteThreads].GetInt64()
+
 	opt.BcacheDir = GlobalMountOptions[proto.BcacheDir].GetString()
 	//opt.EnableBcache = GlobalMountOptions[proto.EnableBcache].GetBool()
 	opt.BcacheFilterFiles = GlobalMountOptions[proto.BcacheFilterFiles].GetString()
@@ -763,6 +765,18 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	if _, err := os.Stat(bcache.UnixSocketPath); err == nil && opt.BcacheDir != "" {
 		opt.EnableBcache = true
 	}
+
+	opt.EnableBcache = GlobalMountOptions[proto.EnableBcache].GetBool()
+	if opt.Rdonly {
+		verReadSeq := GlobalMountOptions[proto.SnapshotReadVerSeq].GetInt64()
+		if verReadSeq == -1 {
+			opt.VerReadSeq = math.MaxUint64
+		} else {
+			opt.VerReadSeq = uint64(verReadSeq)
+		}
+		log.LogDebugf("oonfig.verReadSeq %v opt.VerReadSeq %v", verReadSeq, opt.VerReadSeq)
+	}
+	opt.MetaSendTimeout = GlobalMountOptions[proto.MetaSendTimeout].GetInt64()
 
 	opt.BuffersTotalLimit = GlobalMountOptions[proto.BuffersTotalLimit].GetInt64()
 	opt.MetaSendTimeout = GlobalMountOptions[proto.MetaSendTimeout].GetInt64()

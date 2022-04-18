@@ -2940,6 +2940,7 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 		Masters:           config.Masters,
 		FollowerRead:      true,
 		OnAppendExtentKey: metaWrapper.AppendExtentKey,
+		OnSplitExtentKey:  metaWrapper.SplitExtentKey,
 		OnGetExtents:      metaWrapper.GetExtents,
 		OnTruncate:        metaWrapper.Truncate,
 	}

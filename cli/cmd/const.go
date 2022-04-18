@@ -123,6 +123,10 @@ const (
 
 	//Usages
 	CliUsageClientIDKey = "needed if cluster authentication is on"
+	//version op
+	CliFlagVersionCreate = "verCreate"
+	CliFlagVersionList   = "verList"
+	CliFlagVersionDel    = "verDel"
 )
 
 type MasterOp int

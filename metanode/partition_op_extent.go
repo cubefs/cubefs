@@ -17,7 +17,9 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
+	"sort"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
@@ -124,8 +126,13 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 	}
 
 	ext := req.Extent
+
+	// extent key verSeq not set value since marshal will not include verseq
+	// use inode verSeq instead
+	inoParm.verSeq = mp.verSeq
 	inoParm.Extents.Append(ext)
-	//log.LogInfof("ExtentAppendWithCheck: ino(%v) ext(%v) discard(%v) eks(%v)", req.Inode, ext, req.DiscardExtents, ino.Extents.eks)
+	log.LogDebugf("ExtentAppendWithCheck: ino(%v) mp(%v) verSeq (%v)", req.Inode, req.PartitionID, mp.verSeq)
+
 	// Store discard extents right after the append extent key.
 	if len(req.DiscardExtents) != 0 {
 		inoParm.Extents.eks = append(inoParm.Extents.eks, req.DiscardExtents...)
@@ -135,10 +142,23 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMExtentsAddWithCheck, val)
+	var opFlag uint32 = opFSMExtentsAddWithCheck
+	if req.IsSplit {
+		opFlag = opFSMExtentSplit
+	}
+	resp, err := mp.submit(opFlag, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
+	}
+
+	log.LogDebugf("ExtentAppendWithCheck: ino(%v) mp(%v) verSeq (%v) req.VerSeq(%v)", req.Inode, req.PartitionID, mp.verSeq, req.VerSeq)
+
+	if mp.verSeq > req.VerSeq {
+		//reuse ExtentType to identify flag of version inconsistent between metanode and client
+		//will resp to client and make client update all streamer's extent and it's verSeq
+		p.ExtentType |= proto.MultiVersionFlag
+		p.VerSeq = mp.verSeq
 	}
 	p.PacketErrorWithBody(resp.(uint8), nil)
 	return
@@ -155,6 +175,71 @@ func (mp *metaPartition) SetTxInfo(info []*proto.TxInfo) {
 	}
 }
 
+type VerOpData struct {
+	Op     uint8
+	VerSeq uint64
+}
+
+func (mp *metaPartition) MultiVersionOp(op uint8, verSeq uint64) (err error) {
+
+	verData := &VerOpData{
+		Op:     op,
+		VerSeq: verSeq,
+	}
+	data, _ := json.Marshal(verData)
+	_, err = mp.submit(opFSMVersionOp, data)
+
+	return
+}
+
+func (mp *metaPartition) GetAllVersionInfo(req *proto.MultiVersionOpRequest, p *Packet) (err error) {
+	return
+}
+
+func (mp *metaPartition) GetSpecVersionInfo(req *proto.MultiVersionOpRequest, p *Packet) (err error) {
+	return
+}
+
+func (mp *metaPartition) GetExtentByVer(ino *Inode, req *proto.GetExtentsRequest, rsp *proto.GetExtentsResponse) {
+	log.LogInfof("action[GetExtentByVer] read ino %v readseq %v ino seq %v hist len %v", ino.Inode, req.VerSeq, ino.verSeq, len(ino.multiVersions))
+	if req.VerSeq == math.MaxUint64 {
+		req.VerSeq = 0
+	}
+	ino.DoReadFunc(func() {
+		ino.Extents.Range(func(ek proto.ExtentKey) bool {
+			if ek.VerSeq <= req.VerSeq {
+				rsp.Extents = append(rsp.Extents, ek)
+				log.LogInfof("action[GetExtentByVer] fresh layer.read ino %v readseq %v ino seq %v include ek %v", ino.Inode, req.VerSeq, ino.verSeq, ek)
+			} else {
+				log.LogInfof("action[GetExtentByVer] fresh layer.read ino %v readseq %v ino seq %v exclude ek %v", ino.Inode, req.VerSeq, ino.verSeq, ek)
+			}
+			return true
+		})
+
+		for _, snapIno := range ino.multiVersions {
+			if req.VerSeq > snapIno.verSeq {
+				log.LogInfof("action[GetExtentByVer] finish read ino %v readseq %v snapIno ino seq %v", ino.Inode, req.VerSeq, snapIno.verSeq)
+				break
+			}
+			log.LogInfof("action[GetExtentByVer] read ino %v readseq %v snapIno ino seq %v", ino.Inode, req.VerSeq, snapIno.verSeq)
+			for _, ek := range snapIno.Extents.eks {
+				if req.VerSeq >= ek.VerSeq {
+					log.LogInfof("action[GetExtentByVer] get extent ino %v readseq %v snapIno ino seq %v, include ek (%v)", ino.Inode, req.VerSeq, snapIno.verSeq, ek.String())
+					rsp.Extents = append(rsp.Extents, ek)
+				} else {
+					log.LogInfof("action[GetExtentByVer] not get extent ino %v readseq %v snapIno ino seq %v, exclude ek (%v)", ino.Inode, req.VerSeq, snapIno.verSeq, ek.String())
+				}
+			}
+		}
+		sort.SliceStable(rsp.Extents, func(i, j int) bool {
+			return rsp.Extents[i].FileOffset < rsp.Extents[j].FileOffset
+		})
+
+	})
+
+	return
+}
+
 func (mp *metaPartition) SetUidLimit(info []*proto.UidSpaceInfo) {
 	mp.uidManager.volName = mp.config.VolName
 	mp.uidManager.setUidAcl(info)
@@ -166,8 +251,11 @@ func (mp *metaPartition) GetUidInfo() (info []*proto.UidReportSpaceInfo) {
 
 // ExtentsList returns the list of extents.
 func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error) {
+	log.LogDebugf("action[ExtentsList] inode %v verSeq %v", req.Inode, req.VerSeq)
 	ino := NewInode(req.Inode, 0)
 	retMsg := mp.getInode(ino)
+
+	//notice.getInode should not set verSeq due to extent need filter from the newest layer to req.VerSeq
 	ino = retMsg.Msg
 	var (
 		reply  []byte
@@ -176,14 +264,23 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 
 	if status == proto.OpOk {
 		resp := &proto.GetExtentsResponse{}
-		ino.DoReadFunc(func() {
-			resp.Generation = ino.Generation
-			resp.Size = ino.Size
-			ino.Extents.Range(func(ek proto.ExtentKey) bool {
-				resp.Extents = append(resp.Extents, ek)
-				return true
+		log.LogInfof("action[ExtentsList] inode %v request verseq %v ino ver %v extent size %v ino.Size %v hist len %v",
+			req.Inode, req.VerSeq, ino.verSeq, len(ino.Extents.eks), ino.Size, ino, len(ino.multiVersions))
+
+		if req.VerSeq > 0 && ino.verSeq > 0 {
+			mp.GetExtentByVer(ino, req, resp)
+		} else {
+			ino.DoReadFunc(func() {
+				resp.Generation = ino.Generation
+				resp.Size = ino.Size
+				ino.Extents.Range(func(ek proto.ExtentKey) bool {
+					resp.Extents = append(resp.Extents, ek)
+					log.LogInfof("action[ExtentsList] append ek %v", ek)
+					return true
+				})
 			})
-		})
+		}
+
 		reply, err = json.Marshal(resp)
 		if err != nil {
 			status = proto.OpErr
@@ -197,6 +294,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 // ObjExtentsList returns the list of obj extents and extents.
 func (mp *metaPartition) ObjExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
+	ino.verSeq = req.VerSeq
 	retMsg := mp.getInode(ino)
 	ino = retMsg.Msg
 	var (
@@ -254,6 +352,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (er
 	}
 
 	ino.Size = req.Size
+	ino.verSeq = mp.verSeq
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -353,13 +452,13 @@ func (mp *metaPartition) BatchObjExtentAppend(req *proto.AppendObjExtentKeysRequ
 // }
 
 // ExtentsEmpty only use in datalake situation
-func (mp *metaPartition) ExtentsEmpty(req *proto.EmptyExtentKeyRequest, p *Packet, ino *Inode) (err error) {
+func (mp *metaPartition) ExtentsOp(p *Packet, ino *Inode, op uint32) (err error) {
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMExtentsEmpty, val)
+	resp, err := mp.submit(op, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -374,7 +473,7 @@ func (mp *metaPartition) sendExtentsToChan(eks []proto.ExtentKey) (err error) {
 	}
 
 	sortExts := NewSortedExtentsFromEks(eks)
-	val, err := sortExts.MarshalBinary()
+	val, err := sortExts.MarshalBinary(true)
 	if err != nil {
 		return fmt.Errorf("[delExtents] marshal binary fail, %s", err.Error())
 	}

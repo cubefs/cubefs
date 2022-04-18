@@ -72,6 +72,7 @@ func (mp *metaPartition) fsmTxCreateDentry(txDentry *TxDentry) (status uint8) {
 func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 	forceUpdate bool) (status uint8) {
 	status = proto.OpOk
+
 	var parIno *Inode
 	if !forceUpdate {
 		item := mp.inodeTree.CopyGet(NewInode(dentry.ParentId, 0))
@@ -97,19 +98,36 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 		//do not allow directories and files to overwrite each
 		// other when renaming
 		d := item.(*Dentry)
-		if proto.OsModeType(dentry.Type) != proto.OsModeType(d.Type) && !proto.IsSymlink(dentry.Type) && !proto.IsSymlink(d.Type) {
+		if d.isDeleted() {
+			log.LogDebugf("action[fsmCreateDentry] newest dentry %v be set deleted flag", d)
+			d.Inode = dentry.Inode
+			d.VerSeq = dentry.VerSeq
+			d.Type = dentry.Type
+			d.ParentId = dentry.ParentId
+			log.LogDebugf("action[fsmCreateDentry.ver] latest dentry already deleted.Now create new one [%v]", dentry)
+
+			if !forceUpdate {
+				parIno.IncNLink(mp.verSeq)
+				parIno.SetMtime()
+			}
+			return
+		} else if proto.OsModeType(dentry.Type) != proto.OsModeType(d.Type) && !proto.IsSymlink(dentry.Type) && !proto.IsSymlink(d.Type) {
 			log.LogErrorf("action[fsmCreateDentry] ParentId [%v] get [%v] but should del, dentry name [%v], inode [%v], type[%v,%v],dir[%v,%v]",
 				dentry.ParentId, parIno, dentry.Name, dentry.Inode, dentry.Type, d.Type, proto.IsSymlink(dentry.Type), proto.IsSymlink(d.Type))
 			status = proto.OpArgMismatchErr
 			return
-		}
-
-		if dentry.ParentId == d.ParentId && strings.Compare(dentry.Name, d.Name) == 0 && dentry.Inode == d.Inode {
+		} else if dentry.ParentId == d.ParentId && strings.Compare(dentry.Name, d.Name) == 0 && dentry.Inode == d.Inode {
+			log.LogDebugf("action[fsmCreateDentry.ver] no need repeat create new one [%v]", dentry)
 			return
 		}
-
+		log.LogErrorf("action[fsmCreateDentry.ver] dentry already exist [%v] and diff with the request [%v]", d, dentry)
 		status = proto.OpExistErr
 		return
+	} else {
+		if !forceUpdate {
+			parIno.IncNLink(mp.verSeq)
+			parIno.SetMtime()
+		}
 	}
 
 	if !forceUpdate {
@@ -127,8 +145,13 @@ func (mp *metaPartition) getDentry(dentry *Dentry) (*Dentry, uint8) {
 		status = proto.OpNotExistErr
 		return nil, status
 	}
-	dentry = item.(*Dentry)
-	return dentry, status
+	log.LogDebug("action[getDentry] dentry[%v]", dentry)
+
+	den := mp.getDentryByVerSeq(item.(*Dentry), dentry.VerSeq)
+	if den != nil {
+		return den, proto.OpOk
+	}
+	return den, proto.OpNotExistErr
 }
 
 func (mp *metaPartition) fsmTxDeleteDentry(txDentry *TxDentry) (resp *DentryResponse) {
@@ -179,37 +202,72 @@ func (mp *metaPartition) fsmTxDeleteDentry(txDentry *TxDentry) (resp *DentryResp
 }
 
 // Delete dentry from the dentry tree.
-func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (
-	resp *DentryResponse) {
+func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp *DentryResponse) {
+
+	log.LogDebugf("action[fsmDeleteDentry] dentry(%v)", denParm)
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
 
-	var item interface{}
+	var (
+		item   interface{}
+		doMore = true
+		clean  bool
+	)
 	if checkInode {
+		log.LogDebugf("action[fsmDeleteDentry] dentry %v", denParm)
 		item = mp.dentryTree.Execute(func(tree *btree.BTree) interface{} {
-			d := tree.CopyGet(dentry)
+			d := tree.CopyGet(denParm)
 			if d == nil {
 				return nil
 			}
-			if d.(*Dentry).Inode != dentry.Inode {
+			den := d.(*Dentry)
+			if den.Inode != denParm.Inode {
 				return nil
 			}
-			return mp.dentryTree.tree.Delete(dentry)
+			if mp.verSeq == 0 {
+				log.LogDebugf("action[fsmDeleteDentry] volume snapshot not enabled,delete directly")
+				return mp.dentryTree.tree.Delete(den)
+			}
+			_, doMore, clean = item.(*Dentry).deleteVerSnapshot(denParm.VerSeq, mp.verSeq, mp.multiVersionList.VerList)
+			return den
 		})
 	} else {
-		item = mp.dentryTree.Delete(dentry)
+		log.LogDebugf("action[fsmDeleteDentry] dentry %v", denParm)
+		if mp.verSeq == 0 {
+			item = mp.dentryTree.tree.Delete(denParm)
+		} else {
+			item = mp.dentryTree.Get(denParm)
+			if item != nil {
+				_, doMore, clean = item.(*Dentry).deleteVerSnapshot(denParm.VerSeq, mp.verSeq, mp.multiVersionList.VerList)
+			}
+		}
 	}
 
+	if item != nil && (clean == true || (len(item.(*Dentry).dentryList) == 0 && item.(*Dentry).isDeleted())) {
+		log.LogDebugf("action[fsmDeleteDentry] dnetry %v really be deleted", item.(*Dentry))
+		item = mp.dentryTree.Delete(item.(*Dentry))
+	}
+
+	if !doMore { // not the top layer,do nothing to parent inode
+		if item != nil {
+			resp.Msg = item.(*Dentry)
+		}
+		log.LogDebugf("action[fsmDeleteDentry] there's nothing to do more denParm %v", denParm)
+		return
+	}
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
+		log.LogErrorf("action[fsmDeleteDentry] not found dentry %v", denParm)
 		return
 	} else {
-		mp.inodeTree.CopyFind(NewInode(dentry.ParentId, 0),
+		mp.inodeTree.CopyFind(NewInode(denParm.ParentId, 0),
 			func(item BtreeItem) {
-				if item != nil {
+				if item != nil { // no matter
 					ino := item.(*Inode)
 					if !ino.ShouldDelete() {
+						log.LogDebugf("action[fsmDeleteDentry] den  %v delete parent's link", denParm)
 						item.(*Inode).DecNLink()
+						log.LogDebugf("action[fsmDeleteDentry] inode %v be unlinked by child name %v", item.(*Inode).Inode, denParm.Name)
 						item.(*Inode).SetMtime()
 					}
 				}
@@ -296,6 +354,16 @@ func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry) (
 	return
 }
 
+func (mp *metaPartition) getDentryTree() *BTree {
+	return mp.dentryTree.GetTree()
+}
+
+func (mp *metaPartition) getDentryByVerSeq(dy *Dentry, verSeq uint64) (d *Dentry) {
+	log.LogInfof("action[getDentryByVerSeq] verseq %v, tmp dentry %v, inode id %v, name %v", verSeq, dy.VerSeq, dy.Inode, dy.Name)
+	d, _ = dy.getDentryByVerSeq(verSeq)
+	return
+}
+
 func (mp *metaPartition) readDirOnly(req *ReadDirOnlyReq) (resp *ReadDirOnlyResp) {
 	resp = &ReadDirOnlyResp{}
 	begDentry := &Dentry{
@@ -305,8 +373,11 @@ func (mp *metaPartition) readDirOnly(req *ReadDirOnlyReq) (resp *ReadDirOnlyResp
 		ParentId: req.ParentID + 1,
 	}
 	mp.dentryTree.AscendRange(begDentry, endDentry, func(i BtreeItem) bool {
-		d := i.(*Dentry)
-		if proto.IsDir(d.Type) {
+		if proto.IsDir(i.(*Dentry).Type) {
+			d := mp.getDentryByVerSeq(i.(*Dentry), req.VerSeq)
+			if d == nil {
+				return true
+			}
 			resp.Children = append(resp.Children, proto.Dentry{
 				Inode: d.Inode,
 				Type:  d.Type,
@@ -327,7 +398,10 @@ func (mp *metaPartition) readDir(req *ReadDirReq) (resp *ReadDirResp) {
 		ParentId: req.ParentID + 1,
 	}
 	mp.dentryTree.AscendRange(begDentry, endDentry, func(i BtreeItem) bool {
-		d := i.(*Dentry)
+		d := mp.getDentryByVerSeq(i.(*Dentry), req.VerSeq)
+		if d == nil {
+			return true
+		}
 		resp.Children = append(resp.Children, proto.Dentry{
 			Inode: d.Inode,
 			Type:  d.Type,
@@ -356,7 +430,10 @@ func (mp *metaPartition) readDirLimit(req *ReadDirLimitReq) (resp *ReadDirLimitR
 		ParentId: req.ParentID + 1,
 	}
 	mp.dentryTree.AscendRange(startDentry, endDentry, func(i BtreeItem) bool {
-		d := i.(*Dentry)
+		d := mp.getDentryByVerSeq(i.(*Dentry), req.VerSeq)
+		if d == nil {
+			return true
+		}
 		resp.Children = append(resp.Children, proto.Dentry{
 			Inode: d.Inode,
 			Type:  d.Type,

@@ -62,6 +62,14 @@ type MetadataManagerConfig struct {
 	RaftStore raftstore.RaftStore
 }
 
+type verOp2Phase struct {
+	verSeq     uint64
+	verPrepare uint64
+	status     uint32
+	step       uint32
+	sync.Mutex
+}
+
 type metadataManager struct {
 	nodeId               uint64
 	zoneName             string
@@ -78,6 +86,7 @@ type metadataManager struct {
 	maxQuotaGoroutineNum int32
 	cpuUtil              atomicutil.Float64
 	samplerDone          chan struct{}
+	volUpdating          *sync.Map //map[string]*verOp2Phase
 }
 
 func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) {
@@ -270,6 +279,9 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opQuotaCreateDentry(conn, p, remoteAddr)
 	case proto.OpMetaGetUniqID:
 		err = m.opMetaGetUniqID(conn, p, remoteAddr)
+	// multi version
+	case proto.OpVersionOperation:
+		err = m.opMultiVersionOp(conn, p, remoteAddr)
 	default:
 		err = fmt.Errorf("%s unknown Opcode: %d, reqId: %d", remoteAddr,
 			p.Opcode, p.GetReqID())
@@ -519,6 +531,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		NodeId:      m.nodeId,
 		RootDir:     path.Join(m.rootDir, partitionPrefix+partitionId),
 		ConnPool:    m.connPool,
+		VerSeq:      request.VerSeq,
 	}
 	mpc.AfterStop = func() {
 		m.detachPartition(request.PartitionID)
@@ -629,6 +642,7 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) Metadata
 		partitions:           make(map[uint64]MetaPartition),
 		metaNode:             metaNode,
 		maxQuotaGoroutineNum: defaultMaxQuotaGoroutine,
+		volUpdating:          new(sync.Map),
 	}
 }
 
