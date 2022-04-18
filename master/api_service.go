@@ -726,6 +726,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
 	if vol.dpReplicaNum == 1 && !req.followRead {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "single replica must enable follower read"})
 	}
@@ -747,6 +748,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.authenticate = req.authenticate
 	newArgs.dpSelectorName = req.dpSelectorName
 	newArgs.dpSelectorParm = req.dpSelectorParm
+	newArgs.enablePosixAcl = req.enablePosixAcl
 	if req.coldArgs != nil {
 		newArgs.coldArgs = req.coldArgs
 	}
