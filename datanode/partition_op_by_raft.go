@@ -218,8 +218,10 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 		if err == nil {
 			resp = proto.OpOk
 			dp.uploadApplyID(raftApplyID)
+			log.LogDebug("action[ApplyRandomWrite] success!")
 		} else {
 			err = fmt.Errorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err(%v) retry[20]", raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err)
+			log.LogErrorf("action[ApplyRandomWrite] failed err %v", err)
 			exporter.Warning(err.Error())
 			resp = proto.OpDiskErr
 			panic(newRaftApplyError(err))
@@ -239,6 +241,23 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 
 	for i := 0; i < 20; i++ {
 		err = dp.ExtentStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, storage.RandomWriteType, opItem.opcode == proto.OpSyncRandomWrite)
+		var syncWrite bool
+		writeType := storage.RandomWriteType
+		if opItem.opcode == proto.OpRandomWrite || opItem.opcode == proto.OpSyncRandomWrite {
+			if dp.verSeq > 0 {
+				err = storage.VerNotConsistentError
+				log.LogErrorf("action[ApplyRandomWrite] volume [%v] dp [%v] %v,client need update to newest version!", dp.volumeID, dp.partitionID, err)
+				return
+			}
+		} else if opItem.opcode == proto.OpRandomWriteAppend || opItem.opcode == proto.OpSyncRandomWriteAppend {
+			writeType = storage.AppendRandomWriteType
+		}
+
+		if opItem.opcode == proto.OpSyncRandomWriteAppend || opItem.opcode == proto.OpSyncRandomWrite || opItem.opcode == proto.OpSyncRandomWriteVer {
+			syncWrite = true
+		}
+
+		err = dp.ExtentStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, writeType, syncWrite)
 		if err == nil {
 			break
 		}
@@ -259,18 +278,21 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 	val, err := MarshalRandWriteRaftLog(pkg.Opcode, pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size), pkg.Data, pkg.CRC)
 	if err != nil {
+		log.LogErrorf("action[RandomWriteSubmit] [%v] marshal error %v", dp.partitionID, err)
 		return
 	}
 	var (
 		resp interface{}
 	)
+	log.LogDebugf("action[RandomWriteSubmit] [%v] before submit", dp.partitionID)
 	if resp, err = dp.Put(nil, val); err != nil {
+		log.LogErrorf("action[RandomWriteSubmit] submit error %v", err)
 		return
 	}
 
 	pkg.ResultCode = resp.(uint8)
 
-	log.LogDebugf("[RandomWrite] SubmitRaft: %v", pkg.GetUniqueLogId())
+	log.LogDebugf("[RandomWrite] SubmitRaft: %v", pkg.ResultCode)
 
 	return
 }

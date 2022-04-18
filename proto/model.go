@@ -303,3 +303,13 @@ type BadDiskInfos struct {
 type DiscardDataPartitionInfos struct {
 	DiscardDps []DataPartitionInfo
 }
+
+type VolVersionInfo struct {
+	Ver    uint64
+	Ctime  time.Time
+	Status uint8 // building,normal,deleted,abnormal
+}
+
+type VolVersionInfoList struct {
+	VerList []*VolVersionInfo
+}

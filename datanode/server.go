@@ -148,6 +148,7 @@ type DataNode struct {
 	metrics        *DataNodeMetrics
 	metricsDegrade int64
 	metricsCnt     uint64
+	volUpdating    sync.Map //map[string]*verOp2Phase
 
 	control common.Control
 
@@ -162,6 +163,15 @@ type DataNode struct {
 	serviceIDKey            string
 	cpuUtil        atomicutil.Float64
 	cpuSamplerDone chan struct{}
+}
+
+type verOp2Phase struct {
+	verSeq     uint64
+	verPrepare uint64
+	status     uint32
+	step       uint32
+	op         uint8
+	sync.Mutex
 }
 
 func NewServer() *DataNode {

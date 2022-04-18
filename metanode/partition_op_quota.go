@@ -281,7 +281,7 @@ func (mp *metaPartition) setInodeQuota(quotaIds []uint32, inode uint64) {
 		log.LogErrorf("setInodeQuota marsha1 quotaInfos [%v] fail [%v]", quotaInfos, err)
 		return
 	}
-	extend.Put([]byte(proto.QuotaKey), value)
+	extend.Put([]byte(proto.QuotaKey), value, mp.verSeq)
 	treeItem := mp.extendTree.CopyGet(extend)
 	var e *Extend
 	if treeItem == nil {

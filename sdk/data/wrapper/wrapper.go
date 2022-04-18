@@ -17,6 +17,7 @@ package wrapper
 import (
 	"fmt"
 	syslog "log"
+	"math"
 	"net"
 	"strings"
 	"sync"
@@ -44,6 +45,7 @@ type SimpleClientInfo interface {
 	GetFlowInfo() (*proto.ClientReportLimitInfo, bool)
 	UpdateFlowInfo(limit *proto.LimitRsp2Client)
 	SetClientID(id uint64) error
+	UpdateLatestVer(id uint64) error
 }
 
 // Wrapper TODO rename. This name does not reflect what it is doing.
@@ -74,10 +76,18 @@ type Wrapper struct {
 	LocalIp     string
 
 	minWriteAbleDataPartitionCnt int
+	verReadSeq                   uint64
+	client                       *SimpleClientInfo
+}
+
+func (w *Wrapper) GetMasterClient() *masterSDK.MasterClient {
+	return w.mc
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
-func NewDataPartitionWrapper(clientInfo SimpleClientInfo, volName string, masters []string, preload bool, minWriteAbleDataPartitionCnt int) (w *Wrapper, err error) {
+func NewDataPartitionWrapper(client SimpleClientInfo, volName string, masters []string, preload bool, minWriteAbleDataPartitionCnt int, verReadSeq uint64) (w *Wrapper, err error) {
+	log.LogInfof("action[NewDataPartitionWrapper] verReadSeq %v", verReadSeq)
+
 	w = new(Wrapper)
 	w.stopC = make(chan struct{})
 	w.masters = masters
@@ -97,6 +107,8 @@ func NewDataPartitionWrapper(clientInfo SimpleClientInfo, volName string, master
 		return
 	}
 
+	w.verReadSeq = verReadSeq
+
 	if err = w.updateClusterInfo(); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
@@ -107,7 +119,7 @@ func NewDataPartitionWrapper(clientInfo SimpleClientInfo, volName string, master
 		return
 	}
 
-	w.UploadFlowInfo(clientInfo, true)
+	w.UploadFlowInfo(client, true)
 
 	if err = w.initDpSelector(); err != nil {
 		log.LogErrorf("NewDataPartitionWrapper: init initDpSelector failed, [%v]", err)
@@ -119,9 +131,16 @@ func NewDataPartitionWrapper(clientInfo SimpleClientInfo, volName string, master
 	if err = w.updateDataNodeStatus(); err != nil {
 		log.LogErrorf("NewDataPartitionWrapper: init DataNodeStatus failed, [%v]", err)
 	}
-	go w.uploadFlowInfoByTick(clientInfo)
-	go w.updateSimpleVolViewByTick()
-	go w.update()
+
+	if verReadSeq > 0 {
+		if err = w.updateCheckVerList(volName, verReadSeq); err != nil {
+			log.LogErrorf("NewDataPartitionWrapper: init Read with ver [%v] error [%v]", verReadSeq, err)
+			return
+		}
+	}
+	go w.uploadFlowInfoByTick(client)
+	go w.updateSimpleVolViewByTick(client)
+	go w.update(client)
 	return
 }
 
@@ -179,11 +198,13 @@ func (w *Wrapper) GetSimpleVolView() (err error) {
 		log.LogWarnf("GetSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
+
 	if view.Status == 1 {
 		log.LogWarnf("GetSimpleVolView: volume has been marked for deletion: volume(%v) status(%v - 0:normal/1:markDelete)",
 			w.volName, view.Status)
 		return proto.ErrVolNotExists
 	}
+
 	w.followerRead = view.FollowerRead
 	w.dpSelectorName = view.DpSelectorName
 	w.dpSelectorParm = view.DpSelectorParm
@@ -214,7 +235,7 @@ func (w *Wrapper) uploadFlowInfoByTick(clientInfo SimpleClientInfo) {
 
 // uid need get uids info by volView with high frequency, but if no uid works
 // use 1 minute is fine
-func (w *Wrapper) updateSimpleVolViewByTick() {
+func (w *Wrapper) updateSimpleVolViewByTick(clientInfo SimpleClientInfo) {
 	ticker := time.NewTicker(10 * time.Second)
 	var tickCnt uint16
 	for {
@@ -224,7 +245,7 @@ func (w *Wrapper) updateSimpleVolViewByTick() {
 				tickCnt++
 				continue
 			}
-			w.UpdateSimpleVolView()
+			w.updateSimpleVolView(clientInfo)
 			tickCnt++
 		case <-w.stopC:
 			return
@@ -232,12 +253,12 @@ func (w *Wrapper) updateSimpleVolViewByTick() {
 	}
 }
 
-func (w *Wrapper) update() {
-	ticker := time.NewTicker(time.Minute)
+func (w *Wrapper) update(client SimpleClientInfo) {
+	ticker := time.NewTicker(5 * time.Second)
 	for {
 		select {
 		case <-ticker.C:
-			w.UpdateSimpleVolView()
+			w.updateSimpleVolView(client)
 			w.updateDataPartition(false)
 			w.updateDataNodeStatus()
 			w.CheckPermission()
@@ -283,7 +304,7 @@ func (w *Wrapper) CheckPermission() {
 	}
 }
 
-func (w *Wrapper) UpdateSimpleVolView() (err error) {
+func (w *Wrapper) updateSimpleVolView(client SimpleClientInfo) (err error) {
 	var view *proto.SimpleVolView
 	if view, err = w.mc.AdminAPI().GetVolumeSimpleInfo(w.volName); err != nil {
 		log.LogWarnf("updateSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
@@ -291,6 +312,15 @@ func (w *Wrapper) UpdateSimpleVolView() (err error) {
 	}
 
 	w.UpdateUidsView(view)
+	if w.verReadSeq > 0 {
+		if err = w.updateCheckVerList(w.volName, w.verReadSeq); err != nil {
+			log.LogFatal("updateSimpleVolView: readSeq abnormal %v", err)
+		}
+	} else {
+		if err = client.UpdateLatestVer(view.LatestVer); err != nil {
+			log.LogWarnf("updateSimpleVolView: UpdateLatestVer ver %v faile err %v", view.LatestVer, err)
+		}
+	}
 
 	if w.followerRead != view.FollowerRead && !w.followerReadClientCfg {
 		log.LogDebugf("UpdateSimpleVolView: update followerRead from old(%v) to new(%v)",
@@ -492,6 +522,49 @@ func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 		return nil, fmt.Errorf("partition[%v] not exsit", partitionID)
 	}
 	return dp, nil
+}
+
+func (w *Wrapper) updateCheckVerList(volName string, verReadSeq uint64) error {
+	w.Lock.RLock()
+	defer w.Lock.RUnlock()
+
+	verList, err := w.mc.AdminAPI().GetVerList(volName)
+	if err != nil {
+		log.LogErrorf("updateCheckVerList: get cluster fail: err(%v)", err)
+		return err
+	}
+
+	if verList == nil {
+		msg := fmt.Sprintf("get verList nil, vol [%v] reqd seq [%v]", volName, verReadSeq)
+		log.LogErrorf("action[updateCheckVerList] %v", msg)
+		return fmt.Errorf("%v", msg)
+	}
+
+	log.LogInfof("action[updateCheckVerList] vol [%v] req seq [%v]", volName, verReadSeq)
+
+	if verReadSeq > 0 && len(verList.VerList) == 0 {
+		msg := fmt.Sprintf("get verSeq [%v] failed,master not eable snapshot", verReadSeq)
+		log.LogErrorf("action[updateCheckVerList] %v", msg)
+		return fmt.Errorf("%v", msg)
+	}
+	if verReadSeq > 0 {
+		if verReadSeq == math.MaxUint64 {
+			verReadSeq = 0
+		}
+		for _, ver := range verList.VerList {
+			log.LogInfof("action[updateCheckVerList] ver %v,%v,%v", ver.Ver, ver.Status, ver.Ctime)
+			if ver.Ver == verReadSeq {
+				if ver.Status != proto.VersionNormal {
+					return fmt.Errorf("action[updateCheckVerList] status %v not right", ver.Status)
+				}
+				log.LogInfof("action[updateCheckVerList] get ver %v,%v,%v", ver.Ver, ver.Status, ver.Ctime)
+				return nil
+			}
+		}
+		return fmt.Errorf("not found read ver %v", verReadSeq)
+	}
+	return nil
+
 }
 
 // WarningMsg returns the warning message that contains the cluster name.

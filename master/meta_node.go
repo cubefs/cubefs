@@ -160,6 +160,17 @@ func (metaNode *MetaNode) createHeartbeatTask(masterAddr string, fileStatsEnable
 	return
 }
 
+func (metaNode *MetaNode) createVersionTask(volume string, version uint64, op uint8, addr string) (task *proto.AdminTask) {
+	request := &proto.MultiVersionOpRequest{
+		VolumeID: volume,
+		VerSeq:   version,
+		Op:       op,
+		Addr:     addr,
+	}
+	task = proto.NewAdminTask(proto.OpVersionOperation, metaNode.Addr, request)
+	return
+}
+
 func (metaNode *MetaNode) checkHeartbeat() {
 	metaNode.Lock()
 	defer metaNode.Unlock()

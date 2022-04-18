@@ -31,10 +31,15 @@ func NewPacketToDeleteExtent(dp *DataPartition, ext *proto.ExtentKey) *Packet {
 	p.Opcode = proto.OpMarkDelete
 	p.ExtentType = proto.NormalExtentType
 	p.PartitionID = uint64(dp.PartitionID)
-	if storage.IsTinyExtent(ext.ExtentId) {
+	if storage.IsTinyExtent(ext.ExtentId) || ext.IsSplit {
 		p.ExtentType = proto.TinyExtentType
-		p.Data, _ = json.Marshal(ext)
-		p.Size = uint32(len(p.Data))
+	}
+
+	p.Data, _ = json.Marshal(ext)
+	p.Size = uint32(len(p.Data))
+
+	if ext.IsSplit {
+		p.Opcode = proto.OpSplitMarkDelete
 	}
 	p.ExtentID = ext.ExtentId
 	p.ReqID = proto.GenerateRequestID()

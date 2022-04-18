@@ -90,6 +90,7 @@ var (
 	ErrVolNoCacheAndRule                       = errors.New("vol has no cache and rule")
 	ErrNoAclPermission                         = errors.New("acl no permission")
 	ErrQuotaNotExists                          = errors.New("quota not exists")
+	ErrCodeVersionOp                           = errors.New("version op failed")
 )
 
 // http response error code and error message definitions
@@ -155,6 +156,7 @@ const (
 	ErrCodeInvalidSecretKey
 	ErrCodeIsOwner
 	ErrCodeZoneNumError
+	ErrCodeVersionOpError
 )
 
 // Err2CodeMap error map to code
@@ -218,6 +220,7 @@ var Err2CodeMap = map[error]int32{
 	ErrInvalidSecretKey:                ErrCodeInvalidSecretKey,
 	ErrIsOwner:                         ErrCodeIsOwner,
 	ErrZoneNum:                         ErrCodeZoneNumError,
+	ErrCodeVersionOp:                   ErrCodeVersionOpError,
 }
 
 func ParseErrorCode(code int32) error {
@@ -288,6 +291,7 @@ var code2ErrMap = map[int32]error{
 	ErrCodeInvalidSecretKey:                ErrInvalidSecretKey,
 	ErrCodeIsOwner:                         ErrIsOwner,
 	ErrCodeZoneNumError:                    ErrZoneNum,
+	ErrCodeVersionOpError:                  ErrCodeVersionOp,
 }
 
 type GeneralResp struct {

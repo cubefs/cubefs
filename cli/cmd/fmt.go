@@ -196,6 +196,11 @@ func formatUidInfoTableRow(uidInfo *proto.UidSpaceInfo) string {
 		uidInfo.Uid, time.Unix(uidInfo.CTime, 0).Format(time.RFC1123), uidInfo.Enabled, uidInfo.Limited, uidInfo.LimitSize, uidInfo.UsedSize)
 }
 
+func formatVerInfoTableRow(vi *proto.VolVersionInfo) string {
+	return fmt.Sprintf(volumeVersionPattern,
+		vi.Ver, vi.Ctime.Local().Format(time.RFC1123), vi.Status, "")
+}
+
 var (
 	dataPartitionTablePattern = "%-8v    %-8v    %-10v    %-10v     %-18v    %-18v"
 	dataPartitionTableHeader  = fmt.Sprintf(dataPartitionTablePattern,

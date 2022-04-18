@@ -93,15 +93,19 @@ LOOP:
 
 	// check
 	lastItem := fileList.Back()
-	if lastItem == nil {
+	if lastItem != nil {
+		fileName = lastItem.Value.(string)
+	}
+	if lastItem == nil || !strings.HasPrefix(fileName, prefixDelExtentV2) {
 		//if no exist EXTENT_DEL_*, create one
+		log.LogDebugf("action[appendDelExtentsToFile] verseq %v", mp.verSeq)
 		fp, fileName, fileSize, err = mp.createExtentDeleteFile(prefixDelExtentV2, idx, fileList)
+		log.LogDebugf("action[appendDelExtentsToFile] verseq %v fileName %v", mp.verSeq, fileName)
 		if err != nil {
 			panic(err)
 		}
 	} else {
 		//exist, open last file
-		fileName = lastItem.Value.(string)
 		fp, err = os.OpenFile(path.Join(mp.config.RootDir, fileName),
 			os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 		if err != nil {
@@ -111,11 +115,7 @@ LOOP:
 		idx = getDelExtFileIdx(fileName)
 	}
 
-	extentV2 := false
-	if strings.HasPrefix(fileName, prefixDelExtentV2) {
-		extentV2 = true
-	}
-
+	log.LogDebugf("action[appendDelExtentsToFile] verseq %v fileName %v", mp.verSeq, fileName)
 	// TODO Unhandled errors
 	defer fp.Close()
 	buf := make([]byte, 0)
@@ -133,11 +133,7 @@ LOOP:
 			var data []byte
 			buf = buf[:0]
 			for _, ek := range eks {
-				if extentV2 {
-					data, err = ek.MarshalBinaryWithCheckSum()
-				} else {
-					data, err = ek.MarshalBinary()
-				}
+				data, err = ek.MarshalBinaryWithCheckSum(ek.VerSeq > 0)
 				if err != nil {
 					log.LogWarnf("[appendDelExtentsToFile] partitionId=%d,"+
 						" extentKey marshal: %s", mp.config.PartitionId, err.Error())
@@ -168,6 +164,7 @@ LOOP:
 				panic(err)
 			}
 			fileSize += int64(len(buf))
+			log.LogDebugf("action[appendDelExtentsToFile] filesize now %v", fileSize)
 		}
 	}
 }
@@ -236,7 +233,9 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			extentV2 = true
 			extentKeyLen = uint64(proto.ExtentV2Length)
 		}
+
 		cursor := binary.BigEndian.Uint64(buf[:8])
+		log.LogDebugf("action[deleteExtentsFromList] get cursor %v", cursor)
 		if size := uint64(fileInfo.Size()) - cursor; size < MB {
 			if size <= 0 {
 				size = extentKeyLen
@@ -320,7 +319,8 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 					panic(err)
 				}
 			} else {
-				if err = ek.UnmarshalBinary(buff); err != nil {
+				//ek for del no need to get version
+				if err = ek.UnmarshalBinary(buff, false); err != nil {
 					panic(err)
 				}
 			}

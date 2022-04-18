@@ -93,7 +93,7 @@ func TestPanicCheckMetaPartitions(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID)
+	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID, 0)
 	vol.addMetaPartition(mp)
 	mp = nil
 	c.checkMetaPartitions()
@@ -206,7 +206,7 @@ func TestPanicCheckBadMetaPartitionRecovery(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	dp := newMetaPartition(partitionID, 0, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID)
+	dp := newMetaPartition(partitionID, 0, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID, 0)
 	c.BadMetaPartitionIds.Store(fmt.Sprintf("%v", dp.PartitionID), dp)
 	c.scheduleToCheckMetaPartitionRecoveryProgress()
 }

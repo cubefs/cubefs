@@ -74,6 +74,8 @@ type MetaPartition struct {
 	offlineMutex     sync.RWMutex
 	uidInfo          []*proto.UidReportSpaceInfo
 	EqualCheckPass   bool
+	VerSeq           uint64
+
 	sync.RWMutex
 }
 
@@ -84,7 +86,7 @@ func newMetaReplica(start, end uint64, metaNode *MetaNode) (mr *MetaReplica) {
 	return
 }
 
-func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName string, volID uint64) (mp *MetaPartition) {
+func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName string, volID uint64, verSeq uint64) (mp *MetaPartition) {
 	mp = &MetaPartition{PartitionID: partitionID, Start: start, End: end, volName: volName, volID: volID}
 	mp.ReplicaNum = replicaNum
 	mp.Replicas = make([]*MetaReplica, 0)
@@ -93,6 +95,7 @@ func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName 
 	mp.MissNodes = make(map[string]int64, 0)
 	mp.Peers = make([]proto.Peer, 0)
 	mp.Hosts = make([]string, 0)
+	mp.VerSeq = verSeq
 	mp.LoadResponse = make([]*proto.MetaPartitionLoadResponse, 0)
 	mp.EqualCheckPass = true
 	return
@@ -592,12 +595,14 @@ func (mp *MetaPartition) replicaCreationTasks(clusterID, volName string) (tasks 
 func (mp *MetaPartition) buildNewMetaPartitionTasks(specifyAddrs []string, peers []proto.Peer, volName string) (tasks []*proto.AdminTask) {
 	tasks = make([]*proto.AdminTask, 0)
 	hosts := make([]string, 0)
+
 	req := &proto.CreateMetaPartitionRequest{
 		Start:       mp.Start,
 		End:         mp.End,
 		PartitionID: mp.PartitionID,
 		Members:     peers,
 		VolName:     volName,
+		VerSeq:      mp.VerSeq,
 	}
 	if specifyAddrs == nil {
 		hosts = mp.Hosts
@@ -658,6 +663,7 @@ func (mp *MetaPartition) createTaskToCreateReplica(host string) (t *proto.AdminT
 		PartitionID: mp.PartitionID,
 		Members:     mp.Peers,
 		VolName:     mp.volName,
+		VerSeq:      mp.VerSeq,
 	}
 	t = proto.NewAdminTask(proto.OpCreateMetaPartition, host, req)
 	resetMetaPartitionTaskID(t, mp.PartitionID)

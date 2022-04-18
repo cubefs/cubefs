@@ -33,7 +33,7 @@ import (
 
 // MetaItem defines the structure of the metadata operations.
 type MetaItem struct {
-	Op uint32 `json:"op"`
+	Op uint32 `json:"Op"`
 	K  []byte `json:"k"`
 	V  []byte `json:"v"`
 }

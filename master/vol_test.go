@@ -340,10 +340,10 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 
 	vol := newVol(vv)
 	// unavailable mp
-	mp1 := newMetaPartition(1, 1, defaultMaxMetaPartitionInodeID, 3, name, volID)
+	mp1 := newMetaPartition(1, 1, defaultMaxMetaPartitionInodeID, 3, name, volID, 0)
 	vol.addMetaPartition(mp1)
 	//readonly mp
-	mp2 := newMetaPartition(2, 1, defaultMaxMetaPartitionInodeID, 3, name, volID)
+	mp2 := newMetaPartition(2, 1, defaultMaxMetaPartitionInodeID, 3, name, volID, 0)
 	mp2.Status = proto.ReadOnly
 	vol.addMetaPartition(mp2)
 	vol.updateViewCache(server.cluster)

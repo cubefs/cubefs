@@ -43,6 +43,7 @@ type IDAllocator struct {
 }
 
 const clientIDBatchCount = 1000
+
 func newIDAllocator(store *raftstore_db.RocksDBStore, partition raftstore.Partition) (alloc *IDAllocator) {
 	alloc = new(IDAllocator)
 	alloc.store = store

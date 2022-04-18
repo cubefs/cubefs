@@ -458,3 +458,14 @@ func (dataNode *DataNode) resetDecommissionStatus() {
 	dataNode.DecommissionDpTotal = InvalidDecommissionDpCnt
 	dataNode.DecommissionCompleteTime = 0
 }
+func (dataNode *DataNode) createVersionTask(volume string, version uint64, op uint8, addr string) (task *proto.AdminTask) {
+	request := &proto.MultiVersionOpRequest{
+		VolumeID: volume,
+		VerSeq:   version,
+		Op:       uint8(op),
+		Addr:     addr,
+	}
+	log.LogInfof("action[createVersionTask] op %v  datanode addr %v addr %v volume %v seq %v", op, dataNode.Addr, addr, volume, version)
+	task = proto.NewAdminTask(proto.OpVersionOperation, dataNode.Addr, request)
+	return
+}

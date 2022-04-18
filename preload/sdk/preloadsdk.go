@@ -127,6 +127,7 @@ func NewClient(config PreloadConfig) *PreLoadClient {
 		Masters:           config.Masters,
 		Preload:           true,
 		OnAppendExtentKey: mw.AppendExtentKey,
+		OnSplitExtentKey:  mw.SplitExtentKey,
 		OnGetExtents:      mw.GetExtents,
 		OnTruncate:        mw.Truncate,
 		VolumeType:        proto.VolumeTypeCold,

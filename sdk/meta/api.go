@@ -17,6 +17,7 @@ package meta
 import (
 	"fmt"
 	syslog "log"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -232,7 +233,7 @@ func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid ui
 		return nil, syscall.ENOENT
 	}
 
-	status, info, err = mw.iget(parentMP, parentID)
+	status, info, err = mw.iget(parentMP, parentID, mw.LastVerSeq)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
@@ -290,13 +291,13 @@ create_dentry:
 	}
 	if err != nil {
 		if status == statusOpDirQuota || status == statusNoSpace {
-			mw.iunlink(mp, info.Inode)
+			mw.iunlink(mp, info.Inode, mw.LastVerSeq)
 			mw.ievict(mp, info.Inode)
 		}
 		return nil, statusToErrno(status)
 	} else if status != statusOK {
 		if status != statusExist {
-			mw.iunlink(mp, info.Inode)
+			mw.iunlink(mp, info.Inode, mw.LastVerSeq)
 			mw.ievict(mp, info.Inode)
 		}
 		return nil, statusToErrno(status)
@@ -320,7 +321,7 @@ func (mw *MetaWrapper) Lookup_ll(parentID uint64, name string) (inode uint64, mo
 		return 0, 0, syscall.ENOENT
 	}
 
-	status, inode, mode, err := mw.lookup(parentMP, parentID, name)
+	status, inode, mode, err := mw.lookup(parentMP, parentID, name, mw.VerReadSeq)
 	if err != nil || status != statusOK {
 		return 0, 0, statusToErrno(status)
 	}
@@ -334,7 +335,7 @@ func (mw *MetaWrapper) InodeGet_ll(inode uint64) (*proto.InodeInfo, error) {
 		return nil, syscall.ENOENT
 	}
 
-	status, info, err := mw.iget(mp, inode)
+	status, info, err := mw.iget(mp, inode, mw.VerReadSeq)
 	if err != nil || status != statusOK {
 		if status == statusNoent {
 			// For NOENT error, pull the latest mp and give it another try,
@@ -365,7 +366,7 @@ func (mw *MetaWrapper) doInodeGet(inode uint64) (*proto.InodeInfo, error) {
 		return nil, syscall.ENOENT
 	}
 
-	status, info, err := mw.iget(mp, inode)
+	status, info, err := mw.iget(mp, inode, mw.VerReadSeq)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
@@ -490,8 +491,14 @@ func (mw *MetaWrapper) Delete_ll(parentID uint64, name string, isDir bool) (*pro
 	if mw.enableTx(proto.TxOpMaskRemove) {
 		return mw.txDelete_ll(parentID, name, isDir)
 	} else {
-		return mw.delete_ll(parentID, name, isDir)
+		return mw.Delete_ll_EX(parentID, name, isDir, 0)
 	}
+}
+func (mw *MetaWrapper) Delete_Ver_ll(parentID uint64, name string, isDir bool, verSeq uint64) (*proto.InodeInfo, error) {
+	if verSeq == 0 {
+		verSeq = math.MaxUint64
+	}
+	return mw.Delete_ll_EX(parentID, name, isDir, verSeq)
 }
 
 func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool) (info *proto.InodeInfo, err error) {
@@ -515,7 +522,7 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool) (in
 		}
 	}()
 
-	status, inode, mode, err = mw.lookup(parentMP, parentID, name)
+	status, inode, mode, err = mw.lookup(parentMP, parentID, name, mw.LastVerSeq)
 	if err != nil || status != statusOK {
 		return nil, statusErrToErrno(status, err)
 	}
@@ -614,7 +621,8 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool) (in
  * Note that the return value of InodeInfo might be nil without error,
  * and the caller should make sure InodeInfo is valid before using it.
  */
-func (mw *MetaWrapper) delete_ll(parentID uint64, name string, isDir bool) (*proto.InodeInfo, error) {
+
+func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, verSeq uint64) (*proto.InodeInfo, error) {
 	var (
 		status          int
 		inode           uint64
@@ -624,7 +632,7 @@ func (mw *MetaWrapper) delete_ll(parentID uint64, name string, isDir bool) (*pro
 		mp              *MetaPartition
 		inodeCreateTime int64
 	)
-
+	log.LogDebugf("action[Delete_ll_EX] name %v verSeq %v parentID %v isDir %v", name, verSeq, parentID, isDir)
 	parentMP := mw.getPartitionByInode(parentID)
 	if parentMP == nil {
 		log.LogErrorf("delete_ll: No parent partition, parentID(%v) name(%v)", parentID, name)
@@ -632,24 +640,27 @@ func (mw *MetaWrapper) delete_ll(parentID uint64, name string, isDir bool) (*pro
 	}
 
 	if isDir {
-		status, inode, mode, err = mw.lookup(parentMP, parentID, name)
+		status, inode, mode, err = mw.lookup(parentMP, parentID, name, verSeq)
 		if err != nil || status != statusOK {
 			return nil, statusToErrno(status)
 		}
 		if !proto.IsDir(mode) {
 			return nil, syscall.EINVAL
 		}
-		mp = mw.getPartitionByInode(inode)
-		if mp == nil {
-			log.LogErrorf("delete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
-			return nil, syscall.EAGAIN
-		}
-		status, info, err = mw.iget(mp, inode)
-		if err != nil || status != statusOK {
-			return nil, statusToErrno(status)
-		}
-		if info == nil || info.Nlink > 2 {
-			return nil, syscall.ENOTEMPTY
+
+		if verSeq == 0 {
+			mp = mw.getPartitionByInode(inode)
+			if mp == nil {
+				log.LogErrorf("Delete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
+				return nil, syscall.EAGAIN
+			}
+			status, info, err = mw.iget(mp, inode, verSeq)
+			if err != nil || status != statusOK {
+				return nil, statusToErrno(status)
+			}
+			if info == nil || info.Nlink > 2 {
+				return nil, syscall.ENOTEMPTY
+			}
 		}
 		if mw.EnableQuota {
 			quotaInfos, err := mw.GetInodeQuota_ll(inode)
@@ -693,27 +704,31 @@ func (mw *MetaWrapper) delete_ll(parentID uint64, name string, isDir bool) (*pro
 		}
 	}
 
-	status, inode, err = mw.ddelete(parentMP, parentID, name, inodeCreateTime)
+	log.LogDebugf("action[Delete_ll] parentID %v name %v verSeq %v", parentID, name, verSeq)
+	status, inode, err = mw.ddelete(parentMP, parentID, name, inodeCreateTime, verSeq)
 	if err != nil || status != statusOK {
 		if status == statusNoent {
+			log.LogDebugf("action[Delete_ll] parentID %v name %v verSeq %v", parentID, name, verSeq)
 			return nil, nil
 		}
+		log.LogDebugf("action[Delete_ll] parentID %v name %v verSeq %v", parentID, name, verSeq)
 		return nil, statusToErrno(status)
 	}
-
+	log.LogDebugf("action[Delete_ll] parentID %v name %v verSeq %v", parentID, name, verSeq)
 	// dentry is deleted successfully but inode is not, still returns success.
 	mp = mw.getPartitionByInode(inode)
 	if mp == nil {
 		log.LogErrorf("delete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
 		return nil, nil
 	}
-
-	status, info, err = mw.iunlink(mp, inode)
+	log.LogDebugf("action[Delete_ll] parentID %v name %v verSeq %v", parentID, name, verSeq)
+	status, info, err = mw.iunlink(mp, inode, verSeq)
 	if err != nil || status != statusOK {
+		log.LogDebugf("action[Delete_ll] parentID %v name %v verSeq %v err %v", parentID, name, verSeq, err)
 		return nil, nil
 	}
 
-	if mw.EnableSummary {
+	if verSeq == 0 && mw.EnableSummary {
 		go func() {
 			if proto.IsDir(mode) {
 				mw.UpdateSummary_ll(parentID, 0, -1, 0)
@@ -751,7 +766,7 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 		return syscall.ENOENT
 	}
 	// look up for the src ino
-	status, srcInode, srcMode, err := mw.lookup(srcParentMP, srcParentID, srcName)
+	status, srcInode, srcMode, err := mw.lookup(srcParentMP, srcParentID, srcName, mw.LastVerSeq)
 	if err != nil || status != statusOK {
 		return statusToErrno(status)
 	}
@@ -763,7 +778,7 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 
 	funcs := make([]func() (int, error), 0)
 
-	status, dstInode, dstMode, err := mw.lookup(dstParentMP, dstParentID, dstName)
+	status, dstInode, dstMode, err := mw.lookup(dstParentMP, dstParentID, dstName, mw.LastVerSeq)
 	if err == nil && status == statusOK {
 
 		// Note that only regular files are allowed to be overwritten.
@@ -920,7 +935,10 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 }
 
 func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID uint64, dstName string, overwritten bool) (err error) {
-	var oldInode uint64
+	var (
+		oldInode   uint64
+		lastVerSeq uint64
+	)
 
 	srcParentMP := mw.getPartitionByInode(srcParentID)
 	if srcParentMP == nil {
@@ -931,7 +949,7 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 		return syscall.ENOENT
 	}
 
-	status, info, err := mw.iget(dstParentMP, dstParentID)
+	status, info, err := mw.iget(dstParentMP, dstParentID, mw.VerReadSeq)
 	if err != nil || status != statusOK {
 		return statusToErrno(status)
 	}
@@ -943,7 +961,7 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 	}
 
 	// look up for the src ino
-	status, inode, mode, err := mw.lookup(srcParentMP, srcParentID, srcName)
+	status, inode, mode, err := mw.lookup(srcParentMP, srcParentID, srcName, mw.VerReadSeq)
 	if err != nil || status != statusOK {
 		return statusToErrno(status)
 	}
@@ -988,12 +1006,12 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 	}
 
 	if status != statusOK {
-		mw.iunlink(srcMP, inode)
+		mw.iunlink(srcMP, inode, lastVerSeq)
 		return statusToErrno(status)
 	}
 
 	// delete dentry from src parent
-	status, _, err = mw.ddelete(srcParentMP, srcParentID, srcName, 0)
+	status, _, err = mw.ddelete(srcParentMP, srcParentID, srcName, 0, lastVerSeq)
 	if err != nil {
 		log.LogErrorf("mw.ddelete(srcParentMP, srcParentID, %s) failed.", srcName)
 		return statusToErrno(status)
@@ -1003,23 +1021,23 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 			e   error
 		)
 		if oldInode == 0 {
-			sts, _, e = mw.ddelete(dstParentMP, dstParentID, dstName, 0)
+			sts, _, e = mw.ddelete(dstParentMP, dstParentID, dstName, 0, lastVerSeq)
 		} else {
 			sts, _, e = mw.dupdate(dstParentMP, dstParentID, dstName, oldInode)
 		}
 		if e == nil && sts == statusOK {
-			mw.iunlink(srcMP, inode)
+			mw.iunlink(srcMP, inode, lastVerSeq)
 		}
 		return statusToErrno(status)
 	}
 
-	mw.iunlink(srcMP, inode)
+	mw.iunlink(srcMP, inode, lastVerSeq)
 
 	if oldInode != 0 {
 		// overwritten
 		inodeMP := mw.getPartitionByInode(oldInode)
 		if inodeMP != nil {
-			mw.iunlink(inodeMP, oldInode)
+			mw.iunlink(inodeMP, oldInode, lastVerSeq)
 			// evict oldInode to avoid oldInode becomes orphan inode
 			mw.ievict(inodeMP, oldInode)
 		}
@@ -1084,7 +1102,22 @@ func (mw *MetaWrapper) ReadDir_ll(parentID uint64) ([]proto.Dentry, error) {
 		return nil, syscall.ENOENT
 	}
 
-	status, children, err := mw.readdir(parentMP, parentID)
+	status, children, err := mw.readDir(parentMP, parentID)
+	if err != nil || status != statusOK {
+		return nil, statusToErrno(status)
+	}
+	return children, nil
+}
+
+// Read limit count dentries with parentID, start from string
+func (mw *MetaWrapper) ReadDirLimitByVer(parentID uint64, from string, limit uint64, verSeq uint64) ([]proto.Dentry, error) {
+	log.LogDebugf("action[ReadDirLimit_ll] parentID %v from %v limit %v", parentID, from, limit)
+	parentMP := mw.getPartitionByInode(parentID)
+	if parentMP == nil {
+		return nil, syscall.ENOENT
+	}
+
+	status, children, err := mw.readDirLimit(parentMP, parentID, from, limit, verSeq)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
@@ -1093,12 +1126,13 @@ func (mw *MetaWrapper) ReadDir_ll(parentID uint64) ([]proto.Dentry, error) {
 
 // Read limit count dentries with parentID, start from string
 func (mw *MetaWrapper) ReadDirLimit_ll(parentID uint64, from string, limit uint64) ([]proto.Dentry, error) {
+	log.LogDebugf("action[ReadDirLimit_ll] parentID %v from %v limit %v", parentID, from, limit)
 	parentMP := mw.getPartitionByInode(parentID)
 	if parentMP == nil {
 		return nil, syscall.ENOENT
 	}
 
-	status, children, err := mw.readdirlimit(parentMP, parentID, from, limit)
+	status, children, err := mw.readDirLimit(parentMP, parentID, from, limit, mw.VerReadSeq)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
@@ -1133,7 +1167,38 @@ func (mw *MetaWrapper) DentryUpdate_ll(parentID uint64, name string, inode uint6
 	return
 }
 
-// Allocated as a callback by stream sdk
+func (mw *MetaWrapper) SplitExtentKey(parentInode, inode uint64, ek proto.ExtentKey) error {
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		return syscall.ENOENT
+	}
+	var oldInfo *proto.InodeInfo
+	if mw.EnableSummary {
+		oldInfo, _ = mw.InodeGet_ll(inode)
+	}
+
+	status, err := mw.appendExtentKey(mp, inode, ek, nil, true)
+	if err != nil || status != statusOK {
+		log.LogErrorf("SplitExtentKey: inode(%v) ek(%v) err(%v) status(%v)", inode, ek, err, status)
+		return statusToErrno(status)
+	}
+	log.LogDebugf("SplitExtentKey: ino(%v) ek(%v)", inode, ek)
+
+	if mw.EnableSummary {
+		go func() {
+			newInfo, _ := mw.InodeGet_ll(inode)
+			if oldInfo != nil && newInfo != nil {
+				if int64(oldInfo.Size) < int64(newInfo.Size) {
+					mw.UpdateSummary_ll(parentInode, 0, 0, int64(newInfo.Size)-int64(oldInfo.Size))
+				}
+			}
+		}()
+	}
+
+	return nil
+}
+
+// Used as a callback by stream sdk
 func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.ExtentKey, discard []proto.ExtentKey) error {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
@@ -1144,12 +1209,12 @@ func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.Exten
 		oldInfo, _ = mw.InodeGet_ll(inode)
 	}
 
-	status, err := mw.appendExtentKey(mp, inode, ek, discard)
+	status, err := mw.appendExtentKey(mp, inode, ek, discard, false)
 	if err != nil || status != statusOK {
-		log.LogErrorf("AppendExtentKey: inode(%v) ek(%v) local discard(%v) err(%v) status(%v)", inode, ek, discard, err, status)
+		log.LogErrorf("MetaWrapper AppendExtentKey: inode(%v) ek(%v) local discard(%v) err(%v) status(%v)", inode, ek, discard, err, status)
 		return statusToErrno(status)
 	}
-	log.LogDebugf("AppendExtentKey: ino(%v) ek(%v) discard(%v)", inode, ek, discard)
+	log.LogDebugf("MetaWrapper AppendExtentKey: ino(%v) ek(%v) discard(%v)", inode, ek, discard)
 
 	if mw.EnableSummary {
 		go func() {
@@ -1203,11 +1268,16 @@ func (mw *MetaWrapper) GetExtents(inode uint64) (gen uint64, size uint64, extent
 		return 0, 0, nil, syscall.ENOENT
 	}
 
-	status, gen, size, extents, err := mw.getExtents(mp, inode)
-	if err != nil || status != statusOK {
-		log.LogErrorf("GetExtents: ino(%v) err(%v) status(%v)", inode, err, status)
-		return 0, 0, nil, statusToErrno(status)
+	resp, err := mw.getExtents(mp, inode)
+	if err != nil {
+		log.LogErrorf("GetExtents: ino(%v) err(%v) status(%v)", inode, err, resp.Status)
+		return 0, 0, nil, statusToErrno(resp.Status)
 	}
+	extents = resp.Extents
+	gen = resp.Generation
+	size = resp.Size
+
+	// log.LogDebugf("GetObjExtents stack[%v]", string(debug.Stack()))
 	log.LogDebugf("GetExtents: ino(%v) gen(%v) size(%v) extents(%v)", inode, gen, size, extents)
 	return gen, size, extents, nil
 }
@@ -1363,7 +1433,7 @@ func (mw *MetaWrapper) link(parentID uint64, name string, ino uint64) (*proto.In
 		return nil, syscall.ENOENT
 	}
 
-	status, info, err := mw.iget(parentMP, parentID)
+	status, info, err := mw.iget(parentMP, parentID, mw.VerReadSeq)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
@@ -1404,7 +1474,7 @@ func (mw *MetaWrapper) link(parentID uint64, name string, ino uint64) (*proto.In
 		return nil, statusToErrno(status)
 	} else if status != statusOK {
 		if status != statusExist {
-			mw.iunlink(mp, ino)
+			mw.iunlink(mp, ino, mw.LastVerSeq)
 		}
 		return nil, statusToErrno(status)
 	}
@@ -1519,7 +1589,7 @@ func (mw *MetaWrapper) InodeUnlink_ll(inode uint64) (*proto.InodeInfo, error) {
 		log.LogErrorf("InodeUnlink_ll: No such partition, ino(%v)", inode)
 		return nil, syscall.EINVAL
 	}
-	status, info, err := mw.iunlink(mp, inode)
+	status, info, err := mw.iunlink(mp, inode, mw.LastVerSeq)
 	if err != nil || status != statusOK {
 		log.LogErrorf("InodeUnlink_ll: ino(%v) err(%v) status(%v)", inode, err, status)
 		return nil, statusToErrno(status)
