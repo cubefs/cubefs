@@ -54,6 +54,22 @@ struct cfs_dirent {
     uint32_t     nameLen;
 };
 
+struct cfs_hdfs_stat_info {
+    uint64_t size;
+    uint64_t atime;
+    uint64_t mtime;
+    uint32_t atime_nsec;
+    uint32_t mtime_nsec;
+    mode_t   mode;
+};
+
+struct cfs_dirent_info {
+    struct   cfs_hdfs_stat_info stat;
+    char     d_type;
+    char     name[256];
+    uint32_t     nameLen;
+};
+
 */
 import "C"
 
@@ -774,6 +790,91 @@ func cfs_readdir(id C.int64_t, fd C.int, dirents []C.struct_cfs_dirent, count C.
 	}
 
 	return n
+}
+
+//export cfs_lsdir
+func cfs_lsdir(id C.int64_t, fd C.int, direntsInfo []C.struct_cfs_dirent_info, count C.int) (n C.int) {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return statusEINVAL
+	}
+
+	f := c.getFile(uint(fd))
+	if f == nil {
+		return statusEBADFD
+	}
+
+	if f.dirp == nil {
+		f.dirp = &dirStream{}
+		dentries, err := c.mw.ReadDir_ll(f.ino)
+		if err != nil {
+			return errorToStatus(err)
+		}
+		f.dirp.dirents = dentries
+	}
+
+	dirp := f.dirp
+	inodeIDS := make([]uint64, count, count)
+	for dirp.pos < len(dirp.dirents) && n < count {
+		inodeIDS[n] = dirp.dirents[dirp.pos].Inode
+		// fill up d_type
+		if proto.IsRegular(dirp.dirents[dirp.pos].Type) {
+			direntsInfo[n].d_type = C.DT_REG
+		} else if proto.IsDir(dirp.dirents[dirp.pos].Type) {
+			direntsInfo[n].d_type = C.DT_DIR
+		} else if proto.IsSymlink(dirp.dirents[dirp.pos].Type) {
+			direntsInfo[n].d_type = C.DT_LNK
+		} else {
+			direntsInfo[n].d_type = C.DT_UNKNOWN
+		}
+		nameLen := len(dirp.dirents[dirp.pos].Name)
+		if nameLen >= 256 {
+			nameLen = 255
+		}
+		hdr := (*reflect.StringHeader)(unsafe.Pointer(&dirp.dirents[dirp.pos].Name))
+
+		C.memcpy(unsafe.Pointer(&direntsInfo[n].name[0]), unsafe.Pointer(hdr.Data), C.size_t(nameLen))
+		direntsInfo[n].name[nameLen] = 0
+		direntsInfo[n].nameLen = C.uint32_t(nameLen)
+
+		// advance cursor
+		dirp.pos++
+		n++
+	}
+	if n == 0 {
+		return n
+	}
+	infos := c.mw.BatchInodeGet(inodeIDS)
+	if len(infos) != int(n) {
+		return statusEIO
+	}
+	for i := 0; i < len(infos); i++ {
+		// fill up the size
+		direntsInfo[i].stat.size = C.uint64_t(infos[i].Size)
+
+		// fill up the mode
+		if proto.IsRegular(infos[i].Mode) {
+			direntsInfo[i].stat.mode = C.uint32_t(C.S_IFREG) | C.uint32_t(infos[i].Mode&0777)
+		} else if proto.IsDir(infos[i].Mode) {
+			direntsInfo[i].stat.mode = C.uint32_t(C.S_IFDIR) | C.uint32_t(infos[i].Mode&0777)
+		} else if proto.IsSymlink(infos[i].Mode) {
+			direntsInfo[i].stat.mode = C.uint32_t(C.S_IFLNK) | C.uint32_t(infos[i].Mode&0777)
+		} else {
+			direntsInfo[i].stat.mode = C.uint32_t(C.S_IFSOCK) | C.uint32_t(infos[i].Mode&0777)
+		}
+
+		// fill up the time struct
+		t := infos[i].AccessTime.UnixNano()
+		direntsInfo[i].stat.atime = C.uint64_t(t / 1e9)
+		direntsInfo[i].stat.atime_nsec = C.uint32_t(t % 1e9)
+
+		t = infos[i].ModifyTime.UnixNano()
+		direntsInfo[i].stat.mtime = C.uint64_t(t / 1e9)
+		direntsInfo[i].stat.mtime_nsec = C.uint32_t(t % 1e9)
+
+	}
+	return n
+
 }
 
 //export cfs_mkdirs

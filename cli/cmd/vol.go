@@ -148,7 +148,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			followerRead, _ := strconv.ParseBool(optFollowerRead)
 			normalZonesFirst, _ := strconv.ParseBool(optNormalZonesFirst)
 			replicaNum := 3
-			if optReplicaNum == "" && optVolType == 1{
+			if optReplicaNum == "" && optVolType == 1 {
 				replicaNum = 1
 			}
 			// ask user for confirm
