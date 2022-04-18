@@ -287,8 +287,10 @@ func (d *Disk) ForceExitRaftStore() {
 	partitionList := d.DataPartitionList()
 	for _, partitionID := range partitionList {
 		partition := d.GetDataPartition(partitionID)
-		partition.partitionStatus = proto.Unavailable
-		partition.stopRaft()
+		if partition != nil {
+			partition.partitionStatus = proto.Unavailable
+			partition.stopRaft()
+		}
 	}
 }
 

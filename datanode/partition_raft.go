@@ -722,10 +722,11 @@ func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) 
 
 // Get all replica applied ids
 func (dp *DataPartition) getAllReplicaAppliedID() (allAppliedID []uint64, replyNum uint8) {
-	allAppliedID = make([]uint64, dp.getReplicaLen())
-	for i := 0; i < dp.getReplicaLen(); i++ {
+	replicas := dp.getReplicaCopy()
+	allAppliedID = make([]uint64, len(replicas))
+	for i := 0; i < len(replicas); i++ {
 		p := NewPacketToGetAppliedID(dp.partitionID)
-		replicaHostParts := strings.Split(dp.getReplicaAddr(i), ":")
+		replicaHostParts := strings.Split(replicas[i], ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
 		if LocalIP == replicaHost {
 			log.LogDebugf("partition(%v) local no send msg. localIP(%v) replicaHost(%v) appliedId(%v)",
@@ -734,7 +735,7 @@ func (dp *DataPartition) getAllReplicaAppliedID() (allAppliedID []uint64, replyN
 			replyNum++
 			continue
 		}
-		target := dp.getReplicaAddr(i)
+		target := replicas[i]
 		appliedID, err := dp.getRemoteAppliedID(target, p)
 		if err != nil {
 			log.LogErrorf("partition(%v) getRemoteAppliedID Failed(%v).", dp.partitionID, err)
