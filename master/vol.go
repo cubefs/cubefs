@@ -1031,6 +1031,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.Capacity = args.capacity
 	vol.FollowerRead = args.followerRead
 	vol.authenticate = args.authenticate
+	vol.enablePosixAcl = args.enablePosixAcl
 
 	if proto.IsCold(vol.VolType) {
 		coldArgs := args.coldArgs
@@ -1073,6 +1074,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		authenticate:   vol.authenticate,
 		dpSelectorName: vol.dpSelectorName,
 		dpSelectorParm: vol.dpSelectorParm,
+		enablePosixAcl: vol.enablePosixAcl,
 
 		coldArgs: args,
 	}

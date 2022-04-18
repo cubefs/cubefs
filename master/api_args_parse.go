@@ -226,6 +226,7 @@ type updateVolReq struct {
 	capacity       uint64
 	followRead     bool
 	authenticate   bool
+	enablePosixAcl bool
 	zoneName       string
 	description    string
 	dpSelectorName string
@@ -308,6 +309,10 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	req.zoneName = extractStrWithDefault(r, zoneNameKey, vol.zoneName)
 
 	if req.capacity, err = extractUint64WithDefault(r, volCapacityKey, vol.Capacity); err != nil {
+		return
+	}
+
+	if req.enablePosixAcl, err = extractBoolWithDefault(r, enablePosixAclKey, vol.enablePosixAcl); err != nil {
 		return
 	}
 
