@@ -21,6 +21,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Packet) (err error) {
@@ -182,7 +183,9 @@ func (mp *metaPartition) QuotaCreateDentry(req *proto.QuotaCreateDentryRequest, 
 		Name:     req.Name,
 		Inode:    req.Inode,
 		Type:     req.Mode,
+		VerSeq:   mp.verSeq,
 	}
+	log.LogDebugf("action[CreateDentry] mp[%v] with seq %v,dentry [%v]", mp.config.PartitionId, mp.verSeq, dentry)
 	val, err := dentry.Marshal()
 	if err != nil {
 		return
@@ -262,15 +265,25 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 
 // DeleteDentry deletes a dentry.
 func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err error) {
+
 	dentry := &Dentry{
 		ParentId: req.ParentID,
 		Name:     req.Name,
+		VerSeq:   req.Verseq,
 	}
+	log.LogDebugf("action[DeleteDentry] den(%v)", dentry)
+
 	val, err := dentry.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
+	if mp.verSeq == 0 && dentry.VerSeq > 0 {
+		err = fmt.Errorf("snapshot not enabled")
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	log.LogDebugf("action[DeleteDentry] submit!")
 	r, err := mp.submit(opFSMDeleteDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
@@ -427,6 +440,7 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err erro
 		ParentId: req.ParentID,
 		Name:     req.Name,
 		Inode:    req.Inode,
+		VerSeq:   mp.verSeq,
 	}
 	val, err := dentry.Marshal()
 	if err != nil {
@@ -475,6 +489,7 @@ func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 }
 
 func (mp *metaPartition) ReadDirLimit(req *ReadDirLimitReq, p *Packet) (err error) {
+	log.LogInfof("action[ReadDirLimit] read seq %v, request[%v]", req.VerSeq, req)
 	resp := mp.readDirLimit(req)
 	reply, err := json.Marshal(resp)
 	if err != nil {
@@ -490,6 +505,7 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 	dentry := &Dentry{
 		ParentId: req.ParentID,
 		Name:     req.Name,
+		VerSeq:   req.VerSeq,
 	}
 	dentry, status := mp.getDentry(dentry)
 	var reply []byte

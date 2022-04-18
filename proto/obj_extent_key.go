@@ -28,7 +28,7 @@ type Blob struct {
 	Vid    uint64
 }
 
-// ExtentKey defines the extent key struct.
+// ObjExtentKey defines the extent key struct.
 type ObjExtentKey struct {
 	Cid        uint64 // cluster id
 	CodeMode   uint8  // EC encode and decode mode
@@ -38,6 +38,9 @@ type ObjExtentKey struct {
 	Blobs      []Blob
 	FileOffset uint64 // obj offset in file
 	Crc        uint32
+	// snapshot
+	VerSeq uint64
+	ModGen uint64
 }
 
 // String returns the string format of the extentKey.

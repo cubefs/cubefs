@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 	"strings"
 	"sync"
 )
@@ -66,6 +67,7 @@ func (v *Vol) GetPartition(partitionID uint64) *DataPartition {
 // UpdatePartitions updates the data partition.
 func (v *Vol) UpdatePartitions(partitions *DataPartitionsView) {
 	for _, dp := range partitions.DataPartitions {
+		log.LogDebugf("action[UpdatePartitions] dp (id:%v,status:%v)", dp.PartitionID, dp.Status)
 		v.replaceOrInsert(dp)
 	}
 }

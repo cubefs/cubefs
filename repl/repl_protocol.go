@@ -273,8 +273,8 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	if err = request.ReadFromConnFromCli(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
 		return
 	}
-	log.LogDebugf("action[readPkgAndPrepare] packet(%v) from remote(%v) ",
-		request.GetUniqueLogId(), rp.sourceConn.RemoteAddr().String())
+	log.LogDebugf("action[readPkgAndPrepare] packet(%v) op %v from remote(%v) ",
+		request.GetUniqueLogId(), request.Opcode, rp.sourceConn.RemoteAddr().String())
 	if err = request.resolveFollowersAddr(); err != nil {
 		err = rp.putResponse(request)
 		return

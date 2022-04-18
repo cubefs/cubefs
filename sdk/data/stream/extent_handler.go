@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/util/stat"
 	"net"
+	"runtime/debug"
 	"sync/atomic"
 	"time"
 
@@ -106,10 +107,14 @@ type ExtentHandler struct {
 
 	// Signaled in receiver ONLY to exit *sender*.
 	doneSender chan struct{}
+
+	// ver update need alloc new extent
+	verUpdate chan uint64
 }
 
 // NewExtentHandler returns a new extent handler.
 func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *ExtentHandler {
+	log.LogDebugf("NewExtentHandler stack(%v)", string(debug.Stack()))
 	eh := &ExtentHandler{
 		stream:       stream,
 		id:           GetExtentHandlerID(),
@@ -122,6 +127,7 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *Ex
 		reply:        make(chan *Packet, 1024),
 		doneSender:   make(chan struct{}),
 		doneReceiver: make(chan struct{}),
+		verUpdate:    make(chan uint64),
 	}
 
 	go eh.receiver()
@@ -204,6 +210,10 @@ func (eh *ExtentHandler) sender() {
 
 	for {
 		select {
+		case <-eh.verUpdate:
+			eh.dp = nil
+			eh.key = nil
+			log.LogInfof("action[ExtentHandler] ver update in sender process and set dp and key as nil")
 		//		case <-t.C:
 		//			log.LogDebugf("sender alive: eh(%v) inflight(%v)", eh, atomic.LoadInt32(&eh.inflight))
 		case packet := <-eh.request:
@@ -321,9 +331,13 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	log.LogDebugf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet, reply)
 
 	if reply.ResultCode != proto.OpOk {
-		errmsg := fmt.Sprintf("reply NOK: reply(%v)", reply)
-		eh.processReplyError(packet, errmsg)
-		return
+		if reply.ResultCode != proto.ErrCodeVersionOpError {
+			errmsg := fmt.Sprintf("reply NOK: reply(%v)", reply)
+			eh.processReplyError(packet, errmsg)
+			return
+		}
+		// todo(leonchang) need check safety
+		eh.stream.GetExtents()
 	}
 
 	if !packet.isValidWriteReply(reply) {
@@ -359,6 +373,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 			ExtentId:     extID,
 			ExtentOffset: extOffset,
 			Size:         packet.Size,
+			VerSeq:       eh.stream.verSeq,
 		}
 	} else {
 		eh.key.Size += packet.Size
@@ -384,13 +399,14 @@ func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
 func (eh *ExtentHandler) flush() (err error) {
 	eh.flushPacket()
 	eh.waitForFlush()
-
+	log.LogDebugf("flush.eh inode %v fileoffset %v, mod %v, key[%v] ", eh.inode, eh.fileOffset, eh.storeMode, eh.key)
 	err = eh.appendExtentKey()
 	if err != nil {
 		return
 	}
 
 	if eh.storeMode == proto.TinyExtentType {
+		log.LogWarnf("action[ExtentHandler.flush] tiny type not set close")
 		eh.setClosed()
 	}
 
@@ -508,7 +524,7 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 		extID int
 	)
 
-	//log.LogDebugf("ExtentHandler allocateExtent enter: eh(%v)", eh)
+	log.LogDebugf("ExtentHandler allocateExtent enter: eh(%v)", eh)
 
 	exclude := make(map[string]struct{})
 
@@ -642,14 +658,17 @@ func (eh *ExtentHandler) getStatus() int32 {
 }
 
 func (eh *ExtentHandler) setClosed() bool {
+	log.LogDebugf("action[ExtentHandler.setClosed] stack (%v)", string(debug.Stack()))
 	return atomic.CompareAndSwapInt32(&eh.status, ExtentStatusOpen, ExtentStatusClosed)
 }
 
 func (eh *ExtentHandler) setRecovery() bool {
+	log.LogDebugf("action[ExtentHandler.setRecovery] stack (%v)", string(debug.Stack()))
 	return atomic.CompareAndSwapInt32(&eh.status, ExtentStatusClosed, ExtentStatusRecovery)
 }
 
 func (eh *ExtentHandler) setError() bool {
+	log.LogDebugf("action[ExtentHandler.setError] stack (%v)", string(debug.Stack()))
 	if proto.IsHot(eh.stream.client.volumeType) {
 		atomic.StoreInt32(&eh.stream.status, StreamerError)
 	}

@@ -674,6 +674,15 @@ func (c *Cluster) syncAclList(vol *Vol, val []byte) (err error) {
 	return c.submit(metadata)
 }
 
+func (c *Cluster) syncMultiVersion(vol *Vol, val []byte) (err error) {
+	metadata := new(RaftCmd)
+	metadata.Op = opSyncMulitVersion
+	metadata.K = MultiVerPrefix + strconv.FormatUint(vol.ID, 10)
+	metadata.V = val
+
+	return c.submit(metadata)
+}
+
 func (c *Cluster) loadAclList(vol *Vol) (err error) {
 	key := AclPrefix + strconv.FormatUint(vol.ID, 10)
 	result, err := c.fsm.store.SeekForPrefix([]byte(key))
@@ -714,6 +723,19 @@ func (c *Cluster) loadUidSpaceList(vol *Vol) (err error) {
 	vol.initUidSpaceManager(c)
 	for _, value := range result {
 		return vol.uidSpaceManager.load(c, value)
+	}
+	return
+}
+
+func (c *Cluster) loadMultiVersion(vol *Vol) (err error) {
+	key := MultiVerPrefix + strconv.FormatUint(vol.ID, 10)
+	result, err := c.fsm.store.SeekForPrefix([]byte(key))
+	if err != nil {
+		log.LogErrorf("action[loadMultiVersion] err %v", err.Error())
+		return vol.VersionMgr.init(c)
+	}
+	for _, value := range result {
+		return vol.VersionMgr.loadMultiVersion(value)
 	}
 	return
 }
@@ -1276,6 +1298,7 @@ func (c *Cluster) loadVols() (err error) {
 		}
 		vol := newVolFromVolValue(vv)
 		vol.Status = vv.Status
+
 		if err = c.loadAclList(vol); err != nil {
 			log.LogInfof("action[loadVols],vol[%v] load acl manager error %v", vol.Name, err)
 			continue
@@ -1283,6 +1306,11 @@ func (c *Cluster) loadVols() (err error) {
 
 		if err = c.loadUidSpaceList(vol); err != nil {
 			log.LogInfof("action[loadVols],vol[%v] load uid manager error %v", vol.Name, err)
+			continue
+		}
+
+		if err = c.loadMultiVersion(vol); err != nil {
+			log.LogInfof("action[loadVols],vol[%v] load ver manager error %v", vol.Name, err)
 			continue
 		}
 
@@ -1320,7 +1348,7 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 				mpv.Peers[i].ID = mn.(*MetaNode).ID
 			}
 		}
-		mp := newMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, vol.mpReplicaNum, vol.Name, mpv.VolID)
+		mp := newMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, vol.mpReplicaNum, vol.Name, mpv.VolID, 0)
 		mp.setHosts(strings.Split(mpv.Hosts, underlineSeparator))
 		mp.setPeers(mpv.Peers)
 		mp.OfflinePeerID = mpv.OfflinePeerID
