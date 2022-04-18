@@ -168,6 +168,8 @@ type volValue struct {
 	CacheLowWater    int
 	CacheLRUInterval int
 	CacheRule        string
+
+	EnablePosixAcl bool
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -198,6 +200,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		DpSelectorName:    vol.dpSelectorName,
 		DpSelectorParm:    vol.dpSelectorParm,
 		DefaultPriority:   vol.defaultPriority,
+		EnablePosixAcl:    vol.enablePosixAcl,
 
 		VolType:          vol.VolType,
 		EbsBlkSize:       vol.EbsBlkSize,

@@ -2441,6 +2441,7 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		DomainId:          req.domainId,
 		CreateTime:        createTime,
 		Description:       req.description,
+		EnablePosixAcl:    req.enablePosixAcl,
 
 		VolType:          req.volType,
 		EbsBlkSize:       req.coldArgs.objBlockSize,

@@ -72,6 +72,7 @@ type Vol struct {
 	crossZone          bool
 	domainOn           bool
 	defaultPriority    bool // old default zone first
+	enablePosixAcl     bool
 	zoneName           string
 	MetaPartitions     map[uint64]*MetaPartition `graphql:"-"`
 	mpsLock            sync.RWMutex
@@ -114,6 +115,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.description = vv.Description
 	vol.defaultPriority = vv.DefaultPriority
 	vol.domainId = vv.DomainId
+	vol.enablePosixAcl = vv.EnablePosixAcl
 
 	vol.VolType = vv.VolType
 	vol.EbsBlkSize = vv.EbsBlkSize
@@ -125,7 +127,6 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.CacheLowWater = vv.CacheLowWater
 	vol.CacheLRUInterval = vv.CacheLRUInterval
 	vol.CacheRule = vv.CacheRule
-
 	return
 }
 

@@ -1018,6 +1018,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		Status:             vol.Status,
 		Capacity:           vol.Capacity,
 		FollowerRead:       vol.FollowerRead,
+		EnablePosixAcl:     vol.enablePosixAcl,
 		NeedToLowerReplica: vol.NeedToLowerReplica,
 		Authenticate:       vol.authenticate,
 		CrossZone:          vol.crossZone,
@@ -2222,6 +2223,19 @@ func parseReqToDecoDisk(r *http.Request) (nodeAddr, diskPath string, limit int, 
 	return
 }
 
+func extractPosixAcl(r *http.Request) (enablePosix bool, err error) {
+	var value string
+	if value = r.FormValue(enablePosixAclKey); value == "" {
+		return
+	}
+
+	status, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("parse %s failed, val %s", enablePosixAclKey, value)
+	}
+
+	return status, nil
+}
 func (m *Server) migrateMetaNodeHandler(w http.ResponseWriter, r *http.Request) {
 	srcAddr, targetAddr, limit, err := parseMigrateNodeParam(r)
 	if err != nil {
