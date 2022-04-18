@@ -189,6 +189,7 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 	if per == USER && args.Owner != uid {
 		return nil, fmt.Errorf("[%s] not has permission to create volume for [%s]", uid, args.Owner)
 	}
+
 	req := &createVolReq{
 		name:             args.Name,
 		owner:            args.Owner,

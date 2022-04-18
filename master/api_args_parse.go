@@ -423,6 +423,7 @@ type createVolReq struct {
 	zoneName         string
 	description      string
 	volType          int
+	enablePosixAcl   bool
 	// cold vol args
 	coldArgs coldVolArgs
 }
@@ -539,6 +540,11 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	req.zoneName = extractStr(r, zoneNameKey)
 	req.description = extractStr(r, descriptionKey)
 	req.domainId, err = extractUint64WithDefault(r, domainIdKey, 0)
+	if err != nil {
+		return
+	}
+
+	req.enablePosixAcl, err = extractPosixAcl(r)
 
 	return
 }
