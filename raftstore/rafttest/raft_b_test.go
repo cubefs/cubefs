@@ -17,6 +17,7 @@ func Benchmark_Raft(b *testing.B) {
 		for _, s := range servers {
 			s.raft.Stop()
 		}
+		dataType = 0
 	}()
 
 	leadServer := waitElect(servers, 1, w)

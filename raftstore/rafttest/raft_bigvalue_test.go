@@ -25,6 +25,7 @@ func TestPutBigValue(t *testing.T) {
 		for _, s := range servers {
 			s.raft.Stop()
 		}
+		dataType = 0
 	}()
 
 	leaderMap := make(map[uint64]*testServer)
