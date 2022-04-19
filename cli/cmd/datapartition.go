@@ -36,6 +36,14 @@ const (
 	cmdDataPartitionShort = "Manage data partition"
 )
 
+const (
+	DataNodePprofPort string = "17320"
+)
+
+var (
+	optShowRaftStatus bool
+)
+
 type PartitionStatus struct {
 	VolName    string       `json:"volName"`
 	ID         uint64       `json:"id"`
@@ -107,6 +115,7 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 			stdout(formatDataPartitionInfo(partition))
 		},
 	}
+	cmd.Flags().BoolVarP(&optShowRaftStatus, "show-raft", "r", false, "Display data partition raft status")
 	return cmd
 }
 
@@ -240,8 +249,6 @@ func newFixLackReplicaDataPartitionCmd(client *master.MasterClient) *cobra.Comma
 				var (
 					partition  *proto.DataPartitionInfo
 					leaderAddr string
-					resp       *http.Response
-					respData   []byte
 				)
 
 				stdout("FIX [%v] ... ", pid)
@@ -263,26 +270,11 @@ func newFixLackReplicaDataPartitionCmd(client *master.MasterClient) *cobra.Comma
 					stdout("SKIP(no leader)\n")
 					return
 				}
-				ip := strings.Split(leaderAddr, ":")
-				if len(ip) != 2 {
-					stdout("SKIP(invalid leader addr: %v)\n", leaderAddr)
-					return
-				}
-				url := fmt.Sprintf("http://%s:%s/partition?id=%d", ip[0], "17320", pid)
-				resp, err = http.Get(url)
+
+				var dataNodeResp *DataPartitionResponse
+				dataNodeResp, err = getDataNodePartitionStatus(leaderAddr, pid)
 				if err != nil {
-					stdout("SKIP(url: %v err: %v)\n", url, err)
-					return
-				}
-				respData, err = io.ReadAll(resp.Body)
-				_ = resp.Body.Close()
-				if err != nil {
-					stdout("SKIP(read body failed, url: %v err: %v)\n", url, err)
-					return
-				}
-				dataNodeResp := &DataPartitionResponse{}
-				if err = json.Unmarshal(respData, &dataNodeResp); err != nil {
-					stdout("SKIP(unmarshal failed, url: %v err: %v)\n", url, err)
+					stdout("SKIP(failed to get partition status, err[%v])\n", err)
 					return
 				}
 
@@ -484,4 +476,34 @@ func newDataPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 		},
 	}
 	return cmd
+}
+
+func getDataNodePartitionStatus(addr string, pid uint64) (dataNodeResp *DataPartitionResponse, err error) {
+	var (
+		resp     *http.Response
+		respData []byte
+	)
+
+	ip := strings.Split(addr, ":")
+	if len(ip) != 2 {
+		err = fmt.Errorf("invalid addr[%v]", addr)
+		return
+	}
+	url := fmt.Sprintf("http://%s:%s/partition?id=%d", ip[0], DataNodePprofPort, pid)
+	resp, err = http.Get(url)
+	if err != nil {
+		err = fmt.Errorf("failed to GET url[%v] err[%v]", url, err)
+		return
+	}
+	respData, err = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		err = fmt.Errorf("read body failed, url[%v] err[%v]", url, err)
+		return
+	}
+	if err = json.Unmarshal(respData, &dataNodeResp); err != nil {
+		err = fmt.Errorf("unmarshal failed, url[%v] err[%v]", url, err)
+		return
+	}
+	return
 }

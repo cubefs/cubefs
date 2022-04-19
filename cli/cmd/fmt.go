@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/tiglabs/raft"
 )
 
 func formatClusterView(cv *proto.ClusterView) string {
@@ -178,7 +179,21 @@ func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("Peers :\n"))
 	sb.WriteString(fmt.Sprintf("%v\n", formatPeerTableHeader()))
 	for _, peer := range partition.Peers {
-		sb.WriteString(fmt.Sprintf("%v\n", formatPeer(peer)))
+		var (
+			msg string
+			sts *raft.Status
+		)
+		if optShowRaftStatus {
+			dataNodeResp, err := getDataNodePartitionStatus(peer.Addr, partition.PartitionID)
+			if err == nil {
+				sts = dataNodeResp.Data.RaftStatus
+				if sts != nil {
+					msg = fmt.Sprintf("    leader[%v] term[%v] index[%v] commit[%v] apply[%v]", sts.Leader, sts.Term, sts.Index, sts.Commit, sts.Applied)
+				}
+			}
+
+		}
+		sb.WriteString(fmt.Sprintf("%v%v\n", formatPeer(peer), msg))
 	}
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("Hosts :\n"))
