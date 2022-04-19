@@ -16,8 +16,10 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -40,6 +42,7 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newDataPartitionGetCmd(client),
 		newListCorruptDataPartitionCmd(client),
 		newDataPartitionDecommissionCmd(client),
+		newDataPartitionBatchDecommissionCmd(client),
 		newDataPartitionReplicateCmd(client),
 		newDataPartitionDeleteReplicaCmd(client),
 	)
@@ -47,11 +50,12 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdDataPartitionGetShort           = "Display detail information of a data partition"
-	cmdCheckCorruptDataPartitionShort  = "Check and list unhealthy data partitions"
-	cmdDataPartitionDecommissionShort  = "Decommission a replication of the data partition to a new address"
-	cmdDataPartitionReplicateShort     = "Add a replication of the data partition on a new address"
-	cmdDataPartitionDeleteReplicaShort = "Delete a replication of the data partition on a fixed address"
+	cmdDataPartitionGetShort               = "Display detail information of a data partition"
+	cmdCheckCorruptDataPartitionShort      = "Check and list unhealthy data partitions"
+	cmdDataPartitionDecommissionShort      = "Decommission a replication of the data partition to a new address"
+	cmdDataPartitionBatchDecommissionShort = "Batch decommission a replication of the data partitions specified in a file separated by white space"
+	cmdDataPartitionReplicateShort         = "Add a replication of the data partition on a new address"
+	cmdDataPartitionDeleteReplicaShort     = "Delete a replication of the data partition on a fixed address"
 )
 
 func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
@@ -173,9 +177,10 @@ The "reset" command will be released in next version`,
 
 func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   CliOpDecommission + " [ADDRESS] [DATA PARTITION ID]",
-		Short: cmdDataPartitionDecommissionShort,
-		Args:  cobra.MinimumNArgs(2),
+		Use:     CliOpDecommission + " [ADDRESS] [DATA PARTITION ID]",
+		Aliases: []string{"decomm"},
+		Short:   cmdDataPartitionDecommissionShort,
+		Args:    cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
 				err         error
@@ -200,6 +205,48 @@ func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
 			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	return cmd
+}
+
+func newDataPartitionBatchDecommissionCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:     CliOpBatchDecommission + " [ADDRESS] [FILE CONTAINS DP ID]",
+		Aliases: []string{"b-decomm"},
+		Short:   cmdDataPartitionBatchDecommissionShort,
+		Args:    cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err         error
+				data        []byte
+				partitionID uint64
+			)
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+			address := args[0]
+			dpFile := args[1]
+			data, err = os.ReadFile(dpFile)
+			if err != nil {
+				return
+			}
+			dpStrings := strings.Split(strings.TrimSuffix(string(data), "\n"), " ")
+			for _, dpString := range dpStrings {
+				partitionID, err = strconv.ParseUint(dpString, 10, 64)
+				stdout("Decommission [%v] ... ", partitionID)
+				if err != nil {
+					return
+				}
+				if err = client.AdminAPI().DecommissionDataPartition(partitionID, address); err != nil {
+					return
+				}
+				stdout("OK\n")
+			}
+			stdout("Batch decommission finished!\n")
+			return
 		},
 	}
 	return cmd
