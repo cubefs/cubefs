@@ -332,7 +332,7 @@ func (s *raft) run() {
 			s.pending[starti] = pr.future
 			s.pendingCmd[starti] = pr.cmdType
 
-			e:=proto.GetEntryFromPoolWithArgWithLeader(pr.cmdType,s.raftFsm.term,starti,pr.data )
+			e:=proto.GetEntryFromPoolWithArgWithLeader(pr.cmdType,s.raftFsm.term,starti,pr.data, len(s.raftFsm.replicas)-1)
 			//var e = &proto.Entry{Term: s.raftFsm.term, Index: starti, Type: pr.cmdType, Data: pr.data}
 
 			msg.Entries = append(msg.Entries, e)
@@ -347,7 +347,7 @@ func (s *raft) run() {
 				case pr := <-s.propc:
 					s.pending[starti] = pr.future
 					s.pendingCmd[starti] = pr.cmdType
-					e:=proto.GetEntryFromPoolWithArgWithLeader(pr.cmdType,s.raftFsm.term,starti,pr.data )
+					e:=proto.GetEntryFromPoolWithArgWithLeader(pr.cmdType,s.raftFsm.term,starti,pr.data, len(s.raftFsm.replicas)-1)
 					//var e = &proto.Entry{Term: s.raftFsm.term, Index: starti, Type: pr.cmdType, Data: pr.data}
 
 					msg.Entries = append(msg.Entries, e)
@@ -410,29 +410,25 @@ func (s *raft) run() {
 			if s.isLeader() {
 				s.apply()
 				for _, msg := range s.raftFsm.msgs {
-                                    if msg.Type == proto.ReqMsgSnapShot {
-                                        s.sendSnapshot(msg)
-                                        continue
-                                    }
-                                    s.sendMessage(msg)
-                                }
-				s.persist()
-				if len(s.raftFsm.replicas) == 1 {
-					s.raftFsm.maybeCommit()
+					if msg.Type == proto.ReqMsgSnapShot {
+						s.sendSnapshot(msg)
+						continue
+					}
+					s.sendMessage(msg)
 				}
+				s.persist()
 			} else {
-			        s.persist()
+				s.persist()
 				for _, msg := range s.raftFsm.msgs {
-                                    if msg.Type == proto.ReqMsgSnapShot {
-                                        s.sendSnapshot(msg)
-                                        continue
-                                    }
-                                    s.sendMessage(msg)
-                                }
+					if msg.Type == proto.ReqMsgSnapShot {
+						s.sendSnapshot(msg)
+						continue
+					}
+					s.sendMessage(msg)
+				}
 				s.apply()
-			
 			}
-                        s.advance() 
+			s.advance()
 
 			s.raftFsm.msgs = nil
 			readyc = nil
@@ -965,7 +961,7 @@ func (s *raft) handlePanic(err interface{}) {
 
 	fatal := &FatalError{
 		ID:  s.raftFsm.id,
-		Err: fmt.Errorf("raft[%v] occur panic error: [%v]", s.raftFsm.id, err),
+		Err: fmt.Errorf("raftID[%v] raft[%v] occur panic error: [%v]", s.config.NodeID, s.raftFsm.id, err),
 	}
 	s.raftConfig.StateMachine.HandleFatalEvent(fatal)
 }

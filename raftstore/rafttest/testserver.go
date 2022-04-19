@@ -301,7 +301,8 @@ func getCurrentNanoTime() int64 {
 }
 
 func initRaftLog(logDir string) {
-	raftLogPath := path.Join(logDir, "logs")
+	raftLogPath := path.Join("/tmp/rafttest/", "logs")
+	os.RemoveAll(raftLogPath)
 	_, err := os.Stat(raftLogPath)
 	if err != nil {
 		if pathErr, ok := err.(*os.PathError); ok {
