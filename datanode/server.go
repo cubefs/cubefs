@@ -422,6 +422,7 @@ func (s *DataNode) checkLocalPartitionMatchWithMaster() (err error) {
 func (s *DataNode) registerHandler() {
 	http.HandleFunc("/disks", s.getDiskAPI)
 	http.HandleFunc("/partitions", s.getPartitionsAPI)
+	http.HandleFunc("/localNoLeaderPartitions", s.getLocalNoLeaderPartitionsAPI)
 	http.HandleFunc("/partition", s.getPartitionAPI)
 	http.HandleFunc("/deletePartition", s.deletePartition)
 	http.HandleFunc("/extent", s.getExtentAPI)
