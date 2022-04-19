@@ -12,7 +12,7 @@ var ReplArgSplit = "/"
 // Encode follower hosts and quorum value into a bytes.
 // Format: {HOST1}/{HOST2}/{HOST3}/{QUORUM}
 func EncodeReplPacketArg(followers []string, quorum int) []byte {
-	return blackmagic.StringToBytes(strings.Join(followers, ReplArgSplit) + ReplArgSplit + strconv.Itoa(quorum))
+	return []byte(strings.Join(followers, ReplArgSplit) + ReplArgSplit + strconv.Itoa(quorum))
 }
 
 // Decode follower hosts and quorum from a bytes.
