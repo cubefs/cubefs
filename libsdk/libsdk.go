@@ -111,7 +111,7 @@ import (
 const (
 	defaultBlkSize = uint32(1) << 12
 
-	maxFdNum uint = 1024000
+	maxFdNum uint = 10240000
 
 	MaxSizePutOnce = int64(1) << 23
 )
@@ -815,8 +815,10 @@ func cfs_lsdir(id C.int64_t, fd C.int, direntsInfo []C.struct_cfs_dirent_info, c
 
 	dirp := f.dirp
 	inodeIDS := make([]uint64, count, count)
+	inodeMap := make(map[uint64]int)
 	for dirp.pos < len(dirp.dirents) && n < count {
 		inodeIDS[n] = dirp.dirents[dirp.pos].Inode
+		inodeMap[dirp.dirents[dirp.pos].Inode] = n
 		// fill up d_type
 		if proto.IsRegular(dirp.dirents[dirp.pos].Type) {
 			direntsInfo[n].d_type = C.DT_REG
@@ -849,29 +851,29 @@ func cfs_lsdir(id C.int64_t, fd C.int, direntsInfo []C.struct_cfs_dirent_info, c
 		return statusEIO
 	}
 	for i := 0; i < len(infos); i++ {
-		// fill up the size
-		direntsInfo[i].stat.size = C.uint64_t(infos[i].Size)
+		// fill up the stat
+		index := inodeMap[infos[i].Inode]
+		direntsInfo[index].stat.size = C.uint64_t(infos[i].Size)
 
 		// fill up the mode
 		if proto.IsRegular(infos[i].Mode) {
-			direntsInfo[i].stat.mode = C.uint32_t(C.S_IFREG) | C.uint32_t(infos[i].Mode&0777)
+			direntsInfo[index].stat.mode = C.uint32_t(C.S_IFREG) | C.uint32_t(infos[i].Mode&0777)
 		} else if proto.IsDir(infos[i].Mode) {
-			direntsInfo[i].stat.mode = C.uint32_t(C.S_IFDIR) | C.uint32_t(infos[i].Mode&0777)
+			direntsInfo[index].stat.mode = C.uint32_t(C.S_IFDIR) | C.uint32_t(infos[i].Mode&0777)
 		} else if proto.IsSymlink(infos[i].Mode) {
-			direntsInfo[i].stat.mode = C.uint32_t(C.S_IFLNK) | C.uint32_t(infos[i].Mode&0777)
+			direntsInfo[index].stat.mode = C.uint32_t(C.S_IFLNK) | C.uint32_t(infos[i].Mode&0777)
 		} else {
-			direntsInfo[i].stat.mode = C.uint32_t(C.S_IFSOCK) | C.uint32_t(infos[i].Mode&0777)
+			direntsInfo[index].stat.mode = C.uint32_t(C.S_IFSOCK) | C.uint32_t(infos[i].Mode&0777)
 		}
 
 		// fill up the time struct
-		t := infos[i].AccessTime.UnixNano()
-		direntsInfo[i].stat.atime = C.uint64_t(t / 1e9)
-		direntsInfo[i].stat.atime_nsec = C.uint32_t(t % 1e9)
+		t := infos[index].AccessTime.UnixNano()
+		direntsInfo[index].stat.atime = C.uint64_t(t / 1e9)
+		direntsInfo[index].stat.atime_nsec = C.uint32_t(t % 1e9)
 
-		t = infos[i].ModifyTime.UnixNano()
-		direntsInfo[i].stat.mtime = C.uint64_t(t / 1e9)
-		direntsInfo[i].stat.mtime_nsec = C.uint32_t(t % 1e9)
-
+		t = infos[index].ModifyTime.UnixNano()
+		direntsInfo[index].stat.mtime = C.uint64_t(t / 1e9)
+		direntsInfo[index].stat.mtime_nsec = C.uint32_t(t % 1e9)
 	}
 	return n
 
