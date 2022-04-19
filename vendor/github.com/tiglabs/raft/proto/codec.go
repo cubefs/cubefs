@@ -258,7 +258,7 @@ func (m *Message) Encode(w io.Writer) error {
 			if err := e.Encode(w); err != nil {
 				return err
 			}
-			PutEntryToPool(e)
+			//PutEntryToPool(e)
 		}
 	}
 	if len(m.Context) > 0 {
@@ -305,8 +305,8 @@ func (m *Message) Decode(r *util.BufferReader) error {
 					esize := binary.BigEndian.Uint32(datas[start:])
 					start = start + 4
 					end := start + uint64(esize)
-					//entry:=new(Entry)
-					entry:=GetEntryFromPoolWithFollower()
+					entry:=new(Entry)
+					//entry:=GetEntryFromPoolWithFollower()
 					entry.Decode(datas[start:end])
 					m.Entries = append(m.Entries, entry)
 					start = end

@@ -62,18 +62,18 @@ func (u *unstable) stableTo(i, t uint64,iscache bool) {
 		l := uint64(len(u.entries))
 		diff := l - (i + 1 - u.offset)
 		if diff > 0 {
-			temp1:=u.entries[0:i+1-u.offset]
-			for t1:=0;t1<len(temp1);t1++{
-				if iscache && temp1[t1].Index<=i && temp1[t1].Term<=t{
-					proto.PutEntryToPool(temp1[t1])
-				}
-			}
+			//temp1:=u.entries[0:i+1-u.offset]
+			//for t1:=0;t1<len(temp1);t1++{
+			//	if iscache && temp1[t1].Index<=i && temp1[t1].Term<=t{
+			//		proto.PutEntryToPool(temp1[t1])
+			//	}
+			//}
 			copy(u.entries, u.entries[i+1-u.offset:l])
 		}
 		for k := diff; k < l; k++ {
-			if iscache && u.entries[k].Index<=i && u.entries[k].Term<=t{
-				proto.PutEntryToPool(u.entries[k])
-			}
+			//if iscache && u.entries[k].Index<=i && u.entries[k].Term<=t{
+			//	proto.PutEntryToPool(u.entries[k])
+			//}
 			u.entries[k] = nil
 		}
 		u.entries = u.entries[0:diff]

@@ -332,8 +332,8 @@ func (s *raft) run() {
 			s.pending[starti] = pr.future
 			s.pendingCmd[starti] = pr.cmdType
 
-			e:=proto.GetEntryFromPoolWithArgWithLeader(pr.cmdType,s.raftFsm.term,starti,pr.data, len(s.raftFsm.replicas)-1)
-			//var e = &proto.Entry{Term: s.raftFsm.term, Index: starti, Type: pr.cmdType, Data: pr.data}
+			//e:=proto.GetEntryFromPoolWithArgWithLeader(pr.cmdType,s.raftFsm.term,starti,pr.data, len(s.raftFsm.replicas)-1)
+			var e = &proto.Entry{Term: s.raftFsm.term, Index: starti, Type: pr.cmdType, Data: pr.data}
 
 			msg.Entries = append(msg.Entries, e)
 			pool.returnProposal(pr)
@@ -347,8 +347,8 @@ func (s *raft) run() {
 				case pr := <-s.propc:
 					s.pending[starti] = pr.future
 					s.pendingCmd[starti] = pr.cmdType
-					e:=proto.GetEntryFromPoolWithArgWithLeader(pr.cmdType,s.raftFsm.term,starti,pr.data, len(s.raftFsm.replicas)-1)
-					//var e = &proto.Entry{Term: s.raftFsm.term, Index: starti, Type: pr.cmdType, Data: pr.data}
+					//e:=proto.GetEntryFromPoolWithArgWithLeader(pr.cmdType,s.raftFsm.term,starti,pr.data, len(s.raftFsm.replicas)-1)
+					var e = &proto.Entry{Term: s.raftFsm.term, Index: starti, Type: pr.cmdType, Data: pr.data}
 
 					msg.Entries = append(msg.Entries, e)
 					pool.returnProposal(pr)

@@ -190,9 +190,9 @@ func (l *raftLog) persist() (err error) {
 		if err = l.storage.StoreEntries(entries); err != nil {
 			return
 		}
-		for _,e:=range entries{
-			proto.PutEntryToPool(e)
-		}
+		//for _,e:=range entries{
+		//	proto.PutEntryToPool(e)
+		//}
 		l.cache.truncateAndAppend(entries, true)
 		l.stableTo(entries[len(entries)-1].Index, entries[len(entries)-1].Term)
 
