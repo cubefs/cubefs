@@ -248,8 +248,8 @@ func (cache *ExtentCache) Get(offset uint64) (ret *proto.ExtentKey) {
 }
 
 // PrepareRequests classifies the incoming request.
-func (cache *ExtentCache) PrepareRequests(offset, size int, data []byte) []*ExtentRequest {
-	requests := make([]*ExtentRequest, 0)
+func (cache *ExtentCache) PrepareRequests(offset, size int, data []byte) (requests []*ExtentRequest, fileSize int) {
+	requests = make([]*ExtentRequest, 0)
 	pivot := proto.GetExtentKeyFromPool()
 	pivot.FileOffset = uint64(offset)
 	upper := proto.GetExtentKeyFromPool()
@@ -273,6 +273,7 @@ func (cache *ExtentCache) PrepareRequests(offset, size int, data []byte) []*Exte
 		return false
 	})
 
+	fileSize = int(cache.size)
 	cache.root.AscendRange(lower, upper, func(i btree.Item) bool {
 		ek := i.(*proto.ExtentKey)
 		ekStart := int(ek.FileOffset)
@@ -332,7 +333,7 @@ func (cache *ExtentCache) PrepareRequests(offset, size int, data []byte) []*Exte
 		requests = append(requests, req)
 	}
 
-	return requests
+	return
 }
 
 func (cache *ExtentCache) prepareMergeRequests() (readRequests []*ExtentRequest, writeRequest *ExtentRequest, err error) {

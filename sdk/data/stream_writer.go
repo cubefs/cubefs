@@ -74,8 +74,8 @@ type FlushOverWriteRequest struct {
 }
 
 type OverWriteRequest struct {
-	direct bool
-	oriReq *ExtentRequest
+	direct     bool
+	oriReq     *ExtentRequest
 	fileOffset int
 	size       int
 	data       []byte
@@ -317,15 +317,12 @@ func (s *Streamer) handleRequest(ctx context.Context, request interface{}) {
 	case *OpenRequest:
 		s.open()
 		request.done <- struct{}{}
-		break
 	case *WriteRequest:
 		request.writeBytes, request.isROW, request.err = s.write(request.ctx, request.data, request.fileOffset, request.size, request.direct, request.overWriteBuffer)
 		request.done <- struct{}{}
-		break
 	case *TruncRequest:
 		request.err = s.truncate(request.ctx, request.size)
 		request.done <- struct{}{}
-		break
 	case *FlushRequest:
 		request.err = s.flush(request.ctx)
 		if len(s.overWriteReq) > 0 {
@@ -338,19 +335,15 @@ func (s *Streamer) handleRequest(ctx context.Context, request interface{}) {
 			}
 		}
 		request.done <- struct{}{}
-		break
 	case *ReleaseRequest:
 		request.err = s.release(request.ctx)
 		request.done <- struct{}{}
-		break
 	case *EvictRequest:
 		request.err = s.evict(request.ctx)
 		request.done <- struct{}{}
-		break
 	case *ExtentMergeRequest:
 		request.finish, request.err = s.extentMerge(request.ctx)
 		request.done <- struct{}{}
-		break
 	default:
 	}
 }
@@ -362,7 +355,7 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, dir
 	ctx=context.Background()
 	s.client.writeLimiter.Wait(ctx)
 
-	requests := s.extents.PrepareRequests(offset, size, data)
+	requests, _ := s.extents.PrepareRequests(offset, size, data)
 	if log.IsDebugEnabled() {
 		log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)
 	}
@@ -380,7 +373,7 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, dir
 		if err != nil {
 			return
 		}
-		requests = s.extents.PrepareRequests(offset, size, data)
+		requests, _ = s.extents.PrepareRequests(offset, size, data)
 		if log.IsDebugEnabled() {
 			log.LogDebugf("Streamer write: ino(%v) prepared requests after flush(%v)", s.inode, requests)
 		}
@@ -392,6 +385,12 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, dir
 			rowFlag   bool
 		)
 		if req.ExtentKey != nil {
+			// clear read ahead cache
+			if s.readAhead && s.extentReader != nil && s.extentReader.key.PartitionId == req.ExtentKey.PartitionId && s.extentReader.key.ExtentId == req.ExtentKey.ExtentId && s.extentReader.req != nil {
+				s.extentReader.reqMutex.Lock()
+				s.extentReader.req = nil
+				s.extentReader.reqMutex.Unlock()
+			}
 			if overWriteBuffer {
 				writeSize = s.appendOverWriteReq(ctx, req, direct)
 			} else {
@@ -669,7 +668,7 @@ func (s *Streamer) doWrite(ctx context.Context, data []byte, offset, size int, d
 
 			// not use preExtent if once failed
 			if i > 0 || !s.usePreExtentHandler(offset, size) {
-				s.handler = NewExtentHandler(s, offset, storeMode)
+				s.handler = NewExtentHandler(s, offset, storeMode, s.appendWriteBuffer)
 			}
 			s.dirty = false
 		}
@@ -1113,7 +1112,7 @@ func (s *Streamer) usePreExtentHandler(offset, size int) bool {
 		return false
 	}
 
-	s.handler = NewExtentHandler(s, int(preEk.FileOffset), proto.NormalExtentType)
+	s.handler = NewExtentHandler(s, int(preEk.FileOffset), proto.NormalExtentType, false)
 
 	s.handler.dp = dp
 	s.handler.extID = int(preEk.ExtentId)

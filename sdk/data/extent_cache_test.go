@@ -46,7 +46,7 @@ func Test_PrepareRequests(t *testing.T) {
 	}
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
-			get := testExtentCache.PrepareRequests(tt.args.offset, tt.args.size, tt.args.data)
+			get, _ := testExtentCache.PrepareRequests(tt.args.offset, tt.args.size, tt.args.data)
 			fmt.Printf("extent request: %v\n", get)
 			for i, req := range get {
 				if !reflect.DeepEqual(req.ExtentKey, tt.want[i]) {

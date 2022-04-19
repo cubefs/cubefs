@@ -186,7 +186,7 @@ func TestConsistenceRead(t *testing.T) {
 	}
 	sysStat := fInfo.Sys().(*syscall.Stat_t)
 	streamMap := ec.streamerConcurrentMap.GetMapSegment(sysStat.Ino)
-	streamer := NewStreamer(ec, sysStat.Ino, streamMap)
+	streamer := NewStreamer(ec, sysStat.Ino, streamMap, false, false)
 	if err = streamer.GetExtents(context.Background()); err != nil {
 		t.Fatalf("refresh extent: err(%v) inode(%v)", err, sysStat.Ino)
 	}

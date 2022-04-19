@@ -57,15 +57,19 @@ type Streamer struct {
 
 	overWriteReq      []*OverWriteRequest
 	overWriteReqMutex sync.Mutex
+	appendWriteBuffer bool
 
 	tinySize   int
 	extentSize int
+
+	readAhead    bool
+	extentReader *ExtentReader
 
 	writeLock sync.Mutex
 }
 
 // NewStreamer returns a new streamer.
-func NewStreamer(client *ExtentClient, inode uint64, streamMap *ConcurrentStreamerMapSegment) *Streamer {
+func NewStreamer(client *ExtentClient, inode uint64, streamMap *ConcurrentStreamerMapSegment, appendWriteBuffer bool, readAhead bool) *Streamer {
 	s := new(Streamer)
 	s.client = client
 	s.inode = inode
@@ -76,6 +80,8 @@ func NewStreamer(client *ExtentClient, inode uint64, streamMap *ConcurrentStream
 	s.tinySize = client.tinySize
 	s.extentSize = client.extentSize
 	s.streamerMap = streamMap
+	s.appendWriteBuffer = appendWriteBuffer
+	s.readAhead = readAhead
 	go s.server()
 	return s
 }
@@ -96,11 +102,18 @@ func (s *Streamer) GetExtents(ctx context.Context) error {
 // GetExtentReader returns the extent reader.
 // TODO: use memory pool
 func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
+	if s.readAhead && s.extentReader != nil && s.extentReader.key.Equal(ek) {
+		return s.extentReader, nil
+	}
+
 	partition, err := s.client.dataWrapper.GetDataPartition(ek.PartitionId)
 	if err != nil {
 		return nil, err
 	}
-	reader := NewExtentReader(s.inode, ek, partition, s.client.dataWrapper.FollowerRead())
+	reader := NewExtentReader(s.inode, ek, partition, s.client.dataWrapper.FollowerRead(), s.readAhead)
+	if s.readAhead {
+		s.extentReader = reader
+	}
 	return reader, nil
 }
 
@@ -110,11 +123,12 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 		reader          *ExtentReader
 		requests        []*ExtentRequest
 		revisedRequests []*ExtentRequest
+		fileSize        int
 	)
 	ctx=context.Background()
 	s.client.readLimiter.Wait(ctx)
 
-	requests = s.extents.PrepareRequests(offset, size, data)
+	requests, fileSize = s.extents.PrepareRequests(offset, size, data)
 	for _, req := range requests {
 		if req.ExtentKey == nil || req.ExtentKey.PartitionId > 0 {
 			continue
@@ -131,7 +145,7 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 			s.writeLock.Unlock()
 			return
 		}
-		revisedRequests = s.extents.PrepareRequests(offset, size, data)
+		revisedRequests, fileSize = s.extents.PrepareRequests(offset, size, data)
 		s.writeLock.Unlock()
 		break
 	}
@@ -140,9 +154,8 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 		requests = revisedRequests
 	}
 
-	filesize, _ := s.extents.Size()
 	if log.IsDebugEnabled() {
-		log.LogDebugf("Stream read: ino(%v) userExpectOffset(%v) userExpectSize(%v) requests(%v) filesize(%v)", s.inode, offset, size, requests, filesize)
+		log.LogDebugf("Stream read: ino(%v) userExpectOffset(%v) userExpectSize(%v) requests(%v) filesize(%v)", s.inode, offset, size, requests, fileSize)
 	}
 	for _, req := range requests {
 		if req.ExtentKey == nil {
@@ -151,15 +164,15 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 				req.Data[i] = 0
 			}
 
-			if req.FileOffset+req.Size > filesize {
-				if req.FileOffset >= filesize {
+			if req.FileOffset+req.Size > fileSize {
+				if req.FileOffset >= fileSize {
 					return
 				}
-				req.Size = filesize - req.FileOffset
+				req.Size = fileSize - req.FileOffset
 				total += req.Size
 				err = io.EOF
 				if total == 0 {
-					log.LogWarnf("Stream read: ino(%v) userExpectOffset(%v) userExpectSize(%v) req(%v) filesize(%v)", s.inode, offset, size, req, filesize)
+					log.LogWarnf("Stream read: ino(%v) userExpectOffset(%v) userExpectSize(%v) req(%v) filesize(%v)", s.inode, offset, size, req, fileSize)
 				}
 				return
 			}
@@ -191,8 +204,9 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 }
 
 // concurrent read/write optimization
-// 1.if data is in handler unflushed packet, read from the packet
-// 2.if data has been written to data node, read from datanode without flushing
+// If appendWriteBuffer is on, read all data from extent handler cache. Otherwise,
+//   1.if data is in handler unflushed packet, read from the packet
+//   2.if data has been written to data node, read from datanode without flushing
 func (s *Streamer) readFromCache(req *ExtentRequest) (read int, skipFlush bool) {
 	s.handlerMutex.Lock()
 	defer s.handlerMutex.Unlock()
@@ -200,24 +214,83 @@ func (s *Streamer) readFromCache(req *ExtentRequest) (read int, skipFlush bool) 
 		return
 	}
 
-	s.handler.packetMutex.Lock()
-	defer s.handler.packetMutex.Unlock()
+	if !s.appendWriteBuffer {
+		if s.handler.key != nil && uint64(req.FileOffset) >= s.handler.key.FileOffset &&
+			uint64(req.FileOffset+req.Size) <= s.handler.key.FileOffset+uint64(s.handler.key.Size) {
+			req.ExtentKey = s.handler.key
+			skipFlush = true
+			return
+		}
 
-	if s.handler.packet != nil && req.FileOffset >= int(s.handler.packet.KernelOffset) &&
-		req.FileOffset+req.Size <= int(s.handler.packet.KernelOffset)+int(s.handler.packet.Size) {
-		off := req.FileOffset - int(s.handler.packet.KernelOffset)
-		copy(req.Data, s.handler.packet.Data[off:off+req.Size])
-		read += req.Size
-		skipFlush = true
+		s.handler.packetMutex.RLock()
+		defer s.handler.packetMutex.RUnlock()
+		if s.handler.packet != nil && req.FileOffset >= int(s.handler.packet.KernelOffset) &&
+			req.FileOffset+req.Size <= int(s.handler.packet.KernelOffset)+int(s.handler.packet.Size) {
+			off := req.FileOffset - int(s.handler.packet.KernelOffset)
+			copy(req.Data, s.handler.packet.Data[off:off+req.Size])
+			read += req.Size
+			skipFlush = true
+		}
 		return
 	}
 
-	if s.handler.key != nil && uint64(req.FileOffset) >= s.handler.key.FileOffset &&
-		uint64(req.FileOffset+req.Size) <= s.handler.key.FileOffset+uint64(s.handler.key.Size) {
-		req.ExtentKey = s.handler.key
-		skipFlush = true
+	// read from extent handler packetList
+	remainSize := req.Size
+	currentOffset := req.FileOffset
+	defer func() {
+		if remainSize == 0 {
+			skipFlush = true
+		} else {
+			log.LogErrorf("readFromCache cannot read enough data: expect(%v) read(%v) req(%v) packetList(%v) packet(%v)", req.Size, read, req, s.handler.packetList, s.handler.packet)
+			read = 0
+			req.Data = req.Data[:0]
+		}
+	}()
+	s.handler.packetMutex.RLock()
+	defer s.handler.packetMutex.RUnlock()
+
+	for _, p := range s.handler.packetList {
+		if remainSize == 0 {
+			break
+		}
+		if currentOffset >= int(p.KernelOffset)+int(p.Size) {
+			continue
+		}
+
+		offset := currentOffset - int(p.KernelOffset)
+		if offset < 0 {
+			log.LogErrorf("readFromCache packet offset invalid: req(%v) packet(%v)", req, p)
+			return
+		}
+		dataLen := remainSize
+		if offset+dataLen > int(p.Size) {
+			dataLen = int(p.Size) - offset
+		}
+		copy(req.Data[read:read+dataLen], p.Data[offset:offset+dataLen])
+		read += dataLen
+		currentOffset += dataLen
+		remainSize -= dataLen
+	}
+	if remainSize == 0 {
 		return
 	}
+
+	// read from extent handler packet
+	if s.handler.packet == nil {
+		return
+	}
+	offset := currentOffset - int(s.handler.packet.KernelOffset)
+	if offset < 0 {
+		log.LogErrorf("readFromCache packet offset invalid: req(%v) packet(%v)", req, s.handler.packet)
+		return
+	}
+	dataLen := remainSize
+	if offset+dataLen > int(s.handler.packet.Size) {
+		dataLen = int(s.handler.packet.Size) - offset
+	}
+	copy(req.Data[read:read+dataLen], s.handler.packet.Data[offset:offset+dataLen])
+	read += dataLen
+	remainSize -= dataLen
 	return
 }
 

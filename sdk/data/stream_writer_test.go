@@ -313,7 +313,7 @@ func getStreamer(t *testing.T, file string, ec *ExtentClient) *Streamer {
 	}
 	sysStat := info.Sys().(*syscall.Stat_t)
 	streamMap := ec.streamerConcurrentMap.GetMapSegment(sysStat.Ino)
-	return NewStreamer(ec, sysStat.Ino, streamMap)
+	return NewStreamer(ec, sysStat.Ino, streamMap, false, false)
 }
 
 func TestROW(t *testing.T) {
@@ -351,7 +351,7 @@ func TestROW(t *testing.T) {
 	}
 	inode := fInfo.Sys().(*syscall.Stat_t).Ino
 	streamMap := ec.streamerConcurrentMap.GetMapSegment(inode)
-	streamer := NewStreamer(ec, inode, streamMap)
+	streamer := NewStreamer(ec, inode, streamMap, false, false)
 	_, _, eks, err := mw.GetExtents(ctx, inode)
 	if err != nil {
 		t.Fatalf("GetExtents filed: err(%v) inode(%v)", err, inode)
@@ -436,7 +436,7 @@ func TestWrite_DataConsistency(t *testing.T) {
 	}
 	sysStat := fInfo.Sys().(*syscall.Stat_t)
 	streamMap := ec.streamerConcurrentMap.GetMapSegment(sysStat.Ino)
-	streamer := NewStreamer(ec, sysStat.Ino, streamMap)
+	streamer := NewStreamer(ec, sysStat.Ino, streamMap, false, false)
 	if _, _, eks, err := mw.GetExtents(context.Background(), sysStat.Ino); err != nil {
 		t.Fatalf("GetExtents filed: err(%v) inode(%v)", err, sysStat.Ino)
 	} else {
@@ -508,7 +508,7 @@ func TestStreamer_UsePreExtentHandler_ROWByOtherClient(t *testing.T) {
 
 	_, ec1, err := creatHelper(t)
 	streamer1 := getStreamer(t, testFile, ec1)
-	requests := streamer1.extents.PrepareRequests(0, length, data)
+	requests, _ := streamer1.extents.PrepareRequests(0, length, data)
 	_, err = streamer1.doROW(ctx, requests[0], false)
 	if err != nil {
 		t.Fatalf("doROW failed: err(%v)", err)
@@ -599,7 +599,7 @@ func TestStreamer_Truncate_CloseHandler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("write failed: err(%v)", err)
 	}
-	requests := streamer.extents.PrepareRequests(length, length, data)
+	requests, _ := streamer.extents.PrepareRequests(length, length, data)
 	if requests[0].ExtentKey != nil {
 		t.Fatalf("dirty ek after truncate")
 	}
@@ -625,7 +625,7 @@ func TestStreamer_ROW_CloseHandler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("write failed: err(%v)", err)
 	}
-	requests := streamer.extents.PrepareRequests(length, length*2, data)
+	requests, _ := streamer.extents.PrepareRequests(length, length*2, data)
 	_, err = streamer.doROW(ctx, requests[0], false)
 	if err != nil {
 		t.Fatalf("doROW failed: err(%v)", err)
@@ -634,7 +634,7 @@ func TestStreamer_ROW_CloseHandler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("write failed: err(%v)", err)
 	}
-	requests = streamer.extents.PrepareRequests(0, length*2, data)
+	requests, _ = streamer.extents.PrepareRequests(0, length*2, data)
 	if len(requests) != 2 || (requests[0].ExtentKey.PartitionId == requests[1].ExtentKey.PartitionId && requests[0].ExtentKey.ExtentId == requests[1].ExtentKey.ExtentId) {
 		t.Fatalf("dirty ek after ROW")
 	}

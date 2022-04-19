@@ -176,38 +176,16 @@ log:
 weak_alias (openat, openat64)
 
 // rename between cfs and ordinary file is not allowed
-int rename(const char *old_pathname, const char *new_pathname) {
-    #ifdef USE_RENAMEAT2
-    return renameat2(AT_FDCWD, old_pathname, AT_FDCWD, new_pathname, 0);
-    #else
-    return renameat(AT_FDCWD, old_pathname, AT_FDCWD, new_pathname);
-    #endif
-}
-
-// rename between cfs and ordinary file is not allowed
-#ifdef USE_RENAMEAT2
-int renameat(int olddirfd, const char *old_pathname,
-        int newdirfd, const char *new_pathname) {
-    return renameat2(olddirfd, old_pathname, newdirfd, new_pathname, 0);
-}
-#endif
-
-// rename between cfs and ordinary file is not allowed
-#ifdef USE_RENAMEAT2
 int renameat2(int olddirfd, const char *old_pathname,
         int newdirfd, const char *new_pathname, unsigned int flags) {
-#else
-int renameat(int olddirfd, const char *old_pathname,
-        int newdirfd, const char *new_pathname) {
-#endif
     if(!g_cfs_inited) {
-        #ifdef USE_RENAMEAT2
-        real_renameat2 = dlsym(RTLD_NEXT, "renameat2");
-        return real_renameat2(olddirfd, old_pathname, newdirfd, new_pathname, flags);
-        #else
-        real_renameat = dlsym(RTLD_NEXT, "renameat");
-        return real_renameat(olddirfd, old_pathname, newdirfd, new_pathname);
-        #endif
+        if(g_has_renameat2) {
+            real_renameat2 = dlsym(RTLD_NEXT, "renameat2");
+            return real_renameat2(olddirfd, old_pathname, newdirfd, new_pathname, flags);
+        } else {
+            real_renameat = dlsym(RTLD_NEXT, "renameat");
+            return real_renameat(olddirfd, old_pathname, newdirfd, new_pathname);
+        }
     }
 
     int is_cfs_old = 0;
@@ -234,7 +212,6 @@ int renameat(int olddirfd, const char *old_pathname,
     const char *cfs_new_path = (new_path == NULL) ? new_pathname : new_path;
     int re = -1;
     if(g_hook && is_cfs_old && is_cfs_new) {
-        #ifdef USE_RENAMEAT2
         if(flags & RENAME_NOREPLACE) {
             if(!cfs_faccessat(g_cfs_client_id, newdirfd, cfs_new_path, F_OK, 0)) {
                 errno = ENOTEMPTY;
@@ -244,24 +221,23 @@ int renameat(int olddirfd, const char *old_pathname,
             // other flags unimplemented
             goto log;
         }
-        #endif
         #ifdef DUP_TO_LOCAL
-        #ifdef USE_RENAMEAT2
-        re = real_renameat2(olddirfd, old_pathname, newdirfd, new_pathname, flags);
-        #else
-        re = real_renameat(olddirfd, old_pathname, newdirfd, new_pathname);
-        #endif
+        if(g_has_renameat2) {
+            re = real_renameat2(olddirfd, old_pathname, newdirfd, new_pathname, flags);
+        } else {
+            re = real_renameat(olddirfd, old_pathname, newdirfd, new_pathname);
+        }
         if(re < 0) {
             goto log;
         }
         #endif
         re = cfs_re(cfs_renameat(g_cfs_client_id, olddirfd, cfs_old_path, newdirfd, cfs_new_path));
     } else if(!g_hook || (!is_cfs_old && !is_cfs_new)) {
-        #ifdef USE_RENAMEAT2
-        re = real_renameat2(olddirfd, old_pathname, newdirfd, new_pathname, flags);
-        #else
-        re = real_renameat(olddirfd, old_pathname, newdirfd, new_pathname);
-        #endif
+        if(g_has_renameat2) {
+            re = real_renameat2(olddirfd, old_pathname, newdirfd, new_pathname, flags);
+        } else {
+            re = real_renameat(olddirfd, old_pathname, newdirfd, new_pathname);
+        }
     }
 
 log:
@@ -271,6 +247,15 @@ log:
     log_debug("hook %s, olddirfd:%d, old_pathname:%s, is_cfs_old:%d, newdirfd:%d, new_pathname:%s, is_cfs_new:%d, flags:%#x, re:%d\n", __func__, olddirfd, old_pathname, is_cfs_old, newdirfd, new_pathname, is_cfs_new, flags, re);
     #endif
     return re;
+}
+
+int rename(const char *old_pathname, const char *new_pathname) {
+    return renameat2(AT_FDCWD, old_pathname, AT_FDCWD, new_pathname, 0);
+}
+
+int renameat(int olddirfd, const char *old_pathname,
+        int newdirfd, const char *new_pathname) {
+    return renameat2(olddirfd, old_pathname, newdirfd, new_pathname, 0);
 }
 
 int truncate(const char *pathname, off_t length) {
@@ -2531,5 +2516,6 @@ static void cfs_init() {
         exit(1);
     }
 
+    g_has_renameat2 = has_renameat2();
     g_cfs_inited = true;
 }

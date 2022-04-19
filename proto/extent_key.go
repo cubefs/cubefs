@@ -27,9 +27,9 @@ import (
 )
 
 var (
-	ExtentLength 	  = 40
+	ExtentLength      = 40
 	ExtentDbKeyLength = 24
-	InvalidKey   	  = errors.New("invalid key error")
+	InvalidKey        = errors.New("invalid key error")
 )
 
 // ExtentKey defines the extent key struct.
@@ -192,12 +192,12 @@ func (k *ExtentKey) UnmarshalBinaryV2(data []byte) (err error) {
 	if len(data) < ExtentLength {
 		return fmt.Errorf("ekdata buff err, need at least %d, but buff len:%d", ExtentLength, len(data))
 	}
-	k.FileOffset   = binary.BigEndian.Uint64(data[0  : 8])
-	k.PartitionId  = binary.BigEndian.Uint64(data[8  : 16])
-	k.ExtentId     = binary.BigEndian.Uint64(data[16 : 24])
-	k.ExtentOffset = binary.BigEndian.Uint64(data[24 : 32])
-	k.Size         = binary.BigEndian.Uint32(data[32 : 36])
-	k.CRC          = binary.BigEndian.Uint32(data[36 : 40])
+	k.FileOffset = binary.BigEndian.Uint64(data[0:8])
+	k.PartitionId = binary.BigEndian.Uint64(data[8:16])
+	k.ExtentId = binary.BigEndian.Uint64(data[16:24])
+	k.ExtentOffset = binary.BigEndian.Uint64(data[24:32])
+	k.Size = binary.BigEndian.Uint32(data[32:36])
+	k.CRC = binary.BigEndian.Uint32(data[36:40])
 
 	return nil
 }
@@ -218,6 +218,14 @@ func (k *ExtentKey) GetExtentKey() (m string) {
 // comparison: upper1 >= lower2 && upper2 >= lower1 .
 func (k *ExtentKey) Overlap(o *ExtentKey) bool {
 	return k.FileOffset+uint64(k.Size) >= o.FileOffset && o.FileOffset+uint64(o.Size) >= k.FileOffset
+}
+
+func (k *ExtentKey) Equal(k1 *ExtentKey) bool {
+	return k.FileOffset == k1.FileOffset &&
+		k.PartitionId == k1.PartitionId &&
+		k.ExtentId == k1.ExtentId &&
+		k.ExtentOffset == k1.ExtentOffset &&
+		k.Size == k1.Size
 }
 
 type TinyExtentDeleteRecord struct {

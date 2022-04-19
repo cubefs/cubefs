@@ -74,6 +74,7 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+	"unicode"
 	"unsafe"
 
 	"github.com/willf/bitset"
@@ -90,7 +91,7 @@ import (
 	"github.com/chubaofs/chubaofs/util/ump"
 	"github.com/chubaofs/chubaofs/util/version"
 
-	_ "github.com/chubaofs/chubaofs/util/log/http"     // HTTP APIs for logging control
+	_ "github.com/chubaofs/chubaofs/util/log/http" // HTTP APIs for logging control
 )
 
 const (
@@ -103,13 +104,17 @@ const (
 )
 
 const (
-	normalExtentSize      = 32 * 1024 * 1024
-	defaultBlkSize        = uint32(1) << 12
-	maxFdNum         uint = 1024000
-	moduleName            = "kbpclient"
-	redologPrefix         = "ib_logfile"
-	binlogPrefix          = "mysql-bin"
-	appMysql8             = "mysql_8"
+	normalExtentSize       = 32 * 1024 * 1024
+	defaultBlkSize         = uint32(1) << 12
+	maxFdNum          uint = 1024000
+	moduleName             = "kbpclient"
+	redologPrefix          = "ib_logfile"
+	binlogPrefix           = "mysql-bin"
+	relayBinlogPrefix      = "relay-bin"
+	masterInfo             = "master.info"
+	relayLogInfo           = "relay-log.info"
+	appMysql8              = "mysql_8"
+	appCoralDB             = "coraldb"
 
 	// cache
 	maxInodeCache         = 10000
@@ -183,7 +188,7 @@ func newClient(conf *C.cfs_config_t) *client {
 	c.logDir = C.GoString(conf.log_dir)
 	c.logLevel = C.GoString(conf.log_level)
 	c.app = C.GoString(conf.app)
-	c.useMetaCache = (c.app != appMysql8)
+	c.useMetaCache = (c.app != appCoralDB)
 	c.profPort, _ = strconv.ParseUint(strings.Split(C.GoString(conf.prof_port), ",")[0], 10, 64)
 	c.autoFlush, _ = strconv.ParseBool(C.GoString(conf.auto_flush))
 	c.inodeCache = cache.NewInodeCache(inodeExpiration, maxInodeCache, inodeEvictionInterval, c.useMetaCache)
@@ -416,23 +421,23 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 	// But when using glibc, O_CREAT can be used independently (e.g. MySQL).
 	if fuseFlags&uint32(C.O_CREAT) != 0 {
 		dirpath, name := gopath.Split(absPath)
-		dirInode, err := c.lookupPath(nil,dirpath)
+		dirInode, err := c.lookupPath(nil, dirpath)
 		if err != nil {
 			return errorToStatus(err)
 		}
 		if len(name) == 0 {
 			return statusEINVAL
 		}
-		inode, err := c.getDentry(nil,dirInode, name)
+		inode, err := c.getDentry(nil, dirInode, name)
 		var newInfo *proto.InodeInfo
 		if err == nil {
 			if fuseFlags&uint32(C.O_EXCL) != 0 {
 				return statusEEXIST
 			} else {
-				newInfo, err = c.getInode(nil,inode)
+				newInfo, err = c.getInode(nil, inode)
 			}
 		} else if err == syscall.ENOENT {
-			newInfo, err = c.create(nil,dirInode, name, fuseMode, uint32(os.Getuid()), uint32(os.Getgid()), nil)
+			newInfo, err = c.create(nil, dirInode, name, fuseMode, uint32(os.Getuid()), uint32(os.Getgid()), nil)
 			if err != nil {
 				return errorToStatus(err)
 			}
@@ -442,9 +447,9 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 		info = newInfo
 	} else {
 		var newInfo *proto.InodeInfo
-		for newInfo, err = c.getInodeByPath(nil,absPath); err == nil && fuseFlags&uint32(C.O_NOFOLLOW) == 0 && proto.IsSymlink(newInfo.Mode); {
+		for newInfo, err = c.getInodeByPath(nil, absPath); err == nil && fuseFlags&uint32(C.O_NOFOLLOW) == 0 && proto.IsSymlink(newInfo.Mode); {
 			absPath := c.absPath(string(newInfo.Target))
-			newInfo, err = c.getInodeByPath(nil,absPath)
+			newInfo, err = c.getInodeByPath(nil, absPath)
 		}
 		if err != nil {
 			return errorToStatus(err)
@@ -461,21 +466,29 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 	f.path = absPath
 
 	if proto.IsRegular(info.Mode) {
-		c.ec.OpenStream(f.ino)
+		var appendWriteBuffer bool
+		var readAhead bool
+		_, name := gopath.Split(f.path)
+		nameParts := strings.Split(name, ".")
+		if nameParts[0] == relayBinlogPrefix && len(nameParts) > 1 && len(nameParts[1]) > 0 && unicode.IsDigit(rune(nameParts[1][0])) {
+			appendWriteBuffer = true
+			readAhead = true
+		}
+		c.ec.OpenStream(f.ino, appendWriteBuffer, readAhead)
 		if fuseFlags&uint32(C.O_TRUNC) != 0 {
 			if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
 				c.closeStream(f)
 				c.releaseFD(f.fd)
 				return statusEACCES
 			}
-			if err = c.truncate(nil,f.ino, 0); err != nil {
+			if err = c.truncate(nil, f.ino, 0); err != nil {
 				c.closeStream(f)
 				c.releaseFD(f.fd)
 				return statusEIO
 			}
 			info.Size = 0
 		}
-		c.ec.RefreshExtentsCache(nil,f.ino)
+		c.ec.RefreshExtentsCache(nil, f.ino)
 	}
 	f.size = info.Size
 	f.path = absPath
@@ -544,7 +557,6 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) (re C.int) {
 		return statusEINVAL
 	}
 
-
 	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_rename))
 	defer ump.AfterTPUs(tpObject, nil)
 
@@ -561,7 +573,7 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) (re C.int) {
 	}
 
 	srcDirPath, srcName := gopath.Split(absFrom)
-	srcDirInode, err := c.lookupPath(nil,srcDirPath)
+	srcDirInode, err := c.lookupPath(nil, srcDirPath)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -571,10 +583,10 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) (re C.int) {
 	}
 
 	c.invalidateDentry(srcDirInode, srcName)
-	c.inodeCache.Delete(nil,srcDirInode)
-	dstInfo, err := c.getInodeByPath(nil,absTo)
+	c.inodeCache.Delete(nil, srcDirInode)
+	dstInfo, err := c.getInodeByPath(nil, absTo)
 	if err == nil && proto.IsDir(dstInfo.Mode) {
-		err = c.mw.Rename_ll(nil,srcDirInode, srcName, dstInfo.Inode, srcName)
+		err = c.mw.Rename_ll(nil, srcDirInode, srcName, dstInfo.Inode, srcName)
 		if err != nil {
 			return errorToStatus(err)
 		}
@@ -582,15 +594,15 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) (re C.int) {
 	}
 
 	dstDirPath, dstName := gopath.Split(absTo)
-	dstDirInode, err := c.lookupPath(nil,dstDirPath)
+	dstDirInode, err := c.lookupPath(nil, dstDirPath)
 	if err != nil {
 		return errorToStatus(err)
 	}
 	// If dstName exist when renaming, the inode of the dstName will be updated to the inode of the srcName.
 	// So, the dstName shuold be invalidated, too,
 	c.invalidateDentry(dstDirInode, dstName)
-	c.inodeCache.Delete(nil,dstDirInode)
-	err = c.mw.Rename_ll(nil,srcDirInode, srcName, dstDirInode, dstName)
+	c.inodeCache.Delete(nil, dstDirInode)
+	err = c.mw.Rename_ll(nil, srcDirInode, srcName, dstDirInode, dstName)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -645,18 +657,16 @@ func cfs_truncate(id C.int64_t, path *C.char, len C.off_t) (re C.int) {
 		return statusEINVAL
 	}
 
-
-
 	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_truncate))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
-	inode, err = c.lookupPath(nil,absPath)
+	inode, err = c.lookupPath(nil, absPath)
 	if err != nil {
 		return errorToStatus(err)
 	}
 
-	err = c.truncate(nil,inode, int(len))
+	err = c.truncate(nil, inode, int(len))
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -699,11 +709,10 @@ func cfs_ftruncate(id C.int64_t, fd C.int, len C.off_t) (re C.int) {
 	path = f.path
 	ino = f.ino
 
-
 	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_ftruncate))
 	defer ump.AfterTPUs(tpObject, nil)
 
-	err = c.truncate(nil,f.ino, int(len))
+	err = c.truncate(nil, f.ino, int(len))
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -749,7 +758,7 @@ func cfs_fallocate(id C.int64_t, fd C.int, mode C.int, offset C.off_t, len C.off
 	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_fallocate))
 	defer ump.AfterTPUs(tpObject, nil)
 
-	info, err := c.getInode(nil,f.ino)
+	info, err := c.getInode(nil, f.ino)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -768,7 +777,7 @@ func cfs_fallocate(id C.int64_t, fd C.int, mode C.int, offset C.off_t, len C.off
 		return statusEINVAL
 	}
 
-	err = c.truncate(nil,info.Inode, int(offset+len))
+	err = c.truncate(nil, info.Inode, int(offset+len))
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -814,7 +823,7 @@ func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) (r
 	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_posix_fallocate))
 	defer ump.AfterTPUs(tpObject, nil)
 
-	info, err := c.getInode(nil,f.ino)
+	info, err := c.getInode(nil, f.ino)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -824,7 +833,7 @@ func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) (r
 		return statusOK
 	}
 
-	err = c.truncate(nil,info.Inode, int(offset+len))
+	err = c.truncate(nil, info.Inode, int(offset+len))
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -834,10 +843,11 @@ func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) (r
 //export cfs_flush
 func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 	var (
-		c    *client
-		path string
-		ino  uint64
-		err  error
+		c     *client
+		path  string
+		ino   uint64
+		err   error
+		start time.Time
 	)
 	defer func() {
 		if r := recover(); r != nil || re < 0 {
@@ -850,11 +860,12 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 		} else {
 			if log.IsDebugEnabled() {
 				msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) re(%v) err(%v)", id, fd, path, ino, re, err)
-				log.LogDebugf("cfs_flush: %s", msg)
+				log.LogDebugf("cfs_flush: %s time(%v)", msg, time.Since(start).Microseconds())
 			}
 		}
 	}()
 
+	start = time.Now()
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -873,7 +884,6 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 		return statusOK
 	}
 
-
 	act := ump_cfs_flush
 	if f.logType == RedoLogType {
 		act = ump_cfs_flush_redolog
@@ -887,7 +897,7 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 		ump.AfterTPUs(tpObject2, nil)
 	}()
 
-	if err = c.flush(nil,f.ino); err != nil {
+	if err = c.flush(nil, f.ino); err != nil {
 		return statusEIO
 	}
 	return statusOK
@@ -924,7 +934,6 @@ func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) (re C.int) {
 		return statusEEXIST
 	}
 
-
 	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_mkdirs))
 	defer ump.AfterTPUs(tpObject, nil)
 
@@ -937,10 +946,10 @@ func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) (re C.int) {
 		if dir == "" {
 			continue
 		}
-		child, err := c.getDentry(nil,pino, dir)
+		child, err := c.getDentry(nil, pino, dir)
 		if err != nil {
 			if err == syscall.ENOENT {
-				info, err := c.create(nil,pino, dir, fuseMode, uid, gid, nil)
+				info, err := c.create(nil, pino, dir, fuseMode, uid, gid, nil)
 				if err != nil {
 					return errorToStatus(err)
 				}
@@ -1004,12 +1013,12 @@ func cfs_rmdir(id C.int64_t, path *C.char) (re C.int) {
 		return statusOK
 	}
 	dirpath, name := gopath.Split(absPath)
-	dirInode, err := c.lookupPath(nil,dirpath)
+	dirInode, err := c.lookupPath(nil, dirpath)
 	if err != nil {
 		return errorToStatus(err)
 	}
 
-	_, err = c.delete(nil,dirInode, name, true)
+	_, err = c.delete(nil, dirInode, name, true)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1039,7 +1048,7 @@ func cfs_chdir(id C.int64_t, path *C.char) (re C.int) {
 	}
 
 	cwd := c.absPath(C.GoString(path))
-	dirInfo, err := c.getInodeByPath(nil,cwd)
+	dirInfo, err := c.getInodeByPath(nil, cwd)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1110,7 +1119,7 @@ func cfs_getdents(id C.int64_t, fd C.int, buf unsafe.Pointer, count C.int) (n C.
 
 	if f.dirp == nil {
 		f.dirp = &dirStream{}
-		dentries, err := c.mw.ReadDir_ll(nil,f.ino)
+		dentries, err := c.mw.ReadDir_ll(nil, f.ino)
 		if err != nil {
 			return errorToStatus(err)
 		}
@@ -1195,19 +1204,19 @@ func cfs_link(id C.int64_t, oldpath *C.char, newpath *C.char) (re C.int) {
 	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_link))
 	defer ump.AfterTPUs(tpObject, nil)
 
-	inode, err := c.lookupPath(nil,c.absPath(C.GoString(oldpath)))
+	inode, err := c.lookupPath(nil, c.absPath(C.GoString(oldpath)))
 	if err != nil {
 		return errorToStatus(err)
 	}
 
 	absPath := c.absPath(C.GoString(newpath))
 	dirPath, name := gopath.Split(absPath)
-	dirInode, err := c.lookupPath(nil,dirPath)
+	dirInode, err := c.lookupPath(nil, dirPath)
 	if err != nil {
 		return errorToStatus(err)
 	}
 
-	_, err = c.mw.Link(nil,dirInode, name, inode)
+	_, err = c.mw.Link(nil, dirInode, name, inode)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1261,19 +1270,19 @@ func cfs_symlink(id C.int64_t, target *C.char, linkPath *C.char) (re C.int) {
 
 	absPath := c.absPath(C.GoString(linkPath))
 	dirpath, name := gopath.Split(absPath)
-	dirInode, err := c.lookupPath(nil,dirpath)
+	dirInode, err := c.lookupPath(nil, dirpath)
 	if err != nil {
 		return errorToStatus(err)
 	}
 
-	_, err = c.getDentry(nil,dirInode, name)
+	_, err = c.getDentry(nil, dirInode, name)
 	if err == nil {
 		return statusEEXIST
 	} else if err != syscall.ENOENT {
 		return errorToStatus(err)
 	}
 
-	_, err = c.create(nil,dirInode, name, proto.Mode(os.ModeSymlink|os.ModePerm), uint32(os.Getuid()), uint32(os.Getgid()), []byte(c.absPath(C.GoString(target))))
+	_, err = c.create(nil, dirInode, name, proto.Mode(os.ModeSymlink|os.ModePerm), uint32(os.Getuid()), uint32(os.Getgid()), []byte(c.absPath(C.GoString(target))))
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1326,7 +1335,7 @@ func cfs_unlink(id C.int64_t, path *C.char) (re C.int) {
 	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
-	info, err := c.getInodeByPath(nil,absPath)
+	info, err := c.getInodeByPath(nil, absPath)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1336,17 +1345,17 @@ func cfs_unlink(id C.int64_t, path *C.char) (re C.int) {
 	}
 
 	dirpath, name := gopath.Split(absPath)
-	dirInode, err := c.lookupPath(nil,dirpath)
+	dirInode, err := c.lookupPath(nil, dirpath)
 	if err != nil {
 		return errorToStatus(err)
 	}
-	info, err = c.delete(nil,dirInode, name, false)
+	info, err = c.delete(nil, dirInode, name, false)
 	if err != nil {
 		return errorToStatus(err)
 	}
 
 	if info != nil {
-		c.mw.Evict(nil,info.Inode, true)
+		c.mw.Evict(nil, info.Inode, true)
 	}
 	return 0
 }
@@ -1398,11 +1407,10 @@ func cfs_readlink(id C.int64_t, path *C.char, buf *C.char, size C.size_t) (re C.
 		return C.ssize_t(statusEINVAL)
 	}
 
-
 	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_readlink))
 	defer ump.AfterTPUs(tpObject, nil)
 
-	info, err := c.getInodeByPath(nil,c.absPath(C.GoString(path)))
+	info, err := c.getInodeByPath(nil, c.absPath(C.GoString(path)))
 	if err != nil {
 		return C.ssize_t(errorToStatus(err))
 	}
@@ -1478,9 +1486,9 @@ func _cfs_stat(id C.int64_t, path *C.char, stat *C.struct_stat, flags C.int) (re
 
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
-	for info, err = c.getInodeByPath(nil,absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
+	for info, err = c.getInodeByPath(nil, absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
 		absPath := c.absPath(string(info.Target))
-		info, err = c.getInodeByPath(nil,absPath)
+		info, err = c.getInodeByPath(nil, absPath)
 	}
 	if err != nil {
 		return errorToStatus(err)
@@ -1561,15 +1569,14 @@ func _cfs_stat64(id C.int64_t, path *C.char, stat *C.struct_stat64, flags C.int)
 		return statusEINVAL
 	}
 
-
 	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_stat64))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
-	for info, err = c.getInodeByPath(nil,absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
+	for info, err = c.getInodeByPath(nil, absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
 		absPath = c.absPath(string(info.Target))
-		info, err = c.getInodeByPath(nil,absPath)
+		info, err = c.getInodeByPath(nil, absPath)
 	}
 	if err != nil {
 		return errorToStatus(err)
@@ -1704,15 +1711,15 @@ func _cfs_chmod(id C.int64_t, path *C.char, mode C.mode_t, flags C.int) C.int {
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
 	var err error
-	for info, err = c.getInodeByPath(nil,absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
+	for info, err = c.getInodeByPath(nil, absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
 		absPath := c.absPath(string(info.Target))
-		info, err = c.getInodeByPath(nil,absPath)
+		info, err = c.getInodeByPath(nil, absPath)
 	}
 	if err != nil {
 		return errorToStatus(err)
 	}
 
-	err = c.setattr(nil,info, proto.AttrMode, uint32(mode), 0, 0, 0, 0)
+	err = c.setattr(nil, info, proto.AttrMode, uint32(mode), 0, 0, 0, 0)
 
 	if err != nil {
 		return errorToStatus(err)
@@ -1732,16 +1739,15 @@ func cfs_fchmod(id C.int64_t, fd C.int, mode C.mode_t) C.int {
 		return statusEBADFD
 	}
 
-
 	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_fchmod))
 	defer ump.AfterTPUs(tpObject, nil)
 
-	info, err := c.getInode(nil,f.ino)
+	info, err := c.getInode(nil, f.ino)
 	if err != nil {
 		return errorToStatus(err)
 	}
 
-	err = c.setattr(nil,info, proto.AttrMode, uint32(mode), 0, 0, 0, 0)
+	err = c.setattr(nil, info, proto.AttrMode, uint32(mode), 0, 0, 0, 0)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1778,22 +1784,21 @@ func _cfs_chown(id C.int64_t, path *C.char, uid C.uid_t, gid C.gid_t, flags C.in
 		return statusEINVAL
 	}
 
-
 	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_chown))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
 	var err error
-	for info, err = c.getInodeByPath(nil,absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
+	for info, err = c.getInodeByPath(nil, absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
 		absPath := c.absPath(string(info.Target))
-		info, err = c.getInodeByPath(nil,absPath)
+		info, err = c.getInodeByPath(nil, absPath)
 	}
 	if err != nil {
 		return errorToStatus(err)
 	}
 
-	err = c.setattr(nil,info, proto.AttrUid|proto.AttrGid, 0, uint32(uid), uint32(gid), 0, 0)
+	err = c.setattr(nil, info, proto.AttrUid|proto.AttrGid, 0, uint32(uid), uint32(gid), 0, 0)
 
 	if err != nil {
 		return errorToStatus(err)
@@ -1813,16 +1818,15 @@ func cfs_fchown(id C.int64_t, fd C.int, uid C.uid_t, gid C.gid_t) C.int {
 		return statusEBADFD
 	}
 
-
 	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_fchown))
 	defer ump.AfterTPUs(tpObject, nil)
 
-	info, err := c.getInode(nil,f.ino)
+	info, err := c.getInode(nil, f.ino)
 	if err != nil {
 		return errorToStatus(err)
 	}
 
-	err = c.setattr(nil,info, proto.AttrUid|proto.AttrGid, 0, uint32(uid), uint32(gid), 0, 0)
+	err = c.setattr(nil, info, proto.AttrUid|proto.AttrGid, 0, uint32(uid), uint32(gid), 0, 0)
 
 	if err != nil {
 		return errorToStatus(err)
@@ -1851,16 +1855,15 @@ func cfs_utimens(id C.int64_t, path *C.char, times *C.struct_timespec, flags C.i
 		return statusEINVAL
 	}
 
-
 	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_utimens))
 	defer ump.AfterTPUs(tpObject, nil)
 
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
 	var err error
-	for info, err = c.getInodeByPath(nil,absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
+	for info, err = c.getInodeByPath(nil, absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
 		absPath := c.absPath(string(info.Target))
-		info, err = c.getInodeByPath(nil,absPath)
+		info, err = c.getInodeByPath(nil, absPath)
 	}
 	if err != nil {
 		return errorToStatus(err)
@@ -1891,7 +1894,7 @@ func cfs_utimens(id C.int64_t, path *C.char, times *C.struct_timespec, flags C.i
 	} else {
 		mtime = int64(mp.tv_sec)
 	}
-	err = c.setattr(nil,info, proto.AttrAccessTime|proto.AttrModifyTime, 0, 0, 0, mtime, atime)
+	err = c.setattr(nil, info, proto.AttrAccessTime|proto.AttrModifyTime, 0, 0, 0, mtime, atime)
 
 	if err != nil {
 		return errorToStatus(err)
@@ -1962,7 +1965,6 @@ func cfs_faccessat(id C.int64_t, dirfd C.int, path *C.char, mode C.int, flags C.
 		return statusEINVAL
 	}
 
-
 	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_faccessat))
 	defer ump.AfterTPUs(tpObject, nil)
 
@@ -1970,10 +1972,10 @@ func cfs_faccessat(id C.int64_t, dirfd C.int, path *C.char, mode C.int, flags C.
 	if err != nil {
 		return statusEINVAL
 	}
-	inode, err := c.lookupPath(nil,absPath)
+	inode, err := c.lookupPath(nil, absPath)
 	var info *proto.InodeInfo
 	for err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) {
-		info, err = c.getInode(nil,inode)
+		info, err = c.getInode(nil, inode)
 		if err != nil {
 			return errorToStatus(err)
 		}
@@ -1981,7 +1983,7 @@ func cfs_faccessat(id C.int64_t, dirfd C.int, path *C.char, mode C.int, flags C.
 			break
 		}
 		absPath = c.absPath(string(info.Target))
-		inode, err = c.lookupPath(nil,absPath)
+		inode, err = c.lookupPath(nil, absPath)
 	}
 	if err != nil {
 		return errorToStatus(err)
@@ -2000,13 +2002,12 @@ func cfs_setxattr(id C.int64_t, path *C.char, name *C.char, value unsafe.Pointer
 		return statusEINVAL
 	}
 
-
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
 	var err error
-	for info, err = c.getInodeByPath(nil,absPath); err == nil && proto.IsSymlink(info.Mode); {
+	for info, err = c.getInodeByPath(nil, absPath); err == nil && proto.IsSymlink(info.Mode); {
 		absPath := c.absPath(string(info.Target))
-		info, err = c.getInodeByPath(nil,absPath)
+		info, err = c.getInodeByPath(nil, absPath)
 	}
 	if err != nil {
 		return errorToStatus(err)
@@ -2018,7 +2019,7 @@ func cfs_setxattr(id C.int64_t, path *C.char, name *C.char, value unsafe.Pointer
 	hdr.Len = int(size)
 	hdr.Cap = int(size)
 
-	err = c.mw.XAttrSet_ll(nil,info.Inode, []byte(C.GoString(name)), buffer)
+	err = c.mw.XAttrSet_ll(nil, info.Inode, []byte(C.GoString(name)), buffer)
 	if err != nil {
 		return statusEIO
 	}
@@ -2033,9 +2034,8 @@ func cfs_lsetxattr(id C.int64_t, path *C.char, name *C.char, value unsafe.Pointe
 		return statusEINVAL
 	}
 
-
 	absPath := c.absPath(C.GoString(path))
-	inode, err := c.lookupPath(nil,absPath)
+	inode, err := c.lookupPath(nil, absPath)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -2046,7 +2046,7 @@ func cfs_lsetxattr(id C.int64_t, path *C.char, name *C.char, value unsafe.Pointe
 	hdr.Len = int(size)
 	hdr.Cap = int(size)
 
-	err = c.mw.XAttrSet_ll(nil,inode, []byte(C.GoString(name)), buffer)
+	err = c.mw.XAttrSet_ll(nil, inode, []byte(C.GoString(name)), buffer)
 	if err != nil {
 		return statusEIO
 	}
@@ -2066,14 +2066,13 @@ func cfs_fsetxattr(id C.int64_t, fd C.int, name *C.char, value unsafe.Pointer, s
 		return statusEBADFD
 	}
 
-
 	var buffer []byte
 	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&buffer))
 	hdr.Data = uintptr(value)
 	hdr.Len = int(size)
 	hdr.Cap = int(size)
 
-	err := c.mw.XAttrSet_ll(nil,f.ino, []byte(C.GoString(name)), buffer)
+	err := c.mw.XAttrSet_ll(nil, f.ino, []byte(C.GoString(name)), buffer)
 	if err != nil {
 		return statusEIO
 	}
@@ -2088,19 +2087,18 @@ func cfs_getxattr(id C.int64_t, path *C.char, name *C.char, value unsafe.Pointer
 		return C.ssize_t(statusEINVAL)
 	}
 
-
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
 	var err error
-	for info, err = c.getInodeByPath(nil,absPath); err == nil && proto.IsSymlink(info.Mode); {
+	for info, err = c.getInodeByPath(nil, absPath); err == nil && proto.IsSymlink(info.Mode); {
 		absPath := c.absPath(string(info.Target))
-		info, err = c.getInodeByPath(nil,absPath)
+		info, err = c.getInodeByPath(nil, absPath)
 	}
 	if err != nil {
 		return C.ssize_t(errorToStatus(err))
 	}
 
-	xattr, err := c.mw.XAttrGet_ll(nil,info.Inode, C.GoString(name))
+	xattr, err := c.mw.XAttrGet_ll(nil, info.Inode, C.GoString(name))
 	if err != nil {
 		return C.ssize_t(statusEIO)
 	}
@@ -2133,13 +2131,12 @@ func cfs_lgetxattr(id C.int64_t, path *C.char, name *C.char, value unsafe.Pointe
 		return C.ssize_t(statusEINVAL)
 	}
 
-
 	absPath := c.absPath(C.GoString(path))
-	inode, err := c.lookupPath(nil,absPath)
+	inode, err := c.lookupPath(nil, absPath)
 	if err != nil {
 		return C.ssize_t(errorToStatus(err))
 	}
-	xattr, err := c.mw.XAttrGet_ll(nil,inode, C.GoString(name))
+	xattr, err := c.mw.XAttrGet_ll(nil, inode, C.GoString(name))
 	if err != nil {
 		return C.ssize_t(statusEIO)
 	}
@@ -2177,8 +2174,7 @@ func cfs_fgetxattr(id C.int64_t, fd C.int, name *C.char, value unsafe.Pointer, s
 		return C.ssize_t(statusEBADFD)
 	}
 
-
-	xattr, err := c.mw.XAttrGet_ll(nil,f.ino, C.GoString(name))
+	xattr, err := c.mw.XAttrGet_ll(nil, f.ino, C.GoString(name))
 	if err != nil {
 		return C.ssize_t(statusEIO)
 	}
@@ -2214,15 +2210,15 @@ func cfs_listxattr(id C.int64_t, path *C.char, list *C.char, size C.size_t) C.ss
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
 	var err error
-	for info, err = c.getInodeByPath(nil,absPath); err == nil && proto.IsSymlink(info.Mode); {
+	for info, err = c.getInodeByPath(nil, absPath); err == nil && proto.IsSymlink(info.Mode); {
 		absPath := c.absPath(string(info.Target))
-		info, err = c.getInodeByPath(nil,absPath)
+		info, err = c.getInodeByPath(nil, absPath)
 	}
 	if err != nil {
 		return C.ssize_t(errorToStatus(err))
 	}
 
-	names, err := c.mw.XAttrsList_ll(nil,info.Inode)
+	names, err := c.mw.XAttrsList_ll(nil, info.Inode)
 	if err != nil {
 		return C.ssize_t(statusEIO)
 	}
@@ -2261,11 +2257,11 @@ func cfs_llistxattr(id C.int64_t, path *C.char, list *C.char, size C.size_t) C.s
 	}
 
 	absPath := c.absPath(C.GoString(path))
-	inode, err := c.lookupPath(nil,absPath)
+	inode, err := c.lookupPath(nil, absPath)
 	if err != nil {
 		return C.ssize_t(errorToStatus(err))
 	}
-	names, err := c.mw.XAttrsList_ll(nil,inode)
+	names, err := c.mw.XAttrsList_ll(nil, inode)
 	if err != nil {
 		return C.ssize_t(statusEIO)
 	}
@@ -2354,9 +2350,9 @@ func cfs_removexattr(id C.int64_t, path *C.char, name *C.char) C.int {
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
 	var err error
-	for info, err = c.getInodeByPath(nil,absPath); err == nil && proto.IsSymlink(info.Mode); {
+	for info, err = c.getInodeByPath(nil, absPath); err == nil && proto.IsSymlink(info.Mode); {
 		absPath := c.absPath(string(info.Target))
-		info, err = c.getInodeByPath(nil,absPath)
+		info, err = c.getInodeByPath(nil, absPath)
 	}
 	if err != nil {
 		return errorToStatus(err)
@@ -2504,6 +2500,7 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 		ino    uint64
 		err    error
 		offset int
+		start  time.Time
 	)
 	defer func() {
 		if r := recover(); r != nil || re < 0 {
@@ -2516,11 +2513,12 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 		} else {
 			if log.IsDebugEnabled() {
 				msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, re, err)
-				log.LogDebugf("cfs_read: %s", msg)
+				log.LogDebugf("cfs_read: %s time(%v)", msg, time.Since(start).Microseconds())
 			}
 		}
 	}()
 
+	start = time.Now()
 	c, exist := getClient(int64(id))
 	if !exist {
 		return C.ssize_t(statusEINVAL)
@@ -2532,7 +2530,6 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 	}
 	path = f.path
 	ino = f.ino
-
 
 	tpObject1 := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_read))
 	tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKeyFast(ump_cfs_read))
@@ -2558,14 +2555,16 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 	if off < 0 {
 		offset = int(f.pos)
 	}
-	n, hasHole, err := c.ec.Read(nil,f.ino, buffer, offset, len(buffer))
-	extentNotExist := err != nil && strings.Contains(err.Error(), "extent does not exist")
-	if err != nil && err != io.EOF && !extentNotExist {
-		return C.ssize_t(statusEIO)
-	}
-	if extentNotExist || n < int(size) || hasHole {
-		c.ec.RefreshExtentsCache(nil,f.ino)
-		n, _, err = c.ec.Read(nil,f.ino, buffer, offset, len(buffer))
+	n, hasHole, err := c.ec.Read(nil, f.ino, buffer, offset, len(buffer))
+	if c.app == appCoralDB {
+		extentNotExist := err != nil && strings.Contains(err.Error(), "extent does not exist")
+		if err != nil && err != io.EOF && !extentNotExist {
+			return C.ssize_t(statusEIO)
+		}
+		if extentNotExist || n < int(size) || hasHole {
+			c.ec.RefreshExtentsCache(nil, f.ino)
+			n, _, err = c.ec.Read(nil, f.ino, buffer, offset, len(buffer))
+		}
 	}
 	if err != nil && err != io.EOF {
 		return C.ssize_t(statusEIO)
@@ -2639,6 +2638,7 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		err     error
 		offset  int
 		flagBuf bytes.Buffer
+		start   time.Time
 	)
 	defer func() {
 		var fileSize uint64 = 0
@@ -2658,7 +2658,7 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		} else {
 			if log.IsDebugEnabled() {
 				msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) fileSize(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), fileSize, re, err)
-				log.LogDebugf("cfs_write: %s", msg)
+				log.LogDebugf("cfs_write: %s time(%v)", msg, time.Since(start).Microseconds())
 			}
 		}
 	}()
@@ -2666,7 +2666,7 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	once.Do(func() {
 		signal.Ignore(syscall.SIGHUP, syscall.SIGTERM)
 	})
-
+	start = time.Now()
 	c, exist := getClient(int64(id))
 	if !exist {
 		return C.ssize_t(statusEINVAL)
@@ -2699,9 +2699,11 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		act = ump_cfs_write_binlog
 	} else if f.logType == RedoLogType {
 		act = ump_cfs_write_redolog
-		if c.app == appMysql8 {
+		if c.app == appMysql8 || c.app == appCoralDB {
 			overWriteBuffer = true
 		}
+	} else if strings.Contains(f.path, masterInfo) || strings.Contains(f.path, relayLogInfo) {
+		overWriteBuffer = true
 	}
 	tpObject1 := ump.BeforeTP(c.umpFunctionKeyFast(act))
 	tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKeyFast(act))
@@ -3056,22 +3058,22 @@ func (c *client) copyFile(fd uint, newfd uint) uint {
 }
 
 func (c *client) create(ctx context.Context, parentID uint64, name string, mode, uid, gid uint32, target []byte) (info *proto.InodeInfo, err error) {
-	info, err = c.mw.Create_ll(nil,parentID, name, mode, uid, gid, target)
-	c.inodeCache.Delete(nil,parentID)
+	info, err = c.mw.Create_ll(nil, parentID, name, mode, uid, gid, target)
+	c.inodeCache.Delete(nil, parentID)
 	c.inodeCache.Put(info)
 	return
 }
 
 func (c *client) delete(ctx context.Context, parentID uint64, name string, isDir bool) (info *proto.InodeInfo, err error) {
-	info, err = c.mw.Delete_ll(nil,parentID, name, isDir)
-	c.inodeCache.Delete(nil,parentID)
+	info, err = c.mw.Delete_ll(nil, parentID, name, isDir)
+	c.inodeCache.Delete(nil, parentID)
 	c.invalidateDentry(parentID, name)
 	return
 }
 
 func (c *client) truncate(ctx context.Context, inode uint64, len int) (err error) {
-	err = c.ec.Truncate(nil,inode, len)
-	info := c.inodeCache.Get(nil,inode)
+	err = c.ec.Truncate(nil, inode, len)
+	info := c.inodeCache.Get(nil, inode)
 	if info != nil {
 		info.Size = uint64(len)
 		c.inodeCache.Put(info)
@@ -3081,7 +3083,7 @@ func (c *client) truncate(ctx context.Context, inode uint64, len int) (err error
 }
 
 func (c *client) flush(ctx context.Context, inode uint64) (err error) {
-	err = c.ec.Flush(nil,inode)
+	err = c.ec.Flush(nil, inode)
 	//c.inodeCache.Delete(nil,inode)
 	return
 }
@@ -3123,11 +3125,11 @@ func (c *client) releaseFD(fd uint) *file {
 
 func (c *client) getInodeByPath(ctx context.Context, path string) (info *proto.InodeInfo, err error) {
 	var ino uint64
-	ino, err = c.lookupPath(nil,path)
+	ino, err = c.lookupPath(nil, path)
 	if err != nil {
 		return
 	}
-	info, err = c.getInode(nil,ino)
+	info, err = c.getInode(nil, ino)
 	return
 }
 
@@ -3140,7 +3142,7 @@ func (c *client) lookupPath(ctx context.Context, path string) (ino uint64, err e
 			if dir == "/" || dir == "" {
 				continue
 			}
-			child, err = c.getDentry(nil,ino, dir)
+			child, err = c.getDentry(nil, ino, dir)
 			if err != nil {
 				ino = 0
 				return
@@ -3152,11 +3154,11 @@ func (c *client) lookupPath(ctx context.Context, path string) (ino uint64, err e
 }
 
 func (c *client) getInode(ctx context.Context, ino uint64) (info *proto.InodeInfo, err error) {
-	info = c.inodeCache.Get(nil,ino)
+	info = c.inodeCache.Get(nil, ino)
 	if info != nil {
 		return
 	}
-	info, err = c.mw.InodeGet_ll(nil,ino)
+	info, err = c.mw.InodeGet_ll(nil, ino)
 	if err != nil {
 		return
 	}
@@ -3177,7 +3179,7 @@ func (c *client) getDentry(ctx context.Context, parentID uint64, name string) (i
 		dentryCache = cache.NewDentryCache(dentryValidDuration, c.useMetaCache)
 		c.inodeDentryCache[parentID] = dentryCache
 	}
-	ino, _, err = c.mw.Lookup_ll(nil,parentID, name)
+	ino, _, err = c.mw.Lookup_ll(nil, parentID, name)
 	if err != nil {
 		return
 	}
@@ -3204,7 +3206,7 @@ func (c *client) setattr(ctx context.Context, info *proto.InodeInfo, valid uint3
 		mode = info.Mode &^ uint32(0777) // clear rwx mode bit
 		mode |= fuseMode
 	}
-	return c.mw.Setattr(nil,info.Inode, valid, mode, uid, gid, atime, mtime)
+	return c.mw.Setattr(nil, info.Inode, valid, mode, uid, gid, atime, mtime)
 }
 
 func (c *client) closeStream(f *file) {

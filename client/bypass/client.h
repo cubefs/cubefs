@@ -4,6 +4,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <gnu/libc-version.h>
 #include <limits.h>
 #include <search.h>
 #include <signal.h>
@@ -24,11 +25,9 @@
 // Define ALIASNAME as a weak alias for NAME.
 # define weak_alias(name, aliasname) extern __typeof (name) aliasname __attribute__ ((weak, alias (#name)));
 
-// renameat2 is added in glibc-2.28
-#if defined(__GLIBC__) && \
-    defined(__GLIBC_MINOR__) && \
-    (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 28))
-#define USE_RENAMEAT2
+// compatible for glibc before 2.18
+#ifndef RENAME_NOREPLACE
+#define RENAME_NOREPLACE (1 << 0)
 #endif
 
 /*
@@ -268,6 +267,8 @@ static char *g_ignore_path;
 static cfs_config_t g_cfs_config;
 static const char *CFS_CFG_PATH = "cfs_client.ini";
 static const char *CFS_CFG_PATH_JED = "/export/servers/cfs/cfs_client.ini";
+
+static bool g_has_renameat2 = false;
 
 #if defined(_CFS_DEBUG) || defined(DUP_TO_LOCAL)
 // map for each open fd to its pathname, to print pathname in debug log
@@ -620,5 +621,26 @@ static void signal_handler(int signum) {
     #endif
 }
 */
+
+bool has_renameat2() {
+    const char *ver = gnu_get_libc_version();
+    char *ver1 = strdup(ver);
+    if(ver1 == NULL) {
+        return false;
+    }
+    char *delimiter = strstr(ver1, ".");
+    int len = 0;
+    if(delimiter != NULL) {
+        len = strlen(delimiter);
+        delimiter[0] = '\0';
+    }
+    int major = atoi(ver1);
+    int minor = 0;
+    if(len > 1) {
+        minor = atoi(delimiter + 1);
+    }
+    free(ver1);
+    return major > 2 || (major == 2 && minor >= 28);
+}
 
 #endif

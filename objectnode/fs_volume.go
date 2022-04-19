@@ -502,7 +502,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 			_ = v.mw.Evict(context.Background(), invisibleTempDataInode.Inode, false)
 		}
 	}()
-	if err = v.ec.OpenStream(invisibleTempDataInode.Inode); err != nil {
+	if err = v.ec.OpenStream(invisibleTempDataInode.Inode, false, false); err != nil {
 		return
 	}
 	defer func() {
@@ -802,7 +802,7 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 		}
 	}()
 
-	if err = v.ec.OpenStream(tempInodeInfo.Inode); err != nil {
+	if err = v.ec.OpenStream(tempInodeInfo.Inode, false, false); err != nil {
 		log.LogErrorf("WritePart: data open stream fail: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) err(%v)",
 			v.name, path, multipartId, partId, tempInodeInfo.Inode, err)
 		return nil, err
@@ -1094,7 +1094,7 @@ func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash) (size 
 }
 
 func (v *Volume) appendInodeHash(h hash.Hash, inode uint64, total uint64, preAllocatedBuf []byte) (err error) {
-	if err = v.ec.OpenStream(inode); err != nil {
+	if err = v.ec.OpenStream(inode, false, false); err != nil {
 		log.LogErrorf("appendInodeHash: data open stream fail: inode(%v) err(%v)",
 			inode, err)
 		return
@@ -2004,7 +2004,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		log.LogErrorf("CopyFile: copy source path file size greater than 5GB, source path(%v), target path(%v)", sourcePath, targetPath)
 		return nil, syscall.EFBIG
 	}
-	if err = sv.ec.OpenStream(sInode); err != nil {
+	if err = sv.ec.OpenStream(sInode, false, false); err != nil {
 		log.LogErrorf("CopyFile: open source path stream fail, source path(%v) source path inode(%v) err(%v)",
 			sourcePath, sInode, err)
 		return
@@ -2148,7 +2148,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			_ = v.mw.Evict(context.Background(), tInodeInfo.Inode, false)
 		}
 	}()
-	if err = v.ec.OpenStream(tInodeInfo.Inode); err != nil {
+	if err = v.ec.OpenStream(tInodeInfo.Inode, false, false); err != nil {
 		return
 	}
 	defer func() {
