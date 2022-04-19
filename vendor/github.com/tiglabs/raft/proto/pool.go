@@ -68,6 +68,10 @@ func GetEntryFromPoolWithFollower() (e *Entry) {
 	return e
 }
 
+const (
+	MinLeaderLogEntryRefCnt =2
+)
+
 func GetEntryFromPoolWithArgWithLeader(t EntryType,term,index uint64,data []byte, followerCnt int) (e *Entry) {
 	e=GetEntryFromPool()
 	e.Type=t
@@ -75,8 +79,8 @@ func GetEntryFromPoolWithArgWithLeader(t EntryType,term,index uint64,data []byte
 	e.Term=term
 	e.Index=index
 	e.ctx=nil
-	e.OrgRefCnt=uint8(FollowerLogEntryRefCnt + followerCnt)
-	atomic.StoreInt32(&e.RefCnt, int32(FollowerLogEntryRefCnt + followerCnt))
+	e.OrgRefCnt=uint8(MinLeaderLogEntryRefCnt + followerCnt)
+	atomic.StoreInt32(&e.RefCnt, int32(MinLeaderLogEntryRefCnt + followerCnt))
 	atomic.AddUint64(&LeaderGetEntryCnt,1)
 
 	return

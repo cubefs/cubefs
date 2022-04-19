@@ -148,7 +148,7 @@ func (e *Entry) SetCtx(ctx context.Context) {
 }
 
 func (e *Entry)IsLeaderLogEntry() bool {
-	return e.OrgRefCnt > FollowerLogEntryRefCnt
+	return e.OrgRefCnt > MinLeaderLogEntryRefCnt
 }
 
 
