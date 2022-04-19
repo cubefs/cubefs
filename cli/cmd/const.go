@@ -32,6 +32,7 @@ const (
 	CliOpSetThreshold      = "threshold"
 	CliOpSetDelRate        = "deleterate"
 	CliOpCheck             = "check"
+	CliOpFix               = "fix"
 	CliOpReset             = "reset"
 	CliOpReplicate         = "add-replica"
 	CliOpDelReplica        = "del-replica"
