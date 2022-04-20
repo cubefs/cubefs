@@ -398,6 +398,10 @@ func GetPacketFromPool() (p *Packet) {
 	return
 }
 
+func (p *Packet) GetFollowers() []string {
+	return p.followersAddrs
+}
+
 func NewPacket(ctx context.Context) (p *Packet) {
 	p = new(Packet)
 	p.Magic = proto.ProtoMagic
