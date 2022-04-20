@@ -274,6 +274,8 @@ func (m *Message) Decode(r *util.BufferReader) error {
 				m.Context = datas[start:]
 			}
 		}
+	} else {
+		return fmt.Errorf("Message Decode: invalid version [%v]", ver)
 	}
 	return nil
 }
