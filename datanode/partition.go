@@ -451,22 +451,19 @@ func (dp *DataPartition) ForceLoadHeader() {
 
 // PersistMetadata persists the file metadata on the disk.
 func (dp *DataPartition) PersistMetadata() (err error) {
+	var (
+		fmeta    *os.File
+		metaData []byte
+	)
+
 	dp.persistMetaMutex.Lock()
 	defer dp.persistMetaMutex.Unlock()
 
-	var (
-		metadataFile *os.File
-		metaData     []byte
-	)
 	fileName := path.Join(dp.Path(), TempMetadataFileName)
-	if metadataFile, err = os.OpenFile(fileName, os.O_CREATE|os.O_RDWR, 0666); err != nil {
+	if fmeta, err = os.OpenFile(fileName, os.O_CREATE|os.O_RDWR, 0666); err != nil {
 		return
 	}
-	defer func() {
-		metadataFile.Sync()
-		metadataFile.Close()
-		os.Remove(fileName)
-	}()
+	defer fmeta.Close()
 
 	sp := sortedPeers(dp.config.Peers)
 	sort.Sort(sp)
@@ -484,11 +481,18 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 	if metaData, err = json.Marshal(md); err != nil {
 		return
 	}
-	if _, err = metadataFile.Write(metaData); err != nil {
+	if _, err = fmeta.Write(metaData); err != nil {
 		return
 	}
+	if err = fmeta.Sync(); err != nil {
+		return
+	}
+	if err = os.Rename(fileName, path.Join(dp.Path(), DataPartitionMetadataFileName)); err != nil {
+		_ = os.Remove(fileName)
+		return
+	}
+
 	log.LogInfof("PersistMetadata DataPartition(%v) data(%v)", dp.partitionID, string(metaData))
-	err = os.Rename(fileName, path.Join(dp.Path(), DataPartitionMetadataFileName))
 	return
 }
 func (dp *DataPartition) statusUpdateScheduler() {
