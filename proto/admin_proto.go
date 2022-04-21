@@ -716,6 +716,7 @@ type SimpleVolView struct {
 	MpCnt                int
 	DpCnt                int
 	FollowerRead         bool
+	NearRead             bool
 	NeedToLowerReplica   bool
 	Authenticate         bool
 	VolWriteMutexEnable  bool

@@ -176,6 +176,7 @@ type volValue struct {
 	DpWriteableThreshold float64
 	Owner                string
 	FollowerRead         bool
+	NearRead            bool
 	ForceROW             bool
 	CrossRegionHAType    bsProto.CrossRegionHAType
 	Authenticate         bool
@@ -218,6 +219,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		Capacity:             vol.Capacity,
 		Owner:                vol.Owner,
 		FollowerRead:         vol.FollowerRead,
+		NearRead:            vol.NearRead,
 		ForceROW:             vol.ForceROW,
 		CrossRegionHAType:    vol.CrossRegionHAType,
 		Authenticate:         vol.authenticate,

@@ -123,6 +123,7 @@ const (
 	cmdVolDefaultTrashDays      = 0
 	cmdVolDefaultFollowerReader = true
 	cmdVolDefaultForceROW       = false
+	cmdVolDefaultNearReader     = false
 	cmdVolDefaultCrossRegionHA  = 0
 	cmdVolDefaultZoneName       = "default"
 	cmdVolDefaultStoreMode      = int(proto.StoreModeMem)
@@ -213,7 +214,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optReplicas, CliFlagReplicas, cmdVolDefaultReplicas, "Specify data partition replicas number")
 	cmd.Flags().IntVar(&optMpReplicas, CliFlagMpReplicas, cmdVolDefaultReplicas, "Specify meta partition replicas number")
 	cmd.Flags().IntVar(&optTrashDays, CliFlagTrashDays, cmdVolDefaultTrashDays, "Specify trash remaining days ")
-	cmd.Flags().BoolVar(&optFollowerRead, CliFlagEnableFollowerRead, cmdVolDefaultFollowerReader, "Enable read form replica follower")
+	cmd.Flags().BoolVar(&optFollowerRead, CliFlagEnableFollowerRead, cmdVolDefaultFollowerReader, "Enable read from replica follower")
 	cmd.Flags().BoolVar(&optForceROW, CliFlagEnableForceROW, cmdVolDefaultForceROW, "Use ROW instead of overwrite")
 	cmd.Flags().Uint8Var(&optCrossRegionHAType, CliFlagEnableCrossRegionHA, cmdVolDefaultCrossRegionHA,
 		"Set cross region high available type(0 for default, 1 for quorum)")
@@ -240,6 +241,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		optTrashDays            int
 		optStoreMode            int
 		optFollowerRead         string
+		optNearRead      	    string
 		optForceROW             string
 		optAuthenticate         string
 		optEnableToken          string
@@ -313,6 +315,17 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				vv.FollowerRead = enable
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  Allow follower read : %v\n", formatEnabledDisabled(vv.FollowerRead)))
+			}
+			if optNearRead != "" {
+				isChange = true
+				var enable bool
+				if enable, err = strconv.ParseBool(optNearRead); err != nil {
+					return
+				}
+				confirmString.WriteString(fmt.Sprintf("  Allow near read : %v -> %v\n", formatEnabledDisabled(vv.NearRead), formatEnabledDisabled(enable)))
+				vv.NearRead = enable
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Allow near read : %v\n", formatEnabledDisabled(vv.NearRead)))
 			}
 			if optForceROW != "" {
 				isChange = true
@@ -454,7 +467,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum), int(vv.MpReplicaNum), int(vv.TrashRemainingDays),
-				int(vv.DefaultStoreMode), vv.FollowerRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
+				int(vv.DefaultStoreMode), vv.FollowerRead, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
 				vv.ForceROW, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec)
 			if err != nil {
 				return
@@ -473,7 +486,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optReplicas, CliFlagReplicas, 0, "Specify data partition replicas number")
 	cmd.Flags().IntVar(&optMpReplicas, CliFlagMpReplicas, 0, "Specify meta partition replicas number")
 	cmd.Flags().IntVar(&optTrashDays, CliFlagTrashDays, 0, "Specify trash remaining days")
-	cmd.Flags().StringVar(&optFollowerRead, CliFlagEnableFollowerRead, "", "Enable read form replica follower")
+	cmd.Flags().StringVar(&optFollowerRead, CliFlagEnableFollowerRead, "", "Enable read from replica follower")
+	cmd.Flags().StringVar(&optNearRead, CliFlagEnableNearRead, "", "Enable read from ip near replica")
 	cmd.Flags().StringVar(&optForceROW, CliFlagEnableForceROW, "", "Enable only row instead of overwrite")
 	cmd.Flags().StringVar(&optCrossRegionHAType, CliFlagEnableCrossRegionHA, "",
 		"Set cross region high available type(0 for default, 1 for quorum)")

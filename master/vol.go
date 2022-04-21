@@ -46,6 +46,7 @@ type Vol struct {
 	Capacity            uint64 // GB
 	NeedToLowerReplica  bool
 	FollowerRead        bool
+	NearRead            bool
 	ForceROW            bool
 	authenticate        bool
 	autoRepair          bool
@@ -191,6 +192,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.ExtentCacheExpireSec = vv.ExtentCacheExpireSec
 	vol.MinWritableMPNum = vv.MinWritableMPNum
 	vol.MinWritableDPNum = vv.MinWritableDPNum
+	vol.NearRead = vv.NearRead
 
 	return vol
 }
@@ -1025,6 +1027,7 @@ func (vol *Vol) backupConfig() *Vol {
 		Capacity:             vol.Capacity,
 		dpReplicaNum:         vol.dpReplicaNum,
 		FollowerRead:         vol.FollowerRead,
+		NearRead:             vol.NearRead,
 		authenticate:         vol.authenticate,
 		enableToken:          vol.enableToken,
 		autoRepair:           vol.autoRepair,
@@ -1056,6 +1059,7 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.Capacity = backupVol.Capacity
 	vol.dpReplicaNum = backupVol.dpReplicaNum
 	vol.FollowerRead = backupVol.FollowerRead
+	vol.NearRead = backupVol.NearRead
 	vol.authenticate = backupVol.authenticate
 	vol.enableToken = backupVol.enableToken
 	vol.autoRepair = backupVol.autoRepair

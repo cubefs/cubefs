@@ -2397,7 +2397,7 @@ errHandler:
 }
 
 func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacity uint64, replicaNum, mpReplicaNum uint8,
-	followerRead, authenticate, enableToken, autoRepair, forceROW bool, dpSelectorName, dpSelectorParm string,
+	followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW bool, dpSelectorName, dpSelectorParm string,
 	ossBucketPolicy proto.BucketAccessPolicy, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
 	remainingDays uint32, storeMode proto.StoreMode, layout proto.MetaPartitionLayout, extentCacheExpireSec int64) (err error) {
 	var (
@@ -2482,9 +2482,9 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		}
 		vol.MpLayout = layout
 	}
-
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
+	vol.NearRead = nearRead
 	vol.ForceROW = forceROW
 	vol.ExtentCacheExpireSec = extentCacheExpireSec
 	vol.authenticate = authenticate

@@ -76,6 +76,7 @@ const (
 	CliFlagMpReplicas          = "mp-replicas"
 	CliFlagEnable              = "enable"
 	CliFlagEnableFollowerRead  = "follower-read"
+	CliFlagEnableNearRead      = "near-read"
 	CliFlagEnableForceROW      = "force-row"
 	CliFlagExtentCacheExpireSec	= "ek-expire-second"
 	CliFlagEnableCrossRegionHA = "cross-region"

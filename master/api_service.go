@@ -1155,6 +1155,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		replicaNum   int
 		mpReplicaNum int
 		followerRead bool
+		nearRead     bool
 		forceROW     bool
 		authenticate bool
 		enableToken  bool
@@ -1202,7 +1203,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	if mpReplicaNum == 0 {
 		mpReplicaNum = int(vol.mpReplicaNum)
 	}
-	if followerRead, authenticate, enableToken, autoRepair, forceROW, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
+	if followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1246,7 +1247,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), uint8(mpReplicaNum),
-		followerRead, authenticate, enableToken, autoRepair, forceROW, dpSelectorName, dpSelectorParm, ossBucketPolicy,
+		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, dpSelectorName, dpSelectorParm, ossBucketPolicy,
 		crossRegionHAType, dpWriteableThreshold, trashRemainingDays, proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -1405,6 +1406,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		Status:               vol.Status,
 		Capacity:             vol.Capacity,
 		FollowerRead:         vol.FollowerRead,
+		NearRead:             vol.NearRead,
 		ForceROW:             vol.ForceROW,
 		CrossRegionHAType:    vol.CrossRegionHAType,
 		NeedToLowerReplica:   vol.NeedToLowerReplica,
@@ -2493,7 +2495,7 @@ func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, ca
 	return
 }
 
-func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authenticate, enableToken, autoRepair, forceROW bool, err error) {
+func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW bool, err error) {
 	if followerReadStr := r.FormValue(followerReadKey); followerReadStr != "" {
 		if followerRead, err = strconv.ParseBool(followerReadStr); err != nil {
 			err = unmatchedKey(followerReadKey)
@@ -2501,6 +2503,14 @@ func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authent
 		}
 	} else {
 		followerRead = vol.FollowerRead
+	}
+	if nearReadStr := r.FormValue(nearReadKey); nearReadStr != "" {
+		if nearRead, err = strconv.ParseBool(nearReadStr); err != nil {
+			err = unmatchedKey(nearReadKey)
+			return
+		}
+	} else {
+		nearRead = vol.NearRead
 	}
 	if authenticateStr := r.FormValue(authenticateKey); authenticateStr != "" {
 		if authenticate, err = strconv.ParseBool(authenticateStr); err != nil {

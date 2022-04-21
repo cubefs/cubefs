@@ -162,6 +162,7 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 		return
 	}
 	w.followerRead = view.FollowerRead
+	w.nearRead = view.NearRead
 	w.forceROW = view.ForceROW
 	w.dpSelectorName = view.DpSelectorName
 	w.dpSelectorParm = view.DpSelectorParm
@@ -421,7 +422,7 @@ func (w *Wrapper) updateDataNodeStatus() (err error) {
 }
 
 func (w *Wrapper) SetNearRead(nearRead bool) {
-	w.nearRead = nearRead
+	w.nearRead = w.nearRead || nearRead
 	log.LogInfof("SetNearRead: set nearRead to %v", w.nearRead)
 }
 

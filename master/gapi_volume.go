@@ -374,7 +374,7 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 	}
 
 	if err = s.cluster.updateVol(args.Name, args.AuthKey, *args.ZoneName, *args.Description, *args.Capacity,
-		uint8(*args.ReplicaNum), vol.mpReplicaNum, *args.FollowerRead, *args.Authenticate, *args.EnableToken, *args.AutoRepair, *args.ForceROW,
+		uint8(*args.ReplicaNum), vol.mpReplicaNum, *args.FollowerRead, vol.NearRead, *args.Authenticate, *args.EnableToken, *args.AutoRepair, *args.ForceROW,
 		vol.dpSelectorName, vol.dpSelectorParm, vol.OSSBucketPolicy, vol.CrossRegionHAType, vol.dpWriteableThreshold, vol.trashRemainingDays,
 		proto.StoreMode(*args.storeMode), proto.MetaPartitionLayout{uint32(*args.mpPercent), uint32(*args.repPercent)}, vol.ExtentCacheExpireSec); err != nil {
 		return nil, err
