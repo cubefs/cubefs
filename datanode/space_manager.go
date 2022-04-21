@@ -490,6 +490,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			NeedCompare:     true,
 			IsLearner:       partition.IsRaftLearner(),
 			LastUpdateTime:  partition.lastUpdateTime,
+			IsRecover:       partition.DataPartitionCreateType == proto.DecommissionedCreateDataPartition,
 		}
 		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v) isLearner(%v).",
 			vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader, vr.IsLearner)
