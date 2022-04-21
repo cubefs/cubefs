@@ -34,6 +34,9 @@ func (s *DataNode) Prepare(p *repl.Packet, remoteAddr string) (err error) {
 	if p.IsMasterCommand() {
 		return
 	}
+	if err = s.checkReplInfo(p); err != nil {
+		return
+	}
 	p.BeforeTp(s.clusterID)
 	err = s.checkStoreMode(p)
 	if err != nil {
@@ -125,4 +128,12 @@ func (s *DataNode) addExtentInfo(p *repl.Packet) error {
 	}
 
 	return nil
+}
+
+func (s *DataNode) checkReplInfo(p *repl.Packet) (err error) {
+	if p.IsLeaderPacket() && len(p.GetFollowers()) == 0 {
+		err = fmt.Errorf("checkReplInfo: leader write packet without follower address")
+		return
+	}
+	return
 }
