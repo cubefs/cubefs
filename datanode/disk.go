@@ -16,6 +16,7 @@ package datanode
 
 import (
 	"fmt"
+	syslog "log"
 	"os"
 	"path"
 	"regexp"
@@ -327,27 +328,7 @@ func (d *Disk) isPartitionDir(filename string) (isPartitionDir bool) {
 
 // RestorePartition reads the files stored on the local disk and restores the data partitions.
 func (d *Disk) RestorePartition(visitor PartitionVisitor) {
-	var convert = func(node *proto.DataNodeInfo) *DataNodeInfo {
-		result := &DataNodeInfo{}
-		result.Addr = node.Addr
-		result.PersistenceDataPartitions = node.PersistenceDataPartitions
-		return result
-	}
-	var dataNode *proto.DataNodeInfo
 	var err error
-	for i := 0; i < 3; i++ {
-		dataNode, err = MasterClient.NodeAPI().GetDataNode(d.space.dataNode.localServerAddr)
-		if err != nil {
-			log.LogErrorf("action[RestorePartition]: getDataNode error %v", err)
-			continue
-		}
-		break
-	}
-	dinfo := convert(dataNode)
-	if len(dinfo.PersistenceDataPartitions) == 0 {
-		log.LogWarnf("action[RestorePartition]: length of PersistenceDataPartitions is 0, ExpiredPartition check " +
-			"without effect")
-	}
 
 	var (
 		partitionID   uint64
@@ -381,13 +362,18 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 		log.LogDebugf("acton[RestorePartition] disk(%v) path(%v) PartitionID(%v) partitionSize(%v).",
 			d.Path, filename, partitionID, partitionSize)
 
-		if isExpiredPartition(partitionID, dinfo.PersistenceDataPartitions) {
+		if d.isExpiredPartition(partitionID) {
 			log.LogErrorf("action[RestorePartition]: find expired partition[%s], rename it and you can delete it "+
 				"manually", filename)
 			oldName := path.Join(d.Path, filename)
 			newName := path.Join(d.Path, ExpiredPartitionPrefix+filename)
 			os.Rename(oldName, newName)
 			continue
+		}
+
+		if dpPath, ok := d.dataNode.dnInfoFromDisk.Put(partitionID, path.Join(d.Path, filename)); !ok {
+			syslog.Printf("[Start] action[RestorePartition]: duplicate partition directories, pid[%v], [%v], [%v]\n", partitionID, dpPath, path.Join(d.Path, filename))
+			return
 		}
 
 		wg.Add(1)
@@ -398,7 +384,8 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 			)
 			defer wg.Done()
 			if dp, err = LoadDataPartition(path.Join(d.Path, filename), d); err != nil {
-				msg := fmt.Sprintf("action[RestorePartition] new partition(%v) err(%v) ", partitionID, err)
+				msg := fmt.Sprintf("[Start] action[RestorePartition] new partition(%v) err(%v) ", partitionID, err)
+				syslog.Println(msg)
 				log.LogError(msg)
 				exporter.Warning(msg)
 				return
@@ -420,16 +407,15 @@ func (d *Disk) getSelectWeight() float64 {
 }
 
 // isExpiredPartition return whether one partition is expired
-// if one partition does not exist in master, we decided that it is one expired partition
-func isExpiredPartition(id uint64, partitions []uint64) bool {
-	if len(partitions) == 0 {
+// if one partition does not exist in master, it is considered as an expired partition
+func (d *Disk) isExpiredPartition(id uint64) bool {
+	dnInfo := d.dataNode.dnInfoFromMaster
+	if len(dnInfo.persistDpInfo) == 0 {
 		return true
 	}
-
-	for _, existId := range partitions {
-		if existId == id {
-			return false
-		}
+	_, ok := dnInfo.persistDpInfo[id]
+	if ok {
+		return false
 	}
 	return true
 }

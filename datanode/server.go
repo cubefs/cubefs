@@ -15,9 +15,12 @@
 package datanode
 
 import (
+	"errors"
 	"fmt"
+	syslog "log"
 	"net"
 	"net/http"
+	"os"
 	"regexp"
 	"runtime"
 	"runtime/debug"
@@ -25,11 +28,8 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
-
-	"errors"
-	"os"
 	"syscall"
+	"time"
 
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
@@ -138,6 +138,10 @@ type DataNode struct {
 	metrics        *DataNodeMetrics
 	metricsDegrade int64
 	metricsCnt     uint64
+
+	// Used during start up to screen out duplicate partition directories.
+	dnInfoFromMaster *DataNodeInfo // no need to lock this one
+	dnInfoFromDisk   *DataNodeInfo
 
 	control common.Control
 }
@@ -288,6 +292,26 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	}
 	s.space.diskIOLimit = diskIOLimit
 
+	s.dnInfoFromMaster = &DataNodeInfo{persistDpInfo: make(map[uint64]string)}
+	s.dnInfoFromDisk = &DataNodeInfo{persistDpInfo: make(map[uint64]string)}
+	var dnInfo *proto.DataNodeInfo
+	for i := 0; i < 3; i++ {
+		dnInfo, err = MasterClient.NodeAPI().GetDataNode(s.localServerAddr)
+		if err != nil {
+			log.LogWarnf("[Start] action[RestorePartition]: getDataNode failed, index[%v] err[%v]", i, err)
+			continue
+		}
+		break
+	}
+	if dnInfo == nil {
+		err = ErrGetMasterDatanodeInfoFailed
+		syslog.Printf("[Start] action[RestorePartition]: getDataNode failed, last err[%v]\n", err)
+		return
+	}
+	for _, pid := range dnInfo.PersistenceDataPartitions {
+		s.dnInfoFromMaster.persistDpInfo[pid] = ""
+	}
+
 	var wg sync.WaitGroup
 	for _, d := range cfg.GetSlice(ConfigKeyDisks) {
 		log.LogDebugf("action[startSpaceManager] load disk raw config(%v).", d)
@@ -377,35 +401,24 @@ func (s *DataNode) register(cfg *config.Config) {
 }
 
 type DataNodeInfo struct {
-	Addr                      string
-	PersistenceDataPartitions []uint64
+	lock          sync.RWMutex
+	persistDpInfo map[uint64]string // partition id -> path
+}
+
+func (dnInfo *DataNodeInfo) Put(pid uint64, path string) (oldPath string, ok bool) {
+	dnInfo.lock.Lock()
+	defer dnInfo.lock.Unlock()
+	oldPath, exist := dnInfo.persistDpInfo[pid]
+	if exist {
+		return oldPath, false
+	}
+	dnInfo.persistDpInfo[pid] = path
+	return "", true
 }
 
 func (s *DataNode) checkLocalPartitionMatchWithMaster() (err error) {
-	var convert = func(node *proto.DataNodeInfo) *DataNodeInfo {
-		result := &DataNodeInfo{}
-		result.Addr = node.Addr
-		result.PersistenceDataPartitions = node.PersistenceDataPartitions
-		return result
-	}
-	var dataNode *proto.DataNodeInfo
-	for i := 0; i < 3; i++ {
-		if dataNode, err = MasterClient.NodeAPI().GetDataNode(s.localServerAddr); err != nil {
-			log.LogErrorf("checkLocalPartitionMatchWithMaster error %v", err)
-			continue
-		}
-		break
-	}
-	if dataNode == nil {
-		err = ErrGetMasterDatanodeInfoFailed
-		return
-	}
-	dinfo := convert(dataNode)
-	if len(dinfo.PersistenceDataPartitions) == 0 {
-		return
-	}
 	lackPartitions := make([]uint64, 0)
-	for _, partitionID := range dinfo.PersistenceDataPartitions {
+	for partitionID := range s.dnInfoFromMaster.persistDpInfo {
 		dp := s.space.Partition(partitionID)
 		if dp == nil {
 			lackPartitions = append(lackPartitions, partitionID)
@@ -414,8 +427,8 @@ func (s *DataNode) checkLocalPartitionMatchWithMaster() (err error) {
 	if len(lackPartitions) == 0 {
 		return
 	}
-	err = fmt.Errorf("LackPartitions %v on datanode %v,datanode cannot start", lackPartitions, s.localServerAddr)
-	log.LogErrorf(err.Error())
+	err = fmt.Errorf("[Start] LackPartitions [%v] on datanode [%v], datanode cannot start", lackPartitions, s.localServerAddr)
+	log.LogError(err)
 	return
 }
 
