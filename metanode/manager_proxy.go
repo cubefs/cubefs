@@ -119,7 +119,7 @@ end:
 
 	leaderAddr, _ = mp.IsLeader()
 	if leaderAddr == oldLeaderAddr && needTryToLeader{
-		log.LogWarnf("mp[%v] leader(%s) is not response, now try to elect to be leader", mp.GetBaseConfig().PartitionId, leaderAddr)
+		log.LogErrorf("mp[%v] leader(%s) is not response, now try to elect to be leader", mp.GetBaseConfig().PartitionId, leaderAddr)
 		_ = mp.TryToLeader(mp.GetBaseConfig().PartitionId)
 	}
 

@@ -107,7 +107,9 @@ func (d *FsCapMon) TriggerDiskError(err error) {
 }
 
 func (d *FsCapMon) cleanDiskError() {
-	log.LogWarnf("clean disk(%s) status:%d--->%d", d.Path, d.Status, ReadWrite)
+	if d.Status != ReadWrite {
+		log.LogWarnf("clean disk(%s) status:%d--->%d", d.Path, d.Status, ReadWrite)
+	}
 	d.Status = ReadWrite
 }
 
@@ -115,9 +117,8 @@ func (d *FsCapMon) updateCheckTick() {
 	d.RLock()
 	defer d.RUnlock()
 
-	if d.Status == ReadWrite {
-		d.lastUpdate = time.Now()
-	}
+	d.cleanDiskError()
+	d.lastUpdate = time.Now()
 }
 
 func (d *FsCapMon) UpdateDiskTick() {
