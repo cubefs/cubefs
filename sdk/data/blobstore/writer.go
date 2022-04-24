@@ -359,9 +359,15 @@ func (writer *Writer) CacheFileSize() int {
 }
 
 func (writer *Writer) FreeCache() {
+	if buf.CachePool == nil {
+		return
+	}
 	buf.CachePool.Put(writer.buf)
 }
 
 func (writer *Writer) AllocateCache() {
+	if buf.CachePool == nil {
+		return
+	}
 	writer.buf = buf.CachePool.Get()
 }
