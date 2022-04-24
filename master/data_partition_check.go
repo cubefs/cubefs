@@ -285,8 +285,6 @@ func (partition *DataPartition) checkReplicationTask(c *Cluster, dataPartitionSi
 			" On :%v  Err:%v  Hosts:%v  new task to create DataReplica",
 			addMissingReplicaErr, partition.PartitionID, lackAddr, lackErr.Error(), partition.Hosts)
 		Warn(c.Name, msg)
-	} else {
-		partition.setToNormal()
 	}
 
 	return
