@@ -292,7 +292,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 
 func (dp *DataPartition) Start() (err error) {
 	go dp.statusUpdateScheduler(context.Background())
-	if dp.DataPartitionCreateType != proto.NormalCreateDataPartition {
+	if dp.DataPartitionCreateType == proto.DecommissionedCreateDataPartition {
 		go dp.startRaftAfterRepair()
 		return
 	}

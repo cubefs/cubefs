@@ -465,6 +465,7 @@ type PartitionReport struct {
 	NeedCompare     bool
 	IsLearner       bool
 	LastUpdateTime  int64
+	IsRecover       bool  // 表示当前恢复状态, true表示正在恢复, false表示恢复完成
 }
 
 // DataNodeHeartbeatResponse defines the response to the data node heartbeat.
