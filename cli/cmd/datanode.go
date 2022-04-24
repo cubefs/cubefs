@@ -15,12 +15,20 @@
 package cmd
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
+	"github.com/spf13/cobra"
+
+	"github.com/cubefs/cubefs/datanode"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/spf13/cobra"
 )
 
 const (
@@ -37,14 +45,16 @@ func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
 		newDataNodeListCmd(client),
 		newDataNodeInfoCmd(client),
 		newDataNodeDecommissionCmd(client),
+		newDataNodeFixMissingReplicasCmd(client),
 	)
 	return cmd
 }
 
 const (
-	cmdDataNodeListShort             = "List information of data nodes"
-	cmdDataNodeInfoShort             = "Show information of a data node"
-	cmdDataNodeDecommissionInfoShort = "decommission partitions in a data node to others"
+	cmdDataNodeListShort               = "List information of data nodes"
+	cmdDataNodeInfoShort               = "Show information of a data node"
+	cmdDataNodeDecommissionInfoShort   = "Decommission partitions in a data node to others"
+	cmdDataNodeFixMissingReplicasShort = "Fix missing local replicas so data node can start. Note that this command should be executed on data node"
 )
 
 func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
@@ -145,6 +155,105 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
 			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	return cmd
+}
+
+func newDataNodeFixMissingReplicasCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpFixMissingReplicas + " [ADDRESS] [FILE CONTAINS DP ID]",
+		Short: cmdDataNodeFixMissingReplicasShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err         error
+				data        []byte
+				partitionID uint64
+			)
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+			addr := args[0]
+			dpFile := args[1]
+			data, err = os.ReadFile(dpFile)
+			if err != nil {
+				return
+			}
+			dpStrings := strings.Split(strings.TrimSuffix(string(data), "\n"), " ")
+			for _, dpString := range dpStrings {
+				partitionID, err = strconv.ParseUint(dpString, 10, 64)
+				stdout("Fix missing replica [%v] ... ", partitionID)
+				if err != nil {
+					return
+				}
+				var dpInfo *proto.DataPartitionInfo
+				if dpInfo, err = client.AdminAPI().GetDataPartition("", partitionID); err != nil {
+					return
+				}
+				for _, replica := range dpInfo.Replicas {
+					if replica.Addr != addr {
+						continue
+					}
+					if replica.DiskPath == "" {
+						err = fmt.Errorf("Disk path is empty!")
+						return
+					}
+
+					var diskInfo os.FileInfo
+					diskInfo, err = os.Stat(replica.DiskPath)
+					if err != nil || !diskInfo.IsDir() {
+						err = fmt.Errorf("failed to stat disk path [%v] as a directory, err(%v)", replica.DiskPath, err)
+						return
+					}
+
+					md := datanode.DataPartitionMetadata{
+						VolumeID:                dpInfo.VolName,
+						PartitionID:             dpInfo.PartitionID,
+						PartitionSize:           int(replica.Total),
+						Peers:                   dpInfo.Peers,
+						Hosts:                   dpInfo.Hosts,
+						DataPartitionCreateType: proto.NormalCreateDataPartition,
+						CreateTime:              time.Now().Format(datanode.TimeLayout),
+					}
+
+					var (
+						metadata []byte
+						fmeta    *os.File
+					)
+					metadata, err = json.Marshal(md)
+					if err != nil {
+						return
+					}
+
+					filePath := path.Join(replica.DiskPath, fmt.Sprintf(datanode.DataPartitionPrefix+"_%v_%v", md.PartitionID, md.PartitionSize))
+					stdout("[%v] ", filePath)
+					if err = os.MkdirAll(filePath, 0755); err != nil {
+						return
+					}
+
+					fileName := path.Join(filePath, datanode.DataPartitionMetadataFileName)
+					fmeta, err = os.OpenFile(fileName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0666)
+					if err != nil {
+						return
+					}
+					if _, err = fmeta.Write(metadata); err != nil {
+						fmeta.Close()
+						return
+					}
+					if err = fmeta.Sync(); err != nil {
+						fmeta.Close()
+						return
+					}
+					fmeta.Close()
+					break
+				}
+				stdout("OK\n")
+			}
+			stdout("Fix missing replicas finished!\n")
+			return
 		},
 	}
 	return cmd
