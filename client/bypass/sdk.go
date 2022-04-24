@@ -161,14 +161,14 @@ var (
 
 	signalIgnoreFunc = func() {}
 
-	sdkInitOnce    			 sync.Once
-	signalIgnoreOnce 		 sync.Once
+	sdkInitOnce              sync.Once
+	signalIgnoreOnce         sync.Once
 	versionReporterStartOnce sync.Once
 
-	CommitID       string
-	BranchName     string
-	BuildTime      string
-	Debug          string
+	CommitID   string
+	BranchName string
+	BuildTime  string
+	Debug      string
 )
 
 var (
@@ -274,7 +274,7 @@ func getClient(id int64) (c *client, exist bool) {
 	return gClientManager.GetClient(id)
 }
 
-func  putClient(id int64, c *client) {
+func putClient(id int64, c *client) {
 	gClientManager.PutClient(id, c)
 }
 
@@ -765,7 +765,7 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) (re C.int) {
 
 	absFrom := c.absPath(C.GoString(from))
 	absTo := c.absPath(C.GoString(to))
-	if absFrom == absTo || strings.HasPrefix(absTo, absFrom + string(os.PathSeparator)) {
+	if absFrom == absTo || strings.HasPrefix(absTo, absFrom+string(os.PathSeparator)) {
 		// 不允许源路径和目标路径一样，或将源路径移动到自身子目录的操作
 		return statusEINVAL
 	}
@@ -3193,7 +3193,7 @@ func cfs_batch_stat(id C.int64_t, inosp unsafe.Pointer, stats []C.struct_stat, c
 		st_ctim.tv_nsec = C.long(t % 1e9)
 		stats[i].st_ctim = st_ctim
 
-		found ++
+		found++
 	}
 
 	return C.int(found)
@@ -3358,6 +3358,9 @@ func (c *client) copyFile(fd uint, newfd uint) uint {
 	newfile := &file{fd: f.fd, ino: f.ino, flags: f.flags, mode: f.mode, size: f.size, pos: f.pos, path: f.path, target: f.target, dirp: f.dirp}
 	newfile.fd = newfd
 	c.fdmap[newfd] = newfile
+	if proto.IsRegular(newfile.mode) {
+		c.ec.OpenStream(newfile.ino, false, false)
+	}
 	return newfd
 }
 
