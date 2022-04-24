@@ -35,9 +35,20 @@
 
 #define _GNU_SOURCE
 
-#include <dlfcn.h>
 #include "client.h"
 
+#define WRAPPER(cmd, res)                          \
+    g_need_rwlock? (                               \
+            pthread_rwlock_rdlock(&update_rwlock), \
+            res = cmd,                             \
+            pthread_rwlock_unlock(&update_rwlock), \
+            res): (res = cmd)
+
+#define WRAPPER_IGNORE_RES(cmd)                    \
+    g_need_rwlock? (                               \
+            pthread_rwlock_rdlock(&update_rwlock), \
+            cmd,                                   \
+            pthread_rwlock_unlock(&update_rwlock)): cmd
 
 /*
  * File operations
@@ -67,7 +78,7 @@ int close(int fd) {
                 goto log;
             }
             #endif
-            re = cfs_re(cfs_close(g_cfs_client_id, fd & ~CFS_FD_MASK));
+            WRAPPER(cfs_re(cfs_close(g_cfs_client_id, fd & ~CFS_FD_MASK)), re);
         }
     } else {
         re = real_close(fd);
@@ -135,9 +146,9 @@ int openat(int dirfd, const char *pathname, int flags, ...) {
         if(fd < 0) {
             goto log;
         }
-        fd = cfs_re(cfs_openat_fd(g_cfs_client_id, dirfd, cfs_path, flags, mode, fd));
+        WRAPPER(cfs_re(cfs_openat_fd(g_cfs_client_id, dirfd, cfs_path, flags, mode, fd)), fd);
         #else
-        fd = cfs_re(cfs_openat(g_cfs_client_id, dirfd, cfs_path, flags, mode));
+        WRAPPER(cfs_re(cfs_openat(g_cfs_client_id, dirfd, cfs_path, flags, mode)), fd);
         #endif
     } else {
         fd = real_openat(dirfd, pathname, flags, mode);
@@ -149,7 +160,7 @@ int openat(int dirfd, const char *pathname, int flags, ...) {
 
     if(fd & CFS_FD_MASK) {
         if(g_hook && is_cfs) {
-            cfs_close(g_cfs_client_id, fd);
+            WRAPPER_IGNORE_RES(cfs_close(g_cfs_client_id, fd));
         } else {
             real_close(fd);
         }
@@ -213,7 +224,7 @@ int renameat2(int olddirfd, const char *old_pathname,
     int re = -1;
     if(g_hook && is_cfs_old && is_cfs_new) {
         if(flags & RENAME_NOREPLACE) {
-            if(!cfs_faccessat(g_cfs_client_id, newdirfd, cfs_new_path, F_OK, 0)) {
+            if(!WRAPPER(cfs_faccessat(g_cfs_client_id, newdirfd, cfs_new_path, F_OK, 0), re)) {
                 errno = ENOTEMPTY;
                 goto log;
             }
@@ -231,7 +242,7 @@ int renameat2(int olddirfd, const char *old_pathname,
             goto log;
         }
         #endif
-        re = cfs_re(cfs_renameat(g_cfs_client_id, olddirfd, cfs_old_path, newdirfd, cfs_new_path));
+        WRAPPER(cfs_re(cfs_renameat(g_cfs_client_id, olddirfd, cfs_old_path, newdirfd, cfs_new_path)), re);
     } else if(!g_hook || (!is_cfs_old && !is_cfs_new)) {
         if(g_has_renameat2) {
             re = real_renameat2(olddirfd, old_pathname, newdirfd, new_pathname, flags);
@@ -273,7 +284,7 @@ int truncate(const char *pathname, off_t length) {
             goto log;
         }
         #endif
-        re = cfs_re(cfs_truncate(g_cfs_client_id, path, length));
+        WRAPPER(cfs_re(cfs_truncate(g_cfs_client_id, path, length)), re);
     } else {
         re = real_truncate(pathname, length);
     }
@@ -307,7 +318,7 @@ int ftruncate(int fd, off_t length) {
             goto log;
         }
         #endif
-        re = cfs_re(cfs_ftruncate(g_cfs_client_id, fd, length));
+        WRAPPER(cfs_re(cfs_ftruncate(g_cfs_client_id, fd, length)), re);
     } else {
         re = real_ftruncate(fd, length);
     }
@@ -343,7 +354,7 @@ int fallocate(int fd, int mode, off_t offset, off_t len) {
             goto log;
         }
         #endif
-        re = cfs_re(cfs_fallocate(g_cfs_client_id, fd, mode, offset, len));
+        WRAPPER(cfs_re(cfs_fallocate(g_cfs_client_id, fd, mode, offset, len)), re);
     } else {
         re = real_fallocate(fd, mode, offset, len);
     }
@@ -379,7 +390,7 @@ int posix_fallocate(int fd, off_t offset, off_t len) {
             goto log;
         }
         #endif
-        re = cfs_re(cfs_posix_fallocate(g_cfs_client_id, fd, offset, len));
+        WRAPPER(cfs_re(cfs_posix_fallocate(g_cfs_client_id, fd, offset, len)), re);
     } else {
         re = real_posix_fallocate(fd, offset, len);
     }
@@ -427,7 +438,7 @@ int mkdirat(int dirfd, const char *pathname, mode_t mode) {
             goto log;
         }
         #endif
-        re = cfs_re(cfs_mkdirsat(g_cfs_client_id, dirfd, cfs_path, mode));
+        WRAPPER(cfs_re(cfs_mkdirsat(g_cfs_client_id, dirfd, cfs_path, mode)), re);
     } else {
         re = real_mkdirat(dirfd, pathname, mode);
     }
@@ -455,7 +466,7 @@ int rmdir(const char *pathname) {
             goto log;
         }
         #endif
-        re = cfs_re(cfs_rmdir(g_cfs_client_id, path));
+        WRAPPER(cfs_re(cfs_rmdir(g_cfs_client_id, path)), re);
     } else {
         re = real_rmdir(pathname);
     }
@@ -577,7 +588,7 @@ int chdir(const char *pathname) {
         }
         #endif
         free(abs_path);
-        re = cfs_re(cfs_chdir(g_cfs_client_id, cfs_path));
+        WRAPPER(cfs_re(cfs_chdir(g_cfs_client_id, cfs_path)), re);
         if(re == 0) {
             g_in_cfs = true;
             free(g_cwd);
@@ -628,7 +639,7 @@ int fchdir(int fd) {
     }
     #endif
     char *buf = (char *) malloc(PATH_MAX);
-    re = cfs_re(cfs_fchdir(g_cfs_client_id, fd, buf, PATH_MAX));
+    WRAPPER(cfs_re(cfs_fchdir(g_cfs_client_id, fd, buf, PATH_MAX)), re);
     if (re == 0) {
         g_in_cfs = true;
         free(g_cwd);
@@ -655,14 +666,15 @@ DIR *opendir(const char *pathname) {
         free(path);
         return real_opendir(pathname);
     }
-    int fd = cfs_openat(g_cfs_client_id, AT_FDCWD, path, O_RDONLY | O_DIRECTORY, 0);
+    int fd;
+    WRAPPER(cfs_openat(g_cfs_client_id, AT_FDCWD, path, O_RDONLY | O_DIRECTORY, 0), fd);
     free(path);
 
     if(fd < 0) {
         return NULL;
     }
     if(fd & CFS_FD_MASK) {
-        cfs_close(g_cfs_client_id, fd);
+        WRAPPER_IGNORE_RES(cfs_close(g_cfs_client_id, fd));
         return NULL;
     }
 
@@ -725,7 +737,8 @@ struct dirent *readdir(DIR *dirp) {
     struct dirent *dp;
     if(dirp->offset >= dirp->size) {
         int fd = dirp->fd & ~CFS_FD_MASK;
-        int count = cfs_getdents(g_cfs_client_id, fd, dirp->data, dirp->allocation);
+        int count;
+        WRAPPER(cfs_getdents(g_cfs_client_id, fd, dirp->data, dirp->allocation), count);
         if(count <= 0) {
             if(count < 0) {
                 errno = EBADF;
@@ -763,7 +776,7 @@ int closedir(DIR *dirp) {
     if(!g_hook || !is_cfs) {
         re = real_closedir(dirp);
     } else {
-        re = cfs_re(cfs_close(g_cfs_client_id, dirp->fd));
+        WRAPPER(cfs_re(cfs_close(g_cfs_client_id, dirp->fd)), re);
         free(dirp);
     }
     return re;
@@ -856,7 +869,7 @@ int linkat(int olddirfd, const char *old_pathname,
     const char *cfs_new_path = (new_path == NULL) ? new_pathname : new_path;
     int re = -1;
     if(g_hook && is_cfs_old && is_cfs_new) {
-        re = cfs_re(cfs_linkat(g_cfs_client_id, olddirfd, cfs_old_path, newdirfd, cfs_new_path, flags));
+        WRAPPER(cfs_re(cfs_linkat(g_cfs_client_id, olddirfd, cfs_old_path, newdirfd, cfs_new_path, flags)), re);
     } else if(!g_hook || (!is_cfs_old && !is_cfs_new)) {
         re = real_linkat(olddirfd, old_pathname, newdirfd, new_pathname, flags);
     }
@@ -894,7 +907,7 @@ int symlinkat(const char *target, int dirfd, const char *linkpath) {
 
     int re = -1;
     if(g_hook && is_cfs && t != NULL) {
-        re = cfs_re(cfs_symlinkat(g_cfs_client_id, t, dirfd, (path == NULL) ? linkpath : path));
+        WRAPPER(cfs_re(cfs_symlinkat(g_cfs_client_id, t, dirfd, (path == NULL) ? linkpath : path)), re);
     } else if(!g_hook || !is_cfs) {
         re = real_symlinkat(target, dirfd, linkpath);
     }
@@ -936,7 +949,7 @@ int unlinkat(int dirfd, const char *pathname, int flags) {
             goto log;
         }
         #endif
-        re = cfs_re(cfs_unlinkat(g_cfs_client_id, dirfd, cfs_path, flags));
+        WRAPPER(cfs_re(cfs_unlinkat(g_cfs_client_id, dirfd, cfs_path, flags)), re);
     } else {
         re = real_unlinkat(dirfd, pathname, flags);
     }
@@ -970,7 +983,8 @@ ssize_t readlinkat(int dirfd, const char *pathname, char *buf, size_t size) {
     }
 
     const char *cfs_path = (path == NULL) ? pathname : path;
-    ssize_t re = g_hook && is_cfs ? cfs_sre(cfs_readlinkat(g_cfs_client_id, dirfd, cfs_path, buf, size)) :
+    ssize_t re;
+    re = g_hook && is_cfs ? WRAPPER(cfs_sre(cfs_readlinkat(g_cfs_client_id, dirfd, cfs_path, buf, size)), re) :
            real_readlinkat(dirfd, pathname, buf, size);
     free(path);
     return re;
@@ -997,7 +1011,8 @@ int __xstat(int ver, const char *pathname, struct stat *statbuf) {
     }
 
     char *path = get_cfs_path(pathname);
-    int re = (g_hook && path != NULL) ? cfs_re(cfs_stat(g_cfs_client_id, path, statbuf)) : real_stat(ver, pathname, statbuf);
+    int re;
+    re = (g_hook && path != NULL) ? WRAPPER(cfs_re(cfs_stat(g_cfs_client_id, path, statbuf)), re) : real_stat(ver, pathname, statbuf);
     free(path);
     #ifdef _CFS_DEBUG
     log_debug("hook %s, is_cfs:%d, pathname:%s, re:%d\n", __func__, path != NULL, pathname, re);
@@ -1012,7 +1027,8 @@ int __xstat64(int ver, const char *pathname, struct stat64 *statbuf) {
     }
 
     char *path = get_cfs_path(pathname);
-    int re = (g_hook && path != NULL) ? cfs_re(cfs_stat64(g_cfs_client_id, path, statbuf)) : real_stat64(ver, pathname, statbuf);
+    int re;
+    re = (g_hook && path != NULL) ? WRAPPER(cfs_re(cfs_stat64(g_cfs_client_id, path, statbuf)), re) : real_stat64(ver, pathname, statbuf);
     free(path);
     #ifdef _CFS_DEBUG
     log_debug("hook %s, is_cfs:%d, pathname:%s, re:%d\n", __func__, path != NULL, pathname, re);
@@ -1027,7 +1043,8 @@ int __lxstat(int ver, const char *pathname, struct stat *statbuf) {
     }
 
     char *path = get_cfs_path(pathname);
-    int re = (g_hook && path != NULL) ? cfs_re(cfs_lstat(g_cfs_client_id, path, statbuf)) : real_lstat(ver, pathname, statbuf);
+    int re;
+    re = (g_hook && path != NULL) ? WRAPPER(cfs_re(cfs_lstat(g_cfs_client_id, path, statbuf)), re) : real_lstat(ver, pathname, statbuf);
     free(path);
     #ifdef _CFS_DEBUG
     log_debug("hook %s, is_cfs:%d, pathname:%s, re:%d\n", __func__, path != NULL, pathname, re);
@@ -1042,7 +1059,8 @@ int __lxstat64(int ver, const char *pathname, struct stat64 *statbuf) {
     }
 
     char *path = get_cfs_path(pathname);
-    int re = (g_hook && path != NULL) ? cfs_re(cfs_lstat64(g_cfs_client_id, path, statbuf)) :
+    int re;
+    re = (g_hook && path != NULL) ? WRAPPER(cfs_re(cfs_lstat64(g_cfs_client_id, path, statbuf)), re) :
              real_lstat64(ver, pathname, statbuf);
     free(path);
     #ifdef _CFS_DEBUG
@@ -1064,7 +1082,8 @@ int __fxstat(int ver, int fd, struct stat *statbuf) {
     #endif
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    int re = g_hook && is_cfs ? cfs_re(cfs_fstat(g_cfs_client_id, fd, statbuf)) : real_fstat(ver, fd, statbuf);
+    int re;
+    re = g_hook && is_cfs ? WRAPPER(cfs_re(cfs_fstat(g_cfs_client_id, fd, statbuf)), re) : real_fstat(ver, fd, statbuf);
     #ifdef _CFS_DEBUG
     log_debug("hook %s, is_cfs:%d, fd:%d, re:%d\n", __func__, is_cfs > 0, fd, re);
     #endif
@@ -1084,7 +1103,8 @@ int __fxstat64(int ver, int fd, struct stat64 *statbuf) {
     #endif
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    int re = g_hook && is_cfs ? cfs_re(cfs_fstat64(g_cfs_client_id, fd, statbuf)) :
+    int re;
+    re = g_hook && is_cfs ? WRAPPER(cfs_re(cfs_fstat64(g_cfs_client_id, fd, statbuf)), re) :
         real_fstat64(ver, fd, statbuf);
     #ifdef _CFS_DEBUG
     log_debug("hook %s, is_cfs:%d, fd:%d, re:%d\n", __func__, is_cfs > 0, fd, re);
@@ -1109,7 +1129,8 @@ int __fxstatat(int ver, int dirfd, const char *pathname, struct stat *statbuf, i
     }
 
     const char *cfs_path = (path == NULL) ? pathname : path;
-    int re = g_hook && is_cfs ? cfs_re(cfs_fstatat(g_cfs_client_id, dirfd, cfs_path, statbuf, flags)) :
+    int re;
+    re = g_hook && is_cfs ? WRAPPER(cfs_re(cfs_fstatat(g_cfs_client_id, dirfd, cfs_path, statbuf, flags)), re) :
              real_fstatat(ver, dirfd, pathname, statbuf, flags);
     free(path);
     #ifdef _CFS_DEBUG
@@ -1135,7 +1156,8 @@ int __fxstatat64(int ver, int dirfd, const char *pathname, struct stat64 *statbu
     }
 
     const char *cfs_path = (path == NULL) ? pathname : path;
-    int re = g_hook && is_cfs ? cfs_re(cfs_fstatat64(g_cfs_client_id, dirfd, cfs_path, statbuf, flags)) :
+    int re;
+    re = g_hook && is_cfs ? WRAPPER(cfs_re(cfs_fstatat64(g_cfs_client_id, dirfd, cfs_path, statbuf, flags)), re) :
         real_fstatat64(ver, dirfd, pathname, statbuf, flags);
     free(path);
     return re;
@@ -1158,7 +1180,8 @@ int fchmod(int fd, mode_t mode) {
     #endif
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    return is_cfs ? cfs_re(cfs_fchmod(g_cfs_client_id, fd, mode)) : real_fchmod(fd, mode);
+    int re;
+    return is_cfs ? WRAPPER(cfs_re(cfs_fchmod(g_cfs_client_id, fd, mode)), re) : real_fchmod(fd, mode);
 }
 
 int fchmodat(int dirfd, const char *pathname, mode_t mode, int flags) {
@@ -1178,7 +1201,8 @@ int fchmodat(int dirfd, const char *pathname, mode_t mode, int flags) {
     }
 
     const char *cfs_path = (path == NULL) ? pathname : path;
-    int re = g_hook && is_cfs ? cfs_re(cfs_fchmodat(g_cfs_client_id, dirfd, cfs_path, mode, flags)) : 
+    int re;
+    re = g_hook && is_cfs ? WRAPPER(cfs_re(cfs_fchmodat(g_cfs_client_id, dirfd, cfs_path, mode, flags)), re) :
         real_fchmodat(dirfd, pathname, mode, flags);
     free(path);
     return re;
@@ -1195,7 +1219,8 @@ int lchown(const char *pathname, uid_t owner, gid_t group) {
     }
 
     char *path = get_cfs_path(pathname);
-    int re = (g_hook && path != NULL) ? cfs_re(cfs_lchown(g_cfs_client_id, path, owner, group)) :
+    int re;
+    re = (g_hook && path != NULL) ? WRAPPER(cfs_re(cfs_lchown(g_cfs_client_id, path, owner, group)), re) :
              real_lchown(pathname, owner, group);
     free(path);
     return re;
@@ -1214,7 +1239,8 @@ int fchown(int fd, uid_t owner, gid_t group) {
     #endif
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    return g_hook && is_cfs ? cfs_re(cfs_fchown(g_cfs_client_id, fd, owner, group)) :
+    int re;
+    return g_hook && is_cfs ? WRAPPER(cfs_re(cfs_fchown(g_cfs_client_id, fd, owner, group)), re) :
         real_fchown(fd, owner, group);
 }
 
@@ -1235,7 +1261,8 @@ int fchownat(int dirfd, const char *pathname, uid_t owner, gid_t group, int flag
     }
 
     const char *cfs_path = (path == NULL) ? pathname : path;
-    int re = g_hook && is_cfs ? cfs_re(cfs_fchownat(g_cfs_client_id, dirfd, cfs_path, owner, group, flags)) :
+    int re;
+    re = g_hook && is_cfs ? WRAPPER(cfs_re(cfs_fchownat(g_cfs_client_id, dirfd, cfs_path, owner, group, flags)), re):
         real_fchownat(dirfd, pathname, owner, group, flags);
     free(path);
     return re;
@@ -1253,7 +1280,8 @@ int utime(const char *pathname, const struct utimbuf *times) {
         pts = & ts[0];
     }
     char *path = get_cfs_path(pathname);
-    int re = (g_hook && path != NULL) ? cfs_re(cfs_utimens(g_cfs_client_id, path, pts, 0)) :
+    int re;
+    re = (g_hook && path != NULL) ? WRAPPER(cfs_re(cfs_utimens(g_cfs_client_id, path, pts, 0)), re) :
             real_utime(pathname, times);
     free(path);
     return re;
@@ -1271,7 +1299,8 @@ int utimes(const char *pathname, const struct timeval *times) {
         pts = & ts[0];
     }
     char *path = get_cfs_path(pathname);
-    int re = (g_hook && path != NULL) ? cfs_re(cfs_utimens(g_cfs_client_id, path, pts, 0)) :
+    int re;
+    re = (g_hook && path != NULL) ? WRAPPER(cfs_re(cfs_utimens(g_cfs_client_id, path, pts, 0)), re) :
             real_utimes(pathname, times);
     free(path);
     return re;
@@ -1299,7 +1328,8 @@ int futimesat(int dirfd, const char *pathname, const struct timeval times[2]) {
         struct timespec ts[2] = {times[0].tv_sec, times[0].tv_usec*1000, times[1].tv_sec, times[1].tv_usec*1000};
         pts = & ts[0];
     }
-    int re = g_hook && is_cfs ? cfs_re(cfs_utimensat(g_cfs_client_id, dirfd, cfs_path, pts, 0)) :
+    int re;
+    re = g_hook && is_cfs ? WRAPPER(cfs_re(cfs_utimensat(g_cfs_client_id, dirfd, cfs_path, pts, 0)), re) :
         real_futimesat(dirfd, pathname, times);
     free(path);
     return re;
@@ -1322,7 +1352,8 @@ int utimensat(int dirfd, const char *pathname, const struct timespec times[2], i
     }
 
     const char *cfs_path = (path == NULL) ? pathname : path;
-    int re = g_hook && is_cfs ? cfs_re(cfs_utimensat(g_cfs_client_id, dirfd, cfs_path, times, flags)) :
+    int re;
+    re = g_hook && is_cfs ? WRAPPER(cfs_re(cfs_utimensat(g_cfs_client_id, dirfd, cfs_path, times, flags)), re) :
         real_utimensat(dirfd, pathname, times, flags);
     free(path);
     return re;
@@ -1341,7 +1372,8 @@ int futimens(int fd, const struct timespec times[2]) {
     #endif
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    return g_hook && is_cfs ? cfs_re(cfs_futimens(g_cfs_client_id, fd, times)) : real_futimens(fd, times);
+    int re;
+    return g_hook && is_cfs ? WRAPPER(cfs_re(cfs_futimens(g_cfs_client_id, fd, times)), re) : real_futimens(fd, times);
 }
 
 int access(const char *pathname, int mode) {
@@ -1373,7 +1405,7 @@ int faccessat(int dirfd, const char *pathname, int mode, int flags) {
             goto log;
         }
         #endif
-        re = cfs_re(cfs_faccessat(g_cfs_client_id, dirfd, cfs_path, mode, flags));
+        WRAPPER(cfs_re(cfs_faccessat(g_cfs_client_id, dirfd, cfs_path, mode, flags)), re);
     } else {
         re = real_faccessat(dirfd, pathname, mode, flags);
     }
@@ -1400,7 +1432,8 @@ int setxattr(const char *pathname, const char *name,
     }
 
     char *path = get_cfs_path(pathname);
-    int re = (g_hook && path != NULL) ? cfs_re(cfs_setxattr(g_cfs_client_id, path, name, value, size, flags)) :
+    int re;
+    re = (g_hook && path != NULL) ? WRAPPER(cfs_re(cfs_setxattr(g_cfs_client_id, path, name, value, size, flags)), re) :
              real_setxattr(pathname, name, value, size, flags);
     free(path);
     return re;
@@ -1414,7 +1447,8 @@ int lsetxattr(const char *pathname, const char *name,
     }
 
     char *path = get_cfs_path(pathname);
-    int re = (g_hook && path != NULL) ? cfs_re(cfs_lsetxattr(g_cfs_client_id, path, name, value, size, flags)) :
+    int re;
+    re = (g_hook && path != NULL) ? WRAPPER(cfs_re(cfs_lsetxattr(g_cfs_client_id, path, name, value, size, flags)), re) :
              real_lsetxattr(pathname, name, value, size, flags);
     free(path);
     return re;
@@ -1428,7 +1462,8 @@ int fsetxattr(int fd, const char *name, const void *value, size_t size, int flag
 
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    return g_hook && is_cfs ? cfs_re(cfs_fsetxattr(g_cfs_client_id, fd, name, value, size, flags)) :
+    int re;
+    return g_hook && is_cfs ? WRAPPER(cfs_re(cfs_fsetxattr(g_cfs_client_id, fd, name, value, size, flags)), re) :
            real_fsetxattr(fd, name, value, size, flags);
 }
 
@@ -1439,7 +1474,8 @@ ssize_t getxattr(const char *pathname, const char *name, void *value, size_t siz
     }
 
     char *path = get_cfs_path(pathname);
-    int re = (g_hook && path != NULL) ? cfs_sre(cfs_getxattr(g_cfs_client_id, path, name, value, size)) :
+    int re;
+    re = (g_hook && path != NULL) ? WRAPPER(cfs_sre(cfs_getxattr(g_cfs_client_id, path, name, value, size)), re) :
              real_getxattr(pathname, name, value, size);
     free(path);
     return re;
@@ -1452,7 +1488,8 @@ ssize_t lgetxattr(const char *pathname, const char *name, void *value, size_t si
     }
 
     char *path = get_cfs_path(pathname);
-    int re = (g_hook && path != NULL) ? cfs_sre(cfs_lgetxattr(g_cfs_client_id, path, name, value, size)) :
+    int re;
+    re = (g_hook && path != NULL) ? WRAPPER(cfs_sre(cfs_lgetxattr(g_cfs_client_id, path, name, value, size)), re) :
              real_lgetxattr(pathname, name, value, size);
     free(path);
     return re;
@@ -1466,7 +1503,8 @@ ssize_t fgetxattr(int fd, const char *name, void *value, size_t size) {
 
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    return g_hook && is_cfs ? cfs_sre(cfs_fgetxattr(g_cfs_client_id, fd, name, value, size)) :
+    int re;
+    return g_hook && is_cfs ? WRAPPER(cfs_sre(cfs_fgetxattr(g_cfs_client_id, fd, name, value, size)), re) :
            real_fgetxattr(fd, name, value, size);
 }
 
@@ -1477,7 +1515,8 @@ ssize_t listxattr(const char *pathname, char *list, size_t size) {
     }
 
     char *path = get_cfs_path(pathname);
-    int re = (g_hook && path != NULL) ? cfs_sre(cfs_listxattr(g_cfs_client_id, path, list, size)) :
+    int re;
+    re = (g_hook && path != NULL) ? WRAPPER(cfs_sre(cfs_listxattr(g_cfs_client_id, path, list, size)), re) :
              real_listxattr(pathname, list, size);
     free(path);
     return re;
@@ -1490,7 +1529,8 @@ ssize_t llistxattr(const char *pathname, char *list, size_t size) {
     }
 
     char *path = get_cfs_path(pathname);
-    int re = (g_hook && path != NULL) ? cfs_sre(cfs_llistxattr(g_cfs_client_id, path, list, size)) :
+    ssize_t re;
+    re = (g_hook && path != NULL) ? WRAPPER(cfs_sre(cfs_llistxattr(g_cfs_client_id, path, list, size)), re) :
              real_llistxattr(pathname, list, size);
     free(path);
     return re;
@@ -1504,7 +1544,8 @@ ssize_t flistxattr(int fd, char *list, size_t size) {
 
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    return g_hook && is_cfs ? cfs_sre(cfs_flistxattr(g_cfs_client_id, fd, list, size)) :
+    ssize_t re;
+    return g_hook && is_cfs ? WRAPPER(cfs_sre(cfs_flistxattr(g_cfs_client_id, fd, list, size)), re) :
            real_flistxattr(fd, list, size);
 }
 
@@ -1515,7 +1556,8 @@ int removexattr(const char *pathname, const char *name) {
     }
 
     char *path = get_cfs_path(pathname);
-    int re = (g_hook && path != NULL) ? cfs_re(cfs_removexattr(g_cfs_client_id, path, name)) :
+    int re;
+    re = (g_hook && path != NULL) ? WRAPPER(cfs_re(cfs_removexattr(g_cfs_client_id, path, name)), re) :
              real_removexattr(pathname, name);
     free(path);
     return re;
@@ -1528,7 +1570,8 @@ int lremovexattr(const char *pathname, const char *name) {
     }
 
     char *path = get_cfs_path(pathname);
-    int re = (g_hook && path != NULL) ? cfs_re(cfs_lremovexattr(g_cfs_client_id, path, name)) :
+    int re;
+    re = (g_hook && path != NULL) ? WRAPPER(cfs_re(cfs_lremovexattr(g_cfs_client_id, path, name)), re) :
              real_lremovexattr(pathname, name);
     free(path);
     return re;
@@ -1542,7 +1585,8 @@ int fremovexattr(int fd, const char *name) {
 
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    return g_hook && is_cfs ? cfs_re(cfs_fremovexattr(g_cfs_client_id, fd, name)) :
+    int re;
+    return g_hook && is_cfs ? WRAPPER(cfs_re(cfs_fremovexattr(g_cfs_client_id, fd, name)), re) :
            real_fremovexattr(fd, name);
 }
 
@@ -1572,20 +1616,20 @@ int fcntl(int fd, int cmd, ...) {
             goto log;
         }
         if(cmd == F_SETLK || cmd == F_SETLKW) {
-            re = cfs_fcntl_lock(g_cfs_client_id, fd, cmd, (struct flock *)arg);
+            WRAPPER(cfs_fcntl_lock(g_cfs_client_id, fd, cmd, (struct flock *)arg), re);
         } else {
             re_old = re;
-            re = cfs_fcntl(g_cfs_client_id, fd, cmd, 
-            (cmd == F_DUPFD || cmd == F_DUPFD_CLOEXEC) ? re : (intptr_t)arg);
+            WRAPPER(cfs_fcntl(g_cfs_client_id, fd, cmd,
+            (cmd == F_DUPFD || cmd == F_DUPFD_CLOEXEC) ? re_old : (intptr_t)arg), re);
             if(re != re_old) {
                 goto log;
             }
         }
         #else
         if(cmd == F_SETLK || cmd == F_SETLKW) {
-            re = cfs_fcntl_lock(g_cfs_client_id, fd, cmd, (struct flock *)arg);
+            WRAPPER(cfs_fcntl_lock(g_cfs_client_id, fd, cmd, (struct flock *)arg), re);
         } else {
-            re = cfs_fcntl(g_cfs_client_id, fd, cmd, (intptr_t)arg);
+            WRAPPER(cfs_fcntl(g_cfs_client_id, fd, cmd, (intptr_t)arg), re);
         }
         #endif
         re = cfs_re(re);
@@ -1645,7 +1689,7 @@ int dup2(int oldfd, int newfd) {
 
     // If newfd was open, close it before being reused
     if(newfd >= 0 && newfd < CFS_FD_MAP_SIZE && g_cfs_fd_map[newfd] > 0) {
-        cfs_close(g_cfs_client_id, g_cfs_fd_map[newfd] & ~CFS_FD_MASK);
+        WRAPPER_IGNORE_RES(cfs_close(g_cfs_client_id, g_cfs_fd_map[newfd] & ~CFS_FD_MASK));
         g_cfs_fd_map[newfd] = 0;
     }
 
@@ -1682,7 +1726,7 @@ int dup3(int oldfd, int newfd, int flags) {
 
     // If newfd was open, close it before being reused
     if(newfd >= 0 && newfd < CFS_FD_MAP_SIZE && g_cfs_fd_map[newfd] > 0) {
-        cfs_close(g_cfs_client_id, g_cfs_fd_map[newfd] & ~CFS_FD_MASK);
+        WRAPPER_IGNORE_RES(cfs_close(g_cfs_client_id, g_cfs_fd_map[newfd] & ~CFS_FD_MASK));
         g_cfs_fd_map[newfd] = 0;
     }
 
@@ -1734,7 +1778,7 @@ ssize_t read(int fd, void *buf, size_t count) {
     #endif
     int is_cfs = fd & CFS_FD_MASK;
     fd = fd & ~CFS_FD_MASK;
-    ssize_t re, re_cfs;
+    ssize_t re, re_cfs = 0;
 
     if(g_hook && is_cfs) {
         #ifdef DUP_TO_LOCAL
@@ -1752,7 +1796,7 @@ ssize_t read(int fd, void *buf, size_t count) {
         // 1. read local -> write local -> write CFS -> read CFS
         // 2. write local -> read local -> read CFS -> write CFS
         // In contition 2, write CFS may be concurrent with read CFS, resulting in last bytes read being zero.
-        re_cfs = cfs_sre(cfs_read(g_cfs_client_id, fd, buf_copy, re));
+        WRAPPER(cfs_sre(cfs_read(g_cfs_client_id, fd, buf_copy, re)), re_cfs);
         if(re_cfs <= 0) {
             goto log;
         }
@@ -1772,11 +1816,11 @@ ssize_t read(int fd, void *buf, size_t count) {
                 printf("\n");
                 re = -1;
             }
-            cfs_flush_log();
+            WRAPPER_IGNORE_RES(cfs_flush_log());
         }
         free(buf_copy);
         #else
-        re = cfs_sre(cfs_read(g_cfs_client_id, fd, buf, count));
+        WRAPPER(cfs_sre(cfs_read(g_cfs_client_id, fd, buf, count)), re);
         #endif
     } else {
         re = real_read(fd, buf, count);
@@ -1806,7 +1850,7 @@ ssize_t readv(int fd, const struct iovec *iov, int iovcnt) {
     fd = fd & ~CFS_FD_MASK;
     ssize_t re;
     if(g_hook && is_cfs) {
-        re = cfs_sre(cfs_readv(g_cfs_client_id, fd, iov, iovcnt));
+        WRAPPER(cfs_sre(cfs_readv(g_cfs_client_id, fd, iov, iovcnt)), re);
         #ifdef DUP_TO_LOCAL
         if(re <= 0) {
             goto log;
@@ -1824,7 +1868,7 @@ ssize_t readv(int fd, const struct iovec *iov, int iovcnt) {
         for(int i = 0; i < iovcnt; i++) {
             if(memcmp(iov[i].iov_base, iov_local[i].iov_base, iov[i].iov_len)) {
                 re = -1;
-                cfs_flush_log();
+                WRAPPER_IGNORE_RES(cfs_flush_log());
                 ENTRY *entry = getFdEntry(fd);
                 log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, offset:%d, iovcnt:%d, iov_idx:%d, iov_len:%d\n", __func__, is_cfs > 0, fd, entry && entry->data ? (char *)entry->data : "", offset, iovcnt, i, iov[i].iov_len);
             }
@@ -1869,7 +1913,7 @@ ssize_t pread(int fd, void *buf, size_t count, off_t offset) {
             re = -1;
             goto log;
         }
-        re = cfs_sre(cfs_pread(g_cfs_client_id, fd, buf_copy, count, offset));
+        WRAPPER(cfs_sre(cfs_pread(g_cfs_client_id, fd, buf_copy, count, offset)), re);
         if(re <= 0) {
             goto log;
         }
@@ -1887,11 +1931,11 @@ ssize_t pread(int fd, void *buf, size_t count, off_t offset) {
             }
             printf("\n");
             re = -1;
-            cfs_flush_log();
+            WRAPPER_IGNORE_RES(cfs_flush_log());
         }
         free(buf_copy);
         #else
-        re = cfs_sre(cfs_pread(g_cfs_client_id, fd, buf, count, offset));
+        WRAPPER(cfs_sre(cfs_pread(g_cfs_client_id, fd, buf, count, offset)), re);
         #endif
     } else {
         re = real_pread(fd, buf, count, offset);
@@ -1922,7 +1966,7 @@ ssize_t preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset) {
     fd = fd & ~CFS_FD_MASK;
     ssize_t re;
     if(g_hook && is_cfs) {
-        re = cfs_sre(cfs_preadv(g_cfs_client_id, fd, iov, iovcnt, offset));
+        WRAPPER(cfs_sre(cfs_preadv(g_cfs_client_id, fd, iov, iovcnt, offset)), re);
         #ifdef DUP_TO_LOCAL
         if(re <= 0) {
             goto log;
@@ -1939,7 +1983,7 @@ ssize_t preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset) {
         for(int i = 0; i < iovcnt; i++) {
             if(memcmp(iov[i].iov_base, iov_local[i].iov_base, iov[i].iov_len)) {
                 re = -1;
-                cfs_flush_log();
+                WRAPPER_IGNORE_RES(cfs_flush_log());
                 ENTRY *entry = getFdEntry(fd);
                 log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, iovcnt:%d, offset:%d, iov_idx: %d\n", __func__, is_cfs > 0, fd, entry && entry->data ? (char *)entry->data : "", iovcnt, offset, i);
             }
@@ -1990,10 +2034,10 @@ ssize_t write(int fd, const void *buf, size_t count) {
             goto log;
         }
         memcpy(buf_copy, buf, count);
-        re = cfs_sre(cfs_write(g_cfs_client_id, fd, buf_copy, count));
+        WRAPPER(cfs_sre(cfs_write(g_cfs_client_id, fd, buf_copy, count)), re);
         free(buf_copy);
         #else
-        re = cfs_sre(cfs_write(g_cfs_client_id, fd, buf, count));
+        WRAPPER(cfs_sre(cfs_write(g_cfs_client_id, fd, buf, count)), re);
         #endif
     } else {
         re = real_write(fd, buf, count);
@@ -2029,7 +2073,7 @@ ssize_t writev(int fd, const struct iovec *iov, int iovcnt) {
             goto log;
         }
         #endif
-        re = cfs_sre(cfs_writev(g_cfs_client_id, fd, iov, iovcnt));
+        WRAPPER(cfs_sre(cfs_writev(g_cfs_client_id, fd, iov, iovcnt)), re);
     } else {
         re = real_writev(fd, iov, iovcnt);
     }
@@ -2069,10 +2113,10 @@ ssize_t pwrite(int fd, const void *buf, size_t count, off_t offset) {
             goto log;
         }
         memcpy(buf_copy, buf, count);
-        re = cfs_sre(cfs_pwrite(g_cfs_client_id, fd, buf_copy, count, offset));
+        WRAPPER(cfs_sre(cfs_pwrite(g_cfs_client_id, fd, buf_copy, count, offset)), re);
         free(buf_copy);
         #else
-        re = cfs_sre(cfs_pwrite(g_cfs_client_id, fd, buf, count, offset));
+        WRAPPER(cfs_sre(cfs_pwrite(g_cfs_client_id, fd, buf, count, offset)), re);
         #endif
     } else {
         re = real_pwrite(fd, buf, count, offset);
@@ -2109,7 +2153,7 @@ ssize_t pwritev(int fd, const struct iovec *iov, int iovcnt, off_t offset) {
             goto log;
         }
         #endif
-        re = cfs_sre(cfs_pwritev(g_cfs_client_id, fd, iov, iovcnt, offset));
+        WRAPPER(cfs_sre(cfs_pwritev(g_cfs_client_id, fd, iov, iovcnt, offset)), re);
     } else {
         re = real_pwritev(fd, iov, iovcnt, offset);
     }
@@ -2143,13 +2187,14 @@ off_t lseek(int fd, off_t offset, int whence) {
         if(re < 0) {
             goto log;
         }
-        off_t re_cfs = cfs_lseek(g_cfs_client_id, fd, offset, whence);
+        off_t re_cfs;
+        WRAPPER(cfs_lseek(g_cfs_client_id, fd, offset, whence), re_cfs);
         if(re_cfs != re) {
             ENTRY *entry = getFdEntry(fd);
             log_debug("hook %s, re from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, offset:%d, whence:%d, re:%d, re_cfs:%d\n", __func__, is_cfs > 0, fd, entry && entry->data ? (char *)entry->data : "", offset, whence, re, re_cfs);
         }
         #else
-        re = cfs_lseek(g_cfs_client_id, fd, offset, whence);
+        WRAPPER(cfs_lseek(g_cfs_client_id, fd, offset, whence), re);
         if(re < 0) {
             errno = -re;
             re = -1;
@@ -2195,7 +2240,7 @@ int fdatasync(int fd) {
             goto log;
         }
         #endif
-        re = cfs_re(cfs_flush(g_cfs_client_id, fd));
+        WRAPPER(cfs_re(cfs_flush(g_cfs_client_id, fd)), re);
     } else {
         re = real_fdatasync(fd);
     }
@@ -2230,7 +2275,7 @@ int fsync(int fd) {
             goto log;
         }
         #endif
-        re = cfs_re(cfs_flush(g_cfs_client_id, fd));
+        WRAPPER(cfs_re(cfs_flush(g_cfs_client_id, fd)), re);
     } else {
         re = real_fsync(fd);
     }
@@ -2257,7 +2302,7 @@ void abort() {
     #ifdef _CFS_DEBUG
     log_debug("hook %s\n", __func__);
     #endif
-    cfs_flush_log();
+    WRAPPER_IGNORE_RES(cfs_flush_log());
     // abort is marked with __attribute__((noreturn)) by GCC.
     // If not ends with an infinite loop, there will be a compile warning.
     while(1) {
@@ -2273,7 +2318,7 @@ void _exit(int status) {
     #ifdef _CFS_DEBUG
     log_debug("hook %s\n", __func__);
     #endif
-    cfs_flush_log();
+    WRAPPER_IGNORE_RES(cfs_flush_log());
     // _exit is marked with __attribute__((noreturn)) by GCC.
     // If not ends with an infinite loop, there will be a compile warning.
     while(1) {
@@ -2289,7 +2334,7 @@ void exit(int status) {
     #ifdef _CFS_DEBUG
     log_debug("hook %s\n", __func__);
     #endif
-    cfs_flush_log();
+    WRAPPER_IGNORE_RES(cfs_flush_log());
     // exit is marked with __attribute__((noreturn)) by GCC.
     // If not ends with an infinite loop, there will be a compile warning.
     while(1) {
@@ -2338,7 +2383,7 @@ log:
  * Refer to https://tbrindus.ca/correct-ld-preload-hooking-libc/
  */
 __attribute__((constructor)) static void setup(void) {
-    cfs_init();
+    init();
 }
 
 __attribute__((destructor)) static void destroy(void) {
@@ -2349,10 +2394,53 @@ __attribute__((destructor)) static void destroy(void) {
     #ifdef _CFS_DEBUG
     printf("destructor\n");
     #endif
-    cfs_close_client(g_cfs_client_id);
+    pthread_rwlock_destroy(&update_rwlock);
+    //cfs_close_client(g_cfs_client_id); //consume too much time
 }
 
-static void cfs_init() {
+void* baseOpen(char* name) {
+    void *handle = dlopen(name, RTLD_NOW|RTLD_GLOBAL);
+    if(handle == NULL) {
+        char msg[1024];
+        sprintf(msg, "dlopen %s error: %s\n", name, dlerror());
+        real_write(STDOUT_FILENO, msg, strlen(msg));
+        real_exit(1);
+    }
+    return handle;
+}
+
+void* plugOpen(char* name) {
+    void *handle = dlopen(name, RTLD_NOW|RTLD_GLOBAL);
+    if(handle == NULL) {
+        char msg[1024];
+        sprintf(msg, "dlopen %s error: %s\n", name, dlerror());
+        real_write(STDOUT_FILENO, msg, strlen(msg));
+        real_exit(1);
+    }
+
+    void* task = dlsym(handle, "main..inittask");
+    InitModule_t initModule = (InitModule_t)dlsym(handle, "InitModule");
+    initModule(task);
+
+    return handle;
+}
+
+void plugClose(void* handle) {
+    FinishModule_t finishModule = (FinishModule_t)dlsym(handle, "FinishModule");
+    void* task = dlsym(handle, "main..finitask");
+    finishModule(task);
+
+    dlclose(handle);
+    fprintf(stderr, "dlclose error: %s\n", dlerror());
+}
+
+static void init() {
+    #if !defined(CommitID)
+    char *msg = "CommitID not defined, build with -DCommitID=.\n";
+    real_write(STDOUT_FILENO, msg, strlen(msg));
+    exit(1);
+    #endif
+
     if(g_cfs_inited) {
         return;
     }
@@ -2364,6 +2452,102 @@ static void cfs_init() {
     printf("constructor\n");
     #endif
 
+    init_libc_func();
+    baseOpen("libempty.so");
+    void *handle = plugOpen("libcfssdk.so");
+    init_cfs_func(handle);
+
+    g_config_path = getenv("CFS_CONFIG_PATH");
+    if(g_config_path == NULL) {
+        g_config_path = CFS_CFG_PATH;
+        if(real_access(g_config_path, F_OK)) {
+            g_config_path = CFS_CFG_PATH_JED;
+        }
+    }
+
+    // parse client configurations from ini file.
+    client_config_t client_config;
+    memset(&client_config, 0, sizeof(client_config_t));
+    // libc printf CANNOT be used in this init function, otherwise will cause circular dependencies.
+    if(ini_parse(g_config_path, config_handler, &client_config) < 0) {
+        char *msg = "Can't load CFS config file, use CFS_CONFIG_PATH env variable.\n";
+        real_write(STDOUT_FILENO, msg, strlen(msg));
+        exit(1);
+    }
+
+    if(client_config.mount_point == NULL || client_config.master_addr == NULL ||
+    client_config.vol_name == NULL || client_config.owner == NULL || client_config.log_dir == NULL) {
+        char *msg = "Check CFS config file for necessary parameters.\n";
+        real_write(STDOUT_FILENO, msg, strlen(msg));
+        exit(1);
+    }
+
+    g_mount_point = client_config.mount_point;
+    g_ignore_path = client_config.ignore_path;
+    g_cfs_config.master_addr = client_config.master_addr;
+    g_cfs_config.vol_name = client_config.vol_name;
+    g_cfs_config.owner = client_config.owner;
+    g_cfs_config.follower_read = client_config.follower_read;
+    g_cfs_config.app = client_config.app;
+    g_cfs_config.auto_flush = client_config.auto_flush;
+    g_cfs_config.master_client = client_config.master_client;
+
+    g_init_config.ignore_sighup = 1;
+    g_init_config.ignore_sigterm = 1;
+    g_init_config.log_dir = client_config.log_dir;
+    g_init_config.log_level = client_config.log_level;
+    g_init_config.prof_port = client_config.prof_port;
+
+    if(g_ignore_path == NULL) {
+        g_ignore_path = "";
+    }
+
+    char *mount_point = getenv("CFS_MOUNT_POINT");
+    if(mount_point != NULL) {
+        free((char *)g_mount_point);
+        g_mount_point = mount_point;
+    }
+
+    if(g_mount_point == NULL || g_mount_point[0] != '/') {
+        char *msg = "Mount point is null or not an absolute path.\n";
+        real_write(STDOUT_FILENO, msg, strlen(msg));
+        exit(1);
+    }
+    char *path = get_clean_path(g_mount_point);
+    // should not free the returned string from getenv()
+    if(mount_point == NULL) {
+        free((char *)g_mount_point);
+    }
+    g_mount_point = path;
+
+    if(cfs_sdk_init(&g_init_config) != 0) {
+        char *msg= "Can't initialize CFS SDK, check the config file.\n";
+        real_write(STDOUT_FILENO, msg, strlen(msg));
+        exit(1);
+    }
+
+    g_cfs_client_id = cfs_new_client(&g_cfs_config, "", NULL);
+    //g_cfs_client_id = cfs_new_client(&g_cfs_config, g_config_path, NULL);
+    if(g_cfs_client_id < 0) {
+        char *msg = "Can't start CFS client, check the config file.\n";
+        real_write(STDOUT_FILENO, msg, strlen(msg));
+        exit(1);
+    }
+
+    g_has_renameat2 = has_renameat2();
+    pthread_rwlock_init(&update_rwlock, NULL);
+    g_need_rwlock = true;
+    g_cfs_inited = true;
+
+    pthread_t thread;
+    if(pthread_create(&thread, NULL, &update_cfs_func, handle)) {
+        char *msg = "pthread_create error.\n";
+        real_write(STDOUT_FILENO, msg, strlen(msg));
+        exit(1);
+    }
+}
+
+static void init_libc_func() {
     real_open = dlsym(RTLD_NEXT, "open");
     real_openat = dlsym(RTLD_NEXT, "openat");
     real_close = dlsym(RTLD_NEXT, "close");
@@ -2453,99 +2637,183 @@ static void cfs_init() {
     real_abort = dlsym(RTLD_NEXT, "abort");
     real__exit = dlsym(RTLD_NEXT, "_exit");
     real_exit = dlsym(RTLD_NEXT, "exit");
+}
 
-    const char *cfs_config_path = getenv("CFS_CONFIG_PATH");
-    if(cfs_config_path == NULL) {
-        cfs_config_path = CFS_CFG_PATH;
-        if(real_access(cfs_config_path, F_OK)) {
-            cfs_config_path = CFS_CFG_PATH_JED;
+static void init_cfs_func(void *handle) {
+    cfs_sdk_init = (cfs_sdk_init_func)dlsym(handle, "cfs_sdk_init");
+    cfs_sdk_close = (cfs_sdk_close_t)dlsym(handle, "cfs_sdk_close");
+    cfs_new_client = (cfs_new_client_t)dlsym(handle, "cfs_new_client");
+    cfs_close_client = (cfs_close_client_t)dlsym(handle, "cfs_close_client");
+    cfs_client_state = (cfs_client_state_t)dlsym(handle, "cfs_client_state");
+    cfs_flush_log = (cfs_flush_log_t)dlsym(handle, "cfs_flush_log");
+    cfs_statfs = (cfs_statfs_t_)dlsym(handle, "cfs_statfs");
+
+    cfs_close = (cfs_close_t)dlsym(handle, "cfs_close");
+    cfs_open = (cfs_open_t)dlsym(handle, "cfs_open");
+    cfs_openat = (cfs_openat_t)dlsym(handle, "cfs_openat");
+    cfs_openat_fd = (cfs_openat_fd_t)dlsym(handle, "cfs_openat_fd");
+    cfs_rename = (cfs_rename_t)dlsym(handle, "cfs_rename");
+    cfs_renameat = (cfs_renameat_t)dlsym(handle, "cfs_renameat");
+    cfs_truncate = (cfs_truncate_t)dlsym(handle, "cfs_truncate");
+    cfs_ftruncate = (cfs_ftruncate_t)dlsym(handle, "cfs_ftruncate");
+    cfs_fallocate = (cfs_fallocate_t)dlsym(handle, "cfs_fallocate");
+    cfs_posix_fallocate = (cfs_posix_fallocate_t)dlsym(handle, "cfs_posix_fallocate");
+    cfs_flush = (cfs_flush_t)dlsym(handle, "cfs_flush");
+
+    cfs_chdir = (cfs_chdir_t)dlsym(handle, "cfs_chdir");
+    cfs_fchdir = (cfs_fchdir_t)dlsym(handle, "cfs_fchdir");
+    cfs_getcwd = (cfs_getcwd_t)dlsym(handle, "cfs_getcwd");
+    cfs_mkdirs = (cfs_mkdirs_t)dlsym(handle, "cfs_mkdirs");
+    cfs_mkdirsat = (cfs_mkdirsat_t)dlsym(handle, "cfs_mkdirsat");
+    cfs_rmdir = (cfs_rmdir_t)dlsym(handle, "cfs_rmdir");
+    cfs_getdents = (cfs_getdents_t)dlsym(handle, "cfs_getdents");
+
+    cfs_link = (cfs_link_t)dlsym(handle, "cfs_link");
+    cfs_linkat = (cfs_linkat_t)dlsym(handle, "cfs_linkat");
+    cfs_symlink = (cfs_symlink_t)dlsym(handle, "cfs_symlink");
+    cfs_symlinkat = (cfs_symlinkat_t)dlsym(handle, "cfs_symlinkat");
+    cfs_unlink = (cfs_unlink_t)dlsym(handle, "cfs_unlink");
+    cfs_unlinkat = (cfs_unlinkat_t)dlsym(handle, "cfs_unlinkat");
+    cfs_readlink = (cfs_readlink_t)dlsym(handle, "cfs_readlink");
+    cfs_readlinkat = (cfs_readlinkat_t)dlsym(handle, "cfs_readlinkat");
+
+    cfs_stat = (cfs_stat_t)dlsym(handle, "cfs_stat");
+    cfs_stat64 = (cfs_stat64_t)dlsym(handle, "cfs_stat64");
+    cfs_lstat = (cfs_lstat_t)dlsym(handle, "cfs_lstat");
+    cfs_lstat64 = (cfs_lstat64_t)dlsym(handle, "cfs_lstat64");
+    cfs_fstat = (cfs_fstat_t)dlsym(handle, "cfs_fstat");
+    cfs_fstat64 = (cfs_fstat64_t)dlsym(handle, "cfs_fstat64");
+    cfs_fstatat = (cfs_fstatat_t)dlsym(handle, "cfs_fstatat");
+    cfs_fstatat64 = (cfs_fstatat64_t)dlsym(handle, "cfs_fstatat64");
+    cfs_chmod = (cfs_chmod_t)dlsym(handle, "cfs_chmod");
+    cfs_fchmod = (cfs_fchmod_t)dlsym(handle, "cfs_fchmod");
+    cfs_fchmodat = (cfs_fchmodat_t)dlsym(handle, "cfs_fchmodat");
+    cfs_chown = (cfs_chown_t)dlsym(handle, "cfs_chown");
+    cfs_lchown = (cfs_lchown_t)dlsym(handle, "cfs_lchown");
+    cfs_fchown = (cfs_fchown_t)dlsym(handle, "cfs_fchown");
+    cfs_fchownat = (cfs_fchownat_t)dlsym(handle, "cfs_fchownat");
+    cfs_futimens = (cfs_futimens_t)dlsym(handle, "cfs_futimens");
+    cfs_utimens = (cfs_utimens_t)dlsym(handle, "cfs_utimens");
+    cfs_utimensat = (cfs_utimensat_t)dlsym(handle, "cfs_utimensat");
+    cfs_access = (cfs_access_t)dlsym(handle, "cfs_access");
+    cfs_faccessat = (cfs_faccessat_t)dlsym(handle, "cfs_faccessat");
+
+    cfs_setxattr = (cfs_setxattr_t)dlsym(handle, "cfs_setxattr");
+    cfs_lsetxattr = (cfs_lsetxattr_t)dlsym(handle, "cfs_lsetxattr");
+    cfs_fsetxattr = (cfs_fsetxattr_t)dlsym(handle, "cfs_fsetxattr");
+    cfs_getxattr = (cfs_getxattr_t)dlsym(handle, "cfs_getxattr");
+    cfs_lgetxattr = (cfs_lgetxattr_t)dlsym(handle, "cfs_lgetxattr");
+    cfs_fgetxattr = (cfs_fgetxattr_t)dlsym(handle, "cfs_fgetxattr");
+    cfs_listxattr = (cfs_listxattr_t)dlsym(handle, "cfs_listxattr");
+    cfs_llistxattr = (cfs_llistxattr_t)dlsym(handle, "cfs_llistxattr");
+    cfs_flistxattr = (cfs_flistxattr_t)dlsym(handle, "cfs_flistxattr");
+    cfs_removexattr = (cfs_removexattr_t)dlsym(handle, "cfs_removexattr");
+    cfs_lremovexattr = (cfs_lremovexattr_t)dlsym(handle, "cfs_lremovexattr");
+    cfs_fremovexattr = (cfs_fremovexattr_t)dlsym(handle, "cfs_fremovexattr");
+
+    cfs_fcntl = (cfs_fcntl_t)dlsym(handle, "cfs_fcntl");
+    cfs_fcntl_lock = (cfs_fcntl_lock_t)dlsym(handle, "cfs_fcntl_lock");
+
+    cfs_read = (cfs_read_t)dlsym(handle, "cfs_read");
+    cfs_pread = (cfs_pread_t)dlsym(handle, "cfs_pread");
+    cfs_readv = (cfs_readv_t)dlsym(handle, "cfs_readv");
+    cfs_preadv = (cfs_preadv_t)dlsym(handle, "cfs_preadv");
+    cfs_write = (cfs_write_t)dlsym(handle, "cfs_write");
+    cfs_pwrite = (cfs_pwrite_t)dlsym(handle, "cfs_pwrite");
+    cfs_writev = (cfs_writev_t)dlsym(handle, "cfs_writev");
+    cfs_pwritev = (cfs_pwritev_t)dlsym(handle, "cfs_pwritev");
+    cfs_lseek = (cfs_lseek_t)dlsym(handle, "cfs_lseek");
+}
+
+static void *update_cfs_func(void* param) {
+    #define INTERVAL 6
+    #define MAXLEN 1024
+    #define VERSIONLEN 4
+    char* currentID = strdup(CommitID);
+    void* old_handle = param;
+    char* envPtr = strdup(getenv("LD_PRELOAD"));
+
+    while(1) {
+        sleep(INTERVAL);
+        char str[MAXLEN];
+        sprintf(str, "%s/version", g_version_url);
+        FILE *fp = fopen(str, "r");
+        if(fp == NULL) {
+            fprintf(stderr, "fail to open  %s\n", str);
+            continue;
         }
-    }
+        memset(str, 0, MAXLEN);
+        fgets(str, MAXLEN, fp);
+        fclose(fp);
 
-    // parse client configurations from ini file.
-    client_config_t client_config;
-    memset(&client_config, 0, sizeof(client_config_t));
-    // libc printf CANNOT be used in this init function, otherwise will cause circular dependencies.
-    if(ini_parse(cfs_config_path, config_handler, &client_config) < 0) {
-        char *msg = "Can't load CFS config file, use CFS_CONFIG_PATH env variable.\n";
-        real_write(STDOUT_FILENO, msg, strlen(msg));
-        exit(1);
-    }
+        if((str[0] - '0') == 0){
+            if (g_need_rwlock) g_need_rwlock = false;
+            continue;
+        }
+        else if ((str[0] - '0') == 2) {
+            g_need_rwlock = true;
+            pthread_rwlock_wrlock(&update_rwlock);
+            cfs_close_client(g_cfs_client_id);
+            plugClose(old_handle);
+            pthread_rwlock_unlock(&update_rwlock);
+            continue;
+        }
 
-    if(client_config.mount_point == NULL || client_config.master_addr == NULL ||
-    client_config.vol_name == NULL || client_config.owner == NULL || client_config.log_dir == NULL) {
-        char *msg = "Check CFS config file for necessary parameters.\n";
-        real_write(STDOUT_FILENO, msg, strlen(msg));
-        exit(1);
-    }
+        g_need_rwlock = true;
+        if(strlen(str) < VERSIONLEN) {
+            continue;
+        }
 
-    g_mount_point = client_config.mount_point;
-    g_ignore_path = client_config.ignore_path;
-    g_cfs_config.master_addr = client_config.master_addr;
-    g_cfs_config.vol_name = client_config.vol_name;
-    g_cfs_config.owner = client_config.owner;
-    g_cfs_config.follower_read = client_config.follower_read;
-    g_cfs_config.app = client_config.app;
-    g_cfs_config.auto_flush = client_config.auto_flush;
-    g_cfs_config.master_client = client_config.master_client;
+        str[VERSIONLEN + 2] = 0;
+        if(!strcmp(str+2, currentID)) {
+            continue;
+        }
 
-    cfs_sdk_init_t init_t;
-    init_t.ignore_sighup = 1;
-    init_t.ignore_sigterm = 1;
-    init_t.log_dir = client_config.log_dir;
-    init_t.log_level = client_config.log_level;
-    init_t.prof_port = client_config.prof_port;
+        char *commit_id = strdup(str+2);
+        memset(str, 0, MAXLEN);
 
-    if(g_ignore_path == NULL) {
-        g_ignore_path = "";
-    }
+        pthread_rwlock_wrlock(&update_rwlock);
 
-    char *mount_point = getenv("CFS_MOUNT_POINT");
-    if(mount_point != NULL) {
-        free((char *)g_mount_point);
-        g_mount_point = mount_point;
-    }
-    char *vol_name = getenv("CFS_VOL_NAME");
-    if(vol_name != NULL) {
-        free((char *)g_cfs_config.vol_name);
-        g_cfs_config.vol_name = vol_name;
-    }
-    char *prof_port = getenv("CFS_PROF_PORT");
-    if(prof_port != NULL) {
-        free((char *)init_t.prof_port);
-        init_t.prof_port = prof_port;
-    }
-    char *master_client = getenv("CFS_MASTER_CLIENT");
-    if(master_client != NULL) {
-        free((char *)g_cfs_config.master_client);
-        g_cfs_config.master_client = master_client;
-    }
+        char *client_state = NULL;
+        size_t size = cfs_client_state(g_cfs_client_id, NULL, 0);
+        if (size > 0) {
+            client_state = (char *)malloc(size);
+            if(client_state == NULL) {
+                fprintf(stderr, "fail to malloc size\n: %d", size);
+                pthread_rwlock_unlock(&update_rwlock);
+                exit(1);
+            }
+            memset(client_state, '\0', size);
+            cfs_client_state(g_cfs_client_id, client_state, size);
+        }
 
-    if(g_mount_point == NULL || g_mount_point[0] != '/') {
-        char *msg = "Mount point is null or not an absolute path.\n";
-        real_write(STDOUT_FILENO, msg, strlen(msg));
-        exit(1);
-    }
-    char *path = get_clean_path(g_mount_point);
-    // should not free the returned string from getenv()
-    if(mount_point == NULL) {
-        free((char *)g_mount_point);
-    }
-    g_mount_point = path;
+        cfs_sdk_close();
+        plugClose(old_handle);
+        setenv("LD_PRELOAD", envPtr, 1);
 
-    if(cfs_sdk_init(&init_t) != 0) {
-        char *msg= "Can't initialize CFS SDK, check the config file.\n";
-        real_write(STDOUT_FILENO, msg, strlen(msg));
-        exit(1);
-    }
+        sprintf(str, "%s/libcfssdk_%s.so", g_version_url, commit_id);
+        void *handle = plugOpen(str);
+        fprintf(stderr, "commit id change from %s to %s\n", currentID, commit_id);
+        free(currentID);
+        currentID = commit_id;
+        old_handle = handle;
+        init_cfs_func(handle);
 
-    g_cfs_client_id = cfs_new_client(&g_cfs_config);
-    if(g_cfs_client_id < 0) {
-        char *msg = "Can't start CFS client, check the config file.\n";
-        real_write(STDOUT_FILENO, msg, strlen(msg));
-        exit(1);
+        if(cfs_sdk_init(&g_init_config) != 0) {
+            char *msg= "Can't initialize CFS SDK, check the config file.\n";
+            real_write(STDOUT_FILENO, msg, strlen(msg));
+            exit(1);
+        }
+        int64_t new_client = cfs_new_client(NULL, g_config_path, client_state);
+        if(new_client < 0) {
+            char *msg = "Can't start CFS client, check the config file.\n";
+            real_write(STDOUT_FILENO, msg, strlen(msg));
+            pthread_rwlock_unlock(&update_rwlock);
+            exit(1);
+        }
+        free(client_state);
+        g_cfs_client_id = new_client;
+        pthread_rwlock_unlock(&update_rwlock);
     }
-
-    g_has_renameat2 = has_renameat2();
-    g_cfs_inited = true;
+    free(envPtr);
 }

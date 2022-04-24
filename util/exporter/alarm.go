@@ -32,10 +32,16 @@ var (
 )
 
 func collectAlarm() {
+	defer wg.Done()
 	AlarmCh = make(chan *Alarm, ChSize)
 	for {
-		m := <-AlarmCh
-		AlarmPool.Put(m)
+		select {
+		case <-stopC:
+			AlarmPool = nil
+			return
+		case m := <-AlarmCh:
+			AlarmPool.Put(m)
+		}
 	}
 }
 

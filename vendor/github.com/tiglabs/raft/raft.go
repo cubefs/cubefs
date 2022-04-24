@@ -275,8 +275,6 @@ func (s *raft) runApply() {
 	}
 }
 
-
-
 func (s *raft) run() {
 	defer func() {
 		s.doStop()
@@ -390,22 +388,22 @@ func (s *raft) run() {
 			s.handleSnapshot(snapReq)
 
 		case <-readyc:
-                        /*
-			s.persist()
+			/*
+				s.persist()
 
-			s.apply()
+				s.apply()
 
 
-			s.advance()
+				s.advance()
 
-			// Send all messages.
-			for _, msg := range s.raftFsm.msgs {
-				if msg.Type == proto.ReqMsgSnapShot {
-					s.sendSnapshot(msg)
-					continue
+				// Send all messages.
+				for _, msg := range s.raftFsm.msgs {
+					if msg.Type == proto.ReqMsgSnapShot {
+						s.sendSnapshot(msg)
+						continue
+					}
+					s.sendMessage(msg)
 				}
-				s.sendMessage(msg)
-			}
 			*/
 			if s.isLeader() {
 				s.apply()
@@ -496,6 +494,7 @@ func (s *raft) monitor() {
 		select {
 		case <-s.stopc:
 			statusTicker.Stop()
+			leaderTicker.Stop()
 			return
 
 		case <-statusTicker.C:

@@ -43,6 +43,7 @@ func (m *Monitor) initHBaseTable() (err error) {
 
 func (m *Monitor) scheduleTableTask(lastTime int64) {
 	createTicker := time.NewTicker(TableRotate)
+	defer createTicker.Stop()
 	log.LogInfof("scheduleTableTask: start, rotate time(%v), clear time(%v)", TableRotate, TableClearTime)
 	for {
 		select {

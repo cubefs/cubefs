@@ -22,8 +22,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-
 )
 
 type Object struct {
@@ -33,7 +31,7 @@ type Object struct {
 
 const (
 	defaultConnectTimeoutMs = 1000
-	ObjectPoolCnt = 64
+	ObjectPoolCnt           = 64
 )
 
 var (
@@ -85,6 +83,7 @@ type ConnectPool struct {
 	connectTimeoutNs int64
 	closeCh          chan struct{}
 	closeOnce        sync.Once
+	wg               sync.WaitGroup
 }
 
 func NewConnectPool() (cp *ConnectPool) {
@@ -93,9 +92,10 @@ func NewConnectPool() (cp *ConnectPool) {
 		mincap:           5,
 		maxcap:           80,
 		timeout:          int64(time.Second * ConnectIdleTime),
-		connectTimeoutNs: int64(defaultConnectTimeoutMs*time.Millisecond),
+		connectTimeoutNs: int64(defaultConnectTimeoutMs * time.Millisecond),
 		closeCh:          make(chan struct{}),
 	}
+	cp.wg.Add(1)
 	go cp.autoRelease()
 
 	return cp
@@ -110,6 +110,7 @@ func NewConnectPoolWithTimeout(idleConnTimeout time.Duration, connectTimeoutMs i
 		connectTimeoutNs: connectTimeoutMs * int64(time.Millisecond),
 		closeCh:          make(chan struct{}),
 	}
+	cp.wg.Add(1)
 	go cp.autoRelease()
 
 	return cp
@@ -124,6 +125,7 @@ func NewConnectPoolWithTimeoutAndCap(min, max int, idleConnTimeout, connectTimeo
 		connectTimeoutNs: connectTimeoutNs,
 		closeCh:          make(chan struct{}),
 	}
+	cp.wg.Add(1)
 	go cp.autoRelease()
 
 	return cp
@@ -206,7 +208,7 @@ func (cp *ConnectPool) UpdateTimeout(idleConnTimeout, connectTimeoutNs int64) {
 	cp.timeout = idleConnTimeout * int64(time.Second)
 	cp.connectTimeoutNs = connectTimeoutNs
 	for _, pool := range cp.pools {
-		atomic.StoreInt64(&pool.timeout, idleConnTimeout * int64(time.Second))
+		atomic.StoreInt64(&pool.timeout, idleConnTimeout*int64(time.Second))
 		atomic.StoreInt64(&pool.connectTimeoutNs, connectTimeoutNs)
 	}
 	cp.Unlock()
@@ -223,6 +225,7 @@ func (cp *ConnectPool) ClearConnectPool(addr string) {
 }
 
 func (cp *ConnectPool) autoRelease() {
+	defer cp.wg.Done()
 	var timer = time.NewTimer(time.Second)
 	for {
 		select {
@@ -250,6 +253,7 @@ func (cp *ConnectPool) releaseAll() {
 	for _, pool := range cp.pools {
 		pools = append(pools, pool)
 	}
+	cp.pools = make(map[string]*Pool)
 	cp.RUnlock()
 	for _, pool := range pools {
 		pool.ReleaseAll()
@@ -259,19 +263,20 @@ func (cp *ConnectPool) releaseAll() {
 func (cp *ConnectPool) Close() {
 	cp.closeOnce.Do(func() {
 		close(cp.closeCh)
+		cp.wg.Wait()
 		cp.releaseAll()
 	})
 }
 
 type Pool struct {
 	connectTimeoutNs int64
-	lock           sync.RWMutex
-	objects        chan *Object
-	mincap         int
-	maxcap         int
-	target         string
-	timeout        int64
-	connectTimeout int64
+	lock             sync.RWMutex
+	objects          chan *Object
+	mincap           int
+	maxcap           int
+	target           string
+	timeout          int64
+	connectTimeout   int64
 }
 
 func NewPool(ctx context.Context, min, max int, timeout, connectTimeoutNs int64, target string) (p *Pool) {

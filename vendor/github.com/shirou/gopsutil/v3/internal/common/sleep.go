@@ -9,6 +9,7 @@ import (
 // Can be interrupted by context cancelation.
 func Sleep(ctx context.Context, interval time.Duration) error {
 	var timer = time.NewTimer(interval)
+	defer timer.Stop()
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

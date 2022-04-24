@@ -129,7 +129,7 @@ func (c *client) registerReadProcStatus(alive bool) {
 	if len(c.masterClient) == 0 {
 		return
 	}
-	url := fmt.Sprintf("http://%s%s?%s=:%d&%s=%t", c.masterClient, ControlReadProcessRegister, clientKey, gProfPort, aliveKey, alive)
+	url := fmt.Sprintf("http://%s%s?%s=:%d&%s=%t", c.masterClient, ControlReadProcessRegister, clientKey, gClientManager.profPort, aliveKey, alive)
 	if reply, err := sendWithRetry(url, MaxRetry); err != nil {
 		msg := fmt.Sprintf("send url(%v) err(%v) reply(%v)", url, err, reply)
 		handleError(c, "registerReadProcStatus", msg)

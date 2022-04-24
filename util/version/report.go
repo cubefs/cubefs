@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -28,15 +29,23 @@ const (
 	DefaultReportAddr = "http://jfs.report.jd.local/version/report"
 )
 
-func ReportVersionSchedule(cfg *config.Config, masterAddr []string, version string) {
+func ReportVersionSchedule(cfg *config.Config, masterAddr []string, version string, stopC chan struct{}, wg *sync.WaitGroup) {
+	defer func() {
+		if wg != nil {
+			wg.Done()
+		}
+	}()
 	reportAddr = cfg.GetString(ConfigKeyReportAddr)
 	if reportAddr == "" {
 		reportAddr = DefaultReportAddr
 	}
 
 	timer := time.NewTimer(0)
+	defer timer.Stop()
 	for {
 		select {
+		case <-stopC:
+			return
 		case <-timer.C:
 			err := reportVersion(cfg, masterAddr, version)
 			if err != nil {
@@ -106,7 +115,7 @@ func reportVersion(cfg *config.Config, masterAddr []string, version string) (err
 }
 
 const (
-	ClusterName       = "clusterName"
+	ClusterName = "clusterName"
 )
 
 func getCluster(cfg *config.Config, masterAddr []string) string {

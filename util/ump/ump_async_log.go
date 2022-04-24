@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync"
 	"sync/atomic"
 )
 
@@ -74,11 +75,12 @@ const (
 )
 
 var (
-	FunctionTpLogWrite        = &LogWrite{logCh: make(chan interface{}, ChSize)}
-	FunctionTpGroupByLogWrite = &LogWrite{logCh: make(chan interface{}, ChSize)}
-	SystemAliveLogWrite       = &LogWrite{logCh: make(chan interface{}, ChSize)}
-	BusinessAlarmLogWrite     = &LogWrite{logCh: make(chan interface{}, ChSize), empty: make(chan struct{}, 1)}
-	UmpDataDir                = "/export/home/tomcat/UMP-Monitor/logs/"
+	FunctionTpLogWrite = &LogWrite{logCh: make(chan interface{}, ChSize)}
+	// FunctionTpGroupByLogWrite = &LogWrite{logCh: make(chan interface{}, ChSize)}
+	SystemAliveLogWrite   = &LogWrite{logCh: make(chan interface{}, ChSize)}
+	BusinessAlarmLogWrite = &LogWrite{logCh: make(chan interface{}, ChSize), empty: make(chan struct{}, 1)}
+	UmpDataDir            = "/export/home/tomcat/UMP-Monitor/logs/"
+	wg                    sync.WaitGroup
 )
 
 type LogWrite struct {
@@ -95,12 +97,14 @@ type LogWrite struct {
 	inflight int32
 	// Issue a signal to this channel when inflight hits zero.
 	empty chan struct{}
+	stopC chan struct{}
 }
 
 func (lw *LogWrite) initLogFp(sufixx string) (err error) {
 	var fi os.FileInfo
 	lw.seq = 0
 	lw.sigCh = make(chan bool, 1)
+	lw.stopC = make(chan struct{})
 	lw.logSufixx = sufixx
 	lw.logName = fmt.Sprintf("%s%s%s", UmpDataDir, "ump_", lw.logSufixx)
 	lw.bf = bytes.NewBuffer([]byte{})
@@ -237,9 +241,9 @@ func initLogName(module string) (err error) {
 	if err = FunctionTpLogWrite.initLogFp(module + "_" + FunctionTpSufixx); err != nil {
 		return
 	}
-	if err = FunctionTpGroupByLogWrite.initLogFp(module + "_" + FunctionTpGroupBySufixx); err != nil {
-		return
-	}
+	// if err = FunctionTpGroupByLogWrite.initLogFp(module + "_" + FunctionTpGroupBySufixx); err != nil {
+	// 	return
+	// }
 	if err = SystemAliveLogWrite.initLogFp(module + "_" + SystemAliveSufixx); err != nil {
 		return
 	}
@@ -269,6 +273,7 @@ func GetLocalIpAddr() (localAddr string, err error) {
 }
 
 func backGroudWrite() {
+	wg.Add(3)
 	//go FunctionTpLogWrite.backGroundWrite(FunctionTpType)
 	//go SystemAliveLogWrite.backGroundWrite(SystemAliveType)
 	//go BusinessAlarmLogWrite.backGroundWrite(BusinessAlarmType)
@@ -276,4 +281,14 @@ func backGroudWrite() {
 	go FunctionTpLogWrite.backGroupWriteForGroupByTPV629()
 	go SystemAliveLogWrite.backGroupAliveWriteV629()
 	go BusinessAlarmLogWrite.backGroupBusinessWriteV629()
+}
+
+func stopLogWriter() {
+	close(FunctionTpLogWrite.stopC)
+	close(SystemAliveLogWrite.stopC)
+	close(BusinessAlarmLogWrite.stopC)
+	wg.Wait()
+	FunctionTpLogWrite = nil
+	SystemAliveLogWrite = nil
+	BusinessAlarmLogWrite = nil
 }

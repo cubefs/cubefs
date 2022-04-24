@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -56,6 +57,7 @@ type Super struct {
 	rootIno                  uint64
 
 	delProcessPath []string
+	wg             sync.WaitGroup
 }
 
 // Functions that Super needs to implement
@@ -148,6 +150,20 @@ func (s *Super) Root() (fs.Node, error) {
 	return root, nil
 }
 
+func (s *Super) Node(ino, pino uint64, mode uint32) (fs.Node, error) {
+	var node fs.Node
+
+	// Create a fake InodeInfo. All File or Dir operations only use
+	// InodeInfo.Inode.
+	fakeInfo := &proto.InodeInfo{Inode: ino, Mode: mode}
+	if proto.OsMode(fakeInfo.Mode).IsDir() {
+		node = NewDir(s, fakeInfo)
+	} else {
+		node = NewFile(s, fakeInfo)
+	}
+	return node, nil
+}
+
 // Statfs handles the Statfs request and returns a set of statistics.
 func (s *Super) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fuse.StatfsResponse) error {
 	total, used := s.mw.Statfs()
@@ -233,7 +249,9 @@ func (s *Super) handleError(op, msg string) {
 func (s *Super) handleErrorWithGetInode(op, msg string, inode uint64) {
 	log.LogError(msg)
 
-	go func() {
+	s.wg.Add(1)
+	go func() { //为啥起协程
+		defer s.wg.Done()
 		// if failed to get inode, judge err and alarm;
 		// if succeed to get inode, alarm msg err;
 		// if inode not exists, not alarm
@@ -245,5 +263,17 @@ func (s *Super) handleErrorWithGetInode(op, msg string, inode uint64) {
 			ump.Alarm(s.umpKey(), errmsg2)
 		}
 	}()
+}
+
+func (s *Super) Close() {
+	if s.ec != nil {
+		_ = s.ec.Close(context.Background())
+	}
+	if s.mw != nil {
+		_ = s.mw.Close()
+	}
+	data.Fini() //  把它注释掉有影响吗
+	s.ic.Stop()
+	s.wg.Wait()
 
 }

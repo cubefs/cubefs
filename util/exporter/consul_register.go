@@ -50,6 +50,7 @@ func GetConsulId(app string, role string, host string, port int64) string {
 
 // do consul register process
 func DoConsulRegisterProc(addr, app, role, cluster string, port int64) {
+	defer wg.Done()
 	if len(addr) <= 0 {
 		return
 	}
@@ -82,6 +83,8 @@ func DoConsulRegisterProc(addr, app, role, cluster string, port int64) {
 
 	for {
 		select {
+		case <-stopC:
+			return
 		case <-ticker.C:
 			req := makeRegisterReq(host, addr, app, role, cluster, port)
 			if req == nil {

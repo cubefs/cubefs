@@ -17,6 +17,7 @@ const (
 )
 
 func (w *Wrapper) ScheduleDataPartitionMetricsReport() {
+	defer w.wg.Done()
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogErrorf("ScheduleDataPartitionMetricsReport panic: err(%v) stack(%v)", r, string(debug.Stack()))
@@ -34,6 +35,8 @@ func (w *Wrapper) ScheduleDataPartitionMetricsReport() {
 
 	for {
 		select {
+		case <-w.stopC:
+			return
 		case <-reportTicker.C:
 			w.reportMetrics()
 			if w.dpMetricsReportConfig.ReportIntervalSec != reportIntervalSec {
@@ -48,8 +51,6 @@ func (w *Wrapper) ScheduleDataPartitionMetricsReport() {
 				fetchTicker.Reset(time.Duration(fetchIntervalSec) * time.Second)
 				log.LogInfof("ScheduleDataPartitionMetricsReport: reset fetchIntervalSec(%v)", fetchIntervalSec)
 			}
-		case <-w.stopC:
-			return
 		}
 	}
 }

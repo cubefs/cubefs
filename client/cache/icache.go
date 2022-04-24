@@ -42,6 +42,8 @@ type InodeCache struct {
 	maxElements        int
 	bgEvictionInterval time.Duration
 	useCache           bool
+	stopC              chan struct{}
+	wg                 sync.WaitGroup
 }
 
 // NewInodeCache returns a new inode cache.
@@ -53,8 +55,10 @@ func NewInodeCache(exp time.Duration, maxElements int, bgEvictionInterval time.D
 		maxElements:        maxElements,
 		bgEvictionInterval: bgEvictionInterval,
 		useCache:           useCache,
+		stopC:              make(chan struct{}),
 	}
 	if useCache {
+		ic.wg.Add(1)
 		go ic.backgroundEviction()
 	}
 	return ic
@@ -168,10 +172,13 @@ func (ic *InodeCache) evict(foreground bool) {
 }
 
 func (ic *InodeCache) backgroundEviction() {
+	defer ic.wg.Done()
 	t := time.NewTicker(ic.bgEvictionInterval)
 	defer t.Stop()
 	for {
 		select {
+		case <-ic.stopC:
+			return
 		case <-t.C:
 			//log.LogInfof("InodeCache: start BG evict")
 			//start := time.Now()
@@ -182,6 +189,11 @@ func (ic *InodeCache) backgroundEviction() {
 			//log.LogInfof("InodeCache: done BG evict, cost (%v)ns", elapsed.Nanoseconds())
 		}
 	}
+}
+
+func (ic *InodeCache) Stop() {
+	close(ic.stopC)
+	ic.wg.Wait()
 }
 
 func inodeExpired(info *proto.InodeInfo) bool {

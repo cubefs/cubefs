@@ -2,10 +2,12 @@
 #define CLIENT_H
 
 #include <dirent.h>
+#include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <gnu/libc-version.h>
 #include <limits.h>
+#include <pthread.h>
 #include <search.h>
 #include <signal.h>
 #include <stdarg.h>
@@ -251,7 +253,12 @@ static int g_cfs_fd_map[CFS_FD_MAP_SIZE];
 
 // whether the initialization has been done or not
 static bool g_cfs_inited;
-static void cfs_init();
+static bool g_need_rwlock;
+pthread_rwlock_t update_rwlock;
+static void init();
+static void init_libc_func();
+static void init_cfs_func(void *);
+static void *update_cfs_func(void *);
 
 #define CFS_FD_MASK (1 << (sizeof(int)*8 - 2))
 // the current working directory, doesn't include the mount point part if in cfs
@@ -265,6 +272,9 @@ static const bool g_hook = true;
 static char *g_mount_point;
 static char *g_ignore_path;
 static cfs_config_t g_cfs_config;
+static cfs_sdk_init_t g_init_config;
+static char *g_version_url = "/data";
+static const char *g_config_path;
 static const char *CFS_CFG_PATH = "cfs_client.ini";
 static const char *CFS_CFG_PATH_JED = "/export/servers/cfs/cfs_client.ini";
 
@@ -359,14 +369,14 @@ static int config_handler(void* user, const char* section,
         pconfig->mount_point = strdup(value);
     } else if (MATCH("", "ignorePath")) {
         pconfig->ignore_path = strdup(value);
+    } else if (MATCH("", "versionUrl")) {
+        g_version_url = strdup(value);
     } else if (MATCH("", "volName")) {
         pconfig->vol_name = strdup(value);
     } else if (MATCH("", "owner")) {
         pconfig->owner = strdup(value);
     } else if (MATCH("", "masterAddr")) {
         pconfig->master_addr = strdup(value);
-    } else if (MATCH("", "followerRead")) {
-        pconfig->follower_read = strdup(value);
     } else if (MATCH("", "logDir")) {
         pconfig->log_dir = strdup(value);
     } else if (MATCH("", "logLevel")) {

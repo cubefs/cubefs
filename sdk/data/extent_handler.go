@@ -115,6 +115,7 @@ type ExtentHandler struct {
 
 	// Signaled in receiver ONLY to exit *sender*.
 	doneSender chan struct{}
+	wg         sync.WaitGroup
 
 	// the last time eh was used
 	lastAccessTime int64
@@ -139,6 +140,7 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, cachePacket b
 		cachePacket:  cachePacket,
 	}
 
+	eh.wg.Add(2)
 	go eh.receiver()
 	go eh.sender()
 
@@ -211,6 +213,7 @@ func (eh *ExtentHandler) write(ctx context.Context, data []byte, offset, size in
 }
 
 func (eh *ExtentHandler) sender() {
+	defer eh.wg.Done()
 	var err error
 
 	//	t := time.NewTicker(5 * time.Second)
@@ -276,7 +279,7 @@ func (eh *ExtentHandler) sender() {
 
 		case <-eh.doneSender:
 			eh.setClosed()
-			if log.IsDebugEnabled(){
+			if log.IsDebugEnabled() {
 				log.LogDebugf("sender: done, eh(%v) size(%v) ek(%v)", eh, eh.size, eh.key)
 			}
 			return
@@ -285,6 +288,7 @@ func (eh *ExtentHandler) sender() {
 }
 
 func (eh *ExtentHandler) receiver() {
+	defer eh.wg.Done()
 	//	t := time.NewTicker(5 * time.Second)
 	//	defer t.Stop()
 
@@ -354,7 +358,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	}
 
 	eh.lastAccessTime = time.Now().Unix()
-	if log.IsDebugEnabled(){
+	if log.IsDebugEnabled() {
 		log.LogDebugf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet, reply)
 	}
 
@@ -465,6 +469,7 @@ func (eh *ExtentHandler) flush(ctx context.Context) (err error) {
 func (eh *ExtentHandler) cleanup() (err error) {
 	eh.doneSender <- struct{}{}
 	eh.doneReceiver <- struct{}{}
+	eh.wg.Wait()
 
 	if eh.conn != nil {
 		conn := eh.conn
@@ -501,7 +506,7 @@ func (eh *ExtentHandler) appendExtentKey(ctx context.Context) (err error) {
 	}
 	dirty := eh.dirty
 	eh.ekMutex.Unlock()
-	if log.IsDebugEnabled(){
+	if log.IsDebugEnabled() {
 		log.LogDebugf("appendExtentKey enter: eh(%v) key(%v) dirty(%v)", eh, ek, dirty)
 	}
 
@@ -527,7 +532,7 @@ func (eh *ExtentHandler) appendExtentKey(ctx context.Context) (err error) {
 		// Otherwise, don't call Append, because that will result appendding ek wrongly in the following extent cache update, i.e. in truncate request.
 		eh.stream.extents.Insert(ek, false)
 	}
-	if log.IsDebugEnabled(){
+	if log.IsDebugEnabled() {
 		log.LogDebugf("appendExtentKey exit: eh(%v) key(%v) dirty(%v) err(%v)", eh, eh.key, eh.dirty, err)
 	}
 

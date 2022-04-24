@@ -61,6 +61,7 @@ type Wrapper struct {
 	mc                    *masterSDK.MasterClient
 	stopOnce              sync.Once
 	stopC                 chan struct{}
+	wg                    sync.WaitGroup
 
 	dpSelector DataPartitionSelector
 
@@ -120,6 +121,7 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 	}
 	StreamConnPool = util.NewConnectPoolWithTimeoutAndCap(0, 10, w.connConfig.IdleTimeoutSec, w.connConfig.ConnectTimeoutNs)
 
+	w.wg.Add(3)
 	go w.update()
 	go w.updateCrossRegionHostStatus()
 	go w.ScheduleDataPartitionMetricsReport()
@@ -130,6 +132,7 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 func (w *Wrapper) Stop() {
 	w.stopOnce.Do(func() {
 		close(w.stopC)
+		w.wg.Wait()
 	})
 }
 
@@ -181,6 +184,7 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 }
 
 func (w *Wrapper) update() {
+	defer w.wg.Done()
 	for {
 		err := w.updateWithRecover()
 		if err == nil {
@@ -200,14 +204,15 @@ func (w *Wrapper) updateWithRecover() (err error) {
 		}
 	}()
 	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
 	for {
 		select {
+		case <-w.stopC:
+			return
 		case <-ticker.C:
 			w.updateSimpleVolView()
 			w.updateDataPartition(false)
 			w.updateDataNodeStatus()
-		case <-w.stopC:
-			return
 		}
 	}
 }

@@ -4,6 +4,7 @@ package fs // import "bazil.org/fuse/fs"
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"io"
@@ -46,6 +47,7 @@ var ForgetServeLimit *rate.Limiter = rate.NewLimiter(defaultForgetServeLimit, de
 type FS interface {
 	// Root is called to obtain the Node for the file system root.
 	Root() (Node, error)
+	Node(ino, pino uint64, mode uint32) (Node, error)
 }
 
 type FSStatfser interface {
@@ -390,13 +392,153 @@ type Server struct {
 	nodeGen    uint64
 
 	// Used to ensure worker goroutines finish before Serve returns
-	wg sync.WaitGroup
+	wg     sync.WaitGroup
+	stop   bool
+	wServe sync.WaitGroup
+}
+
+type ContextNode struct {
+	Inode      uint64
+	ParentIno  uint64
+	Generation uint64
+	Refs       uint64
+	NodeID     uint64
+	Mode       uint32
+	Rsvd       uint32
+}
+
+type ContextHandle struct {
+	HandleID uint64
+	NodeID   uint64
+}
+
+type FuseContext struct {
+	NodeList   []*ContextNode
+	HandleList []*ContextHandle
+}
+
+func (s *Server) marshalFuseContext() (fuseContext []byte, err error) {
+	var (
+		ncount int
+		hcount int
+		skip   uint64
+	)
+	// Wait all received requests to finish
+	// FIXME: add a timeout to avoid waiting forever
+	s.wg.Wait()
+
+	s.meta.Lock()
+	// s.node[0] is nil and s.node[1] is root.
+	// No need to save root since it is created everytime fuse is mounted.
+	skip = 2
+	nodeList := make([]*ContextNode, 0, len(s.node)-int(skip))
+	for i, sn := range s.node[skip:] {
+		if sn == nil {
+			continue
+		}
+		var (
+			attr   fuse.Attr = fuse.Attr{}
+			nodeid uint64    = skip + uint64(i)
+		)
+
+		sn.wg.Wait()
+
+		if err = sn.node.Attr(nil, &attr); err != nil {
+			s.meta.Unlock()
+			err = fmt.Errorf("marshalFuseContext: failed to get mode of node %v: %v", sn.inode, err)
+			return
+		}
+		cn := &ContextNode{sn.inode, attr.ParentIno, sn.generation, sn.refs, nodeid, uint32(attr.Mode), 0}
+		nodeList = append(nodeList, cn)
+		ncount++
+	}
+
+	skip = 1
+	handleList := make([]*ContextHandle, 0, len(s.handle)-int(skip))
+	for i, sh := range s.handle[skip:] {
+		if sh == nil {
+			continue
+		}
+		handleid := skip + uint64(i)
+		if hdl, ok := sh.handle.(HandleFlusher); ok {
+			if err = hdl.Flush(nil, nil); err != nil {
+				s.meta.Unlock()
+				err = fmt.Errorf("marshalFuseContext: flush handle %v: %v\n",
+					s.node[sh.nodeID].inode, err)
+				return
+			}
+		}
+		ch := &ContextHandle{handleid, uint64(sh.nodeID)}
+		handleList = append(handleList, ch)
+		hcount++
+	}
+	s.meta.Unlock()
+	fuseContext, err = json.Marshal(FuseContext{nodeList, handleList})
+	log.Printf("marshalFuseContext. Node count: %d  Handle count: %d\n", ncount, hcount)
+	return
+}
+
+func (s *Server) rebuildFuseContext(fs FS, buf []byte) (err error) {
+	if buf == nil {
+		return
+	}
+	fuseContext := &FuseContext{}
+	if err = json.Unmarshal(buf, &fuseContext); err != nil {
+		return
+	}
+	for _, cn := range fuseContext.NodeList {
+		sn := &serveNode{inode: cn.Inode, generation: cn.Generation, refs: cn.Refs}
+		if sn.node, err = fs.Node(cn.Inode, cn.ParentIno, cn.Mode); err != nil {
+			err = fmt.Errorf("rebuildFuseContext: failed to get fs.Node of %v: %v\n", sn.inode, err)
+			return
+		}
+
+		for uint64(len(s.node)) < cn.NodeID {
+			freeNodeID := fuse.NodeID(len(s.node))
+			s.freeNode = append(s.freeNode, freeNodeID)
+			s.node = append(s.node, nil)
+		}
+		s.node = append(s.node, sn)
+		s.nodeRef[sn.node.NodeID()] = fuse.NodeID(cn.NodeID)
+	}
+
+	for _, ch := range fuseContext.HandleList {
+		if ch.NodeID > uint64(len(s.node)) {
+			err = fmt.Errorf("rebuildFuseContext: invalid handle(%v) len of s.node %v\n",
+				ch, len(s.node))
+			return
+		}
+
+		var hdl Handle
+		sn := s.node[ch.NodeID]
+		if node, ok := sn.node.(NodeOpener); ok {
+			// create streamers for chubaofs
+			if hdl, err = node.Open(nil, nil, nil); err != nil {
+				err = fmt.Errorf("rebuildFuseContext: failed to open handle %v: %v\n", sn.inode, err)
+				return
+			}
+		} else {
+			hdl = sn.node
+		}
+
+		sh := &serveHandle{handle: hdl, nodeID: fuse.NodeID(ch.NodeID)}
+		for uint64(len(s.handle)) < ch.HandleID {
+			freeHandleID := fuse.HandleID(len(s.handle))
+			s.freeHandle = append(s.freeHandle, freeHandleID)
+			s.handle = append(s.handle, nil)
+		}
+		s.handle = append(s.handle, sh)
+	}
+
+	return
 }
 
 // Serve serves the FUSE connection by making calls to the methods
 // of fs and the Nodes and Handles it makes available.  It returns only
 // when the connection has been closed or an unexpected error occurs.
-func (s *Server) Serve(fs FS) error {
+func (s *Server) Serve(fs FS, fuseContext []byte) ([]byte, error) {
+	s.wServe.Add(1)
+	defer s.wServe.Done()
 	defer s.wg.Wait() // Wait for worker goroutines to complete before return
 
 	s.fs = fs
@@ -406,7 +548,7 @@ func (s *Server) Serve(fs FS) error {
 
 	root, err := fs.Root()
 	if err != nil {
-		return fmt.Errorf("cannot obtain root node: %v", err)
+		return nil, fmt.Errorf("cannot obtain root node: %v", err)
 	}
 	// Recognize the root node if it's ever returned from Lookup,
 	// passed to Invalidate, etc.
@@ -419,13 +561,22 @@ func (s *Server) Serve(fs FS) error {
 	})
 	s.handle = append(s.handle, nil)
 
+	err = s.rebuildFuseContext(fs, fuseContext)
+	if err != nil {
+		return nil, fmt.Errorf("cannot rebuildFuseContext: %v", err)
+	}
+
 	for {
+		if s.stop {
+			s.wg.Wait()
+			return s.marshalFuseContext()
+		}
 		req, err := s.conn.ReadRequest()
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
-			return err
+			return nil, err
 		}
 
 		switch req.(type) {
@@ -441,14 +592,19 @@ func (s *Server) Serve(fs FS) error {
 			s.serve(req)
 		}()
 	}
-	return nil
+	return nil, nil
+}
+
+func (s *Server) Stop() {
+	s.stop = true
+	s.wServe.Wait()
 }
 
 // Serve serves a FUSE connection with the default settings. See
 // Server.Serve.
-func Serve(c *fuse.Conn, fs FS) error {
+func Serve(c *fuse.Conn, fs FS, fuseContext []byte) ([]byte, error) {
 	server := New(c, nil)
-	return server.Serve(fs)
+	return server.Serve(fs, fuseContext)
 }
 
 type nothing struct{}

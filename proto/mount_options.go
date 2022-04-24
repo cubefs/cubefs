@@ -1,7 +1,6 @@
 package proto
 
 import (
-	"flag"
 	"fmt"
 	"strconv"
 
@@ -133,9 +132,9 @@ func InitMountOptions(opts []MountOption) {
 	opts[AutoFlush] = MountOption{"autoFlush", "set autoFlush for client", "", true}
 	opts[DeleteProcessAbsoPath] = MountOption{"delProcessAbsoPath", "the absolute path of the process which is allowed to delete files", "", ""}
 
-	for i := 0; i < MaxMountOption; i++ {
-		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
-	}
+	//	for i := 0; i < MaxMountOption; i++ {
+	//		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
+	//	}
 }
 
 func ParseMountOptions(opts []MountOption, cfg *config.Config) {

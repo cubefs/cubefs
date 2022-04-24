@@ -15,10 +15,12 @@
 package exporter
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/chubaofs/chubaofs/util/config"
@@ -45,6 +47,8 @@ var (
 	exporterPort      int64
 	enabledPrometheus = false
 	replacer          = strings.NewReplacer("-", "_", ".", "_", " ", "_", ",", "_", ":", "_")
+	stopC             = make(chan struct{})
+	wg                sync.WaitGroup
 )
 
 func metricsName(name string) string {
@@ -81,11 +85,19 @@ func Init(cluster, role string, cfg *config.Config) {
 	}))
 	namespace = AppName + "_" + role
 	addr := fmt.Sprintf(":%d", port)
+	server := &http.Server{Addr: addr}
+	wg.Add(2)
 	go func() {
-		err := http.ListenAndServe(addr, nil)
+		defer wg.Done()
+		err := server.ListenAndServe()
 		if err != nil {
 			log.LogError("exporter http serve error: ", err)
 		}
+	}()
+	go func() {
+		defer wg.Done()
+		<-stopC
+		server.Shutdown(context.Background())
 	}()
 
 	collect()
@@ -155,6 +167,7 @@ func RegistConsul(cfg *config.Config) {
 		if ok := strings.HasPrefix(consulAddr, "http"); !ok {
 			consulAddr = "http://" + consulAddr
 		}
+		wg.Add(1)
 		go DoConsulRegisterProc(consulAddr, AppName, modulename, clustername, exporterPort)
 		log.LogInfof("consul registered [addr %v, app: %v, role: %v, cluster: %v, port: %v]",
 			consulAddr, AppName, modulename, clustername, exporterPort)
@@ -165,8 +178,14 @@ func collect() {
 	if !enabledPrometheus {
 		return
 	}
+	wg.Add(4)
 	go collectCounter()
 	go collectGauge()
 	go collectTP()
 	go collectAlarm()
+}
+
+func Stop() {
+	close(stopC)
+	wg.Wait()
 }

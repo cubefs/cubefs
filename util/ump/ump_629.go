@@ -23,58 +23,66 @@ type LogFormatV629 struct {
 }
 
 func (lw *LogWrite) backGroupWriteForGroupByTPV629() {
+	defer wg.Done()
 	for {
-		var body []byte
+		select {
+		case <-lw.stopC:
+			lw.logFp.Close()
+			return
+		default:
+			var body []byte
 
-		FunctionTPKeyMap.Range(func(key, value interface{}) bool {
-			umpLog := &LogFormatV629{
-				Time:     time.Now().Unix(),
-				HostName: HostName,
-				AppName:  AppName,
-				Version:  logFormatVersion,
-				Logs:     make([]map[string]string, 0),
-			}
-			v, ok := value.(*sync.Map)
-			if !ok {
-				return true
-			}
-			FunctionTPKeyMap.Delete(key)
-			elapsedMap := make(map[string]string, 0)
-			var elapsedTimeCountStr strings.Builder
-			v.Range(func(key1, value1 interface{}) bool {
-				elapsedTime := key1.(int64)
-				elapsedTimeCountStr.WriteString(strconv.Itoa(int(elapsedTime)))
-				elapsedTimeCountStr.WriteString(elapsedTimeCountSeparator)
-				tpObj := value1.(*FunctionTpGroupBy)
-				elapsedTimeCountStr.WriteString(strconv.Itoa(int(tpObj.count)))
-				elapsedTimeCountStr.WriteString(elapsedTimeCountSeparator)
+			FunctionTPKeyMap.Range(func(key, value interface{}) bool {
+				umpLog := &LogFormatV629{
+					Time:     time.Now().Unix(),
+					HostName: HostName,
+					AppName:  AppName,
+					Version:  logFormatVersion,
+					Logs:     make([]map[string]string, 0),
+				}
+				v, ok := value.(*sync.Map)
+				if !ok {
+					return true
+				}
+				FunctionTPKeyMap.Delete(key)
+				elapsedMap := make(map[string]string, 0)
+				var elapsedTimeCountStr strings.Builder
+				v.Range(func(key1, value1 interface{}) bool {
+					elapsedTime := key1.(int64)
+					elapsedTimeCountStr.WriteString(strconv.Itoa(int(elapsedTime)))
+					elapsedTimeCountStr.WriteString(elapsedTimeCountSeparator)
+					tpObj := value1.(*FunctionTpGroupBy)
+					elapsedTimeCountStr.WriteString(strconv.Itoa(int(tpObj.count)))
+					elapsedTimeCountStr.WriteString(elapsedTimeCountSeparator)
+					return true
+				})
+				timeCount := strings.TrimSuffix(elapsedTimeCountStr.String(), elapsedTimeCountSeparator)
+				elapsedMap["e"] = timeCount
+				elapsedMap["k"] = key.(string)
+				umpLog.Logs = append(umpLog.Logs, elapsedMap)
+
+				err := lw.jsonEncoder.Encode(umpLog)
+				if err != nil {
+					return true
+				}
+				body = append(body, logStartMarker...)
+				body = append(body, lw.bf.Bytes()...)
+				lw.bf.Reset()
 				return true
 			})
-			timeCount := strings.TrimSuffix(elapsedTimeCountStr.String(), elapsedTimeCountSeparator)
-			elapsedMap["e"] = timeCount
-			elapsedMap["k"] = key.(string)
-			umpLog.Logs = append(umpLog.Logs, elapsedMap)
-
-			err := lw.jsonEncoder.Encode(umpLog)
-			if err != nil {
-				return true
+			time.Sleep(time.Second)
+			if lw.backGroundCheckFile() != nil {
+				continue
 			}
-			body = append(body, logStartMarker...)
-			body = append(body, lw.bf.Bytes()...)
-			lw.bf.Reset()
-			return true
-		})
-		time.Sleep(time.Second)
-		if lw.backGroundCheckFile() != nil {
-			continue
+			n, _ := lw.logFp.Write(body)
+			lw.logSize += (int64)(n)
+			body = make([]byte, 0)
 		}
-		n, _ := lw.logFp.Write(body)
-		lw.logSize += (int64)(n)
-		body = make([]byte, 0)
 	}
 }
 
 func (lw *LogWrite) backGroupAliveWriteV629() {
+	defer wg.Done()
 	ticker := time.NewTicker(20 * time.Second)
 	defer ticker.Stop()
 	aliveKeyMap := new(sync.Map)
@@ -82,6 +90,9 @@ func (lw *LogWrite) backGroupAliveWriteV629() {
 	for {
 		var body []byte
 		select {
+		case <-lw.stopC:
+			lw.logFp.Close()
+			return
 		case aliveLog := <-lw.logCh:
 			alive := aliveLog.(*SystemAlive)
 			aliveKeyMap.Store(alive.Key, "")
@@ -118,6 +129,7 @@ func (lw *LogWrite) backGroupAliveWriteV629() {
 }
 
 func (lw *LogWrite) backGroupBusinessWriteV629() {
+	defer wg.Done()
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	businessKeyMap := new(sync.Map)
@@ -125,6 +137,9 @@ func (lw *LogWrite) backGroupBusinessWriteV629() {
 	for {
 		var body []byte
 		select {
+		case <-lw.stopC:
+			lw.logFp.Close()
+			return
 		case businessLog := <-lw.logCh:
 			alarmLog := businessLog.(*BusinessAlarm)
 			businessKeyMap.Store(alarmLog.Key, alarmLog.Detail)

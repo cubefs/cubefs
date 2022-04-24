@@ -23,20 +23,21 @@ import (
 )
 
 var (
-	GaugePool = &sync.Pool{New: func() interface{} {
-		return new(Gauge)
-	}}
-
 	GaugeGroup sync.Map
 	GaugeCh    chan *Gauge
 )
 
 func collectGauge() {
+	defer wg.Done()
 	GaugeCh = make(chan *Gauge, ChSize)
 	for {
-		m := <-GaugeCh
-		metric := m.Metric()
-		metric.Set(float64(m.val))
+		select {
+		case <-stopC:
+			return
+		case m := <-GaugeCh:
+			metric := m.Metric()
+			metric.Set(float64(m.val))
+		}
 	}
 }
 

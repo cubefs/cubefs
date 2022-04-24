@@ -77,6 +77,16 @@ func InitUmp(module, appName string) (err error) {
 	return nil
 }
 
+func StopUmp() {
+	stopLogWriter()
+	FuncationTPMap = nil
+	AlarmPool = nil
+	TpObjectPool = nil
+	SystemAlivePool = nil
+	FunctionTpPool = nil
+	FunctionTpGroupByPool = nil
+}
+
 func BeforeTP(key string) (o *TpObject) {
 	if !enableUmp {
 		return

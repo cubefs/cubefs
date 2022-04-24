@@ -23,18 +23,20 @@ import (
 
 var (
 	CounterGroup sync.Map
-	CounterPool  = &sync.Pool{New: func() interface{} {
-		return new(Counter)
-	}}
-	CounterCh chan *Counter
+	CounterCh    chan *Counter
 )
 
 func collectCounter() {
+	defer wg.Done()
 	CounterCh = make(chan *Counter, ChSize)
 	for {
-		m := <-CounterCh
-		metric := m.Metric()
-		metric.Add(float64(m.val))
+		select {
+		case <-stopC:
+			return
+		case m := <-CounterCh:
+			metric := m.Metric()
+			metric.Add(float64(m.val))
+		}
 	}
 }
 

@@ -19,8 +19,8 @@
 //   if(client_id < 0) { // error occurs }
 //   cfs_close_client(client_id);
 
-#ifndef CFS_SDK_H
-#define CFS_SDK_H
+#ifndef CFS_SDK_DL_H
+#define CFS_SDK_DL_H
 
 #include <fcntl.h>
 #include <stdint.h>
@@ -80,7 +80,8 @@ typedef struct {
  * Library / framework initialization
  * This method will initialize logging and HTTP APIs.
  */
-int cfs_sdk_init(cfs_sdk_init_t* t);
+typedef int (*cfs_sdk_init_func)(cfs_sdk_init_t* t);
+typedef void (*cfs_sdk_close_t)();
 
 /*
  * Get library version info
@@ -88,122 +89,210 @@ int cfs_sdk_init(cfs_sdk_init_t* t);
 int cfs_sdk_version(cfs_sdk_version_t* v);
 
 // return client_id, should be positive if no error occurs
-int64_t cfs_new_client(const cfs_config_t *conf);
-void cfs_close_client(int64_t id);
-int cfs_statfs(int64_t id, cfs_statfs_t* stat);
+typedef int64_t (*cfs_new_client_t)(const cfs_config_t *conf, const char *config_path, char *str);
+typedef void (*cfs_close_client_t)(int64_t id);
+typedef size_t (*cfs_client_state_t)(int64_t id, char *buf, int size);
+typedef int (*cfs_statfs_t_)(int64_t id, cfs_statfs_t* stat);
 /*
  * Log is cached by default, will only be flushed when client close.
  * Call this function manually when necessary.
  */
-void cfs_flush_log();
+typedef void (*cfs_flush_log_t)();
 
 /*
  * File operations
  */
-int cfs_close(int64_t id, int fd);
-int cfs_open(int64_t id, const char *path, int flags, mode_t mode);
-int cfs_openat(int64_t id, int dirfd, const char *path, int flags, mode_t mode);
-int cfs_openat_fd(int64_t id, int dirfd, const char *path, int flags, mode_t mode, int fd);
-int cfs_rename(int64_t id, const char *from, const char *to);
-int cfs_renameat(int64_t id, int fromdirfd, const char *from, int todirfd, const char *to);
-int cfs_truncate(int64_t id, const char *path, off_t len);
-int cfs_ftruncate(int64_t id, int fd, off_t len);
-int cfs_fallocate(int64_t id, int fd, int mode, off_t offset, off_t len);
-int cfs_posix_fallocate(int64_t id, int fd, off_t offset, off_t len);
-int cfs_flush(int64_t id, int fd);
+typedef int (*cfs_close_t)(int64_t id, int fd);
+typedef int (*cfs_open_t)(int64_t id, const char *path, int flags, mode_t mode);
+typedef int (*cfs_openat_t)(int64_t id, int dirfd, const char *path, int flags, mode_t mode);
+typedef int (*cfs_openat_fd_t)(int64_t id, int dirfd, const char *path, int flags, mode_t mode, int fd);
+typedef int (*cfs_rename_t)(int64_t id, const char *from, const char *to);
+typedef int (*cfs_renameat_t)(int64_t id, int fromdirfd, const char *from, int todirfd, const char *to);
+typedef int (*cfs_truncate_t)(int64_t id, const char *path, off_t len);
+typedef int (*cfs_ftruncate_t)(int64_t id, int fd, off_t len);
+typedef int (*cfs_fallocate_t)(int64_t id, int fd, int mode, off_t offset, off_t len);
+typedef int (*cfs_posix_fallocate_t)(int64_t id, int fd, off_t offset, off_t len);
+typedef int (*cfs_flush_t)(int64_t id, int fd);
 
 /*
  * Directory operations
  */
-int cfs_chdir(int64_t id, const char *path);
+typedef int (*cfs_chdir_t)(int64_t id, const char *path);
 /*
  * The dir corresponding to fd is written to buf if buf is not NULL and size is enough.
  * This feature is for CFS kernel bypass client.
  */
-int cfs_fchdir(int64_t id, int fd, char *buf, int size);
-char* cfs_getcwd(int64_t id);
-int cfs_mkdirs(int64_t id, const char *path, mode_t mode);
-int cfs_mkdirsat(int64_t id, int dirfd, const char *path, mode_t mode);
-int cfs_rmdir(int64_t id, const char *path);
 int cfs_readdir(int64_t id, int fd, cfs_dirent_t* dirents, int count);
-int cfs_getdents(int64_t id, int fd, char *buf, int count);
+
+typedef int (*cfs_fchdir_t)(int64_t id, int fd, char *buf, int size);
+typedef char* (*cfs_getcwd_t)(int64_t id);
+typedef int (*cfs_mkdirs_t)(int64_t id, const char *path, mode_t mode);
+typedef int (*cfs_mkdirsat_t)(int64_t id, int dirfd, const char *path, mode_t mode);
+typedef int (*cfs_rmdir_t)(int64_t id, const char *path);
+typedef int (*cfs_getdents_t)(int64_t id, int fd, char *buf, int count);
 
 /*
  * Link operations
  */
-int cfs_link(int64_t id, const char *oldpath, const char *newpath);
-int cfs_linkat(int64_t id, int olddirfd, const char *oldpath, int newdirfd, const char *newpath, int flags);
-int cfs_symlink(int64_t id, const char *target, const char *linkpath);
-int cfs_symlinkat(int64_t id, const char *target, int newdirfd, const char *linkpath);
-int cfs_unlink(int64_t id, const char *path);
-int cfs_unlinkat(int64_t id, int dirfd, const char *pathname, int flags);
-ssize_t cfs_readlink(int64_t id, const char *pathname, char *buf, size_t size);
-ssize_t cfs_readlinkat(int64_t id, int dirfd, const char *pathname, char *buf, size_t size);
+typedef int (*cfs_link_t)(int64_t id, const char *oldpath, const char *newpath);
+typedef int (*cfs_linkat_t)(int64_t id, int olddirfd, const char *oldpath, int newdirfd, const char *newpath, int flags);
+typedef int (*cfs_symlink_t)(int64_t id, const char *target, const char *linkpath);
+typedef int (*cfs_symlinkat_t)(int64_t id, const char *target, int newdirfd, const char *linkpath);
+typedef int (*cfs_unlink_t)(int64_t id, const char *path);
+typedef int (*cfs_unlinkat_t)(int64_t id, int dirfd, const char *pathname, int flags);
+typedef ssize_t (*cfs_readlink_t)(int64_t id, const char *pathname, char *buf, size_t size);
+typedef ssize_t (*cfs_readlinkat_t)(int64_t id, int dirfd, const char *pathname, char *buf, size_t size);
 
 /*
  * Basic file attributes
  */
-int cfs_stat(int64_t id, const char *path, struct stat *stat);
-int cfs_stat64(int64_t id, const char *path, struct stat64 *stat);
-int cfs_lstat(int64_t id, const char *path, struct stat *stat);
-int cfs_lstat64(int64_t id, const char *path, struct stat64 *stat);
-int cfs_fstat(int64_t id, int fd, struct stat *stat);
-int cfs_fstat64(int64_t id, int fd, struct stat64 *stat);
-int cfs_fstatat(int64_t id, int dirfd, const char *path, struct stat *stat, int flags);
-int cfs_fstatat64(int64_t id, int dirfd, const char *path, struct stat64 *stat, int flags);
-int cfs_chmod(int64_t id, const char *path, mode_t mode);
-int cfs_fchmod(int64_t id, int fd, mode_t mode);
-int cfs_fchmodat(int64_t id, int dirfd, const char *path, mode_t mode, int flags);
-int cfs_chown(int64_t id, const char *path, uid_t uid, gid_t gid);
-int cfs_lchown(int64_t id, const char *path, uid_t uid, gid_t gid);
-int cfs_fchown(int64_t id, int fd, uid_t uid, gid_t gid);
-int cfs_fchownat(int64_t id, int dirfd, const char *path, uid_t uid, gid_t gid, int flags);
-int cfs_futimens(int64_t id, int fd, const struct timespec *times);
-int cfs_utimens(int64_t id, const char *path, const struct timespec *times, int flags);
-int cfs_utimensat(int64_t id, int dirfd, const char *path, const struct timespec *times, int flags);
-int cfs_access(int64_t id, const char *pathname, int mode);
-int cfs_faccessat(int64_t id, int dirfd, const char *pathname, int mode, int flags);
+typedef int (*cfs_stat_t)(int64_t id, const char *path, struct stat *stat);
+typedef int (*cfs_stat64_t)(int64_t id, const char *path, struct stat64 *stat);
+typedef int (*cfs_lstat_t)(int64_t id, const char *path, struct stat *stat);
+typedef int (*cfs_lstat64_t)(int64_t id, const char *path, struct stat64 *stat);
+typedef int (*cfs_fstat_t)(int64_t id, int fd, struct stat *stat);
+typedef int (*cfs_fstat64_t)(int64_t id, int fd, struct stat64 *stat);
+typedef int (*cfs_fstatat_t)(int64_t id, int dirfd, const char *path, struct stat *stat, int flags);
+typedef int (*cfs_fstatat64_t)(int64_t id, int dirfd, const char *path, struct stat64 *stat, int flags);
+typedef int (*cfs_chmod_t)(int64_t id, const char *path, mode_t mode);
+typedef int (*cfs_fchmod_t)(int64_t id, int fd, mode_t mode);
+typedef int (*cfs_fchmodat_t)(int64_t id, int dirfd, const char *path, mode_t mode, int flags);
+typedef int (*cfs_chown_t)(int64_t id, const char *path, uid_t uid, gid_t gid);
+typedef int (*cfs_lchown_t)(int64_t id, const char *path, uid_t uid, gid_t gid);
+typedef int (*cfs_fchown_t)(int64_t id, int fd, uid_t uid, gid_t gid);
+typedef int (*cfs_fchownat_t)(int64_t id, int dirfd, const char *path, uid_t uid, gid_t gid, int flags);
+typedef int (*cfs_futimens_t)(int64_t id, int fd, const struct timespec *times);
+typedef int (*cfs_utimens_t)(int64_t id, const char *path, const struct timespec *times, int flags);
+typedef int (*cfs_utimensat_t)(int64_t id, int dirfd, const char *path, const struct timespec *times, int flags);
+typedef int (*cfs_access_t)(int64_t id, const char *pathname, int mode);
+typedef int (*cfs_faccessat_t)(int64_t id, int dirfd, const char *pathname, int mode, int flags);
 
 /*
  * Extended file attributes
  */
-int cfs_setxattr(int64_t id, const char *path, const char *name, const void *value, size_t size, int flags);
-int cfs_lsetxattr(int64_t id, const char *path, const char *name, const void *value, size_t size, int flags);
-int cfs_fsetxattr(int64_t id, int fd, const char *name, const void *value, size_t size, int flags);
-ssize_t cfs_getxattr(int64_t id, const char *path, const char *name, void *value, size_t size);
-ssize_t cfs_lgetxattr(int64_t id, const char *path, const char *name, void *value, size_t size);
-ssize_t cfs_fgetxattr(int64_t id, int fd, const char *name, void *value, size_t size);
-ssize_t cfs_listxattr(int64_t id, const char *path, char *list, size_t size);
-ssize_t cfs_llistxattr(int64_t id, const char *path, char *list, size_t size);
-ssize_t cfs_flistxattr(int64_t id, int fd, char *list, size_t size);
-int cfs_removexattr(int64_t id, const char *path, const char *name);
-int cfs_lremovexattr(int64_t id, const char *path, const char *name);
-int cfs_fremovexattr(int64_t id, int fd, const char *name);
+typedef int (*cfs_setxattr_t)(int64_t id, const char *path, const char *name, const void *value, size_t size, int flags);
+typedef int (*cfs_lsetxattr_t)(int64_t id, const char *path, const char *name, const void *value, size_t size, int flags);
+typedef int (*cfs_fsetxattr_t)(int64_t id, int fd, const char *name, const void *value, size_t size, int flags);
+typedef ssize_t (*cfs_getxattr_t)(int64_t id, const char *path, const char *name, void *value, size_t size);
+typedef ssize_t (*cfs_lgetxattr_t)(int64_t id, const char *path, const char *name, void *value, size_t size);
+typedef ssize_t (*cfs_fgetxattr_t)(int64_t id, int fd, const char *name, void *value, size_t size);
+typedef ssize_t (*cfs_listxattr_t)(int64_t id, const char *path, char *list, size_t size);
+typedef ssize_t (*cfs_llistxattr_t)(int64_t id, const char *path, char *list, size_t size);
+typedef ssize_t (*cfs_flistxattr_t)(int64_t id, int fd, char *list, size_t size);
+typedef int (*cfs_removexattr_t)(int64_t id, const char *path, const char *name);
+typedef int (*cfs_lremovexattr_t)(int64_t id, const char *path, const char *name);
+typedef int (*cfs_fremovexattr_t)(int64_t id, int fd, const char *name);
 
 /*
  * File descriptor manipulations
  */
 // Only support some cmds, F_DUPFD, F_SETFL
-int cfs_fcntl(int64_t id, int fd, int cmd, int arg);
+typedef int (*cfs_fcntl_t)(int64_t id, int fd, int cmd, int arg);
 // For fcntl cmd F_SETLK, F_SETLKW
-int cfs_fcntl_lock(int64_t id, int fd, int cmd, struct flock *lk);
+typedef int (*cfs_fcntl_lock_t)(int64_t id, int fd, int cmd, struct flock *lk);
 
 /*
  * Read & Write
  */
-ssize_t cfs_read(int64_t id, int fd, char *buf, size_t size);
-ssize_t cfs_pread(int64_t id, int fd, char *buf, size_t size, off_t off);
-ssize_t cfs_readv(int64_t id, int fd, const struct iovec *iov, int iovcnt);
-ssize_t cfs_preadv(int64_t id, int fd, const struct iovec *iov, int iovcnt, off_t off);
-ssize_t cfs_write(int64_t id, int fd, const char *buf, size_t size);
-ssize_t cfs_pwrite(int64_t id, int fd, const char *buf, size_t size, off_t off);
-ssize_t cfs_writev(int64_t id, int fd, const struct iovec *iov, int iovcnt);
-ssize_t cfs_pwritev(int64_t id, int fd, const struct iovec *iov, int iovcnt, off_t off);
-off64_t cfs_lseek(int64_t id, int fd, off64_t offset, int whence);
+typedef ssize_t (*cfs_read_t)(int64_t id, int fd, char *buf, size_t size);
+typedef ssize_t (*cfs_pread_t)(int64_t id, int fd, char *buf, size_t size, off_t off);
+typedef ssize_t (*cfs_readv_t)(int64_t id, int fd, const struct iovec *iov, int iovcnt);
+typedef ssize_t (*cfs_preadv_t)(int64_t id, int fd, const struct iovec *iov, int iovcnt, off_t off);
+typedef ssize_t (*cfs_write_t)(int64_t id, int fd, const char *buf, size_t size);
+typedef ssize_t (*cfs_pwrite_t)(int64_t id, int fd, const char *buf, size_t size, off_t off);
+typedef ssize_t (*cfs_writev_t)(int64_t id, int fd, const struct iovec *iov, int iovcnt);
+typedef ssize_t (*cfs_pwritev_t)(int64_t id, int fd, const struct iovec *iov, int iovcnt, off_t off);
+typedef off64_t (*cfs_lseek_t)(int64_t id, int fd, off64_t offset, int whence);
 
 /*
  * Batch metadata operations
  */
 int cfs_batch_stat(int64_t id, uint64_t *inos, struct stat *stats, int count);
 
+typedef void (*InitModule_t)(void*);
+typedef void (*FinishModule_t)(void*);
+
+static cfs_sdk_init_func cfs_sdk_init;
+static cfs_sdk_close_t cfs_sdk_close;
+static cfs_new_client_t cfs_new_client;
+static cfs_close_client_t cfs_close_client;
+static cfs_client_state_t cfs_client_state;
+static cfs_statfs_t_ cfs_statfs;
+static cfs_flush_log_t cfs_flush_log;
+
+static cfs_close_t cfs_close;
+static cfs_open_t cfs_open;
+static cfs_openat_t cfs_openat;
+static cfs_openat_fd_t cfs_openat_fd;
+static cfs_rename_t cfs_rename;
+static cfs_renameat_t cfs_renameat;
+static cfs_truncate_t cfs_truncate;
+static cfs_ftruncate_t cfs_ftruncate;
+static cfs_fallocate_t cfs_fallocate;
+static cfs_posix_fallocate_t cfs_posix_fallocate;
+static cfs_flush_t cfs_flush;
+
+static cfs_chdir_t cfs_chdir;
+static cfs_fchdir_t cfs_fchdir;
+static cfs_getcwd_t cfs_getcwd;
+static cfs_mkdirs_t cfs_mkdirs;
+static cfs_mkdirsat_t cfs_mkdirsat;
+static cfs_rmdir_t cfs_rmdir;
+static cfs_getdents_t cfs_getdents;
+
+static cfs_link_t cfs_link;
+static cfs_linkat_t cfs_linkat;
+static cfs_symlink_t cfs_symlink;
+static cfs_symlinkat_t cfs_symlinkat;
+static cfs_unlink_t cfs_unlink;
+static cfs_unlinkat_t cfs_unlinkat;
+static cfs_readlink_t cfs_readlink;
+static cfs_readlinkat_t cfs_readlinkat;
+
+static cfs_stat_t cfs_stat;
+static cfs_stat64_t cfs_stat64;
+static cfs_lstat_t cfs_lstat;
+static cfs_lstat64_t cfs_lstat64;
+static cfs_fstat_t cfs_fstat;
+static cfs_fstat64_t cfs_fstat64;
+static cfs_fstatat_t cfs_fstatat;
+static cfs_fstatat64_t cfs_fstatat64;
+static cfs_chmod_t cfs_chmod;
+static cfs_fchmod_t cfs_fchmod;
+static cfs_fchmodat_t cfs_fchmodat;
+static cfs_chown_t cfs_chown;
+static cfs_lchown_t cfs_lchown;
+static cfs_fchown_t cfs_fchown;
+static cfs_fchownat_t cfs_fchownat;
+static cfs_futimens_t cfs_futimens;
+static cfs_utimens_t cfs_utimens;
+static cfs_utimensat_t cfs_utimensat;
+static cfs_access_t cfs_access;
+static cfs_faccessat_t cfs_faccessat;
+
+static cfs_setxattr_t cfs_setxattr;
+static cfs_lsetxattr_t cfs_lsetxattr;
+static cfs_fsetxattr_t cfs_fsetxattr;
+static cfs_getxattr_t cfs_getxattr;
+static cfs_lgetxattr_t cfs_lgetxattr;
+static cfs_fgetxattr_t cfs_fgetxattr;
+static cfs_listxattr_t cfs_listxattr;
+static cfs_llistxattr_t cfs_llistxattr;
+static cfs_flistxattr_t cfs_flistxattr;
+static cfs_removexattr_t cfs_removexattr;
+static cfs_lremovexattr_t cfs_lremovexattr;
+static cfs_fremovexattr_t cfs_fremovexattr;
+
+static cfs_fcntl_t cfs_fcntl;
+static cfs_fcntl_lock_t cfs_fcntl_lock;
+
+static cfs_read_t cfs_read;
+static cfs_pread_t cfs_pread;
+static cfs_readv_t cfs_readv;
+static cfs_preadv_t cfs_preadv;
+static cfs_write_t cfs_write;
+static cfs_pwrite_t cfs_pwrite;
+static cfs_writev_t cfs_writev;
+static cfs_pwritev_t cfs_pwritev;
+static cfs_lseek_t cfs_lseek;
 #endif

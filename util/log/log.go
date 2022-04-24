@@ -103,9 +103,11 @@ type asyncWriter struct {
 	flushC      chan bool
 	rotateDay   chan struct{} // TODO rotateTime?
 	mu          sync.Mutex
+	wg          sync.WaitGroup
 }
 
 func (writer *asyncWriter) flushScheduler() {
+	defer writer.wg.Done()
 	ticker := time.NewTicker(1 * time.Second)
 	for {
 		select {
@@ -140,9 +142,8 @@ func (writer *asyncWriter) Write(p []byte) (n int, err error) {
 
 // Close closes the writer.
 func (writer *asyncWriter) Close() (err error) {
-	writer.mu.Lock()
-	defer writer.mu.Unlock()
 	close(writer.flushC)
+	writer.wg.Wait()
 	return
 }
 
@@ -212,6 +213,7 @@ func newAsyncWriter(fileName string, rollingSize int64) (*asyncWriter, error) {
 		flushC:      make(chan bool, 1000),
 		rotateDay:   make(chan struct{}, 1),
 	}
+	w.wg.Add(1)
 	go w.flushScheduler()
 	return w, nil
 }
@@ -254,6 +256,8 @@ type Log struct {
 	msgC           chan string
 	rotate         *LogRotate
 	lastRolledTime time.Time
+	closeC         chan struct{}
+	wg             sync.WaitGroup
 }
 
 var (
@@ -322,6 +326,8 @@ func InitLog(dir, module string, level Level, rotate *LogRotate) (*Log, error) {
 		return nil, err
 	}
 	l.lastRolledTime = time.Now()
+	l.closeC = make(chan struct{})
+	l.wg.Add(1)
 	go l.checkLogRotation(dir, module)
 
 	gLog = l
@@ -384,6 +390,15 @@ func (l *Log) Flush() {
 		if logger != nil {
 			logger.Flush()
 		}
+	}
+}
+
+func (l *Log) Close() {
+	close(l.closeC)
+	l.wg.Wait()
+	logHandles := [...]*LogObject{l.debugLogger, l.infoLogger, l.warnLogger, l.errorLogger, l.readLogger, l.updateLogger, l.criticalLogger}
+	for _, logger := range logHandles {
+		logger.object.Close()
 	}
 }
 
@@ -670,41 +685,55 @@ func LogFlush() {
 	}
 }
 
+func LogClose() {
+	if gLog == nil {
+		return
+	}
+	gLog.Flush()
+	gLog.Close()
+	gLog = nil
+}
+
 func (l *Log) checkLogRotation(logDir, module string) {
+	defer l.wg.Done()
+	ticker := time.NewTicker(DefaultRollingInterval)
+	defer ticker.Stop()
 	var needDelFiles RolledFile
 	for {
-		needDelFiles = needDelFiles[:0]
-		// check disk space
-		fs := syscall.Statfs_t{}
-		if err := syscall.Statfs(logDir, &fs); err != nil {
-			time.Sleep(DefaultRollingInterval)
-			continue
-		}
-		diskSpaceLeft := int64(fs.Bavail * uint64(fs.Bsize))
-		diskSpaceLeft -= l.rotate.headRoom * 1024 * 1024
+		select {
+		case <-l.closeC:
+			return
+		case <-ticker.C:
+			needDelFiles = needDelFiles[:0]
+			// check disk space
+			fs := syscall.Statfs_t{}
+			if err := syscall.Statfs(logDir, &fs); err != nil {
+				continue
+			}
+			diskSpaceLeft := int64(fs.Bavail * uint64(fs.Bsize))
+			diskSpaceLeft -= l.rotate.headRoom * 1024 * 1024
 
-		err := l.removeLogFile(logDir, diskSpaceLeft, module)
-		if err != nil {
-			time.Sleep(DefaultRollingInterval)
-			continue
-		}
-		// check if it is time to rotate
-		now := time.Now()
-		if now.Day() == l.lastRolledTime.Day() {
-			time.Sleep(DefaultRollingInterval)
-			continue
-		}
+			err := l.removeLogFile(logDir, diskSpaceLeft, module)
+			if err != nil {
+				continue
+			}
+			// check if it is time to rotate
+			now := time.Now()
+			if now.Day() == l.lastRolledTime.Day() {
+				continue
+			}
 
-		// rotate log files
-		l.debugLogger.SetRotation()
-		l.infoLogger.SetRotation()
-		l.warnLogger.SetRotation()
-		l.errorLogger.SetRotation()
-		l.readLogger.SetRotation()
-		l.updateLogger.SetRotation()
-		l.criticalLogger.SetRotation()
+			// rotate log files
+			l.debugLogger.SetRotation()
+			l.infoLogger.SetRotation()
+			l.warnLogger.SetRotation()
+			l.errorLogger.SetRotation()
+			l.readLogger.SetRotation()
+			l.updateLogger.SetRotation()
+			l.criticalLogger.SetRotation()
 
-		l.lastRolledTime = now
+			l.lastRolledTime = now
+		}
 	}
 }
 

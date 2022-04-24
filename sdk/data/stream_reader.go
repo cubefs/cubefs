@@ -54,6 +54,7 @@ type Streamer struct {
 
 	request chan interface{} // request channel, write/flush/close
 	done    chan struct{}    // stream writer is being closed
+	wg      sync.WaitGroup
 
 	overWriteReq      []*OverWriteRequest
 	overWriteReqMutex sync.Mutex
@@ -82,6 +83,7 @@ func NewStreamer(client *ExtentClient, inode uint64, streamMap *ConcurrentStream
 	s.streamerMap = streamMap
 	s.appendWriteBuffer = appendWriteBuffer
 	s.readAhead = readAhead
+	s.wg.Add(1)
 	go s.server()
 	return s
 }
@@ -125,7 +127,7 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 		revisedRequests []*ExtentRequest
 		fileSize        int
 	)
-	ctx=context.Background()
+	ctx = context.Background()
 	s.client.readLimiter.Wait(ctx)
 
 	requests, fileSize = s.extents.PrepareRequests(offset, size, data)

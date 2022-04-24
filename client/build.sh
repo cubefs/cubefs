@@ -12,5 +12,6 @@ case ${build_opt} in
     go test -c -covermode=atomic -coverpkg="../..." -ldflags "-X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}'" -o cfs-client
 		;;
 	*)
-    go build -ldflags "-X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}'" -o cfs-client
+    go build -gcflags "-N -l" -ldflags "-X main.CommitID=${CommitID}" -linkshared -o fuse-client main.go
+    go build -gcflags "-N -l" -ldflags "-E main.main -X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}'" -buildmode=plugin -linkshared -o libfusesdk.so fuse.go
 esac

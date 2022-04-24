@@ -154,36 +154,44 @@ func (e *MountpointDoesNotExistError) Error() string {
 // visible until after Conn.Ready is closed. See Conn.MountError for
 // possible errors. Incoming requests on Conn must be served to make
 // progress.
-func Mount(dir string, options ...MountOption) (*Conn, error) {
-	conf := mountConfig{
-		options: make(map[string]string),
-	}
-	for _, option := range options {
-		if err := option(&conf); err != nil {
-			return nil, err
-		}
-	}
-
+func Mount(dir string, fuseFd *os.File, options ...MountOption) (*Conn, error) {
 	ready := make(chan struct{}, 1)
 	c := &Conn{
 		Ready: ready,
 	}
-	f, err := mount(dir, &conf, ready, &c.MountError)
-	if err != nil {
-		return nil, err
-	}
-	c.dev = f
 
-	if err := initMount(c, &conf); err != nil {
-		c.Close()
-		if err == ErrClosedWithoutInit {
-			// see if we can provide a better error
-			<-c.Ready
-			if err := c.MountError; err != nil {
+	if fuseFd == nil {
+		conf := mountConfig{
+			options: make(map[string]string),
+		}
+		for _, option := range options {
+			if err := option(&conf); err != nil {
 				return nil, err
 			}
 		}
-		return nil, err
+
+		f, err := mount(dir, &conf, ready, &c.MountError)
+		if err != nil {
+			return nil, err
+		}
+		c.dev = f
+
+		if err := initMount(c, &conf); err != nil {
+			c.Close()
+			if err == ErrClosedWithoutInit {
+				// see if we can provide a better error
+				<-c.Ready
+				if err := c.MountError; err != nil {
+					return nil, err
+				}
+			}
+			return nil, err
+		}
+	} else {
+		close(ready)
+		c.dev = fuseFd
+		// FIXME: save protocol version when saving context?
+		c.proto = Protocol{protoVersionMaxMajor, protoVersionMaxMinor}
 	}
 
 	InitReadBlockPool()
@@ -531,6 +539,10 @@ func (c *Conn) Close() error {
 	c.rio.Lock()
 	defer c.rio.Unlock()
 	return c.dev.Close()
+}
+
+func (c *Conn) Fusefd() *os.File {
+	return c.dev
 }
 
 // caller must hold wio or rio
@@ -1331,6 +1343,7 @@ type Attr struct {
 	Rdev      uint32      // device numbers
 	Flags     uint32      // chflags(2) flags (OS X only)
 	BlockSize uint32      // preferred blocksize for filesystem I/O
+	ParentIno uint64      // for chubaofs's file only
 }
 
 func (a Attr) String() string {
@@ -1628,6 +1641,9 @@ type OpenRequest struct {
 var _ = Request(&OpenRequest{})
 
 func (r *OpenRequest) String() string {
+	if r == nil {
+		return ""
+	}
 	return fmt.Sprintf("Open [%s] dir=%v fl=%v", &r.Header, r.Dir, r.Flags)
 }
 
@@ -1651,6 +1667,9 @@ func (r *OpenResponse) string() string {
 }
 
 func (r *OpenResponse) String() string {
+	if r == nil {
+		return ""
+	}
 	return fmt.Sprintf("Open %s", r.string())
 }
 

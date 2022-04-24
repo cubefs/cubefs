@@ -30,12 +30,18 @@ var (
 )
 
 func collectTP() {
+	defer wg.Done()
 	TPCh = make(chan *TimePoint, ChSize)
 	for {
-		m := <-TPCh
-		metric := m.Metric()
-		metric.Set(float64(m.val))
-		TPPool.Put(m)
+		select {
+		case <-stopC:
+			TPPool = nil
+			return
+		case m := <-TPCh:
+			metric := m.Metric()
+			metric.Set(float64(m.val))
+			TPPool.Put(m)
+		}
 	}
 }
 

@@ -70,6 +70,7 @@ func (rs *RaftServer) run() {
 	for {
 		select {
 		case <-rs.stopc:
+			randomSeedTicker.Stop()
 			return
 
 		case id := <-fatalStopc:

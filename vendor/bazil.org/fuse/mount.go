@@ -3,12 +3,9 @@ package fuse
 import (
 	"bufio"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"sync"
-
-	"github.com/jacobsa/daemonize"
 )
 
 var (
@@ -33,13 +30,9 @@ func lineLogger(wg *sync.WaitGroup, prefix string, ignore func(line string) bool
 		if ignore(line) {
 			continue
 		}
-		msg := fmt.Sprintf("%s: %s", prefix, line)
-		log.Println(msg)
-		daemonize.StatusWriter.Write([]byte(msg + "\n"))
+		log.Printf("%s: %s", prefix, line)
 	}
 	if err := scanner.Err(); err != nil {
-		msg := fmt.Sprintf("%s, error reading: %v", prefix, err)
-		log.Println(msg)
-		daemonize.StatusWriter.Write([]byte(msg + "\n"))
+		log.Printf("%s, error reading: %v", prefix, err)
 	}
 }

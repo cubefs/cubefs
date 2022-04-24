@@ -95,9 +95,10 @@ type FlushRequest struct {
 
 // ReleaseRequest defines a release request.
 type ReleaseRequest struct {
-	err  error
-	done chan struct{}
-	ctx  context.Context
+	mustRelease bool
+	err         error
+	done        chan struct{}
+	ctx         context.Context
 }
 
 // TruncRequest defines a truncate request.
@@ -201,6 +202,19 @@ func (s *Streamer) IssueReleaseRequest(ctx context.Context) error {
 	return err
 }
 
+func (s *Streamer) IssueMustReleaseRequest(ctx context.Context) error {
+	request := releaseRequestPool.Get().(*ReleaseRequest)
+	request.done = make(chan struct{}, 1)
+	request.mustRelease = true
+	request.ctx = ctx
+	s.request <- request
+	s.streamerMap.Unlock()
+	<-request.done
+	err := request.err
+	releaseRequestPool.Put(request)
+	return err
+}
+
 func (s *Streamer) IssueTruncRequest(ctx context.Context, size int) error {
 	request := truncRequestPool.Get().(*TruncRequest)
 	request.size = size
@@ -237,6 +251,7 @@ func (s *Streamer) IssueExtentMergeRequest(ctx context.Context) (finish bool, er
 }
 
 func (s *Streamer) server() {
+	defer s.wg.Done()
 	t := time.NewTicker(5 * time.Second)
 	defer t.Stop()
 
@@ -336,7 +351,7 @@ func (s *Streamer) handleRequest(ctx context.Context, request interface{}) {
 		}
 		request.done <- struct{}{}
 	case *ReleaseRequest:
-		request.err = s.release(request.ctx)
+		request.err = s.release(request.ctx, request.mustRelease)
 		request.done <- struct{}{}
 	case *EvictRequest:
 		request.err = s.evict(request.ctx)
@@ -850,8 +865,12 @@ func (s *Streamer) open() {
 	log.LogDebugf("open: streamer(%v) refcnt(%v)", s, s.refcnt)
 }
 
-func (s *Streamer) release(ctx context.Context) error {
-	s.refcnt--
+func (s *Streamer) release(ctx context.Context, mustRelease bool) error {
+	if mustRelease {
+		s.refcnt = 0
+	} else {
+		s.refcnt--
+	}
 	s.closeOpenHandler(ctx)
 	err := s.flush(ctx)
 	if err != nil {

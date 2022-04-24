@@ -58,7 +58,7 @@ const (
 )
 
 const (
-	StatusOK = statusOK
+	StatusOK    = statusOK
 	StatusExist = statusExist
 	StatusNoent = statusNoent
 )
@@ -140,6 +140,7 @@ type MetaWrapper struct {
 
 	closeCh   chan struct{}
 	closeOnce sync.Once
+	wg        sync.WaitGroup
 
 	// Used to signal the go routines which are waiting for partition view update
 	partMutex sync.Mutex
@@ -224,6 +225,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	}
 	mw.conns = util.NewConnectPoolWithTimeoutAndCap(0, 10, mw.connConfig.IdleTimeoutSec, mw.connConfig.ConnectTimeoutNs)
 
+	mw.wg.Add(2)
 	go mw.refresh()
 
 	go mw.startUpdateLimiterConfig()
@@ -266,6 +268,7 @@ func (mw *MetaWrapper) OSSBucketPolicy() proto.BucketAccessPolicy {
 func (mw *MetaWrapper) Close() error {
 	mw.closeOnce.Do(func() {
 		close(mw.closeCh)
+		mw.wg.Wait()
 		mw.conns.Close()
 	})
 	return nil
@@ -280,6 +283,7 @@ func (mw *MetaWrapper) Cluster() string {
 //}
 
 func (mw *MetaWrapper) startUpdateLimiterConfig() {
+	defer mw.wg.Done()
 	for {
 		err := mw.startUpdateLimiterConfigWithRecover()
 		if err == nil {

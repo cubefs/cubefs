@@ -90,7 +90,6 @@ import (
 	"io"
 	syslog "log"
 	"math"
-	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -110,6 +109,7 @@ import (
 	"unsafe"
 
 	"github.com/willf/bitset"
+	"gopkg.in/ini.v1"
 
 	"github.com/chubaofs/chubaofs/client/cache"
 	"github.com/chubaofs/chubaofs/proto"
@@ -157,7 +157,6 @@ const (
 
 var (
 	gClientManager *clientManager
-	gProfPort      uint64
 
 	signalIgnoreFunc = func() {}
 
@@ -206,6 +205,9 @@ type clientManager struct {
 	nextClientID int64
 	clients      map[int64]*client
 	mu           sync.RWMutex
+	profPort     uint64
+	wg           sync.WaitGroup
+	stopC        chan struct{}
 }
 
 func (m *clientManager) GetNextClientID() int64 {
@@ -234,10 +236,11 @@ func (m *clientManager) GetClient(id int64) (c *client, exist bool) {
 func newClientManager() *clientManager {
 	return &clientManager{
 		clients: make(map[int64]*client),
+		stopC:   make(chan struct{}),
 	}
 }
 
-func newClient(conf *C.cfs_config_t) *client {
+func newClient(conf *C.cfs_config_t, configPath string) *client {
 	id := getNextClientID()
 	c := &client{
 		id:               id,
@@ -248,22 +251,86 @@ func newClient(conf *C.cfs_config_t) *client {
 		inodeDentryCache: make(map[uint64]*cache.DentryCache),
 	}
 
-	c.masterAddr = C.GoString(conf.master_addr)
-	c.volName = C.GoString(conf.vol_name)
-	c.owner = C.GoString(conf.owner)
-	c.followerRead, _ = strconv.ParseBool(C.GoString(conf.follower_read))
-	c.app = C.GoString(conf.app)
-	c.useMetaCache = (c.app != appCoralDB)
-	c.autoFlush, _ = strconv.ParseBool(C.GoString(conf.auto_flush))
-	c.inodeCache = cache.NewInodeCache(inodeExpiration, maxInodeCache, inodeEvictionInterval, c.useMetaCache)
-	c.masterClient = C.GoString(conf.master_client)
+	fmt.Printf("=======configPath: %s, len: %d\n", configPath, len(configPath))
+	if len(configPath) == 0 {
+		c.masterAddr = C.GoString(conf.master_addr)
+		c.volName = C.GoString(conf.vol_name)
+		c.owner = C.GoString(conf.owner)
+		c.followerRead, _ = strconv.ParseBool(C.GoString(conf.follower_read))
+		c.app = C.GoString(conf.app)
+		c.useMetaCache = (c.app != appCoralDB)
+		c.autoFlush, _ = strconv.ParseBool(C.GoString(conf.auto_flush))
+		c.masterClient = C.GoString(conf.master_client)
+	} else {
+		cfg, err := ini.Load(configPath)
+		if err != nil {
+			syslog.Printf("load config file %s err: %v", configPath, err)
+			os.Exit(1)
+		}
+		c.masterAddr = cfg.Section("").Key("masterAddr").String()
+		c.volName = cfg.Section("").Key("volName").String()
+		c.owner = cfg.Section("").Key("owner").String()
+		c.followerRead = cfg.Section("").Key("followerRead").MustBool(false)
+		c.app = cfg.Section("").Key("app").String()
+		c.useMetaCache = (c.app != appCoralDB)
+		c.autoFlush = cfg.Section("").Key("autoFlush").MustBool(false)
+		c.masterClient = cfg.Section("").Key("masterClient").String()
+	}
 
+	c.inodeCache = cache.NewInodeCache(inodeExpiration, maxInodeCache, inodeEvictionInterval, c.useMetaCache)
 	c.readProcErrMap = make(map[string]int)
 
 	// Just skip fd 0, 1, 2, to avoid confusion.
 	c.fdset.Set(0).Set(1).Set(2)
 
 	return c
+}
+
+func rebuild_client_state(c *client, clientState *ClientState) {
+	c.cwd = clientState.Cwd
+
+	for _, v := range clientState.Files {
+		f := &file{fd: v.Fd, ino: v.Ino, flags: v.Flags, mode: v.Mode, size: v.Size, pos: v.Pos, path: v.Path, target: []byte(v.Target), locked: v.Locked}
+		if v.DirPos >= 0 {
+			f.dirp = &dirStream{}
+			f.dirp.pos = v.DirPos
+			dentries, err := c.mw.ReadDir_ll(context.Background(), f.ino)
+			if err != nil {
+				msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) err(%v)", c.id, f.fd, f.path, f.ino, err)
+				handleError(c, "readDir when newClient", msg)
+				continue
+			}
+			f.dirp.dirents = dentries
+		}
+		if proto.IsRegular(f.mode) {
+			var appendWriteBuffer bool
+			var readAhead bool
+			_, name := gopath.Split(f.path)
+			nameParts := strings.Split(name, ".")
+			if nameParts[0] == relayBinlogPrefix && len(nameParts) > 1 && len(nameParts[1]) > 0 && unicode.IsDigit(rune(nameParts[1][0])) {
+				appendWriteBuffer = true
+				readAhead = true
+			}
+			c.ec.OpenStream(f.ino, appendWriteBuffer, readAhead)
+			c.ec.RefreshExtentsCache(nil, f.ino)
+		}
+		if strings.Contains(f.path, "ib_logfile") {
+			f.logType = RedoLogType
+		} else if strings.Contains(f.path, "mysql-bin") {
+			f.logType = BinLogType
+		}
+		if v.Locked {
+			f.mu.Lock()
+		}
+		c.fdmap[f.fd] = f
+		c.fdset.Set(f.fd)
+		fdmap, ok := c.inomap[f.ino]
+		if !ok {
+			fdmap = make(map[uint]bool)
+			c.inomap[f.ino] = fdmap
+		}
+		fdmap[f.fd] = true
+	}
 }
 
 func getNextClientID() int64 {
@@ -299,7 +366,8 @@ func startVersionReporter(cluster string, masters []string) {
 			ClusterName string `json:"clusterName"`
 		}{cluster})
 		cfg := config.LoadConfigString(string(cfgStr))
-		go version.ReportVersionSchedule(cfg, masters, versionInfo)
+		gClientManager.wg.Add(1)
+		go version.ReportVersionSchedule(cfg, masters, versionInfo, gClientManager.stopC, &gClientManager.wg)
 	})
 }
 
@@ -319,6 +387,7 @@ type file struct {
 	dirp *dirStream
 	// for file write lock
 	mu      sync.RWMutex
+	locked  bool
 	logType uint8
 }
 
@@ -368,7 +437,8 @@ type client struct {
 	inodeDentryCache     map[uint64]*cache.DentryCache
 	inodeDentryCacheLock sync.RWMutex
 
-	closeOnce sync.Once
+	clientState string
+	closeOnce   sync.Once
 }
 
 /*
@@ -391,7 +461,7 @@ func initSDK(t *C.cfs_sdk_init_t) C.int {
 	var logDir = C.GoString(t.log_dir)
 	var logLevel = C.GoString(t.log_level)
 
-	var profPort, _ = strconv.ParseUint(strings.Split(C.GoString(t.prof_port), ",")[0], 10, 64)
+	gClientManager.profPort, _ = strconv.ParseUint(strings.Split(C.GoString(t.prof_port), ",")[0], 10, 64)
 
 	// Setup signal ignore
 	ignoreSignals := make([]os.Signal, 0)
@@ -421,48 +491,51 @@ func initSDK(t *C.cfs_sdk_init_t) C.int {
 		level = log.ErrorLevel
 	}
 	if len(logDir) == 0 {
-		fmt.Printf("no valid log dir specified.\n")
+		syslog.Println("no valid log dir specified.\n")
 		return C.int(statusEINVAL)
 	}
 	if _, err = log.InitLog(logDir, moduleName, level, nil); err != nil {
-		fmt.Printf("initialize logging failed: %v\n", err)
+		syslog.Println("initialize logging failed: %v\n", err)
 		return C.int(statusEIO)
 	}
 
 	outputFilePath := gopath.Join(logDir, moduleName, "output.log")
 	var outputFile *os.File
 	if outputFile, err = os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666); err != nil {
-		fmt.Printf("open %v for stdout redirection failed: %v", outputFilePath, err)
+		syslog.Printf("open %v for stdout redirection failed: %v", outputFilePath, err)
 		return C.int(statusEIO)
 	}
 	syslog.SetOutput(outputFile)
 
 	// Initialize HTTP APIs
-	if profPort == 0 && isMysql() {
+	if gClientManager.profPort == 0 && isMysql() {
 		syslog.Printf("prof port is required in mysql but not specified")
 		return C.int(statusEINVAL)
 	}
-	if profPort != 0 {
-		gProfPort = profPort
-		log.LogInfof("using prof port: %v", profPort)
-		syslog.Printf("using prof port: %v\n", profPort)
-		var profNetListener net.Listener
-		if profNetListener, err = net.Listen("tcp", fmt.Sprintf(":%v", profPort)); isMysql() && err != nil {
-			log.LogErrorf("listen prof port [%v] failed: %v", profPort, err)
-			log.LogFlush()
-			syslog.Printf("listen prof port [%v] failed: %v", profPort, err)
-			return C.int(statusEIO)
-		}
-		if err == nil {
-			http.HandleFunc(log.GetLogPath, log.GetLog)
-			http.HandleFunc("/version", GetVersionHandleFunc)
-			http.HandleFunc(ControlReadProcessRegister, registerReadProcStatusHandleFunc)
-			http.HandleFunc(ControlBroadcastRefreshExtents, broadcastRefreshExtentsHandleFunc)
-			http.HandleFunc(ControlGetReadProcs, getReadProcsHandleFunc)
-			go func() {
-				_ = http.Serve(profNetListener, http.DefaultServeMux)
-			}()
-		}
+	if gClientManager.profPort != 0 {
+		log.LogInfof("using prof port: %v", gClientManager.profPort)
+		syslog.Printf("using prof port: %v\n", gClientManager.profPort)
+
+		http.HandleFunc(log.GetLogPath, log.GetLog)
+		http.HandleFunc("/version", GetVersionHandleFunc)
+		http.HandleFunc(ControlReadProcessRegister, registerReadProcStatusHandleFunc)
+		http.HandleFunc(ControlBroadcastRefreshExtents, broadcastRefreshExtentsHandleFunc)
+		http.HandleFunc(ControlGetReadProcs, getReadProcsHandleFunc)
+		server := &http.Server{Addr: fmt.Sprintf(":%v", gClientManager.profPort)}
+		gClientManager.wg.Add(2)
+		go func() {
+			defer gClientManager.wg.Done()
+			listenErr := server.ListenAndServe()
+			if listenErr != nil && listenErr != http.ErrServerClosed && isMysql() {
+				syslog.Printf("listen prof port [%v] failed: %v", gClientManager.profPort, err)
+				os.Exit(1)
+			}
+		}()
+		go func() {
+			defer gClientManager.wg.Done()
+			<-gClientManager.stopC
+			server.Shutdown(context.Background())
+		}()
 	}
 
 	syslog.Printf(getVersionInfoString())
@@ -500,15 +573,48 @@ func cfs_sdk_version(v *C.cfs_sdk_version_t) C.int {
 	return C.int(0)
 }
 
+type FileState struct {
+	Fd    uint
+	Ino   uint64
+	Flags uint32
+	Mode  uint32
+	Size  uint64
+	Pos   uint64
+
+	// save the path for openat, fstat, etc.
+	Path string
+	// symbolic file only
+	Target string
+	// dir only
+	DirPos int
+	Locked bool
+}
+
+type ClientState struct {
+	Cwd   string // current working directory
+	Files []FileState
+}
+
 /*
  * Client operations
  */
 
 //export cfs_new_client
-func cfs_new_client(conf *C.cfs_config_t) C.int64_t {
-	c := newClient(conf)
+func cfs_new_client(conf *C.cfs_config_t, configPath, str *C.char) C.int64_t {
+	c := newClient(conf, C.GoString(configPath))
+	syslog.Printf("clientState in cfs_new_client: %d\n", len(C.GoString(str)))
 	if err := c.start(); err != nil {
 		return C.int64_t(statusEIO)
+	}
+	if C.GoString(str) != "" {
+		var clientState ClientState
+		err := json.Unmarshal([]byte(C.GoString(str)), &clientState)
+		if err == nil {
+			rebuild_client_state(c, &clientState)
+		} else {
+			syslog.Printf("Unmarshal clientState err(%v), clientState(%s)\n", err, C.GoString(str))
+			return C.int64_t(statusEIO)
+		}
 	}
 	putClient(c.id, c)
 	return C.int64_t(c.id)
@@ -519,9 +625,22 @@ func cfs_close_client(id C.int64_t) {
 	if c, exist := getClient(int64(id)); exist {
 		removeClient(int64(id))
 		c.stop()
-
 	}
-	log.LogFlush()
+}
+
+//export cfs_sdk_close
+func cfs_sdk_close() {
+	for id, c := range gClientManager.clients {
+		removeClient(id)
+		c.stop()
+	}
+	close(gClientManager.stopC)
+	gClientManager.wg.Wait()
+	gClientManager = nil
+	ump.StopUmp()
+	log.LogClose()
+	exporter.Stop()
+	free_globals()
 	runtime.GC()
 }
 
@@ -540,6 +659,62 @@ func cfs_statfs(id C.int64_t, stat *C.cfs_statfs_t) (re C.int) {
 //export cfs_flush_log
 func cfs_flush_log() {
 	log.LogFlush()
+}
+
+//export cfs_client_state
+func cfs_client_state(id C.int64_t, buf unsafe.Pointer, size C.size_t) C.size_t {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return 0
+	}
+	if c.clientState != "" {
+		if int(size) < len(c.clientState)+1 {
+			return C.size_t(len(c.clientState) + 1)
+		}
+		var buffer []byte
+		hdr := (*reflect.SliceHeader)(unsafe.Pointer(&buffer))
+		hdr.Data = uintptr(buf)
+		hdr.Len = len(c.clientState) + 1
+		hdr.Cap = len(c.clientState) + 1
+		copy(buffer, c.clientState)
+		copy(buffer[len(c.clientState):], "\000")
+		c.clientState = ""
+		return 0
+	}
+	c.fdlock.Lock()
+	fdmap := c.fdmap
+	c.fdlock.Unlock()
+	files := make([]FileState, 0, len(fdmap))
+	for _, v := range fdmap {
+		var f FileState
+		f.Fd = v.fd
+		f.Ino = v.ino
+		f.Flags = v.flags
+		f.Mode = v.mode
+		f.Size = v.size
+		f.Pos = v.pos
+		f.Path = v.path
+		f.Target = string(v.target)
+		f.Locked = v.locked
+		if v.dirp != nil {
+			f.DirPos = v.dirp.pos
+		} else {
+			f.DirPos = -1
+		}
+		files = append(files, f)
+	}
+
+	str, err := json.Marshal(ClientState{c.cwd, files})
+	if err != nil {
+		log.LogErrorf("Marshal clientState err(%v), files(%v)\n", err, files)
+	}
+	c.clientState = string(str)
+	log.LogDebugf("cfs client state: %s\n", c.clientState)
+	return C.size_t(len(str) + 1)
+}
+
+func free_globals() {
+	data.Fini()
 }
 
 /*
@@ -668,6 +843,7 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 	f.size = info.Size
 	f.path = absPath
 
+	// if you rewrite here, please modify rebuild_client_state together
 	if proto.IsRegular(info.Mode) {
 		var appendWriteBuffer bool
 		var readAhead bool
@@ -2727,8 +2903,10 @@ func cfs_fcntl_lock(id C.int64_t, fd C.int, cmd C.int, lk *C.struct_flock) C.int
 	if (cmd == C.F_SETLK || cmd == C.F_SETLKW) && lk.l_whence == C.SEEK_SET && lk.l_start == 0 && lk.l_len == 0 {
 		if lk.l_type == C.F_WRLCK {
 			f.mu.Lock()
+			f.locked = true
 		} else if lk.l_type == C.F_UNLCK {
 			f.mu.Unlock()
+			f.locked = false
 		} else {
 			return statusEINVAL
 		}
@@ -3240,9 +3418,15 @@ func (c *client) start() (err error) {
 		err = nil
 	}
 	if err != nil {
-		fmt.Println(err)
+		syslog.Println(err)
 		return
 	}
+
+	defer func() {
+		if err != nil {
+			mc.ClientAPI().ReleaseVolMutex(c.volName)
+		}
+	}()
 
 	var mw *meta.MetaWrapper
 	if mw, err = meta.NewMetaWrapper(&meta.MetaConfig{
@@ -3252,7 +3436,7 @@ func (c *client) start() (err error) {
 		Owner:         c.owner,
 		InfiniteRetry: true,
 	}); err != nil {
-		fmt.Println(err)
+		syslog.Println(err)
 		return
 	}
 
@@ -3269,7 +3453,7 @@ func (c *client) start() (err error) {
 		MetaWrapper:       mw,
 		ExtentMerge:       isMysql(),
 	}); err != nil {
-		fmt.Println(err)
+		syslog.Println(err)
 		return
 	}
 
@@ -3279,7 +3463,7 @@ func (c *client) start() (err error) {
 
 	// metric
 	if err = ump.InitUmp(moduleName, "jdos_chubaofs-node"); err != nil {
-		fmt.Println(err)
+		syslog.Println(err)
 		return
 	}
 	c.initUmpKeys()
@@ -3303,6 +3487,8 @@ func (c *client) stop() {
 		if c.mw != nil {
 			_ = c.mw.Close()
 		}
+
+		c.inodeCache.Stop()
 	})
 }
 
@@ -3572,3 +3758,28 @@ func isMysql() bool {
 }
 
 func main() {}
+
+//export InitModule
+func InitModule(initTask unsafe.Pointer) {
+	pluginpath, _, errstr := lastmoduleinit()
+	doInit(initTask)
+	if errstr != "" {
+		syslog.Printf("module init res, pluginpath: %s, err: %s\n", pluginpath, errstr)
+	}
+}
+
+//export FinishModule
+func FinishModule(finiTask unsafe.Pointer) {
+	doFini(finiTask)
+	runtime.RemoveLastModuleitabs()
+	runtime.RemoveLastModule()
+}
+
+//go:linkname doInit runtime.doInit
+func doInit(t unsafe.Pointer) // t should be a *runtime.initTask
+
+//go:linkname doFini runtime.doFini
+func doFini(t unsafe.Pointer) // t should be a *runtime.finiTask
+
+//go:linkname lastmoduleinit plugin.lastmoduleinit
+func lastmoduleinit() (pluginpath string, syms map[string]interface{}, errstr string)

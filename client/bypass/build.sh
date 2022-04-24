@@ -52,9 +52,10 @@ echo "using goflag=\"${goflag}\""
 echo "using gccflag=\"${gccflag}\""
 if [[ ${build_sdk} -eq 1 ]]; then
     echo "building sdk (libcfssdk.so) ..."
-    go build -ldflags "${goflag} -X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}' -X 'main.Debug=${Debug}'" -buildmode=c-shared -o ${dir}/libcfssdk.so ${dir}/*.go
+    go build -ldflags "${goflag} -E main.main -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}' -X 'main.Debug=${Debug}'" -buildmode=plugin -linkshared -o ${dir}/libcfssdk.so ${dir}/sdk.go ${dir}/http.go ${dir}/ump.go
+    go build -buildmode=plugin -linkshared -o libempty.so  empty.go
 fi
 if [[ ${build_client} -eq 1 ]]; then
     echo "building client (libcfsclient.so) ..."
-    gcc -std=c99 ${gccflag} -fPIC -shared -o ${dir}/libcfsclient.so ${dir}/client.c ${dir}/ini.c -ldl -L${dir} -lcfssdk
+    gcc -std=c99 ${gccflag} -DCommitID=\"${CommitID}\" -fPIC -shared -o ${dir}/libcfsclient.so ${dir}/client.c ${dir}/ini.c -ldl -lpthread
 fi

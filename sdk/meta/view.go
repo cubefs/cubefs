@@ -37,14 +37,14 @@ const (
 )
 
 type VolumeView struct {
-	Name            	string
-	Owner           	string
-	MetaPartitions  	[]*MetaPartition
-	OSSSecure       	*OSSSecure
-	OSSBucketPolicy 	proto.BucketAccessPolicy
-	CreateTime      	int64
-	CrossRegionHAType	proto.CrossRegionHAType
-	ConnConfig			*proto.ConnConfig
+	Name              string
+	Owner             string
+	MetaPartitions    []*MetaPartition
+	OSSSecure         *OSSSecure
+	OSSBucketPolicy   proto.BucketAccessPolicy
+	CreateTime        int64
+	CrossRegionHAType proto.CrossRegionHAType
+	ConnConfig        *proto.ConnConfig
 }
 
 type OSSSecure struct {
@@ -89,14 +89,14 @@ func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 	}
 	var convert = func(volView *proto.VolView) *VolumeView {
 		result := &VolumeView{
-			Name:            	volView.Name,
-			Owner:           	volView.Owner,
-			MetaPartitions:  	make([]*MetaPartition, len(volView.MetaPartitions)),
-			OSSSecure:       	&OSSSecure{},
-			OSSBucketPolicy: 	volView.OSSBucketPolicy,
-			CreateTime:      	volView.CreateTime,
-			CrossRegionHAType: 	volView.CrossRegionHAType,
-			ConnConfig: 		volView.ConnConfig,
+			Name:              volView.Name,
+			Owner:             volView.Owner,
+			MetaPartitions:    make([]*MetaPartition, len(volView.MetaPartitions)),
+			OSSSecure:         &OSSSecure{},
+			OSSBucketPolicy:   volView.OSSBucketPolicy,
+			CreateTime:        volView.CreateTime,
+			CrossRegionHAType: volView.CrossRegionHAType,
+			ConnConfig:        volView.ConnConfig,
 		}
 		if volView.OSSSecure != nil {
 			result.OSSSecure.AccessKey = volView.OSSSecure.AccessKey
@@ -195,7 +195,7 @@ func (mw *MetaWrapper) updateMetaPartitionsWithNoCache() error {
 			Start:       view.Start,
 			End:         view.End,
 			Members:     view.Members,
-			Learners: 	 view.Learners,
+			Learners:    view.Learners,
 			LeaderAddr:  view.LeaderAddr,
 			Status:      view.Status,
 		}
@@ -242,6 +242,7 @@ func (mw *MetaWrapper) triggerForceUpdate() {
 }
 
 func (mw *MetaWrapper) refresh() {
+	defer mw.wg.Done()
 	for {
 		err := mw.refreshWithRecover()
 		if err == nil {
@@ -268,6 +269,8 @@ func (mw *MetaWrapper) refreshWithRecover() (panicErr error) {
 
 	for {
 		select {
+		case <-mw.closeCh:
+			return
 		case <-t.C:
 			if err = mw.updateMetaPartitions(); err != nil {
 				mw.onAsyncTaskError.OnError(err)
@@ -289,8 +292,6 @@ func (mw *MetaWrapper) refreshWithRecover() (panicErr error) {
 			mw.partMutex.Unlock()
 			mw.partCond.Broadcast()
 			log.LogInfof("End forceUpdateMetaPartitions: err(%v)", err)
-		case <-mw.closeCh:
-			return
 		}
 	}
 }

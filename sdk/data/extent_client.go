@@ -17,6 +17,7 @@ package data
 import (
 	"context"
 	"fmt"
+	syslog "log"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -56,8 +57,6 @@ var (
 	releaseRequestPool *sync.Pool
 	truncRequestPool   *sync.Pool
 	evictRequestPool   *sync.Pool
-
-	configStopC = make(chan struct{}, 0)
 )
 
 func init() {
@@ -131,6 +130,9 @@ type ExtentClient struct {
 	extentSize int
 	autoFlush  bool
 
+	stopC chan struct{}
+	wg    sync.WaitGroup
+
 	extentMerge        bool
 	extentMergeIno     []uint64
 	extentMergeChan    chan struct{}
@@ -193,6 +195,7 @@ retry:
 	client.readLimiter = rate.NewLimiter(readLimit, defaultReadLimitBurst)
 	client.writeLimiter = rate.NewLimiter(writeLimit, defaultWriteLimitBurst)
 	client.masterClient = masterSDK.NewMasterClient(config.Masters, false)
+	client.wg.Add(1)
 	go client.startUpdateConfig()
 
 	client.alignSize = config.AlignSize
@@ -203,10 +206,12 @@ retry:
 	}
 	client.maxExtentNumPerAlignArea = config.MaxExtentNumPerAlignArea
 	client.forceAlignMerge = config.ForceAlignMerge
+	client.stopC = make(chan struct{})
 
 	client.extentMerge = config.ExtentMerge
 	if client.extentMerge {
 		client.extentMergeChan = make(chan struct{})
+		client.wg.Add(1)
 		go client.BackgroundExtentMerge()
 	}
 	return
@@ -249,6 +254,17 @@ func (client *ExtentClient) CloseStream(ctx context.Context, inode uint64) error
 	return s.IssueReleaseRequest(ctx)
 }
 
+func (client *ExtentClient) MustCloseStream(ctx context.Context, inode uint64) error {
+	streamerMapSeg := client.streamerConcurrentMap.GetMapSegment(inode)
+	streamerMapSeg.Lock()
+	s, ok := streamerMapSeg.streamers[inode]
+	if !ok {
+		streamerMapSeg.Unlock()
+		return nil
+	}
+	return s.IssueMustReleaseRequest(ctx)
+}
+
 // Evict request shall grab the lock until request is sent to the request channel
 func (client *ExtentClient) EvictStream(ctx context.Context, inode uint64) error {
 	streamerMapSeg := client.streamerConcurrentMap.GetMapSegment(inode)
@@ -264,6 +280,7 @@ func (client *ExtentClient) EvictStream(ctx context.Context, inode uint64) error
 	}
 
 	s.done <- struct{}{}
+	s.wg.Wait()
 	return nil
 }
 
@@ -460,6 +477,7 @@ func setRate(lim *rate.Limiter, val int) string {
 }
 
 func (client *ExtentClient) startUpdateConfig() {
+	defer client.wg.Done()
 	for {
 		err := client.startUpdateConfigWithRecover()
 		if err == nil {
@@ -482,16 +500,12 @@ func (client *ExtentClient) startUpdateConfigWithRecover() (err error) {
 	defer ticker.Stop()
 	for {
 		select {
-		case <-configStopC:
+		case <-client.stopC:
 			return
 		case <-ticker.C:
 			client.updateConfig()
 		}
 	}
-}
-
-func (client *ExtentClient) stopUpdateConfig() {
-	configStopC <- struct{}{}
 }
 
 func (client *ExtentClient) updateConfig() {
@@ -541,13 +555,19 @@ func (client *ExtentClient) updateConfig() {
 }
 
 func (client *ExtentClient) Close(ctx context.Context) error {
+	close(client.stopC)
+	client.wg.Wait()
+	client.dataWrapper.Stop()
 	// release streamers
 	inodes := client.streamerConcurrentMap.Keys()
 	for _, inode := range inodes {
+		_ = client.Flush(ctx, inode)
+		_ = client.MustCloseStream(ctx, inode)
 		_ = client.EvictStream(ctx, inode)
 	}
-	client.dataWrapper.Stop()
-	client.stopUpdateConfig()
+	syslog.Printf("streamer count after data close: %d\n", client.streamerConcurrentMap.Length())
+	StreamConnPool.Close()
+	StreamConnPool = nil
 	return nil
 }
 
@@ -593,9 +613,12 @@ func (c *ExtentClient) SetExtentSize(size int) {
 }
 
 func (c *ExtentClient) BackgroundExtentMerge() {
+	defer c.wg.Done()
 	ctx := context.Background()
 	for {
 		select {
+		case <-c.stopC:
+			return
 		case <-c.extentMergeChan:
 			inodes := c.extentMergeIno
 			if len(inodes) == 1 && inodes[0] == 0 {
@@ -630,4 +653,12 @@ func (c *ExtentClient) lookupAllInode(parent uint64) (inodes []uint64) {
 		}
 	}
 	return
+}
+func Fini() {
+	openRequestPool = nil
+	writeRequestPool = nil
+	flushRequestPool = nil
+	releaseRequestPool = nil
+	truncRequestPool = nil
+	evictRequestPool = nil
 }

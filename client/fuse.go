@@ -20,10 +20,9 @@ package main
 // Default mountpoint is specified in fuse.json, which is "/mnt".
 
 import (
-	"bytes"
-	"flag"
+	"context"
+	"encoding/json"
 	"fmt"
-
 	syslog "log"
 	"net/http"
 	_ "net/http/pprof"
@@ -35,6 +34,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 
 	"bazil.org/fuse"
@@ -52,7 +52,6 @@ import (
 
 	"github.com/chubaofs/chubaofs/util/ump"
 	"github.com/chubaofs/chubaofs/util/version"
-	"github.com/jacobsa/daemonize"
 )
 
 const (
@@ -83,45 +82,46 @@ var (
 	BuildTime  string
 )
 
-var (
-	configFile       = flag.String("c", "", "FUSE client config file")
-	configVersion    = flag.Bool("v", false, "show version")
-	configForeground = flag.Bool("f", false, "run foreground")
-)
+type client struct {
+	stopC       chan struct{}
+	super       *cfs.Super
+	wg          sync.WaitGroup
+	fuseServer  *fs.Server
+	fsConn      *fuse.Conn
+	clientState []byte
+	outputFile  *os.File
+	volName     string
+	readonly    bool
+	mc          *master.MasterClient
+	stderrFd    int
+}
 
 var GlobalMountOptions []proto.MountOption
+var gClient *client
 
 func init() {
+	// add GODEBUG=madvdontneed=1 environ, to make sysUnused uses madvise(MADV_DONTNEED) to signal the kernel that a
+	// range of allocated memory contains unneeded data.
+	os.Setenv("GODEBUG", "madvdontneed=1")
 	GlobalMountOptions = proto.NewMountOptions()
 	proto.InitMountOptions(GlobalMountOptions)
 }
 
-func main() {
-	flag.Parse()
-
-	if *configVersion {
-		fmt.Print(proto.DumpVersion(Role, BranchName, CommitID, BuildTime))
-		os.Exit(0)
-	}
-
-	if !*configForeground {
-		if err := startDaemon(); err != nil {
-			fmt.Printf("Mount failed.\n%s\n", err)
-			os.Exit(1)
-		}
-		os.Exit(0)
-	}
+func StartClient(configFile string, fuseFd *os.File, clientState []byte) error {
 
 	/*
 	 * We are in daemon from here.
 	 * Must notify the parent process through SignalOutcome anyway.
 	 */
-
-	cfg, _ := config.LoadConfigFile(*configFile)
+	cfg, _ := config.LoadConfigFile(configFile)
 	opt, err := parseMountOption(cfg)
 	if err != nil {
-		daemonize.SignalOutcome(err)
-		os.Exit(1)
+		return err
+	}
+	gClient = &client{
+		stopC:   make(chan struct{}),
+		volName: opt.Volname,
+		mc:      master.NewMasterClientFromString(opt.Master, false),
 	}
 
 	if opt.MaxCPUs > 0 {
@@ -130,27 +130,33 @@ func main() {
 		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
 
-	//Init tracing
-
 	level := parseLogLevel(opt.Loglvl)
 	_, err = log.InitLog(opt.Logpath, opt.Volname, level, log.NewClientLogRotate())
 	if err != nil {
-		daemonize.SignalOutcome(err)
-		os.Exit(1)
+		return err
 	}
-	defer log.LogFlush()
 
 	outputFilePath := path.Join(opt.Logpath, opt.Volname, LoggerOutput)
 	outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
 	if err != nil {
-		daemonize.SignalOutcome(err)
-		os.Exit(1)
+		return err
 	}
 	defer func() {
-		outputFile.Sync()
-		outputFile.Close()
+		if err != nil {
+			syslog.Printf("start kernel bypass client failed: err(%v)\n", err)
+			outputFile.Sync()
+			outputFile.Close()
+		}
 	}()
-	syslog.SetOutput(outputFile)
+	gClient.outputFile = outputFile
+
+	gClient.stderrFd, err = syscall.Dup(int(os.Stderr.Fd()))
+	if err != nil {
+		return err
+	}
+	if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
+		return err
+	}
 
 	syslog.Println(dumpVersion())
 	syslog.Println("*** Final Mount Options ***")
@@ -161,127 +167,109 @@ func main() {
 
 	changeRlimit(defaultRlimit)
 
-	if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
-		daemonize.SignalOutcome(err)
-		os.Exit(1)
-	}
-
-	registerInterceptedSignal(opt)
+	registerInterceptedSignal()
 
 	if err = checkPermission(opt); err != nil {
 		syslog.Println("check permission failed: ", err)
 		log.LogFlush()
-		_ = daemonize.SignalOutcome(err)
-		os.Exit(1)
+		return err
 	}
+	gClient.readonly = opt.Rdonly
 
 	// check volume mutex is whether open, if true, apply volume mutex
-	if err = checkVolWriteMutex(opt); err != nil {
+	if err = checkVolWriteMutex(); err != nil {
 		syslog.Println("check volume mutex permission failed: ", err)
 		log.LogFlush()
-		_ = daemonize.SignalOutcome(err)
-		os.Exit(1)
+		return err
 	}
-	defer releaseVolWriteMutex(opt)
+	defer func() {
+		if err != nil {
+			releaseVolWriteMutex()
+		}
+	}()
 
-	fsConn, super, err := mount(opt)
+	fsConn, err := mount(opt, fuseFd, clientState)
 	if err != nil {
 		syslog.Println("mount failed: ", err)
 		log.LogFlush()
-		_ = daemonize.SignalOutcome(err)
-		os.Exit(1)
-	} else {
-		_ = daemonize.SignalOutcome(nil)
+		return err
 	}
-	defer fsConn.Close()
+	gClient.fsConn = fsConn
 
-	exporter.Init(super.ClusterName(), ModuleName, cfg)
+	exporter.Init(gClient.super.ClusterName(), ModuleName, cfg)
 	exporter.RegistConsul(cfg)
 
 	// report client version
 	var masters = strings.Split(opt.Master, meta.HostsSeparator)
 	versionInfo := proto.DumpVersion(ModuleName, BranchName, CommitID, BuildTime)
-	go version.ReportVersionSchedule(cfg, masters, versionInfo)
-
-	if err = fs.Serve(fsConn, super); err != nil {
-		log.LogFlush()
-		syslog.Printf("fs Serve returns err(%v)", err)
-		os.Exit(1)
-	}
+	gClient.wg.Add(2)
+	go version.ReportVersionSchedule(cfg, masters, versionInfo, gClient.stopC, &gClient.wg)
+	go func() {
+		defer gClient.wg.Done()
+		gClient.fuseServer = fs.New(fsConn, nil)
+		if gClient.clientState, err = gClient.fuseServer.Serve(gClient.super, clientState); err != nil {
+			log.LogFlush()
+			syslog.Printf("fs Serve returns err(%v)", err)
+			os.Exit(1)
+		}
+		if gClient.clientState == nil {
+			log.LogFlush()
+			os.Exit(0)
+		}
+	}()
 
 	<-fsConn.Ready
 	if fsConn.MountError != nil {
 		log.LogFlush()
-		syslog.Printf("fs Serve returns err(%v)\n", err)
-		os.Exit(1)
+		syslog.Printf("fs Serve returns err(%v)\n", fsConn.MountError)
+		return fsConn.MountError
 	}
+	return nil
 }
 
 func dumpVersion() string {
 	return fmt.Sprintf("ChubaoFS Client\nBranch: %s\nCommit: %s\nBuild: %s %s %s %s\n", BranchName, CommitID, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime)
 }
 
-func startDaemon() error {
-	cmdPath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("startDaemon failed: cannot get absolute command path, err(%v)", err)
+func GetVersionHandleFunc(w http.ResponseWriter, r *http.Request) {
+	var resp = struct {
+		Branch string
+		Commit string
+		Build  string
+	}{
+		Branch: BranchName,
+		Commit: CommitID,
+		Build:  fmt.Sprintf("%s %s %s %s", runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime),
 	}
-
-	if len(os.Args) <= 1 {
-		return fmt.Errorf("startDaemon failed: cannot use null arguments")
-	}
-
-	args := []string{"-f"}
-	args = append(args, os.Args[1:]...)
-
-	if *configFile != "" {
-		configPath, err := filepath.Abs(*configFile)
-		if err != nil {
-			return fmt.Errorf("startDaemon failed: cannot get absolute command path of config file(%v) , err(%v)", *configFile, err)
-		}
-		for i := 0; i < len(args); i++ {
-			if args[i] == "-c" {
-				// Since *configFile is not "", the (i+1)th argument must be the config file path
-				args[i+1] = configPath
-				break
-			}
-		}
-	}
-
-	env := os.Environ()
-
-	// add GODEBUG=madvdontneed=1 environ, to make sysUnused uses madvise(MADV_DONTNEED) to signal the kernel that a
-	// range of allocated memory contains unneeded data.
-	env = append(env, "GODEBUG=madvdontneed=1")
-	buf := new(bytes.Buffer)
-	err = daemonize.Run(cmdPath, args, env, buf)
-	if err != nil {
-		if buf.Len() > 0 {
-			fmt.Println(buf.String())
-		}
-		return fmt.Errorf("startDaemon failed.\ncmd(%v)\nargs(%v)\nerr(%v)\n", cmdPath, args, err)
-	}
-
-	return nil
+	var encoded []byte
+	encoded, _ = json.Marshal(&resp)
+	w.Write(encoded)
+	return
 }
 
-func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err error) {
-	super, err = cfs.NewSuper(opt)
+func mount(opt *proto.MountOptions, fuseFd *os.File, clientState []byte) (fsConn *fuse.Conn, err error) {
+	super, err := cfs.NewSuper(opt)
 	if err != nil {
 		log.LogError(errors.Stack(err))
 		return
 	}
 
+	gClient.super = super
 	http.HandleFunc(ControlCommandSetRate, super.SetRate)
 	http.HandleFunc(ControlCommandGetRate, super.GetRate)
 	http.HandleFunc(ControlCommandGetOpRate, super.GetOpRate)
 	http.HandleFunc(ControlCommandFreeOSMemory, freeOSMemory)
 	http.HandleFunc(log.GetLogPath, log.GetLog)
+	http.HandleFunc("/version", GetVersionHandleFunc)
+	var server *http.Server
 
+	gClient.wg.Add(2)
 	go func() {
+		defer gClient.wg.Done()
 		if opt.Profport != "" {
 			syslog.Println("Start pprof with port:", opt.Profport)
-			if err := http.ListenAndServe(":"+opt.Profport, nil); err == nil {
+			server = &http.Server{Addr: fmt.Sprintf(":%v", opt.Profport)}
+			if err := server.ListenAndServe(); err == nil || err == http.ErrServerClosed {
 				return
 			}
 		}
@@ -291,12 +279,19 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 
 		for port := log.DefaultProfPort; port <= log.MaxProfPort; port++ {
 			syslog.Println("Start pprof with port:", port)
-			if err := http.ListenAndServe(":"+strconv.Itoa(port), nil); err != nil {
+			server = &http.Server{Addr: fmt.Sprintf(":%v", strconv.Itoa(port))}
+			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				syslog.Println("Start pprof err: ", err)
 				continue
 			}
 			break
 		}
+	}()
+
+	go func() {
+		defer gClient.wg.Done()
+		<-gClient.stopC
+		server.Shutdown(context.Background())
 	}()
 
 	if err = ump.InitUmp(fmt.Sprintf("%v_%v_%v", super.ClusterName(), super.VolName(), ModuleName), "jdos_chubaofs_node"); err != nil {
@@ -324,19 +319,25 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 		options = append(options, fuse.PosixACL())
 	}
 
-	fsConn, err = fuse.Mount(opt.MountPoint, options...)
+	fsConn, err = fuse.Mount(opt.MountPoint, fuseFd, options...)
 	return
 }
 
-func registerInterceptedSignal(opt *proto.MountOptions) {
+func registerInterceptedSignal() {
 	sigC := make(chan os.Signal, 1)
 	signal.Notify(sigC, syscall.SIGINT, syscall.SIGTERM)
+	gClient.wg.Add(1)
 	go func() {
-		sig := <-sigC
-		syslog.Printf("Killed due to a received signal (%v)\n", sig)
-		// release volume write mutex
-		releaseVolWriteMutex(opt)
-		os.Exit(1)
+		defer gClient.wg.Done()
+		select {
+		case <-gClient.stopC:
+			return
+		case sig := <-sigC:
+			syslog.Printf("Killed due to a received signal (%v)\n", sig)
+			// release volume write mutex
+			releaseVolWriteMutex()
+			os.Exit(1)
+		}
 	}()
 }
 
@@ -407,17 +408,15 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 }
 
 func checkPermission(opt *proto.MountOptions) (err error) {
-	var mc = master.NewMasterClientFromString(opt.Master, false)
-
 	// Check token permission
 	var info *proto.VolStatInfo
-	if info, err = mc.ClientAPI().GetVolumeStat(opt.Volname); err != nil {
+	if info, err = gClient.mc.ClientAPI().GetVolumeStat(opt.Volname); err != nil {
 		err = errors.Trace(err, "Get volume stat failed, check your masterAddr!")
 		return
 	}
 	if info.EnableToken {
 		var token *proto.Token
-		if token, err = mc.ClientAPI().GetToken(opt.Volname, opt.TokenKey); err != nil {
+		if token, err = gClient.mc.ClientAPI().GetToken(opt.Volname, opt.TokenKey); err != nil {
 			log.LogWarnf("checkPermission: get token type failed: volume(%v) tokenKey(%v) err(%v)",
 				opt.Volname, opt.TokenKey, err)
 			return
@@ -429,7 +428,7 @@ func checkPermission(opt *proto.MountOptions) (err error) {
 	// Check user access policy is enabled
 	if opt.AccessKey != "" {
 		var userInfo *proto.UserInfo
-		if userInfo, err = mc.UserAPI().GetAKInfo(opt.AccessKey); err != nil {
+		if userInfo, err = gClient.mc.UserAPI().GetAKInfo(opt.AccessKey); err != nil {
 			return
 		}
 		if userInfo.SecretKey != opt.SecretKey {
@@ -455,24 +454,22 @@ func checkPermission(opt *proto.MountOptions) (err error) {
 	return
 }
 
-func checkVolWriteMutex(opt *proto.MountOptions) (err error) {
-	if opt.Rdonly {
+func checkVolWriteMutex() (err error) {
+	if gClient.readonly {
 		return
 	}
-	var mc = master.NewMasterClientFromString(opt.Master, false)
-	err = mc.ClientAPI().ApplyVolMutex(opt.Volname)
+	err = gClient.mc.ClientAPI().ApplyVolMutex(gClient.volName)
 	if err == nil || err == proto.ErrVolWriteMutexUnable {
 		return nil
 	}
 	return
 }
 
-func releaseVolWriteMutex(opt *proto.MountOptions) (err error) {
-	if opt.Rdonly {
+func releaseVolWriteMutex() (err error) {
+	if gClient.readonly {
 		return
 	}
-	var mc = master.NewMasterClientFromString(opt.Master, false)
-	err = mc.ClientAPI().ReleaseVolMutex(opt.Volname)
+	err = gClient.mc.ClientAPI().ReleaseVolMutex(gClient.volName)
 	if err == nil || err == proto.ErrVolWriteMutexUnable {
 		return nil
 	}
@@ -509,3 +506,35 @@ func changeRlimit(val uint64) {
 func freeOSMemory(w http.ResponseWriter, r *http.Request) {
 	debug.FreeOSMemory()
 }
+
+func GetFuseFd() *os.File {
+	return gClient.fsConn.Fusefd()
+}
+
+func GetClientState() []byte {
+	return gClient.clientState
+}
+
+func StopClient() (clientState []byte) {
+	gClient.fuseServer.Stop()
+	clientState = gClient.clientState
+	close(gClient.stopC)
+	gClient.wg.Wait()
+
+	releaseVolWriteMutex()
+	gClient.super.Close()
+
+	sysutil.RedirectFD(gClient.stderrFd, int(os.Stderr.Fd()))
+	gClient.outputFile.Sync()
+	gClient.outputFile.Close()
+
+	ump.StopUmp()
+	log.LogClose()
+	exporter.Stop()
+	gClient = nil
+
+	runtime.GC()
+	return
+}
+
+func main() {}

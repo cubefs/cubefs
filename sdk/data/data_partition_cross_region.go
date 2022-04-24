@@ -73,8 +73,8 @@ func (crossRegionMetrics *CrossRegionMetrics) String() string {
 
 func NewCrossRegionMetrics() *CrossRegionMetrics {
 	return &CrossRegionMetrics{
-		CrossRegionHosts:	make(map[RegionRankType][]string, 0),
-		HostErrCounter: 	make(map[string]int, 0),
+		CrossRegionHosts: make(map[RegionRankType][]string, 0),
+		HostErrCounter:   make(map[string]int, 0),
 	}
 }
 
@@ -99,6 +99,7 @@ func (w *Wrapper) refreshCrossRegionHostStatus(pingHosts []string) {
 }
 
 func (w *Wrapper) updateCrossRegionHostStatus() {
+	defer w.wg.Done()
 	w.getAllCrossRegionHostStatus()
 	for {
 		err := w.updateCrossRegionHostStatusWithRecover()
@@ -120,16 +121,18 @@ func (w *Wrapper) updateCrossRegionHostStatusWithRecover() (err error) {
 	}()
 
 	pingTicker := time.NewTicker(time.Minute)
+	defer pingTicker.Stop()
 	refreshTicker := time.NewTicker(24 * time.Hour)
+	defer refreshTicker.Stop()
 
 	for {
 		select {
+		case <-w.stopC:
+			return
 		case <-pingTicker.C:
 			w.getUnknownCrossRegionHostStatus()
 		case <-refreshTicker.C:
 			w.getAllCrossRegionHostStatus()
-		case <-w.stopC:
-			return
 		}
 	}
 }

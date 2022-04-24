@@ -83,6 +83,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 			select {
 			case <-stopC:
 				timer.Stop()
+				timerCursor.Stop()
 				return
 
 			case <-readyChan:
