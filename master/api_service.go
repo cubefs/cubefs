@@ -1124,7 +1124,7 @@ func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rstMsg = fmt.Sprintf("decommission data node [%v] limit %d successfully", offLineAddr, limit)
+	rstMsg = fmt.Sprintf("decommission data node [%v] limit %d submited!need check status later!", offLineAddr, limit)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
@@ -1169,7 +1169,7 @@ func (m *Server) migrateDataNodeHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	rstMsg := fmt.Sprintf("migrateDataNodeHandler from src [%v] to target[%v] has migrate successfully", srcAddr, targetAddr)
+	rstMsg := fmt.Sprintf("migrateDataNodeHandler from src [%v] to target[%v] has submited and run in asyn ways,need check laster!", srcAddr, targetAddr)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
