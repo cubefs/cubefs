@@ -22,10 +22,10 @@ import (
 	"io"
 	"math/rand"
 	"net"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
-
-	"github.com/chubaofs/chubaofs/repl"
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
@@ -38,12 +38,16 @@ type Packet struct {
 	errCount int
 }
 
+func EncodeReplPacketArg(followers []string, quorum int) []byte {
+	return []byte(strings.Join(followers, "/") + "/" + strconv.Itoa(quorum))
+}
+
 func (p *Packet) SetupReplArg(allHost []string, quorum int) {
 	var followers []string
 	if len(allHost) > 1 {
 		followers = allHost[1:]
 	}
-	p.Arg = repl.EncodeReplPacketArg(followers, quorum)
+	p.Arg = EncodeReplPacketArg(followers, quorum)
 	p.ArgLen = uint32(len(p.Arg))
 }
 
