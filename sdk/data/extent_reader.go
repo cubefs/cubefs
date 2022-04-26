@@ -21,7 +21,6 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
-	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
@@ -120,7 +119,7 @@ func (er *ExtentReader) read(dp *DataPartition, reqPacket *Packet, req *ExtentRe
 	}
 	if err != nil {
 		log.LogWarnf("read error: err(%v), followerRead(%v)", err, followerRead)
-		return readBytes, errors.New(fmt.Sprintf("read error: followerRead(%v), err(%v)", followerRead, err))
+		return readBytes, err
 	}
 	return
 }

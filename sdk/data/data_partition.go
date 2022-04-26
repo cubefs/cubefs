@@ -79,9 +79,9 @@ func (dp *DataPartition) LocalMetricsRefresh() {
 	}
 
 	if dp.Metrics.WriteOpNum != 0 {
-		atomic.StoreInt64(&dp.Metrics.AvgWriteLatencyNano, (9*dp.GetAvgWrite() + dp.Metrics.SumWriteLatencyNano/dp.Metrics.WriteOpNum) / 10)
+		atomic.StoreInt64(&dp.Metrics.AvgWriteLatencyNano, (9*dp.GetAvgWrite()+dp.Metrics.SumWriteLatencyNano/dp.Metrics.WriteOpNum)/10)
 	} else {
-		atomic.StoreInt64(&dp.Metrics.AvgWriteLatencyNano, (9*dp.GetAvgWrite()) / 10)
+		atomic.StoreInt64(&dp.Metrics.AvgWriteLatencyNano, (9*dp.GetAvgWrite())/10)
 	}
 
 	dp.Metrics.SumReadLatencyNano = 0
@@ -113,9 +113,9 @@ func (dp *DataPartition) RemoteMetricsRefresh(newMetrics *proto.DataPartitionMet
 	defer dp.Metrics.Unlock()
 
 	if newMetrics != nil && newMetrics.WriteOpNum != 0 {
-		atomic.StoreInt64(&dp.Metrics.AvgWriteLatencyNano, (9*dp.GetAvgWrite() + newMetrics.SumWriteLatencyNano/newMetrics.WriteOpNum) / 10)
+		atomic.StoreInt64(&dp.Metrics.AvgWriteLatencyNano, (9*dp.GetAvgWrite()+newMetrics.SumWriteLatencyNano/newMetrics.WriteOpNum)/10)
 	} else {
-		atomic.StoreInt64(&dp.Metrics.AvgWriteLatencyNano, (9*dp.GetAvgWrite()) / 10)
+		atomic.StoreInt64(&dp.Metrics.AvgWriteLatencyNano, (9*dp.GetAvgWrite())/10)
 	}
 }
 
@@ -186,7 +186,7 @@ func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {
 				err  error
 			)
 			defer wg.Done()
-			if conn, err = util.DailTimeOut(addr, time.Duration(dp.ClientWrapper.connConfig.ConnectTimeoutNs) * time.Nanosecond); err != nil {
+			if conn, err = util.DailTimeOut(addr, time.Duration(dp.ClientWrapper.connConfig.ConnectTimeoutNs)*time.Nanosecond); err != nil {
 				log.LogWarnf("Dail to Host (%v) err(%v)", addr, err.Error())
 				if strings.Contains(err.Error(), syscall.ECONNREFUSED.Error()) {
 					lock.Lock()
@@ -295,7 +295,7 @@ func (dp *DataPartition) FollowerRead(reqPacket *Packet, req *ExtentRequest) (sc
 		log.LogWarnf("FollowerRead: errMap(%v), reqPacket(%v), try the next round", errMap, reqPacket)
 		time.Sleep(StreamSendSleepInterval)
 	}
-	err = errors.New(fmt.Sprintf("FollowerRead exit: retried %v times and still failed, sc(%v) reqPacket(%v) errMap(%v)", StreamSendReadMaxRetry, sc, reqPacket, errMap))
+	err = errors.New(fmt.Sprintf("FollowerRead: failed %v times, reqPacket(%v) errMap(%v)", StreamSendReadMaxRetry, reqPacket, errMap))
 	return
 }
 
@@ -434,7 +434,7 @@ func (dp *DataPartition) getEpochReadHost(hosts []string) (err error, addr strin
 	epoch := dp.Epoch
 	dp.Epoch += 1
 	for retry := 0; retry < len(hosts); retry++ {
-		addr = hosts[(epoch+uint64(retry)) % uint64(len(hosts))]
+		addr = hosts[(epoch+uint64(retry))%uint64(len(hosts))]
 		active, ok := hostsStatus[addr]
 		if ok && active {
 			return nil, addr

@@ -137,16 +137,24 @@ const (
 )
 
 const (
-	normalExtentSize       = 32 * 1024 * 1024
-	defaultBlkSize         = uint32(1) << 12
-	maxFdNum          uint = 1024000
-	redologPrefix          = "ib_logfile"
-	binlogPrefix           = "mysql-bin"
-	relayBinlogPrefix      = "relay-bin"
-	masterInfo             = "master.info"
-	relayLogInfo           = "relay-log.info"
-	appMysql8              = "mysql_8"
-	appCoralDB             = "coraldb"
+	normalExtentSize      = 32 * 1024 * 1024
+	defaultBlkSize        = uint32(1) << 12
+	maxFdNum         uint = 1024000
+
+	appMysql8  = "mysql_8"
+	appCoralDB = "coraldb"
+
+	fileBinlog       = "mysql-bin"
+	fileRedolog      = "ib_logfile"
+	fileRelaylog     = "relay-bin"
+	fileMasterInfo   = "master.info"
+	fileRelaylogInfo = "relay-log.info"
+
+	fileTypeBinlog       = 1
+	fileTypeRedolog      = 2
+	fileTypeRelaylog     = 3
+	fileTypeMasterInfo   = 4
+	fileTypeRelaylogInfo = 5
 
 	// cache
 	maxInodeCache         = 10000
@@ -304,17 +312,22 @@ func rebuild_client_state(c *client, clientState *ClientState) {
 			var readAhead bool
 			_, name := gopath.Split(f.path)
 			nameParts := strings.Split(name, ".")
-			if nameParts[0] == relayBinlogPrefix && len(nameParts) > 1 && len(nameParts[1]) > 0 && unicode.IsDigit(rune(nameParts[1][0])) {
+			if nameParts[0] == fileRelaylog && len(nameParts) > 1 && len(nameParts[1]) > 0 && unicode.IsDigit(rune(nameParts[1][0])) {
+				f.fileType = fileTypeRelaylog
 				appendWriteBuffer = true
 				readAhead = true
 			}
 			c.ec.OpenStream(f.ino, appendWriteBuffer, readAhead)
 			c.ec.RefreshExtentsCache(nil, f.ino)
 		}
-		if strings.Contains(f.path, "ib_logfile") {
-			f.logType = RedoLogType
-		} else if strings.Contains(f.path, "mysql-bin") {
-			f.logType = BinLogType
+		if strings.Contains(f.path, fileRedolog) {
+			f.fileType = fileTypeRedolog
+		} else if strings.Contains(f.path, fileBinlog) {
+			f.fileType = fileTypeBinlog
+		} else if strings.Contains(f.path, fileMasterInfo) {
+			f.fileType = fileTypeMasterInfo
+		} else if strings.Contains(f.path, fileRelaylogInfo) {
+			f.fileType = fileTypeRelaylogInfo
 		}
 		if v.Locked {
 			f.mu.Lock()
@@ -383,15 +396,10 @@ type file struct {
 	// dir only
 	dirp *dirStream
 	// for file write lock
-	mu      sync.RWMutex
-	locked  bool
-	logType uint8
+	mu       sync.RWMutex
+	locked   bool
+	fileType uint8
 }
-
-const (
-	BinLogType  = 1
-	RedoLogType = 2
-)
 
 type dirStream struct {
 	pos     int
@@ -845,7 +853,8 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 		var readAhead bool
 		_, name := gopath.Split(f.path)
 		nameParts := strings.Split(name, ".")
-		if nameParts[0] == relayBinlogPrefix && len(nameParts) > 1 && len(nameParts[1]) > 0 && unicode.IsDigit(rune(nameParts[1][0])) {
+		if nameParts[0] == fileRelaylog && len(nameParts) > 1 && len(nameParts[1]) > 0 && unicode.IsDigit(rune(nameParts[1][0])) {
+			f.fileType = fileTypeRelaylog
 			appendWriteBuffer = true
 			readAhead = true
 		}
@@ -867,10 +876,14 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 	}
 	f.size = info.Size
 	f.path = absPath
-	if strings.Contains(absPath, "ib_logfile") {
-		f.logType = RedoLogType
-	} else if strings.Contains(absPath, "mysql-bin") {
-		f.logType = BinLogType
+	if strings.Contains(absPath, fileRedolog) {
+		f.fileType = fileTypeRedolog
+	} else if strings.Contains(absPath, fileBinlog) {
+		f.fileType = fileTypeBinlog
+	} else if strings.Contains(f.path, fileMasterInfo) {
+		f.fileType = fileTypeMasterInfo
+	} else if strings.Contains(f.path, fileRelaylogInfo) {
+		f.fileType = fileTypeRelaylogInfo
 	}
 	return C.int(f.fd)
 }
@@ -1255,9 +1268,9 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 	}
 
 	act := ump_cfs_flush
-	if f.logType == RedoLogType {
+	if f.fileType == fileTypeRedolog {
 		act = ump_cfs_flush_redolog
-	} else if f.logType == BinLogType {
+	} else if f.fileType == fileTypeBinlog {
 		act = ump_cfs_flush_binlog
 	}
 	tpObject1 := ump.BeforeTP(c.umpFunctionKeyFast(act))
@@ -2975,12 +2988,14 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 	path = f.path
 	ino = f.ino
 
-	tpObject1 := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_read))
-	tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKeyFast(ump_cfs_read))
-	defer func() {
-		ump.AfterTPUs(tpObject1, nil)
-		ump.AfterTPUs(tpObject2, nil)
-	}()
+	if f.fileType != fileTypeRelaylog {
+		tpObject1 := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_read))
+		tpObject2 := ump.BeforeTP(c.umpFunctionGeneralKeyFast(ump_cfs_read))
+		defer func() {
+			ump.AfterTPUs(tpObject1, nil)
+			ump.AfterTPUs(tpObject2, nil)
+		}()
+	}
 
 	accFlags := f.flags & uint32(C.O_ACCMODE)
 	if accFlags == uint32(C.O_WRONLY) {
@@ -3138,14 +3153,14 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	//var ctx = tracer.Context()
 	overWriteBuffer := false
 	act := ump_cfs_write
-	if f.logType == BinLogType {
+	if f.fileType == fileTypeBinlog {
 		act = ump_cfs_write_binlog
-	} else if f.logType == RedoLogType {
+	} else if f.fileType == fileTypeRedolog {
 		act = ump_cfs_write_redolog
 		if c.app == appMysql8 || c.app == appCoralDB {
 			overWriteBuffer = true
 		}
-	} else if strings.Contains(f.path, masterInfo) || strings.Contains(f.path, relayLogInfo) {
+	} else if f.fileType == fileTypeMasterInfo || f.fileType == fileTypeRelaylogInfo {
 		overWriteBuffer = true
 	}
 	tpObject1 := ump.BeforeTP(c.umpFunctionKeyFast(act))

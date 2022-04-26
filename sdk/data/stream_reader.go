@@ -128,7 +128,9 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 		fileSize        int
 	)
 	ctx = context.Background()
-	s.client.readLimiter.Wait(ctx)
+	if s.client.readRate > 0 {
+		s.client.readLimiter.Wait(ctx)
+	}
 
 	requests, fileSize = s.extents.PrepareRequests(offset, size, data)
 	for _, req := range requests {
@@ -138,6 +140,9 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 
 		read, skipFlush := s.readFromCache(req)
 		total += read
+		if total == size {
+			return
+		}
 		if skipFlush {
 			break
 		}

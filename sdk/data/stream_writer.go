@@ -368,7 +368,9 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, dir
 		log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v)", s.inode, offset, size)
 	}
 	ctx = context.Background()
-	s.client.writeLimiter.Wait(ctx)
+	if s.client.writeRate > 0 {
+		s.client.writeLimiter.Wait(ctx)
+	}
 
 	requests, _ := s.extents.PrepareRequests(offset, size, data)
 	if log.IsDebugEnabled() {
@@ -603,21 +605,8 @@ func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool
 
 func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct bool) (total int, err error) {
 	var dp *DataPartition
-	err = s.flush(ctx)
-	if err != nil {
-		return
-	}
-
 	offset := req.FileOffset
 	size := req.Size
-
-	// the extent key needs to be updated because when preparing the requests,
-	// the obtained extent key could be a local key which can be inconsistent with the remote key.
-	req.ExtentKey = s.extents.Get(uint64(offset))
-	if req.ExtentKey == nil {
-		err = errors.New(fmt.Sprintf("doOverwrite: extent key not exist, ino(%v) fileOffset(%v)", s.inode, offset))
-		return
-	}
 	ekFileOffset := int(req.ExtentKey.FileOffset)
 	ekExtOffset := int(req.ExtentKey.ExtentOffset)
 

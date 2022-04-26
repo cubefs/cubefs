@@ -503,6 +503,14 @@ func (se *SortedExtents) Range(f func(ek proto.ExtentKey) bool) {
 	}
 }
 
+func (se *SortedExtents) RangeWithoutLock(f func(ek proto.ExtentKey) bool) {
+	for _, ek := range se.eks {
+		if !f(ek) {
+			break
+		}
+	}
+}
+
 func (se *SortedExtents) Range2(f func(index int, ek proto.ExtentKey) bool) {
 	se.RLock()
 	defer se.RUnlock()

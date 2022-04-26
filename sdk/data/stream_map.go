@@ -10,7 +10,7 @@ const SegmentCount = 256
 type ConcurrentStreamerMap []*ConcurrentStreamerMapSegment
 
 type ConcurrentStreamerMapSegment struct {
-	sync.Mutex
+	sync.RWMutex
 	streamers map[uint64]*Streamer
 }
 

@@ -90,16 +90,6 @@ func (cache *ExtentCache) update(gen, size uint64, eks []proto.ExtentKey) {
 
 	log.LogDebugf("ExtentCache update: ino(%v) cache.gen(%v) cache.size(%v) cache.ek(%v) gen(%v) size(%v)", cache.inode, cache.gen, cache.size, cache.ek, gen, size)
 
-	//	cache.root.Ascend(func(bi btree.Item) bool {
-	//		ek := bi.(*proto.ExtentKey)
-	//		log.LogDebugf("ExtentCache update: local ino(%v) ek(%v)", cache.inode, ek)
-	//		return true
-	//	})
-	//
-	//	for _, ek := range eks {
-	//		log.LogDebugf("ExtentCache update: remote ino(%v) ek(%v)", cache.inode, ek)
-	//	}
-
 	if cache.gen != 0 && cache.gen >= gen {
 		log.LogDebugf("ExtentCache update: no need to update, ino(%v) gen(%v) size(%v)", cache.inode, gen, size)
 		return
@@ -139,7 +129,6 @@ func (cache *ExtentCache) insert(ek *proto.ExtentKey, sync bool) {
 	ekEnd := ek.FileOffset + uint64(ek.Size)
 	deleteExtents := cache.root.Insert(nil, *ek)
 
-	// todo gen
 	if sync {
 		cache.gen++
 		cache.ek = nil
@@ -150,7 +139,9 @@ func (cache *ExtentCache) insert(ek *proto.ExtentKey, sync bool) {
 		cache.size = ekEnd
 	}
 
-	log.LogDebugf("ExtentCache Insert: ino(%v) ek(%v) deleteEks(%v)", cache.inode, ek, deleteExtents)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("ExtentCache Insert: ino(%v) ek(%v) deleteEks(%v)", cache.inode, ek, deleteExtents)
+	}
 }
 
 func (cache *ExtentCache) Pre(offset uint64) (pre *proto.ExtentKey) {
@@ -193,39 +184,9 @@ func (cache *ExtentCache) List() []proto.ExtentKey {
 	return extents
 }
 
-// Get returns the extent key based on the given offset.
-func (cache *ExtentCache) Get(offset uint64) (ret *proto.ExtentKey) {
-	cache.RLock()
-	defer cache.RUnlock()
-
-	cache.root.Range(func(ek proto.ExtentKey) bool {
-
-		log.LogDebugf("ExtentCache GetConnect: ino(%v) ek(%v) offset(%v)", cache.inode, ek, offset)
-		if offset >= ek.FileOffset && offset < ek.FileOffset+uint64(ek.Size) {
-			ret = &ek
-			return false
-		}
-		return true
-
-	})
-
-	return ret
-}
-
 // PrepareRequests classifies the incoming request.
 func (cache *ExtentCache) PrepareRequests(offset, size int, data []byte) (requests []*ExtentRequest, fileSize int) {
 	requests = make([]*ExtentRequest, 0)
-	pivot := proto.GetExtentKeyFromPool()
-	pivot.FileOffset = uint64(offset)
-	upper := proto.GetExtentKeyFromPool()
-	upper.FileOffset = uint64(offset + size)
-	lower := proto.GetExtentKeyFromPool()
-
-	defer func() {
-		proto.PutExtentKeyToPool(pivot)
-		proto.PutExtentKeyToPool(upper)
-		proto.PutExtentKeyToPool(lower)
-	}()
 	start := offset
 	end := offset + size
 
@@ -233,11 +194,13 @@ func (cache *ExtentCache) PrepareRequests(offset, size int, data []byte) (reques
 	defer cache.RUnlock()
 
 	fileSize = int(cache.size)
-	cache.root.Range(func(ek proto.ExtentKey) bool {
+	cache.root.RangeWithoutLock(func(ek proto.ExtentKey) bool {
 		ekStart := int(ek.FileOffset)
 		ekEnd := int(ek.FileOffset) + int(ek.Size)
 
-		log.LogDebugf("PrepareRequests: ino(%v) start(%v) end(%v) ekStart(%v) ekEnd(%v)", cache.inode, start, end, ekStart, ekEnd)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("PrepareRequests: ino(%v) start(%v) end(%v) ekStart(%v) ekEnd(%v)", cache.inode, start, end, ekStart, ekEnd)
+		}
 
 		if end <= ekStart {
 			return false

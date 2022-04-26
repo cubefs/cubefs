@@ -109,6 +109,8 @@ type ExtentClient struct {
 
 	originReadRate  int64
 	originWriteRate int64
+	readRate        uint64
+	writeRate       uint64
 	readLimiter     *rate.Limiter
 	writeLimiter    *rate.Limiter
 	masterClient    *masterSDK.MasterClient
@@ -435,8 +437,8 @@ func (client *ExtentClient) ExtentMerge(ctx context.Context, inode uint64) (fini
 // GetStreamer returns the streamer.
 func (client *ExtentClient) GetStreamer(inode uint64) *Streamer {
 	streamerMapSeg := client.streamerConcurrentMap.GetMapSegment(inode)
-	streamerMapSeg.Lock()
-	defer streamerMapSeg.Unlock()
+	streamerMapSeg.RLock()
+	defer streamerMapSeg.RUnlock()
 	s, ok := streamerMapSeg.streamers[inode]
 	if !ok {
 		return nil
@@ -514,34 +516,36 @@ func (client *ExtentClient) updateConfig() {
 		return
 	}
 	// If rate from master is 0, then restore the client rate
-	var readLimit, writeLimit rate.Limit
-	readRate, ok := limitInfo.ClientReadVolRateLimitMap[client.dataWrapper.volName]
+	var (
+		ok                  bool
+		readRate, writeRate uint64
+	)
+	readRate, ok = limitInfo.ClientReadVolRateLimitMap[client.dataWrapper.volName]
 	if !ok {
 		readRate, ok = limitInfo.ClientReadVolRateLimitMap[""]
 	}
-	if ok && readRate > 0 {
+	if (!ok || readRate == 0) && client.originReadRate > 0 {
+		readRate = uint64(client.originReadRate)
+	}
+	client.readRate = readRate
+	if readRate > 0 {
 		client.readLimiter.SetLimit(rate.Limit(readRate))
 	} else {
-		if client.originReadRate > 0 {
-			readLimit = rate.Limit(client.originReadRate)
-		} else {
-			readLimit = rate.Limit(defaultReadLimitRate)
-		}
-		client.readLimiter.SetLimit(readLimit)
+		client.readLimiter.SetLimit(rate.Limit(defaultReadLimitRate))
 	}
-	writeRate, ok := limitInfo.ClientWriteVolRateLimitMap[client.dataWrapper.volName]
+
+	writeRate, ok = limitInfo.ClientWriteVolRateLimitMap[client.dataWrapper.volName]
 	if !ok {
 		writeRate, ok = limitInfo.ClientWriteVolRateLimitMap[""]
 	}
-	if ok && writeRate > 0 {
+	if (!ok || writeRate == 0) && client.originWriteRate > 0 {
+		writeRate = uint64(client.originWriteRate)
+	}
+	client.writeRate = writeRate
+	if writeRate > 0 {
 		client.writeLimiter.SetLimit(rate.Limit(writeRate))
 	} else {
-		if client.originWriteRate > 0 {
-			writeLimit = rate.Limit(client.originWriteRate)
-		} else {
-			writeLimit = rate.Limit(defaultWriteLimitRate)
-		}
-		client.writeLimiter.SetLimit(writeLimit)
+		client.writeLimiter.SetLimit(rate.Limit(defaultWriteLimitRate))
 	}
 
 	if client.extentMerge {
