@@ -30,57 +30,57 @@ import (
 
 // Vol represents a set of meta partitionMap and data partitionMap
 type Vol struct {
-	ID                  uint64
-	Name                string
-	Owner               string
-	OSSAccessKey        string
-	OSSSecretKey        string
-	OSSBucketPolicy     proto.BucketAccessPolicy
-	dpReplicaNum        uint8
-	mpReplicaNum        uint8
-	dpLearnerNum        uint8
-	mpLearnerNum        uint8
-	Status              uint8
+	ID                   uint64
+	Name                 string
+	Owner                string
+	OSSAccessKey         string
+	OSSSecretKey         string
+	OSSBucketPolicy      proto.BucketAccessPolicy
+	dpReplicaNum         uint8
+	mpReplicaNum         uint8
+	dpLearnerNum         uint8
+	mpLearnerNum         uint8
+	Status               uint8
 	mpMemUsageThreshold  float32
-	dataPartitionSize   uint64
-	Capacity            uint64 // GB
-	NeedToLowerReplica  bool
-	FollowerRead        bool
-	NearRead            bool
-	ForceROW            bool
-	authenticate        bool
-	autoRepair          bool
-	zoneName            string
-	crossZone           bool
-	CrossRegionHAType   proto.CrossRegionHAType
-	enableToken         bool
-	tokens              map[string]*proto.Token
-	tokensLock          sync.RWMutex
-	MetaPartitions      map[uint64]*MetaPartition `graphql:"-"`
-	mpsLock             sync.RWMutex
-	dataPartitions      *DataPartitionMap
-	mpsCache            []byte
-	viewCache           []byte
-	createDpMutex       sync.RWMutex
-	createMpMutex       sync.RWMutex
-	createTime          int64
+	dataPartitionSize    uint64
+	Capacity             uint64 // GB
+	NeedToLowerReplica   bool
+	FollowerRead         bool
+	NearRead             bool
+	ForceROW             bool
+	authenticate         bool
+	autoRepair           bool
+	zoneName             string
+	crossZone            bool
+	CrossRegionHAType    proto.CrossRegionHAType
+	enableToken          bool
+	tokens               map[string]*proto.Token
+	tokensLock           sync.RWMutex
+	MetaPartitions       map[uint64]*MetaPartition `graphql:"-"`
+	mpsLock              sync.RWMutex
+	dataPartitions       *DataPartitionMap
+	mpsCache             []byte
+	viewCache            []byte
+	createDpMutex        sync.RWMutex
+	createMpMutex        sync.RWMutex
+	createTime           int64
 	dpWriteableThreshold float64
-	description         string
-	dpSelectorName      string
-	dpSelectorParm      string
-	DPConvertMode       proto.ConvertMode
-	MPConvertMode       proto.ConvertMode
-	volWriteMutexEnable bool
-	volWriteMutex       sync.Mutex
-	volWriteMutexClient *VolWriteMutexClient
-	ExtentCacheExpireSec	int64
-	writableMpCount    int64
-	MinWritableMPNum   int
-	MinWritableDPNum   int
-	trashRemainingDays  uint32
-	convertState        proto.VolConvertState
-	DefaultStoreMode    proto.StoreMode
-	MpLayout            proto.MetaPartitionLayout
+	description          string
+	dpSelectorName       string
+	dpSelectorParm       string
+	DPConvertMode        proto.ConvertMode
+	MPConvertMode        proto.ConvertMode
+	volWriteMutexEnable  bool
+	volWriteMutex        sync.Mutex
+	volWriteMutexClient  *VolWriteMutexClient
+	ExtentCacheExpireSec int64
+	writableMpCount      int64
+	MinWritableMPNum     int
+	MinWritableDPNum     int
+	trashRemainingDays   uint32
+	convertState         proto.VolConvertState
+	DefaultStoreMode     proto.StoreMode
+	MpLayout             proto.MetaPartitionLayout
 	sync.RWMutex
 }
 
@@ -350,7 +350,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int, dataNodeBadDisksOfVol 
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
 	for _, dp := range vol.dataPartitions.partitionMap {
-		dp.checkReplicaStatus(c.cfg.DataPartitionTimeOutSec)
+		dp.checkReplicaStatus(c.Name, c.cfg.DataPartitionTimeOutSec)
 		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec, vol.dpWriteableThreshold, vol.CrossRegionHAType, c, vol.getDataPartitionQuorum())
 		dp.checkLeader(c.cfg.DataPartitionTimeOutSec)
 		dp.checkMissingReplicas(c.Name, c.leaderInfo.addr, c.cfg.MissingDataPartitionInterval, c.cfg.IntervalToAlarmMissingDataPartition)

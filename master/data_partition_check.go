@@ -156,13 +156,17 @@ func (partition *DataPartition) checkReplicaStatusOnLiveNode(liveReplicas []*Dat
 	return true
 }
 
-func (partition *DataPartition) checkReplicaStatus(timeOutSec int64) {
+func (partition *DataPartition) checkReplicaStatus(clusterName string, timeOutSec int64) {
 	partition.Lock()
 	defer partition.Unlock()
 	for _, replica := range partition.Replicas {
 		if !replica.isLive(timeOutSec) {
 			if replica.Status != proto.Unavailable {
 				replica.Status = proto.ReadOnly
+			}
+			if replica.loadFailedByDataNode(3 * timeOutSec) {
+				msg := fmt.Sprintf("cluster[%v],vol[%v],dp[%v] load failed by datanode", clusterName, partition.VolName, partition.PartitionID)
+				Warn(clusterName, msg)
 			}
 		}
 	}

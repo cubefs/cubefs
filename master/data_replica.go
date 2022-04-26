@@ -55,6 +55,10 @@ func (replica *DataReplica) isLive(timeOutSec int64) (isAvailable bool) {
 	return
 }
 
+func (replica *DataReplica) loadFailedByDataNode(timeOutSec int64) bool {
+	return replica.dataNode.isActive == true && replica.Status != proto.Unavailable && replica.isActive(timeOutSec) == false
+}
+
 func (replica *DataReplica) isActive(timeOutSec int64) bool {
 	return time.Now().Unix()-replica.ReportTime <= timeOutSec
 }
