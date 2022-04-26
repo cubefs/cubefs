@@ -94,7 +94,7 @@ class CopyObjectTest(S3TestCase):
         self.assertNotEqual(target_response["ETag"], "")
         self.assertEqual(target_response["ETag"], source_response["ETag"])
         self.assertEqual(target_response["ContentLength"], source_response["ContentLength"])
-        self.assertGreater(target_response["LastModified"], source_response["LastModified"])
+        self.assertGreaterEqual(target_response["LastModified"], source_response["LastModified"])
         if is_dir:
             self.assertEqual(target_response["ContentLength"], 0)
         if contain_mete_data:
