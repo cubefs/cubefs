@@ -1375,7 +1375,7 @@ func (c *Cluster) migrateDataNode(srcAddr, targetAddr string, limit int) (err er
 	}
 
 	if len(toBeOffLinePartitions) <= 0 && len(partitions) != 0 {
-		err =  fmt.Errorf("migrateDataNode no partition can migrate from [%s] to [%s]", srcAddr, targetAddr)
+		err = fmt.Errorf("migrateDataNode no partition can migrate from [%s] to [%s]", srcAddr, targetAddr)
 		log.LogWarnf("action[migrateDataNode] %v", err)
 		return
 	}
@@ -1625,12 +1625,12 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 		if _, ok := c.vols[dp.VolName]; !ok {
 			log.LogWarnf("clusterID[%v] partitionID:%v  on node:%v offline failed,PersistenceHosts:[%v]",
 				c.Name, dp.PartitionID, srcAddr, dp.Hosts)
-			return
+			goto errHandler
 		}
 		if c.isFaultDomain(c.vols[dp.VolName]) {
 			log.LogErrorf("clusterID[%v] partitionID:%v  on node:%v is banlance zone,PersistenceHosts:[%v]",
 				c.Name, dp.PartitionID, srcAddr, dp.Hosts)
-			return
+			goto errHandler
 		}
 		// select data nodes from the other node set in same zone
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
@@ -1678,7 +1678,12 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 	return
 
 errHandler:
-	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on node:%v  "+
+	if dp.isSingleReplica() {
+		if dp.SingleDecommissionStatus == datanode.DecommsionEnter {
+			dp.SingleDecommissionStatus = 0
+		}
+	}
+	msg = fmt.Sprintf(errMsg+" clusterID[%v] partitionID:%v  on Node:%v  "+
 		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
 		c.Name, dp.PartitionID, srcAddr, newAddr, err, dp.Hosts)
 
