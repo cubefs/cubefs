@@ -1354,6 +1354,11 @@ func (c *Cluster) migrateDataNode(srcAddr, targetAddr string, limit int) (err er
 	srcNode.MigrateLock.Lock()
 	defer srcNode.MigrateLock.Unlock()
 
+	if srcNode.ToBeOffline == true {
+		err = fmt.Errorf("migrate src(%v) is still on working, please wait,check or cancel if abnormal", srcAddr)
+		log.LogWarnf("action[migrateDataNode] %v", err)
+		return
+	}
 	partitions := c.getAllDataPartitionByDataNode(srcAddr)
 	if targetAddr != "" {
 		toBeOffLinePartitions = make([]*DataPartition, 0)
@@ -1370,7 +1375,9 @@ func (c *Cluster) migrateDataNode(srcAddr, targetAddr string, limit int) (err er
 	}
 
 	if len(toBeOffLinePartitions) <= 0 && len(partitions) != 0 {
-		return fmt.Errorf("migrateDataNode no partition can migrate from [%s] to [%s]", srcAddr, targetAddr)
+		err =  fmt.Errorf("migrateDataNode no partition can migrate from [%s] to [%s]", srcAddr, targetAddr)
+		log.LogWarnf("action[migrateDataNode] %v", err)
+		return
 	}
 
 	if limit <= 0 && targetAddr == "" {
@@ -1399,12 +1406,12 @@ func (c *Cluster) migrateDataNode(srcAddr, targetAddr string, limit int) (err er
 	}
 
 	go func(dataNode *DataNode) {
-		log.LogInfof("action[decommissionDataNode] wait subroutine  finished")
+		log.LogInfof("action[migrateDataNode] %v wait subroutine  finished", srcAddr)
 		wg.Wait()
-		log.LogInfof("action[decommissionDataNode] subroutines  finished")
+		log.LogInfof("action[migrateDataNode] %v subroutines  finished", srcAddr)
 		select {
 		case err = <-errChannel:
-			log.LogInfof("action[decommissionDataNode] decommsion error occur %v", err)
+			log.LogInfof("action[migrateDataNode] %v decommsion error occur %v", srcAddr, err)
 			return
 		default:
 		}
@@ -1417,21 +1424,21 @@ func (c *Cluster) migrateDataNode(srcAddr, targetAddr string, limit int) (err er
 		}
 
 		if err = c.syncDeleteDataNode(dataNode); err != nil {
-			msg = fmt.Sprintf("action[decommissionDataNode],clusterID[%v] node[%v] OffLine failed,err[%v]",
+			msg = fmt.Sprintf("action[migrateDataNode],clusterID[%v] Node[%v] OffLine failed,err[%v]",
 				c.Name, dataNode.Addr, err)
 			Warn(c.Name, msg)
 			return
 		}
 		c.delDataNodeFromCache(dataNode)
-		msg = fmt.Sprintf("action[decommissionDataNode],clusterID[%v] node[%v] OffLine success",
+		msg = fmt.Sprintf("action[migrateDataNode],clusterID[%v] Node[%v] OffLine success",
 			c.Name, dataNode.Addr)
 		Warn(c.Name, msg)
-		log.LogInfof("action[decommissionDataNode] del node %v", dataNode.Addr)
+		log.LogInfof("action[migrateDataNode] del node %v", dataNode.Addr)
 		dataNode.ToBeOffline = false
 		close(errChannel)
 	}(srcNode)
 
-	log.LogInfof("action[decommissionDataNode] return now")
+	log.LogInfof("action[migrateDataNode] %v return now", srcAddr)
 	return
 }
 
