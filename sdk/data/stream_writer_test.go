@@ -306,7 +306,7 @@ func creatHelper(t *testing.T) (mw *meta.MetaWrapper, ec *ExtentClient, err erro
 	return mw, ec, nil
 }
 
-func getStreamer(t *testing.T, file string, ec *ExtentClient) *Streamer {
+func getStreamer(t *testing.T, file string, ec *ExtentClient, appendWriteBuffer bool, readAhead bool) *Streamer {
 	info, err := os.Stat(file)
 	if err != nil {
 		t.Fatalf("Stat failed: err(%v) file(%v)", err, file)
@@ -493,7 +493,7 @@ func TestStreamer_UsePreExtentHandler_ROWByOtherClient(t *testing.T) {
 	}()
 
 	_, ec, err := creatHelper(t)
-	streamer := getStreamer(t, testFile, ec)
+	streamer := getStreamer(t, testFile, ec, false, false)
 	ctx := context.Background()
 	length := 1024
 	data := make([]byte, length)
@@ -507,7 +507,7 @@ func TestStreamer_UsePreExtentHandler_ROWByOtherClient(t *testing.T) {
 	}
 
 	_, ec1, err := creatHelper(t)
-	streamer1 := getStreamer(t, testFile, ec1)
+	streamer1 := getStreamer(t, testFile, ec1, false, false)
 	requests, _ := streamer1.extents.PrepareRequests(0, length, data)
 	_, err = streamer1.doROW(ctx, requests[0], false)
 	if err != nil {
@@ -535,7 +535,7 @@ func TestHandler_Recover(t *testing.T) {
 
 	var err error
 	_, ec, _ := creatHelper(t)
-	streamer := getStreamer(t, testFile, ec)
+	streamer := getStreamer(t, testFile, ec, false, false)
 	ctx := context.Background()
 	length := 1024
 	data := make([]byte, length*2)
@@ -571,6 +571,39 @@ func TestHandler_Recover(t *testing.T) {
 	}
 }
 
+func TestHandler_AppendWriteBuffer_Recover(t *testing.T) {
+	testFile := "/cfs/mnt/TestHandler_AppendWriteBuffer_Recover"
+	file, _ := os.Create(testFile)
+	defer func() {
+		file.Close()
+		os.Remove(testFile)
+		log.LogFlush()
+	}()
+
+	var err error
+	_, ec, _ := creatHelper(t)
+	streamer := getStreamer(t, testFile, ec, true, false)
+	ctx := context.Background()
+	length := 1024
+	data := make([]byte, length)
+	_, _, err = streamer.write(ctx, data, 0, length, false, false)
+	if err != nil {
+		t.Fatalf("write failed: err(%v)", err)
+	}
+	suc := streamer.handler.setClosed()
+	if !suc {
+		t.Fatalf("setClosed failed")
+	}
+	suc = streamer.handler.setRecovery()
+	if !suc {
+		t.Fatalf("setRecovery failed")
+	}
+	err = streamer.flush(ctx)
+	if err != nil {
+		t.Fatalf("flush failed: err(%v)", err)
+	}
+}
+
 // Handler should be closed in truncate operation, otherwise dirty ek which has been formerly truncated, will be inserted again.
 func TestStreamer_Truncate_CloseHandler(t *testing.T) {
 	testFile := "/cfs/mnt/TestStreamer_Truncate_CloseHandler"
@@ -583,7 +616,7 @@ func TestStreamer_Truncate_CloseHandler(t *testing.T) {
 
 	var err error
 	_, ec, _ := creatHelper(t)
-	streamer := getStreamer(t, testFile, ec)
+	streamer := getStreamer(t, testFile, ec, false, false)
 	ctx := context.Background()
 	length := 1024
 	data := make([]byte, length*2)
@@ -617,7 +650,7 @@ func TestStreamer_ROW_CloseHandler(t *testing.T) {
 
 	var err error
 	_, ec, _ := creatHelper(t)
-	streamer := getStreamer(t, testFile, ec)
+	streamer := getStreamer(t, testFile, ec, false, false)
 	ctx := context.Background()
 	length := 1024
 	data := make([]byte, length*2)

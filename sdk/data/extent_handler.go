@@ -575,7 +575,10 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet, errmsg string) error {
 		handler = NewExtentHandler(eh.stream, int(packet.KernelOffset), proto.NormalExtentType, false)
 		handler.setClosed()
 	}
-	handler.pushToRequest(packet.Ctx(), packet)
+	// packet.Data will be released in original handler flush
+	p := packet.Copy()
+	copy(p.Data, packet.Data)
+	handler.pushToRequest(p.Ctx(), p)
 	if eh.recoverHandler == nil {
 		eh.recoverHandler = handler
 		// Note: put it to dirty list after packet is sent, so this

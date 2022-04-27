@@ -272,6 +272,30 @@ func (p *Packet) readFromConn(c net.Conn, deadlineTimeNs int64) (err error) {
 	return
 }
 
+func (p *Packet) Copy() *Packet {
+	packet := new(Packet)
+	packet.ReqID = p.ReqID
+	packet.PartitionID = p.PartitionID
+	packet.Magic = p.Magic
+	packet.ExtentType = p.ExtentType
+	packet.ExtentID = p.ExtentID
+	packet.ExtentOffset = p.ExtentOffset
+	packet.Arg = p.Arg
+	packet.ArgLen = p.ArgLen
+	packet.RemainingFollowers = p.RemainingFollowers
+	packet.Opcode = p.Opcode
+	packet.inode = p.inode
+	packet.KernelOffset = p.KernelOffset
+	packet.Size = p.Size
+	var err error
+	if packet.Data, err = proto.Buffers.Get(len(p.Data)); err != nil {
+		packet.Data = make([]byte, len(p.Data))
+	}
+	packet.SetCtx(p.Ctx())
+	packet.errCount = p.errCount
+	return packet
+}
+
 func readToBuffer(c net.Conn, buf *[]byte, readSize int) (err error) {
 	if *buf == nil || readSize != util.BlockSize {
 		*buf = make([]byte, readSize)
