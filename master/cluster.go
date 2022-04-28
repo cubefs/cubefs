@@ -1334,6 +1334,7 @@ func (c *Cluster) decommissionCancel(dataNode *DataNode) (err error) {
 			log.LogWarnf("action[decommissionCancel] cancel decommission subroutine partition %v and status %v",
 				dp.PartitionID, dp.SingleDecommissionStatus)
 			dp.singleDecommissionChan <- false
+			dp.SingleDecommissionStatus = 0
 		}
 	}
 	dataNode.ToBeOffline = false
