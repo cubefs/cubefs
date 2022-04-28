@@ -76,7 +76,7 @@ func (er *ExtentReader) Read(ctx context.Context, req *ExtentRequest) (readBytes
 
 	readAhead := false
 	realReq := req
-	if size <= readAheadThreshold &&
+	if er.readAhead && size <= readAheadThreshold &&
 		uint64(req.FileOffset)-req.ExtentKey.FileOffset+req.ExtentKey.ExtentOffset+uint64(util.BlockSize) <= uint64(req.ExtentKey.Size) {
 		readAhead = true
 		size = util.BlockSize

@@ -66,7 +66,7 @@ if [[ ${build_client} -eq 1 ]]; then
     echo "building client (cfs-client libcfsclient.so libempty.so) ..."
     go build -buildmode=plugin -linkshared -o ${dir}/libempty.so  ${dir}/empty.go
     go build -ldflags "${goflag}" -linkshared -o ${dir}/cfs-client ${dir}/main_fuse.go
-    gcc -std=c99 ${gccflag} -fPIC -shared -o ${dir}/libcfsclient.so ${dir}/main_bypass.c ${dir}/bypass/ini.c -ldl -lpthread
+    g++ ${gccflag} -fPIC -shared -o ${dir}/libcfsclient.so ${dir}/main_bypass.c ${dir}/bypass/cache.c ${dir}/bypass/ini.c -ldl -lpthread -I ${dir}/bypass/include
 fi
 if [[ ${build_test} -eq 1 ]]; then
     echo "building test (cfs-client) ..."

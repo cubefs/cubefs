@@ -21,8 +21,13 @@
 #include <time.h>
 #include <unistd.h>
 #include <utime.h>
+#include <map>
+#include <set>
 #include "ini.h"
 #include "sdk.h"
+#include "util.h"
+
+using namespace std;
 
 // Define ALIASNAME as a weak alias for NAME.
 # define weak_alias(name, aliasname) extern __typeof (name) aliasname __attribute__ ((weak, alias (#name)));
@@ -146,8 +151,8 @@ typedef int (*fdatasync_t)(int fd);
 typedef int (*fsync_t)(int fd);
 
 typedef void (*abort_t)();
-typedef void (*_exit_t)();
-typedef void (*exit_t)();
+typedef void (*_exit_t)(int status);
+typedef void (*exit_t)(int status);
 //typedef int (*sigaction_t)(int signum, const struct sigaction *act, struct sigaction *oldact);
 
 static open_t real_open;
@@ -245,11 +250,19 @@ static exit_t real_exit;
  * In many bash commands, e.g. touch, cat, etc, dup2 is used to redirect IO.
  * Thus, maintaining a map between system fd and CFS fd is necessary.
  */
-#define _CFS_BASH
-#ifdef _CFS_BASH
-#define CFS_FD_MAP_SIZE 16
-static int g_cfs_fd_map[CFS_FD_MAP_SIZE];
-#endif
+static map<int, int> g_dup_origin;
+
+static map<int, cfs_file_t *> g_open_file;
+pthread_rwlock_t g_open_file_lock;
+static map<ino_t, set<cfs_file_t *>> g_inode_open_file;
+pthread_rwlock_t g_inode_open_file_lock;
+#define BIG_PAGE_CACHE_SIZE 67108864
+#define SMALL_PAGE_CACHE_SIZE 67108864
+static lru_cache_t *g_big_page_cache;
+static lru_cache_t *g_small_page_cache;
+
+// map for each open fd to its pathname, to print pathname in debug log
+static map<int, char *> g_fd_path;
 
 // whether the initialization has been done or not
 static bool g_cfs_inited;
@@ -278,67 +291,7 @@ static const char *CFS_CFG_PATH_JED = "/export/servers/cfs/cfs_client.ini";
 
 static bool g_has_renameat2 = false;
 
-#if defined(_CFS_DEBUG) || defined(DUP_TO_LOCAL)
-// map for each open fd to its pathname, to print pathname in debug log
-static struct hsearch_data g_fdmap = {0};
-#define FD_MAP_SIZE 100
-
-static char *str_int(int i) {
-    int len = snprintf(NULL, 0, "%d", i);
-    char *key = malloc(len + 1);
-    if(key == NULL) {
-        return NULL;
-    }
-    snprintf(key, len + 1, "%d", i);
-    return key;
-}
-
-static ENTRY *getFdEntry(int fd) {
-    char *key = str_int(fd);
-    if(key == NULL) {
-        return NULL;
-    }
-    ENTRY *entry = malloc(sizeof(ENTRY));
-    if(entry == NULL) {
-        free(key);
-        return NULL;
-    }
-    memset(entry, 0, sizeof(ENTRY));
-    entry->key = key;
-    if(!hsearch_r(*entry, FIND, &entry, &g_fdmap)) {
-        free(entry);
-        entry = NULL;
-    }
-    free(key);
-    return entry;
-}
-
-static int addFdEntry(int fd, char *path) {
-    ENTRY *entry = getFdEntry(fd);
-    if(entry != NULL) {
-        free(entry->data);
-        entry->data = path;
-        return 1;
-    }
-    char *key = str_int(fd);
-    if(key == NULL) {
-        return 0;
-    }
-    entry = malloc(sizeof(ENTRY));
-    if(entry == NULL) {
-        return 0;
-    }
-    memset(entry, 0, sizeof(ENTRY));
-    entry->key = key;
-    entry->data = path;
-    int re = hsearch_r(*entry, ENTER, &entry, &g_fdmap);
-    if(!re) {
-        free(key);
-        free(entry);
-    }
-    return re;
-}
-#endif
+//static void (*g_sa_handler[30])(int);
 
 typedef struct {
      char* mount_point;
@@ -355,8 +308,6 @@ typedef struct {
      char* auto_flush;
      char* master_client;
 } client_config_t;
-
-//static void (*g_sa_handler[30])(int);
 
 static int config_handler(void* user, const char* section,
         const char* name, const char* value) {
@@ -583,27 +534,6 @@ static char *get_cfs_path(const char *pathname) {
     return result;
 }
 
-static void log_debug(const char* message, ...) {
-    va_list args;
-    va_start(args, message);
-    /*
-    char *func = va_arg(args, char *);
-    va_end(args);
-    if(!strstr(func, "write")) return;
-    va_start(args, message);
-    */
-    va_end(args);
-    struct timeval now;
-    gettimeofday(&now, NULL);
-    struct tm *ptm = localtime(&now.tv_sec);
-    char buf[27];
-    strftime(buf, 20, "%F %H:%M:%S", ptm);
-    sprintf(buf + 19, ".%.6d", now.tv_usec);
-    buf[26] = '\0';
-    printf("%s [debug] ", buf);
-    vprintf(message, args);
-}
-
 // process returned int from cfs functions
 static int cfs_re(int re) {
     if(re < 0) {
@@ -638,7 +568,7 @@ static void signal_handler(int signum) {
 }
 */
 
-bool has_renameat2() {
+static bool has_renameat2() {
     const char *ver = gnu_get_libc_version();
     char *ver1 = strdup(ver);
     if(ver1 == NULL) {
@@ -657,6 +587,25 @@ bool has_renameat2() {
     }
     free(ver1);
     return major > 2 || (major == 2 && minor >= 28);
+}
+
+static void update_inode_size(ino_t ino, size_t size) {
+    pthread_rwlock_rdlock(&g_inode_open_file_lock);
+    auto it = g_inode_open_file.find(ino);
+    if(it != g_inode_open_file.end()) {
+        for(const auto &f : it->second) {
+            f->size = size;
+        }
+    }
+    pthread_rwlock_unlock(&g_inode_open_file_lock);
+}
+
+static cfs_file_t *get_open_file(int fd) {
+    pthread_rwlock_rdlock(&g_open_file_lock);
+    auto it = g_open_file.find(fd);
+    cfs_file_t *f = (it != g_open_file.end() ? it->second : NULL);
+    pthread_rwlock_unlock(&g_open_file_lock);
+    return f;
 }
 
 #endif

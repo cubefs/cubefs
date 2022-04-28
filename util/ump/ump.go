@@ -104,6 +104,21 @@ func BeforeTP(key string) (o *TpObject) {
 	return
 }
 
+func BeforeTPWithStartTime(key string, start time.Time) (o *TpObject) {
+	if !enableUmp {
+		return
+	}
+
+	o = TpObjectPool.Get().(*TpObject)
+	o.StartTime = start
+	tp := FunctionTpGroupByPool.Get().(*FunctionTpGroupBy)
+	tp.Key = key
+	tp.ProcessState = "0"
+	o.UmpType = tp
+
+	return
+}
+
 //func AfterTPOld(o *TpObject, err error) {
 //	if !enableUmp {
 //		return

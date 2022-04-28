@@ -258,9 +258,9 @@ int ini_parse(const char* filename, ini_handler handler, void* user)
     if (!handle) {
         return -1;
     }
-    real_fopen = dlsym(handle, "fopen");
-    real_fgets = dlsym(handle, "fgets");
-    real_fclose = dlsym(handle, "fclose");
+    real_fopen = (fopen_t)dlsym(handle, "fopen");
+    real_fgets = (fgets_t)dlsym(handle, "fgets");
+    real_fclose = (fclose_t)dlsym(handle, "fclose");
 
     file = real_fopen(filename, "r");
     if (!file) {

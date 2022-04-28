@@ -22,11 +22,16 @@
 #ifndef CFS_SDK_DL_H
 #define CFS_SDK_DL_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <fcntl.h>
 #include <stdint.h>
 #include <sys/stat.h>
 #include <sys/uio.h>
 #include <unistd.h>
+#include "cache.h"
 
 typedef struct {
         int ignore_sighup;
@@ -65,6 +70,7 @@ typedef size_t (*cfs_client_state_t)(int64_t id, char *buf, int size);
  * Call this function manually when necessary.
  */
 typedef void (*cfs_flush_log_t)();
+typedef void (*cfs_ump_t)(int64_t id, int umpType, int sec, int nsec);
 
 /*
  * File operations
@@ -80,6 +86,7 @@ typedef int (*cfs_ftruncate_t)(int64_t id, int fd, off_t len);
 typedef int (*cfs_fallocate_t)(int64_t id, int fd, int mode, off_t offset, off_t len);
 typedef int (*cfs_posix_fallocate_t)(int64_t id, int fd, off_t offset, off_t len);
 typedef int (*cfs_flush_t)(int64_t id, int fd);
+typedef int (*cfs_get_file_t)(int64_t id, int fd, cfs_file_t *file);
 
 /*
  * Directory operations
@@ -159,12 +166,12 @@ typedef int (*cfs_fcntl_lock_t)(int64_t id, int fd, int cmd, struct flock *lk);
 /*
  * Read & Write
  */
-typedef ssize_t (*cfs_read_t)(int64_t id, int fd, char *buf, size_t size);
-typedef ssize_t (*cfs_pread_t)(int64_t id, int fd, char *buf, size_t size, off_t off);
+typedef ssize_t (*cfs_read_t)(int64_t id, int fd, void *buf, size_t size);
+typedef ssize_t (*cfs_pread_t)(int64_t id, int fd, void *buf, size_t size, off_t off);
 typedef ssize_t (*cfs_readv_t)(int64_t id, int fd, const struct iovec *iov, int iovcnt);
 typedef ssize_t (*cfs_preadv_t)(int64_t id, int fd, const struct iovec *iov, int iovcnt, off_t off);
-typedef ssize_t (*cfs_write_t)(int64_t id, int fd, const char *buf, size_t size);
-typedef ssize_t (*cfs_pwrite_t)(int64_t id, int fd, const char *buf, size_t size, off_t off);
+typedef ssize_t (*cfs_write_t)(int64_t id, int fd, const void *buf, size_t size);
+typedef ssize_t (*cfs_pwrite_t)(int64_t id, int fd, const void *buf, size_t size, off_t off);
 typedef ssize_t (*cfs_writev_t)(int64_t id, int fd, const struct iovec *iov, int iovcnt);
 typedef ssize_t (*cfs_pwritev_t)(int64_t id, int fd, const struct iovec *iov, int iovcnt, off_t off);
 typedef off64_t (*cfs_lseek_t)(int64_t id, int fd, off64_t offset, int whence);
@@ -179,6 +186,7 @@ static cfs_new_client_t cfs_new_client;
 static cfs_close_client_t cfs_close_client;
 static cfs_client_state_t cfs_client_state;
 static cfs_flush_log_t cfs_flush_log;
+static cfs_ump_t cfs_ump;
 
 static cfs_close_t cfs_close;
 static cfs_open_t cfs_open;
@@ -191,6 +199,7 @@ static cfs_ftruncate_t cfs_ftruncate;
 static cfs_fallocate_t cfs_fallocate;
 static cfs_posix_fallocate_t cfs_posix_fallocate;
 static cfs_flush_t cfs_flush;
+static cfs_get_file_t cfs_get_file;
 
 static cfs_chdir_t cfs_chdir;
 static cfs_fchdir_t cfs_fchdir;
@@ -255,4 +264,8 @@ static cfs_pwrite_t cfs_pwrite;
 static cfs_writev_t cfs_writev;
 static cfs_pwritev_t cfs_pwritev;
 static cfs_lseek_t cfs_lseek;
+#ifdef __cplusplus
+}
+#endif
+
 #endif
