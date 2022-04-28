@@ -40,7 +40,7 @@ import (
 )
 
 const (
-	UnixSocketPath         = "/var/lib/adls/bcache.socket"
+	UnixSocketPath         = "/var/lib/kubelet/bcache.socket"
 	CacheKey               = "cachekey"
 	CheckSum               = "md5sum"
 	OffSet                 = "offset"
