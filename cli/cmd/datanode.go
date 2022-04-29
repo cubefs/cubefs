@@ -29,8 +29,9 @@ const (
 
 func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   CliResourceDataNode,
-		Short: cmdDataNodeShort,
+		Use:     CliResourceDataNode,
+		Short:   cmdDataNodeShort,
+		Aliases: []string{"dn"},
 	}
 	cmd.AddCommand(
 		newDataNodeListCmd(client),

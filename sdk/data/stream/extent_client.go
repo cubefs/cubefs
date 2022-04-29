@@ -160,10 +160,14 @@ func (client *ExtentClient) OpenStream(inode uint64) error {
 		s = NewStreamer(client, inode)
 		client.streamers[inode] = s
 	}
+	if client.noFlushOnClose {
+		s.IssueOpenRequest()
+		return nil
+	}
 	return s.IssueOpenRequest()
 }
 
-func (client *ExtentClient) openGetStream(inode uint64) (s *Streamer, needClose bool) {
+func (client *ExtentClient) openGetStream(inode uint64) (s *Streamer) {
 	var ok bool
 
 	client.streamerLock.Lock()
@@ -171,12 +175,9 @@ func (client *ExtentClient) openGetStream(inode uint64) (s *Streamer, needClose 
 	if !ok {
 		s = NewStreamer(client, inode)
 		client.streamers[inode] = s
-		_ = s.IssueOpenRequest() //lock is released
-		needClose = true
-		return s, needClose
 	}
 	client.streamerLock.Unlock()
-	return s, needClose
+	return s
 }
 
 // Release request shall grab the lock until request is sent to the request channel
@@ -185,6 +186,10 @@ func (client *ExtentClient) CloseStream(inode uint64) error {
 	s, ok := client.streamers[inode]
 	if !ok {
 		client.streamerLock.Unlock()
+		return nil
+	}
+	if client.noFlushOnClose {
+		s.IssueReleaseRequest()
 		return nil
 	}
 	return s.IssueReleaseRequest()
@@ -253,28 +258,18 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags i
 
 func (client *ExtentClient) Truncate(inode uint64, size int) error {
 	prefix := fmt.Sprintf("Truncate{ino(%v)size(%v)}", inode, size)
-	s, needClose := client.openGetStream(inode)
-
+	s := client.openGetStream(inode)
 	err := s.IssueTruncRequest(size)
 	if err != nil {
 		err = errors.Trace(err, prefix)
 		log.LogError(errors.Stack(err))
 	}
-
-	if needClose {
-		_ = client.CloseStream(inode)
-	}
 	return err
 }
 
 func (client *ExtentClient) Flush(inode uint64) error {
-	var needClose bool
-	s, needClose := client.openGetStream(inode)
-	err := s.IssueFlushRequest()
-	if needClose {
-		_ = client.CloseStream(inode)
-	}
-	return err
+	s := client.openGetStream(inode)
+	return s.IssueFlushRequest()
 }
 
 func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int) (read int, err error) {

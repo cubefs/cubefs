@@ -64,7 +64,7 @@ func (s *DataNode) releaseExtent(p *repl.Packet) {
 }
 
 func (s *DataNode) addMetrics(p *repl.Packet) {
-	if p.IsMasterCommand() {
+	if p.IsMasterCommand() || p.ShallDegrade() {
 		return
 	}
 	p.AfterTp()

@@ -30,8 +30,9 @@ const (
 
 func newMetaNodeCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   cmdMetaNodeUse,
-		Short: cmdMetaNodeShort,
+		Use:     cmdMetaNodeUse,
+		Short:   cmdMetaNodeShort,
+		Aliases: []string{"mn"},
 	}
 	cmd.AddCommand(
 		newMetaNodeListCmd(client),

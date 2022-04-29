@@ -13,8 +13,12 @@ jobs:
   ci-tests:
     runs-on: ubuntu-latest
     steps:
+      - name: Setup go environment
+        uses: actions/setup-go@v3
+        with:
+          go-version: '1.16.12'
       - name: Checkout repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: Check gofmt
         run: |
           find . -type f -name "*.go" | grep -v 'vendor' | xargs gofmt -l > gofmt_results.txt

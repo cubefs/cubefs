@@ -16,11 +16,13 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/spf13/cobra"
 	"sort"
 	"strconv"
+
+	"github.com/spf13/cobra"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
 )
 
 const (
@@ -30,8 +32,9 @@ const (
 
 func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   cmdDataPartitionUse,
-		Short: cmdDataPartitionShort,
+		Use:     cmdDataPartitionUse,
+		Short:   cmdDataPartitionShort,
+		Aliases: []string{"dp"},
 	}
 	cmd.AddCommand(
 		newDataPartitionGetCmd(client),
