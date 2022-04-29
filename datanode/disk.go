@@ -29,6 +29,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/gammazero/workerpool"
 )
 
 var (
@@ -60,10 +61,15 @@ type Disk struct {
 	syncTinyDeleteRecordFromLeaderOnEveryDisk chan bool
 	space                                     *SpaceManager
 	dataNode                                  *DataNode
+
+	// Used to limit io go routines per disk.
+	workers *workerpool.WorkerPool
 }
 
 const (
 	SyncTinyDeleteRecordFromLeaderOnEveryDisk = 5
+
+	DefaultDiskIOLimit = 100
 )
 
 type PartitionVisitor func(dp *DataPartition)
@@ -81,6 +87,7 @@ func NewDisk(path string, reservedSpace uint64, maxErrCnt int, space *SpaceManag
 	d.computeUsage()
 	d.updateSpaceInfo()
 	d.startScheduleToUpdateSpaceInfo()
+	d.workers = workerpool.New(space.diskIOLimit)
 	return
 }
 
@@ -184,7 +191,7 @@ func (d *Disk) doBackendTask() {
 		for _, dp := range partitions {
 			dp.extentStore.BackendTask()
 		}
-		time.Sleep(time.Minute)
+		time.Sleep(5 * time.Minute)
 	}
 }
 
@@ -280,8 +287,10 @@ func (d *Disk) ForceExitRaftStore() {
 	partitionList := d.DataPartitionList()
 	for _, partitionID := range partitionList {
 		partition := d.GetDataPartition(partitionID)
-		partition.partitionStatus = proto.Unavailable
-		partition.stopRaft()
+		if partition != nil {
+			partition.partitionStatus = proto.Unavailable
+			partition.stopRaft()
+		}
 	}
 }
 
@@ -382,7 +391,6 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 		}
 
 		wg.Add(1)
-
 		go func(partitionID uint64, filename string) {
 			var (
 				dp  *DataPartition
@@ -390,16 +398,14 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 			)
 			defer wg.Done()
 			if dp, err = LoadDataPartition(path.Join(d.Path, filename), d); err != nil {
-				mesg := fmt.Sprintf("action[RestorePartition] new partition(%v) err(%v) ",
-					partitionID, err.Error())
-				log.LogError(mesg)
-				exporter.Warning(mesg)
+				msg := fmt.Sprintf("action[RestorePartition] new partition(%v) err(%v) ", partitionID, err)
+				log.LogError(msg)
+				exporter.Warning(msg)
 				return
 			}
 			if visitor != nil {
 				visitor(dp)
 			}
-
 		}(partitionID, filename)
 	}
 	wg.Wait()

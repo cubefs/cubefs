@@ -81,6 +81,8 @@ const (
 	DefaultUDSName       = "/tmp/ChubaoFS-fdstore.sock"
 
 	DefaultLogPath = "/var/log/chubaofs"
+
+	TimeOutPort = 10 * time.Second
 )
 
 var (
@@ -446,7 +448,7 @@ func startDaemon() error {
 func waitListenAndServe(statusCh chan error, addr string, handler http.Handler) {
 	var err error
 	var loop int = 0
-	var interval int = (1 << 17) - 1
+	var interval int = (1 << 20) - 1
 	var listener net.Listener
 	var dynamicPort bool
 
@@ -454,8 +456,7 @@ func waitListenAndServe(statusCh chan error, addr string, handler http.Handler) 
 		addr = ":0"
 	}
 
-	// FIXME: 1 min timeout?
-	timeout := time.Now().Add(time.Minute)
+	timeout := time.Now().Add(TimeOutPort)
 	for {
 		if listener, err = net.Listen("tcp", addr); err == nil {
 			break
@@ -464,18 +465,15 @@ func waitListenAndServe(statusCh chan error, addr string, handler http.Handler) 
 		// addr is not released for use
 		if strings.Contains(err.Error(), "bind: address already in use") {
 			if loop&interval == 0 {
-				syslog.Printf("address %v is still in use\n", addr)
+				warnForeground("address %v is still in use, please wait ...\n", addr)
 			}
 			runtime.Gosched()
 		} else {
 			break
 		}
 		if time.Now().After(timeout) {
-			msg := fmt.Sprintf("address %v is still in use after "+
+			warnForeground("address %v is still in use after "+
 				"timeout, choose port automatically\n", addr)
-			syslog.Print(msg)
-			msg = "Warning: " + msg
-			daemonize.StatusWriter.Write([]byte(msg))
 			dynamicPort = true
 			break
 		}
@@ -691,4 +689,11 @@ func changeRlimit(val uint64) {
 
 func freeOSMemory(w http.ResponseWriter, r *http.Request) {
 	debug.FreeOSMemory()
+}
+
+func warnForeground(format string, v ...interface{}) {
+	msg := fmt.Sprintf(format, v...)
+	syslog.Print(msg)
+	msg = "Warning: " + msg
+	daemonize.StatusWriter.Write([]byte(msg))
 }

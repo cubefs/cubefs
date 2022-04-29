@@ -16,7 +16,6 @@ package util
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/errors"
 	"io"
 	"net"
 	"smux"
@@ -27,6 +26,9 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -123,7 +125,9 @@ func VerifySmuxPoolConfig(cfg *SmuxConnPoolConfig) error {
 }
 
 func DefaultSmuxConfig() *smux.Config {
-	return smux.DefaultConfig()
+	sc := smux.DefaultConfig()
+	sc.KeepAliveTimeout = 120 * time.Second
+	return sc
 }
 
 var gConfig = DefaultSmuxConnPoolConfig()
@@ -231,7 +235,6 @@ func (cp *SmuxConnectPool) PutConnect(stream *smux.Stream, forceClose bool) {
 		return
 	}
 	if forceClose {
-		stream.Close()
 		pool.MarkClosed(stream)
 		return
 	}
@@ -412,9 +415,8 @@ getFromPool:
 		select {
 		case obj := <-p.objects:
 			if streamClosed(obj.stream) {
-				p.MarkClosed(obj.stream)
+				continue
 			} else if time.Now().UnixNano()-obj.idle > p.cfg.StreamIdleTimeout {
-				obj.stream.Close()
 				p.MarkClosed(obj.stream)
 			} else {
 				p.PutStreamObjectToPool(obj)
@@ -505,6 +507,11 @@ func (p *SmuxPool) getAvailSess() (sess *smux.Session) {
 			break
 		}
 	}
+	if sess != nil {
+		log.LogDebugf("getAvailSess: target(%v) sessionsLen(%v)", p.target, sessionsLen)
+	} else {
+		log.LogDebugf("getAvailSess: no available session, target(%v) sessionsLen(%v)", p.target, sessionsLen)
+	}
 	p.sessionsLock.RUnlock()
 	return
 }
@@ -533,7 +540,6 @@ getFromPool:
 			if obj != nil {
 				select {
 				case <-obj.stream.GetDieCh():
-					p.MarkClosed(obj.stream)
 					continue getFromPool
 				default:
 					return obj.stream, nil
@@ -551,6 +557,11 @@ func (p *SmuxPool) NewStream() (stream *smux.Stream, err error) {
 	if sess != nil {
 		stream, err = p.openStream(sess)
 		if err != nil {
+			log.LogWarnf("NewStream - openStream failed, createNewSession: target(%v) err(%v)", p.target, err)
+			if err == ErrTooMuchSmuxStreams {
+				return nil, err
+			}
+			sess.Close()
 			goto createNewSession
 		} else {
 			return
@@ -567,9 +578,10 @@ createNewSession:
 }
 
 func (p *SmuxPool) MarkClosed(s *smux.Stream) {
-	s.Close()
-	p.addInflightStream(-1)
-	p.streamBucket.returnTokens(1)
+	if err := s.Close(); err != io.ErrClosedPipe {
+		p.addInflightStream(-1)
+		p.streamBucket.returnTokens(1)
+	}
 }
 
 func (p *SmuxPool) addInflightStream(n int) int {
@@ -623,14 +635,12 @@ func (p *SmuxPool) openStream(sess *smux.Session) (stream *smux.Stream, err erro
 
 func (p *SmuxPool) PutStreamObjectToPool(obj *streamObject) {
 	if streamClosed(obj.stream) {
-		p.MarkClosed(obj.stream)
 		return
 	}
 	select {
 	case p.objects <- obj:
 		return
 	default:
-		obj.stream.Close()
 		p.MarkClosed(obj.stream)
 	}
 }

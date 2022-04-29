@@ -28,9 +28,9 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/cryptoutil"
-
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/tiglabs/raft"
 )
 
 //
@@ -177,8 +177,14 @@ func (m *Server) createRaftServer() (err error) {
 		Applied: m.fsm.applied,
 		SM:      m.fsm,
 	}
-	if m.partition, err = m.raftStore.CreatePartition(partitionCfg); err != nil {
+
+	var rc *raft.RaftConfig
+
+	if m.partition, rc, err = m.raftStore.CreatePartition(partitionCfg); err != nil {
 		return errors.Trace(err, "CreatePartition failed")
+	}
+	if err = m.raftStore.RaftServer().CreateRaft(rc); err != nil {
+		return errors.Trace(err, "CreateRaft failed")
 	}
 	return
 }

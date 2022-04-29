@@ -166,8 +166,8 @@ func (c *Cluster) checkDataPartitions() {
 		readWrites := vol.checkDataPartitions(c)
 		vol.dataPartitions.setReadWriteDataPartitions(readWrites, c.Name)
 		vol.dataPartitions.updateResponseCache(true, 0)
-		msg := fmt.Sprintf("action[checkDataPartitions],vol[%v] can readWrite partitions:%v  ", vol.Name, vol.dataPartitions.readableAndWritableCnt)
-		log.LogInfo(msg)
+		log.LogInfof("action[checkDataPartitions],vol[%v] dps[%v], can readWrite partitions:%v",
+			vol.Name, len(vol.dataPartitions.partitions), vol.dataPartitions.readableAndWritableCnt)
 	}
 }
 
@@ -817,6 +817,7 @@ func (c *Cluster) createDataPartition(volName string, zoneNum int) (dp *DataPart
 	default:
 		dp.total = util.DefaultDataPartitionSize
 		dp.Status = proto.ReadWrite
+		dp.statusReason = DpStRw
 	}
 	if err = c.syncAddDataPartition(dp); err != nil {
 		goto errHandler
@@ -1250,6 +1251,7 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 	}
 
 	dp.Status = proto.ReadOnly
+	dp.statusReason = DpStIsRecovering
 	dp.isRecover = true
 	c.putBadDataPartitionIDs(replica, srcAddr, dp.PartitionID)
 

@@ -134,6 +134,8 @@ func (ft *FollowerTransport) serverReadFromFollower() {
 // Read the response from the follower
 func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err error) {
 	reply := NewPacket()
+	reply.Opcode = request.Opcode
+	reply.ReqID = request.ReqID
 	defer func() {
 		reply.clean()
 		request.respCh <- err

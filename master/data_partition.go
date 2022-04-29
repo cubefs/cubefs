@@ -27,6 +27,42 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+const (
+	DpStRw = iota
+	DpStInvReplicaNum
+	DpStNospc
+	DpStRoReplica
+	DpStNotEnoughReplica
+	DpStIsRecovering
+	DpStNew
+	DpStDiskErr
+	DpStMarkRo
+)
+
+func DataPartitionStatusReason(reason int) string {
+	switch reason {
+	case DpStRw:
+		return "readable and writable"
+	case DpStInvReplicaNum:
+		return "invalid number of replicas"
+	case DpStNospc:
+		return "not enough space"
+	case DpStRoReplica:
+		return "readonly replicas"
+	case DpStNotEnoughReplica:
+		return "not enough replicas"
+	case DpStIsRecovering:
+		return "is recovering"
+	case DpStNew:
+		return "new datapartition"
+	case DpStDiskErr:
+		return "disk error"
+	case DpStMarkRo:
+		return "marked readonly"
+	}
+	return ""
+}
+
 // DataPartition represents the structure of storing the file contents.
 type DataPartition struct {
 	PartitionID    uint64
@@ -50,6 +86,8 @@ type DataPartition struct {
 	OfflinePeerID           uint64
 	FileInCoreMap           map[string]*FileInCore
 	FilesWithMissingReplica map[string]int64 // key: file name, value: last time when a missing replica is found
+
+	statusReason int // ReadOnly or Unavailable reason
 }
 
 func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64) (partition *DataPartition) {
@@ -64,6 +102,7 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64)
 	partition.MissingNodes = make(map[string]int64)
 
 	partition.Status = proto.ReadOnly
+	partition.statusReason = DpStNew
 	partition.VolName = volName
 	partition.VolID = volID
 	partition.modifyTime = time.Now().Unix()

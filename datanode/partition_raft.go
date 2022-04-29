@@ -33,6 +33,7 @@ import (
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/tiglabs/raft"
 	raftproto "github.com/tiglabs/raft/proto"
 )
 
@@ -76,6 +77,7 @@ func (dp *DataPartition) StartRaft() (err error) {
 		heartbeatPort int
 		replicaPort   int
 		peers         []raftstore.PeerAddress
+		rc            *raft.RaftConfig
 	)
 	defer func() {
 		if r := recover(); r != nil {
@@ -109,7 +111,11 @@ func (dp *DataPartition) StartRaft() (err error) {
 		WalPath: dp.path,
 	}
 
-	dp.raftPartition, err = dp.config.RaftStore.CreatePartition(pc)
+	dp.raftPartition, rc, err = dp.config.RaftStore.CreatePartition(pc)
+	if err != nil {
+		return
+	}
+	err = dp.config.RaftStore.RaftServer().CreateRaft(rc)
 	if err == nil {
 		dp.ForceSetRaftRunning()
 		dp.ForceSetDataPartitionToFininshLoad()
@@ -716,10 +722,11 @@ func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) 
 
 // Get all replica applied ids
 func (dp *DataPartition) getAllReplicaAppliedID() (allAppliedID []uint64, replyNum uint8) {
-	allAppliedID = make([]uint64, dp.getReplicaLen())
-	for i := 0; i < dp.getReplicaLen(); i++ {
+	replicas := dp.getReplicaCopy()
+	allAppliedID = make([]uint64, len(replicas))
+	for i := 0; i < len(replicas); i++ {
 		p := NewPacketToGetAppliedID(dp.partitionID)
-		replicaHostParts := strings.Split(dp.getReplicaAddr(i), ":")
+		replicaHostParts := strings.Split(replicas[i], ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
 		if LocalIP == replicaHost {
 			log.LogDebugf("partition(%v) local no send msg. localIP(%v) replicaHost(%v) appliedId(%v)",
@@ -728,7 +735,7 @@ func (dp *DataPartition) getAllReplicaAppliedID() (allAppliedID []uint64, replyN
 			replyNum++
 			continue
 		}
-		target := dp.getReplicaAddr(i)
+		target := replicas[i]
 		appliedID, err := dp.getRemoteAppliedID(target, p)
 		if err != nil {
 			log.LogErrorf("partition(%v) getRemoteAppliedID Failed(%v).", dp.partitionID, err)

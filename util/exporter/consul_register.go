@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -157,7 +156,6 @@ func makeRegisterReq(host, addr, app, role, cluster, meta string, port int64) (r
 	if ok {
 		cInfo.Meta = metas
 		cInfo.Meta["cluster"] = cluster
-		cInfo.Meta["commit"] = proto.CommitID
 	}
 
 	cInfoBytes, err := json.Marshal(cInfo)

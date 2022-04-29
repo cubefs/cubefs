@@ -211,7 +211,10 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	if vol.getDataPartitionsCount() == 0 && vol.Status != markDelete {
 		c.batchCreateDataPartition(vol, 1)
 	}
+	roDatapartitions := make([]uint64, 0)
+	unavailDatapartitions := make([]uint64, 0)
 	vol.dataPartitions.RLock()
+	oldRwCnt := vol.dataPartitions.readableAndWritableCnt
 	defer vol.dataPartitions.RUnlock()
 	for _, dp := range vol.dataPartitions.partitionMap {
 		dp.checkReplicaStatus(c.cfg.DataPartitionTimeOutSec)
@@ -221,11 +224,38 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 		dp.checkReplicaNum(c, vol)
 		if dp.Status == proto.ReadWrite {
 			cnt++
+		} else if dp.Status == proto.ReadOnly {
+			roDatapartitions = append(roDatapartitions, dp.PartitionID)
+		} else {
+			unavailDatapartitions = append(unavailDatapartitions, dp.PartitionID)
 		}
 		dp.checkDiskError(c.Name, c.leaderInfo.addr)
 		tasks := dp.checkReplicationTask(c.Name, vol.dataPartitionSize)
 		if len(tasks) != 0 {
 			c.addDataNodeTasks(tasks)
+		}
+	}
+	// 200 comes from autoCreateDataPartitions()
+	if oldRwCnt-cnt > rwDatapartitionCntReport && cnt < 200 {
+		str := fmt.Sprintf("[checkDataPartitions] plunge vol[%s] datapartition rw[%v -> %v] ro[%v] unavail[%v]",
+			vol.Name, oldRwCnt, cnt, len(roDatapartitions), len(unavailDatapartitions))
+		Warn(c.Name, str)
+		log.LogWarn(str)
+		for _, dpID := range roDatapartitions {
+			dp, ok := vol.dataPartitions.partitionMap[dpID]
+			if !ok {
+				continue
+			}
+			log.LogWarnf("[checkDataPartitions] datapartition[%v] status[%v] reason[%v]",
+				dpID, dp.Status, DataPartitionStatusReason(dp.statusReason))
+		}
+		for _, dpID := range unavailDatapartitions {
+			dp, ok := vol.dataPartitions.partitionMap[dpID]
+			if !ok {
+				continue
+			}
+			log.LogWarnf("[checkDataPartitions] datapartition[%v] status[%v] reason[%v]",
+				dpID, dp.Status, DataPartitionStatusReason(dp.statusReason))
 		}
 	}
 	return
@@ -401,7 +431,8 @@ func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 	if (vol.Capacity > 200000 && vol.dataPartitions.readableAndWritableCnt < 200) || vol.dataPartitions.readableAndWritableCnt < minNumOfRWDataPartitions {
 		count := vol.calculateExpansionNum()
-		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v]", vol.Name, count)
+		log.LogInfof("action[autoCreateDataPartitions] vol[%v] dps[%v] add[%v] rwCnt[%v]",
+			vol.Name, len(vol.dataPartitions.partitions), count, vol.dataPartitions.readableAndWritableCnt)
 		c.batchCreateDataPartition(vol, count)
 	}
 }

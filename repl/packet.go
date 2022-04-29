@@ -203,7 +203,7 @@ func NewReadTinyDeleteRecordResponsePacket(requestID int64, partitionID uint64) 
 	p = new(Packet)
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
-	p.Opcode = proto.OpOk
+	p.Opcode = proto.OpReadTinyDeleteRecord
 	p.ReqID = requestID
 	p.ExtentType = proto.NormalExtentType
 
@@ -251,12 +251,12 @@ func NewTinyExtentStreamReadResponsePacket(requestID int64, partitionID uint64, 
 	return
 }
 
+// Note: Opcode must be assigned according to the request packet.
 func NewStreamReadResponsePacket(requestID int64, partitionID uint64, extentID uint64) (p *Packet) {
 	p = new(Packet)
 	p.ExtentID = extentID
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
-	p.Opcode = proto.OpOk
 	p.ReqID = requestID
 	p.ExtentType = proto.NormalExtentType
 

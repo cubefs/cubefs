@@ -65,6 +65,8 @@ const (
 	defaultMaxMetaPartitionCountOnEachNode             = 10000
 	defaultReplicaNum                                  = 3
 	defaultDiffSpaceUsage                              = 1024 * 1024 * 1024
+
+	rwDatapartitionCntReport = 100 // FIXME
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)

@@ -97,6 +97,13 @@ const (
 	ConfigKeySmuxMaxConn       = "smuxMaxConn"        //int
 	ConfigKeySmuxStreamPerConn = "smuxStreamPerConn"  //int
 	ConfigKeySmuxMaxBuffer     = "smuxMaxBuffer"      //int
+
+	// Limit the number of goroutines waiting for disk IO.
+	// This is a per disk configuration.
+	// Default value is 100, with respect to HDD disk.
+	// For SSD or NVME disk, please increase this value for
+	// for better performance.
+	ConfigKeyDiskIOLimit = "diskIOLimit" //int
 )
 
 // DataNode defines the structure of a data node.
@@ -275,6 +282,11 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	s.space.SetRaftStore(s.raftStore)
 	s.space.SetNodeID(s.nodeID)
 	s.space.SetClusterID(s.clusterID)
+	diskIOLimit := int(cfg.GetInt(ConfigKeyDiskIOLimit))
+	if diskIOLimit <= DefaultDiskIOLimit {
+		diskIOLimit = DefaultDiskIOLimit
+	}
+	s.space.diskIOLimit = diskIOLimit
 
 	var wg sync.WaitGroup
 	for _, d := range cfg.GetSlice(ConfigKeyDisks) {

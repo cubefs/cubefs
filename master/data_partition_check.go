@@ -30,6 +30,7 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 	liveReplicas := partition.getLiveReplicasFromHosts(dpTimeOutSec)
 	if len(partition.Replicas) > len(partition.Hosts) {
 		partition.Status = proto.ReadOnly
+		partition.statusReason = DpStInvReplicaNum
 		msg := fmt.Sprintf("action[extractStatus],partitionID:%v has exceed repica, replicaNum:%v  liveReplicas:%v   Status:%v  RocksDBHost:%v ",
 			partition.PartitionID, partition.ReplicaNum, len(liveReplicas), partition.Status, partition.Hosts)
 		Warn(clusterName, msg)
@@ -39,11 +40,19 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 	switch len(liveReplicas) {
 	case (int)(partition.ReplicaNum):
 		partition.Status = proto.ReadOnly
-		if partition.checkReplicaStatusOnLiveNode(liveReplicas) == true && partition.canWrite() {
-			partition.Status = proto.ReadWrite
+		if partition.checkReplicaStatusOnLiveNode(liveReplicas) == true {
+			if partition.canWrite() {
+				partition.Status = proto.ReadWrite
+				partition.statusReason = DpStRw
+			} else {
+				partition.statusReason = DpStNospc
+			}
+		} else {
+			partition.statusReason = DpStRoReplica
 		}
 	default:
 		partition.Status = proto.ReadOnly
+		partition.statusReason = DpStNotEnoughReplica
 	}
 	if needLog == true && len(liveReplicas) != int(partition.ReplicaNum) {
 		msg := fmt.Sprintf("action[extractStatus],partitionID:%v  replicaNum:%v  liveReplicas:%v   Status:%v  RocksDBHost:%v ",
@@ -174,6 +183,7 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) {
 
 	if len(diskErrorAddrs) != (int)(partition.ReplicaNum) && len(diskErrorAddrs) > 0 {
 		partition.Status = proto.ReadOnly
+		partition.statusReason = DpStDiskErr
 	}
 
 	for addr, diskPath := range diskErrorAddrs {
