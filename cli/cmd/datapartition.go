@@ -15,20 +15,52 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/tiglabs/raft"
 )
 
 const (
 	cmdDataPartitionUse   = "datapartition [COMMAND]"
 	cmdDataPartitionShort = "Manage data partition"
 )
+
+const (
+	DataNodePprofPort string = "17320"
+)
+
+var (
+	optShowRaftStatus bool
+)
+
+type PartitionStatus struct {
+	VolName    string       `json:"volName"`
+	ID         uint64       `json:"id"`
+	Size       int          `json:"size"`
+	Used       int          `json:"used"`
+	Status     int          `json:"status"`
+	Path       string       `json:"path"`
+	FileCount  int          `json:"fileCount"`
+	Replicas   []string     `json:"replicas"`
+	RaftStatus *raft.Status `json:"raftStatus"`
+}
+
+type DataPartitionResponse struct {
+	Code int             `json:"code"`
+	Data PartitionStatus `json:"data"`
+	Msg  string          `json:"msg"`
+}
 
 func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
@@ -39,7 +71,9 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 	cmd.AddCommand(
 		newDataPartitionGetCmd(client),
 		newListCorruptDataPartitionCmd(client),
+		newFixLackReplicaDataPartitionCmd(client),
 		newDataPartitionDecommissionCmd(client),
+		newDataPartitionBatchDecommissionCmd(client),
 		newDataPartitionReplicateCmd(client),
 		newDataPartitionDeleteReplicaCmd(client),
 	)
@@ -47,11 +81,13 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdDataPartitionGetShort           = "Display detail information of a data partition"
-	cmdCheckCorruptDataPartitionShort  = "Check and list unhealthy data partitions"
-	cmdDataPartitionDecommissionShort  = "Decommission a replication of the data partition to a new address"
-	cmdDataPartitionReplicateShort     = "Add a replication of the data partition on a new address"
-	cmdDataPartitionDeleteReplicaShort = "Delete a replication of the data partition on a fixed address"
+	cmdDataPartitionGetShort               = "Display detail information of a data partition"
+	cmdCheckCorruptDataPartitionShort      = "Check and list unhealthy data partitions"
+	cmdFixLackReplicaDataPartitionShort    = "Check and fix data partitions lack of replica"
+	cmdDataPartitionDecommissionShort      = "Decommission a replication of the data partition to a new address"
+	cmdDataPartitionBatchDecommissionShort = "Batch decommission a replication of the data partitions specified in a file separated by white space"
+	cmdDataPartitionReplicateShort         = "Add a replication of the data partition on a new address"
+	cmdDataPartitionDeleteReplicaShort     = "Delete a replication of the data partition on a fixed address"
 )
 
 func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
@@ -79,6 +115,7 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 			stdout(formatDataPartitionInfo(partition))
 		},
 	}
+	cmd.Flags().BoolVarP(&optShowRaftStatus, "show-raft", "r", false, "Display data partition raft status")
 	return cmd
 }
 
@@ -150,6 +187,7 @@ The "reset" command will be released in next version`,
 				}
 				if partition != nil {
 					stdout("%v\n", formatDataPartitionInfoRow(partition))
+					stdout("missing nodes(%v)\n", partition.MissingNodes)
 				}
 			}
 
@@ -171,11 +209,138 @@ The "reset" command will be released in next version`,
 	return cmd
 }
 
+func newFixLackReplicaDataPartitionCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpFix,
+		Short: cmdFixLackReplicaDataPartitionShort,
+		Long:  `Fix lack of replica data partitions`,
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				view      *proto.ClusterView
+				dataNodes map[uint64]string
+				diagnosis *proto.DataPartitionDiagnosis
+				err       error
+			)
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+
+			// Get all the nodes and establish an id->addr map
+			if view, err = client.AdminAPI().GetCluster(); err != nil {
+				return
+			}
+			dataNodes = make(map[uint64]string)
+			for _, node := range view.DataNodes {
+				dataNodes[node.ID] = node.Addr
+			}
+
+			// Get diagnosis results
+			if diagnosis, err = client.AdminAPI().DiagnoseDataPartition(); err != nil {
+				return
+			}
+			sort.SliceStable(diagnosis.LackReplicaDataPartitionIDs, func(i, j int) bool {
+				return diagnosis.LackReplicaDataPartitionIDs[i] < diagnosis.LackReplicaDataPartitionIDs[j]
+			})
+
+			// Fix dp
+			for _, pid := range diagnosis.LackReplicaDataPartitionIDs {
+				var (
+					partition  *proto.DataPartitionInfo
+					leaderAddr string
+				)
+
+				stdout("FIX [%v] ... ", pid)
+				if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
+					err = fmt.Errorf("Failed to get partition, err:[%v] ", err)
+					stdout("SKIP(%v)\n", err)
+					return
+				}
+				if partition == nil {
+					stdout("SKIP(partition is nil)\n")
+					return
+				}
+				for _, replica := range partition.Replicas {
+					if replica.IsLeader {
+						leaderAddr = replica.Addr
+					}
+				}
+				if leaderAddr == "" {
+					stdout("SKIP(no leader)\n")
+					return
+				}
+
+				var dataNodeResp *DataPartitionResponse
+				dataNodeResp, err = getDataNodePartitionStatus(leaderAddr, pid)
+				if err != nil {
+					stdout("SKIP(failed to get partition status, err[%v])\n", err)
+					return
+				}
+
+				var peers map[uint64]string
+				peers = make(map[uint64]string)
+				for _, peer := range partition.Peers {
+					peers[peer.ID] = peer.Addr
+				}
+
+				var staleAddr string
+
+				// Delete stale replica
+				for id := range dataNodeResp.Data.RaftStatus.Replicas {
+					var ok bool
+
+					if _, ok = peers[id]; ok {
+						continue
+					}
+					staleAddr, ok = dataNodes[id]
+					if !ok {
+						stdout("SKIP(no such node id: %v)\n", id)
+						return
+					}
+					stdout("pid[%v] staleAddr[%v] ", pid, staleAddr)
+					if err = client.AdminAPI().DeleteDataReplica(pid, staleAddr); err != nil {
+						stdout("SKIP(failed to delete replica: %v)\n", err)
+						return
+					}
+					break
+				}
+
+				// Add replica
+				if len(partition.Hosts) <= 2 {
+					var targetAddr string
+
+					if staleAddr == "" {
+						for id := range dataNodes {
+							if _, ok := peers[id]; !ok {
+								targetAddr = dataNodes[id]
+							}
+						}
+					} else {
+						targetAddr = staleAddr
+					}
+					stdout("targetAddr[%v] ", targetAddr)
+					if err = client.AdminAPI().AddDataReplica(pid, targetAddr); err != nil {
+						stdout("SKIP(failed to add replica: addr[%v] err[%v])", staleAddr, err)
+						return
+					}
+				}
+
+				stdout(" OK\n")
+			}
+
+			return
+		},
+	}
+	return cmd
+}
+
 func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   CliOpDecommission + " [ADDRESS] [DATA PARTITION ID]",
-		Short: cmdDataPartitionDecommissionShort,
-		Args:  cobra.MinimumNArgs(2),
+		Use:     CliOpDecommission + " [ADDRESS] [DATA PARTITION ID]",
+		Aliases: []string{"decomm"},
+		Short:   cmdDataPartitionDecommissionShort,
+		Args:    cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
 				err         error
@@ -200,6 +365,48 @@ func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
 			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	return cmd
+}
+
+func newDataPartitionBatchDecommissionCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:     CliOpBatchDecommission + " [ADDRESS] [FILE CONTAINS DP ID]",
+		Aliases: []string{"b-decomm"},
+		Short:   cmdDataPartitionBatchDecommissionShort,
+		Args:    cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err         error
+				data        []byte
+				partitionID uint64
+			)
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+			address := args[0]
+			dpFile := args[1]
+			data, err = os.ReadFile(dpFile)
+			if err != nil {
+				return
+			}
+			dpStrings := strings.Split(strings.TrimSuffix(string(data), "\n"), " ")
+			for _, dpString := range dpStrings {
+				partitionID, err = strconv.ParseUint(dpString, 10, 64)
+				stdout("Decommission [%v] ... ", partitionID)
+				if err != nil {
+					return
+				}
+				if err = client.AdminAPI().DecommissionDataPartition(partitionID, address); err != nil {
+					return
+				}
+				stdout("OK\n")
+			}
+			stdout("Batch decommission finished!\n")
+			return
 		},
 	}
 	return cmd
@@ -269,4 +476,34 @@ func newDataPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 		},
 	}
 	return cmd
+}
+
+func getDataNodePartitionStatus(addr string, pid uint64) (dataNodeResp *DataPartitionResponse, err error) {
+	var (
+		resp     *http.Response
+		respData []byte
+	)
+
+	ip := strings.Split(addr, ":")
+	if len(ip) != 2 {
+		err = fmt.Errorf("invalid addr[%v]", addr)
+		return
+	}
+	url := fmt.Sprintf("http://%s:%s/partition?id=%d", ip[0], DataNodePprofPort, pid)
+	resp, err = http.Get(url)
+	if err != nil {
+		err = fmt.Errorf("failed to GET url[%v] err[%v]", url, err)
+		return
+	}
+	respData, err = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		err = fmt.Errorf("read body failed, url[%v] err[%v]", url, err)
+		return
+	}
+	if err = json.Unmarshal(respData, &dataNodeResp); err != nil {
+		err = fmt.Errorf("unmarshal failed, url[%v] err[%v]", url, err)
+		return
+	}
+	return
 }

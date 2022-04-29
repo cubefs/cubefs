@@ -142,6 +142,18 @@ func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	s.buildSuccessResp(w, result)
 }
+func (s *DataNode) getLocalNoLeaderPartitionsAPI(w http.ResponseWriter, r *http.Request) {
+	var partitions string
+	s.space.RangePartitions(func(dp *DataPartition) bool {
+		if !dp.IsDataPartitionLoading() {
+			if dp.raftPartition == nil || dp.raftPartition.Status().Leader == raft.NoLeader {
+				partitions = fmt.Sprintf("%v %v", partitions, dp.partitionID)
+			}
+		}
+		return true
+	})
+	s.buildSuccessResp(w, partitions)
+}
 
 func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 	const (
@@ -175,7 +187,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if partition.IsDataPartitionLoading() {
+	if partition.IsDataPartitionLoading() || partition.raftPartition == nil {
 		raftSt = &raft.Status{Stopped: true}
 	} else {
 		raftSt = partition.raftPartition.Status()

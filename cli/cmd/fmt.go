@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/tiglabs/raft"
 )
 
 func formatClusterView(cv *proto.ClusterView) string {
@@ -178,7 +179,21 @@ func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("Peers :\n"))
 	sb.WriteString(fmt.Sprintf("%v\n", formatPeerTableHeader()))
 	for _, peer := range partition.Peers {
-		sb.WriteString(fmt.Sprintf("%v\n", formatPeer(peer)))
+		var (
+			msg string
+			sts *raft.Status
+		)
+		if optShowRaftStatus {
+			dataNodeResp, err := getDataNodePartitionStatus(peer.Addr, partition.PartitionID)
+			if err == nil {
+				sts = dataNodeResp.Data.RaftStatus
+				if sts != nil {
+					msg = fmt.Sprintf("    leader[%v] term[%v] index[%v] commit[%v] apply[%v]", sts.Leader, sts.Term, sts.Index, sts.Commit, sts.Applied)
+				}
+			}
+
+		}
+		sb.WriteString(fmt.Sprintf("%v%v\n", formatPeer(peer), msg))
 	}
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("Hosts :\n"))
@@ -364,16 +379,17 @@ func formatTimeToString(t time.Time) string {
 	return t.Format("2006-01-02 15:04:05")
 }
 
-var dataReplicaTableRowPattern = "%-18v    %-6v    %-6v    %-6v    %-6v    %-6v    %-10v"
+var dataReplicaTableRowPattern = "%-18v    %-6v    %-6v    %-6v    %-6v    %-6v    %-10v    %-10v"
 
 func formatDataReplicaTableHeader() string {
-	return fmt.Sprintf(dataReplicaTableRowPattern, "ADDRESS", "USED", "TOTAL", "ISLEADER", "FILECOUNT", "STATUS", "REPORT TIME")
+	return fmt.Sprintf(dataReplicaTableRowPattern, "ADDRESS", "USED", "TOTAL", "ISLEADER", "FILECOUNT", "STATUS", "REPORT TIME", "DISK PATH")
 }
 
 func formatDataReplica(indentation string, replica *proto.DataReplica, rowTable bool) string {
 	if rowTable {
 		return fmt.Sprintf(dataReplicaTableRowPattern, replica.Addr, formatSize(replica.Used), formatSize(replica.Total),
-			replica.IsLeader, replica.FileCount, formatDataPartitionStatus(replica.Status), formatTime(replica.ReportTime))
+			replica.IsLeader, replica.FileCount, formatDataPartitionStatus(replica.Status), formatTime(replica.ReportTime),
+			replica.DiskPath)
 	}
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("%v- Addr           : %v\n", indentation, replica.Addr))
