@@ -327,6 +327,7 @@ func cfs_start_client(id C.int64_t) C.int {
 
 	err := c.start()
 	if err != nil {
+		syslog.Println(err)
 		return statusEIO
 	}
 	return statusOK
