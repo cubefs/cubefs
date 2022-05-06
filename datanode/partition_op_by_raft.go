@@ -158,7 +158,6 @@ func PutRandomWriteOpItem(item *rndWrtOpItem){
 
 // RandomWriteSubmit submits the proposal to raft.
 func UnmarshalRandWriteRaftLog(raw []byte) (opItem *rndWrtOpItem, err error) {
-	opItem = GetRandomWriteOpItem()
 	var index int
 	version:=binary.BigEndian.Uint32(raw[index:index+4])
 	index+=4
@@ -174,6 +173,7 @@ func UnmarshalRandWriteRaftLog(raw []byte) (opItem *rndWrtOpItem, err error) {
 		opItem, err = UnmarshalOldVersionRaftLog(raw)
 		return
 	}
+	opItem = GetRandomWriteOpItem()
 	if err = binary.Read(buff, binary.BigEndian, &opItem.opcode); err != nil {
 		return
 	}
@@ -222,6 +222,7 @@ func BinaryUnmarshalRandWriteRaftLogV3(raw []byte) (opItem *rndWrtOpItem, err er
 	index+=4
 	if opItem.size+int64(index)!=int64(len(raw)){
 		err=fmt.Errorf("unavali RandomWriteRaftlog body, raw len(%v), has unmarshal(%v) opItemSize(%v)",len(raw),index,opItem.size )
+		return nil,err
 	}
 	opItem.data = raw[index:int64(index)+opItem.size]
 
