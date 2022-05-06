@@ -146,7 +146,7 @@ func NewOverwritePacket(ctx context.Context, dp *DataPartition, extentID uint64,
 	p.Arg = nil
 	p.ArgLen = 0
 	p.RemainingFollowers = 0
-	p.Opcode = proto.OpRandomWriteV3
+	p.Opcode = proto.OpRandomWrite
 	p.HasPrepare = false
 	p.StartT, p.RecvT, p.WaitT, p.SendT = time.Now().UnixNano(), time.Now().UnixNano(), time.Now().UnixNano(), time.Now().UnixNano()
 	p.ReqID = proto.GenerateRequestID()

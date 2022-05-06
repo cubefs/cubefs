@@ -160,10 +160,10 @@ func PutRandomWriteOpItem(item *rndWrtOpItem){
 func UnmarshalRandWriteRaftLog(raw []byte) (opItem *rndWrtOpItem, err error) {
 	var index int
 	version:=binary.BigEndian.Uint32(raw[index:index+4])
-	index+=4
-	if version==RandomWriteRaftLogMagicVersionV3{
-		return BinaryUnmarshalRandWriteRaftLogV3(raw)
-	}
+	//index+=4
+	//if version==RandomWriteRaftLogMagicVersionV3{
+	//	return BinaryUnmarshalRandWriteRaftLogV3(raw)
+	//}
 	buff := bytes.NewBuffer(raw)
 	if err = binary.Read(buff, binary.BigEndian, &version); err != nil {
 		return

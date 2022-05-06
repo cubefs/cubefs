@@ -93,8 +93,6 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handleBatchMarkDeletePacket(p, c)
 	case proto.OpRandomWrite, proto.OpSyncRandomWrite:
 		s.handleRandomWritePacket(p)
-	case proto.OpRandomWriteV3, proto.OpSyncRandomWriteV3:
-		s.handleRandomWritePacketV3(p)
 	case proto.OpNotifyReplicasToRepair:
 		s.handlePacketToNotifyExtentRepair(p)
 	case proto.OpGetAllWatermarks:
@@ -482,32 +480,32 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 }
 
 
-func (s *DataNode) handleRandomWritePacketV3(p *repl.Packet) {
-	var err error
-	defer func() {
-		if err != nil {
-			p.PackErrorBody(ActionWrite, err.Error())
-		} else {
-			p.PacketOkReply()
-		}
-	}()
-	partition := p.Object.(*DataPartition)
-	_, isLeader := partition.IsRaftLeader()
-	if !isLeader {
-		err = raft.ErrNotLeader
-		return
-	}
-	err = partition.RandomWriteSubmitV3(p)
-	if err != nil && strings.Contains(err.Error(), raft.ErrNotLeader.Error()) {
-		err = raft.ErrNotLeader
-		return
-	}
-
-	if err == nil && p.ResultCode != proto.OpOk {
-		err = storage.TryAgainError
-		return
-	}
-}
+//func (s *DataNode) handleRandomWritePacketV3(p *repl.Packet) {
+//	var err error
+//	defer func() {
+//		if err != nil {
+//			p.PackErrorBody(ActionWrite, err.Error())
+//		} else {
+//			p.PacketOkReply()
+//		}
+//	}()
+//	partition := p.Object.(*DataPartition)
+//	_, isLeader := partition.IsRaftLeader()
+//	if !isLeader {
+//		err = raft.ErrNotLeader
+//		return
+//	}
+//	err = partition.RandomWriteSubmitV3(p)
+//	if err != nil && strings.Contains(err.Error(), raft.ErrNotLeader.Error()) {
+//		err = raft.ErrNotLeader
+//		return
+//	}
+//
+//	if err == nil && p.ResultCode != proto.OpOk {
+//		err = storage.TryAgainError
+//		return
+//	}
+//}
 
 
 

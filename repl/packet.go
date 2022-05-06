@@ -616,17 +616,7 @@ func (p *Packet) allocateBufferFromPoolForReadConnnectBody(c net.Conn) (isUseBuf
 		_, err = io.ReadFull(c, p.Data[:readSize])
 		atomic.StoreInt64(&p.useDataPoolFlag, PacketUseDataPool)
 		isUseBufferPool = true
-	} else if p.IsRandomWriteV3() {
-		needDataSize := uint32(readSize) + proto.RandomWriteRaftLogV3HeaderSize
-		if needDataSize <= util.BlockSize {
-			p.Data, _ = proto.Buffers.Get(util.BlockSize)
-			atomic.StoreInt64(&p.useDataPoolFlag, PacketUseDataPool)
-			isUseBufferPool = true
-		} else {
-			p.Data = make([]byte, uint32(readSize)+proto.RandomWriteRaftLogV3HeaderSize)
-		}
-		_, err = io.ReadFull(c, p.Data[proto.RandomWriteRaftLogV3HeaderSize:p.Size+proto.RandomWriteRaftLogV3HeaderSize])
-	} else {
+	}else {
 		p.Data = make([]byte, readSize)
 		_, err = io.ReadFull(c, p.Data[:readSize])
 	}

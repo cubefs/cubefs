@@ -616,7 +616,7 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 	for total < size {
 		reqPacket := NewOverwritePacket(ctx, dp, req.ExtentKey.ExtentId, offset-ekFileOffset+total+ekExtOffset, s.inode, offset)
 		if direct {
-			reqPacket.Opcode = proto.OpSyncRandomWriteV3
+			reqPacket.Opcode = proto.OpSyncRandomWrite
 		}
 		packSize := util.Min(size-total, util.OverWritePacketSizeLimit)
 		reqPacket.Data = req.Data[total : total+packSize]
