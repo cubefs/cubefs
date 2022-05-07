@@ -1,18 +1,18 @@
-// This is a C SDK for ChubaoFS implemented by Golang, all the 
-// functions are in accordance with libc, except for cfs_ prefix 
-// in function name, a heading client_id parameter, and a negative 
-// ERRNO returned when fail(e.g. cfs_open will return -EACCES if 
+// This is a C SDK for ChubaoFS implemented by Golang, all the
+// functions are in accordance with libc, except for cfs_ prefix
+// in function name, a heading client_id parameter, and a negative
+// ERRNO returned when fail(e.g. cfs_open will return -EACCES if
 // it fails with error EACCES).
-// 
+//
 // Notice:
-//   1. CFS DOESN'T support scatter-gather IO, these functions 
-// (cfs_readv,cfs_preadv,cfs_writev,cfs_pwritev) are implemented by 
+//   1. CFS DOESN'T support scatter-gather IO, these functions
+// (cfs_readv,cfs_preadv,cfs_writev,cfs_pwritev) are implemented by
 // copying buffers.
-//   2. Some sophisticated functions are partly supported, e.g. 
+//   2. Some sophisticated functions are partly supported, e.g.
 // cfs_fcntl, cfs_fcntl_lock. DON'T rely on them.
-//   3. CFS DOESN'T check file permissions, cfs_access only check file 
+//   3. CFS DOESN'T check file permissions, cfs_access only check file
 // existence.
-// 
+//
 // Usage:
 //   cfs_config_t conf = (cfs_config_t) { ... };
 //   int64_t client_id = cfs_new_client(&conf);
@@ -49,9 +49,15 @@ typedef struct {
     const char* tracing_report_addr;
 } cfs_config_t;
 
+typedef struct {
+	uint64_t total;
+	uint64_t used;
+} cfs_statfs_t;
+
 // return client_id, should be positive if no error occurs
 int64_t cfs_new_client(const cfs_config_t *conf);
 void cfs_close_client(int64_t id);
+int cfs_statfs(int64_t id, cfs_statfs_t* stat);
 /*
  * Log is cached by default, will only be flushed when client close.
  * Call this function manually when necessary.
