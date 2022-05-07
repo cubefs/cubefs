@@ -342,7 +342,7 @@ func (partition *DataPartition) checkReplicaSize(clusterID string, diffSpaceUsag
 			diff = temp
 		}
 	}
-	if diff > float64(diffSpaceUsage) {
+	if diff > float64(diffSpaceUsage) && diff < float64(util.DefaultDataPartitionSize) {
 		msg := fmt.Sprintf("action[checkReplicaSize] vol[%v],partition[%v] difference space usage [%v] larger than %v, ",
 			partition.VolName, partition.PartitionID, diff, diffSpaceUsage)
 		for _, dr := range partition.Replicas {
