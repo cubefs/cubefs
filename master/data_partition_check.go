@@ -121,10 +121,9 @@ func (partition *DataPartition) checkReplicaStatus(timeOutSec int64) {
 	for _, replica := range partition.Replicas {
 		if !replica.isLive(timeOutSec) {
 			log.LogInfof("action[checkReplicaStatus] partition %v replica %v be set status ReadOnly", partition.PartitionID, replica.Addr)
-			if partition.isSingleReplica() {
-				return
+			if replica.Status == proto.ReadWrite {
+				replica.Status = proto.ReadOnly
 			}
-			replica.Status = proto.ReadOnly
 			continue
 		}
 
