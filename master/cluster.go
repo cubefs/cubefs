@@ -813,12 +813,12 @@ func (c *Cluster) getVolCrossRegionHAType(volName string) (volCrossRegionHAType 
 	return
 }
 
-func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int) (err error) {
+func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int, designatedZoneName string) (err error) {
 	for i := 0; i < reqCount; i++ {
 		if c.DisableAutoAllocate {
 			return
 		}
-		if _, err = c.createDataPartition(vol.Name); err != nil {
+		if _, err = c.createDataPartition(vol.Name, designatedZoneName); err != nil {
 			log.LogErrorf("action[batchCreateDataPartition] after create [%v] data partition,occurred error,err[%v]", i, err)
 			break
 		}
@@ -832,7 +832,7 @@ func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int) (err error) {
 // 3. Communicate with the data node to synchronously create a data partition.
 // - If succeeded, replicate the data through raft and persist it to RocksDB.
 // - Otherwise, throw errors
-func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err error) {
+func (c *Cluster) createDataPartition(volName, designatedZoneName string) (dp *DataPartition, err error) {
 	var (
 		vol         *Vol
 		partitionID uint64
@@ -847,12 +847,16 @@ func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err er
 	vol.createDpMutex.Lock()
 	defer vol.createDpMutex.Unlock()
 	errChannel := make(chan error, vol.dpReplicaNum+vol.dpLearnerNum)
+	zoneName := vol.zoneName
+	if designatedZoneName != "" {
+		zoneName = designatedZoneName
+	}
 	if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
-		if targetHosts, targetPeers, err = c.chooseTargetDataNodesForCreateQuorumDataPartition(int(vol.dpReplicaNum), vol.zoneName); err != nil {
+		if targetHosts, targetPeers, err = c.chooseTargetDataNodesForCreateQuorumDataPartition(int(vol.dpReplicaNum), zoneName); err != nil {
 			goto errHandler
 		}
 	} else {
-		if targetHosts, targetPeers, err = c.chooseTargetDataNodes(nil, nil, nil, int(vol.dpReplicaNum), vol.zoneName, false); err != nil {
+		if targetHosts, targetPeers, err = c.chooseTargetDataNodes(nil, nil, nil, int(vol.dpReplicaNum), zoneName, false); err != nil {
 			goto errHandler
 		}
 		// vol.dpLearnerNum is 0 now. if it will be used in the feature, should choose new learner replica
@@ -910,10 +914,10 @@ func (c *Cluster) createDataPartition(volName string) (dp *DataPartition, err er
 		goto errHandler
 	}
 	vol.dataPartitions.put(dp)
-	log.LogInfof("action[createDataPartition] success, volName[%v], partitionId[%v]", volName, partitionID)
+	log.LogInfof("action[createDataPartition] success, volName[%v] zoneName:[%v], partitionId[%v]", volName, zoneName, partitionID)
 	return
 errHandler:
-	err = fmt.Errorf("action[createDataPartition], clusterID[%v] vol[%v] Err:%v ", c.Name, volName, err.Error())
+	err = fmt.Errorf("action[createDataPartition], clusterID[%v] vol[%v] zoneName:[%v] Err:%v ", c.Name, volName, zoneName, err.Error())
 	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
 	return

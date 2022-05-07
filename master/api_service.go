@@ -343,6 +343,7 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		rstMsg                     string
 		volName                    string
+		designatedZoneName         string
 		vol                        *Vol
 		reqCreateCount             int
 		lastTotalDataPartitions    int
@@ -350,7 +351,7 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 		err                        error
 	)
 
-	if reqCreateCount, volName, err = parseRequestToCreateDataPartition(r); err != nil {
+	if reqCreateCount, volName, designatedZoneName, err = parseRequestToCreateDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -359,9 +360,21 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
 	}
+	if designatedZoneName != "" {
+		if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
+			if err = m.cluster.validCrossRegionHA(designatedZoneName); err != nil {
+				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+				return
+			}
+		}
+		if err = m.cluster.validZone(designatedZoneName, int(vol.dpReplicaNum)); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+	}
 	lastTotalDataPartitions = len(vol.dataPartitions.partitions)
 	clusterTotalDataPartitions = m.cluster.getDataPartitionCount()
-	err = m.cluster.batchCreateDataPartition(vol, reqCreateCount)
+	err = m.cluster.batchCreateDataPartition(vol, reqCreateCount, designatedZoneName)
 	rstMsg = fmt.Sprintf(" createDataPartition succeeeds. "+
 		"clusterLastTotalDataPartitions[%v],vol[%v] has %v data partitions previously and %v data partitions now",
 		clusterTotalDataPartitions, volName, lastTotalDataPartitions, len(vol.dataPartitions.partitions))
@@ -2774,7 +2787,7 @@ func extractVolWriteMutex(r *http.Request) bool {
 	return volWriteMutex
 }
 
-func parseRequestToCreateDataPartition(r *http.Request) (count int, name string, err error) {
+func parseRequestToCreateDataPartition(r *http.Request) (count int, name, designatedZoneName string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2788,6 +2801,7 @@ func parseRequestToCreateDataPartition(r *http.Request) (count int, name string,
 	if name, err = extractName(r); err != nil {
 		return
 	}
+	designatedZoneName = r.FormValue(zoneNameKey)
 	return
 }
 

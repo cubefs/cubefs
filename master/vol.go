@@ -327,7 +327,7 @@ func (vol *Vol) initDataPartitions(c *Cluster) (err error) {
 			if c.DisableAutoAllocate {
 				return
 			}
-			if _, err = c.createDataPartition(vol.Name); err != nil {
+			if _, err = c.createDataPartition(vol.Name, ""); err != nil {
 				log.LogErrorf("action[batchCreateDataPartition] after create [%v] data partition,occurred error,err[%v]", i, err)
 				errChannel <- err
 			}
@@ -345,7 +345,7 @@ func (vol *Vol) initDataPartitions(c *Cluster) (err error) {
 func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int, dataNodeBadDisksOfVol map[string][]string) {
 	dataNodeBadDisksOfVol = make(map[string][]string, 0)
 	if vol.getDataPartitionsCount() == 0 && vol.Status != markDelete {
-		c.batchCreateDataPartition(vol, 1)
+		c.batchCreateDataPartition(vol, 1, "")
 	}
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
@@ -560,7 +560,7 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 		vol.dataPartitions.readableAndWritableCnt < vol.MinWritableDPNum {
 		count := vol.calculateExpansionNum()
 		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v]", vol.Name, count)
-		c.batchCreateDataPartition(vol, count)
+		c.batchCreateDataPartition(vol, count, "")
 	}
 }
 
