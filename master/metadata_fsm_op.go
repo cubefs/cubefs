@@ -134,6 +134,7 @@ type dataPartitionValue struct {
 	Replicas      []*replicaValue
 	IsRecover     bool
 	PanicHosts    []string
+	IsManual      bool
 }
 
 type replicaValue struct {
@@ -155,6 +156,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		PanicHosts:    dp.PanicHosts,
 		Replicas:      make([]*replicaValue, 0),
 		IsRecover:     dp.isRecover,
+		IsManual:      dp.IsManual,
 	}
 	for _, replica := range dp.Replicas {
 		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}
@@ -916,6 +918,7 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		dp.OfflinePeerID = dpv.OfflinePeerID
 		dp.isRecover = dpv.IsRecover
 		dp.PanicHosts = dpv.PanicHosts
+		dp.IsManual = dpv.IsManual
 		for _, rv := range dpv.Replicas {
 			if !contains(dp.Hosts, rv.Addr) {
 				continue

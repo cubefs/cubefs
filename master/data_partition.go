@@ -39,6 +39,7 @@ type DataPartition struct {
 	ReplicaNum     uint8
 	Status         int8
 	isRecover      bool
+	IsManual       bool
 	Replicas       []*DataReplica `graphql:"-"`
 	Hosts          []string       // host addresses
 	Peers          []proto.Peer
@@ -783,6 +784,7 @@ func (partition *DataPartition) ToProto(c *Cluster) *proto.DataPartitionInfo {
 		ReplicaNum:              partition.ReplicaNum,
 		Status:                  partition.Status,
 		IsRecover:               partition.isRecover,
+		IsManual:                partition.IsManual,
 		Replicas:                replicas,
 		Hosts:                   partition.Hosts,
 		Peers:                   partition.Peers,

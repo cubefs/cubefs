@@ -4019,3 +4019,27 @@ func (c *Cluster) updateVolMinWritableMPAndDPNum(volName string, minRwMPNum, min
 	}
 	return
 }
+
+func (c *Cluster) updateDataPartition(dp *DataPartition, isManual bool) (err error) {
+	oldIsManual := dp.IsManual
+	dp.IsManual = isManual
+	if err = c.syncUpdateDataPartition(dp); err != nil {
+		dp.IsManual = oldIsManual
+		return
+	}
+	if dp.IsManual {
+		dp.Status = proto.ReadOnly
+	}
+	return
+}
+
+func (c *Cluster) batchUpdateDataPartitions(dps []*DataPartition, isManual bool) (successDpIDs []uint64, err error) {
+	successDpIDs = make([]uint64, 0)
+	for _, dp := range dps {
+		if err = c.updateDataPartition(dp, isManual); err != nil {
+			return
+		}
+		successDpIDs = append(successDpIDs, dp.PartitionID)
+	}
+	return
+}

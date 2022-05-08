@@ -262,6 +262,8 @@ func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("PartitionID   : %v\n", partition.PartitionID))
 	sb.WriteString(fmt.Sprintf("ReplicaNum    : %v\n", partition.ReplicaNum))
 	sb.WriteString(fmt.Sprintf("Status        : %v\n", formatDataPartitionStatus(partition.Status)))
+	sb.WriteString(fmt.Sprintf("Recovering    : %v\n", formatIsRecover(partition.IsRecover)))
+	sb.WriteString(fmt.Sprintf("IsManual      : %v\n", formatIsRecover(partition.IsManual)))
 	sb.WriteString(fmt.Sprintf("LastLoadedTime: %v\n", formatTime(partition.LastLoadedTime)))
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("Replicas : \n"))

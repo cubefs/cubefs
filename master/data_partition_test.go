@@ -27,6 +27,8 @@ func TestDataPartition(t *testing.T) {
 	getDataPartition(partition.PartitionID, t)
 	loadDataPartitionTest(partition, t)
 	decommissionDataPartition(partition, t)
+	updateDataPartition(partition, true, server.cluster, commonVol, t)
+	updateDataPartition(partition, false, server.cluster, commonVol, t)
 	allDataNodes := make([]string, 0)
 	server.cluster.dataNodes.Range(func(key, _ interface{}) bool {
 		if addr, ok := key.(string); ok {
@@ -153,6 +155,26 @@ func delDataReplicaTest(dp *DataPartition, t *testing.T) {
 	for _, r := range dp.Replicas {
 		if testAddr == r.Addr {
 			t.Errorf("delete replica [%v] failed", testAddr)
+			return
+		}
+	}
+}
+
+func updateDataPartition(dp *DataPartition, isManual bool, c *Cluster, vol *Vol, t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&isManual=%v",
+		hostAddr, proto.AdminDataPartitionUpdate, dp.VolName, dp.PartitionID, isManual)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	if dp.IsManual != isManual {
+		t.Errorf("expect isManual[%v],dp.IsManual[%v],not equal", isManual, dp.IsManual)
+		return
+	}
+	dp.isRecover = false
+	dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec, 0, vol.CrossRegionHAType, c, vol.getDataPartitionQuorum())
+	t.Logf("dp.IsManual[%v] Status[%v]", dp.IsManual, dp.Status)
+	if dp.IsManual {
+		if dp.Status != proto.ReadOnly {
+			t.Errorf("dp.IsManual[%v] expect Status ReadOnly, but get Status[%v]", dp.IsManual, dp.Status)
 			return
 		}
 	}

@@ -2,6 +2,7 @@ package master
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -395,5 +396,55 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		time.Sleep(time.Second)
 		vol.updateViewCache(server.cluster)
+	}
+}
+
+func TestVolBatchUpdateDps(t *testing.T) {
+	volName := commonVolName
+	vol, err := server.cluster.getVol(volName)
+	if err != nil || vol == nil {
+		t.Errorf("getVol:%v err:%v", volName, err)
+		return
+	}
+	for _, dataPartition := range vol.cloneDataPartitionMap() {
+		dataPartition.IsManual = false
+	}
+
+	count := vol.dataPartitions.readableAndWritableCnt / 2
+	reqURL := fmt.Sprintf("%v%v?name=%v&isManual=%v&count=%v&start=1&end=1000",
+		hostAddr, proto.AdminVolBatchUpdateDps, vol.Name, true, count)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+
+	manualDPCount := 0
+	var minIsManualDpID, maxIsManualDpID uint64
+	minIsManualDpID = math.MaxUint64
+	for _, dataPartition := range vol.cloneDataPartitionMap() {
+		if dataPartition.IsManual {
+			manualDPCount++
+			if dataPartition.PartitionID < minIsManualDpID {
+				minIsManualDpID = dataPartition.PartitionID
+			}
+			if dataPartition.PartitionID > maxIsManualDpID {
+				maxIsManualDpID = dataPartition.PartitionID
+			}
+		}
+	}
+	if manualDPCount != count {
+		t.Errorf("expect count is %v,but get manualDPCount:%v", count, manualDPCount)
+		return
+	}
+	reqURL = fmt.Sprintf("%v%v?name=%v&isManual=%v&start=%v&end=%v",
+		hostAddr, proto.AdminVolBatchUpdateDps, vol.Name, false, minIsManualDpID, maxIsManualDpID)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	manualDPCount = 0
+	for _, dataPartition := range vol.cloneDataPartitionMap() {
+		if dataPartition.IsManual {
+			manualDPCount++
+		}
+	}
+	if manualDPCount != 0 {
+		t.Errorf("expect manualDPCount is 0,but get :%v", manualDPCount)
 	}
 }

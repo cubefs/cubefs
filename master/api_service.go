@@ -1132,6 +1132,84 @@ func (m *Server) manualResetDataPartition(w http.ResponseWriter, r *http.Request
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
+func (m *Server) updateDataPartition(w http.ResponseWriter, r *http.Request) {
+	var (
+		vol         *Vol
+		dp          *DataPartition
+		volName     string
+		partitionID uint64
+		isManual    bool
+		err         error
+	)
+	if partitionID, volName, isManual, err = parseUpdateDataPartition(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if volName != "" {
+		if vol, err = m.cluster.getVol(volName); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+			return
+		}
+		if dp, err = vol.getDataPartitionByID(partitionID); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
+			return
+		}
+	} else {
+		if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
+			return
+		}
+	}
+
+	if err = m.cluster.updateDataPartition(dp, isManual); err != nil {
+		msg := fmt.Sprintf("updateDataPartition[%v] failed, err[%v]", dp.PartitionID, err)
+		log.LogErrorf(msg)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	rstMsg := fmt.Sprintf("updateDataPartition[%v] to isManual[%v] successfully", partitionID, isManual)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) batchUpdateDataPartitions(w http.ResponseWriter, r *http.Request) {
+	var (
+		vol            *Vol
+		volName        string
+		isManual       bool
+		startID        uint64
+		endID          uint64
+		count          int
+		err            error
+		dataPartitions []*DataPartition
+		msg            string
+	)
+	if volName, isManual, count, startID, endID, err = parseBatchUpdateDataPartitions(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if vol, err = m.cluster.getVol(volName); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+
+	if count > 0 {
+		dataPartitions = vol.dataPartitions.getRWDataPartitionsOfGivenCount(count)
+		msg = fmt.Sprintf("batchUpdateDataPartitions to isManual[%v] count[%v] ", isManual, count)
+	} else {
+		dataPartitions = vol.dataPartitions.getDataPartitionsFromStartIDToEndID(startID, endID)
+		msg = fmt.Sprintf("batchUpdateDataPartitions to isManual[%v] startID[%v], endID[%v] ", isManual, startID, endID)
+	}
+	successDpIDs, err := m.cluster.batchUpdateDataPartitions(dataPartitions, isManual)
+	if err != nil {
+		msg += fmt.Sprintf("successDpIDs[%v] err:%v", successDpIDs, err)
+		log.LogErrorf(msg)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: msg})
+		return
+	}
+	msg += fmt.Sprintf("successDpIDs[%v].", successDpIDs)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
 // Mark the volume as deleted, which will then be deleted later.
 func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 	var (
@@ -2831,6 +2909,94 @@ func parseRequestToLoadDataPartition(r *http.Request) (ID uint64, err error) {
 		return
 	}
 	if ID, err = extractDataPartitionID(r); err != nil {
+		return
+	}
+	return
+}
+
+func parseUpdateDataPartition(r *http.Request) (ID uint64, volName string, isManual bool, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if ID, err = extractDataPartitionID(r); err != nil {
+		return
+	}
+	if isManual, err = extractIsManual(r); err != nil {
+		return
+	}
+	volName = r.FormValue(nameKey)
+	return
+}
+
+func parseBatchUpdateDataPartitions(r *http.Request) (volName string, isManual bool, count int, startID, endID uint64, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if volName = r.FormValue(nameKey); volName == "" {
+		err = keyNotFound(nameKey)
+		return
+	}
+	if isManual, err = extractIsManual(r); err != nil {
+		return
+	}
+	if count, err = extractCount(r); err != nil {
+		return
+	}
+	if count > 0 {
+		return
+	}
+	if startID, err = extractStart(r); err != nil {
+		return
+	}
+	if endID, err = extractEnd(r); err != nil {
+		return
+	}
+	if startID > endID {
+		err = fmt.Errorf("startID:%v should not more than endID:%v", startID, endID)
+	}
+	return
+}
+
+func extractIsManual(r *http.Request) (isManual bool, err error) {
+	var value string
+	if value = r.FormValue(isManualKey); value == "" {
+		err = keyNotFound(isManualKey)
+		return
+	}
+	return strconv.ParseBool(value)
+}
+
+func extractStart(r *http.Request) (startID uint64, err error) {
+	var value string
+	if value = r.FormValue(startKey); value == "" {
+		err = keyNotFound(startKey)
+		return
+	}
+	if startID, err = strconv.ParseUint(value, 10, 64); err != nil {
+		return
+	}
+	return
+}
+
+func extractEnd(r *http.Request) (endID uint64, err error) {
+	var value string
+	if value = r.FormValue(endKey); value == "" {
+		err = keyNotFound(endKey)
+		return
+	}
+	if endID, err = strconv.ParseUint(value, 10, 64); err != nil {
+		return
+	}
+	return
+}
+
+func extractCount(r *http.Request) (count int, err error) {
+	var value string
+	if value = r.FormValue(countKey); value == "" {
+		return
+	}
+	if count, err = strconv.Atoi(value); err != nil {
+		err = unmatchedKey(countKey)
 		return
 	}
 	return

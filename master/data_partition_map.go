@@ -248,3 +248,30 @@ func (dpMap *DataPartitionMap) checkBadDiskDataPartitions(diskPath, nodeAddr str
 	}
 	return
 }
+
+func (dpMap *DataPartitionMap) getRWDataPartitionsOfGivenCount(count int) (partitions []*DataPartition) {
+	dpMap.RLock()
+	defer dpMap.RUnlock()
+	partitions = make([]*DataPartition, 0)
+	for _, dp := range dpMap.partitionMap {
+		if dp.Status == proto.ReadWrite {
+			partitions = append(partitions, dp)
+		}
+		if len(partitions) >= count {
+			return
+		}
+	}
+	return
+}
+
+func (dpMap *DataPartitionMap) getDataPartitionsFromStartIDToEndID(startID, endID uint64) (partitions []*DataPartition) {
+	dpMap.RLock()
+	defer dpMap.RUnlock()
+	partitions = make([]*DataPartition, 0)
+	for _, dp := range dpMap.partitionMap {
+		if dp.PartitionID >= startID && dp.PartitionID <= endID {
+			partitions = append(partitions, dp)
+		}
+	}
+	return
+}

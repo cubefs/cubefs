@@ -39,7 +39,9 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 		Warn(clusterName, msg)
 		return
 	}
-	if IsCrossRegionHATypeQuorum(crossRegionHAType) {
+	if partition.IsManual {
+		partition.Status = proto.ReadOnly
+	} else if IsCrossRegionHATypeQuorum(crossRegionHAType) {
 		partition.checkStatusOfCrossRegionQuorumVol(liveReplicas, dpWriteableThreshold, c, quorum)
 	} else {
 		switch len(liveReplicas) {

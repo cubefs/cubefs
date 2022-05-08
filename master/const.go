@@ -100,6 +100,7 @@ const (
 	StoreModeKey                = "storeMode"
 	volConvertStKey             = "convertState"
 	versionKey                  = "version"
+	isManualKey                 = "isManual"
 )
 
 const (

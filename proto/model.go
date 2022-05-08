@@ -223,6 +223,7 @@ type DataPartitionInfo struct {
 	ReplicaNum              uint8
 	Status                  int8
 	IsRecover               bool
+	IsManual                bool
 	Replicas                []*DataReplica
 	Hosts                   []string // host addresses
 	Peers                   []Peer
