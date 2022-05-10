@@ -169,7 +169,7 @@ func UnmarshalRandWriteRaftLog(raw []byte) (opItem *rndWrtOpItem, err error) {
 		return
 	}
 
-	if version != BinaryMarshalMagicVersion {
+	if version != BinaryMarshalMagicVersion && version != RandomWriteRaftLogMagicVersionV3 {
 		opItem, err = UnmarshalOldVersionRaftLog(raw)
 		return
 	}
