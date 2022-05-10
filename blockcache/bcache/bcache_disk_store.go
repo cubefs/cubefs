@@ -134,6 +134,12 @@ type bcacheManager struct {
 	pending    chan waitFlush
 }
 
+func encryptXOR(data []byte) {
+	for index, value := range data {
+		data[index] = value ^ byte(0xF)
+	}
+}
+
 func (bm *bcacheManager) cache(key string, data []byte, direct bool) {
 	log.LogDebugf("TRACE cache. key(%v)  len(%v) direct(%v)", key, len(data), direct)
 	if direct {
@@ -182,6 +188,8 @@ func (bm *bcacheManager) read(key string, offset uint64, len uint32) (io.ReadClo
 		if n, err := f.ReadAt(buf, int64(offset)); err != nil {
 			return nil, err
 		} else {
+			//decrypt
+			encryptXOR(buf[:n])
 			return ioutil.NopCloser(bytes.NewBuffer(buf[:n])), nil
 		}
 	}
@@ -199,7 +207,8 @@ func (bm *bcacheManager) load(key string) (ReadCloser, error) {
 	bm.Lock()
 	defer bm.Unlock()
 	if it, ok := bm.bcacheKeys[key]; ok {
-		bm.bcacheKeys[key] = cacheItem{size: it.size, atime: uint32(time.Now().Unix())}
+		//bm.bcacheKeys[key] = cacheItem{size: it.size, atime: uint32(time.Now().Unix())}
+		it.atime = uint32(time.Now().Unix())
 	}
 	return f, err
 }
@@ -411,11 +420,11 @@ func NewDiskStore(dir string, cacheSize int64, config *bcacheConfig) *DiskStore 
 	}
 
 	if config.Limit <= 0 {
-		config.Limit = 1000000
+		config.Limit = 10000000
 	}
 
-	if config.Limit > 2000000 {
-		config.Limit = 2000000
+	if config.Limit > 20000000 {
+		config.Limit = 20000000
 	}
 	c := &DiskStore{
 		dir:       dir,
@@ -451,6 +460,8 @@ func (d *DiskStore) flushKey(key string, data []byte) error {
 		log.LogErrorf("Create block tmp file:%s err:%s!", tmp, err)
 		return err
 	}
+	//encrypt
+	encryptXOR(data)
 	_, err = f.Write(data)
 	if err != nil {
 		f.Close()
@@ -509,7 +520,7 @@ func (d *DiskStore) remove(key string) (err error) {
 func (d *DiskStore) buildCachePath(key string, dir string) string {
 	//key=inode_hex(offset)_size
 	//path=/dir/blocks/hashKey(key)%512/hashKey(key)%256/key
-	return fmt.Sprintf("%s/blocks/%d/%d/%s", dir, hashKey(key)%512, hashKey(key)%256, key)
+	return fmt.Sprintf("%s/blocks/%d/%d/%s", dir, hashKey(key)%256, hashKey(key)%512, key)
 }
 
 func (d *DiskStore) diskUsageRatio() (float32, int64) {
