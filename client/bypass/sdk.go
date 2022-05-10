@@ -53,6 +53,14 @@ typedef struct {
 	uint64_t total;
 	uint64_t used;
 } cfs_statfs_t;
+
+typedef struct {
+    uint64_t ino;
+    char     name[256];
+    char     d_type;
+    uint32_t     nameLen;
+} cfs_dirent_t;
+
 */
 import "C"
 
@@ -1120,6 +1128,60 @@ func cfs_fchdir(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.int) (re C.in
 
 	c.cwd = f.path
 	return statusOK
+}
+
+//export cfs_readdir
+func cfs_readdir(id C.int64_t, fd C.int, dirents []C.cfs_dirent_t, count C.int) (n C.int) {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return C.int(statusEINVAL)
+	}
+
+	f := c.getFile(uint(fd))
+	if f == nil {
+		return C.int(statusEBADFD)
+	}
+
+	if f.dirp == nil {
+		f.dirp = &dirStream{}
+		dentries, err := c.mw.ReadDir_ll(context.Background(), f.ino)
+		if err != nil {
+			return errorToStatus(err)
+		}
+		f.dirp.dirents = dentries
+	}
+
+	dirp := f.dirp
+	for dirp.pos < len(dirp.dirents) && n < count {
+		// fill up ino
+		dirents[n].ino = C.uint64_t(dirp.dirents[dirp.pos].Inode)
+
+		// fill up d_type
+		if proto.IsRegular(dirp.dirents[dirp.pos].Type) {
+			dirents[n].d_type = C.DT_REG
+		} else if proto.IsDir(dirp.dirents[dirp.pos].Type) {
+			dirents[n].d_type = C.DT_DIR
+		} else if proto.IsSymlink(dirp.dirents[dirp.pos].Type) {
+			dirents[n].d_type = C.DT_LNK
+		} else {
+			dirents[n].d_type = C.DT_UNKNOWN
+		}
+
+		// fill up name
+		nameLen := len(dirp.dirents[dirp.pos].Name)
+		if nameLen >= 256 {
+			nameLen = 255
+		}
+		hdr := (*reflect.StringHeader)(unsafe.Pointer(&dirp.dirents[dirp.pos].Name))
+		C.memcpy(unsafe.Pointer(&dirents[n].name[0]), unsafe.Pointer(hdr.Data), C.size_t(nameLen))
+		dirents[n].name[nameLen] = 0
+		dirents[n].nameLen = C.uint32_t(nameLen)
+		// advance cursor
+		dirp.pos++
+		n++
+	}
+
+	return C.int(n)
 }
 
 //export cfs_getdents
@@ -2869,6 +2931,79 @@ func cfs_lseek(id C.int64_t, fd C.int, offset C.off64_t, whence C.int) (re C.off
 		f.pos = f.size + uint64(offset)
 	}
 	return C.off64_t(f.pos)
+}
+
+//export cfs_batch_stat
+func cfs_batch_stat(id C.int64_t, inosp unsafe.Pointer, stats []C.struct_stat, count C.int) (re C.int) {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return C.int(statusEINVAL)
+	}
+
+	var inodes []uint64
+	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&inodes))
+	hdr.Data = uintptr(inosp)
+	hdr.Len, hdr.Cap = int(count), int(count)
+
+	if log.IsDebugEnabled() {
+		log.LogDebugf("cfs_batch_stat: client(%v) inos[%v], count[%v] re[%v]", int64(id), inodes, int(count), int(re))
+	}
+
+	infos := c.mw.BatchInodeGet(context.Background(), inodes)
+	infoMap := make(map[uint64]*proto.InodeInfo)
+	for _, info := range infos {
+		infoMap[info.Inode] = info
+	}
+
+	for i := 0; i < int(count); i++ {
+		ino := uint64(inodes[i])
+		stats[i].st_dev = 0
+		stats[i].st_ino = C.ino_t(ino)
+		info, exist := infoMap[ino]
+		if !exist {
+			continue
+		}
+
+		stats[i].st_size = C.off_t(info.Size)
+		stats[i].st_nlink = C.nlink_t(info.Nlink)
+		stats[i].st_blksize = C.blksize_t(defaultBlkSize)
+		stats[i].st_uid = C.uid_t(info.Uid)
+		stats[i].st_gid = C.gid_t(info.Gid)
+
+		if info.Size%512 != 0 {
+			stats[i].st_blocks = C.blkcnt_t(info.Size>>9) + 1
+		} else {
+			stats[i].st_blocks = C.blkcnt_t(info.Size >> 9)
+		}
+
+		if proto.IsRegular(info.Mode) {
+			stats[i].st_mode = C.mode_t(C.S_IFREG) | C.mode_t(info.Mode&0777)
+		} else if proto.IsDir(info.Mode) {
+			stats[i].st_mode = C.mode_t(C.S_IFDIR) | C.mode_t(info.Mode&0777)
+		} else if proto.IsSymlink(info.Mode) {
+			stats[i].st_mode = C.mode_t(C.S_IFLNK) | C.mode_t(info.Mode&0777)
+		} else {
+			stats[i].st_mode = C.mode_t(C.S_IFSOCK) | C.mode_t(info.Mode&0777)
+		}
+
+		var st_atim, st_mtim, st_ctim C.struct_timespec
+		t := info.AccessTime.UnixNano()
+		st_atim.tv_sec = C.time_t(t / 1e9)
+		st_atim.tv_nsec = C.long(t % 1e9)
+		stats[i].st_atim = st_atim
+
+		t = info.ModifyTime.UnixNano()
+		st_mtim.tv_sec = C.time_t(t / 1e9)
+		st_mtim.tv_nsec = C.long(t % 1e9)
+		stats[i].st_mtim = st_mtim
+
+		t = info.CreateTime.UnixNano()
+		st_ctim.tv_sec = C.time_t(t / 1e9)
+		st_ctim.tv_nsec = C.long(t % 1e9)
+		stats[i].st_ctim = st_ctim
+	}
+
+	return C.int(count)
 }
 
 /*
