@@ -48,6 +48,11 @@ typedef struct {
     const char* tracing_report_addr;
     const char* tracing_flag;
 } cfs_config_t;
+
+typedef struct {
+	uint64_t total;
+	uint64_t used;
+} cfs_statfs_t;
 */
 import "C"
 
@@ -332,6 +337,18 @@ func cfs_close_client(id C.int64_t) {
 	}
 	log.LogFlush()
 	runtime.GC()
+}
+
+//export cfs_statfs
+func cfs_statfs(id C.int64_t, stat *C.cfs_statfs_t) (re C.int) {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return statusEINVAL
+	}
+	total, used := c.mw.Statfs()
+	stat.total = C.uint64_t(total)
+	stat.used = C.uint64_t(used)
+	return 0
 }
 
 //export cfs_flush_log
