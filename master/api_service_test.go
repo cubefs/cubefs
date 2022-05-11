@@ -1993,3 +1993,85 @@ func TestSetVolMinRWPartition(t *testing.T) {
 			volName, minRwMPNum, minRwDPNum, volumeSimpleInfo.MinWritableMPNum, volumeSimpleInfo.MinWritableDPNum)
 	}
 }
+
+func TestCreateDataPartitionOfDesignatedZoneName(t *testing.T) {
+	if err := validateCreateDataPartition(commonVolName, "", 5, t); err != nil {
+		t.Error(err)
+	}
+	if err := validateCreateDataPartition(commonVolName, fmt.Sprintf("%v,%v", testZone3, testZone2), 5, t); err != nil {
+		t.Error(err)
+	}
+	if err := validateCreateDataPartition(quorumVolName, "", 5, t); err != nil {
+		t.Error(err)
+	}
+	if err := validateCreateDataPartition(quorumVolName, fmt.Sprintf("%s,%s,%s", testZone6, testZone3, testZone2), 5, t); err != nil {
+		t.Error(err)
+	}
+}
+
+func validateCreateDataPartition(volName, designatedZoneName string, createCount int, t *testing.T) (err error) {
+	var (
+		oldMaxDpID     uint64
+		oldDpCount     int
+		newDpCount     int
+		reqURL         string
+		expectZoneName string
+		dataNode       *DataNode
+	)
+	// record old dp info
+	vol, err := server.cluster.getVol(volName)
+	if err != nil {
+		return
+	}
+	for dpID := range vol.cloneDataPartitionMap() {
+		oldDpCount++
+		if dpID > oldMaxDpID {
+			oldMaxDpID = dpID
+		}
+	}
+	//do create dp
+	if designatedZoneName == "" {
+		expectZoneName = vol.zoneName
+		reqURL = fmt.Sprintf("%v%v?count=%v&name=%v", hostAddr, proto.AdminCreateDataPartition, createCount, vol.Name)
+	} else {
+		expectZoneName = designatedZoneName
+		reqURL = fmt.Sprintf("%v%v?count=%v&name=%v&zoneName=%v", hostAddr, proto.AdminCreateDataPartition, createCount, vol.Name, designatedZoneName)
+	}
+	process(reqURL, t)
+	zoneList := strings.Split(expectZoneName, ",")
+	expectZoneMap := make(map[string]bool)
+	for _, zone := range zoneList {
+		expectZoneMap[zone] = true
+	}
+	// check create count and dp zone info
+	for _, dataPartition := range vol.cloneDataPartitionMap() {
+		if dataPartition.PartitionID > oldMaxDpID {
+			newDpCount++
+			dpZones := make([]string, 0)
+			// check dp zone, must be in given zones
+			for _, nodeAddr := range dataPartition.Hosts {
+				load, ok := server.cluster.t.dataNodes.Load(nodeAddr)
+				if !ok {
+					t.Errorf("can not get datanode:%v", nodeAddr)
+					return
+				}
+				if dataNode, ok = load.(*DataNode); !ok {
+					t.Errorf("can not get datanode:%v", nodeAddr)
+					return
+				}
+				dpZones = append(dpZones, dataNode.ZoneName)
+				if !expectZoneMap[dataNode.ZoneName] {
+					t.Errorf("expect zones:%v but get:%v", expectZoneName, dataNode.ZoneName)
+				}
+			}
+			if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
+				validateCrossRegionDataPartition(dataPartition, t)
+			}
+			t.Logf("index:%v newDpID:%v dpZones:%v expectZoneName:%v", newDpCount, dataPartition.PartitionID, dpZones, expectZoneName)
+		}
+	}
+	if newDpCount != createCount {
+		t.Errorf("expect createCount:%v but get newDpCount:%v", createCount, newDpCount)
+	}
+	return
+}
