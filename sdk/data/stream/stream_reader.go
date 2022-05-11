@@ -82,6 +82,10 @@ func (s *Streamer) GetExtents() error {
 	return s.extents.Refresh(s.inode, s.client.getExtents)
 }
 
+func (s *Streamer) GetExtentsForce() error {
+	return s.extents.RefreshForce(s.inode, s.client.getExtents)
+}
+
 // GetExtentReader returns the extent reader.
 // TODO: use memory pool
 func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {

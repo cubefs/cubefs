@@ -656,7 +656,7 @@ func (s *Streamer) truncate(size int) error {
 	}
 
 	s.extents.TruncDiscard(uint64(size))
-	return s.GetExtents()
+	return s.GetExtentsForce()
 }
 
 func (s *Streamer) tinySizeLimit() int {
