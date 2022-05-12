@@ -49,6 +49,9 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newDataPartitionAddLearnerCmd(client),
 		newDataPartitionPromoteLearnerCmd(client),
 		newDataPartitionCheckCommitCmd(client),
+		newDataPartitionFreezeCmd(client),
+		newDataPartitionUnfreezeCmd(client),
+		newDataPartitionTransferCmd(client),
 	)
 	return cmd
 }
@@ -63,7 +66,115 @@ const (
 	cmdDataPartitionDeleteReplicaShort  = "Delete a replication of the data partition on a fixed address"
 	cmdDataPartitionAddLearnerShort     = "Add a learner of the data partition on a new address"
 	cmdDataPartitionPromoteLearnerShort = "Promote the learner of the data partition on a fixed address"
+	cmdDataPartitionFreezeShort          = "Freezes the DP and does not provide the write service. It is used only for smart Volumes"
+	cmdDataPartitionUnFreezeLearnerShort = "Unfreeze the DP to provide write services. It is used only for smart Volumes"
 )
+
+func newDataPartitionTransferCmd(client *master.MasterClient) *cobra.Command {
+	var (
+		partitionId uint64
+		address     string
+		destAddress string
+		err         error
+		result      string
+	)
+
+	var cmd = &cobra.Command{
+		Use:   CliOpTransfer + " [DATA PARTITION ID ADDRESS  DEST ADDRESS]",
+		Short: "",
+		Args:  cobra.MinimumNArgs(3),
+		Run: func(cmd *cobra.Command, args []string) {
+			defer func() {
+				if err != nil {
+					errout("transfer data partition failed:%v\n", err.Error())
+				}
+			}()
+
+			partitionId, err = strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				return
+			}
+			address = args[1]
+			destAddress = args[2]
+			result, err = client.AdminAPI().DataPartitionTransfer(partitionId, address, destAddress)
+			if err != nil {
+				return
+			}
+			stdout("%s\n", result)
+		},
+	}
+	return cmd
+}
+
+func newDataPartitionUnfreezeCmd(client *master.MasterClient) *cobra.Command {
+	var (
+		volName     string
+		partitionId uint64
+		err         error
+		result      string
+	)
+	var cmd = &cobra.Command{
+		Use:   CliOpUnfreeze + " [VolName PARTITION ID]",
+		Short: cmdDataPartitionUnFreezeLearnerShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			if len(args) != 2 {
+				errout("%v", "both volName and partitionId must be present")
+			}
+			defer func() {
+				if err != nil {
+					errout("unfreeze data partition failed:%v\n", err.Error())
+				}
+			}()
+			volName = args[0]
+			partitionId, err = strconv.ParseUint(args[1], 10, 64)
+			if err != nil {
+				return
+			}
+			result, err = client.AdminAPI().UnfreezeDataPartition(volName, partitionId)
+			if err != nil {
+				return
+			}
+			stdout("%s\n", result)
+		},
+	}
+	return cmd
+}
+
+func newDataPartitionFreezeCmd(client *master.MasterClient) *cobra.Command {
+	var (
+		volName     string
+		partitionId uint64
+		err         error
+		result      string
+	)
+	var cmd = &cobra.Command{
+		Use:   CliOpFreeze + " [VolName PARTITION ID]",
+		Short: cmdDataPartitionFreezeShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			if len(args) != 2 {
+				errout("%v", "both volName and partitionId must be present")
+			}
+			defer func() {
+				if err != nil {
+					errout("freeze data partition failed:%v\n", err.Error())
+				}
+			}()
+			volName = args[0]
+			partitionId, err = strconv.ParseUint(args[1], 10, 64)
+			if err != nil {
+				return
+			}
+			result, err = client.AdminAPI().FreezeDataPartition(volName, partitionId)
+			if err != nil {
+				return
+			}
+			stdout("%s\n", result)
+		},
+	}
+	return cmd
+}
 
 func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{

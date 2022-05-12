@@ -38,6 +38,7 @@ type DataPartition struct {
 	LastLoadedTime int64
 	ReplicaNum     uint8
 	Status         int8
+	IsFrozen       bool
 	isRecover      bool
 	IsManual       bool
 	Replicas       []*DataReplica `graphql:"-"`
@@ -81,6 +82,7 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64)
 	partition.modifyTime = time.Now().Unix()
 	partition.createTime = time.Now().Unix()
 	partition.lastWarnTime = time.Now().Unix()
+	partition.createTime = time.Now().Unix()
 	return
 }
 
@@ -226,7 +228,7 @@ func (partition *DataPartition) hasMissingOneReplica(offlineAddr string, replica
 	return
 }
 
-func (partition *DataPartition) canBeOffLine(offlineAddr string) (err error) {
+func (partition *DataPartition) canBeOffLine(offlineAddr string, isManuel bool) (err error) {
 	msg := fmt.Sprintf("action[canOffLine],partitionID:%v  RocksDBHost:%v  offLine:%v ",
 		partition.PartitionID, partition.Hosts, offlineAddr)
 	liveReplicas := partition.liveReplicas(defaultDataPartitionTimeOutSec)
@@ -238,8 +240,11 @@ func (partition *DataPartition) canBeOffLine(offlineAddr string) (err error) {
 			otherLiveReplicas = append(otherLiveReplicas, replica)
 		}
 	}
-
-	if len(otherLiveReplicas) < int(partition.ReplicaNum/2) {
+	minLiveReplicaNum := int(partition.ReplicaNum/2)
+	if !isManuel {
+		minLiveReplicaNum += 1
+	}
+	if len(otherLiveReplicas) < minLiveReplicaNum {
 		msg = fmt.Sprintf(msg+" err:%v  liveReplicas:%v ", proto.ErrCannotBeOffLine, len(liveReplicas))
 		log.LogError(msg)
 		err = fmt.Errorf(msg)
@@ -344,6 +349,19 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *proto.Dat
 	copy(dpr.Hosts, partition.Hosts)
 	dpr.LeaderAddr = partition.getLeaderAddr()
 	dpr.IsRecover = partition.isRecover
+	dpr.IsFrozen = partition.IsFrozen
+	dpr.CreateTime = partition.createTime
+	dpr.Total = partition.total
+	dpr.Used = partition.used
+	for _, replica := range partition.Replicas {
+		if replica.MType == proto.MediumSSDName {
+			dpr.MediumType = proto.MediumSSDName
+			break
+		}
+	}
+	if len(dpr.MediumType) == 0 {
+		dpr.MediumType = proto.MediumHDDName
+	}
 	return
 }
 
@@ -596,6 +614,10 @@ func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode
 	replica, err := partition.getReplica(dataNode.Addr)
 	if err != nil {
 		replica = newDataReplica(dataNode)
+		zone, err := c.t.getZone(dataNode.ZoneName)
+		if err == nil {
+			replica.MType = zone.MType.String()
+		}
 		partition.addReplica(replica)
 	}
 	partition.total = vr.Total
@@ -653,6 +675,11 @@ func (partition *DataPartition) afterCreation(nodeAddr, diskPath string, c *Clus
 	replica.DiskPath = diskPath
 	replica.ReportTime = time.Now().Unix()
 	replica.Total = util.DefaultDataPartitionSize
+	var zone *Zone
+	zone, err = c.t.getZone(dataNode.ZoneName)
+	if err == nil {
+		replica.MType = zone.MType.String()
+	}
 	partition.addReplica(replica)
 	partition.checkAndRemoveMissReplica(replica.Addr)
 	return
@@ -781,6 +808,7 @@ func (partition *DataPartition) ToProto(c *Cluster) *proto.DataPartitionInfo {
 	return &proto.DataPartitionInfo{
 		PartitionID:             partition.PartitionID,
 		LastLoadedTime:          partition.LastLoadedTime,
+		CreateTime:              partition.createTime,
 		ReplicaNum:              partition.ReplicaNum,
 		Status:                  partition.Status,
 		IsRecover:               partition.isRecover,
@@ -796,6 +824,7 @@ func (partition *DataPartition) ToProto(c *Cluster) *proto.DataPartitionInfo {
 		FileInCoreMap:           fileInCoreMap,
 		OfflinePeerID:           partition.OfflinePeerID,
 		FilesWithMissingReplica: partition.FilesWithMissingReplica,
+		IsFrozen:                partition.IsFrozen,
 	}
 }
 
@@ -886,6 +915,53 @@ func (partition *DataPartition) needToRebalanceZone(c *Cluster, zoneList []strin
 	return
 }
 
+//check if the data partition needs to rebalance zone
+func (partition *DataPartition) needToRebalanceZoneForSmartVol(c *Cluster, zoneList []string) (isNeed bool, err error) {
+	var (
+		idcMap     map[string]string
+		currIDCMap map[string][]string
+	)
+
+	var ssdReplicas uint8 = 0
+	for _, r := range partition.Replicas {
+		if r.MType == proto.MediumSSDName {
+			ssdReplicas++
+		}
+	}
+	// the partition may be in transferring
+	if ssdReplicas < partition.ReplicaNum && ssdReplicas > 0 {
+		return
+	}
+
+	idcMap = make(map[string]string, 0)
+	var idc *IDCInfo
+	for _, zoneName := range zoneList {
+		idc, err = c.t.getIDCByZone(zoneName)
+		if err != nil {
+			return
+		}
+		idcMap[idc.Name] = zoneName
+	}
+
+	currIDCMap, err = partition.getIDCMap(c)
+	if err != nil {
+		return
+	}
+	log.LogDebugf("needToRebalanceZoneForSmartVol, data partition: %v, zone: %v, idcMap: %v, currIDCMap: %v\n", partition.PartitionID, zoneList, idcMap, currIDCMap)
+	if (len(idcMap) == 1 && len(currIDCMap) == 1) || (len(currIDCMap) == 2 && (len(idcMap) == 2 || len(idcMap) == 3)) {
+		isNeed = false
+		for idcName := range currIDCMap {
+			_, ok := idcMap[idcName]
+			if !ok {
+				isNeed = true
+			}
+		}
+		return
+	}
+	isNeed = true
+	return
+}
+
 var getTargetAddressForBalanceDataPartitionZone = func(c *Cluster, offlineAddr string, dp *DataPartition, excludeNodeSets []uint64, destZone string, validate bool) (oldAddr, newAddr string, err error) {
 	var (
 		offlineZoneName     string
@@ -899,9 +975,14 @@ var getTargetAddressForBalanceDataPartitionZone = func(c *Cluster, offlineAddr s
 	if vol, err = c.getVol(dp.VolName); err != nil {
 		return
 	}
+	if vol.isSmart {
+		err = fmt.Errorf("not support the smart vol: %v  to balance dp", dp.VolName)
+		return
+	}
 	if offlineZoneName, targetZoneName, err = dp.getOfflineAndTargetZone(c, vol.zoneName, IsCrossRegionHATypeQuorum(vol.CrossRegionHAType)); err != nil {
 		return
 	}
+	log.LogInfof("[getTargetAddressForBalanceDataPartitionZone], data partition id: %v, offlineZoneName: %v, targetZoneName: %v", dp.PartitionID, offlineZoneName, targetZoneName)
 	if offlineZoneName == "" || targetZoneName == "" {
 		err = fmt.Errorf("getOfflineAndTargetZone error, offlineZone[%v], targetZone[%v]", offlineZoneName, targetZoneName)
 		return
@@ -916,7 +997,7 @@ var getTargetAddressForBalanceDataPartitionZone = func(c *Cluster, offlineAddr s
 		err = fmt.Errorf("can not find address to decommission")
 		return
 	}
-	if err = c.validateDecommissionDataPartition(dp, oldAddr); err != nil {
+	if err = c.validateDecommissionDataPartition(dp, oldAddr, false); err != nil {
 		return
 	}
 	if addrInTargetZone, err = dp.getAddressByZoneName(c, targetZone.name); err != nil {
@@ -932,6 +1013,7 @@ var getTargetAddressForBalanceDataPartitionZone = func(c *Cluster, offlineAddr s
 			return
 		}
 		newAddr = targetHosts[0]
+		log.LogInfof("getTargetAddressForBalanceDataPartitionZone, data partition: %v, oldAddr: %v, newAddr: %v", dp.PartitionID, oldAddr, newAddr)
 		return
 	}
 	//if there is a replica in target zone, choose the same nodeset with this replica
@@ -1013,6 +1095,124 @@ func (partition *DataPartition) getOfflineAndTargetZone(c *Cluster, zoneName str
 	}
 	offlineZone = projectiveToCurZoneList[0]
 	targetZone = projectiveToZoneList[0]
+	return
+}
+
+func (partition *DataPartition) getOfflineAndTargetZoneForSmartVol(c *Cluster, zoneName string) (offlineZone, targetZone string, err error) {
+	zoneList := strings.Split(zoneName, ",")
+	switch len(zoneList) {
+	case 1:
+		zoneList = append(make([]string, 0), zoneList[0], zoneList[0], zoneList[0])
+	case 2:
+		switch partition.PartitionID % 2 {
+		case 0:
+			zoneList = append(make([]string, 0), zoneList[0], zoneList[0], zoneList[1])
+		default:
+			zoneList = append(make([]string, 0), zoneList[1], zoneList[1], zoneList[0])
+		}
+		log.LogInfof("action[getSourceAndTargetZone],data partitionID:%v,zone name:[%v],chosen zoneList:%v",
+			partition.PartitionID, zoneName, zoneList)
+	case 3:
+		index := partition.PartitionID % 6
+		switch partition.PartitionID%6 < 3 {
+		case true:
+			zoneList = append(make([]string, 0), zoneList[index], zoneList[index], zoneList[(index+1)%3])
+		default:
+			zoneList = append(make([]string, 0), zoneList[(index+1)%3], zoneList[(index+1)%3], zoneList[index%3])
+		}
+		log.LogInfof("action[getOfflineAndTargetZoneForSmartVol],data partitionID:%v,zone name:[%v],chosen zoneList:%v",
+			partition.PartitionID, zoneName, zoneList)
+	default:
+		err = fmt.Errorf("partition zone num must be 1, 2 or 3")
+		return
+	}
+
+	var idc *IDCInfo
+	idcList := make([]string, len(zoneList))
+	idcMap := make(map[string]string) // key: idcName, value: zoneName
+	for index, zoneName := range zoneList {
+		idc, err = c.t.getIDCByZone(zoneName)
+		if err != nil {
+			log.LogErrorf("[getOfflineAndTargetZoneForSmartVol], err: %v", err.Error())
+			return
+		}
+		idcList[index] = idc.Name
+		idcMap[idc.Name] = zoneName
+	}
+
+	var currentIDCList []string
+	currentIDCList, err = partition.getIDCList(c)
+	if err != nil {
+		return
+	}
+
+	var currentIDCMap map[string][]string
+	currentIDCMap, err = partition.getIDCMap(c)
+	if err != nil {
+		return
+	}
+
+	intersect := util.Intersect(idcList, currentIDCList)
+	projectiveToIDCList := util.Projective(idcList, intersect)
+	projectiveToCurrIDCList := util.Projective(currentIDCList, intersect)
+	log.LogInfof("[getOfflineAndTargetZoneForSmartVol], Current replica zoneList:%v, volume zoneName:%v ", currentIDCList, idcList)
+	if len(projectiveToIDCList) == 0 || len(projectiveToCurrIDCList) == 0 {
+		err = fmt.Errorf("action[getOfflineAndTargetZoneForSmartVol], Current replica zoneList:%v is consistent with the volume zoneName:%v,"+
+			"do not need to balance", currentIDCList, idcList)
+		return
+	}
+	offlineZoneList, ok := currentIDCMap[projectiveToCurrIDCList[0]]
+	if !ok {
+		err = fmt.Errorf("[getOfflineAndTargetZoneForSmartVol], not found offline zone, idc: %v", projectiveToCurrIDCList[0])
+		return
+	}
+	offlineZone = offlineZoneList[0]
+	log.LogInfof("[getOfflineAndTargetZoneForSmartVol], offzones: %v,  offzone: %v ", offlineZoneList, offlineZone)
+
+	var ssdReplicas uint8 = 0
+	for _, r := range partition.Replicas {
+		if r.MType == proto.MediumSSDName {
+			ssdReplicas++
+		}
+	}
+	// the partition may be in transferring
+	if ssdReplicas < partition.ReplicaNum && ssdReplicas > 0 {
+		err = fmt.Errorf("getOfflineAndTargetZoneForSmartVol, the partition may be in transferring")
+		return
+	}
+
+	if ssdReplicas == 0 {
+		var (
+			idc            *IDCInfo
+			zone           *Zone
+			targetZoneList []string
+		)
+		idc, err = c.t.getIDC(projectiveToIDCList[0])
+		if err != nil {
+			return
+		}
+		targetZoneList = idc.getZones(proto.MediumHDD)
+		for _, zoneName := range targetZoneList {
+			zone, err = c.t.getZone(zoneName)
+			if err != nil {
+				return
+			}
+			if zone.canWriteForDataNode(1) {
+				targetZone = zoneName
+				log.LogInfof("[getOfflineAndTargetZoneForSmartVol], target-zones: %v,  target-zone: %v ", targetZoneList, targetZone)
+				return
+			}
+		}
+		err = fmt.Errorf("[getOfflineAndTargetZoneForSmartVol], not found target zone, idc: %v", idc.Name)
+		return
+	}
+
+	targetZone, ok = idcMap[projectiveToIDCList[0]]
+	if !ok {
+		err = fmt.Errorf("[getOfflineAndTargetZoneForSmartVol], not found target zone, idc: %v", projectiveToIDCList[0])
+		return
+	}
+	log.LogInfof("[getOfflineAndTargetZoneForSmartVol], target-zone: %v ", targetZone)
 	return
 }
 
@@ -1253,4 +1453,60 @@ func (partition *DataPartition) containSSDMediumTypeDataNode(c *Cluster) (contai
 		}
 	}
 	return
+}
+
+func (partition *DataPartition) getIDCMap(c *Cluster) (idcs map[string][]string, err error) {
+	idcs = make(map[string][]string, 0)
+	for _, host := range partition.Hosts {
+		var dataNode *DataNode
+		var zone *Zone
+		dataNode, err = c.dataNode(host)
+		if err != nil {
+			return
+		}
+		zone, err = c.t.getZoneByDataNode(dataNode)
+		if err != nil {
+			return
+		}
+
+		_, ok := idcs[zone.idcName]
+		if !ok {
+			zones := make([]string, 0)
+			zones = append(zones, zone.name)
+			idcs[zone.idcName] = zones
+		} else {
+			idcs[zone.idcName] = append(idcs[zone.idcName], zone.name)
+		}
+	}
+	return
+}
+
+func (partition *DataPartition) getIDCList(c *Cluster) (idcs []string, err error) {
+	idcs = make([]string, len(partition.Hosts))
+	for index, host := range partition.Hosts {
+		var dataNode *DataNode
+		var zone *Zone
+		dataNode, err = c.dataNode(host)
+		if err != nil {
+			return
+		}
+		zone, err = c.t.getZoneByDataNode(dataNode)
+		if err != nil {
+			return
+		}
+		idcs[index] = zone.idcName
+	}
+	return
+}
+
+func (partition *DataPartition) freeze() {
+	partition.IsFrozen = true
+}
+
+func (partition *DataPartition) unfreeze() {
+	partition.IsFrozen = false
+}
+
+func (partition *DataPartition) isFrozen() bool {
+	return partition.IsFrozen
 }

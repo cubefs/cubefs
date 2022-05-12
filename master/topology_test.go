@@ -2,7 +2,9 @@ package master
 
 import (
 	"fmt"
+	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util"
+	"github.com/chubaofs/chubaofs/util/log"
 	"strings"
 	"testing"
 	"time"
@@ -203,4 +205,201 @@ func TestAllocZones(t *testing.T) {
 			return
 		}
 	}
+}
+
+func TestIDC(t *testing.T) {
+	topo := newTopology()
+	idc1Name := "TestIDC1"
+	idc2Name := "TestIDC2"
+	defer log.LogFlush()
+	idc1 := newIDC(idc1Name)
+	topo.putIDC(idc1)
+	idc2 := newIDC(idc2Name)
+	topo.putIDC(idc2)
+	idc, err := topo.getIDC(idc1Name)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if idc.Name != idc1Name {
+		t.Error(idc.Name)
+		t.FailNow()
+	}
+
+	_, err = server.cluster.t.createIDC(idc1Name, server.cluster)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	err = server.cluster.t.deleteIDC(idc1Name, server.cluster)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	idc, err = server.cluster.t.getIDC(idc1Name)
+	if err == nil {
+		t.Errorf("idc: %v has been deleted, %v.", idc1Name, idc.Name)
+		t.FailNow()
+	}
+	view, err := server.cluster.t.getIDCView(idc1Name)
+	if err == nil {
+		t.Errorf("idc: %v has been deleted, %v.", idc1Name, idc.Name)
+		t.FailNow()
+	}
+
+	_, err = server.cluster.t.createIDC(idc1Name, server.cluster)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	_, err = server.cluster.t.createIDC(idc2Name, server.cluster)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+
+	view, err = server.cluster.t.getIDCView(idc1Name)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if view.Name != idc1Name {
+		t.Error(view.Name)
+		t.FailNow()
+	}
+	if len(view.Zones) != 0 {
+		t.Error(len(view.Zones))
+		t.FailNow()
+	}
+
+	// set thd idc info, idc: nil->idc1, MediumInit->HDD
+	err = server.cluster.setZoneIDC(testZone1, idc1Name, proto.MediumHDD)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	zone1, err := server.cluster.t.getZone(testZone1)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if zone1.MType != proto.MediumHDD {
+		t.Error(zone1.MType.String())
+		t.FailNow()
+	}
+	if zone1.idcName != idc1Name {
+		t.Error(zone1.idcName)
+		t.FailNow()
+	}
+
+	view, err = server.cluster.t.getIDCView(idc1Name)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if view.Name != idc1Name {
+		t.Error(view.Name)
+		t.FailNow()
+	}
+	if len(view.Zones) == 0 {
+		t.Error(len(view.Zones))
+		t.FailNow()
+	}
+	for name, mType := range view.Zones {
+		if name != testZone1 {
+			t.Error(name)
+			t.FailNow()
+		}
+		if mType != proto.MediumHDDName {
+			t.Error(mType)
+			t.FailNow()
+		}
+	}
+
+	views := server.cluster.t.getIDCViews()
+	if views == nil {
+		t.Error("views is nil")
+		t.FailNow()
+	}
+	for _, view := range views {
+		t.Log(view.Name)
+		if views[0].Name != idc1Name {
+			continue
+		}
+		for name, mType := range view.Zones {
+			if name != testZone1 {
+				t.Error(name)
+				t.FailNow()
+			}
+			if mType != proto.MediumHDDName {
+				t.Error(mType)
+				t.FailNow()
+			}
+		}
+	}
+	if len(views) == 0 {
+		t.Error(len(views))
+		t.FailNow()
+	}
+	// set thd idc info, HDD->SDD
+	err = server.cluster.setZoneIDC(testZone1, idc1Name, proto.MediumSSD)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	zone1, err = server.cluster.t.getZone(testZone1)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if zone1.MType != proto.MediumSSD {
+		t.Error(zone1.MType.String())
+		t.FailNow()
+	}
+	if zone1.idcName != idc1Name {
+		t.Error(zone1.idcName)
+		t.FailNow()
+	}
+
+	// set thd idc info, idc1->idc2
+	err = server.cluster.setZoneIDC(testZone1, idc2Name, proto.MediumInit)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	zone1, err = server.cluster.t.getZone(testZone1)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if zone1.MType != proto.MediumSSD {
+		t.Error(zone1.MType.String())
+		t.FailNow()
+	}
+	if zone1.idcName != idc2Name {
+		t.Error(zone1.idcName)
+		t.FailNow()
+	}
+
+  err = server.cluster.t.deleteIDC(idc2Name, server.cluster)
+  if err == nil {
+    t.Errorf("idc: %v should not be deleted", idc2Name)
+    t.FailNow()
+  }
+  _, err = server.cluster.t.getIDC(idc2Name)
+  if err != nil {
+    t.Errorf("idc: %v err: %v.", idc2Name, err.Error())
+    t.FailNow()
+  }
+
+  err = server.cluster.t.deleteIDC(idc1Name, server.cluster)
+  if err != nil {
+    t.Errorf("idc: %v should be deleted", idc1Name)
+    t.FailNow()
+  }
+  _, err = server.cluster.t.getIDC(idc1Name)
+  if err == nil {
+    t.Errorf("idc: %v err: %v.", idc1Name, err.Error())
+    t.FailNow()
+  } 
 }

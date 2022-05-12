@@ -16,6 +16,7 @@ package master
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -66,6 +67,7 @@ type Cluster struct {
 	dpRepairChan               chan *RepairTask
 	mpRepairChan               chan *RepairTask
 	DataNodeBadDisks           *sync.Map
+	metaLoadedTime             int64
 }
 type (
 	RepairType uint8
@@ -103,6 +105,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.idAlloc = newIDAllocator(c.fsm.store, c.partition)
 	c.initDpRepairChan()
 	c.initMpRepairChan()
+	c.resetMetaLoadedTime()
 	return
 }
 
@@ -971,7 +974,7 @@ func (c *Cluster) isValidZone(zoneName string) (isValid bool, err error) {
 //valid zone name
 //if zone name duplicate, return error
 //if vol enable cross zone and the zone number of cluster less than defaultReplicaNum return error
-func (c *Cluster) validZone(zoneName string, replicaNum int) (err error) {
+func (c *Cluster) validZone(zoneName string, replicaNum int, isSmart bool) (err error) {
 	var crossZone bool
 	if zoneName == "" {
 		err = fmt.Errorf("zone name empty")
@@ -986,8 +989,13 @@ func (c *Cluster) validZone(zoneName string, replicaNum int) (err error) {
 	if crossZone && c.t.zoneLen() <= 1 {
 		return fmt.Errorf("cluster has one zone,can't cross zone")
 	}
+	var zone *Zone
 	for _, name := range zoneList {
-		if _, err = c.t.getZone(name); err != nil {
+		if zone, err = c.t.getZone(name); err != nil {
+			return
+		}
+		if isSmart && zone.MType != proto.MediumSSD {
+			err = fmt.Errorf("the medium type of zone: %v, should be ssd", name)
 			return
 		}
 	}
@@ -1381,7 +1389,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	defer dp.offlineMutex.Unlock()
 	excludeNodeSets = make([]uint64, 0)
 	if destAddr != "" {
-		if err = c.validateDecommissionDataPartition(dp, offlineAddr); err != nil {
+		if err = c.validateDecommissionDataPartition(dp, offlineAddr, true); err != nil {
 			goto errHandler
 		}
 		if _, err = c.dataNode(offlineAddr); err != nil {
@@ -1426,7 +1434,6 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	}
 	// update latest version of replica member info to all partition replica member
 	go c.syncDataPartitionReplicasToDataNode(dp)
-
 	return
 errHandler:
 	msg = errMsg + fmt.Sprintf("clusterID[%v] partitionID:%v  on Node:%v  "+
@@ -1485,6 +1492,9 @@ func (partition *DataPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
 		log.LogWarnf("action[repairDataPartition] clusterID[%v] Recover pool is full, recover partition[%v], pool size[%v]", c.Name, dpInRecover, c.cfg.DataPartitionsRecoverPoolSize)
 		return
 	}
+	if vol.isSmart {
+		return
+	}
 	if isNeedBalance, err = partition.needToRebalanceZone(c, zoneList, vol.CrossRegionHAType); err != nil {
 		return
 	}
@@ -1494,6 +1504,330 @@ func (partition *DataPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
 	if err = c.sendRepairDataPartitionTask(partition, BalanceDataZone); err != nil {
 		return
 	}
+	return
+}
+
+var getTargetAddressForDataPartitionSmartTransfer = func(c *Cluster, offlineAddr string, dp *DataPartition, excludeNodeSets []uint64, destZoneName string, validOfflineAddr bool) (oldAddr, newAddr string, err error) {
+	var (
+		dataNode                              *DataNode
+		zone                                  *Zone
+		targetHosts                           []string
+		vol                                   *Vol
+		regionType                            proto.RegionType
+		zones, masterZones, masterRegionHosts []string
+		volIDCs                               map[string]*IDCInfo
+		hddNodeSetMap                         map[string][]uint64
+		idcMap                                map[string]*IDCInfo
+	)
+	vol, err = c.getVol(dp.VolName)
+	if err != nil {
+		return
+	}
+	if !vol.isSmart {
+		err = fmt.Errorf("vol: %v is not smart", dp.VolName)
+		return
+	}
+
+	if validOfflineAddr {
+		if err = c.validateDecommissionDataPartition(dp, offlineAddr, false); err != nil {
+			return
+		}
+	}
+	oldAddr = offlineAddr
+	if destZoneName != "" {
+		if zone, err = c.t.getZone(destZoneName); err != nil {
+			return
+		}
+		if targetHosts, _, err = zone.getAvailDataNodeHosts(excludeNodeSets, dp.Hosts, 1); err != nil {
+			return
+		}
+		newAddr = targetHosts[0]
+		return
+	}
+
+	dataNode, err = c.dataNode(offlineAddr)
+	if err != nil {
+		return
+	}
+	if dataNode.ZoneName == "" {
+		err = fmt.Errorf("vol: %v, dataNode[%v] zone is nil", dp.VolName, dataNode.Addr)
+		return
+	}
+
+	zone, err = c.t.getZone(dataNode.ZoneName)
+	if err != nil {
+		return
+	}
+	var currIDC *IDCInfo
+	currIDC, err = c.t.getIDC(zone.idcName)
+	if err != nil {
+		return
+	}
+	availableZones := currIDC.getZones(proto.MediumHDD)
+	if len(availableZones) == 0 {
+		err = fmt.Errorf("no available zones")
+		return
+	}
+
+	var copyMapFunc = func(fromMap map[string]*IDCInfo) map[string]uint8 {
+		res := make(map[string]uint8, 0)
+		for name, _ := range fromMap {
+			res[name] = 0
+		}
+		return res
+	}
+
+	hddNodeSetMap, idcMap, err = getHDDZonesAndIDCsOfReplicas(c, dp.Hosts, offlineAddr)
+	if err != nil {
+		return
+	}
+	newAddr, err = selectTargetHostFromIDCForTransfer(c, currIDC, dp.Hosts, hddNodeSetMap, offlineAddr)
+	if err != nil {
+		goto errHandler
+	}
+
+	if newAddr != "" {
+		return
+	}
+	log.LogInfof("[getTargetAddressForDataPartitionSmartTransfer],"+
+		"no host is selected from the same idc for addr: %v", offlineAddr)
+	zones = strings.Split(vol.zoneName, ",")
+	if len(zones) == 1 {
+		goto errHandler
+	}
+
+	log.LogInfof("[getTargetAddressForDataPartitionSmartTransfer], zones: %v", len(zones))
+	if !IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
+		volIDCs, err = getAllIDCsFromZones(c, zones)
+		log.LogInfof("[getTargetAddressForDataPartitionSmartTransfer], vol idc count: %v", len(volIDCs))
+		if len(volIDCs) == 2 {
+			goto errHandler
+		}
+
+		for name, idc := range volIDCs {
+			if name == currIDC.Name {
+				continue
+			}
+			idcMapTemp := copyMapFunc(idcMap)
+			idcMapTemp[name] = 0
+			log.LogInfof("[getTargetAddressForDataPartitionSmartTransfer], tmp idc count: %v, idc: %v", len(idcMapTemp), name)
+			//  if the idc is selected, the replicas must cross two idc
+			if len(volIDCs) >= 2 && len(idcMapTemp) != 2 {
+				continue
+			}
+			log.LogInfof("[getTargetAddressForDataPartitionSmartTransfer],"+
+				"select host from the other idc: %v for addr: %v", idc.Name, offlineAddr)
+			newAddr, err = selectTargetHostFromIDCForTransfer(c, idc, dp.Hosts, hddNodeSetMap, offlineAddr)
+			if err != nil || newAddr == "" {
+				goto errHandler
+			}
+
+			return
+		}
+		goto errHandler
+	}
+	regionType, err = c.getDataNodeRegionType(offlineAddr)
+	if err != nil {
+		goto errHandler
+	}
+	masterZones, _, err = c.getMasterAndSlaveRegionZoneName(vol.zoneName)
+	if err != nil {
+		goto errHandler
+	}
+	masterRegionHosts, _, err = c.getMasterAndSlaveRegionAddrsFromDataNodeAddrs(dp.Hosts)
+	if err != nil {
+		return
+	}
+
+	switch regionType {
+	case proto.MasterRegion:
+		zones = masterZones
+		hddNodeSetMap, idcMap, err = getHDDZonesAndIDCsOfReplicas(c, masterRegionHosts, offlineAddr)
+		if err != nil {
+			return
+		}
+	default:
+		err = fmt.Errorf("invalid region type: %v", regionType)
+		goto errHandler
+	}
+	volIDCs, err = getAllIDCsFromZones(c, zones)
+	if len(volIDCs) == 1 {
+		goto errHandler
+	}
+
+	for name, idc := range volIDCs {
+		if name == currIDC.Name {
+			continue
+		}
+		idcMapTemp := copyMapFunc(idcMap)
+		idcMapTemp[name] = 0
+		if len(volIDCs) >= 2 && len(idcMapTemp) != 2 {
+			continue
+		}
+		//get zone from other idc
+		newAddr, err = selectTargetHostFromIDCForTransfer(c, idc, dp.Hosts, hddNodeSetMap, offlineAddr)
+		if err != nil || newAddr == "" {
+			goto errHandler
+		}
+		return
+	}
+errHandler:
+	log.LogErrorf("[getTargetAddressForDataPartitionSmartTransfer], no host is selected from random zone for addr: %v", offlineAddr)
+	if err != nil {
+		err = fmt.Errorf("[getTargetAddressForDataPartitionSmartTransfer], "+
+			"no host is selected  for addr: %v, err: %v", offlineAddr, err.Error())
+	} else {
+		err = fmt.Errorf("[getTargetAddressForDataPartitionSmartTransfer],"+
+			"no host is selected  for addr: %v", offlineAddr)
+	}
+	return
+}
+
+func getHDDZonesAndIDCsOfReplicas(c *Cluster, hosts []string, offlineAddr string) (
+	hddZones map[string][]uint64, idcMap map[string]*IDCInfo, err error) {
+	var (
+		zone *Zone
+		idc  *IDCInfo
+	)
+	hddZones = make(map[string][]uint64, 0)
+	idcMap = make(map[string]*IDCInfo, 0)
+	for _, host := range hosts {
+		if host == offlineAddr {
+			continue
+		}
+		var dn *DataNode
+		dn, err = c.dataNode(host)
+		if err != nil {
+			return
+		}
+		zone, err = c.t.getZone(dn.ZoneName)
+		if err != nil {
+			return
+		}
+		idc, err = c.t.getIDCByZone(zone.name)
+		if err != nil {
+			return
+		}
+		idcMap[zone.idcName] = idc
+		if zone.MType != proto.MediumHDD {
+			continue
+		}
+		ids, ok := hddZones[zone.name]
+		if !ok {
+			ids = make([]uint64, 0)
+			ids = append(ids, dn.NodeSetID)
+			hddZones[zone.name] = ids
+			continue
+		}
+		ids = append(ids, dn.NodeSetID)
+	}
+	return
+}
+
+func getAllIDCsFromZones(c *Cluster, zones []string) (idcs map[string]*IDCInfo, err error) {
+	idcs = make(map[string]*IDCInfo, 0)
+	var zone *Zone
+	for _, name := range zones {
+		zone, err = c.t.getZone(name)
+		if err != nil {
+			return
+		}
+		var idc *IDCInfo
+		idc, err = c.t.getIDC(zone.idcName)
+		if err != nil {
+			return
+		}
+		idcs[zone.idcName] = idc
+	}
+	return
+}
+
+func selectTargetHostFromIDCForTransfer(c *Cluster, targetIDC *IDCInfo, hosts []string,
+	hddZones map[string][]uint64, offlineAddr string) (newAddr string, err error) {
+	var (
+		zone        *Zone
+		ns          *nodeSet
+		targetHosts []string
+	)
+
+	// get another zoneName of idc
+	availableZones := targetIDC.getZones(proto.MediumHDD)
+	if len(availableZones) == 0 {
+		err = fmt.Errorf("no available zones")
+		return
+	}
+
+	// 1: select a target host from the same NodeSet
+	for zName, nodeSets := range hddZones {
+		if !contains(availableZones, zName) {
+			continue
+		}
+		zone, err = c.t.getZone(zName)
+		if err != nil {
+			continue
+		}
+		for _, setID := range nodeSets {
+			ns, err = zone.getNodeSet(setID)
+			if err != nil {
+				log.LogError(err.Error())
+				continue
+			}
+			targetHosts, _, err = ns.getAvailDataNodeHosts(hosts, 1)
+			if err == nil {
+				newAddr = targetHosts[0]
+				return
+			}
+		}
+	}
+	log.LogInfof("[selectTargetHostFromIDCForTransfer],"+
+		"no host is selected from the same node set of idc: %v for addr: %v", targetIDC.Name, offlineAddr)
+	// 2: select data nodes from the other node set in same zone
+	for zName, nodeSets := range hddZones {
+		if !contains(availableZones, zName) {
+			continue
+		}
+		zone, err = c.t.getZone(zName)
+		if err != nil {
+			continue
+		}
+		nsArr := make([]uint64, 0)
+		for _, setID := range nodeSets {
+			ns, err = zone.getNodeSet(setID)
+			if err != nil {
+				log.LogError(err.Error())
+				continue
+			}
+			nsArr = append(nsArr, ns.ID)
+		}
+		targetHosts, _, err = zone.getAvailDataNodeHosts(nsArr, hosts, 1)
+		if err == nil {
+			newAddr = targetHosts[0]
+			return
+		}
+	}
+	log.LogInfof("[selectTargetHostFromIDCForTransfer],"+
+		"no host is selected from the other node set of idc: %v for addr: %v", targetIDC.Name, offlineAddr)
+
+	// 3: select a zone randomly
+	for _, zName := range availableZones {
+		zone, err = c.t.getZone(zName)
+		if err != nil {
+			continue
+		}
+		if zone.getStatus() == unavailableZone {
+			continue
+		}
+		targetHosts, _, err = zone.getAvailDataNodeHosts([]uint64{}, hosts, 1)
+		if err == nil {
+			newAddr = targetHosts[0]
+			return
+		}
+	}
+
+	log.LogWarnf("[selectTargetHostFromIDCForTransfer],"+
+		"no host is selected from random zone of idc: %v for addr: %v", targetIDC.Name, offlineAddr)
+	err = nil
+	//err = fmt.Errorf("[getTargetAddressForDataPartitionSmartTransfer], no host is selected  for addr: %v, err: %v", offlineAddr, err.Error())
 	return
 }
 
@@ -1508,7 +1842,7 @@ var getTargetAddressForDataPartitionDecommission = func(c *Cluster, offlineAddr 
 		vol         *Vol
 	)
 	if validOfflineAddr {
-		if err = c.validateDecommissionDataPartition(dp, offlineAddr); err != nil {
+		if err = c.validateDecommissionDataPartition(dp, offlineAddr, true); err != nil {
 			return
 		}
 	}
@@ -1600,7 +1934,7 @@ errHandler:
 	return
 }
 
-func (c *Cluster) validateDecommissionDataPartition(dp *DataPartition, offlineAddr string) (err error) {
+func (c *Cluster) validateDecommissionDataPartition(dp *DataPartition, offlineAddr string, isManuel bool) (err error) {
 	dp.RLock()
 	defer dp.RUnlock()
 	if ok := dp.hasHost(offlineAddr); !ok {
@@ -1625,7 +1959,7 @@ func (c *Cluster) validateDecommissionDataPartition(dp *DataPartition, offlineAd
 	}
 
 	// if the partition can be offline or not
-	if err = dp.canBeOffLine(offlineAddr); err != nil {
+	if err = dp.canBeOffLine(offlineAddr, isManuel); err != nil {
 		return
 	}
 
@@ -1788,7 +2122,7 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate, mi
 		}
 	}()
 	if validate == true {
-		if err = c.validateDecommissionDataPartition(dp, addr); err != nil {
+		if err = c.validateDecommissionDataPartition(dp, addr, true); err != nil {
 			return
 		}
 	}
@@ -2401,9 +2735,9 @@ errHandler:
 }
 
 func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacity uint64, replicaNum, mpReplicaNum uint8,
-	followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW bool, dpSelectorName, dpSelectorParm string,
+	followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart bool, dpSelectorName, dpSelectorParm string,
 	ossBucketPolicy proto.BucketAccessPolicy, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
-	remainingDays uint32, storeMode proto.StoreMode, layout proto.MetaPartitionLayout, extentCacheExpireSec int64) (err error) {
+	remainingDays uint32, storeMode proto.StoreMode, layout proto.MetaPartitionLayout, extentCacheExpireSec int64, smartRules []string) (err error) {
 	var (
 		vol           *Vol
 		volBak        *Vol
@@ -2468,10 +2802,10 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		}
 	}
 	if zoneName != "" {
-		if err = c.validZone(zoneName, int(replicaNum)); err != nil {
+		if err = c.validZone(zoneName, int(replicaNum), isSmart); err != nil {
 			goto errHandler
 		}
-		if err = c.validZone(zoneName, int(vol.mpReplicaNum+vol.mpLearnerNum)); err != nil {
+		if err = c.validZone(zoneName, int(vol.mpReplicaNum+vol.mpLearnerNum), isSmart); err != nil {
 			goto errHandler
 		}
 		vol.zoneName = zoneName
@@ -2526,7 +2860,17 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	vol.trashRemainingDays = remainingDays
 	vol.DefaultStoreMode = storeMode
 	vol.dpWriteableThreshold = dpWriteableThreshold
-
+	vol.isSmart = isSmart
+	if smartRules != nil {
+		vol.smartRules = smartRules
+	}
+	if vol.isSmart {
+		err = proto.CheckLayerPolicy(c.Name, name, vol.smartRules)
+		if err != nil {
+			err = fmt.Errorf(" valid smart rules for vol: %v, err: %v", name, err.Error())
+			goto errHandler
+		}
+	}
 	if err = c.syncUpdateVol(vol); err != nil {
 		log.LogErrorf("action[updateVol] vol[%v] err[%v]", name, err)
 		err = proto.ErrPersistenceByRaft
@@ -2544,9 +2888,9 @@ errHandler:
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
 func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, trashDays int,
-	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW bool,
+	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart bool,
 	crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
-	storeMode proto.StoreMode, mpLayout proto.MetaPartitionLayout) (vol *Vol, err error) {
+	storeMode proto.StoreMode, mpLayout proto.MetaPartitionLayout, smartRules []string) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -2559,6 +2903,14 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	}
 	if zoneName == "" {
 		zoneName = DefaultZoneName
+	}
+
+	if isSmart {
+		err = proto.CheckLayerPolicy(c.Name, name, smartRules)
+		if err != nil {
+			err = fmt.Errorf("valid smart rules for vol: %v, err: %v", name, err.Error())
+			goto errHandler
+		}
 	}
 	if IsCrossRegionHATypeQuorum(crossRegionHAType) {
 		if dpReplicaNum != maxQuorumVolDataPartitionReplicaNum {
@@ -2574,15 +2926,15 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 			goto errHandler
 		}
 	}
-	if err = c.validZone(zoneName, dpReplicaNum); err != nil {
+	if err = c.validZone(zoneName, dpReplicaNum, isSmart); err != nil {
 		goto errHandler
 	}
-	if err = c.validZone(zoneName, mpReplicaNum+int(mpLearnerNum)); err != nil {
+	if err = c.validZone(zoneName, mpReplicaNum+int(mpLearnerNum), isSmart); err != nil {
 		goto errHandler
 	}
 	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, mpReplicaNum, trashDays,
-		followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, crossRegionHAType, 0, mpLearnerNum, dpWriteableThreshold,
-		storeMode, proto.VolConvertStInit, mpLayout); err != nil {
+		followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, crossRegionHAType, 0, mpLearnerNum, dpWriteableThreshold,
+		storeMode, proto.VolConvertStInit, mpLayout, smartRules); err != nil {
 		goto errHandler
 	}
 	if err = vol.initMetaPartitions(c, mpCount); err != nil {
@@ -2612,9 +2964,9 @@ errHandler:
 }
 
 func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum, trashDays int,
-	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW bool,
+	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart bool,
 	crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64,
-	storeMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout) (vol *Vol, err error) {
+	storeMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string) (vol *Vol, err error) {
 	var id uint64
 	var createTime = time.Now().Unix() // record unix seconds of volume create time
 	masterRegionZoneList := strings.Split(zoneName, ",")
@@ -2638,8 +2990,8 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 		goto errHandler
 	}
 	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), uint8(mpReplicaNum), followerRead,
-		authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, createTime, description, "", "",
-		crossRegionHAType, dpLearnerNum, mpLearnerNum, dpWriteableThreshold, uint32(trashDays), storeMode, convertSt, mpLayout)
+		authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, createTime, description, "", "",
+		crossRegionHAType, dpLearnerNum, mpLearnerNum, dpWriteableThreshold, uint32(trashDays), storeMode, convertSt, mpLayout, smartRules)
 
 	if len(masterRegionZoneList) > 1 {
 		vol.crossZone = true
@@ -3446,6 +3798,8 @@ func (c *Cluster) sendRepairDataPartitionTask(dp *DataPartition, rType RepairTyp
 	case c.dpRepairChan <- repairTask:
 		Warn(c.Name, fmt.Sprintf("action[sendRepairDataPartitionTask] clusterID[%v] vol[%v] data partition[%v] "+
 			"task type[%v]", c.Name, dp.VolName, dp.PartitionID, rType))
+		log.LogDebugf(c.Name, fmt.Sprintf("action[sendRepairDataPartitionTask] clusterID[%v] vol[%v] data partition[%v] "+
+			"task type[%v]", c.Name, dp.VolName, dp.PartitionID, rType))
 	default:
 		Warn(c.Name, fmt.Sprintf("action[sendRepairDataPartitionTask] clusterID[%v] vol[%v] data partition[%v] "+
 			"task type[%v], chanLength[%v], chanCapacity[%v], dpRepairChan has been full", c.Name, dp.VolName, dp.PartitionID, rType, len(c.dpRepairChan),
@@ -4079,4 +4433,209 @@ func (c *Cluster) batchUpdateDataPartitions(dps []*DataPartition, isManual bool)
 		successDpIDs = append(successDpIDs, dp.PartitionID)
 	}
 	return
+}
+
+func (c *Cluster) setZoneIDC(zoneName, idcName string, mType proto.MediumType) (err error) {
+	if idcName == "" && mType == proto.MediumInit {
+		err = fmt.Errorf("[setZoneIDC], invalid arguments")
+		return
+	}
+
+	var zone *Zone
+	zone, err = c.t.getZone(zoneName)
+	if err != nil {
+		return
+	}
+	var (
+		currIDC, newIDC *IDCInfo
+	)
+
+	// Default the zone.idcName is nil, set it
+	if zone.idcName == "" {
+		newIDC, err = c.t.getIDC(idcName)
+		if err != nil {
+			return
+		}
+		mTypeTemp := mType
+		if mType == proto.MediumInit {
+			mTypeTemp = zone.MType
+		}
+		err = newIDC.addZone(zoneName, mTypeTemp, c)
+		if err != nil {
+			return
+		}
+		zone.idcName = idcName
+		zone.MType = mTypeTemp
+		return
+	}
+
+	currIDC, err = c.t.getIDC(zone.idcName)
+	if err != nil {
+		return
+	}
+
+	// only update the medium type
+	if idcName == "" {
+		if zone.MType == mType {
+			return
+		}
+		err = currIDC.addZone(zone.name, mType, c)
+		if err != nil {
+			return
+		}
+		log.LogInfof("only set the type, %v->%v\n", zone.MType.String(), mType.String())
+		zone.MType = mType
+		return
+	}
+
+	// only update the idc name
+	if mType == proto.MediumInit {
+		if zone.idcName == idcName {
+			return
+		}
+		newIDC, err = c.t.getIDC(idcName)
+		if err != nil {
+			return
+		}
+		err = currIDC.deleteZone(zoneName, c)
+		if err != nil {
+			return
+		}
+		err = newIDC.addZone(zoneName, zone.MType, c)
+		if err != nil {
+			e := currIDC.addZone(zone.name, zone.MType, c)
+			if e != nil {
+				log.LogErrorf("[setZoneIDC], failed to recovery the idc info for zone: %v", zone.name)
+			}
+			return
+		}
+		log.LogInfof("only set the idc name, %v->%v\n", zone.idcName, idcName)
+		zone.idcName = idcName
+		return
+	}
+
+	if zone.idcName == idcName && zone.MType == mType {
+		return
+	}
+
+	// update the idc name and medium type
+	newIDC, err = c.t.getIDC(idcName)
+	if err != nil {
+		return
+	}
+	err = currIDC.deleteZone(zoneName, c)
+	if err != nil {
+		return
+	}
+	err = newIDC.addZone(zoneName, mType, c)
+	if err != nil {
+		e := currIDC.addZone(zone.name, zone.MType, c)
+		if e != nil {
+			log.LogErrorf("[setZoneIDC], failed to recovery the idc info for zone: %v", zone.name)
+		}
+		return
+	}
+	log.LogInfof("set name:, %v->%v, the type, %v->%v\n", zone.idcName, idcName, zone.MType.String(), mType.String())
+	zone.idcName = idcName
+	zone.MType = mType
+	return
+}
+
+func (c *Cluster) setZoneMType(zoneName string, mType proto.MediumType) (err error) {
+	if mType == proto.MediumInit {
+		return
+	}
+
+	var zone *Zone
+	zone, err = c.t.getZone(zoneName)
+	if err != nil {
+		return
+	}
+
+	var currIDC *IDCInfo
+	currIDC, err = c.t.getIDC(zone.idcName)
+	if err != nil {
+		return
+	}
+
+	if currIDC.getMediumType(zoneName) == mType {
+		return
+	}
+
+	err = currIDC.addZone(zoneName, mType, c)
+	if err != nil {
+		return
+	}
+	zone.MType = mType
+	return
+}
+
+func (c *Cluster) freezeDataPartition(volName string, partitionID uint64) (err error) {
+	var vol *Vol
+	vol, err = c.getVol(volName)
+	if err != nil {
+		return
+	}
+	if !vol.isSmart {
+		err = fmt.Errorf("[freezeDataPartition], vol: %v is not smart", volName)
+		return
+	}
+	var dp *DataPartition
+	dp, err = vol.getDataPartitionByID(partitionID)
+	if err != nil {
+		return
+	}
+	if dp.isFrozen() {
+		return
+	}
+	dp.Lock()
+	defer dp.Unlock()
+	dp.freeze()
+	err = c.syncUpdateDataPartition(dp)
+	if err != nil {
+		dp.unfreeze()
+		return
+	}
+	return
+}
+
+func (c *Cluster) unfreezeDataPartition(volName string, partitionID uint64) (err error) {
+	var vol *Vol
+	vol, err = c.getVol(volName)
+	if err != nil {
+		return
+	}
+	if !vol.isSmart {
+		err = fmt.Errorf("[unfreezeDataPartition], vol: %v is not smart", volName)
+		return
+	}
+	var dp *DataPartition
+	dp, err = vol.getDataPartitionByID(partitionID)
+	if err != nil {
+		return
+	}
+	if !dp.isFrozen() {
+		return
+	}
+	dp.Lock()
+	defer dp.Unlock()
+	dp.unfreeze()
+	err = c.syncUpdateDataPartition(dp)
+	if err != nil {
+		dp.freeze()
+		return
+	}
+	return
+}
+
+func (c *Cluster) updateMetaLoadedTime() {
+	c.metaLoadedTime = time.Now().Unix()
+}
+
+func (c *Cluster) getMetaLoadedTime() int64 {
+	return c.metaLoadedTime
+}
+
+func (c *Cluster) resetMetaLoadedTime() {
+	c.metaLoadedTime = math.MaxInt64
 }

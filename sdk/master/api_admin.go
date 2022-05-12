@@ -101,6 +101,28 @@ func (api *AdminAPI) ManualResetDataPartition(partitionID uint64, nodeAddrs stri
 	return
 }
 
+func (api *AdminAPI) FreezeDataPartition(volName string, partitionId uint64) (result string, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminFreezeDataPartition)
+	request.addParam("id", strconv.Itoa(int(partitionId)))
+	request.addParam("name", volName)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func (api *AdminAPI) UnfreezeDataPartition(volName string, partitionId uint64) (result string, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminUnfreezeDataPartition)
+	request.addParam("id", strconv.Itoa(int(partitionId)))
+	request.addParam("name", volName)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
 func (api *AdminAPI) ResetCorruptDataNode(nodeAddr string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminResetCorruptDataNode)
 	request.addParam("addr", nodeAddr)
@@ -333,7 +355,7 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 }
 
 func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpReplicas, trashDays, storeMode int,
-	followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW bool, authKey, zoneName, mpLayout string, bucketPolicy,
+	followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart bool, authKey, zoneName, mpLayout, smartRules string, bucketPolicy,
 	crossRegionHAType uint8, extentCacheExpireSec int64) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
@@ -353,6 +375,8 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	request.addParam("ekExpireSec", strconv.FormatInt(extentCacheExpireSec, 10))
 	request.addParam("storeMode", strconv.Itoa(storeMode))
 	request.addParam("metaLayout", mpLayout)
+	request.addParam("smart", strconv.FormatBool(isSmart))
+	request.addParam("smartRules", smartRules)
 	if trashDays > -1 {
 		request.addParam("trashRemainingDays", strconv.Itoa(trashDays))
 	}
@@ -374,7 +398,7 @@ func (api *AdminAPI) SetVolumeConvertTaskState(volName, authKey string, st int) 
 }
 
 func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int, dpSize, capacity uint64, replicas, mpReplicas, trashDays, storeMode int,
-	followerRead, autoRepair, volWriteMutex, forceROW bool, zoneName, mpLayout string, crossRegionHAType uint8) (err error) {
+	followerRead, autoRepair, volWriteMutex, forceROW, isSmart bool, zoneName, mpLayout, smartRules string, crossRegionHAType uint8) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
@@ -392,6 +416,8 @@ func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int, dpSize, ca
 	request.addParam("trashRemainingDays", strconv.Itoa(trashDays))
 	request.addParam("storeMode", strconv.Itoa(storeMode))
 	request.addParam("metaLayout", mpLayout)
+	request.addParam("smart", strconv.FormatBool(isSmart))
+	request.addParam("smartRules", smartRules)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -464,6 +490,27 @@ func (api *AdminAPI) CreateMetaPartition(volName string, inodeStart uint64) (err
 func (api *AdminAPI) ListVols(keywords string) (volsInfo []*proto.VolInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminListVols)
 	request.addParam("keywords", keywords)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	volsInfo = make([]*proto.VolInfo, 0)
+	if err = json.Unmarshal(data, &volsInfo); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) ListVolsByKeywordsAndSmart(keywords, smart string) (volsInfo []*proto.VolInfo, err error) {
+	var request *request
+	if len(smart) == 0 {
+		request = newAPIRequest(http.MethodGet, proto.AdminListVols)
+		request.addParam("keywords", keywords)
+	} else {
+		request = newAPIRequest(http.MethodGet, proto.AdminSmartVolList)
+		request.addParam("keywords", keywords)
+		request.addParam("smart", smart)
+	}
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -623,6 +670,123 @@ func (api *AdminAPI) SetVolMinRWPartition(volName string, minRwMPNum, minRwDPNum
 	request.addParam("name", volName)
 	request.addParam("minWritableMp", strconv.Itoa(minRwMPNum))
 	request.addParam("minWritableDp", strconv.Itoa(minRwDPNum))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) GetIdc(name string) (view *proto.IDCView, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.GetIDCView)
+	request.addParam("name", name)
+
+	data, err := api.mc.serveRequest(request)
+	if err != nil {
+		return
+	}
+	view = &proto.IDCView{}
+	if err = json.Unmarshal(data, &view); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) DeleteIdc(name string) (result string, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.DeleteDC)
+	request.addParam("name", name)
+
+	data, err := api.mc.serveRequest(request)
+	if err != nil {
+		return
+	}
+	return string(data), nil
+}
+
+func (api *AdminAPI) CreateIdc(name string) (result string, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.CreateIDC)
+	request.addParam("name", name)
+
+	data, err := api.mc.serveRequest(request)
+	if err != nil {
+		return
+	}
+	return string(data), nil
+}
+
+func (api *AdminAPI) IdcList() (views []*proto.IDCView, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.IDCList)
+	data, err := api.mc.serveRequest(request)
+
+	if err != nil {
+		return
+	}
+	views = make([]*proto.IDCView, 0)
+	if err = json.Unmarshal(data, &views); err != nil {
+		return
+	}
+
+	return
+}
+
+func (api *AdminAPI) SetIDC(idcName, mediumType, zoneName string) (result string, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.SetZoneIDC)
+	request.addParam("idcName", idcName)
+	request.addParam("mediumType", mediumType)
+	request.addParam("zoneName", zoneName)
+
+	data, err := api.mc.serveRequest(request)
+	if err != nil {
+		return
+	}
+	return string(data), nil
+}
+
+func (api *AdminAPI) DataPartitionTransfer(partitionId uint64, address, destAddress string) (result string, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminTransferDataPartition)
+	request.addParam("id", strconv.Itoa(int(partitionId)))
+	request.addParam("addr", address)
+	request.addParam("destAddr", destAddress)
+
+	data, err := api.mc.serveRequest(request)
+	if err != nil {
+		return
+	}
+	return string(data), nil
+}
+
+func (api *AdminAPI) ListSmartVolumes() (volumes []*proto.SmartVolume, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminSmartVolList)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+
+	volumes = make([]*proto.SmartVolume, 0)
+	if err = json.Unmarshal(buf, &volumes); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) GetSmartVolume(volName, authKey string) (sv *proto.SmartVolume, err error) {
+	var buf []byte
+	request := newAPIRequest(http.MethodGet, proto.ClientVol)
+	request.addParam("name", volName)
+	request.addParam("authKey", authKey)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	sv = &proto.SmartVolume{}
+	if err = json.Unmarshal(buf, &sv); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) TransferSmartVolDataPartition(dpId uint64, addr string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminTransferDataPartition)
+	request.addParam("id", strconv.FormatUint(dpId, 10))
+	request.addParam("addr", addr)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}

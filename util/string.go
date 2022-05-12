@@ -102,3 +102,19 @@ func Projective(long, short []string) (result []string) {
 	}
 	return result
 }
+
+func IsStrEmpty(str string) bool {
+	str = strings.ReplaceAll(str, " ", "")
+	return len(str) == 0
+}
+
+func SubStringByLength(str string, length int) string {
+	if len(str) <= length {
+		return str
+	}
+	return str[:length]
+}
+
+func FormatTimestamp(timestamp int64) string {
+	return time.Unix(timestamp, 0).Format("2006-01-02 15:04:05")
+}

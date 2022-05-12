@@ -19,6 +19,9 @@ import (
 	"flag"
 	"fmt"
 	"github.com/chubaofs/chubaofs/convertnode"
+	"github.com/chubaofs/chubaofs/schedulenode/compact"
+	"github.com/chubaofs/chubaofs/schedulenode/scheduler"
+	"github.com/chubaofs/chubaofs/schedulenode/smart"
 	syslog "log"
 	"net"
 	"net/http"
@@ -61,23 +64,29 @@ const (
 )
 
 const (
-	RoleMaster  = "master"
-	RoleMeta    = "metanode"
-	RoleData    = "datanode"
-	RoleObject  = "objectnode"
-	RoleConsole = "console"
-	RoleMonitor = "monitor"
-	RoleConvert = "convert"
+	RoleMaster   = "master"
+	RoleMeta     = "metanode"
+	RoleData     = "datanode"
+	RoleObject   = "objectnode"
+	RoleConsole  = "console"
+	RoleMonitor  = "monitor"
+	RoleConvert  = "convert"
+	RoleSchedule = "schedulenode"
+	RoleSmart    = "smartvolume"
+	RoleCompact  = "compact"
 )
 
 const (
-	ModuleMaster  = "master"
-	ModuleMeta    = "metaNode"
-	ModuleData    = "dataNode"
-	ModuleObject  = "objectNode"
-	ModuleConsole = "console"
-	ModuleMonitor = "monitor"
-	ModuleConvert = "convert"
+	ModuleMaster   = "master"
+	ModuleMeta     = "metaNode"
+	ModuleData     = "dataNode"
+	ModuleObject   = "objectNode"
+	ModuleConsole  = "console"
+	ModuleMonitor  = "monitor"
+	ModuleConvert  = "convert"
+	ModuleSchedule = "scheduleNode"
+	ModuleSmart    = "smartVolume"
+	ModuleCompact  = "compact"
 )
 
 const (
@@ -219,6 +228,15 @@ func run() error {
 	case RoleConvert:
 		server = convertnode.NewServer()
 		module = ModuleConvert
+	case RoleSchedule:
+		server = scheduler.NewScheduleNode()
+		module = ModuleSchedule
+	case RoleSmart:
+		server = smart.NewSmartVolumeWorker()
+		module = ModuleSmart
+	case RoleCompact:
+		server = compact.NewCompactWorker()
+		module = ModuleCompact
 	default:
 		_ = daemonize.SignalOutcome(fmt.Errorf("Fatal: role mismatch: %v", role))
 		return fmt.Errorf("unknown role: %v", role)

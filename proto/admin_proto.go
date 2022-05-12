@@ -30,9 +30,12 @@ const (
 	AdminGetDataPartition          = "/dataPartition/get"
 	AdminLoadDataPartition         = "/dataPartition/load"
 	AdminCreateDataPartition       = "/dataPartition/create"
+	AdminFreezeDataPartition       = "/dataPartition/freeze"
+	AdminUnfreezeDataPartition     = "/dataPartition/unfreeze"
 	AdminDecommissionDataPartition = "/dataPartition/decommission"
 	AdminDiagnoseDataPartition     = "/dataPartition/diagnose"
 	AdminResetDataPartition        = "/dataPartition/reset"
+	AdminTransferDataPartition     = "/dataPartition/transfer"
 	AdminManualResetDataPartition  = "/dataPartition/manualReset"
 	AdminDataPartitionUpdate       = "/dataPartition/update"
 	AdminResetCorruptDataNode      = "/dataNode/reset"
@@ -66,6 +69,8 @@ const (
 	AdminEnableTrash               = "/admin/trash"
 	AdminStatTrash                 = "/admin/trash/stat"
 
+	AdminSmartVolList = "/admin/smartVol/list"
+
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
@@ -80,12 +85,12 @@ const (
 	ConsoleFileUpload = "/file/upload"
 
 	// Client APIs
-	ClientDataPartitions = "/client/partitions"
-	ClientVol            = "/client/vol"
-	ClientMetaPartition  = "/metaPartition/get"
-	ClientVolStat        = "/client/volStat"
-	ClientMetaPartitions = "/client/metaPartitions"
-	ClientMetaPartitionSnapshotCheck  = "/getSnapshotCrc"
+	ClientDataPartitions             = "/client/partitions"
+	ClientVol                        = "/client/vol"
+	ClientMetaPartition              = "/metaPartition/get"
+	ClientVolStat                    = "/client/volStat"
+	ClientMetaPartitions             = "/client/metaPartitions"
+	ClientMetaPartitionSnapshotCheck = "/getSnapshotCrc"
 
 	ClientDataPartitionsDbBack = "/client/dataPartitions"
 
@@ -127,6 +132,12 @@ const (
 	GetRegionView   = "/region/get"
 	RegionList      = "/region/list"
 	CreateRegion    = "/region/create"
+
+	SetZoneIDC = "/zone/setIDC"
+	GetIDCView = "/idc/get"
+	IDCList    = "/idc/list"
+	CreateIDC  = "/idc/create"
+	DeleteDC   = "/idc/delete"
 
 	//token
 	TokenGetURI    = "/token/get"
@@ -223,6 +234,49 @@ const (
 	SlaveRegion
 )
 
+type MediumType uint8
+
+const (
+	MediumInit    MediumType = 0
+	MediumSSD     MediumType = 1
+	MediumHDD     MediumType = 2
+	MediumEC      MediumType = 3
+	MediumSSDName            = "ssd"
+	MediumHDDName            = "hdd"
+	MediumECName             = "ec"
+)
+
+func StrToMediumType(str string) (mType MediumType, err error) {
+	switch str {
+	case MediumHDDName:
+		mType = MediumHDD
+	case MediumSSDName:
+		mType = MediumSSD
+	case MediumECName:
+		mType = MediumEC
+	default:
+		err = fmt.Errorf("invalid medium type: %v", str)
+	}
+	return
+}
+
+func (m MediumType) String() string {
+	switch m {
+	case MediumHDD:
+		return MediumHDDName
+	case MediumSSD:
+		return MediumSSDName
+	case MediumEC:
+		return MediumECName
+	default:
+		return "unknown"
+	}
+}
+
+func (m MediumType) Check() bool {
+	return m == MediumSSD || m == MediumHDD || m == MediumEC
+}
+
 type AddReplicaType uint8
 
 func (a AddReplicaType) String() string {
@@ -267,14 +321,13 @@ type ClusterInfo struct {
 	// MUST keep for old version client
 	ClientReadLimitRate  uint64
 	ClientWriteLimitRate uint64
-	//TrashEnable          bool
 }
 
 type LimitInfo struct {
 	Cluster                     string
 	MetaNodeDeleteBatchCount    uint64
 	MetaNodeDeleteWorkerSleepMs uint64
-	MetaNodeReadDirLimitNum		uint64
+	MetaNodeReadDirLimitNum     uint64
 
 	MetaNodeReqRateLimit             uint64
 	MetaNodeReqOpRateLimitMap        map[uint8]uint64
@@ -293,8 +346,8 @@ type LimitInfo struct {
 	DataNodeFixTinyDeleteRecordLimitOnDisk uint64
 	DataNodeRepairTaskLimitOnDisk          uint64
 
-	ExtentMergeIno          map[string][]uint64
-	ExtentMergeSleepMs      uint64
+	ExtentMergeIno     map[string][]uint64
+	ExtentMergeSleepMs uint64
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -467,7 +520,7 @@ type PartitionReport struct {
 	NeedCompare     bool
 	IsLearner       bool
 	LastUpdateTime  int64
-	IsRecover       bool  // 表示当前恢复状态, true表示正在恢复, false表示恢复完成
+	IsRecover       bool // 表示当前恢复状态, true表示正在恢复, false表示恢复完成
 }
 
 // DataNodeHeartbeatResponse defines the response to the data node heartbeat.
@@ -612,6 +665,11 @@ type DataPartitionResponse struct {
 	LeaderAddr  string
 	Epoch       uint64
 	IsRecover   bool
+	IsFrozen    bool
+	CreateTime  int64
+	MediumType  string
+	Total       uint64
+	Used        uint64
 }
 
 // DataPartitionsView defines the view of a data partition
@@ -662,7 +720,13 @@ type VolView struct {
 	OSSSecure         *OSSSecure
 	OSSBucketPolicy   BucketAccessPolicy
 	CreateTime        int64
-	ConnConfig		  *ConnConfig	// todo
+	ConnConfig        *ConnConfig // todo
+	IsSmart           bool
+	SmartRules        []string
+}
+
+func (v *VolView) SetSmartRules(rules []string) {
+	v.SmartRules = rules
 }
 
 func (v *VolView) SetOwner(owner string) {
@@ -677,10 +741,11 @@ func (v *VolView) SetOSSBucketPolicy(ossBucketPolicy BucketAccessPolicy) {
 	v.OSSBucketPolicy = ossBucketPolicy
 }
 
-func NewVolView(name string, status uint8, followerRead bool, createTime int64) (view *VolView) {
+func NewVolView(name string, status uint8, followerRead, isSmart bool, createTime int64) (view *VolView) {
 	view = new(VolView)
 	view.Name = name
 	view.FollowerRead = followerRead
+	view.IsSmart = isSmart
 	view.CreateTime = createTime
 	view.Status = status
 	view.MetaPartitions = make([]*MetaPartitionView, 0)
@@ -754,6 +819,8 @@ type SimpleVolView struct {
 	UsedRatio            float64
 	FileAvgSize          float64
 	CreateStatus         VolCreateStatus
+	IsSmart               bool
+	SmartRules            []string
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -770,9 +837,11 @@ type VolInfo struct {
 	TotalSize          uint64
 	UsedSize           uint64
 	TrashRemainingDays uint32
+	IsSmart            bool
+	SmartRules         []string
 }
 
-func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64, remainingDays uint32) *VolInfo {
+func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64, remainingDays uint32, isSmart bool, rules []string) *VolInfo {
 	return &VolInfo{
 		Name:               name,
 		Owner:              owner,
@@ -781,6 +850,8 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 		TotalSize:          totalSize,
 		UsedSize:           usedSize,
 		TrashRemainingDays: remainingDays,
+		IsSmart:            isSmart,
+		SmartRules:         rules,
 	}
 }
 
@@ -834,10 +905,10 @@ const (
 
 
 type ConnConfig struct {
-	IdleTimeoutSec		int64
-	ConnectTimeoutNs	int64
-	WriteTimeoutNs		int64
-	ReadTimeoutNs		int64
+	IdleTimeoutSec   int64
+	ConnectTimeoutNs int64
+	WriteTimeoutNs   int64
+	ReadTimeoutNs    int64
 }
 
 func (config *ConnConfig) String() string {
@@ -851,7 +922,6 @@ func (config *ConnConfig) String() string {
 type TrashStatus struct {
 	Enable bool
 }
-
 
 type DpMetricsReportConfig struct {
 	EnableReport      bool

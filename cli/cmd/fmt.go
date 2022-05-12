@@ -136,7 +136,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  OSS bucket policy    : %s\n", svv.OSSBucketPolicy))
 	sb.WriteString(fmt.Sprintf("  DP convert mode      : %s\n", svv.DPConvertMode))
 	sb.WriteString(fmt.Sprintf("  MP convert mode      : %s\n", svv.MPConvertMode))
-	sb.WriteString(fmt.Sprintf("  ExtentCache Expire   : %v\n", time.Duration(svv.ExtentCacheExpireSec) * time.Second))
+	sb.WriteString(fmt.Sprintf("  ExtentCache Expire   : %v\n", time.Duration(svv.ExtentCacheExpireSec)*time.Second))
 	sb.WriteString(fmt.Sprintf("  writable mp count    : %v\n", svv.RwMpCnt))
 	sb.WriteString(fmt.Sprintf("  writable dp count    : %v\n", svv.RwDpCnt))
 	sb.WriteString(fmt.Sprintf("  min writable mp num  : %v\n", svv.MinWritableMPNum))
@@ -147,7 +147,9 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  writable mp count    : %v\n", svv.RwMpCnt))
 	sb.WriteString(fmt.Sprintf("  writable dp count    : %v\n", svv.RwDpCnt))
 	sb.WriteString(fmt.Sprintf("  min writable mp num  : %v\n", svv.MinWritableMPNum))
-	sb.WriteString(fmt.Sprintf("  min writable dp num  : %v", svv.MinWritableDPNum))
+	sb.WriteString(fmt.Sprintf("  min writable dp num  : %v\n", svv.MinWritableDPNum))
+	sb.WriteString(fmt.Sprintf("  smart           : %s\n", formatEnabledDisabled(svv.IsSmart)))
+	sb.WriteString(fmt.Sprintf("  smart rules           : %v\n", strings.Join(svv.SmartRules, ",")))
 	return sb.String()
 }
 
@@ -190,25 +192,26 @@ func formatVolumeStatus(status uint8) string {
 }
 
 var (
-	volumeInfoTablePattern = "%-63v    %-20v    %-8v    %-8v    %-8v    %-10v"
-	volumeInfoTableHeader  = fmt.Sprintf(volumeInfoTablePattern, "VOLUME", "OWNER", "USED", "TOTAL", "STATUS", "CREATE TIME")
+	volumeInfoTablePattern = "%-63v    %-20v    %-8v    %-8v    %-8v    %-10v   %-45v"
+	volumeInfoTableHeader  = fmt.Sprintf(volumeInfoTablePattern, "VOLUME", "OWNER", "USED", "TOTAL", "STATUS", "IS SMART", "CREATE TIME")
 )
 
 func formatVolInfoTableRow(vi *proto.VolInfo) string {
 	return fmt.Sprintf(volumeInfoTablePattern,
 		vi.Name, vi.Owner, formatSize(vi.UsedSize), formatSize(vi.TotalSize),
-		formatVolumeStatus(vi.Status), time.Unix(vi.CreateTime, 0).Local().Format(time.RFC1123))
+		formatVolumeStatus(vi.Status), vi.IsSmart, time.Unix(vi.CreateTime, 0).Local().Format(time.RFC1123))
 }
 
 var (
-	volumeDetailInfoTablePattern = "%-63v    %-20v    %-30v    %-10v    %-12v    %-8v    %-8v    %-8v    %-8v    %-10v"
-	volumeDetailInfoTableHeader  = fmt.Sprintf(volumeDetailInfoTablePattern, "VOLUME", "OWNER", "ZONE NAME", "CROSS ZONE", "INODE COUNT", "DP COUNT", "USED", "TOTAL", "STATUS", "CREATE TIME")
+	volumeDetailInfoTablePattern = "%-63v    %-20v    %-30v    %-10v    %-12v    %-8v    %-8v    %-8v    %-8v    %-10v	 %-45v"
+	volumeDetailInfoTableHeader  = fmt.Sprintf(volumeDetailInfoTablePattern, "VOLUME", "OWNER", "ZONE NAME", "CROSS ZONE", "INODE COUNT",
+		"DP COUNT", "USED", "TOTAL", "STATUS", "IS SMART", "CREATE TIME")
 )
 
 func formatVolDetailInfoTableRow(vv *proto.SimpleVolView, vi *proto.VolInfo) string {
 	return fmt.Sprintf(volumeDetailInfoTablePattern,
 		vv.Name, vv.Owner, vv.ZoneName, vv.CrossZone, vv.InodeCount, vv.DpCnt, formatSize(vi.UsedSize), formatSize(vi.TotalSize),
-		formatVolumeStatus(vi.Status), time.Unix(vi.CreateTime, 0).Local().Format(time.RFC1123))
+		formatVolumeStatus(vi.Status), vi.IsSmart, time.Unix(vi.CreateTime, 0).Local().Format(time.RFC1123))
 }
 
 // cfs-cli volume info [vol name] -m/-d
@@ -262,6 +265,7 @@ func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("PartitionID   : %v\n", partition.PartitionID))
 	sb.WriteString(fmt.Sprintf("ReplicaNum    : %v\n", partition.ReplicaNum))
 	sb.WriteString(fmt.Sprintf("Status        : %v\n", formatDataPartitionStatus(partition.Status)))
+	sb.WriteString(fmt.Sprintf("CreateTime: %v\n", formatTime(partition.CreateTime)))
 	sb.WriteString(fmt.Sprintf("Recovering    : %v\n", formatIsRecover(partition.IsRecover)))
 	sb.WriteString(fmt.Sprintf("IsManual      : %v\n", formatIsRecover(partition.IsManual)))
 	sb.WriteString(fmt.Sprintf("LastLoadedTime: %v\n", formatTime(partition.LastLoadedTime)))
@@ -370,8 +374,8 @@ var (
 	metaPartitionTablePattern = "%-8v    %-12v    %-12v    %-12v    %-12v    %-12v    %-12v    %-10v    %-10v    %-20v    %-18v"
 	metaPartitionTableHeader  = fmt.Sprintf(metaPartitionTablePattern,
 		"ID", "MAX INODE", "DENTRY COUNT", "INODE COUNT", "START", "END", "MAX EXIST INO", "STATUS", "STOREMODE", "LEADER", "MEMBERS")
-	metaPartitionSnapshotCrcInfoTablePattern      = "%-12v    %-12v    %-18v    %-12v    %-12v\n"
-	metaPartitionSnapshotCrcInfoTableHeader = fmt.Sprintf(metaPartitionSnapshotCrcInfoTablePattern, "LocalAddr", "Role",
+	metaPartitionSnapshotCrcInfoTablePattern = "%-12v    %-12v    %-18v    %-12v    %-12v\n"
+	metaPartitionSnapshotCrcInfoTableHeader  = fmt.Sprintf(metaPartitionSnapshotCrcInfoTablePattern, "LocalAddr", "Role",
 		"SnapshotCreateTime", "  LeaderCrc", "  FollowerCrc")
 )
 
@@ -521,16 +525,16 @@ func formatTimeToString(t time.Time) string {
 	return t.Format("2006-01-02 15:04:05")
 }
 
-var dataReplicaTableRowPattern = "%-20v    %-8v    %-8v    %-8v    %-12v    %-10v    %-20v    %-8v"
+var dataReplicaTableRowPattern = "%-20v    %-8v    %-8v    %-8v    %-12v    %-10v    %-20v    %-8v		%-8v"
 
 func formatDataReplicaTableHeader() string {
-	return fmt.Sprintf(dataReplicaTableRowPattern, "ADDRESS", "USED", "TOTAL", "ISLEADER", "FILECOUNT", "STATUS", "REPORT TIME", "ISLEARNER")
+	return fmt.Sprintf(dataReplicaTableRowPattern, "ADDRESS", "USED", "TOTAL", "ISLEADER", "FILECOUNT", "STATUS", "REPORT TIME", "ISLEARNER", "MEDIUM-TYPE")
 }
 
 func formatDataReplica(indentation string, replica *proto.DataReplica, rowTable bool) string {
 	if rowTable {
 		return fmt.Sprintf(dataReplicaTableRowPattern, replica.Addr, formatSize(replica.Used), formatSize(replica.Total),
-			replica.IsLeader, replica.FileCount, formatDataPartitionStatus(replica.Status), formatTime(replica.ReportTime), replica.IsLearner)
+			replica.IsLeader, replica.FileCount, formatDataPartitionStatus(replica.Status), formatTime(replica.ReportTime), replica.IsLearner, replica.MType)
 	}
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("%v- Addr           : %v\n", indentation, replica.Addr))
@@ -656,8 +660,9 @@ func formatZoneInfoTableRow(zv *proto.ZoneView) string {
 func formatZoneView(zv *proto.ZoneView) string {
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  Name                 : %v\n", zv.Name))
-	sb.WriteString(fmt.Sprintf("  Status               : %s\n", zv.Status))
+	sb.WriteString(fmt.Sprintf("  Status                 : %s\n", zv.Status))
 	sb.WriteString(fmt.Sprintf("  Region               : %v\n", zv.Region))
+	sb.WriteString(fmt.Sprintf("  Medium Type     : %v\n", zv.MediumType))
 	return sb.String()
 }
 
@@ -688,7 +693,7 @@ func formatMonitorQueryData(data *proto.QueryData) string {
 }
 
 func formatConvertProcessorInfo(processors []*proto.ConvertProcessorInfo) string {
-	ProcessorInfoRowPattern  := "    %-10v    %-10v    %-10v\n"
+	ProcessorInfoRowPattern := "    %-10v    %-10v    %-10v\n"
 	ProcessorInfoTableHeader := fmt.Sprintf(ProcessorInfoRowPattern, "ID", "STATE", "COUNT")
 
 	sb := strings.Builder{}
@@ -701,7 +706,7 @@ func formatConvertProcessorInfo(processors []*proto.ConvertProcessorInfo) string
 }
 
 func formatConvertClusterInfo(clusters []*proto.ConvertClusterInfo) string {
-	clusterRowPattern  := "    %-10v    %-10v\n"
+	clusterRowPattern := "    %-10v    %-10v\n"
 	clusterTableHeader := fmt.Sprintf(clusterRowPattern, "NAME", "NODES")
 
 	sb := strings.Builder{}
@@ -722,7 +727,7 @@ func formatConvertClusterInfo(clusters []*proto.ConvertClusterInfo) string {
 }
 
 func formatConvertTaskTable(tasks []*proto.ConvertTaskInfo) string {
-	taskRowPattern  := "    %-10v    %-10v    %-10v    %-10v    %-10v    %-10v    %-10v\n"
+	taskRowPattern := "    %-10v    %-10v    %-10v    %-10v    %-10v    %-10v    %-10v\n"
 	taskTableHeader := fmt.Sprintf(taskRowPattern, "CLUSTER", "VOLNAME", "PROCESSORID", "CONMPNUM", "FINMPNUM", "RUNNINGMPID", "LAYOUT")
 
 	sb := strings.Builder{}
@@ -758,7 +763,7 @@ func formatConvertClusterDetailInfo(cluster *proto.ConvertClusterDetailInfo) str
 	sb.WriteString("[Cluster]\n")
 	sb.WriteString(fmt.Sprintf("  Name                : %v\n", cluster.Cluster.ClusterName))
 	for index, node := range cluster.Cluster.Nodes {
-		sb.WriteString(fmt.Sprintf("  Nodes%-02d             : %v\n",  index, node))
+		sb.WriteString(fmt.Sprintf("  Nodes%-02d             : %v\n", index, node))
 	}
 	sb.WriteString(fmt.Sprintf("  Task Count          : %v\n", len(cluster.Tasks)))
 	sb.WriteString("\n  Tasks   Info        :\n")
@@ -775,7 +780,6 @@ func formatConvertProcessorDetailInfo(processor *proto.ConvertProcessorDetailInf
 	sb.WriteString(fmt.Sprintf("  State               : %s\n", processor.Processor.StateStr()))
 	sb.WriteString(fmt.Sprintf("  Count               : %v\n", processor.Processor.Count))
 
-
 	sb.WriteString("\n  Tasks   Info        :\n")
 	sb.WriteString(formatConvertTaskTable(processor.Tasks))
 
@@ -785,7 +789,7 @@ func formatConvertProcessorDetailInfo(processor *proto.ConvertProcessorDetailInf
 func formatConvertTaskSelMP(task *proto.ConvertTaskInfo) string {
 	var sb = strings.Builder{}
 	for index, mpId := range task.SelectedMP {
-		if index != 0 && index % 5 == 0 {
+		if index != 0 && index%5 == 0 {
 			sb.WriteString("\n                        ")
 		}
 		sb.WriteString(fmt.Sprintf("%-5d", mpId))
@@ -797,7 +801,7 @@ func formatConvertTaskSelMP(task *proto.ConvertTaskInfo) string {
 func formatConvertTaskFinMP(task *proto.ConvertTaskInfo) string {
 	var sb = strings.Builder{}
 	for index, mpId := range task.FinishedMP {
-		if index != 0 && index % 5 == 0 {
+		if index != 0 && index%5 == 0 {
 			sb.WriteString("\n                        ")
 		}
 		sb.WriteString(fmt.Sprintf("%-5d", mpId))
@@ -809,7 +813,7 @@ func formatConvertTaskFinMP(task *proto.ConvertTaskInfo) string {
 func formatConvertTaskIgnMP(task *proto.ConvertTaskInfo) string {
 	var sb = strings.Builder{}
 	for index, mpId := range task.IgnoredMP {
-		if index != 0 && index % 5 == 0 {
+		if index != 0 && index%5 == 0 {
 			sb.WriteString("\n                        ")
 		}
 		sb.WriteString(fmt.Sprintf("%-5d", mpId))
@@ -843,7 +847,7 @@ func formatConvertTaskDetailInfo(task *proto.ConvertTaskInfo) string {
 	return sb.String()
 }
 
-func formatConvertDetailInfo(data interface{}, objType string) string{
+func formatConvertDetailInfo(data interface{}, objType string) string {
 	var sb = strings.Builder{}
 	switch objType {
 	case "cluster":
@@ -901,6 +905,7 @@ func isEqualStrings(strs1, strs2 []string) bool {
 	}
 	return true
 }
+
 var tinyExtentTableRowPattern = "%-20v    %-20v    %-20v    %-20v    %-8v    %-10v    %-8v    %-20v"
 
 func formatTinyExtentTableHeader() string {
@@ -937,4 +942,13 @@ func formatNormalExtent(r *proto.DataReplica, extent *proto.ExtentInfoBlock) str
 
 	return fmt.Sprintf(normalExtentTableRowPattern, r.Addr, r.DiskPath, r.IsLeader, extent[proto.ExtentInfoSize], extent[proto.ExtentInfoCrc],
 		formatTime(int64(extent[proto.ExtentInfoModifyTime])))
+}
+
+var (
+	idcQueryTablePattern    = "%-16s	%-16s"
+	idcQueryDataTableHeader = fmt.Sprintf(idcQueryTablePattern, "Name", "Zones")
+)
+
+func formatIdcInfoTableRow(name string, zones string) string {
+	return fmt.Sprintf(idcQueryTablePattern, name, zones)
 }

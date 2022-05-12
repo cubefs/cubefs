@@ -80,6 +80,8 @@ type Vol struct {
 	convertState         proto.VolConvertState
 	DefaultStoreMode     proto.StoreMode
 	MpLayout             proto.MetaPartitionLayout
+	isSmart              bool
+	smartRules           []string
 	CreateStatus         proto.VolCreateStatus
 	sync.RWMutex
 }
@@ -90,9 +92,9 @@ type VolWriteMutexClient struct {
 }
 
 func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8,
-	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW bool, createTime int64, description, dpSelectorName,
+	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart bool, createTime int64, description, dpSelectorName,
 	dpSelectorParm string, crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64, trashDays uint32,
-	defStoreMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout) (vol *Vol) {
+	defStoreMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	if dpReplicaNum < defaultReplicaNum {
@@ -145,6 +147,10 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	}
 	vol.DefaultStoreMode = defStoreMode
 	vol.MpLayout = mpLayout
+	vol.isSmart = isSmart
+	if smartRules != nil {
+		vol.smartRules = smartRules
+	}
 	return
 }
 
@@ -164,6 +170,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.AutoRepair,
 		vv.VolWriteMutexEnable,
 		vv.ForceROW,
+		vv.IsSmart,
 		vv.CreateTime,
 		vv.Description,
 		vv.DpSelectorName,
@@ -175,7 +182,8 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.TrashRemainingDays,
 		vv.DefStoreMode,
 		vv.ConverState,
-		vv.MpLayout)
+		vv.MpLayout,
+		vv.SmartRules)
 	// overwrite oss secure
 	vol.OSSAccessKey, vol.OSSSecretKey = vv.OSSAccessKey, vv.OSSSecretKey
 	vol.Status = vv.Status
@@ -349,7 +357,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int, dataNodeBadDisksOfVol 
 		dp.checkLeader(c.cfg.DataPartitionTimeOutSec)
 		dp.checkMissingReplicas(c.Name, c.leaderInfo.addr, c.cfg.MissingDataPartitionInterval, c.cfg.IntervalToAlarmMissingDataPartition)
 		dp.checkReplicaNumAndSize(c, vol)
-		if dp.Status == proto.ReadWrite {
+		if dp.Status == proto.ReadWrite && !dp.isFrozen() {
 			cnt++
 		}
 		diskErrorAddrs := dp.checkDiskError(c.Name, c.leaderInfo.addr)
@@ -585,10 +593,11 @@ func (vol *Vol) totalUsedSpace() uint64 {
 }
 
 func (vol *Vol) updateViewCache(c *Cluster) {
-	view := proto.NewVolView(vol.Name, vol.Status, vol.FollowerRead, vol.createTime)
+	view := proto.NewVolView(vol.Name, vol.Status, vol.FollowerRead, vol.isSmart, vol.createTime)
 	view.ForceROW = vol.ForceROW
 	view.CrossRegionHAType = vol.CrossRegionHAType
 	view.SetOwner(vol.Owner)
+	view.SetSmartRules(vol.smartRules)
 	view.SetOSSSecure(vol.OSSAccessKey, vol.OSSSecretKey)
 	view.SetOSSBucketPolicy(vol.OSSBucketPolicy)
 	mpViews := vol.getMetaPartitionsView()
@@ -800,6 +809,13 @@ func (vol *Vol) getTasksToDeleteDataPartitions() (tasks []*proto.AdminTask) {
 func (vol *Vol) getDataPartitionsCount() (count int) {
 	vol.RLock()
 	count = len(vol.dataPartitions.partitionMap)
+	vol.RUnlock()
+	return
+}
+
+func (vol *Vol) getWritableDataPartitionsCount() (count int) {
+	vol.RLock()
+	count = vol.dataPartitions.readableAndWritableCnt
 	vol.RUnlock()
 	return
 }
@@ -1043,6 +1059,8 @@ func (vol *Vol) backupConfig() *Vol {
 		mpReplicaNum:         vol.mpReplicaNum,
 		ForceROW:             vol.ForceROW,
 		ExtentCacheExpireSec: vol.ExtentCacheExpireSec,
+		isSmart:              vol.isSmart,
+		smartRules:           vol.smartRules,
 	}
 }
 
@@ -1075,4 +1093,6 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.mpReplicaNum = backupVol.mpReplicaNum
 	vol.ForceROW = backupVol.ForceROW
 	vol.ExtentCacheExpireSec = backupVol.ExtentCacheExpireSec
+	vol.isSmart = backupVol.isSmart
+	vol.smartRules = backupVol.smartRules
 }

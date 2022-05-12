@@ -34,12 +34,18 @@ type topology struct {
 	zones                []*Zone
 	zoneLock             sync.RWMutex
 	regionMap            *sync.Map //regionName:*Region
+	idcMap               *sync.Map // key: idcName, value: IDCInfo
 }
 
 type Region struct {
 	Name       string
 	RegionType proto.RegionType
 	ZoneMap    *sync.Map // key:zoneName
+}
+
+type IDCInfo struct {
+	Name    string
+	ZoneMap *sync.Map // key: zoneName, value: MediumType
 }
 
 func newTopology() (t *topology) {
@@ -49,6 +55,7 @@ func newTopology() (t *topology) {
 	t.metaNodes = new(sync.Map)
 	t.zones = make([]*Zone, 0)
 	t.regionMap = new(sync.Map)
+	t.idcMap = new(sync.Map)
 	return
 }
 
@@ -565,6 +572,8 @@ func (ns *nodeSet) metaNodeCount() int {
 type Zone struct {
 	name                string
 	regionName          string
+	idcName             string
+	MType               proto.MediumType `json:"mtype"`
 	setIndexForDataNode int
 	setIndexForMetaNode int
 	status              int
@@ -582,6 +591,20 @@ func newZone(name string) (zone *Zone) {
 	zone.metaNodes = new(sync.Map)
 	zone.nodeSetMap = make(map[uint64]*nodeSet)
 	return
+}
+
+func newPureZone(name string) (zone *Zone) {
+	zone = new(Zone)
+	zone.name = name
+	return
+}
+
+func (zone *Zone) setIDCName(idcName string) {
+	zone.idcName = idcName
+}
+
+func (zone *Zone) setMType(mtype proto.MediumType) {
+	zone.MType = mtype
 }
 
 func (zone *Zone) setStatus(status int) {
@@ -1194,4 +1217,260 @@ func (region *Region) isMasterRegion() bool {
 
 func (region *Region) isSlaveRegion() bool {
 	return region.RegionType == proto.SlaveRegion
+}
+
+func newIDC(name string) (idc *IDCInfo) {
+	idc = new(IDCInfo)
+	idc.Name = name
+	idc.ZoneMap = new(sync.Map)
+	return
+}
+
+func newIDCFromIDCValue(value *idcValue) (idc *IDCInfo) {
+	idc = new(IDCInfo)
+	idc.Name = value.Name
+	idc.ZoneMap = new(sync.Map)
+	for name, zone := range value.Zones {
+		idc.ZoneMap.Store(name, zone.MType)
+	}
+	return
+}
+
+func (t *topology) createIDC(name string, c *Cluster) (idc *IDCInfo, err error) {
+	_, ok := t.idcMap.Load(name)
+	if ok {
+		err = fmt.Errorf("idc[%v] has exist", name)
+		return
+	}
+
+	idc = newIDC(name)
+	err = c.syncAddIDC(idc)
+	if err != nil {
+		return
+	}
+	err = t.putIDC(idc)
+	if err != nil {
+		return
+	}
+	return
+}
+
+func (t *topology) deleteIDC(name string, c *Cluster) (err error) {
+	value, ok := t.idcMap.Load(name)
+	if !ok {
+		return
+	}
+
+	idc := value.(*IDCInfo)
+	count := 0
+
+	idc.ZoneMap.Range(func(key, _ interface{}) bool {
+		zone, e := t.getZone(key.(string))
+		if e != nil {
+			return true
+		}
+		if zone.dataNodes == nil {
+			return true
+		}
+
+		zone.dataNodes.Range(func(_, _ interface{}) bool {
+			count++
+			if count > 0 {
+				return false
+			}
+			return true
+		})
+
+		if count > 0 {
+			return false
+		}
+
+		return true
+	})
+
+	if count > 0 {
+		err = fmt.Errorf("the idc: %v is not empty, can not delete it", name)
+		return
+	}
+
+	err = c.syncDeleteIDC(idc)
+	if err != nil {
+		return
+	}
+	t.idcMap.Delete(name)
+	return
+}
+
+func (t *topology) putIDC(idc *IDCInfo) (err error) {
+	_, ok := t.idcMap.Load(idc.Name)
+	if ok {
+		err = fmt.Errorf("idc[%v] has exist", idc.Name)
+		return
+	}
+	t.idcMap.Store(idc.Name, idc)
+	return
+}
+
+func (t *topology) getIDC(name string) (idc *IDCInfo, err error) {
+	if name == "" {
+		err = fmt.Errorf("idc name is empty")
+		return
+	}
+	value, ok := t.idcMap.Load(name)
+	if !ok {
+		err = fmt.Errorf("idc[%v] is not found", name)
+		return
+	}
+	idc, ok = value.(*IDCInfo)
+	if !ok || idc == nil {
+		err = fmt.Errorf("idc[%v] is not found", name)
+		return
+	}
+	return
+}
+
+func (t *topology) getIDCByZone(zoneName string) (idc *IDCInfo, err error) {
+	if zoneName == "" {
+		err = fmt.Errorf("zone name is empty")
+		return
+	}
+	var zone *Zone
+	zone, err = t.getZone(zoneName)
+	if err != nil {
+		return
+	}
+	return t.getIDC(zone.idcName)
+}
+
+// if not found zone, add it
+// if the originalMtype is not equals to mtype, update it
+func (idc *IDCInfo) addZone(zoneName string, mtype proto.MediumType, c *Cluster) (err error) {
+	value, ok := idc.ZoneMap.Load(zoneName)
+	if ok && value.(proto.MediumType) == mtype {
+		return
+	}
+
+	idc.ZoneMap.Store(zoneName, mtype)
+	err = c.syncUpdateIDC(idc)
+	if err == nil {
+		return
+	}
+
+	if !ok {
+		idc.ZoneMap.Delete(zoneName)
+		return
+	}
+
+	idc.ZoneMap.Store(zoneName, value)
+	return
+}
+
+func (idc *IDCInfo) deleteZone(zoneName string, c *Cluster) (err error) {
+	value, ok := idc.ZoneMap.Load(zoneName)
+	if !ok {
+		return
+	}
+	idc.ZoneMap.Delete(zoneName)
+	err = c.syncUpdateIDC(idc)
+	if err != nil {
+		idc.ZoneMap.Store(zoneName, value)
+		log.LogErrorf("action[deleteZone] idc[%v] zoneName[%v] err[%v]", idc.Name, zoneName, err)
+		return
+	}
+	return
+}
+
+func (idc *IDCInfo) getMediumType(zoneName string) (mType proto.MediumType) {
+	value, ok := idc.ZoneMap.Load(zoneName)
+	if !ok {
+		mType = proto.MediumInit
+		return
+	}
+	mType = value.(proto.MediumType)
+	return
+}
+
+func (idc *IDCInfo) getZones(mType proto.MediumType) (zones []string) {
+	zones = make([]string, 0)
+	idc.ZoneMap.Range(func(key, value interface{}) bool {
+		name, ok := key.(string)
+		if !ok {
+			return true
+		}
+		zoneType, ok := value.(proto.MediumType)
+		if !ok {
+			return true
+		}
+		if zoneType == mType {
+			zones = append(zones, name)
+		}
+		return true
+	})
+	return
+}
+
+func (idc *IDCInfo) getAllZones() (zones []*Zone) {
+	zones = make([]*Zone, 0)
+	idc.ZoneMap.Range(func(key, value interface{}) bool {
+		name, ok := key.(string)
+		if !ok {
+			return true
+		}
+		mtype, ok := value.(proto.MediumType)
+		if !ok {
+			return true
+		}
+		zone := newPureZone(name)
+		zone.setMType(mtype)
+		zones = append(zones, zone)
+		return true
+	})
+	return
+}
+
+func (t *topology) getIDCView(name string) (view *proto.IDCView, err error) {
+	value, ok := t.idcMap.Load(name)
+	if !ok {
+		err = fmt.Errorf("not found the idc: %v", name)
+		return
+	}
+	idc, ok := value.(*IDCInfo)
+	if !ok {
+		err = fmt.Errorf("not found the idc: %v", name)
+		return
+	}
+
+	view = new(proto.IDCView)
+	view.Name = name
+	view.Zones = make(map[string]string, 0)
+	zones := idc.getAllZones()
+	for _, zone := range zones {
+		view.Zones[zone.name] = zone.MType.String()
+	}
+	return
+}
+
+func (t *topology) getIDCViews() (views []*proto.IDCView) {
+	views = make([]*proto.IDCView, 0)
+	t.idcMap.Range(func(key, value interface{}) bool {
+		name, ok := key.(string)
+		if !ok {
+			return true
+		}
+		idc, ok := value.(*IDCInfo)
+		if !ok {
+			return true
+		}
+
+		zones := idc.getAllZones()
+		view := new(proto.IDCView)
+		view.Name = name
+		view.Zones = make(map[string]string, 0)
+		for _, zone := range zones {
+			view.Zones[zone.name] = zone.MType.String()
+		}
+		views = append(views, view)
+		return true
+	})
+	return
 }

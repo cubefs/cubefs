@@ -73,6 +73,7 @@ const (
 func newVolListCmd(client *master.MasterClient) *cobra.Command {
 	var optKeyword string
 	var optDetailMod bool
+	var optMediumType string
 	var cmd = &cobra.Command{
 		Use:     CliOpList,
 		Short:   cmdVolListShort,
@@ -85,7 +86,7 @@ func newVolListCmd(client *master.MasterClient) *cobra.Command {
 					errout("List cluster volume failed:\n%v\n", err)
 				}
 			}()
-			if vols, err = client.AdminAPI().ListVols(optKeyword); err != nil {
+			if vols, err = client.AdminAPI().ListVolsByKeywordsAndSmart(optKeyword, optMediumType); err != nil {
 				return
 			}
 			sort.Slice(vols, func(i, j int) bool { return vols[i].Name < vols[j].Name })
@@ -109,6 +110,7 @@ func newVolListCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&optDetailMod, "detail-mod", "d", false, "list the volumes with empty zone name")
 	cmd.Flags().StringVar(&optKeyword, "keyword", "", "Specify keyword of volume name to filter")
+	cmd.Flags().StringVar(&optMediumType, "medium-type", "", "Specify the volume smart")
 
 	return cmd
 }
@@ -123,6 +125,7 @@ const (
 	cmdVolDefaultTrashDays      = 0
 	cmdVolDefaultFollowerReader = true
 	cmdVolDefaultForceROW       = false
+	cmdVolDefaultIsSmart        = false
 	cmdVolDefaultNearReader     = false
 	cmdVolDefaultCrossRegionHA  = 0
 	cmdVolDefaultZoneName       = "default"
@@ -146,6 +149,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optTrashDays int
 	var optStoreMode int
 	var optLayout string
+	var optIsSmart bool
+	var smartRules []string
 	var cmd = &cobra.Command{
 		Use:   cmdVolCreateUse,
 		Short: cmdVolCreateShort,
@@ -190,6 +195,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  ZoneName            : %v\n", optZoneName)
 				stdout("  Store mode          : %v\n", storeMode.Str())
 				stdout("  Meta layout         : %v - %v\n", num1, num2)
+				stdout("  Smart Enable       : %s\n", formatEnabledDisabled(optIsSmart))
+				stdout("  Smart Rules         : %v\n", strings.Join(smartRules, ","))
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -200,7 +207,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			}
 
 			err = client.AdminAPI().CreateVolume(volumeName, userID, optMPCount, optDPSize, optCapacity, optReplicas,
-				optMpReplicas, optTrashDays, optStoreMode, optFollowerRead, optAutoRepair, optVolWriteMutex, optForceROW, optZoneName, optLayout, optCrossRegionHAType)
+				optMpReplicas, optTrashDays, optStoreMode, optFollowerRead, optAutoRepair, optVolWriteMutex, optForceROW, optIsSmart,
+				optZoneName, optLayout, strings.Join(smartRules, ","), optCrossRegionHAType)
 			if err != nil {
 				errout("Create volume failed case:\n%v\n", err)
 			}
@@ -224,6 +232,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	cmd.Flags().IntVar(&optStoreMode, CliFlagStoreMode, cmdVolDefaultStoreMode, "Specify volume store mode[1:Mem, 2:RocksDb]")
 	cmd.Flags().StringVar(&optLayout, CliFlagMetaLayout, cmdVolDefMetaLayout, "Specify volume mp layout num1,num2 [num1:rocks db mp percent, num2:rocks db replica percent]")
+	cmd.Flags().BoolVar(&optIsSmart, CliFlagIsSmart, cmdVolDefaultIsSmart, "Enable the smart vol or not")
+	cmd.Flags().StringSliceVar(&smartRules, CliSmartRulesMode, []string{}, "Specify volume smart rules")
 	return cmd
 }
 
@@ -241,7 +251,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		optTrashDays            int
 		optStoreMode            int
 		optFollowerRead         string
-		optNearRead      	    string
+		optNearRead             string
 		optForceROW             string
 		optAuthenticate         string
 		optEnableToken          string
@@ -254,6 +264,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		optYes                  bool
 		confirmString           = strings.Builder{}
 		vv                      *proto.SimpleVolView
+		optIsSmart              string
+		smartRules              []string
 	)
 	var cmd = &cobra.Command{
 		Use:   CliOpSet + " [VOLUME NAME]",
@@ -270,6 +282,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 					errout("Error: %v", err)
 				}
 			}()
+			fmt.Printf("%v\n", smartRules)
+
 			if vv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
 				return
 			}
@@ -448,6 +462,24 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
+			if optIsSmart != "" {
+				isChange = true
+				var enable bool
+				if enable, err = strconv.ParseBool(optIsSmart); err != nil {
+					return
+				}
+				confirmString.WriteString(fmt.Sprintf("  smart:  %v -> %v\n", vv.IsSmart, enable))
+				vv.IsSmart = enable
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  smart          :  %v\n", vv.IsSmart))
+			}
+			if len(smartRules) != 0 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  SmartRules          :  %s -> %s\n", strings.Join(vv.SmartRules, ","), strings.Join(smartRules, ",")))
+				vv.SmartRules = smartRules
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  SmartRules          :  %s\n", strings.Join(vv.SmartRules, ",")))
+			}
 			if err != nil {
 				return
 			}
@@ -468,7 +500,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			}
 			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum), int(vv.MpReplicaNum), int(vv.TrashRemainingDays),
 				int(vv.DefaultStoreMode), vv.FollowerRead, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
-				vv.ForceROW, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec)
+				vv.ForceROW, vv.IsSmart, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, strings.Join(smartRules, ","), uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec)
 			if err != nil {
 				return
 			}
@@ -500,7 +532,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optExtentCacheExpireSec, CliFlagExtentCacheExpireSec, 0, "Specify the expiration second of the extent cache (-1 means never expires)")
 	cmd.Flags().StringVar(&optLayout, CliFlagMetaLayout, "", "specify volume meta layout num1,num2 [num1:rocks db mp percent, num2:rocks db replicas percent]")
 	cmd.Flags().IntVar(&optStoreMode, CliFlagStoreMode, 0, "specify volume default store mode [1:Mem, 2:Rocks]")
-
+	cmd.Flags().StringVar(&optIsSmart, CliFlagIsSmart, "", "Enable the smart vol or not")
+	cmd.Flags().StringSliceVar(&smartRules, CliSmartRulesMode, []string{}, "Specify volume smart rules")
 	return cmd
 }
 func newVolInfoCmd(client *master.MasterClient) *cobra.Command {

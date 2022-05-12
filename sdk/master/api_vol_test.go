@@ -17,7 +17,8 @@ var (
 	testTrashDays            = 10
 	testMpReplicas           = 3
 	testFollowerRead         = true
-	testForceROW			 = false
+	testForceROW             = false
+	testIsSmart              = false
 	testAutoRepair           = false
 	testVolWriteMutex        = false
 	testZoneName             = "default"
@@ -28,13 +29,13 @@ var (
 
 func TestVolCreate(t *testing.T) {
 	err := testMc.AdminAPI().CreateVolume(testVolName, testOwner, testMpcount, testDpSize, testCapacity,
-		testReplicas, testMpReplicas, testTrashDays, testStoreMode, testFollowerRead, testAutoRepair, testVolWriteMutex, testForceROW, testZoneName, testMpLyout, 0)
+		testReplicas, testMpReplicas, testTrashDays, testStoreMode, testFollowerRead, testAutoRepair, testVolWriteMutex, testForceROW, testIsSmart, testZoneName, testMpLyout, "",0)
 	if err != nil {
 		t.Errorf("create vol failed: err(%v) vol(%v)", err, testVolName)
 	}
 	defaultVol := "defaultVol"
 	err = testMc.AdminAPI().CreateDefaultVolume(defaultVol, testOwner)
-	if err != nil {
+	if err != nil && !strings.Contains(err.Error(), "duplicate vol"){
 		t.Errorf("create vol failed: err(%v) vol(%v)", err, defaultVol)
 	}
 }
@@ -45,8 +46,8 @@ func TestUpdateVol(t *testing.T) {
 	updateFollowerRead := false
 	trashDays := 15
 	err := testMc.AdminAPI().UpdateVolume(testVolName, extentCap, testReplicas, testMpReplicas, trashDays, testStoreMode,
-		updateFollowerRead, false, false, false, false, false, authKey, testZoneName,
-		testMpLyout, 0, 0, 0)
+		updateFollowerRead, false, false, false, false, false, false, authKey, testZoneName,
+		testMpLyout, "", 0, 0, 0)
 	if err != nil {
 		t.Errorf("update vol failed: err(%v) vol(%v)", err, testVolName)
 		t.FailNow()

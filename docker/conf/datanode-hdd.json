@@ -1,0 +1,25 @@
+{
+  "role": "datanode",
+  "listen": "17310",
+  "prof": "17320",
+  "raftHeartbeat": "17330",
+  "raftReplica": "17340",
+  "raftDir": "/cfs/log",
+  "consulAddr": "http://192.168.0.101:8500",
+  "exporterPort": 9500,
+  "cell": "cell-01",
+  "logDir": "/cfs/log",
+  "logLevel": "info",
+  "zoneName": "zone1-hdd",
+  "disks": [
+    "/cfs/disk:10737418240"
+  ],
+  "masterAddr": [
+    "192.168.0.11:17010",
+    "192.168.0.12:17010",
+    "192.168.0.13:17010"
+  ],
+  "tracingSamplerType": "const",
+  "tracingSamplerParam": 1,
+  "tracingReportAddr": "172.20.189.87:6831"
+}

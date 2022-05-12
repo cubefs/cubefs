@@ -220,9 +220,11 @@ type VolStatInfo struct {
 type DataPartitionInfo struct {
 	PartitionID             uint64
 	LastLoadedTime          int64
+	CreateTime              int64
 	ReplicaNum              uint8
 	Status                  int8
 	IsRecover               bool
+	IsFrozen                bool
 	IsManual                bool
 	Replicas                []*DataReplica
 	Hosts                   []string // host addresses
@@ -264,6 +266,7 @@ type DataReplica struct {
 	NeedsToCompare  bool
 	IsLearner       bool
 	DiskPath        string
+	MType           string
 }
 
 // data partition diagnosis represents the inactive data nodes, corrupt data partitions, and data partitions lack of replicas
@@ -353,6 +356,11 @@ type RegionView struct {
 	Zones      []string
 }
 
+type IDCView struct {
+	Name  string
+	Zones map[string]string
+}
+
 func NewRegionView(name string) (regionView *RegionView) {
 	regionView = &RegionView{
 		Name:  name,
@@ -362,10 +370,12 @@ func NewRegionView(name string) (regionView *RegionView) {
 }
 
 type ZoneView struct {
-	Name    string
-	Status  string
-	Region  string
-	NodeSet map[uint64]*nodeSetView
+	Name       string
+	Status     string
+	Region     string
+	IDC        string
+	MediumType string
+	NodeSet    map[uint64]*nodeSetView
 }
 
 type nodeSetView struct {

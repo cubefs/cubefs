@@ -59,7 +59,8 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 	var interceptor mux.MiddlewareFunc = func(next http.Handler) http.Handler {
 		return http.HandlerFunc(
 			func(w http.ResponseWriter, r *http.Request) {
-				log.LogDebugf("action[interceptor] request, method[%v] path[%v] query[%v]", r.Method, r.URL.Path, r.URL.Query())
+				log.LogDebugf("action[interceptor] request, method[%v] path[%v] query[%v] remoteAddr[%v]",
+					r.Method, r.URL.Path, r.URL.Query(), r.RemoteAddr)
 				if mux.CurrentRoute(r).GetName() == proto.AdminGetIP {
 					next.ServeHTTP(w, r)
 					return
@@ -174,6 +175,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetVolMinRWPartition).
 		HandlerFunc(m.setVolMinRWPartition)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminSmartVolList).
+		HandlerFunc(m.listSmartVols)
 
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -256,6 +260,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminResetDataPartition).
 		HandlerFunc(m.resetDataPartition)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminFreezeDataPartition).
+		HandlerFunc(m.freezeDataPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminUnfreezeDataPartition).
+		HandlerFunc(m.unfreezeDataPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminManualResetDataPartition).
 		HandlerFunc(m.manualResetDataPartition)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -264,6 +274,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminVolBatchUpdateDps).
 		HandlerFunc(m.batchUpdateDataPartitions)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminTransferDataPartition).
+		HandlerFunc(m.transferDataPartition)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.ClientDataPartitions).
 		HandlerFunc(m.getDataPartitions)
@@ -380,6 +393,22 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.CreateRegion).
 		HandlerFunc(m.addRegion)
+
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.CreateIDC).
+		HandlerFunc(m.addIDC)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.DeleteDC).
+		HandlerFunc(m.deleteIDC)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.SetZoneIDC).
+		HandlerFunc(m.setZoneIDC)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.GetIDCView).
+		HandlerFunc(m.getIDC)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.IDCList).
+		HandlerFunc(m.idcList)
 
 	// APIs for token-based client permissions control
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

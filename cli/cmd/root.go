@@ -65,6 +65,7 @@ func NewRootCmd(client *master.MasterClient, mClient *monitor.MonitorClient, cc 
 		newReadWriteCheckTinyFileCmd(),
 		trash.NewTrashCmd(client),
 		newConvertNodeCmd(cc),
+		newIdcCommand(client),
 	)
 	return cmd
 }

@@ -62,10 +62,11 @@ func newNodeSetView(dataNodeLen, metaNodeLen int) *nodeSetView {
 
 //ZoneView define the view of zone
 type ZoneView struct {
-	Name    string
-	Status  string
-	Region  string
-	NodeSet map[uint64]*nodeSetView
+	Name       string
+	Status     string
+	Region     string
+	MediumType string
+	NodeSet    map[uint64]*nodeSetView
 }
 
 func newZoneView(name string) *ZoneView {
@@ -189,6 +190,7 @@ func (m *Server) listZone(w http.ResponseWriter, r *http.Request) {
 		cv := newZoneView(zone.name)
 		cv.Status = zone.getStatusToString()
 		cv.Region = zone.regionName
+		cv.MediumType = zone.MType.String()
 		zoneViews = append(zoneViews, cv)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(zoneViews))
@@ -369,7 +371,7 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if err = m.cluster.validZone(designatedZoneName, int(vol.dpReplicaNum)); err != nil {
+		if err = m.cluster.validZone(designatedZoneName, int(vol.dpReplicaNum), vol.isSmart); err != nil {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 			return
 		}
@@ -716,7 +718,6 @@ func (m *Server) addMetaReplicaLearner(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	mp.offlineMutex.Lock()
 	defer mp.offlineMutex.Unlock()
 	if isAutoChooseAddrForQuorumVol(addReplicaType) && len(mp.Hosts) >= totalReplicaNum {
@@ -831,6 +832,8 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		destAddr    string
 		partitionID uint64
 		err         error
+		vol         *Vol
+		chooseFunc  ChooseDataHostFunc
 	)
 
 	if partitionID, addr, destAddr, err = parseRequestToDecommissionDataPartition(r); err != nil {
@@ -841,11 +844,58 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
 		return
 	}
-	if err = m.cluster.decommissionDataPartition(addr, dp, getTargetAddressForDataPartitionDecommission, handleDataPartitionOfflineErr, "", destAddr, false); err != nil {
+	vol, err = m.cluster.getVol(dp.VolName)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+	if vol.isSmart && dp.isFrozen() {
+		chooseFunc = getTargetAddressForDataPartitionSmartTransfer
+	} else {
+		chooseFunc = getTargetAddressForDataPartitionDecommission
+	}
+	if err = m.cluster.decommissionDataPartition(addr, dp, chooseFunc, handleDataPartitionOfflineErr, "", destAddr, false); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 	rstMsg = fmt.Sprintf(proto.AdminDecommissionDataPartition+" dataPartitionID :%v  on node:%v successfully", partitionID, addr)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) transferDataPartition(w http.ResponseWriter, r *http.Request) {
+	var (
+		rstMsg      string
+		dp          *DataPartition
+		addr        string
+		partitionID uint64
+		err         error
+		vol         *Vol
+	)
+
+	if partitionID, addr, _, err = parseRequestToDecommissionDataPartition(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
+		return
+	}
+
+	vol, err = m.cluster.getVol(dp.VolName)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+	if dp.Status != proto.ReadOnly &&
+		vol.getWritableDataPartitionsCount() < vol.MinWritableDPNum {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("too less writable data partitions: %v", vol.getWritableDataPartitionsCount())))
+		return
+	}
+	if err = m.cluster.decommissionDataPartition(addr, dp, getTargetAddressForDataPartitionSmartTransfer, handleDataPartitionOfflineErr, "", "", false); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	rstMsg = fmt.Sprintf(proto.AdminTransferDataPartition+" dataPartitionID :%v  on node:%v successfully", partitionID, addr)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
@@ -1249,24 +1299,24 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	var (
-		name         string
-		authKey      string
-		err          error
-		msg          string
-		capacity     int
-		replicaNum   int
-		mpReplicaNum int
-		followerRead bool
-		nearRead     bool
-		forceROW     bool
-		authenticate bool
-		enableToken  bool
-		autoRepair   bool
-		zoneName     string
-		description  string
-		extentCacheExpireSec	int64
+		name                 string
+		authKey              string
+		err                  error
+		msg                  string
+		capacity             int
+		replicaNum           int
+		mpReplicaNum         int
+		followerRead         bool
+		nearRead             bool
+		forceROW             bool
+		authenticate         bool
+		enableToken          bool
+		autoRepair           bool
+		zoneName             string
+		description          string
+		extentCacheExpireSec int64
 
-		vol          *Vol
+		vol *Vol
 
 		dpSelectorName       string
 		dpSelectorParm       string
@@ -1276,6 +1326,8 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		trashRemainingDays   uint32
 		storeMode            int
 		mpLayout             proto.MetaPartitionLayout
+		isSmart              bool
+		smartRules           []string
 	)
 	if name, authKey, replicaNum, mpReplicaNum, err = parseRequestToUpdateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1348,9 +1400,15 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	isSmart, smartRules, err = parseSmartToUpdateVol(r, vol)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), uint8(mpReplicaNum),
-		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, dpSelectorName, dpSelectorParm, ossBucketPolicy,
-		crossRegionHAType, dpWriteableThreshold, trashRemainingDays, proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec); err != nil {
+		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart, dpSelectorName, dpSelectorParm, ossBucketPolicy,
+		crossRegionHAType, dpWriteableThreshold, trashRemainingDays, proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1411,10 +1469,12 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		trashDays            int
 		storeMode            int
 		mpLayout             proto.MetaPartitionLayout
+		isSmart              bool
+		smartRules           []string
 	)
 
 	if name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays, followerRead, authenticate,
-		enableToken, autoRepair, volWriteMutexEnable, forceROW, crossRegionHAType,dpWriteableThreshold, mpLayout, err = parseRequestToCreateVol(r); err != nil {
+		enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, crossRegionHAType, dpWriteableThreshold, mpLayout, smartRules, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1443,8 +1503,8 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size,
-		capacity, trashDays, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW,
-		crossRegionHAType, dpWriteableThreshold, proto.StoreMode(storeMode), mpLayout); err != nil {
+		capacity, trashDays, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart,
+		crossRegionHAType, dpWriteableThreshold, proto.StoreMode(storeMode), mpLayout, smartRules); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1547,6 +1607,8 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		DefaultStoreMode:     vol.DefaultStoreMode,
 		ConvertState:         vol.convertState,
 		MpLayout:             vol.MpLayout,
+		IsSmart:              vol.isSmart,
+		SmartRules:           vol.smartRules,
 		TotalSize:            stat.TotalSize,
 		UsedSize:             stat.UsedSize,
 		UsedRatio:            usedRatio,
@@ -1967,7 +2029,7 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr string
 		zoneName string
-		version	 string
+		version  string
 		id       uint64
 		err      error
 	)
@@ -2719,6 +2781,28 @@ func parseCrossRegionHATypeToUpdateVol(r *http.Request, vol *Vol) (crossRegionHA
 	return
 }
 
+func parseSmartToUpdateVol(r *http.Request, vol *Vol) (isSmart bool, smartRules []string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	isSmartStr := r.FormValue(smartKey)
+	if isSmartStr == "" {
+		isSmart = vol.isSmart
+	} else {
+		isSmart, err = strconv.ParseBool(isSmartStr)
+		if err != nil {
+			return
+		}
+	}
+	rules := r.FormValue(smartRulesKey)
+	if rules != "" {
+		smartRules = strings.Split(rules, ",")
+	} else {
+		smartRules = vol.smartRules
+	}
+	return
+}
+
 func parseOSSBucketPolicyToUpdateVol(r *http.Request, vol *Vol) (ossBucketPolicy proto.BucketAccessPolicy, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -2764,9 +2848,9 @@ func parseDefaultTrashDaysToUpdateVol(r *http.Request, vol *Vol) (remaining uint
 
 func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string,
 	mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays int,
-	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable,forceROW bool,
+	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart bool,
 	crossRegionHAType proto.CrossRegionHAType, dpWritableThreshold float64,
-	layout proto.MetaPartitionLayout, err error) {
+	layout proto.MetaPartitionLayout, smartRules []string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2870,6 +2954,21 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 			err = unmatchedKey(StoreModeKey)
 			return
 		}
+	}
+
+	isSmartStr := r.FormValue(smartKey)
+	if isSmartStr == "" {
+		isSmart = false
+	} else {
+		isSmart, err = strconv.ParseBool(isSmartStr)
+		if err != nil {
+			return
+		}
+	}
+
+	rules := r.FormValue(smartRulesKey)
+	if rules != "" {
+		smartRules = strings.Split(rules, ",")
 	}
 	return
 }
@@ -3765,7 +3864,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 				InodeCount:  mp.Replicas[i].InodeCount,
 				IsLearner:   mp.Replicas[i].IsLearner,
 				StoreMode:   mp.Replicas[i].StoreMode,
-				ApplyId:  	 mp.Replicas[i].ApplyId,
+				ApplyId:     mp.Replicas[i].ApplyId,
 			}
 
 			if mp.Replicas[i].StoreMode == proto.StoreModeMem {
@@ -3826,7 +3925,36 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 			}
 			stat := volStat(vol)
 
-			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize, vol.trashRemainingDays)
+			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize, vol.trashRemainingDays, vol.isSmart, vol.smartRules)
+			volsInfo = append(volsInfo, volInfo)
+		}
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))
+}
+
+func (m *Server) listSmartVols(w http.ResponseWriter, r *http.Request) {
+	var (
+		err      error
+		keywords string
+		vol      *Vol
+		volsInfo []*proto.VolInfo
+	)
+	if keywords, err = parseKeywords(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	volsInfo = make([]*proto.VolInfo, 0)
+	for _, name := range m.cluster.allVolNames() {
+		if strings.Contains(name, keywords) {
+			if vol, err = m.cluster.getVol(name); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+				return
+			}
+			if !vol.isSmart {
+				continue
+			}
+			stat := volStat(vol)
+			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize, vol.trashRemainingDays, vol.isSmart, vol.smartRules)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
@@ -4432,3 +4560,188 @@ func extractMinWritableDPNum(r *http.Request, volMinRwDPNum int) (minRwDPNum int
 	return
 }
 
+func (m *Server) addIDC(w http.ResponseWriter, r *http.Request) {
+	var (
+		idcName string
+		err     error
+	)
+	idcName, err = parseRequestToAddIDC(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	_, err = m.cluster.t.createIDC(idcName, m.cluster)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("add idc[%v] successfully", idcName)))
+}
+
+func (m *Server) deleteIDC(w http.ResponseWriter, r *http.Request) {
+	var (
+		idcName string
+		err     error
+	)
+	idcName, err = parseRequestToAddIDC(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	err = m.cluster.t.deleteIDC(idcName, m.cluster)
+	if err != nil {
+		sendOkReply(w, r, newSuccessHTTPReply(err.Error()))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("delete idc[%v] successfully", idcName)))
+}
+
+func parseRequestToAddIDC(r *http.Request) (idcName string, err error) {
+	err = r.ParseForm()
+	if err != nil {
+		return
+	}
+	idcName, err = extractIDCNameKey(r)
+	if err != nil {
+		return
+	}
+	return
+}
+
+func extractIDCNameKey(r *http.Request) (idcName string, err error) {
+	err = r.ParseForm()
+	if err != nil {
+		return
+	}
+	idcName = r.FormValue(nameKey)
+	if idcName == "" {
+		err = keyNotFound(nameKey)
+		return
+	}
+	return
+}
+
+func (m *Server) setZoneIDC(w http.ResponseWriter, r *http.Request) {
+	var (
+		zoneName, idcName string
+		mType             proto.MediumType
+		err               error
+	)
+	zoneName, idcName, mType, err = parseRequestToSetZone(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if err = m.cluster.setZoneIDC(zoneName, idcName, mType); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set idc to: %v, medium type to: %v  for zone: %v successfully", idcName, mType, zoneName)))
+}
+
+func parseRequestToSetZone(r *http.Request) (zoneName, idcName string, mType proto.MediumType, err error) {
+	err = r.ParseForm()
+	if err != nil {
+		return
+	}
+	zoneName, err = extractZoneName(r)
+	if err != nil {
+		return
+	}
+	idcName = r.FormValue(idcNameKey)
+	mTypeStr := r.FormValue(mediumTypeKey)
+	if mTypeStr == "" {
+		mType = proto.MediumInit
+		return
+	}
+	mType, err = proto.StrToMediumType(mTypeStr)
+	return
+}
+
+func (m *Server) getIDC(w http.ResponseWriter, r *http.Request) {
+	var (
+		idcName string
+		err     error
+	)
+	idcName, err = extractIDCNameKey(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	idc, err := m.cluster.t.getIDCView(idcName)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(idc))
+}
+
+func (m *Server) idcList(w http.ResponseWriter, r *http.Request) {
+	views := m.cluster.t.getIDCViews()
+	sendOkReply(w, r, newSuccessHTTPReply(views))
+}
+
+func (m *Server) freezeDataPartition(w http.ResponseWriter, r *http.Request) {
+	var (
+		volName     string
+		partitionID uint64
+		err         error
+	)
+	volName, partitionID, err = extractFreezeDataPartitionPara(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	err = m.cluster.freezeDataPartition(volName, partitionID)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply("success"))
+}
+
+func (m *Server) unfreezeDataPartition(w http.ResponseWriter, r *http.Request) {
+	var (
+		volName     string
+		partitionID uint64
+		err         error
+	)
+	volName, partitionID, err = extractFreezeDataPartitionPara(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	err = m.cluster.unfreezeDataPartition(volName, partitionID)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply("success"))
+}
+
+func extractFreezeDataPartitionPara(r *http.Request) (volName string, partitionID uint64, err error) {
+	err = r.ParseForm()
+	if err != nil {
+		return
+	}
+	volName = r.FormValue(nameKey)
+	if volName == "" {
+		err = keyNotFound(nameKey)
+		return
+	}
+	idStr := r.FormValue(idKey)
+	if idStr == "" {
+		err = keyNotFound(idKey)
+		return
+	}
+	partitionID, err = strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		return
+	}
+	return
+}

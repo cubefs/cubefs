@@ -54,29 +54,29 @@ func (s *VolumeService) registerObject(schema *schemabuilder.Schema) {
 			return nil, err
 		}
 		return &proto.SimpleVolView{
-			ID:                 vol.ID,
-			Name:               vol.Name,
-			Owner:              vol.Owner,
-			ZoneName:           vol.zoneName,
-			DpReplicaNum:       vol.dpReplicaNum,
-			MpReplicaNum:       vol.mpReplicaNum,
-			Status:             vol.Status,
-			Capacity:           vol.Capacity,
-			FollowerRead:       vol.FollowerRead,
-			ForceROW:           vol.ForceROW,
-			CrossRegionHAType:  vol.CrossRegionHAType,
-			NeedToLowerReplica: vol.NeedToLowerReplica,
-			Authenticate:       vol.authenticate,
-			EnableToken:        vol.enableToken,
-			CrossZone:          vol.crossZone,
-			AutoRepair:         vol.autoRepair,
-			Tokens:             vol.tokens,
-			RwDpCnt:            vol.dataPartitions.readableAndWritableCnt,
-			MpCnt:              len(vol.MetaPartitions),
-			DpCnt:              len(vol.dataPartitions.partitionMap),
-			CreateTime:         time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
-			Description:        vol.description,
-			Quorum:             vol.getDataPartitionQuorum(),
+			ID:                   vol.ID,
+			Name:                 vol.Name,
+			Owner:                vol.Owner,
+			ZoneName:             vol.zoneName,
+			DpReplicaNum:         vol.dpReplicaNum,
+			MpReplicaNum:         vol.mpReplicaNum,
+			Status:               vol.Status,
+			Capacity:             vol.Capacity,
+			FollowerRead:         vol.FollowerRead,
+			ForceROW:             vol.ForceROW,
+			CrossRegionHAType:    vol.CrossRegionHAType,
+			NeedToLowerReplica:   vol.NeedToLowerReplica,
+			Authenticate:         vol.authenticate,
+			EnableToken:          vol.enableToken,
+			CrossZone:            vol.crossZone,
+			AutoRepair:           vol.autoRepair,
+			Tokens:               vol.tokens,
+			RwDpCnt:              vol.dataPartitions.readableAndWritableCnt,
+			MpCnt:                len(vol.MetaPartitions),
+			DpCnt:                len(vol.dataPartitions.partitionMap),
+			CreateTime:           time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
+			Description:          vol.description,
+			Quorum:               vol.getDataPartitionQuorum(),
 			ExtentCacheExpireSec: vol.ExtentCacheExpireSec,
 			RwMpCnt:              int(vol.getWritableMpCount()),
 			MinWritableMPNum:     vol.MinWritableMPNum,
@@ -209,9 +209,9 @@ func (s *VolumeService) volPermission(ctx context.Context, args struct {
 }
 
 func (s *VolumeService) createVolume(ctx context.Context, args struct {
-	Name, Owner, ZoneName, Description                 string
+	Name, Owner, ZoneName, Description                                                   string
 	Capacity, DataPartitionSize, MpCount, DpReplicaNum, storeMode, mpPercent, repPercent uint64
-	FollowerRead, Authenticate, CrossZone, EnableToken bool
+	FollowerRead, Authenticate, CrossZone, EnableToken                                   bool
 }) (*Vol, error) {
 	uid, per, err := permissions(ctx, ADMIN|USER)
 	if err != nil {
@@ -236,8 +236,8 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 
 	vol, err := s.cluster.createVol(args.Name, args.Owner, args.ZoneName, args.Description, int(args.MpCount),
 		int(args.DpReplicaNum), defaultReplicaNum, int(args.DataPartitionSize), int(args.Capacity), 0,
-		args.FollowerRead, args.Authenticate, args.EnableToken, false, false, false, 0, 0,
-		proto.StoreMode(args.storeMode), proto.MetaPartitionLayout{uint32(args.mpPercent), uint32(args.repPercent)})
+		args.FollowerRead, args.Authenticate, args.EnableToken, false, false, false, false, 0, 0,
+		proto.StoreMode(args.storeMode), proto.MetaPartitionLayout{uint32(args.mpPercent), uint32(args.repPercent)}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -374,9 +374,9 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 	}
 
 	if err = s.cluster.updateVol(args.Name, args.AuthKey, *args.ZoneName, *args.Description, *args.Capacity,
-		uint8(*args.ReplicaNum), vol.mpReplicaNum, *args.FollowerRead, vol.NearRead, *args.Authenticate, *args.EnableToken, *args.AutoRepair, *args.ForceROW,
+		uint8(*args.ReplicaNum), vol.mpReplicaNum, *args.FollowerRead, vol.NearRead, *args.Authenticate, *args.EnableToken, *args.AutoRepair, *args.ForceROW, false,
 		vol.dpSelectorName, vol.dpSelectorParm, vol.OSSBucketPolicy, vol.CrossRegionHAType, vol.dpWriteableThreshold, vol.trashRemainingDays,
-		proto.StoreMode(*args.storeMode), proto.MetaPartitionLayout{uint32(*args.mpPercent), uint32(*args.repPercent)}, vol.ExtentCacheExpireSec); err != nil {
+		proto.StoreMode(*args.storeMode), proto.MetaPartitionLayout{uint32(*args.mpPercent), uint32(*args.repPercent)}, vol.ExtentCacheExpireSec, vol.smartRules); err != nil {
 		return nil, err
 	}
 

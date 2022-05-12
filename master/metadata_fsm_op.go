@@ -17,14 +17,14 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
-	"strings"
-	"sync/atomic"
-
 	bsProto "github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"github.com/tiglabs/raft/proto"
+	"strconv"
+	"strings"
+	"sync/atomic"
+	"time"
 )
 
 /* We defines several "values" such as clusterValue, metaPartitionValue, dataPartitionValue, volValue, dataNodeValue,
@@ -43,7 +43,7 @@ type clusterValue struct {
 	DataNodeReqVolPartRateLimitMap    map[string]uint64
 	DataNodeReqVolOpPartRateLimitMap  map[string]map[uint8]uint64
 	MetaNodeReqRateLimit              uint64
-	MetaNodeReadDirLimitNum			  uint64
+	MetaNodeReadDirLimitNum           uint64
 	MetaNodeReqOpRateLimitMap         map[uint8]uint64
 	MetaNodeDeleteBatchCount          uint64
 	MetaNodeDeleteWorkerSleepMs       uint64
@@ -72,7 +72,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MetaNodeReqOpRateLimitMap:         c.cfg.MetaNodeReqOpRateLimitMap,
 		MetaNodeDeleteBatchCount:          c.cfg.MetaNodeDeleteBatchCount,
 		MetaNodeDeleteWorkerSleepMs:       c.cfg.MetaNodeDeleteWorkerSleepMs,
-		MetaNodeReadDirLimitNum: 		   c.cfg.MetaNodeReadDirLimitNum,
+		MetaNodeReadDirLimitNum:           c.cfg.MetaNodeReadDirLimitNum,
 		ClientReadVolRateLimitMap:         c.cfg.ClientReadVolRateLimitMap,
 		ClientWriteVolRateLimitMap:        c.cfg.ClientWriteVolRateLimitMap,
 		ClientVolOpRateLimitMap:           c.cfg.ClientVolOpRateLimitMap,
@@ -125,6 +125,7 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 
 type dataPartitionValue struct {
 	PartitionID   uint64
+	CreateTime    int64
 	ReplicaNum    uint8
 	Hosts         string
 	Peers         []bsProto.Peer
@@ -135,6 +136,7 @@ type dataPartitionValue struct {
 	OfflinePeerID uint64
 	Replicas      []*replicaValue
 	IsRecover     bool
+	IsFrozen      bool
 	PanicHosts    []string
 	IsManual      bool
 }
@@ -147,6 +149,7 @@ type replicaValue struct {
 func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 	dpv = &dataPartitionValue{
 		PartitionID:   dp.PartitionID,
+		CreateTime:    dp.createTime,
 		ReplicaNum:    dp.ReplicaNum,
 		Hosts:         dp.hostsToString(),
 		Peers:         dp.Peers,
@@ -158,6 +161,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		PanicHosts:    dp.PanicHosts,
 		Replicas:      make([]*replicaValue, 0),
 		IsRecover:     dp.isRecover,
+		IsFrozen:      dp.IsFrozen,
 		IsManual:      dp.IsManual,
 	}
 	for _, replica := range dp.Replicas {
@@ -180,7 +184,7 @@ type volValue struct {
 	DpWriteableThreshold float64
 	Owner                string
 	FollowerRead         bool
-	NearRead            bool
+	NearRead             bool
 	ForceROW             bool
 	CrossRegionHAType    bsProto.CrossRegionHAType
 	Authenticate         bool
@@ -205,6 +209,8 @@ type volValue struct {
 	DefStoreMode         bsProto.StoreMode
 	ConverState          bsProto.VolConvertState
 	MpLayout             bsProto.MetaPartitionLayout
+	IsSmart              bool
+	SmartRules           []string
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -223,7 +229,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		Capacity:             vol.Capacity,
 		Owner:                vol.Owner,
 		FollowerRead:         vol.FollowerRead,
-		NearRead:            vol.NearRead,
+		NearRead:             vol.NearRead,
 		ForceROW:             vol.ForceROW,
 		CrossRegionHAType:    vol.CrossRegionHAType,
 		Authenticate:         vol.authenticate,
@@ -251,6 +257,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		DefStoreMode:         vol.DefaultStoreMode,
 		ConverState:          vol.convertState,
 		MpLayout:             vol.MpLayout,
+		IsSmart:              vol.isSmart,
+		SmartRules:           vol.smartRules,
 	}
 	return
 }
@@ -329,6 +337,28 @@ func newRegionValue(region *Region) (rv *regionValue) {
 	return
 }
 
+type idcValue struct {
+	Name  string
+	Zones map[string]*Zone
+}
+
+func newIDCValue(idc *IDCInfo) (iv *idcValue) {
+	iv = new(idcValue)
+	iv.Name = idc.Name
+	iv.Zones = make(map[string]*Zone, 0)
+	zones := idc.getAllZones()
+	for _, zone := range zones {
+		iv.Zones[zone.name] = zone
+	}
+	return
+}
+
+type frozenDataPartitionValue struct {
+	VolName     string
+	PartitionID uint64
+	Timestamp   uint64
+}
+
 // RaftCmd defines the Raft commands.
 type RaftCmd struct {
 	Op uint32 `json:"op"`
@@ -383,6 +413,8 @@ func (m *RaftCmd) setOpType() {
 		m.Op = OpSyncAddToken
 	case regionAcronym:
 		m.Op = OpSyncAddRegion
+	case idcAcronym:
+		m.Op = OpSyncAddIDC
 	default:
 		log.LogWarnf("action[setOpType] unknown opCode[%v]", keyArr[1])
 	}
@@ -670,6 +702,49 @@ func (c *Cluster) syncPutRegionInfo(opType uint32, region *Region) (err error) {
 	return c.submit(metadata)
 }
 
+//key=#idc#idcName,value=json.Marshal(rv)
+func (c *Cluster) syncAddIDC(idc *IDCInfo) (err error) {
+	return c.syncPutIDCInfo(OpSyncAddIDC, idc)
+}
+
+func (c *Cluster) syncUpdateIDC(idc *IDCInfo) (err error) {
+	return c.syncPutIDCInfo(OpSyncUpdateIDC, idc)
+}
+
+func (c *Cluster) syncDeleteIDC(idc *IDCInfo) (err error) {
+	return c.syncPutIDCInfo(OpSyncDelIDC, idc)
+}
+func (c *Cluster) syncPutIDCInfo(opType uint32, idc *IDCInfo) (err error) {
+	if idc == nil {
+		return fmt.Errorf("action[syncPutDCInfo] idc is nil")
+	}
+	metadata := new(RaftCmd)
+	metadata.Op = opType
+	metadata.K = idcPrefix + idc.Name
+	rv := newIDCValue(idc)
+	if metadata.V, err = json.Marshal(rv); err != nil {
+		return errors.New(err.Error())
+	}
+	return c.submit(metadata)
+}
+
+func (c *Cluster) syncPutIFrozenDP(opType uint32, partitionID uint64) (err error) {
+	if partitionID == 0 {
+		return fmt.Errorf("action[syncPutIFrozenDP] partitionID should more than 0")
+	}
+	metadata := new(RaftCmd)
+	metadata.Op = opType
+	metadata.K = frozenDPPrefix + strconv.FormatUint(partitionID, 10)
+
+	var dpv frozenDataPartitionValue
+	dpv.Timestamp = uint64(time.Now().Second())
+	metadata.V, err = json.Marshal(&dpv)
+	if err != nil {
+		return errors.New(err.Error())
+	}
+	return c.submit(metadata)
+}
+
 func (c *Cluster) loadClusterValue() (err error) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(clusterPrefix))
 	if err != nil {
@@ -922,6 +997,13 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		dp.isRecover = dpv.IsRecover
 		dp.PanicHosts = dpv.PanicHosts
 		dp.IsManual = dpv.IsManual
+		dp.IsFrozen = dpv.IsFrozen
+		dp.total = vol.dataPartitionSize
+		if dpv.CreateTime > 0 {
+			dp.createTime = dpv.CreateTime
+		} else {
+			dp.createTime = 1654099200 // 2022-06-01 00:00:00
+		}
 		for _, rv := range dpv.Replicas {
 			if !contains(dp.Hosts, rv.Addr) {
 				continue
@@ -1007,6 +1089,52 @@ func (c *Cluster) loadRegions() (err error) {
 			return true
 		}
 		zone.regionName = regionName
+		return true
+	})
+	return
+}
+
+func (c *Cluster) loadIDCs() (err error) {
+	var records map[string][]byte
+	records, err = c.fsm.store.SeekForPrefix([]byte(idcPrefix))
+	if err != nil {
+		return fmt.Errorf("action[loadIDCs] err:%v", err.Error())
+	}
+
+	zones := make(map[string]*IDCInfo, 0)
+	for _, record := range records {
+		var idc idcValue
+		err = json.Unmarshal(record, &idc)
+		if err != nil {
+			err = fmt.Errorf("action[loadIDCs] unmarshal err:%v", err.Error())
+			return
+		}
+		idcInfo := newIDCFromIDCValue(&idc)
+		err = c.t.putIDC(idcInfo)
+		if err != nil {
+			err = fmt.Errorf("action[loadIDCs], failed to put idc: %v,  err:%v", idcInfo.Name, err.Error())
+			return
+		}
+
+		for name, _ := range idc.Zones {
+			zones[name] = idcInfo
+		}
+		log.LogInfof("action[loadIDCs], idc: %v, zones[%v]", idc.Name, idc.Zones)
+	}
+
+	// set idc name, medium type of zones
+	c.t.zoneMap.Range(func(zoneName, value interface{}) bool {
+		zone, ok := value.(*Zone)
+		if !ok {
+			return true
+		}
+		idc, ok := zones[zone.name]
+		if !ok {
+			return true
+		}
+		mType := idc.getMediumType(zone.name)
+		zone.idcName = idc.Name
+		zone.MType = mType
 		return true
 	})
 	return

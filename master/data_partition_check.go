@@ -24,10 +24,11 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
-func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dpTimeOutSec int64, dpWriteableThreshold float64, crossRegionHAType proto.CrossRegionHAType, c *Cluster, quorum int) {
+func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dpTimeOutSec int64, dpWriteableThreshold float64,
+	crossRegionHAType proto.CrossRegionHAType, c *Cluster, quorum int) {
 	partition.Lock()
 	defer partition.Unlock()
-	if partition.isRecover {
+	if partition.isRecover || partition.IsFrozen {
 		partition.Status = proto.ReadOnly
 		return
 	}
@@ -290,6 +291,12 @@ func (partition *DataPartition) checkReplicationTask(c *Cluster, dataPartitionSi
 	if partition.Status == proto.ReadWrite {
 		return
 	}
+
+	ms := time.Now().Unix()
+	if ms < c.getMetaLoadedTime() || ms-c.getMetaLoadedTime() < 120 {
+		return
+	}
+
 	if lackAddr, lackErr := partition.missingReplicaAddress(dataPartitionSize); lackErr != nil {
 		msg = fmt.Sprintf("action[%v], partitionID:%v  Lack Replication"+
 			" On :%v  Err:%v  Hosts:%v  new task to create DataReplica",

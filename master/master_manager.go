@@ -44,6 +44,7 @@ func (m *Server) handleLeaderChange(leader uint64) {
 		if oldLeaderAddr != m.leaderInfo.addr {
 			m.loadMetadata()
 			m.metaReady = true
+			m.cluster.updateMetaLoadedTime()
 		}
 		m.cluster.checkDataNodeHeartbeat()
 		m.cluster.checkMetaNodeHeartbeat()
@@ -52,6 +53,7 @@ func (m *Server) handleLeaderChange(leader uint64) {
 			m.clusterName, m.leaderInfo.addr))
 		m.clearMetadata()
 		m.metaReady = false
+		m.cluster.resetMetaLoadedTime()
 	}
 }
 
@@ -101,6 +103,9 @@ func (m *Server) loadMetadata() {
 	}
 
 	if err = m.cluster.loadRegions(); err != nil {
+		panic(err)
+	}
+	if err = m.cluster.loadIDCs(); err != nil {
 		panic(err)
 	}
 	if err = m.cluster.loadDataNodes(); err != nil {

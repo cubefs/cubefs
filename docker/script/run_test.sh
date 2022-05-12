@@ -246,6 +246,7 @@ run_unit_test() {
             ./datanode/... \
             ./metanode/... \
             ./objectnode/... \
+            ./schedulenode/... \
             ./storage/... \
             ./sdk/data/... \
             ./sdk/meta/... \

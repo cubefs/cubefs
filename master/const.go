@@ -91,6 +91,10 @@ const (
 	crossRegionHAKey            = "crossRegion"
 	regionNameKey               = "regionName"
 	regionTypeKey               = "regionType"
+	idcNameKey                  = "idcName"
+	mediumTypeKey               = "mediumType"
+	smartRulesKey               = "smartRules"
+	smartKey               = "smart"
 	addReplicaTypeKey           = "addReplicaType"
 	convertModeKey              = "convertMode"
 	partitionTypeKey            = "partitionType"
@@ -235,6 +239,10 @@ const (
 	OpSyncAddRegion    uint32 = 0x23
 	OpSyncUpdateRegion uint32 = 0x24
 	OpSyncDelRegion    uint32 = 0x25
+
+	OpSyncAddIDC    uint32 = 0x26
+	OpSyncUpdateIDC uint32 = 0x27
+	OpSyncDelIDC    uint32 = 0x28
 )
 
 const (
@@ -243,9 +251,11 @@ const (
 	metaNodeAcronym       = "mn"
 	dataNodeAcronym       = "dn"
 	dataPartitionAcronym  = "dp"
+	frozenDataPartitionAcronym = "frozen_dp"
 	metaPartitionAcronym  = "mp"
 	volAcronym            = "vol"
 	regionAcronym         = "region"
+	idcAcronym                 = "idc"
 	clusterAcronym        = "c"
 	nodeSetAcronym        = "s"
 	tokenAcronym          = "t"
@@ -257,9 +267,11 @@ const (
 	dataPartitionPrefix   = keySeparator + dataPartitionAcronym + keySeparator
 	volPrefix             = keySeparator + volAcronym + keySeparator
 	regionPrefix          = keySeparator + regionAcronym + keySeparator
+	idcPrefix                  = keySeparator + idcAcronym + keySeparator
 	metaPartitionPrefix   = keySeparator + metaPartitionAcronym + keySeparator
 	clusterPrefix         = keySeparator + clusterAcronym + keySeparator
 	nodeSetPrefix         = keySeparator + nodeSetAcronym + keySeparator
+	frozenDPPrefix             = keySeparator + frozenDataPartitionAcronym + keySeparator
 
 	akAcronym      = "ak"
 	userAcronym    = "user"

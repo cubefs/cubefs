@@ -53,6 +53,10 @@ const (
 	mds11Addr         = "127.0.0.1:9111"
 	mds12Addr         = "127.0.0.1:9112"
 	mds13Addr         = "127.0.0.1:9113"
+	mds14Addr         = "127.0.0.1:9114"
+	mds15Addr         = "127.0.0.1:9115"
+	mds16Addr         = "127.0.0.1:9116"
+	mds17Addr         = "127.0.0.1:9117"
 
 	mms1Addr      = "127.0.0.1:8101"
 	mms2Addr      = "127.0.0.1:8102"
@@ -67,23 +71,30 @@ const (
 	mms11Addr     = "127.0.0.1:8111"
 	mms12Addr     = "127.0.0.1:8112"
 	mms13Addr     = "127.0.0.1:8113"
+	mms14Addr     = "127.0.0.1:8114"
+	mms15Addr     = "127.0.0.1:8115"
 	commonVolName = "commonVol"
 	quorumVolName = "quorumVol"
+	smartVolName  = "smartVol"
 	testZone1     = "zone1"
 	testZone2     = "zone2"
 	testZone3     = "zone3"
 	testZone4     = "zone4"
 	testZone5     = "zone5"
 	testZone6     = "zone6"
+	testZone7     = "zone7"
+	testZone8     = "zone8"
+	testZone9     = "zone9"
 	testRegion1   = "masterRegion1"
 	testRegion2   = "masterRegion2"
 	testRegion3   = "slaveRegion3"
 	testRegion4   = "slaveRegion4"
 
-	testUserID  = "testUser"
-	ak          = "0123456789123456"
-	sk          = "01234567891234560123456789123456"
-	description = "testUser"
+	testUserID     = "testUser"
+	ak             = "0123456789123456"
+	sk             = "01234567891234560123456789123456"
+	description    = "testUser"
+	testSmartRules = "actionMetrics:dp:read:count:minute:1000:5:hdd,actionMetrics:dp:appendWrite:count:minute:1000:5:hdd"
 )
 
 var server = createDefaultMasterServerForTest()
@@ -126,6 +137,10 @@ func createDefaultMasterServerForTest() *Server {
 	addDataServer(mds11Addr, testZone6)
 	addDataServer(mds12Addr, testZone6)
 	addDataServer(mds13Addr, testZone6)
+	addDataServer(mds14Addr, testZone7)
+	addDataServer(mds15Addr, testZone8)
+	addDataServer(mds16Addr, testZone9)
+	addDataServer(mds17Addr, testZone9)
 	// add meta node
 	addMetaServer(mms1Addr, testZone1)
 	addMetaServer(mms2Addr, testZone1)
@@ -137,6 +152,8 @@ func createDefaultMasterServerForTest() *Server {
 	addMetaServer(mms11Addr, testZone6)
 	addMetaServer(mms12Addr, testZone6)
 	addMetaServer(mms13Addr, testZone6)
+	addMetaServer(mms14Addr, testZone9)
+	addMetaServer(mms15Addr, testZone9)
 	time.Sleep(5 * time.Second)
 	testServer.cluster.cfg = newClusterConfig()
 	testServer.cluster.cfg.DataPartitionsRecoverPoolSize = maxDataPartitionsRecoverPoolSize
@@ -147,8 +164,8 @@ func createDefaultMasterServerForTest() *Server {
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
 	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 3, 100, 0,
-		false, false, false, false, true, false, 0, 0,
-		proto.StoreModeMem, proto.MetaPartitionLayout{0, 0})
+		false, false, false, false, true, false, false, 0, 0,
+		proto.StoreModeMem, proto.MetaPartitionLayout{0, 0}, []string{})
 	if err != nil {
 		panic(err)
 	}
@@ -323,6 +340,40 @@ func processReturnRawReply(reqURL string, t *testing.T) (reply *RawHTTPReply) {
 	}
 	if reply.Code != 0 {
 		t.Errorf("failed,msg[%v],data[%v]", reply.Msg, reply.Data)
+		return
+	}
+	return
+}
+
+func processNoTerminal(reqURL string, t *testing.T) (reply *proto.HTTPReply, err error) {
+	var resp *http.Response
+	resp, err = http.Get(reqURL)
+	if err != nil {
+		t.Logf("err is %v", err)
+		return
+	}
+	fmt.Println(resp.StatusCode)
+	defer resp.Body.Close()
+	var body []byte
+	body, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Logf("err is %v", err)
+		return
+	}
+	t.Log(string(body))
+	if resp.StatusCode != http.StatusOK {
+		err = fmt.Errorf("status code[%v]", resp.StatusCode)
+		t.Log(err.Error())
+		return
+	}
+	reply = &proto.HTTPReply{}
+	if err = json.Unmarshal(body, reply); err != nil {
+		t.Log(err)
+		return
+	}
+	if reply.Code != 0 {
+		err = fmt.Errorf("failed,msg[%v],data[%v]", reply.Msg, reply.Data)
+		t.Log(err.Error())
 		return
 	}
 	return
@@ -1691,7 +1742,7 @@ func TestCreateVolForUpdateToCrossRegionVol(t *testing.T) {
 	process(reqURL, t)
 	// create a normal vol
 	err := mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, 1,
-		false, false, false, true, zoneName, "0,0", 0)
+		false, false, false, true, false, zoneName, "0,0", "", 0)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		return
@@ -1703,7 +1754,7 @@ func TestUpdateVolToCrossRegionVol(t *testing.T) {
 	newZoneName := fmt.Sprintf("%s,%s,%s,%s", testZone1, testZone2, testZone3, testZone6)
 	// update to cross region vol
 	err := mc.AdminAPI().UpdateVolume(volName, 200, 5, 0, 0, 1, false, false, false, false, false,
-		true, buildAuthKey("cfs"), newZoneName, "0,0", 0, 1, 120)
+		true, false, buildAuthKey("cfs"), newZoneName, "0,0", "", 0, 1, 120)
 	if err != nil {
 		t.Errorf("UpdateVolume err:%v", err)
 		return
@@ -2098,3 +2149,1997 @@ func TestSetReadDirLimitNum(t *testing.T) {
 	}
 
 }
+
+func TestValidSmartRules(t *testing.T) {
+	clusterID := "cfs"
+	volName := "vol"
+	{
+		ruleStr := "actionMetrics:dp:read:count:minute:1000:5:hdd,actionMetrics:dp:appendWrite:count:minute:1000:5:hdd"
+		rules := strings.Split(ruleStr, ",")
+		err := proto.CheckLayerPolicy(clusterID, volName, rules)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+	}
+	{
+		ruleStr := "actionMetrics:dp:read:count:minute:1000:5:hdd,actionMetrics:dp:appendWrite:count:minute:1000:5"
+		rules := strings.Split(ruleStr, ",")
+		err := proto.CheckLayerPolicy(clusterID, volName, rules)
+		if err == nil {
+			t.Errorf("%v is invalid", ruleStr)
+			t.FailNow()
+		}
+	}
+
+	{
+		ruleStr := ""
+		rules := strings.Split(ruleStr, ",")
+		err := proto.CheckLayerPolicy(clusterID, volName, rules)
+		if err == nil {
+			t.Errorf("%v is invalid", ruleStr)
+			t.FailNow()
+		}
+	}
+
+	{
+		ruleStr := "actionMetrics:dp:read:count:minute:1000:5:hdd,actionMetrics:dp:appendWrite:count:minute:1000:5:hdd,"
+		for i := 0; i < 4; i++ {
+			ruleStr += "actionMetrics:dp:read:count:minute:1000:5:hdd,actionMetrics:dp:appendWrite:count:minute:1000:5:hdd"
+		}
+		ruleStr += ",actionMetrics:dp:read:count:minute:1000:5:hdd,actionMetrics:dp:appendWrite:count:minute:1000:5:hdd"
+		rules := strings.Split(ruleStr, ",")
+		err := proto.CheckLayerPolicy(clusterID, volName, rules)
+		if err == nil {
+			t.Errorf("%v is invalid", ruleStr)
+			t.FailNow()
+		}
+	}
+}
+
+func TestIDCAPI(t *testing.T) {
+	idc1Name := "TestIDCAPI1"
+	var (
+		reqURL string
+		err    error
+	)
+	reqURL = fmt.Sprintf("%v%v?name1=%v", hostAddr, proto.CreateIDC, idc1Name)
+	_, err = processNoTerminal(reqURL, t)
+	if err == nil {
+		t.FailNow()
+	}
+	reqURL = fmt.Sprintf("%v%v?name=%v", hostAddr, proto.CreateIDC, "")
+	_, err = processNoTerminal(reqURL, t)
+	if err == nil {
+		t.FailNow()
+	}
+
+	reqURL = fmt.Sprintf("%v%v?name=%v", hostAddr, proto.CreateIDC, idc1Name)
+	_, err = processNoTerminal(reqURL, t)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	reqURL = fmt.Sprintf("%v%v?zoneName=%v&idcName1=%v&mediumType=%v", hostAddr, proto.SetZoneIDC, testZone1, idc1Name, "hdd")
+	t.Log(reqURL)
+	_, err = processNoTerminal(reqURL, t)
+	if err == nil {
+		t.FailNow()
+	}
+	reqURL = fmt.Sprintf("%v%v?zoneName=%v&idcName=%v&mediumType=%v", hostAddr, proto.SetZoneIDC, "zone11", idc1Name, "hdd")
+	t.Log(reqURL)
+	_, err = processNoTerminal(reqURL, t)
+	if err == nil {
+		t.FailNow()
+	}
+	reqURL = fmt.Sprintf("%v%v?zoneName=%v&idcName=%v&mediumType=%v", hostAddr, proto.SetZoneIDC, testZone1, idc1Name, "hdd1")
+	t.Log(reqURL)
+	_, err = processNoTerminal(reqURL, t)
+	if err == nil {
+		t.FailNow()
+	}
+	reqURL = fmt.Sprintf("%v%v?zoneName=%v&idcName=%v&mediumType1=%v", hostAddr, proto.SetZoneIDC, testZone1, idc1Name, "hdd")
+	t.Log(reqURL)
+	_, err = processNoTerminal(reqURL, t)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	reqURL = fmt.Sprintf("%v%v?zoneName=%v&idcName1=%v&mediumType=%v", hostAddr, proto.SetZoneIDC, testZone1, idc1Name, "hdd")
+	t.Log(reqURL)
+	_, err = processNoTerminal(reqURL, t)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	reqURL = fmt.Sprintf("%v%v?zoneName=%v&idcName=%v&mediumType=%v", hostAddr, proto.SetZoneIDC, testZone2, idc1Name, "ssd")
+	t.Log(reqURL)
+	_, err = processNoTerminal(reqURL, t)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	reqURL = fmt.Sprintf("%v%v?zoneName=%v&idcName=%v&mediumType=%v", hostAddr, proto.SetZoneIDC, "", idc1Name, "hdd")
+	t.Log(reqURL)
+	_, err = processNoTerminal(reqURL, t)
+	if err == nil {
+		t.FailNow()
+	}
+	reqURL = fmt.Sprintf("%v%v?zoneName=%v&idcName=%v&mediumType=%v", hostAddr, proto.SetZoneIDC, testZone1, "", "ssd")
+	t.Log(reqURL)
+	_, err = processNoTerminal(reqURL, t)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+}
+
+func TestSetIDC(t *testing.T) {
+	idcName1 := "idcTestSetIDC1"
+	idcName2 := "idcTestSetIDC2"
+	c := server.cluster
+	_, err := c.t.createIDC(idcName1, c)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	_, err = c.t.createIDC(idcName2, c)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	err = c.setZoneIDC(testZone2, idcName1, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	err = c.setZoneIDC(testZone1, idcName1, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	idc, err := c.t.getIDC(idcName1)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if idc.getMediumType(testZone1) != proto.MediumSSD {
+		t.Error(idc.getMediumType(testZone1).String())
+		t.FailNow()
+	}
+
+	err = c.setZoneIDC(testZone1, idcName1, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	idc, err = c.t.getIDC(idcName1)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if idc.getMediumType(testZone1) != proto.MediumHDD {
+		t.Error(idc.getMediumType(testZone1).String())
+		t.FailNow()
+	}
+
+	err = c.setZoneIDC(testZone1, idcName1, proto.MediumInit)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if idc.getMediumType(testZone1) != proto.MediumHDD {
+		t.Error(idc.getMediumType(testZone1).String())
+		t.FailNow()
+	}
+
+	err = c.setZoneIDC(testZone1, idcName2, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	idc, err = c.t.getIDC(idcName2)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if idc.getMediumType(testZone1) != proto.MediumHDD {
+		t.Error(idc.getMediumType(testZone1).String())
+		t.FailNow()
+	}
+
+	err = c.setZoneIDC(testZone2, idcName2, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	idc, err = c.t.getIDC(idcName2)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if idc.getMediumType(testZone2) != proto.MediumHDD {
+		t.Error(idc.getMediumType(testZone2).String())
+		t.FailNow()
+	}
+}
+
+func TestSmartVolRules(t *testing.T) {
+	volName := "volTestSmartVolRules"
+	idcName := "idcTestSmartVolRules"
+	idc1 := new(IDCInfo)
+	idc1.Name = idcName
+	c := server.cluster
+	_, err := c.t.createIDC(idcName, c)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone2, idcName, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone1, idcName, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	defer log.LogFlush()
+	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 3, int(proto.StoreModeMem),
+		false, false, false, true, true, testZone2, "", testSmartRules, 0)
+	if err != nil {
+		t.Errorf("CreateVolume err:%v", err)
+		return
+	}
+	vol, err := mc.AdminAPI().GetVolumeSimpleInfo(volName)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if !vol.IsSmart {
+		t.Error(vol.IsSmart)
+		t.FailNow()
+	}
+	if len(vol.SmartRules) == 0 {
+		t.Error(len(vol.SmartRules))
+		t.FailNow()
+	}
+	defer log.LogFlush()
+	var reqURL string
+	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminSmartVolList)
+	t.Log(reqURL)
+	resp := process(reqURL, t)
+	vols := resp.Data.([]interface{})
+	/*
+		vols := make([]*proto.VolInfo, 0)
+		for _, value := range resp.Data.([]interface{}) {
+			vols = append(vols, value.(*proto.VolInfo))
+		}
+
+	*/
+	if len(vols) < 1 {
+		t.Errorf("len: %v, data: %v\n", len(vols), resp.Data)
+		t.FailNow()
+	}
+
+	reqURL = fmt.Sprintf("%v%v?name=%v&authKey=7b2f1bf38b87d32470c4557c7ff02e75&smart=%v", hostAddr, proto.AdminUpdateVol, volName, true)
+	t.Log(reqURL)
+	_, err = processNoTerminal(reqURL, t)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	vol, err = mc.AdminAPI().GetVolumeSimpleInfo(volName)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if !vol.IsSmart {
+		t.Error(vol.IsSmart)
+		t.FailNow()
+	}
+
+	rules := "actionMetrics:dp:read:count:minute:1000:10:hdd,actionMetrics:dp:appendWrite:count:minute:1000:10:hdd"
+	reqURL = fmt.Sprintf("%v%v?name=%v&authKey=7b2f1bf38b87d32470c4557c7ff02e75&smart=%v&smartRules=%v", hostAddr, proto.AdminUpdateVol, volName, false, rules)
+	t.Log(reqURL)
+	_, err = processNoTerminal(reqURL, t)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	vol, err = mc.AdminAPI().GetVolumeSimpleInfo(volName)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	rulesArr := strings.Split(rules, ",")
+	if len(rulesArr) != len(vol.SmartRules) {
+		t.Errorf("%v %v", len(rulesArr), len(vol.SmartRules))
+		t.FailNow()
+	}
+	for index, rule := range vol.SmartRules {
+		if rule != rulesArr[index] {
+			t.Errorf("%v %v", rule, rulesArr[index])
+			t.FailNow()
+		}
+	}
+	/*
+		reqURL = fmt.Sprintf("%v%v?name=%v&authKey=7b2f1bf38b87d32470c4557c7ff02e75&smartRules=%v", hostAddr, proto.AdminUpdateVol, volName, "")
+		t.Log(reqURL)
+		_, err = processNoTerminal(reqURL, t)
+		if err == nil {
+			t.Errorf("url: %v, should be failed", reqURL)
+			t.FailNow()
+		}
+		vol, err = mc.AdminAPI().GetVolumeSimpleInfo(volName)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+
+		//todo: how to delete the rules
+		if len(vol.SmartRules) != 2 {
+			t.Errorf("%v", len(vol.SmartRules))
+			t.FailNow()
+		}
+	*/
+}
+
+/*
+	addDataServer(mds1Addr, testZone1)
+	addDataServer(mds2Addr, testZone1)
+	addDataServer(mds3Addr, testZone2)
+	addDataServer(mds4Addr, testZone2)
+	addDataServer(mds5Addr, testZone2)
+	addDataServer(mds6Addr, testZone2)
+	addDataServer(mds7Addr, testZone3)
+	addDataServer(mds8Addr, testZone3)
+	addDataServer(mds11Addr, testZone6)
+	addDataServer(mds12Addr, testZone6)
+	addDataServer(mds13Addr, testZone6)
+
+idc1: zone1->hdd, zone2->sdd
+idc2: zone3->hdd, zone6->sdd
+*/
+func TestGetTargetAddressForDataPartitionSmartTransferForOneZone(t *testing.T) {
+	idcName := "IDCTestGetTargetAddressForDataPartitionSmartTransferForOneZone"
+	volName := smartVolName
+	idc1 := new(IDCInfo)
+	idc1.Name = idcName
+	c := server.cluster
+	_, err := c.t.createIDC(idcName, c)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone2, idcName, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone1, idcName, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	defer log.LogFlush()
+	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 3, int(proto.StoreModeMem),
+		false, false, false, true, true, testZone2, "", testSmartRules, 0)
+	if err != nil {
+		t.Errorf("CreateVolume err:%v", err)
+		return
+	}
+	vol, err := mc.AdminAPI().GetVolumeSimpleInfo(volName)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if !vol.IsSmart {
+		t.Error(vol.IsSmart)
+		t.FailNow()
+	}
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminSmartVolList)
+	t.Log(reqURL)
+	resp := process(reqURL, t)
+	t.Logf("data: %v", resp.Data)
+
+	dps, err := mc.ClientAPI().GetDataPartitions(volName)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if len(dps.DataPartitions) == 0 {
+		t.Error(len(dps.DataPartitions))
+		t.FailNow()
+	}
+
+	pid := dps.DataPartitions[0].PartitionID
+	dp, err := c.getDataPartitionByID(pid)
+	replica := dp.Replicas[0]
+	dn, err := c.dataNode(replica.Addr)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	t.Logf("dps: %v, pid: %v, addr: %v", len(dps.DataPartitions), pid, replica.Addr)
+	oldAddr, newAddr, err := getTargetAddressForDataPartitionSmartTransfer(c, replica.Addr, dp, nil, "", true)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if oldAddr != replica.Addr {
+		t.Error(oldAddr)
+		t.FailNow()
+	}
+	// check the new add is belong to old hosts
+	zone, err := c.t.getZone(dn.ZoneName)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	_, err = zone.getDataNode(newAddr)
+	if err == nil {
+		t.FailNow()
+	}
+
+	// check the new add is belong to expected zone
+	zone, err = c.t.getZone(testZone1)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	_, err = zone.getDataNode(newAddr)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+
+	t.Logf("new addr: %v", newAddr)
+}
+
+/*
+	addDataServer(mds1Addr, testZone1)
+	addDataServer(mds2Addr, testZone1)
+	addDataServer(mds3Addr, testZone2)
+	addDataServer(mds4Addr, testZone2)
+	addDataServer(mds5Addr, testZone2)
+	addDataServer(mds6Addr, testZone2)
+	addDataServer(mds7Addr, testZone3)
+	addDataServer(mds8Addr, testZone3)
+	addDataServer(mds11Addr, testZone6)
+	addDataServer(mds12Addr, testZone6)
+	addDataServer(mds13Addr, testZone6)
+
+vol: zone1-ssd
+idc1: zone1->ssd, zone2->hdd
+*/
+func TestGetTargetAddressForDataPartitionSmartCase1(t *testing.T) {
+	volName := "smartVolTestGetTargetAddressForDataPartitionSmartCase1"
+	idcName := "IDCTestGetTargetAddressForDataPartitionSmartCase1"
+	idc1 := new(IDCInfo)
+	idc1.Name = idcName
+	c := server.cluster
+	_, err := c.t.createIDC(idcName, c)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone2, idcName, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone6, idcName, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	defer log.LogFlush()
+	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
+		false, false, false, true, true, testZone2, "", testSmartRules, 0)
+	if err != nil {
+		t.Errorf("CreateVolume err:%v", err)
+		return
+	}
+	dps, err := mc.ClientAPI().GetDataPartitions(volName)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if len(dps.DataPartitions) == 0 {
+		t.Error(len(dps.DataPartitions))
+		t.FailNow()
+	}
+
+	pid := dps.DataPartitions[0].PartitionID
+	dp, err := c.getDataPartitionByID(pid)
+
+	for _, replica := range dp.Replicas {
+		dn, err := c.dataNode(replica.Addr)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		t.Logf("dps: %v, pid: %v, addr: %v", len(dps.DataPartitions), pid, replica.Addr)
+		oldAddr, newAddr, err := getTargetAddressForDataPartitionSmartTransfer(c, replica.Addr, dp, nil, "", true)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		if oldAddr != replica.Addr {
+			t.Error(oldAddr)
+			t.FailNow()
+		}
+		// check the new add is belong to old hosts
+		zone, err := c.t.getZone(dn.ZoneName)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		_, err = zone.getDataNode(newAddr)
+		if err == nil {
+			t.FailNow()
+		}
+
+		// check the new add is belong to expected zone
+		zone, err = c.t.getZone(testZone6)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		_, err = zone.getDataNode(newAddr)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		replica.Addr = newAddr
+		hosts := make([]string, 0)
+		for _, host := range dp.Hosts {
+			if host == oldAddr {
+				host = newAddr
+			}
+			hosts = append(hosts, host)
+		}
+		dp.Hosts = hosts
+		t.Logf("dps: %v, pid: %v, addr: %v, new addr: %v", len(dps.DataPartitions), pid, oldAddr, newAddr)
+	}
+}
+
+/*
+	addDataServer(mds1Addr, testZone1)
+	addDataServer(mds2Addr, testZone1)
+	addDataServer(mds3Addr, testZone2)
+	addDataServer(mds4Addr, testZone2)
+	addDataServer(mds5Addr, testZone2)
+	addDataServer(mds6Addr, testZone2)
+	addDataServer(mds7Addr, testZone3)
+	addDataServer(mds8Addr, testZone3)
+	addDataServer(mds11Addr, testZone6)
+	addDataServer(mds12Addr, testZone6)
+	addDataServer(mds13Addr, testZone6)
+vol: zone1-ssd
+idc1: zone1-ssd zone1-hdd zone3-hdd
+*/
+func TestGetTargetAddressForDataPartitionSmartCase2(t *testing.T) {
+	volName := "smartVolTestGetTargetAddressForDataPartitionSmartCase2"
+	idcName := "idcTestGetTargetAddressForDataPartitionSmartCase2"
+	idc1 := new(IDCInfo)
+	idc1.Name = idcName
+	c := server.cluster
+	_, err := c.t.createIDC(idcName, c)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone2, idcName, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone1, idcName, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone3, idcName, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	defer log.LogFlush()
+	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
+		false, false, false, true, true, testZone2, "", testSmartRules, 0)
+	if err != nil {
+		t.Errorf("CreateVolume err:%v", err)
+		return
+	}
+	dps, err := mc.ClientAPI().GetDataPartitions(volName)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if len(dps.DataPartitions) == 0 {
+		t.Error(len(dps.DataPartitions))
+		t.FailNow()
+	}
+
+	pid := dps.DataPartitions[0].PartitionID
+	dp, err := c.getDataPartitionByID(pid)
+
+	for index, replica := range dp.Replicas {
+		dn, err := c.dataNode(replica.Addr)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		t.Logf("index; %v, mType: %v, dps: %v, pid: %v, addr: %v", index, replica.MType, len(dps.DataPartitions), pid, replica.Addr)
+		oldAddr, newAddr, err := getTargetAddressForDataPartitionSmartTransfer(c, replica.Addr, dp, nil, "", true)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		if oldAddr != replica.Addr {
+			t.Error(oldAddr)
+			t.FailNow()
+		}
+		// check the new add is belong to old hosts
+		zone, err := c.t.getZone(dn.ZoneName)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		_, err = zone.getDataNode(newAddr)
+		if err == nil {
+			t.FailNow()
+		}
+
+		// check the new add is belong to expected zone
+		zone1, err1 := c.t.getZone(testZone1)
+		if err1 != nil {
+			t.Error(err1.Error())
+			t.FailNow()
+		}
+		_, err1 = zone1.getDataNode(newAddr)
+
+		zone3, err3 := c.t.getZone(testZone3)
+		if err3 != nil {
+			t.Error(err3.Error())
+			t.FailNow()
+		}
+		_, err3 = zone3.getDataNode(newAddr)
+
+		if err1 != nil && err3 != nil {
+			t.Errorf(err1.Error())
+			t.FailNow()
+		}
+
+		replica.Addr = newAddr
+		hosts := make([]string, 0)
+		for _, host := range dp.Hosts {
+			if host == oldAddr {
+				host = newAddr
+			}
+			hosts = append(hosts, host)
+		}
+		dp.Hosts = hosts
+		t.Logf("dps: %v, pid: %v, addr: %v, new addr: %v", len(dps.DataPartitions), pid, oldAddr, newAddr)
+	}
+}
+
+/*
+	addDataServer(mds1Addr, testZone1)
+	addDataServer(mds2Addr, testZone1)
+	addDataServer(mds3Addr, testZone2)
+	addDataServer(mds4Addr, testZone2)
+	addDataServer(mds5Addr, testZone2)
+	addDataServer(mds6Addr, testZone2)
+	addDataServer(mds7Addr, testZone3)
+	addDataServer(mds8Addr, testZone3)
+	addDataServer(mds11Addr, testZone6)
+	addDataServer(mds12Addr, testZone6)
+	addDataServer(mds13Addr, testZone6)
+vol: zone1-ssd zone3-ssd
+idc1: zone1-ssd zone3-sdd zone2-hdd
+*/
+func TestGetTargetAddressForDataPartitionSmartCase3(t *testing.T) {
+	volName := "smartVolTestGetTargetAddressForDataPartitionSmartCase3"
+	idcName := "idcTestGetTargetAddressForDataPartitionSmartCase3"
+	idc1 := new(IDCInfo)
+	idc1.Name = idcName
+	c := server.cluster
+	_, err := c.t.createIDC(idcName, c)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone1, idcName, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone3, idcName, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone2, idcName, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	defer log.LogFlush()
+	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
+		false, false, false, true, true,
+		fmt.Sprintf("%v,%v", testZone1, testZone3), "", testSmartRules, 0)
+	if err != nil {
+		t.Errorf("CreateVolume err:%v", err)
+		return
+	}
+	dps, err := mc.ClientAPI().GetDataPartitions(volName)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if len(dps.DataPartitions) == 0 {
+		t.Error(len(dps.DataPartitions))
+		t.FailNow()
+	}
+
+	pid := dps.DataPartitions[0].PartitionID
+	dp, err := c.getDataPartitionByID(pid)
+
+	for _, replica := range dp.Replicas {
+		dn, err := c.dataNode(replica.Addr)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		t.Logf("dps: %v, pid: %v, addr: %v", len(dps.DataPartitions), pid, replica.Addr)
+		oldAddr, newAddr, err := getTargetAddressForDataPartitionSmartTransfer(c, replica.Addr, dp, nil, "", true)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		if oldAddr != replica.Addr {
+			t.Error(oldAddr)
+			t.FailNow()
+		}
+		// check the new add is belong to old hosts
+		zone, err := c.t.getZone(dn.ZoneName)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		_, err = zone.getDataNode(newAddr)
+		if err == nil {
+			t.FailNow()
+		}
+
+		// check the new add is belong to expected zone
+		zone, err = c.t.getZone(testZone2)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		_, err = zone.getDataNode(newAddr)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		replica.Addr = newAddr
+		hosts := make([]string, 0)
+		for _, host := range dp.Hosts {
+			if host == oldAddr {
+				host = newAddr
+			}
+			hosts = append(hosts, host)
+		}
+		dp.Hosts = hosts
+		t.Logf("dps: %v, pid: %v, addr: %v, new addr: %v", len(dps.DataPartitions), pid, oldAddr, newAddr)
+	}
+}
+
+/*
+	addDataServer(mds1Addr, testZone1)
+	addDataServer(mds2Addr, testZone1)
+	addDataServer(mds3Addr, testZone2)
+	addDataServer(mds4Addr, testZone2)
+	addDataServer(mds5Addr, testZone2)
+	addDataServer(mds6Addr, testZone2)
+	addDataServer(mds7Addr, testZone3)
+	addDataServer(mds8Addr, testZone3)
+	addDataServer(mds11Addr, testZone6)
+	addDataServer(mds12Addr, testZone6)
+	addDataServer(mds13Addr, testZone6)
+vol: zone1-ssd zone3-ssd
+idc1: zone1-ssd zone2-hdd
+idc2: zone3-ssd zone6-hdd
+*/
+func TestGetTargetAddressForDataPartitionSmartCase4(t *testing.T) {
+	volName := "smartVolTestGetTargetAddressForDataPartitionSmartCase4"
+	idcName1 := "idc1TestGetTargetAddressForDataPartitionSmartCase4"
+	idcName2 := "idc2TestGetTargetAddressForDataPartitionSmartCase4"
+	c := server.cluster
+	_, err := c.t.createIDC(idcName1, c)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone1, idcName1, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone2, idcName1, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	_, err = c.t.createIDC(idcName2, c)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone3, idcName2, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone6, idcName2, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	defer log.LogFlush()
+	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
+		false, false, false, true, true,
+		fmt.Sprintf("%v,%v", testZone1, testZone3), "", testSmartRules, 0)
+	if err != nil {
+		t.Errorf("CreateVolume err:%v", err)
+		return
+	}
+	dps, err := mc.ClientAPI().GetDataPartitions(volName)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if len(dps.DataPartitions) == 0 {
+		t.Error(len(dps.DataPartitions))
+		t.FailNow()
+	}
+
+	pid := dps.DataPartitions[0].PartitionID
+	dp, err := c.getDataPartitionByID(pid)
+
+	for index, replica := range dp.Replicas {
+		t.Logf("index; %v, mType: %v, dps: %v, pid: %v, addr: %v", index, replica.MType, len(dps.DataPartitions), pid, replica.Addr)
+		dn, err := c.dataNode(replica.Addr)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		t.Logf("dps: %v, pid: %v, addr: %v", len(dps.DataPartitions), pid, replica.Addr)
+		oldAddr, newAddr, err := getTargetAddressForDataPartitionSmartTransfer(c, replica.Addr, dp, nil, "", true)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		if oldAddr != replica.Addr {
+			t.Error(oldAddr)
+			t.FailNow()
+		}
+		// check the new add is belong to old hosts
+		zone, err := c.t.getZone(dn.ZoneName)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		_, err = zone.getDataNode(newAddr)
+		if err == nil {
+			t.FailNow()
+		}
+
+		var expectedZoneName string
+		switch zone.name {
+		case testZone1:
+			expectedZoneName = testZone2
+		case testZone3:
+			expectedZoneName = testZone6
+		default:
+			t.Error(zone.name)
+			t.FailNow()
+		}
+		zone, err = c.t.getZone(expectedZoneName)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+
+		// check the new add is belong to expected zone
+		_, err = zone.getDataNode(newAddr)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+
+		// update the dp's replicas and hosts
+		replica.Addr = newAddr
+		hosts := make([]string, 0)
+		for _, host := range dp.Hosts {
+			if host == oldAddr {
+				host = newAddr
+			}
+			hosts = append(hosts, host)
+		}
+		dp.Hosts = hosts
+		t.Logf("dps: %v, pid: %v, addr: %v, new addr: %v", len(dps.DataPartitions), pid, oldAddr, newAddr)
+	}
+}
+
+/*
+	addDataServer(mds1Addr, testZone1)
+	addDataServer(mds2Addr, testZone1)
+	addDataServer(mds3Addr, testZone2)
+	addDataServer(mds4Addr, testZone2)
+	addDataServer(mds5Addr, testZone2)
+	addDataServer(mds6Addr, testZone2)
+	addDataServer(mds7Addr, testZone3)
+	addDataServer(mds8Addr, testZone3)
+	addDataServer(mds11Addr, testZone6)
+	addDataServer(mds12Addr, testZone6)
+	addDataServer(mds13Addr, testZone6)
+vol: zone2-ssd zone3-ssd
+idc1: zone2-ssd zone7-hdd zone8-hdd
+idc2: zone3-ssd zone6-hdd
+*/
+func TestGetTargetAddressForDataPartitionSmartCase5(t *testing.T) {
+	volName := "smartVolTestGetTargetAddressForDataPartitionSmartCase5"
+	idcName1 := "idc1TestGetTargetAddressForDataPartitionSmartCase5"
+	idcName2 := "idc2TestGetTargetAddressForDataPartitionSmartCase5"
+	c := server.cluster
+	_, err := c.t.createIDC(idcName1, c)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	defer log.LogFlush()
+	err = c.setZoneIDC(testZone2, idcName1, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone7, idcName1, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone8, idcName1, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	_, err = c.t.createIDC(idcName2, c)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone3, idcName2, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone6, idcName2, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
+		false, false, false, true, true,
+		fmt.Sprintf("%v,%v", testZone2, testZone3), "", testSmartRules, 0)
+	if err != nil {
+		t.Errorf("CreateVolume err:%v", err)
+		return
+	}
+	dps, err := mc.ClientAPI().GetDataPartitions(volName)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if len(dps.DataPartitions) == 0 {
+		t.Error(len(dps.DataPartitions))
+		t.FailNow()
+	}
+
+	var pid uint64
+	for _, dp := range dps.DataPartitions {
+		zone2Count := 0
+		for _, host := range dp.Hosts {
+			zn, err := c.dataNode(host)
+			if err != nil {
+				t.Error(err.Error())
+				t.FailNow()
+			}
+			if zn.ZoneName == testZone2 {
+				zone2Count++
+			}
+			if zone2Count >= 2 {
+				pid = dp.PartitionID
+				break
+			}
+		}
+	}
+	// todo: the pid may be 0
+	if pid == 0 {
+		t.Error(pid)
+		t.FailNow()
+	}
+
+	dp, err := c.getDataPartitionByID(pid)
+	count := 0
+	for _, replica := range dp.Replicas {
+		dn, err := c.dataNode(replica.Addr)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		t.Logf("dps: %v, pid: %v, addr: %v", len(dps.DataPartitions), pid, replica.Addr)
+		oldAddr, newAddr, err := getTargetAddressForDataPartitionSmartTransfer(c, replica.Addr, dp, nil, "", true)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		if oldAddr != replica.Addr {
+			t.Error(oldAddr)
+			t.FailNow()
+		}
+		// check the new add is belong to old hosts
+		zone, err := c.t.getZone(dn.ZoneName)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		_, err = zone.getDataNode(newAddr)
+		if err == nil {
+			t.FailNow()
+		}
+
+		// check the new add is belong to expected zone
+		switch zone.name {
+		case testZone2:
+			for {
+				zone, _ = c.t.getZone(testZone7)
+				_, err = zone.getDataNode(newAddr)
+				if err == nil {
+					count++
+					break
+				}
+				zone, _ = c.t.getZone(testZone8)
+				_, err = zone.getDataNode(newAddr)
+				if err == nil {
+					break
+				}
+				t.Error(err.Error())
+				t.FailNow()
+			}
+		case testZone3:
+			zone, err = c.t.getZone(testZone6)
+			if err != nil {
+				t.Error(err.Error())
+				t.FailNow()
+			}
+			_, err = zone.getDataNode(newAddr)
+			if err != nil {
+				t.Error(err.Error())
+				t.FailNow()
+			}
+		default:
+			t.Error(zone.name)
+			t.FailNow()
+		}
+
+		// update the dp's replicas and hosts
+		replica.Addr = newAddr
+		hosts := make([]string, 0)
+		for _, host := range dp.Hosts {
+			if host == oldAddr {
+				host = newAddr
+			}
+			hosts = append(hosts, host)
+		}
+		dp.Hosts = hosts
+		t.Logf("dps: %v, pid: %v, addr: %v, new addr: %v", len(dps.DataPartitions), pid, oldAddr, newAddr)
+	}
+	if count != 1 {
+		t.Error(count)
+		t.FailNow()
+	}
+}
+
+/*
+	addDataServer(mds1Addr, testZone1)
+	addDataServer(mds2Addr, testZone1)
+	addDataServer(mds3Addr, testZone2)
+	addDataServer(mds4Addr, testZone2)
+	addDataServer(mds5Addr, testZone2)
+	addDataServer(mds6Addr, testZone2)
+	addDataServer(mds7Addr, testZone3)
+	addDataServer(mds8Addr, testZone3)
+	addDataServer(mds11Addr, testZone6)
+	addDataServer(mds12Addr, testZone6)
+	addDataServer(mds13Addr, testZone6)
+vol: zone1-ssd zone3-ssd zone7-ssd
+idc1: zone7-ssd zone2-hdd
+idc2: zone3-ssd zone6-hdd
+idc2: zone1-ssd zone8-hdd
+*/
+func TestGetTargetAddressForDataPartitionSmartCase6(t *testing.T) {
+	volName := "smartVolTestGetTargetAddressForDataPartitionSmartCase6"
+	idcName1 := "idc1TestGetTargetAddressForDataPartitionSmartCase6"
+	idcName2 := "idc2TestGetTargetAddressForDataPartitionSmartCase6"
+	idcName3 := "idc3TestGetTargetAddressForDataPartitionSmartCase6"
+	c := server.cluster
+	_, err := c.t.createIDC(idcName1, c)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone7, idcName1, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone2, idcName1, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	_, err = c.t.createIDC(idcName2, c)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone3, idcName2, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone6, idcName2, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	_, err = c.t.createIDC(idcName3, c)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone1, idcName3, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone8, idcName3, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	defer log.LogFlush()
+	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
+		false, false, false, true, true,
+		fmt.Sprintf("%v,%v,%v", testZone1, testZone3, testZone7), "", testSmartRules, 0)
+	if err != nil {
+		t.Errorf("CreateVolume err:%v", err)
+		return
+	}
+
+	zone, err := c.t.getZone(testZone8)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	zone.setStatus(unavailableZone)
+	defer zone.setStatus(normalZone)
+	if zone.getStatus() != unavailableZone {
+		t.Error(zone.getStatusToString())
+		t.FailNow()
+	}
+
+	dps, err := mc.ClientAPI().GetDataPartitions(volName)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if len(dps.DataPartitions) == 0 {
+		t.Error(len(dps.DataPartitions))
+		t.FailNow()
+	}
+	for _, dpv := range dps.DataPartitions {
+		pid := dpv.PartitionID
+		dp, err := c.getDataPartitionByID(pid)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+
+		count := 0
+		for _, replica := range dp.Replicas {
+			dn, err := c.dataNode(replica.Addr)
+			if err != nil {
+				t.Error(err.Error())
+				t.FailNow()
+			}
+
+			if dn.ZoneName == testZone1 {
+				count++
+			}
+		}
+
+		if count != 1 {
+			continue
+		}
+
+		count = 0
+		for index, replica := range dp.Replicas {
+			t.Logf("index; %v, mType: %v, dps: %v, pid: %v, addr: %v", index, replica.MType, len(dps.DataPartitions), pid, replica.Addr)
+			dn, err := c.dataNode(replica.Addr)
+			if err != nil {
+				t.Error(err.Error())
+				t.FailNow()
+			}
+
+			t.Logf("dps: %v, pid: %v, addr: %v", len(dps.DataPartitions), pid, replica.Addr)
+			oldAddr, newAddr, err := getTargetAddressForDataPartitionSmartTransfer(c, replica.Addr, dp, nil, "", true)
+			if err != nil {
+				t.Error(err.Error())
+				t.FailNow()
+			}
+			if oldAddr != replica.Addr {
+				t.Error(oldAddr)
+				t.FailNow()
+			}
+			// check the new add is belong to old hosts
+			zone, err := c.t.getZone(dn.ZoneName)
+			if err != nil {
+				t.Error(err.Error())
+				t.FailNow()
+			}
+			_, err = zone.getDataNode(newAddr)
+			if err == nil {
+				t.FailNow()
+			}
+
+			zone, err = c.t.getZone(testZone6)
+			if err != nil {
+				t.Error(err.Error())
+				t.FailNow()
+			}
+
+			// check the new add is belong to expected zone
+			_, err = zone.getDataNode(newAddr)
+			// update the dp's replicas and hosts
+			replica.Addr = newAddr
+			hosts := make([]string, 0)
+			for _, host := range dp.Hosts {
+				if host == oldAddr {
+					host = newAddr
+				}
+				hosts = append(hosts, host)
+			}
+			dp.Hosts = hosts
+			t.Logf("dps: %v, pid: %v, addr: %v, new addr: %v", len(dps.DataPartitions), pid, oldAddr, newAddr)
+			if err == nil {
+				count++
+			}
+		}
+		if count == 0 || count == 3 {
+			t.Error(count)
+			t.FailNow()
+		}
+	}
+}
+
+/*
+master-region:
+	zone1:
+		datanode:
+			127.0.0.1:9101
+			127.0.0.1:9102
+		metanode:
+			127.0.0.1:8101
+			127.0.0.1:8102
+	zone9:
+		datanode:
+			127.0.0.1:9116
+			127.0.0.1:9117
+		metanode:
+			127.0.0.1:8114
+			127.0.0.1:8115
+
+slave-region:
+	zone3:
+		datanode:
+			127.0.0.1:9107
+			127.0.0.1:9107
+		metanode:
+			127.0.0.1:8107
+			127.0.0.1:8108
+
+zoneName: zone1,zone9,zone3
+*/
+func TestGetTargetAddressForDataPartitionSmartCase7(t *testing.T) {
+	volName := "smartVolTestGetTargetAddressForDataPartitionSmartCase7"
+	idcName1 := "idc1TestGetTargetAddressForDataPartitionSmartCase7"
+	idcName2 := "idc2TestGetTargetAddressForDataPartitionSmartCase7"
+	c := server.cluster
+	_, err := c.t.createIDC(idcName1, c)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone1, idcName1, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone9, idcName1, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone2, idcName1, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	_, err = c.t.createIDC(idcName2, c)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone3, idcName2, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone6, idcName2, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	masterRegionName := "smartCaseMasterRegion1"
+	slaveRegionName := "smartCaseSlaveRegion1"
+	regionMap := make(map[string]proto.RegionType)
+	regionMap[masterRegionName] = proto.MasterRegion
+	regionMap[slaveRegionName] = proto.SlaveRegion
+	for regionName, regionType := range regionMap {
+		reqURL := fmt.Sprintf("%v%v?regionName=%v&regionType=%d", hostAddr, proto.CreateRegion, regionName, regionType)
+		t.Log(reqURL)
+		process(reqURL, t)
+	}
+
+	// slave region: zone6
+	reqURL := fmt.Sprintf("%v%v?zoneName=%v&regionName=%v", hostAddr, proto.SetZoneRegion, testZone3, slaveRegionName)
+	process(reqURL, t)
+
+	//master region zone: zone1, zone7
+	reqURL = fmt.Sprintf("%v%v?zoneName=%v&regionName=%v", hostAddr, proto.SetZoneRegion, testZone1, masterRegionName)
+	process(reqURL, t)
+	reqURL = fmt.Sprintf("%v%v?zoneName=%v&regionName=%v", hostAddr, proto.SetZoneRegion, testZone9, masterRegionName)
+	process(reqURL, t)
+
+	defer log.LogFlush()
+	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 5, 3, 0, int(proto.StoreModeMem),
+		false, false, false, true, true,
+		fmt.Sprintf("%v,%v,%v", testZone1, testZone9, testZone3), "", testSmartRules, 1)
+	if err != nil {
+		t.Errorf("CreateVolume err:%v", err)
+		return
+	}
+	dps, err := mc.ClientAPI().GetDataPartitions(volName)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if len(dps.DataPartitions) == 0 {
+		t.Error(len(dps.DataPartitions))
+		t.FailNow()
+	}
+
+	pid := dps.DataPartitions[0].PartitionID
+	dp, err := c.getDataPartitionByID(pid)
+
+	t.Logf("replicas: %v", len(dp.Replicas))
+	for index, replica := range dp.Replicas {
+		t.Logf("index; %v, mType: %v, dps: %v, pid: %v, addr: %v", index, replica.MType, len(dps.DataPartitions), pid, replica.Addr)
+		oldAddr, newAddr, err := getTargetAddressForDataPartitionSmartTransfer(c, replica.Addr, dp, nil, "", true)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		if oldAddr != replica.Addr {
+			t.Error(oldAddr)
+			t.FailNow()
+		}
+
+		var zone *Zone
+		if oldAddr == "127.0.0.1:9101" || oldAddr == "127.0.0.1:9102" ||
+			oldAddr == "127.0.0.1:9116" || oldAddr == "127.0.0.1:9117" {
+			zone, err = c.t.getZone(testZone2)
+			if err != nil {
+				t.Error(err.Error())
+				t.FailNow()
+			}
+		} else if oldAddr == "127.0.0.1:9107" || oldAddr == "127.0.0.1:9108" {
+			zone, err = c.t.getZone(testZone6)
+			if err != nil {
+				t.Error(err.Error())
+				t.FailNow()
+			}
+		} else {
+			t.Error(oldAddr)
+			t.FailNow()
+		}
+		// check the new add is belong to expected zone
+		_, err = zone.getDataNode(newAddr)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+
+		// update the dp's replicas and hosts
+		replica.Addr = newAddr
+		hosts := make([]string, 0)
+		for _, host := range dp.Hosts {
+			if host == oldAddr {
+				host = newAddr
+			}
+			hosts = append(hosts, host)
+		}
+		dp.Hosts = hosts
+		t.Logf("dps: %v, pid: %v, addr: %v, new addr: %v", len(dps.DataPartitions), pid, oldAddr, newAddr)
+	}
+}
+
+func TestFreezeDataPartition(t *testing.T) {
+	volName := "TestFreezeDataPartition"
+	idcName := "idcTestFreezeDataPartition"
+	c := server.cluster
+	_, err := c.t.createIDC(idcName, c)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone2, idcName, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone1, idcName, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	defer log.LogFlush()
+	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
+		false, false, false, true, true, testZone2, "", testSmartRules, 0)
+	if err != nil {
+		t.Errorf("CreateVolume err:%v", err)
+		t.FailNow()
+	}
+	dps, err := mc.ClientAPI().GetDataPartitions(volName)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if len(dps.DataPartitions) == 0 {
+		t.Error(len(dps.DataPartitions))
+		t.FailNow()
+	}
+
+	pid := dps.DataPartitions[0].PartitionID
+	dp, err := c.getDataPartitionByID(pid)
+	if dp.Status != proto.ReadWrite {
+		t.Error(dp.Status)
+		t.FailNow()
+	}
+
+	dpInfo, err := mc.AdminAPI().GetDataPartition(volName, pid)
+	if dpInfo.IsFrozen {
+		t.Errorf("%v should not be frozen", dp.PartitionID)
+		t.FailNow()
+	}
+
+	err = c.freezeDataPartition(volName, dp.PartitionID)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+
+	dpInfo, err = mc.AdminAPI().GetDataPartition(volName, pid)
+	if !dpInfo.IsFrozen {
+		t.Errorf("%v should not be frozen", dp.PartitionID)
+		t.FailNow()
+	}
+
+	err = c.unfreezeDataPartition(volName, dp.PartitionID)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+
+	dpInfo, err = mc.AdminAPI().GetDataPartition(volName, pid)
+	if dpInfo.IsFrozen {
+		t.Errorf("%v should not be frozen", dp.PartitionID)
+		t.FailNow()
+	}
+}
+
+/*
+	addDataServer(mds1Addr, testZone1)
+	addDataServer(mds2Addr, testZone1)
+	addDataServer(mds3Addr, testZone2)
+	addDataServer(mds4Addr, testZone2)
+	addDataServer(mds5Addr, testZone2)
+	addDataServer(mds6Addr, testZone2)
+	addDataServer(mds7Addr, testZone3)
+	addDataServer(mds8Addr, testZone3)
+	addDataServer(mds11Addr, testZone6)
+	addDataServer(mds12Addr, testZone6)
+	addDataServer(mds13Addr, testZone6)
+vol: zone2-ssd -> zone2-ssd,zone3-ssd
+idc1: zone2-ssd zone1-hdd
+idc2: zone3-ssd zone6-hdd
+*/
+/*
+func TestGetTargetAddressForBalanceDataPartitionZone1(t *testing.T) {
+	volName := "TestGetTargetAddressForBalanceDataPartitionZone1"
+	idcName1 := "idc1TestGetTargetAddressForBalanceDataPartitionZone1"
+	idcName2 := "idc2TestGetTargetAddressForBalanceDataPartitionZone1"
+	c := server.cluster
+	_, err := c.t.createIDC(idcName1, c)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone2, idcName1, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone1, idcName1, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	_, err = c.t.createIDC(idcName2, c)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone3, idcName2, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone6, idcName2, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	defer log.LogFlush()
+	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
+		false, false, false, true, true, testZone2, "", testSmartRules, 0)
+	if err != nil {
+		t.Errorf("CreateVolume err:%v", err)
+		return
+	}
+
+	var vol *Vol
+	vol, err = c.getVol(volName)
+	if err != nil {
+		return
+	}
+	t.Logf("smart: %v", vol.isSmart)
+
+	vol.zoneName = fmt.Sprintf("%v,%v", testZone2, testZone3)
+
+	dps, err := mc.ClientAPI().GetDataPartitions(volName)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if len(dps.DataPartitions) == 0 {
+		t.Error(len(dps.DataPartitions))
+		t.FailNow()
+	}
+
+	pid := dps.DataPartitions[0].PartitionID
+	dp, err := c.getDataPartitionByID(pid)
+
+	for index, replica := range dp.Replicas {
+		t.Logf("index; %v, mType: %v, dps: %v, pid: %v, addr: %v", index, replica.MType, len(dps.DataPartitions), pid, replica.Addr)
+		dn, err := c.dataNode(replica.Addr)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		//isNeed, err := dp.needToRebalanceZoneForSmartVol(c, []string{testZone1, testZone3})
+		isNeed, err := dp.needToRebalanceZoneForSmartVol(c, strings.Split(vol.zoneName, ","))
+		if err != nil {
+			t.Errorf(err.Error())
+			t.FailNow()
+		}
+		t.Logf("isNeed: %v, vol: %v", isNeed, vol.zoneName)
+		if index > 0 && isNeed {
+			t.Logf("index: %v, isNeed: %v", index, isNeed)
+			t.FailNow()
+		}
+		if index > 0 && !isNeed {
+			break
+		}
+		oldAddr, newAddr, err := getTargetAddressForBalanceDataPartitionZone(c, replica.Addr, dp, nil, "", true)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		// check the new add is belong to old hosts
+		zone, err := c.t.getZone(dn.ZoneName)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		_, err = zone.getDataNode(newAddr)
+		if err == nil {
+			t.FailNow()
+		}
+
+		expectedZoneName := testZone3
+		zone, err = c.t.getZone(expectedZoneName)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+
+		// check the new add is belong to expected zone
+		_, err = zone.getDataNode(newAddr)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+
+		// update the dp's replicas and hosts
+		replica.Addr = newAddr
+		hosts := make([]string, 0)
+		for _, host := range dp.Hosts {
+			if host == oldAddr {
+				host = newAddr
+			}
+			hosts = append(hosts, host)
+		}
+		dp.Hosts = hosts
+		t.Logf("index: %v, old addr: %v, new addr: %v", index, oldAddr, newAddr)
+	}
+}
+
+*/
+
+/*
+	addDataServer(mds1Addr, testZone1)
+	addDataServer(mds2Addr, testZone1)
+	addDataServer(mds3Addr, testZone2)
+	addDataServer(mds4Addr, testZone2)
+	addDataServer(mds5Addr, testZone2)
+	addDataServer(mds6Addr, testZone2)
+	addDataServer(mds7Addr, testZone3)
+	addDataServer(mds8Addr, testZone3)
+	addDataServer(mds11Addr, testZone6)
+	addDataServer(mds12Addr, testZone6)
+	addDataServer(mds13Addr, testZone6)
+vol: zone2-ssd -> zone6-ssd
+idc1: zone2-ssd zone1-hdd
+idc2: zone6-ssd zone3-hdd
+*/
+/*
+func TestGetTargetAddressForBalanceDataPartitionZone2(t *testing.T) {
+	volName := "TestGetTargetAddressForBalanceDataPartitionZone2"
+	idcName1 := "idc1TestGetTargetAddressForBalanceDataPartitionZone2"
+	idcName2 := "idc2TestGetTargetAddressForBalanceDataPartitionZone2"
+	c := server.cluster
+	_, err := c.t.createIDC(idcName1, c)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone2, idcName1, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone1, idcName1, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	_, err = c.t.createIDC(idcName2, c)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone6, idcName2, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone3, idcName2, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	defer log.LogFlush()
+	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
+		false, false, false, true, true, testZone2, "", testSmartRules, 0)
+	if err != nil {
+		t.Errorf("CreateVolume err:%v", err)
+		return
+	}
+
+	var vol *Vol
+	vol, err = c.getVol(volName)
+	if err != nil {
+		return
+	}
+	t.Logf("smart: %v", vol.isSmart)
+
+	vol.zoneName = testZone6
+
+	dps, err := mc.ClientAPI().GetDataPartitions(volName)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if len(dps.DataPartitions) == 0 {
+		t.Error(len(dps.DataPartitions))
+		t.FailNow()
+	}
+
+	pid := dps.DataPartitions[0].PartitionID
+	dp, err := c.getDataPartitionByID(pid)
+
+	for index, replica := range dp.Replicas {
+		t.Logf("index; %v, mType: %v, dps: %v, pid: %v, addr: %v", index, replica.MType, len(dps.DataPartitions), pid, replica.Addr)
+		dn, err := c.dataNode(replica.Addr)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		isNeed, err := dp.needToRebalanceZoneForSmartVol(c, strings.Split(vol.zoneName, ","))
+		if err != nil {
+			t.Errorf(err.Error())
+			t.FailNow()
+		}
+		t.Logf("isNeed: %v, vol: %v", isNeed, vol.zoneName)
+		if !isNeed {
+			t.Logf("index: %v, isNeed: %v", index, isNeed)
+			t.FailNow()
+		}
+		oldAddr, newAddr, err := getTargetAddressForBalanceDataPartitionZone(c, replica.Addr, dp, nil, "", true)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		// check the new add is belong to old hosts
+		zone, err := c.t.getZone(dn.ZoneName)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		_, err = zone.getDataNode(newAddr)
+		if err == nil {
+			t.FailNow()
+		}
+
+		expectedZoneName := testZone6
+		zone, err = c.t.getZone(expectedZoneName)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+
+		// check the new add is belong to expected zone
+		_, err = zone.getDataNode(newAddr)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+
+		// update the dp's replicas and hosts
+		replica.Addr = newAddr
+		hosts := make([]string, 0)
+		for _, host := range dp.Hosts {
+			if host == oldAddr {
+				host = newAddr
+			}
+			hosts = append(hosts, host)
+		}
+		dp.Hosts = hosts
+		t.Logf("index: %v, old addr: %v, new addr: %v", index, oldAddr, newAddr)
+	}
+}
+
+*/
+
+/*
+	addDataServer(mds1Addr, testZone1)
+	addDataServer(mds2Addr, testZone1)
+	addDataServer(mds3Addr, testZone2)
+	addDataServer(mds4Addr, testZone2)
+	addDataServer(mds5Addr, testZone2)
+	addDataServer(mds6Addr, testZone2)
+	addDataServer(mds7Addr, testZone3)
+	addDataServer(mds8Addr, testZone3)
+	addDataServer(mds11Addr, testZone6)
+	addDataServer(mds12Addr, testZone6)
+	addDataServer(mds13Addr, testZone6)
+vol: zone1-ssd,zone6-ssd -> zone6-ssd
+idc1: zone1-ssd zone2-hdd
+idc2: zone6-ssd zone3-hdd
+*/
+/*
+func TestGetTargetAddressForBalanceDataPartitionZone3(t *testing.T) {
+	volName := "TestGetTargetAddressForBalanceDataPartitionZone3"
+	idcName1 := "idc1TestGetTargetAddressForBalanceDataPartitionZone3"
+	idcName2 := "idc2TestGetTargetAddressForBalanceDataPartitionZone3"
+	c := server.cluster
+	_, err := c.t.createIDC(idcName1, c)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone1, idcName1, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone2, idcName1, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	_, err = c.t.createIDC(idcName2, c)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone6, idcName2, proto.MediumSSD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	err = c.setZoneIDC(testZone3, idcName2, proto.MediumHDD)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	defer log.LogFlush()
+	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
+		false, false, false, true, true,
+		fmt.Sprintf("%v,%v", testZone1, testZone6), "", testSmartRules, 0)
+	if err != nil {
+		t.Errorf("CreateVolume err:%v", err)
+		return
+	}
+
+	var vol *Vol
+	vol, err = c.getVol(volName)
+	if err != nil {
+		return
+	}
+	t.Logf("smart: %v", vol.isSmart)
+
+	vol.zoneName = testZone6
+
+	dps, err := mc.ClientAPI().GetDataPartitions(volName)
+	if err != nil {
+		t.Error(err.Error())
+		t.FailNow()
+	}
+	if len(dps.DataPartitions) == 0 {
+		t.Error(len(dps.DataPartitions))
+		t.FailNow()
+	}
+
+	pid := dps.DataPartitions[0].PartitionID
+	dp, err := c.getDataPartitionByID(pid)
+
+	for index, replica := range dp.Replicas {
+		t.Logf("index; %v, mType: %v, dps: %v, pid: %v, addr: %v", index, replica.MType, len(dps.DataPartitions), pid, replica.Addr)
+		dn, err := c.dataNode(replica.Addr)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+
+		if dn.ZoneName == testZone6 {
+			continue
+		}
+
+		isNeed, err := dp.needToRebalanceZoneForSmartVol(c, strings.Split(vol.zoneName, ","))
+		if err != nil {
+			t.Errorf(err.Error())
+			t.FailNow()
+		}
+		if !isNeed {
+			t.Errorf("index: %v, isNeed: %v", index, isNeed)
+			t.FailNow()
+		}
+		oldAddr, newAddr, err := getTargetAddressForBalanceDataPartitionZone(c, replica.Addr, dp, nil, "", true)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		// check the new add is belong to old hosts
+		zone, err := c.t.getZone(dn.ZoneName)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+		_, err = zone.getDataNode(newAddr)
+		if err == nil {
+			t.Errorf("not found the data node: %v, from zone: %v", newAddr, zone.name)
+			t.FailNow()
+		}
+
+		expectedZoneName := testZone6
+		zone, err = c.t.getZone(expectedZoneName)
+		if err != nil {
+			t.Error(err.Error())
+			t.FailNow()
+		}
+
+		// check the new add is belong to expected zone
+		_, err = zone.getDataNode(newAddr)
+		if err != nil {
+			t.Errorf("new addr: %v, err: %v", newAddr, err.Error())
+			t.FailNow()
+		}
+
+		// update the dp's replicas and hosts
+		replica.Addr = newAddr
+		hosts := make([]string, 0)
+		for _, host := range dp.Hosts {
+			if host == oldAddr {
+				host = newAddr
+			}
+			hosts = append(hosts, host)
+		}
+		dp.Hosts = hosts
+		t.Logf("index: %v, old addr: %v, new addr: %v", index, oldAddr, newAddr)
+	}
+}
+*/

@@ -32,6 +32,38 @@ const (
 	CfgTracingReportAddr   = "tracingReportAddr"   // jeagert addr
 )
 
+const (
+	ConfigKeyLocalIP     = "localIP"
+	ConfigKeyRole        = "role"
+	ConfigKeyLogDir      = "logDir"
+	ConfigKeyLogLevel    = "logLevel"
+	ConfigKeyProfPort    = "prof"
+	ConfigKeyClusterAddr = "clusterAddr"
+
+	// mysql config key
+	ConfigKeyMysql       = "mysql"
+	ConfigKeyMysqlUrl    = "url"
+	ConfigKeyUserName    = "userName"
+	ConfigKeyPassword    = "password"
+	ConfigKeyDatabase    = "database"
+	ConfigKeyPort        = "port"
+	ConfigKeyIdleConn    = "maxIdleConns"
+	ConfigKeyOpenConn    = "maxOpenConns"
+	ConfigKeyPassFile    = "passFile"
+	ConfigKeyEncryptPass = "database.password"
+
+	// leader elect config
+	ConfigKeyHeartbeat        = "heartbeat"        // int
+	ConfigKeyLeaderPeriod     = "leaderPeriod"     // int
+	ConfigKeyFollowerPeriod   = "followerPeriod"   // int
+	ConfigKeyWorkerHeartbeat  = "workerHeartbeat"  // int
+	ConfigKeyWorkerPeriod     = "workerPeriod"     // int
+	ConfigKeyWorkerTaskPeriod = "workerTaskPeriod" // int
+
+	// HBase config
+	ConfigKeyHBaseUrl = "hBaseUrl" // int
+)
+
 // Config defines the struct of a configuration in general.
 type Config struct {
 	data map[string]interface{}
@@ -219,6 +251,14 @@ func (c *Config) CheckAndGetBool(key string) (bool, bool) {
 	return false, false
 }
 
+func (c *Config) SetStringSlice(key string, value []string) bool {
+	if _, ok := c.data[key]; ok {
+		return false
+	}
+	c.data[key] = value
+	return true
+}
+
 func NewIllegalConfigError(configKey string) error {
 	return fmt.Errorf("illegal config %s", configKey)
 }
@@ -266,4 +306,78 @@ func CheckOrStoreConstCfg(fileDir, fileName string, cfg *ConstConfig) (ok bool, 
 		return false, fmt.Errorf("compare const config %v and %v failed: %v", storedConstCfg, cfg, err)
 	}
 	return true, nil
+}
+
+// GetMap returns a map for the config key.
+func (c *Config) GetMap(key string) map[string]interface{} {
+	x, present := c.data[key]
+	if !present {
+		return nil
+	}
+	if result, isString := x.(map[string]interface{}); isString {
+		return result
+	}
+	return nil
+}
+
+type MysqlConfig struct {
+	Url          string
+	Username     string
+	Password     string
+	Database     string
+	Port         int
+	MaxIdleConns int
+	MaxOpenConns int
+}
+
+func NewMysqlConfig(url, username, password, database string, port, ics, ocs int) *MysqlConfig {
+	return &MysqlConfig{
+		Url:          url,
+		Username:     username,
+		Password:     password,
+		Database:     database,
+		Port:         port,
+		MaxIdleConns: ics,
+		MaxOpenConns: ocs,
+	}
+}
+
+type ElectConfig struct {
+	Heartbeat      int
+	LeaderPeriod   int
+	FollowerPeriod int
+}
+
+func NewElectConfig(hb, lp, fp int) *ElectConfig {
+	return &ElectConfig{
+		Heartbeat:      hb,
+		LeaderPeriod:   lp,
+		FollowerPeriod: fp,
+	}
+}
+
+// WorkerHeartbeat: worker node heartbeat time,
+// WorkerPeriod: N 和心跳周期workerNode没有更新，则认为节点宕机
+type WorkerConfig struct {
+	WorkerHeartbeat  int
+	WorkerPeriod     int
+	TaskCreatePeriod int
+}
+
+func NewWorkerConfig(whb, wp, wtp int) *WorkerConfig {
+	return &WorkerConfig{
+		WorkerHeartbeat:  whb,
+		WorkerPeriod:     wp,
+		TaskCreatePeriod: wtp,
+	}
+}
+
+type HBaseConfig struct {
+	Host string
+}
+
+func NewHBaseConfig(hBaseHost string) *HBaseConfig {
+	return &HBaseConfig{
+		Host: hBaseHost,
+	}
 }
