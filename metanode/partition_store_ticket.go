@@ -53,7 +53,9 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				log.LogWarnf("[startSchedule] raftPartition is nil so skip" +
 					" truncate raft log")
 			}
-			msg.snap.Close()
+			if msg.snap != nil {
+				msg.snap.Close()
+			}
 
 		} else {
 			// retry again
@@ -90,7 +92,9 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				)
 				for _, msg := range msgs {
 					if curIndex >= msg.applyIndex {
-						msg.snap.Close()
+						if msg.snap != nil {
+							msg.snap.Close()
+						}
 						continue
 					}
 					if maxIdx < msg.applyIndex {
@@ -100,7 +104,9 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 						maxIdx = msg.applyIndex
 						maxMsg = msg
 					} else {
-						msg.snap.Close()
+						if msg.snap != nil {
+							msg.snap.Close()
+						}
 					}
 				}
 				if maxMsg != nil {

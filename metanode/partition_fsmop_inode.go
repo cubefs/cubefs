@@ -487,6 +487,9 @@ func (mp *metaPartition) fsmBatchEvictInode(ib InodeBatch, timestamp int64, tras
 }
 
 func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
+	if proto.IsDir(ino.Type) {
+		return
+	}
 	if ino.ShouldDelete() {
 		st, _ := mp.mvToDeletedInodeTree(ino, time.Now().UnixNano() / 1000)
 		log.LogDebugf("checkAndInsertFreeList moveToDeletedInodeTree: inode: %v, status: %v", ino, st)
