@@ -487,20 +487,9 @@ func (mp *metaPartition) fsmBatchEvictInode(ib InodeBatch, timestamp int64, tras
 }
 
 func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
-	//if proto.IsDir(ino.Type) {
-	//	return
-	//}
-	//if ino.ShouldDelete() {
-	//	mp.freeList.Push(ino.Inode)
-	//}
 	if ino.ShouldDelete() {
-		st, err := mp.mvToDeletedInodeTree(ino, time.Now().UnixNano() / 1000)
-		if err == rocksdbError {
-			exporter.WarningRocksdbError(fmt.Sprintf("action[checkAndInsertFreeList] clusterID[%s] volumeName[%s] partitionID[%v]" +
-				" move to deleted inode tree failed[ino:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
-				mp.config.PartitionId, ino))
-		}
-		log.LogDebugf("checkAndInsertFreeList moToDeletedInodeTree: inode: %v, status: %v", ino, st)
+		st, _ := mp.mvToDeletedInodeTree(ino, time.Now().UnixNano() / 1000)
+		log.LogDebugf("checkAndInsertFreeList moveToDeletedInodeTree: inode: %v, status: %v", ino, st)
 	}
 }
 

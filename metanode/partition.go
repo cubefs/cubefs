@@ -488,13 +488,13 @@ func CreateMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) ( 
 		return nil, err
 	}
 
-	if err = mp.db.OpenDb(mp.getRocksDbRootDir()); err != nil {
-		return nil, err
-	}
-
 	if mp.HasMemStore() {
 		mp.initMemoryTree()
 		mp.cleanRocksDbTreeResource()
+	}
+
+	if err = mp.db.OpenDb(mp.getRocksDbRootDir()); err != nil {
+		return nil, err
 	}
 
 	if mp.HasRocksDBStore() {

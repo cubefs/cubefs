@@ -25,6 +25,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -116,6 +117,7 @@ func (mp *metaPartition) addDelExtentToDb(key []byte, eks []proto.ExtentKey) (er
 	}()
 
 	if handle, err = mp.db.CreateBatchHandler(); err != nil {
+		log.LogErrorf("[addDelExtentToDb] partition[%v] create batch handler failed:%v", mp.config.PartitionId, err)
 		return err
 	}
 
@@ -138,6 +140,7 @@ func (mp *metaPartition) addDelExtentToDb(key []byte, eks []proto.ExtentKey) (er
 				goto errOut
 			}
 			if handle, err = mp.db.CreateBatchHandler(); err != nil {
+				log.LogErrorf("[addDelExtentToDb] partition[%v] create batch handle failed:%v", mp.config.PartitionId, err)
 				goto errOut
 			}
 		}
@@ -145,6 +148,7 @@ func (mp *metaPartition) addDelExtentToDb(key []byte, eks []proto.ExtentKey) (er
 		copy(mp.addBatchKey[keyOffset : keyOffset + 8], key[0:8])
 		copy(mp.addBatchKey[keyOffset + 8 : keyOffset + dbExtentKeySize], ekInfo)
 		if err = mp.db.AddItemToBatch(handle, mp.addBatchKey[keyOffset : keyOffset + dbExtentKeySize], data); err != nil{
+			log.LogErrorf("[addDelExtentToDb] partition[%v] add item to batch handle failed:%v", mp.config.PartitionId, err)
 			goto errOut
 		}
 
@@ -153,17 +157,27 @@ func (mp *metaPartition) addDelExtentToDb(key []byte, eks []proto.ExtentKey) (er
 
 
 	err = mp.db.CommitBatchAndRelease(handle)
+	if err != nil {
+		log.LogErrorf("[addDelExtentToDb] partition[%v] commit batch handle and release failed:%v", mp.config.PartitionId, err)
+	}
 
 	return
 
 errOut:
-	if  handle != nil {
+	if handle != nil {
 		mp.db.ReleaseBatchHandle(handle)
 	}
 	return
 }
 
 func (mp *metaPartition) appendDelExtentsToDb() {
+	defer func() {
+		if err := recover(); err != nil {
+			log.LogFlush()
+			log.LogErrorf("appendDelExtentsToDb: partition(%v) err(%v) stack(%v)", mp.config.PartitionId, err, debug.Stack())
+			panic(err)
+		}
+	}()
 	commitCheckTimer := time.NewTimer(time.Minute * 5)
 	extDeleteCursor := uint64(0)
 	for ; ; {
@@ -285,7 +299,12 @@ func (mp *metaPartition) syncDelExtentsToFollowers(extDeletedCursor uint64, retr
 func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (err error) {
 	stKey   := make([]byte, 1)
 	endKey  := make([]byte, 1)
-	delHandle, _ := mp.db.CreateBatchHandler()
+	var delHandle interface{}
+	delHandle, err = mp.db.CreateBatchHandler()
+	if err != nil {
+		log.LogErrorf("[cleanExpiredExtents] partition[%v] create batch handler failed:%v", mp.config.PartitionId, err)
+		return
+	}
 
 	stKey[0]  = byte(ExtentDelTable)
 	endKey[0] = byte(ExtentDelTable + 1)
@@ -325,6 +344,7 @@ func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (err error) {
 				return false, err
 			}
 			if delHandle, err = mp.db.CreateBatchHandler(); err != nil {
+				log.LogErrorf("Mp[%d] leader cleanExpiredExtents create batch handle failed:%v", mp.config.PartitionId, err)
 				return false, err
 			}
 
@@ -333,6 +353,7 @@ func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (err error) {
 		keyOffset := (cnt % maxItemsPerBatch) * dbExtentKeySize
 		copy(mp.delBatchKey[keyOffset : keyOffset + dbExtentKeySize], k)
 		if err = mp.db.DelItemToBatch(delHandle, mp.delBatchKey[keyOffset : keyOffset + dbExtentKeySize]); err != nil{
+			log.LogErrorf("Mp[%d] leader cleanExpiredExtents rocksdb handle DelItemToBatch failed:%v", mp.config.PartitionId, err)
 			return false, err
 		}
 		cnt++
@@ -340,11 +361,16 @@ func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (err error) {
 	}
 
 	if err = mp.db.Range(stKey, endKey, handleItemFunc); err != nil {
-		_ = mp.db.ReleaseBatchHandle(delHandle)
+		log.LogErrorf("Mp[%d] leader cleanExpiredExtents handle item failed:%v", mp.config.PartitionId, err)
+		if delHandle != nil {
+			_ = mp.db.ReleaseBatchHandle(delHandle)
+		}
 		return err
 	}
 
 	if err = mp.db.CommitBatchAndRelease(delHandle); err != nil {
+		_ = mp.db.ReleaseBatchHandle(delHandle)
+		log.LogErrorf("[cleanExpiredExtents] partitionId=%d, commit batch and release handle failed: %s", mp.config.PartitionId, err.Error())
 		return err
 	}
 	log.LogInfof("Mp[%d] leader clean expired extents[%d], now err extents:%v, success", mp.config.PartitionId, cnt, retryList.Len())
@@ -354,7 +380,13 @@ func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (err error) {
 func (mp *metaPartition)followerCleanDeletedExtents(delCommitDate uint64)  (err error){
 	stKey   := make([]byte, 1)
 	endKey  := make([]byte, 1)
-	delHandle, _ := mp.db.CreateBatchHandler()
+	var delHandle interface{}
+	delHandle, err = mp.db.CreateBatchHandler()
+	if err != nil {
+		log.LogErrorf("[followerCleanDeletedExtents] partition[%v] create batch handler failed:%v", mp.config.PartitionId, err)
+		return
+	}
+
 
 	stKey[0]  = byte(ExtentDelTable)
 	endKey[0] = byte(ExtentDelTable + 1)
@@ -386,6 +418,7 @@ func (mp *metaPartition)followerCleanDeletedExtents(delCommitDate uint64)  (err 
 				return false, err
 			}
 			if delHandle, err = mp.db.CreateBatchHandler(); err != nil {
+				log.LogErrorf("Mp[%d] followerCleanDeletedExtents create batch handle failed:%v", mp.config.PartitionId, err)
 				return false, err
 			}
 
@@ -395,6 +428,7 @@ func (mp *metaPartition)followerCleanDeletedExtents(delCommitDate uint64)  (err 
 		copy(mp.delBatchKey[keyOffset : keyOffset + dbExtentKeySize], k)
 		//log.LogInfof("MP[%v] clean del extent: %v, cnt:%v", mp.config.PartitionId, k, cnt)
 		if err = mp.db.DelItemToBatch(delHandle, mp.delBatchKey[keyOffset : keyOffset + dbExtentKeySize]); err != nil{
+			log.LogErrorf("Mp[%d] followerCleanDeletedExtents rocksdb handle DelItemToBatch failed:%v", mp.config.PartitionId, err)
 			return false, err
 		}
 
@@ -403,11 +437,16 @@ func (mp *metaPartition)followerCleanDeletedExtents(delCommitDate uint64)  (err 
 	}
 
 	if err = mp.db.Range(stKey, endKey, handleItemFunc); err != nil {
-		_ = mp.db.ReleaseBatchHandle(delHandle)
+		log.LogErrorf("Mp[%d] follower clean deleted extents handleItem failed:%v", mp.config.PartitionId, err)
+		if delHandle != nil {
+			_ = mp.db.ReleaseBatchHandle(delHandle)
+		}
 		return err
 	}
 
 	if err = mp.db.CommitBatchAndRelease(delHandle); err != nil {
+		_ = mp.db.ReleaseBatchHandle(delHandle)
+		log.LogErrorf("[followerCleanDeletedExtents] partitionId=%d, commit batch and release handle failed: %s", mp.config.PartitionId, err.Error())
 		return err
 	}
 	log.LogInfof("Mp[%d] follower sync clean extents(%d) before:%v, success", mp.config.PartitionId, cnt, delCommitDate)
@@ -415,6 +454,13 @@ func (mp *metaPartition)followerCleanDeletedExtents(delCommitDate uint64)  (err 
 }
 
 func (mp *metaPartition) deleteExtentsFromDb() {
+	defer func() {
+		if err := recover(); err != nil {
+			log.LogFlush()
+			log.LogErrorf("deleteExtentsFromDb: partition(%v) err(%v) stack(%v)", mp.config.PartitionId, err, debug.Stack())
+			panic(err)
+		}
+	}()
 	retryList := list.New()
 	delTimer := time.NewTimer(time.Minute * 1)
 

@@ -159,6 +159,7 @@ func (dbInfo *RocksDbInfo) interOpenDb(dir string) (err error) {
 	dbInfo.defReadOption  = gorocksdb.NewDefaultReadOptions()
 	dbInfo.defWriteOption = gorocksdb.NewDefaultWriteOptions()
 	dbInfo.defFlushOption = gorocksdb.NewDefaultFlushOptions()
+	dbInfo.defWriteOption.DisableWAL(true)
 	return nil
 }
 
@@ -410,7 +411,8 @@ func (dbInfo *RocksDbInfo) Del(key []byte) (err error) {
 	return
 }
 
-func (dbInfo *RocksDbInfo) CreateBatchHandler() (batch interface{}, err error) {
+func (dbInfo *RocksDbInfo) CreateBatchHandler() (interface{}, error) {
+	var err error
 	defer func() {
 		if err != nil {
 			log.LogErrorf("rocksdb CreateBatchHandler failed, error:%v", err)
@@ -418,11 +420,11 @@ func (dbInfo *RocksDbInfo) CreateBatchHandler() (batch interface{}, err error) {
 	}()
 
 	if err = dbInfo.accessDb(); err != nil {
-		return
+		return nil, err
 	}
 	defer dbInfo.releaseDb()
 	dbInfo.wait.Add(1)
-	batch = gorocksdb.NewWriteBatch()
+	batch := gorocksdb.NewWriteBatch()
 	return batch, nil
 }
 
@@ -457,13 +459,12 @@ func (dbInfo *RocksDbInfo) CommitBatchAndRelease(handle interface{}) (err error)
 		return
 	}
 
-	defer func() {
-		batch.Destroy()
-		dbInfo.wait.Done()
-	}()
 	if err = dbInfo.db.Write(dbInfo.defWriteOption, batch); err != nil {
+		log.LogErrorf("rocksdb CommitBatchAndRelease write failed:%v", err)
 		return
 	}
+	batch.Destroy()
+	dbInfo.wait.Done()
 	return
 }
 

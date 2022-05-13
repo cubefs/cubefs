@@ -166,7 +166,7 @@ func (mp *metaPartition) loadInode(ctx context.Context, rootDir string) (err err
 			return
 		}
 
-		//mp.checkAndInsertFreeList(ino)
+		mp.checkAndInsertFreeList(ino)
 		if mp.config.Cursor < ino.Inode {
 			mp.config.Cursor = ino.Inode
 		}
