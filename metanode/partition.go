@@ -937,9 +937,9 @@ func (mp *metaPartition) nextInodeID() (inodeId uint64, err error) {
 
 // Return a new inode ID and update the offset.
 func (mp *metaPartition) isInoOutOfRange(inodeId uint64) (err error) {
-	cur := atomic.LoadUint64(&mp.config.Cursor)
-	if inodeId > cur || inodeId < mp.config.Start {
-		err = fmt.Errorf("ino[%d] is out of range[%d, %d]", inodeId, mp.config.Start, cur)
+	end := atomic.LoadUint64(&mp.config.End)
+	if inodeId > end || inodeId < mp.config.Start {
+		err = fmt.Errorf("ino[%d] is out of range[%d, %d]", inodeId, mp.config.Start, end)
 	}
 	return err
 }

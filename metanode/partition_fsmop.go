@@ -24,6 +24,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
@@ -73,11 +74,11 @@ func (mp *metaPartition) decommissionPartition() (err error) {
 func (mp *metaPartition) fsmUpdatePartition(end uint64) (status uint8,
 	err error) {
 	status = proto.OpOk
-	oldEnd := mp.config.End
-	mp.config.End = end
+	oldEnd := atomic.LoadUint64(&mp.config.End)
+	atomic.StoreUint64(&mp.config.End, end)
 	defer func() {
 		if err != nil {
-			mp.config.End = oldEnd
+			atomic.StoreUint64(&mp.config.End, oldEnd)
 			status = proto.OpDiskErr
 		}
 	}()
