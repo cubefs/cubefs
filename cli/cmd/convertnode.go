@@ -344,8 +344,8 @@ func newConvertStopCmd(client *convert.ConvertClient) *cobra.Command {
 }
 
 const (
-	cmdConvertNodeDBCmdUse = "db nodeaddr"
-	cmdConvertNodeDBCmdShort = "db nodeaddr"
+	cmdConvertNodeDBCmdUse = "db"
+	cmdConvertNodeDBCmdShort = "Operation Database"
 )
 
 func newConvertNodeDBCmd() *cobra.Command {
@@ -361,14 +361,13 @@ func newConvertNodeDBCmd() *cobra.Command {
 
 func newConvertNodeAddrCmd() *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   "nodeaddr list/clear",
+		Use:   "convertNodeAddr",
 		Short: "list or clear convert nodes addr in database",
-		Run: func(cmd *cobra.Command, args []string) {
-
-		},
 	}
-	cmd.AddCommand(newConvertNodeAddrListCmd())
-	cmd.AddCommand(newConvertNodesAddrClearCmd())
+	cmd.AddCommand(
+		newConvertNodeAddrListCmd(),
+		newConvertNodesAddrClearCmd(),
+	)
 	return cmd
 }
 
@@ -436,7 +435,7 @@ func newConvertNodesAddrClearCmd() *cobra.Command {
 			}
 
 			for _, convertNodeAddr := range convertNodesAddr {
-				if err = convertNodeDB.ClearIpAddrInDataBase(convertNodeAddr); err != nil {
+				if err = convertNodeDB.ClearIpAddrInDataBase(convertNodeAddr.IpAddr); err != nil {
 					stdout(fmt.Sprintf("Delete convert node addr from database failed, node addr[%s] err[%v]\n", convertNodeAddr.IpAddr, err))
 					return
 				}

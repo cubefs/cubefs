@@ -55,7 +55,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 				exporter.WarningRocksdbError(fmt.Sprintf("action[Apply] clusterID[%s] volumeName[%s] partitionID[%v]" +
 					" apply failed witch rocksdb error[msg:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
 					mp.config.PartitionId, msg))
-				mp.TryToLeader(mp.config.PartitionId)
+				mp.tryToGiveUpLeader()
 			}
 			log.LogErrorf("Mp[%d] action[Apply] failed,index:%v,msg:%v,resp:%v,err:%v", mp.config.PartitionId, index, msg, resp, err)
 			return
@@ -64,7 +64,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			exporter.WarningRocksdbError(fmt.Sprintf("action[Apply] clusterID[%s] volumeName[%s] partitionID[%v]" +
 				" apply failed witch rocksdb error[msg:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
 				mp.config.PartitionId, msg))
-			mp.TryToLeader(mp.config.PartitionId)
+			mp.tryToGiveUpLeader()
 			err = fsmError
 			return
 		}

@@ -114,3 +114,13 @@ func NewPacketGetMetaNodeVersionInfo(ctx context.Context) *Packet {
 	p.SetCtx(ctx)
 	return p
 }
+
+func NewPacketToChangeLeader(ctx context.Context, mpID uint64) *Packet {
+	p := new(Packet)
+	p.Magic = proto.ProtoMagic
+	p.Opcode = proto.OpMetaPartitionTryToLeader
+	p.PartitionID = mpID
+	p.ReqID = proto.GenerateRequestID()
+	p.SetCtx(ctx)
+	return p
+}

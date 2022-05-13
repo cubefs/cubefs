@@ -104,6 +104,7 @@ func (task *ConvertTask) genTaskViewInfo() *proto.ConvertTaskInfo {
 	r.SelectedMP = append(r.SelectedMP, task.info.SelectedMP...)
 	r.FinishedMP = append(r.FinishedMP, task.info.FinishedMP...)
 	r.IgnoredMP = append(r.IgnoredMP, task.info.IgnoredMP...)
+	r.RunningMP = task.info.RunningMP
 	r.Layout = task.info.Layout
 	r.TaskState = task.info.TaskState
 	r.MPConvertState = task.info.MPConvertState
@@ -203,7 +204,7 @@ func (task *ConvertTask) mpAddLearner() (err error) {
 		return
 	}
 
-	if err = task.db.putTaskInfoToDB(task.transform()); err != nil {
+	if err = task.db.PutTaskInfoToDB(task.transform()); err != nil {
 		log.LogErrorf("action[mpAddLearner] task[%s] MP[%d] put task to data base failed:%v",
 			task.taskName(), task.info.RunningMP, err)
 		return
@@ -366,7 +367,7 @@ func (task *ConvertTask) mpWaitStable() (err error) {
 	}
 
 	if task.mpInfo, err = task.mc.clientAPI().GetMetaPartition(task.info.RunningMP); err != nil {
-		log.LogErrorf("action[mpWaitStable] task[%s] MP[%V] GetMetaPartition failed, err[%v]",
+		log.LogErrorf("action[mpWaitStable] task[%s] MP[%v] GetMetaPartition failed, err[%v]",
 			task.taskName(), task.info.RunningMP, err)
 		return
 	}

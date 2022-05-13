@@ -1305,3 +1305,49 @@ func (mp *metaPartition) IsRaftHang() bool {
 	}
 	return true
 }
+
+func (mp *metaPartition) tryToGiveUpLeader() {
+	log.LogInfof("[tryToGiveUpLeader] mp(%v) id(%v)", mp.config.PartitionId, mp.config.NodeId)
+	if _, ok := mp.IsLeader(); !ok {
+		log.LogInfof("[tryToGiveUpLeader] mp(%v) id(%v) is not leader", mp.config.PartitionId, mp.config.NodeId)
+		return
+	}
+
+	for _, peer := range mp.config.Peers {
+		if peer.ID == mp.config.NodeId {
+			continue
+		}
+		if err := mp.sendTryToLeaderReqToFollower(peer.Addr); err != nil {
+			continue
+		}
+		break
+	}
+}
+
+func (mp *metaPartition) sendTryToLeaderReqToFollower(addr string) error {
+	log.LogInfof("[sendTryToLeaderReqToFollower] mp(%v) id(%v) send tryToLeaderRequest to %s", mp.config.PartitionId, mp.config.NodeId, addr)
+	conn, err := mp.config.ConnPool.GetConnect(addr)
+	if err != nil {
+		log.LogErrorf("[sendTryToLeaderReqToFollower] get conn failed, mpID(%v), follower addr(%s), err(%v)",
+			mp.config.PartitionId, addr, err)
+		return err
+	}
+	defer mp.config.ConnPool.PutConnect(conn, true)
+	packet := NewPacketToChangeLeader(context.Background(), mp.config.PartitionId)
+	if err = packet.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
+		log.LogErrorf("[sendTryToLeaderReqToFollower] writeToConn failed, mpID(%v), follower addr(%s), err(%v)",
+			mp.config.PartitionId, addr, err)
+		return err
+	}
+	if err = packet.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+		log.LogErrorf("[sendTryToLeaderReqToFollower] readFromConn failed, mpID(%v), follower addr(%s), err(%v)",
+			mp.config.PartitionId, addr, err)
+		return err
+	}
+	if packet.ResultCode != proto.OpOk {
+		log.LogErrorf("[sendTryToLeaderReqToFollower] result code mismatch, mpID(%v), follower addr(%s), resultCode(%v)",
+			mp.config.PartitionId, addr, packet.ResultCode)
+		return fmt.Errorf("error code:0x%X", packet.ResultCode)
+	}
+	return nil
+}

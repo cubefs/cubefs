@@ -253,7 +253,7 @@ func (m *ConvertNode) SingletonCheck() (err error) {
 	}
 
 	if len(records) == 0 {
-		if err = m.mySqlDB.putIpAddrToDataBase(m.ipAddr); err != nil {
+		if err = m.mySqlDB.PutIpAddrToDataBase(m.ipAddr); err != nil {
 			log.LogErrorf("[SingletonCheck] create singleton record failed:%v", err)
 		}
 		return
@@ -284,7 +284,7 @@ func (m *ConvertNode) loadInfoFromDataBase() (err error) {
 }
 
 func (m *ConvertNode) loadClusterInfo() (err error) {
-	clusters, err :=  m.mySqlDB.loadAllClusterInfoFromDB()
+	clusters, err :=  m.mySqlDB.LoadAllClusterInfoFromDB()
 	if err != nil {
 		return
 	}
@@ -299,7 +299,7 @@ func (m *ConvertNode) loadClusterInfo() (err error) {
 func (m *ConvertNode) loadTaskInfo() (err error) {
 	//load from mysql
 	var taskRecs []*TaskInfo
-	if taskRecs, err = m.mySqlDB.loadAllTaskInfoFromDB(); err != nil {
+	if taskRecs, err = m.mySqlDB.LoadAllTaskInfoFromDB(); err != nil {
 		return
 	}
 	for _, taskRec := range taskRecs {
@@ -389,7 +389,7 @@ func (m *ConvertNode) addTask(clusterName, volName string) (err error){
 	m.processors[id].addTask(task)
 	mc.AddTask(task)
 	m.taskMap[key] = task
-	if err = m.mySqlDB.putTaskInfoToDB(task.transform()); err != nil {
+	if err = m.mySqlDB.PutTaskInfoToDB(task.transform()); err != nil {
 		log.LogErrorf("action[addTask] put task[%s] to db failed, err[%v]", task.taskName(), err)
 	}
 	return
@@ -421,7 +421,7 @@ func (m *ConvertNode) delTask(clusterName, volName string) (err error){
 	}
 	task.mc.DelTask(task)
 	delete(m.taskMap, key)
-	if err = m.mySqlDB.deleteTaskInfoFromDB(clusterName, volName); err != nil {
+	if err = m.mySqlDB.DeleteTaskInfoFromDB(clusterName, volName); err != nil {
 		log.LogErrorf("action[delTask] delete task[%s] from db failed, err[%v]", task.taskName(), err)
 	}
 	return
@@ -473,7 +473,7 @@ func (m *ConvertNode) addClusterConf(clusterName string, nodes []string) (err er
 	mc, ok := m.clusterMap[clusterName]
 	if !ok {
 		m.clusterMap[clusterName] = NewClusterInfo(clusterName, nodes)
-		if err = m.mySqlDB.putClusterInfoToDB(clusterName, nodes); err != nil {
+		if err = m.mySqlDB.PutClusterInfoToDB(clusterName, nodes); err != nil {
 			log.LogErrorf("action[addClusterConf] put cluster[%s] info to db failed, err[%v]", clusterName, err)
 		}
 		return
@@ -487,7 +487,7 @@ func (m *ConvertNode) addClusterConf(clusterName string, nodes []string) (err er
 			mc.AddNode(node)
 		}
 	}
-	if err = m.mySqlDB.updateClusterInfoToDB(clusterName, nodes); err != nil {
+	if err = m.mySqlDB.UpdateClusterInfoToDB(clusterName, mc.Nodes()); err != nil {
 		log.LogErrorf("action[addClusterConf] update cluster[%s] info to db failed, err[%v]", clusterName, err)
 	}
 	return
@@ -506,7 +506,7 @@ func (m *ConvertNode) delClusterConf(clusterName string, delNodes []string) (err
 
 	cluster, ok := m.clusterMap[clusterName]
 	if !ok {
-		_ = m.mySqlDB.deleteClusterInfoFromDB(clusterName)
+		_ = m.mySqlDB.DeleteClusterInfoFromDB(clusterName)
 		return fmt.Errorf("cluster[%s] already del", clusterName)
 	}
 
@@ -515,7 +515,7 @@ func (m *ConvertNode) delClusterConf(clusterName string, delNodes []string) (err
 			return fmt.Errorf("cluster[%s] has tasks[%d], can not del", clusterName, cluster.TaskCount())
 		}
 		delete(m.clusterMap, clusterName)
-		return m.mySqlDB.deleteClusterInfoFromDB(clusterName)
+		return m.mySqlDB.DeleteClusterInfoFromDB(clusterName)
 	}
 
 	existNodes := make([]string, 0)
@@ -533,12 +533,12 @@ func (m *ConvertNode) delClusterConf(clusterName string, delNodes []string) (err
 			return fmt.Errorf("cluster[%s] has tasks[%d], can not del", clusterName, cluster.TaskCount())
 		}
 		delete(m.clusterMap, clusterName)
-		if err = m.mySqlDB.deleteClusterInfoFromDB(clusterName); err != nil {
+		if err = m.mySqlDB.DeleteClusterInfoFromDB(clusterName); err != nil {
 			log.LogErrorf("action[delClusterConf] delete cluster[%s] info from db failed, err[%v]", clusterName, err)
 		}
 	} else {
 		cluster.UpdateNodes(existNodes)
-		if err = m.mySqlDB.updateClusterInfoToDB(clusterName, existNodes); err != nil {
+		if err = m.mySqlDB.UpdateClusterInfoToDB(clusterName, existNodes); err != nil {
 			log.LogErrorf("action[delClusterConf] update cluster[%s] info from db failed, err[%v]", clusterName, err)
 		}
 	}

@@ -105,23 +105,24 @@ func (ClusterInfoTable) TableName() string {
 	return "cluster_info"
 }
 
-func (db *DBInfo) putClusterInfoToDB(clusterName string, mastersAddr []string) error {
+func (db *DBInfo) PutClusterInfoToDB(clusterName string, mastersAddr []string) error {
 	return db.dbHandle.Create(&ClusterInfoTable{
-			ClusterName: clusterName,
-			MasterAddr:  strings.Join(mastersAddr, ","),
-		}).Error
+		ClusterName: clusterName,
+		MasterAddr:  strings.Join(mastersAddr, ","),
+	}).Error
 }
 
-func (db *DBInfo) deleteClusterInfoFromDB(clusterName string) error {
+func (db *DBInfo) DeleteClusterInfoFromDB(clusterName string) error {
 	return db.dbHandle.Where("cluster_name = ?", clusterName).Delete(&ClusterInfoTable{}).Error
 }
 
-func (db *DBInfo) updateClusterInfoToDB(clusterName string, mastersAddr []string) error {
-	return db.dbHandle.Where("cluster_name = ?", clusterName).
-		Update("addr", strings.Join(mastersAddr, ",")).Error
+func (db *DBInfo) UpdateClusterInfoToDB(clusterName string, mastersAddr []string) error {
+	addr := strings.Join(mastersAddr, ",")
+	return db.dbHandle.Model(&ClusterInfoTable{}).Where("cluster_name = ?", clusterName).
+		Update("addr", addr).Error
 }
 
-func (db *DBInfo) loadAllClusterInfoFromDB() (clustersInfo []*ClusterInfoTable, err error) {
+func (db *DBInfo) LoadAllClusterInfoFromDB() (clustersInfo []*ClusterInfoTable, err error) {
 	clustersInfo = make([]*ClusterInfoTable, 0)
 	err = db.dbHandle.Table(ClusterInfoTable{}.TableName()).Find(&clustersInfo).Error
 	return
@@ -132,8 +133,8 @@ type TaskInfo struct {
 	ID                   uint64 `gorm:"column:id;"`
 	ClusterName          string `gorm:"column:cluster_name;"`
 	VolumeName           string `gorm:"column:volume_name;"`
-	SelectedMP           string `gorm:"column:selected_mp;"`   //
-	FinishedMP           string `gorm:"column:finished_mp;"`   //
+	SelectedMP           string `gorm:"column:selected_mp;"` //
+	FinishedMP           string `gorm:"column:finished_mp;"` //
 	RunningMP            uint64 `gorm:"column:running_mp;"`
 	Layout               string `gorm:"column:layout;"`        //
 	Process              uint32 `gorm:"-"`                     //
@@ -148,7 +149,7 @@ func (TaskInfo) TableName() string {
 }
 
 //if task exist, update task info, else create task info to db
-func (db *DBInfo) putTaskInfoToDB(task *TaskInfo) error {
+func (db *DBInfo) PutTaskInfoToDB(task *TaskInfo) error {
 	taskRec := new(TaskInfo)
 	if err := db.dbHandle.Table(TaskInfo{}.TableName()).Where("cluster_name = ? and volume_name = ?",
 		task.ClusterName, task.VolumeName).First(taskRec).Error; err == gorm.ErrRecordNotFound {
@@ -160,12 +161,12 @@ func (db *DBInfo) putTaskInfoToDB(task *TaskInfo) error {
 	return db.dbHandle.Table(TaskInfo{}.TableName()).Save(task).Error
 }
 
-func (db *DBInfo) deleteTaskInfoFromDB(clusterName, volumeName string) error {
+func (db *DBInfo) DeleteTaskInfoFromDB(clusterName, volumeName string) error {
 	return db.dbHandle.Table(TaskInfo{}.TableName()).Where("cluster_name = ? and volume_name = ?",
 		clusterName, volumeName).Delete(&TaskInfo{}).Error
 }
 
-func (db *DBInfo) loadAllTaskInfoFromDB() (tasks []*TaskInfo, err error){
+func (db *DBInfo) LoadAllTaskInfoFromDB() (tasks []*TaskInfo, err error) {
 	tasks = make([]*TaskInfo, 0)
 	err = db.dbHandle.Table(TaskInfo{}.TableName()).Scan(&tasks).Error
 	return
@@ -187,19 +188,12 @@ func (db *DBInfo) LoadIpAddrFromDataBase() (records []*SingletonCheckTable, err 
 	return
 }
 
-func (db *DBInfo) putIpAddrToDataBase(ipAddr string) (err error){
-	if err = db.dbHandle.Table(SingletonCheckTable{}.TableName()).Create(&SingletonCheckTable{
+func (db *DBInfo) PutIpAddrToDataBase(ipAddr string) (err error) {
+	return db.dbHandle.Table(SingletonCheckTable{}.TableName()).Create(&SingletonCheckTable{
 		IpAddr: ipAddr,
-	}).Error; err != nil {
-		return
-	}
-	return
+	}).Error
 }
 
-func (db *DBInfo) ClearIpAddrInDataBase(record *SingletonCheckTable) (err error) {
-	return db.dbHandle.Delete(record).Error
+func (db *DBInfo) ClearIpAddrInDataBase(addr string) (err error) {
+	return db.dbHandle.Model(&SingletonCheckTable{}).Where("ip_addr = ?", addr).Delete(&SingletonCheckTable{}).Error
 }
-
-
-
-

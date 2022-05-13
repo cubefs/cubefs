@@ -25,7 +25,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
-	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -173,8 +172,8 @@ errOut:
 func (mp *metaPartition) appendDelExtentsToDb() {
 	defer func() {
 		if err := recover(); err != nil {
+			log.LogErrorf("appendDelExtentsToDb: partition(%v) err(%v)", mp.config.PartitionId, err)
 			log.LogFlush()
-			log.LogErrorf("appendDelExtentsToDb: partition(%v) err(%v) stack(%v)", mp.config.PartitionId, err, debug.Stack())
 			panic(err)
 		}
 	}()
@@ -456,8 +455,8 @@ func (mp *metaPartition)followerCleanDeletedExtents(delCommitDate uint64)  (err 
 func (mp *metaPartition) deleteExtentsFromDb() {
 	defer func() {
 		if err := recover(); err != nil {
+			log.LogErrorf("deleteExtentsFromDb: partition(%v) err(%v)", mp.config.PartitionId, err)
 			log.LogFlush()
-			log.LogErrorf("deleteExtentsFromDb: partition(%v) err(%v) stack(%v)", mp.config.PartitionId, err, debug.Stack())
 			panic(err)
 		}
 	}()
