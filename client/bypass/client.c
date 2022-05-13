@@ -2462,13 +2462,13 @@ static void cfs_init() {
         }
     }
     // libc printf CANNOT be used in this init function, otherwise will cause circular dependencies.
-    if(ini_parse(cfs_config_path, config_handler, &g_cfs_config) < 0) {
+    if(ini_parse(cfs_config_path, config_handler, &g_cfs_sdk_init, &g_cfs_config) < 0) {
         char *msg = "Can't load CFS config file, use CFS_CONFIG_PATH env variable.\n";
         real_write(STDOUT_FILENO, msg, strlen(msg));
         exit(1);
     }
     if(g_mount_point == NULL || g_cfs_config.master_addr == NULL || 
-    g_cfs_config.vol_name == NULL || g_cfs_config.owner == NULL || g_cfs_config.log_dir == NULL) {
+    g_cfs_config.vol_name == NULL || g_cfs_config.owner == NULL || g_cfs_sdk_init.log_dir == NULL) {
         char *msg = "Check CFS config file for necessary parameters.\n";
         real_write(STDOUT_FILENO, msg, strlen(msg));
         exit(1);
@@ -2488,8 +2488,8 @@ static void cfs_init() {
     }
     char *prof_port = getenv("CFS_PROF_PORT");
     if(prof_port != NULL) {
-        free((char *)g_cfs_config.prof_port);
-        g_cfs_config.prof_port = prof_port;
+        free((char *)g_cfs_sdk_init.prof_port);
+        g_cfs_sdk_init.prof_port = prof_port;
     }
     char *master_client = getenv("CFS_MASTER_CLIENT");
     if(master_client != NULL) {
@@ -2508,6 +2508,14 @@ static void cfs_init() {
         free((char *)g_mount_point);
     }
     g_mount_point = path;
+
+    g_cfs_sdk_init.ignore_sighup = 1;
+    g_cfs_sdk_init.ignore_sigterm = 1;
+    if(cfs_sdk_init(&g_cfs_sdk_init) != 0) {
+        char *msg= "Can't initialize CFS SDK, check the config file.\n";
+        real_write(STDOUT_FILENO, msg, strlen(msg));
+        exit(1);
+    }
 
     g_cfs_client_id = cfs_new_client(&g_cfs_config);
     if(g_cfs_client_id < 0) {

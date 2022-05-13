@@ -264,6 +264,7 @@ static const bool g_hook = true;
 
 static char *g_mount_point;
 static char *g_ignore_path;
+static cfs_sdk_init_t g_cfs_sdk_init;
 static cfs_config_t g_cfs_config;
 static const char *CFS_CFG_PATH = "cfs_client.ini";
 static const char *CFS_CFG_PATH_JED = "/export/servers/cfs/cfs_client.ini";
@@ -334,8 +335,9 @@ static int addFdEntry(int fd, char *path) {
 
 //static void (*g_sa_handler[30])(int);
 
-static int config_handler(void* user, const char* section,
+static int config_handler(void* sdk, void* user, const char* section,
         const char* name, const char* value) {
+    cfs_sdk_init_t *psdkinit = (cfs_sdk_init_t*)sdk;
     cfs_config_t *pconfig = (cfs_config_t*)user;
     #define MATCH(s, n) strcmp(section, s) == 0 && strcmp(name, n) == 0
 
@@ -352,23 +354,17 @@ static int config_handler(void* user, const char* section,
     } else if (MATCH("", "followerRead")) {
         pconfig->follower_read = strdup(value);
     } else if (MATCH("", "logDir")) {
-        pconfig->log_dir = strdup(value);
+        psdkinit->log_dir = strdup(value);
     } else if (MATCH("", "logLevel")) {
-        pconfig->log_level = strdup(value);
+        psdkinit->log_level = strdup(value);
     } else if (MATCH("", "app")) {
         pconfig->app = strdup(value);
     } else if (MATCH("", "profPort")) {
-        pconfig->prof_port = strdup(value);
+        psdkinit->prof_port = strdup(value);
     } else if (MATCH("", "autoFlush")) {
         pconfig->auto_flush = strdup(value);
     } else if (MATCH("", "masterClient")) {
         pconfig->master_client = strdup(value);
-    } else if (MATCH("", "tracingSamplerType")) {
-        pconfig->tracing_sampler_type = strdup(value);
-    } else if (MATCH("", "tracingSamplerParam")) {
-        pconfig->tracing_sampler_param = strdup(value);
-    } else if (MATCH("", "tracingReportAddr")) {
-        pconfig->tracing_report_addr = strdup(value);
     } else {
         return 0;  /* unknown section/name, error */
     }

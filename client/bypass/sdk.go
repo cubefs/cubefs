@@ -33,20 +33,21 @@ package main
 #include <unistd.h>
 
 typedef struct {
+    int ignore_sighup;
+	int ignore_sigterm;
+	const char* log_dir;
+	const char* log_level;
+	const char* prof_port;
+} cfs_sdk_init_t;
+
+typedef struct {
     const char* master_addr;
     const char* vol_name;
     const char* owner;
     const char* follower_read;
-    const char* log_dir;
-    const char* log_level;
 	const char* app;
-    const char* prof_port;
 	const char* auto_flush;
     const char* master_client;
-    const char* tracing_sampler_type;
-    const char* tracing_sampler_param;
-    const char* tracing_report_addr;
-    const char* tracing_flag;
 } cfs_config_t;
 
 typedef struct {
@@ -72,6 +73,7 @@ import (
 	"io"
 	syslog "log"
 	"math"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -138,6 +140,7 @@ const (
 
 var (
 	gClientManager *clientManager
+	gProfPort      uint64
 	once           sync.Once
 	CommitID       string
 	BranchName     string
@@ -161,11 +164,9 @@ var (
 )
 
 func init() {
-	os.Setenv("GODEBUG", "madvdontneed=1")
+	_ = os.Setenv("GODEBUG", "madvdontneed=1")
 	data.SetNormalExtentSize(normalExtentSize)
-	gClientManager = &clientManager{
-		clients: make([]*client, 2),
-	}
+	gClientManager = newClientManager()
 }
 
 func errorToStatus(err error) C.int {
@@ -180,11 +181,41 @@ func errorToStatus(err error) C.int {
 
 type clientManager struct {
 	nextClientID int64
-	clients      []*client
+	clients      map[int64]*client
+	mu           sync.RWMutex
+}
+
+func (m *clientManager) GetNextClientID() int64 {
+	return atomic.AddInt64(&m.nextClientID, 1)
+}
+
+func (m *clientManager) PutClient(id int64, c *client) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.clients[id] = c
+}
+
+func (m *clientManager) RemoveClient(id int64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.clients, id)
+}
+
+func (m *clientManager) GetClient(id int64) (c *client, exist bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	c, exist = m.clients[id]
+	return
+}
+
+func newClientManager() *clientManager {
+	return &clientManager{
+		clients: make(map[int64]*client),
+	}
 }
 
 func newClient(conf *C.cfs_config_t) *client {
-	id := atomic.AddInt64(&gClientManager.nextClientID, 1)
+	id := getNextClientID()
 	c := &client{
 		id:               id,
 		fdmap:            make(map[uint]*file),
@@ -198,46 +229,34 @@ func newClient(conf *C.cfs_config_t) *client {
 	c.volName = C.GoString(conf.vol_name)
 	c.owner = C.GoString(conf.owner)
 	c.followerRead, _ = strconv.ParseBool(C.GoString(conf.follower_read))
-	c.logDir = C.GoString(conf.log_dir)
-	c.logLevel = C.GoString(conf.log_level)
 	c.app = C.GoString(conf.app)
 	c.useMetaCache = (c.app != appCoralDB)
-	c.profPort, _ = strconv.ParseUint(strings.Split(C.GoString(conf.prof_port), ",")[0], 10, 64)
 	c.autoFlush, _ = strconv.ParseBool(C.GoString(conf.auto_flush))
 	c.inodeCache = cache.NewInodeCache(inodeExpiration, maxInodeCache, inodeEvictionInterval, c.useMetaCache)
 	c.masterClient = C.GoString(conf.master_client)
 
 	c.readProcErrMap = make(map[string]int)
-	c.tracingSamplerType = C.GoString(conf.tracing_sampler_type)
-	if val, err := strconv.ParseFloat(C.GoString(conf.tracing_sampler_param), 64); err == nil {
-		c.tracingSamplerParam = val
-	}
-	c.tracingReportAddr = C.GoString(conf.tracing_report_addr)
 
 	// Just skip fd 0, 1, 2, to avoid confusion.
 	c.fdset.Set(0).Set(1).Set(2)
 
-	if len(gClientManager.clients) <= int(id) {
-		gClientManager.clients = make([]*client, id+1)
-	}
-	gClientManager.clients[id] = c
-
 	return c
 }
 
+func getNextClientID() int64 {
+	return gClientManager.GetNextClientID()
+}
+
 func getClient(id int64) (c *client, exist bool) {
-	//gClientManager.mu.RLock()
-	//defer gClientManager.mu.RUnlock()
-	c = gClientManager.clients[id]
-	if c == nil {
-		exist = false
-	}
-	exist = true
-	return
+	return gClientManager.GetClient(id)
+}
+
+func  putClient(id int64, c *client) {
+	gClientManager.PutClient(id, c)
 }
 
 func removeClient(id int64) {
-	gClientManager.clients[id] = nil
+	gClientManager.RemoveClient(id)
 }
 
 type file struct {
@@ -278,23 +297,14 @@ type client struct {
 	volName      string
 	owner        string
 	followerRead bool
-	logDir       string
-	logLevel     string
 	app          string
 
-	profPort        uint64
 	readProcErrMap  map[string]int // key: ip:port, value: count of error
 	readProcMapLock sync.Mutex
 
 	masterClient string
 
 	autoFlush bool
-
-	// profiling config
-	tracingSamplerType  string
-	tracingSamplerParam float64
-	tracingReportAddr   string
-	tracingFlag         bool
 
 	// runtime context
 	cwd    string // current working directory
@@ -313,6 +323,98 @@ type client struct {
 	inodeCache           *cache.InodeCache
 	inodeDentryCache     map[uint64]*cache.DentryCache
 	inodeDentryCacheLock sync.Mutex
+
+	closeOnce sync.Once
+}
+
+/*
+ * Library / framework initialization
+ * This method will initialize logging and HTTP APIs.
+ */
+//export cfs_sdk_init
+func cfs_sdk_init(t *C.cfs_sdk_init_t) C.int {
+	var re C.int
+	once.Do(func() {
+		re = initSDK(t)
+	})
+	return re
+}
+
+func initSDK(t *C.cfs_sdk_init_t) C.int {
+	var ignoreSigHup = int(t.ignore_sighup)
+	var ignoreSigTerm = int(t.ignore_sigterm)
+
+	var logDir = C.GoString(t.log_dir)
+	var logLevel = C.GoString(t.log_level)
+
+	var profPort, _ = strconv.ParseUint(strings.Split(C.GoString(t.prof_port), ",")[0], 10, 64)
+
+	// Setup signal ignore
+	ignoreSignals := make([]os.Signal, 0)
+	if ignoreSigHup == 1 {
+		ignoreSignals = append(ignoreSignals, syscall.SIGHUP)
+	}
+	if ignoreSigTerm == 1 {
+		ignoreSignals = append(ignoreSignals, syscall.SIGTERM)
+	}
+	if len(ignoreSignals) > 0 {
+		fmt.Printf("ignore signal: %v\n", ignoreSignals)
+		signal.Ignore(ignoreSignals...)
+	}
+
+	var err error
+
+	// Initialize logging
+	level := log.WarnLevel
+	if logLevel == "debug" {
+		level = log.DebugLevel
+	} else if logLevel == "info" {
+		level = log.InfoLevel
+	} else if logLevel == "warn" {
+		level = log.WarnLevel
+	} else if logLevel == "error" {
+		level = log.ErrorLevel
+	}
+	if len(logDir) == 0 {
+		fmt.Printf("no valid log dir specified.\n")
+		return C.int(statusEINVAL)
+	}
+	if _, err = log.InitLog(logDir, moduleName, level, nil); err != nil {
+		fmt.Printf("initialize logging failed: %v\n", err)
+		return C.int(statusEIO)
+	}
+
+	outputFilePath := gopath.Join(logDir, moduleName, "output.log")
+	var outputFile *os.File
+	if outputFile, err = os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666); err != nil {
+		fmt.Printf("open %v for stdout redirection failed: %v", outputFilePath, err)
+		return C.int(statusEIO)
+	}
+	syslog.SetOutput(outputFile)
+
+	// Initialize HTTP APIs
+	if profPort != 0 {
+		gProfPort = profPort;
+		log.LogInfof("using prof port: %v", profPort)
+		syslog.Printf("using prof port: %v\n", profPort)
+		var profNetListener net.Listener
+		if profNetListener, err = net.Listen("tcp", fmt.Sprintf(":%v", profPort)); err != nil {
+			log.LogErrorf("listen prof port [%v] failed: %v", profPort, err)
+			log.LogFlush()
+			syslog.Printf("listen prof port [%v] failed: %v", profPort, err)
+			return C.int(statusEIO)
+		}
+		http.HandleFunc(log.GetLogPath, log.GetLog)
+		http.HandleFunc("/version", GetVersionHandleFunc)
+		http.HandleFunc(ControlReadProcessRegister, registerReadProcStatusHandleFunc)
+		http.HandleFunc(ControlBroadcastRefreshExtents, broadcastRefreshExtentsHandleFunc)
+		http.HandleFunc(ControlGetReadProcs, getReadProcsHandleFunc)
+		go func() {
+			_ = http.Serve(profNetListener, http.DefaultServeMux)
+		}()
+	}
+
+	return C.int(0)
 }
 
 /*
@@ -323,25 +425,18 @@ type client struct {
 func cfs_new_client(conf *C.cfs_config_t) C.int64_t {
 	c := newClient(conf)
 	if err := c.start(); err != nil {
-		removeClient(c.id)
 		return C.int64_t(statusEIO)
 	}
+	putClient(c.id, c)
 	return C.int64_t(c.id)
 }
 
 //export cfs_close_client
 func cfs_close_client(id C.int64_t) {
 	if c, exist := getClient(int64(id)); exist {
-		if c.mc != nil {
-			_ = c.mc.ClientAPI().ReleaseVolMutex(c.volName)
-		}
-		if c.ec != nil {
-			_ = c.ec.Close(context.Background())
-		}
-		if c.mw != nil {
-			_ = c.mw.Close()
-		}
 		removeClient(int64(id))
+		c.stop()
+
 	}
 	log.LogFlush()
 	runtime.GC()
@@ -3034,44 +3129,11 @@ func (c *client) absPathAt(dirfd C.int, path *C.char) (string, error) {
 }
 
 func (c *client) start() (err error) {
-	level := log.WarnLevel
-	if c.logLevel == "debug" {
-		level = log.DebugLevel
-	} else if c.logLevel == "info" {
-		level = log.InfoLevel
-	} else if c.logLevel == "warn" {
-		level = log.WarnLevel
-	} else if c.logLevel == "error" {
-		level = log.ErrorLevel
-	}
-	if len(c.logDir) == 0 {
-		return fmt.Errorf("empty dir")
-	}
-	if _, err = log.InitLog(c.logDir, moduleName, level, nil); err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	outputFilePath := gopath.Join(c.logDir, moduleName, "output.log")
-	var outputFile *os.File
-	if outputFile, err = os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666); err != nil {
-		fmt.Println(err)
-		return
-	}
-	syslog.SetOutput(outputFile)
 	defer func() {
 		if err != nil {
 			syslog.Printf("start kernel bypass client failed: err(%v)\n", err)
 		}
-		outputFile.Sync()
-		outputFile.Close()
 	}()
-
-	if c.profPort == 0 {
-		err = fmt.Errorf("invalid prof port")
-		fmt.Println(err)
-		return
-	}
 
 	masters := strings.Split(c.masterAddr, ",")
 	mc := master.NewMasterClient(masters, false)
@@ -3117,21 +3179,6 @@ func (c *client) start() (err error) {
 	c.mw = mw
 	c.ec = ec
 
-	// Init tracing, CAN'T be closed, or the tracing data will be lost
-
-	go func() {
-		listenErr := http.ListenAndServe(fmt.Sprintf(":%v", c.profPort), nil)
-		if listenErr != nil && isMysql() {
-			fmt.Println(listenErr)
-			os.Exit(1)
-		}
-	}()
-	http.HandleFunc(log.GetLogPath, log.GetLog)
-	http.HandleFunc("/version", GetVersionHandleFunc)
-	http.HandleFunc(ControlReadProcessRegister, c.registerReadProcStatusHandleFunc)
-	http.HandleFunc(ControlBroadcastRefreshExtents, c.broadcastRefreshExtentsHandleFunc)
-	http.HandleFunc(ControlGetReadProcs, c.getReadProcs)
-
 	// metric
 	if err = ump.InitUmp(moduleName, "jdos_chubaofs-node"); err != nil {
 		fmt.Println(err)
@@ -3152,6 +3199,20 @@ func (c *client) start() (err error) {
 	cfg := config.LoadConfigString(string(cfgStr))
 	go version.ReportVersionSchedule(cfg, masters, versionInfo)
 	return
+}
+
+func (c *client) stop() {
+	c.closeOnce.Do(func() {
+		if c.mc != nil {
+			_ = c.mc.ClientAPI().ReleaseVolMutex(c.volName)
+		}
+		if c.ec != nil {
+			_ = c.ec.Close(context.Background())
+		}
+		if c.mw != nil {
+			_ = c.mw.Close()
+		}
+	})
 }
 
 func (c *client) allocFD(ino uint64, flags, mode uint32, target []byte, fd int) *file {

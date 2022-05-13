@@ -45,7 +45,13 @@ func GetVersionHandleFunc(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func (c *client) broadcastRefreshExtentsHandleFunc(w http.ResponseWriter, r *http.Request) {
+func broadcastRefreshExtentsHandleFunc(w http.ResponseWriter, r *http.Request) {
+	const defaultClientID = 1
+	c, exist := getClient(defaultClientID)
+	if !exist {
+		buildFailureResp(w, http.StatusNotFound, fmt.Sprintf("client [%v] not exist", defaultClientID))
+		return
+	}
 	if err := r.ParseForm(); err != nil {
 		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("parse parameter error: %v", err))
 		return
@@ -65,7 +71,13 @@ func (c *client) broadcastRefreshExtentsHandleFunc(w http.ResponseWriter, r *htt
 	buildSuccessResp(w, "success")
 }
 
-func (c *client) registerReadProcStatusHandleFunc(w http.ResponseWriter, r *http.Request) {
+func registerReadProcStatusHandleFunc(w http.ResponseWriter, r *http.Request) {
+	const defaultClientID = 1
+	c, exist := getClient(defaultClientID)
+	if !exist {
+		buildFailureResp(w, http.StatusNotFound, fmt.Sprintf("client [%v] not exist", defaultClientID))
+		return
+	}
 	if err := r.ParseForm(); err != nil {
 		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("parse parameter error: %v", err))
 		return
@@ -117,14 +129,20 @@ func (c *client) registerReadProcStatus(alive bool) {
 	if len(c.masterClient) == 0 {
 		return
 	}
-	url := fmt.Sprintf("http://%s%s?%s=:%d&%s=%t", c.masterClient, ControlReadProcessRegister, clientKey, c.profPort, aliveKey, alive)
+	url := fmt.Sprintf("http://%s%s?%s=:%d&%s=%t", c.masterClient, ControlReadProcessRegister, clientKey, gProfPort, aliveKey, alive)
 	if reply, err := sendWithRetry(url, MaxRetry); err != nil {
 		msg := fmt.Sprintf("send url(%v) err(%v) reply(%v)", url, err, reply)
 		handleError(c, "registerReadProcStatus", msg)
 	}
 }
 
-func (c *client) getReadProcs(w http.ResponseWriter, r *http.Request) {
+func getReadProcsHandleFunc(w http.ResponseWriter, r *http.Request) {
+	const defaultClientID = 1
+	c, exist := getClient(defaultClientID)
+	if !exist {
+		buildFailureResp(w, http.StatusNotFound, fmt.Sprintf("client [%v] not exist", defaultClientID))
+		return
+	}
 	var encoded []byte
 	c.readProcMapLock.Lock()
 	encoded, _ = json.Marshal(&c.readProcErrMap)
