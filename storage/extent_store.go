@@ -56,6 +56,9 @@ const (
 	RandomWriteType          = 2
 	AppendWriteType          = 1
 
+	BaseExtentIDPersistStep = 10000
+	BaseExtentIDSyncStep    = 9000
+
 	LoadInProgress int32 = 0
 	LoadFinish     int32 = 1
 )
@@ -122,6 +125,7 @@ var (
 type ExtentStore struct {
 	dataPath     string
 	baseExtentID uint64 // TODO what is baseExtentID
+	baseExtentIDPersistCount          uint64
 	//extentInfoMap                     sync.Map // map that stores all the extent information
 	extentMapSlice                    *MapSlice
 	extentCnt                         int64
@@ -340,6 +344,9 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 		baseFileID = MinExtentID
 	}
 	atomic.StoreUint64(&s.baseExtentID, baseFileID)
+	if err = s.PersistenceBaseExtentID(baseFileID); err != nil {
+		return
+	}
 	log.LogInfof("datadir(%v) maxBaseId(%v)", s.dataPath, baseFileID)
 	return nil
 }

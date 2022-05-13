@@ -60,8 +60,14 @@ func (s *ExtentStore) DeleteBlockCrc(extentID uint64) (err error) {
 
 func (s *ExtentStore) PersistenceBaseExtentID(extentID uint64) (err error) {
 	value := make([]byte, 8)
-	binary.BigEndian.PutUint64(value, extentID)
+	persistBaseExtentID := extentID+BaseExtentIDPersistStep
+	binary.BigEndian.PutUint64(value, persistBaseExtentID)
 	_, err = s.metadataFp.WriteAt(value, BaseExtentIDOffset)
+	if (atomic.AddUint64(&s.baseExtentIDPersistCount, 1) - 1) % BaseExtentIDSyncStep == 0 {
+		if err = s.metadataFp.Sync(); err != nil {
+			return
+		}
+	}
 	return
 }
 
