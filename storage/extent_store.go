@@ -56,8 +56,8 @@ const (
 	RandomWriteType          = 2
 	AppendWriteType          = 1
 
-	BaseExtentIDPersistStep = 10000
-	BaseExtentIDSyncStep    = 9000
+	BaseExtentIDPersistStep = 500
+	BaseExtentIDSyncStep    = 400
 
 	LoadInProgress int32 = 0
 	LoadFinish     int32 = 1
@@ -123,8 +123,8 @@ var (
 // Multiple small files can be appended to the same tinyExtent.
 // In addition, the deletion of small files is implemented by the punch hole from the underlying file system.
 type ExtentStore struct {
-	dataPath     string
-	baseExtentID uint64 // TODO what is baseExtentID
+	dataPath                          string
+	baseExtentID                      uint64 // TODO what is baseExtentID
 	baseExtentIDPersistCount          uint64
 	//extentInfoMap                     sync.Map // map that stores all the extent information
 	extentMapSlice                    *MapSlice
@@ -1115,7 +1115,7 @@ func (s *ExtentStore) ForceEvictCache(ratio Ratio) {
 func (s *ExtentStore) PlaybackTinyDelete() (err error) {
 	var (
 		recordFileInfo os.FileInfo
-		recordData     = make([]byte, DeleteTinyRecordSize)
+		recordData           = make([]byte, DeleteTinyRecordSize)
 		readOff        int64 = 0
 		readN                = 0
 	)
