@@ -250,6 +250,7 @@ func TestMetaPartition_fsmRecoverDeletedDentry(t *testing.T) {
 	mp := new(metaPartition)
 	mp.config = new(MetaPartitionConfig)
 	mp.config.Start = 1
+	mp.config.End = 16000000
 	mp.config.Cursor = 100000
 	mp.dentryTree = mockDentryTree()
 	mp.inodeTree = &InodeBTree{NewBtree()}

@@ -553,7 +553,7 @@ func CreateInodeLinkInterTest(t *testing.T, leader, follower *metaPartition) {
 
 	//create inode link for not exist inode
 	req = &proto.LinkInodeRequest{
-		Inode: ino + 1,
+		Inode: math.MaxUint64 - 10,
 	}
 	packet = &Packet{}
 	if _ = leader.CreateInodeLink(req, packet); packet.ResultCode != proto.OpInodeOutOfRange {
@@ -660,7 +660,7 @@ func EvictFileInodeInterTest(t *testing.T, leader, follower *metaPartition) {
 
 	//evict not exist inode, response result code is not exist error
 	reqEvictInode = &proto.EvictInodeRequest{
-		Inode: ino + 1,
+		Inode: math.MaxUint64 - 10,
 	}
 	packet = &Packet{}
 	if err = leader.EvictInode(reqEvictInode, packet); packet.ResultCode != proto.OpInodeOutOfRange {

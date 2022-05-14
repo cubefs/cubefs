@@ -52,6 +52,7 @@ func TestMetaPartition_mvToDeletedInodeTree(t *testing.T) {
 	mp := new(metaPartition)
 	mp.config = new(MetaPartitionConfig)
 	mp.config.Start = 1
+	mp.config.End = 16000000
 	mp.config.Cursor = 100000
 	mp.inodeTree = mockInodeTree()
 	mp.inodeDeletedTree = &DeletedInodeBTree{NewBtree()}
@@ -93,6 +94,7 @@ func TestMetaPartition_fsmRecoverDeletedInode(t *testing.T) {
 	mp.config = new(MetaPartitionConfig)
 	mp.config.PartitionId = 1
 	mp.config.Start = 1
+	mp.config.End = 16000000
 	mp.config.Cursor = 100000
 	ino1 := NewInode(10, proto.Mode(os.ModeDir))
 	ino1.SetDeleteMark()

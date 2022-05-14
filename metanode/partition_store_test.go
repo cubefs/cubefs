@@ -273,6 +273,7 @@ func TestMetaPartition_storeDentry(t *testing.T) {
 	mp.config.StoreMode = proto.StoreModeMem
 	mp.config.Cursor = 10000
 	mp.config.Start = 0
+	mp.config.End = 16000000
 	mp.initMemoryTree()
 	_, err = mp.storeDentry(rootdir, msg)
 	if err != nil {
@@ -352,6 +353,7 @@ func TestMetaPartition_storeExtend(t *testing.T) {
 	mp.config.StoreMode = proto.StoreModeMem
 	mp.config.Cursor = 10000
 	mp.config.Start = 0
+	mp.config.End = 16000000
 	mp.initMemoryTree()
 	_, err = mp.storeExtend(rootdir, msg)
 	if err != nil {
