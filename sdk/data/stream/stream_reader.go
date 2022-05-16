@@ -21,6 +21,7 @@ import (
 
 	"golang.org/x/net/context"
 
+	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
@@ -162,7 +163,7 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 		} else {
 			//skip hole,ek is not nil,read bcache firstly
 			cacheKey := util.GenerateKey(s.client.volumeName, s.inode, req.ExtentKey.FileOffset)
-			if s.client.bcacheEnable {
+			if s.client.bcacheEnable && req.FileOffset <= bcache.MaxBlockSize {
 				//todo offset is ok for tinyextent?
 				offset := req.FileOffset - int(req.ExtentKey.FileOffset)
 				if s.client.loadBcache != nil {
@@ -182,14 +183,14 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 			}
 
 			// todo :  optimization
-			var needCache bool = false
+			var needCache = false
 			if _, ok := s.inflightL1cache.Load(cacheKey); !ok && s.client.bcacheEnable {
 				s.inflightL1cache.Store(cacheKey, true)
 				needCache = true
 			}
 
 			var buf []byte
-			if needCache {
+			if needCache && req.FileOffset <= bcache.MaxBlockSize {
 				//read full extent
 				buf = make([]byte, req.ExtentKey.Size)
 				fullReq := NewExtentRequest(int(req.ExtentKey.FileOffset), int(req.ExtentKey.Size), buf, req.ExtentKey)
