@@ -56,7 +56,7 @@ const (
 	CacheLimit   = "cacheLimit"
 	CacheFree    = "cacheFree"
 	BlockSize    = "blockSize"
-	MaxBlockSize = 128 << 20
+	MaxBlockSize = 8 << 20
 )
 
 var (
@@ -160,25 +160,30 @@ func (s *bcacheStore) registerHandler(router *mux.Router) {
 }
 
 func (s *bcacheStore) startUnixHttpServer() {
+
 	os.Mkdir(filepath.Dir(UnixSocketPath), FilePerm)
 	if _, err := os.Stat(UnixSocketPath); err == nil {
 		existErr := fmt.Sprintf("Another process is running or %s already exist.", UnixSocketPath)
-		panic(errors.New(existErr))
-	}
-	lis, err := net.Listen("unix", UnixSocketPath)
-	if err != nil {
-		panic(err)
+		log.LogErrorf(existErr)
+		os.Remove(UnixSocketPath)
 	}
 	router := mux.NewRouter().SkipClean(true)
-	s.unixListener = lis
 	s.registerHandler(router)
+	go func() {
+		lis, err := net.Listen("unix", UnixSocketPath)
+		if err != nil {
+			panic(err)
+		}
+		s.unixListener = lis
+		http.Serve(lis, router)
+	}()
+
 	go func() {
 		for {
 			time.Sleep(time.Minute * 2)
 			runtime.GC()
 		}
 	}()
-	go http.Serve(lis, router)
 }
 
 func (s *bcacheStore) cacheBlock(w http.ResponseWriter, r *http.Request) {
