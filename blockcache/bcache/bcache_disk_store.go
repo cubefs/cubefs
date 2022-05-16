@@ -93,7 +93,7 @@ func newBcacheManager(conf *bcacheConfig) BcacheManager {
 		blockSize:  conf.BlockSize,
 		pending:    make(chan waitFlush, 1024),
 	}
-	bm.wg.Add(len(cacheDirs))
+	//bm.wg.Add(len(cacheDirs))
 	var index = 0
 	for cacheDir, cacheSize := range dirSizeMap {
 		disk := NewDiskStore(cacheDir, cacheSize, conf)
@@ -101,7 +101,7 @@ func newBcacheManager(conf *bcacheConfig) BcacheManager {
 		go bm.reBuildCacheKeys(cacheDir, disk)
 		index++
 	}
-	bm.wg.Wait()
+	//bm.wg.Wait()
 	go bm.spaceManager()
 	go bm.flush()
 	//go bm.scrub()
@@ -325,7 +325,7 @@ func (bm *bcacheManager) reBuildCacheKeys(dir string, store *DiskStore) {
 		log.LogDebugf("updateStat(%v)", key)
 		store.updateStat(key.it.size)
 	}
-	defer bm.wg.Done()
+	//defer bm.wg.Done()
 }
 
 func (bm *bcacheManager) walker(c chan keyPair, prefix string, initial bool) filepath.WalkFunc {
