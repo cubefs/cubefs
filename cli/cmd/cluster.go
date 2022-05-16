@@ -37,6 +37,7 @@ func (cmd *ChubaoFSCmd) newClusterCmd(client *master.MasterClient) *cobra.Comman
 		newClusterStatCmd(client),
 		newClusterFreezeCmd(client),
 		newClusterSetThresholdCmd(client),
+		newClusterEcUpdate(client),
 		newClusterSetClientPkgAddr(client),
 	)
 	return clusterCmd
@@ -49,6 +50,7 @@ const (
 	cmdClusterThresholdShort        = "Set memory threshold of metanodes"
 	cmdClusterExtentDelRocksDbShort = "Set extent del in rocksdb enable"
 	cmdClusterClientPkgAddr         = "Set URL for client pkg download, default http://storage.jd.local/dpgimage/cfs_spark/"
+	cmdClusterEcUpdateShort  = "update ec config"
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
@@ -158,5 +160,71 @@ func newClusterSetClientPkgAddr(client *master.MasterClient) *cobra.Command {
 			stdout("ClientPackageAddr is set to %s.\n", addr)
 		},
 	}
+	return cmd
+}
+
+func newClusterEcUpdate(client *master.MasterClient) *cobra.Command {
+	var (
+		optEcMaxScrubExtents   int
+		optEcScrubPeriod       int
+		optMaxCodecConcurrent  int
+		optEcScrubEnable       string
+	)
+	var cmd = &cobra.Command{
+		Use:   CliOpEcSet,
+		Short: cmdClusterEcUpdateShort,
+		Args:  cobra.MinimumNArgs(0),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var isChange = false
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+			var cv *proto.ClusterView
+			if cv, err = client.AdminAPI().GetCluster(); err != nil {
+				errout("Get cluster info fail:\n%v\n", err)
+			}
+			if optEcScrubEnable != "" {
+				var enable bool
+				isChange = true
+				if enable, err = strconv.ParseBool(optEcScrubEnable); err != nil {
+					return
+				}
+				cv.EcScrubEnable = enable
+			}
+			if optEcMaxScrubExtents > 0 {
+				isChange = true
+				cv.EcMaxScrubExtents = uint8(optEcMaxScrubExtents)
+			}
+			if optMaxCodecConcurrent > 0 {
+				isChange = true
+				cv.MaxCodecConcurrent = optMaxCodecConcurrent
+			}
+			if optEcScrubPeriod > 0 {
+				isChange = true
+				cv.EcScrubPeriod = uint32(optEcScrubPeriod)
+			}
+			if !isChange {
+				stdout("No changes has been set.\n")
+				return
+			}
+			err = client.AdminAPI().UpdateEcInfo(cv.EcScrubEnable, int(cv.EcMaxScrubExtents), int(cv.EcScrubPeriod), cv.MaxCodecConcurrent)
+			if err != nil {
+				return
+			}
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().IntVar(&optEcScrubPeriod, CliFlagEcScrubPeriod, 0, "Specify ec scrub period unit: min")
+	cmd.Flags().IntVar(&optEcMaxScrubExtents, CliFlagEcMaxScrubExtents, 0, "Specify every disk concurrent scrub extents")
+	cmd.Flags().StringVar(&optEcScrubEnable, CliFlagEcScrubEnable, "", "Enable ec scrub ")
+	cmd.Flags().IntVar(&optMaxCodecConcurrent, CliFlagMaxCodecConcurrent, 0, "Specify every codecNode concurrent migrate dp")
 	return cmd
 }

@@ -1,0 +1,65 @@
+language: go
+
+os:
+  - linux
+  - osx
+  - windows
+
+arch:
+  - amd64
+  - arm64
+  - ppc64le
+  - s390x
+
+go:
+  - 1.14.x
+  - 1.15.x
+  - 1.16.x
+  - master
+
+env:
+  - GO111MODULE=off CGO_ENABLED=0
+
+install:
+ - go get ./...
+
+script:
+ - go vet ./...
+ - go test -cpu=1,2 .
+ - go test -tags=noasm -cpu=1,2 .
+ - go build examples/simple-decoder.go
+ - go build examples/simple-encoder.go
+ - go build examples/stream-decoder.go
+ - go build examples/stream-encoder.go
+
+jobs:
+  allow_failures:
+    - go: 'master'
+    - arch: s390x
+  fast_finish: true
+  include:
+    - stage: other
+      go: 1.16.x
+      os: linux
+      arch: amd64
+      script:
+        - diff <(gofmt -d .) <(printf "")
+        - diff <(gofmt -d ./examples) <(printf "")
+        - go get github.com/klauspost/asmfmt&&go install github.com/klauspost/asmfmt/cmd/asmfmt
+        - diff <(asmfmt -d .) <(printf "")
+        - CGO_ENABLED=1 go test -cpu=1 -short -race .
+        - CGO_ENABLED=1 go test -cpu=2 -short -race .
+        - CGO_ENABLED=1 go test -tags=noasm -cpu=1 -short -race .
+        - CGO_ENABLED=1 go test -tags=noasm -cpu=4 -short -race .
+        - CGO_ENABLED=1 go test -no-avx512 -short -race .
+        - CGO_ENABLED=1 go test -no-avx512 -no-avx2 -short -race .
+        - CGO_ENABLED=1 go test -no-avx512 -no-avx2 -no-ssse3 -short -race .
+        - GOOS=linux GOARCH=386 go test -short .
+    - stage: other
+      go: 1.15.x
+      os: linux
+      arch: amd64
+      script:
+        - go test -no-avx512
+        - go test -no-avx512 -no-avx2
+        - go test -no-avx512 -no-avx2 -no-ssse3

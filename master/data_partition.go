@@ -61,6 +61,9 @@ type DataPartition struct {
 	PanicHosts              []string
 	FileInCoreMap           map[string]*FileInCore `graphql:"-"`
 	FilesWithMissingReplica map[string]int64       `graphql:"-"` // key: file name, value: last time when a missing replica is found
+	lastUpdateTimeMap       map[string]int64
+	EcMigrateStatus         uint8
+	doDelDpAlreadyEcTime    int64
 }
 
 func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64) (partition *DataPartition) {
@@ -75,6 +78,7 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64)
 	partition.FilesWithMissingReplica = make(map[string]int64)
 	partition.MissingNodes = make(map[string]int64)
 	partition.PanicHosts = make([]string, 0)
+	partition.lastUpdateTimeMap = make(map[string]int64)
 
 	partition.Status = proto.ReadOnly
 	partition.VolName = volName
@@ -362,6 +366,7 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *proto.Dat
 	if len(dpr.MediumType) == 0 {
 		dpr.MediumType = proto.MediumHDDName
 	}
+	dpr.EcMigrateStatus = partition.EcMigrateStatus
 	return
 }
 
@@ -617,6 +622,7 @@ func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode
 		partition.addReplica(replica)
 	}
 	partition.total = vr.Total
+	partition.lastUpdateTimeMap[dataNode.Addr] = vr.LastUpdateTime
 	replica.Status = int8(vr.PartitionStatus)
 	replica.Total = vr.Total
 	replica.Used = vr.Used
@@ -816,6 +822,7 @@ func (partition *DataPartition) ToProto(c *Cluster) *proto.DataPartitionInfo {
 		CreateTime:              partition.createTime,
 		ReplicaNum:              partition.ReplicaNum,
 		Status:                  partition.Status,
+		EcMigrateStatus:         partition.EcMigrateStatus,
 		IsRecover:               partition.isRecover,
 		IsManual:                partition.IsManual,
 		Replicas:                replicas,

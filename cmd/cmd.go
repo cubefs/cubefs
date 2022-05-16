@@ -18,11 +18,13 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/chubaofs/chubaofs/codecnode"
 	"github.com/chubaofs/chubaofs/convertnode"
 	"github.com/chubaofs/chubaofs/datanodeAgent"
 	"github.com/chubaofs/chubaofs/schedulenode/compact"
 	"github.com/chubaofs/chubaofs/schedulenode/scheduler"
 	"github.com/chubaofs/chubaofs/schedulenode/smart"
+	"github.com/chubaofs/chubaofs/ecnode"
 	syslog "log"
 	"net"
 	"net/http"
@@ -76,6 +78,8 @@ const (
 	RoleSmart     = "smartvolume"
 	RoleCompact   = "compact"
 	RoleDataAgent = "dataAgent"
+	RoleCodec   = "codecnode"
+	RoleEc      = "ecnode"
 )
 
 const (
@@ -90,6 +94,8 @@ const (
 	ModuleSmart     = "smartVolume"
 	ModuleCompact   = "compact"
 	ModuleDataAgent = "dataAgent"
+	ModuleCodec  = "codecNode"
+	ModuleEc      = "ecNode"
 )
 
 const (
@@ -243,6 +249,12 @@ func run() error {
 	case RoleDataAgent:
 		server = datanodeAgent.NewServer()
 		module = ModuleDataAgent
+	case RoleCodec:
+		server = codecnode.NewServer()
+		module = ModuleCodec
+	case RoleEc:
+		server = ecnode.NewServer()
+		module = ModuleEc
 	default:
 		_ = daemonize.SignalOutcome(fmt.Errorf("Fatal: role mismatch: %v", role))
 		return fmt.Errorf("unknown role: %v", role)

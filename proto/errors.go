@@ -28,16 +28,22 @@ var (
 	ErrVolNotExists           = errors.New("vol not exists")
 	ErrMetaPartitionNotExists = errors.New("meta partition not exists")
 	ErrDataPartitionNotExists = errors.New("data partition not exists")
+	ErrEcPartitionNotExists   = errors.New("ec partition not exists")
 	ErrDataNodeNotExists      = errors.New("data node not exists")
 	ErrMetaNodeNotExists      = errors.New("meta node not exists")
+	ErrEcNodeNotExists        = errors.New("ec node not exists")
+	ErrCodecNodeNotExists     = errors.New("codec node not exists")
 	ErrDuplicateVol           = errors.New("duplicate vol")
 	ErrActiveDataNodesTooLess = errors.New("no enough active data node")
 	ErrActiveMetaNodesTooLess = errors.New("no enough active meta node")
 	ErrInvalidMpStart         = errors.New("invalid meta partition start value")
 	ErrNoAvailDataPartition   = errors.New("no available data partition")
 	ErrReshuffleArray         = errors.New("the array to be reshuffled is nil")
+	ErrNoAvailEcPartition     = errors.New("no available ec partition")
+	ErrEcDataCrc              = errors.New("ec data crc error")
 
-	ErrIllegalDataReplica = errors.New("data replica is illegal")
+	ErrDataPartitionNotMigrating = errors.New("data partition not Migrating")
+	ErrIllegalDataReplica        = errors.New("data replica is illegal")
 
 	ErrMissingReplica       = errors.New("a missing data replica is found")
 	ErrHasOneMissingReplica = errors.New("there is a missing replica")
@@ -49,6 +55,7 @@ var (
 	ErrNoDataNodeToCreateDataPartition = errors.New("no enough data nodes for creating a data partition")
 	ErrNoZoneToCreateDataPartition     = errors.New("no zone available for creating a data partition")
 	ErrNoZoneToCreateMetaPartition     = errors.New("no zone available for creating a meta partition")
+	ErrNoZoneToCreateECPartition       = errors.New("no zone available for creating a ec partition")
 	ErrNoNodeSetToCreateDataPartition  = errors.New("no node set available for creating a data partition")
 	ErrNoNodeSetToCreateMetaPartition  = errors.New("no node set available for creating a meta partition")
 	ErrNoMetaNodeToCreateMetaPartition = errors.New("no enough meta nodes for creating a meta partition")
@@ -161,6 +168,10 @@ const (
 	ErrCodeVolWriteMutexOccupied
 	ErrCodeHBaseOperation
 	ErrCodeVolInCreation
+	ErrCodeEcPartitionNotExists
+	ErrCodeNoAvailEcPartition
+	ErrCodeNoZoneToCreateECPartition
+	ErrCodeDataPartitionNotMigrating
 )
 
 // Err2CodeMap error map to code
@@ -175,6 +186,8 @@ var Err2CodeMap = map[error]int32{
 	ErrVolNotExists:                    ErrCodeVolNotExists,
 	ErrMetaPartitionNotExists:          ErrCodeMetaPartitionNotExists,
 	ErrDataPartitionNotExists:          ErrCodeDataPartitionNotExists,
+	ErrEcPartitionNotExists:            ErrCodeEcPartitionNotExists,
+	ErrDataPartitionNotMigrating:       ErrCodeDataPartitionNotMigrating,
 	ErrDataNodeNotExists:               ErrCodeDataNodeNotExists,
 	ErrMetaNodeNotExists:               ErrCodeMetaNodeNotExists,
 	ErrDuplicateVol:                    ErrCodeDuplicateVol,
@@ -249,6 +262,8 @@ var code2ErrMap = map[int32]error{
 	ErrCodeVolNotExists:                    ErrVolNotExists,
 	ErrCodeMetaPartitionNotExists:          ErrMetaPartitionNotExists,
 	ErrCodeDataPartitionNotExists:          ErrDataPartitionNotExists,
+	ErrCodeEcPartitionNotExists:            ErrEcPartitionNotExists,
+	ErrCodeDataPartitionNotMigrating:       ErrDataPartitionNotMigrating,
 	ErrCodeDataNodeNotExists:               ErrDataNodeNotExists,
 	ErrCodeMetaNodeNotExists:               ErrMetaNodeNotExists,
 	ErrCodeDuplicateVol:                    ErrDuplicateVol,

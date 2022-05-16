@@ -661,6 +661,10 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 		return
 	}
 
+	if proto.IsEcStatus(dp.EcMigrateStatus) {
+		err = errors.New("Ec not support RandomWrite")
+		return
+	}
 	sc := NewStreamConn(dp, false)
 
 	for total < size {

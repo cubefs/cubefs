@@ -15,6 +15,7 @@
 # permissions and limitations under the License.
 
 MntPoint=/cfs/mnt
+EcMntPoint=/cfs/ecmnt
 mkdir -p /cfs/bin /cfs/log /cfs/mnt
 src_path=/go/src/github.com/chubaofs/cfs
 cli=/cfs/bin/cfs-cli
@@ -25,6 +26,8 @@ Master1Addr="192.168.0.11:17010"
 LeaderAddr=""
 VolName=ltptest
 Owner=ltptest
+EcVolName=ltpectest
+EcOwner=ltpectest
 AccessKey=39bEF4RrAQgMj6RV
 SecretKey=TRL6o3JL16YOqvZGIohBDFTHZDEcFsyd
 AuthKey="0e20229116d5a9a4a9e876806b514a85"
@@ -253,6 +256,8 @@ run_unit_test() {
             ./metanode/... \
             ./objectnode/... \
             ./schedulenode/... \
+            ./codecnode/... \
+            ./ecnode/... \
             ./storage/... \
             ./sdk/data/... \
             ./sdk/meta/... \
@@ -347,6 +352,154 @@ run_trash_test() {
    echo -e "\033[32mdone\033[0m"
 }
 
+run_ectest() {
+    export GO111MODULE="off"
+    base_path=/go/src/github.com/chubaofs/chubaofs
+    echo "Running EC Consistency Test"
+    echo "************************";
+    echo "   EC Consistency Test  ";
+    echo "************************";
+    pre_ec_consistency_test
+    ret=$?
+    if [[ $ret -ne 0 ]]; then
+        exit $ret
+    fi
+
+    echo "Ec Consistency Test start"
+    ec_consistency_test
+    ret=$?
+    if [[ $ret -ne 0 ]]; then
+        exit $ret
+    fi
+    echo "Ec Consistency Test end"
+
+    after_ec_consistency_test
+    ret=$?
+    if [[ $ret -ne 0 ]]; then
+        exit $ret
+    fi
+}
+
+pre_ec_consistency_test() {
+  mkdir -p /cfs/ecmnt
+  echo -n "Creating EcVolume   ... "
+  ${cli} volume create ${EcVolName} ${EcOwner} --capacity=30 --ecEnable=true -y > /dev/null
+  if [[ $? -ne 0 ]]; then
+      echo -e "\033[31mfail\033[0m"
+      return 1
+  fi
+
+  ${cli} volume ec-set ${EcVolName} --ecRetryWait 1 > /dev/null
+  if [[ $? -ne 0 ]]; then
+      echo -e "set ecRetryWait \033[31mfail\033[0m"
+      return 1
+  fi
+
+  ret=`${cli} volume info ${EcVolName} | grep EcEnable | awk '{print $3}'`
+  if [[ "$ret" == "false" ]]; then
+      echo -e "\033[31mfail\033[0m"
+      return 1
+  fi
+  echo -e "\033[32mdone\033[0m"
+
+  echo -n "Starting EcClient   ... "
+  nohup /cfs/bin/cfs-client -c /cfs/conf/client_ec.json >/cfs/log/cfs.out 2>&1 &
+  sleep 10
+  res=$( mount | grep -q "$EcVolName on $EcMntPoint" ; echo $? )
+  if [[ $res -ne 0 ]] ; then
+      echo -e "\033[31mfail\033[0m"
+      return $res
+  fi
+  echo -e "\033[32mdone\033[0m"
+  return 0
+}
+
+ec_consistency_test() {
+  test_files=(100M 1M 111K 10K)
+  for file in ${test_files[@]};do
+    echo -n "write to $EcMntPoint/$file   ... "
+    timeout 180 dd if=/dev/zero of=$EcMntPoint/$file bs=$file count=1 &>/dev/null
+    if [[ $? -ne 0 ]];then
+      echo -e "\033[31mfail\033[0m"
+    fi
+    echo -e "\033[32mdone\033[0m"
+  done
+
+  dps=(`${cli} volume info ${EcVolName} --data-partition | awk '{print $1}' | sed  -e 's/[a-z|A-Z|:]//g' -e '/^$/d'`)
+
+  echo "origin file md5 info:"
+  for ((idx=0; idx<${#test_files[@]}; idx++));do
+    md5_origin_files[$idx]=`timeout 180 md5sum $EcMntPoint/${test_files[$idx]} | awk '{print $1}'`
+    printf "%-5s %-10s\n" ${test_files[$idx]} ${md5_origin_files[$idx]}
+  done
+  sleep 120
+  needmigration=1
+  time=0
+  while ((1));do
+    echo -e "\rMigration Start  timeout:(300)s curtime:($time)s  ... \c"
+    for((idx=0; idx<${#dps[@]}; idx++));do
+      ret=`${cli} datapartition info ${dps[$idx]} | grep USED -A 3 | awk 'NR==2{print $2}'`
+      if [[ $ret == 0 ]]; then
+          migration_status[$idx]=1
+          continue
+      fi
+
+      if [[ needmigration -eq 1 ]];then
+        ${cli} datapartition migrate-ec ${dps[$idx]} "test" >/dev/null
+        migration_status[$idx]=0
+      fi
+
+      ret=`${cli} ecpartition info ${dps[$idx]} | grep EcMigrateStatus | awk '{print $3}'`
+      if [[ "$ret" == "FinishEc" ]];then
+        migration_status[$idx]=1
+      fi
+    done
+    migration_fin=1
+    if [[ needmigration -eq 1 ]];then needmigration=0; fi
+    for status in ${migration_status[@]};do
+      if [[ $status -eq 0 ]]; then migration_fin=0; break; fi
+    done
+    if [[ $migration_fin -eq 1 ]]; then
+      echo -e "\033[32mdone\033[0m"
+      break
+    fi
+    if [[ $time -ge 300 ]]; then
+      echo -e "\033[31mfail\033[0m"
+      echo "migration timeout"
+      return 1
+    fi
+    time=$((time+10))
+    sleep 10
+  done
+  sleep 60
+  for ((idx=0; idx<${#test_files[@]}; idx++));do
+    ecmd5=`timeout 180 md5sum $EcMntPoint/${test_files[$idx]} | awk '{print $1}'`
+    echo -n "${test_files[$idx]} origin:${md5_origin_files[$idx]} ec:$ecmd5   ... "
+    if [[ "$ecmd5" == "${md5_origin_files[$idx]}" ]];then
+      echo -e "\033[32mdone\033[0m"
+      continue
+    fi
+    echo -e "\033[31mfail\033[0m"
+  done
+
+  return 0
+}
+
+after_ec_consistency_test() {
+  echo -n "Stopping EcClient   ... "
+  umount ${EcMntPoint}
+  echo -e "\033[32mdone\033[0m" || { echo -e "\033[31mfail\033[0m"; exit 1; }
+
+  echo -n "Deleting EcVolume   ... "
+  ${cli} volume delete ${EcVolName} -y &> /dev/null
+  if [[ $? -ne 0 ]]; then
+      echo -e "\033[31mfail\033[0m"
+      return 1
+  fi
+  echo -e "\033[32mdone\033[0m"
+  return 0
+}
+
 run_bypass_client_test() {
     echo "run bypass client test..."
     LD_PRELOAD=/usr/lib64/libcfsclient.so CFS_CONFIG_PATH=/cfs/conf/bypass.ini CFS_MOUNT_POINT=/cfs/mnt /cfs/bin/test-bypass
@@ -367,6 +520,9 @@ run_unit_test
 reload_client
 run_ltptest
 run_s3_test
+if [[ $ECENABLE -eq 1 ]];then
+  run_ectest
+fi
 set_trash_days; sleep 310
 run_trash_test; sleep 2
 stop_client ; sleep 20

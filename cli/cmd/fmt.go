@@ -40,6 +40,17 @@ func formatClusterView(cv *proto.ClusterView) string {
 	sb.WriteString(fmt.Sprintf("  Dp recover pool  : %v\n", cv.DpRecoverPool))
 	sb.WriteString(fmt.Sprintf("  Mp recover pool  : %v\n", cv.MpRecoverPool))
 	sb.WriteString(fmt.Sprintf("  Client pkg addr  : %v\n", cv.ClientPkgAddr))
+	sb.WriteString(fmt.Sprintf("  EcNode count     : %v\n", len(cv.EcNodes)))
+	sb.WriteString(fmt.Sprintf("  EcNode used      : %v GB\n", cv.EcNodeStatInfo.UsedGB))
+	sb.WriteString(fmt.Sprintf("  EcNode total     : %v GB\n", cv.EcNodeStatInfo.TotalGB))
+	sb.WriteString(fmt.Sprintf("  Ec scrub enable  : %v\n", cv.EcScrubEnable))
+	sb.WriteString(fmt.Sprintf("  Ec scrub period  : %v min\n", cv.EcScrubPeriod))
+	sb.WriteString(fmt.Sprintf("  Ec scrub extents : %v\n", cv.EcMaxScrubExtents))
+	sb.WriteString(fmt.Sprintf("  codec concurrent : %v\n", cv.MaxCodecConcurrent))
+	if cv.EcScrubEnable {
+		startScrubTime := time.Unix(cv.EcScrubStartTime, 0).Format(time.RFC1123)
+		sb.WriteString(fmt.Sprintf("  Ec start scrub   : %v \n", startScrubTime))
+	}
 	return sb.String()
 }
 
@@ -105,6 +116,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Owner                : %v\n", svv.Owner))
 	sb.WriteString(fmt.Sprintf("  Zone                 : %v\n", svv.ZoneName))
 	sb.WriteString(fmt.Sprintf("  Status               : %v\n", formatVolumeStatus(svv.Status)))
+	sb.WriteString(fmt.Sprintf("  EcEnable             : %v\n", svv.EcEnable))
 	sb.WriteString(fmt.Sprintf("  Capacity             : %v GB\n", svv.Capacity))
 	sb.WriteString(fmt.Sprintf("  Create time          : %v\n", svv.CreateTime))
 	sb.WriteString(fmt.Sprintf("  Authenticate         : %v\n", formatEnabledDisabled(svv.Authenticate)))
@@ -271,6 +283,7 @@ func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("CreateTime: %v\n", formatTime(partition.CreateTime)))
 	sb.WriteString(fmt.Sprintf("Recovering    : %v\n", formatIsRecover(partition.IsRecover)))
 	sb.WriteString(fmt.Sprintf("IsManual      : %v\n", formatIsRecover(partition.IsManual)))
+	sb.WriteString(fmt.Sprintf("EcMigrateStatus : %v\n", EcStatusMap[partition.EcMigrateStatus]))
 	sb.WriteString(fmt.Sprintf("LastLoadedTime: %v\n", formatTime(partition.LastLoadedTime)))
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("Replicas : \n"))
@@ -609,6 +622,7 @@ func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID                  : %v\n", dn.ID))
 	sb.WriteString(fmt.Sprintf("  Address             : %v\n", dn.Addr))
+	sb.WriteString(fmt.Sprintf("  HttpPort            : %v\n", dn.HttpPort))
 	sb.WriteString(fmt.Sprintf("  Version             : %v\n", dn.Version))
 	sb.WriteString(fmt.Sprintf("  Carry               : %v\n", dn.Carry))
 	sb.WriteString(fmt.Sprintf("  Used ratio          : %v\n", dn.UsageRatio))
@@ -961,5 +975,119 @@ var dataPartitionRaftTableHeaderInfo = fmt.Sprintf(raftInfoTableHeader, "ID", "I
 func formatDataPartitionRaftTableInfo(raft *proto.Status) string {
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf(raftInfoTableHeader, raft.NodeID, raft.Leader == raft.NodeID, raft.Commit, raft.Index, raft.Applied, raft.Log.FirstIndex, raft.Log.LastIndex, raft.PendQueue, raft.State, raft.Stopped))
+	return sb.String()
+}
+
+var ecReplicaTableRowPattern = "%-18v    %-6v    %-6v    %-6v    %-6v    %-6v    %-10v    %-8v"
+
+func formatEcReplicaTableHeader() string {
+	return fmt.Sprintf(ecReplicaTableRowPattern, "ADDRESS", "USED", "TOTAL", "ISLEADER", "FILECOUNT", "STATUS", "REPORT TIME", "HTTPPORT")
+}
+
+func formatEcReplica(indentation string, replica *proto.EcReplica, rowTable bool) string {
+	if rowTable {
+		return fmt.Sprintf(ecReplicaTableRowPattern, replica.Addr, formatSize(replica.Used), formatSize(replica.Total),
+			replica.IsLeader, replica.FileCount, formatDataPartitionStatus(replica.Status), formatTime(replica.ReportTime), replica.HttpPort)
+	}
+	var sb = strings.Builder{}
+	sb.WriteString(fmt.Sprintf("%v- Addr           : %v\n", indentation, replica.Addr))
+	sb.WriteString(fmt.Sprintf("%v  Used           : %v\n", indentation, formatSize(replica.Used)))
+	sb.WriteString(fmt.Sprintf("%v  Total          : %v\n", indentation, formatSize(replica.Total)))
+	sb.WriteString(fmt.Sprintf("%v  IsLeader       : %v\n", indentation, replica.IsLeader))
+	sb.WriteString(fmt.Sprintf("%v  FileCount      : %v\n", indentation, replica.FileCount))
+	sb.WriteString(fmt.Sprintf("%v  HasLoadResponse: %v\n", indentation, replica.HasLoadResponse))
+	sb.WriteString(fmt.Sprintf("%v  NeedsToCompare : %v\n", indentation, replica.NeedsToCompare))
+	sb.WriteString(fmt.Sprintf("%v  Status         : %v\n", indentation, formatDataPartitionStatus(replica.Status)))
+	sb.WriteString(fmt.Sprintf("%v  DiskPath       : %v\n", indentation, replica.DiskPath))
+	sb.WriteString(fmt.Sprintf("%v  ReportTime     : %v\n", indentation, formatTime(replica.ReportTime)))
+	sb.WriteString(fmt.Sprintf("%v  HttpPort       : %v\n", indentation, replica.HttpPort))
+	return sb.String()
+}
+
+var ecNodeDetailTableRowPattern = "%-6v    %-6v    %-6v    %-10v"
+
+func formatSimpleVolEcView(svv *proto.SimpleVolView) string {
+
+	var sb = strings.Builder{}
+	sb.WriteString(fmt.Sprintf("  Ec is enabled            : %v\n", svv.EcEnable))
+	sb.WriteString(fmt.Sprintf("  Ec data numbers          : %v\n", svv.EcDataNum))
+	sb.WriteString(fmt.Sprintf("  Ec parity numbers        : %v\n", svv.EcParityNum))
+	sb.WriteString(fmt.Sprintf("  Ec migration waitTime    : %v min\n", svv.EcWaitTime))
+	sb.WriteString(fmt.Sprintf("  rep partition saveTime   : %v min\n", svv.EcSaveTime))
+	sb.WriteString(fmt.Sprintf("  Ec migrate timeOut       : %v min\n", svv.EcTimeOut))
+	sb.WriteString(fmt.Sprintf("  Ec fail retry waitTime   : %v min\n", svv.EcRetryWait))
+	sb.WriteString(fmt.Sprintf("  Ec max unit size         : %v bytes\n", svv.EcMaxUnitSize))
+	return sb.String()
+}
+
+func formatEcPartitionInfo(partition *proto.EcPartitionInfo) string {
+	var sb = strings.Builder{}
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("volume name     : %v\n", partition.VolName))
+	sb.WriteString(fmt.Sprintf("volume ID       : %v\n", partition.VolID))
+	sb.WriteString(fmt.Sprintf("PartitionID     : %v\n", partition.PartitionID))
+	sb.WriteString(fmt.Sprintf("Status          : %v\n", formatDataPartitionStatus(partition.Status)))
+	sb.WriteString(fmt.Sprintf("EcMigrateStatus : %v\n", EcStatusMap[partition.EcMigrateStatus]))
+	sb.WriteString(fmt.Sprintf("LastLoadedTime  : %v\n", formatTime(partition.LastLoadedTime)))
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("Replicas : \n"))
+	sb.WriteString(fmt.Sprintf("%v\n", formatEcReplicaTableHeader()))
+	for _, replica := range partition.EcReplicas {
+		sb.WriteString(fmt.Sprintf("%v\n", formatEcReplica("", replica, true)))
+	}
+
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("Hosts :\n"))
+	for _, host := range partition.Hosts {
+		sb.WriteString(fmt.Sprintf("  [%v]", host))
+	}
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("Zones :\n"))
+	for _, zone := range partition.Zones {
+		sb.WriteString(fmt.Sprintf("  [%v]", zone))
+	}
+	sb.WriteString("\n")
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("MissingNodes :\n"))
+	for partitionHost, id := range partition.MissingNodes {
+		sb.WriteString(fmt.Sprintf("  [%v, %v]\n", partitionHost, id))
+	}
+	sb.WriteString(fmt.Sprintf("FilesWithMissingReplica : \n"))
+	for file, id := range partition.FilesWithMissingReplica {
+		sb.WriteString(fmt.Sprintf("  [%v, %v]\n", file, id))
+	}
+	return sb.String()
+}
+
+func formatEcPartitionInfoRow(partition *proto.EcPartitionInfo) string {
+	var sb = strings.Builder{}
+	sort.Strings(partition.Hosts)
+	sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n",
+		partition.PartitionID, partition.VolName, formatDataPartitionStatus(partition.Status), "master", fmt.Sprintf("%v/%v", len(partition.Hosts), partition.ReplicaNum), "(hosts)"+strings.Join(partition.Hosts, ",")))
+	return sb.String()
+}
+
+func formatEcNodeDetail(en *proto.EcNodeInfo, rowTable bool) string {
+	if rowTable {
+		return fmt.Sprintf(dataNodeDetailTableRowPattern, en.ID, en.ZoneName, en.Addr, formatSize(en.Used),
+			formatSize(en.Total), formatNodeStatus(en.IsActive), formatTimeToString(en.ReportTime))
+	}
+	var sb = strings.Builder{}
+	sb.WriteString(fmt.Sprintf("  ID                  : %v\n", en.ID))
+	sb.WriteString(fmt.Sprintf("  Address             : %v\n", en.Addr))
+	sb.WriteString(fmt.Sprintf("  HttpPort            : %v\n", en.HttpPort))
+	sb.WriteString(fmt.Sprintf("  Carry               : %v\n", en.Carry))
+	sb.WriteString(fmt.Sprintf("  Used ratio          : %v\n", en.UsageRatio))
+	sb.WriteString(fmt.Sprintf("  Used                : %v\n", formatSize(en.Used)))
+	sb.WriteString(fmt.Sprintf("  Available           : %v\n", formatSize(en.AvailableSpace)))
+	sb.WriteString(fmt.Sprintf("  Total               : %v\n", formatSize(en.Total)))
+	sb.WriteString(fmt.Sprintf("  Zone                : %v\n", en.ZoneName))
+	sb.WriteString(fmt.Sprintf("  IsActive            : %v\n", formatNodeStatus(en.IsActive)))
+	sb.WriteString(fmt.Sprintf("  Report time         : %v\n", formatTimeToString(en.ReportTime)))
+	sb.WriteString(fmt.Sprintf("  Partition count     : %v\n", en.DataPartitionCount))
+	sb.WriteString(fmt.Sprintf("  Bad disks           : %v\n", en.BadDisks))
+	sb.WriteString(fmt.Sprintf("  Persist partitions  : %v\n", en.PersistenceDataPartitions))
+	sb.WriteString(fmt.Sprintf("  tobeOffline         : %v\n", en.ToBeOffline))
+	sb.WriteString(fmt.Sprintf("  tobeMigrated        : %v\n", en.ToBeMigrated))
 	return sb.String()
 }

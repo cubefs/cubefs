@@ -23,7 +23,7 @@ func buildPanicVol() *Vol {
 	}
 	var createTime = time.Now().Unix() // record create time of this volume
 	vol := newVol(id, commonVol.Name, commonVol.Owner, testZone1+","+testZone2, commonVol.dataPartitionSize, commonVol.Capacity,
-		defaultReplicaNum, defaultReplicaNum, false, false, true,
+		defaultReplicaNum, defaultReplicaNum,false, false, true,
 		true, false, false, false, createTime, createTime, "", "", "", 0, 0, 0, 0.0, 30,
 		proto.StoreModeMem, proto.VolConvertStInit, proto.MetaPartitionLayout{0, 0}, strings.Split(testSmartRules, ","), proto.CompactDefault)
 

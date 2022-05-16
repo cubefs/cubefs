@@ -406,6 +406,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/moveExtentBatch", s.moveExtentFileBatch)
 	http.HandleFunc("/repairExtent", s.repairExtent)
 	http.HandleFunc("/repairExtentBatch", s.repairExtentBatch)
+	http.HandleFunc("/extentCrc", s.getExtentCrc)
 }
 
 func (s *DataNode) startTCPService() (err error) {

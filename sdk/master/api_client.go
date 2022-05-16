@@ -158,6 +158,21 @@ func (api *ClientAPI) GetDataPartitions(volName string) (view *proto.DataPartiti
 	return
 }
 
+func (api *ClientAPI) GetEcPartitions(volName string) (view *proto.EcPartitionsView, err error) {
+	path := proto.ClientEcPartitions
+	var request = newAPIRequest(http.MethodGet, path)
+	request.addParam("name", volName)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	view = &proto.EcPartitionsView{}
+	if err = json.Unmarshal(data, view); err != nil {
+		return
+	}
+	return
+}
+
 func (api *ClientAPI) ApplyVolMutex(volName string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminApplyVolMutex)
 	request.addParam("name", volName)

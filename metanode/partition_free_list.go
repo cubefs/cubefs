@@ -77,6 +77,8 @@ func (mp *metaPartition) updateVolWorker() {
 				PartitionID: view.DataPartitions[i].PartitionID,
 				Status:      view.DataPartitions[i].Status,
 				Hosts:       view.DataPartitions[i].Hosts,
+				EcHosts:     view.DataPartitions[i].EcHosts,
+				EcMigrateStatus: view.DataPartitions[i].EcMigrateStatus,
 				ReplicaNum:  view.DataPartitions[i].ReplicaNum,
 			}
 		}
@@ -305,6 +307,17 @@ func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, ext *proto.Ex
 			ext.PartitionId)
 		return
 	}
+
+	//delete the ec node
+	if proto.IsEcFinished(dp.EcMigrateStatus) {
+		err = mp.doDeleteEcMarkedInodes(ctx, dp, ext)
+		return
+	}else if dp.EcMigrateStatus == proto.Migrating {
+		err = errors.NewErrorf("dp(%v) is migrate Ec, wait done", dp.PartitionID)
+		return
+	}
+
+
 	// delete the data node
 	conn, err := mp.config.ConnPool.GetConnect(dp.Hosts[0])
 
@@ -355,6 +368,16 @@ func (mp *metaPartition) doBatchDeleteExtentsByPartition(ctx context.Context, pa
 		}
 	}
 
+	// delete the ec node
+	//delete the ec node
+	if proto.IsEcFinished(dp.EcMigrateStatus) {
+		err = mp.doBatchDeleteEcExtentsByPartition(ctx, dp, exts)
+		return
+	}else if dp.EcMigrateStatus == proto.Migrating {
+		err = errors.NewErrorf("dp(%v) is migrate Ec, wait done", dp.PartitionID)
+		return
+	}
+
 	// delete the data node
 	conn, err := mp.config.ConnPool.GetConnect(dp.Hosts[0])
 
@@ -399,4 +422,78 @@ func (mp *metaPartition) persistDeletedInodes(inos []uint64) {
 			log.LogWarnf("[persistDeletedInodes] failed store ino=%v", ino)
 		}
 	}
+}
+
+func (mp *metaPartition) doDeleteEcMarkedInodes(ctx context.Context, dp *DataPartition, ext *proto.ExtentKey) (err error) {
+	// delete the data node
+	conn, err := mp.config.ConnPool.GetConnect(dp.EcHosts[0])
+
+	defer func() {
+		if err != nil {
+			log.LogError(err)
+			mp.config.ConnPool.PutConnect(conn, ForceClosedConnect)
+		} else {
+			mp.config.ConnPool.PutConnect(conn, NoClosedConnect)
+		}
+	}()
+
+	if err != nil {
+		err = errors.NewErrorf("get conn from pool %s, "+
+			"extents partitionId=%d, extentId=%d",
+			err.Error(), ext.PartitionId, ext.ExtentId)
+		return
+	}
+	p := NewPacketToDeleteEcExtent(ctx, dp, ext)
+	if err = p.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
+		err = errors.NewErrorf("write to ecNode %s, %s", p.GetUniqueLogId(),
+			err.Error())
+		return
+	}
+	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+		err = errors.NewErrorf("read response from ecNode %s, %s",
+			p.GetUniqueLogId(), err.Error())
+		return
+	}
+	if p.ResultCode != proto.OpOk {
+		err = errors.NewErrorf("[deleteEcMarkedInodes] %s response: %s", p.GetUniqueLogId(),
+			p.GetResultMsg())
+	}
+	return
+}
+
+func (mp *metaPartition) doBatchDeleteEcExtentsByPartition(ctx context.Context, dp *DataPartition, exts []*proto.ExtentKey) (err error) {
+	var (
+		conn *net.TCPConn
+	)
+	conn, err = mp.config.ConnPool.GetConnect(dp.EcHosts[0])
+	defer func() {
+		if err != nil {
+			mp.config.ConnPool.PutConnect(conn, ForceClosedConnect)
+		} else {
+			mp.config.ConnPool.PutConnect(conn, NoClosedConnect)
+		}
+	}()
+
+	if err != nil {
+		err = errors.NewErrorf("get conn from pool %s, "+
+			"extents partitionId=%d",
+			err.Error(), dp.PartitionID)
+		return
+	}
+	p := NewPacketToBatchDeleteEcExtent(ctx, dp, exts)
+	if err = p.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
+		err = errors.NewErrorf("write to ecNode %s, %s", p.GetUniqueLogId(),
+			err.Error())
+		return
+	}
+	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime*10); err != nil {
+		err = errors.NewErrorf("read response from ecNode %s, %s",
+			p.GetUniqueLogId(), err.Error())
+		return
+	}
+	if p.ResultCode != proto.OpOk {
+		err = errors.NewErrorf("[deleteEcMarkedInodes] %s response: %s", p.GetUniqueLogId(),
+			p.GetResultMsg())
+	}
+	return
 }

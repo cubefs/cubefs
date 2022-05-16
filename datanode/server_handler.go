@@ -968,3 +968,44 @@ func (s *DataNode) repairExtentBatch(w http.ResponseWriter, r *http.Request) {
 	s.buildSuccessResp(w, resultMap)
 	return
 }
+
+
+func (s *DataNode) getExtentCrc(w http.ResponseWriter, r *http.Request) {
+	var (
+		partitionID uint64
+		extentID    uint64
+		err         error
+	)
+	if err = r.ParseForm(); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if partitionID, err = strconv.ParseUint(r.FormValue("partitionId"), 10, 64); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if extentID, err = strconv.ParseUint(r.FormValue("extentId"), 10, 64); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	log.LogDebugf("getExtentCrc partitionID(%v) extentID(%v)", partitionID, extentID)
+	partition := s.space.Partition(partitionID)
+	if partition == nil {
+		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
+		return
+	}
+	store := partition.ExtentStore()
+	crc, err := store.GetExtentCrc(extentID)
+	if err != nil {
+		log.LogErrorf("GetExtentCrc err(%v)", err)
+		s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	result := &struct {
+		CRC uint32
+	}{
+		CRC: crc,
+	}
+	s.buildSuccessResp(w, result)
+}

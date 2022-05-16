@@ -109,12 +109,28 @@ const (
 	isManualKey                 = "isManual"
 	mediumKey                   = "medium"
 	forceKey                    = "force"
+	ecEnableKey                 = "ecEnable"
+	ecScrubEnableKey            = "ecScrubEnable"
+	ecScrubPeriodKey            = "ecScrubPeriod"
+	ecDataNumKey                = "ecDataNum"
+	ecParityNumKey              = "ecParityNum"
+	ecSaveTimeKey               = "ecSaveTime"
+	ecWaitTimeKey               = "ecWaitTime"
+	ecTimeOutKey                = "ecTimeOut"
+	ecRetryWaitKey              = "ecRetryWait"
+	ecMaxUnitSizeKey            = "ecMaxUnitSize"
+	ecMaxScrubExtentsKey        = "ecMaxScrubExtents"
+	maxCodecConcurrentKey       = "maxCodecConcurrent"
+	needDelEcKey                = "delEc"
+	ecTestKey                   = "test"
+	dataNodeHttpPortKey         = "httpPort"
 	compactTagKey				= "compactTag"
 )
 
 const (
 	nodeTypeDataNode = "dataNode"
 	nodeTypeMetaNode = "metaNode"
+	nodeTypeEcNode   = "ecNode"
 	nodeTypeAll      = "all"
 )
 
@@ -197,6 +213,21 @@ const (
 	minCrossRegionVolMasterRegionZonesCount            = 1
 	defaultClientPkgAddr                               = "http://storage.jd.local/dpgimage/cfs_spark/"
 	defaultCompactTag                                  = "default"
+	defaultEcMigrationSaveTime                         = 100 * 365 * 24 * 60 //min
+	defaultMinEcTime                                   = 5 //min
+	defaultEcMigrationTimeOut                          = 30 //min
+	defaultEcMigrationWaitTime                         = 30 * 24 * 60 //min
+	defaultEcMigrationRetryWait                        = 60 //min
+	defaultEcMaxUnitSize                               = 32 * 1024 * 1024 //byte
+	defaultEcScrubPeriod                               = 30 * 24 * 60 //min
+	defaultEcScrubPeriodTime                           = 60 //second
+	defaultEcScrubDiskConcurrentExtents                = 3
+	defaultMaxCodecConcurrent                          = 10
+	defaultEcScrubEnable                               = false
+	defaultEcEnable                                    = false
+	defaultEcDataNum                                   = 4
+	defaultEcParityNum                                 = 2
+	defaultDataNodeHttpPort                            = "17320"
 )
 
 const (
@@ -248,6 +279,15 @@ const (
 	OpSyncAddIDC    uint32 = 0x26
 	OpSyncUpdateIDC uint32 = 0x27
 	OpSyncDelIDC    uint32 = 0x28
+
+	opSyncPut               uint32 = 0x26
+	opSyncDelete            uint32 = 0x27
+	opSyncUpdate            uint32 = 0x28
+	opSyncAddEcPartition    uint32 = 0x29
+	opSyncDelEcPartition	uint32 = 0x2A
+	opSyncUpdateEcPartition uint32 = 0x2B
+	opSyncAddMigrateTask    uint32 = 0x2C
+	opSyncUpdateMigrateTask uint32 = 0x2D
 )
 
 const (
@@ -277,6 +317,14 @@ const (
 	clusterPrefix              = keySeparator + clusterAcronym + keySeparator
 	nodeSetPrefix              = keySeparator + nodeSetAcronym + keySeparator
 	frozenDPPrefix             = keySeparator + frozenDataPartitionAcronym + keySeparator
+	codecNodeAcronym      = "ncn"
+	ecNodeAcronym         = "nec"
+	migrateAcronym        = "dto" //dp transfer ec
+	ecPartitionAcronym    = "ecdp"
+	codecNodePrefix       = keySeparator + codecNodeAcronym + keySeparator
+	ecNodePrefix          = keySeparator + ecNodeAcronym + keySeparator
+	migratePrefix         = keySeparator + migrateAcronym + keySeparator
+	ecPartitionPrefix     = keySeparator + ecPartitionAcronym + keySeparator
 
 	akAcronym      = "ak"
 	userAcronym    = "user"

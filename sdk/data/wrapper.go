@@ -78,6 +78,7 @@ type Wrapper struct {
 	dpMetricsReportConfig  *proto.DpMetricsReportConfig
 	dpMetricsRefreshCount  uint
 	dpMetricsFetchErrCount uint
+	ecEnable               bool
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
@@ -171,6 +172,7 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	w.dpSelectorParm = view.DpSelectorParm
 	w.crossRegionHAType = view.CrossRegionHAType
 	w.quorum = view.Quorum
+	w.ecEnable = view.EcEnable
 	w.extentCacheExpireSec = view.ExtentCacheExpireSec
 	w.updateConnConfig(view.ConnConfig)
 	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
@@ -257,6 +259,10 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 		w.extentCacheExpireSec = view.ExtentCacheExpireSec
 	}
 
+	if w.ecEnable != view.EcEnable {
+		log.LogInfof("updateSimpleVolView: update EcEnable from old(%v) to new(%v)", w.ecEnable, view.EcEnable)
+		w.ecEnable = view.EcEnable
+	}
 	w.updateConnConfig(view.ConnConfig)
 	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
 
@@ -325,6 +331,8 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 	old, ok := w.partitions[dp.PartitionID]
 	if ok {
 		if old.Status != dp.Status || old.ReplicaNum != dp.ReplicaNum ||
+			old.EcMigrateStatus != dp.EcMigrateStatus || old.ecEnable != w.ecEnable ||
+			strings.Join(old.EcHosts, ",") != strings.Join(dp.EcHosts, ",") ||
 			strings.Join(old.Hosts, ",") != strings.Join(dp.Hosts, ",") {
 			log.LogInfof("updateDataPartition: dp (%v) --> (%v)", old, dp)
 		}
@@ -332,14 +340,20 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 		old.ReplicaNum = dp.ReplicaNum
 		old.Hosts = dp.Hosts
 		old.NearHosts = dp.NearHosts
+		old.EcMigrateStatus = dp.EcMigrateStatus
+		old.EcHosts = dp.EcHosts
+		old.EcMaxUnitSize = dp.EcMaxUnitSize
+		old.EcDataNum = dp.EcDataNum
 		old.CrossRegionMetrics.Lock()
 		old.CrossRegionMetrics.CrossRegionHosts = dp.CrossRegionMetrics.CrossRegionHosts
 		old.CrossRegionMetrics.Unlock()
 		dp.Metrics = old.Metrics
+		old.ecEnable = w.ecEnable
 	} else {
 		dp.Metrics = proto.NewDataPartitionMetrics()
+		dp.ecEnable = w.ecEnable
 		w.partitions[dp.PartitionID] = dp
-		log.LogInfof("updateDataPartition: new dp (%v)", dp)
+		log.LogInfof("updateDataPartition: new dp (%v) EcMigrateStatus (%v)", dp, dp.EcMigrateStatus)
 	}
 	w.Unlock()
 
@@ -411,6 +425,10 @@ func (w *Wrapper) updateDataNodeStatus() (err error) {
 
 	newHostsStatus := make(map[string]bool)
 	for _, node := range cv.DataNodes {
+		newHostsStatus[node.Addr] = node.Status
+	}
+
+	for _, node := range cv.EcNodes {
 		newHostsStatus[node.Addr] = node.Status
 	}
 	log.LogInfof("updateDataNodeStatus: update %d hosts status", len(newHostsStatus))

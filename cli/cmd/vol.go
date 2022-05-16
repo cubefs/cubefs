@@ -62,6 +62,10 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolSetMinRWPartitionCmd(client),
 		newVolConvertTaskCmd(client),
 		newVolAddMPCmd(client),
+		newVolEcInfoCmd(client),
+		newVolEcSetCmd(client),
+		newVolEcPartitionsConsistency(client),
+		newVolEcPartitionsChunkConsistency(client),
 	)
 	return cmd
 }
@@ -132,6 +136,9 @@ const (
 	cmdVolDefaultStoreMode      = int(proto.StoreModeMem)
 	cmdVolDefMetaLayout         = "0,0"
 	cmdVolDefaultCompact        = false
+	cmdVolDefaultEcDataNum      = 4
+	cmdVolDefaultEcParityNum    = 2
+	cmdVolDefaultEcEnable       = false
 )
 
 func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
@@ -143,6 +150,9 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optFollowerRead bool
 	var optForceROW bool
 	var optCrossRegionHAType uint8
+	var optEcDataNum uint8
+	var optEcParityNum uint8
+	var optEcEnable bool
 	var optAutoRepair bool
 	var optVolWriteMutex bool
 	var optYes bool
@@ -192,6 +202,9 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  Replicas            : %v\n", optReplicas)
 				stdout("  MpReplicas          : %v\n", optMpReplicas)
 				stdout("  TrashDays           : %v\n", optTrashDays)
+				stdout("  Ec data units num   : %v\n", optEcDataNum)
+				stdout("  Ec parity units num : %v\n", optEcParityNum)
+				stdout("  Ec is enabled       : %v\n", optEcEnable)
 				stdout("  Allow follower read : %v\n", formatEnabledDisabled(optFollowerRead))
 				stdout("  Force ROW           : %v\n", formatEnabledDisabled(optForceROW))
 				stdout("  Cross Region HA     : %s\n", proto.CrossRegionHAType(optCrossRegionHAType))
@@ -215,7 +228,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 
 			err = client.AdminAPI().CreateVolume(volumeName, userID, optMPCount, optDPSize, optCapacity, optReplicas,
 				optMpReplicas, optTrashDays, optStoreMode, optFollowerRead, optAutoRepair, optVolWriteMutex, optForceROW, optIsSmart,
-				optZoneName, optLayout, strings.Join(smartRules, ","), optCrossRegionHAType, formatEnabledDisabled(optCompactTag))
+				optZoneName, optLayout, strings.Join(smartRules, ","), optCrossRegionHAType, formatEnabledDisabled(optCompactTag), optEcDataNum, optEcParityNum, optEcEnable)
 			if err != nil {
 				errout("Create volume failed case:\n%v\n", err)
 			}
@@ -242,13 +255,21 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().BoolVar(&optIsSmart, CliFlagIsSmart, cmdVolDefaultIsSmart, "Enable the smart vol or not")
 	cmd.Flags().StringSliceVar(&smartRules, CliSmartRulesMode, []string{}, "Specify volume smart rules")
 	cmd.Flags().BoolVar(&optCompactTag, CliFlagCompactTag, cmdVolDefaultCompact, "Specify volume compact")
+	cmd.Flags().Uint8Var(&optEcDataNum, CliFlagEcDataNum, cmdVolDefaultEcDataNum, "Specify ec data units number")
+	cmd.Flags().Uint8Var(&optEcParityNum, CliFlagEcParityNum, cmdVolDefaultEcParityNum, "Specify ec parity units number")
+	cmd.Flags().BoolVar(&optEcEnable, CliFlagEcEnable, cmdVolDefaultEcEnable, "Enable ec partiton backup")
 	return cmd
 }
 
 const (
-	cmdVolInfoUse   = "info [VOLUME NAME]"
-	cmdVolInfoShort = "Show volume information"
-	cmdVolSetShort  = "Set configuration of the volume"
+	cmdVolInfoUse      = "info [VOLUME NAME]"
+	cmdVolInfoShort    = "Show volume information"
+	cmdVolSetShort     = "Set configuration of the volume"
+	cmdVolEcInfoUse    = "ec-info [VOLUME NAME]"
+	cmdVolEcInfoShort  = "Show volume ec information"
+	cmdVolEcSetShort   = "Set ec configuration of the volume"
+	cmdVolEcPartitions = "Check Consistency of ec partition and data partition in volume"
+	cmdVolEcChunkData  = "Check ecPartition Consistency of chunk data"
 )
 
 func newVolSetCmd(client *master.MasterClient) *cobra.Command {
@@ -1187,4 +1208,230 @@ func checkForceRowAndCompact(vv *proto.SimpleVolView, forceRowChange, compactTag
 			errout("error: force row cannot be closed when compact is closed for less than %v minutes, Please close compact first\n", proto.CompatTagClosedTimeDuration / 60)
 		}
 	}
+}
+
+func newVolEcInfoCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   cmdVolEcInfoUse,
+		Short: cmdVolEcInfoShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var volumeName = args[0]
+			var svv *proto.SimpleVolView
+
+			if svv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
+				errout("Get volume info failed:\n%v\n", err)
+			}
+			// print summary info
+			stdout("Summary:\n%s\n", formatSimpleVolEcView(svv))
+			return
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	return cmd
+}
+
+func newVolEcSetCmd(client *master.MasterClient) *cobra.Command {
+	var (
+		optEcSaveTime    int64
+		optEcWaitTime    int64
+		optEcTimeOut     int64
+		optEcRetryWait   int64
+		optEcMaxUnitSize uint64
+		optEcEnable      string
+		confirmString    = strings.Builder{}
+		vv               *proto.SimpleVolView
+	)
+	var cmd = &cobra.Command{
+		Use:   CliOpEcSet + " [VOLUME NAME]",
+		Short: cmdVolEcSetShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var volumeName = args[0]
+			var isChange = false
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+			if vv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
+				return
+			}
+			confirmString.WriteString("Volume configuration changes:\n")
+			confirmString.WriteString(fmt.Sprintf("  Name                : %v\n", vv.Name))
+
+			if optEcWaitTime > 0 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  waitTime            : %v days -> %v days\n", vv.EcWaitTime, optEcWaitTime))
+				vv.EcWaitTime = optEcWaitTime
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  waitTime            : %v days -> %v days\n", vv.EcWaitTime, optEcWaitTime))
+			}
+			if optEcSaveTime > 0 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  optEcSaveTime            : %v days -> %v days\n", vv.EcSaveTime, optEcSaveTime))
+				vv.EcSaveTime = optEcSaveTime
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  optEcSaveTime            : %v days -> %v days\n", vv.EcSaveTime, optEcSaveTime))
+			}
+
+			if optEcTimeOut > 0 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  optEcTimeOut           : %v mins -> %v mins\n", vv.EcTimeOut, optEcTimeOut))
+				vv.EcTimeOut = optEcTimeOut
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  optEcTimeOut           : %v mins -> %v mins\n", vv.EcTimeOut, optEcTimeOut))
+			}
+
+			if optEcRetryWait > 0 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  optEcRetryWait            : %v -> %v \n", vv.EcRetryWait, optEcRetryWait))
+				vv.EcRetryWait = optEcRetryWait
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  optEcRetryWait            : %v -> %v \n", vv.EcRetryWait, optEcRetryWait))
+			}
+
+			if optEcMaxUnitSize > 0 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  optEcMaxUnitSize            : %v -> %v \n", vv.EcMaxUnitSize, optEcMaxUnitSize))
+				vv.EcMaxUnitSize = optEcMaxUnitSize
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  optEcMaxUnitSize            : %v -> %v \n", vv.EcMaxUnitSize, optEcMaxUnitSize))
+			}
+
+			if optEcEnable != "" {
+				isChange = true
+				var enable bool
+				if enable, err = strconv.ParseBool(optEcEnable); err != nil {
+					return
+				}
+				confirmString.WriteString(fmt.Sprintf("  EnableEc         : %v -> %v\n", formatEnabledDisabled(vv.EcEnable), formatEnabledDisabled(enable)))
+				vv.EcEnable = enable
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  EnableEc         : %v\n", formatEnabledDisabled(vv.EcEnable)))
+			}
+
+			if !isChange {
+				stdout("No changes has been set.\n")
+				return
+			}
+			err = client.AdminAPI().UpdateVolumeEcInfo(vv.Name, vv.EcEnable, int(vv.EcDataNum), int(vv.EcParityNum), vv.EcSaveTime, vv.EcWaitTime, vv.EcTimeOut, vv.EcRetryWait, vv.EcMaxUnitSize)
+			if err != nil {
+				return
+			}
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().StringVar(&optEcEnable, CliFlagEcEnable, "", "Enable ec")
+	cmd.Flags().Int64Var(&optEcSaveTime, CliFlagEcSaveTime, 0, "Specify ec save replicate data time [Unit: min]")
+	cmd.Flags().Int64Var(&optEcWaitTime, CliFlagEcWaitTime, 0, "Specify ec wait time to migrate when replica dp full[Unit: min]")
+	cmd.Flags().Int64Var(&optEcTimeOut, CliFlagEcTimeOut, 0, "Specify ec timeOut [Unit: min]")
+	cmd.Flags().Int64Var(&optEcRetryWait, CliFlagEcRetryWait, 0, "Specify ec migration fail retry wait time [Unit: min]")
+	cmd.Flags().Uint64Var(&optEcMaxUnitSize, CliFlagEcMaxUnitSize, 0, "Specify ec max unit size (Unit: byte)")
+	return cmd
+}
+
+func newVolEcPartitionsConsistency(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpCheckConsistency + " [VOLUME]",
+		Short: cmdVolEcPartitions,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var volumeName = args[0]
+			var epv *proto.EcPartitionsView
+
+			if epv, err = client.ClientAPI().GetEcPartitions(volumeName); err != nil {
+				errout("Get EcPartitions failed:\n%v\n", err)
+			}
+			for _, ep := range epv.EcPartitions {
+				ep, err := client.AdminAPI().GetEcPartition("", ep.PartitionID)
+				if err != nil {
+					stdout("GetEcPartition(%v) err:%v\n", ep.PartitionID, err)
+					continue
+				}
+				if ep.EcMigrateStatus != proto.FinishEC {
+					continue
+				}
+				dp, err := client.AdminAPI().GetDataPartition("", ep.PartitionID)
+				if err != nil {
+					stdout("GetDataPartition(%v) err:%v\n", ep.PartitionID, err)
+					continue
+				}
+				stdout("Start Partition(%v) Check ...", ep.PartitionID)
+				errExtent, err := startCheckEcPartitionConsistency(dp, ep, client, false)
+				if err != nil {
+					stdoutRed("    FAIL")
+					continue
+				}
+				if len(errExtent) == 0 {
+					stdoutGreen("   PASS")
+				} else {
+					stdoutRed("    FAIL")
+					stdout("Partition(%v) errExtent(%v)", ep.PartitionID, errExtent)
+				}
+			}
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	return cmd
+}
+
+func newVolEcPartitionsChunkConsistency(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpCheckEcData + " [VOLUME]",
+		Short: cmdVolEcChunkData,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var volumeName = args[0]
+			var epv *proto.EcPartitionsView
+
+			if epv, err = client.ClientAPI().GetEcPartitions(volumeName); err != nil {
+				errout("Get EcPartitions failed:\n%v\n", err)
+			}
+			for _, ep := range epv.EcPartitions {
+				ep, err := client.AdminAPI().GetEcPartition(volumeName, ep.PartitionID)
+				if err != nil {
+					stdout("GetEcPartition(%v) err:%v\n", ep.PartitionID, err)
+					continue
+				}
+				if !proto.IsEcFinished(ep.EcMigrateStatus) {
+					continue
+				}
+				stdout("Start Partition(%v) Check chunk data ...", ep.PartitionID)
+				err = checkEcPartitionChunkData(ep)
+				if err != nil {
+					stdout("%v\n", err)
+				} else {
+					stdout("%v ", ep.PartitionID)
+					stdoutGreen("  PASS\n")
+				}
+			}
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	return cmd
 }

@@ -50,6 +50,7 @@ type Cluster struct {
 	t                          *topology
 	dataNodeStatInfo           *nodeStatInfo
 	metaNodeStatInfo           *nodeStatInfo
+	ecNodeStatInfo			   *nodeStatInfo
 	zoneStatInfos              map[string]*proto.ZoneStat
 	volStatInfo                sync.Map
 	BadDataPartitionIds        *sync.Map
@@ -68,6 +69,17 @@ type Cluster struct {
 	mpRepairChan               chan *RepairTask
 	DataNodeBadDisks           *sync.Map
 	metaLoadedTime             int64
+
+	EcScrubEnable              bool
+	EcMaxScrubExtents          uint8
+	EcScrubPeriod              uint32
+	EcStartScrubTime           int64
+	MaxCodecConcurrent         int
+	BadEcPartitionIds          *sync.Map
+	codecNodes                 sync.Map
+	ecNodes                    sync.Map
+	cnMutex                    sync.RWMutex
+	enMutex                    sync.RWMutex // ec node mutex
 }
 type (
 	RepairType uint8
@@ -94,11 +106,13 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.t = newTopology()
 	c.BadDataPartitionIds = new(sync.Map)
 	c.BadMetaPartitionIds = new(sync.Map)
+	c.BadEcPartitionIds   = new(sync.Map)
 	c.MigratedDataPartitionIds = new(sync.Map)
 	c.MigratedMetaPartitionIds = new(sync.Map)
 	c.DataNodeBadDisks = new(sync.Map)
 	c.dataNodeStatInfo = new(nodeStatInfo)
 	c.metaNodeStatInfo = new(nodeStatInfo)
+	c.ecNodeStatInfo = new(nodeStatInfo)
 	c.zoneStatInfos = make(map[string]*proto.ZoneStat)
 	c.fsm = fsm
 	c.partition = partition
@@ -106,6 +120,11 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.initDpRepairChan()
 	c.initMpRepairChan()
 	c.resetMetaLoadedTime()
+	c.EcScrubEnable = defaultEcScrubEnable
+	c.EcMaxScrubExtents = defaultEcScrubDiskConcurrentExtents
+	c.EcScrubPeriod = defaultEcScrubPeriod
+	c.MaxCodecConcurrent = defaultMaxCodecConcurrent
+	c.EcStartScrubTime = time.Now().Unix()
 	return
 }
 
@@ -126,6 +145,8 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToRepairMultiZoneDataPartitions()
 	c.scheduleToMergeZoneNodeset()
 	c.scheduleToCheckAutoMetaPartitionCreation()
+	c.scheduleToCheckEcDataPartitions()
+	c.scheduleToMigrationEc()
 
 }
 
@@ -204,7 +225,7 @@ func (c *Cluster) checkDataPartitions() {
 		readWrites, dataNodeBadDisksOfVol := vol.checkDataPartitions(c)
 		allBadDisks = append(allBadDisks, dataNodeBadDisksOfVol)
 		vol.dataPartitions.setReadWriteDataPartitions(readWrites, c.Name)
-		vol.dataPartitions.updateResponseCache(true, 0)
+		vol.dataPartitions.updateResponseCache(vol.ecDataPartitions,true, 0)
 		msg := fmt.Sprintf("action[checkDataPartitions],vol[%v] can readWrite partitions:%v  ", vol.Name, vol.dataPartitions.readableAndWritableCnt)
 		log.LogInfo(msg)
 	}
@@ -277,6 +298,24 @@ func (c *Cluster) scheduleToCheckHeartbeat() {
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				c.checkMetaNodeHeartbeat()
+			}
+			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
+		}
+	}()
+
+	go func() {
+		for {
+			if c.partition != nil && c.partition.IsRaftLeader() {
+				c.checkEcNodeHeartbeat()
+			}
+			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
+		}
+	}()
+
+	go func() {
+		for {
+			if c.partition != nil && c.partition.IsRaftLeader() {
+				c.checkCodecNodeHeartbeat()
 			}
 			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
 		}
@@ -621,7 +660,7 @@ errHandler:
 	return
 }
 
-func (c *Cluster) addDataNode(nodeAddr, zoneName, version string) (id uint64, err error) {
+func (c *Cluster) addDataNode(nodeAddr, httpPort, zoneName, version string) (id uint64, err error) {
 	c.dnMutex.Lock()
 	defer c.dnMutex.Unlock()
 	var dataNode *DataNode
@@ -630,7 +669,7 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName, version string) (id uint64, er
 		return dataNode.ID, nil
 	}
 
-	dataNode = newDataNode(nodeAddr, zoneName, c.Name, version)
+	dataNode = newDataNode(nodeAddr, httpPort, zoneName, c.Name, version)
 	zone, err := c.t.getZone(zoneName)
 	if err != nil {
 		zone = c.t.putZoneIfAbsent(newZone(zoneName))
@@ -2956,8 +2995,8 @@ errHandler:
 
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, trashDays int,
-	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart bool,
+func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, trashDays int, ecDataNum, ecParityNum uint8,
+	ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart bool,
 	crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
 	storeMode proto.StoreMode, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag) (vol *Vol, err error) {
 	var (
@@ -3001,8 +3040,8 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	if err = c.validZone(zoneName, mpReplicaNum+int(mpLearnerNum), isSmart); err != nil {
 		goto errHandler
 	}
-	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, mpReplicaNum, trashDays,
-		followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, crossRegionHAType, 0, mpLearnerNum, dpWriteableThreshold,
+	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, mpReplicaNum, trashDays, ecDataNum, ecParityNum,
+		ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, crossRegionHAType, 0, mpLearnerNum, dpWriteableThreshold,
 		storeMode, proto.VolConvertStInit, mpLayout, smartRules, compactTag); err != nil {
 		goto errHandler
 	}
@@ -3032,8 +3071,8 @@ errHandler:
 	return
 }
 
-func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum, trashDays int,
-	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart bool,
+func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum, trashDays int, dataNum, parityNum uint8,
+	enableEc, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart bool,
 	crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64,
 	storeMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag) (vol *Vol, err error) {
 	var (
@@ -3067,6 +3106,9 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), uint8(mpReplicaNum), followerRead,
 		authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, createTime, smartEnableTime, description, "", "",
 		crossRegionHAType, dpLearnerNum, mpLearnerNum, dpWriteableThreshold, uint32(trashDays), storeMode, convertSt, mpLayout, smartRules, compactTag)
+	vol.EcDataNum = dataNum
+	vol.EcParityNum = parityNum
+	vol.EcEnable = enableEc
 	if len(masterRegionZoneList) > 1 {
 		vol.crossZone = true
 	}

@@ -57,6 +57,11 @@ type clusterValue struct {
 	ExtentMergeSleepMs                uint64
 	FixTinyDeleteRecordLimit          uint64
 	ClientPkgAddr                     string
+	EcScrubEnable                     bool
+	EcMaxScrubExtents                 uint8
+	EcScrubPeriod                     uint32
+	EcStartScrubTime                  int64
+	MaxCodecConcurrent                int
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -86,6 +91,11 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		ExtentMergeSleepMs:                c.cfg.ExtentMergeSleepMs,
 		FixTinyDeleteRecordLimit:          c.dnFixTinyDeleteRecordLimit,
 		ClientPkgAddr:                     c.cfg.ClientPkgAddr,
+		EcScrubEnable:                     c.EcScrubEnable,
+		EcMaxScrubExtents:                 c.EcMaxScrubExtents,
+		EcScrubPeriod:                     c.EcScrubPeriod,
+		EcStartScrubTime:                  c.EcStartScrubTime,
+		MaxCodecConcurrent:                c.MaxCodecConcurrent,
 	}
 	return cv
 }
@@ -143,6 +153,7 @@ type dataPartitionValue struct {
 	IsFrozen      bool
 	PanicHosts    []string
 	IsManual      bool
+	EcMigrateStatus uint8
 }
 
 type replicaValue struct {
@@ -167,6 +178,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		IsRecover:     dp.isRecover,
 		IsFrozen:      dp.IsFrozen,
 		IsManual:      dp.IsManual,
+		EcMigrateStatus: dp.EcMigrateStatus,
 	}
 	for _, replica := range dp.Replicas {
 		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}
@@ -219,6 +231,14 @@ type volValue struct {
 	SmartRules           []string
 	CompactTag           bsProto.CompactTag
 	CompactTagModifyTime int64
+	EcDataNum            uint8
+	EcParityNum          uint8
+	EcSaveTime           int64
+	EcWaitTime           int64
+	EcTimeOut            int64
+	EcRetryWait          int64
+	EcMaxUnitSize        uint64
+	EcEnable             bool
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -270,6 +290,14 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		SmartRules:           vol.smartRules,
 		CompactTag:           vol.compactTag,
 		CompactTagModifyTime: vol.compactTagModifyTime,
+		EcEnable:             vol.EcEnable,
+		EcDataNum:            vol.EcDataNum,
+		EcParityNum:          vol.EcParityNum,
+		EcSaveTime:           vol.EcMigrationSaveTime,
+		EcWaitTime:           vol.EcMigrationWaitTime,
+		EcTimeOut:            vol.EcMigrationTimeOut,
+		EcRetryWait:          vol.EcMigrationRetryWait,
+		EcMaxUnitSize:        vol.EcMaxUnitSize,
 	}
 	return
 }
@@ -286,6 +314,7 @@ type dataNodeValue struct {
 	ID        uint64
 	NodeSetID uint64
 	Addr      string
+	HttpPort  string
 	ZoneName  string
 	Version   string
 }
@@ -295,6 +324,7 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		ID:        dataNode.ID,
 		NodeSetID: dataNode.NodeSetID,
 		Addr:      dataNode.Addr,
+		HttpPort:  dataNode.HttpPort,
 		ZoneName:  dataNode.ZoneName,
 		Version:   dataNode.Version,
 	}
@@ -774,6 +804,20 @@ func (c *Cluster) loadClusterValue() (err error) {
 			cv.FixTinyDeleteRecordLimit = 1
 		}
 		c.cfg.ClientPkgAddr = cv.ClientPkgAddr
+		c.EcScrubEnable = cv.EcScrubEnable
+		c.EcScrubPeriod = cv.EcScrubPeriod
+		if c.EcScrubPeriod == 0 {
+			c.EcScrubPeriod = defaultEcScrubPeriod
+		}
+		c.EcMaxScrubExtents = cv.EcMaxScrubExtents
+		if c.EcMaxScrubExtents == 0 {
+			c.EcMaxScrubExtents = defaultEcScrubDiskConcurrentExtents
+		}
+		c.EcStartScrubTime = cv.EcStartScrubTime
+		c.MaxCodecConcurrent = cv.MaxCodecConcurrent
+		if c.MaxCodecConcurrent == 0 {
+			c.MaxCodecConcurrent = defaultMaxCodecConcurrent
+		}
 		c.dnFixTinyDeleteRecordLimit = cv.FixTinyDeleteRecordLimit
 		c.updateMetaNodeDeleteBatchCount(cv.MetaNodeDeleteBatchCount)
 		c.updateMetaNodeDeleteWorkerSleepMs(cv.MetaNodeDeleteWorkerSleepMs)
@@ -877,7 +921,7 @@ func (c *Cluster) loadDataNodes() (err error) {
 		if dnv.ZoneName == "" {
 			dnv.ZoneName = DefaultZoneName
 		}
-		dataNode := newDataNode(dnv.Addr, dnv.ZoneName, c.Name, dnv.Version)
+		dataNode := newDataNode(dnv.Addr, dnv.HttpPort, dnv.ZoneName, c.Name, dnv.Version)
 		dataNode.ID = dnv.ID
 		dataNode.NodeSetID = dnv.NodeSetID
 		c.dataNodes.Store(dataNode.Addr, dataNode)
@@ -1020,6 +1064,7 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		} else {
 			dp.createTime = 1654099200 // 2022-06-01 00:00:00
 		}
+		dp.EcMigrateStatus = dpv.EcMigrateStatus
 		for _, rv := range dpv.Replicas {
 			if !contains(dp.Hosts, rv.Addr) {
 				continue

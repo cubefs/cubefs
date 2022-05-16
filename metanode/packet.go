@@ -124,3 +124,42 @@ func NewPacketToChangeLeader(ctx context.Context, mpID uint64) *Packet {
 	p.SetCtx(ctx)
 	return p
 }
+
+// NewPacketToDeleteEcExtent returns a new packet to delete the extent.
+func NewPacketToDeleteEcExtent(ctx context.Context, dp *DataPartition, ext *proto.ExtentKey) *Packet {
+	p := new(Packet)
+	p.Magic = proto.ProtoMagic
+	p.Opcode = proto.OpMarkDelete
+	p.ExtentType = proto.NormalExtentType
+	p.PartitionID = uint64(dp.PartitionID)
+	if storage.IsTinyExtent(ext.ExtentId) {
+		p.ExtentType = proto.TinyExtentType
+		p.Data, _ = json.Marshal(ext)
+		p.Size = uint32(len(p.Data))
+	}
+	p.ExtentID = ext.ExtentId
+	p.ReqID = proto.GenerateRequestID()
+	p.RemainingFollowers = uint8(len(dp.EcHosts) - 1)
+	p.Arg = ([]byte)(dp.GetAllEcAddrs())
+	p.ArgLen = uint32(len(p.Arg))
+	p.SetCtx(ctx)
+
+	return p
+}
+
+// NewPacketToBatchDeleteEcExtent returns a new packet to batch delete the extent.
+func NewPacketToBatchDeleteEcExtent(ctx context.Context, dp *DataPartition, exts []*proto.ExtentKey) *Packet {
+	p := new(Packet)
+	p.Magic = proto.ProtoMagic
+	p.Opcode = proto.OpBatchDeleteExtent
+	p.ExtentType = proto.NormalExtentType
+	p.PartitionID = uint64(dp.PartitionID)
+	p.Data, _ = json.Marshal(exts)
+	p.Size = uint32(len(p.Data))
+	p.ReqID = proto.GenerateRequestID()
+	p.RemainingFollowers = uint8(len(dp.EcHosts) - 1)
+	p.Arg = ([]byte)(dp.GetAllEcAddrs())
+	p.ArgLen = uint32(len(p.Arg))
+	p.SetCtx(ctx)
+	return p
+}

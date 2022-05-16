@@ -16,6 +16,7 @@ package master
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -28,9 +29,11 @@ import (
 type topology struct {
 	dataNodes            *sync.Map
 	metaNodes            *sync.Map
+	ecNodes              *sync.Map
 	zoneMap              *sync.Map
 	zoneIndexForDataNode int
 	zoneIndexForMetaNode int
+	zoneIndexForEcNode   int
 	zones                []*Zone
 	zoneLock             sync.RWMutex
 	regionMap            *sync.Map //regionName:*Region
@@ -54,6 +57,7 @@ func newTopology() (t *topology) {
 	t.dataNodes = new(sync.Map)
 	t.metaNodes = new(sync.Map)
 	t.zones = make([]*Zone, 0)
+	t.ecNodes = new(sync.Map)
 	t.regionMap = new(sync.Map)
 	t.idcMap = new(sync.Map)
 	return
@@ -579,6 +583,7 @@ type Zone struct {
 	status              int
 	dataNodes           *sync.Map
 	metaNodes           *sync.Map
+	ecNodes             *sync.Map
 	nodeSetMap          map[uint64]*nodeSet
 	nsLock              sync.RWMutex
 	sync.RWMutex
@@ -589,6 +594,7 @@ func newZone(name string) (zone *Zone) {
 	zone.status = proto.ZoneStNormal
 	zone.dataNodes = new(sync.Map)
 	zone.metaNodes = new(sync.Map)
+	zone.ecNodes = new(sync.Map)
 	zone.nodeSetMap = make(map[uint64]*nodeSet)
 	return
 }
@@ -1473,4 +1479,128 @@ func (t *topology) getIDCViews() (views []*proto.IDCView) {
 		return true
 	})
 	return
+}
+
+func (t *topology) allocZonesForEcNode(zoneNum, replicaNum int, excludeZones []string) (zones []*Zone, err error) {
+	zones = t.getAllEcZones()
+	if t.isSingleZone() {
+		return zones, nil
+	}
+	if excludeZones == nil {
+		excludeZones = make([]string, 0)
+	}
+
+	var num int
+	if len(zones) >= zoneNum {
+		num = zoneNum
+	} else {
+		err = errors.NewErrorf("not enough zone for ec create, have(%v) need(%v)", len(zones), zoneNum)
+		return
+	}
+	demandWriteNodes := math.Ceil(float64(replicaNum) / float64(num))
+	candidateZones := make([]*Zone, 0)
+	for i := 0; i < len(zones); i++ {
+		if t.zoneIndexForEcNode >= len(zones) {
+			t.zoneIndexForEcNode = 0
+		}
+		zone := zones[t.zoneIndexForEcNode]
+		t.zoneIndexForEcNode++
+		if zone.status == unavailableZone {
+			continue
+		}
+		if contains(excludeZones, zone.name) {
+			continue
+		}
+		if zone.canWriteForEcNode(uint8(demandWriteNodes)) {
+			candidateZones = append(candidateZones, zone)
+		}
+		if len(candidateZones) >= num {
+			break
+		}
+	}
+	if len(candidateZones) < num {
+		log.LogError(fmt.Sprintf("action[allocZonesForEcNode],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],err:%v",
+			num, len(candidateZones), demandWriteNodes, proto.ErrNoZoneToCreateECPartition))
+		return nil, errors.NewError(proto.ErrNoZoneToCreateECPartition)
+	}
+	zones = candidateZones
+	err = nil
+	return
+}
+
+func (t *topology) getAllEcZones() (zones []*Zone) {
+	t.zoneLock.RLock()
+	defer t.zoneLock.RUnlock()
+	zones = make([]*Zone, 0)
+	t.zoneMap.Range(func(zoneName, value interface{}) bool {
+		zone := value.(*Zone)
+		if zone.ecNodeCount() > 0 {
+			zones = append(zones, zone)
+		}
+		return true
+	})
+	return
+}
+
+func (zone *Zone) canWriteForEcNode(replicaNum uint8) (can bool) {
+	zone.RLock()
+	defer zone.RUnlock()
+	var leastAlive uint8
+	zone.ecNodes.Range(func(addr, value interface{}) bool {
+		ecNode := value.(*ECNode)
+		if ecNode.isActive == true && ecNode.isWriteAble() == true {
+			leastAlive++
+		}
+		if leastAlive >= replicaNum {
+			can = true
+			return false
+		}
+		return true
+	})
+	log.LogInfof("canWriteForEcNode zone[%v], leastAlive[%v], replicaNum[%v], count[%v]",
+		zone.name, leastAlive, replicaNum, zone.ecNodeCount())
+	return
+}
+
+func (zone *Zone) ecNodeCount() (len int) {
+
+	zone.ecNodes.Range(func(key, value interface{}) bool {
+		len++
+		return true
+	})
+	return
+}
+
+func (zone *Zone) getAvailEcNodeHosts(excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+	if replicaNum == 0 {
+		return
+	}
+	return getAvailHosts(zone.ecNodes, excludeHosts, replicaNum, selectEcNode)
+}
+
+func (zone *Zone) putEcNode(ecNode *ECNode) (err error) {
+	zone.ecNodes.Store(ecNode.Addr, ecNode)
+	return
+}
+
+func (t *topology) putEcNode(ecNode *ECNode) (err error) {
+	if _, ok := t.ecNodes.Load(ecNode.Addr); ok {
+		return
+	}
+	t.ecNodes.Store(ecNode.Addr, ecNode)
+	zone, err := t.getZone(ecNode.ZoneName)
+	if err != nil {
+		return
+	}
+	zone.putEcNode(ecNode)
+	return
+}
+
+func (t *topology) deleteEcNode(ecNode *ECNode) {
+	t.ecNodes.Delete(ecNode.Addr)
+	zone, err := t.getZone(ecNode.ZoneName)
+	if err != nil {
+		return
+	}
+	zone.ecNodes.Delete(ecNode.Addr)
 }

@@ -307,3 +307,18 @@ func readToBuffer(c net.Conn, buf *[]byte, readSize int) (err error) {
 	_, err = io.ReadFull(c, (*buf)[:readSize])
 	return
 }
+
+func NewTinyExtentReadPacket(ctx context.Context, partitionID uint64, extentID uint64, offset, size int) (p *Packet) {
+	p = new(Packet)
+	p.ExtentID = extentID
+	p.PartitionID = partitionID
+	p.Magic = proto.ProtoMagic
+	p.ExtentOffset = int64(offset)
+	p.Size = uint32(size)
+	p.Opcode = proto.OpTinyExtentAvaliRead
+	p.ExtentType = proto.TinyExtentType
+	p.ReqID = proto.GenerateRequestID()
+	p.SetCtx(ctx)
+
+	return
+}

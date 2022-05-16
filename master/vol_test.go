@@ -369,7 +369,7 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 	var volID uint64 = 1
 	var createTime = time.Now().Unix()
 	vol := newVol(volID, name, name, "", util.DefaultDataPartitionSize, 100, defaultReplicaNum,
-		defaultReplicaNum, false, false,
+		 defaultReplicaNum,false, false,
 		false, true, false, false, false, createTime, createTime, "", "", "", 0,
 		0, 0, 0.0, 30, proto.StoreModeMem, proto.VolConvertStInit, proto.MetaPartitionLayout{0, 0},
 		strings.Split(testSmartRules, ","), proto.CompactDefault)

@@ -95,6 +95,21 @@ const (
 	sk             = "01234567891234560123456789123456"
 	description    = "testUser"
 	testSmartRules = "actionMetrics:dp:read:count:minute:1000:5:hdd,actionMetrics:dp:appendWrite:count:minute:1000:5:hdd"
+
+	httpPort = "17520"
+	ecs1Addr = "127.0.0.1:10301"
+	ecs2Addr = "127.0.0.1:10302"
+	ecs3Addr = "127.0.0.1:10303"
+	ecs4Addr = "127.0.0.1:10304"
+	ecs5Addr = "127.0.0.1:10305"
+	ecs6Addr = "127.0.0.1:10306"
+	ecs7Addr = "127.0.0.1:10307"
+	ecs8Addr = "127.0.0.1:10308"
+	ecs9Addr = "127.0.0.1:10309"
+
+	mcs1Addr = "127.0.0.1:10201"
+	mcs2Addr = "127.0.0.1:10202"
+	mcs3Addr = "127.0.0.1:10203"
 )
 
 var server = createDefaultMasterServerForTest()
@@ -154,16 +169,34 @@ func createDefaultMasterServerForTest() *Server {
 	addMetaServer(mms13Addr, testZone6)
 	addMetaServer(mms14Addr, testZone9)
 	addMetaServer(mms15Addr, testZone9)
+
+	// add ec node
+	addEcServer(ecs1Addr, httpPort, testZone1)
+	addEcServer(ecs2Addr, httpPort, testZone1)
+	addEcServer(ecs3Addr, httpPort, testZone1)
+	addEcServer(ecs4Addr, httpPort, testZone2)
+	addEcServer(ecs5Addr, httpPort, testZone2)
+	addEcServer(ecs6Addr, httpPort, testZone2)
+	addEcServer(ecs7Addr, httpPort, testZone3)
+	addEcServer(ecs8Addr, httpPort, testZone3)
+	addEcServer(ecs9Addr, httpPort, testZone3)
+
+	//add codec node
+	addCodecServer(mcs1Addr, httpPort, testZone1)
+	addCodecServer(mcs2Addr, httpPort, testZone1)
+	addCodecServer(mcs3Addr, httpPort, testZone1)
 	time.Sleep(5 * time.Second)
 	testServer.cluster.cfg = newClusterConfig()
 	testServer.cluster.cfg.DataPartitionsRecoverPoolSize = maxDataPartitionsRecoverPoolSize
 	testServer.cluster.cfg.MetaPartitionsRecoverPoolSize = maxMetaPartitionsRecoverPoolSize
 	testServer.cluster.checkDataNodeHeartbeat()
 	testServer.cluster.checkMetaNodeHeartbeat()
+	testServer.cluster.checkEcNodeHeartbeat()
+	testServer.cluster.checkCodecNodeHeartbeat()
 	testServer.cluster.cfg.nodeSetCapacity = defaultNodeSetCapacity
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
-	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 3, 100, 0,
+	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 3, 100, 0, defaultEcDataNum, defaultEcParityNum, defaultEcEnable,
 		false, false, false, false, true, false, false, 0, 0,
 		proto.StoreModeMem, proto.MetaPartitionLayout{0, 0}, []string{}, proto.CompactDefault)
 	if err != nil {
@@ -1263,10 +1296,10 @@ func TestMergeNodeSetAPI(t *testing.T) {
 	zoneNodeSet1.putNodeSet(nodeSet1)
 	zoneNodeSet1.putNodeSet(nodeSet2)
 	topo.putZone(zoneNodeSet1)
-	topo.putDataNode(createDataNodeForNodeSet(mds6Addr, zoneNodeSet1.name, server.cluster.Name, nodeSet1))
-	topo.putDataNode(createDataNodeForNodeSet(mds7Addr, zoneNodeSet1.name, server.cluster.Name, nodeSet1))
-	topo.putDataNode(createDataNodeForNodeSet(mds8Addr, zoneNodeSet1.name, server.cluster.Name, nodeSet1))
-	topo.putDataNode(createDataNodeForNodeSet(mds9Addr, zoneNodeSet1.name, server.cluster.Name, nodeSet1))
+	topo.putDataNode(createDataNodeForNodeSet(mds6Addr, httpPort, zoneNodeSet1.name, server.cluster.Name, nodeSet1))
+	topo.putDataNode(createDataNodeForNodeSet(mds7Addr, httpPort, zoneNodeSet1.name, server.cluster.Name, nodeSet1))
+	topo.putDataNode(createDataNodeForNodeSet(mds8Addr, httpPort, zoneNodeSet1.name, server.cluster.Name, nodeSet1))
+	topo.putDataNode(createDataNodeForNodeSet(mds9Addr, httpPort, zoneNodeSet1.name, server.cluster.Name, nodeSet1))
 	topo.putMetaNode(createMetaNodeForNodeSet(mms6Addr, zoneNodeSet1.name, server.cluster.Name, nodeSet1))
 	topo.putMetaNode(createMetaNodeForNodeSet(mms7Addr, zoneNodeSet1.name, server.cluster.Name, nodeSet1))
 	topo.putMetaNode(createMetaNodeForNodeSet(mms8Addr, zoneNodeSet1.name, server.cluster.Name, nodeSet1))
@@ -1742,7 +1775,7 @@ func TestCreateVolForUpdateToCrossRegionVol(t *testing.T) {
 	process(reqURL, t)
 	// create a normal vol
 	err := mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, 1,
-		false, false, false, true, false, zoneName, "0,0", "", 0, "default")
+		false, false, false, true, false, zoneName, "0,0", "", 0, "default", defaultEcDataNum, defaultEcParityNum, false)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		return
@@ -2414,7 +2447,7 @@ func TestSmartVolRules(t *testing.T) {
 
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 3, int(proto.StoreModeMem),
-		false, false, false, true, true, testZone2, "", testSmartRules, 0, "default")
+		false, false, false, true, true, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		return
@@ -2553,7 +2586,7 @@ func TestGetTargetAddressForDataPartitionSmartTransferForOneZone(t *testing.T) {
 
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 3, int(proto.StoreModeMem),
-		false, false, false, true, true, testZone2, "", testSmartRules, 0, "default")
+		false, false, false, true, true, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		return
@@ -2666,7 +2699,7 @@ func TestGetTargetAddressForDataPartitionSmartCase1(t *testing.T) {
 
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
-		false, false, false, true, true, testZone2, "", testSmartRules, 0, "default")
+		false, false, false, true, true, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		return
@@ -2779,7 +2812,7 @@ func TestGetTargetAddressForDataPartitionSmartCase2(t *testing.T) {
 
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
-		false, false, false, true, true, testZone2, "", testSmartRules, 0, "default")
+		false, false, false, true, true, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		return
@@ -2902,7 +2935,7 @@ func TestGetTargetAddressForDataPartitionSmartCase3(t *testing.T) {
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
 		false, false, false, true, true,
-		fmt.Sprintf("%v,%v", testZone1, testZone3), "", testSmartRules, 0, "default")
+		fmt.Sprintf("%v,%v", testZone1, testZone3), "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		return
@@ -3027,7 +3060,7 @@ func TestGetTargetAddressForDataPartitionSmartCase4(t *testing.T) {
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
 		false, false, false, true, true,
-		fmt.Sprintf("%v,%v", testZone1, testZone3), "", testSmartRules, 0, "default")
+		fmt.Sprintf("%v,%v", testZone1, testZone3), "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		return
@@ -3171,7 +3204,7 @@ func TestGetTargetAddressForDataPartitionSmartCase5(t *testing.T) {
 
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
 		false, false, false, true, true,
-		fmt.Sprintf("%v,%v", testZone2, testZone3), "", testSmartRules, 0, "default")
+		fmt.Sprintf("%v,%v", testZone2, testZone3), "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		return
@@ -3365,7 +3398,7 @@ func TestGetTargetAddressForDataPartitionSmartCase6(t *testing.T) {
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
 		false, false, false, true, true,
-		fmt.Sprintf("%v,%v,%v", testZone1, testZone3, testZone7), "", testSmartRules, 0, "default")
+		fmt.Sprintf("%v,%v,%v", testZone1, testZone3, testZone7), "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		return
@@ -3571,7 +3604,7 @@ func TestGetTargetAddressForDataPartitionSmartCase7(t *testing.T) {
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 5, 3, 0, int(proto.StoreModeMem),
 		false, false, false, true, true,
-		fmt.Sprintf("%v,%v,%v", testZone1, testZone9, testZone3), "", testSmartRules, 1, "default")
+		fmt.Sprintf("%v,%v,%v", testZone1, testZone9, testZone3), "", testSmartRules, 1, "default", defaultEcDataNum, defaultEcParityNum, false)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		return
@@ -3663,7 +3696,7 @@ func TestFreezeDataPartition(t *testing.T) {
 
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
-		false, false, false, true, true, testZone2, "", testSmartRules, 0, "default")
+		false, false, false, true, true, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		t.FailNow()
@@ -4165,3 +4198,13 @@ func TestGetTargetAddressForBalanceDataPartitionZone3(t *testing.T) {
 	}
 }
 */
+
+func addEcServer(addr, httpPort, zoneName string) {
+	ecs := mocktest.NewMockEcServer(addr, httpPort, zoneName)
+	ecs.Start()
+}
+
+func addCodecServer(addr, httpPort, zoneName string) {
+	mcs := mocktest.NewMockCodecServer(addr, httpPort, zoneName)
+	mcs.Start()
+}

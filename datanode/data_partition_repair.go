@@ -304,7 +304,6 @@ func (dp *DataPartition) DoRepairOnLeaderDisk(ctx context.Context, repairTasks [
 		if !store.IsFinishLoad() {
 			continue
 		}
-		dp.lastUpdateTime = time.Now().Unix()
 		store.Create(extentInfo[storage.FileID], true)
 	}
 	for _, extentInfo := range repairTasks[0].ExtentsToBeRepaired {

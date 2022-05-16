@@ -122,6 +122,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminGetCluster).
 		HandlerFunc(m.getCluster)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminClusterEcSet).
+		HandlerFunc(m.updateEcClusterInfo)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminClusterGetScrub).
+		HandlerFunc(m.getEcScrubInfo)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminClusterFreeze).
 		HandlerFunc(m.setupAutoAllocation)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -151,6 +157,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminUpdateVol).
 		HandlerFunc(m.updateVol)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminUpdateVolEcInfo).
+		HandlerFunc(m.updateVolEcInfo)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetVolConvertSt).
 		HandlerFunc(m.setVolConvertTaskState)
@@ -292,6 +301,21 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.ClientDataPartitions).
 		HandlerFunc(m.getDataPartitions)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminCanMigrateDataPartitions).
+		HandlerFunc(m.GetCanMigrateDp)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminCanDelDataPartitions).
+		HandlerFunc(m.GetCanDelDp)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminDelDpAlreadyEc).
+		HandlerFunc(m.DelDpAlreadyEc)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminDpMigrateEc).
+		HandlerFunc(m.DpMigrateEcById)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminDpStopMigrating).
+		HandlerFunc(m.DpStopMigrating)
 
 	// meta node management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -347,6 +371,67 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminClusterAutoMergeNodeSet).
 		HandlerFunc(m.setupAutoMergeNodeSet)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminDNStopMigrating).
+		HandlerFunc(m.DNStopMigrating)
+
+	// APIs for CodecNodes
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.GetAllCodecNodes).
+		HandlerFunc(m.getAllCodecNodes)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.GetCodecNode).
+		HandlerFunc(m.getCodecNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AddCodecNode).
+		HandlerFunc(m.addCodecNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.DecommissionCodecNode).
+		HandlerFunc(m.decommissionCodecNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.GetCodecNodeTaskResponse).
+		HandlerFunc(m.handleCodecNodeTaskResponse)
+
+	// APIs for EcNode
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.GetEcNode).
+		HandlerFunc(m.getEcNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AddEcNode).
+		HandlerFunc(m.addEcNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.DecommissionEcNode).
+		HandlerFunc(m.decommissionEcNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.DecommissionEcDisk).
+		HandlerFunc(m.decommissionEcDisk)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.GetEcNodeTaskResponse).
+		HandlerFunc(m.handleEcNodeTaskResponse)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminDecommissionEcPartition).
+		HandlerFunc(m.decommissionEcPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGetEcPartition).
+		HandlerFunc(m.getEcPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.ClientEcPartitions).
+		HandlerFunc(m.getEcPartitions)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminDiagnoseEcPartition).
+		HandlerFunc(m.diagnoseEcPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminDeleteEcReplica).
+		HandlerFunc(m.deleteEcDataReplica)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminAddEcReplica).
+		HandlerFunc(m.addEcDataReplica)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminEcPartitionRollBack).
+		HandlerFunc(m.setEcPartitionRollBack)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGetAllTaskStatus).
+		HandlerFunc(m.GetAllTaskStatus)
 
 	// user management APIs
 	router.NewRoute().Methods(http.MethodPost).

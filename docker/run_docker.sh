@@ -69,6 +69,11 @@ start_servers() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml up -d servers
 }
 
+start_ecservers_test() {
+    isDiskAvailable $DiskPath
+    docker-compose -f ${RootPath}/docker/docker-compose-test.yml up -d ec_servers
+}
+
 start_client() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml run client bash -c "/cfs/script/start_client.sh ; /bin/bash"
 }
@@ -85,6 +90,10 @@ start_ci_test() {
     docker-compose -f ${RootPath}/docker/docker-compose-test.yml run client
 }
 
+start_ci_ectest() {
+    docker-compose -f ${RootPath}/docker/docker-compose-test.yml run ec_client
+}
+
 cover_analyze() {
     docker-compose -f ${RootPath}/docker/docker-compose-test.yml run cover_analyze
 }
@@ -92,7 +101,13 @@ cover_analyze() {
 run_ci_tests() {
     build_test
     start_servers_test
-    start_ci_test
+    ls $RootPath/ecnode &>/dev/null
+    if [[ $? -eq 0 ]];then
+      start_ecservers_test
+      start_ci_ectest
+    else
+      start_ci_test
+    fi
     clean
     cover_analyze
     clean

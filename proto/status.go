@@ -20,3 +20,13 @@ const (
 	ReadWrite   = 2
 	Unavailable = -1
 )
+
+const (
+	// dp partition EC status
+	NotEcMigrate = iota
+	Migrating
+	FinishEC
+	RollBack
+	OnlyEcExist
+	MigrateFailed
+)

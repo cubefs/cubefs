@@ -1,0 +1,18 @@
+{
+    "role": "ecnode",
+    "listen": "17510",
+    "prof": "17520",
+    "consulAddr": "http://192.168.0.101:8500",
+    "exporterPort": 9500,
+    "cell": "cell-03",
+    "logDir": "/cfs/log",
+    "logLevel": "debug",
+    "disks": [
+      "/cfs/disk:10737418240"
+    ],
+    "masterAddr": [
+      "192.168.0.11:17010",
+      "192.168.0.12:17010",
+      "192.168.0.13:17010"
+    ]
+}

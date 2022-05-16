@@ -53,6 +53,11 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newDataPartitionFreezeCmd(client),
 		newDataPartitionUnfreezeCmd(client),
 		newDataPartitionTransferCmd(client),
+		newGetCanEcMigrateCmd(client),
+		newGetCanEcDelCmd(client),
+		newDelDpAlreadyEc(client),
+		newMigrateEc(client),
+		newStopMigratingByDataPartition(client),
 	)
 	return cmd
 }
@@ -69,6 +74,11 @@ const (
 	cmdDataPartitionPromoteLearnerShort = "Promote the learner of the data partition on a fixed address"
 	cmdDataPartitionFreezeShort          = "Freezes the DP and does not provide the write service. It is used only for smart Volumes"
 	cmdDataPartitionUnFreezeLearnerShort = "Unfreeze the DP to provide write services. It is used only for smart Volumes"
+	cmdGetCanEcMigrateShort             = "Display these partitions's detail information of can ec migrate"
+	cmdGetCanEcDelShort                 = "Display these partitions's detail information of already finish ec"
+	cmdDelDpAlreadyEc                   = "delete the datapartition of already finish ec migration"
+	cmdMigrateEc                        = "start ec migration to using ecnode store data"
+	cmdStopMigratingEcByDataPartition   = "stop migrating task by data partition"
 )
 
 func newDataPartitionTransferCmd(client *master.MasterClient) *cobra.Command {
@@ -831,6 +841,140 @@ func newDataPartitionCheckCommitCmd(client *master.MasterClient) *cobra.Command 
 		},
 	}
 	cmd.Flags().Uint64Var(&optSpecifyDP, CliFlagId, 0, "check data partition by partitionID")
+	return cmd
+}
+
+func newGetCanEcMigrateCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpGetCanEcMigrate,
+		Short: cmdGetCanEcMigrateShort,
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err        error
+				partitions = make([]*proto.DataPartitionResponse, 0)
+			)
+			if partitions, err = client.AdminAPI().GetCanMigrateDataPartitions(); err != nil {
+				return
+			}
+			for _, partition := range partitions {
+				stdout(formatDataPartitionTableRow(partition))
+				stdout("\n")
+			}
+		},
+	}
+	return cmd
+}
+
+func newGetCanEcDelCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpGetCanEcDel,
+		Short: cmdGetCanEcDelShort,
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err        error
+				partitions = make([]*proto.DataPartitionResponse, 0)
+			)
+			if partitions, err = client.AdminAPI().GetCanDelDataPartitions(); err != nil {
+				return
+			}
+			for _, partition := range partitions {
+				stdout(formatDataPartitionTableRow(partition))
+				stdout("\n")
+			}
+		},
+	}
+	return cmd
+}
+
+func newDelDpAlreadyEc(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpDelAleadyEcDp + " [PARTITION ID]",
+		Short: cmdDelDpAlreadyEc,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			partitionID, err := strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				stdout("%v\n", err)
+				return
+			}
+			stdout("%v\n", client.AdminAPI().DeleteDpAlreadyEc(partitionID))
+		},
+	}
+	return cmd
+}
+
+func newMigrateEc(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpMigrateEc + " [PARTITION ID]",
+		Short: cmdMigrateEc,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			partitionID, err := strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				stdout("%v\n", err)
+				return
+			}
+			test := false
+			if len(args) == 2 && args[1] == "test" {
+				test = true
+			}
+			stdout("%v\n", client.AdminAPI().MigrateEcById(partitionID, test))
+		},
+	}
+	return cmd
+}
+
+func getDataPartitionCrc(dp *proto.DataPartitionInfo, dpCrc map[uint64]map[string]uint32, extentInfo []uint64, dpWg *sync.WaitGroup, client *master.MasterClient, printLog bool) {
+	defer dpWg.Done()
+	var hostmapLock sync.Mutex
+	for _, extentId := range extentInfo {
+		if printLog {
+			stdout("DataPartition:%v Extent:%v start\n", dp.PartitionID, extentId)
+		}
+		var wg sync.WaitGroup
+		hostmap := make(map[string]uint32)
+		for _, host := range dp.Hosts {
+			wg.Add(1)
+			go func(host string) {
+				defer wg.Done()
+				var (
+					crc uint32
+					err error
+				)
+				arr := strings.Split(host, ":")
+				if printLog {
+					stdout("  from DataNode(%v) get crc\n", host)
+				}
+				if crc, err = client.NodeAPI().DataNodeGetExtentCrc(arr[0], dp.PartitionID, extentId); err != nil {
+					if printLog {
+						stdout("  DataNode(%v) GetExtentCrc err(%v)\n", host, err)
+					}
+					return
+				}
+				hostmapLock.Lock()
+				hostmap[host] = crc
+				hostmapLock.Unlock()
+			}(host)
+		}
+		wg.Wait()
+		dpCrc[extentId] = hostmap
+	}
+}
+
+func newStopMigratingByDataPartition(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpStopMigratingEc + " [PARTITION ID]",
+		Short: cmdStopMigratingEcByDataPartition,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			partitionID, err := strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				stdout("%v\n", err)
+				return
+			}
+			stdout("%v\n", client.AdminAPI().StopMigratingByDataPartition(partitionID))
+		},
+	}
 	return cmd
 }
 

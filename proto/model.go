@@ -61,6 +61,7 @@ type DataNodeInfo struct {
 	Version                   string
 	ZoneName                  string `json:"Zone"`
 	Addr                      string
+	HttpPort                  string
 	ReportTime                time.Time
 	IsActive                  bool
 	UsageRatio                float64 // used / total space
@@ -69,6 +70,37 @@ type DataNodeInfo struct {
 	DataPartitionReports      []*PartitionReport
 	DataPartitionCount        uint32
 	NodeSetID                 uint64
+	PersistenceDataPartitions []uint64
+	BadDisks                  []string
+	ToBeOffline               bool
+	ToBeMigrated              bool
+}
+
+type CodecNodeInfo struct {
+	ID         uint64
+	Addr       string
+	ReportTime time.Time
+	IsActive   bool
+	Version    string
+}
+
+type EcNodeInfo struct {
+	Total                     uint64 `json:"TotalWeight"`
+	Used                      uint64 `json:"UsedWeight"`
+	AvailableSpace            uint64
+	RemainCapacity            uint64
+	ID                        uint64
+	ZoneName                  string `json:"Zone"`
+	Addr                      string
+	HttpPort                  string
+	Version                   string
+	ReportTime                time.Time
+	IsActive                  bool
+	UsageRatio                float64 // used / total space
+	SelectedTimes             uint64
+	Carry                     float64 // carry is a factor used in cacluate the node's weight
+	DataPartitionReports      []*PartitionReport
+	DataPartitionCount        uint32
 	PersistenceDataPartitions []uint64
 	BadDisks                  []string
 	ToBeOffline               bool
@@ -153,15 +185,24 @@ type ClusterView struct {
 	MaxDataPartitionID     uint64
 	MaxMetaNodeID          uint64
 	MaxMetaPartitionID     uint64
+	EcScrubEnable          bool
+	EcMaxScrubExtents      uint8
+	EcScrubPeriod          uint32
+	EcScrubStartTime       int64
+	MaxCodecConcurrent     int
 	DataNodeStatInfo       *NodeStatInfo
 	MetaNodeStatInfo       *NodeStatInfo
+	EcNodeStatInfo         *NodeStatInfo
 	VolStatInfo            []*VolStatInfo
 	BadPartitionIDs        []BadPartitionView
 	BadMetaPartitionIDs    []BadPartitionView
+	BadEcPartitionIDs      []BadPartitionView
 	MigratedDataPartitions []BadPartitionView
 	MigratedMetaPartitions []BadPartitionView
 	MetaNodes              []NodeView
 	DataNodes              []NodeView
+	CodEcnodes             []NodeView
+	EcNodes                []NodeView
 	DataNodeBadDisks       []DataNodeBadDisksView
 	SchedulerDomain        string // todo
 	ClientPkgAddr          string
@@ -189,6 +230,7 @@ type DataNodeBadDisksView struct {
 type ClusterStatInfo struct {
 	DataNodeStatInfo *NodeStatInfo
 	MetaNodeStatInfo *NodeStatInfo
+	EcNodeStatInfo   *NodeStatInfo
 	ZoneStatInfo     map[string]*ZoneStat
 }
 
@@ -230,6 +272,7 @@ type DataPartitionInfo struct {
 	LastLoadedTime          int64
 	CreateTime              int64
 	ReplicaNum              uint8
+	EcMigrateStatus         uint8
 	Status                  int8
 	IsRecover               bool
 	IsFrozen                bool
@@ -391,4 +434,35 @@ type nodeSetView struct {
 	MetaNodeLen int
 	MetaNodes   []NodeView
 	DataNodes   []NodeView
+}
+
+// EcPartition represents the structure of storing the file contents by erasure code.
+type EcPartitionInfo struct {
+	*DataPartitionInfo
+	EcReplicas     []*EcReplica
+	DataUnitsNum   uint8
+	ParityUnitsNum uint8
+}
+
+// EcReplica represents the replica of a ec partition
+type EcReplica struct {
+	Addr            string
+	ReportTime      int64
+	FileCount       uint32
+	Status          int8
+	HasLoadResponse bool   // if there is any response when loading
+	Total           uint64 `json:"TotalSize"`
+	Used            uint64 `json:"UsedSize"`
+	IsLeader        bool
+	NeedsToCompare  bool
+	DiskPath        string
+	NodeIndex       uint32
+	HttpPort        string
+}
+
+// ec partition diagnosis represents the inactive data nodes, corrupt data partitions, and data partitions lack of replicas
+type EcPartitionDiagnosis struct {
+	InactiveEcNodes           []string
+	CorruptEcPartitionIDs     []uint64
+	LackReplicaEcPartitionIDs []uint64
 }

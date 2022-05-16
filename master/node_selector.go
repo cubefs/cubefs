@@ -17,14 +17,15 @@ package master
 import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/util/log"
 	"sort"
 	"sync"
-	"github.com/chubaofs/chubaofs/util/log"
 )
 
 const (
 	selectDataNode = 0
 	selectMetaNode = 1
+	selectEcNode   = 2
 )
 
 type weightedNode struct {
@@ -195,6 +196,9 @@ func getAvailHosts(nodes *sync.Map, excludeHosts []string, replicaNum int, selec
 	case selectMetaNode:
 		maxTotalFunc = getMetaNodeMaxTotal
 		getCarryNodesFunc = getAllCarryMetaNodes
+	case selectEcNode:
+		maxTotalFunc = getEcNodeMaxTotal
+		getCarryNodesFunc = getAvailCarryEcNodeTab
 	default:
 		return nil, nil, fmt.Errorf("invalid selectType[%v]", selectType)
 	}

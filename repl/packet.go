@@ -62,9 +62,9 @@ type Packet struct {
 
 type FollowerPacket struct {
 	proto.Packet
-	errorCh          chan error
-	dataPoolRefCnt   *int32
-	isUseDataPool    bool
+	errorCh        chan error
+	dataPoolRefCnt *int32
+	isUseDataPool  bool
 }
 
 func NewFollowerPacket(ctx context.Context, parent *Packet) (fp *FollowerPacket) {
@@ -87,8 +87,6 @@ func (p *FollowerPacket) DecDataPoolRefCnt() {
 		atomic.AddInt32(p.dataPoolRefCnt, -1)
 	}
 }
-
-
 
 func (p *FollowerPacket) IsErrPacket() bool {
 	return p.ResultCode != proto.OpOk && p.ResultCode != proto.OpInitResultCode
@@ -160,7 +158,7 @@ func (p *Packet) cleanDataPoolFlag(srcFun string) (isReturnToPool bool) {
 		isReturnToPool = true
 		p.Object = nil
 		p.TpObject = nil
-		p.dataPoolRefCnt=0
+		p.dataPoolRefCnt = 0
 		p.Arg = nil
 		p.followerPackets = nil
 		p.OrgBuffer = nil
@@ -182,7 +180,7 @@ func (p *Packet) forceCleanDataPoolFlag(srcFun string) (isReturnToPool bool) {
 		isReturnToPool = true
 		p.Object = nil
 		p.TpObject = nil
-		p.dataPoolRefCnt=0
+		p.dataPoolRefCnt = 0
 		p.Arg = nil
 		p.followerPackets = nil
 		p.OrgBuffer = nil
@@ -191,9 +189,9 @@ func (p *Packet) forceCleanDataPoolFlag(srcFun string) (isReturnToPool bool) {
 }
 
 func (p *Packet) cleanPacketPoolFlag(srcFun string) (isReturnToPool bool) {
-	if p.isUsePacketPool() && p.canPutToPacketPool()  {
+	if p.isUsePacketPool() && p.canPutToPacketPool() {
 		PutPacketToPool(p)
-		isReturnToPool=true
+		isReturnToPool = true
 	}
 	return
 }
@@ -201,7 +199,7 @@ func (p *Packet) cleanPacketPoolFlag(srcFun string) (isReturnToPool bool) {
 func (p *Packet) forceCleanPacketPoolFlag(srcFun string) (isReturnToPool bool) {
 	if p.isUsePacketPool() {
 		PutPacketToPool(p)
-		isReturnToPool=true
+		isReturnToPool = true
 	}
 	return
 }
@@ -284,7 +282,7 @@ func (p *Packet) DecDataPoolRefCnt() {
 }
 
 func (p *Packet) DecPacketPoolRefCnt() {
-	if p.isUsePacketPool(){
+	if p.isUsePacketPool() {
 		if atomic.LoadInt32(&p.packetPoolRefCnt) > 0 {
 			atomic.AddInt32(&p.packetPoolRefCnt, -1)
 		}
@@ -294,7 +292,6 @@ func (p *Packet) DecPacketPoolRefCnt() {
 func (p *Packet) isUseDataPool() bool {
 	return atomic.LoadInt64(&p.useDataPoolFlag) == PacketUseDataPool
 }
-
 
 func (p *Packet) isUsePacketPool() bool {
 	return atomic.LoadInt64(&p.usePacketPoolFlag) == PacketUsePacketPool
@@ -348,7 +345,7 @@ func PutPacketToPool(p *Packet) {
 			}
 		}
 	}
-	p.HasPrepare=false
+	p.HasPrepare = false
 	p.Size = 0
 	p.Data = nil
 	p.Opcode = 0
@@ -363,20 +360,20 @@ func PutPacketToPool(p *Packet) {
 	p.RemainingFollowers = 0
 	p.CRC = 0
 	p.ArgLen = 0
-	p.OrgBuffer=nil
+	p.OrgBuffer = nil
 	p.KernelOffset = 0
 	p.SetCtx(nil)
 	p.Arg = nil
-	p.OrgSize=0
-	p.followersAddrs=nil
-	p.IsReleased=0
-	p.mesg=""
-	p.Object=nil
-	p.NeedReply=true
-	p.OrgSize=0
-	p.quorum=0
-	p.TpObject=nil
-	p.errorCh=nil
+	p.OrgSize = 0
+	p.followersAddrs = nil
+	p.IsReleased = 0
+	p.mesg = ""
+	p.Object = nil
+	p.NeedReply = true
+	p.OrgSize = 0
+	p.quorum = 0
+	p.TpObject = nil
+	p.errorCh = nil
 	p.Data = nil
 	p.StartT = time.Now().UnixNano()
 	p.WaitT = time.Now().UnixNano()
@@ -391,8 +388,8 @@ func GetPacketFromPool() (p *Packet) {
 	p = PacketPool[index].Get().(*Packet)
 	p.StartT = time.Now().UnixNano()
 	p.usePacketPoolFlag = PacketUsePacketPool
-	if p.PoolFlag==0 {
-		p.PoolFlag=proto.GenerateRequestID()
+	if p.PoolFlag == 0 {
+		p.PoolFlag = proto.GenerateRequestID()
 	}
 	p.NeedReply = true
 	return
@@ -410,8 +407,6 @@ func NewPacket(ctx context.Context) (p *Packet) {
 	p.SetCtx(ctx)
 	return
 }
-
-
 
 func NewPacketToGetAllWatermarks(ctx context.Context, partitionID uint64, extentType uint8) (p *Packet) {
 	p = new(Packet)
@@ -486,6 +481,32 @@ func NewTinyExtentRepairReadPacket(ctx context.Context, partitionID uint64, exte
 	p.ExtentType = proto.TinyExtentType
 	p.ReqID = proto.GenerateRequestID()
 	p.SetCtx(ctx)
+
+	return
+}
+
+func NewPacketToReadEcTinyDeleteRecord(ctx context.Context, partitionID uint64, offset int64) (p *Packet) {
+	p = new(Packet)
+	p.Opcode = proto.OpEcTinyDelInfoRead
+	p.PartitionID = partitionID
+	p.Magic = proto.ProtoMagic
+	p.ReqID = proto.GenerateRequestID()
+	p.ExtentOffset = offset
+	p.SetCtx(ctx)
+
+	return
+}
+
+func NewExtentStripeRead(partitionID, extentID, offset, size uint64) (p *Packet) {
+	p = new(Packet)
+	p.ExtentID = extentID
+	p.PartitionID = partitionID
+	p.Magic = proto.ProtoMagic
+	p.ExtentOffset = int64(offset)
+	p.Size = uint32(size)
+	p.Opcode = proto.OpEcRead
+	p.ReqID = proto.GenerateRequestID()
+	p.StartT = time.Now().UnixNano()
 
 	return
 }
@@ -571,7 +592,7 @@ func (p *Packet) PackErrorBody(action, msg string) {
 	p.Size = uint32(len([]byte(action + "_" + msg)))
 	p.Data = make([]byte, p.Size)
 	copy(p.Data[:int(p.Size)], []byte(action+"_"+msg))
-	p.ArgLen=0
+	p.ArgLen = 0
 }
 
 func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineSonds int64) (isUseBufferPool bool, err error) {
@@ -616,7 +637,7 @@ func (p *Packet) allocateBufferFromPoolForReadConnnectBody(c net.Conn) (isUseBuf
 		_, err = io.ReadFull(c, p.Data[:readSize])
 		atomic.StoreInt64(&p.useDataPoolFlag, PacketUseDataPool)
 		isUseBufferPool = true
-	}else {
+	} else {
 		p.Data = make([]byte, readSize)
 		_, err = io.ReadFull(c, p.Data[:readSize])
 	}
@@ -636,7 +657,11 @@ func (p *Packet) IsMasterCommand() bool {
 		proto.OpDataPartitionTryToLeader,
 		proto.OpSyncDataPartitionReplicas,
 		proto.OpAddDataPartitionRaftLearner,
-		proto.OpPromoteDataPartitionRaftLearner:
+		proto.OpPromoteDataPartitionRaftLearner,
+		proto.OpEcNodeHeartbeat,
+		proto.OpCreateEcDataPartition,
+		proto.OpChangeEcPartitionMembers,
+		proto.OpDeleteEcDataPartition:
 		return true
 	}
 	return false
@@ -657,7 +682,8 @@ func (p *Packet) IsTinyExtentType() bool {
 }
 
 func (p *Packet) IsWriteOperation() bool {
-	return p.Opcode == proto.OpWrite || p.Opcode == proto.OpSyncWrite
+	return p.Opcode == proto.OpWrite || p.Opcode == proto.OpSyncWrite ||
+		p.Opcode == proto.OpEcWrite || p.Opcode == proto.OpSyncEcWrite
 }
 
 func (p *Packet) IsCreateExtentOperation() bool {
@@ -676,7 +702,7 @@ func (p *Packet) IsReadOperation() bool {
 	return p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpRead ||
 		p.Opcode == proto.OpExtentRepairRead || p.Opcode == proto.OpReadTinyDeleteRecord ||
 		p.Opcode == proto.OpTinyExtentRepairRead || p.Opcode == proto.OpStreamFollowerRead ||
-		p.Opcode == proto.OpTinyExtentAvaliRead
+		p.Opcode == proto.OpTinyExtentAvaliRead || p.Opcode == proto.OpEcTinyRepairRead
 }
 
 func (p *Packet) IsRandomWrite() bool {

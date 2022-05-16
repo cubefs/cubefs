@@ -16,6 +16,7 @@ package master
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -399,13 +400,16 @@ func (api *AdminAPI) SetVolumeConvertTaskState(volName, authKey string, st int) 
 }
 
 func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int, dpSize, capacity uint64, replicas, mpReplicas, trashDays, storeMode int,
-	followerRead, autoRepair, volWriteMutex, forceROW, isSmart bool, zoneName, mpLayout, smartRules string, crossRegionHAType uint8, compactTag string) (err error) {
+	followerRead, autoRepair, volWriteMutex, forceROW, isSmart bool, zoneName, mpLayout, smartRules string, crossRegionHAType uint8, compactTag string, ecDataNum, ecParityNum uint8, ecEnable bool) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
 	request.addParam("mpCount", strconv.Itoa(mpCount))
 	request.addParam("size", strconv.FormatUint(dpSize, 10))
 	request.addParam("capacity", strconv.FormatUint(capacity, 10))
+	request.addParam("ecDataNum", strconv.Itoa(int(ecDataNum)))
+	request.addParam("ecParityNum", strconv.Itoa(int(ecParityNum)))
+	request.addParam("ecEnable", strconv.FormatBool(ecEnable))
 	request.addParam("followerRead", strconv.FormatBool(followerRead))
 	request.addParam("forceROW", strconv.FormatBool(forceROW))
 	request.addParam("crossRegion", strconv.Itoa(int(crossRegionHAType)))
@@ -797,6 +801,154 @@ func (api *AdminAPI) TransferSmartVolDataPartition(dpId uint64, addr string) (er
 	}
 	return
 }
+func (api *AdminAPI) GetEcPartition(volName string, partitionID uint64) (partition *proto.EcPartitionInfo, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminGetEcPartition)
+	request.addParam("id", strconv.Itoa(int(partitionID)))
+	request.addParam("name", volName)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	partition = &proto.EcPartitionInfo{}
+	err = json.Unmarshal(buf, &partition)
+	return
+}
+
+func (api *AdminAPI) DecommissionEcPartition(partitionID uint64, nodeAddr string) (data []byte, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminDecommissionEcPartition)
+	request.addParam("id", strconv.FormatUint(partitionID, 10))
+	request.addParam("addr", nodeAddr)
+
+	data, err = api.mc.serveRequest(request)
+	return
+}
+
+func (api *AdminAPI) DeleteEcReplica(ecPartitionID uint64, nodeAddr string) (data []byte, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminDeleteEcReplica)
+	request.addParam("id", strconv.FormatUint(ecPartitionID, 10))
+	request.addParam("addr", nodeAddr)
+
+	data, err = api.mc.serveRequest(request)
+	return
+}
+
+func (api *AdminAPI) AddEcReplica(ecPartitionID uint64, nodeAddr string) (data []byte, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminAddEcReplica)
+	request.addParam("id", strconv.FormatUint(ecPartitionID, 10))
+	request.addParam("addr", nodeAddr)
+
+	data, err = api.mc.serveRequest(request)
+	return
+}
+
+func (api *AdminAPI) SetEcRollBack(ecPartitionID uint64, needDelEc bool) (data []byte, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminEcPartitionRollBack)
+	request.addParam("id", strconv.FormatUint(ecPartitionID, 10))
+	request.addParam("delEc", strconv.FormatBool(needDelEc))
+	data, err = api.mc.serveRequest(request)
+	return
+}
+
+func (api *AdminAPI) DiagnoseEcPartition() (diagnosis *proto.EcPartitionDiagnosis, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminDiagnoseEcPartition)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	diagnosis = &proto.EcPartitionDiagnosis{}
+	if err = json.Unmarshal(buf, &diagnosis); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) UpdateVolumeEcInfo(volName string, ecEnable bool, ecDataNum, ecParityNum int, ecSaveTime, ecWaitTime, ecTimeOut, ecRetryWait int64, ecMaxUnitSize uint64) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVolEcInfo)
+
+	request.addParam("name", volName)
+	request.addParam("ecMaxUnitSize", strconv.FormatUint(ecMaxUnitSize, 10))
+	request.addParam("ecDataNum", strconv.Itoa(ecDataNum))
+	request.addParam("ecParityNum", strconv.Itoa(ecParityNum))
+	request.addParam("ecSaveTime", strconv.FormatInt(ecSaveTime, 10))
+	request.addParam("ecWaitTime", strconv.FormatInt(ecWaitTime, 10))
+	request.addParam("ecTimeOut", strconv.FormatInt(ecTimeOut, 10))
+	request.addParam("ecRetryWait", strconv.FormatInt(ecRetryWait, 10))
+	request.addParam("ecEnable", strconv.FormatBool(ecEnable))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) UpdateEcInfo(ecScrubEnable bool, ecMaxScrubExtents, ecScrubPeriod, maxCodecConcurrent int) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminClusterEcSet)
+	request.addParam("ecScrubPeriod", strconv.Itoa(ecScrubPeriod))
+	request.addParam("ecMaxScrubExtents", strconv.Itoa(ecMaxScrubExtents))
+	request.addParam("maxCodecConcurrent", strconv.Itoa(maxCodecConcurrent))
+	request.addParam("ecScrubEnable", strconv.FormatBool(ecScrubEnable))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) GetCanMigrateDataPartitions() (partitions []*proto.DataPartitionResponse, err error) {
+	var data []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminCanMigrateDataPartitions)
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	partitions = make([]*proto.DataPartitionResponse, 0)
+	if err = json.Unmarshal(data, &partitions); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) GetCanDelDataPartitions() (partitions []*proto.DataPartitionResponse, err error) {
+	var data []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminCanDelDataPartitions)
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	partitions = make([]*proto.DataPartitionResponse, 0)
+	if err = json.Unmarshal(data, &partitions); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) DeleteDpAlreadyEc(ecPartitionID uint64) string {
+	var request = newAPIRequest(http.MethodGet, proto.AdminDelDpAlreadyEc)
+	request.addParam("id", strconv.FormatUint(ecPartitionID, 10))
+	data, err := api.mc.serveRequest(request)
+	if err != nil {
+		return fmt.Sprintf("DeleteDpAlreadyEc fail:%v\n", err)
+	}
+	return string(data)
+}
+
+func (api *AdminAPI) MigrateEcById(ecPartitionID uint64, test bool) string {
+	var request = newAPIRequest(http.MethodGet, proto.AdminDpMigrateEc)
+	request.addParam("id", strconv.FormatUint(ecPartitionID, 10))
+	request.addParam("test", strconv.FormatBool(test))
+	data, err := api.mc.serveRequest(request)
+	if err != nil {
+		return fmt.Sprintf("MigrateEcById fail: %v\n", err)
+	}
+	return string(data)
+}
+
+func (api *AdminAPI) StopMigratingByDataPartition(dataPartitionID uint64) string {
+	var request = newAPIRequest(http.MethodGet, proto.AdminDpStopMigrating)
+	request.addParam("id", strconv.FormatUint(dataPartitionID, 10))
+	data, err := api.mc.serveRequest(request)
+	if err != nil {
+		return fmt.Sprintf("StopMigratingByDataPartition fail:%v\n", err)
+	}
+	return string(data)
+}
+
 
 func (api *AdminAPI) ListCompactVolumes() (volumes []*proto.CompactVolume, err error) {
 	var buf []byte

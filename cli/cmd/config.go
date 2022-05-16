@@ -41,6 +41,7 @@ var (
   "monitorAddr": "monitor.chubao.io",
   "dnProf": 17320,
   "mnProf": 17220,
+  "enProf": 17520,
   "convertAddr": "",
   "convertNodeDBConfig": {
     "path": "gate11.local.jed.jddb.com:3306",
@@ -63,6 +64,7 @@ type Config struct {
 	MonitorAddr         string               `json:"monitorAddr"`
 	DataNodeProfPort    uint16               `json:"dnProf"`
 	MetaNodeProfPort    uint16               `json:"mnProf"`
+	EcNodeProfPort      uint16               `json:"enProf"`
 	ConvertAddr         string               `json:"convertAddr"`
 	ConvertNodeDBConfig convertnode.DBConfig `json:"convertNodeDBConfig"`
 	IsDbBack            int8                 `json:"isDbBack"`
@@ -88,6 +90,7 @@ func newConfigSetCmd() *cobra.Command {
 	var optMonitorHost string
 	var optDNProfPort uint16
 	var optMNProfPort uint16
+	var optENProfPort uint16
 	var optConvertHost string
 	var optConvertNodeDBAddr string
 	var optConvertNodeDBUserName string
@@ -102,7 +105,7 @@ func newConfigSetCmd() *cobra.Command {
 			var monitorHosts string
 			var config *Config
 			var err error
-			if optMasterHost == "" && optMonitorHost == "" && optDNProfPort == 0 && optMNProfPort == 0 && len(optConvertHost) == 0 &&
+			if optMasterHost == "" && optMonitorHost == "" && optDNProfPort == 0 && optMNProfPort == 0 && optENProfPort == 0 && len(optConvertHost) == 0 &&
 				optConvertNodeDBAddr == "" && optConvertNodeDBUserName == "" && optConvertNodeDBPassword == "" && optIsDbBack == -1 {
 				stdout(fmt.Sprintf("No changes has been set. Input 'cfs-cli config set -h' for help.\n"))
 				return
@@ -128,6 +131,9 @@ func newConfigSetCmd() *cobra.Command {
 			}
 			if optMNProfPort > 0 {
 				config.MetaNodeProfPort = optMNProfPort
+			}
+			if optENProfPort > 0 {
+				config.EcNodeProfPort = optENProfPort
 			}
 			if len(optConvertHost) > 0 {
 				config.ConvertAddr = optConvertHost

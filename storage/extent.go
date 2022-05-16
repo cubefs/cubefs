@@ -57,8 +57,6 @@ func (ei *ExtentInfoBlock) Loaded() bool {
 	return ei[ModifyTime] > 0
 }
 
-
-
 // Extent is an implementation of Extent for local regular extent file data management.
 // This extent implementation manages all header info and data body in one single entry file.
 // Header of extent include inode value of this extent block and Crc blocks of data blocks.
@@ -440,6 +438,20 @@ func (e *Extent) tinyExtentAvaliOffset(offset int64) (newOffset, newEnd int64, e
 	if newEnd < newOffset {
 		err = fmt.Errorf("unavali TinyExtentAvaliOffset on SEEK_DATA or SEEK_HOLE   (%v) offset(%v) "+
 			"newEnd(%v) newOffset(%v)", e.extentID, offset, newEnd, newOffset)
+	}
+	return
+}
+
+func (e *Extent) tinyExtentAvaliAndHoleOffset(offset int64) (dataOffset, holeOffset int64, err error) {
+	e.Lock()
+	defer e.Unlock()
+	dataOffset, err = e.file.Seek(offset, SEEK_DATA)
+	if err != nil {
+		return
+	}
+	holeOffset, err = e.file.Seek(offset, SEEK_HOLE)
+	if err != nil {
+		return
 	}
 	return
 }

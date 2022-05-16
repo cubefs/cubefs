@@ -62,6 +62,8 @@ const (
 	OpStreamRead         uint8 = 0x05
 	OpStreamFollowerRead uint8 = 0x06
 	OpGetAllWatermarks   uint8 = 0x07
+	OpEcRead                   = OpRead
+	OpStreamEcRead             = OpStreamRead
 
 	OpNotifyReplicasToRepair         uint8 = 0x08
 	OpExtentRepairRead               uint8 = 0x09
@@ -77,6 +79,7 @@ const (
 	OpGetAllWatermarksV2             uint8 = 0x17
 	OpGetAllExtentInfo               uint8 = 0x18
 	OpTinyExtentAvaliRead            uint8 = 0x19
+	OpEcTinyDelInfoRead                    = OpReadTinyDeleteRecord
 
 	// Operations client-->datanode
 	OpRandomWriteV3     uint8 = 0x50
@@ -182,6 +185,30 @@ const (
 	OpMetaCursorReset   uint8 = 0x94
 	OpMetaGetCmpInode   uint8 = 0x95
 	OpMetaInodeMergeEks uint8 = 0x96
+
+	//Operations: Master -> CodecNode
+	OpCodecNodeHeartbeat               uint8 = 0xA0
+	OpIssueMigrationTask               uint8 = 0xA1
+	OpStopMigratingByDatapartitionTask uint8 = 0xA2
+	OpStopMigratingByNodeTask          uint8 = 0xA3
+
+	//EC Operations: Master -> EcNode
+	OpEcNodeHeartbeat                 uint8 = 0xB0
+	OpCreateEcDataPartition           uint8 = 0xB1
+	OpDeleteEcDataPartition           uint8 = 0xB2
+	OpNotifyEcRepairTinyDelInfo       uint8 = 0xB3
+	OpChangeEcPartitionMembers        uint8 = 0xB4
+	OpUpdateEcDataPartition           uint8 = 0xB6
+	OpEcWrite                         uint8 = 0xB7
+	OpSyncEcWrite                     uint8 = 0xB8
+	OpEcTinyRepairRead                uint8 = 0xB9
+	OpPersistTinyExtentDelete         uint8 = 0xBA
+	OpEcTinyDelete                    uint8 = 0xBB
+	OpNotifyEcRepairOriginTinyDelInfo uint8 = 0xBC
+	OpEcOriginTinyDelInfoRead         uint8 = 0xBD
+	OpEcGetTinyDeletingInfo           uint8 = 0xBE
+	OpEcRecordTinyDelInfo             uint8 = 0xBF
+	OpEcNodeDail                      uint8 = 0xC0
 
 	// Commons
 	OpInodeOutOfRange  uint8 = 0xF2
@@ -342,6 +369,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpNotifyReplicasToRepair"
 	case OpExtentRepairRead:
 		m = "OpExtentRepairRead"
+	case OpTinyExtentAvaliRead:
+		m = "OpTinyExtentAvaliRead"
 	case OpInodeOutOfRange:
 		m = "InodeOutOfRange"
 	case OpIntraGroupNetErr:
@@ -807,10 +836,10 @@ func (p *Packet) AddMesgLog(m string) {
 // GetUniqueLogId returns the unique log ID.
 func (p *Packet) GetUniqueLogId() (m string) {
 	defer func() {
-		if p.PoolFlag==0 {
+		if p.PoolFlag == 0 {
 			m = m + fmt.Sprintf("_ResultMesg(%v)", p.GetResultMsg())
-		}else {
-			m = m + fmt.Sprintf("_ResultMesg(%v)_PoolFLag(%v)", p.GetResultMsg(),p.PoolFlag)
+		} else {
+			m = m + fmt.Sprintf("_ResultMesg(%v)_PoolFLag(%v)", p.GetResultMsg(), p.PoolFlag)
 		}
 	}()
 	if p.HasPrepare {

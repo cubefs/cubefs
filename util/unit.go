@@ -40,6 +40,7 @@ const (
 	PacketHeaderSize         = 57
 	BlockHeaderSize          = 4096
 	OverWritePacketSizeLimit = 512 * 1024 // Write up to 1MB of data at a time in MySQL
+	EcBlockSize              = 2 * MB
 )
 
 const (
@@ -86,5 +87,5 @@ func isMatch(exp *regexp.Regexp, val interface{}) bool {
 
 func FixedPoint(value float64, scale int) float64 {
 	decimal := math.Pow10(scale)
-	return float64(int(math.Round(value * decimal))) / decimal
+	return float64(int(math.Round(value*decimal))) / decimal
 }

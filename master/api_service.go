@@ -200,6 +200,7 @@ func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
 	cs := &proto.ClusterStatInfo{
 		DataNodeStatInfo: m.cluster.dataNodeStatInfo,
 		MetaNodeStatInfo: m.cluster.metaNodeStatInfo,
+		EcNodeStatInfo:   m.cluster.ecNodeStatInfo,
 		ZoneStatInfo:     make(map[string]*proto.ZoneStat, 0),
 	}
 	for zoneName, zoneStat := range m.cluster.zoneStatInfos {
@@ -225,12 +226,20 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MaxMetaPartitionID:     m.cluster.idAlloc.metaPartitionID,
 		MetaNodes:              make([]proto.NodeView, 0),
 		DataNodes:              make([]proto.NodeView, 0),
+		CodEcnodes:             make([]proto.NodeView, 0),
+		EcNodes:                make([]proto.NodeView, 0),
 		VolStatInfo:            make([]*proto.VolStatInfo, 0),
 		BadPartitionIDs:        make([]proto.BadPartitionView, 0),
 		BadMetaPartitionIDs:    make([]proto.BadPartitionView, 0),
+		BadEcPartitionIDs:      make([]proto.BadPartitionView, 0),
 		MigratedDataPartitions: make([]proto.BadPartitionView, 0),
 		MigratedMetaPartitions: make([]proto.BadPartitionView, 0),
 		DataNodeBadDisks:       make([]proto.DataNodeBadDisksView, 0),
+		EcScrubEnable:          m.cluster.EcScrubEnable,
+		EcMaxScrubExtents:      m.cluster.EcMaxScrubExtents,
+		EcScrubPeriod:          m.cluster.EcScrubPeriod,
+		EcScrubStartTime:       m.cluster.EcStartScrubTime,
+		MaxCodecConcurrent:     m.cluster.MaxCodecConcurrent,
 	}
 
 	vols := m.cluster.allVolNames()
@@ -238,6 +247,9 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	cv.DataNodes = m.cluster.allDataNodes()
 	cv.DataNodeStatInfo = m.cluster.dataNodeStatInfo
 	cv.MetaNodeStatInfo = m.cluster.metaNodeStatInfo
+	cv.CodEcnodes = m.cluster.allCodecNodes()
+	cv.EcNodes = m.cluster.allEcNodes()
+	cv.EcNodeStatInfo = m.cluster.ecNodeStatInfo
 	for _, name := range vols {
 		stat, ok := m.cluster.volStatInfo.Load(name)
 		if !ok {
@@ -258,6 +270,13 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		path := key.(string)
 		bpv := badPartitionView{Path: path, PartitionIDs: badPartitionIds}
 		cv.BadMetaPartitionIDs = append(cv.BadMetaPartitionIDs, bpv)
+		return true
+	})
+	m.cluster.BadEcPartitionIds.Range(func(key, value interface{}) bool {
+		badEcPartitionIds := value.([]uint64)
+		path := key.(string)
+		bpv := badPartitionView{Path: path, PartitionIDs: badEcPartitionIds}
+		cv.BadEcPartitionIDs = append(cv.BadEcPartitionIDs, bpv)
 		return true
 	})
 	m.cluster.MigratedDataPartitionIds.Range(func(key, value interface{}) bool {
@@ -952,11 +971,14 @@ func (m *Server) setNodeToOfflineState(w http.ResponseWriter, r *http.Request) {
 	if nodeType == nodeTypeAll {
 		m.cluster.setDataNodeToOfflineState(startID, endID, state, zoneName)
 		m.cluster.setMetaNodeToOfflineState(startID, endID, state, zoneName)
+		m.cluster.setEcNodeToOfflineState(startID, endID, state, zoneName)
 	} else {
 		if nodeType == nodeTypeDataNode {
 			m.cluster.setDataNodeToOfflineState(startID, endID, state, zoneName)
-		} else {
+		} else if nodeType == nodeTypeMetaNode{
 			m.cluster.setMetaNodeToOfflineState(startID, endID, state, zoneName)
+		} else {
+			m.cluster.setEcNodeToOfflineState(startID, endID, state, zoneName)
 		}
 	}
 	sendOkReply(w, r, newSuccessHTTPReply("success"))
@@ -1511,12 +1533,15 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		trashDays            int
 		storeMode            int
 		mpLayout             proto.MetaPartitionLayout
+		ecDataNum            uint8
+		ecParityNum          uint8
+		ecEnable             bool
 		isSmart              bool
 		smartRules           []string
 		compactTag           string
 	)
 
-	if name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays, followerRead, authenticate,
+	if name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate,
 		enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, crossRegionHAType, dpWriteableThreshold, mpLayout, smartRules, compactTag, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -1559,7 +1584,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size,
-		capacity, trashDays, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart,
+		capacity, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart,
 		crossRegionHAType, dpWriteableThreshold, proto.StoreMode(storeMode), mpLayout, smartRules, cmpTag); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -1673,22 +1698,31 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		CreateStatus:         vol.CreateStatus,
 		CompactTag:           vol.compactTag.String(),
 		CompactTagModifyTime: vol.compactTagModifyTime,
+		EcEnable:             vol.EcEnable,
+		EcWaitTime:           vol.EcMigrationWaitTime,
+		EcSaveTime:           vol.EcMigrationSaveTime,
+		EcRetryWait:          vol.EcMigrationRetryWait,
+		EcTimeOut:            vol.EcMigrationTimeOut,
+		EcDataNum:            vol.EcDataNum,
+		EcParityNum:          vol.EcParityNum,
+		EcMaxUnitSize:        vol.EcMaxUnitSize,
 	}
 }
 
 func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr string
+		httpPort string
 		zoneName string
 		id       uint64
 		version  string
 		err      error
 	)
-	if nodeAddr, zoneName, version, err = parseRequestForAddNode(r); err != nil {
+	if nodeAddr, httpPort, zoneName, version, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if id, err = m.cluster.addDataNode(nodeAddr, zoneName, version); err != nil {
+	if id, err = m.cluster.addDataNode(nodeAddr, httpPort, zoneName, version); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2122,7 +2156,7 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 		id       uint64
 		err      error
 	)
-	if nodeAddr, zoneName, version, err = parseRequestForAddNode(r); err != nil {
+	if nodeAddr, _, zoneName, version, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -2538,7 +2572,7 @@ func parseRequestForUpdateMetaNode(r *http.Request) (nodeAddr string, id uint64,
 	return
 }
 
-func parseRequestForAddNode(r *http.Request) (nodeAddr, zoneName, version string, err error) {
+func parseRequestForAddNode(r *http.Request) (nodeAddr, httpPort, zoneName, version string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2551,6 +2585,10 @@ func parseRequestForAddNode(r *http.Request) (nodeAddr, zoneName, version string
 
 	if versionStr := r.FormValue(versionKey); versionStr == "" {
 		version = defaultMetaNodeVersion
+	}
+
+	if httpPort = r.FormValue(dataNodeHttpPortKey); httpPort == "" {
+		httpPort = defaultDataNodeHttpPort
 	}
 	return
 }
@@ -2571,6 +2609,20 @@ func parseAndExtractNodeAddr(r *http.Request) (nodeAddr string, err error) {
 		return
 	}
 	return extractNodeAddr(r)
+}
+
+func parseAndExtractCodecNodeAddr(r *http.Request) (nodeAddr, version string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if nodeAddr, err = extractNodeAddr(r); err != nil {
+		return
+	}
+
+	if versionStr := r.FormValue(versionKey); versionStr == "" {
+		version = defaultMetaNodeVersion
+	}
+	return
 }
 
 func extractStrictFlag(r *http.Request) (strict bool, err error) {
@@ -2952,7 +3004,7 @@ func parseDefaultTrashDaysToUpdateVol(r *http.Request, vol *Vol) (remaining uint
 }
 
 func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string,
-	mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays int,
+	mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays int, dataNum uint8, parityNum uint8, enableEc,
 	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart bool,
 	crossRegionHAType proto.CrossRegionHAType, dpWritableThreshold float64,
 	layout proto.MetaPartitionLayout, smartRules []string, compactTag string, err error) {
@@ -3078,6 +3130,34 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 
 	if compactTag = r.FormValue(compactTagKey); compactTag == "" {
 		compactTag = defaultCompactTag
+	}
+	var tmpDataNum int
+	if dataNumStr := r.FormValue(ecDataNumKey); dataNumStr == "" {
+		tmpDataNum = defaultEcDataNum
+		log.LogWarnf("ecDataNum no set")
+	} else if tmpDataNum, err = strconv.Atoi(dataNumStr); err != nil {
+		err = unmatchedKey(ecDataNumKey)
+		return
+	}
+	dataNum = uint8(tmpDataNum)
+
+	var tmpParityNum int
+	if parityNumStr := r.FormValue(ecParityNumKey); parityNumStr == "" {
+		tmpParityNum = defaultEcParityNum
+		log.LogWarnf("ecParityNum no set")
+	} else if tmpParityNum, err = strconv.Atoi(parityNumStr); err != nil {
+		err = unmatchedKey(ecParityNumKey)
+		return
+	}
+	parityNum = uint8(tmpParityNum)
+
+	var value string
+	if value = r.FormValue(ecEnableKey); value == "" {
+		enableEc = defaultEcEnable
+		return
+	}
+	if enableEc, err = strconv.ParseBool(value); err != nil {
+		return
 	}
 	return
 }
@@ -3535,6 +3615,18 @@ func extractStatus(r *http.Request) (status bool, err error) {
 		return
 	}
 	if status, err = strconv.ParseBool(value); err != nil {
+		return
+	}
+	return
+}
+
+func extractTest(r *http.Request) (test bool, err error) {
+	var value string
+	if value = r.FormValue(ecTestKey); value == "" {
+		err = keyNotFound(ecTestKey)
+		return
+	}
+	if test, err = strconv.ParseBool(value); err != nil {
 		return
 	}
 	return

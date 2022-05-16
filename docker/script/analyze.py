@@ -48,6 +48,8 @@ def analyze_coverage():
         "metanode",
         "datanode",
         "objectnode",
+        "codecnode",
+        "ecnode",
         "util",
     ]
     module_details = {}

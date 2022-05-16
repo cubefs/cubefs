@@ -87,6 +87,15 @@ type Vol struct {
 	CreateStatus         proto.VolCreateStatus
 	compactTag			 proto.CompactTag
 	compactTagModifyTime int64
+	EcEnable             bool
+	EcDataNum            uint8
+	EcParityNum          uint8
+	EcMigrationWaitTime  int64
+	EcMigrationSaveTime  int64
+	EcMigrationTimeOut   int64
+	EcMigrationRetryWait int64
+	EcMaxUnitSize        uint64
+	ecDataPartitions     *EcDataPartitionCache
 	sync.RWMutex
 }
 
@@ -101,6 +110,7 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	defStoreMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
+	vol.ecDataPartitions = newEcDataPartitionCache(vol)
 	if dpReplicaNum < defaultReplicaNum {
 		dpReplicaNum = defaultReplicaNum
 	}
@@ -157,6 +167,15 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 		vol.smartRules = smartRules
 	}
 	vol.compactTag = compactTag
+
+	vol.EcDataNum = defaultEcDataNum
+	vol.EcParityNum = defaultEcParityNum
+	vol.EcEnable = defaultEcEnable
+	vol.EcMigrationWaitTime = defaultEcMigrationWaitTime
+	vol.EcMigrationSaveTime = defaultEcMigrationSaveTime
+	vol.EcMigrationTimeOut = defaultEcMigrationTimeOut
+	vol.EcMigrationRetryWait = defaultEcMigrationRetryWait
+	vol.EcMaxUnitSize = defaultEcMaxUnitSize
 	return
 }
 
@@ -203,7 +222,33 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.MinWritableMPNum = vv.MinWritableMPNum
 	vol.MinWritableDPNum = vv.MinWritableDPNum
 	vol.NearRead = vv.NearRead
-
+	vol.EcMigrationSaveTime = vv.EcSaveTime
+	vol.EcMigrationWaitTime = vv.EcWaitTime
+	vol.EcMigrationRetryWait = vv.EcRetryWait
+	vol.EcMigrationTimeOut = vv.EcTimeOut
+	vol.EcMaxUnitSize = vv.EcMaxUnitSize
+	vol.EcDataNum     = vv.EcDataNum
+	vol.EcParityNum   = vv.EcParityNum
+	vol.EcEnable      = vv.EcEnable
+	if vol.EcDataNum == 0 || vol.EcParityNum == 0 {
+		vol.EcDataNum = defaultEcDataNum
+		vol.EcParityNum = defaultEcParityNum
+	}
+	if vol.EcMigrationSaveTime == 0 {
+		vol.EcMigrationSaveTime = defaultEcMigrationSaveTime
+	}
+	if vol.EcMigrationWaitTime == 0 {
+		vol.EcMigrationWaitTime = defaultEcMigrationWaitTime
+	}
+	if vol.EcMigrationRetryWait == 0 {
+		vol.EcMigrationRetryWait = defaultEcMigrationRetryWait
+	}
+	if vol.EcMigrationTimeOut == 0 {
+		vol.EcMigrationTimeOut = defaultEcMigrationTimeOut
+	}
+	if vol.EcMaxUnitSize == 0 {
+		vol.EcMaxUnitSize = defaultEcMaxUnitSize
+	}
 	return vol
 }
 
@@ -286,7 +331,7 @@ func (vol *Vol) maxPartitionID() (maxPartitionID uint64) {
 }
 
 func (vol *Vol) getDataPartitionsView() (body []byte, err error) {
-	return vol.dataPartitions.updateResponseCache(false, 0)
+	return vol.dataPartitions.updateResponseCache(vol.ecDataPartitions, false, 0)
 }
 
 func (vol *Vol) getDataPartitionByID(partitionID uint64) (dp *DataPartition, err error) {
@@ -415,6 +460,9 @@ func (vol *Vol) checkReplicaNum(c *Cluster) {
 			continue
 		}
 	}
+
+	vol.checkEcReplicaNum(c)
+
 	vol.NeedToLowerReplica = false
 }
 func (vol *Vol) checkRepairMetaPartitions(c *Cluster) {
@@ -603,7 +651,8 @@ func (vol *Vol) setAllDataPartitionsToReadOnly() {
 }
 
 func (vol *Vol) totalUsedSpace() uint64 {
-	return vol.dataPartitions.totalUsedSpace()
+	totalUsed := vol.ecDataPartitions.totalUsedSpace() + vol.dataPartitions.totalUsedSpace()
+	return totalUsed
 }
 
 func (vol *Vol) updateViewCache(c *Cluster) {
@@ -624,8 +673,10 @@ func (vol *Vol) updateViewCache(c *Cluster) {
 		return
 	}
 	vol.setMpsCache(mpsBody)
-	dpResps := vol.dataPartitions.getDataPartitionsView(0)
+	dpResps := vol.dataPartitions.getDataPartitionsView(vol.ecDataPartitions, 0)
+	ecResps := vol.ecDataPartitions.getEcPartitionsView(0)
 	view.DataPartitions = dpResps
+	view.EcPartitions = ecResps
 	viewReply := newSuccessHTTPReply(view)
 	body, err := json.Marshal(viewReply)
 	if err != nil {
@@ -689,8 +740,9 @@ func (vol *Vol) checkStatus(c *Cluster) {
 	log.LogInfof("action[volCheckStatus] vol[%v],status[%v]", vol.Name, vol.Status)
 	metaTasks := vol.getTasksToDeleteMetaPartitions()
 	dataTasks := vol.getTasksToDeleteDataPartitions()
+	ecTasks := vol.getTasksToDeleteEcDataPartitions()
 
-	if len(metaTasks) == 0 && len(dataTasks) == 0 {
+	if len(metaTasks) == 0 && len(dataTasks) == 0 && len(ecTasks) == 0 {
 		vol.deleteVolFromStore(c)
 	}
 	go func() {
@@ -701,6 +753,11 @@ func (vol *Vol) checkStatus(c *Cluster) {
 		for _, dataTask := range dataTasks {
 			vol.deleteDataPartitionFromDataNode(c, dataTask)
 		}
+
+		for _, ecTask := range ecTasks {
+			vol.deleteEcDataPartitionFromEcNode(c, ecTask)
+		}
+
 	}()
 
 	return
@@ -1114,4 +1171,108 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.smartRules = backupVol.smartRules
 	vol.compactTag = backupVol.compactTag
 	vol.compactTagModifyTime = backupVol.compactTagModifyTime
+}
+
+func (vol *Vol) getEcPartitionByID(partitionID uint64) (ep *EcDataPartition, err error) {
+	return vol.ecDataPartitions.get(partitionID)
+}
+
+func (vol *Vol) getEcPartitionsView() (body []byte, err error) {
+	return vol.ecDataPartitions.updateResponseCache(false, 0)
+}
+
+func (vol *Vol) dpIsCanEc(dp *DataPartition) bool {
+	if dp.Status == proto.ReadOnly && time.Now().Unix()-getDpLastUpdateTime(dp) > EcTimeMinute*vol.EcMigrationWaitTime && dp.used > 0 {
+		return true
+	}
+	return false
+}
+
+//getCanOperDataPartitions oper-> false: get can migration dps true: get can del dps
+func (vol *Vol) getCanOperDataPartitions(oper bool) []*proto.DataPartitionResponse {
+	dpResp := make([]*proto.DataPartitionResponse, 0)
+	vol.dataPartitions.RLock()
+	defer vol.dataPartitions.RUnlock()
+	for _, dp := range vol.dataPartitions.partitionMap {
+		if !vol.dpIsCanEc(dp) {
+			continue
+		}
+		if !oper && dp.EcMigrateStatus != proto.NotEcMigrate && dp.EcMigrateStatus != proto.RollBack {
+			continue
+		}
+
+		if (dp.EcMigrateStatus == proto.FinishEC) == oper {
+			dpResp = append(dpResp, dp.convertToDataPartitionResponse())
+		}
+	}
+	return dpResp
+}
+
+func (vol *Vol) cloneEcPartitionMap() (eps map[uint64]*EcDataPartition) {
+	vol.ecDataPartitions.RLock()
+	defer vol.ecDataPartitions.RUnlock()
+	eps = make(map[uint64]*EcDataPartition, 0)
+	for _, ep := range vol.ecDataPartitions.partitions {
+		if !proto.IsEcFinished(ep.EcMigrateStatus) {
+			continue
+		}
+		eps[ep.PartitionID] = ep
+	}
+	return
+}
+
+func (vol *Vol) checkEcReplicaNum(c *Cluster) {
+	var err error
+	eps := vol.cloneEcPartitionMap()
+	volEcReplicaNum := vol.EcDataNum + vol.EcParityNum
+	for _, ep := range eps {
+		if !proto.IsEcFinished(ep.EcMigrateStatus) {
+			continue
+		}
+		host := ep.getToBeDecommissionHost(int(volEcReplicaNum))
+		if host == "" {
+			continue
+		}
+		if err = ep.removeOneEcReplicaByHost(c, host); err != nil {
+			log.LogErrorf("action[checkReplicaNum],vol[%v],err[%v]", vol.Name, err)
+			continue
+		}
+	}
+}
+
+func (vol *Vol) getTasksToDeleteEcDataPartitions() (tasks []*proto.AdminTask) {
+	tasks = make([]*proto.AdminTask, 0)
+	vol.ecDataPartitions.RLock()
+	defer vol.ecDataPartitions.RUnlock()
+
+	for _, ep := range vol.ecDataPartitions.partitions { //delete all ecPartitions
+		for _, replica := range ep.ecReplicas {
+			tasks = append(tasks, ep.createTaskToDeleteEcPartition(replica.Addr))
+		}
+	}
+	return
+}
+
+func (vol *Vol) deleteEcDataPartitionFromEcNode(c *Cluster, task *proto.AdminTask) {
+	ep, err := vol.getEcPartitionByID(task.PartitionID)
+	if err != nil {
+		return
+	}
+	ecNode, err := c.ecNode(task.OperatorAddr)
+	if err != nil {
+		return
+	}
+	_, err = ecNode.TaskManager.syncSendAdminTask(task)
+	if err != nil {
+		log.LogErrorf("action[deleteEcDataReplica] vol[%v],ec data partition[%v],err[%v]", ep.VolName, ep.PartitionID, err)
+		return
+	}
+	ep.Lock()
+	defer ep.Unlock()
+	ep.removeReplicaByAddr(ecNode.Addr)
+	ep.checkAndRemoveMissReplica(ecNode.Addr)
+	if err = ep.update("deleteEcDataReplica", ep.VolName, ep.Peers, ep.Hosts, c); err != nil {
+		log.LogErrorf("deleteEcDataReplica err[%v]", err)
+	}
+	return
 }

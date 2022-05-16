@@ -49,15 +49,17 @@ type DataNode struct {
 	ToBeOffline               bool
 	ToBeMigrated              bool
 	MType                     string
+	HttpPort                  string
 }
 
-func newDataNode(addr, zoneName, clusterID, version string) (dataNode *DataNode) {
+func newDataNode(addr, httpPort, zoneName, clusterID, version string) (dataNode *DataNode) {
 	dataNode = new(DataNode)
 	dataNode.Carry = rand.Float64()
 	dataNode.Total = 1
 	dataNode.Addr = addr
 	dataNode.ZoneName = zoneName
 	dataNode.TaskManager = newAdminTaskManager(dataNode.Addr, zoneName, clusterID)
+	dataNode.HttpPort = httpPort
 	dataNode.DiskInfos = make(map[string]*proto.DiskInfo, 0)
 	dataNode.Version = version
 	return
@@ -93,6 +95,7 @@ func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse
 	dataNode.Used = resp.Used
 	dataNode.AvailableSpace = resp.Available
 	dataNode.ZoneName = resp.ZoneName
+	dataNode.HttpPort = resp.HttpPort
 	dataNode.DataPartitionCount = resp.CreatedPartitionCnt
 	dataNode.DataPartitionReports = resp.PartitionReports
 	dataNode.BadDisks = resp.BadDisks

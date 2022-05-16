@@ -116,6 +116,14 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 
+	if err = m.cluster.loadEcNodes(); err != nil {
+		panic(err)
+	}
+
+	if err = m.cluster.loadCodecNodes(); err != nil {
+		panic(err)
+	}
+
 	if err = m.cluster.loadVols(); err != nil {
 		panic(err)
 	}
@@ -128,6 +136,12 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 	if err = m.cluster.loadDataPartitions(); err != nil {
+		panic(err)
+	}
+	if err = m.cluster.loadEcPartitions(); err != nil {
+		panic(err)
+	}
+	if err = m.cluster.loadMigrateTask(); err != nil {
 		panic(err)
 	}
 	log.LogInfo("action[loadMetadata] end")
@@ -156,6 +170,9 @@ func (m *Server) clearMetadata() {
 	m.cluster.clearTopology()
 	m.cluster.clearDataNodes()
 	m.cluster.clearMetaNodes()
+	m.cluster.clearCodecNodes()
+	m.cluster.clearEcNodes()
+	m.cluster.clearMigrateTask()
 	m.cluster.clearVols()
 	m.user.clearUserStore()
 	m.user.clearAKStore()

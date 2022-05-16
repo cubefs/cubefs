@@ -16,6 +16,7 @@ package data
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"strings"
 	"sync"
@@ -40,6 +41,7 @@ type DataPartition struct {
 	ClientWrapper      *Wrapper
 	Metrics            *proto.DataPartitionMetrics
 	hostErrMap         sync.Map //key: host; value: last error access time
+	ecEnable           bool
 }
 
 // If the connection fails, take punitive measures. Punish time is 5s.
@@ -441,4 +443,66 @@ func (dp *DataPartition) getEpochReadHost(hosts []string) (err error, addr strin
 		}
 	}
 	return fmt.Errorf("getEpochReadHost failed: no available host"), ""
+}
+
+
+func chooseEcNode(hosts []string, stripeUnitSize, extentOffset uint64, dp *DataPartition) (host string) {
+	div := math.Floor(float64(extentOffset) / float64(stripeUnitSize))
+	index := int(div) % int(dp.EcDataNum)
+	hostsStatus := dp.ClientWrapper.HostsStatus
+
+	if status, ok := hostsStatus[hosts[index]]; ok && status {
+		host = hosts[index]
+	}
+	return
+}
+
+func (dp *DataPartition) EcRead(reqPacket *Packet, req *ExtentRequest) (sc *StreamConn, readBytes int, err error) {
+	errMap := make(map[string]error)
+	hosts := proto.GetEcHostsByExtentId(uint64(len(dp.EcHosts)), req.ExtentKey.ExtentId, dp.EcHosts)
+	stripeUnitSize := proto.CalStripeUnitSize(uint64(req.ExtentKey.Size), dp.EcMaxUnitSize, uint64(dp.EcDataNum))
+
+	host := chooseEcNode(hosts, stripeUnitSize, uint64(reqPacket.ExtentOffset), dp)
+	sc = &StreamConn{
+		dp:       dp,
+		currAddr: host,
+	}
+
+	readBytes, _, _, err = dp.sendReadCmdToDataPartition(sc, reqPacket, req)
+	log.LogDebugf("EcRead: send to addr(%v), reqPacket(%v)", sc.currAddr, reqPacket)
+	if err == nil {
+		return
+	}
+	errMap[sc.currAddr] = err
+
+	hostsStatus := dp.ClientWrapper.HostsStatus
+	for _, addr := range dp.EcHosts {
+		if addr == host {
+			continue
+		}
+		if status, ok := hostsStatus[addr]; !ok || !status {
+			continue
+		}
+		sc.currAddr = addr
+		readBytes, _, _, err = dp.sendReadCmdToDataPartition(sc, reqPacket, req)
+		if err == nil {
+			return
+		}
+		errMap[addr] = err
+	}
+
+	log.LogWarnf("EcRead exit: err(%v), reqPacket(%v)", err, reqPacket)
+	err = errors.New(fmt.Sprintf("EcRead: failed, sc(%v) reqPacket(%v) errMap(%v)", sc, reqPacket, errMap))
+
+	return
+}
+
+func (dp *DataPartition) canEcRead() bool {
+	if dp.EcMigrateStatus == proto.OnlyEcExist {
+		return true
+	}
+	if dp.ecEnable && dp.EcMigrateStatus == proto.FinishEC {
+		return true
+	}
+	return false
 }

@@ -38,6 +38,12 @@ const (
 	AdminTransferDataPartition     = "/dataPartition/transfer"
 	AdminManualResetDataPartition  = "/dataPartition/manualReset"
 	AdminDataPartitionUpdate       = "/dataPartition/update"
+	AdminCanDelDataPartitions      = "/dataPartition/candel"
+	AdminCanMigrateDataPartitions  = "/dataPartition/canmigrate"
+	AdminDelDpAlreadyEc            = "/dataPartition/deldpalreadyec"
+	AdminDpMigrateEc               = "/dataPartition/ecmigreate"
+	AdminDpStopMigrating           = "/dataPartition/stopMigrating"
+	AdminDNStopMigrating           = "/dataNode/stopMigrating"
 	AdminResetCorruptDataNode      = "/dataNode/reset"
 	AdminDeleteDataReplica         = "/dataReplica/delete"
 	AdminAddDataReplica            = "/dataReplica/add"
@@ -45,6 +51,7 @@ const (
 	AdminPromoteDataReplicaLearner = "/dataLearner/promote"
 	AdminDeleteVol                 = "/vol/delete"
 	AdminUpdateVol                 = "/vol/update"
+	AdminUpdateVolEcInfo           = "/vol/updateEcInfo"
 	AdminSetVolConvertSt           = "/vol/setConvertSate"
 	AdminVolBatchUpdateDps         = "/vol/batchUpdateDataPartitions"
 	AdminCreateVol                 = "/admin/createVol"
@@ -55,6 +62,8 @@ const (
 	AdminGetLimitInfo              = "/admin/getLimitInfo"
 	AdminCreateMetaPartition       = "/metaPartition/create"
 	AdminSetMetaNodeThreshold      = "/threshold/set"
+	AdminClusterEcSet              = "/cluster/ecSet"
+	AdminClusterGetScrub           = "/scrub/get"
 	AdminListVols                  = "/vol/list"
 	AdminSetNodeInfo               = "/admin/setNodeInfo"
 	AdminGetNodeInfo               = "/admin/getNodeInfo"
@@ -129,6 +138,9 @@ const (
 	GetDataNodeTaskResponse   = "/dataNode/response"          // Method: 'POST', ContentType: 'application/json'
 	DataNodeValidateCRCReport = "/dataNode/validateCRCReport" // Method: 'POST', ContentType: 'application/json'
 
+	GetCodecNodeTaskResponse = "/codecNode/response" // Method: 'POST', ContentType: 'application/json'
+	GetEcNodeTaskResponse    = "/ecNode/response"    // Method: 'POST', ContentType: 'application/json'
+
 	GetTopologyView = "/topo/get"
 	UpdateZone      = "/zone/update"
 	GetAllZones     = "/zone/list"
@@ -166,6 +178,29 @@ const (
 	UserTransferVol     = "/user/transferVol"
 	UserList            = "/user/list"
 	UsersOfVol          = "/vol/users"
+
+	//CodecNode API
+	GetAllCodecNodes      = "/codecNode/getAllNodes"
+	GetCodecNode          = "/codecNode/get"
+	AddCodecNode          = "/codecNode/add"
+	DecommissionCodecNode = "/codecNode/decommission"
+
+	//ecnode
+	AddEcNode          = "/ecNode/add"
+	GetEcNode          = "/ecNode/get"
+	DecommissionEcNode = "/ecNode/decommission"
+	DecommissionEcDisk = "/ecNode/diskDecommission"
+
+	//EcDataPartition API
+	AdminGetEcPartition          = "/ecPartition/get"
+	AdminDecommissionEcPartition = "/ecPartition/decommission"
+	AdminDiagnoseEcPartition     = "/ecPartition/diagnose"
+	AdminEcPartitionRollBack     = "/ecPartition/rollback"
+	AdminGetAllTaskStatus        = "/ecPartition/gettaskstatus"
+	AdminDeleteEcReplica         = "/ecReplica/delete"
+	AdminAddEcReplica            = "/ecReplica/add"
+	ClientEcPartitions           = "/client/ecPartitions"
+
 	//graphql api for header
 	HeadAuthorized  = "Authorization"
 	ParamAuthorized = "_authorization"
@@ -719,6 +754,10 @@ type DataPartitionResponse struct {
 	MediumType  string
 	Total       uint64
 	Used        uint64
+	EcMigrateStatus uint8
+	EcHosts         []string
+	EcDataNum       uint8
+	EcMaxUnitSize   uint64
 }
 
 // DataPartitionsView defines the view of a data partition
@@ -730,6 +769,37 @@ func NewDataPartitionsView() (dataPartitionsView *DataPartitionsView) {
 	dataPartitionsView = new(DataPartitionsView)
 	dataPartitionsView.DataPartitions = make([]*DataPartitionResponse, 0)
 	return
+}
+
+// EcPartitionResponse defines the response from a ec node to the master that is related to a ec partition.
+type EcPartitionResponse struct {
+	PartitionID    uint64
+	Status         int8
+	ReplicaNum     uint8
+	Hosts          []string
+	LeaderAddr     string
+	DataUnitsNum   uint8
+	ParityUnitsNum uint8
+}
+
+// EcPartitionsView defines the view of a ec partition
+type EcPartitionsView struct {
+	EcPartitions []*EcPartitionResponse
+}
+
+func NewEcPartitionsView() (ecPartitionsView *EcPartitionsView) {
+	ecPartitionsView = new(EcPartitionsView)
+	ecPartitionsView.EcPartitions = make([]*EcPartitionResponse, 0)
+	return
+}
+
+type MigrateTaskView struct {
+	RetryTimes      uint8
+	VolName         string
+	Status          string
+	PartitionID     uint64
+	CurrentExtentID uint64
+	ModifyTime      int64
 }
 
 // MetaPartitionView defines the view of a meta partition
@@ -766,6 +836,7 @@ type VolView struct {
 	CrossRegionHAType CrossRegionHAType
 	MetaPartitions    []*MetaPartitionView
 	DataPartitions    []*DataPartitionResponse
+	EcPartitions      []*EcPartitionResponse
 	OSSSecure         *OSSSecure
 	OSSBucketPolicy   BucketAccessPolicy
 	CreateTime        int64
@@ -804,6 +875,7 @@ func NewVolView(name string, status uint8, followerRead, isSmart bool, createTim
 	view.Status = status
 	view.MetaPartitions = make([]*MetaPartitionView, 0)
 	view.DataPartitions = make([]*DataPartitionResponse, 0)
+	view.EcPartitions = make([]*EcPartitionResponse, 0)
 	return
 }
 
@@ -878,6 +950,14 @@ type SimpleVolView struct {
 	SmartRules            []string
 	CompactTag            string
 	CompactTagModifyTime  int64
+	EcEnable              bool
+	EcDataNum             uint8
+	EcParityNum           uint8
+	EcWaitTime            int64
+	EcSaveTime            int64
+	EcTimeOut             int64
+	EcRetryWait           int64
+	EcMaxUnitSize         uint64
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -996,4 +1076,122 @@ func (config *DpMetricsReportConfig) String() string {
 	}
 	return fmt.Sprintf("EnableReport(%v) ReportIntervalSec(%v) FetchIntervalSec(%v)",
 		config.EnableReport, config.ReportIntervalSec, config.FetchIntervalSec)
+}
+
+// EcPartitionReport defines the partition report.
+type EcPartitionReport struct {
+	VolName         string
+	PartitionID     uint64
+	PartitionStatus int
+	Total           uint64
+	Used            uint64
+	DiskPath        string
+	IsLeader        bool
+	ExtentCount     int
+	NeedCompare     bool
+	IsRecover       bool
+	NodeIndex       uint32
+}
+
+// EcNodeHeartbeatResponse defines the response to the ec node heartbeat.
+type EcNodeHeartbeatResponse struct {
+	Total               uint64
+	Used                uint64
+	Available           uint64
+	TotalPartitionSize  uint64 // volCnt * volsize
+	RemainingCapacity   uint64 // remaining capacity to create partition
+	CreatedPartitionCnt uint32
+	MaxCapacity         uint64 // maximum capacity of disk to create partition
+	PartitionReports    []*EcPartitionReport
+	HttpPort            string
+	CellName            string
+	Status              uint8
+	Result              string
+	BadDisks            []string
+	Version             string
+}
+
+// CreateEcPartitionRequest defines the request to create a ec partition.
+type CreateEcPartitionRequest struct {
+	PartitionID   uint64
+	PartitionSize uint64
+	VolumeID      string
+	DataNodeNum   uint32
+	ParityNodeNum uint32
+	NodeIndex     uint32
+	Hosts         []string
+	EcMaxUnitSize uint64
+	CheckSum      bool
+}
+
+// DeleteEcPartitionRequest defines the request to delete a ec partition.
+type DeleteEcPartitionRequest struct {
+	DataPartitionType string
+	PartitionId       uint64
+}
+
+// DeleteEcPartitionRequest defines the request to delete a ec partition.
+type RepairEcExtentRequest struct {
+	DataPartitionType string
+	PartitionId       uint64
+	ExtentId          uint64
+}
+
+// ChangeEcPartitionMembersRequest defines the request to change members of a ec partition.
+type ChangeEcPartitionMembersRequest struct {
+	DataPartitionType string
+	PartitionId       uint64
+	Hosts             []string
+}
+
+type UpdateEcVolInfoRequest struct {
+	ScrubMaxEcDpNum  uint8
+	ScrubMaxVolDpNum uint8
+	ScrubBeginHour   uint8
+	ScrubEndHour     uint8
+	ScrubPeriod      uint8
+	ScrubNeed        bool
+	ScrubStartTime   int64
+	VolName          string
+}
+
+type UpdateEcScrubInfoRequest struct {
+	ScrubEnable     bool
+	MaxScrubExtents uint8
+	ScrubPeriod     uint32
+	StartScrubTime  int64
+}
+
+// DeleteEcDataPartitionResponse defines the response to the request of deleting a data partition.
+type DeleteEcDataPartitionResponse struct {
+	Status      uint8
+	Result      string
+	PartitionId uint64
+}
+
+type CodecNodeClientView struct {
+	Addr     string
+	IsActive bool
+	Version  string
+}
+
+// CodecNodeHeartbeatResponse defines the response to the codec node heartbeat.
+type CodecNodeHeartbeatResponse struct {
+	Status uint8
+	Result string
+	Version string
+}
+
+type EcNodeChangeMemberResponse struct {
+	Status      uint8
+	Result      string
+	VolName     string
+	PartitionId uint64
+}
+
+type CodecNodeMigrationResponse struct {
+	Status          uint8
+	Result          string
+	PartitionId     uint64
+	CurrentExtentID uint64
 }

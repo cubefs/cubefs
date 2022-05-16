@@ -98,10 +98,10 @@ func (dpMap *DataPartitionMap) setDataPartitionResponseCache(responseCache []byt
 	}
 }
 
-func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitionID uint64) (body []byte, err error) {
+func (dpMap *DataPartitionMap) updateResponseCache(eps *EcDataPartitionCache, needsUpdate bool, minPartitionID uint64) (body []byte, err error) {
 	responseCache := dpMap.getDataPartitionResponseCache()
 	if responseCache == nil || needsUpdate || len(responseCache) == 0 {
-		dpResps := dpMap.getDataPartitionsView(minPartitionID)
+		dpResps := dpMap.getDataPartitionsView(eps, minPartitionID)
 		if len(dpResps) == 0 {
 			log.LogError(fmt.Sprintf("action[updateDpResponseCache],volName[%v] minPartitionID:%v,err:%v",
 				dpMap.volName, minPartitionID, proto.ErrNoAvailDataPartition))
@@ -124,17 +124,33 @@ func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitio
 	return
 }
 
-func (dpMap *DataPartitionMap) getDataPartitionsView(minPartitionID uint64) (dpResps []*proto.DataPartitionResponse) {
+func (dpMap *DataPartitionMap) getDataPartitionsView(eps *EcDataPartitionCache, minPartitionID uint64) (dpResps []*proto.DataPartitionResponse) {
 	dpResps = make([]*proto.DataPartitionResponse, 0)
 	log.LogDebugf("volName[%v] DataPartitionMapLen[%v],DataPartitionsLen[%v],minPartitionID[%v]",
 		dpMap.volName, len(dpMap.partitionMap), len(dpMap.partitions), minPartitionID)
 	dpMap.RLock()
-	defer dpMap.RUnlock()
 	for _, dp := range dpMap.partitionMap {
 		if dp.PartitionID <= minPartitionID {
 			continue
 		}
 		dpResp := dp.convertToDataPartitionResponse()
+		if dp.EcMigrateStatus == proto.FinishEC {
+			if ecDp, err := eps.get(dp.PartitionID); err == nil {
+				ecDp.appendEcInfoToDataPartitionResponse(dpResp)
+			}
+		}
+		dpResps = append(dpResps, dpResp)
+	}
+	defer dpMap.RUnlock()
+
+	eps.RLock()
+	defer eps.RUnlock()
+	for _, ep := range eps.partitions {
+		if ep.DataPartition.PartitionID <= minPartitionID || ep.EcMigrateStatus != proto.OnlyEcExist {
+			continue
+		}
+		dpResp := ep.DataPartition.convertToDataPartitionResponse()
+		ep.appendEcInfoToDataPartitionResponse(dpResp)
 		dpResps = append(dpResps, dpResp)
 	}
 
@@ -224,6 +240,9 @@ func (dpMap *DataPartitionMap) totalUsedSpace() (totalUsed uint64) {
 	dpMap.RLock()
 	defer dpMap.RUnlock()
 	for _, dp := range dpMap.partitions {
+		if proto.IsEcFinished(dp.EcMigrateStatus) {
+			continue
+		}
 		totalUsed = totalUsed + dp.getMaxUsedSpace()
 	}
 	return

@@ -27,6 +27,8 @@ type DataPartition struct {
 	ReplicaNum    uint8
 	PartitionType string
 	Hosts         []string
+	EcHosts       []string
+	EcMigrateStatus uint8
 }
 
 // GetAllAddrs returns all addresses of the data partition.
@@ -74,4 +76,8 @@ func (v *Vol) replaceOrInsert(partition *DataPartition) {
 	v.Lock()
 	defer v.Unlock()
 	v.dataPartitionView[partition.PartitionID] = partition
+}
+
+func (dp *DataPartition) GetAllEcAddrs() (m string) {
+	return strings.Join(dp.EcHosts[1:], proto.AddrSplit) + proto.AddrSplit
 }

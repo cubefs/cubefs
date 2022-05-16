@@ -1563,3 +1563,46 @@ func parseResp(resp []byte) (data []byte, err error) {
 	data = body.Data
 	return
 }
+
+func getExtentInfo(dp *proto.DataPartitionInfo, client *sdk.MasterClient) (extentInfo []uint64, err error) {
+	var (
+		dnPartition   *proto.DNDataPartitionInfo
+		extentInfoMap = make(map[uint64]bool)
+		errCount      int
+		errMsg        error
+	)
+
+	for _, host := range dp.Hosts {
+		if errCount > len(dp.Hosts)/2 {
+			break
+		}
+		arr := strings.Split(host, ":")
+		if dnPartition, err = client.NodeAPI().DataNodeGetPartition(arr[0], dp.PartitionID); err != nil {
+			errMsg = fmt.Errorf("%v DataNodeGetPartition err(%v) ", host, err)
+			errCount++
+			continue
+		}
+
+		for _, ei := range dnPartition.Files {
+			if ei[storage.Size] == 0 {
+				continue
+			}
+			_, ok := extentInfoMap[ei[storage.FileID]]
+			if ok {
+				continue
+			}
+			extentInfoMap[ei[storage.FileID]] = true
+			extentInfo = append(extentInfo, ei[storage.FileID])
+		}
+	}
+	if errCount > len(dp.Hosts)/2 {
+		err = errMsg
+	} else {
+		err = nil
+		sort.Slice(extentInfo, func(i, j int) bool {
+			return extentInfo[i] < extentInfo[j]
+		})
+	}
+
+	return
+}

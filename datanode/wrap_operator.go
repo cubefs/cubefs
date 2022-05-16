@@ -361,6 +361,7 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		p.PacketOkReply()
 	}
 
+	partition.lastUpdateTime = time.Now().Unix()
 	return
 }
 
@@ -390,6 +391,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		p.PacketOkReply()
 	}
 
+	partition.lastUpdateTime = time.Now().Unix()
 	return
 }
 
@@ -480,7 +482,6 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 	}
 }
 
-
 //func (s *DataNode) handleRandomWritePacketV3(p *repl.Packet) {
 //	var err error
 //	defer func() {
@@ -507,8 +508,6 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 //		return
 //	}
 //}
-
-
 
 func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
 	var (
@@ -687,7 +686,7 @@ func (s *DataNode) handlePacketToGetAllWatermarksV2(p *repl.Packet) {
 			err = storage.PartitionIsLoaddingErr
 			return
 		}
-		 _, data,err = store.GetAllWatermarksWithByteArr(p.ExtentType, storage.NormalExtentFilter())
+		_, data, err = store.GetAllWatermarksWithByteArr(p.ExtentType, storage.NormalExtentFilter())
 	} else {
 		var extentIDs = make([]uint64, 0, len(p.Data)/8)
 		var extentID uint64
@@ -703,7 +702,7 @@ func (s *DataNode) handlePacketToGetAllWatermarksV2(p *repl.Packet) {
 			}
 			extentIDs = append(extentIDs, extentID)
 		}
-		_, data,err = store.GetAllWatermarksWithByteArr(p.ExtentType, storage.TinyExtentFilter(extentIDs))
+		_, data, err = store.GetAllWatermarksWithByteArr(p.ExtentType, storage.TinyExtentFilter(extentIDs))
 	}
 	if err != nil {
 		return
@@ -856,7 +855,6 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 	return
 }
 
-
 func (s *DataNode) handleTinyExtentAvaliRead(request *repl.Packet, connect net.Conn) {
 	var (
 		err                 error
@@ -910,6 +908,13 @@ func (s *DataNode) handleTinyExtentAvaliRead(request *repl.Packet, connect net.C
 			continue
 		}
 		currNeedReplySize := newEnd - newOffset
+		if currNeedReplySize <= 0 {
+			err = fmt.Errorf("ExtentID(%v) offset(%v) currNeedReplySize(%v) <= 0", request.ExtentID, offset, currNeedReplySize)
+			logContent := fmt.Sprintf("action[operatePacket] %v.",
+				reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
+			log.LogErrorf(logContent)
+			break
+		}
 		currReadSize := uint32(util.Min(int(currNeedReplySize), util.ReadBlockSize))
 		if currReadSize == util.ReadBlockSize {
 			reply.Data, _ = proto.Buffers.Get(util.ReadBlockSize)

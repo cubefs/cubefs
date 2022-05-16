@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-func createDataNodeForTopo(addr, zoneName string, ns *nodeSet) (dn *DataNode) {
-	dn = newDataNode(addr, zoneName, "test", "1.0.0")
+func createDataNodeForTopo(addr, httpPort, zoneName string, ns *nodeSet) (dn *DataNode) {
+	dn = newDataNode(addr, httpPort, zoneName, "test", "1.0.0")
 	dn.ZoneName = zoneName
 	dn.Total = 1024 * util.GB
 	dn.Used = 10 * util.GB
@@ -42,7 +42,7 @@ func batchCreateDataNodeForNodeSet(topo *topology, ns *nodeSet, zoneName, cluste
 		count = ns.Capacity - ns.dataNodeCount()
 	}
 	for i := 0; i < count; i++ {
-		topo.putDataNode(createDataNodeForNodeSet(fmt.Sprintf("%v%v", baseAddr, i), zoneName, clusterID, ns))
+		topo.putDataNode(createDataNodeForNodeSet(fmt.Sprintf("%v%v", baseAddr, i), httpPort, zoneName, clusterID, ns))
 	}
 }
 func batchCreateMetaNodeForNodeSet(topo *topology, ns *nodeSet, zoneName, clusterID, baseAddr string, count int) {
@@ -53,8 +53,8 @@ func batchCreateMetaNodeForNodeSet(topo *topology, ns *nodeSet, zoneName, cluste
 		topo.putMetaNode(createMetaNodeForNodeSet(fmt.Sprintf("%v%v", baseAddr, i), zoneName, clusterID, ns))
 	}
 }
-func createDataNodeForNodeSet(addr, zoneName, clusterID string, ns *nodeSet) (dn *DataNode) {
-	dn = newDataNode(addr, zoneName, clusterID, "1.0.0")
+func createDataNodeForNodeSet(addr, httpPort, zoneName, clusterID string, ns *nodeSet) (dn *DataNode) {
+	dn = newDataNode(addr, httpPort, zoneName, clusterID, "1.0.0")
 	dn.ZoneName = zoneName
 	dn.Total = 1024 * util.GB
 	dn.Used = 10 * util.GB
@@ -85,11 +85,11 @@ func TestSingleZone(t *testing.T) {
 	topo.putZone(zone)
 	nodeSet := newNodeSet(1, 6, zoneName)
 	zone.putNodeSet(nodeSet)
-	topo.putDataNode(createDataNodeForTopo(mds1Addr, zoneName, nodeSet))
-	topo.putDataNode(createDataNodeForTopo(mds2Addr, zoneName, nodeSet))
-	topo.putDataNode(createDataNodeForTopo(mds3Addr, zoneName, nodeSet))
-	topo.putDataNode(createDataNodeForTopo(mds4Addr, zoneName, nodeSet))
-	topo.putDataNode(createDataNodeForTopo(mds5Addr, zoneName, nodeSet))
+	topo.putDataNode(createDataNodeForTopo(mds1Addr, httpPort, zoneName, nodeSet))
+	topo.putDataNode(createDataNodeForTopo(mds2Addr, httpPort, zoneName, nodeSet))
+	topo.putDataNode(createDataNodeForTopo(mds3Addr, httpPort, zoneName, nodeSet))
+	topo.putDataNode(createDataNodeForTopo(mds4Addr, httpPort, zoneName, nodeSet))
+	topo.putDataNode(createDataNodeForTopo(mds5Addr, httpPort, zoneName, nodeSet))
 	if !topo.isSingleZone() {
 		zones := topo.getAllZones()
 		t.Errorf("topo should be single zone,zone num [%v]", len(zones))
@@ -130,7 +130,7 @@ func TestSingleZone(t *testing.T) {
 		return
 	}
 	fmt.Println(newHosts)
-	topo.deleteDataNode(createDataNodeForTopo(mds1Addr, zoneName, nodeSet))
+	topo.deleteDataNode(createDataNodeForTopo(mds1Addr, httpPort, zoneName, nodeSet))
 }
 
 func TestAllocZones(t *testing.T) {
@@ -143,21 +143,21 @@ func TestAllocZones(t *testing.T) {
 	nodeSet1 := newNodeSet(1, 6, zoneName1)
 	zone1.putNodeSet(nodeSet1)
 	topo.putZone(zone1)
-	topo.putDataNode(createDataNodeForTopo(mds1Addr, zoneName1, nodeSet1))
-	topo.putDataNode(createDataNodeForTopo(mds2Addr, zoneName1, nodeSet1))
+	topo.putDataNode(createDataNodeForTopo(mds1Addr, httpPort, zoneName1, nodeSet1))
+	topo.putDataNode(createDataNodeForTopo(mds2Addr, httpPort, zoneName1, nodeSet1))
 	zoneName2 := "zone2"
 	zone2 := newZone(zoneName2)
 	nodeSet2 := newNodeSet(2, 6, zoneName2)
 	zone2.putNodeSet(nodeSet2)
 	topo.putZone(zone2)
-	topo.putDataNode(createDataNodeForTopo(mds3Addr, zoneName2, nodeSet2))
-	topo.putDataNode(createDataNodeForTopo(mds4Addr, zoneName2, nodeSet2))
+	topo.putDataNode(createDataNodeForTopo(mds3Addr, httpPort, zoneName2, nodeSet2))
+	topo.putDataNode(createDataNodeForTopo(mds4Addr, httpPort, zoneName2, nodeSet2))
 	zoneName3 := "zone3"
 	zone3 := newZone(zoneName3)
 	nodeSet3 := newNodeSet(3, 6, zoneName3)
 	zone3.putNodeSet(nodeSet3)
 	topo.putZone(zone3)
-	topo.putDataNode(createDataNodeForTopo(mds5Addr, zoneName3, nodeSet3))
+	topo.putDataNode(createDataNodeForTopo(mds5Addr, httpPort, zoneName3, nodeSet3))
 	zones := topo.getAllZones()
 	if len(zones) != zoneCount {
 		t.Errorf("expect zones num[%v],len(zones) is %v", zoneCount, len(zones))

@@ -1,0 +1,11 @@
+{
+    "role": "codecnode",
+    "listen": "9500",
+    "logDir": "/cfs/log",
+    "logLevel": "debug",
+    "masterAddr": [
+      "192.168.0.11:17010",
+      "192.168.0.12:17010",
+      "192.168.0.13:17010"
+    ]
+}

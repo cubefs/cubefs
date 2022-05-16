@@ -45,6 +45,7 @@ const (
 	MASTER ClientType = iota
 	DATANODE
 	METANODE
+	ECNODE
 )
 
 type MasterClient struct {
@@ -57,6 +58,7 @@ type MasterClient struct {
 	ClientType       ClientType
 	DataNodeProfPort uint16
 	MetaNodeProfPort uint16
+	EcNodeProfPort   uint16
 
 	adminAPI  *AdminAPI
 	clientAPI *ClientAPI
@@ -179,7 +181,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 					}
 					return nil, err
 				}
-			case DATANODE, METANODE:
+			case DATANODE, METANODE, ECNODE:
 				// o represent proto.ErrCodeSuccess
 				if body.Code != 200 {
 					log.LogErrorf("action failed, Code:%v, Msg:%v, Data:%v", body.Code, body.Msg, body.Data)
@@ -216,7 +218,7 @@ func (c *MasterClient) prepareRequest() (addr string, nodes []string) {
 	case MASTER:
 		addr = c.leaderAddr
 		nodes = c.masters
-	case DATANODE, METANODE:
+	case DATANODE, METANODE, ECNODE:
 		addr = c.nodeAddr
 		nodes = []string{addr}
 	}

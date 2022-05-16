@@ -39,6 +39,22 @@ services:
         networks:
             extnetwork:
 
+    ec_servers:
+        image: chubaofs/cfs-base:1.4
+        depends_on:
+            - ecnode1
+            - ecnode2
+            - ecnode3
+            - ecnode4
+            - ecnode5
+            - ecnode6
+            - ecnode7
+            - codecnode1
+            - codecnode2
+            - codecnode3
+        networks:
+            extnetwork:
+
     master1:
         image: chubaofs/cfs-base:1.4
         ports:
@@ -302,6 +318,224 @@ services:
             extnetwork:
                 ipv4_address: 192.168.0.34
 
+    ecnode1:
+        image: chubaofs/cfs-base:1.4
+        ports:
+            - "17510"
+            - "17520"
+            - "17530"
+            - "17540"
+            - 9500
+        volumes:
+            - ${DiskPath:-./docker_data}/ecnode1/disk:/cfs/disk
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/ecnode1/log:/cfs/log
+            - ./conf/ecnode1.json:/cfs/conf/ecnode1.json
+            - ./script/start_ecnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh ecnode1.json
+        restart: on-failure
+        privileged: true
+        environment:
+            - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.51
+
+    ecnode2:
+        image: chubaofs/cfs-base:1.4
+        ports:
+            - "17510"
+            - "17520"
+            - "17530"
+            - "17540"
+            - 9500
+        volumes:
+            - ${DiskPath:-./docker_data}/ecnode2/disk:/cfs/disk
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/ecnode2/log:/cfs/log
+            - ./conf/ecnode1.json:/cfs/conf/ecnode1.json
+            - ./script/start_ecnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh ecnode1.json
+        restart: on-failure
+        privileged: true
+        environment:
+            - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.52
+
+    ecnode3:
+        image: chubaofs/cfs-base:1.4
+        ports:
+            - "17510"
+            - "17520"
+            - "17530"
+            - "17540"
+            - 9500
+        volumes:
+            - ${DiskPath:-./docker_data}/ecnode3/disk:/cfs/disk
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/ecnode3/log:/cfs/log
+            - ./conf/ecnode2.json:/cfs/conf/ecnode2.json
+            - ./script/start_ecnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh ecnode2.json
+        restart: on-failure
+        privileged: true
+        environment:
+            - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.53
+
+    ecnode4:
+        image: chubaofs/cfs-base:1.4
+        ports:
+            - "17510"
+            - "17520"
+            - "17530"
+            - "17540"
+            - 9500
+        volumes:
+            - ${DiskPath:-./docker_data}/ecnode4/disk:/cfs/disk
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/ecnode4/log:/cfs/log
+            - ./conf/ecnode2.json:/cfs/conf/ecnode2.json
+            - ./script/start_ecnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh ecnode2.json
+        restart: on-failure
+        privileged: true
+        environment:
+            - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.54
+
+    ecnode5:
+        image: chubaofs/cfs-base:1.4
+        ports:
+            - "17510"
+            - "17520"
+            - "17530"
+            - "17540"
+            - 9500
+        volumes:
+            - ${DiskPath:-./docker_data}/ecnode5/disk:/cfs/disk
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/ecnode5/log:/cfs/log
+            - ./conf/ecnode3.json:/cfs/conf/ecnode3.json
+            - ./script/start_ecnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh ecnode3.json
+        restart: on-failure
+        privileged: true
+        environment:
+            - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.55
+
+    ecnode6:
+        image: chubaofs/cfs-base:1.4
+        ports:
+            - "17510"
+            - "17520"
+            - "17530"
+            - "17540"
+            - 9500
+        volumes:
+            - ${DiskPath:-./docker_data}/ecnode6/disk:/cfs/disk
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/ecnode6/log:/cfs/log
+            - ./conf/ecnode3.json:/cfs/conf/ecnode3.json
+            - ./script/start_ecnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh ecnode3.json
+        restart: on-failure
+        privileged: true
+        environment:
+            - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.56
+
+    ecnode7:
+        image: chubaofs/cfs-base:1.4
+        ports:
+            - "17510"
+            - "17520"
+            - "17530"
+            - "17540"
+            - 9500
+        volumes:
+            - ${DiskPath:-./docker_data}/ecnode7/disk:/cfs/disk
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/ecnode7/log:/cfs/log
+            - ./conf/ecnode1.json:/cfs/conf/ecnode1.json
+            - ./script/start_ecnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh ecnode1.json
+        restart: on-failure
+        privileged: true
+        environment:
+            - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.57
+
+    codecnode1:
+        image: chubaofs/cfs-base:1.4
+        ports:
+            - "80"
+            - 9500
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/codecnode1/log:/cfs/log
+            - ./conf/codecnode.json:/cfs/conf/codecnode.json
+            - ./script/start_codecnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        environment:
+            - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.61
+
+    codecnode2:
+        image: chubaofs/cfs-base:1.4
+        ports:
+            - "80"
+            - 9500
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/codecnode2/log:/cfs/log
+            - ./conf/codecnode.json:/cfs/conf/codecnode.json
+            - ./script/start_codecnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        environment:
+            - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.62
+
+    codecnode3:
+        image: chubaofs/cfs-base:1.4
+        ports:
+            - "80"
+            - 9500
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/codecnode3/log:/cfs/log
+            - ./conf/codecnode.json:/cfs/conf/codecnode.json
+            - ./script/start_codecnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        environment:
+            - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.63
+
     objectnode1:
         image: chubaofs/cfs-base:1.4
         ports:
@@ -404,6 +638,37 @@ services:
         cap_add:
             - SYS_ADMIN
         command: /bin/bash /cfs/script/start.sh
+        networks:
+            extnetwork:
+
+    ec_client:
+        image: chubaofs/cfs-runtime-alter:1.0
+        ports:
+            - 9500
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ./bin/libcfssdk.so:/usr/lib64/libcfssdk.so:ro
+            - ./bin/libcfsclient.so:/usr/lib64/libcfsclient.so:ro
+            - ./bin/libempty.so:/usr/lib64/libempty.so:ro
+            - ./conf/hosts:/etc/hosts:ro
+            - ./conf/client.json:/cfs/conf/client.json
+            - ./conf/client_ec.json:/cfs/conf/client_ec.json
+            - ./conf/bypass.ini:/cfs/conf/bypass.ini
+            - ${DiskPath:-./docker_data}/client/log:/cfs/log
+            - ${DiskPath:-./docker_data}/coverage:/cfs/coverage
+            - ./script/run_test.sh:/cfs/script/start.sh
+            - ./script/start_client.sh:/cfs/script/start_client.sh
+            - ./ltp/runtest/fs:/opt/ltp/runtest/fs
+            - ./s3tests:/opt/s3tests:ro
+            - ../:/go/src/github.com/chubaofs/chubaofs
+        privileged: true
+        devices:
+            - /dev/fuse:/dev/fuse:rwm
+        cap_add:
+            - SYS_ADMIN
+        command: /bin/bash /cfs/script/start.sh
+        environment:
+            - ECENABLE=0
         networks:
             extnetwork:
 

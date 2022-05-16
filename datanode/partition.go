@@ -601,6 +601,7 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 	validateCRCTimer := time.NewTimer(DefaultIntervalDataPartitionValidateCRC)
 	retryFetchVolHATypeTimer := time.NewTimer(0)
 	retryFetchVolHATypeTimer.Stop()
+	persistDpLastUpdateTimer := time.NewTimer(time.Hour) //for persist dp lastUpdateTime
 	var index int
 	for {
 
@@ -640,6 +641,9 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 			if err := dp.fetchVolHATypeFromMaster(); err != nil {
 				retryFetchVolHATypeTimer.Reset(time.Minute)
 			}
+		case <-persistDpLastUpdateTimer.C:
+			dp.PersistMetadata()
+			persistDpLastUpdateTimer.Reset(time.Hour)
 		}
 	}
 }
@@ -860,7 +864,7 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 		}
 		if store.HasExtent(uint64(extentInfo[storage.FileID])) {
 			//info := &storage.ExtentInfo{Source: extentInfo.Source, FileID: extentInfo.FileID, Size: extentInfo.Size} todo
-			info := storage.ExtentInfoBlock{ storage.FileID: extentInfo[storage.FileID], storage.Size: extentInfo[storage.Size]}
+			info := storage.ExtentInfoBlock{storage.FileID: extentInfo[storage.FileID], storage.Size: extentInfo[storage.Size]}
 			repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, info)
 			continue
 		}

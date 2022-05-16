@@ -113,6 +113,33 @@ const (
 	CliFlagRaft                 = "raft"
 	CliFlagCompactTag           = "compact"
 
+	CliOpRollBack              = "rollback"
+	CliOpGetCanEcDel           = "get-can-del"
+	CliOpGetCanEcMigrate       = "get-can-migrate"
+	CliOpGetTaskStatus         = "get-task-status"
+	CliOpMigrateEc             = "migrate-ec"
+	CliOpDelAleadyEcDp         = "deldp-ec"
+	CliOpEcSet                 = "ec-set"
+	CliOpCheckEcData           = "check-stripe-consistency"
+	CliOpGetEcExtentHosts      = "getEcExtentHosts"
+	CliOpGetEcTinyDelInfo      = "getEcTinyDelInfo"
+	CliOpCheckConsistency      = "check-consistency"
+	CliOpStopMigratingEc       = "stop-migrating"
+	CliFlagEcEnable            = "ecEnable"
+	CliFlagEcScrubEnable       = "ecScrubEnable"
+	CliFlagEcDataNum           = "ecDataNum"
+	CliFlagEcParityNum         = "ecParityNum"
+	CliFlagEcSaveTime          = "ecSaveTime"
+	CliFlagEcWaitTime          = "ecWaitTime"
+	CliFlagEcTimeOut           = "ecTimeOut"
+	CliFlagEcRetryWait         = "ecRetryWait"
+	CliFlagEcMaxUnitSize       = "ecMaxUnitSize"
+	CliFlagEcScrubPeriod       = "ecScrubPeriod"
+	CliFlagEcMaxScrubExtents   = "ecDiskConcurrentExtents"
+	CliFlagMaxCodecConcurrent  = "maxCodecConcurrent"
+	CliResourceEcNode          = "ecnode"
+	CliResourceCodecnodeNode   = "codecnode"
+
 	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
 
 	//Shorthand format of resource name
@@ -168,3 +195,19 @@ const (
 
 	opFSMExtentsInsert
 )
+
+var EcStatusMap = map[uint8]string{
+	0: "NotMigrate",
+	1: "Migrating",
+	2: "FinishEc",
+	3: "RollBack",
+	4: "OnlyEcExist",
+	5: "MigrateFailed",
+}
+
+var tinyDelStatusMap = map[uint32]string{
+	0: "baseDeleteMark",
+	1: "deleteMark",
+	2: "deleting",
+	3: "deleted",
+}

@@ -39,6 +39,7 @@ func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
 		newDataNodeDecommissionCmd(client),
 		newDataNodeDiskDecommissionCmd(client),
 		newResetDataNodeCmd(client),
+		newStopMigratingByDataNode(client),
 	)
 	return cmd
 }
@@ -49,6 +50,7 @@ const (
 	cmdDataNodeDecommissionInfoShort     = "decommission partitions in a data node to others"
 	cmdDataNodeDiskDecommissionInfoShort = "decommission disk of partitions in a data node to others"
 	cmdResetDataNodeShort                = "Reset corrupt data partitions related to this node"
+	cmdStopMigratingEcByDataNode         = "stop migrating task by data node"
 )
 
 func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
@@ -245,6 +247,22 @@ loss, be careful to do this.`,
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
 			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	return cmd
+}
+
+func newStopMigratingByDataNode(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpStopMigratingEc + " [NODE ADDRESS]",
+		Short: cmdStopMigratingEcByDataNode,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				nodeAddr string
+			)
+			nodeAddr = args[0]
+			stdout("%v\n", client.NodeAPI().StopMigratingByDataNode(nodeAddr))
 		},
 	}
 	return cmd

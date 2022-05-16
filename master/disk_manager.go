@@ -30,6 +30,7 @@ func (c *Cluster) scheduleToCheckDiskRecoveryProgress() {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				if c.vols != nil {
 					c.checkDiskRecoveryProgress()
+					c.checkEcDiskRecoveryProgress()
 					c.checkMigratedDataPartitionsRecoveryProgress()
 				}
 			}

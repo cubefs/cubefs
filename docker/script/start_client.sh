@@ -113,6 +113,10 @@ show_cluster_info() {
     echo &>> ${tmp_file}
     ${cli} datanode list &>> ${tmp_file}
     echo &>> ${tmp_file}
+    ${cli} codecnode list &>> ${tmp_file}
+    echo &>> ${tmp_file}
+    ${cli} ecnode list &>> ${tmp_file}
+    echo &>> ${tmp_file}
     ${cli} user info ${Owner} &>> ${tmp_file}
     echo &>> ${tmp_file}
     ${cli} volume info ${VolName} &>> ${tmp_file}

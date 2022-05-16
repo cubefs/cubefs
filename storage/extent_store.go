@@ -1164,3 +1164,4 @@ func (s *ExtentStore) GetRealBlockCnt(extentID uint64) (block int64, err error) 
 	block = e.getRealBlockCnt()
 	return
 }
+

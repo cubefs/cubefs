@@ -54,6 +54,87 @@ func (api *NodeAPI) AddMetaNode(serverAddr, zoneName, version string) (id uint64
 	return
 }
 
+func (api *NodeAPI) AddCodecNode(serverAddr, version string) (id uint64, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AddCodecNode)
+	request.addParam("addr", serverAddr)
+	request.addParam("version", version)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	id, err = strconv.ParseUint(string(data), 10, 64)
+	return
+}
+
+func (api *NodeAPI) CodEcNodeDecommission(nodeAddr string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.DecommissionCodecNode)
+	request.addParam("addr", nodeAddr)
+	request.addHeader("isTimeOut", "false")
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *NodeAPI) AddEcNode(serverAddr, httpPort, zoneName, version string) (id uint64, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AddEcNode)
+	request.addParam("addr", serverAddr)
+	request.addParam("httpPort", httpPort)
+	request.addParam("zoneName", zoneName)
+	request.addParam("version", version)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	id, err = strconv.ParseUint(string(data), 10, 64)
+	return
+}
+
+func (api *NodeAPI) GetEcScrubInfo() (scrubInfo proto.UpdateEcScrubInfoRequest, err error) {
+	var respData []byte
+	var respInfo proto.UpdateEcScrubInfoRequest
+	var request = newAPIRequest(http.MethodGet, proto.AdminClusterGetScrub)
+	request.addHeader("isTimeOut", "false")
+
+	if respData, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	if err = json.Unmarshal(respData, &respInfo); err != nil {
+		return
+	}
+	return respInfo, err
+}
+
+func (api *NodeAPI) EcNodeDecommission(nodeAddr string) (data []byte, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.DecommissionEcNode)
+	request.addParam("addr", nodeAddr)
+	request.addHeader("isTimeOut", "false")
+
+	data, err = api.mc.serveRequest(request)
+	return
+}
+
+func (api *NodeAPI) EcNodeDiskDecommission(nodeAddr, diskID string) (data []byte, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.DecommissionEcDisk)
+	request.addParam("addr", nodeAddr)
+	request.addParam("disk", diskID)
+	request.addHeader("isTimeOut", "false")
+
+	data, err = api.mc.serveRequest(request)
+	return
+}
+
+func (api *NodeAPI) EcNodegetTaskStatus() (taskView []*proto.MigrateTaskView, err error) {
+	var data []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminGetAllTaskStatus)
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	taskView = make([]*proto.MigrateTaskView, 0)
+	err = json.Unmarshal(data, &taskView)
+	return
+}
+
 func (api *NodeAPI) GetDataNode(serverHost string) (node *proto.DataNodeInfo, err error) {
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.GetDataNode)
@@ -103,6 +184,32 @@ func (api *NodeAPI) ResponseDataNodeTask(task *proto.AdminTask) (err error) {
 		return
 	}
 	var request = newAPIRequest(http.MethodPost, proto.GetDataNodeTaskResponse)
+	request.addBody(encoded)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *NodeAPI) ResponseCodecNodeTask(task *proto.AdminTask) (err error) {
+	var encoded []byte
+	if encoded, err = json.Marshal(task); err != nil {
+		return
+	}
+	var request = newAPIRequest(http.MethodPost, proto.GetCodecNodeTaskResponse)
+	request.addBody(encoded)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *NodeAPI) ResponseEcNodeTask(task *proto.AdminTask) (err error) {
+	var encoded []byte
+	if encoded, err = json.Marshal(task); err != nil {
+		return
+	}
+	var request = newAPIRequest(http.MethodPost, proto.GetEcNodeTaskResponse)
 	request.addBody(encoded)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -186,4 +293,113 @@ func (api *NodeAPI) DataNodeValidateCRCReport(dpCrcInfo *proto.DataPartitionExte
 		return
 	}
 	return
+}
+
+func (api *NodeAPI) DataNodeGetTinyExtentHolesAndAvali(addr string, partitionID, extentID uint64) (info *proto.DNTinyExtentInfo, err error) {
+	var request = newAPIRequest(http.MethodGet, "/tinyExtentHoleInfo")
+	var buf []byte
+	nodeClient := NewNodeClient(fmt.Sprintf("%v:%v", addr, api.mc.DataNodeProfPort), false, DATANODE)
+	nodeClient.DataNodeProfPort = api.mc.DataNodeProfPort
+	request.addParam("partitionID", strconv.FormatUint(partitionID, 10))
+	request.addParam("extentID", strconv.FormatUint(extentID, 10))
+	request.addHeader("isTimeOut", "false")
+	if buf, err = nodeClient.serveRequest(request); err != nil {
+		return
+	}
+	info = &proto.DNTinyExtentInfo{}
+	if err = json.Unmarshal(buf, &info); err != nil {
+		return
+	}
+	return
+}
+
+func (api *NodeAPI) GetCodecNode(serverHost string) (node *proto.CodecNodeInfo, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.GetCodecNode)
+	request.addParam("addr", serverHost)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	node = &proto.CodecNodeInfo{}
+	if err = json.Unmarshal(buf, &node); err != nil {
+		return
+	}
+	return
+}
+
+func (api *NodeAPI) GetEcNode(serverHost string) (node *proto.EcNodeInfo, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.GetEcNode)
+	request.addParam("addr", serverHost)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	node = &proto.EcNodeInfo{}
+	if err = json.Unmarshal(buf, &node); err != nil {
+		return
+	}
+	return
+}
+
+func (api *NodeAPI) EcNodeGetTaskStatus() (taskView []*proto.MigrateTaskView, err error) {
+	var data []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminGetAllTaskStatus)
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	taskView = make([]*proto.MigrateTaskView, 0)
+	err = json.Unmarshal(data, &taskView)
+	return
+}
+
+func (api *NodeAPI) DataNodeGetExtentCrc(addr string, partitionId, extentId uint64) (crc uint32, err error) {
+	var request = newAPIRequest(http.MethodGet, "/extentCrc")
+	var buf []byte
+	nodeClient := NewNodeClient(fmt.Sprintf("%v:%v", addr, api.mc.DataNodeProfPort), false, DATANODE)
+	nodeClient.DataNodeProfPort = api.mc.DataNodeProfPort
+	request.addParam("partitionId", strconv.FormatUint(partitionId, 10))
+	request.addParam("extentId", strconv.FormatUint(extentId, 10))
+	request.addHeader("isTimeOut", "false")
+	if buf, err = nodeClient.serveRequest(request); err != nil {
+		return
+	}
+	resp := &struct {
+		CRC uint32
+	}{}
+	if err = json.Unmarshal(buf, resp); err != nil {
+		return
+	}
+	crc = resp.CRC
+	return
+}
+
+func (api *NodeAPI) EcNodeGetExtentCrc(addr string, partitionId, extentId, stripeCount uint64, crc uint32) (resp *proto.ExtentCrcResponse, err error) {
+	var request = newAPIRequest(http.MethodGet, "/extentCrc")
+	var buf []byte
+	nodeClient := NewNodeClient(fmt.Sprintf("%v:%v", addr, api.mc.EcNodeProfPort), false, ECNODE)
+	nodeClient.EcNodeProfPort = api.mc.EcNodeProfPort
+	request.addParam("partitionId", strconv.FormatUint(partitionId, 10))
+	request.addParam("extentId", strconv.FormatUint(extentId, 10))
+	request.addParam("stripeCount", strconv.FormatUint(stripeCount, 10))
+	request.addParam("crc", strconv.FormatUint(uint64(crc), 10))
+	request.addHeader("isTimeOut", "false")
+	if buf, err = nodeClient.serveRequest(request); err != nil {
+		return
+	}
+	resp = &proto.ExtentCrcResponse{}
+	if err = json.Unmarshal(buf, resp); err != nil {
+		return
+	}
+
+	return
+}
+
+func (api *NodeAPI) StopMigratingByDataNode(datanode string) string {
+	var request = newAPIRequest(http.MethodGet, proto.AdminDNStopMigrating)
+	request.addParam("addr", datanode)
+	data, err := api.mc.serveRequest(request)
+	if err != nil {
+		return fmt.Sprintf("StopMigratingByDataNode fail:%v\n", err)
+	}
+	return string(data)
 }

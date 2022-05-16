@@ -129,6 +129,14 @@ func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
 		response = &proto.UpdateMetaPartitionResponse{}
 	case proto.OpDecommissionMetaPartition:
 		response = &proto.MetaPartitionDecommissionResponse{}
+	case proto.OpCodecNodeHeartbeat:
+		response = &proto.CodecNodeHeartbeatResponse{}
+	case proto.OpEcNodeHeartbeat:
+		response = &proto.EcNodeHeartbeatResponse{}
+	case proto.OpChangeEcPartitionMembers:
+		response = &proto.EcNodeChangeMemberResponse{}
+	case proto.OpIssueMigrationTask:
+		response = &proto.CodecNodeMigrationResponse{}
 	default:
 		log.LogError(fmt.Sprintf("unknown operate code(%v)", task.OpCode))
 	}
