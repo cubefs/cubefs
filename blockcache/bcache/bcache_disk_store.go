@@ -518,9 +518,11 @@ func (d *DiskStore) remove(key string) (err error) {
 }
 
 func (d *DiskStore) buildCachePath(key string, dir string) string {
-	//key=inode_hex(offset)_size
-	//path=/dir/blocks/hashKey(key)%512/hashKey(key)%256/key
-	return fmt.Sprintf("%s/blocks/%d/%d/%s", dir, hashKey(key)%256, hashKey(key)%512, key)
+	inodeId, err := strconv.ParseInt(strings.Split(key, "_")[1], 10, 64)
+	if err != nil {
+		return fmt.Sprintf("%s/blocks/%d/%d/%s", dir, hashKey(key)&0xFFF%512, hashKey(key)%512, key)
+	}
+	return fmt.Sprintf("%s/blocks/%d/%d/%s", dir, hashKey(key)&0xFFF%512, inodeId%512, key)
 }
 
 func (d *DiskStore) diskUsageRatio() (float32, int64) {
