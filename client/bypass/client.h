@@ -264,7 +264,6 @@ static const bool g_hook = true;
 
 static char *g_mount_point;
 static char *g_ignore_path;
-static cfs_sdk_init_t g_cfs_sdk_init;
 static cfs_config_t g_cfs_config;
 static const char *CFS_CFG_PATH = "cfs_client.ini";
 static const char *CFS_CFG_PATH_JED = "/export/servers/cfs/cfs_client.ini";
@@ -333,18 +332,33 @@ static int addFdEntry(int fd, char *path) {
 }
 #endif
 
+typedef struct {
+     char* mount_point;
+     char* ignore_path;
+     char* log_dir;
+     char* log_level;
+     char* prof_port;
+     char* master_addr;
+     char* vol_name;
+     char* owner;
+     // whether to read from follower nodes or not, set "false" if want to read the newest data
+     char* follower_read;
+     char* app;
+     char* auto_flush;
+     char* master_client;
+} client_config_t;
+
 //static void (*g_sa_handler[30])(int);
 
-static int config_handler(void* sdk, void* user, const char* section,
+static int config_handler(void* user, const char* section,
         const char* name, const char* value) {
-    cfs_sdk_init_t *psdkinit = (cfs_sdk_init_t*)sdk;
-    cfs_config_t *pconfig = (cfs_config_t*)user;
+    client_config_t *pconfig = (client_config_t*)user;
     #define MATCH(s, n) strcmp(section, s) == 0 && strcmp(name, n) == 0
 
     if (MATCH("", "mountPoint")) {
-        g_mount_point = strdup(value);
+        pconfig->mount_point = strdup(value);
     } else if (MATCH("", "ignorePath")) {
-        g_ignore_path = strdup(value);
+        pconfig->ignore_path = strdup(value);
     } else if (MATCH("", "volName")) {
         pconfig->vol_name = strdup(value);
     } else if (MATCH("", "owner")) {
@@ -354,13 +368,13 @@ static int config_handler(void* sdk, void* user, const char* section,
     } else if (MATCH("", "followerRead")) {
         pconfig->follower_read = strdup(value);
     } else if (MATCH("", "logDir")) {
-        psdkinit->log_dir = strdup(value);
+        pconfig->log_dir = strdup(value);
     } else if (MATCH("", "logLevel")) {
-        psdkinit->log_level = strdup(value);
+        pconfig->log_level = strdup(value);
     } else if (MATCH("", "app")) {
         pconfig->app = strdup(value);
     } else if (MATCH("", "profPort")) {
-        psdkinit->prof_port = strdup(value);
+        pconfig->prof_port = strdup(value);
     } else if (MATCH("", "autoFlush")) {
         pconfig->auto_flush = strdup(value);
     } else if (MATCH("", "masterClient")) {

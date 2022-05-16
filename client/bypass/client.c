@@ -2461,21 +2461,45 @@ static void cfs_init() {
             cfs_config_path = CFS_CFG_PATH_JED;
         }
     }
+
+    // parse client configurations from ini file.
+    client_config_t client_config;
+    memset(&client_config, 0, sizeof(client_config_t));
     // libc printf CANNOT be used in this init function, otherwise will cause circular dependencies.
-    if(ini_parse(cfs_config_path, config_handler, &g_cfs_sdk_init, &g_cfs_config) < 0) {
+    if(ini_parse(cfs_config_path, config_handler, &client_config) < 0) {
         char *msg = "Can't load CFS config file, use CFS_CONFIG_PATH env variable.\n";
         real_write(STDOUT_FILENO, msg, strlen(msg));
         exit(1);
     }
-    if(g_mount_point == NULL || g_cfs_config.master_addr == NULL || 
-    g_cfs_config.vol_name == NULL || g_cfs_config.owner == NULL || g_cfs_sdk_init.log_dir == NULL) {
+
+    if(client_config.mount_point == NULL || client_config.master_addr == NULL ||
+    client_config.vol_name == NULL || client_config.owner == NULL || client_config.log_dir == NULL) {
         char *msg = "Check CFS config file for necessary parameters.\n";
         real_write(STDOUT_FILENO, msg, strlen(msg));
         exit(1);
     }
+
+    g_mount_point = client_config.mount_point;
+    g_ignore_path = client_config.ignore_path;
+    g_cfs_config.master_addr = client_config.master_addr;
+    g_cfs_config.vol_name = client_config.vol_name;
+    g_cfs_config.owner = client_config.owner;
+    g_cfs_config.follower_read = client_config.follower_read;
+    g_cfs_config.app = client_config.app;
+    g_cfs_config.auto_flush = client_config.auto_flush;
+    g_cfs_config.master_client = client_config.master_client;
+
+    cfs_sdk_init_t init_t;
+    init_t.ignore_sighup = 1;
+    init_t.ignore_sigterm = 1;
+    init_t.log_dir = client_config.log_dir;
+    init_t.log_level = client_config.log_level;
+    init_t.prof_port = client_config.prof_port;
+
     if(g_ignore_path == NULL) {
         g_ignore_path = "";
     }
+
     char *mount_point = getenv("CFS_MOUNT_POINT");
     if(mount_point != NULL) {
         free((char *)g_mount_point);
@@ -2488,8 +2512,8 @@ static void cfs_init() {
     }
     char *prof_port = getenv("CFS_PROF_PORT");
     if(prof_port != NULL) {
-        free((char *)g_cfs_sdk_init.prof_port);
-        g_cfs_sdk_init.prof_port = prof_port;
+        free((char *)init_t.prof_port);
+        init_t.prof_port = prof_port;
     }
     char *master_client = getenv("CFS_MASTER_CLIENT");
     if(master_client != NULL) {
@@ -2509,9 +2533,7 @@ static void cfs_init() {
     }
     g_mount_point = path;
 
-    g_cfs_sdk_init.ignore_sighup = 1;
-    g_cfs_sdk_init.ignore_sigterm = 1;
-    if(cfs_sdk_init(&g_cfs_sdk_init) != 0) {
+    if(cfs_sdk_init(&init_t) != 0) {
         char *msg= "Can't initialize CFS SDK, check the config file.\n";
         real_write(STDOUT_FILENO, msg, strlen(msg));
         exit(1);

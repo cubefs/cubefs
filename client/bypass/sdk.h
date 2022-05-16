@@ -37,6 +37,23 @@ typedef struct {
 } cfs_sdk_init_t;
 
 typedef struct {
+        char version[256];
+        uint32_t version_len;
+        char branch[256];
+        uint32_t branch_len;
+        char commit_id[256];
+        uint32_t commit_id_len;
+        char runtime_version[256];
+        uint32_t runtime_version_len;
+        char goos[256];
+        uint32_t goos_len;
+        char goarch[256];
+        uint32_t goarch_len;
+        char build_time[256];
+        uint32_t build_time_len;
+} cfs_sdk_version_t;
+
+typedef struct {
     const char* master_addr;
     const char* vol_name;
     const char* owner;
@@ -64,6 +81,11 @@ typedef struct {
  * This method will initialize logging and HTTP APIs.
  */
 int cfs_sdk_init(cfs_sdk_init_t* t);
+
+/*
+ * Get library version info
+ */
+int cfs_sdk_version(cfs_sdk_version_t* v);
 
 // return client_id, should be positive if no error occurs
 int64_t cfs_new_client(const cfs_config_t *conf);

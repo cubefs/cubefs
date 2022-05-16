@@ -41,6 +41,23 @@ typedef struct {
 } cfs_sdk_init_t;
 
 typedef struct {
+	char version[256];
+    uint32_t version_len;
+	char branch[256];
+    uint32_t branch_len;
+	char commit_id[256];
+	uint32_t commit_id_len;
+	char runtime_version[256];
+	uint32_t runtime_version_len;
+	char goos[256];
+	uint32_t goos_len;
+	char goarch[256];
+	uint32_t goarch_len;
+    char build_time[256];
+	uint32_t build_time_len;
+} cfs_sdk_version_t;
+
+typedef struct {
     const char* master_addr;
     const char* vol_name;
     const char* owner;
@@ -141,7 +158,13 @@ const (
 var (
 	gClientManager *clientManager
 	gProfPort      uint64
-	once           sync.Once
+
+	signalIgnoreFunc = func() {}
+
+	sdkInitOnce    			 sync.Once
+	signalIgnoreOnce 		 sync.Once
+	versionReporterStartOnce sync.Once
+
 	CommitID       string
 	BranchName     string
 	BuildTime      string
@@ -259,6 +282,22 @@ func removeClient(id int64) {
 	gClientManager.RemoveClient(id)
 }
 
+func getVersionInfoString() string {
+	cmd, _ := os.Executable()
+	return fmt.Sprintf("ChubaoFS %s\nBranch: %s\nVersion: %s\nCommit: %s\nBuild: %s %s %s %s\nCMD: %s\n", moduleName, BranchName, proto.BaseVersion, CommitID, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime, cmd)
+}
+
+func startVersionReporter(cluster string, masters []string) {
+	versionReporterStartOnce.Do(func() {
+		versionInfo := getVersionInfoString()
+		cfgStr, _ := json.Marshal(struct {
+			ClusterName string `json:"clusterName"`
+		}{cluster})
+		cfg := config.LoadConfigString(string(cfgStr))
+		go version.ReportVersionSchedule(cfg, masters, versionInfo)
+	})
+}
+
 type file struct {
 	fd    uint
 	ino   uint64
@@ -334,7 +373,7 @@ type client struct {
 //export cfs_sdk_init
 func cfs_sdk_init(t *C.cfs_sdk_init_t) C.int {
 	var re C.int
-	once.Do(func() {
+	sdkInitOnce.Do(func() {
 		re = initSDK(t)
 	})
 	return re
@@ -358,8 +397,9 @@ func initSDK(t *C.cfs_sdk_init_t) C.int {
 		ignoreSignals = append(ignoreSignals, syscall.SIGTERM)
 	}
 	if len(ignoreSignals) > 0 {
-		fmt.Printf("ignore signal: %v\n", ignoreSignals)
-		signal.Ignore(ignoreSignals...)
+		signalIgnoreFunc = func() {
+			signal.Ignore(ignoreSignals...)
+		}
 	}
 
 	var err error
@@ -393,27 +433,65 @@ func initSDK(t *C.cfs_sdk_init_t) C.int {
 	syslog.SetOutput(outputFile)
 
 	// Initialize HTTP APIs
+	if profPort == 0 && isMysql() {
+		syslog.Printf("prof port is required in mysql but not specified")
+		return C.int(statusEINVAL)
+	}
 	if profPort != 0 {
-		gProfPort = profPort;
+		gProfPort = profPort
 		log.LogInfof("using prof port: %v", profPort)
 		syslog.Printf("using prof port: %v\n", profPort)
 		var profNetListener net.Listener
-		if profNetListener, err = net.Listen("tcp", fmt.Sprintf(":%v", profPort)); err != nil {
+		if profNetListener, err = net.Listen("tcp", fmt.Sprintf(":%v", profPort)); isMysql() && err != nil {
 			log.LogErrorf("listen prof port [%v] failed: %v", profPort, err)
 			log.LogFlush()
 			syslog.Printf("listen prof port [%v] failed: %v", profPort, err)
 			return C.int(statusEIO)
 		}
-		http.HandleFunc(log.GetLogPath, log.GetLog)
-		http.HandleFunc("/version", GetVersionHandleFunc)
-		http.HandleFunc(ControlReadProcessRegister, registerReadProcStatusHandleFunc)
-		http.HandleFunc(ControlBroadcastRefreshExtents, broadcastRefreshExtentsHandleFunc)
-		http.HandleFunc(ControlGetReadProcs, getReadProcsHandleFunc)
-		go func() {
-			_ = http.Serve(profNetListener, http.DefaultServeMux)
-		}()
+		if err == nil {
+			http.HandleFunc(log.GetLogPath, log.GetLog)
+			http.HandleFunc("/version", GetVersionHandleFunc)
+			http.HandleFunc(ControlReadProcessRegister, registerReadProcStatusHandleFunc)
+			http.HandleFunc(ControlBroadcastRefreshExtents, broadcastRefreshExtentsHandleFunc)
+			http.HandleFunc(ControlGetReadProcs, getReadProcsHandleFunc)
+			go func() {
+				_ = http.Serve(profNetListener, http.DefaultServeMux)
+			}()
+		}
 	}
 
+	syslog.Printf(getVersionInfoString())
+
+	return C.int(0)
+}
+
+//export cfs_sdk_version
+func cfs_sdk_version(v *C.cfs_sdk_version_t) C.int {
+
+	var copyStringToCCharArray = func(src string, dst *C.char, dstLen *C.uint32_t) {
+		var srcLen = len(src)
+		if srcLen >= 256 {
+			srcLen = 255 - 1
+		}
+		hdr := (*reflect.StringHeader)(unsafe.Pointer(&src))
+		C.memcpy(unsafe.Pointer(dst), unsafe.Pointer(hdr.Data), C.size_t(srcLen))
+		*dstLen = C.uint32_t(srcLen)
+	}
+
+	// Fill up branch
+	copyStringToCCharArray(BranchName, &v.branch[0], &v.branch_len)
+	// Fill up commit ID
+	copyStringToCCharArray(CommitID, &v.commit_id[0], &v.commit_id_len)
+	// Fill up version
+	copyStringToCCharArray(proto.BaseVersion, &v.version[0], &v.version_len)
+	// Fill up runtime version
+	copyStringToCCharArray(runtime.Version(), &v.runtime_version[0], &v.runtime_version_len)
+	// Fill up GOOS
+	copyStringToCCharArray(runtime.GOOS, &v.goos[0], &v.goos_len)
+	// Fill up GOARCH
+	copyStringToCCharArray(runtime.GOARCH, &v.goarch[0], &v.goarch_len)
+	// Fill up build time
+	copyStringToCCharArray(BuildTime, &v.build_time[0], &v.build_time_len)
 	return C.int(0)
 }
 
@@ -2837,9 +2915,8 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		}
 	}()
 
-	once.Do(func() {
-		signal.Ignore(syscall.SIGHUP, syscall.SIGTERM)
-	})
+	signalIgnoreOnce.Do(signalIgnoreFunc)
+
 	start = time.Now()
 	c, exist := getClient(int64(id))
 	if !exist {
@@ -3190,14 +3267,7 @@ func (c *client) start() (err error) {
 	c.registerReadProcStatus(true)
 
 	// version
-	cmd, _ := os.Executable()
-	versionInfo := fmt.Sprintf("ChubaoFS %s\nBranch: %s\nVersion: %s\nCommit: %s\nBuild: %s %s %s %s\nCMD: %s\n", moduleName, BranchName, proto.BaseVersion, CommitID, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime, cmd)
-	syslog.Printf(versionInfo)
-	cfgStr, _ := json.Marshal(struct {
-		ClusterName string `json:"clusterName"`
-	}{mw.Cluster()})
-	cfg := config.LoadConfigString(string(cfgStr))
-	go version.ReportVersionSchedule(cfg, masters, versionInfo)
+	startVersionReporter(mw.Cluster(), masters)
 	return
 }
 
