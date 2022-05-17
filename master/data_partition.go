@@ -865,6 +865,13 @@ func (partition *DataPartition) needToRebalanceZone(c *Cluster, zoneList []strin
 	}
 	log.LogDebugf("action[needToRebalanceZone],data partitionID:%v,zone name:%v,current zones[%v]",
 		partition.PartitionID, zoneList, curZoneList)
+	// if there is a ssd zone, need not repair cross zone
+	for zoneName := range curZoneMap {
+		if strings.Contains(zoneName, "ssd") {
+			isNeed = false
+			return
+		}
+	}
 	if (len(zoneList) == 1 && len(curZoneMap) == 1) || (len(curZoneMap) == 2 && (len(zoneList) == 2 || len(zoneList) == 3)) {
 		isNeed = false
 		for zone := range curZoneMap {
