@@ -122,6 +122,8 @@ type clusterConfig struct {
 	ClientPkgAddr                       string
 	MetaNodeRocksdbDiskThreshold        float32
 	MetaNodeDumpWaterLevel              uint64
+	MonitorSummarySec					uint64
+	MonitorReportSec					uint64
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

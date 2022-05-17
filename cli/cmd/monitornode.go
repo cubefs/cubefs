@@ -89,16 +89,9 @@ func newMonitorClusterTopIPCmd(cluster string, client *monitor.MonitorClient) *c
 				opStart = now.Add(-5 * time.Minute).Format(timeLayout)
 				opEnd = now.Format(timeLayout)
 			}
-			if opVol == "" {
-				if view, err = client.MonitorAPI().GetClusterTopIP(opTable, cluster, module, opStart, opEnd, opOrder, opLimit); err != nil {
-					stdout("%v\n", err)
-					return
-				}
-			} else {
-				if view, err = client.MonitorAPI().GetTopIP("", cluster, module, opStart, opEnd, opLimit, opOrder, "", opVol); err != nil {
-					stdout("%v\n", err)
-					return
-				}
+			if view, err = client.MonitorAPI().GetTopIP("", cluster, module, opStart, opEnd, opLimit, opOrder, "", opVol); err != nil {
+				stdout("%v\n", err)
+				return
 			}
 			stdout("%v\n", monitorQueryDataTableHeader)
 			for _, data := range view.Data {
@@ -143,16 +136,9 @@ func newMonitorClusterTopVolCmd(cluster string, client *monitor.MonitorClient) *
 				opStart = now.Add(-5 * time.Minute).Format(timeLayout)
 				opEnd = now.Format(timeLayout)
 			}
-			if opIP == "" {
-				if view, err = client.MonitorAPI().GetClusterTopVol(opTable, cluster, module, opStart, opEnd, opOrder, opLimit); err != nil {
-					stdout("%v\n", err)
-					return
-				}
-			} else {
-				if view, err = client.MonitorAPI().GetTopPartition("", cluster, module, opStart, opEnd, opLimit, "vol", opOrder, opIP, ""); err != nil {
-					stdout("%v\n", err)
-					return
-				}
+			if view, err = client.MonitorAPI().GetTopPartition("", cluster, module, opStart, opEnd, opLimit, "vol", opOrder, opIP, ""); err != nil {
+				stdout("%v\n", err)
+				return
 			}
 			stdout("%v\n", monitorQueryDataTableHeader)
 			for _, data := range view.Data {

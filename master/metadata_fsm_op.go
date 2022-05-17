@@ -66,6 +66,8 @@ type clusterValue struct {
 	MaxCodecConcurrent                int
 	MetaNodeRocksdbDiskThreshold      float32
 	MetaNodeDumpWaterLevel            uint64
+	MonitorSummarySec				  uint64
+	MonitorReportSec				  uint64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -104,6 +106,8 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MaxCodecConcurrent:                c.MaxCodecConcurrent,
 		MetaNodeRocksdbDiskThreshold:      c.cfg.MetaNodeRocksdbDiskThreshold,
 		MetaNodeDumpWaterLevel:            c.cfg.MetaNodeDumpWaterLevel,
+		MonitorSummarySec: 				   c.cfg.MonitorSummarySec,
+		MonitorReportSec: 				   c.cfg.MonitorReportSec,
 	}
 	return cv
 }
@@ -899,6 +903,8 @@ func (c *Cluster) loadClusterValue() (err error) {
 			cv.MetaNodeDumpWaterLevel = defaultMetanodeDumpWaterLevel
 		}
 		atomic.StoreUint64(&c.cfg.MetaNodeDumpWaterLevel, cv.MetaNodeDumpWaterLevel)
+		atomic.StoreUint64(&c.cfg.MonitorSummarySec, cv.MonitorSummarySec)
+		atomic.StoreUint64(&c.cfg.MonitorReportSec, cv.MonitorReportSec)
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}

@@ -130,6 +130,8 @@ const (
 	dataNodeHttpPortKey          = "httpPort"
 	compactTagKey                = "compactTag"
 	dumpWaterLevelKey            = "metaNodeDumpWaterLevel"
+	monitorSummarySecondKey		 = "monitorSummarySec"
+	monitorReportSecondKey		 = "monitorReportSec"
 )
 
 const (

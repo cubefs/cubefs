@@ -3368,6 +3368,30 @@ func TestGetTargetAddressForDataPartitionSmartCase5(t *testing.T) {
 	}
 }
 
+func TestSetMonitorTime(t *testing.T) {
+	summarySecond := 30
+	reportSecond := 60
+	reqURL := fmt.Sprintf("%v%v?monitorSummarySec=%v&monitorReportSec=%v", hostAddr, proto.AdminSetNodeInfo, summarySecond, reportSecond)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	if server.cluster.cfg.MonitorSummarySec != uint64(summarySecond) || server.cluster.cfg.MonitorReportSec != uint64(reportSecond) {
+		t.Errorf("set monitorTime failed: expect summarySecond(%v) but(%v), expect reportSecond(%v) but(%v)",
+			summarySecond, server.cluster.cfg.MonitorSummarySec, reportSecond, server.cluster.cfg.MonitorReportSec)
+		return
+	}
+	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
+	fmt.Println(reqURL)
+	reply := processReturnRawReply(reqURL, t)
+	limitInfo := &proto.LimitInfo{}
+	if err := json.Unmarshal(reply.Data, limitInfo); err != nil {
+		t.Errorf("unmarshal limitinfo failed,err:%v", err)
+	}
+	if limitInfo.MonitorSummarySec != uint64(summarySecond) || limitInfo.MonitorReportSec != uint64(reportSecond) {
+		t.Errorf("get monitorTime failed: expect summarySecond(%v) but(%v), expect reportSecond(%v) but(%v)",
+			summarySecond, limitInfo.MonitorSummarySec, reportSecond, limitInfo.MonitorReportSec)
+	}
+}
+
 /*
 	addDataServer(mds1Addr, testZone1)
 	addDataServer(mds2Addr, testZone1)

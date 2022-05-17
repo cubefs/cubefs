@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	defaultSummaryTime = 1 * time.Second
-	defaultReportTime  = 5 * time.Second
+	defaultSummarySecond = 5
+	defaultReportSecond  = 10
 )
 
 var (
@@ -26,14 +26,15 @@ var (
 )
 
 type Statistics struct {
-	cluster		 string
-	module       string
-	address      string
-	sendList     []*MonitorData // store data per second
-	sendListLock sync.RWMutex
-	monitorAddr  string
-	reportTimer  time.Duration
-	stopC		 chan bool
+	cluster		 	string
+	module       	string
+	address      	string
+	sendList     	[]*MonitorData // store data per second
+	sendListLock 	sync.RWMutex
+	monitorAddr  	string
+	summarySecond	uint64
+	reportSecond 	uint64
+	stopC        	chan bool
 }
 
 type MonitorData struct {
@@ -67,13 +68,14 @@ func (data *MonitorData) String() string {
 
 func newStatistics(monitorAddr, cluster, moduleName, nodeAddr string) *Statistics {
 	return &Statistics{
-		cluster: 	 cluster,
-		module:      moduleName,
-		address:     nodeAddr,
-		monitorAddr: monitorAddr,
-		sendList:    make([]*MonitorData, 0),
-		reportTimer: defaultReportTime,
-		stopC:		 make(chan bool),
+		cluster:      	cluster,
+		module:       	moduleName,
+		address:      	nodeAddr,
+		monitorAddr:  	monitorAddr,
+		sendList:     	make([]*MonitorData, 0),
+		summarySecond: 	defaultSummarySecond,
+		reportSecond: 	defaultReportSecond,
+		stopC:        	make(chan bool),
 	}
 }
 
@@ -91,6 +93,26 @@ func InitStatistics(cfg *config.Config, cluster, moduleName, nodeAddr string, su
 		go StatisticsModule.summaryJob(summaryFunc)
 		go StatisticsModule.reportJob()
 	})
+}
+
+func (m *Statistics) UpdateMonitorSummaryTime(newSecondTime uint64) {
+	if m != nil && newSecondTime > 0 && newSecondTime != m.summarySecond {
+		atomic.StoreUint64(&m.summarySecond, newSecondTime)
+	}
+}
+
+func (m *Statistics) UpdateMonitorReportTime(newSecondTime uint64) {
+	if m != nil && newSecondTime > 0 && newSecondTime != m.reportSecond {
+		atomic.StoreUint64(&m.reportSecond, newSecondTime)
+	}
+}
+
+func (m *Statistics) GetMonitorSummaryTime() uint64 {
+	return atomic.LoadUint64(&m.summarySecond)
+}
+
+func (m *Statistics) GetMonitorReportTime() uint64 {
+	return atomic.LoadUint64(&m.reportSecond)
 }
 
 func (m *Statistics) CloseStatistics() {
@@ -128,9 +150,10 @@ func (m *Statistics) summaryJob(summaryFunc func(reportTime int64) []*MonitorDat
 			log.LogErrorf("Monitor: summary job panic(%v) module(%v) ip(%v)", err, m.module, m.address)
 		}
 	}()
-	sumTicker := time.NewTicker(defaultSummaryTime)
+	summaryTime := m.GetMonitorSummaryTime()
+	sumTicker := time.NewTicker(time.Duration(summaryTime)*time.Second)
 	defer sumTicker.Stop()
-	log.LogInfof("Monitor: start summary job, ticker(%v)", defaultSummaryTime)
+	log.LogInfof("Monitor: start summary job, ticker (%v)s", summaryTime)
 	for {
 		select {
 		case <-sumTicker.C:
@@ -139,6 +162,13 @@ func (m *Statistics) summaryJob(summaryFunc func(reportTime int64) []*MonitorDat
 			m.sendListLock.Lock()
 			m.sendList = append(m.sendList, dataList...)
 			m.sendListLock.Unlock()
+			// check summary time
+			newSummaryTime := m.GetMonitorSummaryTime()
+			if newSummaryTime > 0 && newSummaryTime != summaryTime {
+				summaryTime = newSummaryTime
+				sumTicker.Reset(time.Duration(newSummaryTime)*time.Second)
+				log.LogInfof("Monitor: summaryJob reset ticker (%v)s", newSummaryTime)
+			}
 		case <-m.stopC:
 			log.LogWarnf("Monitor: stop summary job")
 			return
@@ -152,15 +182,23 @@ func (m *Statistics) reportJob() {
 			log.LogErrorf("Monitor: report job panic(%v) module(%v) ip(%v)", err, m.module, m.address)
 		}
 	}()
-	ticker := time.NewTicker(m.reportTimer)
-	defer ticker.Stop()
-	log.LogInfof("Monitor: start report job, ticker(%v)", m.reportTimer)
+	reportTime := m.GetMonitorReportTime()
+	reportTicker := time.NewTicker(time.Duration(reportTime)*time.Second)
+	defer reportTicker.Stop()
+	log.LogInfof("Monitor: start report job, ticker (%v)s", reportTime)
 	for {
 		select {
-		case <-ticker.C:
+		case <-reportTicker.C:
 			sendList := m.currentSendList()
 			if len(sendList) > 0 {
 				m.reportToMonitor(sendList)
+			}
+			// check report time
+			newReportTime := m.GetMonitorReportTime()
+			if newReportTime > 0 && newReportTime != reportTime {
+				reportTime = newReportTime
+				reportTicker.Reset(time.Duration(newReportTime)*time.Second)
+				log.LogInfof("Monitor: reportJob reset ticker (%v)s", newReportTime)
 			}
 		case <-m.stopC:
 			log.LogWarnf("Monitor: stop report job")

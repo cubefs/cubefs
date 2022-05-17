@@ -8,6 +8,7 @@ import (
 
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/statistics"
 	"golang.org/x/time/rate"
 )
 
@@ -144,6 +145,11 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 	updateDeleteWorkerSleepMs(limitInfo.MetaNodeDeleteWorkerSleepMs)
 	updateReadDirLimitNum(limitInfo.MetaNodeReadDirLimitNum)
 	updateDumpWaterLevel(limitInfo.MetaNodeDumpWaterLevel)
+
+	if statistics.StatisticsModule != nil {
+		statistics.StatisticsModule.UpdateMonitorSummaryTime(limitInfo.MonitorSummarySec)
+		statistics.StatisticsModule.UpdateMonitorReportTime(limitInfo.MonitorReportSec)
+	}
 }
 
 func (m *MetaNode) updateRateLimitInfo() {

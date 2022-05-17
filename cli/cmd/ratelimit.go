@@ -30,6 +30,9 @@ const (
 	cmdRateLimitSetShort  = "Set rate limit"
 	minRate               = 100
 	minPartRate           = 1
+
+	minMonitorSummarySeconds	= 5
+	minMonitorReportSeconds		= 10
 )
 
 func newRateLimitCmd(client *master.MasterClient) *cobra.Command {
@@ -90,6 +93,12 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.DataNodeRepairTaskZoneCount >= 0 && info.ZoneName == "" {
 				errout("if DataNodeRepairTaskZoneCount is set , ZoneName can not be empty")
 			}
+			if (info.MonitorSummarySecond > 0 && info.MonitorSummarySecond < minMonitorSummarySeconds) ||
+				(info.MonitorReportSecond > 0 && info.MonitorReportSecond < minMonitorReportSeconds) ||
+				(info.MonitorSummarySecond > info.MonitorReportSecond) {
+				errout("summary seconds for monitor can't be less than %d, report seconds for monitor can't be less than monitor seconds(%d) or %d\n",
+					minMonitorSummarySeconds, info.MonitorSummarySecond, minMonitorReportSeconds)
+			}
 			msg := ""
 			if info.ClientReadVolRate >= 0 {
 				msg += fmt.Sprintf("clientReadVolRate: %d, volume: %s, ", info.ClientReadVolRate, info.Volume)
@@ -139,6 +148,12 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.MetaNodeDumpWaterLevel > 0 {
 				msg += fmt.Sprintf("dumpWaterLevel    : %d, ", info.MetaNodeDumpWaterLevel)
 			}
+			if info.MonitorSummarySecond > 0 {
+				msg += fmt.Sprintf("monitorSummarySec : %d, ", info.MonitorSummarySecond)
+			}
+			if info.MonitorReportSecond > 0 {
+				msg += fmt.Sprintf("monitorReportSec  : %d, ", info.MonitorReportSecond)
+			}
 			if msg == "" {
 				stdout("No valid parameters\n")
 				return
@@ -172,6 +187,8 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&info.DnFixTinyDeleteRecordLimit, "fixTinyDeleteRecordLimit", -1, "data node fix tiny delete record limit")
 	cmd.Flags().Int64Var(&info.DataNodeRepairTaskZoneCount, "dataNodeRepairTaskZoneCount", -1, "data node repair task count of target zone")
 	cmd.Flags().Int64Var(&info.MetaNodeDumpWaterLevel, "metaNodeDumpWaterLevel", -1, "meta node dump snap shot water level")
+	cmd.Flags().Uint64Var(&info.MonitorSummarySecond, "monitorSummarySecond", 0, "summary seconds for monitor")
+	cmd.Flags().Uint64Var(&info.MonitorReportSecond, "monitorReportSecond", 0, "report seconds for monitor")
 	return cmd
 }
 
@@ -210,5 +227,7 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  DataNodeRepairTaskZoneLimit : %v\n", info.DataNodeRepairTaskCountZoneLimit))
 	sb.WriteString(fmt.Sprintf("  MetaNodeDumpWaterLevel      : %v\n", info.MetaNodeDumpWaterLevel))
 	sb.WriteString(fmt.Sprintf("  (map[zone]limit)\n"))
+	sb.WriteString(fmt.Sprintf("  MonitorSummarySecond        : %v\n", info.MonitorSummarySec))
+	sb.WriteString(fmt.Sprintf("  MonitorReportSecond         : %v\n", info.MonitorReportSec))
 	return sb.String()
 }

@@ -3502,6 +3502,24 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 	if val, ok := params[dumpWaterLevelKey]; ok {
 		atomic.StoreUint64(&c.cfg.MetaNodeDumpWaterLevel, val.(uint64))
 	}
+	oldMonitorSummaryTime := atomic.LoadUint64(&c.cfg.MonitorSummarySec)
+	if val, ok := params[monitorSummarySecondKey]; ok {
+		v := val.(uint64)
+		if v <= 0 {
+			err = errors.NewErrorf("parameter %s must be greater than 0", monitorSummarySecondKey)
+			return
+		}
+		atomic.StoreUint64(&c.cfg.MonitorSummarySec, val.(uint64))
+	}
+	oldMonitorReportTime := atomic.LoadUint64(&c.cfg.MonitorReportSec)
+	if val, ok := params[monitorReportSecondKey]; ok {
+		v := val.(uint64)
+		if v <= 0 {
+			err = errors.NewErrorf("parameter %s must be greater than 0", monitorReportSecondKey)
+			return
+		}
+		atomic.StoreUint64(&c.cfg.MonitorReportSec, val.(uint64))
+	}
 
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterConfig] err[%v]", err)
@@ -3517,6 +3535,8 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreInt32(&c.cfg.MetaPartitionsRecoverPoolSize, oldMpRecoverPoolSize)
 		atomic.StoreUint64(&c.cfg.ExtentMergeSleepMs, oldExtentMergeSleepMs)
 		atomic.StoreUint64(&c.cfg.MetaNodeDumpWaterLevel, oldDumpWaterLevel)
+		atomic.StoreUint64(&c.cfg.MonitorSummarySec, oldMonitorSummaryTime)
+		atomic.StoreUint64(&c.cfg.MonitorReportSec, oldMonitorReportTime)
 		err = proto.ErrPersistenceByRaft
 		return
 	}

@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chubaofs/chubaofs/util/statinfo"
-
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
+	"github.com/chubaofs/chubaofs/util/statinfo"
+	"github.com/chubaofs/chubaofs/util/statistics"
 	"golang.org/x/time/rate"
 )
 
@@ -120,6 +120,11 @@ func (m *DataNode) updateNodeBaseInfo() {
 	}
 	m.space.SetDiskRepairTaskLimit(limitInfo.DataNodeRepairTaskLimitOnDisk)
 	m.space.SetForceFlushFDInterval(limitInfo.DataNodeFlushFDInterval)
+
+	if statistics.StatisticsModule != nil {
+		statistics.StatisticsModule.UpdateMonitorSummaryTime(limitInfo.MonitorSummarySec)
+		statistics.StatisticsModule.UpdateMonitorReportTime(limitInfo.MonitorReportSec)
+	}
 }
 
 func (m *DataNode) updateRateLimitInfo() {

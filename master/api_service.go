@@ -374,6 +374,8 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		ssdZoneRepairTaskCount = defaultSSDZoneTaskLimit
 	}
 	clusterRepairTaskCount := repairTaskCount
+	monitorSummarySec := atomic.LoadUint64(&m.cluster.cfg.MonitorSummarySec)
+	monitorReportSec := atomic.LoadUint64(&m.cluster.cfg.MonitorReportSec)
 	m.cluster.cfg.reqRateLimitMapMutex.Lock()
 	defer m.cluster.cfg.reqRateLimitMapMutex.Unlock()
 	if dataNodeZoneName != "" {
@@ -408,6 +410,8 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		ExtentMergeSleepMs:                     m.cluster.cfg.ExtentMergeSleepMs,
 		DataNodeFixTinyDeleteRecordLimitOnDisk: m.cluster.dnFixTinyDeleteRecordLimit,
 		MetaNodeDumpWaterLevel:                 dumpWaterLevel,
+		MonitorSummarySec:						monitorSummarySec,
+		MonitorReportSec: 						monitorReportSec,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -3887,7 +3891,8 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 
 	uintKeys := []string{nodeDeleteBatchCountKey, nodeMarkDeleteRateKey, dataNodeRepairTaskCountKey, nodeDeleteWorkerSleepMs, metaNodeReqRateKey, metaNodeReqOpRateKey,
 		dataNodeReqRateKey, dataNodeReqVolOpRateKey, dataNodeReqOpRateKey, dataNodeReqVolPartRateKey, dataNodeReqVolOpPartRateKey, opcodeKey, clientReadVolRateKey, clientWriteVolRateKey,
-		extentMergeSleepMsKey, dataNodeFlushFDIntervalKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey, dataNodeRepairTaskSSDKey, dumpWaterLevelKey}
+		extentMergeSleepMsKey, dataNodeFlushFDIntervalKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey, dataNodeRepairTaskSSDKey, dumpWaterLevelKey,
+		monitorSummarySecondKey, monitorReportSecondKey}
 	for _, key := range uintKeys {
 		if err = parseUintKey(params, key, r); err != nil {
 			return

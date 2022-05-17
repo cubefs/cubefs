@@ -446,6 +446,9 @@ type LimitInfo struct {
 	ExtentMergeSleepMs          uint64
 	MetaNodeDumpWaterLevel      uint64
 	DataNodeFlushFDInterval     uint32
+
+	MonitorSummarySec		uint64
+	MonitorReportSec		uint64
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -1036,6 +1039,8 @@ type RateLimitInfo struct {
 	DnFixTinyDeleteRecordLimit int64
 	DataNodeRepairTaskZoneCount  int64
 	MetaNodeDumpWaterLevel     int64
+	MonitorSummarySecond	   uint64
+	MonitorReportSecond		   uint64
 }
 
 type ConvertMode uint8

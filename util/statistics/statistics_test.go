@@ -102,7 +102,7 @@ func helper(times int, t *testing.T) {
 		partition[1].monitorData[ActionMetaLookup].UpdateData(2 * dataSize)
 		partition[2].monitorData[ActionMetaExtentsAdd].UpdateData(3 * dataSize)
 	}
-	time.Sleep(time.Second * 5)
+	time.Sleep(time.Second * time.Duration(StatisticsModule.GetMonitorReportTime()))
 	for _, cc := range collector {
 		var size [3]uint64
 		var count [3]uint64

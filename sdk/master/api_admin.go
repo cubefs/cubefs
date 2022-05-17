@@ -628,6 +628,12 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.MetaNodeDumpWaterLevel > 0 {
 		request.addParam("metaNodeDumpWaterLevel", strconv.FormatInt(int64(info.MetaNodeDumpWaterLevel), 10))
 	}
+	if info.MonitorSummarySecond > 0 {
+		request.addParam("monitorSummarySec", strconv.FormatUint(info.MonitorSummarySecond, 10))
+	}
+	if info.MonitorReportSecond > 0 {
+		request.addParam("monitorReportSec", strconv.FormatUint(info.MonitorReportSecond, 10))
+	}
 	request.addParam("volume", info.Volume)
 	request.addParam("zoneName", info.ZoneName)
 	if _, err = api.mc.serveRequest(request); err != nil {
