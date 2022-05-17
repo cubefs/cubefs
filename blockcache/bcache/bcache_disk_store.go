@@ -173,6 +173,12 @@ func (bm *bcacheManager) read(key string, offset uint64, len uint32) (io.ReadClo
 	if ok {
 		f, err := bm.load(key)
 		if os.IsNotExist(err) {
+			bm.Lock()
+			delete(bm.bcacheKeys, key)
+			bm.Unlock()
+			d := bm.selectDiskKv(key)
+			atomic.AddInt64(&d.usedSize, -int64(it.size))
+			atomic.AddInt64(&d.usedCount, -1)
 			return nil, os.ErrNotExist
 		}
 		if err != nil {
@@ -207,7 +213,6 @@ func (bm *bcacheManager) load(key string) (ReadCloser, error) {
 	bm.Lock()
 	defer bm.Unlock()
 	if it, ok := bm.bcacheKeys[key]; ok {
-		//bm.bcacheKeys[key] = cacheItem{size: it.size, atime: uint32(time.Now().Unix())}
 		it.atime = uint32(time.Now().Unix())
 	}
 	return f, err
