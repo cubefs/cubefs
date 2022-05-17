@@ -249,9 +249,18 @@ func (dpMap *DataPartitionMap) checkBadDiskDataPartitions(diskPath, nodeAddr str
 	return
 }
 
-func (dpMap *DataPartitionMap) getRWDataPartitionsOfGivenCount(count int) (partitions []*DataPartition) {
+func (dpMap *DataPartitionMap) getRWDataPartitionsOfGivenCount(count int) (partitions []*DataPartition, err error) {
 	dpMap.RLock()
 	defer dpMap.RUnlock()
+	minRestRwDpCount := 10
+	if len(dpMap.partitionMap) > 100 {
+		minRestRwDpCount = 20
+	}
+	if dpMap.readableAndWritableCnt-count <= minRestRwDpCount {
+		err = fmt.Errorf("readableAndWritableCnt[%v] count[%v] less than minRestRwDpCount[%v]",
+			dpMap.readableAndWritableCnt, count, minRestRwDpCount)
+		return
+	}
 	partitions = make([]*DataPartition, 0)
 	for _, dp := range dpMap.partitionMap {
 		if dp.Status == proto.ReadWrite {

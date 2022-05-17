@@ -1193,7 +1193,11 @@ func (m *Server) batchUpdateDataPartitions(w http.ResponseWriter, r *http.Reques
 	}
 
 	if count > 0 {
-		dataPartitions = vol.dataPartitions.getRWDataPartitionsOfGivenCount(count)
+		dataPartitions, err = vol.dataPartitions.getRWDataPartitionsOfGivenCount(count)
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
 		msg = fmt.Sprintf("batchUpdateDataPartitions to isManual[%v] count[%v] ", isManual, count)
 	} else {
 		dataPartitions = vol.dataPartitions.getDataPartitionsFromStartIDToEndID(startID, endID)
