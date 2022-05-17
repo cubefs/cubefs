@@ -425,7 +425,7 @@ func NewDiskStore(dir string, cacheSize int64, config *bcacheConfig) *DiskStore 
 	}
 
 	if config.Limit <= 0 {
-		config.Limit = 10000000
+		config.Limit = 20000000
 	}
 
 	if config.Limit > 20000000 {
