@@ -8,16 +8,53 @@ Debug="0"
 [[ "-$GOPATH" == "-" ]] && { echo "GOPATH not set"; exit 1 ; }
 
 goflag="-s"
-while getopts "g" arg; do
-  case $arg in
-    g)
-      Debug="1"
-      goflag=""
-      gccflag="-g"
-      ;;
-  esac
+
+build_sdk=1
+build_client=1
+
+help() {
+    cat <<EOF
+
+Usage: ./build.sh [ -h | --help ] [ -g ] [ --sdk-only | --client-only ]
+    -h, --help              show help info
+    -g                      setup Debug="1" goflag="" gccflag="-g"
+    --sdk-only              build sdk (libcfssdk.so) only
+    --client-only           build client (libcfsclient.so) only
+EOF
+    exit 0
+}
+
+ARGS=( "$@" )
+for opt in ${ARGS[*]} ; do
+    case "$opt" in
+        -h|--help)
+            help
+            ;;
+        -g)
+            Debug="1"
+            goflag=""
+            gccflag="-g"
+            ;;
+    	--sdk-only)
+    	    build_sdk=1
+    	    build_client=0
+	        ;;
+	    --client-only)
+	        build_sdk=0
+	        build_client=1
+	        ;;
+    esac
 done
 
 dir=$(dirname $0)
-go build -ldflags "${goflag} -X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}' -X 'main.Debug=${Debug}'" -buildmode=c-shared -o ${dir}/libcfssdk.so ${dir}/*.go
-gcc -std=c99 ${gccflag} -fPIC -shared -o ${dir}/libcfsclient.so ${dir}/client.c ${dir}/ini.c -ldl -L${dir} -lcfssdk
+echo "using Debug=\"${Debug}\""
+echo "using goflag=\"${goflag}\""
+echo "using gccflag=\"${gccflag}\""
+if [[ ${build_sdk} -eq 1 ]]; then
+    echo "building sdk (libcfssdk.so) ..."
+    go build -ldflags "${goflag} -X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}' -X 'main.Debug=${Debug}'" -buildmode=c-shared -o ${dir}/libcfssdk.so ${dir}/*.go
+fi
+if [[ ${build_client} -eq 1 ]]; then
+    echo "building client (libcfsclient.so) ..."
+    gcc -std=c99 ${gccflag} -fPIC -shared -o ${dir}/libcfsclient.so ${dir}/client.c ${dir}/ini.c -ldl -L${dir} -lcfssdk
+fi

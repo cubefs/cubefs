@@ -57,8 +57,7 @@ int ini_parse(const char* filename, ini_handler handler, void* user);
 /* Same as ini_parse(), but takes an ini_reader function pointer instead of
    filename. Used for implementing custom or string-based I/O (see also
    ini_parse_string). */
-int ini_parse_stream(ini_reader reader, void* stream, ini_handler handler,
-                     void* user);
+int ini_parse_stream(ini_reader reader, void* stream, ini_handler handler, void* user);
 
 /* Same as ini_parse(), but takes a zero-terminated string with the INI data
 instead of a file. Useful for parsing INI data from a network socket or

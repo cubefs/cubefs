@@ -29,30 +29,63 @@
 #include <unistd.h>
 
 typedef struct {
+        int ignore_sighup;
+        int ignore_sigterm;
+        const char* log_dir;
+        const char* log_level;
+        const char* prof_port;
+} cfs_sdk_init_t;
+
+typedef struct {
+        char version[256];
+        uint32_t version_len;
+        char branch[256];
+        uint32_t branch_len;
+        char commit_id[256];
+        uint32_t commit_id_len;
+        char runtime_version[256];
+        uint32_t runtime_version_len;
+        char goos[256];
+        uint32_t goos_len;
+        char goarch[256];
+        uint32_t goarch_len;
+        char build_time[256];
+        uint32_t build_time_len;
+} cfs_sdk_version_t;
+
+typedef struct {
     const char* master_addr;
     const char* vol_name;
     const char* owner;
     // whether to read from follower nodes or not, set "false" if want to read the newest data
     const char* follower_read;
-    const char* log_dir;
-    // debug|info|warn|error
-    const char* log_level;
     const char* app;
-
-    const char* prof_port;
     const char* auto_flush;
     const char* master_client;
-
-    // following are optional parameters for profiling
-    const char* tracing_sampler_type;
-    const char* tracing_sampler_param;
-    const char* tracing_report_addr;
 } cfs_config_t;
 
 typedef struct {
 	uint64_t total;
 	uint64_t used;
 } cfs_statfs_t;
+
+typedef struct {
+    uint64_t ino;
+    char     name[256];
+    char     d_type;
+    uint32_t     nameLen;
+} cfs_dirent_t;
+
+/*
+ * Library / framework initialization
+ * This method will initialize logging and HTTP APIs.
+ */
+int cfs_sdk_init(cfs_sdk_init_t* t);
+
+/*
+ * Get library version info
+ */
+int cfs_sdk_version(cfs_sdk_version_t* v);
 
 // return client_id, should be positive if no error occurs
 int64_t cfs_new_client(const cfs_config_t *conf);
@@ -92,6 +125,7 @@ char* cfs_getcwd(int64_t id);
 int cfs_mkdirs(int64_t id, const char *path, mode_t mode);
 int cfs_mkdirsat(int64_t id, int dirfd, const char *path, mode_t mode);
 int cfs_rmdir(int64_t id, const char *path);
+int cfs_readdir(int64_t id, int fd, cfs_dirent_t* dirents, int count);
 int cfs_getdents(int64_t id, int fd, char *buf, int count);
 
 /*
@@ -166,5 +200,10 @@ ssize_t cfs_pwrite(int64_t id, int fd, const char *buf, size_t size, off_t off);
 ssize_t cfs_writev(int64_t id, int fd, const struct iovec *iov, int iovcnt);
 ssize_t cfs_pwritev(int64_t id, int fd, const struct iovec *iov, int iovcnt, off_t off);
 off64_t cfs_lseek(int64_t id, int fd, off64_t offset, int whence);
+
+/*
+ * Batch metadata operations
+ */
+int cfs_batch_stat(int64_t id, uint64_t *inos, struct stat *stats, int count);
 
 #endif
