@@ -223,6 +223,11 @@ func (s *bcacheStore) cacheBlock(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	defer r.Body.Close()
+	if r.ContentLength > MaxBlockSize {
+		log.LogWarnf("EntityTooLarge. key(%v)  readN(%v) blockSize(%v)", key, readN, s.conf.BlockSize)
+		errorCode = EntityTooLarge
+		return
+	}
 	content := make([]byte, r.ContentLength)
 	n, err := io.ReadFull(r.Body, content)
 	if err != nil && err != io.EOF && int64(n) != r.ContentLength {
