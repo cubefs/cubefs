@@ -815,7 +815,7 @@ func cfs_lsdir(id C.int64_t, fd C.int, direntsInfo []C.struct_cfs_dirent_info, c
 
 	dirp := f.dirp
 	inodeIDS := make([]uint64, count, count)
-	inodeMap := make(map[uint64]int)
+	inodeMap := make(map[uint64]C.int)
 	for dirp.pos < len(dirp.dirents) && n < count {
 		inodeIDS[n] = dirp.dirents[dirp.pos].Inode
 		inodeMap[dirp.dirents[dirp.pos].Inode] = n
