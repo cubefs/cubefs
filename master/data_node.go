@@ -135,6 +135,10 @@ func (dataNode *DataNode) isWriteAble() (ok bool) {
 	return
 }
 
+func (dataNode *DataNode) dpCntInLimit() bool {
+	return dataNode.DataPartitionCount <= dpCntOneNodeLimit()
+}
+
 func (dataNode *DataNode) isWriteAbleWithSize(size uint64) (ok bool) {
 	dataNode.RLock()
 	defer dataNode.RUnlock()

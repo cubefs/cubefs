@@ -988,7 +988,7 @@ func (ns *nodeSet) canWriteForDataNode(replicaNum int) bool {
 	var count int
 	ns.dataNodes.Range(func(key, value interface{}) bool {
 		node := value.(*DataNode)
-		if node.isWriteAble() && node.DataPartitionCount < dpCntOneNodeLimit() {
+		if node.isWriteAble() && node.dpCntInLimit() {
 			count++
 		}
 		if count >= replicaNum {
@@ -1485,7 +1485,7 @@ func (zone *Zone) canWriteForDataNode(replicaNum uint8) (can bool) {
 	var leastAlive uint8
 	zone.dataNodes.Range(func(addr, value interface{}) bool {
 		dataNode := value.(*DataNode)
-		if dataNode.DataPartitionCount > dpCntOneNodeLimit() {
+		if !dataNode.dpCntInLimit() {
 			return true
 		}
 		if dataNode.isActive && dataNode.isWriteAbleWithSize(30*util.GB) {
