@@ -2447,6 +2447,9 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		}
 		vol.mpLearnerNum = defaultQuorumMetaPartitionLearnerReplicaNum
 	}
+	if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) && !IsCrossRegionHATypeQuorum(crossRegionHAType) {
+		vol.mpLearnerNum = 0
+	}
 	if !IsCrossRegionHATypeQuorum(crossRegionHAType) && replicaNum > vol.dpReplicaNum {
 		err = fmt.Errorf("don't support new replicaNum[%v] larger than old dpReplicaNum[%v] for crossRegionHAType[%s]",
 			replicaNum, vol.dpReplicaNum, crossRegionHAType)
