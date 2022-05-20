@@ -431,12 +431,12 @@ func (e *Extent) tinyExtentAvaliOffset(offset int64) (newOffset, newEnd int64, e
 	if err != nil {
 		return
 	}
-	if newOffset-offset > util.BlockSize {
-		newOffset = offset + util.BlockSize
-	}
-	if newEnd-newOffset > util.BlockSize {
-		newEnd = newOffset + util.BlockSize
-	}
+	//if newOffset-offset > util.BlockSize {
+	//	newOffset = offset + util.BlockSize
+	//}
+	//if newEnd-newOffset > util.BlockSize {
+	//	newEnd = newOffset + util.BlockSize
+	//}
 	if newEnd < newOffset {
 		err = fmt.Errorf("unavali TinyExtentAvaliOffset on SEEK_DATA or SEEK_HOLE   (%v) offset(%v) "+
 			"newEnd(%v) newOffset(%v)", e.extentID, offset, newEnd, newOffset)

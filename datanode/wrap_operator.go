@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"math"
 	"net"
 	"strconv"
 	"strings"
@@ -745,8 +746,12 @@ func (s *DataNode) writeEmptyPacketOnTinyExtentRepairRead(reply *repl.Packet, ne
 	reply.Arg[0] = EmptyResponse
 	binary.BigEndian.PutUint64(reply.Arg[1:9], uint64(replySize))
 	err = reply.WriteToConn(connect, proto.WriteDeadlineTime)
-	reply.Size = uint32(replySize)
-	logContent := fmt.Sprintf("action[operatePacket] %v.",
+	if replySize>=math.MaxUint32 {
+		reply.Size=math.MaxUint32
+	}else {
+		reply.Size = uint32(replySize)
+	}
+	logContent := fmt.Sprintf("action[write empty repair packet] %v.",
 		reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
 	log.LogReadf(logContent)
 
@@ -782,13 +787,9 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 	if err != nil {
 		return
 	}
-	needReplySize = int64(request.Size)
 	offset := request.ExtentOffset
-	if uint64(request.ExtentOffset)+uint64(request.Size) > tinyExtentFinfoSize {
-		needReplySize = int64(tinyExtentFinfoSize - uint64(request.ExtentOffset))
-	}
+	needReplySize = int64(tinyExtentFinfoSize - uint64(request.ExtentOffset))
 	avaliReplySize := uint64(needReplySize)
-
 	partition.monitorData[statistics.ActionRepairRead].UpdateData(uint64(request.Size))
 
 	var (
