@@ -282,7 +282,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 		return
 	}
 	rand.Seed(time.Now().UnixNano())
-	partition.FullSyncTinyDeleteTime = time.Now().Unix() - (rand.Int63n(DelayFullSyncTinyDeleteTimeRandom))
+	partition.FullSyncTinyDeleteTime = time.Now().Unix()+rand.Int63n(3600*24)
 	partition.lastSyncTinyDeleteTime = partition.FullSyncTinyDeleteTime
 	// Attach data partition to disk mapping
 	disk.AttachDataPartition(partition)
@@ -935,10 +935,10 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 			dp.lastSyncTinyDeleteTime, time.Now().Unix(), dp.FullSyncTinyDeleteTime, isFullSync, isRealSync)
 	}()
 	if !isFullSync {
-		if localTinyDeleteFileSize, err = dp.extentStore.LoadTinyDeleteFileOffset(); err != nil {
+		if time.Now().Unix()-dp.lastSyncTinyDeleteTime < MinSyncTinyDeleteTime {
 			return
 		}
-		if time.Now().Unix()-dp.lastSyncTinyDeleteTime < MinSyncTinyDeleteTime {
+		if localTinyDeleteFileSize, err = dp.extentStore.LoadTinyDeleteFileOffset(); err != nil {
 			return
 		}
 
