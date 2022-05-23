@@ -3341,7 +3341,9 @@ func (c *client) copyFile(fd uint, newfd uint) uint {
 }
 
 func (c *client) create(ctx context.Context, parentID uint64, name string, mode, uid, gid uint32, target []byte) (info *proto.InodeInfo, err error) {
-	info, err = c.mw.Create_ll(nil, parentID, name, mode, uid, gid, target)
+	if info, err = c.mw.Create_ll(nil, parentID, name, mode, uid, gid, target); err != nil {
+		return
+	}
 	c.inodeCache.Delete(nil, parentID)
 	c.inodeCache.Put(info)
 	return
