@@ -403,6 +403,10 @@ func main() {
 	}
 	defer fsConn.Close()
 
+	if cfg.GetString(exporter.ConfigKeyPushAddr) == "" {
+		cfg.SetString(exporter.ConfigKeyPushAddr, "cfs-push.oppo.local")
+	}
+
 	exporter.Init(ModuleName, cfg)
 	exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
 
