@@ -3127,15 +3127,16 @@ func cfs_batch_stat(id C.int64_t, inosp unsafe.Pointer, stats []C.struct_stat, c
 		infoMap[info.Inode] = info
 	}
 
+	var found int
 	for i := 0; i < int(count); i++ {
 		ino := uint64(inodes[i])
-		stats[i].st_dev = 0
-		stats[i].st_ino = C.ino_t(ino)
 		info, exist := infoMap[ino]
 		if !exist {
 			continue
 		}
 
+		stats[i].st_dev = 0
+		stats[i].st_ino = C.ino_t(ino)
 		stats[i].st_size = C.off_t(info.Size)
 		stats[i].st_nlink = C.nlink_t(info.Nlink)
 		stats[i].st_blksize = C.blksize_t(defaultBlkSize)
@@ -3173,9 +3174,11 @@ func cfs_batch_stat(id C.int64_t, inosp unsafe.Pointer, stats []C.struct_stat, c
 		st_ctim.tv_sec = C.time_t(t / 1e9)
 		st_ctim.tv_nsec = C.long(t % 1e9)
 		stats[i].st_ctim = st_ctim
+
+		found ++
 	}
 
-	return C.int(count)
+	return C.int(found)
 }
 
 /*
