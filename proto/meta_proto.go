@@ -63,3 +63,11 @@ type CreateMetaPartitionResponse struct {
 	Status      uint8
 	Result      string
 }
+
+type MNMetaPartitionInfo struct {
+	LeaderAddr string    `json:"leaderAddr"`
+	Peers      []Peer    `json:"peers"`
+	Learners   []Learner `json:"learners"`
+	NodeId     uint64    `json:"nodeId"`
+	Cursor     uint64    `json:"cursor"`
+}

@@ -482,6 +482,90 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor, parallelism int) {
 	loadWaitGroup.Wait()
 }
 
+// RestoreOnePartition restores the data partition.
+func (d *Disk) RestoreOnePartition(visitor PartitionVisitor, partitionPath string) (err error) {
+	var (
+		partitionID uint64
+		partition   *DataPartition
+		dInfo       *DataNodeInfo
+	)
+	if len(partitionPath) == 0 {
+		err = fmt.Errorf("action[RestoreOnePartition] partition path is empty")
+		return
+	}
+	partitionFullPath := path.Join(d.Path, partitionPath)
+	_, err = os.Stat(partitionFullPath)
+	if err != nil {
+		err = fmt.Errorf("action[RestoreOnePartition] read dir(%v) err(%v)", partitionFullPath, err)
+		return
+	}
+	if !d.isPartitionDir(partitionPath) {
+		err = fmt.Errorf("action[RestoreOnePartition] invalid partition path")
+		return
+	}
+
+	if partitionID, _, err = unmarshalPartitionName(partitionPath); err != nil {
+		err = fmt.Errorf("action[RestoreOnePartition] unmarshal partitionName(%v) from disk(%v) err(%v) ",
+			partitionPath, d.Path, err.Error())
+		return
+	}
+
+	dInfo, err = d.getPersistPartitionsFromMaster()
+	if err != nil {
+		return
+	}
+	if len(dInfo.PersistenceDataPartitions) == 0 {
+		log.LogWarnf("action[RestoreOnePartition]: length of PersistenceDataPartitions is 0, ExpiredPartition check " +
+			"without effect")
+	}
+
+	if isExpiredPartition(partitionID, dInfo.PersistenceDataPartitions) {
+		log.LogErrorf("action[RestoreOnePartition]: find expired partition[%s], rename it and you can delete it "+
+			"manually", partitionPath)
+		newName := path.Join(d.Path, ExpiredPartitionPrefix+partitionPath)
+		_ = os.Rename(partitionFullPath, newName)
+		return
+	}
+
+	startTime := time.Now()
+	if partition, err = LoadDataPartition(partitionFullPath, d); err != nil {
+		msg := fmt.Sprintf("load partition(%v) failed: %v",
+			partitionFullPath, err)
+		log.LogError(msg)
+		exporter.Warning(msg)
+		return
+	}
+	log.LogInfof("partition(%v) load complete cost(%v)",
+		partitionFullPath, time.Since(startTime))
+	if visitor != nil {
+		visitor(partition)
+	}
+	return
+}
+
+func (d *Disk) getPersistPartitionsFromMaster() (dInfo *DataNodeInfo, err error) {
+	var dataNode *proto.DataNodeInfo
+	var convert = func(node *proto.DataNodeInfo) *DataNodeInfo {
+		result := &DataNodeInfo{}
+		result.Addr = node.Addr
+		result.PersistenceDataPartitions = node.PersistenceDataPartitions
+		return result
+	}
+	for i := 0; i < 3; i++ {
+		dataNode, err = MasterClient.NodeAPI().GetDataNode(d.space.dataNode.localServerAddr)
+		if err != nil {
+			log.LogErrorf("action[RestorePartition]: getDataNode error %v", err)
+			continue
+		}
+		break
+	}
+	if err != nil {
+		return
+	}
+	dInfo = convert(dataNode)
+	return
+}
+
 func (d *Disk) AddSize(size uint64) {
 	atomic.AddUint64(&d.Allocated, size)
 }

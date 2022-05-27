@@ -434,6 +434,46 @@ func (manager *SpaceManager) ExpiredPartition(partitionID uint64) {
 	dp.Expired()
 }
 
+func (manager *SpaceManager) ReloadPartition(d *Disk, partitionID uint64, partitionPath string) (err error) {
+	var partition *DataPartition
+	err = d.RestoreOnePartition(func(dp *DataPartition) {
+		manager.partitionMutex.Lock()
+		defer manager.partitionMutex.Unlock()
+		if _, has := manager.partitions[dp.partitionID]; !has {
+			manager.partitions[dp.partitionID] = dp
+			log.LogDebugf("action[reloadPartition] put partition(%v) to manager.", dp.partitionID)
+		}
+	}, partitionPath)
+	if err != nil {
+		return
+	}
+
+	partition = manager.Partition(partitionID)
+	if partition == nil {
+		return fmt.Errorf("partition not exist")
+	}
+
+	partition.DataPartitionCreateType = proto.DecommissionedCreateDataPartition
+	if err = partition.PersistMetadata(); err != nil {
+		goto errDeal
+	}
+
+	// start raft
+	if err = partition.Start(); err != nil {
+		goto errDeal
+	}
+	go partition.ExtentStore().AsyncLoadExtentSize()
+	return
+
+errDeal:
+	manager.DetachDataPartition(partitionID)
+	partition.Disk().DetachDataPartition(partition)
+	msg := fmt.Sprintf("partition [id: %v, disk: %v] start failed: %v", partition.partitionID, partition.Disk().Path, err)
+	log.LogErrorf(msg)
+	exporter.Warning(msg)
+	return
+}
+
 func (manager *SpaceManager) SyncPartitionReplicas(partitionID uint64, hosts []string) {
 	dp := manager.Partition(partitionID)
 	if dp == nil {

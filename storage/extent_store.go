@@ -21,11 +21,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"path"
+	"regexp"
 	"strconv"
 	"sync"
 	"sync/atomic"
-	"path"
-	"regexp"
 	"time"
 
 	"hash/crc32"
@@ -123,9 +123,9 @@ var (
 // Multiple small files can be appended to the same tinyExtent.
 // In addition, the deletion of small files is implemented by the punch hole from the underlying file system.
 type ExtentStore struct {
-	dataPath                          string
-	baseExtentID                      uint64 // TODO what is baseExtentID
-	baseExtentIDPersistCount          uint64
+	dataPath                 string
+	baseExtentID             uint64 // TODO what is baseExtentID
+	baseExtentIDPersistCount uint64
 	//extentInfoMap                     sync.Map // map that stores all the extent information
 	extentMapSlice                    *MapSlice
 	extentCnt                         int64
@@ -212,7 +212,6 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int,
 	}
 	return
 }
-
 
 func (ei *ExtentInfoBlock) Init(size uint64, modTime time.Time) {
 	ei[Size] = size
@@ -377,7 +376,6 @@ func (s *ExtentStore) IsFinishLoad() bool {
 	return atomic.LoadInt32(&s.loadStatus) == LoadFinish
 }
 
-
 func (s *ExtentStore) getExtentInfoByExtentID(eid uint64) (ei *ExtentInfoBlock, ok bool) {
 	ei, ok = s.extentMapSlice.Load(eid)
 	return
@@ -526,7 +524,7 @@ func (s *ExtentStore) Close() {
 
 // Watermark returns the extent info of the given extent on the record.
 func (s *ExtentStore) Watermark(extentID uint64) (ei *ExtentInfoBlock, err error) {
-	if !IsTinyExtent(extentID) && !s.IsFinishLoad(){
+	if !IsTinyExtent(extentID) && !s.IsFinishLoad() {
 		err = PartitionIsLoaddingErr
 		return
 	}
@@ -565,7 +563,6 @@ func (s *ExtentStore) GetAllWatermarks(extentType uint8, filter ExtentFilter) (e
 	tinyDeleteFileSize, err = s.LoadTinyDeleteFileOffset()
 	return
 }
-
 
 func (s *ExtentStore) GetAllWatermarksWithByteArr(extentType uint8, filter ExtentFilter) (tinyDeleteFileSize int64, data []byte, err error) {
 	needSize := 0
@@ -1134,7 +1131,7 @@ func (s *ExtentStore) PlaybackTinyDelete() (err error) {
 			return
 		}
 		extentID, offset, size := UnMarshalTinyExtent(recordData[:readN])
-		ei,ok := s.getExtentInfoByExtentID(extentID)
+		ei, ok := s.getExtentInfoByExtentID(extentID)
 		if !ok {
 			continue
 		}
@@ -1146,5 +1143,15 @@ func (s *ExtentStore) PlaybackTinyDelete() (err error) {
 			return
 		}
 	}
+	return
+}
+
+func (s *ExtentStore) GetRealBlockCnt(extentID uint64) (block int64, err error) {
+	ei, _ := s.getExtentInfoByExtentID(extentID)
+	e, err := s.extentWithHeader(ei)
+	if err != nil {
+		return
+	}
+	block = e.getRealBlockCnt()
 	return
 }

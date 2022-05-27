@@ -21,12 +21,12 @@ import (
 
 const (
 	testDiskPath = "/cfs/testDataNodeDisk"
-	Master = "master"
+	Master       = "master"
 )
 
 var (
-	startHttp bool
-	fakeNode *fakeDataNode
+	startHttp      bool
+	fakeNode       *fakeDataNode
 	partitionIdNum uint64
 )
 
@@ -37,7 +37,6 @@ type fakeDataNode struct {
 	fakeNormalExtentId uint64
 	fakeTinyExtentId   uint64
 }
-
 
 func Test_getTinyExtentHoleInfo(t *testing.T) {
 	if err := FakeNodePrepare(t); err != nil {
@@ -85,7 +84,7 @@ func Test_handleTinyExtentAvaliRead(t *testing.T) {
 	p.ExtentType = proto.TinyExtentType
 	p.ReqID = proto.GenerateRequestID()
 
-	opCode, err,  msg := fakeNode.FakeOperateHandle(t, p)
+	opCode, err, msg := fakeNode.FakeOperateHandle(t, p)
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -100,11 +99,11 @@ func newFakeDataNode(t *testing.T) *fakeDataNode {
 	fdn := &fakeDataNode{
 		DataNode: DataNode{
 			clusterID:       "datanode-cluster",
-			raftHeartbeat:	 "17331",
-			raftReplica:	 "17341",
+			raftHeartbeat:   "17331",
+			raftReplica:     "17341",
 			port:            "11010",
 			zoneName:        "zone-01",
-			httpPort:		  "11210",
+			httpPort:        "11210",
 			localIP:         "127.0.0.1",
 			localServerAddr: "127.0.0.1:11010",
 			nodeID:          uint64(111),
@@ -116,12 +115,12 @@ func newFakeDataNode(t *testing.T) *fakeDataNode {
 			"127.0.0.1:11012",
 		},
 		fakeNormalExtentId: 1025,
-		fakeTinyExtentId: 1,
-		path: testDiskPath,
+		fakeTinyExtentId:   1,
+		path:               testDiskPath,
 	}
 
 	runHttp(t)
-	masters := []string {
+	masters := []string{
 		"127.0.0.1:6767",
 	}
 	MasterClient = masterSDK.NewMasterClient(masters, false)
@@ -134,8 +133,7 @@ func newFakeDataNode(t *testing.T) *fakeDataNode {
 	return fdn
 }
 
-
-func runHttp (t *testing.T) {
+func runHttp(t *testing.T) {
 	if !startHttp {
 		profNetListener, err := net.Listen("tcp", fmt.Sprintf(":%v", 6767))
 		if err != nil {
@@ -184,7 +182,7 @@ func (fdn *fakeDataNode) fakeDeleteDataPartition(t *testing.T, partitionId uint6
 
 }
 
-func FakeDirCreate(t *testing.T) (err error){
+func FakeDirCreate(t *testing.T) (err error) {
 	_, err = os.Stat(testDiskPath)
 	if err == nil {
 		os.RemoveAll(testDiskPath)
@@ -195,7 +193,7 @@ func FakeDirCreate(t *testing.T) (err error){
 	return
 }
 
-func FakeNodePrepare(t *testing.T) (err error){
+func FakeNodePrepare(t *testing.T) (err error) {
 	if err = FakeDirCreate(t); err != nil {
 		t.Fatalf("mkdir err[%v]", err)
 		return
@@ -206,7 +204,7 @@ func FakeNodePrepare(t *testing.T) (err error){
 	return
 }
 
-func PrepareDataPartition(extentCreate, dataPrepare bool, t *testing.T, partitionId uint64) *DataPartition{
+func PrepareDataPartition(extentCreate, dataPrepare bool, t *testing.T, partitionId uint64) *DataPartition {
 	dp := fakeNode.fakeCreateDataPartition(t, partitionId)
 	if dp == nil {
 		t.Fatalf("create Partition failed")
@@ -244,10 +242,10 @@ func PrepareDataPartition(extentCreate, dataPrepare bool, t *testing.T, partitio
 
 func (fdn *fakeDataNode) fakeCreateDataPartition(t *testing.T, partitionId uint64) (dp *DataPartition) {
 	req := &proto.CreateDataPartitionRequest{
-		PartitionId:    partitionId,
-		PartitionSize:  5 * util.GB, // 5GB
-		VolumeId:       "testVol",
-		Hosts:          fdn.Hosts,
+		PartitionId:   partitionId,
+		PartitionSize: 5 * util.GB, // 5GB
+		VolumeId:      "testVol",
+		Hosts:         fdn.Hosts,
 		Members: []proto.Peer{
 			{ID: fdn.nodeID, Addr: fdn.localServerAddr},
 			{ID: fdn.nodeID, Addr: fdn.localServerAddr},
@@ -273,7 +271,7 @@ func (fdn *fakeDataNode) fakeCreateDataPartition(t *testing.T, partitionId uint6
 		},
 	}
 
-	opCode, err,  msg := fdn.FakeOperateHandle(t, p)
+	opCode, err, msg := fdn.FakeOperateHandle(t, p)
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -296,7 +294,7 @@ func (e *fakeDataNode) fakeCreateExtent(dp *DataPartition, t *testing.T, extentI
 		},
 	}
 
-	opCode, err,  msg := e.FakeOperateHandle(t, p)
+	opCode, err, msg := e.FakeOperateHandle(t, p)
 	if err != nil {
 		t.Fatal(err)
 		return nil
@@ -311,7 +309,7 @@ func (e *fakeDataNode) fakeCreateExtent(dp *DataPartition, t *testing.T, extentI
 	return nil
 }
 
-func (fdn *fakeDataNode) prepareTestData(t * testing.T, dp *DataPartition, extentId uint64) (crc uint32, err error) {
+func (fdn *fakeDataNode) prepareTestData(t *testing.T, dp *DataPartition, extentId uint64) (crc uint32, err error) {
 	size := 1 * util.MB
 	data := make([]byte, size)
 	for i := 0; i < size; i++ {
@@ -334,7 +332,7 @@ func (fdn *fakeDataNode) prepareTestData(t * testing.T, dp *DataPartition, exten
 		},
 	}
 
-	opCode, err,  msg := fdn.FakeOperateHandle(t, p)
+	opCode, err, msg := fdn.FakeOperateHandle(t, p)
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -345,7 +343,7 @@ func (fdn *fakeDataNode) prepareTestData(t * testing.T, dp *DataPartition, exten
 	return
 }
 
-func (fdn *fakeDataNode) FakeOperateHandle(t *testing.T, p *repl.Packet) (opCode uint8, err error, msg string){
+func (fdn *fakeDataNode) FakeOperateHandle(t *testing.T, p *repl.Packet) (opCode uint8, err error, msg string) {
 	err = fdn.Prepare(p, fdn.localServerAddr)
 	if err != nil {
 		t.Errorf("prepare err %v", err)
@@ -411,10 +409,10 @@ func buildJSONResp(w http.ResponseWriter, stateCode int, data interface{}, send,
 	w.Write(jsonBody)
 }
 
-func fakeGetClusterInfo(w http.ResponseWriter, r *http.Request){
-	info := &proto.ClusterInfo {
+func fakeGetClusterInfo(w http.ResponseWriter, r *http.Request) {
+	info := &proto.ClusterInfo{
 		Cluster: "chubaofs",
-		Ip: "127.0.0.1",
+		Ip:      "127.0.0.1",
 	}
 	buildJSONResp(w, http.StatusOK, info, Master, "")
 }
@@ -424,9 +422,7 @@ func fakeAddDataNode(w http.ResponseWriter, r *http.Request) {
 }
 
 func fakeGetDataNode(w http.ResponseWriter, r *http.Request) {
-	info := &proto.DataNodeInfo{
-
-	}
+	info := &proto.DataNodeInfo{}
 	buildJSONResp(w, http.StatusOK, info, Master, "")
 }
 

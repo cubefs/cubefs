@@ -400,6 +400,12 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/getReplBufferDetail", s.getReplProtocalBufferDetail)
 	http.HandleFunc("/tinyExtentHoleInfo", s.getTinyExtentHoleInfo)
 	http.HandleFunc("/playbackTinyExtentMarkDelete", s.playbackPartitionTinyDelete)
+	http.HandleFunc("/stopPartition", s.stopPartition)
+	http.HandleFunc("/reloadPartition", s.reloadPartition)
+	http.HandleFunc("/moveExtent", s.moveExtentFile)
+	http.HandleFunc("/moveExtentBatch", s.moveExtentFileBatch)
+	http.HandleFunc("/repairExtent", s.repairExtent)
+	http.HandleFunc("/repairExtentBatch", s.repairExtentBatch)
 }
 
 func (s *DataNode) startTCPService() (err error) {

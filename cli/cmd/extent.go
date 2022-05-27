@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/log"
 	"hash/crc32"
 	"io/ioutil"
 	"math"
@@ -29,22 +30,24 @@ import (
 )
 
 const (
-	cmdExtentUse         = "extent [command]"
-	cmdExtentShort       = "Check extent consistency"
-	cmdCheckReplicaUse   = "check-replica volumeName"
-	cmdCheckReplicaShort = "Check replica consistency"
-	cmdCheckLengthUse    = "check-length volumeName"
-	cmdCheckLengthShort  = "Check extent length"
-	cmdCheckExtentCrcUse = "check-crc volumeName"
-	cmdCheckExtentShort  = "Check extent crc"
-	cmdCheckEkUse        = "check-ek volumeName"
-	cmdCheckEkShort      = "Check inode extent key"
-	cmdCheckNlinkUse     = "check-nlink volumeName"
-	cmdCheckNlinkShort   = "Check inode nlink"
-	cmdSearchExtentUse   = "search volumeName"
-	cmdSearchExtentShort = "Search extent key"
-	cmdCheckGarbageUse   = "check-garbage volumeName"
-	cmdCheckGarbageShort = "Check garbage extents"
+	cmdExtentUse                = "extent [command]"
+	cmdExtentShort              = "Check extent consistency"
+	cmdCheckReplicaUse          = "check-replica volumeName"
+	cmdCheckReplicaShort        = "Check replica consistency"
+	cmdCheckLengthUse           = "check-length volumeName"
+	cmdCheckLengthShort         = "Check extent length"
+	cmdCheckExtentCrcUse        = "check-crc volumeName"
+	cmdCheckExtentShort         = "Check extent crc"
+	cmdCheckEkUse               = "check-ek volumeName"
+	cmdCheckEkShort             = "Check inode extent key"
+	cmdCheckNlinkUse            = "check-nlink volumeName"
+	cmdCheckNlinkShort          = "Check inode nlink"
+	cmdSearchExtentUse          = "search volumeName"
+	cmdSearchExtentShort        = "Search extent key"
+	cmdCheckGarbageUse          = "check-garbage volumeName"
+	cmdCheckGarbageShort        = "Check garbage extents"
+	cmdCheckTinyExtentHoleUse   = "check-tiny-hole"
+	cmdCheckTinyExtentHoleShort = "Check tiny extents hole"
 )
 
 const (
@@ -64,18 +67,18 @@ type ExtentMd5 struct {
 }
 
 type DataPartition struct {
-	VolName              string                `json:"volName"`
-	ID                   uint64                `json:"id"`
-	Size                 int                   `json:"size"`
-	Used                 int                   `json:"used"`
-	Status               int                   `json:"status"`
-	Path                 string                `json:"path"`
+	VolName              string                    `json:"volName"`
+	ID                   uint64                    `json:"id"`
+	Size                 int                       `json:"size"`
+	Used                 int                       `json:"used"`
+	Status               int                       `json:"status"`
+	Path                 string                    `json:"path"`
 	Files                []storage.ExtentInfoBlock `json:"extents"`
-	FileCount            int                   `json:"fileCount"`
-	Replicas             []string              `json:"replicas"`
-	Peers                []proto.Peer          `json:"peers"`
-	TinyDeleteRecordSize int64                 `json:"tinyDeleteRecordSize"`
-	RaftStatus           *raft.Status          `json:"raftStatus"`
+	FileCount            int                       `json:"fileCount"`
+	Replicas             []string                  `json:"replicas"`
+	Peers                []proto.Peer              `json:"peers"`
+	TinyDeleteRecordSize int64                     `json:"tinyDeleteRecordSize"`
+	RaftStatus           *raft.Status              `json:"raftStatus"`
 }
 
 type Inode struct {
@@ -128,6 +131,7 @@ func newExtentCmd(mc *sdk.MasterClient) *cobra.Command {
 		newExtentCheckCmd(checkTypeInodeNlink),
 		newExtentSearchCmd(),
 		newExtentGarbageCheckCmd(),
+		newTinyExtentCheckHoleCmd(),
 	)
 	return cmd
 }
@@ -228,6 +232,56 @@ func newExtentCheckCmd(checkType int) *cobra.Command {
 	cmd.Flags().Uint64Var(&extentConcurrency, "extentConcurrency", 1, "max concurrent checking extents")
 	cmd.Flags().StringVar(&modifyTimeMin, "modifyTimeMin", "", "min modify time for inode")
 	cmd.Flags().StringVar(&modifyTimeMax, "modifyTimeMax", "", "max modify time for inode")
+	return cmd
+}
+
+func newTinyExtentCheckHoleCmd() *cobra.Command {
+	var (
+		use        = cmdCheckTinyExtentHoleUse
+		short      = cmdCheckTinyExtentHoleShort
+		scanLimit  uint64
+		volumeStr  string
+		autoRepair bool
+		dpid       uint64
+	)
+	var cmd = &cobra.Command{
+		Use:   use,
+		Short: short,
+		Run: func(cmd *cobra.Command, args []string) {
+			if scanLimit > 150 {
+				stdout("scanLimit too high: %d\n", scanLimit)
+				return
+			}
+
+			rServer := newRepairServer(scanLimit)
+			log.LogInfof("fix tiny extent for master: %v", client.Leader())
+
+			vols := loadNeedRepairVolume()
+			ids := loadNeedRepairPartition()
+
+			if dpid > 0 {
+				ids = []uint64{dpid}
+			}
+			if volumeStr != "" {
+				vols = []string{volumeStr}
+			}
+
+			log.LogInfo("check start")
+			rServer.checkHolesAndRepair(autoRepair, vols, ids)
+			log.LogInfo("check end")
+			return
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().Uint64Var(&scanLimit, "limit", 10, "limit rate")
+	cmd.Flags().StringVar(&volumeStr, "volume", "", "fix by volume name")
+	cmd.Flags().Uint64Var(&dpid, "partition", 0, "fix by data partition id")
+	cmd.Flags().BoolVar(&autoRepair, "auto-repair", false, "true:scan bad tiny extent and send repair cmd to datanode automatically; false:only scan and record result, do not repair it")
 	return cmd
 }
 

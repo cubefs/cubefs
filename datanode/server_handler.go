@@ -19,9 +19,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/util/log"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -316,20 +318,20 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		raftStatus = partition.raftPartition.Status()
 	}
 	result := &struct {
-		VolName              string                `json:"volName"`
-		ID                   uint64                `json:"id"`
-		Size                 int                   `json:"size"`
-		Used                 int                   `json:"used"`
-		Status               int                   `json:"status"`
-		Path                 string                `json:"path"`
+		VolName              string                    `json:"volName"`
+		ID                   uint64                    `json:"id"`
+		Size                 int                       `json:"size"`
+		Used                 int                       `json:"used"`
+		Status               int                       `json:"status"`
+		Path                 string                    `json:"path"`
 		Files                []storage.ExtentInfoBlock `json:"extents"`
-		FileCount            int                   `json:"fileCount"`
-		Replicas             []string              `json:"replicas"`
-		Peers                []proto.Peer          `json:"peers"`
-		Learners             []proto.Learner       `json:"learners"`
-		TinyDeleteRecordSize int64                 `json:"tinyDeleteRecordSize"`
-		RaftStatus           *raft.Status          `json:"raftStatus"`
-		IsFinishLoad         bool                  `json:"isFinishLoad"`
+		FileCount            int                       `json:"fileCount"`
+		Replicas             []string                  `json:"replicas"`
+		Peers                []proto.Peer              `json:"peers"`
+		Learners             []proto.Learner           `json:"learners"`
+		TinyDeleteRecordSize int64                     `json:"tinyDeleteRecordSize"`
+		RaftStatus           *raft.Status              `json:"raftStatus"`
+		IsFinishLoad         bool                      `json:"isFinishLoad"`
 	}{
 		VolName:              partition.volumeID,
 		ID:                   partition.partitionID,
@@ -549,12 +551,15 @@ func (s *DataNode) getTinyExtentHoleInfo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	blks, _ := store.GetRealBlockCnt(uint64(extentID))
 	result := &struct {
-		Holes     []*proto.TinyExtentHole      `json:"holes"`
-		ExtentAvaliSize uint64                   `json:"extentAvaliSize"`
-	} {
-		Holes: holes,
+		Holes           []*proto.TinyExtentHole `json:"holes"`
+		ExtentAvaliSize uint64                  `json:"extentAvaliSize"`
+		ExtentBlocks    int64                   `json:"blockNum"`
+	}{
+		Holes:           holes,
 		ExtentAvaliSize: extentAvaliSize,
+		ExtentBlocks:    blks,
 	}
 
 	s.buildSuccessResp(w, result)
@@ -585,4 +590,381 @@ func (s *DataNode) playbackPartitionTinyDelete(w http.ResponseWriter, r *http.Re
 		return
 	}
 	s.buildSuccessResp(w, nil)
+}
+
+func (s *DataNode) stopPartitionById(partitionID uint64) (err error) {
+	partition := s.space.Partition(partitionID)
+	if partition == nil {
+		err = fmt.Errorf("partition[%d] not exist", partitionID)
+		return
+	}
+	partition.Disk().space.DetachDataPartition(partition.partitionID)
+	partition.Disk().DetachDataPartition(partition)
+	partition.Stop()
+	return nil
+}
+
+func (s *DataNode) stopPartition(w http.ResponseWriter, r *http.Request) {
+	var (
+		partitionID uint64
+		err         error
+	)
+	if err = r.ParseForm(); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if partitionID, err = strconv.ParseUint(r.FormValue("partitionID"), 10, 64); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err = s.stopPartitionById(partitionID); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.buildSuccessResp(w, nil)
+}
+
+func (s *DataNode) reloadPartitionByName(partitionPath, disk string) (err error) {
+	var (
+		d           *Disk
+		partition   *DataPartition
+		partitionID uint64
+	)
+
+	if d, err = s.space.GetDisk(disk); err != nil {
+		return
+	}
+
+	if partitionID, _, err = unmarshalPartitionName(partitionPath); err != nil {
+		err = fmt.Errorf("action[reloadPartition] unmarshal partitionName(%v) from disk(%v) err(%v) ",
+			partitionPath, disk, err.Error())
+		return
+	}
+
+	partition = s.space.Partition(partitionID)
+	if partition != nil {
+		err = fmt.Errorf("partition[%d] exist, can not reload", partitionID)
+		return
+	}
+
+	if err = s.space.ReloadPartition(d, partitionID, partitionPath); err != nil {
+		return
+	}
+	return
+}
+
+func (s *DataNode) reloadPartition(w http.ResponseWriter, r *http.Request) {
+	var (
+		partitionPath string
+		disk          string
+		err           error
+	)
+	if err = r.ParseForm(); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if disk = r.FormValue("disk"); disk == "" {
+		s.buildFailureResp(w, http.StatusBadRequest, "param disk is empty")
+		return
+	}
+
+	if partitionPath = r.FormValue("partitionPath"); partitionPath == "" {
+		s.buildFailureResp(w, http.StatusBadRequest, "param partitionPath is empty")
+		return
+	}
+
+	if err = s.reloadPartitionByName(partitionPath, disk); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.buildSuccessResp(w, nil)
+}
+
+func (s *DataNode) moveExtentFileToBackup(pathStr string, partitionID, extentID uint64) (err error) {
+	const (
+		repairDirStr = "repair_extents_backup"
+	)
+	rootPath := pathStr[:strings.LastIndex(pathStr, "/")]
+	extentFilePath := path.Join(pathStr, strconv.Itoa(int(extentID)))
+	now := time.Now()
+	repairDirPath := path.Join(rootPath, repairDirStr, fmt.Sprintf("%d-%d-%d", now.Year(), now.Month(), now.Day()))
+	os.MkdirAll(repairDirPath, 0655)
+	fileInfo, err := os.Stat(repairDirPath)
+	if err != nil || !fileInfo.IsDir() {
+		err = fmt.Errorf("path[%s] is not exist or is not dir", repairDirPath)
+		return
+	}
+	repairBackupFilePath := path.Join(repairDirPath, fmt.Sprintf("%d_%d_%d", partitionID, extentID, now.Unix()))
+	log.LogWarnf("rename file[%s-->%s]", extentFilePath, repairBackupFilePath)
+	if err = os.Rename(extentFilePath, repairBackupFilePath); err != nil {
+		return
+	}
+
+	file, err := os.OpenFile(extentFilePath, os.O_CREATE|os.O_RDWR|os.O_EXCL, 0666)
+	if err != nil {
+		return
+	}
+	file.Close()
+	return nil
+}
+
+func (s *DataNode) moveExtentFile(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramPath        = "path"
+		paramPartitionID = "partition"
+		paramExtentID    = "extent"
+	)
+	var (
+		err            error
+		partitionID    uint64
+		extentID       uint64
+		pathStr        string
+		partitionIDStr string
+		extentIDStr    string
+	)
+	defer func() {
+		if err != nil {
+			s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
+			log.LogErrorf("move extent %s/%s failed:%s", pathStr, extentIDStr, err.Error())
+		}
+	}()
+
+	pathStr = r.FormValue(paramPath)
+	partitionIDStr = r.FormValue(paramPartitionID)
+	extentIDStr = r.FormValue(paramExtentID)
+	log.LogWarnf("move extent %s/%s begin", pathStr, extentIDStr)
+
+	if len(partitionIDStr) == 0 || len(extentIDStr) == 0 || len(pathStr) == 0 {
+		err = fmt.Errorf("need param [%s %s %s]", paramPath, paramPartitionID, paramExtentID)
+		return
+	}
+
+	if partitionID, err = strconv.ParseUint(partitionIDStr, 10, 64); err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramPartitionID, err)
+		return
+	}
+	if extentID, err = strconv.ParseUint(extentIDStr, 10, 64); err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramExtentID, err)
+		return
+	}
+
+	if err = s.moveExtentFileToBackup(pathStr, partitionID, extentID); err != nil {
+		return
+	}
+
+	log.LogWarnf("move extent %s/%s success", pathStr, extentIDStr)
+	s.buildSuccessResp(w, nil)
+	return
+}
+
+func (s *DataNode) moveExtentFileBatch(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramPath        = "path"
+		paramPartitionID = "partition"
+		paramExtentID    = "extent"
+	)
+	var (
+		err            error
+		partitionID    uint64
+		pathStr        string
+		partitionIDStr string
+		extentIDStr    string
+		resultMap      map[uint64]string
+	)
+	defer func() {
+		if err != nil {
+			s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
+			log.LogWarnf("move extent batch partition:%s extents:%s failed:%s", pathStr, extentIDStr, err.Error())
+		}
+	}()
+
+	resultMap = make(map[uint64]string)
+	pathStr = r.FormValue(paramPath)
+	partitionIDStr = r.FormValue(paramPartitionID)
+	extentIDStr = r.FormValue(paramExtentID)
+	extentIDArrayStr := strings.Split(extentIDStr, "-")
+	log.LogWarnf("move extent batch partition:%s extents:%s begin", pathStr, extentIDStr)
+
+	if len(partitionIDStr) == 0 || len(extentIDArrayStr) == 0 || len(pathStr) == 0 {
+		err = fmt.Errorf("need param [%s %s %s]", paramPath, paramPartitionID, paramExtentID)
+		return
+	}
+
+	if partitionID, err = strconv.ParseUint(partitionIDStr, 10, 64); err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramPartitionID, err)
+		return
+	}
+	for _, idStr := range extentIDArrayStr {
+		var ekId uint64
+		if ekId, err = strconv.ParseUint(idStr, 10, 64); err != nil {
+			err = fmt.Errorf("parse param %v fail: %v", paramExtentID, err)
+			return
+		}
+		resultMap[ekId] = fmt.Sprintf("partition:%d extent:%d not start", partitionID, ekId)
+	}
+
+	for _, idStr := range extentIDArrayStr {
+		ekId, _ := strconv.ParseUint(idStr, 10, 64)
+		if err = s.moveExtentFileToBackup(pathStr, partitionID, ekId); err != nil {
+			resultMap[ekId] = err.Error()
+			log.LogErrorf("repair extent %s/%s failed", pathStr, idStr)
+		} else {
+			resultMap[ekId] = "OK"
+			log.LogWarnf("repair extent %s/%s success", pathStr, idStr)
+		}
+	}
+	err = nil
+	log.LogWarnf("move extent batch partition:%s extents:%s success", pathStr, extentIDStr)
+	s.buildSuccessResp(w, resultMap)
+	return
+}
+
+func (s *DataNode) repairExtent(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramPath        = "path"
+		paramPartitionID = "partition"
+		paramExtentID    = "extent"
+	)
+	var (
+		err              error
+		partitionID      uint64
+		extentID         uint64
+		hasStopPartition bool
+		pathStr          string
+		partitionIDStr   string
+		extentIDStr      string
+		lastSplitIndex   int
+	)
+	defer func() {
+		if err != nil {
+			s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
+			log.LogErrorf("repair extent batch partition: %s extents[%s] failed:%s", pathStr, extentIDStr, err.Error())
+		}
+
+		if hasStopPartition {
+			s.reloadPartitionByName(pathStr[lastSplitIndex+1:], pathStr[:lastSplitIndex])
+		}
+
+	}()
+
+	hasStopPartition = false
+	pathStr = r.FormValue(paramPath)
+	partitionIDStr = r.FormValue(paramPartitionID)
+	extentIDStr = r.FormValue(paramExtentID)
+
+	if len(partitionIDStr) == 0 || len(extentIDStr) == 0 || len(pathStr) == 0 {
+		err = fmt.Errorf("need param [%s %s %s]", paramPath, paramPartitionID, paramExtentID)
+		return
+	}
+
+	if partitionID, err = strconv.ParseUint(partitionIDStr, 10, 64); err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramPartitionID, err)
+		return
+	}
+	if extentID, err = strconv.ParseUint(extentIDStr, 10, 64); err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramExtentID, err)
+		return
+	}
+	lastSplitIndex = strings.LastIndex(pathStr, "/")
+	log.LogWarnf("repair extent %s/%s begin", pathStr, extentIDStr)
+
+	if err = s.stopPartitionById(partitionID); err != nil {
+		return
+	}
+	hasStopPartition = true
+
+	if err = s.moveExtentFileToBackup(pathStr, partitionID, extentID); err != nil {
+		return
+	}
+
+	hasStopPartition = false
+	if err = s.reloadPartitionByName(pathStr[lastSplitIndex+1:], pathStr[:lastSplitIndex]); err != nil {
+		return
+	}
+	log.LogWarnf("repair extent %s/%s success", pathStr, extentIDStr)
+	s.buildSuccessResp(w, nil)
+	return
+}
+
+func (s *DataNode) repairExtentBatch(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramPath        = "path"
+		paramPartitionID = "partition"
+		paramExtentID    = "extent"
+	)
+	var (
+		err              error
+		partitionID      uint64
+		hasStopPartition bool
+		pathStr          string
+		partitionIDStr   string
+		extentIDStr      string
+		resultMap        map[uint64]string
+		lastSplitIndex   int
+	)
+	defer func() {
+		if err != nil {
+			s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
+			log.LogErrorf("repair extent batch partition: %s extents[%s] failed:%s", pathStr, extentIDStr, err.Error())
+		}
+
+		if hasStopPartition {
+			s.reloadPartitionByName(pathStr[lastSplitIndex+1:], pathStr[:lastSplitIndex])
+		}
+	}()
+
+	resultMap = make(map[uint64]string)
+	hasStopPartition = false
+	pathStr = r.FormValue(paramPath)
+	partitionIDStr = r.FormValue(paramPartitionID)
+	extentIDStr = r.FormValue(paramExtentID)
+	extentIDArrayStr := strings.Split(extentIDStr, "-")
+
+	if len(partitionIDStr) == 0 || len(extentIDArrayStr) == 0 || len(pathStr) == 0 {
+		err = fmt.Errorf("need param [%s %s %s]", paramPath, paramPartitionID, paramExtentID)
+		return
+	}
+
+	if partitionID, err = strconv.ParseUint(partitionIDStr, 10, 64); err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramPartitionID, err)
+		return
+	}
+	for _, idStr := range extentIDArrayStr {
+		var ekId uint64
+		if ekId, err = strconv.ParseUint(idStr, 10, 64); err != nil {
+			err = fmt.Errorf("parse param %v fail: %v", paramExtentID, err)
+			return
+		}
+		resultMap[ekId] = fmt.Sprintf("partition:%d extent:%d not start", partitionID, ekId)
+	}
+	lastSplitIndex = strings.LastIndex(pathStr, "/")
+	log.LogWarnf("repair extent batch partition: %s extents[%s] begin", pathStr, extentIDStr)
+
+	if err = s.stopPartitionById(partitionID); err != nil {
+		return
+	}
+	hasStopPartition = true
+
+	for _, idStr := range extentIDArrayStr {
+		ekId, _ := strconv.ParseUint(idStr, 10, 64)
+		if err = s.moveExtentFileToBackup(pathStr, partitionID, ekId); err != nil {
+			resultMap[ekId] = err.Error()
+			log.LogErrorf("repair extent %s/%s failed:%s", pathStr, idStr, err.Error())
+		} else {
+			resultMap[ekId] = "OK"
+			log.LogWarnf("repair extent %s/%s success", pathStr, idStr)
+		}
+	}
+	err = nil
+	hasStopPartition = false
+	if err = s.reloadPartitionByName(pathStr[lastSplitIndex+1:], pathStr[:lastSplitIndex]); err != nil {
+		return
+	}
+	log.LogWarnf("repair extent batch partition: %s extents[%s] success", pathStr, extentIDStr)
+	s.buildSuccessResp(w, resultMap)
+	return
 }

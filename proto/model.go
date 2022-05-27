@@ -128,8 +128,8 @@ type MetaReplicaInfo struct {
 	InodeCount  uint64
 	DentryCount uint64
 	IsLearner   bool
-	StoreMode	StoreMode
-	ApplyId		uint64
+	StoreMode   StoreMode
+	ApplyId     uint64
 }
 
 // ClusterView provides the view of a cluster.
@@ -156,7 +156,7 @@ type ClusterView struct {
 	MetaNodes              []NodeView
 	DataNodes              []NodeView
 	DataNodeBadDisks       []DataNodeBadDisksView
-	SchedulerDomain		   string	// todo
+	SchedulerDomain        string // todo
 }
 
 // NodeView provides the view of the data or meta node.
@@ -290,6 +290,13 @@ type ExtentInfo struct {
 
 type ExtentInfoBlock [4]uint64
 
+const (
+	ExtentInfoFileID = iota
+	ExtentInfoSize
+	ExtentInfoCrc
+	ExtentInfoModifyTime
+)
+
 // Status raft status
 type Status struct {
 	ID                uint64
@@ -320,40 +327,6 @@ type ReplicaStatus struct {
 	Active      bool
 	LastActive  time.Time
 	Inflight    int
-}
-type DNDataPartitionInfo struct {
-	VolName              string        `json:"volName"`
-	ID                   uint64        `json:"id"`
-	Size                 int           `json:"size"`
-	Used                 int           `json:"used"`
-	Status               int           `json:"status"`
-	Path                 string        `json:"path"`
-	Files                []ExtentInfoBlock `json:"extents"`
-	FileCount            int           `json:"fileCount"`
-	Replicas             []string      `json:"replicas"`
-	TinyDeleteRecordSize int64         `json:"tinyDeleteRecordSize"`
-	RaftStatus           *Status       `json:"raftStatus"`
-	Peers                []Peer        `json:"peers"`
-	Learners             []Learner     `json:"learners"`
-}
-
-type TinyExtentHole struct {
-	Offset 		uint64
-	Size		uint64
-	PreAllSize 	uint64
-}
-
-type DNTinyExtentInfo struct {
-	Holes     []*TinyExtentHole      `json:"holes"`
-	ExtentAvaliSize uint64                   `json:"extentAvaliSize"`
-}
-
-type MNMetaPartitionInfo struct {
-	LeaderAddr string    `json:"leaderAddr"`
-	Peers      []Peer    `json:"peers"`
-	Learners   []Learner `json:"learners"`
-	NodeId     uint64    `json:"nodeId"`
-	Cursor     uint64    `json:"cursor"`
 }
 
 type DataPartitionExtentCrcInfo struct {
