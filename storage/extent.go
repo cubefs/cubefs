@@ -50,7 +50,7 @@ type ExtentInfoBlock [4]uint64
 var EmptyExtentBlock = ExtentInfoBlock{}
 
 func (eiBlock ExtentInfoBlock) String() string {
-	return fmt.Sprintf("%v_%v", eiBlock[FileID], eiBlock[Size])
+	return fmt.Sprintf("%v_%v_%v_%v", eiBlock[FileID], eiBlock[Size],eiBlock[Crc],eiBlock[ModifyTime])
 }
 
 func (ei *ExtentInfoBlock) Loaded() bool {

@@ -7,6 +7,7 @@ import (
 	"path"
 	"reflect"
 	"runtime"
+	"sync"
 	"testing"
 )
 
@@ -254,4 +255,126 @@ func objectsAreEqual(expected, actual interface{}) bool {
 		return exp == nil && act == nil
 	}
 	return bytes.Equal(exp, act)
+}
+
+
+const (
+	MaxExtentID=60000
+)
+
+var (
+	ems *MapSlice
+)
+
+
+func Test_DeleteExtentData(t *testing.T) {
+	InsertExtentData(t)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go asyncDeleteExtentData(t,3,&wg)
+	wg.Wait()
+	wg.Add(1)
+	go loadExtentInfoBlockArr(t,3,&wg)
+	wg.Wait()
+}
+
+func InsertExtentData(t *testing.T) {
+	var wg sync.WaitGroup
+	ems=NewMapSlice(1)
+	for i:=1;i<8;i++{
+		wg.Add(1)
+		go asyncInsertExtentData(t,i,&wg)
+	}
+	wg.Wait()
+
+}
+
+func asyncInsertExtentData(t *testing.T,modNun int,wg *sync.WaitGroup) {
+	defer func() {
+		wg.Done()
+	}()
+	var count int
+	for i:=1;i<MaxExtentID;i++{
+		if i%modNun==0 {
+			eb:=ExtentInfoBlock{
+				FileID:uint64(i),
+				Size:uint64(i+1),
+				Crc:uint64(i+2),
+				ModifyTime:uint64(i+3),
+			}
+			ems.Store(uint64(i),eb)
+			count++
+		}
+	}
+	t.Logf("modNum(%v) insert success(%v) emsSumRecords(%v)",modNun,count,ems.Len())
+}
+
+
+
+
+func asyncDeleteExtentData(t *testing.T,modNun int,wg *sync.WaitGroup) {
+	defer func() {
+		wg.Done()
+	}()
+	var count int
+	for i:=1;i<MaxExtentID;i++{
+		if IsTinyExtent(uint64(i)){
+			continue
+		}
+		if i%modNun==0 {
+			ems.Delete(uint64(i))
+			count++
+		}
+	}
+	t.Logf("modNum(%v) delete success(%v) emsSumRecords(%v)",modNun,count,ems.Len())
+}
+
+
+
+func loadExtentInfoBlockArr(t *testing.T,modNun int,wg *sync.WaitGroup) {
+	defer func() {
+		wg.Done()
+	}()
+	var count int
+	for i:=1;i<MaxExtentID;i++{
+		if i%modNun==0 {
+			if IsTinyExtent(uint64(i)) {
+				continue
+			}
+			ei,_,err:=loadExtentInfoBlockAndCheck(t,uint64(i))
+			if err==nil {
+				t.Fatalf("extent(%v) has been delete,why can load(%v)",uint64(i),ei)
+				t.FailNow()
+			}
+			count++
+		}
+	}
+	t.Logf("modNum(%v) load failed  count(%v) emsSumRecords(%v)",modNun,count,ems.Len())
+}
+
+
+func loadExtentInfoBlockAndCheck(t *testing.T,eid uint64)(ei *ExtentInfoBlock,ok bool,err error) {
+	ei,ok=ems.Load(eid)
+	if !ok {
+		err=fmt.Errorf("cannot load extent(%v),because not exsit",eid)
+		return
+	}
+	if ei[FileID]!=uint64(eid) {
+		err=fmt.Errorf("check extentID failed :eid(%v) extentInfoBlock(%v)",eid,ei)
+		return
+	}
+	if ei[Size]!=uint64(eid+1) {
+		err=fmt.Errorf("check extent Size failed :eid(%v) extentInfoBlock(%v)",eid,ei)
+		return
+	}
+	if ei[Crc]!=uint64(eid+2) {
+		err=fmt.Errorf("check extent Crc failed :eid(%v) extentInfoBlock(%v)",eid,ei)
+		return
+	}
+	if ei[ModifyTime]!=uint64(eid+3) {
+		err=fmt.Errorf("check extent ModifyTime failed :eid(%v) extentInfoBlock(%v)",eid,ei)
+		return
+	}
+
+	return
 }
