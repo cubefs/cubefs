@@ -101,12 +101,19 @@ const (
 	volConvertStKey             = "convertState"
 	versionKey                  = "version"
 	isManualKey                 = "isManual"
+	mediumKey                   = "medium"
 )
 
 const (
 	nodeTypeDataNode = "dataNode"
 	nodeTypeMetaNode = "metaNode"
 	nodeTypeAll      = "all"
+)
+
+const (
+	mediumAll    = "all"
+	mediumSSD    = "ssd"
+	mediumNormal = "normal"
 )
 
 const (

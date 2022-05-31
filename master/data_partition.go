@@ -1219,3 +1219,38 @@ func (partition *DataPartition) getLearnerHosts() (learnerHosts []string) {
 	}
 	return
 }
+
+func (partition *DataPartition) isTargetMediumType(targetMedium string, c *Cluster) (ok bool, err error) {
+	var medium string
+	if targetMedium == mediumAll {
+		ok = true
+		return
+	}
+	containSSD, err := partition.containSSDMediumTypeDataNode(c)
+	if err != nil {
+		return
+	}
+	if containSSD {
+		medium = mediumSSD
+	} else {
+		medium = mediumNormal
+	}
+	ok = medium == targetMedium
+	return
+}
+
+func (partition *DataPartition) containSSDMediumTypeDataNode(c *Cluster) (contain bool, err error) {
+	partition.RLock()
+	defer partition.RUnlock()
+	for _, host := range partition.Hosts {
+		var dataNode *DataNode
+		if dataNode, err = c.dataNode(host); err != nil {
+			return
+		}
+		if dataNode.isSSDMediumType() {
+			contain = true
+			return
+		}
+	}
+	return
+}

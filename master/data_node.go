@@ -16,6 +16,7 @@ package master
 
 import (
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 
@@ -175,4 +176,8 @@ func (dataNode *DataNode) isReachThresholdByDisk(diskPath string, threshold floa
 		return false
 	}
 	return disk.UsageRatio > threshold
+}
+
+func (dataNode *DataNode) isSSDMediumType() bool {
+	return strings.Contains(dataNode.ZoneName, mediumSSD)
 }

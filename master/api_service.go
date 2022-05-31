@@ -1175,6 +1175,7 @@ func (m *Server) batchUpdateDataPartitions(w http.ResponseWriter, r *http.Reques
 	var (
 		vol            *Vol
 		volName        string
+		mediumType     string
 		isManual       bool
 		startID        uint64
 		endID          uint64
@@ -1183,7 +1184,7 @@ func (m *Server) batchUpdateDataPartitions(w http.ResponseWriter, r *http.Reques
 		dataPartitions []*DataPartition
 		msg            string
 	)
-	if volName, isManual, count, startID, endID, err = parseBatchUpdateDataPartitions(r); err != nil {
+	if volName, mediumType, isManual, count, startID, endID, err = parseBatchUpdateDataPartitions(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1193,15 +1194,19 @@ func (m *Server) batchUpdateDataPartitions(w http.ResponseWriter, r *http.Reques
 	}
 
 	if count > 0 {
-		dataPartitions, err = vol.dataPartitions.getRWDataPartitionsOfGivenCount(count)
+		dataPartitions, err = vol.getRWDataPartitionsOfGivenCount(count, mediumType, m.cluster)
 		if err != nil {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 			return
 		}
-		msg = fmt.Sprintf("batchUpdateDataPartitions to isManual[%v] count[%v] ", isManual, count)
+		msg = fmt.Sprintf("batchUpdateDataPartitions to isManual[%v] count[%v] mediumType[%v] ", isManual, count, mediumType)
 	} else {
-		dataPartitions = vol.dataPartitions.getDataPartitionsFromStartIDToEndID(startID, endID)
-		msg = fmt.Sprintf("batchUpdateDataPartitions to isManual[%v] startID[%v], endID[%v] ", isManual, startID, endID)
+		dataPartitions, err = vol.getDataPartitionsFromStartIDToEndID(startID, endID, mediumType, m.cluster)
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		msg = fmt.Sprintf("batchUpdateDataPartitions to isManual[%v] startID[%v], endID[%v] mediumType[%v] ", isManual, startID, endID, mediumType)
 	}
 	successDpIDs, err := m.cluster.batchUpdateDataPartitions(dataPartitions, isManual)
 	if err != nil {
@@ -2945,12 +2950,15 @@ func parseUpdateDataPartition(r *http.Request) (ID uint64, volName string, isMan
 	return
 }
 
-func parseBatchUpdateDataPartitions(r *http.Request) (volName string, isManual bool, count int, startID, endID uint64, err error) {
+func parseBatchUpdateDataPartitions(r *http.Request) (volName, medium string, isManual bool, count int, startID, endID uint64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
 	if volName = r.FormValue(nameKey); volName == "" {
 		err = keyNotFound(nameKey)
+		return
+	}
+	if medium, err = extractMedium(r); err != nil {
 		return
 	}
 	if isManual, err = extractIsManual(r); err != nil {
@@ -2970,6 +2978,18 @@ func parseBatchUpdateDataPartitions(r *http.Request) (volName string, isManual b
 	}
 	if startID > endID {
 		err = fmt.Errorf("startID:%v should not more than endID:%v", startID, endID)
+	}
+	return
+}
+
+func extractMedium(r *http.Request) (medium string, err error) {
+	if medium = r.FormValue(mediumKey); medium == "" {
+		err = keyNotFound(mediumKey)
+		return
+	}
+	if !(medium == mediumAll || medium == mediumSSD || medium == mediumNormal) {
+		err = fmt.Errorf("medium must be %v, %v or %v ", mediumAll, mediumSSD, mediumNormal)
+		return
 	}
 	return
 }
