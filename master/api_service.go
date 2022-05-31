@@ -1480,10 +1480,19 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 	var (
 		volInodeCount  uint64
 		volDentryCount uint64
+		usedRatio      float64
+		fileAvgSize    float64
 	)
 	for _, mp := range vol.MetaPartitions {
 		volDentryCount = volDentryCount + mp.DentryCount
 		volInodeCount = volInodeCount + mp.InodeCount
+	}
+	stat := volStat(vol)
+	if stat.TotalSize > 0 {
+		usedRatio = float64(stat.UsedSize) / float64(stat.TotalSize)
+	}
+	if volInodeCount > 0 {
+		fileAvgSize = float64(stat.UsedSize) / float64(volInodeCount)
 	}
 	maxPartitionID := vol.maxPartitionID()
 	return &proto.SimpleVolView{
@@ -1531,6 +1540,10 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		DefaultStoreMode:     vol.DefaultStoreMode,
 		ConvertState:         vol.convertState,
 		MpLayout:             vol.MpLayout,
+		TotalSize:            stat.TotalSize,
+		UsedSize:             stat.UsedSize,
+		UsedRatio:            usedRatio,
+		FileAvgSize:          fileAvgSize,
 	}
 }
 

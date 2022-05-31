@@ -749,6 +749,10 @@ type SimpleVolView struct {
 	DefaultStoreMode     StoreMode
 	ConvertState         VolConvertState
 	MpLayout             MetaPartitionLayout
+	TotalSize            uint64
+	UsedSize             uint64
+	UsedRatio            float64
+	FileAvgSize          float64
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
