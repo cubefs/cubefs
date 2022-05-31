@@ -84,11 +84,12 @@ func (ms *MapSlice) Range(f func(extentID uint64, ei *ExtentInfoBlock)) {
 }
 
 func (ms *MapSlice) RangeNormalExtent(f func(extentID uint64, ei *ExtentInfoBlock)) {
-	ms.mu.RLock()
-	defer ms.mu.RUnlock()
-	for i := 0; i < len(ms.objSlice); i++ {
-		if ms.objSlice[i][FileID] != 0 {
-			f(ms.objSlice[i][FileID], &ms.objSlice[i])
+	ms.mu.Lock()
+	tmpObjSlice := ms.objSlice
+	ms.mu.Unlock()
+	for i := 0; i < len(tmpObjSlice); i++ {
+		if tmpObjSlice[i][FileID] != 0 {
+			f(tmpObjSlice[i][FileID], &tmpObjSlice[i])
 		}
 	}
 }
