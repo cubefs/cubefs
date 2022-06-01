@@ -89,9 +89,8 @@ func Init(role string, cfg *config.Config) {
 
 	port := cfg.GetInt64(ConfigKeyExporterPort)
 
-	if port == 0 {
-		log.LogInfof("%v exporter port not set, use default 17510", port)
-		port = 17510
+	if port < 0 {
+		log.LogInfof("%v exporter port set random default", port)
 	}
 
 	exporterPort = port
