@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/rand"
 	"net"
 	"strings"
@@ -315,10 +316,7 @@ func (si *ItemIterator) Close() {
 
 // Next returns the next item in the iterator.
 func (si *ItemIterator) Next() (data []byte, err error) {
-	appIDBuf := make([]byte, 8)
-	binary.BigEndian.PutUint64(appIDBuf, si.applyID)
-	data = appIDBuf[:]
-	return
+	return nil, io.EOF
 }
 
 // ApplyRandomWrite random write apply
