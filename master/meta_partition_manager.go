@@ -267,8 +267,8 @@ func (c *Cluster) fulfillMetaReplica(partitionID uint64, badAddr string) (isPush
 
 func (c *Cluster) scheduleToCheckAutoMetaPartitionCreation() {
 	go func() {
-		// check volumes after switching leader two minutes
-		time.Sleep(time.Second * defaultIntervalToWaitMetaPartitionElectionLeader)
+		// check volumes after switching leader four minutes
+		time.Sleep(4 * time.Minute)
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				vols := c.copyVols()
@@ -313,10 +313,10 @@ func (vol *Vol) autoCreateMetaPartitions(c *Cluster) {
 			return
 		}
 		var nextStart uint64
-		if mp.MaxInodeID <= 0 {
-			nextStart = mp.Start + defaultMetaPartitionInodeIDStep
-		} else {
+		if mp.MaxInodeID > mp.Start {
 			nextStart = mp.MaxInodeID + defaultMetaPartitionInodeIDStep
+		} else {
+			nextStart = mp.Start + defaultMetaPartitionInodeIDStep
 		}
 		if err = vol.splitMetaPartition(c, mp, nextStart); err != nil {
 			msg := fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits failed,err[%v]",

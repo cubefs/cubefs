@@ -145,8 +145,8 @@ func (c *Cluster) scheduleToUpdateStatInfo() {
 func (c *Cluster) scheduleToCheckAutoDataPartitionCreation() {
 	go func() {
 
-		// check volumes after switching leader two minutes
-		time.Sleep(2 * time.Minute)
+		// check volumes after switching leader four minutes
+		time.Sleep(4 * time.Minute)
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				vols := c.copyVols()
