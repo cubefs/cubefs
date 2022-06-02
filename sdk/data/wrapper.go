@@ -494,15 +494,17 @@ func (w *Wrapper) CrossRegionHATypeQuorum() bool {
 }
 
 // Sort hosts by distance form local
-func (w *Wrapper) sortHostsByDistance(hosts []string) []string {
-	for i := 0; i < len(hosts); i++ {
-		for j := i + 1; j < len(hosts); j++ {
-			if distanceFromLocal(hosts[i]) > distanceFromLocal(hosts[j]) {
-				hosts[i], hosts[j] = hosts[j], hosts[i]
+func (w *Wrapper) sortHostsByDistance(dpHosts []string) []string {
+	nearHost := make([]string, len(dpHosts))
+	copy(nearHost, dpHosts)
+	for i := 0; i < len(nearHost); i++ {
+		for j := i + 1; j < len(nearHost); j++ {
+			if distanceFromLocal(nearHost[i]) > distanceFromLocal(nearHost[j]) {
+				nearHost[i], nearHost[j] = nearHost[j], nearHost[i]
 			}
 		}
 	}
-	return hosts
+	return nearHost
 }
 
 func (w *Wrapper) updateConnConfig(config *proto.ConnConfig) {

@@ -145,7 +145,20 @@ func TestNearRead(t *testing.T) {
 	}
 	for _, tt := range testsForNearRead {
 		t.Run(tt.name, func(t *testing.T) {
+			beforeHosts := make([]string, len(tt.hosts))
+			copy(beforeHosts, tt.hosts)
 			nearHosts := dataWrapper.sortHostsByDistance(tt.hosts)
+			afterHosts := tt.hosts
+			fmt.Printf("NearRead: before hosts(%v) after(%v) near(%v)\n", beforeHosts, afterHosts, nearHosts)
+			if len(beforeHosts) != len(afterHosts) {
+				t.Errorf("NearRead: hosts changed, expect hosts(%v) but(%v)", beforeHosts, afterHosts)
+			}
+			for i := 0; i < len(beforeHosts); i++ {
+				if beforeHosts[i] != afterHosts[i] {
+					t.Errorf("NearRead: hosts changed, expect hosts(%v) but(%v)", beforeHosts, afterHosts)
+					break
+				}
+			}
 			if nearHosts[0] != tt.nearest {
 				t.Errorf("NearRead: sort hosts error, expect nearest(%v) but(%v)", tt.nearest, nearHosts[0])
 			}
