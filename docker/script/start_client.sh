@@ -153,8 +153,8 @@ check_cluster
 create_cluster_user
 ensure_node_writable "metanode"
 ensure_node_writable "datanode"
-create_volume
-#create_cold_volume
+#create_volume
+create_cold_volume
 show_cluster_info
 start_client
 

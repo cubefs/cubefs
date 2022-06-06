@@ -225,7 +225,6 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			allowed = true
 			return
 		}
-
 		// Check user policy
 		var volume *Volume
 		if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
@@ -304,7 +303,6 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 		}
-
 		if vol != nil && acl != nil && !acl.IsAclEmpty() {
 			allowed = acl.IsAllowed(param, isOwner)
 			if !allowed {

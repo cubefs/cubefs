@@ -40,6 +40,7 @@ const (
 	HeaderNameLocation           = "Location"
 	HeaderNameCacheControl       = "Cache-Control"
 	HeaderNameExpires            = "Expires"
+	HeaderNameConnection         = "Connection"
 
 	// Headers for CORS validation
 	Origin                                = "Origin"
@@ -118,7 +119,7 @@ const (
 )
 
 const (
-	StorageClassStandard = "Standard"
+	StorageClassStandard = "STANDARD"
 )
 
 // XAttr keys for ObjectNode compatible feature

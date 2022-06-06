@@ -1075,17 +1075,18 @@ func (mw *MetaWrapper) getMultipart(mp *MetaPartition, path, multipartId string)
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, path, multipartId string, partId uint16, size uint64, md5 string, indoe uint64) (status int, err error) {
+func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, path, multipartId string, partId uint16, size uint64, md5 string, inodeInfo *proto.InodeInfo) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("addMultipartPart", err, bgTime, 1)
 	}()
 
 	part := &proto.MultipartPartInfo{
-		ID:    partId,
-		Inode: indoe,
-		MD5:   md5,
-		Size:  size,
+		ID:         partId,
+		Inode:      inodeInfo.Inode,
+		MD5:        md5,
+		Size:       size,
+		UploadTime: inodeInfo.ModifyTime,
 	}
 
 	req := &proto.AddMultipartPartRequest{

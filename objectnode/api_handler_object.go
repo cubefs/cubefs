@@ -836,7 +836,7 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	copyResult := CopyResult{
-		ETag:         fsFileInfo.ETag,
+		ETag:         "\"" + fsFileInfo.ETag + "\"",
 		LastModified: formatTimeISO(fsFileInfo.ModifyTime),
 	}
 
@@ -907,10 +907,11 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var option = &ListFilesV1Option{
-		Prefix:    prefix,
-		Delimiter: delimiter,
-		Marker:    marker,
-		MaxKeys:   maxKeysInt,
+		Prefix:     prefix,
+		Delimiter:  delimiter,
+		Marker:     marker,
+		MaxKeys:    maxKeysInt,
+		OnlyObject: true,
 	}
 
 	var result *ListFilesV1Result
@@ -924,6 +925,7 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 
 	// get owner
 	var bucketOwner = NewBucketOwner(vol)
+	log.LogDebugf("Owner: %v", bucketOwner)
 	var contents = make([]*Content, 0, len(result.Files))
 	for _, file := range result.Files {
 		if file.Mode == 0 {

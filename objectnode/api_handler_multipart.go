@@ -211,7 +211,7 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 
 	// write header to response
 	w.Header()[HeaderNameContentLength] = []string{"0"}
-	w.Header()[HeaderNameETag] = []string{fsFileInfo.ETag}
+	w.Header()[HeaderNameETag] = []string{"\"" + fsFileInfo.ETag + "\""}
 	return
 }
 
@@ -305,6 +305,7 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// get owner
 	bucketOwner := NewBucketOwner(vol)
+	initiator := NewInitiator(vol)
 
 	// get parts
 	parts := NewParts(fsParts)
@@ -319,6 +320,7 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 		IsTruncated:  isTruncated,
 		Parts:        parts,
 		Owner:        bucketOwner,
+		Initiator:    initiator,
 	}
 
 	var bytes []byte
@@ -338,6 +340,64 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 			GetRequestID(r), err)
 	}
 	return
+}
+
+func (o *ObjectNode) checkReqParts(reqParts *CompleteMultipartUploadRequest, multipartInfo *proto.MultipartInfo) (valid bool, discardedPartInodes map[uint64]uint16, committedPartInfo *proto.MultipartInfo) {
+	if len(reqParts.Parts) <= 0 {
+		log.LogErrorf("isReqPartsValid: upload part is empty")
+		return false, nil, nil
+	}
+
+	reqInfo := make(map[int]int, 0)
+	for _, reqPart := range reqParts.Parts {
+		reqInfo[reqPart.PartNumber] = 0
+	}
+
+	committedPartInfo = &proto.MultipartInfo{
+		ID:       multipartInfo.ID,
+		Path:     multipartInfo.Path,
+		InitTime: multipartInfo.InitTime,
+		Parts:    make([]*proto.MultipartPartInfo, 0),
+	}
+	for key, val := range multipartInfo.Extend {
+		committedPartInfo.Extend[key] = val
+	}
+	uploadedInfo := make(map[uint16]string, 0)
+	discardedPartInodes = make(map[uint64]uint16, 0)
+	for _, uploadedPart := range multipartInfo.Parts {
+		eTag := uploadedPart.MD5
+		if strings.Contains(eTag, "\"") {
+			eTag = strings.ReplaceAll(eTag, "\"", "")
+		}
+		uploadedInfo[uploadedPart.ID] = eTag
+
+		if _, existed := reqInfo[int(uploadedPart.ID)]; !existed {
+			discardedPartInodes[uploadedPart.Inode] = uploadedPart.ID
+		} else {
+			committedPartInfo.Parts = append(committedPartInfo.Parts, uploadedPart)
+		}
+	}
+
+	lastPartNum := -1
+	for _, reqPart := range reqParts.Parts {
+		if reqPart.PartNumber <= lastPartNum {
+			log.LogErrorf("isReqPartsValid: the list of parts was not in ascending order")
+			return false, nil, nil
+		} else {
+			lastPartNum = reqPart.PartNumber
+		}
+
+		if eTag, existed := uploadedInfo[uint16(reqPart.PartNumber)]; !existed {
+			log.LogErrorf("isReqPartsValid: part number(%v) not existed", reqPart.PartNumber)
+			return false, nil, nil
+		} else {
+			if eTag != reqPart.ETag {
+				log.LogErrorf("isReqPartsValid: part number(%v) md5 not matched", reqPart.PartNumber)
+				return false, nil, nil
+			}
+		}
+	}
+	return true, discardedPartInodes, committedPartInfo
 }
 
 // Complete multipart
@@ -400,26 +460,26 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 		errorCode = InvalidArgument
 		return
 	}
-
-	// check uploaded part info
-	if len(multipartUploadRequest.Parts) <= 0 {
-		log.LogErrorf("completeMultipartUploadHandler: upload part is empty: requestID(%v) err(%v)",
-			GetRequestID(r), err)
-		errorCode = InvalidPart
-		return
-	}
-	// upload part info list must be in ascending order
-	var partIndex int
-	for _, partRequest := range multipartUploadRequest.Parts {
-		partIndex++
-		if partRequest.PartNumber != partIndex {
-			log.LogErrorf("completeMultipartUploadHandler: the list of parts was not in ascending order: requestID(%v) err(%v)",
+	/*
+		// check uploaded part info
+		if len(multipartUploadRequest.Parts) <= 0 {
+			log.LogErrorf("completeMultipartUploadHandler: upload part is empty: requestID(%v) err(%v)",
 				GetRequestID(r), err)
-			errorCode = InvalidPartOrder
+			errorCode = InvalidPart
 			return
 		}
-	}
-
+		// upload part info list must be in ascending order
+		var partIndex int
+		for _, partRequest := range multipartUploadRequest.Parts {
+			partIndex++
+			if partRequest.PartNumber != partIndex {
+				log.LogErrorf("completeMultipartUploadHandler: the list of parts was not in ascending order: requestID(%v) err(%v)",
+					GetRequestID(r), err)
+				errorCode = InvalidPartOrder
+				return
+			}
+		}
+	*/
 	// get multipart info
 	var multipartInfo *proto.MultipartInfo
 	if multipartInfo, err = vol.mw.GetMultipart_ll(param.object, uploadId); err != nil {
@@ -436,28 +496,34 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 		errorCode = InternalErrorCode(err)
 		return
 	}
-
-	// check request part info with every part wrote in previous WritePart request
-	if len(multipartUploadRequest.Parts) != len(multipartInfo.Parts) {
-		log.LogErrorf("CompleteMultipart: upload part size is not equal received part size: volume(%v) multipartID(%v) path(%v) err(%v)",
-			vol.name, uploadId, param.object, err)
-		errorCode = InvalidPart
-		return
-	}
-	for index := 0; index < len(multipartInfo.Parts); index++ {
-		eTag := multipartInfo.Parts[index].MD5
-		if strings.Contains(eTag, "\"") {
-			eTag = strings.ReplaceAll(eTag, "\"", "")
-		}
-		if multipartUploadRequest.Parts[index].ETag != eTag {
-			log.LogErrorf("CompleteMultipart: upload part ETag not equal received part ETag: volume(%v) multipartID(%v) path(%v) err(%v)",
+	/*
+		// check request part info with every part wrote in previous WritePart request
+		if len(multipartUploadRequest.Parts) != len(multipartInfo.Parts) {
+			log.LogErrorf("CompleteMultipart: upload part size is not equal received part size: volume(%v) multipartID(%v) path(%v) err(%v)",
 				vol.name, uploadId, param.object, err)
 			errorCode = InvalidPart
 			return
 		}
+		for index := 0; index < len(multipartInfo.Parts); index++ {
+			eTag := multipartInfo.Parts[index].MD5
+			if strings.Contains(eTag, "\"") {
+				eTag = strings.ReplaceAll(eTag, "\"", "")
+			}
+			if multipartUploadRequest.Parts[index].ETag != eTag {
+				log.LogErrorf("CompleteMultipart: upload part ETag not equal received part ETag: volume(%v) multipartID(%v) path(%v) err(%v)",
+					vol.name, uploadId, param.object, err)
+				errorCode = InvalidPart
+				return
+			}
+		}
+	*/
+	valid, discardedInods, committedPartInfo := o.checkReqParts(multipartUploadRequest, multipartInfo)
+	if !valid {
+		errorCode = InvalidPart
+		return
 	}
-
-	fsFileInfo, err := vol.CompleteMultipart(param.Object(), uploadId, multipartInfo)
+	//todo
+	fsFileInfo, err := vol.CompleteMultipart(param.Object(), uploadId, committedPartInfo, discardedInods)
 	if err == syscall.ENOENT {
 		errorCode = NoSuchUpload
 		return
@@ -550,6 +616,8 @@ func (o *ObjectNode) abortMultipartUploadHandler(w http.ResponseWriter, r *http.
 		return
 	}
 	log.LogDebugf("abortMultipartUploadHandler: Volume abort multipart, requestID(%v) uploadID(%v) path(%v)", GetRequestID(r), uploadId, param.Object())
+	//errorCode = NoContent
+	w.WriteHeader(http.StatusNoContent)
 	return
 }
 

@@ -92,10 +92,11 @@ type PutFileOption struct {
 }
 
 type ListFilesV1Option struct {
-	Prefix    string
-	Delimiter string
-	Marker    string
-	MaxKeys   uint64
+	Prefix     string
+	Delimiter  string
+	Marker     string
+	MaxKeys    uint64
+	OnlyObject bool
 }
 
 type ListFilesV1Result struct {
@@ -130,6 +131,7 @@ type Volume struct {
 	ec         *stream.ExtentClient
 	store      Store // Storage for ACP management
 	name       string
+	owner      string
 	metaLoader ossMetaLoader
 	ticker     *time.Ticker
 	createTime int64
@@ -143,6 +145,10 @@ type Volume struct {
 	closeCh   chan struct{}
 
 	onAsyncTaskError AsyncTaskErrorFunc
+}
+
+func (v *Volume) GetOwner() string {
+	return v.owner
 }
 
 func (v *Volume) syncOSSMeta() {
@@ -328,6 +334,20 @@ func (v *Volume) getXAttr(path string, key string) (info *proto.XAttrInfo, err e
 	return
 }
 
+func (v *Volume) IsEmpty() bool {
+	children, err := v.mw.ReadDir_ll(proto.RootIno)
+	if err != nil {
+		log.LogErrorf("IsEmpty: parent ino(%v) err(%v)", proto.RootIno, err)
+		return false
+	}
+
+	if len(children) > 0 {
+		log.LogDebugf("IsEmpty: parent ino(%v), children: %v", proto.RootIno, children)
+		return false
+	}
+	return true
+}
+
 func (v *Volume) GetXAttr(path string, key string) (info *proto.XAttrInfo, err error) {
 	var inode uint64
 
@@ -493,17 +513,17 @@ func (v *Volume) OSSSecure() (accessKey, secretKey string) {
 // It supports parameters such as prefix, delimiter, and paging.
 // It is a data plane logical encapsulation of the object storage interface ListObjectsV1.
 func (v *Volume) ListFilesV1(opt *ListFilesV1Option) (result *ListFilesV1Result, err error) {
-
 	marker := opt.Marker
 	prefix := opt.Prefix
 	maxKeys := opt.MaxKeys
 	delimiter := opt.Delimiter
+	onlyObject := opt.OnlyObject
 
 	var infos []*FSFileInfo
 	var prefixes Prefixes
 	var nextMarker string
 
-	infos, prefixes, nextMarker, err = v.listFilesV1(prefix, marker, delimiter, maxKeys)
+	infos, prefixes, nextMarker, err = v.listFilesV1(prefix, marker, delimiter, maxKeys, onlyObject)
 	if err != nil {
 		log.LogErrorf("ListFilesV1: list fail: volume(%v) prefix(%v) marker(%v) delimiter(%v) maxKeys(%v) nextMarker(%v) err(%v)",
 			v.name, prefix, marker, delimiter, maxKeys, nextMarker, err)
@@ -866,6 +886,9 @@ func (v *Volume) applyInodeToDEntry(parentId uint64, name string, inode uint64) 
 			err = syscall.EINVAL
 			return
 		}
+		//current implementation dosen't support object versioning, so uploading a object with a key already existed in bucket
+		// is implemented with replacing the old one instead.
+		// refer: https://docs.aws.amazon.com/AmazonS3/latest/userguide/upload-objects.html
 		if err = v.applyInodeToExistDentry(parentId, name, inode); err != nil {
 			log.LogErrorf("applyInodeToDEntry: apply inode to exist dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
 				parentId, name, inode, err)
@@ -1056,7 +1079,7 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 	etag = hex.EncodeToString(md5Hash.Sum(nil))
 
 	// update temp file inode to meta with session
-	err = v.mw.AddMultipartPart_ll(path, multipartId, partId, size, etag, tempInodeInfo.Inode)
+	err = v.mw.AddMultipartPart_ll(path, multipartId, partId, size, etag, tempInodeInfo)
 	if err == syscall.EEXIST {
 		// Result success but cleanup data.
 		err = nil
@@ -1123,7 +1146,7 @@ func (v *Volume) AbortMultipart(path string, multipartID string) (err error) {
 	return nil
 }
 
-func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *proto.MultipartInfo) (fsFileInfo *FSFileInfo, err error) {
+func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *proto.MultipartInfo, discardedPartInodes map[uint64]uint16) (fsFileInfo *FSFileInfo, err error) {
 	defer func() {
 		log.LogInfof("Audit: CompleteMultipart: volume(%v) path(%v) multipartID(%v) err(%v)",
 			v.name, path, multipartID, err)
@@ -1281,6 +1304,15 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		if err = v.mw.InodeDelete_ll(part.Inode); err != nil {
 			log.LogErrorf("CompleteMultipart: destroy part inode fail: volume(%v) multipartID(%v) partID(%v) inode(%v) err(%v)",
 				v.name, multipartID, part.ID, part.Inode, err)
+		}
+	}
+
+	//discard part inodes
+	for discardedInode, partNum := range discardedPartInodes {
+		log.LogDebugf("CompleteMultipart: discard part number(%v)", partNum)
+		if _, err = v.mw.InodeUnlink_ll(discardedInode); err != nil {
+			log.LogWarnf("CompleteMultipart: unlink inode fail: volume(%v) inode(%v) err(%v)",
+				v.name, discardedInode, err)
 		}
 	}
 
@@ -2031,7 +2063,7 @@ func (v *Volume) lookupDirectories(dirs []string, autoCreate bool) (inode uint64
 	return
 }
 
-func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64) (infos []*FSFileInfo, prefixes Prefixes, nextMarker string, err error) {
+func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64, onlyObject bool) (infos []*FSFileInfo, prefixes Prefixes, nextMarker string, err error) {
 	var prefixMap = PrefixMap(make(map[string]struct{}))
 
 	parentId, dirs, err := v.findParentId(prefix)
@@ -2055,7 +2087,7 @@ func (v *Volume) listFilesV1(prefix, marker, delimiter string, maxKeys uint64) (
 	// return if it reach to max keys
 	var rc uint64
 	// recursion scan
-	infos, prefixMap, nextMarker, _, err = v.recursiveScan(infos, prefixMap, parentId, maxKeys, rc, dirs, prefix, marker, delimiter)
+	infos, prefixMap, nextMarker, _, err = v.recursiveScan(infos, prefixMap, parentId, maxKeys, rc, dirs, prefix, marker, delimiter, onlyObject)
 	if err != nil {
 		log.LogErrorf("listFilesV1: volume list dir fail: Volume(%v) err(%v)", v.name, err)
 		return
@@ -2106,7 +2138,7 @@ func (v *Volume) listFilesV2(prefix, startAfter, contToken, delimiter string, ma
 	// return if it reach to max keys
 	var rc uint64
 	// recursion scan
-	infos, prefixMap, nextMarker, _, err = v.recursiveScan(infos, prefixMap, parentId, maxKeys, rc, dirs, prefix, marker, delimiter)
+	infos, prefixMap, nextMarker, _, err = v.recursiveScan(infos, prefixMap, parentId, maxKeys, rc, dirs, prefix, marker, delimiter, true)
 	if err != nil {
 		log.LogErrorf("listFilesV2: Volume list dir fail, Volume(%v) err(%v)", v.name, err)
 		return
@@ -2179,39 +2211,40 @@ func (v *Volume) findParentId(prefix string) (inode uint64, prefixDirs []string,
 // that match the prefix and delimiter criteria. Stop when the number of matches reaches a threshold
 // or all files and directories are scanned.
 func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, parentId, maxKeys, rc uint64,
-	dirs []string, prefix, marker, delimiter string) ([]*FSFileInfo, PrefixMap, string, uint64, error) {
+	dirs []string, prefix, marker, delimiter string, onlyObject bool) ([]*FSFileInfo, PrefixMap, string, uint64, error) {
 	var err error
 	var nextMarker string
 
 	var currentPath = strings.Join(dirs, pathSep) + pathSep
 	log.LogDebugf("recursiveScan enter: fileInfos(%v) parentId(%v) prefix(%v) marker(%v) delimiter(%v) currentPath(%v)", fileInfos, parentId, prefix, marker, delimiter, currentPath)
+	/*
+		if len(dirs) > 0 && prefix != "" && strings.HasSuffix(currentPath, prefix) {
+			// When the current scanning position is not the root directory, a prefix matching
+			// check is performed on the current directory first.
+			//
+			// The reason for this is that according to the definition of Amazon S3's ListObjects
+			// interface, directory entries that meet the exact prefix match will be returned as
+			// a Content result, not as a CommonPrefix.
 
-	if len(dirs) > 0 && prefix != "" && strings.HasSuffix(currentPath, prefix) {
-		// When the current scanning position is not the root directory, a prefix matching
-		// check is performed on the current directory first.
-		//
-		// The reason for this is that according to the definition of Amazon S3's ListObjects
-		// interface, directory entries that meet the exact prefix match will be returned as
-		// a Content result, not as a CommonPrefix.
-
-		// Add check to marker, if request contain marker, current path must greater than marker,
-		// otherwise can not put it to prefix map
-		if (len(marker) > 0 && currentPath > marker) || len(marker) == 0 {
-			// If the number of matches reaches the threshold given by maxKey,
-			// stop scanning and return results.
-			// To get the next marker, first compare the result counts with the max key
-			// it means that when result count reach the max key, continue to find the next key as the next marker
-			if rc >= maxKeys {
-				return fileInfos, prefixMap, currentPath, rc, nil
+			// Add check to marker, if request contain marker, current path must greater than marker,
+			// otherwise can not put it to prefix map
+			if (len(marker) > 0 && currentPath > marker) || len(marker) == 0 {
+				// If the number of matches reaches the threshold given by maxKey,
+				// stop scanning and return results.
+				// To get the next marker, first compare the result counts with the max key
+				// it means that when result count reach the max key, continue to find the next key as the next marker
+				if rc >= maxKeys {
+					return fileInfos, prefixMap, currentPath, rc, nil
+				}
+				fileInfo := &FSFileInfo{
+					Inode: parentId,
+					Path:  currentPath,
+				}
+				fileInfos = append(fileInfos, fileInfo)
+				rc++
 			}
-			fileInfo := &FSFileInfo{
-				Inode: parentId,
-				Path:  currentPath,
-			}
-			fileInfos = append(fileInfos, fileInfo)
-			rc++
 		}
-	}
+	*/
 
 	// The "prefix" needs to be extracted as marker when it is larger than "marker".
 	// So extract prefixMarker in this layer.
@@ -2273,7 +2306,7 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 				continue
 			}
 			if os.FileMode(child.Type).IsDir() && strings.HasPrefix(marker, path) {
-				fileInfos, prefixMap, nextMarker, rc, err = v.recursiveScan(fileInfos, prefixMap, child.Inode, maxKeys, rc, append(dirs, child.Name), prefix, marker, delimiter)
+				fileInfos, prefixMap, nextMarker, rc, err = v.recursiveScan(fileInfos, prefixMap, child.Inode, maxKeys, rc, append(dirs, child.Name), prefix, marker, delimiter, onlyObject)
 				if err != nil {
 					return fileInfos, prefixMap, nextMarker, rc, err
 				}
@@ -2300,19 +2333,23 @@ func (v *Volume) recursiveScan(fileInfos []*FSFileInfo, prefixMap PrefixMap, par
 			}
 		}
 
-		if rc >= maxKeys {
-			nextMarker = path
-			return fileInfos, prefixMap, nextMarker, rc, nil
+		if onlyObject && os.FileMode(child.Type).IsRegular() || !onlyObject {
+			if rc >= maxKeys {
+				nextMarker = path
+				return fileInfos, prefixMap, nextMarker, rc, nil
+			}
+
+			fileInfo := &FSFileInfo{
+				Inode: child.Inode,
+				Path:  path,
+			}
+
+			fileInfos = append(fileInfos, fileInfo)
+			rc++
 		}
-		fileInfo := &FSFileInfo{
-			Inode: child.Inode,
-			Path:  path,
-		}
-		fileInfos = append(fileInfos, fileInfo)
-		rc++
 
 		if os.FileMode(child.Type).IsDir() {
-			fileInfos, prefixMap, nextMarker, rc, err = v.recursiveScan(fileInfos, prefixMap, child.Inode, maxKeys, rc, append(dirs, child.Name), prefix, fmt.Sprintf("%v%v%v", currentPath, child.Name, pathSep), delimiter)
+			fileInfos, prefixMap, nextMarker, rc, err = v.recursiveScan(fileInfos, prefixMap, child.Inode, maxKeys, rc, append(dirs, child.Name), prefix, fmt.Sprintf("%v%v%v", currentPath, child.Name, pathSep), delimiter, onlyObject)
 			if err != nil {
 				return fileInfos, prefixMap, nextMarker, rc, err
 			}
@@ -3108,6 +3145,7 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 		mw:             metaWrapper,
 		ec:             extentClient,
 		name:           config.Volume,
+		owner:          volumeInfo.Owner,
 		store:          config.Store,
 		createTime:     metaWrapper.VolCreateTime(),
 		volType:        volumeInfo.VolType,

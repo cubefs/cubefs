@@ -16,6 +16,7 @@ package objectnode
 
 import (
 	"encoding/json"
+	"github.com/cubefs/cubefs/proto"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -29,7 +30,9 @@ func (o *ObjectNode) getBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 		err error
 		ec  *ErrorCode
 	)
-	defer o.errorResponse(w, r, err, ec)
+	defer func() {
+		o.errorResponse(w, r, err, ec)
+	}()
 
 	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
@@ -46,6 +49,14 @@ func (o *ObjectNode) getBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	var policy *Policy
 	if policy, err = vol.metaLoader.loadPolicy(); err != nil {
 		ec = InternalErrorCode(err)
+		return
+	}
+
+	if policy == nil {
+		err = proto.ErrVolPolicyNotExists
+		ec = NoSuchBucketPolicy
+		log.LogErrorf("getBucketPolicyHandler: NoSuchBucketPolicy, requestID(%v), err(%v), ec(%v)",
+			GetRequestID(r), err, ec)
 		return
 	}
 
@@ -67,7 +78,9 @@ func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 		err error
 		ec  *ErrorCode
 	)
-	defer o.errorResponse(w, r, err, ec)
+	defer func() {
+		o.errorResponse(w, r, err, ec)
+	}()
 
 	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {

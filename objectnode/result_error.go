@@ -90,20 +90,24 @@ var (
 	MissingContentLength                = &ErrorCode{ErrorCode: "MissingContentLength", ErrorMessage: "You must provide the Content-Length HTTP header.", StatusCode: http.StatusLengthRequired}
 	NoSuchBucket                        = &ErrorCode{ErrorCode: "NoSuchBucket", ErrorMessage: "The specified bucket does not exist.", StatusCode: http.StatusNotFound}
 	NoSuchKey                           = &ErrorCode{ErrorCode: "NoSuchKey", ErrorMessage: "The specified key does not exist.", StatusCode: http.StatusNotFound}
+	NoSuchBucketPolicy                  = &ErrorCode{ErrorCode: "NoSuchBucketPolicy", ErrorMessage: "The specified bucket does not have a bucket policy.", StatusCode: http.StatusNotFound}
 	PreconditionFailed                  = &ErrorCode{ErrorCode: "PreconditionFailed", ErrorMessage: "At least one of the preconditions you specified did not hold.", StatusCode: http.StatusPreconditionFailed}
 	MaxContentLength                    = &ErrorCode{ErrorCode: "MaxContentLength", ErrorMessage: "Content-Length is bigger than 20KB.", StatusCode: http.StatusLengthRequired}
-	DuplicatedBucket                    = &ErrorCode{ErrorCode: "CreateBucketFailed", ErrorMessage: "Duplicate bucket name.", StatusCode: http.StatusBadRequest}
-	ObjectModeConflict                  = &ErrorCode{ErrorCode: "ObjectModeConflict", ErrorMessage: "Object already exists but file mode conflicts", StatusCode: http.StatusConflict}
-	NotModified                         = &ErrorCode{ErrorCode: "MaxContentLength", ErrorMessage: "Not modified.", StatusCode: http.StatusNotModified}
-	NoSuchUpload                        = &ErrorCode{ErrorCode: "NoSuchUpload", ErrorMessage: "The specified upload does not exist.", StatusCode: http.StatusNotFound}
-	OverMaxRecordSize                   = &ErrorCode{ErrorCode: "OverMaxRecordSize", ErrorMessage: "The length of a record in the input or result is greater than maxCharsPerRecord of 1 MB.", StatusCode: http.StatusBadRequest}
-	CopySourceSizeTooLarge              = &ErrorCode{ErrorCode: "InvalidRequest", ErrorMessage: "The specified copy source is larger than the maximum allowable size for a copy source: 5368709120", StatusCode: http.StatusBadRequest}
-	InvalidPartOrder                    = &ErrorCode{ErrorCode: "InvalidPartOrder", ErrorMessage: "The list of parts was not in ascending order. Parts list must be specified in order by part number.", StatusCode: http.StatusBadRequest}
-	InvalidPart                         = &ErrorCode{ErrorCode: "InvalidPart", ErrorMessage: "One or more of the specified parts could not be found. The part might not have been uploaded, or the specified entity tag might not have matched the part's entity tag.", StatusCode: http.StatusBadRequest}
-	InvalidCacheArgument                = &ErrorCode{ErrorCode: "InvalidCacheArgument", ErrorMessage: "Invalid Cache-Control or Expires Argument", StatusCode: http.StatusBadRequest}
-	TagsGreaterThen10                   = &ErrorCode{ErrorCode: "BadRequest", ErrorMessage: "Object tags cannot be greater than 10", StatusCode: http.StatusBadRequest}
-	InvalidTagKey                       = &ErrorCode{ErrorCode: "InvalidTag", ErrorMessage: "The TagKey you have provided is invalid", StatusCode: http.StatusBadRequest}
-	InvalidTagValue                     = &ErrorCode{ErrorCode: "InvalidTag", ErrorMessage: "The TagValue you have provided is invalid", StatusCode: http.StatusBadRequest}
+	//DuplicatedBucket                    = &ErrorCode{ErrorCode: "CreateBucketFailed", ErrorMessage: "Duplicate bucket name.", StatusCode: http.StatusBadRequest}
+	//https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html
+	DuplicatedBucket          = &ErrorCode{ErrorCode: "CreateBucketFailed", ErrorMessage: "The bucket that you tried to create already exists, and you own it. ", StatusCode: http.StatusConflict}
+	InvalidLocationConstraint = &ErrorCode{ErrorCode: "CreateBucketFailed", ErrorMessage: "The specified location (Region) constraint is not valid.", StatusCode: http.StatusBadRequest}
+	ObjectModeConflict        = &ErrorCode{ErrorCode: "ObjectModeConflict", ErrorMessage: "Object already exists but file mode conflicts", StatusCode: http.StatusConflict}
+	NotModified               = &ErrorCode{ErrorCode: "MaxContentLength", ErrorMessage: "Not modified.", StatusCode: http.StatusNotModified}
+	NoSuchUpload              = &ErrorCode{ErrorCode: "NoSuchUpload", ErrorMessage: "The specified upload does not exist.", StatusCode: http.StatusNotFound}
+	OverMaxRecordSize         = &ErrorCode{ErrorCode: "OverMaxRecordSize", ErrorMessage: "The length of a record in the input or result is greater than maxCharsPerRecord of 1 MB.", StatusCode: http.StatusBadRequest}
+	CopySourceSizeTooLarge    = &ErrorCode{ErrorCode: "InvalidRequest", ErrorMessage: "The specified copy source is larger than the maximum allowable size for a copy source: 5368709120", StatusCode: http.StatusBadRequest}
+	InvalidPartOrder          = &ErrorCode{ErrorCode: "InvalidPartOrder", ErrorMessage: "The list of parts was not in ascending order. Parts list must be specified in order by part number.", StatusCode: http.StatusBadRequest}
+	InvalidPart               = &ErrorCode{ErrorCode: "InvalidPart", ErrorMessage: "One or more of the specified parts could not be found. The part might not have been uploaded, or the specified entity tag might not have matched the part's entity tag.", StatusCode: http.StatusBadRequest}
+	InvalidCacheArgument      = &ErrorCode{ErrorCode: "InvalidCacheArgument", ErrorMessage: "Invalid Cache-Control or Expires Argument", StatusCode: http.StatusBadRequest}
+	TagsGreaterThen10         = &ErrorCode{ErrorCode: "BadRequest", ErrorMessage: "Object tags cannot be greater than 10", StatusCode: http.StatusBadRequest}
+	InvalidTagKey             = &ErrorCode{ErrorCode: "InvalidTag", ErrorMessage: "The TagKey you have provided is invalid", StatusCode: http.StatusBadRequest}
+	InvalidTagValue           = &ErrorCode{ErrorCode: "InvalidTag", ErrorMessage: "The TagValue you have provided is invalid", StatusCode: http.StatusBadRequest}
 )
 
 func HttpStatusErrorCode(code int) *ErrorCode {

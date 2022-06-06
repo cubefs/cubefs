@@ -392,7 +392,7 @@ func TestWriteSlice(t *testing.T) {
 		}
 
 		ctx := context.Background()
-		writer.err = make(chan error)
+		writer.err = make(chan *wSliceErr)
 		writer.wg.Add(1)
 		if tc.wg {
 			go func() {

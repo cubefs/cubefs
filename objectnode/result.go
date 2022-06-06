@@ -80,6 +80,12 @@ type CompleteMultipartResult struct {
 	ETag     string   `xml:"ETag"`
 }
 
+type Initiator struct {
+	XMLName     xml.Name `xml:"Initiator"`
+	ID          string   `xml:"ID"`
+	DisplayName string   `xml:"DisplayName"`
+}
+
 type BucketOwner struct {
 	XMLName     xml.Name `xml:"Owner"`
 	ID          string   `xml:"ID"`
@@ -108,6 +114,7 @@ type ListPartsResult struct {
 	Bucket           string       `xml:"Bucket"`
 	Key              string       `xml:"Key"`
 	UploadId         string       `xml:"UploadId"`
+	Initiator        *Initiator   `xml:"Initiator"`
 	Owner            *BucketOwner `xml:"Owner"`
 	StorageClass     string       `xml:"StorageClass"`
 	PartNumberMarker int          `xml:"PartNumberMarker"`
@@ -165,7 +172,7 @@ func NewParts(fsParts []*FSPart) []*Part {
 		part := &Part{
 			PartNumber:   fsPart.PartNumber,
 			LastModified: fsPart.LastModified,
-			ETag:         fsPart.ETag,
+			ETag:         "\"" + fsPart.ETag + "\"",
 			Size:         fsPart.Size,
 		}
 		parts = append(parts, part)
@@ -194,8 +201,17 @@ func NewUploads(fsUploads []*FSUpload, accessKey string) []*Upload {
 
 func NewBucketOwner(volume *Volume) *BucketOwner {
 	return &BucketOwner{
-		ID:          volume.Owner(),
-		DisplayName: volume.Owner(),
+		//ID:          volume.Owner(),
+		//DisplayName: volume.Owner(),
+		ID:          volume.GetOwner(),
+		DisplayName: volume.GetOwner(),
+	}
+}
+
+func NewInitiator(volume *Volume) *Initiator {
+	return &Initiator{
+		ID:          volume.GetOwner(),
+		DisplayName: volume.GetOwner(),
 	}
 }
 
@@ -317,4 +333,9 @@ type PartRequest struct {
 type CompleteMultipartUploadRequest struct {
 	XMLName xml.Name       `xml:"CompleteMultipartUpload"`
 	Parts   []*PartRequest `xml:"Part"`
+}
+
+type CreateBucketRequest struct {
+	XMLName            xml.Name `xml:"CreateBucketConfiguration"`
+	LocationConstraint string   `xml:"LocationConstraint"`
 }
