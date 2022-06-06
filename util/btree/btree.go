@@ -129,6 +129,10 @@ func New(degree int) *BTree {
 	return NewWithFreeList(degree, NewFreeList(DefaultFreeListSize))
 }
 
+func NewWithSize(degree, initSize int) *BTree {
+	return NewWithFreeList(degree, NewFreeList(initSize))
+}
+
 // NewWithFreeList creates a new B-Tree that uses the given node free list.
 func NewWithFreeList(degree int, f *FreeList) *BTree {
 	if degree <= 1 {

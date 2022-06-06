@@ -309,6 +309,8 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	d.super.fslock.Unlock()
 
 	resp.EntryValid = LookupValidDuration
+
+	log.LogDebugf("TRACE Lookup exit: parent(%v) req(%v) cost (%d)", d.info.Inode, req, time.Since(*bgTime).Microseconds())
 	return child, nil
 }
 
@@ -316,6 +318,14 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 	var err error
 	var limit uint64 = DefaultReaddirLimit
 	start := time.Now()
+
+	bgTime := stat.BeginStat()
+	// var err error
+	metric := exporter.NewTPCnt("readdir")
+	defer func() {
+		stat.EndStat("ReadDirLimit", err, bgTime, 1)
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
+	}()
 
 	dirCtx := d.dctx.GetCopy(req.Handle)
 	children, err := d.super.mw.ReadDirLimit_ll(d.info.Inode, dirCtx.Name, limit)
@@ -354,6 +364,7 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 			Type:  ParseType(child.Type),
 			Name:  child.Name,
 		}
+
 		inodes = append(inodes, child.Inode)
 		dirents = append(dirents, dentry)
 		dcache.Put(child.Name, child.Inode)
@@ -365,7 +376,7 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 	}
 
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE ReadDir: ino(%v) (%v)ns", d.info.Inode, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE ReadDir exit: ino(%v) (%v)ns %v", d.info.Inode, elapsed.Nanoseconds(), req)
 	return dirents, err
 }
 
@@ -401,6 +412,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 			Type:  ParseType(child.Type),
 			Name:  child.Name,
 		}
+
 		inodes = append(inodes, child.Inode)
 		dirents = append(dirents, dentry)
 		dcache.Put(child.Name, child.Inode)
@@ -413,7 +425,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	d.dcache = dcache
 
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE ReadDir: ino(%v) (%v)ns", d.info.Inode, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE ReadDirAll: ino(%v) (%v)ns", d.info.Inode, elapsed.Nanoseconds())
 	return dirents, nil
 }
 

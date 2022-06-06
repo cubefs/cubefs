@@ -15,6 +15,7 @@
 package stream
 
 import (
+	"container/list"
 	"fmt"
 	"sync"
 	"syscall"
@@ -49,6 +50,12 @@ const (
 
 	defaultWriteLimitRate  = rate.Inf
 	defaultWriteLimitBurst = 128
+
+	defaultStreamerLimit = 100000
+	defMaxStreamerLimit  = 10000000
+	kHighWatermarkPct    = 1.01
+	slowStreamerEvictNum = 10
+	fastStreamerEvictNum = 10000
 )
 
 var (
@@ -93,6 +100,7 @@ type ExtentConfig struct {
 	ReadRate          int64
 	WriteRate         int64
 	BcacheEnable      bool
+	MaxStreamerLimit  int64
 	OnAppendExtentKey AppendExtentKeyFunc
 	OnGetExtents      GetExtentsFunc
 	OnTruncate        TruncateFunc
@@ -100,15 +108,21 @@ type ExtentConfig struct {
 	OnLoadBcache      LoadBcacheFunc
 	OnCacheBcache     CacheBcacheFunc
 	OnEvictBcache     EvictBacheFunc
+
+	DisableMetaCache bool
 }
 
 // ExtentClient defines the struct of the extent client.
 type ExtentClient struct {
-	streamers    map[uint64]*Streamer
-	streamerLock sync.Mutex
+	streamers        map[uint64]*Streamer
+	streamerList     *list.List
+	streamerLock     sync.Mutex
+	maxStreamerLimit int
 
 	readLimiter  *rate.Limiter
 	writeLimiter *rate.Limiter
+
+	disableMetaCache bool
 
 	volumeType      int
 	volumeName      string
@@ -124,6 +138,63 @@ type ExtentClient struct {
 	cacheBcache     CacheBcacheFunc
 	evictBcache     EvictBacheFunc
 	inflightL1cache sync.Map
+}
+
+func (client *ExtentClient) evictStreamer() bool {
+	// remove from list
+	item := client.streamerList.Back()
+	if item == nil {
+		return false
+	}
+
+	client.streamerList.Remove(item)
+	ino := item.Value.(uint64)
+
+	s, ok := client.streamers[ino]
+	if !ok {
+		return true
+	}
+
+	if s.isOpen {
+		client.streamerList.PushFront(ino)
+		return true
+	}
+
+	delete(s.client.streamers, s.inode)
+	return true
+}
+
+func (client *ExtentClient) batchEvictStramer(batchCnt int) {
+	client.streamerLock.Lock()
+	defer client.streamerLock.Unlock()
+
+	for cnt := 0; cnt < batchCnt; cnt++ {
+		ok := client.evictStreamer()
+		if !ok {
+			break
+		}
+	}
+
+}
+
+func (client *ExtentClient) backgroundEvictStream() {
+	t := time.NewTicker(2 * time.Second)
+	for range t.C {
+		start := time.Now()
+		streamerSize := client.streamerList.Len()
+		highWatermark := int(float32(client.maxStreamerLimit) * kHighWatermarkPct)
+		for streamerSize > client.maxStreamerLimit {
+			// fast evict
+			if streamerSize > highWatermark {
+				client.batchEvictStramer(fastStreamerEvictNum)
+			} else {
+				client.batchEvictStramer(slowStreamerEvictNum)
+			}
+			streamerSize = client.streamerList.Len()
+			log.LogDebugf("batch evict cnt(%d), cost(%d), now(%d)", 1, time.Since(start).Microseconds(), streamerSize)
+		}
+		log.LogInfof("streamer total cnt(%d), cost(%d) ns", streamerSize, time.Since(start).Nanoseconds())
+	}
 }
 
 // NewExtentClient returns a new extent client.
@@ -158,6 +229,7 @@ retry:
 	client.bcacheEnable = config.BcacheEnable
 	client.BcacheHealth = true
 	client.preload = config.Preload
+	client.disableMetaCache = config.DisableMetaCache
 
 	var readLimit, writeLimit rate.Limit
 	if config.ReadRate <= 0 {
@@ -174,6 +246,22 @@ retry:
 	client.readLimiter = rate.NewLimiter(readLimit, defaultReadLimitBurst)
 	client.writeLimiter = rate.NewLimiter(writeLimit, defaultWriteLimitBurst)
 
+	if config.MaxStreamerLimit <= 0 {
+		return
+	}
+
+	if config.MaxStreamerLimit <= defaultStreamerLimit {
+		client.maxStreamerLimit = defaultStreamerLimit
+	} else if config.MaxStreamerLimit > defMaxStreamerLimit {
+		client.maxStreamerLimit = defMaxStreamerLimit
+	} else {
+		client.maxStreamerLimit = int(config.MaxStreamerLimit)
+	}
+
+	log.LogInfof("max streamer limit %d", client.maxStreamerLimit)
+	client.streamerList = list.New()
+	go client.backgroundEvictStream()
+
 	return
 }
 
@@ -188,6 +276,15 @@ func (client *ExtentClient) OpenStream(inode uint64) error {
 	if !ok {
 		s = NewStreamer(client, inode)
 		client.streamers[inode] = s
+		if !client.disableMetaCache {
+			client.streamerList.PushFront(inode)
+		}
+	}
+	if !s.isOpen && !client.disableMetaCache {
+		s.isOpen = true
+		log.LogDebugf("open stream again, ino(%v)", s.inode)
+		s.request = make(chan interface{}, 64)
+		go s.server()
 	}
 	return s.IssueOpenRequest()
 }
@@ -211,12 +308,18 @@ func (client *ExtentClient) EvictStream(inode uint64) error {
 		client.streamerLock.Unlock()
 		return nil
 	}
-	err := s.IssueEvictRequest()
-	if err != nil {
-		return err
+	if s.isOpen {
+		s.isOpen = false
+		err := s.IssueEvictRequest()
+		if err != nil {
+			return err
+		}
+		s.done <- struct{}{}
+	} else {
+		delete(s.client.streamers, s.inode)
+		s.client.streamerLock.Unlock()
 	}
 
-	s.done <- struct{}{}
 	return nil
 }
 
@@ -308,6 +411,8 @@ func (client *ExtentClient) Flush(inode uint64) error {
 }
 
 func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int) (read int, err error) {
+	//log.LogErrorf("======> ExtentClient Read Enter, inode(%v), len(data)=(%v), offset(%v), size(%v).", inode, len(data), offset, size)
+	//t1 := time.Now()
 	if size == 0 {
 		return
 	}
@@ -328,6 +433,7 @@ func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int
 	}
 
 	read, err = s.read(data, offset, size)
+	// log.LogErrorf("======> ExtentClient Read Exit, inode(%v), time[%v us].", inode, time.Since(t1).Microseconds())
 	return
 }
 
@@ -408,6 +514,11 @@ func (client *ExtentClient) GetStreamer(inode uint64) *Streamer {
 	if !ok {
 		return nil
 	}
+	if !s.isOpen {
+		s.isOpen = true
+		s.request = make(chan interface{}, 64)
+		go s.server()
+	}
 	return s
 }
 
@@ -444,21 +555,22 @@ func setRate(lim *rate.Limiter, val int) string {
 	return "unlimited"
 }
 
-func (client *ExtentClient) Close() error {
-	// release streamers
-	var inodes []uint64
-	client.streamerLock.Lock()
-	inodes = make([]uint64, 0, len(client.streamers))
-	for inode := range client.streamers {
-		inodes = append(inodes, inode)
-	}
-	client.streamerLock.Unlock()
-	for _, inode := range inodes {
-		_ = client.EvictStream(inode)
-	}
-	client.dataWrapper.Stop()
-	return nil
-}
+// func (client *ExtentClient) Close() error {
+// 	// release streamers
+// 	var inodes []uint64
+// 	client.streamerLock.Lock()
+// 	inodes = make([]uint64, 0, len(client.streamers))
+// 	for inode := range client.streamers {
+// 		inodes = append(inodes, inode)
+// 	}
+// 	client.streamerLock.Unlock()
+// 	for _, inode := range inodes {
+// 		_ = client.EvictStream(inode)
+// 	}
+// 	close(client.stopC)
+// 	client.dataWrapper.Stop()
+// 	return nil
+// }
 
 func (client *ExtentClient) AllocatePreLoadDataPartition(volName string, count int, capacity, ttl uint64, zones string) (err error) {
 	return client.dataWrapper.AllocatePreLoadDataPartition(volName, count, capacity, ttl, zones)

@@ -60,6 +60,8 @@ const (
 	WriteThreads
 	MetaSendTimeout
 	BuffersTotalLimit
+	MaxStreamerLimit
+
 	MaxMountOption
 )
 
@@ -138,6 +140,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[EnableSummary] = MountOption{"enableSummary", "enable content summary", "", false}
 	opts[MetaSendTimeout] = MountOption{"metaSendTimeout", "Meta send timeout", "", int64(600)}
 	opts[BuffersTotalLimit] = MountOption{"buffersTotalLimit", "Send/Receive packets memory limit", "", int64(32768)} //default 4G
+	opts[MaxStreamerLimit] = MountOption{"maxStreamerLimit", "The maximum number of streamers", "", int64(0)}         // default 0
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -281,4 +284,5 @@ type MountOptions struct {
 	NeedRestoreFuse      bool
 	MetaSendTimeout      int64
 	BuffersTotalLimit    int64
+	MaxStreamerLimit     int64
 }

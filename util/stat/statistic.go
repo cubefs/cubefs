@@ -397,6 +397,10 @@ func StatBandWidth(typeName string, Size uint32) {
 	EndStat(typeName+"[FLOW_KB]", nil, nil, Size/1024)
 }
 
+func GetMememory() (Virt, Res uint64, err error) {
+	return GetProcessMemory(gSt.pid)
+}
+
 func GetProcessMemory(pid int) (Virt, Res uint64, err error) {
 	proFileName := fmt.Sprintf(PRO_MEM, pid)
 	fp, err := os.Open(proFileName)

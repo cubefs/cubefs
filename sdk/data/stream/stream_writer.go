@@ -169,6 +169,12 @@ func (s *Streamer) IssueEvictRequest() error {
 func (s *Streamer) server() {
 	t := time.NewTicker(2 * time.Second)
 	defer t.Stop()
+	defer func() {
+		if !s.client.disableMetaCache {
+			close(s.request)
+			s.request = nil
+		}
+	}()
 
 	for {
 		select {
@@ -183,12 +189,17 @@ func (s *Streamer) server() {
 		case <-t.C:
 			s.traverse()
 			if s.refcnt <= 0 {
+
 				s.client.streamerLock.Lock()
 				if s.idle >= streamWriterIdleTimeoutPeriod && len(s.request) == 0 {
-					delete(s.client.streamers, s.inode)
-					if s.client.evictIcache != nil {
-						s.client.evictIcache(s.inode)
+					if s.client.disableMetaCache {
+						delete(s.client.streamers, s.inode)
+						if s.client.evictIcache != nil {
+							s.client.evictIcache(s.inode)
+						}
 					}
+
+					s.isOpen = false
 					s.client.streamerLock.Unlock()
 
 					// fail the remaining requests in such case
@@ -197,6 +208,7 @@ func (s *Streamer) server() {
 					return
 				}
 				s.client.streamerLock.Unlock()
+
 				s.idle++
 			}
 		}
@@ -619,7 +631,9 @@ func (s *Streamer) evict() error {
 		s.client.streamerLock.Unlock()
 		return errors.New(fmt.Sprintf("evict: streamer(%v) refcnt(%v)", s, s.refcnt))
 	}
-	delete(s.client.streamers, s.inode)
+	if s.client.disableMetaCache {
+		delete(s.client.streamers, s.inode)
+	}
 	s.client.streamerLock.Unlock()
 	return nil
 }
