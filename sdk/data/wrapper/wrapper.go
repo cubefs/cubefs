@@ -155,7 +155,7 @@ func (w *Wrapper) GetSimpleVolView() (err error) {
 }
 
 func (w *Wrapper) uploadFlowInfoByTick(clientInfo SimpleClientInfo) {
-	ticker := time.NewTicker(3 * time.Second)
+	ticker := time.NewTicker(10 * time.Second)
 	for {
 		select {
 		case <-ticker.C:

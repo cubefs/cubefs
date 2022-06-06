@@ -14,6 +14,8 @@
 
 package proto
 
+import "github.com/cubefs/cubefs/util"
+
 // api
 const (
 	// Admin APIs
@@ -511,6 +513,9 @@ func NewMetaPartitionView(partitionID, start, end uint64, status int8) (mpView *
 const (
 	QosStateNormal   uint8 = 0x01
 	QosStateHitLimit uint8 = 0x02
+
+	MinIopsLimit uint64 = 3
+	MinFLowLimit uint64 = 128*util.KB
 )
 
 const (

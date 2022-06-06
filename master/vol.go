@@ -673,6 +673,7 @@ type ServerFactorLimit struct {
 	NeedAfterAlloc uint64
 	Magnify        uint32 // for client allocation need magnify
 	LimitRate      float32
+	LastMagnify    uint64
 	requestCh      chan interface{}
 	done           chan interface{}
 	qosManager     *QosCtrlManager
@@ -734,15 +735,19 @@ func (qosManager *QosCtrlManager) volUpdateLimit(limitArgs *qosArgs) {
 
 	if limitArgs.iopsWVal != 0 {
 		qosManager.serverFactorLimitMap[proto.IopsWriteType].Total = limitArgs.iopsWVal
+		qosManager.serverFactorLimitMap[proto.IopsWriteType].LastMagnify = 0
 	}
 	if limitArgs.iopsRVal != 0 {
 		qosManager.serverFactorLimitMap[proto.IopsReadType].Total = limitArgs.iopsRVal
+		qosManager.serverFactorLimitMap[proto.IopsWriteType].LastMagnify = 0
 	}
 	if limitArgs.flowWVal != 0 {
 		qosManager.serverFactorLimitMap[proto.FlowWriteType].Total = limitArgs.flowWVal
+		qosManager.serverFactorLimitMap[proto.IopsWriteType].LastMagnify = 0
 	}
 	if limitArgs.flowRVal != 0 {
 		qosManager.serverFactorLimitMap[proto.FlowReadType].Total = limitArgs.flowRVal
+		qosManager.serverFactorLimitMap[proto.IopsWriteType].LastMagnify = 0
 	}
 
 	for i := proto.IopsReadType; i <= proto.FlowWriteType; i++ {
@@ -768,8 +773,8 @@ func (qosManager *QosCtrlManager) initClientQosInfo(clientID uint64, host string
 	if cliCnt <= proto.QosDefaultClientCnt {
 		cliCnt = proto.QosDefaultClientCnt
 	}
-	if len(qosManager.serverFactorLimitMap) > int(cliCnt) {
-		cliCnt = uint32(len(qosManager.serverFactorLimitMap))
+	if len(qosManager.cliInfoMgrMap) > int(cliCnt) {
+		cliCnt = uint32(len(qosManager.cliInfoMgrMap))
 	}
 
 	limitRsp2Client = proto.NewLimitRsp2Client()
@@ -831,6 +836,13 @@ func (qosManager *QosCtrlManager) initClientQosInfo(clientID uint64, host string
 	return
 }
 
+func (serverLimit *ServerFactorLimit) String() string {
+	return fmt.Sprintf("serverLimit {total:[%v],alloc:(allocated:[%v],need:[%v],buffer:[%v]),limit:(limitrate:[%v], magnify:[%v]),client sum {used:[%v], need:[%v]}}",
+		serverLimit.Total, serverLimit.Allocated, serverLimit.NeedAfterAlloc, serverLimit.Buffer,
+		serverLimit.LimitRate, serverLimit.LastMagnify,
+		serverLimit.CliUsed, serverLimit.CliNeed)
+}
+
 func (serverLimit *ServerFactorLimit) getDstLimit(factorType uint32, used, need uint64) (dstLimit uint64) {
 	if factorType == proto.FlowWriteType || factorType == proto.FlowReadType {
 		if need > used {
@@ -877,7 +889,7 @@ func (serverLimit *ServerFactorLimit) dispatch() {
 }
 
 // handle client request and rsp with much more if buffer is enough according rules of allocate
-func (s *ServerFactorLimit) updateLimitFactor(req interface{}) {
+func (serverLimit *ServerFactorLimit) updateLimitFactor(req interface{}) {
 
 	request := req.(*qosRequestArgs)
 	clientID := request.clientID
@@ -888,7 +900,7 @@ func (s *ServerFactorLimit) updateLimitFactor(req interface{}) {
 	lastClientInfo := request.lastClientInfo
 
 	log.LogInfof("action[updateLimitFactor] vol [%v] clientID [%v] type [%v],client report [%v,%v,%v,%v] last client report [%v,%v,%v,%v] periodically cal Assign [%v,%v]",
-		s.qosManager.vol.Name, clientID, proto.QosTypeString(factorType),
+		serverLimit.qosManager.vol.Name, clientID, proto.QosTypeString(factorType),
 		clientReq.Used, clientReq.Need, clientReq.UsedLimit, clientReq.UsedBuffer,
 		lastClientInfo.Used, lastClientInfo.Need, lastClientInfo.UsedLimit, lastClientInfo.UsedBuffer,
 		assignInfo.UsedLimit, assignInfo.UsedBuffer)
@@ -899,44 +911,50 @@ func (s *ServerFactorLimit) updateLimitFactor(req interface{}) {
 	// flow limit and buffer not enough,client need more
 	if (clientReq.Need + clientReq.Used) > (assignInfo.UsedLimit + assignInfo.UsedBuffer) {
 		log.LogInfof("action[updateLimitFactor] vol [%v] clientID [%v] type [%v], need [%v] used [%v], used limit [%v]",
-			s.qosManager.vol.Name, clientID, proto.QosTypeString(factorType), clientReq.Need, clientReq.Used, clientReq.UsedLimit)
+			serverLimit.qosManager.vol.Name, clientID, proto.QosTypeString(factorType), clientReq.Need, clientReq.Used, clientReq.UsedLimit)
 
-		dstLimit := s.getDstLimit(factorType, clientReq.Used, clientReq.Need)
+		dstLimit := serverLimit.getDstLimit(factorType, clientReq.Used, clientReq.Need)
 
 		// Assign already  allocated the buffer for client
 		if dstLimit > assignInfo.UsedLimit+assignInfo.UsedBuffer {
 			additionBuffer := dstLimit - assignInfo.UsedLimit - assignInfo.UsedBuffer
 			// if buffer is available then balance must not effect, try use buffer as possible as can
-			if s.Buffer > 0 {
+			if serverLimit.Buffer > 0 {
 				log.LogDebugf("action[updateLimitFactor] vol [%v] clientID [%v] type [%v] client need more buffer [%v] serverlimit buffer [%v] used [%v]",
-					s.qosManager.vol.Name, clientID, proto.QosTypeString(factorType),
-					additionBuffer, s.Buffer, s.Allocated)
+					serverLimit.qosManager.vol.Name, clientID, proto.QosTypeString(factorType),
+					additionBuffer, serverLimit.Buffer, serverLimit.Allocated)
 
 				// calc dst buffer for client to expand
 				// ignore the case of s.used be zero.  used should large then 0 because dstLimit isn't zero and be part of s.used
-				dstUsedBuffer := uint64(float32(dstLimit*s.Buffer/s.Allocated) * 0.5)
-				if dstUsedBuffer > dstLimit {
+				var dstUsedBuffer uint64
+				if serverLimit.Allocated != 0 {
+					dstUsedBuffer = uint64(float32(dstLimit*serverLimit.Buffer/serverLimit.Allocated) * 0.5)
+					if dstUsedBuffer > dstLimit {
+						dstUsedBuffer = dstLimit
+					}
+				} else {
 					dstUsedBuffer = dstLimit
 				}
+
 				if assignInfo.UsedBuffer < dstUsedBuffer {
 					additionBuffer = dstUsedBuffer - assignInfo.UsedBuffer
-					if additionBuffer > s.Buffer {
-						rsp2Client.UsedBuffer += s.Buffer
+					if additionBuffer > serverLimit.Buffer {
+						rsp2Client.UsedBuffer += serverLimit.Buffer
 						assignInfo.UsedBuffer = rsp2Client.UsedBuffer
-						s.Allocated += s.Buffer
-						s.Buffer = 0
+						serverLimit.Allocated += serverLimit.Buffer
+						serverLimit.Buffer = 0
 					} else {
 						rsp2Client.UsedBuffer = dstUsedBuffer
 						assignInfo.UsedBuffer = dstUsedBuffer
-						s.Buffer -= additionBuffer
-						s.Allocated += additionBuffer
+						serverLimit.Buffer -= additionBuffer
+						serverLimit.Allocated += additionBuffer
 					}
 				}
 			}
 		}
 	}
 	log.LogInfof("action[updateLimitFactor] vol [%v] [clientID [%v] type [%v] rsp2Client.UsedLimit [%v], UsedBuffer [%v]",
-		s.qosManager.vol.Name, clientID, proto.QosTypeString(factorType), rsp2Client.UsedLimit, rsp2Client.UsedBuffer)
+		serverLimit.qosManager.vol.Name, clientID, proto.QosTypeString(factorType), rsp2Client.UsedLimit, rsp2Client.UsedBuffer)
 	request.wg.Done()
 }
 
@@ -974,7 +992,7 @@ func (qosManager *QosCtrlManager) HandleClientQosReq(reqClientInfo *proto.Client
 		clientInfo.Assign = limitRsp
 		clientInfo.Time = time.Now()
 		for i := proto.IopsReadType; i <= proto.FlowWriteType; i++ {
-			log.LogInfof("action[HandleClientQosReq] vol [%v] [%v,%v,%v,%v]", qosManager.vol.Name,
+			log.LogDebugf("action[HandleClientQosReq] vol [%v] [%v,%v,%v,%v]", qosManager.vol.Name,
 				reqClientInfo.FactorMap[i].Used,
 				reqClientInfo.FactorMap[i].Need,
 				reqClientInfo.FactorMap[i].UsedLimit,
@@ -1011,12 +1029,17 @@ func (qosManager *QosCtrlManager) HandleClientQosReq(reqClientInfo *proto.Client
 
 	return
 }
+
 func (qosManager *QosCtrlManager) updateServerLimitByClientsInfo(factorType uint32) {
 	var (
 		cliSum                      proto.ClientLimitInfo
 		nextStageNeed, nextStageUse uint64
 	)
 	qosManager.RLock()
+	serverLimit := qosManager.serverFactorLimitMap[factorType]
+
+	log.LogInfof("action[updateServerLimitByClientsInfo] vol [%v] type [%v] last limitInfo(%v)",
+		qosManager.vol.Name, proto.QosTypeString(factorType),serverLimit)
 
 	// get sum of data from all clients reports
 	for host, cliInfo := range qosManager.cliInfoMgrMap {
@@ -1030,21 +1053,9 @@ func (qosManager *QosCtrlManager) updateServerLimitByClientsInfo(factorType uint
 			cliFactor.Used, cliFactor.Need, cliFactor.UsedLimit, cliFactor.UsedBuffer)
 	}
 
-	log.LogInfof("action[updateServerLimitByClientsInfo] vol [%v] type [%v] all clisum used:[%v] need:[%v] limit:[%v] buffer:[%v]",
-		qosManager.vol.Name, proto.QosTypeString(factorType), cliSum.Used, cliSum.Need, cliSum.UsedLimit, cliSum.UsedBuffer)
-
-	serverLimit := qosManager.serverFactorLimitMap[factorType]
 	serverLimit.CliUsed = cliSum.Used
 	serverLimit.CliNeed = cliSum.Need
 	qosManager.RUnlock()
-
-	if cliSum.Used > serverLimit.Total {
-		log.LogWarnf("action[updateServerLimitByClientsInfo] vol [%v] type [%v] sum of all clients flow use [%v]  larger than volume totoal [%v]",
-			qosManager.vol.Name, proto.QosTypeString(factorType), cliSum.Used, serverLimit.Total)
-	}
-
-	log.LogInfof("action[updateServerLimitByClientsInfo] vol [%v] type [%v] last epoch serverLimit total:[%v] used:[%v] need:[%v] buffer:[%v] limitrate:[%v]",
-		qosManager.vol.Name, proto.QosTypeString(factorType), serverLimit.Total, serverLimit.Allocated, serverLimit.NeedAfterAlloc, serverLimit.Buffer, serverLimit.LimitRate)
 
 	serverLimit.Buffer = 0
 	nextStageUse = cliSum.Used
@@ -1077,14 +1088,39 @@ func (qosManager *QosCtrlManager) updateServerLimitByClientsInfo(factorType uint
 	serverLimit.Allocated = nextStageUse
 	serverLimit.NeedAfterAlloc = nextStageNeed
 
-	log.LogInfof("action[updateServerLimitByClientsInfo] vol [%v] type [%v] after cal get next stage need [%v] and used [%v], buffer [%v]",
-		qosManager.vol.Name, proto.QosTypeString(factorType), nextStageNeed, nextStageUse, serverLimit.Buffer)
 	// get the limitRate,additionFlowNeed should be zero if total used can increase
 	serverLimit.LimitRate = 0
 	if serverLimit.NeedAfterAlloc > 0 {
 		serverLimit.LimitRate = float32(serverLimit.NeedAfterAlloc) / float32(serverLimit.Allocated+serverLimit.NeedAfterAlloc)
-	}
 
+		log.LogInfof("action[updateServerLimitByClientsInfo] vol [%v] type [%v] alloc not enough need limitRatio serverLimit:(%v)",
+			qosManager.vol.Name, proto.QosTypeString(factorType), serverLimit)
+
+		lastMagnify := serverLimit.LastMagnify
+		lastLimitRitio := serverLimit.LimitRate
+		// master assigned limit and buffer not be used as expected,we need adjust the gap
+		if serverLimit.CliUsed < serverLimit.Total {
+			serverLimit.LastMagnify += uint64(float32(serverLimit.Total - serverLimit.CliUsed) * 0.1)
+		} else {
+			if serverLimit.LastMagnify > 0 {
+				var magnify uint64
+				if serverLimit.LastMagnify > (serverLimit.CliUsed - serverLimit.Total) {
+					magnify = serverLimit.CliUsed - serverLimit.Total
+				} else {
+					magnify = serverLimit.LastMagnify
+				}
+				serverLimit.LastMagnify -= uint64(float32(magnify) * 0.1)
+			}
+		}
+		serverLimit.LimitRate = serverLimit.LimitRate * (1 - float32(serverLimit.LastMagnify) / float32(serverLimit.Allocated+serverLimit.NeedAfterAlloc))
+		log.LogWarnf("action[updateServerLimitByClientsInfo] vol [%v] type [%v] limitRatio [%v] updated to limitRatio [%v] by magnify [%v] lastMagnify [%v]",
+			qosManager.vol.Name, proto.QosTypeString(factorType),
+			lastLimitRitio, serverLimit.LimitRate, serverLimit.LastMagnify, lastMagnify)
+	} else {
+		serverLimit.LastMagnify = 0
+	}
+	log.LogInfof("action[updateServerLimitByClientsInfo] vol [%v] type [%v] after adjust limitRatio serverLimit:(%v)",
+		qosManager.vol.Name, proto.QosTypeString(factorType), serverLimit)
 	return
 }
 
@@ -1104,6 +1140,15 @@ func (qosManager *QosCtrlManager) assignClientsNewQos(factorType uint32) {
 			assignInfo.UsedLimit = uint64(float32(cliInfo.Used+cliInfo.Need) * (1 - serverLimit.LimitRate))
 			if serverLimit.Allocated != 0 {
 				assignInfo.UsedBuffer = uint64(float32(serverLimit.Buffer*assignInfo.UsedLimit/serverLimit.Allocated) * 0.5)
+			}
+
+			if assignInfo.UsedLimit == 0 {
+				switch factorType {
+				case proto.IopsReadType, proto.IopsWriteType:
+					assignInfo.UsedLimit = proto.MinIopsLimit
+				case proto.FlowWriteType, proto.FlowReadType:
+					assignInfo.UsedLimit = proto.MinFLowLimit
+				}
 			}
 
 			log.LogDebugf("action[assignClientsNewQos] Assign host [%v] limit [%v] buffer [%v]",
@@ -1162,8 +1207,10 @@ func (vol *Vol) checkQos() {
 		vol.qosManager.assignClientsNewQos(factorType)
 
 		serverLimit := vol.qosManager.serverFactorLimitMap[factorType]
-		log.LogInfof("action[UpdateAllQosInfo] vol name [%v] type [%v] after updateServerLimitByClientsInfo get limitRate:[%v] server total [%v] used [%v] need [%v] buffer [%v]",
-			vol.Name, proto.QosTypeString(factorType), serverLimit.LimitRate, serverLimit.Total, serverLimit.Allocated, serverLimit.NeedAfterAlloc, serverLimit.Buffer)
+		log.LogInfof("action[UpdateAllQosInfo] vol name [%v] type [%v] after updateServerLimitByClientsInfo get limitRate:[%v] " +
+			"server total [%v] beAllocated [%v] NeedAfterAlloc [%v] buffer [%v]",
+			vol.Name, proto.QosTypeString(factorType), serverLimit.LimitRate,
+			serverLimit.Total, serverLimit.Allocated, serverLimit.NeedAfterAlloc, serverLimit.Buffer)
 	}
 }
 
