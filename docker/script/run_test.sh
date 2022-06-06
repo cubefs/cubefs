@@ -298,6 +298,10 @@ run_ltptest() {
     mkdir -p $LTPTestDir
     nohup /bin/sh -c " /opt/ltp/runltp  -f fs -d $LTPTestDir > $LtpLog 2>&1; echo $? > /tmp/ltpret " &
     wait_proc_done "runltp" $LtpLog
+    echo "------------------------";
+    echo "Failed LTP Test Cases:"
+    cat /opt/ltp/output/*
+    echo "------------------------";
 }
 
 stop_client() {

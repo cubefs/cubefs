@@ -33,7 +33,8 @@ import (
 
 const (
 	MaxSelectDataPartitionForWrite = 32
-	MaxNewHandlerRetry             = 3
+	MaxNewHandlerRetry             = 4
+	MaxUsePreHandlerRetry		   = 1
 	MaxPacketErrorCount            = 32
 	MaxDirtyListLen                = 0
 )
@@ -176,7 +177,7 @@ func (s *Streamer) IssueWriteRequest(ctx context.Context, offset uint64, data []
 }
 
 func (s *Streamer) IssueFlushRequest(ctx context.Context) error {
-	if atomic.LoadInt32(&s.writeOp) <= 0 && s.dirtylist.Len() <= 0 && len(s.overWriteReq) == 0 {
+	if atomic.LoadInt32(&s.writeOp) <= 0 && s.dirtylist.Len() <= 0 && len(s.overWriteReq) == 0 && len(s.pendingPacketList) == 0 {
 		return nil
 	}
 
@@ -270,7 +271,7 @@ func (s *Streamer) server() {
 		case <-t.C:
 			s.traverse()
 			if s.client.autoFlush {
-				s.flush(ctx)
+				s.flush(ctx, false)
 			}
 			if s.refcnt <= 0 {
 				s.streamerMap.Lock()
@@ -339,7 +340,7 @@ func (s *Streamer) handleRequest(ctx context.Context, request interface{}) {
 		request.err = s.truncate(request.ctx, request.size)
 		request.done <- struct{}{}
 	case *FlushRequest:
-		request.err = s.flush(request.ctx)
+		request.err = s.flush(request.ctx, true)
 		if len(s.overWriteReq) > 0 {
 			s.overWriteReqMutex.Lock()
 			overWriteReq := s.overWriteReq
@@ -380,13 +381,17 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset uint64, size i
 	needFlush := false
 	for _, req := range requests {
 		if req.ExtentKey != nil && req.ExtentKey.PartitionId == 0 {
+			if s.OverwriteLocalPacket(req) {
+				req.Done = true
+				continue
+			}
 			needFlush = true
 			break
 		}
 	}
 
 	if needFlush {
-		err = s.flush(ctx)
+		err = s.flush(ctx, true)
 		if err != nil {
 			return
 		}
@@ -406,6 +411,10 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset uint64, size i
 		total += writeSize
 	} else {
 		for _, req := range requests {
+			if req.Done {
+				total += req.Size
+				continue
+			}
 			if req.ExtentKey != nil {
 				// clear read ahead cache
 				if s.readAhead && s.extentReader != nil && s.extentReader.key.PartitionId == req.ExtentKey.PartitionId && s.extentReader.key.ExtentId == req.ExtentKey.ExtentId && s.extentReader.req != nil {
@@ -414,7 +423,7 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset uint64, size i
 					s.extentReader.reqMutex.Unlock()
 				}
 				if overWriteBuffer {
-					writeSize = s.appendOverWriteReq(ctx, req, direct)
+					writeSize = s.appendOverWriteReq(req, direct)
 				} else {
 					writeSize, rowFlag, err = s.doOverWriteOrROW(ctx, req, direct)
 				}
@@ -452,7 +461,7 @@ func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, dir
 		if tryCount%100 == 0 {
 			log.LogWarnf("doOverWriteOrROW failed: try (%v)th times, ino(%v) req(%v)", tryCount, s.inode, req)
 		}
-		if s.enableOverwrite() {
+		if s.enableOverwrite() && req.ExtentKey != nil {
 			if writeSize, err = s.doOverwrite(ctx, req, direct); err == nil {
 				break
 			}
@@ -616,7 +625,7 @@ func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool
 		}
 	}()
 
-	err = s.flush(ctx)
+	err = s.flush(ctx, true)
 	if err != nil {
 		return
 	}
@@ -724,9 +733,10 @@ func (s *Streamer) doWrite(ctx context.Context, data []byte, offset uint64, size
 			}
 
 			// not use preExtent if once failed
-			if i > 0 || !s.usePreExtentHandler(offset, size) {
+			if i > MaxUsePreHandlerRetry || !s.usePreExtentHandler(offset, size) {
 				s.handler = NewExtentHandler(s, offset, storeMode, s.appendWriteBuffer)
 			}
+
 			s.dirty = false
 		}
 
@@ -738,7 +748,10 @@ func (s *Streamer) doWrite(ctx context.Context, data []byte, offset uint64, size
 			}
 			break
 		}
-
+		if log.IsDebugEnabled() {
+			log.LogDebugf("doWrite: offset(%v) size(%v) err(%v) eh(%v) packet(%v) pendingPacketList length(%v)",
+				offset, size, err, s.handler, s.handler.packet, len(s.pendingPacketList))
+		}
 		s.closeOpenHandler(ctx)
 	}
 
@@ -755,7 +768,7 @@ func (s *Streamer) doWrite(ctx context.Context, data []byte, offset uint64, size
 	return
 }
 
-func (s *Streamer) appendOverWriteReq(ctx context.Context, oriReq *ExtentRequest, direct bool) (writeSize int) {
+func (s *Streamer) appendOverWriteReq(oriReq *ExtentRequest, direct bool) (writeSize int) {
 	var (
 		req    *OverWriteRequest = &OverWriteRequest{oriReq: oriReq, direct: direct}
 		offset int
@@ -795,7 +808,11 @@ func (s *Streamer) appendOverWriteReq(ctx context.Context, oriReq *ExtentRequest
 	return
 }
 
-func (s *Streamer) flush(ctx context.Context) (err error) {
+func (s *Streamer) flush(ctx context.Context, flushPendingPacket bool) (err error) {
+	if len(s.pendingPacketList) > PendingPacketMaxLen || (flushPendingPacket && len(s.pendingPacketList) > 0) {
+		s.FlushAllPendingPacket(ctx)
+	}
+
 	for {
 		element := s.dirtylist.Get()
 		if element == nil {
@@ -803,7 +820,7 @@ func (s *Streamer) flush(ctx context.Context) (err error) {
 		}
 		eh := element.Value.(*ExtentHandler)
 		if log.IsDebugEnabled() {
-			log.LogDebugf("Streamer flush begin: eh(%v)", eh)
+			log.LogDebugf("Streamer flush begin: eh(%v) packet(%v)", eh, eh.packet)
 		}
 		err = eh.flush(ctx)
 		if err != nil {
@@ -832,6 +849,12 @@ func (s *Streamer) flush(ctx context.Context) (err error) {
 
 func (s *Streamer) traverse() (err error) {
 	s.traversed++
+	if len(s.pendingPacketList) > 0 && s.traversed >= streamWriterFlushPeriod {
+		if log.IsDebugEnabled() {
+			log.LogDebugf("Streamer traverse: ino(%v) flush pending packet length(%v)", s.inode, len(s.pendingPacketList))
+		}
+		s.FlushAllPendingPacket(context.Background())
+	}
 	length := s.dirtylist.Len()
 	for i := 0; i < length; i++ {
 		element := s.dirtylist.Get()
@@ -884,7 +907,7 @@ func (s *Streamer) closeOpenHandler(ctx context.Context) {
 			s.handler.flushPacket(ctx)
 		} else {
 			// flush all handler when close current handler, to prevent extent key overwriting
-			s.flush(ctx)
+			s.flush(ctx, true)
 		}
 
 		if !s.dirty {
@@ -908,7 +931,7 @@ func (s *Streamer) release(ctx context.Context, mustRelease bool) error {
 		s.refcnt--
 	}
 	s.closeOpenHandler(ctx)
-	err := s.flush(ctx)
+	err := s.flush(ctx, true)
 	if err != nil {
 		s.abort()
 	}
@@ -933,6 +956,7 @@ func (s *Streamer) evict(ctx context.Context) error {
 }
 
 func (s *Streamer) abort() {
+	// todo flush pending packet?
 	for {
 		element := s.dirtylist.Get()
 		if element == nil {
@@ -947,7 +971,7 @@ func (s *Streamer) abort() {
 
 func (s *Streamer) truncate(ctx context.Context, size uint64) error {
 	s.closeOpenHandler(ctx)
-	err := s.flush(ctx)
+	err := s.flush(ctx, true)
 	if err != nil {
 		return err
 	}
@@ -1114,7 +1138,7 @@ func (s *Streamer) extentMerge(ctx context.Context) (finish bool, err error) {
 		}
 	}()
 
-	if err = s.flush(ctx); err != nil {
+	if err = s.flush(ctx, true); err != nil {
 		return
 	}
 

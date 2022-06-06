@@ -356,8 +356,8 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 }
 
 func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpReplicas, trashDays, storeMode int,
-	followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart bool, authKey, zoneName, mpLayout, smartRules string, bucketPolicy,
-	crossRegionHAType uint8, extentCacheExpireSec int64, compactTag string) (err error) {
+	followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart, enableWriteCache bool, authKey, zoneName, mpLayout, smartRules string,
+	bucketPolicy, crossRegionHAType uint8, extentCacheExpireSec int64, compactTag string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
@@ -367,6 +367,7 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	request.addParam("followerRead", strconv.FormatBool(followerRead))
 	request.addParam("nearRead", strconv.FormatBool(nearRead))
 	request.addParam("forceROW", strconv.FormatBool(forceROW))
+	request.addParam("writeCache", strconv.FormatBool(enableWriteCache))
 	request.addParam("authenticate", strconv.FormatBool(authenticate))
 	request.addParam("enableToken", strconv.FormatBool(enableToken))
 	request.addParam("autoRepair", strconv.FormatBool(autoRepair))
@@ -400,7 +401,7 @@ func (api *AdminAPI) SetVolumeConvertTaskState(volName, authKey string, st int) 
 }
 
 func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int, dpSize, capacity uint64, replicas, mpReplicas, trashDays, storeMode int,
-	followerRead, autoRepair, volWriteMutex, forceROW, isSmart bool, zoneName, mpLayout, smartRules string, crossRegionHAType uint8, compactTag string, ecDataNum, ecParityNum uint8, ecEnable bool) (err error) {
+	followerRead, autoRepair, volWriteMutex, forceROW, isSmart, enableWriteCache bool, zoneName, mpLayout, smartRules string, crossRegionHAType uint8, compactTag string, ecDataNum, ecParityNum uint8, ecEnable bool) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
@@ -412,6 +413,7 @@ func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int, dpSize, ca
 	request.addParam("ecEnable", strconv.FormatBool(ecEnable))
 	request.addParam("followerRead", strconv.FormatBool(followerRead))
 	request.addParam("forceROW", strconv.FormatBool(forceROW))
+	request.addParam("writeCache", strconv.FormatBool(enableWriteCache))
 	request.addParam("crossRegion", strconv.Itoa(int(crossRegionHAType)))
 	request.addParam("autoRepair", strconv.FormatBool(autoRepair))
 	request.addParam("replicaNum", strconv.Itoa(replicas))

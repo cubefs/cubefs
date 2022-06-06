@@ -37,6 +37,7 @@ func (api *ClientAPI) GetVolume(volName string, authKey string) (vv *proto.VolVi
 	var request = newAPIRequest(http.MethodPost, proto.ClientVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
+	request.addParam("baseVersion", proto.BaseVersion)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return

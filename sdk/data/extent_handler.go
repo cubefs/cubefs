@@ -66,6 +66,7 @@ type ExtentHandler struct {
 	packetMutex sync.RWMutex // for packet and packetList
 	cachePacket bool
 	packetList  []*Packet
+	overwriteLocalPacketMutex sync.Mutex
 
 	// Updated in *write* method ONLY.
 	size         int
@@ -152,7 +153,7 @@ func (eh *ExtentHandler) String() string {
 	if eh == nil {
 		return ""
 	}
-	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)StoreMode(%v)}", eh.id, eh.inode, eh.fileOffset, eh.storeMode)
+	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)Size(%v)StoreMode(%v)}", eh.id, eh.inode, eh.fileOffset, eh.size, eh.storeMode)
 }
 
 func (eh *ExtentHandler) write(ctx context.Context, data []byte, offset uint64, size int, direct bool) (ek *proto.ExtentKey, err error) {
@@ -173,11 +174,21 @@ func (eh *ExtentHandler) write(ctx context.Context, data []byte, offset uint64, 
 	// If this write request is not continuous, and cannot be merged
 	// into the extent handler, just close it and return error.
 	// In this case, the caller should try to create a new extent handler.
-	if eh.fileOffset+uint64(eh.size) != offset || eh.extentOffset+eh.size+size > eh.stream.extentSize ||
-		(eh.storeMode == proto.TinyExtentType && eh.size+size > blksize) {
+	if (!eh.stream.client.EnableWriteCache() && eh.fileOffset+uint64(eh.size) != offset) ||
+		eh.extentOffset+eh.size+size > eh.stream.extentSize || (eh.storeMode == proto.TinyExtentType && eh.size+size > blksize) {
 
-		err = errors.New("ExtentHandler: full or incontinuous")
+		err = errors.NewErrorf("ExtentHandler: full or discontinuous: writeCache(%v) extentSize(%v) offset(%v) size(%v) eh(%v)",
+			eh.stream.client.EnableWriteCache(), eh.stream.extentSize, offset, size, eh)
 		return
+	}
+	if eh.stream.client.EnableWriteCache() &&
+		( (offset + uint64(size) > uint64(eh.stream.extentSize) + eh.fileOffset) || (eh.storeMode == proto.TinyExtentType && offset + uint64(size) > uint64(blksize)) ) {
+		err = errors.NewErrorf("ExtentHandler is full: offset(%v) size(%v) eh(%v)", offset, size, eh)
+		return
+	}
+
+	if eh.fileOffset + uint64(eh.size) != offset {
+		return eh.stream.WritePendingPacket(data, offset, size, direct)
 	}
 
 	for total < size {
@@ -195,7 +206,9 @@ func (eh *ExtentHandler) write(ctx context.Context, data []byte, offset uint64, 
 			eh.packet.Size += uint32(write)
 			total += write
 		}
-
+		if log.IsDebugEnabled() {
+			log.LogDebugf("ExtentHandler write: eh(%v) packet(%v)", eh, eh.packet)
+		}
 		if int(eh.packet.Size) >= blksize {
 			eh.flushPacket(ctx)
 		}
@@ -203,10 +216,14 @@ func (eh *ExtentHandler) write(ctx context.Context, data []byte, offset uint64, 
 
 	eh.size += total
 
+	if len(eh.stream.pendingPacketList) > 0 {
+		eh.stream.pendingPacketList = eh.stream.FlushContinuousPendingPacket(ctx)
+	}
+
 	// This is just a local cache to prepare write requests.
 	// Partition and extent are not allocated.
 	ek = &proto.ExtentKey{
-		FileOffset: uint64(eh.fileOffset),
+		FileOffset: eh.fileOffset,
 		Size:       uint32(eh.size),
 	}
 	return ek, nil
@@ -713,6 +730,10 @@ func (eh *ExtentHandler) flushPacket(ctx context.Context) {
 	if eh.packet == nil {
 		return
 	}
+	if log.IsDebugEnabled() {
+		log.LogDebugf("flushPacket: eh(%v) packet(%v)", eh, eh.packet)
+	}
+	eh.overwriteLocalPacketMutex.Lock()
 	eh.pushToRequest(ctx, eh.packet)
 	eh.packetMutex.Lock()
 	if eh.cachePacket {
@@ -720,6 +741,7 @@ func (eh *ExtentHandler) flushPacket(ctx context.Context) {
 	}
 	eh.packet = nil
 	eh.packetMutex.Unlock()
+	eh.overwriteLocalPacketMutex.Unlock()
 }
 
 func (eh *ExtentHandler) pushToRequest(ctx context.Context, packet *Packet) {

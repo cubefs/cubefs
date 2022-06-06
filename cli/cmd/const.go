@@ -82,6 +82,7 @@ const (
 	CliFlagEnableFollowerRead   = "follower-read"
 	CliFlagEnableNearRead       = "near-read"
 	CliFlagEnableForceROW       = "force-row"
+	CliFlagEnableWriteCache     = "write-cache"
 	CliFlagExtentCacheExpireSec = "ek-expire-second"
 	CliFlagEnableCrossRegionHA  = "cross-region"
 	CliFlagAutoRepair           = "auto-repair"

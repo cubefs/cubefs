@@ -223,6 +223,14 @@ func (s *Super) GetOpRate(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(s.mw.GetOpLimitRate()))
 }
 
+func (s *Super) EnableWriteCache() bool {
+	return s.ec.EnableWriteCache()
+}
+
+func (s *Super) SetEnableWriteCache(writeCache bool) {
+	s.ec.SetEnableWriteCache(writeCache)
+}
+
 func (s *Super) exporterKey(act string) string {
 	return fmt.Sprintf("%v_fuseclient_%v", s.cluster, act)
 }

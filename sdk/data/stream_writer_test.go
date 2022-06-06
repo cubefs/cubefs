@@ -501,7 +501,7 @@ func TestStreamer_UsePreExtentHandler_ROWByOtherClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("write failed: err(%v)", err)
 	}
-	err = streamer.flush(ctx)
+	err = streamer.flush(ctx, true)
 	if err != nil {
 		t.Fatalf("flush failed: err(%v)", err)
 	}
@@ -518,7 +518,7 @@ func TestStreamer_UsePreExtentHandler_ROWByOtherClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("write failed: err(%v)", err)
 	}
-	err = streamer.flush(ctx)
+	err = streamer.flush(ctx, true)
 	if err == nil {
 		t.Fatalf("usePreExtentHandler should fail when the extent has removed by other clients")
 	}
@@ -543,7 +543,7 @@ func TestHandler_Recover(t *testing.T) {
 	if err != nil {
 		t.Fatalf("write failed: err(%v)", err)
 	}
-	err = streamer.flush(ctx)
+	err = streamer.flush(ctx, true)
 	if err != nil {
 		t.Fatalf("flush failed: err(%v)", err)
 	}
@@ -598,7 +598,7 @@ func TestHandler_AppendWriteBuffer_Recover(t *testing.T) {
 	if !suc {
 		t.Fatalf("setRecovery failed")
 	}
-	err = streamer.flush(ctx)
+	err = streamer.flush(ctx, true)
 	if err != nil {
 		t.Fatalf("flush failed: err(%v)", err)
 	}

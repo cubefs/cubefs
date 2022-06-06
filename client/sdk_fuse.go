@@ -293,6 +293,8 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, clientState []byte) (fsConn
 
 	if opt.WriteCache {
 		options = append(options, fuse.WritebackCache())
+		log.LogInfof("mount: vol enable write cache(%v)", opt.WriteCache)
+		super.SetEnableWriteCache(true)
 	}
 
 	if opt.EnablePosixACL {
@@ -406,6 +408,11 @@ func checkPermission(opt *proto.MountOptions) (err error) {
 		}
 		log.LogInfof("checkPermission: get token: token(%v)", token)
 		opt.Rdonly = token.TokenType == int8(proto.ReadOnlyToken) || opt.Rdonly
+	}
+
+	// Get write-cache options
+	if info.EnableWriteCache {
+		opt.WriteCache = true
 	}
 
 	// Check user access policy is enabled

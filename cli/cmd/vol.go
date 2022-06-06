@@ -131,6 +131,7 @@ const (
 	cmdVolDefaultForceROW       = false
 	cmdVolDefaultIsSmart        = false
 	cmdVolDefaultNearReader     = false
+	cmdVolDefaultWriteCache     = false
 	cmdVolDefaultCrossRegionHA  = 0
 	cmdVolDefaultZoneName       = "default"
 	cmdVolDefaultStoreMode      = int(proto.StoreModeMem)
@@ -149,6 +150,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optMpReplicas int
 	var optFollowerRead bool
 	var optForceROW bool
+	var optEnableWriteCache	bool
 	var optCrossRegionHAType uint8
 	var optEcDataNum uint8
 	var optEcParityNum uint8
@@ -207,6 +209,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  Ec is enabled       : %v\n", optEcEnable)
 				stdout("  Allow follower read : %v\n", formatEnabledDisabled(optFollowerRead))
 				stdout("  Force ROW           : %v\n", formatEnabledDisabled(optForceROW))
+				stdout("  Enable Write Cache  : %v\n", formatEnabledDisabled(optEnableWriteCache))
 				stdout("  Cross Region HA     : %s\n", proto.CrossRegionHAType(optCrossRegionHAType))
 				stdout("  Auto repair         : %v\n", formatEnabledDisabled(optAutoRepair))
 				stdout("  Volume write mutex  : %v\n", formatEnabledDisabled(optVolWriteMutex))
@@ -227,7 +230,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			}
 
 			err = client.AdminAPI().CreateVolume(volumeName, userID, optMPCount, optDPSize, optCapacity, optReplicas,
-				optMpReplicas, optTrashDays, optStoreMode, optFollowerRead, optAutoRepair, optVolWriteMutex, optForceROW, optIsSmart,
+				optMpReplicas, optTrashDays, optStoreMode, optFollowerRead, optAutoRepair, optVolWriteMutex, optForceROW, optIsSmart, optEnableWriteCache,
 				optZoneName, optLayout, strings.Join(smartRules, ","), optCrossRegionHAType, formatEnabledDisabled(optCompactTag), optEcDataNum, optEcParityNum, optEcEnable)
 			if err != nil {
 				errout("Create volume failed case:\n%v\n", err)
@@ -244,6 +247,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optTrashDays, CliFlagTrashDays, cmdVolDefaultTrashDays, "Specify trash remaining days ")
 	cmd.Flags().BoolVar(&optFollowerRead, CliFlagEnableFollowerRead, cmdVolDefaultFollowerReader, "Enable read from replica follower")
 	cmd.Flags().BoolVar(&optForceROW, CliFlagEnableForceROW, cmdVolDefaultForceROW, "Use ROW instead of overwrite")
+	cmd.Flags().BoolVar(&optEnableWriteCache, CliFlagEnableWriteCache, cmdVolDefaultWriteCache, "Enable write back cache when mounting FUSE")
 	cmd.Flags().Uint8Var(&optCrossRegionHAType, CliFlagEnableCrossRegionHA, cmdVolDefaultCrossRegionHA,
 		"Set cross region high available type(0 for default, 1 for quorum)")
 	cmd.Flags().BoolVar(&optAutoRepair, CliFlagAutoRepair, false, "Enable auto balance partition distribution according to zoneName")
@@ -282,6 +286,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		optFollowerRead         string
 		optNearRead             string
 		optForceROW             string
+		optEnableWriteCache		string
 		optAuthenticate         string
 		optEnableToken          string
 		optAutoRepair           string
@@ -386,6 +391,17 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				vv.ForceROW = enable
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  Force ROW           : %v\n", formatEnabledDisabled(vv.ForceROW)))
+			}
+			if optEnableWriteCache != "" {
+				isChange = true
+				var enable bool
+				if enable, err = strconv.ParseBool(optEnableWriteCache); err != nil {
+					return
+				}
+				confirmString.WriteString(fmt.Sprintf("  Enable Write Cache  : %v -> %v\n", formatEnabledDisabled(vv.EnableWriteCache), formatEnabledDisabled(enable)))
+				vv.EnableWriteCache = enable
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Enable Write Cache  : %v\n", formatEnabledDisabled(vv.EnableWriteCache)))
 			}
 
 			if optAuthenticate != "" {
@@ -557,7 +573,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			}
 			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum), int(vv.MpReplicaNum), int(vv.TrashRemainingDays),
 				int(vv.DefaultStoreMode), vv.FollowerRead, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
-				vv.ForceROW, vv.IsSmart, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, strings.Join(smartRules, ","), uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag)
+				vv.ForceROW, vv.IsSmart, vv.EnableWriteCache, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, strings.Join(smartRules, ","), uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag)
 			if err != nil {
 				return
 			}
@@ -578,6 +594,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optFollowerRead, CliFlagEnableFollowerRead, "", "Enable read from replica follower")
 	cmd.Flags().StringVar(&optNearRead, CliFlagEnableNearRead, "", "Enable read from ip near replica")
 	cmd.Flags().StringVar(&optForceROW, CliFlagEnableForceROW, "", "Enable only row instead of overwrite")
+	cmd.Flags().StringVar(&optEnableWriteCache, CliFlagEnableWriteCache, "", "Enable write back cache when mounting FUSE")
 	cmd.Flags().StringVar(&optCrossRegionHAType, CliFlagEnableCrossRegionHA, "",
 		"Set cross region high available type(0 for default, 1 for quorum)")
 	cmd.Flags().StringVar(&optAuthenticate, CliFlagAuthenticate, "", "Enable authenticate")

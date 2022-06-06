@@ -347,7 +347,7 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset uint
 			write, isROW, err = s.IssueWriteRequest(ctx, offset, data, direct, overWriteBuffer)
 		} else {
 			for _, req := range requests {
-				write += s.appendOverWriteReq(ctx, req, direct)
+				write += s.appendOverWriteReq(req, direct)
 			}
 		}
 	} else {
@@ -721,4 +721,12 @@ func (c *ExtentClient) lookupAllInode(parent uint64) (inodes []uint64) {
 		}
 	}
 	return
+}
+
+func (c *ExtentClient) EnableWriteCache() bool {
+	return c.dataWrapper.enableWriteCache
+}
+
+func (c *ExtentClient) SetEnableWriteCache(writeCache bool) {
+	c.dataWrapper.enableWriteCache = writeCache
 }

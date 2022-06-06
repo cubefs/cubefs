@@ -834,6 +834,7 @@ type VolView struct {
 	Status            uint8
 	FollowerRead      bool
 	ForceROW          bool
+	EnableWriteCache  bool
 	CrossRegionHAType CrossRegionHAType
 	MetaPartitions    []*MetaPartitionView
 	DataPartitions    []*DataPartitionResponse
@@ -893,47 +894,48 @@ func NewMetaPartitionView(partitionID, start, end uint64, status int8) (mpView *
 
 // SimpleVolView defines the simple view of a volume
 type SimpleVolView struct {
-	ID                    uint64
-	Name                  string
-	Owner                 string
-	ZoneName              string
-	DpReplicaNum          uint8
-	MpReplicaNum          uint8
-	DpLearnerNum          uint8
-	MpLearnerNum          uint8
-	InodeCount            uint64
-	DentryCount           uint64
-	MaxMetaPartitionID    uint64
-	Status                uint8
-	Capacity              uint64 // GB
-	DpWriteableThreshold  float64
-	RwDpCnt               int
-	MpCnt                 int
-	DpCnt                 int
-	FollowerRead          bool
-	NearRead              bool
-	NeedToLowerReplica    bool
-	Authenticate          bool
-	VolWriteMutexEnable   bool
-	CrossZone             bool
-	AutoRepair            bool
-	CreateTime            string
-	EnableToken           bool
-	ForceROW              bool
-	CrossRegionHAType     CrossRegionHAType
-	Tokens                map[string]*Token `graphql:"-"`
-	Description           string
-	DpSelectorName        string
-	DpSelectorParm        string
-	Quorum                int
-	OSSBucketPolicy       BucketAccessPolicy
-	DPConvertMode         ConvertMode
-	MPConvertMode         ConvertMode
-	MasterRegionZone      string
-	SlaveRegionZone       string
-	ConnConfig            *ConnConfig // todo
-	ExtentCacheExpireSec  int64
-	DpMetricsReportConfig *DpMetricsReportConfig // todo
+	ID                   uint64
+	Name                 string
+	Owner                string
+	ZoneName             string
+	DpReplicaNum         uint8
+	MpReplicaNum         uint8
+	DpLearnerNum         uint8
+	MpLearnerNum         uint8
+	InodeCount           uint64
+	DentryCount          uint64
+	MaxMetaPartitionID   uint64
+	Status               uint8
+	Capacity             uint64 // GB
+	DpWriteableThreshold float64
+	RwDpCnt              int
+	MpCnt                int
+	DpCnt                int
+	FollowerRead         bool
+	NearRead             bool
+	NeedToLowerReplica   bool
+	Authenticate         bool
+	VolWriteMutexEnable  bool
+	CrossZone            bool
+	AutoRepair           bool
+	CreateTime           string
+	EnableToken          bool
+	ForceROW             bool
+	EnableWriteCache	 bool
+	CrossRegionHAType    CrossRegionHAType
+	Tokens               map[string]*Token `graphql:"-"`
+	Description          string
+	DpSelectorName       string
+	DpSelectorParm       string
+	Quorum               int
+	OSSBucketPolicy      BucketAccessPolicy
+	DPConvertMode        ConvertMode
+	MPConvertMode        ConvertMode
+	MasterRegionZone     string
+	SlaveRegionZone      string
+	ConnConfig			 *ConnConfig	// todo
+	ExtentCacheExpireSec int64
+	DpMetricsReportConfig	*DpMetricsReportConfig	// todo
 	RwMpCnt               int
 	MinWritableMPNum      int
 	MinWritableDPNum      int
@@ -941,11 +943,11 @@ type SimpleVolView struct {
 	DefaultStoreMode      StoreMode
 	ConvertState          VolConvertState
 	MpLayout              MetaPartitionLayout
-	TotalSize             uint64
-	UsedSize              uint64
-	UsedRatio             float64
-	FileAvgSize           float64
-	CreateStatus          VolCreateStatus
+	TotalSize            uint64
+	UsedSize             uint64
+	UsedRatio            float64
+	FileAvgSize          float64
+	CreateStatus         VolCreateStatus
 	IsSmart               bool
 	SmartEnableTime string
 	SmartRules            []string

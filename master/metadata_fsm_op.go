@@ -207,6 +207,7 @@ type volValue struct {
 	NearRead             bool
 	ForceROW             bool
 	ForceRowModifyTime   int64
+	EnableWriteCache	bool
 	CrossRegionHAType    bsProto.CrossRegionHAType
 	Authenticate         bool
 	EnableToken          bool
@@ -263,6 +264,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		FollowerRead:         vol.FollowerRead,
 		NearRead:             vol.NearRead,
 		ForceROW:             vol.ForceROW,
+		EnableWriteCache: 	  vol.enableWriteCache,
 		CrossRegionHAType:    vol.CrossRegionHAType,
 		Authenticate:         vol.authenticate,
 		AutoRepair:           vol.autoRepair,

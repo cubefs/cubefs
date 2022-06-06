@@ -66,6 +66,7 @@ type Streamer struct {
 	extentReader *ExtentReader
 
 	writeLock sync.Mutex
+	pendingPacketList []*Packet
 }
 
 // NewStreamer returns a new streamer.
@@ -82,6 +83,7 @@ func NewStreamer(client *ExtentClient, inode uint64, streamMap *ConcurrentStream
 	s.streamerMap = streamMap
 	s.appendWriteBuffer = appendWriteBuffer
 	s.readAhead = readAhead
+	s.pendingPacketList = make([]*Packet, 0)
 	s.wg.Add(1)
 	go s.server()
 	return s
@@ -136,7 +138,6 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset uint64, size in
 		if req.ExtentKey == nil || req.ExtentKey.PartitionId > 0 {
 			continue
 		}
-
 		read, skipFlush := s.readFromCache(req)
 		total += read
 		if total == size {

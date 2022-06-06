@@ -270,7 +270,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	for _, name := range vols {
 		stat, ok := m.cluster.volStatInfo.Load(name)
 		if !ok {
-			cv.VolStatInfo = append(cv.VolStatInfo, newVolStatInfo(name, 0, 0, "0.0001", false))
+			cv.VolStatInfo = append(cv.VolStatInfo, newVolStatInfo(name, 0, 0, "0.0001", false, false))
 			continue
 		}
 		cv.VolStatInfo = append(cv.VolStatInfo, stat.(*volStatInfo))
@@ -1440,6 +1440,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		zoneName             string
 		description          string
 		extentCacheExpireSec int64
+		enableWriteCache	 bool
 
 		vol *Vol
 
@@ -1483,7 +1484,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	if mpReplicaNum == 0 {
 		mpReplicaNum = int(vol.mpReplicaNum)
 	}
-	if followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
+	if followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, enableWriteCache, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1538,7 +1539,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), uint8(mpReplicaNum),
-		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart, dpSelectorName, dpSelectorParm, ossBucketPolicy,
+		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart, enableWriteCache, dpSelectorName, dpSelectorParm, ossBucketPolicy,
 		crossRegionHAType, dpWriteableThreshold, trashRemainingDays, proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -1593,6 +1594,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		autoRepair           bool
 		volWriteMutexEnable  bool
 		forceROW             bool
+		enableWriteCache	bool
 		crossRegionHAType    proto.CrossRegionHAType
 		zoneName             string
 		description          string
@@ -1609,7 +1611,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate,
-		enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, crossRegionHAType, dpWriteableThreshold, mpLayout, smartRules, compactTag, err = parseRequestToCreateVol(r); err != nil {
+		enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, dpWriteableThreshold, mpLayout, smartRules, compactTag, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1651,7 +1653,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size,
-		capacity, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart,
+		capacity, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache,
 		crossRegionHAType, dpWriteableThreshold, proto.StoreMode(storeMode), mpLayout, smartRules, cmpTag); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -1727,6 +1729,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		FollowerRead:         vol.FollowerRead,
 		NearRead:             vol.NearRead,
 		ForceROW:             vol.ForceROW,
+		EnableWriteCache: 	 vol.enableWriteCache,
 		CrossRegionHAType:    vol.CrossRegionHAType,
 		NeedToLowerReplica:   vol.NeedToLowerReplica,
 		Authenticate:         vol.authenticate,
@@ -2881,7 +2884,7 @@ func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, ca
 	return
 }
 
-func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW bool, err error) {
+func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, enableWriteCache bool, err error) {
 	if followerReadStr := r.FormValue(followerReadKey); followerReadStr != "" {
 		if followerRead, err = strconv.ParseBool(followerReadStr); err != nil {
 			err = unmatchedKey(followerReadKey)
@@ -2897,6 +2900,14 @@ func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, nearRea
 		}
 	} else {
 		nearRead = vol.NearRead
+	}
+	if enableWriteCacheStr := r.FormValue(enableWriteCacheKey); enableWriteCacheStr != "" {
+		if enableWriteCache, err = strconv.ParseBool(enableWriteCacheStr); err != nil {
+			err = unmatchedKey(enableWriteCacheKey)
+			return
+		}
+	} else {
+		enableWriteCache = vol.enableWriteCache
 	}
 	if authenticateStr := r.FormValue(authenticateKey); authenticateStr != "" {
 		if authenticate, err = strconv.ParseBool(authenticateStr); err != nil {
@@ -3072,7 +3083,7 @@ func parseDefaultTrashDaysToUpdateVol(r *http.Request, vol *Vol) (remaining uint
 
 func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string,
 	mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays int, dataNum uint8, parityNum uint8, enableEc,
-	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart bool,
+	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
 	crossRegionHAType proto.CrossRegionHAType, dpWritableThreshold float64,
 	layout proto.MetaPartitionLayout, smartRules []string, compactTag string, err error) {
 	if err = r.ParseForm(); err != nil {
@@ -3136,6 +3147,9 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 		return
 	}
 	if forceROW, err = extractForceROW(r); err != nil {
+		return
+	}
+	if enableWriteCache, err = extractWriteCache(r); err != nil {
 		return
 	}
 	if crossRegionHAType, err = extractCrossRegionHA(r); err != nil {
@@ -3733,6 +3747,18 @@ func extractForceROW(r *http.Request) (forceROW bool, err error) {
 	return
 }
 
+func extractWriteCache(r *http.Request) (enableWriteCache bool, err error) {
+	var value string
+	if value = r.FormValue(enableWriteCacheKey); value == "" {
+		enableWriteCache = false
+		return
+	}
+	if enableWriteCache, err = strconv.ParseBool(value); err != nil {
+		return
+	}
+	return
+}
+
 func extractAuthenticate(r *http.Request) (authenticate bool, err error) {
 	var value string
 	if value = r.FormValue(authenticateKey); value == "" {
@@ -4059,6 +4085,7 @@ func volStat(vol *Vol) (stat *proto.VolStatInfo) {
 		stat.UsedSize = stat.TotalSize
 	}
 	stat.EnableToken = vol.enableToken
+	stat.EnableWriteCache = vol.enableWriteCache
 	log.LogDebugf("total[%v],usedSize[%v]", stat.TotalSize, stat.UsedSize)
 	return
 }

@@ -636,7 +636,7 @@ func setVolForceRow(forceRow bool) {
 	vv, _ := mc.AdminAPI().GetVolumeSimpleInfo(ltptestVolume)
 	_ = mc.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum), int(vv.MpReplicaNum), int(vv.TrashRemainingDays),
 		int(vv.DefaultStoreMode), vv.FollowerRead, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
-		forceRow, vv.IsSmart, calcAuthKey(vv.Owner), vv.ZoneName, fmt.Sprintf("%v,%v", vv.MpLayout.PercentOfMP, vv.MpLayout.PercentOfReplica), strings.Join(vv.SmartRules, ","),
+		forceRow, vv.IsSmart, vv.EnableWriteCache, calcAuthKey(vv.Owner), vv.ZoneName, fmt.Sprintf("%v,%v", vv.MpLayout.PercentOfMP, vv.MpLayout.PercentOfReplica), strings.Join(vv.SmartRules, ","),
 		uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag)
 }
 

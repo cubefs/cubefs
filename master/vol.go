@@ -48,6 +48,7 @@ type Vol struct {
 	NearRead             bool
 	ForceROW             bool
 	forceRowModifyTime   int64
+	enableWriteCache	 bool
 	authenticate         bool
 	autoRepair           bool
 	zoneName             string
@@ -105,7 +106,7 @@ type VolWriteMutexClient struct {
 }
 
 func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8,
-	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart bool, createTime, smartEnableTime int64, description, dpSelectorName,
+	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool, createTime, smartEnableTime int64, description, dpSelectorName,
 	dpSelectorParm string, crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64, trashDays uint32,
 	defStoreMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
@@ -138,6 +139,7 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
 	vol.ForceROW = forceROW
+	vol.enableWriteCache = enableWriteCache
 	vol.authenticate = authenticate
 	vol.zoneName = zoneName
 	vol.viewCache = make([]byte, 0)
@@ -196,6 +198,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.VolWriteMutexEnable,
 		vv.ForceROW,
 		vv.IsSmart,
+		vv.EnableWriteCache,
 		vv.CreateTime,
 		vv.SmartEnableTime,
 		vv.Description,
@@ -658,6 +661,7 @@ func (vol *Vol) totalUsedSpace() uint64 {
 func (vol *Vol) updateViewCache(c *Cluster) {
 	view := proto.NewVolView(vol.Name, vol.Status, vol.FollowerRead, vol.isSmart, vol.createTime)
 	view.ForceROW = vol.ForceROW
+	view.EnableWriteCache = vol.enableWriteCache
 	view.CrossRegionHAType = vol.CrossRegionHAType
 	view.SetOwner(vol.Owner)
 	view.SetSmartRules(vol.smartRules)
@@ -1130,6 +1134,7 @@ func (vol *Vol) backupConfig() *Vol {
 		dpWriteableThreshold: vol.dpWriteableThreshold,
 		mpReplicaNum:         vol.mpReplicaNum,
 		ForceROW:             vol.ForceROW,
+		enableWriteCache:	  vol.enableWriteCache,
 		ExtentCacheExpireSec: vol.ExtentCacheExpireSec,
 		isSmart:              vol.isSmart,
 		smartRules:           vol.smartRules,
@@ -1166,6 +1171,7 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.dpWriteableThreshold = backupVol.dpWriteableThreshold
 	vol.mpReplicaNum = backupVol.mpReplicaNum
 	vol.ForceROW = backupVol.ForceROW
+	vol.enableWriteCache = backupVol.enableWriteCache
 	vol.ExtentCacheExpireSec = backupVol.ExtentCacheExpireSec
 	vol.isSmart = backupVol.isSmart
 	vol.smartRules = backupVol.smartRules

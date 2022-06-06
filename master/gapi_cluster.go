@@ -695,7 +695,7 @@ func (m *ClusterService) makeClusterView() *proto.ClusterView {
 	for _, name := range vols {
 		stat, ok := m.cluster.volStatInfo.Load(name)
 		if !ok {
-			cv.VolStatInfo = append(cv.VolStatInfo, newVolStatInfo(name, 0, 0, "0.0001", false))
+			cv.VolStatInfo = append(cv.VolStatInfo, newVolStatInfo(name, 0, 0, "0.0001", false, false))
 			continue
 		}
 		cv.VolStatInfo = append(cv.VolStatInfo, stat.(*volStatInfo))

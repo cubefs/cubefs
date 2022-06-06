@@ -54,6 +54,7 @@ type Wrapper struct {
 	followerReadClientCfg bool
 	nearRead              bool
 	forceROW              bool
+	enableWriteCache	  bool
 	extentCacheExpireSec  int64
 	dpSelectorChanged     bool
 	dpSelectorName        string
@@ -180,10 +181,11 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
 
 	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
-		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) forceROW(%v) createTime(%v) dpSelectorName(%v) "+
+		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) forceROW(%v) enableWriteCache(%v) createTime(%v) dpSelectorName(%v) "+
 		"dpSelectorParm(%v) quorum(%v) extentCacheExpireSecond(%v)",
 		view.ID, view.Name, view.Owner, view.Status, view.Capacity, view.MpReplicaNum, view.DpReplicaNum, view.MpCnt,
-		view.DpCnt, view.FollowerRead, view.ForceROW, view.CreateTime, view.DpSelectorName, view.DpSelectorParm, view.Quorum, view.ExtentCacheExpireSec)
+		view.DpCnt, view.FollowerRead, view.ForceROW, view.EnableWriteCache, view.CreateTime, view.DpSelectorName, view.DpSelectorParm,
+		view.Quorum, view.ExtentCacheExpireSec)
 	return nil
 }
 

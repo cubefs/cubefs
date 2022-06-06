@@ -64,6 +64,7 @@ func (s *VolumeService) registerObject(schema *schemabuilder.Schema) {
 			Capacity:             vol.Capacity,
 			FollowerRead:         vol.FollowerRead,
 			ForceROW:             vol.ForceROW,
+			EnableWriteCache:     vol.enableWriteCache,
 			CrossRegionHAType:    vol.CrossRegionHAType,
 			NeedToLowerReplica:   vol.NeedToLowerReplica,
 			Authenticate:         vol.authenticate,
@@ -236,7 +237,7 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 
 	vol, err := s.cluster.createVol(args.Name, args.Owner, args.ZoneName, args.Description, int(args.MpCount),
 		int(args.DpReplicaNum), defaultReplicaNum, int(args.DataPartitionSize), int(args.Capacity), 0, defaultEcDataNum, defaultEcParityNum, defaultEcEnable,
-		args.FollowerRead, args.Authenticate, args.EnableToken, false, false, false, false, 0, 0,
+		args.FollowerRead, args.Authenticate, args.EnableToken, false, false, false, false, false, 0, 0,
 		proto.StoreMode(args.storeMode), proto.MetaPartitionLayout{uint32(args.mpPercent), uint32(args.repPercent)}, nil, proto.CompactDefault)
 	if err != nil {
 		return nil, err
@@ -301,7 +302,7 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 	Name, AuthKey                                          string
 	ZoneName, Description                                  *string
 	Capacity, ReplicaNum, storeMode, mpPercent, repPercent *uint64
-	EnableToken, ForceROW                                  *bool
+	EnableToken, ForceROW, EnableWriteCache                *bool
 	FollowerRead, Authenticate, AutoRepair                 *bool
 }) (*Vol, error) {
 	uid, perm, err := permissions(ctx, ADMIN|USER)
@@ -334,6 +335,10 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 
 	if args.ForceROW == nil {
 		args.ForceROW = &vol.ForceROW
+	}
+
+	if args.EnableWriteCache == nil {
+		args.EnableWriteCache = &vol.enableWriteCache
 	}
 
 	if args.Authenticate == nil {
@@ -375,7 +380,7 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 
 	if err = s.cluster.updateVol(args.Name, args.AuthKey, *args.ZoneName, *args.Description, *args.Capacity,
 		uint8(*args.ReplicaNum), vol.mpReplicaNum, *args.FollowerRead, vol.NearRead, *args.Authenticate, *args.EnableToken, *args.AutoRepair, *args.ForceROW, false,
-		vol.dpSelectorName, vol.dpSelectorParm, vol.OSSBucketPolicy, vol.CrossRegionHAType, vol.dpWriteableThreshold, vol.trashRemainingDays,
+		*args.EnableWriteCache, vol.dpSelectorName, vol.dpSelectorParm, vol.OSSBucketPolicy, vol.CrossRegionHAType, vol.dpWriteableThreshold, vol.trashRemainingDays,
 		proto.StoreMode(*args.storeMode), proto.MetaPartitionLayout{uint32(*args.mpPercent), uint32(*args.repPercent)},
 		vol.ExtentCacheExpireSec, vol.smartRules, vol.compactTag); err != nil {
 		return nil, err
