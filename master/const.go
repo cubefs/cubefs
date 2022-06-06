@@ -112,9 +112,9 @@ const (
 )
 
 const (
-	mediumAll    = "all"
-	mediumSSD    = "ssd"
-	mediumNormal = "normal"
+	mediumAll = "all"
+	mediumSSD = "ssd"
+	mediumHDD = "hdd"
 )
 
 const (

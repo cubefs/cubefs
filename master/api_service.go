@@ -2990,8 +2990,8 @@ func extractMedium(r *http.Request) (medium string, err error) {
 		err = keyNotFound(mediumKey)
 		return
 	}
-	if !(medium == mediumAll || medium == mediumSSD || medium == mediumNormal) {
-		err = fmt.Errorf("medium must be %v, %v or %v ", mediumAll, mediumSSD, mediumNormal)
+	if !(medium == mediumAll || medium == mediumSSD || medium == mediumHDD) {
+		err = fmt.Errorf("medium must be %v, %v or %v ", mediumAll, mediumSSD, mediumHDD)
 		return
 	}
 	return

@@ -1233,7 +1233,7 @@ func (partition *DataPartition) isTargetMediumType(targetMedium string, c *Clust
 	if containSSD {
 		medium = mediumSSD
 	} else {
-		medium = mediumNormal
+		medium = mediumHDD
 	}
 	ok = medium == targetMedium
 	return

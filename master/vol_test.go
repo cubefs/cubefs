@@ -434,7 +434,7 @@ func TestVolBatchUpdateDps(t *testing.T) {
 		t.Errorf("expect count is %v,but get manualDPCount:%v", count, manualDPCount)
 		return
 	}
-	reqURL = fmt.Sprintf("%v%v?name=%v&isManual=%v&start=%v&end=%v&medium=normal",
+	reqURL = fmt.Sprintf("%v%v?name=%v&isManual=%v&start=%v&end=%v&medium=hdd",
 		hostAddr, proto.AdminVolBatchUpdateDps, vol.Name, false, minIsManualDpID, maxIsManualDpID)
 	fmt.Println(reqURL)
 	process(reqURL, t)
