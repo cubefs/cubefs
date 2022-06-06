@@ -60,16 +60,12 @@ type ExtentCache struct {
 func NewExtentCache(inode uint64) *ExtentCache {
 	return &ExtentCache{
 		inode:   inode,
-		root:    btree.New(32),
-		discard: btree.New(32),
+		root:    btree.NewWithSize(8, 4),
+		discard: btree.NewWithSize(8, 4),
 	}
 }
 
-// Refresh refreshes the extent cache.
-func (cache *ExtentCache) Refresh(inode uint64, getExtents GetExtentsFunc) error {
-	if cache.root.Len() > 0 {
-		return nil
-	}
+func (cache *ExtentCache) RefreshForce(inode uint64, getExtents GetExtentsFunc) error {
 	gen, size, extents, err := getExtents(inode)
 	if err != nil {
 		return err
@@ -81,7 +77,11 @@ func (cache *ExtentCache) Refresh(inode uint64, getExtents GetExtentsFunc) error
 }
 
 // Refresh refreshes the extent cache.
-func (cache *ExtentCache) RefreshForce(inode uint64, getExtents GetExtentsFunc) error {
+func (cache *ExtentCache) Refresh(inode uint64, getExtents GetExtentsFunc) error {
+	if cache.root.Len() > 0 {
+		return nil
+	}
+
 	gen, size, extents, err := getExtents(inode)
 	if err != nil {
 		return err

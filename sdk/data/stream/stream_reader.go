@@ -47,6 +47,7 @@ type Streamer struct {
 	handler   *ExtentHandler   // current open handler
 	dirtylist *DirtyExtentList // dirty handlers
 	dirty     bool             // whether current open handler is in the dirty list
+	isOpen    bool
 
 	request chan interface{} // request channel, write/flush/close
 	done    chan struct{}    // stream writer is being closed
@@ -65,6 +66,7 @@ func NewStreamer(client *ExtentClient, inode uint64) *Streamer {
 	s.request = make(chan interface{}, 64)
 	s.done = make(chan struct{})
 	s.dirtylist = NewDirtyExtentList()
+	s.isOpen = true
 	go s.server()
 	return s
 }
@@ -105,6 +107,8 @@ func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
 }
 
 func (s *Streamer) read(data []byte, offset int, size int) (total int, err error) {
+	//log.LogErrorf("==========> Streamer Read Enter, inode(%v).", s.inode)
+	//t1 := time.Now()
 	var (
 		readBytes       int
 		reader          *ExtentReader
@@ -154,6 +158,7 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 				//if total == 0 {
 				//	log.LogErrorf("read: ino(%v) req(%v) filesize(%v)", s.inode, req, filesize)
 				//}
+				//log.LogErrorf("==========> Streamer Read Exit, inode(%v), time[%v us].", s.inode, time.Since(t1).Microseconds())
 				return
 			}
 
@@ -235,5 +240,6 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 			}
 		}
 	}
+	//log.LogErrorf("==========> Streamer Read Exit, inode(%v), time[%v us].", s.inode, time.Since(t1).Microseconds())
 	return
 }

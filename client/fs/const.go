@@ -61,6 +61,8 @@ var (
 	LookupValidDuration = 5 * time.Second
 	// the expiration duration of the attributes in the FUSE cache
 	AttrValidDuration = 30 * time.Second
+
+	DisableMetaCache = true
 )
 
 // ParseError returns the error type.

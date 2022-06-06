@@ -153,19 +153,22 @@ func (f *File) Forget() {
 		stat.EndStat("Forget", err, bgTime, 1)
 		log.LogDebugf("TRACE Forget: ino(%v)", ino)
 	}()
-	f.super.ic.Delete(ino)
+
 	//TODO:why cannot close fwriter
 	//log.LogErrorf("TRACE Forget: ino(%v)", ino)
 	//if f.fWriter != nil {
 	//	f.fWriter.Close()
 	//}
-	f.super.fslock.Lock()
-	delete(f.super.nodeCache, ino)
-	f.super.fslock.Unlock()
 
-	if err := f.super.ec.EvictStream(ino); err != nil {
-		log.LogWarnf("Forget: stream not ready to evict, ino(%v) err(%v)", ino, err)
-		return
+	if DisableMetaCache {
+		f.super.ic.Delete(ino)
+		f.super.fslock.Lock()
+		delete(f.super.nodeCache, ino)
+		f.super.fslock.Unlock()
+		if err := f.super.ec.EvictStream(ino); err != nil {
+			log.LogWarnf("Forget: stream not ready to evict, ino(%v) err(%v)", ino, err)
+			return
+		}
 	}
 
 	if !f.super.orphan.Evict(ino) {
@@ -185,7 +188,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	}()
 
 	ino := f.info.Inode
-	log.LogDebugf("TRANCE open ino(%v) info(%v)", ino, f.info)
+	log.LogDebugf("TRACE open ino(%v) info(%v)", ino, f.info)
 	start := time.Now()
 
 	f.super.ec.OpenStream(ino)
@@ -230,18 +233,24 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Open: ino(%v) req(%v) resp(%v) (%v)ns", ino, req, resp, elapsed.Nanoseconds())
+
 	return f, nil
 }
 
 // Release handles the release request.
 func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error) {
+
+	ino := f.info.Inode
 	bgTime := stat.BeginStat()
+
 	defer func() {
 		stat.EndStat("Release", err, bgTime, 1)
 		f.fWriter.FreeCache()
+		if DisableMetaCache {
+			f.super.ic.Delete(ino)
+		}
 	}()
 
-	ino := f.info.Inode
 	log.LogDebugf("TRACE Release enter: ino(%v) req(%v)", ino, req)
 
 	start := time.Now()
@@ -254,12 +263,11 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 	err = f.super.ec.CloseStream(ino)
 	if err != nil {
 		log.LogErrorf("Release: close writer failed, ino(%v) req(%v) err(%v)", ino, req, err)
-		f.super.ic.Delete(ino)
 		return ParseError(err)
 	}
-	f.super.ic.Delete(ino)
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Release: ino(%v) req(%v) (%v)ns", ino, req, elapsed.Nanoseconds())
+
 	return nil
 }
 
@@ -310,6 +318,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Read: ino(%v) offset(%v) reqsize(%v) req(%v) size(%v) (%v)ns", f.info.Inode, req.Offset, req.Size, req, size, elapsed.Nanoseconds())
+
 	return nil
 }
 
@@ -438,9 +447,14 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 		log.LogErrorf("TRACE Flush err: ino(%v) err(%v)", f.info.Inode, err)
 		return ParseError(err)
 	}
-	f.super.ic.Delete(f.info.Inode)
+
+	if DisableMetaCache {
+		f.super.ic.Delete(f.info.Inode)
+	}
+
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Flush: ino(%v) (%v)ns", f.info.Inode, elapsed.Nanoseconds())
+
 	return nil
 }
 
@@ -673,6 +687,6 @@ func (f *File) fileSizeVersion2(ino uint64) (size int, gen uint64) {
 		}
 	}
 
-	log.LogDebugf("TRANCE fileSizeVersion2: ino(%v) fileSize(%v) gen(%v) valid(%v)", ino, size, gen, valid)
+	log.LogDebugf("TRACE fileSizeVersion2: ino(%v) fileSize(%v) gen(%v) valid(%v)", ino, size, gen, valid)
 	return
 }

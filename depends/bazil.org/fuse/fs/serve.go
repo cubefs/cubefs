@@ -22,6 +22,7 @@ import (
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fuseutil"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/stat"
 	"golang.org/x/net/context"
 	"golang.org/x/time/rate"
 )
@@ -1295,6 +1296,11 @@ func (c *Server) serve(r fuse.Request) {
 	}
 
 	req := &serveRequest{Request: r, cancel: cancel}
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("fuse:"+opName(r), nil, bgTime, 1)
+	}()
 
 	c.debug(request{
 		Op:      opName(r),

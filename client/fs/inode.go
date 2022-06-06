@@ -92,10 +92,7 @@ func fillAttr(info *proto.InodeInfo, attr *fuse.Attr) {
 }
 
 func inodeExpired(info *proto.InodeInfo) bool {
-	if time.Now().UnixNano() > info.Expiration() {
-		return true
-	}
-	return false
+	return time.Now().UnixNano() > info.Expiration()
 }
 
 func inodeSetExpiration(info *proto.InodeInfo, t time.Duration) {

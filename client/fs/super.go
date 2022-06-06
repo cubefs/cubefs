@@ -136,6 +136,10 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		s.sc = NewSummaryCache(DefaultSummaryExpiration, MaxSummaryCache)
 	}
 
+	if opt.MaxStreamerLimit > 0 {
+		DisableMetaCache = false
+	}
+
 	s.volType = opt.VolType
 	s.ebsEndpoint = opt.EbsEndpoint
 	s.CacheAction = opt.CacheAction
@@ -157,6 +161,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		WriteRate:         opt.WriteRate,
 		VolumeType:        opt.VolType,
 		BcacheEnable:      opt.EnableBcache,
+		MaxStreamerLimit:  opt.MaxStreamerLimit,
 		OnAppendExtentKey: s.mw.AppendExtentKey,
 		OnGetExtents:      s.mw.GetExtents,
 		OnTruncate:        s.mw.Truncate,
@@ -164,7 +169,10 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		OnLoadBcache:      s.bc.Get,
 		OnCacheBcache:     s.bc.Put,
 		OnEvictBcache:     s.bc.Evict,
+
+		DisableMetaCache: DisableMetaCache,
 	}
+
 	s.ec, err = stream.NewExtentClient(extentConfig)
 	if err != nil {
 		return nil, errors.Trace(err, "NewExtentClient failed!")

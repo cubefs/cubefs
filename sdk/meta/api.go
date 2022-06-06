@@ -252,6 +252,8 @@ func (mw *MetaWrapper) BatchInodeGet(inodes []uint64) []*proto.InodeInfo {
 	for infos := range resp {
 		batchInfos = append(batchInfos, infos...)
 	}
+
+	log.LogDebugf("BatchInodeGet: inodesCnt(%d)", len(inodes))
 	return batchInfos
 }
 
