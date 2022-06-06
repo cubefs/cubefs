@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"hash/crc32"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -950,7 +949,7 @@ func parseQosInfo(r *http.Request) (info *proto.ClientReportLimitInfo, err error
 	if body, err = ioutil.ReadAll(r.Body); err != nil {
 		return
 	}
-	log.LogInfof("action[parseQosInfo] body len:[%v],crc:[%v]", len(body), crc32.ChecksumIEEE(body))
+	// log.LogInfof("action[parseQosInfo] body len:[%v],crc:[%v]", len(body), crc32.ChecksumIEEE(body))
 	err = json.Unmarshal(body, info)
 	return
 }
