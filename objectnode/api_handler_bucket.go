@@ -18,8 +18,10 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/xml"
+	"io"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/cubefs/cubefs/proto"
@@ -37,19 +39,35 @@ func (o *ObjectNode) headBucketHandler(w http.ResponseWriter, r *http.Request) {
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateBucket.html
 func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request) {
 	var (
-		err error
+		err       error
+		errorCode *ErrorCode
 	)
+
+	defer func() {
+		if errorCode != nil {
+			_ = errorCode.ServeResponse(w, r)
+			return
+		}
+	}()
+
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
 	if bucket == "" {
 		_ = InvalidBucketName.ServeResponse(w, r)
 		return
 	}
-	if vol, _ := o.getVol(bucket); vol != nil {
+	//if vol, _ := o.getVol(bucket); vol != nil {
+	//	log.LogInfof("create bucket failed: duplicated bucket name[%v]", bucket)
+	//	_ = DuplicatedBucket.ServeResponse(w, r)
+	//	return
+	//}
+
+	if vol, _ := o.vm.VolumeWithoutBlacklist(bucket); vol != nil {
 		log.LogInfof("create bucket failed: duplicated bucket name[%v]", bucket)
 		_ = DuplicatedBucket.ServeResponse(w, r)
 		return
 	}
+
 	auth := parseRequestAuthInfo(r)
 	var userInfo *proto.UserInfo
 	if userInfo, err = o.getUserInfoByAccessKey(auth.accessKey); err != nil {
@@ -57,13 +75,43 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
+
+	// get LocationConstraint if any
+	contentLenStr := r.Header.Get(HeaderNameContentLength)
+	if contentLen, errConv := strconv.Atoi(contentLenStr); errConv == nil && contentLen > 0 {
+		var requestBytes []byte
+		requestBytes, err = ioutil.ReadAll(r.Body)
+		if err != nil && err != io.EOF {
+			log.LogErrorf("createBucketHandler: read request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			errorCode = InternalErrorCode(err)
+			return
+		}
+
+		createBucketRequest := &CreateBucketRequest{}
+		err = UnmarshalXMLEntity(requestBytes, createBucketRequest)
+		if err != nil {
+			log.LogErrorf("createBucketHandler: unmarshal xml fail: requestID(%v) err(%v)",
+				GetRequestID(r), err)
+			errorCode = InvalidArgument
+			return
+		}
+		if createBucketRequest.LocationConstraint != o.region {
+			_ = InvalidLocationConstraint.ServeResponse(w, r)
+			log.LogErrorf("createBucketHandler failed: LocationConstraint(%v), region(%v)",
+				createBucketRequest.LocationConstraint, o.region)
+			return
+		}
+	}
+
 	if err = o.mc.AdminAPI().CreateDefaultVolume(bucket, userInfo.UserID); err != nil {
 		log.LogErrorf("create bucket[%v] failed: accessKey(%v), err(%v)", bucket, auth.accessKey, err)
 		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
 	//todo parse body
-	w.Header()[HeaderNameLocation] = []string{o.region}
+	//w.Header()[HeaderNameLocation] = []string{o.region}
+	w.Header()[HeaderNameLocation] = []string{"/" + bucket}
+	w.Header()[HeaderNameConnection] = []string{"close"}
 	return
 }
 
@@ -72,9 +120,9 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request) {
 
 	var (
-		volState *proto.VolStatInfo
-		authKey  string
-		err      error
+		//volState *proto.VolStatInfo
+		authKey string
+		err     error
 	)
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
@@ -89,15 +137,27 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
-	if volState, err = o.mc.ClientAPI().GetVolumeStat(bucket); err != nil {
-		log.LogErrorf("get bucket state from master error: err(%v)", err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
+	//if volState, err = o.mc.ClientAPI().GetVolumeStat(bucket); err != nil {
+	//	log.LogErrorf("get bucket state from master error: err(%v)", err)
+	//	_ = InternalErrorCode(err).ServeResponse(w, r)
+	//	return
+	//}
+	//if volState.UsedSize != 0 {
+	//	_ = BucketNotEmpty.ServeResponse(w, r)
+	//	return
+	//}
+
+	var vol *Volume
+	if vol, err = o.vm.Volume(bucket); err != nil {
+		_ = NoSuchBucket.ServeResponse(w, r)
 		return
 	}
-	if volState.UsedSize != 0 {
+
+	if !vol.IsEmpty() {
 		_ = BucketNotEmpty.ServeResponse(w, r)
 		return
 	}
+
 	// delete Volume from master
 	if authKey, err = calculateAuthKey(userInfo.UserID); err != nil {
 		log.LogErrorf("delete bucket[%v] error: calculate authKey(%v) err(%v)", bucket, userInfo.UserID, err)

@@ -93,6 +93,12 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		w.Header()[HeaderNameXAmzRequestId] = []string{requestID}
 		w.Header()[HeaderNameServer] = []string{HeaderValueServer}
 
+		if connHeader := r.Header.Get(HeaderNameConnection); strings.EqualFold(connHeader, "close") {
+			w.Header()[HeaderNameConnection] = []string{"close"}
+		} else {
+			w.Header()[HeaderNameConnection] = []string{"keep-alive"}
+		}
+
 		var action = ActionFromRouteName(mux.CurrentRoute(r).GetName())
 		SetRequestAction(r, action)
 		// ===== pre-handle finish =====
@@ -179,12 +185,10 @@ func (o *ObjectNode) authMiddleware(next http.Handler) http.Handler {
 				_ = InternalErrorCode(err).ServeResponse(w, r)
 				return
 			}
-
 			if !pass {
 				_ = AccessDenied.ServeResponse(w, r)
 				return
 			}
-
 			next.ServeHTTP(w, r)
 		})
 }
@@ -258,10 +262,18 @@ func (o *ObjectNode) corsMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+
 		var vol *Volume
-		if vol, err = o.vm.Volume(param.Bucket()); err != nil {
-			next.ServeHTTP(w, r)
-			return
+		if param.action == proto.OSSCreateBucketAction {
+			if vol, err = o.vm.VolumeWithoutBlacklist(param.Bucket()); err != nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+		} else {
+			if vol, err = o.vm.Volume(param.Bucket()); err != nil {
+				next.ServeHTTP(w, r)
+				return
+			}
 		}
 
 		var setupCORSHeader = func(volume *Volume, writer http.ResponseWriter, request *http.Request) {

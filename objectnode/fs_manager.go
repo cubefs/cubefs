@@ -82,6 +82,10 @@ func (loader *VolumeLoader) Volume(volName string) (*Volume, error) {
 	return loader.loadVolume(volName)
 }
 
+func (loader *VolumeLoader) VolumeWithoutBlacklist(volName string) (*Volume, error) {
+	return loader.loadVolumeWithoutBlacklist(volName)
+}
+
 func (loader *VolumeLoader) syncVolumeInit(volume string) (releaseFunc func()) {
 	value, _ := loader.volInitMap.LoadOrStore(volume, new(sync.Mutex))
 	var initMu = value.(*sync.Mutex)
@@ -94,17 +98,69 @@ func (loader *VolumeLoader) syncVolumeInit(volume string) (releaseFunc func()) {
 	}
 }
 
+func (loader *VolumeLoader) loadVolumeWithoutBlacklist(volName string) (*Volume, error) {
+	var err error
+	var volume *Volume
+	var exist bool
+	loader.volMu.RLock()
+	volume, exist = loader.volumes[volName]
+	loader.volMu.RUnlock()
+	if !exist {
+		var release = loader.syncVolumeInit(volName)
+		loader.volMu.RLock()
+		volume, exist = loader.volumes[volName]
+		if exist {
+			loader.volMu.RUnlock()
+			release()
+			return volume, nil
+		}
+		loader.volMu.RUnlock()
+
+		var onAsyncTaskError AsyncTaskErrorFunc = func(err error) {
+			switch err {
+			case proto.ErrVolNotExists:
+				loader.Release(volName)
+			default:
+			}
+		}
+		var config = &VolumeConfig{
+			Volume:           volName,
+			Masters:          loader.masters,
+			Store:            loader.store,
+			OnAsyncTaskError: onAsyncTaskError,
+			MetaStrict:       loader.metaStrict,
+		}
+		if volume, err = NewVolume(config); err != nil {
+			if err != proto.ErrVolNotExists {
+				log.LogErrorf("loadVolume: init volume fail: volume(%v) err(%v)", volume, err)
+			}
+			release()
+			return nil, err
+		}
+		ak, sk := volume.OSSSecure()
+		log.LogDebugf("[loadVolume] load Volume: Name[%v] AccessKey[%v] SecretKey[%v]", volName, ak, sk)
+
+		loader.volMu.Lock()
+		loader.volumes[volName] = volume
+		loader.volMu.Unlock()
+		release()
+
+	}
+
+	return volume, nil
+}
+
 func (loader *VolumeLoader) loadVolume(volName string) (*Volume, error) {
 	var err error
 	// Check if the volume is on the blacklist.
 	if val, exist := loader.blacklist.Load(volName); exist {
 		if ts, is := val.(time.Time); is {
 			if time.Since(ts) <= volumeBlacklistTTL {
+				log.LogDebugf("loadVolume faild, blacklist")
 				return nil, proto.ErrVolNotExists
 			}
 		}
 	}
-
 	var volume *Volume
 	var exist bool
 	loader.volMu.RLock()
@@ -202,6 +258,10 @@ func (m *VolumeManager) selectLoader(name string) *VolumeLoader {
 
 func (m *VolumeManager) Volume(volName string) (*Volume, error) {
 	return m.selectLoader(volName).Volume(volName)
+}
+
+func (m *VolumeManager) VolumeWithoutBlacklist(volName string) (*Volume, error) {
+	return m.selectLoader(volName).VolumeWithoutBlacklist(volName)
 }
 
 // Release all

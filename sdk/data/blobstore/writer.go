@@ -201,7 +201,8 @@ func (writer *Writer) WriteFromReader(ctx context.Context, reader io.Reader, h h
 			}
 			wSlice.Data = make([]byte, bufSize)
 			copy(wSlice.Data, writer.buf)
-			writer.resetBuffer()
+			//writer.resetBuffer()
+			writer.buf = writer.buf[:0]
 			if (err == nil || err == io.EOF) && h != nil {
 				h.Write(wSlice.Data)
 				log.LogDebugf("writeBuff: bufSize(%v), md5", bufSize)

@@ -163,6 +163,10 @@ const (
 	POSIXReadAction  Action = POSIXActionPrefix + "Read"
 	POSIXWriteAction Action = POSIXActionPrefix + "Write"
 
+	// Object lock actions
+	OSSPutObjectLockConfigurationAction Action = OSSActionPrefix + "PutObjectLockConfiguration" // unsupported
+	OSSGetObjectLockConfigurationAction Action = OSSActionPrefix + "GetObjectLockConfiguration" // unsupported
+
 	NoneAction Action = ""
 )
 
@@ -240,6 +244,9 @@ var (
 		// POSIX file system interface actions
 		POSIXReadAction,
 		POSIXWriteAction,
+
+		OSSPutObjectLockConfigurationAction,
+		OSSGetObjectLockConfigurationAction,
 	}
 )
 
