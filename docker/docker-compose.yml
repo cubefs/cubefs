@@ -404,7 +404,7 @@ services:
             extnetwork:
 
     convert:
-        image: chubaofs/cfs-base:1.3
+        image: chubaofs/cfs-base:1.4
         ports:
             - 8002
             - 7001

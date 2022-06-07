@@ -61,7 +61,7 @@ func TestMetaPartition_storeDeletedDentry(t *testing.T) {
 	}
 
 	msg := new(storeMsg)
-	msg.snap = &BTreeSnapShot{
+	msg.snap = &MemSnapShot{
 		delDentry: &DeletedDentryBTree{tree},
 	}
 
@@ -140,7 +140,7 @@ func TestMetaPartition_storeDeletedInode(t *testing.T) {
 	}
 
 	storeMsg := new(storeMsg)
-	storeMsg.snap = &BTreeSnapShot{
+	storeMsg.snap = &MemSnapShot{
 		delInode: &DeletedInodeBTree{tree},
 	}
 	mp := new(metaPartition)
@@ -197,7 +197,7 @@ func TestMetaPartition_storeInode(t *testing.T) {
 	}
 
 	sMsg := new(storeMsg)
-	sMsg.snap = &BTreeSnapShot{
+	sMsg.snap = &MemSnapShot{
 		inode: &InodeBTree{tree},
 	}
 	mp := new(metaPartition)
@@ -262,7 +262,7 @@ func TestMetaPartition_storeDentry(t *testing.T) {
 	}
 
 	msg := new(storeMsg)
-	msg.snap = &BTreeSnapShot{
+	msg.snap = &MemSnapShot{
 		dentry: &DentryBTree{tree},
 	}
 
@@ -342,7 +342,7 @@ func TestMetaPartition_storeExtend(t *testing.T) {
 	}
 
 	msg := new(storeMsg)
-	msg.snap = &BTreeSnapShot{
+	msg.snap = &MemSnapShot{
 		extend: &ExtendBTree{tree},
 	}
 
@@ -431,7 +431,7 @@ func TestMetaPartition_storeMultipart(t *testing.T) {
 	}
 
 	msg := new(storeMsg)
-	msg.snap = &BTreeSnapShot{
+	msg.snap = &MemSnapShot{
 		multipart: &MultipartBTree{tree},
 	}
 

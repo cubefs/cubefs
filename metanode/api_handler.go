@@ -18,9 +18,11 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/util"
+	"hash/crc32"
 	"io"
 	"math"
 	"net/http"
@@ -82,6 +84,9 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/resetPeer", m.resetPeer)
 	http.HandleFunc("/removePeer", m.removePeerInRaftLog)
 	http.HandleFunc("/getAllDeleteExtents", m.getAllDeleteEkHandler)
+
+	http.HandleFunc("/getMetaDataCrcSum", m.getMetaDataCrcSum)
+	http.HandleFunc("/getInodesCrcSum", m.getAllInodesCrcSum)
 	return
 }
 
@@ -979,5 +984,141 @@ func (m *MetaNode) removePeerInRaftLog(w http.ResponseWriter, r *http.Request) {
 
 	resp.Code = http.StatusOK
 	resp.Msg = "OK"
+	return
+}
+
+func (m *MetaNode) getMetaDataCrcSum(w http.ResponseWriter, r *http.Request) {
+	var (
+		err    error
+		pid    uint64
+		mp     MetaPartition
+		crcSum uint32
+	)
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("[getMetaDataCrcSum] response %s", err)
+		}
+	}()
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	if pid, err = strconv.ParseUint(r.FormValue("pid"), 10, 64); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	if mp, err = m.metadataManager.GetPartition(pid); err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	snap := mp.GetSnapShot()
+	if snap == nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = "meta partition snapshot is nil"
+		return
+	}
+	defer snap.Close()
+
+	var (
+		cntSet    = make([]uint64, 0)
+		crcSumSet = make([]uint32, 0)
+	)
+	for t := DentryType; t < MaxType; t++{
+		crcSum, err = snap.CrcSum(t)
+		if err != nil {
+			resp.Code = http.StatusInternalServerError
+			resp.Msg = fmt.Sprintf("%s crc sum error:%v", t.String(), err)
+			return
+		}
+		cntSet = append(cntSet, snap.Count(t))
+		crcSumSet = append(crcSumSet, crcSum)
+	}
+	resp.Data = &proto.MetaDataCRCSumInfo{
+		PartitionID: pid,
+		ApplyID:     snap.ApplyID(),
+		CntSet:      cntSet,
+		CRCSumSet:   crcSumSet,
+	}
+	return
+}
+
+func (m *MetaNode) getAllInodesCrcSum(w http.ResponseWriter, r *http.Request)  {
+	var (
+		err error
+		pid uint64
+		mp  MetaPartition
+	)
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("[getAllInodesCrcSum] response %s", err)
+		}
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	if pid, err = strconv.ParseUint(r.FormValue("pid"), 10, 64); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	if mp, err = m.metadataManager.GetPartition(pid); err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	snap := mp.GetSnapShot()
+	if snap == nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = "meta partition snapshot is nil"
+		return
+	}
+	defer snap.Close()
+
+	var (
+		inodeCnt  = snap.Count(InodeType)
+		crcSumSet = make([]uint32, 0, inodeCnt)
+		inodes    = make([]uint64, 0, inodeCnt)
+		crc       = crc32.NewIEEE()
+	)
+	err = snap.Range(InodeType, func(inodeBinary []byte) (bool, error) {
+		if len(inodeBinary) < AccessTimeOffset + 8 {
+			return false, fmt.Errorf("inode binary with error length:%v", len(inodeBinary))
+		}
+		binary.BigEndian.PutUint64(inodeBinary[AccessTimeOffset: AccessTimeOffset+8], 0)
+		inodes = append(inodes, binary.BigEndian.Uint64(inodeBinary[BaseInodeKeyOffset : BaseInodeKeyOffset +8]))
+		crcSumSet = append(crcSumSet, crc32.ChecksumIEEE(inodeBinary[0:]))
+		if _, err = crc.Write(inodeBinary); err != nil {
+			return false, fmt.Errorf("crc sum write failed:%v", err)
+		}
+		return true, nil
+	})
+	if err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+	resp.Data = &proto.InodesCRCSumInfo{
+		PartitionID:     pid,
+		ApplyID:         snap.ApplyID(),
+		AllInodesCRCSum: crc.Sum32(),
+		InodesID:        inodes,
+		CRCSumSet:       crcSumSet,
+	}
 	return
 }

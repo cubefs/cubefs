@@ -34,7 +34,27 @@ const (
 	MultipartType
 	DelDentryType
 	DelInodeType
+	MaxType
 )
+
+func (t TreeType) String() string {
+	switch t {
+	case DentryType:
+		return "dentry tree"
+	case InodeType:
+		return "inode tree"
+	case ExtendType:
+		return "extend tree"
+	case MultipartType:
+		return "multipart tree"
+	case DelDentryType:
+		return "deleted dentry tree"
+	case DelInodeType:
+		return "deleted inode tree"
+	default:
+		return "unknown"
+	}
+}
 
 var (
 	existsError    = fmt.Errorf("exists error")
@@ -45,7 +65,8 @@ var (
 
 func NewSnapshot(mp *metaPartition) Snapshot {
 	if mp.HasMemStore() {
-		return &BTreeSnapShot{
+		return &MemSnapShot{
+			applyID:   mp.GetAppliedID(),
 			inode:     &InodeBTree{mp.inodeTree.(*InodeBTree).GetTree()},
 			dentry:    &DentryBTree{mp.dentryTree.(*DentryBTree).GetTree()},
 			extend:    &ExtendBTree{mp.extendTree.(*ExtendBTree).GetTree()},
@@ -64,7 +85,9 @@ func NewSnapshot(mp *metaPartition) Snapshot {
 type Snapshot interface {
 	Range(tp TreeType, cb func(v []byte) (bool, error)) error
 	Close()
-	Count(tp TreeType) (uint64)
+	Count(tp TreeType) uint64
+	CrcSum(tp TreeType) (uint32, error)
+	ApplyID() uint64
 }
 
 type Tree interface {
@@ -75,6 +98,7 @@ type Tree interface {
 	Clear() error
 	Execute(fn func(tree interface{}) interface{}) interface{}
 	PersistBaseInfo() error
+	GetPersistentApplyID() uint64
 }
 
 type InodeTree interface {

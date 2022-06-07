@@ -35,6 +35,7 @@ const (
 	BaseInodeValueLen    = 72
 	BaseInodeKeyOffset   = 4
 	BaseInodeValueOffset = 16
+	AccessTimeOffset     = 52
 )
 
 // Inode wraps necessary properties of `Inode` information in the file system.

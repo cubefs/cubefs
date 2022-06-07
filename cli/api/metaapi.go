@@ -100,6 +100,7 @@ func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 	}
 	stateCode := resp.StatusCode
 	respData, err = ioutil.ReadAll(resp.Body)
+	log.LogInfof("resp data:%s", string(respData))
 	_ = resp.Body.Close()
 	if err != nil {
 		log.LogErrorf("serveRequest: read http response body fail: err(%v)", err)
@@ -283,4 +284,40 @@ func (mc *MetaHttpClient) GetAllInodes(pid uint64) (rstMap map[uint64]*metanode.
 	}
 
 	return inodeMap, nil
+}
+
+func (mc *MetaHttpClient) GetMetaDataCrcSum(pid uint64) (result *proto.MetaDataCRCSumInfo, err error){
+	req := newAPIRequest(http.MethodGet, "/getMetaDataCrcSum")
+	req.params["pid"] = fmt.Sprintf("%v", pid)
+	var data []byte
+	data, err = mc.serveRequest(req)
+	if err != nil {
+		log.LogInfof("err:%v,respData:%v\n", err, string(data))
+		return
+	}
+	result = new(proto.MetaDataCRCSumInfo)
+	if err = json.Unmarshal(data, result); err != nil {
+		err = fmt.Errorf("unmarshal failed:%v", err)
+		return
+	}
+	return
+}
+
+func (mc *MetaHttpClient) GetInodesCrcSum(pid uint64) (result *proto.InodesCRCSumInfo, err error) {
+	req := newAPIRequest(http.MethodGet, "/getInodesCrcSum")
+	req.params["pid"] = fmt.Sprintf("%v", pid)
+	var respData []byte
+	respData, err = mc.serveRequest(req)
+	if err != nil {
+		log.LogErrorf("err:%v,respData:%v\n", err, string(respData))
+		return
+	}
+
+	dec := json.NewDecoder(bytes.NewBuffer(respData))
+	result = &proto.InodesCRCSumInfo{}
+	if err = dec.Decode(result); err != nil {
+		log.LogErrorf("decode failed:%v", err)
+		return
+	}
+	return
 }
