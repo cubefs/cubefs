@@ -31,6 +31,7 @@ const (
 	CliOpFreeze            = "freeze"
 	CliOpSetThreshold      = "threshold"
 	CliOpCheck             = "check"
+	CliOpCheckCommit       = "check-commit"
 	CliOpReset             = "reset"
 	CliOpReplicate         = "add-replica"
 	CliOpDelReplica        = "del-replica"

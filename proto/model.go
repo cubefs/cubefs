@@ -314,6 +314,11 @@ type Status struct {
 	RestoringSnapshot bool
 	State             string // leader、follower、candidate
 	Replicas          map[uint64]*ReplicaStatus
+	Log               *LogStatus
+}
+type LogStatus struct {
+	FirstIndex uint64
+	LastIndex  uint64
 }
 
 // ReplicaStatus  replica status

@@ -1,16 +1,13 @@
 package cmd
 
 import (
-	"bufio"
-	"encoding/json"
+
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/data"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/log"
-	"io"
 	"math"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -44,11 +41,12 @@ type tinyExtentRepairServer struct {
 	holeNumFd       *os.File
 	holeSizeFd      *os.File
 	availSizeFd     *os.File
+	hugeTinyFd      *os.File
 	failedGetExtFd  *os.File
 	successRepairFd *os.File
 	failRepairFd    *os.File
-	scanLimitCh     chan bool
 	repairLimitCh   chan bool
+	autoRepair      bool
 	fdLock          sync.Mutex
 }
 
@@ -57,36 +55,35 @@ type ExtentRepairInfo struct {
 	ExtentID uint64                  `json:"extent_id"`
 }
 
-func (server *tinyExtentRepairServer) getRepairStatus(w http.ResponseWriter, _ *http.Request) {
-	b, _ := json.Marshal(server.PartitionMap)
-	w.Write(b)
-}
-
-func newRepairServer(limit uint64) (rServer *tinyExtentRepairServer) {
+func newRepairServer(autoRepair bool) (rServer *tinyExtentRepairServer) {
 	rServer = new(tinyExtentRepairServer)
 	rServer.PartitionMap = make(map[uint64][]*ExtentRepairInfo, 0)
-	rServer.scanLimitCh = make(chan bool, limit)
 	rServer.repairLimitCh = make(chan bool, 10)
+	rServer.autoRepair = autoRepair
 	return
 }
+
 func (server *tinyExtentRepairServer) start() {
-	fileNum, _ := os.OpenFile(fmt.Sprintf("tiny_extent_hole_diff_num%v.csv", time.Now().Unix()), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	fileSize, _ := os.OpenFile(fmt.Sprintf("tiny_extent_hole_diff_size%v.csv", time.Now().Unix()), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	fileAvailSize, _ := os.OpenFile(fmt.Sprintf("tiny_extent_avail_diff_size%v.csv", time.Now().Unix()), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	fileGetFailExt, _ := os.OpenFile(fmt.Sprintf("tiny_extent_get_fail%v.csv", time.Now().Unix()), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	successRepair, _ := os.OpenFile("success_tiny_extent_repair.csv", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	failRepair, _ := os.OpenFile("fail_tiny_extent_repair.csv", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	server.holeNumFd, _ = os.OpenFile(fmt.Sprintf("tiny_extent_hole_diff_num_%v.csv", time.Now().Format("2006010215")), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	server.holeSizeFd, _ = os.OpenFile(fmt.Sprintf("tiny_extent_hole_diff_size_%v.csv", time.Now().Format("2006010215")), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	server.availSizeFd, _ = os.OpenFile(fmt.Sprintf("tiny_extent_avail_diff_size_%v.csv", time.Now().Format("2006010215")), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	server.hugeTinyFd, _ = os.OpenFile(fmt.Sprintf("tiny_extent_huge_%v.csv", time.Now().Format("2006010215")), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	server.failedGetExtFd, _ = os.OpenFile(fmt.Sprintf("tiny_extent_get_fail_%v.csv", time.Now().Format("2006010215")), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	server.successRepairFd, _ = os.OpenFile("success_tiny_extent_repair.csv", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	server.failRepairFd, _ = os.OpenFile("fail_tiny_extent_repair.csv", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 
-	fileNum.WriteString("Volume,Partition,Extent,DiffHolesNum,DiffExtentSize,MinHolesNum,MinHolesNumHost,MaxHolesNum,MaxHolesNumHost,BadHostsNum,BadHosts,Hosts\n")
-	fileSize.WriteString("Volume,Partition,Extent,DiffHolesSize,DiffExtentSize,MinHolesSize,MinHolesSizeHost,MaxHolesSize,MaxHolesSizeHost,BadHostsNum,BadHosts,Hosts\n")
-	fileAvailSize.WriteString("Volume,Partition,Extent,DiffAvailSize,DiffExtentSize,MaxAvailSize,MaxAvailSizeHost,MinAvailSize,MinAvailSizeHost,BadHostsNum,BadHosts,Hosts\n")
-
-	server.holeNumFd = fileNum
-	server.holeSizeFd = fileSize
-	server.availSizeFd = fileAvailSize
-	server.failedGetExtFd = fileGetFailExt
-	server.successRepairFd = successRepair
-	server.failRepairFd = failRepair
+	if s, _ := server.holeNumFd.Stat(); s.Size() == 0 {
+		server.holeNumFd.WriteString("Volume,Partition,Extent,DiffHolesNum,DiffExtentSize,MinHolesNum,MinHolesNumHost,MaxHolesNum,MaxHolesNumHost,BadHostsNum,BadHosts,Hosts\n")
+	}
+	if s, _ := server.holeSizeFd.Stat(); s.Size() == 0 {
+		server.holeSizeFd.WriteString("Volume,Partition,Extent,DiffHolesSize,DiffExtentSize,MinHolesSize,MinHolesSizeHost,MaxHolesSize,MaxHolesSizeHost,BadHostsNum,BadHosts,Hosts\n")
+	}
+	if s, _ := server.availSizeFd.Stat(); s.Size() == 0 {
+		server.availSizeFd.WriteString("Volume,Partition,Extent,DiffAvailSize,DiffExtentSize,MaxAvailSize,MaxAvailSizeHost,MinAvailSize,MinAvailSizeHost,BadHostsNum,BadHosts,Hosts\n")
+	}
+	if s, _ := server.hugeTinyFd.Stat(); s.Size() == 0 {
+		server.hugeTinyFd.WriteString("Volume,Partition,MaxExtent,MaxExtentMaxReplica,MaxExtentMinReplica,MinExtent,MinExtentMaxReplicaMinExtentMinReplica,Hosts\n")
+	}
 }
 
 func (server *tinyExtentRepairServer) stop() {
@@ -99,123 +96,12 @@ func (server *tinyExtentRepairServer) stop() {
 }
 
 func (server *tinyExtentRepairServer) writeFile(fd *os.File, s string) {
+	if s == "" {
+		return
+	}
 	server.fdLock.Lock()
 	defer server.fdLock.Unlock()
 	fd.WriteString(s)
-}
-
-func (server *tinyExtentRepairServer) checkHolesAndRepair(autoRepair bool, vols []string, dps []uint64) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.LogErrorf("panic err:%v", r)
-		}
-	}()
-	server.start()
-	defer server.stop()
-	var existString = func(strs []string, target string) (exist bool) {
-		for _, s := range strs {
-			if s == target {
-				exist = true
-				return
-			}
-		}
-		return
-	}
-
-	var existId = func(ids []uint64, target uint64) (exist bool) {
-		for _, s := range ids {
-			if s == target {
-				exist = true
-				return
-			}
-		}
-		return
-	}
-
-	cv, err := client.AdminAPI().GetCluster()
-	if err != nil {
-		log.LogErrorf("err: %v", err)
-		return
-	}
-	log.LogInfof("action[checkHolesAndRepair] cluster name: %v", cv.Name)
-	for _, v := range cv.VolStatInfo {
-		if len(vols) > 0 && !existString(vols, v.Name) {
-			continue
-		}
-		volume, err1 := client.AdminAPI().GetVolumeSimpleInfo(v.Name)
-		if err1 != nil {
-			log.LogErrorf("admin get volume: %v, err: %v", v.Name, err1)
-			continue
-		}
-		clv, err1 := client.ClientAPI().GetVolume(volume.Name, calcAuthKey(volume.Owner))
-		if err1 != nil {
-			log.LogErrorf("client get volume: %v, err: %v", v.Name, err1)
-			continue
-		}
-		log.LogInfof("action[checkHolesAndRepair] scan volume:%v start", volume.Name)
-		wg := sync.WaitGroup{}
-
-		for _, dp := range clv.DataPartitions {
-			if len(dps) > 0 && !existId(dps, dp.PartitionID) {
-				continue
-			}
-			wg.Add(1)
-			server.scanLimitCh <- true
-			go func(partition *proto.DataPartitionResponse) {
-				defer func() {
-					wg.Done()
-					<-server.scanLimitCh
-				}()
-				resultNum, resultSize, resultAvailSize, failExts, needRepairExtents := checkTinyExtents(volume.Name, partition.PartitionID, partition.Hosts)
-				if resultNum != "" {
-					server.writeFile(server.holeNumFd, resultNum)
-				}
-				if resultSize != "" {
-					server.writeFile(server.holeSizeFd, resultSize)
-				}
-				if resultAvailSize != "" {
-					server.writeFile(server.availSizeFd, resultAvailSize)
-				}
-				if failExts != "" {
-					server.writeFile(server.failedGetExtFd, failExts)
-				}
-				if autoRepair && len(needRepairExtents) > 0 {
-					for j := 0; j < checkRepeatTime; j++ {
-						//等待一分钟，再检查一次，如果依然满足修复条件，则把它放入修复队列
-						log.LogDebugf("action[checkTinyExtents] check partition:%v again before put it to repair slice after 1 minute", partition.PartitionID)
-						time.Sleep(time.Minute)
-						newNeedRepair := make([]*ExtentRepairInfo, 0)
-						for _, needRepair := range needRepairExtents {
-							_, _, _, _, eif, err2 := checkTinyExtent(volume.Name, partition.PartitionID, partition.Hosts, needRepair.ExtentID)
-							if err2 != nil {
-								log.LogErrorf("action[checkTinyExtents] checkTinyExtent, data partition:%v, extent:%v, err:%v", partition.PartitionID, needRepair.ExtentID, err2)
-								continue
-							}
-							if eif != nil {
-								newNeedRepair = append(newNeedRepair, eif)
-								continue
-							}
-							log.LogWarnf("action[checkTinyExtents] data partition:%v, extent:%v, repaired by itself", partition.PartitionID, needRepair.ExtentID)
-						}
-						if len(newNeedRepair) == 0 {
-							break
-						}
-						needRepairExtents = newNeedRepair
-					}
-					if len(needRepairExtents) > 0 {
-						server.putToPartitionMap(partition.PartitionID, needRepairExtents)
-						server.doRepair(needRepairExtents, partition.PartitionID)
-					}
-				}
-			}(dp)
-		}
-		wg.Wait()
-		log.LogInfof("action[checkHolesAndRepair] scan volume:%v, end", volume.Name)
-		server.holeNumFd.Sync()
-		server.holeSizeFd.Sync()
-		server.availSizeFd.Sync()
-		server.failedGetExtFd.Sync()
-	}
 }
 
 func (server *tinyExtentRepairServer) putToPartitionMap(pid uint64, needRepairExtents []*ExtentRepairInfo) {
@@ -263,13 +149,11 @@ func (server *tinyExtentRepairServer) doRepair(needRepairExtents []*ExtentRepair
 	//repairExtent
 	if len(needRepairExtents) == 1 {
 		if err = dnHelper.RepairExtent(needRepairExtents[0].ExtentID, dp.Path, pid); err != nil {
-			server.updateStat(pid, repairHost, 0, RepairFail)
 			server.writeFile(server.failRepairFd, fmt.Sprintf("%v,%v,%v,%v,%v\n", dpFromMaster.VolName, pid, repairHost, dp.Path, needRepairExtents[0].ExtentID))
 			log.LogErrorf("action[doRepair] repairExtent, volume:%v, partition:%v, host:%v, path:%v, extent:%v, repair failed, err:%v", dpFromMaster.VolName, pid, repairHost, dp.Path, needRepairExtents[0].ExtentID, err)
 			return
 		}
 		server.writeFile(server.successRepairFd, fmt.Sprintf("%v,%v,%v,%v,%v\n", dpFromMaster.VolName, pid, repairHost, dp.Path, needRepairExtents[0].ExtentID))
-		server.updateStat(pid, repairHost, 0, RepairSuccess)
 		log.LogInfof("action[doRepair] repairExtent, volume:%v, partition:%v, host:%v, path:%v, extent:%v, repair success", dpFromMaster.VolName, pid, repairHost, dp.Path, needRepairExtents[0].ExtentID)
 		server.successRepairFd.Sync()
 		server.waitRepairFinish()
@@ -287,22 +171,19 @@ func (server *tinyExtentRepairServer) doRepair(needRepairExtents []*ExtentRepair
 	if extentsRepairResult, err = dnHelper.RepairExtentBatch(strings.Join(extents, "-"), dp.Path, pid); err != nil {
 		for idx := range needRepairExtents {
 			server.writeFile(server.failRepairFd, fmt.Sprintf("%v,%v,%v,%v,%v\n", dpFromMaster.VolName, pid, repairHost, dp.Path, needRepairExtents[idx].ExtentID))
-			server.updateStat(pid, repairHost, idx, RepairFail)
 		}
 		log.LogErrorf("action[doRepair] repairExtentBatch, volume:%v, partition:%v, host:%v, path:%v, extent:%v, repair failed, err:%v", dpFromMaster.VolName, pid, repairHost, dp.Path, needRepairExtents[0].ExtentID, err)
 		return
 	}
 	successExtents := make([]uint64, 0)
 	failedExtents := make([]uint64, 0)
-	for idx, eif := range needRepairExtents {
+	for _, eif := range needRepairExtents {
 		if extentsRepairResult[eif.ExtentID] != "OK" {
 			failedExtents = append(failedExtents, eif.ExtentID)
 			server.writeFile(server.failRepairFd, fmt.Sprintf("%v,%v,%v,%v,%v\n", dpFromMaster.VolName, pid, repairHost, dp.Path, eif.ExtentID))
-			server.updateStat(pid, repairHost, idx, RepairFail)
 		} else {
 			successExtents = append(successExtents, eif.ExtentID)
 			server.writeFile(server.successRepairFd, fmt.Sprintf("%v,%v,%v,%v,%v\n", dpFromMaster.VolName, pid, repairHost, dp.Path, eif.ExtentID))
-			server.updateStat(pid, repairHost, idx, RepairSuccess)
 		}
 	}
 	log.LogInfof("action[doRepair] repairExtentBatch, volume:%v, partition:%v, host:%v, path:%v, success extents:%v, failed extents:%v", dpFromMaster.VolName, pid, repairHost, dp.Path, successExtents, failedExtents)
@@ -316,17 +197,7 @@ func (server *tinyExtentRepairServer) waitRepairFinish() {
 	time.Sleep(time.Minute * 2)
 }
 
-//Deprecated 暂时没有用处
-func (server *tinyExtentRepairServer) updateStat(pid uint64, host string, extentIdx int, newStat RepairStatus) {
-	server.lock.Lock()
-	defer server.lock.Unlock()
-	if len(server.PartitionMap[pid]) < extentIdx+1 {
-		return
-	}
-	server.PartitionMap[pid][extentIdx].HostStat[host] = newStat
-}
-
-func checkTinyExtent(volume string, partitionID uint64, partitionHosts []string, extent uint64) (resultNum, resultSize, resultAvailSize, failExtent string, eif *ExtentRepairInfo, err error) {
+func checkTinyExtent(volume string, partitionID uint64, partitionHosts []string, extent uint64) (resultNum, resultSize, resultAvailSize string, maxsize uint64, minSize uint64, eif *ExtentRepairInfo, err error) {
 	var (
 		maxHolesSize     uint64
 		maxHolesSizeHost string
@@ -352,16 +223,16 @@ func checkTinyExtent(volume string, partitionID uint64, partitionHosts []string,
 	for _, h := range partitionHosts {
 		sdnHost := fmt.Sprintf("%v:%v", strings.Split(h, ":")[0], client.DataNodeProfPort)
 		dnHelper := data.NewDataHttpClient(sdnHost, false)
-		ehs, err1 := dnHelper.GetExtentHoles(partitionID, extent)
-		if err1 != nil {
-			log.LogErrorf("action[checkTinyExtent] get extent holes failed, dp:%v, ext:%v, url:%v, err:%v", partitionID, extent, fmt.Sprintf("http://%v/tinyExtentHoleInfo?partitionID=%v&extentID=%v", sdnHost, partitionID, extent), err1)
-			failExtent = fmt.Sprintf("%v,%v,%v,%v\n", volume, partitionID, extent, h)
+		var ehs *proto.DNTinyExtentInfo
+		var ext *proto.ExtentInfoBlock
+		ehs, err = dnHelper.GetExtentHoles(partitionID, extent)
+		if err != nil {
+			log.LogErrorf("action[checkTinyExtent] get extent holes failed, dp:%v, ext:%v, url:%v, err:%v", partitionID, extent, fmt.Sprintf("http://%v/tinyExtentHoleInfo?partitionID=%v&extentID=%v", sdnHost, partitionID, extent), err)
 			return
 		}
-		ext, err1 := dnHelper.GetExtentInfo(partitionID, extent)
-		if err1 != nil {
-			log.LogErrorf("action[checkTinyExtent] get extent failed, dp:%v, ext:%v, url:%v, err:%v", partitionID, extent, fmt.Sprintf("http://%v/extent?partitionID=%v&extentID=%v", sdnHost, partitionID, extent), err1)
-			failExtent = fmt.Sprintf("%v,%v,%v,%v\n", volume, partitionID, extent, h)
+		ext, err = dnHelper.GetExtentInfo(partitionID, extent)
+		if err != nil {
+			log.LogErrorf("action[checkTinyExtent] get extent failed, dp:%v, ext:%v, url:%v, err:%v", partitionID, extent, fmt.Sprintf("http://%v/extent?partitionID=%v&extentID=%v", sdnHost, partitionID, extent), err)
 			return
 		}
 		if len(ehs.Holes) > maxHolesNum {
@@ -407,7 +278,9 @@ func checkTinyExtent(volume string, partitionID uint64, partitionHosts []string,
 			BlockNum:   ehs.BlocksNum,
 		})
 	}
-	if (maxHolesNum - minHolesNum) > 1 {
+	maxsize = maxExtentSize
+	minSize = minExtentSize
+	if (maxHolesNum-minHolesNum) > 0 && maxExtentSize == minExtentSize {
 		resultNum = fmt.Sprintf("%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v\n", volume, partitionID, extent, maxHolesNum-minHolesNum, maxExtentSize-minExtentSize, minHolesNum, minHolesNumHost,
 			maxHolesNum, maxHolesNumHost, formatExtentInfo(dpExtInfos, func(ext *DpExtInfo) bool {
 				if ext.HoleNum == uint32(minHolesNum) {
@@ -416,7 +289,7 @@ func checkTinyExtent(volume string, partitionID uint64, partitionHosts []string,
 				return false
 			}), partitionHosts)
 	}
-	if (maxHolesSize - minHolesSize) > thresholdMb*util.MB {
+	if (maxHolesSize-minHolesSize) > thresholdMb*util.MB && maxExtentSize == minExtentSize {
 		resultSize = fmt.Sprintf("%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v\n", volume, partitionID, extent, maxHolesSize-minHolesSize, maxExtentSize-minExtentSize, minHolesSize, minHolesSizeHost,
 			maxHolesSize, maxHolesSizeHost, formatExtentInfo(dpExtInfos, func(ext *DpExtInfo) bool {
 				if ext.HoleSize == minHolesSize {
@@ -425,7 +298,7 @@ func checkTinyExtent(volume string, partitionID uint64, partitionHosts []string,
 				return false
 			}), partitionHosts)
 	}
-	if (maxAvailSize - minAvailSize) > thresholdMb*util.MB {
+	if (maxAvailSize-minAvailSize) > thresholdMb*util.MB && maxExtentSize == minExtentSize {
 		resultAvailSize = fmt.Sprintf("%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v\n", volume, partitionID, extent, maxAvailSize-minAvailSize, maxExtentSize-minExtentSize, maxAvailSize, maxAvailSizeHost,
 			minAvailSize, minAvailSizeHost, formatExtentInfo(dpExtInfos, func(ext *DpExtInfo) bool {
 				if ext.AvailSize == maxAvailSize {
@@ -433,20 +306,18 @@ func checkTinyExtent(volume string, partitionID uint64, partitionHosts []string,
 				}
 				return false
 			}), partitionHosts)
-		//只修复Extent数据追平的数据,并且当且仅当待修复副本占少数的时候需要修复，如果副本超过一半，则认为多数的是正确的结果，比如在删除失败的场景下，往往少数副本Size更大。
-		if maxExtentSize == minExtentSize && (maxAvailSize-minAvailSize) > thresholdMb*util.MB {
-			eif = new(ExtentRepairInfo)
-			eif.ExtentID = extent
-			eif.HostStat = make(map[string]RepairStatus, 0)
-			for _, e := range dpExtInfos {
-				if e.AvailSize == maxAvailSize {
-					continue
-				}
-				eif.HostStat[e.Host] = Origin
+		eif = new(ExtentRepairInfo)
+		eif.ExtentID = extent
+		eif.HostStat = make(map[string]RepairStatus, 0)
+		for _, e := range dpExtInfos {
+			if e.AvailSize == maxAvailSize {
+				continue
 			}
-			if len(eif.HostStat) >= len(partitionHosts)/2+1 {
-				eif = nil
-			}
+			eif.HostStat[e.Host] = Origin
+		}
+		//当且仅当待修复副本占少数的时候需要修复，如果副本超过一半，则认为多数的是正确的结果，比如在删除失败的场景下，往往少数副本Size更大。
+		if len(eif.HostStat) >= len(partitionHosts)/2+1 {
+			eif = nil
 		}
 	}
 	return
@@ -463,58 +334,73 @@ func formatExtentInfo(exts []*DpExtInfo, skipFunc func(ext *DpExtInfo) bool) str
 	return strconv.Itoa(len(result)) + "," + strings.Join(result, ";")
 }
 
-func loadNeedRepairPartition() (ids []uint64) {
-	ids = make([]uint64, 0)
-	buf := make([]byte, 2048)
-	var err error
-	idsF, _ := os.OpenFile("ids", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	defer idsF.Close()
-	o := bufio.NewReader(idsF)
-	for {
-		buf, _, err = o.ReadLine()
-		if err == io.EOF {
-			break
-		}
-		id, _ := strconv.ParseUint(string(buf), 10, 64)
-		if id > 0 {
-			ids = append(ids, id)
-		}
-	}
-	return
-}
-
-func loadNeedRepairVolume() (vols []string) {
-	volsF, _ := os.OpenFile("vols", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	defer volsF.Close()
-	var err error
-	r := bufio.NewReader(volsF)
-	vols = make([]string, 0)
-	buf := make([]byte, 2048)
-	for {
-		buf, _, err = r.ReadLine()
-		if err == io.EOF {
-			break
-		}
-		vols = append(vols, string(buf))
-	}
-	return
-}
-
-func checkTinyExtents(volume string, partitionID uint64, partitionHosts []string) (resultsNum, resultsSize, resultsAvailSize, resultsFailExts string, needRepairExtents []*ExtentRepairInfo) {
-	if partitionID < 1 || volume == "" || len(partitionHosts) == 0 {
+func (server *tinyExtentRepairServer) checkAndRepairTinyExtents(volume string, partition *proto.DataPartitionResponse) (err error) {
+	var resultsNum, resultsSize, resultsAvailSize, resultHugeExt, resultsFailExts string
+	var needRepairExtents []*ExtentRepairInfo
+	if partition.PartitionID < 1 || volume == "" || len(partition.Hosts) == 0 {
 		return
 	}
 	needRepairExtents = make([]*ExtentRepairInfo, 0)
+	var maxSizeTinyInfo = &struct {
+		maxSize  uint64
+		minSize  uint64
+		extentID int
+	}{}
+	var minSizeTinyInfo = &struct {
+		maxSize  uint64
+		minSize  uint64
+		extentID int
+	}{
+		maxSize: math.MaxUint64,
+	}
 	for i := 1; i < 65; i++ {
-		resultNum, resultSize, resultAvailSize, failExtent, eif, _ := checkTinyExtent(volume, partitionID, partitionHosts, uint64(i))
-		if eif != nil {
-			needRepairExtents = append(needRepairExtents, eif)
+		var resultNum, resultSize, resultAvailSize string
+		var minTinyReplicaSize uint64
+		var maxTinyReplicaSize uint64
+		var needRepairExtent *ExtentRepairInfo
+		for j := 0; j < 3; j++ {
+			resultNum, resultSize, resultAvailSize, maxTinyReplicaSize, minTinyReplicaSize, needRepairExtent, err = checkTinyExtent(volume, partition.PartitionID, partition.Hosts, uint64(i))
+			if resultAvailSize == "" && err == nil {
+				break
+			}
+			time.Sleep(10 * time.Second)
+		}
+		if err != nil {
+			resultsFailExts += fmt.Sprintf("%v,%v,%v\n", volume, partition.PartitionID, i)
+			continue
+		}
+		if needRepairExtent != nil {
+			needRepairExtents = append(needRepairExtents, needRepairExtent)
+		}
+		if minSizeTinyInfo.maxSize > maxTinyReplicaSize {
+			minSizeTinyInfo.maxSize = maxTinyReplicaSize
+			minSizeTinyInfo.maxSize = maxTinyReplicaSize
+			minSizeTinyInfo.minSize = minTinyReplicaSize
+			minSizeTinyInfo.extentID = i
+		}
+		if maxSizeTinyInfo.maxSize < maxTinyReplicaSize {
+			maxSizeTinyInfo.maxSize = maxTinyReplicaSize
+			maxSizeTinyInfo.maxSize = maxTinyReplicaSize
+			maxSizeTinyInfo.minSize = minTinyReplicaSize
+			maxSizeTinyInfo.extentID = i
 		}
 		resultsNum += resultNum
 		resultsSize += resultSize
 		resultsAvailSize += resultAvailSize
-		resultsFailExts += failExtent
 	}
-	log.LogInfof("action[checkTinyExtents] volume:%v, partition %v finish", volume, partitionID)
+	if (minSizeTinyInfo.maxSize > 0 && (maxSizeTinyInfo.maxSize/minSizeTinyInfo.maxSize > 50) && (maxSizeTinyInfo.maxSize-minSizeTinyInfo.maxSize > 100*util.MB)) || maxSizeTinyInfo.maxSize > 10*util.TB {
+		resultHugeExt = fmt.Sprintf("%v,%v,%v,%v,%v,%v,%v,%v,%v\n", volume, partition.PartitionID, maxSizeTinyInfo.extentID, maxSizeTinyInfo.maxSize, maxSizeTinyInfo.minSize, minSizeTinyInfo.extentID, minSizeTinyInfo.maxSize, minSizeTinyInfo.minSize, partition.Hosts)
+	}
+	log.LogInfof("action[checkAndRepairTinyExtents] volume:%v, partition %v finish", volume, partition.PartitionID)
+
+	server.writeFile(server.holeNumFd, resultsNum)
+	server.writeFile(server.holeSizeFd, resultsSize)
+	server.writeFile(server.availSizeFd, resultsAvailSize)
+	server.writeFile(server.failedGetExtFd, resultHugeExt)
+	server.writeFile(server.hugeTinyFd, resultHugeExt)
+	if server.autoRepair && len(needRepairExtents) > 0 {
+		server.putToPartitionMap(partition.PartitionID, needRepairExtents)
+		server.doRepair(needRepairExtents, partition.PartitionID)
+	}
 	return
 }

@@ -32,6 +32,8 @@ import (
 const (
 	cmdExtentUse                = "extent [command]"
 	cmdExtentShort              = "Check extent consistency"
+	cmdExtentInfo               = "info [partition] [extent]"
+	cmdExtentInfoShort          = "show extent info"
 	cmdCheckReplicaUse          = "check-replica volumeName"
 	cmdCheckReplicaShort        = "Check replica consistency"
 	cmdCheckLengthUse           = "check-length volumeName"
@@ -132,8 +134,65 @@ func newExtentCmd(mc *sdk.MasterClient) *cobra.Command {
 		newExtentSearchCmd(),
 		newExtentGarbageCheckCmd(),
 		newTinyExtentCheckHoleCmd(),
+		newExtentGetCmd(),
 	)
 	return cmd
+}
+
+func newExtentGetCmd() *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   cmdExtentInfo,
+		Short: cmdExtentInfoShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			defer func() {
+				if err != nil {
+					stdout(err.Error())
+				}
+			}()
+			partitionID, err := strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				return
+			}
+			extentID, err := strconv.ParseUint(args[1], 10, 64)
+			if err != nil {
+				return
+			}
+			dp, err := client.AdminAPI().GetDataPartition("", partitionID)
+			if err != nil {
+				return
+			}
+			fmt.Printf("%-30v: %v\n", "Volume", dp.VolName)
+			fmt.Printf("%-30v: %v\n", "Data Partition", partitionID)
+			fmt.Printf("%-30v: %v\n", "Extent", extentID)
+			fmt.Printf("%-30v: %v\n", "Hosts", strings.Join(dp.Hosts, ","))
+			fmt.Println()
+			if storage.IsTinyExtent(extentID) {
+				stdout("%v\n", formatTinyExtentTableHeader())
+			} else {
+				stdout("%v\n", formatNormalExtentTableHeader())
+			}
+
+			for _, r := range dp.Replicas {
+				dHost := fmt.Sprintf("%v:%v", strings.Split(r.Addr, ":")[0], client.DataNodeProfPort)
+				dataClient := data.NewDataHttpClient(dHost, false)
+				extent, err1 := dataClient.GetExtentInfo(partitionID, extentID)
+				if err1 != nil {
+					continue
+				}
+				if storage.IsTinyExtent(extentID) {
+					extentHoles, _ := dataClient.GetExtentHoles(partitionID, extentID)
+					stdout("%v\n", formatTinyExtent(r, extent, extentHoles))
+				} else {
+					stdout("%v\n", formatNormalExtent(r, extent))
+				}
+
+			}
+		},
+	}
+	return cmd
+
 }
 
 func newExtentCheckCmd(checkType int) *cobra.Command {
@@ -253,11 +312,11 @@ func newTinyExtentCheckHoleCmd() *cobra.Command {
 				return
 			}
 
-			rServer := newRepairServer(scanLimit)
+			rServer := newRepairServer(autoRepair)
 			log.LogInfof("fix tiny extent for master: %v", client.Leader())
 
-			vols := loadNeedRepairVolume()
-			ids := loadNeedRepairPartition()
+			vols := loadSpecifiedVolumes()
+			ids := loadSpecifiedPartitions()
 
 			if dpid > 0 {
 				ids = []uint64{dpid}
@@ -267,15 +326,17 @@ func newTinyExtentCheckHoleCmd() *cobra.Command {
 			}
 
 			log.LogInfo("check start")
-			rServer.checkHolesAndRepair(autoRepair, vols, ids)
+			rServer.start()
+			defer rServer.stop()
+
+			rangeAllDataPartitions(scanLimit, vols, ids, func(vol *proto.SimpleVolView) {
+				rServer.holeNumFd.Sync()
+				rServer.holeSizeFd.Sync()
+				rServer.availSizeFd.Sync()
+				rServer.failedGetExtFd.Sync()
+			}, rServer.checkAndRepairTinyExtents)
 			log.LogInfo("check end")
 			return
-		},
-		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			if len(args) != 0 {
-				return nil, cobra.ShellCompDirectiveNoFileComp
-			}
-			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().Uint64Var(&scanLimit, "limit", 10, "limit rate")
@@ -1445,3 +1506,5 @@ func parseResp(resp []byte) (data []byte, err error) {
 	data = body.Data
 	return
 }
+
+

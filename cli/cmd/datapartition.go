@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -47,6 +48,7 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newDataPartitionDeleteReplicaCmd(client),
 		newDataPartitionAddLearnerCmd(client),
 		newDataPartitionPromoteLearnerCmd(client),
+		newDataPartitionCheckCommitCmd(client),
 	)
 	return cmd
 }
@@ -54,6 +56,7 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 const (
 	cmdDataPartitionGetShort            = "Display detail information of a data partition"
 	cmdCheckCorruptDataPartitionShort   = "Check and list unhealthy data partitions"
+	cmdCheckCommitDataPartitionShort    = "Check the snapshot blocking by analyze commit id in data partitions"
 	cmdResetDataPartitionShort          = "Reset corrupt data partition"
 	cmdDataPartitionDecommissionShort   = "Decommission a replication of the data partition to a new address"
 	cmdDataPartitionReplicateShort      = "Add a replication of the data partition on a new address"
@@ -652,4 +655,147 @@ func newDataPartitionPromoteLearnerCmd(client *master.MasterClient) *cobra.Comma
 		},
 	}
 	return cmd
+}
+func newDataPartitionCheckCommitCmd(client *master.MasterClient) *cobra.Command {
+	var optSpecifyDP uint64
+	var cmd = &cobra.Command{
+		Use:   CliOpCheckCommit,
+		Short: cmdCheckCommitDataPartitionShort,
+		Long:  `if the follower lack too much raft log from leader, the raft may be hang, we should check and resolve it `,
+		Run: func(cmd *cobra.Command, args []string) {
+			if optSpecifyDP > 0 {
+				partition, err1 := client.AdminAPI().GetDataPartition("", optSpecifyDP)
+				if err1 != nil {
+					stdout("%v\n", err1)
+					return
+				}
+				for _, r := range partition.Replicas {
+					if r.IsLeader {
+						isLack, lackID, next, firstIdx, err := checkDataPartitionCommit(r.Addr, partition.PartitionID)
+						if err != nil {
+							continue
+						}
+						if isLack {
+							var host string
+							for _, p := range partition.Peers {
+								if p.ID == lackID {
+									host = p.Addr
+								}
+							}
+							fmt.Printf("Volume,Partition,LackPeerID,LackHost\n")
+							fmt.Printf("%v,%v,%v,%v,%v,%v\n", partition.VolName, optSpecifyDP, lackID, host, next, firstIdx)
+						}
+					}
+				}
+			} else {
+				checkCommit(client)
+			}
+		},
+	}
+	cmd.Flags().Uint64Var(&optSpecifyDP, CliFlagId, 0, "check data partition by partitionID")
+	return cmd
+}
+
+type commitChecker struct {
+	badDps sync.Map
+}
+func checkCommit(client *master.MasterClient) (err error) {
+
+	f, _ := os.OpenFile(fmt.Sprintf("check_commit_%v.csv", time.Now().Unix()), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	defer f.Close()
+	f.WriteString("Volume,Partition,LackPeerID,LackHost")
+	var badDps sync.Map
+	var partitionFunc = func(volumeName string, partition *proto.DataPartitionResponse) (err error){
+		isLack, lackID, _, _, err := checkDataPartitionCommit(partition.LeaderAddr, partition.PartitionID)
+		if err != nil {
+			return
+		}
+		if isLack {
+			badDps.Store(partition.PartitionID, lackID)
+		}
+		return
+	}
+
+	var volFunc = func(vol *proto.SimpleVolView) {
+		//retry to check
+		for i := 0; i < 4; i++ {
+			count := 0
+			badDps.Range(func(key, value interface{}) bool {
+				count++
+				id := key.(uint64)
+				oldLackID := value.(uint64)
+				partition, err1 := client.AdminAPI().GetDataPartition("", id)
+				if err1 != nil {
+					return true
+				}
+				for _, r := range partition.Replicas {
+					if r.IsLeader {
+						isLack, lackID, _, _, err2 := checkDataPartitionCommit(r.Addr, partition.PartitionID)
+						if err2 != nil {
+							continue
+						}
+						if !isLack {
+							badDps.Delete(partition.PartitionID)
+						} else if lackID != oldLackID {
+							badDps.Store(partition.PartitionID, lackID)
+						}
+					}
+				}
+				return true
+			})
+			if count == 0 {
+				break
+			}
+			time.Sleep(time.Minute)
+		}
+
+		//output
+		badDps.Range(func(key, value interface{}) bool {
+			id := key.(uint64)
+			oldLackID := value.(uint64)
+			partition, err1 := client.AdminAPI().GetDataPartition("", id)
+			if err1 != nil {
+				return true
+			}
+			var host string
+			for _, p := range partition.Peers {
+				if p.ID == oldLackID {
+					host = p.Addr
+				}
+			}
+			f.WriteString(fmt.Sprintf("%v,%v,%v,%v\n", vol.Name, id, oldLackID, host))
+			return true
+		})
+		f.Sync()
+	}
+	rangeAllDataPartitions(20, nil, nil, volFunc, partitionFunc)
+
+	fmt.Println("scan finish, result has been saved to local file")
+	return
+}
+
+func checkDataPartitionCommit(leader string, pid uint64,) (lack bool, lackID uint64, next, firstIdx uint64, err error) {
+	var dnPartition *proto.DNDataPartitionInfo
+	addr := strings.Split(leader, ":")[0]
+	//check dataPartition by dataNode api
+	for i := 0; i < 3; i++ {
+		if dnPartition, err = client.NodeAPI().DataNodeGetPartition(addr, pid); err == nil {
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if err != nil {
+		return
+	}
+	if dnPartition.RaftStatus != nil && dnPartition.RaftStatus.Replicas != nil {
+		for id, r := range dnPartition.RaftStatus.Replicas {
+			if r.Next < dnPartition.RaftStatus.Log.FirstIndex {
+				lack = true
+				lackID = id
+				next = r.Next
+				firstIdx = dnPartition.RaftStatus.Log.FirstIndex
+			}
+		}
+	}
+	return
 }
