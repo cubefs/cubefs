@@ -118,8 +118,6 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	if trashDays > maxTrashRemainingDays {
 		trashDays = maxTrashRemainingDays
 	}
-	vol.MinWritableMPNum = defaultVolMinWritableMPNum
-	vol.MinWritableDPNum = defaultVolMinWritableDPNum
 	vol.dataPartitionSize = dpSize
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead
