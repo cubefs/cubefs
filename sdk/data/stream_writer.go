@@ -718,39 +718,36 @@ func (s *Streamer) doWrite(ctx context.Context, data []byte, offset, size int, d
 
 func (s *Streamer) appendOverWriteReq(ctx context.Context, oriReq *ExtentRequest, direct bool) (writeSize int) {
 	var (
-		req     *OverWriteRequest = &OverWriteRequest{oriReq: oriReq, direct: direct}
-		lastReq *OverWriteRequest
-		offset  int
+		req    *OverWriteRequest = &OverWriteRequest{oriReq: oriReq, direct: direct}
+		offset int
 	)
 	writeSize = oriReq.Size
 
 	s.overWriteReqMutex.Lock()
 	defer s.overWriteReqMutex.Unlock()
-	if len(s.overWriteReq) == 0 {
-		goto append
-	}
-	lastReq = s.overWriteReq[len(s.overWriteReq)-1]
-	if req.oriReq.ExtentKey.PartitionId != lastReq.oriReq.ExtentKey.PartitionId ||
-		req.oriReq.ExtentKey.ExtentId != lastReq.oriReq.ExtentKey.ExtentId ||
-		req.oriReq.FileOffset < lastReq.oriReq.FileOffset ||
-		req.oriReq.FileOffset > lastReq.oriReq.FileOffset+lastReq.oriReq.Size {
-		goto append
+
+	for _, curReq := range s.overWriteReq {
+		if req.oriReq.ExtentKey.PartitionId != curReq.oriReq.ExtentKey.PartitionId ||
+			req.oriReq.ExtentKey.ExtentId != curReq.oriReq.ExtentKey.ExtentId ||
+			req.oriReq.FileOffset < curReq.oriReq.FileOffset ||
+			req.oriReq.FileOffset > curReq.oriReq.FileOffset+curReq.oriReq.Size {
+			continue
+		}
+
+		offset = req.oriReq.FileOffset - curReq.oriReq.FileOffset
+		if req.oriReq.FileOffset+req.oriReq.Size <= curReq.oriReq.FileOffset+curReq.oriReq.Size {
+			copy(curReq.oriReq.Data[offset:offset+req.oriReq.Size], req.oriReq.Data)
+		} else if req.oriReq.FileOffset == curReq.oriReq.FileOffset+curReq.oriReq.Size {
+			curReq.oriReq.Data = append(curReq.oriReq.Data, req.oriReq.Data...)
+			curReq.oriReq.Size = len(curReq.oriReq.Data)
+		} else {
+			copy(curReq.oriReq.Data[offset:], req.oriReq.Data[:curReq.oriReq.Size-offset])
+			curReq.oriReq.Data = append(curReq.oriReq.Data, req.oriReq.Data[curReq.oriReq.Size-offset:]...)
+			curReq.oriReq.Size = len(curReq.oriReq.Data)
+		}
+		return
 	}
 
-	offset = req.oriReq.FileOffset - lastReq.oriReq.FileOffset
-	if req.oriReq.FileOffset+req.oriReq.Size <= lastReq.oriReq.FileOffset+lastReq.oriReq.Size {
-		copy(lastReq.oriReq.Data[offset:offset+req.oriReq.Size], req.oriReq.Data)
-	} else if req.oriReq.FileOffset == lastReq.oriReq.FileOffset+lastReq.oriReq.Size {
-		lastReq.oriReq.Data = append(lastReq.oriReq.Data, req.oriReq.Data...)
-		lastReq.oriReq.Size = len(lastReq.oriReq.Data)
-	} else {
-		copy(lastReq.oriReq.Data[offset:], req.oriReq.Data[:lastReq.oriReq.Size-offset])
-		lastReq.oriReq.Data = append(lastReq.oriReq.Data, req.oriReq.Data[lastReq.oriReq.Size-offset:]...)
-		lastReq.oriReq.Size = len(lastReq.oriReq.Data)
-	}
-	return
-
-append:
 	data := make([]byte, len(req.oriReq.Data))
 	copy(data, req.oriReq.Data)
 	req.oriReq.Data = data
