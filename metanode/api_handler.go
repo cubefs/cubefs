@@ -169,13 +169,6 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 
 func (m *MetaNode) getAllDeleteEkHandler(w http.ResponseWriter, r *http.Request) {
 	resp := NewAPIResponse(http.StatusSeeOther, "")
-
-	if err := r.ParseForm(); err != nil {
-		resp.Code = http.StatusBadRequest
-		resp.Msg = err.Error()
-		return
-	}
-
 	shouldSkip := false
 	defer func() {
 		if !shouldSkip {
@@ -185,6 +178,13 @@ func (m *MetaNode) getAllDeleteEkHandler(w http.ResponseWriter, r *http.Request)
 			}
 		}
 	}()
+
+	if err := r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
 	if err != nil {
 		resp.Code = http.StatusBadRequest
@@ -197,7 +197,8 @@ func (m *MetaNode) getAllDeleteEkHandler(w http.ResponseWriter, r *http.Request)
 		resp.Msg = err.Error()
 		return
 	}
-	buff := bytes.NewBufferString(`{"code": 200, "msg": "OK", "data":{ "deleteEks": [`)
+
+	buff := bytes.NewBufferString(`{"data":[`)
 	if _, err = w.Write(buff.Bytes()); err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()
@@ -245,12 +246,10 @@ func (m *MetaNode) getAllDeleteEkHandler(w http.ResponseWriter, r *http.Request)
 		return true, nil
 	})
 	shouldSkip = true
-	buff.WriteString(`], `)
-	buff.WriteString("\n")
 	if err != nil {
-		buff.WriteString(fmt.Sprintf(`"errorMsg": "%s"}}`, err.Error()))
+		buff.WriteString(fmt.Sprintf(`], "code": %v, "msg": "%s"}`, http.StatusInternalServerError, err.Error()))
 	} else {
-		buff.WriteString(`"errorMsg": ""}}`)
+		buff.WriteString(`], "code": 200, "msg": "OK"}`)
 	}
 	if _, err = w.Write(buff.Bytes()); err != nil {
 		log.LogErrorf("[getAllDeleteEkHandler] response %s", err)
@@ -299,7 +298,7 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer snap.Close()
 
-	buff := bytes.NewBufferString(`{"code": 200, "msg": "OK", "data":{ "inodes": [`)
+	buff := bytes.NewBufferString(`{"data":[`)
 	if _, err = w.Write(buff.Bytes()); err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()
@@ -362,12 +361,10 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 		return true, nil
 	})
 	shouldSkip = true
-	buff.WriteString(`], `)
-	buff.WriteString("\n")
 	if err != nil {
-		buff.WriteString(fmt.Sprintf(`"errorMsg": "%s"}}`, err.Error()))
+		buff.WriteString(fmt.Sprintf(`], "code": %v, "msg": "%s"}`, http.StatusInternalServerError, err.Error()))
 	} else {
-		buff.WriteString(`"errorMsg": ""}}`)
+		buff.WriteString(`], "code": 200, "msg": "OK"}`)
 	}
 	if _, err = w.Write(buff.Bytes()); err != nil {
 		log.LogErrorf("[getAllInodesHandler] response %s", err)
@@ -617,7 +614,7 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 	}
 	defer snap.Close()
 
-	buff := bytes.NewBufferString(`{"code": 200, "msg": "OK", "data": {"dentries": [`)
+	buff := bytes.NewBufferString(`{"data":[`)
 	if _, err = w.Write(buff.Bytes()); err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()
@@ -653,12 +650,10 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 		return true, nil
 	})
 	shouldSkip = true
-	buff.WriteString(`], `)
-	buff.WriteString("\n")
 	if err != nil {
-		buff.WriteString(fmt.Sprintf(`"errorMsg": "%s"}}`, err.Error()))
+		buff.WriteString(fmt.Sprintf(`], "code": %v, "msg": "%s"}`, http.StatusInternalServerError, err.Error()))
 	} else {
-		buff.WriteString(`"errorMsg": ""}}`)
+		buff.WriteString(`], "code": 200, "msg": "OK"}`)
 	}
 	if _, err = w.Write(buff.Bytes()); err != nil {
 		log.LogErrorf("[getAllDentriesHandler] response %s", err)
