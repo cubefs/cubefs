@@ -335,8 +335,10 @@ type ReplicaStatus struct {
 }
 
 type DataPartitionExtentCrcInfo struct {
-	PartitionID    uint64
-	ExtentCrcInfos []*ExtentCrcInfo
+	PartitionID               uint64
+	ExtentCrcInfos            []*ExtentCrcInfo
+	IsBuildValidateCRCTaskErr bool
+	ErrMsg                    string
 }
 
 type ExtentCrcInfo struct {

@@ -128,4 +128,11 @@ const (
 	EmptyCrcValue uint64 = 4045511210
 
 	DefaultIntervalDataPartitionValidateCRC = time.Hour * 24
+	GetRemoteExtentInfoForValidateCRCRetryTimes = 3
+)
+
+const (
+	errorConnRefused = "connection refused"
+	errorIOTimeout   = "i/o timeout"
+	errorGetConnect  = "get connection failed"
 )

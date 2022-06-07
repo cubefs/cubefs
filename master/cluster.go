@@ -3520,6 +3520,12 @@ func (c *Cluster) handleDataNodeValidateCRCReport(dpCrcInfo *proto.DataPartition
 		return
 	}
 	warnMsg := new(strings.Builder)
+	if dpCrcInfo.IsBuildValidateCRCTaskErr {
+		warnMsg.WriteString(fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v build task err:%v ",
+			c.Name, dpCrcInfo.PartitionID, dpCrcInfo.ErrMsg))
+		Warn(c.Name, warnMsg.String())
+		return
+	}
 	replicaCrcDetail := new(strings.Builder)
 	for _, extentCrcInfo := range dpCrcInfo.ExtentCrcInfos {
 		warnMsg.Reset()

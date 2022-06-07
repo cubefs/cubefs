@@ -61,12 +61,45 @@ func (dp *DataPartition) runValidateCRC(ctx context.Context) {
 	err := dp.buildDataPartitionValidateCRCTask(ctx, validateCRCTasks, replicas)
 	if err != nil {
 		log.LogErrorf("action[runValidateCRC] partition(%v) err(%v).", dp.partitionID, err)
+		if isGetConnectError(err) || isConnectionRefusedFailure(err) || isIOTimeoutFailure(err) {
+			return
+		}
+		dpCrcInfo := proto.DataPartitionExtentCrcInfo{
+			PartitionID:               dp.partitionID,
+			IsBuildValidateCRCTaskErr: true,
+			ErrMsg:                    err.Error(),
+		}
+		if err = MasterClient.NodeAPI().DataNodeValidateCRCReport(&dpCrcInfo); err != nil {
+			log.LogErrorf("report DataPartition Validate CRC result failed,PartitionID(%v) err:%v", dp.partitionID, err)
+			return
+		}
 		return
 	}
 
 	dp.validateCRC(validateCRCTasks)
 	end := time.Now().UnixNano()
 	log.LogWarnf("action[runValidateCRC] partition(%v) finish cost[%vms].", dp.partitionID, (end-start)/int64(time.Millisecond))
+}
+
+func isGetConnectError(err error) bool {
+	if strings.Contains(err.Error(), errorGetConnect) {
+		return true
+	}
+	return false
+}
+
+func isConnectionRefusedFailure(err error) bool {
+	if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(errorConnRefused)) {
+		return true
+	}
+	return false
+}
+
+func isIOTimeoutFailure(err error) bool {
+	if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(errorIOTimeout)) {
+		return true
+	}
+	return false
 }
 
 func (dp *DataPartition) buildDataPartitionValidateCRCTask(ctx context.Context, validateCRCTasks []*DataPartitionValidateCRCTask, replicas []string) (err error) {
@@ -84,9 +117,8 @@ func (dp *DataPartition) buildDataPartitionValidateCRCTask(ctx context.Context, 
 	for index := 1; index < len(replicas); index++ {
 		var followerExtents []storage.ExtentInfoBlock
 		followerAddr := replicas[index]
-		if followerExtents, err = dp.getRemoteExtentInfoForValidateCRC(ctx, followerAddr); err != nil {
-			log.LogErrorf("buildDataPartitionValidateCRCTask PartitionID(%v) on(%v) err(%v)", dp.partitionID, followerAddr, err)
-			continue
+		if followerExtents, err = dp.getRemoteExtentInfoForValidateCRCWithRetry(ctx, followerAddr); err != nil {
+			return
 		}
 		validateCRCTasks[index] = NewDataPartitionValidateCRCTask(followerExtents, followerAddr, leaderAddr)
 		validateCRCTasks[index].addr = followerAddr
@@ -108,11 +140,22 @@ func (dp *DataPartition) getLocalExtentInfoForValidateCRC() (extents []storage.E
 	return
 }
 
+func (dp *DataPartition) getRemoteExtentInfoForValidateCRCWithRetry(ctx context.Context, target string) (extentFiles []storage.ExtentInfoBlock, err error) {
+	for i := 0; i < GetRemoteExtentInfoForValidateCRCRetryTimes; i++ {
+		extentFiles, err = dp.getRemoteExtentInfoForValidateCRC(ctx, target)
+		if err == nil {
+			return
+		}
+		log.LogWarnf("getRemoteExtentInfoForValidateCRCWithRetry PartitionID(%v) on(%v) err(%v)", dp.partitionID, target, err)
+	}
+	return
+}
+
 func (dp *DataPartition) getRemoteExtentInfoForValidateCRC(ctx context.Context, target string) (extentFiles []storage.ExtentInfoBlock, err error) {
 	var packet = proto.NewPacketToGetAllExtentInfo(ctx, dp.partitionID)
 	var conn *net.TCPConn
 	if conn, err = gConnPool.GetConnect(target); err != nil {
-		err = errors.Trace(err, "get connection failed")
+		err = errors.Trace(err, errorGetConnect)
 		return
 	}
 	defer func() {
@@ -138,7 +181,7 @@ func (dp *DataPartition) getRemoteExtentInfoForValidateCRC(ctx context.Context, 
 		return
 	}
 	extentFiles = make([]storage.ExtentInfoBlock, 0, len(reply.Data)/20)
-	for index := 0; index < int(reply.Size)/24; index++ {
+	for index := 0; index < int(reply.Size)/20; index++ {
 		var offset = index * 20
 		var extentID = binary.BigEndian.Uint64(reply.Data[offset:])
 		var size = binary.BigEndian.Uint64(reply.Data[offset+8:])
