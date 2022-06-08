@@ -2415,7 +2415,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		err = proto.ErrVolNotExists
 		goto errHandler
 	}
-	masterRegionZoneList = strings.Split(vol.zoneName, ",")
+	masterRegionZoneList = strings.Split(zoneName, ",")
 	if IsCrossRegionHATypeQuorum(crossRegionHAType) {
 		if err = c.validCrossRegionHA(zoneName); err != nil {
 			goto errHandler

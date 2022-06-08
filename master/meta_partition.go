@@ -292,8 +292,9 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 		mp.Status = proto.ReadWrite
 	}
 	if writeLog && len(liveReplicas) != int(mp.ReplicaNum) {
-		msg := fmt.Sprintf("action[checkMPStatus],id:%v,status:%v,replicaNum:%v,replicas:%v,persistenceHosts:%v",
-			mp.PartitionID, mp.Status, mp.ReplicaNum, len(liveReplicas), mp.Hosts)
+		inactiveAddrs := mp.getInactiveAddrsFromLiveReplicas(liveReplicas)
+		msg := fmt.Sprintf("action[checkMPStatus],id:%v,status:%v,replicaNum:%v,replicas:%v,persistenceHosts:%v inactiveAddrs:%v",
+			mp.PartitionID, mp.Status, mp.ReplicaNum, len(liveReplicas), mp.Hosts, inactiveAddrs)
 		log.LogInfo(msg)
 		Warn(clusterID, msg)
 	}
@@ -421,6 +422,18 @@ func (mp *MetaPartition) getLiveReplicasAddr(liveReplicas []*MetaReplica) (addrs
 	}
 	return
 }
+
+func (mp *MetaPartition) getInactiveAddrsFromLiveReplicas(liveReplicas []*MetaReplica) (inactiveAddrs []string) {
+	inactiveAddrs = make([]string, 0)
+	liveReplicasAddr := mp.getLiveReplicasAddr(liveReplicas)
+	for _, host := range mp.Hosts {
+		if !contains(liveReplicasAddr, host) {
+			inactiveAddrs = append(inactiveAddrs, host)
+		}
+	}
+	return
+}
+
 func (mp *MetaPartition) getLiveReplicas() (liveReplicas []*MetaReplica) {
 	learnerHosts := mp.getLearnerHosts()
 	liveReplicas = make([]*MetaReplica, 0)
