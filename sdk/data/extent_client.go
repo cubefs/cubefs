@@ -338,7 +338,9 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset uint
 	if s.overWriteBuffer {
 		// overWriteReqMutex should be locked here to prevent invalid prepared requests
 		s.overWriteReqMutex.Lock()
-		requests, _ := s.extents.PrepareRequests(offset, len(data), data)
+	}
+	requests, _ := s.extents.PrepareRequests(offset, len(data), data)
+	if s.overWriteBuffer {
 		hasAppendWrite := false
 		for _, req := range requests {
 			if req.ExtentKey == nil || req.ExtentKey.PartitionId == 0 {
@@ -354,11 +356,17 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset uint
 			}
 		}
 		s.overWriteReqMutex.Unlock()
-	} else {
-		write, isROW, err = s.IssueWriteRequest(ctx, offset, data, direct)
+		return
 	}
-
-	return
+	if s.enableParallelOverwrite(requests) {
+		if log.IsDebugEnabled() {
+			log.LogDebugf("WriteForParallelOverwrite: ino(%v) parallel overwrite offset(%v) size(%v)", s.inode, offset, len(data))
+		}
+		if overWriteSize, overWriteErr := s.doOverwrite(ctx, requests[0], direct); overWriteErr == nil {
+			return overWriteSize, false, nil
+		}
+	}
+	return s.IssueWriteRequest(ctx, offset, data, direct)
 }
 
 func (client *ExtentClient) SyncWrite(ctx context.Context, inode uint64, offset uint64, data []byte) (dp *DataPartition, write int, newEk *proto.ExtentKey, err error) {

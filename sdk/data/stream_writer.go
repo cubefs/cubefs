@@ -442,6 +442,10 @@ func (s *Streamer) enableOverwrite() bool {
 	return !s.isForceROW() && !s.client.dataWrapper.CrossRegionHATypeQuorum() && !s.enableRemoteCache()
 }
 
+func (s *Streamer) enableParallelOverwrite(requests []*ExtentRequest) bool {
+	return s.enableOverwrite() && len(requests) == 1 && requests[0].ExtentKey != nil && requests[0].ExtentKey.PartitionId != 0
+}
+
 func (s *Streamer) writeToExtent(ctx context.Context, oriReq *ExtentRequest, dp *DataPartition, extID int,
 	direct bool, conn *net.TCPConn) (total int, err error) {
 	size := oriReq.Size
