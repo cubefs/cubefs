@@ -1,6 +1,6 @@
 # Roadmap
 
-Here we draft the engineering roadmap of ChubaoFS. 
+Here we draft the engineering roadmap of CubeFS. 
 
 ## Interfaces
 
@@ -15,13 +15,13 @@ Here we draft the engineering roadmap of ChubaoFS.
 
 * Multi version of data storage such as snapshot and history (May 2022)
 
-* Memory chubaofs built on distributed unused memory (May 2022)
+* Memory cubefs built on distributed unused memory (May 2022)
 
 * Audit function on Data operation flow (May 2022)
 
 ## Ecosystem
 
-* ChubaoSpark, a ChubaoFS-based shuffle manager for Apache Spark (WIP)
+* ChubaoSpark, a CubeFS-based shuffle manager for Apache Spark (WIP)
 
-* ChubaoDB, a ChubaoFS-based document store & search (WIP)
+* ChubaoDB, a CubeFS-based document store & search (WIP)
 
