@@ -60,8 +60,12 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 		partition.lastStatus = partition.Status
 	}
 	if needLog == true && len(liveReplicas) != int(partition.ReplicaNum) {
-		msg := fmt.Sprintf("action[extractStatus],partitionID:%v  replicaNum:%v  liveReplicas:%v   Status:%v  RocksDBHost:%v ",
-			partition.PartitionID, partition.ReplicaNum, len(liveReplicas), partition.Status, partition.Hosts)
+		liveHosts := make([]string, 0, len(liveReplicas))
+		for _, r := range liveReplicas {
+			liveHosts = append(liveHosts, r.Addr)
+		}
+		msg := fmt.Sprintf("action[extractStatus],partitionID:%v  replicaNum:%v  liveReplicas:%v   Status:%v  RocksDBHost:%v,liveHosts:%v ",
+			partition.PartitionID, partition.ReplicaNum, len(liveReplicas), partition.Status, partition.Hosts, liveHosts)
 		log.LogInfo(msg)
 		if time.Now().Unix()-partition.lastWarnTime > intervalToWarnDataPartition {
 			Warn(clusterName, msg)

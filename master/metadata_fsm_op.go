@@ -865,7 +865,7 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 			continue
 		}
 		if vol.ID != mpv.VolID {
-			Warn(c.Name, fmt.Sprintf("action[loadMetaPartitions] has duplicate vol[%v],vol.ID[%v],mpv.VolID[%v]", mpv.VolName, vol.ID, mpv.VolID))
+			Warn(c.Name, fmt.Sprintf("action[loadMetaPartitions] has duplicate vol[%v],vol.ID[%v],mpv.VolID[%v],mp[%v]", mpv.VolName, vol.ID, mpv.VolID, mpv.PartitionID))
 			continue
 		}
 		mp := newMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, vol.mpReplicaNum, mpv.LearnerNum, vol.Name, mpv.VolID)
@@ -908,7 +908,7 @@ func (c *Cluster) loadDataPartitions() (err error) {
 			continue
 		}
 		if vol.ID != dpv.VolID {
-			Warn(c.Name, fmt.Sprintf("action[loadDataPartitions] has duplicate vol[%v],vol.ID[%v],mpv.VolID[%v]", dpv.VolName, vol.ID, dpv.VolID))
+			Warn(c.Name, fmt.Sprintf("action[loadDataPartitions] has duplicate vol[%v],vol.ID[%v],dpv.VolID[%v],dp[%v]", dpv.VolName, vol.ID, dpv.VolID, dpv.PartitionID))
 			continue
 		}
 		dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.VolName, dpv.VolID)
