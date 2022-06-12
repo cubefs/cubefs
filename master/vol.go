@@ -733,14 +733,14 @@ func (qosManager *QosCtrlManager) volUpdateLimit(limitArgs *qosArgs) {
 	log.LogWarnf("action[volUpdateLimit] vol %v try set limit iopsrlimit[%v],iopswlimit[%v],flowrlimit[%v],flowwlimit[%v]",
 		qosManager.vol.Name, limitArgs.iopsRVal, limitArgs.iopsWVal, limitArgs.flowRVal, limitArgs.flowWVal)
 
-	if limitArgs.iopsWVal != 0 {
-		qosManager.serverFactorLimitMap[proto.IopsWriteType].Total = limitArgs.iopsWVal
-		qosManager.serverFactorLimitMap[proto.IopsWriteType].LastMagnify = 0
-	}
-	if limitArgs.iopsRVal != 0 {
-		qosManager.serverFactorLimitMap[proto.IopsReadType].Total = limitArgs.iopsRVal
-		qosManager.serverFactorLimitMap[proto.IopsWriteType].LastMagnify = 0
-	}
+	//if limitArgs.iopsWVal != 0 {
+	//	qosManager.serverFactorLimitMap[proto.IopsWriteType].Total = limitArgs.iopsWVal
+	//	qosManager.serverFactorLimitMap[proto.IopsWriteType].LastMagnify = 0
+	//}
+	//if limitArgs.iopsRVal != 0 {
+	//	qosManager.serverFactorLimitMap[proto.IopsReadType].Total = limitArgs.iopsRVal
+	//	qosManager.serverFactorLimitMap[proto.IopsWriteType].LastMagnify = 0
+	//}
 	if limitArgs.flowWVal != 0 {
 		qosManager.serverFactorLimitMap[proto.FlowWriteType].Total = limitArgs.flowWVal
 		qosManager.serverFactorLimitMap[proto.IopsWriteType].LastMagnify = 0
@@ -1226,7 +1226,10 @@ func (vol *Vol) getQosStatus() interface{} {
 	}
 
 	return &qosStatus{
-		ServerFactorLimitMap: vol.qosManager.serverFactorLimitMap,
+		ServerFactorLimitMap: map[uint32]*ServerFactorLimit{
+			proto.FlowReadType:vol.qosManager.serverFactorLimitMap[proto.FlowReadType],
+			proto.FlowWriteType:vol.qosManager.serverFactorLimitMap[proto.FlowWriteType],
+		},
 		QosEnable:            vol.qosManager.qosEnable,
 		ClientReqPeriod:      vol.qosManager.ClientReqPeriod,
 		ClientHitTriggerCnt:  vol.qosManager.ClientHitTriggerCnt,
