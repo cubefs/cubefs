@@ -467,37 +467,37 @@ func parseRequestQos(r *http.Request, isMagnify bool) (qosParam *qosArgs, err er
 	if qosEnableStr := r.FormValue(QosEnableKey); qosEnableStr != "" {
 		qosParam.qosEnable, _ = strconv.ParseBool(qosEnableStr)
 	}
-	if iopsRLimitStr := r.FormValue(IopsRKey); iopsRLimitStr != "" {
-		log.LogInfof("actin[parseRequestQos] iopsRLimitStr %v", iopsRLimitStr)
-		if value, err = strconv.Atoi(iopsRLimitStr); err == nil {
-			qosParam.iopsRVal = uint64(value)
-			if !isMagnify && qosParam.iopsRVal < MinIoLimit {
-				err = fmt.Errorf("iops read %v need larger than 100", value)
-				return
-			}
-			if isMagnify && (qosParam.iopsRVal < MinMagnify || qosParam.iopsRVal > MaxMagnify) {
-				err = fmt.Errorf("iops read magnify %v must between %v and %v", value, MinMagnify, MaxMagnify)
-				log.LogErrorf("acttion[parseRequestQos] %v",err.Error())
-				return
-			}
-		}
-	}
-
-	if iopsWLimitStr := r.FormValue(IopsWKey); iopsWLimitStr != "" {
-		log.LogInfof("actin[parseRequestQos] iopsWLimitStr %v", iopsWLimitStr)
-		if value, err = strconv.Atoi(iopsWLimitStr); err == nil {
-			qosParam.iopsWVal = uint64(value)
-			if !isMagnify && qosParam.iopsWVal < MinIoLimit {
-				err = fmt.Errorf("iops %v write write io larger than 100", value)
-				return
-			}
-			if isMagnify && (qosParam.iopsWVal < MinMagnify || qosParam.iopsWVal > MaxMagnify) {
-				err = fmt.Errorf("iops write magnify %v must between %v and %v", value, MinMagnify, MaxMagnify)
-				log.LogErrorf("acttion[parseRequestQos] %v",err.Error())
-				return
-			}
-		}
-	}
+	//if iopsRLimitStr := r.FormValue(IopsRKey); iopsRLimitStr != "" {
+	//	log.LogInfof("actin[parseRequestQos] iopsRLimitStr %v", iopsRLimitStr)
+	//	if value, err = strconv.Atoi(iopsRLimitStr); err == nil {
+	//		qosParam.iopsRVal = uint64(value)
+	//		if !isMagnify && qosParam.iopsRVal < MinIoLimit {
+	//			err = fmt.Errorf("iops read %v need larger than 100", value)
+	//			return
+	//		}
+	//		if isMagnify && (qosParam.iopsRVal < MinMagnify || qosParam.iopsRVal > MaxMagnify) {
+	//			err = fmt.Errorf("iops read magnify %v must between %v and %v", value, MinMagnify, MaxMagnify)
+	//			log.LogErrorf("acttion[parseRequestQos] %v",err.Error())
+	//			return
+	//		}
+	//	}
+	//}
+	//
+	//if iopsWLimitStr := r.FormValue(IopsWKey); iopsWLimitStr != "" {
+	//	log.LogInfof("actin[parseRequestQos] iopsWLimitStr %v", iopsWLimitStr)
+	//	if value, err = strconv.Atoi(iopsWLimitStr); err == nil {
+	//		qosParam.iopsWVal = uint64(value)
+	//		if !isMagnify && qosParam.iopsWVal < MinIoLimit {
+	//			err = fmt.Errorf("iops %v write write io larger than 100", value)
+	//			return
+	//		}
+	//		if isMagnify && (qosParam.iopsWVal < MinMagnify || qosParam.iopsWVal > MaxMagnify) {
+	//			err = fmt.Errorf("iops write magnify %v must between %v and %v", value, MinMagnify, MaxMagnify)
+	//			log.LogErrorf("acttion[parseRequestQos] %v",err.Error())
+	//			return
+	//		}
+	//	}
+	//}
 
 	if flowRLimitStr := r.FormValue(FlowRKey); flowRLimitStr != "" {
 		log.LogInfof("actin[parseRequestQos] flowRLimitStr %v", flowRLimitStr)

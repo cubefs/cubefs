@@ -386,50 +386,12 @@ func (limitManager *LimitManager) GetFlowInfo() (*proto.ClientReportLimitInfo, b
 	for factorType, limitFactor := range limitManager.limitMap {
 		limitFactor.lock.RLock()
 
-		var used, limit, buffer uint64
+		var used uint64
 		grid := limitFactor.gridList.Back()
-		// calc and set in case of time may be shifted
-		griCnt := 0
-		if limitFactor.gridList.Len() > 0 {
-			log.LogInfof("action[GetFlowInfo] start  grid %v", grid.Value.(*GridElement).ID)
-		}
 
-		for griCnt < limitFactor.gridList.Len() {
-			used += atomic.LoadUint64(&grid.Value.(*GridElement).used)
-			limit += grid.Value.(*GridElement).limit
-			buffer += grid.Value.(*GridElement).buffer
-			griCnt++
-
-			log.LogInfof("action[GetFlowInfo] type [%v] grid id[%v] used %v limit %v buffer %v time %v sum_used %v sum_limit %v,len %v",
-				proto.QosTypeString(factorType),
-				grid.Value.(*GridElement).ID,
-				grid.Value.(*GridElement).used,
-				grid.Value.(*GridElement).limit,
-				grid.Value.(*GridElement).buffer,
-				grid.Value.(*GridElement).time,
-				used,
-				limit, limitFactor.gridList.Len())
-			if grid.Prev() == nil || griCnt >= girdCntOneSecond {
-				break
-			}
-			grid = grid.Prev()
-		}
-		if limitFactor.gridList.Len() > 0 {
-			log.LogInfof("action[GetFlowInfo] end grid %v", grid.Value.(*GridElement).ID)
-		}
-
-		timeElapse := uint64(time.Second)*uint64(griCnt)/girdCntOneSecond
-		if timeElapse < uint64(qosReportMinGap) {
-			log.LogWarnf("action[GetFlowInfo] type [%v] timeElapse [%v] since last report",
-				proto.QosTypeString(limitFactor.factorType), timeElapse)
-			timeElapse = uint64(qosReportMinGap) // time of interval get vol view from master todo:change to config time
-		}
-
-		// reqUsed := uint64(float64(used) / (float64(timeElapse) / float64(time.Second)))
 		reqUsed := limitFactor.valAllocLastCommit
-		log.LogInfof("action[GetFlowInfo] type [%v] used [%v] timeelapse [%v] griCnt[%v] reqused[%v]",
-			proto.QosTypeString(limitFactor.factorType),
-			used, timeElapse, griCnt, reqUsed)
+		log.LogInfof("action[GetFlowInfo] type [%v] used [%v] reqused[%v]", proto.QosTypeString(limitFactor.factorType),
+			used, reqUsed)
 
 		factor := &proto.ClientLimitInfo{
 			Used:		reqUsed,

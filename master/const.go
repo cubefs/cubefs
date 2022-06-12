@@ -104,7 +104,7 @@ const (
 const (
 	LRUCacheSize    = 3 << 30
 	WriteBufferSize = 4 * util.MB
-	MinFlowLimit    = 1 * util.MB
+	MinFlowLimit    = 100 * util.MB
 	MinIoLimit      = 100
 	MinMagnify      = 10
 	MaxMagnify      = 100
@@ -137,8 +137,8 @@ const (
 	defaultMigrateDpCnt                          = 50
 	defaultMigrateMpCnt                          = 15
 	defaultMaxReplicaCnt                         = 16
-	defaultIopsRLimit                     uint64 = 1 << 16
-	defaultIopsWLimit                     uint64 = 1 << 16
+	defaultIopsRLimit                     uint64 = 1 << 35
+	defaultIopsWLimit                     uint64 = 1 << 35
 	defaultFlowWLimit                     uint64 = 1 << 35
 	defaultFlowRLimit                     uint64 = 1 << 35
 	defaultLimitTypeCnt                          = 4

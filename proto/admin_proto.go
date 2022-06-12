@@ -80,6 +80,7 @@ const (
 	QosUpdateClientParam   = "/qos/updateClientParam"
 	QosUpdateZoneLimit     = "/qos/updateZoneLimit" // include disk enable
 	QosUpload              = "/admin/qosUpload"
+	QosMasterLimit         = "/qos/masterLimit"
 	//raft node APIs
 	AddRaftNode    = "/raftNode/add"
 	RemoveRaftNode = "/raftNode/remove"
