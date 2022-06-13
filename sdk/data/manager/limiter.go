@@ -138,7 +138,7 @@ func (factor *LimitFactor) alloc(allocCnt uint32) (ret uint8,future *util.Future
 					// unlock need call here,UpdateSimpleVolView will lock again
 					factor.lock.Unlock()
 					activeState.activeUpdate = true
-				//	go factor.mgr.WrapperUpdate(factor.mgr.simpleClient)
+					go factor.mgr.WrapperUpdate(factor.mgr.simpleClient)
 				}
 			}
 		}
