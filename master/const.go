@@ -86,6 +86,7 @@ const (
 	FlowRKey                = "flowRKey"
 	ClientReqPeriod         = "reqPeriod"
 	ClientTriggerCnt        = "triggerCnt"
+	QosMasterLimit          = "qosLimit"
 )
 
 const (
@@ -108,6 +109,7 @@ const (
 	MinIoLimit      = 100
 	MinMagnify      = 10
 	MaxMagnify      = 100
+	QosMasterAcceptCnt = 5000
 )
 
 const (
