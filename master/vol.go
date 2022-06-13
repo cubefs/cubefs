@@ -17,7 +17,6 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -81,6 +80,7 @@ type Vol struct {
 	convertState         proto.VolConvertState
 	DefaultStoreMode     proto.StoreMode
 	MpLayout             proto.MetaPartitionLayout
+	CreateStatus         proto.VolCreateStatus
 	sync.RWMutex
 }
 
@@ -111,10 +111,6 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	if dpSize < util.GB {
 		dpSize = util.DefaultDataPartitionSize
 	}
-	zoneList := strings.Split(zoneName, ",")
-	if len(zoneList) > 1 {
-		vol.crossZone = true
-	}
 	vol.ExtentCacheExpireSec = defaultExtentCacheExpireSec
 	vol.MinWritableMPNum = defaultVolMinWritableMPNum
 	vol.MinWritableDPNum = defaultVolMinWritableDPNum
@@ -122,8 +118,6 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	if trashDays > maxTrashRemainingDays {
 		trashDays = maxTrashRemainingDays
 	}
-	vol.MinWritableMPNum = defaultVolMinWritableMPNum
-	vol.MinWritableDPNum = defaultVolMinWritableDPNum
 	vol.dataPartitionSize = dpSize
 	vol.Capacity = capacity
 	vol.FollowerRead = followerRead

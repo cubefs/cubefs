@@ -145,8 +145,8 @@ func (c *Cluster) scheduleToUpdateStatInfo() {
 func (c *Cluster) scheduleToCheckAutoDataPartitionCreation() {
 	go func() {
 
-		// check volumes after switching leader two minutes
-		time.Sleep(2 * time.Minute)
+		// check volumes after switching leader four minutes
+		time.Sleep(4 * time.Minute)
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				vols := c.copyVols()
@@ -1023,8 +1023,8 @@ func (c *Cluster) validCrossRegionHA(volZoneName string) (err error) {
 	if err != nil {
 		return
 	}
-	if len(masterRegionZoneName) < 2 || len(slaveRegionZone) == 0 {
-		return fmt.Errorf("there must be at least two master and one slave region zone for cross region vol")
+	if len(masterRegionZoneName) < minCrossRegionVolMasterRegionZonesCount || len(slaveRegionZone) == 0 {
+		return fmt.Errorf("there must be at least %v master and 1 slave region zone for cross region vol", minCrossRegionVolMasterRegionZonesCount)
 	}
 	return
 }
@@ -2408,15 +2408,19 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		vol           *Vol
 		volBak        *Vol
 		serverAuthKey string
-		zoneList      []string
+		masterRegionZoneList    []string
 	)
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[updateVol] err[%v]", err)
 		err = proto.ErrVolNotExists
 		goto errHandler
 	}
+	masterRegionZoneList = strings.Split(zoneName, ",")
 	if IsCrossRegionHATypeQuorum(crossRegionHAType) {
 		if err = c.validCrossRegionHA(zoneName); err != nil {
+			goto errHandler
+		}
+		if masterRegionZoneList, _, err = c.getMasterAndSlaveRegionZoneName(zoneName); err != nil {
 			goto errHandler
 		}
 	}
@@ -2472,8 +2476,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		}
 		vol.zoneName = zoneName
 	}
-	zoneList = strings.Split(vol.zoneName, ",")
-	if len(zoneList) > 1 {
+	if len(masterRegionZoneList) > 1 {
 		vol.crossZone = true
 	} else {
 		vol.crossZone = false
@@ -2595,6 +2598,7 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 		_ = vol.initDataPartitions(c)
 		readWriteDataPartitions = len(vol.dataPartitions.partitionMap)
 	}
+	vol.CreateStatus = proto.DefaultVolCreateStatus
 	vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
 	vol.updateViewCache(c)
 	log.LogInfof("action[createVol] vol[%v],readableAndWritableCnt[%v]", name, readWriteDataPartitions)
@@ -2612,11 +2616,21 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64,
 	storeMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout) (vol *Vol, err error) {
 	var id uint64
+	var createTime = time.Now().Unix() // record unix seconds of volume create time
+	masterRegionZoneList := strings.Split(zoneName, ",")
+	if IsCrossRegionHATypeQuorum(crossRegionHAType) {
+		if masterRegionZoneList, _, err = c.getMasterAndSlaveRegionZoneName(zoneName); err != nil {
+			goto errHandler
+		}
+	}
 	c.createVolMutex.Lock()
 	defer c.createVolMutex.Unlock()
-	var createTime = time.Now().Unix() // record unix seconds of volume create time
-	if _, err = c.getVol(name); err == nil {
-		err = proto.ErrDuplicateVol
+	if vol, err = c.getVol(name); err == nil {
+		if vol.CreateStatus == proto.VolInCreation {
+			err = proto.ErrVolInCreation
+		} else {
+			err = proto.ErrDuplicateVol
+		}
 		goto errHandler
 	}
 	id, err = c.idAlloc.allocateCommonID()
@@ -2627,6 +2641,10 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 		authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, createTime, description, "", "",
 		crossRegionHAType, dpLearnerNum, mpLearnerNum, dpWriteableThreshold, uint32(trashDays), storeMode, convertSt, mpLayout)
 
+	if len(masterRegionZoneList) > 1 {
+		vol.crossZone = true
+	}
+	vol.CreateStatus = proto.VolInCreation
 	// refresh oss secure
 	vol.refreshOSSSecure()
 	if err = c.syncAddVol(vol); err != nil {
@@ -2953,6 +2971,15 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		}
 		atomic.StoreUint64(&c.cfg.MetaNodeReqRateLimit, v)
 	}
+	oldMetaNodeReadDirLimit := atomic.LoadUint64(&c.cfg.MetaNodeReadDirLimitNum)
+	if val, ok := params[metaNodeReadDirLimitKey]; ok {
+		v := val.(uint64)
+		if v > 0 && v < minReadDirLimitNum {
+			err = errors.NewErrorf("parameter %s can't be less than %d", metaNodeReadDirLimitKey, minReadDirLimitNum)
+			return
+		}
+		atomic.StoreUint64(&c.cfg.MetaNodeReadDirLimitNum, v)
+	}
 	oldDeleteWorkerSleepMs := atomic.LoadUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs)
 	if val, ok := params[nodeDeleteWorkerSleepMs]; ok {
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, val.(uint64))
@@ -2976,6 +3003,7 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, oldDeleteLimitRate)
 		atomic.StoreUint64(&c.cfg.DataNodeRepairTaskCount, oldRepairTaskCount)
 		atomic.StoreUint64(&c.cfg.MetaNodeReqRateLimit, oldMetaNodeReqRateLimit)
+		atomic.StoreUint64(&c.cfg.MetaNodeReadDirLimitNum, oldMetaNodeReadDirLimit)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, oldDeleteWorkerSleepMs)
 		atomic.StoreInt32(&c.cfg.DataPartitionsRecoverPoolSize, oldDpRecoverPoolSize)
 		atomic.StoreInt32(&c.cfg.MetaPartitionsRecoverPoolSize, oldMpRecoverPoolSize)

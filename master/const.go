@@ -68,6 +68,7 @@ const (
 	dataNodeReqVolOpPartRateKey = "dataNodeReqVolOpPartRate"
 	metaNodeReqRateKey          = "metaNodeReqRate"
 	metaNodeReqOpRateKey        = "metaNodeReqOpRate"
+	metaNodeReadDirLimitKey		= "metaNodeReadDirLimit"
 	clientReadVolRateKey        = "clientReadVolRate"
 	clientWriteVolRateKey       = "clientWriteVolRate"
 	clientVolOpRateKey          = "clientVolOpRate"
@@ -101,12 +102,19 @@ const (
 	volConvertStKey             = "convertState"
 	versionKey                  = "version"
 	isManualKey                 = "isManual"
+	mediumKey                   = "medium"
 )
 
 const (
 	nodeTypeDataNode = "dataNode"
 	nodeTypeMetaNode = "metaNode"
 	nodeTypeAll      = "all"
+)
+
+const (
+	mediumAll = "all"
+	mediumSSD = "ssd"
+	mediumHDD = "hdd"
 )
 
 const (
@@ -164,6 +172,7 @@ const (
 	defaultLearnerPromThreshold                        = 90
 	minRateLimit                                       = 100
 	minPartRateLimit                                   = 1
+	minReadDirLimitNum								   = 500000
 	diskErrDataPartitionOfflineBatchCount              = 200
 	defaultHighUsedRatioDataNodesThreshold             = 0.85
 	defaultHighUsedRatioMetaNodesThreshold             = 0.85
@@ -178,6 +187,7 @@ const (
 	defaultLowCapacityVol                              = 10 * 1024
 	maxTrashRemainingDays                              = 30
 	defaultMetaNodeVersion                             = "3.0.0"
+	minCrossRegionVolMasterRegionZonesCount            = 1
 )
 
 const (

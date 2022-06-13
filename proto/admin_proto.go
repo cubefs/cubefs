@@ -274,7 +274,7 @@ type LimitInfo struct {
 	Cluster                     string
 	MetaNodeDeleteBatchCount    uint64
 	MetaNodeDeleteWorkerSleepMs uint64
-	MetaNodeReadDirLimitNum		uint64	// todo
+	MetaNodeReadDirLimitNum		uint64
 
 	MetaNodeReqRateLimit             uint64
 	MetaNodeReqOpRateLimitMap        map[uint8]uint64
@@ -749,6 +749,11 @@ type SimpleVolView struct {
 	DefaultStoreMode     StoreMode
 	ConvertState         VolConvertState
 	MpLayout             MetaPartitionLayout
+	TotalSize            uint64
+	UsedSize             uint64
+	UsedRatio            float64
+	FileAvgSize          float64
+	CreateStatus         VolCreateStatus
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -819,6 +824,14 @@ const (
 	DefaultConvertMode ConvertMode = iota
 	IncreaseReplicaNum
 )
+
+type VolCreateStatus uint8
+
+const (
+	DefaultVolCreateStatus VolCreateStatus = iota
+	VolInCreation
+)
+
 
 type ConnConfig struct {
 	IdleTimeoutSec		int64

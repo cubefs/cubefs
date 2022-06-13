@@ -411,7 +411,7 @@ func TestVolBatchUpdateDps(t *testing.T) {
 	}
 
 	count := vol.dataPartitions.readableAndWritableCnt / 2
-	reqURL := fmt.Sprintf("%v%v?name=%v&isManual=%v&count=%v&start=1&end=1000",
+	reqURL := fmt.Sprintf("%v%v?name=%v&isManual=%v&count=%v&start=1&end=1000&medium=all",
 		hostAddr, proto.AdminVolBatchUpdateDps, vol.Name, true, count)
 	fmt.Println(reqURL)
 	process(reqURL, t)
@@ -434,7 +434,11 @@ func TestVolBatchUpdateDps(t *testing.T) {
 		t.Errorf("expect count is %v,but get manualDPCount:%v", count, manualDPCount)
 		return
 	}
-	reqURL = fmt.Sprintf("%v%v?name=%v&isManual=%v&start=%v&end=%v",
+	reqURL = fmt.Sprintf("%v%v?name=%v&isManual=%v&start=%v&end=%v&medium=hdd",
+		hostAddr, proto.AdminVolBatchUpdateDps, vol.Name, false, minIsManualDpID, maxIsManualDpID)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	reqURL = fmt.Sprintf("%v%v?name=%v&isManual=%v&start=%v&end=%v&medium=ssd",
 		hostAddr, proto.AdminVolBatchUpdateDps, vol.Name, false, minIsManualDpID, maxIsManualDpID)
 	fmt.Println(reqURL)
 	process(reqURL, t)

@@ -171,7 +171,7 @@ func (partition *DataPartition) checkReplicaStatus(clusterName string, timeOutSe
 				replica.Status = proto.ReadOnly
 			}
 			if replica.loadFailedByDataNode(3 * timeOutSec) {
-				msg := fmt.Sprintf("cluster[%v],vol[%v],dp[%v] load failed by datanode", clusterName, partition.VolName, partition.PartitionID)
+				msg := fmt.Sprintf("cluster[%v],vol[%v],dp[%v],replica[%v] load failed by datanode", clusterName, partition.VolName, partition.PartitionID, replica.Addr)
 				Warn(clusterName, msg)
 			}
 		}

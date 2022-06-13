@@ -1261,7 +1261,7 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 		metaNode *MetaNode
 		logMsg   string
 	)
-	log.LogInfof("action[dealMetaNodeHeartbeatResp],clusterID[%v] receive nodeAddr[%v] heartbeat", c.Name, nodeAddr)
+	log.LogInfof("action[dealMetaNodeHeartbeatResp],clusterID[%v] receive nodeAddr[%v] heartbeat ReportsCount[%v]", c.Name, nodeAddr, len(resp.MetaPartitionReports))
 	if resp.Status == proto.TaskFailed {
 		msg := fmt.Sprintf("action[dealMetaNodeHeartbeatResp],clusterID[%v] nodeAddr %v heartbeat failed,err %v",
 			c.Name, nodeAddr, resp.Result)

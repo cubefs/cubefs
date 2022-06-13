@@ -88,6 +88,7 @@ var (
 	ErrHBaseOperation                  = errors.New("hbase operation error")
 
 	ErrOperationDisabled = errors.New("operation have been disabled")
+	ErrVolInCreation     = errors.New("vol is in creation")
 )
 
 // http response error code and error message definitions
@@ -156,6 +157,7 @@ const (
 	ErrCodeVolWriteMutexUnable
 	ErrCodeVolWriteMutexOccupied
 	ErrCodeHBaseOperation
+	ErrCodeVolInCreation
 )
 
 // Err2CodeMap error map to code
@@ -222,6 +224,7 @@ var Err2CodeMap = map[error]int32{
 	ErrVolWriteMutexUnable:             ErrCodeVolWriteMutexUnable,
 	ErrVolWriteMutexOccupied:           ErrCodeVolWriteMutexOccupied,
 	ErrHBaseOperation:                  ErrCodeHBaseOperation,
+	ErrVolInCreation:                   ErrCodeVolInCreation,
 }
 
 func ParseErrorCode(code int32) error {
@@ -295,6 +298,7 @@ var code2ErrMap = map[int32]error{
 	ErrCodeVolWriteMutexUnable:             ErrVolWriteMutexUnable,
 	ErrCodeVolWriteMutexOccupied:           ErrVolWriteMutexOccupied,
 	ErrCodeHBaseOperation:                  ErrHBaseOperation,
+	ErrCodeVolInCreation:                   ErrVolInCreation,
 }
 
 type GeneralResp struct {

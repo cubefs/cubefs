@@ -249,22 +249,28 @@ func (dpMap *DataPartitionMap) checkBadDiskDataPartitions(diskPath, nodeAddr str
 	return
 }
 
-func (dpMap *DataPartitionMap) getRWDataPartitionsOfGivenCount(count int) (partitions []*DataPartition, err error) {
-	dpMap.RLock()
-	defer dpMap.RUnlock()
+func (vol *Vol) getRWDataPartitionsOfGivenCount(count int, medium string, c *Cluster) (partitions []*DataPartition, err error) {
 	minRestRwDpCount := 10
-	if len(dpMap.partitionMap) > 100 {
+	if len(vol.dataPartitions.partitionMap) > 100 {
 		minRestRwDpCount = 20
 	}
-	if dpMap.readableAndWritableCnt-count <= minRestRwDpCount {
+	if vol.dataPartitions.readableAndWritableCnt-count <= minRestRwDpCount {
 		err = fmt.Errorf("readableAndWritableCnt[%v] count[%v] less than minRestRwDpCount[%v]",
-			dpMap.readableAndWritableCnt, count, minRestRwDpCount)
+			vol.dataPartitions.readableAndWritableCnt, count, minRestRwDpCount)
 		return
 	}
+	dataPartitionMap := vol.cloneDataPartitionMap()
 	partitions = make([]*DataPartition, 0)
-	for _, dp := range dpMap.partitionMap {
+	for _, dp := range dataPartitionMap {
 		if dp.Status == proto.ReadWrite {
-			partitions = append(partitions, dp)
+			ok, err1 := dp.isTargetMediumType(medium, c)
+			if err1 != nil {
+				err = fmt.Errorf("action[getRWDataPartitionsOfGivenCount] err:%v", err1)
+				return
+			}
+			if ok {
+				partitions = append(partitions, dp)
+			}
 		}
 		if len(partitions) >= count {
 			return
@@ -273,13 +279,19 @@ func (dpMap *DataPartitionMap) getRWDataPartitionsOfGivenCount(count int) (parti
 	return
 }
 
-func (dpMap *DataPartitionMap) getDataPartitionsFromStartIDToEndID(startID, endID uint64) (partitions []*DataPartition) {
-	dpMap.RLock()
-	defer dpMap.RUnlock()
+func (vol *Vol) getDataPartitionsFromStartIDToEndID(startID, endID uint64, medium string, c *Cluster) (partitions []*DataPartition, err error) {
+	dataPartitionMap := vol.cloneDataPartitionMap()
 	partitions = make([]*DataPartition, 0)
-	for _, dp := range dpMap.partitionMap {
+	for _, dp := range dataPartitionMap {
 		if dp.PartitionID >= startID && dp.PartitionID <= endID {
-			partitions = append(partitions, dp)
+			ok, err1 := dp.isTargetMediumType(medium, c)
+			if err1 != nil {
+				err = fmt.Errorf("action[getDataPartitionsFromStartIDToEndID] err:%v", err1)
+				return
+			}
+			if ok {
+				partitions = append(partitions, dp)
+			}
 		}
 	}
 	return
