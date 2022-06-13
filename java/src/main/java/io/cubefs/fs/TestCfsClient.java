@@ -1,6 +1,4 @@
-package io.chubao.fs;
-
-import io.chubao.fs.CfsLibrary.Dirent;
+package io.cubefs.fs;
 
 import java.io.FileNotFoundException;
 
@@ -102,8 +100,8 @@ public class TestCfsClient {
             }
 
             int total_entry = 0;
-            Dirent dent = new Dirent();
-            Dirent[] dents = (Dirent[]) dent.toArray(2);
+            CfsLibrary.Dirent dent = new CfsLibrary.Dirent();
+            CfsLibrary.Dirent[] dents = (CfsLibrary.Dirent[]) dent.toArray(2);
             for (;;) {
                 int n = mnt.readdir(fd, dents, 2);
                 if (n <= 0) {

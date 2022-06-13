@@ -1,10 +1,7 @@
-package io.chubao.fs;
+package io.cubefs.fs;
 
 import com.sun.jna.Native;
 import com.sun.jna.Pointer;
-
-import io.chubao.fs.CfsLibrary.Dirent;
-import io.chubao.fs.CfsLibrary.DirentArray;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -110,9 +107,9 @@ public class CfsMount {
      * Note that the memory allocated for Dirent[] must be countinuous. For example,
      * (new Dirent()).toArray(count).
      */
-    public int readdir(int fd, Dirent[] dents, int count) {
+    public int readdir(int fd, CfsLibrary.Dirent[] dents, int count) {
         Pointer arr = dents[0].getPointer();
-        DirentArray.ByValue slice = new DirentArray.ByValue();
+        CfsLibrary.DirentArray.ByValue slice = new CfsLibrary.DirentArray.ByValue();
         slice.data = arr;
         slice.len = (long) count;
         slice.cap = (long) count;
