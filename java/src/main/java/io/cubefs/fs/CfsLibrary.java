@@ -1,4 +1,4 @@
-package io.chubao.fs;
+package io.cubefs.fs;
 
 import com.sun.jna.Library;
 import com.sun.jna.Structure;
