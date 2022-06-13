@@ -15,6 +15,9 @@
 package metanode
 
 import (
+	"encoding/binary"
+	"fmt"
+	"hash/crc32"
 	"sync"
 
 	"github.com/chubaofs/chubaofs/util/btree"
@@ -27,9 +30,10 @@ type (
 	BtreeItem = btree.Item
 )
 
-var _ Snapshot = &BTreeSnapShot{}
+var _ Snapshot = &MemSnapShot{}
 
-type BTreeSnapShot struct {
+type MemSnapShot struct {
+	applyID   uint64
 	inode     *InodeBTree
 	dentry    *DentryBTree
 	extend    *ExtendBTree
@@ -38,7 +42,7 @@ type BTreeSnapShot struct {
 	delInode  *DeletedInodeBTree
 }
 
-func (b *BTreeSnapShot) Range(tp TreeType, cb func(v []byte) (bool, error)) error {
+func (b *MemSnapShot) Range(tp TreeType, cb func(v []byte) (bool, error)) error {
 	switch tp {
 	case InodeType:
 		return b.inode.Range(&Inode{}, nil, cb)
@@ -57,9 +61,9 @@ func (b *BTreeSnapShot) Range(tp TreeType, cb func(v []byte) (bool, error)) erro
 	panic("out of type")
 }
 
-func (b *BTreeSnapShot) Close() {}
+func (b *MemSnapShot) Close() {}
 
-func (b *BTreeSnapShot) Count(tp TreeType) uint64 {
+func (b *MemSnapShot) Count(tp TreeType) uint64 {
 	switch tp {
 	case InodeType:
 		return uint64(b.inode.Len())
@@ -76,6 +80,48 @@ func (b *BTreeSnapShot) Count(tp TreeType) uint64 {
 	default:
 	}
 	panic("out of type")
+}
+
+func (b *MemSnapShot) CrcSum(tp TreeType) (crcSum uint32, err error) {
+	crc := crc32.NewIEEE()
+	cb := func(v []byte) (bool, error) {
+		if tp == InodeType {
+			if len(v) < AccessTimeOffset+8 {
+				return false, fmt.Errorf("inode binary with error length:%v", len(v))
+			}
+			binary.BigEndian.PutUint64(v[AccessTimeOffset:AccessTimeOffset+8], 0)
+		}
+		if _, err = crc.Write(v); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+
+	switch tp {
+	case InodeType:
+		err = b.inode.Range(&Inode{}, nil, cb)
+	case DentryType:
+		err = b.dentry.Range(&Dentry{}, nil, cb)
+	case ExtendType:
+		err = b.extend.Range(&Extend{}, nil, cb)
+	case MultipartType:
+		err = b.multipart.Range(&Multipart{}, nil, cb)
+	case DelDentryType:
+		err = b.delDentry.Range(&DeletedDentry{}, nil, cb)
+	case DelInodeType:
+		err = b.delInode.Range(&DeletedINode{}, nil, cb)
+	default:
+		panic("out of type")
+	}
+	if err != nil {
+		return
+	}
+	crcSum = crc.Sum32()
+	return
+}
+
+func (b *MemSnapShot) ApplyID() uint64 {
+	return b.applyID
 }
 
 var _ InodeTree = &InodeBTree{}
@@ -666,6 +712,10 @@ func (i *BTree) SetApplyID(index uint64) {
 }
 
 func (i *BTree) GetApplyID() uint64 {
+	return 0
+}
+
+func (i *BTree) GetPersistentApplyID() uint64 {
 	return 0
 }
 

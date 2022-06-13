@@ -71,3 +71,18 @@ type MNMetaPartitionInfo struct {
 	NodeId     uint64    `json:"nodeId"`
 	Cursor     uint64    `json:"cursor"`
 }
+
+type MetaDataCRCSumInfo struct {
+	PartitionID uint64   `json:"pid"`
+	ApplyID     uint64   `json:"applyID"`
+	CntSet      []uint64 `json:"cntSet"`
+	CRCSumSet   []uint32 `json:"crcSumSet"`
+}
+
+type InodesCRCSumInfo struct {
+	PartitionID     uint64   `json:"pid"`
+	ApplyID         uint64   `json:"applyID"`
+	AllInodesCRCSum uint32   `json:"allInodesCRCSum"`
+	InodesID        []uint64 `json:"inodeIDSet"`
+	CRCSumSet       []uint32 `json:"crcSumSet"`
+}

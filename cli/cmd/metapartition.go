@@ -17,6 +17,8 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/chubaofs/chubaofs/cli/api"
+	"github.com/chubaofs/chubaofs/metanode"
 	"io/ioutil"
 	"net/http"
 	"sort"
@@ -54,6 +56,8 @@ func newMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newMetaPartitionResetCursorCmd(client),
 		newMetaPartitionListAllInoCmd(client),
 		newMetaPartitionCheckSnapshot(client),
+		newMetaDataChecksum(client),
+		newCheckInodeTree(client),
 	)
 	return cmd
 }
@@ -300,7 +304,7 @@ func checkMetaPartition(pid uint64, client *master.MasterClient) (outPut string,
 func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command {
 	var optStoreMode int
 	var cmd = &cobra.Command{
-		Use:   CliOpDecommission + " [ADDRESS] [META PARTITION ID] [DestAddr] [DstStoreMode]",
+		Use:   CliOpDecommission + " [ADDRESS] [META PARTITION ID] [DestAddr]",
 		Short: cmdMetaPartitionDecommissionShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -796,4 +800,299 @@ func newMetaPartitionSelectMetaNodeCmd(client *master.MasterClient) *cobra.Comma
 
 	cmd.Flags().IntVar(&optStoreMode, CliFlagStoreMode, 0, "specify volume default store mode [1:Mem, 2:Rocks]")
 	return cmd
+}
+
+func newMetaDataChecksum(mc *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   "meta-data-checksum [META PARTITION ID]",
+		Short: "meta data checksum",
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			pidStr := args[0]
+			pid, err := strconv.ParseUint(pidStr, 10, 64)
+			if err != nil {
+				stdout("parse meta partition id failed, meta partition id str:%s, error:%v", pidStr, err)
+				return
+			}
+
+			var mpInfo *proto.MetaPartitionInfo
+			mpInfo, err = mc.ClientAPI().GetMetaPartition(pid)
+			if err != nil {
+				stdout("get meta partition info failed, mpid:%v, error:%v\n", pid, err)
+				return
+			}
+			if len(mpInfo.Hosts) == 0 {
+				stdout("mp hosts count is zero\n")
+				return
+			}
+			var (
+				wg         = new(sync.WaitGroup)
+				applyIDSet = make([]uint64, len(mpInfo.Hosts))
+				result     = make([]*proto.MetaDataCRCSumInfo, len(mpInfo.Hosts))
+				errCh      = make(chan error, len(mpInfo.Hosts))
+			)
+			for index, host := range mpInfo.Hosts {
+				wg.Add(1)
+				go func(index int, host string) {
+					defer wg.Done()
+					hostSplitArr := strings.Split(host, ":")
+					if len(hostSplitArr) != 2 {
+						errCh <- fmt.Errorf("host(%s) with error format", host)
+						return
+					}
+					addr := fmt.Sprintf("%s:%v", hostSplitArr[0], mc.MetaNodeProfPort)
+					metaHttpClient := api.NewMetaHttpClient(addr, false)
+					r, e := metaHttpClient.GetMetaDataCrcSum(pid)
+					if e != nil {
+						errCh <- fmt.Errorf("get mp(%v) meta data crc sum from %s failed, error:%v", pid, addr, e)
+						return
+					}
+					applyIDSet[index] = r.ApplyID
+					result[index] = r
+				}(index, host)
+			}
+			wg.Wait()
+			select {
+			case err = <-errCh:
+				errout(err.Error())
+			default:
+			}
+			stdout("mp[%v] replica count:%v\n", pid, len(mpInfo.Hosts))
+			if !isSameApplyID(applyIDSet, mpInfo.Hosts) {
+				return
+			}
+			validateMetaDataCrcResult(result, mpInfo.Hosts)
+		},
+	}
+	return cmd
+}
+
+func isSameApplyID(applyIDSet []uint64, hosts []string) bool {
+	applyID := applyIDSet[0]
+	for index := 0; index < len(applyIDSet); index++ {
+		if applyIDSet[index] != applyID {
+			sb := strings.Builder{}
+			sb.WriteString("meta partition with different apply id, check again, apply id[")
+			for i, host := range hosts {
+				sb.WriteString(fmt.Sprintf("%s-%v ", host, applyIDSet[i]))
+			}
+			sb.WriteString("]\n")
+			stdout(sb.String())
+			return false
+		}
+	}
+	return true
+}
+
+func validateMetaDataCrcResult(r []*proto.MetaDataCRCSumInfo, hosts []string) {
+	baseTreeType := metanode.DentryType
+	treeCnt := len(r[0].CntSet)
+	for index := 0; index < treeCnt; index++ {
+		treeType :=  metanode.TreeType(index + int(baseTreeType))
+		if ok := validateCnt(index, r, hosts); !ok {
+			stdout("%s skip validate crc sum\n", treeType.String())
+			continue
+		}
+		stdout("%s with the same count\n", treeType.String())
+		if ok := validateCrcSum(index, r, hosts); !ok {
+			continue
+		}
+		stdout("%s with the same crc sum\n", treeType.String())
+	}
+}
+
+func validateCnt(typeIndex int, r []*proto.MetaDataCRCSumInfo, hosts []string) bool {
+	first := r[0]
+	for index := 0; index < len(r); index++ {
+		if first.CntSet[typeIndex] != r[index].CntSet[typeIndex] {
+			sb := strings.Builder{}
+			sb.WriteString(fmt.Sprintf("%s with different count [", metanode.TreeType(typeIndex+1).String()))
+			for i, host := range hosts {
+				sb.WriteString(fmt.Sprintf("%s-%v ", host, r[i].CntSet[typeIndex]))
+			}
+			sb.WriteString("]\n")
+			stdout(sb.String())
+			return false
+		}
+	}
+	return true
+}
+
+func validateCrcSum(typeIndex int, r []*proto.MetaDataCRCSumInfo, hosts []string) bool {
+	first := r[0]
+	for index := 0; index < len(r); index++ {
+		if first.CRCSumSet[typeIndex] != r[index].CRCSumSet[typeIndex] {
+			sb := strings.Builder{}
+			sb.WriteString(fmt.Sprintf("%s with different crc sum [", metanode.TreeType(typeIndex+1).String()))
+			for i, host := range hosts {
+				sb.WriteString(fmt.Sprintf("%s-%v ", host, r[i].CRCSumSet[typeIndex]))
+			}
+			sb.WriteString("]\n")
+			stdout(sb.String())
+			return false
+		}
+	}
+	return true
+}
+
+func newCheckInodeTree(mc *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   "check-inode-tree [META PARTITION ID]",
+		Short: "check inode tree",
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			pidStr := args[0]
+			pid, err := strconv.ParseUint(pidStr, 10, 64)
+			if err != nil {
+				stdout("parse meta partition id failed, meta partition id str:%s, error:%v", pidStr, err)
+				return
+			}
+
+			var mpInfo *proto.MetaPartitionInfo
+			mpInfo, err = mc.ClientAPI().GetMetaPartition(pid)
+			if err != nil {
+				stdout("get meta partition info failed, mpid:%v, error:%v", pid, err)
+				return
+			}
+			if len(mpInfo.Hosts) == 0 {
+				stdout("mp hosts count is zero\n")
+				return
+			}
+			var (
+				wg             = new(sync.WaitGroup)
+				errCh          = make(chan error, len(mpInfo.Hosts))
+				totalCRCSumSet = make([]uint32, len(mpInfo.Hosts))
+				applyIDSet     = make([]uint64, len(mpInfo.Hosts))
+				resultSet      = make([]*proto.InodesCRCSumInfo, len(mpInfo.Hosts))
+			)
+			for index, host := range mpInfo.Hosts {
+				wg.Add(1)
+				go func(index int, host string) {
+					defer wg.Done()
+					hostSplitArr := strings.Split(host, ":")
+					if len(hostSplitArr) != 2 {
+						errCh <- fmt.Errorf("host(%s) with error format", host)
+						return
+					}
+					addr := fmt.Sprintf("%s:%v", hostSplitArr[0], mc.MetaNodeProfPort)
+					metaHttpClient := api.NewMetaHttpClient(addr, false)
+					r, e := metaHttpClient.GetInodesCrcSum(pid)
+					if e != nil {
+						errCh <- fmt.Errorf("get mp(%v) meta data crc sum from %s failed, error:%v", pid, addr, e)
+						return
+					}
+					totalCRCSumSet[index] = r.AllInodesCRCSum
+					applyIDSet[index] = r.ApplyID
+					resultSet[index] = r
+				}(index, host)
+			}
+			wg.Wait()
+			select {
+			case err = <-errCh:
+				errout(err.Error())
+			default:
+			}
+			stdout("mp[%v] replica count:%v\n", pid, len(mpInfo.Hosts))
+			if !isSameApplyID(applyIDSet, mpInfo.Hosts) {
+				return
+			}
+
+			if isSameCrcSum(totalCRCSumSet) {
+				stdout("the crc sum are all the same\n")
+				return
+			}
+
+			validateInodes(resultSet, mpInfo.Hosts)
+		},
+	}
+	return cmd
+}
+
+func isSameCrcSum(crcSumSet []uint32) bool {
+	firstCrcSum := crcSumSet[0]
+	for _, crcSum := range crcSumSet {
+		if crcSum != firstCrcSum {
+			return false
+		}
+	}
+	return true
+}
+
+func validateInodes(resultSet []*proto.InodesCRCSumInfo, hosts []string) {
+	countSet := make([]int, len(hosts))
+	for index, r := range resultSet {
+		countSet[index] = len(r.InodesID)
+	}
+	if !isSameCount(countSet) {
+		stdoutMissingInodes(resultSet, hosts)
+		return
+	}
+	stdoutMismatchInodes(resultSet, hosts)
+}
+
+func isSameCount(countSet []int) bool {
+	firstCnt := countSet[0]
+	for _, count := range countSet {
+		if firstCnt != count {
+			return false
+		}
+	}
+	return true
+}
+
+func stdoutMissingInodes(resultSet []*proto.InodesCRCSumInfo, hosts []string) {
+	inodesIDMapSet := make([]map[uint64]bool, len(resultSet))
+	for index, result := range resultSet {
+		inodesIDMap := make(map[uint64]bool, len(result.InodesID))
+		for _, inodeID := range result.InodesID {
+			inodesIDMap[inodeID] = true
+		}
+		inodesIDMapSet[index] = inodesIDMap
+	}
+	missingInodesInfo := make(map[string]map[uint64]bool, 0)
+	for index, inodesIDMap := range inodesIDMapSet {
+		for inodeID, _ := range inodesIDMap {
+			for i := 0; i < len(inodesIDMapSet); i++ {
+				if i == index {
+					continue
+				}
+				if _, ok := inodesIDMapSet[i][inodeID]; !ok {
+					if _, has := missingInodesInfo[hosts[i]]; !has {
+						missingInodesInfo[hosts[i]] = make(map[uint64]bool, 0)
+					}
+					missingInodesInfo[hosts[i]][inodeID] = true
+				}
+			}
+		}
+	}
+	for host, missingInodesMap := range missingInodesInfo {
+		missingInodes := make([]uint64, 0, len(missingInodesMap))
+		for inodeId, _ := range missingInodesMap {
+			missingInodes = append(missingInodes, inodeId)
+		}
+		sort.Slice(missingInodes, func(i, j int) bool {
+			return missingInodes[i] < missingInodes[j]
+		})
+		stdout("host:%s, missing inodes:%v\n", host, missingInodes)
+	}
+	return
+}
+
+func stdoutMismatchInodes(resultSet []*proto.InodesCRCSumInfo, hosts []string) {
+	firstInodesCRCSumSet := resultSet[0].CRCSumSet
+	mismatchInodeCount := 0
+	for inodeIndex, crcSum := range firstInodesCRCSumSet {
+		for _, result := range resultSet {
+			if result.CRCSumSet[inodeIndex] != crcSum {
+				mismatchInodeCount++
+				stdout("%v. mismatch inode id %v:\n", mismatchInodeCount, result.InodesID[inodeIndex])
+				for hostIndex, host := range hosts {
+					stdout("host:%s, inode crc sum:%v\n", host, resultSet[hostIndex].CRCSumSet[inodeIndex])
+				}
+				stdout("\n")
+				break
+			}
+		}
+	}
+	stdout("total mismatch inode count:%v\n", mismatchInodeCount)
 }

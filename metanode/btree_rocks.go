@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/tecbot/gorocksdb"
+	"hash/crc32"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -15,15 +16,16 @@ import (
 )
 
 type RocksBaseInfo struct {
-	version      uint32
-	length       uint32
-	applyId      uint64
-	inodeCnt     uint64
-	dentryCnt    uint64
-	extendCnt    uint64
-	multiCnt     uint64
-	delDentryCnt uint64
-	delInodeCnt  uint64
+	version           uint32
+	length            uint32
+	applyId           uint64
+	inodeCnt          uint64
+	dentryCnt         uint64
+	extendCnt         uint64
+	multiCnt          uint64
+	delDentryCnt      uint64
+	delInodeCnt       uint64
+	persistentApplyId uint64
 }
 
 func (info *RocksBaseInfo) Marshal() (result []byte, err error) {
@@ -55,6 +57,7 @@ func (info *RocksBaseInfo) Marshal() (result []byte, err error) {
 	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.delInodeCnt)); err != nil {
 		panic(err)
 	}
+	info.persistentApplyId = info.applyId
 	return buff.Bytes(), nil
 }
 
@@ -88,6 +91,7 @@ func (info *RocksBaseInfo) Unmarshal(raw []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &info.delInodeCnt); err != nil {
 		return
 	}
+	info.persistentApplyId = info.applyId
 	return
 }
 
@@ -128,6 +132,10 @@ func (r *RocksTree) SetApplyID(id uint64) {
 
 func (r *RocksTree) GetApplyID() uint64 {
 	return atomic.LoadUint64(&r.baseInfo.applyId)
+}
+
+func (r *RocksTree) GetPersistentApplyID() uint64 {
+	return atomic.LoadUint64(&r.baseInfo.persistentApplyId)
 }
 
 func (r *RocksTree) PersistBaseInfo() error {
@@ -1468,4 +1476,31 @@ func (r *RocksSnapShot) Close() {
 		return
 	}
 	r.tree.db.ReleaseSnap(r.snap)
+}
+
+func (r *RocksSnapShot) CrcSum(tp TreeType) (crcSum uint32, err error) {
+	tableType := getTableTypeKey(tp)
+	crc := crc32.NewIEEE()
+	cb := func(k, v []byte) (bool, error) {
+		if tp == InodeType {
+			if len(v) < AccessTimeOffset + 8 {
+				return false, fmt.Errorf("")
+			}
+			binary.BigEndian.PutUint64(v[AccessTimeOffset: AccessTimeOffset+8], 0)
+		}
+		if _, err := crc.Write(v); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+
+	if err = r.tree.db.RangeWithSnap([]byte{byte(tableType)}, []byte{byte(tableType) + 1}, r.snap, cb); err != nil {
+		return
+	}
+	crcSum = crc.Sum32()
+	return
+}
+
+func (r *RocksSnapShot) ApplyID() uint64 {
+	return r.baseInfo.applyId
 }
