@@ -15,8 +15,10 @@
 package master
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/time/rate"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -364,6 +366,7 @@ func (m *Server) createPreLoadDataPartition(w http.ResponseWriter, r *http.Reque
 	cv.DataPartitions = dpResps
 	sendOkReply(w, r, newSuccessHTTPReply(cv))
 }
+
 func (m *Server) getQosStatus(w http.ResponseWriter, r *http.Request) {
 	var (
 		volName string
@@ -381,6 +384,7 @@ func (m *Server) getQosStatus(w http.ResponseWriter, r *http.Request) {
 
 	sendOkReply(w, r, newSuccessHTTPReply(vol.getQosStatus()))
 }
+
 
 func (m *Server) getClientQosInfo(w http.ResponseWriter, r *http.Request) {
 	var (
@@ -419,6 +423,28 @@ func (m *Server) getClientQosInfo(w http.ResponseWriter, r *http.Request) {
 		sendOkReply(w, r, newSuccessHTTPReply(rsp))
 	}
 }
+
+func (m *Server) getQosUpdateMasterLimit(w http.ResponseWriter, r *http.Request) {
+	var (
+		err     error
+		value   string
+		limit   uint64
+	)
+	if value = r.FormValue(QosMasterLimit); value != "" {
+		if limit, err = strconv.ParseUint(value, 10, 64); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("wrong param of limit")))
+		}
+		if limit < QosMasterAcceptCnt {
+			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("limit too less than %v", QosMasterAcceptCnt)))
+		}
+
+		m.cluster.cfg.QosMasterAcceptLimit = limit
+		m.cluster.QosAcceptLimit.SetLimit(rate.Limit(limit))
+		sendOkReply(w, r, newSuccessHTTPReply("success"))
+	}
+	sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("no param of limit")))
+}
+
 
 func (m *Server) QosUpdateClientParam(w http.ResponseWriter, r *http.Request) {
 	var (
@@ -1286,6 +1312,9 @@ func (m *Server) qosUpload(w http.ResponseWriter, r *http.Request) {
 		vol   *Vol
 		limit *proto.LimitRsp2Client
 	)
+	ctx := context.Background()
+	m.cluster.QosAcceptLimit.WaitN(ctx, 1)
+
 	if name, err = parseAndExtractName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return

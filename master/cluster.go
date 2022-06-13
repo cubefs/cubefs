@@ -16,6 +16,7 @@ package master
 
 import (
 	"fmt"
+	"golang.org/x/time/rate"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -63,6 +64,7 @@ type Cluster struct {
 	zoneList            []string
 	followerReadManager *followerReadManager
 	diskQosEnable       bool
+	QosAcceptLimit      *rate.Limiter
 }
 
 type followerReadManager struct {
@@ -142,6 +144,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.partition = partition
 	c.idAlloc = newIDAllocator(c.fsm.store, c.partition)
 	c.domainManager = newDomainManager(c)
+	c.QosAcceptLimit = rate.NewLimiter(rate.Inf, int(c.cfg.QosMasterAcceptLimit))
 	return
 }
 

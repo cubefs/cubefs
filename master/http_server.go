@@ -204,6 +204,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.QosGetZoneLimitInfo).
 		HandlerFunc(m.QosGetZoneLimit)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.QosUpdateMasterLimit).
+		HandlerFunc(m.getQosUpdateMasterLimit)
 	//router.NewRoute().Methods(http.MethodGet).
 	//	Path(proto.QosUpdateMagnify).
 	//	HandlerFunc(m.QosUpdateMagnify)
