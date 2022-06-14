@@ -138,6 +138,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 
 	if opt.MaxStreamerLimit > 0 {
 		DisableMetaCache = false
+		s.fsyncOnClose = false
 	}
 
 	s.volType = opt.VolType

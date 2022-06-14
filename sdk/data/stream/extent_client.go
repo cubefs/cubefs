@@ -191,7 +191,7 @@ func (client *ExtentClient) backgroundEvictStream() {
 				client.batchEvictStramer(slowStreamerEvictNum)
 			}
 			streamerSize = client.streamerList.Len()
-			log.LogDebugf("batch evict cnt(%d), cost(%d), now(%d)", 1, time.Since(start).Microseconds(), streamerSize)
+			log.LogInfof("batch evict cnt(%d), cost(%d), now(%d)", 1, time.Since(start).Microseconds(), streamerSize)
 		}
 		log.LogInfof("streamer total cnt(%d), cost(%d) ns", streamerSize, time.Since(start).Nanoseconds())
 	}
@@ -257,6 +257,8 @@ retry:
 	} else {
 		client.maxStreamerLimit = int(config.MaxStreamerLimit)
 	}
+
+	client.maxStreamerLimit += fastStreamerEvictNum
 
 	log.LogInfof("max streamer limit %d", client.maxStreamerLimit)
 	client.streamerList = list.New()
