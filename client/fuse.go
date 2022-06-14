@@ -38,9 +38,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/util/buf"
 
-	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util"
 
@@ -693,7 +693,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.EnableUnixPermission = GlobalMountOptions[proto.EnableUnixPermission].GetBool()
 	opt.ReadThreads = GlobalMountOptions[proto.ReadThreads].GetInt64()
 	opt.WriteThreads = GlobalMountOptions[proto.WriteThreads].GetInt64()
-	//opt.EnableBcache = GlobalMountOptions[proto.EnableBcache].GetBool()
+	// opt.EnableBcache = GlobalMountOptions[proto.EnableBcache].GetBool()
 	if _, err := os.Stat(bcache.UnixSocketPath); err == nil {
 		opt.EnableBcache = true
 	}

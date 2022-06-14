@@ -19,14 +19,15 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/stat"
-	"golang.org/x/net/context"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/stat"
+	"golang.org/x/net/context"
 
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -84,22 +85,26 @@ func (bc *BcacheClient) Get(key string, buf []byte, offset uint64, size uint32) 
 	}
 	if response.StatusCode != http.StatusOK {
 		log.LogErrorf("TRACE BCache client Get() FAIL. response(%v)", response)
-		return 0, errors.NewErrorf("Bad response(%v)", response)
+		err = fmt.Errorf("bad response(%v)", response.StatusCode)
+		return 0, err
 	}
 
-	result, err := ioutil.ReadAll(response.Body)
+	n, err := io.ReadFull(response.Body, buf[:size])
+	// result, err := ioutil.ReadAll(response.Body)
 	if err != nil {
 		log.LogErrorf("TRACE BCache client ReadAll FAIL. err(%v)", err)
 		return 0, err
 	}
-	n := copy(buf, result)
+
+	// n := copy(buf, result)
 	delay := time.Since(start)
 	if delay > SlowRequest {
 		log.LogWarnf("slow request:GET cache key:%v,  consume:%.3f s", key, delay.Seconds())
 	}
 	if n != int(size) {
 		log.LogErrorf("BCache client GET() error,exception size(%v),but readSize(%v)", size, n)
-		return 0, errors.NewErrorf("BCache client GET() error,exception size(%v),but readSize(%v)", size, n)
+		err = errors.NewErrorf("BCache client GET() error,exception size(%v),but readSize(%v)", size, n)
+		return 0, err
 	}
 	log.LogDebugf("q. key(%v) offset(%v) size(%v) consume(%v)ns",
 		key, offset, size, delay.Nanoseconds())

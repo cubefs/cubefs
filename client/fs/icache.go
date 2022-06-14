@@ -84,7 +84,7 @@ func (ic *InodeCache) Get(ino uint64) *proto.InodeInfo {
 	}
 
 	info := element.Value.(*proto.InodeInfo)
-	if inodeExpired(info) {
+	if inodeExpired(info) && DisableMetaCache {
 		ic.RUnlock()
 		// log.LogDebugf("InodeCache GetConnect expired: now(%v) inode(%v), expired(%d)", time.Now().Format(LogTimeFormat), info.Inode, info.Expiration())
 		return nil
@@ -158,7 +158,7 @@ func (ic *InodeCache) backgroundEviction() {
 
 	for range t.C {
 		log.LogInfof("InodeCache: start BG evict")
-		if DisableMetaCache {
+		if !DisableMetaCache {
 			log.LogInfof("InodeCache: no need to do BG evict")
 			continue
 		}
