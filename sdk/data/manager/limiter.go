@@ -335,43 +335,58 @@ func NewLimitManager(client wrapper.SimpleClientInfo) *LimitManager {
 	return mgr
 }
 
-func (limitManager *LimitManager) CalcNeed(limitFactor *LimitFactor, reqUsed uint64) (need uint64){
+func (factor *LimitFactor) GetWaitTotalSize() (waitSize uint64) {
+	value := factor.waitList.Front()
+	for {
+		if value == nil {
+			break
+		}
+		ele := value.Value.(*AllocElement)
+		waitSize += uint64(ele.used)
+		value = value.Next()
+	}
+	return
+}
+
+
+func (limitManager *LimitManager) CalcNeed(limitFactor *LimitFactor, used uint64) (need uint64){
 	if limitFactor.waitList.Len() == 0 {
 		return 0
 	}
 	if limitFactor.factorType == proto.FlowReadType || limitFactor.factorType == proto.FlowWriteType {
-		if reqUsed == 0 {
-			reqUsed = 128 * util.KB
+		used += limitFactor.GetWaitTotalSize()
+		if used < 128 * util.KB {
+			used = 128 * util.KB
 		}
-		if reqUsed < util.MB {
-			need = 5 * reqUsed
-		} else if reqUsed < 5*util.MB {
-			need = 2 * reqUsed
-		} else if reqUsed < 10*util.MB {
-			need = uint64(1.5 * float64(reqUsed))
-		} else if reqUsed < 50*util.MB {
-			need = uint64(1.2 * float64(reqUsed))
-		} else if reqUsed < 100*util.MB {
-			need = uint64(1.1 * float64(reqUsed))
-		} else if reqUsed < 300*util.MB {
-			need = reqUsed
+		if used < util.MB {
+			need = 5 * used
+		} else if used < 5*util.MB {
+			need = 2 * used
+		} else if used < 10*util.MB {
+			need = uint64(1.5 * float64(used))
+		} else if used < 50*util.MB {
+			need = uint64(1.2 * float64(used))
+		} else if used < 100*util.MB {
+			need = uint64(1.1 * float64(used))
+		} else if used < 300*util.MB {
+			need = used
 		} else {
 			need = 300 * util.MB
 		}
 	} else {
-		if reqUsed == 0 {
-			reqUsed = uint64(limitFactor.waitList.Len())
+		if used == 0 {
+			used = uint64(limitFactor.waitList.Len())
 		}
-		if reqUsed < 10 {
-			need = 3 * reqUsed
-		} else if reqUsed < 50 {
-			need = uint64(1.5 * float64(reqUsed))
-		} else if reqUsed < 100 {
-			need = uint64(1.2 * float64(reqUsed))
-		} else if reqUsed < 1000 {
-			need = uint64(1.1 * float64(reqUsed))
-		} else if reqUsed < 3000 {
-			need = reqUsed
+		if used < 10 {
+			need = 3 * used
+		} else if used < 50 {
+			need = uint64(1.5 * float64(used))
+		} else if used < 100 {
+			need = uint64(1.2 * float64(used))
+		} else if used < 1000 {
+			need = uint64(1.1 * float64(used))
+		} else if used < 3000 {
+			need = used
 		} else {
 			need = 3000
 		}
