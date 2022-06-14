@@ -216,12 +216,15 @@ func (factor *LimitFactor) TryReleaseWaitList() {
 				"grid be allocated [%v] grid limit [%v] and buffer[%v], gird id:[%v], use pregrid size[%v]",
 				proto.QosTypeString(factor.factorType), factor.waitList.Len(), tGrid.used, tGrid.limit, tGrid.buffer,
 				tGrid.ID, uint32(tGrid.limit + tGrid.buffer- tGrid.used))
-			val := tGrid.limit + tGrid.buffer - atomic.LoadUint64(&tGrid.used)
-			ele.used -= uint32(val)
-			log.LogInfof("action[TryReleaseWaitList] type [%v] ele used [%v]", proto.QosTypeString(factor.factorType), ele.used)
 
-			// atomic.AddUint64(&curGrid.used, tGrid.limit+ tGrid.buffer)
-			atomic.AddUint64(&tGrid.used, val)
+			tUsed := atomic.LoadUint64(&tGrid.used)
+			val := tGrid.limit + tGrid.buffer - tUsed // uint may out range
+			if tGrid.limit + tGrid.buffer > tUsed && ele.used >= uint32(val) { // not atomic pretect,grid used may larger than limit and buffer
+				ele.used -= uint32(val)
+				log.LogInfof("action[TryReleaseWaitList] type [%v] ele used reduce [%v] and left [%v]", proto.QosTypeString(factor.factorType), val, ele.used)
+				// atomic.AddUint64(&curGrid.used, tGrid.limit+ tGrid.buffer)
+				atomic.AddUint64(&tGrid.used, val)
+			}
 
 			if gridIter.Next() == nil {
 				return
