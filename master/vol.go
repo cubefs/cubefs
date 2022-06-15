@@ -795,6 +795,8 @@ func (qosManager *QosCtrlManager) initClientQosInfo(clientID uint64, host string
 			serverLimit.Buffer -= initLimit
 			serverLimit.Allocated += initLimit
 		} else {
+			initLimit = serverLimit.Buffer
+			serverLimit.Allocated += initLimit
 			serverLimit.Buffer = 0
 		}
 
@@ -810,8 +812,8 @@ func (qosManager *QosCtrlManager) initClientQosInfo(clientID uint64, host string
 				cliInfo.UsedLimit = 1 * util.GB / 8
 			}
 		} else {
-			if cliInfo.UsedLimit > 5000 {
-				cliInfo.UsedLimit = 5000
+			if cliInfo.UsedLimit > 200 {
+				cliInfo.UsedLimit = 200
 			}
 		}
 
