@@ -760,14 +760,9 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) (re C.int) {
 
 	absFrom := c.absPath(C.GoString(from))
 	absTo := c.absPath(C.GoString(to))
-	if strings.Contains(absTo, absFrom) {
-		if absTo == absFrom {
-			return statusEINVAL
-		}
-		// can't make a directory a subdirectory of itself
-		if absTo[len(absFrom)] == '/' {
-			return statusEINVAL
-		}
+	if absFrom == absTo || strings.HasPrefix(absTo, absFrom) {
+		// 不允许源路径和目标路径一样，或将源路径移动到自身子目录的操作
+		return statusEINVAL
 	}
 
 	srcDirPath, srcName := gopath.Split(absFrom)
