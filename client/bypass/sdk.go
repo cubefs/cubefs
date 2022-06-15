@@ -760,7 +760,7 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) (re C.int) {
 
 	absFrom := c.absPath(C.GoString(from))
 	absTo := c.absPath(C.GoString(to))
-	if absFrom == absTo || strings.HasPrefix(absTo, absFrom) {
+	if absFrom == absTo || strings.HasPrefix(absTo, absFrom + string(os.PathSeparator)) {
 		// 不允许源路径和目标路径一样，或将源路径移动到自身子目录的操作
 		return statusEINVAL
 	}
