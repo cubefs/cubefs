@@ -1144,15 +1144,6 @@ func (qosManager *QosCtrlManager) assignClientsNewQos(factorType uint32) {
 				assignInfo.UsedBuffer = uint64(float32(serverLimit.Buffer*assignInfo.UsedLimit/serverLimit.Allocated) * 0.5)
 			}
 
-			if assignInfo.UsedLimit == 0 {
-				switch factorType {
-				case proto.IopsReadType, proto.IopsWriteType:
-					assignInfo.UsedLimit = proto.MinIopsLimit
-				case proto.FlowWriteType, proto.FlowReadType:
-					assignInfo.UsedLimit = proto.MinFLowLimit
-				}
-			}
-
 			log.LogDebugf("action[assignClientsNewQos] Assign host [%v] limit [%v] buffer [%v]",
 				host, assignInfo.UsedLimit, assignInfo.UsedBuffer)
 
