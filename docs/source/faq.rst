@@ -446,7 +446,7 @@ Supported `log-level`: `debug,info,warn,error,critical,read,write,fatal`
 
     .. code-block:: bash
 
-        clusterID[xxx] addr[xxx]_op[xx] has no response util time out
+        clusterID[xxx] addr[xxx]_op[xx] has no response until time out
 
     Analysis:The response timed out when the Master sends the [Op] command to mn or dn, check the network between Master and mn/dn; check whether the dn/mn service process is alive.
 
