@@ -56,6 +56,7 @@ type LimitFactor struct {
 	valAllocCommit uint64
 	valAllocLastApply  uint64
 	valAllocLastCommit uint64
+	isSetLimitZero     bool
 }
 
 func (factor *LimitFactor) getNeedByMagnify(allocCnt uint32, magnify uint32) uint64 {
@@ -178,6 +179,7 @@ func (factor *LimitFactor) SetLimit(limitVal uint64, bufferVal uint64) {
 
 	// should not enter in,do more protection for enhance client usage
 	if grid.limit == 0 {
+		factor.isSetLimitZero = true
 		switch factor.factorType {
 		case proto.IopsReadType, proto.IopsWriteType:
 			grid.limit = proto.MinIopsLimit / girdCntOneSecond
@@ -190,7 +192,10 @@ func (factor *LimitFactor) SetLimit(limitVal uint64, bufferVal uint64) {
 				grid.limit = 10*util.KB
 			}
 		}
+	} else {
+		factor.isSetLimitZero = false
 	}
+
 	grid = factor.gridList.Back().Value.(*GridElement)
 	log.LogInfof("action[SetLimit] factor type [%v] gird id %v limit %v buffer %v",
 		proto.QosTypeString(factor.factorType), grid.ID, grid.limit, grid.buffer)
@@ -403,11 +408,12 @@ func (limitManager *LimitManager) GetFlowInfo() (*proto.ClientReportLimitInfo, b
 		limitFactor.lock.RLock()
 
 		var reqUsed uint64
+		griCnt = 0
 		grid := limitFactor.gridList.Back()
-
+		grid = grid.Prev()
 		//reqUsed := limitFactor.valAllocLastCommit
 
-		for griCnt < limitFactor.gridList.Len() {
+		for griCnt < limitFactor.gridList.Len()-1 {
 			reqUsed += atomic.LoadUint64(&grid.Value.(*GridElement).used)
 			limit += grid.Value.(*GridElement).limit
 			buffer += grid.Value.(*GridElement).buffer
@@ -423,18 +429,22 @@ func (limitManager *LimitManager) GetFlowInfo() (*proto.ClientReportLimitInfo, b
 				reqUsed,
 				limit, limitFactor.gridList.Len())
 			if grid.Prev() == nil || griCnt >= girdCntOneSecond {
+				log.LogInfof("action[[GetFlowInfo] type [%v] grid count %v reqused %v list len %v",
+					proto.QosTypeString(factorType), griCnt, reqUsed, limitFactor.gridList.Len())
 				break
 			}
 			grid = grid.Prev()
 		}
 
-		//timeElapse := uint64(time.Second)*uint64(griCnt)/girdCntOneSecond
-		//if timeElapse < uint64(qosReportMinGap) {
-		//	log.LogWarnf("action[GetFlowInfo] type [%v] timeElapse [%v] since last report",
-		//		proto.QosTypeString(limitFactor.factorType), timeElapse)
-		//	timeElapse = uint64(qosReportMinGap) // time of interval get vol view from master todo:change to config time
-		//}
-		// reqUsed = uint64(float64(reqUsed) / (float64(timeElapse) / float64(time.Second)))
+		if griCnt > 0 {
+			timeElapse := uint64(time.Second)*uint64(griCnt)/girdCntOneSecond
+			if timeElapse < uint64(qosReportMinGap) {
+				log.LogWarnf("action[GetFlowInfo] type [%v] timeElapse [%v] since last report",
+					proto.QosTypeString(limitFactor.factorType), timeElapse)
+				timeElapse = uint64(qosReportMinGap) // time of interval get vol view from master todo:change to config time
+			}
+			reqUsed = uint64(float64(reqUsed) / (float64(timeElapse) / float64(time.Second)))
+		}
 
 		factor := &proto.ClientLimitInfo{
 			Used:		reqUsed,
@@ -450,15 +460,21 @@ func (limitManager *LimitManager) GetFlowInfo() (*proto.ClientReportLimitInfo, b
 		info.Status = proto.QosStateNormal
 		info.ID = limitManager.ID
 		if limitFactor.waitList.Len() > 0 ||
-			factor.Used|factor.Need|factor.UsedLimit|factor.UsedBuffer > 0 {
+			!limitFactor.isSetLimitZero ||
+			factor.Used|factor.Need > 0 {
+			log.LogInfof("action[GetFlowInfo] type [%v]  len [%v] isSetLimitZero [%v] used [%v] need [%v]", proto.QosTypeString(limitFactor.factorType),
+				limitFactor.waitList.Len(), limitFactor.isSetLimitZero, factor.Used, factor.Need)
 			validCliInfo = true
 		}
-		log.LogInfof("action[GetFlowInfo] type [%v] report to master " +
-			"with simpleClient limit info [%v,%v,%v,%v],host [%v], " +
-			"status [%v] grid [%v, %v, %v]",
-			proto.QosTypeString(limitFactor.factorType),
-			factor.Used, factor.Need, factor.UsedBuffer, factor.UsedLimit,	info.Host,
-			info.Status, grid.Value.(*GridElement).ID, grid.Value.(*GridElement).limit,	grid.Value.(*GridElement).buffer)
+
+		if griCnt > 0 {
+			log.LogInfof("action[GetFlowInfo] type [%v] last commit[%v] report to master "+
+				"with simpleClient limit info [%v,%v,%v,%v],host [%v], "+
+				"status [%v] grid [%v, %v, %v]",
+				proto.QosTypeString(limitFactor.factorType), limitFactor.valAllocLastCommit,
+				factor.Used, factor.Need, factor.UsedBuffer, factor.UsedLimit, info.Host,
+				info.Status, grid.Value.(*GridElement).ID, grid.Value.(*GridElement).limit, grid.Value.(*GridElement).buffer)
+		}
 	}
 
 	lastValid := limitManager.isLastReqValid
