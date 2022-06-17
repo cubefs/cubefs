@@ -105,7 +105,7 @@ const (
 const (
 	LRUCacheSize    = 3 << 30
 	WriteBufferSize = 4 * util.MB
-	MinFlowLimit    = 1 * util.MB
+	MinFlowLimit    = 100 * util.MB
 	MinIoLimit      = 100
 	MinMagnify      = 10
 	MaxMagnify      = 100
