@@ -298,7 +298,8 @@ func (c *Cluster) scheduleToCheckVolQos() {
 					vol.checkQos()
 				}
 			}
-			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckQos))
+			// time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckQos))
+			time.Sleep(time.Duration(float32(time.Second) * 0.5))
 		}
 	}()
 }
