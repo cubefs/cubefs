@@ -85,6 +85,7 @@ func (f AsyncTaskErrorFunc) OnError(err error) {
 }
 
 type MetaConfig struct {
+	Modulename       string
 	Volume           string
 	Owner            string
 	Masters          []string
@@ -98,6 +99,7 @@ type MetaConfig struct {
 type MetaWrapper struct {
 	sync.RWMutex
 	cluster         string
+	modulename      string
 	localIP         string
 	volname         string
 	ossSecure       *OSSSecure
@@ -184,6 +186,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 		mw.ticketMess = ticketMess
 	}
 
+	mw.modulename = config.Modulename
 	mw.volname = config.Volume
 	mw.owner = config.Owner
 	mw.ownerValidation = config.ValidateOwner

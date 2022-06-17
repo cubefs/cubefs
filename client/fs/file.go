@@ -23,7 +23,6 @@ import (
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 
 	"github.com/chubaofs/chubaofs/util/ump"
@@ -171,8 +170,8 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 
 	start := time.Now()
 
-	metric := exporter.NewTPCnt("fileread")
-	defer metric.Set(err)
+	tpObject1 := ump.BeforeTP(f.super.umpFunctionGeneralKey("fileread"))
+	defer ump.AfterTP(tpObject1, err)
 
 	size, _, err := f.super.ec.Read(ctx, f.info.Inode, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
 	if err != nil && err != io.EOF {
@@ -233,8 +232,8 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	enSyncWrite = f.super.enSyncWrite
 	start := time.Now()
 
-	metric := exporter.NewTPCnt("filewrite")
-	defer metric.Set(err)
+	tpObject1 := ump.BeforeTP(f.super.umpFunctionGeneralKey("filewrite"))
+	defer ump.AfterTP(tpObject1, err)
 
 	size, _, err := f.super.ec.Write(ctx, ino, int(req.Offset), req.Data, enSyncWrite, false)
 	if err != nil {
@@ -274,8 +273,8 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	log.LogDebugf("TRACE Flush enter: ino(%v)", f.info.Inode)
 	start := time.Now()
 
-	metric := exporter.NewTPCnt("filesync")
-	defer metric.Set(err)
+	tpObject1 := ump.BeforeTP(f.super.umpFunctionGeneralKey("filesync"))
+	defer ump.AfterTP(tpObject1, err)
 
 	err = f.super.ec.Flush(ctx, f.info.Inode)
 	if err != nil {

@@ -117,7 +117,6 @@ import (
 	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/sdk/meta"
 	"github.com/chubaofs/chubaofs/util/config"
-	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 
 	"github.com/chubaofs/chubaofs/util/ump"
@@ -639,7 +638,6 @@ func cfs_sdk_close() {
 	gClientManager = nil
 	ump.StopUmp()
 	log.LogClose()
-	exporter.Stop()
 	free_globals()
 	runtime.GC()
 }
@@ -3430,6 +3428,7 @@ func (c *client) start() (err error) {
 
 	var mw *meta.MetaWrapper
 	if mw, err = meta.NewMetaWrapper(&meta.MetaConfig{
+		Modulename:    moduleName,
 		Volume:        c.volName,
 		Masters:       masters,
 		ValidateOwner: true,
@@ -3467,7 +3466,6 @@ func (c *client) start() (err error) {
 		return
 	}
 	c.initUmpKeys()
-	exporter.InitRole(mw.Cluster(), moduleName)
 
 	c.registerReadProcStatus(true)
 

@@ -38,6 +38,7 @@ import (
 // Super defines the struct of a super block.
 type Super struct {
 	cluster     string
+	modulename  string
 	volname     string
 	owner       string
 	ic          *cache.InodeCache
@@ -72,6 +73,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s = new(Super)
 	var masters = strings.Split(opt.Master, meta.HostsSeparator)
 	var metaConfig = &meta.MetaConfig{
+		Modulename:    opt.Modulename,
 		Volume:        opt.Volname,
 		Owner:         opt.Owner,
 		Masters:       masters,
@@ -109,6 +111,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	if err != nil {
 		return nil, errors.Trace(err, "NewExtentClient failed!")
 	}
+	s.modulename = opt.Modulename
 	s.volname = opt.Volname
 	s.owner = opt.Owner
 	s.cluster = s.mw.Cluster()
@@ -230,6 +233,10 @@ func (s *Super) umpKey() string {
 
 func (s *Super) umpFunctionKey(act string) string {
 	return fmt.Sprintf("%s_%s_%s", s.cluster, s.volname, act)
+}
+
+func (s *Super) umpFunctionGeneralKey(act string) string {
+	return fmt.Sprintf("%s_%s_%s", s.cluster, s.modulename, act)
 }
 
 func (s *Super) umpAlarmKey() string {

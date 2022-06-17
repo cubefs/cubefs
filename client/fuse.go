@@ -45,7 +45,6 @@ import (
 	"github.com/chubaofs/chubaofs/sdk/meta"
 	"github.com/chubaofs/chubaofs/util/config"
 	"github.com/chubaofs/chubaofs/util/errors"
-	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 	_ "github.com/chubaofs/chubaofs/util/log/http" // HTTP APIs for logging control
 	sysutil "github.com/chubaofs/chubaofs/util/sys"
@@ -117,6 +116,9 @@ func StartClient(configFile string, fuseFd *os.File, clientState []byte) error {
 	opt, err := parseMountOption(cfg)
 	if err != nil {
 		return err
+	}
+	if opt.Modulename == "" {
+		opt.Modulename = ModuleName
 	}
 	gClient = &client{
 		stopC:   make(chan struct{}),
@@ -195,9 +197,6 @@ func StartClient(configFile string, fuseFd *os.File, clientState []byte) error {
 		return err
 	}
 	gClient.fsConn = fsConn
-
-	exporter.Init(gClient.super.ClusterName(), ModuleName, cfg)
-	exporter.RegistConsul(cfg)
 
 	// report client version
 	var masters = strings.Split(opt.Master, meta.HostsSeparator)
@@ -348,6 +347,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	proto.ParseMountOptions(GlobalMountOptions, cfg)
 
 	opt.MountPoint = GlobalMountOptions[proto.MountPoint].GetString()
+	opt.Modulename = GlobalMountOptions[proto.Modulename].GetString()
 	opt.Volname = GlobalMountOptions[proto.VolName].GetString()
 	opt.Owner = GlobalMountOptions[proto.Owner].GetString()
 	opt.Master = GlobalMountOptions[proto.Master].GetString()
@@ -530,7 +530,6 @@ func StopClient() (clientState []byte) {
 
 	ump.StopUmp()
 	log.LogClose()
-	exporter.Stop()
 	gClient = nil
 
 	runtime.GC()

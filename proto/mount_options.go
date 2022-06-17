@@ -16,6 +16,7 @@ const (
 	Owner
 	Master
 	// Optional
+	Modulename
 	LogDir
 	WarnLogDir
 	LogLevel
@@ -84,6 +85,7 @@ func NewMountOptions() []MountOption {
 
 func InitMountOptions(opts []MountOption) {
 	opts[MountPoint] = MountOption{"mountPoint", "Mount Point", "", ""}
+	opts[Modulename] = MountOption{"modulename", "module name", "", ""}
 	opts[VolName] = MountOption{"volName", "Volume Name", "", ""}
 	opts[Owner] = MountOption{"owner", "Owner", "", ""}
 	opts[Master] = MountOption{MasterAddr, "Master Address", "", ""}
@@ -230,6 +232,7 @@ func (opt *MountOption) GetInt64() int64 {
 type MountOptions struct {
 	Config                   *config.Config
 	MountPoint               string
+	Modulename               string
 	Volname                  string
 	Owner                    string
 	Master                   string

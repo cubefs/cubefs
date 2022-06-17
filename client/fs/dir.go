@@ -24,7 +24,6 @@ import (
 	"bazil.org/fuse/fs"
 	"github.com/chubaofs/chubaofs/client/cache"
 	"github.com/chubaofs/chubaofs/proto"
-	"github.com/chubaofs/chubaofs/util/exporter"
 	"github.com/chubaofs/chubaofs/util/log"
 
 	"github.com/chubaofs/chubaofs/util/ump"
@@ -90,8 +89,8 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	start := time.Now()
 
 	var err error
-	metric := exporter.NewTPCnt("filecreate")
-	defer metric.Set(err)
+	tpObject := ump.BeforeTP(d.super.umpFunctionGeneralKey("filecreate"))
+	defer ump.AfterTP(tpObject, err)
 
 	info, err := d.super.mw.Create_ll(ctx, d.info.Inode, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil)
 	if err != nil {
@@ -130,8 +129,8 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 	start := time.Now()
 
 	var err error
-	metric := exporter.NewTPCnt("mkdir")
-	defer metric.Set(err)
+	tpObject := ump.BeforeTP(d.super.umpFunctionGeneralKey("mkdir"))
+	defer ump.AfterTP(tpObject, err)
 
 	info, err := d.super.mw.Create_ll(ctx, d.info.Inode, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid, req.Gid, nil)
 	if err != nil {
@@ -164,8 +163,8 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) (err error) {
 
 	start := time.Now()
 	d.dcache.Delete(req.Name)
-	metric := exporter.NewTPCnt("remove")
-	defer metric.Set(err)
+	tpObject1 := ump.BeforeTP(d.super.umpFunctionGeneralKey("remove"))
+	defer ump.AfterTP(tpObject1, err)
 
 	info, syserr := d.super.mw.Delete_ll(ctx, d.info.Inode, req.Name, req.Dir)
 	if syserr != nil {
@@ -237,8 +236,8 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	start := time.Now()
 
 	var err error
-	metric := exporter.NewTPCnt("readdir")
-	defer metric.Set(err)
+	tpObject := ump.BeforeTP(d.super.umpFunctionGeneralKey("readdir"))
+	defer ump.AfterTP(tpObject, err)
 
 	children, err := d.super.mw.ReadDir_ll(ctx, d.info.Inode)
 	if err != nil {
@@ -291,8 +290,8 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 	d.dcache.Delete(req.OldName)
 
 	var err error
-	metric := exporter.NewTPCnt("rename")
-	defer metric.Set(err)
+	tpObject := ump.BeforeTP(d.super.umpFunctionGeneralKey("rename"))
+	defer ump.AfterTP(tpObject, err)
 
 	err = d.super.mw.Rename_ll(ctx, d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName)
 	if err != nil {
@@ -341,8 +340,8 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 	start := time.Now()
 
 	var err error
-	metric := exporter.NewTPCnt("mknod")
-	defer metric.Set(err)
+	tpObject := ump.BeforeTP(d.super.umpFunctionGeneralKey("mknod"))
+	defer ump.AfterTP(tpObject, err)
 
 	info, err := d.super.mw.Create_ll(ctx, d.info.Inode, req.Name, proto.Mode(req.Mode), req.Uid, req.Gid, nil)
 	if err != nil {
@@ -360,13 +359,12 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 // Symlink handles the symlink request.
 func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, error) {
 
-
 	parentIno := d.info.Inode
 	start := time.Now()
 
 	var err error
-	metric := exporter.NewTPCnt("symlink")
-	defer metric.Set(err)
+	tpObject := ump.BeforeTP(d.super.umpFunctionGeneralKey("symlink"))
+	defer ump.AfterTP(tpObject, err)
 
 	info, err := d.super.mw.Create_ll(ctx, parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid, req.Gid, []byte(req.Target))
 	if err != nil {
@@ -384,7 +382,6 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 // Link handles the link request.
 func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.Node, error) {
 
-
 	var oldInode *proto.InodeInfo
 	switch old := old.(type) {
 	case *File:
@@ -401,8 +398,8 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 	start := time.Now()
 
 	var err error
-	metric := exporter.NewTPCnt("link")
-	defer metric.Set(err)
+	tpObject := ump.BeforeTP(d.super.umpFunctionGeneralKey("link"))
+	defer ump.AfterTP(tpObject, err)
 
 	info, err := d.super.mw.Link(ctx, d.info.Inode, req.NewName, oldInode.Inode)
 	if err != nil {
