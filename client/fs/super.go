@@ -157,6 +157,10 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	if s.bcacheDir != "" && !strings.HasSuffix(s.bcacheDir, "/") {
 		s.bcacheDir = s.bcacheDir + "/"
 	}
+	if !(opt.MaxStreamerLimit > 0 && opt.EnableBcache) {
+		opt.EnableBcache = false
+	}
+
 	s.volType = opt.VolType
 	s.ebsEndpoint = opt.EbsEndpoint
 	s.CacheAction = opt.CacheAction
