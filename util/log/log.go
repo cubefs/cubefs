@@ -528,6 +528,10 @@ func LogInfof(format string, v ...interface{}) {
 	gLog.infoLogger.Output(2, s)
 }
 
+func EnableInfo() bool {
+	return InfoLevel&gLog.level == gLog.level
+}
+
 // LogError logs the errors.
 func LogError(v ...interface{}) {
 	if gLog == nil {
@@ -580,6 +584,10 @@ func LogDebugf(format string, v ...interface{}) {
 	s := fmt.Sprintf(format, v...)
 	s = gLog.SetPrefix(s, levelPrefixes[0])
 	gLog.debugLogger.Output(2, s)
+}
+
+func EnableDebug() bool {
+	return DebugLevel&gLog.level == gLog.level
 }
 
 // LogFatal logs the fatal errors.
