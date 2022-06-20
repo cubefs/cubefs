@@ -83,6 +83,10 @@ func (s *Streamer) String() string {
 
 // TODO should we call it RefreshExtents instead?
 func (s *Streamer) GetExtents() error {
+	if s.client.disableMetaCache {
+		return s.extents.RefreshForce(s.inode, s.client.getExtents)
+	}
+
 	return s.extents.Refresh(s.inode, s.client.getExtents)
 }
 
