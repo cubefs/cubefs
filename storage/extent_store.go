@@ -409,10 +409,15 @@ func (s *ExtentStore) Write(ctx context.Context, extentID uint64, offset, size i
 		s.addNormalExtentSize(size)
 	}
 	ei.UpdateExtentInfo(e, 0)
-
+	s.updateExtentInfo(extentID, *ei)
 	return nil
 }
 
+func (s *ExtentStore) updateExtentInfo(extentID uint64, ei ExtentInfoBlock) {
+	if !IsTinyExtent(extentID) {
+		s.extentMapSlice.Store(extentID, ei)
+	}
+}
 func (s *ExtentStore) checkOffsetAndSize(extentID uint64, offset, size int64) error {
 	if IsTinyExtent(extentID) {
 		return nil
