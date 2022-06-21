@@ -15,13 +15,11 @@ import (
 type SortedExtents struct {
 	sync.RWMutex
 	eks []proto.ExtentKey
-	set ExtentKeySet
 }
 
 func NewSortedExtents() *SortedExtents {
 	return &SortedExtents{
 		eks: make([]proto.ExtentKey, 0),
-		set: NewExtentKeySet(),
 	}
 }
 
@@ -126,12 +124,7 @@ func (se *SortedExtents) Insert(ctx context.Context, ek proto.ExtentKey) (delete
 	se.RWMutex.Lock()
 	defer se.RWMutex.Unlock()
 
-	defer func() {
-		if se.set.Length() > 0 {
-			se.set.Reset()
-		}
-	}()
-
+	set := NewExtentKeySet()
 	// -------------------------------------------------------------------------------------
 	// Sample:
 	//                        |=============================|
@@ -298,7 +291,7 @@ func (se *SortedExtents) Insert(ctx context.Context, ek proto.ExtentKey) (delete
 			//   ek.FileOffset <= cur.FileOffset <= cur.FileOffset+cur.Size <= ek.FileOffset+ek.Size
 			//
 			// In this case the cur need be remove from extent key chan (se.eks).
-			se.set.Put(cur)
+			set.Put(cur)
 			if index == len(se.eks)-1 {
 				se.eks = se.eks[:index]
 			} else {
@@ -337,17 +330,7 @@ func (se *SortedExtents) Insert(ctx context.Context, ek proto.ExtentKey) (delete
 	}
 
 	// Analyze garbage
-	if se.set.Length() > 0 {
-		for i := 0; i < len(se.eks); i++ {
-			se.set.Remove(&se.eks[i])
-			if se.set.Length() == 0 {
-				break
-			}
-		}
-		deleteExtents = se.set.ToExtentKeys()
-	}
-
-	return
+	return set.GetDelExtentKeys(se.eks)
 }
 
 // Insert ek into the specified position in the ek chain, and check whether the data is continuous with
@@ -659,6 +642,20 @@ func (s ExtentKeySet) Length() int {
 
 func (s *ExtentKeySet) Reset() {
 	*s = (*s)[:0]
+}
+
+func (s *ExtentKeySet) GetDelExtentKeys(eks []proto.ExtentKey) []proto.ExtentKey {
+	if s.Length() == 0 {
+		return nil
+	}
+
+	for i := 0; i < len(eks); i++ {
+		s.Remove(&eks[i])
+		if s.Length() == 0 {
+			break
+		}
+	}
+	return s.ToExtentKeys()
 }
 
 func NewExtentKeySet() ExtentKeySet {
