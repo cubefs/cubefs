@@ -147,10 +147,7 @@ func (se *SortedExtents) AppendWithCheck(ek proto.ExtentKey, discard []proto.Ext
 	}
 	firstKey := se.eks[0]
 	if firstKey.FileOffset >= endOffset {
-		eks := se.doCopyExtents()
-		se.eks = se.eks[:0]
-		se.eks = append(se.eks, ek)
-		se.eks = append(se.eks, eks...)
+		se.insert(ek, 0)
 		return
 	}
 
@@ -197,12 +194,13 @@ func (se *SortedExtents) AppendWithCheck(ek proto.ExtentKey, discard []proto.Ext
 		return deleteExtents, proto.OpConflictExtentsErr
 	}
 
+	if len(invalidExtents) == 0 {
+		se.insert(ek, startIndex)
+		return
+	}
+
 	endIndex = startIndex + len(invalidExtents)
-	upperExtents := make([]proto.ExtentKey, len(se.eks)-endIndex)
-	copy(upperExtents, se.eks[endIndex:])
-	se.eks = se.eks[:startIndex]
-	se.eks = append(se.eks, ek)
-	se.eks = append(se.eks, upperExtents...)
+	se.instertWithDiscard(ek, startIndex, endIndex)
 	return
 }
 
@@ -236,6 +234,28 @@ func (se *SortedExtents) Truncate(offset uint64) (deleteExtents []proto.ExtentKe
 		}
 	}
 	return
+}
+
+func (se *SortedExtents) insert(ek proto.ExtentKey, startIdx int) {
+	se.eks = append(se.eks, ek)
+	size := len(se.eks)
+
+	for idx := size - 1; idx > startIdx; idx-- {
+		se.eks[idx] = se.eks[idx-1]
+	}
+
+	se.eks[startIdx] = ek
+}
+
+func (se *SortedExtents) instertWithDiscard(ek proto.ExtentKey, startIdx, endIdx int) {
+	upperSize := len(se.eks) - endIdx
+	se.eks[startIdx] = ek
+
+	for idx := 0; idx < upperSize; idx++ {
+		se.eks[startIdx+1+idx] = se.eks[endIdx+idx]
+	}
+
+	se.eks = se.eks[:startIdx+1+upperSize]
 }
 
 func (se *SortedExtents) Len() int {
