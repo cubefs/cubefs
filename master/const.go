@@ -94,7 +94,7 @@ const (
 	idcNameKey                  = "idcName"
 	mediumTypeKey               = "mediumType"
 	smartRulesKey               = "smartRules"
-	smartKey               = "smart"
+	smartKey                    = "smart"
 	addReplicaTypeKey           = "addReplicaType"
 	convertModeKey              = "convertMode"
 	partitionTypeKey            = "partitionType"
@@ -192,6 +192,7 @@ const (
 	maxTrashRemainingDays                              = 30
 	defaultMetaNodeVersion                             = "3.0.0"
 	minCrossRegionVolMasterRegionZonesCount            = 1
+	defaultClientPkgAddr                               = "http://storage.jd.local/dpgimage/cfs_spark/"
 )
 
 const (
@@ -246,31 +247,31 @@ const (
 )
 
 const (
-	keySeparator          = "#"
-	idSeparator           = "$" // To seperate ID of server that submits raft changes
-	metaNodeAcronym       = "mn"
-	dataNodeAcronym       = "dn"
-	dataPartitionAcronym  = "dp"
+	keySeparator               = "#"
+	idSeparator                = "$" // To seperate ID of server that submits raft changes
+	metaNodeAcronym            = "mn"
+	dataNodeAcronym            = "dn"
+	dataPartitionAcronym       = "dp"
 	frozenDataPartitionAcronym = "frozen_dp"
-	metaPartitionAcronym  = "mp"
-	volAcronym            = "vol"
-	regionAcronym         = "region"
+	metaPartitionAcronym       = "mp"
+	volAcronym                 = "vol"
+	regionAcronym              = "region"
 	idcAcronym                 = "idc"
-	clusterAcronym        = "c"
-	nodeSetAcronym        = "s"
-	tokenAcronym          = "t"
-	maxDataPartitionIDKey = keySeparator + "max_dp_id"
-	maxMetaPartitionIDKey = keySeparator + "max_mp_id"
-	maxCommonIDKey        = keySeparator + "max_common_id"
-	metaNodePrefix        = keySeparator + metaNodeAcronym + keySeparator
-	dataNodePrefix        = keySeparator + dataNodeAcronym + keySeparator
-	dataPartitionPrefix   = keySeparator + dataPartitionAcronym + keySeparator
-	volPrefix             = keySeparator + volAcronym + keySeparator
-	regionPrefix          = keySeparator + regionAcronym + keySeparator
+	clusterAcronym             = "c"
+	nodeSetAcronym             = "s"
+	tokenAcronym               = "t"
+	maxDataPartitionIDKey      = keySeparator + "max_dp_id"
+	maxMetaPartitionIDKey      = keySeparator + "max_mp_id"
+	maxCommonIDKey             = keySeparator + "max_common_id"
+	metaNodePrefix             = keySeparator + metaNodeAcronym + keySeparator
+	dataNodePrefix             = keySeparator + dataNodeAcronym + keySeparator
+	dataPartitionPrefix        = keySeparator + dataPartitionAcronym + keySeparator
+	volPrefix                  = keySeparator + volAcronym + keySeparator
+	regionPrefix               = keySeparator + regionAcronym + keySeparator
 	idcPrefix                  = keySeparator + idcAcronym + keySeparator
-	metaPartitionPrefix   = keySeparator + metaPartitionAcronym + keySeparator
-	clusterPrefix         = keySeparator + clusterAcronym + keySeparator
-	nodeSetPrefix         = keySeparator + nodeSetAcronym + keySeparator
+	metaPartitionPrefix        = keySeparator + metaPartitionAcronym + keySeparator
+	clusterPrefix              = keySeparator + clusterAcronym + keySeparator
+	nodeSetPrefix              = keySeparator + nodeSetAcronym + keySeparator
 	frozenDPPrefix             = keySeparator + frozenDataPartitionAcronym + keySeparator
 
 	akAcronym      = "ak"

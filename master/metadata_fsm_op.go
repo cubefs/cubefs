@@ -55,6 +55,7 @@ type clusterValue struct {
 	ExtentMergeIno                    map[string][]uint64
 	ExtentMergeSleepMs                uint64
 	FixTinyDeleteRecordLimit          uint64
+	ClientPkgAddr                     string
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -82,6 +83,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		ExtentMergeIno:                    c.cfg.ExtentMergeIno,
 		ExtentMergeSleepMs:                c.cfg.ExtentMergeSleepMs,
 		FixTinyDeleteRecordLimit:          c.dnFixTinyDeleteRecordLimit,
+		ClientPkgAddr:                     c.cfg.ClientPkgAddr,
 	}
 	return cv
 }
@@ -762,6 +764,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		if cv.FixTinyDeleteRecordLimit <= 0 {
 			cv.FixTinyDeleteRecordLimit = 1
 		}
+		c.cfg.ClientPkgAddr = cv.ClientPkgAddr
 		c.dnFixTinyDeleteRecordLimit = cv.FixTinyDeleteRecordLimit
 		c.updateMetaNodeDeleteBatchCount(cv.MetaNodeDeleteBatchCount)
 		c.updateMetaNodeDeleteWorkerSleepMs(cv.MetaNodeDeleteWorkerSleepMs)

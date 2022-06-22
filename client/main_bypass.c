@@ -35,7 +35,7 @@
 
 #define _GNU_SOURCE
 
-#include "client.h"
+#include "./bypass/client.h"
 
 #define WRAPPER(cmd, res)                          \
     g_need_rwlock? (                               \
@@ -2430,17 +2430,12 @@ void plugClose(void* handle) {
     void* task = dlsym(handle, "main..finitask");
     finishModule(task);
 
-    dlclose(handle);
-    fprintf(stderr, "dlclose error: %s\n", dlerror());
+    int res = dlclose(handle);
+    if(res != 0)
+        fprintf(stderr, "dlclose error: %s\n", dlerror());
 }
 
 static void init() {
-    #if !defined(CommitID)
-    char *msg = "CommitID not defined, build with -DCommitID=.\n";
-    real_write(STDOUT_FILENO, msg, strlen(msg));
-    exit(1);
-    #endif
-
     if(g_cfs_inited) {
         return;
     }
@@ -2453,8 +2448,8 @@ static void init() {
     #endif
 
     init_libc_func();
-    baseOpen("libempty.so");
-    void *handle = plugOpen("libcfssdk.so");
+    baseOpen("/usr/lib64/libempty.so");
+    void *handle = plugOpen("/usr/lib64/libcfssdk.so");
     init_cfs_func(handle);
 
     g_config_path = getenv("CFS_CONFIG_PATH");
@@ -2484,13 +2479,6 @@ static void init() {
 
     g_mount_point = client_config.mount_point;
     g_ignore_path = client_config.ignore_path;
-    g_cfs_config.master_addr = client_config.master_addr;
-    g_cfs_config.vol_name = client_config.vol_name;
-    g_cfs_config.owner = client_config.owner;
-    g_cfs_config.follower_read = client_config.follower_read;
-    g_cfs_config.app = client_config.app;
-    g_cfs_config.auto_flush = client_config.auto_flush;
-    g_cfs_config.master_client = client_config.master_client;
 
     g_init_config.ignore_sighup = 1;
     g_init_config.ignore_sigterm = 1;
@@ -2526,8 +2514,7 @@ static void init() {
         exit(1);
     }
 
-    g_cfs_client_id = cfs_new_client(&g_cfs_config, "", NULL);
-    //g_cfs_client_id = cfs_new_client(&g_cfs_config, g_config_path, NULL);
+    g_cfs_client_id = cfs_new_client(NULL, g_config_path, NULL);
     if(g_cfs_client_id < 0) {
         char *msg = "Can't start CFS client, check the config file.\n";
         real_write(STDOUT_FILENO, msg, strlen(msg));
@@ -2727,53 +2714,25 @@ static void init_cfs_func(void *handle) {
 
 static void *update_cfs_func(void* param) {
     #define INTERVAL 6
-    #define MAXLEN 1024
-    #define VERSIONLEN 4
-    char* currentID = strdup(CommitID);
+    #define VERSIONLEN 1
+    char* reload;
     void* old_handle = param;
     char* envPtr = strdup(getenv("LD_PRELOAD"));
 
     while(1) {
         sleep(INTERVAL);
-        char str[MAXLEN];
-        sprintf(str, "%s/version", g_version_url);
-        FILE *fp = fopen(str, "r");
-        if(fp == NULL) {
-            fprintf(stderr, "fail to open  %s\n", str);
+        reload = getenv("RELOAD_CLIENT");
+        if (reload == NULL || strcmp(reload, "1") != 0)
             continue;
-        }
-        memset(str, 0, MAXLEN);
-        fgets(str, MAXLEN, fp);
-        fclose(fp);
 
-        if((str[0] - '0') == 0){
-            if (g_need_rwlock) g_need_rwlock = false;
-            continue;
-        }
-        else if ((str[0] - '0') == 2) {
-            g_need_rwlock = true;
-            pthread_rwlock_wrlock(&update_rwlock);
-            cfs_close_client(g_cfs_client_id);
-            plugClose(old_handle);
+        g_need_rwlock = true;
+        pthread_rwlock_wrlock(&update_rwlock);
+        if (reload == NULL || strcmp(reload, "1") != 0) {
             pthread_rwlock_unlock(&update_rwlock);
             continue;
         }
 
-        g_need_rwlock = true;
-        if(strlen(str) < VERSIONLEN) {
-            continue;
-        }
-
-        str[VERSIONLEN + 2] = 0;
-        if(!strcmp(str+2, currentID)) {
-            continue;
-        }
-
-        char *commit_id = strdup(str+2);
-        memset(str, 0, MAXLEN);
-
-        pthread_rwlock_wrlock(&update_rwlock);
-
+        fprintf(stderr, "Begin to update client.\n");
         char *client_state = NULL;
         size_t size = cfs_client_state(g_cfs_client_id, NULL, 0);
         if (size > 0) {
@@ -2791,11 +2750,7 @@ static void *update_cfs_func(void* param) {
         plugClose(old_handle);
         setenv("LD_PRELOAD", envPtr, 1);
 
-        sprintf(str, "%s/libcfssdk_%s.so", g_version_url, commit_id);
-        void *handle = plugOpen(str);
-        fprintf(stderr, "commit id change from %s to %s\n", currentID, commit_id);
-        free(currentID);
-        currentID = commit_id;
+        void *handle = plugOpen("/usr/lib64/libcfssdk.so");
         old_handle = handle;
         init_cfs_func(handle);
 
@@ -2806,13 +2761,12 @@ static void *update_cfs_func(void* param) {
         }
         int64_t new_client = cfs_new_client(NULL, g_config_path, client_state);
         if(new_client < 0) {
-            char *msg = "Can't start CFS client, check the config file.\n";
-            real_write(STDOUT_FILENO, msg, strlen(msg));
             pthread_rwlock_unlock(&update_rwlock);
             exit(1);
         }
         free(client_state);
         g_cfs_client_id = new_client;
+        fprintf(stderr, "Finish to update client.\n");
         pthread_rwlock_unlock(&update_rwlock);
     }
     free(envPtr);

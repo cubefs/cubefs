@@ -171,3 +171,24 @@ func (api *ClientAPI) ReleaseVolMutex(volName string) (err error) {
 	_, err = api.mc.serveRequest(request)
 	return
 }
+
+func (api *ClientAPI) SetClientPkgAddr(addr string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminSetClientPkgAddr)
+	request.addParam("addr", addr)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *ClientAPI) GetClientPkgAddr() (addr string, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminGetClientPkgAddr)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	if err = json.Unmarshal(data, &addr); err != nil {
+		return
+	}
+	return
+}

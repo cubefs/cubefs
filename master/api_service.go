@@ -218,6 +218,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MetaNodeThreshold:      m.cluster.cfg.MetaNodeThreshold,
 		DpRecoverPool:          m.cluster.cfg.DataPartitionsRecoverPoolSize,
 		MpRecoverPool:          m.cluster.cfg.MetaPartitionsRecoverPoolSize,
+		ClientPkgAddr:          m.cluster.cfg.ClientPkgAddr,
 		Applied:                m.fsm.applied,
 		MaxDataPartitionID:     m.cluster.idAlloc.dataPartitionID,
 		MaxMetaNodeID:          m.cluster.idAlloc.commonID,
@@ -305,7 +306,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		MetaNodeDeleteBatchCount:               batchCount,
 		MetaNodeDeleteWorkerSleepMs:            deleteSleepMs,
 		MetaNodeReqRateLimit:                   metaNodeReqRateLimit,
-		MetaNodeReadDirLimitNum: 				metaNodeReadDirLimitNum,
+		MetaNodeReadDirLimitNum:                metaNodeReadDirLimitNum,
 		MetaNodeReqOpRateLimitMap:              m.cluster.cfg.MetaNodeReqOpRateLimitMap,
 		DataNodeDeleteLimitRate:                deleteLimitRate,
 		DataNodeRepairTaskLimitOnDisk:          repairTaskCount,
@@ -4744,4 +4745,28 @@ func extractFreezeDataPartitionPara(r *http.Request) (volName string, partitionI
 		return
 	}
 	return
+}
+
+func (m *Server) setClientPkgAddr(w http.ResponseWriter, r *http.Request) {
+	var (
+		addr string
+		err  error
+	)
+	if err = r.ParseForm(); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if addr = r.FormValue(addrKey); addr == "" {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: keyNotFound(addrKey).Error()})
+		return
+	}
+	if err = m.cluster.setClientPkgAddr(addr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set clientPkgAddr to %s successfully", addr)))
+}
+
+func (m *Server) getClientPkgAddr(w http.ResponseWriter, r *http.Request) {
+	sendOkReply(w, r, newSuccessHTTPReply(m.cluster.cfg.ClientPkgAddr))
 }

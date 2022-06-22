@@ -131,6 +131,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.RemoveRaftNode).
 		HandlerFunc(m.removeRaftNode)
 	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminClusterStat).HandlerFunc(m.clusterStat)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetClientPkgAddr).
+		HandlerFunc(m.setClientPkgAddr)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGetClientPkgAddr).
+		HandlerFunc(m.getClientPkgAddr)
 
 	// volume management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

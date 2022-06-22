@@ -21,7 +21,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	syslog "log"
 	"net/http"
@@ -64,7 +63,6 @@ const (
 	LoggerPrefix = "client"
 	LoggerOutput = "output.log"
 
-	ModuleName            = "fuseclient"
 	ConfigKeyExporterPort = "exporterKey"
 
 	ControlCommandSetRate      = "/rate/set"
@@ -75,13 +73,8 @@ const (
 	Role                       = "Client"
 )
 
-var (
-	CommitID   string
-	BranchName string
-	BuildTime  string
-)
-
-type client struct {
+type fClient struct {
+	moduleName  string
 	stopC       chan struct{}
 	super       *cfs.Super
 	wg          sync.WaitGroup
@@ -96,7 +89,7 @@ type client struct {
 }
 
 var GlobalMountOptions []proto.MountOption
-var gClient *client
+var gClient *fClient
 
 func init() {
 	// add GODEBUG=madvdontneed=1 environ, to make sysUnused uses madvise(MADV_DONTNEED) to signal the kernel that a
@@ -106,7 +99,7 @@ func init() {
 	proto.InitMountOptions(GlobalMountOptions)
 }
 
-func StartClient(configFile string, fuseFd *os.File, clientState []byte) error {
+func StartClient(configFile string, fuseFd *os.File, clientState []byte) (err error) {
 
 	/*
 	 * We are in daemon from here.
@@ -118,12 +111,13 @@ func StartClient(configFile string, fuseFd *os.File, clientState []byte) error {
 		return err
 	}
 	if opt.Modulename == "" {
-		opt.Modulename = ModuleName
+		opt.Modulename = "fuseclient"
 	}
-	gClient = &client{
-		stopC:   make(chan struct{}),
-		volName: opt.Volname,
-		mc:      master.NewMasterClientFromString(opt.Master, false),
+	gClient = &fClient{
+		moduleName: opt.Modulename,
+		stopC:      make(chan struct{}),
+		volName:    opt.Volname,
+		mc:         master.NewMasterClientFromString(opt.Master, false),
 	}
 
 	if opt.MaxCPUs > 0 {
@@ -145,7 +139,8 @@ func StartClient(configFile string, fuseFd *os.File, clientState []byte) error {
 	}
 	defer func() {
 		if err != nil {
-			syslog.Printf("start kernel bypass client failed: err(%v)\n", err)
+			syslog.Printf("start fuse client failed: err(%v)\n", err)
+			err = fmt.Errorf("%v.\nPlease check %s for more details.", err, outputFilePath)
 			outputFile.Sync()
 			outputFile.Close()
 		}
@@ -200,7 +195,7 @@ func StartClient(configFile string, fuseFd *os.File, clientState []byte) error {
 
 	// report client version
 	var masters = strings.Split(opt.Master, meta.HostsSeparator)
-	versionInfo := proto.DumpVersion(ModuleName, BranchName, CommitID, BuildTime)
+	versionInfo := proto.DumpVersion(gClient.moduleName, BranchName, CommitID, BuildTime)
 	gClient.wg.Add(2)
 	go version.ReportVersionSchedule(cfg, masters, versionInfo, gClient.stopC, &gClient.wg)
 	go func() {
@@ -227,23 +222,7 @@ func StartClient(configFile string, fuseFd *os.File, clientState []byte) error {
 }
 
 func dumpVersion() string {
-	return fmt.Sprintf("ChubaoFS Client\nBranch: %s\nCommit: %s\nBuild: %s %s %s %s\n", BranchName, CommitID, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime)
-}
-
-func GetVersionHandleFunc(w http.ResponseWriter, r *http.Request) {
-	var resp = struct {
-		Branch string
-		Commit string
-		Build  string
-	}{
-		Branch: BranchName,
-		Commit: CommitID,
-		Build:  fmt.Sprintf("%s %s %s %s", runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime),
-	}
-	var encoded []byte
-	encoded, _ = json.Marshal(&resp)
-	w.Write(encoded)
-	return
+	return fmt.Sprintf("\nChubaoFS Client\nBranch: %s\nCommit: %s\nBuild: %s %s %s %s\n", BranchName, CommitID, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime)
 }
 
 func mount(opt *proto.MountOptions, fuseFd *os.File, clientState []byte) (fsConn *fuse.Conn, err error) {
@@ -260,6 +239,8 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, clientState []byte) (fsConn
 	http.HandleFunc(ControlCommandFreeOSMemory, freeOSMemory)
 	http.HandleFunc(log.GetLogPath, log.GetLog)
 	http.HandleFunc("/version", GetVersionHandleFunc)
+	http.HandleFunc(ControlSetUpgrade, gClient.SetClientUpgrade)
+	http.HandleFunc(ControlUnsetUpgrade, UnsetClientUpgrade)
 	var server *http.Server
 
 	gClient.wg.Add(2)
@@ -273,7 +254,7 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, clientState []byte) (fsConn
 			}
 		}
 
-		syslog.Printf("Start with config pprof[%v] falied, try %v to %v\n", opt.Profport, log.DefaultProfPort,
+		syslog.Printf("Start with config pprof[%v] failed, try %v to %v\n", opt.Profport, log.DefaultProfPort,
 			log.MaxProfPort)
 
 		for port := log.DefaultProfPort; port <= log.MaxProfPort; port++ {
@@ -293,7 +274,7 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, clientState []byte) (fsConn
 		server.Shutdown(context.Background())
 	}()
 
-	if err = ump.InitUmp(fmt.Sprintf("%v_%v_%v", super.ClusterName(), super.VolName(), ModuleName), "jdos_chubaofs_node"); err != nil {
+	if err = ump.InitUmp(fmt.Sprintf("%v_%v_%v", super.ClusterName(), super.VolName(), gClient.moduleName), "jdos_chubaofs_node"); err != nil {
 		return
 	}
 
@@ -333,6 +314,8 @@ func registerInterceptedSignal() {
 			return
 		case sig := <-sigC:
 			syslog.Printf("Killed due to a received signal (%v)\n", sig)
+			gClient.outputFile.Sync()
+			gClient.outputFile.Close()
 			// release volume write mutex
 			releaseVolWriteMutex()
 			os.Exit(1)
@@ -511,19 +494,16 @@ func GetFuseFd() *os.File {
 	return gClient.fsConn.Fusefd()
 }
 
-func GetClientState() []byte {
-	return gClient.clientState
-}
-
 func StopClient() (clientState []byte) {
 	gClient.fuseServer.Stop()
-	clientState = gClient.clientState
 	close(gClient.stopC)
 	gClient.wg.Wait()
+	clientState = gClient.clientState
 
 	releaseVolWriteMutex()
 	gClient.super.Close()
 
+	syslog.Printf("Stop fuse client successfully.")
 	sysutil.RedirectFD(gClient.stderrFd, int(os.Stderr.Fd()))
 	gClient.outputFile.Sync()
 	gClient.outputFile.Close()

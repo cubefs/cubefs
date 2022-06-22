@@ -37,6 +37,7 @@ func (cmd *ChubaoFSCmd) newClusterCmd(client *master.MasterClient) *cobra.Comman
 		newClusterStatCmd(client),
 		newClusterFreezeCmd(client),
 		newClusterSetThresholdCmd(client),
+		newClusterSetClientPkgAddr(client),
 	)
 	return clusterCmd
 }
@@ -47,6 +48,7 @@ const (
 	cmdClusterFreezeShort           = "Freeze cluster"
 	cmdClusterThresholdShort        = "Set memory threshold of metanodes"
 	cmdClusterExtentDelRocksDbShort = "Set extent del in rocksdb enable"
+	cmdClusterClientPkgAddr         = "Set URL for client pkg download, default http://storage.jd.local/dpgimage/cfs_spark/"
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
@@ -136,6 +138,24 @@ If the memory usage reaches this threshold, all the mata partition will be readO
 				errout("Failed: %v\n", err)
 			}
 			stdout("MetaNode threshold is set to %v!\n", threshold)
+		},
+	}
+	return cmd
+}
+
+func newClusterSetClientPkgAddr(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpSetClientPkgAddr + " [URL]",
+		Short: cmdClusterClientPkgAddr,
+		Args:  cobra.MinimumNArgs(1),
+		Long:  `set url for download client package used for upgrade client online.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var addr string = args[0]
+			if err = client.ClientAPI().SetClientPkgAddr(addr); err != nil {
+				errout("Failed: %v\n", err)
+			}
+			stdout("ClientPackageAddr is set to %s.\n", addr)
 		},
 	}
 	return cmd

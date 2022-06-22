@@ -153,7 +153,7 @@ func (s *Super) Root() (fs.Node, error) {
 	return root, nil
 }
 
-func (s *Super) Node(ino, pino uint64, mode uint32) (fs.Node, error) {
+func (s *Super) Node(ino uint64, mode uint32) (fs.Node, error) {
 	var node fs.Node
 
 	// Create a fake InodeInfo. All File or Dir operations only use
@@ -257,7 +257,7 @@ func (s *Super) handleErrorWithGetInode(op, msg string, inode uint64) {
 	log.LogError(msg)
 
 	s.wg.Add(1)
-	go func() { //为啥起协程
+	go func() {
 		defer s.wg.Done()
 		// if failed to get inode, judge err and alarm;
 		// if succeed to get inode, alarm msg err;
@@ -279,8 +279,6 @@ func (s *Super) Close() {
 	if s.mw != nil {
 		_ = s.mw.Close()
 	}
-	data.Fini() //  把它注释掉有影响吗
 	s.ic.Stop()
 	s.wg.Wait()
-
 }

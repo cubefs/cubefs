@@ -269,11 +269,9 @@ static int64_t g_cfs_client_id;
 // hook or not, currently for test
 static const bool g_hook = true;
 
-static char *g_mount_point;
-static char *g_ignore_path;
-static cfs_config_t g_cfs_config;
 static cfs_sdk_init_t g_init_config;
-static char *g_version_url = "/data";
+static const char *g_mount_point;
+static const char *g_ignore_path;
 static const char *g_config_path;
 static const char *CFS_CFG_PATH = "cfs_client.ini";
 static const char *CFS_CFG_PATH_JED = "/export/servers/cfs/cfs_client.ini";
@@ -369,8 +367,6 @@ static int config_handler(void* user, const char* section,
         pconfig->mount_point = strdup(value);
     } else if (MATCH("", "ignorePath")) {
         pconfig->ignore_path = strdup(value);
-    } else if (MATCH("", "versionUrl")) {
-        g_version_url = strdup(value);
     } else if (MATCH("", "volName")) {
         pconfig->vol_name = strdup(value);
     } else if (MATCH("", "owner")) {

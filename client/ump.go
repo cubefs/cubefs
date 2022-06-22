@@ -45,7 +45,7 @@ func init() {
 
 func (c *client) initUmpKeys() {
 	volKeyPrefix := fmt.Sprintf("%s_%s_", c.mw.Cluster(), c.volName)
-	clusterKeyPrefix := fmt.Sprintf("%s_%s_", c.mw.Cluster(), moduleName)
+	clusterKeyPrefix := fmt.Sprintf("%s_%s_", c.mw.Cluster(), gClientManager.moduleName)
 	umpKeyVolArr = append(umpKeyVolArr, fmt.Sprintf("%vcfs_close", volKeyPrefix))
 	umpKeyVolArr = append(umpKeyVolArr, fmt.Sprintf("%vcfs_open", volKeyPrefix))
 	umpKeyVolArr = append(umpKeyVolArr, fmt.Sprintf("%vcfs_rename", volKeyPrefix))
@@ -113,7 +113,7 @@ func (c *client) umpFunctionKeyFast(act int) string {
 }
 
 func (c *client) umpFunctionGeneralKey(act string) string {
-	return fmt.Sprintf("%s_%s_%s", c.mw.Cluster(), moduleName, act)
+	return fmt.Sprintf("%s_%s_%s", c.mw.Cluster(), gClientManager.moduleName, act)
 }
 
 func (c *client) umpFunctionGeneralKeyFast(act int) string {

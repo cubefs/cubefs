@@ -42,6 +42,7 @@ const (
 	CliOpResetCursor       = "reset-cursor"
 	CliOpListMpAllInos     = "list-inos"
 	CliOpCheckSnapshot     = "check-snapshot"
+	CliOpSetClientPkgAddr  = "client-package-addr"
 
 	// monitor op
 	CliOpIPTopPartition      = "ip-top-partition"

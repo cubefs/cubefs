@@ -60,16 +60,16 @@ const (
 	defaultMetaPartitionTimeOutSec             = 10 * defaultIntervalToCheckHeartbeat
 	//DefaultMetaPartitionMissSec                         = 3600
 
-	defaultIntervalToAlarmMissingMetaPartition         = 10 * 60 // interval of checking if a replica is missing
-	defaultMetaPartitionMemUsageThreshold      float32 = 0.75    // memory usage threshold on a meta partition
-	defaultMaxMetaPartitionCountOnEachNode             = 10000
-	defaultReplicaNum                                  = 3
-	defaultDiffSpaceUsage                              = 10 * 1024 * 1024 * 1024
-	defaultCrossZoneNum                                = 3
-	defaultExtentCacheExpireSec 					   = 60
-	defaultIntervalToWaitMetaPartitionElectionLeader   = 2 * 60
-	defaultVolMinWritableMPNum                         = 1
-	defaultVolMinWritableDPNum                         = 5
+	defaultIntervalToAlarmMissingMetaPartition               = 10 * 60 // interval of checking if a replica is missing
+	defaultMetaPartitionMemUsageThreshold            float32 = 0.75    // memory usage threshold on a meta partition
+	defaultMaxMetaPartitionCountOnEachNode                   = 10000
+	defaultReplicaNum                                        = 3
+	defaultDiffSpaceUsage                                    = 10 * 1024 * 1024 * 1024
+	defaultCrossZoneNum                                      = 3
+	defaultExtentCacheExpireSec                              = 60
+	defaultIntervalToWaitMetaPartitionElectionLeader         = 2 * 60
+	defaultVolMinWritableMPNum                               = 1
+	defaultVolMinWritableDPNum                               = 5
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)
@@ -113,6 +113,7 @@ type clusterConfig struct {
 	diffSpaceUsage                      uint64
 	DataPartitionsRecoverPoolSize       int32
 	MetaPartitionsRecoverPoolSize       int32
+	ClientPkgAddr                       string
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -141,6 +142,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.ClientWriteVolRateLimitMap = make(map[string]uint64)
 	cfg.ClientVolOpRateLimitMap = make(map[string]map[uint8]int64)
 	cfg.ExtentMergeIno = make(map[string][]uint64)
+	cfg.ClientPkgAddr = defaultClientPkgAddr
 	return
 }
 

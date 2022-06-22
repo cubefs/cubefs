@@ -133,8 +133,14 @@ build_server() {
 build_client() {
     pre_build
     pushd $SrcPath >/dev/null
-    echo -n "build cfs-client   "
-    go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-client ${SrcPath}/client/*.go  && echo "success" || echo "failed"
+    echo -n "build libempty.so   "
+    go build -buildmode=plugin -linkshared -o ${BuildBinPath}/libempty.so ${SrcPath}/client/empty.go || echo "failed"
+    echo -n "libcfsclient.so   "
+    gcc -std=c99 -fPIC -shared -o ${BuildBinPath}/libcfsclient.so ${SrcPath}/client/main_bypass.c ${SrcPath}/client/bypass/ini.c -ldl -lpthread || echo "failed"
+    echo -n "libcfssdk_${CommitID}.so   "
+    go build -ldflags "-E main.main ${LDFlags}" -buildmode=plugin -linkshared -o ${BuildBinPath}/libcfssdk_${CommitID}.so ${SrcPath}/client/sdk_fuse.go ${SrcPath}/client/sdk_bypass.go ${SrcPath}/client/http.go ${SrcPath}/client/ump.go || echo "failed"
+    echo -n "cfs-client   "
+    go build -linkshared -o ${BuildBinPath}/cfs-client ${SrcPath}/client/main_fuse.go && echo "success" || echo "failed"
     popd >/dev/null
 }
 

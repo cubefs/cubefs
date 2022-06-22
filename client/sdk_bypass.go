@@ -138,7 +138,6 @@ const (
 	normalExtentSize       = 32 * 1024 * 1024
 	defaultBlkSize         = uint32(1) << 12
 	maxFdNum          uint = 1024000
-	moduleName             = "kbpclient"
 	redologPrefix          = "ib_logfile"
 	binlogPrefix           = "mysql-bin"
 	relayBinlogPrefix      = "relay-bin"
@@ -155,18 +154,12 @@ const (
 )
 
 var (
-	gClientManager *clientManager
-
+	gClientManager   *clientManager
 	signalIgnoreFunc = func() {}
 
 	sdkInitOnce              sync.Once
 	signalIgnoreOnce         sync.Once
 	versionReporterStartOnce sync.Once
-
-	CommitID   string
-	BranchName string
-	BuildTime  string
-	Debug      string
 )
 
 var (
@@ -201,12 +194,14 @@ func errorToStatus(err error) C.int {
 }
 
 type clientManager struct {
+	moduleName   string
 	nextClientID int64
 	clients      map[int64]*client
 	mu           sync.RWMutex
 	profPort     uint64
-	wg           sync.WaitGroup
 	stopC        chan struct{}
+	wg           sync.WaitGroup
+	outputFile   *os.File
 }
 
 func (m *clientManager) GetNextClientID() int64 {
@@ -234,8 +229,9 @@ func (m *clientManager) GetClient(id int64) (c *client, exist bool) {
 
 func newClientManager() *clientManager {
 	return &clientManager{
-		clients: make(map[int64]*client),
-		stopC:   make(chan struct{}),
+		moduleName: "kbpclient",
+		clients:    make(map[int64]*client),
+		stopC:      make(chan struct{}),
 	}
 }
 
@@ -250,7 +246,6 @@ func newClient(conf *C.cfs_config_t, configPath string) *client {
 		inodeDentryCache: make(map[uint64]*cache.DentryCache),
 	}
 
-	fmt.Printf("=======configPath: %s, len: %d\n", configPath, len(configPath))
 	if len(configPath) == 0 {
 		c.masterAddr = C.GoString(conf.master_addr)
 		c.volName = C.GoString(conf.vol_name)
@@ -286,6 +281,7 @@ func newClient(conf *C.cfs_config_t, configPath string) *client {
 }
 
 func rebuild_client_state(c *client, clientState *ClientState) {
+	log.LogDebugf("rebuild_client_state. clientState: %v\n", clientState)
 	c.cwd = clientState.Cwd
 
 	for _, v := range clientState.Files {
@@ -355,7 +351,7 @@ func getVersionInfoString() string {
 	}
 	pid := os.Getpid()
 	return fmt.Sprintf("ChubaoFS %s\nBranch: %s\nVersion: %s\nCommit: %s\nBuild: %s %s %s %s\nCMD: %s\nPID: %d\n",
-		moduleName, BranchName, proto.BaseVersion, CommitID, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime, cmd, pid)
+		gClientManager.moduleName, BranchName, proto.BaseVersion, CommitID, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime, cmd, pid)
 }
 
 func startVersionReporter(cluster string, masters []string) {
@@ -440,6 +436,28 @@ type client struct {
 	closeOnce   sync.Once
 }
 
+type FileState struct {
+	Fd    uint
+	Ino   uint64
+	Flags uint32
+	Mode  uint32
+	Size  uint64
+	Pos   uint64
+
+	// save the path for openat, fstat, etc.
+	Path string
+	// symbolic file only
+	Target string
+	// dir only
+	DirPos int
+	Locked bool
+}
+
+type ClientState struct {
+	Cwd   string // current working directory
+	Files []FileState
+}
+
 /*
  * Library / framework initialization
  * This method will initialize logging and HTTP APIs.
@@ -493,18 +511,17 @@ func initSDK(t *C.cfs_sdk_init_t) C.int {
 		syslog.Println("no valid log dir specified.\n")
 		return C.int(statusEINVAL)
 	}
-	if _, err = log.InitLog(logDir, moduleName, level, nil); err != nil {
+	if _, err = log.InitLog(logDir, gClientManager.moduleName, level, nil); err != nil {
 		syslog.Println("initialize logging failed: %v\n", err)
 		return C.int(statusEIO)
 	}
 
-	outputFilePath := gopath.Join(logDir, moduleName, "output.log")
-	var outputFile *os.File
-	if outputFile, err = os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666); err != nil {
+	outputFilePath := gopath.Join(logDir, gClientManager.moduleName, "output.log")
+	if gClientManager.outputFile, err = os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666); err != nil {
 		syslog.Printf("open %v for stdout redirection failed: %v", outputFilePath, err)
 		return C.int(statusEIO)
 	}
-	syslog.SetOutput(outputFile)
+	syslog.SetOutput(gClientManager.outputFile)
 
 	// Initialize HTTP APIs
 	if gClientManager.profPort == 0 && isMysql() {
@@ -520,6 +537,8 @@ func initSDK(t *C.cfs_sdk_init_t) C.int {
 		http.HandleFunc(ControlReadProcessRegister, registerReadProcStatusHandleFunc)
 		http.HandleFunc(ControlBroadcastRefreshExtents, broadcastRefreshExtentsHandleFunc)
 		http.HandleFunc(ControlGetReadProcs, getReadProcsHandleFunc)
+		http.HandleFunc(ControlSetUpgrade, SetClientUpgrade)
+		http.HandleFunc(ControlUnsetUpgrade, UnsetClientUpgrade)
 		server := &http.Server{Addr: fmt.Sprintf(":%v", gClientManager.profPort)}
 		gClientManager.wg.Add(2)
 		go func() {
@@ -538,6 +557,7 @@ func initSDK(t *C.cfs_sdk_init_t) C.int {
 	}
 
 	syslog.Printf(getVersionInfoString())
+	log.LogDebugf("bypass client started.\n")
 
 	return C.int(0)
 }
@@ -572,28 +592,6 @@ func cfs_sdk_version(v *C.cfs_sdk_version_t) C.int {
 	return C.int(0)
 }
 
-type FileState struct {
-	Fd    uint
-	Ino   uint64
-	Flags uint32
-	Mode  uint32
-	Size  uint64
-	Pos   uint64
-
-	// save the path for openat, fstat, etc.
-	Path string
-	// symbolic file only
-	Target string
-	// dir only
-	DirPos int
-	Locked bool
-}
-
-type ClientState struct {
-	Cwd   string // current working directory
-	Files []FileState
-}
-
 /*
  * Client operations
  */
@@ -601,7 +599,6 @@ type ClientState struct {
 //export cfs_new_client
 func cfs_new_client(conf *C.cfs_config_t, configPath, str *C.char) C.int64_t {
 	c := newClient(conf, C.GoString(configPath))
-	syslog.Printf("clientState in cfs_new_client: %d\n", len(C.GoString(str)))
 	if err := c.start(); err != nil {
 		return C.int64_t(statusEIO)
 	}
@@ -629,16 +626,18 @@ func cfs_close_client(id C.int64_t) {
 
 //export cfs_sdk_close
 func cfs_sdk_close() {
+	log.LogDebugf("close bypass client.\n")
 	for id, c := range gClientManager.clients {
 		removeClient(id)
 		c.stop()
 	}
+	gClientManager.outputFile.Sync()
+	gClientManager.outputFile.Close()
 	close(gClientManager.stopC)
 	gClientManager.wg.Wait()
 	gClientManager = nil
 	ump.StopUmp()
 	log.LogClose()
-	free_globals()
 	runtime.GC()
 }
 
@@ -709,10 +708,6 @@ func cfs_client_state(id C.int64_t, buf unsafe.Pointer, size C.size_t) C.size_t 
 	c.clientState = string(str)
 	log.LogDebugf("cfs client state: %s\n", c.clientState)
 	return C.size_t(len(str) + 1)
-}
-
-func free_globals() {
-	data.Fini()
 }
 
 /*
@@ -3405,7 +3400,9 @@ func (c *client) absPathAt(dirfd C.int, path *C.char) (string, error) {
 func (c *client) start() (err error) {
 	defer func() {
 		if err != nil {
-			syslog.Printf("start kernel bypass client failed: err(%v)\n", err)
+			gClientManager.outputFile.Sync()
+			gClientManager.outputFile.Close()
+			fmt.Println("Start client failed. Please check output.log for more details.\n")
 		}
 	}()
 
@@ -3428,7 +3425,7 @@ func (c *client) start() (err error) {
 
 	var mw *meta.MetaWrapper
 	if mw, err = meta.NewMetaWrapper(&meta.MetaConfig{
-		Modulename:    moduleName,
+		Modulename:    gClientManager.moduleName,
 		Volume:        c.volName,
 		Masters:       masters,
 		ValidateOwner: true,
@@ -3461,7 +3458,7 @@ func (c *client) start() (err error) {
 	c.ec = ec
 
 	// metric
-	if err = ump.InitUmp(moduleName, "jdos_chubaofs-node"); err != nil {
+	if err = ump.InitUmp(gClientManager.moduleName, "jdos_chubaofs-node"); err != nil {
 		syslog.Println(err)
 		return
 	}
@@ -3743,7 +3740,7 @@ func handleError(c *client, act, msg string) {
 		errmsg1 := fmt.Sprintf("act(%s) - %s", act, msg)
 		ump.Alarm(key1, errmsg1)
 
-		key2 := fmt.Sprintf("%s_%s_warning", c.mw.Cluster(), moduleName)
+		key2 := fmt.Sprintf("%s_%s_warning", c.mw.Cluster(), gClientManager.moduleName)
 		errmsg2 := fmt.Sprintf("volume(%s) %s", c.volName, errmsg1)
 		ump.Alarm(key2, errmsg2)
 		ump.FlushAlarm()
@@ -3754,8 +3751,6 @@ func isMysql() bool {
 	processName := filepath.Base(os.Args[0])
 	return strings.Contains(processName, "mysqld")
 }
-
-func main() {}
 
 //export InitModule
 func InitModule(initTask unsafe.Pointer) {

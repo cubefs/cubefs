@@ -2739,10 +2739,10 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	ossBucketPolicy proto.BucketAccessPolicy, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
 	remainingDays uint32, storeMode proto.StoreMode, layout proto.MetaPartitionLayout, extentCacheExpireSec int64, smartRules []string) (err error) {
 	var (
-		vol           *Vol
-		volBak        *Vol
-		serverAuthKey string
-		masterRegionZoneList    []string
+		vol                  *Vol
+		volBak               *Vol
+		serverAuthKey        string
+		masterRegionZoneList []string
 	)
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[updateVol] err[%v]", err)
@@ -4638,4 +4638,16 @@ func (c *Cluster) getMetaLoadedTime() int64 {
 
 func (c *Cluster) resetMetaLoadedTime() {
 	c.metaLoadedTime = math.MaxInt64
+}
+
+func (c *Cluster) setClientPkgAddr(addr string) (err error) {
+	oldAddr := c.cfg.ClientPkgAddr
+	c.cfg.ClientPkgAddr = addr
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setClientPkgAddr] err[%v]", err)
+		c.cfg.ClientPkgAddr = oldAddr
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
 }

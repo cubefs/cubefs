@@ -17,7 +17,6 @@ package data
 import (
 	"context"
 	"fmt"
-	syslog "log"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -565,7 +564,6 @@ func (client *ExtentClient) Close(ctx context.Context) error {
 		_ = client.MustCloseStream(ctx, inode)
 		_ = client.EvictStream(ctx, inode)
 	}
-	syslog.Printf("streamer count after data close: %d\n", client.streamerConcurrentMap.Length())
 	StreamConnPool.Close()
 	StreamConnPool = nil
 	return nil
@@ -653,12 +651,4 @@ func (c *ExtentClient) lookupAllInode(parent uint64) (inodes []uint64) {
 		}
 	}
 	return
-}
-func Fini() {
-	openRequestPool = nil
-	writeRequestPool = nil
-	flushRequestPool = nil
-	releaseRequestPool = nil
-	truncRequestPool = nil
-	evictRequestPool = nil
 }

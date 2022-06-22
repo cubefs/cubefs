@@ -4,14 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/sdk/master"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
@@ -19,12 +22,23 @@ const (
 	ControlBroadcastRefreshExtents = "/broadcast/refreshExtents"
 	ControlReadProcessRegister     = "/readProcess/register"
 	ControlGetReadProcs            = "/get/readProcs"
+	ControlSetUpgrade              = "/set/clientUpgrade"
+	ControlUnsetUpgrade            = "/unset/clientUpgrade"
 
-	aliveKey  = "alive"
-	volKey    = "vol"
-	inoKey    = "ino"
-	clientKey = "client" // ip:port
-	MaxRetry  = 5
+	aliveKey   = "alive"
+	volKey     = "vol"
+	inoKey     = "ino"
+	clientKey  = "client" // ip:port
+	versionKey = "version"
+	MaxRetry   = 5
+)
+
+var (
+	CommitID    string
+	BranchName  string
+	BuildTime   string
+	Debug       string
+	NextVersion string
 )
 
 func GetVersionHandleFunc(w http.ResponseWriter, r *http.Request) {
@@ -69,6 +83,122 @@ func broadcastRefreshExtentsHandleFunc(w http.ResponseWriter, r *http.Request) {
 		log.LogInfof("broadcastRefreshExtentsHandleFunc: refresh ino(%v) vol(%v)", ino, vol)
 	}
 	buildSuccessResp(w, "success")
+}
+
+func (c *fClient) SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("Parse parameter error: %v", err))
+		return
+	}
+	version := r.FormValue(versionKey)
+	if version == "" {
+		buildFailureResp(w, http.StatusBadRequest, "Invalid version parameter.")
+		return
+	}
+	if version == CommitID {
+		buildFailureResp(w, http.StatusBadRequest, "Current version is same to expected.")
+		return
+	}
+	if NextVersion != "" && version != NextVersion {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("Last version %s is upgrading. please waiting.", NextVersion))
+		return
+	}
+	if version == NextVersion {
+		buildSuccessResp(w, "Please waiting")
+		return
+	}
+	if err := setClientUpgrade(c.mc, version); err != nil {
+		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	buildSuccessResp(w, "Set successful. Upgrading.")
+	return
+}
+
+func SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
+	const defaultClientID = 1
+	c, exist := getClient(defaultClientID)
+	if !exist {
+		buildFailureResp(w, http.StatusNotFound, fmt.Sprintf("client [%v] not exist", defaultClientID))
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("Parse parameter error: %v", err))
+		return
+	}
+	version := r.FormValue(versionKey)
+	if version == "" {
+		buildFailureResp(w, http.StatusBadRequest, "Invalid version parameter.")
+		return
+	}
+	if version == CommitID {
+		buildFailureResp(w, http.StatusBadRequest, "Current version is same to expected.")
+		return
+	}
+	if NextVersion != "" && version != NextVersion {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("Last version %s is upgrading. please waiting.", NextVersion))
+		return
+	}
+	if version == NextVersion {
+		buildSuccessResp(w, "Please waiting")
+		return
+	}
+	if err := setClientUpgrade(c.mc, version); err != nil {
+		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	buildSuccessResp(w, "Set successful. Upgrading.")
+	return
+}
+
+func setClientUpgrade(mc *master.MasterClient, version string) (err error) {
+	NextVersion = version
+	defer func() {
+		if err != nil {
+			NextVersion = ""
+		}
+	}()
+	addr, err := mc.ClientAPI().GetClientPkgAddr()
+	if err != nil {
+		return
+	}
+	filename := fmt.Sprintf("libcfssdk_%s.so", version)
+	var url string
+	if addr[len(addr)-1] == '/' {
+		url = fmt.Sprintf("%s%s", addr, filename)
+	} else {
+		url = fmt.Sprintf("%s/%s", addr, filename)
+	}
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("Download %s error: %v", url, err)
+	}
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("Download %s error: %s", url, resp.Status)
+	}
+	defer resp.Body.Close()
+
+	tmpfile := fmt.Sprintf("/tmp/.%s", filename)
+	os.Remove(tmpfile)
+	out, err := os.Create(tmpfile)
+	if err != nil {
+		return fmt.Errorf("Create %s error: %v", tmpfile, err)
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return fmt.Errorf("Write %s err: %v", tmpfile, err)
+	}
+	os.Rename(tmpfile, "/usr/lib64/libcfssdk.so")
+	os.Setenv("RELOAD_CLIENT", "1")
+	return
+}
+
+func UnsetClientUpgrade(w http.ResponseWriter, r *http.Request) {
+	os.Unsetenv("RELOAD_CLIENT")
+	NextVersion = ""
+	buildSuccessResp(w, "Success")
 }
 
 func registerReadProcStatusHandleFunc(w http.ResponseWriter, r *http.Request) {
