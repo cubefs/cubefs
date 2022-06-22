@@ -284,7 +284,12 @@ func removeClient(id int64) {
 
 func getVersionInfoString() string {
 	cmd, _ := os.Executable()
-	return fmt.Sprintf("ChubaoFS %s\nBranch: %s\nVersion: %s\nCommit: %s\nBuild: %s %s %s %s\nCMD: %s\n", moduleName, BranchName, proto.BaseVersion, CommitID, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime, cmd)
+	if len(os.Args) > 1 {
+		cmd = cmd + " " + strings.Join(os.Args[1:], " ")
+	}
+	pid := os.Getpid()
+	return fmt.Sprintf("ChubaoFS %s\nBranch: %s\nVersion: %s\nCommit: %s\nBuild: %s %s %s %s\nCMD: %s\nPID: %d\n",
+		moduleName, BranchName, proto.BaseVersion, CommitID, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildTime, cmd, pid)
 }
 
 func startVersionReporter(cluster string, masters []string) {
@@ -361,7 +366,7 @@ type client struct {
 	useMetaCache         bool
 	inodeCache           *cache.InodeCache
 	inodeDentryCache     map[uint64]*cache.DentryCache
-	inodeDentryCacheLock sync.Mutex
+	inodeDentryCacheLock sync.RWMutex
 
 	closeOnce sync.Once
 }
@@ -626,7 +631,7 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 		if len(name) == 0 {
 			return statusEINVAL
 		}
-		inode, err := c.getDentry(nil, dirInode, name)
+		inode, err := c.getDentry(nil, dirInode, name, false)
 		var newInfo *proto.InodeInfo
 		if err == nil {
 			if fuseFlags&uint32(C.O_EXCL) != 0 {
@@ -1114,17 +1119,24 @@ func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) (re C.int) {
 			}
 			msg := fmt.Sprintf("id(%v) path(%v) mode(%v) re(%v) err(%v)%s", id, C.GoString(path), mode, re, err, stack)
 			handleError(c, "cfs_mkdirs", msg)
+		} else {
+			if log.IsDebugEnabled() {
+				msg := fmt.Sprintf("id(%v) path(%v) mode(%v) re(%v) err(%v)", id, C.GoString(path), mode, re, err)
+				log.LogDebugf("cfs_mkdirs: %s", msg)
+			}
 		}
 	}()
 
 	c, exist := getClient(int64(id))
 	if !exist {
-		return statusEINVAL
+		re = statusEINVAL
+		return
 	}
 
 	dirpath := c.absPath(C.GoString(path))
 	if dirpath == "/" {
-		return statusEEXIST
+		re = statusEEXIST
+		return
 	}
 
 	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_mkdirs))
@@ -1139,22 +1151,33 @@ func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) (re C.int) {
 		if dir == "" {
 			continue
 		}
-		child, err := c.getDentry(nil, pino, dir)
-		if err != nil {
-			if err == syscall.ENOENT {
-				info, err := c.create(nil, pino, dir, fuseMode, uid, gid, nil)
-				if err != nil {
-					return errorToStatus(err)
+		var child uint64
+		child, err = c.getDentry(nil, pino, dir, true)
+		if err != nil && err != syscall.ENOENT {
+			re = errorToStatus(err)
+			return
+		}
+		if err == syscall.ENOENT {
+			var info *proto.InodeInfo
+			info, err = c.create(nil, pino, dir, fuseMode, uid, gid, nil)
+			if err != nil && err != syscall.ENOENT {
+				re = errorToStatus(err)
+				return
+			}
+			if err == syscall.EEXIST {
+				if child, err = c.getDentry(nil, pino, dir, true); err != nil {
+					re = errorToStatus(err)
+					return
 				}
-				child = info.Inode
 			} else {
-				return errorToStatus(err)
+				child = info.Inode
 			}
 		}
 		pino = child
 	}
 
-	return statusOK
+	re = statusOK
+	return
 }
 
 //export cfs_mkdirsat
@@ -1522,7 +1545,7 @@ func cfs_symlink(id C.int64_t, target *C.char, linkPath *C.char) (re C.int) {
 		return errorToStatus(err)
 	}
 
-	_, err = c.getDentry(nil, dirInode, name)
+	_, err = c.getDentry(nil, dirInode, name, false)
 	if err == nil {
 		return statusEEXIST
 	} else if err != syscall.ENOENT {
@@ -3344,6 +3367,14 @@ func (c *client) create(ctx context.Context, parentID uint64, name string, mode,
 	}
 	c.inodeCache.Delete(nil, parentID)
 	c.inodeCache.Put(info)
+	c.inodeDentryCacheLock.Lock()
+	dentryCache, ok := c.inodeDentryCache[parentID]
+	if !ok {
+		dentryCache = cache.NewDentryCache(dentryValidDuration, c.useMetaCache)
+		c.inodeDentryCache[parentID] = dentryCache
+	}
+	dentryCache.Put(name, info.Inode)
+	c.inodeDentryCacheLock.Unlock()
 	return
 }
 
@@ -3425,7 +3456,7 @@ func (c *client) lookupPath(ctx context.Context, path string) (ino uint64, err e
 			if dir == "/" || dir == "" {
 				continue
 			}
-			child, err = c.getDentry(nil, ino, dir)
+			child, err = c.getDentry(nil, ino, dir, false)
 			if err != nil {
 				ino = 0
 				return
@@ -3449,23 +3480,28 @@ func (c *client) getInode(ctx context.Context, ino uint64) (info *proto.InodeInf
 	return
 }
 
-func (c *client) getDentry(ctx context.Context, parentID uint64, name string) (ino uint64, err error) {
+func (c *client) getDentry(ctx context.Context, parentID uint64, name string, strict bool) (ino uint64, err error) {
 	c.inodeDentryCacheLock.Lock()
 	defer c.inodeDentryCacheLock.Unlock()
-	dentryCache, ok := c.inodeDentryCache[parentID]
-	if ok {
-		ino, ok = dentryCache.Get(name)
-		if ok {
+
+	dentryCache, cacheExists := c.inodeDentryCache[parentID]
+	if cacheExists && !strict {
+		var ok bool
+		if ino, ok = dentryCache.Get(name); ok {
 			return
 		}
-	} else {
-		dentryCache = cache.NewDentryCache(dentryValidDuration, c.useMetaCache)
-		c.inodeDentryCache[parentID] = dentryCache
 	}
+
 	ino, _, err = c.mw.Lookup_ll(nil, parentID, name)
 	if err != nil {
 		return
 	}
+
+	if !cacheExists {
+		dentryCache = cache.NewDentryCache(dentryValidDuration, c.useMetaCache)
+		c.inodeDentryCache[parentID] = dentryCache
+	}
+
 	dentryCache.Put(name, ino)
 	return
 }

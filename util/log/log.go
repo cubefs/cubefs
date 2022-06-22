@@ -59,13 +59,24 @@ const (
 
 var levelPrefixes = []string{
 	"[DEBUG]",
-	"[INFO ]",
-	"[WARN ]",
+	"[INFO]",
+	"[WARN]",
 	"[ERROR]",
 	"[FATAL]",
-	"[READ ]",
+	"[READ]",
 	"[WRITE]",
-	"[Critical]",
+	"[CRITICAL]",
+}
+
+func init() {
+	// 为日志前缀增加进程信息, 包括进程名和进程ID
+	var exe, _ = os.Executable()
+	exe = path.Base(exe)
+	var pid = os.Getpid()
+	var logCommonPrefix = fmt.Sprintf("[%v/%v]", exe, pid)
+	for i := 0; i< len(levelPrefixes); i++ {
+		levelPrefixes[i] = logCommonPrefix + levelPrefixes[i]
+	}
 }
 
 type RolledFile []os.FileInfo
