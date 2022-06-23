@@ -400,6 +400,7 @@ func (m *Server) deleteDataReplica(w http.ResponseWriter, r *http.Request) {
 		dp          *DataPartition
 		partitionID uint64
 		err         error
+		force       bool
 	)
 
 	if partitionID, addr, err = parseRequestToRemoveDataReplica(r); err != nil {
@@ -412,7 +413,11 @@ func (m *Server) deleteDataReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = m.cluster.removeDataReplica(dp, addr, true); err != nil {
+	var value string
+	if value = r.FormValue(forceKey); value != "" {
+		force, _ = strconv.ParseBool(value)
+	}
+	if err = m.cluster.removeDataReplica(dp, addr, !force); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
