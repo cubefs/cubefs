@@ -51,6 +51,24 @@ const (
 	metadataOpFSMEvictInodeBatch
 	metadataOpFSMCursorReset
 	metadataOpFSMExtentsInsert
+	metadataOpFSMBatchCreate
+	metadataOpFSMSnapShotCrc
+
+	metadataOpFSMCreateDeletedInode
+	metadataOpFSMCreateDeletedDentry
+	metadataOpFSMRecoverDeletedDentry
+	metadataOpFSMBatchRecoverDeletedDentry
+	metadataOpFSMRecoverDeletedInode
+	metadataOpFSMBatchRecoverDeletedInode
+	metadataOpFSMCleanDeletedDentry
+	metadataOpFSMBatchCleanDeletedDentry
+	metadataOpFSMCleanDeletedInode
+	metadataOpFSMBatchCleanDeletedInode
+	metadataOpFSMInternalCleanDeletedInode
+	metadataOpFSMCleanExpiredDentry
+	metadataOpFSMCleanExpiredInode
+	metadataOpFSMExtentDelSync
+	metadataOpSnapSyncExtent
 )
 
 const (
@@ -116,7 +134,7 @@ func (decoder *MetadataCommandDecoder) DecodeCommand(command []byte) (values com
 		columnValFrom.Value = "N/A"
 	}
 	if opKVData.Timestamp > 0 {
-		columnValTime.Value = time.Unix(opKVData.Timestamp, 0).Format("2006-01-02 15:04:05")
+		columnValTime.Value = time.Unix(opKVData.Timestamp/1000/1000, 0).Format("2006-01-02 15:04:05")
 	} else {
 		columnValTime.Value = "N/A"
 	}
@@ -256,6 +274,26 @@ func (decoder *MetadataCommandDecoder) DecodeCommand(command []byte) (values com
 	case metadataOpFSMInternalDelExtentCursor:
 		columnValOp.SetValue("DelExtentCursor")
 		columnValAttrs.SetValue(fmt.Sprintf("cursor: %v", string(opKVData.V)))
+	case metadataOpFSMInternalCleanDeletedInode:
+		columnValOp.SetValue("InternalCleanDeletedInode")
+		inodes := make([]uint64, 0)
+		if len(opKVData.V) == 0 {
+			break
+		}
+		buf := bytes.NewBuffer(opKVData.V)
+		for {
+			var inodeID uint64
+			err = binary.Read(buf, binary.BigEndian, &inodeID)
+			if err != nil {
+				if err == io.EOF {
+					err = nil
+					break
+				}
+				break
+			}
+			inodes = append(inodes, inodeID)
+		}
+		columnValAttrs.SetValue(fmt.Sprintf("inodes:%v", inodes))
 	default:
 		columnValOp.SetValue(strconv.Itoa(int(opKVData.Op)))
 		columnValAttrs.SetValue("N/A")

@@ -1,8 +1,12 @@
 package sink
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"path"
 	"strings"
 
 	"github.com/tiglabs/raft/storage/wal"
@@ -213,6 +217,161 @@ func (s *Sinker) buildRecordRowText(entry *proto.Entry) (text string, skip bool,
 		skip = true
 	}
 	return
+}
+
+var footerMagic = []byte{'\xf9', '\xbf', '\x3e', '\x0a', '\xd3', '\xc5', '\xcc', '\x3f'}
+const indexItemSize = 8 + 8 + 4
+
+type indexItem struct {
+	logindex uint64 // 日志的index
+	logterm  uint64 // 日志的term
+	offset   uint32 // 日志在文件中的偏移
+}
+
+type logEntryIndex []indexItem
+
+func decodeLogIndex(data []byte) (logEntryIndex, error) {
+	offset := 0
+	var err error
+
+	nItems := binary.BigEndian.Uint32(data[offset:])
+	offset += 4
+
+	calcItems := uint32((len(data) - 4 -29 -4) / 20)
+	if calcItems < nItems {
+		err = fmt.Errorf("!!! log expect %d recs, but now have %d recs", nItems, calcItems)
+		nItems = calcItems
+	}
+	li := make([]indexItem, nItems)
+
+	for i := 0; i < int(nItems); i++ {
+		li[i].logindex = binary.BigEndian.Uint64(data[offset:])
+		offset += 8
+		li[i].logterm = binary.BigEndian.Uint64(data[offset:])
+		offset += 8
+		li[i].offset = binary.BigEndian.Uint32(data[offset:])
+		offset += 4
+	}
+	return li, err
+}
+
+func (s *Sinker) getRaftLogRecordsIndexItem(data []byte) (logEntryIndex, error) {
+	index := make([]indexItem, 0)
+	footer := data[len(data) - 29 :]
+	if footer[0] != 3 {
+		return index, fmt.Errorf("record file has no index item")
+	}
+
+	if binary.BigEndian.Uint64(footer[1:9]) != 16 {
+		return index, fmt.Errorf("record file footer data len error")
+	}
+
+	logIndexOffset := int(binary.BigEndian.Uint64(footer[9:17]))
+	if !bytes.Equal(footer[17:25], footerMagic) {
+		return index, fmt.Errorf("record file footer magic error\n")
+	}
+
+	logIndexBuff := data[logIndexOffset : ]
+
+	return decodeLogIndex(logIndexBuff[9:])
+}
+
+func (s *Sinker)parseLogEntry(data []byte, offset int, lastTerm, lastIndex *uint64) (int, error) {
+	if offset >= len(data) {
+		return offset, fmt.Errorf("parese finished, offset[%d] is beyond data buff[%d]", offset, len(data))
+	}
+	logType := data[offset]
+	offset += 1
+	if logType != 1 {
+		return offset, fmt.Errorf("parese finished, logtype is not log entry")
+	}
+
+	size := binary.BigEndian.Uint64(data[offset:])
+	offset += 8
+
+	if offset + int(size) > len(data) {
+		return offset - 9, fmt.Errorf("parese log failed: data size err")
+	}
+
+	entryBuff := data[offset: offset + int(size)]
+	newCrc := common.NewCRC(entryBuff)
+	offset += int(size)
+	crc := binary.BigEndian.Uint32(data[offset:])
+	offset += 4
+	if crc != newCrc.Value() {
+		fmt.Printf("parese log failed, crc err, expect[%d], but now[%d], next item maybe not right\n", crc, newCrc.Value())
+	}
+
+	entry := &proto.Entry{}
+	entry.Decode(entryBuff)
+
+	if *lastTerm == 0 {
+		*lastTerm = entry.Term
+	}
+	if *lastIndex == 0 {
+		*lastIndex = entry.Index
+	}
+
+	if *lastTerm != entry.Term {
+		fmt.Printf("leader changed, term:%d-->%d, index:%d-->%d\n", *lastTerm, entry.Term, *lastIndex, entry.Index)
+	} else {
+		if *lastIndex != (entry.Index - 1) {
+			fmt.Printf("index skipped, term:%d, index:%d-->%d\n", entry.Term, *lastIndex, entry.Index)
+		}
+	}
+	value, _, _ :=s.buildRecordRowText(entry)
+	fmt.Printf("%v\n", value)
+	*lastTerm = entry.Term
+	*lastIndex = entry.Index
+	return offset, nil
+}
+
+func (s *Sinker) ForceParseRaftLog() {
+
+	fileNames, _ := common.ListLogEntryFiles(s.logDir)
+	lastIndex := uint64(0)
+	lastTerm  := uint64(0)
+	fmt.Printf("force parse \ntotal files:%d \n%s\n", len(fileNames), s.buildHeaderRowText())
+	for index, logFile := range fileNames {
+		fileAbsName := path.Join(s.logDir, logFile.String())
+		data, err := ioutil.ReadFile(fileAbsName)
+		if err != nil {
+			fmt.Printf("read %d file[%s] failed:%s\n", index, err.Error())
+			continue
+		}
+
+		//get index recs
+		indexRecs, err:= s.getRaftLogRecordsIndexItem(data)
+		if err != nil {
+			fmt.Printf("get log records failed:%s\n", err.Error())
+		}
+		offset := 0
+
+		// read data as log entry
+		for {
+			offset , err = s.parseLogEntry(data, offset, &lastTerm, &lastIndex)
+			if err != nil {
+				fmt.Printf("parse %d file[%s] err:%s\n", index, logFile.String(), err.Error())
+				break
+			}
+		}
+		fmt.Printf("parse %d file[%s] seq read record finished: offset:%d\n", index, logFile.String(), offset)
+		//read data by recs offset
+		lastOffset := 0
+		for _, rec := range indexRecs {
+			lastOffset = int(rec.offset)
+			if int(rec.offset) < offset {
+				continue
+			}
+
+			_, err = s.parseLogEntry(data, int(rec.offset), &lastTerm, &lastIndex)
+			if err != nil {
+				fmt.Printf("parse %d file[%s] err:%s\n", index, fileAbsName, err.Error())
+			}
+		}
+		fmt.Printf("\n*****************************\nparse %d file[%s] seq read record finished: offset:%d, last rec offset:%d, data len:%d \n*****************************\n",
+			index, logFile.String(), offset, lastOffset, len(data))
+	}
 }
 
 func (s *Sinker) formatEntryType(entryType proto.EntryType) string {

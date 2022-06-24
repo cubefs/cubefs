@@ -37,7 +37,9 @@ func main() {
 		count       uint64
 		filter      string
 		showHelp    bool
+		force       bool
 		err         error
+
 	)
 
 	flag.StringVar(&walPath, "path", "", "path of RAFT WAL")
@@ -49,6 +51,7 @@ func main() {
 	flag.Uint64Var(&count, "count", 0, "read limit, 0 for unlimited")
 	flag.StringVar(&filter, "filter", "all", "record type filter (all,normal,confchange)")
 	flag.BoolVar(&showHelp, "help", false, "show help")
+	flag.BoolVar(&force, "force", false, "force parse raft log, no need meta file")
 	flag.Parse()
 
 	if showHelp {
@@ -111,11 +114,15 @@ func main() {
 	var bufWriter = bufio.NewWriter(os.Stdout)
 
 	var sinker = sink.NewLogEntrySinker(walPath, decoder, bufWriter, opt)
+	if force {
+		sinker.ForceParseRaftLog()
+	} else {
 
-	if err = sinker.Run(); err != nil {
-		_ = bufWriter.Flush()
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
+		if err = sinker.Run(); err != nil {
+			_ = bufWriter.Flush()
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	_ = bufWriter.Flush()
