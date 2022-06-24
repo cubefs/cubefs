@@ -15,9 +15,11 @@ package proto
 
 import (
 	"encoding/binary"
-	"github.com/tiglabs/raft/util"
 	"io"
 	"sort"
+
+	"github.com/tiglabs/raft/logger"
+	"github.com/tiglabs/raft/util"
 )
 
 const (
@@ -278,8 +280,13 @@ func (m *Message) Decode(r *util.BufferReader) error {
 	if datas, err = r.ReadFull(4); err != nil {
 		return err
 	}
-	if datas, err = r.ReadFull(int(binary.BigEndian.Uint32(datas))); err != nil {
+	dataLen := int(binary.BigEndian.Uint32(datas))
+	if datas, err = r.ReadFull(dataLen); err != nil {
 		return err
+	}
+
+	if len(datas) < int(message_header) {
+		logger.Warn("message Decode: the length of data(%v) less than header length(%v) read length(%v)", len(datas), message_header, dataLen)
 	}
 
 	ver := datas[0]
