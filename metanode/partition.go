@@ -388,7 +388,8 @@ func (mp *metaPartition) startRaft() (err error) {
 		Learners: learners,
 		SM:       mp,
 	}
-	mp.raftPartition, err = mp.config.RaftStore.CreatePartition(pc)
+	mp.raftPartition = mp.config.RaftStore.CreatePartition(pc)
+	err = mp.raftPartition.StartRaft(pc, mp.config.RaftStore)
 	return
 }
 

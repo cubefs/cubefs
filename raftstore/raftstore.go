@@ -23,14 +23,12 @@ import (
 
 	"github.com/tiglabs/raft"
 	"github.com/tiglabs/raft/logger"
-	"github.com/tiglabs/raft/proto"
-	"github.com/tiglabs/raft/storage/wal"
 	raftlog "github.com/tiglabs/raft/util/log"
 )
 
 // RaftStore defines the interface for the raft store.
 type RaftStore interface {
-	CreatePartition(cfg *PartitionConfig) (Partition, error)
+	CreatePartition(cfg *PartitionConfig) Partition
 	Stop()
 	RaftConfig() *raft.Config
 	RaftStatus(raftID uint64) (raftStatus *raft.Status)
@@ -142,7 +140,7 @@ func (s *raftStore) RaftServer() *raft.RaftServer {
 }
 
 // CreatePartition creates a new partition in the raft store.
-func (s *raftStore) CreatePartition(cfg *PartitionConfig) (p Partition, err error) {
+func (s *raftStore) CreatePartition(cfg *PartitionConfig) (p Partition) {
 	// Init WaL Storage for this partition.
 	// Variables:
 	// wc: WaL Configuration.
@@ -153,35 +151,6 @@ func (s *raftStore) CreatePartition(cfg *PartitionConfig) (p Partition, err erro
 		walPath = path.Join(s.raftPath, strconv.FormatUint(cfg.ID, 10))
 	} else {
 		walPath = path.Join(cfg.WalPath, "wal_"+strconv.FormatUint(cfg.ID, 10))
-	}
-
-	wc := &wal.Config{}
-	ws, err := wal.NewStorage(walPath, wc)
-	if err != nil {
-		return
-	}
-	peers := make([]proto.Peer, 0)
-	for _, peerAddress := range cfg.Peers {
-		peers = append(peers, peerAddress.Peer)
-		s.AddNodeWithPort(
-			peerAddress.ID,
-			peerAddress.Address,
-			peerAddress.HeartbeatPort,
-			peerAddress.ReplicaPort,
-		)
-	}
-	rc := &raft.RaftConfig{
-		ID:           cfg.ID,
-		Peers:        peers,
-		Leader:       cfg.Leader,
-		Term:         cfg.Term,
-		Storage:      ws,
-		StateMachine: cfg.SM,
-		Applied:      cfg.Applied,
-		Learners:     cfg.Learners,
-	}
-	if err = s.raftServer.CreateRaft(rc); err != nil {
-		return
 	}
 	p = newPartition(cfg, s.raftServer, walPath)
 	return

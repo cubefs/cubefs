@@ -16,6 +16,7 @@ package raftstore
 
 import (
 	"context"
+	"github.com/tiglabs/raft/storage/wal"
 	"os"
 	"path"
 	"strconv"
@@ -84,6 +85,8 @@ type Partition interface {
 	TryToLeader(nodeID uint64) error
 
 	IsOfflinePeer() bool
+
+	StartRaft(cfg *PartitionConfig, raftStore RaftStore) error
 }
 
 // Default implementation of the Partition interface.
@@ -163,6 +166,9 @@ func (p *partition) Status() (status *PartitionStatus) {
 
 // LeaderTerm returns the current term of leader in the raft group.
 func (p *partition) LeaderTerm() (leaderID, term uint64) {
+	if p.raft == nil {
+		return
+	}
 	leaderID, term = p.raft.LeaderTerm(p.id)
 	return
 }
@@ -225,6 +231,38 @@ func (p *partition) Truncate(index uint64) {
 	if p.raft != nil {
 		p.raft.Truncate(p.id, index)
 	}
+}
+
+func (p *partition) StartRaft(cfg *PartitionConfig, raftStore RaftStore) (err error) {
+	wc := &wal.Config{}
+	ws, err := wal.NewStorage(p.walPath, wc)
+	if err != nil {
+		return
+	}
+	peers := make([]proto.Peer, 0)
+	for _, peerAddress := range cfg.Peers {
+		peers = append(peers, peerAddress.Peer)
+		raftStore.AddNodeWithPort(
+			peerAddress.ID,
+			peerAddress.Address,
+			peerAddress.HeartbeatPort,
+			peerAddress.ReplicaPort,
+		)
+	}
+	rc := &raft.RaftConfig{
+		ID:           cfg.ID,
+		Peers:        peers,
+		Leader:       cfg.Leader,
+		Term:         cfg.Term,
+		Storage:      ws,
+		StateMachine: cfg.SM,
+		Applied:      cfg.Applied,
+		Learners:     cfg.Learners,
+	}
+	if err = p.raft.CreateRaft(rc); err != nil {
+		return
+	}
+	return
 }
 
 func newPartition(cfg *PartitionConfig, raft *raft.RaftServer, walPath string) Partition {

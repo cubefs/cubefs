@@ -259,8 +259,9 @@ func (m *Server) createRaftServer() (err error) {
 		Applied: m.fsm.applied,
 		SM:      m.fsm,
 	}
-	if m.partition, err = m.raftStore.CreatePartition(partitionCfg); err != nil {
-		return errors.Trace(err, "CreatePartition failed")
+	m.partition = m.raftStore.CreatePartition(partitionCfg)
+	if err = m.partition.StartRaft(partitionCfg, m.raftStore); err != nil {
+		return errors.Trace(err, "start raft partition failed")
 	}
 	return
 }
