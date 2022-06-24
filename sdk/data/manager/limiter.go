@@ -264,7 +264,7 @@ func (factor *LimitFactor) CheckGrid() {
 	factor.gridId++
 
 	if factor.mgr.enable == true && factor.mgr.lastTimeOfSetLimit.Add(time.Second*qosExpireTime).Before(newGrid.time) {
-		log.LogWarnf("action[CheckGrid]. qos disable in case of recv no command from master in long time, last time %v, grid time %v",
+		log.LogWarnf("action[CheckGrid]. qos recv no command from master in long time, last time %v, grid time %v",
 			factor.mgr.lastTimeOfSetLimit, newGrid.time)
 	}
 	log.LogInfof("action[CheckGrid] factor type:[%v] gridlistLen:[%v] waitlistLen:[%v] hitlimitcnt:[%v] "+
