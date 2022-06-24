@@ -851,27 +851,27 @@ func (serverLimit *ServerFactorLimit) getDstLimit(factorType uint32, used, need 
 			need = used
 		}
 		if (need + used) < 10*util.MB/8 {
-			dstLimit = uint64(float32(need+used) * 2)
+			dstLimit = uint64(float64(need+used) * 2)
 		} else if (need + used) < 50*util.MB/8 {
-			dstLimit = uint64(float32(need+used) * 1.5)
+			dstLimit = uint64(float64(need+used) * 1.5)
 		} else if (need + used) < 100*util.MB/8 {
-			dstLimit = uint64(float32(need+used) * 1.2)
+			dstLimit = uint64(float64(need+used) * 1.2)
 		} else if (need + used) < 1*util.GB/8 {
-			dstLimit = uint64(float32(need+used) * 1.1)
+			dstLimit = uint64(float64(need+used) * 1.1)
 		} else {
-			dstLimit = uint64(float32(need+used) + 1*util.GB/8)
+			dstLimit = uint64(float64(need+used) + 1*util.GB/8)
 		}
 	} else {
 		if (need + used) < 100 {
-			dstLimit = uint64(float32(need+used) * 2)
+			dstLimit = uint64(float64(need+used) * 2)
 		} else if (need + used) < 500 {
-			dstLimit = uint64(float32(need+used) * 1.5)
+			dstLimit = uint64(float64(need+used) * 1.5)
 		} else if (need + used) < 1000 {
-			dstLimit = uint64(float32(need+used) * 1.2)
+			dstLimit = uint64(float64(need+used) * 1.2)
 		} else if (need + used) < 5000 {
-			dstLimit = uint64(float32(need+used) * 1.2)
+			dstLimit = uint64(float64(need+used) * 1.2)
 		} else {
-			dstLimit = uint64(float32(need+used) + 1000)
+			dstLimit = uint64(float64(need+used) + 1000)
 		}
 	}
 	return
@@ -930,7 +930,7 @@ func (serverLimit *ServerFactorLimit) updateLimitFactor(req interface{}) {
 				// ignore the case of s.used be zero.  used should large then 0 because dstLimit isn't zero and be part of s.used
 				var dstUsedBuffer uint64
 				if serverLimit.Allocated != 0 {
-					dstUsedBuffer = uint64(float32(dstLimit*serverLimit.Buffer/serverLimit.Allocated) * 0.5)
+					dstUsedBuffer = uint64(float64(dstLimit)*(float64(serverLimit.Buffer)/float64(serverLimit.Allocated)) * 0.5)
 					if dstUsedBuffer > dstLimit {
 						dstUsedBuffer = dstLimit
 					}
@@ -1093,7 +1093,7 @@ func (qosManager *QosCtrlManager) updateServerLimitByClientsInfo(factorType uint
 	// get the limitRate,additionFlowNeed should be zero if total used can increase
 	serverLimit.LimitRate = 0
 	if serverLimit.NeedAfterAlloc > 0 {
-		serverLimit.LimitRate = float32(serverLimit.NeedAfterAlloc) / float32(serverLimit.Allocated+serverLimit.NeedAfterAlloc)
+		serverLimit.LimitRate = float32(float64(serverLimit.NeedAfterAlloc) / float64(serverLimit.Allocated+serverLimit.NeedAfterAlloc))
 
 		log.LogInfof("action[updateServerLimitByClientsInfo] vol [%v] type [%v] alloc not enough need limitRatio serverLimit:(%v)",
 			qosManager.vol.Name, proto.QosTypeString(factorType), serverLimit)
@@ -1102,7 +1102,7 @@ func (qosManager *QosCtrlManager) updateServerLimitByClientsInfo(factorType uint
 		lastLimitRitio := serverLimit.LimitRate
 		// master assigned limit and buffer not be used as expected,we need adjust the gap
 		if serverLimit.CliUsed < serverLimit.Total {
-			serverLimit.LastMagnify += uint64(float32(serverLimit.Total - serverLimit.CliUsed) * 0.1)
+			serverLimit.LastMagnify += uint64(float64(serverLimit.Total - serverLimit.CliUsed) * 0.1)
 		} else {
 			if serverLimit.LastMagnify > 0 {
 				var magnify uint64
@@ -1114,7 +1114,7 @@ func (qosManager *QosCtrlManager) updateServerLimitByClientsInfo(factorType uint
 				serverLimit.LastMagnify -= uint64(float32(magnify) * 0.1)
 			}
 		}
-		serverLimit.LimitRate = serverLimit.LimitRate * (1 - float32(serverLimit.LastMagnify) / float32(serverLimit.Allocated+serverLimit.NeedAfterAlloc))
+		serverLimit.LimitRate = serverLimit.LimitRate * float32(1 - float64(serverLimit.LastMagnify) / float64(serverLimit.Allocated+serverLimit.NeedAfterAlloc))
 		log.LogWarnf("action[updateServerLimitByClientsInfo] vol [%v] type [%v] limitRatio [%v] updated to limitRatio [%v] by magnify [%v] lastMagnify [%v]",
 			qosManager.vol.Name, proto.QosTypeString(factorType),
 			lastLimitRitio, serverLimit.LimitRate, serverLimit.LastMagnify, lastMagnify)
@@ -1139,9 +1139,9 @@ func (qosManager *QosCtrlManager) assignClientsNewQos(factorType uint32) {
 			assignInfo.UsedLimit = 0
 			assignInfo.UsedBuffer = 0
 		} else {
-			assignInfo.UsedLimit = uint64(float32(cliInfo.Used+cliInfo.Need) * (1 - serverLimit.LimitRate))
+			assignInfo.UsedLimit = uint64(float64(cliInfo.Used+cliInfo.Need) * float64(1 - serverLimit.LimitRate))
 			if serverLimit.Allocated != 0 {
-				assignInfo.UsedBuffer = uint64(float32(serverLimit.Buffer*assignInfo.UsedLimit/serverLimit.Allocated) * 0.5)
+				assignInfo.UsedBuffer = uint64(float64(serverLimit.Buffer) * (float64(assignInfo.UsedLimit)/float64(serverLimit.Allocated)) * 0.5)
 			}
 
 			log.LogDebugf("action[assignClientsNewQos] Assign host [%v] limit [%v] buffer [%v]",
