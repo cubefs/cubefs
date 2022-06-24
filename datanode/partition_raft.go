@@ -124,7 +124,7 @@ func (dp *DataPartition) startRaft() (err error) {
 		WalPath:  dp.path,
 	}
 	dp.raftPartition = dp.config.RaftStore.CreatePartition(pc)
-	if err = dp.raftPartition.StartRaft(pc, dp.config.RaftStore); err != nil {
+	if err = dp.raftPartition.CreateRaft(pc, dp.config.RaftStore); err != nil {
 		return
 	}
 	go dp.StartRaftLoggingSchedule()

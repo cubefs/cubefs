@@ -97,3 +97,7 @@ func (m MockPartition) TryToLeader(nodeID uint64) error {
 func (m MockPartition) IsOfflinePeer() bool {
 	panic("implement me")
 }
+
+func (m MockPartition) CreateRaft(cfg *raftstore.PartitionConfig, raftStore raftstore.RaftStore) error {
+	panic("implement me")
+}

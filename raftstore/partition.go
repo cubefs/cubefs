@@ -86,7 +86,7 @@ type Partition interface {
 
 	IsOfflinePeer() bool
 
-	StartRaft(cfg *PartitionConfig, raftStore RaftStore) error
+	CreateRaft(cfg *PartitionConfig, raftStore RaftStore) error
 }
 
 // Default implementation of the Partition interface.
@@ -233,7 +233,7 @@ func (p *partition) Truncate(index uint64) {
 	}
 }
 
-func (p *partition) StartRaft(cfg *PartitionConfig, raftStore RaftStore) (err error) {
+func (p *partition) CreateRaft(cfg *PartitionConfig, raftStore RaftStore) (err error) {
 	wc := &wal.Config{}
 	ws, err := wal.NewStorage(p.walPath, wc)
 	if err != nil {
