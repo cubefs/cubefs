@@ -529,8 +529,8 @@ func parseRequestQos(r *http.Request, isMagnify bool) (qosParam *qosArgs, err er
 		log.LogInfof("actin[parseRequestQos] flowRLimitStr %v", flowRLimitStr)
 		if value, err = strconv.Atoi(flowRLimitStr); err == nil {
 			qosParam.flowRVal = uint64(value * flowFmt)
-			if !isMagnify && qosParam.flowRVal < MinFlowLimit {
-				err = fmt.Errorf("flow read %v must larger than 100", value)
+			if !isMagnify && (qosParam.flowRVal < MinFlowLimit || qosParam.flowRVal > MaxFlowLimit) {
+				err = fmt.Errorf("flow read %v should be between 100M and 10TB ", value)
 				return
 			}
 			if isMagnify && (qosParam.flowRVal < MinMagnify || qosParam.flowRVal > MaxMagnify) {
@@ -544,8 +544,8 @@ func parseRequestQos(r *http.Request, isMagnify bool) (qosParam *qosArgs, err er
 		log.LogInfof("actin[parseRequestQos] flowWLimitStr %v", flowWLimitStr)
 		if value, err = strconv.Atoi(flowWLimitStr); err == nil {
 			qosParam.flowWVal = uint64(value * flowFmt)
-			if !isMagnify && qosParam.flowWVal < MinFlowLimit {
-				err = fmt.Errorf("flow write %v must larger than 100", value)
+			if !isMagnify && (qosParam.flowWVal < MinFlowLimit || qosParam.flowWVal > MaxFlowLimit) {
+				err = fmt.Errorf("flow write %v should be between 100M and 10TB", value)
 				log.LogErrorf("acttion[parseRequestQos] %v",err.Error())
 				return
 			}
@@ -597,6 +597,11 @@ func (m *Server) QosUpdateZoneLimit(w http.ResponseWriter, r *http.Request) {
 	}
 	if qosParam, err = parseRequestQos(r, false); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if (qosParam.flowWVal > 0 && (qosParam.flowWVal < MinZoneDiskLimit * util.MB || qosParam.flowWVal > MaxZoneDiskLimit * util.MB)) ||
+		(qosParam.flowRVal > 0 && (qosParam.flowRVal < MinZoneDiskLimit * util.MB || qosParam.flowWVal > MaxZoneDiskLimit * util.MB) ) {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("zone disk flow param should between 300 and 10000")))
 		return
 	}
 
