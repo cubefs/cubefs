@@ -19,35 +19,37 @@ import (
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
-func (mp *metaPartition) fsmCreateMultipart(multipart *Multipart) (status uint8, err error) {
+func (mp *metaPartition) fsmCreateMultipart(dbHandle interface{}, multipart *Multipart) (status uint8, err error) {
 	status = proto.OpOk
 
-	err = mp.multipartTree.Create(multipart, false)
+	var ok bool
+	_, ok, err = mp.multipartTree.Create(dbHandle, multipart, false)
 	if err != nil {
-		if err == existsError {
-			status = proto.OpExistErr
-		} else {
-			status = proto.OpErr
-		}
+		status = proto.OpErr
+		return
+	}
+	if !ok {
+		status = proto.OpExistErr
 	}
 	return
 }
 
-func (mp *metaPartition) fsmRemoveMultipart(multipart *Multipart) (status uint8, err error) {
+func (mp *metaPartition) fsmRemoveMultipart(dbHandle interface{}, multipart *Multipart) (status uint8, err error) {
 	status = proto.OpOk
 
-	_, err = mp.multipartTree.Delete(multipart.key, multipart.id)
+	var ok bool
+	ok, err = mp.multipartTree.Delete(dbHandle, multipart.key, multipart.id)
 	if err != nil {
-		if err == notExistsError {
-			status =  proto.OpNotExistErr
-		} else {
-			status = proto.OpErr
-		}
+		status = proto.OpErr
+		return
+	}
+	if !ok {
+		status =  proto.OpNotExistErr
 	}
 	return
 }
 
-func (mp *metaPartition) fsmAppendMultipart(multipart *Multipart) (status uint8, err error) {
+func (mp *metaPartition) fsmAppendMultipart(dbHandle interface{}, multipart *Multipart) (status uint8, err error) {
 	var storedMultipart *Multipart
 	status = proto.OpOk
 	storedMultipart, err = mp.multipartTree.Get(multipart.key, multipart.id)
@@ -68,7 +70,7 @@ func (mp *metaPartition) fsmAppendMultipart(multipart *Multipart) (status uint8,
 		}
 	}
 
-	if err = mp.multipartTree.Put(storedMultipart); err != nil {
+	if err = mp.multipartTree.Put(dbHandle, storedMultipart); err != nil {
 		status = proto.OpErr
 		log.LogErrorf("[fsmAppendMultipart] update multipart info failed, multipart id:%s, multipart key:%s, error:%v",
 			multipart.id, multipart.key, err)

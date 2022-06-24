@@ -189,7 +189,7 @@ func (mp *metaPartition) getDeletedDentry(start, end *DeletedDentry) (res []*Del
 	defer func() {
 		log.LogDebugf("[getDeletedDentry], start: %v, end: %v, count: %v, status: %v",
 			start, end, len(res), status)
-		if err == rocksdbError {
+		if err == rocksDBError {
 			exporter.WarningRocksdbError(fmt.Sprintf("action[getDeletedDentry] clusterID[%s] volumeName[%s] partitionID[%v]"+
 				" get deleted dentry failed witch rocksdb error[deleted dentry start:%v, end:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
 				mp.config.PartitionId, start, end))

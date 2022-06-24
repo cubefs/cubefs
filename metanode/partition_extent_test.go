@@ -413,11 +413,11 @@ func ExtentsTruncateInterTest03(t *testing.T, leader, follower *metaPartition) {
 	}
 	inode, _ := leader.inodeTree.Get(ino)
 	inode.SetDeleteMark()
-	leader.inodeTree.Put(inode)
+	_ = inodePut(leader.inodeTree, inode)
 
 	inode, _ = follower.inodeTree.Get(ino)
 	inode.SetDeleteMark()
-	follower.inodeTree.Put(inode)
+	_ = inodePut(follower.inodeTree, inode)
 
 	req := &proto.TruncateRequest{
 		Inode:   ino,

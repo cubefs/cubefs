@@ -21,11 +21,11 @@ type ExtendOpResult struct {
 	Extend *Extend
 }
 
-func (mp *metaPartition) fsmSetXAttr(extend *Extend) (resp *proto.XAttrRaftResponse, err error) {
+func (mp *metaPartition) fsmSetXAttr(dbHandle interface{}, extend *Extend) (resp *proto.XAttrRaftResponse, err error) {
 	resp = &proto.XAttrRaftResponse{Inode: extend.inode}
 	resp.Status = proto.OpOk
 
-	if tmpErr := mp.isInoOutOfRange(extend.inode); tmpErr != nil {
+	if outOfRange, _ := mp.isInoOutOfRange(extend.inode); outOfRange {
 		resp.Status = proto.OpInodeOutOfRange
 		return
 	}
@@ -41,18 +41,18 @@ func (mp *metaPartition) fsmSetXAttr(extend *Extend) (resp *proto.XAttrRaftRespo
 	}
 
 	e.Merge(extend, true)
-	if err = mp.extendTree.Put(e); err != nil {
+	if err = mp.extendTree.Put(dbHandle, e); err != nil {
 		resp.Status = proto.OpErr
 		return
 	}
 	return
 }
 
-func (mp *metaPartition) fsmRemoveXAttr(extend *Extend) (resp *proto.XAttrRaftResponse, err error) {
+func (mp *metaPartition) fsmRemoveXAttr(dbHandle interface{}, extend *Extend) (resp *proto.XAttrRaftResponse, err error) {
 	resp = &proto.XAttrRaftResponse{Inode: extend.inode}
 	resp.Status = proto.OpOk
 
-	if tmpErr := mp.isInoOutOfRange(extend.inode); tmpErr != nil {
+	if outOfRange, _ := mp.isInoOutOfRange(extend.inode); outOfRange {
 		resp.Status = proto.OpInodeOutOfRange
 		return
 	}
@@ -70,7 +70,7 @@ func (mp *metaPartition) fsmRemoveXAttr(extend *Extend) (resp *proto.XAttrRaftRe
 		e.Remove(key)
 		return true
 	})
-	if err = mp.extendTree.Put(e); err != nil {
+	if err = mp.extendTree.Put(dbHandle, e); err != nil {
 		resp.Status = proto.OpErr
 		return
 	}

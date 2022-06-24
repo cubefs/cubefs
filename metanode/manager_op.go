@@ -72,6 +72,14 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		goto end
 	}
 	m.Range(func(id uint64, partition MetaPartition) bool {
+		var applyID, inodeCnt, dentryCnt uint64
+		snap := partition.(*metaPartition).GetSnapShot()
+		if snap != nil {
+			applyID = snap.ApplyID()
+			inodeCnt = snap.Count(InodeType)
+			dentryCnt = snap.Count(DentryType)
+			snap.Close()
+		}
 		mConf := partition.GetBaseConfig()
 		maxInode := partition.GetInodeTree().MaxItem()
 		maxIno := mConf.Start
@@ -85,12 +93,12 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			Status:          proto.ReadWrite,
 			MaxInodeID:      mConf.Cursor,
 			VolName:         mConf.VolName,
-			InodeCnt:        partition.GetInodeTree().Count(),
-			DentryCnt:       partition.GetDentryTree().Count(),
+			InodeCnt:        inodeCnt,
+			DentryCnt:       dentryCnt,
 			IsLearner:       partition.IsLearner(),
 			ExistMaxInodeID: maxIno,
 			StoreMode:       mConf.StoreMode,
-			ApplyId:         partition.GetAppliedID(),
+			ApplyId:         applyID,
 		}
 		addr, isLeader := partition.IsLeader()
 		if addr == "" || partition.IsRaftHang(){
@@ -228,7 +236,12 @@ func (m *metadataManager) opFreeInodeOnRaftFollower(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],err[%v]", p.GetOpMsgWithReqAndResult(), string(p.Data))
 		return
 	}
-	mp.(*metaPartition).internalClean(p.Data[:p.Size])
+	if err = mp.FreeInode(p.Data[:p.Size]); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v],err[%v]", p.GetOpMsgWithReqAndResult(), string(p.Data))
+		return
+	}
 	p.PacketOkReply()
 	m.respondToClient(conn, p)
 

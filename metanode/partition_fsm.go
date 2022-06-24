@@ -31,8 +31,6 @@ import (
 	"sync/atomic"
 	"time"
 
-
-
 	"io/ioutil"
 	"os"
 	"path"
@@ -47,25 +45,26 @@ import (
 
 // Apply applies the given operational commands.
 func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
-	msg := &MetaItem{}
-	var fsmError error
+	var (
+		ctx           = context.Background()
+		msg           = new(MetaItem)
+		dbWriteHandle interface{}
+	)
+	if dbWriteHandle, err = mp.inodeTree.CreateBatchWriteHandle(); err != nil {
+		log.LogErrorf("action[Apply] create write batch handle failed:%v", err)
+		return
+	}
+
 	defer func() {
 		if err != nil {
-			if err == rocksdbError {
-				exporter.WarningRocksdbError(fmt.Sprintf("action[Apply] clusterID[%s] volumeName[%s] partitionID[%v]" +
-					" apply failed witch rocksdb error[msg:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
-					mp.config.PartitionId, msg))
-				mp.tryToGiveUpLeader()
-			}
 			log.LogErrorf("Mp[%d] action[Apply] failed,index:%v,msg:%v,resp:%v,err:%v", mp.config.PartitionId, index, msg, resp, err)
-			return
-		}
-		if fsmError == rocksdbError {
+			if err == accessDBError {
+				return
+			}
 			exporter.WarningRocksdbError(fmt.Sprintf("action[Apply] clusterID[%s] volumeName[%s] partitionID[%v]" +
-				" apply failed witch rocksdb error[msg:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
-				mp.config.PartitionId, msg))
+				" apply failed, [error:%v], [msg:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
+				mp.config.PartitionId, err, msg))
 			mp.tryToGiveUpLeader()
-			err = fsmError
 			return
 		}
 		mp.uploadApplyID(index)
@@ -74,8 +73,17 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		return
 	}
 
-	var ctx = context.Background()
 	mp.inodeTree.SetApplyID(index)
+
+	//commit db
+	defer func() {
+		if err != nil {
+			_ = mp.inodeTree.ReleaseBatchWriteHandle(dbWriteHandle)
+			return
+		}
+
+		err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(dbWriteHandle, true)
+	}()
 
 	switch msg.Op {
 	case opFSMCreateInode:
@@ -88,19 +96,20 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if mp.config.Cursor < ino.Inode {
 			mp.config.Cursor = ino.Inode
 		}
-		resp, fsmError = mp.fsmCreateInode(ino)
+		resp, err = mp.fsmCreateInode(dbWriteHandle, ino)
 	case opFSMUnlinkInode:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return
 		}
-		resp, fsmError = mp.fsmUnlinkInode(ino, msg.Timestamp, msg.TrashEnable)
+		resp, err = mp.fsmUnlinkInode(dbWriteHandle, ino.Inode, 1, msg.Timestamp, msg.TrashEnable)
 	case opFSMUnlinkInodeBatch:
-		inodes, err := InodeBatchUnmarshal(ctx, msg.V)
+		var inodes InodeBatch
+		inodes, err = InodeBatchUnmarshal(ctx, msg.V)
 		if err != nil {
 			return nil, err
 		}
-		resp, fsmError = mp.fsmUnlinkInodeBatch(inodes, msg.Timestamp, msg.TrashEnable)
+		resp, err = mp.fsmUnlinkInodeBatch(dbWriteHandle, inodes, msg.Timestamp, msg.TrashEnable)
 	case opFSMExtentTruncate:
 		mp.monitorData[statistics.ActionMetaTruncate].UpdateData(0)
 
@@ -108,13 +117,13 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return
 		}
-		resp, fsmError = mp.fsmExtentsTruncate(ino)
+		resp, err = mp.fsmExtentsTruncate(dbWriteHandle, ino)
 	case opFSMCreateLinkInode:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return
 		}
-		resp, fsmError = mp.fsmCreateLinkInode(ino)
+		resp, err = mp.fsmCreateLinkInode(dbWriteHandle, ino)
 	case opFSMEvictInode:
 		mp.monitorData[statistics.ActionMetaEvictInode].UpdateData(0)
 
@@ -122,20 +131,21 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return
 		}
-		resp, fsmError = mp.fsmEvictInode(ino, msg.Timestamp, msg.TrashEnable)
+		resp, err = mp.fsmEvictInode(dbWriteHandle, ino, msg.Timestamp, msg.TrashEnable)
 	case opFSMEvictInodeBatch:
-		inodes, err := InodeBatchUnmarshal(ctx, msg.V)
+		var inodes InodeBatch
+		inodes, err = InodeBatchUnmarshal(ctx, msg.V)
 		if err != nil {
 			return nil, err
 		}
-		resp, fsmError = mp.fsmBatchEvictInode(inodes, msg.Timestamp, msg.TrashEnable)
+		resp, err = mp.fsmBatchEvictInode(dbWriteHandle, inodes, msg.Timestamp, msg.TrashEnable)
 	case opFSMSetAttr:
 		req := &SetattrRequest{}
 		err = json.Unmarshal(msg.V, req)
 		if err != nil {
 			return
 		}
-		resp, fsmError = mp.fsmSetAttr(req)
+		resp, err = mp.fsmSetAttr(dbWriteHandle, req)
 	case opFSMCreateDentry:
 		mp.monitorData[statistics.ActionMetaCreateDentry].UpdateData(0)
 
@@ -143,7 +153,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp, fsmError = mp.fsmCreateDentry(den, false)
+		resp, err = mp.fsmCreateDentry(dbWriteHandle, den, false)
 	case opFSMDeleteDentry:
 		mp.monitorData[statistics.ActionMetaDeleteDentry].UpdateData(0)
 
@@ -151,25 +161,26 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp, fsmError = mp.fsmDeleteDentry(den, msg.Timestamp, msg.From, false, msg.TrashEnable)
+		resp, err = mp.fsmDeleteDentry(dbWriteHandle, den, msg.Timestamp, msg.From, false, msg.TrashEnable)
 	case opFSMDeleteDentryBatch:
-		db, err := DentryBatchUnmarshal(msg.V)
+		var batchDen DentryBatch
+		batchDen, err = DentryBatchUnmarshal(msg.V)
 		if err != nil {
 			return nil, err
 		}
-		resp, fsmError = mp.fsmBatchDeleteDentry(db, msg.Timestamp, msg.From, msg.TrashEnable)
+		resp, err = mp.fsmBatchDeleteDentry(dbWriteHandle, batchDen, msg.Timestamp, msg.From, msg.TrashEnable)
 	case opFSMUpdateDentry:
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp, fsmError = mp.fsmUpdateDentry(den, msg.Timestamp, msg.From, msg.TrashEnable)
+		resp, err = mp.fsmUpdateDentry(dbWriteHandle, den, msg.Timestamp, msg.From, msg.TrashEnable)
 	case opFSMUpdatePartition:
 		req := &UpdatePartitionReq{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
-		resp, fsmError = mp.fsmUpdatePartition(req.End)
+		resp, err = mp.fsmUpdatePartition(req.End)
 	case opFSMExtentsAdd:
 		mp.monitorData[statistics.ActionMetaExtentsAdd].UpdateData(0)
 
@@ -177,7 +188,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return
 		}
-		resp, fsmError = mp.fsmAppendExtents(ctx, ino)
+		resp, err = mp.fsmAppendExtents(ctx, dbWriteHandle, ino)
 	case opFSMExtentsInsert:
 		mp.monitorData[statistics.ActionMetaExtentsInsert].UpdateData(0)
 
@@ -185,25 +196,25 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return
 		}
-		resp, fsmError = mp.fsmInsertExtents(ctx, ino)
+		resp, err = mp.fsmInsertExtents(ctx, dbWriteHandle, ino)
 	case opFSMStoreTick:
-		msg := &storeMsg{
+		sMsg := &storeMsg{
 			command:    opFSMStoreTick,
 			applyIndex: index,
 			snap:       NewSnapshot(mp),
 		}
-		if msg.snap != nil {
-			mp.storeChan <- msg
+		if sMsg.snap != nil {
+			mp.storeChan <- sMsg
 		}
 	case opFSMInternalDeleteInode:
-		fsmError = mp.internalDelete(msg.V)
+		err = mp.internalDelete(dbWriteHandle, msg.V)
 	case opFSMCursorReset:
 		req := &proto.CursorResetRequest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			log.LogInfof("mp[%v] reset cursor, json unmarshal failed:%s", mp.config.PartitionId, err.Error())
 			return mp.config.Cursor, err
 		}
-		resp, fsmError = mp.internalCursorReset(req)
+		resp, err = mp.internalCursorReset(req)
 	case opFSMInternalDeleteInodeBatch:
 		if len(msg.V) == 0 {
 			return
@@ -214,7 +225,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			log.LogErrorf("mp[%v] inode batch unmarshal failed:%s", mp.config.PartitionId, err.Error())
 			return
 		}
-		fsmError = mp.internalDeleteBatch(inodes)
+		err = mp.internalDeleteBatch(dbWriteHandle, inodes)
 	case opFSMInternalDelExtentFile:
 		err = mp.delOldExtentFile(msg.V)
 	case opFSMInternalDelExtentCursor:
@@ -224,25 +235,25 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if extend, err = NewExtendFromBytes(msg.V); err != nil {
 			return
 		}
-		resp, fsmError = mp.fsmSetXAttr(extend)
+		resp, err = mp.fsmSetXAttr(dbWriteHandle, extend)
 	case opFSMRemoveXAttr:
 		var extend *Extend
 		if extend, err = NewExtendFromBytes(msg.V); err != nil {
 			return
 		}
-		resp, fsmError = mp.fsmRemoveXAttr(extend)
+		resp, err = mp.fsmRemoveXAttr(dbWriteHandle, extend)
 	case opFSMCreateMultipart:
 		var multipart *Multipart
 		multipart = MultipartFromBytes(msg.V)
-		resp, fsmError = mp.fsmCreateMultipart(multipart)
+		resp, err = mp.fsmCreateMultipart(dbWriteHandle, multipart)
 	case opFSMRemoveMultipart:
 		var multipart *Multipart
 		multipart = MultipartFromBytes(msg.V)
-		resp, fsmError = mp.fsmRemoveMultipart(multipart)
+		resp, err = mp.fsmRemoveMultipart(dbWriteHandle, multipart)
 	case opFSMAppendMultipart:
 		var multipart *Multipart
 		multipart = MultipartFromBytes(msg.V)
-		resp, fsmError = mp.fsmAppendMultipart(multipart)
+		resp, err = mp.fsmAppendMultipart(dbWriteHandle, multipart)
 	case opFSMSyncCursor:
 		var cursor uint64
 		cursor = binary.BigEndian.Uint64(msg.V)
@@ -256,7 +267,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err != nil {
 			return
 		}
-		resp, fsmError = mp.fsmCleanExpiredDentry(batch)
+		resp, err = mp.fsmCleanExpiredDentry(dbWriteHandle, batch)
 	case opFSMCleanExpiredInode:
 		var batch FSMDeletedINodeBatch
 		batch, err = FSMDeletedINodeBatchUnmarshal(msg.V)
@@ -264,7 +275,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			log.LogError(err.Error())
 			return
 		}
-		resp, fsmError = mp.fsmCleanExpiredInode(batch)
+		resp, err = mp.fsmCleanExpiredInode(dbWriteHandle, batch)
 	case opFSMRecoverDeletedInode:
 		ino := new(FSMDeletedINode)
 		err = ino.Unmarshal(msg.V)
@@ -272,7 +283,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			log.LogError(err.Error())
 			return
 		}
-		resp, fsmError = mp.fsmRecoverDeletedInode(ino)
+		resp, err = mp.fsmRecoverDeletedInode(dbWriteHandle, ino)
 
 	case opFSMBatchRecoverDeletedInode:
 		var batch FSMDeletedINodeBatch
@@ -281,21 +292,21 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			log.LogError(err.Error())
 			return
 		}
-		resp, fsmError = mp.fsmBatchRecoverDeletedInode(batch)
+		resp, err = mp.fsmBatchRecoverDeletedInode(dbWriteHandle, batch)
 	case opFSMBatchRecoverDeletedDentry:
 		var batch DeletedDentryBatch
 		batch, err = DeletedDentryBatchUnmarshal(msg.V)
 		if err != nil {
 			return
 		}
-		resp, fsmError = mp.fsmBatchRecoverDeletedDentry(batch)
+		resp, err = mp.fsmBatchRecoverDeletedDentry(dbWriteHandle, batch)
 	case opFSMRecoverDeletedDentry:
 		ddentry := new(DeletedDentry)
 		err = ddentry.Unmarshal(msg.V)
 		if err != nil {
 			return
 		}
-		resp, fsmError = mp.fsmRecoverDeletedDentry(ddentry)
+		resp, err = mp.fsmRecoverDeletedDentry(dbWriteHandle, ddentry)
 	case opFSMCleanDeletedInode:
 		di := NewFSMDeletedINode(0)
 		err = di.Unmarshal(msg.V)
@@ -303,7 +314,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			log.LogError(err.Error())
 			return
 		}
-		resp, fsmError = mp.fsmCleanDeletedInode(di)
+		resp, err = mp.fsmCleanDeletedInode(dbWriteHandle, di)
 	case opFSMBatchCleanDeletedInode:
 		var inos FSMDeletedINodeBatch
 		inos, err = FSMDeletedINodeBatchUnmarshal(msg.V)
@@ -311,23 +322,23 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			log.LogError(err.Error())
 			return
 		}
-		resp, fsmError = mp.fsmBatchCleanDeletedInode(inos)
+		resp, err = mp.fsmBatchCleanDeletedInode(dbWriteHandle, inos)
 	case opFSMCleanDeletedDentry:
 		ddentry := new(DeletedDentry)
 		err = ddentry.Unmarshal(msg.V)
 		if err != nil {
 			return
 		}
-		resp, fsmError = mp.fsmCleanDeletedDentry(ddentry)
+		resp, err = mp.fsmCleanDeletedDentry(dbWriteHandle, ddentry)
 	case opFSMBatchCleanDeletedDentry:
 		var batch DeletedDentryBatch
 		batch, err = DeletedDentryBatchUnmarshal(msg.V)
 		if err != nil {
 			return
 		}
-		resp, fsmError = mp.fsmBatchCleanDeletedDentry(batch)
+		resp, err = mp.fsmBatchCleanDeletedDentry(dbWriteHandle, batch)
 	case opFSMInternalCleanDeletedInode:
-		fsmError = mp.internalClean(msg.V)
+		err = mp.internalClean(dbWriteHandle, msg.V)
 	case opFSMExtentDelSync:
 		mp.fsmSyncDelExtents(msg.V)
 	}
@@ -542,17 +553,13 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		appIndexID             uint64
 		cursor                 uint64
 		wg                     sync.WaitGroup
-		inodeBatchCh           = make(chan InodeBatch, 128)
-		dentryBatchCh          = make(chan DentryBatch, 128)
-		multipartBatchCh       = make(chan MultipartBatch, 128)
-		extendBatchCh          = make(chan ExtendBatch, 128)
-		deletedInodeBatchCh    = make(chan DeletedINodeBatch, 128)
-		deletedDentryBatchCh   = make(chan DeletedDentryBatch, 128)
-		delExtentsBatchCh      = make(chan DelExtentBatch, 128)
+		mulItemsCh             = make(chan *MulItems, 128)
 		snapshotSign           = crc32.NewIEEE()
 		snapshotCrcStoreSuffix = "snapshotCrc"
 		leaderCrc              uint32
 		db                     *RocksDbInfo
+		dbWriteHandle          interface{}
+		count                  int
 	)
 
 	nowStr := strconv.FormatInt(time.Now().Unix(), 10)
@@ -571,173 +578,82 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 	}
 
 	defer func() {
-		close(inodeBatchCh)
-		close(dentryBatchCh)
-		close(multipartBatchCh)
-		close(extendBatchCh)
-		close(deletedInodeBatchCh)
-		close(deletedDentryBatchCh)
-		close(delExtentsBatchCh)
+		close(mulItemsCh)
 		wg.Wait()
-		if err == ErrSnapShotEOF {
-			crc := snapshotSign.Sum32()
-			leaderCrcStr := strconv.FormatUint(uint64(leaderCrc), 10)
-			crcStoreFile := fmt.Sprintf("%s/%s", mp.config.RootDir, snapshotCrcStoreSuffix)
-			var crcBuff = bytes.NewBuffer(make([]byte, 0, 16))
-			storeStr := fmt.Sprintf("%v, %v, %v", time.Now().Format("2006-01-02 15:04:05"), leaderCrcStr, crc)
-			crcBuff.WriteString(storeStr)
-			if err = ioutil.WriteFile(crcStoreFile, crcBuff.Bytes(), 0775); err != nil {
-				log.LogWarnf("write to file failed, err is :%v", err)
+		if err != nil {
+			db.CloseDb()
+			log.LogErrorf("ApplySnapshot: stop with error: partitionID(%v) err(%v)", mp.config.PartitionId, err)
+			if err == rocksDBError {
+				exporter.WarningRocksdbError(fmt.Sprintf("action[ApplySnapshot] clusterID[%s] volumeName[%s] partitionID[%v]" +
+					" apply snapshot failed witch rocksdb error", mp.manager.metaNode.clusterId, mp.config.VolName,
+					mp.config.PartitionId))
 			}
-
-			if leaderCrc != 0  && leaderCrc != crc {
-				log.LogWarnf("ApplySnapshot partitionID(%v) leader crc[%v] and local[%v] is different, snaps", mp.config.PartitionId, leaderCrc, crc)
-			}
-
-			if newErr := db.CloseDb(); newErr != nil {
-				err = newErr
-				log.LogInfof("ApplySnapshot: metaPartition(%v) recover from snap failed; Close new db failed:%s", mp.config.PartitionId, newErr.Error())
-				return
-			}
-
-			if newErr := mp.ResetDbByNewDir(newDbDir); newErr != nil {
-				err = newErr
-				log.LogInfof("ApplySnapshot: metaPartition(%v) recover from snap failed; Reset db failed:%s", mp.config.PartitionId, newErr.Error())
-				return
-			}
-
-			mp.applyID = appIndexID
-			if err = mp.resetMetaTree(metaTree); err != nil {
-				log.LogErrorf("ApplySnapshot: reset meta tree failed:%v", err)
-				return
-			}
-			if cursor != 0 {
-				mp.config.Cursor = cursor
-			}
-			err = nil
-			// store message
-			sMsg := &storeMsg{
-				command:    opFSMStoreTick,
-				applyIndex: mp.applyID,
-				snap:       NewSnapshot(mp),
-			}
-			if sMsg.snap != nil {
-				mp.storeChan <- sMsg
-			}
-			mp.extReset <- struct{}{}
-			log.LogInfof("ApplySnapshot: finish with EOF: partitionID(%v) applyID(%v),cursor(%v)", mp.config.PartitionId, mp.applyID, mp.config.Cursor)
 			return
 		}
-		if err == rocksdbError {
-			exporter.WarningRocksdbError(fmt.Sprintf("action[ApplySnapshot] clusterID[%s] volumeName[%s] partitionID[%v]" +
-				" apply snapshot failed witch rocksdb error", mp.manager.metaNode.clusterId, mp.config.VolName,
-				mp.config.PartitionId))
+
+		if newErr := db.CloseDb(); newErr != nil {
+			err = newErr
+			log.LogInfof("ApplySnapshot: metaPartition(%v) recover from snap failed; Close new db failed:%s", mp.config.PartitionId, newErr.Error())
+			return
 		}
-		db.CloseDb()
-		log.LogErrorf("ApplySnapshot: stop with error: partitionID(%v) err(%v)", mp.config.PartitionId, err)
+
+		if newErr := mp.ResetDbByNewDir(newDbDir); newErr != nil {
+			err = newErr
+			log.LogInfof("ApplySnapshot: metaPartition(%v) recover from snap failed; Reset db failed:%s", mp.config.PartitionId, newErr.Error())
+			return
+		}
+
+		mp.applyID = appIndexID
+		if err = mp.resetMetaTree(metaTree); err != nil {
+			log.LogErrorf("ApplySnapshot: reset meta tree failed:%v", err)
+			return
+		}
+		if cursor != 0 {
+			mp.config.Cursor = cursor
+		}
+		err = nil
+		// store message
+		sMsg := &storeMsg{
+			command:    opFSMStoreTick,
+			applyIndex: mp.applyID,
+			snap:       NewSnapshot(mp),
+		}
+		if sMsg.snap != nil {
+			mp.storeChan <- sMsg
+		}
+		mp.extReset <- struct{}{}
+		log.LogInfof("ApplySnapshot: finish with EOF: partitionID(%v) applyID(%v),cursor(%v)", mp.config.PartitionId, mp.applyID, mp.config.Cursor)
 	}()
 
-	wg.Add(7)
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for inodes := range inodeBatchCh {
-			for _, ino := range inodes {
-				if cursor < ino.Inode {
-					cursor = ino.Inode
-				}
-				if e := metaTree.InodeTree.Create(ino, true); e != nil {
-					log.LogErrorf("ApplySnapshot: create inode failed, partitionID(%v) inode(%v) error(%v)",
-						mp.config.PartitionId, ino, e)
-					err = e
-					return
-				}
-				log.LogDebugf("ApplySnapshot: create inode: partitonID(%v) inode(%v).", mp.config.PartitionId, ino)
-			}
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		for dentries := range dentryBatchCh {
-			for _, dentry := range dentries {
-				if e := metaTree.DentryTree.Create(dentry, true); e != nil {
-					log.LogErrorf("ApplySnapshot: create dentry failed, partitionID(%v) dentry(%v) error(%v)", mp.config.PartitionId, dentry, e)
-					err = e
-					return
-				}
-				log.LogDebugf("ApplySnapshot: create dentry: partitionID(%v) dentry(%v)", mp.config.PartitionId, dentry)
-			}
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		for multiparts := range multipartBatchCh {
-			for _, multipart := range multiparts {
-				if e := metaTree.MultipartTree.Create(multipart, true); e != nil {
-					log.LogErrorf("ApplySnapshot: create multipart failed, partitionID(%v) extend(%v) error(%v)", mp.config.PartitionId, multipart, e)
-					err = e
-					return
-				}
-				log.LogDebugf("ApplySnapshot: create multipart: partitionID(%v) multipart(%v)", mp.config.PartitionId, multipart)
-			}
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		for extends := range extendBatchCh {
-			for _, extend := range extends {
-				if e := metaTree.ExtendTree.Create(extend, true); e != nil {
-					log.LogErrorf("ApplySnapshot: create extentd attributes failed, partitionID(%v) extend(%v) error(%v)", mp.config.PartitionId, extend, e)
-					err = e
-					return
-				}
-				log.LogDebugf("ApplySnapshot: set extend attributes: partitionID(%v) extend(%v)",
-					mp.config.PartitionId, extend)
-			}
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		for eks := range delExtentsBatchCh {
-			for _, ekInfo := range eks {
-				db.Put(ekInfo.key, ekInfo.data)
-				log.LogDebugf("ApplySnapshot: put del extetns info: partitionID(%v) extent(%v)",
-					mp.config.PartitionId, ekInfo.key)
-			}
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		for delInodes := range deletedInodeBatchCh {
-			for _, delInode := range delInodes {
-				if e := metaTree.DeletedInodeTree.Create(delInode, true); e != nil {
-					log.LogErrorf("ApplySnapshot: create deleted inode failed, partitionID(%v) delInode(%v) error(%v)", mp.config.PartitionId, delInode, e)
-					err = e
-					return
-				}
-				log.LogDebugf("ApplySnapshot: create deleted inode: partitionID(%v) delInode(%v)", mp.config.PartitionId, delInode)
-			}
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		for delDentries := range deletedDentryBatchCh {
-			for _, delDentry := range delDentries {
-				if e := metaTree.DeletedDentryTree.Create(delDentry, true); e != nil {
-					log.LogErrorf("ApplySnapshot: create deleted dentry failed, partitionID(%v) delDentry(%v) error(%v)", mp.config.PartitionId, delDentry, e)
-					err = e
-					return
-				}
-				log.LogDebugf("ApplySnapshot: create deleted dentry: partitionID(%v) delDentry(%v)", mp.config.PartitionId, delDentry)
-			}
+		err = mp.MetaItemBatchCreate(db, metaTree, mulItemsCh)
+		if err != nil {
+			log.LogErrorf("meta item batch create failed:%v", err)
 		}
 	}()
 
+	dbWriteHandle, err = metaTree.InodeTree.CreateBatchWriteHandle()
+	if err != nil {
+		return
+	}
+	defer func() {
+		if err != nil {
+			_ = metaTree.InodeTree.ReleaseBatchWriteHandle(dbWriteHandle)
+			return
+		}
+
+		if err = metaTree.InodeTree.CommitAndReleaseBatchWriteHandle(dbWriteHandle, true); err != nil {
+			return
+		}
+	}()
 	ctx := context.Background()
 	for {
 		data, err = iter.Next()
 		if err != nil {
 			if err == io.EOF{
-				err = ErrSnapShotEOF
+				err = nil
 			}
 			return
 		}
@@ -781,7 +697,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			if cursor < ino.Inode {
 				cursor = ino.Inode
 			}
-			if err = metaTree.InodeTree.Create(ino, true); err != nil {
+			if _, _, err = metaTree.InodeTree.Create(dbWriteHandle, ino, true); err != nil {
 				log.LogErrorf("ApplySnapshot: create inode failed, partitionID(%v) inode(%v)", mp.config.PartitionId, ino)
 				return
 			}
@@ -801,7 +717,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 					return
 				}
 			}
-			if err = metaTree.DentryTree.Create(dentry, true); err != nil {
+			if _, _, err = metaTree.DentryTree.Create(dbWriteHandle, dentry, true); err != nil {
 				log.LogErrorf("ApplySnapshot: create dentry failed, partitionID(%v) dentry(%v) error(%v)", mp.config.PartitionId, dentry, err)
 				return
 			}
@@ -811,14 +727,14 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			if extend, err = NewExtendFromBytes(snap.V); err != nil {
 				return
 			}
-			if err = metaTree.ExtendTree.Create(extend, true); err != nil {
+			if _, _, err = metaTree.ExtendTree.Create(dbWriteHandle, extend, true); err != nil {
 				log.LogErrorf("ApplySnapshot: create extentd attributes failed, partitionID(%v) extend(%v) error(%v)", mp.config.PartitionId, extend, err)
 				return
 			}
 			log.LogDebugf("ApplySnapshot: set extend attributes: partitionID(%v) extend(%v)", mp.config.PartitionId, extend)
 		case opFSMCreateMultipart:
 			var multipart = MultipartFromBytes(snap.V)
-			if err = metaTree.MultipartTree.Create(multipart, true); err != nil {
+			if _, _, err = metaTree.MultipartTree.Create(dbWriteHandle, multipart, true); err != nil {
 				log.LogErrorf("ApplySnapshot: create multipart failed, partitionID(%v) extend(%v) error(%v)", mp.config.PartitionId, multipart, err)
 				return
 			}
@@ -849,13 +765,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			log.LogInfof("batch info[inodeCnt:%v dentryCnt:%v multipartCnt:%v extendCnt:%v delInodeCnt:%v delDentryCnt:%v]",
 				len(mulItems.InodeBatches), len(mulItems.DentryBatches), len(mulItems.MultipartBatches), len(mulItems.ExtendBatches),
 				len(mulItems.DeletedInodeBatches), len(mulItems.DeletedDentryBatches))
-			inodeBatchCh <- mulItems.InodeBatches
-			dentryBatchCh <- mulItems.DentryBatches
-			multipartBatchCh <- mulItems.MultipartBatches
-			extendBatchCh <- mulItems.ExtendBatches
-			deletedInodeBatchCh <- mulItems.DeletedInodeBatches
-			deletedDentryBatchCh <- mulItems.DeletedDentryBatches
-			delExtentsBatchCh <- mulItems.DelExtents
+			mulItemsCh <- mulItems
 			lenData := make([]byte, 4)
 			binary.BigEndian.PutUint32(lenData, uint32(len(data)))
 			if _, err = snapshotSign.Write(lenData); err != nil {
@@ -866,11 +776,115 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			}
 		case opFSMSnapShotCrc:
 			leaderCrc = binary.BigEndian.Uint32(snap.V)
+			crc := snapshotSign.Sum32()
+			leaderCrcStr := strconv.FormatUint(uint64(leaderCrc), 10)
+			crcStoreFile := fmt.Sprintf("%s/%s", mp.config.RootDir, snapshotCrcStoreSuffix)
+			var crcBuff = bytes.NewBuffer(make([]byte, 0, 16))
+			storeStr := fmt.Sprintf("%v, %v, %v", time.Now().Format("2006-01-02 15:04:05"), leaderCrcStr, crc)
+			crcBuff.WriteString(storeStr)
+			if err = ioutil.WriteFile(crcStoreFile, crcBuff.Bytes(), 0775); err != nil {
+				log.LogWarnf("write to file failed, err is :%v", err)
+			}
+
+			if leaderCrc != 0  && leaderCrc != crc {
+				log.LogWarnf("ApplySnapshot partitionID(%v) leader crc[%v] and local[%v] is different, snaps", mp.config.PartitionId, leaderCrc, crc)
+				err = fmt.Errorf("crc mismatch")
+			}
 		default:
 			err = fmt.Errorf("unknown op=%d", snap.Op)
 			return
 		}
+
+		if count, err = metaTree.InodeTree.BatchWriteCount(dbWriteHandle); err != nil {
+			return
+		}
+
+		if count < DefMaxWriteBatchCount {
+			 continue
+		}
+
+		if err = metaTree.InodeTree.CommitAndReleaseBatchWriteHandle(dbWriteHandle, true); err != nil {
+			dbWriteHandle = nil
+			return
+		}
+		if dbWriteHandle, err = metaTree.InodeTree.CreateBatchWriteHandle(); err != nil {
+			return
+		}
 	}
+}
+
+func (mp *metaPartition)MetaItemBatchCreate(db *RocksDbInfo, metaTree *MetaTree, mulItemsCh chan *MulItems) (err error) {
+	defer func() {
+		log.LogDebugf("meta item batch create finished, error:%v", err)
+	}()
+
+	for {
+		mulItems, ok := <- mulItemsCh
+		if !ok {
+			break
+		}
+		var dbHandle interface{}
+		if dbHandle, err = metaTree.InodeTree.CreateBatchWriteHandle(); err != nil {
+			return
+		}
+		for _, inode := range mulItems.InodeBatches {
+			if _, _, err = metaTree.InodeTree.Create(dbHandle, inode, true); err != nil {
+				err = fmt.Errorf("create inode failed:%v", err)
+				return
+			}
+			log.LogDebugf("ApplySnapshot: create inode: partitonID(%v) inode(%v).", mp.config.PartitionId, inode)
+		}
+
+		for _, dentry := range mulItems.DentryBatches {
+			if _, _, err = metaTree.DentryTree.Create(dbHandle, dentry, true); err != nil {
+				err = fmt.Errorf("create dentry failed:%v", err)
+				return
+			}
+			log.LogDebugf("ApplySnapshot: create dentry: partitionID(%v) dentry(%v)", mp.config.PartitionId, dentry)
+		}
+
+		for _, ext := range mulItems.ExtendBatches {
+			if _, _, err = metaTree.ExtendTree.Create(dbHandle, ext, true); err != nil {
+				err = fmt.Errorf("create extend failed:%v", err)
+				return
+			}
+			log.LogDebugf("ApplySnapshot: set extend attributes: partitionID(%v) extend(%v)", mp.config.PartitionId, ext)
+		}
+
+		for _, mul := range mulItems.MultipartBatches {
+			if _, _, err = metaTree.MultipartTree.Create(dbHandle, mul, true); err != nil {
+				err = fmt.Errorf("create multipart failed:%v", err)
+				return
+			}
+			log.LogDebugf("ApplySnapshot: create multipart: partitionID(%v) multipart(%v)", mp.config.PartitionId, mul)
+		}
+
+		for _, delInode := range mulItems.DeletedInodeBatches {
+			if _, _, err = metaTree.DeletedInodeTree.Create(dbHandle, delInode, true); err != nil {
+				err = fmt.Errorf("create deleted inode failed:%v", err)
+				return
+			}
+			log.LogDebugf("ApplySnapshot: create deleted inode: partitionID(%v) delInode(%v)", mp.config.PartitionId, delInode)
+		}
+
+		for _, delDentry := range mulItems.DeletedDentryBatches {
+			if _, _, err = metaTree.DeletedDentryTree.Create(dbHandle, delDentry, true); err != nil {
+				err = fmt.Errorf("create deleted dentry failed:%v", err)
+				return
+			}
+			log.LogDebugf("ApplySnapshot: create deleted dentry: partitionID(%v) delDentry(%v)", mp.config.PartitionId, delDentry)
+		}
+
+		for _, ekInfo := range mulItems.DelExtents {
+			_ = db.Put(ekInfo.key, ekInfo.data)
+			log.LogDebugf("ApplySnapshot: put del extetns info: partitionID(%v) extent(%v)", mp.config.PartitionId, ekInfo.key)
+		}
+
+		if err = metaTree.InodeTree.CommitAndReleaseBatchWriteHandle(dbHandle, true); err != nil {
+			return
+		}
+	}
+	return
 }
 
 // HandleFatalEvent handles the fatal errors.
@@ -967,6 +981,7 @@ func (mp *metaPartition) uploadApplyID(applyId uint64) {
 	atomic.StoreUint64(&mp.applyID, applyId)
 
 	if mp.HasRocksDBStore() {
+		//todo:min(retain logs, maximumApplyIdDifference)
 		if math.Abs(float64(mp.applyID - mp.inodeTree.GetPersistentApplyID())) > maximumApplyIdDifference {
 			//persist to rocksdb
 			if err := mp.inodeTree.PersistBaseInfo(); err != nil {

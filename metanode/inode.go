@@ -633,6 +633,17 @@ func (i *Inode) DecNLink() {
 	i.Unlock()
 }
 
+func (i *Inode) DecNlinkNum(unlinkCount uint32) {
+	i.Lock()
+	if i.NLink > unlinkCount {
+		i.NLink = i.NLink - unlinkCount
+	} else {
+		i.NLink = 0
+	}
+
+	i.Unlock()
+}
+
 // GetNLink returns the nLink value.
 func (i *Inode) GetNLink() uint32 {
 	i.RLock()

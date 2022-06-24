@@ -165,7 +165,7 @@ func (mp *metaPartition) CleanDeletedInode(req *proto.CleanDeletedInodeRequest, 
 
 func (mp *metaPartition) getDeletedInode(ino uint64) (srcIno *Inode, di *DeletedINode, status uint8, err error) {
 	defer func() {
-		if err == rocksdbError {
+		if err == rocksDBError {
 			exporter.WarningRocksdbError(fmt.Sprintf("action[getDeletedInode] clusterID[%s] volumeName[%s] partitionID[%v]"+
 				" get deleted inode failed witch rocksdb error[inode:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
 				mp.config.PartitionId, ino))

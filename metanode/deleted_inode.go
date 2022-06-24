@@ -261,6 +261,10 @@ func (di *DeletedINode) MarshalValue() (val []byte) {
 		panic(err)
 	}
 
+	if err = binary.Write(buff, binary.BigEndian, &di.IsExpired); err != nil {
+		panic(err)
+	}
+
 	val = buff.Bytes()
 	return
 }
@@ -363,6 +367,10 @@ func (di *DeletedINode) UnmarshalValue(ctx context.Context, val []byte) (err err
 	}
 
 	if err = binary.Read(buff, binary.BigEndian, &di.Timestamp); err != nil {
+		return
+	}
+
+	if err = binary.Read(buff, binary.BigEndian, &di.IsExpired); err != nil {
 		return
 	}
 

@@ -29,7 +29,7 @@ import (
 // ExtentAppend appends an extent.
 func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Packet) (err error) {
 
-	if err = mp.isInoOutOfRange(req.Inode); err != nil {
+	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
 		return
 	}
@@ -57,7 +57,7 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 
 func (mp *metaPartition) ExtentInsert(req *proto.InsertExtentKeyRequest, p *Packet) (err error) {
 
-	if err = mp.isInoOutOfRange(req.Inode); err != nil {
+	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
 		return
 	}
@@ -86,7 +86,7 @@ func (mp *metaPartition) ExtentInsert(req *proto.InsertExtentKeyRequest, p *Pack
 // ExtentsList returns the list of extents.
 func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error) {
 
-	if err = mp.isInoOutOfRange(req.Inode); err != nil {
+	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
 		return
 	}
@@ -128,7 +128,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 // ExtentsTruncate truncates an extent.
 func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (err error) {
 
-	if err = mp.isInoOutOfRange(req.Inode); err != nil {
+	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
 		return
 	}
@@ -159,7 +159,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (er
 
 func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p *Packet) (err error) {
 
-	if err = mp.isInoOutOfRange(req.Inode); err != nil {
+	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
 		return
 	}

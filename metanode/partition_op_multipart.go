@@ -34,7 +34,7 @@ func (mp *metaPartition) GetMultipart(req *proto.GetMultipartRequest, p *Packet)
 	var multipart *Multipart
 	multipart, err = mp.multipartTree.RefGet(req.Path, req.MultipartId)
 	if err != nil {
-		if err == rocksdbError {
+		if err == rocksDBError {
 			exporter.WarningRocksdbError(fmt.Sprintf("action[GetMultipart] clusterID[%s] volumeName[%s] partitionID[%v]" +
 				" get multipart failed witch rocksdb error[multipart path:%s, id:%s]", mp.manager.metaNode.clusterId, mp.config.VolName,
 				mp.config.PartitionId, req.Path, req.MultipartId))

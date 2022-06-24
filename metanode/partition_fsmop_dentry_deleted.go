@@ -25,63 +25,56 @@ type fsmOpDeletedDentryResponse struct {
 	Msg    *DeletedDentry `json:"den"`
 }
 
-func (mp *metaPartition) mvToDeletedDentryTree(dentry *Dentry, timestamp int64, from string) (uint8, error) {
+func (mp *metaPartition) mvToDeletedDentryTree(dbHandle interface{}, dentry *Dentry, timestamp int64, from string) (uint8, error) {
 	ddentry := newDeletedDentry(dentry, timestamp, from)
-	resp, err := mp.fsmCreateDeletedDentry(ddentry, false)
+	resp, err := mp.fsmCreateDeletedDentry(dbHandle, ddentry, false)
 	if err != nil {
 		log.LogErrorf("action[mvToDeletedDentryTree] create deleted dentry failed:%v", err)
 	}
 	return resp.Status, err
 }
 
-func (mp *metaPartition) fsmCreateDeletedDentry(ddentry *DeletedDentry, force bool) (rsp *fsmOpDeletedDentryResponse, err error) {
+func (mp *metaPartition) fsmCreateDeletedDentry(dbHandle interface{}, ddentry *DeletedDentry, force bool) (rsp *fsmOpDeletedDentryResponse, err error) {
 	rsp = new(fsmOpDeletedDentryResponse)
 	rsp.Status = proto.OpOk
-	err = mp.dentryDeletedTree.Create(ddentry, force)
-	if err == nil {
-		return
-	}
-	if err != existsError {
+
+	var (
+		dden *DeletedDentry
+		ok bool
+	)
+	if dden, ok, err = mp.dentryDeletedTree.Create(dbHandle, ddentry, force); err != nil {
 		rsp.Status = proto.OpErr
-		return
-	}
-	//get and validate
-	var dden *DeletedDentry
-	if dden, err = mp.dentryDeletedTree.Get(ddentry.ParentId, ddentry.Name, ddentry.Timestamp); err != nil {
-		rsp.Status = proto.OpErr
-		return
-	}
-	if dden == nil {
-		//todo:record log, alarm?
-		log.LogErrorf("action[fsmCreateDeletedDentry] deleted dentry(%v) get nil", ddentry)
 		return
 	}
 
-	if dden.ParentId == ddentry.ParentId && strings.Compare(dden.Name, ddentry.Name) == 0 &&
-		dden.Timestamp == ddentry.Timestamp && dden.Inode == ddentry.Inode {
-		return
+	if !ok {
+		if dden.ParentId == ddentry.ParentId && strings.Compare(dden.Name, ddentry.Name) == 0 &&
+			dden.Timestamp == ddentry.Timestamp && dden.Inode == ddentry.Inode {
+			return
+		}
+		rsp.Status = proto.OpErr
 	}
-	rsp.Status = proto.OpErr
 	return
 }
 
-func (mp *metaPartition) fsmBatchCleanDeletedDentry(dens DeletedDentryBatch) (
+func (mp *metaPartition) fsmBatchCleanDeletedDentry(dbHandle interface{}, dens DeletedDentryBatch) (
 	res []*fsmOpDeletedDentryResponse, err error) {
 
 	res = make([]*fsmOpDeletedDentryResponse, 0)
-	wrongIndex := len(dens)
 	defer func() {
-		for index := wrongIndex; index < len(dens); index++ {
-			res = append(res, &fsmOpDeletedDentryResponse{Status: proto.OpErr})
+		if err != nil {
+			for index := 0; index < len(dens); index++ {
+				res = append(res, &fsmOpDeletedDentryResponse{Status: proto.OpErr})
+			}
 		}
 	}()
 
 	for index := 0; index < len(dens); index++ {
 		var rsp *fsmOpDeletedDentryResponse
-		rsp, err = mp.cleanDeletedDentry(dens[index])
-		if err == rocksdbError {
-			wrongIndex = index
-			break
+		rsp, err = mp.cleanDeletedDentry(dbHandle, dens[index])
+		if err != nil{
+			res = res[:0]
+			return
 		}
 		if rsp.Status != proto.OpOk {
 			res = append(res, rsp)
@@ -90,11 +83,11 @@ func (mp *metaPartition) fsmBatchCleanDeletedDentry(dens DeletedDentryBatch) (
 	return
 }
 
-func (mp *metaPartition) fsmCleanDeletedDentry(dd *DeletedDentry) (resp *fsmOpDeletedDentryResponse, err error) {
-	return mp.cleanDeletedDentry(dd)
+func (mp *metaPartition) fsmCleanDeletedDentry(dbHandle interface{}, dd *DeletedDentry) (resp *fsmOpDeletedDentryResponse, err error) {
+	return mp.cleanDeletedDentry(dbHandle, dd)
 }
 
-func (mp *metaPartition) cleanDeletedDentry(ddentry *DeletedDentry) (
+func (mp *metaPartition) cleanDeletedDentry(dbHandle interface{}, ddentry *DeletedDentry) (
 	resp *fsmOpDeletedDentryResponse, err error) {
 	resp = new(fsmOpDeletedDentryResponse)
 	resp.Msg = ddentry
@@ -127,7 +120,7 @@ func (mp *metaPartition) cleanDeletedDentry(ddentry *DeletedDentry) (
 		log.LogErrorf("[cleanDeletedDentry], not found dentry: %v, item: %v", ddentry, dd)
 		resp.Status = proto.OpNotExistErr
 	}
-	if _, err = mp.dentryDeletedTree.Delete(dd.ParentId, dd.Name, dd.Timestamp); err != nil && err != notExistsError {
+	if _, err = mp.dentryDeletedTree.Delete(dbHandle, dd.ParentId, dd.Name, dd.Timestamp); err != nil {
 		resp.Status = proto.OpErr
 		return
 	}
@@ -135,7 +128,7 @@ func (mp *metaPartition) cleanDeletedDentry(ddentry *DeletedDentry) (
 	return
 }
 
-func (mp *metaPartition) fsmRecoverDeletedDentry(ddentry *DeletedDentry) (
+func (mp *metaPartition) fsmRecoverDeletedDentry(dbHandle interface{}, ddentry *DeletedDentry) (
 	resp *fsmOpDeletedDentryResponse, err error) {
 	resp = new(fsmOpDeletedDentryResponse)
 	resp.Msg = ddentry
@@ -202,7 +195,7 @@ func (mp *metaPartition) fsmRecoverDeletedDentry(ddentry *DeletedDentry) (
 			return
 		}
 
-		resp.Status, err = mp.fsmCreateDentry(d, false)
+		resp.Status, err = mp.fsmCreateDentry(dbHandle, d, false)
 		resp.Msg = newDDentry
 		if err != nil || resp.Status != proto.OpOk {
 			log.LogErrorf("[fsmRecoverDeletedDentry], failed to create dentry: %v, status: %v, err :%v",
@@ -211,14 +204,14 @@ func (mp *metaPartition) fsmRecoverDeletedDentry(ddentry *DeletedDentry) (
 		}
 	} else {
 		dentry = dd.buildDentry()
-		resp.Status, err = mp.fsmCreateDentry(dentry, false)
+		resp.Status, err = mp.fsmCreateDentry(dbHandle, dentry, false)
 		if err != nil || resp.Status != proto.OpOk {
 			log.LogErrorf("[fsmRecoverDeletedDentry], failed to create dentry: %v, status: %v, err: %v", dentry, resp.Status, err)
 			return
 		}
 		resp.Msg = dd
 	}
-	if _, err = mp.dentryDeletedTree.Delete(ddentry.ParentId, ddentry.Name, ddentry.Timestamp); err != nil {
+	if _, err = mp.dentryDeletedTree.Delete(dbHandle, ddentry.ParentId, ddentry.Name, ddentry.Timestamp); err != nil {
 		log.LogErrorf("[fsmRecoverDeletedDentry] deleted dentry: %v delete failed:%v", ddentry, err)
 		resp.Status = proto.OpErr
 		return
@@ -226,20 +219,22 @@ func (mp *metaPartition) fsmRecoverDeletedDentry(ddentry *DeletedDentry) (
 	return
 }
 
-func (mp *metaPartition) fsmBatchRecoverDeletedDentry(dens DeletedDentryBatch) (
+func (mp *metaPartition) fsmBatchRecoverDeletedDentry(dbHandle interface{}, dens DeletedDentryBatch) (
 	res []*fsmOpDeletedDentryResponse, err error) {
 	res = make([]*fsmOpDeletedDentryResponse, 0)
-	var wrongIndex = len(dens)
 	defer func() {
-		for index := wrongIndex; index < len(dens); index++ {
-			res = append(res, &fsmOpDeletedDentryResponse{Status: proto.OpErr, Msg: dens[index]})
+		if err != nil {
+			for index := 0; index < len(dens); index++ {
+				res = append(res, &fsmOpDeletedDentryResponse{Status: proto.OpErr, Msg: dens[index]})
+			}
 		}
 	}()
-	for index, den := range dens {
+	for _, den := range dens {
 		var rsp *fsmOpDeletedDentryResponse
-		rsp, err = mp.fsmRecoverDeletedDentry(den)
-		if err == rocksdbError {
-			wrongIndex = index
+		rsp, err = mp.fsmRecoverDeletedDentry(dbHandle, den)
+		if err != nil {
+			res = res[:0]
+			return
 		}
 		if rsp.Status != proto.OpOk {
 			res = append(res, rsp)
@@ -248,21 +243,22 @@ func (mp *metaPartition) fsmBatchRecoverDeletedDentry(dens DeletedDentryBatch) (
 	return
 }
 
-func (mp *metaPartition) fsmCleanExpiredDentry(dens DeletedDentryBatch) (
+func (mp *metaPartition) fsmCleanExpiredDentry(dbHandle interface{}, dens DeletedDentryBatch) (
 	res []*fsmOpDeletedDentryResponse, err error) {
 	res = make([]*fsmOpDeletedDentryResponse, 0)
-	var wrongIndex = len(dens)
 	defer func() {
-		for index := wrongIndex; index < len(dens); index++ {
-			res = append(res, &fsmOpDeletedDentryResponse{Status: proto.OpErr, Msg: dens[index]})
+		if err != nil {
+			for index := 0; index < len(dens); index++ {
+				res = append(res, &fsmOpDeletedDentryResponse{Status: proto.OpErr, Msg: dens[index]})
+			}
 		}
 	}()
-	for index, den := range dens {
+	for _, den := range dens {
 		var rsp *fsmOpDeletedDentryResponse
-		rsp, err = mp.cleanDeletedDentry(den)
-		if err == rocksdbError {
-			wrongIndex = index
-			break
+		rsp, err = mp.cleanDeletedDentry(dbHandle, den)
+		if err != nil {
+			res = res[:0]
+			return
 		}
 		if rsp.Status != proto.OpOk {
 			res = append(res, rsp)

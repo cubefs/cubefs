@@ -286,5 +286,5 @@ func (d *Dentry) UnmarshalValue(val []byte) (err error) {
 }
 
 func (d *Dentry) String() string {
-	return fmt.Sprintf(" ParentID: %v, InodeID: %v, Name: %v", d.ParentId, d.Inode, d.Name)
+	return fmt.Sprintf(" ParentID: %v, InodeID: %v, Name: %v, Type:%v", d.ParentId, d.Inode, d.Name, d.Type)
 }

@@ -30,7 +30,7 @@ func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err er
 		resp interface{}
 	)
 
-	if err = mp.isInoOutOfRange(req.Inode); err != nil {
+	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
 		return
 	}
@@ -54,7 +54,7 @@ func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err er
 
 func (mp *metaPartition) GetXAttr(req *proto.GetXAttrRequest, p *Packet) (err error) {
 
-	if err = mp.isInoOutOfRange(req.Inode); err != nil {
+	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
 		return
 	}
@@ -68,7 +68,7 @@ func (mp *metaPartition) GetXAttr(req *proto.GetXAttrRequest, p *Packet) (err er
 	var extend *Extend
 	extend, err = mp.extendTree.RefGet(req.Inode)
 	if err != nil {
-		if err == rocksdbError {
+		if err == rocksDBError {
 			exporter.WarningRocksdbError(fmt.Sprintf("action[GetXAttr] clusterID[%s] volumeName[%s] partitionID[%v]" +
 				" get extend failed witch rocksdb error[Inode:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
 				mp.config.PartitionId, req.Inode))
@@ -103,7 +103,7 @@ func (mp *metaPartition) BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packe
 		var extend *Extend
 		extend, err = mp.extendTree.RefGet(inode)
 		if err != nil {
-			if err == rocksdbError {
+			if err == rocksDBError {
 				exporter.WarningRocksdbError(fmt.Sprintf("action[BatchGetXAttr] clusterID[%s] volumeName[%s] partitionID[%v]" +
 					" get extend failed witch rocksdb error[Inode:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
 					mp.config.PartitionId, inode))
@@ -138,7 +138,7 @@ func (mp *metaPartition) RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (
 		resp interface{}
 	)
 
-	if err = mp.isInoOutOfRange(req.Inode); err != nil {
+	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
 		return
 	}
@@ -160,7 +160,7 @@ func (mp *metaPartition) RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (
 
 func (mp *metaPartition) ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err error) {
 
-	if err = mp.isInoOutOfRange(req.Inode); err != nil {
+	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
 		return
 	}
@@ -174,7 +174,7 @@ func (mp *metaPartition) ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err 
 	var extend *Extend
 	extend, err = mp.extendTree.RefGet(req.Inode)
 	if err != nil {
-		if err == rocksdbError {
+		if err == rocksDBError {
 			exporter.WarningRocksdbError(fmt.Sprintf("action[ListXAttr] clusterID[%s] volumeName[%s] partitionID[%v]" +
 				" get extend failed witch rocksdb error[Inode:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
 				mp.config.PartitionId, req.Inode))

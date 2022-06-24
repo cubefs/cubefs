@@ -236,7 +236,6 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 			if ok := produceItem(item); !ok {
 				return false, nil
 			}
-			produceItem(item)
 			return true, nil
 		}); err != nil {
 			produceError(err)

@@ -25,7 +25,7 @@ import (
 // CreateDentry returns a new dentry.
 func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err error) {
 
-	if err = mp.isInoOutOfRange(req.ParentID); err != nil {
+	if _, err = mp.isInoOutOfRange(req.ParentID); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
 		return
 	}
@@ -58,7 +58,7 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 // DeleteDentry deletes a dentry.
 func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err error) {
 
-	if err = mp.isInoOutOfRange(req.ParentID); err != nil {
+	if _, err = mp.isInoOutOfRange(req.ParentID); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
 		return
 	}
@@ -173,7 +173,7 @@ func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet)
 // UpdateDentry updates a dentry.
 func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err error) {
 
-	if err = mp.isInoOutOfRange(req.ParentID); err != nil {
+	if _, err = mp.isInoOutOfRange(req.ParentID); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
 		return
 	}
@@ -215,7 +215,7 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err erro
 // ReadDir reads the directory based on the given request.
 func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 
-	if err = mp.isInoOutOfRange(req.ParentID); err != nil {
+	if _, err = mp.isInoOutOfRange(req.ParentID); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
 		return
 	}
@@ -243,7 +243,7 @@ func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 // Lookup looks up the given dentry from the request.
 func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 
-	if err = mp.isInoOutOfRange(req.ParentID); err != nil {
+	if _, err = mp.isInoOutOfRange(req.ParentID); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
 		return
 	}
