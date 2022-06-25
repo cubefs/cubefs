@@ -1207,7 +1207,7 @@ func (vol *Vol) checkQos() {
 	}
 }
 
-func (vol *Vol) getQosStatus() interface{} {
+func (vol *Vol) getQosStatus(cluster *Cluster) interface{} {
 
 	type qosStatus struct {
 		ServerFactorLimitMap map[uint32]*ServerFactorLimit // vol qos data for iops w/r and flow w/r
@@ -1216,6 +1216,8 @@ func (vol *Vol) getQosStatus() interface{} {
 		QosEnable            bool
 		ClientReqPeriod      uint32
 		ClientHitTriggerCnt  uint32
+		ClusterMaxUploadCnt  uint32
+		Cfg                  uint32
 	}
 
 	return &qosStatus{
@@ -1226,6 +1228,8 @@ func (vol *Vol) getQosStatus() interface{} {
 		QosEnable:            vol.qosManager.qosEnable,
 		ClientReqPeriod:      vol.qosManager.ClientReqPeriod,
 		ClientHitTriggerCnt:  vol.qosManager.ClientHitTriggerCnt,
+		ClusterMaxUploadCnt:  uint32(cluster.QosAcceptLimit.Limit()),
+		Cfg:                  uint32(cluster.cfg.QosMasterAcceptLimit),
 	}
 }
 

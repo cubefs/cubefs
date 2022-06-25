@@ -382,7 +382,7 @@ func (m *Server) getQosStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sendOkReply(w, r, newSuccessHTTPReply(vol.getQosStatus()))
+	sendOkReply(w, r, newSuccessHTTPReply(vol.getQosStatus(m.cluster)))
 }
 
 
@@ -433,14 +433,17 @@ func (m *Server) getQosUpdateMasterLimit(w http.ResponseWriter, r *http.Request)
 	if value = r.FormValue(QosMasterLimit); value != "" {
 		if limit, err = strconv.ParseUint(value, 10, 64); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("wrong param of limit")))
+			return
 		}
 		if limit < QosMasterAcceptCnt {
 			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("limit too less than %v", QosMasterAcceptCnt)))
+			return
 		}
 
 		m.cluster.cfg.QosMasterAcceptLimit = limit
 		m.cluster.QosAcceptLimit.SetLimit(rate.Limit(limit))
 		sendOkReply(w, r, newSuccessHTTPReply("success"))
+		return
 	}
 	sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("no param of limit")))
 }
