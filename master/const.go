@@ -110,6 +110,7 @@ const (
 	MinIoLimit      = 100
 	MinMagnify      = 10
 	MaxMagnify      = 100
+	QosMasterAcceptCnt = 5000
 	MinZoneDiskLimit = 300
 	MaxZoneDiskLimit = 10000
 )
