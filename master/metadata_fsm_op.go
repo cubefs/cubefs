@@ -17,6 +17,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"golang.org/x/time/rate"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -43,6 +44,7 @@ type clusterValue struct {
 	MaxDpCntLimit               uint64
 	FaultDomain                 bool
 	DiskQosEnable               bool
+	QosLimitUpload              uint64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -58,6 +60,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MaxDpCntLimit:               c.cfg.MaxDpCntLimit,
 		FaultDomain:                 c.FaultDomain,
 		DiskQosEnable:               c.diskQosEnable,
+		QosLimitUpload:				 uint64(c.QosAcceptLimit.Limit()),
 	}
 	return cv
 }
@@ -688,6 +691,14 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.cfg.ClusterLoadFactor = cv.LoadFactor
 		c.DisableAutoAllocate = cv.DisableAutoAllocate
 		c.diskQosEnable = cv.DiskQosEnable
+		c.cfg.QosMasterAcceptLimit = cv.QosLimitUpload
+
+		if c.cfg.QosMasterAcceptLimit < QosMasterAcceptCnt {
+			c.cfg.QosMasterAcceptLimit = QosMasterAcceptCnt
+		}
+		c.QosAcceptLimit.SetLimit(rate.Limit(c.cfg.QosMasterAcceptLimit))
+		log.LogInfof("action[loadClusterValue] qos limit %v", c.cfg.QosMasterAcceptLimit)
+
 		c.updateMetaNodeDeleteBatchCount(cv.MetaNodeDeleteBatchCount)
 		c.updateMetaNodeDeleteWorkerSleepMs(cv.MetaNodeDeleteWorkerSleepMs)
 		c.updateDataNodeDeleteLimitRate(cv.DataNodeDeleteLimitRate)

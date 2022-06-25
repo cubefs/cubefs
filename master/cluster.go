@@ -144,7 +144,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.partition = partition
 	c.idAlloc = newIDAllocator(c.fsm.store, c.partition)
 	c.domainManager = newDomainManager(c)
-	c.QosAcceptLimit = rate.NewLimiter(rate.Inf, int(c.cfg.QosMasterAcceptLimit))
+	c.QosAcceptLimit = rate.NewLimiter(rate.Limit(c.cfg.QosMasterAcceptLimit), proto.QosDefaultBurst)
 	return
 }
 

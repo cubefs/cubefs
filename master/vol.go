@@ -1217,7 +1217,6 @@ func (vol *Vol) getQosStatus(cluster *Cluster) interface{} {
 		ClientReqPeriod      uint32
 		ClientHitTriggerCnt  uint32
 		ClusterMaxUploadCnt  uint32
-		Cfg                  uint32
 	}
 
 	return &qosStatus{
@@ -1229,7 +1228,6 @@ func (vol *Vol) getQosStatus(cluster *Cluster) interface{} {
 		ClientReqPeriod:      vol.qosManager.ClientReqPeriod,
 		ClientHitTriggerCnt:  vol.qosManager.ClientHitTriggerCnt,
 		ClusterMaxUploadCnt:  uint32(cluster.QosAcceptLimit.Limit()),
-		Cfg:                  uint32(cluster.cfg.QosMasterAcceptLimit),
 	}
 }
 
