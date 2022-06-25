@@ -528,9 +528,10 @@ const (
 )
 
 const (
-	QosDefaultClientCnt uint32 = 100
-	QosDefaultDiskMaxFLowLimit int = 0x7FFFFFFF
-	QosDefaultDiskMaxIoLimit int = 100000
+	QosDefaultBurst                   = 128
+	QosDefaultClientCnt        uint32 = 100
+	QosDefaultDiskMaxFLowLimit int    = 0x7FFFFFFF
+	QosDefaultDiskMaxIoLimit   int    = 100000
 )
 
 func QosTypeString(factorType uint32) string {

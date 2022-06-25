@@ -442,6 +442,10 @@ func (m *Server) getQosUpdateMasterLimit(w http.ResponseWriter, r *http.Request)
 
 		m.cluster.cfg.QosMasterAcceptLimit = limit
 		m.cluster.QosAcceptLimit.SetLimit(rate.Limit(limit))
+		if err = m.cluster.syncPutCluster(); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("set master not worked %v", err)))
+			return
+		}
 		sendOkReply(w, r, newSuccessHTTPReply("success"))
 		return
 	}

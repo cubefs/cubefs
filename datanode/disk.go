@@ -92,10 +92,10 @@ func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, 
 	d.startScheduleToUpdateSpaceInfo()
 
 	d.limitFactor = make(map[uint32]*rate.Limiter, 0)
-	d.limitFactor[proto.FlowReadType] = rate.NewLimiter(rate.Inf, proto.QosDefaultDiskMaxFLowLimit)
-	d.limitFactor[proto.FlowWriteType] = rate.NewLimiter(rate.Inf, proto.QosDefaultDiskMaxFLowLimit)
-	d.limitFactor[proto.IopsReadType] = rate.NewLimiter(rate.Inf, proto.QosDefaultDiskMaxIoLimit)
-	d.limitFactor[proto.IopsWriteType] = rate.NewLimiter(rate.Inf, proto.QosDefaultDiskMaxIoLimit)
+	d.limitFactor[proto.FlowReadType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxFLowLimit), proto.QosDefaultBurst)
+	d.limitFactor[proto.FlowWriteType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxFLowLimit), proto.QosDefaultBurst)
+	d.limitFactor[proto.IopsReadType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), proto.QosDefaultBurst)
+	d.limitFactor[proto.IopsWriteType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), proto.QosDefaultBurst)
 
 	return
 }
