@@ -103,16 +103,16 @@ const (
 )
 
 const (
-	LRUCacheSize    = 3 << 30
-	WriteBufferSize = 4 * util.MB
-	MaxFlowLimit    = 10 * util.TB
-	MinFlowLimit    = 100 * util.MB
-	MinIoLimit      = 100
-	MinMagnify      = 10
-	MaxMagnify      = 100
+	LRUCacheSize       = 3 << 30
+	WriteBufferSize    = 4 * util.MB
+	MaxFlowLimit       = 10 * util.TB
+	MinFlowLimit       = 100 * util.MB
+	MinIoLimit         = 100
+	MinMagnify         = 10
+	MaxMagnify         = 100
 	QosMasterAcceptCnt = 5
-	MinZoneDiskLimit = 300
-	MaxZoneDiskLimit = 10000
+	MinZoneDiskLimit   = 300
+	MaxZoneDiskLimit   = 10000
 )
 
 const (

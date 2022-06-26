@@ -124,7 +124,7 @@ func createDefaultMasterServerForTest() *Server {
 		normalZonesFirst: false,
 		zoneName:         testZone2,
 		description:      "",
-		qosLimitArgs:    &qosArgs{},
+		qosLimitArgs:     &qosArgs{},
 	}
 
 	vol, err := testServer.cluster.createVol(req)
