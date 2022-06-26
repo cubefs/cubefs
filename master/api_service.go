@@ -1326,7 +1326,7 @@ func (m *Server) qosUpload(w http.ResponseWriter, r *http.Request) {
 	)
 	ctx := context.Background()
 	m.cluster.QosAcceptLimit.WaitN(ctx, 1)
-
+	log.LogInfof("action[qosUpload] limit %v", m.cluster.QosAcceptLimit.Limit())
 	if name, err = parseAndExtractName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -1355,7 +1355,7 @@ func (m *Server) qosUpload(w http.ResponseWriter, r *http.Request) {
 				sendErrReply(w, r, newErrHTTPReply(err))
 			}
 		} else {
-			log.LogInfof("action[qosUpload] qosEnableStr:[%v] err [%v]", err)
+			log.LogInfof("action[qosUpload] qosEnableStr:[%v] err [%v]", qosEnableStr, err)
 		}
 	}
 

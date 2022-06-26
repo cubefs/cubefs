@@ -17,6 +17,7 @@ package blobstore
 import (
 	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/sdk/data/manager"
 	"github.com/cubefs/cubefs/util/buf"
 	"reflect"
 	"syscall"
@@ -68,7 +69,15 @@ func init() {
 		FileSize:        0,
 		CacheThreshold:  0,
 	}
+	ec := &stream.ExtentClient{}
+	err := gohook.HookMethod(ec, "Write", MockWriteTrue, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))
+	}
+	config.Ec = ec
+
 	buf.InitCachePool(8388608)
+	config.Ec.LimitManager =  manager.NewLimitManager(nil)
 	writer = NewWriter(config)
 }
 
@@ -324,6 +333,12 @@ func TestNewWriter(t *testing.T) {
 		FileSize:        0,
 		CacheThreshold:  0,
 	}
+	config.Ec = &stream.ExtentClient{}
+	err := gohook.HookMethod(config.Ec , "Write", MockWriteTrue, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))
+	}
+	config.Ec.LimitManager =  manager.NewLimitManager(nil)
 	w := NewWriter(config)
 	_ = w.String()
 }

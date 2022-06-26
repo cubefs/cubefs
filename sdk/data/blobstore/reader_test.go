@@ -17,6 +17,7 @@ package blobstore
 import (
 	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/sdk/data/manager"
 	"io"
 	"math/rand"
 	"os"
@@ -51,6 +52,13 @@ func TestNewReader(t *testing.T) {
 		FileSize:        0,
 		CacheThreshold:  0,
 	}
+	ec := &stream.ExtentClient{}
+	err := gohook.HookMethod(ec, "Write", MockWriteTrue, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))
+	}
+	mockConfig.Ec = ec
+
 	reader := NewReader(mockConfig)
 	assert.NotEmpty(t, reader, nil)
 }
@@ -80,6 +88,7 @@ func TestBuildExtentKey(t *testing.T) {
 	rs.objExtentKey = proto.ObjExtentKey{FileOffset: 100, Size: 100}
 	for _, tc := range testCase {
 		reader := Reader{}
+		reader.limitManager = manager.NewLimitManager(nil)
 		reader.extentKeys = tc.eks
 		reader.buildExtentKey(rs)
 		assert.Equal(t, tc.expectEk, rs.extentKey)
@@ -100,6 +109,7 @@ func TestFileSize(t *testing.T) {
 
 	for _, tc := range testCase {
 		reader := Reader{}
+		reader.limitManager = manager.NewLimitManager(nil)
 		reader.valid = tc.valid
 		reader.objExtentKeys = tc.objEks
 		gotSize, gotOk := reader.fileSize()
@@ -158,6 +168,7 @@ func TestRefreshEbsExtents(t *testing.T) {
 
 	for _, tc := range testCase {
 		reader := Reader{}
+		reader.limitManager = manager.NewLimitManager(nil)
 		mw := &meta.MetaWrapper{}
 		err := gohook.HookMethod(mw, "GetObjExtents", tc.getObjFunc, nil)
 		if err != nil {
@@ -192,6 +203,7 @@ func TestPrepareEbsSlice(t *testing.T) {
 			panic(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))
 		}
 		reader := Reader{}
+		reader.limitManager = manager.NewLimitManager(nil)
 		reader.mw = mw
 		_, got := reader.prepareEbsSlice(tc.offset, tc.size)
 		assert.Equal(t, tc.expectError, got)
@@ -217,6 +229,7 @@ func TestRead(t *testing.T) {
 
 	for _, tc := range testCase {
 		reader := &Reader{}
+		reader.limitManager = manager.NewLimitManager(nil)
 		reader.close = tc.close
 		reader.readConcurrency = tc.readConcurrency
 
@@ -303,6 +316,7 @@ func TestAsyncCache(t *testing.T) {
 
 	for _, tc := range testCase {
 		reader := Reader{}
+		reader.limitManager = manager.NewLimitManager(nil)
 		reader.cacheThreshold = 1000
 		ctx := context.Background()
 		err := gohook.HookMethod(ebsc, "Read", tc.ebsReadFunc, nil)
@@ -340,6 +354,7 @@ func TestNeedCacheL2(t *testing.T) {
 
 	for _, tc := range testCase {
 		reader := Reader{}
+		reader.limitManager = manager.NewLimitManager(nil)
 		reader.cacheAction = tc.cacheAction
 		reader.fileLength = tc.fileLength
 		reader.cacheThreshold = tc.cacheThreshold
@@ -360,6 +375,7 @@ func TestNeedCacheL1(t *testing.T) {
 
 	for _, tc := range testCase {
 		reader := Reader{}
+		reader.limitManager = manager.NewLimitManager(nil)
 		reader.enableBcache = tc.enableCache
 		got := reader.needCacheL1()
 		assert.Equal(t, tc.expectCache, got)
@@ -390,6 +406,7 @@ func TestReadSliceRange(t *testing.T) {
 
 	for _, tc := range testCase {
 		reader := &Reader{}
+		reader.limitManager = manager.NewLimitManager(nil)
 		ebsc := &BlobStoreClient{}
 		bc := &bcache.BcacheClient{}
 		ec := &stream.ExtentClient{}
