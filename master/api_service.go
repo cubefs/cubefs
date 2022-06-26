@@ -385,7 +385,6 @@ func (m *Server) getQosStatus(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(vol.getQosStatus(m.cluster)))
 }
 
-
 func (m *Server) getClientQosInfo(w http.ResponseWriter, r *http.Request) {
 	var (
 		volName string
@@ -426,9 +425,9 @@ func (m *Server) getClientQosInfo(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) getQosUpdateMasterLimit(w http.ResponseWriter, r *http.Request) {
 	var (
-		err     error
-		value   string
-		limit   uint64
+		err   error
+		value string
+		limit uint64
 	)
 	if value = r.FormValue(QosMasterLimit); value != "" {
 		if limit, err = strconv.ParseUint(value, 10, 64); err != nil {
@@ -451,7 +450,6 @@ func (m *Server) getQosUpdateMasterLimit(w http.ResponseWriter, r *http.Request)
 	}
 	sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("no param of limit")))
 }
-
 
 func (m *Server) QosUpdateClientParam(w http.ResponseWriter, r *http.Request) {
 	var (
@@ -542,7 +540,7 @@ func parseRequestQos(r *http.Request, isMagnify bool) (qosParam *qosArgs, err er
 			}
 			if isMagnify && (qosParam.flowRVal < MinMagnify || qosParam.flowRVal > MaxMagnify) {
 				err = fmt.Errorf("flow read magnify %v must between %v and %v", value, MinMagnify, MaxMagnify)
-				log.LogErrorf("acttion[parseRequestQos] %v",err.Error())
+				log.LogErrorf("acttion[parseRequestQos] %v", err.Error())
 				return
 			}
 		}
@@ -553,12 +551,12 @@ func parseRequestQos(r *http.Request, isMagnify bool) (qosParam *qosArgs, err er
 			qosParam.flowWVal = uint64(value * flowFmt)
 			if !isMagnify && (qosParam.flowWVal < MinFlowLimit || qosParam.flowWVal > MaxFlowLimit) {
 				err = fmt.Errorf("flow write %v should be between 100M and 10TB", value)
-				log.LogErrorf("acttion[parseRequestQos] %v",err.Error())
+				log.LogErrorf("acttion[parseRequestQos] %v", err.Error())
 				return
 			}
 			if isMagnify && (qosParam.flowWVal < MinMagnify || qosParam.flowWVal > MaxMagnify) {
 				err = fmt.Errorf("flow write magnify %v must between %v and %v", value, MinMagnify, MaxMagnify)
-				log.LogErrorf("acttion[parseRequestQos] %v",err.Error())
+				log.LogErrorf("acttion[parseRequestQos] %v", err.Error())
 				return
 			}
 		}
@@ -606,8 +604,8 @@ func (m *Server) QosUpdateZoneLimit(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if (qosParam.flowWVal > 0 && (qosParam.flowWVal < MinZoneDiskLimit * util.MB || qosParam.flowWVal > MaxZoneDiskLimit * util.MB)) ||
-		(qosParam.flowRVal > 0 && (qosParam.flowRVal < MinZoneDiskLimit * util.MB || qosParam.flowWVal > MaxZoneDiskLimit * util.MB) ) {
+	if (qosParam.flowWVal > 0 && (qosParam.flowWVal < MinZoneDiskLimit*util.MB || qosParam.flowWVal > MaxZoneDiskLimit*util.MB)) ||
+		(qosParam.flowRVal > 0 && (qosParam.flowRVal < MinZoneDiskLimit*util.MB || qosParam.flowWVal > MaxZoneDiskLimit*util.MB)) {
 		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("zone disk flow param should between 300 and 10000")))
 		return
 	}
@@ -625,8 +623,8 @@ func (m *Server) QosUpdateZoneLimit(w http.ResponseWriter, r *http.Request) {
 // flowRVal, flowWVal take MB as unit
 func (m *Server) QosGetZoneLimit(w http.ResponseWriter, r *http.Request) {
 	var (
-		value    interface{}
-		ok       bool
+		value interface{}
+		ok    bool
 	)
 	var zoneName string
 	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
@@ -640,21 +638,21 @@ func (m *Server) QosGetZoneLimit(w http.ResponseWriter, r *http.Request) {
 	zone := value.(*Zone)
 
 	type qosZoneStatus struct {
-		Zone string
+		Zone            string
 		DiskLimitEnable bool
-		IopsRVal      uint64
-		IopsWVal      uint64
-		FlowRVal      uint64
-		FlowWVal      uint64
+		IopsRVal        uint64
+		IopsWVal        uint64
+		FlowRVal        uint64
+		FlowWVal        uint64
 	}
 
 	zoneSt := &qosZoneStatus{
-		Zone:zoneName,
+		Zone:            zoneName,
 		DiskLimitEnable: m.cluster.diskQosEnable,
-		IopsRVal: zone.QosIopsRLimit,
-		IopsWVal: zone.QosIopsWLimit,
-		FlowRVal: zone.QosFlowRLimit,
-		FlowWVal: zone.QosFlowWLimit,
+		IopsRVal:        zone.QosIopsRLimit,
+		IopsWVal:        zone.QosIopsWLimit,
+		FlowRVal:        zone.QosFlowRLimit,
+		FlowWVal:        zone.QosFlowWLimit,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(zoneSt))
 }
@@ -1364,9 +1362,9 @@ func (m *Server) qosUpload(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) getVolSimpleInfo(w http.ResponseWriter, r *http.Request) {
 	var (
-		err     error
-		name    string
-		vol     *Vol
+		err  error
+		name string
+		vol  *Vol
 	)
 
 	if name, err = parseAndExtractName(r); err != nil {

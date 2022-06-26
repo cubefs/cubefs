@@ -77,7 +77,7 @@ func init() {
 	config.Ec = ec
 
 	buf.InitCachePool(8388608)
-	config.Ec.LimitManager =  manager.NewLimitManager(nil)
+	config.Ec.LimitManager = manager.NewLimitManager(nil)
 	writer = NewWriter(config)
 }
 
@@ -334,11 +334,11 @@ func TestNewWriter(t *testing.T) {
 		CacheThreshold:  0,
 	}
 	config.Ec = &stream.ExtentClient{}
-	err := gohook.HookMethod(config.Ec , "Write", MockWriteTrue, nil)
+	err := gohook.HookMethod(config.Ec, "Write", MockWriteTrue, nil)
 	if err != nil {
 		panic(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))
 	}
-	config.Ec.LimitManager =  manager.NewLimitManager(nil)
+	config.Ec.LimitManager = manager.NewLimitManager(nil)
 	w := NewWriter(config)
 	_ = w.String()
 }

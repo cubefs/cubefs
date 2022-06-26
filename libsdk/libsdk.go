@@ -1109,7 +1109,7 @@ func (c *client) start() (err error) {
 		c.bc = bcache.NewBcacheClient()
 	}
 	var ebsc *blobstore.BlobStoreClient
-        if c.ebsEndpoint != "" {
+	if c.ebsEndpoint != "" {
 		if ebsc, err = blobstore.NewEbsClient(access.Config{
 			ConnMode: access.NoLimitConnMode,
 			Consul: api.Config{
@@ -1122,7 +1122,7 @@ func (c *client) start() (err error) {
 		}); err != nil {
 			return
 		}
-	}	
+	}
 	var mw *meta.MetaWrapper
 	if mw, err = meta.NewMetaWrapper(&meta.MetaConfig{
 		Volume:        c.volName,

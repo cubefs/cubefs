@@ -20,7 +20,7 @@ const (
 	girdCntOneSecond     = 3
 	gridWindowTimeScope  = 10
 	qosExpireTime        = 20
-	qosReportMinGap      = uint32(time.Second)/2
+	qosReportMinGap      = uint32(time.Second) / 2
 	defaultMagnifyFactor = 100
 )
 
@@ -43,17 +43,17 @@ type AllocElement struct {
 }
 
 type LimitFactor struct {
-	factorType     uint32
-	gridList       *list.List
-	waitList       *list.List
-	gidHitLimitCnt uint8
-	mgr            *LimitManager
-	gridId         uint64
-	magnify        uint32
-	winBuffer      uint64
-	lock           sync.RWMutex
-	valAllocApply  uint64
-	valAllocCommit uint64
+	factorType         uint32
+	gridList           *list.List
+	waitList           *list.List
+	gidHitLimitCnt     uint8
+	mgr                *LimitManager
+	gridId             uint64
+	magnify            uint32
+	winBuffer          uint64
+	lock               sync.RWMutex
+	valAllocApply      uint64
+	valAllocCommit     uint64
 	valAllocLastApply  uint64
 	valAllocLastCommit uint64
 	isSetLimitZero     bool
@@ -77,7 +77,7 @@ func (factor *LimitFactor) getNeedByMagnify(allocCnt uint32, magnify uint32) uin
 	return need
 }
 
-func (factor *LimitFactor) alloc(allocCnt uint32) (ret uint8,future *util.Future) {
+func (factor *LimitFactor) alloc(allocCnt uint32) (ret uint8, future *util.Future) {
 	log.LogInfof("action[alloc] type [%v] alloc [%v], tmp factor waitlist [%v] hitlimtcnt [%v] len [%v]", proto.QosTypeString(factor.factorType),
 		allocCnt, factor.waitList.Len(), factor.gidHitLimitCnt, factor.gridList.Len())
 	atomic.AddUint64(&factor.valAllocApply, uint64(allocCnt))
@@ -97,7 +97,7 @@ func (factor *LimitFactor) alloc(allocCnt uint32) (ret uint8,future *util.Future
 
 	type activeSt struct {
 		activeUpdate bool
-		needWait       bool
+		needWait     bool
 	}
 	activeState := &activeSt{}
 	defer func(active *activeSt) {
@@ -123,7 +123,6 @@ func (factor *LimitFactor) alloc(allocCnt uint32) (ret uint8,future *util.Future
 			future:  future,
 			magnify: factor.magnify,
 		})
-
 
 		if grid.hitLimit == false {
 			factor.gidHitLimitCnt++
@@ -186,10 +185,10 @@ func (factor *LimitFactor) SetLimit(limitVal uint64, bufferVal uint64) {
 			if grid.limit == 0 {
 				grid.limit = 1
 			}
-		case proto.FlowReadType,proto.FlowWriteType:
+		case proto.FlowReadType, proto.FlowWriteType:
 			grid.limit = proto.MinFLowLimit / girdCntOneSecond
 			if grid.limit == 0 {
-				grid.limit = 10*util.KB
+				grid.limit = 10 * util.KB
 			}
 		}
 	} else {
@@ -220,11 +219,11 @@ func (factor *LimitFactor) TryReleaseWaitList() {
 			log.LogWarnf("action[TryReleaseWaitList] type [%v] new gird be used up.alloc in waitlist left cnt [%v],"+
 				"grid be allocated [%v] grid limit [%v] and buffer[%v], gird id:[%v], use pregrid size[%v]",
 				proto.QosTypeString(factor.factorType), factor.waitList.Len(), tGrid.used, tGrid.limit, tGrid.buffer,
-				tGrid.ID, uint32(tGrid.limit + tGrid.buffer - tGrid.used))
+				tGrid.ID, uint32(tGrid.limit+tGrid.buffer-tGrid.used))
 
 			tUsed := atomic.LoadUint64(&tGrid.used)
-			val := tGrid.limit + tGrid.buffer - tUsed // uint may out range
-			if tGrid.limit + tGrid.buffer > tUsed && ele.used >= uint32(val) { // not atomic pretect,grid used may larger than limit and buffer
+			val := tGrid.limit + tGrid.buffer - tUsed                        // uint may out range
+			if tGrid.limit+tGrid.buffer > tUsed && ele.used >= uint32(val) { // not atomic pretect,grid used may larger than limit and buffer
 				ele.used -= uint32(val)
 				log.LogInfof("action[TryReleaseWaitList] type [%v] ele used reduce [%v] and left [%v]", proto.QosTypeString(factor.factorType), val, ele.used)
 				// atomic.AddUint64(&curGrid.used, tGrid.limit+ tGrid.buffer)
@@ -346,14 +345,13 @@ func (factor *LimitFactor) GetWaitTotalSize() (waitSize uint64) {
 	return
 }
 
-
-func (limitManager *LimitManager) CalcNeed(limitFactor *LimitFactor, used uint64) (need uint64){
+func (limitManager *LimitManager) CalcNeed(limitFactor *LimitFactor, used uint64) (need uint64) {
 	if limitFactor.waitList.Len() == 0 {
 		return 0
 	}
 	if limitFactor.factorType == proto.FlowReadType || limitFactor.factorType == proto.FlowWriteType {
 		used += limitFactor.GetWaitTotalSize()
-		if used < 128 * util.KB {
+		if used < 128*util.KB {
 			used = 128 * util.KB
 		}
 		if used < util.MB {
@@ -392,7 +390,6 @@ func (limitManager *LimitManager) CalcNeed(limitFactor *LimitFactor, used uint64
 	return
 }
 
-
 func (limitManager *LimitManager) GetFlowInfo() (*proto.ClientReportLimitInfo, bool) {
 	log.LogInfof("action[LimitManager.GetFlowInfo]")
 	info := &proto.ClientReportLimitInfo{
@@ -400,9 +397,9 @@ func (limitManager *LimitManager) GetFlowInfo() (*proto.ClientReportLimitInfo, b
 	}
 	var (
 		validCliInfo bool
-		griCnt int
-		limit uint64
-		buffer uint64
+		griCnt       int
+		limit        uint64
+		buffer       uint64
 	)
 	for factorType, limitFactor := range limitManager.limitMap {
 		limitFactor.lock.RLock()
@@ -437,7 +434,7 @@ func (limitManager *LimitManager) GetFlowInfo() (*proto.ClientReportLimitInfo, b
 		}
 
 		if griCnt > 0 {
-			timeElapse := uint64(time.Second)*uint64(griCnt)/girdCntOneSecond
+			timeElapse := uint64(time.Second) * uint64(griCnt) / girdCntOneSecond
 			if timeElapse < uint64(qosReportMinGap) {
 				log.LogWarnf("action[GetFlowInfo] type [%v] timeElapse [%v] since last report",
 					proto.QosTypeString(limitFactor.factorType), timeElapse)
@@ -447,7 +444,7 @@ func (limitManager *LimitManager) GetFlowInfo() (*proto.ClientReportLimitInfo, b
 		}
 
 		factor := &proto.ClientLimitInfo{
-			Used:		reqUsed,
+			Used:       reqUsed,
 			Need:       limitManager.CalcNeed(limitFactor, reqUsed),
 			UsedLimit:  limitFactor.gridList.Back().Value.(*GridElement).limit * girdCntOneSecond,
 			UsedBuffer: limitFactor.gridList.Back().Value.(*GridElement).buffer * girdCntOneSecond,
@@ -505,7 +502,7 @@ func (limitManager *LimitManager) ScheduleCheckGrid() {
 				cnt++
 				for factorType, limitFactor := range limitManager.limitMap {
 					limitFactor.CheckGrid()
-					if cnt % 3 == 0 {
+					if cnt%3 == 0 {
 						log.LogInfof("action[ScheduleCheckGrid] type [%v] factor apply val:[%v] commit val:[%v]",
 							proto.QosTypeString(factorType), atomic.LoadUint64(&limitFactor.valAllocApply), atomic.LoadUint64(&limitFactor.valAllocCommit))
 						limitFactor.valAllocLastApply = atomic.LoadUint64(&limitFactor.valAllocLastApply)

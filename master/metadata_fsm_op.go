@@ -60,7 +60,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MaxDpCntLimit:               c.cfg.MaxDpCntLimit,
 		FaultDomain:                 c.FaultDomain,
 		DiskQosEnable:               c.diskQosEnable,
-		QosLimitUpload:				 uint64(c.QosAcceptLimit.Limit()),
+		QosLimitUpload:              uint64(c.QosAcceptLimit.Limit()),
 	}
 	return cv
 }

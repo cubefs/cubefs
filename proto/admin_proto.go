@@ -75,7 +75,7 @@ const (
 	QosGetStatus           = "/qos/getStatus"
 	QosGetClientsLimitInfo = "/qos/getClientsInfo"
 	QosGetZoneLimitInfo    = "/qos/getZoneLimit" // include disk enable
-	QosUpdate              = "/qos/update" // include disk enable
+	QosUpdate              = "/qos/update"       // include disk enable
 	QosUpdateMagnify       = "/qos/updateMagnify"
 	QosUpdateClientParam   = "/qos/updateClientParam"
 	QosUpdateZoneLimit     = "/qos/updateZoneLimit" // include disk enable
@@ -517,7 +517,7 @@ const (
 	QosStateHitLimit uint8 = 0x02
 
 	MinIopsLimit uint64 = 3
-	MinFLowLimit uint64 = 128*util.KB
+	MinFLowLimit uint64 = 128 * util.KB
 )
 
 const (
