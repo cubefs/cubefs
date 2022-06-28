@@ -74,6 +74,7 @@ type Super struct {
 	CacheThreshold int
 	EbsBlockSize   int
 	enableBcache   bool
+	bcacheDir      string
 	readThreads    int
 	writeThreads   int
 	bc             *bcache.BcacheClient
@@ -94,13 +95,13 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s = new(Super)
 	var masters = strings.Split(opt.Master, meta.HostsSeparator)
 	var metaConfig = &meta.MetaConfig{
-		Volume:        opt.Volname,
-		Owner:         opt.Owner,
-		Masters:       masters,
-		Authenticate:  opt.Authenticate,
-		TicketMess:    opt.TicketMess,
-		ValidateOwner: opt.Authenticate || opt.AccessKey == "",
-		EnableSummary: opt.EnableSummary && opt.EnableXattr,
+		Volume:          opt.Volname,
+		Owner:           opt.Owner,
+		Masters:         masters,
+		Authenticate:    opt.Authenticate,
+		TicketMess:      opt.TicketMess,
+		ValidateOwner:   opt.Authenticate || opt.AccessKey == "",
+		EnableSummary:   opt.EnableSummary && opt.EnableXattr,
 		MetaSendTimeout: opt.MetaSendTimeout,
 	}
 	s.mw, err = meta.NewMetaWrapper(metaConfig)
@@ -139,8 +140,9 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	if opt.MaxStreamerLimit > 0 {
 		DisableMetaCache = false
 		s.fsyncOnClose = false
-	}
 
+	}
+	s.bcacheDir = strings.ReplaceAll(opt.BcacheDir, opt.MountPoint, opt.SubDir)
 	s.volType = opt.VolType
 	s.ebsEndpoint = opt.EbsEndpoint
 	s.CacheAction = opt.CacheAction
@@ -149,6 +151,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.enableBcache = opt.EnableBcache
 	s.readThreads = int(opt.ReadThreads)
 	s.writeThreads = int(opt.WriteThreads)
+
 	if s.enableBcache {
 		s.bc = bcache.NewBcacheClient()
 	}
@@ -162,6 +165,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		WriteRate:         opt.WriteRate,
 		VolumeType:        opt.VolType,
 		BcacheEnable:      opt.EnableBcache,
+		BcacheDir:         opt.BcacheDir,
 		MaxStreamerLimit:  opt.MaxStreamerLimit,
 		OnAppendExtentKey: s.mw.AppendExtentKey,
 		OnGetExtents:      s.mw.GetExtents,
@@ -252,7 +256,7 @@ func (s *Super) Root() (fs.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	root := NewDir(s, inode)
+	root := NewDir(s, inode, inode.Inode, "")
 	return root, nil
 }
 
@@ -263,7 +267,7 @@ func (s *Super) Node(ino, pino uint64, mode uint32) (fs.Node, error) {
 	// InodeInfo.Inode.
 	fakeInfo := &proto.InodeInfo{Inode: ino, Mode: mode}
 	if proto.OsMode(fakeInfo.Mode).IsDir() {
-		node = NewDir(s, fakeInfo)
+		node = NewDir(s, fakeInfo, pino, "")
 	} else {
 		node = NewFile(s, fakeInfo, DefaultFlag, pino)
 		// The node is saved in FuseContextNodes list, that means

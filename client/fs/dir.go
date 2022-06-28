@@ -84,10 +84,12 @@ func (dctx *DirContexts) Remove(handle fuse.HandleID) {
 
 // Dir defines the structure of a directory
 type Dir struct {
-	super  *Super
-	info   *proto.InodeInfo
-	dcache *DentryCache
-	dctx   *DirContexts
+	super     *Super
+	info      *proto.InodeInfo
+	dcache    *DentryCache
+	dctx      *DirContexts
+	parentIno uint64
+	name      string
 }
 
 // Functions that Dir needs to implement
@@ -111,12 +113,36 @@ var (
 )
 
 // NewDir returns a new directory.
-func NewDir(s *Super, i *proto.InodeInfo) fs.Node {
+func NewDir(s *Super, i *proto.InodeInfo, pino uint64, dirName string) fs.Node {
 	return &Dir{
-		super: s,
-		info:  i,
-		dctx:  NewDirContexts(),
+		super:     s,
+		info:      i,
+		parentIno: pino,
+		name:      dirName,
+		dctx:      NewDirContexts(),
 	}
+}
+
+func (d *Dir) getCwd() string {
+	dirPath := ""
+	curIno := d.info.Inode
+	for curIno != d.super.rootIno {
+		d.super.fslock.Lock()
+		node, ok := d.super.nodeCache[curIno]
+		d.super.fslock.Unlock()
+		if !ok {
+			log.LogErrorf("Get node cache failed: ino(%v)", curIno)
+			return "unknown" + dirPath
+		}
+		curDir, ok := node.(*Dir)
+		if !ok {
+			log.LogErrorf("Type error: Can not convert node -> *Dir, ino(%v)", curDir.parentIno)
+			return "unknown" + dirPath
+		}
+		dirPath = "/" + curDir.name + dirPath
+		curIno = curDir.parentIno
+	}
+	return dirPath
 }
 
 // Attr set the attributes of a directory.
@@ -163,7 +189,8 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 
 	d.super.ic.Put(info)
 	child := NewFile(d.super, info, uint32(req.Flags&DefaultFlag), d.info.Inode)
-	d.super.ec.OpenStream(info.Inode)
+
+	d.super.ec.OpenStream(info.Inode, false)
 	d.super.fslock.Lock()
 	d.super.nodeCache[info.Inode] = child
 	d.super.fslock.Unlock()
@@ -215,7 +242,7 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 	}
 
 	d.super.ic.Put(info)
-	child := NewDir(d.super, info)
+	child := NewDir(d.super, info, d.info.Inode, req.Name)
 
 	d.super.fslock.Lock()
 	d.super.nodeCache[info.Inode] = child
@@ -300,7 +327,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	child, ok := d.super.nodeCache[ino]
 	if !ok {
 		if mode.IsDir() {
-			child = NewDir(d.super, info)
+			child = NewDir(d.super, info, d.info.Inode, req.Name)
 		} else {
 			child = NewFile(d.super, info, DefaultFlag, d.info.Inode)
 		}
