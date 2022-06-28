@@ -52,7 +52,8 @@ var (
     "maxOpenConns": 100,
     "logMode": false,
     "logZap": ""
-  }
+  },
+  "isDbBack": 0
 }
 `)
 )
@@ -64,6 +65,7 @@ type Config struct {
 	MetaNodeProfPort    uint16               `json:"mnProf"`
 	ConvertAddr         string               `json:"convertAddr"`
 	ConvertNodeDBConfig convertnode.DBConfig `json:"convertNodeDBConfig"`
+	IsDbBack            int8                 `json:"isDbBack"`
 }
 
 func newConfigCmd() *cobra.Command {
@@ -90,6 +92,7 @@ func newConfigSetCmd() *cobra.Command {
 	var optConvertNodeDBAddr string
 	var optConvertNodeDBUserName string
 	var optConvertNodeDBPassword string
+	var optIsDbBack int8
 	var cmd = &cobra.Command{
 		Use:   CliOpSet,
 		Short: cmdConfigSetShort,
@@ -99,8 +102,8 @@ func newConfigSetCmd() *cobra.Command {
 			var monitorHosts string
 			var config *Config
 			var err error
-			if optMasterHost == "" && optMonitorHost == "" && optDNProfPort == 0 && optMNProfPort == 0  && len(optConvertHost) == 0 &&
-				optConvertNodeDBAddr == "" && optConvertNodeDBUserName == "" && optConvertNodeDBPassword == ""{
+			if optMasterHost == "" && optMonitorHost == "" && optDNProfPort == 0 && optMNProfPort == 0 && len(optConvertHost) == 0 &&
+				optConvertNodeDBAddr == "" && optConvertNodeDBUserName == "" && optConvertNodeDBPassword == "" && optIsDbBack == -1 {
 				stdout(fmt.Sprintf("No changes has been set. Input 'cfs-cli config set -h' for help.\n"))
 				return
 			}
@@ -138,6 +141,9 @@ func newConfigSetCmd() *cobra.Command {
 			if optConvertNodeDBPassword != "" {
 				config.ConvertNodeDBConfig.Password = optConvertNodeDBPassword
 			}
+			if optIsDbBack != -1 {
+				config.IsDbBack = optIsDbBack
+			}
 			if _, err := setConfig(config); err != nil {
 				stdout("error: %v\n", err)
 				return
@@ -153,6 +159,7 @@ func newConfigSetCmd() *cobra.Command {
 	cmd.Flags().StringVar(&optConvertNodeDBAddr, "convertNodeDBAddr", "", "Specify convert node database address")
 	cmd.Flags().StringVar(&optConvertNodeDBUserName, "convertNodeDBUserName", "", "Specify convert node database user name")
 	cmd.Flags().StringVar(&optConvertNodeDBPassword, "convertNodeDBPassword", "", "Specify convert node database password")
+	cmd.Flags().Int8Var(&optIsDbBack, "isDbBack", -1, "If used for dbback, 0 or 1")
 	return cmd
 }
 func newConfigInfoCmd() *cobra.Command {
@@ -171,6 +178,7 @@ func newConfigInfoCmd() *cobra.Command {
 			stdout(fmt.Sprintf("Monitor address:\n  %v\n", config.MonitorAddr))
 			stdout(fmt.Sprintf("MySQL Database Addr:\n  %s\n", config.ConvertNodeDBConfig.Path))
 			stdout(fmt.Sprintf("MySQL Database Name:\n  %s\n", config.ConvertNodeDBConfig.Dbname))
+			stdout(fmt.Sprintf("IsDbBack:\n  %v\n", config.IsDbBack))
 		},
 	}
 	cmd.Flags().StringVar(&optFilterWritable, "filter-writable", "", "Filter node writable status")

@@ -39,7 +39,7 @@ func runCLI() (err error) {
 	if cfg, err = cmd.LoadConfig(); err != nil {
 		return
 	}
-	if len(cfg.MasterAddr) > 0 && cfg.MasterAddr[0] == proto.DbBackMaster {
+	if cfg.IsDbBack == 1 {
 		proto.IsDbBack = true
 	}
 	cfscli := setupCommands(cfg)
