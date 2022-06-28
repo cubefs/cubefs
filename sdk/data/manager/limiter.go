@@ -3,6 +3,7 @@ package manager
 import (
 	"container/list"
 	"golang.org/x/net/context"
+	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -345,7 +346,7 @@ func (factor *LimitFactor) GetWaitTotalSize() (waitSize uint64) {
 	return
 }
 
-func (limitManager *LimitManager) CalcNeed(limitFactor *LimitFactor, used uint64) (need uint64) {
+func (limitManager *LimitManager) CalcNeedByPow(limitFactor *LimitFactor, used uint64) (need uint64) {
 	if limitFactor.waitList.Len() == 0 {
 		return 0
 	}
@@ -353,40 +354,16 @@ func (limitManager *LimitManager) CalcNeed(limitFactor *LimitFactor, used uint64
 		used += limitFactor.GetWaitTotalSize()
 		if used < 128*util.KB {
 			used = 128 * util.KB
+			return
 		}
-		if used < util.MB {
-			need = 5 * used
-		} else if used < 5*util.MB {
-			need = 2 * used
-		} else if used < 10*util.MB {
-			need = uint64(1.5 * float64(used))
-		} else if used < 50*util.MB {
-			need = uint64(1.2 * float64(used))
-		} else if used < 100*util.MB {
-			need = uint64(1.1 * float64(used))
-		} else if used < 300*util.MB {
-			need = used
-		} else {
-			need = 300 * util.MB
-		}
+		need = uint64(300*util.MB * math.Pow(float64(used) / float64(300*util.MB), 0.8))
 	} else {
 		if used == 0 {
 			used = uint64(limitFactor.waitList.Len())
 		}
-		if used < 10 {
-			need = 3 * used
-		} else if used < 50 {
-			need = uint64(1.5 * float64(used))
-		} else if used < 100 {
-			need = uint64(1.2 * float64(used))
-		} else if used < 1000 {
-			need = uint64(1.1 * float64(used))
-		} else if used < 3000 {
-			need = used
-		} else {
-			need = 3000
-		}
+		need = uint64(300 * math.Pow(float64(used) / float64(300), 0.8))
 	}
+
 	return
 }
 
@@ -445,7 +422,7 @@ func (limitManager *LimitManager) GetFlowInfo() (*proto.ClientReportLimitInfo, b
 
 		factor := &proto.ClientLimitInfo{
 			Used:       reqUsed,
-			Need:       limitManager.CalcNeed(limitFactor, reqUsed),
+			Need:       limitManager.CalcNeedByPow(limitFactor, reqUsed),
 			UsedLimit:  limitFactor.gridList.Back().Value.(*GridElement).limit * girdCntOneSecond,
 			UsedBuffer: limitFactor.gridList.Back().Value.(*GridElement).buffer * girdCntOneSecond,
 		}
