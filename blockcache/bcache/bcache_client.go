@@ -80,11 +80,11 @@ func (bc *BcacheClient) Get(key string, buf []byte, offset uint64, size uint32) 
 		}
 	}()
 	if err != nil {
-		log.LogErrorf("TRACE BCache client Get() FAIL err(%v)", err)
+		log.LogDebugf("TRACE BCache client Get() FAIL err(%v)", err)
 		return 0, err
 	}
 	if response.StatusCode != http.StatusOK {
-		log.LogErrorf("TRACE BCache client Get() FAIL. response(%v)", response)
+		log.LogDebugf("TRACE BCache client Get() FAIL. response(%v)", response)
 		err = fmt.Errorf("bad response(%v)", response.StatusCode)
 		return 0, err
 	}
@@ -92,7 +92,7 @@ func (bc *BcacheClient) Get(key string, buf []byte, offset uint64, size uint32) 
 	n, err := io.ReadFull(response.Body, buf[:size])
 	// result, err := ioutil.ReadAll(response.Body)
 	if err != nil {
-		log.LogErrorf("TRACE BCache client ReadAll FAIL. err(%v)", err)
+		log.LogDebugf("TRACE BCache client ReadAll FAIL. err(%v)", err)
 		return 0, err
 	}
 
@@ -102,7 +102,7 @@ func (bc *BcacheClient) Get(key string, buf []byte, offset uint64, size uint32) 
 		log.LogWarnf("slow request:GET cache key:%v,  consume:%.3f s", key, delay.Seconds())
 	}
 	if n != int(size) {
-		log.LogErrorf("BCache client GET() error,exception size(%v),but readSize(%v)", size, n)
+		log.LogDebugf("BCache client GET() error,exception size(%v),but readSize(%v)", size, n)
 		err = errors.NewErrorf("BCache client GET() error,exception size(%v),but readSize(%v)", size, n)
 		return 0, err
 	}
@@ -130,11 +130,11 @@ func (bc *BcacheClient) Put(key string, buf []byte) error {
 	start := time.Now()
 	response, err := bc.httpc.Do(req)
 	if err != nil {
-		log.LogErrorf("TRACE BCache client Put() FAIL err(%v)", err)
+		log.LogDebugf("TRACE BCache client Put() FAIL err(%v)", err)
 		return err
 	}
 	if response.StatusCode != http.StatusOK {
-		log.LogErrorf("TRACE BCache client Put() FAIL. response(%v)", response)
+		log.LogDebugf("TRACE BCache client Put() FAIL. response(%v)", response)
 		return errors.NewErrorf("Bad response(%v)", response)
 	}
 	delay := time.Since(start)

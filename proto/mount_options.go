@@ -56,6 +56,7 @@ const (
 	CacheAction
 	EbsBlockSize
 	EnableBcache
+	BcacheDir
 	ReadThreads
 	WriteThreads
 	MetaSendTimeout
@@ -133,7 +134,8 @@ func InitMountOptions(opts []MountOption) {
 	opts[EbsServerPath] = MountOption{"ebsServerPath", "Ebs service path", "", ""}
 	opts[CacheAction] = MountOption{"cacheAction", "Cold cache action", "", int64(0)}
 	opts[EbsBlockSize] = MountOption{"ebsBlockSize", "Ebs object size", "", ""}
-	opts[EnableBcache] = MountOption{"enableBcache", "Enble block cache", "", false}
+	opts[EnableBcache] = MountOption{"enableBcache", "Enable block cache", "", false}
+	opts[BcacheDir] = MountOption{"bcacheDir", "block cache dir", "", ""}
 	opts[ReadThreads] = MountOption{"readThreads", "Cold volume read threads", "", int64(10)}
 	opts[WriteThreads] = MountOption{"writeThreads", "Cold volume write threads", "", int64(10)}
 	opts[EnablePosixACL] = MountOption{"enablePosixACL", "enable posix ACL support", "", false}
@@ -277,6 +279,7 @@ type MountOptions struct {
 	CacheThreshold       int
 	EbsBlockSize         int
 	EnableBcache         bool
+	BcacheDir            string
 	ReadThreads          int64
 	WriteThreads         int64
 	EnableSummary        bool

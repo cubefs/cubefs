@@ -100,6 +100,7 @@ type ExtentConfig struct {
 	ReadRate          int64
 	WriteRate         int64
 	BcacheEnable      bool
+	BcacheDir         string
 	MaxStreamerLimit  int64
 	OnAppendExtentKey AppendExtentKeyFunc
 	OnGetExtents      GetExtentsFunc
@@ -127,6 +128,7 @@ type ExtentClient struct {
 	volumeType      int
 	volumeName      string
 	bcacheEnable    bool
+	bcacheDir       string
 	BcacheHealth    bool
 	preload         bool
 	dataWrapper     *wrapper.Wrapper
@@ -227,6 +229,7 @@ retry:
 	client.volumeType = config.VolumeType
 	client.volumeName = config.Volume
 	client.bcacheEnable = config.BcacheEnable
+	client.bcacheDir = config.BcacheDir
 	client.BcacheHealth = true
 	client.preload = config.Preload
 	client.disableMetaCache = config.DisableMetaCache
@@ -272,11 +275,12 @@ func (client *ExtentClient) GetEnablePosixAcl() bool {
 }
 
 // Open request shall grab the lock until request is sent to the request channel
-func (client *ExtentClient) OpenStream(inode uint64) error {
+func (client *ExtentClient) OpenStream(inode uint64, needBCache bool) error {
 	client.streamerLock.Lock()
 	s, ok := client.streamers[inode]
 	if !ok {
 		s = NewStreamer(client, inode)
+		s.needBCache = needBCache
 		client.streamers[inode] = s
 		if !client.disableMetaCache {
 			client.streamerList.PushFront(inode)
@@ -557,22 +561,21 @@ func setRate(lim *rate.Limiter, val int) string {
 	return "unlimited"
 }
 
-// func (client *ExtentClient) Close() error {
-// 	// release streamers
-// 	var inodes []uint64
-// 	client.streamerLock.Lock()
-// 	inodes = make([]uint64, 0, len(client.streamers))
-// 	for inode := range client.streamers {
-// 		inodes = append(inodes, inode)
-// 	}
-// 	client.streamerLock.Unlock()
-// 	for _, inode := range inodes {
-// 		_ = client.EvictStream(inode)
-// 	}
-// 	close(client.stopC)
-// 	client.dataWrapper.Stop()
-// 	return nil
-// }
+func (client *ExtentClient) Close() error {
+	// release streamers
+	var inodes []uint64
+	client.streamerLock.Lock()
+	inodes = make([]uint64, 0, len(client.streamers))
+	for inode := range client.streamers {
+		inodes = append(inodes, inode)
+	}
+	client.streamerLock.Unlock()
+	for _, inode := range inodes {
+		_ = client.EvictStream(inode)
+	}
+	client.dataWrapper.Stop()
+	return nil
+}
 
 func (client *ExtentClient) AllocatePreLoadDataPartition(volName string, count int, capacity, ttl uint64, zones string) (err error) {
 	return client.dataWrapper.AllocatePreLoadDataPartition(volName, count, capacity, ttl, zones)

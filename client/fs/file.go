@@ -17,6 +17,7 @@ package fs
 import (
 	"fmt"
 	"io"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -110,6 +111,28 @@ func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64) fs.Node {
 	return &File{super: s, info: i, parentIno: pino}
 }
 
+//get file parentPath
+func (f *File) getParentPath() string {
+	filepath := ""
+	if f.parentIno == f.super.rootIno {
+		return "/"
+	}
+
+	f.super.fslock.Lock()
+	node, ok := f.super.nodeCache[f.parentIno]
+	f.super.fslock.Unlock()
+	if !ok {
+		log.LogErrorf("Get node cache failed: ino(%v)", f.parentIno)
+		return "unknown" + filepath
+	}
+	parentDir, ok := node.(*Dir)
+	if !ok {
+		log.LogErrorf("Type error: Can not convert node -> *Dir, ino(%v)", f.parentIno)
+		return "unknown" + filepath
+	}
+	return parentDir.getCwd() + filepath
+}
+
 // Attr sets the attributes of a file.
 func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	var err error
@@ -191,7 +214,14 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	log.LogDebugf("TRACE open ino(%v) info(%v)", ino, f.info)
 	start := time.Now()
 
-	f.super.ec.OpenStream(ino)
+	parentPath := f.getParentPath()
+	var needBCache bool
+	if strings.Contains(parentPath, f.super.bcacheDir) {
+		needBCache = true
+	}
+	log.LogDebugf("TRACE open ino(%v) parentPath(%v) f.super.bcacheDir(%v) needBCache(%v)", ino, parentPath, f.super.bcacheDir, needBCache)
+
+	f.super.ec.OpenStream(ino, needBCache)
 
 	f.super.ec.RefreshExtentsCache(ino)
 
