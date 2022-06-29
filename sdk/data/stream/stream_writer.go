@@ -312,7 +312,7 @@ func (s *Streamer) write(data []byte, offset, size, flags int) (total int, err e
 		if req.ExtentKey != nil {
 			writeSize, err = s.doOverwrite(req, direct)
 			if s.client.bcacheEnable {
-				cacheKey := util.GenerateKey(s.client.volumeName, s.inode, uint64(req.FileOffset))
+				cacheKey := util.GenerateRepVolKey(s.client.volumeName, s.inode, req.ExtentKey.ExtentId, uint64(req.FileOffset))
 				go s.client.evictBcache(cacheKey)
 			}
 		} else {

@@ -86,6 +86,10 @@ func GenerateKey(volName string, ino uint64, offset uint64) string {
 	return fmt.Sprintf("%v_%v_%016x", volName, ino, offset)
 }
 
+func GenerateRepVolKey(volName string, ino uint64, extentId uint64, offset uint64) string {
+	return fmt.Sprintf("%v_%v_%v_%016x", volName, ino, extentId, offset)
+}
+
 func OneDaySec() int64 {
 	return 60 * 60 * 24
 }

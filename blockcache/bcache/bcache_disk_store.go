@@ -18,6 +18,7 @@ package bcache
 import (
 	"bufio"
 	"bytes"
+	"container/list"
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
@@ -89,7 +90,8 @@ func newBcacheManager(conf *bcacheConfig) BcacheManager {
 
 	bm := &bcacheManager{
 		bstore:     make([]*DiskStore, len(cacheDirs)),
-		bcacheKeys: make(map[string]cacheItem, 1024),
+		bcacheKeys: make(map[string]*list.Element),
+		lrulist:    list.New(),
 		blockSize:  conf.BlockSize,
 		pending:    make(chan waitFlush, 1024),
 	}
@@ -109,13 +111,12 @@ func newBcacheManager(conf *bcacheConfig) BcacheManager {
 }
 
 type cacheItem struct {
-	size  uint32
-	atime uint32
-	md5   string
+	key  string
+	size uint32
 }
 type keyPair struct {
 	key string
-	it  cacheItem
+	it  *cacheItem
 }
 
 //key vid_inode_offset
@@ -127,7 +128,8 @@ type waitFlush struct {
 type bcacheManager struct {
 	sync.RWMutex
 	wg         sync.WaitGroup
-	bcacheKeys map[string]cacheItem
+	bcacheKeys map[string]*list.Element
+	lrulist    *list.List
 	bstore     []*DiskStore
 	blockSize  uint32
 	freeRatio  float32
@@ -158,18 +160,21 @@ func (bm *bcacheManager) cacheDirect(key string, data []byte) {
 	diskKv := bm.selectDiskKv(key)
 	if diskKv.flushKey(key, data) == nil {
 		bm.Lock()
-		bm.bcacheKeys[key] = cacheItem{
-			size:  uint32(len(data)),
-			atime: uint32(time.Now().Unix()),
+		item := &cacheItem{
+			key:  key,
+			size: uint32(len(data)),
 		}
+		element := bm.lrulist.PushBack(item)
+		bm.bcacheKeys[key] = element
 		bm.Unlock()
 	}
 }
 
 func (bm *bcacheManager) read(key string, offset uint64, len uint32) (io.ReadCloser, error) {
 	bm.Lock()
-	it, ok := bm.bcacheKeys[key]
+	element, ok := bm.bcacheKeys[key]
 	bm.Unlock()
+	item := element.Value.(*cacheItem)
 	if ok {
 		f, err := bm.load(key)
 		if os.IsNotExist(err) {
@@ -177,7 +182,7 @@ func (bm *bcacheManager) read(key string, offset uint64, len uint32) (io.ReadClo
 			delete(bm.bcacheKeys, key)
 			bm.Unlock()
 			d := bm.selectDiskKv(key)
-			atomic.AddInt64(&d.usedSize, -int64(it.size))
+			atomic.AddInt64(&d.usedSize, -int64(item.size))
 			atomic.AddInt64(&d.usedCount, -1)
 			return nil, os.ErrNotExist
 		}
@@ -185,7 +190,7 @@ func (bm *bcacheManager) read(key string, offset uint64, len uint32) (io.ReadClo
 			return nil, err
 		}
 		defer f.Close()
-		size := it.size
+		size := item.size
 		log.LogDebugf("read. offset =%v,len=%v size=%v", offset, len, size)
 		if uint32(offset)+len > size {
 			len = size - uint32(offset)
@@ -212,8 +217,8 @@ func (bm *bcacheManager) load(key string) (ReadCloser, error) {
 	}
 	bm.Lock()
 	defer bm.Unlock()
-	if it, ok := bm.bcacheKeys[key]; ok {
-		it.atime = uint32(time.Now().Unix())
+	if element, ok := bm.bcacheKeys[key]; ok {
+		bm.lrulist.MoveToBack(element)
 	}
 	return f, err
 }
@@ -226,9 +231,11 @@ func (bm *bcacheManager) erase(key string) {
 	if err == nil {
 		bm.Lock()
 		defer bm.Unlock()
+		if element, ok := bm.bcacheKeys[key]; ok {
+			bm.lrulist.Remove(element)
+		}
 		delete(bm.bcacheKeys, key)
 	}
-
 }
 
 func (bm *bcacheManager) stats() (int64, int64) {
@@ -255,11 +262,11 @@ func (bm *bcacheManager) spaceManager() {
 	for {
 		select {
 		case <-ticker.C:
-			for index, store := range bm.bstore {
+			for _, store := range bm.bstore {
 				useRatio, files := store.diskUsageRatio()
 				log.LogDebugf("useRation(%v), files(%v)", useRatio, files)
 				if 1-useRatio < store.freeLimit || files > int64(store.limit) {
-					bm.freeSpace(index, store, 1-useRatio, files)
+					bm.freeSpace(store, 1-useRatio, files)
 				}
 			}
 		case <-tmpTicker.C:
@@ -272,10 +279,48 @@ func (bm *bcacheManager) spaceManager() {
 }
 
 //lru cache
-func (bm *bcacheManager) freeSpace(index int, store *DiskStore, free float32, files int64) {
+//func (bm *bcacheManager) freeSpace(index int, store *DiskStore, free float32, files int64) {
+//	var decreaseSpace int64
+//	var decreaseCnt int
+//	storeCnt := uint32(len(bm.bstore))
+//	bm.Lock()
+//	defer bm.Unlock()
+//	if free < store.freeLimit {
+//		decreaseSpace = int64((store.freeLimit - free) * (float32(store.capacity)))
+//	}
+//	if files > int64(store.limit) {
+//		decreaseCnt = int(files - int64(store.limit))
+//	}
+//	var lastKey string
+//	var lastItem cacheItem
+//	var cnt int
+//	for key, value := range bm.bcacheKeys {
+//		if int(hashKey(key)%storeCnt) == index {
+//			if cnt == 0 || lastItem.atime > value.atime {
+//				lastKey = key
+//				lastItem = value
+//			}
+//			cnt++
+//			if cnt > 1 {
+//				store.remove(lastKey)
+//				delete(bm.bcacheKeys, lastKey)
+//				decreaseSpace -= int64(value.size)
+//				decreaseCnt--
+//				cnt = 0
+//				log.LogDebugf("remove %s from cache, age: %d", lastKey, lastItem.atime)
+//				if decreaseCnt <= 0 && decreaseSpace <= 0 {
+//					break
+//				}
+//			}
+//		}
+//	}
+//
+//}
+
+//lru
+func (bm *bcacheManager) freeSpace(store *DiskStore, free float32, files int64) {
 	var decreaseSpace int64
 	var decreaseCnt int
-	storeCnt := uint32(len(bm.bstore))
 	bm.Lock()
 	defer bm.Unlock()
 	if free < store.freeLimit {
@@ -284,30 +329,33 @@ func (bm *bcacheManager) freeSpace(index int, store *DiskStore, free float32, fi
 	if files > int64(store.limit) {
 		decreaseCnt = int(files - int64(store.limit))
 	}
-	var lastKey string
-	var lastItem cacheItem
-	var cnt int
-	for key, value := range bm.bcacheKeys {
-		if int(hashKey(key)%storeCnt) == index {
-			if cnt == 0 || lastItem.atime > value.atime {
-				lastKey = key
-				lastItem = value
-			}
-			cnt++
-			if cnt > 1 {
-				store.remove(lastKey)
-				delete(bm.bcacheKeys, lastKey)
-				decreaseSpace -= int64(value.size)
-				decreaseCnt--
-				cnt = 0
-				log.LogDebugf("remove %s from cache, age: %d", lastKey, lastItem.atime)
-				if decreaseCnt <= 0 && decreaseSpace <= 0 {
-					break
-				}
-			}
-		}
-	}
 
+	cnt := 0
+	for {
+		if decreaseCnt <= 0 && decreaseSpace <= 0 {
+			break
+		}
+		//avoid dead loop
+		if cnt > 10000 {
+			break
+		}
+
+		element := bm.lrulist.Front()
+		if element == nil {
+			return
+		}
+		item := element.Value.(*cacheItem)
+
+		if err := store.remove(item.key); err == nil {
+			bm.lrulist.Remove(element)
+			delete(bm.bcacheKeys, item.key)
+			decreaseSpace -= int64(item.size)
+			decreaseCnt--
+			cnt++
+		}
+		log.LogDebugf("remove %v from cache", item.key)
+
+	}
 }
 
 func (bm *bcacheManager) reBuildCacheKeys(dir string, store *DiskStore) {
@@ -323,12 +371,13 @@ func (bm *bcacheManager) reBuildCacheKeys(dir string, store *DiskStore) {
 		close(c)
 	}()
 
-	for key := range c {
+	for value := range c {
 		bm.Lock()
-		bm.bcacheKeys[key.key] = key.it
+		element := bm.lrulist.PushBack(value.it)
+		bm.bcacheKeys[value.key] = element
 		bm.Unlock()
-		log.LogDebugf("updateStat(%v)", key)
-		store.updateStat(key.it.size)
+		log.LogDebugf("updateStat(%v)", value.it.size)
+		store.updateStat(value.it.size)
 	}
 	//defer bm.wg.Done()
 }
@@ -349,12 +398,11 @@ func (bm *bcacheManager) walker(c chan keyPair, prefix string, initial bool) fil
 		}
 		_, key := filepath.Split(path)
 		size := uint32(info.Size())
-		atime := AccessTime(info)
 		pair := keyPair{
 			key: key,
-			it: cacheItem{
-				size:  size,
-				atime: uint32(atime),
+			it: &cacheItem{
+				key:  key,
+				size: size,
 			},
 		}
 		select {
@@ -371,36 +419,17 @@ func (bm *bcacheManager) flush() {
 		log.LogDebugf("flush data,key(%v), dir(%v)", pending.Key, diskKv.dir)
 		if diskKv.flushKey(pending.Key, pending.Data) == nil {
 			bm.Lock()
-			bm.bcacheKeys[pending.Key] = cacheItem{
-				size:  uint32(len(pending.Data)),
-				atime: uint32(time.Now().Unix()),
+			item := &cacheItem{
+				key:  pending.Key,
+				size: uint32(len(pending.Data)),
 			}
+			element := bm.lrulist.PushBack(item)
+			bm.bcacheKeys[pending.Key] = element
 			bm.Unlock()
 		}
 	}
 }
 
-func (bm *bcacheManager) scrub() {
-	for {
-		tmpMap := make(map[string]cacheItem)
-		bm.RLock()
-		for key, value := range bm.bcacheKeys {
-			tmpMap[key] = value
-		}
-		bm.RUnlock()
-		for key, value := range tmpMap {
-			diskKv := bm.selectDiskKv(key)
-			err := diskKv.scrub(key, value.md5)
-			if err.Error() == "scrub error" {
-				log.LogErrorf("key:%v is inconsistent ,md5 check error.", key)
-			}
-			bm.erase(key)
-			time.Sleep(time.Second)
-		}
-
-		time.Sleep(2 * time.Hour)
-	}
-}
 func hashKey(key string) uint32 {
 	return crc32.ChecksumIEEE([]byte(key))
 }
