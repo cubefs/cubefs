@@ -142,7 +142,21 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		s.fsyncOnClose = false
 
 	}
+
+	if !strings.HasSuffix(opt.MountPoint, "/") {
+		opt.MountPoint = opt.MountPoint + "/"
+	}
+	if !strings.HasSuffix(opt.SubDir, "/") {
+		opt.SubDir = opt.SubDir + "/"
+	}
+	if opt.BcacheDir != "" && !strings.HasSuffix(opt.BcacheDir, "/") {
+		opt.BcacheDir = opt.BcacheDir + "/"
+	}
+
 	s.bcacheDir = strings.ReplaceAll(opt.BcacheDir, opt.MountPoint, opt.SubDir)
+	if s.bcacheDir != "" && !strings.HasSuffix(s.bcacheDir, "/") {
+		s.bcacheDir = s.bcacheDir + "/"
+	}
 	s.volType = opt.VolType
 	s.ebsEndpoint = opt.EbsEndpoint
 	s.CacheAction = opt.CacheAction

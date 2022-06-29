@@ -17,6 +17,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/cubefs/cubefs/util/stat"
 	"golang.org/x/net/context"
 	syslog "log"
 	"net"
@@ -197,6 +198,17 @@ func main() {
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
+	//stat log
+	_, err = stat.NewStatistic(logDir, "blockcache", int64(stat.DefaultStatLogSize),
+		stat.DefaultTimeOutUs, true)
+	if err != nil {
+		err = errors.NewErrorf("Init stat log fail: %v\n", err)
+		fmt.Println(err)
+		daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+	stat.ClearStat()
+
 	defer func() {
 		outputFile.Sync()
 		outputFile.Close()
