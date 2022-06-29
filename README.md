@@ -42,18 +42,18 @@ An advantage of doing so is to separate storage from compute - one can scale up 
 
 Some key features of CubeFS include:
 
-- Scale-out metadata management
-
-- Strong replication consistency
-
-- Specific performance optimizations for large/small files and sequential/random writes
-
-- Multi-tenancy
-
-- POSIX-compatible and mountable
-
-- S3-compatible object storage interface
-
+- Multiple Access Protocol Support  
+  Converge posix filesystem interfaces、S3-compatible interfaces and hdfs interfaces
+- Metadata Highly Scalable  
+  Elasticity, scalability and strong consistency of metadata
+- High Performance  
+  Specific performance optimizations for large/small files and sequential/random writes
+- Multi-tenancy  
+  Share the whole storage and resource utilization ratio
+- Hybrid Cloud Acceleration  
+  Accelerates access and improves performance by localizing remote data and metadata storage
+- Online Erasure Coding Subsystem  
+  Provide high reliability, high availability, low cost erasure coding storage system
 
 We are committed to making CubeFS better and more mature. Please stay tuned. 
 
