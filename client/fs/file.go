@@ -206,6 +206,8 @@ func (f *File) Forget() {
 // Open handles the open request.
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (handle fs.Handle, err error) {
 	bgTime := stat.BeginStat()
+	var needBCache bool
+
 	defer func() {
 		stat.EndStat("Open", err, bgTime, 1)
 	}()
@@ -215,8 +217,10 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	start := time.Now()
 
 	parentPath := f.getParentPath()
-	var needBCache bool
-	if strings.Contains(parentPath, f.super.bcacheDir) {
+	if parentPath != "" && !strings.HasSuffix(parentPath, "/") {
+		parentPath = parentPath + "/"
+	}
+	if f.super.bcacheDir != "" && strings.HasPrefix(parentPath, f.super.bcacheDir) {
 		needBCache = true
 	}
 	log.LogDebugf("TRACE open ino(%v) parentPath(%v) f.super.bcacheDir(%v) needBCache(%v)", ino, parentPath, f.super.bcacheDir, needBCache)

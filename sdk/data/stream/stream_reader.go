@@ -190,7 +190,7 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 
 			// todo :  optimization
 			var needCache = false
-			if _, ok := s.inflightL1cache.Load(cacheKey); !ok && s.client.bcacheEnable {
+			if _, ok := s.inflightL1cache.Load(cacheKey); !ok && s.client.bcacheEnable && s.needBCache {
 				s.inflightL1cache.Store(cacheKey, true)
 				needCache = true
 			}

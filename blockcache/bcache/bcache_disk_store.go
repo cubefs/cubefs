@@ -22,6 +22,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
+	"github.com/cubefs/cubefs/util/stat"
 	"hash/crc32"
 	"io"
 	"io/ioutil"
@@ -143,6 +144,11 @@ func encryptXOR(data []byte) {
 }
 
 func (bm *bcacheManager) cache(key string, data []byte, direct bool) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("Cache:Write", nil, bgTime, 1)
+		stat.StatBandWidth("Cache", uint32(len(data)))
+	}()
 	log.LogDebugf("TRACE cache. key(%v)  len(%v) direct(%v)", key, len(data), direct)
 	if direct {
 		bm.cacheDirect(key, data)
@@ -171,11 +177,22 @@ func (bm *bcacheManager) cacheDirect(key string, data []byte) {
 }
 
 func (bm *bcacheManager) read(key string, offset uint64, len uint32) (io.ReadCloser, error) {
+	var err error
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("GetCache:Read", err, bgTime, 1)
+		if err == nil {
+			stat.StatBandWidth("GetCache:Read", len)
+		}
+	}()
+	metaBgTime := stat.BeginStat()
 	bm.Lock()
 	element, ok := bm.bcacheKeys[key]
 	bm.Unlock()
-	item := element.Value.(*cacheItem)
+	stat.EndStat("GetCache:Read:GetMeta", nil, metaBgTime, 1)
+	log.LogDebugf("Trace read. ok =%v", ok)
 	if ok {
+		item := element.Value.(*cacheItem)
 		f, err := bm.load(key)
 		if os.IsNotExist(err) {
 			bm.Lock()
@@ -195,16 +212,21 @@ func (bm *bcacheManager) read(key string, offset uint64, len uint32) (io.ReadClo
 		if uint32(offset)+len > size {
 			len = size - uint32(offset)
 		}
+		dataBgTime := stat.BeginStat()
 		buf := make([]byte, len)
-		if n, err := f.ReadAt(buf, int64(offset)); err != nil {
+		n, err := f.ReadAt(buf, int64(offset))
+		stat.EndStat("GetCache:Read:ReadData", err, dataBgTime, 1)
+		if err != nil {
 			return nil, err
 		} else {
 			//decrypt
 			encryptXOR(buf[:n])
 			return ioutil.NopCloser(bytes.NewBuffer(buf[:n])), nil
 		}
+	} else {
+		err = os.ErrNotExist
 	}
-	return nil, os.ErrNotExist
+	return nil, err
 }
 
 func (bm *bcacheManager) load(key string) (ReadCloser, error) {
@@ -271,6 +293,8 @@ func (bm *bcacheManager) spaceManager() {
 			}
 		case <-tmpTicker.C:
 			for _, store := range bm.bstore {
+				useRatio, files := store.diskUsageRatio()
+				log.LogInfof("useRation(%v), files(%v)", useRatio, files)
 				bm.deleteTmpFile(store)
 			}
 		}
@@ -336,7 +360,7 @@ func (bm *bcacheManager) freeSpace(store *DiskStore, free float32, files int64) 
 			break
 		}
 		//avoid dead loop
-		if cnt > 10000 {
+		if cnt > 100000 {
 			break
 		}
 
@@ -484,6 +508,11 @@ func (d *DiskStore) checkBuildCacheDir(dir string) {
 }
 
 func (d *DiskStore) flushKey(key string, data []byte) error {
+	var err error
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("Cache:Write:FlushData", err, bgTime, 1)
+	}()
 	cachePath := d.buildCachePath(key, d.dir)
 	log.LogDebugf("TRACE BCacheService flushKey Enter. key(%v) cachePath(%v)", key, cachePath)
 	d.checkBuildCacheDir(filepath.Dir(cachePath))

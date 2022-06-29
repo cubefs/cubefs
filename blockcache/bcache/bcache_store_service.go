@@ -19,6 +19,7 @@ import (
 	"encoding/hex"
 	"encoding/xml"
 	"fmt"
+	"github.com/cubefs/cubefs/util/stat"
 	"io"
 	"net"
 	"net/http"
@@ -189,7 +190,7 @@ func (s *bcacheStore) startUnixHttpServer() {
 func (s *bcacheStore) cacheBlock(w http.ResponseWriter, r *http.Request) {
 	var err error
 	var errorCode *ErrorCode
-
+	bgTime := stat.BeginStat()
 	defer func() {
 		if errorCode != nil {
 			errorCode.ServeResponse(w, r)
@@ -197,6 +198,7 @@ func (s *bcacheStore) cacheBlock(w http.ResponseWriter, r *http.Request) {
 		if r != nil && r.Body != nil {
 			r.Body.Close()
 		}
+		stat.EndStat("Cache", err, bgTime, 1)
 	}()
 
 	key := r.URL.Query().Get(CacheKey)
@@ -259,44 +261,57 @@ func (s *bcacheStore) cacheBlock(w http.ResponseWriter, r *http.Request) {
 
 func (s *bcacheStore) loadBlock(w http.ResponseWriter, r *http.Request) {
 	var errorCode *ErrorCode
+	var err error
+	var length uint64
+	bgTime := stat.BeginStat()
 	defer func() {
 		if errorCode != nil {
 			errorCode.ServeResponse(w, r)
 		}
+		stat.EndStat("GetCache", err, bgTime, 1)
 	}()
 	parameter := r.URL.Query()
 	key := parameter.Get(CacheKey)
 	offsetStr := parameter.Get(OffSet)
 	lenStr := parameter.Get(Len)
-
 	if !keyRegexp.MatchString(key) {
 		errorCode = InvalidKey
+		err = errors.New(InvalidKey.ErrorCode)
 		return
 	}
 
 	if key == "" || offsetStr == "" || lenStr == "" {
 		errorCode = InvalidArgument
+		err = errors.New(InvalidArgument.ErrorCode)
 		return
 	}
+
 	offset, err := strconv.ParseUint(offsetStr, 10, 64)
 	if err != nil {
 		errorCode = InvalidNumber
+		err = errors.New(InvalidNumber.ErrorCode)
 		return
 	}
-	length, err := strconv.ParseUint(lenStr, 10, 64)
+
+	length, err = strconv.ParseUint(lenStr, 10, 64)
 	if err != nil {
 		errorCode = InvalidNumber
+		err = errors.New(InvalidNumber.ErrorCode)
 		return
 	}
+
 	in, err := s.bcache.read(key, offset, uint32(length))
 	if err != nil {
 		if os.IsNotExist(err) {
 			errorCode = NoSuchCacheKey
+			err = errors.New(NoSuchCacheKey.ErrorCode)
 		} else {
 			errorCode = InternalError
+			err = errors.New(InternalError.ErrorCode)
 		}
 		return
 	}
+
 	w.Header()["Content-Type"] = []string{"application/octet-stream"}
 	defer in.Close()
 	io.Copy(w, in)
@@ -334,20 +349,25 @@ func (s *bcacheStore) parserConf(cfg *config.Config) (*bcacheConfig, error) {
 
 func (s *bcacheStore) evictBlock(w http.ResponseWriter, r *http.Request) {
 	var errorCode *ErrorCode
+	var err error
+	bgTime := stat.BeginStat()
 	defer func() {
 		if errorCode != nil {
 			errorCode.ServeResponse(w, r)
 		}
+		stat.EndStat("EvictCache", err, bgTime, 1)
 	}()
 	parameter := r.URL.Query()
 	key := parameter.Get(CacheKey)
 	if !keyRegexp.MatchString(key) {
 		errorCode = InvalidKey
+		err = errors.New(InvalidKey.ErrorCode)
 		return
 	}
 
 	if key == "" {
 		errorCode = InvalidArgument
+		err = errors.New(InvalidArgument.ErrorCode)
 		return
 	}
 	s.bcache.erase(key)
