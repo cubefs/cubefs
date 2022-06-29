@@ -470,7 +470,7 @@ func (client *ExtentClient) ReadExtent(inode uint64, ek *proto.ExtentKey, data [
 	}
 
 	var needCache = false
-	cacheKey := util.GenerateKey(s.client.volumeName, s.inode, ek.FileOffset)
+	cacheKey := util.GenerateRepVolKey(s.client.volumeName, s.inode, ek.ExtentId, ek.FileOffset)
 	if _, ok := client.inflightL1cache.Load(cacheKey); !ok && client.shouldBcache() {
 		client.inflightL1cache.Store(cacheKey, true)
 		needCache = true
