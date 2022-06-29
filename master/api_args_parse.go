@@ -541,6 +541,7 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	if followerExist && followerRead == false && proto.IsHot(req.volType) && req.dpReplicaNum == 1 {
 		return fmt.Errorf("vol with one replia should enable followerRead")
 	}
+	req.followerRead = followerRead
 	if proto.IsHot(req.volType) && req.dpReplicaNum == 1 {
 		req.followerRead = true
 	}
