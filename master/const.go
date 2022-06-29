@@ -47,7 +47,7 @@ const (
 	followerReadKey             = "followerRead"
 	nearReadKey                 = "nearRead"
 	forceROWKey                 = "forceROW"
-	extentExpirationKey			= "ekExpireSec"
+	extentExpirationKey         = "ekExpireSec"
 	authenticateKey             = "authenticate"
 	akKey                       = "ak"
 	keywordsKey                 = "keywords"
@@ -68,7 +68,7 @@ const (
 	dataNodeReqVolOpPartRateKey = "dataNodeReqVolOpPartRate"
 	metaNodeReqRateKey          = "metaNodeReqRate"
 	metaNodeReqOpRateKey        = "metaNodeReqOpRate"
-	metaNodeReadDirLimitKey		= "metaNodeReadDirLimit"
+	metaNodeReadDirLimitKey     = "metaNodeReadDirLimit"
 	clientReadVolRateKey        = "clientReadVolRate"
 	clientWriteVolRateKey       = "clientWriteVolRate"
 	clientVolOpRateKey          = "clientVolOpRate"
@@ -144,7 +144,7 @@ const (
 )
 
 const (
-	defaultInitMetaPartitionCount                      = 5
+	defaultInitMetaPartitionCount                      = 3
 	defaultMaxInitMetaPartitionCount                   = 100
 	defaultMaxMetaPartitionInodeID              uint64 = 1<<63 - 1
 	defaultMetaPartitionInodeIDStep             uint64 = 1 << 24
@@ -172,7 +172,7 @@ const (
 	defaultLearnerPromThreshold                        = 90
 	minRateLimit                                       = 100
 	minPartRateLimit                                   = 1
-	minReadDirLimitNum								   = 500000
+	minReadDirLimitNum                                 = 500000
 	diskErrDataPartitionOfflineBatchCount              = 200
 	defaultHighUsedRatioDataNodesThreshold             = 0.85
 	defaultHighUsedRatioMetaNodesThreshold             = 0.85
