@@ -1101,7 +1101,9 @@ func (qosManager *QosCtrlManager) updateServerLimitByClientsInfo(factorType uint
 		lastLimitRitio := serverLimit.LimitRate
 		// master assigned limit and buffer not be used as expected,we need adjust the gap
 		if serverLimit.CliUsed < serverLimit.Total {
-			serverLimit.LastMagnify += uint64(float64(serverLimit.Total-serverLimit.CliUsed) * 0.1)
+			if serverLimit.LimitRate > -10.0 && serverLimit.LastMagnify < serverLimit.Total * 10 {
+				serverLimit.LastMagnify += uint64(float64(serverLimit.Total-serverLimit.CliUsed) * 0.1)
+			}
 		} else {
 			if serverLimit.LastMagnify > 0 {
 				var magnify uint64
