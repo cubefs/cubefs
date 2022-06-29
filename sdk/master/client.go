@@ -51,7 +51,7 @@ type MasterClient struct {
 	sync.RWMutex
 	masters          []string
 	useSSL           bool
-	timeout			 time.Duration
+	timeout          time.Duration
 	leaderAddr       string
 	nodeAddr         string
 	ClientType       ClientType
@@ -114,9 +114,9 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			host = nodes[i]
 		}
 		var (
-			resp 	*http.Response
-			timeout	bool
-			schema 	string
+			resp    *http.Response
+			timeout bool
+			schema  string
 		)
 		if c.useSSL {
 			schema = "https"
@@ -157,7 +157,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			if requestAddr != host {
 				c.setLeader(host)
 			}
-			if proto.IsDbBack {
+			if proto.IsDbBack && r.path != proto.AdminSetNodeInfo && r.path != proto.AdminGetLimitInfo {
 				return repsData, nil
 			}
 			var body = &struct {
@@ -189,6 +189,9 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 
 			return []byte(body.Data), nil
 		default:
+			if proto.IsDbBack && stateCode == http.StatusBadRequest {
+				return nil, fmt.Errorf(string(repsData))
+			}
 			log.LogWarnf("serveRequest: unknown status: host(%v) uri(%v) status(%v) body(%s).",
 				resp.Request.URL.String(), host, stateCode, strings.Replace(string(repsData), "\n", "", -1))
 			continue
