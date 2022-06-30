@@ -57,15 +57,20 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				continue
 			}
 
-			vol, err := c.getVol(partition.VolName)
+			_, err = c.getVol(partition.VolName)
 			if err != nil {
 				Warn(c.Name, fmt.Sprintf("checkDiskRecoveryProgress clusterID[%v],partitionID[%v] vol(%s) is not exist",
 					c.Name, partitionID, partition.VolName))
 				continue
 			}
-
-			if len(partition.Replicas) == 0 || len(partition.Replicas) < int(vol.dpReplicaNum) {
+			log.LogInfof("action[checkDiskRecoveryProgress] dp %v isSpec %v replics %v conf replics num %v",
+				partition.PartitionID, partition.isSpecialReplicaCnt(), len(partition.Replicas), int(partition.ReplicaNum))
+			if len(partition.Replicas) == 0 ||
+				(!partition.isSpecialReplicaCnt() && len(partition.Replicas) < int(partition.ReplicaNum)) ||
+				(partition.isSpecialReplicaCnt() && len(partition.Replicas) > int(partition.ReplicaNum)) {
 				newBadDpIds = append(newBadDpIds, partitionID)
+				log.LogInfof("action[checkDiskRecoveryProgress] dp %v newBadDpIds [%v] replics %v conf replics num %v",
+					partition.PartitionID, newBadDpIds, len(partition.Replicas), int(partition.ReplicaNum))
 				continue
 			}
 

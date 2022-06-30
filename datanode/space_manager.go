@@ -301,6 +301,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		ClusterID:     manager.clusterID,
 		PartitionSize: request.PartitionSize,
 		PartitionType: int(request.PartitionTyp),
+		ReplicaNum:    request.ReplicaNum,
 	}
 	dp = manager.partitions[dpCfg.PartitionID]
 	if dp != nil {

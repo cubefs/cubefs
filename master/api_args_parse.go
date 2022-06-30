@@ -356,6 +356,26 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	return
 }
 
+func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authenticate bool, err error) {
+	if followerReadStr := r.FormValue(followerReadKey); followerReadStr != "" {
+		if followerRead, err = strconv.ParseBool(followerReadStr); err != nil {
+			err = unmatchedKey(followerReadKey)
+			return
+		}
+	} else {
+		followerRead = vol.FollowerRead
+	}
+	if authenticateStr := r.FormValue(authenticateKey); authenticateStr != "" {
+		if authenticate, err = strconv.ParseBool(authenticateStr); err != nil {
+			err = unmatchedKey(authenticateKey)
+			return
+		}
+	} else {
+		authenticate = vol.authenticate
+	}
+	return
+}
+
 func parseRequestToSetVolCapacity(r *http.Request) (name, authKey string, capacity int, err error) {
 	if err = r.ParseForm(); err != nil {
 		return

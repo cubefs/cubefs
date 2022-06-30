@@ -1,12 +1,11 @@
 # CubeFS
 
-[![CNCF Status](https://img.shields.io/badge/cncf%20status-sandbox-blue.svg)](https://www.cncf.io/sandbox-projects)
+[![CNCF Status](https://img.shields.io/badge/cncf%20status-incubating-blue.svg)](https://www.cncf.io/projects)
 [![Build Status](https://github.com/cubefs/cubefs/actions/workflows/ci.yml/badge.svg)](https://github.com/cubefs/cubefs/actions/workflows/ci.yml)
 [![LICENSE](https://img.shields.io/github/license/cubefs/cubefs.svg)](https://github.com/cubefs/cubefs/blob/master/LICENSE)
 [![Language](https://img.shields.io/badge/Language-Go-blue.svg)](https://golang.org/)
 [![Go Report Card](https://goreportcard.com/badge/github.com/cubefs/cubefs)](https://goreportcard.com/report/github.com/cubefs/cubefs)
 [![Docs](https://readthedocs.org/projects/cubefs/badge/?version=latest)](https://cubefs.readthedocs.io/en/latest/?badge=latest)
-[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs?ref=badge_shield)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/2761/badge)](https://bestpractices.coreinfrastructure.org/projects/2761)
 
 |<img src="https://user-images.githubusercontent.com/5708406/91202310-31eaab80-e734-11ea-84fc-c1b1882ae71c.png" height="24"/>&nbsp;Community Meeting|
@@ -38,25 +37,25 @@ Please use [releases](https://github.com/cubefs/cubefs/releases) instead of the 
 
 ## Overview
 
-CubeFS (储宝文件系统 in Chinese) is a cloud-native storage platform that provides both POSIX-compliant and S3-compatible interfaces. It is hosted by the [Cloud Native Computing Foundation](https://cncf.io) (CNCF) as a [sandbox](https://www.cncf.io/sandbox-projects/) project.
+CubeFS (储宝文件系统 in Chinese) is a cloud-native storage platform that provides both POSIX-compliant and S3-compatible interfaces. It is hosted by the [Cloud Native Computing Foundation](https://cncf.io) (CNCF) as a [incubating](https://www.cncf.io/projects/) project.
 
 CubeFS has been commonly used as the underlying storage infrastructure for online applications, database or data processing services and machine learning jobs orchestrated by Kubernetes. 
 An advantage of doing so is to separate storage from compute - one can scale up or down based on the workload and independent of the other, providing total flexibility in matching resources to the actual storage and compute capacity required at any given time.
 
 Some key features of CubeFS include:
 
-- Scale-out metadata management
-
-- Strong replication consistency
-
-- Specific performance optimizations for large/small files and sequential/random writes
-
-- Multi-tenancy
-
-- POSIX-compatible and mountable
-
-- S3-compatible object storage interface
-
+- Multiple Access Protocol Support  
+  Converge posix filesystem interfaces、S3-compatible interfaces and hdfs interfaces
+- Metadata Highly Scalable  
+  Elasticity, scalability and strong consistency of metadata
+- High Performance  
+  Specific performance optimizations for large/small files and sequential/random writes
+- Multi-tenancy  
+  Share the whole storage and resource utilization ratio
+- Hybrid Cloud Acceleration  
+  Accelerates access and improves performance by localizing remote data and metadata storage
+- Online Erasure Coding Subsystem  
+  Provide high reliability, high availability, low cost erasure coding storage system
 
 We are committed to making CubeFS better and more mature. Please stay tuned. 
 
@@ -328,4 +327,4 @@ For a list of users and success stories see [ADOPTERS.md](ADOPTERS.md).
 CubeFS is licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).
 For detail see [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
-[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fchubaofs%2Fcfs?ref=badge_large)
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fcubefs%2Fcfs.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fcubefs%2Fcfs?ref=badge_large)

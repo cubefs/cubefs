@@ -1,7 +1,7 @@
 ## Release v2.5.0 - 2022/01/06
 
 ### **UPGRAGDE NOTICE**
-If your ChubaoFS version is v2.3.x or before, please refer to the UPGRADE NOTICE in v2.4.0 for upgrading steps. And also please make sure that your fuse client or objectnode version is equal to or older than the servers, i.e. master, metanode and datanode. In another word, newer versioned client can not be used in a cluster with older versioned servers.
+If your CubeFS version is v2.3.x or before, please refer to the UPGRADE NOTICE in v2.4.0 for upgrading steps. And also please make sure that your fuse client or objectnode version is equal to or older than the servers, i.e. master, metanode and datanode. In another word, newer versioned client can not be used in a cluster with older versioned servers.
 
 ### **Main Feature**
 * `fuse client`:support auto push data to push gateway
@@ -159,7 +159,7 @@ The parent directory stores the files, directories and total file size of the cu
 
 ### _**UPGRAGDE NOTICE**_
 
-If your ChubaoFS version is v2.3.x or before, please refer to the UPGRADE NOTICE in v2.4.0 for upgrading steps. And also please make sure that your fuse client or objectnode version is equal to or older than the servers, i.e. master, metanode and datanode. In another word, newer versioned client can not be used in a cluster with older versioned servers.
+If your CubeFS version is v2.3.x or before, please refer to the UPGRADE NOTICE in v2.4.0 for upgrading steps. And also please make sure that your fuse client or objectnode version is equal to or older than the servers, i.e. master, metanode and datanode. In another word, newer versioned client can not be used in a cluster with older versioned servers.
 
 ### Feature
 
@@ -182,7 +182,7 @@ If your ChubaoFS version is v2.3.x or before, please refer to the UPGRADE NOTICE
 
 ### _**UPGRAGDE NOTICE**_
 
-If your ChuBaoFS version is v2.3.x or before, and need to upgrade to v2.4.x , please follow the following upgrade steps:
+If your CubeFS version is v2.3.x or before, and need to upgrade to v2.4.x , please follow the following upgrade steps:
 
 1. first of all, firewall open two more port (17710 & 17810) in your machine to support tcp multiplexing；
 
@@ -251,7 +251,7 @@ Note that when upgrading from versions prior to `v2.3.0` to version `v2.3.0` or 
 
 ### Feature
 * `client`: support multiple subdir permissions for an individual user. [#1051](https://github.com/cubefs/cubefs/pull/1051)
-* `sdk`: introducing libsdk so applications can embed the use of chubaofs to a single binary and no additional process is required at runtime. [#1082](https://github.com/cubefs/cubefs/pull/1082)
+* `sdk`: introducing libsdk so applications can embed the use of cubefs to a single binary and no additional process is required at runtime. [#1082](https://github.com/cubefs/cubefs/pull/1082)
 
 ### Enhancement
 
@@ -326,9 +326,9 @@ Note that when upgrading from versions prior to `v2.3.0` to version `v2.3.0` or 
 ## Release v2.1.0 - 2020/07/09
 
 ### Feature
-* `console`: ChubaoFS **Console** is a web application, which provides management for volume, file, s3, user, node, monitoring, and alarm. 
-The ChubaoFS **Console** makes it much easier to access services provided by ChubaoFS. [#728](https://github.com/cubefs/cubefs/pull/728)  
-Please refer to [https://chubaofs.readthedocs.io/en/latest/user-guide/console.html](https://chubaofs.readthedocs.io/en/latest/user-guide/console.html) to start the **Console**.
+* `console`: CubeFS **Console** is a web application, which provides management for volume, file, s3, user, node, monitoring, and alarm. 
+The CubeFS **Console** makes it much easier to access services provided by CubeFS. [#728](https://github.com/cubefs/cubefs/pull/728)  
+Please refer to [https://cubefs.readthedocs.io/en/latest/user-guide/console.html](https://cubefs.readthedocs.io/en/latest/user-guide/console.html) to start the **Console**.
 * `metanode`: Provide compatibility verification tool for meta partition. [#684](https://github.com/cubefs/cubefs/pull/684)
 * `object`: CORS access control. [#507](https://github.com/cubefs/cubefs/pull/507)
 * `fuse`: Introduce **fsyncOnClose** mount option. Choose if closing system call shall trigger fsync. [#494](https://github.com/cubefs/cubefs/pull/494)
@@ -351,7 +351,7 @@ Release2.1.0 did a lot of work to optimize memory usage.
 * `datanode`: Prioritize healthy data node when sending message to data partition. [#562](https://github.com/cubefs/cubefs/pull/562)
 * `metanode` `datanode`: Check expired partition before loading. [#624](https://github.com/cubefs/cubefs/pull/624)
 * `object`: Implemented several conditional parameters in **GetObject** action. [#471](https://github.com/cubefs/cubefs/pull/471)
-* `object`: Making S3 credential compatible with earlier version of ChubaoFS. [#508](https://github.com/cubefs/cubefs/pull/508)
+* `object`: Making S3 credential compatible with earlier version of CubeFS. [#508](https://github.com/cubefs/cubefs/pull/508)
 * `object`: Totally support presigned url; Partial support user-defined metadata; Making ETag versioned. [#540](https://github.com/cubefs/cubefs/pull/540)   
 * `object`: **CopyObject** across volumes; Support coping directory; Support coping **xattr**. [#563](https://github.com/cubefs/cubefs/pull/563)
 * `object`: Parallel downloading. [#548](https://github.com/cubefs/cubefs/pull/548)
@@ -432,7 +432,7 @@ Release2.1.0 did a lot of work to optimize memory usage.
 * Filter target meta partitions in batch iget. [#472](https://github.com/cubefs/cubefs/pull/472)
 
 #### Others
-* Yum tool for deploying ChubaoFS cluster. [#385](https://github.com/cubefs/cubefs/pull/385)
+* Yum tool for deploying CubeFS cluster. [#385](https://github.com/cubefs/cubefs/pull/385)
 
 ### Bug fix
 * Fix the signature algorithm issues. [#369](https://github.com/cubefs/cubefs/pull/369) [#476](https://github.com/cubefs/cubefs/pull/476)
@@ -446,7 +446,7 @@ Release2.1.0 did a lot of work to optimize memory usage.
 * Fix offline strategy for raft peers of `data partition` and `meta partition`. [#467](https://github.com/cubefs/cubefs/pull/467)
 
 ### Document
-* Add guide for running ChubaoFS by yum tools. [#386](https://github.com/cubefs/cubefs/pull/386)
+* Add guide for running CubeFS by yum tools. [#386](https://github.com/cubefs/cubefs/pull/386)
 * Update FUSE client mount options. [#439](https://github.com/cubefs/cubefs/pull/439)
 * Add documentation for client token. [#449](https://github.com/cubefs/cubefs/pull/449)
 
@@ -466,17 +466,17 @@ Release2.1.0 did a lot of work to optimize memory usage.
 * Unified the configuration of master address and listening port in documentation. [#362](https://github.com/cubefs/cubefs/pull/362)
 
 ### Document
-* Added benchmark data and guidelines for deploying ChubaoFS cluster with Helm in README file. [#350](https://github.com/cubefs/cubefs/pull/350)
+* Added benchmark data and guidelines for deploying CubeFS cluster with Helm in README file. [#350](https://github.com/cubefs/cubefs/pull/350)
 
 ## Release v1.5.0 - 2020/01/08
 
 ### Feature
-* Add a general Authentication & Authorization framework for ChubaoFS. [commit](https://github.com/cubefs/cubefs/commit/60a4977980e093d746d88e848dc3d1f87e17dfb5)
+* Add a general Authentication & Authorization framework for CubeFS. [commit](https://github.com/cubefs/cubefs/commit/60a4977980e093d746d88e848dc3d1f87e17dfb5)
 * Object storage interface. Add ObjectNode to provide S3-compatible APIs. [commit](https://github.com/cubefs/cubefs/commit/d609fedb5c031e27f79dce9c004fdbb101070ac1)
 
 ### Enhancement
 * Check disk path size in run-docker script. [commit](https://github.com/cubefs/cubefs/commit/ba6f2e068f40515491066cfe349d0266f92d9d5c)
-* Support building ChubaoFS docker image that contains cfs-server and cfs-client. [commit](https://github.com/cubefs/cubefs/commit/e1483f5ec531882d193c3ae8237012789f018831)
+* Support building CubeFS docker image that contains cfs-server and cfs-client. [commit](https://github.com/cubefs/cubefs/commit/e1483f5ec531882d193c3ae8237012789f018831)
 * Add go test in docker-compose. [commit](https://github.com/cubefs/cubefs/commit/7ec1e318be0601e2130d2279201541268a29a28b)
 * Add authorization to master api getVol. [commit](https://github.com/cubefs/cubefs/commit/df6ff2a3285c2f77d90baa76ef352d3ec3f38bc4)
 * Support building under the Darwin(Apple MacOS) and Microsoft Windows operating system environment. [commit](https://github.com/cubefs/cubefs/commit/03718f1ed5ed096b3a3f2b810abeffcaec743159)
@@ -756,7 +756,7 @@ Release2.1.0 did a lot of work to optimize memory usage.
 
 * Client: enable support to fifo and socket file types. [commit](https://github.com/cubefs/cubefs/pull/80/commits/a1b118423334c075b0fbdc0b059b7225e8c2173f)
 * Clientv2: use jacobsa fuse package instead of bazil. [commit](https://github.com/cubefs/cubefs/pull/68)
-* Docker: introduce docker compose to create a local testing ChubaoFS cluster. [commit](https://github.com/cubefs/cubefs/pull/79)
+* Docker: introduce docker compose to create a local testing CubeFS cluster. [commit](https://github.com/cubefs/cubefs/pull/79)
 
 
 ### Bugfix
@@ -784,7 +784,7 @@ Release2.1.0 did a lot of work to optimize memory usage.
 
 ### Change / Refactoring
 
-* Rename the repository from cfs to chubaofs.
+* Rename the repository from cfs to cubefs.
 * Use own errors module instead of juju errors due to license incompatibility.
 * Metanode: Change not raft leader error to tryOtherAddr error.
 

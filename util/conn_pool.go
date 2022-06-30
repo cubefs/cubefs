@@ -45,7 +45,7 @@ func NewConnectPool() (cp *ConnectPool) {
 	cp = &ConnectPool{
 		pools:          make(map[string]*Pool),
 		mincap:         5,
-		maxcap:         80,
+		maxcap:         500,
 		timeout:        int64(time.Second * ConnectIdleTime),
 		connectTimeout: defaultConnectTimeout,
 		closeCh:        make(chan struct{}),

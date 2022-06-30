@@ -1,27 +1,21 @@
 # Roadmap
 
-Here we draft the engineering roadmap of ChubaoFS. 
-
-## Interfaces
+Here we draft several todo big features as the engineering roadmap of CubeFS. 
 
 
-## Core Feature
+## Caching
 
-* Multi cache layer to support data lake, including Erasure-Code (Publishing in progress)
 
-## Core Subsystems
+With tiered local + distributed buffer cache, cubefs will be a unified platform of data storage & caching acceleration, applied to data-intensive systems (e.g. ML training, recommendations AI model dispatching, et al.) in private/public/hybrid cloud platforms. 
 
-* Solve the nonatomic problem of rename (May 2022)
 
-* Multi version of data storage such as snapshot and history (May 2022)
+## Atomicity of rename
 
-* Memory chubaofs built on distributed unused memory (May 2022)
+distributed txn design & efficient implementation
 
-* Audit function on Data operation flow (May 2022)
 
-## Ecosystem
+## Multi-version snapshots
 
-* ChubaoSpark, a ChubaoFS-based shuffle manager for Apache Spark (WIP)
+for atomic versioned data lake 
 
-* ChubaoDB, a ChubaoFS-based document store & search (WIP)
 

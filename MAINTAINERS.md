@@ -1,4 +1,4 @@
-This page listed the ChubaoFS main maintainers and their reponsibilities.
+This page listed the CubeFS main maintainers and their reponsibilities.
 
 Name | Email | Duty | Organization
 --------|---|---|---

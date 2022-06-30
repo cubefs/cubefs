@@ -102,6 +102,7 @@ type dataPartitionValue struct {
 	IsRecover     bool
 	PartitionType int
 	PartitionTTL  int64
+	RdOnly        bool
 }
 
 type replicaValue struct {
@@ -123,6 +124,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		IsRecover:     dp.isRecover,
 		PartitionType: dp.PartitionType,
 		PartitionTTL:  dp.PartitionTTL,
+		RdOnly:        dp.RdOnly,
 	}
 	for _, replica := range dp.Replicas {
 		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}
@@ -964,6 +966,8 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		dp.Peers = dpv.Peers
 		dp.OfflinePeerID = dpv.OfflinePeerID
 		dp.isRecover = dpv.IsRecover
+		dp.RdOnly = dpv.RdOnly
+
 		for _, rv := range dpv.Replicas {
 			if !contains(dp.Hosts, rv.Addr) {
 				continue
