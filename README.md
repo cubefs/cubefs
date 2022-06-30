@@ -51,9 +51,9 @@ Some key features of CubeFS include:
 - Multi-tenancy  
   Share the whole storage and resource utilization ratio
 - Hybrid Cloud Acceleration  
-  Accelerates access and improves performance by localizing remote data and metadata storage
+  Accelerate Hybrid Cloud IO performance through multi-level caching
 - Online Erasure Coding Subsystem  
-  Provide high reliability, high availability, low cost erasure coding storage system
+  Provide high durability, high availability, low cost erasure coding storage system
 
 We are committed to making CubeFS better and more mature. Please stay tuned. 
 
