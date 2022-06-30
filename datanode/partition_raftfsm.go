@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"sync/atomic"
 
 	"github.com/chubaofs/chubaofs/util/exporter"
@@ -141,7 +142,14 @@ func (dp *DataPartition) Snapshot(recoverNode uint64) (raftproto.Snapshot, error
 func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftproto.SnapIterator) (err error) {
 	// Never delete the raft log which hadn't applied, so snapshot no need.
 	log.LogInfof("PartitionID(%v) ApplySnapshot from(%v)", dp.partitionID, dp.raftPartition.CommittedIndex())
-	return
+	for {
+		if _, err = iterator.Next(); err != nil {
+			if err != io.EOF {
+				log.LogError(fmt.Sprintf("action[ApplySnapshot] PartitionID(%v) ApplySnapshot from(%v) failed,err:%v", dp.partitionID, dp.raftPartition.CommittedIndex(), err.Error()))
+			}
+			return
+		}
+	}
 }
 
 // HandleFatalEvent notifies the application when panic happens.
