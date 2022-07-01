@@ -146,8 +146,9 @@ func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftprot
 		if _, err = iterator.Next(); err != nil {
 			if err != io.EOF {
 				log.LogError(fmt.Sprintf("action[ApplySnapshot] PartitionID(%v) ApplySnapshot from(%v) failed,err:%v", dp.partitionID, dp.raftPartition.CommittedIndex(), err.Error()))
+				return
 			}
-			return
+			return nil
 		}
 	}
 }
