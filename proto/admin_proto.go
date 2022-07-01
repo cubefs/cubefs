@@ -724,11 +724,16 @@ type VolView struct {
 	CreateTime        int64
 	ConnConfig        *ConnConfig // todo
 	IsSmart           bool
+	SmartEnableTime int64
 	SmartRules        []string
 }
 
 func (v *VolView) SetSmartRules(rules []string) {
 	v.SmartRules = rules
+}
+
+func (v *VolView) SetSmartEnableTime (sec int64) {
+	v.SmartEnableTime = sec
 }
 
 func (v *VolView) SetOwner(owner string) {
@@ -822,6 +827,7 @@ type SimpleVolView struct {
 	FileAvgSize           float64
 	CreateStatus          VolCreateStatus
 	IsSmart               bool
+	SmartEnableTime string
 	SmartRules            []string
 }
 

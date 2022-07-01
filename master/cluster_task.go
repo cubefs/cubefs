@@ -1463,6 +1463,10 @@ func (c *Cluster) handleDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataN
 		c.t.deleteDataNode(dataNode)
 		oldZoneName := dataNode.ZoneName
 		dataNode.ZoneName = resp.ZoneName
+		zone, err := c.t.getZone(dataNode.ZoneName)
+		if err == nil {
+			dataNode.MType = zone.MType.String()
+		}
 		c.adjustDataNode(dataNode)
 		log.LogWarnf("dataNode zone changed from [%v] to [%v]", oldZoneName, resp.ZoneName)
 	}

@@ -81,6 +81,7 @@ type Vol struct {
 	DefaultStoreMode     proto.StoreMode
 	MpLayout             proto.MetaPartitionLayout
 	isSmart              bool
+	smartEnableTime      int64
 	smartRules           []string
 	CreateStatus         proto.VolCreateStatus
 	sync.RWMutex
@@ -92,7 +93,7 @@ type VolWriteMutexClient struct {
 }
 
 func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8,
-	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart bool, createTime int64, description, dpSelectorName,
+	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart bool, createTime, smartEnableTime int64, description, dpSelectorName,
 	dpSelectorParm string, crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64, trashDays uint32,
 	defStoreMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
@@ -148,6 +149,7 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.DefaultStoreMode = defStoreMode
 	vol.MpLayout = mpLayout
 	vol.isSmart = isSmart
+	vol.smartEnableTime = smartEnableTime
 	if smartRules != nil {
 		vol.smartRules = smartRules
 	}
@@ -172,6 +174,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.ForceROW,
 		vv.IsSmart,
 		vv.CreateTime,
+		vv.SmartEnableTime,
 		vv.Description,
 		vv.DpSelectorName,
 		vv.DpSelectorParm,
@@ -598,6 +601,7 @@ func (vol *Vol) updateViewCache(c *Cluster) {
 	view.CrossRegionHAType = vol.CrossRegionHAType
 	view.SetOwner(vol.Owner)
 	view.SetSmartRules(vol.smartRules)
+	view.SetSmartEnableTime(vol.smartEnableTime)
 	view.SetOSSSecure(vol.OSSAccessKey, vol.OSSSecretKey)
 	view.SetOSSBucketPolicy(vol.OSSBucketPolicy)
 	mpViews := vol.getMetaPartitionsView()

@@ -12,6 +12,7 @@ const (
 	MonitorSchedulerMoveTaskToHistory            = "moveTaskToHistory"
 	MonitorSchedulerMoveExceptionWorkerToHistory = "moveExceptionWorkerToHistory"
 	MonitorSchedulerFlowControlManager           = "flowControlManager"
+	MonitorSchedulerMigrateThresholdManager      = "migrateThresholdManager"
 
 	// hBase client
 	MonitorHBaseSelectDPMetrics       = "hBaseSelectDPMetrics"
@@ -68,6 +69,10 @@ const (
 	MonitorMysqlListFlowControl                = "ListFlowControls"
 	MonitorMysqlSelectFlowControlsViaType      = "SelectFlowControlsViaType"
 	MonitorMysqlDeleteFlowControl              = "DeleteFlowControl"
+	MonitorMysqlAddScheduleConfig              = "AddScheduleConfig"
+	MonitorMysqlSelectScheduleConfig           = "SelectScheduleConfig"
+	MonitorMysqlUpdateScheduleConfig           = "UpdateScheduleConfig"
+	MonitorMysqlDeleteScheduleConfig           = "DeleteScheduleConfig"
 
 	// base worker
 	MonitorWorkerHeartbeat = "workerHeartbeat"

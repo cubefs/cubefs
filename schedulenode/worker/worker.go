@@ -272,7 +272,7 @@ func (b *BaseWorker) loadNotFinishedTasks(wt proto.WorkerType) {
 
 // scheduler for loading tasks allocated current node
 func (b *BaseWorker) loadWorkerTasks(wt proto.WorkerType) {
-	timer := time.NewTimer(0)
+	timer := time.NewTimer(time.Second * DefaultLoadTaskPeriod)
 	for {
 		log.LogDebugf("[loadWorkerTasks] load tasks dispatched current worker node, workerId(%v), workerType(%v), workerAddr(%v)",
 			b.WorkerId, proto.WorkerTypeToName(wt), b.WorkerAddr)
@@ -302,7 +302,6 @@ func (b *BaseWorker) loadWorkerTasks(wt proto.WorkerType) {
 		case <-b.StopC:
 			timer.Stop()
 		}
-		timer.Reset(time.Second * DefaultLoadTaskPeriod)
 	}
 }
 

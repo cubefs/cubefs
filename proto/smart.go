@@ -27,6 +27,7 @@ type SmartVolume struct {
 	TotalSize         uint64
 	UsedSize          uint64
 	CreateTime        int64
+	SmartEnableTime   int64
 	FollowerRead      bool
 	ForceROW          bool
 	CrossRegionHAType CrossRegionHAType

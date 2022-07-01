@@ -1609,6 +1609,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		ConvertState:         vol.convertState,
 		MpLayout:             vol.MpLayout,
 		IsSmart:              vol.isSmart,
+		SmartEnableTime:           time.Unix(vol.smartEnableTime, 0).Format(proto.TimeFormat),
 		SmartRules:           vol.smartRules,
 		TotalSize:            stat.TotalSize,
 		UsedSize:             stat.UsedSize,

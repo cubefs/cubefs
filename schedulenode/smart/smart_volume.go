@@ -23,22 +23,24 @@ import (
 )
 
 const (
-	DefaultSmartVolumeLoadDuration  = 60  // unit: second
-	DefaultClusterLoadDuration      = 60  // unit: second
-	DefaultDPMigrateUsedThreshold   = 0.1 // dp can be migrated when used size more then this threshold
-	DefaultVolumeMaxMigratingDPNums = 100 // the max dp nums that are migrating in one volume
-	DefaultActionMetricMinuteUnit   = 5   // the max dp nums that are migrating in one volume
+	DefaultSmartVolumeLoadDuration      = 60  // unit: second
+	DefaultClusterLoadDuration          = 60  // unit: second
+	DefaultMigrateUsedThresholdDuration = 120 // unit: second
+	DefaultDPMigrateUsedThreshold       = 0.5 // dp can be migrated when used size more then this threshold
+	DefaultVolumeMaxMigratingDPNums     = 100 // the max dp nums that are migrating in one volume
+	DefaultActionMetricMinuteUnit       = 5   // the max dp nums that are migrating in one volume
 )
 
 type SmartVolumeWorker struct {
 	worker.BaseWorker
-	masterAddr  map[string][]string
-	mcw         map[string]*master.MasterClient
-	svv         map[string]*proto.SmartVolumeView
-	cv          map[string]*proto.ClusterView // TODO
-	HBaseConfig *config.HBaseConfig
-	hBaseClient *hbase.HBaseClient
-	svvLock     sync.RWMutex
+	masterAddr         map[string][]string
+	mcw                map[string]*master.MasterClient
+	svv                map[string]*proto.SmartVolumeView
+	cv                 map[string]*proto.ClusterView // TODO
+	HBaseConfig        *config.HBaseConfig
+	hBaseClient        *hbase.HBaseClient
+	svvLock            sync.RWMutex
+	dpMigrateThreshold sync.Map
 }
 
 func NewSmartVolumeWorker() *SmartVolumeWorker {
@@ -56,8 +58,14 @@ func NewSmartVolumeWorkerForScheduler(cfg *config.Config) (sv *SmartVolumeWorker
 		log.LogErrorf("[doStart] init smart volume worker failed, error(%v)", err)
 		return
 	}
+	if err = sv.loadMigrateThreshold(); err != nil {
+		log.LogErrorf("[doStart] load data partition migrate threshold failed, error(%v)", err)
+		return
+	}
 	// start smart volume load scheduler
 	go sv.loadSmartVolume()
+	// load data partition migrate threshold
+	go sv.migrateThresholdManager()
 	return
 }
 
@@ -86,12 +94,10 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		log.LogErrorf("[doStart] init smart volume worker failed, error(%v)", err)
 		return
 	}
-
 	if err = sv.RegisterWorker(proto.WorkerTypeSmartVolume, sv.ConsumeTask); err != nil {
 		log.LogErrorf("[doStart] register smart volume worker failed, error(%v)", err)
 		return
 	}
-
 	go sv.registerHandler()
 	go sv.loadSmartVolume()
 	//go sv.loadCluster()
@@ -163,6 +169,104 @@ func (sv *SmartVolumeWorker) loadSmartVolume() {
 			return
 		}
 	}
+}
+
+func (sv *SmartVolumeWorker) loadMigrateThreshold() (err error) {
+	metrics := exporter.NewTPCnt(proto.MonitorSchedulerMigrateThresholdManager)
+	defer metrics.Set(err)
+
+	keys := make(map[string]*proto.ScheduleConfig)
+	scs, err := mysql.SelectScheduleConfig(proto.ScheduleConfigTypeMigrateThreshold)
+	if err != nil {
+		log.LogErrorf("[migrateThresholdManager] select volume migrate threshold failed, err(%v)", err)
+		return
+	}
+	for _, sc := range scs {
+		key := sc.Key()
+		keys[key] = sc
+		sv.dpMigrateThreshold.Store(key, sc)
+	}
+	// clean flow controls in memory before load all new flow controls
+	sv.dpMigrateThreshold.Range(func(key, value interface{}) bool {
+		k := key.(string)
+		if _, ok := keys[k]; !ok {
+			sv.dpMigrateThreshold.Delete(key)
+		}
+		return true
+	})
+	// global default value
+	var globalDefaultExisted bool
+	globalKey := fmt.Sprintf("%v_%v", proto.ScheduleConfigTypeMigrateThreshold, proto.ScheduleConfigMigrateThresholdGlobalKey)
+	sv.dpMigrateThreshold.Range(func(key, value interface{}) bool {
+		k := key.(string)
+		if k == globalKey {
+			globalDefaultExisted = true
+		}
+		return true
+	})
+	if !globalDefaultExisted {
+		configValue := strconv.FormatFloat(DefaultDPMigrateUsedThreshold, 'f', 2, 64)
+		dsc := proto.NewScheduleConfig(proto.ScheduleConfigTypeMigrateThreshold, proto.ScheduleConfigMigrateThresholdGlobalKey, configValue)
+		sv.dpMigrateThreshold.Store(globalKey, dsc)
+	}
+	return
+}
+
+func (sv *SmartVolumeWorker) migrateThresholdManager() {
+	timer := time.NewTimer(0)
+	for {
+		log.LogDebugf("[migrateThresholdManager] smart volume migrate threshold manager is running...")
+		select {
+		case <-timer.C:
+			if err := sv.loadMigrateThreshold(); err != nil {
+				log.LogErrorf("[migrateThresholdManager] flow control manager has exception, err(%v)", err)
+				return
+			}
+			timer.Reset(time.Second * time.Duration(DefaultMigrateUsedThresholdDuration))
+		case <-sv.StopC:
+			log.LogInfof("[migrateThresholdManager] stop smart volume migrate threshold manager")
+			return
+		}
+	}
+}
+
+func (sv *SmartVolumeWorker) getVolumeMigrateThreshold(volName string) (threshold float64) {
+	var (
+		v   interface{}
+		ok  bool
+		err error
+		sc  *proto.ScheduleConfig
+	)
+
+	getThresholdByKey := func(key string) (e error) {
+		if v, ok = sv.dpMigrateThreshold.Load(key); ok {
+			sc, ok = v.(*proto.ScheduleConfig)
+			if !ok {
+				return errors.New("invalid value type")
+			}
+			threshold, err = strconv.ParseFloat(sc.ConfigValue, 64)
+			if err != nil {
+				return err
+			}
+			return
+		}
+		return errors.New("not exist")
+	}
+
+	volumeKey := fmt.Sprintf("%v_%v", proto.ScheduleConfigTypeMigrateThreshold, volName)
+	if err = getThresholdByKey(volumeKey); err == nil && threshold > 0 {
+		return threshold
+	}
+	log.LogInfof("[getVolumeMigrateThreshold] get volume migrate threshold failed, volName(%v), volumeKey(%v), threshold(%v), err(%v)",
+		volName, volumeKey, threshold, err)
+
+	globalKey := fmt.Sprintf("%v_%v", proto.ScheduleConfigTypeMigrateThreshold, proto.ScheduleConfigMigrateThresholdGlobalKey)
+	if err = getThresholdByKey(globalKey); err == nil && threshold > 0 {
+		return threshold
+	}
+	log.LogErrorf("[getVolumeMigrateThreshold] get global migrate threshold failed, volName(%v), globalKey(%v), threshold(%v), err(%v)",
+		volName, globalKey, threshold, err)
+	return DefaultDPMigrateUsedThreshold
 }
 
 func (sv *SmartVolumeWorker) loadCluster() {
@@ -267,12 +371,15 @@ func (sv *SmartVolumeWorker) CreateTask(clusterId string, taskNum int64, running
 		var writableDPNums int
 		var migrateWritableDPNums int
 		var usedRate float64
+		var volumeMigrateThreshold float64
 		for _, partition := range volume.DataPartitions {
 			if partition.Status == proto.ReadWrite && !partition.IsFrozen {
 				writableDPNums++
 			}
 		}
 		volumeTaskNum = len(volumeTasks[volume.Name])
+		volumeMigrateThreshold = sv.getVolumeMigrateThreshold(volume.Name)
+
 		for _, dp := range volume.DataPartitions {
 			if volumeTaskNum >= DefaultVolumeMaxMigratingDPNums {
 				log.LogInfof("[SmartVolumeWorker CreateTask] volume migrate tasks has reached max task number, cluster(%v), volume(%v), volumeTaskNum(%v)",
@@ -296,9 +403,9 @@ func (sv *SmartVolumeWorker) CreateTask(clusterId string, taskNum int64, running
 					clusterId, volume.Name, dp.PartitionID, dp.Used, dp.Total)
 				continue
 			}
-			if usedRate <= DefaultDPMigrateUsedThreshold {
+			if usedRate <= volumeMigrateThreshold {
 				log.LogInfof("[SmartVolumeWorker CreateTask] data partition used rate not reach migrate threshold, cluster(%v), volume(%v), dpId(%v), usedRate(%v), used(%v), total(%v), migrateThreshold(%v)",
-					clusterId, volume.Name, dp.PartitionID, usedRate, dp.Used, dp.Total, DefaultDPMigrateUsedThreshold)
+					clusterId, volume.Name, dp.PartitionID, usedRate, dp.Used, dp.Total, volumeMigrateThreshold)
 				continue
 			}
 			if dp.IsRecover {
@@ -358,7 +465,7 @@ func (sv *SmartVolumeWorker) CreateTask(clusterId string, taskNum int64, running
 							amFlag = false
 							break
 						}
-						metricsData, err = sv.getHBaseMetrics(clusterId, volume.Name, dp, policy)
+						metricsData, err = sv.getHBaseMetrics(clusterId, volume.Name, volume.SmartEnableTime, dp, policy)
 						if err != nil {
 							log.LogErrorf("[SmartVolumeWorker CreateTask] get action metrics failed, cluster(%v), volume(%v), dp(%v), policy(%v), err(%v)",
 								clusterId, volume.Name, dp.PartitionID, policy.String(), err)
@@ -445,7 +552,7 @@ func (sv *SmartVolumeWorker) CreateTask(clusterId string, taskNum int64, running
 	return
 }
 
-func (sv *SmartVolumeWorker) getHBaseMetrics(clusterId, volName string, dp *proto.DataPartitionResponse, policy *proto.LayerPolicyActionMetrics) (metricsData []*proto.HBaseMetricsData, err error) {
+func (sv *SmartVolumeWorker) getHBaseMetrics(clusterId, volName string, smartEnableTime int64, dp *proto.DataPartitionResponse, policy *proto.LayerPolicyActionMetrics) (metricsData []*proto.HBaseMetricsData, err error) {
 	var (
 		startTime      string
 		startTimestamp int64
@@ -456,8 +563,14 @@ func (sv *SmartVolumeWorker) getHBaseMetrics(clusterId, volName string, dp *prot
 			clusterId, volName, dp.PartitionID, policy.String(), err)
 		return nil, err
 	}
-	// The start time must be later than the creation time of data partition, Otherwise the data partition may be transferred for have no request.
+	// The start time must be later than the creation time of data partition, and must be later than the volume smart rule effective time too.
+	// Otherwise the data partition may be transferred for have no request.
 	// because if data partition has not been created, the records from its creation time to the start time are empty, and it will be considered that there is no request
+	if startTimestamp < smartEnableTime {
+		log.LogInfof("[getHBaseMetrics] query start time early then volume smart rule effective time, cluster(%v), volume(%v), dp(%v), policy(%v), startTime(%v), smartEnableTime(%v)",
+			clusterId, volName, dp.PartitionID, policy.String(), util.FormatTimestamp(startTimestamp), util.FormatTimestamp(smartEnableTime))
+		return nil, errors.New("query start time early then volume smart rule effective time")
+	}
 	if startTimestamp < dp.CreateTime {
 		log.LogInfof("[getHBaseMetrics] query start time early then create time, cluster(%v), volume(%v), dp(%v), policy(%v), startTime(%v), dpCreateTime(%v)",
 			clusterId, volName, dp.PartitionID, policy.String(), util.FormatTimestamp(startTimestamp), util.FormatTimestamp(dp.CreateTime))
@@ -517,6 +630,11 @@ func (sv *SmartVolumeWorker) ConsumeTask(task *proto.Task) (restore bool, err er
 	if err != nil {
 		log.LogErrorf("[ConsumeTask] get data partition failed, taskInfo(%v), err(%v)", task.String(), err)
 		return
+	}
+	if len(dp.Replicas) < int(dp.ReplicaNum) {
+		errorInfo := fmt.Sprintf("dp current replicas is less then its replica num, replicaLength(%v), replicaNum(%v)\n", len(dp.Replicas), dp.ReplicaNum)
+		log.LogErrorf("[ConsumeTask] %s, taskInfo(%v), err(%v)", errorInfo, task.String(), err)
+		return true, errors.New(errorInfo)
 	}
 
 	// restore task to queue if data partition is repairing,
@@ -582,10 +700,6 @@ func (sv *SmartVolumeWorker) ConsumeTask(task *proto.Task) (restore bool, err er
 		}
 		// if dp replication has not exist in source host, master return error like this: "%v is not in data partition hosts:%v"
 		err = sv.mcw[task.Cluster].AdminAPI().TransferSmartVolDataPartition(task.DpId, sourceHost)
-		if err != nil && strings.Contains(err.Error(), "is not in data partition") {
-			log.LogWarnf("[ConsumeTask] source host has not in data partition replication, taskInfo(%v), sourceHost(%v), err(%v)", task.String(), sourceHost, err)
-			return false, nil
-		}
 		if err != nil {
 			log.LogErrorf("[ConsumeTask] decommission data partition failed, taskInfo(%v), sourceHost(%v), err(%v)", task.String(), sourceHost, err)
 			return true, err
@@ -823,7 +937,7 @@ func getStartTime(timeType int8, lessCount int) (timestamp int64, res string, er
 		t = t.Add(time.Minute * time.Duration(-lessCount))
 
 		minute := t.Minute()
-		if minute % DefaultActionMetricMinuteUnit != 0 {
+		if minute%DefaultActionMetricMinuteUnit != 0 {
 			remainder := minute % DefaultActionMetricMinuteUnit
 			duration, _ := time.ParseDuration(fmt.Sprintf("-%vm", remainder))
 			t = t.Add(duration)
@@ -860,7 +974,7 @@ func getStopTime(timeType int8) (res string, err error) {
 		t = t.Add(duration)
 
 		minute := t.Minute()
-		if minute % DefaultActionMetricMinuteUnit != 0 {
+		if minute%DefaultActionMetricMinuteUnit != 0 {
 			remainder := minute % DefaultActionMetricMinuteUnit
 			duration, _ := time.ParseDuration(fmt.Sprintf("-%vm", remainder))
 			t = t.Add(duration)
@@ -874,6 +988,17 @@ func getStopTime(timeType int8) (res string, err error) {
 		return
 	}
 	return t.Format(format), nil
+}
+
+func (sv *SmartVolumeWorker) MigrateThreshold() map[string]*proto.ScheduleConfig {
+	values := make(map[string]*proto.ScheduleConfig)
+	sv.dpMigrateThreshold.Range(func(key, value interface{}) bool {
+		k := key.(string)
+		v := value.(*proto.ScheduleConfig)
+		values[k] = v
+		return true
+	})
+	return values
 }
 
 func CalcAuthKey(key string) (authKey string) {

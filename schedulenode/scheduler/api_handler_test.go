@@ -2,12 +2,14 @@ package scheduler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/sdk/mysql"
 	"github.com/chubaofs/chubaofs/util/config"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -60,13 +62,16 @@ func init() {
 func TestGetScheduleNodeLeader(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v", ListenAddr, ScheduleNodeAPIGetLeader)
 	fmt.Println(reqURL)
-	reply := process(reqURL, t)
+	reply, err := process(reqURL)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
 	if reply.Code != 200 {
 		fmt.Printf("Got leader failed, code(%v), message(%v)\n", reply.Code, reply.Msg)
 		return
 	}
 	le := &proto.LeaderElect{}
-	err := json.Unmarshal(reply.Data, le)
+	err = json.Unmarshal(reply.Data, le)
 	if err != nil {
 		t.Errorf("unmarshall response data to leader elect failed, errorInfo: %s", err.Error())
 	}
@@ -86,7 +91,10 @@ func TestListTasks(t *testing.T) {
 		ParamKeyDPId, tasks[0].DpId,
 		ParamKeyWorkerType, proto.WorkerTypeSmartVolume)
 	fmt.Println(reqURL)
-	reply := process(reqURL, t)
+	reply, err := process(reqURL)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
 	if reply.Code != 200 {
 		fmt.Printf("List tasks failed, code(%v), message(%v)\n", reply.Code, reply.Msg)
 		return
@@ -118,7 +126,10 @@ func TestListTaskHistory(t *testing.T) {
 		ParamKeyDPId, tasks[0].DpId,
 		ParamKeyWorkerType, proto.WorkerTypeSmartVolume)
 	fmt.Println(reqURL)
-	reply := process(reqURL, t)
+	reply, err := process(reqURL)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
 	if reply.Code != 200 {
 		fmt.Printf("Got leader failed, code(%v), message(%v)\n", reply.Code, reply.Msg)
 		return
@@ -151,7 +162,10 @@ func TestAddFlowControl(t *testing.T) {
 		ParamKeyFlowValue, flow.FlowValue,
 		ParamKeyMaxNum, flow.MaxNums)
 	fmt.Println(reqURL)
-	reply := process(reqURL, t)
+	reply, err := process(reqURL)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
 	if reply.Code != 200 {
 		fmt.Printf("add flow control failed, code(%v), message(%v)\n", reply.Code, reply.Msg)
 		return
@@ -193,7 +207,10 @@ func TestModifyFlowControl(t *testing.T) {
 		ParamKeyFlowValue, flow.FlowValue,
 		ParamKeyMaxNum, flow.MaxNums)
 	fmt.Println(reqURL)
-	reply := process(reqURL, t)
+	reply, err := process(reqURL)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
 	if reply.Code != 200 {
 		fmt.Printf("add flow control failed, code(%v), message(%v)\n", reply.Code, reply.Msg)
 		return
@@ -207,7 +224,10 @@ func TestModifyFlowControl(t *testing.T) {
 		ParamKeyFlowValue, flow.FlowValue,
 		ParamKeyMaxNum, flow.MaxNums)
 	fmt.Println(reqURL)
-	reply = process(reqURL, t)
+	reply, err = process(reqURL)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
 	if reply.Code != 200 {
 		fmt.Printf("modify flow control failed, code(%v), message(%v)\n", reply.Code, reply.Msg)
 		return
@@ -249,7 +269,10 @@ func TestDeleteFlowControl(t *testing.T) {
 		ParamKeyFlowValue, flow.FlowValue,
 		ParamKeyMaxNum, flow.MaxNums)
 	fmt.Println(reqURL)
-	reply := process(reqURL, t)
+	reply, err := process(reqURL)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
 	if reply.Code != 200 {
 		fmt.Printf("add flow control failed, code(%v), message(%v)\n", reply.Code, reply.Msg)
 		return
@@ -260,7 +283,10 @@ func TestDeleteFlowControl(t *testing.T) {
 		ParamKeyFlowType, flow.FlowType,
 		ParamKeyFlowValue, flow.FlowValue)
 	fmt.Println(reqURL)
-	reply = process(reqURL, t)
+	reply, err = process(reqURL)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
 	if reply.Code != 200 {
 		fmt.Printf("delete flow control failed, code(%v), message(%v)\n", reply.Code, reply.Msg)
 		return
@@ -332,7 +358,10 @@ func TestListFlowControls(t *testing.T) {
 
 	reqURL := fmt.Sprintf("%v%v", ListenAddr, ScheduleNodeAPIFlowList)
 	fmt.Println(reqURL)
-	reply := process(reqURL, t)
+	reply, err := process(reqURL)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
 	if reply.Code != 200 {
 		fmt.Printf("list flow controls failed, code(%v), message(%v)\n", reply.Code, reply.Msg)
 		return
@@ -474,38 +503,272 @@ func deleteTasks(tasks []*proto.Task) error {
 	return mysql.DeleteTasks(tasks)
 }
 
+func TestAddScheduleConfig(t *testing.T) {
+	configKey := "smartVolume"
+	configValue := "0.3"
+	sc := proto.NewScheduleConfig(proto.ScheduleConfigTypeMigrateThreshold, configKey, configValue)
+	err := mysql.DeleteScheduleConfig(sc)
+	if err != nil && !strings.Contains(err.Error(), "affected rows less then one") {
+		t.Fatalf(err.Error())
+	}
+
+	// add new via api
+	reqURL := fmt.Sprintf("%v%v?%s=%v&%s=%s&%s=%v", ListenAddr, ScheduleNodeAPIConfigAdd,
+		ParamKeyConfigType, sc.ConfigType,
+		ParamKeyConfigKey, sc.ConfigKey,
+		ParamKeyConfigValue, sc.ConfigValue)
+	fmt.Println(reqURL)
+	reply, err := process(reqURL)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	if reply.Code != 200 {
+		fmt.Printf("add schedule config failed, code(%v), message(%v)\n", reply.Code, reply.Msg)
+		return
+	}
+
+	// clean
+	defer func() {
+		if err = mysql.DeleteScheduleConfig(sc); err != nil {
+			t.Fatalf(err.Error())
+		}
+	}()
+
+	// select to check add success
+	var existed bool
+	scs, err := mysql.SelectScheduleConfig(proto.ScheduleConfigTypeMigrateThreshold)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	for _, sc := range scs {
+		if sc.ConfigType == proto.ScheduleConfigTypeMigrateThreshold && sc.ConfigKey == configKey && sc.ConfigValue == configValue {
+			existed = true
+			break
+		}
+	}
+	if !existed {
+		t.Fatalf("add failed")
+	}
+}
+
+func TestAddScheduleConfigException(t *testing.T) {
+	configKey := "smartVolume"
+	configValue1 := "test"
+	configValue2 := "3"
+	sc := proto.NewScheduleConfig(proto.ScheduleConfigTypeMigrateThreshold, configKey, configValue1)
+
+	// add new via api
+	reqURL := fmt.Sprintf("%v%v?%s=%v&%s=%s&%s=%v", ListenAddr, ScheduleNodeAPIConfigAdd,
+		ParamKeyConfigType, sc.ConfigType,
+		ParamKeyConfigKey, sc.ConfigKey,
+		ParamKeyConfigValue, sc.ConfigValue)
+	fmt.Println(reqURL)
+	_, err := process(reqURL)
+	if err != nil && !strings.Contains(err.Error(), "parse migrate threshold failed") {
+		t.Fatalf(err.Error())
+	}
+
+	sc.ConfigValue = configValue2
+	// add new via api
+	reqURL = fmt.Sprintf("%v%v?%s=%v&%s=%s&%s=%v", ListenAddr, ScheduleNodeAPIConfigAdd,
+		ParamKeyConfigType, sc.ConfigType,
+		ParamKeyConfigKey, sc.ConfigKey,
+		ParamKeyConfigValue, sc.ConfigValue)
+	fmt.Println(reqURL)
+	_, err = process(reqURL)
+	if err != nil && !strings.Contains(err.Error(), "migrate threshold value is invalid") {
+		t.Fatalf(err.Error())
+	}
+}
+
+func TestModifyScheduleConfig(t *testing.T) {
+	var (
+		err error
+		scs []*proto.ScheduleConfig
+	)
+	configKey := "smartVolume"
+	configValue1 := "0.3"
+	configValue2 := "0.6"
+	sc := proto.NewScheduleConfig(proto.ScheduleConfigTypeMigrateThreshold, configKey, configValue1)
+	if err = mysql.AddScheduleConfig(sc); err != nil {
+		t.Fatalf(err.Error())
+	}
+
+	// clean
+	defer func() {
+		if err = mysql.DeleteScheduleConfig(sc); err != nil {
+			t.Fatalf(err.Error())
+		}
+	}()
+
+	sc.ConfigValue = configValue2
+	reqURL := fmt.Sprintf("%v%v?%s=%v&%s=%s&%s=%v", ListenAddr, ScheduleNodeAPIConfigUpdate,
+		ParamKeyConfigType, sc.ConfigType,
+		ParamKeyConfigKey, sc.ConfigKey,
+		ParamKeyConfigValue, sc.ConfigValue)
+	fmt.Println(reqURL)
+	reply, err := process(reqURL)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	if reply.Code != 200 {
+		fmt.Printf("modify schedule config failed, code(%v), message(%v)\n", reply.Code, reply.Msg)
+		return
+	}
+
+	// select and check
+	if scs, err = mysql.SelectScheduleConfig(proto.ScheduleConfigTypeMigrateThreshold); err != nil {
+		t.Fatalf(err.Error())
+	}
+	var existed bool
+	for _, sc := range scs {
+		if sc.ConfigType == proto.ScheduleConfigTypeMigrateThreshold && sc.ConfigKey == configKey && sc.ConfigValue == configValue2 {
+			existed = true
+		}
+	}
+	if !existed {
+		t.Fatalf("modify failed")
+	}
+}
+
+func TestSelectScheduleConfig(t *testing.T) {
+	var (
+		err error
+		scs []*proto.ScheduleConfig
+	)
+	configKey1 := "smartVolume1"
+	configKey2 := "smartVolume2"
+	configValue1 := "0.3"
+	configValue2 := "0.6"
+	sc1 := proto.NewScheduleConfig(proto.ScheduleConfigTypeMigrateThreshold, configKey1, configValue1)
+	sc2 := proto.NewScheduleConfig(proto.ScheduleConfigTypeMigrateThreshold, configKey2, configValue2)
+	err = mysql.DeleteScheduleConfig(sc1)
+	if err != nil && !strings.Contains(err.Error(), "affected rows less then one") {
+		t.Fatalf(err.Error())
+	}
+	err = mysql.DeleteScheduleConfig(sc2)
+	if err != nil && !strings.Contains(err.Error(), "affected rows less then one") {
+		t.Fatalf(err.Error())
+	}
+
+	if err = mysql.AddScheduleConfig(sc1); err != nil {
+		t.Fatalf(err.Error())
+	}
+	if err = mysql.AddScheduleConfig(sc2); err != nil {
+		t.Fatalf(err.Error())
+	}
+
+	// clean
+	defer func() {
+		if err = mysql.DeleteScheduleConfig(sc1); err != nil {
+			t.Fatalf(err.Error())
+		}
+		if err = mysql.DeleteScheduleConfig(sc2); err != nil {
+			t.Fatalf(err.Error())
+		}
+	}()
+
+	var existed1 bool
+	var existed2 bool
+	reqURL := fmt.Sprintf("%v%v?%s=%v", ListenAddr, ScheduleNodeAPIConfigSelect, ParamKeyConfigType, proto.ScheduleConfigTypeMigrateThreshold)
+	fmt.Println(reqURL)
+	reply, err := process(reqURL)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	if reply.Code != 200 {
+		fmt.Printf("modify schedule config failed, code(%v), message(%v)\n", reply.Code, reply.Msg)
+		return
+	}
+	scs = make([]*proto.ScheduleConfig, 0)
+	err = json.Unmarshal(reply.Data, &scs)
+	for _, sc := range scs {
+		if sc.ConfigType == proto.ScheduleConfigTypeMigrateThreshold && sc.ConfigKey == configKey1 && sc.ConfigValue == configValue1 {
+			existed1 = true
+		}
+		if sc.ConfigType == proto.ScheduleConfigTypeMigrateThreshold && sc.ConfigKey == configKey2 && sc.ConfigValue == configValue2 {
+			existed2 = true
+		}
+	}
+	if !existed1 {
+		t.Fatalf("modify failed")
+	}
+	if !existed2 {
+		t.Fatalf("modify failed")
+	}
+}
+
+func TestDeleteScheduleConfig(t *testing.T) {
+	var (
+		err error
+		scs []*proto.ScheduleConfig
+	)
+	configKey := "smartVolume1"
+	configValue := "0.3"
+	sc := proto.NewScheduleConfig(proto.ScheduleConfigTypeMigrateThreshold, configKey, configValue)
+	err = mysql.DeleteScheduleConfig(sc)
+	if err != nil && !strings.Contains(err.Error(), "affected rows less then one") {
+		t.Fatalf(err.Error())
+	}
+	if err = mysql.AddScheduleConfig(sc); err != nil {
+		t.Fatalf(err.Error())
+	}
+
+	reqURL := fmt.Sprintf("%v%v?%s=%v&%s=%s&%s=%v", ListenAddr, ScheduleNodeAPIConfigDelete,
+		ParamKeyConfigType, sc.ConfigType,
+		ParamKeyConfigKey, sc.ConfigKey,
+		ParamKeyConfigValue, sc.ConfigValue)
+	fmt.Println(reqURL)
+	reply, err := process(reqURL)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	if reply.Code != 200 {
+		fmt.Printf("modify schedule config failed, code(%v), message(%v)\n", reply.Code, reply.Msg)
+		return
+	}
+
+	// select and check
+	if scs, err = mysql.SelectScheduleConfig(proto.ScheduleConfigTypeMigrateThreshold); err != nil {
+		t.Fatalf(err.Error())
+	}
+	var existed bool
+	for _, sc := range scs {
+		if sc.ConfigType == proto.ScheduleConfigTypeMigrateThreshold && sc.ConfigKey == configKey && sc.ConfigValue == configValue {
+			existed = true
+		}
+	}
+	if existed {
+		t.Fatalf("delete failed")
+	}
+}
+
 type HttpReply struct {
 	Code int32           `json:"code"`
 	Msg  string          `json:"msg"`
 	Data json.RawMessage `json:"data"`
 }
 
-func process(reqURL string, t *testing.T) (reply *HttpReply) {
+func process(reqURL string) (reply *HttpReply, err error) {
 	resp, err := http.Get(reqURL)
 	if err != nil {
-		t.Errorf("err is %v", err)
 		return
 	}
 	fmt.Println(resp.StatusCode)
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		t.Errorf("err is %v", err)
-		return
-	}
-	t.Log(string(body))
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("status code[%v]", resp.StatusCode)
 		return
 	}
 
 	reply = &HttpReply{}
 	if err = json.Unmarshal(body, reply); err != nil {
-		t.Error(err)
 		return
 	}
 	if reply.Code != 200 {
-		t.Errorf("failed,msg[%v],data[%v]", reply.Msg, reply.Data)
+		err = errors.New(fmt.Sprintf("failed,msg[%v],data[%v]", reply.Msg, reply.Data))
 		return
 	}
 	return

@@ -2,6 +2,7 @@ package proto
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/chubaofs/chubaofs/util/errors"
 	"github.com/chubaofs/chubaofs/util/log"
 	"sync"
@@ -272,4 +273,37 @@ func NewFlowControl(wt WorkerType, flowType, flowValue string, maxNum int64) (fl
 		MaxNums:    maxNum,
 	}
 	return
+}
+
+type ScheduleConfigType uint8
+
+const (
+	ScheduleConfigTypeReserved ScheduleConfigType = iota
+	ScheduleConfigTypeMigrateThreshold
+	ScheduleConfigTypeMigrateThresholdString = "migrateThreshold"
+)
+
+const (
+	ScheduleConfigMigrateThresholdGlobalKey  = "*"
+)
+
+type ScheduleConfig struct {
+	ConfigId    uint64
+	ConfigType  ScheduleConfigType
+	ConfigKey   string
+	ConfigValue string
+	CreateTime  time.Time
+	UpdateTime  time.Time
+}
+
+func NewScheduleConfig(ct ScheduleConfigType, ck, cv string) *ScheduleConfig {
+	return &ScheduleConfig{
+		ConfigType:  ct,
+		ConfigKey:   ck,
+		ConfigValue: cv,
+	}
+}
+
+func (sc ScheduleConfig) Key() string {
+	return fmt.Sprintf("%v_%v", sc.ConfigType, sc.ConfigKey)
 }

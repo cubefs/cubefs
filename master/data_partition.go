@@ -614,10 +614,6 @@ func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode
 	replica, err := partition.getReplica(dataNode.Addr)
 	if err != nil {
 		replica = newDataReplica(dataNode)
-		zone, err := c.t.getZone(dataNode.ZoneName)
-		if err == nil {
-			replica.MType = zone.MType.String()
-		}
 		partition.addReplica(replica)
 	}
 	partition.total = vr.Total
@@ -625,6 +621,15 @@ func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode
 	replica.Total = vr.Total
 	replica.Used = vr.Used
 	partition.setMaxUsed()
+	if len(dataNode.MType) > 0 {
+		replica.MType = dataNode.MType
+	} else {
+		zone, err := c.t.getZone(dataNode.ZoneName)
+		if err == nil {
+			replica.MType = zone.MType.String()
+			dataNode.MType = zone.MType.String()
+		}
+	}
 	replica.FileCount = uint32(vr.ExtentCount)
 	replica.setAlive()
 	replica.IsLeader = vr.IsLeader

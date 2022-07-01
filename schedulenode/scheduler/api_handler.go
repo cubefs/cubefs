@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
+	"github.com/chubaofs/chubaofs/schedulenode/smart"
 	"github.com/chubaofs/chubaofs/sdk/mysql"
 	"github.com/chubaofs/chubaofs/util"
 	"github.com/chubaofs/chubaofs/util/buf"
@@ -13,19 +14,22 @@ import (
 )
 
 const (
-	ParamKeyCluster    = "cluster"
-	ParamKeyVolume     = "volume"
-	ParamKeyDPId       = "dpId"
-	ParamKeyMPid       = "mdId"
-	ParamKeyTaskType   = "taskType"
-	ParamKeyTaskId     = "taskId"
-	ParamKeyFlowType   = "flowType"
-	ParamKeyFlowValue  = "flowValue"
-	ParamKeyLimit      = "limit"
-	ParamKeyOffset     = "offset"
-	ParamKeyWorkerType = "workerType"
-	ParamKeyWorkerAddr = "workerAddr"
-	ParamKeyMaxNum     = "maxNum"
+	ParamKeyCluster     = "cluster"
+	ParamKeyVolume      = "volume"
+	ParamKeyDPId        = "dpId"
+	ParamKeyMPid        = "mdId"
+	ParamKeyTaskType    = "taskType"
+	ParamKeyTaskId      = "taskId"
+	ParamKeyFlowType    = "flowType"
+	ParamKeyFlowValue   = "flowValue"
+	ParamKeyLimit       = "limit"
+	ParamKeyOffset      = "offset"
+	ParamKeyWorkerType  = "workerType"
+	ParamKeyWorkerAddr  = "workerAddr"
+	ParamKeyMaxNum      = "maxNum"
+	ParamKeyConfigType  = "confType"
+	ParamKeyConfigKey   = "key"
+	ParamKeyConfigValue = "value"
 )
 
 const (
@@ -45,7 +49,12 @@ const (
 	ScheduleNodeAPIFlowModify         = "/flow/modify"
 	ScheduleNodeAPIFlowDelete         = "/flow/delete"
 	ScheduleNodeAPIFlowList           = "/flow/list"
-	ScheduleNodeAPIFlowGet           = "/flow/get"
+	ScheduleNodeAPIFlowGet            = "/flow/get"
+	ScheduleNodeAPIConfigAdd          = "/config/add"
+	ScheduleNodeAPIConfigUpdate       = "/config/update"
+	ScheduleNodeAPIConfigDelete       = "/config/delete"
+	ScheduleNodeAPIConfigSelect       = "/config/select"
+	ScheduleNodeAPIMigrateUsing       = "/migrate/using"
 )
 
 func (s *ScheduleNode) getScheduleStatus(w http.ResponseWriter, r *http.Request) {
@@ -437,6 +446,130 @@ func (s *ScheduleNode) getFlowControlsInMemory(w http.ResponseWriter, r *http.Re
 	s.buildSuccessResp(w, flows)
 }
 
+func (s *ScheduleNode) addScheduleConfig(w http.ResponseWriter, r *http.Request) {
+	var (
+		sc  *proto.ScheduleConfig
+		err error
+	)
+	sc, err = parseParamScheduleConfig(r)
+	if err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err = mysql.AddScheduleConfig(sc); err != nil {
+		err = fmt.Errorf("add schedule config failed: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.buildSuccessResp(w, "add schedule config success")
+}
+
+func (s *ScheduleNode) updateScheduleConfig(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+		sc  *proto.ScheduleConfig
+	)
+	sc, err = parseParamScheduleConfig(r)
+	if err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err = mysql.UpdateScheduleConfig(sc); err != nil {
+		err = fmt.Errorf("modify schedule config failed: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.buildSuccessResp(w, "modify schedule config success")
+}
+
+func (s *ScheduleNode) deleteScheduleConfig(w http.ResponseWriter, r *http.Request) {
+	var (
+		err      error
+		sc       *proto.ScheduleConfig
+		confType int
+		confKey  string
+	)
+	if err = r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if util.IsStrEmpty(r.FormValue(ParamKeyConfigType)) {
+		err = fmt.Errorf("param %v can not be empty", ParamKeyConfigType)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if confType, err = strconv.Atoi(r.FormValue(ParamKeyConfigType)); err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", ParamKeyConfigType, err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if confType != int(proto.ScheduleConfigTypeMigrateThreshold) {
+		err = fmt.Errorf("invalid config type: %v", confType)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	confKey = r.FormValue(ParamKeyConfigKey)
+	if util.IsStrEmpty(confKey) {
+		err = fmt.Errorf("param %v can not be empty", ParamKeyConfigKey)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	sc = &proto.ScheduleConfig{
+		ConfigType: proto.ScheduleConfigType(confType),
+		ConfigKey:  confKey,
+	}
+	if err = mysql.DeleteScheduleConfig(sc); err != nil {
+		err = fmt.Errorf("delete schedule config failed: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.buildSuccessResp(w, "delete schedule config success")
+}
+
+func (s *ScheduleNode) selectScheduleConfig(w http.ResponseWriter, r *http.Request) {
+	var (
+		scs      []*proto.ScheduleConfig
+		err      error
+		confType int
+	)
+	if util.IsStrEmpty(r.FormValue(ParamKeyConfigType)) {
+		err = fmt.Errorf("param %v can not be empty", ParamKeyConfigType)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if confType, err = strconv.Atoi(r.FormValue(ParamKeyConfigType)); err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", ParamKeyConfigType, err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if confType != int(proto.ScheduleConfigTypeMigrateThreshold) {
+		err = fmt.Errorf("invalid config type: %v", confType)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if scs, err = mysql.SelectScheduleConfig(proto.ScheduleConfigType(confType)); err != nil {
+		err = fmt.Errorf("list scedule config infos failed: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.buildSuccessResp(w, scs)
+}
+
+func (s *ScheduleNode) selectMigrateThresholdUsing(w http.ResponseWriter, r *http.Request) {
+	value, exist := s.workers.Load(proto.WorkerTypeSmartVolume)
+	if !exist {
+		s.buildFailureResp(w, http.StatusBadRequest, "smart volume worker not found")
+		return
+	}
+	sv, ok := value.(*smart.SmartVolumeWorker)
+	if !ok {
+		s.buildFailureResp(w, http.StatusBadRequest, "smart volume worker type is invalid")
+		return
+	}
+	s.buildSuccessResp(w, sv.MigrateThreshold())
+}
+
 func (s *ScheduleNode) newProxy() *httputil.ReverseProxy {
 	return &httputil.ReverseProxy{
 		Director: func(request *http.Request) {
@@ -445,6 +578,51 @@ func (s *ScheduleNode) newProxy() *httputil.ReverseProxy {
 		},
 		BufferPool: buf.NewBytePool(1000, 32*1024),
 	}
+}
+
+func parseParamScheduleConfig(r *http.Request) (flow *proto.ScheduleConfig, err error) {
+	var (
+		confType  int
+		confKey   string
+		confValue string
+	)
+	if err = r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		return
+	}
+	if util.IsStrEmpty(r.FormValue(ParamKeyConfigType)) {
+		err = fmt.Errorf("param %v can not be empty", ParamKeyConfigType)
+		return
+	}
+	if confType, err = strconv.Atoi(r.FormValue(ParamKeyConfigType)); err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", ParamKeyConfigType, err)
+		return
+	}
+	if confType != int(proto.ScheduleConfigTypeMigrateThreshold) {
+		err = fmt.Errorf("invalid config type: %v", confType)
+		return
+	}
+	confKey = r.FormValue(ParamKeyConfigKey)
+	if util.IsStrEmpty(confKey) {
+		err = fmt.Errorf("param %v can not be empty", ParamKeyConfigKey)
+		return
+	}
+	confValue = r.FormValue(ParamKeyConfigValue)
+	if util.IsStrEmpty(confValue) {
+		err = fmt.Errorf("param %v can not be empty", ParamKeyConfigValue)
+		return
+	}
+	// if config type is migrate threshold, value must be float64 and less then 1
+	var migrateThreshold float64
+	if migrateThreshold, err = strconv.ParseFloat(confValue, 64); err != nil {
+		err = fmt.Errorf("parse migrate threshold failed: %v", err.Error())
+		return
+	}
+	if migrateThreshold <= 0 || migrateThreshold >= 1 {
+		err = fmt.Errorf("migrate threshold value is invalid")
+		return
+	}
+	return proto.NewScheduleConfig(proto.ScheduleConfigType(confType), confKey, confValue), nil
 }
 
 func parseParamFlowControl(r *http.Request) (flow *proto.FlowControl, err error) {

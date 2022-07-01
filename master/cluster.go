@@ -2860,6 +2860,9 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	vol.trashRemainingDays = remainingDays
 	vol.DefaultStoreMode = storeMode
 	vol.dpWriteableThreshold = dpWriteableThreshold
+	if isSmart && !vol.isSmart {
+		vol.smartEnableTime = time.Now().Unix()
+	}
 	vol.isSmart = isSmart
 	if smartRules != nil {
 		vol.smartRules = smartRules
@@ -2967,7 +2970,10 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart bool,
 	crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64,
 	storeMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string) (vol *Vol, err error) {
-	var id uint64
+	var (
+		id uint64
+		smartEnableTime int64
+	)
 	var createTime = time.Now().Unix() // record unix seconds of volume create time
 	masterRegionZoneList := strings.Split(zoneName, ",")
 	if IsCrossRegionHATypeQuorum(crossRegionHAType) {
@@ -2989,8 +2995,11 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	if err != nil {
 		goto errHandler
 	}
+	if isSmart {
+		smartEnableTime = createTime
+	}
 	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), uint8(mpReplicaNum), followerRead,
-		authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, createTime, description, "", "",
+		authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, createTime, smartEnableTime, description, "", "",
 		crossRegionHAType, dpLearnerNum, mpLearnerNum, dpWriteableThreshold, uint32(trashDays), storeMode, convertSt, mpLayout, smartRules)
 
 	if len(masterRegionZoneList) > 1 {

@@ -248,6 +248,25 @@ func TestGetStartTime2(t *testing.T) {
 	fmt.Printf("Second : %v\n", timeValue.Second())
 }
 
+func TestGetVolumeMigrateThreshold(t *testing.T) {
+	volume1 := "smart3"
+	volume2 := "smart5"
+
+	smart := NewSmartVolumeWorker()
+
+	sc1 := proto.NewScheduleConfig(proto.ScheduleConfigTypeMigrateThreshold, volume1, "0.3")
+	sc2 := proto.NewScheduleConfig(proto.ScheduleConfigTypeMigrateThreshold, "*", "0.6")
+	smart.dpMigrateThreshold.Store(sc1.Key(), sc1)
+	smart.dpMigrateThreshold.Store(sc2.Key(), sc2)
+
+
+	threshold1 := smart.getVolumeMigrateThreshold(volume1)
+	fmt.Println(threshold1)
+
+	threshold2 := smart.getVolumeMigrateThreshold(volume2)
+	fmt.Println(threshold2)
+}
+
 func TestGetStartTime(t *testing.T) {
 	lessCount := 20
 	_, resMinute, err := getStartTime(proto.ActionMetricsTimeTypeMinute, lessCount)

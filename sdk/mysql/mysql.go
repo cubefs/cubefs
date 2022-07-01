@@ -23,7 +23,7 @@ func InitMysqlClient(mc *config.MysqlConfig) (err error) {
 		return nil
 	}
 	mysqlPort := strconv.Itoa(mc.Port)
-	dataSource := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", mc.Username, mc.Password, mc.Url, mysqlPort, mc.Database)
+	dataSource := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8&loc=Local", mc.Username, mc.Password, mc.Url, mysqlPort, mc.Database)
 	db, err = sql.Open("mysql", dataSource)
 	if err != nil {
 		log.LogErrorf("[InitMysqlClient] init mysql client failed, url(%v), username(%v), password(%v), err(%v)", mc.Url, mc.Username, mc.Password, err)
@@ -111,6 +111,7 @@ func ParsePassword(filePath, confKey string) (password string, err error) {
 		}
 		log.LogDebugf("[ParsePassword] origin string: %v", line)
 		line = strings.ReplaceAll(line, " ", "")
+		line = strings.ReplaceAll(line, "\n", "")
 		index := strings.Index(line, "=")
 		name := util.SubString(line, 0, index)
 		value := util.SubString(line, index+1, len(line))

@@ -150,6 +150,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  min writable mp num  : %v\n", svv.MinWritableMPNum))
 	sb.WriteString(fmt.Sprintf("  min writable dp num  : %v\n", svv.MinWritableDPNum))
 	sb.WriteString(fmt.Sprintf("  smart           : %s\n", formatEnabledDisabled(svv.IsSmart)))
+	sb.WriteString(fmt.Sprintf("  smart enable time: %v\n", svv.SmartEnableTime))
 	sb.WriteString(fmt.Sprintf("  smart rules           : %v\n", strings.Join(svv.SmartRules, ",")))
 	return sb.String()
 }

@@ -162,6 +162,11 @@ func (s *ScheduleNode) registerHandler() {
 	http.HandleFunc(ScheduleNodeAPIFlowDelete, s.deleteFlowControl)
 	http.HandleFunc(ScheduleNodeAPIFlowList, s.listFlowControls)
 	http.HandleFunc(ScheduleNodeAPIFlowGet, s.getFlowControlsInMemory)
+	http.HandleFunc(ScheduleNodeAPIConfigAdd, s.addScheduleConfig)
+	http.HandleFunc(ScheduleNodeAPIConfigUpdate, s.updateScheduleConfig)
+	http.HandleFunc(ScheduleNodeAPIConfigDelete, s.deleteScheduleConfig)
+	http.HandleFunc(ScheduleNodeAPIConfigSelect, s.selectScheduleConfig)
+	http.HandleFunc(ScheduleNodeAPIMigrateUsing, s.selectMigrateThresholdUsing)
 }
 
 func (s *ScheduleNode) identityMonitor() {

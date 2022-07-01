@@ -212,6 +212,7 @@ type volValue struct {
 	ConverState          bsProto.VolConvertState
 	MpLayout             bsProto.MetaPartitionLayout
 	IsSmart              bool
+	SmartEnableTime int64
 	SmartRules           []string
 }
 
@@ -260,6 +261,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		ConverState:          vol.convertState,
 		MpLayout:             vol.MpLayout,
 		IsSmart:              vol.isSmart,
+		SmartEnableTime: vol.smartEnableTime,
 		SmartRules:           vol.smartRules,
 	}
 	return
