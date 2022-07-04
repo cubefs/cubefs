@@ -177,7 +177,6 @@ func (factor *LimitFactor) SetLimit(limitVal uint64, bufferVal uint64) {
 		grid.limit = limitVal / girdCntOneSecond
 	}
 
-	// should not enter in,do more protection for enhance client usage
 	if grid.limit == 0 {
 		factor.isSetLimitZero = true
 		switch factor.factorType {
@@ -353,7 +352,7 @@ func (limitManager *LimitManager) CalcNeedByPow(limitFactor *LimitFactor, used u
 	if limitFactor.factorType == proto.FlowReadType || limitFactor.factorType == proto.FlowWriteType {
 		used += limitFactor.GetWaitTotalSize()
 		if used < 128*util.KB {
-			used = 128 * util.KB
+			need = 128 * util.KB
 			return
 		}
 		need = uint64(300*util.MB * math.Pow(float64(used) / float64(300*util.MB), 0.8))
