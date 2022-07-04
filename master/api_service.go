@@ -1344,7 +1344,7 @@ func (m *Server) qosUpload(w http.ResponseWriter, r *http.Request) {
 
 	if qosEnable, _ := strconv.ParseBool(qosEnableStr); qosEnable {
 		if clientInfo, err := parseQosInfo(r); err == nil {
-			// log.LogInfof("action[qosUpload] cliInfoMgrMap [%v],clientInfo id[%v] clientInfo.Host %v, remote addr", clientInfo.ID, clientInfo.Host, r.RemoteAddr)
+			log.LogDebugf("action[qosUpload] cliInfoMgrMap [%v],clientInfo id[%v] clientInfo.Host %v, enable %v", clientInfo.ID, clientInfo.Host, r.RemoteAddr, qosEnable)
 			if clientInfo.ID == 0 {
 				if limit, err = vol.qosManager.init(m.cluster, clientInfo.Host); err != nil {
 					sendErrReply(w, r, newErrHTTPReply(err))
