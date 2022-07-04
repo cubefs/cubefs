@@ -138,15 +138,27 @@ func (qosManager *QosCtrlManager) initClientQosInfo(clientID uint64, host string
 	for factorType <= proto.FlowWriteType {
 		var initLimit uint64
 		serverLimit := qosManager.serverFactorLimitMap[factorType]
-		initLimit = serverLimit.Total / uint64(cliCnt)
 
-		if serverLimit.Buffer > initLimit {
-			serverLimit.Buffer -= initLimit
-			serverLimit.Allocated += initLimit
-		} else {
-			initLimit = serverLimit.Buffer
-			serverLimit.Allocated += initLimit
-			serverLimit.Buffer = 0
+		if qosManager.qosEnable {
+			initLimit = serverLimit.Total / uint64(cliCnt)
+
+			if serverLimit.Buffer > initLimit {
+				serverLimit.Buffer -= initLimit
+				serverLimit.Allocated += initLimit
+			} else {
+				initLimit = serverLimit.Buffer
+				serverLimit.Allocated += initLimit
+				serverLimit.Buffer = 0
+			}
+			if factorType == proto.FlowWriteType || factorType == proto.FlowReadType {
+				if initLimit > 1*util.GB/8 {
+					initLimit = 1 * util.GB / 8
+				}
+			} else {
+				if initLimit > 200 {
+					initLimit = 200
+				}
+			}
 		}
 
 		clientInitInfo.FactorMap[factorType] = &proto.ClientLimitInfo{
@@ -155,18 +167,7 @@ func (qosManager *QosCtrlManager) initClientQosInfo(clientID uint64, host string
 			Used:       0,
 			Need:       0,
 		}
-		cliInfo := clientInitInfo.FactorMap[factorType]
-		if factorType == proto.FlowWriteType || factorType == proto.FlowReadType {
-			if cliInfo.UsedLimit > 1*util.GB/8 {
-				cliInfo.UsedLimit = 1 * util.GB / 8
-			}
-		} else {
-			if cliInfo.UsedLimit > 200 {
-				cliInfo.UsedLimit = 200
-			}
-		}
 
-		limitRsp2Client.FactorMap[factorType] = cliInfo
 		limitRsp2Client.Magnify[factorType] = serverLimit.Magnify
 
 		log.LogDebugf("action[initClientQosInfo] vol [%v] clientID [%v] factorType [%v] init client info and set limitRsp2Client [%v]"+
@@ -528,6 +529,8 @@ func (vol *Vol) checkQos() {
 	// check expire client and delete from map
 	tTime := time.Now()
 	for id, cli := range vol.qosManager.cliInfoMgrMap {
+		log.LogWarnf("action[checkQos] vol [%v] Id [%v] addr [%v] check. time now[%v],client last alive time[%v]",
+			vol.Name, id, cli.host, tTime.Unix(), cli.Time.Unix())
 		if cli.Time.Add(20 * time.Second).Before(tTime) {
 			log.LogWarnf("action[checkQos] vol [%v] Id [%v] addr [%v] be delete in case of long time no request",
 				vol.Name, id, cli.host)
@@ -617,6 +620,18 @@ func (vol *Vol) getClientLimitInfo(id uint64, ip string) (interface{}, error) {
 func (vol *Vol) volQosEnable(c *Cluster, enable bool) error {
 	log.LogWarnf("action[qosEnable] vol %v, set qos enable [%v], qosmgr[%v]", vol.Name, enable, vol.qosManager)
 	vol.qosManager.qosEnable = enable
+	vol.qosManager.Lock()
+	defer vol.qosManager.Unlock()
+
+	if !enable {
+		for _, limit := range vol.qosManager.cliInfoMgrMap {
+			for factorType := proto.IopsReadType; factorType <= proto.FlowWriteType; factorType++ {
+				limit.Assign.FactorMap[factorType].UsedLimit = 0
+				limit.Assign.FactorMap[factorType].UsedBuffer = 0
+			}
+		}
+
+	}
 	return c.syncUpdateVol(vol)
 }
 
