@@ -1,13 +1,13 @@
 package master
 
 import (
-"fmt"
-"sync"
-"time"
+	"fmt"
+	"sync"
+	"time"
 
-"github.com/cubefs/cubefs/proto"
-"github.com/cubefs/cubefs/util"
-"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 
@@ -169,6 +169,7 @@ func (qosManager *QosCtrlManager) initClientQosInfo(clientID uint64, host string
 		}
 
 		limitRsp2Client.Magnify[factorType] = serverLimit.Magnify
+		limitRsp2Client.FactorMap[factorType] = clientInitInfo.FactorMap[factorType]
 
 		log.LogDebugf("action[initClientQosInfo] vol [%v] clientID [%v] factorType [%v] init client info and set limitRsp2Client [%v]"+
 			"server total[%v] used [%v] buffer [%v]",
@@ -184,7 +185,7 @@ func (qosManager *QosCtrlManager) initClientQosInfo(clientID uint64, host string
 		ID:     clientID,
 		host:   host,
 	}
-	log.LogDebugf("action[initClientQosInfo] vol [%v] clientID [%v]", qosManager.vol.Name, clientID)
+	log.LogDebugf("action[initClientQosInfo] vol [%v] clientID [%v] Assign [%v]", qosManager.vol.Name, clientID, limitRsp2Client)
 	return
 }
 
@@ -310,7 +311,7 @@ func (serverLimit *ServerFactorLimit) updateLimitFactor(req interface{}) {
 }
 
 func (qosManager *QosCtrlManager) init(cluster *Cluster, host string) (limit *proto.LimitRsp2Client, err error) {
-	log.LogInfof("action[qosManage.init] vol [%v] host %v", qosManager.vol.Name, host)
+	log.LogDebugf("action[qosManage.init] vol [%v] host %v", qosManager.vol.Name, host)
 	var id uint64
 	if id, err = cluster.idAlloc.allocateCommonID(); err == nil {
 		return qosManager.initClientQosInfo(id, host)
@@ -343,6 +344,9 @@ func (qosManager *QosCtrlManager) HandleClientQosReq(reqClientInfo *proto.Client
 		clientInfo.Assign = limitRsp
 		clientInfo.Time = time.Now()
 		for i := proto.IopsReadType; i <= proto.FlowWriteType; i++ {
+			reqClientInfo.FactorMap[i].UsedLimit = reqClientInfo.FactorMap[i].Used
+			reqClientInfo.FactorMap[i].UsedBuffer = reqClientInfo.FactorMap[i].Need
+
 			log.LogDebugf("action[HandleClientQosReq] vol [%v] [%v,%v,%v,%v]", qosManager.vol.Name,
 				reqClientInfo.FactorMap[i].Used,
 				reqClientInfo.FactorMap[i].Need,
@@ -351,7 +355,6 @@ func (qosManager *QosCtrlManager) HandleClientQosReq(reqClientInfo *proto.Client
 		}
 		return
 	}
-
 	index := 0
 	wg := &sync.WaitGroup{}
 	wg.Add(len(reqClientInfo.FactorMap))
@@ -407,6 +410,10 @@ func (qosManager *QosCtrlManager) updateServerLimitByClientsInfo(factorType uint
 	serverLimit.CliUsed = cliSum.Used
 	serverLimit.CliNeed = cliSum.Need
 	qosManager.RUnlock()
+
+	if !qosManager.qosEnable {
+		return
+	}
 
 	serverLimit.Buffer = 0
 	nextStageUse = cliSum.Used
@@ -481,8 +488,9 @@ func (qosManager *QosCtrlManager) assignClientsNewQos(factorType uint32) {
 	qosManager.RLock()
 	serverLimit := qosManager.serverFactorLimitMap[factorType]
 	var bufferAllocated uint64
+
 	// recalculate client Assign limit and buffer
-	for host, cliInfoMgr := range qosManager.cliInfoMgrMap {
+	for _, cliInfoMgr := range qosManager.cliInfoMgrMap {
 		cliInfo := cliInfoMgr.Cli.FactorMap[factorType]
 		assignInfo := cliInfoMgr.Assign.FactorMap[factorType]
 
@@ -495,9 +503,6 @@ func (qosManager *QosCtrlManager) assignClientsNewQos(factorType uint32) {
 				assignInfo.UsedBuffer = uint64(float64(serverLimit.Buffer) * (float64(assignInfo.UsedLimit) / float64(serverLimit.Allocated)) * 0.5)
 			}
 
-			log.LogDebugf("action[assignClientsNewQos] Assign host [%v] limit [%v] buffer [%v]",
-				host, assignInfo.UsedLimit, assignInfo.UsedBuffer)
-
 			// buffer left may be quit large and we should not used up and doen't mean if buffer large than used limit line
 			if assignInfo.UsedBuffer > assignInfo.UsedLimit {
 				assignInfo.UsedBuffer = assignInfo.UsedLimit
@@ -505,8 +510,6 @@ func (qosManager *QosCtrlManager) assignClientsNewQos(factorType uint32) {
 		}
 
 		bufferAllocated += assignInfo.UsedBuffer
-		log.LogDebugf("action[assignClientsNewQos] vol [%v] host [%v] type [%v] assignInfo used limit [%v], used buffer [%v]",
-			qosManager.vol.Name, host, proto.QosTypeString(factorType), assignInfo.UsedLimit, assignInfo.UsedBuffer)
 	}
 
 	qosManager.RUnlock()
@@ -529,8 +532,6 @@ func (vol *Vol) checkQos() {
 	// check expire client and delete from map
 	tTime := time.Now()
 	for id, cli := range vol.qosManager.cliInfoMgrMap {
-		log.LogWarnf("action[checkQos] vol [%v] Id [%v] addr [%v] check. time now[%v],client last alive time[%v]",
-			vol.Name, id, cli.host, tTime.Unix(), cli.Time.Unix())
 		if cli.Time.Add(20 * time.Second).Before(tTime) {
 			log.LogWarnf("action[checkQos] vol [%v] Id [%v] addr [%v] be delete in case of long time no request",
 				vol.Name, id, cli.host)
@@ -538,10 +539,6 @@ func (vol *Vol) checkQos() {
 		}
 	}
 
-	if !vol.qosManager.qosEnable {
-		vol.qosManager.Unlock()
-		return
-	}
 	vol.qosManager.Unlock()
 
 	// periodically updateServerLimitByClientsInfo and get assigned limit info for all clients
@@ -550,6 +547,10 @@ func (vol *Vol) checkQos() {
 		// calc all clients and get real used and need value , used value should less then total
 		vol.qosManager.updateServerLimitByClientsInfo(factorType)
 		// update client assign info by result above
+		if !vol.qosManager.qosEnable {
+			continue
+		}
+
 		vol.qosManager.assignClientsNewQos(factorType)
 
 		serverLimit := vol.qosManager.serverFactorLimitMap[factorType]
@@ -572,6 +573,8 @@ func (vol *Vol) getQosStatus(cluster *Cluster) interface{} {
 		ClusterMaxUploadCnt  uint32
 		ClientALiveCnt       int
 	}
+	vol.qosManager.RLock()
+	defer vol.qosManager.RUnlock()
 
 	return &qosStatus{
 		ServerFactorLimitMap: map[uint32]*ServerFactorLimit{
