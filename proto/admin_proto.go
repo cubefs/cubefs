@@ -528,7 +528,7 @@ const (
 )
 
 const (
-	QosDefaultBurst                   = 128
+	QosDefaultBurst                   = 16000000
 	QosDefaultClientCnt        uint32 = 100
 	QosDefaultDiskMaxFLowLimit int    = 0x7FFFFFFF
 	QosDefaultDiskMaxIoLimit   int    = 100000
