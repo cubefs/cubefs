@@ -403,6 +403,7 @@ func (m *Server) getClientQosInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if host = r.FormValue(addrKey); host != "" {
+		log.LogInfof("action[getClientQosInfo] host %v",host)
 		if !checkIp(host) {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("addr not legal").Error()})
 			return
@@ -416,7 +417,7 @@ func (m *Server) getClientQosInfo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var rsp interface{}
-	if rsp, err = vol.getClientLimitInfo(id, util.GetIp(host)); err != nil {
+	if rsp, err = vol.getClientLimitInfo(id, host); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 	} else {
 		sendOkReply(w, r, newSuccessHTTPReply(rsp))
@@ -1433,6 +1434,16 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 }
 
 func checkIp(addr string) bool {
+
+	ip := strings.Trim(addr, " ")
+	regStr := `^(([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.)(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){2}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])`
+	if match, _ := regexp.MatchString(regStr, ip); match {
+		return true
+	}
+	return false
+}
+
+func checkIpPort(addr string) bool {
 	var arr []string
 	if arr = strings.Split(addr, ":"); len(arr) < 2 {
 		return false
@@ -1460,7 +1471,7 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if !checkIp(nodeAddr) {
+	if !checkIpPort(nodeAddr) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("addr not legal").Error()})
 		return
 	}
@@ -2403,7 +2414,7 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if !checkIp(nodeAddr) {
+	if !checkIpPort(nodeAddr) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("addr not legal").Error()})
 		return
 	}
