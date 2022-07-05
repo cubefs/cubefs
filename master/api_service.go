@@ -484,7 +484,7 @@ func (m *Server) QosUpdateClientParam(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply("success"))
 }
 
-func parseRequestQos(r *http.Request, isMagnify bool) (qosParam *qosArgs, err error) {
+func parseRequestQos(r *http.Request, isMagnify bool, isEnableIops bool) (qosParam *qosArgs, err error) {
 	qosParam = &qosArgs{}
 
 	var value int
@@ -499,37 +499,41 @@ func parseRequestQos(r *http.Request, isMagnify bool) (qosParam *qosArgs, err er
 	if qosEnableStr := r.FormValue(QosEnableKey); qosEnableStr != "" {
 		qosParam.qosEnable, _ = strconv.ParseBool(qosEnableStr)
 	}
-	//if iopsRLimitStr := r.FormValue(IopsRKey); iopsRLimitStr != "" {
-	//	log.LogInfof("actin[parseRequestQos] iopsRLimitStr %v", iopsRLimitStr)
-	//	if value, err = strconv.Atoi(iopsRLimitStr); err == nil {
-	//		qosParam.iopsRVal = uint64(value)
-	//		if !isMagnify && qosParam.iopsRVal < MinIoLimit {
-	//			err = fmt.Errorf("iops read %v need larger than 100", value)
-	//			return
-	//		}
-	//		if isMagnify && (qosParam.iopsRVal < MinMagnify || qosParam.iopsRVal > MaxMagnify) {
-	//			err = fmt.Errorf("iops read magnify %v must between %v and %v", value, MinMagnify, MaxMagnify)
-	//			log.LogErrorf("acttion[parseRequestQos] %v",err.Error())
-	//			return
-	//		}
-	//	}
-	//}
-	//
-	//if iopsWLimitStr := r.FormValue(IopsWKey); iopsWLimitStr != "" {
-	//	log.LogInfof("actin[parseRequestQos] iopsWLimitStr %v", iopsWLimitStr)
-	//	if value, err = strconv.Atoi(iopsWLimitStr); err == nil {
-	//		qosParam.iopsWVal = uint64(value)
-	//		if !isMagnify && qosParam.iopsWVal < MinIoLimit {
-	//			err = fmt.Errorf("iops %v write write io larger than 100", value)
-	//			return
-	//		}
-	//		if isMagnify && (qosParam.iopsWVal < MinMagnify || qosParam.iopsWVal > MaxMagnify) {
-	//			err = fmt.Errorf("iops write magnify %v must between %v and %v", value, MinMagnify, MaxMagnify)
-	//			log.LogErrorf("acttion[parseRequestQos] %v",err.Error())
-	//			return
-	//		}
-	//	}
-	//}
+
+	if isEnableIops {
+		if iopsRLimitStr := r.FormValue(IopsRKey); iopsRLimitStr != "" {
+			log.LogInfof("actin[parseRequestQos] iopsRLimitStr %v", iopsRLimitStr)
+			if value, err = strconv.Atoi(iopsRLimitStr); err == nil {
+				qosParam.iopsRVal = uint64(value)
+				if !isMagnify && qosParam.iopsRVal < MinIoLimit {
+					err = fmt.Errorf("iops read %v need larger than 100", value)
+					return
+				}
+				if isMagnify && (qosParam.iopsRVal < MinMagnify || qosParam.iopsRVal > MaxMagnify) {
+					err = fmt.Errorf("iops read magnify %v must between %v and %v", value, MinMagnify, MaxMagnify)
+					log.LogErrorf("acttion[parseRequestQos] %v",err.Error())
+					return
+				}
+			}
+		}
+
+		if iopsWLimitStr := r.FormValue(IopsWKey); iopsWLimitStr != "" {
+			log.LogInfof("actin[parseRequestQos] iopsWLimitStr %v", iopsWLimitStr)
+			if value, err = strconv.Atoi(iopsWLimitStr); err == nil {
+				qosParam.iopsWVal = uint64(value)
+				if !isMagnify && qosParam.iopsWVal < MinIoLimit {
+					err = fmt.Errorf("iops %v write write io larger than 100", value)
+					return
+				}
+				if isMagnify && (qosParam.iopsWVal < MinMagnify || qosParam.iopsWVal > MaxMagnify) {
+					err = fmt.Errorf("iops write magnify %v must between %v and %v", value, MinMagnify, MaxMagnify)
+					log.LogErrorf("acttion[parseRequestQos] %v",err.Error())
+					return
+				}
+			}
+		}
+
+	}
 
 	if flowRLimitStr := r.FormValue(FlowRKey); flowRLimitStr != "" {
 		log.LogInfof("actin[parseRequestQos] flowRLimitStr %v", flowRLimitStr)
@@ -581,7 +585,7 @@ func (m *Server) QosUpdateMagnify(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if vol, err = m.cluster.getVol(volName); err == nil {
-		if magnifyArgs, err = parseRequestQos(r, true); err == nil {
+		if magnifyArgs, err = parseRequestQos(r, true, false); err == nil {
 			_ = vol.volQosUpdateMagnify(m.cluster, magnifyArgs)
 			sendOkReply(w, r, newSuccessHTTPReply("success"))
 		}
@@ -601,7 +605,7 @@ func (m *Server) QosUpdateZoneLimit(w http.ResponseWriter, r *http.Request) {
 	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
 		zoneName = DefaultZoneName
 	}
-	if qosParam, err = parseRequestQos(r, false); err != nil {
+	if qosParam, err = parseRequestQos(r, false, true); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -681,7 +685,7 @@ func (m *Server) QosUpdate(w http.ResponseWriter, r *http.Request) {
 			}
 			log.LogInfof("action[DiskQosUpdate] update qos eanble [%v]", enable)
 		}
-		if limitArgs, err = parseRequestQos(r, false); err == nil && limitArgs.isArgsWork() {
+		if limitArgs, err = parseRequestQos(r, false, false); err == nil && limitArgs.isArgsWork() {
 			if err = vol.volQosUpdateLimit(m.cluster, limitArgs); err != nil {
 				goto RET
 			}
