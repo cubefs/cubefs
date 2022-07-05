@@ -556,12 +556,11 @@ type ClientLimitInfo struct {
 }
 
 type ClientReportLimitInfo struct {
-	Ver       int8
 	ID        uint64
 	FactorMap map[uint32]*ClientLimitInfo
 	Host      string
 	Status    uint8
-	Reserved  string
+	reserved  string
 }
 
 func NewClientReportLimitInfo() *ClientReportLimitInfo {
@@ -570,15 +569,15 @@ func NewClientReportLimitInfo() *ClientReportLimitInfo {
 	}
 }
 
+
 type LimitRsp2Client struct {
-	Ver           int8
 	ID            uint64
 	Enable        bool
 	ReqPeriod     uint32
 	HitTriggerCnt uint8
 	FactorMap     map[uint32]*ClientLimitInfo
 	Magnify       map[uint32]uint32
-	Reserved      string
+	reserved      string
 }
 
 func NewLimitRsp2Client() *LimitRsp2Client {
