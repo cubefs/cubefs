@@ -558,7 +558,7 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
-	if req.qosLimitArgs, err = parseRequestQos(r, false); err != nil {
+	if req.qosLimitArgs, err = parseRequestQos(r, false, false); err != nil {
 		return err
 	}
 	req.zoneName = extractStr(r, zoneNameKey)
