@@ -28,12 +28,35 @@ type ServerFactorLimit struct {
 	qosManager     *QosCtrlManager
 }
 
+type ClientReportOutput struct {
+	ID        uint64
+	FactorMap map[uint32]*proto.ClientLimitInfo
+	Host      string
+	Status    uint8
+}
+
+type LimitOutput struct {
+	ID            uint64
+	Enable        bool
+	ReqPeriod     uint32
+	HitTriggerCnt uint8
+	FactorMap     map[uint32]*proto.ClientLimitInfo
+}
+
+type ClientInfoOutput struct {
+	Cli    *ClientReportOutput
+	Assign *LimitOutput
+	Time   time.Time
+	ID     uint64
+	Host   string
+}
+
 type ClientInfoMgr struct {
 	Cli    *proto.ClientReportLimitInfo
 	Assign *proto.LimitRsp2Client
 	Time   time.Time
 	ID     uint64
-	host   string
+	Host   string
 }
 
 type qosRequestArgs struct {
@@ -116,7 +139,7 @@ func (qosManager *QosCtrlManager) getQosLimit(factorTYpe uint32) uint64 {
 
 func (qosManager *QosCtrlManager) initClientQosInfo(clientID uint64, host string) (limitRsp2Client *proto.LimitRsp2Client, err error) {
 
-	log.LogDebugf("action[initClientQosInfo] vol %v clientID %v host %v", qosManager.vol.Name, clientID, host)
+	log.LogDebugf("action[initClientQosInfo] vol %v clientID %v Host %v", qosManager.vol.Name, clientID, host)
 	clientInitInfo := proto.NewClientReportLimitInfo()
 	cliCnt := qosManager.defaultClientCnt
 	if cliCnt <= proto.QosDefaultClientCnt {
@@ -183,7 +206,7 @@ func (qosManager *QosCtrlManager) initClientQosInfo(clientID uint64, host string
 		Assign: limitRsp2Client,
 		Time:   time.Now(),
 		ID:     clientID,
-		host:   host,
+		Host:   host,
 	}
 	log.LogDebugf("action[initClientQosInfo] vol [%v] clientID [%v] Assign [%v]", qosManager.vol.Name, clientID, limitRsp2Client)
 	return
@@ -311,7 +334,7 @@ func (serverLimit *ServerFactorLimit) updateLimitFactor(req interface{}) {
 }
 
 func (qosManager *QosCtrlManager) init(cluster *Cluster, host string) (limit *proto.LimitRsp2Client, err error) {
-	log.LogDebugf("action[qosManage.init] vol [%v] host %v", qosManager.vol.Name, host)
+	log.LogDebugf("action[qosManage.init] vol [%v] Host %v", qosManager.vol.Name, host)
 	var id uint64
 	if id, err = cluster.idAlloc.allocateCommonID(); err == nil {
 		return qosManager.initClientQosInfo(id, host)
@@ -402,7 +425,7 @@ func (qosManager *QosCtrlManager) updateServerLimitByClientsInfo(factorType uint
 		cliSum.Need += cliFactor.Need
 		cliSum.UsedLimit += cliFactor.UsedLimit
 		cliSum.UsedBuffer += cliFactor.UsedBuffer
-		log.LogDebugf("action[updateServerLimitByClientsInfo] vol [%v] host [%v] type [%v] used [%v] need [%v] limit [%v] buffer [%v]",
+		log.LogDebugf("action[updateServerLimitByClientsInfo] vol [%v] Host [%v] type [%v] used [%v] need [%v] limit [%v] buffer [%v]",
 			qosManager.vol.Name, host, proto.QosTypeString(factorType),
 			cliFactor.Used, cliFactor.Need, cliFactor.UsedLimit, cliFactor.UsedBuffer)
 	}
@@ -534,7 +557,7 @@ func (vol *Vol) checkQos() {
 	for id, cli := range vol.qosManager.cliInfoMgrMap {
 		if cli.Time.Add(20 * time.Second).Before(tTime) {
 			log.LogWarnf("action[checkQos] vol [%v] Id [%v] addr [%v] be delete in case of long time no request",
-				vol.Name, id, cli.host)
+				vol.Name, id, cli.Host)
 			delete(vol.qosManager.cliInfoMgrMap, id)
 		}
 	}
@@ -592,28 +615,57 @@ func (vol *Vol) getClientLimitInfo(id uint64, ip string) (interface{}, error) {
 	vol.qosManager.RLock()
 	defer vol.qosManager.RUnlock()
 
+	assignFuc := func(info *ClientInfoMgr) (rspInfo *ClientInfoOutput){
+		rspInfo = &ClientInfoOutput{
+			Cli: &ClientReportOutput{
+				ID: info.Cli.ID,
+				Status: info.Cli.Status,
+				FactorMap: make(map[uint32]*proto.ClientLimitInfo, 0),
+			},
+			Assign: &LimitOutput{
+				ID: info.Assign.ID,
+				Enable: info.Assign.Enable,
+				ReqPeriod: info.Assign.ReqPeriod,
+				HitTriggerCnt: info.Assign.HitTriggerCnt,
+				FactorMap: make(map[uint32]*proto.ClientLimitInfo, 0),
+			},
+			Time: info.Time,
+			Host: info.Host,
+			ID: info.ID,
+		}
+
+		rspInfo.Cli.FactorMap[proto.FlowReadType] = info.Cli.FactorMap[proto.FlowReadType]
+		rspInfo.Cli.FactorMap[proto.FlowWriteType] = info.Cli.FactorMap[proto.FlowWriteType]
+
+		rspInfo.Assign.FactorMap[proto.FlowReadType] = info.Assign.FactorMap[proto.FlowReadType]
+		rspInfo.Assign.FactorMap[proto.FlowWriteType] = info.Assign.FactorMap[proto.FlowWriteType]
+
+		return
+	}
+
 	if id > 0 {
 		if info, ok := vol.qosManager.cliInfoMgrMap[id]; ok {
-			if len(ip) > 0 && util.GetIp(info.host) != ip {
-				return nil, fmt.Errorf("ip info [%v] not equal with request [%v]", info.host, ip)
+			if len(ip) > 0 && util.GetIp(info.Host) != ip {
+				return nil, fmt.Errorf("ip info [%v] not equal with request [%v]", info.Host, ip)
 			}
-			return info, nil
+			return assignFuc(info), nil
 		}
 	} else {
-		if len(ip) != 0 {
-			var resp []*ClientInfoMgr
-			for _, info := range vol.qosManager.cliInfoMgrMap {
-				// http connection port  from client will change time by time,so ignore port here
-				if util.GetIp(info.host) == ip {
-					resp = append(resp, info)
+		var resp []*ClientInfoOutput
+		for _, info := range vol.qosManager.cliInfoMgrMap {
+			// http connection port  from client will change time by time,so ignore port here
+			rspInfo := assignFuc(info)
+			if len(ip) != 0 {
+				if util.GetIp(info.Host) == ip {
+					resp = append(resp, rspInfo)
 				}
+			} else {
+				resp = append(resp, rspInfo)
 			}
-			if len(resp) > 0 {
-				return resp, nil
-			}
-		} else {
-			return vol.qosManager.cliInfoMgrMap, nil
 		}
+
+		return resp, nil
+
 	}
 	return nil, fmt.Errorf("not found")
 }
@@ -631,7 +683,9 @@ func (vol *Vol) volQosEnable(c *Cluster, enable bool) error {
 				limit.Assign.FactorMap[factorType].UsedBuffer = 0
 			}
 		}
-
+		for _, cli := range vol.qosManager.serverFactorLimitMap {
+			cli.Buffer = cli.Total
+		}
 	}
 	return c.syncUpdateVol(vol)
 }
