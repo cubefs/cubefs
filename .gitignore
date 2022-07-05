@@ -12,3 +12,4 @@ tmp/
 docker/log
 console/html
 *.iml
+client/*.so

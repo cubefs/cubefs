@@ -380,11 +380,12 @@ services:
             ipv4_address: 192.168.0.50
 
     client:
-        image: chubaofs/cfs-base:1.4
+        image: chubaofs/cfs-runtime-alter:1.0
         ports:
             - 9500
         volumes:
             - ./bin:/cfs/bin:ro
+            - ./bin/libcfssdk.so:/usr/lib64/libcfssdk.so:ro
             - ./conf/hosts:/etc/hosts:ro
             - ./conf/client.json:/cfs/conf/client.json
             - ${DiskPath:-./docker_data}/client/log:/cfs/log
@@ -455,7 +456,7 @@ services:
                 ipv4_address: 192.168.0.104
 
     build:
-        image: chubaofs/cfs-base:1.4
+        image: chubaofs/cfs-runtime-alter:1.0
         volumes:
             - ../:/go/src/github.com/chubaofs/chubaofs
         command:
@@ -464,7 +465,7 @@ services:
             extnetwork:
 
     build_test:
-        image: chubaofs/cfs-base:1.4
+        image: chubaofs/cfs-runtime-alter:1.0
         volumes:
             - ../:/go/src/github.com/chubaofs/chubaofs
         command:
