@@ -1,7 +1,6 @@
 package metanode
 
 import (
-	"context"
 	"fmt"
 	"github.com/chubaofs/chubaofs/metanode/metamock"
 	"github.com/chubaofs/chubaofs/proto"
@@ -503,11 +502,7 @@ func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartiti
 		t.Errorf("inode tree count mismatch, leader:%v, follower:%v", leaderMp.inodeTree.Count(), followerMp.inodeTree.Count())
 		return false
 	}
-	if err := leaderMp.inodeTree.Range(nil, nil, func(v []byte) (bool, error) {
-		inode := NewInode(0, 0)
-		if err := inode.Unmarshal(context.Background(), v); err != nil {
-			return false, fmt.Errorf("unmarshal inode failed:%v", err)
-		}
+	if err := leaderMp.inodeTree.Range(nil, nil, func(inode *Inode) (bool, error) {
 		ino, _ := followerMp.inodeTree.Get(inode.Inode)
 		if ino == nil {
 			return false, fmt.Errorf("not found inode(%v) in follower meta partition", inode)
@@ -522,11 +517,7 @@ func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartiti
 		t.Errorf("dentry tree count mismatch, leader:%v, follower:%v", leaderMp.dentryTree.Count(), followerMp.dentryTree.Count())
 		return false
 	}
-	if err := leaderMp.dentryTree.Range(nil, nil, func(v []byte) (bool, error) {
-		dentry := new(Dentry)
-		if err := dentry.Unmarshal(v); err != nil {
-			return false, fmt.Errorf("unmarshal dentry failed:%v", err)
-		}
+	if err := leaderMp.dentryTree.Range(nil, nil, func(dentry *Dentry) (bool, error) {
 		if d, _ := followerMp.dentryTree.Get(dentry.ParentId, dentry.Name); d == nil {
 			return false, fmt.Errorf("not found dentry(%v) in follower meta partition", dentry)
 		}
@@ -540,8 +531,7 @@ func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartiti
 		t.Errorf("multipart tree count mismatch, leader:%v, follower:%v", leaderMp.multipartTree.Count(), followerMp.multipartTree.Count())
 		return false
 	}
-	if err := leaderMp.multipartTree.Range(nil, nil, func(v []byte) (bool, error) {
-		multipart := MultipartFromBytes(v)
+	if err := leaderMp.multipartTree.Range(nil, nil, func(multipart *Multipart) (bool, error) {
 		if m, _ := followerMp.multipartTree.Get(multipart.key, multipart.id); m == nil {
 			return false, fmt.Errorf("not found multipart(%v) in follower meta partition", multipart)
 		}
@@ -555,11 +545,7 @@ func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartiti
 		t.Errorf("extend tree count mismatch, leader:%v, follower:%v", leaderMp.extendTree.Count(), followerMp.extendTree.Count())
 		return false
 	}
-	if err := leaderMp.extendTree.Range(nil, nil, func(v []byte) (bool, error) {
-		extend, err := NewExtendFromBytes(v)
-		if err != nil {
-			return false, fmt.Errorf("unmarshal extend failed:%v", err)
-		}
+	if err := leaderMp.extendTree.Range(nil, nil, func(extend *Extend) (bool, error) {
 		if e, _ := followerMp.extendTree.Get(extend.inode); e == nil {
 			return false, fmt.Errorf("not found extend(%v) in follower meta partition", extend)
 		}
@@ -573,11 +559,7 @@ func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartiti
 		t.Errorf("deleted inode tree count mismatch, leader:%v, follower:%v", leaderMp.inodeDeletedTree.Count(), followerMp.inodeDeletedTree.Count())
 		return false
 	}
-	if err := leaderMp.inodeDeletedTree.Range(nil, nil, func(v []byte) (bool, error) {
-		delInode := new(DeletedINode)
-		if err := delInode.Unmarshal(context.Background(), v); err != nil {
-			return false, fmt.Errorf("unmarshal deleted inode failed:%v", err)
-		}
+	if err := leaderMp.inodeDeletedTree.Range(nil, nil, func(delInode *DeletedINode) (bool, error) {
 		if di, _ := followerMp.inodeDeletedTree.Get(delInode.Inode.Inode); di == nil {
 			return false, fmt.Errorf("not found deleted inode(%v) in follower meta partition", delInode)
 		}
@@ -591,11 +573,7 @@ func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartiti
 		t.Errorf("deleted dentry tree count mismatch, leader:%v, follower:%v", leaderMp.dentryDeletedTree.Count(), leaderMp.dentryDeletedTree.Count())
 		return false
 	}
-	if err := leaderMp.dentryDeletedTree.Range(nil, nil, func(v []byte) (bool, error) {
-		delDentry := new(DeletedDentry)
-		if err := delDentry.Unmarshal(v); err != nil {
-			 return false, fmt.Errorf("unmarshal deleted dentry failed:%v", err)
-		}
+	if err := leaderMp.dentryDeletedTree.Range(nil, nil, func(delDentry *DeletedDentry) (bool, error) {
 		if dd, _ := followerMp.dentryDeletedTree.Get(delDentry.ParentId, delDentry.Name, delDentry.Timestamp); dd == nil {
 			return false, fmt.Errorf("not found deleted dentry(%v) in follower meta partition", delDentry)
 		}

@@ -15,7 +15,6 @@
 package metanode
 
 import (
-	"context"
 	"encoding/binary"
 	"fmt"
 	"github.com/chubaofs/chubaofs/util/errors"
@@ -141,7 +140,6 @@ func newMetaItemIteratorV2(mp *metaPartition, version *MetaNodeVersion ) (si *Me
 			close(iter.dataCh)
 			close(iter.errorCh)
 		}()
-		var ctx = context.Background()
 		var produceItem = func(item interface{}) (success bool) {
 			select {
 			case iter.dataCh <- item:
@@ -168,12 +166,8 @@ func newMetaItemIteratorV2(mp *metaPartition, version *MetaNodeVersion ) (si *Me
 		produceItem(si.applyID)
 
 		// process inodes
-		if err = iter.treeSnap.Range(InodeType, func(v []byte) (bool, error) {
-			inode := NewInode(0, 0)
-			if e := inode.Unmarshal(ctx, v); e != nil {
-				return false, e
-			}
-			if ok := produceItem(inode); !ok {
+		if err = iter.treeSnap.Range(InodeType, func(v interface{}) (bool, error) {
+			if ok := produceItem(v.(*Inode)); !ok {
 				return false, nil
 			}
 			return true, nil
@@ -185,12 +179,8 @@ func newMetaItemIteratorV2(mp *metaPartition, version *MetaNodeVersion ) (si *Me
 			return
 		}
 		// process dentries
-		if err = iter.treeSnap.Range(DentryType, func(v []byte) (bool, error) {
-			dentry := new(Dentry)
-			if e := dentry.Unmarshal(v); e != nil {
-				return false, e
-			}
-			if ok := produceItem(dentry); !ok {
+		if err = iter.treeSnap.Range(DentryType, func(v interface{}) (bool, error) {
+			if ok := produceItem(v.(*Dentry)); !ok {
 				return false, nil
 			}
 			return true, nil
@@ -202,12 +192,8 @@ func newMetaItemIteratorV2(mp *metaPartition, version *MetaNodeVersion ) (si *Me
 			return
 		}
 		// process extends
-		if err = iter.treeSnap.Range(ExtendType, func(v []byte) (bool, error) {
-			extend, e := NewExtendFromBytes(v)
-			if e != nil {
-				return false, e
-			}
-			if ok := produceItem(extend); !ok {
+		if err = iter.treeSnap.Range(ExtendType, func(v interface{}) (bool, error) {
+			if ok := produceItem(v.(*Extend)); !ok {
 				return false, nil
 			}
 			return true, nil
@@ -219,9 +205,8 @@ func newMetaItemIteratorV2(mp *metaPartition, version *MetaNodeVersion ) (si *Me
 			return
 		}
 		// process multiparts
-		if err = iter.treeSnap.Range(MultipartType, func(v []byte) (bool, error) {
-			multipart := MultipartFromBytes(v)
-			if ok := produceItem(multipart); !ok {
+		if err = iter.treeSnap.Range(MultipartType, func(v interface{}) (bool, error) {
+			if ok := produceItem(v.(*Multipart)); !ok {
 				return false, nil
 			}
 			return true, nil
@@ -234,12 +219,10 @@ func newMetaItemIteratorV2(mp *metaPartition, version *MetaNodeVersion ) (si *Me
 		}
 
 		//process deleted inode
-		if err = iter.treeSnap.Range(DelInodeType, func(v []byte) (bool, error) {
-			dino := NewDeletedInodeByID(0)
-			if e := dino.Unmarshal(ctx, v); e != nil {
-				return false, e
+		if err = iter.treeSnap.Range(DelInodeType, func(v interface{}) (bool, error) {
+			if ok := produceItem(v.(*DeletedINode)); !ok {
+				return false, nil
 			}
-			produceItem(dino)
 			return true, nil
 		}); err != nil {
 			produceError(err)
@@ -250,12 +233,8 @@ func newMetaItemIteratorV2(mp *metaPartition, version *MetaNodeVersion ) (si *Me
 		}
 
 		// process deleted dentries
-		if err = iter.treeSnap.Range(DelDentryType, func(v []byte) (bool, error) {
-			dd := newPrimaryDeletedDentry(0, "", 0, 0)
-			if e := dd.Unmarshal(v); e != nil {
-				return false, e
-			}
-			if ok := produceItem(dd); !ok {
+		if err = iter.treeSnap.Range(DelDentryType, func(v interface{}) (bool, error) {
+			if ok := produceItem(v.(*DeletedDentry)); !ok {
 				return false, nil
 			}
 			return true, nil

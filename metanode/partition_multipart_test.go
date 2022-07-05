@@ -92,8 +92,7 @@ func createTestMultiParts(leader, follower *metaPartition) (multiparts []*proto.
 			leader.multipartTree.Count(), follower.multipartTree.Count())
 		return
 	}
-	if err = follower.multipartTree.Range(nil, nil, func(v []byte) (bool, error) {
-		multipart := MultipartFromBytes(v)
+	if err = follower.multipartTree.Range(nil, nil, func(multipart *Multipart) (bool, error) {
 		m, _ := leader.multipartTree.Get(multipart.key, multipart.id)
 		if m == nil {
 			return false, fmt.Errorf("multipart[key:%s, id:%s] in leader and follower mismatch", multipart.key, multipart.id)

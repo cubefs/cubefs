@@ -6,7 +6,6 @@ import (
 	"github.com/chubaofs/chubaofs/metanode/metamock"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/raftstore"
-	"github.com/chubaofs/chubaofs/util/log"
 	"math"
 	"os"
 	"reflect"
@@ -67,12 +66,7 @@ func CreateDentryInterTest01(t *testing.T, leader, follower *metaPartition) {
 		ParentId: parentID + 1,
 	}
 	dentriesInleader := make([]*Dentry, 0, 200)
-	if err = leader.dentryTree.Range(startDentry, endDentry, func(v []byte) (bool, error) {
-		d := &Dentry{}
-		if err = d.Unmarshal(v); err != nil {
-			log.LogErrorf("dentry unmarshal has err:[%s]", err.Error())
-			return false, err
-		}
+	if err = leader.dentryTree.Range(startDentry, endDentry, func(d *Dentry) (bool, error) {
 		dentriesInleader = append(dentriesInleader, d)
 		return true, nil
 	}); err != nil {
@@ -80,12 +74,7 @@ func CreateDentryInterTest01(t *testing.T, leader, follower *metaPartition) {
 	}
 
 	dentriesInFollower := make([]*Dentry, 0, 100)
-	if err = follower.dentryTree.Range(startDentry, endDentry, func(v []byte) (bool, error) {
-		d := &Dentry{}
-		if err = d.Unmarshal(v); err != nil {
-			fmt.Printf("dentry unmarshal has err:[%s]", err.Error())
-			return false, err
-		}
+	if err = follower.dentryTree.Range(startDentry, endDentry, func(d *Dentry) (bool, error) {
 		dentriesInFollower = append(dentriesInFollower, d)
 		return true, nil
 	}); err != nil {

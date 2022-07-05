@@ -1,7 +1,6 @@
 package metanode
 
 import (
-	"context"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/sortedextent"
@@ -582,9 +581,7 @@ func TestInodeTreeRange(t *testing.T) {
 
 	startInode := 43
 	index := 0
-	memInodeTree.Range(NewInode(43, 0), nil, func(data []byte) (bool, error) {
-		inode := NewInode(0, 0)
-		_ = inode.Unmarshal(context.Background(), data)
+	memInodeTree.Range(NewInode(43, 0), nil, func(inode *Inode) (bool, error) {
 		if inode.Inode != uint64(startInode+index) {
 			t.Fatalf("Test Range: inode mismatch, expect:%v, actual:%v", startInode+index, inode.Inode)
 		}
@@ -596,9 +593,7 @@ func TestInodeTreeRange(t *testing.T) {
 	}
 
 	index = 0
-	rocksInodeTree.Range(NewInode(43, 0), nil, func(data []byte) (bool, error) {
-		inode := NewInode(0, 0)
-		_ = inode.Unmarshal(context.Background(), data)
+	rocksInodeTree.Range(NewInode(43, 0), nil, func(inode *Inode) (bool, error) {
 		if inode.Inode != uint64(startInode+index) {
 			t.Fatalf("Test Range: inode mismatch, expect:%v, actual:%v", startInode+index, inode.Inode)
 		}
@@ -679,12 +674,7 @@ func TestDeletedDentryRange(t *testing.T) {
 		{Dentry{ParentId: 3, Name: "test_03", Inode: 3000}, curTimestamp, ""},
 	}
 	actualResult := make([]*DeletedDentry, 0, 5)
-	memDelDentryTree.Range(nil, nil, func(data []byte) (bool, error) {
-		delDen := new(DeletedDentry)
-		if err := delDen.Unmarshal(data); err != nil {
-			t.Errorf("unmarshal failed:%v", err)
-			return false, err
-		}
+	memDelDentryTree.Range(nil, nil, func(delDen *DeletedDentry) (bool, error) {
 		actualResult = append(actualResult, delDen)
 		return true, nil
 	})
@@ -698,12 +688,7 @@ func TestDeletedDentryRange(t *testing.T) {
 	}
 
 	actualResult = make([]*DeletedDentry, 0, 5)
-	rocksDelDentryTree.Range(nil, nil, func(data []byte) (bool, error) {
-		delDen := new(DeletedDentry)
-		if err := delDen.Unmarshal(data); err != nil {
-			t.Errorf("unmarshal failed:%v", err)
-			return false, err
-		}
+	rocksDelDentryTree.Range(nil, nil, func(delDen *DeletedDentry) (bool, error) {
 		actualResult = append(actualResult, delDen)
 		return true, nil
 	})
@@ -723,12 +708,7 @@ func TestDeletedDentryRange(t *testing.T) {
 		{Dentry{ParentId: 1, Name: "test_01", Inode: 1004}, curTimestamp + 1000, ""},
 	}
 	actualResult = make([]*DeletedDentry, 0, 5)
-	memDelDentryTree.Range(newPrimaryDeletedDentry(1, "", 0, 0), newPrimaryDeletedDentry(2, "", 0, 0), func(data []byte) (bool, error) {
-		delDen := new(DeletedDentry)
-		if err := delDen.Unmarshal(data); err != nil {
-			t.Errorf("unmarshal failed:%v", err)
-			return false, err
-		}
+	memDelDentryTree.Range(newPrimaryDeletedDentry(1, "", 0, 0), newPrimaryDeletedDentry(2, "", 0, 0), func(delDen *DeletedDentry) (bool, error) {
 		actualResult = append(actualResult, delDen)
 		return true, nil
 	})
@@ -742,12 +722,7 @@ func TestDeletedDentryRange(t *testing.T) {
 	}
 
 	actualResult = make([]*DeletedDentry, 0, 5)
-	rocksDelDentryTree.Range(newPrimaryDeletedDentry(1, "", 0, 0), newPrimaryDeletedDentry(2, "", 0, 0), func(data []byte) (bool, error) {
-		delDen := new(DeletedDentry)
-		if err := delDen.Unmarshal(data); err != nil {
-			t.Errorf("unmarshal failed:%v", err)
-			return false, err
-		}
+	rocksDelDentryTree.Range(newPrimaryDeletedDentry(1, "", 0, 0), newPrimaryDeletedDentry(2, "", 0, 0), func(delDen *DeletedDentry) (bool, error) {
 		actualResult = append(actualResult, delDen)
 		return true, nil
 	})
@@ -767,12 +742,7 @@ func TestDeletedDentryRange(t *testing.T) {
 	}
 	actualResult = make([]*DeletedDentry, 0, 5)
 	memDelDentryTree.Range(newPrimaryDeletedDentry(1, "test_01", curTimestamp, 0),
-		newPrimaryDeletedDentry(1, "test_01", curTimestamp+2000, 0), func(data []byte) (bool, error) {
-			delDen := new(DeletedDentry)
-			if err := delDen.Unmarshal(data); err != nil {
-				t.Errorf("unmarshal failed:%v", err)
-				return false, err
-			}
+		newPrimaryDeletedDentry(1, "test_01", curTimestamp+2000, 0), func(delDen *DeletedDentry) (bool, error) {
 			actualResult = append(actualResult, delDen)
 			return true, nil
 		})
@@ -787,12 +757,7 @@ func TestDeletedDentryRange(t *testing.T) {
 
 	actualResult = make([]*DeletedDentry, 0, 5)
 	rocksDelDentryTree.Range(newPrimaryDeletedDentry(1, "test_01", curTimestamp, 0),
-		newPrimaryDeletedDentry(1, "test_01", curTimestamp+2000, 0), func(data []byte) (bool, error) {
-			delDen := new(DeletedDentry)
-			if err := delDen.Unmarshal(data); err != nil {
-				t.Errorf("unmarshal failed:%v", err)
-				return false, err
-			}
+		newPrimaryDeletedDentry(1, "test_01", curTimestamp+2000, 0), func(delDen *DeletedDentry) (bool, error) {
 			actualResult = append(actualResult, delDen)
 			return true, nil
 		})
@@ -812,12 +777,7 @@ func TestDeletedDentryRange(t *testing.T) {
 	}
 	actualResult = make([]*DeletedDentry, 0, 5)
 	memDelDentryTree.Range(newPrimaryDeletedDentry(1, "test_01", curTimestamp, 0),
-		newPrimaryDeletedDentry(2, "", 0, 0), func(data []byte) (bool, error) {
-			delDen := new(DeletedDentry)
-			if err := delDen.Unmarshal(data); err != nil {
-				t.Errorf("unmarshal failed:%v", err)
-				return false, err
-			}
+		newPrimaryDeletedDentry(2, "", 0, 0), func(delDen *DeletedDentry) (bool, error) {
 			actualResult = append(actualResult, delDen)
 			return true, nil
 		})
@@ -832,12 +792,7 @@ func TestDeletedDentryRange(t *testing.T) {
 
 	actualResult = make([]*DeletedDentry, 0, 5)
 	rocksDelDentryTree.Range(newPrimaryDeletedDentry(1, "test_01", curTimestamp, 0),
-		newPrimaryDeletedDentry(2, "", 0, 0), func(data []byte) (bool, error) {
-			delDen := new(DeletedDentry)
-			if err := delDen.Unmarshal(data); err != nil {
-				t.Errorf("unmarshal failed:%v", err)
-				return false, err
-			}
+		newPrimaryDeletedDentry(2, "", 0, 0), func(delDen *DeletedDentry) (bool, error) {
 			actualResult = append(actualResult, delDen)
 			return true, nil
 		})
@@ -896,9 +851,7 @@ func TestDentryTreeRange(t *testing.T) {
 		{ParentId: 1, Name: "test_04", Inode: 1004, Type: 0},
 	}
 	actualResult := make([]*Dentry, 0, 6)
-	memDentryTree.Range(&Dentry{ParentId: 1}, &Dentry{ParentId: 2}, func(data []byte) (bool, error) {
-		den := &Dentry{}
-		_ = den.Unmarshal(data)
+	memDentryTree.Range(&Dentry{ParentId: 1}, &Dentry{ParentId: 2}, func(den *Dentry) (bool, error) {
 		actualResult = append(actualResult, den)
 		return true, nil
 	})
@@ -912,9 +865,7 @@ func TestDentryTreeRange(t *testing.T) {
 	}
 
 	actualResult = make([]*Dentry, 0, 6)
-	rocksDentryTree.Range(&Dentry{ParentId: 1}, &Dentry{ParentId: 2}, func(data []byte) (bool, error) {
-		den := &Dentry{}
-		_ = den.Unmarshal(data)
+	rocksDentryTree.Range(&Dentry{ParentId: 1}, &Dentry{ParentId: 2}, func(den *Dentry) (bool, error) {
 		actualResult = append(actualResult, den)
 		return true, nil
 	})
@@ -934,9 +885,7 @@ func TestDentryTreeRange(t *testing.T) {
 		{ParentId: 1, Name: "test_04", Inode: 1004, Type: 0},
 	}
 	actualResult = make([]*Dentry, 0, 4)
-	memDentryTree.Range(&Dentry{ParentId: 1, Name: "test"}, &Dentry{ParentId: 2}, func(data []byte) (bool, error) {
-		den := &Dentry{}
-		_ = den.Unmarshal(data)
+	memDentryTree.Range(&Dentry{ParentId: 1, Name: "test"}, &Dentry{ParentId: 2}, func(den *Dentry) (bool, error) {
 		actualResult = append(actualResult, den)
 		return true, nil
 	})
@@ -950,9 +899,7 @@ func TestDentryTreeRange(t *testing.T) {
 	}
 
 	actualResult = make([]*Dentry, 0, 6)
-	rocksDentryTree.Range(&Dentry{ParentId: 1, Name: "test"}, &Dentry{ParentId: 2}, func(data []byte) (bool, error) {
-		den := &Dentry{}
-		_ = den.Unmarshal(data)
+	rocksDentryTree.Range(&Dentry{ParentId: 1, Name: "test"}, &Dentry{ParentId: 2}, func(den *Dentry) (bool, error) {
 		actualResult = append(actualResult, den)
 		return true, nil
 	})

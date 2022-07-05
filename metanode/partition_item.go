@@ -201,7 +201,6 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 			close(iter.dataCh)
 			close(iter.errorCh)
 		}()
-		var ctx = context.Background()
 		var produceItem = func(item interface{}) (success bool) {
 			select {
 			case iter.dataCh <- item:
@@ -228,12 +227,8 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		produceItem(si.applyID)
 
 		// process inodes
-		if err = iter.treeSnap.Range(InodeType, func(v []byte) (bool, error) {
-			item := NewInode(0, 0)
-			if e := item.Unmarshal(ctx, v); e != nil {
-				return false, e
-			}
-			if ok := produceItem(item); !ok {
+		if err = iter.treeSnap.Range(InodeType, func(v interface{}) (bool, error) {
+			if ok := produceItem(v.(*Inode)); !ok {
 				return false, nil
 			}
 			return true, nil
@@ -247,12 +242,8 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 
 
 		// process dentries
-		if err = iter.treeSnap.Range(DentryType, func(v []byte) (bool, error) {
-			item := &Dentry{}
-			if e := item.Unmarshal(v); e != nil {
-				return false, e
-			}
-			if ok := produceItem(item); !ok {
+		if err = iter.treeSnap.Range(DentryType, func(v interface{}) (bool, error) {
+			if ok := produceItem(v.(*Dentry)); !ok {
 				return false, nil
 			}
 			return true, nil
@@ -264,12 +255,8 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 			return
 		}
 		// process extends
-		if err = iter.treeSnap.Range(ExtendType, func(v []byte) (bool, error) {
-			item, e := NewExtendFromBytes(v)
-			if e != nil {
-				return false, e
-			}
-			if ok := produceItem(item); !ok {
+		if err = iter.treeSnap.Range(ExtendType, func(v interface{}) (bool, error) {
+			if ok := produceItem(v.(*Extend)); !ok {
 				return false, nil
 			}
 			return true, nil
@@ -282,8 +269,8 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		}
 
 		// process multiparts
-		if err = iter.treeSnap.Range(MultipartType, func(v []byte) (bool, error) {
-			if ok := produceItem(MultipartFromBytes(v)); !ok {
+		if err = iter.treeSnap.Range(MultipartType, func(v interface{}) (bool, error) {
+			if ok := produceItem(v.(*Multipart)); !ok {
 				return false, nil
 			}
 			return true, nil

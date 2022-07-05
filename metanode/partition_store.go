@@ -621,7 +621,12 @@ func (mp *metaPartition) storeInode(rootDir string, sm *storeMsg) (crc uint32, e
 
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
-	if err = sm.snap.Range(InodeType, func(data []byte) (bool, error) {
+	if err = sm.snap.Range(InodeType, func(item interface{}) (bool, error) {
+		inode := item.(*Inode)
+		var data []byte
+		if data, err = inode.MarshalV2(); err != nil {
+			return false, err
+		}
 		// set length
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
 		if _, err = fp.Write(lenBuf); err != nil {
@@ -662,7 +667,12 @@ func (mp *metaPartition) storeDeletedInode(rootDir string,
 	}()
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
-	if err = sm.snap.Range(DelInodeType, func(data []byte) (bool, error) {
+	if err = sm.snap.Range(DelInodeType, func(item interface{}) (bool, error) {
+		delInode := item.(*DeletedINode)
+		var data []byte
+		if data, err = delInode.Marshal(); err != nil {
+			return false, err
+		}
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
 		if _, err = fp.Write(lenBuf); err != nil {
 			return false, err
@@ -701,7 +711,12 @@ func (mp *metaPartition) storeDeletedDentry(rootDir string, sm *storeMsg) (crc u
 	}()
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
-	if err = sm.snap.Range(DelDentryType, func(data []byte) (bool, error) {
+	if err = sm.snap.Range(DelDentryType, func(item interface{}) (bool, error) {
+		delDentry := item.(*DeletedDentry)
+		var data []byte
+		if data, err = delDentry.Marshal(); err != nil {
+			return false, err
+		}
 		// set length
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
 		if _, err = fp.Write(lenBuf); err != nil {
@@ -742,7 +757,12 @@ func (mp *metaPartition) storeDentry(rootDir string,
 	}()
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
-	if err = sm.snap.Range(DentryType, func(data []byte) (bool, error) {
+	if err = sm.snap.Range(DentryType, func(item interface{}) (bool, error) {
+		dentry := item.(*Dentry)
+		var data []byte
+		if data, err = dentry.MarshalV2(); err != nil {
+			return false, err
+		}
 		// set length
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
 		if _, err = fp.Write(lenBuf); err != nil {
@@ -793,9 +813,14 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 	if _, err = crc32.Write(varintTmp[:n]); err != nil {
 		return
 	}
-	err = sm.snap.Range(ExtendType, func(raw []byte) (bool, error) {
+	err = sm.snap.Range(ExtendType, func(item interface{}) (bool, error) {
+		extend := item.(*Extend)
+		var data []byte
+		if data, err = extend.Bytes(); err != nil {
+			return false, err
+		}
 		// write length
-		n = binary.PutUvarint(varintTmp, uint64(len(raw)))
+		n = binary.PutUvarint(varintTmp, uint64(len(data)))
 		if _, err = writer.Write(varintTmp[:n]); err != nil {
 			return false, err
 		}
@@ -803,10 +828,10 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 			return false, err
 		}
 		// write raw
-		if _, err = writer.Write(raw); err != nil {
+		if _, err = writer.Write(data); err != nil {
 			return false, err
 		}
-		if _, err = crc32.Write(raw); err != nil {
+		if _, err = crc32.Write(data); err != nil {
 			return false, err
 		}
 		return true, nil
@@ -853,9 +878,14 @@ func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint3
 	if _, err = crc32.Write(varintTmp[:n]); err != nil {
 		return
 	}
-	err = sm.snap.Range(MultipartType, func(raw []byte) (bool, error) {
+	err = sm.snap.Range(MultipartType, func(item interface{}) (bool, error) {
+		multipart := item.(*Multipart)
+		var data []byte
+		if data, err = multipart.Bytes(); err != nil {
+			return false, err
+		}
 		// write length
-		n = binary.PutUvarint(varintTmp, uint64(len(raw)))
+		n = binary.PutUvarint(varintTmp, uint64(len(data)))
 		if _, err = writer.Write(varintTmp[:n]); err != nil {
 			return false, err
 		}
@@ -863,10 +893,10 @@ func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint3
 			return false, err
 		}
 		// write raw
-		if _, err = writer.Write(raw); err != nil {
+		if _, err = writer.Write(data); err != nil {
 			return false, err
 		}
-		if _, err = crc32.Write(raw); err != nil {
+		if _, err = crc32.Write(data); err != nil {
 			return false, err
 		}
 		return true, nil

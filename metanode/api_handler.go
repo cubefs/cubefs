@@ -17,8 +17,6 @@ package metanode
 import (
 	"bufio"
 	"bytes"
-	"context"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"github.com/chubaofs/chubaofs/proto"
@@ -332,12 +330,8 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 		endTime = math.MaxInt64
 	}
 
-	err = snap.Range(InodeType, func(inodeBinary []byte) (bool, error) {
-		inode := NewInode(0, 0)
-		if err = inode.Unmarshal(context.Background() ,inodeBinary); err != nil {
-			log.LogErrorf("unmarshal inode has err:[%s]", err.Error())
-			return false, err
-		}
+	err = snap.Range(InodeType, func(item interface{}) (bool, error) {
+		inode := item.(*Inode)
 		if inodeType != 0 &&  inode.Type != inodeType {
 			return true, nil
 		}
@@ -630,13 +624,8 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 		delimiter = []byte{',', '\n'}
 		isFirst   = true
 	)
-	err = snap.Range(DentryType, func(dentryBinary []byte) (bool, error) {
-		dentry := &Dentry{}
-		if err = dentry.Unmarshal(dentryBinary); err != nil {
-			return false, err
-		}
-
-		val, err = json.Marshal(dentry)
+	err = snap.Range(DentryType, func(item interface{}) (bool, error) {
+		val, err = json.Marshal(item.(*Dentry))
 		if err != nil {
 			return false, err
 		}
@@ -811,12 +800,8 @@ func (m *MetaNode) getAllInodeId(w http.ResponseWriter, r *http.Request) {
 	defer snap.Close()
 
 	inosRsp := &proto.MpAllInodesId{Count: 0, Inodes: make([]uint64, 0)}
-	err = snap.Range(InodeType, func(inodeBinary []byte) (bool, error) {
-		inode := NewInode(0, 0)
-		if err = inode.Unmarshal(context.Background() ,inodeBinary); err != nil {
-			log.LogErrorf("unmarshal inode has err:[%s]", err.Error())
-			return false, err
-		}
+	err = snap.Range(InodeType, func(item interface{}) (bool, error) {
+		inode := item.(*Inode)
 		if inodeType != 0 && inode.Type != inodeType {
 			return true, nil
 		}
@@ -1095,12 +1080,15 @@ func (m *MetaNode) getAllInodesCrcSum(w http.ResponseWriter, r *http.Request)  {
 		inodes    = make([]uint64, 0, inodeCnt)
 		crc       = crc32.NewIEEE()
 	)
-	err = snap.Range(InodeType, func(inodeBinary []byte) (bool, error) {
-		if len(inodeBinary) < AccessTimeOffset + 8 {
-			return false, fmt.Errorf("inode binary with error length:%v", len(inodeBinary))
+	err = snap.Range(InodeType, func(item interface{}) (bool, error) {
+		inode := item.(*Inode)
+		inode.AccessTime = 0
+		var inodeBinary []byte
+		inodeBinary, err = inode.MarshalV2()
+		if err != nil {
+			return false, err
 		}
-		binary.BigEndian.PutUint64(inodeBinary[AccessTimeOffset: AccessTimeOffset+8], 0)
-		inodes = append(inodes, binary.BigEndian.Uint64(inodeBinary[BaseInodeKeyOffset : BaseInodeKeyOffset +8]))
+		inodes = append(inodes, inode.Inode)
 		crcSumSet = append(crcSumSet, crc32.ChecksumIEEE(inodeBinary[0:]))
 		if _, err = crc.Write(inodeBinary); err != nil {
 			return false, fmt.Errorf("crc sum write failed:%v", err)

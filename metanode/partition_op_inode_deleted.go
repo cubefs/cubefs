@@ -240,11 +240,8 @@ func (mp *metaPartition) statDeletedFileInfo() (statInfo map[string]*proto.Delet
 		return
 	}
 	defer snap.Close()
-	err = snap.Range(DelDentryType, func(data []byte) (bool, error) {
-		dden := new(DeletedDentry)
-		if err = dden.Unmarshal(data); err != nil {
-			return false, err
-		}
+	err = snap.Range(DelDentryType, func(item interface{}) (bool, error) {
+		dden := item.(*DeletedDentry)
 		dateStr := getDateStr(dden.Timestamp)
 		e, ok := statInfo[dateStr]
 		if !ok {
@@ -261,11 +258,8 @@ func (mp *metaPartition) statDeletedFileInfo() (statInfo map[string]*proto.Delet
 		return
 	}
 
-	err = snap.Range(DelInodeType, func(data []byte) (bool, error) {
-		dino := new(DeletedINode)
-		if err = dino.Unmarshal(context.Background(), data); err != nil {
-			return false, err
-		}
+	err = snap.Range(DelInodeType, func(item interface{}) (bool, error) {
+		dino := item.(*DeletedINode)
 		dateStr := getDateStr(dino.Timestamp)
 		e, ok := statInfo[dateStr]
 		if !ok {
@@ -361,19 +355,13 @@ func (mp *metaPartition) CleanExpiredDeletedINode() (err error) {
 		return
 	}
 	defer snap.Close()
-	err = snap.Range(DelInodeType, func(data []byte) (bool, error) {
+	err = snap.Range(DelInodeType, func(item interface{}) (bool, error) {
+		di := item.(*DeletedINode)
 		_, ok := mp.IsLeader()
 		if !ok {
 			return false, errors.NewErrorf("not leader")
 		}
 
-		di := new(DeletedINode)
-		if err = di.Unmarshal(ctx, data); err != nil {
-			exporter.WarningRocksdbError(fmt.Sprintf("action[CleanExpiredDeletedINode] clusterID[%s] volumeName[%s] partitionID[%v]"+
-				"unmarshal failed:%v", mp.manager.metaNode.clusterId, mp.config.VolName, mp.config.PartitionId, err))
-			log.LogErrorf("[CleanExpiredDeletedINode], failed to unmarshal value, err:%v", err)
-			return true, err
-		}
 		if di.Timestamp >= expires {
 			return true, nil
 		}
