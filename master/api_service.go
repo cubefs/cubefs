@@ -600,6 +600,7 @@ func (m *Server) QosUpdateZoneLimit(w http.ResponseWriter, r *http.Request) {
 		ok       bool
 		err      error
 		qosParam *qosArgs
+		enable   bool
 	)
 	var zoneName string
 	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
@@ -609,6 +610,15 @@ func (m *Server) QosUpdateZoneLimit(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+
+	if sVal := r.FormValue(DiskEnableKey); sVal != "" {
+		if enable, err = strconv.ParseBool(sVal); err == nil {
+			log.LogInfof("action[DiskQosUpdate] enable be set [%v]", enable)
+			m.cluster.diskQosEnable = enable
+			err = m.cluster.syncPutCluster()
+		}
+	}
+
 	//if (qosParam.flowWVal > 0 && (qosParam.flowWVal < MinZoneDiskLimit*util.MB || qosParam.flowWVal > MaxZoneDiskLimit*util.MB)) ||
 	//	(qosParam.flowRVal > 0 && (qosParam.flowRVal < MinZoneDiskLimit*util.MB || qosParam.flowWVal > MaxZoneDiskLimit*util.MB)) {
 	//	sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("zone disk flow param should between 300 and 10000")))
@@ -694,13 +704,6 @@ func (m *Server) QosUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if value = r.FormValue(DiskEnableKey); value != "" {
-		if enable, err = strconv.ParseBool(value); err == nil {
-			log.LogInfof("action[DiskQosUpdate] enable be set [%v]", enable)
-			m.cluster.diskQosEnable = enable
-			err = m.cluster.syncPutCluster()
-		}
-	}
 RET:
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
