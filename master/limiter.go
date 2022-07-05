@@ -650,7 +650,7 @@ func (vol *Vol) getClientLimitInfo(id uint64, ip string) (interface{}, error) {
 
 	if id > 0 {
 		if info, ok := vol.qosManager.cliInfoMgrMap[id]; ok {
-			if len(ip) > 0 && util.GetIp(info.Host) != ip {
+			if len(ip) > 0 && info.Host != ip {
 				return nil, fmt.Errorf("ip info [%v] not equal with request [%v]", info.Host, ip)
 			}
 			return assignFuc(info), nil
@@ -661,16 +661,16 @@ func (vol *Vol) getClientLimitInfo(id uint64, ip string) (interface{}, error) {
 			// http connection port  from client will change time by time,so ignore port here
 			rspInfo := assignFuc(info)
 			if len(ip) != 0 {
-				if util.GetIp(info.Host) == ip {
+				if info.Host == ip {
 					resp = append(resp, rspInfo)
 				}
 			} else {
 				resp = append(resp, rspInfo)
 			}
 		}
-
-		return resp, nil
-
+		if len(resp) > 0 {
+			return resp, nil
+		}
 	}
 	return nil, fmt.Errorf("not found")
 }
