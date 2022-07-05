@@ -20,7 +20,7 @@ type ServerFactorLimit struct {
 	CliNeed        uint64
 	Allocated      uint64
 	NeedAfterAlloc uint64
-	Magnify        uint32 // for client allocation need magnify
+	magnify        uint32 // for client allocation need magnify
 	LimitRate      float32
 	LastMagnify    uint64
 	requestCh      chan interface{}
@@ -66,9 +66,9 @@ func (qosManager *QosCtrlManager) volUpdateMagnify(magnifyArgs *qosArgs) {
 
 	arrMagnify := [4]uint64{magnifyArgs.iopsRVal, magnifyArgs.iopsWVal, magnifyArgs.flowRVal, magnifyArgs.flowWVal}
 	for i := proto.IopsReadType; i <= proto.FlowWriteType; i++ {
-		magnify := qosManager.serverFactorLimitMap[i].Magnify
+		magnify := qosManager.serverFactorLimitMap[i].magnify
 		if uint64(magnify) != arrMagnify[i-1] && arrMagnify[i-1] > 0 {
-			qosManager.serverFactorLimitMap[i].Magnify = uint32(arrMagnify[i-1])
+			qosManager.serverFactorLimitMap[i].magnify = uint32(arrMagnify[i-1])
 			log.LogWarnf("action[volUpdateMagnify] vol %v  after update type [%v] magnify [%v] to [%v]",
 				qosManager.vol.Name, proto.QosTypeString(i), magnify, arrMagnify[i-1])
 		}
@@ -107,7 +107,7 @@ func (qosManager *QosCtrlManager) volUpdateLimit(limitArgs *qosArgs) {
 }
 
 func (qosManager *QosCtrlManager) getQosMagnify(factorTYpe uint32) uint32 {
-	return qosManager.serverFactorLimitMap[factorTYpe].Magnify
+	return qosManager.serverFactorLimitMap[factorTYpe].magnify
 }
 
 func (qosManager *QosCtrlManager) getQosLimit(factorTYpe uint32) uint64 {
@@ -168,7 +168,7 @@ func (qosManager *QosCtrlManager) initClientQosInfo(clientID uint64, host string
 			Need:       0,
 		}
 
-		limitRsp2Client.Magnify[factorType] = serverLimit.Magnify
+		limitRsp2Client.Magnify[factorType] = serverLimit.magnify
 		limitRsp2Client.FactorMap[factorType] = clientInitInfo.FactorMap[factorType]
 
 		log.LogDebugf("action[initClientQosInfo] vol [%v] clientID [%v] factorType [%v] init client info and set limitRsp2Client [%v]"+
@@ -361,7 +361,7 @@ func (qosManager *QosCtrlManager) HandleClientQosReq(reqClientInfo *proto.Client
 	for factorType, clientFactor := range reqClientInfo.FactorMap {
 		limitRsp.FactorMap[factorType] = &proto.ClientLimitInfo{}
 		serverLimit := qosManager.serverFactorLimitMap[factorType]
-		limitRsp.Magnify[factorType] = serverLimit.Magnify
+		limitRsp.Magnify[factorType] = serverLimit.magnify
 
 		request := &qosRequestArgs{
 			clientID:       clientID,
@@ -565,8 +565,6 @@ func (vol *Vol) getQosStatus(cluster *Cluster) interface{} {
 
 	type qosStatus struct {
 		ServerFactorLimitMap map[uint32]*ServerFactorLimit // vol qos data for iops w/r and flow w/r
-		DefaultClientCnt     uint32
-		InitClientCnt        uint32
 		QosEnable            bool
 		ClientReqPeriod      uint32
 		ClientHitTriggerCnt  uint32
