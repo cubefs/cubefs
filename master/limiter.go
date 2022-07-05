@@ -509,6 +509,9 @@ func (qosManager *QosCtrlManager) updateServerLimitByClientsInfo(factorType uint
 
 func (qosManager *QosCtrlManager) assignClientsNewQos(factorType uint32) {
 	qosManager.RLock()
+	if !qosManager.qosEnable {
+		return
+	}
 	serverLimit := qosManager.serverFactorLimitMap[factorType]
 	var bufferAllocated uint64
 
@@ -679,8 +682,7 @@ func (vol *Vol) volQosEnable(c *Cluster, enable bool) error {
 	if !enable {
 		for _, limit := range vol.qosManager.cliInfoMgrMap {
 			for factorType := proto.IopsReadType; factorType <= proto.FlowWriteType; factorType++ {
-				limit.Assign.FactorMap[factorType].UsedLimit = 0
-				limit.Assign.FactorMap[factorType].UsedBuffer = 0
+				limit.Assign.FactorMap[factorType] = &proto.ClientLimitInfo{}
 			}
 		}
 		for _, cli := range vol.qosManager.serverFactorLimitMap {
