@@ -116,10 +116,12 @@ func (qosManager *QosCtrlManager) volUpdateLimit(limitArgs *qosArgs) {
 	if limitArgs.flowWVal != 0 {
 		qosManager.serverFactorLimitMap[proto.FlowWriteType].Total = limitArgs.flowWVal
 		qosManager.serverFactorLimitMap[proto.IopsWriteType].LastMagnify = 0
+		qosManager.serverFactorLimitMap[proto.FlowWriteType].Buffer = limitArgs.flowWVal
 	}
 	if limitArgs.flowRVal != 0 {
 		qosManager.serverFactorLimitMap[proto.FlowReadType].Total = limitArgs.flowRVal
-		qosManager.serverFactorLimitMap[proto.IopsWriteType].LastMagnify = 0
+		qosManager.serverFactorLimitMap[proto.FlowReadType].LastMagnify = 0
+		qosManager.serverFactorLimitMap[proto.FlowReadType].Buffer = limitArgs.flowRVal
 	}
 
 	for i := proto.IopsReadType; i <= proto.FlowWriteType; i++ {
@@ -684,9 +686,6 @@ func (vol *Vol) volQosEnable(c *Cluster, enable bool) error {
 			for factorType := proto.IopsReadType; factorType <= proto.FlowWriteType; factorType++ {
 				limit.Assign.FactorMap[factorType] = &proto.ClientLimitInfo{}
 			}
-		}
-		for _, cli := range vol.qosManager.serverFactorLimitMap {
-			cli.Buffer = cli.Total
 		}
 	}
 	return c.syncUpdateVol(vol)
