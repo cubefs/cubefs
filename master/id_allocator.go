@@ -28,6 +28,7 @@ type IDAllocator struct {
 	dataPartitionID uint64
 	metaPartitionID uint64
 	commonID        uint64
+	clientID        uint64
 	store           *raftstore.RocksDBStore
 	partition       raftstore.Partition
 	dpIDLock        sync.RWMutex
@@ -46,7 +47,27 @@ func (alloc *IDAllocator) restore() {
 	alloc.restoreMaxDataPartitionID()
 	alloc.restoreMaxMetaPartitionID()
 	alloc.restoreMaxCommonID()
+	alloc.restoreClientID()
 }
+
+func (alloc *IDAllocator) restoreClientID() {
+	value, err := alloc.store.Get(maxClientIDKey)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to restore maxClientID,err:%v ", err.Error()))
+	}
+	bytes := value.([]byte)
+	if len(bytes) == 0 {
+		alloc.clientID = 0
+		return
+	}
+	clientID, err := strconv.ParseUint(string(bytes), 10, 64)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to restore maxClientID,err:%v ", err.Error()))
+	}
+	alloc.clientID = clientID
+	log.LogInfof("action[restoreClientID] maxClientID[%v]", alloc.clientID)
+}
+
 
 func (alloc *IDAllocator) restoreMaxDataPartitionID() {
 	value, err := alloc.store.Get(maxDataPartitionIDKey)
@@ -115,6 +136,10 @@ func (alloc *IDAllocator) setCommonID(id uint64) {
 	atomic.StoreUint64(&alloc.commonID, id)
 }
 
+func (alloc *IDAllocator) setClientID(id uint64) {
+	atomic.StoreUint64(&alloc.clientID, id)
+}
+
 func (alloc *IDAllocator) allocateDataPartitionID() (partitionID uint64, err error) {
 	alloc.dpIDLock.Lock()
 	defer alloc.dpIDLock.Unlock()
@@ -162,6 +187,32 @@ errHandler:
 	log.LogErrorf("action[allocateMetaPartitionID] err:%v", err.Error())
 	return
 }
+
+
+func (alloc *IDAllocator) allocateClientID() (clientID uint64, err error) {
+	alloc.mpIDLock.Lock()
+	defer alloc.mpIDLock.Unlock()
+	var cmd []byte
+	metadata := new(RaftCmd)
+	metadata.Op = opSyncAllocClientID
+	metadata.K = maxClientIDKey
+	clientID = atomic.LoadUint64(&alloc.clientID) + 1
+	value := strconv.FormatUint(uint64(clientID), 10)
+	metadata.V = []byte(value)
+	cmd, err = metadata.Marshal()
+	if err != nil {
+		goto errHandler
+	}
+	if _, err = alloc.partition.Submit(cmd); err != nil {
+		goto errHandler
+	}
+	alloc.setClientID(clientID)
+	return
+errHandler:
+	log.LogErrorf("action[allocateClientID] err:%v", err.Error())
+	return
+}
+
 
 func (alloc *IDAllocator) allocateCommonID() (id uint64, err error) {
 	alloc.mnIDLock.Lock()

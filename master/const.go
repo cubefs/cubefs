@@ -205,6 +205,7 @@ const (
 	opSyncDataPartitionsView   uint32 = 0x20
 	opSyncExclueDomain         uint32 = 0x23
 	opSyncUpdateZone           uint32 = 0x24
+	opSyncAllocClientID 	   uint32 = 0x25
 )
 
 const (
@@ -223,6 +224,7 @@ const (
 	maxDataPartitionIDKey = keySeparator + "max_dp_id"
 	maxMetaPartitionIDKey = keySeparator + "max_mp_id"
 	maxCommonIDKey        = keySeparator + "max_common_id"
+	maxClientIDKey 		  = keySeparator + "client_id"
 	metaNodePrefix        = keySeparator + metaNodeAcronym + keySeparator
 	dataNodePrefix        = keySeparator + dataNodeAcronym + keySeparator
 	dataPartitionPrefix   = keySeparator + dataPartitionAcronym + keySeparator

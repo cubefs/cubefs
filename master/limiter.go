@@ -338,7 +338,7 @@ func (serverLimit *ServerFactorLimit) updateLimitFactor(req interface{}) {
 func (qosManager *QosCtrlManager) init(cluster *Cluster, host string) (limit *proto.LimitRsp2Client, err error) {
 	log.LogDebugf("action[qosManage.init] vol [%v] Host %v", qosManager.vol.Name, host)
 	var id uint64
-	if id, err = cluster.idAlloc.allocateCommonID(); err == nil {
+	if id, err = cluster.idAlloc.allocateClientID(); err == nil {
 		return qosManager.initClientQosInfo(id, host)
 	}
 	return
