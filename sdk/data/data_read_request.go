@@ -3,13 +3,14 @@ package data
 import (
 	"context"
 	"fmt"
+
 	"github.com/chubaofs/chubaofs/proto"
 	"github.com/chubaofs/chubaofs/util/log"
 )
 
 type ReadRequest struct {
-	Req 		*ExtentRequest
-	Partition	*DataPartition
+	Req       *ExtentRequest
+	Partition *DataPartition
 }
 
 func (req *ReadRequest) String() string {
@@ -19,7 +20,7 @@ func (req *ReadRequest) String() string {
 	return fmt.Sprintf("req(%v) host(%v)", req.Req, req.Partition)
 }
 
-func (client *ExtentClient) GetReadRequests(ctx context.Context, inode uint64, data []byte, offset int, size int) (readRequests []*ReadRequest, err error) {
+func (client *ExtentClient) GetReadRequests(ctx context.Context, inode uint64, data []byte, offset uint64, size int) (readRequests []*ReadRequest, fileSize uint64, err error) {
 	if size == 0 {
 		return
 	}
@@ -42,7 +43,6 @@ func (client *ExtentClient) GetReadRequests(ctx context.Context, inode uint64, d
 	var (
 		requests        []*ExtentRequest
 		revisedRequests []*ExtentRequest
-		fileSize        int
 	)
 
 	requests, fileSize = s.extents.PrepareRequests(offset, size, data)
@@ -67,7 +67,6 @@ func (client *ExtentClient) GetReadRequests(ctx context.Context, inode uint64, d
 	if log.IsDebugEnabled() {
 		log.LogDebugf("Stream read: ino(%v) userExpectOffset(%v) userExpectSize(%v) requests(%v) filesize(%v)", s.inode, offset, size, requests, fileSize)
 	}
-	// filesize 需要返回么？
 	for _, req := range requests {
 		var readReq *ReadRequest
 		if req.ExtentKey == nil {
@@ -76,7 +75,7 @@ func (client *ExtentClient) GetReadRequests(ctx context.Context, inode uint64, d
 			partition, err := s.client.dataWrapper.GetDataPartition(req.ExtentKey.PartitionId)
 			if err != nil {
 				log.LogWarnf("GetReadRequests: get dp err(%v) pid(%v)", err, req.ExtentKey.PartitionId)
-				return nil, err
+				return nil, 0, err
 			}
 			readReq = &ReadRequest{Req: req, Partition: partition}
 		}

@@ -402,31 +402,38 @@ inode_info_t *new_inode_info(ino_t inode, bool use_pagecache, cfs_pwrite_inode_t
 }
 
 void release_inode_info(inode_info_t *inode_info) {
-    if(inode_info == NULL) return;
+    if(inode_info == NULL) {
+        return;
+    }
 
     page_t *p;
     pthread_mutex_destroy(&inode_info->pages_lock);
-    if(inode_info->use_pagecache) {
-        for(int i = 0; i < BLOCKS_PER_FILE; i++) {
-            if(inode_info->pages[i] != NULL) {
-                for(int j = 0; j < PAGES_PER_BLOCK; j++) {
-                    p = inode_info->pages[i][j];
-                    if (p != NULL) {
-                        pthread_rwlock_wrlock(&p->lock);
-                        p->inode_info = NULL;
-                        pthread_rwlock_unlock(&p->lock);
-                    }
-                }
-                free(inode_info->pages[i]);
-            }
-        }
-        free(inode_info->pages);
+    if(!inode_info->use_pagecache) {
+        free(inode_info);
+        return;
     }
+
+    for(int i = 0; i < BLOCKS_PER_FILE; i++) {
+        if(inode_info->pages[i] == NULL) {
+            continue;
+        }
+        for(int j = 0; j < PAGES_PER_BLOCK; j++) {
+            p = inode_info->pages[i][j];
+            if (p == NULL) {
+                continue;
+            }
+            p->inode_info = NULL;
+        }
+        free(inode_info->pages[i]);
+    }
+    free(inode_info->pages);
     free(inode_info);
 }
 
 size_t read_cache(inode_info_t *inode_info, off_t offset, size_t count, void *data) {
-    if (!inode_info->use_pagecache) return 0;
+    if (!inode_info->use_pagecache) {
+        return 0;
+    }
 
     int page_size = inode_info->c->page_size;
     int index = offset/page_size;
@@ -465,8 +472,9 @@ size_t read_cache(inode_info_t *inode_info, off_t offset, size_t count, void *da
 }
 
 size_t write_cache(inode_info_t *inode_info, off_t offset, size_t count, const void *data) {
-    if (!inode_info->use_pagecache)
+    if (!inode_info->use_pagecache) {
         return 0;
+    }
     int page_size = inode_info->c->page_size;
     int index = offset/page_size;
     int block_index;
@@ -525,8 +533,9 @@ size_t write_cache(inode_info_t *inode_info, off_t offset, size_t count, const v
 }
 
 int flush_inode(inode_info_t *inode_info) {
-    if (!inode_info->use_pagecache) return 0;
-
+    if (!inode_info->use_pagecache) {
+        return 0;
+    }
     page_t *p;
     int re = 0;
     int re_tmp;
@@ -549,8 +558,9 @@ int flush_inode(inode_info_t *inode_info) {
 }
 
 void flush_inode_range(inode_info_t *inode_info, off_t offset, size_t count) {
-    if (!inode_info->use_pagecache) return;
-
+    if (!inode_info->use_pagecache) {
+        return;
+    }
     int begin_index = offset/inode_info->c->page_size;
     int end_index = (offset + count - 1)/inode_info->c->page_size;
     int block_index;
@@ -571,8 +581,9 @@ void flush_inode_range(inode_info_t *inode_info, off_t offset, size_t count) {
 }
 
 void clear_inode_range(inode_info_t *inode_info, off_t offset, size_t count) {
-    if (!inode_info->use_pagecache) return;
-
+    if (!inode_info->use_pagecache) {
+        return;
+    }
     int begin_index = offset/inode_info->c->page_size;
     int end_index = (offset + count - 1)/inode_info->c->page_size;
     int block_index;

@@ -191,6 +191,12 @@ int real_openat(int dirfd, const char *pathname, int flags, ...) {
         if(fd < 0) {
             goto log;
         }
+        cfs_file_t cfs_file;
+        cfs_get_file(g_client_info.cfs_client_id, fd, &cfs_file);
+        if(record_open_file(&cfs_file) < 0) {
+            fprintf(stderr, "cache open_file %d failed.\n", fd);
+            fd = -1;
+        }
     } else {
         fd = libc_openat(dirfd, pathname, flags, mode);
     }
@@ -215,13 +221,7 @@ log:
     flags&O_DIRECT?"O_DIRECT|":"", flags&O_SYNC?"O_SYNC|":"", flags&O_DSYNC?"O_DSYNC":"", fd);
     #endif
     if(g_hook && is_cfs && fd > 0) {
-        cfs_file_t cfs_file;
-        cfs_get_file(g_client_info.cfs_client_id, fd, &cfs_file);
-        if(record_open_file(&cfs_file) < 0) {
-            fprintf(stderr, "cache open_file %d failed.\n", fd);
-            fd = -1;
-        } else
-            fd |= CFS_FD_MASK;
+        fd |= CFS_FD_MASK;
     }
     return fd;
 }
@@ -1445,15 +1445,16 @@ ssize_t real_read(int fd, void *buf, size_t count) {
         re_local = libc_read(fd, buf_local, count);
         #endif
         file_t *f = get_open_file(fd);
-        if(f == NULL)
+        if(f == NULL) {
             goto log;
+        }
         offset = f->pos;
         size = f->inode_info->size;
         re_cache = read_cache(f->inode_info, f->pos, count, buf);
         if(re_cache < count && f->pos + re_cache < f->inode_info->size) {
             // data may reside both in cache and CFS, flush to prevent inconsistent read
             flush_inode_range(f->inode_info, f->pos, count);
-            re = cfs_errno_ssize_t(cfs_pread(g_client_info.cfs_client_id, fd, buf, count, f->pos));
+            re = cfs_errno_ssize_t(cfs_pread_sock(g_client_info.cfs_client_id, fd, buf, count, f->pos));
         } else {
             re = re_cache;
         }
@@ -1574,13 +1575,14 @@ ssize_t real_pread(int fd, void *buf, size_t count, off_t offset) {
         re_local = libc_pread(fd, buf_local, count, offset);
         #endif
         file_t *f = get_open_file(fd);
-        if(f == NULL)
+        if(f == NULL) {
             goto log;
+        }
         re_cache = read_cache(f->inode_info, offset, count, buf);
         if(re_cache < count && offset + re_cache < f->inode_info->size) {
             // data may reside both in cache and CFS, flush to prevent inconsistent read
             flush_inode_range(f->inode_info, offset, count);
-            re = cfs_errno_ssize_t(cfs_pread(g_client_info.cfs_client_id, fd, buf, count, offset));
+            re = cfs_errno_ssize_t(cfs_pread_sock(g_client_info.cfs_client_id, fd, buf, count, offset));
         } else {
             re = re_cache;
         }

@@ -97,8 +97,8 @@ typedef struct {
 	uint64_t 	partition_id;
 	uint64_t 	extent_id;
 	uint64_t 	extent_offset;
-	char* 	 	dp_host;
-	char* 	 	dp_port;
+	char 	 	dp_host[32];
+	int 	 	dp_port;
 } cfs_read_req_t;
 */
 import "C"
@@ -3028,14 +3028,14 @@ func cfs_pread(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 }
 
 //export cfs_read_requests
-func cfs_read_requests(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.off_t, requests unsafe.Pointer, req_count C.int) C.ssize_t {
+func cfs_read_requests(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.off_t, requests unsafe.Pointer, req_count C.int) C.int {
 	c, exist := getClient(int64(id))
 	if !exist {
-		return C.ssize_t(statusEINVAL)
+		return statusEINVAL
 	}
 	f := c.getFile(uint(fd))
 	if f == nil {
-		return C.ssize_t(statusEBADFD)
+		return statusEBADFD
 	}
 
 	var buffer []byte
@@ -3045,20 +3045,20 @@ func cfs_read_requests(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t
 	hdr.Cap = int(size)
 
 	// off >= 0 stands for pread
-	offset := int(off)
+	offset := uint64(off)
 	if off < 0 {
-		offset = int(f.pos)
+		offset = f.pos
 	}
 
 	if log.IsDebugEnabled() {
 		log.LogDebugf("cfs_read_requests read: id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v)", id, fd, f.path, f.ino, len(buffer), offset)
 	}
-	readRequests, err := c.ec.GetReadRequests(nil, f.ino, buffer, offset, len(buffer))
+	readRequests, fileSize, err := c.ec.GetReadRequests(nil, f.ino, buffer, offset, len(buffer))
 	if err != nil {
-		return C.ssize_t(statusEIO)
+		return statusEIO
 	}
 	if len(readRequests) > int(req_count) {
-		return C.ssize_t(-len(readRequests))
+		return -C.int(len(readRequests))
 	}
 
 	var goRequests []C.cfs_read_req_t
@@ -3067,6 +3067,9 @@ func cfs_read_requests(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t
 	hdrReq.Len, hdrReq.Cap = int(req_count), int(req_count)
 
 	for i, readReq := range readRequests {
+		if log.IsDebugEnabled() {
+			log.LogDebugf("cfs_read_requests read: index(%v) req(%v) id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v)", i, readReq, id, fd, f.path, f.ino, len(buffer), offset)
+		}
 		goRequests[i].file_offset = C.off_t(readReq.Req.FileOffset)
 		goRequests[i].size = C.size_t(readReq.Req.Size)
 		if readReq.Req.ExtentKey == nil {
@@ -3074,21 +3077,34 @@ func cfs_read_requests(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t
 			goRequests[i].partition_id = C.uint64_t(0)
 			goRequests[i].extent_id = C.uint64_t(0)
 			goRequests[i].extent_offset = C.uint64_t(0)
+			if readReq.Req.FileOffset+uint64(readReq.Req.Size) > fileSize {
+				if readReq.Req.FileOffset >= fileSize {
+					goRequests[i].size = C.size_t(0)
+				} else {
+					goRequests[i].size = C.size_t(fileSize - readReq.Req.FileOffset)
+				}
+				return C.int(i + 1)
+			}
 		} else {
 			goRequests[i].partition_id = C.uint64_t(readReq.Req.ExtentKey.PartitionId)
 			goRequests[i].extent_id = C.uint64_t(readReq.Req.ExtentKey.ExtentId)
 			goRequests[i].extent_offset = C.uint64_t(uint64(readReq.Req.FileOffset) - readReq.Req.ExtentKey.FileOffset + readReq.Req.ExtentKey.ExtentOffset)
 			if readReq.Partition.LeaderAddr != "" {
 				addrArr := strings.Split(readReq.Partition.LeaderAddr, ":")
-				goRequests[i].dp_host = C.CString(addrArr[0])
-				goRequests[i].dp_port = C.CString(addrArr[1])
+				// max length of dp_host is 32, defined in cfs_read_req_t
+				hdr := (*reflect.StringHeader)(unsafe.Pointer(&addrArr[0]))
+				addrLen := len(addrArr[0])
+				if addrLen > 32-1 {
+					addrLen = 32 - 1
+				}
+				C.memcpy(unsafe.Pointer(&goRequests[i].dp_host), unsafe.Pointer(hdr.Data), C.size_t(addrLen))
+				goRequests[i].dp_host[addrLen] = 0
+				port, _ := strconv.ParseInt(addrArr[1], 10, 64)
+				goRequests[i].dp_port = C.int(port)
 			}
 		}
-		if log.IsDebugEnabled() {
-			log.LogDebugf("cfs_read_requests read: index(%v) req(%v) id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v)", i, readReq, id, fd, f.path, f.ino, len(buffer), offset)
-		}
 	}
-	return C.ssize_t(len(readRequests))
+	return C.int(len(readRequests))
 }
 
 func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.off_t) (re C.ssize_t) {

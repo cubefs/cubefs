@@ -67,8 +67,8 @@ typedef struct {
 	uint64_t 	partition_id;
 	uint64_t 	extent_id;
 	uint64_t 	extent_offset;
-	char* 	 	dp_host;
-	char* 	 	dp_port;
+	char 	 	dp_host[32];
+	int 	 	dp_port;
 } cfs_read_req_t;
 
 /*
