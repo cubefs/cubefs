@@ -61,6 +61,16 @@ typedef struct {
 	off_t pos;
 } cfs_file_t;
 
+typedef struct {
+	off_t 		file_offset;
+	size_t 		size;
+	uint64_t 	partition_id;
+	uint64_t 	extent_id;
+	uint64_t 	extent_offset;
+	char* 	 	dp_host;
+	char* 	 	dp_port;
+} cfs_read_req_t;
+
 /*
  * Library / framework initialization
  * This method will initialize logging and HTTP APIs.

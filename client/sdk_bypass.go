@@ -90,6 +90,16 @@ typedef struct {
 	size_t size;
 	off_t pos;
 } cfs_file_t;
+
+typedef struct {
+	off_t 		file_offset;
+	size_t 		size;
+	uint64_t 	partition_id;
+	uint64_t 	extent_id;
+	uint64_t 	extent_offset;
+	char* 	 	dp_host;
+	char* 	 	dp_port;
+} cfs_read_req_t;
 */
 import "C"
 
@@ -3015,6 +3025,70 @@ func cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t) C.ssize
 //export cfs_pread
 func cfs_pread(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.off_t) C.ssize_t {
 	return _cfs_read(id, fd, buf, size, off)
+}
+
+//export cfs_read_requests
+func cfs_read_requests(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.off_t, requests unsafe.Pointer, req_count C.int) C.ssize_t {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return C.ssize_t(statusEINVAL)
+	}
+	f := c.getFile(uint(fd))
+	if f == nil {
+		return C.ssize_t(statusEBADFD)
+	}
+
+	var buffer []byte
+	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&buffer))
+	hdr.Data = uintptr(buf)
+	hdr.Len = int(size)
+	hdr.Cap = int(size)
+
+	// off >= 0 stands for pread
+	offset := int(off)
+	if off < 0 {
+		offset = int(f.pos)
+	}
+
+	if log.IsDebugEnabled() {
+		log.LogDebugf("cfs_read_requests read: id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v)", id, fd, f.path, f.ino, len(buffer), offset)
+	}
+	readRequests, err := c.ec.GetReadRequests(nil, f.ino, buffer, offset, len(buffer))
+	if err != nil {
+		return C.ssize_t(statusEIO)
+	}
+	if len(readRequests) > int(req_count) {
+		return C.ssize_t(-len(readRequests))
+	}
+
+	var goRequests []C.cfs_read_req_t
+	hdrReq := (*reflect.SliceHeader)(unsafe.Pointer(&goRequests))
+	hdrReq.Data = uintptr(requests)
+	hdrReq.Len, hdrReq.Cap = int(req_count), int(req_count)
+
+	for i, readReq := range readRequests {
+		goRequests[i].file_offset = C.off_t(readReq.Req.FileOffset)
+		goRequests[i].size = C.size_t(readReq.Req.Size)
+		if readReq.Req.ExtentKey == nil {
+			// hole
+			goRequests[i].partition_id = C.uint64_t(0)
+			goRequests[i].extent_id = C.uint64_t(0)
+			goRequests[i].extent_offset = C.uint64_t(0)
+		} else {
+			goRequests[i].partition_id = C.uint64_t(readReq.Req.ExtentKey.PartitionId)
+			goRequests[i].extent_id = C.uint64_t(readReq.Req.ExtentKey.ExtentId)
+			goRequests[i].extent_offset = C.uint64_t(uint64(readReq.Req.FileOffset) - readReq.Req.ExtentKey.FileOffset + readReq.Req.ExtentKey.ExtentOffset)
+			if readReq.Partition.LeaderAddr != "" {
+				addrArr := strings.Split(readReq.Partition.LeaderAddr, ":")
+				goRequests[i].dp_host = C.CString(addrArr[0])
+				goRequests[i].dp_port = C.CString(addrArr[1])
+			}
+		}
+		if log.IsDebugEnabled() {
+			log.LogDebugf("cfs_read_requests read: index(%v) req(%v) id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v)", i, readReq, id, fd, f.path, f.ino, len(buffer), offset)
+		}
+	}
+	return C.ssize_t(len(readRequests))
 }
 
 func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.off_t) (re C.ssize_t) {
