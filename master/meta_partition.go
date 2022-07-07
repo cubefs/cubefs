@@ -292,9 +292,10 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 		mp.Status = proto.ReadWrite
 	}
 	if writeLog && len(liveReplicas) != int(mp.ReplicaNum) {
-		inactiveAddrs := mp.getInactiveAddrsFromLiveReplicas(liveReplicas)
-		msg := fmt.Sprintf("action[checkMPStatus],id:%v,status:%v,replicaNum:%v,replicas:%v,persistenceHosts:%v inactiveAddrs:%v",
-			mp.PartitionID, mp.Status, mp.ReplicaNum, len(liveReplicas), mp.Hosts, inactiveAddrs)
+		allLiveReplicas := mp.getAllLiveReplicas()
+		inactiveAddrs := mp.getInactiveAddrsFromLiveReplicas(allLiveReplicas)
+		msg := fmt.Sprintf("action[checkMPStatus],id:%v,status:%v,replicaNum:%v,learnerNum:%v,replicas:%v,persistenceHosts:%v inactiveAddrs:%v",
+			mp.PartitionID, mp.Status, mp.ReplicaNum, mp.LearnerNum, len(allLiveReplicas), mp.Hosts, inactiveAddrs)
 		log.LogInfo(msg)
 		Warn(clusterID, msg)
 	}
@@ -429,6 +430,17 @@ func (mp *MetaPartition) getInactiveAddrsFromLiveReplicas(liveReplicas []*MetaRe
 	for _, host := range mp.Hosts {
 		if !contains(liveReplicasAddr, host) {
 			inactiveAddrs = append(inactiveAddrs, host)
+		}
+	}
+	return
+}
+
+// include norma and learner peer
+func (mp *MetaPartition) getAllLiveReplicas() (allLiveReplicas []*MetaReplica) {
+	allLiveReplicas = make([]*MetaReplica, 0)
+	for _, mr := range mp.Replicas {
+		if mr.isActive() {
+			allLiveReplicas = append(allLiveReplicas, mr)
 		}
 	}
 	return
