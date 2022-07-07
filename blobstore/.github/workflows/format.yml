@@ -1,0 +1,37 @@
+name: Format
+
+on:
+  push:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  GolangFormat:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go Version 1.x
+        uses: actions/setup-go@v2
+        with:
+          go-version: ^1.17
+
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Make rocksdb includes
+        run: |
+          wget -O deps.tar.gz http://ocs-upload-cn.heytapcs.com/deps.tar.gz
+          tar -zxf deps.tar.gz
+          mv deps .deps
+          source env.sh
+          echo "CGO_CFLAGS=${CGO_CFLAGS}" >> $GITHUB_ENV
+          echo "CGO_LDFLAGS=${CGO_LDFLAGS}" >> $GITHUB_ENV
+
+      - name: Check vet
+        run: |
+          go vet -trimpath ./...
+
+      - name: Go code format with gofumpt
+        run: |
+          go install mvdan.cc/gofumpt@v0.2.1
+          gofumpt -l -w .
+          git diff --exit-code
