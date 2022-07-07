@@ -21,6 +21,7 @@ Usage: ./build.sh [ -h | --help ] [ -g ] [ --sdk-only | --client-only ]
     -g                      setup Debug="1" goflag="" gccflag="-g"
     --sdk-only              build sdk (libcfssdk.so libempty.so) only
     --client-only           build client (libcfsclient.so and cfs-client) only
+    test                    build in test mode
 EOF
     exit 0
 }
@@ -57,8 +58,9 @@ echo "using Debug=\"${Debug}\""
 echo "using goflag=\"${goflag}\""
 echo "using gccflag=\"${gccflag}\""
 if [[ ${build_sdk} -eq 1 ]]; then
-    echo "building sdk (libcfssdk_${CommitID}.so) ..."
+    echo "building sdk (libcfssdk_${CommitID}.so, libcfssdk_cshared.so) ..."
     go build -ldflags "${goflag} -E main.main -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}' -X 'main.Debug=${Debug}'" -buildmode=plugin -linkshared -o ${dir}/libcfssdk_${CommitID}.so ${dir}/sdk_fuse.go ${dir}/sdk_bypass.go ${dir}/http.go ${dir}/ump.go
+    go build -ldflags "${goflag} -X main.CommitID=${CommitID} -X main.BranchName=${BranchName} -X 'main.BuildTime=${BuildTime}' -X 'main.Debug=${Debug}'" -buildmode=c-shared -o ${dir}/libcfssdk_cshared.so ${dir}/sdk_fuse.go ${dir}/sdk_bypass.go ${dir}/http.go ${dir}/ump.go
 fi
 if [[ ${build_client} -eq 1 ]]; then
     echo "building client (cfs-client libcfsclient.so libempty.so) ..."

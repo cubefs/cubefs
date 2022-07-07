@@ -2633,7 +2633,6 @@ static void init_cfs_func(void *handle) {
     cfs_close_client = (cfs_close_client_t)dlsym(handle, "cfs_close_client");
     cfs_client_state = (cfs_client_state_t)dlsym(handle, "cfs_client_state");
     cfs_flush_log = (cfs_flush_log_t)dlsym(handle, "cfs_flush_log");
-    cfs_statfs = (cfs_statfs_t_)dlsym(handle, "cfs_statfs");
 
     cfs_close = (cfs_close_t)dlsym(handle, "cfs_close");
     cfs_open = (cfs_open_t)dlsym(handle, "cfs_open");

@@ -36,22 +36,6 @@ typedef struct {
         const char* prof_port;
 } cfs_sdk_init_t;
 
-typedef struct {
-        char version[256];
-        uint32_t version_len;
-        char branch[256];
-        uint32_t branch_len;
-        char commit_id[256];
-        uint32_t commit_id_len;
-        char runtime_version[256];
-        uint32_t runtime_version_len;
-        char goos[256];
-        uint32_t goos_len;
-        char goarch[256];
-        uint32_t goarch_len;
-        char build_time[256];
-        uint32_t build_time_len;
-} cfs_sdk_version_t;
 
 typedef struct {
     const char* master_addr;
@@ -64,18 +48,6 @@ typedef struct {
     const char* master_client;
 } cfs_config_t;
 
-typedef struct {
-	uint64_t total;
-	uint64_t used;
-} cfs_statfs_t;
-
-typedef struct {
-    uint64_t ino;
-    char     name[256];
-    char     d_type;
-    uint32_t     nameLen;
-} cfs_dirent_t;
-
 /*
  * Library / framework initialization
  * This method will initialize logging and HTTP APIs.
@@ -83,16 +55,11 @@ typedef struct {
 typedef int (*cfs_sdk_init_func)(cfs_sdk_init_t* t);
 typedef void (*cfs_sdk_close_t)();
 
-/*
- * Get library version info
- */
-int cfs_sdk_version(cfs_sdk_version_t* v);
 
 // return client_id, should be positive if no error occurs
 typedef int64_t (*cfs_new_client_t)(const cfs_config_t *conf, const char *config_path, char *str);
 typedef void (*cfs_close_client_t)(int64_t id);
 typedef size_t (*cfs_client_state_t)(int64_t id, char *buf, int size);
-typedef int (*cfs_statfs_t_)(int64_t id, cfs_statfs_t* stat);
 /*
  * Log is cached by default, will only be flushed when client close.
  * Call this function manually when necessary.
@@ -122,8 +89,6 @@ typedef int (*cfs_chdir_t)(int64_t id, const char *path);
  * The dir corresponding to fd is written to buf if buf is not NULL and size is enough.
  * This feature is for CFS kernel bypass client.
  */
-int cfs_readdir(int64_t id, int fd, cfs_dirent_t* dirents, int count);
-
 typedef int (*cfs_fchdir_t)(int64_t id, int fd, char *buf, int size);
 typedef char* (*cfs_getcwd_t)(int64_t id);
 typedef int (*cfs_mkdirs_t)(int64_t id, const char *path, mode_t mode);
@@ -204,10 +169,6 @@ typedef ssize_t (*cfs_writev_t)(int64_t id, int fd, const struct iovec *iov, int
 typedef ssize_t (*cfs_pwritev_t)(int64_t id, int fd, const struct iovec *iov, int iovcnt, off_t off);
 typedef off64_t (*cfs_lseek_t)(int64_t id, int fd, off64_t offset, int whence);
 
-/*
- * Batch metadata operations
- */
-int cfs_batch_stat(int64_t id, uint64_t *inos, struct stat *stats, int count);
 
 typedef void (*InitModule_t)(void*);
 typedef void (*FinishModule_t)(void*);
@@ -217,7 +178,6 @@ static cfs_sdk_close_t cfs_sdk_close;
 static cfs_new_client_t cfs_new_client;
 static cfs_close_client_t cfs_close_client;
 static cfs_client_state_t cfs_client_state;
-static cfs_statfs_t_ cfs_statfs;
 static cfs_flush_log_t cfs_flush_log;
 
 static cfs_close_t cfs_close;

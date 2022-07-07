@@ -16,7 +16,9 @@ package main
 
 /*
 #define _GNU_SOURCE
+#ifndef __USE_LARGEFILE64
 #define __USE_LARGEFILE64
+#endif
 #ifndef FALLOC_FL_KEEP_SIZE
 #define FALLOC_FL_KEEP_SIZE 0x01
 #endif
@@ -715,7 +717,7 @@ func cfs_client_state(id C.int64_t, buf unsafe.Pointer, size C.size_t) C.size_t 
  */
 
 //export cfs_close
-func cfs_close(id C.int64_t, fd C.int) {
+func cfs_close(id C.int64_t, fd C.int) (re C.int) {
 	var (
 		path string
 		ino  uint64
@@ -727,11 +729,11 @@ func cfs_close(id C.int64_t, fd C.int) {
 	}()
 	c, exist := getClient(int64(id))
 	if !exist {
-		return
+		return statusOK
 	}
 	f := c.releaseFD(uint(fd))
 	if f == nil {
-		return
+		return statusOK
 	}
 	path = f.path
 	ino = f.ino
@@ -741,6 +743,7 @@ func cfs_close(id C.int64_t, fd C.int) {
 
 	c.flush(nil, f.ino)
 	c.closeStream(f)
+	return statusOK
 }
 
 //export cfs_open
