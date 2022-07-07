@@ -1313,7 +1313,7 @@ func (c *client) mkdir(pino uint64, name string, mode uint32) (info *proto.Inode
 }
 
 func (c *client) openStream(f *file) {
-	_ = c.ec.OpenStream(f.ino, false)
+	_ = c.ec.OpenStream(f.ino)
 }
 
 func (c *client) closeStream(f *file) {
