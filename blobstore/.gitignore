@@ -1,0 +1,12 @@
+.vscode
+.idea/
+.DS_Store
+.version
+.cache
+.deps/
+bin/
+*/*/*/run/
+node_modules/
+package.json
+package-lock.json
+!.gitkeep
