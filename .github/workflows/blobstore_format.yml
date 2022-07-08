@@ -1,37 +1,45 @@
-name: Format
+name: BlobStore-Format
 
 on:
   push:
+    paths:
+        - 'blobstore/**.go'
   pull_request:
     types: [opened, synchronize, reopened]
+    paths:
+        - 'blobstore/**'
 
 jobs:
   GolangFormat:
+    name: format
     runs-on: ubuntu-latest
     steps:
-      - name: Set up Go Version 1.x
-        uses: actions/setup-go@v2
+      - name: Set up Go Version 1.17.x
+        uses: actions/setup-go@v3
         with:
-          go-version: ^1.17
+          go-version: 1.17
 
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
-      - name: Make rocksdb includes
+      - name: Make compiled rocksdb includes
         run: |
-          wget -O deps.tar.gz http://ocs-upload-cn.heytapcs.com/deps.tar.gz
+          cd blobstore
+          wget -O deps.tar.gz https://ocs-cn-south1.heytapcs.com/blobstore/deps.tar.gz
           tar -zxf deps.tar.gz
           mv deps .deps
           source env.sh
           echo "CGO_CFLAGS=${CGO_CFLAGS}" >> $GITHUB_ENV
           echo "CGO_LDFLAGS=${CGO_LDFLAGS}" >> $GITHUB_ENV
 
-      - name: Check vet
+      - name: Check golang vet
         run: |
+          cd blobstore
           go vet -trimpath ./...
 
       - name: Go code format with gofumpt
         run: |
+          cd blobstore
           go install mvdan.cc/gofumpt@v0.2.1
           gofumpt -l -w .
           git diff --exit-code
