@@ -5,8 +5,12 @@ name: CI
 on:
   push:
     branches: [ master ]
+    paths-ignore:
+        - 'blobstore/**'
   pull_request:
     branches: [ master ]
+    paths-ignore:
+        - 'blobstore/**'
 
 jobs:
 
