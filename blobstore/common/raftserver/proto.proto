@@ -1,0 +1,18 @@
+syntax="proto3";
+package raftserver;
+
+message member {
+   uint64 nodeID  = 1;
+   string host    = 2;
+   bool   learner = 3;
+   bytes  context = 4;
+}
+
+message snapshotMeta {
+    string name              = 1;
+    uint64 index             = 2;
+    uint64 term              = 3;
+    repeated member mbs      = 4;
+    repeated uint64 voters   = 5;
+    repeated uint64 learners = 6;
+}
