@@ -57,7 +57,7 @@ func newDataNode(addr, zoneName, clusterID, version string) (dataNode *DataNode)
 	dataNode.Total = 1
 	dataNode.Addr = addr
 	dataNode.ZoneName = zoneName
-	dataNode.TaskManager = newAdminTaskManager(dataNode.Addr, clusterID)
+	dataNode.TaskManager = newAdminTaskManager(dataNode.Addr, zoneName, clusterID)
 	dataNode.DiskInfos = make(map[string]*proto.DiskInfo, 0)
 	dataNode.Version = version
 	return

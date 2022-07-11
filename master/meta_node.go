@@ -52,7 +52,7 @@ func newMetaNode(addr, zoneName, clusterID string, version string) (node *MetaNo
 	return &MetaNode{
 		Addr:     addr,
 		ZoneName: zoneName,
-		Sender:   newAdminTaskManager(addr, clusterID),
+		Sender:   newAdminTaskManager(addr, zoneName, clusterID),
 		Carry:    rand.Float64(),
 		Version:  version,
 	}

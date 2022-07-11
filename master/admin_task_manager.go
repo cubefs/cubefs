@@ -43,16 +43,18 @@ const (
 type AdminTaskManager struct {
 	clusterID  string
 	targetAddr string
+	targetZone string
 	TaskMap    map[string]*proto.AdminTask
 	sync.RWMutex
 	exitCh   chan struct{}
 	connPool *util.ConnectPool
 }
 
-func newAdminTaskManager(targetAddr, clusterID string) (sender *AdminTaskManager) {
+func newAdminTaskManager(targetAddr, targetZone, clusterID string) (sender *AdminTaskManager) {
 
 	sender = &AdminTaskManager{
 		targetAddr: targetAddr,
+		targetZone: targetZone,
 		clusterID:  clusterID,
 		TaskMap:    make(map[string]*proto.AdminTask),
 		exitCh:     make(chan struct{}, 1),
@@ -67,7 +69,7 @@ func (sender *AdminTaskManager) process() {
 	ticker := time.NewTicker(TaskWorkerInterval)
 	defer func() {
 		ticker.Stop()
-		Warn(sender.clusterID, fmt.Sprintf("clusterID[%v] %v sender stop", sender.clusterID, sender.targetAddr))
+		Warn(sender.clusterID, fmt.Sprintf("clusterID[%v] zone:%v addr:%v sender stop", sender.clusterID, sender.targetZone, sender.targetAddr))
 	}()
 	for {
 		select {
@@ -141,7 +143,7 @@ func (sender *AdminTaskManager) sendTasks(tasks []*proto.AdminTask) {
 	for _, task := range tasks {
 		conn, err := sender.getConn()
 		if err != nil {
-			msg := fmt.Sprintf("clusterID[%v] get connection to %v,err,%v", sender.clusterID, sender.targetAddr, errors.Stack(err))
+			msg := fmt.Sprintf("clusterID[%v] get connection to zone:%v,addr:%v,err:%v", sender.clusterID, sender.targetZone, sender.targetAddr, errors.Stack(err))
 			WarnBySpecialKey(fmt.Sprintf("%v_%v_sendTask", sender.clusterID, ModuleName), msg)
 			sender.putConn(conn, true)
 			sender.updateTaskInfo(task, false)
