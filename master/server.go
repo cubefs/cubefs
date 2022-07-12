@@ -93,6 +93,11 @@ func setOverSoldFactor(factor float32) {
 		overSoldFactor = factor
 	}
 }
+
+var (
+	volNameErr = errors.New("name can only start and end with number or letters, and len can't less than 3")
+)
+
 func dpCntOneNodeLimit() uint32 {
 	if maxDpCntOneNode <= 0 {
 		return 3000
