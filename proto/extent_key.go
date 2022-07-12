@@ -66,8 +66,18 @@ func (k *ExtentKey) Marshal() (m string) {
 	return fmt.Sprintf("%v_%v_%v_%v_%v_%v", k.FileOffset, k.PartitionId, k.ExtentId, k.ExtentOffset, k.Size, k.CRC)
 }
 
+func (k *ExtentKey) MarshalBinaryExt(data []byte) {
+	binary.BigEndian.PutUint64(data[0:], k.FileOffset)
+	binary.BigEndian.PutUint64(data[8:], k.PartitionId)
+	binary.BigEndian.PutUint64(data[16:], k.ExtentId)
+	binary.BigEndian.PutUint64(data[24:], k.ExtentOffset)
+	binary.BigEndian.PutUint32(data[32:], k.Size)
+	binary.BigEndian.PutUint32(data[36:], k.CRC)
+}
+
 // MarshalBinary marshals the binary format of the extent key.
 func (k *ExtentKey) MarshalBinary() ([]byte, error) {
+
 	buf := bytes.NewBuffer(make([]byte, 0, ExtentLength))
 	if err := binary.Write(buf, binary.BigEndian, k.FileOffset); err != nil {
 		return nil, err
