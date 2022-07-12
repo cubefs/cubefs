@@ -18,12 +18,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"golang.org/x/time/rate"
 	"net/http"
 	"regexp"
 	"strconv"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/time/rate"
 
 	"strings"
 
@@ -858,18 +859,20 @@ func (m *Server) deleteDataReplica(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// force only be used in scenario that dp of two replicas volume no leader caused by one replica crash
-	var value string
-	if value = r.FormValue(raftForceDelKey); value != "" {
-		raftForce, _ = strconv.ParseBool(value)
-		if raftForce && dp.ReplicaNum != 2 {
-			msg = fmt.Sprintf("failed! replicaNum [%v] and force should be used in two replcias datapartition", dp.ReplicaNum)
-			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
-			return
-		}
+	raftForce, err = parseRaftForce(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
-
-	if value = r.FormValue(forceKey); value != "" {
-		force, _ = strconv.ParseBool(value)
+	if raftForce && dp.ReplicaNum != 2 {
+		msg = fmt.Sprintf("failed! replicaNum [%v] and force should be used in two replcias datapartition", dp.ReplicaNum)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
+		return
+	}
+	force, err = pareseBoolWithDefault(r, forceKey, false)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 
 	if err = m.cluster.removeDataReplica(dp, addr, !force, raftForce); err != nil {
@@ -950,6 +953,7 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		dp          *DataPartition
 		addr        string
 		partitionID uint64
+		raftForce   bool
 		err         error
 	)
 
@@ -961,14 +965,20 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
 		return
 	}
+	raftForce, err = parseRaftForce(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	if dp.isSpecialReplicaCnt() {
 		rstMsg = fmt.Sprintf(proto.AdminDecommissionDataPartition+" dataPartitionID :%v  is special replica cnt %v on node:%v async running,need check later",
 			partitionID, dp.ReplicaNum, addr)
-		go m.cluster.decommissionDataPartition(addr, dp, handleDataPartitionOfflineErr)
+		go m.cluster.decommissionDataPartition(addr, dp, raftForce, handleDataPartitionOfflineErr)
 		sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 		return
 	}
-	if err = m.cluster.decommissionDataPartition(addr, dp, handleDataPartitionOfflineErr); err != nil {
+	if err = m.cluster.decommissionDataPartition(addr, dp, raftForce, handleDataPartitionOfflineErr); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1180,22 +1190,6 @@ func (m *Server) volShrink(w http.ResponseWriter, r *http.Request) {
 	msg = fmt.Sprintf("update vol[%v] successfully\n", name)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
-
-// func (c *Cluster) checkZoneArgs(zoneName string, crossZone bool) error {
-// 	var zones []string
-// 	if zoneName == "" {
-// 		zoneName = DefaultZoneName
-// 	}
-
-// 	zones = strings.Split(zoneName, ",")
-// 	for _, name := range zones {
-// 		if _, err := c.t.getZone(name); err != nil {
-// 			return err
-// 		}
-// 	}
-
-// 	return nil
-// }
 
 func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 
@@ -1539,10 +1533,16 @@ func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 		rstMsg      string
 		offLineAddr string
 		limit       int
+		raftForce   bool
 		err         error
 	)
 
 	if offLineAddr, limit, err = parseDecomNodeReq(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	raftForce, err = parseRaftForce(r)
+	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1552,7 +1552,7 @@ func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = m.cluster.migrateDataNode(offLineAddr, "", limit); err != nil {
+	if err = m.cluster.migrateDataNode(offLineAddr, "", limit, raftForce); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1565,6 +1565,11 @@ func (m *Server) migrateDataNodeHandler(w http.ResponseWriter, r *http.Request) 
 	srcAddr, targetAddr, limit, err := parseMigrateNodeParam(r)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	raftForce, err := parseRaftForce(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
@@ -1597,7 +1602,7 @@ func (m *Server) migrateDataNodeHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err = m.cluster.migrateDataNode(srcAddr, targetAddr, limit); err != nil {
+	if err = m.cluster.migrateDataNode(srcAddr, targetAddr, limit, raftForce); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2353,11 +2358,17 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 		offLineAddr, diskPath string
 		err                   error
 		limit                 int
+		raftForce             bool
 		badPartitionIds       []uint64
 		badPartitions         []*DataPartition
 	)
 
 	if offLineAddr, diskPath, limit, err = parseReqToDecoDisk(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	raftForce, err = parseRaftForce(r)
+	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -2384,7 +2395,7 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 
 	rstMsg = fmt.Sprintf("receive decommissionDisk node[%v] disk[%v] limit [%d], badPartitionIds[%v] has offline successfully",
 		node.Addr, diskPath, limit, badPartitionIds)
-	if err = m.cluster.decommissionDisk(node, diskPath, badPartitions); err != nil {
+	if err = m.cluster.decommissionDisk(node, raftForce, diskPath, badPartitions); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2605,36 +2616,6 @@ func (m *Server) loadMetaPartition(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
-func parseReqToDecoDisk(r *http.Request) (nodeAddr, diskPath string, limit int, err error) {
-	if err = r.ParseForm(); err != nil {
-		return
-	}
-	nodeAddr, err = extractNodeAddr(r)
-	if err != nil {
-		return
-	}
-	diskPath, err = extractDiskPath(r)
-	if err != nil {
-		return
-	}
-
-	limit, err = parseUintParam(r, countKey)
-	return
-}
-
-func extractPosixAcl(r *http.Request) (enablePosix bool, err error) {
-	var value string
-	if value = r.FormValue(enablePosixAclKey); value == "" {
-		return
-	}
-
-	status, err := strconv.ParseBool(value)
-	if err != nil {
-		return false, fmt.Errorf("parse %s failed, val %s", enablePosixAclKey, value)
-	}
-
-	return status, nil
-}
 func (m *Server) migrateMetaNodeHandler(w http.ResponseWriter, r *http.Request) {
 	srcAddr, targetAddr, limit, err := parseMigrateNodeParam(r)
 	if err != nil {
@@ -2758,10 +2739,59 @@ func (m *Server) getRaftStatus(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(data))
 }
 
+func parseReqToDecoDisk(r *http.Request) (nodeAddr, diskPath string, limit int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	nodeAddr, err = extractNodeAddr(r)
+	if err != nil {
+		return
+	}
+	diskPath, err = extractDiskPath(r)
+	if err != nil {
+		return
+	}
+
+	limit, err = parseUintParam(r, countKey)
+	return
+}
+
 type getVolParameter struct {
 	name                string
 	authKey             string
 	skipOwnerValidation bool
+}
+
+func pareseBoolWithDefault(r *http.Request, key string, old bool) (bool, error) {
+	val := r.FormValue(key)
+	if val == "" {
+		return old, nil
+	}
+
+	newVal, err := strconv.ParseBool(val)
+	if err != nil {
+		return false, fmt.Errorf("parse %s bool val err, err %s", key, err.Error())
+	}
+
+	return newVal, nil
+}
+
+func parseRaftForce(r *http.Request) (bool, error) {
+	return pareseBoolWithDefault(r, raftForceDelKey, false)
+}
+
+func extractPosixAcl(r *http.Request) (enablePosix bool, err error) {
+	var value string
+	if value = r.FormValue(enablePosixAclKey); value == "" {
+		return
+	}
+
+	status, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("parse %s failed, val %s", enablePosixAclKey, value)
+	}
+
+	return status, nil
 }
 
 func (m *Server) getMetaPartitions(w http.ResponseWriter, r *http.Request) {
