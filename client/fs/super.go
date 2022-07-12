@@ -152,10 +152,13 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	if opt.BcacheDir != "" && !strings.HasSuffix(opt.BcacheDir, "/") {
 		opt.BcacheDir = opt.BcacheDir + "/"
 	}
-
-	s.bcacheDir = strings.ReplaceAll(opt.BcacheDir, opt.MountPoint, opt.SubDir)
-	if s.bcacheDir != "" && !strings.HasSuffix(s.bcacheDir, "/") {
-		s.bcacheDir = s.bcacheDir + "/"
+	if s.bcacheDir == opt.MountPoint {
+		s.bcacheDir = "/"
+	} else {
+		s.bcacheDir = strings.ReplaceAll(opt.BcacheDir, opt.MountPoint, "/")
+		if s.bcacheDir != "" && !strings.HasSuffix(s.bcacheDir, "/") {
+			s.bcacheDir = s.bcacheDir + "/"
+		}
 	}
 	if !(opt.MaxStreamerLimit > 0 && opt.EnableBcache) {
 		opt.EnableBcache = false
