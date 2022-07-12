@@ -15,6 +15,13 @@ type SortedExtents struct {
 	eks []proto.ExtentKey
 }
 
+var extentP = sync.Pool{
+	New: func() interface{} {
+		b := make([]byte, proto.ExtentLength)
+		return &b
+	},
+}
+
 func NewSortedExtents() *SortedExtents {
 	return &SortedExtents{
 		eks: make([]proto.ExtentKey, 0),
@@ -44,13 +51,15 @@ func (se *SortedExtents) MarshalBinary() ([]byte, error) {
 	se.RLock()
 	defer se.RUnlock()
 
+	data = make([]byte, 0, proto.ExtentLength*len(se.eks))
+	ekdata := extentP.Get().(*[]byte)
+	defer extentP.Put(ekdata)
+
 	for _, ek := range se.eks {
-		ekdata, err := ek.MarshalBinary()
-		if err != nil {
-			return nil, err
-		}
-		data = append(data, ekdata...)
+		ek.MarshalBinaryExt(*ekdata)
+		data = append(data, *ekdata...)
 	}
+
 	return data, nil
 }
 

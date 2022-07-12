@@ -94,3 +94,46 @@ func TestTruncate01(t *testing.T) {
 		t.Fail()
 	}
 }
+
+func TestSortedMarshal(t *testing.T) {
+	se := NewSortedExtents()
+
+	e1 := proto.ExtentKey{
+		FileOffset:   1,
+		Size:         1010,
+		ExtentId:     10,
+		ExtentOffset: 10110,
+		PartitionId:  100,
+		CRC:          0000,
+	}
+	e2 := proto.ExtentKey{
+		FileOffset:   4,
+		Size:         1030,
+		ExtentId:     10,
+		ExtentOffset: 1010,
+		PartitionId:  100,
+		CRC:          0200,
+	}
+
+	se.eks = append(se.eks, e1)
+	se.eks = append(se.eks, e2)
+
+	data, err := se.MarshalBinary()
+	if err != nil {
+		t.Fail()
+	}
+
+	se2 := NewSortedExtents()
+	err = se2.UnmarshalBinary(data)
+	if err != nil {
+		t.Fail()
+	}
+
+	for idx := 0; idx < len(se.eks); idx++ {
+		e1 := se.eks[idx]
+		e2 := se2.eks[idx]
+		if e1 != e2 || e1.CRC != e2.CRC {
+			t.Fail()
+		}
+	}
+}
