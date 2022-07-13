@@ -163,7 +163,7 @@ func NewShardRepairMgr(
 		return nil, err
 	}
 
-	workerSelector := selector.NewSelectorWithGetter(10*1000, func() (hosts []string, err error) {
+	workerSelector := selector.MakeSelector(10*1000, func() (hosts []string, err error) {
 		return serviceGetter.GetService(context.Background(), proto.ServiceNameBlobNode, cfg.ClusterID)
 	})
 	failMsgSender, err := base.NewMsgSender(cfg.failedProducerConfig())

@@ -60,8 +60,8 @@ func NewSelector(intervalMs int64, getter func() ([]string, error)) (Selector, e
 	return s, nil
 }
 
-// NewSelectorWithGetter always return a selector
-func NewSelectorWithGetter(intervalMs int64, getter func() ([]string, error)) Selector {
+// MakeSelector always return a selector
+func MakeSelector(intervalMs int64, getter func() ([]string, error)) Selector {
 	values, _ := getter()
 	return &selector{
 		interval:     int64(time.Millisecond) * intervalMs,
@@ -149,7 +149,7 @@ func (s *selector) getValues(n int, rr bool) []string {
 	copy(values, s.cachedValues)
 	s.RUnlock()
 
-	if rr {
+	if rr && len(values) > 0 {
 		if n > len(values) {
 			n = len(values)
 		}
