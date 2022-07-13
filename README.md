@@ -129,7 +129,7 @@ docker image remove -f  arm64_gcc4_golang1_13_ubuntu_14_04_cubefs
 The list of RPM packages dependencies can be installed with:
 
 ```
-$ yum install https://ocs-cn-north1.heytapcs.com/cubefs/rpm/3.0.0/cfs-install-3.0.0-el7.x86_64.rpm
+$ yum install https://ocs-cn-north1.heytapcs.com/cubefs/cfs-install-latest-el7.x86_64.rpm
 $ cd /cfs/install
 $ tree -L 2
 .
