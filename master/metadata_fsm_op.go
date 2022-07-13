@@ -212,6 +212,8 @@ type volValue struct {
 	DpWriteableThreshold float64
 	Owner                string
 	FollowerRead         bool
+	FollowerReadDelayCfg bsProto.DpFollowerReadDelayConfig
+	FollReadHostWeight   int
 	NearRead             bool
 	ForceROW             bool
 	ForceRowModifyTime   int64
@@ -271,6 +273,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		Capacity:             vol.Capacity,
 		Owner:                vol.Owner,
 		FollowerRead:         vol.FollowerRead,
+		FollowerReadDelayCfg: vol.FollowerReadDelayCfg,
+		FollReadHostWeight:   vol.FollReadHostWeight,
 		NearRead:             vol.NearRead,
 		ForceROW:             vol.ForceROW,
 		ForceRowModifyTime:   vol.forceRowModifyTime,

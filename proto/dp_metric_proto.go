@@ -14,6 +14,8 @@ const (
 
 	ReportUrl = "/dpMetrics/report"
 	FetchUrl  = "/dpMetrics/fetch"
+
+	DefaultLowestDelayHostWeight = 70
 )
 
 // DataPartitionMetrics defines the wrapper of the metrics related to the data partition.
@@ -70,4 +72,21 @@ func (m *DataPartitionMetricsMessage) DecodeBinary(data []byte) error {
 		m.DpMetrics[i] = metric
 	}
 	return nil
+}
+
+type ReadMetrics struct {
+	sync.RWMutex
+	AvgFollowerReadHostDelay map[string]int64 // sorted by avgDelay
+	SumFollowerReadHostDelay map[string]int64 // for summary,unit: milliseconds
+	FollowerReadOpNum        map[string]int64
+	SortedHost               []string
+	PartitionId              uint64
+}
+
+func NewDPReadMetrics() *ReadMetrics {
+	return &ReadMetrics{
+		AvgFollowerReadHostDelay: make(map[string]int64, 0),
+		SumFollowerReadHostDelay: make(map[string]int64, 0),
+		FollowerReadOpNum:        make(map[string]int64, 0),
+	}
 }

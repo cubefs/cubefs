@@ -54,7 +54,7 @@ type Wrapper struct {
 	followerReadClientCfg bool
 	nearRead              bool
 	forceROW              bool
-	enableWriteCache	  bool
+	enableWriteCache      bool
 	extentCacheExpireSec  int64
 	dpSelectorChanged     bool
 	dpSelectorName        string
@@ -80,6 +80,9 @@ type Wrapper struct {
 	dpMetricsRefreshCount  uint
 	dpMetricsFetchErrCount uint
 	ecEnable               bool
+
+	dpFollowerReadDelayConfig *proto.DpFollowerReadDelayConfig
+	dpLowestDelayHostWeight   int
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
@@ -103,6 +106,10 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 		ReportIntervalSec: defaultMetricReportSec,
 		FetchIntervalSec:  defaultMetricFetchSec,
 	}
+	w.dpFollowerReadDelayConfig = &proto.DpFollowerReadDelayConfig{
+		EnableCollect:        true,
+		DelaySummaryInterval: followerReadDelaySummaryInterval,
+	}
 	if err = w.updateClusterInfo(); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
@@ -125,10 +132,11 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 		StreamConnPool = util.NewConnectPoolWithTimeoutAndCap(0, 10, w.connConfig.IdleTimeoutSec, w.connConfig.ConnectTimeoutNs)
 	})
 
-	w.wg.Add(3)
+	w.wg.Add(4)
 	go w.update()
 	go w.updateCrossRegionHostStatus()
 	go w.ScheduleDataPartitionMetricsReport()
+	go w.dpFollowerReadDelayCollect()
 
 	return
 }
@@ -179,13 +187,14 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	w.extentCacheExpireSec = view.ExtentCacheExpireSec
 	w.updateConnConfig(view.ConnConfig)
 	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
+	w.updateDpFollowerReadDelayConfig(&view.DpFolReadDelayConfig)
 
 	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
 		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) forceROW(%v) enableWriteCache(%v) createTime(%v) dpSelectorName(%v) "+
-		"dpSelectorParm(%v) quorum(%v) extentCacheExpireSecond(%v)",
+		"dpSelectorParm(%v) quorum(%v) extentCacheExpireSecond(%v) dpFolReadDelayConfig(%v)",
 		view.ID, view.Name, view.Owner, view.Status, view.Capacity, view.MpReplicaNum, view.DpReplicaNum, view.MpCnt,
 		view.DpCnt, view.FollowerRead, view.ForceROW, view.EnableWriteCache, view.CreateTime, view.DpSelectorName, view.DpSelectorParm,
-		view.Quorum, view.ExtentCacheExpireSec)
+		view.Quorum, view.ExtentCacheExpireSec, view.DpFolReadDelayConfig)
 	return nil
 }
 
@@ -269,7 +278,11 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 	}
 	w.updateConnConfig(view.ConnConfig)
 	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
-
+	w.updateDpFollowerReadDelayConfig(&view.DpFolReadDelayConfig)
+	if w.dpLowestDelayHostWeight != view.FolReadHostWeight {
+		log.LogInfof("updateSimpleVolView: update FolReadHostWeight from old(%v) to new(%v)", w.dpLowestDelayHostWeight, view.FolReadHostWeight)
+		w.dpLowestDelayHostWeight = view.FolReadHostWeight
+	}
 	return nil
 }
 
@@ -352,9 +365,11 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 		old.CrossRegionMetrics.CrossRegionHosts = dp.CrossRegionMetrics.CrossRegionHosts
 		old.CrossRegionMetrics.Unlock()
 		dp.Metrics = old.Metrics
+		dp.ReadMetrics = old.ReadMetrics
 		old.ecEnable = w.ecEnable
 	} else {
 		dp.Metrics = proto.NewDataPartitionMetrics()
+		dp.ReadMetrics = proto.NewDPReadMetrics()
 		dp.ecEnable = w.ecEnable
 		w.partitions[dp.PartitionID] = dp
 		log.LogInfof("updateDataPartition: new dp (%v) EcMigrateStatus (%v)", dp, dp.EcMigrateStatus)
@@ -521,6 +536,19 @@ func (w *Wrapper) updateDpMetricsReportConfig(config *proto.DpMetricsReportConfi
 	if config.FetchIntervalSec > 0 && w.dpMetricsReportConfig.FetchIntervalSec != config.FetchIntervalSec {
 		atomic.StoreInt64(&w.dpMetricsReportConfig.FetchIntervalSec, config.FetchIntervalSec)
 	}
+}
+
+func (w *Wrapper) updateDpFollowerReadDelayConfig(config *proto.DpFollowerReadDelayConfig) {
+	if config == nil || w.dpFollowerReadDelayConfig == nil {
+		return
+	}
+	if w.dpFollowerReadDelayConfig.EnableCollect != config.EnableCollect {
+		w.dpFollowerReadDelayConfig.EnableCollect = config.EnableCollect
+	}
+	if config.DelaySummaryInterval >= 0 && w.dpFollowerReadDelayConfig.DelaySummaryInterval != config.DelaySummaryInterval {
+		atomic.StoreInt64(&w.dpFollowerReadDelayConfig.DelaySummaryInterval, config.DelaySummaryInterval)
+	}
+	log.LogInfof("updateDpFollowerReadDelayConfig: (%v)", w.dpFollowerReadDelayConfig)
 }
 
 func distanceFromLocal(b string) int {

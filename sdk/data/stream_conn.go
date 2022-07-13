@@ -112,7 +112,9 @@ func (sc *StreamConn) sendToDataPartition(req *Packet) (conn *net.TCPConn, err e
 		log.LogWarnf("sendToDataPartition: get connection to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 		return
 	}
-
+	if req.Opcode == proto.OpStreamFollowerRead {
+		req.SendT = time.Now().UnixNano()
+	}
 	if err = req.WriteToConnNs(conn, sc.dp.ClientWrapper.connConfig.WriteTimeoutNs); err != nil {
 		log.LogWarnf("sendToDataPartition: failed to write to addr(%v) err(%v)", sc.currAddr, err)
 		return
@@ -204,6 +206,14 @@ func (dp *DataPartition) getNearestHost() string {
 
 func (dp *DataPartition) getFollowerReadHost() string {
 	if len(dp.Hosts) > 0 {
+		// if enableCollect is false, use getEpoch; unless, getLowest
+		if dp.ClientWrapper.dpFollowerReadDelayConfig.EnableCollect {
+			err, host := dp.getLowestReadDelayHost(dp.PartitionID)
+			if err == nil {
+				return host
+			}
+			log.LogWarnf("getFollowerReadHost err:(%v)", err)
+		}
 		err, host := dp.getEpochReadHost(dp.Hosts)
 		if err == nil {
 			return host

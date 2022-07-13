@@ -2833,7 +2833,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	dpSelectorName, dpSelectorParm string,
 	ossBucketPolicy proto.BucketAccessPolicy, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
 	remainingDays uint32, storeMode proto.StoreMode, layout proto.MetaPartitionLayout, extentCacheExpireSec int64,
-	smartRules []string, compactTag proto.CompactTag) (err error) {
+	smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, follReadHostWeight int) (err error) {
 	var (
 		vol                  *Vol
 		volBak               *Vol
@@ -2967,6 +2967,8 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	vol.trashRemainingDays = remainingDays
 	vol.DefaultStoreMode = storeMode
 	vol.dpWriteableThreshold = dpWriteableThreshold
+	vol.FollowerReadDelayCfg = dpFolReadDelayCfg
+	vol.FollReadHostWeight = follReadHostWeight
 	if isSmart && !vol.isSmart {
 		vol.smartEnableTime = time.Now().Unix()
 	}
@@ -3010,7 +3012,7 @@ errHandler:
 func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, trashDays int, ecDataNum, ecParityNum uint8,
 	ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
 	crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
-	storeMode proto.StoreMode, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag) (vol *Vol, err error) {
+	storeMode proto.StoreMode, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -3054,7 +3056,7 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	}
 	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, mpReplicaNum, trashDays, ecDataNum, ecParityNum,
 		ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, 0, mpLearnerNum, dpWriteableThreshold,
-		storeMode, proto.VolConvertStInit, mpLayout, smartRules, compactTag); err != nil {
+		storeMode, proto.VolConvertStInit, mpLayout, smartRules, compactTag, dpFolReadDelayCfg); err != nil {
 		goto errHandler
 	}
 	if err = vol.initMetaPartitions(c, mpCount); err != nil {
@@ -3086,7 +3088,7 @@ errHandler:
 func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum, trashDays int, dataNum, parityNum uint8,
 	enableEc, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
 	crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64,
-	storeMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag) (vol *Vol, err error) {
+	storeMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig) (vol *Vol, err error) {
 	var (
 		id              uint64
 		smartEnableTime int64
@@ -3117,7 +3119,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	}
 	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), uint8(mpReplicaNum), followerRead,
 		authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, createTime, smartEnableTime, description, "", "",
-		crossRegionHAType, dpLearnerNum, mpLearnerNum, dpWriteableThreshold, uint32(trashDays), storeMode, convertSt, mpLayout, smartRules, compactTag)
+		crossRegionHAType, dpLearnerNum, mpLearnerNum, dpWriteableThreshold, uint32(trashDays), storeMode, convertSt, mpLayout, smartRules, compactTag, dpFolReadDelayCfg)
 	vol.EcDataNum = dataNum
 	vol.EcParityNum = parityNum
 	vol.EcEnable = enableEc

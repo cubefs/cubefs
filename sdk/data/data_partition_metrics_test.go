@@ -23,6 +23,66 @@ var (
 	testVol					= "testVol"
 )
 
+func TestWrapper_SummaryAndSortReadDelay(t *testing.T) {
+	wrapper := &Wrapper{
+		clusterName:               testCluster,
+		volName:                   testVol,
+		dpFollowerReadDelayConfig: &proto.DpFollowerReadDelayConfig{EnableCollect: true},
+		partitions:                make(map[uint64]*DataPartition),
+	}
+
+	testDataPartitions = make([]*DataPartition, 6)
+	for i := 0; i < len(testDataPartitions); i++ {
+		testDataPartitions[i] = &DataPartition{
+			DataPartitionResponse: proto.DataPartitionResponse{
+				Hosts: []string{"127.0.0.1:8080", "127.0.0.1:8081", "127.0.0.1:8082"},
+			},
+			ReadMetrics: &proto.ReadMetrics{
+				SumFollowerReadHostDelay: map[string]int64{
+					"127.0.0.1:8080": 6,
+					"127.0.0.1:8081": 36,
+				},
+				FollowerReadOpNum: map[string]int64{
+					"127.0.0.1:8080": 6,
+					"127.0.0.1:8081": 6,
+				},
+				AvgFollowerReadHostDelay: make(map[string]int64),
+			},
+		}
+		testDataPartitions[i].PartitionID = uint64(i)
+		wrapper.partitions[uint64(i)] = testDataPartitions[i]
+	}
+	wrapper.SummaryAndSortReadDelay()
+	// check sorted ReadMetrics
+	sortedHost := wrapper.partitions[0].ReadMetrics.SortedHost
+	testForHostDelay := []struct {
+		name string
+		host string
+	}{
+		{
+			name: "1st",
+			host: "127.0.0.1:8080",
+		},
+		{
+			name: "2nd",
+			host: "127.0.0.1:8081",
+		},
+		{
+			name: "3rd",
+			host: "127.0.0.1:8082",
+		},
+	}
+	for i, tt := range testForHostDelay {
+		t.Run(tt.name, func(t *testing.T) {
+			if sortedHost[i] != tt.host {
+				t.Errorf("TestWrapper_SummaryAndSortReadDelay: test[%v],expect[%v],but[%v]", tt.name, tt.host, sortedHost[i])
+				return
+			}
+		})
+	}
+
+}
+
 func TestReportMetrics(t *testing.T) {
 	initTestDataPartitionsMetricsHelper(true)
 	LocalIP = "127.0.0.0"

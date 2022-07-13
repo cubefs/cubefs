@@ -380,7 +380,7 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 
 func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpReplicas, trashDays, storeMode int,
 	followerRead, volWriteMutex, nearRead, authenticate, enableToken, autoRepair, forceROW, isSmart, enableWriteCache bool, authKey, zoneName, mpLayout, smartRules string,
-	bucketPolicy, crossRegionHAType uint8, extentCacheExpireSec int64, compactTag string) (err error) {
+	bucketPolicy, crossRegionHAType uint8, extentCacheExpireSec int64, compactTag string, hostDelayInterval int64, follReadHostWeight int) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
@@ -404,6 +404,8 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	request.addParam("smart", strconv.FormatBool(isSmart))
 	request.addParam("smartRules", smartRules)
 	request.addParam("compactTag", compactTag)
+	request.addParam("hostDelayInterval", strconv.Itoa(int(hostDelayInterval)))
+	request.addParam("follReadHostWeight", strconv.Itoa(follReadHostWeight))
 	if trashDays > -1 {
 		request.addParam("trashRemainingDays", strconv.Itoa(trashDays))
 	}
@@ -425,7 +427,8 @@ func (api *AdminAPI) SetVolumeConvertTaskState(volName, authKey string, st int) 
 }
 
 func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int, dpSize, capacity uint64, replicas, mpReplicas, trashDays, storeMode int,
-	followerRead, autoRepair, volWriteMutex, forceROW, isSmart, enableWriteCache bool, zoneName, mpLayout, smartRules string, crossRegionHAType uint8, compactTag string, ecDataNum, ecParityNum uint8, ecEnable bool) (err error) {
+	followerRead, autoRepair, volWriteMutex, forceROW, isSmart, enableWriteCache bool, zoneName, mpLayout, smartRules string, crossRegionHAType uint8, compactTag string, ecDataNum, ecParityNum uint8, ecEnable bool,
+	hostDelayInterval int64) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
@@ -450,6 +453,7 @@ func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int, dpSize, ca
 	request.addParam("smart", strconv.FormatBool(isSmart))
 	request.addParam("smartRules", smartRules)
 	request.addParam("compactTag", compactTag)
+	request.addParam("hostDelayInterval", strconv.Itoa(int(hostDelayInterval)))
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}

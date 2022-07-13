@@ -173,6 +173,8 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  smart enable time    : %v\n", svv.SmartEnableTime))
 	sb.WriteString(fmt.Sprintf("  smart rules          : %v\n", strings.Join(svv.SmartRules, ",")))
 	sb.WriteString(fmt.Sprintf("  Compact              : %v\n", svv.CompactTag))
+	sb.WriteString(fmt.Sprintf("  Host Delay Interval  : %v\n", svv.DpFolReadDelayConfig.DelaySummaryInterval))
+	sb.WriteString(fmt.Sprintf("  LowestDelay Host Weight: %v%%\n", svv.FolReadHostWeight))
 	return sb.String()
 }
 

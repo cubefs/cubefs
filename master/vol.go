@@ -45,6 +45,8 @@ type Vol struct {
 	Capacity             uint64 // GB
 	NeedToLowerReplica   bool
 	FollowerRead         bool
+	FollowerReadDelayCfg proto.DpFollowerReadDelayConfig //sec
+	FollReadHostWeight   int
 	NearRead             bool
 	ForceROW             bool
 	forceRowModifyTime   int64
@@ -103,7 +105,7 @@ type Vol struct {
 func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8,
 	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool, createTime, smartEnableTime int64, description, dpSelectorName,
 	dpSelectorParm string, crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64, trashDays uint32,
-	defStoreMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag) (vol *Vol) {
+	defStoreMode proto.StoreMode, convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	vol.ecDataPartitions = newEcDataPartitionCache(vol)
@@ -164,6 +166,8 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 		vol.smartRules = smartRules
 	}
 	vol.compactTag = compactTag
+	vol.FollowerReadDelayCfg = dpFolReadDelayCfg
+	vol.FollReadHostWeight = defaultFollReadHostWeight
 
 	vol.EcDataNum = defaultEcDataNum
 	vol.EcParityNum = defaultEcParityNum
@@ -208,7 +212,8 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.ConverState,
 		vv.MpLayout,
 		vv.SmartRules,
-		vv.CompactTag)
+		vv.CompactTag,
+		vv.FollowerReadDelayCfg)
 	// overwrite oss secure
 	vol.OSSAccessKey, vol.OSSSecretKey = vv.OSSAccessKey, vv.OSSSecretKey
 	vol.Status = vv.Status
@@ -1102,6 +1107,7 @@ func (vol *Vol) backupConfig() *Vol {
 		smartRules:           vol.smartRules,
 		compactTag:           vol.compactTag,
 		compactTagModifyTime: vol.compactTagModifyTime,
+		FollowerReadDelayCfg: vol.FollowerReadDelayCfg,
 	}
 }
 

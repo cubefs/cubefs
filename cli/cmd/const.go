@@ -114,6 +114,8 @@ const (
 	CliExtentDelByRocksKey      = "extentDelByRocks"
 	CliFlagRaft                 = "raft"
 	CliFlagCompactTag           = "compact"
+	CliFlagFollReadDelayInterval = "host-delay-interval"
+	CliFlagFollReadHostWeight    = "set-host-weight"
 
 	CliOpRollBack              = "rollback"
 	CliOpGetCanEcDel           = "get-can-del"

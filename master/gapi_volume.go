@@ -238,7 +238,8 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 	vol, err := s.cluster.createVol(args.Name, args.Owner, args.ZoneName, args.Description, int(args.MpCount),
 		int(args.DpReplicaNum), defaultReplicaNum, int(args.DataPartitionSize), int(args.Capacity), 0, defaultEcDataNum, defaultEcParityNum, defaultEcEnable,
 		args.FollowerRead, args.Authenticate, args.EnableToken, false, false, false, false, false, 0, 0,
-		proto.StoreMode(args.storeMode), proto.MetaPartitionLayout{uint32(args.mpPercent), uint32(args.repPercent)}, nil, proto.CompactDefault)
+		proto.StoreMode(args.storeMode), proto.MetaPartitionLayout{uint32(args.mpPercent), uint32(args.repPercent)}, nil, proto.CompactDefault,
+		proto.DpFollowerReadDelayConfig{false, 0})
 	if err != nil {
 		return nil, err
 	}
@@ -382,7 +383,7 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 		uint8(*args.ReplicaNum), vol.mpReplicaNum, *args.FollowerRead, vol.NearRead, *args.Authenticate, *args.EnableToken, *args.AutoRepair, *args.ForceROW,
 		vol.volWriteMutexEnable, false, *args.EnableWriteCache, vol.dpSelectorName, vol.dpSelectorParm, vol.OSSBucketPolicy, vol.CrossRegionHAType,
 		vol.dpWriteableThreshold, vol.trashRemainingDays, proto.StoreMode(*args.storeMode), proto.MetaPartitionLayout{uint32(*args.mpPercent), uint32(*args.repPercent)},
-		vol.ExtentCacheExpireSec, vol.smartRules, vol.compactTag); err != nil {
+		vol.ExtentCacheExpireSec, vol.smartRules, vol.compactTag, vol.FollowerReadDelayCfg, vol.FollReadHostWeight); err != nil {
 		return nil, err
 	}
 

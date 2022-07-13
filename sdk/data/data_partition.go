@@ -17,6 +17,7 @@ package data
 import (
 	"fmt"
 	"math"
+	"math/rand"
 	"net"
 	"strings"
 	"sync"
@@ -42,6 +43,7 @@ type DataPartition struct {
 	Metrics            *proto.DataPartitionMetrics
 	hostErrMap         sync.Map //key: host; value: last error access time
 	ecEnable           bool
+	ReadMetrics        *proto.ReadMetrics
 }
 
 // If the connection fails, take punitive measures. Punish time is 5s.
@@ -365,6 +367,7 @@ func (dp *DataPartition) sendReadCmdToDataPartition(sc *StreamConn, reqPacket *P
 		log.LogWarnf("sendReadCmdToDataPartition: getReply error and RETURN, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, reqPacket, err)
 		return
 	}
+	dp.RecordFollowerRead(reqPacket.SendT, sc.currAddr)
 	return
 }
 
@@ -445,7 +448,6 @@ func (dp *DataPartition) getEpochReadHost(hosts []string) (err error, addr strin
 	return fmt.Errorf("getEpochReadHost failed: no available host"), ""
 }
 
-
 func chooseEcNode(hosts []string, stripeUnitSize, extentOffset uint64, dp *DataPartition) (host string) {
 	div := math.Floor(float64(extentOffset) / float64(stripeUnitSize))
 	index := int(div) % int(dp.EcDataNum)
@@ -505,4 +507,162 @@ func (dp *DataPartition) canEcRead() bool {
 		return true
 	}
 	return false
+}
+
+func (dp *DataPartition) RecordFollowerRead(sendT int64, host string) {
+	if !dp.ClientWrapper.dpFollowerReadDelayConfig.EnableCollect {
+		return
+	}
+	if sendT == 0 {
+		// except FollowerRead req packet, other read req packet SendT=0
+		return
+	}
+	cost := time.Now().UnixNano() - sendT
+
+	dp.ReadMetrics.Lock()
+	defer dp.ReadMetrics.Unlock()
+
+	dp.ReadMetrics.FollowerReadOpNum[host]++
+	dp.ReadMetrics.SumFollowerReadHostDelay[host] += cost
+	if log.IsDebugEnabled() {
+		log.LogDebugf("RecordFollowerRead: opNum(%v), total cost(%v), host(%v)", dp.ReadMetrics.FollowerReadOpNum[host],
+			dp.ReadMetrics.SumFollowerReadHostDelay[host], host)
+	}
+	return
+}
+
+func (dp *DataPartition) RemoteReadMetricsSummary() *proto.ReadMetrics {
+	if dp.ReadMetrics == nil {
+		return nil
+	}
+	dp.ReadMetrics.Lock()
+	defer dp.ReadMetrics.Unlock()
+
+	if dp.ReadMetrics.FollowerReadOpNum == nil || dp.ReadMetrics.SumFollowerReadHostDelay == nil {
+		log.LogWarnf("RemoteReadMetricsSummary failed: dpID(%v), OpNum&Sum are nil\n", dp.PartitionID)
+		return nil
+	}
+	if len(dp.ReadMetrics.FollowerReadOpNum) == 0 || len(dp.ReadMetrics.SumFollowerReadHostDelay) == 0 {
+		log.LogDebugf("RemoteReadMetricsSummary failed: dpID(%v) ReadMetrics len = 0", dp.PartitionID)
+		return nil
+	}
+
+	summaryMetrics := &proto.ReadMetrics{PartitionId: dp.PartitionID}
+	summaryMetrics.SumFollowerReadHostDelay = dp.ReadMetrics.SumFollowerReadHostDelay
+	summaryMetrics.FollowerReadOpNum = dp.ReadMetrics.FollowerReadOpNum
+
+	dp.ReadMetrics.SumFollowerReadHostDelay = make(map[string]int64, 0)
+	dp.ReadMetrics.FollowerReadOpNum = make(map[string]int64, 0)
+
+	if log.IsDebugEnabled() {
+		log.LogDebugf("RemoteReadMetricsSummary success: dpID(%v)", dp.PartitionID)
+	}
+	return summaryMetrics
+}
+
+func (dp *DataPartition) UpdateReadMetricsHost(hosts []string) {
+	dp.ReadMetrics.Lock()
+	defer dp.ReadMetrics.Unlock()
+
+	dp.ReadMetrics.SortedHost = hosts
+	if log.IsDebugEnabled() {
+		log.LogDebugf("UpdateReadMetrics success: dpID(%v) SortedHost(%v)", dp.PartitionID, dp.ReadMetrics.SortedHost)
+	}
+}
+
+func (dp *DataPartition) ClearReadMetrics() {
+	dp.ReadMetrics.Lock()
+	defer dp.ReadMetrics.Unlock()
+
+	dp.ReadMetrics.SumFollowerReadHostDelay = make(map[string]int64, 0)
+	dp.ReadMetrics.FollowerReadOpNum = make(map[string]int64, 0)
+	dp.ReadMetrics.SortedHost = make([]string, 0)
+
+	if log.IsDebugEnabled() {
+		log.LogDebugf("ClearReadMetrics success: dpID(%v)", dp.PartitionID)
+	}
+}
+
+func (dp *DataPartition) getLowestReadDelayHost(dataPartitionID uint64) (err error, addr string) {
+	if dataPartitionID != dp.PartitionID {
+		dataPartitionID = dp.PartitionID
+	}
+	dp.ReadMetrics.RLock()
+	defer dp.ReadMetrics.RUnlock()
+
+	sortedHosts := dp.ReadMetrics.SortedHost
+	if sortedHosts == nil {
+		return fmt.Errorf("getLowestReadDelayHost failed: dpID(%v) sortedHosts is nil", dp.PartitionID), ""
+	}
+	var availableHost []string
+	// check hosts status to get available hosts
+	hostsStatus := dp.ClientWrapper.HostsStatus
+	for _, addr = range sortedHosts {
+		if status, ok := hostsStatus[addr]; ok && status {
+			availableHost = append(availableHost, addr)
+		}
+	}
+	addr, err = dp.assignHostByWeight(availableHost)
+	if err != nil {
+		return fmt.Errorf("getLowestReadDelayHost failed: dpID(%v) err(%v)", dp.PartitionID, err), ""
+	}
+	log.LogDebugf("getLowestReadDelayHost success: dpID(%v), host(%v)", dataPartitionID, addr)
+	return nil, addr
+}
+
+func (dp *DataPartition) assignHostByWeight(hosts []string) (host string, err error) {
+	if hosts == nil {
+		err = fmt.Errorf("assignHostByWeight failed: no available host")
+		return "", err
+	}
+	num := len(hosts)
+	if num == 1 {
+		// only one available host
+		log.LogInfof("assignHostByWeight: only one available host(%v)", hosts[0])
+		return hosts[0], nil
+	}
+	firstWeight := dp.ClientWrapper.dpLowestDelayHostWeight
+	weightListForHosts := getHostsWeight(firstWeight, num)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("assignHostByWeight: host num: %v, weight for host: %v", num, weightListForHosts)
+	}
+	return getHostByWeight(weightListForHosts, hosts), nil
+}
+
+func getHostsWeight(first int, num int) (weight []int) {
+	weight = make([]int, num)
+	var total = 100
+	if first == 0 {
+		weight[0] = proto.DefaultLowestDelayHostWeight
+	} else {
+		weight[0] = first
+	}
+	total -= weight[0]
+	// except the lowest delay host, other host divide equally
+	for i := 1; i < num; i++ {
+		weight[i] = int(math.Ceil(float64(total)/float64(num-i)))
+		total -= weight[i]
+	}
+	return
+}
+
+func getHostByWeight(weight []int, hosts []string) (host string) {
+	for i := 1; i < len(weight); i++ {
+		weight[i] += weight[i-1]
+	}
+	rand.Seed(time.Now().UnixNano())
+	target := rand.Intn(100)
+	left := 0
+	right := len(weight)
+	for left < right {
+		mid := (left + right)/2
+		if weight[mid] == target {
+			return hosts[mid]
+		} else if weight[mid] > target {
+			right = mid
+		} else {
+			left = mid + 1
+		}
+	}
+	return hosts[left]
 }

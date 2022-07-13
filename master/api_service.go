@@ -1493,6 +1493,8 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		isSmart              bool
 		smartRules           []string
 		compactTag           proto.CompactTag
+		dpFolReadDelayCfg    proto.DpFollowerReadDelayConfig
+		follReadHostWeight   int
 	)
 	if name, authKey, replicaNum, mpReplicaNum, err = parseRequestToUpdateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1526,6 +1528,8 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	dpFolReadDelayCfg, err = parseHostDelayCfgToUpdateVol(r, followerRead, vol)
+	follReadHostWeight, err = parseFollReadHostWeightToUpdateVol(r, vol)
 	dpSelectorName, dpSelectorParm, err = parseDefaultSelectorToUpdateVol(r, vol)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1578,7 +1582,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	}
 	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), uint8(mpReplicaNum),
 		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, isSmart, enableWriteCache, dpSelectorName, dpSelectorParm, ossBucketPolicy,
-		crossRegionHAType, dpWriteableThreshold, trashRemainingDays, proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag); err != nil {
+		crossRegionHAType, dpWriteableThreshold, trashRemainingDays, proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1646,10 +1650,11 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		isSmart              bool
 		smartRules           []string
 		compactTag           string
+		dpFolReadDelayCfg    proto.DpFollowerReadDelayConfig
 	)
 
 	if name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate,
-		enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, dpWriteableThreshold, mpLayout, smartRules, compactTag, err = parseRequestToCreateVol(r); err != nil {
+		enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, dpWriteableThreshold, mpLayout, smartRules, compactTag, dpFolReadDelayCfg, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1692,7 +1697,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 
 	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size,
 		capacity, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache,
-		crossRegionHAType, dpWriteableThreshold, proto.StoreMode(storeMode), mpLayout, smartRules, cmpTag); err != nil {
+		crossRegionHAType, dpWriteableThreshold, proto.StoreMode(storeMode), mpLayout, smartRules, cmpTag, dpFolReadDelayCfg); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1765,6 +1770,8 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		Status:               vol.Status,
 		Capacity:             vol.Capacity,
 		FollowerRead:         vol.FollowerRead,
+		DpFolReadDelayConfig: vol.FollowerReadDelayCfg,
+		FolReadHostWeight:    vol.FollReadHostWeight,
 		NearRead:             vol.NearRead,
 		ForceROW:             vol.ForceROW,
 		EnableWriteCache:     vol.enableWriteCache,
@@ -2991,6 +2998,39 @@ func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, nearRea
 	return
 }
 
+func parseHostDelayCfgToUpdateVol(r *http.Request, followerRead bool, vol *Vol) (FollowerReadHostDelayCfg proto.DpFollowerReadDelayConfig, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if hostDelayInterStr := r.FormValue(dpHostDelayIntervalKey); hostDelayInterStr == "" {
+		FollowerReadHostDelayCfg = vol.FollowerReadDelayCfg
+	} else {
+		hostDelayInterC, _ := strconv.Atoi(hostDelayInterStr)
+		if hostDelayInterC == 0 {
+			FollowerReadHostDelayCfg.EnableCollect = false
+		} else if followerRead {
+			FollowerReadHostDelayCfg.EnableCollect = true
+		}
+		FollowerReadHostDelayCfg.DelaySummaryInterval = int64(hostDelayInterC)
+	}
+	return
+}
+
+func parseFollReadHostWeightToUpdateVol(r *http.Request, vol *Vol) (follReadHostWeight int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if follReadHostWeightStr := r.FormValue(dpFollReadHostWeightKey); follReadHostWeightStr == "" {
+		follReadHostWeight = vol.FollReadHostWeight
+	} else {
+		follReadHostWeight, _ = strconv.Atoi(follReadHostWeightStr)
+		if follReadHostWeight < 0 || follReadHostWeight > 100 {
+			follReadHostWeight = 0
+		}
+	}
+	return
+}
+
 func parseDefaultSelectorToUpdateVol(r *http.Request, vol *Vol) (dpSelectorName, dpSelectorParm string, err error) {
 	err = r.ParseForm()
 	if err != nil {
@@ -3132,7 +3172,7 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays int, dataNum uint8, parityNum uint8, enableEc,
 	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
 	crossRegionHAType proto.CrossRegionHAType, dpWritableThreshold float64,
-	layout proto.MetaPartitionLayout, smartRules []string, compactTag string, err error) {
+	layout proto.MetaPartitionLayout, smartRules []string, compactTag string, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -3229,6 +3269,18 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 			err = unmatchedKey(StoreModeKey)
 			return
 		}
+	}
+	hostDelayInterStr := r.FormValue(dpHostDelayIntervalKey)
+	if hostDelayInterStr == "" {
+		dpFolReadDelayCfg.DelaySummaryInterval = 0
+	} else {
+		hostDelayInterC, _ := strconv.Atoi(hostDelayInterStr)
+		if followerRead && hostDelayInterC > 0 {
+			dpFolReadDelayCfg.EnableCollect = true
+		} else {
+			dpFolReadDelayCfg.EnableCollect = false
+		}
+		dpFolReadDelayCfg.DelaySummaryInterval = int64(hostDelayInterC)
 	}
 
 	layout.PercentOfReplica = 0

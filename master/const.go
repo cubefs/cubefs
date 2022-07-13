@@ -44,6 +44,8 @@ const (
 	volAuthKey                   = "authKey"
 	replicaNumKey                = "replicaNum"
 	mpReplicaNumKey              = "mpReplicaNum"
+	dpHostDelayIntervalKey       = "hostDelayInterval"
+	dpFollReadHostWeightKey		 = "follReadHostWeight"
 	followerReadKey              = "followerRead"
 	nearReadKey                  = "nearRead"
 	forceROWKey                  = "forceROW"
@@ -238,6 +240,7 @@ const (
 	defaultEcParityNum                                 = 2
 	defaultDataNodeHttpPort                            = "17320"
 	defaultSSDZoneTaskLimit                            = 20
+	defaultFollReadHostWeight						   = 0
 )
 
 const (

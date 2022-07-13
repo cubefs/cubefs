@@ -165,6 +165,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optIsSmart bool
 	var smartRules []string
 	var optCompactTag bool
+	var optFolReadDelayInterval int64
 	var cmd = &cobra.Command{
 		Use:   cmdVolCreateUse,
 		Short: cmdVolCreateShort,
@@ -220,6 +221,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  Smart Enable        : %s\n", formatEnabledDisabled(optIsSmart))
 				stdout("  Smart Rules         : %v\n", strings.Join(smartRules, ","))
 				stdout("  Compact             : %v\n", formatEnabledDisabled(optCompactTag))
+				stdout("  FolReadDelayInterval: %v\n", optFolReadDelayInterval)
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -231,7 +233,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 
 			err = client.AdminAPI().CreateVolume(volumeName, userID, optMPCount, optDPSize, optCapacity, optReplicas,
 				optMpReplicas, optTrashDays, optStoreMode, optFollowerRead, optAutoRepair, optVolWriteMutex, optForceROW, optIsSmart, optEnableWriteCache,
-				optZoneName, optLayout, strings.Join(smartRules, ","), optCrossRegionHAType, formatEnabledDisabled(optCompactTag), optEcDataNum, optEcParityNum, optEcEnable)
+				optZoneName, optLayout, strings.Join(smartRules, ","), optCrossRegionHAType, formatEnabledDisabled(optCompactTag), optEcDataNum, optEcParityNum, optEcEnable, optFolReadDelayInterval)
 			if err != nil {
 				errout("Create volume failed case:\n%v\n", err)
 			}
@@ -246,6 +248,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optMpReplicas, CliFlagMpReplicas, cmdVolDefaultReplicas, "Specify meta partition replicas number")
 	cmd.Flags().IntVar(&optTrashDays, CliFlagTrashDays, cmdVolDefaultTrashDays, "Specify trash remaining days ")
 	cmd.Flags().BoolVar(&optFollowerRead, CliFlagEnableFollowerRead, cmdVolDefaultFollowerReader, "Enable read from replica follower")
+	cmd.Flags().Int64Var(&optFolReadDelayInterval, CliFlagFollReadDelayInterval, 0, "Specify host delay update interval [Unit: second]")
 	cmd.Flags().BoolVar(&optForceROW, CliFlagEnableForceROW, cmdVolDefaultForceROW, "Use ROW instead of overwrite")
 	cmd.Flags().BoolVar(&optEnableWriteCache, CliFlagEnableWriteCache, cmdVolDefaultWriteCache, "Enable write back cache when mounting FUSE")
 	cmd.Flags().Uint8Var(&optCrossRegionHAType, CliFlagEnableCrossRegionHA, cmdVolDefaultCrossRegionHA,
@@ -302,6 +305,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		optIsSmart              string
 		smartRules              []string
 		optCompactTag           string
+		optFolReadDelayInterval int64
+		optLowestDelayHostWeight int
 	)
 	var cmd = &cobra.Command{
 		Use:   CliOpSet + " [VOLUME NAME]",
@@ -367,6 +372,20 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				vv.FollowerRead = enable
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  Allow follower read : %v\n", formatEnabledDisabled(vv.FollowerRead)))
+			}
+			if optFolReadDelayInterval >= 0 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  Host Delay Interval : %v sec -> %v sec\n", vv.DpFolReadDelayConfig.DelaySummaryInterval, optFolReadDelayInterval))
+				vv.DpFolReadDelayConfig.DelaySummaryInterval = optFolReadDelayInterval
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Host Delay Interval : %v sec\n", vv.DpFolReadDelayConfig.DelaySummaryInterval))
+			}
+			if optLowestDelayHostWeight > 0 && optLowestDelayHostWeight <= 100 && optLowestDelayHostWeight != vv.FolReadHostWeight {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  LowestDelay Host Weight  : %v -> %v\n", vv.FolReadHostWeight, optLowestDelayHostWeight))
+				vv.FolReadHostWeight = optLowestDelayHostWeight
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  LowestDelay Host Weight  : %v\n", vv.FolReadHostWeight))
 			}
 			if optNearRead != "" {
 				isChange = true
@@ -585,7 +604,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			}
 			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum), int(vv.MpReplicaNum), int(vv.TrashRemainingDays),
 				int(vv.DefaultStoreMode), vv.FollowerRead, vv.VolWriteMutexEnable, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
-				vv.ForceROW, vv.IsSmart, vv.EnableWriteCache, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, strings.Join(smartRules, ","), uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag)
+				vv.ForceROW, vv.IsSmart, vv.EnableWriteCache, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, strings.Join(smartRules, ","), uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag,
+				vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight)
 			if err != nil {
 				return
 			}
@@ -604,11 +624,12 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optMpReplicas, CliFlagMpReplicas, 0, "Specify meta partition replicas number")
 	cmd.Flags().IntVar(&optTrashDays, CliFlagTrashDays, -1, "Specify trash remaining days")
 	cmd.Flags().StringVar(&optFollowerRead, CliFlagEnableFollowerRead, "", "Enable read from replica follower")
+	cmd.Flags().Int64Var(&optFolReadDelayInterval, CliFlagFollReadDelayInterval, -1, "Specify host delay update interval [Unit: second]")
+	cmd.Flags().IntVar(&optLowestDelayHostWeight, CliFlagFollReadHostWeight, 0, "assign weight for the lowest delay host when enable FollowerRead,(0,100]")
 	cmd.Flags().StringVar(&optNearRead, CliFlagEnableNearRead, "", "Enable read from ip near replica")
 	cmd.Flags().StringVar(&optForceROW, CliFlagEnableForceROW, "", "Enable only row instead of overwrite")
 	cmd.Flags().StringVar(&optEnableWriteCache, CliFlagEnableWriteCache, "", "Enable write back cache when mounting FUSE")
-	cmd.Flags().StringVar(&optCrossRegionHAType, CliFlagEnableCrossRegionHA, "",
-		"Set cross region high available type(0 for default, 1 for quorum)")
+	cmd.Flags().StringVar(&optCrossRegionHAType, CliFlagEnableCrossRegionHA, "", "Set cross region high available type(0 for default, 1 for quorum)")
 	cmd.Flags().StringVar(&optAuthenticate, CliFlagAuthenticate, "", "Enable authenticate")
 	cmd.Flags().StringVar(&optEnableToken, CliFlagEnableToken, "", "ReadOnly/ReadWrite token validation for fuse client")
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, "", "Specify volume zone name")

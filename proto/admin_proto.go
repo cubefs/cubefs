@@ -953,6 +953,8 @@ type SimpleVolView struct {
 	ConnConfig			 *ConnConfig	// todo
 	ExtentCacheExpireSec int64
 	DpMetricsReportConfig	*DpMetricsReportConfig	// todo
+	DpFolReadDelayConfig  DpFollowerReadDelayConfig
+	FolReadHostWeight     int
 	RwMpCnt               int
 	MinWritableMPNum      int
 	MinWritableDPNum      int
@@ -1226,4 +1228,9 @@ type MetaNodeDiskInfo struct {
 	UsageRatio         float64
 	Status             int8
 	MPCount            int
+}
+
+type DpFollowerReadDelayConfig struct {
+	EnableCollect        bool
+	DelaySummaryInterval int64
 }
