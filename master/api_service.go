@@ -619,12 +619,6 @@ func (m *Server) QosUpdateZoneLimit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	//if (qosParam.flowWVal > 0 && (qosParam.flowWVal < MinZoneDiskLimit*util.MB || qosParam.flowWVal > MaxZoneDiskLimit*util.MB)) ||
-	//	(qosParam.flowRVal > 0 && (qosParam.flowRVal < MinZoneDiskLimit*util.MB || qosParam.flowWVal > MaxZoneDiskLimit*util.MB)) {
-	//	sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("zone disk flow param should between 300 and 10000")))
-	//	return
-	//}
-
 	if value, ok = m.cluster.t.zoneMap.Load(zoneName); !ok {
 		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("zonename [%v] not found", zoneName)))
 		return

@@ -2332,17 +2332,19 @@ func (c *Cluster) checkZoneName(name string,
 	newZoneName = zoneName
 
 	if crossZone {
+		if newZoneName != "" {
+			if len(zoneList) == 1 {
+				return newZoneName, fmt.Errorf("action[checkZoneName] vol use specified single zoneName conflit with cross zone flag")
+			} else {
+				if err = c.checkNormalZoneName(newZoneName); err != nil {
+					return newZoneName, err
+				}
+			}
+		}
 		if c.FaultDomain {
 			if newZoneName != "" {
 				if !defaultPriority || domainId > 0 {
-					return newZoneName, fmt.Errorf("action[checkZoneName] vol specified zoneName but cann't cross zone")
-				}
-				if len(zoneList) == 1 {
-					return newZoneName, fmt.Errorf("action[checkZoneName] vol specified zoneName but cann't cross zone")
-				} else {
-					if err = c.checkNormalZoneName(newZoneName); err != nil {
-						return newZoneName, err
-					}
+					return newZoneName, fmt.Errorf("action[checkZoneName] vol need FaultDomain but set zone name")
 				}
 			} else {
 				if domainId > 0 {
