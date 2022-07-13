@@ -70,7 +70,7 @@ func NewMQLbClient(cfg *LbConfig, service clustermgr.APIService, clusterID proto
 	return &lbClient{
 		retryHostsCnt: cfg.RetryHostsCnt,
 		Client:        New(&cfg.Config),
-		selector:      selector.NewSelectorWithGetter(cfg.HostSyncIntervalMs, hostGetter),
+		selector:      selector.MakeSelector(cfg.HostSyncIntervalMs, hostGetter),
 	}
 }
 
