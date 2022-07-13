@@ -44,6 +44,33 @@ func TestSelector_NewSelector(t *testing.T) {
 	}
 }
 
+func TestSelector_MakeSelector(t *testing.T) {
+	{
+		sl := MakeSelector(100, func() (strings []string, e error) {
+			return nil, errors.New("no hosts")
+		})
+		require.Empty(t, sl.GetRoundRobinN(1))
+	}
+	{
+		sl := MakeSelector(100, func() (strings []string, e error) {
+			return nil, nil
+		})
+		require.Empty(t, sl.GetRoundRobinN(1))
+	}
+	{
+		sl := MakeSelector(100, func() (strings []string, e error) {
+			return []string{}, nil
+		})
+		require.Empty(t, sl.GetRoundRobinN(1))
+	}
+	{
+		sl := MakeSelector(100, func() (strings []string, e error) {
+			return []string{"x", "y"}, nil
+		})
+		require.NotEmpty(t, sl.GetRoundRobinN(1))
+	}
+}
+
 func TestSelector_GetRandomN(t *testing.T) {
 	type fields struct {
 		hosts []string

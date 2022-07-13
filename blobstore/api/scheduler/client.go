@@ -121,7 +121,7 @@ func New(cfg *Config, service cmapi.APIService, clusterID proto.ClusterID) ISche
 		cfg.HostSyncIntervalMs = 1000
 	}
 	return &client{
-		selector: selector.NewSelectorWithGetter(cfg.HostSyncIntervalMs, hostGetter),
+		selector: selector.MakeSelector(cfg.HostSyncIntervalMs, hostGetter),
 		Client:   rpc.NewClient(&cfg.Config),
 	}
 }
