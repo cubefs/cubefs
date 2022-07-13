@@ -6,11 +6,17 @@ on:
   push:
     branches: [ master ]
     paths-ignore:
-        - 'blobstore/**'
+      - 'blobstore/**'
+      - '.github/**'
+      - 'docs/**'
+      - '**.md'
   pull_request:
     branches: [ master ]
     paths-ignore:
-        - 'blobstore/**'
+      - 'blobstore/**'
+      - '.github/**'
+      - 'docs/**'
+      - '**.md'
 
 jobs:
 
