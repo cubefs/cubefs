@@ -19,10 +19,10 @@ package testing
 //go:generate mockgen -destination=./mocks/util_selector.go -package=mocks -mock_names Selector=MockSelector github.com/cubefs/cubefs/blobstore/util/selector Selector
 
 // github.com/cubefs/cubefs/blobstore/common/... common interfaces
-//go:generate mockgen -destination=./mocks/raft_server.go -package=mocks -mock_names RaftServer=MockRaftServer github.com/cubefs/cubefs/blobstore/common/raftserver RaftServer
-//go:generate mockgen -destination=./mocks/rpc_client.go -package=mocks -mock_names Client=MockRPCClient github.com/cubefs/cubefs/blobstore/common/rpc Client
-//go:generate mockgen -destination=./mocks/encoder.go -package=mocks -mock_names Encoder=MockEncoder github.com/cubefs/cubefs/blobstore/common/recordlog Encoder
-//go:generate mockgen -destination=./mocks/task_switch.go -package=mocks -mock_names ISwitcher=MockSwitcher github.com/cubefs/cubefs/blobstore/common/taskswitch ISwitcher
+//go:generate mockgen -destination=./mocks/common_raftserver.go -package=mocks -mock_names RaftServer=MockRaftServer github.com/cubefs/cubefs/blobstore/common/raftserver RaftServer
+//go:generate mockgen -destination=./mocks/common_rpc.go -package=mocks -mock_names Client=MockRPCClient github.com/cubefs/cubefs/blobstore/common/rpc Client
+//go:generate mockgen -destination=./mocks/common_recordlog.go -package=mocks -mock_names Encoder=MockRecordLogEncoder github.com/cubefs/cubefs/blobstore/common/recordlog Encoder
+//go:generate mockgen -destination=./mocks/common_taskswitch.go -package=mocks -mock_names ISwitcher=MockSwitcher github.com/cubefs/cubefs/blobstore/common/taskswitch ISwitcher
 
 // github.com/cubefs/cubefs/blobstore/api/... api interfaces
 //go:generate mockgen -destination=./mocks/api_access.go -package=mocks -mock_names API=MockAccessAPI github.com/cubefs/cubefs/blobstore/api/access API

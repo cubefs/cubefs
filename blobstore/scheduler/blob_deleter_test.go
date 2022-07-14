@@ -61,7 +61,7 @@ func newDeleteTopicConsumer(t *testing.T) *deleteTopicConsumer {
 	producer.EXPECT().SendMessage(any).AnyTimes().Return(nil)
 	consumer := NewMockConsumer(ctr)
 
-	delLogger := mocks.NewMockEncoder(ctr)
+	delLogger := mocks.NewMockRecordLogEncoder(ctr)
 	delLogger.EXPECT().Close().AnyTimes().Return(nil)
 	delLogger.EXPECT().Encode(any).AnyTimes().Return(nil)
 	tp := taskpool.New(2, 2)
