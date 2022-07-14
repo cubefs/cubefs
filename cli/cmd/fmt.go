@@ -954,3 +954,11 @@ var (
 func formatIdcInfoTableRow(name string, zones string) string {
 	return fmt.Sprintf(idcQueryTablePattern, name, zones)
 }
+
+var raftInfoTableHeader = "%-6v     %-8v    %-10v     %-10v   %-10v      %-10v    %-10v    %-8v    %-16v    %-10v"
+var dataPartitionRaftTableHeaderInfo = fmt.Sprintf(raftInfoTableHeader, "ID", "ISLEADER", "COMMIT", "INDEX", "APPLIED", "LOGFIRST", "LOGLAST", "PENDQUE", "STATE", "STOPED")
+func formatDataPartitionRaftTableInfo(raft *proto.Status) string {
+	var sb = strings.Builder{}
+	sb.WriteString(fmt.Sprintf(raftInfoTableHeader, raft.NodeID, raft.Leader == raft.NodeID, raft.Commit, raft.Index, raft.Applied, raft.Log.FirstIndex, raft.Log.LastIndex, raft.PendQueue, raft.State, raft.Stopped))
+	return sb.String()
+}

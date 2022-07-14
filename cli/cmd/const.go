@@ -110,6 +110,7 @@ const (
 	CliFlagIsSmart              = "smart"
 	CliSmartRulesMode           = "smart-rules"
 	CliExtentDelByRocksKey      = "extentDelByRocks"
+	CliFlagRaft                 = "raft"
 
 	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

@@ -32,6 +32,7 @@ import (
 const (
 	cmdDataPartitionUse   = "datapartition [COMMAND]"
 	cmdDataPartitionShort = "Manage data partition"
+	defaultNodeTimeOutSec = 180
 )
 
 func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
@@ -177,6 +178,7 @@ func newDataPartitionFreezeCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
+	var optRaft bool
 	var cmd = &cobra.Command{
 		Use:   CliOpInfo + " [DATA PARTITION ID]",
 		Short: cmdDataPartitionGetShort,
@@ -193,8 +195,33 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout(formatDataPartitionInfo(partition))
+			if optRaft {
+				stdout("\n")
+				stdout("RaftInfo :\n")
+				stdout(fmt.Sprintf("%v\n", dataPartitionRaftTableHeaderInfo))
+				for _, p := range partition.Peers {
+					var dnPartition *proto.DNDataPartitionInfo
+					addr := strings.Split(p.Addr, ":")[0]
+					//check dataPartition by dataNode api
+					for i := 0; i < 3; i++ {
+						if dnPartition, err = client.NodeAPI().DataNodeGetPartition(addr, partitionID); err == nil {
+							break
+						}
+						time.Sleep(1 * time.Second)
+					}
+					if err != nil {
+						continue
+					}
+					if dnPartition.RaftStatus == nil {
+						stdout(fmt.Sprintf("%v   raft is stopped\n", p.ID))
+						continue
+					}
+					stdout(fmt.Sprintf("%v\n", formatDataPartitionRaftTableInfo(dnPartition.RaftStatus)))
+				}
+			}
 		},
 	}
+	cmd.Flags().BoolVar(&optRaft, CliFlagRaft, false, "show raft peer detail info")
 	return cmd
 }
 
@@ -781,8 +808,8 @@ func newDataPartitionCheckCommitCmd(client *master.MasterClient) *cobra.Command 
 					return
 				}
 				for _, r := range partition.Replicas {
-					if r.IsLeader {
-						isLack, lackID, next, firstIdx, err := checkDataPartitionCommit(r.Addr, partition.PartitionID)
+					if r.IsLeader && time.Now().Unix()-r.ReportTime <= defaultNodeTimeOutSec  {
+						isLack, lackID, active, next, firstIdx, err := checkDataPartitionCommit(r.Addr, partition.PartitionID)
 						if err != nil {
 							continue
 						}
@@ -793,8 +820,8 @@ func newDataPartitionCheckCommitCmd(client *master.MasterClient) *cobra.Command 
 									host = p.Addr
 								}
 							}
-							fmt.Printf("Volume,Partition,LackPeerID,LackHost\n")
-							fmt.Printf("%v,%v,%v,%v,%v,%v\n", partition.VolName, optSpecifyDP, lackID, host, next, firstIdx)
+							fmt.Printf("Volume,Partition,BadPeerID,BadHost,IsActive,Next,FirstIndex\n")
+							fmt.Printf("%v,%v,%v,%v,%v,%v,%v\n", partition.VolName, optSpecifyDP, lackID, host, active, next, firstIdx)
 						}
 					}
 				}
@@ -807,17 +834,17 @@ func newDataPartitionCheckCommitCmd(client *master.MasterClient) *cobra.Command 
 	return cmd
 }
 
-type commitChecker struct {
-	badDps sync.Map
-}
 func checkCommit(client *master.MasterClient) (err error) {
 
 	f, _ := os.OpenFile(fmt.Sprintf("check_commit_%v.csv", time.Now().Unix()), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	defer f.Close()
-	f.WriteString("Volume,Partition,LackPeerID,LackHost")
+	stat, _ := f.Stat()
+	if stat.Size() == 0 {
+		f.WriteString("Volume,Partition,BadPeerID,BadHost,IsActive,Next,FirstIndex\n")
+	}
 	var badDps sync.Map
 	var partitionFunc = func(volumeName string, partition *proto.DataPartitionResponse) (err error){
-		isLack, lackID, _, _, err := checkDataPartitionCommit(partition.LeaderAddr, partition.PartitionID)
+		isLack, lackID, _, _, _, err := checkDataPartitionCommit(partition.LeaderAddr, partition.PartitionID)
 		if err != nil {
 			return
 		}
@@ -841,7 +868,7 @@ func checkCommit(client *master.MasterClient) (err error) {
 				}
 				for _, r := range partition.Replicas {
 					if r.IsLeader {
-						isLack, lackID, _, _, err2 := checkDataPartitionCommit(r.Addr, partition.PartitionID)
+						isLack, lackID, _, _, _, err2 := checkDataPartitionCommit(r.Addr, partition.PartitionID)
 						if err2 != nil {
 							continue
 						}
@@ -863,29 +890,40 @@ func checkCommit(client *master.MasterClient) (err error) {
 		//output
 		badDps.Range(func(key, value interface{}) bool {
 			id := key.(uint64)
-			oldLackID := value.(uint64)
 			partition, err1 := client.AdminAPI().GetDataPartition("", id)
 			if err1 != nil {
 				return true
 			}
-			var host string
-			for _, p := range partition.Peers {
-				if p.ID == oldLackID {
-					host = p.Addr
+			for _, r := range partition.Replicas {
+				if r.IsLeader {
+					isLack, lackID, active, next, first, err2 := checkDataPartitionCommit(r.Addr, partition.PartitionID)
+					if err2 != nil {
+						continue
+					}
+					if isLack {
+						var host string
+						for _, p := range partition.Peers {
+							if p.ID == lackID {
+								host = p.Addr
+							}
+						}
+						f.WriteString(fmt.Sprintf("%v,%v,%v,%v,%v,%v,%v\n", vol.Name, id, lackID, host, active, next, first))
+					}
 				}
 			}
-			f.WriteString(fmt.Sprintf("%v,%v,%v,%v\n", vol.Name, id, oldLackID, host))
 			return true
 		})
 		f.Sync()
 	}
-	rangeAllDataPartitions(20, nil, nil, volFunc, partitionFunc)
+	vols := loadSpecifiedVolumes()
+	ids := loadSpecifiedPartitions()
+	rangeAllDataPartitions(20, vols, ids, volFunc, partitionFunc)
 
 	fmt.Println("scan finish, result has been saved to local file")
 	return
 }
 
-func checkDataPartitionCommit(leader string, pid uint64,) (lack bool, lackID uint64, next, firstIdx uint64, err error) {
+func checkDataPartitionCommit(leader string, pid uint64,) (lack bool, lackID uint64, active bool, next, firstIdx uint64, err error) {
 	var dnPartition *proto.DNDataPartitionInfo
 	addr := strings.Split(leader, ":")[0]
 	//check dataPartition by dataNode api
@@ -900,10 +938,14 @@ func checkDataPartitionCommit(leader string, pid uint64,) (lack bool, lackID uin
 	}
 	if dnPartition.RaftStatus != nil && dnPartition.RaftStatus.Replicas != nil {
 		for id, r := range dnPartition.RaftStatus.Replicas {
-			if r.Next < dnPartition.RaftStatus.Log.FirstIndex {
+			if dnPartition.RaftStatus.Leader == id {
+				continue
+			}
+			if r.Next < dnPartition.RaftStatus.Log.FirstIndex || !r.Active {
 				lack = true
 				lackID = id
 				next = r.Next
+				active = r.Active
 				firstIdx = dnPartition.RaftStatus.Log.FirstIndex
 			}
 		}
