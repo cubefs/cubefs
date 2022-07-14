@@ -414,7 +414,7 @@ func (s *ExtentStore) Write(ctx context.Context, extentID uint64, offset, size i
 }
 
 func (s *ExtentStore) updateExtentInfo(extentID uint64, ei ExtentInfoBlock) {
-	if !IsTinyExtent(extentID) {
+	if !IsTinyExtent(extentID) && ei[FileID] == extentID {
 		s.extentMapSlice.Store(extentID, ei)
 	}
 }
