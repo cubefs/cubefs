@@ -25,17 +25,17 @@ An advantage of doing so is to separate storage from compute - one can scale up 
 
 Some key features of CubeFS include:
 
-- Multiple Protocols Support
+- Multiple Protocols Support  
   Allowing users to access the same file over multiple protocols, such as POSIX/HDFS/S3
-- Highly Scalable Metadata Service
+- Highly Scalable Metadata Service  
   Elasticity, scalability and strong consistency of metadata
-- Excellent Storage Performance
+- Excellent Storage Performance  
   A lot of performance optimizations for large/small files and sequential/random writes
-- Multi-tenancy
+- Multi-tenancy  
   Provides an efficient mechanism to improve resource utilization and tenant isolation
-- Hybrid Cloud Acceleration
+- Hybrid Cloud Acceleration  
   Accelerate Hybrid Cloud IO performance through multi-level cache
-- Multiple Storage Engines
+- Multiple Storage Engines  
   Provides high-performance replication engine and low-cost erasure coding engine
 
 ## Documents
