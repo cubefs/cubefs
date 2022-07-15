@@ -40,7 +40,6 @@ type chunkState struct {
 // MigrateWorker used to manager migrate task
 type MigrateWorker struct {
 	t           *proto.MigrateTask
-	taskType    string
 	bolbNodeCli IVunitAccess
 
 	benchmarkBids            []*ShardInfoSimple
@@ -51,7 +50,6 @@ type MigrateWorker struct {
 // MigrateTaskEx migrate task execution machine
 type MigrateTaskEx struct {
 	taskInfo *proto.MigrateTask
-	taskType string
 
 	downloadShardConcurrency int
 	blobNodeCli              IVunitAccess
@@ -62,7 +60,6 @@ func NewMigrateWorker(task MigrateTaskEx) ITaskWorker {
 	return &MigrateWorker{
 		t:                        task.taskInfo,
 		bolbNodeCli:              task.blobNodeCli,
-		taskType:                 task.taskType,
 		downloadShardConcurrency: task.downloadShardConcurrency,
 		forbiddenDirectDownload:  task.taskInfo.ForbiddenDirectDownload,
 	}
@@ -96,7 +93,7 @@ func (w *MigrateWorker) GenTasklets(ctx context.Context) ([]Tasklet, *WorkError)
 	}
 
 	w.benchmarkBids = benchmarkBids
-	span.Debugf("task info: taskType[%s], benchmarkBids size[%d], need migrate bids size[%d]", w.taskType, len(benchmarkBids), len(migBids))
+	span.Debugf("task info: taskType[%s], benchmarkBids size[%d], need migrate bids size[%d]", w.TaskType(), len(benchmarkBids), len(migBids))
 	tasklets := BidsSplit(ctx, migBids, workutils.BigBufPool.GetBufSize())
 	return tasklets, nil
 }
@@ -128,23 +125,23 @@ func (w *MigrateWorker) GetBenchmarkBids() []*ShardInfoSimple {
 }
 
 // CancelArgs returns cancel args
-func (w *MigrateWorker) CancelArgs() (taskID, taskType string, src []proto.VunitLocation, dest proto.VunitLocation) {
-	return w.t.TaskID, w.taskType, w.t.Sources, w.t.Destination
+func (w *MigrateWorker) CancelArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
+	return w.t.TaskID, w.TaskType(), w.t.Sources, w.t.Destination
 }
 
 // CompleteArgs returns complete args
-func (w *MigrateWorker) CompleteArgs() (taskID, taskType string, src []proto.VunitLocation, dest proto.VunitLocation) {
-	return w.t.TaskID, w.taskType, w.t.Sources, w.t.Destination
+func (w *MigrateWorker) CompleteArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
+	return w.t.TaskID, w.TaskType(), w.t.Sources, w.t.Destination
 }
 
 // ReclaimArgs returns reclaim args
-func (w *MigrateWorker) ReclaimArgs() (taskID, taskType string, src []proto.VunitLocation, dest proto.VunitLocation) {
-	return w.t.TaskID, w.taskType, w.t.Sources, w.t.Destination
+func (w *MigrateWorker) ReclaimArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
+	return w.t.TaskID, w.TaskType(), w.t.Sources, w.t.Destination
 }
 
 // TaskType returns task type
-func (w *MigrateWorker) TaskType() (taskType string) {
-	return w.taskType
+func (w *MigrateWorker) TaskType() (taskType proto.TaskType) {
+	return w.t.TaskType
 }
 
 func majorityLocked(ctx context.Context, vunitAccess IVunitAccess, replicas []proto.VunitLocation, mode codemode.CodeMode) (success bool) {

@@ -108,15 +108,15 @@ func vunit(vuid proto.Vuid) proto.VunitLocation {
 	return proto.VunitLocation{Vuid: vuid, Host: "127.0.0.1:xx"}
 }
 
-func (t *mockWorkerTask) GetSrc() []proto.VunitLocation {
+func (t *mockWorkerTask) GetSources() []proto.VunitLocation {
 	return t.src
 }
 
-func (t *mockWorkerTask) GetDest() proto.VunitLocation {
+func (t *mockWorkerTask) GetDestination() proto.VunitLocation {
 	return t.dst
 }
 
-func (t *mockWorkerTask) SetDest(dstVuid proto.VunitLocation) {
+func (t *mockWorkerTask) SetDestination(dstVuid proto.VunitLocation) {
 	t.dst = dstVuid
 }
 
@@ -135,8 +135,8 @@ func TestTaskQueue(t *testing.T) {
 	id, wt, exist := q.PopTask()
 	require.Equal(t, true, exist)
 	require.Equal(t, id, taskID1)
-	require.Equal(t, task1.GetSrc(), wt.GetSrc())
-	require.Equal(t, task1.GetDest(), wt.GetDest())
+	require.Equal(t, task1.GetSources(), wt.GetSources())
+	require.Equal(t, task1.GetDestination(), wt.GetDestination())
 	_, _, exist = q.PopTask()
 	require.Equal(t, false, exist)
 
@@ -146,8 +146,8 @@ func TestTaskQueue(t *testing.T) {
 	id, wt, exist = q.PopTask()
 	require.Equal(t, true, exist)
 	require.Equal(t, id, taskID1)
-	require.Equal(t, vunits([]proto.Vuid{1, 2, 3}), wt.GetSrc())
-	require.Equal(t, vunit(4), wt.GetDest())
+	require.Equal(t, vunits([]proto.Vuid{1, 2, 3}), wt.GetSources())
+	require.Equal(t, vunit(4), wt.GetDestination())
 
 	// test Stats
 	taskID2 := "task_id2"
@@ -196,8 +196,8 @@ func TestWorkerTaskQueue(t *testing.T) {
 	id, wt, exist := wq.Acquire(idc)
 	require.Equal(t, true, exist)
 	require.Equal(t, id, taskID1)
-	require.Equal(t, wt.GetSrc(), task1.GetSrc())
-	require.Equal(t, wt.GetDest(), task1.GetDest())
+	require.Equal(t, wt.GetSources(), task1.GetSources())
+	require.Equal(t, wt.GetDestination(), task1.GetDestination())
 
 	_, _, exist = wq.Acquire(idc)
 	require.Equal(t, false, exist)
@@ -205,11 +205,11 @@ func TestWorkerTaskQueue(t *testing.T) {
 	id, wt, exist = wq.Acquire(idc)
 	require.Equal(t, true, exist)
 	require.Equal(t, id, taskID1)
-	require.Equal(t, wt.GetSrc(), task1.GetSrc())
-	require.Equal(t, wt.GetDest(), task1.GetDest())
+	require.Equal(t, wt.GetSources(), task1.GetSources())
+	require.Equal(t, wt.GetDestination(), task1.GetDestination())
 
 	// test Cancel
-	err := wq.Cancel(idc, taskID1, task1.GetSrc(), task1.GetDest())
+	err := wq.Cancel(idc, taskID1, task1.GetSources(), task1.GetDestination())
 	require.NoError(t, err)
 	_, _, exist = wq.Acquire(idc)
 	require.Equal(t, false, exist)
@@ -217,17 +217,17 @@ func TestWorkerTaskQueue(t *testing.T) {
 	id, wt, exist = wq.Acquire(idc)
 	require.Equal(t, true, exist)
 	require.Equal(t, id, taskID1)
-	require.Equal(t, wt.GetSrc(), task1.GetSrc())
-	require.Equal(t, wt.GetDest(), task1.GetDest())
+	require.Equal(t, wt.GetSources(), task1.GetSources())
+	require.Equal(t, wt.GetDestination(), task1.GetDestination())
 
 	// test Reclaim
-	err = wq.Reclaim(idc, taskID1, task1.GetSrc(), task1.GetDest(), vunit(6), 0)
+	err = wq.Reclaim(idc, taskID1, task1.GetSources(), task1.GetDestination(), vunit(6), 0)
 	require.NoError(t, err)
 	id, wt, exist = wq.Acquire(idc)
 	require.Equal(t, true, exist)
 	require.Equal(t, id, taskID1)
-	require.Equal(t, wt.GetSrc(), vunits([]proto.Vuid{1, 2, 3}))
-	require.Equal(t, wt.GetDest(), vunit(6))
+	require.Equal(t, wt.GetSources(), vunits([]proto.Vuid{1, 2, 3}))
+	require.Equal(t, wt.GetDestination(), vunit(6))
 
 	// test Renewal
 	err = wq.Renewal(idc, taskID1)
@@ -238,8 +238,8 @@ func TestWorkerTaskQueue(t *testing.T) {
 	id, wt, exist = wq.Acquire(idc)
 	require.Equal(t, true, exist)
 	require.Equal(t, id, taskID1)
-	require.Equal(t, wt.GetSrc(), vunits([]proto.Vuid{1, 2, 3}))
-	require.Equal(t, wt.GetDest(), vunit(6))
+	require.Equal(t, wt.GetSources(), vunits([]proto.Vuid{1, 2, 3}))
+	require.Equal(t, wt.GetDestination(), vunit(6))
 	// test Complete
 	_, err = wq.Complete(idc, taskID1, vunits([]proto.Vuid{1, 2, 3}), vunit(6))
 	require.NoError(t, err)

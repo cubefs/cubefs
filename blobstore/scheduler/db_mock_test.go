@@ -359,10 +359,10 @@ func (m *MockRepairTaskTable) EXPECT() *MockRepairTaskTableMockRecorder {
 }
 
 // Find mocks base method.
-func (m *MockRepairTaskTable) Find(arg0 context.Context, arg1 string) (*proto.VolRepairTask, error) {
+func (m *MockRepairTaskTable) Find(arg0 context.Context, arg1 string) (*proto.MigrateTask, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Find", arg0, arg1)
-	ret0, _ := ret[0].(*proto.VolRepairTask)
+	ret0, _ := ret[0].(*proto.MigrateTask)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -374,10 +374,10 @@ func (mr *MockRepairTaskTableMockRecorder) Find(arg0, arg1 interface{}) *gomock.
 }
 
 // FindAll mocks base method.
-func (m *MockRepairTaskTable) FindAll(arg0 context.Context) ([]*proto.VolRepairTask, error) {
+func (m *MockRepairTaskTable) FindAll(arg0 context.Context) ([]*proto.MigrateTask, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FindAll", arg0)
-	ret0, _ := ret[0].([]*proto.VolRepairTask)
+	ret0, _ := ret[0].([]*proto.MigrateTask)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -389,10 +389,10 @@ func (mr *MockRepairTaskTableMockRecorder) FindAll(arg0 interface{}) *gomock.Cal
 }
 
 // FindByDiskID mocks base method.
-func (m *MockRepairTaskTable) FindByDiskID(arg0 context.Context, arg1 proto.DiskID) ([]*proto.VolRepairTask, error) {
+func (m *MockRepairTaskTable) FindByDiskID(arg0 context.Context, arg1 proto.DiskID) ([]*proto.MigrateTask, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FindByDiskID", arg0, arg1)
-	ret0, _ := ret[0].([]*proto.VolRepairTask)
+	ret0, _ := ret[0].([]*proto.MigrateTask)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -404,7 +404,7 @@ func (mr *MockRepairTaskTableMockRecorder) FindByDiskID(arg0, arg1 interface{}) 
 }
 
 // Insert mocks base method.
-func (m *MockRepairTaskTable) Insert(arg0 context.Context, arg1 *proto.VolRepairTask) error {
+func (m *MockRepairTaskTable) Insert(arg0 context.Context, arg1 *proto.MigrateTask) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Insert", arg0, arg1)
 	ret0, _ := ret[0].(error)
@@ -475,7 +475,7 @@ func (mr *MockRepairTaskTableMockRecorder) RemoveMarkDelete(arg0, arg1 interface
 }
 
 // Update mocks base method.
-func (m *MockRepairTaskTable) Update(arg0 context.Context, arg1 *proto.VolRepairTask) error {
+func (m *MockRepairTaskTable) Update(arg0 context.Context, arg1 *proto.MigrateTask) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Update", arg0, arg1)
 	ret0, _ := ret[0].(error)

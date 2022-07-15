@@ -40,17 +40,16 @@ const (
 	prepareTaskPauseS           = 2
 )
 
-// MMigrater merged interfaces for mocking.
-type MMigrater interface {
-	IMigrater
-	IBalancer
-	IDiskDroper
-	IManualMigrater
+// MMigrator merged interfaces for mocking.
+type MMigrator interface {
+	IMigrator
+	IDisKMigrator
+	IManualMigrator
 }
 
 // Migrator base interface of migrate, balancer, disk_droper, manual_migrater.
 type Migrator interface {
-	AcquireTask(ctx context.Context, idc string) (*proto.MigrateTask, error)
+	AcquireTask(ctx context.Context, idc string) (proto.MigrateTask, error)
 	CancelTask(ctx context.Context, args *api.CancelTaskArgs) error
 	CompleteTask(ctx context.Context, args *api.CompleteTaskArgs) error
 	ReclaimTask(ctx context.Context, idc, taskID string,
@@ -68,8 +67,20 @@ type Migrator interface {
 	Run()
 }
 
-// IMigrater interface of common migrator
-type IMigrater interface {
+// IDisKMigrator base interface of disk migrate, such as disk repair and disk drop
+type IDisKMigrator interface {
+	Migrator
+	Progress(ctx context.Context) (repairingDiskID proto.DiskID, total, repaired int)
+}
+
+// IManualMigrator interface of manual migrater
+type IManualMigrator interface {
+	Migrator
+	AddManualTask(ctx context.Context, vuid proto.Vuid, forbiddenDirectDownload bool) (err error)
+}
+
+// IMigrator interface of common migrator
+type IMigrator interface {
 	Migrator
 	// inner interface
 	SetLockFailHandleFunc(lockFailHandleFunc func(ctx context.Context, task *proto.MigrateTask))
@@ -139,7 +150,7 @@ type MigrateConfig struct {
 type MigrateMgr struct {
 	closer.Closer
 
-	taskType           string
+	taskType           proto.TaskType
 	diskMigratingVuids *diskMigratingVuids
 
 	taskTbl db.IMigrateTaskTable
@@ -169,7 +180,7 @@ func NewMigrateMgr(
 	taskSwitch taskswitch.ISwitcher,
 	taskTbl db.IMigrateTaskTable,
 	conf *MigrateConfig,
-	taskType string,
+	taskType proto.TaskType,
 	clusterID proto.ClusterID,
 ) *MigrateMgr {
 	mgr := &MigrateMgr{
@@ -232,7 +243,7 @@ func (mgr *MigrateMgr) Load() (err error) {
 		case proto.MigrateStateInited:
 			mgr.prepareQueue.PushTask(tasks[i].TaskID, tasks[i])
 		case proto.MigrateStatePrepared:
-			mgr.workQueue.AddPreparedTask(tasks[i].SourceIdc, tasks[i].TaskID, tasks[i])
+			mgr.workQueue.AddPreparedTask(tasks[i].SourceIDC, tasks[i].TaskID, tasks[i])
 		case proto.MigrateStateWorkCompleted:
 			mgr.finishQueue.PushTask(tasks[i].TaskID, tasks[i])
 		case proto.MigrateStateFinished, proto.MigrateStateFinishedInAdvance:
@@ -344,7 +355,7 @@ func (mgr *MigrateMgr) prepareTask() (err error) {
 
 	migTask.CodeMode = volInfo.CodeMode
 	migTask.Sources = volInfo.VunitLocations
-	migTask.SetDest(ret.Location())
+	migTask.SetDestination(ret.Location())
 	migTask.State = proto.MigrateStatePrepared
 
 	// update db
@@ -353,7 +364,7 @@ func (mgr *MigrateMgr) prepareTask() (err error) {
 	})
 
 	// send task to worker queue and remove task in prepareQueue
-	mgr.workQueue.AddPreparedTask(migTask.SourceIdc, migTask.TaskID, migTask)
+	mgr.workQueue.AddPreparedTask(migTask.SourceIDC, migTask.TaskID, migTask)
 	mgr.prepareQueue.RemoveTask(migTask.TaskID)
 
 	span.Infof("prepare task success: task_id[%s], state[%v]", migTask.TaskID, migTask.State)
@@ -506,7 +517,7 @@ func (mgr *MigrateMgr) handleUpdateVolMappingFail(ctx context.Context, task *pro
 			span.Errorf("realloc failed: vuid[%d], err[%+v]", task.SourceVuid, err)
 			return err
 		}
-		task.SetDest(newVunit.Location())
+		task.SetDestination(newVunit.Location())
 		task.State = proto.MigrateStatePrepared
 		task.WorkerRedoCnt++
 
@@ -515,7 +526,7 @@ func (mgr *MigrateMgr) handleUpdateVolMappingFail(ctx context.Context, task *pro
 		})
 
 		mgr.finishQueue.RemoveTask(task.TaskID)
-		mgr.workQueue.AddPreparedTask(task.SourceIdc, task.TaskID, task)
+		mgr.workQueue.AddPreparedTask(task.SourceIDC, task.TaskID, task)
 		span.Infof("task %+v redo again", task)
 
 		return nil
@@ -555,20 +566,20 @@ func (mgr *MigrateMgr) Stats() api.MigrateTasksStat {
 }
 
 // AcquireTask acquire migrate task
-func (mgr *MigrateMgr) AcquireTask(ctx context.Context, idc string) (task *proto.MigrateTask, err error) {
+func (mgr *MigrateMgr) AcquireTask(ctx context.Context, idc string) (task proto.MigrateTask, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	if !mgr.taskSwitch.Enabled() {
-		return nil, proto.ErrTaskPaused
+		return task, proto.ErrTaskPaused
 	}
 
 	_, migTask, _ := mgr.workQueue.Acquire(idc)
 	if migTask != nil {
-		task = migTask.(*proto.MigrateTask)
+		task = *migTask.(*proto.MigrateTask)
 		span.Infof("acquire %s taskId: %s", mgr.taskType, task.TaskID)
 		return task, nil
 	}
-	return nil, proto.ErrTaskEmpty
+	return task, proto.ErrTaskEmpty
 }
 
 // CancelTask cancel migrate task

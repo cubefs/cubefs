@@ -167,10 +167,10 @@ type ITaskWorker interface {
 	ExecTasklet(ctx context.Context, t Tasklet) *WorkError
 	// check whether the task is executed successfully when volume task finish
 	Check(ctx context.Context) *WorkError
-	CancelArgs() (taskID, taskType string, src []proto.VunitLocation, dest proto.VunitLocation)
-	CompleteArgs() (taskID, taskType string, src []proto.VunitLocation, dest proto.VunitLocation)
-	ReclaimArgs() (taskID, taskType string, src []proto.VunitLocation, dest proto.VunitLocation)
-	TaskType() (taskType string)
+	CancelArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation)
+	CompleteArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation)
+	ReclaimArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation)
+	TaskType() (taskType proto.TaskType)
 	GetBenchmarkBids() []*ShardInfoSimple
 }
 

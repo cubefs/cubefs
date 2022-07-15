@@ -77,20 +77,20 @@ func (w *mockRepairWorker) Check(ctx context.Context) *WorkError {
 	return nil
 }
 
-func (w *mockRepairWorker) CancelArgs() (taskID, taskType string, src []proto.VunitLocation, dest proto.VunitLocation) {
-	return "test_mock_task", "repair", []proto.VunitLocation{}, proto.VunitLocation{}
+func (w *mockRepairWorker) CancelArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
+	return "test_mock_task", w.TaskType(), []proto.VunitLocation{}, proto.VunitLocation{}
 }
 
-func (w *mockRepairWorker) CompleteArgs() (taskID, taskType string, src []proto.VunitLocation, dest proto.VunitLocation) {
-	return "test_mock_task", "repair", []proto.VunitLocation{}, proto.VunitLocation{}
+func (w *mockRepairWorker) CompleteArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
+	return "test_mock_task", w.TaskType(), []proto.VunitLocation{}, proto.VunitLocation{}
 }
 
-func (w *mockRepairWorker) ReclaimArgs() (taskID, taskType string, src []proto.VunitLocation, dest proto.VunitLocation) {
-	return "test_mock_task", "repair", []proto.VunitLocation{}, proto.VunitLocation{}
+func (w *mockRepairWorker) ReclaimArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
+	return "test_mock_task", w.TaskType(), []proto.VunitLocation{}, proto.VunitLocation{}
 }
 
-func (w *mockRepairWorker) TaskType() string {
-	return "repair"
+func (w *mockRepairWorker) TaskType() proto.TaskType {
+	return proto.TaskTypeDiskRepair
 }
 
 func (w *mockRepairWorker) GetBenchmarkBids() []*ShardInfoSimple {
@@ -122,20 +122,20 @@ func (w *mockMigrateWorker) Check(ctx context.Context) *WorkError {
 	return nil
 }
 
-func (w *mockMigrateWorker) CancelArgs() (taskID, taskType string, src []proto.VunitLocation, dest proto.VunitLocation) {
-	return "test_mock_task", "repair", []proto.VunitLocation{}, proto.VunitLocation{}
+func (w *mockMigrateWorker) CancelArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
+	return "test_mock_task", w.TaskType(), []proto.VunitLocation{}, proto.VunitLocation{}
 }
 
-func (w *mockMigrateWorker) CompleteArgs() (taskID, taskType string, src []proto.VunitLocation, dest proto.VunitLocation) {
-	return "test_mock_task", "repair", []proto.VunitLocation{}, proto.VunitLocation{}
+func (w *mockMigrateWorker) CompleteArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
+	return "test_mock_task", w.TaskType(), []proto.VunitLocation{}, proto.VunitLocation{}
 }
 
-func (w *mockMigrateWorker) ReclaimArgs() (taskID, taskType string, src []proto.VunitLocation, dest proto.VunitLocation) {
-	return "test_mock_task", "repair", []proto.VunitLocation{}, proto.VunitLocation{}
+func (w *mockMigrateWorker) ReclaimArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
+	return "test_mock_task", w.TaskType(), []proto.VunitLocation{}, proto.VunitLocation{}
 }
 
-func (w *mockMigrateWorker) TaskType() string {
-	return "migrate"
+func (w *mockMigrateWorker) TaskType() proto.TaskType {
+	return proto.TaskTypeBalance
 }
 
 func (w *mockMigrateWorker) GetBenchmarkBids() []*ShardInfoSimple {
@@ -196,7 +196,7 @@ func initTestTaskRunnerMgr(t *testing.T, taskCnt int) *TaskRunnerMgr {
 	for i := 0; i < taskCnt; i++ {
 		taskID := fmt.Sprintf("repair_%d", i+1)
 		task := VolRepairTaskEx{
-			taskInfo: &proto.VolRepairTask{TaskID: taskID},
+			taskInfo: &proto.MigrateTask{TaskID: taskID, TaskType: proto.TaskTypeDiskRepair},
 		}
 		err := tm.AddRepairTask(ctx, task)
 		require.NoError(t, err)
@@ -205,7 +205,7 @@ func initTestTaskRunnerMgr(t *testing.T, taskCnt int) *TaskRunnerMgr {
 	for i := 0; i < taskCnt; i++ {
 		taskID := fmt.Sprintf("balance_%d", i+1)
 		task := MigrateTaskEx{
-			taskInfo: &proto.MigrateTask{TaskID: taskID},
+			taskInfo: &proto.MigrateTask{TaskID: taskID, TaskType: proto.TaskTypeBalance},
 		}
 		err := tm.AddBalanceTask(ctx, task)
 		require.NoError(t, err)
@@ -214,7 +214,7 @@ func initTestTaskRunnerMgr(t *testing.T, taskCnt int) *TaskRunnerMgr {
 	for i := 0; i < taskCnt; i++ {
 		taskID := fmt.Sprintf("diskDrop_%d", i+1)
 		task := MigrateTaskEx{
-			taskInfo: &proto.MigrateTask{TaskID: taskID},
+			taskInfo: &proto.MigrateTask{TaskID: taskID, TaskType: proto.TaskTypeDiskDrop},
 		}
 		err := tm.AddDiskDropTask(ctx, task)
 		require.NoError(t, err)

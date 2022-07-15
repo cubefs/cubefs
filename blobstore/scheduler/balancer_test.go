@@ -50,13 +50,13 @@ func newBalancer(t *testing.T) *BalanceMgr {
 	migrater.EXPECT().WaitEnable().AnyTimes().Return()
 	migrater.EXPECT().Enabled().AnyTimes().Return(true)
 	mgr := NewBalanceMgr(clusterMgr, volumeUpdater, taskSwitch, topologyMgr, migrateTable, conf)
-	mgr.IMigrater = migrater
+	mgr.IMigrator = migrater
 	return mgr
 }
 
 func TestBalanceLoad(t *testing.T) {
 	mgr := newBalancer(t)
-	mgr.IMigrater.(*MockMigrater).EXPECT().Load().Return(nil)
+	mgr.IMigrator.(*MockMigrater).EXPECT().Load().Return(nil)
 	err := mgr.Load()
 	require.NoError(t, err)
 }
@@ -65,9 +65,9 @@ func TestBalanceRun(t *testing.T) {
 	mgr := newBalancer(t)
 	defer mgr.Close()
 
-	mgr.IMigrater.(*MockMigrater).EXPECT().Run().Return()
-	mgr.IMigrater.(*MockMigrater).EXPECT().ClearTasksByStates(any, any).AnyTimes().Return()
-	mgr.IMigrater.(*MockMigrater).EXPECT().GetMigratingDiskNum().AnyTimes().Return(1)
+	mgr.IMigrator.(*MockMigrater).EXPECT().Run().Return()
+	mgr.IMigrator.(*MockMigrater).EXPECT().ClearTasksByStates(any, any).AnyTimes().Return()
+	mgr.IMigrator.(*MockMigrater).EXPECT().GetMigratingDiskNum().AnyTimes().Return(1)
 	mgr.cfg.CollectTaskIntervalS = 1
 	mgr.cfg.CheckTaskIntervalS = 1
 	require.True(t, mgr.Enabled())
@@ -79,7 +79,7 @@ func TestBalanceRun(t *testing.T) {
 func TestBalanceCollectionTask(t *testing.T) {
 	{
 		mgr := newBalancer(t)
-		mgr.IMigrater.(*MockMigrater).EXPECT().GetMigratingDiskNum().AnyTimes().Return(1)
+		mgr.IMigrator.(*MockMigrater).EXPECT().GetMigratingDiskNum().AnyTimes().Return(1)
 
 		err := mgr.collectionTask()
 		require.True(t, errors.Is(err, ErrTooManyBalancingTasks))
@@ -88,7 +88,7 @@ func TestBalanceCollectionTask(t *testing.T) {
 	{
 		mgr := newBalancer(t)
 		mgr.cfg.BalanceDiskCntLimit = 2
-		mgr.IMigrater.(*MockMigrater).EXPECT().GetMigratingDiskNum().AnyTimes().Return(1)
+		mgr.IMigrator.(*MockMigrater).EXPECT().GetMigratingDiskNum().AnyTimes().Return(1)
 
 		disk1 := &client.DiskInfoSimple{
 			ClusterID:    1,
@@ -124,7 +124,7 @@ func TestBalanceCollectionTask(t *testing.T) {
 			taskStatsMgr: base.NewClusterTopologyStatisticsMgr(1, []float64{}),
 		}
 		clusterTopMgr.buildClusterTopo([]*client.DiskInfoSimple{disk1, disk2, disk3}, 1)
-		mgr.IMigrater.(*MockMigrater).EXPECT().IsMigratingDisk(any).AnyTimes().DoAndReturn(func(diskID proto.DiskID) bool {
+		mgr.IMigrator.(*MockMigrater).EXPECT().IsMigratingDisk(any).AnyTimes().DoAndReturn(func(diskID proto.DiskID) bool {
 			return diskID == 1
 		})
 		mgr.clusterTopology = clusterTopMgr
@@ -145,7 +145,7 @@ func TestBalanceCollectionTask(t *testing.T) {
 		}
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Return(units, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
-		mgr.IMigrater.(*MockMigrater).EXPECT().AddTask(any, any).Return()
+		mgr.IMigrator.(*MockMigrater).EXPECT().AddTask(any, any).Return()
 		err = mgr.collectionTask()
 		require.NoError(t, err)
 
@@ -166,7 +166,7 @@ func TestBalanceAcquireTask(t *testing.T) {
 	ctx := context.Background()
 	idc := "z0"
 	mgr := newBalancer(t)
-	mgr.IMigrater.(*MockMigrater).EXPECT().AcquireTask(any, any).Return(&proto.MigrateTask{}, nil)
+	mgr.IMigrator.(*MockMigrater).EXPECT().AcquireTask(any, any).Return(proto.MigrateTask{TaskType: proto.TaskTypeBalance}, nil)
 	_, err := mgr.AcquireTask(ctx, idc)
 	require.NoError(t, err)
 }
@@ -174,7 +174,7 @@ func TestBalanceAcquireTask(t *testing.T) {
 func TestBalanceCancelTask(t *testing.T) {
 	ctx := context.Background()
 	mgr := newBalancer(t)
-	mgr.IMigrater.(*MockMigrater).EXPECT().CancelTask(any, any).Return(nil)
+	mgr.IMigrator.(*MockMigrater).EXPECT().CancelTask(any, any).Return(nil)
 	err := mgr.CancelTask(ctx, &api.CancelTaskArgs{})
 	require.NoError(t, err)
 }
@@ -183,7 +183,7 @@ func TestBalanceReclaimTask(t *testing.T) {
 	ctx := context.Background()
 	idc := "z0"
 	mgr := newBalancer(t)
-	mgr.IMigrater.(*MockMigrater).EXPECT().ReclaimTask(any, any, any, any, any, any).Return(nil)
+	mgr.IMigrator.(*MockMigrater).EXPECT().ReclaimTask(any, any, any, any, any, any).Return(nil)
 	t1 := mockGenMigrateTask(idc, 4, 100, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
 	err := mgr.ReclaimTask(ctx, idc, t1.TaskID, t1.Sources, t1.Destination, &client.AllocVunitInfo{})
 	require.NoError(t, err)
@@ -193,12 +193,12 @@ func TestBalanceCompleteTask(t *testing.T) {
 	ctx := context.Background()
 	idc := "z0"
 	mgr := newBalancer(t)
-	mgr.IMigrater.(*MockMigrater).EXPECT().CompleteTask(any, any).Return(nil)
+	mgr.IMigrator.(*MockMigrater).EXPECT().CompleteTask(any, any).Return(nil)
 	t1 := mockGenMigrateTask(idc, 4, 100, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
 	err := mgr.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: idc, TaskId: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
 	require.NoError(t, err)
 
-	mgr.IMigrater.(*MockMigrater).EXPECT().CompleteTask(any, any).Return(errMock)
+	mgr.IMigrator.(*MockMigrater).EXPECT().CompleteTask(any, any).Return(errMock)
 	err = mgr.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: idc, TaskId: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
 	require.True(t, errors.Is(err, errMock))
 }
@@ -207,11 +207,11 @@ func TestBalanceRenewalTask(t *testing.T) {
 	ctx := context.Background()
 	idc := "z0"
 	mgr := newBalancer(t)
-	mgr.IMigrater.(*MockMigrater).EXPECT().RenewalTask(any, any, any).Return(nil)
+	mgr.IMigrator.(*MockMigrater).EXPECT().RenewalTask(any, any, any).Return(nil)
 	err := mgr.RenewalTask(ctx, idc, "")
 	require.NoError(t, err)
 
-	mgr.IMigrater.(*MockMigrater).EXPECT().RenewalTask(any, any, any).Return(errMock)
+	mgr.IMigrator.(*MockMigrater).EXPECT().RenewalTask(any, any, any).Return(errMock)
 	err = mgr.RenewalTask(ctx, idc, "")
 	require.True(t, errors.Is(err, errMock))
 }

@@ -36,10 +36,10 @@ type Service struct {
 	leaderHost    string
 	followerHosts []string
 
-	balanceMgr    IBalancer
-	diskDropMgr   IDiskDroper
-	diskRepairMgr IDiskRepairer
-	manualMigMgr  IManualMigrater
+	balanceMgr    Migrator
+	diskDropMgr   IDisKMigrator
+	diskRepairMgr IDisKMigrator
+	manualMigMgr  IManualMigrator
 	inspectMgr    IVolumeInspector
 	archiveMgr    IArchiver
 
@@ -64,8 +64,7 @@ func (svr *Service) HTTPTaskAcquire(c *rpc.Context) {
 	manualMigTask, err := svr.manualMigMgr.AcquireTask(ctx, args.IDC)
 	if err == nil {
 		ret := &api.WorkerTask{
-			TaskType:      proto.ManualMigrateType,
-			ManualMigrate: manualMigTask,
+			Task: manualMigTask,
 		}
 		c.RespondJSON(ret)
 		return
@@ -74,8 +73,7 @@ func (svr *Service) HTTPTaskAcquire(c *rpc.Context) {
 	repairTask, err := svr.diskRepairMgr.AcquireTask(ctx, args.IDC)
 	if err == nil {
 		ret := &api.WorkerTask{
-			TaskType: proto.RepairTaskType,
-			Repair:   repairTask,
+			Task: repairTask,
 		}
 		c.RespondJSON(ret)
 		return
@@ -84,8 +82,7 @@ func (svr *Service) HTTPTaskAcquire(c *rpc.Context) {
 	diskDropTask, err := svr.diskDropMgr.AcquireTask(ctx, args.IDC)
 	if err == nil {
 		ret := &api.WorkerTask{
-			TaskType: proto.DiskDropTaskType,
-			DiskDrop: diskDropTask,
+			Task: diskDropTask,
 		}
 		c.RespondJSON(ret)
 		return
@@ -94,8 +91,7 @@ func (svr *Service) HTTPTaskAcquire(c *rpc.Context) {
 	balanceTask, err := svr.balanceMgr.AcquireTask(ctx, args.IDC)
 	if err == nil {
 		ret := &api.WorkerTask{
-			TaskType: proto.BalanceTaskType,
-			Balance:  balanceTask,
+			Task: balanceTask,
 		}
 		c.RespondJSON(ret)
 		return
@@ -113,7 +109,7 @@ func (svr *Service) HTTPTaskReclaim(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	if !proto.ValidTaskType(args.TaskType) {
+	if !args.TaskType.Valid() {
 		c.RespondError(rpc.NewError(http.StatusBadRequest, "illegal_type", errcode.ErrIllegalTaskType))
 		return
 	}
@@ -125,13 +121,13 @@ func (svr *Service) HTTPTaskReclaim(c *rpc.Context) {
 	}
 
 	switch args.TaskType {
-	case proto.RepairTaskType:
+	case proto.TaskTypeDiskRepair:
 		err = svr.diskRepairMgr.ReclaimTask(ctx, args.IDC, args.TaskId, args.Src, args.Dest, newDst)
-	case proto.BalanceTaskType:
+	case proto.TaskTypeBalance:
 		err = svr.balanceMgr.ReclaimTask(ctx, args.IDC, args.TaskId, args.Src, args.Dest, newDst)
-	case proto.DiskDropTaskType:
+	case proto.TaskTypeDiskDrop:
 		err = svr.diskDropMgr.ReclaimTask(ctx, args.IDC, args.TaskId, args.Src, args.Dest, newDst)
-	case proto.ManualMigrateType:
+	case proto.TaskTypeManualMigrate:
 		err = svr.manualMigMgr.ReclaimTask(ctx, args.IDC, args.TaskId, args.Src, args.Dest, newDst)
 	}
 
@@ -148,20 +144,20 @@ func (svr *Service) HTTPTaskCancel(c *rpc.Context) {
 		return
 	}
 
-	if !proto.ValidTaskType(args.TaskType) {
+	if !args.TaskType.Valid() {
 		c.RespondError(rpc.NewError(http.StatusBadRequest, "illegal_type", errcode.ErrIllegalTaskType))
 		return
 	}
 
 	var err error
 	switch args.TaskType {
-	case proto.RepairTaskType:
+	case proto.TaskTypeDiskRepair:
 		err = svr.diskRepairMgr.CancelTask(ctx, args)
-	case proto.BalanceTaskType:
+	case proto.TaskTypeBalance:
 		err = svr.balanceMgr.CancelTask(ctx, args)
-	case proto.DiskDropTaskType:
+	case proto.TaskTypeDiskDrop:
 		err = svr.diskDropMgr.CancelTask(ctx, args)
-	case proto.ManualMigrateType:
+	case proto.TaskTypeManualMigrate:
 		err = svr.manualMigMgr.CancelTask(ctx, args)
 	}
 
@@ -177,20 +173,20 @@ func (svr *Service) HTTPTaskComplete(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	if !proto.ValidTaskType(args.TaskType) {
+	if !args.TaskType.Valid() {
 		c.RespondError(rpc.NewError(http.StatusBadRequest, "illegal_type", errcode.ErrIllegalTaskType))
 		return
 	}
 
 	var err error
 	switch args.TaskType {
-	case proto.RepairTaskType:
+	case proto.TaskTypeDiskRepair:
 		err = svr.diskRepairMgr.CompleteTask(ctx, args)
-	case proto.BalanceTaskType:
+	case proto.TaskTypeBalance:
 		err = svr.balanceMgr.CompleteTask(ctx, args)
-	case proto.DiskDropTaskType:
+	case proto.TaskTypeDiskDrop:
 		err = svr.diskDropMgr.CompleteTask(ctx, args)
-	case proto.ManualMigrateType:
+	case proto.TaskTypeManualMigrate:
 		err = svr.manualMigMgr.CompleteTask(ctx, args)
 	}
 
@@ -281,13 +277,13 @@ func (svr *Service) HTTPTaskReport(c *rpc.Context) {
 	}
 
 	switch args.TaskType {
-	case proto.RepairTaskType:
+	case proto.TaskTypeDiskRepair:
 		svr.diskRepairMgr.ReportWorkerTaskStats(args)
-	case proto.BalanceTaskType:
+	case proto.TaskTypeBalance:
 		svr.balanceMgr.ReportWorkerTaskStats(args)
-	case proto.DiskDropTaskType:
+	case proto.TaskTypeDiskDrop:
 		svr.diskDropMgr.ReportWorkerTaskStats(args)
-	case proto.ManualMigrateType:
+	case proto.TaskTypeManualMigrate:
 		svr.manualMigMgr.ReportWorkerTaskStats(args)
 	}
 

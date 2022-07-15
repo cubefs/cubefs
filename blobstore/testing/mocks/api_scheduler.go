@@ -153,10 +153,10 @@ func (mr *MockISchedulerMockRecorder) DiskDropTaskDetail(arg0, arg1 interface{})
 }
 
 // DiskRepairTaskDetail mocks base method.
-func (m *MockIScheduler) DiskRepairTaskDetail(arg0 context.Context, arg1 *scheduler.TaskStatArgs) (scheduler.RepairTaskDetail, error) {
+func (m *MockIScheduler) DiskRepairTaskDetail(arg0 context.Context, arg1 *scheduler.TaskStatArgs) (scheduler.MigrateTaskDetail, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DiskRepairTaskDetail", arg0, arg1)
-	ret0, _ := ret[0].(scheduler.RepairTaskDetail)
+	ret0, _ := ret[0].(scheduler.MigrateTaskDetail)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

@@ -194,9 +194,9 @@ func (q *Queue) Stats() (todo, doing int) {
 
 // WorkerTask define worker task interface
 type WorkerTask interface {
-	GetSrc() []proto.VunitLocation
-	GetDest() proto.VunitLocation
-	SetDest(dest proto.VunitLocation)
+	GetSources() []proto.VunitLocation
+	GetDestination() proto.VunitLocation
+	SetDestination(dest proto.VunitLocation)
 }
 
 // TaskQueue task queue
@@ -366,7 +366,7 @@ func (q *WorkerTaskQueue) Reclaim(idc, taskID string, src []proto.VunitLocation,
 	if err != nil {
 		return err
 	}
-	wtask.SetDest(newDest)
+	wtask.SetDestination(newDest)
 	return idcQueue.Requeue(taskID, 0)
 }
 
@@ -445,7 +445,7 @@ func (q *WorkerTaskQueue) SetLeaseExpiredS(dura time.Duration) {
 }
 
 func checkValid(task WorkerTask, src []proto.VunitLocation, dst proto.VunitLocation) error {
-	if !vunitSliceEqual(task.GetSrc(), src) || task.GetDest() != dst {
+	if !vunitSliceEqual(task.GetSources(), src) || task.GetDestination() != dst {
 		return ErrUnmatchedVuids
 	}
 	return nil

@@ -34,6 +34,7 @@ func TestMigrateGenTasklets(t *testing.T) {
 	godi := 11
 	balanceTask := &proto.MigrateTask{
 		TaskID:      "mock_balance_task_id",
+		TaskType:    proto.TaskTypeBalance,
 		CodeMode:    codemode.CodeMode(mode),
 		Sources:     replicas,
 		Destination: replicas[badi],
@@ -49,7 +50,7 @@ func TestMigrateGenTasklets(t *testing.T) {
 
 	workutils.BigBufPool = workutils.NewByteBufferPool(2*1024, 10)
 	getter := NewMockGetterWithBids(replicas, codemode.CodeMode(mode), bids, sizes)
-	w := NewMigrateWorker(MigrateTaskEx{taskInfo: balanceTask, taskType: proto.BalanceTaskType, blobNodeCli: getter, downloadShardConcurrency: 1})
+	w := NewMigrateWorker(MigrateTaskEx{taskInfo: balanceTask, blobNodeCli: getter, downloadShardConcurrency: 1})
 
 	tasklets, _ := w.GenTasklets(context.Background())
 	require.Equal(t, 0, len(tasklets))
@@ -161,6 +162,7 @@ func TestMigrateExecTasklet(t *testing.T) {
 	badi := 10
 	diskDropTask := &proto.MigrateTask{
 		TaskID:      "mock_disk_drop_task_id",
+		TaskType:    proto.TaskTypeDiskDrop,
 		CodeMode:    codemode.CodeMode(mode),
 		Sources:     replicas,
 		Destination: replicas[badi],
@@ -172,7 +174,7 @@ func TestMigrateExecTasklet(t *testing.T) {
 
 	workutils.BigBufPool = workutils.NewByteBufferPool(2*1024, 100)
 	getter := NewMockGetterWithBids(replicas, codemode.CodeMode(mode), bids, sizes)
-	w := NewMigrateWorker(MigrateTaskEx{taskInfo: diskDropTask, taskType: proto.DiskDropTaskType, blobNodeCli: getter, downloadShardConcurrency: 1})
+	w := NewMigrateWorker(MigrateTaskEx{taskInfo: diskDropTask, blobNodeCli: getter, downloadShardConcurrency: 1})
 
 	{
 		shards, _ := getter.ListShards(context.Background(), replicas[badi])
@@ -230,6 +232,7 @@ func TestMigrateCheck(t *testing.T) {
 	badi := 10
 	diskDropTask := &proto.MigrateTask{
 		TaskID:      "mock_disk_drop_task_id",
+		TaskType:    proto.TaskTypeDiskDrop,
 		CodeMode:    codemode.CodeMode(mode),
 		Sources:     replicas,
 		Destination: replicas[badi],
@@ -241,7 +244,7 @@ func TestMigrateCheck(t *testing.T) {
 
 	workutils.BigBufPool = workutils.NewByteBufferPool(2*1024, 100)
 	getter := NewMockGetterWithBids(replicas, codemode.CodeMode(mode), bids, sizes)
-	w := NewMigrateWorker(MigrateTaskEx{taskInfo: diskDropTask, taskType: proto.DiskDropTaskType, blobNodeCli: getter, downloadShardConcurrency: 1})
+	w := NewMigrateWorker(MigrateTaskEx{taskInfo: diskDropTask, blobNodeCli: getter, downloadShardConcurrency: 1})
 
 	shards, _ := getter.ListShards(context.Background(), replicas[badi])
 
@@ -290,6 +293,7 @@ func TestMigrateArgs(t *testing.T) {
 	badi := 15
 	diskDropTask := &proto.MigrateTask{
 		TaskID:      "mock_disk_drop_task_id",
+		TaskType:    proto.TaskTypeDiskDrop,
 		CodeMode:    codemode.CodeMode(mode),
 		Sources:     replicas,
 		Destination: replicas[badi],
@@ -300,23 +304,23 @@ func TestMigrateArgs(t *testing.T) {
 
 	workutils.BigBufPool = workutils.NewByteBufferPool(2*1024, 100)
 	getter := NewMockGetterWithBids(replicas, codemode.CodeMode(mode), bids, sizes)
-	w := NewMigrateWorker(MigrateTaskEx{taskInfo: diskDropTask, taskType: proto.DiskDropTaskType, blobNodeCli: getter, downloadShardConcurrency: 1})
+	w := NewMigrateWorker(MigrateTaskEx{taskInfo: diskDropTask, blobNodeCli: getter, downloadShardConcurrency: 1})
 
 	taskID, taskType, src, dest := w.ReclaimArgs()
 	require.Equal(t, diskDropTask.TaskID, taskID)
-	require.Equal(t, proto.DiskDropTaskType, taskType)
+	require.Equal(t, proto.TaskTypeDiskDrop, taskType)
 	require.Equal(t, diskDropTask.Sources, src)
 	require.Equal(t, diskDropTask.Destination, dest)
 
 	taskID, taskType, src, dest = w.CompleteArgs()
 	require.Equal(t, diskDropTask.TaskID, taskID)
-	require.Equal(t, proto.DiskDropTaskType, taskType)
+	require.Equal(t, proto.TaskTypeDiskDrop, taskType)
 	require.Equal(t, diskDropTask.Sources, src)
 	require.Equal(t, diskDropTask.Destination, dest)
 
 	taskID, taskType, src, dest = w.CancelArgs()
 	require.Equal(t, diskDropTask.TaskID, taskID)
-	require.Equal(t, proto.DiskDropTaskType, taskType)
+	require.Equal(t, proto.TaskTypeDiskDrop, taskType)
 	require.Equal(t, diskDropTask.Sources, src)
 	require.Equal(t, diskDropTask.Destination, dest)
 }
