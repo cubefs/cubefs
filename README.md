@@ -25,23 +25,22 @@ An advantage of doing so is to separate storage from compute - one can scale up 
 
 Some key features of CubeFS include:
 
-- Multiple Access Protocol Support  
-  Converge posix filesystem interfaces、S3-compatible interfaces and hdfs interfaces
-- Metadata Highly Scalable  
+- Multiple Protocols Support
+  Allowing users to access the same file over multiple protocols, such as POSIX/HDFS/S3
+- Highly Scalable Metadata Service
   Elasticity, scalability and strong consistency of metadata
-- High Performance  
-  Specific performance optimizations for large/small files and sequential/random writes
-- Multi-tenancy  
-  Share the whole storage and resource utilization ratio
-- Hybrid Cloud Acceleration  
-  Accelerate Hybrid Cloud IO performance through multi-level caching
-- Online Erasure Coding Subsystem  
-  Provide high durability, high availability, low cost erasure coding storage system
+- Excellent Storage Performance
+  A lot of performance optimizations for large/small files and sequential/random writes
+- Multi-tenancy
+  Provides an efficient mechanism to improve resource utilization and tenant isolation
+- Hybrid Cloud Acceleration
+  Accelerate Hybrid Cloud IO performance through multi-level cache
+- Multiple Storage Engines
+  Provides high-performance replication engine and low-cost erasure coding engine
 
 ## Documents
 
 - English version: https://cubefs.readthedocs.io/en/latest/
-
 - Chinese version: https://cubefs.readthedocs.io/zh_CN/latest/
 
 ## Benchmark
@@ -61,7 +60,6 @@ Refer to [cubefs.readthedocs.io](https://cubefs.readthedocs.io/en/latest/evaluat
 
 ## Setup CubeFS 
 - [Set up a small CubeFS cluster](https://github.com/cubefs/cubefs/blob/master/INSTALL.md) 
-
 - [Helm chart to Run a CubeFS Cluster in Kubernetes](https://github.com/cubefs/cubefs/blob/master/HELM.md)
 
 ## Community
