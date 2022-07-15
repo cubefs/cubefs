@@ -74,60 +74,60 @@ func TestDiskRepairerLoad(t *testing.T) {
 	}
 	{
 		mgr := newDiskRepairer(t)
-		t1 := mockGenVolRepairTask(1, proto.RepairStateInited, 1, newMockVolInfoMap())
-		t2 := mockGenVolRepairTask(2, proto.RepairStatePrepared, 2, newMockVolInfoMap())
-		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindAll(any).Return([]*proto.VolRepairTask{t1, t2}, nil)
+		t1 := mockGenVolRepairTask(1, proto.MigrateStateInited, 1, newMockVolInfoMap())
+		t2 := mockGenVolRepairTask(2, proto.MigrateStatePrepared, 2, newMockVolInfoMap())
+		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindAll(any).Return([]*proto.MigrateTask{t1, t2}, nil)
 		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return(nil, errMock)
 		err := mgr.Load()
 		require.True(t, errors.Is(err, errMock))
 	}
 	{
 		mgr := newDiskRepairer(t)
-		t1 := mockGenVolRepairTask(1, proto.RepairStateInited, 1, newMockVolInfoMap())
-		t2 := mockGenVolRepairTask(2, proto.RepairStatePrepared, 2, newMockVolInfoMap())
-		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindAll(any).Return([]*proto.VolRepairTask{t1, t2}, nil)
-		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return([]*proto.VolRepairTask{t1}, nil)
+		t1 := mockGenVolRepairTask(1, proto.MigrateStateInited, 1, newMockVolInfoMap())
+		t2 := mockGenVolRepairTask(2, proto.MigrateStatePrepared, 2, newMockVolInfoMap())
+		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindAll(any).Return([]*proto.MigrateTask{t1, t2}, nil)
+		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return([]*proto.MigrateTask{t1}, nil)
 		require.Panics(t, func() {
 			mgr.Load()
 		})
 	}
 	{
 		mgr := newDiskRepairer(t)
-		t1 := mockGenVolRepairTask(1, proto.RepairStateInited, 1, newMockVolInfoMap())
-		t2 := mockGenVolRepairTask(2, proto.RepairStatePrepared, 1, newMockVolInfoMap())
-		t3 := mockGenVolRepairTask(3, proto.RepairStateFinishedInAdvance, 1, newMockVolInfoMap())
-		t4 := mockGenVolRepairTask(4, proto.RepairStateWorkCompleted, 1, newMockVolInfoMap())
-		t5 := mockGenVolRepairTask(5, proto.RepairStateFinished, 1, newMockVolInfoMap())
-		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindAll(any).Return([]*proto.VolRepairTask{t1, t2, t3, t4, t5}, nil)
-		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return([]*proto.VolRepairTask{t1, t2, t3, t4, t5}, nil)
+		t1 := mockGenVolRepairTask(1, proto.MigrateStateInited, 1, newMockVolInfoMap())
+		t2 := mockGenVolRepairTask(2, proto.MigrateStatePrepared, 1, newMockVolInfoMap())
+		t3 := mockGenVolRepairTask(3, proto.MigrateStateFinishedInAdvance, 1, newMockVolInfoMap())
+		t4 := mockGenVolRepairTask(4, proto.MigrateStateWorkCompleted, 1, newMockVolInfoMap())
+		t5 := mockGenVolRepairTask(5, proto.MigrateStateFinished, 1, newMockVolInfoMap())
+		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindAll(any).Return([]*proto.MigrateTask{t1, t2, t3, t4, t5}, nil)
+		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return([]*proto.MigrateTask{t1, t2, t3, t4, t5}, nil)
 		err := mgr.Load()
 		require.NoError(t, err)
 	}
 	{
 		mgr := newDiskRepairer(t)
-		t1 := mockGenVolRepairTask(1, proto.RepairStateInited, 1, newMockVolInfoMap())
-		t2 := mockGenVolRepairTask(2, proto.RepairStatePrepared, 2, newMockVolInfoMap())
-		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindAll(any).Return([]*proto.VolRepairTask{t1, t2}, nil)
-		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return([]*proto.VolRepairTask{t1, t2}, nil)
+		t1 := mockGenVolRepairTask(1, proto.MigrateStateInited, 1, newMockVolInfoMap())
+		t2 := mockGenVolRepairTask(2, proto.MigrateStatePrepared, 2, newMockVolInfoMap())
+		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindAll(any).Return([]*proto.MigrateTask{t1, t2}, nil)
+		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return([]*proto.MigrateTask{t1, t2}, nil)
 		require.Panics(t, func() {
 			mgr.Load()
 		})
 	}
 	{
 		mgr := newDiskRepairer(t)
-		t1 := mockGenVolRepairTask(1, proto.RepairStatePrepared, 1, newMockVolInfoMap())
-		t2 := mockGenVolRepairTask(1, proto.RepairStatePrepared, 1, newMockVolInfoMap())
-		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindAll(any).Return([]*proto.VolRepairTask{t1, t2}, nil)
-		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return([]*proto.VolRepairTask{t1, t2}, nil)
+		t1 := mockGenVolRepairTask(1, proto.MigrateStatePrepared, 1, newMockVolInfoMap())
+		t2 := mockGenVolRepairTask(1, proto.MigrateStatePrepared, 1, newMockVolInfoMap())
+		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindAll(any).Return([]*proto.MigrateTask{t1, t2}, nil)
+		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return([]*proto.MigrateTask{t1, t2}, nil)
 		require.Panics(t, func() {
 			mgr.Load()
 		})
 	}
 	{
 		mgr := newDiskRepairer(t)
-		t1 := mockGenVolRepairTask(1, proto.RepairState(111), 1, newMockVolInfoMap())
-		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindAll(any).Return([]*proto.VolRepairTask{t1}, nil)
-		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return([]*proto.VolRepairTask{t1}, nil)
+		t1 := mockGenVolRepairTask(1, proto.MigrateState(111), 1, newMockVolInfoMap())
+		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindAll(any).Return([]*proto.MigrateTask{t1}, nil)
+		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return([]*proto.MigrateTask{t1}, nil)
 		require.Panics(t, func() {
 			mgr.Load()
 		})
@@ -279,14 +279,15 @@ func TestDiskRepairerCollectTask(t *testing.T) {
 			}
 			units = append(units, &ele)
 		}
-		t1 := &proto.VolRepairTask{
-			TaskID:  base.GenTaskID("disk-repair", volume.Vid),
-			BadVuid: units[0].Vuid,
+		t1 := &proto.MigrateTask{
+			TaskID:     base.GenTaskID("disk-repair", volume.Vid),
+			TaskType:   proto.TaskTypeDiskRepair,
+			SourceVuid: units[0].Vuid,
 		}
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListBrokenDisks(any, any).Return([]*client.DiskInfoSimple{disk1}, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Return(units, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().SetDiskRepairing(any, any).Return(nil)
-		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return([]*proto.VolRepairTask{t1}, nil)
+		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return([]*proto.MigrateTask{t1}, nil)
 		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().Insert(any, any).AnyTimes().Return(nil)
 		mgr.collectTask()
 		todo, doing := mgr.prepareQueue.StatsTasks()
@@ -387,7 +388,7 @@ func TestDiskRepairerPopTaskAndFinish(t *testing.T) {
 	}
 	{
 		mgr := newDiskRepairer(t)
-		t1 := mockGenVolRepairTask(1, proto.RepairStateFinished, 1, newMockVolInfoMap())
+		t1 := mockGenVolRepairTask(1, proto.MigrateStateFinished, 1, newMockVolInfoMap())
 		mgr.finishQueue.PushTask(t1.TaskID, t1)
 		require.Panics(t, func() {
 			mgr.popTaskAndFinish()
@@ -395,7 +396,7 @@ func TestDiskRepairerPopTaskAndFinish(t *testing.T) {
 	}
 	{
 		mgr := newDiskRepairer(t)
-		t1 := mockGenVolRepairTask(1, proto.RepairStateWorkCompleted, 1, newMockVolInfoMap())
+		t1 := mockGenVolRepairTask(1, proto.MigrateStateWorkCompleted, 1, newMockVolInfoMap())
 		mgr.finishQueue.PushTask(t1.TaskID, t1)
 		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().Update(any, any).Return(nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(errMock)
@@ -404,7 +405,7 @@ func TestDiskRepairerPopTaskAndFinish(t *testing.T) {
 	}
 	{
 		mgr := newDiskRepairer(t)
-		t1 := mockGenVolRepairTask(1, proto.RepairStateWorkCompleted, 1, newMockVolInfoMap())
+		t1 := mockGenVolRepairTask(1, proto.MigrateStateWorkCompleted, 1, newMockVolInfoMap())
 		mgr.finishQueue.PushTask(t1.TaskID, t1)
 		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().Update(any, any).Return(nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(errcode.ErrOldVuidNotMatch)
@@ -414,7 +415,7 @@ func TestDiskRepairerPopTaskAndFinish(t *testing.T) {
 	}
 	{
 		mgr := newDiskRepairer(t)
-		t1 := mockGenVolRepairTask(1, proto.RepairStateWorkCompleted, 1, newMockVolInfoMap())
+		t1 := mockGenVolRepairTask(1, proto.MigrateStateWorkCompleted, 1, newMockVolInfoMap())
 		mgr.finishQueue.PushTask(t1.TaskID, t1)
 		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().Update(any, any).Return(nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(errcode.ErrNewVuidNotMatch)
@@ -424,7 +425,7 @@ func TestDiskRepairerPopTaskAndFinish(t *testing.T) {
 	}
 	{
 		mgr := newDiskRepairer(t)
-		t1 := mockGenVolRepairTask(1, proto.RepairStateWorkCompleted, 1, newMockVolInfoMap())
+		t1 := mockGenVolRepairTask(1, proto.MigrateStateWorkCompleted, 1, newMockVolInfoMap())
 		mgr.finishQueue.PushTask(t1.TaskID, t1)
 		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().Update(any, any).Times(2).Return(nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(errcode.ErrNewVuidNotMatch)
@@ -447,7 +448,7 @@ func TestDiskRepairerPopTaskAndFinish(t *testing.T) {
 	}
 	{
 		mgr := newDiskRepairer(t)
-		t1 := mockGenVolRepairTask(1, proto.RepairStateWorkCompleted, 1, newMockVolInfoMap())
+		t1 := mockGenVolRepairTask(1, proto.MigrateStateWorkCompleted, 1, newMockVolInfoMap())
 		mgr.finishQueue.PushTask(t1.TaskID, t1)
 		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().Update(any, any).Times(2).Return(nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(errcode.ErrStatChunkFailed)
@@ -470,7 +471,7 @@ func TestDiskRepairerPopTaskAndFinish(t *testing.T) {
 	}
 	{
 		mgr := newDiskRepairer(t)
-		t1 := mockGenVolRepairTask(1, proto.RepairStateWorkCompleted, 1, newMockVolInfoMap())
+		t1 := mockGenVolRepairTask(1, proto.MigrateStateWorkCompleted, 1, newMockVolInfoMap())
 		mgr.finishQueue.PushTask(t1.TaskID, t1)
 		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().Update(any, any).Times(2).Return(nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(nil)
@@ -504,29 +505,30 @@ func TestDiskRepairerCheckRepairedAndClear(t *testing.T) {
 			}
 			units = append(units, &ele)
 		}
-		t1 := &proto.VolRepairTask{
-			TaskID:  base.GenTaskID("disk-repair", volume.Vid),
-			BadVuid: units[0].Vuid,
+		t1 := &proto.MigrateTask{
+			TaskID:     base.GenTaskID("disk-repair", volume.Vid),
+			TaskType:   proto.TaskTypeDiskRepair,
+			SourceVuid: units[0].Vuid,
 		}
-		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return([]*proto.VolRepairTask{t1}, nil)
+		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return([]*proto.MigrateTask{t1}, nil)
 		mgr.checkRepairedAndClear()
 
-		t1.State = proto.RepairStateFinished
-		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return([]*proto.VolRepairTask{t1}, nil)
+		t1.State = proto.MigrateStateFinished
+		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return([]*proto.MigrateTask{t1}, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Return(nil, errMock)
 		mgr.checkRepairedAndClear()
 
-		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return([]*proto.VolRepairTask{t1}, nil)
+		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return([]*proto.MigrateTask{t1}, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Return(units, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetDiskInfo(any, any).Return(nil, errMock)
 		mgr.checkRepairedAndClear()
 
-		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return([]*proto.VolRepairTask{t1}, nil)
+		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return([]*proto.MigrateTask{t1}, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Return(nil, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().SetDiskRepaired(any, any).Return(errMock)
 		mgr.checkRepairedAndClear()
 
-		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return([]*proto.VolRepairTask{t1}, nil)
+		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return([]*proto.MigrateTask{t1}, nil)
 		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().MarkDeleteByDiskID(any, any).Return(nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Return(nil, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().SetDiskRepaired(any, any).Return(nil)
@@ -553,7 +555,7 @@ func TestDiskRepairerAcquireTask(t *testing.T) {
 	{
 		mgr := newDiskRepairer(t)
 		mgr.taskSwitch.(*mocks.MockSwitcher).EXPECT().Enabled().Return(true)
-		t1 := mockGenVolRepairTask(1, proto.RepairStatePrepared, 1, newMockVolInfoMap())
+		t1 := mockGenVolRepairTask(1, proto.MigrateStatePrepared, 1, newMockVolInfoMap())
 		mgr.workQueue.AddPreparedTask(idc, t1.TaskID, t1)
 		_, err := mgr.AcquireTask(ctx, idc)
 		require.NoError(t, err)
@@ -570,7 +572,7 @@ func TestDiskRepairerCancelTask(t *testing.T) {
 	}
 	{
 		mgr := newDiskRepairer(t)
-		t1 := mockGenVolRepairTask(1, proto.RepairStatePrepared, 1, newMockVolInfoMap())
+		t1 := mockGenVolRepairTask(1, proto.MigrateStatePrepared, 1, newMockVolInfoMap())
 		mgr.workQueue.AddPreparedTask(idc, t1.TaskID, t1)
 
 		err := mgr.CancelTask(ctx, &api.CancelTaskArgs{})
@@ -583,13 +585,13 @@ func TestDiskRepairerReclaimTask(t *testing.T) {
 	idc := "z0"
 	{
 		mgr := newDiskRepairer(t)
-		t1 := mockGenVolRepairTask(1, proto.RepairStatePrepared, 1, newMockVolInfoMap())
+		t1 := mockGenVolRepairTask(1, proto.MigrateStatePrepared, 1, newMockVolInfoMap())
 		err := mgr.ReclaimTask(ctx, idc, t1.TaskID, t1.Sources, t1.Destination, &client.AllocVunitInfo{})
 		require.Error(t, err)
 	}
 	{
 		mgr := newDiskRepairer(t)
-		t1 := mockGenVolRepairTask(1, proto.RepairStatePrepared, 1, newMockVolInfoMap())
+		t1 := mockGenVolRepairTask(1, proto.MigrateStatePrepared, 1, newMockVolInfoMap())
 		mgr.workQueue.AddPreparedTask(idc, t1.TaskID, t1)
 		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().Update(any, any).Return(errMock)
 		err := mgr.ReclaimTask(ctx, idc, t1.TaskID, t1.Sources, t1.Destination, &client.AllocVunitInfo{})
@@ -597,7 +599,7 @@ func TestDiskRepairerReclaimTask(t *testing.T) {
 	}
 	{
 		mgr := newDiskRepairer(t)
-		t1 := mockGenVolRepairTask(1, proto.RepairStatePrepared, 1, newMockVolInfoMap())
+		t1 := mockGenVolRepairTask(1, proto.MigrateStatePrepared, 1, newMockVolInfoMap())
 		mgr.workQueue.AddPreparedTask(idc, t1.TaskID, t1)
 		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().Update(any, any).Return(nil)
 		err := mgr.ReclaimTask(ctx, idc, t1.TaskID, t1.Sources, t1.Destination, &client.AllocVunitInfo{})
@@ -610,13 +612,13 @@ func TestDiskRepairerCompleteTask(t *testing.T) {
 	idc := "z0"
 	{
 		mgr := newDiskRepairer(t)
-		t1 := mockGenVolRepairTask(1, proto.RepairStatePrepared, 1, newMockVolInfoMap())
+		t1 := mockGenVolRepairTask(1, proto.MigrateStatePrepared, 1, newMockVolInfoMap())
 		err := mgr.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: idc, TaskId: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
 		require.Error(t, err)
 	}
 	{
 		mgr := newDiskRepairer(t)
-		t1 := mockGenVolRepairTask(1, proto.RepairStatePrepared, 1, newMockVolInfoMap())
+		t1 := mockGenVolRepairTask(1, proto.MigrateStatePrepared, 1, newMockVolInfoMap())
 		mgr.workQueue.AddPreparedTask(idc, t1.TaskID, t1)
 		err := mgr.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: idc, TaskId: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
 		require.NoError(t, err)
@@ -645,7 +647,7 @@ func TestDiskRepairerRenewalTask(t *testing.T) {
 	{
 		mgr := newDiskRepairer(t)
 		mgr.taskSwitch.(*mocks.MockSwitcher).EXPECT().Enabled().Return(true)
-		t1 := mockGenVolRepairTask(1, proto.RepairStatePrepared, 1, newMockVolInfoMap())
+		t1 := mockGenVolRepairTask(1, proto.MigrateStatePrepared, 1, newMockVolInfoMap())
 		mgr.workQueue.AddPreparedTask(idc, t1.TaskID, t1)
 		err := mgr.RenewalTask(ctx, idc, t1.TaskID)
 		require.NoError(t, err)
@@ -676,7 +678,7 @@ func TestDiskRepairerQueryTask(t *testing.T) {
 	}
 	{
 		mgr := newDiskRepairer(t)
-		t1 := mockGenVolRepairTask(1, proto.RepairStatePrepared, 1, newMockVolInfoMap())
+		t1 := mockGenVolRepairTask(1, proto.MigrateStatePrepared, 1, newMockVolInfoMap())
 		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().Find(any, any).Return(t1, nil)
 		_, err := mgr.QueryTask(ctx, taskID)
 		require.NoError(t, err)
@@ -709,10 +711,10 @@ func TestDiskRepairerProgress(t *testing.T) {
 	{
 		mgr := newDiskRepairer(t)
 		mgr.repairingDiskID = proto.DiskID(1)
-		t1 := mockGenVolRepairTask(1, proto.RepairStatePrepared, 1, newMockVolInfoMap())
-		t2 := mockGenVolRepairTask(2, proto.RepairStateFinished, 1, newMockVolInfoMap())
-		t3 := mockGenVolRepairTask(3, proto.RepairStateFinishedInAdvance, 1, newMockVolInfoMap())
-		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return([]*proto.VolRepairTask{t1, t2, t3}, nil)
+		t1 := mockGenVolRepairTask(1, proto.MigrateStatePrepared, 1, newMockVolInfoMap())
+		t2 := mockGenVolRepairTask(2, proto.MigrateStateFinished, 1, newMockVolInfoMap())
+		t3 := mockGenVolRepairTask(3, proto.MigrateStateFinishedInAdvance, 1, newMockVolInfoMap())
+		mgr.taskTbl.(*MockRepairTaskTable).EXPECT().FindByDiskID(any, any).Return([]*proto.MigrateTask{t1, t2, t3}, nil)
 		diskID, total, repaired := mgr.Progress(ctx)
 		require.Equal(t, proto.DiskID(1), diskID)
 		require.Equal(t, 3, total)

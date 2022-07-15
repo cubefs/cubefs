@@ -29,11 +29,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
-// IBalancer define the interface of balance manager
-type IBalancer interface {
-	Migrator
-}
-
 const (
 	collectBalanceTaskPauseS = 5
 )
@@ -55,7 +50,7 @@ type BalanceMgrConfig struct {
 
 // BalanceMgr balance manager
 type BalanceMgr struct {
-	IMigrater
+	IMigrator
 
 	clusterTopology IClusterTopology
 	clusterMgrCli   client.ClusterMgrAPI
@@ -76,23 +71,23 @@ func NewBalanceMgr(
 		clusterMgrCli:   clusterMgrCli,
 		cfg:             conf,
 	}
-	mgr.IMigrater = NewMigrateMgr(clusterMgrCli, volumeUpdater, taskSwitch, taskTbl,
-		&conf.MigrateConfig, proto.BalanceTaskType, conf.ClusterID)
-	mgr.IMigrater.SetLockFailHandleFunc(mgr.IMigrater.FinishTaskInAdvanceWhenLockFail)
+	mgr.IMigrator = NewMigrateMgr(clusterMgrCli, volumeUpdater, taskSwitch, taskTbl,
+		&conf.MigrateConfig, proto.TaskTypeBalance, conf.ClusterID)
+	mgr.IMigrator.SetLockFailHandleFunc(mgr.IMigrator.FinishTaskInAdvanceWhenLockFail)
 	return mgr
 }
 
 // Run run balance task manager
 func (mgr *BalanceMgr) Run() {
 	go mgr.collectTaskLoop()
-	mgr.IMigrater.Run()
+	mgr.IMigrator.Run()
 	go mgr.clearTaskLoop()
 }
 
 // Close close balance task manager
 func (mgr *BalanceMgr) Close() {
 	mgr.clusterTopology.Close()
-	mgr.IMigrater.Close()
+	mgr.IMigrator.Close()
 }
 
 func (mgr *BalanceMgr) collectTaskLoop() {
@@ -102,13 +97,13 @@ func (mgr *BalanceMgr) collectTaskLoop() {
 	for {
 		select {
 		case <-t.C:
-			mgr.IMigrater.WaitEnable()
+			mgr.IMigrator.WaitEnable()
 			err := mgr.collectionTask()
 			if err == ErrTooManyBalancingTasks || err == ErrNoBalanceVunit {
 				log.Debugf("no task to collect and sleep: sleep second[%d], err[%+v]", collectBalanceTaskPauseS, err)
 				time.Sleep(time.Duration(collectBalanceTaskPauseS) * time.Second)
 			}
-		case <-mgr.IMigrater.Done():
+		case <-mgr.IMigrator.Done():
 			return
 		}
 	}
@@ -118,10 +113,10 @@ func (mgr *BalanceMgr) collectionTask() (err error) {
 	span, ctx := trace.StartSpanFromContext(context.Background(), "balance_collectionTask")
 	defer span.Finish()
 
-	needBalanceDiskCnt := mgr.cfg.BalanceDiskCntLimit - mgr.IMigrater.GetMigratingDiskNum()
+	needBalanceDiskCnt := mgr.cfg.BalanceDiskCntLimit - mgr.IMigrator.GetMigratingDiskNum()
 	if needBalanceDiskCnt <= 0 {
 		span.Warnf("the number of balancing disk is greater than config: current[%d], conf[%d]",
-			mgr.IMigrater.GetMigratingDiskNum(), mgr.cfg.BalanceDiskCntLimit)
+			mgr.IMigrator.GetMigratingDiskNum(), mgr.cfg.BalanceDiskCntLimit)
 		return ErrTooManyBalancingTasks
 	}
 
@@ -165,7 +160,7 @@ func (mgr *BalanceMgr) selectDisks(maxFreeChunkCnt, minFreeChunkCnt int64) []*cl
 		if !disk.IsHealth() {
 			continue
 		}
-		if ok := mgr.IMigrater.IsMigratingDisk(disk.DiskID); ok {
+		if ok := mgr.IMigrator.IsMigratingDisk(disk.DiskID); ok {
 			continue
 		}
 		if disk.FreeChunkCnt < minFreeChunkCnt {
@@ -187,12 +182,13 @@ func (mgr *BalanceMgr) genOneBalanceTask(ctx context.Context, diskInfo *client.D
 	span.Debugf("select balance volume unit; vuid[%d+, volume_id[%v]", vuid, vuid.Vid())
 	task := &proto.MigrateTask{
 		TaskID:       mgr.genUniqTaskID(vuid.Vid()),
+		TaskType:     proto.TaskTypeBalance,
 		State:        proto.MigrateStateInited,
-		SourceIdc:    diskInfo.Idc,
+		SourceIDC:    diskInfo.Idc,
 		SourceDiskID: diskInfo.DiskID,
 		SourceVuid:   vuid,
 	}
-	mgr.IMigrater.AddTask(ctx, task)
+	mgr.IMigrator.AddTask(ctx, task)
 	return
 }
 
@@ -226,9 +222,9 @@ func (mgr *BalanceMgr) clearTaskLoop() {
 	for {
 		select {
 		case <-t.C:
-			mgr.IMigrater.WaitEnable()
+			mgr.IMigrator.WaitEnable()
 			mgr.ClearFinishedTask()
-		case <-mgr.IMigrater.Done():
+		case <-mgr.IMigrator.Done():
 			return
 		}
 	}
@@ -240,7 +236,7 @@ func (mgr *BalanceMgr) ClearFinishedTask() {
 	defer span.Finish()
 
 	clearStates := []proto.MigrateState{proto.MigrateStateFinished, proto.MigrateStateFinishedInAdvance}
-	mgr.IMigrater.ClearTasksByStates(ctx, clearStates)
+	mgr.IMigrator.ClearTasksByStates(ctx, clearStates)
 }
 
 func (mgr *BalanceMgr) genUniqTaskID(vid proto.Vid) string {

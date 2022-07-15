@@ -115,7 +115,7 @@ func newMockServiceWithOpts(ctr *gomock.Controller, isLeader bool) *Service {
 	blobDeleteMgr := NewMockTaskRunner(ctr)
 	shardRepairMgr := NewMockTaskRunner(ctr)
 	diskDropMgr := NewMockMigrater(ctr)
-	diskRepairMgr := NewMockDiskRepairer(ctr)
+	diskRepairMgr := NewMockMigrater(ctr)
 	manualMgr := NewMockMigrater(ctr)
 	balanceMgr := NewMockMigrater(ctr)
 	inspecterMgr := NewMockVolumeInspector(ctr)
@@ -167,7 +167,7 @@ func newMockServiceWithOpts(ctr *gomock.Controller, isLeader bool) *Service {
 	volumeUpdater.EXPECT().UpdateFollowerVolumeCache(any, any, any).AnyTimes().Return(nil)
 	volumeUpdater.EXPECT().UpdateLeaderVolumeCache(any, any).AnyTimes().Return(nil)
 
-	manualMgr.EXPECT().AcquireTask(any, any).AnyTimes().Return(&proto.MigrateTask{}, nil)
+	manualMgr.EXPECT().AcquireTask(any, any).AnyTimes().Return(proto.MigrateTask{TaskType: proto.TaskTypeManualMigrate}, nil)
 
 	volumeCache.EXPECT().Update(any).AnyTimes().Return(&client.VolumeInfoSimple{}, nil)
 

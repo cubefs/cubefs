@@ -64,7 +64,7 @@ func newMigrateMgr(t *testing.T) *MigrateMgr {
 			WorkQueueSize:           3,
 		},
 	}
-	mgr := NewMigrateMgr(clusterMgr, volumeUpdater, taskSwitch, migrateTbl, conf, proto.BalanceTaskType, 0)
+	mgr := NewMigrateMgr(clusterMgr, volumeUpdater, taskSwitch, migrateTbl, conf, proto.TaskTypeBalance, 0)
 	mgr.SetLockFailHandleFunc(mgr.FinishTaskInAdvanceWhenLockFail)
 	return mgr
 }
@@ -498,7 +498,7 @@ func TestMigrateQueryTask(t *testing.T) {
 	_, err := mgr.QueryTask(ctx, taskID)
 	require.ErrorIs(t, errMock, err)
 
-	mgr.taskTbl.(*MockMigrateTaskTable).EXPECT().Find(any, any).Return(&proto.MigrateTask{}, nil)
+	mgr.taskTbl.(*MockMigrateTaskTable).EXPECT().Find(any, any).Return(&proto.MigrateTask{TaskType: proto.TaskTypeDiskDrop}, nil)
 	_, err = mgr.QueryTask(ctx, taskID)
 	require.NoError(t, err)
 }

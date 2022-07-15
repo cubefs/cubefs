@@ -31,6 +31,28 @@ const (
 	TaskLeaseExpiredS  = 10 // task lease duration in scheduler
 )
 
+type TaskType string
+
+const (
+	TaskTypeDiskRepair    TaskType = "disk_repair"
+	TaskTypeBalance       TaskType = "balance"
+	TaskTypeDiskDrop      TaskType = "disk_drop"
+	TaskTypeManualMigrate TaskType = "manual_migrate"
+)
+
+func (t TaskType) Valid() bool {
+	switch t {
+	case TaskTypeDiskRepair, TaskTypeBalance, TaskTypeDiskDrop, TaskTypeManualMigrate:
+		return true
+	default:
+		return false
+	}
+}
+
+func (t TaskType) String() string {
+	return string(t)
+}
+
 type VunitLocation struct {
 	Vuid   Vuid   `json:"vuid" bson:"vuid"`
 	Host   string `json:"host" bson:"host"`
@@ -51,104 +73,6 @@ func CheckVunitLocations(locations []VunitLocation) bool {
 	return true
 }
 
-const (
-	RepairTaskType    = "repair_task"
-	BalanceTaskType   = "balance_task"
-	DiskDropTaskType  = "disk_drop_task"
-	ManualMigrateType = "manual_migrate"
-)
-
-var _taskType = map[string]struct{}{
-	RepairTaskType:    {},
-	BalanceTaskType:   {},
-	DiskDropTaskType:  {},
-	ManualMigrateType: {},
-}
-
-func ValidTaskType(task string) bool {
-	_, ok := _taskType[task]
-	return ok
-}
-
-type RepairState uint8
-
-const (
-	RepairStateInited RepairState = iota + 1
-	RepairStatePrepared
-	RepairStateWorkCompleted
-	RepairStateFinished
-	RepairStateFinishedInAdvance
-)
-
-const (
-	BrokenDiskTrigger   = 0
-	BrokenStripeTrigger = 1
-)
-
-type VolRepairTask struct {
-	TaskID        string      `json:"task_id" bson:"_id"`
-	State         RepairState `json:"state" bson:"state"`
-	WorkerRedoCnt uint8       `json:"worker_redo_cnt" bson:"worker_redo_cnt"`
-	RepairDiskID  DiskID      `json:"repair_disk_id" bson:"repair_disk_id"`
-
-	CodeMode    codemode.CodeMode `json:"code_mode" bson:"code_mode"`
-	Sources     []VunitLocation   `json:"sources" bson:"sources"` // include all replicas of volumes
-	Destination VunitLocation     `json:"destination" bson:"destination"`
-
-	BadVuid Vuid  `json:"bad_vuid"`
-	BadIdx  uint8 `json:"bad_idx" bson:"bad_idx"` // index of repair replica in volume replicas
-
-	BrokenDiskIDC string `json:"broken_disk_idc"`
-
-	Ctime string `json:"ctime" bson:"ctime"` // task create time
-	MTime string `json:"mtime" bson:"mtime"` // task modify time
-
-	// BrokenDiskTrigger: trigger by broken disk,
-	// BrokenStripeTrigger: trigger by stripe which has broken replica
-	TriggerBy int `json:"trigger_by" bson:"trigger_by"`
-}
-
-func (t *VolRepairTask) GetSrc() []VunitLocation {
-	return t.Sources
-}
-
-func (t *VolRepairTask) GetDest() VunitLocation {
-	return t.Destination
-}
-
-func (t *VolRepairTask) SetDest(dst VunitLocation) {
-	t.Destination = dst
-}
-
-func (t *VolRepairTask) NewDiskId() DiskID {
-	return t.Destination.DiskID
-}
-
-func (t *VolRepairTask) Vid() Vid {
-	return t.BadVuid.Vid()
-}
-
-func (t *VolRepairTask) RepairVuid() Vuid {
-	return t.BadVuid
-}
-
-func (t *VolRepairTask) Finished() bool {
-	return t.State == RepairStateFinished || t.State == RepairStateFinishedInAdvance
-}
-
-func (t *VolRepairTask) Running() bool {
-	return t.State == RepairStatePrepared || t.State == RepairStateWorkCompleted
-}
-
-func (t *VolRepairTask) Copy() *VolRepairTask {
-	task := &VolRepairTask{}
-	*task = *t
-	dst := make([]VunitLocation, len(t.Sources))
-	copy(dst, t.Sources)
-	task.Sources = dst
-	return task
-}
-
 type MigrateState uint8
 
 const (
@@ -160,11 +84,11 @@ const (
 )
 
 type MigrateTask struct {
-	TaskID        string       `json:"task_id" bson:"_id"`                     // task id
-	State         MigrateState `json:"state" bson:"state"`                     // task state
-	WorkerRedoCnt uint8        `json:"worker_redo_cnt" bson:"worker_redo_cnt"` // worker redo task count
+	TaskID   string       `json:"task_id" bson:"_id"`         // task id
+	TaskType TaskType     `json:"task_type" bson:"task_type"` // task type
+	State    MigrateState `json:"state" bson:"state"`         // task state
 
-	SourceIdc    string `json:"source_idc" bson:"source_idc"`         // source idc
+	SourceIDC    string `json:"source_idc" bson:"source_idc"`         // source idc
 	SourceDiskID DiskID `json:"source_disk_id" bson:"source_disk_id"` // source disk id
 	SourceVuid   Vuid   `json:"source_vuid" bson:"source_vuid"`       // source volume unit id
 
@@ -179,22 +103,36 @@ type MigrateTask struct {
 	FinishAdvanceReason string `json:"finish_advance_reason" bson:"finish_advance_reason"`
 	// task migrate chunk direct download first,if fail will recover chunk by ec repair
 	ForbiddenDirectDownload bool `json:"forbidden_direct_download" bson:"forbidden_direct_download"`
+
+	WorkerRedoCnt uint8 `json:"worker_redo_cnt" bson:"worker_redo_cnt"` // worker redo task count
 }
 
-func (t *MigrateTask) GetSrc() []VunitLocation {
+func (t *MigrateTask) DestinationDiskID() DiskID {
+	return t.Destination.DiskID
+}
+
+func (t *MigrateTask) Vid() Vid {
+	return t.SourceVuid.Vid()
+}
+
+func (t *MigrateTask) GetSources() []VunitLocation {
 	return t.Sources
 }
 
-func (t *MigrateTask) GetDest() VunitLocation {
+func (t *MigrateTask) GetDestination() VunitLocation {
 	return t.Destination
 }
 
-func (t *MigrateTask) SetDest(dest VunitLocation) {
+func (t *MigrateTask) SetDestination(dest VunitLocation) {
 	t.Destination = dest
 }
 
 func (t *MigrateTask) DestinationDiskId() DiskID {
 	return t.Destination.DiskID
+}
+
+func (t *MigrateTask) GetSourceDiskID() DiskID {
+	return t.SourceDiskID
 }
 
 func (t *MigrateTask) Running() bool {
@@ -212,10 +150,6 @@ func (t *MigrateTask) Copy() *MigrateTask {
 	copy(dst, t.Sources)
 	task.Sources = dst
 	return task
-}
-
-func (t *MigrateTask) SrcMigDiskID() DiskID {
-	return t.SourceDiskID
 }
 
 type InspectCheckPoint struct {

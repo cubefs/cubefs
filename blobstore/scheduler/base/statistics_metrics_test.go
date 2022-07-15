@@ -33,7 +33,7 @@ func (m *mockStats) StatQueueTaskCnt() (preparing, workerDoing, finishing int) {
 }
 
 func TestTaskStatisticsMgr(t *testing.T) {
-	mgr := NewTaskStatsMgrAndRun(1, proto.RepairTaskType, &mockStats{})
+	mgr := NewTaskStatsMgrAndRun(1, proto.TaskTypeDiskRepair, &mockStats{})
 	mgr.ReportWorkerTaskStats("repair_task_1", proto.TaskStatistics{}, 10, 10)
 
 	_, err := mgr.QueryTaskDetail("repair_task_1")

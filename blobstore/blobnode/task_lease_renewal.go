@@ -80,40 +80,40 @@ func (tr *TaskRenter) stopRenewalFailTask(ctx context.Context, ret *api.TaskRene
 	span := trace.SpanFromContextSafe(ctx)
 	for taskID, errMsg := range ret.Repair {
 		if len(errMsg) != 0 {
-			span.Infof("renewal fail should stop: taskID[%s], type[%s]", taskID, proto.RepairTaskType)
-			err := tr.tm.StopTaskRunner(taskID, proto.RepairTaskType)
+			span.Infof("renewal fail should stop: taskID[%s], type[%s]", taskID, proto.TaskTypeDiskRepair)
+			err := tr.tm.StopTaskRunner(taskID, proto.TaskTypeDiskRepair)
 			if err != nil {
-				span.Errorf("stop task runner failed: taskID[%s], taskType[%s], err[%+v]", taskID, proto.RepairTaskType, err)
+				span.Errorf("stop task runner failed: taskID[%s], taskType[%s], err[%+v]", taskID, proto.TaskTypeDiskRepair, err)
 			}
 		}
 	}
 
 	for taskID, errMsg := range ret.Balance {
 		if len(errMsg) != 0 {
-			span.Infof("renewal fail should stop: taskID[%s], type[%s]", taskID, proto.BalanceTaskType)
-			err := tr.tm.StopTaskRunner(taskID, proto.BalanceTaskType)
+			span.Infof("renewal fail should stop: taskID[%s], type[%s]", taskID, proto.TaskTypeBalance)
+			err := tr.tm.StopTaskRunner(taskID, proto.TaskTypeBalance)
 			if err != nil {
-				span.Errorf("stop task runner failed: taskID[%s], taskType[%s], err[%+v]", taskID, proto.BalanceTaskType, err)
+				span.Errorf("stop task runner failed: taskID[%s], taskType[%s], err[%+v]", taskID, proto.TaskTypeBalance, err)
 			}
 		}
 	}
 
 	for taskID, errMsg := range ret.DiskDrop {
 		if len(errMsg) != 0 {
-			span.Infof("renewal fail should stop: taskID[%s], type[%s]", taskID, proto.DiskDropTaskType)
-			err := tr.tm.StopTaskRunner(taskID, proto.DiskDropTaskType)
+			span.Infof("renewal fail should stop: taskID[%s], type[%s]", taskID, proto.TaskTypeDiskDrop)
+			err := tr.tm.StopTaskRunner(taskID, proto.TaskTypeDiskDrop)
 			if err != nil {
-				span.Errorf("stop task runner failed: taskID[%s], taskType[%s], err[%+v]", taskID, proto.DiskDropTaskType, err)
+				span.Errorf("stop task runner failed: taskID[%s], taskType[%s], err[%+v]", taskID, proto.TaskTypeDiskDrop, err)
 			}
 		}
 	}
 
 	for taskID, errMsg := range ret.ManualMigrate {
 		if len(errMsg) != 0 {
-			span.Infof("renewal fail should stop: taskID[%s], type[%s]", taskID, proto.ManualMigrateType)
-			err := tr.tm.StopTaskRunner(taskID, proto.ManualMigrateType)
+			span.Infof("renewal fail should stop: taskID[%s], type[%s]", taskID, proto.TaskTypeManualMigrate)
+			err := tr.tm.StopTaskRunner(taskID, proto.TaskTypeManualMigrate)
 			if err != nil {
-				span.Errorf("stop task runner failed: taskID[%s], taskType[%s], err[%+v]", taskID, proto.ManualMigrateType, err)
+				span.Errorf("stop task runner failed: taskID[%s], taskType[%s], err[%+v]", taskID, proto.TaskTypeManualMigrate, err)
 			}
 		}
 	}

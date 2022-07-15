@@ -23,14 +23,14 @@ import (
 
 // VolRepairTaskEx  volume repair task execution
 type VolRepairTaskEx struct {
-	taskInfo                 *proto.VolRepairTask
+	taskInfo                 *proto.MigrateTask
 	downloadShardConcurrency int
 	blobNodeCli              IVunitAccess
 }
 
 // RepairWorker repair worker
 type RepairWorker struct {
-	t                        *proto.VolRepairTask
+	t                        *proto.MigrateTask
 	blobNodeCli              IVunitAccess
 	benchmarkBids            []*ShardInfoSimple
 	downloadShardConcurrency int
@@ -56,7 +56,7 @@ func (w *RepairWorker) GenTasklets(ctx context.Context) ([]Tasklet, *WorkError) 
 		w.t.Sources,
 		w.t.Destination,
 		w.t.CodeMode,
-		[]uint8{w.t.BadIdx})
+		[]uint8{w.t.SourceVuid.Index()})
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func (w *RepairWorker) ExecTasklet(ctx context.Context, tasklet Tasklet) *WorkEr
 	shardRecover := NewShardRecover(replicas, mode, tasklet.bids, workutils.BigBufPool, w.blobNodeCli, w.downloadShardConcurrency)
 	defer shardRecover.ReleaseBuf()
 
-	return MigrateBids(ctx, shardRecover, w.t.BadIdx, w.t.Destination, false, tasklet.bids, w.blobNodeCli)
+	return MigrateBids(ctx, shardRecover, w.t.SourceVuid.Index(), w.t.Destination, false, tasklet.bids, w.blobNodeCli)
 }
 
 // Check check repair task
@@ -83,23 +83,23 @@ func (w *RepairWorker) Check(ctx context.Context) *WorkError {
 }
 
 // CancelArgs returns cancel args
-func (w *RepairWorker) CancelArgs() (taskID, taskType string, src []proto.VunitLocation, dest proto.VunitLocation) {
-	return w.t.TaskID, proto.RepairTaskType, w.t.Sources, w.t.Destination
+func (w *RepairWorker) CancelArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
+	return w.t.TaskID, w.TaskType(), w.t.Sources, w.t.Destination
 }
 
 // CompleteArgs returns complete args
-func (w *RepairWorker) CompleteArgs() (taskID, taskType string, src []proto.VunitLocation, dest proto.VunitLocation) {
-	return w.t.TaskID, proto.RepairTaskType, w.t.Sources, w.t.Destination
+func (w *RepairWorker) CompleteArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
+	return w.t.TaskID, w.TaskType(), w.t.Sources, w.t.Destination
 }
 
 // ReclaimArgs returns reclaim args
-func (w *RepairWorker) ReclaimArgs() (taskID, taskType string, src []proto.VunitLocation, dest proto.VunitLocation) {
-	return w.t.TaskID, proto.RepairTaskType, w.t.Sources, w.t.Destination
+func (w *RepairWorker) ReclaimArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
+	return w.t.TaskID, w.TaskType(), w.t.Sources, w.t.Destination
 }
 
 // TaskType returns task type
-func (w *RepairWorker) TaskType() (taskType string) {
-	return proto.RepairTaskType
+func (w *RepairWorker) TaskType() (taskType proto.TaskType) {
+	return proto.TaskTypeDiskRepair
 }
 
 // GetBenchmarkBids returns benchmark bids

@@ -25,15 +25,9 @@ import (
 	"github.com/cubefs/cubefs/blobstore/scheduler/db"
 )
 
-// IManualMigrater interface of manual migrater
-type IManualMigrater interface {
-	Migrator
-	AddManualTask(ctx context.Context, vuid proto.Vuid, forbiddenDirectDownload bool) (err error)
-}
-
 // ManualMigrateMgr manual migrate manager
 type ManualMigrateMgr struct {
-	IMigrater
+	IMigrator
 
 	clusterMgrCli client.ClusterMgrAPI
 }
@@ -46,9 +40,9 @@ func NewManualMigrateMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater clien
 	}
 	cfg := defaultMigrateConfig(clusterID)
 
-	mgr.IMigrater = NewMigrateMgr(clusterMgrCli, volumeUpdater, taskswitch.NewEnabledTaskSwitch(), taskTbl,
-		&cfg, proto.ManualMigrateType, clusterID)
-	mgr.IMigrater.SetLockFailHandleFunc(mgr.IMigrater.FinishTaskInAdvanceWhenLockFail)
+	mgr.IMigrator = NewMigrateMgr(clusterMgrCli, volumeUpdater, taskswitch.NewEnabledTaskSwitch(), taskTbl,
+		&cfg, proto.TaskTypeManualMigrate, clusterID)
+	mgr.IMigrator.SetLockFailHandleFunc(mgr.IMigrator.FinishTaskInAdvanceWhenLockFail)
 	return mgr
 }
 
@@ -70,13 +64,14 @@ func (mgr *ManualMigrateMgr) AddManualTask(ctx context.Context, vuid proto.Vuid,
 
 	task := &proto.MigrateTask{
 		TaskID:                  mgr.genUniqTaskID(vuid.Vid()),
+		TaskType:                proto.TaskTypeManualMigrate,
 		State:                   proto.MigrateStateInited,
-		SourceIdc:               disk.Idc,
+		SourceIDC:               disk.Idc,
 		SourceDiskID:            disk.DiskID,
 		SourceVuid:              vuid,
 		ForbiddenDirectDownload: forbiddenDirectDownload,
 	}
-	mgr.IMigrater.AddTask(ctx, task)
+	mgr.IMigrator.AddTask(ctx, task)
 
 	span.Debugf("add manual migrate task success: task_info[%+v]", task)
 	return nil

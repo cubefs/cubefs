@@ -22,7 +22,7 @@ import (
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
-	schedulerapi "github.com/cubefs/cubefs/blobstore/api/scheduler"
+	"github.com/cubefs/cubefs/blobstore/api/scheduler"
 	base "github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
 	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -70,7 +70,7 @@ type WorkerConfig struct {
 	AcquireIntervalMs int `json:"acquire_interval_ms"`
 
 	// scheduler client config
-	Scheduler schedulerapi.Config `json:"scheduler"`
+	Scheduler scheduler.Config `json:"scheduler"`
 	// blbonode client config
 	BlobNode bnapi.Config `json:"blobnode"`
 
@@ -218,7 +218,7 @@ func (s *WorkerService) WorkerStats(c *rpc.Context) {
 	c.RespondJSON(ret)
 }
 
-func newRenewalCli(cfg schedulerapi.Config, service cmapi.APIService, clusterID proto.ClusterID) client.IScheduler {
+func newRenewalCli(cfg scheduler.Config, service cmapi.APIService, clusterID proto.ClusterID) client.IScheduler {
 	// The timeout period must be strictly controlled
 	cfg.ClientTimeoutMs = proto.RenewalTimeoutS * 1000
 	return client.NewSchedulerClient(&cfg, service, clusterID)
@@ -298,7 +298,7 @@ func (s *WorkerService) hasInspectTaskResource() bool {
 func (s *WorkerService) acquireTask() {
 	span, ctx := trace.StartSpanFromContext(context.Background(), "acquireTask")
 
-	t, err := s.schedulerCli.AcquireTask(ctx, &schedulerapi.AcquireArgs{IDC: s.taskRenter.idc})
+	t, err := s.schedulerCli.AcquireTask(ctx, &scheduler.AcquireArgs{IDC: s.taskRenter.idc})
 	if err != nil {
 		code := rpc.DetectStatusCode(err)
 		if code != errcode.CodeNotingTodo {
@@ -308,55 +308,48 @@ func (s *WorkerService) acquireTask() {
 	}
 
 	if !t.IsValid() {
-		span.Errorf("task is illegal: task type[%s], disk drop[%+v], balance[%+v], repair[%+v], manual[%+v]",
-			t.TaskType, t.DiskDrop, t.Balance, t.Repair, t.ManualMigrate)
+		span.Errorf("task is illegal: task type[%s], task[%+v]",
+			t.TaskType(), t.Task)
 		return
 	}
 
-	var taskID string
-	switch t.TaskType {
-	case proto.RepairTaskType:
-		taskID = t.Repair.TaskID
+	taskID := t.Task.TaskID
+	switch t.TaskType() {
+	case proto.TaskTypeDiskRepair:
 		err = s.taskRunnerMgr.AddRepairTask(ctx, VolRepairTaskEx{
-			taskInfo:                 t.Repair,
+			taskInfo:                 &t.Task,
 			downloadShardConcurrency: s.DownloadShardConcurrency,
 			blobNodeCli:              s.blobNodeCli,
 		})
 
-	case proto.BalanceTaskType:
-		taskID = t.Balance.TaskID
+	case proto.TaskTypeBalance:
 		err = s.taskRunnerMgr.AddBalanceTask(ctx, MigrateTaskEx{
-			taskInfo:                 t.Balance,
-			taskType:                 proto.BalanceTaskType,
+			taskInfo:                 &t.Task,
 			blobNodeCli:              s.blobNodeCli,
 			downloadShardConcurrency: s.DownloadShardConcurrency,
 		})
 
-	case proto.DiskDropTaskType:
-		taskID = t.DiskDrop.TaskID
+	case proto.TaskTypeDiskDrop:
 		err = s.taskRunnerMgr.AddDiskDropTask(ctx, MigrateTaskEx{
-			taskInfo:                 t.DiskDrop,
-			taskType:                 proto.DiskDropTaskType,
+			taskInfo:                 &t.Task,
 			blobNodeCli:              s.blobNodeCli,
 			downloadShardConcurrency: s.DownloadShardConcurrency,
 		})
-	case proto.ManualMigrateType:
-		taskID = t.ManualMigrate.TaskID
+	case proto.TaskTypeManualMigrate:
 		err = s.taskRunnerMgr.AddManualMigrateTask(ctx, MigrateTaskEx{
-			taskInfo:                 t.ManualMigrate,
-			taskType:                 proto.ManualMigrateType,
+			taskInfo:                 &t.Task,
 			blobNodeCli:              s.blobNodeCli,
 			downloadShardConcurrency: s.DownloadShardConcurrency,
 		})
 	default:
-		span.Fatalf("can not support task: type[%+v]", t.TaskType)
+		span.Fatalf("can not support task: type[%+v]", t.TaskType())
 	}
 
 	if err != nil {
 		span.Errorf("add task failed: taskID[%s], err[%v]", taskID, err)
 		return
 	}
-	span.Infof("acquire task success: task_type[%s], taskID[%s]", t.TaskType, taskID)
+	span.Infof("acquire task success: task_type[%s], taskID[%s]", t.TaskType(), taskID)
 }
 
 // acquire inspect task

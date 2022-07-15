@@ -28,12 +28,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
-// IDiskDroper define the interface of disk drop manager
-type IDiskDroper interface {
-	Migrator
-	Progress(ctx context.Context) (repairingDiskID proto.DiskID, total, repaired int)
-}
-
 // DiskDropMgrConfig disk drop manager config
 type DiskDropMgrConfig struct {
 	MigrateConfig
@@ -41,7 +35,7 @@ type DiskDropMgrConfig struct {
 
 // DiskDropMgr disk drop manager
 type DiskDropMgr struct {
-	IMigrater
+	IMigrator
 
 	mu             sync.Mutex
 	dropDisk       *client.DiskInfoSimple
@@ -62,15 +56,15 @@ func NewDiskDropMgr(
 		clusterMgrCli: clusterMgrCli,
 		cfg:           conf,
 	}
-	mgr.IMigrater = NewMigrateMgr(clusterMgrCli, volumeUpdater, taskSwitch, taskTbl,
-		&conf.MigrateConfig, proto.DiskDropTaskType, conf.ClusterID)
+	mgr.IMigrator = NewMigrateMgr(clusterMgrCli, volumeUpdater, taskSwitch, taskTbl,
+		&conf.MigrateConfig, proto.TaskTypeDiskDrop, conf.ClusterID)
 	return mgr
 }
 
 // Load load disk drop task from database
 func (mgr *DiskDropMgr) Load() (err error) {
 	ctx := context.Background()
-	allTasks, err := mgr.IMigrater.FindAll(ctx)
+	allTasks, err := mgr.IMigrator.FindAll(ctx)
 	if err != nil {
 		return err
 	}
@@ -79,8 +73,8 @@ func (mgr *DiskDropMgr) Load() (err error) {
 		return
 	}
 
-	droppingDiskID := allTasks[0].SrcMigDiskID()
-	tasks, err := mgr.IMigrater.FindByDiskID(ctx, droppingDiskID)
+	droppingDiskID := allTasks[0].GetSourceDiskID()
+	tasks, err := mgr.IMigrator.FindByDiskID(ctx, droppingDiskID)
 	if err != nil {
 		return err
 	}
@@ -90,13 +84,13 @@ func (mgr *DiskDropMgr) Load() (err error) {
 
 	mgr.setDroppingDiskID(droppingDiskID)
 
-	return mgr.IMigrater.Load()
+	return mgr.IMigrator.Load()
 }
 
 // Run run disk drop task
 func (mgr *DiskDropMgr) Run() {
 	go mgr.collectTaskLoop()
-	mgr.IMigrater.Run()
+	mgr.IMigrator.Run()
 	go mgr.checkDroppedAndClearLoop()
 }
 
@@ -108,9 +102,9 @@ func (mgr *DiskDropMgr) collectTaskLoop() {
 	for {
 		select {
 		case <-t.C:
-			mgr.IMigrater.WaitEnable()
+			mgr.IMigrator.WaitEnable()
 			mgr.collectTask()
-		case <-mgr.IMigrater.Done():
+		case <-mgr.IMigrator.Done():
 			return
 		}
 	}
@@ -201,7 +195,7 @@ func (mgr *DiskDropMgr) genDiskDropTasks(ctx context.Context, diskID proto.DiskI
 }
 
 func (mgr *DiskDropMgr) dropVuidsFromDb(ctx context.Context, diskID proto.DiskID) (drops []proto.Vuid, err error) {
-	tasks, err := mgr.IMigrater.FindByDiskID(ctx, diskID)
+	tasks, err := mgr.IMigrator.FindByDiskID(ctx, diskID)
 	if err != nil {
 		return nil, err
 	}
@@ -228,12 +222,13 @@ func (mgr *DiskDropMgr) initOneTask(ctx context.Context, src proto.Vuid, dropDis
 	vid := src.Vid()
 	t := proto.MigrateTask{
 		TaskID:       mgr.genUniqTaskID(vid),
+		TaskType:     proto.TaskTypeDiskDrop,
 		State:        proto.MigrateStateInited,
 		SourceDiskID: dropDiskID,
-		SourceIdc:    diskIDC,
+		SourceIDC:    diskIDC,
 		SourceVuid:   src,
 	}
-	mgr.IMigrater.AddTask(ctx, &t)
+	mgr.IMigrator.AddTask(ctx, &t)
 }
 
 func (mgr *DiskDropMgr) acquireDropDisk(ctx context.Context) (*client.DiskInfoSimple, error) {
@@ -262,9 +257,9 @@ func (mgr *DiskDropMgr) checkDroppedAndClearLoop() {
 	for {
 		select {
 		case <-t.C:
-			mgr.IMigrater.WaitEnable()
+			mgr.IMigrator.WaitEnable()
 			mgr.checkDroppedAndClear()
-		case <-mgr.IMigrater.Done():
+		case <-mgr.IMigrator.Done():
 			return
 		}
 	}
@@ -295,7 +290,7 @@ func (mgr *DiskDropMgr) checkDropped(ctx context.Context, diskID proto.DiskID) b
 	span := trace.SpanFromContextSafe(ctx)
 	span.Infof("check dropped: disk_id[%d]", diskID)
 
-	tasks, err := mgr.IMigrater.FindByDiskID(ctx, diskID)
+	tasks, err := mgr.IMigrator.FindByDiskID(ctx, diskID)
 	if err != nil {
 		span.Errorf("find all tasks failed: disk_id[%d], err[%+v]", diskID, err)
 		return false
@@ -324,7 +319,7 @@ func (mgr *DiskDropMgr) checkDropped(ctx context.Context, diskID proto.DiskID) b
 }
 
 func (mgr *DiskDropMgr) clearTasksByDiskID(ctx context.Context, diskID proto.DiskID) {
-	mgr.IMigrater.ClearTasksByDiskID(ctx, diskID)
+	mgr.IMigrator.ClearTasksByDiskID(ctx, diskID)
 }
 
 func (mgr *DiskDropMgr) setDroppingDiskID(diskID proto.DiskID) {
@@ -365,7 +360,7 @@ func (mgr *DiskDropMgr) Progress(ctx context.Context) (dropDiskID proto.DiskID, 
 		return base.EmptyDiskID, 0, 0
 	}
 
-	allTasks, err := mgr.IMigrater.FindByDiskID(ctx, dropDiskID)
+	allTasks, err := mgr.IMigrator.FindByDiskID(ctx, dropDiskID)
 	if err != nil {
 		span.Errorf("find all task failed: err[%+v]", err)
 		return dropDiskID, 0, 0
