@@ -13,7 +13,6 @@ require (
 	github.com/desertbit/grumble v1.1.1
 	github.com/dustin/go-humanize v1.0.0
 	github.com/fatih/color v1.13.0
-	github.com/globalsign/mgo v0.0.0-20181015135952-eeefdecb41b8
 	github.com/go-redis/redis/v8 v8.11.4
 	github.com/golang/mock v1.6.0
 	github.com/golang/protobuf v1.5.2
@@ -25,6 +24,7 @@ require (
 	github.com/klauspost/reedsolomon v1.9.2
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/prometheus/client_golang v1.11.0
+	github.com/rs/xid v1.4.0
 	github.com/stretchr/testify v1.7.0
 	github.com/tecbot/gorocksdb v0.0.0-20191217155057-f0fad39f321c
 	go.etcd.io/etcd/raft/v3 v3.5.1

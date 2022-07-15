@@ -42,7 +42,6 @@ type Service struct {
 	diskRepairMgr IDisKMigrator
 	manualMigMgr  IManualMigrator
 	inspectMgr    IVolumeInspector
-	archiveMgr    IArchiver
 
 	shardRepairMgr ITaskRunner
 	blobDeleteMgr  ITaskRunner

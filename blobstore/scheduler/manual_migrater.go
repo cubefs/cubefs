@@ -18,11 +18,10 @@ import (
 	"context"
 
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/scheduler/base"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
-	"github.com/cubefs/cubefs/blobstore/scheduler/db"
 )
 
 // ManualMigrateMgr manual migrate manager
@@ -34,12 +33,13 @@ type ManualMigrateMgr struct {
 
 // NewManualMigrateMgr returns manual migrate manager
 func NewManualMigrateMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.IVolumeUpdater,
-	taskTbl db.IMigrateTaskTable, conf *MigrateConfig) *ManualMigrateMgr {
+	taskLogger recordlog.Encoder, conf *MigrateConfig) *ManualMigrateMgr {
 	mgr := &ManualMigrateMgr{
 		clusterMgrCli: clusterMgrCli,
 	}
-	mgr.IMigrator = NewMigrateMgr(clusterMgrCli, volumeUpdater, taskswitch.NewEnabledTaskSwitch(),
-		taskTbl, conf, proto.TaskTypeManualMigrate)
+
+	mgr.IMigrator = NewMigrateMgr(clusterMgrCli, volumeUpdater, taskswitch.NewEnabledTaskSwitch(), taskLogger,
+		conf, proto.TaskTypeManualMigrate)
 	mgr.IMigrator.SetLockFailHandleFunc(mgr.IMigrator.FinishTaskInAdvanceWhenLockFail)
 	return mgr
 }
@@ -61,7 +61,7 @@ func (mgr *ManualMigrateMgr) AddManualTask(ctx context.Context, vuid proto.Vuid,
 	}
 
 	task := &proto.MigrateTask{
-		TaskID:                  base.GenTaskID("manual_migrate", vuid.Vid()),
+		TaskID:                  client.GenMigrateTaskID(proto.TaskTypeManualMigrate, disk.DiskID, vuid.Vid()),
 		TaskType:                proto.TaskTypeManualMigrate,
 		State:                   proto.MigrateStateInited,
 		SourceIDC:               disk.Idc,

@@ -20,7 +20,7 @@ import (
 	"math"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"github.com/rs/xid"
 
 	"github.com/cubefs/cubefs/blobstore/common/counter"
 	"github.com/cubefs/cubefs/blobstore/common/errors"
@@ -79,7 +79,7 @@ func Subtraction(a, b []comproto.Vuid) (c []comproto.Vuid) {
 
 // GenTaskID return task id
 func GenTaskID(prefix string, vid comproto.Vid) string {
-	return fmt.Sprintf("%s-%d-%v", prefix, vid, primitive.NewObjectID().Hex())
+	return fmt.Sprintf("%s-%d-%v", prefix, vid, xid.New().String())
 }
 
 // DataMountFormat format data

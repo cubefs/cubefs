@@ -18,6 +18,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -301,5 +302,142 @@ func TestClustermgrClient(t *testing.T) {
 		cli.client.(*MockClusterManager).EXPECT().RegisterService(any, any, any, any, any).Return(nil)
 		err := cli.Register(ctx, RegisterInfo{})
 		require.NoError(t, err)
+	}
+	{
+		// get service
+		cli.client.(*MockClusterManager).EXPECT().GetService(any, any).Return(cmapi.ServiceInfo{}, nil)
+		_, err := cli.GetService(ctx, "mock", proto.ClusterID(1))
+		require.NoError(t, err)
+	}
+	{
+		// add migrate task
+		cli.client.(*MockClusterManager).EXPECT().SetKV(any, any, any).Return(nil)
+		err := cli.AddMigrateTask(ctx, &proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), proto.Vid(1))})
+		require.NoError(t, err)
+	}
+	{
+		// update migrate task
+		cli.client.(*MockClusterManager).EXPECT().SetKV(any, any, any).Return(nil)
+		err := cli.UpdateMigrateTask(ctx, &proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), proto.Vid(1))})
+		require.NoError(t, err)
+	}
+	{
+		// get migrate task
+		task1 := &proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), proto.Vid(1))}
+		taskBytes, _ := json.Marshal(task1)
+		cli.client.(*MockClusterManager).EXPECT().SetKV(any, any, any).Return(nil)
+		cli.client.(*MockClusterManager).EXPECT().GetKV(any, any).Return(cmapi.GetKvRet{Value: taskBytes}, nil)
+		err := cli.AddMigrateTask(ctx, task1)
+		require.NoError(t, err)
+		task2, err := cli.GetMigrateTask(ctx, task1.TaskID)
+		require.NoError(t, err)
+		require.Equal(t, task1.TaskID, task2.TaskID)
+
+		// unmarshal failed
+		taskBytes = append(taskBytes, []byte("mock")...)
+		cli.client.(*MockClusterManager).EXPECT().GetKV(any, any).Return(cmapi.GetKvRet{Value: taskBytes}, nil)
+		_, err = cli.GetMigrateTask(ctx, task1.TaskID)
+		require.Error(t, err)
+
+		// clustermgr return err
+		cli.client.(*MockClusterManager).EXPECT().GetKV(any, any).Return(cmapi.GetKvRet{}, errMock)
+		_, err = cli.GetMigrateTask(ctx, task1.TaskID)
+		require.True(t, errors.Is(err, errMock))
+	}
+	{
+		// delete migrate task
+		task1 := &proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), proto.Vid(1))}
+		cli.client.(*MockClusterManager).EXPECT().DeleteKV(any, any).Return(nil)
+		err := cli.DeleteMigrateTask(ctx, task1.TaskID)
+		require.NoError(t, err)
+	}
+	{
+		// list all migrate tasks by disk_id
+		diskID := proto.DiskID(100)
+		task1 := &proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeBalance, diskID, proto.Vid(1)), TaskType: proto.TaskTypeBalance}
+		task1Bytes, _ := json.Marshal(task1)
+		task2 := &proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeBalance, diskID, proto.Vid(2)), TaskType: proto.TaskTypeBalance}
+		task2Bytes, _ := json.Marshal(task2)
+		cli.client.(*MockClusterManager).EXPECT().ListKV(any, any).Return(cmapi.ListKvRet{Kvs: []*cmapi.KeyValue{{Key: task1.TaskID, Value: task1Bytes}}, Marker: task1.TaskID}, nil)
+		cli.client.(*MockClusterManager).EXPECT().ListKV(any, any).Return(cmapi.ListKvRet{Kvs: []*cmapi.KeyValue{{Key: task2.TaskID, Value: task2Bytes}}, Marker: task2.TaskID}, nil)
+		cli.client.(*MockClusterManager).EXPECT().ListKV(any, any).Return(cmapi.ListKvRet{Kvs: []*cmapi.KeyValue{}, Marker: defaultListTaskMarker}, nil)
+		tasks, err := cli.ListAllMigrateTasksByDiskID(ctx, proto.TaskTypeBalance, diskID)
+		require.NoError(t, err)
+		require.Equal(t, 2, len(tasks))
+		require.Equal(t, task1.TaskID, tasks[0].TaskID)
+		require.Equal(t, task2.TaskID, tasks[1].TaskID)
+
+		// unmarshal failed
+		cli.client.(*MockClusterManager).EXPECT().ListKV(any, any).Return(cmapi.ListKvRet{Kvs: []*cmapi.KeyValue{{Key: task1.TaskID, Value: append(task1Bytes, []byte("mock")...)}}, Marker: task1.TaskID}, nil)
+		_, err = cli.ListAllMigrateTasksByDiskID(ctx, proto.TaskTypeBalance, diskID)
+		require.Error(t, err)
+
+		// clustermgr return err
+		cli.client.(*MockClusterManager).EXPECT().ListKV(any, any).Return(cmapi.ListKvRet{}, errMock)
+		_, err = cli.ListAllMigrateTasksByDiskID(ctx, proto.TaskTypeBalance, diskID)
+		require.True(t, errors.Is(err, errMock))
+
+		// list all migrate task
+		task3 := &proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeBalance, proto.DiskID(200), proto.Vid(2)), TaskType: proto.TaskTypeBalance}
+		task3Bytes, _ := json.Marshal(task3)
+		cli.client.(*MockClusterManager).EXPECT().ListKV(any, any).Return(cmapi.ListKvRet{Kvs: []*cmapi.KeyValue{
+			{Key: task1.TaskID, Value: task1Bytes},
+			{Key: task2.TaskID, Value: task2Bytes},
+			{Key: task3.TaskID, Value: task3Bytes},
+		}, Marker: task3.TaskID}, nil)
+		cli.client.(*MockClusterManager).EXPECT().ListKV(any, any).Return(cmapi.ListKvRet{Kvs: []*cmapi.KeyValue{}, Marker: defaultListTaskMarker}, nil)
+		tasks, err = cli.ListAllMigrateTasks(ctx, proto.TaskTypeBalance)
+		require.NoError(t, err)
+		require.Equal(t, 3, len(tasks))
+		require.Equal(t, task1.TaskID, tasks[0].TaskID)
+		require.Equal(t, task2.TaskID, tasks[1].TaskID)
+		require.Equal(t, task3.TaskID, tasks[2].TaskID)
+	}
+	{
+		// add migrating disk meta
+		diskMeta1 := &MigratingDiskMeta{Disk: &DiskInfoSimple{DiskID: proto.DiskID(1)}, TaskType: proto.TaskTypeDiskDrop}
+		metaBytes, _ := json.Marshal(diskMeta1)
+		cli.client.(*MockClusterManager).EXPECT().SetKV(any, any, any).Return(nil)
+		err := cli.AddMigratingDisk(ctx, diskMeta1)
+		require.NoError(t, err)
+
+		// get migrating disk meta
+		cli.client.(*MockClusterManager).EXPECT().GetKV(any, any).Return(cmapi.GetKvRet{Value: metaBytes}, nil)
+		diskMeta2, err := cli.GetMigratingDisk(ctx, diskMeta1.TaskType, diskMeta1.Disk.DiskID)
+		require.NoError(t, err)
+		require.Equal(t, diskMeta1.ID(), diskMeta2.ID())
+
+		// delete migrating task
+		cli.client.(*MockClusterManager).EXPECT().DeleteKV(any, any).Return(nil)
+		err = cli.DeleteMigratingDisk(ctx, diskMeta1.TaskType, diskMeta1.Disk.DiskID)
+		require.NoError(t, err)
+	}
+	{
+		// list migrating disk
+		diskMeta1 := &MigratingDiskMeta{Disk: &DiskInfoSimple{DiskID: proto.DiskID(1)}, TaskType: proto.TaskTypeDiskDrop}
+		diskMeta1Bytes, _ := json.Marshal(diskMeta1)
+		diskMeta2 := &MigratingDiskMeta{Disk: &DiskInfoSimple{DiskID: proto.DiskID(1)}, TaskType: proto.TaskTypeDiskDrop}
+		diskMeta2Bytes, _ := json.Marshal(diskMeta2)
+		cli.client.(*MockClusterManager).EXPECT().ListKV(any, any).Return(cmapi.ListKvRet{Kvs: []*cmapi.KeyValue{
+			{Key: diskMeta1.ID(), Value: diskMeta1Bytes}, {Key: diskMeta2.ID(), Value: diskMeta2Bytes},
+		}, Marker: diskMeta2.ID()}, nil)
+		cli.client.(*MockClusterManager).EXPECT().ListKV(any, any).Return(cmapi.ListKvRet{Kvs: []*cmapi.KeyValue{}, Marker: defaultListTaskMarker}, nil)
+		tasks, err := cli.ListMigratingDisks(ctx, proto.TaskTypeDiskDrop)
+		require.NoError(t, err)
+		require.Equal(t, 2, len(tasks))
+		require.Equal(t, diskMeta1.ID(), tasks[0].ID())
+		require.Equal(t, diskMeta2.ID(), tasks[1].ID())
+
+		// unmarshal failed
+		cli.client.(*MockClusterManager).EXPECT().ListKV(any, any).Return(cmapi.ListKvRet{Kvs: []*cmapi.KeyValue{
+			{Key: diskMeta1.ID(), Value: diskMeta1Bytes}, {Key: diskMeta2.ID(), Value: append(diskMeta2Bytes, []byte("mock")...)},
+		}, Marker: diskMeta2.ID()}, nil)
+		_, err = cli.ListMigratingDisks(ctx, proto.TaskTypeDiskDrop)
+		require.Error(t, err)
+
+		// clustermgr list failed
+		cli.client.(*MockClusterManager).EXPECT().ListKV(any, any).Return(cmapi.ListKvRet{}, errMock)
+		_, err = cli.ListMigratingDisks(ctx, proto.TaskTypeDiskDrop)
+		require.True(t, errors.Is(err, errMock))
 	}
 }

@@ -21,11 +21,10 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/scheduler/base"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
-	"github.com/cubefs/cubefs/blobstore/scheduler/db"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
@@ -60,13 +59,13 @@ type BalanceMgr struct {
 
 // NewBalanceMgr returns balance manager
 func NewBalanceMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.IVolumeUpdater, taskSwitch taskswitch.ISwitcher,
-	clusterTopology IClusterTopology, taskTbl db.IMigrateTaskTable, conf *BalanceMgrConfig) *BalanceMgr {
+	clusterTopology IClusterTopology, taskLogger recordlog.Encoder, conf *BalanceMgrConfig) *BalanceMgr {
 	mgr := &BalanceMgr{
 		clusterTopology: clusterTopology,
 		clusterMgrCli:   clusterMgrCli,
 		cfg:             conf,
 	}
-	mgr.IMigrator = NewMigrateMgr(clusterMgrCli, volumeUpdater, taskSwitch, taskTbl,
+	mgr.IMigrator = NewMigrateMgr(clusterMgrCli, volumeUpdater, taskSwitch, taskLogger,
 		&conf.MigrateConfig, proto.TaskTypeBalance)
 	mgr.IMigrator.SetLockFailHandleFunc(mgr.IMigrator.FinishTaskInAdvanceWhenLockFail)
 	return mgr
@@ -76,7 +75,6 @@ func NewBalanceMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.IVol
 func (mgr *BalanceMgr) Run() {
 	go mgr.collectTaskLoop()
 	mgr.IMigrator.Run()
-	go mgr.clearTaskLoop()
 }
 
 // Close close balance task manager
@@ -174,9 +172,9 @@ func (mgr *BalanceMgr) genOneBalanceTask(ctx context.Context, diskInfo *client.D
 		return
 	}
 
-	span.Debugf("select balance volume unit; vuid[%d+, volume_id[%v]", vuid, vuid.Vid())
+	span.Debugf("select balance volume unit; vuid[%d], volume_id[%v]", vuid, vuid.Vid())
 	task := &proto.MigrateTask{
-		TaskID:       base.GenTaskID("balance", vuid.Vid()),
+		TaskID:       client.GenMigrateTaskID(proto.TaskTypeBalance, diskInfo.DiskID, vuid.Vid()),
 		TaskType:     proto.TaskTypeBalance,
 		State:        proto.MigrateStateInited,
 		SourceIDC:    diskInfo.Idc,
@@ -210,30 +208,6 @@ func (mgr *BalanceMgr) selectBalanceVunit(ctx context.Context, diskID proto.Disk
 		}
 	}
 	return vuid, ErrNoBalanceVunit
-}
-
-func (mgr *BalanceMgr) clearTaskLoop() {
-	t := time.NewTicker(time.Duration(mgr.cfg.CheckTaskIntervalS) * time.Second)
-	defer t.Stop()
-
-	for {
-		select {
-		case <-t.C:
-			mgr.IMigrator.WaitEnable()
-			mgr.ClearFinishedTask()
-		case <-mgr.IMigrator.Done():
-			return
-		}
-	}
-}
-
-// ClearFinishedTask clear finished balance task
-func (mgr *BalanceMgr) ClearFinishedTask() {
-	span, ctx := trace.StartSpanFromContext(context.Background(), "balance_ClearFinishedTask")
-	defer span.Finish()
-
-	clearStates := []proto.MigrateState{proto.MigrateStateFinished, proto.MigrateStateFinishedInAdvance}
-	mgr.IMigrator.ClearTasksByStates(ctx, clearStates)
 }
 
 func freeChunkCntMax(disks []*client.DiskInfoSimple) int64 {

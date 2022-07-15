@@ -55,7 +55,6 @@ func newMockService(t *testing.T) *Service {
 	manualMgr := NewMockMigrater(ctr)
 	balanceMgr := NewMockMigrater(ctr)
 	inspectorMgr := NewMockVolumeInspector(ctr)
-	archiver := NewMockArchiver(ctr)
 	volumeCache := NewMockVolumeCache(ctr)
 
 	// return balance task
@@ -174,7 +173,6 @@ func newMockService(t *testing.T) *Service {
 		manualMigMgr:  manualMgr,
 		diskRepairMgr: diskRepairMgr,
 		inspectMgr:    inspectorMgr,
-		archiveMgr:    archiver,
 
 		shardRepairMgr: shardRepairMgr,
 		blobDeleteMgr:  blobDeleteMgr,

@@ -6,9 +6,7 @@ nohup ./consul agent -dev -client 0.0.0.0 >> /tmp/consul.log  2>&1 &
 uuid=`./kafka_2.13-3.1.0/bin/kafka-storage.sh random-uuid`
 ./kafka_2.13-3.1.0/bin/kafka-storage.sh format -t $uuid -c kafka_2.13-3.1.0/config/kraft/server.properties
 ./kafka_2.13-3.1.0/bin/kafka-server-start.sh -daemon kafka_2.13-3.1.0/config/kraft/server.properties
-# start mongo
-mkdir -p ./mongo/db
-./mongodb-linux-x86_64-rhel70-3.6.23/bin/mongod --dbpath ./mongo/db --logpath /tmp/mongod.log --fork
+
 # Start the clustermgr
 nohup ./clustermgr -f conf/clustermgr.conf >> /tmp/clustermgr.log  2>&1 &
 nohup ./clustermgr -f conf/clustermgr1.conf >> /tmp/clustermgr1.log  2>&1 &
