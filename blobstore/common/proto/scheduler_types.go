@@ -84,31 +84,27 @@ const (
 )
 
 type MigrateTask struct {
-	TaskID   string       `json:"task_id" bson:"_id"`         // task id
-	TaskType TaskType     `json:"task_type" bson:"task_type"` // task type
-	State    MigrateState `json:"state" bson:"state"`         // task state
+	TaskID   string       `json:"task_id"`   // task id
+	TaskType TaskType     `json:"task_type"` // task type
+	State    MigrateState `json:"state"`     // task state
 
-	SourceIDC    string `json:"source_idc" bson:"source_idc"`         // source idc
-	SourceDiskID DiskID `json:"source_disk_id" bson:"source_disk_id"` // source disk id
-	SourceVuid   Vuid   `json:"source_vuid" bson:"source_vuid"`       // source volume unit id
+	SourceIDC    string `json:"source_idc"`     // source idc
+	SourceDiskID DiskID `json:"source_disk_id"` // source disk id
+	SourceVuid   Vuid   `json:"source_vuid"`    // source volume unit id
 
-	Sources  []VunitLocation   `json:"sources" bson:"sources"`     // source volume units location
-	CodeMode codemode.CodeMode `json:"code_mode" bson:"code_mode"` // codemode
+	Sources  []VunitLocation   `json:"sources"`   // source volume units location
+	CodeMode codemode.CodeMode `json:"code_mode"` // codemode
 
-	Destination VunitLocation `json:"destination" bson:"destination"` // destination volume unit location
+	Destination VunitLocation `json:"destination"` // destination volume unit location
 
-	Ctime string `json:"ctime" bson:"ctime"` // create time
-	MTime string `json:"mtime" bson:"mtime"` // modify time
+	Ctime string `json:"ctime"` // create time
+	MTime string `json:"mtime"` // modify time
 
-	FinishAdvanceReason string `json:"finish_advance_reason" bson:"finish_advance_reason"`
+	FinishAdvanceReason string `json:"finish_advance_reason"`
 	// task migrate chunk direct download first,if fail will recover chunk by ec repair
-	ForbiddenDirectDownload bool `json:"forbidden_direct_download" bson:"forbidden_direct_download"`
+	ForbiddenDirectDownload bool `json:"forbidden_direct_download"`
 
-	WorkerRedoCnt uint8 `json:"worker_redo_cnt" bson:"worker_redo_cnt"` // worker redo task count
-}
-
-func (t *MigrateTask) DestinationDiskID() DiskID {
-	return t.Destination.DiskID
+	WorkerRedoCnt uint8 `json:"worker_redo_cnt"` // worker redo task count
 }
 
 func (t *MigrateTask) Vid() Vid {
@@ -127,7 +123,7 @@ func (t *MigrateTask) SetDestination(dest VunitLocation) {
 	t.Destination = dest
 }
 
-func (t *MigrateTask) DestinationDiskId() DiskID {
+func (t *MigrateTask) DestinationDiskID() DiskID {
 	return t.Destination.DiskID
 }
 
@@ -137,10 +133,6 @@ func (t *MigrateTask) GetSourceDiskID() DiskID {
 
 func (t *MigrateTask) Running() bool {
 	return t.State == MigrateStatePrepared || t.State == MigrateStateWorkCompleted
-}
-
-func (t *MigrateTask) Finished() bool {
-	return t.State == MigrateStateFinished || t.State == MigrateStateFinishedInAdvance
 }
 
 func (t *MigrateTask) Copy() *MigrateTask {
@@ -180,14 +172,6 @@ func (inspect *InspectRet) Err() error {
 		return nil
 	}
 	return errors.New(inspect.InspectErrStr)
-}
-
-// ArchiveRecord archive record
-type ArchiveRecord struct {
-	TaskID      string      `bson:"_id"`
-	TaskType    string      `bson:"task_type"`
-	ArchiveTime string      `bson:"archive_time"`
-	Content     interface{} `bson:"content"`
 }
 
 type ShardRepairTask struct {

@@ -8,6 +8,7 @@ import (
 	context "context"
 	reflect "reflect"
 
+	clustermgr "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	proto "github.com/cubefs/cubefs/blobstore/common/proto"
 	client "github.com/cubefs/cubefs/blobstore/scheduler/client"
 	gomock "github.com/golang/mock/gomock"
@@ -36,6 +37,34 @@ func (m *MockClusterMgrAPI) EXPECT() *MockClusterMgrAPIMockRecorder {
 	return m.recorder
 }
 
+// AddMigrateTask mocks base method.
+func (m *MockClusterMgrAPI) AddMigrateTask(arg0 context.Context, arg1 *proto.MigrateTask) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddMigrateTask", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AddMigrateTask indicates an expected call of AddMigrateTask.
+func (mr *MockClusterMgrAPIMockRecorder) AddMigrateTask(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddMigrateTask", reflect.TypeOf((*MockClusterMgrAPI)(nil).AddMigrateTask), arg0, arg1)
+}
+
+// AddMigratingDisk mocks base method.
+func (m *MockClusterMgrAPI) AddMigratingDisk(arg0 context.Context, arg1 *client.MigratingDiskMeta) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddMigratingDisk", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AddMigratingDisk indicates an expected call of AddMigratingDisk.
+func (mr *MockClusterMgrAPIMockRecorder) AddMigratingDisk(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddMigratingDisk", reflect.TypeOf((*MockClusterMgrAPI)(nil).AddMigratingDisk), arg0, arg1)
+}
+
 // AllocVolumeUnit mocks base method.
 func (m *MockClusterMgrAPI) AllocVolumeUnit(arg0 context.Context, arg1 proto.Vuid) (*client.AllocVunitInfo, error) {
 	m.ctrl.T.Helper()
@@ -49,6 +78,34 @@ func (m *MockClusterMgrAPI) AllocVolumeUnit(arg0 context.Context, arg1 proto.Vui
 func (mr *MockClusterMgrAPIMockRecorder) AllocVolumeUnit(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocVolumeUnit", reflect.TypeOf((*MockClusterMgrAPI)(nil).AllocVolumeUnit), arg0, arg1)
+}
+
+// DeleteMigrateTask mocks base method.
+func (m *MockClusterMgrAPI) DeleteMigrateTask(arg0 context.Context, arg1 string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteMigrateTask", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteMigrateTask indicates an expected call of DeleteMigrateTask.
+func (mr *MockClusterMgrAPIMockRecorder) DeleteMigrateTask(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMigrateTask", reflect.TypeOf((*MockClusterMgrAPI)(nil).DeleteMigrateTask), arg0, arg1)
+}
+
+// DeleteMigratingDisk mocks base method.
+func (m *MockClusterMgrAPI) DeleteMigratingDisk(arg0 context.Context, arg1 proto.TaskType, arg2 proto.DiskID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteMigratingDisk", arg0, arg1, arg2)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteMigratingDisk indicates an expected call of DeleteMigratingDisk.
+func (mr *MockClusterMgrAPIMockRecorder) DeleteMigratingDisk(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMigratingDisk", reflect.TypeOf((*MockClusterMgrAPI)(nil).DeleteMigratingDisk), arg0, arg1, arg2)
 }
 
 // GetConfig mocks base method.
@@ -81,6 +138,36 @@ func (mr *MockClusterMgrAPIMockRecorder) GetDiskInfo(arg0, arg1 interface{}) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDiskInfo", reflect.TypeOf((*MockClusterMgrAPI)(nil).GetDiskInfo), arg0, arg1)
 }
 
+// GetMigrateTask mocks base method.
+func (m *MockClusterMgrAPI) GetMigrateTask(arg0 context.Context, arg1 string) (*proto.MigrateTask, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetMigrateTask", arg0, arg1)
+	ret0, _ := ret[0].(*proto.MigrateTask)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetMigrateTask indicates an expected call of GetMigrateTask.
+func (mr *MockClusterMgrAPIMockRecorder) GetMigrateTask(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMigrateTask", reflect.TypeOf((*MockClusterMgrAPI)(nil).GetMigrateTask), arg0, arg1)
+}
+
+// GetMigratingDisk mocks base method.
+func (m *MockClusterMgrAPI) GetMigratingDisk(arg0 context.Context, arg1 proto.TaskType, arg2 proto.DiskID) (*client.MigratingDiskMeta, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetMigratingDisk", arg0, arg1, arg2)
+	ret0, _ := ret[0].(*client.MigratingDiskMeta)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetMigratingDisk indicates an expected call of GetMigratingDisk.
+func (mr *MockClusterMgrAPIMockRecorder) GetMigratingDisk(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMigratingDisk", reflect.TypeOf((*MockClusterMgrAPI)(nil).GetMigratingDisk), arg0, arg1, arg2)
+}
+
 // GetService mocks base method.
 func (m *MockClusterMgrAPI) GetService(arg0 context.Context, arg1 string, arg2 proto.ClusterID) ([]string, error) {
 	m.ctrl.T.Helper()
@@ -109,6 +196,36 @@ func (m *MockClusterMgrAPI) GetVolumeInfo(arg0 context.Context, arg1 proto.Vid) 
 func (mr *MockClusterMgrAPIMockRecorder) GetVolumeInfo(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVolumeInfo", reflect.TypeOf((*MockClusterMgrAPI)(nil).GetVolumeInfo), arg0, arg1)
+}
+
+// ListAllMigrateTasks mocks base method.
+func (m *MockClusterMgrAPI) ListAllMigrateTasks(arg0 context.Context, arg1 proto.TaskType) ([]*proto.MigrateTask, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListAllMigrateTasks", arg0, arg1)
+	ret0, _ := ret[0].([]*proto.MigrateTask)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListAllMigrateTasks indicates an expected call of ListAllMigrateTasks.
+func (mr *MockClusterMgrAPIMockRecorder) ListAllMigrateTasks(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAllMigrateTasks", reflect.TypeOf((*MockClusterMgrAPI)(nil).ListAllMigrateTasks), arg0, arg1)
+}
+
+// ListAllMigrateTasksByDiskID mocks base method.
+func (m *MockClusterMgrAPI) ListAllMigrateTasksByDiskID(arg0 context.Context, arg1 proto.TaskType, arg2 proto.DiskID) ([]*proto.MigrateTask, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListAllMigrateTasksByDiskID", arg0, arg1, arg2)
+	ret0, _ := ret[0].([]*proto.MigrateTask)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListAllMigrateTasksByDiskID indicates an expected call of ListAllMigrateTasksByDiskID.
+func (mr *MockClusterMgrAPIMockRecorder) ListAllMigrateTasksByDiskID(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAllMigrateTasksByDiskID", reflect.TypeOf((*MockClusterMgrAPI)(nil).ListAllMigrateTasksByDiskID), arg0, arg1, arg2)
 }
 
 // ListBrokenDisks mocks base method.
@@ -169,6 +286,37 @@ func (m *MockClusterMgrAPI) ListDropDisks(arg0 context.Context) ([]*client.DiskI
 func (mr *MockClusterMgrAPIMockRecorder) ListDropDisks(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDropDisks", reflect.TypeOf((*MockClusterMgrAPI)(nil).ListDropDisks), arg0)
+}
+
+// ListMigrateTasks mocks base method.
+func (m *MockClusterMgrAPI) ListMigrateTasks(arg0 context.Context, arg1 proto.TaskType, arg2 *clustermgr.ListKvOpts) ([]*proto.MigrateTask, string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListMigrateTasks", arg0, arg1, arg2)
+	ret0, _ := ret[0].([]*proto.MigrateTask)
+	ret1, _ := ret[1].(string)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ListMigrateTasks indicates an expected call of ListMigrateTasks.
+func (mr *MockClusterMgrAPIMockRecorder) ListMigrateTasks(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMigrateTasks", reflect.TypeOf((*MockClusterMgrAPI)(nil).ListMigrateTasks), arg0, arg1, arg2)
+}
+
+// ListMigratingDisks mocks base method.
+func (m *MockClusterMgrAPI) ListMigratingDisks(arg0 context.Context, arg1 proto.TaskType) ([]*client.MigratingDiskMeta, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListMigratingDisks", arg0, arg1)
+	ret0, _ := ret[0].([]*client.MigratingDiskMeta)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListMigratingDisks indicates an expected call of ListMigratingDisks.
+func (mr *MockClusterMgrAPIMockRecorder) ListMigratingDisks(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMigratingDisks", reflect.TypeOf((*MockClusterMgrAPI)(nil).ListMigratingDisks), arg0, arg1)
 }
 
 // ListRepairingDisks mocks base method.
@@ -298,6 +446,20 @@ func (m *MockClusterMgrAPI) UnlockVolume(arg0 context.Context, arg1 proto.Vid) e
 func (mr *MockClusterMgrAPIMockRecorder) UnlockVolume(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnlockVolume", reflect.TypeOf((*MockClusterMgrAPI)(nil).UnlockVolume), arg0, arg1)
+}
+
+// UpdateMigrateTask mocks base method.
+func (m *MockClusterMgrAPI) UpdateMigrateTask(arg0 context.Context, arg1 *proto.MigrateTask) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateMigrateTask", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateMigrateTask indicates an expected call of UpdateMigrateTask.
+func (mr *MockClusterMgrAPIMockRecorder) UpdateMigrateTask(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateMigrateTask", reflect.TypeOf((*MockClusterMgrAPI)(nil).UpdateMigrateTask), arg0, arg1)
 }
 
 // UpdateVolume mocks base method.

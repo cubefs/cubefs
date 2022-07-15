@@ -35,13 +35,11 @@ var (
 
 // scheduler
 var (
-	ErrNoSuchService   = errors.New("no such service")
 	ErrIllegalTaskType = errors.New("illegal task type")
 	ErrCanNotDropped   = errors.New("disk can not dropped")
 
 	// error code
 	ErrNothingTodo = Error(CodeNotingTodo)
-	ErrNoInspect   = Error(CodeNoInspect)
 )
 
 // worker

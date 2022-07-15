@@ -24,11 +24,11 @@ import (
 	"time"
 
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
-
 	api "github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/cmd"
 	"github.com/cubefs/cubefs/blobstore/common/config"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -165,25 +165,31 @@ func NewService(conf *Config) (svr *Service, err error) {
 	topologyMgr := NewClusterTopologyMgr(clusterMgrCli, topoConf)
 
 	// all migrate manager
+	taskLogger, err := recordlog.NewEncoder(&conf.TaskLog)
+	if err != nil {
+		return nil, err
+	}
 	balanceTaskSwitch, err := switchMgr.AddSwitch(taskswitch.BalanceSwitchName)
 	if err != nil {
 		return nil, err
 	}
-	balanceMgr := NewBalanceMgr(clusterMgrCli, volumeUpdater, balanceTaskSwitch, topologyMgr, database.BalanceTable, &conf.Balance)
+	balanceMgr := NewBalanceMgr(clusterMgrCli, volumeUpdater, balanceTaskSwitch, topologyMgr, taskLogger, &conf.Balance)
 
 	diskDropTaskSwitch, err := switchMgr.AddSwitch(taskswitch.DiskDropSwitchName)
 	if err != nil {
 		return nil, err
 	}
-	diskDropMgr := NewDiskDropMgr(clusterMgrCli, volumeUpdater, diskDropTaskSwitch, database.DiskDropTable, &conf.DiskDrop)
+	diskDropMgr := NewDiskDropMgr(clusterMgrCli, volumeUpdater, diskDropTaskSwitch, taskLogger, &conf.DiskDrop)
 
+	// new disk repair manager
 	diskRepairTaskSwitch, err := switchMgr.AddSwitch(taskswitch.DiskRepairSwitchName)
 	if err != nil {
 		return nil, err
 	}
-	diskRepairMgr := NewDiskRepairMgr(clusterMgrCli, diskRepairTaskSwitch, database.RepairTaskTable, &conf.DiskRepair)
 
-	manualMigMgr := NewManualMigrateMgr(clusterMgrCli, volumeUpdater, database.ManualMigrateTable, &conf.ManualMigrate)
+	diskRepairMgr := NewDiskRepairMgr(clusterMgrCli, diskRepairTaskSwitch, taskLogger, &conf.DiskRepair)
+
+	manualMigMgr := NewManualMigrateMgr(clusterMgrCli, volumeUpdater, taskLogger, &conf.ManualMigrate)
 
 	mqProxy := client.NewProxyClient(&conf.Proxy, cmapi.New(&conf.ClusterMgr), conf.ClusterID)
 	inspectorTaskSwitch, err := switchMgr.AddSwitch(taskswitch.VolumeInspectSwitchName)
@@ -192,16 +198,11 @@ func NewService(conf *Config) (svr *Service, err error) {
 	}
 	inspectMgr := NewVolumeInspectMgr(database.InspectCheckPointTable, clusterMgrCli, mqProxy, inspectorTaskSwitch, &conf.VolumeInspect)
 
-	// new archive store manager
-	archiveMgr := NewArchiveStoreMgr(database.ArchiveTable, conf.Archive)
-	archiveMgr.RegisterTables(database.BalanceTable, database.DiskDropTable, database.RepairTaskTable)
-
 	svr.balanceMgr = balanceMgr
 	svr.diskDropMgr = diskDropMgr
 	svr.manualMigMgr = manualMigMgr
 	svr.diskRepairMgr = diskRepairMgr
 	svr.inspectMgr = inspectMgr
-	svr.archiveMgr = archiveMgr
 
 	err = svr.waitAndLoad()
 	if err != nil {
@@ -257,7 +258,6 @@ func (svr *Service) Run() {
 	svr.balanceMgr.Run()
 	svr.diskDropMgr.Run()
 	svr.manualMigMgr.Run()
-	svr.archiveMgr.Run()
 	svr.inspectMgr.Run()
 }
 
@@ -349,7 +349,6 @@ func (svr *Service) Close() {
 	svr.diskDropMgr.Close()
 	svr.manualMigMgr.Close()
 	svr.inspectMgr.Close()
-	svr.archiveMgr.Close()
 }
 
 // NewHandler returns app server handler

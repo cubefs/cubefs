@@ -16,7 +16,12 @@ package client
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"sync"
+	"time"
+
+	"github.com/rs/xid"
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -28,11 +33,11 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
-// ClusterMgrAPI define the interface of clustermgr used by scheduler
-type ClusterMgrAPI interface {
+type ClusterMgrConfigAPI interface {
 	GetConfig(ctx context.Context, key string) (val string, err error)
+}
 
-	// volume
+type ClusterMgrVolumeAPI interface {
 	GetVolumeInfo(ctx context.Context, Vid proto.Vid) (ret *VolumeInfoSimple, err error)
 	LockVolume(ctx context.Context, Vid proto.Vid) (err error)
 	UnlockVolume(ctx context.Context, Vid proto.Vid) (err error)
@@ -41,8 +46,9 @@ type ClusterMgrAPI interface {
 	ReleaseVolumeUnit(ctx context.Context, vuid proto.Vuid, diskID proto.DiskID) (err error)
 	ListDiskVolumeUnits(ctx context.Context, diskID proto.DiskID) (ret []*VunitInfoSimple, err error)
 	ListVolume(ctx context.Context, marker proto.Vid, count int) (volInfo []*VolumeInfoSimple, retVid proto.Vid, err error)
+}
 
-	// disk
+type ClusterMgrDiskAPI interface {
 	ListClusterDisks(ctx context.Context) (disks []*DiskInfoSimple, err error)
 	ListBrokenDisks(ctx context.Context, count int) (disks []*DiskInfoSimple, err error)
 	ListRepairingDisks(ctx context.Context) (disks []*DiskInfoSimple, err error)
@@ -51,16 +57,98 @@ type ClusterMgrAPI interface {
 	SetDiskRepaired(ctx context.Context, diskID proto.DiskID) (err error)
 	SetDiskDropped(ctx context.Context, diskID proto.DiskID) (err error)
 	GetDiskInfo(ctx context.Context, diskID proto.DiskID) (ret *DiskInfoSimple, err error)
+}
 
-	// register
+type ClusterMgrServiceAPI interface {
 	Register(ctx context.Context, info RegisterInfo) error
 	GetService(ctx context.Context, name string, clusterID proto.ClusterID) (hosts []string, err error)
 }
 
+type ClusterMgrTaskAPI interface {
+	UpdateMigrateTask(ctx context.Context, value *proto.MigrateTask) (err error)
+	AddMigrateTask(ctx context.Context, value *proto.MigrateTask) (err error)
+	GetMigrateTask(ctx context.Context, key string) (task *proto.MigrateTask, err error)
+	DeleteMigrateTask(ctx context.Context, key string) (err error)
+	ListMigrateTasks(ctx context.Context, taskType proto.TaskType, args *cmapi.ListKvOpts) (tasks []*proto.MigrateTask, marker string, err error)
+	ListAllMigrateTasks(ctx context.Context, taskType proto.TaskType) (tasks []*proto.MigrateTask, err error)
+	ListAllMigrateTasksByDiskID(ctx context.Context, taskType proto.TaskType, diskID proto.DiskID) (tasks []*proto.MigrateTask, err error)
+	AddMigratingDisk(ctx context.Context, value *MigratingDiskMeta) (err error)
+	DeleteMigratingDisk(ctx context.Context, taskType proto.TaskType, diskID proto.DiskID) (err error)
+	GetMigratingDisk(ctx context.Context, taskType proto.TaskType, diskID proto.DiskID) (meta *MigratingDiskMeta, err error)
+	ListMigratingDisks(ctx context.Context, taskType proto.TaskType) (disks []*MigratingDiskMeta, err error)
+}
+
+// ClusterMgrAPI define the interface of clustermgr used by scheduler
+type ClusterMgrAPI interface {
+	ClusterMgrConfigAPI
+	ClusterMgrVolumeAPI
+	ClusterMgrDiskAPI
+	ClusterMgrServiceAPI
+	ClusterMgrTaskAPI
+}
+
+// migrate task key generate rule
+//
+//  - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//  |  task_type  |  disk_id  |  volume_id  | random_id |
+//  - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// for example:
+//  	balance-10-18-cbkgq4ic605btusi7g90
+//		disk_repair-6-1-cbkgq9qc605btusi7gf0
+//		disk_drop-6-12-cbkgq9qc605btusi7gg0
+//		manual_migrate-6-18-cbkgq9qc605btusi7gj0
+//
+//	migrating disk key generate rule
+//
+//  - - - - - - - - - - - - - - - - - - - - - - -
+//  | _migratingDiskPrefix | task_type | disk_id |
+//  - - - - - - - - - - - - - - - - - - - - - - -
+//  for example:
+// 		migrating-disk_repair-1
+//		migrating-disk_drop-2
+//
+const (
+	_delimiter           = "-"
+	_migratingDiskPrefix = "migrating"
+)
+
 var (
 	defaultListDiskNum    = 1000
 	defaultListDiskMarker = proto.DiskID(0)
+	defaultListTaskNum    = 1000
+	defaultListTaskMarker = ""
 )
+
+type MigratingDiskMeta struct {
+	Disk     *DiskInfoSimple `json:"disk"`
+	TaskType proto.TaskType  `json:"task_type"`
+	Ctime    string          `json:"ctime"`
+}
+
+func (d *MigratingDiskMeta) ID() string {
+	return genMigratingDiskID(d.TaskType, d.Disk.DiskID)
+}
+
+func genMigratingDiskID(taskType proto.TaskType, diskID proto.DiskID) string {
+	return fmt.Sprintf("%s%d", genMigratingDiskPrefix(taskType), diskID)
+}
+
+func genMigratingDiskPrefix(taskType proto.TaskType) string {
+	return fmt.Sprintf("%s%s%s%s", _migratingDiskPrefix, _delimiter, taskType, _delimiter)
+}
+
+// GenMigrateTaskID return uniq task id
+func GenMigrateTaskID(taskType proto.TaskType, diskID proto.DiskID, volumeID proto.Vid) string {
+	return fmt.Sprintf("%s%d%s%s", GenMigrateTaskPrefixByDiskID(taskType, diskID), volumeID, _delimiter, xid.New().String())
+}
+
+func GenMigrateTaskPrefix(taskType proto.TaskType) string {
+	return fmt.Sprintf("%s%s", taskType, _delimiter)
+}
+
+func GenMigrateTaskPrefixByDiskID(taskType proto.TaskType, diskID proto.DiskID) string {
+	return fmt.Sprintf("%s%d%s", GenMigrateTaskPrefix(taskType), diskID, _delimiter)
+}
 
 // VolumeInfoSimple volume info used by scheduler
 type VolumeInfoSimple struct {
@@ -242,6 +330,10 @@ type IClusterManager interface {
 	DroppedDisk(ctx context.Context, id proto.DiskID) (err error)
 	RegisterService(ctx context.Context, node cmapi.ServiceNode, tickInterval, heartbeatTicks, expiresTicks uint32) (err error)
 	GetService(ctx context.Context, args cmapi.GetServiceArgs) (info cmapi.ServiceInfo, err error)
+	GetKV(ctx context.Context, key string) (ret cmapi.GetKvRet, err error)
+	DeleteKV(ctx context.Context, key string) (err error)
+	SetKV(ctx context.Context, key string, value []byte) (err error)
+	ListKV(ctx context.Context, args *cmapi.ListKvOpts) (ret cmapi.ListKvRet, err error)
 }
 
 // clustermgrClient clustermgr client
@@ -621,6 +713,7 @@ func (c *clustermgrClient) GetDiskInfo(ctx context.Context, diskID proto.DiskID)
 	return ret, nil
 }
 
+// Register register service
 func (c *clustermgrClient) Register(ctx context.Context, info RegisterInfo) error {
 	node := cmapi.ServiceNode{
 		ClusterID: info.ClusterID,
@@ -631,6 +724,7 @@ func (c *clustermgrClient) Register(ctx context.Context, info RegisterInfo) erro
 	return c.client.RegisterService(ctx, node, info.HeartbeatIntervalS, info.HeartbeatTicks, info.ExpiresTicks)
 }
 
+// GetService returns services
 func (c *clustermgrClient) GetService(ctx context.Context, name string, clusterID proto.ClusterID) (hosts []string, err error) {
 	svrInfos, err := c.client.GetService(ctx, cmapi.GetServiceArgs{Name: name})
 	if err != nil {
@@ -639,6 +733,173 @@ func (c *clustermgrClient) GetService(ctx context.Context, name string, clusterI
 	for _, s := range svrInfos.Nodes {
 		if clusterID == proto.ClusterID(s.ClusterID) {
 			hosts = append(hosts, s.Host)
+		}
+	}
+	return
+}
+
+// AddMigrateTask adds migrate task
+func (c *clustermgrClient) AddMigrateTask(ctx context.Context, value *proto.MigrateTask) (err error) {
+	value.Ctime = time.Now().String()
+	value.MTime = value.Ctime
+
+	return c.setTask(ctx, value.TaskID, value)
+}
+
+// UpdateMigrateTask updates migrate task
+func (c *clustermgrClient) UpdateMigrateTask(ctx context.Context, value *proto.MigrateTask) (err error) {
+	value.MTime = time.Now().String()
+	return c.setTask(ctx, value.TaskID, value)
+}
+
+func (c *clustermgrClient) setTask(ctx context.Context, key string, value interface{}) (err error) {
+	val, err := json.Marshal(value)
+	if err != nil {
+		return
+	}
+	return c.client.SetKV(ctx, key, val)
+}
+
+// GetMigrateTask returns migrate task
+func (c *clustermgrClient) GetMigrateTask(ctx context.Context, key string) (task *proto.MigrateTask, err error) {
+	val, err := c.client.GetKV(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(val.Value, &task)
+	return
+}
+
+// DeleteMigrateTask deletes migrate task and if will get nil if the key does not exits
+func (c *clustermgrClient) DeleteMigrateTask(ctx context.Context, key string) (err error) {
+	return c.client.DeleteKV(ctx, key)
+}
+
+// ListAllMigrateTasksByDiskID returns all migrate task with disk_id
+func (c *clustermgrClient) ListAllMigrateTasksByDiskID(ctx context.Context, taskType proto.TaskType, diskID proto.DiskID) (tasks []*proto.MigrateTask, err error) {
+	return c.listAllMigrateTasks(ctx, GenMigrateTaskPrefixByDiskID(taskType, diskID), taskType)
+}
+
+// ListAllMigrateTasks returns all migrate task
+func (c *clustermgrClient) ListAllMigrateTasks(ctx context.Context, taskType proto.TaskType) (tasks []*proto.MigrateTask, err error) {
+	return c.listAllMigrateTasks(ctx, GenMigrateTaskPrefix(taskType), taskType)
+}
+
+// ListMigrateTasks returns migrate task base on page size
+func (c *clustermgrClient) ListMigrateTasks(ctx context.Context, taskType proto.TaskType, args *cmapi.ListKvOpts) (tasks []*proto.MigrateTask, marker string, err error) {
+	return c.listMigrateTasks(ctx, taskType, args)
+}
+
+func (c *clustermgrClient) listMigrateTasks(ctx context.Context, taskType proto.TaskType, args *cmapi.ListKvOpts) (tasks []*proto.MigrateTask, marker string, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	ret, err := c.client.ListKV(ctx, args)
+	if err != nil {
+		span.Errorf("list task failed: err[%+v]", err)
+		return nil, marker, err
+	}
+	for _, v := range ret.Kvs {
+		var task *proto.MigrateTask
+		err = json.Unmarshal(v.Value, &task)
+		if err != nil {
+			span.Errorf("unmarshal task failed: err[%+v]", err)
+			return nil, marker, err
+		}
+		if task.TaskType != taskType {
+			span.Errorf("task type is invalid: expected[%s], actual[%s]", taskType, task.TaskType)
+			continue
+		}
+		tasks = append(tasks, task)
+	}
+	marker = ret.Marker
+	return
+}
+
+func (c *clustermgrClient) listAllMigrateTasks(ctx context.Context, prefix string, taskType proto.TaskType) (tasks []*proto.MigrateTask, err error) {
+	marker := defaultListTaskMarker
+	for {
+		args := &cmapi.ListKvOpts{
+			Prefix: prefix,
+			Count:  defaultListTaskNum,
+			Marker: marker,
+		}
+		ret, marker, err := c.listMigrateTasks(ctx, taskType, args)
+		if err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, ret...)
+		if marker == defaultListTaskMarker {
+			break
+		}
+	}
+	return
+}
+
+// AddMigratingDisk adds migrating disk meta
+func (c *clustermgrClient) AddMigratingDisk(ctx context.Context, value *MigratingDiskMeta) (err error) {
+	value.Ctime = time.Now().String()
+	return c.setTask(ctx, value.ID(), value)
+}
+
+// DeleteMigratingDisk deletes migrating disk meta
+func (c *clustermgrClient) DeleteMigratingDisk(ctx context.Context, taskType proto.TaskType, diskID proto.DiskID) (err error) {
+	return c.client.DeleteKV(ctx, genMigratingDiskID(taskType, diskID))
+}
+
+// GetMigratingDisk returns migrating disk meta
+func (c *clustermgrClient) GetMigratingDisk(ctx context.Context, taskType proto.TaskType, diskID proto.DiskID) (meta *MigratingDiskMeta, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	ret, err := c.client.GetKV(ctx, genMigratingDiskID(taskType, diskID))
+	if err != nil {
+		return nil, err
+	}
+	if err = json.Unmarshal(ret.Value, &meta); err != nil {
+		return nil, err
+	}
+	if meta.TaskType != taskType {
+		span.Errorf("task type is invalid: expected[%s], actual[%s]", taskType, meta.TaskType)
+		return meta, errcode.ErrIllegalTaskType
+	}
+	if meta.Disk.DiskID != diskID {
+		span.Errorf("disk_id is invalid: expected[%s], actual[%s]", diskID, meta.Disk.DiskID)
+		return meta, errcode.ErrIllegalTaskType
+	}
+	return
+}
+
+// ListMigratingDisks returns all migrating disks
+func (c *clustermgrClient) ListMigratingDisks(ctx context.Context, taskType proto.TaskType) (disks []*MigratingDiskMeta, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	prefix := genMigratingDiskPrefix(taskType)
+	marker := defaultListTaskMarker
+	for {
+		args := &cmapi.ListKvOpts{
+			Prefix: prefix,
+			Count:  defaultListTaskNum,
+			Marker: marker,
+		}
+		ret, err := c.client.ListKV(ctx, args)
+		if err != nil {
+			span.Errorf("list task failed: err[%+v]", err)
+			return nil, err
+		}
+
+		for _, v := range ret.Kvs {
+			var task *MigratingDiskMeta
+			err = json.Unmarshal(v.Value, &task)
+			if err != nil {
+				span.Errorf("unmarshal task failed: err[%+v]", err)
+				return nil, err
+			}
+			if task.TaskType != taskType {
+				span.Errorf("task type is invalid: expected[%s], actual[%s]", taskType, task.TaskType)
+				continue
+			}
+			disks = append(disks, task)
+		}
+		marker = ret.Marker
+		if marker == defaultListTaskMarker {
+			break
 		}
 	}
 	return

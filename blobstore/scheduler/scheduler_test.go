@@ -24,7 +24,6 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/scheduler/base"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
@@ -32,8 +31,8 @@ import (
 // github.com/cubefs/cubefs/blobstore/scheduler/... module scheduler interfaces
 //go:generate mockgen -destination=./client_mock_test.go -package=scheduler -mock_names ClusterMgrAPI=MockClusterMgrAPI,BlobnodeAPI=MockBlobnodeAPI,IVolumeUpdater=MockVolumeUpdater,ProxyAPI=MockMqProxyAPI github.com/cubefs/cubefs/blobstore/scheduler/client ClusterMgrAPI,BlobnodeAPI,IVolumeUpdater,ProxyAPI
 //go:generate mockgen -destination=./base_mock_test.go -package=scheduler -mock_names IConsumer=MockConsumer,IProducer=MockProducer github.com/cubefs/cubefs/blobstore/scheduler/base IConsumer,IProducer
-//go:generate mockgen -destination=./db_mock_test.go  -package=scheduler -mock_names IKafkaOffsetTable=MockKafkaOffsetTable,IOrphanShardTable=MockOrphanShardTable,IArchiveTable=MockArchiveTable,IMigrateTaskTable=MockMigrateTaskTable,IRepairTaskTable=MockRepairTaskTable,IInspectCheckPointTable=MockInspectCheckPointTable github.com/cubefs/cubefs/blobstore/scheduler/db IKafkaOffsetTable,IOrphanShardTable,IArchiveTable,IMigrateTaskTable,IRepairTaskTable,IInspectCheckPointTable
-//go:generate mockgen -destination=./scheduler_mock_test.go -package=scheduler -mock_names ITaskRunner=MockTaskRunner,IVolumeCache=MockVolumeCache,MMigrator=MockMigrater,IVolumeInspector=MockVolumeInspector,IClusterTopology=MockClusterTopology,IArchiver=MockArchiver github.com/cubefs/cubefs/blobstore/scheduler ITaskRunner,IVolumeCache,MMigrator,IVolumeInspector,IClusterTopology,IArchiver
+//go:generate mockgen -destination=./db_mock_test.go  -package=scheduler -mock_names IKafkaOffsetTable=MockKafkaOffsetTable,IOrphanShardTable=MockOrphanShardTable,IInspectCheckPointTable=MockInspectCheckPointTable github.com/cubefs/cubefs/blobstore/scheduler/db IKafkaOffsetTable,IOrphanShardTable,IInspectCheckPointTable
+//go:generate mockgen -destination=./scheduler_mock_test.go -package=scheduler -mock_names ITaskRunner=MockTaskRunner,IVolumeCache=MockVolumeCache,MMigrator=MockMigrater,IVolumeInspector=MockVolumeInspector,IClusterTopology=MockClusterTopology github.com/cubefs/cubefs/blobstore/scheduler ITaskRunner,IVolumeCache,MMigrator,IVolumeInspector,IClusterTopology
 
 const (
 	testTopic = "test_topic"
@@ -69,14 +68,14 @@ func NewBroker(t *testing.T) *sarama.MockBroker {
 	return broker0
 }
 
-func mockGenMigrateTask(idc string, diskID proto.DiskID, vid proto.Vid, state proto.MigrateState, volInfoMap map[proto.Vid]*client.VolumeInfoSimple) (task *proto.MigrateTask) {
+func mockGenMigrateTask(taskType proto.TaskType, idc string, diskID proto.DiskID, vid proto.Vid, state proto.MigrateState, volInfoMap map[proto.Vid]*client.VolumeInfoSimple) (task *proto.MigrateTask) {
 	srcs := volInfoMap[vid].VunitLocations
 
 	codeMode := volInfoMap[vid].CodeMode
 	vunitInfo := MockAlloc(volInfoMap[vid].VunitLocations[0].Vuid)
 	task = &proto.MigrateTask{
-		TaskID:       base.GenTaskID("balance", vid),
-		TaskType:     proto.TaskTypeBalance,
+		TaskID:       client.GenMigrateTaskID(taskType, diskID, vid),
+		TaskType:     taskType,
 		State:        state,
 		SourceIDC:    idc,
 		SourceDiskID: diskID,
@@ -109,29 +108,6 @@ func MockGenVolInfo(vid proto.Vid, cm codemode.CodeMode, status proto.VolumeStat
 	vol.Vid = vid
 	vol.CodeMode = cm
 	return &vol
-}
-
-func mockGenVolRepairTask(vid proto.Vid, state proto.MigrateState, diskID proto.DiskID, volInfoMap map[proto.Vid]*client.VolumeInfoSimple) *proto.MigrateTask {
-	vunitLocations := volInfoMap[vid].VunitLocations
-	codeMode := volInfoMap[vid].CodeMode
-	dst := MockAlloc(volInfoMap[vid].VunitLocations[0].Vuid).Location()
-	task := proto.MigrateTask{
-		TaskID:       base.GenTaskID("disk-repair", vid),
-		TaskType:     proto.TaskTypeDiskRepair,
-		State:        state,
-		SourceDiskID: diskID,
-		CodeMode:     codeMode,
-		Sources:      vunitLocations,
-		SourceVuid:   vunitLocations[0].Vuid,
-		SourceIDC:    "z0",
-	}
-
-	if state == proto.MigrateStatePrepared ||
-		state == proto.MigrateStateWorkCompleted ||
-		state == proto.MigrateStateFinished {
-		task.Destination = dst
-	}
-	return &task
 }
 
 func MockAlloc(vuid proto.Vuid) *client.AllocVunitInfo {

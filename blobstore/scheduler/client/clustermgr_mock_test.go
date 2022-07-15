@@ -52,6 +52,20 @@ func (mr *MockClusterManagerMockRecorder) AllocVolumeUnit(arg0, arg1 interface{}
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocVolumeUnit", reflect.TypeOf((*MockClusterManager)(nil).AllocVolumeUnit), arg0, arg1)
 }
 
+// DeleteKV mocks base method.
+func (m *MockClusterManager) DeleteKV(arg0 context.Context, arg1 string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteKV", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteKV indicates an expected call of DeleteKV.
+func (mr *MockClusterManagerMockRecorder) DeleteKV(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteKV", reflect.TypeOf((*MockClusterManager)(nil).DeleteKV), arg0, arg1)
+}
+
 // DiskInfo mocks base method.
 func (m *MockClusterManager) DiskInfo(arg0 context.Context, arg1 proto.DiskID) (*blobnode.DiskInfo, error) {
 	m.ctrl.T.Helper()
@@ -94,6 +108,21 @@ func (m *MockClusterManager) GetConfig(arg0 context.Context, arg1 string) (strin
 func (mr *MockClusterManagerMockRecorder) GetConfig(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetConfig", reflect.TypeOf((*MockClusterManager)(nil).GetConfig), arg0, arg1)
+}
+
+// GetKV mocks base method.
+func (m *MockClusterManager) GetKV(arg0 context.Context, arg1 string) (clustermgr.GetKvRet, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetKV", arg0, arg1)
+	ret0, _ := ret[0].(clustermgr.GetKvRet)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetKV indicates an expected call of GetKV.
+func (mr *MockClusterManagerMockRecorder) GetKV(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKV", reflect.TypeOf((*MockClusterManager)(nil).GetKV), arg0, arg1)
 }
 
 // GetService mocks base method.
@@ -154,6 +183,21 @@ func (m *MockClusterManager) ListDroppingDisk(arg0 context.Context) ([]*blobnode
 func (mr *MockClusterManagerMockRecorder) ListDroppingDisk(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDroppingDisk", reflect.TypeOf((*MockClusterManager)(nil).ListDroppingDisk), arg0)
+}
+
+// ListKV mocks base method.
+func (m *MockClusterManager) ListKV(arg0 context.Context, arg1 *clustermgr.ListKvOpts) (clustermgr.ListKvRet, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListKV", arg0, arg1)
+	ret0, _ := ret[0].(clustermgr.ListKvRet)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListKV indicates an expected call of ListKV.
+func (mr *MockClusterManagerMockRecorder) ListKV(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListKV", reflect.TypeOf((*MockClusterManager)(nil).ListKV), arg0, arg1)
 }
 
 // ListVolume mocks base method.
@@ -240,6 +284,20 @@ func (m *MockClusterManager) SetDisk(arg0 context.Context, arg1 proto.DiskID, ar
 func (mr *MockClusterManagerMockRecorder) SetDisk(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetDisk", reflect.TypeOf((*MockClusterManager)(nil).SetDisk), arg0, arg1, arg2)
+}
+
+// SetKV mocks base method.
+func (m *MockClusterManager) SetKV(arg0 context.Context, arg1 string, arg2 []byte) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetKV", arg0, arg1, arg2)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetKV indicates an expected call of SetKV.
+func (mr *MockClusterManagerMockRecorder) SetKV(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetKV", reflect.TypeOf((*MockClusterManager)(nil).SetKV), arg0, arg1, arg2)
 }
 
 // UnlockVolume mocks base method.

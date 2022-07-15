@@ -55,14 +55,4 @@ function INIT()
         fi
         rm -f kafka_2.13-3.1.0.tgz
     fi
-    #get mongo
-    if [ ! -d bin/mongodb-linux-x86_64-rhel70-3.6.23 ]; then
-      wget https://ocs-cn-south1.heytapcs.com/blobstore/mongodb-linux-x86_64-rhel70-3.6.23.tgz
-      tar -zxvf mongodb-linux-x86_64-rhel70-3.6.23.tgz -C bin/
-      if [ $? -ne 0 ]; then
-          echo "prepare mongodb failed"
-          exit 1
-      fi
-      rm -f mongodb-linux-x86_64-rhel70-3.6.23.tgz
-    fi
 }
