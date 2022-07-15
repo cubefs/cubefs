@@ -105,7 +105,7 @@ func (tm *TaskRunnerMgr) AddRepairTask(ctx context.Context, task VolRepairTaskEx
 	runner := NewTaskRunner(
 		ctx,
 		task.taskInfo.TaskID,
-		w, task.taskInfo.BrokenDiskIDC,
+		w, task.taskInfo.SourceIDC,
 		tm.repairTaskletRunConcurrency,
 		tm.schedulerCli)
 	err := addRunner(tm.repair, task.taskInfo.TaskID, runner)
@@ -126,7 +126,7 @@ func (tm *TaskRunnerMgr) AddBalanceTask(ctx context.Context, task MigrateTaskEx)
 	runner := NewTaskRunner(
 		ctx,
 		task.taskInfo.TaskID,
-		w, task.taskInfo.SourceIdc,
+		w, task.taskInfo.SourceIDC,
 		tm.balanceTaskletRunConcurrency,
 		tm.schedulerCli)
 	err := addRunner(tm.balance, task.taskInfo.TaskID, runner)
@@ -147,7 +147,7 @@ func (tm *TaskRunnerMgr) AddDiskDropTask(ctx context.Context, task MigrateTaskEx
 	runner := NewTaskRunner(
 		ctx,
 		task.taskInfo.TaskID,
-		w, task.taskInfo.SourceIdc,
+		w, task.taskInfo.SourceIDC,
 		tm.diskDropTaskletRunConcurrency,
 		tm.schedulerCli)
 	err := addRunner(tm.diskDrop, task.taskInfo.TaskID, runner)
@@ -168,7 +168,7 @@ func (tm *TaskRunnerMgr) AddManualMigrateTask(ctx context.Context, task MigrateT
 	runner := NewTaskRunner(
 		ctx,
 		task.taskInfo.TaskID,
-		w, task.taskInfo.SourceIdc,
+		w, task.taskInfo.SourceIDC,
 		tm.manualMigrateTaskletRunConcurrency,
 		tm.schedulerCli)
 	err := addRunner(tm.manualMigrate, task.taskInfo.TaskID, runner)
@@ -209,18 +209,18 @@ func (tm *TaskRunnerMgr) GetManualMigrateAliveTask() []*TaskRunner {
 }
 
 // StopTaskRunner stops task runner
-func (tm *TaskRunnerMgr) StopTaskRunner(taskID, taskType string) error {
+func (tm *TaskRunnerMgr) StopTaskRunner(taskID string, taskType proto.TaskType) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
 	switch taskType {
-	case proto.RepairTaskType:
+	case proto.TaskTypeDiskRepair:
 		return stopRunner(tm.repair, taskID)
-	case proto.BalanceTaskType:
+	case proto.TaskTypeBalance:
 		return stopRunner(tm.balance, taskID)
-	case proto.DiskDropTaskType:
+	case proto.TaskTypeDiskDrop:
 		return stopRunner(tm.diskDrop, taskID)
-	case proto.ManualMigrateType:
+	case proto.TaskTypeManualMigrate:
 		return stopRunner(tm.manualMigrate, taskID)
 	default:
 		log.Panicf("unknown task type %s", taskType)

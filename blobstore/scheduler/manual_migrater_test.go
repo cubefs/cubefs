@@ -35,20 +35,20 @@ func newManualMigrater(t *testing.T) *ManualMigrateMgr {
 	migrateTable := NewMockMigrateTaskTable(ctr)
 	migrater := NewMockMigrater(ctr)
 	mgr := NewManualMigrateMgr(clusterMgr, volumeUpdater, migrateTable, proto.ClusterID(1))
-	mgr.IMigrater = migrater
+	mgr.IMigrator = migrater
 	return mgr
 }
 
 func TestManualMigrateLoad(t *testing.T) {
 	mgr := newManualMigrater(t)
-	mgr.IMigrater.(*MockMigrater).EXPECT().Load().Return(nil)
+	mgr.IMigrator.(*MockMigrater).EXPECT().Load().Return(nil)
 	err := mgr.Load()
 	require.NoError(t, err)
 }
 
 func TestManualMigrateRun(t *testing.T) {
 	mgr := newManualMigrater(t)
-	mgr.IMigrater.(*MockMigrater).EXPECT().Run().Return()
+	mgr.IMigrator.(*MockMigrater).EXPECT().Run().Return()
 	mgr.Run()
 }
 
@@ -73,7 +73,7 @@ func TestManualMigrateAddTask(t *testing.T) {
 		volume := MockGenVolInfo(10001, codemode.EC6P6, proto.VolumeStatusIdle)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetDiskInfo(any, any).Return(&client.DiskInfoSimple{}, nil)
-		mgr.IMigrater.(*MockMigrater).EXPECT().AddTask(any, any).Return()
+		mgr.IMigrator.(*MockMigrater).EXPECT().AddTask(any, any).Return()
 		err := mgr.AddManualTask(ctx, proto.Vuid(1), false)
 		require.NoError(t, err)
 	}
@@ -83,7 +83,7 @@ func TestManualMigrateAcquireTask(t *testing.T) {
 	ctx := context.Background()
 	idc := "z0"
 	mgr := newManualMigrater(t)
-	mgr.IMigrater.(*MockMigrater).EXPECT().AcquireTask(any, any).Return(&proto.MigrateTask{}, nil)
+	mgr.IMigrator.(*MockMigrater).EXPECT().AcquireTask(any, any).Return(proto.MigrateTask{TaskType: proto.TaskTypeManualMigrate}, nil)
 	_, err := mgr.AcquireTask(ctx, idc)
 	require.NoError(t, err)
 }
@@ -91,7 +91,7 @@ func TestManualMigrateAcquireTask(t *testing.T) {
 func TestManualMigrateCancelTask(t *testing.T) {
 	ctx := context.Background()
 	mgr := newManualMigrater(t)
-	mgr.IMigrater.(*MockMigrater).EXPECT().CancelTask(any, any).Return(nil)
+	mgr.IMigrator.(*MockMigrater).EXPECT().CancelTask(any, any).Return(nil)
 	err := mgr.CancelTask(ctx, &api.CancelTaskArgs{})
 	require.NoError(t, err)
 }
@@ -100,7 +100,7 @@ func TestManualMigrateReclaimTask(t *testing.T) {
 	ctx := context.Background()
 	idc := "z0"
 	mgr := newManualMigrater(t)
-	mgr.IMigrater.(*MockMigrater).EXPECT().ReclaimTask(any, any, any, any, any, any).Return(nil)
+	mgr.IMigrator.(*MockMigrater).EXPECT().ReclaimTask(any, any, any, any, any, any).Return(nil)
 	t1 := mockGenMigrateTask(idc, 4, 100, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
 	err := mgr.ReclaimTask(ctx, idc, t1.TaskID, t1.Sources, t1.Destination, &client.AllocVunitInfo{})
 	require.NoError(t, err)
@@ -110,12 +110,12 @@ func TestManualMigrateCompleteTask(t *testing.T) {
 	ctx := context.Background()
 	idc := "z0"
 	mgr := newManualMigrater(t)
-	mgr.IMigrater.(*MockMigrater).EXPECT().CompleteTask(any, any).Return(nil)
+	mgr.IMigrator.(*MockMigrater).EXPECT().CompleteTask(any, any).Return(nil)
 	t1 := mockGenMigrateTask(idc, 4, 100, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
 	err := mgr.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: idc, TaskId: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
 	require.NoError(t, err)
 
-	mgr.IMigrater.(*MockMigrater).EXPECT().CompleteTask(any, any).Return(errMock)
+	mgr.IMigrator.(*MockMigrater).EXPECT().CompleteTask(any, any).Return(errMock)
 	err = mgr.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: idc, TaskId: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
 	require.True(t, errors.Is(err, errMock))
 }
@@ -124,11 +124,11 @@ func TestManualMigrateRenewalTask(t *testing.T) {
 	ctx := context.Background()
 	idc := "z0"
 	mgr := newManualMigrater(t)
-	mgr.IMigrater.(*MockMigrater).EXPECT().RenewalTask(any, any, any).Return(nil)
+	mgr.IMigrator.(*MockMigrater).EXPECT().RenewalTask(any, any, any).Return(nil)
 	err := mgr.RenewalTask(ctx, idc, "")
 	require.NoError(t, err)
 
-	mgr.IMigrater.(*MockMigrater).EXPECT().RenewalTask(any, any, any).Return(errMock)
+	mgr.IMigrator.(*MockMigrater).EXPECT().RenewalTask(any, any, any).Return(errMock)
 	err = mgr.RenewalTask(ctx, idc, "")
 	require.True(t, errors.Is(err, errMock))
 }

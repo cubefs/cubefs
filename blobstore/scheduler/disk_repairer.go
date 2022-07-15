@@ -34,25 +34,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
-// IDiskRepairer define the interface of disk repair manager
-type IDiskRepairer interface {
-	AcquireTask(ctx context.Context, idc string) (task *proto.VolRepairTask, err error)
-	CancelTask(ctx context.Context, args *api.CancelTaskArgs) error
-	CompleteTask(ctx context.Context, args *api.CompleteTaskArgs) error
-	ReclaimTask(ctx context.Context, idc, taskID string,
-		src []proto.VunitLocation, oldDst proto.VunitLocation, newDst *client.AllocVunitInfo) error
-	RenewalTask(ctx context.Context, idc, taskID string) error
-	QueryTask(ctx context.Context, taskID string) (*api.RepairTaskDetail, error)
-	ReportWorkerTaskStats(st *api.TaskReportArgs)
-	StatQueueTaskCnt() (inited, prepared, completed int)
-	Stats() api.MigrateTasksStat
-	Progress(ctx context.Context) (repairingDiskID proto.DiskID, total, repaired int)
-	Enabled() bool
-	Load() error
-	Run()
-	closer.Closer
-}
-
 const (
 	prepareIntervalS = 1
 	finishIntervalS  = 5
@@ -106,7 +87,7 @@ func NewRepairMgr(cfg *DiskRepairMgrCfg, taskSwitch taskswitch.ISwitcher,
 
 		hasRevised: false,
 	}
-	mgr.taskStatsMgr = base.NewTaskStatsMgrAndRun(cfg.ClusterID, proto.RepairTaskType, mgr)
+	mgr.taskStatsMgr = base.NewTaskStatsMgrAndRun(cfg.ClusterID, proto.TaskTypeDiskRepair, mgr)
 	return mgr
 }
 
@@ -124,7 +105,7 @@ func (mgr *DiskRepairMgr) Load() error {
 		return nil
 	}
 
-	repairingDiskID := allTasks[0].RepairDiskID
+	repairingDiskID := allTasks[0].SourceDiskID
 	tasks, err := mgr.taskTbl.FindByDiskID(ctx, repairingDiskID)
 	if err != nil {
 		return err
@@ -146,13 +127,13 @@ func (mgr *DiskRepairMgr) Load() error {
 
 		log.Infof("load task success: task_id[%s], state[%d]", t.TaskID, t.State)
 		switch t.State {
-		case proto.RepairStateInited:
+		case proto.MigrateStateInited:
 			mgr.prepareQueue.PushTask(t.TaskID, t)
-		case proto.RepairStatePrepared:
-			mgr.workQueue.AddPreparedTask(t.BrokenDiskIDC, t.TaskID, t)
-		case proto.RepairStateWorkCompleted:
+		case proto.MigrateStatePrepared:
+			mgr.workQueue.AddPreparedTask(t.SourceIDC, t.TaskID, t)
+		case proto.MigrateStateWorkCompleted:
 			mgr.finishQueue.PushTask(t.TaskID, t)
-		case proto.RepairStateFinished, proto.RepairStateFinishedInAdvance:
+		case proto.MigrateStateFinished, proto.MigrateStateFinishedInAdvance:
 			continue
 		default:
 			panic("unexpect repair state")
@@ -174,6 +155,10 @@ func (mgr *DiskRepairMgr) Enabled() bool {
 	return mgr.taskSwitch.Enabled()
 }
 
+func (mgr *DiskRepairMgr) WaitEnable() {
+	mgr.taskSwitch.WaitEnable()
+}
+
 func (mgr *DiskRepairMgr) collectTaskLoop() {
 	t := time.NewTicker(time.Duration(mgr.cfg.CollectTaskIntervalS) * time.Second)
 	defer t.Stop()
@@ -181,7 +166,7 @@ func (mgr *DiskRepairMgr) collectTaskLoop() {
 	for {
 		select {
 		case <-t.C:
-			mgr.taskSwitch.WaitEnable()
+			mgr.WaitEnable()
 			mgr.collectTask()
 		case <-mgr.Closer.Done():
 			return
@@ -287,7 +272,7 @@ func (mgr *DiskRepairMgr) badVuidsFromDb(ctx context.Context, diskID proto.DiskI
 	}
 
 	for _, t := range tasks {
-		bads = append(bads, t.RepairVuid())
+		bads = append(bads, t.SourceVuid)
 	}
 	return bads, nil
 }
@@ -308,16 +293,14 @@ func (mgr *DiskRepairMgr) initOneTask(ctx context.Context, badVuid proto.Vuid, b
 	span := trace.SpanFromContextSafe(ctx)
 
 	vid := badVuid.Vid()
-	t := proto.VolRepairTask{
-		TaskID:       mgr.genUniqTaskID(vid),
-		State:        proto.RepairStateInited,
-		RepairDiskID: brokenDiskID,
-
-		BadVuid: badVuid,
-		BadIdx:  badVuid.Index(),
-
-		BrokenDiskIDC: brokenDiskIdc,
-		TriggerBy:     proto.BrokenDiskTrigger,
+	t := proto.MigrateTask{
+		TaskID:                  mgr.genUniqTaskID(vid),
+		TaskType:                proto.TaskTypeDiskRepair,
+		State:                   proto.MigrateStateInited,
+		SourceDiskID:            brokenDiskID,
+		SourceVuid:              badVuid,
+		SourceIDC:               brokenDiskIdc,
+		ForbiddenDirectDownload: true,
 	}
 	base.InsistOn(ctx, "repair init one task insert task to tbl", func() error {
 		return mgr.taskTbl.Insert(ctx, &t)
@@ -354,7 +337,7 @@ func (mgr *DiskRepairMgr) acquireBrokenDisk(ctx context.Context) (*client.DiskIn
 
 func (mgr *DiskRepairMgr) prepareTaskLoop() {
 	for {
-		mgr.taskSwitch.WaitEnable()
+		mgr.WaitEnable()
 		todo, doing := mgr.workQueue.StatsTasks()
 		if !mgr.hasRepairingDisk() || todo+doing >= mgr.cfg.WorkQueueSize {
 			time.Sleep(1 * time.Second)
@@ -380,13 +363,13 @@ func (mgr *DiskRepairMgr) popTaskAndPrepare() error {
 
 	defer func() {
 		if err != nil {
-			span.Errorf("prepare task failed  and retry task: task_id[%s], err[%+v]", task.(*proto.VolRepairTask).TaskID, err)
-			mgr.prepareQueue.RetryTask(task.(*proto.VolRepairTask).TaskID)
+			span.Errorf("prepare task failed  and retry task: task_id[%s], err[%+v]", task.(*proto.MigrateTask).TaskID, err)
+			mgr.prepareQueue.RetryTask(task.(*proto.MigrateTask).TaskID)
 		}
 	}()
 
 	//why:avoid to change task in queue
-	t := task.(*proto.VolRepairTask).Copy()
+	t := task.(*proto.MigrateTask).Copy()
 	span.Infof("pop task: task_id[%s], task[%+v]", t.TaskID, t)
 	// whether vid has another running task
 	err = base.VolTaskLockerInst().TryLock(ctx, t.Vid())
@@ -411,7 +394,7 @@ func (mgr *DiskRepairMgr) popTaskAndPrepare() error {
 	return nil
 }
 
-func (mgr *DiskRepairMgr) prepareTask(t *proto.VolRepairTask) error {
+func (mgr *DiskRepairMgr) prepareTask(t *proto.MigrateTask) error {
 	span, ctx := trace.StartSpanFromContext(
 		context.Background(),
 		"DiskRepairMgr.prepareTask")
@@ -426,8 +409,8 @@ func (mgr *DiskRepairMgr) prepareTask(t *proto.VolRepairTask) error {
 	}
 
 	// 1.check necessity of generating current task
-	badVuid := t.RepairVuid()
-	if volInfo.VunitLocations[t.BadIdx].Vuid != badVuid {
+	badVuid := t.SourceVuid
+	if volInfo.VunitLocations[badVuid.Index()].Vuid != badVuid {
 		span.Infof("repair task finish in advance: task_id[%s]", t.TaskID)
 		mgr.finishTaskInAdvance(ctx, t)
 		return nil
@@ -443,7 +426,7 @@ func (mgr *DiskRepairMgr) prepareTask(t *proto.VolRepairTask) error {
 	t.CodeMode = volInfo.CodeMode
 	t.Sources = volInfo.VunitLocations
 	t.Destination = allocDstVunit.Location()
-	t.State = proto.RepairStatePrepared
+	t.State = proto.MigrateStatePrepared
 	base.InsistOn(ctx, "repair prepare task update task tbl", func() error {
 		return mgr.taskTbl.Update(ctx, t)
 	})
@@ -452,13 +435,13 @@ func (mgr *DiskRepairMgr) prepareTask(t *proto.VolRepairTask) error {
 	return nil
 }
 
-func (mgr *DiskRepairMgr) sendToWorkQueue(t *proto.VolRepairTask) {
-	mgr.workQueue.AddPreparedTask(t.BrokenDiskIDC, t.TaskID, t)
+func (mgr *DiskRepairMgr) sendToWorkQueue(t *proto.MigrateTask) {
+	mgr.workQueue.AddPreparedTask(t.SourceIDC, t.TaskID, t)
 	mgr.prepareQueue.RemoveTask(t.TaskID)
 }
 
-func (mgr *DiskRepairMgr) finishTaskInAdvance(ctx context.Context, t *proto.VolRepairTask) {
-	t.State = proto.RepairStateFinishedInAdvance
+func (mgr *DiskRepairMgr) finishTaskInAdvance(ctx context.Context, t *proto.MigrateTask) {
+	t.State = proto.MigrateStateFinishedInAdvance
 	base.InsistOn(ctx, "repair finish task in advance update task tbl", func() error {
 		return mgr.taskTbl.Update(ctx, t)
 	})
@@ -470,7 +453,7 @@ func (mgr *DiskRepairMgr) finishTaskInAdvance(ctx context.Context, t *proto.VolR
 
 func (mgr *DiskRepairMgr) finishTaskLoop() {
 	for {
-		mgr.taskSwitch.WaitEnable()
+		mgr.WaitEnable()
 		err := mgr.popTaskAndFinish()
 		if err == base.ErrNoTaskInQueue {
 			time.Sleep(time.Duration(finishIntervalS) * time.Second)
@@ -487,7 +470,7 @@ func (mgr *DiskRepairMgr) popTaskAndFinish() error {
 	span, ctx := trace.StartSpanFromContext(context.Background(), "disk_repair.popTaskAndFinish")
 	defer span.Finish()
 
-	t := task.(*proto.VolRepairTask).Copy()
+	t := task.(*proto.MigrateTask).Copy()
 	err := mgr.finishTask(ctx, t)
 	if err != nil {
 		span.Errorf("finish task failed: err[%+v]", err)
@@ -498,7 +481,7 @@ func (mgr *DiskRepairMgr) popTaskAndFinish() error {
 	return nil
 }
 
-func (mgr *DiskRepairMgr) finishTask(ctx context.Context, task *proto.VolRepairTask) (retErr error) {
+func (mgr *DiskRepairMgr) finishTask(ctx context.Context, task *proto.MigrateTask) (retErr error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	defer func() {
@@ -507,8 +490,8 @@ func (mgr *DiskRepairMgr) finishTask(ctx context.Context, task *proto.VolRepairT
 		}
 	}()
 
-	if task.State != proto.RepairStateWorkCompleted {
-		span.Panicf("task state not expect: task_id[%s], expect state[%d], actual state[%d]", proto.RepairStateWorkCompleted, task.State)
+	if task.State != proto.MigrateStateWorkCompleted {
+		span.Panicf("task state not expect: task_id[%s], expect state[%d], actual state[%d]", proto.MigrateStateWorkCompleted, task.State)
 	}
 	// complete stage can not make sure to save task info to db,
 	// finish stage make sure to save task info to db
@@ -520,14 +503,14 @@ func (mgr *DiskRepairMgr) finishTask(ctx context.Context, task *proto.VolRepairT
 	})
 
 	newVuid := task.Destination.Vuid
-	oldVuid := task.RepairVuid()
-	err := mgr.clusterMgrCli.UpdateVolume(ctx, newVuid, oldVuid, task.NewDiskId())
+	oldVuid := task.SourceVuid
+	err := mgr.clusterMgrCli.UpdateVolume(ctx, newVuid, oldVuid, task.DestinationDiskID())
 	if err != nil {
 		span.Errorf("update volume failed: err[%+v]", err)
 		return mgr.handleUpdateVolMappingFail(ctx, task, err)
 	}
 
-	task.State = proto.RepairStateFinished
+	task.State = proto.MigrateStateFinished
 	base.InsistOn(ctx, "repair finish task update task state finished", func() error {
 		return mgr.taskTbl.Update(ctx, task)
 	})
@@ -541,7 +524,7 @@ func (mgr *DiskRepairMgr) finishTask(ctx context.Context, task *proto.VolRepairT
 	return nil
 }
 
-func (mgr *DiskRepairMgr) handleUpdateVolMappingFail(ctx context.Context, task *proto.VolRepairTask, err error) error {
+func (mgr *DiskRepairMgr) handleUpdateVolMappingFail(ctx context.Context, task *proto.MigrateTask, err error) error {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Infof("handle update vol mapping failed: task_id[%s], state[%d], dest vuid[%d]", task.TaskID, task.State, task.Destination.Vuid)
 
@@ -553,13 +536,13 @@ func (mgr *DiskRepairMgr) handleUpdateVolMappingFail(ctx context.Context, task *
 	if base.ShouldAllocAndRedo(code) {
 		span.Infof("realloc vunit and redo: task_id[%s]", task.TaskID)
 
-		newVunit, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, task.BadVuid, task.Sources)
+		newVunit, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, task.SourceVuid, task.Sources)
 		if err != nil {
-			span.Errorf("realloc failed: vuid[%d], err[%+v]", task.BadVuid, err)
+			span.Errorf("realloc failed: vuid[%d], err[%+v]", task.SourceVuid, err)
 			return err
 		}
-		task.SetDest(newVunit.Location())
-		task.State = proto.RepairStatePrepared
+		task.SetDestination(newVunit.Location())
+		task.State = proto.MigrateStatePrepared
 		task.WorkerRedoCnt++
 
 		base.InsistOn(ctx, "repair redo task update task tbl", func() error {
@@ -567,7 +550,7 @@ func (mgr *DiskRepairMgr) handleUpdateVolMappingFail(ctx context.Context, task *
 		})
 
 		mgr.finishQueue.RemoveTask(task.TaskID)
-		mgr.workQueue.AddPreparedTask(task.BrokenDiskIDC, task.TaskID, task)
+		mgr.workQueue.AddPreparedTask(task.SourceIDC, task.TaskID, task)
 		span.Infof("task redo again:  task_id[%v]", task.TaskID)
 		return nil
 	}
@@ -582,7 +565,7 @@ func (mgr *DiskRepairMgr) checkRepairedAndClearLoop() {
 	for {
 		select {
 		case <-t.C:
-			mgr.taskSwitch.WaitEnable()
+			mgr.WaitEnable()
 			mgr.checkRepairedAndClear()
 		case <-mgr.Closer.Done():
 			return
@@ -679,17 +662,17 @@ func (mgr *DiskRepairMgr) hasRepairingDisk() bool {
 }
 
 // AcquireTask acquire repair task
-func (mgr *DiskRepairMgr) AcquireTask(ctx context.Context, idc string) (*proto.VolRepairTask, error) {
+func (mgr *DiskRepairMgr) AcquireTask(ctx context.Context, idc string) (task proto.MigrateTask, err error) {
 	if !mgr.taskSwitch.Enabled() {
-		return nil, proto.ErrTaskPaused
+		return task, proto.ErrTaskPaused
 	}
 
-	_, task, _ := mgr.workQueue.Acquire(idc)
-	if task != nil {
-		t := task.(*proto.VolRepairTask)
-		return t, nil
+	_, repairTask, _ := mgr.workQueue.Acquire(idc)
+	if repairTask != nil {
+		task = *repairTask.(*proto.MigrateTask)
+		return task, nil
 	}
-	return nil, proto.ErrTaskEmpty
+	return task, proto.ErrTaskEmpty
 }
 
 // CancelTask cancel repair task
@@ -727,7 +710,7 @@ func (mgr *DiskRepairMgr) ReclaimTask(ctx context.Context,
 		return err
 	}
 
-	err = mgr.taskTbl.Update(ctx, task.(*proto.VolRepairTask))
+	err = mgr.taskTbl.Update(ctx, task.(*proto.MigrateTask))
 	if err != nil {
 		span.Warnf("update reclaim task failed: task_id[%s], err[%+v]", taskID, err)
 	}
@@ -746,8 +729,8 @@ func (mgr *DiskRepairMgr) CompleteTask(ctx context.Context, args *api.CompleteTa
 		return err
 	}
 
-	t := completeTask.(*proto.VolRepairTask)
-	t.State = proto.RepairStateWorkCompleted
+	t := completeTask.(*proto.MigrateTask)
+	t.State = proto.MigrateStateWorkCompleted
 
 	mgr.finishQueue.PushTask(args.TaskId, t)
 	// as complete func is face to svr api, so can not loop save task
@@ -778,8 +761,8 @@ func (mgr *DiskRepairMgr) ReportWorkerTaskStats(st *api.TaskReportArgs) {
 }
 
 // QueryTask return task statistics
-func (mgr *DiskRepairMgr) QueryTask(ctx context.Context, taskID string) (*api.RepairTaskDetail, error) {
-	detail := &api.RepairTaskDetail{}
+func (mgr *DiskRepairMgr) QueryTask(ctx context.Context, taskID string) (*api.MigrateTaskDetail, error) {
+	detail := &api.MigrateTaskDetail{}
 	taskInfo, err := mgr.taskTbl.Find(ctx, taskID)
 	if err != nil {
 		return detail, err

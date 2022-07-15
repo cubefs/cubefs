@@ -30,12 +30,11 @@ func TestGenTasklets(t *testing.T) {
 	mode := codemode.EC6P10L2
 	replicas, _ := genMockVol(1, codemode.CodeMode(mode))
 	badi := 0
-	taskInfo := proto.VolRepairTask{
+	taskInfo := proto.MigrateTask{
 		TaskID:      "mock_task_id",
 		CodeMode:    codemode.CodeMode(mode),
 		Sources:     replicas,
 		Destination: replicas[badi],
-		BadIdx:      uint8(badi),
 	}
 	bids := []proto.BlobID{1, 2, 3, 4, 5, 6, 7}
 	sizes := []int64{1024, 2048, 0, 512, 23, 65, 12}
@@ -88,11 +87,10 @@ func TestExecTasklet(t *testing.T) {
 	mode := codemode.EC6P10L2
 	replicas, _ := genMockVol(1, codemode.CodeMode(mode))
 	badi := 0
-	taskInfo := proto.VolRepairTask{
+	taskInfo := proto.MigrateTask{
 		TaskID:      "mock_task_id",
 		CodeMode:    codemode.CodeMode(mode),
 		Sources:     replicas,
-		BadIdx:      uint8(badi),
 		Destination: replicas[badi],
 	}
 	bids := []proto.BlobID{1, 2, 3, 4, 5, 6, 7}
@@ -128,11 +126,11 @@ func TestCheck(t *testing.T) {
 	mode := codemode.EC6P10L2
 	replicas, _ := genMockVol(1, codemode.CodeMode(mode))
 	badi := 0
-	taskInfo := proto.VolRepairTask{
+	taskInfo := proto.MigrateTask{
 		TaskID:      "mock_task_id",
+		TaskType:    proto.TaskTypeDiskRepair,
 		CodeMode:    codemode.CodeMode(mode),
 		Sources:     replicas,
-		BadIdx:      uint8(badi),
 		Destination: replicas[badi],
 	}
 	bids := []proto.BlobID{1, 2, 3, 4, 5, 6, 7}
@@ -175,7 +173,7 @@ func TestRepairArgs(t *testing.T) {
 	mode := codemode.EC6P10L2
 	replicas, _ := genMockVol(1, codemode.CodeMode(mode))
 	badi := 0
-	taskInfo := proto.VolRepairTask{
+	taskInfo := proto.MigrateTask{
 		TaskID:      "mock_task_id",
 		CodeMode:    codemode.CodeMode(mode),
 		Sources:     replicas,
@@ -190,19 +188,19 @@ func TestRepairArgs(t *testing.T) {
 
 	taskID, taskType, src, dest := w.ReclaimArgs()
 	require.Equal(t, taskInfo.TaskID, taskID)
-	require.Equal(t, proto.RepairTaskType, taskType)
+	require.Equal(t, proto.TaskTypeDiskRepair, taskType)
 	require.Equal(t, taskInfo.Sources, src)
 	require.Equal(t, taskInfo.Destination, dest)
 
 	taskID, taskType, src, dest = w.CompleteArgs()
 	require.Equal(t, taskInfo.TaskID, taskID)
-	require.Equal(t, proto.RepairTaskType, taskType)
+	require.Equal(t, proto.TaskTypeDiskRepair, taskType)
 	require.Equal(t, taskInfo.Sources, src)
 	require.Equal(t, taskInfo.Destination, dest)
 
 	taskID, taskType, src, dest = w.CancelArgs()
 	require.Equal(t, taskInfo.TaskID, taskID)
-	require.Equal(t, proto.RepairTaskType, taskType)
+	require.Equal(t, proto.TaskTypeDiskRepair, taskType)
 	require.Equal(t, taskInfo.Sources, src)
 	require.Equal(t, taskInfo.Destination, dest)
 }

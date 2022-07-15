@@ -27,11 +27,11 @@ import (
 
 // IRepairTaskTable define the interface of db used by disk repair
 type IRepairTaskTable interface {
-	Insert(ctx context.Context, t *proto.VolRepairTask) error
-	Update(ctx context.Context, t *proto.VolRepairTask) error
-	Find(ctx context.Context, taskID string) (task *proto.VolRepairTask, err error)
-	FindByDiskID(ctx context.Context, diskID proto.DiskID) (tasks []*proto.VolRepairTask, err error)
-	FindAll(ctx context.Context) (tasks []*proto.VolRepairTask, err error)
+	Insert(ctx context.Context, t *proto.MigrateTask) error
+	Update(ctx context.Context, t *proto.MigrateTask) error
+	Find(ctx context.Context, taskID string) (task *proto.MigrateTask, err error)
+	FindByDiskID(ctx context.Context, diskID proto.DiskID) (tasks []*proto.MigrateTask, err error)
+	FindAll(ctx context.Context) (tasks []*proto.MigrateTask, err error)
 	MarkDeleteByDiskID(ctx context.Context, diskID proto.DiskID) error
 
 	IRecordSrcTbl
@@ -53,7 +53,7 @@ func OpenRepairTaskTbl(coll *mongo.Collection, name string) (IRepairTaskTable, e
 }
 
 // Insert insert task
-func (tbl *RepairTaskTbl) Insert(ctx context.Context, t *proto.VolRepairTask) error {
+func (tbl *RepairTaskTbl) Insert(ctx context.Context, t *proto.MigrateTask) error {
 	t.Ctime = time.Now().String()
 	t.MTime = t.Ctime
 	trace.SpanFromContextSafe(ctx).Debugf("insert task %+v", t)
@@ -62,7 +62,7 @@ func (tbl *RepairTaskTbl) Insert(ctx context.Context, t *proto.VolRepairTask) er
 }
 
 // Update update task
-func (tbl *RepairTaskTbl) Update(ctx context.Context, t *proto.VolRepairTask) error {
+func (tbl *RepairTaskTbl) Update(ctx context.Context, t *proto.MigrateTask) error {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("update repair task tbl task %+v", *t)
 
@@ -71,13 +71,13 @@ func (tbl *RepairTaskTbl) Update(ctx context.Context, t *proto.VolRepairTask) er
 }
 
 // Find find task by taskID
-func (tbl *RepairTaskTbl) Find(ctx context.Context, taskID string) (task *proto.VolRepairTask, err error) {
+func (tbl *RepairTaskTbl) Find(ctx context.Context, taskID string) (task *proto.MigrateTask, err error) {
 	err = tbl.coll.FindOne(ctx, bson.M{"_id": taskID, deleteMark: bson.M{"$ne": true}}).Decode(&task)
 	return
 }
 
 // FindByDiskID find task by diskID
-func (tbl *RepairTaskTbl) FindByDiskID(ctx context.Context, diskID proto.DiskID) (tasks []*proto.VolRepairTask, err error) {
+func (tbl *RepairTaskTbl) FindByDiskID(ctx context.Context, diskID proto.DiskID) (tasks []*proto.MigrateTask, err error) {
 	cursor, err := tbl.coll.Find(ctx, bson.M{"repair_disk_id": diskID, deleteMark: bson.M{"$ne": true}})
 	if err != nil {
 		return nil, err
@@ -87,7 +87,7 @@ func (tbl *RepairTaskTbl) FindByDiskID(ctx context.Context, diskID proto.DiskID)
 }
 
 // FindAll return all tasks
-func (tbl *RepairTaskTbl) FindAll(ctx context.Context) (tasks []*proto.VolRepairTask, err error) {
+func (tbl *RepairTaskTbl) FindAll(ctx context.Context) (tasks []*proto.MigrateTask, err error) {
 	cursor, err := tbl.coll.Find(ctx, bson.M{deleteMark: bson.M{"$ne": true}})
 	if err != nil {
 		return nil, err
@@ -110,8 +110,8 @@ func (tbl *RepairTaskTbl) QueryMarkDeleteTasks(ctx context.Context, delayMin int
 	span := trace.SpanFromContextSafe(ctx)
 
 	type VolRepairTaskEx struct {
-		proto.VolRepairTask `bson:",inline"`
-		DelTime             int64 `bson:"del_time"`
+		proto.MigrateTask `bson:",inline"`
+		DelTime           int64 `bson:"del_time"`
 	}
 	var tasks []*VolRepairTaskEx
 	cursor, err := tbl.coll.Find(ctx, bson.M{deleteMark: true})

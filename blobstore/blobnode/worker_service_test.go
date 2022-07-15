@@ -84,31 +84,31 @@ func (m *mScheCli) AcquireTask(ctx context.Context, args *api.AcquireArgs) (ret 
 	task := api.WorkerTask{}
 	switch m.id % 3 {
 	case 0:
-		task.Repair = &proto.VolRepairTask{
+		task.Task = proto.MigrateTask{
+			TaskID:      fmt.Sprintf("repair_%d", m.id),
+			TaskType:    proto.TaskTypeDiskRepair,
 			CodeMode:    mode,
 			Destination: dst,
 			Sources:     srcReplicas,
 		}
-		task.TaskType = proto.RepairTaskType
-		task.Repair.TaskID = fmt.Sprintf("repair_%d", m.id)
 		m.repairTaskCnt++
 	case 1:
-		task.Balance = &proto.MigrateTask{
+		task.Task = proto.MigrateTask{
+			TaskID:      fmt.Sprintf("balance_%d", m.id),
+			TaskType:    proto.TaskTypeBalance,
 			CodeMode:    mode,
 			Destination: dst,
 			Sources:     srcReplicas,
 		}
-		task.TaskType = proto.BalanceTaskType
-		task.Balance.TaskID = fmt.Sprintf("balance_%d", m.id)
 		m.balanceTaskCnt++
 	case 2:
-		task.DiskDrop = &proto.MigrateTask{
+		task.Task = proto.MigrateTask{
+			TaskID:      fmt.Sprintf("disk_drop_%d", m.id),
+			TaskType:    proto.TaskTypeDiskDrop,
 			CodeMode:    mode,
 			Destination: dst,
 			Sources:     srcReplicas,
 		}
-		task.TaskType = proto.DiskDropTaskType
-		task.DiskDrop.TaskID = fmt.Sprintf("disk_drop_%d", m.id)
 		m.diskDropTaskCnt++
 	}
 	return &task, nil

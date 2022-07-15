@@ -33,7 +33,7 @@ import (
 //go:generate mockgen -destination=./client_mock_test.go -package=scheduler -mock_names ClusterMgrAPI=MockClusterMgrAPI,BlobnodeAPI=MockBlobnodeAPI,IVolumeUpdater=MockVolumeUpdater,ProxyAPI=MockMqProxyAPI github.com/cubefs/cubefs/blobstore/scheduler/client ClusterMgrAPI,BlobnodeAPI,IVolumeUpdater,ProxyAPI
 //go:generate mockgen -destination=./base_mock_test.go -package=scheduler -mock_names IConsumer=MockConsumer,IProducer=MockProducer github.com/cubefs/cubefs/blobstore/scheduler/base IConsumer,IProducer
 //go:generate mockgen -destination=./db_mock_test.go  -package=scheduler -mock_names IKafkaOffsetTable=MockKafkaOffsetTable,IOrphanShardTable=MockOrphanShardTable,IArchiveTable=MockArchiveTable,IMigrateTaskTable=MockMigrateTaskTable,IRepairTaskTable=MockRepairTaskTable,IInspectCheckPointTable=MockInspectCheckPointTable github.com/cubefs/cubefs/blobstore/scheduler/db IKafkaOffsetTable,IOrphanShardTable,IArchiveTable,IMigrateTaskTable,IRepairTaskTable,IInspectCheckPointTable
-//go:generate mockgen -destination=./scheduler_mock_test.go -package=scheduler -mock_names ITaskRunner=MockTaskRunner,IVolumeCache=MockVolumeCache,MMigrater=MockMigrater,IDiskRepairer=MockDiskRepairer,IVolumeInspector=MockVolumeInspector,IClusterTopology=MockClusterTopology,IArchiver=MockArchiver github.com/cubefs/cubefs/blobstore/scheduler ITaskRunner,IVolumeCache,MMigrater,IDiskRepairer,IVolumeInspector,IClusterTopology,IArchiver
+//go:generate mockgen -destination=./scheduler_mock_test.go -package=scheduler -mock_names ITaskRunner=MockTaskRunner,IVolumeCache=MockVolumeCache,MMigrator=MockMigrater,IVolumeInspector=MockVolumeInspector,IClusterTopology=MockClusterTopology,IArchiver=MockArchiver github.com/cubefs/cubefs/blobstore/scheduler ITaskRunner,IVolumeCache,MMigrator,IVolumeInspector,IClusterTopology,IArchiver
 
 const (
 	testTopic = "test_topic"
@@ -76,8 +76,9 @@ func mockGenMigrateTask(idc string, diskID proto.DiskID, vid proto.Vid, state pr
 	vunitInfo := MockAlloc(volInfoMap[vid].VunitLocations[0].Vuid)
 	task = &proto.MigrateTask{
 		TaskID:       base.GenTaskID("balance", vid),
+		TaskType:     proto.TaskTypeBalance,
 		State:        state,
-		SourceIdc:    idc,
+		SourceIDC:    idc,
 		SourceDiskID: diskID,
 		SourceVuid:   volInfoMap[vid].VunitLocations[0].Vuid,
 		Sources:      srcs,
@@ -110,24 +111,24 @@ func MockGenVolInfo(vid proto.Vid, cm codemode.CodeMode, status proto.VolumeStat
 	return &vol
 }
 
-func mockGenVolRepairTask(vid proto.Vid, state proto.RepairState, diskID proto.DiskID, volInfoMap map[proto.Vid]*client.VolumeInfoSimple) *proto.VolRepairTask {
+func mockGenVolRepairTask(vid proto.Vid, state proto.MigrateState, diskID proto.DiskID, volInfoMap map[proto.Vid]*client.VolumeInfoSimple) *proto.MigrateTask {
 	vunitLocations := volInfoMap[vid].VunitLocations
 	codeMode := volInfoMap[vid].CodeMode
 	dst := MockAlloc(volInfoMap[vid].VunitLocations[0].Vuid).Location()
-	task := proto.VolRepairTask{
-		TaskID:        base.GenTaskID("disk-repair", vid),
-		State:         state,
-		RepairDiskID:  diskID,
-		CodeMode:      codeMode,
-		Sources:       vunitLocations,
-		BadVuid:       vunitLocations[0].Vuid,
-		BadIdx:        0,
-		BrokenDiskIDC: "z0",
+	task := proto.MigrateTask{
+		TaskID:       base.GenTaskID("disk-repair", vid),
+		TaskType:     proto.TaskTypeDiskRepair,
+		State:        state,
+		SourceDiskID: diskID,
+		CodeMode:     codeMode,
+		Sources:      vunitLocations,
+		SourceVuid:   vunitLocations[0].Vuid,
+		SourceIDC:    "z0",
 	}
 
-	if state == proto.RepairStatePrepared ||
-		state == proto.RepairStateWorkCompleted ||
-		state == proto.RepairStateFinished {
+	if state == proto.MigrateStatePrepared ||
+		state == proto.MigrateStateWorkCompleted ||
+		state == proto.MigrateStateFinished {
 		task.Destination = dst
 	}
 	return &task

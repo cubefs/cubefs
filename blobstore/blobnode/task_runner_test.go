@@ -66,20 +66,20 @@ func (w *mockWorker) Check(ctx context.Context) *WorkError {
 	return OtherError(w.checkRetErr)
 }
 
-func (w *mockWorker) CancelArgs() (taskID, taskType string, src []proto.VunitLocation, dest proto.VunitLocation) {
-	return "test_mock_task", "repair", []proto.VunitLocation{}, proto.VunitLocation{}
+func (w *mockWorker) CancelArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
+	return "test_mock_task", w.TaskType(), []proto.VunitLocation{}, proto.VunitLocation{}
 }
 
-func (w *mockWorker) CompleteArgs() (taskID, taskType string, src []proto.VunitLocation, dest proto.VunitLocation) {
-	return "test_mock_task", "repair", []proto.VunitLocation{}, proto.VunitLocation{}
+func (w *mockWorker) CompleteArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
+	return "test_mock_task", w.TaskType(), []proto.VunitLocation{}, proto.VunitLocation{}
 }
 
-func (w *mockWorker) ReclaimArgs() (taskID, taskType string, src []proto.VunitLocation, dest proto.VunitLocation) {
-	return "test_mock_task", "repair", []proto.VunitLocation{}, proto.VunitLocation{}
+func (w *mockWorker) ReclaimArgs() (taskID string, taskType proto.TaskType, src []proto.VunitLocation, dest proto.VunitLocation) {
+	return "test_mock_task", w.TaskType(), []proto.VunitLocation{}, proto.VunitLocation{}
 }
 
-func (w *mockWorker) TaskType() string {
-	return "repair"
+func (w *mockWorker) TaskType() proto.TaskType {
+	return proto.TaskTypeDiskRepair
 }
 
 func (w *mockWorker) GetBenchmarkBids() (bids []*ShardInfoSimple) {

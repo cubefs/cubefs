@@ -40,13 +40,13 @@ func TestArchiveStore(t *testing.T) {
 		defer mgr.Close()
 
 		balanceTable := NewMockMigrateTaskTable(ctr)
-		balanceTable.EXPECT().Name().AnyTimes().Return(proto.BalanceTaskType)
-		record1 := &proto.ArchiveRecord{TaskID: uuid.New().String(), TaskType: proto.BalanceTaskType, Content: proto.MigrateTask{}}
+		balanceTable.EXPECT().Name().AnyTimes().Return(proto.TaskTypeBalance.String())
+		record1 := &proto.ArchiveRecord{TaskID: uuid.New().String(), TaskType: proto.TaskTypeBalance.String(), Content: proto.MigrateTask{}}
 		balanceTable.EXPECT().QueryMarkDeleteTasks(any, any).AnyTimes().Return([]*proto.ArchiveRecord{record1}, nil)
 
 		repairTaskTable := NewMockRepairTaskTable(ctr)
-		repairTaskTable.EXPECT().Name().AnyTimes().Return(proto.RepairTaskType)
-		record2 := &proto.ArchiveRecord{TaskID: uuid.New().String(), TaskType: proto.RepairTaskType, Content: proto.VolRepairTask{}}
+		repairTaskTable.EXPECT().Name().AnyTimes().Return(proto.TaskTypeDiskRepair.String())
+		record2 := &proto.ArchiveRecord{TaskID: uuid.New().String(), TaskType: proto.TaskTypeDiskRepair.String(), Content: proto.MigrateTask{}}
 		repairTaskTable.EXPECT().QueryMarkDeleteTasks(any, any).AnyTimes().Return([]*proto.ArchiveRecord{record2}, nil)
 
 		mgr.RegisterTables(balanceTable, repairTaskTable)
@@ -59,7 +59,7 @@ func TestArchiveStore(t *testing.T) {
 		defer mgr.Close()
 
 		repairTaskTable := NewMockRepairTaskTable(ctr)
-		repairTaskTable.EXPECT().Name().AnyTimes().Return(proto.RepairTaskType)
+		repairTaskTable.EXPECT().Name().AnyTimes().Return(proto.TaskTypeDiskRepair.String())
 		mgr.RegisterTables(repairTaskTable)
 		mgr.RegisterTables(repairTaskTable)
 	}
@@ -70,7 +70,7 @@ func TestArchiveStore(t *testing.T) {
 		defer mgr.Close()
 
 		repairTaskTable := NewMockRepairTaskTable(ctr)
-		repairTaskTable.EXPECT().Name().AnyTimes().Return(proto.RepairTaskType)
+		repairTaskTable.EXPECT().Name().AnyTimes().Return(proto.TaskTypeDiskRepair.String())
 		repairTaskTable.EXPECT().QueryMarkDeleteTasks(any, any).AnyTimes().Return(nil, errMock)
 
 		mgr.RegisterTables(repairTaskTable)
@@ -82,15 +82,15 @@ func TestArchiveStore(t *testing.T) {
 		defer mgr.Close()
 
 		repairTaskTable := NewMockRepairTaskTable(ctr)
-		repairTaskTable.EXPECT().Name().AnyTimes().Return(proto.RepairTaskType)
+		repairTaskTable.EXPECT().Name().AnyTimes().Return(proto.TaskTypeDiskRepair.String())
 		id1 := uuid.New().String()
 		id2 := uuid.New().String()
-		task1 := proto.VolRepairTask{TaskID: id1}
-		task2 := proto.VolRepairTask{TaskID: id2}
-		record1 := &proto.ArchiveRecord{TaskID: id1, TaskType: proto.RepairTaskType, Content: task1} // task already archive and remove success
-		record2 := &proto.ArchiveRecord{TaskID: id2, TaskType: proto.RepairTaskType, Content: task2} // archive success
-		record3 := &proto.ArchiveRecord{}                                                            // find task failed
-		record4 := &proto.ArchiveRecord{}                                                            // task already archive and remove source failed
+		task1 := proto.MigrateTask{TaskID: id1}
+		task2 := proto.MigrateTask{TaskID: id2}
+		record1 := &proto.ArchiveRecord{TaskID: id1, TaskType: proto.TaskTypeDiskRepair.String(), Content: task1} // task already archive and remove success
+		record2 := &proto.ArchiveRecord{TaskID: id2, TaskType: proto.TaskTypeDiskRepair.String(), Content: task2} // archive success
+		record3 := &proto.ArchiveRecord{}                                                                         // find task failed
+		record4 := &proto.ArchiveRecord{}                                                                         // task already archive and remove source failed
 		repairTaskTable.EXPECT().QueryMarkDeleteTasks(any, any).AnyTimes().Return([]*proto.ArchiveRecord{record1, record2, record3, record4}, nil)
 
 		archiveTable.EXPECT().FindTask(any, any).Return(record1, nil)

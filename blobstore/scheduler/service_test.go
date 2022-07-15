@@ -51,7 +51,7 @@ func newMockService(t *testing.T) *Service {
 	blobDeleteMgr := NewMockTaskRunner(ctr)
 	shardRepairMgr := NewMockTaskRunner(ctr)
 	diskDropMgr := NewMockMigrater(ctr)
-	diskRepairMgr := NewMockDiskRepairer(ctr)
+	diskRepairMgr := NewMockMigrater(ctr)
 	manualMgr := NewMockMigrater(ctr)
 	balanceMgr := NewMockMigrater(ctr)
 	inspectorMgr := NewMockVolumeInspector(ctr)
@@ -59,19 +59,20 @@ func newMockService(t *testing.T) *Service {
 	volumeCache := NewMockVolumeCache(ctr)
 
 	// return balance task
-	manualMgr.EXPECT().AcquireTask(any, any).Return(nil, errMock)
-	diskRepairMgr.EXPECT().AcquireTask(any, any).Return(nil, errMock)
-	diskDropMgr.EXPECT().AcquireTask(any, any).Return(nil, errMock)
-	balanceMgr.EXPECT().AcquireTask(any, any).Return(&proto.MigrateTask{}, nil)
+	emptyTask := proto.MigrateTask{}
+	manualMgr.EXPECT().AcquireTask(any, any).Return(emptyTask, errMock)
+	diskRepairMgr.EXPECT().AcquireTask(any, any).Return(emptyTask, errMock)
+	diskDropMgr.EXPECT().AcquireTask(any, any).Return(emptyTask, errMock)
+	balanceMgr.EXPECT().AcquireTask(any, any).Return(proto.MigrateTask{TaskType: proto.TaskTypeBalance}, nil)
 	// return disk drop task
-	manualMgr.EXPECT().AcquireTask(any, any).Return(nil, errMock)
-	diskRepairMgr.EXPECT().AcquireTask(any, any).Return(nil, errMock)
-	diskDropMgr.EXPECT().AcquireTask(any, any).Return(&proto.MigrateTask{}, nil)
+	manualMgr.EXPECT().AcquireTask(any, any).Return(emptyTask, errMock)
+	diskRepairMgr.EXPECT().AcquireTask(any, any).Return(emptyTask, errMock)
+	diskDropMgr.EXPECT().AcquireTask(any, any).Return(proto.MigrateTask{TaskType: proto.TaskTypeDiskDrop}, nil)
 	// return disk repair task
-	manualMgr.EXPECT().AcquireTask(any, any).Return(nil, errMock)
-	diskRepairMgr.EXPECT().AcquireTask(any, any).Return(&proto.VolRepairTask{}, nil)
+	manualMgr.EXPECT().AcquireTask(any, any).Return(emptyTask, errMock)
+	diskRepairMgr.EXPECT().AcquireTask(any, any).Return(proto.MigrateTask{TaskType: proto.TaskTypeDiskRepair}, nil)
 	// return manual migrate task
-	manualMgr.EXPECT().AcquireTask(any, any).Return(&proto.MigrateTask{}, nil)
+	manualMgr.EXPECT().AcquireTask(any, any).Return(proto.MigrateTask{TaskType: proto.TaskTypeManualMigrate}, nil)
 
 	// reclaim repair task
 	diskRepairMgr.EXPECT().ReclaimTask(any, any, any, any, any, any).Return(nil)
@@ -196,52 +197,52 @@ func TestServiceAPI(t *testing.T) {
 		// acquire task
 		task, err := schedulerCli.AcquireTask(ctx, &api.AcquireArgs{IDC: "z0"})
 		require.NoError(t, err)
-		require.Equal(t, proto.BalanceTaskType, task.TaskType)
+		require.Equal(t, proto.TaskTypeBalance, task.TaskType())
 
 		task, err = schedulerCli.AcquireTask(ctx, &api.AcquireArgs{IDC: "z0"})
 		require.NoError(t, err)
-		require.Equal(t, proto.DiskDropTaskType, task.TaskType)
+		require.Equal(t, proto.TaskTypeDiskDrop, task.TaskType())
 
 		task, err = schedulerCli.AcquireTask(ctx, &api.AcquireArgs{IDC: "z0"})
 		require.NoError(t, err)
-		require.Equal(t, proto.RepairTaskType, task.TaskType)
+		require.Equal(t, proto.TaskTypeDiskRepair, task.TaskType())
 
 		task, err = schedulerCli.AcquireTask(ctx, &api.AcquireArgs{IDC: "z0"})
 		require.NoError(t, err)
-		require.Equal(t, proto.ManualMigrateType, task.TaskType)
+		require.Equal(t, proto.TaskTypeManualMigrate, task.TaskType())
 
 		// reclaim task
-		err = schedulerCli.ReclaimTask(ctx, &api.ReclaimTaskArgs{IDC: "z0", TaskType: proto.RepairTaskType})
+		err = schedulerCli.ReclaimTask(ctx, &api.ReclaimTaskArgs{IDC: "z0", TaskType: proto.TaskTypeDiskRepair})
 		require.NoError(t, err)
-		err = schedulerCli.ReclaimTask(ctx, &api.ReclaimTaskArgs{IDC: "z0", TaskType: proto.BalanceTaskType})
+		err = schedulerCli.ReclaimTask(ctx, &api.ReclaimTaskArgs{IDC: "z0", TaskType: proto.TaskTypeBalance})
 		require.NoError(t, err)
-		err = schedulerCli.ReclaimTask(ctx, &api.ReclaimTaskArgs{IDC: "z0", TaskType: proto.DiskDropTaskType})
+		err = schedulerCli.ReclaimTask(ctx, &api.ReclaimTaskArgs{IDC: "z0", TaskType: proto.TaskTypeDiskDrop})
 		require.NoError(t, err)
-		err = schedulerCli.ReclaimTask(ctx, &api.ReclaimTaskArgs{IDC: "z0", TaskType: proto.ManualMigrateType})
+		err = schedulerCli.ReclaimTask(ctx, &api.ReclaimTaskArgs{IDC: "z0", TaskType: proto.TaskTypeManualMigrate})
 		require.NoError(t, err)
 		err = schedulerCli.ReclaimTask(ctx, &api.ReclaimTaskArgs{IDC: "z0", TaskType: "task"})
 		require.Error(t, err)
 
 		// cancel task
-		err = schedulerCli.CancelTask(ctx, &api.CancelTaskArgs{IDC: "z0", TaskType: proto.RepairTaskType})
+		err = schedulerCli.CancelTask(ctx, &api.CancelTaskArgs{IDC: "z0", TaskType: proto.TaskTypeDiskRepair})
 		require.NoError(t, err)
-		err = schedulerCli.CancelTask(ctx, &api.CancelTaskArgs{IDC: "z0", TaskType: proto.BalanceTaskType})
+		err = schedulerCli.CancelTask(ctx, &api.CancelTaskArgs{IDC: "z0", TaskType: proto.TaskTypeBalance})
 		require.NoError(t, err)
-		err = schedulerCli.CancelTask(ctx, &api.CancelTaskArgs{IDC: "z0", TaskType: proto.DiskDropTaskType})
+		err = schedulerCli.CancelTask(ctx, &api.CancelTaskArgs{IDC: "z0", TaskType: proto.TaskTypeDiskDrop})
 		require.NoError(t, err)
-		err = schedulerCli.CancelTask(ctx, &api.CancelTaskArgs{IDC: "z0", TaskType: proto.ManualMigrateType})
+		err = schedulerCli.CancelTask(ctx, &api.CancelTaskArgs{IDC: "z0", TaskType: proto.TaskTypeManualMigrate})
 		require.NoError(t, err)
 		err = schedulerCli.CancelTask(ctx, &api.CancelTaskArgs{IDC: "z0", TaskType: "task"})
 		require.Error(t, err)
 
 		// complete task
-		err = schedulerCli.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: "z0", TaskType: proto.RepairTaskType})
+		err = schedulerCli.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: "z0", TaskType: proto.TaskTypeDiskRepair})
 		require.NoError(t, err)
-		err = schedulerCli.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: "z0", TaskType: proto.BalanceTaskType})
+		err = schedulerCli.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: "z0", TaskType: proto.TaskTypeBalance})
 		require.NoError(t, err)
-		err = schedulerCli.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: "z0", TaskType: proto.DiskDropTaskType})
+		err = schedulerCli.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: "z0", TaskType: proto.TaskTypeDiskDrop})
 		require.NoError(t, err)
-		err = schedulerCli.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: "z0", TaskType: proto.ManualMigrateType})
+		err = schedulerCli.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: "z0", TaskType: proto.TaskTypeManualMigrate})
 		require.NoError(t, err)
 		err = schedulerCli.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: "z0", TaskType: "task"})
 		require.Error(t, err)
@@ -252,13 +253,13 @@ func TestServiceAPI(t *testing.T) {
 		require.NoError(t, err)
 
 		// report task
-		err = schedulerCli.ReportTask(ctx, &api.TaskReportArgs{TaskType: proto.RepairTaskType})
+		err = schedulerCli.ReportTask(ctx, &api.TaskReportArgs{TaskType: proto.TaskTypeDiskRepair})
 		require.NoError(t, err)
-		err = schedulerCli.ReportTask(ctx, &api.TaskReportArgs{TaskType: proto.BalanceTaskType})
+		err = schedulerCli.ReportTask(ctx, &api.TaskReportArgs{TaskType: proto.TaskTypeBalance})
 		require.NoError(t, err)
-		err = schedulerCli.ReportTask(ctx, &api.TaskReportArgs{TaskType: proto.DiskDropTaskType})
+		err = schedulerCli.ReportTask(ctx, &api.TaskReportArgs{TaskType: proto.TaskTypeDiskDrop})
 		require.NoError(t, err)
-		err = schedulerCli.ReportTask(ctx, &api.TaskReportArgs{TaskType: proto.ManualMigrateType})
+		err = schedulerCli.ReportTask(ctx, &api.TaskReportArgs{TaskType: proto.TaskTypeManualMigrate})
 		require.NoError(t, err)
 
 		// add manual migrate task

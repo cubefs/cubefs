@@ -77,22 +77,22 @@ func OpenDatabase(conf *Config) (tables *Database, err error) {
 
 	if tables.BalanceTable, err = openMigrateTbl(
 		mustCreateCollection(db, conf.BalanceTable),
-		proto.BalanceTaskType); err != nil {
+		proto.TaskTypeBalance.String()); err != nil {
 		return nil, err
 	}
 	if tables.DiskDropTable, err = openMigrateTbl(
 		mustCreateCollection(db, conf.DiskDropTable),
-		proto.DiskDropTaskType); err != nil {
+		proto.TaskTypeDiskDrop.String()); err != nil {
 		return nil, err
 	}
 	if tables.ManualMigrateTable, err = openMigrateTbl(
 		mustCreateCollection(db, conf.ManualMigrateTable),
-		proto.ManualMigrateType); err != nil {
+		proto.TaskTypeManualMigrate.String()); err != nil {
 		return nil, err
 	}
 	if tables.RepairTaskTable, err = OpenRepairTaskTbl(
 		mustCreateCollection(db, conf.RepairTable),
-		proto.RepairTaskType); err != nil {
+		proto.TaskTypeDiskRepair.String()); err != nil {
 		return nil, err
 	}
 	if tables.InspectCheckPointTable, err = OpenInspectCheckPointTbl(

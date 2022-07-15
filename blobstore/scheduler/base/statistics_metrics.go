@@ -111,7 +111,7 @@ type TaskStatsMgr struct {
 }
 
 // NewTaskStatsMgrAndRun run task stats manager
-func NewTaskStatsMgrAndRun(clusterID proto.ClusterID, taskType string, taskCntStats TaskCntStats) *TaskStatsMgr {
+func NewTaskStatsMgrAndRun(clusterID proto.ClusterID, taskType proto.TaskType, taskCntStats TaskCntStats) *TaskStatsMgr {
 	mgr := NewTaskStatsMgr(clusterID, taskType)
 	mgr.taskCntStats = taskCntStats
 	go mgr.ReportTaskCntLoop()
@@ -119,10 +119,10 @@ func NewTaskStatsMgrAndRun(clusterID proto.ClusterID, taskType string, taskCntSt
 }
 
 // NewTaskStatsMgr returns task stats manager
-func NewTaskStatsMgr(clusterID proto.ClusterID, taskType string) *TaskStatsMgr {
+func NewTaskStatsMgr(clusterID proto.ClusterID, taskType proto.TaskType) *TaskStatsMgr {
 	labels := map[string]string{
 		"cluster_id": fmt.Sprintf("%d", clusterID),
-		"task_type":  taskType,
+		"task_type":  taskType.String(),
 		"kind":       KindSuccess,
 	}
 

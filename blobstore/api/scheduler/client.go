@@ -61,7 +61,7 @@ type IScheduler interface {
 	CompleteInspect(ctx context.Context, args *CompleteInspectArgs) (err error)
 
 	// stats
-	DiskRepairTaskDetail(ctx context.Context, args *TaskStatArgs) (ret RepairTaskDetail, err error)
+	DiskRepairTaskDetail(ctx context.Context, args *TaskStatArgs) (ret MigrateTaskDetail, err error)
 	BalanceTaskDetail(ctx context.Context, args *TaskStatArgs) (ret MigrateTaskDetail, err error)
 	DiskDropTaskDetail(ctx context.Context, args *TaskStatArgs) (ret MigrateTaskDetail, err error)
 	ManualMigrateTaskDetail(ctx context.Context, args *TaskStatArgs) (ret MigrateTaskDetail, err error)
