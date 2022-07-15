@@ -26,15 +26,16 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
+	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 )
 
 func newManualMigrater(t *testing.T) *ManualMigrateMgr {
 	ctr := gomock.NewController(t)
 	clusterMgr := NewMockClusterMgrAPI(ctr)
 	volumeUpdater := NewMockVolumeUpdater(ctr)
-	migrateTable := NewMockMigrateTaskTable(ctr)
+	taskLogger := mocks.NewMockRecordLogEncoder(ctr)
 	migrater := NewMockMigrater(ctr)
-	mgr := NewManualMigrateMgr(clusterMgr, volumeUpdater, migrateTable, &MigrateConfig{ClusterID: 1})
+	mgr := NewManualMigrateMgr(clusterMgr, volumeUpdater, taskLogger, &MigrateConfig{ClusterID: 1})
 	mgr.IMigrator = migrater
 	return mgr
 }
@@ -101,7 +102,7 @@ func TestManualMigrateReclaimTask(t *testing.T) {
 	idc := "z0"
 	mgr := newManualMigrater(t)
 	mgr.IMigrator.(*MockMigrater).EXPECT().ReclaimTask(any, any, any, any, any, any).Return(nil)
-	t1 := mockGenMigrateTask(idc, 4, 100, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
+	t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, idc, 4, 100, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
 	err := mgr.ReclaimTask(ctx, idc, t1.TaskID, t1.Sources, t1.Destination, &client.AllocVunitInfo{})
 	require.NoError(t, err)
 }
@@ -111,7 +112,7 @@ func TestManualMigrateCompleteTask(t *testing.T) {
 	idc := "z0"
 	mgr := newManualMigrater(t)
 	mgr.IMigrator.(*MockMigrater).EXPECT().CompleteTask(any, any).Return(nil)
-	t1 := mockGenMigrateTask(idc, 4, 100, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
+	t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, idc, 4, 100, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
 	err := mgr.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: idc, TaskId: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
 	require.NoError(t, err)
 

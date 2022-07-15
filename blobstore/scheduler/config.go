@@ -21,6 +21,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cmd"
 	"github.com/cubefs/cubefs/blobstore/common/mongoutil"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/scheduler/db"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
@@ -29,8 +30,6 @@ import (
 const (
 	defaultTopologyUpdateIntervalMin  = 1
 	defaultVolumeCacheUpdateIntervalS = 10
-	defaultArchiveDelayMin            = 5
-	defaultArchiveIntervalMin         = 5
 	defaultRetryHostsCnt              = 1
 	defaultClientTimeoutMs            = int64(1000)
 	defaultHostSyncIntervalMs         = int64(1000)
@@ -58,12 +57,7 @@ const (
 	defaultExpiresTicks   = uint32(60)
 
 	defaultDatabase               = "scheduler"
-	defaultBalanceTable           = "balance_tbl"
-	defaultDiskDropTable          = "disk_drop_tbl"
-	defaultRepairTable            = "repair_tbl"
 	defaultInspectCheckPointTable = "inspect_checkpoint_tbl"
-	defaultManualMigrateTable     = "manual_migrate_tbl"
-	defaultArchiveTasksTable      = "archive_tasks_tbl"
 	defaultKafkaOffsetTable       = "kafka_offset_tbl"
 	defaultOrphanedShardTable     = "orphaned_shard_tbl"
 
@@ -99,7 +93,7 @@ type Config struct {
 	DiskRepair    MigrateConfig       `json:"disk_repair"`
 	ManualMigrate MigrateConfig       `json:"manual_migrate"`
 	VolumeInspect VolumeInspectMgrCfg `json:"volume_inspect"`
-	Archive       ArchiveStoreConfig  `json:"archive"`
+	TaskLog       recordlog.Config    `json:"task_log"`
 
 	Kafka       KafkaConfig       `json:"kafka"`
 	ShardRepair ShardRepairConfig `json:"shard_repair"`
@@ -194,6 +188,7 @@ func (c *Config) fixConfig() (err error) {
 	}
 	defaulter.LessOrEqual(&c.TopologyUpdateIntervalMin, defaultTopologyUpdateIntervalMin)
 	defaulter.LessOrEqual(&c.VolumeCacheUpdateIntervalS, defaultVolumeCacheUpdateIntervalS)
+	defaulter.LessOrEqual(&c.TaskLog.ChunkBits, defaultDeleteLogChunkSize)
 	c.fixClientConfig()
 	c.fixDataBaseConfig()
 	c.fixKafkaConfig()
@@ -204,7 +199,6 @@ func (c *Config) fixConfig() (err error) {
 	c.fixInspectConfig()
 	c.fixShardRepairConfig()
 	c.fixBlobDeleteConfig()
-	c.fixArchiveStoreConfig()
 	c.fixRegisterConfig()
 	return nil
 }
@@ -223,12 +217,7 @@ func (c *Config) fixDataBaseConfig() {
 	}
 	defaulter.LessOrEqual(&c.Database.Mongo.TimeoutMs, defaultMongoTimeoutMs)
 	defaulter.Empty(&c.Database.DBName, defaultDatabase)
-	defaulter.Empty(&c.Database.BalanceTable, defaultBalanceTable)
-	defaulter.Empty(&c.Database.DiskDropTable, defaultDiskDropTable)
-	defaulter.Empty(&c.Database.RepairTable, defaultRepairTable)
 	defaulter.Empty(&c.Database.InspectCheckPointTable, defaultInspectCheckPointTable)
-	defaulter.Empty(&c.Database.ManualMigrateTable, defaultManualMigrateTable)
-	defaulter.Empty(&c.Database.ArchiveTasksTable, defaultArchiveTasksTable)
 	defaulter.Empty(&c.Database.KafkaOffsetTable, defaultKafkaOffsetTable)
 	defaulter.Empty(&c.Database.OrphanShardTable, defaultOrphanedShardTable)
 }
@@ -299,11 +288,6 @@ func (c *Config) fixBlobDeleteConfig() {
 	defaulter.Equal(&c.BlobDelete.SafeDelayTimeH, defaultDeleteDelayH)
 	defaulter.Less(&c.BlobDelete.SafeDelayTimeH, defaultDeleteNoDelay)
 	c.BlobDelete.Kafka = c.Kafka.BlobDelete
-}
-
-func (c *Config) fixArchiveStoreConfig() {
-	defaulter.LessOrEqual(&c.Archive.ArchiveDelayMin, defaultArchiveDelayMin)
-	defaulter.LessOrEqual(&c.Archive.ArchiveIntervalMin, defaultArchiveIntervalMin)
 }
 
 func (c *Config) fixRegisterConfig() {

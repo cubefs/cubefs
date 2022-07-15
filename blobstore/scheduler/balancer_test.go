@@ -38,7 +38,7 @@ func newBalancer(t *testing.T) *BalanceMgr {
 	volumeUpdater := NewMockVolumeUpdater(ctr)
 	taskSwitch := mocks.NewMockSwitcher(ctr)
 	topologyMgr := NewMockClusterTopology(ctr)
-	migrateTable := NewMockMigrateTaskTable(ctr)
+	taskLogger := mocks.NewMockRecordLogEncoder(ctr)
 	migrater := NewMockMigrater(ctr)
 	conf := &BalanceMgrConfig{}
 	c := closer.New()
@@ -49,7 +49,8 @@ func newBalancer(t *testing.T) *BalanceMgr {
 	migrater.EXPECT().Done().AnyTimes().Return(c.Done())
 	migrater.EXPECT().WaitEnable().AnyTimes().Return()
 	migrater.EXPECT().Enabled().AnyTimes().Return(true)
-	mgr := NewBalanceMgr(clusterMgr, volumeUpdater, taskSwitch, topologyMgr, migrateTable, conf)
+
+	mgr := NewBalanceMgr(clusterMgr, volumeUpdater, taskSwitch, topologyMgr, taskLogger, conf)
 	mgr.IMigrator = migrater
 	return mgr
 }
@@ -66,7 +67,6 @@ func TestBalanceRun(t *testing.T) {
 	defer mgr.Close()
 
 	mgr.IMigrator.(*MockMigrater).EXPECT().Run().Return()
-	mgr.IMigrator.(*MockMigrater).EXPECT().ClearTasksByStates(any, any).AnyTimes().Return()
 	mgr.IMigrator.(*MockMigrater).EXPECT().GetMigratingDiskNum().AnyTimes().Return(1)
 	mgr.cfg.CollectTaskIntervalS = 1
 	mgr.cfg.CheckTaskIntervalS = 1
@@ -184,7 +184,7 @@ func TestBalanceReclaimTask(t *testing.T) {
 	idc := "z0"
 	mgr := newBalancer(t)
 	mgr.IMigrator.(*MockMigrater).EXPECT().ReclaimTask(any, any, any, any, any, any).Return(nil)
-	t1 := mockGenMigrateTask(idc, 4, 100, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
+	t1 := mockGenMigrateTask(proto.TaskTypeBalance, idc, 4, 100, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
 	err := mgr.ReclaimTask(ctx, idc, t1.TaskID, t1.Sources, t1.Destination, &client.AllocVunitInfo{})
 	require.NoError(t, err)
 }
@@ -194,7 +194,7 @@ func TestBalanceCompleteTask(t *testing.T) {
 	idc := "z0"
 	mgr := newBalancer(t)
 	mgr.IMigrator.(*MockMigrater).EXPECT().CompleteTask(any, any).Return(nil)
-	t1 := mockGenMigrateTask(idc, 4, 100, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
+	t1 := mockGenMigrateTask(proto.TaskTypeBalance, idc, 4, 100, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
 	err := mgr.CompleteTask(ctx, &api.CompleteTaskArgs{IDC: idc, TaskId: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
 	require.NoError(t, err)
 

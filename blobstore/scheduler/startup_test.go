@@ -119,7 +119,6 @@ func newMockServiceWithOpts(ctr *gomock.Controller, isLeader bool) *Service {
 	manualMgr := NewMockMigrater(ctr)
 	balanceMgr := NewMockMigrater(ctr)
 	inspecterMgr := NewMockVolumeInspector(ctr)
-	archiver := NewMockArchiver(ctr)
 	volumeCache := NewMockVolumeCache(ctr)
 	volumeUpdater := NewMockVolumeUpdater(ctr)
 
@@ -127,13 +126,11 @@ func newMockServiceWithOpts(ctr *gomock.Controller, isLeader bool) *Service {
 	diskRepairMgr.EXPECT().Close().AnyTimes().Return()
 	diskDropMgr.EXPECT().Close().AnyTimes().Return()
 	manualMgr.EXPECT().Close().AnyTimes().Return()
-	archiver.EXPECT().Close().AnyTimes().Return()
 	inspecterMgr.EXPECT().Close().AnyTimes().Return()
 
 	balanceMgr.EXPECT().Run().AnyTimes().Return()
 	diskDropMgr.EXPECT().Run().AnyTimes().Return()
 	diskRepairMgr.EXPECT().Run().AnyTimes().Return()
-	archiver.EXPECT().Run().AnyTimes().Return()
 	inspecterMgr.EXPECT().Run().AnyTimes().Return()
 	manualMgr.EXPECT().Run().AnyTimes().Return()
 
@@ -173,15 +170,13 @@ func newMockServiceWithOpts(ctr *gomock.Controller, isLeader bool) *Service {
 
 	clusterMgrCli.EXPECT().GetConfig(any, any).AnyTimes().Return("", errMock)
 	service := &Service{
-		ClusterID:     1,
-		leader:        isLeader,
-		balanceMgr:    balanceMgr,
-		diskDropMgr:   diskDropMgr,
-		manualMigMgr:  manualMgr,
-		diskRepairMgr: diskRepairMgr,
-		inspectMgr:    inspecterMgr,
-		archiveMgr:    archiver,
-
+		ClusterID:      1,
+		leader:         isLeader,
+		balanceMgr:     balanceMgr,
+		diskDropMgr:    diskDropMgr,
+		manualMigMgr:   manualMgr,
+		diskRepairMgr:  diskRepairMgr,
+		inspectMgr:     inspecterMgr,
 		shardRepairMgr: shardRepairMgr,
 		blobDeleteMgr:  blobDeleteMgr,
 		volCache:       volumeCache,
