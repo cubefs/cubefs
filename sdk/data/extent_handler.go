@@ -54,7 +54,7 @@ type ExtentHandler struct {
 	stream     *Streamer
 	id         uint64 // extent handler id
 	inode      uint64
-	fileOffset int
+	fileOffset uint64
 	storeMode  int
 
 	// Either open/closed/recovery/error.
@@ -125,7 +125,7 @@ type ExtentHandler struct {
 }
 
 // NewExtentHandler returns a new extent handler.
-func NewExtentHandler(stream *Streamer, offset int, storeMode int, cachePacket bool) *ExtentHandler {
+func NewExtentHandler(stream *Streamer, offset uint64, storeMode int, cachePacket bool) *ExtentHandler {
 	eh := &ExtentHandler{
 		stream:       stream,
 		id:           GetExtentHandlerID(),
@@ -155,7 +155,7 @@ func (eh *ExtentHandler) String() string {
 	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)StoreMode(%v)}", eh.id, eh.inode, eh.fileOffset, eh.storeMode)
 }
 
-func (eh *ExtentHandler) write(ctx context.Context, data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
+func (eh *ExtentHandler) write(ctx context.Context, data []byte, offset uint64, size int, direct bool) (ek *proto.ExtentKey, err error) {
 	var total, write int
 	status := eh.getStatus()
 	if !eh.debug && status >= ExtentStatusClosed {
@@ -173,7 +173,7 @@ func (eh *ExtentHandler) write(ctx context.Context, data []byte, offset, size in
 	// If this write request is not continuous, and cannot be merged
 	// into the extent handler, just close it and return error.
 	// In this case, the caller should try to create a new extent handler.
-	if eh.fileOffset+eh.size != offset || eh.extentOffset+eh.size+size > eh.stream.extentSize ||
+	if eh.fileOffset+uint64(eh.size) != offset || eh.extentOffset+eh.size+size > eh.stream.extentSize ||
 		(eh.storeMode == proto.TinyExtentType && eh.size+size > blksize) {
 
 		err = errors.New("ExtentHandler: full or incontinuous")
@@ -182,7 +182,7 @@ func (eh *ExtentHandler) write(ctx context.Context, data []byte, offset, size in
 
 	for total < size {
 		if eh.packet == nil {
-			eh.packet = NewWritePacket(context.Background(), eh.inode, offset+total, eh.storeMode, blksize)
+			eh.packet = NewWritePacket(context.Background(), eh.inode, offset+uint64(total), eh.storeMode, blksize)
 			if direct {
 				eh.packet.Opcode = proto.OpSyncWrite
 			}
@@ -246,7 +246,7 @@ func (eh *ExtentHandler) sender() {
 			// For ExtentStore, calculate the extent offset.
 			// For TinyStore, the extent offset is always 0 in the request packet,
 			// and the reply packet tells the real extent offset.
-			extOffset := int(packet.KernelOffset) - eh.fileOffset + eh.extentOffset
+			extOffset := int(packet.KernelOffset-eh.fileOffset) + eh.extentOffset
 
 			// fill the packet according to the extent
 			packet.PartitionID = eh.dp.PartitionID
@@ -577,7 +577,7 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet, errmsg string) error {
 		// Always use normal extent store mode for recovery.
 		// Because tiny extent files are limited, tiny store
 		// failures might due to lack of tiny extent file.
-		handler = NewExtentHandler(eh.stream, int(packet.KernelOffset), proto.NormalExtentType, false)
+		handler = NewExtentHandler(eh.stream, packet.KernelOffset, proto.NormalExtentType, false)
 		handler.setClosed()
 	}
 	// packet.Data will be released in original handler flush

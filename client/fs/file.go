@@ -173,7 +173,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	tpObject1 := ump.BeforeTP(f.super.umpFunctionGeneralKey("fileread"))
 	defer ump.AfterTP(tpObject1, err)
 
-	size, _, err := f.super.ec.Read(ctx, f.info.Inode, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
+	size, _, err := f.super.ec.Read(ctx, f.info.Inode, resp.Data[fuse.OutHeaderSize:], uint64(req.Offset), req.Size)
 	if err != nil && err != io.EOF {
 		msg := fmt.Sprintf("Read: ino(%v) req(%v) err(%v) size(%v)", f.info.Inode, req, err, size)
 		f.super.handleErrorWithGetInode("Read", msg, f.info.Inode)
@@ -212,7 +212,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 
 	if req.Offset > int64(filesize) && reqlen == 1 && req.Data[0] == 0 {
 		// workaround: posix_fallocate would write 1 byte if fallocate is not supported.
-		err = f.super.ec.Truncate(ctx, ino, int(req.Offset)+reqlen)
+		err = f.super.ec.Truncate(ctx, ino, uint64(req.Offset)+uint64(reqlen))
 		if err == nil {
 			resp.Size = reqlen
 		}
@@ -235,7 +235,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	tpObject1 := ump.BeforeTP(f.super.umpFunctionGeneralKey("filewrite"))
 	defer ump.AfterTP(tpObject1, err)
 
-	size, _, err := f.super.ec.Write(ctx, ino, int(req.Offset), req.Data, enSyncWrite, false)
+	size, _, err := f.super.ec.Write(ctx, ino, uint64(req.Offset), req.Data, enSyncWrite, false)
 	if err != nil {
 		msg := fmt.Sprintf("Write: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
 		f.super.handleErrorWithGetInode("Write", msg, ino)
@@ -320,7 +320,7 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 			log.LogErrorf("Setattr: truncate wait for flush ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
 		}
-		if err := f.super.ec.Truncate(ctx, ino, int(req.Size)); err != nil {
+		if err := f.super.ec.Truncate(ctx, ino, req.Size); err != nil {
 			log.LogErrorf("Setattr: truncate ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
 		}
@@ -452,13 +452,13 @@ func (f *File) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) er
 	return nil
 }
 
-func (f *File) fileSize(ctx context.Context, ino uint64) (size int, gen uint64) {
+func (f *File) fileSize(ctx context.Context, ino uint64) (size uint64, gen uint64) {
 	size, gen, valid := f.super.ec.FileSize(ino)
 	log.LogDebugf("fileSize: ino(%v) fileSize(%v) gen(%v) valid(%v)", ino, size, gen, valid)
 
 	if !valid {
 		if info, err := f.super.InodeGet(ctx, ino); err == nil {
-			size = int(info.Size)
+			size = info.Size
 			gen = info.Generation
 		}
 	}

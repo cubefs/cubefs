@@ -27,7 +27,7 @@ import (
 
 // ExtentRequest defines the struct for the request of read or write an extent.
 type ExtentRequest struct {
-	FileOffset int
+	FileOffset uint64
 	Size       int
 	Data       []byte
 	ExtentKey  *proto.ExtentKey
@@ -42,7 +42,7 @@ func (er *ExtentRequest) String() string {
 }
 
 // NewExtentRequest returns a new extent request.
-func NewExtentRequest(offset, size int, data []byte, ek *proto.ExtentKey) *ExtentRequest {
+func NewExtentRequest(offset uint64, size int, data []byte, ek *proto.ExtentKey) *ExtentRequest {
 	return &ExtentRequest{
 		FileOffset: offset,
 		Size:       size,
@@ -159,10 +159,10 @@ func (cache *ExtentCache) Pre(offset uint64) (pre *proto.ExtentKey) {
 }
 
 // Size returns the size of the cache.
-func (cache *ExtentCache) Size() (size int, gen uint64) {
+func (cache *ExtentCache) Size() (size uint64, gen uint64) {
 	cache.RLock()
 	defer cache.RUnlock()
-	return int(cache.size), cache.gen
+	return cache.size, cache.gen
 }
 
 // SetSize set the size of the cache.
@@ -185,18 +185,18 @@ func (cache *ExtentCache) List() []proto.ExtentKey {
 }
 
 // PrepareRequests classifies the incoming request.
-func (cache *ExtentCache) PrepareRequests(offset, size int, data []byte) (requests []*ExtentRequest, fileSize int) {
+func (cache *ExtentCache) PrepareRequests(offset uint64, size int, data []byte) (requests []*ExtentRequest, fileSize uint64) {
 	requests = make([]*ExtentRequest, 0)
 	start := offset
-	end := offset + size
+	end := offset + uint64(size)
 
 	cache.RLock()
 	defer cache.RUnlock()
 
-	fileSize = int(cache.size)
+	fileSize = cache.size
 	cache.root.RangeWithoutLock(func(ek proto.ExtentKey) bool {
-		ekStart := int(ek.FileOffset)
-		ekEnd := int(ek.FileOffset) + int(ek.Size)
+		ekStart := ek.FileOffset
+		ekEnd := ek.FileOffset + uint64(ek.Size)
 
 		if log.IsDebugEnabled() {
 			log.LogDebugf("PrepareRequests: ino(%v) start(%v) end(%v) ekStart(%v) ekEnd(%v)", cache.inode, start, end, ekStart, ekEnd)
@@ -211,20 +211,20 @@ func (cache *ExtentCache) PrepareRequests(offset, size int, data []byte) (reques
 				return false
 			} else if end < ekEnd {
 				// add hole (start, ekStart)
-				req := NewExtentRequest(start, ekStart-start, data[start-offset:ekStart-offset], nil)
+				req := NewExtentRequest(start, int(ekStart-start), data[start-offset:ekStart-offset], nil)
 				requests = append(requests, req)
 				// add non-hole (ekStart, end)
-				req = NewExtentRequest(ekStart, end-ekStart, data[ekStart-offset:end-offset], &ek)
+				req = NewExtentRequest(ekStart, int(end-ekStart), data[ekStart-offset:end-offset], &ek)
 				requests = append(requests, req)
 				start = end
 				return false
 			} else {
 				// add hole (start, ekStart)
-				req := NewExtentRequest(start, ekStart-start, data[start-offset:ekStart-offset], nil)
+				req := NewExtentRequest(start, int(ekStart-start), data[start-offset:ekStart-offset], nil)
 				requests = append(requests, req)
 
 				// add non-hole (ekStart, ekEnd)
-				req = NewExtentRequest(ekStart, ekEnd-ekStart, data[ekStart-offset:ekEnd-offset], &ek)
+				req = NewExtentRequest(ekStart, int(ekEnd-ekStart), data[ekStart-offset:ekEnd-offset], &ek)
 				requests = append(requests, req)
 
 				start = ekEnd
@@ -233,13 +233,13 @@ func (cache *ExtentCache) PrepareRequests(offset, size int, data []byte) (reques
 		} else if start < ekEnd {
 			if end <= ekEnd {
 				// add non-hole (start, end)
-				req := NewExtentRequest(start, end-start, data[start-offset:end-offset], &ek)
+				req := NewExtentRequest(start, int(end-start), data[start-offset:end-offset], &ek)
 				requests = append(requests, req)
 				start = end
 				return false
 			} else {
 				// add non-hole (start, ekEnd), start = ekEnd
-				req := NewExtentRequest(start, ekEnd-start, data[start-offset:ekEnd-offset], &ek)
+				req := NewExtentRequest(start, int(ekEnd-start), data[start-offset:ekEnd-offset], &ek)
 				requests = append(requests, req)
 				start = ekEnd
 				return true
@@ -254,7 +254,7 @@ func (cache *ExtentCache) PrepareRequests(offset, size int, data []byte) (reques
 	}
 	if start < end {
 		// add hole (start, end)
-		req := NewExtentRequest(start, end-start, data[start-offset:end-offset], nil)
+		req := NewExtentRequest(start, int(end-start), data[start-offset:end-offset], nil)
 		requests = append(requests, req)
 	}
 
@@ -287,7 +287,7 @@ func (cache *ExtentCache) prepareMergeRequests() (readRequests []*ExtentRequest,
 			}
 		}
 
-		req = NewExtentRequest(int(ek.FileOffset), int(ek.Size), data[total:total+ek.Size], &ek)
+		req = NewExtentRequest(ek.FileOffset, int(ek.Size), data[total:total+ek.Size], &ek)
 		readRequests = append(readRequests, req)
 		total += ek.Size
 		preEk = &ek

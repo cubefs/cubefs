@@ -137,7 +137,7 @@ func TestStreamer_UsePreExtentHandler(t *testing.T) {
 		writeLock  sync.Mutex
 	}
 	type args struct {
-		offset int
+		offset uint64
 		size   int
 	}
 
@@ -358,7 +358,7 @@ func TestROW(t *testing.T) {
 	}
 	for _, ek := range eks {
 		req := &ExtentRequest{
-			FileOffset: int(ek.FileOffset),
+			FileOffset: ek.FileOffset,
 			Size:       int(ek.Size),
 			Data:       []byte(writeData),
 			ExtentKey:  &ek,
@@ -400,10 +400,10 @@ func TestWrite_DataConsistency(t *testing.T) {
 	}
 	defer file.Close()
 	// append write
-	fileOffset := 0
+	var fileOffset uint64 = 0
 	for i := 0; i < 3; i++ {
 		n, _ := file.WriteAt([]byte(" aaaa aaaa"), int64(fileOffset))
-		fileOffset += n
+		fileOffset += uint64(n)
 	}
 	// append write at 30~50
 	_, err = file.WriteAt([]byte(" aaaa aaaa aaaa aaaa"), int64(fileOffset))
@@ -514,7 +514,7 @@ func TestStreamer_UsePreExtentHandler_ROWByOtherClient(t *testing.T) {
 		t.Fatalf("doROW failed: err(%v)", err)
 	}
 
-	_, _, err = streamer.write(ctx, data, length, length, false, false)
+	_, _, err = streamer.write(ctx, data, uint64(length), length, false, false)
 	if err != nil {
 		t.Fatalf("write failed: err(%v)", err)
 	}
@@ -557,7 +557,7 @@ func TestHandler_Recover(t *testing.T) {
 	}
 	streamer.handler.setDebug(true)
 
-	_, _, err = streamer.write(ctx, data, length, length, false, false)
+	_, _, err = streamer.write(ctx, data, uint64(length), length, false, false)
 	if err != nil {
 		t.Fatalf("write failed: err(%v)", err)
 	}
@@ -624,15 +624,15 @@ func TestStreamer_Truncate_CloseHandler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("write failed: err(%v)", err)
 	}
-	err = streamer.truncate(ctx, length)
+	err = streamer.truncate(ctx, uint64(length))
 	if err != nil {
 		t.Fatalf("truncate failed: err(%v)", err)
 	}
-	_, _, err = streamer.write(ctx, data, length*2, length, false, false)
+	_, _, err = streamer.write(ctx, data, uint64(length)*2, length, false, false)
 	if err != nil {
 		t.Fatalf("write failed: err(%v)", err)
 	}
-	requests, _ := streamer.extents.PrepareRequests(length, length, data)
+	requests, _ := streamer.extents.PrepareRequests(uint64(length), length, data)
 	if requests[0].ExtentKey != nil {
 		t.Fatalf("dirty ek after truncate")
 	}
@@ -658,12 +658,12 @@ func TestStreamer_ROW_CloseHandler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("write failed: err(%v)", err)
 	}
-	requests, _ := streamer.extents.PrepareRequests(length, length*2, data)
+	requests, _ := streamer.extents.PrepareRequests(uint64(length), length*2, data)
 	_, err = streamer.doROW(ctx, requests[0], false)
 	if err != nil {
 		t.Fatalf("doROW failed: err(%v)", err)
 	}
-	_, _, err = streamer.write(ctx, data, length*2, length, false, false)
+	_, _, err = streamer.write(ctx, data, uint64(length)*2, length, false, false)
 	if err != nil {
 		t.Fatalf("write failed: err(%v)", err)
 	}

@@ -119,13 +119,13 @@ func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
 	return reader, nil
 }
 
-func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) (total int, hasHole bool, err error) {
+func (s *Streamer) read(ctx context.Context, data []byte, offset uint64, size int) (total int, hasHole bool, err error) {
 	var (
 		readBytes       int
 		reader          *ExtentReader
 		requests        []*ExtentRequest
 		revisedRequests []*ExtentRequest
-		fileSize        int
+		fileSize        uint64
 	)
 	ctx = context.Background()
 	if s.client.readRate > 0 {
@@ -171,11 +171,11 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset int, size int) 
 				req.Data[i] = 0
 			}
 
-			if req.FileOffset+req.Size > fileSize {
+			if req.FileOffset+uint64(req.Size) > fileSize {
 				if req.FileOffset >= fileSize {
 					return
 				}
-				req.Size = fileSize - req.FileOffset
+				req.Size = int(fileSize - req.FileOffset)
 				total += req.Size
 				err = io.EOF
 				if total == 0 {
@@ -223,7 +223,7 @@ func (s *Streamer) readFromCache(req *ExtentRequest) (read int, skipFlush bool) 
 
 	if !s.appendWriteBuffer {
 		if s.handler.key != nil && uint64(req.FileOffset) >= s.handler.key.FileOffset &&
-			uint64(req.FileOffset+req.Size) <= s.handler.key.FileOffset+uint64(s.handler.key.Size) {
+			req.FileOffset+uint64(req.Size) <= s.handler.key.FileOffset+uint64(s.handler.key.Size) {
 			req.ExtentKey = s.handler.key
 			skipFlush = true
 			return
@@ -231,9 +231,9 @@ func (s *Streamer) readFromCache(req *ExtentRequest) (read int, skipFlush bool) 
 
 		s.handler.packetMutex.RLock()
 		defer s.handler.packetMutex.RUnlock()
-		if s.handler.packet != nil && req.FileOffset >= int(s.handler.packet.KernelOffset) &&
-			req.FileOffset+req.Size <= int(s.handler.packet.KernelOffset)+int(s.handler.packet.Size) {
-			off := req.FileOffset - int(s.handler.packet.KernelOffset)
+		if s.handler.packet != nil && req.FileOffset >= s.handler.packet.KernelOffset &&
+			req.FileOffset+uint64(req.Size) <= s.handler.packet.KernelOffset+uint64(s.handler.packet.Size) {
+			off := int(req.FileOffset - s.handler.packet.KernelOffset)
 			copy(req.Data, s.handler.packet.Data[off:off+req.Size])
 			read += req.Size
 			skipFlush = true
@@ -260,11 +260,11 @@ func (s *Streamer) readFromCache(req *ExtentRequest) (read int, skipFlush bool) 
 		if remainSize == 0 {
 			break
 		}
-		if currentOffset >= int(p.KernelOffset)+int(p.Size) {
+		if currentOffset >= p.KernelOffset+uint64(p.Size) {
 			continue
 		}
 
-		offset := currentOffset - int(p.KernelOffset)
+		offset := int(currentOffset - p.KernelOffset)
 		if offset < 0 {
 			log.LogErrorf("readFromCache packet offset invalid: req(%v) packet(%v)", req, p)
 			return
@@ -275,7 +275,7 @@ func (s *Streamer) readFromCache(req *ExtentRequest) (read int, skipFlush bool) 
 		}
 		copy(req.Data[read:read+dataLen], p.Data[offset:offset+dataLen])
 		read += dataLen
-		currentOffset += dataLen
+		currentOffset += uint64(dataLen)
 		remainSize -= dataLen
 	}
 	if remainSize == 0 {
@@ -286,7 +286,7 @@ func (s *Streamer) readFromCache(req *ExtentRequest) (read int, skipFlush bool) 
 	if s.handler.packet == nil {
 		return
 	}
-	offset := currentOffset - int(s.handler.packet.KernelOffset)
+	offset := int(currentOffset - s.handler.packet.KernelOffset)
 	if offset < 0 {
 		log.LogErrorf("readFromCache packet offset invalid: req(%v) packet(%v)", req, s.handler.packet)
 		return

@@ -1068,7 +1068,7 @@ func cfs_truncate(id C.int64_t, path *C.char, len C.off_t) (re C.int) {
 		return errorToStatus(err)
 	}
 
-	err = c.truncate(nil, inode, int(len))
+	err = c.truncate(nil, inode, uint64(len))
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1116,7 +1116,7 @@ func cfs_ftruncate(id C.int64_t, fd C.int, len C.off_t) (re C.int) {
 	tpObject := ump.BeforeTP(c.umpFunctionKeyFast(ump_cfs_ftruncate))
 	defer ump.AfterTPUs(tpObject, nil)
 
-	err = c.truncate(nil, f.ino, int(len))
+	err = c.truncate(nil, f.ino, uint64(len))
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1182,7 +1182,7 @@ func cfs_fallocate(id C.int64_t, fd C.int, mode C.int, offset C.off_t, len C.off
 		return statusEINVAL
 	}
 
-	err = c.truncate(nil, info.Inode, int(offset+len))
+	err = c.truncate(nil, info.Inode, uint64(offset+len))
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1239,7 +1239,7 @@ func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) (r
 		return statusOK
 	}
 
-	err = c.truncate(nil, info.Inode, int(offset+len))
+	err = c.truncate(nil, info.Inode, uint64(offset+len))
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -3011,7 +3011,7 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 		path   string
 		ino    uint64
 		err    error
-		offset int
+		offset uint64
 		start  time.Time
 	)
 	defer func() {
@@ -3073,9 +3073,9 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 	hdr.Cap = int(size)
 
 	// off >= 0 stands for pread
-	offset = int(off)
+	offset = uint64(off)
 	if off < 0 {
-		offset = int(f.pos)
+		offset = f.pos
 	}
 	n, hasHole, err := c.ec.Read(nil, f.ino, buffer, offset, len(buffer))
 	if c.app == appCoralDB {
@@ -3158,7 +3158,7 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		path    string
 		ino     uint64
 		err     error
-		offset  int
+		offset  uint64
 		flagBuf bytes.Buffer
 		start   time.Time
 	)
@@ -3245,12 +3245,12 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 	}
 
 	// off >= 0 stands for pwrite
-	offset = int(off)
+	offset = uint64(off)
 	if off < 0 {
 		if f.flags&uint32(C.O_APPEND) != 0 {
 			f.pos = f.size
 		}
-		offset = int(f.pos)
+		offset = f.pos
 	}
 
 	n, isROW, err := c.ec.Write(nil, f.ino, offset, buffer, false, overWriteBuffer)
@@ -3645,14 +3645,14 @@ func (c *client) delete(ctx context.Context, parentID uint64, name string, isDir
 	return
 }
 
-func (c *client) truncate(ctx context.Context, inode uint64, len int) (err error) {
+func (c *client) truncate(ctx context.Context, inode uint64, len uint64) (err error) {
 	err = c.ec.Truncate(nil, inode, len)
 	info := c.inodeCache.Get(nil, inode)
 	if info != nil {
 		info.Size = uint64(len)
 		c.inodeCache.Put(info)
 	}
-	c.updateSizeByIno(inode, uint64(len))
+	c.updateSizeByIno(inode, len)
 	return
 }
 

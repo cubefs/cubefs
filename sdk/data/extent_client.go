@@ -230,7 +230,7 @@ func (client *ExtentClient) OpenStream(inode uint64, appendWriteBuffer bool, rea
 	return s.IssueOpenRequest()
 }
 
-func (client *ExtentClient) OpenStreamWithSize(inode uint64, size int) (err error) {
+func (client *ExtentClient) OpenStreamWithSize(inode uint64, size uint64) (err error) {
 	streamerMapSeg := client.streamerConcurrentMap.GetMapSegment(inode)
 	streamerMapSeg.Lock()
 	s, ok := streamerMapSeg.streamers[inode]
@@ -295,7 +295,7 @@ func (client *ExtentClient) RefreshExtentsCache(ctx context.Context, inode uint6
 }
 
 // FileSize returns the file size.
-func (client *ExtentClient) FileSize(inode uint64) (size int, gen uint64, valid bool) {
+func (client *ExtentClient) FileSize(inode uint64) (size uint64, gen uint64, valid bool) {
 	s := client.GetStreamer(inode)
 	if s == nil {
 		return
@@ -315,7 +315,7 @@ func (client *ExtentClient) FileSize(inode uint64) (size int, gen uint64, valid 
 //}
 
 // Write writes the data.
-func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset int, data []byte, direct bool, overWriteBuffer bool) (write int, isROW bool, err error) {
+func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset uint64, data []byte, direct bool, overWriteBuffer bool) (write int, isROW bool, err error) {
 	if client.dataWrapper.volNotExists {
 		return 0, false, proto.ErrVolNotExists
 	}
@@ -353,7 +353,7 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset int,
 	return
 }
 
-func (client *ExtentClient) Truncate(ctx context.Context, inode uint64, size int) error {
+func (client *ExtentClient) Truncate(ctx context.Context, inode uint64, size uint64) error {
 	if client.dataWrapper.volNotExists {
 		return proto.ErrVolNotExists
 	}
@@ -389,7 +389,7 @@ func (client *ExtentClient) Flush(ctx context.Context, inode uint64) error {
 	return s.IssueFlushRequest(ctx)
 }
 
-func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte, offset int, size int) (read int, hasHole bool, err error) {
+func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte, offset uint64, size int) (read int, hasHole bool, err error) {
 	if size == 0 {
 		return
 	}

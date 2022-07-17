@@ -194,7 +194,7 @@ func TestConsistenceRead(t *testing.T) {
 	eks := streamer.extents.List()
 	for _, ek := range eks {
 		data := make([]byte, ek.Size)
-		req := NewExtentRequest(int(ek.FileOffset), int(ek.Size), data, &ek)
+		req := NewExtentRequest(ek.FileOffset, int(ek.Size), data, &ek)
 		reqPacket := NewReadPacket(context.Background(), &ek, int(ek.ExtentOffset), req.Size, streamer.inode, req.FileOffset, false)
 		partition, getErr := streamer.client.dataWrapper.GetDataPartition(ek.PartitionId)
 		if getErr != nil {
@@ -220,8 +220,8 @@ func TestConsistenceRead(t *testing.T) {
 			t.Fatalf("data is not consistent: leaderBytes(%v) consistenBytes(%v) leaderData(%v) consistenData(%v)",
 				leaderReadBytes, consisReadBytes, string(leadData), string(req.Data))
 		}
-		fmt.Println(fmt.Sprintf("read: leaderBytes(%v) consistenBytes(%v) leaderData(%v) consistenData(%v)",
-			leaderReadBytes, consisReadBytes, len(leadData), len(req.Data)))
+		fmt.Printf("read: leaderBytes(%v) consistenBytes(%v) leaderData(%v) consistenData(%v)\n",
+			leaderReadBytes, consisReadBytes, len(leadData), len(req.Data))
 	}
 	// close
 	streamer.done <- struct{}{}

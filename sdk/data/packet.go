@@ -61,14 +61,14 @@ func (p *Packet) String() string {
 }
 
 // NewWritePacket returns a new write packet.
-func NewWritePacket(ctx context.Context, inode uint64, fileOffset, storeMode int, blksize int) *Packet {
+func NewWritePacket(ctx context.Context, inode uint64, fileOffset uint64, storeMode int, blksize int) *Packet {
 	p := new(Packet)
 	p.ReqID = proto.GenerateRequestID()
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpWrite
 	p.ExtentType = uint8(storeMode)
 	p.inode = inode
-	p.KernelOffset = uint64(fileOffset)
+	p.KernelOffset = fileOffset
 	var err error
 	if p.Data, err = proto.Buffers.Get(blksize); err != nil {
 		p.Data = make([]byte, blksize)
@@ -78,7 +78,7 @@ func NewWritePacket(ctx context.Context, inode uint64, fileOffset, storeMode int
 }
 
 // NewWritePacket returns a new write packet.
-func NewROWPacket(ctx context.Context, dp *DataPartition, quorum int, inode uint64, extID, fileOffset, extentOffset, size int) *Packet {
+func NewROWPacket(ctx context.Context, dp *DataPartition, quorum int, inode uint64, extID int, fileOffset uint64, extentOffset, size int) *Packet {
 	p := new(Packet)
 	p.ReqID = proto.GenerateRequestID()
 	p.Magic = proto.ProtoMagic
@@ -139,7 +139,7 @@ func PutOverWritePacketToPool(p *Packet) {
 }
 
 // NewOverwritePacket returns a new overwrite packet.
-func NewOverwritePacket(ctx context.Context, dp *DataPartition, extentID uint64, extentOffset int, inode uint64, fileOffset int) *Packet {
+func NewOverwritePacket(ctx context.Context, dp *DataPartition, extentID uint64, extentOffset int, inode uint64, fileOffset uint64) *Packet {
 	p := GetOverWritePacketFromPool()
 	p.PartitionID = dp.PartitionID
 	p.Magic = proto.ProtoMagic
@@ -161,7 +161,7 @@ func NewOverwritePacket(ctx context.Context, dp *DataPartition, extentID uint64,
 }
 
 // NewReadPacket returns a new read packet.
-func NewReadPacket(ctx context.Context, key *proto.ExtentKey, extentOffset, size int, inode uint64, fileOffset int, followerRead bool) *Packet {
+func NewReadPacket(ctx context.Context, key *proto.ExtentKey, extentOffset, size int, inode uint64, fileOffset uint64, followerRead bool) *Packet {
 	p := new(Packet)
 	p.ExtentID = key.ExtentId
 	p.PartitionID = key.PartitionId

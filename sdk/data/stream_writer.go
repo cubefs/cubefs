@@ -56,7 +56,7 @@ type OpenRequest struct {
 
 // WriteRequest defines a write request.
 type WriteRequest struct {
-	fileOffset      int
+	fileOffset      uint64
 	size            int
 	data            []byte
 	direct          bool
@@ -103,7 +103,7 @@ type ReleaseRequest struct {
 
 // TruncRequest defines a truncate request.
 type TruncRequest struct {
-	size int
+	size uint64
 	err  error
 	done chan struct{}
 	ctx  context.Context
@@ -144,7 +144,7 @@ func GetWriteRequestFromPool() (request *WriteRequest) {
 	return
 }
 
-func (s *Streamer) IssueWriteRequest(ctx context.Context, offset int, data []byte, direct bool, overWriteBuffer bool) (write int, isROW bool, err error) {
+func (s *Streamer) IssueWriteRequest(ctx context.Context, offset uint64, data []byte, direct bool, overWriteBuffer bool) (write int, isROW bool, err error) {
 	if atomic.LoadInt32(&s.status) >= StreamerError {
 		return 0, false, errors.New(fmt.Sprintf("IssueWriteRequest: stream writer in error status, ino(%v)", s.inode))
 	}
@@ -215,7 +215,7 @@ func (s *Streamer) IssueMustReleaseRequest(ctx context.Context) error {
 	return err
 }
 
-func (s *Streamer) IssueTruncRequest(ctx context.Context, size int) error {
+func (s *Streamer) IssueTruncRequest(ctx context.Context, size uint64) error {
 	request := truncRequestPool.Get().(*TruncRequest)
 	request.size = size
 	request.done = make(chan struct{}, 1)
@@ -363,7 +363,7 @@ func (s *Streamer) handleRequest(ctx context.Context, request interface{}) {
 	}
 }
 
-func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, direct bool, overWriteBuffer bool) (total int, isROW bool, err error) {
+func (s *Streamer) write(ctx context.Context, data []byte, offset uint64, size int, direct bool, overWriteBuffer bool) (total int, isROW bool, err error) {
 	if log.IsDebugEnabled() {
 		log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v)", s.inode, offset, size)
 	}
@@ -432,10 +432,10 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset, size int, dir
 		}
 	}
 
-	if filesize, _ := s.extents.Size(); offset+total > filesize {
-		s.extents.SetSize(uint64(offset+total), false)
+	if filesize, _ := s.extents.Size(); offset+uint64(total) > filesize {
+		s.extents.SetSize(offset+uint64(total), false)
 		if log.IsDebugEnabled() {
-			log.LogDebugf("Streamer write: ino(%v) filesize changed to (%v)", s.inode, offset+total)
+			log.LogDebugf("Streamer write: ino(%v) filesize changed to (%v)", s.inode, offset+uint64(total))
 		}
 	}
 	if log.IsDebugEnabled() {
@@ -483,7 +483,7 @@ func (s *Streamer) writeToExtent(ctx context.Context, oriReq *ExtentRequest, dp 
 
 	for total < size {
 		currSize := util.Min(size-total, util.OverWritePacketSizeLimit)
-		packet := NewROWPacket(ctx, dp, s.client.dataWrapper.quorum, s.inode, extID, oriReq.FileOffset+total, total, currSize)
+		packet := NewROWPacket(ctx, dp, s.client.dataWrapper.quorum, s.inode, extID, oriReq.FileOffset+uint64(total), total, currSize)
 		if direct {
 			packet.Opcode = proto.OpSyncWrite
 		}
@@ -607,7 +607,7 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 	var dp *DataPartition
 	offset := req.FileOffset
 	size := req.Size
-	ekFileOffset := int(req.ExtentKey.FileOffset)
+	ekFileOffset := req.ExtentKey.FileOffset
 	ekExtOffset := int(req.ExtentKey.ExtentOffset)
 
 	if dp, err = s.client.dataWrapper.GetDataPartition(req.ExtentKey.PartitionId); err != nil {
@@ -618,7 +618,7 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 	sc := NewStreamConn(dp, false)
 
 	for total < size {
-		reqPacket := NewOverwritePacket(ctx, dp, req.ExtentKey.ExtentId, offset-ekFileOffset+total+ekExtOffset, s.inode, offset)
+		reqPacket := NewOverwritePacket(ctx, dp, req.ExtentKey.ExtentId, int(offset-ekFileOffset)+total+ekExtOffset, s.inode, offset)
 		if direct {
 			reqPacket.Opcode = proto.OpSyncRandomWrite
 		}
@@ -653,7 +653,7 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 	return
 }
 
-func (s *Streamer) doWrite(ctx context.Context, data []byte, offset, size int, direct bool) (total int, err error) {
+func (s *Streamer) doWrite(ctx context.Context, data []byte, offset uint64, size int, direct bool) (total int, err error) {
 	var (
 		ek *proto.ExtentKey
 	)
@@ -665,7 +665,7 @@ func (s *Streamer) doWrite(ctx context.Context, data []byte, offset, size int, d
 		if s.handler == nil {
 			storeMode := proto.TinyExtentType
 
-			if offset != 0 || offset+size > s.tinySizeLimit() {
+			if offset != 0 || offset+uint64(size) > uint64(s.tinySizeLimit()) {
 				storeMode = proto.NormalExtentType
 			}
 			if log.IsDebugEnabled() {
@@ -719,14 +719,14 @@ func (s *Streamer) appendOverWriteReq(ctx context.Context, oriReq *ExtentRequest
 		if req.oriReq.ExtentKey.PartitionId != curReq.oriReq.ExtentKey.PartitionId ||
 			req.oriReq.ExtentKey.ExtentId != curReq.oriReq.ExtentKey.ExtentId ||
 			req.oriReq.FileOffset < curReq.oriReq.FileOffset ||
-			req.oriReq.FileOffset > curReq.oriReq.FileOffset+curReq.oriReq.Size {
+			req.oriReq.FileOffset > curReq.oriReq.FileOffset+uint64(curReq.oriReq.Size) {
 			continue
 		}
 
-		offset = req.oriReq.FileOffset - curReq.oriReq.FileOffset
-		if req.oriReq.FileOffset+req.oriReq.Size <= curReq.oriReq.FileOffset+curReq.oriReq.Size {
+		offset = int(req.oriReq.FileOffset - curReq.oriReq.FileOffset)
+		if req.oriReq.FileOffset+uint64(req.oriReq.Size) <= curReq.oriReq.FileOffset+uint64(curReq.oriReq.Size) {
 			copy(curReq.oriReq.Data[offset:offset+req.oriReq.Size], req.oriReq.Data)
-		} else if req.oriReq.FileOffset == curReq.oriReq.FileOffset+curReq.oriReq.Size {
+		} else if req.oriReq.FileOffset == curReq.oriReq.FileOffset+uint64(curReq.oriReq.Size) {
 			curReq.oriReq.Data = append(curReq.oriReq.Data, req.oriReq.Data...)
 			curReq.oriReq.Size = len(curReq.oriReq.Data)
 		} else {
@@ -895,7 +895,7 @@ func (s *Streamer) abort() {
 	}
 }
 
-func (s *Streamer) truncate(ctx context.Context, size int) error {
+func (s *Streamer) truncate(ctx context.Context, size uint64) error {
 	s.closeOpenHandler(ctx)
 	err := s.flush(ctx)
 	if err != nil {
@@ -1091,7 +1091,7 @@ func (s *Streamer) extentMerge(ctx context.Context) (finish bool, err error) {
 	return
 }
 
-func (s *Streamer) usePreExtentHandler(offset, size int) bool {
+func (s *Streamer) usePreExtentHandler(offset uint64, size int) bool {
 	preEk := s.extents.Pre(uint64(offset))
 	if preEk == nil ||
 		s.dirtylist.Len() != 0 ||
@@ -1120,7 +1120,7 @@ func (s *Streamer) usePreExtentHandler(offset, size int) bool {
 		return false
 	}
 
-	s.handler = NewExtentHandler(s, int(preEk.FileOffset), proto.NormalExtentType, false)
+	s.handler = NewExtentHandler(s, preEk.FileOffset, proto.NormalExtentType, false)
 
 	s.handler.dp = dp
 	s.handler.extID = int(preEk.ExtentId)

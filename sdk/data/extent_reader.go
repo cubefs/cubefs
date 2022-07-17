@@ -64,14 +64,14 @@ func (er *ExtentReader) Read(ctx context.Context, req *ExtentRequest) (readBytes
 	if er.readAhead {
 		er.reqMutex.Lock()
 		defer er.reqMutex.Unlock()
-		if er.req != nil && req.FileOffset >= er.req.FileOffset && req.FileOffset+req.Size <= er.req.FileOffset+er.req.Size {
-			copy(req.Data[0:req.Size], er.req.Data[req.FileOffset-er.req.FileOffset:req.FileOffset-er.req.FileOffset+req.Size])
+		if er.req != nil && req.FileOffset >= er.req.FileOffset && req.FileOffset+uint64(req.Size) <= er.req.FileOffset+uint64(er.req.Size) {
+			copy(req.Data[0:req.Size], er.req.Data[req.FileOffset-er.req.FileOffset:req.FileOffset-er.req.FileOffset+uint64(req.Size)])
 			readBytes = req.Size
 			return
 		}
 	}
 
-	offset := req.FileOffset - int(er.key.FileOffset) + int(er.key.ExtentOffset)
+	offset := int(req.FileOffset - er.key.FileOffset + er.key.ExtentOffset)
 	size := req.Size
 
 	readAhead := false

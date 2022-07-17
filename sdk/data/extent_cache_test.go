@@ -10,7 +10,7 @@ import (
 
 func Test_PrepareRequests(t *testing.T) {
 	type args struct {
-		offset int
+		offset uint64
 		size   int
 		data   []byte
 	}

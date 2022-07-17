@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/chubaofs/chubaofs/util/log"
 	"hash/crc32"
 	"io/ioutil"
 	"math"
@@ -17,6 +16,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/chubaofs/chubaofs/util/log"
 
 	"github.com/chubaofs/chubaofs/metanode"
 	"github.com/chubaofs/chubaofs/proto"
@@ -1283,7 +1284,7 @@ func validateTinyExtentCrc(dataPartition *proto.DataPartitionResponse, extentID 
 		crcLocAddrMapTmp := make(map[uint32][]string)
 		for addr := range replicaSizeMap {
 			crcData := make([]byte, size)
-			err1 := readExtent(dataPartition, addr, extentID, crcData, int(offset), int(size))
+			err1 := readExtent(dataPartition, addr, extentID, crcData, offset, int(size))
 			if err1 != nil {
 				err = fmt.Errorf("addr[%v] extentId[%v] offset[%v] size[%v] err:%v", addr, extentID, int(offset), int(size), err1)
 				return
@@ -1519,7 +1520,7 @@ func getExtentMd5(datanode string, dpId uint64, extentId uint64, extentOffset ui
 	return
 }
 
-func readExtent(dp *proto.DataPartitionResponse, addr string, extentId uint64, d []byte, offset int, size int) (err error) {
+func readExtent(dp *proto.DataPartitionResponse, addr string, extentId uint64, d []byte, offset uint64, size int) (err error) {
 	ctx := context.Background()
 	ek := &proto.ExtentKey{PartitionId: dp.PartitionID, ExtentId: extentId}
 	dataPartition := &data.DataPartition{
@@ -1528,7 +1529,7 @@ func readExtent(dp *proto.DataPartitionResponse, addr string, extentId uint64, d
 	}
 	dataPartition.ClientWrapper.SetConnConfig()
 	sc := data.NewStreamConnWithAddr(dataPartition, addr)
-	reqPacket := data.NewReadPacket(ctx, ek, offset, size, 0, offset, true)
+	reqPacket := data.NewReadPacket(ctx, ek, int(offset), size, 0, offset, true)
 	req := data.NewExtentRequest(0, 0, d, nil)
 	_, _, _, err = dataPartition.SendReadCmdToDataPartition(sc, reqPacket, req)
 	return
@@ -1562,5 +1563,3 @@ func parseResp(resp []byte) (data []byte, err error) {
 	data = body.Data
 	return
 }
-
-

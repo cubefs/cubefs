@@ -1061,9 +1061,10 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 
 func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash) (size uint64, err error) {
 	var (
-		buf                   = make([]byte, 2*util.BlockSize)
-		readN, writeN, offset int
-		hashBuf               = make([]byte, 2*util.BlockSize)
+		buf           = make([]byte, 2*util.BlockSize)
+		readN, writeN int
+		offset        uint64
+		hashBuf       = make([]byte, 2*util.BlockSize)
 	)
 	for {
 		readN, err = reader.Read(buf)
@@ -1077,7 +1078,7 @@ func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash) (size 
 					v.name, inode, offset, readN, err))
 				return
 			}
-			offset += writeN
+			offset += uint64(writeN)
 			// copy to md5 buffer, and then write to md5
 			size += uint64(writeN)
 			copy(hashBuf, buf[:readN])
@@ -1115,7 +1116,10 @@ func (v *Volume) appendInodeHash(h hash.Hash, inode uint64, total uint64, preAll
 		buf = make([]byte, 1024*64)
 	}
 
-	var n, offset, size int
+	var (
+		n, size int
+		offset  uint64
+	)
 	for {
 		size = len(buf)
 		rest := total - uint64(offset)
@@ -1132,7 +1136,7 @@ func (v *Volume) appendInodeHash(h hash.Hash, inode uint64, total uint64, preAll
 			if _, err = h.Write(buf[:n]); err != nil {
 				return
 			}
-			offset += n
+			offset += uint64(n)
 		}
 		if n == 0 || err == io.EOF {
 			break
@@ -1219,7 +1223,7 @@ func (v *Volume) ReadInode(ino uint64, writer io.Writer, offset, size uint64) er
 		return nil
 	}
 
-	if err = v.ec.OpenStreamWithSize(ino, int(offset+size)); err != nil {
+	if err = v.ec.OpenStreamWithSize(ino, offset+size); err != nil {
 		log.LogErrorf("ReadFile: data open stream fail, Inode(%v) err(%v)", ino, err)
 		return err
 	}
@@ -1246,7 +1250,7 @@ func (v *Volume) ReadInode(ino uint64, writer io.Writer, offset, size uint64) er
 		if uint64(readSize) > rest {
 			readSize = int(rest)
 		}
-		n, _, err = v.ec.Read(context.Background(), ino, tmp, int(offset), readSize)
+		n, _, err = v.ec.Read(context.Background(), ino, tmp, offset, readSize)
 		if err != nil && err != io.EOF {
 			log.LogErrorf("ReadInode: data read fail: volume(%v) inode(%v) offset(%v) size(%v) err(%v)",
 				v.name, ino, offset, size, err)
@@ -2165,19 +2169,19 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		md5Value    string
 		readN       int
 		writeN      int
-		readOffset  int
-		writeOffset int
+		readOffset  uint64
+		writeOffset uint64
 		readSize    int
 		buf         = make([]byte, 2*util.BlockSize)
 		hashBuf     = make([]byte, 2*util.BlockSize)
 	)
 	for {
 		readSize = len(buf)
-		if (int(fileSize) - readOffset) <= 0 {
+		if (fileSize - readOffset) <= 0 {
 			break
 		}
-		if (int(fileSize) - readOffset) < len(buf) {
-			readSize = int(fileSize) - readOffset
+		if int(fileSize-readOffset) < len(buf) {
+			readSize = int(fileSize - readOffset)
 		}
 		readN, _, err = sv.ec.Read(context.Background(), sInode, buf, readOffset, readSize)
 		if err != nil && err != io.EOF {
@@ -2189,8 +2193,8 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 					v.name, targetPath, tInodeInfo.Inode, writeOffset, err)
 				return
 			}
-			readOffset += readN
-			writeOffset += writeN
+			readOffset += uint64(readN)
+			writeOffset += uint64(writeN)
 			// copy to md5 buffer, and then write to md5
 			copy(hashBuf, buf[:readN])
 			md5Hash.Write(hashBuf[:readN])
