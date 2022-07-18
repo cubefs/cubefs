@@ -16,7 +16,7 @@ INSTALLDIR=${CURRENT_DIR}/.deps
 mkdir -p ${INSTALLDIR}/lib
 mkdir -p ${INSTALLDIR}/include
 
-ZLIB_VER=1.2.11
+ZLIB_VER=1.2.12
 BZIP2_VER=1.0.6
 SNAPPY_VER=1.1.7
 LZ4_VER=1.8.3
@@ -28,12 +28,15 @@ pushd ${INSTALLDIR}
 if [ ! -f lib/libz.a ]; then
     rm -rf zlib-${ZLIB_VER}
     if [ ! -f zlib-${ZLIB_VER}.tar.gz ]; then
-        wget https://github.com/madler/zlib/archive/refs/tags/v${ZLIB_VER}.tar.gz -O zlib-${ZLIB_VER}.tar.gz
+        wget http://zlib.net/zlib-${ZLIB_VER}.tar.gz
+        if [ $? -ne 0 ]; then
+            exit 1
+        fi
+        tar -zxf zlib-${ZLIB_VER}.tar.gz
         if [ $? -ne 0 ]; then
             exit 1
         fi
     fi
-    tar -zxf zlib-${ZLIB_VER}.tar.gz
     pushd zlib-${ZLIB_VER}
     CFLAGS='-fPIC' ./configure --prefix=${INSTALLDIR} --static
     make
@@ -49,8 +52,11 @@ if [ ! -f lib/libbz2.a ]; then
         if [ $? -ne 0 ]; then
             exit 1
         fi
+        tar -zxf bzip2-bzip2-${BZIP2_VER}.tar.gz
+        if [ $? -ne 0 ]; then
+            exit 1
+        fi
     fi
-    tar -zxf bzip2-bzip2-${BZIP2_VER}.tar.gz
     pushd bzip2-bzip2-${BZIP2_VER}
     make CFLAGS='-fPIC -O2 -g -D_FILE_OFFSET_BITS=64'
     cp -f libbz2.a ${INSTALLDIR}/lib/libbz2.a
@@ -65,8 +71,11 @@ if [ ! -f lib/libzstd.a ]; then
         if [ $? -ne 0 ]; then
             exit 1
         fi
+        tar -zxf zstd-${ZSTD_VER}.tar.gz
+        if [ $? -ne 0 ]; then
+            exit 1
+        fi
     fi
-    tar -zxf zstd-${ZSTD_VER}.tar.gz
     pushd zstd-${ZSTD_VER}/lib
     make CFLAGS='-fPIC -O2'
     cp -f libzstd.a ${INSTALLDIR}/lib
@@ -80,8 +89,11 @@ if [ ! -f lib/liblz4.a ]; then
         if [ $? -ne 0 ]; then
             exit 1
         fi
+        tar -zxf lz4-${LZ4_VER}.tar.gz
+        if [ $? -ne 0 ]; then
+            exit 1
+        fi
     fi
-    tar -zxf lz4-${LZ4_VER}.tar.gz
     pushd lz4-${LZ4_VER}/lib
     make CFLAGS='-fPIC -O2'
     cp -f liblz4.a ${INSTALLDIR}/lib
@@ -96,8 +108,11 @@ if [ ! -f lib/libsnappy.a ]; then
         if [ $? -ne 0 ]; then
             exit 1
         fi
+        tar -zxf snappy-${SNAPPY_VER}.tar.gz
+        if [ $? -ne 0 ]; then
+            exit 1
+        fi
     fi
-    tar -zxf snappy-${SNAPPY_VER}.tar.gz
     mkdir snappy-${SNAPPY_VER}/build
     pushd snappy-${SNAPPY_VER}/build
     cmake -DCMAKE_POSITION_INDEPENDENT_CODE=ON .. && make
@@ -116,8 +131,11 @@ if [ ! -f lib/librocksdb.a ]; then
         if [ $? -ne 0 ]; then
             exit 1
         fi
+        tar -zxf rocksdb-${ROCKSDB_VER}.tar.gz
+        if [ $? -ne 0 ]; then
+            exit 1
+        fi
     fi
-    tar -zxf rocksdb-${ROCKSDB_VER}.tar.gz
     pushd rocksdb-${ROCKSDB_VER}
     CCMAJOR=`gcc -dumpversion | awk -F. '{print $1}'`
     if [ ${CCMAJOR} -ge 9 ]; then
@@ -128,8 +146,8 @@ if [ ! -f lib/librocksdb.a ]; then
         exit 1
     fi
     make install-static INSTALL_PATH=${INSTALLDIR}
-    strip -S -x lib/librocksdb.a
     popd
+    strip -S -x lib/librocksdb.a
 fi
 popd
 
