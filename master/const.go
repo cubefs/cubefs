@@ -61,6 +61,7 @@ const (
 	nodeDeleteBatchCountKey     = "batchCount"
 	nodeMarkDeleteRateKey       = "markDeleteRate"
 	dataNodeRepairTaskCountKey  = "dataNodeRepairTaskCount"
+	dataNodeRepairTaskCntZoneKey= "dataNodeRepairTaskZoneCount"
 	dataNodeReqRateKey          = "dataNodeReqRate"
 	dataNodeReqOpRateKey        = "dataNodeReqOpRate"
 	dataNodeReqVolOpRateKey     = "dataNodeReqVolOpRate"

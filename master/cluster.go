@@ -3375,6 +3375,28 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 	return
 }
 
+func (c *Cluster) setDataNodeRepairTaskCountZoneLimit(val uint64, zone string) (err error) {
+	c.cfg.reqRateLimitMapMutex.Lock()
+	defer c.cfg.reqRateLimitMapMutex.Unlock()
+	oldVal, ok := c.cfg.DataNodeRepairTaskCountZoneLimit[zone]
+	if val > 0 {
+		c.cfg.DataNodeRepairTaskCountZoneLimit[zone] = val
+	} else {
+		delete(c.cfg.DataNodeRepairTaskCountZoneLimit, zone)
+	}
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setDataNodeRepairTaskCountZoneLimit] err[%v]", err)
+		if ok {
+			c.cfg.DataNodeRepairTaskCountZoneLimit[zone] = oldVal
+		} else {
+			delete(c.cfg.DataNodeRepairTaskCountZoneLimit, zone)
+		}
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
 func (c *Cluster) setDataNodeReqRateLimit(val uint64, zone string) (err error) {
 	c.cfg.reqRateLimitMapMutex.Lock()
 	defer c.cfg.reqRateLimitMapMutex.Unlock()

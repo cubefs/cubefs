@@ -100,6 +100,7 @@ type clusterConfig struct {
 	reqRateLimitMapMutex                sync.Mutex
 	DataNodeDeleteLimitRate             uint64 //datanode delete limit rate
 	DataNodeRepairTaskCount             uint64
+	DataNodeRepairTaskCountZoneLimit    map[string]uint64
 	MetaNodeDeleteWorkerSleepMs         uint64
 	ClientReadVolRateLimitMap           map[string]uint64
 	ClientWriteVolRateLimitMap          map[string]uint64
@@ -142,6 +143,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.ClientWriteVolRateLimitMap = make(map[string]uint64)
 	cfg.ClientVolOpRateLimitMap = make(map[string]map[uint8]int64)
 	cfg.ExtentMergeIno = make(map[string][]uint64)
+	cfg.DataNodeRepairTaskCountZoneLimit = make(map[string]uint64)
 	cfg.ClientPkgAddr = defaultClientPkgAddr
 	return
 }

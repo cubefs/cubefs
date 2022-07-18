@@ -2150,6 +2150,28 @@ func TestSetReadDirLimitNum(t *testing.T) {
 
 }
 
+func TestSetDataNodeRepairTaskCountZoneLimit(t *testing.T) {
+	limitNum := uint64(10)
+	zone := testZone1
+	reqURL := fmt.Sprintf("%v%v?%v=%v&zoneName=%v", hostAddr, proto.AdminSetNodeInfo, dataNodeRepairTaskCntZoneKey, limitNum, zone)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+	if server.cluster.cfg.DataNodeRepairTaskCountZoneLimit[zone] != limitNum {
+		t.Errorf("set zone:%v DataNodeRepairTaskCountZoneLimit to %v failed", zone, limitNum)
+		return
+	}
+	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
+	fmt.Println(reqURL)
+	reply := processReturnRawReply(reqURL, t)
+	limitInfo := &proto.LimitInfo{}
+	if err := json.Unmarshal(reply.Data, limitInfo); err != nil {
+		t.Errorf("unmarshal limitinfo failed,err:%v", err)
+	}
+	if limitInfo.DataNodeRepairTaskCountZoneLimit[zone] != limitNum {
+		t.Errorf("DataNodeRepairTaskCountZoneLimit expect:%v, real:%v", limitNum, limitInfo.DataNodeRepairTaskCountZoneLimit)
+	}
+}
+
 func TestValidSmartRules(t *testing.T) {
 	clusterID := "cfs"
 	volName := "vol"

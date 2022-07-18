@@ -112,6 +112,11 @@ func (m *DataNode) updateDeleteLimitInfo() {
 	deleteLimiteRater.SetLimit(l)
 
 	m.space.SetDiskFixTinyDeleteRecordLimit(limitInfo.DataNodeFixTinyDeleteRecordLimitOnDisk)
+	if limitInfo.DataNodeRepairTaskCountZoneLimit != nil {
+		if taskLimit, ok := limitInfo.DataNodeRepairTaskCountZoneLimit[m.zoneName]; ok {
+			limitInfo.DataNodeRepairTaskLimitOnDisk = taskLimit
+		}
+	}
 	m.space.SetDiskRepairTaskLimit(limitInfo.DataNodeRepairTaskLimitOnDisk)
 }
 

@@ -347,6 +347,7 @@ type LimitInfo struct {
 
 	DataNodeFixTinyDeleteRecordLimitOnDisk uint64
 	DataNodeRepairTaskLimitOnDisk          uint64
+	DataNodeRepairTaskCountZoneLimit       map[string]uint64
 
 	ExtentMergeIno     map[string][]uint64
 	ExtentMergeSleepMs uint64
@@ -884,6 +885,7 @@ type RateLimitInfo struct {
 	ClientWriteRate            int64
 	ClientVolOpRate            int64
 	DnFixTinyDeleteRecordLimit int64
+	DataNodeRepairTaskZoneCount  int64
 }
 
 type ConvertMode uint8

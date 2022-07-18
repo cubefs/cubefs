@@ -310,6 +310,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		MetaNodeReqOpRateLimitMap:              m.cluster.cfg.MetaNodeReqOpRateLimitMap,
 		DataNodeDeleteLimitRate:                deleteLimitRate,
 		DataNodeRepairTaskLimitOnDisk:          repairTaskCount,
+		DataNodeRepairTaskCountZoneLimit:       m.cluster.cfg.DataNodeRepairTaskCountZoneLimit,
 		DataNodeReqZoneRateLimitMap:            m.cluster.cfg.DataNodeReqZoneRateLimitMap,
 		DataNodeReqZoneOpRateLimitMap:          m.cluster.cfg.DataNodeReqZoneOpRateLimitMap,
 		DataNodeReqZoneVolOpRateLimitMap:       m.cluster.cfg.DataNodeReqZoneVolOpRateLimitMap,
@@ -1801,6 +1802,13 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		op = uint8(val.(uint64))
 	}
 
+	if val, ok := params[dataNodeRepairTaskCntZoneKey]; ok {
+		v := val.(uint64)
+		if err = m.cluster.setDataNodeRepairTaskCountZoneLimit(v, zone); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
 	if val, ok := params[dataNodeReqRateKey]; ok {
 		v := val.(uint64)
 		if v > 0 && v < minRateLimit {
@@ -1816,7 +1824,7 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := params[dataNodeReqVolOpRateKey]; ok {
 		v := val.(uint64)
 		if v > 0 && v < minRateLimit {
-			err = errors.NewErrorf("parameter %s can't be less than %d", dataNodeReqRateKey, minRateLimit)
+			err = errors.NewErrorf("parameter %s can't be less than %d", dataNodeReqVolOpRateKey, minRateLimit)
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
@@ -3533,7 +3541,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 
 	uintKeys := []string{nodeDeleteBatchCountKey, nodeMarkDeleteRateKey, dataNodeRepairTaskCountKey, nodeDeleteWorkerSleepMs, metaNodeReqRateKey, metaNodeReqOpRateKey,
 		dataNodeReqRateKey, dataNodeReqVolOpRateKey, dataNodeReqOpRateKey, dataNodeReqVolPartRateKey, dataNodeReqVolOpPartRateKey, opcodeKey, clientReadVolRateKey, clientWriteVolRateKey,
-		extentMergeSleepMsKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey}
+		extentMergeSleepMsKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey}
 	for _, key := range uintKeys {
 		if err = parseUintKey(params, key, r); err != nil {
 			return
