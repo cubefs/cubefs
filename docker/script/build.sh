@@ -36,9 +36,9 @@ cd /go/src/github.com/chubaofs/chubaofs/client;
 bash ./build.sh ${build_opt} &>> /tmp/cfs_build_output
 if [[ $? -eq 0 ]]; then
     echo -e "\033[32mdone\033[0m";
-    mv cfs-client /go/src/github.com/chubaofs/chubaofs/docker/bin/cfs-client;
-    mv libcfssdk_${CommitID}.so /go/src/github.com/chubaofs/chubaofs/docker/bin/libcfssdk.so;
-    mv libcfssdk_cshared.so /go/src/github.com/chubaofs/chubaofs/docker/bin/libcfssdk_cshared.so;
+    mv bin/cfs-client /go/src/github.com/chubaofs/chubaofs/docker/bin/cfs-client;
+    mv bin/libcfssdk.so /go/src/github.com/chubaofs/chubaofs/docker/bin/libcfssdk.so;
+    mv bin/libcfssdk_cshared.so /go/src/github.com/chubaofs/chubaofs/docker/bin/libcfssdk_cshared.so;
 else
     echo -e "\033[31mfail\033[0m";
     failed=1
