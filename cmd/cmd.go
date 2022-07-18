@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/chubaofs/chubaofs/convertnode"
+	"github.com/chubaofs/chubaofs/datanodeAgent"
 	"github.com/chubaofs/chubaofs/schedulenode/compact"
 	"github.com/chubaofs/chubaofs/schedulenode/scheduler"
 	"github.com/chubaofs/chubaofs/schedulenode/smart"
@@ -64,29 +65,31 @@ const (
 )
 
 const (
-	RoleMaster   = "master"
-	RoleMeta     = "metanode"
-	RoleData     = "datanode"
-	RoleObject   = "objectnode"
-	RoleConsole  = "console"
-	RoleMonitor  = "monitor"
-	RoleConvert  = "convert"
-	RoleSchedule = "schedulenode"
-	RoleSmart    = "smartvolume"
-	RoleCompact  = "compact"
+	RoleMaster    = "master"
+	RoleMeta      = "metanode"
+	RoleData      = "datanode"
+	RoleObject    = "objectnode"
+	RoleConsole   = "console"
+	RoleMonitor   = "monitor"
+	RoleConvert   = "convert"
+	RoleSchedule  = "schedulenode"
+	RoleSmart     = "smartvolume"
+	RoleCompact   = "compact"
+	RoleDataAgent = "dataAgent"
 )
 
 const (
-	ModuleMaster   = "master"
-	ModuleMeta     = "metaNode"
-	ModuleData     = "dataNode"
-	ModuleObject   = "objectNode"
-	ModuleConsole  = "console"
-	ModuleMonitor  = "monitor"
-	ModuleConvert  = "convert"
-	ModuleSchedule = "scheduleNode"
-	ModuleSmart    = "smartVolume"
-	ModuleCompact  = "compact"
+	ModuleMaster    = "master"
+	ModuleMeta      = "metaNode"
+	ModuleData      = "dataNode"
+	ModuleObject    = "objectNode"
+	ModuleConsole   = "console"
+	ModuleMonitor   = "monitor"
+	ModuleConvert   = "convert"
+	ModuleSchedule  = "scheduleNode"
+	ModuleSmart     = "smartVolume"
+	ModuleCompact   = "compact"
+	ModuleDataAgent = "dataAgent"
 )
 
 const (
@@ -237,6 +240,9 @@ func run() error {
 	case RoleCompact:
 		server = compact.NewCompactWorker()
 		module = ModuleCompact
+	case RoleDataAgent:
+		server = datanodeAgent.NewServer()
+		module = ModuleDataAgent
 	default:
 		_ = daemonize.SignalOutcome(fmt.Errorf("Fatal: role mismatch: %v", role))
 		return fmt.Errorf("unknown role: %v", role)

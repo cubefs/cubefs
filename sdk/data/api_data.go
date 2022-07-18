@@ -238,6 +238,41 @@ func (c *DataHttpClient) GetExtentInfo(id uint64, eid uint64) (ehs *proto.Extent
 	return
 }
 
+func (c *DataHttpClient) StopPartition(pid uint64) (err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[StopPartition],pid:%v,err:%v", pid, err)
+		}
+		log.LogFlush()
+	}()
+	req := newAPIRequest(http.MethodGet, "/stopPartition")
+	req.addParam("partitionID", fmt.Sprintf("%v", pid))
+	_, err = c.serveRequest(req)
+	log.LogInfof("action[StopPartition],pid:%v,:%v", pid, err)
+	if err != nil {
+		return
+	}
+	return
+}
+
+func (c *DataHttpClient) ReLoadPartition(partitionDirName, dirPath string) (err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[ReLoadPartition],pid:%v,err:%v", partitionDirName, err)
+		}
+		log.LogFlush()
+	}()
+	req := newAPIRequest(http.MethodGet, "/reloadPartition")
+	req.addParam("partitionPath", partitionDirName)
+	req.addParam("disk", dirPath)
+	_, err = c.serveRequest(req)
+	log.LogInfof("action[ReLoadPartition],pid:%v,err:%v", partitionDirName, err)
+	if err != nil {
+		return
+	}
+	return
+}
+
 //repair agent
 func (c *DataHttpClient) RepairExtent(extent uint64, partitionPath string, partition uint64) (err error) {
 	params := make(map[string]string)
@@ -280,5 +315,26 @@ func (c *DataHttpClient) RepairExtentBatch(extents, partitionPath string, partit
 	if err = json.Unmarshal(d, &exts); err != nil {
 		return
 	}
+	return
+}
+
+//datanodeAgent api
+
+func (c *DataHttpClient) FetchExtentsCrc(partitionPath string)(extentsMap map[uint64]*proto.ExtentInfoBlock, err error) {
+	d := make([]byte, 0)
+	for i := 0; i < 3; i++ {
+		req := newAPIRequest(http.MethodGet, "/fetchExtentsCrc")
+		req.addParam("path", partitionPath)
+		d, err = c.serveRequest(req)
+		if err == nil {
+			break
+		}
+		time.Sleep(5 * time.Second)
+	}
+	if err != nil {
+		return
+	}
+	extentsMap = make(map[uint64]*proto.ExtentInfoBlock, 0)
+	err = json.Unmarshal(d, &extentsMap)
 	return
 }

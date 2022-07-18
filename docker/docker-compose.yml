@@ -220,7 +220,8 @@ services:
             - ${DiskPath:-./docker_data}/datanode1/log:/cfs/log
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/datanode.json:/cfs/conf/datanode.json
-            - ./script/start_datanode.sh:/cfs/script/start.sh
+            - ./conf/dataAgent.json:/cfs/conf/dataAgent.json
+            - ./script/start_dataagent.sh:/cfs/script/start_agent.sh
         command: /cfs/bin/cfs-server -f -c /cfs/conf/datanode.json
         restart: on-failure
         privileged: true
@@ -244,7 +245,8 @@ services:
             - ${DiskPath:-./docker_data}/datanode2/log:/cfs/log
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/datanode.json:/cfs/conf/datanode.json
-            - ./script/start_datanode.sh:/cfs/script/start.sh
+            - ./conf/dataAgent.json:/cfs/conf/dataAgent.json
+            - ./script/start_dataagent.sh:/cfs/script/start_agent.sh
         command: /cfs/bin/cfs-server -f -c /cfs/conf/datanode.json
         restart: on-failure
         privileged: true
@@ -268,7 +270,8 @@ services:
             - ${DiskPath:-./docker_data}/datanode3/log:/cfs/log
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/datanode.json:/cfs/conf/datanode.json
-            - ./script/start_datanode.sh:/cfs/script/start.sh
+            - ./conf/dataAgent.json:/cfs/conf/dataAgent.json
+            - ./script/start_dataagent.sh:/cfs/script/start_agent.sh
         command: /cfs/bin/cfs-server -f -c /cfs/conf/datanode.json
         restart: on-failure
         privileged: true
@@ -292,7 +295,8 @@ services:
             - ${DiskPath:-./docker_data}/datanode4/log:/cfs/log
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/datanode.json:/cfs/conf/datanode.json
-            - ./script/start_datanode.sh:/cfs/script/start.sh
+            - ./conf/dataAgent.json:/cfs/conf/dataAgent.json
+            - ./script/start_dataagent.sh:/cfs/script/start_agent.sh
         command: /cfs/bin/cfs-server -f -c /cfs/conf/datanode.json
         restart: on-failure
         privileged: true

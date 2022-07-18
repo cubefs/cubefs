@@ -1,0 +1,7 @@
+{
+  "role": "dataAgent",
+  "prof": "6101",
+  "logDir": "/cfs/log",
+  "logLevel": "debug",
+  "dataCfgPath": "/cfs/conf/datanode.json"
+}

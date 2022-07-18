@@ -1,5 +1,12 @@
 package proto
 
+const (
+	FileID = iota
+	Size
+	Crc
+	ModifyTime
+)
+
 type DataPartitions struct {
 	Partitions     []*DataPartition `json:"partitions"`
 	PartitionCount int              `json:"partitionCount"`

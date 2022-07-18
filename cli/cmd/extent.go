@@ -50,6 +50,9 @@ const (
 	cmdCheckGarbageShort        = "Check garbage extents"
 	cmdCheckTinyExtentHoleUse   = "check-tiny-hole"
 	cmdCheckTinyExtentHoleShort = "Check tiny extents hole"
+	cmdExtentRepair             = "repair [partition] [extent] [host]"
+	cmdExtentRepairShort        = "repair extent"
+
 )
 
 const (
@@ -135,6 +138,7 @@ func newExtentCmd(mc *sdk.MasterClient) *cobra.Command {
 		newExtentGarbageCheckCmd(),
 		newTinyExtentCheckHoleCmd(),
 		newExtentGetCmd(),
+		newExtentRepairCmd(),
 	)
 	return cmd
 }
@@ -193,6 +197,58 @@ func newExtentGetCmd() *cobra.Command {
 	}
 	return cmd
 
+}
+
+func newExtentRepairCmd() *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   cmdExtentRepair,
+		Short: cmdExtentRepairShort,
+		Args:  cobra.MinimumNArgs(3),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			defer func() {
+				if err != nil {
+					stdout(err.Error())
+				}
+			}()
+			partitionID, err := strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				return
+			}
+			extentID, err := strconv.ParseUint(args[1], 10, 64)
+			if err != nil {
+				return
+			}
+			host := args[2]
+			dp, err := client.AdminAPI().GetDataPartition("", partitionID)
+			if err != nil {
+				return
+			}
+			var exist bool
+			for _, h := range dp.Hosts {
+				if h == host {
+					exist = true
+					break
+				}
+			}
+			if !exist {
+				err = fmt.Errorf("host[%v] not exist in hosts[%v]", host, dp.Hosts)
+				return
+			}
+			dHost := fmt.Sprintf("%v:%v", strings.Split(host, ":")[0], client.DataNodeProfPort)
+			dataClient := data.NewDataHttpClient(dHost, false)
+			partition, err := dataClient.GetPartitionFromNode(partitionID)
+			if err != nil {
+				return
+			}
+			err = dataClient.RepairExtent(extentID, partition.Path, partitionID)
+			if err != nil {
+				return
+			}
+			fmt.Printf("repair success")
+		},
+	}
+	return cmd
 }
 
 func newExtentCheckCmd(checkType int) *cobra.Command {
