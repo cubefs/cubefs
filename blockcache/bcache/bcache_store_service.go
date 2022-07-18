@@ -162,7 +162,7 @@ func (s *bcacheStore) registerHandler(router *mux.Router) {
 
 func (s *bcacheStore) startUnixHttpServer() {
 
-	os.Mkdir(filepath.Dir(UnixSocketPath), FilePerm)
+	os.MkdirAll(filepath.Dir(UnixSocketPath), FilePerm)
 	if _, err := os.Stat(UnixSocketPath); err == nil {
 		existErr := fmt.Sprintf("Another process is running or %s already exist.", UnixSocketPath)
 		log.LogErrorf(existErr)
