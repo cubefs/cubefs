@@ -198,6 +198,21 @@ func (mr *MockClusterMgrAPIMockRecorder) GetVolumeInfo(arg0, arg1 interface{}) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVolumeInfo", reflect.TypeOf((*MockClusterMgrAPI)(nil).GetVolumeInfo), arg0, arg1)
 }
 
+// GetVolumeInspectCheckPoint mocks base method.
+func (m *MockClusterMgrAPI) GetVolumeInspectCheckPoint(arg0 context.Context) (*proto.VolumeInspectCheckPoint, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetVolumeInspectCheckPoint", arg0)
+	ret0, _ := ret[0].(*proto.VolumeInspectCheckPoint)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetVolumeInspectCheckPoint indicates an expected call of GetVolumeInspectCheckPoint.
+func (mr *MockClusterMgrAPIMockRecorder) GetVolumeInspectCheckPoint(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVolumeInspectCheckPoint", reflect.TypeOf((*MockClusterMgrAPI)(nil).GetVolumeInspectCheckPoint), arg0)
+}
+
 // ListAllMigrateTasks mocks base method.
 func (m *MockClusterMgrAPI) ListAllMigrateTasks(arg0 context.Context, arg1 proto.TaskType) ([]*proto.MigrateTask, error) {
 	m.ctrl.T.Helper()
@@ -432,6 +447,20 @@ func (m *MockClusterMgrAPI) SetDiskRepairing(arg0 context.Context, arg1 proto.Di
 func (mr *MockClusterMgrAPIMockRecorder) SetDiskRepairing(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetDiskRepairing", reflect.TypeOf((*MockClusterMgrAPI)(nil).SetDiskRepairing), arg0, arg1)
+}
+
+// SetVolumeInspectCheckPoint mocks base method.
+func (m *MockClusterMgrAPI) SetVolumeInspectCheckPoint(arg0 context.Context, arg1 proto.Vid) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetVolumeInspectCheckPoint", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetVolumeInspectCheckPoint indicates an expected call of SetVolumeInspectCheckPoint.
+func (mr *MockClusterMgrAPIMockRecorder) SetVolumeInspectCheckPoint(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetVolumeInspectCheckPoint", reflect.TypeOf((*MockClusterMgrAPI)(nil).SetVolumeInspectCheckPoint), arg0, arg1)
 }
 
 // UnlockVolume mocks base method.

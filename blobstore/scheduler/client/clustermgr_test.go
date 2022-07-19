@@ -440,4 +440,22 @@ func TestClustermgrClient(t *testing.T) {
 		_, err = cli.ListMigratingDisks(ctx, proto.TaskTypeDiskDrop)
 		require.True(t, errors.Is(err, errMock))
 	}
+	{
+		// set volume inspect checkpoint
+		startVid := proto.Vid(100)
+		cli.client.(*MockClusterManager).EXPECT().SetKV(any, any, any).Return(nil)
+		err := cli.SetVolumeInspectCheckPoint(ctx, startVid)
+		require.NoError(t, err)
+
+		// get volume inspect checkpoint
+		checkpoint := &proto.VolumeInspectCheckPoint{
+			StartVid: startVid,
+			Ctime:    "",
+		}
+		checkpointBytes, _ := json.Marshal(checkpoint)
+		cli.client.(*MockClusterManager).EXPECT().GetKV(any, any).Return(cmapi.GetKvRet{Value: checkpointBytes}, nil)
+		checkpoint2, err := cli.GetVolumeInspectCheckPoint(ctx)
+		require.NoError(t, err)
+		require.Equal(t, checkpoint.StartVid, checkpoint2.StartVid)
+	}
 }

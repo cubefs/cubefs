@@ -30,9 +30,8 @@ type Config struct {
 	Mongo  mongoutil.Config `json:"mongo"`
 	DBName string           `json:"db_name"`
 
-	InspectCheckPointTable string `json:"inspect_checkpoint_table"`
-	OrphanShardTable       string `json:"orphaned_shard_table"`
-	KafkaOffsetTable       string `json:"kafka_offset_table"`
+	OrphanShardTable string `json:"orphaned_shard_table"`
+	KafkaOffsetTable string `json:"kafka_offset_table"`
 }
 
 // Database used for database operate
@@ -41,8 +40,6 @@ type Database struct {
 
 	KafkaOffsetTable IKafkaOffsetTable
 	OrphanShardTable IOrphanShardTable
-
-	InspectCheckPointTable IInspectCheckPointTable
 }
 
 // OpenDatabase open database
@@ -54,10 +51,6 @@ func OpenDatabase(conf *Config) (tables *Database, err error) {
 	db := client.Database(conf.DBName)
 	tables = &Database{DB: db}
 
-	if tables.InspectCheckPointTable, err = OpenInspectCheckPointTbl(
-		mustCreateCollection(db, conf.InspectCheckPointTable)); err != nil {
-		return nil, err
-	}
 	tables.KafkaOffsetTable = openKafkaOffsetTable(mustCreateCollection(db, conf.KafkaOffsetTable))
 	tables.OrphanShardTable = openOrphanedShardTable(mustCreateCollection(db, conf.OrphanShardTable))
 

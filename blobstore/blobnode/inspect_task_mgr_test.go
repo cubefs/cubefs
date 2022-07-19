@@ -51,7 +51,7 @@ func testDodoInspect(t *testing.T, mode codemode.CodeMode) {
 	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)
 	reporter := &mockResultReporter{nil}
 	mgr := NewInspectTaskMgr(1, getter, reporter)
-	task := proto.InspectTask{
+	task := proto.VolumeInspectTask{
 		TaskId:   "InspectTask_XXX",
 		Mode:     mode,
 		Replicas: replicas,
@@ -148,7 +148,7 @@ func TestAddTask(t *testing.T) {
 	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)
 	reporter := &mockResultReporter{nil}
 	mgr := NewInspectTaskMgr(1, getter, reporter)
-	task := proto.InspectTask{
+	task := proto.VolumeInspectTask{
 		TaskId:   "InspectTask_XXX",
 		Mode:     mode,
 		Replicas: replicas,
