@@ -155,96 +155,96 @@ typedef void (*_exit_t)(int status);
 typedef void (*exit_t)(int status);
 //typedef int (*sigaction_t)(int signum, const struct sigaction *act, struct sigaction *oldact);
 
-static open_t real_open;
-static openat_t real_openat;
-static close_t real_close;
-static rename_t real_rename;
-static renameat_t real_renameat;
-static renameat2_t real_renameat2;
-static truncate_t real_truncate;
-static ftruncate_t real_ftruncate;
-static fallocate_t real_fallocate;
-static posix_fallocate_t real_posix_fallocate;
+static open_t libc_open;
+static openat_t libc_openat;
+static close_t libc_close;
+static rename_t libc_rename;
+static renameat_t libc_renameat;
+static renameat2_t libc_renameat2;
+static truncate_t libc_truncate;
+static ftruncate_t libc_ftruncate;
+static fallocate_t libc_fallocate;
+static posix_fallocate_t libc_posix_fallocate;
 
-static chdir_t real_chdir;
-static fchdir_t real_fchdir;
-static getcwd_t real_getcwd;
-static mkdir_t real_mkdir;
-static mkdirat_t real_mkdirat;
-static rmdir_t real_rmdir;
-static opendir_t real_opendir;
-static fdopendir_t real_fdopendir;
-static readdir_t real_readdir;
-static closedir_t real_closedir;
-static realpath_t real_realpath;
+static chdir_t libc_chdir;
+static fchdir_t libc_fchdir;
+static getcwd_t libc_getcwd;
+static mkdir_t libc_mkdir;
+static mkdirat_t libc_mkdirat;
+static rmdir_t libc_rmdir;
+static opendir_t libc_opendir;
+static fdopendir_t libc_fdopendir;
+static readdir_t libc_readdir;
+static closedir_t libc_closedir;
+static realpath_t libc_realpath;
 
-static link_t real_link;
-static linkat_t real_linkat;
-static symlink_t real_symlink;
-static symlinkat_t real_symlinkat;
-static unlink_t real_unlink;
-static unlinkat_t real_unlinkat;
-static readlink_t real_readlink;
-static readlinkat_t real_readlinkat;
+static link_t libc_link;
+static linkat_t libc_linkat;
+static symlink_t libc_symlink;
+static symlinkat_t libc_symlinkat;
+static unlink_t libc_unlink;
+static unlinkat_t libc_unlinkat;
+static readlink_t libc_readlink;
+static readlinkat_t libc_readlinkat;
 
-static stat_t real_stat;
-static stat64_t real_stat64;
-static lstat_t real_lstat;
-static lstat64_t real_lstat64;
-static fstat_t real_fstat;
-static fstat64_t real_fstat64;
-static fstatat_t real_fstatat;
-static fstatat64_t real_fstatat64;
-static chmod_t real_chmod;
-static fchmod_t real_fchmod;
-static fchmodat_t real_fchmodat;
-static chown_t real_chown;
-static lchown_t real_lchown;
-static fchown_t real_fchown;
-static fchownat_t real_fchownat;
-static utime_t real_utime;
-static utimes_t real_utimes;
-static futimesat_t real_futimesat;
-static utimensat_t real_utimensat;
-static futimens_t real_futimens;
-static access_t real_access;
-static faccessat_t real_faccessat;
+static stat_t libc_stat;
+static stat64_t libc_stat64;
+static lstat_t libc_lstat;
+static lstat64_t libc_lstat64;
+static fstat_t libc_fstat;
+static fstat64_t libc_fstat64;
+static fstatat_t libc_fstatat;
+static fstatat64_t libc_fstatat64;
+static chmod_t libc_chmod;
+static fchmod_t libc_fchmod;
+static fchmodat_t libc_fchmodat;
+static chown_t libc_chown;
+static lchown_t libc_lchown;
+static fchown_t libc_fchown;
+static fchownat_t libc_fchownat;
+static utime_t libc_utime;
+static utimes_t libc_utimes;
+static futimesat_t libc_futimesat;
+static utimensat_t libc_utimensat;
+static futimens_t libc_futimens;
+static access_t libc_access;
+static faccessat_t libc_faccessat;
 
-static setxattr_t real_setxattr;
-static lsetxattr_t real_lsetxattr;
-static fsetxattr_t real_fsetxattr;
-static getxattr_t real_getxattr;
-static lgetxattr_t real_lgetxattr;
-static fgetxattr_t real_fgetxattr;
-static listxattr_t real_listxattr;
-static llistxattr_t real_llistxattr;
-static flistxattr_t real_flistxattr;
-static removexattr_t real_removexattr;
-static lremovexattr_t real_lremovexattr;
-static fremovexattr_t real_fremovexattr;
+static setxattr_t libc_setxattr;
+static lsetxattr_t libc_lsetxattr;
+static fsetxattr_t libc_fsetxattr;
+static getxattr_t libc_getxattr;
+static lgetxattr_t libc_lgetxattr;
+static fgetxattr_t libc_fgetxattr;
+static listxattr_t libc_listxattr;
+static llistxattr_t libc_llistxattr;
+static flistxattr_t libc_flistxattr;
+static removexattr_t libc_removexattr;
+static lremovexattr_t libc_lremovexattr;
+static fremovexattr_t libc_fremovexattr;
 
-static fcntl_t real_fcntl;
-static dup2_t real_dup2;
-static dup3_t real_dup3;
+static fcntl_t libc_fcntl;
+static dup2_t libc_dup2;
+static dup3_t libc_dup3;
 
-static read_t real_read;
-static readv_t real_readv;
-static pread_t real_pread;
-static preadv_t real_preadv;
-static write_t real_write;
-static writev_t real_writev;
-static pwrite_t real_pwrite;
-static pwritev_t real_pwritev;
-static lseek_t real_lseek;
-static lseek64_t real_lseek64;
+static read_t libc_read;
+static readv_t libc_readv;
+static pread_t libc_pread;
+static preadv_t libc_preadv;
+static write_t libc_write;
+static writev_t libc_writev;
+static pwrite_t libc_pwrite;
+static pwritev_t libc_pwritev;
+static lseek_t libc_lseek;
+static lseek64_t libc_lseek64;
 
-static fdatasync_t real_fdatasync;
-static fsync_t real_fsync;
+static fdatasync_t libc_fdatasync;
+static fsync_t libc_fsync;
 
-static abort_t real_abort;
-static _exit_t real__exit;
-static exit_t real_exit;
-//static sigaction_t real_sigaction;
+static abort_t libc_abort;
+static _exit_t libc__exit;
+static exit_t libc_exit;
+//static sigaction_t libc_sigaction;
 
 /*
  * In many bash commands, e.g. touch, cat, etc, dup2 is used to redirect IO.
@@ -535,7 +535,7 @@ static char *get_cfs_path(const char *pathname) {
 }
 
 // process returned int from cfs functions
-static int cfs_re(int re) {
+static int cfs_errno(int re) {
     if(re < 0) {
         errno = -re;
         re = -1;
@@ -546,7 +546,7 @@ static int cfs_re(int re) {
 }
 
 // process returned ssize_t from cfs functions
-static ssize_t cfs_sre(ssize_t re) {
+static ssize_t cfs_errno_ssize_t(ssize_t re) {
     if(re < 0) {
         errno = -re;
         re = -1;
