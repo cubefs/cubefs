@@ -196,7 +196,7 @@ func NewService(conf *Config) (svr *Service, err error) {
 	if err != nil {
 		return nil, err
 	}
-	inspectMgr := NewVolumeInspectMgr(database.InspectCheckPointTable, clusterMgrCli, mqProxy, inspectorTaskSwitch, &conf.VolumeInspect)
+	inspectMgr := NewVolumeInspectMgr(clusterMgrCli, mqProxy, inspectorTaskSwitch, &conf.VolumeInspect)
 
 	svr.balanceMgr = balanceMgr
 	svr.diskDropMgr = diskDropMgr

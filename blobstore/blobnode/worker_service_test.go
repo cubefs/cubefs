@@ -118,7 +118,7 @@ func (m *mScheCli) AcquireInspectTask(ctx context.Context) (ret *api.WorkerInspe
 	m.inspectID++
 	m.acquireInspectCnt++
 	ret = &api.WorkerInspectTask{}
-	task := &proto.InspectTask{}
+	task := &proto.VolumeInspectTask{}
 	task.Mode = codemode.EC6P10L2
 	ret.Task = task
 	ret.Task.TaskId = fmt.Sprintf("inspect_%d", m.inspectID)

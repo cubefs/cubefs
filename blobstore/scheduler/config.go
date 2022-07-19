@@ -56,10 +56,9 @@ const (
 	defaultHeartbeatTicks = uint32(30)
 	defaultExpiresTicks   = uint32(60)
 
-	defaultDatabase               = "scheduler"
-	defaultInspectCheckPointTable = "inspect_checkpoint_tbl"
-	defaultKafkaOffsetTable       = "kafka_offset_tbl"
-	defaultOrphanedShardTable     = "orphaned_shard_tbl"
+	defaultDatabase           = "scheduler"
+	defaultKafkaOffsetTable   = "kafka_offset_tbl"
+	defaultOrphanedShardTable = "orphaned_shard_tbl"
 
 	defaultShardRepairNormalTopic   = "shard_repair"
 	defaultShardRepairPriorityTopic = "shard_repair_prior"
@@ -217,7 +216,6 @@ func (c *Config) fixDataBaseConfig() {
 	}
 	defaulter.LessOrEqual(&c.Database.Mongo.TimeoutMs, defaultMongoTimeoutMs)
 	defaulter.Empty(&c.Database.DBName, defaultDatabase)
-	defaulter.Empty(&c.Database.InspectCheckPointTable, defaultInspectCheckPointTable)
 	defaulter.Empty(&c.Database.KafkaOffsetTable, defaultKafkaOffsetTable)
 	defaulter.Empty(&c.Database.OrphanShardTable, defaultOrphanedShardTable)
 }

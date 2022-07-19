@@ -48,7 +48,7 @@ func (c *client) AcquireTask(ctx context.Context, args *AcquireArgs) (ret *Worke
 }
 
 type WorkerInspectTask struct {
-	Task *proto.InspectTask `json:"task"`
+	Task *proto.VolumeInspectTask `json:"task"`
 }
 
 func (task *WorkerInspectTask) IsValid() bool {
@@ -57,7 +57,7 @@ func (task *WorkerInspectTask) IsValid() bool {
 
 func (c *client) AcquireInspectTask(ctx context.Context) (*WorkerInspectTask, error) {
 	ret := WorkerInspectTask{
-		Task: &proto.InspectTask{},
+		Task: &proto.VolumeInspectTask{},
 	}
 	err := c.request(func(host string) error {
 		return c.GetWith(ctx, host+PathInspectAcquire, &ret)
@@ -141,7 +141,7 @@ func (c *client) CompleteTask(ctx context.Context, args *CompleteTaskArgs) (err 
 }
 
 type CompleteInspectArgs struct {
-	*proto.InspectRet
+	*proto.VolumeInspectRet
 }
 
 func (c *client) CompleteInspect(ctx context.Context, args *CompleteInspectArgs) (err error) {

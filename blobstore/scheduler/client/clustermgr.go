@@ -76,6 +76,8 @@ type ClusterMgrTaskAPI interface {
 	DeleteMigratingDisk(ctx context.Context, taskType proto.TaskType, diskID proto.DiskID) (err error)
 	GetMigratingDisk(ctx context.Context, taskType proto.TaskType, diskID proto.DiskID) (meta *MigratingDiskMeta, err error)
 	ListMigratingDisks(ctx context.Context, taskType proto.TaskType) (disks []*MigratingDiskMeta, err error)
+	GetVolumeInspectCheckPoint(ctx context.Context) (ck *proto.VolumeInspectCheckPoint, err error)
+	SetVolumeInspectCheckPoint(ctx context.Context, startVid proto.Vid) (err error)
 }
 
 // ClusterMgrAPI define the interface of clustermgr used by scheduler
@@ -87,18 +89,18 @@ type ClusterMgrAPI interface {
 	ClusterMgrTaskAPI
 }
 
-// migrate task key generate rule
+// migrate task key
 //
 //  - - - - - - - - - - - - - - - - - - - - - - - - - - -
 //  |  task_type  |  disk_id  |  volume_id  | random_id |
 //  - - - - - - - - - - - - - - - - - - - - - - - - - - -
-// for example:
+//	for example:
 //  	balance-10-18-cbkgq4ic605btusi7g90
 //		disk_repair-6-1-cbkgq9qc605btusi7gf0
 //		disk_drop-6-12-cbkgq9qc605btusi7gg0
 //		manual_migrate-6-18-cbkgq9qc605btusi7gj0
 //
-//	migrating disk key generate rule
+//	migrating disk key
 //
 //  - - - - - - - - - - - - - - - - - - - - - - -
 //  | _migratingDiskPrefix | task_type | disk_id |
@@ -107,6 +109,13 @@ type ClusterMgrAPI interface {
 // 		migrating-disk_repair-1
 //		migrating-disk_drop-2
 //
+// volume inspect checkpoint key
+//
+//  - - - - - - - - - - - - - -
+//  | {task_type} | checkpoint |
+//  - - - - - - - - - - - - - -
+//  for example:
+//		volume_inspect-checkpoint
 const (
 	_delimiter           = "-"
 	_migratingDiskPrefix = "migrating"
@@ -148,6 +157,10 @@ func GenMigrateTaskPrefix(taskType proto.TaskType) string {
 
 func GenMigrateTaskPrefixByDiskID(taskType proto.TaskType, diskID proto.DiskID) string {
 	return fmt.Sprintf("%s%d%s", GenMigrateTaskPrefix(taskType), diskID, _delimiter)
+}
+
+func genVolumeInspectCheckpointKey() string {
+	return proto.TaskTypeVolumeInspect.String() + _delimiter + "checkpoint"
 }
 
 // VolumeInfoSimple volume info used by scheduler
@@ -903,4 +916,25 @@ func (c *clustermgrClient) ListMigratingDisks(ctx context.Context, taskType prot
 		}
 	}
 	return
+}
+
+func (c *clustermgrClient) GetVolumeInspectCheckPoint(ctx context.Context) (ck *proto.VolumeInspectCheckPoint, err error) {
+	ret, err := c.client.GetKV(ctx, genVolumeInspectCheckpointKey())
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(ret.Value, &ck)
+	return
+}
+
+func (c *clustermgrClient) SetVolumeInspectCheckPoint(ctx context.Context, startVid proto.Vid) (err error) {
+	checkPoint := &proto.VolumeInspectCheckPoint{
+		StartVid: startVid,
+		Ctime:    time.Now().String(),
+	}
+	checkPointBytes, err := json.Marshal(checkPoint)
+	if err != nil {
+		return err
+	}
+	return c.client.SetKV(ctx, genVolumeInspectCheckpointKey(), checkPointBytes)
 }
