@@ -133,7 +133,7 @@ func (s *Service) Apply(data [][]byte, index uint64) error {
 		span.Error(errors.Detail(err))
 		return err
 	}
-	span.Infof("state machine apply, total data: %d, decode cost: %dus, module apply cost: %dus, record apply index cost: %dus",
+	span.Debugf("state machine apply, total data: %d, decode cost: %dus, module apply cost: %dus, record apply index cost: %dus",
 		len(data), decodeCost/time.Microsecond, moduleApplyCost/time.Microsecond, time.Since(start)/time.Microsecond)
 
 	return nil

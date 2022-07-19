@@ -32,6 +32,8 @@ import (
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/configmgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/diskmgr"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/kvmgr"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/kvdb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/raftdb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
@@ -91,6 +93,8 @@ type Config struct {
 	DBPath                   string                    `json:"db_path"`
 	NormalDBPath             string                    `json:"normal_db_path"`
 	NormalDBOption           kvstore.RocksDBOption     `json:"normal_db_option"`
+	KvDBPath                 string                    `json:"kv_db_path"`
+	KvDBOption               kvstore.RocksDBOption     `json:"kv_db_option"`
 	CodeModePolicies         []codemode.Policy         `json:"code_mode_policies"`
 	ClusterCfg               map[string]interface{}    `json:"cluster_config"`
 	RaftConfig               RaftConfig                `json:"raft_config"`
@@ -101,7 +105,6 @@ type Config struct {
 	MaxHeartbeatNotifyNum    int                       `json:"max_heartbeat_notify_num"`
 	ChunkSize                uint64                    `json:"chunk_size"`
 	MetricReportIntervalM    int                       `json:"metric_report_interval_m"`
-	ApplyFlush               bool                      `json:"apply_flush"`
 
 	cmd.Config
 }
@@ -122,6 +125,7 @@ type Service struct {
 	// cause DiskMgr applier LoadData should be call first, or VolumeMgr LoadData may return error with disk not found
 	DiskMgr   *diskmgr.DiskMgr
 	VolumeMgr *volumemgr.VolumeMgr
+	KvMgr     *kvmgr.KvMgr
 
 	dbs map[string]base.SnapshotDB
 	// status indicate service's current state, like normal/snapshot
@@ -191,6 +195,12 @@ func New(cfg *Config) (*Service, error) {
 	if err != nil {
 		log.Fatalf("open raft database failed, err: %v", err)
 	}
+	kvDB, err := kvdb.Open(cfg.KvDBPath, false, func(option *kvstore.RocksDBOption) {
+		*option = cfg.KvDBOption
+	})
+	if err != nil {
+		log.Fatal("open kv database failed,err:%v", err)
+	}
 
 	// consul client initial
 	consulConf := api.DefaultConfig()
@@ -201,7 +211,7 @@ func New(cfg *Config) (*Service, error) {
 	}
 
 	service := &Service{
-		dbs:          map[string]base.SnapshotDB{"volume": volumeDB, "normal": normalDB},
+		dbs:          map[string]base.SnapshotDB{"volume": volumeDB, "normal": normalDB, "keyValue": kvDB},
 		Config:       cfg,
 		raftStartCh:  make(chan interface{}),
 		status:       ServiceStatusNormal,
@@ -231,6 +241,12 @@ func New(cfg *Config) (*Service, error) {
 		log.Fatalf("fail to new volumeMgr, error: %v", errors.Detail(err))
 	}
 
+	kvMgr, err := kvmgr.NewKvMgr(kvDB)
+	if err != nil {
+		log.Fatalf("fail to new kvMgr, error: %v", errors.Detail(err))
+	}
+
+	service.KvMgr = kvMgr
 	service.VolumeMgr = volumeMgr
 	service.ConfigMgr = configMgr
 	service.DiskMgr = diskMgr
@@ -435,6 +451,7 @@ func (c *Config) checkAndFix() (err error) {
 	c.NormalDBOption.CreateIfMissing = true
 	c.VolumeMgrConfig.VolumeDBOption.CreateIfMissing = true
 	c.RaftConfig.RaftDBOption.CreateIfMissing = true
+	c.KvDBOption.CreateIfMissing = true
 
 	if c.NormalDBPath == "" {
 		c.NormalDBPath = c.DBPath + "/normaldb"
@@ -444,6 +461,9 @@ func (c *Config) checkAndFix() (err error) {
 	}
 	if c.RaftConfig.RaftDBPath == "" {
 		c.RaftConfig.RaftDBPath = c.DBPath + "/raftdb"
+	}
+	if c.KvDBPath == "" {
+		c.KvDBPath = c.DBPath + "/kvdb"
 	}
 
 	return
