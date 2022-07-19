@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/require"
 
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	api "github.com/cubefs/cubefs/blobstore/api/scheduler"
@@ -32,7 +33,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
 	"github.com/cubefs/cubefs/blobstore/scheduler/db"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
-	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -212,9 +212,9 @@ func TestServer(t *testing.T) {
 	go leaderServer.RunTask()
 	go followerServer.RunTask()
 
-	kafkaOffset := NewMockKafkaOffsetTable(ctr)
-	kafkaOffset.EXPECT().Get(any, any).AnyTimes().Return(int64(0), nil)
-	kafkaOffset.EXPECT().Set(any, any, any).AnyTimes().Return(nil)
+	kafkaOffset := NewMockClusterMgrAPI(ctr)
+	kafkaOffset.EXPECT().GetConsumeOffset(any, any, any).AnyTimes().Return(int64(0), nil)
+	kafkaOffset.EXPECT().SetConsumeOffset(any, any, any, any).AnyTimes().Return(nil)
 
 	err := leaderServer.runKafkaMonitor(proto.ClusterID(1), kafkaOffset)
 	require.Error(t, err)

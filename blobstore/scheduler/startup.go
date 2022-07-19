@@ -120,7 +120,7 @@ func NewService(conf *Config) (svr *Service, err error) {
 	vc := NewVolumeCache(clusterMgrCli, conf.VolumeCacheUpdateIntervalS)
 	conf.ShardRepair.Kafka = conf.Kafka.ShardRepair
 	conf.ShardRepair.Kafka.BrokerList = conf.Kafka.BrokerList
-	shardRepairMgr, err := NewShardRepairMgr(&conf.ShardRepair, vc, switchMgr, database.KafkaOffsetTable, database.OrphanShardTable, blobnodeCli, clusterMgrCli)
+	shardRepairMgr, err := NewShardRepairMgr(&conf.ShardRepair, vc, switchMgr, database.OrphanShardTable, blobnodeCli, clusterMgrCli)
 	if err != nil {
 		log.Errorf("new shard repair mgr: cfg[%+v], err[%w]", conf.ShardRepair, err)
 		return nil, err
@@ -128,7 +128,7 @@ func NewService(conf *Config) (svr *Service, err error) {
 
 	conf.BlobDelete.Kafka = conf.Kafka.BlobDelete
 	conf.BlobDelete.Kafka.BrokerList = conf.Kafka.BrokerList
-	deleteMgr, err := NewBlobDeleteMgr(&conf.BlobDelete, vc, database.KafkaOffsetTable, blobnodeCli, switchMgr)
+	deleteMgr, err := NewBlobDeleteMgr(&conf.BlobDelete, vc, blobnodeCli, switchMgr, clusterMgrCli)
 	if err != nil {
 		log.Errorf("new blob delete mgr: cfg[%+v], err[%w]", conf.BlobDelete, err)
 		return nil, err
@@ -150,7 +150,7 @@ func NewService(conf *Config) (svr *Service, err error) {
 		return
 	}
 
-	err = svr.runKafkaMonitor(conf.ClusterID, database.KafkaOffsetTable)
+	err = svr.runKafkaMonitor(conf.ClusterID, clusterMgrCli)
 	if err != nil {
 		log.Errorf("run kafka monitor failed: err[%w]", err)
 		return nil, err
@@ -169,20 +169,21 @@ func NewService(conf *Config) (svr *Service, err error) {
 	if err != nil {
 		return nil, err
 	}
-	balanceTaskSwitch, err := switchMgr.AddSwitch(taskswitch.BalanceSwitchName)
+
+	balanceTaskSwitch, err := switchMgr.AddSwitch(proto.TaskTypeBalance.String())
 	if err != nil {
 		return nil, err
 	}
 	balanceMgr := NewBalanceMgr(clusterMgrCli, volumeUpdater, balanceTaskSwitch, topologyMgr, taskLogger, &conf.Balance)
 
-	diskDropTaskSwitch, err := switchMgr.AddSwitch(taskswitch.DiskDropSwitchName)
+	diskDropTaskSwitch, err := switchMgr.AddSwitch(proto.TaskTypeDiskDrop.String())
 	if err != nil {
 		return nil, err
 	}
 	diskDropMgr := NewDiskDropMgr(clusterMgrCli, volumeUpdater, diskDropTaskSwitch, taskLogger, &conf.DiskDrop)
 
 	// new disk repair manager
-	diskRepairTaskSwitch, err := switchMgr.AddSwitch(taskswitch.DiskRepairSwitchName)
+	diskRepairTaskSwitch, err := switchMgr.AddSwitch(proto.TaskTypeDiskRepair.String())
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +193,7 @@ func NewService(conf *Config) (svr *Service, err error) {
 	manualMigMgr := NewManualMigrateMgr(clusterMgrCli, volumeUpdater, taskLogger, &conf.ManualMigrate)
 
 	mqProxy := client.NewProxyClient(&conf.Proxy, cmapi.New(&conf.ClusterMgr), conf.ClusterID)
-	inspectorTaskSwitch, err := switchMgr.AddSwitch(taskswitch.VolumeInspectSwitchName)
+	inspectorTaskSwitch, err := switchMgr.AddSwitch(proto.TaskTypeVolumeInspect.String())
 	if err != nil {
 		return nil, err
 	}
@@ -271,20 +272,28 @@ func (svr *Service) RunTask() {
 	svr.blobDeleteMgr.RunTask()
 }
 
-func (svr *Service) runKafkaMonitor(clusterID proto.ClusterID, access db.IKafkaOffsetTable) error {
-	// collect cfg
-	var topicCfgs []*base.KafkaConfig
-	topicCfgs = append(topicCfgs, conf.BlobDelete.normalConsumerConfig())
-	topicCfgs = append(topicCfgs, conf.BlobDelete.failedConsumerConfig())
-	topicCfgs = append(topicCfgs, conf.ShardRepair.failedConsumerConfig())
-	for _, topicCfg := range conf.ShardRepair.priorityConsumerConfigs() {
-		topicCfgs = append(topicCfgs, &topicCfg.KafkaConfig)
+func (svr *Service) runKafkaMonitor(clusterID proto.ClusterID, access base.IConsumerOffset) error {
+	// blob delete
+	var blobDeletetopicCfgs []*base.KafkaConfig
+	blobDeletetopicCfgs = append(blobDeletetopicCfgs, conf.BlobDelete.normalConsumerConfig())
+	blobDeletetopicCfgs = append(blobDeletetopicCfgs, conf.BlobDelete.failedConsumerConfig())
+	if err := runMonitor(proto.TaskTypeBlobDelete, clusterID, blobDeletetopicCfgs, access); err != nil {
+		return err
 	}
 
-	// start topic monitor
+	// shard repair
+	var shardRepairtopicCfgs []*base.KafkaConfig
+	shardRepairtopicCfgs = append(shardRepairtopicCfgs, conf.ShardRepair.failedConsumerConfig())
+	for _, topicCfg := range conf.ShardRepair.priorityConsumerConfigs() {
+		shardRepairtopicCfgs = append(shardRepairtopicCfgs, &topicCfg.KafkaConfig)
+	}
+	return runMonitor(proto.TaskTypeShardRepair, clusterID, shardRepairtopicCfgs, access)
+}
+
+func runMonitor(taskType proto.TaskType, clusterID proto.ClusterID, topics []*base.KafkaConfig, access base.IConsumerOffset) error {
 	monitorIntervalS := 1
-	for _, topicCfg := range topicCfgs {
-		m, err := base.NewKafkaTopicMonitor(clusterID, topicCfg, access, monitorIntervalS)
+	for _, topicCfg := range topics {
+		m, err := base.NewKafkaTopicMonitor(taskType, clusterID, topicCfg, access, monitorIntervalS)
 		if err != nil {
 			log.Errorf("new kafka topic monitor topic failed: topic[%s], err[%+v]", topicCfg.Topic, err)
 			return err

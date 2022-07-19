@@ -39,11 +39,14 @@ const (
 	TaskTypeDiskDrop      TaskType = "disk_drop"
 	TaskTypeManualMigrate TaskType = "manual_migrate"
 	TaskTypeVolumeInspect TaskType = "volume_inspect"
+	TaskTypeShardRepair   TaskType = "shard_repair"
+	TaskTypeBlobDelete    TaskType = "blob_delete"
 )
 
 func (t TaskType) Valid() bool {
 	switch t {
-	case TaskTypeDiskRepair, TaskTypeBalance, TaskTypeDiskDrop, TaskTypeManualMigrate, TaskTypeVolumeInspect:
+	case TaskTypeDiskRepair, TaskTypeBalance, TaskTypeDiskDrop, TaskTypeManualMigrate,
+		TaskTypeVolumeInspect, TaskTypeShardRepair, TaskTypeBlobDelete:
 		return true
 	default:
 		return false

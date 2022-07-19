@@ -28,16 +28,6 @@ type ISwitcher interface {
 	WaitEnable()
 }
 
-// task switch name
-const (
-	DiskRepairSwitchName    = "disk_repair"
-	BalanceSwitchName       = "balance"
-	DiskDropSwitchName      = "disk_drop"
-	BlobDeleteSwitchName    = "blob_delete"
-	ShardRepairSwitchName   = "shard_repair"
-	VolumeInspectSwitchName = "volume_inspect"
-)
-
 const (
 	syncTaskStatusIntervalS = 15
 	SwitchOpen              = "true"

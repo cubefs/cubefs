@@ -50,7 +50,7 @@ func newDeleteTopicConsumer(t *testing.T) *deleteTopicConsumer {
 	)
 
 	switchMgr := taskswitch.NewSwitchMgr(clusterMgrCli)
-	taskSwitch, err := switchMgr.AddSwitch(taskswitch.BlobDeleteSwitchName)
+	taskSwitch, err := switchMgr.AddSwitch(proto.TaskTypeBlobDelete.String())
 	require.NoError(t, err)
 
 	blobnodeCli := NewMockBlobnodeAPI(ctr)
@@ -344,14 +344,14 @@ func TestNewDeleteMgr(t *testing.T) {
 
 	clusterMgrCli := NewMockClusterMgrAPI(ctr)
 	clusterMgrCli.EXPECT().GetConfig(any, any).AnyTimes().Return("", errMock)
+	clusterMgrCli.EXPECT().GetConsumeOffset(any, any, any).AnyTimes().Return(int64(0), nil)
+	clusterMgrCli.EXPECT().SetConsumeOffset(any, any, any, any).AnyTimes().Return(nil)
+
 	volCache := NewMockVolumeCache(ctr)
 	blobnodeCli := NewMockBlobnodeAPI(ctr)
-	accessor := NewMockKafkaOffsetTable(ctr)
-	accessor.EXPECT().Get(any, any).AnyTimes().Return(int64(0), nil)
-	accessor.EXPECT().Set(any, any, any).AnyTimes().Return(nil)
 	switchMgr := taskswitch.NewSwitchMgr(clusterMgrCli)
 
-	service, err := NewBlobDeleteMgr(blobCfg, volCache, accessor, blobnodeCli, switchMgr)
+	service, err := NewBlobDeleteMgr(blobCfg, volCache, blobnodeCli, switchMgr, clusterMgrCli)
 	require.NoError(t, err)
 
 	// run task

@@ -16,28 +16,29 @@ package base
 
 import (
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/Shopify/sarama"
-	"go.mongodb.org/mongo-driver/mongo"
 
 	"github.com/cubefs/cubefs/blobstore/common/kafka"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/scheduler/db"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 // KafkaTopicMonitor kafka monitor
 type KafkaTopicMonitor struct {
+	taskType       proto.TaskType
 	topic          string
 	partitions     []int32
-	offsetAccessor db.IKafkaOffsetTable
+	offsetAccessor IConsumerOffset
 	monitor        *kafka.Monitor
 	interval       time.Duration
 }
 
 // NewKafkaTopicMonitor returns kafka topic monitor
-func NewKafkaTopicMonitor(clusterID proto.ClusterID, cfg *KafkaConfig, offsetAccessor db.IKafkaOffsetTable, monitorIntervalS int) (*KafkaTopicMonitor, error) {
+func NewKafkaTopicMonitor(taskType proto.TaskType, clusterID proto.ClusterID, cfg *KafkaConfig, offsetAccessor IConsumerOffset, monitorIntervalS int) (*KafkaTopicMonitor, error) {
 	consumer, err := sarama.NewConsumer(cfg.BrokerList, defaultKafkaCfg())
 	if err != nil {
 		return nil, err
@@ -60,6 +61,7 @@ func NewKafkaTopicMonitor(clusterID proto.ClusterID, cfg *KafkaConfig, offsetAcc
 		interval = time.Millisecond
 	}
 	return &KafkaTopicMonitor{
+		taskType:       taskType,
 		topic:          cfg.Topic,
 		partitions:     partitions,
 		offsetAccessor: offsetAccessor,
@@ -75,9 +77,9 @@ func (m *KafkaTopicMonitor) Run() {
 
 	for {
 		for _, partition := range m.partitions {
-			off, err := m.offsetAccessor.Get(m.topic, partition)
+			off, err := m.offsetAccessor.GetConsumeOffset(m.taskType, m.topic, partition)
 			if err != nil {
-				if err != mongo.ErrNoDocuments {
+				if rpc.DetectStatusCode(err) != http.StatusNotFound {
 					log.Errorf("get consume offset failed: err[%v]", err)
 				}
 				continue

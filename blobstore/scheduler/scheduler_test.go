@@ -31,7 +31,7 @@ import (
 // github.com/cubefs/cubefs/blobstore/scheduler/... module scheduler interfaces
 //go:generate mockgen -destination=./client_mock_test.go -package=scheduler -mock_names ClusterMgrAPI=MockClusterMgrAPI,BlobnodeAPI=MockBlobnodeAPI,IVolumeUpdater=MockVolumeUpdater,ProxyAPI=MockMqProxyAPI github.com/cubefs/cubefs/blobstore/scheduler/client ClusterMgrAPI,BlobnodeAPI,IVolumeUpdater,ProxyAPI
 //go:generate mockgen -destination=./base_mock_test.go -package=scheduler -mock_names IConsumer=MockConsumer,IProducer=MockProducer github.com/cubefs/cubefs/blobstore/scheduler/base IConsumer,IProducer
-//go:generate mockgen -destination=./db_mock_test.go  -package=scheduler -mock_names IKafkaOffsetTable=MockKafkaOffsetTable,IOrphanShardTable=MockOrphanShardTable github.com/cubefs/cubefs/blobstore/scheduler/db IKafkaOffsetTable,IOrphanShardTable
+//go:generate mockgen -destination=./db_mock_test.go  -package=scheduler -mock_names IOrphanShardTable=MockOrphanShardTable github.com/cubefs/cubefs/blobstore/scheduler/db IOrphanShardTable
 //go:generate mockgen -destination=./scheduler_mock_test.go -package=scheduler -mock_names ITaskRunner=MockTaskRunner,IVolumeCache=MockVolumeCache,MMigrator=MockMigrater,IVolumeInspector=MockVolumeInspector,IClusterTopology=MockClusterTopology github.com/cubefs/cubefs/blobstore/scheduler ITaskRunner,IVolumeCache,MMigrator,IVolumeInspector,IClusterTopology
 
 const (

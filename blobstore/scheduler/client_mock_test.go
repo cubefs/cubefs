@@ -123,6 +123,21 @@ func (mr *MockClusterMgrAPIMockRecorder) GetConfig(arg0, arg1 interface{}) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetConfig", reflect.TypeOf((*MockClusterMgrAPI)(nil).GetConfig), arg0, arg1)
 }
 
+// GetConsumeOffset mocks base method.
+func (m *MockClusterMgrAPI) GetConsumeOffset(arg0 proto.TaskType, arg1 string, arg2 int32) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetConsumeOffset", arg0, arg1, arg2)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetConsumeOffset indicates an expected call of GetConsumeOffset.
+func (mr *MockClusterMgrAPIMockRecorder) GetConsumeOffset(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetConsumeOffset", reflect.TypeOf((*MockClusterMgrAPI)(nil).GetConsumeOffset), arg0, arg1, arg2)
+}
+
 // GetDiskInfo mocks base method.
 func (m *MockClusterMgrAPI) GetDiskInfo(arg0 context.Context, arg1 proto.DiskID) (*client.DiskInfoSimple, error) {
 	m.ctrl.T.Helper()
@@ -405,6 +420,20 @@ func (m *MockClusterMgrAPI) ReleaseVolumeUnit(arg0 context.Context, arg1 proto.V
 func (mr *MockClusterMgrAPIMockRecorder) ReleaseVolumeUnit(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReleaseVolumeUnit", reflect.TypeOf((*MockClusterMgrAPI)(nil).ReleaseVolumeUnit), arg0, arg1, arg2)
+}
+
+// SetConsumeOffset mocks base method.
+func (m *MockClusterMgrAPI) SetConsumeOffset(arg0 proto.TaskType, arg1 string, arg2 int32, arg3 int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetConsumeOffset", arg0, arg1, arg2, arg3)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetConsumeOffset indicates an expected call of SetConsumeOffset.
+func (mr *MockClusterMgrAPIMockRecorder) SetConsumeOffset(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetConsumeOffset", reflect.TypeOf((*MockClusterMgrAPI)(nil).SetConsumeOffset), arg0, arg1, arg2, arg3)
 }
 
 // SetDiskDropped mocks base method.
