@@ -31,14 +31,12 @@ type Config struct {
 	DBName string           `json:"db_name"`
 
 	OrphanShardTable string `json:"orphaned_shard_table"`
-	KafkaOffsetTable string `json:"kafka_offset_table"`
 }
 
 // Database used for database operate
 type Database struct {
 	DB *mongo.Database
 
-	KafkaOffsetTable IKafkaOffsetTable
 	OrphanShardTable IOrphanShardTable
 }
 
@@ -51,7 +49,6 @@ func OpenDatabase(conf *Config) (tables *Database, err error) {
 	db := client.Database(conf.DBName)
 	tables = &Database{DB: db}
 
-	tables.KafkaOffsetTable = openKafkaOffsetTable(mustCreateCollection(db, conf.KafkaOffsetTable))
 	tables.OrphanShardTable = openOrphanedShardTable(mustCreateCollection(db, conf.OrphanShardTable))
 
 	return

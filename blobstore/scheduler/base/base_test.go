@@ -21,7 +21,7 @@ import (
 
 	"github.com/Shopify/sarama"
 
-	"github.com/cubefs/cubefs/blobstore/scheduler/db"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
@@ -29,11 +29,7 @@ import (
 
 const testTopic = "test_topic"
 
-var (
-	_ db.IKafkaOffsetTable = &mockAccess{}
-
-	errMock = errors.New("mock error")
-)
+var errMock = errors.New("mock error")
 
 func init() {
 	log.SetOutputLevel(log.Lfatal)
@@ -73,13 +69,13 @@ func newMockAccess(err error) *mockAccess {
 	}
 }
 
-func (m *mockAccess) Set(topic string, partition int32, offset int64) error {
+func (m *mockAccess) SetConsumeOffset(taskType proto.TaskType, topic string, partition int32, offset int64) error {
 	key := fmt.Sprintf("%s_%d", topic, partition)
 	m.offsets[key] = offset
 	return m.err
 }
 
-func (m *mockAccess) Get(topic string, partition int32) (int64, error) {
+func (m *mockAccess) GetConsumeOffset(taskType proto.TaskType, topic string, partition int32) (int64, error) {
 	key := fmt.Sprintf("%s_%d", topic, partition)
 	return m.offsets[key], m.err
 }

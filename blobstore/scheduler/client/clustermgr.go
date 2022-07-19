@@ -78,6 +78,8 @@ type ClusterMgrTaskAPI interface {
 	ListMigratingDisks(ctx context.Context, taskType proto.TaskType) (disks []*MigratingDiskMeta, err error)
 	GetVolumeInspectCheckPoint(ctx context.Context) (ck *proto.VolumeInspectCheckPoint, err error)
 	SetVolumeInspectCheckPoint(ctx context.Context, startVid proto.Vid) (err error)
+	GetConsumeOffset(taskType proto.TaskType, topic string, partition int32) (offset int64, err error)
+	SetConsumeOffset(taskType proto.TaskType, topic string, partition int32, offset int64) (err error)
 }
 
 // ClusterMgrAPI define the interface of clustermgr used by scheduler
@@ -90,7 +92,6 @@ type ClusterMgrAPI interface {
 }
 
 // migrate task key
-//
 //  - - - - - - - - - - - - - - - - - - - - - - - - - - -
 //  |  task_type  |  disk_id  |  volume_id  | random_id |
 //  - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -101,7 +102,6 @@ type ClusterMgrAPI interface {
 //		manual_migrate-6-18-cbkgq9qc605btusi7gj0
 //
 //	migrating disk key
-//
 //  - - - - - - - - - - - - - - - - - - - - - - -
 //  | _migratingDiskPrefix | task_type | disk_id |
 //  - - - - - - - - - - - - - - - - - - - - - - -
@@ -110,15 +110,24 @@ type ClusterMgrAPI interface {
 //		migrating-disk_drop-2
 //
 // volume inspect checkpoint key
-//
 //  - - - - - - - - - - - - - -
-//  | {task_type} | checkpoint |
+//  | {task_type} | _checkPoint |
 //  - - - - - - - - - - - - - -
 //  for example:
 //		volume_inspect-checkpoint
+//
+// kafka consume offset key
+//  - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//  | {task_type} | _consumeOffset | {topic} | {partition} |
+//  - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//	for example:
+//		blob_delete-consume_offset-blob_delete-1
+//		shard_repair-consume_offset-shard_repair-2
 const (
 	_delimiter           = "-"
 	_migratingDiskPrefix = "migrating"
+	_checkPoint          = "checkpoint"
+	_consumeOffset       = "consume_offset"
 )
 
 var (
@@ -159,8 +168,18 @@ func GenMigrateTaskPrefixByDiskID(taskType proto.TaskType, diskID proto.DiskID) 
 	return fmt.Sprintf("%s%d%s", GenMigrateTaskPrefix(taskType), diskID, _delimiter)
 }
 
+type ConsumeOffset struct {
+	Topic     string `json:"topic"`
+	Partition int32  `json:"partition"`
+	Offset    int64  `json:"offset"`
+}
+
 func genVolumeInspectCheckpointKey() string {
-	return proto.TaskTypeVolumeInspect.String() + _delimiter + "checkpoint"
+	return proto.TaskTypeVolumeInspect.String() + _delimiter + _checkPoint
+}
+
+func genConsumerOffsetKey(taskType proto.TaskType, topic string, partition int32) string {
+	return fmt.Sprintf("%s%s%s%s%s%s%d", taskType, _delimiter, _consumeOffset, _delimiter, topic, _delimiter, partition)
 }
 
 // VolumeInfoSimple volume info used by scheduler
@@ -937,4 +956,27 @@ func (c *clustermgrClient) SetVolumeInspectCheckPoint(ctx context.Context, start
 		return err
 	}
 	return c.client.SetKV(ctx, genVolumeInspectCheckpointKey(), checkPointBytes)
+}
+
+func (c *clustermgrClient) GetConsumeOffset(taskType proto.TaskType, topic string, partition int32) (offset int64, err error) {
+	ret, err := c.client.GetKV(context.Background(), genConsumerOffsetKey(taskType, topic, partition))
+	if err != nil {
+		return offset, err
+	}
+	var consumeOffset ConsumeOffset
+	err = json.Unmarshal(ret.Value, &consumeOffset)
+	return consumeOffset.Offset, err
+}
+
+func (c *clustermgrClient) SetConsumeOffset(taskType proto.TaskType, topic string, partition int32, offset int64) (err error) {
+	consumeOffset := &ConsumeOffset{
+		Topic:     topic,
+		Partition: partition,
+		Offset:    offset,
+	}
+	consumeOffsetBytes, err := json.Marshal(consumeOffset)
+	if err != nil {
+		return err
+	}
+	return c.client.SetKV(context.Background(), genConsumerOffsetKey(taskType, topic, partition), consumeOffsetBytes)
 }

@@ -34,7 +34,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/scheduler/base"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
-	"github.com/cubefs/cubefs/blobstore/scheduler/db"
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
@@ -209,16 +208,16 @@ type BlobDeleteMgr struct {
 func NewBlobDeleteMgr(
 	cfg *BlobDeleteConfig,
 	volCache IVolumeCache,
-	offAccessor db.IKafkaOffsetTable,
 	blobnodeCli client.BlobnodeAPI,
 	switchMgr *taskswitch.SwitchMgr,
+	clusterMgrCli client.ClusterMgrAPI,
 ) (*BlobDeleteMgr, error) {
-	normalTopicConsumers, err := base.NewKafkaPartitionConsumers(cfg.normalConsumerConfig(), offAccessor)
+	normalTopicConsumers, err := base.NewKafkaPartitionConsumers(proto.TaskTypeBlobDelete, cfg.normalConsumerConfig(), clusterMgrCli)
 	if err != nil {
 		return nil, err
 	}
 
-	failTopicConsumers, err := base.NewKafkaPartitionConsumers(cfg.failedConsumerConfig(), offAccessor)
+	failTopicConsumers, err := base.NewKafkaPartitionConsumers(proto.TaskTypeBlobDelete, cfg.failedConsumerConfig(), clusterMgrCli)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +227,7 @@ func NewBlobDeleteMgr(
 		return nil, err
 	}
 
-	taskSwitch, err := switchMgr.AddSwitch(taskswitch.BlobDeleteSwitchName)
+	taskSwitch, err := switchMgr.AddSwitch(proto.TaskTypeBlobDelete.String())
 	if err != nil {
 		return nil, err
 	}

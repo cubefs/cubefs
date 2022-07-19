@@ -458,4 +458,25 @@ func TestClustermgrClient(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, checkpoint.StartVid, checkpoint2.StartVid)
 	}
+	{
+		// set consume offset
+		topic := "test"
+		partition := int32(100)
+		offset := int64(124548412)
+		cli.client.(*MockClusterManager).EXPECT().SetKV(any, any, any).Return(nil)
+		err := cli.SetConsumeOffset(proto.TaskTypeShardRepair, topic, partition, offset)
+		require.NoError(t, err)
+
+		// get consume offset
+		consumeOffset := &ConsumeOffset{
+			Topic:     topic,
+			Partition: partition,
+			Offset:    offset,
+		}
+		consumeOffsetBytes, _ := json.Marshal(consumeOffset)
+		cli.client.(*MockClusterManager).EXPECT().GetKV(any, any).Return(cmapi.GetKvRet{Value: consumeOffsetBytes}, nil)
+		offset2, err := cli.GetConsumeOffset(proto.TaskTypeShardRepair, topic, partition)
+		require.NoError(t, err)
+		require.Equal(t, offset, offset2)
+	}
 }
