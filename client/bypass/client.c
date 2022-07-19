@@ -60,12 +60,14 @@ int real_close(int fd) {
 log:
     #ifdef _CFS_DEBUG
     ; // labels can only be followed by statements
+    pthread_rwlock_wrlock(&g_client_info.fd_path_lock);
     auto it = g_client_info.fd_path.find(fd);
     log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, re:%d\n", __func__, fd_in_cfs(fd), fd, it != g_client_info.fd_path.end() ? it->second : "", re);
     if(it != g_client_info.fd_path.end()) {
         free(it->second);
         g_client_info.fd_path.erase(it);
     }
+    pthread_rwlock_unlock(&g_client_info.fd_path_lock);
     #endif
     return re;
 }
@@ -177,15 +179,6 @@ int real_openat(int dirfd, const char *pathname, int flags, ...) {
         }
         fd = cfs_re(cfs_openat_fd(g_client_info.cfs_client_id, dirfd, cfs_path, flags, mode, fd));
         #else
-        /*
-        if(strstr(cfs_path, ".ibd") || strstr(cfs_path, ".frm") || strstr(cfs_path, "ibdata1")) {
-            is_cfs = 0;
-            char fuse_path[256];
-            sprintf(fuse_path, "/mnt/cfs%s", cfs_path);
-            fd = libc_openat(dirfd, fuse_path, flags, mode);
-            goto log;
-        }
-        */
         fd = cfs_errno(cfs_openat(g_client_info.cfs_client_id, dirfd, cfs_path, flags, mode));
         #endif
         if(fd < 0) {
@@ -212,7 +205,9 @@ log:
     }
     free(path);
     #if defined(_CFS_DEBUG) || defined(DUP_TO_LOCAL)
+    pthread_rwlock_wrlock(&g_client_info.fd_path_lock);
     g_client_info.fd_path[fd] = strdup(pathname);
+    pthread_rwlock_unlock(&g_client_info.fd_path_lock);
     #endif
     #ifdef _CFS_DEBUG
     log_debug("hook %s, is_cfs:%d, dirfd:%d, pathname:%s, flags:%#x(%s%s%s%s%s%s%s), re:%d\n",
@@ -339,8 +334,8 @@ int real_ftruncate(int fd, off_t length) {
 log:
     #ifdef _CFS_DEBUG
     ; // labels can only be followed by statements
-    auto fd_path_it = g_client_info.fd_path.find(fd);
-    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, length:%d, re:%d\n", __func__, fd_in_cfs(fd), fd, fd_path_it != g_client_info.fd_path.end() ? fd_path_it->second : "", length, re);
+    const char *fd_path = get_fd_path(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, length:%d, re:%d\n", __func__, fd_in_cfs(fd), fd, fd_path, length, re);
     #endif
     return re;
 }
@@ -363,8 +358,8 @@ int real_fallocate(int fd, int mode, off_t offset, off_t len) {
 log:
     #ifdef _CFS_DEBUG
     ; // labels can only be followed by statements
-    auto fd_path_it = g_client_info.fd_path.find(fd);
-    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, mode:%#X, offset:%ld, len:%d, re:%d\n", __func__, fd_in_cfs(fd), fd, fd_path_it != g_client_info.fd_path.end() ? fd_path_it->second : "", mode, offset, len, re);
+    const char *fd_path = get_fd_path(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, mode:%#X, offset:%ld, len:%d, re:%d\n", __func__, fd_in_cfs(fd), fd, fd_path, mode, offset, len, re);
     #endif
     return re;
 }
@@ -387,8 +382,8 @@ int real_posix_fallocate(int fd, off_t offset, off_t len) {
 log:
     #ifdef _CFS_DEBUG
     ; // labels can only be followed by statements
-    auto fd_path_it = g_client_info.fd_path.find(fd);
-    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, offset:%ld, len:%d, re:%d\n", __func__, fd_in_cfs(fd), fd, fd_path_it != g_client_info.fd_path.end() ? fd_path_it->second : "", offset, len, re);
+    const char *fd_path = get_fd_path(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, offset:%ld, len:%d, re:%d\n", __func__, fd_in_cfs(fd), fd, fd_path, offset, len, re);
     #endif
     return re;
 }
@@ -1468,8 +1463,8 @@ ssize_t real_read(int fd, void *buf, size_t count) {
         // 2. write local -> read local -> read CFS -> write CFS
         // In contition 2, write CFS may be concurrent with read CFS, resulting in last bytes read being zero.
         if(re_local > 0 && re > 0 && memcmp(buf, buf_local, re)) {
-            auto it = g_client_info.fd_path.find(fd);
-            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, re:%d\n", __func__, fd_in_cfs(fd), fd, it != g_client_info.fd_path.end() ? it->second : "", count, offset, re);
+            const char *fd_path = get_fd_path(fd);
+            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, re:%d\n", __func__, fd_in_cfs(fd), fd, fd_path, count, offset, re);
             printf("CFS:\n");
             int total = 0;
             for(int i = 0; i < re; i++) {
@@ -1498,10 +1493,10 @@ ssize_t real_read(int fd, void *buf, size_t count) {
 log:
     #ifdef _CFS_DEBUG
     ; // labels can only be followed by statements
-    auto fd_path_it = g_client_info.fd_path.find(fd);
+    const char *fd_path = get_fd_path(fd);
     clock_gettime(CLOCK_REALTIME, &stop);
     long time = (stop.tv_sec - start.tv_sec)*1000000000 + stop.tv_nsec - start.tv_nsec;
-    log_debug("hook %s, is_cfs:%d, fd:%d, path: %s, count:%d, offset:%ld, size:%d, re:%d, re_cache:%d, time:%d\n", __func__, fd_in_cfs(fd), fd, fd_path_it != g_client_info.fd_path.end() ? fd_path_it->second : "", count, offset, size, re, re_cache, time/1000);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path: %s, count:%d, offset:%ld, size:%d, re:%d, re_cache:%d, time:%d\n", __func__, fd_in_cfs(fd), fd, fd_path, count, offset, size, re, re_cache, time/1000);
     #endif
     return re;
 }
@@ -1538,8 +1533,8 @@ ssize_t real_readv(int fd, const struct iovec *iov, int iovcnt) {
             if(memcmp(iov[i].iov_base, iov_local[i].iov_base, iov[i].iov_len)) {
                 re = -1;
                 cfs_flush_log();
-                auto it = g_client_info.fd_path.find(fd);
-                log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, offset:%ld, iovcnt:%d, iov_idx:%d, iov_len:%d\n", __func__, fd_in_cfs(fd), fd, it != g_client_info.fd_path.end() ? it->second : "", offset, iovcnt, i, iov[i].iov_len);
+                const char *fd_path = get_fd_path(fd);
+                log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, offset:%ld, iovcnt:%d, iov_idx:%d, iov_len:%d\n", __func__, fd_in_cfs(fd), fd, fd_path, offset, iovcnt, i, iov[i].iov_len);
             }
             free(iov_local[i].iov_base);
         }
@@ -1551,8 +1546,8 @@ ssize_t real_readv(int fd, const struct iovec *iov, int iovcnt) {
 log:
     #ifdef _CFS_DEBUG
     ; // labels can only be followed by statements
-    auto fd_path_it = g_client_info.fd_path.find(fd);
-    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, iovcnt:%d, re:%d\n", __func__, fd_in_cfs(fd), fd, fd_path_it != g_client_info.fd_path.end() ? fd_path_it->second : "", iovcnt, re);
+    const char *fd_path = get_fd_path(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, iovcnt:%d, re:%d\n", __func__, fd_in_cfs(fd), fd, fd_path, iovcnt, re);
     #endif
     return re;
 }
@@ -1588,8 +1583,8 @@ ssize_t real_pread(int fd, void *buf, size_t count, off_t offset) {
         }
         #ifdef DUP_TO_LOCAL
         if(re_local > 0 && re > 0 && memcmp(buf, buf_local, re)) {
-            auto it = g_client_info.fd_path.find(fd);
-            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, re:%d\n", __func__, fd_in_cfs(fd), fd, it != g_client_info.fd_path.end() ? it->second : "", count, offset, re);
+            const char *fd_path = get_fd_path(fd);
+            log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, re:%d\n", __func__, fd_in_cfs(fd), fd, fd_path, count, offset, re);
             printf("CFS:\n");
             int total = 0;
             for(int i = 0; i < re; i++) {
@@ -1618,8 +1613,8 @@ ssize_t real_pread(int fd, void *buf, size_t count, off_t offset) {
 log:
     #ifdef _CFS_DEBUG
     ; // labels can only be followed by statements
-    auto fd_path_it = g_client_info.fd_path.find(fd);
-    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, re:%d\n", __func__, fd_in_cfs(fd), fd, fd_path_it != g_client_info.fd_path.end() ? fd_path_it->second : "", count, offset, re);
+    const char *fd_path = get_fd_path(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, re:%d\n", __func__, fd_in_cfs(fd), fd, fd_path, count, offset, re);
     #endif
     return re;
 }
@@ -1646,8 +1641,8 @@ ssize_t real_preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset) {
             if(memcmp(iov[i].iov_base, iov_local[i].iov_base, iov[i].iov_len)) {
                 re = -1;
                 cfs_flush_log();
-                auto it = g_client_info.fd_path.find(fd);
-                log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, iovcnt:%d, offset:%ld, iov_idx: %d\n", __func__, fd_in_cfs(fd), fd, it != g_client_info.fd_path.end() ? it->second : "", iovcnt, offset, i);
+                const char *fd_path = get_fd_path(fd);
+                log_debug("hook %s, data from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, iovcnt:%d, offset:%ld, iov_idx: %d\n", __func__, fd_in_cfs(fd), fd, fd_path, iovcnt, offset, i);
             }
             free(iov_local[i].iov_base);
         }
@@ -1659,8 +1654,8 @@ ssize_t real_preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset) {
 log:
     #ifdef _CFS_DEBUG
     ; // labels can only be followed by statements
-    auto fd_path_it = g_client_info.fd_path.find(fd);
-    log_debug("hook %s, is_cfs:%d, fd:%d, iovcnt:%d, offset:%ld, re:%d\n", __func__, fd_in_cfs(fd), fd, fd_path_it != g_client_info.fd_path.end() ? fd_path_it->second : "", iovcnt, offset, re);
+    const char *fd_path = get_fd_path(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, iovcnt:%d, offset:%ld, re:%d\n", __func__, fd_in_cfs(fd), fd, fd_path, iovcnt, offset, re);
     #endif
     return re;
 }
@@ -1721,10 +1716,10 @@ ssize_t real_write(int fd, const void *buf, size_t count) {
 log:
     #ifdef _CFS_DEBUG
     ; // labels can only be followed by statements
-    auto fd_path_it = g_client_info.fd_path.find(fd);
+    const char *fd_path = get_fd_path(fd);
     clock_gettime(CLOCK_REALTIME, &stop);
     long time = (stop.tv_sec - start.tv_sec)*1000000000 + stop.tv_nsec - start.tv_nsec;
-    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, size:%d, re:%d, re_cache:%d, time:%d\n", __func__, fd_in_cfs(fd), fd, fd_path_it != g_client_info.fd_path.end() ? fd_path_it->second : "", count, offset, size, re, re_cache, time/1000);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, size:%d, re:%d, re_cache:%d, time:%d\n", __func__, fd_in_cfs(fd), fd, fd_path, count, offset, size, re, re_cache, time/1000);
     #endif
     return re;
 }
@@ -1762,8 +1757,8 @@ ssize_t real_writev(int fd, const struct iovec *iov, int iovcnt) {
 log:
     #ifdef _CFS_DEBUG
     ; // labels can only be followed by statements
-    auto fd_path_it = g_client_info.fd_path.find(fd);
-    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, iovcnt:%d, re:%d\n", __func__, fd_in_cfs(fd), fd, fd_path_it != g_client_info.fd_path.end() ? fd_path_it->second : "", iovcnt, re);
+    const char *fd_path = get_fd_path(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, iovcnt:%d, re:%d\n", __func__, fd_in_cfs(fd), fd, fd_path, iovcnt, re);
     #endif
     return re;
 }
@@ -1809,10 +1804,10 @@ ssize_t real_pwrite(int fd, const void *buf, size_t count, off_t offset) {
 log:
     #ifdef _CFS_DEBUG
     ; // labels can only be followed by statements
-    auto fd_path_it = g_client_info.fd_path.find(fd);
+    const char *fd_path = get_fd_path(fd);
     clock_gettime(CLOCK_REALTIME, &stop);
     long time = (stop.tv_sec - start.tv_sec)*1000000000 + stop.tv_nsec - start.tv_nsec;
-    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, re:%d, re_cache:%d, time:%d\n", __func__, fd_in_cfs(fd), fd, fd_path_it != g_client_info.fd_path.end() ? fd_path_it->second : "", count, offset, re, re_cache, time/1000);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, re:%d, re_cache:%d, time:%d\n", __func__, fd_in_cfs(fd), fd, fd_path, count, offset, re, re_cache, time/1000);
     #endif
     return re;
 }
@@ -1844,8 +1839,8 @@ ssize_t real_pwritev(int fd, const struct iovec *iov, int iovcnt, off_t offset) 
 log:
     #ifdef _CFS_DEBUG
     ; // labels can only be followed by statements
-    auto fd_path_it = g_client_info.fd_path.find(fd);
-    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, iovcnt:%d, offset:%ld, re:%d\n", __func__, fd_in_cfs(fd), fd, fd_path_it != g_client_info.fd_path.end() ? fd_path_it->second : "", iovcnt, offset, re);
+    const char *fd_path = get_fd_path(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, iovcnt:%d, offset:%ld, re:%d\n", __func__, fd_in_cfs(fd), fd, fd_path, iovcnt, offset, re);
     #endif
     return re;
 }
@@ -1876,8 +1871,8 @@ off_t real_lseek(int fd, off_t offset, int whence) {
         re_cfs = f->pos;
         #ifdef DUP_TO_LOCAL
         if(re_cfs != re) {
-            auto it = g_client_info.fd_path.find(fd);
-            log_debug("hook %s, re from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, offset:%ld, whence:%d, re:%d, re_cfs:%d\n", __func__, fd_in_cfs(fd), fd, it != g_client_info.fd_path.end() ? it->second : "", offset, whence, re, re_cfs);
+            const char *fd_path = get_fd_path(fd);
+            log_debug("hook %s, re from CFS and local is not consistent. is_cfs:%d, fd:%d, path:%s, offset:%ld, whence:%d, re:%d, re_cfs:%d\n", __func__, fd_in_cfs(fd), fd, fd_path, offset, whence, re, re_cfs);
         }
         #else
         re = re_cfs;
@@ -1889,8 +1884,8 @@ off_t real_lseek(int fd, off_t offset, int whence) {
 log:
     #ifdef _CFS_DEBUG
     ; // labels can only be followed by statements
-    auto fd_path_it = g_client_info.fd_path.find(fd);
-    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, offset:%ld, whence:%d, re:%d\n", __func__, fd_in_cfs(fd), fd, fd_path_it != g_client_info.fd_path.end() ? fd_path_it->second : "", offset, whence, re);
+    const char *fd_path = get_fd_path(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, offset:%ld, whence:%d, re:%d\n", __func__, fd_in_cfs(fd), fd, fd_path, offset, whence, re);
     #endif
     return re;
 }
@@ -1929,8 +1924,8 @@ int real_fdatasync(int fd) {
 log:
     #ifdef _CFS_DEBUG
     ; // labels can only be followed by statements
-    auto fd_path_it = g_client_info.fd_path.find(fd);
-    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, re:%d\n", __func__, fd_in_cfs(fd), fd, fd_path_it != g_client_info.fd_path.end() ? fd_path_it->second : "", re);
+    const char *fd_path = get_fd_path(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, re:%d\n", __func__, fd_in_cfs(fd), fd, fd_path, re);
     #endif
     return re;
 }
@@ -1964,8 +1959,8 @@ int real_fsync(int fd) {
 log:
     #ifdef _CFS_DEBUG
     ; // labels can only be followed by statements
-    auto fd_path_it = g_client_info.fd_path.find(fd);
-    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, re:%d\n", __func__, fd_in_cfs(fd), fd, fd_path_it != g_client_info.fd_path.end() ? fd_path_it->second : "", re);
+    const char *fd_path = get_fd_path(fd);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, re:%d\n", __func__, fd_in_cfs(fd), fd, fd_path, re);
     #endif
     return re;
 }

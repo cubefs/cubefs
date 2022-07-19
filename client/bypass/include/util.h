@@ -1,10 +1,6 @@
 #ifndef UTIL_H
 #define UTIL_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <stdarg.h>
 #include <stdio.h>
 #include <sys/time.h>
@@ -30,9 +26,5 @@ static void log_debug(const char* message, ...) {
     printf("%s [debug] ", buf);
     vprintf(message, args);
 }
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

@@ -1,12 +1,14 @@
 #ifndef CACHE_H
 #define CACHE_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
+#include <pthread.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 #include <map>
+#include <set>
+#include "sdk.h"
 #include "util.h"
 
 #define BIG_PAGE_CACHE_SIZE 67108864
@@ -94,9 +96,5 @@ void flush_inode_range(inode_info_t *inode_info, off_t offset, size_t count);
 void clear_inode_range(inode_info_t *inode_info, off_t offset, size_t count);
 void clear_inode(inode_info_t *inode_info);
 void flush_and_release(std::map<ino_t, inode_info_t *> &arg);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

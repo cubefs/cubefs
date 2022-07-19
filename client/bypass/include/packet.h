@@ -1,3 +1,6 @@
+#ifndef PACKET_H
+#define PACKET_H
+
 #include <arpa/inet.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -13,7 +16,6 @@
 #define NormalExtentType 1
 #define PacketHeaderSize 57
 #define ProtoMagic 0xFF
-#define ReadBlockSize 131072
 typedef struct packet {
 	uint8_t Magic;
 	uint8_t ExtentType;
@@ -36,8 +38,9 @@ packet_t *new_read_packet(uint64_t partition_id, uint64_t extent_id, uint64_t ex
 packet_t *new_reply(int64_t req_id, uint64_t partition_id, uint64_t extent_id);
 void marshal_header(packet_t *p, char *out);
 void unmarshal_header(packet_t *p, char *in);
-int new_connection(const char *ip, int port);
 ssize_t write_sock(int sock_fd, packet_t *p);
 ssize_t read_sock(int sock_fd, packet_t *p);
 ssize_t get_read_reply(int sock_fd, packet_t *req);
 bool check_read_reply(packet_t *req, packet_t *reply);
+
+#endif

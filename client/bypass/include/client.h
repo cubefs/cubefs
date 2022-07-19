@@ -23,9 +23,11 @@
 #include <utime.h>
 #include <map>
 #include <set>
+#include "cache.h"
+#include "conn_pool.h"
 #include "ini.h"
-#include "sdk.h"
 #include "packet.h"
+#include "sdk.h"
 #include "util.h"
 #include "cache.h"
 
@@ -360,6 +362,7 @@ typedef struct {
 
     // map for each open fd to its pathname, to print pathname in debug log
     map<int, char *> fd_path;
+    pthread_rwlock_t fd_path_lock;
 
     // the current working directory, doesn't include the mount point part if in cfs
     char *cwd;
@@ -658,12 +661,13 @@ static bool has_renameat2() {
 }
 
 bool fd_in_cfs(int fd) {
-    if(g_client_info.dup_fds.find(fd) != g_client_info.dup_fds.end())
+    if(g_client_info.dup_fds.find(fd) != g_client_info.dup_fds.end()) {
         return true;
+    }
 
-    if (fd & CFS_FD_MASK)
+    if (fd & CFS_FD_MASK) {
         return true;
-
+    }
     return false;
 }
 
@@ -700,7 +704,6 @@ file_t *get_open_file(int fd) {
 }
 
 ssize_t cfs_pread_sock(int64_t id, int fd, void *buf, size_t count, off_t offset) {
-    cfs_flush(id, fd);
     int max_count = 3;
     cfs_read_req_t *req = (cfs_read_req_t *)calloc(max_count, sizeof(cfs_read_req_t));
 	int req_count = cfs_read_requests(id, fd, buf, count, offset, req, max_count);
@@ -718,7 +721,11 @@ ssize_t cfs_pread_sock(int64_t id, int fd, void *buf, size_t count, off_t offset
         if(p == NULL) {
             break;
         }
-        int sock_fd = new_connection(req[i].dp_host, req[i].dp_port);
+        int sock_fd = get_conn(g_conn_pool, req[i].dp_host, req[i].dp_port);
+        if(sock_fd < 0) {
+            free(p);
+            break;
+        }
         ssize_t re = write_sock(sock_fd, p);
         if(re < 0) {
             free(p);
@@ -727,16 +734,33 @@ ssize_t cfs_pread_sock(int64_t id, int fd, void *buf, size_t count, off_t offset
         }
         re = get_read_reply(sock_fd, p);
         free(p);
-        close(sock_fd);
         if(re < 0) {
+            close(sock_fd);
             break;
         }
-        read += req[i].size;
+        #ifdef _CFS_DEBUG
+        log_debug("cfs_pread_sock read sock, file_offset:%d, host:%s, sock_fd:%d, dp:%d, extent:%d, extent_offset:%ld, size:%d, re:%d\n", req[i].file_offset, req[i].dp_host, sock_fd, req[i].partition_id, req[i].extent_id, req[i].extent_offset, req[i].size, re);
+        #endif
+        put_conn(g_conn_pool, req[i].dp_host, req[i].dp_port, sock_fd);
+        read += re;
+        if(re != req[i].size) {
+            break;
+        }
     }
+    #ifdef _CFS_DEBUG
+    log_debug("cfs_pread_sock, fd:%d, count:%d, offset:%ld, req_count:%d, read:%d\n", fd, count, offset, req_count, read);
+    #endif
     if(read < count) {
         read = cfs_pread(id, fd, buf, count, offset);
     }
     return read;
 }
 
+static const char *get_fd_path(int fd) {
+    pthread_rwlock_rdlock(&g_fd_path_lock);
+    auto it = g_fd_path.find(fd);
+    const char *path = it != g_fd_path.end() ? it->second : "";
+    pthread_rwlock_unlock(&g_fd_path_lock);
+    return path;
+}
 #endif

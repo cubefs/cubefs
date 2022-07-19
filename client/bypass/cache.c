@@ -1,10 +1,3 @@
-#include <pthread.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <map>
-#include <set>
-#include <vector>
 #include "cache.h"
 
 using namespace std;

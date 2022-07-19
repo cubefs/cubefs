@@ -56,5 +56,5 @@ if [[ ${build_sdk} -eq 1 ]]; then
 fi
 if [[ ${build_client} -eq 1 ]]; then
     echo "building client (libcfsclient.so) ..."
-    g++ ${gccflag} -fPIC -shared -o ${dir}/libcfsclient.so ${dir}/cache.c ${dir}/packet.c ${dir}/client.c ${dir}/ini.c -ldl -L${dir} -lcfssdk -I ${dir}/include
+    g++ ${gccflag} -fPIC -shared -o ${dir}/libcfsclient.so ${dir}/cache.c ${dir}/packet.c ${dir}/conn_pool.c ${dir}/client.c ${dir}/ini.c -ldl -L${dir} -lcfssdk -I ${dir}/include
 fi

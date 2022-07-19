@@ -22,15 +22,15 @@
 #ifndef CFS_SDK_DL_H
 #define CFS_SDK_DL_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <fcntl.h>
 #include <stdint.h>
 #include <sys/stat.h>
 #include <sys/uio.h>
 #include <unistd.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef struct {
         int ignore_sighup;
@@ -70,6 +70,8 @@ typedef struct {
 	char 	 	dp_host[32];
 	int 	 	dp_port;
 } cfs_read_req_t;
+
+struct cfs_file;
 
 /*
  * Library / framework initialization

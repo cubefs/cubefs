@@ -70,28 +70,6 @@ void unmarshal_header(packet_t *p, char *in) {
 	p->KernelOffset = ntohll(*(uint64_t *)(in + 49));
 }
 
-int new_connection(const char *ip, int port) {
-    int sock_fd = -1, client_fd;
-	if(ip == NULL) {
-		return sock_fd;
-	}
-    if((sock_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        return sock_fd;
-    }
-    struct sockaddr_in addr;
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    if(inet_pton(AF_INET, ip, &addr.sin_addr) < 0) {
-		close(sock_fd);
-        return sock_fd;
-    }
-    if((client_fd = connect(sock_fd, (struct sockaddr*)&addr, sizeof(addr)))) {
-		close(sock_fd);
-        return sock_fd;
-    }
-    return sock_fd;
-}
-
 ssize_t write_sock(int sock_fd, packet_t *p) {
     char *header = (char *)malloc(PacketHeaderSize);
 	if(header == NULL) {
@@ -126,16 +104,15 @@ ssize_t get_read_reply(int sock_fd, packet_t *req) {
 	ssize_t read = 0;
 	while(read < req->Size) {
 		packet_t *reply = new_reply(req->ReqID, req->PartitionID, req->ExtentID);
-		int size = req->Size - read;
-		if(size > ReadBlockSize) {
-			size = ReadBlockSize;
-		}
 		reply->Data = req->Data + read;
-		reply->Size = size;
 		ssize_t re = read_sock(sock_fd, reply);
 		bool valid = check_read_reply(req, reply);
+		uint32_t size = reply->Size;
 		free(reply);
-		if(re < 0 || !valid) {
+		if(re < 0) {
+			return re;
+		}
+		if(!valid) {
 			return read;
 		}
 		read += size;
