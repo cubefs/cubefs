@@ -17,8 +17,6 @@ package base
 import (
 	"errors"
 
-	"go.mongodb.org/mongo-driver/mongo"
-
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 )
@@ -43,7 +41,6 @@ var (
 	ErrNoTaskInQueue     = errors.New("no task in queue")
 	ErrVolNotOnlyOneTask = errors.New("vol not only one task running")
 	ErrUpdateVolumeCache = errors.New("update volume cache failed")
-	ErrNoDocuments       = mongo.ErrNoDocuments
 )
 
 // TaskCommonConfig task common config
