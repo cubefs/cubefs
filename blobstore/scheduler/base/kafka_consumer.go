@@ -17,14 +17,15 @@ package base
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/Shopify/sarama"
-	"go.mongodb.org/mongo-driver/mongo"
 
 	"github.com/cubefs/cubefs/blobstore/common/kafka"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/scheduler/db"
 )
 
 const minConsumeWaitTime = time.Millisecond * 500
@@ -33,6 +34,12 @@ const minConsumeWaitTime = time.Millisecond * 500
 type IConsumer interface {
 	ConsumeMessages(ctx context.Context, msgCnt int) (msgs []*sarama.ConsumerMessage)
 	CommitOffset(ctx context.Context) error
+}
+
+// IConsumerOffset records consume offset
+type IConsumerOffset interface {
+	GetConsumeOffset(taskType proto.TaskType, topic string, partition int32) (offset int64, err error)
+	SetConsumeOffset(taskType proto.TaskType, topic string, partition int32, offset int64) (err error)
 }
 
 // KafkaConfig kafka config
@@ -56,8 +63,8 @@ type TopicConsumer struct {
 }
 
 // NewTopicConsumer returns topic round-robin partition consumer
-func NewTopicConsumer(cfg *KafkaConfig, offsetAccessor db.IKafkaOffsetTable) (IConsumer, error) {
-	consumers, err := NewKafkaPartitionConsumers(cfg, offsetAccessor)
+func NewTopicConsumer(taskType proto.TaskType, cfg *KafkaConfig, offsetAccessor IConsumerOffset) (IConsumer, error) {
+	consumers, err := NewKafkaPartitionConsumers(taskType, cfg, offsetAccessor)
 	if err != nil {
 		return nil, err
 	}
@@ -86,15 +93,16 @@ func (c *TopicConsumer) CommitOffset(ctx context.Context) error {
 
 // PartitionConsumer partition consumer
 type PartitionConsumer struct {
+	taskType       proto.TaskType
 	topic          string
 	partition      int32
 	consumer       sarama.PartitionConsumer
 	consumeInfo    ConsumeInfo
-	offsetAccessor db.IKafkaOffsetTable // consume offset persistence
+	offsetAccessor IConsumerOffset // consume offset persistence
 }
 
 // NewKafkaPartitionConsumers returns kafka partition consumers
-func NewKafkaPartitionConsumers(cfg *KafkaConfig, offsetAccessor db.IKafkaOffsetTable) ([]IConsumer, error) {
+func NewKafkaPartitionConsumers(taskType proto.TaskType, cfg *KafkaConfig, offsetAccessor IConsumerOffset) ([]IConsumer, error) {
 	var consumers []IConsumer
 	consumer, err := sarama.NewConsumer(cfg.BrokerList, defaultKafkaCfg())
 	if err != nil {
@@ -108,7 +116,7 @@ func NewKafkaPartitionConsumers(cfg *KafkaConfig, offsetAccessor db.IKafkaOffset
 		cfg.Partitions = partitions
 	}
 	for _, partition := range cfg.Partitions {
-		partitionConsumer, err := newKafkaPartitionConsumer(consumer, cfg.Topic, partition, offsetAccessor)
+		partitionConsumer, err := newKafkaPartitionConsumer(taskType, consumer, cfg.Topic, partition, offsetAccessor)
 		if err != nil {
 			return nil, fmt.Errorf("new kafka partition consumer: err[%w]", err)
 		}
@@ -118,8 +126,9 @@ func NewKafkaPartitionConsumers(cfg *KafkaConfig, offsetAccessor db.IKafkaOffset
 	return consumers, nil
 }
 
-func newKafkaPartitionConsumer(consumer sarama.Consumer, topic string, partition int32, offsetAccessor db.IKafkaOffsetTable) (*PartitionConsumer, error) {
+func newKafkaPartitionConsumer(taskType proto.TaskType, consumer sarama.Consumer, topic string, partition int32, offsetAccessor IConsumerOffset) (*PartitionConsumer, error) {
 	kafkaConsumer := PartitionConsumer{
+		taskType:       taskType,
 		topic:          topic,
 		offsetAccessor: offsetAccessor,
 	}
@@ -190,7 +199,7 @@ func (c *PartitionConsumer) CommitOffset(ctx context.Context) error {
 
 	offset := c.consumeInfo.Offset
 	span.Debugf("start commit offset: offset[%d], topic[%s], partition[%d]", offset, c.topic, c.partition)
-	err := c.offsetAccessor.Set(c.topic, c.partition, offset)
+	err := c.offsetAccessor.SetConsumeOffset(c.taskType, c.topic, c.partition, offset)
 	if err != nil {
 		span.Errorf("commit offset failed: [%+v]", err)
 		return err
@@ -200,9 +209,9 @@ func (c *PartitionConsumer) CommitOffset(ctx context.Context) error {
 }
 
 func (c *PartitionConsumer) loadConsumeInfo(topic string, pt int32) (consumeInfo ConsumeInfo, err error) {
-	commitOffset, err := c.offsetAccessor.Get(topic, pt)
+	commitOffset, err := c.offsetAccessor.GetConsumeOffset(c.taskType, topic, pt)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
+		if rpc.DetectStatusCode(err) == http.StatusNotFound {
 			return ConsumeInfo{Commit: sarama.OffsetOldest, Offset: sarama.OffsetOldest}, nil
 		}
 		return

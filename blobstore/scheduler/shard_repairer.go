@@ -22,17 +22,16 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
-	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
-	"github.com/cubefs/cubefs/blobstore/common/rpc"
-	"github.com/cubefs/cubefs/blobstore/common/trace"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/singleflight"
 
 	"github.com/cubefs/cubefs/blobstore/common/counter"
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/kafka"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/scheduler/base"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
 	"github.com/cubefs/cubefs/blobstore/scheduler/db"
@@ -143,28 +142,27 @@ func NewShardRepairMgr(
 	cfg *ShardRepairConfig,
 	vc IVolumeCache,
 	switchMgr *taskswitch.SwitchMgr,
-	offAccessor db.IKafkaOffsetTable,
 	orphanShardTbl db.IOrphanShardTable,
 	blobnodeCli client.BlobnodeAPI,
-	serviceGetter client.ClusterMgrAPI,
+	clusterMgrCli client.ClusterMgrAPI,
 ) (*ShardRepairMgr, error) {
-	priorConsumers, err := base.NewPriorityConsumer(cfg.priorityConsumerConfigs(), offAccessor)
+	priorConsumers, err := base.NewPriorityConsumer(proto.TaskTypeShardRepair, cfg.priorityConsumerConfigs(), clusterMgrCli)
 	if err != nil {
 		return nil, err
 	}
 
-	failTopicConsumers, err := base.NewKafkaPartitionConsumers(cfg.failedConsumerConfig(), offAccessor)
+	failTopicConsumers, err := base.NewKafkaPartitionConsumers(proto.TaskTypeShardRepair, cfg.failedConsumerConfig(), clusterMgrCli)
 	if err != nil {
 		return nil, err
 	}
 
-	taskSwitch, err := switchMgr.AddSwitch(taskswitch.ShardRepairSwitchName)
+	taskSwitch, err := switchMgr.AddSwitch(proto.TaskTypeShardRepair.String())
 	if err != nil {
 		return nil, err
 	}
 
 	workerSelector := selector.MakeSelector(10*1000, func() (hosts []string, err error) {
-		return serviceGetter.GetService(context.Background(), proto.ServiceNameBlobNode, cfg.ClusterID)
+		return clusterMgrCli.GetService(context.Background(), proto.ServiceNameBlobNode, cfg.ClusterID)
 	})
 	failMsgSender, err := base.NewMsgSender(cfg.failedProducerConfig())
 	if err != nil {

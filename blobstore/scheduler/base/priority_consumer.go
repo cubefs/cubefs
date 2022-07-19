@@ -21,7 +21,7 @@ import (
 
 	"github.com/Shopify/sarama"
 
-	"github.com/cubefs/cubefs/blobstore/scheduler/db"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 type topicPriority struct {
@@ -41,12 +41,12 @@ type priorityConsumer struct {
 }
 
 // NewPriorityConsumer return priority consumer
-func NewPriorityConsumer(cfgs []PriorityConsumerConfig, offsetAccessor db.IKafkaOffsetTable) (IConsumer, error) {
+func NewPriorityConsumer(taskType proto.TaskType, cfgs []PriorityConsumerConfig, offsetAccessor IConsumerOffset) (IConsumer, error) {
 	multiConsumer := priorityConsumer{}
 	multiConsumer.topicConsumers = make(map[string]IConsumer, len(cfgs))
 	multiConsumer.sortedTopicPriority = make([]topicPriority, 0)
 	for _, cfg := range cfgs {
-		cs, err := NewTopicConsumer(&cfg.KafkaConfig, offsetAccessor)
+		cs, err := NewTopicConsumer(taskType, &cfg.KafkaConfig, offsetAccessor)
 		if err != nil {
 			return nil, fmt.Errorf("new topic consumer: cfg[%+v], err[%w]", cfg.KafkaConfig, err)
 		}

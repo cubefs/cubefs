@@ -55,7 +55,7 @@ func newShardRepairMgr(t *testing.T) *ShardRepairMgr {
 	clusterMgrCli := NewMockClusterMgrAPI(ctr)
 	clusterMgrCli.EXPECT().GetConfig(any, any).AnyTimes().Return("", nil)
 	switchMgr := taskswitch.NewSwitchMgr(clusterMgrCli)
-	taskSwitch, _ := switchMgr.AddSwitch(taskswitch.BlobDeleteSwitchName)
+	taskSwitch, _ := switchMgr.AddSwitch(proto.TaskTypeBlobDelete.String())
 
 	consumer := NewMockConsumer(ctr)
 
@@ -209,10 +209,6 @@ func TestNewShardRepairMgr(t *testing.T) {
 	clusterMgrCli := NewMockClusterMgrAPI(ctr)
 	switchMgr := taskswitch.NewSwitchMgr(clusterMgrCli)
 
-	accessor := NewMockKafkaOffsetTable(ctr)
-	accessor.EXPECT().Get(any, any).AnyTimes().Return(int64(0), nil)
-	accessor.EXPECT().Set(any, any, any).AnyTimes().Return(nil)
-
 	orphanShardTable := NewMockOrphanShardTable(ctr)
 	orphanShardTable.EXPECT().Save(any).AnyTimes().Return(nil)
 
@@ -221,10 +217,12 @@ func TestNewShardRepairMgr(t *testing.T) {
 
 	clusterCli := NewMockClusterMgrAPI(ctr)
 	clusterCli.EXPECT().GetService(any, any, any).Return(nil, errMock)
+	clusterCli.EXPECT().GetConsumeOffset(any, any, any).AnyTimes().Return(int64(0), nil)
+	clusterCli.EXPECT().SetConsumeOffset(any, any, any, any).AnyTimes().Return(nil)
 
-	_, err := NewShardRepairMgr(cfg, volCache, switchMgr, accessor, orphanShardTable, blobnode, clusterCli)
+	_, err := NewShardRepairMgr(cfg, volCache, switchMgr, orphanShardTable, blobnode, clusterCli)
 	require.NoError(t, err)
 
-	_, err = NewShardRepairMgr(cfg, volCache, switchMgr, accessor, orphanShardTable, blobnode, clusterCli)
+	_, err = NewShardRepairMgr(cfg, volCache, switchMgr, orphanShardTable, blobnode, clusterCli)
 	require.Error(t, err)
 }

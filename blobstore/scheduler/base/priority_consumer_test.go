@@ -19,6 +19,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 func TestPriorityConsumer(t *testing.T) {
@@ -37,7 +39,7 @@ func TestPriorityConsumer(t *testing.T) {
 	}
 
 	mockAcc := newMockAccess(nil)
-	priorityConsumer, err := NewPriorityConsumer(cfgs, mockAcc)
+	priorityConsumer, err := NewPriorityConsumer(proto.TaskTypeShardRepair, cfgs, mockAcc)
 	require.NoError(t, err)
 
 	// Then: messages starting from offset 0 are consumed.
@@ -65,6 +67,6 @@ func TestPriorityConsumer(t *testing.T) {
 			Priority: 1,
 		},
 	}
-	_, err = NewPriorityConsumer(cfgs, mockAcc)
+	_, err = NewPriorityConsumer(proto.TaskTypeShardRepair, cfgs, mockAcc)
 	require.Error(t, err)
 }

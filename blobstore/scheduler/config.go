@@ -57,7 +57,6 @@ const (
 	defaultExpiresTicks   = uint32(60)
 
 	defaultDatabase           = "scheduler"
-	defaultKafkaOffsetTable   = "kafka_offset_tbl"
 	defaultOrphanedShardTable = "orphaned_shard_tbl"
 
 	defaultShardRepairNormalTopic   = "shard_repair"
@@ -216,7 +215,6 @@ func (c *Config) fixDataBaseConfig() {
 	}
 	defaulter.LessOrEqual(&c.Database.Mongo.TimeoutMs, defaultMongoTimeoutMs)
 	defaulter.Empty(&c.Database.DBName, defaultDatabase)
-	defaulter.Empty(&c.Database.KafkaOffsetTable, defaultKafkaOffsetTable)
 	defaulter.Empty(&c.Database.OrphanShardTable, defaultOrphanedShardTable)
 }
 

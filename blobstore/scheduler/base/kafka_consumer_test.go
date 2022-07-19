@@ -23,7 +23,9 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/stretchr/testify/require"
-	"go.mongodb.org/mongo-driver/mongo"
+
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 var (
@@ -155,7 +157,7 @@ func (m *mockConsumer) Close() error {
 func TestPartitionConsumer(t *testing.T) {
 	mockConsume := newMockConsumer()
 	access := newMockAccess(nil)
-	pc, err := newKafkaPartitionConsumer(mockConsume, "topic1", 1, access)
+	pc, err := newKafkaPartitionConsumer(proto.TaskTypeBlobDelete, mockConsume, "topic1", 1, access)
 	require.NoError(t, err)
 
 	mockConsume.Run(100)
@@ -172,7 +174,7 @@ func TestTopicConsume(t *testing.T) {
 	mockConsume := newMockConsumer()
 	access := newMockAccess(nil)
 	for _, pid := range []int32{1, 2, 3} {
-		pc, _ := newKafkaPartitionConsumer(mockConsume, topic, pid, access)
+		pc, _ := newKafkaPartitionConsumer(proto.TaskTypeBlobDelete, mockConsume, topic, pid, access)
 		cs = append(cs, pc)
 	}
 	mockConsume.Run(100)
@@ -184,7 +186,7 @@ func TestTopicConsume(t *testing.T) {
 		topicConsumer.ConsumeMessages(context.Background(), 1)
 		err := topicConsumer.CommitOffset(context.Background())
 		require.NoError(t, err)
-		off, err := access.Get(topic, pid)
+		off, err := access.GetConsumeOffset(proto.TaskTypeBlobDelete, topic, pid)
 		require.NoError(t, err)
 		require.Equal(t, int64(0), off)
 	}
@@ -192,7 +194,7 @@ func TestTopicConsume(t *testing.T) {
 	topicConsumer.ConsumeMessages(context.Background(), 1)
 	err := topicConsumer.CommitOffset(context.Background())
 	require.NoError(t, err)
-	off, err := access.Get(topic, 1)
+	off, err := access.GetConsumeOffset(proto.TaskTypeBlobDelete, topic, 1)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), off)
 }
@@ -200,7 +202,7 @@ func TestTopicConsume(t *testing.T) {
 func TestConsumerError(t *testing.T) {
 	mockConsume := newMockConsumer()
 	access := newMockAccess(nil)
-	pc, err := newKafkaPartitionConsumer(mockConsume, "topic1", 1, access)
+	pc, err := newKafkaPartitionConsumer(proto.TaskTypeBlobDelete, mockConsume, "topic1", 1, access)
 	require.NoError(t, err)
 	pcTmp := mockConsume.getPc("topic1", 1)
 	go func() { pcTmp.sendErr(errors.New("fake error")) }()
@@ -211,8 +213,8 @@ func TestConsumerError(t *testing.T) {
 
 func TestLoadConsumeInfo(t *testing.T) {
 	mockConsume := newMockConsumer()
-	access := newMockAccess(mongo.ErrNoDocuments)
-	pc, _ := newKafkaPartitionConsumer(mockConsume, "topic1", 1, access)
+	access := newMockAccess(errcode.ErrNotFound)
+	pc, _ := newKafkaPartitionConsumer(proto.TaskTypeBlobDelete, mockConsume, "topic1", 1, access)
 	off, _ := pc.loadConsumeInfo("topic1", 1)
 	require.Equal(t, sarama.OffsetOldest, off.Offset)
 }
@@ -227,7 +229,7 @@ func TestNewTopicConsumer(t *testing.T) {
 	}
 
 	access := newMockAccess(nil)
-	consumer, err := NewTopicConsumer(cfg, access)
+	consumer, err := NewTopicConsumer(proto.TaskTypeBlobDelete, cfg, access)
 	require.NoError(t, err)
 
 	msgs := consumer.ConsumeMessages(context.Background(), 1)
@@ -238,11 +240,11 @@ func TestNewTopicConsumer(t *testing.T) {
 	require.Error(t, err)
 
 	cfg.BrokerList = []string{}
-	_, err = NewTopicConsumer(cfg, access)
+	_, err = NewTopicConsumer(proto.TaskTypeBlobDelete, cfg, access)
 	require.Error(t, err)
 
 	cfg.Partitions = nil
 	cfg.BrokerList = []string{broker.Addr()}
-	_, err = NewTopicConsumer(cfg, access)
+	_, err = NewTopicConsumer(proto.TaskTypeBlobDelete, cfg, access)
 	require.Error(t, err)
 }
