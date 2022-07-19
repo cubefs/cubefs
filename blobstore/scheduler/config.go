@@ -19,11 +19,9 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/cmd"
-	"github.com/cubefs/cubefs/blobstore/common/mongoutil"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
-	"github.com/cubefs/cubefs/blobstore/scheduler/db"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 )
 
@@ -33,7 +31,6 @@ const (
 	defaultRetryHostsCnt              = 1
 	defaultClientTimeoutMs            = int64(1000)
 	defaultHostSyncIntervalMs         = int64(1000)
-	defaultMongoTimeoutMs             = int64(3000)
 
 	defaultBalanceDiskCntLimit = 100
 	defaultMaxDiskFreeChunkCnt = int64(1024)
@@ -56,9 +53,6 @@ const (
 	defaultHeartbeatTicks = uint32(30)
 	defaultExpiresTicks   = uint32(60)
 
-	defaultDatabase           = "scheduler"
-	defaultOrphanedShardTable = "orphaned_shard_tbl"
-
 	defaultShardRepairNormalTopic   = "shard_repair"
 	defaultShardRepairPriorityTopic = "shard_repair_prior"
 	defaultShardRepairFailedTopic   = "shard_repair_failed"
@@ -67,8 +61,6 @@ const (
 	defaultBlobDeleteFailedTopic = "blob_delete_failed"
 )
 
-var defaultWriteConfig = mongoutil.DefaultWriteConfig
-
 // Config service config
 type Config struct {
 	cmd.Config
@@ -76,7 +68,6 @@ type Config struct {
 	ClusterID proto.ClusterID `json:"cluster_id"`
 	Services  Services        `json:"services"`
 
-	Database                   db.Config `json:"database"`
 	TopologyUpdateIntervalMin  int       `json:"topology_update_interval_min"`
 	VolumeCacheUpdateIntervalS int       `json:"volume_cache_update_interval_s"`
 	FreeChunkCounterBuckets    []float64 `json:"free_chunk_counter_buckets"`
@@ -188,7 +179,6 @@ func (c *Config) fixConfig() (err error) {
 	defaulter.LessOrEqual(&c.VolumeCacheUpdateIntervalS, defaultVolumeCacheUpdateIntervalS)
 	defaulter.LessOrEqual(&c.TaskLog.ChunkBits, defaultDeleteLogChunkSize)
 	c.fixClientConfig()
-	c.fixDataBaseConfig()
 	c.fixKafkaConfig()
 	c.fixBalanceConfig()
 	c.fixDiskDropConfig()
@@ -207,15 +197,6 @@ func (c *Config) fixClientConfig() {
 	defaulter.LessOrEqual(&c.Proxy.RetryHostsCnt, defaultRetryHostsCnt)
 	defaulter.LessOrEqual(&c.Blobnode.ClientTimeoutMs, defaultClientTimeoutMs)
 	defaulter.LessOrEqual(&c.Scheduler.ClientTimeoutMs, defaultClientTimeoutMs)
-}
-
-func (c *Config) fixDataBaseConfig() {
-	if c.Database.Mongo.WriteConcern == nil {
-		c.Database.Mongo.WriteConcern = &defaultWriteConfig
-	}
-	defaulter.LessOrEqual(&c.Database.Mongo.TimeoutMs, defaultMongoTimeoutMs)
-	defaulter.Empty(&c.Database.DBName, defaultDatabase)
-	defaulter.Empty(&c.Database.OrphanShardTable, defaultOrphanedShardTable)
 }
 
 func (c *Config) fixKafkaConfig() {
@@ -270,6 +251,7 @@ func (c *Config) fixShardRepairConfig() {
 	defaulter.LessOrEqual(&c.ShardRepair.TaskPoolSize, defaultTaskPoolSize)
 	defaulter.LessOrEqual(&c.ShardRepair.NormalHandleBatchCnt, defaultHandleBatchCnt)
 	defaulter.LessOrEqual(&c.ShardRepair.FailHandleBatchCnt, defaultHandleBatchCnt)
+	defaulter.LessOrEqual(&c.ShardRepair.OrphanShardLog.ChunkBits, defaultDeleteLogChunkSize)
 	defaulter.LessOrEqual(&c.ShardRepair.FailMsgConsumeIntervalMs, defaultFailMsgConsumeIntervalMs)
 	c.ShardRepair.Kafka = c.Kafka.ShardRepair
 }

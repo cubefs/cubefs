@@ -34,7 +34,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/scheduler/base"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
-	"github.com/cubefs/cubefs/blobstore/scheduler/db"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
@@ -48,7 +47,6 @@ var (
 	errInvalidMembers   = errors.New("invalid members")
 	errInvalidLeader    = errors.New("invalid leader")
 	errInvalidNodeID    = errors.New("invalid node_id")
-	errInvalidMongo     = errors.New("invalid mongo")
 )
 
 var (
@@ -104,13 +102,6 @@ func NewService(conf *Config) (svr *Service, err error) {
 		followerHosts: conf.Follower(),
 	}
 
-	// init db
-	database, err := db.OpenDatabase(&conf.Database)
-	if err != nil {
-		log.Errorf("open database failed: err[%+v]", err)
-		return nil, errInvalidMongo
-	}
-
 	clusterMgrCli := client.NewClusterMgrClient(&conf.ClusterMgr)
 
 	blobnodeCli := client.NewBlobnodeClient(&conf.Blobnode)
@@ -120,7 +111,7 @@ func NewService(conf *Config) (svr *Service, err error) {
 	vc := NewVolumeCache(clusterMgrCli, conf.VolumeCacheUpdateIntervalS)
 	conf.ShardRepair.Kafka = conf.Kafka.ShardRepair
 	conf.ShardRepair.Kafka.BrokerList = conf.Kafka.BrokerList
-	shardRepairMgr, err := NewShardRepairMgr(&conf.ShardRepair, vc, switchMgr, database.OrphanShardTable, blobnodeCli, clusterMgrCli)
+	shardRepairMgr, err := NewShardRepairMgr(&conf.ShardRepair, vc, switchMgr, blobnodeCli, clusterMgrCli)
 	if err != nil {
 		log.Errorf("new shard repair mgr: cfg[%+v], err[%w]", conf.ShardRepair, err)
 		return nil, err

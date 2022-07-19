@@ -17,6 +17,8 @@ package scheduler
 import (
 	"context"
 	"encoding/json"
+	"io/ioutil"
+	"os"
 	"testing"
 
 	"github.com/Shopify/sarama"
@@ -25,6 +27,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/counter"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
 	"github.com/cubefs/cubefs/blobstore/scheduler/base"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
@@ -49,8 +52,8 @@ func newShardRepairMgr(t *testing.T) *ShardRepairMgr {
 	sender := NewMockProducer(ctr)
 	sender.EXPECT().SendMessage(any).AnyTimes().Return(nil)
 
-	db := NewMockOrphanShardTable(ctr)
-	db.EXPECT().Save(any).AnyTimes().Return(nil)
+	orphanShardLog := mocks.NewMockRecordLogEncoder(ctr)
+	orphanShardLog.EXPECT().Encode(any).AnyTimes().Return(nil)
 
 	clusterMgrCli := NewMockClusterMgrAPI(ctr)
 	clusterMgrCli.EXPECT().GetConfig(any, any).AnyTimes().Return("", nil)
@@ -64,7 +67,7 @@ func newShardRepairMgr(t *testing.T) *ShardRepairMgr {
 		blobnodeSelector:        selector,
 		blobnodeCli:             blobnode,
 		failMsgSender:           sender,
-		orphanShardTable:        db,
+		orphanShardLogger:       orphanShardLog,
 		taskSwitch:              taskSwitch,
 		failTopicConsumers:      []base.IConsumer{consumer},
 		taskPool:                taskpool.New(1, 1),
@@ -193,12 +196,20 @@ func TestNewShardRepairMgr(t *testing.T) {
 	broker0 := NewBroker(t)
 	defer broker0.Close()
 
+	testDir, err := ioutil.TempDir(os.TempDir(), "orphan_shard_log")
+	require.NoError(t, err)
+	defer os.RemoveAll(testDir)
+
 	cfg := &ShardRepairConfig{
 		Kafka: ShardRepairKafkaConfig{
 			BrokerList: []string{broker0.Addr()},
 			Normal:     TopicConfig{Topic: testTopic, Partitions: []int32{0}},
 			Priority:   TopicConfig{Topic: testTopic, Partitions: []int32{0}},
 			Failed:     TopicConfig{Topic: testTopic, Partitions: []int32{0}},
+		},
+		OrphanShardLog: recordlog.Config{
+			Dir:       testDir,
+			ChunkBits: 22,
 		},
 	}
 
@@ -209,9 +220,6 @@ func TestNewShardRepairMgr(t *testing.T) {
 	clusterMgrCli := NewMockClusterMgrAPI(ctr)
 	switchMgr := taskswitch.NewSwitchMgr(clusterMgrCli)
 
-	orphanShardTable := NewMockOrphanShardTable(ctr)
-	orphanShardTable.EXPECT().Save(any).AnyTimes().Return(nil)
-
 	blobnode := NewMockBlobnodeAPI(ctr)
 	blobnode.EXPECT().RepairShard(any, any, any).AnyTimes().Return(nil)
 
@@ -220,9 +228,9 @@ func TestNewShardRepairMgr(t *testing.T) {
 	clusterCli.EXPECT().GetConsumeOffset(any, any, any).AnyTimes().Return(int64(0), nil)
 	clusterCli.EXPECT().SetConsumeOffset(any, any, any, any).AnyTimes().Return(nil)
 
-	_, err := NewShardRepairMgr(cfg, volCache, switchMgr, orphanShardTable, blobnode, clusterCli)
+	_, err = NewShardRepairMgr(cfg, volCache, switchMgr, blobnode, clusterCli)
 	require.NoError(t, err)
 
-	_, err = NewShardRepairMgr(cfg, volCache, switchMgr, orphanShardTable, blobnode, clusterCli)
+	_, err = NewShardRepairMgr(cfg, volCache, switchMgr, blobnode, clusterCli)
 	require.Error(t, err)
 }
