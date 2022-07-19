@@ -28,7 +28,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/scheduler/base"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
-	"github.com/cubefs/cubefs/blobstore/scheduler/db"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
@@ -36,8 +35,8 @@ import (
 
 // IVolumeInspector define the interface of volume inspect manager
 type IVolumeInspector interface {
-	AcquireInspect(ctx context.Context) (*proto.InspectTask, error)
-	CompleteInspect(ctx context.Context, ret *proto.InspectRet)
+	AcquireInspect(ctx context.Context) (*proto.VolumeInspectTask, error)
+	CompleteInspect(ctx context.Context, ret *proto.VolumeInspectRet)
 	GetTaskStats() (finished, timeout [counter.SLOT]int)
 	Enabled() bool
 	Run()
@@ -60,20 +59,9 @@ var (
 	errForbiddenAcquire = errors.New("forbidden acquire task")
 )
 
-// IVolsGetter define the interface of clustermgr used by inspect
-type IVolsGetter interface {
-	ListVolume(ctx context.Context, vid proto.Vid, count int) ([]*client.VolumeInfoSimple, proto.Vid, error)
-	GetVolumeInfo(ctx context.Context, Vid proto.Vid) (ret *client.VolumeInfoSimple, err error)
-}
-
-// IRepairShardSender define the shard repair interface used by inspect
-type IRepairShardSender interface {
-	SendShardRepairMsg(ctx context.Context, vid proto.Vid, bid proto.BlobID, badIdx []uint8) error
-}
-
 type inspectTaskInfo struct {
-	t           *proto.InspectTask
-	ret         *proto.InspectRet
+	t           *proto.VolumeInspectTask
+	ret         *proto.VolumeInspectRet
 	acquireTime *time.Time
 }
 
@@ -86,7 +74,7 @@ func (t *inspectTaskInfo) tryAcquire() error {
 	return nil
 }
 
-func (t *inspectTaskInfo) complete(ret *proto.InspectRet) {
+func (t *inspectTaskInfo) complete(ret *proto.VolumeInspectRet) {
 	t.ret = ret
 }
 
@@ -186,11 +174,10 @@ type VolumeInspectMgr struct {
 
 	firstPrepare bool
 
-	taskSwitch taskswitch.ISwitcher
-	tbl        db.IInspectCheckPointTable
-	volsGetter IVolsGetter
+	taskSwitch    taskswitch.ISwitcher
+	clusterMgrCli client.ClusterMgrAPI
 
-	repairShardSender IRepairShardSender
+	repairShardSender client.ProxyAPI
 	sendDeduplicator  *badShardDeduplicator
 
 	completeTaskCounter counter.Counter
@@ -201,9 +188,8 @@ type VolumeInspectMgr struct {
 
 // NewVolumeInspectMgr returns inspect task manager
 func NewVolumeInspectMgr(
-	tbl db.IInspectCheckPointTable,
-	volsGetter IVolsGetter,
-	repairShardSender IRepairShardSender,
+	clusterMgrCli client.ClusterMgrAPI,
+	repairShardSender client.ProxyAPI,
 	taskSwitch taskswitch.ISwitcher, cfg *VolumeInspectMgrCfg) *VolumeInspectMgr {
 	return &VolumeInspectMgr{
 		Closer:            closer.New(),
@@ -211,8 +197,7 @@ func NewVolumeInspectMgr(
 		acquireEnable:     false,
 		firstPrepare:      true,
 		taskSwitch:        taskSwitch,
-		tbl:               tbl,
-		volsGetter:        volsGetter,
+		clusterMgrCli:     clusterMgrCli,
 		repairShardSender: repairShardSender,
 		sendDeduplicator:  newBadShardDeduplicator(defaultDuplicateCnt),
 		cfg:               cfg,
@@ -268,7 +253,7 @@ func (mgr *VolumeInspectMgr) canAcquire() bool {
 func (mgr *VolumeInspectMgr) getStartVid(ctx context.Context) proto.Vid {
 	if mgr.firstPrepare {
 		mgr.firstPrepare = false
-		ck, err := mgr.tbl.GetCheckPoint(ctx)
+		ck, err := mgr.clusterMgrCli.GetVolumeInspectCheckPoint(ctx)
 		if err == nil {
 			return ck.StartVid
 		}
@@ -304,7 +289,7 @@ func (mgr *VolumeInspectMgr) prepare(ctx context.Context) {
 		}
 
 		span.Debugf("prepare inspect task: start vid[%d], list step[%d]", startVid, listStep)
-		vols, nextVid, err = mgr.volsGetter.ListVolume(ctx, startVid, listStep)
+		vols, nextVid, err = mgr.clusterMgrCli.ListVolume(ctx, startVid, listStep)
 		if err != nil {
 			span.Errorf("list volume failed: err[%+v]", err)
 			time.Sleep(defaultPrepareFailSleepS * time.Second)
@@ -341,7 +326,7 @@ func (mgr *VolumeInspectMgr) prepare(ctx context.Context) {
 }
 
 // AcquireInspect acquire inspect task
-func (mgr *VolumeInspectMgr) AcquireInspect(ctx context.Context) (*proto.InspectTask, error) {
+func (mgr *VolumeInspectMgr) AcquireInspect(ctx context.Context) (*proto.VolumeInspectTask, error) {
 	if !mgr.canAcquire() {
 		return nil, errForbiddenAcquire
 	}
@@ -363,7 +348,7 @@ func (mgr *VolumeInspectMgr) AcquireInspect(ctx context.Context) (*proto.Inspect
 }
 
 // CompleteInspect complete inspect task
-func (mgr *VolumeInspectMgr) CompleteInspect(ctx context.Context, ret *proto.InspectRet) {
+func (mgr *VolumeInspectMgr) CompleteInspect(ctx context.Context, ret *proto.VolumeInspectRet) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	if !mgr.canAcquire() {
@@ -454,7 +439,7 @@ func (mgr *VolumeInspectMgr) finish(ctx context.Context) {
 	for _, volMissedShards := range missedShards {
 		vid := volMissedShards[0].Vuid.Vid()
 
-		volInfo, err := mgr.volsGetter.GetVolumeInfo(ctx, vid)
+		volInfo, err := mgr.clusterMgrCli.GetVolumeInfo(ctx, vid)
 		if err != nil {
 			span.Errorf("get volume info failed: err[%+v]", err)
 			continue
@@ -480,7 +465,7 @@ func (mgr *VolumeInspectMgr) finish(ctx context.Context) {
 	}
 
 	err := retry.Timed(3, 200).On(func() error {
-		return mgr.tbl.SaveCheckPoint(ctx, mgr.nextVid)
+		return mgr.clusterMgrCli.SetVolumeInspectCheckPoint(ctx, mgr.nextVid)
 	})
 	if err != nil {
 		span.Warnf("save checkpoint failed: err[%+v]", err)
@@ -553,8 +538,8 @@ func (mgr *VolumeInspectMgr) genTaskID(vol *client.VolumeInfoSimple) string {
 	return base.GenTaskID("inspect", vol.Vid)
 }
 
-func (mgr *VolumeInspectMgr) genInspectTask(taskID string, vol *client.VolumeInfoSimple) *proto.InspectTask {
-	return &proto.InspectTask{
+func (mgr *VolumeInspectMgr) genInspectTask(taskID string, vol *client.VolumeInfoSimple) *proto.VolumeInspectTask {
+	return &proto.VolumeInspectTask{
 		TaskId:   taskID,
 		Mode:     vol.CodeMode,
 		Replicas: vol.VunitLocations,

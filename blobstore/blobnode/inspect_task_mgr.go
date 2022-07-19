@@ -55,7 +55,7 @@ func NewInspectTaskMgr(inspectConcurrency int, bidGetter IBidGetter, report IRes
 }
 
 // AddTask adds inspect task
-func (mgr *InspectTaskMgr) AddTask(ctx context.Context, task *proto.InspectTask) error {
+func (mgr *InspectTaskMgr) AddTask(ctx context.Context, task *proto.VolumeInspectTask) error {
 	span := trace.SpanFromContextSafe(ctx)
 
 	err := mgr.taskLimit.Acquire()
@@ -77,12 +77,12 @@ func (mgr *InspectTaskMgr) RunningTaskSize() int {
 	return mgr.taskLimit.Running()
 }
 
-func (mgr *InspectTaskMgr) doInspect(ctx context.Context, task *proto.InspectTask) *proto.InspectRet {
+func (mgr *InspectTaskMgr) doInspect(ctx context.Context, task *proto.VolumeInspectTask) *proto.VolumeInspectRet {
 	span := trace.SpanFromContextSafe(ctx)
 
 	mode := task.Mode
 	replicas := task.Replicas
-	ret := proto.InspectRet{TaskID: task.TaskId}
+	ret := proto.VolumeInspectRet{TaskID: task.TaskId}
 
 	if len(replicas) != workutils.AllReplCnt(mode) {
 		span.Errorf("replicas length is invalid: taskID[%s], mode[%d], expect len[%d], actual len[%d]",
@@ -143,10 +143,10 @@ func (mgr *InspectTaskMgr) doInspect(ctx context.Context, task *proto.InspectTas
 	return &ret
 }
 
-func (mgr *InspectTaskMgr) reportInspectResult(ctx context.Context, inspectRet *proto.InspectRet) {
+func (mgr *InspectTaskMgr) reportInspectResult(ctx context.Context, inspectRet *proto.VolumeInspectRet) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	args := api.CompleteInspectArgs{InspectRet: inspectRet}
+	args := api.CompleteInspectArgs{VolumeInspectRet: inspectRet}
 	err := mgr.reporter.CompleteInspect(ctx, &args)
 	if err != nil {
 		span.Errorf("report inspect result failed: taskID[%s], err[%+v]", inspectRet.TaskID, err)

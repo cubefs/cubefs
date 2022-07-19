@@ -38,11 +38,12 @@ const (
 	TaskTypeBalance       TaskType = "balance"
 	TaskTypeDiskDrop      TaskType = "disk_drop"
 	TaskTypeManualMigrate TaskType = "manual_migrate"
+	TaskTypeVolumeInspect TaskType = "volume_inspect"
 )
 
 func (t TaskType) Valid() bool {
 	switch t {
-	case TaskTypeDiskRepair, TaskTypeBalance, TaskTypeDiskDrop, TaskTypeManualMigrate:
+	case TaskTypeDiskRepair, TaskTypeBalance, TaskTypeDiskDrop, TaskTypeManualMigrate, TaskTypeVolumeInspect:
 		return true
 	default:
 		return false
@@ -144,13 +145,12 @@ func (t *MigrateTask) Copy() *MigrateTask {
 	return task
 }
 
-type InspectCheckPoint struct {
-	Id       string `json:"_id" bson:"_id"`
-	StartVid Vid    `json:"start_vid" bson:"start_vid"` // min vid in current batch volumes
-	Ctime    string `json:"ctime" bson:"ctime"`
+type VolumeInspectCheckPoint struct {
+	StartVid Vid    `json:"start_vid"` // min vid in current batch volumes
+	Ctime    string `json:"ctime"`
 }
 
-type InspectTask struct {
+type VolumeInspectTask struct {
 	TaskId   string            `json:"task_id"`
 	Mode     codemode.CodeMode `json:"mode"`
 	Replicas []VunitLocation   `json:"replicas"`
@@ -161,13 +161,13 @@ type MissedShard struct {
 	Bid  BlobID `json:"bid"`
 }
 
-type InspectRet struct {
+type VolumeInspectRet struct {
 	TaskID        string         `json:"task_id"`
 	InspectErrStr string         `json:"inspect_err_str"` // inspect run success or not
 	MissedShards  []*MissedShard `json:"missed_shards"`
 }
 
-func (inspect *InspectRet) Err() error {
+func (inspect *VolumeInspectRet) Err() error {
 	if len(inspect.InspectErrStr) == 0 {
 		return nil
 	}

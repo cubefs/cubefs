@@ -552,10 +552,10 @@ func (m *MockVolumeInspector) EXPECT() *MockVolumeInspectorMockRecorder {
 }
 
 // AcquireInspect mocks base method.
-func (m *MockVolumeInspector) AcquireInspect(arg0 context.Context) (*proto.InspectTask, error) {
+func (m *MockVolumeInspector) AcquireInspect(arg0 context.Context) (*proto.VolumeInspectTask, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AcquireInspect", arg0)
-	ret0, _ := ret[0].(*proto.InspectTask)
+	ret0, _ := ret[0].(*proto.VolumeInspectTask)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -579,7 +579,7 @@ func (mr *MockVolumeInspectorMockRecorder) Close() *gomock.Call {
 }
 
 // CompleteInspect mocks base method.
-func (m *MockVolumeInspector) CompleteInspect(arg0 context.Context, arg1 *proto.InspectRet) {
+func (m *MockVolumeInspector) CompleteInspect(arg0 context.Context, arg1 *proto.VolumeInspectRet) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "CompleteInspect", arg0, arg1)
 }

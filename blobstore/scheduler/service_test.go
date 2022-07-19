@@ -126,7 +126,7 @@ func newMockService(t *testing.T) *Service {
 	manualMgr.EXPECT().AddManualTask(any, any, any).Return(nil)
 
 	// acquire inspect task
-	inspectorMgr.EXPECT().AcquireInspect(any).Return(&proto.InspectTask{}, nil)
+	inspectorMgr.EXPECT().AcquireInspect(any).Return(&proto.VolumeInspectTask{}, nil)
 
 	// complete inspect task
 	inspectorMgr.EXPECT().CompleteInspect(any, any).Return()

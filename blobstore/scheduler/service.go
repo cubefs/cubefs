@@ -164,7 +164,7 @@ func (svr *Service) HTTPInspectComplete(c *rpc.Context) {
 	}
 
 	ctx := c.Request.Context()
-	svr.inspectMgr.CompleteInspect(ctx, args.InspectRet)
+	svr.inspectMgr.CompleteInspect(ctx, args.VolumeInspectRet)
 	c.Respond()
 }
 
