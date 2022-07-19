@@ -27,11 +27,9 @@ import (
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	api "github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/common/counter"
-	"github.com/cubefs/cubefs/blobstore/common/mongoutil"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
-	"github.com/cubefs/cubefs/blobstore/scheduler/db"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 )
 
@@ -61,7 +59,6 @@ func runMockFollowerService(s *Service) string {
 }
 
 func TestNewService(t *testing.T) {
-	mongoURI := ""
 	testCases := []struct {
 		conf *Config
 		err  error
@@ -87,21 +84,6 @@ func TestNewService(t *testing.T) {
 				Services:  Services{Leader: 1, Members: map[uint64]string{1: "127.0.0.1:9800"}},
 			},
 			err: errInvalidNodeID,
-		},
-		{
-			conf: &Config{
-				ClusterID: proto.ClusterID(1),
-				Services:  Services{Leader: 1, NodeID: 2, Members: map[uint64]string{1: "127.0.0.1:9800", 2: "127.0.0.1:9880"}},
-			},
-			err: errInvalidMongo,
-		},
-		{
-			conf: &Config{
-				ClusterID: proto.ClusterID(1),
-				Database:  db.Config{Mongo: mongoutil.Config{URI: mongoURI}},
-				Services:  Services{Leader: 1, NodeID: 2, Members: map[uint64]string{1: "127.0.0.1:9800", 2: "127.0.0.1:9880"}},
-			},
-			err: errInvalidMongo,
 		},
 	}
 	for _, tc := range testCases {

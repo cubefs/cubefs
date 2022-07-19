@@ -29,12 +29,12 @@ import (
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/kafka"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/scheduler/base"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
-	"github.com/cubefs/cubefs/blobstore/scheduler/db"
 	"github.com/cubefs/cubefs/blobstore/util/selector"
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
@@ -69,6 +69,8 @@ type ShardRepairConfig struct {
 
 	FailHandleBatchCnt       int   `json:"fail_handle_batch_cnt"`
 	FailMsgConsumeIntervalMs int64 `json:"fail_msg_consume_interval_ms"`
+
+	OrphanShardLog recordlog.Config `json:"orphan_shard_log"`
 
 	Kafka ShardRepairKafkaConfig `json:"-"`
 }
@@ -108,6 +110,13 @@ func (cfg *ShardRepairConfig) failedProducerConfig() *kafka.ProducerCfg {
 	}
 }
 
+// OrphanShard orphan shard identification.
+type OrphanShard struct {
+	ClusterID proto.ClusterID `json:"cluster_id"`
+	Vid       proto.Vid       `json:"vid"`
+	Bid       proto.BlobID    `json:"bid"`
+}
+
 // ShardRepairMgr shard repair manager
 type ShardRepairMgr struct {
 	taskPool   taskpool.TaskPool
@@ -126,15 +135,14 @@ type ShardRepairMgr struct {
 	blobnodeCli      client.BlobnodeAPI
 	blobnodeSelector selector.Selector
 
-	orphanShardTable db.IOrphanShardTable
-
 	repairSuccessCounter    prometheus.Counter
 	repairSuccessCounterMin *counter.Counter
 	repairFailedCounter     prometheus.Counter
 	repairFailedCounterMin  *counter.Counter
 	errStatsDistribution    *base.ErrorStats
 
-	group singleflight.Group
+	group             singleflight.Group
+	orphanShardLogger recordlog.Encoder
 }
 
 // NewShardRepairMgr returns shard repair manager
@@ -142,7 +150,6 @@ func NewShardRepairMgr(
 	cfg *ShardRepairConfig,
 	vc IVolumeCache,
 	switchMgr *taskswitch.SwitchMgr,
-	orphanShardTbl db.IOrphanShardTable,
 	blobnodeCli client.BlobnodeAPI,
 	clusterMgrCli client.ClusterMgrAPI,
 ) (*ShardRepairMgr, error) {
@@ -169,6 +176,11 @@ func NewShardRepairMgr(
 		return nil, err
 	}
 
+	orphanShardsLog, err := recordlog.NewEncoder(&cfg.OrphanShardLog)
+	if err != nil {
+		return nil, err
+	}
+
 	return &ShardRepairMgr{
 		blobnodeCli:      blobnodeCli,
 		taskPool:         taskpool.New(cfg.TaskPoolSize, cfg.TaskPoolSize),
@@ -185,7 +197,7 @@ func NewShardRepairMgr(
 		normalHandleBatchCnt: cfg.NormalHandleBatchCnt,
 		failHandlerBatchCnt:  cfg.FailHandleBatchCnt,
 
-		orphanShardTable: orphanShardTbl,
+		orphanShardLogger: orphanShardsLog,
 
 		repairSuccessCounter:    base.NewCounter(cfg.ClusterID, ShardRepair, base.KindSuccess),
 		repairFailedCounter:     base.NewCounter(cfg.ClusterID, ShardRepair, base.KindFailed),
@@ -405,7 +417,7 @@ func (s *ShardRepairMgr) repairShard(ctx context.Context, volInfo *client.Volume
 func (s *ShardRepairMgr) saveOrphanShard(ctx context.Context, repairMsg proto.ShardRepairMsg) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	shard := db.OrphanShard{
+	shard := OrphanShard{
 		ClusterID: repairMsg.ClusterID,
 		Vid:       repairMsg.Vid,
 		Bid:       repairMsg.Bid,
@@ -413,7 +425,7 @@ func (s *ShardRepairMgr) saveOrphanShard(ctx context.Context, repairMsg proto.Sh
 	span.Infof("save orphan shard: [%+v]", shard)
 
 	base.InsistOn(ctx, "save orphan shard", func() error {
-		return s.orphanShardTable.Save(shard)
+		return s.orphanShardLogger.Encode(shard)
 	})
 }
 
