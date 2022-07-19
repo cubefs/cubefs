@@ -87,6 +87,7 @@ func clear(testService *Service) {
 func initTestService(t *testing.T) *Service {
 	cfg := *testServiceCfg
 	cfg.NormalDBPath = cfg.DBPath + "/normaldb" + strconv.Itoa(rand.Intn(100000000))
+	cfg.KvDBPath = cfg.DBPath + "/kvdb" + strconv.Itoa(rand.Intn(100000000))
 	cfg.VolumeMgrConfig.VolumeDBPath = cfg.DBPath + "/volumedb" + strconv.Itoa(rand.Intn(10000000))
 	cfg.RaftConfig.RaftDBPath = cfg.DBPath + "/raftdb" + strconv.Itoa(rand.Intn(10000000))
 	cfg.RaftConfig.ServerConfig.WalDir = "/tmp/tmpsvrraftwal-" + strconv.Itoa(rand.Intn(10000000))

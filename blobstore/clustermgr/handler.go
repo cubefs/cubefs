@@ -128,5 +128,18 @@ func NewHandler(service *Service) *rpc.Router {
 
 	rpc.GET("/snapshot/dump", service.SnapshotDump)
 
+	//==================kv==========================
+	rpc.RegisterArgsParser(&clustermgr.ListKvOpts{}, "json")
+	rpc.RegisterArgsParser(&clustermgr.GetKvArgs{}, "json")
+	rpc.RegisterArgsParser(&clustermgr.DeleteKvArgs{}, "json")
+
+	rpc.GET("/kv/get/:key", service.KvGet, rpc.OptArgsURI())
+
+	rpc.POST("/kv/delete/:key", service.KvDelete, rpc.OptArgsURI())
+
+	rpc.POST("/kv/set", service.KvSet, rpc.OptArgsBody())
+
+	rpc.GET("/kv/list", service.KvList, rpc.OptArgsQuery())
+
 	return rpc.DefaultRouter
 }
