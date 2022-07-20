@@ -345,8 +345,10 @@ func (h *Handler) sendRepairMsg(ctx context.Context, blob blobIdent, badIdxes []
 		}
 		err = h.proxyClient.SendShardRepairMsg(ctx, host, repairArgs)
 		if err != nil {
+			if errorTimeout(err) || errorConnectionRefused(err) {
+				serviceController.PunishServiceWithThreshold(ctx, serviceProxy, host, h.ServicePunishIntervalS)
+			}
 			span.Warnf("send to %s repair message(%+v) %s", host, repairArgs, err.Error())
-			serviceController.PunishServiceWithThreshold(ctx, serviceProxy, host, h.ServicePunishIntervalS)
 			reportUnhealth(clusterID, "punish", serviceProxy, host, "failed")
 			err = errors.Base(err, host)
 		}
@@ -393,8 +395,10 @@ func (h *Handler) clearGarbage(ctx context.Context, location *access.Location) e
 		}
 		err = h.proxyClient.SendDeleteMsg(ctx, host, deleteArgs)
 		if err != nil {
+			if errorTimeout(err) || errorConnectionRefused(err) {
+				serviceController.PunishServiceWithThreshold(ctx, serviceProxy, host, h.ServicePunishIntervalS)
+			}
 			span.Warnf("send to %s delete message(%+v) %s", host, logMsg, err.Error())
-			serviceController.PunishServiceWithThreshold(ctx, serviceProxy, host, h.ServicePunishIntervalS)
 			reportUnhealth(location.ClusterID, "punish", serviceProxy, host, "failed")
 			err = errors.Base(err, host)
 		}
