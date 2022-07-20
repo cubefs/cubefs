@@ -63,13 +63,13 @@ func (ei *ExtentInfoBlock) Loaded() bool {
 // This extent implementation manages all header info and data body in one single entry file.
 // Header of extent include inode value of this extent block and Crc blocks of data blocks.
 type Extent struct {
-	file       *os.File
-	filePath   string
-	extentID   uint64
-	modifyTime int64
-	dataSize   int64
-	hasClose   int32
-	header     []byte
+	file            *os.File
+	filePath        string
+	extentID        uint64
+	modifyTime      int64
+	dataSize        int64
+	isOccurNewWrite bool
+	header          []byte
 	sync.Mutex
 }
 
@@ -82,15 +82,12 @@ func NewExtent(name string, extentID uint64) *Extent {
 	return e
 }
 
-func (e *Extent) HasClosed() bool {
-	return atomic.LoadInt32(&e.hasClose) == ExtentHasClose
+func (e *Extent) IsOccurNewWrite() bool {
+	 return e.isOccurNewWrite==true
 }
 
 // Close this extent and release FD.
 func (e *Extent) Close() (err error) {
-	if e.HasClosed() {
-		return
-	}
 	if err = e.file.Close(); err != nil {
 		return
 	}
@@ -219,7 +216,7 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 	if err = e.checkWriteParameter(offset, size, writeType); err != nil {
 		return
 	}
-
+	e.isOccurNewWrite=true
 	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
 		return
 	}
@@ -303,6 +300,9 @@ func (e *Extent) checkWriteParameter(offset, size int64, writeType int) error {
 // Flush synchronizes data to the disk.
 func (e *Extent) Flush() (err error) {
 	err = e.file.Sync()
+	if err==nil {
+		e.isOccurNewWrite=false
+	}
 	return
 }
 
